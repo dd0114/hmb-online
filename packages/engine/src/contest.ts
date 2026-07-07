@@ -4,7 +4,7 @@ import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
 import { fdist, fclamp } from "./fixedmath";
-import { centerSpot, defendGoal, clampToPitch } from "./pitch";
+import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
 
 /**
  * contest — 경합 판정(패스/인터셉트/태클/슛).
@@ -55,8 +55,13 @@ function nearestAny(state: SimState, x: number, y: number): { p: SimPlayer; dist
   return best ? { p: best, dist: bestD } : null;
 }
 
-/** 골 후 킥오프 리셋(실점팀이 센터에서 시작). */
-export function resetKickoff(state: SimState, pitch: Pitch, restartSide: TeamSide): void {
+/** 골 후 킥오프 리셋(실점팀이 센터에서 시작). stoppage 를 주면 정지 후 재개. */
+export function resetKickoff(
+  state: SimState,
+  pitch: Pitch,
+  restartSide: TeamSide,
+  stoppage = 0,
+): void {
   const c = centerSpot(pitch);
   const taker = nearestOfSide(state, restartSide, c.x, c.y);
   if (taker) {
@@ -67,6 +72,94 @@ export function resetKickoff(state: SimState, pitch: Pitch, restartSide: TeamSid
     state.ball.posFx = { ...c };
     state.possession = restartSide;
   }
+  state.setPiece = { kind: "kickoff", side: restartSide, x: c.x, y: c.y };
+  state.stoppage = stoppage;
+}
+
+/** side 팀 GK. */
+function goalkeeperOf(state: SimState, side: TeamSide): SimPlayer | null {
+  return state.players.find((p) => p.side === side && p.isGK) ?? null;
+}
+
+/**
+ * 세트피스 재시작 공통: (x,y) 에 taker 를 세우고 공을 준다. 정지 + setPiece 컨텍스트 설정.
+ * kind 가 goal_kick 이면 GK 가, 그 외엔 (x,y) 최근접 아웃필드가 taker.
+ */
+function placeRestart(
+  state: SimState,
+  pitch: Pitch,
+  config: EngineConfig,
+  side: TeamSide,
+  x: number,
+  y: number,
+  kind: "corner" | "throw_in" | "goal_kick",
+): SimPlayer | null {
+  const spot = clampToPitch(pitch, x, y);
+  const taker =
+    kind === "goal_kick"
+      ? goalkeeperOf(state, side)
+      : (nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side));
+  if (taker) {
+    taker.posFx.x = spot.x;
+    taker.posFx.y = spot.y;
+    giveBallTo(state, taker);
+  } else {
+    state.ball.posFx = { x: spot.x, y: spot.y };
+    state.ball.owner = null;
+    state.ball.ownerSide = null;
+    state.ball.flight = null;
+    state.possession = side;
+  }
+  state.setPiece = { kind, side, x: spot.x, y: spot.y };
+  state.stoppage = config.setPiece.stoppageTicks;
+  return taker;
+}
+
+/** 스로인 재시작(사이드라인 아웃 → 상대 볼). */
+export function restartThrowIn(
+  state: SimState,
+  pitch: Pitch,
+  config: EngineConfig,
+  side: TeamSide,
+  x: number,
+  y: number,
+  tick: number,
+  minute: number,
+): MatchEvent {
+  const taker = placeRestart(state, pitch, config, side, x, y, "throw_in");
+  return { tick, minute, type: "kickoff", team: side, playerId: taker?.id, detail: "throw_in" };
+}
+
+/** 골킥 재시작(공격팀이 골라인 아웃 → 수비팀 GK). */
+export function restartGoalKick(
+  state: SimState,
+  pitch: Pitch,
+  config: EngineConfig,
+  side: TeamSide,
+  tick: number,
+  minute: number,
+): MatchEvent {
+  const own = defendGoal(pitch, side);
+  const sign = side === "home" ? 1 : -1;
+  const gx = own.x + sign * Math.round(pitch.wFx * 0.05);
+  const taker = placeRestart(state, pitch, config, side, gx, own.y, "goal_kick");
+  return { tick, minute, type: "kickoff", team: side, playerId: taker?.id, detail: "goal_kick" };
+}
+
+/** 코너 재시작(수비팀이 골라인 아웃/세이브 굴절 → 공격팀). nearY 로 위/아래 코너 결정. */
+export function restartCorner(
+  state: SimState,
+  pitch: Pitch,
+  config: EngineConfig,
+  side: TeamSide,
+  nearY: number,
+  tick: number,
+  minute: number,
+): MatchEvent {
+  const g = attackGoal(pitch, side); // 공격 골라인 x.
+  const cornerY = nearY < Math.round(pitch.hFx / 2) ? 0 : pitch.hFx;
+  const taker = placeRestart(state, pitch, config, side, g.x, cornerY, "corner");
+  return { tick, minute, type: "kickoff", team: side, playerId: taker?.id, detail: "corner" };
 }
 
 /**
@@ -80,7 +173,8 @@ export function tryIntercept(
   minute: number,
 ): MatchEvent[] {
   const f = state.ball.flight;
-  if (!f || f.kind === "loose") return [];
+  // 패스만 비행 중 인터셉트. 슛은 골문에서 resolveShot 이 처리(중간 차단 없음).
+  if (!f || f.kind !== "pass") return [];
   const range = config.contest.interceptRange * config.fixedScale;
   const defSide: TeamSide = f.fromSide === "home" ? "away" : "home";
 
@@ -201,6 +295,7 @@ export function resolveShot(
   const xg = f.xg ?? config.contest.xgBase;
   const defSide: TeamSide = scorerSide === "home" ? "away" : "home";
 
+  // --- 득점 ---
   if (rng.next() < xg) {
     state.score[scorerSide] += 1;
     const ev: MatchEvent = {
@@ -211,12 +306,32 @@ export function resolveShot(
       xg,
     };
     if (shooter) ev.playerId = shooter.id;
-    resetKickoff(state, pitch, defSide);
+    resetKickoff(state, pitch, defSide, config.setPiece.goalStoppageTicks);
     return [ev];
   }
 
-  // 선방 — 수비 GK 소유.
-  const gk = state.players.find((p) => p.side === defSide && p.isGK);
+  // --- 유효슛(on target) 여부: shooting/각도로 가감 ---
+  const onTargetProb = fclamp(
+    config.contest.onTargetBase * (shooter ? attrFactor(shooter.attrs.shooting) : 1),
+    0.1,
+    0.9,
+  );
+  const ballY = state.ball.posFx.y;
+  if (rng.next() >= onTargetProb) {
+    // 빗맞음(off target): 수비 블록에 맞아 코너 굴절 또는 골라인 아웃 → 골킥.
+    const restart =
+      rng.next() < config.contest.offTargetBlockCornerProb
+        ? restartCorner(state, pitch, config, scorerSide, ballY, tick, minute)
+        : restartGoalKick(state, pitch, config, defSide, tick, minute);
+    return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "off_target" }, restart];
+  }
+
+  // 유효슛 세이브: GK 캐치 또는 코너로 굴절.
+  if (rng.next() < config.contest.saveCornerProb) {
+    const cornerEv = restartCorner(state, pitch, config, scorerSide, ballY, tick, minute);
+    return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, cornerEv];
+  }
+  const gk = goalkeeperOf(state, defSide);
   if (gk) {
     const goal = defendGoal(pitch, defSide);
     const c = clampToPitch(pitch, goal.x, goal.y);

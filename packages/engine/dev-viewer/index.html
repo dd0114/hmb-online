@@ -89,8 +89,8 @@
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 20;
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
       const BALL_TRAIL = 22, PLAYER_TRAIL = 10; // 잔상 길이(틱)
-      const TICKS_PER_SEC = 12;                 // 1x 재생 속도(FM 처럼 천천히 읽히게)
-      const CRUISE_SPEED = 6, HL_SPEED = 1, HL_WINDOW = 8; // 하이라이트 자동페이싱: 빌드업 6x → 찬스 근처 1x
+      const TICKS_PER_SEC = 2;                  // 1x = 2 게임초/실초 (거의 실시간, 공이 눈에 따라감)
+      const CRUISE_SPEED = 4, HL_SPEED = 1, HL_WINDOW = 8; // 하이라이트 자동페이싱: 빌드업 4x → 찬스 근처 1x
 
       const canvas = document.getElementById("pitch");
       const ctx = canvas.getContext("2d");
@@ -198,11 +198,15 @@
 
       function renderTicker() {
         tickerEl.innerHTML = log.events
-          .filter((e) => ["goal", "shot", "tackle", "interception", "half_whistle", "full_whistle"].includes(e.type))
+          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "half_whistle", "full_whistle"].includes(e.type))
+          // 세트피스(코너/스로인/골킥)는 type=kickoff + detail 로 표기됨.
+          .filter((e) => !(e.type === "kickoff" && e.detail == null && e.minute > 0))
           .map((e) => {
             const who = e.playerId ? ` ${e.playerId}` : "";
             const xg = e.xg != null ? ` (xG ${e.xg.toFixed(2)})` : "";
-            return `<div class="ev-${e.type}" data-tick="${e.tick}" style="cursor:pointer">${e.minute}' · ${e.type}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
+            // 세트피스는 detail 라벨을, 그 외엔 type 을 보여준다.
+            const label = e.detail && e.type === "kickoff" ? e.detail : e.detail && e.type === "shot" ? `${e.type} (${e.detail})` : e.type;
+            return `<div class="ev-${e.type}" data-tick="${e.tick}" style="cursor:pointer">${e.minute}' · ${label}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
           }).join("");
         tickerEl.querySelectorAll("[data-tick]").forEach((el) => el.onclick = () => jumpToTick(+el.dataset.tick));
       }

@@ -19,7 +19,17 @@ import { createPitch, slotToReal, clampToPitch } from "./pitch";
 import { toFixed, fromFixed, stepToward } from "./fixedmath";
 import { glueBallToOwner, advanceBall } from "./ball";
 import { decideBallOwner, decideOffBall, assignPresser } from "./decision";
-import { tryIntercept, tryTackle, resolveArrival, resolveShot, resetKickoff } from "./contest";
+import {
+  tryIntercept,
+  tryTackle,
+  resolveArrival,
+  resolveShot,
+  resetKickoff,
+  restartThrowIn,
+  restartGoalKick,
+  restartCorner,
+} from "./contest";
+import type { OutCross } from "./ball";
 import { hashState } from "./hash";
 
 /**
@@ -150,10 +160,63 @@ function snapshot(state: SimState, config: EngineConfig): TickSnapshot {
   };
 }
 
+/**
+ * 공이 경계를 넘었을 때(out) 세트피스 판정.
+ *  - 사이드라인 → 스로인(찬 팀 상대).
+ *  - 골라인: 공격팀이 냄 → 골킥(수비팀) / 수비팀이 냄 → 코너(공격팀).
+ * 슛은 resolveShot 에서 처리되므로 여기 out 은 사실상 패스(fail_out)/루즈볼.
+ */
+function resolveOut(carry: Carry, out: OutCross, tick: number, minute: number): void {
+  const { state, config, pitch } = carry;
+  const f = state.ball.flight;
+  const fromSide: TeamSide = f?.fromSide ?? state.possession;
+  const opp: TeamSide = fromSide === "home" ? "away" : "home";
+  state.ball.flight = null;
+
+  if (out.edge === "top" || out.edge === "bottom") {
+    // 사이드라인 아웃 → 스로인(상대 볼).
+    carry.events.push(restartThrowIn(state, pitch, config, opp, out.x, out.y, tick, minute));
+    return;
+  }
+  // 골라인 아웃. 홈은 오른쪽(right=wFx) 공격, 어웨이는 왼쪽(left=0) 공격.
+  const homeAttackLine = out.edge === "right";
+  const attackerOfLine: TeamSide = homeAttackLine ? "home" : "away";
+  if (fromSide === attackerOfLine) {
+    // 공격팀이 냄 → 골킥(수비팀).
+    carry.events.push(restartGoalKick(state, pitch, config, opp, tick, minute));
+  } else {
+    // 수비팀이 냄(클리어 등) → 코너(공격팀).
+    carry.events.push(restartCorner(state, pitch, config, fromSide, out.y, tick, minute));
+  }
+}
+
 /** 한 틱 진행(perceive→decide→act→resolve→fatigue). 이벤트는 carry.events 로 push. */
 function stepTick(carry: Carry): void {
   const { state, rng, config, pitch } = carry;
   const minute = tickToMinute(state.tick, config);
+
+  // --- 세트피스 정지(dead ball): 재배치만 하고 결정/경합/공비행 스킵 ---
+  if (state.stoppage > 0) {
+    state.stoppage--;
+    const heldId = state.ball.owner;
+    for (const p of state.players) {
+      if (p.id === heldId) continue;
+      decideOffBall(state, p, config, pitch, null);
+    }
+    for (const p of state.players) {
+      const step = speedStep(p, config);
+      const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
+      const c = clampToPitch(pitch, next.x, next.y);
+      p.posFx.x = c.x;
+      p.posFx.y = c.y;
+    }
+    if (heldId) {
+      const o = state.byId.get(heldId);
+      if (o) glueBallToOwner(state.ball, o.posFx.x, o.posFx.y);
+    }
+    if (state.stoppage === 0) state.setPiece = null;
+    return;
+  }
 
   // --- 압박 담당 지정(수비팀만) ---
   const defSide: TeamSide = state.possession === "home" ? "away" : "home";
@@ -204,6 +267,7 @@ function stepTick(carry: Carry): void {
             kind: "pass",
             target: action.receiver.id,
             fromSide: owner.side,
+            passOutcome: action.outcome,
           };
           state.ball.owner = null;
           state.ball.ownerSide = null;
@@ -234,8 +298,10 @@ function stepTick(carry: Carry): void {
   // --- act: 공 이동 + 경합 ---
   const curOwnerId = state.ball.owner;
   if (state.ball.flight) {
-    const arrived = advanceBall(state.ball, config, pitch);
-    if (arrived) {
+    const res = advanceBall(state.ball, config, pitch);
+    if (res.out) {
+      resolveOut(carry, res.out, state.tick, minute);
+    } else if (res.arrived) {
       if (state.ball.flight.kind === "shot") {
         for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) {
           carry.events.push(e);
@@ -301,6 +367,8 @@ function initCarry(
     possession: "home",
     tick: 0,
     teams: { home: home.team, away: away.team },
+    stoppage: 0,
+    setPiece: null,
   };
 
   const carry: Carry = {
@@ -314,8 +382,9 @@ function initCarry(
     pitch,
   };
 
-  // 킥오프: 홈이 센터에서 시작.
+  // 킥오프: 홈이 센터에서 시작(개시는 정지 없이 바로).
   resetKickoff(state, pitch, "home");
+  state.setPiece = null;
   carry.events.push({ tick: 0, minute: 0, type: "kickoff", team: "home" });
   return carry;
 }

@@ -57,26 +57,60 @@ export interface EngineConfig {
 
   /** 경합 확률 기본치. (ESMS/xG 참고) */
   contest: {
-    /** 패스 성공 기준선(0..1). passing 속성으로 가감. */
+    /** 패스 성공 기준선(0..1). 중앙/후방 패스의 기본 성공확률. passing 속성으로 가감. */
     passBase: number;
+    /** 전진 패스 페널티(전진 정도 0..1 에 곱해 성공확률에서 차감). */
+    passForwardPenalty: number;
+    /** 수신자가 파이널서드일 때 추가 성공확률 페널티. */
+    passFinalThirdPenalty: number;
+    /** 볼 소유자를 압박하는 상대 1명당 성공확률 페널티. */
+    passPressurePenalty: number;
+    /** 패스 거리(m)가 baseDist 를 넘는 매 m 당 성공확률 페널티. */
+    passDistancePenalty: number;
+    /** passDistancePenalty 가 적용되기 시작하는 기준 거리(m). */
+    passBaseDistM: number;
+    /** passing 속성(0..100, 50 기준)이 성공확률에 주는 최대 가감 폭. */
+    passAttrSwing: number;
+    /** 패스 실패 시 아웃오브바운즈(스로인/골킥)로 나갈 비율(나머지는 인플레이 턴오버). */
+    passFailOutProb: number;
     /** 레인 수비수의 인터셉트 기준선. */
     interceptBase: number;
     /** 태클 성공 기준선. */
     tackleBase: number;
     /** 슛 기대득점(xG) 기준선. */
     xgBase: number;
+    /** 슛 시도 최소 xG(이보다 낮으면 장거리 speculative 슛 억제). */
+    shootXgThreshold: number;
     /** 슛 시도 가능한 최대 사거리(m, 상대 골대 기준). */
     shootRange: number;
     /** 각도 페널티 계수(중앙에서 벗어날수록 xG 감소). */
     shootAngleFactor: number;
     /** 거리 페널티 계수(멀수록 xG 감소). */
     shootDistanceFactor: number;
+    /** 슛의 유효슛(on target) 기준 확률. shooting/거리로 가감. */
+    onTargetBase: number;
+    /** 세이브된 유효슛이 코너로 굴절될 확률. */
+    saveCornerProb: number;
+    /** 빗맞은 슛이 수비 블록에 맞고 코너로 굴절될 확률(나머지는 골킥). */
+    offTargetBlockCornerProb: number;
     /** 볼 주인을 태클할 수 있는 접근 거리(m). */
     tackleRange: number;
     /** 비행 중 패스를 가로챌 수 있는 거리(m). */
     interceptRange: number;
     /** 도착·루즈볼을 잡을 수 있는 컨트롤 거리(m). */
     controlRange: number;
+  };
+
+  /** 세트피스(코너/스로인/골킥/골 후) 재시작 튜닝. */
+  setPiece: {
+    /** 재시작 전 정지(dead ball) 틱 수 — 인플레이 시간 하향 + 재배치. */
+    stoppageTicks: number;
+    /** 골 후 킥오프 정지 틱 수. */
+    goalStoppageTicks: number;
+    /** 코너 시 공격팀 선수들이 박스로 몰리는 강도(정규화 당김). */
+    cornerBoxReach: number;
+    /** 파이널서드 경계(공격 방향 정규화 x, 0..1). 패스/코너 판정용. */
+    finalThirdLine: number;
   };
 
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
@@ -89,8 +123,16 @@ export interface EngineConfig {
   movement: {
     /** 공격 시 전방 런 최대 전진량(정규화 x, 0..1). forwardRunFreq 로 가중. */
     forwardRunReach: number;
-    /** 폭 벌림 최대량(정규화 y 편차). widthTendency 로 가중. */
-    widthReach: number;
+    /** 인포제션 폭 벌림 최대량(정규화 y 편차). widthTendency 로 가중. */
+    attackWidthReach: number;
+    /** 아웃오브포제션(블록) 폭(정규화 y 편차). */
+    defendWidthReach: number;
+    /** 인포제션 시 팀 전체 업필드 push(볼 x 를 따라 라인 전진 → length 압축·다이내믹). */
+    attackLinePush: number;
+    /** 아웃오브포제션 블록의 볼 x 방향 수축 강도. */
+    defendCompactX: number;
+    /** 아웃오브포제션 블록의 볼 y 방향 수축 강도. */
+    defendCompactY: number;
     /** 수비 라인 유지 강도(base 로 복귀하는 비율). */
     lineDiscipline: number;
     /** 압박 발동 거리(m) — 볼과 이 거리 안이면 압박 런. */
@@ -99,6 +141,10 @@ export interface EngineConfig {
     markGap: number;
     /** 볼 소유팀이 공을 향해 지원 오는 최대 당김(정규화). */
     supportPull: number;
+    /** positioningFreedom 기반 roam 계수(공 쪽 추가 당김). */
+    roamFactor: number;
+    /** 드리블 1틱당 골 방향 전진 비율(0..1). 박스 침투 속도. */
+    dribbleReach: number;
   };
 
   /** 포메이션 정규화 슬롯(0..1, 공격 방향 +x 프레임). 최소 4-3-3 정의. */
@@ -111,28 +157,28 @@ export interface EngineConfig {
  */
 const formation433: Vec2[] = [
   { x: 0.05, y: 0.5 }, // GK
-  { x: 0.2, y: 0.16 }, // LB
-  { x: 0.18, y: 0.38 }, // LCB
-  { x: 0.18, y: 0.62 }, // RCB
-  { x: 0.2, y: 0.84 }, // RB
-  { x: 0.42, y: 0.3 }, // LCM
+  { x: 0.22, y: 0.2 }, // LB
+  { x: 0.16, y: 0.4 }, // LCB
+  { x: 0.16, y: 0.6 }, // RCB
+  { x: 0.22, y: 0.8 }, // RB
+  { x: 0.44, y: 0.32 }, // LCM
   { x: 0.4, y: 0.5 }, // CM
-  { x: 0.42, y: 0.7 }, // RCM
-  { x: 0.72, y: 0.18 }, // LW
-  { x: 0.76, y: 0.5 }, // ST
-  { x: 0.72, y: 0.82 }, // RW
+  { x: 0.44, y: 0.68 }, // RCM
+  { x: 0.7, y: 0.2 }, // LW
+  { x: 0.78, y: 0.5 }, // ST
+  { x: 0.7, y: 0.8 }, // RW
 ];
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.1.0",
+  version: "engine@0.2.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68 },
   coordMode: "continuous",
   gridSize: 5,
   fixedScale: 1000,
-  perceptionRadius: 30,
+  perceptionRadius: 33,
   speed: {
     maxPerTick: 7.0, // ~7 m/s 질주
     minPerTick: 3.0,
@@ -144,32 +190,56 @@ export const defaultEngineConfig: EngineConfig = {
     looseDecay: 0.82,
   },
   decisionWeights: {
-    pass: 0.55,
-    dribble: 0.32,
-    shoot: 0.22,
-    hold: 0.26,
+    // 슛 대폭 하향(37→~14/팀), 홀드/드리블 비중↑(패스 볼륨·찬스 남발 억제).
+    pass: 0.5,
+    dribble: 0.46,
+    shoot: 1.1,
+    hold: 0.42,
   },
   contest: {
-    passBase: 0.72,
-    interceptBase: 0.28,
-    tackleBase: 0.3,
-    xgBase: 0.14,
-    shootRange: 24,
-    shootAngleFactor: 0.6,
-    shootDistanceFactor: 0.04,
+    passBase: 0.84,
+    passForwardPenalty: 0.22,
+    passFinalThirdPenalty: 0.14,
+    passPressurePenalty: 0.05,
+    passDistancePenalty: 0.008,
+    passBaseDistM: 12,
+    passAttrSwing: 0.14,
+    passFailOutProb: 0.16,
+    interceptBase: 0.06,
+    tackleBase: 0.14,
+    xgBase: 0.225,
+    shootXgThreshold: 0.07,
+    shootRange: 20,
+    shootAngleFactor: 0.7,
+    shootDistanceFactor: 0.025,
+    onTargetBase: 0.28,
+    saveCornerProb: 0.6,
+    offTargetBlockCornerProb: 0.32,
     tackleRange: 2.0,
-    interceptRange: 1.8,
+    interceptRange: 1.5,
     controlRange: 2.5,
+  },
+  setPiece: {
+    stoppageTicks: 12,
+    goalStoppageTicks: 25,
+    cornerBoxReach: 0.85,
+    finalThirdLine: 0.66,
   },
   softCap: 0.25,
   fatiguePerTick: 0.0009,
   movement: {
-    forwardRunReach: 0.18,
-    widthReach: 0.12,
+    forwardRunReach: 0.275,
+    attackWidthReach: 0.13,
+    defendWidthReach: 0.09,
+    attackLinePush: 0.56,
+    defendCompactX: 0.16,
+    defendCompactY: 0.16,
     lineDiscipline: 0.5,
     pressRange: 22,
     markGap: 2.5,
-    supportPull: 0.14,
+    supportPull: 0.08,
+    roamFactor: 0.08,
+    dribbleReach: 0.12,
   },
   formations: {
     "4-3-3": formation433,
