@@ -6,54 +6,43 @@
     <title>HMB 엔진 디버그 뷰어</title>
     <style>
       :root {
-        --bg: #0f1420;
-        --panel: #1a2233;
-        --ink: #e7edf6;
-        --muted: #8ea0bd;
-        --home: #3b82f6;
-        --away: #ef4444;
-        --accent: #22c55e;
+        --bg: #0f1420; --panel: #1a2233; --ink: #e7edf6; --muted: #8ea0bd;
+        --home: #3b82f6; --away: #ef4444; --accent: #22c55e;
       }
       * { box-sizing: border-box; }
       body {
-        margin: 0;
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        background: var(--bg);
-        color: var(--ink);
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 12px;
-        padding: 16px;
+        margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--bg); color: var(--ink);
+        display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px;
       }
-      h1 { font-size: 15px; margin: 0; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; }
-      #scoreboard {
-        display: flex; align-items: center; gap: 16px;
-        font-size: 22px; font-weight: 700;
-      }
-      #scoreboard .home { color: var(--home); }
-      #scoreboard .away { color: var(--away); }
+      h1 { font-size: 14px; margin: 0; color: var(--muted); font-weight: 600; letter-spacing: .5px; }
+      #scoreboard { display: flex; align-items: center; gap: 14px; font-size: 22px; font-weight: 700; }
+      #scoreboard .home { color: var(--home); } #scoreboard .away { color: var(--away); }
       #minute { color: var(--muted); font-size: 14px; }
-      #wrap { width: 100%; max-width: 980px; }
+      #wrap { width: 100%; max-width: 1040px; position: relative; }
       canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: #14532d; }
-      #controls {
+      #flash {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        font-size: 64px; font-weight: 900; color: var(--accent); text-shadow: 0 2px 20px #000;
+        opacity: 0; pointer-events: none; transition: opacity .15s; letter-spacing: 4px;
+      }
+      .controls {
         display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-        background: var(--panel); padding: 10px 12px; border-radius: 8px; width: 100%; max-width: 980px;
+        background: var(--panel); padding: 10px 12px; border-radius: 8px; width: 100%; max-width: 1040px;
       }
       button {
         background: #26324a; color: var(--ink); border: 1px solid #33415f;
-        border-radius: 6px; padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 13px;
+        border-radius: 6px; padding: 6px 11px; cursor: pointer; font-family: inherit; font-size: 13px;
       }
       button:hover { background: #33415f; }
       button.active { background: var(--accent); color: #04220f; border-color: var(--accent); }
-      #scrub { flex: 1 1 220px; }
+      #scrub { flex: 1 1 200px; }
       .sp { color: var(--muted); font-size: 12px; }
       #ticker {
-        width: 100%; max-width: 980px; height: 96px; overflow-y: auto;
+        width: 100%; max-width: 1040px; height: 90px; overflow-y: auto;
         background: var(--panel); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.7;
       }
-      .ev-goal { color: var(--accent); font-weight: 700; }
-      .ev-shot { color: #fbbf24; }
+      .ev-goal { color: var(--accent); font-weight: 700; } .ev-shot { color: #fbbf24; }
       .ev-tackle, .ev-interception { color: var(--muted); }
       #status { color: var(--muted); font-size: 12px; min-height: 16px; }
       input[type="file"] { color: var(--muted); font-size: 12px; }
@@ -67,16 +56,28 @@
       <span class="away" id="awayName">AWAY</span>
       <span id="minute">0'</span>
     </div>
-    <div id="wrap"><canvas id="pitch" width="1050" height="680"></canvas></div>
-    <div id="controls">
+    <div id="wrap">
+      <canvas id="pitch" width="1050" height="680"></canvas>
+      <div id="flash"></div>
+    </div>
+    <div class="controls">
       <button id="playBtn">▶ 재생</button>
       <button id="restartBtn">⟲ 처음</button>
-      <span class="sp">배속</span>
+      <button id="followBtn">🔍 공 따라가기</button>
+      <button id="trailBtn" class="active">✦ 선수 잔상</button>
+      <button id="highlightBtn" class="active">🎬 하이라이트</button>
+      <span class="sp">수동배속</span>
+      <button data-speed="0.25">0.25x</button>
       <button data-speed="0.5">0.5x</button>
       <button data-speed="1" class="active">1x</button>
       <button data-speed="2">2x</button>
       <button data-speed="4">4x</button>
-      <button data-speed="8">8x</button>
+    </div>
+    <div class="controls">
+      <button id="prevShot">◀ 이전 슛</button>
+      <button id="nextShot">다음 슛 ▶</button>
+      <button id="prevGoal">◀ 이전 골</button>
+      <button id="nextGoal">다음 골 ▶</button>
       <input id="scrub" type="range" min="0" max="100" value="0" step="0.01" />
     </div>
     <div id="ticker"></div>
@@ -85,8 +86,12 @@
 
     <script>
       // ===== 완전 자기완결 vanilla JS. 외부 CDN 없음. =====
-      const PITCH_W = 105, PITCH_H = 68; // m (엔진 defaultEngineConfig 와 동일)
-      const MARGIN = 26;
+      const PITCH_W = 105, PITCH_H = 68, MARGIN = 20;
+      const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
+      const BALL_TRAIL = 22, PLAYER_TRAIL = 10; // 잔상 길이(틱)
+      const TICKS_PER_SEC = 12;                 // 1x 재생 속도(FM 처럼 천천히 읽히게)
+      const CRUISE_SPEED = 6, HL_SPEED = 1, HL_WINDOW = 8; // 하이라이트 자동페이싱: 빌드업 6x → 찬스 근처 1x
+
       const canvas = document.getElementById("pitch");
       const ctx = canvas.getContext("2d");
       const statusEl = document.getElementById("status");
@@ -95,181 +100,179 @@
       const tickerEl = document.getElementById("ticker");
       const scrub = document.getElementById("scrub");
       const playBtn = document.getElementById("playBtn");
+      const flashEl = document.getElementById("flash");
 
-      let log = null;        // MatchLog
-      let snaps = [];        // tickSnapshots
-      let playing = false;
-      let speed = 1;
-      let tickPos = 0;       // 실수 틱 위치(보간)
-      const TICKS_PER_SEC = 30; // 1x 기준 재생 속도
-      let lastTs = 0;
+      let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
+      let follow = false, showTrail = true, autoPace = true, keyTicks = [];
+      const baseScale = (canvas.width - 2 * MARGIN) / PITCH_W;
+      let cam = { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
 
-      // ---- 좌표 변환 ----
-      function sx(x) { return MARGIN + (x / PITCH_W) * (canvas.width - 2 * MARGIN); }
-      function sy(y) { return MARGIN + (y / PITCH_H) * (canvas.height - 2 * MARGIN); }
+      function sx(x) { return canvas.width / 2 + (x - cam.cx) * baseScale * cam.zoom; }
+      function sy(y) { return canvas.height / 2 + (y - cam.cy) * baseScale * cam.zoom; }
+      const lerp = (a, b, t) => a + (b - a) * t;
 
-      // ---- 피치 그리기 ----
       function drawPitch() {
-        ctx.fillStyle = "#14532d";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        // 스트라이프
-        ctx.fillStyle = "rgba(255,255,255,0.03)";
-        const stripes = 10;
-        for (let i = 0; i < stripes; i += 2) {
-          const w = (canvas.width - 2 * MARGIN) / stripes;
-          ctx.fillRect(MARGIN + i * w, MARGIN, w, canvas.height - 2 * MARGIN);
-        }
-        ctx.strokeStyle = "rgba(255,255,255,0.55)";
-        ctx.lineWidth = 2;
-        // 외곽
+        ctx.fillStyle = "#14532d"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "rgba(255,255,255,0.035)";
+        const stripes = 12, sw = PITCH_W / stripes;
+        for (let i = 0; i < stripes; i += 2) ctx.fillRect(sx(i * sw), sy(0), sx((i + 1) * sw) - sx(i * sw), sy(PITCH_H) - sy(0));
+        ctx.strokeStyle = "rgba(255,255,255,0.6)"; ctx.lineWidth = 2;
         ctx.strokeRect(sx(0), sy(0), sx(PITCH_W) - sx(0), sy(PITCH_H) - sy(0));
-        // 하프라인
         ctx.beginPath(); ctx.moveTo(sx(PITCH_W / 2), sy(0)); ctx.lineTo(sx(PITCH_W / 2), sy(PITCH_H)); ctx.stroke();
-        // 센터서클
         ctx.beginPath(); ctx.arc(sx(PITCH_W / 2), sy(PITCH_H / 2), (sx(9.15) - sx(0)), 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(sx(PITCH_W / 2), sy(PITCH_H / 2), 3, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.fill();
-        // 페널티 박스(양쪽 16.5m x 40.3m)
         const boxD = 16.5, boxW = 40.3, gy0 = (PITCH_H - boxW) / 2;
         ctx.strokeRect(sx(0), sy(gy0), sx(boxD) - sx(0), sy(gy0 + boxW) - sy(gy0));
         ctx.strokeRect(sx(PITCH_W - boxD), sy(gy0), sx(PITCH_W) - sx(PITCH_W - boxD), sy(gy0 + boxW) - sy(gy0));
-        // 골 area 표시
-        const g0 = (PITCH_H - 18.32) / 2;
-        ctx.fillStyle = "rgba(255,255,255,0.5)";
-        ctx.fillRect(sx(0) - 4, sy(g0), 4, sy(g0 + 18.32) - sy(g0));
-        ctx.fillRect(sx(PITCH_W), sy(g0), 4, sy(g0 + 18.32) - sy(g0));
+        const g0 = (PITCH_H - 7.32) / 2;
+        ctx.fillStyle = "rgba(255,255,255,0.75)";
+        ctx.fillRect(sx(0) - 5, sy(g0), 5, sy(g0 + 7.32) - sy(g0));
+        ctx.fillRect(sx(PITCH_W), sy(g0), 5, sy(g0 + 7.32) - sy(g0));
       }
 
-      // ---- 선수/공 그리기(보간) ----
-      function lerp(a, b, t) { return a + (b - a) * t; }
-
       function draw() {
-        drawPitch();
-        if (snaps.length === 0) return;
+        if (snaps.length === 0) { drawPitch(); return; }
         const i = Math.min(Math.floor(tickPos), snaps.length - 1);
         const j = Math.min(i + 1, snaps.length - 1);
         const t = tickPos - i;
         const A = snaps[i], B = snaps[j];
+        const bx = lerp(A.ball.x, B.ball.x, t), by = lerp(A.ball.y, B.ball.y, t);
+
+        // 카메라: 공 따라가기
+        cam = follow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
+        drawPitch();
+
+        // 선수 잔상(옵션)
+        if (showTrail) {
+          for (let s = Math.max(0, i - PLAYER_TRAIL); s < i; s++) {
+            const a = (s - (i - PLAYER_TRAIL)) / PLAYER_TRAIL * 0.18;
+            for (const p of snaps[s].players) {
+              ctx.beginPath(); ctx.arc(sx(p.pos.x), sy(p.pos.y), 3, 0, Math.PI * 2);
+              ctx.fillStyle = (p.team === "home" ? "59,130,246" : "239,68,68");
+              ctx.fillStyle = `rgba(${ctx.fillStyle},${a})`; ctx.fill();
+            }
+          }
+        }
+        // 공 궤적
+        ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.beginPath();
+        let started = false;
+        for (let s = Math.max(0, i - BALL_TRAIL); s <= i; s++) {
+          const p = sx(snaps[s].ball.x), q = sy(snaps[s].ball.y);
+          if (!started) { ctx.moveTo(p, q); started = true; } else ctx.lineTo(p, q);
+        }
+        ctx.stroke();
 
         // 선수
+        const R = follow ? 15 : 11;
         for (let k = 0; k < A.players.length; k++) {
-          const pa = A.players[k];
-          const pb = B.players[k] || pa;
-          const x = lerp(pa.pos.x, pb.pos.x, t);
-          const y = lerp(pa.pos.y, pb.pos.y, t);
-          const isHome = pa.team === "home";
-          const owner = A.ballOwner === pa.playerId;
-          ctx.beginPath();
-          ctx.arc(sx(x), sy(y), owner ? 10 : 8, 0, Math.PI * 2);
-          ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444";
-          ctx.fill();
-          if (owner) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 2.5; ctx.stroke(); }
-          ctx.fillStyle = "rgba(255,255,255,0.85)";
-          ctx.font = "9px monospace";
-          ctx.textAlign = "center";
-          ctx.fillText(pa.playerId.replace(/[HA]/, ""), sx(x), sy(y) - 11);
+          const pa = A.players[k], pb = B.players[k] || pa;
+          const x = lerp(pa.pos.x, pb.pos.x, t), y = lerp(pa.pos.y, pb.pos.y, t);
+          const isHome = pa.team === "home", owner = A.ballOwner === pa.playerId;
+          ctx.beginPath(); ctx.arc(sx(x), sy(y), owner ? R + 3 : R, 0, Math.PI * 2);
+          ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
+          if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 4; ctx.stroke(); }
+          ctx.fillStyle = "#fff"; ctx.font = `bold ${follow ? 14 : 11}px monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(pa.playerId.replace(/[HA]/, ""), sx(x), sy(y));
         }
-
         // 공
-        const bx = lerp(A.ball.x, B.ball.x, t);
-        const by = lerp(A.ball.y, B.ball.y, t);
-        ctx.beginPath();
-        ctx.arc(sx(bx), sy(by), 5, 0, Math.PI * 2);
-        ctx.fillStyle = "#fff";
-        ctx.fill();
-        ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.stroke();
+        ctx.beginPath(); ctx.arc(sx(bx), sy(by), follow ? 8 : 6, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.stroke();
 
-        // HUD 갱신
         updateHud(A);
       }
 
       function scoreAt(tick) {
         let h = 0, a = 0;
-        for (const e of log.events) {
-          if (e.type === "goal" && e.tick <= tick) { if (e.team === "home") h++; else a++; }
-        }
+        for (const e of log.events) if (e.type === "goal" && e.tick <= tick) (e.team === "home" ? h++ : a++);
         return { h, a };
       }
-
+      let lastGoalShown = -1;
       function updateHud(snap) {
         const s = scoreAt(snap.tick);
         scoreEl.textContent = `${s.h} : ${s.a}`;
         minuteEl.textContent = `${snap.minute}'`;
         scrub.value = ((tickPos / (snaps.length - 1)) * 100).toFixed(2);
+        const totalGoals = s.h + s.a;
+        if (totalGoals > lastGoalShown && lastGoalShown >= 0) { flashEl.textContent = "GOAL"; flashEl.style.opacity = 1; setTimeout(() => (flashEl.style.opacity = 0), 900); }
+        lastGoalShown = totalGoals;
       }
 
-      // ---- 이벤트 티커 ----
       function renderTicker() {
-        const rows = log.events
-          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "half_whistle", "full_whistle"].includes(e.type))
+        tickerEl.innerHTML = log.events
+          .filter((e) => ["goal", "shot", "tackle", "interception", "half_whistle", "full_whistle"].includes(e.type))
           .map((e) => {
-            const cls = "ev-" + e.type;
             const who = e.playerId ? ` ${e.playerId}` : "";
             const xg = e.xg != null ? ` (xG ${e.xg.toFixed(2)})` : "";
-            return `<div class="${cls}">${e.minute}' · ${e.type}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
-          });
-        tickerEl.innerHTML = rows.join("");
+            return `<div class="ev-${e.type}" data-tick="${e.tick}" style="cursor:pointer">${e.minute}' · ${e.type}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
+          }).join("");
+        tickerEl.querySelectorAll("[data-tick]").forEach((el) => el.onclick = () => jumpToTick(+el.dataset.tick));
       }
 
-      // ---- 재생 루프 ----
       function tickLoop(ts) {
         if (!lastTs) lastTs = ts;
-        const dt = (ts - lastTs) / 1000;
-        lastTs = ts;
+        const dt = (ts - lastTs) / 1000; lastTs = ts;
         if (playing && snaps.length > 1) {
-          tickPos += dt * TICKS_PER_SEC * speed;
+          const curTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
+          const nearKey = autoPace && keyTicks.some((kt) => Math.abs(kt - curTick) <= HL_WINDOW);
+          const eff = autoPace ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed;
+          tickPos += dt * TICKS_PER_SEC * eff;
           if (tickPos >= snaps.length - 1) { tickPos = snaps.length - 1; setPlaying(false); }
         }
         draw();
         requestAnimationFrame(tickLoop);
       }
-
-      function setPlaying(p) {
-        playing = p;
-        playBtn.textContent = p ? "⏸ 일시정지" : "▶ 재생";
+      function setPlaying(p) { playing = p; playBtn.textContent = p ? "⏸ 일시정지" : "▶ 재생"; }
+      function jumpToTick(tick) {
+        const idx = snaps.findIndex((s) => s.tick >= tick);
+        tickPos = idx < 0 ? snaps.length - 1 : Math.max(0, idx - 3);
+        lastGoalShown = scoreAt(snaps[Math.floor(tickPos)].tick).h + scoreAt(snaps[Math.floor(tickPos)].tick).a;
+        draw();
+      }
+      function jumpEvent(type, dir) {
+        const curTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
+        const evs = log.events.filter((e) => e.type === type).map((e) => e.tick);
+        const target = dir > 0 ? evs.find((t) => t > curTick + 2) : [...evs].reverse().find((t) => t < curTick - 2);
+        if (target != null) jumpToTick(target);
       }
 
-      // ---- 컨트롤 배선 ----
       playBtn.onclick = () => { if (tickPos >= snaps.length - 1) tickPos = 0; setPlaying(!playing); };
-      document.getElementById("restartBtn").onclick = () => { tickPos = 0; draw(); };
-      document.querySelectorAll("[data-speed]").forEach((b) => {
-        b.onclick = () => {
-          speed = parseFloat(b.dataset.speed);
-          document.querySelectorAll("[data-speed]").forEach((x) => x.classList.remove("active"));
-          b.classList.add("active");
-        };
+      document.getElementById("restartBtn").onclick = () => { tickPos = 0; lastGoalShown = 0; draw(); };
+      const followBtn = document.getElementById("followBtn");
+      followBtn.onclick = () => { follow = !follow; followBtn.classList.toggle("active", follow); draw(); };
+      const trailBtn = document.getElementById("trailBtn");
+      trailBtn.onclick = () => { showTrail = !showTrail; trailBtn.classList.toggle("active", showTrail); draw(); };
+      const hlBtn = document.getElementById("highlightBtn");
+      hlBtn.onclick = () => { autoPace = !autoPace; hlBtn.classList.toggle("active", autoPace); };
+      document.getElementById("nextShot").onclick = () => jumpEvent("shot", 1);
+      document.getElementById("prevShot").onclick = () => jumpEvent("shot", -1);
+      document.getElementById("nextGoal").onclick = () => jumpEvent("goal", 1);
+      document.getElementById("prevGoal").onclick = () => jumpEvent("goal", -1);
+      document.querySelectorAll("[data-speed]").forEach((b) => b.onclick = () => {
+        speed = parseFloat(b.dataset.speed);
+        document.querySelectorAll("[data-speed]").forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
       });
-      scrub.oninput = () => { tickPos = (parseFloat(scrub.value) / 100) * (snaps.length - 1); draw(); };
+      scrub.oninput = () => { tickPos = (parseFloat(scrub.value) / 100) * (snaps.length - 1); lastGoalShown = -1; draw(); };
 
-      // ---- 로딩 ----
       function loadLog(data) {
-        log = data;
-        snaps = data.tickSnapshots;
-        document.getElementById("homeName").textContent = "HOME";
-        document.getElementById("awayName").textContent = "AWAY";
-        renderTicker();
-        tickPos = 0;
-        setPlaying(true);
-        statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away}`;
+        log = data; snaps = data.tickSnapshots;
+        keyTicks = data.events.filter((e) => e.type === "goal" || (e.type === "shot" && (e.xg || 0) >= 0.12)).map((e) => e.tick);
+        renderTicker(); tickPos = 0; lastGoalShown = 0; setPlaying(true);
+        statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
       }
 
-      fetch("./match-log.json")
-        .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
-        .then(loadLog)
-        .catch((err) => {
-          statusEl.textContent =
-            "match-log.json 을 fetch 하지 못했습니다(" + err + "). 정적 서버로 열거나(아래) 파일을 직접 선택하세요. 예: cd dev-viewer && python3 -m http.server 8080 → http://localhost:8080/";
-        });
-
+      if (window.__LOG__) {
+        // 단일 파일(standalone) 모드: 데이터가 HTML 에 내장됨. 서버 불필요.
+        loadLog(window.__LOG__);
+      } else {
+        fetch("./match-log.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(loadLog)
+          .catch((err) => { statusEl.textContent = "match-log.json fetch 실패(" + err + "). 아래 파일 선택으로 열거나 standalone 파일을 여세요."; });
+      }
       document.getElementById("fileInput").onchange = (e) => {
-        const f = e.target.files[0];
-        if (!f) return;
-        const reader = new FileReader();
-        reader.onload = () => loadLog(JSON.parse(reader.result));
-        reader.readAsText(f);
+        const f = e.target.files[0]; if (!f) return;
+        const reader = new FileReader(); reader.onload = () => loadLog(JSON.parse(reader.result)); reader.readAsText(f);
       };
 
-      drawPitch();
-      requestAnimationFrame(tickLoop);
+      drawPitch(); requestAnimationFrame(tickLoop);
     </script>
   </body>
 </html>
