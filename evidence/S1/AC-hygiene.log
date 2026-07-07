@@ -1,0 +1,28 @@
+=== AC-hygiene: 결정론 위생 (Math.random / Date.now / new Date) ===
+규칙: 엔진 소스(.ts, 단 *.test.ts 제외)에 금지 API 문자열 0건.
+
+검사 대상 파일:
+  packages/engine/dev-viewer/generate-demo.ts
+  packages/engine/env.d.ts
+  packages/engine/src/ball.ts
+  packages/engine/src/config.ts
+  packages/engine/src/contest.ts
+  packages/engine/src/decision.ts
+  packages/engine/src/fixedmath.ts
+  packages/engine/src/fixtures.ts
+  packages/engine/src/hash.ts
+  packages/engine/src/index.ts
+  packages/engine/src/match.ts
+  packages/engine/src/perception.ts
+  packages/engine/src/pitch.ts
+  packages/engine/src/rng.ts
+  packages/engine/src/simstate.ts
+
+pattern [Math.random]: 0 occurrence(s)
+pattern [Date.now]: 0 occurrence(s)
+pattern [new Date]: 0 occurrence(s)
+
+=== vitest hygiene.test.ts (동일 검증을 fs 로 자동화) ===
+ ✓ packages/engine/src/hygiene.test.ts (4 tests) 34ms
+ Test Files  1 passed (1)
+      Tests  4 passed (4)

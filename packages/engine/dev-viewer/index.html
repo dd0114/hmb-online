@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HMB 엔진 디버그 뷰어</title>
+    <style>
+      :root {
+        --bg: #0f1420;
+        --panel: #1a2233;
+        --ink: #e7edf6;
+        --muted: #8ea0bd;
+        --home: #3b82f6;
+        --away: #ef4444;
+        --accent: #22c55e;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: var(--bg);
+        color: var(--ink);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 16px;
+      }
+      h1 { font-size: 15px; margin: 0; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; }
+      #scoreboard {
+        display: flex; align-items: center; gap: 16px;
+        font-size: 22px; font-weight: 700;
+      }
+      #scoreboard .home { color: var(--home); }
+      #scoreboard .away { color: var(--away); }
+      #minute { color: var(--muted); font-size: 14px; }
+      #wrap { width: 100%; max-width: 980px; }
+      canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: #14532d; }
+      #controls {
+        display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+        background: var(--panel); padding: 10px 12px; border-radius: 8px; width: 100%; max-width: 980px;
+      }
+      button {
+        background: #26324a; color: var(--ink); border: 1px solid #33415f;
+        border-radius: 6px; padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 13px;
+      }
+      button:hover { background: #33415f; }
+      button.active { background: var(--accent); color: #04220f; border-color: var(--accent); }
+      #scrub { flex: 1 1 220px; }
+      .sp { color: var(--muted); font-size: 12px; }
+      #ticker {
+        width: 100%; max-width: 980px; height: 96px; overflow-y: auto;
+        background: var(--panel); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.7;
+      }
+      .ev-goal { color: var(--accent); font-weight: 700; }
+      .ev-shot { color: #fbbf24; }
+      .ev-tackle, .ev-interception { color: var(--muted); }
+      #status { color: var(--muted); font-size: 12px; min-height: 16px; }
+      input[type="file"] { color: var(--muted); font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>HMB TIER-B 엔진 · 디버그 뷰어</h1>
+    <div id="scoreboard">
+      <span class="home" id="homeName">HOME</span>
+      <span id="score">0 : 0</span>
+      <span class="away" id="awayName">AWAY</span>
+      <span id="minute">0'</span>
+    </div>
+    <div id="wrap"><canvas id="pitch" width="1050" height="680"></canvas></div>
+    <div id="controls">
+      <button id="playBtn">▶ 재생</button>
+      <button id="restartBtn">⟲ 처음</button>
+      <span class="sp">배속</span>
+      <button data-speed="0.5">0.5x</button>
+      <button data-speed="1" class="active">1x</button>
+      <button data-speed="2">2x</button>
+      <button data-speed="4">4x</button>
+      <button data-speed="8">8x</button>
+      <input id="scrub" type="range" min="0" max="100" value="0" step="0.01" />
+    </div>
+    <div id="ticker"></div>
+    <div id="status">match-log.json 로딩 중…</div>
+    <input type="file" id="fileInput" accept="application/json" title="match-log.json 직접 불러오기" />
+
+    <script>
+      // ===== 완전 자기완결 vanilla JS. 외부 CDN 없음. =====
+      const PITCH_W = 105, PITCH_H = 68; // m (엔진 defaultEngineConfig 와 동일)
+      const MARGIN = 26;
+      const canvas = document.getElementById("pitch");
+      const ctx = canvas.getContext("2d");
+      const statusEl = document.getElementById("status");
+      const scoreEl = document.getElementById("score");
+      const minuteEl = document.getElementById("minute");
+      const tickerEl = document.getElementById("ticker");
+      const scrub = document.getElementById("scrub");
+      const playBtn = document.getElementById("playBtn");
+
+      let log = null;        // MatchLog
+      let snaps = [];        // tickSnapshots
+      let playing = false;
+      let speed = 1;
+      let tickPos = 0;       // 실수 틱 위치(보간)
+      const TICKS_PER_SEC = 30; // 1x 기준 재생 속도
+      let lastTs = 0;
+
+      // ---- 좌표 변환 ----
+      function sx(x) { return MARGIN + (x / PITCH_W) * (canvas.width - 2 * MARGIN); }
+      function sy(y) { return MARGIN + (y / PITCH_H) * (canvas.height - 2 * MARGIN); }
+
+      // ---- 피치 그리기 ----
+      function drawPitch() {
+        ctx.fillStyle = "#14532d";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        // 스트라이프
+        ctx.fillStyle = "rgba(255,255,255,0.03)";
+        const stripes = 10;
+        for (let i = 0; i < stripes; i += 2) {
+          const w = (canvas.width - 2 * MARGIN) / stripes;
+          ctx.fillRect(MARGIN + i * w, MARGIN, w, canvas.height - 2 * MARGIN);
+        }
+        ctx.strokeStyle = "rgba(255,255,255,0.55)";
+        ctx.lineWidth = 2;
+        // 외곽
+        ctx.strokeRect(sx(0), sy(0), sx(PITCH_W) - sx(0), sy(PITCH_H) - sy(0));
+        // 하프라인
+        ctx.beginPath(); ctx.moveTo(sx(PITCH_W / 2), sy(0)); ctx.lineTo(sx(PITCH_W / 2), sy(PITCH_H)); ctx.stroke();
+        // 센터서클
+        ctx.beginPath(); ctx.arc(sx(PITCH_W / 2), sy(PITCH_H / 2), (sx(9.15) - sx(0)), 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(sx(PITCH_W / 2), sy(PITCH_H / 2), 3, 0, Math.PI * 2); ctx.fillStyle = "rgba(255,255,255,0.55)"; ctx.fill();
+        // 페널티 박스(양쪽 16.5m x 40.3m)
+        const boxD = 16.5, boxW = 40.3, gy0 = (PITCH_H - boxW) / 2;
+        ctx.strokeRect(sx(0), sy(gy0), sx(boxD) - sx(0), sy(gy0 + boxW) - sy(gy0));
+        ctx.strokeRect(sx(PITCH_W - boxD), sy(gy0), sx(PITCH_W) - sx(PITCH_W - boxD), sy(gy0 + boxW) - sy(gy0));
+        // 골 area 표시
+        const g0 = (PITCH_H - 18.32) / 2;
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.fillRect(sx(0) - 4, sy(g0), 4, sy(g0 + 18.32) - sy(g0));
+        ctx.fillRect(sx(PITCH_W), sy(g0), 4, sy(g0 + 18.32) - sy(g0));
+      }
+
+      // ---- 선수/공 그리기(보간) ----
+      function lerp(a, b, t) { return a + (b - a) * t; }
+
+      function draw() {
+        drawPitch();
+        if (snaps.length === 0) return;
+        const i = Math.min(Math.floor(tickPos), snaps.length - 1);
+        const j = Math.min(i + 1, snaps.length - 1);
+        const t = tickPos - i;
+        const A = snaps[i], B = snaps[j];
+
+        // 선수
+        for (let k = 0; k < A.players.length; k++) {
+          const pa = A.players[k];
+          const pb = B.players[k] || pa;
+          const x = lerp(pa.pos.x, pb.pos.x, t);
+          const y = lerp(pa.pos.y, pb.pos.y, t);
+          const isHome = pa.team === "home";
+          const owner = A.ballOwner === pa.playerId;
+          ctx.beginPath();
+          ctx.arc(sx(x), sy(y), owner ? 10 : 8, 0, Math.PI * 2);
+          ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444";
+          ctx.fill();
+          if (owner) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 2.5; ctx.stroke(); }
+          ctx.fillStyle = "rgba(255,255,255,0.85)";
+          ctx.font = "9px monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(pa.playerId.replace(/[HA]/, ""), sx(x), sy(y) - 11);
+        }
+
+        // 공
+        const bx = lerp(A.ball.x, B.ball.x, t);
+        const by = lerp(A.ball.y, B.ball.y, t);
+        ctx.beginPath();
+        ctx.arc(sx(bx), sy(by), 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = "#111"; ctx.lineWidth = 1.5; ctx.stroke();
+
+        // HUD 갱신
+        updateHud(A);
+      }
+
+      function scoreAt(tick) {
+        let h = 0, a = 0;
+        for (const e of log.events) {
+          if (e.type === "goal" && e.tick <= tick) { if (e.team === "home") h++; else a++; }
+        }
+        return { h, a };
+      }
+
+      function updateHud(snap) {
+        const s = scoreAt(snap.tick);
+        scoreEl.textContent = `${s.h} : ${s.a}`;
+        minuteEl.textContent = `${snap.minute}'`;
+        scrub.value = ((tickPos / (snaps.length - 1)) * 100).toFixed(2);
+      }
+
+      // ---- 이벤트 티커 ----
+      function renderTicker() {
+        const rows = log.events
+          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "half_whistle", "full_whistle"].includes(e.type))
+          .map((e) => {
+            const cls = "ev-" + e.type;
+            const who = e.playerId ? ` ${e.playerId}` : "";
+            const xg = e.xg != null ? ` (xG ${e.xg.toFixed(2)})` : "";
+            return `<div class="${cls}">${e.minute}' · ${e.type}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
+          });
+        tickerEl.innerHTML = rows.join("");
+      }
+
+      // ---- 재생 루프 ----
+      function tickLoop(ts) {
+        if (!lastTs) lastTs = ts;
+        const dt = (ts - lastTs) / 1000;
+        lastTs = ts;
+        if (playing && snaps.length > 1) {
+          tickPos += dt * TICKS_PER_SEC * speed;
+          if (tickPos >= snaps.length - 1) { tickPos = snaps.length - 1; setPlaying(false); }
+        }
+        draw();
+        requestAnimationFrame(tickLoop);
+      }
+
+      function setPlaying(p) {
+        playing = p;
+        playBtn.textContent = p ? "⏸ 일시정지" : "▶ 재생";
+      }
+
+      // ---- 컨트롤 배선 ----
+      playBtn.onclick = () => { if (tickPos >= snaps.length - 1) tickPos = 0; setPlaying(!playing); };
+      document.getElementById("restartBtn").onclick = () => { tickPos = 0; draw(); };
+      document.querySelectorAll("[data-speed]").forEach((b) => {
+        b.onclick = () => {
+          speed = parseFloat(b.dataset.speed);
+          document.querySelectorAll("[data-speed]").forEach((x) => x.classList.remove("active"));
+          b.classList.add("active");
+        };
+      });
+      scrub.oninput = () => { tickPos = (parseFloat(scrub.value) / 100) * (snaps.length - 1); draw(); };
+
+      // ---- 로딩 ----
+      function loadLog(data) {
+        log = data;
+        snaps = data.tickSnapshots;
+        document.getElementById("homeName").textContent = "HOME";
+        document.getElementById("awayName").textContent = "AWAY";
+        renderTicker();
+        tickPos = 0;
+        setPlaying(true);
+        statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away}`;
+      }
+
+      fetch("./match-log.json")
+        .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(loadLog)
+        .catch((err) => {
+          statusEl.textContent =
+            "match-log.json 을 fetch 하지 못했습니다(" + err + "). 정적 서버로 열거나(아래) 파일을 직접 선택하세요. 예: cd dev-viewer && python3 -m http.server 8080 → http://localhost:8080/";
+        });
+
+      document.getElementById("fileInput").onchange = (e) => {
+        const f = e.target.files[0];
+        if (!f) return;
+        const reader = new FileReader();
+        reader.onload = () => loadLog(JSON.parse(reader.result));
+        reader.readAsText(f);
+      };
+
+      drawPitch();
+      requestAnimationFrame(tickLoop);
+    </script>
+  </body>
+</html>

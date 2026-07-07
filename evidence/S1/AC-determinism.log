@@ -1,0 +1,17 @@
+
+ RUN  v2.1.9 /Users/peter.park/spider/hmb-online
+
+ ✓ packages/engine/src/hygiene.test.ts (4 tests) 9ms
+stdout | packages/engine/dev-viewer/generate-demo.test.ts > dev-viewer demo generation > writes match-log.json with a full match
+[generate-demo] wrote /Users/peter.park/spider/hmb-online/packages/engine/dev-viewer/match-log.json {"configVersion":"engine@0.1.0","seed":"4815162342","ticks":5400,"finalScore":{"home":3,"away":0},"events":3246,"goals":3,"shots":147,"lastHash":"bacf7268"}
+
+ ✓ packages/engine/dev-viewer/generate-demo.test.ts (1 test) 188ms
+ ✓ packages/engine/src/resume.test.ts (2 tests) 289ms
+ ✓ packages/engine/src/determinism.test.ts (4 tests) 5044ms
+   ✓ determinism (AC3) > reproduces identical result across 80 runs (desync 0) 4717ms
+
+ Test Files  4 passed (4)
+      Tests  11 passed (11)
+   Start at  00:44:40
+   Duration  5.63s (transform 195ms, setup 0ms, collect 368ms, tests 5.53s, environment 1ms, prepare 470ms)
+

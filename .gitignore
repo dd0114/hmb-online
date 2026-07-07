@@ -3,3 +3,5 @@ node_modules/
 .DS_Store
 dist/
 *.log
+!evidence/**/*.log
+packages/engine/dev-viewer/match-log.json

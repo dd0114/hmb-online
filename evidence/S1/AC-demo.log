@@ -1,0 +1,14 @@
+=== AC-demo: dev-viewer/generate-demo → match-log.json ===
+생성 명령(Node 20): npx vitest run packages/engine/dev-viewer/generate-demo.test.ts
+생성 명령(Node 22+): node --experimental-strip-types packages/engine/dev-viewer/generate-demo.ts
+
+stdout | packages/engine/dev-viewer/generate-demo.test.ts > dev-viewer demo generation > writes match-log.json with a full match
+[generate-demo] wrote /Users/peter.park/spider/hmb-online/packages/engine/dev-viewer/match-log.json {"configVersion":"engine@0.1.0","seed":"4815162342","ticks":5400,"finalScore":{"home":3,"away":0},"events":3246,"goals":3,"shots":147,"lastHash":"bacf7268"}
+ ✓ packages/engine/dev-viewer/generate-demo.test.ts (1 test) 158ms
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+
+=== match-log.json 파일 ===
+-rw-r--r--@ 1 peter.park  staffAlias  7870182 Jul  8 00:45 packages/engine/dev-viewer/match-log.json
+size(bytes):  7870182
+configVersion engine@0.1.0 seed 4815162342 ticks 5400 finalScore {"home":3,"away":0} events 3246
