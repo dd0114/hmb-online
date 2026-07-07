@@ -66,6 +66,7 @@ hmb-online/
 ## 2. `packages/engine` 결정론 공간 코어 설계 (Tier B)
 
 ### 2.1 핵심 모듈 (PRD §7-2)
+- `config.ts` — **`EngineConfig` (모든 튜닝 값 격리, PRD §7-6)**: `msPerTick`(1000), 피치 치수, 좌표 모드(`continuous`|`grid`+`gridSize`), 인식 반경, decision 가중치, contest 확률 계수, 소프트캡·체력 감가율, 고정소수 스케일, 포메이션 정의. 로직은 config 를 읽을 뿐 magic number 하드코딩 금지. `version` 필드로 태깅(재현 번들 포함).
 - `rng.ts` — 시드 PRNG(mulberry32/xorshift). 전역·`Math.random` 불가, 인스턴스 관통.
 - `fixedmath.ts` — 위치·속도·거리·각도를 **정수 스케일 고정소수**로 계산(부동소수 비결정 격리). 이게 Tier B 결정론의 핵심.
 - `pitch.ts` — 좌표계(정규화 105×68), 구역·거리·각도·라인 유틸.
@@ -161,6 +162,7 @@ M1→M2→M3 = 핵심 리스크(움직임 성립성 + 프롬프트 유의미성)
   - `runMatch(...)` 1초 틱 90분 완주, MatchLog(틱별 좌표+이벤트) 산출.
   - **재현**: 동일 3종세트 100회 → 모든 tick hash 동일(desync 0) + 골든 바이트 일치.
   - **결정론 위생**: `Math.random`·`Date.now` grep 0, 위치/속도 fixed-point.
+  - **Config 격리**: 틱 해상도·좌표 모드·범위·계수가 전부 `EngineConfig` 로 빠져 있고 로직에 magic number 하드코딩 0(리뷰), `version` 태깅되어 재현 번들에 포함.
   - **움직임 성립성**: 디버그 뷰어로 1경기 재생 시 (i) 공 소유 이동, (ii) 오프더볼 전개, (iii) 수비 라인 유지가 육안으로 축구스러움(정성 체크리스트 + 스크린샷 증빙).
 
 ### S2 — 직렬화 계약 (shared 행동 파라미터 스키마)

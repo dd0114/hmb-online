@@ -210,13 +210,20 @@ function runTick(rng, state, homeInput, awayInput):
 
 ### 7-4. 결정론·재현 계약
 - 시드를 `TacticalInput.seed` 로 인풋 일부로 고정, 동일 RNG 강제. fixed-point 로 부동소수 발산 차단.
-- **재현 3종세트 = `(seed + selectData + inputLog)`**. `inputLog`=[경기전 TacticalInput, 하프타임 델타]. server 없이 engine headless 로 100% 동일 재생.
+- **재현 세트 = `(seed + selectData + inputLog + EngineConfig 버전)`**. `inputLog`=[경기전 TacticalInput, 하프타임 델타]. 이 넷이면 server 없이 engine headless 로 100% 동일 재생. config 는 버전 태깅(§7-6).
 - **결정: 단일 RNG 스트림 순차 소비 + 골든 스냅샷 잠금**(단순성). fork 는 필요 시 도입.
 
 ### 7-5. 레퍼런스
 - 시간진행: FM slice(`research/match-engine.md` §1-1)를 1초로 축소·단순화.
 - 듀얼/득점: ESMS 확률 가중(§2-2) + xG(§2-3).
 - 결정론 아키텍처: open-football(Rust) 참고(§4). PoC 는 TS.
+
+### 7-6. Configuration / 튜닝 레이어 (모든 magic number 격리)
+- 엔진의 모든 튜닝 값은 **하드코딩 금지 → `EngineConfig` 객체로 격리**해 코드 수정 없이 조정 가능하게 한다(FM `tactics.dat` 데이터드리븐 철학과 동일).
+- **포함 항목(예)**: 틱 해상도(`msPerTick`, 기본 1000), 피치 치수, **좌표 모드(`continuous` | `grid` + `gridSize`)**, 인식 반경, decision 가중치, contest 확률 계수(패스/태클/xG), 소프트캡 페널티, 체력 감가율, 고정소수 스케일, 포메이션 정의.
+- `BalanceConfig` 는 밸런스-sim 전용 노브를 별도 분리. UI 튜닝 값(배속·타이머)은 `UIConfig`.
+- **재현 계약에 config 포함**: 경기는 특정 `EngineConfig` 버전 하에서 재현된다. config 를 바꾸면 과거 매치 재현은 그 버전으로 핀해야 하므로 **config 를 버전 태깅하고 재현 번들(§7-4)에 포함/참조**한다.
+- 즉 "틱 1초→0.5초", "연속→그리드", 범위·계수 조정은 전부 **config 변경 한 번**으로 되어야 하고, 로직 코드는 config 를 읽을 뿐이다.
 
 ---
 
@@ -276,6 +283,7 @@ PoC 검증 후 바로 다음 순위의 지속성·수익 레이어. 방향 = **"
 - **AI 연동**: 서버가 Claude 호출(§6), `TacticalInput` structured output 수신·검증·클램프.
 - **결정론 구현**: 시드 PRNG 강제, **`Math.random`·`Date.now` 전면 금지**. **위치·속도·누적은 고정소수(정수 스케일) 연산**으로 부동소수 비결정 격리. 매치는 `(seed+selectData+inputLog)` 만으로 headless 재현.
 - **모노레포**: `packages/engine`(순수 결정론 공간 시뮬, 프레임워크 무관) · `packages/shared`(직렬화 계약) · `packages/server` · `apps/web`. 엔진 분리로 headless 재현·테스트·향후 Rust 포팅 가능.
+- **Configuration 격리(§7-6)**: 틱 해상도·좌표 모드(연속/그리드)·범위·계수 등 모든 튜닝 값은 `EngineConfig`/`BalanceConfig`/`UIConfig` 로 분리, 코드 수정 없이 조정. config 는 버전 태깅해 재현 번들에 포함.
 - **후순위 최적화**: 성능 한계 시 `packages/engine` 을 Rust(open-football 참고) 포팅. PoC 는 TS 로 충분(1초 틱 × 5,400 = 매우 경량).
 
 ---
