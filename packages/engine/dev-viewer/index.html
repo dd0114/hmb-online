@@ -22,8 +22,9 @@
       #wrap { width: 100%; max-width: 1040px; position: relative; }
       canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: #14532d; }
       #flash {
-        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-        font-size: 68px; font-weight: 900; color: var(--accent); text-shadow: 0 2px 24px #000, 0 0 40px var(--accent);
+        position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center;
+        padding-top: 10%; /* 골문(줌 시 화면 중앙)을 가리지 않게 위쪽에 표시 */
+        font-size: 60px; font-weight: 900; color: var(--accent); text-shadow: 0 2px 24px #000, 0 0 40px var(--accent);
         opacity: 0; pointer-events: none; letter-spacing: 4px;
       }
       #flash.show { animation: goalPop 1.9s cubic-bezier(.2,.8,.2,1) forwards; }
