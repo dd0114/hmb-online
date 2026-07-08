@@ -30,10 +30,18 @@ const compact = {
 };
 
 const html = readFileSync(join(here, "index.html"), "utf8");
-const inject = `\n    <script>window.__LOG__ = ${JSON.stringify(compact)};</script>`;
-// 메인 스크립트보다 먼저 데이터가 정의되도록 <script> 앞에 주입.
-const out = html.replace(/(\n\s*<script>\s*\n\s*\/\/ =====)/, `${inject}$1`);
-if (out === html) throw new Error("주입 지점(<script> // =====) 을 못 찾음");
+// playback.mjs 를 인라인(standalone 은 file:// 라 외부 모듈 fetch 불가). export 제거 → 전역 함수.
+const playbackSrc = readFileSync(join(here, "playback.mjs"), "utf8").replace(/^export\s+/gm, "");
+
+let out = html;
+// 1) 모듈 스크립트의 playback import 제거(전역으로 대체).
+out = out.replace(/\n\s*import\s*\{[^}]*\}\s*from\s*["']\.\/playback\.mjs["'];?/, "");
+if (out === html) throw new Error("playback import 라인을 못 찾음");
+// 2) 모듈 스크립트 앞에 데이터 + playback 전역을 주입.
+const inject = `\n    <script>window.__LOG__ = ${JSON.stringify(compact)};</script>\n    <script>\n${playbackSrc}\n    </script>`;
+const out2 = out.replace(/(\n\s*<script type="module">)/, `${inject}$1`);
+if (out2 === out) throw new Error("주입 지점(<script type=module>) 을 못 찾음");
+out = out2;
 
 const outPath = join(here, "viewer-standalone.html");
 writeFileSync(outPath, out);

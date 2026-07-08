@@ -104,8 +104,9 @@
     <div id="status">match-log.json 로딩 중…</div>
     <input type="file" id="fileInput" accept="application/json" title="match-log.json 직접 불러오기" />
 
-    <script>
-      // ===== 완전 자기완결 vanilla JS. 외부 CDN 없음. =====
+    <script type="module">
+      import { buildPlayback, spansReposition } from "./playback.mjs";
+      // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 20;
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
       const BALL_TRAIL = 22, PLAYER_TRAIL = 10; // 잔상 길이(틱)
@@ -125,9 +126,9 @@
 
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
       let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
-      let annos = [], snapByTick = new Map();
+      let annos = [], snapByTick = new Map(), restartTickSet = new Set();
       let stoppages = [], hold = null; // 데드볼: freeze→skip 시퀀스
-      const TOAST_TICKS = 5, BANNER_TICKS = 16, TELEPORT_CUT = 14;
+      const TOAST_TICKS = 5, BANNER_TICKS = 16;
       const idxOfTick = (tick) => { const i = snaps.findIndex((s) => s.tick >= tick); return i < 0 ? snaps.length - 1 : i; };
       const baseScale = (canvas.width - 2 * MARGIN) / PITCH_W;
       let cam = { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
@@ -160,8 +161,8 @@
         const j = Math.min(i + 1, snaps.length - 1);
         const t = tickPos - i;
         const A = snaps[i], B = snaps[j];
-        // 데드볼 재배치 등 공이 크게 튀는 구간은 보간 안 함(미끄러지는 궤적 illusion 제거).
-        const bt = Math.hypot(B.ball.x - A.ball.x, B.ball.y - A.ball.y) > TELEPORT_CUT ? 0 : t;
+        // 데드볼 재배치 구간만 보간 안 함(슛 궤적은 이벤트로 구분 → 부드럽게). playback.spansReposition.
+        const bt = spansReposition(A.tick, B.tick, restartTickSet) ? 0 : t;
         const bx = lerp(A.ball.x, B.ball.x, bt), by = lerp(A.ball.y, B.ball.y, bt);
 
         // 카메라: 수동 공따라가기 OR 하이라이트(찬스/골) 근처면 자동 줌인
@@ -186,8 +187,8 @@
         let started = false;
         for (let s = Math.max(0, i - BALL_TRAIL); s <= i; s++) {
           const p = sx(snaps[s].ball.x), q = sy(snaps[s].ball.y);
-          // 순간이동(데드볼 재배치)에서는 궤적선을 끊는다.
-          const teleport = s > 0 && Math.hypot(snaps[s].ball.x - snaps[s - 1].ball.x, snaps[s].ball.y - snaps[s - 1].ball.y) > TELEPORT_CUT;
+          // 데드볼 재배치에서는 궤적선을 끊는다(슛 궤적은 유지).
+          const teleport = s > 0 && spansReposition(snaps[s - 1].tick, snaps[s].tick, restartTickSet);
           if (!started || teleport) { ctx.moveTo(p, q); started = true; } else ctx.lineTo(p, q);
         }
         ctx.stroke();
@@ -237,69 +238,6 @@
         updateHud(A);
       }
 
-      // 이벤트 → 상황배너/액션토스트 주석 빌드.
-      function buildAnnos() {
-        snapByTick = new Map(snaps.map((s) => [s.tick, s]));
-        annos = [];
-        const ev = log.events;
-        for (const e of ev) e._k = e.type === "kickoff" ? (e.detail || "kickoff") : (e.type === "shot" && e.detail ? "shot_" + e.detail : e.type);
-        const back = (tick, kinds, span) => ev.find((e) => kinds.includes(e._k) && e.tick <= tick && e.tick >= tick - span);
-        for (const e of ev) {
-          const k = e._k;
-          const T = (text, col) => annos.push({ kind: "toast", tick: e.tick, at: e.tick, text, col });
-          const B = (text, col) => annos.push({ kind: "banner", tick: e.tick, text, col });
-          if (k === "shot") T("슛!", "#fbbf24");
-          else if (k === "shot_one_on_one") T("1:1 찬스!", "#fbbf24");
-          else if (k === "save") T("🧤 선방!", "#38bdf8");
-          else if (k === "shot_off_target") T("빗나감", "#94a3b8");
-          else if (k === "tackle") T("태클", "#cbd5e1");
-          else if (k === "interception") T("차단", "#cbd5e1");
-          else if (k === "foul") { T("파울", "#fb923c"); B("😠 파울 → 프리킥", "#fb923c"); }
-          else if (k === "card") T(e.detail === "red" ? "🟥 레드!" : "🟨 옐로", e.detail === "red" ? "#ef4444" : "#fde047");
-          else if (k === "offside") B("🚩 오프사이드", "#f59e0b");
-          else if (k === "penalty") B("⚽ 페널티킥!", "#22c55e");
-          else if (k === "corner") B("코너킥", "#e7edf6");
-          else if (k === "goal_kick") B("골킥", "#e7edf6");
-          else if (k === "throw_in") B("스로인", "#e7edf6");
-          else if (k === "free_kick") B("프리킥", "#e7edf6");
-          else if (k === "kickoff" && e.minute > 0) B("▶ 킥오프", "#e7edf6");
-        }
-        // 돌파(롱 드리블) 추론: 같은 소유자 유지 + 전진.
-        let start = 0;
-        for (let i = 1; i <= snaps.length; i++) {
-          const prevO = snaps[i - 1] ? snaps[i - 1].ballOwner : null;
-          const curO = snaps[i] ? snaps[i].ballOwner : null;
-          if (curO !== prevO || i === snaps.length) {
-            const run = i - start;
-            if (prevO && run >= 6) {
-              const a = snaps[start].ball, b = snaps[i - 1].ball;
-              const fwd = prevO[0] === "H" ? b.x - a.x : a.x - b.x;
-              const mid = snaps[start + Math.floor(run / 2)];
-              if (fwd >= 9 && mid) annos.push({ kind: "toast", tick: mid.tick, at: mid.tick, text: "돌파!", col: "#a78bfa" });
-            }
-            start = i;
-          }
-        }
-        // 데드볼 정지 시퀀스: 원인 이벤트에서 큰 자막 + freeze → 재시작으로 skip.
-        stoppages = [];
-        const CAUSE = {
-          save: { big: "🧤 선방!", col: "#38bdf8", hold: 1300 },
-          shot_off_target: { big: "빗나감!", col: "#94a3b8", hold: 1100 },
-          foul: { big: "😠 파울!", col: "#fb923c", hold: 1100 },
-          offside: { big: "🚩 오프사이드!", col: "#f59e0b", hold: 1300 },
-          penalty: { big: "⚽ 페널티킥!", col: "#22c55e", hold: 1500 },
-        };
-        const RESTART = ["corner", "goal_kick", "throw_in", "free_kick", "kickoff"];
-        for (let i = 0; i < ev.length; i++) {
-          const c = CAUSE[ev[i]._k];
-          if (!c) continue;
-          let restartTick = ev[i].tick + 6;
-          for (let j = i + 1; j < ev.length && ev[j].tick <= ev[i].tick + 45; j++) {
-            if (RESTART.includes(ev[j]._k)) { restartTick = ev[j].tick; break; }
-          }
-          stoppages.push({ causeTick: ev[i].tick, restartTick, big: c.big, bigCol: c.col, hold: c.hold, done: false });
-        }
-      }
 
       function drawAnnos(curTick) {
         let banner = null;
@@ -441,7 +379,9 @@
         log = data; snaps = data.tickSnapshots;
         // 골 + 모든 슛(유효슛 포함) + 페널티 근처에서 하이라이트(슬로우+자동 줌인).
         keyTicks = data.events.filter((e) => e.type === "goal" || e.type === "penalty" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target")).map((e) => e.tick);
-        buildAnnos();
+        snapByTick = new Map(snaps.map((s) => [s.tick, s]));
+        const pb = buildPlayback(data.events, snaps); // playback.mjs (vitest 검증)
+        annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks;
         renderTicker(); tickPos = 0; lastGoalShown = 0; setPlaying(true);
         statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
       }
