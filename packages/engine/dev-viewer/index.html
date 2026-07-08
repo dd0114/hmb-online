@@ -52,6 +52,9 @@
       }
       .ev-goal { color: var(--accent); font-weight: 700; } .ev-shot { color: #fbbf24; }
       .ev-tackle, .ev-interception { color: var(--muted); }
+      .ev-foul { color: #f59e0b; } .ev-offside { color: #a78bfa; }
+      .ev-free_kick { color: #94a3b8; } .ev-penalty { color: #22c55e; font-weight: 700; }
+      .ev-card { color: #eab308; } .ev-save { color: #38bdf8; }
       #status { color: var(--muted); font-size: 12px; min-height: 16px; }
       input[type="file"] { color: var(--muted); font-size: 12px; }
     </style>
@@ -158,8 +161,7 @@
             const a = (s - (i - PLAYER_TRAIL)) / PLAYER_TRAIL * 0.18;
             for (const p of snaps[s].players) {
               ctx.beginPath(); ctx.arc(sx(p.pos.x), sy(p.pos.y), 3, 0, Math.PI * 2);
-              ctx.fillStyle = (p.team === "home" ? "59,130,246" : "239,68,68");
-              ctx.fillStyle = `rgba(${ctx.fillStyle},${a})`; ctx.fill();
+              ctx.fillStyle = p.team === "home" ? `rgba(59,130,246,${a})` : `rgba(239,68,68,${a})`; ctx.fill();
             }
           }
         }
@@ -240,16 +242,26 @@
         lastGoalShown = totalGoals;
       }
 
+      const EV_LABEL = {
+        goal: "⚽ 골", shot: "슛", tackle: "태클", interception: "인터셉트",
+        foul: "파울", offside: "🚩 오프사이드", free_kick: "프리킥",
+        penalty: "⚽ 페널티!", save: "🧤 세이브", card: "카드",
+        half_whistle: "전반 종료", full_whistle: "경기 종료",
+      };
       function renderTicker() {
         tickerEl.innerHTML = log.events
-          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "half_whistle", "full_whistle"].includes(e.type))
+          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "foul", "offside", "free_kick", "penalty", "card", "save", "half_whistle", "full_whistle"].includes(e.type))
           // 세트피스(코너/스로인/골킥)는 type=kickoff + detail 로 표기됨.
           .filter((e) => !(e.type === "kickoff" && e.detail == null && e.minute > 0))
           .map((e) => {
             const who = e.playerId ? ` ${e.playerId}` : "";
             const xg = e.xg != null ? ` (xG ${e.xg.toFixed(2)})` : "";
-            // 세트피스는 detail 라벨을, 그 외엔 type 을 보여준다.
-            const label = e.detail && e.type === "kickoff" ? e.detail : e.detail && e.type === "shot" ? `${e.type} (${e.detail})` : e.type;
+            let label;
+            if (e.type === "kickoff") label = e.detail || "kickoff";
+            else if (e.type === "card") label = e.detail === "red" ? "🟥 레드카드" : "🟨 옐로카드";
+            else if (e.type === "shot" && e.detail) label = `슛 (${e.detail})`;
+            else if (e.type === "free_kick" && e.detail) label = `프리킥 (${e.detail})`;
+            else label = EV_LABEL[e.type] || e.type;
             return `<div class="ev-${e.type}" data-tick="${e.tick}" style="cursor:pointer">${e.minute}' · ${label}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
           }).join("");
         tickerEl.querySelectorAll("[data-tick]").forEach((el) => el.onclick = () => jumpToTick(+el.dataset.tick));
@@ -303,8 +315,8 @@
 
       function loadLog(data) {
         log = data; snaps = data.tickSnapshots;
-        // 골 + 모든 슛(유효슛 포함) 근처에서 하이라이트(슬로우+자동 줌인).
-        keyTicks = data.events.filter((e) => e.type === "goal" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target")).map((e) => e.tick);
+        // 골 + 모든 슛(유효슛 포함) + 페널티 근처에서 하이라이트(슬로우+자동 줌인).
+        keyTicks = data.events.filter((e) => e.type === "goal" || e.type === "penalty" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target")).map((e) => e.tick);
         renderTicker(); tickPos = 0; lastGoalShown = 0; setPlaying(true);
         statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
       }

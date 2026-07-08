@@ -29,6 +29,8 @@ export interface SimPlayer {
   idHash: number;
   /** 연속 드리블 틱 수(드리블 체인 모멘텀용). 소유 상실/비드리블 시 0. */
   dribbleStreak: number;
+  /** 받은 옐로카드 수(2장 누적 시 퇴장). */
+  yellowCards: number;
 }
 
 /** 공 비행 상태(패스/슛/루즈볼). */
@@ -54,8 +56,10 @@ export interface SetPiece {
    * kind:
    *  - corner/throw_in/goal_kick/kickoff: 일반 세트피스.
    *  - goal: 골 직후 세리머니 정지. 공은 네트에 머물고, 정지가 끝나면 side 팀이 센터 킥오프.
+   *  - free_kick: 파울/오프사이드 후 프리킥. side 팀이 재개.
+   *  - penalty: 박스 내 파울 후 페널티. 정지가 끝나면 side 팀 테이커가 고xG 슛.
    */
-  kind: "corner" | "throw_in" | "goal_kick" | "kickoff" | "goal";
+  kind: "corner" | "throw_in" | "goal_kick" | "kickoff" | "goal" | "free_kick" | "penalty";
   /** 재시작(수혜) 팀. goal 이면 킥오프할 실점팀. */
   side: TeamSide;
   /** 재시작 지점(fixed). */

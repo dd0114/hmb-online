@@ -53,6 +53,10 @@ export interface EngineConfig {
     dribble: number;
     shoot: number;
     hold: number;
+    /** 파이널서드(공격 진영)에서 슛 후보 가중을 곱해 슛을 지배적 선택으로 만드는 배수(>=1). */
+    shootInBox: number;
+    /** 파이널서드에서 후진(음수 forwardGain) 패스 옵션에 주는 감점 계수(후진 m·(0.5+directness) 당). */
+    backwardPassPenalty: number;
   };
 
   /** 경합 확률 기본치. (ESMS/xG 참고) */
@@ -105,6 +109,68 @@ export interface EngineConfig {
     oneOnOneClearM: number;
     /** 1대1 시 xG 배수(하이라이트·높은 xg). 1 이면 비활성(부스트 없음). */
     oneOnOneXgMult: number;
+    /** 1대1(단독 찬스)로 판정되면 슛 후보 가중에 곱하는 배수(>=1). 슛을 거의 강제. */
+    oneOnOneShootBias: number;
+  };
+
+  /**
+   * rules — 축구 규칙(파울/카드/페널티/오프사이드) 노브. (research/football-stats.md 빈도)
+   * 모든 확률·거리는 이 블록에서만 조정한다(하드코딩 금지). 시드 Rng 로만 판정.
+   */
+  rules: {
+    /** 파울(태클 시도 시). */
+    foul: {
+      /** 태클 시도 1회당 파울 기본 확률. aggression/tackling 으로 가감. */
+      base: number;
+      /** 태클러 pressAggression 이 파울 확률에 주는 가중(0..1 → ×(0.5+aggression·이 값)). */
+      aggressionWeight: number;
+      /** 태클 능력(0..100) 낮을수록 파울↑ 계수(×(1 + 이 값·(1-tackling/100))). */
+      tacklingRelief: number;
+      /** 피파울 지점이 수비 박스 안이면 파울 확률에 곱하는 배수(박스 내 필사 태클 → 페널티 유발). */
+      boxFoulMult: number;
+      /** 이미 경고(옐로) 받은 선수의 파울 확률 배수(<1, 신중해짐 → 2옐로 퇴장 억제). */
+      bookedRelief: number;
+    };
+    /** 카드(파울 심각도). */
+    card: {
+      /** 파울당 옐로카드 확률. */
+      yellowProb: number;
+      /** 파울당 직접 레드카드 확률(드묾). 옐로 2장 누적도 퇴장. */
+      redProb: number;
+    };
+    /** 페널티(수비 박스 내 파울). */
+    penalty: {
+      /** 페널티 박스 깊이(골라인에서, m). */
+      boxDepthM: number;
+      /** 페널티 박스 반폭(중앙에서, m). */
+      boxHalfWidthM: number;
+      /** 페널티 스팟 거리(골라인에서, m). */
+      spotM: number;
+      /** 페널티킥 xG. */
+      xg: number;
+      /** 페널티 준비 정지(dead ball) 틱. */
+      stoppageTicks: number;
+    };
+    /** 오프사이드. */
+    offside: {
+      /** 오프사이드 판정 활성화. */
+      enabled: boolean;
+      /** 라인 초과 허용 오차(m). 리시버가 2nd-last 수비수보다 이 이상 앞서야 오프사이드. */
+      toleranceM: number;
+      /** offsideTrap on 인 수비팀은 라인을 이만큼(m) 상향 → 더 자주 유도. */
+      trapBiasM: number;
+      /**
+       * 기하학적으로 오프사이드인 전진 패스가 실제로 깃발이 오를 확률(0..1).
+       * 공간 엔진은 공격수 온사이드 런 타이밍을 모델링하지 않아 대부분의 전진 패스가
+       * 기하학적으로는 라인 앞이므로, 실제 리그 빈도(팀 ~1-3회)에 맞추는 호출 게이트.
+       * offsideTrap on 이면 이 확률을 trapCallMult 로 가중.
+       */
+      callProb: number;
+      /** offsideTrap on 인 수비팀 상대일 때 callProb 배수. */
+      trapCallMult: number;
+    };
+    /** 프리킥(파울/오프사이드) 준비 정지 틱. */
+    freeKickStoppageTicks: number;
   };
 
   /**
@@ -208,7 +274,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.4.0",
+  version: "engine@0.5.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -230,8 +296,11 @@ export const defaultEngineConfig: EngineConfig = {
     // 슛 대폭 하향(37→~14/팀), 홀드/드리블 비중↑(패스 볼륨·찬스 남발 억제).
     pass: 0.5,
     dribble: 0.46,
-    shoot: 1.1,
+    shoot: 0.5,
     hold: 0.42,
+    // 파이널서드 슛 지배 + 후진 패스 페널티(스트라이커 후진 패스 버그 수정).
+    shootInBox: 1.28,
+    backwardPassPenalty: 1.6,
   },
   contest: {
     passBase: 0.84,
@@ -258,6 +327,35 @@ export const defaultEngineConfig: EngineConfig = {
     controlRange: 2.5,
     oneOnOneClearM: 10.0,
     oneOnOneXgMult: 1.3,
+    oneOnOneShootBias: 3.2,
+  },
+  rules: {
+    foul: {
+      base: 0.0115,
+      aggressionWeight: 1.0,
+      tacklingRelief: 0.6,
+      boxFoulMult: 3.0,
+      bookedRelief: 0.15,
+    },
+    card: {
+      yellowProb: 0.17,
+      redProb: 0.0015,
+    },
+    penalty: {
+      boxDepthM: 16.5,
+      boxHalfWidthM: 20.16,
+      spotM: 11.0,
+      xg: 0.76,
+      stoppageTicks: 8,
+    },
+    offside: {
+      enabled: true,
+      toleranceM: 0.7,
+      trapBiasM: 2.5,
+      callProb: 0.013,
+      trapCallMult: 1.8,
+    },
+    freeKickStoppageTicks: 8,
   },
   variety: {
     // 리얼 default: 벤치마크(슛 12-16/팀, 코너 ~5/팀 등)를 유지하는 모던한 변주.

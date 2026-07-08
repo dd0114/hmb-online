@@ -28,7 +28,10 @@ import {
   restartThrowIn,
   restartGoalKick,
   restartCorner,
+  restartFreeKick,
+  checkOffside,
 } from "./contest";
+import { attackGoal } from "./pitch";
 import type { OutCross } from "./ball";
 import { hashState } from "./hash";
 
@@ -89,6 +92,7 @@ function buildPlayers(
       isGK: gk,
       idHash: hashSeed(pi.playerId),
       dribbleStreak: 0,
+      yellowCards: 0,
     } satisfies SimPlayer;
   });
 }
@@ -216,10 +220,38 @@ function stepTick(carry: Carry): void {
       const o = state.byId.get(heldId);
       if (o) glueBallToOwner(state.ball, o.posFx.x, o.posFx.y);
     }
-    // 골 세리머니 정지가 끝나면(공은 그동안 네트에 머묾) 실점팀 센터 킥오프로 리셋.
+    // 정지가 끝나면 재개 처리.
     if (state.stoppage === 0) {
-      if (state.setPiece && state.setPiece.kind === "goal") {
-        resetKickoff(state, pitch, state.setPiece.side);
+      const sp = state.setPiece;
+      if (sp && sp.kind === "goal") {
+        // 골 세리머니 종료(공은 그동안 네트에 머묾) → 실점팀 센터 킥오프.
+        resetKickoff(state, pitch, sp.side);
+      } else if (sp && sp.kind === "penalty") {
+        // 페널티 정지 종료 → 테이커(공 소유자)가 상대 골로 고xG 슛 발사.
+        const taker = state.ball.owner ? state.byId.get(state.ball.owner) : null;
+        if (taker) {
+          const g = attackGoal(pitch, taker.side);
+          state.ball.flight = {
+            toX: g.x,
+            toY: g.y,
+            speed: toFixed(config.contest.shotBallSpeed, config.fixedScale),
+            kind: "shot",
+            target: taker.id,
+            fromSide: taker.side,
+            xg: config.rules.penalty.xg,
+          };
+          state.ball.owner = null;
+          state.ball.ownerSide = null;
+          carry.events.push({
+            tick: state.tick,
+            minute,
+            type: "shot",
+            team: taker.side,
+            playerId: taker.id,
+            xg: config.rules.penalty.xg,
+            detail: "penalty",
+          });
+        }
       }
       state.setPiece = null;
     }
@@ -277,6 +309,31 @@ function stepTick(carry: Carry): void {
           break;
         }
         case "pass": {
+          // 오프사이드: 전진 패스 순간 리시버가 2nd-last 수비수보다 앞이면 수비팀 프리킥.
+          if (checkOffside(state, rng, config, pitch, owner, action.receiver)) {
+            owner.dribbleStreak = 0;
+            carry.events.push({
+              tick: state.tick,
+              minute,
+              type: "offside",
+              team: owner.side,
+              playerId: action.receiver.id,
+            });
+            carry.events.push(
+              restartFreeKick(
+                state,
+                pitch,
+                config,
+                defSide,
+                action.receiver.posFx.x,
+                action.receiver.posFx.y,
+                state.tick,
+                minute,
+                "offside",
+              ),
+            );
+            break;
+          }
           state.ball.flight = {
             toX: action.toX,
             toY: action.toY,
@@ -305,6 +362,10 @@ function stepTick(carry: Carry): void {
       }
     }
   }
+
+  // 오프사이드 등으로 이번 틱 decide 단계에서 dead-ball 이 설정되면 이동·경합·피로를
+  // 건너뛴다(정지 재개는 다음 틱 stoppage 브랜치가 처리). 슛/패스 비행은 stoppage 를 안 건드림.
+  if (state.stoppage > 0) return;
 
   // --- act: 선수 이동 ---
   for (const p of state.players) {
@@ -341,7 +402,7 @@ function stepTick(carry: Carry): void {
   } else if (curOwnerId) {
     const owner = state.byId.get(curOwnerId);
     if (owner) glueBallToOwner(state.ball, owner.posFx.x, owner.posFx.y);
-    for (const e of tryTackle(state, rng, config, state.tick, minute)) {
+    for (const e of tryTackle(state, rng, config, pitch, state.tick, minute)) {
       carry.events.push(e);
     }
   }

@@ -28,6 +28,13 @@ export interface TeamStats {
   corners: number;
   throwIns: number;
   goalKicks: number;
+  // --- 규칙(파울/오프사이드/카드/페널티/세이브) ---
+  fouls: number; // 이 팀이 범한 파울
+  offsides: number; // 이 팀이 걸린 오프사이드
+  yellowCards: number;
+  redCards: number;
+  penaltiesFor: number; // 이 팀이 얻은 페널티
+  saves: number; // 이 팀 GK 의 선방
   avgWidthM: number;
   avgLengthM: number;
   avgDistanceKm: number; // 아웃필드 평균 주행거리
@@ -75,6 +82,7 @@ const EMPTY: TeamStats = {
   shots: 0, goals: 0, onTarget: 0, savedShots: 0, offTargetShots: 0, oneOnOne: 0,
   shotToCorner: 0, shotToGoalKick: 0, passAttempts: 0, passCompleted: 0, passSuccessPct: 0,
   interceptionsConceded: 0, corners: 0, throwIns: 0, goalKicks: 0,
+  fouls: 0, offsides: 0, yellowCards: 0, redCards: 0, penaltiesFor: 0, saves: 0,
   avgWidthM: 0, avgLengthM: 0, avgDistanceKm: 0,
   avgDribbleChain: 0, maxDribbleChain: 0, dribbleChains: 0,
   defenderOverlaps: 0, defenderOverlapTicks: 0, posSpreadM: 0,
@@ -131,12 +139,20 @@ export function computeMatchStats(log: MatchLog, gkIds: Set<string>, opts: Stats
     const throwInConceded = count((e) => e.type === "kickoff" && e.team === opp && e.detail === "throw_in");
     const passAttempts = passCompleted + interceptionsConceded + throwInConceded;
     const passSuccessPct = passAttempts > 0 ? Math.round((passCompleted / passAttempts) * 1000) / 10 : 0;
+    // 규칙 이벤트: foul=범한 팀, offside=걸린(공격) 팀, card=선수 팀, penalty=얻은 팀, save=수비 GK 팀.
+    const fouls = count((e) => e.type === "foul" && e.team === side);
+    const offsides = count((e) => e.type === "offside" && e.team === side);
+    const yellowCards = count((e) => e.type === "card" && e.team === side && e.detail === "yellow");
+    const redCards = count((e) => e.type === "card" && e.team === side && e.detail === "red");
+    const penaltiesFor = count((e) => e.type === "penalty" && e.team === side);
+    const saves = count((e) => e.type === "save" && e.team === side);
     return {
       ...EMPTY,
       shots, goals, onTarget, savedShots, offTargetShots, oneOnOne,
       shotToCorner: shotToCorner[side], shotToGoalKick: shotToGoalKick[side],
       passAttempts, passCompleted, passSuccessPct, interceptionsConceded,
       corners, throwIns, goalKicks,
+      fouls, offsides, yellowCards, redCards, penaltiesFor, saves,
     };
   };
 
@@ -284,6 +300,14 @@ export function formatStatsReport(stats: MatchStats, meta: Record<string, unknow
   row("코너", home.corners, away.corners, home.corners + away.corners, "~5 (양팀~10)");
   row("스로인", home.throwIns, away.throwIns, home.throwIns + away.throwIns, "~17-19");
   row("골킥", home.goalKicks, away.goalKicks, home.goalKicks + away.goalKicks, "-");
+  lines.push("");
+  lines.push("--- 규칙(파울/오프사이드/카드/페널티/세이브) ---");
+  row("파울(범함)", home.fouls, away.fouls, home.fouls + away.fouls, "~22-24 (팀11-12)");
+  row("오프사이드", home.offsides, away.offsides, home.offsides + away.offsides, "팀 ~1-3");
+  row("옐로카드", home.yellowCards, away.yellowCards, home.yellowCards + away.yellowCards, "~3.5-4 (팀~2)");
+  row("레드카드", home.redCards, away.redCards, home.redCards + away.redCards, "~0.1-0.2");
+  row("페널티", home.penaltiesFor, away.penaltiesFor, home.penaltiesFor + away.penaltiesFor, "~0.2-0.3");
+  row("세이브(GK)", home.saves, away.saves, home.saves + away.saves, "-");
   row("팀 width(m)", home.avgWidthM, away.avgWidthM, avg(home.avgWidthM, away.avgWidthM), "40-50");
   row("팀 length(m)", home.avgLengthM, away.avgLengthM, avg(home.avgLengthM, away.avgLengthM), "25-40");
   row("주행거리(km/선수)", home.avgDistanceKm, away.avgDistanceKm, avg(home.avgDistanceKm, away.avgDistanceKm), "10-12");

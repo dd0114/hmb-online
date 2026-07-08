@@ -35,7 +35,12 @@ export const MatchEventType = z.enum([
   "tackle",
   "shot",
   "goal",
-  "card",
+  "save",
+  "foul",
+  "offside",
+  "free_kick",
+  "penalty",
+  "card", // detail: "yellow" | "red"
   "substitution",
   "half_whistle",
   "full_whistle",

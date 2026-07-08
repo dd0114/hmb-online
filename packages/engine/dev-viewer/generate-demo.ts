@@ -1,10 +1,10 @@
 import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
-import type { MatchLog } from "@hmb/shared";
+import type { MatchLog, MatchEvent } from "@hmb/shared";
 import { runMatch } from "../src/match";
 import { defaultEngineConfig } from "../src/config";
-import { demoSeed, demoHome, demoAway, demoSelect } from "../src/fixtures";
+import { demoSeed, demoHome, demoAway, demoSelect, makeTacticalInput } from "../src/fixtures";
 import { computeMatchStats, formatStatsReport, type StatsOptions, type MatchStats } from "./match-stats";
 
 /**
@@ -31,7 +31,7 @@ export function buildDemoLog(): MatchLog {
  */
 export const showcaseConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.4.0-showcase",
+  version: "engine@0.5.0-showcase",
   matchMinutes: 24,
   decisionWeights: {
     ...defaultEngineConfig.decisionWeights,
@@ -146,7 +146,7 @@ function statsOpts(): StatsOptions {
  */
 const baselineConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.4.0-baseline",
+  version: "engine@0.5.0-baseline",
   contest: { ...defaultEngineConfig.contest, oneOnOneXgMult: 1 },
   variety: {
     ...defaultEngineConfig.variety,
@@ -165,8 +165,8 @@ function buildVarietyReport(before: MatchStats, after: MatchStats, beforeHash: s
     Math.round(((t.home[k] as number) + (t.away[k] as number)) / 2 * 10) / 10;
   const L: string[] = [];
   L.push("=== HMB S1 엔진 변주(다이나믹) 전/후 대조 — AC-variety ===");
-  L.push(`before=engine@0.4.0-baseline(변주 OFF, ==0.3.0)  after=${defaultEngineConfig.version}(변주 ON)  seed ${demoSeed}`);
-  L.push(`baseline lastHash=${beforeHash}  (0.3.0 golden=4e7a2771 → 일치 시 변주 OFF==0.3.0 회귀 보증)`);
+  L.push(`before=engine@0.5.0-baseline(변주 OFF)  after=${defaultEngineConfig.version}(변주 ON)  seed ${demoSeed}`);
+  L.push(`baseline lastHash=${beforeHash}  (0.5.0 는 규칙[파울/오프사이드/카드/페널티] 도입으로 0.3.0/0.4.0 앵커와 불일치가 정상)`);
   L.push(`variety(after) lastHash=${afterHash}`);
   L.push("");
   const col = (s: string, w: number): string => s.padEnd(w);
@@ -193,6 +193,106 @@ function buildVarietyReport(before: MatchStats, after: MatchStats, beforeHash: s
   rowSum("슛→골킥 전환", "shotToGoalKick", "");
   rowSum("코너", "corners", "");
   rowSum("골", "goals", "");
+  return L.join("\n");
+}
+
+/**
+ * AC-rules.log — 축구 규칙(파울/오프사이드/카드/페널티) 경기당 빈도(벤치마크 대조) +
+ * 슛 결정 버그 수정의 정량 근거(파이널서드 후진패스 비율·1대1 슛 before/after).
+ *
+ * before/after 는 ablation: 동일 config 에서 슛-버그 수정 노브(shootInBox·backwardPassPenalty·
+ * oneOnOneShootBias)만 중립화(=OFF)한 것과 default(=ON)를 대조 → 수정의 순효과를 격리.
+ * 규칙 빈도는 after(=default, 규칙 ON) 기준. 다중 시드 평균으로 분산 완화.
+ */
+function buildRulesReport(): string {
+  const seeds = ["4815162342", "9999999999", "1234567890", "2718281828", "1414213562", "1618033988", "31415926", "27182818", "16180339", "14142135"];
+  const c = (arr: MatchEvent[], p: (e: MatchEvent) => boolean): number => arr.filter(p).length;
+  const W = defaultEngineConfig.pitch.width;
+  const F3 = defaultEngineConfig.setPiece.finalThirdLine;
+  const prog = (side: string, x: number): number => (side === "home" ? x / W : 1 - x / W);
+
+  // ablation OFF = 수정 노브 중립화.
+  const offConfig = {
+    ...defaultEngineConfig,
+    decisionWeights: { ...defaultEngineConfig.decisionWeights, shootInBox: 1, backwardPassPenalty: 0 },
+    contest: { ...defaultEngineConfig.contest, oneOnOneShootBias: 1 },
+  };
+
+  // 스냅샷 소유권 전이로 완결 패스 방향 판정(파이널서드·스트라이커 후진).
+  const passDir = (log: MatchLog): { f3: number; f3b: number; sf3: number; sf3b: number } => {
+    let f3 = 0, f3b = 0, sf3 = 0, sf3b = 0;
+    let lo: string | null = null, lp: { x: number; y: number } | null = null, lt: string | null = null;
+    for (const sn of log.tickSnapshots) {
+      const o = sn.ballOwner;
+      if (o != null) {
+        const p = sn.players.find((q) => q.playerId === o);
+        const team = p?.team ?? (o[0] === "H" ? "home" : "away");
+        if (lo != null && o !== lo && team === lt && lp && p) {
+          const pp = prog(team, lp.x), rp = prog(team, p.pos.x);
+          const back = rp < pp;
+          // passer(lo) 기준: 파이널서드에서 시작한 완결 패스가 후진(수신자가 덜 전진)인가.
+          if (pp >= F3) { f3++; if (back) f3b++; }
+          if (lo === "H9" || lo === "A9") { if (pp >= F3) { sf3++; if (back) sf3b++; } }
+        }
+        lo = o; lp = p ? { x: p.pos.x, y: p.pos.y } : { x: sn.ball.x, y: sn.ball.y }; lt = team;
+      }
+    }
+    return { f3, f3b, sf3, sf3b };
+  };
+
+  const R = { fouls: 0, offside: 0, yellow: 0, red: 0, pen: 0, saves: 0, freeKick: 0 };
+  let bf3 = 0, bf3b = 0, bsf3 = 0, bsf3b = 0, bOne = 0, bShots = 0, bGoals = 0;
+  let af3 = 0, af3b = 0, asf3 = 0, asf3b = 0, aOne = 0, aShots = 0, aGoals = 0;
+  let redMatches = 0, penMatches = 0;
+  for (const s of seeds) {
+    const home = makeTacticalInput("H", s);
+    const away = makeTacticalInput("A", s);
+    const before = runMatch(s, home, away, demoSelect, offConfig);
+    const after = runMatch(s, home, away, demoSelect, defaultEngineConfig);
+    const bd = passDir(before), ad = passDir(after);
+    bf3 += bd.f3; bf3b += bd.f3b; bsf3 += bd.sf3; bsf3b += bd.sf3b;
+    af3 += ad.f3; af3b += ad.f3b; asf3 += ad.sf3; asf3b += ad.sf3b;
+    const isShot = (e: MatchEvent): boolean => e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target";
+    bOne += c(before.events, (e) => e.type === "shot" && e.detail === "one_on_one");
+    aOne += c(after.events, (e) => e.type === "shot" && e.detail === "one_on_one");
+    bShots += c(before.events, isShot); aShots += c(after.events, isShot);
+    bGoals += c(before.events, (e) => e.type === "goal"); aGoals += c(after.events, (e) => e.type === "goal");
+    const e = after.events;
+    R.fouls += c(e, (x) => x.type === "foul");
+    R.offside += c(e, (x) => x.type === "offside");
+    R.yellow += c(e, (x) => x.type === "card" && x.detail === "yellow");
+    const rd = c(e, (x) => x.type === "card" && x.detail === "red"); R.red += rd; if (rd > 0) redMatches++;
+    const pn = c(e, (x) => x.type === "penalty"); R.pen += pn; if (pn > 0) penMatches++;
+    R.saves += c(e, (x) => x.type === "save");
+    R.freeKick += c(e, (x) => x.type === "free_kick");
+  }
+  const n = seeds.length;
+  const pct = (x: number, y: number): string => (y > 0 ? ((x / y) * 100).toFixed(1) + "%" : "n/a");
+  const per = (v: number): string => (v / n).toFixed(2);
+  const col = (s: string, w: number): string => s.padEnd(w);
+  const L: string[] = [];
+  L.push(`=== HMB S1 엔진 축구 규칙 + 슛 버그 수정 — AC-rules (${defaultEngineConfig.version}, ${n} seeds) ===`);
+  L.push("");
+  L.push("── 슛 결정 버그 수정 (ablation: 수정 노브 OFF vs ON) ──");
+  L.push(col("지표", 30) + col("before(OFF)", 14) + col("after(ON)", 14) + "해석");
+  L.push(col("스트라이커 파이널서드 후진패스", 30) + col(pct(bsf3b, bsf3), 14) + col(pct(asf3b, asf3), 14) + "버그: 좋은 위치서 후진 → 감소");
+  L.push(col("전체 파이널서드 후진패스", 30) + col(pct(bf3b, bf3), 14) + col(pct(af3b, af3), 14) + "");
+  L.push(col("1대1 슛 (경기당)", 30) + col(per(bOne), 14) + col(per(aOne), 14) + "단독찬스 슛 전환↑ (벤치 팀1-3.5)");
+  L.push(col("슛 (경기당, 양팀)", 30) + col(per(bShots), 14) + col(per(aShots), 14) + "");
+  L.push(col("골 (경기당, 양팀)", 30) + col(per(bGoals), 14) + col(per(aGoals), 14) + "");
+  L.push("");
+  L.push("── 규칙 이벤트 빈도 (after=default, 규칙 ON) ──");
+  L.push(col("이벤트", 20) + col("경기당(양팀)", 16) + col("팀당", 12) + "벤치마크(양팀 / 팀)");
+  L.push(col("파울", 20) + col(per(R.fouls), 16) + col(per(R.fouls / 2), 12) + "22-24 / 11-12");
+  L.push(col("오프사이드", 20) + col(per(R.offside), 16) + col(per(R.offside / 2), 12) + "- / 1-3");
+  L.push(col("옐로카드", 20) + col(per(R.yellow), 16) + col(per(R.yellow / 2), 12) + "3.5-4 / ~2");
+  L.push(col("레드카드", 20) + col(per(R.red), 16) + col(per(R.red / 2), 12) + `0.1-0.2 (${redMatches}/${n} 경기)`);
+  L.push(col("페널티", 20) + col(per(R.pen), 16) + col(per(R.pen / 2), 12) + `0.2-0.3 (${penMatches}/${n} 경기)`);
+  L.push(col("세이브(GK)", 20) + col(per(R.saves), 16) + col(per(R.saves / 2), 12) + "-");
+  L.push(col("프리킥(파울+오프사이드)", 20) + col(per(R.freeKick), 16) + col(per(R.freeKick / 2), 12) + "~24 / ~12");
+  L.push("");
+  L.push("주: 공간 엔진은 공격수 온사이드 런 타이밍을 모델링하지 않아 대부분의 전진 패스가 기하학적으로");
+  L.push("   라인 앞이므로, 오프사이드는 config(rules.offside.callProb)로 실제 리그 빈도에 맞춘 호출 게이트를 둔다.");
   return L.join("\n");
 }
 
@@ -235,6 +335,10 @@ export function writeDemo(outPath?: string): { path: string; statsPath: string; 
   const realGoals = buildGoalInNetReport(log, "real(default)");
   const goalNetPath = join(evidenceDir, "AC-goal-in-net.log");
   writeFileSync(goalNetPath, `${showGoals.report}\n\n${realGoals.report}\n`);
+
+  // 축구 규칙 빈도 + 슛 버그 수정 근거(다중 시드) → evidence/S1/AC-rules.log.
+  const rulesPath = join(evidenceDir, "AC-rules.log");
+  writeFileSync(rulesPath, buildRulesReport() + "\n");
 
   const summary = {
     configVersion: log.configVersion,

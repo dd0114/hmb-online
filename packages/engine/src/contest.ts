@@ -162,6 +162,130 @@ export function restartCorner(
   return { tick, minute, type: "kickoff", team: side, playerId: taker?.id, detail: "corner" };
 }
 
+/** 공격 방향 정규화 진행도(0:자기골 라인, 1:상대골 라인). */
+function attackProgressX(pitch: Pitch, side: TeamSide, x: number): number {
+  const frac = x / pitch.wFx;
+  return side === "home" ? frac : 1 - frac;
+}
+
+/**
+ * 프리킥 재시작(파울/오프사이드). side 팀이 (x,y) 에서 재개. dead-ball 정지.
+ */
+export function restartFreeKick(
+  state: SimState,
+  pitch: Pitch,
+  config: EngineConfig,
+  side: TeamSide,
+  x: number,
+  y: number,
+  tick: number,
+  minute: number,
+  detail?: string,
+): MatchEvent {
+  const spot = clampToPitch(pitch, x, y);
+  const taker = nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side);
+  if (taker) {
+    taker.posFx.x = spot.x;
+    taker.posFx.y = spot.y;
+    giveBallTo(state, taker);
+  } else {
+    state.ball.posFx = { x: spot.x, y: spot.y };
+    state.ball.owner = null;
+    state.ball.ownerSide = null;
+    state.ball.flight = null;
+    state.possession = side;
+  }
+  state.setPiece = { kind: "free_kick", side, x: spot.x, y: spot.y };
+  state.stoppage = config.rules.freeKickStoppageTicks;
+  return { tick, minute, type: "free_kick", team: side, playerId: taker?.id, detail };
+}
+
+/**
+ * 페널티 재시작(수비 박스 내 파울). 공격팀 테이커를 페널티 스팟에 세우고 dead-ball 정지.
+ * 정지가 끝나면 match(launchPenaltyShot)가 고xG 슛을 발사한다.
+ */
+export function restartPenalty(
+  state: SimState,
+  pitch: Pitch,
+  config: EngineConfig,
+  side: TeamSide,
+  tick: number,
+  minute: number,
+): void {
+  const g = attackGoal(pitch, side);
+  const sign = side === "home" ? 1 : -1;
+  const spotX = g.x - sign * toFixed(config.rules.penalty.spotM, config.fixedScale);
+  const spot = clampToPitch(pitch, spotX, g.y);
+  const taker = nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side);
+  if (taker) {
+    taker.posFx.x = spot.x;
+    taker.posFx.y = spot.y;
+    giveBallTo(state, taker);
+  } else {
+    state.ball.posFx = { x: spot.x, y: spot.y };
+    state.ball.owner = null;
+    state.ball.ownerSide = null;
+    state.ball.flight = null;
+    state.possession = side;
+  }
+  state.setPiece = { kind: "penalty", side, x: spot.x, y: spot.y };
+  state.stoppage = config.rules.penalty.stoppageTicks;
+  void tick;
+  void minute;
+}
+
+/** 선수 퇴장(레드카드): 코트에서 제거(인원 감소). 소유 중이면 공은 루즈볼 처리. */
+function sendOff(state: SimState, player: SimPlayer): void {
+  const idx = state.players.indexOf(player);
+  if (idx >= 0) state.players.splice(idx, 1);
+  state.byId.delete(player.id);
+  if (state.ball.owner === player.id) {
+    state.ball.owner = null;
+    state.ball.ownerSide = null;
+    state.ball.flight = null;
+  }
+}
+
+/**
+ * 오프사이드 판정(전진 패스 순간). 리시버가 공격 진영에서 2nd-last 수비수보다
+ * 앞(상대 골 쪽)이면 오프사이드. 수비팀 offsideTrap on 이면 라인을 높여 더 자주 유도.
+ */
+export function checkOffside(
+  state: SimState,
+  rng: Rng,
+  config: EngineConfig,
+  pitch: Pitch,
+  owner: SimPlayer,
+  receiver: SimPlayer,
+): boolean {
+  const o = config.rules.offside;
+  if (!o.enabled) return false;
+  const side = owner.side;
+  const recProg = attackProgressX(pitch, side, receiver.posFx.x);
+  // 공격 진영(상대 하프)에서만 + 전진 패스(리시버가 소유자보다 앞)일 때만.
+  if (recProg < 0.5) return false;
+  if (recProg <= attackProgressX(pitch, side, owner.posFx.x)) return false;
+
+  const defSide: TeamSide = side === "home" ? "away" : "home";
+  // 수비팀 선수들의 진행도(공격자 관점). 큰 값일수록 자기 골에 가까움(=마지막 수비수).
+  const progs: number[] = [];
+  for (const p of state.players) {
+    if (p.side !== defSide) continue;
+    progs.push(attackProgressX(pitch, side, p.posFx.x));
+  }
+  if (progs.length < 2) return false;
+  progs.sort((a, b) => b - a);
+  let lineProg = progs[1]!; // 2nd-last defender.
+  const tolNorm = o.toleranceM / config.pitch.width;
+  const trap = state.teams[defSide].offsideTrap;
+  // offsideTrap on 이면 라인을 하프웨이 쪽으로 끌어올림 → 더 많은 리시버가 라인 앞.
+  if (trap) lineProg -= o.trapBiasM / config.pitch.width;
+  if (!(recProg > lineProg + tolNorm)) return false;
+  // 호출 게이트: 기하학적 오프사이드 중 실제 깃발이 오르는 비율(온사이드 런 타이밍 미모델링 보정).
+  const callProb = trap ? fclamp(o.callProb * o.trapCallMult, 0, 1) : o.callProb;
+  return rng.next() < callProb;
+}
+
 /**
  * 비행 중 패스/슛을 상대가 가로채는지(매 틱). 성공 시 소유 이전.
  */
@@ -200,13 +324,72 @@ export function tryIntercept(
   return [];
 }
 
+/** 피파울 지점(victim 위치)이 태클러의 수비 박스(victim 의 공격 골 박스) 안인지. */
+function victimInAttackBox(pitch: Pitch, config: EngineConfig, victim: SimPlayer): boolean {
+  const g = attackGoal(pitch, victim.side);
+  const scale = config.fixedScale;
+  const depth = toFixed(config.rules.penalty.boxDepthM, scale);
+  const halfW = toFixed(config.rules.penalty.boxHalfWidthM, scale);
+  const nearLine = Math.abs(victim.posFx.x - g.x) <= depth;
+  const inWidth = Math.abs(victim.posFx.y - g.y) <= halfW;
+  return nearLine && inWidth;
+}
+
 /**
- * 볼 주인이 상대 태클에 뺏기는지(매 틱). 성공 시 소유 이전.
+ * 파울 처리: foul 이벤트 + 카드(옐로/레드, 2옐로=퇴장) + 박스 내면 페널티, 아니면 프리킥.
+ */
+function commitFoul(
+  state: SimState,
+  rng: Rng,
+  config: EngineConfig,
+  pitch: Pitch,
+  tackler: SimPlayer,
+  victim: SimPlayer,
+  tick: number,
+  minute: number,
+): MatchEvent[] {
+  const events: MatchEvent[] = [];
+  events.push({ tick, minute, type: "foul", team: tackler.side, playerId: tackler.id });
+
+  // 카드 심각도(시드 롤). 직접 레드 < redProb, 옐로 < redProb+yellowProb.
+  const cr = config.rules.card;
+  const roll = rng.next();
+  let sentOff = false;
+  if (roll < cr.redProb) {
+    events.push({ tick, minute, type: "card", team: tackler.side, playerId: tackler.id, detail: "red" });
+    sentOff = true;
+  } else if (roll < cr.redProb + cr.yellowProb) {
+    tackler.yellowCards += 1;
+    events.push({ tick, minute, type: "card", team: tackler.side, playerId: tackler.id, detail: "yellow" });
+    if (tackler.yellowCards >= 2) {
+      events.push({ tick, minute, type: "card", team: tackler.side, playerId: tackler.id, detail: "red" });
+      sentOff = true;
+    }
+  }
+
+  const inBox = victimInAttackBox(pitch, config, victim);
+  if (sentOff) sendOff(state, tackler);
+
+  if (inBox) {
+    events.push({ tick, minute, type: "penalty", team: victim.side });
+    restartPenalty(state, pitch, config, victim.side, tick, minute);
+  } else {
+    events.push(
+      restartFreeKick(state, pitch, config, victim.side, victim.posFx.x, victim.posFx.y, tick, minute, "foul"),
+    );
+  }
+  return events;
+}
+
+/**
+ * 볼 주인이 상대 태클에 뺏기는지(매 틱). 파울 확률 선판정 → 파울이면 프리킥/페널티/카드,
+ * 아니면 시드 베르누이 태클 경합. 성공 시 소유 이전.
  */
 export function tryTackle(
   state: SimState,
   rng: Rng,
   config: EngineConfig,
+  pitch: Pitch,
   tick: number,
   minute: number,
 ): MatchEvent[] {
@@ -227,6 +410,23 @@ export function tryTackle(
     }
   }
   if (!tackler) return [];
+
+  // --- 파울 판정(태클 시도당) ---
+  const fr = config.rules.foul;
+  const boxMult = victimInAttackBox(pitch, config, owner) ? fr.boxFoulMult : 1;
+  const bookedMult = tackler.yellowCards > 0 ? fr.bookedRelief : 1;
+  const foulProb = fclamp(
+    fr.base *
+      (0.5 + tackler.behavior.pressAggression * fr.aggressionWeight) *
+      (1 + fr.tacklingRelief * (1 - tackler.attrs.tackling / 100)) *
+      boxMult *
+      bookedMult,
+    0,
+    0.9,
+  );
+  if (rng.next() < foulProb) {
+    return commitFoul(state, rng, config, pitch, tackler, owner, tick, minute);
+  }
 
   const off = attrFactor(owner.attrs.technical) * (1 + owner.behavior.dribbleTendency * 0.3);
   const def = attrFactor(tackler.attrs.tackling) * (0.7 + tackler.behavior.pressAggression * 0.6);
@@ -344,20 +544,21 @@ export function resolveShot(
   }
 
   // 유효슛 세이브: GK 캐치 또는 코너로 굴절.
+  const gkSaver = goalkeeperOf(state, defSide);
+  const saveEv: MatchEvent = { tick, minute, type: "save", team: defSide, playerId: gkSaver?.id };
   if (rng.next() < config.contest.saveCornerProb) {
     const cornerEv = restartCorner(state, pitch, config, scorerSide, ballY, tick, minute);
-    return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, cornerEv];
+    return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, saveEv, cornerEv];
   }
-  const gk = goalkeeperOf(state, defSide);
-  if (gk) {
+  if (gkSaver) {
     const goal = defendGoal(pitch, defSide);
     const c = clampToPitch(pitch, goal.x, goal.y);
-    gk.posFx.x = c.x;
-    gk.posFx.y = c.y;
-    giveBallTo(state, gk);
+    gkSaver.posFx.x = c.x;
+    gkSaver.posFx.y = c.y;
+    giveBallTo(state, gkSaver);
   } else {
     state.ball.flight = null;
     state.possession = defSide;
   }
-  return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }];
+  return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, saveEv];
 }

@@ -71,7 +71,12 @@ function computeXg(
 }
 
 /** 패스 옵션 점수: 안전(laneDanger)·전진(forwardGain)·거리 종합. */
-function scoreOption(opt: PassOption, owner: SimPlayer, config: EngineConfig): number {
+function scoreOption(
+  opt: PassOption,
+  owner: SimPlayer,
+  config: EngineConfig,
+  ownerInFinalThird: boolean,
+): number {
   const scale = config.fixedScale;
   const safeM = fromFixed(opt.laneDanger, scale);
   const fwdM = fromFixed(opt.forwardGain, scale);
@@ -79,7 +84,13 @@ function scoreOption(opt: PassOption, owner: SimPlayer, config: EngineConfig): n
   const directness = owner.behavior.passDirectness;
   const riskTol = owner.behavior.passRisk;
   // 안전도(위험할수록 감점, passRisk 높으면 관대) + 전진 이득 + 거리 페널티.
-  return safeM * (1.2 - riskTol) + fwdM * (0.4 + directness) - distM * 0.15;
+  let score = safeM * (1.2 - riskTol) + fwdM * (0.4 + directness) - distM * 0.15;
+  // 파이널서드(공격 진영) 후진 패스 페널티: 뒤로(음수 forwardGain) 빼는 패스를 감점 →
+  // 전진/횡 패스·슛을 우선. directness 높은 선수일수록 후진을 더 싫어함.
+  if (ownerInFinalThird && fwdM < 0) {
+    score -= -fwdM * config.decisionWeights.backwardPassPenalty * (0.5 + directness);
+  }
+  return score;
 }
 
 /** 공격 방향 정규화 진행도(0:자기골 라인, 1:상대골 라인). */
@@ -185,9 +196,10 @@ function selectPassOption(
   owner: SimPlayer,
   config: EngineConfig,
   rng: Rng,
+  ownerInFinalThird: boolean,
 ): { opt: PassOption | null; score: number } {
   if (opts.length === 0) return { opt: null, score: -Infinity };
-  const scored = opts.map((o) => ({ o, s: scoreOption(o, owner, config) }));
+  const scored = opts.map((o) => ({ o, s: scoreOption(o, owner, config, ownerInFinalThird) }));
   // 점수 내림차순(동점은 receiver.id 로 안정 정렬 — 결정론).
   scored.sort((a, b) => b.s - a.s || (a.o.receiver.id < b.o.receiver.id ? -1 : 1));
   const temp = config.variety.decisionTemperature;
@@ -225,6 +237,8 @@ export function decideBallOwner(
   const w = config.decisionWeights;
   const sc = config.softCap;
   const goal = attackGoal(pitch, owner.side);
+  const ownerInFinalThird =
+    attackProgress(pitch, owner.side, owner.posFx.x) >= config.setPiece.finalThirdLine;
 
   // --- 슛 후보(좋은 위치/각도/찬스일 때만; xG 임계 미만 speculative 억제) ---
   const { xg: rawXg, distM } = computeXg(owner, config, pitch);
@@ -253,11 +267,15 @@ export function decideBallOwner(
       (0.25 + softCapped(owner.behavior.shootTendency, sc)) *
       quality *
       attrFactor(owner.attrs.shooting);
+    // 파이널서드(공격 진영)의 사거리 슛은 지배적 선택으로 부스트(후진 패스 억제와 짝).
+    if (ownerInFinalThird) wShoot *= w.shootInBox;
+    // 1대1(단독 오픈)이면 거의 강제로 슛 → one_on_one 이벤트가 실제로 찍힌다.
+    if (shootDetail === "one_on_one") wShoot *= config.contest.oneOnOneShootBias;
   }
 
   // --- 패스 후보(상위 후보 중 시드 가중 샘플 = flair 변주) ---
   const opts = passOptions(state, owner, config, pitch);
-  const picked = selectPassOption(opts, owner, config, rng);
+  const picked = selectPassOption(opts, owner, config, rng, ownerInFinalThird);
   const bestOpt = picked.opt;
   let wPass = 0;
   if (bestOpt) {
