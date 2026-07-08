@@ -106,10 +106,21 @@ export interface EngineConfig {
     /** 빗맞은 슛이 수비 블록에 맞고 코너로 굴절될 확률(나머지는 골킥). */
     offTargetBlockCornerProb: number;
     /**
-     * 빗맞은(off_target) 슛이 골포스트 바깥으로 지나가는 거리(m). 도착 프레임 y = 골중앙 ± (골반폭 + 이 값).
-     * 코너 깃발 직행 금지 — 공은 골문 살짝 옆(골라인 근처)에서 아웃된 뒤 세트피스로 재시작된다.
+     * 빗맞은(off_target) 슛이 골포스트 바깥으로 벗어나는 옆 거리(m). 도착 프레임 y = 골중앙 ± (골반폭 + 이 값).
+     * 포스트 바깥 margin — 관중 시점에서 공이 골문 옆으로 벗어나 보이게 하는 횡방향 여유.
      */
-    offTargetMissMarginM: number;
+    offTargetWideMarginM: number;
+    /**
+     * 빗맞은(off_target) 슛이 골라인을 살짝 넘어 필드 밖으로 나가는 거리(m). 도착 프레임 x = 골라인 ± 이 값
+     * (필드 바깥 방향, home 골라인 105→+, away 골라인 0→-). >0 이어야 공이 "골대 옆으로 슉 벗어나는"
+     * 프레임이 보인 뒤(shot_out 정지) 골킥/코너로 재시작된다. 코너 깃발 직행 금지.
+     */
+    offTargetOverrunM: number;
+    /**
+     * 빗맞음 좌우 분산: 슈터가 골중앙 기준 위/아래 어느 쪽이냐에 따라 그 쪽으로 빗나갈 확률(0..1).
+     * 시드 롤이 이 확률을 넘으면 반대쪽으로 빗나가 항상 같은 쪽 반복을 막는다. 0.5 면 완전 무편향.
+     */
+    offTargetSideBias: number;
     /** 중앙 슛 부스트(shootCentralBonus) 판정용 중앙 존 반폭(m). lateral<=이 값이면 완전 중앙(centralFrac=1). */
     centralShootHalfM: number;
     /** 볼 주인을 태클할 수 있는 접근 거리(m). */
@@ -293,7 +304,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.6.0",
+  version: "engine@0.7.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -343,7 +354,9 @@ export const defaultEngineConfig: EngineConfig = {
     onTargetBase: 0.28,
     saveCornerProb: 0.6,
     offTargetBlockCornerProb: 0.32,
-    offTargetMissMarginM: 3.0,
+    offTargetWideMarginM: 3.0,
+    offTargetOverrunM: 3.5,
+    offTargetSideBias: 0.72,
     centralShootHalfM: 12.0,
     tackleRange: 2.0,
     interceptRange: 1.5,

@@ -31,7 +31,7 @@ export function buildDemoLog(): MatchLog {
  */
 export const showcaseConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.6.0-showcase",
+  version: "engine@0.7.0-showcase",
   matchMinutes: 24,
   decisionWeights: {
     ...defaultEngineConfig.decisionWeights,
@@ -121,7 +121,10 @@ function buildGoalInNetReport(log: MatchLog, label: string): { report: string; a
  * (코너/골킥 세트피스는 별도 shot_out 정지 이후 재시작 단계에서만 공이 코너/스팟에 놓인다.)
  */
 function buildShotTargetReport(log: MatchLog, label: string): { report: string; allPass: boolean } {
+  const width = defaultEngineConfig.pitch.width; // 105
   const height = defaultEngineConfig.pitch.height; // 68
+  const centerY = height / 2; // 34
+  const halfPost = defaultEngineConfig.pitch.goalWidth / 2; // 3.66
   const yLo = 26;
   const yHi = 42;
   const cornerLo = 5; // y<5 또는 y>height-5(=63) 이면 코너 깃발 영역.
@@ -131,7 +134,10 @@ function buildShotTargetReport(log: MatchLog, label: string): { report: string; 
   for (const s of log.tickSnapshots) snapByTick.set(s.tick, s);
 
   // 검증 대상: goal 이벤트 + 슛 결과 이벤트(detail=saved/off_target).
-  type Row = { kind: string; tick: number; team: string; x: number; y: number; ok: boolean; corner: boolean };
+  //  - goal/saved: 공이 골문 근처(y 26..42, 코너 아님)에 도달했는지(네트/키퍼 dwell).
+  //  - off_target: 공이 골라인을 넘어(x<0 또는 x>width) 포스트 바깥(y<30.34 또는 y>37.66)으로
+  //    "슉 벗어나는" 프레임이 찍혔는지 + 코너 깃발 직행 0건.
+  type Row = { kind: string; tick: number; team: string; x: number; y: number; ok: boolean; corner: boolean; reason: string };
   const rows: Row[] = [];
   for (const e of log.events) {
     let kind: string | null = null;
@@ -141,13 +147,23 @@ function buildShotTargetReport(log: MatchLog, label: string): { report: string; 
     if (!kind) continue;
     const snap = snapByTick.get(e.tick);
     if (!snap) {
-      rows.push({ kind, tick: e.tick, team: e.team ?? "?", x: NaN, y: NaN, ok: false, corner: false });
+      rows.push({ kind, tick: e.tick, team: e.team ?? "?", x: NaN, y: NaN, ok: false, corner: false, reason: "스냅샷없음" });
       continue;
     }
     const { x, y } = snap.ball;
     const corner = y < cornerLo || y > cornerHi;
-    const ok = y >= yLo && y <= yHi && !corner;
-    rows.push({ kind, tick: e.tick, team: e.team ?? "?", x, y, ok, corner });
+    let ok: boolean;
+    let reason = "";
+    if (kind === "off_target") {
+      const pastLine = x < 0 || x > width;
+      const wideOfPost = y < centerY - halfPost || y > centerY + halfPost;
+      ok = pastLine && wideOfPost && !corner;
+      if (!ok) reason = corner ? "코너!" : !pastLine ? "골라인안" : "포스트안";
+    } else {
+      ok = y >= yLo && y <= yHi && !corner;
+      if (!ok) reason = corner ? "코너!" : "골문밖";
+    }
+    rows.push({ kind, tick: e.tick, team: e.team ?? "?", x, y, ok, corner, reason });
   }
 
   const cornerShots = rows.filter((r) => r.corner);
@@ -165,7 +181,7 @@ function buildShotTargetReport(log: MatchLog, label: string): { report: string; 
 
   const L: string[] = [];
   L.push(`=== AC-shot-target: ${label} (${log.configVersion}, seed ${log.seed}) ===`);
-  L.push(`판정: 슛 결과 도착 y 가 골문 근처 ${yLo}..${yHi} 이고 코너(y<${cornerLo} 또는 y>${cornerHi})로 간 슛이 0건이면 PASS`);
+  L.push(`판정: goal/saved 는 골문 근처(y ${yLo}..${yHi}) | off_target 은 골라인 너머(x<0 또는 x>${width}) + 포스트 바깥(y<${(centerY - halfPost).toFixed(2)} 또는 y>${(centerY + halfPost).toFixed(2)}) | 코너(y<${cornerLo} 또는 y>${cornerHi})로 간 슛 0건이면 PASS`);
   L.push(`총 슛 결과(goal+saved+off_target): ${rows.length}  |  코너로 간 슛: ${cornerShots.length}건`);
   L.push("");
   L.push(dist("goal"));
@@ -180,7 +196,7 @@ function buildShotTargetReport(log: MatchLog, label: string): { report: string; 
         String(r.tick).padEnd(8) +
         r.team.padEnd(6) +
         pos.padEnd(20) +
-        (r.ok ? "PASS" : r.corner ? "FAIL(코너!)" : "FAIL(골문밖)"),
+        (r.ok ? "PASS" : `FAIL(${r.reason})`),
     );
   }
   L.push("");
@@ -222,7 +238,7 @@ function statsOpts(): StatsOptions {
  */
 const baselineConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.6.0-baseline",
+  version: "engine@0.7.0-baseline",
   contest: { ...defaultEngineConfig.contest, oneOnOneXgMult: 1 },
   variety: {
     ...defaultEngineConfig.variety,
@@ -241,8 +257,8 @@ function buildVarietyReport(before: MatchStats, after: MatchStats, beforeHash: s
     Math.round(((t.home[k] as number) + (t.away[k] as number)) / 2 * 10) / 10;
   const L: string[] = [];
   L.push("=== HMB S1 엔진 변주(다이나믹) 전/후 대조 — AC-variety ===");
-  L.push(`before=engine@0.6.0-baseline(변주 OFF)  after=${defaultEngineConfig.version}(변주 ON)  seed ${demoSeed}`);
-  L.push(`baseline lastHash=${beforeHash}  (0.6.0 는 슛 아웃 경로[shot_out 프레임 경유] 변경으로 이전 앵커와 불일치가 정상)`);
+  L.push(`before=engine@0.7.0-baseline(변주 OFF)  after=${defaultEngineConfig.version}(변주 ON)  seed ${demoSeed}`);
+  L.push(`baseline lastHash=${beforeHash}  (0.7.0 는 빗맞은 슛 골라인 오버런[필드 밖 이탈 프레임] 변경으로 이전 앵커와 불일치가 정상)`);
   L.push(`variety(after) lastHash=${afterHash}`);
   L.push("");
   const col = (s: string, w: number): string => s.padEnd(w);

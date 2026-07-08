@@ -535,16 +535,18 @@ export function resolveShot(
   // 코너가 되면 어느 쪽(위/아래) 깃발인지: 슈터의 y(횡위치)로 결정 → 매번 아래 코너로만 가던 단조로움 해소.
   const cornerNearY = shooter ? shooter.posFx.y : line.y;
 
-  // 공을 골문 프레임에 두고 짧게 정지(shot_out) → 정지 종료 시 restart 세트피스 실행.
+  // 공을 도착 프레임에 두고 짧게 정지(shot_out) → 정지 종료 시 restart 세트피스 실행.
+  // x 는 클램프하지 않는다(빗맞은 슛은 골라인을 살짝 넘어 필드 밖으로 나가는 프레임을 보여야 함).
+  // y 만 피치 안으로 클램프. 세이브/골킥/코너 스팟은 restart 단계에서 별도로 올바르게 배치된다.
   const parkForRestart = (parkX: number, parkY: number, restart: DeferredRestart): void => {
-    const c = clampToPitch(pitch, parkX, parkY);
-    state.ball.posFx = { x: c.x, y: c.y };
+    const py = fclamp(parkY, 0, pitch.hFx);
+    state.ball.posFx = { x: parkX, y: py };
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
     state.possession = defSide;
     state.stoppage = config.setPiece.shotAftermathStoppageTicks;
-    state.setPiece = { kind: "shot_out", side: defSide, x: c.x, y: c.y, restart };
+    state.setPiece = { kind: "shot_out", side: defSide, x: parkX, y: py, restart };
   };
 
   // --- 유효슛(on target) 여부: shooting/각도로 가감 ---
@@ -554,13 +556,20 @@ export function resolveShot(
     0.9,
   );
   if (rng.next() >= onTargetProb) {
-    // 빗맞음(off target): 공이 골포스트 살짝 옆(골라인 근처)으로 지나가 아웃 → 골킥,
-    // 또는 수비 블록에 맞아 코너로 굴절. 코너 깃발 직행 금지(shot_out 프레임 경유).
-    const missDir = shooter && shooter.posFx.y < line.y ? -1 : 1; // 슈터 쪽으로 빗나감.
-    const missY = line.y + missDir * (halfPost + toFixed(config.contest.offTargetMissMarginM, scale));
+    // 빗맞음(off target): 공이 골포스트 바깥으로 벗어나 골라인을 살짝 넘어 필드 밖으로 나간다
+    // → 관중 시점에서 "골대 옆으로 슉 벗어나는" 프레임이 보인 뒤 shot_out 정지, 이후 골킥/코너.
+    // 코너로 굴절되는 경우도 shot_out 프레임을 경유(코너 깃발 직행 금지).
+    // 골라인 바깥(필드 밖) 방향으로 overrun: home 골라인(wFx)→+, away 골라인(0)→-.
+    const outSign = line.x === 0 ? -1 : 1;
+    const overrunX = line.x + outSign * toFixed(config.contest.offTargetOverrunM, scale);
+    // 좌우/상하 빗맞음 분산: 슈터 y 편향 + 시드 롤(항상 같은 쪽 반복 방지).
+    const leanHigh = shooter ? shooter.posFx.y >= line.y : true;
+    const pHigh = leanHigh ? config.contest.offTargetSideBias : 1 - config.contest.offTargetSideBias;
+    const missDir = rng.next() < pHigh ? 1 : -1;
+    const missY = line.y + missDir * (halfPost + toFixed(config.contest.offTargetWideMarginM, scale));
     const toCorner = rng.next() < config.contest.offTargetBlockCornerProb;
     parkForRestart(
-      line.x,
+      overrunX,
       missY,
       toCorner
         ? { kind: "corner", side: scorerSide, nearY: cornerNearY }
