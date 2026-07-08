@@ -5,7 +5,7 @@ import type { MatchLog } from "@hmb/shared";
 import { runMatch } from "../src/match";
 import { defaultEngineConfig } from "../src/config";
 import { demoSeed, demoHome, demoAway, demoSelect } from "../src/fixtures";
-import { computeMatchStats, formatStatsReport } from "./match-stats";
+import { computeMatchStats, formatStatsReport, type StatsOptions, type MatchStats } from "./match-stats";
 
 /**
  * generate-demo — fixtures 로 runMatch 를 실행해 dev-viewer/match-log.json 을 만든다.
@@ -31,13 +31,31 @@ export function buildDemoLog(): MatchLog {
  */
 export const showcaseConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.3.0-showcase",
+  version: "engine@0.4.0-showcase",
   matchMinutes: 24,
+  decisionWeights: {
+    ...defaultEngineConfig.decisionWeights,
+    shoot: 1.6, // 슛 더 자주(관전 재미).
+  },
   contest: {
     ...defaultEngineConfig.contest,
     xgBase: 0.5, // 0.225 → 0.5 (슛당 득점 확률↑ = 골 더 많이)
-    onTargetBase: 0.42,
+    onTargetBase: 0.55, // 유효슛↑ → 세이브 상황↑
     shootXgThreshold: 0.05,
+    saveCornerProb: 0.7, // 세이브→코너 굴절↑
+    offTargetBlockCornerProb: 0.45, // 빗맞음→코너↑
+    oneOnOneClearM: 7.0,
+    oneOnOneXgMult: 2.0, // 1대1 하이라이트 더 강하게
+  },
+  variety: {
+    ...defaultEngineConfig.variety,
+    dribbleChainProb: 0.8,
+    dribbleChainBonus: 1.6,
+    dribbleChainMaxTicks: 6,
+    defenderOverlapProb: 0.2,
+    overlapReach: 0.45,
+    decisionTemperature: 0.7,
+    roamNoiseAmp: 4.5,
   },
 };
 
@@ -102,6 +120,82 @@ function demoGkIds(): Set<string> {
   return gk;
 }
 
+/** 데모 입력에서 수비수(back four, base 진행도<=0.25, GK 제외) playerId 집합 — 오버랩 계측용. */
+function demoDefenderIds(): Set<string> {
+  const def = new Set<string>();
+  for (const inp of [demoHome, demoAway]) {
+    for (const p of inp.players) {
+      if (p.role !== "GK" && p.basePosition.x <= 0.25) def.add(p.playerId);
+    }
+  }
+  return def;
+}
+
+/** 리얼 계측용 StatsOptions. */
+function statsOpts(): StatsOptions {
+  return {
+    defenderIds: demoDefenderIds(),
+    pitchWidthM: defaultEngineConfig.pitch.width,
+    finalThirdLine: defaultEngineConfig.setPiece.finalThirdLine,
+  };
+}
+
+/**
+ * 변주 OFF 기준(baseline) config — 모든 variety 노브 0 + 1대1 부스트 비활성.
+ * 이 config 는 engine@0.3.0 최적수렴 동작과 동일해야 한다(변주 전/후 대조 + 회귀 앵커).
+ */
+const baselineConfig = {
+  ...defaultEngineConfig,
+  version: "engine@0.4.0-baseline",
+  contest: { ...defaultEngineConfig.contest, oneOnOneXgMult: 1 },
+  variety: {
+    ...defaultEngineConfig.variety,
+    dribbleChainProb: 0,
+    defenderOverlapProb: 0,
+    decisionTemperature: 0,
+    roamNoiseAmp: 0,
+  },
+};
+
+/** 변주 전/후 핵심 지표 대조 리포트(AC-variety.log). */
+function buildVarietyReport(before: MatchStats, after: MatchStats, beforeHash: string, afterHash: string): string {
+  const sum = (t: MatchStats, k: keyof MatchStats["home"]): number =>
+    (t.home[k] as number) + (t.away[k] as number);
+  const avg = (t: MatchStats, k: keyof MatchStats["home"]): number =>
+    Math.round(((t.home[k] as number) + (t.away[k] as number)) / 2 * 10) / 10;
+  const L: string[] = [];
+  L.push("=== HMB S1 엔진 변주(다이나믹) 전/후 대조 — AC-variety ===");
+  L.push(`before=engine@0.4.0-baseline(변주 OFF, ==0.3.0)  after=${defaultEngineConfig.version}(변주 ON)  seed ${demoSeed}`);
+  L.push(`baseline lastHash=${beforeHash}  (0.3.0 golden=4e7a2771 → 일치 시 변주 OFF==0.3.0 회귀 보증)`);
+  L.push(`variety(after) lastHash=${afterHash}`);
+  L.push("");
+  const col = (s: string, w: number): string => s.padEnd(w);
+  L.push(col("지표(양팀 합/평균)", 26) + col("before", 12) + col("after", 12) + "해석");
+  const rowSum = (label: string, k: keyof MatchStats["home"], note: string): void => {
+    L.push(col(label, 26) + col(String(sum(before, k)), 12) + col(String(sum(after, k)), 12) + note);
+  };
+  const rowAvg = (label: string, k: keyof MatchStats["home"], note: string): void => {
+    L.push(col(label, 26) + col(String(avg(before, k)), 12) + col(String(avg(after, k)), 12) + note);
+  };
+  rowAvg("평균 드리블 체인(틱)", "avgDribbleChain", "롱드리블(연속 돌파)");
+  rowSum("최대 드리블 체인(틱)", "maxDribbleChain", "");
+  rowSum("드리블 체인 수", "dribbleChains", "");
+  rowSum("수비 오버랩(횟수)", "defenderOverlaps", "돌발 전진(뒤공간 노출)");
+  rowSum("수비 오버랩(player-틱)", "defenderOverlapTicks", "");
+  rowAvg("위치 분산(RMS m)", "posSpreadM", "슬롯 고착 완화(로밍)");
+  L.push("");
+  rowSum("슛(시도)", "shots", "");
+  rowSum("유효슛", "onTarget", "세이브 상황↑");
+  rowSum("세이브", "savedShots", "");
+  rowSum("off_target", "offTargetShots", "");
+  rowSum("1대1 찬스", "oneOnOne", "하이라이트");
+  rowSum("슛→코너 전환", "shotToCorner", "");
+  rowSum("슛→골킥 전환", "shotToGoalKick", "");
+  rowSum("코너", "corners", "");
+  rowSum("골", "goals", "");
+  return L.join("\n");
+}
+
 /**
  * MatchLog 를 dev-viewer/match-log.json 으로 저장하고, 매치 스탯을
  * evidence/S1/AC-stats-v2.log 로 저장한다. 벤치마크 대조 스탯을 summary 로 반환.
@@ -115,7 +209,8 @@ export function writeDemo(outPath?: string): { path: string; statsPath: string; 
   writeFileSync(path, JSON.stringify(showcase));
 
   // 매치 스탯 계측(리얼 config) → evidence/S1/AC-stats-v2.log.
-  const stats = computeMatchStats(log, demoGkIds());
+  const opts = statsOpts();
+  const stats = computeMatchStats(log, demoGkIds(), opts);
   const report = formatStatsReport(stats, {
     configVersion: log.configVersion,
     seed: log.seed,
@@ -126,6 +221,14 @@ export function writeDemo(outPath?: string): { path: string; statsPath: string; 
   mkdirSync(evidenceDir, { recursive: true });
   const statsPath = join(evidenceDir, "AC-stats-v2.log");
   writeFileSync(statsPath, report + "\n");
+
+  // 변주 전/후 대조(baseline=변주 OFF vs default=변주 ON) → evidence/S1/AC-variety.log.
+  const baseLog = runMatch(demoSeed, demoHome, demoAway, demoSelect, baselineConfig);
+  const baseStats = computeMatchStats(baseLog, demoGkIds(), opts);
+  const baseHash = baseLog.tickSnapshots[baseLog.tickSnapshots.length - 1]?.hash ?? "";
+  const afterHash = log.tickSnapshots[log.tickSnapshots.length - 1]?.hash ?? "";
+  const varietyPath = join(evidenceDir, "AC-variety.log");
+  writeFileSync(varietyPath, buildVarietyReport(baseStats, stats, baseHash, afterHash) + "\n");
 
   // 골 검증(AC-goal-in-net): 쇼케이스(골 많음)+리얼 두 로그 모두 계측 → evidence/S1/AC-goal-in-net.log.
   const showGoals = buildGoalInNetReport(showcase, "showcase(viewer)");
@@ -140,8 +243,9 @@ export function writeDemo(outPath?: string): { path: string; statsPath: string; 
     finalScore: log.finalScore,
     events: log.events.length,
     goals: log.events.filter((e) => e.type === "goal").length,
-    // 슛 킥 이벤트만(off_target/saved 결과 이벤트 제외).
-    shots: log.events.filter((e) => e.type === "shot" && e.detail == null).length,
+    // 슛 킥 이벤트만(off_target/saved 결과 이벤트 제외; one_on_one 포함).
+    shots: log.events.filter((e) => e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target").length,
+    oneOnOne: log.events.filter((e) => e.type === "shot" && e.detail === "one_on_one").length,
     corners: log.events.filter((e) => e.type === "kickoff" && e.detail === "corner").length,
     throwIns: log.events.filter((e) => e.type === "kickoff" && e.detail === "throw_in").length,
     goalKicks: log.events.filter((e) => e.type === "kickoff" && e.detail === "goal_kick").length,

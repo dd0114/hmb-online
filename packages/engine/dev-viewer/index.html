@@ -172,26 +172,37 @@
         }
         ctx.stroke();
 
-        // 선수 (실제 대비 비율감 위해 마커 축소)
+        // 선수 (실제 대비 비율감 위해 마커 축소). 번호는 외곽선으로 항상 읽히게.
         const R = useFollow ? 11 : 8;
+        const fs = useFollow ? 12 : 9;
+        ctx.font = `bold ${fs}px monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        let ownerDraw = null;
+        const drawNum = (num, px, py) => {
+          ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.strokeText(num, px, py);
+          ctx.fillStyle = "#fff"; ctx.fillText(num, px, py);
+        };
         for (let k = 0; k < A.players.length; k++) {
           const pa = A.players[k], pb = B.players[k] || pa;
           const x = lerp(pa.pos.x, pb.pos.x, t), y = lerp(pa.pos.y, pb.pos.y, t);
           const isHome = pa.team === "home", owner = A.ballOwner === pa.playerId;
-          ctx.beginPath(); ctx.arc(sx(x), sy(y), owner ? R + 2 : R, 0, Math.PI * 2);
+          const px = sx(x), py = sy(y);
+          ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
           ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
           if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
-          ctx.fillStyle = "#fff"; ctx.font = `bold ${useFollow ? 11 : 8}px monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText(pa.playerId.replace(/[HA]/, ""), sx(x), sy(y));
+          const num = pa.playerId.replace(/[HA]/, "");
+          if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);
         }
-        // 공 (밝은 노랑 + 글로우로 가시성 ↑)
+        // 공 (밝은 노랑 + 글로우). 소유자면 발 아래로 살짝 오프셋해 번호를 안 가림.
         const br = useFollow ? 7 : 5.5;
+        const boy = ownerDraw ? R + br + 1 : 0; // 소유 시 공을 아래로
         ctx.save();
         ctx.shadowColor = "#ffe600"; ctx.shadowBlur = 14;
-        ctx.beginPath(); ctx.arc(sx(bx), sy(by), br, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(sx(bx), sy(by) + boy, br, 0, Math.PI * 2);
         ctx.fillStyle = "#ffe600"; ctx.fill();
         ctx.shadowBlur = 0; ctx.lineWidth = 1.5; ctx.strokeStyle = "#6b5200"; ctx.stroke();
         ctx.restore();
+        // 소유자 번호는 공 위에 다시 그려 항상 보이게.
+        if (ownerDraw) { ctx.font = `bold ${fs}px monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; drawNum(ownerDraw.num, ownerDraw.px, ownerDraw.py); }
 
         // 골 세리머니 색종이
         if (confetti.length) {
@@ -293,7 +304,7 @@
       function loadLog(data) {
         log = data; snaps = data.tickSnapshots;
         // 골 + 모든 슛(유효슛 포함) 근처에서 하이라이트(슬로우+자동 줌인).
-        keyTicks = data.events.filter((e) => e.type === "goal" || (e.type === "shot" && e.detail == null)).map((e) => e.tick);
+        keyTicks = data.events.filter((e) => e.type === "goal" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target")).map((e) => e.tick);
         renderTicker(); tickPos = 0; lastGoalShown = 0; setPlaying(true);
         statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
       }

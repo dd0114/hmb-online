@@ -25,6 +25,10 @@ export interface SimPlayer {
   /** 피로 0..1. 클수록 느려짐. */
   fatigue: number;
   isGK: boolean;
+  /** id 의 결정론 해시(오프더볼 시드 노이즈용, 초기화 시 1회 계산). */
+  idHash: number;
+  /** 연속 드리블 틱 수(드리블 체인 모멘텀용). 소유 상실/비드리블 시 0. */
+  dribbleStreak: number;
 }
 
 /** 공 비행 상태(패스/슛/루즈볼). */
@@ -75,6 +79,8 @@ export interface SimState {
   score: { home: number; away: number };
   possession: TeamSide;
   tick: number;
+  /** 매치 시드의 결정론 해시(오프더볼 변주 시드 노이즈용). 재개 시에도 관통. */
+  seedHash: number;
   /** 팀 전술 파라미터(라인/압박/폭). 움직임 결정에 사용. */
   teams: { home: TeamInput; away: TeamInput };
   /** 남은 정지(dead ball) 틱. >0 이면 결정/경합/공비행 없이 재배치만. */

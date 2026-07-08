@@ -101,6 +101,39 @@ export interface EngineConfig {
     interceptRange: number;
     /** 도착·루즈볼을 잡을 수 있는 컨트롤 거리(m). */
     controlRange: number;
+    /** 1대1(단독 찬스) 판정: 슈터 반경 이 거리(m) 안에 비-GK 상대가 없으면 단독 찬스로 본다. */
+    oneOnOneClearM: number;
+    /** 1대1 시 xG 배수(하이라이트·높은 xg). 1 이면 비활성(부스트 없음). */
+    oneOnOneXgMult: number;
+  };
+
+  /**
+   * variety — 행동 변주·돌발성 노브(단조로움 해소). 모두 0 이면 결정 로직이
+   * 이전(engine@0.3.0) 최적수렴 동작과 동일해진다(변주 OFF = 회귀 기준).
+   * 오프더볼 변주(오버랩·로밍)는 시퀀셜 RNG 를 소모하지 않는 시드 노이즈(seed+id+tick 해시)로,
+   * 볼 소유자 변주(드리블 체인·패스 후보 샘플)는 관통 Rng 로 결정한다.
+   */
+  variety: {
+    /** 드리블 체인 강도(0..1). 직전 틱 드리블했다면 이 값·능력치·공간으로 wDribble 모멘텀 가중. 0 이면 체인 없음. */
+    dribbleChainProb: number;
+    /** 드리블 모멘텀 최대 추가 배수 계수. */
+    dribbleChainBonus: number;
+    /** 드리블 체인 최대 길이(틱). 이 이상 연속 드리블이면 모멘텀 소멸(볼 독점 방지). */
+    dribbleChainMaxTicks: number;
+    /** 수비/풀백 오버랩 발동 확률(시드 노이즈 임계). widthTendency·팀 전진성으로 가중. */
+    defenderOverlapProb: number;
+    /** 오버랩 대상 판정: base 진행도(0..1)가 이 값 미만인 선수(수비/풀백)만 오버랩. */
+    overlapBaseLine: number;
+    /** 오버랩 시 추가 전진량(정규화 x, 골 방향). 뒤 공간 노출 리스크 동반. */
+    overlapReach: number;
+    /** 오버랩 결정 시드 노이즈의 시간 버킷 길이(틱) — 여러 틱 지속(플리커 방지). */
+    overlapPeriodTicks: number;
+    /** 패스 후보 샘플 온도(0..1). 0 이면 argmax(최적 1개). 클수록 상위 후보 중 시드 가중 샘플 분산↑. */
+    decisionTemperature: number;
+    /** 오프더볼 목표 위치 시드 노이즈 진폭(m). positioningFreedom 로 가중. 0 이면 로밍 없음. */
+    roamNoiseAmp: number;
+    /** 로밍 노이즈 시간 버킷 길이(틱) — 이 주기로 목표 오프셋이 갱신된다. */
+    roamPeriodTicks: number;
   };
 
   /** 세트피스(코너/스로인/골킥/골 후) 재시작 튜닝. */
@@ -175,7 +208,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.3.0",
+  version: "engine@0.4.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -223,6 +256,21 @@ export const defaultEngineConfig: EngineConfig = {
     tackleRange: 2.0,
     interceptRange: 1.5,
     controlRange: 2.5,
+    oneOnOneClearM: 10.0,
+    oneOnOneXgMult: 1.3,
+  },
+  variety: {
+    // 리얼 default: 벤치마크(슛 12-16/팀, 코너 ~5/팀 등)를 유지하는 모던한 변주.
+    dribbleChainProb: 0.7,
+    dribbleChainBonus: 1.8,
+    dribbleChainMaxTicks: 5,
+    defenderOverlapProb: 0.1,
+    overlapBaseLine: 0.4,
+    overlapReach: 0.32,
+    overlapPeriodTicks: 40,
+    decisionTemperature: 0.4,
+    roamNoiseAmp: 3.0,
+    roamPeriodTicks: 25,
   },
   setPiece: {
     stoppageTicks: 12,

@@ -14,7 +14,7 @@ import type { SimState, SimPlayer } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import { defaultEngineConfig } from "./config";
-import { createRng } from "./rng";
+import { createRng, hashSeed } from "./rng";
 import { createPitch, slotToReal, clampToPitch } from "./pitch";
 import { toFixed, fromFixed, stepToward } from "./fixedmath";
 import { glueBallToOwner, advanceBall } from "./ball";
@@ -87,6 +87,8 @@ function buildPlayers(
       targetFx: { x: base.x, y: base.y },
       fatigue: 0,
       isGK: gk,
+      idHash: hashSeed(pi.playerId),
+      dribbleStreak: 0,
     } satisfies SimPlayer;
   });
 }
@@ -232,6 +234,8 @@ function stepTick(carry: Carry): void {
   const ownerId = state.ball.owner;
   for (const p of state.players) {
     if (p.id === ownerId) continue;
+    // 볼을 안 가진 선수는 드리블 체인 리셋(활성 캐리어만 연속 누적).
+    p.dribbleStreak = 0;
     const pa = p.side === defSide ? presser : null;
     decideOffBall(state, p, config, pitch, pa);
   }
@@ -257,6 +261,7 @@ function stepTick(carry: Carry): void {
             xg: action.xg,
           };
           shotLaunchedThisTick = true;
+          owner.dribbleStreak = 0;
           state.ball.owner = null;
           state.ball.ownerSide = null;
           carry.events.push({
@@ -266,6 +271,7 @@ function stepTick(carry: Carry): void {
             team: owner.side,
             playerId: owner.id,
             xg: action.xg,
+            detail: action.detail,
           });
           owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
           break;
@@ -280,16 +286,19 @@ function stepTick(carry: Carry): void {
             fromSide: owner.side,
             passOutcome: action.outcome,
           };
+          owner.dribbleStreak = 0;
           state.ball.owner = null;
           state.ball.ownerSide = null;
           owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
           break;
         }
         case "dribble": {
+          owner.dribbleStreak = Math.min(config.variety.dribbleChainMaxTicks, owner.dribbleStreak + 1);
           owner.targetFx = { x: action.toX, y: action.toY };
           break;
         }
         case "hold": {
+          owner.dribbleStreak = 0;
           owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
           break;
         }
@@ -379,6 +388,7 @@ function initCarry(
     score: { home: 0, away: 0 },
     possession: "home",
     tick: 0,
+    seedHash: hashSeed(seed),
     teams: { home: home.team, away: away.team },
     stoppage: 0,
     setPiece: null,

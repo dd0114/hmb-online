@@ -3,7 +3,7 @@ import type { SimState, SimPlayer } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
-import { fromFixed, fclamp } from "./fixedmath";
+import { fromFixed, fclamp, fdist } from "./fixedmath";
 import { attackGoal, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
 import { passOptions, nearestOpponent, pressureCount } from "./perception";
 
@@ -18,7 +18,7 @@ import { passOptions, nearestOpponent, pressureCount } from "./perception";
 export type PassOutcome = "success" | "fail_intercept" | "fail_out";
 
 export type Action =
-  | { kind: "shoot"; xg: number; toX: number; toY: number }
+  | { kind: "shoot"; xg: number; toX: number; toY: number; detail?: string }
   | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome }
   | { kind: "dribble"; toX: number; toY: number }
   | { kind: "hold" };
@@ -32,6 +32,23 @@ function softCapped(b: number, softCap: number): number {
 /** 속성 0..100 → 배수(약 0.6..1.4). */
 function attrFactor(v: number): number {
   return 0.6 + 0.8 * (v / 100);
+}
+
+/**
+ * 무상태 결정론 노이즈 [0,1). (seed, playerId, timeBucket) 해시 → 시퀀셜 Rng 를 소모하지 않고
+ * 선수·시간별로 재현 가능한 변주값을 준다(오프더볼 오버랩/로밍용). 재개 시에도 tick 만으로 동일.
+ */
+function varietyNoise(a: number, b: number, c: number): number {
+  let h = 2166136261 >>> 0;
+  h = Math.imul(h ^ (a >>> 0), 16777619);
+  h = Math.imul(h ^ (b >>> 0), 16777619);
+  h = Math.imul(h ^ (c >>> 0), 16777619);
+  h ^= h >>> 15;
+  h = Math.imul(h, 2246822507);
+  h ^= h >>> 13;
+  h = Math.imul(h, 3266489909);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
 }
 
 /** 슛 xG 계산(거리·각도·슈팅속성). */
@@ -158,6 +175,45 @@ export function planPass(
   return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success" };
 }
 
+/**
+ * 패스 후보 선택. decisionTemperature 와 선수 창의성(technical·passRisk)에 따라
+ * 상위 K 후보 중 시드 가중 샘플(flair 변주). 온도 0 또는 후보 1개면 argmax(최적 1개, Rng 미소모).
+ * → "최적 1개로 수렴" 대신 상위 후보로 선택이 분산되어 시나리오가 다양해진다.
+ */
+function selectPassOption(
+  opts: PassOption[],
+  owner: SimPlayer,
+  config: EngineConfig,
+  rng: Rng,
+): { opt: PassOption | null; score: number } {
+  if (opts.length === 0) return { opt: null, score: -Infinity };
+  const scored = opts.map((o) => ({ o, s: scoreOption(o, owner, config) }));
+  // 점수 내림차순(동점은 receiver.id 로 안정 정렬 — 결정론).
+  scored.sort((a, b) => b.s - a.s || (a.o.receiver.id < b.o.receiver.id ? -1 : 1));
+  const temp = config.variety.decisionTemperature;
+  const flair = 0.5 * (owner.attrs.technical / 100) + 0.5 * owner.behavior.passRisk;
+  const k =
+    temp <= 0
+      ? 1
+      : Math.max(1, Math.min(scored.length, 1 + Math.round(temp * flair * (scored.length - 1))));
+  if (k <= 1) {
+    const top = scored[0]!;
+    return { opt: top.o, score: top.s };
+  }
+  // 상위 K 후보 가중 샘플. 가중치 = (score - scoreK + eps) — 최적일수록 큼. Rng 1회 소모.
+  const floor = scored[k - 1]!.s;
+  const eps = 0.5;
+  let total = 0;
+  for (let i = 0; i < k; i++) total += scored[i]!.s - floor + eps;
+  let rr = rng.next() * total;
+  for (let i = 0; i < k; i++) {
+    rr -= scored[i]!.s - floor + eps;
+    if (rr < 0) return { opt: scored[i]!.o, score: scored[i]!.s };
+  }
+  const top = scored[0]!;
+  return { opt: top.o, score: top.s };
+}
+
 /** 볼 소유자의 행동 결정(시드 확률). */
 export function decideBallOwner(
   state: SimState,
@@ -171,11 +227,27 @@ export function decideBallOwner(
   const goal = attackGoal(pitch, owner.side);
 
   // --- 슛 후보(좋은 위치/각도/찬스일 때만; xG 임계 미만 speculative 억제) ---
-  const { xg, distM } = computeXg(owner, config, pitch);
+  const { xg: rawXg, distM } = computeXg(owner, config, pitch);
+  // 1대1(단독) 찬스: 슈터 반경 안에 비-GK 상대가 없고 사거리 안이면 xG 부스트 + 하이라이트 표기.
+  let xg = rawXg;
+  let shootDetail: string | undefined;
+  if (config.contest.oneOnOneXgMult > 1 && distM <= config.contest.shootRange) {
+    const clearR = config.contest.oneOnOneClearM * config.fixedScale;
+    let nonGkNearD = Infinity;
+    for (const p of state.players) {
+      if (p.side === owner.side || p.isGK) continue;
+      const d = fdist(owner.posFx.x, owner.posFx.y, p.posFx.x, p.posFx.y);
+      if (d < nonGkNearD) nonGkNearD = d;
+    }
+    if (nonGkNearD > clearR) {
+      xg = fclamp(rawXg * config.contest.oneOnOneXgMult, 0.01, 0.95);
+      shootDetail = "one_on_one";
+    }
+  }
   let wShoot = 0;
   if (distM <= config.contest.shootRange && xg >= config.contest.shootXgThreshold) {
     // 거리 페널티는 xG 에 이미 반영되므로 여기서는 xG 품질만 가중(이중 페널티 방지).
-    const quality = fclamp(xg / config.contest.xgBase, 0.25, 1.5);
+    const quality = fclamp(xg / config.contest.xgBase, 0.25, 1.8);
     wShoot =
       w.shoot *
       (0.25 + softCapped(owner.behavior.shootTendency, sc)) *
@@ -183,21 +255,14 @@ export function decideBallOwner(
       attrFactor(owner.attrs.shooting);
   }
 
-  // --- 패스 후보 ---
+  // --- 패스 후보(상위 후보 중 시드 가중 샘플 = flair 변주) ---
   const opts = passOptions(state, owner, config, pitch);
-  let bestOpt: PassOption | null = null;
-  let bestScore = -Infinity;
-  for (const o of opts) {
-    const s = scoreOption(o, owner, config);
-    if (s > bestScore) {
-      bestScore = s;
-      bestOpt = o;
-    }
-  }
+  const picked = selectPassOption(opts, owner, config, rng);
+  const bestOpt = picked.opt;
   let wPass = 0;
   if (bestOpt) {
     // 최소 품질 보정: 좋은 옵션일수록 가중.
-    const quality = fclamp(0.3 + bestScore / 40, 0.1, 1.3);
+    const quality = fclamp(0.3 + picked.score / 40, 0.1, 1.3);
     wPass = w.pass * (0.4 + softCapped(1 - owner.behavior.passRisk * 0.3, sc)) * quality;
   }
 
@@ -205,12 +270,25 @@ export function decideBallOwner(
   const near = nearestOpponent(state, owner);
   const spaceM = near ? fromFixed(near.dist, config.fixedScale) : config.perceptionRadius;
   const spaceFactor = fclamp(spaceM / config.perceptionRadius, 0.1, 1);
-  const wDribble =
+  let wDribble =
     w.dribble *
     (0.25 + softCapped(owner.behavior.dribbleTendency, sc)) *
     spaceFactor *
     attrFactor(owner.attrs.technical) *
     (1 - 0.4 * owner.fatigue);
+  // 드리블 체인 모멘텀: 직전 틱 연속 드리블 중이고 최대 길이 미만이면 가중(짧은 패스로 바로 안 빠짐).
+  const vr = config.variety;
+  if (owner.dribbleStreak > 0 && owner.dribbleStreak < vr.dribbleChainMaxTicks && vr.dribbleChainProb > 0) {
+    // 이미 시작한 드리블 런은 공간이 다소 좁아도 이어가고(플로어), 연속 틱이 쌓일수록 더 강하게 밀어붙임.
+    const momentum =
+      1 +
+      vr.dribbleChainProb *
+        vr.dribbleChainBonus *
+        (0.4 + 0.6 * spaceFactor) *
+        attrFactor(owner.attrs.technical) *
+        (1 + 0.3 * owner.dribbleStreak);
+    wDribble *= momentum;
+  }
 
   // --- 홀드 후보(압박 심하면 안전하게) ---
   const wHold = w.hold * (0.5 + 0.5 * owner.behavior.supportDepth);
@@ -221,7 +299,7 @@ export function decideBallOwner(
   let r = rng.next() * total;
 
   if ((r -= wShoot) < 0) {
-    return { kind: "shoot", xg, toX: goal.x, toY: goal.y };
+    return { kind: "shoot", xg, toX: goal.x, toY: goal.y, detail: shootDetail };
   }
   if ((r -= wPass) < 0 && bestOpt) {
     const plan = planPass(state, owner, bestOpt, config, rng, pitch);
@@ -324,6 +402,19 @@ export function decideOffBall(
     ty += Math.round((ball.posFx.y - ty) * mv.supportPull * player.behavior.supportDepth);
     // roam: positioningFreedom 이 크면 공쪽으로 더.
     tx += Math.round((ball.posFx.x - tx) * mv.roamFactor * player.behavior.positioningFreedom);
+    // 수비/풀백 오버랩: 시드 노이즈가 임계 미만이면 여러 틱 동안 라인 위로 전진(뒤 공간 노출 리스크).
+    const vr = config.variety;
+    const baseProg = attackProgress(pitch, player.side, player.baseFx.x);
+    if (vr.defenderOverlapProb > 0 && baseProg < vr.overlapBaseLine) {
+      const obucket = Math.floor(state.tick / Math.max(1, vr.overlapPeriodTicks));
+      const on = varietyNoise((state.seedHash ^ 0x9e3779b9) >>> 0, player.idHash, obucket);
+      const drive = 0.5 * team.tempo + 0.5 * team.defensiveLineHeight;
+      const thresh = vr.defenderOverlapProb * (0.5 + player.behavior.widthTendency) * (0.5 + drive);
+      if (on < thresh) {
+        tx += Math.round((g.x - player.baseFx.x) * vr.overlapReach);
+        ty += widthDir * Math.round(pitch.hFx * mv.attackWidthReach * (0.5 + player.behavior.widthTendency));
+      }
+    }
   } else {
     // 수비 블록: 볼 x 뒤쪽(자기 골 방향)을 중심으로 팀 전체를 압축(미드블록).
     const lineShift = (team.defensiveLineHeight - 0.5) * pitch.wFx * 0.2;
@@ -358,6 +449,17 @@ export function decideOffBall(
       tx = ball.posFx.x;
       ty = ball.posFx.y;
     }
+  }
+
+  // --- 포지셔널 로밍: 시드 노이즈로 목표 위치에 시간가변 오프셋(슬롯 고착 방지, 팀 형태는 유지) ---
+  const rn = config.variety.roamNoiseAmp;
+  if (rn > 0) {
+    const bucket = Math.floor(state.tick / Math.max(1, config.variety.roamPeriodTicks));
+    const nx = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 1);
+    const ny = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 2);
+    const ampFx = Math.round(rn * scale * player.behavior.positioningFreedom);
+    tx += Math.round((nx * 2 - 1) * ampFx);
+    ty += Math.round((ny * 2 - 1) * ampFx);
   }
 
   player.targetFx = clampToPitch(pitch, tx, ty);
