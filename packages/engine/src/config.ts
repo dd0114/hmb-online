@@ -240,6 +240,12 @@ export interface EngineConfig {
     shotAftermathStoppageTicks: number;
     /** 골 시 공이 골라인 안쪽으로 안착하는 깊이(m). 네트 위치 = 골라인 ± 이 값. */
     goalNetDepthM: number;
+    /**
+     * 킥오프(경기 시작·골 후 재시작·후반 시작) 시 전 선수를 formation 기본 배치(baseFx = 슬롯)로
+     * 리셋할지. true 면 "골 넣으면 원래 포메이션으로 다시 시작"(흩어진 상태 → 정렬 킥오프 배치).
+     * false 면 리셋 없이(테이커만 센터) 흩어진 상태 유지(레거시).
+     */
+    resetFormationOnKickoff: boolean;
     /** 코너 시 공격팀 선수들이 박스로 몰리는 강도(정규화 당김). */
     cornerBoxReach: number;
     /** 파이널서드 경계(공격 방향 정규화 x, 0..1). 패스/코너 판정용. */
@@ -304,7 +310,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.7.0",
+  version: "engine@0.8.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -411,6 +417,7 @@ export const defaultEngineConfig: EngineConfig = {
     goalStoppageTicks: 25,
     shotAftermathStoppageTicks: 3,
     goalNetDepthM: 0.5,
+    resetFormationOnKickoff: true,
     cornerBoxReach: 0.85,
     finalThirdLine: 0.66,
   },

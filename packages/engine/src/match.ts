@@ -15,7 +15,7 @@ import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import { defaultEngineConfig } from "./config";
 import { createRng, hashSeed } from "./rng";
-import { createPitch, slotToReal, clampToPitch } from "./pitch";
+import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
 import { toFixed, fromFixed, stepToward } from "./fixedmath";
 import { glueBallToOwner, advanceBall } from "./ball";
 import { decideBallOwner, decideOffBall, assignPresser } from "./decision";
@@ -225,9 +225,14 @@ function stepTick(carry: Carry): void {
       const sp = state.setPiece;
       // shot_out 재시작은 새 세트피스(코너/골킥)를 설정하므로 그 setPiece/stoppage 를 보존.
       let keepSetPiece = false;
-      if (sp && sp.kind === "goal") {
-        // 골 세리머니 종료(공은 그동안 네트에 머묾) → 실점팀 센터 킥오프.
-        resetKickoff(state, pitch, sp.side);
+      if (sp && (sp.kind === "goal" || sp.kind === "kickoff")) {
+        // 정식 킥오프: 골 세리머니 종료(공은 그동안 네트에 머묾) 또는 후반 시작 정지 종료 →
+        // 재개팀(실점팀/어웨이) 센터 킥오프. 공을 센터·재개팀 소유로 두고, 전 선수를 t0 킥오프
+        // 포메이션으로 되돌린다(정지 종료 틱에 리셋 → 그 틱 스냅샷이 정렬 배치를 크리스프하게 담음).
+        resetKickoff(state, pitch, sp.side, config);
+        // kickoff MatchEvent emit(재개팀 표기, detail 없음 = 골 후/후반 재시작 — 뷰어 playback 이
+        // detail 없는 kickoff 를 "포메이션 리셋 지점"으로 인식).
+        carry.events.push({ tick: state.tick, minute, type: "kickoff", team: sp.side });
       } else if (sp && sp.kind === "shot_out") {
         // 슛 아웃(세이브 굴절/빗맞음) 정지 종료 → 실제 세트피스(코너/골킥) 시작.
         // 이 단계에서 비로소 공이 코너 깃발/골킥 스팟에 놓인다(정지 프레임과 함께).
@@ -479,11 +484,29 @@ function initCarry(
     pitch,
   };
 
-  // 킥오프: 홈이 센터에서 시작(개시는 정지 없이 바로).
-  resetKickoff(state, pitch, "home");
-  state.setPiece = null;
-  carry.events.push({ tick: 0, minute: 0, type: "kickoff", team: "home" });
+  // 킥오프: 홈이 센터에서 시작. 1틱 킥오프 정지(setPiece kind "kickoff" + stoppage 1)로 예약 →
+  // tick 0 종료 시 stepTick 정지-종료 경로가 포메이션 리셋 + kickoff 이벤트를 수행한다(골 후/후반
+  // 킥오프와 완전히 동일 경로 → tick0 스냅샷이 정렬된 킥오프 포메이션을 크리스프하게 담고,
+  // 골·후반 킥오프 배치가 t0 슬롯과 정확히 일치한다).
+  const c = centerSpot(pitch);
+  state.setPiece = { kind: "kickoff", side: "home", x: c.x, y: c.y };
+  state.stoppage = 1;
   return carry;
+}
+
+/**
+ * 후반 시작 킥오프 예약: 전반에 킥오프하지 않은 팀(어웨이)이 센터에서 재개.
+ * 1틱짜리 킥오프 정지(setPiece kind "kickoff" + stoppage 1)를 걸어, 첫 후반 틱(half) 종료 시
+ * stepTick 의 정지-종료 경로가 포메이션 리셋 + kickoff 이벤트를 수행한다(골 후 킥오프와 동일 경로 →
+ * 그 틱 스냅샷이 정렬 배치를 크리스프하게 담음).
+ * runMatch(통짜)와 resumeSecondHalf(분할 재개) 양쪽에서 하프 경계의 동일 지점에 호출해 재개
+ * 동일성을 유지한다(applyDelta 를 전반과 동일 입력으로 주면 baseFx·teams 무변경 → 결과 동일).
+ */
+function secondHalfKickoff(carry: Carry): void {
+  const { state, pitch } = carry;
+  const c = centerSpot(pitch);
+  state.setPiece = { kind: "kickoff", side: "away", x: c.x, y: c.y };
+  state.stoppage = 1;
 }
 
 /** carry → MatchLog. */
@@ -517,6 +540,8 @@ export function runMatch(
     minute: tickToMinute(half, config),
     type: "half_whistle",
   });
+  // 후반 시작: 어웨이 킥오프 + 포메이션 리셋(하프타임 후에도 정렬 배치로 재개).
+  secondHalfKickoff(carry);
   simulateRange(carry, total);
   carry.events.push({
     tick: total - 1,
@@ -562,6 +587,8 @@ export function resumeSecondHalf(
   const { state, config, pitch } = carry;
   applyDelta(state, deltaHome, "home", pitch);
   applyDelta(state, deltaAway, "away", pitch);
+  // 후반 시작 킥오프(runMatch 통짜와 동일 지점) — half_whistle 은 runFirstHalf 가 이미 emit.
+  secondHalfKickoff(carry);
   const total = totalTicks(config);
   simulateRange(carry, total);
   carry.events.push({

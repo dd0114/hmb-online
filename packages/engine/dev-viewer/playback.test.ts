@@ -52,7 +52,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
       { type: "save", tick: 96 },
       { type: "kickoff", detail: "corner", tick: 100 },
     ];
-    const save = buildStoppages(ev).find((s) => s.causeTick === 96);
+    const save = buildStoppages(ev).find((s) => s.causeTick === 96)!;
     expect(save).toBeTruthy();
     expect(save.big).toContain("선방");
     expect(save.restartTick).toBe(100);
@@ -63,8 +63,8 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
       { type: "kickoff", detail: "goal_kick", tick: 164 },
     ];
     const st = buildStoppages(ev);
-    expect(st[0].big).toContain("빗나감");
-    expect(st[0].restartTick).toBe(164);
+    expect(st[0]!.big).toContain("빗나감");
+    expect(st[0]!.restartTick).toBe(164);
   });
   it("일반 패스/슛은 정지 시퀀스를 만들지 않는다", () => {
     expect(buildStoppages([{ type: "pass", tick: 1 }, { type: "shot", tick: 2 }])).toHaveLength(0);
@@ -76,8 +76,8 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
       { type: "save", tick: 100 },
       { type: "kickoff", detail: "corner", tick: 104 },
     ]);
-    const goal = st.find((s) => s.causeTick === 50);
-    const save = st.find((s) => s.causeTick === 100);
+    const goal = st.find((s) => s.causeTick === 50)!;
+    const save = st.find((s) => s.causeTick === 100)!;
     expect(goal.isGoal).toBe(true);
     expect(goal.big).toContain("GOAL");
     expect(goal.restartTick).toBe(60); // 킥오프로 skip
@@ -85,10 +85,18 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     expect(save.big).toContain("선방");
     expect(save.big).not.toContain("GOAL");
   });
+  it("골 정지의 재시작은 킥오프 이벤트로 skip(코너 등 다른 재시작보다 킥오프 우선)", () => {
+    const st = buildStoppages([
+      { type: "goal", tick: 100, team: "home" },
+      { type: "kickoff", detail: "corner", tick: 110 }, // 방해용(코너) — 골 후엔 이걸 고르면 안 됨
+      { type: "kickoff", tick: 126 }, // 실제 골 후 킥오프
+    ]);
+    expect(st.find((s) => s.causeTick === 100)!.restartTick).toBe(126);
+  });
 });
 
 describe("buildAnnotations", () => {
-  const snaps = [];
+  const snaps: any[] = [];
   it("슛/선방/오프사이드에 토스트·배너를 만든다", () => {
     const a = buildAnnotations(
       [
@@ -105,7 +113,7 @@ describe("buildAnnotations", () => {
     expect(a.find((x) => x.text === "코너킥" && x.kind === "banner")).toBeTruthy();
   });
   it("롱 드리블(같은 소유자 6틱+ 전진)에 '돌파!' 토스트", () => {
-    const s = [];
+    const s: any[] = [];
     for (let t = 0; t < 8; t++) s.push({ tick: t, ballOwner: "H9", ball: { x: 40 + t * 3, y: 34 } });
     s.push({ tick: 8, ballOwner: "H6", ball: { x: 64, y: 34 } }); // 소유 변경으로 run 종료
     const a = buildAnnotations([], s);

@@ -31,7 +31,7 @@ export function buildDemoLog(): MatchLog {
  */
 export const showcaseConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.7.0-showcase",
+  version: "engine@0.8.0-showcase",
   matchMinutes: 24,
   decisionWeights: {
     ...defaultEngineConfig.decisionWeights,
@@ -204,6 +204,122 @@ function buildShotTargetReport(log: MatchLog, label: string): { report: string; 
   return { report: L.join("\n"), allPass };
 }
 
+/**
+ * 킥오프 검증(AC-kickoff): 골 후(+후반 시작·개시) 정식 킥오프의
+ *  1) kickoff MatchEvent 존재(각 골 → goalStoppageTicks 뒤 킥오프 틱),
+ *  2) 포메이션 리셋(전/후): 킥오프 직전 틱(세리머니 dwell = 흩어짐) vs 킥오프 틱(t0 슬롯 복귀),
+ *  3) 공 = 센터 + 실점팀 소유
+ * 를 검증한다. 포메이션 일치는 t0(경기시작 킥오프) 스냅샷 대비, 테이커(센터 이동) 2명 제외 전 선수.
+ */
+function buildKickoffReport(log: MatchLog, label: string): { report: string; allPass: boolean } {
+  const cfg = defaultEngineConfig;
+  const stoppage = cfg.setPiece.goalStoppageTicks;
+  const cx = cfg.pitch.width / 2;
+  const cy = cfg.pitch.height / 2;
+  const TOL = 0.1; // 슬롯 일치 허용오차(m). 스냅샷은 cm 반올림 → 크리스프 리셋은 ~0.
+  const byTick = new Map<number, (typeof log.tickSnapshots)[number]>();
+  for (const s of log.tickSnapshots) byTick.set(s.tick, s);
+  const t0 = byTick.get(0);
+  const t0Pos = new Map((t0?.players ?? []).map((p) => [p.playerId, p.pos] as const));
+  const t0Taker = t0?.ballOwner ?? null;
+
+  /** snap 의 (테이커 2명 제외) 선수들이 t0 슬롯에서 벗어난 최대 거리 + 일치 수/대상 수. */
+  const formationDev = (
+    snap: (typeof log.tickSnapshots)[number] | undefined,
+    koTaker: string | null,
+  ): { maxDev: number; matched: number; compared: number } => {
+    if (!snap) return { maxDev: Infinity, matched: 0, compared: 0 };
+    let maxDev = 0;
+    let matched = 0;
+    let compared = 0;
+    for (const p of snap.players) {
+      if (p.playerId === t0Taker || p.playerId === koTaker) continue;
+      const base = t0Pos.get(p.playerId);
+      if (!base) continue;
+      compared++;
+      const dev = Math.max(Math.abs(p.pos.x - base.x), Math.abs(p.pos.y - base.y));
+      if (dev > maxDev) maxDev = dev;
+      if (dev <= TOL) matched++;
+    }
+    return { maxDev, matched, compared };
+  };
+
+  const L: string[] = [];
+  L.push(`=== AC-kickoff: ${label} (${log.configVersion}, seed ${log.seed}) ===`);
+  L.push(`판정: 각 골 → ${stoppage}틱 뒤 kickoff 이벤트 존재 + 킥오프틱 공=센터(${cx},${cy})·실점팀 소유 + 포메이션 t0 슬롯 복귀(테이커 제외, 허용오차 ${TOL}m)`);
+  L.push("");
+
+  const goals = log.events.filter((e) => e.type === "goal");
+  L.push(`총 골: ${goals.length}`);
+  L.push(
+    `${"#".padEnd(3)}${"goalTick".padEnd(10)}${"team".padEnd(6)}${"koTick".padEnd(8)}` +
+      `${"koEvt".padEnd(7)}${"ball(x,y)".padEnd(16)}${"소유".padEnd(6)}` +
+      `${"전dev(dwell)".padEnd(14)}${"후dev(kickoff)".padEnd(16)}판정`,
+  );
+  let allPass = true;
+  goals.forEach((g, i) => {
+    const koTick = g.tick + stoppage;
+    const conceding = g.team === "home" ? "away" : "home";
+    const koEvt = log.events.find(
+      (e) => e.type === "kickoff" && !e.detail && e.tick === koTick && e.team === conceding,
+    );
+    const koSnap = byTick.get(koTick);
+    const koTaker = koSnap?.ballOwner ?? null;
+    const before = formationDev(byTick.get(koTick - 1), koTaker); // 세리머니 dwell(흩어짐)
+    const after = formationDev(koSnap, koTaker); // 킥오프(리셋)
+    const owner = koSnap?.players.find((p) => p.playerId === koSnap.ballOwner);
+    const ballCentered =
+      !!koSnap && Math.abs(koSnap.ball.x - cx) <= TOL && Math.abs(koSnap.ball.y - cy) <= TOL;
+    const ownerOk = owner?.team === conceding;
+    const formOk = after.compared > 0 && after.matched === after.compared;
+    const pass = !!koEvt && ballCentered && ownerOk && formOk;
+    if (!pass) allPass = false;
+    const ballStr = koSnap ? `(${koSnap.ball.x.toFixed(1)},${koSnap.ball.y.toFixed(1)})` : "없음";
+    L.push(
+      String(i + 1).padEnd(3) +
+        String(g.tick).padEnd(10) +
+        String(g.team).padEnd(6) +
+        String(koTick).padEnd(8) +
+        (koEvt ? "O" : "X").padEnd(7) +
+        ballStr.padEnd(16) +
+        (ownerOk ? conceding : `${owner?.team ?? "-"}!`).padEnd(6) +
+        `${before.maxDev.toFixed(2)}m`.padEnd(14) +
+        `${after.maxDev.toFixed(2)}m(${after.matched}/${after.compared})`.padEnd(16) +
+        (pass ? "PASS" : "FAIL"),
+    );
+  });
+
+  // 후반 시작 킥오프.
+  L.push("");
+  const total = log.tickSnapshots.length;
+  const half = Math.floor(total / 2);
+  const shEvt = log.events.find((e) => e.type === "kickoff" && !e.detail && e.tick === half);
+  const shSnap = byTick.get(half);
+  const shTaker = shSnap?.ballOwner ?? null;
+  const shBefore = formationDev(byTick.get(half - 1), shTaker);
+  const shAfter = formationDev(shSnap, shTaker);
+  const shOwner = shSnap?.players.find((p) => p.playerId === shSnap.ballOwner);
+  const shBallCentered =
+    !!shSnap && Math.abs(shSnap.ball.x - cx) <= TOL && Math.abs(shSnap.ball.y - cy) <= TOL;
+  const shPass =
+    !!shEvt && shEvt.team === "away" && shBallCentered && shOwner?.team === "away" &&
+    shAfter.compared > 0 && shAfter.matched === shAfter.compared;
+  if (!shPass) allPass = false;
+  L.push(
+    `후반 시작(tick ${half}): koEvt=${shEvt ? "O(away)" : "X"} ` +
+      `ball=${shSnap ? `(${shSnap.ball.x.toFixed(1)},${shSnap.ball.y.toFixed(1)})` : "없음"} ` +
+      `소유=${shOwner?.team ?? "-"} 전dev=${shBefore.maxDev.toFixed(2)}m ` +
+      `후dev=${shAfter.maxDev.toFixed(2)}m(${shAfter.matched}/${shAfter.compared}) => ${shPass ? "PASS" : "FAIL"}`,
+  );
+
+  // 개시(t0) 킥오프도 크리스프 포메이션(전 선수 슬롯, 테이커만 센터)인지 참고 출력.
+  L.push("");
+  L.push(`개시(t0) 킥오프: team=home taker=${t0Taker} ball=${t0 ? `(${t0.ball.x.toFixed(1)},${t0.ball.y.toFixed(1)})` : "없음"} (t0 가 기준 슬롯)`);
+  L.push("");
+  L.push(`결과: ${allPass ? "ALL PASS" : "FAIL"}  (전dev=세리머니 dwell 흩어짐 → 후dev≈0 = 포메이션 리셋 확인)`);
+  return { report: L.join("\n"), allPass };
+}
+
 /** 데모 SelectData 에서 GK playerId 집합. */
 function demoGkIds(): Set<string> {
   const gk = new Set<string>();
@@ -238,7 +354,7 @@ function statsOpts(): StatsOptions {
  */
 const baselineConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.7.0-baseline",
+  version: "engine@0.8.0-baseline",
   contest: { ...defaultEngineConfig.contest, oneOnOneXgMult: 1 },
   variety: {
     ...defaultEngineConfig.variety,
@@ -257,8 +373,8 @@ function buildVarietyReport(before: MatchStats, after: MatchStats, beforeHash: s
     Math.round(((t.home[k] as number) + (t.away[k] as number)) / 2 * 10) / 10;
   const L: string[] = [];
   L.push("=== HMB S1 엔진 변주(다이나믹) 전/후 대조 — AC-variety ===");
-  L.push(`before=engine@0.7.0-baseline(변주 OFF)  after=${defaultEngineConfig.version}(변주 ON)  seed ${demoSeed}`);
-  L.push(`baseline lastHash=${beforeHash}  (0.7.0 는 빗맞은 슛 골라인 오버런[필드 밖 이탈 프레임] 변경으로 이전 앵커와 불일치가 정상)`);
+  L.push(`before=engine@0.8.0-baseline(변주 OFF)  after=${defaultEngineConfig.version}(변주 ON)  seed ${demoSeed}`);
+  L.push(`baseline lastHash=${beforeHash}  (0.8.0 는 골 후/후반/개시 킥오프 포메이션 리셋으로 이전 앵커와 불일치가 정상)`);
   L.push(`variety(after) lastHash=${afterHash}`);
   L.push("");
   const col = (s: string, w: number): string => s.padEnd(w);
@@ -437,6 +553,12 @@ export function writeDemo(outPath?: string): { path: string; statsPath: string; 
   // 축구 규칙 빈도 + 슛 버그 수정 근거(다중 시드) → evidence/S1/AC-rules.log.
   const rulesPath = join(evidenceDir, "AC-rules.log");
   writeFileSync(rulesPath, buildRulesReport() + "\n");
+
+  // 킥오프 검증(AC-kickoff): 골 후/후반/개시 킥오프 이벤트 + 포메이션 리셋(전/후) + 공 센터·실점팀 소유.
+  const showKick = buildKickoffReport(showcase, "showcase(viewer, 골 많음)");
+  const realKick = buildKickoffReport(log, "real(default)");
+  const kickoffPath = join(evidenceDir, "AC-kickoff.log");
+  writeFileSync(kickoffPath, `${showKick.report}\n\n${realKick.report}\n`);
 
   const summary = {
     configVersion: log.configVersion,

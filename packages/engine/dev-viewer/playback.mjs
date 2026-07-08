@@ -46,11 +46,17 @@ export function buildStoppages(events) {
       if (RESTART.has(eventKind(events[j]))) return events[j].tick;
     return fromTick + 6;
   };
+  // 골 후에는 '킥오프' 이벤트로 skip(포메이션 리셋 지점). 없으면 아무 재시작으로 폴백.
+  const nextKickoff = (fromIdx, fromTick, span) => {
+    for (let j = fromIdx + 1; j < events.length && events[j].tick <= fromTick + span; j++)
+      if (eventKind(events[j]) === "kickoff") return events[j].tick;
+    return nextRestart(fromIdx, fromTick, span);
+  };
   const out = [];
   for (let i = 0; i < events.length; i++) {
     const k = eventKind(events[i]);
     if (k === "goal") {
-      out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 60), big: "⚽ GOAL!", bigCol: "#22c55e", hold: 1700, isGoal: true, done: false });
+      out.push({ causeTick: events[i].tick, restartTick: nextKickoff(i, events[i].tick, 60), big: "⚽ GOAL!", bigCol: "#22c55e", hold: 1700, isGoal: true, done: false });
       continue;
     }
     const c = CAUSE[k];

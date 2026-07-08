@@ -55,13 +55,28 @@ function nearestAny(state: SimState, x: number, y: number): { p: SimPlayer; dist
   return best ? { p: best, dist: bestD } : null;
 }
 
-/** 골 후 킥오프 리셋(실점팀이 센터에서 시작). stoppage 를 주면 정지 후 재개. */
+/**
+ * 킥오프 리셋(경기 시작·골 후 재시작·후반 시작). 실점/재개 팀이 센터에서 시작.
+ * config.setPiece.resetFormationOnKickoff 가 true 면 전 선수를 formation 기본 배치(baseFx)로
+ * 되돌린 뒤(골 세리머니 동안 흩어진 상태 → 정렬된 킥오프 포메이션) 테이커만 센터로 옮긴다.
+ * stoppage 를 주면 정지 후 재개.
+ */
 export function resetKickoff(
   state: SimState,
   pitch: Pitch,
   restartSide: TeamSide,
+  config: EngineConfig,
   stoppage = 0,
 ): void {
+  // 포메이션 리셋: 모든 선수를 킥오프 기본 배치(baseFx = 역할 슬롯)로. 경기 시작 t0 와 동일 슬롯.
+  if (config.setPiece.resetFormationOnKickoff) {
+    for (const p of state.players) {
+      p.posFx.x = p.baseFx.x;
+      p.posFx.y = p.baseFx.y;
+      p.targetFx.x = p.baseFx.x;
+      p.targetFx.y = p.baseFx.y;
+    }
+  }
   const c = centerSpot(pitch);
   const taker = nearestOfSide(state, restartSide, c.x, c.y);
   if (taker) {
