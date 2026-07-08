@@ -27,7 +27,11 @@ export function spansReposition(aTick, bTick, restartTicks) {
   return false;
 }
 
-/** 데드볼 정지 시퀀스(원인 → 큰 자막 + freeze → 재시작으로 skip). */
+/**
+ * 데드볼 정지 시퀀스(원인 → 큰 자막 + freeze → 재시작으로 skip).
+ * 골은 isGoal:true(GOAL 자막 + 색종이), 나머지(선방/빗나감/파울/오프사이드/PK)는 isGoal:false(상황 카드).
+ * → '선방인데 골처럼' 방지: 골과 상황 자막을 데이터 레벨에서 구분.
+ */
 export function buildStoppages(events) {
   const CAUSE = {
     save: { big: "🧤 선방!", col: "#38bdf8", hold: 1300 },
@@ -37,15 +41,21 @@ export function buildStoppages(events) {
     penalty: { big: "⚽ 페널티킥!", col: "#22c55e", hold: 1500 },
   };
   const RESTART = new Set(["corner", "goal_kick", "throw_in", "free_kick", "kickoff"]);
+  const nextRestart = (fromIdx, fromTick, span) => {
+    for (let j = fromIdx + 1; j < events.length && events[j].tick <= fromTick + span; j++)
+      if (RESTART.has(eventKind(events[j]))) return events[j].tick;
+    return fromTick + 6;
+  };
   const out = [];
   for (let i = 0; i < events.length; i++) {
-    const c = CAUSE[eventKind(events[i])];
-    if (!c) continue;
-    let restartTick = events[i].tick + 6;
-    for (let j = i + 1; j < events.length && events[j].tick <= events[i].tick + 45; j++) {
-      if (RESTART.has(eventKind(events[j]))) { restartTick = events[j].tick; break; }
+    const k = eventKind(events[i]);
+    if (k === "goal") {
+      out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 60), big: "⚽ GOAL!", bigCol: "#22c55e", hold: 1700, isGoal: true, done: false });
+      continue;
     }
-    out.push({ causeTick: events[i].tick, restartTick, big: c.big, bigCol: c.col, hold: c.hold, done: false });
+    const c = CAUSE[k];
+    if (!c) continue;
+    out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 45), big: c.big, bigCol: c.col, hold: c.hold, isGoal: false, done: false });
   }
   return out;
 }

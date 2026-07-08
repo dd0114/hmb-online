@@ -65,7 +65,11 @@
       }
       button:hover { background: #33415f; }
       button.active { background: var(--accent); color: #04220f; border-color: var(--accent); }
-      #scrub { flex: 1 1 200px; }
+      #scrubwrap { position: relative; flex: 1 1 240px; display: flex; align-items: center; }
+      #scrub { width: 100%; }
+      #marks { position: absolute; left: 0; right: 0; top: 50%; height: 0; pointer-events: none; }
+      #marks .gm { position: absolute; width: 3px; height: 16px; transform: translate(-50%, -50%); border-radius: 2px; box-shadow: 0 0 3px #000; }
+      #clock { color: var(--ink); font-size: 13px; font-weight: 700; min-width: 84px; text-align: right; }
       .sp { color: var(--muted); font-size: 12px; }
       #ticker {
         width: 100%; max-width: 1040px; height: 90px; overflow-y: auto;
@@ -112,7 +116,11 @@
       <button id="nextShot">다음 슛 ▶</button>
       <button id="prevGoal">◀ 이전 골</button>
       <button id="nextGoal">다음 골 ▶</button>
-      <input id="scrub" type="range" min="0" max="100" value="0" step="0.01" />
+      <div id="scrubwrap">
+        <input id="scrub" type="range" min="0" max="100" value="0" step="0.01" />
+        <div id="marks"></div>
+      </div>
+      <span id="clock">0' / 0'</span>
     </div>
     <div id="ticker"></div>
     <div id="status">match-log.json 로딩 중…</div>
@@ -138,10 +146,12 @@
       const flashEl = document.getElementById("flash");
       const bannerEl = document.getElementById("banner");
       const situationEl = document.getElementById("situation");
+      const marksEl = document.getElementById("marks");
+      const clockEl = document.getElementById("clock");
 
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
       let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
-      let annos = [], snapByTick = new Map(), restartTickSet = new Set();
+      let annos = [], snapByTick = new Map(), restartTickSet = new Set(), totalMinutes = 0;
       let stoppages = [], hold = null; // 데드볼: freeze→skip 시퀀스
       const TOAST_TICKS = 5, BANNER_TICKS = 16;
       const idxOfTick = (tick) => { const i = snaps.findIndex((s) => s.tick >= tick); return i < 0 ? snaps.length - 1 : i; };
@@ -301,10 +311,9 @@
         const s = scoreAt(snap.tick);
         scoreEl.textContent = `${s.h} : ${s.a}`;
         minuteEl.textContent = `${snap.minute}'`;
+        clockEl.textContent = `${snap.minute}' / ${totalMinutes}'`;
         scrub.value = ((tickPos / (snaps.length - 1)) * 100).toFixed(2);
-        const totalGoals = s.h + s.a;
-        if (totalGoals > lastGoalShown && lastGoalShown >= 0) celebrate();
-        lastGoalShown = totalGoals;
+        // 골 자막/색종이는 tickLoop 의 정지 시퀀스(isGoal)에서만 발동 → seek/scrub 오발동 없음.
       }
 
       const EV_LABEL = {
@@ -351,7 +360,8 @@
             if (!st.done && st.causeTick > beforeTick && st.causeTick <= afterTick) {
               st.done = true;
               tickPos = idxOfTick(st.causeTick); // 원인 프레임에서 멈춤
-              situationCaption(st.big, st.bigCol); // 상황 카드(골과 다른 스타일)
+              if (st.isGoal) bigCaption(st.big, st.bigCol, true); // 골: 거대 GOAL + 색종이
+              else situationCaption(st.big, st.bigCol); // 선방 등: 상황 카드
               hold = { until: ts + st.hold, jumpTo: idxOfTick(st.restartTick) }; // freeze 후 재시작으로 skip
               break;
             }
@@ -360,7 +370,11 @@
         draw();
         requestAnimationFrame(tickLoop);
       }
-      function resetStops() { stoppages.forEach((s) => (s.done = false)); hold = null; }
+      function clearCaptions() {
+        confetti = [];
+        flashEl.classList.remove("show"); situationEl.classList.remove("show"); bannerEl.classList.remove("show");
+      }
+      function resetStops() { stoppages.forEach((s) => (s.done = false)); hold = null; clearCaptions(); }
       function setPlaying(p) { playing = p; playBtn.textContent = p ? "⏸ 일시정지" : "▶ 재생"; }
       function jumpToTick(tick) {
         const idx = snaps.findIndex((s) => s.tick >= tick);
@@ -402,6 +416,13 @@
         snapByTick = new Map(snaps.map((s) => [s.tick, s]));
         const pb = buildPlayback(data.events, snaps); // playback.mjs (vitest 검증)
         annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks;
+        totalMinutes = snaps.length ? snaps[snaps.length - 1].minute : 0;
+        // 타임라인 골 마커(팀 색).
+        marksEl.innerHTML = data.events.filter((e) => e.type === "goal").map((g) => {
+          const pct = (idxOfTick(g.tick) / Math.max(1, snaps.length - 1)) * 100;
+          const col = g.team === "home" ? "#3b82f6" : "#ef4444";
+          return `<div class="gm" style="left:${pct}%;background:${col}" title="${g.minute}' ${g.team} 골"></div>`;
+        }).join("");
         renderTicker(); tickPos = 0; lastGoalShown = 0; setPlaying(true);
         statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
       }
@@ -418,6 +439,26 @@
         const reader = new FileReader(); reader.onload = () => loadLog(JSON.parse(reader.result)); reader.readAsText(f);
       };
 
+      // 테스트/QA 훅(Playwright): 특정 틱으로 seek 후 프레임 렌더 + 자막 상태 조회.
+      window.__viewer = {
+        ready: () => !!log,
+        events: () => (log ? log.events : []),
+        seek: (tick) => { setPlaying(false); resetStops(); tickPos = idxOfTick(tick); draw(); },
+        // 정지 시퀀스처럼 원인에서 상황 자막을 강제 표시(스크린샷용).
+        showSituationAt: (tick) => {
+          const st = stoppages.find((s) => s.causeTick === tick);
+          setPlaying(false); resetStops(); tickPos = idxOfTick(tick);
+          if (st) situationCaption(st.big, st.bigCol);
+          draw();
+        },
+        cur: () => { const s = snaps[Math.floor(tickPos)]; return { tickPosIdx: Math.floor(tickPos), tick: s.tick, ball: s.ball, follow }; },
+        captions: () => ({
+          flash: getComputedStyle(flashEl).opacity !== "0" ? flashEl.textContent : "",
+          situation: getComputedStyle(situationEl).opacity !== "0" ? situationEl.textContent : "",
+          banner: bannerEl.classList.contains("show") ? bannerEl.textContent : "",
+          score: scoreEl.textContent, minute: minuteEl.textContent,
+        }),
+      };
       drawPitch(); requestAnimationFrame(tickLoop);
     </script>
   </body>

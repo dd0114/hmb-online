@@ -6,3 +6,4 @@ dist/
 !evidence/**/*.log
 packages/engine/dev-viewer/match-log.json
 packages/engine/dev-viewer/viewer-standalone.html
+tools/shots/

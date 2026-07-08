@@ -69,15 +69,21 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
   it("일반 패스/슛은 정지 시퀀스를 만들지 않는다", () => {
     expect(buildStoppages([{ type: "pass", tick: 1 }, { type: "shot", tick: 2 }])).toHaveLength(0);
   });
-  it("골은 정지 시퀀스 원인이 아니다 (골 자막 ≠ 선방/빗나감 자막, '선방인데 골처럼' 방지)", () => {
-    // 골은 celebrate()가 별도 처리. buildStoppages 는 save/off_target/foul/offside/penalty 만.
-    const st = buildStoppages([{ type: "goal", tick: 50 }, { type: "kickoff", tick: 55 }]);
-    expect(st.find((s) => s.causeTick === 50)).toBeUndefined();
-  });
-  it("선방 자막 문구는 골 문구('골')를 포함하지 않는다", () => {
-    const st = buildStoppages([{ type: "save", tick: 10 }, { type: "kickoff", detail: "corner", tick: 14 }]);
-    expect(st[0].big).not.toContain("골");
-    expect(st[0].big).toContain("선방");
+  it("골은 isGoal:true(GOAL 자막+색종이), 선방은 isGoal:false(상황카드) — '선방인데 골처럼' 방지", () => {
+    const st = buildStoppages([
+      { type: "goal", tick: 50, team: "home" },
+      { type: "kickoff", tick: 60 },
+      { type: "save", tick: 100 },
+      { type: "kickoff", detail: "corner", tick: 104 },
+    ]);
+    const goal = st.find((s) => s.causeTick === 50);
+    const save = st.find((s) => s.causeTick === 100);
+    expect(goal.isGoal).toBe(true);
+    expect(goal.big).toContain("GOAL");
+    expect(goal.restartTick).toBe(60); // 킥오프로 skip
+    expect(save.isGoal).toBeFalsy();
+    expect(save.big).toContain("선방");
+    expect(save.big).not.toContain("GOAL");
   });
 });
 
