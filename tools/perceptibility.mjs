@@ -59,7 +59,7 @@ for (let i = 0; i < snaps.length; i += Math.max(1, Math.floor(snaps.length / 100
 }
 
 // ---- 관전 시간(하이라이트 자동페이싱) ----
-const keyTicks = events.filter((e) => e.type === "goal" || (e.type === "shot" && (e.xg || 0) >= 0.12)).map((e) => e.tick);
+const keyTicks = events.filter((e) => e.type === "goal" || (e.type === "shot" && e.detail == null)).map((e) => e.tick);
 let watchSec = 0;
 for (const s of snaps) {
   const near = keyTicks.some((kt) => Math.abs(kt - s.tick) <= HL_WINDOW);

@@ -214,7 +214,13 @@ function stepTick(carry: Carry): void {
       const o = state.byId.get(heldId);
       if (o) glueBallToOwner(state.ball, o.posFx.x, o.posFx.y);
     }
-    if (state.stoppage === 0) state.setPiece = null;
+    // 골 세리머니 정지가 끝나면(공은 그동안 네트에 머묾) 실점팀 센터 킥오프로 리셋.
+    if (state.stoppage === 0) {
+      if (state.setPiece && state.setPiece.kind === "goal") {
+        resetKickoff(state, pitch, state.setPiece.side);
+      }
+      state.setPiece = null;
+    }
     return;
   }
 
@@ -230,6 +236,10 @@ function stepTick(carry: Carry): void {
     decideOffBall(state, p, config, pitch, pa);
   }
 
+  // 이번 틱에 막 쏜 슛인지 — 그렇다면 이 틱엔 공을 슈터 발밑에 두고 다음 틱부터
+  // 골문으로 비행시킨다(같은 틱 순간 해상 방지 → 눈에 보이는 슛 궤적 확보).
+  let shotLaunchedThisTick = false;
+
   // --- decide: 볼 소유자 행동 ---
   if (ownerId && !state.ball.flight) {
     const owner = state.byId.get(ownerId);
@@ -240,12 +250,13 @@ function stepTick(carry: Carry): void {
           state.ball.flight = {
             toX: action.toX,
             toY: action.toY,
-            speed: toFixed(config.ball.shotSpeed, config.fixedScale),
+            speed: toFixed(config.contest.shotBallSpeed, config.fixedScale),
             kind: "shot",
             target: owner.id,
             fromSide: owner.side,
             xg: action.xg,
           };
+          shotLaunchedThisTick = true;
           state.ball.owner = null;
           state.ball.ownerSide = null;
           carry.events.push({
@@ -297,7 +308,9 @@ function stepTick(carry: Carry): void {
 
   // --- act: 공 이동 + 경합 ---
   const curOwnerId = state.ball.owner;
-  if (state.ball.flight) {
+  if (state.ball.flight && shotLaunchedThisTick && state.ball.flight.kind === "shot") {
+    // 막 쏜 틱: 공은 슈터 위치 그대로(비행은 다음 틱부터). 스냅샷에 슈터 발밑이 찍힌다.
+  } else if (state.ball.flight) {
     const res = advanceBall(state.ball, config, pitch);
     if (res.out) {
       resolveOut(carry, res.out, state.tick, minute);

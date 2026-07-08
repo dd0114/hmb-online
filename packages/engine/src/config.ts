@@ -16,8 +16,8 @@ export interface EngineConfig {
   /** 한 경기 길이(분). 전/후반 각 절반. */
   matchMinutes: number;
 
-  /** 피치 실좌표 크기(m). */
-  pitch: { width: number; height: number };
+  /** 피치 실좌표 크기(m). goalWidth = 골포스트 간 폭(m), 골 판정 y 범위에 사용. */
+  pitch: { width: number; height: number; goalWidth: number };
   /** 좌표 모드. Tier B 는 continuous. grid 는 백로그. */
   coordMode: "continuous" | "grid";
   /** grid 모드일 때 셀 크기(m). continuous 면 무시. */
@@ -79,6 +79,8 @@ export interface EngineConfig {
     tackleBase: number;
     /** 슛 기대득점(xG) 기준선. */
     xgBase: number;
+    /** 슛한 공의 비행 속도(m/tick). 골문으로 여러 틱에 걸쳐 날아가도록 passSpeed 급으로 억제. */
+    shotBallSpeed: number;
     /** 슛 시도 최소 xG(이보다 낮으면 장거리 speculative 슛 억제). */
     shootXgThreshold: number;
     /** 슛 시도 가능한 최대 사거리(m, 상대 골대 기준). */
@@ -105,8 +107,10 @@ export interface EngineConfig {
   setPiece: {
     /** 재시작 전 정지(dead ball) 틱 수 — 인플레이 시간 하향 + 재배치. */
     stoppageTicks: number;
-    /** 골 후 킥오프 정지 틱 수. */
+    /** 골 후 킥오프 정지 틱 수. 이 동안 공은 네트에 머문 뒤 센터 킥오프로 리셋. */
     goalStoppageTicks: number;
+    /** 골 시 공이 골라인 안쪽으로 안착하는 깊이(m). 네트 위치 = 골라인 ± 이 값. */
+    goalNetDepthM: number;
     /** 코너 시 공격팀 선수들이 박스로 몰리는 강도(정규화 당김). */
     cornerBoxReach: number;
     /** 파이널서드 경계(공격 방향 정규화 x, 0..1). 패스/코너 판정용. */
@@ -171,10 +175,10 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.2.0",
+  version: "engine@0.3.0",
   msPerTick: 1000,
   matchMinutes: 90,
-  pitch: { width: 105, height: 68 },
+  pitch: { width: 105, height: 68, goalWidth: 7.32 },
   coordMode: "continuous",
   gridSize: 5,
   fixedScale: 1000,
@@ -208,6 +212,7 @@ export const defaultEngineConfig: EngineConfig = {
     interceptBase: 0.06,
     tackleBase: 0.14,
     xgBase: 0.225,
+    shotBallSpeed: 14,
     shootXgThreshold: 0.07,
     shootRange: 20,
     shootAngleFactor: 0.7,
@@ -222,6 +227,7 @@ export const defaultEngineConfig: EngineConfig = {
   setPiece: {
     stoppageTicks: 12,
     goalStoppageTicks: 25,
+    goalNetDepthM: 0.5,
     cornerBoxReach: 0.85,
     finalThirdLine: 0.66,
   },

@@ -31,7 +31,7 @@ export function buildDemoLog(): MatchLog {
  */
 export const showcaseConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.2.0-showcase",
+  version: "engine@0.3.0-showcase",
   matchMinutes: 24,
   contest: {
     ...defaultEngineConfig.contest,
@@ -44,6 +44,54 @@ export const showcaseConfig = {
 /** 쇼케이스 MatchLog(뷰어용). */
 export function buildShowcaseLog(): MatchLog {
   return runMatch(demoSeed, demoHome, demoAway, demoSelect, showcaseConfig);
+}
+
+/**
+ * 골 검증(AC-goal-in-net): 각 goal 이벤트의 골 틱 스냅샷에서 공이
+ *  - 골라인 근처(x < nearLine 또는 x > width-nearLine)  AND
+ *  - 골포스트 y 범위 안(centerY ± goalWidth/2)
+ * 에 있으면 PASS. 센터(52.5,34)로 리셋되면 FAIL.
+ */
+function buildGoalInNetReport(log: MatchLog, label: string): { report: string; allPass: boolean } {
+  const width = defaultEngineConfig.pitch.width; // 105
+  const height = defaultEngineConfig.pitch.height; // 68
+  const goalWidth = defaultEngineConfig.pitch.goalWidth; // 7.32
+  const centerY = height / 2;
+  const halfPost = goalWidth / 2;
+  const yLo = centerY - halfPost;
+  const yHi = centerY + halfPost;
+  const nearLine = 3; // 골라인 근처 허용 오차(m).
+
+  const snapByTick = new Map<number, (typeof log.tickSnapshots)[number]>();
+  for (const s of log.tickSnapshots) snapByTick.set(s.tick, s);
+
+  const goals = log.events.filter((e) => e.type === "goal");
+  const lines: string[] = [];
+  lines.push(`=== AC-goal-in-net: ${label} (${log.configVersion}, seed ${log.seed}) ===`);
+  lines.push(
+    `골라인 근처 기준: x < ${nearLine} 또는 x > ${width - nearLine} | 골포스트 y 범위: ${yLo.toFixed(2)}..${yHi.toFixed(2)}`,
+  );
+  lines.push(`총 골: ${goals.length}`);
+  let allPass = true;
+  goals.forEach((g, i) => {
+    const snap = snapByTick.get(g.tick);
+    if (!snap) {
+      allPass = false;
+      lines.push(`  #${i + 1} tick=${g.tick} team=${g.team} FAIL: 스냅샷 없음`);
+      return;
+    }
+    const { x, y } = snap.ball;
+    const nearGoalLine = x < nearLine || x > width - nearLine;
+    const inPosts = y >= yLo && y <= yHi;
+    const pass = nearGoalLine && inPosts;
+    if (!pass) allPass = false;
+    lines.push(
+      `  #${i + 1} tick=${g.tick} team=${g.team} ball=(${x.toFixed(2)},${y.toFixed(2)}) ` +
+        `골라인=${nearGoalLine ? "O" : "X"} 포스트내=${inPosts ? "O" : "X"} => ${pass ? "PASS" : "FAIL"}`,
+    );
+  });
+  lines.push(`결과: ${allPass ? "ALL PASS" : "FAIL"} (센터(52.5,34) 리셋이면 FAIL)`);
+  return { report: lines.join("\n"), allPass };
 }
 
 /** 데모 SelectData 에서 GK playerId 집합. */
@@ -78,6 +126,12 @@ export function writeDemo(outPath?: string): { path: string; statsPath: string; 
   mkdirSync(evidenceDir, { recursive: true });
   const statsPath = join(evidenceDir, "AC-stats-v2.log");
   writeFileSync(statsPath, report + "\n");
+
+  // 골 검증(AC-goal-in-net): 쇼케이스(골 많음)+리얼 두 로그 모두 계측 → evidence/S1/AC-goal-in-net.log.
+  const showGoals = buildGoalInNetReport(showcase, "showcase(viewer)");
+  const realGoals = buildGoalInNetReport(log, "real(default)");
+  const goalNetPath = join(evidenceDir, "AC-goal-in-net.log");
+  writeFileSync(goalNetPath, `${showGoals.report}\n\n${realGoals.report}\n`);
 
   const summary = {
     configVersion: log.configVersion,

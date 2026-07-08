@@ -46,8 +46,13 @@ export interface BallFlight {
 
 /** 진행 중인 세트피스 컨텍스트(정지 동안 재배치에 사용). */
 export interface SetPiece {
-  kind: "corner" | "throw_in" | "goal_kick" | "kickoff";
-  /** 재시작(수혜) 팀. */
+  /**
+   * kind:
+   *  - corner/throw_in/goal_kick/kickoff: 일반 세트피스.
+   *  - goal: 골 직후 세리머니 정지. 공은 네트에 머물고, 정지가 끝나면 side 팀이 센터 킥오프.
+   */
+  kind: "corner" | "throw_in" | "goal_kick" | "kickoff" | "goal";
+  /** 재시작(수혜) 팀. goal 이면 킥오프할 실점팀. */
   side: TeamSide;
   /** 재시작 지점(fixed). */
   x: number;

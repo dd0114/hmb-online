@@ -23,8 +23,16 @@
       canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: #14532d; }
       #flash {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-        font-size: 64px; font-weight: 900; color: var(--accent); text-shadow: 0 2px 20px #000;
-        opacity: 0; pointer-events: none; transition: opacity .15s; letter-spacing: 4px;
+        font-size: 68px; font-weight: 900; color: var(--accent); text-shadow: 0 2px 24px #000, 0 0 40px var(--accent);
+        opacity: 0; pointer-events: none; letter-spacing: 4px;
+      }
+      #flash.show { animation: goalPop 1.9s cubic-bezier(.2,.8,.2,1) forwards; }
+      @keyframes goalPop {
+        0% { opacity: 0; transform: scale(.3) rotate(-6deg); }
+        12% { opacity: 1; transform: scale(1.25) rotate(3deg); }
+        26% { transform: scale(.95) rotate(-1deg); }
+        40% { transform: scale(1.05); } 82% { opacity: 1; transform: scale(1); }
+        100% { opacity: 0; transform: scale(1.1); }
       }
       .controls {
         display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
@@ -103,7 +111,7 @@
       const flashEl = document.getElementById("flash");
 
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
-      let follow = false, showTrail = true, autoPace = true, keyTicks = [];
+      let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
       const baseScale = (canvas.width - 2 * MARGIN) / PITCH_W;
       let cam = { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
 
@@ -137,8 +145,11 @@
         const A = snaps[i], B = snaps[j];
         const bx = lerp(A.ball.x, B.ball.x, t), by = lerp(A.ball.y, B.ball.y, t);
 
-        // 카메라: 공 따라가기
-        cam = follow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
+        // 카메라: 수동 공따라가기 OR 하이라이트(찬스/골) 근처면 자동 줌인
+        const curTick = A.tick;
+        const nearKey = autoPace && keyTicks.some((kt) => Math.abs(kt - curTick) <= HL_WINDOW);
+        const useFollow = follow || nearKey;
+        cam = useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
         drawPitch();
 
         // 선수 잔상(옵션)
@@ -152,8 +163,8 @@
             }
           }
         }
-        // 공 궤적
-        ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.beginPath();
+        // 공 궤적 (공 색과 맞춰 노랑)
+        ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,230,0,0.45)"; ctx.beginPath();
         let started = false;
         for (let s = Math.max(0, i - BALL_TRAIL); s <= i; s++) {
           const p = sx(snaps[s].ball.x), q = sy(snaps[s].ball.y);
@@ -161,21 +172,34 @@
         }
         ctx.stroke();
 
-        // 선수
-        const R = follow ? 15 : 11;
+        // 선수 (실제 대비 비율감 위해 마커 축소)
+        const R = useFollow ? 11 : 8;
         for (let k = 0; k < A.players.length; k++) {
           const pa = A.players[k], pb = B.players[k] || pa;
           const x = lerp(pa.pos.x, pb.pos.x, t), y = lerp(pa.pos.y, pb.pos.y, t);
           const isHome = pa.team === "home", owner = A.ballOwner === pa.playerId;
-          ctx.beginPath(); ctx.arc(sx(x), sy(y), owner ? R + 3 : R, 0, Math.PI * 2);
+          ctx.beginPath(); ctx.arc(sx(x), sy(y), owner ? R + 2 : R, 0, Math.PI * 2);
           ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
-          if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 4; ctx.stroke(); }
-          ctx.fillStyle = "#fff"; ctx.font = `bold ${follow ? 14 : 11}px monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
+          ctx.fillStyle = "#fff"; ctx.font = `bold ${useFollow ? 11 : 8}px monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText(pa.playerId.replace(/[HA]/, ""), sx(x), sy(y));
         }
-        // 공
-        ctx.beginPath(); ctx.arc(sx(bx), sy(by), follow ? 8 : 6, 0, Math.PI * 2);
-        ctx.fillStyle = "#fff"; ctx.fill(); ctx.strokeStyle = "#111"; ctx.lineWidth = 2; ctx.stroke();
+        // 공 (밝은 노랑 + 글로우로 가시성 ↑)
+        const br = useFollow ? 7 : 5.5;
+        ctx.save();
+        ctx.shadowColor = "#ffe600"; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.arc(sx(bx), sy(by), br, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffe600"; ctx.fill();
+        ctx.shadowBlur = 0; ctx.lineWidth = 1.5; ctx.strokeStyle = "#6b5200"; ctx.stroke();
+        ctx.restore();
+
+        // 골 세리머니 색종이
+        if (confetti.length) {
+          for (const c of confetti) { c.x += c.vx; c.y += c.vy; c.vy += 0.16; c.life -= 0.012; }
+          confetti = confetti.filter((c) => c.life > 0);
+          for (const c of confetti) { ctx.globalAlpha = Math.max(0, c.life); ctx.fillStyle = c.col; ctx.fillRect(c.x, c.y, 4, 4); }
+          ctx.globalAlpha = 1;
+        }
 
         updateHud(A);
       }
@@ -186,13 +210,22 @@
         return { h, a };
       }
       let lastGoalShown = -1;
+      function celebrate() {
+        flashEl.textContent = "⚽ GOAL!";
+        flashEl.classList.remove("show"); void flashEl.offsetWidth; flashEl.classList.add("show");
+        const cols = ["#22c55e", "#fde047", "#3b82f6", "#ef4444", "#ffffff"];
+        for (let n = 0; n < 90; n++) {
+          const ang = Math.random() * Math.PI * 2, spd = 2 + Math.random() * 7;
+          confetti.push({ x: canvas.width / 2, y: canvas.height / 2, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd - 3, life: 1, col: cols[n % cols.length] });
+        }
+      }
       function updateHud(snap) {
         const s = scoreAt(snap.tick);
         scoreEl.textContent = `${s.h} : ${s.a}`;
         minuteEl.textContent = `${snap.minute}'`;
         scrub.value = ((tickPos / (snaps.length - 1)) * 100).toFixed(2);
         const totalGoals = s.h + s.a;
-        if (totalGoals > lastGoalShown && lastGoalShown >= 0) { flashEl.textContent = "GOAL"; flashEl.style.opacity = 1; setTimeout(() => (flashEl.style.opacity = 0), 900); }
+        if (totalGoals > lastGoalShown && lastGoalShown >= 0) celebrate();
         lastGoalShown = totalGoals;
       }
 
@@ -259,7 +292,8 @@
 
       function loadLog(data) {
         log = data; snaps = data.tickSnapshots;
-        keyTicks = data.events.filter((e) => e.type === "goal" || (e.type === "shot" && (e.xg || 0) >= 0.12)).map((e) => e.tick);
+        // 골 + 모든 슛(유효슛 포함) 근처에서 하이라이트(슬로우+자동 줌인).
+        keyTicks = data.events.filter((e) => e.type === "goal" || (e.type === "shot" && e.detail == null)).map((e) => e.tick);
         renderTicker(); tickPos = 0; lastGoalShown = 0; setPlaying(true);
         statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
       }

@@ -3,7 +3,7 @@ import type { SimState, SimPlayer } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
-import { fdist, fclamp } from "./fixedmath";
+import { fdist, fclamp, toFixed } from "./fixedmath";
 import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
 
 /**
@@ -306,7 +306,24 @@ export function resolveShot(
       xg,
     };
     if (shooter) ev.playerId = shooter.id;
-    resetKickoff(state, pitch, defSide, config.setPiece.goalStoppageTicks);
+
+    // 공을 골라인 바로 안쪽(네트)에 안착시킨다. 센터 리셋 금지 —
+    // goalStoppageTicks 동안 네트에 머문 뒤(세리머니) 킥오프에서 센터로 리셋한다.
+    const line = attackGoal(pitch, scorerSide); // 득점팀이 공격하는 골라인(home: wFx, away: 0).
+    const scale = config.fixedScale;
+    const depth = toFixed(config.setPiece.goalNetDepthM, scale);
+    const netX = line.x === 0 ? depth : line.x - depth; // x≈0.5m 또는 (width-0.5)m.
+    const halfPost = toFixed(config.pitch.goalWidth / 2, scale);
+    // 공이 도착한 y 를 골포스트 사이로 클램프(네트 안).
+    const netY = fclamp(state.ball.posFx.y, line.y - halfPost, line.y + halfPost);
+    state.ball.posFx = { x: netX, y: netY };
+    state.ball.owner = null;
+    state.ball.ownerSide = null;
+    state.ball.flight = null;
+    state.possession = defSide;
+    // 세리머니 정지: kind "goal" 로 표시 → 정지 종료 시 match 가 센터 킥오프(defSide) 수행.
+    state.stoppage = config.setPiece.goalStoppageTicks;
+    state.setPiece = { kind: "goal", side: defSide, x: netX, y: netY };
     return [ev];
   }
 
