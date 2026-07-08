@@ -42,6 +42,19 @@
         text-shadow: 0 1px 6px #000;
       }
       #banner.show { opacity: 1; }
+      /* 상황 카드(선방/빗나감/파울/오프사이드/PK) — 골(거대 중앙 팝)과 명확히 구분되는 중간 크기 안내. */
+      #situation {
+        position: absolute; top: 48px; left: 50%; transform: translateX(-50%);
+        background: rgba(10,14,22,.9); border: 2px solid currentColor;
+        padding: 8px 22px; border-radius: 12px; font-size: 30px; font-weight: 800;
+        white-space: nowrap; opacity: 0; pointer-events: none; text-shadow: 0 1px 8px #000;
+      }
+      #situation.show { animation: sitIn 1.3s ease forwards; }
+      @keyframes sitIn {
+        0% { opacity: 0; transform: translateX(-50%) translateY(-14px); }
+        12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+        82% { opacity: 1; } 100% { opacity: 0; }
+      }
       .controls {
         display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
         background: var(--panel); padding: 10px 12px; border-radius: 8px; width: 100%; max-width: 1040px;
@@ -78,6 +91,7 @@
     <div id="wrap">
       <canvas id="pitch" width="1050" height="680"></canvas>
       <div id="flash"></div>
+      <div id="situation"></div>
       <div id="banner"></div>
     </div>
     <div class="controls">
@@ -123,6 +137,7 @@
       const playBtn = document.getElementById("playBtn");
       const flashEl = document.getElementById("flash");
       const bannerEl = document.getElementById("banner");
+      const situationEl = document.getElementById("situation");
 
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
       let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
@@ -277,6 +292,11 @@
         }
       }
       function celebrate() { bigCaption("⚽ GOAL!", "#22c55e", true); }
+      // 상황 카드 — 골과 다른 스타일(중간 크기·색종이 없음)로 '선방/빗나감/파울/오프사이드/PK' 안내.
+      function situationCaption(text, col) {
+        situationEl.textContent = text; situationEl.style.color = col;
+        situationEl.classList.remove("show"); void situationEl.offsetWidth; situationEl.classList.add("show");
+      }
       function updateHud(snap) {
         const s = scoreAt(snap.tick);
         scoreEl.textContent = `${s.h} : ${s.a}`;
@@ -331,7 +351,7 @@
             if (!st.done && st.causeTick > beforeTick && st.causeTick <= afterTick) {
               st.done = true;
               tickPos = idxOfTick(st.causeTick); // 원인 프레임에서 멈춤
-              bigCaption(st.big, st.bigCol, false); // 큰 자막
+              situationCaption(st.big, st.bigCol); // 상황 카드(골과 다른 스타일)
               hold = { until: ts + st.hold, jumpTo: idxOfTick(st.restartTick) }; // freeze 후 재시작으로 skip
               break;
             }
