@@ -193,7 +193,8 @@
         // 카메라: 수동 공따라가기 OR 하이라이트(찬스/골) 근처면 자동 줌인
         const curTick = A.tick;
         const nearKey = autoPace && keyTicks.some((kt) => Math.abs(kt - curTick) <= HL_WINDOW);
-        const useFollow = follow || nearKey;
+        // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
+        const useFollow = follow || nearKey || (hold ? !!hold.zoom : false);
         cam = useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
         drawPitch();
 
@@ -347,6 +348,8 @@
         if (hold) {
           // 데드볼 정지: 큰 자막 유지하며 freeze. 시간 지나면 재시작으로 skip.
           if (ts < hold.until) { draw(); requestAnimationFrame(tickLoop); return; }
+          // skip 직전 자막/색종이 정리(킥오프 배너와 겹침 방지).
+          flashEl.classList.remove("show"); situationEl.classList.remove("show"); confetti = [];
           tickPos = hold.jumpTo; hold = null;
         }
         if (playing && snaps.length > 1) {
@@ -362,7 +365,7 @@
               tickPos = idxOfTick(st.causeTick); // 원인 프레임에서 멈춤
               if (st.isGoal) bigCaption(st.big, st.bigCol, true); // 골: 거대 GOAL + 색종이
               else situationCaption(st.big, st.bigCol); // 선방 등: 상황 카드
-              hold = { until: ts + st.hold, jumpTo: idxOfTick(st.restartTick) }; // freeze 후 재시작으로 skip
+              hold = { until: ts + st.hold, jumpTo: idxOfTick(st.restartTick), zoom: st.isGoal }; // freeze(골은 골문 줌) 후 skip
               break;
             }
           }
@@ -444,6 +447,9 @@
         ready: () => !!log,
         events: () => (log ? log.events : []),
         seek: (tick) => { setPlaying(false); resetStops(); tickPos = idxOfTick(tick); draw(); },
+        play: () => setPlaying(true),
+        pause: () => setPlaying(false),
+        autoPace: (on) => { autoPace = on; },
         // 정지 시퀀스처럼 원인에서 상황 자막을 강제 표시(스크린샷용).
         showSituationAt: (tick) => {
           const st = stoppages.find((s) => s.causeTick === tick);

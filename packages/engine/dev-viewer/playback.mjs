@@ -56,7 +56,8 @@ export function buildStoppages(events) {
   for (let i = 0; i < events.length; i++) {
     const k = eventKind(events[i]);
     if (k === "goal") {
-      out.push({ causeTick: events[i].tick, restartTick: nextKickoff(i, events[i].tick, 60), big: "⚽ GOAL!", bigCol: "#22c55e", hold: 1700, isGoal: true, done: false });
+      // ⚽ 이모지 제거: 화면 중앙 큰 ⚽ 가 '공이 미드필드에 있는 것처럼' 오해를 유발. 텍스트만.
+      out.push({ causeTick: events[i].tick, restartTick: nextKickoff(i, events[i].tick, 60), big: "GOAL!", bigCol: "#22c55e", hold: 1700, isGoal: true, done: false });
       continue;
     }
     const c = CAUSE[k];
