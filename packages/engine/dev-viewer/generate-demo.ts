@@ -39,7 +39,7 @@ export const showcaseConfig = {
   },
   contest: {
     ...defaultEngineConfig.contest,
-    xgBase: 0.5, // 0.225 → 0.5 (슛당 득점 확률↑ = 골 더 많이)
+    xgBase: 0.62, // 0.225 → 0.62 (슛당 득점 확률↑ = 골 더 많이, 관전 재미용 · perceptibility 6/6)
     onTargetBase: 0.55, // 유효슛↑ → 세이브 상황↑
     shootXgThreshold: 0.05,
     saveCornerProb: 0.7, // 세이브→코너 굴절↑
