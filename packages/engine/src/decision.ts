@@ -268,7 +268,13 @@ export function decideBallOwner(
       quality *
       attrFactor(owner.attrs.shooting);
     // 파이널서드(공격 진영)의 사거리 슛은 지배적 선택으로 부스트(후진 패스 억제와 짝).
-    if (ownerInFinalThird) wShoot *= w.shootInBox;
+    if (ownerInFinalThird) {
+      wShoot *= w.shootInBox;
+      // 중앙(골 정면)에 가까울수록 추가 부스트 → 중앙·사거리에서 후진 리사이클 대신 슛.
+      const lateralM = fromFixed(Math.abs(owner.posFx.y - goal.y), config.fixedScale);
+      const centralFrac = fclamp(1 - lateralM / config.contest.centralShootHalfM, 0, 1);
+      wShoot *= 1 + (w.shootCentralBonus - 1) * centralFrac;
+    }
     // 1대1(단독 오픈)이면 거의 강제로 슛 → one_on_one 이벤트가 실제로 찍힌다.
     if (shootDetail === "one_on_one") wShoot *= config.contest.oneOnOneShootBias;
   }

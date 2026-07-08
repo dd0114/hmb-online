@@ -109,7 +109,9 @@ export function computeMatchStats(log: MatchLog, gkIds: Set<string>, opts: Stats
     return n;
   }
 
-  // 슛 → 코너/골킥 전환: 결과 이벤트(saved/off_target) 바로 뒤 같은 틱의 코너/골킥 재시작을 페어링.
+  // 슛 → 코너/골킥 전환: 결과 이벤트(off_target/saved) 뒤에 이어지는 코너/골킥 재시작을 페어링.
+  // 0.6.0 부터 슛 아웃은 shot_out 짧은 정지를 거쳐 몇 틱 뒤 세트피스가 시작되므로(코너 순간이동 방지),
+  // 같은 틱이 아니라 결과 이벤트 바로 다음 이벤트(정지 동안 이벤트 없음 → 다음 = 그 재시작)로 매칭한다.
   const shotToCorner: Record<TeamSide, number> = { home: 0, away: 0 };
   const shotToGoalKick: Record<TeamSide, number> = { home: 0, away: 0 };
   for (let i = 0; i < ev.length - 1; i++) {
@@ -117,7 +119,7 @@ export function computeMatchStats(log: MatchLog, gkIds: Set<string>, opts: Stats
     const n = ev[i + 1]!;
     const isResult = e.type === "shot" && (e.detail === "saved" || e.detail === "off_target");
     if (!isResult || e.team == null) continue;
-    if (n.type === "kickoff" && n.tick === e.tick) {
+    if (n.type === "kickoff") {
       if (n.detail === "corner") shotToCorner[e.team] += 1;
       else if (n.detail === "goal_kick") shotToGoalKick[e.team] += 1;
     }

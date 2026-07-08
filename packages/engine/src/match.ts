@@ -223,9 +223,22 @@ function stepTick(carry: Carry): void {
     // 정지가 끝나면 재개 처리.
     if (state.stoppage === 0) {
       const sp = state.setPiece;
+      // shot_out 재시작은 새 세트피스(코너/골킥)를 설정하므로 그 setPiece/stoppage 를 보존.
+      let keepSetPiece = false;
       if (sp && sp.kind === "goal") {
         // 골 세리머니 종료(공은 그동안 네트에 머묾) → 실점팀 센터 킥오프.
         resetKickoff(state, pitch, sp.side);
+      } else if (sp && sp.kind === "shot_out") {
+        // 슛 아웃(세이브 굴절/빗맞음) 정지 종료 → 실제 세트피스(코너/골킥) 시작.
+        // 이 단계에서 비로소 공이 코너 깃발/골킥 스팟에 놓인다(정지 프레임과 함께).
+        const r = sp.restart;
+        if (r && r.kind === "corner") {
+          carry.events.push(restartCorner(state, pitch, config, r.side, r.nearY, state.tick, minute));
+          keepSetPiece = true;
+        } else if (r && r.kind === "goal_kick") {
+          carry.events.push(restartGoalKick(state, pitch, config, r.side, state.tick, minute));
+          keepSetPiece = true;
+        }
       } else if (sp && sp.kind === "penalty") {
         // 페널티 정지 종료 → 테이커(공 소유자)가 상대 골로 고xG 슛 발사.
         const taker = state.ball.owner ? state.byId.get(state.ball.owner) : null;
@@ -253,7 +266,7 @@ function stepTick(carry: Carry): void {
           });
         }
       }
-      state.setPiece = null;
+      if (!keepSetPiece) state.setPiece = null;
     }
     return;
   }

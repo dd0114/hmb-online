@@ -1,5 +1,5 @@
 import type { EngineConfig } from "./config";
-import type { SimState, SimPlayer } from "./simstate";
+import type { SimState, SimPlayer, DeferredRestart } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
@@ -527,36 +527,67 @@ export function resolveShot(
     return [ev];
   }
 
+  // 슛 도착점(골문 프레임). 세이브/빗맞음 모두 공은 먼저 여기(골문 근처)에 놓인 뒤,
+  // 코너/골킥이 되면 별도 shot_out 정지 → 세트피스 재시작으로만 코너 깃발/골킥 스팟에 놓인다.
+  const scale = config.fixedScale;
+  const line = attackGoal(pitch, scorerSide); // 공격 골라인(home: wFx, away: 0), y=중앙.
+  const halfPost = toFixed(config.pitch.goalWidth / 2, scale);
+  // 코너가 되면 어느 쪽(위/아래) 깃발인지: 슈터의 y(횡위치)로 결정 → 매번 아래 코너로만 가던 단조로움 해소.
+  const cornerNearY = shooter ? shooter.posFx.y : line.y;
+
+  // 공을 골문 프레임에 두고 짧게 정지(shot_out) → 정지 종료 시 restart 세트피스 실행.
+  const parkForRestart = (parkX: number, parkY: number, restart: DeferredRestart): void => {
+    const c = clampToPitch(pitch, parkX, parkY);
+    state.ball.posFx = { x: c.x, y: c.y };
+    state.ball.owner = null;
+    state.ball.ownerSide = null;
+    state.ball.flight = null;
+    state.possession = defSide;
+    state.stoppage = config.setPiece.shotAftermathStoppageTicks;
+    state.setPiece = { kind: "shot_out", side: defSide, x: c.x, y: c.y, restart };
+  };
+
   // --- 유효슛(on target) 여부: shooting/각도로 가감 ---
   const onTargetProb = fclamp(
     config.contest.onTargetBase * (shooter ? attrFactor(shooter.attrs.shooting) : 1),
     0.1,
     0.9,
   );
-  const ballY = state.ball.posFx.y;
   if (rng.next() >= onTargetProb) {
-    // 빗맞음(off target): 수비 블록에 맞아 코너 굴절 또는 골라인 아웃 → 골킥.
-    const restart =
-      rng.next() < config.contest.offTargetBlockCornerProb
-        ? restartCorner(state, pitch, config, scorerSide, ballY, tick, minute)
-        : restartGoalKick(state, pitch, config, defSide, tick, minute);
-    return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "off_target" }, restart];
+    // 빗맞음(off target): 공이 골포스트 살짝 옆(골라인 근처)으로 지나가 아웃 → 골킥,
+    // 또는 수비 블록에 맞아 코너로 굴절. 코너 깃발 직행 금지(shot_out 프레임 경유).
+    const missDir = shooter && shooter.posFx.y < line.y ? -1 : 1; // 슈터 쪽으로 빗나감.
+    const missY = line.y + missDir * (halfPost + toFixed(config.contest.offTargetMissMarginM, scale));
+    const toCorner = rng.next() < config.contest.offTargetBlockCornerProb;
+    parkForRestart(
+      line.x,
+      missY,
+      toCorner
+        ? { kind: "corner", side: scorerSide, nearY: cornerNearY }
+        : { kind: "goal_kick", side: defSide },
+    );
+    return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "off_target" }];
   }
 
-  // 유효슛 세이브: GK 캐치 또는 코너로 굴절.
+  // 유효슛 세이브: GK 가 슛을 막는다. 공은 먼저 키퍼(골문 중앙)에 도달(세이브 시각화).
   const gkSaver = goalkeeperOf(state, defSide);
   const saveEv: MatchEvent = { tick, minute, type: "save", team: defSide, playerId: gkSaver?.id };
-  if (rng.next() < config.contest.saveCornerProb) {
-    const cornerEv = restartCorner(state, pitch, config, scorerSide, ballY, tick, minute);
-    return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, saveEv, cornerEv];
-  }
+  const keeperGoal = defendGoal(pitch, defSide);
+  const keeperSpot = clampToPitch(pitch, keeperGoal.x, keeperGoal.y);
   if (gkSaver) {
-    const goal = defendGoal(pitch, defSide);
-    const c = clampToPitch(pitch, goal.x, goal.y);
-    gkSaver.posFx.x = c.x;
-    gkSaver.posFx.y = c.y;
+    gkSaver.posFx.x = keeperSpot.x;
+    gkSaver.posFx.y = keeperSpot.y;
+  }
+  if (rng.next() < config.contest.saveCornerProb) {
+    // 세이브 굴절 코너: 공은 키퍼 위치에 먼저 놓이고(shot_out 프레임) → 정지 후 코너 세트피스.
+    parkForRestart(keeperSpot.x, keeperSpot.y, { kind: "corner", side: scorerSide, nearY: cornerNearY });
+    return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, saveEv];
+  }
+  // GK 캐치: 키퍼가 공을 잡고 인플레이 지속(정지 없음).
+  if (gkSaver) {
     giveBallTo(state, gkSaver);
   } else {
+    state.ball.posFx = { x: keeperSpot.x, y: keeperSpot.y };
     state.ball.flight = null;
     state.possession = defSide;
   }

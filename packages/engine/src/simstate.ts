@@ -50,6 +50,15 @@ export interface BallFlight {
   passOutcome?: "success" | "fail_intercept" | "fail_out";
 }
 
+/**
+ * shot_out 정지 종료 시 이어질 재시작 명령(코너킥 or 골킥).
+ * 슛(세이브 굴절/빗맞음)이 아웃되면 공을 골문 프레임(키퍼/포스트 옆)에 먼저 두고 짧게 정지한 뒤,
+ * 이 명령으로 실제 세트피스(공이 코너 깃발/골킥 스팟에 놓이는 단계)를 시작한다.
+ */
+export type DeferredRestart =
+  | { kind: "corner"; side: TeamSide; nearY: number }
+  | { kind: "goal_kick"; side: TeamSide };
+
 /** 진행 중인 세트피스 컨텍스트(정지 동안 재배치에 사용). */
 export interface SetPiece {
   /**
@@ -58,13 +67,18 @@ export interface SetPiece {
    *  - goal: 골 직후 세리머니 정지. 공은 네트에 머물고, 정지가 끝나면 side 팀이 센터 킥오프.
    *  - free_kick: 파울/오프사이드 후 프리킥. side 팀이 재개.
    *  - penalty: 박스 내 파울 후 페널티. 정지가 끝나면 side 팀 테이커가 고xG 슛.
+   *  - shot_out: 슛이 세이브 굴절/빗맞음으로 아웃된 직후의 짧은 정지. 공은 골문 프레임
+   *    (키퍼 위치 또는 포스트 옆)에 머물고(코너 깃발 직행 금지), 정지가 끝나면 restart
+   *    (코너킥/골킥) 세트피스가 시작된다.
    */
-  kind: "corner" | "throw_in" | "goal_kick" | "kickoff" | "goal" | "free_kick" | "penalty";
-  /** 재시작(수혜) 팀. goal 이면 킥오프할 실점팀. */
+  kind: "corner" | "throw_in" | "goal_kick" | "kickoff" | "goal" | "free_kick" | "penalty" | "shot_out";
+  /** 재시작(수혜) 팀. goal 이면 킥오프할 실점팀. shot_out 이면 정지 동안 공을 지킨 수비팀. */
   side: TeamSide;
   /** 재시작 지점(fixed). */
   x: number;
   y: number;
+  /** shot_out 정지 종료 시 실행할 세트피스(코너/골킥). shot_out 외에는 undefined. */
+  restart?: DeferredRestart;
 }
 
 /** 공 상태. */

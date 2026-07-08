@@ -57,6 +57,12 @@ export interface EngineConfig {
     shootInBox: number;
     /** 파이널서드에서 후진(음수 forwardGain) 패스 옵션에 주는 감점 계수(후진 m·(0.5+directness) 당). */
     backwardPassPenalty: number;
+    /**
+     * 파이널서드 + 사거리 안에서 슈터가 중앙(골 정면)에 가까울수록 슛 후보 가중에 주는 최대 추가 배수(>=1).
+     * 실제 배수 = 1 + (shootCentralBonus-1)·centralFrac. centralFrac 은 lateral<=centralShootHalfM 에서 1→0.
+     * "중앙·사거리에서 후진 패스 말고 슛" 을 강화(스트라이커 후진 리사이클 버그 대응).
+     */
+    shootCentralBonus: number;
   };
 
   /** 경합 확률 기본치. (ESMS/xG 참고) */
@@ -99,6 +105,13 @@ export interface EngineConfig {
     saveCornerProb: number;
     /** 빗맞은 슛이 수비 블록에 맞고 코너로 굴절될 확률(나머지는 골킥). */
     offTargetBlockCornerProb: number;
+    /**
+     * 빗맞은(off_target) 슛이 골포스트 바깥으로 지나가는 거리(m). 도착 프레임 y = 골중앙 ± (골반폭 + 이 값).
+     * 코너 깃발 직행 금지 — 공은 골문 살짝 옆(골라인 근처)에서 아웃된 뒤 세트피스로 재시작된다.
+     */
+    offTargetMissMarginM: number;
+    /** 중앙 슛 부스트(shootCentralBonus) 판정용 중앙 존 반폭(m). lateral<=이 값이면 완전 중앙(centralFrac=1). */
+    centralShootHalfM: number;
     /** 볼 주인을 태클할 수 있는 접근 거리(m). */
     tackleRange: number;
     /** 비행 중 패스를 가로챌 수 있는 거리(m). */
@@ -208,6 +221,12 @@ export interface EngineConfig {
     stoppageTicks: number;
     /** 골 후 킥오프 정지 틱 수. 이 동안 공은 네트에 머문 뒤 센터 킥오프로 리셋. */
     goalStoppageTicks: number;
+    /**
+     * 슛 아웃(세이브 굴절/빗맞음) 후 코너킥·골킥 세트피스 시작 전, 공을 골문 프레임(키퍼/포스트 옆)에
+     * 두고 짧게 멈추는 정지 틱 수. >0 이어야 공이 골문에 먼저 도달하는 프레임이 보이고(코너 순간이동 방지),
+     * 이후 restart(코너/골킥) 세트피스가 별도로 시작된다.
+     */
+    shotAftermathStoppageTicks: number;
     /** 골 시 공이 골라인 안쪽으로 안착하는 깊이(m). 네트 위치 = 골라인 ± 이 값. */
     goalNetDepthM: number;
     /** 코너 시 공격팀 선수들이 박스로 몰리는 강도(정규화 당김). */
@@ -274,7 +293,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.5.0",
+  version: "engine@0.6.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -298,9 +317,11 @@ export const defaultEngineConfig: EngineConfig = {
     dribble: 0.46,
     shoot: 0.5,
     hold: 0.42,
-    // 파이널서드 슛 지배 + 후진 패스 페널티(스트라이커 후진 패스 버그 수정).
-    shootInBox: 1.28,
-    backwardPassPenalty: 1.6,
+    // 파이널서드 슛 지배 + 후진 패스 페널티 + 중앙 슛 부스트(스트라이커 후진 리사이클 버그 강화 수정).
+    // 슛 볼륨은 벤치마크(팀 12-16) 안(≈16)으로 유지하면서 후진 리사이클을 억제하도록 튜닝.
+    shootInBox: 1.38,
+    backwardPassPenalty: 2.4,
+    shootCentralBonus: 1.35,
   },
   contest: {
     passBase: 0.84,
@@ -322,6 +343,8 @@ export const defaultEngineConfig: EngineConfig = {
     onTargetBase: 0.28,
     saveCornerProb: 0.6,
     offTargetBlockCornerProb: 0.32,
+    offTargetMissMarginM: 3.0,
+    centralShootHalfM: 12.0,
     tackleRange: 2.0,
     interceptRange: 1.5,
     controlRange: 2.5,
@@ -373,6 +396,7 @@ export const defaultEngineConfig: EngineConfig = {
   setPiece: {
     stoppageTicks: 12,
     goalStoppageTicks: 25,
+    shotAftermathStoppageTicks: 3,
     goalNetDepthM: 0.5,
     cornerBoxReach: 0.85,
     finalThirdLine: 0.66,
