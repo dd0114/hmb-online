@@ -103,6 +103,8 @@ export interface EngineConfig {
     onTargetBase: number;
     /** 세이브된 유효슛이 코너로 굴절될 확률. */
     saveCornerProb: number;
+    /** GK 세이브 캐치 지점 = 골라인에서 필드 안쪽으로 이 거리(m). 0 이면 골라인 위(=골문 안, 골 오인). */
+    saveCatchDepthM: number;
     /** 빗맞은 슛이 수비 블록에 맞고 코너로 굴절될 확률(나머지는 골킥). */
     offTargetBlockCornerProb: number;
     /**
@@ -310,7 +312,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.8.0",
+  version: "engine@0.9.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -359,6 +361,7 @@ export const defaultEngineConfig: EngineConfig = {
     shootDistanceFactor: 0.025,
     onTargetBase: 0.28,
     saveCornerProb: 0.6,
+    saveCatchDepthM: 2.5, // 골라인 2.5m 앞에서 캐치 → 골문 밖(골 오인 방지). 0 이면 골라인 위.
     offTargetBlockCornerProb: 0.32,
     offTargetWideMarginM: 3.0,
     offTargetOverrunM: 3.5,

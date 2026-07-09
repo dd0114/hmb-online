@@ -22,6 +22,7 @@
 2. **판정은 독립 QA 전용 — 자기검수 금지.**
    - 내가 만든 걸 내가 "정상"이라 판정하면 편향된다(실제로 골 연출을 자기검수는 통과시켰지만 독립 QA가 FAIL 잡음).
    - 시각/동작 판정은 **별도 컨텍스트 서브에이전트 + Playwright 실제 재생**으로만. → `.claude/agents/independent-qa.md` 참조.
+   - **인지 갭 버그("보이는 것 vs 데이터")는 좌표 추론 금지 — 실화면 캡처로 확인.** 방법 = `/visual-capture-qa` 스킬(`.claude/skills/visual-capture-qa/`): Playwright 로 캔버스 스크린샷 → Read 로 직접 보기 → E2E 계약 박제(test.fail) → 수정 → before/after 재캡처. (실제로 좌표만 보고 "중앙 맞다" 오판한 적 있음.)
 3. **버그픽스·피처 = 테스트 먼저(E2E-TDD) → 검증 → 적용.** 변경 전에 기대동작을 테스트로 박제하고, 통과 확인 후 구현.
 4. **모든 튜닝값 = `EngineConfig` (하드코딩 금지).** 틱해상도·좌표모드·범위·확률·계수·포메이션 전부 config. "코드 수정 없이 config로 튜닝"이 원칙.
 5. **결정론 불변 (절대 깨지 말 것):** `Math.random`·`Date.now`·`new Date` **금지**, 위치/속도는 **고정소수(fixedmath)**, **시드 RNG 인스턴스 관통**(전역 상태 X). 동작 바뀌면 **골든 스냅샷 갱신** + 재현 N회 desync 0 + resume(하프타임 분할=통짜) 동일성 + hygiene 유지.
@@ -66,10 +67,14 @@ cd packages/engine/dev-viewer && node build-standalone.mjs && open viewer-standa
 # 기계 검증:
 node tools/perceptibility.mjs   # 관전 가독성 6/6 (공속도·spread·골빈도)
 node tools/qa-match.mjs          # 상황-데이터 정합성(골=네트, 선방=키퍼 등)
+# 이벤트↔연출 계약 E2E (V1, Playwright): 타입별 자막·공위치 계약 + 버그2건 test.fail 박제.
+npx playwright test              # globalSetup 이 풀해상도 테스트뷰어(showcase+real) 조립 후 실행
+HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 raw 실패 재현(증빙)
 # 독립 시각 QA(Playwright): .claude/agents/independent-qa.md 서브에이전트로 (자기검수 금지)
 ```
 
-- 뷰어 테스트 훅: 페이지의 `window.__viewer` — `ready() events() seek(tick) play() pause() cur() captions()`. Playwright 로 임의 틱 검수 가능.
+- 뷰어 테스트 훅: 페이지의 `window.__viewer` — `ready() events() seek(tick) play() pause() cur() captions() render() renderAt(tp) idxOfTick(t) showSituationAt(t) autoPace(on)`. Playwright 로 임의 틱 검수 가능. (`render()/renderAt` = 보간 후 렌더 공 = 순간이동 검출용, `cur()` 는 원시 스냅샷.)
+- E2E 계약: `packages/engine/dev-viewer/e2e/*.spec.ts` (captions·save·goal-flight·restarts·fouls·shot-outcomes·whistles). 입력로그(match-log.json=showcase, fixture-real.json=offside/card 커버)는 gitignore 생성물 — globalSetup 이 없으면 vitest 로 생성.
 - Playwright chromium 설치돼 있음(`~/Library/Caches/ms-playwright`). 없으면 `npx playwright install chromium`.
 - pnpm은 이 환경에서 corepack 이슈로 깨짐 → **npm 사용**.
 
@@ -83,12 +88,16 @@ node tools/qa-match.mjs          # 상황-데이터 정합성(골=네트, 선방
 |---|---|---|
 | S2 (#8) | shared 직렬화 스키마 | ✅ CLOSED |
 | S1 (#7) | 공간 결정론 엔진 + 디버그 뷰어 | ✅ CLOSED — **Gate G1 PASS**(독립 QA CLEAN PASS) |
-| S3 (#9) | AI 파이프라인: 프롬프트→행동 파라미터 (Claude) | ⏳ **다음(Wave 2)** |
+| V1 (#14) | 이벤트↔연출 계약 E2E 하네스 (Playwright) | ⏳ **다음(Wave 1.5, 진입점)** |
+| V2 (#15) | 엔진 0.9.0: 선방/골 기하 분리 | ⏳ Wave 1.5 (V1 후, V3 과 병렬) |
+| V3 (#16) | 뷰어: 골 비행 순간이동 제거 | ⏳ Wave 1.5 (V1 후, V2 와 병렬) |
+| V4 (#17) | **Gate G1.5**: 독립 QA 이벤트별 연출 판정 | ⏳ Wave 1.5 (V2+V3 후) |
+| S3 (#9) | AI 파이프라인: 프롬프트→행동 파라미터 (Claude) | ⏳ Wave 2 (G1.5 통과 후) |
 | S5 (#11) | 매치 세션 + 5-상태 상태머신(하프타임 연속 재개) | ⏳ Wave 2 |
 | S4 (#10) | 움직임·밸런스 검증 리포트 (Go/No-Go 게이트) | ⏳ Wave 3 |
-| S6 (#12) | PixiJS 정식 렌더 + 개입 UI + E2E | ⏳ Wave 3 |
+| S6 (#12) | PixiJS 정식 렌더 + 개입 UI + E2E | ⏳ Wave 4 |
 
-**다음 할 일: Wave 2 (S3 + S5).** S3 = 자연어 프롬프트를 `TacticalInput`(행동 파라미터, `packages/shared`)로 변환하는 Claude tool-use 파이프라인(`packages/server`). 이게 이 게임의 진짜 핵심(프롬프트가 움직임을 바꾸는 것).
+**다음 할 일: Wave 1.5 (V1→V2∥V3→V4).** G1 통과 후 hero 가 이벤트↔인지 갭 버그 보고(선방이 골처럼 보임 / 골 공 순간이동). 원인·계획 = 이슈 #13 의 2026-07-09 코멘트. 요지: 선방→골 혼동은 엔진이 세이브 공을 골문 안에 파킹하는 데이터 문제(`contest.ts:599-614`), 순간이동은 뷰어 보간 컷 버그(`playback.mjs:12` + `index.html:366`). **엔진 재작성 불요.** 각 이슈에 sk-goal 종료 조건 포함 — 새 세션(sonnet)+`/sk-goal` 로 #14 부터. Wave 2 는 G1.5 통과 후.
 
 ---
 
@@ -104,8 +113,9 @@ node tools/qa-match.mjs          # 상황-데이터 정합성(골=네트, 선방
 | 0.6.0 | 빗맞은슛 코너 순간이동 버그 수정 |
 | 0.7.0 | 빗맞은슛 골라인 밖으로 벗어나 보이게 |
 | 0.8.0 | 골 후 킥오프 포메이션 리셋(t0 슬롯 일치) + kickoff 이벤트 + 실점팀 소유 |
+| 0.9.0 | **선방 공을 골라인 앞 캐치 지점으로**(`saveCatchDepthM`=2.5m) — "선방인데 골처럼" 해소(V2 #15). 기하로 골(네트)/선방(골문 앞) 분리. |
 
-뷰어(연출): 데드볼 정지→상황자막→skip, 골(GOAL, 골문 줌)과 상황카드(선방/빗나감/파울/오프사이드/PK) 분리, 하이라이트 자동페이싱, 타임라인 골 마커+시계, playback.mjs 순수화+테스트.
+뷰어(연출): 데드볼 정지→상황자막→skip, 골(GOAL, 골문 줌)과 상황카드(선방/빗나감/파울/오프사이드/PK) 분리, 하이라이트 자동페이싱, 타임라인 멀티 이벤트 핀(골/PK/선방/유효슛/코너, 클릭점프)+시:초 시계, 유효슛 링 이펙트, 코너·프리킥 pause 비트, **골 인바운드 보간 유지(순간이동 제거, V3 #16)**, playback.mjs 순수화+테스트. 이벤트↔연출 E2E 계약(`e2e/*.spec.ts`)로 회귀 방지.
 
 ---
 
@@ -122,10 +132,10 @@ node tools/qa-match.mjs          # 상황-데이터 정합성(골=네트, 선방
 
 ## 8. 알려진 비-blocker (Backlog, 낮은 우선순위)
 
-- 슛 접근이 하드컷(공이 슈터 발밑→줌 freeze로, 날아가는 모션 없음). 도착 상태는 명확해 관객 오해 없음.
+- ~~슛 접근 하드컷(순간이동)~~ → **해결(0.9.0/V3 #16)**: 골 인바운드 보간 유지. 잔여: 슛 비행이 1~3틱뿐(shotBallSpeed 높음)이라 아주 빠름 — 더 부드럽게 하려면 sub-tick 샘플/속도↓(엔진).
 - 킥오프 직후 궤적 잔상선이 피치 가로질러 지그재그로 그려짐(시각 클러터).
 - freeze→킥오프 렌더/자막 1프레임 desync(코스메틱).
-- 쇼케이스 골 빈도가 시드에 따라 perceptibility 골빈도 기준(≤75초/골)을 살짝 넘을 수 있음(단일 시드 분산).
+- 선방 슛은 keyTicks(하이라이트 슬로우) 대상이 아니라 빠르게 지나감 — 필요 시 keyTicks 에 포함.
 
 ---
 

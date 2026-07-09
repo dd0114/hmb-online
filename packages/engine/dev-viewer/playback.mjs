@@ -8,8 +8,10 @@ export function eventKind(e) {
     : e.type;
 }
 
-// 공이 세트피스 스팟으로 "재배치(순간이동)"되는 이벤트들. 이 틱 경계에서만 컷.
-const REPOSITION = new Set(["corner", "goal_kick", "throw_in", "free_kick", "penalty", "kickoff", "goal"]);
+// 공이 세트피스 스팟으로 "재배치(순간이동)"되는 이벤트들. 이 틱 경계에서만 보간을 컷.
+// ⚠️ goal 은 여기 넣지 않는다: 슛 발사→네트로 "날아 들어가는" 마지막 비행 레그를 컷하면
+//    공이 안 보이고 순간이동한다(V3 #16). 골 후 네트→센터 리셋은 뒤따르는 kickoff(집합 포함)가 컷하므로 안전.
+const REPOSITION = new Set(["corner", "goal_kick", "throw_in", "free_kick", "penalty", "kickoff"]);
 
 /** 데드볼 재배치가 일어나는 틱 집합. */
 export function buildRestartTicks(events) {
@@ -52,6 +54,10 @@ export function buildStoppages(events) {
       if (eventKind(events[j]) === "kickoff") return events[j].tick;
     return nextRestart(fromIdx, fromTick, span);
   };
+  // 세트피스 "정지 비트": 자막 없이 짧게 freeze 만(공이 스팟에 놓인 걸 눈으로 확인). 배너는 annotation 이 담당.
+  //  - 그 자리에서 재개(restartTick=causeTick)하므로 프레임 스킵 없음 = 순수 일시정지.
+  // 코너·프리킥만(자주 나오는 골킥/스로인은 정지가 오히려 노이즈라 제외).
+  const PAUSE_BEAT = { corner: 700, free_kick: 600 };
   const out = [];
   for (let i = 0; i < events.length; i++) {
     const k = eventKind(events[i]);
@@ -61,8 +67,15 @@ export function buildStoppages(events) {
       continue;
     }
     const c = CAUSE[k];
-    if (!c) continue;
-    out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 45), big: c.big, bigCol: c.col, hold: c.hold, isGoal: false, done: false });
+    if (c) {
+      out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 45), big: c.big, bigCol: c.col, hold: c.hold, isGoal: false, done: false });
+      continue;
+    }
+    const beat = PAUSE_BEAT[k];
+    if (beat) {
+      // pauseOnly: 상황카드 없이 그 틱에서 freeze 후 제자리 재개. 배너(annotation)만 보인다.
+      out.push({ causeTick: events[i].tick, restartTick: events[i].tick, big: "", bigCol: "", hold: beat, isGoal: false, pauseOnly: true, done: false });
+    }
   }
   return out;
 }

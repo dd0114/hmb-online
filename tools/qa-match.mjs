@@ -31,7 +31,7 @@ for (const g of ev.filter((e) => e.type === "goal")) {
   if (after.h + after.a <= before.h + before.a) P(`골 t${g.tick}: score 증가 안 함`);
 }
 
-// 2) 선방: 공이 골문(키퍼, y 포스트내) + 그 틱에 골 아님(score 불변) + 이후 재시작(코너 등) 존재.
+// 2) 선방: 공이 골라인 앞(키퍼 캐치, 골문 밖) + 그 틱에 골 아님(score 불변).
 for (const s of ev.filter((e) => e.type === "save")) {
   const b = ballAt(s.tick);
   if (!b) { P(`선방 t${s.tick}: 스냅샷 없음`); continue; }
@@ -40,6 +40,8 @@ for (const s of ev.filter((e) => e.type === "save")) {
   if (goalNear) P(`선방 t${s.tick} ${s.team}: 근처(±2)에 골 이벤트 t${goalNear.tick} — 선방↔골 혼동 위험`);
   const bScore = scoreAt(s.tick - 1), aScore = scoreAt(s.tick + 3);
   if (aScore.h + aScore.a > bScore.h + bScore.a) P(`선방 t${s.tick}: 직후 score 증가(선방인데 득점 처리?)`);
+  // 새 계약(V2): 공이 골라인 위(±1m, 골문 안)면 골로 오인 → 캐치는 골라인 앞이어야 한다.
+  if (b.x <= 1 || b.x >= 104) P(`선방 t${s.tick}: 공 x 가 골라인 위 (${b.x.toFixed(1)}) — 골문 안, 골 오인`);
   if (!inPosts(b.y)) P(`선방 t${s.tick}: 공 y 가 포스트 밖 (${b.y.toFixed(1)}) — 키퍼 위치 아님`);
 }
 

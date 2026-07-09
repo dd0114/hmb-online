@@ -1,0 +1,6 @@
+# e2e 생성물(globalSetup 이 조립/생성) — match-log.json 처럼 gitignore.
+viewer-test.html
+viewer-real.html
+fixture-real.json
+test-results/
+playwright-report/
