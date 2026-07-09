@@ -252,6 +252,12 @@ export interface EngineConfig {
     cornerBoxReach: number;
     /** 파이널서드 경계(공격 방향 정규화 x, 0..1). 패스/코너 판정용. */
     finalThirdLine: number;
+    /** 코너 크로스 공 비행 속도(m/tick). taker 가 박스로 올리는 딜리버리. */
+    crossSpeed: number;
+    /** 코너 크로스 낙하점 깊이(골라인에서 필드 안쪽 m). 6야드~페널티스팟 부근. */
+    crossDepthM: number;
+    /** 코너 크로스 낙하점 중앙 기준 좌우 산포 최대(m). 시드로 ±이 범위. */
+    crossWidthM: number;
   };
 
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
@@ -423,6 +429,9 @@ export const defaultEngineConfig: EngineConfig = {
     resetFormationOnKickoff: true,
     cornerBoxReach: 0.85,
     finalThirdLine: 0.66,
+    crossSpeed: 16,
+    crossDepthM: 10,
+    crossWidthM: 12,
   },
   softCap: 0.25,
   fatiguePerTick: 0.0009,

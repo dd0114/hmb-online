@@ -29,6 +29,7 @@ import {
   restartGoalKick,
   restartCorner,
   restartFreeKick,
+  launchCornerCross,
   checkOffside,
 } from "./contest";
 import { attackGoal } from "./pitch";
@@ -270,6 +271,10 @@ function stepTick(carry: Carry): void {
             detail: "penalty",
           });
         }
+      } else if (sp && sp.kind === "corner") {
+        // 코너 정지 종료 → taker 가 공을 박스 중앙으로 크로스(드리블로 몰고 나가지 않게, #31).
+        // setPiece 는 아래서 null → 다음 틱부터 크로스 비행이 advanceBall 로 진행, resolveArrival 로 경합.
+        launchCornerCross(state, pitch, config, rng);
       }
       if (!keepSetPiece) state.setPiece = null;
     }

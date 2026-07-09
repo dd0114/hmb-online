@@ -117,6 +117,9 @@ function placeRestart(
   if (taker) {
     taker.posFx.x = spot.x;
     taker.posFx.y = spot.y;
+    // targetFx 도 스팟으로 리셋: 안 하면 정지(stoppage) 동안 위치적분 루프가 오픈플레이 잔여
+    // targetFx 로 taker 를 계속 걸어가게 해 공이 코너/스로인 스팟에서 드리프트한다(#31 독립 QA 발견).
+    taker.targetFx = { x: spot.x, y: spot.y };
     giveBallTo(state, taker);
   } else {
     state.ball.posFx = { x: spot.x, y: spot.y };
@@ -175,6 +178,48 @@ export function restartCorner(
   const cornerY = nearY < Math.round(pitch.hFx / 2) ? 0 : pitch.hFx;
   const taker = placeRestart(state, pitch, config, side, g.x, cornerY, "corner");
   return { tick, minute, type: "kickoff", team: side, playerId: taker?.id, detail: "corner" };
+}
+
+/**
+ * 코너 정지 종료 시 taker(공 소유자)가 공을 **박스 중앙으로 크로스**(딜리버리)한다.
+ * 페널티가 골로 flight 를 쏘듯, 코너는 박스 낙하점으로 pass flight 를 쏜다 → resolveArrival 이
+ * 낙하점 최근접(공/수)에게 컨트롤을 준다(박스 크라우딩과 경합). taker 가 드리블로 몰고 나가는
+ * 버그(#31) 제거. 낙하점은 골라인에서 crossDepthM 안쪽, 중앙 ± crossWidthM(시드 산포).
+ */
+export function launchCornerCross(
+  state: SimState,
+  pitch: Pitch,
+  config: EngineConfig,
+  rng: Rng,
+): void {
+  const taker = state.ball.owner ? state.byId.get(state.ball.owner) : null;
+  if (!taker) return;
+  const g = attackGoal(pitch, taker.side);
+  const center = Math.round(pitch.hFx / 2);
+  const inward = taker.side === "home" ? -1 : 1; // 골라인에서 필드 안쪽 방향.
+  const scale = config.fixedScale;
+  const depth = toFixed(config.setPiece.crossDepthM, scale);
+  const spread = Math.round((rng.next() * 2 - 1) * toFixed(config.setPiece.crossWidthM, scale));
+  const t = clampToPitch(pitch, g.x + inward * depth, center + spread);
+  // 명목 수신자: 낙하점 최근접 공격 아웃필더(resolveArrival 폴백용; 최종 컨트롤은 실제 최근접).
+  let rec: SimPlayer | null = null;
+  let bestD = Infinity;
+  for (const p of state.players) {
+    if (p.side !== taker.side || p.isGK || p.id === taker.id) continue;
+    const d = fdist(p.posFx.x, p.posFx.y, t.x, t.y);
+    if (d < bestD) { bestD = d; rec = p; }
+  }
+  state.ball.flight = {
+    toX: t.x,
+    toY: t.y,
+    speed: toFixed(config.setPiece.crossSpeed, scale),
+    kind: "pass",
+    target: rec ? rec.id : undefined,
+    fromSide: taker.side,
+  };
+  state.ball.owner = null;
+  state.ball.ownerSide = null;
+  taker.dribbleStreak = 0;
 }
 
 /** 공격 방향 정규화 진행도(0:자기골 라인, 1:상대골 라인). */

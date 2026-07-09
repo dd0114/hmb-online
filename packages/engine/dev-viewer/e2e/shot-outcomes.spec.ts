@@ -5,6 +5,8 @@ import { loadViewer, eventsOfType, ballAtTick, outsideGoalLine, inGoalMouth, VIE
 test.beforeEach(async ({ page }) => { await loadViewer(page); });
 
 test("off_target → 공이 골라인 밖으로 벗어난다(옆/뒤)", async ({ page }) => {
+  // 쇼케이스 시드엔 off_target 이 없을 수 있어 real config 픽스처(off_target 다수)로 검증.
+  await loadViewer(page, VIEWER_REAL_URL);
   const offs = await eventsOfType(page, "shot", "off_target");
   expect(offs.length).toBeGreaterThan(0);
   for (const o of offs) {

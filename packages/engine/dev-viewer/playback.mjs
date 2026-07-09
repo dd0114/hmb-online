@@ -54,10 +54,16 @@ export function buildStoppages(events) {
       if (eventKind(events[j]) === "kickoff") return events[j].tick;
     return nextRestart(fromIdx, fromTick, span);
   };
-  // 세트피스 "정지 비트": 자막 없이 짧게 freeze 만(공이 스팟에 놓인 걸 눈으로 확인). 배너는 annotation 이 담당.
-  //  - 그 자리에서 재개(restartTick=causeTick)하므로 프레임 스킵 없음 = 순수 일시정지.
-  // 코너·프리킥만(자주 나오는 골킥/스로인은 정지가 오히려 노이즈라 제외).
-  const PAUSE_BEAT = { corner: 700, free_kick: 600 };
+  // 세트피스 큰 자막 정지(#29 hero 요구): 공이 나가면 "코너킥!/스로인!" 크게 띄우고 freeze →
+  // 제자리 재개(restartTick=causeTick, 프레임 스킵 없음). setPiece:true → freeze 중 taker(공 소유자)로
+  // 줌해 "던지는/차는 선수"를 크게 보여준다(#26 taker 잘림 수정이 전제). hold 는 관전 페이싱 튜닝값 —
+  // 스로인은 빈도 높아 짧게. 배너(annotation)는 보조로 병행.
+  const SETPIECE_STOP = {
+    corner: { big: "⛳ 코너킥!", col: "#e7edf6", hold: 900 },
+    throw_in: { big: "🙌 스로인!", col: "#e7edf6", hold: 650 },
+  };
+  // 프리킥만 자막 없는 짧은 정지 비트 유지(골킥은 빈도 높아 무정지).
+  const PAUSE_BEAT = { free_kick: 600 };
   const out = [];
   for (let i = 0; i < events.length; i++) {
     const k = eventKind(events[i]);
@@ -69,6 +75,11 @@ export function buildStoppages(events) {
     const c = CAUSE[k];
     if (c) {
       out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 45), big: c.big, bigCol: c.col, hold: c.hold, isGoal: false, done: false });
+      continue;
+    }
+    const sp = SETPIECE_STOP[k];
+    if (sp) {
+      out.push({ causeTick: events[i].tick, restartTick: events[i].tick, big: sp.big, bigCol: sp.col, hold: sp.hold, isGoal: false, setPiece: true, done: false });
       continue;
     }
     const beat = PAUSE_BEAT[k];
