@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+.git
+packages/engine/dev-viewer/match-log.json
+packages/engine/dev-viewer/viewer-standalone.html
+packages/engine/dev-viewer/e2e/viewer-*.html
+packages/engine/dev-viewer/e2e/fixture-real.json
+packages/engine/poc/match-*.json
+test-results
+playwright-report
+evidence
