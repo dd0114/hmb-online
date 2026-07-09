@@ -2,9 +2,10 @@
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "paths": {
-      "@hmb/shared": ["./packages/shared/src/index.ts"]
+      "@hmb/shared": ["./packages/shared/src/index.ts"],
+      "@hmb/engine": ["./packages/engine/src/index.ts"]
     }
   },
   "include": ["packages/**/*.ts", "apps/**/*.ts"],
-  "exclude": ["**/node_modules", "**/dist", "packages/engine/dev-viewer/e2e"]
+  "exclude": ["**/node_modules", "**/dist", "packages/engine/dev-viewer/e2e", "packages/server"]
 }
