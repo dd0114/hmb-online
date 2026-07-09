@@ -1,14 +1,24 @@
-=== AC-demo: dev-viewer/generate-demo → match-log.json ===
+=== AC-demo: dev-viewer/generate-demo → match-log.json (engine@0.7.0) ===
 생성 명령(Node 20): npx vitest run packages/engine/dev-viewer/generate-demo.test.ts
 생성 명령(Node 22+): node --experimental-strip-types packages/engine/dev-viewer/generate-demo.ts
 
-stdout | packages/engine/dev-viewer/generate-demo.test.ts > dev-viewer demo generation > writes match-log.json with a full match
-[generate-demo] wrote /Users/peter.park/spider/hmb-online/packages/engine/dev-viewer/match-log.json {"configVersion":"engine@0.1.0","seed":"4815162342","ticks":5400,"finalScore":{"home":3,"away":0},"events":3246,"goals":3,"shots":147,"lastHash":"bacf7268"}
- ✓ packages/engine/dev-viewer/generate-demo.test.ts (1 test) 158ms
- Test Files  1 passed (1)
-      Tests  1 passed (1)
+뷰어용 로그는 showcaseConfig(engine@0.7.0-showcase, matchMinutes=24, xgBase·onTarget·변주↑)로
+찬스/슛/하이라이트를 리얼보다 더 많이 만들고, 스탯 증빙(AC-stats-v2)은 리얼 config(engine@0.7.0)로 계측한다.
 
-=== match-log.json 파일 ===
--rw-r--r--@ 1 peter.park  staffAlias  7870182 Jul  8 00:45 packages/engine/dev-viewer/match-log.json
-size(bytes):  7870182
-configVersion engine@0.1.0 seed 4815162342 ticks 5400 finalScore {"home":3,"away":0} events 3246
+리얼 config summary(스탯 증빙, seed 4815162342):
+  configVersion engine@0.7.0, ticks 5400, finalScore home1:away5, goals 6, events 1560, lastHash 065b0a25.
+
+=== match-log.json 파일(쇼케이스, 뷰어 입력) ===
+configVersion engine@0.7.0-showcase seed 4815162342 (showcase 24분=1440틱) — 뷰어 애니메이션 입력.
+쇼케이스 최종 스코어 4:2. 이벤트 타입: kickoff/pass/interception/tackle/shot/goal/save/foul/free_kick/offside.
+티커·하이라이트에 파울·오프사이드·프리킥·카드·페널티·세이브 표시(색/라벨), 페널티는 keyTick 하이라이트 포함.
+standalone: node packages/engine/dev-viewer/build-standalone.mjs → viewer-standalone.html.
+
+주: engine@0.7.0 은 빗맞은 슛(off_target)이 "골대 옆으로 벗어나 보이게" 개선한다. 이전엔 공이 골라인 위
+포스트 살짝 밖(x=105/0)에서 멈춰 골문 바로 옆에 정지한 것처럼 보였다 → 이제 공이 골라인을 넘어
+(x≈108.5 또는 -3.5, offTargetOverrunM) 포스트 바깥(y≈27/41, offTargetWideMarginM)으로 필드 밖으로 나가는
+"슉 벗어나는" 프레임이 보인 뒤 shot_out 짧은 정지→골킥/코너로 재시작된다. 좌우/상하 빗맞음은 슈터 y 편향 +
+시드 롤(offTargetSideBias)로 높게/낮게 갈려 항상 같은 쪽 반복이 사라진다. 세이브 공은 여전히 키퍼(골문 y≈34)에
+shot_aftermath 정지 동안 머문 뒤 코너. 세이브/빗맞음 모두 코너 깃발(y=0/68) 직행 금지(shot_out 프레임 경유).
+슛 도착 검증(코너 0건)은 AC-shot-target.log, 규칙 빈도·후진패스 근거는 AC-rules.log,
+벤치마크 대조 스탯은 AC-stats-v2.log, 골-인-네트 검증은 AC-goal-in-net.log, 변주 전/후 대조는 AC-variety.log 참조.

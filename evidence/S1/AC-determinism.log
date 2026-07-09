@@ -1,17 +1,30 @@
+=== AC-determinism: 재현성/재개/위생 (engine@0.7.0) ===
+명령: npx vitest run packages/engine
 
- RUN  v2.1.9 /Users/peter.park/spider/hmb-online
-
- ✓ packages/engine/src/hygiene.test.ts (4 tests) 9ms
-stdout | packages/engine/dev-viewer/generate-demo.test.ts > dev-viewer demo generation > writes match-log.json with a full match
-[generate-demo] wrote /Users/peter.park/spider/hmb-online/packages/engine/dev-viewer/match-log.json {"configVersion":"engine@0.1.0","seed":"4815162342","ticks":5400,"finalScore":{"home":3,"away":0},"events":3246,"goals":3,"shots":147,"lastHash":"bacf7268"}
-
- ✓ packages/engine/dev-viewer/generate-demo.test.ts (1 test) 188ms
- ✓ packages/engine/src/resume.test.ts (2 tests) 289ms
- ✓ packages/engine/src/determinism.test.ts (4 tests) 5044ms
-   ✓ determinism (AC3) > reproduces identical result across 80 runs (desync 0) 4717ms
+ ✓ packages/engine/src/hygiene.test.ts (4 tests)
+ ✓ packages/engine/src/resume.test.ts (2 tests)
+   ✓ halftime resume equals monolithic (AC: resume) > split first/second half reproduces the whole-match log
+ ✓ packages/engine/dev-viewer/generate-demo.test.ts (1 test)
+ ✓ packages/engine/src/determinism.test.ts (4 tests)
+   ✓ determinism (AC3) > reproduces identical result across 80 runs (desync 0)
+   ✓ determinism (AC3) > every tick hash is stable between two runs
+   ✓ determinism (AC3) > different seed diverges (hash sensitivity)
+   ✓ determinism (AC3) > golden summary snapshot (score + event count + final hash)
 
  Test Files  4 passed (4)
       Tests  11 passed (11)
-   Start at  00:44:40
-   Duration  5.63s (transform 195ms, setup 0ms, collect 368ms, tests 5.53s, environment 1ms, prepare 470ms)
 
+루트 타입체크: npx tsc --noEmit -p tsconfig.json → 통과(0 error).
+
+요약:
+ - 재현성: 동일 입력 80회 재실행 desync 0 (finalScore/틱해시/이벤트수 동일).
+ - 재개 동일성: runFirstHalf + resumeSecondHalf == runMatch (전 틱 해시·이벤트 일치).
+   → 빗맞은 슛 골라인 오버런(필드 밖 이탈 프레임) + 좌우 분산 시드 롤 추가 후에도 하프타임 분할 재개가
+     통짜와 완전 동일. shot_out 정지·지연 재시작은 stoppage 카운트다운으로만 진행되어 관통 시드 Rng 오염 없음.
+ - 위생: Math.random / Date.now / new Date 0건. 오프더볼 변주는 무상태 시드 해시(seed+id+tick),
+   볼 소유자 변주·규칙 판정·슛 판정(빗맞음 좌우 분산 포함)은 관통 Rng 만 사용(전역 난수 없음).
+ - 골든 갱신(engine@0.7.0): score home1-away5, goals 6, events 1560, firstHash 199e8039, lastHash 065b0a25.
+   (0.6.0 golden 7005d4a5 → off_target 도착점이 골라인을 넘는 오버런으로 바뀌고 좌우 분산용 rng.next() 를
+    슛 판정당 1회 추가 소모하며 Rng 스트림 타이밍이 바뀌어 해시 전면 변경이 정상. 결정론 자체는 desync 0 로 유지.)
+ - 결정론 노브: 새 수치·확률은 전부 EngineConfig(setPiece.shotAftermathStoppageTicks,
+   contest.offTargetOverrunM/offTargetWideMarginM/offTargetSideBias/centralShootHalfM 등)로 격리 — 하드코딩 없음. 고정소수 유지.

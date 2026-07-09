@@ -1,0 +1,8 @@
+
+ ✓ packages/shared/test/schema.test.ts (8 tests) 5ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  00:22:42
+   Duration  523ms (transform 79ms, setup 0ms, collect 100ms, tests 5ms, environment 0ms, prepare 112ms)
+
