@@ -132,6 +132,7 @@
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
+      const CAM_SMOOTH = 0.12;                 // 정지(freeze) 중 카메라 팬 속도(0..1/frame). 정지→정지 줌 순간이동 방지.
       const BALL_TRAIL = 6, PLAYER_TRAIL = 10; // 잔상 길이(틱). 공 트레일은 짧은 최근 꼬리(피치 가로지르는 지그재그 클러터 방지).
       const TICKS_PER_SEC = 2;                  // 1x = 2 게임초/실초 (거의 실시간, 공이 눈에 따라감)
       const CRUISE_SPEED = 4, HL_SPEED = 1, HL_WINDOW = 8; // 하이라이트 자동페이싱: 빌드업 4x → 찬스 근처 1x
@@ -158,6 +159,7 @@
       let lastRender = null; // 마지막 draw()의 렌더된 공(보간 후) — Playwright 계약검증용(__viewer.render()).
       let lastGeom = null;   // 마지막 draw()의 화면좌표 기하(캔버스px) — taker/공 클리핑 계약검증용(__viewer.screenGeom()).
       let lastPlayers = [];  // 마지막 draw()의 렌더된(보간 후) 선수 피치좌표 — 세트피스 taker 슬라이드 검출용.
+      let frameDt = 1 / 60;  // 직전 프레임 실경과(초). 카메라 팬을 주사율 무관하게(dt 정규화).
       const TOAST_TICKS = 5, BANNER_TICKS = 16;
       const idxOfTick = (tick) => { const i = snaps.findIndex((s) => s.tick >= tick); return i < 0 ? snaps.length - 1 : i; };
       // 가로·세로 양쪽에 MARGIN 이 남도록 letterbox-fit(작은 배율 채택). 예전엔 폭만 맞춰
@@ -208,7 +210,16 @@
         const koTweening = hold && hold.koIdx != null && hold.tween > 0.4;
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
         const useFollow = !koTweening && (follow || nearKey || (hold ? !!hold.zoom : false));
-        cam = useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
+        const camTarget = useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
+        // 정지(freeze) 중에만 카메라를 목표로 부드럽게 팬(연속 정지 전환의 순간이동 방지: 세이브 줌→코너 줌).
+        // 오픈플레이 follow 와 seek/일시정지는 스냅(기존 동작·계약검증 무영향). 정지 중엔 공이 멈춰 팬해도 랙 없음.
+        // dt 정규화(60fps 기준) → 팬 지속시간이 모니터 주사율(60/120Hz)에 무관하게 일정.
+        const cs = playing && hold ? 1 - Math.pow(1 - CAM_SMOOTH, Math.min(3, frameDt * 60)) : 1;
+        cam = {
+          cx: cam.cx + (camTarget.cx - cam.cx) * cs,
+          cy: cam.cy + (camTarget.cy - cam.cy) * cs,
+          zoom: cam.zoom + (camTarget.zoom - cam.zoom) * cs,
+        };
         drawPitch();
 
         // 선수 잔상(옵션)
@@ -394,6 +405,7 @@
       function tickLoop(ts) {
         if (!lastTs) lastTs = ts;
         const dt = (ts - lastTs) / 1000; lastTs = ts;
+        frameDt = dt;
         if (hold) {
           // 골 세리머니 트윈 진행도 갱신 + 후반부엔 줌 해제(선수들이 포메이션으로 걸어 복귀하는 걸 보여줌).
           if (hold.koIdx != null) {
