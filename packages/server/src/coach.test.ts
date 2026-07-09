@@ -1,22 +1,17 @@
 import { describe, it, expect } from "vitest";
-import { buildCoachMessages, validateCoachOutput, COACH_SYSTEM } from "./coach.js";
+import { validateCoachOutput, promptToTacticalInput, type CoachRequest } from "./coach.js";
+import { stubCoachBackend } from "./backends/stub.js";
 import { makeTacticalInput } from "@hmb/engine";
 
-// 코치의 순수 경로(프롬프트 구성 + 검증/클램프) 테스트 — Claude 호출 없음(키 불필요).
+// 코치의 백엔드-무관 경로(가드레일 + 백엔드 배선) 테스트 — Claude 호출 없음(키 불필요, stub 백엔드).
 // 라이브 프롬프트→움직임 패리티(AC3)는 별도 키-게이트 테스트에서.
 
-describe("coach — buildCoachMessages", () => {
-  it("roster·seed·directive 를 user 프롬프트에 담고 system 은 고정", () => {
-    const { system, user } = buildCoachMessages({
-      directive: "풀백 오버랩·와이드",
-      rosterContext: "H0 GK(0.05,0.5)",
-      seed: "4815162342",
-      prefix: "H",
-    });
-    expect(system).toBe(COACH_SYSTEM);
-    expect(user).toContain("풀백 오버랩·와이드");
-    expect(user).toContain("H0 GK(0.05,0.5)");
-    expect(user).toContain("4815162342");
+describe("coach — promptToTacticalInput (백엔드 주입)", () => {
+  it("stub 백엔드로 검증 통과한 TacticalInput 을 반환", async () => {
+    const req: CoachRequest = { directive: "풀백 오버랩·와이드", rosterContext: "H0 GK", seed: "42", prefix: "H" };
+    const out = await promptToTacticalInput(req, stubCoachBackend());
+    expect(out.players).toHaveLength(11);
+    expect(out.players[0]!.playerId).toBe("H0");
   });
 });
 

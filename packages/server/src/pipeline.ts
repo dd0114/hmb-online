@@ -1,6 +1,8 @@
 import { runMatch, makeSelectData, makeTacticalInput, defaultEngineConfig } from "@hmb/engine";
 import type { MatchLog } from "@hmb/shared";
 import { promptToTacticalInput, type CoachRequest } from "./coach.js";
+import type { CoachBackend } from "./coach-backend.js";
+import { defaultCoachBackend } from "./coach-factory.js";
 
 // 코치 프롬프트용 로스터 컨텍스트(4-3-3 기본). S3b 에서 SelectData/포메이션에서 동적으로 파생.
 const ROSTER_CONTEXT = [
@@ -13,9 +15,9 @@ const ROSTER_CONTEXT = [
  * 서버 권위 파이프라인: 감독 지시 → (코치=AI) 홈 TacticalInput → 결정론 runMatch → MatchLog.
  * 상대(away)는 현재 중립 베이스라인. S3b 에서 양팀 프롬프트·개입(하프타임) 확장.
  */
-export async function runFromDirective(directive: string, seed: string): Promise<MatchLog> {
+export async function runFromDirective(directive: string, seed: string, backend?: CoachBackend): Promise<MatchLog> {
   const req: CoachRequest = { directive, rosterContext: ROSTER_CONTEXT, seed, prefix: "H" };
-  const home = await promptToTacticalInput(req);
+  const home = await promptToTacticalInput(req, backend ?? defaultCoachBackend());
   const away = makeTacticalInput("A", seed); // 중립 베이스라인 상대
   const select = makeSelectData();
   return runMatch(seed, home, away, select, defaultEngineConfig);

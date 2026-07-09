@@ -23,12 +23,17 @@ docker build -f packages/server/Dockerfile -t hmb-server:0.0.1 .
 docker run -p 8787:8787 -e ANTHROPIC_API_KEY=sk-... hmb-server:0.0.1
 ```
 
-## 구조 (S3b 진입점)
-- `src/coach.ts` — `promptToTacticalInput(req)` **계약만 확정, 미구현**. ← 서버 트랙이 여기 채움:
-  `@anthropic-ai/sdk` `client.messages.parse` + `zodOutputFormat(TacticalInput)`(structured output 강제),
-  model `claude-sonnet-5`, 결과 `clampTacticalInput`. (PoC `packages/engine/poc` 가 같은 계약 검증 완료.)
-- `src/pipeline.ts` — 코치 → `runMatch` (서버 권위 파이프라인).
-- `src/index.ts` — `node:http` 엔트리 (`GET /health`, `POST /tactical`).
+## 구조 (AI 백엔드 추상화)
+"AI 가 도는 방식"을 **`CoachBackend` 인터페이스**로 추상화 — 나중에 다른 AI/transport 로 갈아끼운다.
+- `src/coach.ts` — 백엔드 무관 코어: `validateCoachOutput`(가드레일: zod+11명/prefix+clamp), `tacticalJsonSchema`, `promptToTacticalInput(req, backend)`.
+- `src/coach-backend.ts` — `CoachBackend` 인터페이스(`generate(req) → raw`).
+- `src/backends/anthropic.ts` — Claude tool-use(JSON 강제) + 프롬프트 캐싱(system+roster). **기본 모델 sonnet**(`claude-sonnet-5`), `opts.model`/`COACH_MODEL` 로 스왑. 인증: `ANTHROPIC_API_KEY`(메터드) 또는 미설정 시 `claude login` 구독 프로필(정액제).
+- `src/backends/stub.ts` — 결정론 스텁(키/네트워크 불필요) — 오프라인·테스트·CI. directive 키워드로 성향만 조정.
+- `src/coach-factory.ts` — `defaultCoachBackend()`: `COACH_BACKEND=anthropic|stub`(기본: 자격증명 있으면 anthropic, 없으면 stub).
+- `src/pipeline.ts` — 코치(백엔드) → `runMatch`. `src/index.ts` — `GET /health`, `POST /tactical`.
+
+**모델 스왑**: `COACH_MODEL=claude-haiku-4-5 npm run dev -w @hmb/server` (기본 sonnet).
+**오프라인**: 키 없이도 `/tactical` 이 stub 백엔드로 200 + 경기를 반환(배선 검증).
 
 ## 소유 경계 (병렬 개발)
 - **서버 트랙**: `packages/server/**`, `Dockerfile`, 인프라. (이 패키지)

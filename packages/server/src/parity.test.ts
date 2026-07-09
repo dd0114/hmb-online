@@ -2,10 +2,12 @@ import { describe, it, expect } from "vitest";
 import { runMatch, makeSelectData, makeTacticalInput, defaultEngineConfig } from "@hmb/engine";
 import type { MatchLog } from "@hmb/shared";
 import { promptToTacticalInput, type CoachRequest } from "./coach.js";
+import { anthropicCoachBackend } from "./backends/anthropic.js";
 
-// S3b AC3 — 라이브 패리티: 실제 Claude 코치가 만든 두 전술이 PoC(#19)와 같은 방향의 움직임 차이를 내는가.
-// ANTHROPIC_API_KEY 있을 때만 실행(없으면 skip). AI 는 비결정적이라 "방향"만 단언(폭·풀백 전진).
+// S3b AC3 — 라이브 패리티: 실제 Claude 코치(anthropic 백엔드, 기본 sonnet)가 만든 두 전술이
+// PoC(#19)와 같은 방향의 움직임 차이를 내는가. ANTHROPIC_API_KEY 있을 때만 실행(없으면 skip).
 const KEY = process.env["ANTHROPIC_API_KEY"];
+const backend = anthropicCoachBackend(); // 기본 sonnet, COACH_MODEL 로 스왑 가능
 
 const ROSTER = [
   "4-3-3, playerId H0..H10. x=0(자기 골문)→1(상대 골문), y=0..1(좌우 폭).",
@@ -32,7 +34,7 @@ function fullbackAdvance(log: MatchLog): number {
 
 async function runDirective(directive: string): Promise<MatchLog> {
   const req: CoachRequest = { directive, rosterContext: ROSTER, seed: SEED, prefix: "H" };
-  const home = await promptToTacticalInput(req);
+  const home = await promptToTacticalInput(req, backend);
   const away = makeTacticalInput("A", SEED);
   return runMatch(SEED, home, away, makeSelectData(), defaultEngineConfig);
 }

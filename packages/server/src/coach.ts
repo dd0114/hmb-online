@@ -1,6 +1,6 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { TacticalInput, clampTacticalInput } from "@hmb/shared";
+import type { CoachBackend } from "./coach-backend.js";
 
 /** 감독 자연어 지시 → 팀 전술 입력(TacticalInput) 변환 요청. */
 export interface CoachRequest {
@@ -14,7 +14,7 @@ export interface CoachRequest {
   prefix: string;
 }
 
-/** 코치 시스템 프롬프트(고정). */
+/** 코치 시스템 프롬프트(고정, 백엔드 무관). */
 export const COACH_SYSTEM = [
   "너는 축구 게임의 AI 감독이다. 감독의 자연어 지시를 시뮬레이션 엔진의 전술 파라미터(TacticalInput)로 번역한다.",
   "규칙:",
@@ -25,15 +25,19 @@ export const COACH_SYSTEM = [
   "감독 지시의 의도를 파라미터로 충실히 반영하라(예: '풀백 오버랩' → 해당 풀백 widthTendency·forwardRunFreq↑; '로우블록' → defensiveLineHeight↓·compactness↑·pressAggression↓).",
 ].join("\n");
 
-/** 코치 메시지(system+user) 구성 — 순수 함수(테스트 가능, 키 불필요). */
-export function buildCoachMessages(req: CoachRequest): { system: string; user: string } {
-  const user = `${req.rosterContext}\n\nseed: ${req.seed}\n\n감독 지시:\n${req.directive}`;
-  return { system: COACH_SYSTEM, user };
+/**
+ * TacticalInput(zod v3) → JSON Schema(generic). 백엔드가 tool input_schema/structured output 으로 JSON 강제.
+ * SDK zod helper 는 zod v4 요구 → 계약(shared)은 v3 유지, 스키마만 변환.
+ */
+export function tacticalJsonSchema(): Record<string, unknown> {
+  const raw = zodToJsonSchema(TacticalInput, { $refStrategy: "none" }) as Record<string, unknown>;
+  delete raw["$schema"];
+  return raw;
 }
 
 /**
- * Claude 산출 JSON → 스키마 검증 + sanity + 가드레일(clampTacticalInput).
- * 순수 함수(테스트 가능, 키 불필요). AI 산출물의 안전 게이트.
+ * AI 산출 raw → zod 검증 + sanity(11명·prefix) + 가드레일(clampTacticalInput).
+ * 순수 함수(테스트 가능, 키·백엔드 무관). AI 산출물의 안전 게이트.
  */
 export function validateCoachOutput(raw: unknown, expectPrefix: string): TacticalInput {
   const parsed = TacticalInput.parse(raw); // zod 스키마 검증(형태·타입)
@@ -48,38 +52,11 @@ export function validateCoachOutput(raw: unknown, expectPrefix: string): Tactica
   return clampTacticalInput(parsed); // 모든 수치 유효 범위로 클램프
 }
 
-// TacticalInput(zod v3) → JSON Schema. tool-use input_schema 로 써서 JSON 을 강제한다
-// (SDK 의 zod helper 는 zod v4 요구 → 계약(shared)은 v3 유지, 스키마만 변환).
-function tacticalToolSchema(): Anthropic.Tool.InputSchema {
-  const raw = zodToJsonSchema(TacticalInput, { $refStrategy: "none" }) as Record<string, unknown>;
-  delete raw["$schema"];
-  return raw as Anthropic.Tool.InputSchema;
-}
-
-const TACTICAL_TOOL: Anthropic.Tool = {
-  name: "set_tactical_input",
-  description: "감독 지시를 반영한 팀 전술 입력(TacticalInput). 모든 behavior·team 수치는 0..1, mentalModifier 는 -1..1.",
-  input_schema: tacticalToolSchema(),
-};
-
 /**
- * 프롬프트 → TacticalInput (방식1 핵심). Claude(claude-sonnet-5) tool-use 로 JSON 강제.
- * 실행에 `ANTHROPIC_API_KEY` 필요. `client` 주입 시 테스트/모의 가능.
+ * 프롬프트 → TacticalInput (방식1 핵심). AI 실행은 주입된 `backend`(CoachBackend 인터페이스)가 담당 —
+ * anthropic(sonnet 등)·stub·다른 AI 로 교체 가능. 가드레일(validateCoachOutput)은 백엔드 무관 공통.
  */
-export async function promptToTacticalInput(req: CoachRequest, client?: Anthropic): Promise<TacticalInput> {
-  const anthropic = client ?? new Anthropic();
-  const { system, user } = buildCoachMessages(req);
-  const res = await anthropic.messages.create({
-    model: "claude-sonnet-5",
-    max_tokens: 4096,
-    system,
-    messages: [{ role: "user", content: user }],
-    tools: [TACTICAL_TOOL],
-    tool_choice: { type: "tool", name: TACTICAL_TOOL.name },
-  });
-  const block = res.content.find((b) => b.type === "tool_use");
-  if (!block || block.type !== "tool_use") {
-    throw new Error("AI 가 set_tactical_input tool 을 호출하지 않음");
-  }
-  return validateCoachOutput(block.input, req.prefix);
+export async function promptToTacticalInput(req: CoachRequest, backend: CoachBackend): Promise<TacticalInput> {
+  const raw = await backend.generate(req);
+  return validateCoachOutput(raw, req.prefix);
 }
