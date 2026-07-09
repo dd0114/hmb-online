@@ -32,6 +32,28 @@
 
 ---
 
+## 2.5 엔진 QA — 상시 트랙 (지속 규율, 1회성 아님)
+
+> 엔진·뷰어는 계속 바뀐다. QA 는 **매 변경마다 게이트로 + 정기 스윕으로 반복**하는 **상시 트랙**이다(끝나는 작업 아님).
+> SoT = **이슈 #22**(append-only progress log — 발견을 계속 쌓고, 닫지 않는다). owned-glob = `packages/engine/**`.
+> 서버 트랙(#23, `packages/server/**`)과 **병렬 안전** — `packages/shared/**`(계약)만 프리즈·조율.
+
+### QA 루프 (엔진/뷰어를 건드릴 때마다 = 게이트)
+1. **기계검증 1차**: `node tools/qa-match.mjs`(상황-데이터 정합성) + `node tools/perceptibility.mjs`(6/6). 여기서 1차로 거른다.
+2. **E2E 계약**: `npx playwright test`(이벤트↔연출 계약, `packages/engine/dev-viewer/e2e/`). 새 연출/버그는 **계약 먼저 박제**(`test.fail`, E2E-TDD) → 고치며 해제.
+3. **실화면 검증**: `/visual-capture-qa` 스킬 — Playwright 캔버스 캡처 → **Read 로 눈으로 확인** → before/after 재캡처. **좌표 추론 금지**(좌표만 보고 오판한 실적 있음).
+4. **결정론 가드**: 동작 바뀌면 `npm test`(골든 갱신 + desync 0 + resume 동일 + hygiene grep 0). §2-5 불변.
+5. **최종 판정 = 독립 QA**: `.claude/agents/independent-qa.md`(별도 컨텍스트). **자기검수 금지**(§2-2). blocker 0 이어야 통과.
+
+### 정기 스윕 (코드 변경 없어도 주기적으로)
+- **§8 백로그 소진**(코너 크로스 루틴 등), **E2E 계약 커버 확대**(계약 없는 연출 경로), **회귀 감시**(기계지표·골든).
+- 스윕 결과·발견은 **이슈 #22 progress log 에 append** → 고치면 계약 통과로 회귀 방지.
+
+### 요약 원칙
+기계검증 → E2E-TDD → 실화면 캡처 → 결정론 가드 → **독립 QA 판정**. 이걸 매번·반복해서 돈다.
+
+---
+
 ## 3. 아키텍처 (모노레포, npm workspaces)
 
 ```
@@ -142,7 +164,9 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 ## 9. 새 세션 재개 체크리스트
 
 1. `gh auth switch --hostname github.com --user dd0114` (필요 시).
-2. 이슈 #13(epic) + 열린 sub 이슈 STATE 읽기 → 어디까지 됐는지 파악.
+2. epic 읽기: #13(Phase 1 PoC) + #21(Wave 2 병렬: 엔진QA #22 ∥ 서버 #23) STATE → 어디까지 됐는지 파악.
 3. `npm test` 통과 확인, `node tools/qa-match.mjs`·`node tools/perceptibility.mjs` 로 현 상태 스냅샷.
 4. 작업 시 §2 규칙 준수 — 특히 **판정은 독립 QA로만**, **테스트 먼저**, **config로만 튜닝**, **결정론 불변**.
-5. 뷰어 확인: `cd packages/engine/dev-viewer && node build-standalone.mjs && open viewer-standalone.html`.
+5. **엔진/뷰어 변경이면 §2.5 엔진 QA 상시 루프를 매번 돈다**(기계검증→E2E-TDD→실화면캡처→결정론가드→독립QA). 발견은 이슈 #22에 append.
+6. 뷰어 확인: `cd packages/engine/dev-viewer && node build-standalone.mjs && open viewer-standalone.html`.
+7. 서버 작업이면 `packages/server/README.md` + 이슈 #23. `packages/shared/**`(계약)는 두 트랙 프리즈·조율.
