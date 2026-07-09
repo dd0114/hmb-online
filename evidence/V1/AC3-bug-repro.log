@@ -1,0 +1,53 @@
+[e2e globalSetup] built showcase(1440 snaps) + real(5400 snaps)
+
+Running 3 tests using 3 workers
+
+  ✓  3 [chromium] › packages/engine/dev-viewer/e2e/goal-flight.spec.ts:11:1 › goal 순간 공은 네트(골문 안)에 있다 (534ms)
+  ✘  1 [chromium] › packages/engine/dev-viewer/e2e/goal-flight.spec.ts:31:3 › 골 비행 순간이동 금지 › 발사→네트 비행에서 인접 프레임 공 이동량이 상한 이내 (573ms)
+  ✘  2 [chromium] › packages/engine/dev-viewer/e2e/save.spec.ts:12:1 › save 순간 공은 골문 안(골 위치)에 있으면 안 된다 (560ms)
+
+
+  1) [chromium] › packages/engine/dev-viewer/e2e/goal-flight.spec.ts:31:3 › 골 비행 순간이동 금지 › 발사→네트 비행에서 인접 프레임 공 이동량이 상한 이내 
+
+    Error: goal t92: 발사 t91→네트 t92 최대 프레임 이동 15.5m > 2.8000000000000003m = 순간이동
+
+    expect(received).toBeLessThanOrEqual(expected)
+
+    Expected: <= 2.8000000000000003
+    Received:    15.53311301703558
+
+      42 |         m,
+      43 |         `goal t${g.tick}: 발사 t${launch}→네트 t${g.tick} 최대 프레임 이동 ${m.toFixed(1)}m > ${MAX_FLIGHT_STEP}m = 순간이동`
+    > 44 |       ).toBeLessThanOrEqual(MAX_FLIGHT_STEP);
+         |         ^
+      45 |     }
+      46 |   });
+      47 | });
+        at /Users/peter.park/spider/hmb-online/packages/engine/dev-viewer/e2e/goal-flight.spec.ts:44:9
+
+    Error Context: test-results/goal-flight-골-비행-순간이동-금지-발사→네트-비행에서-인접-프레임-공-이동량이-상한-이내-chromium/error-context.md
+
+  2) [chromium] › packages/engine/dev-viewer/e2e/save.spec.ts:12:1 › save 순간 공은 골문 안(골 위치)에 있으면 안 된다 
+
+    Error: save t145 공(105.0,34.0) 이 골문 안 → 골 오인
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: false
+    Received: true
+
+      19 |       inGoalMouth(ball),
+      20 |       `save t${sv.tick} 공(${ball.x.toFixed(1)},${ball.y.toFixed(1)}) 이 골문 안 → 골 오인`
+    > 21 |     ).toBe(false);
+         |       ^
+      22 |   }
+      23 | });
+      24 |
+        at /Users/peter.park/spider/hmb-online/packages/engine/dev-viewer/e2e/save.spec.ts:21:7
+
+    Error Context: test-results/save-save-순간-공은-골문-안-골-위치-에-있으면-안-된다-chromium/error-context.md
+
+  2 failed
+    [chromium] › packages/engine/dev-viewer/e2e/goal-flight.spec.ts:31:3 › 골 비행 순간이동 금지 › 발사→네트 비행에서 인접 프레임 공 이동량이 상한 이내 
+    [chromium] › packages/engine/dev-viewer/e2e/save.spec.ts:12:1 › save 순간 공은 골문 안(골 위치)에 있으면 안 된다 
+  1 passed (1.8s)

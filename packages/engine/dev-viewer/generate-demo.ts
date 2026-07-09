@@ -31,7 +31,7 @@ export function buildDemoLog(): MatchLog {
  */
 export const showcaseConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.8.0-showcase",
+  version: "engine@0.9.0-showcase",
   matchMinutes: 24,
   decisionWeights: {
     ...defaultEngineConfig.decisionWeights,
@@ -354,7 +354,7 @@ function statsOpts(): StatsOptions {
  */
 const baselineConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.8.0-baseline",
+  version: "engine@0.9.0-baseline",
   contest: { ...defaultEngineConfig.contest, oneOnOneXgMult: 1 },
   variety: {
     ...defaultEngineConfig.variety,

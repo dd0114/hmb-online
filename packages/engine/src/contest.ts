@@ -596,8 +596,11 @@ export function resolveShot(
   // 유효슛 세이브: GK 가 슛을 막는다. 공은 먼저 키퍼(골문 중앙)에 도달(세이브 시각화).
   const gkSaver = goalkeeperOf(state, defSide);
   const saveEv: MatchEvent = { tick, minute, type: "save", team: defSide, playerId: gkSaver?.id };
+  // 캐치 지점: 골라인이 아니라 필드 안쪽 saveCatchDepthM 앞(골문 안이면 골로 오인 → V2 #15).
   const keeperGoal = defendGoal(pitch, defSide);
-  const keeperSpot = clampToPitch(pitch, keeperGoal.x, keeperGoal.y);
+  const catchDepth = toFixed(config.contest.saveCatchDepthM, config.fixedScale);
+  const catchX = keeperGoal.x === 0 ? catchDepth : keeperGoal.x - catchDepth;
+  const keeperSpot = clampToPitch(pitch, catchX, keeperGoal.y);
   if (gkSaver) {
     gkSaver.posFx.x = keeperSpot.x;
     gkSaver.posFx.y = keeperSpot.y;

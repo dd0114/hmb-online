@@ -1,0 +1,12 @@
+{
+  "//": "e2e 는 Playwright 자체 컴파일러(esbuild)로 실행된다. 이 tsconfig 는 에디터/명시적 typecheck 용 — DOM+node 타입 제공, 테스트 코드라 인덱스 엄격성은 완화. 루트 typecheck 에서는 제외됨.",
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "noUncheckedIndexedAccess": false,
+    "verbatimModuleSyntax": false,
+    "allowImportingTsExtensions": true
+  },
+  "include": ["**/*.ts", "**/*.mjs"]
+}

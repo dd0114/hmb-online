@@ -7,6 +7,9 @@ dist/
 packages/engine/dev-viewer/match-log.json
 packages/engine/dev-viewer/viewer-standalone.html
 tools/shots/
+# Playwright 출력(루트)
+test-results/
+playwright-report/
 tools/qa_*.mjs
 tools/reqa*.mjs
 tools/*_log.json

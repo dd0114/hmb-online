@@ -18,9 +18,13 @@ describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 �
     expect(spansReposition(108, 110, restarts)).toBe(true);
     expect(spansReposition(110, 112, restarts)).toBe(false); // 재배치 이후 구간은 정상 보간
   });
-  it("골(네트→킥오프) 재배치도 컷한다", () => {
-    const restarts = buildRestartTicks([{ type: "goal", tick: 50 }]);
-    expect(spansReposition(49, 50, restarts)).toBe(true);
+  it("골 인바운드 비행은 컷하지 않는다(발사→네트가 부드럽게 보간). 골 후 리셋은 킥오프가 컷", () => {
+    // goal 단독은 재배치 집합에 없음 → 발사→네트 구간 보간 유지(순간이동 방지, V3 #16).
+    const goalOnly = buildRestartTicks([{ type: "goal", tick: 50 }]);
+    expect(spansReposition(49, 50, goalOnly)).toBe(false);
+    // 골 후 네트→센터 리셋은 뒤따르는 kickoff 이벤트가 컷한다.
+    const withKickoff = buildRestartTicks([{ type: "goal", tick: 50 }, { type: "kickoff", tick: 75 }]);
+    expect(spansReposition(74, 75, withKickoff)).toBe(true);
   });
 });
 
@@ -33,15 +37,16 @@ describe("eventKind", () => {
 });
 
 describe("buildRestartTicks", () => {
-  it("재배치 이벤트만 포함(shot/pass 제외)", () => {
+  it("데드볼 재배치 이벤트만 포함(shot/pass/goal 제외 — goal 인바운드는 보간 유지)", () => {
     const r = buildRestartTicks([
       { type: "kickoff", detail: "corner", tick: 1 },
-      { type: "goal", tick: 2 },
+      { type: "goal", tick: 2 }, // 골 인바운드 비행은 컷 안 함 → 제외
       { type: "free_kick", tick: 3 },
       { type: "shot", tick: 4 },
       { type: "pass", tick: 5 },
+      { type: "kickoff", tick: 6 }, // 골 후 킥오프 리셋은 컷
     ]);
-    expect([...r].sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    expect([...r].sort((a, b) => a - b)).toEqual([1, 3, 6]);
   });
 });
 
@@ -84,6 +89,25 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     expect(save.isGoal).toBeFalsy();
     expect(save.big).toContain("선방");
     expect(save.big).not.toContain("GOAL");
+  });
+  it("코너/프리킥은 pauseOnly 정지 비트 — 자막 없이 제자리 재개, 골킥/스로인은 정지 없음", () => {
+    const st = buildStoppages([
+      { type: "kickoff", detail: "corner", tick: 200 },
+      { type: "free_kick", detail: "foul", tick: 300 },
+      { type: "kickoff", detail: "goal_kick", tick: 400 },
+      { type: "kickoff", detail: "throw_in", tick: 500 },
+    ]);
+    for (const cause of [200, 300]) {
+      const s = st.find((x) => x.causeTick === cause)!;
+      expect(s.pauseOnly).toBe(true);
+      expect(s.big).toBe(""); // 상황카드 자막 없음
+      expect(s.restartTick).toBe(cause); // 제자리 재개(프레임 스킵 없음)
+      expect(s.isGoal).toBeFalsy();
+      expect(s.hold).toBeGreaterThan(0);
+    }
+    // 골킥·스로인은 잦아서 정지 비트 제외.
+    expect(st.find((x) => x.causeTick === 400)).toBeFalsy();
+    expect(st.find((x) => x.causeTick === 500)).toBeFalsy();
   });
   it("골 정지의 재시작은 킥오프 이벤트로 skip(코너 등 다른 재시작보다 킥오프 우선)", () => {
     const st = buildStoppages([
