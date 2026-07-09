@@ -1,0 +1,25 @@
+{
+  "seed": "4815162342",
+  "team": {
+    "formation": "4-3-3",
+    "defensiveLineHeight": 0.85,
+    "compactness": 0.6,
+    "tempo": 0.85,
+    "width": 0.85,
+    "pressingScheme": { "intensity": 0.85, "triggerLine": 0.8 },
+    "offsideTrap": true
+  },
+  "players": [
+    { "playerId": "H0", "role": "GK", "duty": "defend", "basePosition": { "x": 0.05, "y": 0.5 }, "behavior": { "positioningFreedom": 0.2, "forwardRunFreq": 0.05, "widthTendency": 0.1, "supportDepth": 0.1, "pressAggression": 0.2, "passRisk": 0.3, "passDirectness": 0.5, "dribbleTendency": 0.05, "shootTendency": 0.0 }, "mentalModifier": 0.0 },
+    { "playerId": "H1", "role": "LB", "duty": "attack", "basePosition": { "x": 0.3, "y": 0.15 }, "behavior": { "positioningFreedom": 0.6, "forwardRunFreq": 0.85, "widthTendency": 0.9, "supportDepth": 0.8, "pressAggression": 0.7, "passRisk": 0.7, "passDirectness": 0.55, "dribbleTendency": 0.55, "shootTendency": 0.15 }, "mentalModifier": 0.3 },
+    { "playerId": "H2", "role": "LCB", "duty": "defend", "basePosition": { "x": 0.22, "y": 0.4 }, "behavior": { "positioningFreedom": 0.35, "forwardRunFreq": 0.2, "widthTendency": 0.3, "supportDepth": 0.35, "pressAggression": 0.6, "passRisk": 0.45, "passDirectness": 0.6, "dribbleTendency": 0.25, "shootTendency": 0.02 }, "mentalModifier": 0.15 },
+    { "playerId": "H3", "role": "RCB", "duty": "defend", "basePosition": { "x": 0.22, "y": 0.6 }, "behavior": { "positioningFreedom": 0.35, "forwardRunFreq": 0.2, "widthTendency": 0.3, "supportDepth": 0.35, "pressAggression": 0.6, "passRisk": 0.45, "passDirectness": 0.6, "dribbleTendency": 0.25, "shootTendency": 0.02 }, "mentalModifier": 0.15 },
+    { "playerId": "H4", "role": "RB", "duty": "attack", "basePosition": { "x": 0.3, "y": 0.85 }, "behavior": { "positioningFreedom": 0.6, "forwardRunFreq": 0.85, "widthTendency": 0.9, "supportDepth": 0.8, "pressAggression": 0.7, "passRisk": 0.7, "passDirectness": 0.55, "dribbleTendency": 0.55, "shootTendency": 0.15 }, "mentalModifier": 0.3 },
+    { "playerId": "H5", "role": "LCM", "duty": "attack", "basePosition": { "x": 0.46, "y": 0.3 }, "behavior": { "positioningFreedom": 0.6, "forwardRunFreq": 0.75, "widthTendency": 0.55, "supportDepth": 0.7, "pressAggression": 0.75, "passRisk": 0.7, "passDirectness": 0.6, "dribbleTendency": 0.55, "shootTendency": 0.35 }, "mentalModifier": 0.3 },
+    { "playerId": "H6", "role": "CM", "duty": "support", "basePosition": { "x": 0.42, "y": 0.5 }, "behavior": { "positioningFreedom": 0.5, "forwardRunFreq": 0.6, "widthTendency": 0.4, "supportDepth": 0.6, "pressAggression": 0.7, "passRisk": 0.65, "passDirectness": 0.55, "dribbleTendency": 0.45, "shootTendency": 0.3 }, "mentalModifier": 0.25 },
+    { "playerId": "H7", "role": "RCM", "duty": "attack", "basePosition": { "x": 0.46, "y": 0.7 }, "behavior": { "positioningFreedom": 0.6, "forwardRunFreq": 0.75, "widthTendency": 0.55, "supportDepth": 0.7, "pressAggression": 0.75, "passRisk": 0.7, "passDirectness": 0.6, "dribbleTendency": 0.55, "shootTendency": 0.35 }, "mentalModifier": 0.3 },
+    { "playerId": "H8", "role": "LW", "duty": "attack", "basePosition": { "x": 0.72, "y": 0.08 }, "behavior": { "positioningFreedom": 0.55, "forwardRunFreq": 0.7, "widthTendency": 1.0, "supportDepth": 0.75, "pressAggression": 0.65, "passRisk": 0.75, "passDirectness": 0.55, "dribbleTendency": 0.8, "shootTendency": 0.65 }, "mentalModifier": 0.35 },
+    { "playerId": "H9", "role": "ST", "duty": "attack", "basePosition": { "x": 0.78, "y": 0.5 }, "behavior": { "positioningFreedom": 0.6, "forwardRunFreq": 0.7, "widthTendency": 0.3, "supportDepth": 0.85, "pressAggression": 0.6, "passRisk": 0.6, "passDirectness": 0.6, "dribbleTendency": 0.6, "shootTendency": 0.9 }, "mentalModifier": 0.4 },
+    { "playerId": "H10", "role": "RW", "duty": "attack", "basePosition": { "x": 0.72, "y": 0.92 }, "behavior": { "positioningFreedom": 0.55, "forwardRunFreq": 0.7, "widthTendency": 1.0, "supportDepth": 0.75, "pressAggression": 0.65, "passRisk": 0.75, "passDirectness": 0.55, "dribbleTendency": 0.8, "shootTendency": 0.65 }, "mentalModifier": 0.35 }
+  ]
+}
