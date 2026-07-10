@@ -35,8 +35,8 @@
 ## 2.5 엔진 QA — 상시 트랙 (지속 규율, 1회성 아님)
 
 > 엔진·뷰어는 계속 바뀐다. QA 는 **매 변경마다 게이트로 + 정기 스윕으로 반복**하는 **상시 트랙**이다(끝나는 작업 아님).
-> SoT = **이슈 #22**(append-only progress log — 발견을 계속 쌓고, 닫지 않는다). owned-glob = `packages/engine/**`.
-> 서버 트랙(#23, `packages/server/**`)과 **병렬 안전** — `packages/shared/**`(계약)만 프리즈·조율.
+> SoT = **QA 에픽 #25**(epic:qa, append-only — 발견을 계속 쌓고, 닫지 않는다. 구 #22 포함). owned-glob = `packages/engine/**`.
+> 서버 트랙(에픽 #32 AI 워커, `packages/server/**`)과 **병렬 안전** — `packages/shared/**`(계약)만 프리즈·조율.
 
 ### QA 루프 (엔진/뷰어를 건드릴 때마다 = 게이트)
 1. **기계검증 1차**: `node tools/qa-match.mjs`(상황-데이터 정합성) + `node tools/perceptibility.mjs`(6/6). 여기서 1차로 거른다.
@@ -47,7 +47,7 @@
 
 ### 정기 스윕 (코드 변경 없어도 주기적으로)
 - **§8 백로그 소진**(코너 크로스 루틴 등), **E2E 계약 커버 확대**(계약 없는 연출 경로), **회귀 감시**(기계지표·골든).
-- 스윕 결과·발견은 **이슈 #22 progress log 에 append** → 고치면 계약 통과로 회귀 방지.
+- 스윕 결과·발견은 **QA 에픽 #25(서브 이슈) 에 append** → 고치면 계약 통과로 회귀 방지.
 
 ### 요약 원칙
 기계검증 → E2E-TDD → 실화면 캡처 → 결정론 가드 → **독립 QA 판정**. 이걸 매번·반복해서 돈다.
@@ -102,24 +102,16 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 
 ---
 
-## 5. 현재 상태 (epic-flow: 이슈 #13)
+## 5. 현재 상태 (epic-flow — 활성 에픽 2개)
 
-**Phase 1 PoC** 를 S1~S6 vertical slice 로 분해(이슈 #7~#12). 상세 = `docs/PLAN-phase1.md`.
+**완료(닫힘)**: #13 Phase 1 PoC 에픽 — Wave 1(S1·S2 엔진+스키마, Gate G1 PASS) + Wave 1.5(V1~V3 이벤트↔연출 신뢰성, PR #18) + S3 PoC(#19 프롬프트→움직임 증명) + E0 병렬 환경(PR #20). #21/#9/#23/PR#27 은 대체·종결.
 
-| Slice | 내용 | 상태 |
-|---|---|---|
-| S2 (#8) | shared 직렬화 스키마 | ✅ CLOSED |
-| S1 (#7) | 공간 결정론 엔진 + 디버그 뷰어 | ✅ CLOSED — **Gate G1 PASS**(독립 QA CLEAN PASS) |
-| V1 (#14) | 이벤트↔연출 계약 E2E 하네스 (Playwright) | ⏳ **다음(Wave 1.5, 진입점)** |
-| V2 (#15) | 엔진 0.9.0: 선방/골 기하 분리 | ⏳ Wave 1.5 (V1 후, V3 과 병렬) |
-| V3 (#16) | 뷰어: 골 비행 순간이동 제거 | ⏳ Wave 1.5 (V1 후, V2 와 병렬) |
-| V4 (#17) | **Gate G1.5**: 독립 QA 이벤트별 연출 판정 | ⏳ Wave 1.5 (V2+V3 후) |
-| S3 (#9) | AI 파이프라인: 프롬프트→행동 파라미터 (Claude) | ⏳ Wave 2 (G1.5 통과 후) |
-| S5 (#11) | 매치 세션 + 5-상태 상태머신(하프타임 연속 재개) | ⏳ Wave 2 |
-| S4 (#10) | 움직임·밸런스 검증 리포트 (Go/No-Go 게이트) | ⏳ Wave 3 |
-| S6 (#12) | PixiJS 정식 렌더 + 개입 UI + E2E | ⏳ Wave 4 |
+| 활성 트랙 | SoT | owned-glob | 내용 |
+|---|---|---|---|
+| **AI 워커 시스템** (서버 세션) | **에픽 #32** | `packages/server/**` | 정액제 헤드리스 큐 워커 — W1 #33(큐+프로토콜+stub) → W2 #34(구독 워커·sonnet 서브에이전트·모델스왑) → W3 #35(캐시계측·모델비교·이미지·폴백). 요구사항 원문 = #32 §0. |
+| **엔진/뷰어 QA** (QA 세션, 상시) | **에픽 #25** (epic:qa) | `packages/engine/**` | §2.5 상시 루프. G1.5 판정 #17 포함. |
 
-**다음 할 일: Wave 1.5 (V1→V2∥V3→V4).** G1 통과 후 hero 가 이벤트↔인지 갭 버그 보고(선방이 골처럼 보임 / 골 공 순간이동). 원인·계획 = 이슈 #13 의 2026-07-09 코멘트. 요지: 선방→골 혼동은 엔진이 세이브 공을 골문 안에 파킹하는 데이터 문제(`contest.ts:599-614`), 순간이동은 뷰어 보간 컷 버그(`playback.mjs:12` + `index.html:366`). **엔진 재작성 불요.** 각 이슈에 sk-goal 종료 조건 포함 — 새 세션(sonnet)+`/sk-goal` 로 #14 부터. Wave 2 는 G1.5 통과 후.
+**백로그(open 유지, 추후 wave 재편)**: S4 #10(밸런스 Go/No-Go) · S5 #11(세션 상태머신) · S6 #12(PixiJS 정식 렌더).
 
 ---
 
@@ -149,6 +141,7 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 - **렌더 = 2D 실좌표**(디버그=Canvas, 정식=PixiJS). 앱=Capacitor.
 - **메타(Phase 2) = 선수 카드 수집 + 덱(스쿼드+전술+프롬프트) 프리셋** 둘 다.
 - **PvP-ready 경계**: 싱글부터 서버권위·결정론·입력로그 재생·직렬화 스키마 유지 → Phase 3에서 네트워킹만 얹기.
+- **서버 = Java(Spring) + TS 서번트 2개, 정액제 유지 (ADR-1, 에픽 #32 · 2026-07-10)**: 게임 흐름·상태·잡 큐(DB)·결과캐시 전부 Java 소유. TS 는 ①엔진 러너(무상태 simulate/resume RPC — 엔진 재작성 금지) ②AI 실행기(Java 잡 API 폴링, Claude Code 정액제 세션, 서브에이전트 sonnet). Java 도입점 = S5(#11). Phase 1 은 W1 파일 큐가 잠정(JobQueue 인터페이스 뒤 교체). 아키텍처 다이어그램: claude.ai/code/artifact/29dc7dbc-1647-4da9-8a01-61c2ef2976c1
 
 ---
 
@@ -164,9 +157,9 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 ## 9. 새 세션 재개 체크리스트
 
 1. `gh auth switch --hostname github.com --user dd0114` (필요 시).
-2. epic 읽기: #13(Phase 1 PoC) + #21(Wave 2 병렬: 엔진QA #22 ∥ 서버 #23) STATE → 어디까지 됐는지 파악.
+2. epic 읽기: **#32**(AI 워커 시스템, 서버) + **#25**(QA 상시, 엔진) STATE → 어디까지 됐는지 파악. (#13/#21 은 종결 — 이력 참고용.)
 3. `npm test` 통과 확인, `node tools/qa-match.mjs`·`node tools/perceptibility.mjs` 로 현 상태 스냅샷.
 4. 작업 시 §2 규칙 준수 — 특히 **판정은 독립 QA로만**, **테스트 먼저**, **config로만 튜닝**, **결정론 불변**.
-5. **엔진/뷰어 변경이면 §2.5 엔진 QA 상시 루프를 매번 돈다**(기계검증→E2E-TDD→실화면캡처→결정론가드→독립QA). 발견은 이슈 #22에 append.
+5. **엔진/뷰어 변경이면 §2.5 엔진 QA 상시 루프를 매번 돈다**(기계검증→E2E-TDD→실화면캡처→결정론가드→독립QA). 발견은 QA 에픽 #25 에 append.
 6. 뷰어 확인: `cd packages/engine/dev-viewer && node build-standalone.mjs && open viewer-standalone.html`.
-7. 서버 작업이면 `packages/server/README.md` + 이슈 #23. `packages/shared/**`(계약)는 두 트랙 프리즈·조율.
+7. 서버 작업이면 `packages/server/README.md` + 에픽 #32(W1 #33 부터). `packages/shared/**`(계약)는 두 트랙 프리즈·조율.
