@@ -130,8 +130,9 @@
     <script type="module">
       import { buildPlayback, spansReposition } from "./playback.mjs";
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
-      const PITCH_W = 105, PITCH_H = 68, MARGIN = 20;
+      const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
+      const CAM_SMOOTH = 0.12;                 // 정지(freeze) 중 카메라 팬 속도(0..1/frame). 정지→정지 줌 순간이동 방지.
       const BALL_TRAIL = 6, PLAYER_TRAIL = 10; // 잔상 길이(틱). 공 트레일은 짧은 최근 꼬리(피치 가로지르는 지그재그 클러터 방지).
       const TICKS_PER_SEC = 2;                  // 1x = 2 게임초/실초 (거의 실시간, 공이 눈에 따라감)
       const CRUISE_SPEED = 4, HL_SPEED = 1, HL_WINDOW = 8; // 하이라이트 자동페이싱: 빌드업 4x → 찬스 근처 1x
@@ -156,9 +157,17 @@
       let annos = [], snapByTick = new Map(), restartTickSet = new Set(), totalMinutes = 0;
       let stoppages = [], hold = null; // 데드볼: freeze→skip 시퀀스
       let lastRender = null; // 마지막 draw()의 렌더된 공(보간 후) — Playwright 계약검증용(__viewer.render()).
+      let lastGeom = null;   // 마지막 draw()의 화면좌표 기하(캔버스px) — taker/공 클리핑 계약검증용(__viewer.screenGeom()).
+      let lastPlayers = [];  // 마지막 draw()의 렌더된(보간 후) 선수 피치좌표 — 세트피스 taker 슬라이드 검출용.
+      let frameDt = 1 / 60;  // 직전 프레임 실경과(초). 카메라 팬을 주사율 무관하게(dt 정규화).
       const TOAST_TICKS = 5, BANNER_TICKS = 16;
       const idxOfTick = (tick) => { const i = snaps.findIndex((s) => s.tick >= tick); return i < 0 ? snaps.length - 1 : i; };
-      const baseScale = (canvas.width - 2 * MARGIN) / PITCH_W;
+      // 가로·세로 양쪽에 MARGIN 이 남도록 letterbox-fit(작은 배율 채택). 예전엔 폭만 맞춰
+      // 피치가 캔버스 상하를 거의 채워, 터치라인/코너 위 taker 마커와 공이 캔버스 끝에서 잘렸다(#26).
+      const baseScale = Math.min(
+        (canvas.width - 2 * MARGIN) / PITCH_W,
+        (canvas.height - 2 * MARGIN) / PITCH_H,
+      );
       let cam = { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
 
       function sx(x) { return canvas.width / 2 + (x - cam.cx) * baseScale * cam.zoom; }
@@ -201,7 +210,16 @@
         const koTweening = hold && hold.koIdx != null && hold.tween > 0.4;
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
         const useFollow = !koTweening && (follow || nearKey || (hold ? !!hold.zoom : false));
-        cam = useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
+        const camTarget = useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
+        // 정지(freeze) 중에만 카메라를 목표로 부드럽게 팬(연속 정지 전환의 순간이동 방지: 세이브 줌→코너 줌).
+        // 오픈플레이 follow 와 seek/일시정지는 스냅(기존 동작·계약검증 무영향). 정지 중엔 공이 멈춰 팬해도 랙 없음.
+        // dt 정규화(60fps 기준) → 팬 지속시간이 모니터 주사율(60/120Hz)에 무관하게 일정.
+        const cs = playing && hold ? 1 - Math.pow(1 - CAM_SMOOTH, Math.min(3, frameDt * 60)) : 1;
+        cam = {
+          cx: cam.cx + (camTarget.cx - cam.cx) * cs,
+          cy: cam.cy + (camTarget.cy - cam.cy) * cs,
+          zoom: cam.zoom + (camTarget.zoom - cam.zoom) * cs,
+        };
         drawPitch();
 
         // 선수 잔상(옵션)
@@ -240,14 +258,18 @@
         const koSnap = hold && hold.koIdx != null ? snaps[hold.koIdx] : null;
         const koById = koSnap ? new Map(koSnap.players.map((q) => [q.playerId, q.pos])) : null;
         const ptw = koSnap ? hold.tween * hold.tween * (3 - 2 * hold.tween) : 0; // smoothstep
+        const playerRender = [];
         for (let k = 0; k < A.players.length; k++) {
           const pa = A.players[k], pb = B.players[k] || pa;
-          let x = lerp(pa.pos.x, pb.pos.x, t), y = lerp(pa.pos.y, pb.pos.y, t);
+          // bt(=0 데드볼 재배치 구간): 공처럼 선수도 재배치 틱을 컷한다 → 세트피스 taker 가
+          // 스팟으로 슬라이드(순간이동처럼 보임)하지 않고 freeze 경계에서 깔끔히 컷(스로인/코너 일관).
+          let x = lerp(pa.pos.x, pb.pos.x, bt), y = lerp(pa.pos.y, pb.pos.y, bt);
           if (koById) {
             const kp = koById.get(pa.playerId);
             if (kp) { x = lerp(pa.pos.x, kp.x, ptw); y = lerp(pa.pos.y, kp.y, ptw); }
           }
           const isHome = pa.team === "home", owner = A.ballOwner === pa.playerId;
+          playerRender.push({ id: pa.playerId, x, y }); // 렌더된(보간 후) 피치좌표 — taker 슬라이드 검출용.
           const px = sx(x), py = sy(y);
           ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
           ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
@@ -255,6 +277,7 @@
           const num = pa.playerId.replace(/[HA]/, "");
           if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);
         }
+        lastPlayers = playerRender;
         // 공 (밝은 노랑 + 글로우). 소유자면 발 아래로 살짝 오프셋해 번호를 안 가림.
         const br = useFollow ? 7 : 5.5;
         const boy = ownerDraw ? R + br + 1 : 0; // 소유 시 공을 아래로
@@ -266,6 +289,12 @@
         ctx.restore();
         // 소유자 번호는 공 위에 다시 그려 항상 보이게.
         if (ownerDraw) { ctx.font = `bold ${fs}px monospace`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; drawNum(ownerDraw.num, ownerDraw.px, ownerDraw.py); }
+        // 화면좌표 기하 박제(관측 전용, 렌더 불변): 공/소유자(taker) 마커가 캔버스 안에 완전히 그려졌는지 계약검증용.
+        lastGeom = {
+          cw: canvas.width, ch: canvas.height,
+          ball: { px: sx(bx), py: sy(by) + boy, r: br },
+          owner: ownerDraw ? { px: ownerDraw.px, py: ownerDraw.py, r: R + 2 } : null,
+        };
 
         // 유효슛 링 이펙트(공 위치서 퍼지는 링) — 정지 없이 시각만.
         if (shotFx.length) {
@@ -376,6 +405,7 @@
       function tickLoop(ts) {
         if (!lastTs) lastTs = ts;
         const dt = (ts - lastTs) / 1000; lastTs = ts;
+        frameDt = dt;
         if (hold) {
           // 골 세리머니 트윈 진행도 갱신 + 후반부엔 줌 해제(선수들이 포메이션으로 걸어 복귀하는 걸 보여줌).
           if (hold.koIdx != null) {
@@ -402,12 +432,14 @@
             }
           }
           for (const st of stoppages) {
-            if (!st.done && st.causeTick > beforeTick && st.causeTick <= afterTick) {
+            // >= beforeTick: 선행 정지가 restartTick 으로 skip 해 다른 정지의 causeTick 에 정확히
+            // 착지해도(예: 세이브→코너) 그 정지를 놓치지 않는다. 재발화는 st.done 이 막는다.
+            if (!st.done && st.causeTick >= beforeTick && st.causeTick <= afterTick) {
               st.done = true;
               tickPos = idxOfTick(st.causeTick); // 원인 프레임에서 멈춤
               if (st.isGoal) bigCaption(st.big, st.bigCol, true); // 골: 거대 GOAL + 색종이
-              else if (!st.pauseOnly) situationCaption(st.big, st.bigCol); // 선방 등: 상황 카드 (세트피스 pauseOnly 는 자막 없이 정지만)
-              hold = { until: ts + st.hold, start: ts, dur: st.hold, jumpTo: idxOfTick(st.restartTick), zoom: st.isGoal || !!st.pauseOnly }; // freeze 후 skip/제자리재개(세트피스는 공으로 줌)
+              else if (!st.pauseOnly) situationCaption(st.big, st.bigCol); // 선방·세트피스(코너/스로인) 등: 상황 카드 (free_kick pauseOnly 는 자막 없이 정지만)
+              hold = { until: ts + st.hold, start: ts, dur: st.hold, jumpTo: idxOfTick(st.restartTick), zoom: st.isGoal || !!st.pauseOnly || !!st.setPiece }; // freeze 후 skip/제자리재개(세트피스는 taker 로 줌)
               // 골 정지: 세리머니 동안 선수들을 킥오프 포메이션(restart 스냅)으로 트윈 → hold 해제 시 순간이동 제거.
               if (st.isGoal) { hold.formFrom = idxOfTick(st.causeTick); hold.koIdx = idxOfTick(st.restartTick); hold.tween = 0; }
               break;
@@ -526,6 +558,10 @@
         render: () => (lastRender ? { ...lastRender } : null),
         // 임의 tickPos(분수 포함)로 렌더 후 렌더된 공 반환 — 슛 비행 보간 샘플링용.
         renderAt: (tp) => { setPlaying(false); resetStops(); tickPos = tp; draw(); return lastRender ? { ...lastRender } : null; },
+        // 마지막 draw()의 화면좌표 기하(캔버스px): { cw, ch, ball:{px,py,r}, owner:{px,py,r}|null }. taker/공 클리핑 검출용.
+        screenGeom: () => (lastGeom ? JSON.parse(JSON.stringify(lastGeom)) : null),
+        // 임의 tickPos 로 렌더 후 렌더된(보간 후) 선수 피치좌표 배열 [{id,x,y}] 반환 — taker 슬라이드/순간이동 검출용.
+        renderPlayersAt: (tp) => { setPlaying(false); resetStops(); tickPos = tp; draw(); return lastPlayers.map((p) => ({ ...p })); },
         idxOfTick: (tick) => idxOfTick(tick),
         captions: () => ({
           flash: getComputedStyle(flashEl).opacity !== "0" ? flashEl.textContent : "",

@@ -90,24 +90,40 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     expect(save.big).toContain("선방");
     expect(save.big).not.toContain("GOAL");
   });
-  it("코너/프리킥은 pauseOnly 정지 비트 — 자막 없이 제자리 재개, 골킥/스로인은 정지 없음", () => {
+  // #29: hero 요구 — 코너/스로인도 "코너킥!/스로인!" 큰 자막 + 정지 → 제자리 재개(관전 인지).
+  it("코너·스로인은 큰 상황자막 정지(제자리 재개) — 관객이 세트피스를 인지", () => {
     const st = buildStoppages([
       { type: "kickoff", detail: "corner", tick: 200 },
-      { type: "free_kick", detail: "foul", tick: 300 },
-      { type: "kickoff", detail: "goal_kick", tick: 400 },
       { type: "kickoff", detail: "throw_in", tick: 500 },
     ]);
-    for (const cause of [200, 300]) {
-      const s = st.find((x) => x.causeTick === cause)!;
-      expect(s.pauseOnly).toBe(true);
-      expect(s.big).toBe(""); // 상황카드 자막 없음
-      expect(s.restartTick).toBe(cause); // 제자리 재개(프레임 스킵 없음)
-      expect(s.isGoal).toBeFalsy();
-      expect(s.hold).toBeGreaterThan(0);
-    }
-    // 골킥·스로인은 잦아서 정지 비트 제외.
+    const corner = st.find((x) => x.causeTick === 200)!;
+    expect(corner, "코너 정지 있어야").toBeTruthy();
+    expect(corner.big).toContain("코너킥"); // 큰 상황자막(무음 pauseOnly 아님)
+    expect(corner.pauseOnly).toBeFalsy();
+    expect(corner.setPiece).toBe(true); // freeze 중 taker 로 줌 표시
+    expect(corner.restartTick).toBe(200); // 제자리 재개(프레임 스킵 없음)
+    expect(corner.isGoal).toBeFalsy();
+    expect(corner.hold).toBeGreaterThan(0);
+
+    const thr = st.find((x) => x.causeTick === 500)!;
+    expect(thr, "스로인 정지 있어야").toBeTruthy();
+    expect(thr.big).toContain("스로인");
+    expect(thr.pauseOnly).toBeFalsy();
+    expect(thr.setPiece).toBe(true);
+    expect(thr.restartTick).toBe(500);
+    expect(thr.hold).toBeGreaterThan(0);
+  });
+  it("프리킥은 pauseOnly 정지 비트 유지, 골킥은 정지 없음(빈도 높음)", () => {
+    const st = buildStoppages([
+      { type: "free_kick", detail: "foul", tick: 300 },
+      { type: "kickoff", detail: "goal_kick", tick: 400 },
+    ]);
+    const fk = st.find((x) => x.causeTick === 300)!;
+    expect(fk.pauseOnly).toBe(true);
+    expect(fk.big).toBe("");
+    expect(fk.restartTick).toBe(300);
+    // 골킥은 잦아서 정지 제외.
     expect(st.find((x) => x.causeTick === 400)).toBeFalsy();
-    expect(st.find((x) => x.causeTick === 500)).toBeFalsy();
   });
   it("골 정지의 재시작은 킥오프 이벤트로 skip(코너 등 다른 재시작보다 킥오프 우선)", () => {
     const st = buildStoppages([
