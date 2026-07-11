@@ -128,11 +128,14 @@
     <input type="file" id="fileInput" accept="application/json" title="match-log.json 직접 불러오기" />
 
     <script type="module">
-      import { buildPlayback, spansReposition } from "./playback.mjs";
+      import { buildPlayback, spansReposition, synthOutFlight } from "./playback.mjs";
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
       const CAM_SMOOTH = 0.12;                 // 정지(freeze) 중 카메라 팬 속도(0..1/frame). 정지→정지 줌 순간이동 방지.
+      const CAM_MAX_PAN_PXPS = 900;            // #45: 카메라 팬 속도 상한(스크린px/s) — 와이드↔팔로우 급전환도 글라이드
+      const CAM_MAX_ZOOM_PS = 2.2;             // #45: 줌 변화 속도 상한(zoom/s)
+      const SYNTH_MS = 350;                    // #43: 세트피스 freeze 도입부 합성 아웃 비행 시간(ms)
       const BALL_TRAIL = 6, PLAYER_TRAIL = 10; // 잔상 길이(틱). 공 트레일은 짧은 최근 꼬리(피치 가로지르는 지그재그 클러터 방지).
       const TICKS_PER_SEC = 2;                  // 1x = 2 게임초/실초 (거의 실시간, 공이 눈에 따라감)
       const CRUISE_SPEED = 4, HL_SPEED = 1, HL_WINDOW = 8; // 하이라이트 자동페이싱: 빌드업 4x → 찬스 근처 1x
@@ -200,7 +203,13 @@
         const A = snaps[i], B = snaps[j];
         // 데드볼 재배치 구간만 보간 안 함(슛 궤적은 이벤트로 구분 → 부드럽게). playback.spansReposition.
         const bt = spansReposition(A.tick, B.tick, restartTickSet) ? 0 : t;
-        const bx = lerp(A.ball.x, B.ball.x, bt), by = lerp(A.ball.y, B.ball.y, bt);
+        let bx = lerp(A.ball.x, B.ball.x, bt), by = lerp(A.ball.y, B.ball.y, bt);
+        // #43: 세트피스 freeze 도입부 — 합성 아웃 비행. 엔진 데이터엔 공이 라인을 넘는 레그가
+        // 없어서(재시작 틱에 곧장 스팟 파킹) 직전 속도 외삽 레그를 먼저 보여준 뒤 스팟에 놓는다.
+        if (hold && hold.synth) {
+          const sp = (performance.now() - hold.start) / SYNTH_MS;
+          if (sp < 1) { bx = lerp(hold.synth.from.x, hold.synth.exit.x, sp); by = lerp(hold.synth.from.y, hold.synth.exit.y, sp); }
+        }
         lastRender = { x: bx, y: by, bt, aTick: A.tick, bTick: B.tick, tickPos, zoom: hold ? !!hold.zoom : false };
 
         // 카메라: 수동 공따라가기 OR 하이라이트(찬스/골) 근처면 자동 줌인
@@ -209,17 +218,28 @@
         // 골 세리머니 후반(트윈>0.4)엔 줌을 풀어 선수들이 포메이션으로 걸어 복귀하는 걸 전체뷰로 보여줌.
         const koTweening = hold && hold.koIdx != null && hold.tween > 0.4;
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
-        const useFollow = !koTweening && (follow || nearKey || (hold ? !!hold.zoom : false));
+        // 데드볼 정지(hold.wide=세트피스/프리킥)면 전체뷰 강제 → 관객이 박스·선수 배치를 본다.
+        const useFollow = !koTweening && !(hold && hold.wide) && (follow || nearKey || (hold ? !!hold.zoom : false));
         const camTarget = useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
-        // 정지(freeze) 중에만 카메라를 목표로 부드럽게 팬(연속 정지 전환의 순간이동 방지: 세이브 줌→코너 줌).
-        // 오픈플레이 follow 와 seek/일시정지는 스냅(기존 동작·계약검증 무영향). 정지 중엔 공이 멈춰 팬해도 랙 없음.
-        // dt 정규화(60fps 기준) → 팬 지속시간이 모니터 주사율(60/120Hz)에 무관하게 일정.
-        const cs = playing && hold ? 1 - Math.pow(1 - CAM_SMOOTH, Math.min(3, frameDt * 60)) : 1;
-        cam = {
-          cx: cam.cx + (camTarget.cx - cam.cx) * cs,
-          cy: cam.cy + (camTarget.cy - cam.cy) * cs,
-          zoom: cam.zoom + (camTarget.zoom - cam.zoom) * cs,
-        };
+        // 재생 중 카메라를 항상 목표로 부드럽게 팬 → 정지 전환·하이라이트 줌인/줌아웃·정지 재개
+        // (전체뷰↔줌) 모두 순간이동 없이 이어진다(코너-하이라이트 겹침 프레임 튐 방지).
+        // 하이라이트 슬로모 중 공은 프레임당 <1m 이동이라 팬 랙 미미(공 중앙 유지). seek/일시정지는 스냅.
+        // dt 정규화(60fps) → 팬 지속시간이 주사율(60/120Hz) 무관하게 일정.
+        const cs = playing ? 1 - Math.pow(1 - CAM_SMOOTH, Math.min(3, frameDt * 60)) : 1;
+        let ncx = cam.cx + (camTarget.cx - cam.cx) * cs;
+        let ncy = cam.cy + (camTarget.cy - cam.cy) * cs;
+        let nz = cam.zoom + (camTarget.zoom - cam.zoom) * cs;
+        // #45: 프레임당 팬/줌 속도 상한 — 코너 와이드 직후 하이라이트 줌인이 걸리는 급전환(실측
+        // 93px/frame 스텝)이 '한 번 튀는' 점프가 아니라 일정 속도 글라이드가 되게. seek 는 스냅 유지.
+        if (playing) {
+          const pxPerM = baseScale * cam.zoom;
+          const maxPanM = (CAM_MAX_PAN_PXPS * frameDt) / pxPerM;
+          const dxm = ncx - cam.cx, dym = ncy - cam.cy, dm = Math.hypot(dxm, dym);
+          if (dm > maxPanM) { ncx = cam.cx + (dxm / dm) * maxPanM; ncy = cam.cy + (dym / dm) * maxPanM; }
+          const maxDz = CAM_MAX_ZOOM_PS * frameDt;
+          if (Math.abs(nz - cam.zoom) > maxDz) nz = cam.zoom + Math.sign(nz - cam.zoom) * maxDz;
+        }
+        cam = { cx: ncx, cy: ncy, zoom: nz };
         drawPitch();
 
         // 선수 잔상(옵션)
@@ -439,9 +459,20 @@
               tickPos = idxOfTick(st.causeTick); // 원인 프레임에서 멈춤
               if (st.isGoal) bigCaption(st.big, st.bigCol, true); // 골: 거대 GOAL + 색종이
               else if (!st.pauseOnly) situationCaption(st.big, st.bigCol); // 선방·세트피스(코너/스로인) 등: 상황 카드 (free_kick pauseOnly 는 자막 없이 정지만)
-              hold = { until: ts + st.hold, start: ts, dur: st.hold, jumpTo: idxOfTick(st.restartTick), zoom: st.isGoal || !!st.pauseOnly || !!st.setPiece }; // freeze 후 skip/제자리재개(세트피스는 taker 로 줌)
+              // 데드볼 정지(세트피스/프리킥)는 전체뷰(줌업 X — 줌하면 박스·배치가 안 보여 판독 어려움).
+              // 줌은 골 네트인만. wide 플래그로 정지 중 하이라이트 자동줌(nearKey)까지 억제.
+              hold = { until: ts + st.hold, start: ts, dur: st.hold, jumpTo: idxOfTick(st.restartTick), zoom: !!st.isGoal, wide: !!st.wide || !!st.pauseOnly || !!st.setPiece };
               // 골 정지: 세리머니 동안 선수들을 킥오프 포메이션(restart 스냅)으로 트윈 → hold 해제 시 순간이동 제거.
               if (st.isGoal) { hold.formFrom = idxOfTick(st.causeTick); hold.koIdx = idxOfTick(st.restartTick); hold.tween = 0; }
+              // #43: 세트피스(코너/스로인) freeze 도입부에 합성 아웃 비행 — 공이 라인을 넘는 걸 보여준다.
+              if (st.setPiece) {
+                const ci = idxOfTick(st.causeTick);
+                const p1 = snaps[ci - 1], p2 = snaps[ci - 2];
+                if (p1 && p2) {
+                  const sof = synthOutFlight(p2.ball, p1.ball, snaps[ci].ball, { w: PITCH_W, h: PITCH_H });
+                  if (sof) hold.synth = sof;
+                }
+              }
               break;
             }
           }
@@ -562,6 +593,8 @@
         screenGeom: () => (lastGeom ? JSON.parse(JSON.stringify(lastGeom)) : null),
         // 임의 tickPos 로 렌더 후 렌더된(보간 후) 선수 피치좌표 배열 [{id,x,y}] 반환 — taker 슬라이드/순간이동 검출용.
         renderPlayersAt: (tp) => { setPlaying(false); resetStops(); tickPos = tp; draw(); return lastPlayers.map((p) => ({ ...p })); },
+        // 현재 카메라 상태 {cx,cy,zoom} — 재생 중 카메라 점프/팬 검출용.
+        cam: () => ({ cx: cam.cx, cy: cam.cy, zoom: cam.zoom }),
         idxOfTick: (tick) => idxOfTick(tick),
         captions: () => ({
           flash: getComputedStyle(flashEl).opacity !== "0" ? flashEl.textContent : "",

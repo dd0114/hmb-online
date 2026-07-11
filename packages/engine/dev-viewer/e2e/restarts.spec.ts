@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 import {
   loadViewer, eventsOfType, ballAtTick, PITCH_W, PITCH_H,
   screenGeomAt, circleInside, takerSlideBeforeRestart,
+  VIEWER_REAL_URL, events, playUntilSituationContains,
 } from "./fixture";
 
 // 세트피스 재배치 계약: 재시작 이벤트 순간 공이 그 세트피스에 맞는 위치로 옮겨져 있는가.
@@ -85,6 +86,32 @@ test("corner → taker 가 스팟으로 슬라이드하지 않고 컷된다(순�
     if (slide === null) continue;
     expect(slide, `corner t${c.tick} taker ${c.playerId} 슬라이드 ${slide?.toFixed(1)}m`).toBeLessThanOrEqual(3);
   }
+});
+
+// ── #42: CAUSE 정지 skip 이 라이브 플레이를 삼키면 안 된다. ──
+// 세이브 후 공이 라이브인 체인(패스→2차슛→빗나감→골킥)에서, 세이브 정지가 다음 재시작까지
+// 하드 스킵하면 중간 '빗나감!' 상황카드가 통째로 드롭된다(관객은 왜 골킥인지 모름).
+// 계약: 라이브 체인을 지나 재생하면 중간 상황카드가 실제로 발화해야 한다. (real 픽스처 커버)
+test("세이브→라이브 체인→골킥: 중간 '빗나감' 상황카드가 드롭되지 않는다 (#42)", async ({ page }) => {
+  await loadViewer(page, VIEWER_REAL_URL);
+  const all = await events(page);
+  const kind = (e: { type: string; detail?: string }) =>
+    e.type === "kickoff" ? (e.detail || "kickoff") : e.type === "shot" && e.detail ? "shot_" + e.detail : e.type;
+  const RESTART = new Set(["corner", "goal_kick", "throw_in", "free_kick", "kickoff"]);
+  // 패턴 탐색: save → (라이브 이벤트 ≥1) → shot_off_target → (다음 재시작), 스팬 45틱 이내.
+  let found: { save: number; off: number } | null = null;
+  for (let i = 0; i < all.length && !found; i++) {
+    if (kind(all[i]) !== "save") continue;
+    for (let j = i + 1; j < all.length && all[j].tick <= all[i].tick + 45; j++) {
+      const k = kind(all[j]);
+      if (RESTART.has(k)) break; // 세이브 직후 곧장 재시작(체인 아님) → 다음 save 로
+      if (k === "shot_off_target" && j > i + 1) { found = { save: all[i].tick, off: all[j].tick }; break; }
+    }
+  }
+  expect(found, "real 픽스처에 세이브→라이브 체인→빗나감 케이스가 있어야(없으면 픽스처 시드 확인)").toBeTruthy();
+  // 세이브 직전부터 실제 재생 → '선방!' 정지를 지나 라이브 체인이 재생되고 '빗나감!' 카드가 떠야 한다.
+  const caps = await playUntilSituationContains(page, found!.save - 2, "빗나감", 20000);
+  expect(caps.situation).toContain("빗나감");
 });
 
 test("goal_kick → 공이 골라인 부근 골에어리어에 있다", async ({ page }) => {

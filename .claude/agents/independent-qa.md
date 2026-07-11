@@ -19,11 +19,12 @@ model: sonnet
 - `play()`/`pause()` **실제 재생**(골 연출·킥오프 전환은 재생 중에만 일어남 — 이걸로 검수) · `autoPace(bool)`
 - `cur()` 현재 프레임 {tick, ball:{x,y}} (피치 x:0~105 왼쪽골0/오른쪽골105, y:0~68 중앙34) · `captions()` {flash,situation,banner,score,minute}
 
-## 방법 (Playwright 스크립트를 tools/ 에 작성해 실행)
+## 방법 (Playwright 스크립트를 tools/qa_*.mjs 로 작성해 실행)
 1. `chromium.launch()` → `page.goto("file://.../viewer-standalone.html")` → `waitForFunction(()=>window.__viewer&&window.__viewer.ready())`.
 2. 검수 대상 이벤트 tick 을 `events()` 로 얻는다.
-3. **정적 seek 로 데이터 확인 + 실제 play() 로 동작 확인 둘 다.** 재생 검수는: 이벤트 20틱 전으로 seek → `play()` → 100~150ms 간격으로 수 초간 **스크린샷 버스트 + captions()/cur() 로깅**. 스크린샷은 `tools/shots/` 에 저장.
-4. **스크린샷을 직접 Read(이미지)로 확인**하고, 렌더된 화면과 `cur()` 데이터가 일치하는지 교차검증.
+3. **수치 우선, 스크린샷 최소.** 프레임 단위 검증(카메라 튐·순간이동·프레임 유지 등)은 **in-page `requestAnimationFrame` 루프로 `cam()`/`render()`/`cur()` 를 배열에 모아 반환**(메모리) → Node 에서 분석. **프레임마다 PNG 저장 금지**(디스크 폭증). 스크린샷은 **판정을 좌우하는 결정적 프레임 2~5장만** 저장해 Read 로 눈확인.
+4. **정적 seek(데이터) + 실제 play()(동작) 둘 다.** 렌더 화면과 `cur()/render()` 수치가 일치하는지 교차검증.
+5. **디스크 규율(필수):** 스크린샷은 `tools/qa_shots_tmp/`(gitignore `tools/qa_*` 패턴) 에 저장하고, **끝나기 전 반드시 `rm -rf` 로 정리**한다. 한 검수당 저장 PNG **≤ ~20장** 목표. (과거 한 검수가 446장/28MB 를 남겨 디스크를 채운 실적 있음 — 절대 반복 금지.)
 
 ## 무엇을 볼까 (예시 — 이 외에도 이상하면 지적)
 - 공이 실제로 골대/네트에 들어가는 게 보이나? 순간이동/발밑에 붙어있다 갑자기 결과?
