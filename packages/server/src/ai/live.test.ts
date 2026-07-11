@@ -28,6 +28,8 @@ describe.skipIf(!LIVE)("W2 라이브 (AI_LIVE=1, 구독 로그인)", () => {
     const def = validateCoachOutput(await ex.execute(coachJob("콤팩트 로우블록·back four 고정·낮은 라인. 매우 수비적.")), "H");
     // eslint-disable-next-line no-console
     console.log(`[live parity] width atk=${atk.team.width} def=${def.team.width} / line atk=${atk.team.defensiveLineHeight} def=${def.team.defensiveLineHeight}`);
-    expect(atk.team.width).toBeGreaterThanOrEqual(def.team.width);
+    // 강한 방향 단언(같으면 실패 = 모델이 지시를 무시했다는 뜻). 관측치 atk0.85/def0.35, line0.85/0.15.
+    expect(atk.team.width).toBeGreaterThan(def.team.width);
+    expect(atk.team.defensiveLineHeight).toBeGreaterThan(def.team.defensiveLineHeight);
   }, 300_000);
 });
