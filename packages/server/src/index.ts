@@ -6,6 +6,7 @@ import { ResultCache } from "./ai/cache.js";
 import { AiService } from "./ai/service.js";
 import { AiWorker } from "./ai/worker.js";
 import { createExecutor } from "./ai/executor.js";
+import { claudeCodeAuthSelfCheck } from "./ai/executors/claude-code.js";
 import { coachContext, runMatchWithHomeInput } from "./pipeline.js";
 
 /**
@@ -26,6 +27,7 @@ const svc = new AiService(queue, cache);
 
 // 인라인 워커(개발·stub 기본): 별도 프로세스 없이도 end-to-end 동작. 프로덕션 워커는 npm run worker.
 if (INLINE_WORKER) {
+  if (EXECUTOR_KIND === "claude-code") claudeCodeAuthSelfCheck();
   const worker = new AiWorker(queue, cache, createExecutor(EXECUTOR_KIND));
   void worker.runLoop(300).catch((e) => console.error("[inline-worker] 종료:", e));
 }

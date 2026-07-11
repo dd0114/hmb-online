@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 import { TacticalInput, clampTacticalInput } from "@hmb/shared";
 
 /**
@@ -29,6 +30,37 @@ export const COACH_SYSTEM = [
   "behavior 의미: forwardRunFreq=오프더볼 전진 침투, widthTendency=측면으로 벌림(풀백/윙어 오버랩), supportDepth=공격 가담 깊이, pressAggression=개인 압박, passRisk=위험 전진패스, passDirectness=직선 패스, dribbleTendency, shootTendency, positioningFreedom=로밍.",
   "감독 지시의 의도를 파라미터로 충실히 반영하라(예: '풀백 오버랩' → 해당 풀백 widthTendency·forwardRunFreq↑; '로우블록' → defensiveLineHeight↓·compactness↑·pressAggression↓).",
 ].join("\n");
+
+/**
+ * TacticalInput → JSON Schema. claude CLI `--json-schema`(구조화 출력) 로 모델을 안내한다.
+ * shared 계약(zod v3)에서 파생 = 단일 출처(드리프트 없음). 진짜 검증은 validateCoachOutput 게이트.
+ */
+export function tacticalJsonSchema(): Record<string, unknown> {
+  const raw = zodToJsonSchema(TacticalInput, { $refStrategy: "none" }) as Record<string, unknown>;
+  delete raw["$schema"];
+  return raw;
+}
+
+/**
+ * coach 프롬프트 조립. 안정 프리픽스(system + 로스터) 먼저, 가변부(seed·directive·feedback) 마지막
+ * → 프롬프트 캐시 최적(AC5). executor(claude CLI) 가 이 텍스트를 -p 프롬프트로 넘긴다.
+ */
+export function buildCoachPrompt(ctx: CoachContext, feedback?: string): string {
+  const parts = [
+    COACH_SYSTEM,
+    "",
+    `팀 로스터/포메이션:\n${ctx.rosterContext}`,
+    "",
+    `seed: ${ctx.seed}`,
+    `팀 prefix: ${ctx.prefix} (모든 playerId 는 "${ctx.prefix}" 로 시작)`,
+    `감독 지시:\n${ctx.directive}`,
+  ];
+  if (feedback) {
+    parts.push("", `[이전 산출 거부됨] 사유: ${feedback} — 이 문제를 고쳐서 다시 제출.`);
+  }
+  parts.push("", "제공된 JSON 스키마에 맞는 TacticalInput JSON 을 정확히 한 번 제출한다. 다른 설명·행동 금지.");
+  return parts.join("\n");
+}
 
 /**
  * 검증 게이트(가드레일) — AI 산출 raw → zod 스키마 검증 + sanity(11명·prefix) + clamp.
