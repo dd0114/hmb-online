@@ -5,6 +5,7 @@ import {
   spansReposition,
   buildStoppages,
   buildAnnotations,
+  synthOutFlight,
 } from "./playback.mjs";
 
 describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 컷 (하이라이트 순간이동 버그 회귀방지)", () => {
@@ -164,6 +165,67 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
       const save = st.find((s) => s.causeTick === 96)!;
       expect(save.restartTick).toBe(96);
       expect(save.wide).toBeFalsy();
+    });
+  });
+
+  // #43: 페이싱 — 정확성(#42)을 지키면서 데드타임은 최대한 스킵.
+  describe("#43 — 페이싱: 이중 정지 병합 + 라이브 직전까지 데드타임 스킵", () => {
+    it("같은 틱 파울+페널티 → 정지는 페널티 하나만(홀드 스태킹 제거)", () => {
+      const st = buildStoppages([
+        { type: "foul", tick: 163, team: "away" },
+        { type: "card", detail: "yellow", tick: 163 },
+        { type: "penalty", tick: 163, team: "home" },
+        { type: "shot", detail: "penalty", tick: 171 },
+        { type: "kickoff", tick: 197 },
+      ]);
+      const at163 = st.filter((s) => s.causeTick === 163);
+      expect(at163).toHaveLength(1);
+      expect(at163[0]!.big).toContain("페널티"); // 더 구체적인(나중) 이벤트가 이긴다
+    });
+    it("같은 틱 파울+프리킥(pauseOnly) → 상황카드(파울)가 이긴다(자막 없는 비트가 카드를 지우면 안 됨)", () => {
+      const st = buildStoppages([
+        { type: "foul", tick: 300, team: "away" },
+        { type: "free_kick", detail: "foul", tick: 300 },
+      ]);
+      const at300 = st.filter((s) => s.causeTick === 300);
+      expect(at300).toHaveLength(1);
+      expect(at300[0]!.big).toContain("파울");
+    });
+    it("정지→라이브 이벤트가 멀면 라이브 2틱 전까지 스킵(PK 준비 데드타임 회수)", () => {
+      const st = buildStoppages([
+        { type: "penalty", tick: 163, team: "home" },
+        { type: "shot", detail: "penalty", tick: 171 },
+        { type: "kickoff", tick: 197 },
+      ]);
+      const pk = st.find((s) => s.causeTick === 163)!;
+      expect(pk.restartTick).toBe(169); // 171(첫 라이브) - 2 — 킥 준비는 건너뛰고 런업부터 보여준다
+    });
+    it("라이브가 바로 다음 틱이면 스킵 없음(제자리 재개, #42 유지)", () => {
+      const st = buildStoppages([
+        { type: "save", tick: 96 },
+        { type: "pass", tick: 97 },
+        { type: "kickoff", detail: "goal_kick", tick: 104 },
+      ]);
+      expect(st.find((s) => s.causeTick === 96)!.restartTick).toBe(96);
+    });
+  });
+
+  // #43: 스로인 아웃 비행 합성 — 엔진 데이터에 없는 "공이 라인을 넘는" 마지막 레그를
+  // 마지막 속도 외삽으로 만들어 freeze 도입부에 보여준다(공이 나가는 걸 끝까지 보고 정지).
+  describe("#43 — synthOutFlight(아웃 비행 합성)", () => {
+    const pitch = { w: 105, h: 68 };
+    it("직전 속도 외삽이 경계를 스팟 근처에서 넘으면 exit 반환 (실데이터 throw_in@231)", () => {
+      const r = synthOutFlight({ x: 28.2, y: 36.0 }, { x: 34.7, y: 52.8 }, { x: 40.7, y: 68.0 }, pitch)!;
+      expect(r).toBeTruthy();
+      expect(r.exit.y).toBeCloseTo(68, 5); // 터치라인 교차
+      expect(Math.abs(r.exit.x - 40.7)).toBeLessThan(8); // 스팟 근처(왜곡 없음)
+    });
+    it("공이 정지 상태(세이브 파킹 코너 등)면 합성 불가 → null", () => {
+      expect(synthOutFlight({ x: 102.5, y: 34 }, { x: 102.5, y: 34 }, { x: 105, y: 68 }, pitch)).toBeNull();
+    });
+    it("외삽 교차점이 스팟과 동떨어지면(>8m) 합성 포기 → null", () => {
+      // 아래쪽(y=0)으로 가는 공인데 스팟이 반대편 위(y=68) → 왜곡 합성 금지
+      expect(synthOutFlight({ x: 50, y: 20 }, { x: 50, y: 10 }, { x: 50, y: 68 }, pitch)).toBeNull();
     });
   });
 
