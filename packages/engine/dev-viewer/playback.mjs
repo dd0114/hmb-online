@@ -43,10 +43,30 @@ export function buildStoppages(events) {
     penalty: { big: "⚽ 페널티킥!", col: "#22c55e", hold: 1500 },
   };
   const RESTART = new Set(["corner", "goal_kick", "throw_in", "free_kick", "kickoff"]);
+  // #42: 원인→재시작 skip 은 그 사이가 데드타임일 때만 유효하다. 세이브 후 공이 라이브인
+  // 체인(패스→2차슛→빗나감→골킥)을 스킵하면 라이브 플레이가 통째로 사라지고, 중간 상황자막이
+  // 드롭되며, 착지 프레임에 스킵 구간의 토스트/궤적선/선수 잔상이 유령처럼 몰아 나타난다.
+  // → 재시작보다 먼저 라이브 액션 이벤트를 만나면 스킵하지 않고 제자리 재개. card 는 북키핑이라 투과.
+  const SKIP_TRANSPARENT = new Set(["card"]);
   const nextRestart = (fromIdx, fromTick, span) => {
-    for (let j = fromIdx + 1; j < events.length && events[j].tick <= fromTick + span; j++)
-      if (RESTART.has(eventKind(events[j]))) return events[j].tick;
+    for (let j = fromIdx + 1; j < events.length && events[j].tick <= fromTick + span; j++) {
+      const k = eventKind(events[j]);
+      if (RESTART.has(k)) return events[j].tick;
+      if (!SKIP_TRANSPARENT.has(k)) return fromTick; // 라이브 개입 → 제자리 재개
+    }
     return fromTick + 6;
+  };
+  // 뒤따르는 재시작 종류(카메라 wide 판단용). 세이브/빗나감/파울 정지가 wide 세트피스로
+  // 이어지면 그 정지부터 미리 전체뷰(wide)로 → 세트피스 시작 때 카메라가 이미 와이드라 팬 갭 없음.
+  // 라이브 개입으로 스킵이 없으면 wide 미리보기도 하지 않는다(라이브는 통상 팔로우 카메라).
+  const WIDE_RESTART = new Set(["corner", "throw_in", "free_kick"]);
+  const leadsToWideRestart = (fromIdx, fromTick, span) => {
+    for (let j = fromIdx + 1; j < events.length && events[j].tick <= fromTick + span; j++) {
+      const k = eventKind(events[j]);
+      if (RESTART.has(k)) return WIDE_RESTART.has(k);
+      if (!SKIP_TRANSPARENT.has(k)) return false;
+    }
+    return false;
   };
   // 골 후에는 '킥오프' 이벤트로 skip(포메이션 리셋 지점). 없으면 아무 재시작으로 폴백.
   const nextKickoff = (fromIdx, fromTick, span) => {
@@ -74,7 +94,7 @@ export function buildStoppages(events) {
     }
     const c = CAUSE[k];
     if (c) {
-      out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 45), big: c.big, bigCol: c.col, hold: c.hold, isGoal: false, done: false });
+      out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 45), big: c.big, bigCol: c.col, hold: c.hold, isGoal: false, wide: leadsToWideRestart(i, events[i].tick, 45), done: false });
       continue;
     }
     const sp = SETPIECE_STOP[k];

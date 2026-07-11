@@ -43,3 +43,5 @@ console.log(`렌더 공 인접프레임 최대 이동 = ${maxStep.toFixed(1)}m $
 
 await b.close();
 console.log(`캡처 완료 → ${OUT} (Read 로 PNG 를 직접 열어 눈으로 확인할 것)`);
+// ⚠️ 디스크 규율: 프레임 단위 검증은 위 "패턴 C"처럼 renderAt/cam() 수치를 메모리로 모아 판단하고
+//    프레임마다 PNG 저장하지 말 것. 눈확인 끝나면 반드시 정리: `rm -rf $OUT` (안 지우면 /private/tmp 에 누적).

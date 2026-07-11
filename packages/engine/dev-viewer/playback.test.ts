@@ -125,6 +125,48 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     // 골킥은 잦아서 정지 제외.
     expect(st.find((x) => x.causeTick === 400)).toBeFalsy();
   });
+  // #42: CAUSE 정지 skip 은 "원인→재시작 사이 = 데드타임"일 때만. 세이브 후 공이 라이브인
+  // 체인(패스→2차슛→빗나감→골킥)을 스킵하면 라이브 플레이가 사라지고(2차 슛 미표시),
+  // 중간 상황자막이 드롭되며, 착지 프레임에 토스트/궤적선/선수 잔상이 유령처럼 몰아 나타난다.
+  describe("#42 — 라이브 플레이 개입 시 skip 금지", () => {
+    const chain = [
+      { type: "save", tick: 96 },
+      { type: "pass", tick: 97 },
+      { type: "interception", tick: 98 },
+      { type: "shot", tick: 100 },
+      { type: "shot", detail: "off_target", tick: 101 },
+      { type: "kickoff", detail: "goal_kick", tick: 104 },
+    ];
+    it("세이브→라이브 체인→골킥: 세이브 정지는 제자리 재개(라이브 10틱 스킵 금지)", () => {
+      const save = buildStoppages(chain).find((s) => s.causeTick === 96)!;
+      expect(save.restartTick).toBe(96); // 스킵하면 pass~off_target 이 통째로 사라진다
+      expect(save.wide).toBeFalsy(); // 라이브 계속 → 카메라 미리 와이드 금지
+    });
+    it("체인 안의 빗나감 정지는 정상 유지(빗나감→골킥은 진짜 데드타임 → 스킵)", () => {
+      const off = buildStoppages(chain).find((s) => s.causeTick === 101)!;
+      expect(off.big).toContain("빗나감");
+      expect(off.restartTick).toBe(104);
+    });
+    it("card 는 북키핑 이벤트라 스킵을 막지 않는다(파울→카드→프리킥은 기존대로 스킵)", () => {
+      const st = buildStoppages([
+        { type: "foul", tick: 300 },
+        { type: "card", detail: "yellow", tick: 301 },
+        { type: "free_kick", detail: "foul", tick: 303 },
+      ]);
+      expect(st.find((s) => s.causeTick === 300)!.restartTick).toBe(303);
+    });
+    it("라이브 체인 후 코너로 이어져도 wide 미리보기 금지(스킵이 없으므로)", () => {
+      const st = buildStoppages([
+        { type: "save", tick: 96 },
+        { type: "pass", tick: 97 },
+        { type: "kickoff", detail: "corner", tick: 103 },
+      ]);
+      const save = st.find((s) => s.causeTick === 96)!;
+      expect(save.restartTick).toBe(96);
+      expect(save.wide).toBeFalsy();
+    });
+  });
+
   it("골 정지의 재시작은 킥오프 이벤트로 skip(코너 등 다른 재시작보다 킥오프 우선)", () => {
     const st = buildStoppages([
       { type: "goal", tick: 100, team: "home" },

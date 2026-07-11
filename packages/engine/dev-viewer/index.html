@@ -209,12 +209,14 @@
         // 골 세리머니 후반(트윈>0.4)엔 줌을 풀어 선수들이 포메이션으로 걸어 복귀하는 걸 전체뷰로 보여줌.
         const koTweening = hold && hold.koIdx != null && hold.tween > 0.4;
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
-        const useFollow = !koTweening && (follow || nearKey || (hold ? !!hold.zoom : false));
+        // 데드볼 정지(hold.wide=세트피스/프리킥)면 전체뷰 강제 → 관객이 박스·선수 배치를 본다.
+        const useFollow = !koTweening && !(hold && hold.wide) && (follow || nearKey || (hold ? !!hold.zoom : false));
         const camTarget = useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
-        // 정지(freeze) 중에만 카메라를 목표로 부드럽게 팬(연속 정지 전환의 순간이동 방지: 세이브 줌→코너 줌).
-        // 오픈플레이 follow 와 seek/일시정지는 스냅(기존 동작·계약검증 무영향). 정지 중엔 공이 멈춰 팬해도 랙 없음.
-        // dt 정규화(60fps 기준) → 팬 지속시간이 모니터 주사율(60/120Hz)에 무관하게 일정.
-        const cs = playing && hold ? 1 - Math.pow(1 - CAM_SMOOTH, Math.min(3, frameDt * 60)) : 1;
+        // 재생 중 카메라를 항상 목표로 부드럽게 팬 → 정지 전환·하이라이트 줌인/줌아웃·정지 재개
+        // (전체뷰↔줌) 모두 순간이동 없이 이어진다(코너-하이라이트 겹침 프레임 튐 방지).
+        // 하이라이트 슬로모 중 공은 프레임당 <1m 이동이라 팬 랙 미미(공 중앙 유지). seek/일시정지는 스냅.
+        // dt 정규화(60fps) → 팬 지속시간이 주사율(60/120Hz) 무관하게 일정.
+        const cs = playing ? 1 - Math.pow(1 - CAM_SMOOTH, Math.min(3, frameDt * 60)) : 1;
         cam = {
           cx: cam.cx + (camTarget.cx - cam.cx) * cs,
           cy: cam.cy + (camTarget.cy - cam.cy) * cs,
@@ -439,7 +441,9 @@
               tickPos = idxOfTick(st.causeTick); // 원인 프레임에서 멈춤
               if (st.isGoal) bigCaption(st.big, st.bigCol, true); // 골: 거대 GOAL + 색종이
               else if (!st.pauseOnly) situationCaption(st.big, st.bigCol); // 선방·세트피스(코너/스로인) 등: 상황 카드 (free_kick pauseOnly 는 자막 없이 정지만)
-              hold = { until: ts + st.hold, start: ts, dur: st.hold, jumpTo: idxOfTick(st.restartTick), zoom: st.isGoal || !!st.pauseOnly || !!st.setPiece }; // freeze 후 skip/제자리재개(세트피스는 taker 로 줌)
+              // 데드볼 정지(세트피스/프리킥)는 전체뷰(줌업 X — 줌하면 박스·배치가 안 보여 판독 어려움).
+              // 줌은 골 네트인만. wide 플래그로 정지 중 하이라이트 자동줌(nearKey)까지 억제.
+              hold = { until: ts + st.hold, start: ts, dur: st.hold, jumpTo: idxOfTick(st.restartTick), zoom: !!st.isGoal, wide: !!st.wide || !!st.pauseOnly || !!st.setPiece };
               // 골 정지: 세리머니 동안 선수들을 킥오프 포메이션(restart 스냅)으로 트윈 → hold 해제 시 순간이동 제거.
               if (st.isGoal) { hold.formFrom = idxOfTick(st.causeTick); hold.koIdx = idxOfTick(st.restartTick); hold.tween = 0; }
               break;
@@ -562,6 +566,8 @@
         screenGeom: () => (lastGeom ? JSON.parse(JSON.stringify(lastGeom)) : null),
         // 임의 tickPos 로 렌더 후 렌더된(보간 후) 선수 피치좌표 배열 [{id,x,y}] 반환 — taker 슬라이드/순간이동 검출용.
         renderPlayersAt: (tp) => { setPlaying(false); resetStops(); tickPos = tp; draw(); return lastPlayers.map((p) => ({ ...p })); },
+        // 현재 카메라 상태 {cx,cy,zoom} — 재생 중 카메라 점프/팬 검출용.
+        cam: () => ({ cx: cam.cx, cy: cam.cy, zoom: cam.zoom }),
         idxOfTick: (tick) => idxOfTick(tick),
         captions: () => ({
           flash: getComputedStyle(flashEl).opacity !== "0" ? flashEl.textContent : "",
