@@ -1,10 +1,16 @@
 import type { JobQueue } from "./queue.js";
 import type { ResultCache } from "./cache.js";
 import type { AiExecutor } from "./executor.js";
-import type { AiJobResult } from "./protocol.js";
-import { KINDS } from "./kinds.js";
+import type { AiJob, AiJobResult } from "./protocol.js";
+import { KINDS, type KindSpec } from "./kinds.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/** 워커 결과 error 접두어 정규화(에픽 §5). executor 는 이미 접두 → 게이트/기타 실패는 VALIDATE. */
+function classifyError(e: unknown): string {
+  const m = e instanceof Error ? e.message : String(e);
+  return /^(AUTH|CAP|OUTPUT|TIMEOUT|VALIDATE):/.test(m) ? m : `VALIDATE: ${m}`;
+}
 
 /**
  * 헤드리스 AI 워커 — 큐 폴링 → executor 실행 → 검증 게이트 → 결과/캐시.
@@ -26,8 +32,7 @@ export class AiWorker {
     try {
       const spec = KINDS[job.kind];
       spec.contextSchema.parse(job.context); // 컨텍스트 형태 검증
-      const raw = await this.executor.execute(job); // AI 실행(추상화)
-      const output = spec.validate(raw, job.context); // 검증 게이트(가드레일) — executor 무관
+      const output = await this.executeWithGate(job, spec); // AI 실행 + 검증 게이트(+1회 재시도)
       await this.cache.put(job.id, output); // L1 결과캐시 + 재현성 저장
       result = {
         id: job.id,
@@ -41,12 +46,31 @@ export class AiWorker {
         id: job.id,
         kind: job.kind,
         ok: false,
-        error: e instanceof Error ? e.message : String(e),
+        error: classifyError(e),
         meta: { executor: this.executor.name, elapsedMs: Date.now() - started },
       };
     }
     await this.queue.complete(result);
     return true;
+  }
+
+  /**
+   * executor 실행 → 검증 게이트. 게이트 실패 시 실패 사유를 피드백으로 넣어 **정확히 1회** 재시도.
+   * 두 번째도 게이트 실패면 VALIDATE 로 throw. executor 자체 실패(AUTH/CAP/OUTPUT/TIMEOUT)는 재시도 안 함.
+   */
+  private async executeWithGate(job: AiJob, spec: KindSpec): Promise<unknown> {
+    const raw = await this.executor.execute(job); // executor 실패는 그대로 전파(재시도 X)
+    try {
+      return spec.validate(raw, job.context);
+    } catch (ve) {
+      const feedback = ve instanceof Error ? ve.message : String(ve);
+      const raw2 = await this.executor.execute(job, { feedback }); // 피드백 포함 1회 재시도
+      try {
+        return spec.validate(raw2, job.context);
+      } catch (ve2) {
+        throw new Error(`VALIDATE: ${ve2 instanceof Error ? ve2.message : String(ve2)}`);
+      }
+    }
   }
 
   /** 큐가 빌 때까지 처리(테스트·인라인용). 처리한 잡 수 반환. */

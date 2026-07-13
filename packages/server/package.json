@@ -11,10 +11,10 @@
     "worker": "tsx src/worker-main.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.110.0",
     "@hmb/engine": "*",
     "@hmb/shared": "*",
     "tsx": "^4.23.0",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "zod-to-json-schema": "^3.25.2"
   }
 }
