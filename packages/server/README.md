@@ -1,69 +1,88 @@
-# @hmb/server
+# @hmb/server — TS 서번트 2개 (ADR-1)
 
-권위(authoritative) 서버 + **AI 워커 시스템**(에픽 #32). 흐름:
-**감독 자연어 → (AI executor) TacticalInput → 결정론 엔진 실행 → MatchLog** (PRD 방식1).
+Java 게임서버(server-java) 밑에서 도는 **무상태 TS 서번트 프로세스 2개**.
+게임 상태·큐·플로우·멱등(L1)은 전부 **Java 소유** — 여기는 잡을 받아 실행만 한다.
 
-AI 는 **큐 프로토콜 뒤**에 있다 — 서버/파이프라인은 어떤 AI 가 도는지 모른다(에픽 #32 §1, ADR-1).
-Phase 1 은 이 TS 서버가 게임흐름+큐+워커를 겸하고, S5(#11)에서 Java 게임서버가 큐를 인수한다.
+| 서번트 | 엔트리 | 역할 |
+|---|---|---|
+| ① 엔진러너 | `npm run runner` (`src/runner/runner-main.ts`, :8790) | `POST /simulate`(half 1/2, resume) + `GET /health` — 결정론 엔진 RPC |
+| ② AI실행기 | `npm run executor` (`src/executor/executor-main.ts`) | Java `/internal/ai-jobs` 폴링 → 프롬프트 빌드 → AI 실행 → 검증 → complete |
+
+**계약(SoT)**: `docs/plan-v2/LLD-ts-servants.md`(구조·계약·함정) · `docs/plan-v2/api/openapi.yaml`
+(`/internal/ai-jobs`, `AiJobContext`/`AiJobCompleteRequest`) · zod 스키마는 `packages/shared`
+(`SimulateRequest/Response`, `TeamInputJobContext`, `TacticalInput`).
 
 ## 구조
-```
-POST /tactical ─▶ AiService(결과캐시 확인 → 미스면 enqueue) ─▶ FileJobQueue(내구·멱등)
-                                                                 │ 폴링
-   200(경기요약) ◀─ runMatch(결정론) ◀─ 결과 ◀─ AiWorker ── executor ──┐
-                                                └ 검증 게이트(kinds.ts, executor 무관)  ├ stub (오프라인·CI)
-                                                                              └ claude-code (정액제 구독 CLI)
-```
-- `src/ai/protocol.ts` — 잡 프로토콜(AiJob/AiJobResult + promptHash 멱등키).
-- `src/ai/queue.ts` — `JobQueue` 인터페이스 + `FileJobQueue`(v1; S5 에서 Java 잡 API 로 교체).
-- `src/ai/cache.ts` — L1 결과캐시(같은 지시 = AI 스킵 + 리플레이 재현 저장소).
-- `src/ai/kinds.ts` — kind 레지스트리(coach: 컨텍스트·JSON 스키마·프롬프트·검증 게이트).
-- `src/ai/executor.ts` + `executors/` — AI 실행 추상화. `stub`(결정론) · `claude-code`(구독 CLI).
-- `src/ai/worker.ts` — 폴링 워커(검증 실패 시 피드백 1회 재시도, 크래시 복구).
-- `src/coach.ts` — coach 도메인(프롬프트·JSON 스키마·검증 게이트). `src/pipeline.ts` — 결정론 시뮬.
-- `src/index.ts` — 게임서버(`/health`, `/tactical`, `/jobs/:id`). `src/worker-main.ts` — 상주 워커.
 
-## claude-code executor (정액제, 에픽 #32 옵션 D)
-잡 1건 = `claude -p --output-format json --model <AI_MODEL> --json-schema <스키마>` subprocess 1회.
-- **인증 = 구독 로그인**: `ANTHROPIC_API_KEY` 를 **설정하지 말 것**(설정하면 메터드 과금으로 샘). 미설정 시
-  로컬 `claude` 로그인(키체인)으로 정액제 과금. 워커 기동 시 self-check 로그.
-- Agent SDK 미사용(zod v4 peer 충돌 회피, 프리즈 shared 무변경). 구조화 출력은 CLI 네이티브 `--json-schema`.
+```
+서번트① runner   :8790  POST /simulate {seed,selectData,homeInput,awayInput,half,resumeState?}
+                        → {matchLog, resumeState?, lastHash}   · GET /health → {engineVersion}
+서번트② executor  ──poll──▶ Java POST /internal/ai-jobs/poll {workerId,waitMs} (X-Servant-Token)
+                  ◀─204/잡─┘   잡(context=TeamInputJobContext, kind='team-input')
+                  프롬프트(prompt/coach.ts: 로스터 능력치·팀 지시·선수별 지시·half2 prevSummary)
+                  → executor(stub | claude-code CLI, resilience 재시도/폴백, usage 계측)
+                  → 검증 게이트(TacticalInput zod + 11명 + 로스터 id 정합 + clamp, 실패 시 feedback 1회 재시도)
+                  → Java POST /internal/ai-jobs/{id}/complete {ok:true,output,usage} | {ok:false,error}
+```
 
-## 로컬 실행
+- `src/runner/` — `runner-main.ts`(HTTP) · `simulate.ts`(순수 로직: half1/half2 resume/교체 폴백).
+- `src/executor/` — `executor-main.ts`(폴링 루프+엔트리) · `java-client.ts`(poll/complete) ·
+  `executor.ts`(실행 추상화) · `kinds.ts`(team-input 레지스트리) · `metrics.ts`(usage 계측) ·
+  `executors/`(`stub` 결정론·오프라인 / `claude-code` 정액제 구독 CLI / `resilience` 재시도·폴백).
+- `src/prompt/coach.ts` — 프롬프트 빌더 + 검증 게이트(executor 무관 공통).
+- `scripts/generate-runner-fixtures.ts` — server-java WireMock 용 fixture 발행(`npm run fixtures:runner`,
+  단축 매치 샘플 — `docs/plan-v2/fixtures/README.md`).
+
+## 실행
+
 ```bash
-nvm use                                   # 20.19.6
-npm install
-# (A) 오프라인 — stub executor(키/로그인 0):
-npm run dev  -w @hmb/server               # :8787, 인라인 stub 워커
-curl -s -XPOST localhost:8787/tactical -d '{"directive":"풀백 오버랩·와이드","seed":"4815162342"}'
-#  → 200 {finalScore,events,ticks}  (같은 지시 재요청 시 cached:true)
+nvm use && npm install                       # node 20.19.6
 
-# (B) 정액제 — claude-code executor(사전 `claude` 로그인, 키 unset):
-AI_EXECUTOR=claude-code AI_INLINE_WORKER=1 npm run dev -w @hmb/server
-#  또는 서버(웹)와 워커(상주)를 분리:
-AI_EXECUTOR=claude-code npm run worker -w @hmb/server   # 상주 워커
-npm run dev -w @hmb/server                              # 게임서버(같은 AI_DATA_DIR)
+npm run runner   -w @hmb/server              # 서번트① :8790 (RUNNER_PORT 로 변경)
+curl -s localhost:8790/health                #  → {"engineVersion":"engine@0.9.0"}
+
+# 서번트② — 오프라인(stub, 키/로그인 0):
+JAVA_URL=http://localhost:8080 SERVANT_TOKEN=... AI_EXECUTOR=stub npm run executor -w @hmb/server
+# 서번트② — 정액제(claude-code, 사전 `claude` 로그인):
+JAVA_URL=http://localhost:8080 SERVANT_TOKEN=... AI_EXECUTOR=claude-code npm run executor -w @hmb/server
 ```
+
+## claude-code executor (정액제 구독)
+
+잡 1건 = `claude -p --output-format json --model <AI_MODEL> --json-schema <스키마>` subprocess 1회.
+- **인증 = 구독 로그인**: 사전에 로컬 `claude` 로그인. `ANTHROPIC_API_KEY` 는 **설정하지 말 것**
+  (설정 시 메터드 종량 과금으로 샘) — 실행기 기동 시 **감지하면 강제 unset** 후 경고 로그.
+- Agent SDK 미사용(zod v4 peer 충돌 회피). 구조화 출력은 CLI 네이티브 `--json-schema`.
 
 ## env
-| env | 기본 | 의미 |
-|---|---|---|
-| `AI_EXECUTOR` | `stub` | `claude-code` 로 전환(정액제 구독 CLI) |
-| `AI_MODEL` | `sonnet` | 서브에이전트 모델 스왑(별칭 `sonnet`/`haiku`/`opus` 또는 풀ID) |
-| `AI_JOB_TIMEOUT_MS` | `120000` | claude 잡당 강제 타임아웃 |
-| `AI_INLINE_WORKER` | stub=`1`, claude-code=`0` | 서버 프로세스 안에서 워커 폴링 |
-| `AI_DATA_DIR` | `<pkg>/.data` | 큐·캐시 저장 위치(서버·워커가 공유) |
-| `AI_WAIT_MS` | `30000` | `/tactical` long-poll 대기(초과 시 202 + jobId) |
-| `AI_POLL_MS` | `1000` | 상주 워커 폴링 간격 |
-| `PORT` | `8787` | 게임서버 포트 |
+
+| env | 기본 | 프로세스 | 의미 |
+|---|---|---|---|
+| `RUNNER_PORT` | `8790` | runner | 엔진러너 HTTP 포트 |
+| `JAVA_URL` | `http://localhost:8080` | executor | Java 게임서버 베이스 URL |
+| `SERVANT_TOKEN` | (없음 — 경고) | executor | `/internal/**` 고정 shared secret(`X-Servant-Token`) |
+| `AI_WORKER_ID` | `ts-executor-<pid>` | executor | poll body 의 workerId |
+| `AI_POLL_WAIT_MS` | `25000` | executor | long-poll waitMs — [1000, 25000] 로 클램프(openapi 상한) |
+| `AI_EXECUTOR` | `stub` | executor | `stub`(오프라인 결정론) \| `claude-code`(구독 CLI) |
+| `AI_MODEL` | `sonnet` | executor | 모델 스왑(별칭 `sonnet`/`haiku`/`opus` 또는 풀ID) |
+| `AI_FALLBACK_EXECUTOR` | (없음) | executor | primary 가 CAP/TIMEOUT 시 무중단 폴백(예: `stub`) |
+| `AI_MAX_RETRIES` | `2` | executor | CAP/TIMEOUT 지수 백오프 재시도 횟수(0=끔) |
+| `AI_RETRY_BASE_MS` | `500` | executor | 첫 백오프(이후 2배씩, 상한 30s) |
+| `AI_JOB_TIMEOUT_MS` | `120000` | executor | claude 잡당 강제 타임아웃 |
 
 ## 테스트
+
 ```bash
-npx vitest run packages/server        # 로그인/키 0 — stub·큐·게이트·executor(러너 주입)·재시도
-AI_LIVE=1 npx vitest run packages/server/src/ai/live.test.ts   # AC6 라이브(구독 로그인 필요)
+npx vitest run packages/server    # 로그인/키/실 Java 0 — 러너 결정론(AC-T1)·가짜 Java 큐 E2E(AC-T2)·
+                                  # executor(러너 주입)·resilience·metrics·프롬프트/게이트
+npm run typecheck -w @hmb/server
 ```
-실패 분류(결과 error 접두어): `AUTH:` 로그인 · `CAP:` 레이트리밋/캡 · `OUTPUT:` 구조화 실패 · `VALIDATE:` 게이트 거부(재시도 후) · `TIMEOUT:`.
+
+실패 분류(complete error 접두어): `AUTH:` 로그인 · `CAP:` 레이트리밋/캡 · `OUTPUT:` 구조화 실패 ·
+`VALIDATE:` 게이트 거부(feedback 재시도 후) · `TIMEOUT:`. 라이브 스모크(AC-T3)는 통합 게이트에서 1회.
 
 ## 소유 경계 (병렬 개발)
-- **서버 트랙**: `packages/server/**`, `Dockerfile`. **엔진 QA 트랙**: `packages/engine/**`. 서로 안 밟음.
-- 공유 계약 `packages/shared/**` 변경은 두 트랙 조율(프리즈) — 에픽 #32 §3.
+
+- **이 도메인**: `packages/server/**`. **엔진 QA**: `packages/engine/**`(수정 금지 — 부족하면 QA 에픽 레이즈).
+- **게임 API·큐·상태**: `server-java/**` 소유 — 여기서 게임 API 를 만들지 않는다.
+- 공유 계약 `packages/shared/**` 변경은 프리즈 절차(에픽 조율 후 최소 추가).

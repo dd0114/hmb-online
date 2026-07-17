@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { TacticalInput } from "@hmb/shared";
-import { ExecutorLoop } from "./executor-main.js";
+import { ExecutorLoop, prepareExecutorEnv, parsePollWaitMs } from "./executor-main.js";
 import { JavaClient } from "./java-client.js";
 import { stubExecutor } from "./executors/stub.js";
 import { claudeCodeExecutor, type ClaudeRunner } from "./executors/claude-code.js";
@@ -245,5 +245,63 @@ describe("AI실행기 폴링 루프 — 가짜 Java 큐 (AC-T2, 오프라인)", 
     await new Promise((r) => setTimeout(r, 50)); // poll 대기 진입
     stop.abort();
     await expect(done).resolves.toBeUndefined(); // long-poll 이 끊기고 루프 종료
+  });
+
+  it("run(stop): 잡 실행 도중 abort → 진행 중 잡의 complete 가 착지한 뒤 종료(SIGTERM 계약)", async () => {
+    java.queue.push({ id: "job-sig", context: makeTeamInputContext() });
+    const stop = new AbortController();
+    const slow: AiExecutor = {
+      name: "slow-stub",
+      execute: async (job, attempt) => {
+        stop.abort(); // 실행 중간에 SIGTERM 도착
+        await new Promise((r) => setTimeout(r, 100)); // 잡이 아직 진행 중
+        return stubExecutor().execute(job, attempt);
+      },
+    };
+    const loop = new ExecutorLoop(client(java), slow, { log: () => {} });
+    await loop.run(stop.signal); // resolve 시점 = 루프 종료
+
+    // 종료 전에 진행 중이던 잡이 완주해 complete 가 이미 착지해 있어야 한다.
+    expect(java.completes).toHaveLength(1);
+    expect(java.completes[0]!.id).toBe("job-sig");
+    expect(java.completes[0]!.body.ok).toBe(true);
+    expect(TacticalInput.parse(java.completes[0]!.body.output).players).toHaveLength(11);
+  });
+});
+
+describe("executor-main env 헬퍼", () => {
+  it("prepareExecutorEnv: ANTHROPIC_API_KEY 를 강제 unset(정액제 가드)", () => {
+    const prev = process.env["ANTHROPIC_API_KEY"];
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      process.env["ANTHROPIC_API_KEY"] = "sk-should-be-removed";
+      prepareExecutorEnv("stub");
+      expect(process.env["ANTHROPIC_API_KEY"]).toBeUndefined();
+      expect(warn.mock.calls.some((c) => String(c[0]).includes("ANTHROPIC_API_KEY"))).toBe(true);
+    } finally {
+      warn.mockRestore();
+      if (prev === undefined) delete process.env["ANTHROPIC_API_KEY"];
+      else process.env["ANTHROPIC_API_KEY"] = prev;
+    }
+  });
+
+  it("prepareExecutorEnv: 키 미설정이면 아무것도 지우지 않는다(멱등)", () => {
+    const prev = process.env["ANTHROPIC_API_KEY"];
+    try {
+      delete process.env["ANTHROPIC_API_KEY"];
+      prepareExecutorEnv("stub");
+      expect(process.env["ANTHROPIC_API_KEY"]).toBeUndefined();
+    } finally {
+      if (prev !== undefined) process.env["ANTHROPIC_API_KEY"] = prev;
+    }
+  });
+
+  it("parsePollWaitMs: [1000, 25000] 클램프 + 비수치 → 기본 25000", () => {
+    expect(parsePollWaitMs(undefined)).toBe(25_000);
+    expect(parsePollWaitMs("25000")).toBe(25_000);
+    expect(parsePollWaitMs("99999")).toBe(25_000); // openapi 상한
+    expect(parsePollWaitMs("1")).toBe(1_000); // 하한
+    expect(parsePollWaitMs("5000")).toBe(5_000);
+    expect(parsePollWaitMs("abc")).toBe(25_000); // NaN → 기본
   });
 });

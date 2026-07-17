@@ -123,24 +123,39 @@ export class ExecutorLoop {
 
 // ---- 프로세스 엔트리 ------------------------------------------------------------------
 
-const isMainModule =
-  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
-
-if (isMainModule) {
-  // 정액제 가드(LLD §5 함정): ANTHROPIC_API_KEY 가 있으면 claude CLI 가 종량 과금으로 샌다 → 기동 시 unset 강제.
+/**
+ * 정액제 가드(LLD §5 함정, 기동 시 1회): ANTHROPIC_API_KEY 가 있으면 claude CLI 가 구독 대신
+ * 종량 과금으로 샌다 → **감지 시 unset 강제** + 경고. claude-code 면 인증 self-check 로그도 수행.
+ * 엔트리 가드에서 호출(단위테스트 가능하게 export).
+ */
+export function prepareExecutorEnv(executorKind: string = process.env["AI_EXECUTOR"] ?? "stub"): void {
   if (process.env["ANTHROPIC_API_KEY"]) {
     console.warn("[ai-executor] ⚠️ ANTHROPIC_API_KEY 감지 → unset 강제(정액제 구독 세션 유지).");
     delete process.env["ANTHROPIC_API_KEY"];
   }
+  if (executorKind === "claude-code") claudeCodeAuthSelfCheck();
+}
+
+/** AI_POLL_WAIT_MS 파싱 — openapi `AiJobPollRequest.waitMs` 상한(25000)·하한(1000) 클램프. */
+export function parsePollWaitMs(raw: string | undefined): number {
+  const n = Number(raw ?? 25_000);
+  if (!Number.isFinite(n)) return 25_000;
+  return Math.min(25_000, Math.max(1_000, n));
+}
+
+const isMainModule =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMainModule) {
+  const EXECUTOR_KIND = process.env["AI_EXECUTOR"] ?? "stub";
+  prepareExecutorEnv(EXECUTOR_KIND);
 
   const JAVA_URL = process.env["JAVA_URL"] ?? "http://localhost:8080";
   const TOKEN = process.env["SERVANT_TOKEN"] ?? "";
   const WORKER_ID = process.env["AI_WORKER_ID"] ?? `ts-executor-${process.pid}`;
-  const POLL_WAIT_MS = Number(process.env["AI_POLL_WAIT_MS"] ?? 25_000);
-  const EXECUTOR_KIND = process.env["AI_EXECUTOR"] ?? "stub";
+  const POLL_WAIT_MS = parsePollWaitMs(process.env["AI_POLL_WAIT_MS"]);
 
   if (!TOKEN) console.warn("[ai-executor] ⚠️ SERVANT_TOKEN 미설정 — Java 가 401 을 줄 수 있음.");
-  if (EXECUTOR_KIND === "claude-code") claudeCodeAuthSelfCheck();
 
   const metrics = new CacheMetrics();
   const usageByJob = new Map<string, JobUsage>();
