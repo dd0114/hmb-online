@@ -153,52 +153,8 @@ export function buildStoppages(events) {
   return out.filter((s) => byTick.get(s.causeTick) === s);
 }
 
-/**
- * #43/#47: 세트피스 아웃 비행 합성 — 엔진은 공이 라인을 넘는 틱에 곧바로 재시작 스팟으로 파킹하므로
- * "나가는" 마지막 레그가 데이터에 없다. **스팟에서 끝나는** 합성 레그를 그려 공이 실제로 나가는 걸
- * 보여준 뒤 스팟에 놓는다(스팟 종료 → freeze 착지와 연속, 순간이동 0).
- *
- * - **스로인 등 사이드라인 아웃**(kind≠corner): 마지막 인필드 위치(prev1)에서 사이드라인 스팟으로
- *   나가는 단일 레그 {from, exit=spot}. 속도 무관(느린 롤아웃도 커버). prev1 이 스팟과 너무 멀면
- *   (>25m, 비국소 — 되짚기 신뢰 불가) null(기존 컷 유지).
- * - **코너**(kind==="corner"): 코너는 세이브/블록으로 공이 골문 앞 중앙에 **정지 파킹**된 상태에서
- *   발화하고, 직전 궤적(슛)은 골 중앙 지향이라 **진짜 '옆으로 나가는' 궤적이 데이터에 없다**.
- *   → 키퍼가 골라인 밖으로 쳐내는 **디플렉션 2레그** {from, via, exit=spot}: 파킹 → 골라인 위
- *   포스트 밖(wide) via → 코너 깃발(스팟). '골'이 아니라 '코너'로 읽히도록 via 는 포스트 밖으로 보장.
- */
-export function synthOutFlight(prev1, spot, pitch = { w: 105, h: 68 }, kind = "throw_in") {
-  const from = { x: prev1.x, y: prev1.y };
-  if (kind === "corner") {
-    const midY = pitch.h / 2, HALF_POST = 3.66; // config goalWidth 7.32
-    const goalLineX = spot.x >= pitch.w / 2 ? pitch.w : 0;
-    let viaY = prev1.y + (spot.y - prev1.y) * 0.55; // 깃발 쪽으로 치우쳐 나감
-    // wide(포스트 밖) 보장 — 포스트 사이면 '골'로 오인되므로 깃발 쪽 포스트 밖으로 민다.
-    if (viaY > midY - HALF_POST && viaY < midY + HALF_POST)
-      viaY = spot.y >= midY ? midY + HALF_POST + 1 : midY - HALF_POST - 1;
-    return { from, via: { x: goalLineX, y: viaY }, exit: { x: spot.x, y: spot.y } };
-  }
-  // 사이드라인 아웃 폴백(연속 아님으로 판정된 스로인 등): 공을 스팟까지 슬라이드로 합성.
-  // #51: 임계 45m — 연속(라이브) 커버 밖 케이스도 순수 순간이동 대신 슬라이드로 가림. 정말 동떨어지면(>45) 컷.
-  if (Math.hypot(prev1.x - spot.x, prev1.y - spot.y) > 45) return null;
-  return { from, exit: { x: spot.x, y: spot.y } };
-}
-
-/**
- * #52 데드볼 정지 재생: causeTick 부터 공이 스팟(±tol)에 머무는 마지막 스냅 인덱스.
- * 정지 동안 뷰어가 이 구간을 재생하면(정적 홀드 대신) 선수 리포지셔닝(정비)이 자연스럽게 보인다.
- * 공이 스팟을 떠나는 순간(=재시작/스로인 실행)이 정지 끝.
- */
-export function freezeSpanEndIdx(snaps, causeTick, maxTicks = 30, tol = 2) {
-  const ci = snaps.findIndex((s) => s.tick === causeTick);
-  if (ci < 0) return -1;
-  const spot = snaps[ci].ball;
-  let end = ci;
-  for (let j = ci + 1; j < snaps.length && j <= ci + maxTicks; j++) {
-    if (Math.hypot(snaps[j].ball.x - spot.x, snaps[j].ball.y - spot.y) > tol) break;
-    end = j;
-  }
-  return end;
-}
+// #59: synthOutFlight(아웃비행 합성)·freezeSpanEndIdx(정지 재생) 제거 — 엔진이 taker 걸음/정비를
+// 자연 데이터로 방출하므로 뷰어 트릭 불필요. 뷰어는 데드볼도 정상 속도로 재생만 한다.
 
 /** 액션 토스트(선수 근처) + 상황 배너(상단) + 돌파 추론 주석. */
 export function buildAnnotations(events, snaps) {

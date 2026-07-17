@@ -17,6 +17,8 @@ const config = defaultEngineConfig;
 const W = config.pitch.width; // 105
 const CENTER_Y = config.pitch.height / 2; // 34
 const STOP = config.setPiece.stoppageTicks; // 12
+// #59: 정지는 taker 도달까지 동적(base+16 상한). 크로스는 그 후 발사 → 완료 창을 넉넉히(연장+비행).
+const WIN = STOP + 24;
 
 // 페널티에어리어 ≈ 골라인 16.5m 깊이 · 중앙 ±20m. near-post 경합 크로스도 박스로 인정(중앙 고집 X).
 const PEN_DEPTH_M = 18;
@@ -35,7 +37,7 @@ function usableCorners(log: MatchLog) {
   const lastTick = log.tickSnapshots[log.tickSnapshots.length - 1]!.tick;
   const halfW = log.events.find((e) => e.type === "half_whistle");
   const half = halfW ? halfW.tick : Math.floor((lastTick + 1) / 2);
-  const win = STOP + 8;
+  const win = WIN;
   return log.events
     .filter((e) => e.type === "kickoff" && e.detail === "corner")
     .filter((e) => e.tick + win <= lastTick) // 경기 종료 전 완료
@@ -53,7 +55,7 @@ describe("corner cross (#31)", () => {
       const gx = attackGoalX(c.team!);
       let delivered = false;
       let closest = { tick: -1, dGoal: 1e9, dY: 1e9 };
-      for (let t = c.tick + 1; t <= c.tick + STOP + 8; t++) {
+      for (let t = c.tick + 1; t <= c.tick + WIN; t++) {
         const s = byTick.get(t);
         if (!s) continue;
         const dGoal = Math.abs(s.ball.x - gx);
