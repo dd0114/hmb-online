@@ -102,14 +102,14 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 
 ---
 
-## 5. 현재 상태 (epic-flow — 활성 에픽 2개)
+## 5. 현재 상태 (epic-flow)
 
-**완료(닫힘)**: #13 Phase 1 PoC 에픽 — Wave 1(S1·S2 엔진+스키마, Gate G1 PASS) + Wave 1.5(V1~V3 이벤트↔연출 신뢰성, PR #18) + S3 PoC(#19 프롬프트→움직임 증명) + E0 병렬 환경(PR #20). #21/#9/#23/PR#27 은 대체·종결.
+**완료(닫힘)**: #13 Phase 1 PoC 에픽 — Wave 1(S1·S2 엔진+스키마, Gate G1 PASS) + Wave 1.5(V1~V3 이벤트↔연출 신뢰성, PR #18) + S3 PoC(#19 프롬프트→움직임 증명) + E0 병렬 환경(PR #20). #21/#9/#23/PR#27 은 대체·종결. **#32 AI 워커 W1~W3 완료** — 자산(executor·resilience·metrics·claude CLI)은 #63 이 승계, 파일 큐는 퇴역 예정.
 
 | 활성 트랙 | SoT | owned-glob | 내용 |
 |---|---|---|---|
-| **AI 워커 시스템** (서버 세션) | **에픽 #32** | `packages/server/**` | 정액제 헤드리스 큐 워커 — W1 #33(큐+프로토콜+stub) → W2 #34(구독 워커·sonnet 서브에이전트·모델스왑) → W3 #35(캐시계측·모델비교·이미지·폴백). 요구사항 원문 = #32 §0. |
-| **엔진/뷰어 QA** (QA 세션, 상시) | **에픽 #25** (epic:qa) | `packages/engine/**` | §2.5 상시 루프. G1.5 판정 #17 포함. |
+| **게임 시스템 v2 A-to-Z** (§10) | 트래킹 **#60** | 에픽별(§10 표) | 로그인→덱→매치플로우→상점→도감 전체 PoC. 계획 SoT = `docs/plan-v2/` |
+| **엔진/뷰어 QA** (QA 세션, 상시) | **에픽 #25** (epic:qa) | `packages/engine/**` | §2.5 상시 루프. G1.5 판정 #17 포함. v2 요청 이슈 #65·#66 수신측 |
 
 **백로그(open 유지, 추후 wave 재편)**: S4 #10(밸런스 Go/No-Go) · S5 #11(세션 상태머신) · S6 #12(PixiJS 정식 렌더).
 
@@ -141,7 +141,7 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 - **렌더 = 2D 실좌표**(디버그=Canvas, 정식=PixiJS). 앱=Capacitor.
 - **메타(Phase 2) = 선수 카드 수집 + 덱(스쿼드+전술+프롬프트) 프리셋** 둘 다.
 - **PvP-ready 경계**: 싱글부터 서버권위·결정론·입력로그 재생·직렬화 스키마 유지 → Phase 3에서 네트워킹만 얹기.
-- **서버 = Java(Spring) + TS 서번트 2개, 정액제 유지 (ADR-1, 에픽 #32 · 2026-07-10)**: 게임 흐름·상태·잡 큐(DB)·결과캐시 전부 Java 소유. TS 는 ①엔진 러너(무상태 simulate/resume RPC — 엔진 재작성 금지) ②AI 실행기(Java 잡 API 폴링, Claude Code 정액제 세션, 서브에이전트 sonnet). Java 도입점 = S5(#11). Phase 1 은 W1 파일 큐가 잠정(JobQueue 인터페이스 뒤 교체). 아키텍처 다이어그램: claude.ai/code/artifact/29dc7dbc-1647-4da9-8a01-61c2ef2976c1
+- **서버 = Java(Spring) + TS 서번트 2개, 정액제 유지 (ADR-1, 에픽 #32 · 2026-07-10)**: 게임 흐름·상태·잡 큐(DB)·결과캐시 전부 Java 소유. TS 는 ①엔진 러너(무상태 simulate/resume RPC — 엔진 재작성 금지) ②AI 실행기(Java 잡 API 폴링, Claude Code 정액제 세션, 서브에이전트 sonnet). Java 도입 = **v2 에픽 #62 로 확정 실행(2026-07-18, §10)** — 구 "S5(#11) 도입점"과 W1 파일 큐 잠정안은 대체됨. 아키텍처 다이어그램: claude.ai/code/artifact/29dc7dbc-1647-4da9-8a01-61c2ef2976c1
 
 ---
 
@@ -156,10 +156,22 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 
 ## 9. 새 세션 재개 체크리스트
 
-1. `gh auth switch --hostname github.com --user dd0114` (필요 시).
-2. epic 읽기: **#32**(AI 워커 시스템, 서버) + **#25**(QA 상시, 엔진) STATE → 어디까지 됐는지 파악. (#13/#21 은 종결 — 이력 참고용.)
+1. gh 활성 계정이 `dd0114`인지 확인(`gh auth status`). **fleet 환경에서는 `gh auth switch` 금지**(전역 상태 — 다른 세션 깨짐).
+2. epic 읽기: **#60**(게임 시스템 v2 트래킹 → 자기 모듈 에픽 #61~#64) + **#25**(QA 상시, 엔진) STATE → 어디까지 됐는지 파악. (#13/#21/#32 는 종결 — 이력 참고용.)
 3. `npm test` 통과 확인, `node tools/qa-match.mjs`·`node tools/perceptibility.mjs` 로 현 상태 스냅샷.
 4. 작업 시 §2 규칙 준수 — 특히 **판정은 독립 QA로만**, **테스트 먼저**, **config로만 튜닝**, **결정론 불변**.
 5. **엔진/뷰어 변경이면 §2.5 엔진 QA 상시 루프를 매번 돈다**(기계검증→E2E-TDD→실화면캡처→결정론가드→독립QA). 발견은 QA 에픽 #25 에 append.
 6. 뷰어 확인: `cd packages/engine/dev-viewer && node build-standalone.mjs && open viewer-standalone.html`.
-7. 서버 작업이면 `packages/server/README.md` + 에픽 #32(W1 #33 부터). `packages/shared/**`(계약)는 두 트랙 프리즈·조율.
+7. **모듈 작업이면 해당 디렉토리의 CLAUDE.md 먼저**(`server-java/` `apps/web/` `packages/server/` `data/`) — §10 운영 모델 준수.
+
+---
+
+## 10. 게임 시스템 v2 A-to-Z (2026-07-18 확정 — 트래킹 #60)
+
+엔진+렌더링(QA 도메인)을 제외한 **전 게임 시스템**을 최소 스펙(목업 포함)으로 끝까지: 로그인(목업)→로비→덱 구성(선발11+벤치, 선수별 프롬프트, 프리셋)→싱글 매치(봇 매칭→상대 분석→프롬프트→AI 인풋 생성→전반→하프타임(교체≤3)→후반→결과/전적/보상)→상점(포인트 뽑기 10+1, 5등급)→도감. 멀티='준비중'만.
+
+- **계획 SoT**: `docs/plan-v2/` — PRD-v2(확정 결정 D1~D10 + 모듈별 AC), ERD, LLD-{server-java,ts-servants,web,data}. **계획서만 보고 구현 가능해야 한다**가 기준.
+- **확정 스택**: Java 21 + Spring Boot 3 + Gradle + SQLite(Flyway) 권위 서버(ADR-1 지금 실행) / TS 서번트 2개(엔진러너 RPC·AI실행기 라이브+stub 토글) / React+Vite SPA / 선수 110명·5등급 시드(가상, 전량 교체 가능).
+- **운영 모델(중요)**: 모듈 = 에픽 = 세션 = owned-glob. #61 data(`data/**`) · #62 server-java(`server-java/**`) · #63 ts-servants(`packages/server/**`) · #64 web(`apps/web/**`). 각 모듈은 독립 개발·버전 발행, 소비는 발행물/계약로만. **경계 넘어 재발명 금지** — 안 되면 이슈 레이즈(#57 원칙). 각 모듈 디렉토리에 위임용 CLAUDE.md 있음.
+- **계약 프리즈**: `packages/shared/**` + `docs/plan-v2/api/openapi.yaml`(server-java W0 산출, web·servants 입력).
+- **통합 게이트**(#60): G-A stub 풀 E2E(AC-M2) → G-B 브라우저 E2E(AC-W1) → G-C 라이브 AI 스모크(AC-T3) → hero 실플레이 데모 → 모듈별 세션 QA 트랙 전환.
