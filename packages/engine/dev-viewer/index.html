@@ -128,7 +128,7 @@
     <input type="file" id="fileInput" accept="application/json" title="match-log.json 직접 불러오기" />
 
     <script type="module">
-      import { buildPlayback, spansReposition, synthOutFlight } from "./playback.mjs";
+      import { buildPlayback, spansReposition, synthOutFlight, freezeSpanEndIdx } from "./playback.mjs";
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
@@ -157,7 +157,7 @@
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
       let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
       let shotFx = [], shotFxTicks = new Set(); // 유효슛 링 이펙트(정지 없음, 순수 시각)
-      let annos = [], snapByTick = new Map(), restartTickSet = new Set(), totalMinutes = 0;
+      let annos = [], snapByTick = new Map(), restartTickSet = new Set(), ballCutTickSet = new Set(), totalMinutes = 0;
       let stoppages = [], hold = null; // 데드볼: freeze→skip 시퀀스
       let lastRender = null; // 마지막 draw()의 렌더된 공(보간 후) — Playwright 계약검증용(__viewer.render()).
       let lastGeom = null;   // 마지막 draw()의 화면좌표 기하(캔버스px) — taker/공 클리핑 계약검증용(__viewer.screenGeom()).
@@ -202,13 +202,21 @@
         const t = tickPos - i;
         const A = snaps[i], B = snaps[j];
         // 데드볼 재배치 구간만 보간 안 함(슛 궤적은 이벤트로 구분 → 부드럽게). playback.spansReposition.
-        const bt = spansReposition(A.tick, B.tick, restartTickSet) ? 0 : t;
+        // #51: 공은 ballCutTickSet(순간이동만) 으로 컷 → 연속 아웃(스로인)은 라이브 이동. 선수는 restartTickSet 로 항상 컷(pt, 아래).
+        const bt = spansReposition(A.tick, B.tick, ballCutTickSet) ? 0 : t;
         let bx = lerp(A.ball.x, B.ball.x, bt), by = lerp(A.ball.y, B.ball.y, bt);
         // #43: 세트피스 freeze 도입부 — 합성 아웃 비행. 엔진 데이터엔 공이 라인을 넘는 레그가
         // 없어서(재시작 틱에 곧장 스팟 파킹) 직전 속도 외삽 레그를 먼저 보여준 뒤 스팟에 놓는다.
         if (hold && hold.synth) {
           const sp = (performance.now() - hold.start) / SYNTH_MS;
-          if (sp < 1) { bx = lerp(hold.synth.from.x, hold.synth.exit.x, sp); by = lerp(hold.synth.from.y, hold.synth.exit.y, sp); }
+          if (sp < 1) {
+            const s = hold.synth;
+            if (s.via) {
+              // 코너 디플렉션 2레그: from→via(골라인 밖 wide 교차) → via→exit(깃발). 스팟에서 끝나 연속.
+              if (sp < 0.5) { const u = sp / 0.5; bx = lerp(s.from.x, s.via.x, u); by = lerp(s.from.y, s.via.y, u); }
+              else { const u = (sp - 0.5) / 0.5; bx = lerp(s.via.x, s.exit.x, u); by = lerp(s.via.y, s.exit.y, u); }
+            } else { bx = lerp(s.from.x, s.exit.x, sp); by = lerp(s.from.y, s.exit.y, sp); }
+          }
         }
         lastRender = { x: bx, y: by, bt, aTick: A.tick, bTick: B.tick, tickPos, zoom: hold ? !!hold.zoom : false };
 
@@ -256,7 +264,7 @@
         // 피치를 가로지르는 지그재그 클러터를 없앤다.
         ctx.lineWidth = 2.5;
         for (let s = Math.max(1, i - BALL_TRAIL + 1); s <= i; s++) {
-          if (spansReposition(snaps[s - 1].tick, snaps[s].tick, restartTickSet)) continue;
+          if (spansReposition(snaps[s - 1].tick, snaps[s].tick, ballCutTickSet)) continue; // #51: 연속 아웃 공 트레일 유지
           const a = (s - (i - BALL_TRAIL)) / BALL_TRAIL; // 0..1 (최신일수록 1)
           ctx.strokeStyle = `rgba(255,230,0,${(0.12 + 0.45 * Math.max(0, a)).toFixed(3)})`;
           ctx.beginPath();
@@ -279,14 +287,21 @@
         const koById = koSnap ? new Map(koSnap.players.map((q) => [q.playerId, q.pos])) : null;
         const ptw = koSnap ? hold.tween * hold.tween * (3 - 2 * hold.tween) : 0; // smoothstep
         const playerRender = [];
+        // #51: 선수는 모든 재배치 틱(restartTickSet)에서 컷 → taker 가 스팟으로 슬라이드(순간이동처럼 보임)
+        // 하지 않고 freeze 경계에서 깔끔히 컷(#26). 공(bt)은 연속아웃이면 라이브 이동하지만 선수는 항상 컷.
+        const pt = spansReposition(A.tick, B.tick, restartTickSet) ? 0 : t;
         for (let k = 0; k < A.players.length; k++) {
           const pa = A.players[k], pb = B.players[k] || pa;
-          // bt(=0 데드볼 재배치 구간): 공처럼 선수도 재배치 틱을 컷한다 → 세트피스 taker 가
-          // 스팟으로 슬라이드(순간이동처럼 보임)하지 않고 freeze 경계에서 깔끔히 컷(스로인/코너 일관).
-          let x = lerp(pa.pos.x, pb.pos.x, bt), y = lerp(pa.pos.y, pb.pos.y, bt);
+          let x = lerp(pa.pos.x, pb.pos.x, pt), y = lerp(pa.pos.y, pb.pos.y, pt);
           if (koById) {
             const kp = koById.get(pa.playerId);
             if (kp) { x = lerp(pa.pos.x, kp.x, ptw); y = lerp(pa.pos.y, kp.y, ptw); }
+          }
+          // #52: taker 워크인 — 정지 재생 중 taker 를 직전 위치(from)에서 스팟(현재 x,y=글루위치)으로
+          // 걸어오게 트윈(순간이동 제거). 정지 진행도에 비례. 공은 스팟 고정(별도 렌더).
+          if (hold && hold.takerWalk && hold.playTo != null && pa.playerId === hold.takerWalk.id) {
+            const wp = Math.min(1, (tickPos - hold.playFrom) / Math.max(1, hold.playTo - hold.playFrom));
+            x = lerp(hold.takerWalk.fx, x, wp); y = lerp(hold.takerWalk.fy, y, wp);
           }
           const isHome = pa.team === "home", owner = A.ballOwner === pa.playerId;
           playerRender.push({ id: pa.playerId, x, y }); // 렌더된(보간 후) 피치좌표 — taker 슬라이드 검출용.
@@ -432,6 +447,16 @@
             hold.tween = Math.min(1, (ts - hold.start) / hold.dur);
             if (hold.tween > 0.4) hold.zoom = false;
           }
+          // #49: synth 아웃비행 완료(공이 스팟 도달) 후 자막 발화 → "공 나감 → 판정" 순서.
+          if (hold.pendingCaption && (ts - hold.start) >= SYNTH_MS) {
+            situationCaption(hold.pendingCaption.text, hold.pendingCaption.col);
+            hold.pendingCaption = null;
+          }
+          // #52: 데드볼 정지 재생 — 정지 구간(playFrom→playTo)을 hold 시간에 걸쳐 진행시켜 선수 정비 노출.
+          if (hold.playTo != null && ts < hold.until) {
+            const p = Math.min(1, (ts - hold.start) / hold.dur);
+            tickPos = hold.playFrom + (hold.playTo - hold.playFrom) * p;
+          }
           // 데드볼 정지: 큰 자막 유지하며 freeze. 시간 지나면 재시작으로 skip.
           if (ts < hold.until) { draw(); requestAnimationFrame(tickLoop); return; }
           // skip 직전 자막/색종이 정리(킥오프 배너와 겹침 방지).
@@ -457,20 +482,39 @@
             if (!st.done && st.causeTick >= beforeTick && st.causeTick <= afterTick) {
               st.done = true;
               tickPos = idxOfTick(st.causeTick); // 원인 프레임에서 멈춤
-              if (st.isGoal) bigCaption(st.big, st.bigCol, true); // 골: 거대 GOAL + 색종이
-              else if (!st.pauseOnly) situationCaption(st.big, st.bigCol); // 선방·세트피스(코너/스로인) 등: 상황 카드 (free_kick pauseOnly 는 자막 없이 정지만)
+              // #43/#51: 세트피스 freeze 도입부 합성 아웃 비행 — teleport 아웃(코너 등)만.
+              // 연속 아웃(스로인)은 ballCutTickSet 에서 제외돼 이미 라이브로 나가는 걸 보여줬으므로 synth·자막지연 불필요.
+              let synth = null;
+              if (st.setPiece && !st.continuous) {
+                const ci = idxOfTick(st.causeTick);
+                const p1 = snaps[ci - 1];
+                if (p1) synth = synthOutFlight(p1.ball, snaps[ci].ball, { w: PITCH_W, h: PITCH_H }, st.kind) || null;
+              }
+              // #49: synth 아웃비행이 있으면 자막을 SYNTH_MS 뒤(공이 스팟 도달)로 지연 → "공 나감 → 판정" 순서.
+              // hold 를 그만큼 연장해 자막이 원래 표시시간(st.hold)만큼 보이게 한다. synth 없으면 즉시 자막.
+              const captionDelay = synth ? SYNTH_MS : 0;
+              if (st.isGoal) bigCaption(st.big, st.bigCol, true); // 골: 거대 GOAL + 색종이 (즉시)
+              else if (!st.pauseOnly && !captionDelay) situationCaption(st.big, st.bigCol); // synth 없는 정지(선방 등): 즉시
               // 데드볼 정지(세트피스/프리킥)는 전체뷰(줌업 X — 줌하면 박스·배치가 안 보여 판독 어려움).
               // 줌은 골 네트인만. wide 플래그로 정지 중 하이라이트 자동줌(nearKey)까지 억제.
-              hold = { until: ts + st.hold, start: ts, dur: st.hold, jumpTo: idxOfTick(st.restartTick), zoom: !!st.isGoal, wide: !!st.wide || !!st.pauseOnly || !!st.setPiece };
+              hold = { until: ts + st.hold + captionDelay, start: ts, dur: st.hold + captionDelay, jumpTo: idxOfTick(st.restartTick), zoom: !!st.isGoal, wide: !!st.wide || !!st.pauseOnly || !!st.setPiece };
+              if (synth) hold.synth = synth;
+              // synth 있는 setPiece: 자막을 보류했다가 아웃비행 완료 후 발화(아래 hold 처리).
+              if (captionDelay && !st.pauseOnly && !st.isGoal) hold.pendingCaption = { text: st.big, col: st.bigCol };
               // 골 정지: 세리머니 동안 선수들을 킥오프 포메이션(restart 스냅)으로 트윈 → hold 해제 시 순간이동 제거.
               if (st.isGoal) { hold.formFrom = idxOfTick(st.causeTick); hold.koIdx = idxOfTick(st.restartTick); hold.tween = 0; }
-              // #43: 세트피스(코너/스로인) freeze 도입부에 합성 아웃 비행 — 공이 라인을 넘는 걸 보여준다.
-              if (st.setPiece) {
+              // #52: 데드볼 정지 재생 — 정적 홀드 대신 정지 구간(공이 스팟 유지되는 틱들)을 재생해
+              // 선수들이 정비(리포지셔닝)하는 걸 보여준다. 정지 끝(공이 스팟 떠남=실행)에서 재개.
+              if (st.setPiece || st.pauseOnly) {
                 const ci = idxOfTick(st.causeTick);
-                const p1 = snaps[ci - 1], p2 = snaps[ci - 2];
-                if (p1 && p2) {
-                  const sof = synthOutFlight(p2.ball, p1.ball, snaps[ci].ball, { w: PITCH_W, h: PITCH_H });
-                  if (sof) hold.synth = sof;
+                const end = freezeSpanEndIdx(snaps, st.causeTick);
+                if (end > ci) {
+                  hold.playFrom = ci; hold.playTo = end; hold.jumpTo = end;
+                  // #52: taker 워크인 — causeTick 에 스팟으로 순간이동하는 taker 를 직전 위치에서
+                  // 걸어오게 오버레이(공은 스팟 고정). 정지 재생 진행도에 맞춰 from→스팟 트윈.
+                  const takerId = snaps[ci].ballOwner;
+                  const pp = takerId && snaps[ci - 1] && snaps[ci - 1].players.find((p) => p.playerId === takerId);
+                  if (pp) hold.takerWalk = { id: takerId, fx: pp.pos.x, fy: pp.pos.y };
                 }
               }
               break;
@@ -527,7 +571,7 @@
         shotFxTicks = new Set(data.events.filter((e) => e.type === "shot" && e.detail !== "off_target").map((e) => e.tick));
         snapByTick = new Map(snaps.map((s) => [s.tick, s]));
         const pb = buildPlayback(data.events, snaps); // playback.mjs (vitest 검증)
-        annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks;
+        annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks; ballCutTickSet = pb.ballCutTicks;
         totalMinutes = snaps.length ? snaps[snaps.length - 1].minute : 0;
         // 타임라인 이벤트 핀(타입별 색·높이, 클릭 점프). 골>PK>선방>유효슛>코너 순으로 위에 그림.
         const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
@@ -593,9 +637,21 @@
         screenGeom: () => (lastGeom ? JSON.parse(JSON.stringify(lastGeom)) : null),
         // 임의 tickPos 로 렌더 후 렌더된(보간 후) 선수 피치좌표 배열 [{id,x,y}] 반환 — taker 슬라이드/순간이동 검출용.
         renderPlayersAt: (tp) => { setPlaying(false); resetStops(); tickPos = tp; draw(); return lastPlayers.map((p) => ({ ...p })); },
+        // 현재 프레임의 렌더된 선수(리셋 없이) — 정지 재생/워크인 검출용(#52).
+        curPlayers: () => lastPlayers.map((p) => ({ ...p })),
         // 현재 카메라 상태 {cx,cy,zoom} — 재생 중 카메라 점프/팬 검출용.
         cam: () => ({ cx: cam.cx, cy: cam.cy, zoom: cam.zoom }),
         idxOfTick: (tick) => idxOfTick(tick),
+        // #47: 세트피스 정지의 합성 아웃 비행 레그 {from, via?, exit} 를 freeze 와 동일 경로로 계산.
+        // null = 합성 안 함(컷). 코너·스로인 아웃 크로싱 계약 검증용(애니 wall-clock 의존 없이 결정론).
+        synthAt: (causeTick) => {
+          const st = stoppages.find((s) => s.causeTick === causeTick && s.setPiece);
+          if (!st) return null;
+          const ci = idxOfTick(st.causeTick);
+          const p1 = snaps[ci - 1];
+          if (!p1) return null;
+          return synthOutFlight(p1.ball, snaps[ci].ball, { w: PITCH_W, h: PITCH_H }, st.kind) || null;
+        },
         captions: () => ({
           flash: getComputedStyle(flashEl).opacity !== "0" ? flashEl.textContent : "",
           situation: getComputedStyle(situationEl).opacity !== "0" ? situationEl.textContent : "",

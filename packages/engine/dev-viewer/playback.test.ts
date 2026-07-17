@@ -6,6 +6,9 @@ import {
   buildStoppages,
   buildAnnotations,
   synthOutFlight,
+  isContinuousOut,
+  buildBallCutTicks,
+  freezeSpanEndIdx,
 } from "./playback.mjs";
 
 describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 컷 (하이라이트 순간이동 버그 회귀방지)", () => {
@@ -26,6 +29,44 @@ describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 �
     // 골 후 네트→센터 리셋은 뒤따르는 kickoff 이벤트가 컷한다.
     const withKickoff = buildRestartTicks([{ type: "goal", tick: 50 }, { type: "kickoff", tick: 75 }]);
     expect(spansReposition(74, 75, withKickoff)).toBe(true);
+  });
+});
+
+describe("#51 isContinuousOut / buildBallCutTicks — 연속 아웃은 공 라이브(컷 제외)", () => {
+  const S = (arr) => arr.map(([tick, x, y]) => ({ tick, ball: { x, y } }));
+  it("스로인(직전 움직이는 공 + 스팟 근거리)은 continuous=true", () => {
+    const snaps = S([[0, 20, 40], [1, 26, 52], [2, 30, 68]]); // 필드 안 이동 → 사이드라인
+    expect(isContinuousOut(snaps, 2)).toBe(true);
+  });
+  it("코너(직전 정지 파킹공)는 continuous=false → 컷 유지", () => {
+    const snaps = S([[0, 102.5, 34], [1, 102.5, 34], [2, 105, 0]]); // 파킹 → 깃발 순간이동
+    expect(isContinuousOut(snaps, 2)).toBe(false);
+  });
+  it("직전이 움직여도 스팟이 멀면(>25m) continuous=false", () => {
+    const snaps = S([[0, 10, 10], [1, 12, 12], [2, 60, 68]]);
+    expect(isContinuousOut(snaps, 2)).toBe(false);
+  });
+  it("buildBallCutTicks: 연속 스로인은 제외, 코너는 포함", () => {
+    const snaps = S([[0, 20, 40], [1, 26, 52], [2, 30, 68], [3, 102.5, 34], [4, 102.5, 34], [5, 105, 0]]);
+    const events = [
+      { type: "kickoff", detail: "throw_in", tick: 2 }, // 연속 → 공 라이브(컷 제외)
+      { type: "kickoff", detail: "corner", tick: 5 }, // 순간이동 → 컷
+    ];
+    const cut = buildBallCutTicks(events, snaps);
+    expect(cut.has(2)).toBe(false); // 연속 스로인 공 라이브
+    expect(cut.has(5)).toBe(true); // 코너 컷
+  });
+});
+
+describe("#52 freezeSpanEndIdx — 정지 재생 구간(공이 스팟 유지) 끝", () => {
+  const S = (arr: [number, number, number][]) => arr.map(([tick, x, y]) => ({ tick, ball: { x, y } }));
+  it("공이 스팟에 머무는 마지막 스냅 인덱스 반환(정지 구간)", () => {
+    const snaps = S([[0, 20, 50], [1, 25, 60], [2, 30, 68], [3, 30, 68], [4, 30, 68], [5, 30, 68], [6, 45, 40]]);
+    expect(freezeSpanEndIdx(snaps, 2)).toBe(5); // tick5 인덱스(6에서 공 이동=정지 끝)
+  });
+  it("공이 바로 이동하면 causeTick 인덱스(정지 구간 없음)", () => {
+    const snaps = S([[0, 20, 50], [1, 25, 60], [2, 30, 68], [3, 45, 40]]);
+    expect(freezeSpanEndIdx(snaps, 2)).toBe(2);
   });
 });
 
@@ -214,18 +255,42 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
   // 마지막 속도 외삽으로 만들어 freeze 도입부에 보여준다(공이 나가는 걸 끝까지 보고 정지).
   describe("#43 — synthOutFlight(아웃 비행 합성)", () => {
     const pitch = { w: 105, h: 68 };
-    it("직전 속도 외삽이 경계를 스팟 근처에서 넘으면 exit 반환 (실데이터 throw_in@231)", () => {
-      const r = synthOutFlight({ x: 28.2, y: 36.0 }, { x: 34.7, y: 52.8 }, { x: 40.7, y: 68.0 }, pitch)!;
+    const POST_MIN = 34 - 3.66, POST_MAX = 34 + 3.66;
+    it("스로인: 마지막 인필드 위치→사이드라인 스팟 레그 반환 (실데이터 throw_in@231)", () => {
+      const r = synthOutFlight({ x: 34.7, y: 52.8 }, { x: 40.7, y: 68.0 }, pitch, "throw_in")!;
       expect(r).toBeTruthy();
-      expect(r.exit.y).toBeCloseTo(68, 5); // 터치라인 교차
-      expect(Math.abs(r.exit.x - 40.7)).toBeLessThan(8); // 스팟 근처(왜곡 없음)
+      expect(r.from).toEqual({ x: 34.7, y: 52.8 }); // 마지막 인필드에서 출발
+      expect(r.exit.y).toBeCloseTo(68, 5); // 터치라인에서 끝남(스팟)
+      expect(r.exit.x).toBeCloseTo(40.7, 5); // 스팟에서 끝 → freeze 착지와 연속(순간이동 0)
     });
-    it("공이 정지 상태(세이브 파킹 코너 등)면 합성 불가 → null", () => {
-      expect(synthOutFlight({ x: 102.5, y: 34 }, { x: 102.5, y: 34 }, { x: 105, y: 68 }, pitch)).toBeNull();
+    it("스로인이 스팟에서 너무 멀면(>25m, 비국소) 합성 포기 → null(컷 유지)", () => {
+      expect(synthOutFlight({ x: 50, y: 10 }, { x: 50, y: 68 }, pitch, "throw_in")).toBeNull();
     });
-    it("외삽 교차점이 스팟과 동떨어지면(>8m) 합성 포기 → null", () => {
-      // 아래쪽(y=0)으로 가는 공인데 스팟이 반대편 위(y=68) → 왜곡 합성 금지
-      expect(synthOutFlight({ x: 50, y: 20 }, { x: 50, y: 10 }, { x: 50, y: 68 }, pitch)).toBeNull();
+
+    // #47: 느린 스로인(외삽 tHit>3 로 #43 이 놓침)도 아웃 레그가 나와야 한다.
+    it("#47 느린 스로인(실데이터 @714 v≈3)도 사이드라인 아웃 레그 반환", () => {
+      const r = synthOutFlight({ x: 44.1, y: 61.2 }, { x: 59.4, y: 68.0 }, pitch, "throw_in")!;
+      expect(r).toBeTruthy();
+      expect(r.exit.y).toBeCloseTo(68, 5);
+      expect(r.exit.x).toBeCloseTo(59.4, 5);
+    });
+
+    // #47: 코너 = 파킹공(세이브→코너). 진짜 아웃 궤적이 데이터에 없음 → 키퍼 디플렉션 레그로 묘사.
+    it("#47 코너(파킹공, 실데이터 @148): 골라인 밖 wide via 경유 → 깃발(스팟)에서 끝나는 2레그", () => {
+      const r = synthOutFlight({ x: 102.5, y: 34 }, { x: 105, y: 68 }, pitch, "corner")!;
+      expect(r).toBeTruthy();
+      expect(r.from).toEqual({ x: 102.5, y: 34 });
+      expect(r.via).toBeTruthy();
+      expect(r.via!.x).toBeCloseTo(105, 5); // 골라인 위를 넘어감
+      // wide(포스트 밖) 여야 '골'이 아니라 '코너'로 읽힘
+      expect(r.via!.y > POST_MAX || r.via!.y < POST_MIN).toBe(true);
+      expect(r.exit).toEqual({ x: 105, y: 68 }); // 깃발(스팟)에서 끝 → freeze 착지와 연속
+    });
+    it("#47 코너 반대편(x=0/아래 깃발 @978): 골라인 x=0, wide via, 스팟에서 끝", () => {
+      const r = synthOutFlight({ x: 2.5, y: 34 }, { x: 0, y: 68 }, pitch, "corner")!;
+      expect(r.via!.x).toBeCloseTo(0, 5);
+      expect(r.via!.y > POST_MAX || r.via!.y < POST_MIN).toBe(true);
+      expect(r.exit).toEqual({ x: 0, y: 68 });
     });
   });
 
