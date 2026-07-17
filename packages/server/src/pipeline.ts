@@ -14,9 +14,15 @@ export const ROSTER_CONTEXT = [
   "H5 LCM(0.44,0.32) H6 CM(0.40,0.50) H7 RCM(0.44,0.68) H8 LW(0.70,0.20) H9 ST(0.78,0.50) H10 RW(0.70,0.80)",
 ].join("\n");
 
-/** directive+seed → coach 잡 컨텍스트(= AiJob.context). */
-export function coachContext(directive: string, seed: string): CoachContext {
-  return { directive, rosterContext: ROSTER_CONTEXT, seed, prefix: "H" };
+/** directive+seed(+선수별 프롬프트) → coach 잡 컨텍스트(= AiJob.context). */
+export function coachContext(
+  directive: string,
+  seed: string,
+  playerPrompts?: Record<string, string>,
+): CoachContext {
+  const ctx: CoachContext = { directive, rosterContext: ROSTER_CONTEXT, seed, prefix: "H" };
+  if (playerPrompts && Object.keys(playerPrompts).length > 0) ctx.playerPrompts = playerPrompts;
+  return ctx;
 }
 
 /** 검증 통과한 홈 입력으로 결정론 매치 실행. 상대(away)는 중립 베이스라인. */

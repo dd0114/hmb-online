@@ -13,3 +13,8 @@ playwright-report/
 tools/qa_*.mjs
 tools/reqa*.mjs
 tools/*_log.json
+
+# 런타임 데이터(큐·캐시·리포트) — 커밋 금지
+packages/server/.data
+packages/server/.data-*
+packages/server/public/*.png

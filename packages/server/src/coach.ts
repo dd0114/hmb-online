@@ -9,7 +9,7 @@ import { TacticalInput, clampTacticalInput } from "@hmb/shared";
 
 /** 큐에 실리는 coach 잡 컨텍스트(= AiJob.context). */
 export const CoachContext = z.object({
-  /** 감독 자연어 지시. 유일한 가변부 — 캐시 프리픽스 밖. */
+  /** 감독 자연어 지시(팀 전체). 유일한 가변부 — 캐시 프리픽스 밖. */
   directive: z.string().min(1),
   /** 로스터·포메이션 컨텍스트(안정부 — 프롬프트 캐시 프리픽스). */
   rosterContext: z.string().min(1),
@@ -17,6 +17,11 @@ export const CoachContext = z.object({
   seed: z.string().min(1),
   /** 팀 prefix ("H"|"A") — 산출 playerId 검증에 사용. */
   prefix: z.string().min(1),
+  /**
+   * 선수별 자연어 프롬프트(playerId → 지시). HMB 핵심 차별점(§1) — AI 가 선수 개인 성향으로 번역.
+   * 가변부(directive 뒤)라 프리픽스 캐시 유지. 같은 프롬프트 세트 = 같은 promptHash = 즉시 리플레이.
+   */
+  playerPrompts: z.record(z.string(), z.string()).optional(),
 });
 export type CoachContext = z.infer<typeof CoachContext>;
 
@@ -53,8 +58,16 @@ export function buildCoachPrompt(ctx: CoachContext, feedback?: string): string {
     "",
     `seed: ${ctx.seed}`,
     `팀 prefix: ${ctx.prefix} (모든 playerId 는 "${ctx.prefix}" 로 시작)`,
-    `감독 지시:\n${ctx.directive}`,
+    `감독 지시(팀 전체):\n${ctx.directive}`,
   ];
+  const pp = ctx.playerPrompts && Object.entries(ctx.playerPrompts).filter(([, v]) => v.trim());
+  if (pp && pp.length > 0) {
+    parts.push(
+      "",
+      "선수별 개인 지시(해당 선수의 behavior 에 우선 반영 — 팀 지시보다 구체적):",
+      ...pp.map(([pid, prompt]) => `- ${pid}: ${prompt.trim()}`),
+    );
+  }
   if (feedback) {
     parts.push("", `[이전 산출 거부됨] 사유: ${feedback} — 이 문제를 고쳐서 다시 제출.`);
   }

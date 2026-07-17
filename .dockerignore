@@ -1,0 +1,15 @@
+# 버전핀 이미지 빌드 컨텍스트 축소 (에픽 #32 · W3 AC3) — lockfile 로만 의존성 재현.
+**/node_modules
+**/.data
+**/dist
+**/*.log
+.git
+.github
+# 큐·캐시·리포트 생성물(런타임에 볼륨/디렉토리로 생성).
+packages/server/.data
+packages/server/public/*.png
+# 뷰어·테스트 생성물(서버 이미지엔 불필요).
+packages/engine/dev-viewer/match-log.json
+packages/engine/dev-viewer/*-standalone.html
+**/e2e/.artifacts
+scratchpad

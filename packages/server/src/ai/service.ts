@@ -1,5 +1,6 @@
 import type { JobQueue } from "./queue.js";
 import type { ResultCache } from "./cache.js";
+import type { CacheMetrics } from "./metrics.js";
 import { promptHash, type AiJobKind, type AiJobResult } from "./protocol.js";
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -9,6 +10,8 @@ export class AiService {
   constructor(
     private readonly queue: JobQueue,
     private readonly cache: ResultCache,
+    /** W3 AC1: L1 결과캐시 히트율 계측(선택). */
+    private readonly metrics?: CacheMetrics,
   ) {}
 
   /** AI 판단 요청. 결과캐시 히트면 즉시 반환(AI 스킵), 아니면 잡 enqueue. */
@@ -18,13 +21,18 @@ export class AiService {
   ): Promise<{ status: "cached"; id: string; output: unknown } | { status: "queued"; id: string }> {
     const id = promptHash(kind, context);
     const hit = await this.cache.get(id);
-    if (hit !== null) return { status: "cached", id, output: hit };
+    if (hit !== null) {
+      this.metrics?.recordRequest("cached");
+      return { status: "cached", id, output: hit };
+    }
     // done 결과가 있으면 캐시 백필 후 반환(캐시 유실 대비).
     const prev = await this.queue.result(id);
     if (prev?.ok && prev.output !== undefined) {
       await this.cache.put(id, prev.output);
+      this.metrics?.recordRequest("cached");
       return { status: "cached", id, output: prev.output };
     }
+    this.metrics?.recordRequest("queued");
     await this.queue.enqueue({ id, kind, context, enqueuedAt: new Date().toISOString() });
     return { status: "queued", id };
   }

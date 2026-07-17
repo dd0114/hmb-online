@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HMB · 프롬프트 실험실 (A/B)</title>
+<style>
+  :root{--bg:#0d0f13;--panel:#161a21;--panel2:#1d222b;--line:#2a2f3a;--fg:#e6e9ef;--muted:#93a0b0;--accent:#5b8cff;--a:#4f8cff;--b:#ff7a59;--ok:#37d67a;--warn:#ffb020;--mono:ui-monospace,Menlo,monospace}
+  @media (prefers-color-scheme:light){:root{--bg:#f4f6f9;--panel:#fff;--panel2:#eef1f5;--line:#e0e4ea;--fg:#171a20;--muted:#5b6472}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.4}
+  header{padding:16px 22px;border-bottom:1px solid var(--line);display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  header h1{font-size:16px;margin:0;font-weight:650}
+  header .sub{color:var(--muted);font-size:12.5px;max-width:640px}
+  a.opslink{margin-left:auto;color:var(--muted);font-size:12px;text-decoration:none;border:1px solid var(--line);padding:5px 10px;border-radius:8px}
+  .bar{display:flex;gap:10px;align-items:center;padding:12px 22px;border-bottom:1px solid var(--line);flex-wrap:wrap;background:var(--panel)}
+  .bar label{font-size:12px;color:var(--muted)}
+  input,button,textarea{font:inherit}
+  input[type=text]{padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg)}
+  button{cursor:pointer;padding:8px 13px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-weight:600;font-size:13px}
+  button.ghost{background:transparent;color:var(--accent)}
+  button:disabled{opacity:.45;cursor:default}
+  main{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:16px 22px;max-width:1500px;margin:0 auto}
+  @media(max-width:900px){main{grid-template-columns:1fr}}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;min-width:0}
+  .col.A{border-top:3px solid var(--a)} .col.B{border-top:3px solid var(--b)}
+  .col h2{font-size:14px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .tag{font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:99px;color:#fff}
+  .tag.A{background:var(--a)} .tag.B{background:var(--b)}
+  .presets{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+  .presets button{padding:5px 9px;font-size:11.5px;font-weight:500;background:var(--panel2);color:var(--fg);border-color:var(--line)}
+  label.fld{display:block;font-size:11px;color:var(--muted);margin:8px 0 3px}
+  textarea.team{width:100%;height:44px;resize:vertical;padding:7px 9px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font-size:12.5px}
+  .players{margin-top:8px;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .prow{display:grid;grid-template-columns:64px 1fr;gap:0;align-items:center;border-bottom:1px solid var(--line)}
+  .prow:last-child{border:0}
+  .prow .pid{font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:0 8px}
+  .prow input{border:0;border-radius:0;background:transparent;width:100%;padding:7px 9px;font-size:12px}
+  .prow input:focus{outline:1px solid var(--accent);outline-offset:-1px;border-radius:6px}
+  canvas{width:100%;aspect-ratio:105/68;background:#1b7a3d;border-radius:9px;margin-top:10px;display:block}
+  .stat{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+  .stat .box{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 8px;text-align:center}
+  .stat .box b{display:block;font-size:17px;font-family:var(--mono)} .stat .box span{font-size:10.5px;color:var(--muted)}
+  .out{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;min-height:16px}
+  .diff{grid-column:1/-1;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .diff h2{font-size:14px;margin:0 0 8px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th,td{padding:5px 8px;border-bottom:1px solid var(--line);text-align:right;font-family:var(--mono)}
+  th:first-child,td:first-child{text-align:left}
+  thead th{color:var(--muted);font-weight:600}
+  td.chg{color:var(--warn);font-weight:700}
+  .muted{color:var(--muted)} .a-txt{color:var(--a)} .b-txt{color:var(--b)}
+  .score{font-family:var(--mono);font-size:15px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚽ HMB · 프롬프트 실험실</h1>
+  <span class="sub">같은 seed로 <b>선수별 자연어 프롬프트</b> 두 세트(A/B)를 <b>라이브 AI</b>에 태워 → 결정론 시뮬 → 두 경기를 나란히 재생·비교. "프롬프트가 경기를 진짜 바꾸는가"를 눈으로 검증.</span>
+  <a class="opslink" href="/ops">W3 운영 대시보드 →</a>
+</header>
+
+<div class="bar">
+  <label>seed</label><input id="seed" type="text" value="4815162342" style="width:120px" />
+  <button id="runBoth" onclick="runBoth()">▶ A · B 동시 생성 → 재생</button>
+  <button class="ghost" id="playBtn" onclick="togglePlay()" disabled>⏯ 재생/정지</button>
+  <label>속도</label>
+  <select id="speed" onchange="onSpeed()" style="padding:6px 8px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);color:var(--fg);font-size:12px">
+    <option value="0.5">0.5×</option>
+    <option value="1" selected>1× (관전)</option>
+    <option value="2">2×</option>
+    <option value="4">4×</option>
+    <option value="8">8× (빠르게)</option>
+  </select>
+  <input id="scrub" type="range" min="0" max="1000" value="0" oninput="onScrub()" style="width:180px;accent-color:var(--accent)" disabled />
+  <span id="clock" class="muted" style="font-family:var(--mono);font-size:12px"></span>
+  <span id="status" class="muted" style="font-size:12px"></span>
+</div>
+
+<main>
+  <section class="col A" id="colA"></section>
+  <section class="col B" id="colB"></section>
+
+  <section class="diff" id="diffCard" style="display:none">
+    <h2>🔬 프롬프트 → 파라미터 → 경기 (A vs B diff)</h2>
+    <div id="scoreLine" class="score" style="margin-bottom:10px"></div>
+    <div style="overflow-x:auto"><table id="diffTable"></table></div>
+    <div class="muted" style="margin-top:8px;font-size:11.5px">team.width·line = 팀 전술 · 선수 avgX = 평균 전진도(m, 클수록 상대 골문쪽) · dist = 이동거리(km) · touch = 볼 소유 틱. <b class="chg">주황</b> = A/B 차이 큰 항목.</div>
+  </section>
+</main>
+
+<script>
+const ROSTER = [
+  ["H0","GK"],["H1","LB"],["H2","LCB"],["H3","RCB"],["H4","RB"],
+  ["H5","LCM"],["H6","CM"],["H7","RCM"],["H8","LW"],["H9","ST"],["H10","RW"],
+];
+const PRESETS = {
+  "⚡ 극공격": { directive:"매우 공격적. 하이라인·강한 전방압박·넓은 폭·빠른 템포.", pp:{
+    H1:"풀백 오버랩으로 최전방까지 전진 침투", H4:"풀백 오버랩으로 최전방까지 전진 침투",
+    H8:"인버티드 윙어로 안쪽으로 파고들어 슛", H10:"인버티드 윙어로 안쪽으로 파고들어 슛",
+    H9:"뒷공간 침투 위주, 최전방에서 적극 슛" } },
+  "🛡 극수비": { directive:"매우 수비적. 로우블록·낮은 라인·압박 자제·좁게 콤팩트.", pp:{
+    H1:"오버랩 자제, 뒤에 남아 수비 우선", H4:"오버랩 자제, 뒤에 남아 수비 우선",
+    H8:"내려와서 측면 수비 가담", H10:"내려와서 측면 수비 가담",
+    H9:"전방 고립 최소, 수비 압박 도움" } },
+  "🎯 중앙집중": { directive:"중앙 밀집·짧은 패스 위주·측면 자제.", pp:{
+    H8:"안쪽으로 좁혀 중앙 플레이", H10:"안쪽으로 좁혀 중앙 플레이", H6:"深은 위치에서 배급, 로밍 자제" } },
+  "지우기": { directive:"", pp:{} },
+};
+
+function buildCol(side){
+  const el = document.getElementById("col"+side);
+  let rows = ROSTER.map(([id,role]) =>
+    `<div class="prow"><span class="pid">${id} ${role}</span><input id="pp-${side}-${id}" placeholder="${id} 선수 개인 지시(선택)"/></div>`).join("");
+  el.innerHTML =
+    `<h2><span class="tag ${side}">${side}</span> 프롬프트 세트</h2>
+     <div class="presets">${Object.keys(PRESETS).map(k=>`<button onclick="applyPreset('${side}','${k}')">${k}</button>`).join("")}</div>
+     <label class="fld">팀 전체 지시 (directive)</label>
+     <textarea class="team" id="dir-${side}" placeholder="예: 매우 공격적. 하이라인·강한 압박."></textarea>
+     <label class="fld">선수별 개인 프롬프트</label>
+     <div class="players">${rows}</div>
+     <canvas id="cv-${side}" width="420" height="272"></canvas>
+     <div class="stat" id="stat-${side}"></div>
+     <div class="out" id="out-${side}">아직 생성 안 됨.</div>`;
+}
+buildCol("A"); buildCol("B");
+
+function applyPreset(side,k){
+  const p = PRESETS[k];
+  document.getElementById("dir-"+side).value = p.directive;
+  for(const [id] of ROSTER){ document.getElementById(`pp-${side}-${id}`).value = (p.pp&&p.pp[id])||""; }
+}
+applyPreset("A","⚡ 극공격"); applyPreset("B","🛡 극수비");
+
+function collect(side){
+  const pp = {};
+  for(const [id] of ROSTER){ const v=document.getElementById(`pp-${side}-${id}`).value.trim(); if(v) pp[id]=v; }
+  return { directive: document.getElementById("dir-"+side).value.trim() || "균형 잡힌 기본 전술.", playerPrompts: pp, seed: document.getElementById("seed").value.trim() };
+}
+
+// ── 렌더러: MatchLog frames → 피치 캔버스 ──
+const PITCH={L:105,W:68};
+function drawPitch(ctx,w,h){
+  ctx.fillStyle="#1b7a3d"; ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle="rgba(255,255,255,.55)"; ctx.lineWidth=1.4;
+  ctx.strokeRect(3,3,w-6,h-6);
+  ctx.beginPath(); ctx.moveTo(w/2,3); ctx.lineTo(w/2,h-3); ctx.stroke();
+  ctx.beginPath(); ctx.arc(w/2,h/2,h*0.13,0,7); ctx.stroke();
+  const bx=w*0.16, by=h*0.5, bh=h*0.55;
+  ctx.strokeRect(3,by-bh/2,bx,bh); ctx.strokeRect(w-3-bx,by-bh/2,bx,bh);
+}
+function frameToXY(p,w,h){ return [3+(p.x/PITCH.L)*(w-6), 3+(p.y/PITCH.W)*(h-6)]; }
+function drawFrame(side,fr){
+  const cv=document.getElementById("cv-"+side), ctx=cv.getContext("2d"), w=cv.width,h=cv.height;
+  drawPitch(ctx,w,h);
+  for(const p of fr.players){
+    const [x,y]=frameToXY(p,w,h);
+    ctx.beginPath(); ctx.arc(x,y,4.4,0,7);
+    ctx.fillStyle = p.team==="home" ? "#5b8cff" : "#ff5c5c"; ctx.fill();
+    if(fr.owner===p.id){ ctx.lineWidth=2; ctx.strokeStyle="#fff"; ctx.stroke(); }
+  }
+  const [bxp,byp]=frameToXY(fr.ball,w,h);
+  ctx.beginPath(); ctx.arc(bxp,byp,3,0,7); ctx.fillStyle="#fff"; ctx.fill();
+}
+
+const M={A:null,B:null}; let fi=0, playing=false, raf=null, lastT=0, acc=0, speed=1;
+const BASE_FPS=12; // 1× = 12프레임/초 ≈ 전체 90분 매치를 ~2.5분에 관전(다운샘플 3틱/프레임).
+function onSpeed(){ speed=parseFloat(document.getElementById("speed").value); }
+function statBox(s){ return `
+  <div class="box"><b>${s.goals}</b><span>골</span></div>
+  <div class="box"><b>${s.shots}</b><span>슛</span></div>
+  <div class="box"><b>${s.avgLineX.toFixed(0)}</b><span>라인(m)</span></div>
+  <div class="box"><b>${s.widthSpreadM.toFixed(1)}</b><span>폭(σ)</span></div>`; }
+
+async function runOne(side){
+  document.getElementById("out-"+side).textContent="AI 생성 중… (라이브 최대 ~70초, 캐시되면 즉시)";
+  const t0=performance.now();
+  const res = await fetch("/match",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(collect(side))});
+  const d = await res.json();
+  if(!res.ok || d.error){ document.getElementById("out-"+side).textContent="실패: "+(d.error||res.status); return null; }
+  M[side]=d;
+  document.getElementById("stat-"+side).innerHTML=statBox(d.home);
+  document.getElementById("out-"+side).innerHTML=`${d.cached?'<span style="color:var(--ok)">L1 캐시(즉시)</span>':'AI 생성 '+((performance.now()-t0)/1000|0)+'s'} · jobId ${d.jobId.slice(0,8)} · ${d.frames.length} frames`;
+  drawFrame(side,d.frames[0]);
+  return d;
+}
+
+async function runBoth(){
+  document.getElementById("runBoth").disabled=true; document.getElementById("status").textContent="A 생성 → B 생성 (순차, 캐시 히트면 즉시)…";
+  playing=false; if(raf) cancelAnimationFrame(raf);
+  await runOne("A"); await runOne("B");
+  document.getElementById("runBoth").disabled=false; document.getElementById("status").textContent="";
+  if(M.A&&M.B){ fi=0; document.getElementById("playBtn").disabled=false; document.getElementById("scrub").disabled=false; renderDiff(); play(); }
+}
+
+function frameCount(){ return Math.min(M.A.frames.length, M.B.frames.length); }
+function drawAt(i){
+  drawFrame("A",M.A.frames[i]); drawFrame("B",M.B.frames[i]);
+  const n=frameCount(), mm=Math.floor(M.A.frames[i].t/60), ss=M.A.frames[i].t%60;
+  document.getElementById("clock").textContent=`${mm}:${String(ss).padStart(2,"0")}  (${i+1}/${n})`;
+  const sc=document.getElementById("scrub"); if(document.activeElement!==sc) sc.value=Math.round(i/(n-1)*1000);
+}
+function togglePlay(){ playing?pause():play(); }
+function pause(){ playing=false; if(raf) cancelAnimationFrame(raf); document.getElementById("playBtn").textContent="▶ 재생"; }
+function play(){
+  if(!M.A||!M.B) return; playing=true; document.getElementById("playBtn").textContent="⏸ 정지";
+  lastT=performance.now(); acc=0;
+  const n=frameCount();
+  const loop=(now)=>{
+    if(!playing) return;
+    acc += ((now-lastT)/1000)*BASE_FPS*speed; lastT=now;
+    while(acc>=1){ fi=(fi+1)%n; acc-=1; }
+    drawAt(fi);
+    raf=requestAnimationFrame(loop);
+  };
+  raf=requestAnimationFrame(loop);
+}
+function onScrub(){
+  if(!M.A||!M.B) return;
+  fi=Math.round((parseInt(document.getElementById("scrub").value)/1000)*(frameCount()-1));
+  drawAt(fi);
+}
+
+function renderDiff(){
+  const A=M.A,B=M.B; if(!A||!B) return;
+  document.getElementById("diffCard").style.display="block";
+  document.getElementById("scoreLine").innerHTML=
+    `<span class="a-txt">A ${A.finalScore.home}</span> : <span>${A.finalScore.away}</span> &nbsp;&nbsp;vs&nbsp;&nbsp; <span class="b-txt">B ${B.finalScore.home}</span> : <span>${B.finalScore.away}</span> <span class="muted">(home = 프롬프트 적용팀, away = 동일 베이스라인)</span>`;
+  const bA=A.input.team, bB=B.input.team;
+  const pA=Object.fromEntries(A.input.players.map(p=>[p.playerId,p]));
+  const pB=Object.fromEntries(B.input.players.map(p=>[p.playerId,p]));
+  const sA=Object.fromEntries(A.home.players.map(p=>[p.playerId,p]));
+  const sB=Object.fromEntries(B.home.players.map(p=>[p.playerId,p]));
+  const chg=(x,y,th)=>Math.abs(x-y)>=th?' class="chg"':'';
+  let h=`<thead><tr><th>항목</th><th>A</th><th>B</th><th>Δ</th></tr></thead><tbody>`;
+  const teamRow=(name,a,b,th=0.1)=>`<tr><td>${name}</td><td>${a.toFixed(2)}</td><td>${b.toFixed(2)}</td><td${chg(a,b,th)}>${(a-b>=0?'+':'')}${(a-b).toFixed(2)}</td></tr>`;
+  h+=teamRow("team.width",bA.width,bB.width);
+  h+=teamRow("team.defensiveLineHeight",bA.defensiveLineHeight,bB.defensiveLineHeight);
+  h+=teamRow("team.pressing.intensity",bA.pressingScheme.intensity,bB.pressingScheme.intensity);
+  for(const [id,role] of ROSTER){
+    const a=pA[id]?.behavior, b=pB[id]?.behavior; if(!a||!b) continue;
+    const saX=sA[id]?.avgX??0, sbX=sB[id]?.avgX??0, saD=sA[id]?.distanceKm??0, sbD=sB[id]?.distanceKm??0, saT=sA[id]?.touches??0, sbT=sB[id]?.touches??0;
+    h+=`<tr><td>${id} ${role} <span class="muted">fwdRun/width</span></td>`+
+       `<td>${a.forwardRunFreq.toFixed(2)}/${a.widthTendency.toFixed(2)}</td>`+
+       `<td>${b.forwardRunFreq.toFixed(2)}/${b.widthTendency.toFixed(2)}</td>`+
+       `<td${chg(a.forwardRunFreq,b.forwardRunFreq,0.2)}>Δrun ${(a.forwardRunFreq-b.forwardRunFreq>=0?'+':'')}${(a.forwardRunFreq-b.forwardRunFreq).toFixed(2)}</td></tr>`;
+    h+=`<tr><td class="muted">&nbsp;&nbsp;↳ 실측 avgX/dist/touch</td>`+
+       `<td class="muted">${saX.toFixed(0)}m/${saD.toFixed(1)}/${saT}</td>`+
+       `<td class="muted">${sbX.toFixed(0)}m/${sbD.toFixed(1)}/${sbT}</td>`+
+       `<td${chg(saX,sbX,5)}>ΔX ${(saX-sbX>=0?'+':'')}${(saX-sbX).toFixed(0)}m</td></tr>`;
+  }
+  h+="</tbody>";
+  document.getElementById("diffTable").innerHTML=h;
+}
+</script>
+</body>
+</html>

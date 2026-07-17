@@ -3,8 +3,9 @@ import { dirname, join } from "node:path";
 import { FileJobQueue } from "./ai/queue.js";
 import { ResultCache } from "./ai/cache.js";
 import { AiWorker } from "./ai/worker.js";
-import { createExecutor } from "./ai/executor.js";
+import { createResilientExecutor } from "./ai/executor.js";
 import { claudeCodeAuthSelfCheck } from "./ai/executors/claude-code.js";
+import { CacheMetrics } from "./ai/metrics.js";
 
 /**
  * 헤드리스 AI 워커 엔트리(상주 프로세스) — `npm run worker -w @hmb/server`.
@@ -19,12 +20,13 @@ if ((process.env["AI_EXECUTOR"] ?? "stub") === "claude-code") claudeCodeAuthSelf
 
 const queue = new FileJobQueue(join(DATA_DIR, "ai-queue"));
 const cache = new ResultCache(join(DATA_DIR, "ai-cache"));
-const worker = new AiWorker(queue, cache, createExecutor());
+const metrics = new CacheMetrics(); // W3 AC1: L2 프롬프트캐시 계측(종료 시 리포트)
+const worker = new AiWorker(queue, cache, createResilientExecutor({ onUsage: (u) => metrics.recordUsage(u) }));
 
 const abort = new AbortController();
 process.on("SIGINT", () => abort.abort());
 process.on("SIGTERM", () => abort.abort());
 
 void worker.runLoop(POLL_MS, abort.signal).then(() => {
-  console.log("[ai-worker] 종료");
+  console.log("[ai-worker] 종료 · " + metrics.format());
 });

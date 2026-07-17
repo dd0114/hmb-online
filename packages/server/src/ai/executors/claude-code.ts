@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import type { AiExecutor } from "../executor.js";
 import type { AiJob } from "../protocol.js";
 import { KINDS } from "../kinds.js";
+import { parseUsage, type JobUsage } from "../metrics.js";
 
 /**
  * claude-code executor — 정액제(구독) 헤드리스 실행 (에픽 #32 옵션 D, hero 승인 2026-07-11).
@@ -28,6 +29,8 @@ export interface ClaudeCodeOptions {
   timeoutMs?: number;
   /** 러너 주입(테스트/모의). 미지정 시 실제 claude subprocess. */
   runner?: ClaudeRunner;
+  /** W3 AC1: 잡당 토큰 usage 콜백(CacheMetrics.recordUsage 연결). 미지정 시 로그만. */
+  onUsage?: (usage: JobUsage, jobId: string, model: string) => void;
 }
 
 const DEFAULT_MODEL = "sonnet";
@@ -92,19 +95,26 @@ function extractJson(text: string): unknown | null {
   return null;
 }
 
-/** usage 계측(AC5) — 봉투에 있으면 잡당 로그(W3 리포트 원천). 없으면 생략. */
-function logUsage(jobId: string, model: string, env: Record<string, unknown>): void {
-  const u = env["usage"] as Record<string, unknown> | undefined;
-  if (!u) return;
+/** usage 계측(W3 AC1) — 봉투에 있으면 잡당 로그 + onUsage 콜백(리포트 집계 원천). 없으면 생략. */
+function reportUsage(
+  jobId: string,
+  model: string,
+  env: Record<string, unknown>,
+  onUsage?: (usage: JobUsage, jobId: string, model: string) => void,
+): void {
+  const usage = parseUsage(env);
+  if (usage === null) return;
   console.log(
-    `[claude-code] job=${jobId.slice(0, 8)} model=${model} in=${String(u["input_tokens"] ?? "?")} out=${String(u["output_tokens"] ?? "?")} cacheRead=${String(u["cache_read_input_tokens"] ?? 0)} cacheCreate=${String(u["cache_creation_input_tokens"] ?? 0)} costUSD=${String(env["total_cost_usd"] ?? "?")}`,
+    `[claude-code] job=${jobId.slice(0, 8)} model=${model} in=${usage.inputTokens} out=${usage.outputTokens} cacheRead=${usage.cacheReadTokens} cacheCreate=${usage.cacheCreateTokens} costUSD=${usage.costUSD}`,
   );
+  onUsage?.(usage, jobId, model);
 }
 
 export function claudeCodeExecutor(opts: ClaudeCodeOptions = {}): AiExecutor {
   const model = opts.model ?? process.env["AI_MODEL"] ?? DEFAULT_MODEL;
   const timeoutMs = opts.timeoutMs ?? Number(process.env["AI_JOB_TIMEOUT_MS"] ?? DEFAULT_TIMEOUT_MS);
   const runner = opts.runner ?? spawnRunner();
+  const onUsage = opts.onUsage;
 
   return {
     name: `claude-code:${model}`,
@@ -139,7 +149,7 @@ export function claudeCodeExecutor(opts: ClaudeCodeOptions = {}): AiExecutor {
         throw new Error(`${classify(text)}: claude 오류 — ${text.slice(0, 300)}`);
       }
 
-      logUsage(job.id, model, env);
+      reportUsage(job.id, model, env, onUsage);
 
       // 구조화 출력 우선 → result 문자열 파싱 → JSON 블록 추출 순.
       const structured = env["structured_output"];
