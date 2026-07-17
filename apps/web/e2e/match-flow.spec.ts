@@ -83,9 +83,18 @@ test("AC-W1: login → deck save → full match → result → record", async ({
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
 
   // 6) 하프타임 — 교체 1건 + 추가 프롬프트 → 후반 시작
+  // OUT 은 반드시 non-GK 선발이어야 한다 — GK 를 빼면 GK_REQUIRED 로 후반 시작이 막힌다.
+  // 옵션 라벨은 "{position} {name}"(HalftimePanel) 이므로 슬롯 순서에 무관하게
+  // GK 가 아닌 첫 실값 옵션을 골라 선택한다(index 고정 금지 — 슬롯 순서 변동에 견고).
   const outSelect = page.getByTestId("sub-out-select");
   const inSelect = page.getByTestId("sub-in-select");
-  await outSelect.selectOption({ index: 1 });
+  const outValue = await outSelect.evaluate((el) => {
+    const sel = el as HTMLSelectElement;
+    const opt = [...sel.options].find((o) => o.value !== "" && !/^GK\b/.test(o.textContent ?? ""));
+    return opt?.value ?? "";
+  });
+  expect(outValue, "non-GK 선발 OUT 후보가 있어야 함").not.toBe("");
+  await outSelect.selectOption(outValue);
   await inSelect.selectOption({ index: 1 });
   await page.getByTestId("sub-add").click();
   await expect(page.getByTestId("sub-list").getByRole("listitem")).toHaveCount(1);
