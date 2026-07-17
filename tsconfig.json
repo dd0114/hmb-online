@@ -7,5 +7,5 @@
     }
   },
   "include": ["packages/**/*.ts", "apps/**/*.ts"],
-  "exclude": ["**/node_modules", "**/dist", "packages/engine/dev-viewer/e2e", "packages/server"]
+  "exclude": ["**/node_modules", "**/dist", "packages/engine/dev-viewer/e2e", "packages/server", "apps/web"]
 }

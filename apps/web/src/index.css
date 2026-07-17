@@ -1,0 +1,60 @@
+:root {
+  --bg: #0f1115;
+  --bg-elevated: #171a21;
+  --text: #eef0f4;
+  --text-muted: #9aa1ad;
+  --border: #2a2e37;
+  --accent: #4f8cff;
+  --accent-contrast: #ffffff;
+  --danger: #ff5a5a;
+  --success: #37c26f;
+  color-scheme: dark;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+/* mobile-first: phone portrait is the base layout; desktop gets a centered max-width container */
+.app-container {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 900px) {
+  .app-container {
+    max-width: 720px;
+  }
+}
