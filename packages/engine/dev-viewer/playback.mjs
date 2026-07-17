@@ -30,6 +30,36 @@ export function spansReposition(aTick, bTick, restartTicks) {
 }
 
 /**
+ * #51 데드볼 재설계(R1): **연속 아웃**(공이 실제로 움직여 라인을 넘어 스팟이 곧 크로싱 지점) 판별.
+ * 스로인처럼 직전 인플레이 틱이 움직이는 공이고 스팟이 가까우면 true → 그 구간을 컷하지 않고
+ * 라이브로 재생(공이 나가는 걸 실제 보간으로 보여줌). 코너(세이브 park→깃발 순간이동)처럼 직전이
+ * 정지 파킹공이거나 스팟이 멀면 false(teleport → 컷 유지).
+ */
+export function isContinuousOut(snaps, causeTick) {
+  const ci = snaps.findIndex((s) => s.tick === causeTick);
+  if (ci < 2) return false;
+  const p2 = snaps[ci - 2].ball, p1 = snaps[ci - 1].ball, spot = snaps[ci].ball;
+  const moving = Math.hypot(p1.x - p2.x, p1.y - p2.y) >= 0.3; // 직전 공이 움직이는 중
+  const near = Math.hypot(p1.x - spot.x, p1.y - spot.y) <= 25; // 직전→스팟 근거리(진짜 크로싱)
+  return moving && near;
+}
+
+/**
+ * 공 보간을 컷할 틱 집합(= 순간이동 재배치만). 연속 아웃(스로인 등)은 제외해 공이 라이브로
+ * 스팟까지 이동하는 걸 보여준다. 선수(taker)는 restartTicks 로 항상 컷(슬라이드 방지, #26).
+ */
+export function buildBallCutTicks(events, snaps) {
+  const cut = new Set();
+  for (const e of events) {
+    const k = eventKind(e);
+    if (!REPOSITION.has(k)) continue;
+    if (k === "throw_in" && isContinuousOut(snaps, e.tick)) continue; // 연속 스로인 → 공 라이브
+    cut.add(e.tick);
+  }
+  return cut;
+}
+
+/**
  * 데드볼 정지 시퀀스(원인 → 큰 자막 + freeze → 재시작으로 skip).
  * 골은 isGoal:true(GOAL 자막 + 색종이), 나머지(선방/빗나감/파울/오프사이드/PK)는 isGoal:false(상황 카드).
  * → '선방인데 골처럼' 방지: 골과 상황 자막을 데이터 레벨에서 구분.
@@ -102,7 +132,7 @@ export function buildStoppages(events) {
     }
     const sp = SETPIECE_STOP[k];
     if (sp) {
-      out.push({ causeTick: events[i].tick, restartTick: events[i].tick, big: sp.big, bigCol: sp.col, hold: sp.hold, isGoal: false, setPiece: true, done: false });
+      out.push({ causeTick: events[i].tick, restartTick: events[i].tick, big: sp.big, bigCol: sp.col, hold: sp.hold, isGoal: false, setPiece: true, kind: k, done: false });
       continue;
     }
     const beat = PAUSE_BEAT[k];
@@ -124,24 +154,50 @@ export function buildStoppages(events) {
 }
 
 /**
- * #43: 스로인 등 아웃 비행 합성 — 엔진은 공이 라인을 넘는 틱에 곧바로 재시작 스팟으로 파킹하므로
- * "나가는" 마지막 레그가 데이터에 없다. 직전 두 스냅샷의 속도를 외삽해 경계 교차점(exit)을 구하고,
- * 그 교차점이 재시작 스팟 근처(왜곡 없음)일 때만 {from, exit} 를 반환한다. 뷰어는 freeze 도입부에
- * 이 레그를 그려 공이 실제로 나가는 걸 보여준 뒤 스팟에 놓는다. 합성 불가면 null(기존 컷 유지).
+ * #43/#47: 세트피스 아웃 비행 합성 — 엔진은 공이 라인을 넘는 틱에 곧바로 재시작 스팟으로 파킹하므로
+ * "나가는" 마지막 레그가 데이터에 없다. **스팟에서 끝나는** 합성 레그를 그려 공이 실제로 나가는 걸
+ * 보여준 뒤 스팟에 놓는다(스팟 종료 → freeze 착지와 연속, 순간이동 0).
+ *
+ * - **스로인 등 사이드라인 아웃**(kind≠corner): 마지막 인필드 위치(prev1)에서 사이드라인 스팟으로
+ *   나가는 단일 레그 {from, exit=spot}. 속도 무관(느린 롤아웃도 커버). prev1 이 스팟과 너무 멀면
+ *   (>25m, 비국소 — 되짚기 신뢰 불가) null(기존 컷 유지).
+ * - **코너**(kind==="corner"): 코너는 세이브/블록으로 공이 골문 앞 중앙에 **정지 파킹**된 상태에서
+ *   발화하고, 직전 궤적(슛)은 골 중앙 지향이라 **진짜 '옆으로 나가는' 궤적이 데이터에 없다**.
+ *   → 키퍼가 골라인 밖으로 쳐내는 **디플렉션 2레그** {from, via, exit=spot}: 파킹 → 골라인 위
+ *   포스트 밖(wide) via → 코너 깃발(스팟). '골'이 아니라 '코너'로 읽히도록 via 는 포스트 밖으로 보장.
  */
-export function synthOutFlight(prev2, prev1, spot, pitch = { w: 105, h: 68 }) {
-  const vx = prev1.x - prev2.x, vy = prev1.y - prev2.y;
-  if (Math.hypot(vx, vy) < 1e-6) return null; // 정지 공(세이브 파킹 등) — 합성 불가
-  // 경계 4변과의 최소 양수 교차 t (prev1 + v*t 가 피치 밖으로 처음 나가는 지점)
-  let tHit = Infinity;
-  if (vx < 0) tHit = Math.min(tHit, (0 - prev1.x) / vx);
-  if (vx > 0) tHit = Math.min(tHit, (pitch.w - prev1.x) / vx);
-  if (vy < 0) tHit = Math.min(tHit, (0 - prev1.y) / vy);
-  if (vy > 0) tHit = Math.min(tHit, (pitch.h - prev1.y) / vy);
-  if (!isFinite(tHit) || tHit < 0 || tHit > 3) return null; // 3틱 내 도달 못 하면 외삽 신뢰 불가
-  const exit = { x: prev1.x + vx * tHit, y: prev1.y + vy * tHit };
-  if (Math.hypot(exit.x - spot.x, exit.y - spot.y) > 8) return null; // 스팟과 동떨어짐 → 왜곡 합성 금지
-  return { from: { x: prev1.x, y: prev1.y }, exit };
+export function synthOutFlight(prev1, spot, pitch = { w: 105, h: 68 }, kind = "throw_in") {
+  const from = { x: prev1.x, y: prev1.y };
+  if (kind === "corner") {
+    const midY = pitch.h / 2, HALF_POST = 3.66; // config goalWidth 7.32
+    const goalLineX = spot.x >= pitch.w / 2 ? pitch.w : 0;
+    let viaY = prev1.y + (spot.y - prev1.y) * 0.55; // 깃발 쪽으로 치우쳐 나감
+    // wide(포스트 밖) 보장 — 포스트 사이면 '골'로 오인되므로 깃발 쪽 포스트 밖으로 민다.
+    if (viaY > midY - HALF_POST && viaY < midY + HALF_POST)
+      viaY = spot.y >= midY ? midY + HALF_POST + 1 : midY - HALF_POST - 1;
+    return { from, via: { x: goalLineX, y: viaY }, exit: { x: spot.x, y: spot.y } };
+  }
+  // 사이드라인 아웃 폴백(연속 아님으로 판정된 스로인 등): 공을 스팟까지 슬라이드로 합성.
+  // #51: 임계 45m — 연속(라이브) 커버 밖 케이스도 순수 순간이동 대신 슬라이드로 가림. 정말 동떨어지면(>45) 컷.
+  if (Math.hypot(prev1.x - spot.x, prev1.y - spot.y) > 45) return null;
+  return { from, exit: { x: spot.x, y: spot.y } };
+}
+
+/**
+ * #52 데드볼 정지 재생: causeTick 부터 공이 스팟(±tol)에 머무는 마지막 스냅 인덱스.
+ * 정지 동안 뷰어가 이 구간을 재생하면(정적 홀드 대신) 선수 리포지셔닝(정비)이 자연스럽게 보인다.
+ * 공이 스팟을 떠나는 순간(=재시작/스로인 실행)이 정지 끝.
+ */
+export function freezeSpanEndIdx(snaps, causeTick, maxTicks = 30, tol = 2) {
+  const ci = snaps.findIndex((s) => s.tick === causeTick);
+  if (ci < 0) return -1;
+  const spot = snaps[ci].ball;
+  let end = ci;
+  for (let j = ci + 1; j < snaps.length && j <= ci + maxTicks; j++) {
+    if (Math.hypot(snaps[j].ball.x - spot.x, snaps[j].ball.y - spot.y) > tol) break;
+    end = j;
+  }
+  return end;
 }
 
 /** 액션 토스트(선수 근처) + 상황 배너(상단) + 돌파 추론 주석. */
@@ -188,9 +244,15 @@ export function buildAnnotations(events, snaps) {
 
 /** 뷰어가 loadLog 에서 한 번 호출. */
 export function buildPlayback(events, snaps) {
+  const stoppages = buildStoppages(events);
+  // #51: 연속 아웃(스로인) 정지는 라이브 재생 후 도착 시 자막 → synth/자막지연 불필요.
+  for (const st of stoppages) {
+    if (st.setPiece && st.kind === "throw_in") st.continuous = isContinuousOut(snaps, st.causeTick);
+  }
   return {
     annos: buildAnnotations(events, snaps),
-    stoppages: buildStoppages(events),
+    stoppages,
     restartTicks: buildRestartTicks(events),
+    ballCutTicks: buildBallCutTicks(events, snaps),
   };
 }

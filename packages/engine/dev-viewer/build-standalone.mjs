@@ -3,24 +3,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { subsampleSnapshots } from "./subsample.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const log = JSON.parse(readFileSync(join(here, "match-log.json"), "utf8"));
 
 // 용량 축소: 틱을 2개당 1개로 서브샘플(뷰어가 보간) + 좌표 소수1자리 반올림.
-const r1 = (n) => Math.round(n * 10) / 10;
-const STEP = 2;
-const compactSnaps = [];
-for (let i = 0; i < log.tickSnapshots.length; i += STEP) {
-  const s = log.tickSnapshots[i];
-  compactSnaps.push({
-    tick: s.tick,
-    minute: s.minute,
-    ball: { x: r1(s.ball.x), y: r1(s.ball.y) },
-    ballOwner: s.ballOwner,
-    players: s.players.map((p) => ({ playerId: p.playerId, team: p.team, pos: { x: r1(p.pos.x), y: r1(p.pos.y) } })),
-  });
-}
+// #50: 이벤트 참조 틱은 항상 보존(홀수 causeTick 드롭 → 정지 자막/freeze 스킵 방지).
+const compactSnaps = subsampleSnapshots(log.tickSnapshots, log.events, 2);
 const compact = {
   configVersion: log.configVersion,
   seed: log.seed,
