@@ -1,0 +1,121 @@
+.card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.unowned .summary {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
+.expanded {
+  grid-column: 1 / -1;
+}
+
+.summary {
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.topRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pos {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.count {
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.lock {
+  font-size: 10px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grade {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.attrs {
+  margin: 0;
+  padding: 8px 10px 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attrRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.attrLabel {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.attrValue {
+  flex: 1;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.attrBar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.attrFill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+
+.attrNum {
+  width: 26px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text);
+}

@@ -1,0 +1,91 @@
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 4px;
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: 17px;
+}
+
+.save {
+  padding: 8px 18px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.formationRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.formationLabel {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.formationSelect {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.starterCount {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.issueList {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.issue {
+  font-size: 13px;
+  color: #f0b64a;
+}
+
+.serverError {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--danger);
+  background: rgba(255, 90, 90, 0.12);
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.savedNote {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--success);
+}
