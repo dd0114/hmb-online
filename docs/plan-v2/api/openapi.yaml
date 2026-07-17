@@ -1,0 +1,1220 @@
+openapi: 3.1.0
+info:
+  title: HMB 온라인 — server-java API
+  version: "0.1.0"
+  license:
+    name: Proprietary
+    identifier: "UNLICENSED"
+  description: |
+    권위 게임 서버(Java/Spring Boot) API 계약. SoT는 이 파일이다(springdoc이 생성하는 스펙은
+    구현 확인용 — 드리프트는 계약 테스트로 검출한다, LLD-server-java.md §1).
+
+    요구사항/AC = docs/plan-v2/PRD-v2.md §3.2~3.6. DB = docs/plan-v2/ERD.md. 구현 상세 =
+    docs/plan-v2/LLD-server-java.md.
+
+    - 의존 방향: web → server-java → (ts-servants → engine). 웹은 이 API만 안다.
+    - `/api/**` 는 `Authorization: Bearer <token>` 필요(로그인 자체는 제외). `/internal/**` 는
+      서번트 전용 `X-Servant-Token`.
+    - 에러 규약(전 엔드포인트 공통): `ApiError` 스키마. `code` 값은 `ErrorCode` 열거 참조.
+    - `TacticalInput` / `SelectData` / `MatchLog` 는 `packages/shared` (zod)가 상세를 소유한다.
+      여기서는 필드 설명이 있는 느슨한 오브젝트로만 정의(계약 상세는 zod가 SoT) — 필드명은
+      zod 스키마와 반드시 일치시킨다(camelCase).
+
+servers:
+  - url: http://localhost:8080
+    description: local dev
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: auth
+    description: 목업 로그인(닉네임) + 세션 발급 (D8)
+  - name: me
+    description: 내 프로필·지갑·전적
+  - name: catalog
+    description: 선수 도감(카탈로그 전체 + 보유 플래그)
+  - name: deck
+    description: 덱 구성(선발 11 + 벤치 ≤7 + 선수별 프롬프트)
+  - name: presets
+    description: 프롬프트 프리셋 CRUD
+  - name: shop
+    description: 뽑기(단뽑/10연뽑)
+  - name: modes
+    description: 게임 모드 목록(싱글/멀티)
+  - name: matches
+    description: 매치 상태머신(BRIEFING→GEN1→H1_BREAK→GEN2→FINISHED, §5.1)
+  - name: internal
+    description: 서번트 전용 AI 잡 큐 프로토콜(X-Servant-Token)
+
+paths:
+  # ───────────────────────────── auth ─────────────────────────────
+  /api/auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: 닉네임 로그인(목업, D8) — 신규면 유저+지갑 생성
+      security: [] # 로그인 자체는 인증 불필요
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: 로그인 성공(신규/기존 공통)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  # ───────────────────────────── me ─────────────────────────────
+  /api/me:
+    get:
+      tags: [me]
+      operationId: getMe
+      summary: 내 정보(유저+지갑+전적)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/me/matches:
+    get:
+      tags: [me]
+      operationId: listMyMatches
+      summary: 전적 리스트(최근 20)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MatchListItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ───────────────────────────── catalog ─────────────────────────────
+  /api/players:
+    get:
+      tags: [catalog]
+      operationId: listPlayers
+      summary: 카탈로그 전체(110명) + 보유 플래그(도감/덱 화면 공용)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CatalogPlayer"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ───────────────────────────── deck ─────────────────────────────
+  /api/deck:
+    get:
+      tags: [deck]
+      operationId: getDeck
+      summary: 활성 덱 + 슬롯 + 선수별 프롬프트
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deck"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 아직 덱이 없음(신규 유저가 스타터 팩 지급 전 등)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+    put:
+      tags: [deck]
+      operationId: updateDeck
+      summary: 덱 전체 교체(부분수정 없음) — AC-S2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DeckUpdateRequest"
+      responses:
+        "200":
+          description: 저장된 덱(재조회와 동일)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deck"
+        "400":
+          description: |
+            검증 실패 — 보유하지 않은 선수/starter≠11/GK 0명(starter 중)/bench>7/중복 선수/
+            프롬프트 길이 초과. code=DECK_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ───────────────────────────── presets ─────────────────────────────
+  /api/presets:
+    get:
+      tags: [presets]
+      operationId: listPresets
+      summary: 프리셋 목록
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PromptPreset"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [presets]
+      operationId: createPreset
+      summary: 프리셋 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptPresetCreateRequest"
+      responses:
+        "201":
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PromptPreset"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/presets/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    delete:
+      tags: [presets]
+      operationId: deletePreset
+      summary: |
+        프리셋 삭제(수정=삭제+생성으로 단순화, LLD §4). 이미 덱에 복사 저장된 prompt_text는
+        유지된다(AC-S4).
+      responses:
+        "204":
+          description: 삭제됨
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ───────────────────────────── shop ─────────────────────────────
+  /api/shop/gacha:
+    post:
+      tags: [shop]
+      operationId: gacha
+      summary: 뽑기(단뽑/10연뽑) — LLD §4.1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GachaRequest"
+      responses:
+        "200":
+          description: 뽑기 결과 + 갱신된 지갑
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GachaResponse"
+        "400":
+          description: 잘못된 kind 등. code=VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "402":
+          description: 잔액 부족(또는 400 — 서버 구현 선택, AC-S6). code=INSUFFICIENT_POINTS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ───────────────────────────── modes ─────────────────────────────
+  /api/modes:
+    get:
+      tags: [modes]
+      operationId: listModes
+      summary: 게임 모드 목록(싱글 available, 멀티 "준비중" — D10)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ModeInfo"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ───────────────────────────── matches ─────────────────────────────
+  /api/matches:
+    post:
+      tags: [matches]
+      operationId: createMatch
+      summary: 매치 생성(BRIEFING 진입) — 봇 매칭 + 활성 덱 스냅샷 + 시드 생성
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMatchRequest"
+      responses:
+        "201":
+          description: 생성됨(state=BRIEFING)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "400":
+          description: 활성 덱이 유효하지 않음(AC-S2 규칙 재검증). code=DECK_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/matches/{id}:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    get:
+      tags: [matches]
+      operationId: getMatch
+      summary: |
+        매치 상태 조회(폴링용). BRIEFING이면 opponent(상대 분석) 포함. state별로 노출 필드가
+        다르다 — 상세는 MatchDetail 스키마 설명 참고(§5.1).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/matches/{id}/prompts:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    post:
+      tags: [matches]
+      operationId: submitMatchPrompt
+      summary: 팀/선수 프롬프트 입력(phase=pre|halftime) — 같은 대상 재입력은 UPSERT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MatchPromptRequest"
+      responses:
+        "200":
+          description: 저장됨
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidState"
+
+  /api/matches/{id}/kickoff:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    post:
+      tags: [matches]
+      operationId: kickoffMatch
+      summary: 킥오프 — 양팀 half1 AI 잡 enqueue, BRIEFING → GEN1
+      responses:
+        "202":
+          description: 잡 큐잉됨(state=GEN1). 클라이언트는 GET /api/matches/{id} 폴링.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidState"
+
+  /api/matches/{id}/halves/{half}/log:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+      - name: half
+        in: path
+        required: true
+        schema:
+          type: integer
+          enum: [1, 2]
+    get:
+      tags: [matches]
+      operationId: getHalfLog
+      summary: half별 MatchLog(재생용) — AC-M3, zod MatchLog 스키마와 계약
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchLog"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 매치/half 없음 또는 아직 시뮬 전(state 미도달)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/matches/{id}/halftime:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    post:
+      tags: [matches]
+      operationId: submitHalftimeSubs
+      summary: 하프타임 교체 저장(≤3, 벤치→선발만, resume 시 반영) — §5.4, AC-M4
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HalftimeRequest"
+      responses:
+        "200":
+          description: 저장됨(상태 전이는 없음 — resume에서 반영)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "400":
+          description: |
+            교체 규칙 위반(3명 초과·벤치 외 선수·GK 퇴장 후 GK 0). code=SUBSTITUTION_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidState"
+
+  /api/matches/{id}/resume:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    post:
+      tags: [matches]
+      operationId: resumeMatch
+      summary: 후반 시작 — half2 AI 잡 enqueue(전반 요약 컨텍스트 포함), H1_BREAK → GEN2
+      responses:
+        "202":
+          description: 잡 큐잉됨(state=GEN2)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidState"
+
+  /api/matches/{id}/result:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    get:
+      tags: [matches]
+      operationId: getMatchResult
+      summary: 최종 결과(스코어·팀/선수 스탯·리포트). FINISHED에서만 의미 있음(읽기 전용) — §5.5
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidState"
+
+  /api/matches/{id}/retry:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    post:
+      tags: [matches]
+      operationId: retryMatch
+      summary: FAILED 매치의 실패 지점 재큐잉 — AC-M7
+      responses:
+        "202":
+          description: 재큐잉됨(실패 직전 GEN* 상태로 복귀)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidState"
+
+  # ───────────────────────────── internal (서번트 전용) ─────────────────────────────
+  /internal/ai-jobs/poll:
+    post:
+      tags: [internal]
+      operationId: pollAiJob
+      summary: AI 잡 long-poll lease — LLD §6
+      security:
+        - servantToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiJobPollRequest"
+      responses:
+        "200":
+          description: 잡 1개 lease됨(status=leased)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiJob"
+        "204":
+          description: waitMs까지 대기했지만 큐가 비어 있음
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /internal/ai-jobs/{id}/complete:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+        description: promptHash(잡 ID)
+    post:
+      tags: [internal]
+      operationId: completeAiJob
+      summary: 잡 완료 보고(성공/실패) — 성공 시 MatchOrchestrator.onJobDone 트리거
+      security:
+        - servantToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiJobCompleteRequest"
+      responses:
+        "200":
+          description: 반영됨
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /internal/health:
+    get:
+      tags: [internal]
+      operationId: internalHealth
+      summary: 큐 깊이·lease 중 개수(운영 확인용) — W0에는 인증 미부착(TODO W4)
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InternalHealth"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "/api/** 전체(로그인 제외). sessions 테이블 조회."
+    servantToken:
+      type: apiKey
+      in: header
+      name: X-Servant-Token
+      description: "/internal/** 전용 고정 shared secret(AC-Q3)."
+
+  parameters:
+    MatchId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: 인증 실패(토큰 없음/만료/무효). code=UNAUTHORIZED
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    NotFound:
+      description: 리소스 없음. code=NOT_FOUND
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    ValidationError:
+      description: 입력 검증 실패. code=VALIDATION_ERROR
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    InvalidState:
+      description: |
+        현재 매치 상태에서 허용되지 않는 액션(§5.1 전이표 외). code=INVALID_STATE. AC-M1.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+  schemas:
+    # ───────────────────────────── 공통 ─────────────────────────────
+    ErrorCode:
+      type: string
+      description: |
+        전 엔드포인트 공통 에러 코드 열거(LLD §3). 신규 코드 추가 시 이 열거에 먼저 반영한다
+        (openapi.yaml이 계약 SoT).
+      enum:
+        - VALIDATION_ERROR
+        - UNAUTHORIZED
+        - NOT_FOUND
+        - DECK_INVALID
+        - INSUFFICIENT_POINTS
+        - INVALID_STATE
+        - SUBSTITUTION_INVALID
+        - AI_JOB_FAILED
+        - INTERNAL_ERROR
+
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+          description: 사람이 읽을 수 있는 사유(한국어 가능)
+        detail:
+          type: [object, "null"]
+          additionalProperties: true
+      example:
+        code: DECK_INVALID
+        message: 선발이 11명이 아닙니다
+        detail:
+          starterCount: 10
+
+    # ───────────────────────────── auth/me ─────────────────────────────
+    LoginRequest:
+      type: object
+      required: [nickname]
+      properties:
+        nickname:
+          type: string
+          pattern: "^[\\p{L}\\p{N}_-]{2,16}$"
+
+    UserRef:
+      type: object
+      required: [id, nickname]
+      properties:
+        id:
+          type: string
+          description: ULID
+        nickname:
+          type: string
+
+    LoginResponse:
+      type: object
+      required: [token, user, isNew]
+      properties:
+        token:
+          type: string
+          description: 불투명 세션 토큰(Bearer로 사용)
+        user:
+          $ref: "#/components/schemas/UserRef"
+        isNew:
+          type: boolean
+          description: 신규 가입이면 true(스타터 팩 지급 트리거, PRD §3.2)
+
+    WalletInfo:
+      type: object
+      required: [points]
+      properties:
+        points:
+          type: integer
+          minimum: 0
+
+    MatchRecordSummary:
+      type: object
+      required: [wins, draws, losses]
+      properties:
+        wins: { type: integer }
+        draws: { type: integer }
+        losses: { type: integer }
+
+    MeResponse:
+      type: object
+      required: [user, wallet, records]
+      properties:
+        user:
+          $ref: "#/components/schemas/UserRef"
+        wallet:
+          $ref: "#/components/schemas/WalletInfo"
+        records:
+          $ref: "#/components/schemas/MatchRecordSummary"
+
+    MatchListItem:
+      type: object
+      required: [id, opponentName, scoreHome, scoreAway, result, createdAt]
+      properties:
+        id: { type: string }
+        opponentName: { type: string }
+        scoreHome: { type: [integer, "null"] }
+        scoreAway: { type: [integer, "null"] }
+        result:
+          type: [string, "null"]
+          enum: [WIN, DRAW, LOSS]
+        createdAt:
+          type: string
+          format: date-time
+
+    # ───────────────────────────── catalog ─────────────────────────────
+    PlayerAttributes:
+      type: object
+      description: shared PlayerAttributes(packages/shared/src/select-data.ts) — 각 0..100
+      required:
+        [technical, mental, physical, passing, shooting, tackling, pace, stamina, positioning]
+      properties:
+        technical: { type: number, minimum: 0, maximum: 100 }
+        mental: { type: number, minimum: 0, maximum: 100 }
+        physical: { type: number, minimum: 0, maximum: 100 }
+        passing: { type: number, minimum: 0, maximum: 100 }
+        shooting: { type: number, minimum: 0, maximum: 100 }
+        tackling: { type: number, minimum: 0, maximum: 100 }
+        pace: { type: number, minimum: 0, maximum: 100 }
+        stamina: { type: number, minimum: 0, maximum: 100 }
+        positioning: { type: number, minimum: 0, maximum: 100 }
+
+    Grade:
+      type: string
+      enum: [BRONZE, SILVER, GOLD, DIA, LEGEND]
+
+    Position:
+      type: string
+      enum: [GK, DF, MF, FW]
+
+    CatalogPlayer:
+      type: object
+      required: [id, name, position, grade, attributes, owned, ownedCount]
+      properties:
+        id:
+          type: string
+          description: "'P001'.. 고유 ID(실선수 아님, data 에픽 시드)"
+        name: { type: string }
+        position:
+          $ref: "#/components/schemas/Position"
+        grade:
+          $ref: "#/components/schemas/Grade"
+        attributes:
+          $ref: "#/components/schemas/PlayerAttributes"
+        owned:
+          type: boolean
+        ownedCount:
+          type: integer
+          minimum: 0
+
+    # ───────────────────────────── deck ─────────────────────────────
+    DeckSlot:
+      type: object
+      required: [playerId, role, slotIndex]
+      properties:
+        playerId: { type: string }
+        role:
+          type: string
+          enum: [starter, bench]
+        slotIndex:
+          type: integer
+          description: "starter: 0..10(포메이션 슬롯), bench: 0..6"
+        promptText:
+          type: [string, "null"]
+          maxLength: 500
+          description: 선수별 사전 프롬프트(≤500자, hmb.deck.player-prompt-max-chars)
+
+    Deck:
+      type: object
+      required: [id, formation, slots]
+      properties:
+        id: { type: string }
+        formation:
+          type: string
+          description: "'4-4-2' 등 — 엔진 config 포메이션 키와 일치해야 함"
+        slots:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeckSlot"
+        updatedAt:
+          type: string
+          format: date-time
+
+    DeckUpdateRequest:
+      type: object
+      required: [formation, slots]
+      properties:
+        formation:
+          type: string
+        slots:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeckSlot"
+          description: |
+            starter 슬롯 정확히 11개(slotIndex 0..10, GK≥1 포함), bench ≤7(hmb.deck.bench-max),
+            선수 중복 금지, 미보유 선수 금지 — 위반 시 400 DECK_INVALID(AC-S2).
+
+    # ───────────────────────────── presets ─────────────────────────────
+    PromptPreset:
+      type: object
+      required: [id, name, promptText, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        promptText:
+          type: string
+          maxLength: 500
+        createdAt:
+          type: string
+          format: date-time
+
+    PromptPresetCreateRequest:
+      type: object
+      required: [name, promptText]
+      properties:
+        name:
+          type: string
+        promptText:
+          type: string
+          maxLength: 500
+
+    # ───────────────────────────── shop ─────────────────────────────
+    GachaRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [single, ten]
+
+    GachaResultItem:
+      type: object
+      required: [player, isNew]
+      properties:
+        player:
+          $ref: "#/components/schemas/CatalogPlayer"
+        isNew:
+          type: boolean
+          description: PoC 정책 — 중복은 보유 수량 증가, 능력엔 영향 없음(표시만)
+
+    GachaResponse:
+      type: object
+      required: [results, wallet]
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/GachaResultItem"
+          description: single=1개, ten=11개(골드↑ ≥1, pity 적용 가능 — AC-S7)
+        wallet:
+          $ref: "#/components/schemas/WalletInfo"
+
+    # ───────────────────────────── modes ─────────────────────────────
+    ModeInfo:
+      type: object
+      required: [id, available]
+      properties:
+        id:
+          type: string
+          enum: [single, multi]
+        available:
+          type: boolean
+        label:
+          type: [string, "null"]
+          description: "available=false일 때 표시 문구(예: '준비중', D10)"
+
+    # ───────────────────────────── matches ─────────────────────────────
+    MatchState:
+      type: string
+      description: LLD §5.1 상태머신
+      enum: [BRIEFING, GEN1, H1_BREAK, GEN2, FINISHED, FAILED]
+
+    OpponentAnalysisPlayer:
+      type: object
+      required: [name, position, grade]
+      properties:
+        name: { type: string }
+        position:
+          $ref: "#/components/schemas/Position"
+        grade:
+          $ref: "#/components/schemas/Grade"
+        hasPrompt:
+          type: boolean
+
+    OpponentAnalysis:
+      type: object
+      required: [name, analysisText, deck]
+      properties:
+        name: { type: string }
+        analysisText: { type: string }
+        deck:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpponentAnalysisPlayer"
+          minItems: 11
+          maxItems: 11
+
+    MatchDetail:
+      type: object
+      description: |
+        state에 따라 일부 필드만 채워진다: BRIEFING → opponent 포함. H1_BREAK 이후 →
+        scoreH1Home/Away. FINISHED → scoreHome/Away+result. FAILED → failReason.
+      required: [id, state, createdAt]
+      properties:
+        id: { type: string }
+        state:
+          $ref: "#/components/schemas/MatchState"
+        failReason:
+          type: [string, "null"]
+        opponent:
+          $ref: "#/components/schemas/OpponentAnalysis"
+        scoreH1Home: { type: [integer, "null"] }
+        scoreH1Away: { type: [integer, "null"] }
+        scoreHome: { type: [integer, "null"] }
+        scoreAway: { type: [integer, "null"] }
+        result:
+          type: [string, "null"]
+          enum: [WIN, DRAW, LOSS]
+        createdAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+
+    CreateMatchRequest:
+      type: object
+      properties:
+        botId:
+          type: [string, "null"]
+          description: "생략 시 랜덤 봇(BOT_ATK/BOT_DEF/BOT_BAL 중, PRD §3.4)"
+
+    MatchPromptRequest:
+      type: object
+      required: [phase, scope, text]
+      properties:
+        phase:
+          type: string
+          enum: [pre, halftime]
+        scope:
+          type: string
+          enum: [team, player]
+        playerId:
+          type: [string, "null"]
+          description: "scope='player'일 때 필수"
+        text:
+          type: string
+          maxLength: 500
+
+    SubstitutionItem:
+      type: object
+      required: [out, "in"]
+      properties:
+        out:
+          type: string
+          description: playerId(전반 선발)
+        "in":
+          type: string
+          description: playerId(벤치)
+
+    HalftimeRequest:
+      type: object
+      required: [substitutions]
+      properties:
+        substitutions:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/SubstitutionItem"
+          description: "≤3(hmb.match.halftime-subs-max), out∈전반 선발, in∈벤치, 교체 후 GK≥1"
+
+    MatchResult:
+      type: object
+      required: [matchId, scoreHome, scoreAway, result]
+      properties:
+        matchId: { type: string }
+        scoreHome: { type: integer }
+        scoreAway: { type: integer }
+        result:
+          type: string
+          enum: [WIN, DRAW, LOSS]
+        pointsAwarded:
+          type: integer
+          description: 승/무/패 보상(economy.v1.json 수치, 멱등 지급 — AC-M6)
+        teamStats:
+          type: object
+          additionalProperties: true
+          description: 팀 스탯 요약(슛/점유율 등) — 상세는 W3 구현에서 확정
+        playerStats:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+          description: 선수별 스탯 리스트 — 상세는 W3 구현에서 확정
+
+    # ───────────────────────────── shared 계약(느슨한 stub) ─────────────────────────────
+    SelectData:
+      type: object
+      description: |
+        packages/shared/src/select-data.ts (zod SoT). home/away 각각 TeamRoster
+        {name, players: PlayerCard[]}. PlayerCard = {playerId, name, position, attributes}.
+        여기서는 필드 상세를 반복하지 않고 존재만 계약한다 — zod 스키마가 진실.
+      required: [home, away]
+      properties:
+        home:
+          type: object
+          additionalProperties: true
+        away:
+          type: object
+          additionalProperties: true
+
+    TacticalInput:
+      type: object
+      description: |
+        packages/shared/src/tactical-input.ts (zod SoT). AI가 프롬프트로부터 생성하는
+        선수별 행동 파라미터 세트이자 결정론 엔진 입력. 필드: seed(string, uint64를 10진
+        문자열로), team(TeamInput: formation·defensiveLineHeight·compactness·tempo·width·
+        pressingScheme·offsideTrap), players(PlayerInput[]: playerId·role·duty·basePosition·
+        behavior·markTarget?·mentalModifier), meta?(generatedAt?·promptHash?).
+      required: [seed, team, players]
+      properties:
+        seed:
+          type: string
+        team:
+          type: object
+          additionalProperties: true
+        players:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        meta:
+          type: [object, "null"]
+          additionalProperties: true
+
+    MatchLog:
+      type: object
+      description: |
+        packages/shared/src/match-log.ts (zod SoT). 결정론 엔진 출력 — 틱별 좌표 스냅샷 +
+        이벤트 시계열 + 최종 스코어 + 틱 해시(재현/desync 검증). 필드: configVersion, seed,
+        tickSnapshots(TickSnapshot[]: tick·minute·ball·ballOwner·players·hash),
+        events(MatchEvent[]: tick·minute·type·team?·playerId?·xg?·detail?), finalScore
+        {home,away}. AC-M3: 이 응답은 zod MatchLog로 파싱 가능해야 한다.
+      required: [configVersion, seed, tickSnapshots, events, finalScore]
+      properties:
+        configVersion:
+          type: string
+        seed:
+          type: string
+        tickSnapshots:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        events:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        finalScore:
+          type: object
+          properties:
+            home: { type: integer }
+            away: { type: integer }
+
+    # ───────────────────────────── internal ai-jobs ─────────────────────────────
+    AiJobPollRequest:
+      type: object
+      required: [workerId]
+      properties:
+        workerId:
+          type: string
+        waitMs:
+          type: integer
+          maximum: 25000
+          default: 25000
+          description: long-poll 최대 대기(ms). virtual thread라 블로킹 허용(LLD §6).
+
+    AiJobContext:
+      type: object
+      description: |
+        AI 실행기 입력(LLD-ts-servants §3과 동일 계약, LLD-server-java §5.2). kind='team-input'
+        고정. 필드: matchId, side(home|away), half(1|2), seed, formation, roster(11명
+        {playerId,name,position,attributes,slotIndex}), teamPrompt, playerPrompts
+        ({playerId: text}), prevSummary?(half2만: {scoreHome,scoreAway,shots,possessionHint}).
+      required: [kind, matchId, side, half, seed, formation, roster, teamPrompt, playerPrompts]
+      properties:
+        kind:
+          type: string
+          enum: [team-input]
+        matchId: { type: string }
+        side:
+          type: string
+          enum: [home, away]
+        half:
+          type: integer
+          enum: [1, 2]
+        seed: { type: string }
+        formation: { type: string }
+        roster:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        teamPrompt: { type: string }
+        playerPrompts:
+          type: object
+          additionalProperties:
+            type: string
+        prevSummary:
+          type: [object, "null"]
+          additionalProperties: true
+
+    AiJobUsage:
+      type: object
+      properties:
+        inputTokens: { type: integer }
+        outputTokens: { type: integer }
+        cacheReadTokens: { type: integer }
+        cacheCreateTokens: { type: integer }
+        costUSD: { type: number }
+
+    AiJob:
+      type: object
+      required: [id, status, context]
+      properties:
+        id:
+          type: string
+          description: promptHash(멱등 키, sha256 hex 16+)
+        matchId: { type: [string, "null"] }
+        side:
+          type: [string, "null"]
+          enum: [home, away]
+        half:
+          type: [integer, "null"]
+          enum: [1, 2]
+        status:
+          type: string
+          enum: [queued, leased, done, failed]
+        context:
+          $ref: "#/components/schemas/AiJobContext"
+        result:
+          $ref: "#/components/schemas/TacticalInput"
+        error:
+          type: [string, "null"]
+        usage:
+          $ref: "#/components/schemas/AiJobUsage"
+        attempts:
+          type: integer
+        leaseUntil:
+          type: [string, "null"]
+          format: date-time
+
+    AiJobCompleteRequest:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        output:
+          $ref: "#/components/schemas/TacticalInput"
+          description: ok=true일 때 필수
+        error:
+          type: [string, "null"]
+          description: ok=false일 때 필수(attempts<max면 queued 복귀, 아니면 failed — LLD §6)
+        usage:
+          $ref: "#/components/schemas/AiJobUsage"
+
+    InternalHealth:
+      type: object
+      required: [queueDepth, leasedCount]
+      properties:
+        queueDepth:
+          type: integer
+          description: status='queued' 개수
+        leasedCount:
+          type: integer
+          description: status='leased' 개수
