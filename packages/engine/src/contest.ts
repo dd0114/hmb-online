@@ -247,6 +247,10 @@ export function restartFreeKick(
   if (taker) {
     taker.posFx.x = spot.x;
     taker.posFx.y = spot.y;
+    // targetFx 도 스팟으로 핀: 안 하면 정지 동안 위치적분 루프(match.ts)가 오픈플레이 잔여
+    // targetFx 로 taker 를 걸어나가게 해 공이 스팟에서 드리프트한다(#48 penalty/free_kick —
+    // 코너/스로인 #31 과 동일 메커니즘. restartSetPiece 는 이미 핀, 이 둘만 누락됐음).
+    taker.targetFx = { x: spot.x, y: spot.y };
     giveBallTo(state, taker);
   } else {
     state.ball.posFx = { x: spot.x, y: spot.y };
@@ -280,6 +284,10 @@ export function restartPenalty(
   if (taker) {
     taker.posFx.x = spot.x;
     taker.posFx.y = spot.y;
+    // targetFx 도 스팟으로 핀: 안 하면 정지 동안 위치적분 루프(match.ts)가 오픈플레이 잔여
+    // targetFx 로 taker 를 걸어나가게 해 공이 스팟에서 드리프트한다(#48 penalty/free_kick —
+    // 코너/스로인 #31 과 동일 메커니즘. restartSetPiece 는 이미 핀, 이 둘만 누락됐음).
+    taker.targetFx = { x: spot.x, y: spot.y };
     giveBallTo(state, taker);
   } else {
     state.ball.posFx = { x: spot.x, y: spot.y };
