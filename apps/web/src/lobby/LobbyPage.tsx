@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMe, useModes } from "../api/hooks";
+import { ApiError } from "../api/client";
+import { useCreateMatch, useMe, useModes } from "../api/hooks";
 import { useToken } from "../auth/TokenContext";
 import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
@@ -57,7 +58,29 @@ export function LobbyPage() {
 
 function ModeModal({ onClose }: { onClose: () => void }) {
   const { data: modes, isLoading, isError } = useModes();
+  const createMatch = useCreateMatch();
   const navigate = useNavigate();
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  function startSingle() {
+    setCreateError(null);
+    // POST /api/matches → BRIEFING 매치 생성 → /match/:id (LLD-web §2 /lobby)
+    createMatch.mutate(
+      {},
+      {
+        onSuccess: (match) => navigate(`/match/${match.id}`),
+        onError: (err) => {
+          setCreateError(
+            err instanceof ApiError && err.code === "DECK_INVALID"
+              ? `덱이 유효하지 않습니다 — ${err.message}`
+              : err instanceof Error
+                ? err.message
+                : "매치 생성에 실패했습니다",
+          );
+        },
+      },
+    );
+  }
 
   return (
     <div className={styles.modalOverlay} role="dialog" aria-modal="true">
@@ -71,19 +94,25 @@ function ModeModal({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 className={styles.modeButton}
-                disabled={!mode.available}
+                disabled={!mode.available || createMatch.isPending}
                 onClick={() => {
                   if (!mode.available) return;
-                  // R1 전 임시 — 실제 매치 생성/브리핑 플로우는 W2. 지금은 라우팅 스켈레톤만.
-                  navigate("/match/stub");
+                  if (mode.id === "single") startSingle();
                 }}
               >
-                <span>{mode.id === "single" ? "싱글" : "멀티"}</span>
+                <span>
+                  {mode.id === "single"
+                    ? createMatch.isPending
+                      ? "매치 생성 중…"
+                      : "싱글"
+                    : "멀티"}
+                </span>
                 {!mode.available && <span className={styles.badge}>{mode.label ?? "준비중"}</span>}
               </button>
             </li>
           ))}
         </ul>
+        <ErrorToast message={createError} onDismiss={() => setCreateError(null)} />
         <button type="button" className={styles.close} onClick={onClose}>
           닫기
         </button>
