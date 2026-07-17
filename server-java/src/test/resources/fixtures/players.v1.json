@@ -270,5 +270,22 @@
       "stamina": 89,
       "positioning": 90
     }
+  },
+  {
+    "id": "P017",
+    "name": "Test Diamond",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 78,
+      "mental": 74,
+      "physical": 72,
+      "passing": 70,
+      "shooting": 82,
+      "tackling": 30,
+      "pace": 80,
+      "stamina": 70,
+      "positioning": 79
+    }
   }
 ]

@@ -12,9 +12,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-  jackson:
-    property-naming-strategy: LOWER_CAMEL_CASE
-    default-property-inclusion: non_null
+  # jackson 설정은 common/Json.java(@Primary ObjectMapper)가 단일 SoT — spring.jackson.* 키는
+  # 커스텀 빈에 적용되지 않아(dead) 두지 않는다. (W1 검증 이월사항 b)
 
 hmb:
   db:

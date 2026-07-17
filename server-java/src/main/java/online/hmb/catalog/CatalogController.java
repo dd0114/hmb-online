@@ -53,8 +53,4 @@ public class CatalogController {
             throw new IllegalStateException("players.attributes_json 파싱 실패: " + e.getMessage(), e);
         }
     }
-
-    public record CatalogPlayer(String id, String name, String position, String grade,
-                                 Map<String, Object> attributes, boolean owned, int ownedCount) {
-    }
 }

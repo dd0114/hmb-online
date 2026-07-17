@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,8 +26,13 @@ public class EconomyService {
 
     private static final Logger log = LoggerFactory.getLogger(EconomyService.class);
 
-    /** W1에서 소비하는 경제 수치 스냅샷. gacha/rewards 원본 노드는 W2/W3에서 확장. */
-    public record Economy(String version, int initialPoints, List<String> starterPack) {
+    /** 경제 수치 스냅샷(W1: initialPoints/starterPack, W2: gacha). rewards는 W3에서 확장. */
+    public record Economy(String version, int initialPoints, List<String> starterPack, Gacha gacha) {
+    }
+
+    /** economy.v1.json `gacha` 노드 — 뽑기 비용·확률표·pity (AC-S5: 여기서만 온다). */
+    public record Gacha(int singleCost, int tenCost, int tenCount,
+                        Map<String, Double> rates, String tenPityMinGrade) {
     }
 
     private final Optional<Economy> economy;
@@ -48,9 +55,22 @@ public class EconomyService {
             int initialPoints = root.path("initialPoints").asInt();
             List<String> starterPack = new ArrayList<>();
             root.path("starterPack").forEach(n -> starterPack.add(n.asText()));
-            log.info("Loaded economy {} from {} (initialPoints={}, starterPack={} players)",
-                    version, file.getAbsolutePath(), initialPoints, starterPack.size());
-            return Optional.of(new Economy(version, initialPoints, List.copyOf(starterPack)));
+
+            JsonNode g = root.path("gacha");
+            Map<String, Double> rates = new LinkedHashMap<>();
+            g.path("rates").properties().forEach(e -> rates.put(e.getKey(), e.getValue().asDouble()));
+            Gacha gacha = new Gacha(
+                    g.path("singleCost").asInt(),
+                    g.path("tenCost").asInt(),
+                    g.path("tenCount").asInt(),
+                    Map.copyOf(rates),
+                    g.path("tenPityMinGrade").asText());
+
+            log.info("Loaded economy {} from {} (initialPoints={}, starterPack={} players, "
+                            + "gacha single/ten={}/{} tenCount={} pity>={})",
+                    version, file.getAbsolutePath(), initialPoints, starterPack.size(),
+                    gacha.singleCost(), gacha.tenCost(), gacha.tenCount(), gacha.tenPityMinGrade());
+            return Optional.of(new Economy(version, initialPoints, List.copyOf(starterPack), gacha));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());

@@ -17,7 +17,7 @@ import org.springframework.test.context.DynamicPropertySource;
 /**
  * AC-S1(스타터 팩 + /api/me) + AC-S3(owned 플래그) + 스타터 팩 멱등(재로그인 무재지급).
  * fixture economy: initialPoints=3000, starterPack=P001..P014 (GK1/DF5/MF5/FW3 미러).
- * fixture players: 16명(P015, P016은 미보유 확인용).
+ * fixture players: 17명(P015/P016/P017은 미보유 확인용).
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class StarterPackAndMeTest extends ApiTestBase {
@@ -44,11 +44,11 @@ class StarterPackAndMeTest extends ApiTestBase {
         assertThat(((Number) records.get("draws")).longValue()).isZero();
         assertThat(((Number) records.get("losses")).longValue()).isZero();
 
-        // /api/players — 카탈로그 16명 전원 + owned 정확(스타터 14명만 owned)
+        // /api/players — 카탈로그 17명 전원 + owned 정확(스타터 14명만 owned)
         ResponseEntity<List> players = authGet("/api/players", token, List.class);
         assertThat(players.getStatusCode()).isEqualTo(HttpStatus.OK);
         List<Map<String, Object>> list = players.getBody();
-        assertThat(list).hasSize(16);
+        assertThat(list).hasSize(17);
         long ownedCount = list.stream().filter(p -> (Boolean) p.get("owned")).count();
         assertThat(ownedCount).isEqualTo(14);
 

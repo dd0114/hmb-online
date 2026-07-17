@@ -5,11 +5,13 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 import online.hmb.catalog.EconomyService;
 import online.hmb.common.ApiException;
+import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
 import online.hmb.meta.WalletService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -61,6 +63,24 @@ public class MockAuthProvider implements AuthProvider {
             return new AuthResult(existingId.get(), nickname, false);
         }
 
+        try {
+            return createNewUser(nickname);
+        } catch (DataAccessException e) {
+            // 동시 첫 로그인 경합: 다른 요청이 먼저 같은 닉네임을 커밋한 경우(users.nickname
+            // UNIQUE 위반, tx 전체 롤백됨) → 기존 유저 재조회로 로그인 처리 (W1 이월사항 c)
+            if (!SqliteErrors.isUniqueViolation(e)) {
+                throw e;
+            }
+            String racedId = jdbcClient.sql("SELECT id FROM users WHERE nickname = ?")
+                    .param(nickname)
+                    .query(String.class)
+                    .optional()
+                    .orElseThrow(() -> e);
+            return new AuthResult(racedId, nickname, false);
+        }
+    }
+
+    private AuthResult createNewUser(String nickname) {
         return txRunner.run(() -> {
             // 동시 로그인 경합 대비: 트랜잭션 안에서 재확인.
             Optional<String> raced = jdbcClient.sql("SELECT id FROM users WHERE nickname = ?")

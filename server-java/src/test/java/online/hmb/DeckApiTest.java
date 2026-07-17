@@ -168,4 +168,41 @@ class DeckApiTest extends ApiTestBase {
         ResponseEntity<Map> response = putDeck(token, "  ", validStarters());
         assertDeckInvalid(response, "FORMATION_REQUIRED");
     }
+
+    // ── W1 검증 이월(a): 나머지 규칙 회귀 박제 ──────────────────────────
+
+    @Test
+    void invalidRoleRejected() {
+        String token = login("deck_role");
+        List<Map<String, Object>> slots = validStarters();
+        slots.add(slot("P012", "sub", 0)); // starter|bench 외
+        assertDeckInvalid(putDeck(token, "4-4-2", slots), "ROLE_INVALID");
+    }
+
+    @Test
+    void starterSlotIndexOutOfRangeRejected() {
+        String token = login("deck_range");
+        List<Map<String, Object>> slots = validStarters();
+        slots.set(10, slot("P011", "starter", 11)); // starter는 0..10
+        assertDeckInvalid(putDeck(token, "4-4-2", slots), "SLOT_INDEX_RANGE");
+    }
+
+    @Test
+    void duplicateSlotIndexRejected() {
+        String token = login("deck_dupidx");
+        List<Map<String, Object>> slots = validStarters();
+        slots.set(10, slot("P011", "starter", 0)); // slot0은 P001이 이미 사용
+        assertDeckInvalid(putDeck(token, "4-4-2", slots), "SLOT_INDEX_DUPLICATE");
+    }
+
+    @Test
+    void missingPlayerIdRejected() {
+        String token = login("deck_nopid");
+        List<Map<String, Object>> slots = validStarters();
+        Map<String, Object> noPlayer = new java.util.HashMap<>();
+        noPlayer.put("role", "bench");
+        noPlayer.put("slotIndex", 0); // playerId 없음
+        slots.add(noPlayer);
+        assertDeckInvalid(putDeck(token, "4-4-2", slots), "PLAYER_ID_REQUIRED");
+    }
 }

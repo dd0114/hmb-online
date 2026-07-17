@@ -24,7 +24,7 @@ class PlayerCatalogSeedImportTest {
     @Test
     void bootImportsFixturePlayersAndRecordsVersion() {
         long playerCount = jdbcClient.sql("SELECT COUNT(*) FROM players").query(Long.class).single();
-        assertThat(playerCount).isEqualTo(16);
+        assertThat(playerCount).isEqualTo(17);
 
         String version = jdbcClient.sql("SELECT value FROM meta_kv WHERE key = 'players_version'")
                 .query(String.class)
