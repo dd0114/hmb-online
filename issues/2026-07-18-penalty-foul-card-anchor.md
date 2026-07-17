@@ -1,9 +1,9 @@
 # 페널티 파울 시 점프 + "옐로!" 자막이 파울 위치와 불일치
 
-- **GH 이슈**: (등록 예정, 에픽 #25 하위)
+- **GH 이슈**: #69 (에픽 #25 하위)
 - **트랙**: QA 에픽 #25 (`epic:qa`) 하위 · **owned-glob**: `packages/engine/**`
 - **발견**: hero 뷰어 관전 2026-07-18 — "2분43초 반칙 일어날 때 점프가 일어나 반칙이 일어난 곳과 '옐로!' 라고 뜬 곳이 불일치해서 어색".
-- **상태**: Phase 3 진단 (실화면 캡처 완료, hero gate 전)
+- **상태**: ✅ 완료 (2026-07-18) — 전 AC[x], 독립 QA PASS(blocker 0).
 
 ---
 
@@ -33,7 +33,28 @@
 
 ## 2. 계획  <!-- Phase 6 hero gate -->
 
-(Phase 6에서 작성)
+### E2E Goal
+페널티 유발 파울 재생 시 "🟨 옐로" 카드/파울 자막이 페널티 스팟(공)이 아니라 **파울한 선수(A2) 위**에 떠서 파울 지점과 일치하고(점프 인상도 완화), hero가 "자연스럽다" 확인.
+
+### 방향 (뷰어 전용, 엔진 무변경)
+- `playback.mjs buildAnnotations`: foul/card(및 선수 사건 성격의) 토스트에 **anchorPlayer=e.playerId** 부여.
+- `index.html` 토스트 렌더(361-372): anchorPlayer 있으면 그 선수의 카드-틱 위치에 앵커, 없으면 공 폴백.
+- 엔진(`contest.ts restartPenalty`)·결정론·골든은 건드리지 않는다(뷰어 앵커만).
+
+### Acceptance Criteria
+- [x] **AC1** foul/card 토스트가 이벤트 playerId(파울러/피카드 선수) 위치에 앵커된다(공 아님). Evidence: `playback.mjs` T(text,col,anchor)+foul/card 에 e.playerId, `index.html` 토스트 렌더가 anchor 선수 위치 사용(없으면 공 폴백). 실측 캡처 t163/t164 "옐로" 토스트가 A2(#2, 파울러) 위 — 이전 페널티 스팟(공) 아님.
+- [x] **AC2** E2E-TDD 계약: 페널티 파울에서 카드/파울 토스트 anchor=파울러 playerId. Evidence: `playback.test.ts` "#69 ... 선수에 앵커" test.fail(red: anchor undefined)→구현→green(27/27).
+- [x] **AC3** 일반 free_kick 파울 회귀 없음 — 카드가 여전히 파울러(≈공) 위. Evidence: 앵커=파울러(t828 A8·t938 H6, 공↔파울러 0.6~1.5m라 시각 변화 미미, 오히려 파울러에 정확). playback/e2e green.
+- [x] **AC4** 결정론/기계게이트 무영향(뷰어 전용) — npm test 엔진/뷰어 102 passed·qa-match·perceptibility 6/6·playwright 29 green, **골든 unchanged**(엔진 미변경). (server 5실패=별 트랙 #32.)
+- [x] **AC5** 실화면 + 독립 QA PASS(blocker 0). Evidence: independent-qa 픽셀단위 교차검증(fillText 후킹 ↔ cam/curPlayers 역산) — t163 "옐로" 토스트가 A2 파울위치(96.3,38.1) 일치(공/스팟/피해자 아님), 회귀 t828(A8)·t938(H6) 정상, 카메라 급변 0건(부드러운 팬). PASS.
+
+### 후속 백로그 (에픽 #25, 이 이슈 밖)
+- **BL-1** 같은 틱 foul+card 토스트가 동일 픽셀에 겹쳐 "파울"이 "옐로" 뒤로 깨져 보임(가독성, minor). 기존부터 존재(둘 다 같은 앵커). 방향: 동시 발생 시 세로 스태킹 또는 "😠 파울 · 🟨 옐로" 단일 병합. (independent-qa #69 재검 발견.)
+
+### Sub-goals
+- SG1: E2E-TDD — 카드 토스트 앵커=파울러 계약 박제.
+- SG2: 토스트 앵커 playerId 화(playback.mjs + index.html), 공 폴백 유지.
+- SG3: 회귀 게이트(결정론/기계/playwright) + 실화면 + 독립 QA.
 
 ---
 
@@ -42,9 +63,14 @@
 | 일시 | Phase | 내용 |
 |---|---|---|
 | 2026-07-18 | 1~3 | 2:43=tick163 페널티 파울. 실화면 캡처로 (a)공 점프 (b)카드 토스트가 페널티 스팟(공)에 앵커돼 파울러 A2와 4.7m 불일치 확인. 일반 파울(0.6~1.5m)은 일치=페널티 특정. root=토스트 공 앵커(선수 사건인데). 방향=playerId 앵커. |
+| 2026-07-18 | 4~7 | GH #69 등록(에픽 #25). E2E-TDD(playback.test.ts anchor=파울러 red→green) → playback.mjs T(anchor)+foul/card e.playerId, index.html 토스트 렌더 anchor 선수 위치(공 폴백). 실측 캡처 t163/164 카드=A2 위. npm test 102·qa-match·6/6·playwright 29·골든 unchanged. 독립QA PASS(blocker0, 픽셀검증). BL-1(파울·옐로 겹침) 백로그. 전 AC[x]. |
 
 ---
 
 ## 5. Learned  <!-- Phase 8 -->
 
-(Phase 8에서 작성)
+- **가설 적중**: "카드/파울 토스트가 공(재시작 위치)에 앵커된 게 근본"이 맞았다. 일반 파울에선 공≈파울러라 숨어 있다가, 공이 멀어지는 **페널티에서만** 드러난 잠복 버그. → **버그가 특정 조건에서만 보이면, 그 조건이 뭘 다르게 만드는지(여기선 공↔주체 거리)가 root 힌트.**
+- **의미론 앵커**: "카드"는 **선수 사건**인데 공에 앵커한 게 잘못. 연출 요소는 그것이 나타내는 **주체(공/선수/위치)에 앵커**해야 한다. 코너/스로인 배너=공, 파울/카드=선수.
+- **#59와의 상호작용**: #59로 테이커가 스팟으로 걸어오며 "카드가 피해자(테이커) 위에 뜬 것처럼" 인상이 강해져 hero 눈에 띔. 한 수정이 다른 잠복 버그의 가시성을 높이는 경우 — QA 상시 트랙의 가치.
+- **§2.2 실화면 검증의 힘**: 좌표만 봤으면 "카드 4.7m 벗어남" 숫자에 그쳤을 것. 실화면 캡처로 "카드가 파울러가 아니라 **피해자 위**에 뜬다"는 더 심한 오해를 봄. 독립 QA도 fillText 픽셀 후킹으로 수치 교차검증 + BL-1(파울/옐로 겹침) 신규 발견.
+- **재사용 lesson**: 같은 틱 다중 토스트(foul+card)는 겹친다 — 동시 연출 요소는 스태킹/병합 필요(BL-1).

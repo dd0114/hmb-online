@@ -161,7 +161,8 @@ export function buildAnnotations(events, snaps) {
   const annos = [];
   for (const e of events) {
     const k = eventKind(e);
-    const T = (text, col) => annos.push({ kind: "toast", tick: e.tick, at: e.tick, text, col });
+    // anchor(선택): 토스트를 공이 아니라 그 playerId 선수 위치에 앵커(선수 사건용). #69.
+    const T = (text, col, anchor) => annos.push({ kind: "toast", tick: e.tick, at: e.tick, text, col, ...(anchor ? { anchor } : {}) });
     const B = (text, col) => annos.push({ kind: "banner", tick: e.tick, text, col });
     if (k === "shot") T("슛!", "#fbbf24");
     else if (k === "shot_one_on_one") T("1:1 찬스!", "#fbbf24");
@@ -169,8 +170,8 @@ export function buildAnnotations(events, snaps) {
     else if (k === "shot_off_target") T("빗나감", "#94a3b8");
     else if (k === "tackle") T("태클", "#cbd5e1");
     else if (k === "interception") T("차단", "#cbd5e1");
-    else if (k === "foul") { T("파울", "#fb923c"); B("😠 파울 → 프리킥", "#fb923c"); }
-    else if (k === "card") T(e.detail === "red" ? "🟥 레드!" : "🟨 옐로", e.detail === "red" ? "#ef4444" : "#fde047");
+    else if (k === "foul") { T("파울", "#fb923c", e.playerId); B("😠 파울 → 프리킥", "#fb923c"); }
+    else if (k === "card") T(e.detail === "red" ? "🟥 레드!" : "🟨 옐로", e.detail === "red" ? "#ef4444" : "#fde047", e.playerId);
     else if (k === "offside") B("🚩 오프사이드", "#f59e0b");
     else if (k === "penalty") B("⚽ 페널티킥!", "#22c55e");
     else if (k === "corner") B("코너킥", "#e7edf6");

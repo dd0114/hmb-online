@@ -364,7 +364,11 @@
           if (age < 0 || age > TOAST_TICKS) continue;
           const s = snapByTick.get(a.at); if (!s) continue;
           const prog = age / TOAST_TICKS;
-          const px = sx(s.ball.x), py = sy(s.ball.y) - 18 - prog * 22;
+          // #69: anchor 있으면 그 선수(파울러 등) 위치에 앵커 — 공이 아니라. 페널티는 공이 스팟으로
+          // 가버려 카드가 파울러/파울지점과 어긋났음(선수 사건인데 공에 앵커). 선수 없으면 공 폴백.
+          let ax = s.ball.x, ay = s.ball.y;
+          if (a.anchor) { const pl = s.players.find((p) => p.playerId === a.anchor); if (pl) { ax = pl.pos.x; ay = pl.pos.y; } }
+          const px = sx(ax), py = sy(ay) - 18 - prog * 22;
           ctx.globalAlpha = 1 - prog;
           ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.strokeText(a.text, px, py);
           ctx.fillStyle = a.col; ctx.fillText(a.text, px, py);

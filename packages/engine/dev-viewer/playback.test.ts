@@ -267,6 +267,21 @@ describe("buildAnnotations", () => {
     expect(a.find((x) => x.text.includes("오프사이드") && x.kind === "banner")).toBeTruthy();
     expect(a.find((x) => x.text === "코너킥" && x.kind === "banner")).toBeTruthy();
   });
+  it("#69 파울/카드 토스트는 선수(파울러)에 앵커된다 — 공 아님(페널티 스팟 불일치 방지)", () => {
+    const a = buildAnnotations(
+      [
+        { type: "foul", tick: 30, team: "away", playerId: "A2" },
+        { type: "card", detail: "yellow", tick: 30, team: "away", playerId: "A2" },
+        { type: "penalty", tick: 30, team: "home" },
+      ],
+      snaps,
+    );
+    const foul = a.find((x) => x.text === "파울" && x.kind === "toast");
+    const card = a.find((x) => x.text.includes("옐로") && x.kind === "toast");
+    // 카드/파울은 '선수 사건' → anchor=파울러 playerId. 렌더가 공 아니라 그 선수 위치에 그린다.
+    expect(foul?.anchor, "파울 토스트 anchor=파울러").toBe("A2");
+    expect(card?.anchor, "카드 토스트 anchor=파울러").toBe("A2");
+  });
   it("롱 드리블(같은 소유자 6틱+ 전진)에 '돌파!' 토스트", () => {
     const s: any[] = [];
     for (let t = 0; t < 8; t++) s.push({ tick: t, ballOwner: "H9", ball: { x: 40 + t * 3, y: 34 } });
