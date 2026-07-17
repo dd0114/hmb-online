@@ -94,9 +94,10 @@ public class DeckService {
         });
     }
 
-    // ── 검증 (AC-S2 매트릭스) ────────────────────────────────────────────
+    // ── 검증 ────────────────────────────────────────────────────────────
 
-    private void validate(String userId, DeckUpdateRequest request) {
+    /** AC-S2 검증 매트릭스 — PUT /api/deck 및 매치 생성 시 활성 덱 재검증(LLD §5.1)에 공용. */
+    public void validate(String userId, DeckUpdateRequest request) {
         if (request == null || request.slots() == null) {
             throw deckInvalid("요청 바디가 비어 있습니다", Map.of("rule", "BODY_REQUIRED"));
         }

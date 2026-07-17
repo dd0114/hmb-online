@@ -7,9 +7,42 @@
     "deck": {
       "formation": "4-4-2",
       "starters": [
-        {"playerId": "P001", "slotIndex": 0}
+        {"playerId": "P001", "slotIndex": 0},
+        {"playerId": "P002", "slotIndex": 1},
+        {"playerId": "P003", "slotIndex": 2},
+        {"playerId": "P004", "slotIndex": 3},
+        {"playerId": "P005", "slotIndex": 4},
+        {"playerId": "P006", "slotIndex": 5},
+        {"playerId": "P007", "slotIndex": 6},
+        {"playerId": "P008", "slotIndex": 7},
+        {"playerId": "P009", "slotIndex": 8},
+        {"playerId": "P010", "slotIndex": 9},
+        {"playerId": "P011", "slotIndex": 10, "promptText": "적극 침투"}
       ],
-      "bench": ["P002"]
+      "bench": ["P012", "P013"]
+    }
+  },
+  {
+    "id": "BOT_ATK",
+    "name": "Attack FC",
+    "persona": "하이라인 강한 압박으로 공격적으로 몰아붙인다.",
+    "analysisText": "공격형 — 뒷공간 역습에 취약하다.",
+    "deck": {
+      "formation": "4-3-3",
+      "starters": [
+        {"playerId": "P001", "slotIndex": 0},
+        {"playerId": "P002", "slotIndex": 1},
+        {"playerId": "P003", "slotIndex": 2},
+        {"playerId": "P004", "slotIndex": 3},
+        {"playerId": "P005", "slotIndex": 4},
+        {"playerId": "P007", "slotIndex": 5},
+        {"playerId": "P008", "slotIndex": 6},
+        {"playerId": "P009", "slotIndex": 7},
+        {"playerId": "P012", "slotIndex": 8},
+        {"playerId": "P013", "slotIndex": 9},
+        {"playerId": "P014", "slotIndex": 10}
+      ],
+      "bench": ["P006", "P015"]
     }
   }
 ]

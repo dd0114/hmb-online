@@ -16,9 +16,11 @@ import java.util.TreeMap;
 import online.hmb.catalog.CatalogPlayer;
 import online.hmb.catalog.EconomyService;
 import online.hmb.common.ApiException;
+import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
 import online.hmb.meta.WalletService;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -90,7 +92,17 @@ public class GachaService {
             String seed = randomSource.newSeed();
             String now = Instant.now().toString();
 
-            walletService.apply(userId, -cost, reason, pullId);
+            try {
+                walletService.apply(userId, -cost, reason, pullId);
+            } catch (DataAccessException e) {
+                // 동시 뽑기 경합: 둘 다 사전 잔액검사를 통과해도 wallets CHECK(points>=0)가
+                // 늦은 쪽을 막는다 → 500이 아니라 400 INSUFFICIENT_POINTS (W2 검증 이월사항)
+                if (SqliteErrors.isCheckViolation(e)) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS",
+                            "포인트가 부족합니다", Map.of("balance", balance, "cost", cost));
+                }
+                throw e;
+            }
             jdbcClient.sql("""
                             INSERT INTO gacha_pulls(id, user_id, kind, cost, seed, created_at)
                             VALUES (?, ?, ?, ?, ?, ?)

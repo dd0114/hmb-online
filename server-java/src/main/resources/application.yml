@@ -34,9 +34,12 @@ hmb:
     ai-job-timeout-sec: 240        # GEN 상태에서 이걸 넘으면 FAILED
     lease-sec: 120                 # ai_jobs 가시성 타임아웃
     max-attempts: 3
+    sweep-interval-ms: 10000       # JobLeaseSweeper 주기 (LLD §6: 10s)
   servant:
     engine-runner-url: http://localhost:8790
     internal-token: change-me      # /internal/* shared secret (AC-Q3)
+    simulate-timeout-sec: 30       # LLD §5.3
+    simulate-retries: 1            # LLD §5.3: 실패 1회 재시도 후 FAILED
 
 springdoc:
   api-docs:

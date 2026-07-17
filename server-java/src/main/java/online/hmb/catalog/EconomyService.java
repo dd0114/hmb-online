@@ -26,13 +26,18 @@ public class EconomyService {
 
     private static final Logger log = LoggerFactory.getLogger(EconomyService.class);
 
-    /** 경제 수치 스냅샷(W1: initialPoints/starterPack, W2: gacha). rewards는 W3에서 확장. */
-    public record Economy(String version, int initialPoints, List<String> starterPack, Gacha gacha) {
+    /** 경제 수치 스냅샷 (W1: initialPoints/starterPack, W2: gacha, W3: rewards). */
+    public record Economy(String version, int initialPoints, List<String> starterPack,
+                          Gacha gacha, Rewards rewards) {
     }
 
     /** economy.v1.json `gacha` 노드 — 뽑기 비용·확률표·pity (AC-S5: 여기서만 온다). */
     public record Gacha(int singleCost, int tenCost, int tenCount,
                         Map<String, Double> rates, String tenPityMinGrade) {
+    }
+
+    /** economy.v1.json `rewards` 노드 — 매치 보상 승/무/패 (AC-M6, ref=matchId 멱등 지급). */
+    public record Rewards(int win, int draw, int loss) {
     }
 
     private final Optional<Economy> economy;
@@ -66,11 +71,16 @@ public class EconomyService {
                     Map.copyOf(rates),
                     g.path("tenPityMinGrade").asText());
 
+            JsonNode r = root.path("rewards");
+            Rewards rewards = new Rewards(
+                    r.path("win").asInt(), r.path("draw").asInt(), r.path("loss").asInt());
+
             log.info("Loaded economy {} from {} (initialPoints={}, starterPack={} players, "
-                            + "gacha single/ten={}/{} tenCount={} pity>={})",
+                            + "gacha single/ten={}/{} tenCount={} pity>={}, rewards {}/{}/{})",
                     version, file.getAbsolutePath(), initialPoints, starterPack.size(),
-                    gacha.singleCost(), gacha.tenCost(), gacha.tenCount(), gacha.tenPityMinGrade());
-            return Optional.of(new Economy(version, initialPoints, List.copyOf(starterPack), gacha));
+                    gacha.singleCost(), gacha.tenCost(), gacha.tenCount(), gacha.tenPityMinGrade(),
+                    rewards.win(), rewards.draw(), rewards.loss());
+            return Optional.of(new Economy(version, initialPoints, List.copyOf(starterPack), gacha, rewards));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());

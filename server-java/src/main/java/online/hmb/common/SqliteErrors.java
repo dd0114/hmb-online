@@ -19,11 +19,26 @@ public final class SqliteErrors {
         if (e instanceof DataIntegrityViolationException) {
             return true;
         }
+        String msg = causeMessage(e);
+        return msg.contains("SQLITE_CONSTRAINT_UNIQUE") || msg.contains("SQLITE_CONSTRAINT_PRIMARYKEY")
+                || msg.contains("UNIQUE constraint failed")
+                || (msg.contains("SQLITE_CONSTRAINT") && msg.contains("UNIQUE"));
+    }
+
+    /**
+     * CHECK 제약 위반이면 true — 예: wallets.points >= 0 (동시 뽑기 경합으로 사전 잔액검사를
+     * 둘 다 통과한 경우 늦은 쪽이 여기서 걸린다 → 400 INSUFFICIENT_POINTS 매핑, W2 이월사항).
+     */
+    public static boolean isCheckViolation(DataAccessException e) {
+        String msg = causeMessage(e);
+        return msg.contains("SQLITE_CONSTRAINT_CHECK") || msg.contains("CHECK constraint failed");
+    }
+
+    private static String causeMessage(DataAccessException e) {
         Throwable cause = e.getMostSpecificCause();
         if (cause instanceof SQLException se) {
-            String msg = String.valueOf(se.getMessage());
-            return msg.contains("SQLITE_CONSTRAINT") || msg.contains("UNIQUE constraint failed");
+            return String.valueOf(se.getMessage());
         }
-        return false;
+        return String.valueOf(e.getMessage());
     }
 }
