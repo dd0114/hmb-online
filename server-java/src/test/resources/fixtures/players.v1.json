@@ -5,48 +5,287 @@
     "position": "GK",
     "grade": "BRONZE",
     "attributes": {
-      "technical": 40, "mental": 45, "physical": 55, "passing": 35,
-      "shooting": 10, "tackling": 20, "pace": 40, "stamina": 50, "positioning": 60
+      "technical": 40,
+      "mental": 41,
+      "physical": 42,
+      "passing": 43,
+      "shooting": 44,
+      "tackling": 45,
+      "pace": 46,
+      "stamina": 47,
+      "positioning": 48
     }
   },
   {
     "id": "P002",
-    "name": "Test Defender",
+    "name": "Test Defender 1",
     "position": "DF",
-    "grade": "SILVER",
+    "grade": "BRONZE",
     "attributes": {
-      "technical": 50, "mental": 55, "physical": 65, "passing": 50,
-      "shooting": 20, "tackling": 65, "pace": 55, "stamina": 60, "positioning": 60
+      "technical": 45,
+      "mental": 46,
+      "physical": 47,
+      "passing": 48,
+      "shooting": 49,
+      "tackling": 50,
+      "pace": 51,
+      "stamina": 52,
+      "positioning": 53
     }
   },
   {
     "id": "P003",
-    "name": "Test Midfielder",
-    "position": "MF",
-    "grade": "GOLD",
+    "name": "Test Defender 2",
+    "position": "DF",
+    "grade": "BRONZE",
     "attributes": {
-      "technical": 70, "mental": 65, "physical": 60, "passing": 75,
-      "shooting": 55, "tackling": 45, "pace": 60, "stamina": 65, "positioning": 65
+      "technical": 46,
+      "mental": 47,
+      "physical": 48,
+      "passing": 49,
+      "shooting": 50,
+      "tackling": 51,
+      "pace": 52,
+      "stamina": 53,
+      "positioning": 54
     }
   },
   {
     "id": "P004",
-    "name": "Test Forward",
-    "position": "FW",
-    "grade": "DIA",
+    "name": "Test Defender 3",
+    "position": "DF",
+    "grade": "BRONZE",
     "attributes": {
-      "technical": 75, "mental": 60, "physical": 65, "passing": 55,
-      "shooting": 80, "tackling": 25, "pace": 75, "stamina": 60, "positioning": 75
+      "technical": 47,
+      "mental": 48,
+      "physical": 49,
+      "passing": 50,
+      "shooting": 51,
+      "tackling": 52,
+      "pace": 53,
+      "stamina": 54,
+      "positioning": 55
     }
   },
   {
     "id": "P005",
+    "name": "Test Defender 4",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 48,
+      "mental": 49,
+      "physical": 50,
+      "passing": 51,
+      "shooting": 52,
+      "tackling": 53,
+      "pace": 54,
+      "stamina": 55,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P006",
+    "name": "Test Defender 5",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 49,
+      "mental": 50,
+      "physical": 51,
+      "passing": 52,
+      "shooting": 53,
+      "tackling": 54,
+      "pace": 55,
+      "stamina": 56,
+      "positioning": 57
+    }
+  },
+  {
+    "id": "P007",
+    "name": "Test Midfielder 1",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 51,
+      "physical": 52,
+      "passing": 53,
+      "shooting": 54,
+      "tackling": 55,
+      "pace": 56,
+      "stamina": 57,
+      "positioning": 58
+    }
+  },
+  {
+    "id": "P008",
+    "name": "Test Midfielder 2",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 52,
+      "physical": 53,
+      "passing": 54,
+      "shooting": 55,
+      "tackling": 56,
+      "pace": 57,
+      "stamina": 58,
+      "positioning": 59
+    }
+  },
+  {
+    "id": "P009",
+    "name": "Test Midfielder 3",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 52,
+      "mental": 53,
+      "physical": 54,
+      "passing": 55,
+      "shooting": 56,
+      "tackling": 57,
+      "pace": 58,
+      "stamina": 59,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P010",
+    "name": "Test Midfielder 4",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 53,
+      "mental": 54,
+      "physical": 55,
+      "passing": 56,
+      "shooting": 57,
+      "tackling": 58,
+      "pace": 59,
+      "stamina": 60,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P011",
+    "name": "Test Midfielder 5",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 54,
+      "mental": 55,
+      "physical": 56,
+      "passing": 57,
+      "shooting": 58,
+      "tackling": 59,
+      "pace": 60,
+      "stamina": 61,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P012",
+    "name": "Test Forward 1",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 56,
+      "physical": 57,
+      "passing": 58,
+      "shooting": 59,
+      "tackling": 60,
+      "pace": 61,
+      "stamina": 62,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P013",
+    "name": "Test Forward 2",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 56,
+      "mental": 57,
+      "physical": 58,
+      "passing": 59,
+      "shooting": 60,
+      "tackling": 61,
+      "pace": 62,
+      "stamina": 63,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P014",
+    "name": "Test Forward 3",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 57,
+      "mental": 58,
+      "physical": 59,
+      "passing": 60,
+      "shooting": 61,
+      "tackling": 62,
+      "pace": 63,
+      "stamina": 64,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P015",
+    "name": "Test Backup Keeper",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 51,
+      "physical": 52,
+      "passing": 53,
+      "shooting": 54,
+      "tackling": 55,
+      "pace": 56,
+      "stamina": 57,
+      "positioning": 58
+    }
+  },
+  {
+    "id": "P016",
     "name": "Test Legend",
     "position": "FW",
     "grade": "LEGEND",
     "attributes": {
-      "technical": 90, "mental": 85, "physical": 80, "passing": 80,
-      "shooting": 92, "tackling": 30, "pace": 88, "stamina": 78, "positioning": 90
+      "technical": 82,
+      "mental": 83,
+      "physical": 84,
+      "passing": 85,
+      "shooting": 86,
+      "tackling": 87,
+      "pace": 88,
+      "stamina": 89,
+      "positioning": 90
+    }
+  },
+  {
+    "id": "P017",
+    "name": "Test Diamond",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 78,
+      "mental": 74,
+      "physical": 72,
+      "passing": 70,
+      "shooting": 82,
+      "tackling": 30,
+      "pace": 80,
+      "stamina": 70,
+      "positioning": 79
     }
   }
 ]

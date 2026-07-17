@@ -4,6 +4,9 @@ server:
 spring:
   application:
     name: hmb-server
+  threads:
+    virtual:
+      enabled: true   # W4: /internal/ai-jobs/poll long-poll가 블로킹으로 대기해도 요청 스레드 풀을 고갈시키지 않게 (LLD §6)
   datasource:
     url: jdbc:sqlite:${hmb.db.path:./.data/hmb.db}?foreign_keys=on&journal_mode=WAL&busy_timeout=5000
     driver-class-name: org.sqlite.JDBC
@@ -12,9 +15,8 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
-  jackson:
-    property-naming-strategy: LOWER_CAMEL_CASE
-    default-property-inclusion: non_null
+  # jackson 설정은 common/Json.java(@Primary ObjectMapper)가 단일 SoT — spring.jackson.* 키는
+  # 커스텀 빈에 적용되지 않아(dead) 두지 않는다. (W1 검증 이월사항 b)
 
 hmb:
   db:
@@ -35,9 +37,13 @@ hmb:
     ai-job-timeout-sec: 240        # GEN 상태에서 이걸 넘으면 FAILED
     lease-sec: 120                 # ai_jobs 가시성 타임아웃
     max-attempts: 3
+    sweep-interval-ms: 10000       # JobLeaseSweeper 주기 (LLD §6: 10s)
+    poll-interval-ms: 1000         # /internal/ai-jobs/poll long-poll 재조회 간격 (LLD §6: 1s)
   servant:
     engine-runner-url: http://localhost:8790
     internal-token: change-me      # /internal/* shared secret (AC-Q3)
+    simulate-timeout-sec: 30       # LLD §5.3
+    simulate-retries: 1            # LLD §5.3: 실패 1회 재시도 후 FAILED
 
 springdoc:
   api-docs:

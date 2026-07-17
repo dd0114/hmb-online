@@ -1,0 +1,144 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 10;
+}
+
+.sheet {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.title {
+  margin: 0 0 14px;
+  font-size: 16px;
+  text-align: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.card {
+  perspective: 600px;
+  background: none;
+  border: none;
+  padding: 0;
+  height: 96px;
+}
+
+.cardInner {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.45s ease;
+}
+
+.flipped .cardInner {
+  transform: rotateY(180deg);
+}
+
+.cardBack,
+.cardFace {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.cardBack {
+  background: #232838;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.cardFace {
+  transform: rotateY(180deg);
+  background: var(--bg);
+  border: 2px solid var(--border);
+  padding: 4px;
+}
+
+.high .cardFace {
+  box-shadow: 0 0 14px 2px rgba(242, 199, 68, 0.55);
+}
+
+.newBadge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent-contrast);
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.cardName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardPos {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.cardGrade {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+}
+
+.primary {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.secondary {
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 14px;
+}

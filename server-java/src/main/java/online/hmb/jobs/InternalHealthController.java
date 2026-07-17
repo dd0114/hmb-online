@@ -6,9 +6,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * GET /internal/health — 큐 깊이·lease 중 개수 (LLD §6, 운영 확인용).
- * W0: ai_jobs 테이블은 존재하나 아직 아무도 쓰지 않으므로 항상 0 — 실질 구현은 W4(AiJobQueue)에서.
- * TODO(W4): X-Servant-Token 인터셉터로 /internal/** 보호(AC-Q3). W0에는 poll/complete 엔드포인트가
- * 아직 없어 인터셉터를 붙일 대상이 이 헬스체크뿐이므로 보류.
+ * W4: ServantTokenInterceptor가 /internal/** 전체(이 health 포함)를 X-Servant-Token으로 보호한다
+ * (AC-Q3 — W0의 "TODO W4: 인증" 해소). 토큰 없으면 401.
  */
 @RestController
 public class InternalHealthController {

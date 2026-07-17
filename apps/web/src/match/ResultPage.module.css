@@ -1,0 +1,113 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.resultCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+
+.badge {
+  padding: 4px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid var(--border);
+}
+
+.badgeWIN {
+  background: rgba(55, 194, 111, 0.15);
+  border-color: var(--success);
+  color: var(--success);
+}
+
+.badgeDRAW {
+  background: rgba(154, 161, 173, 0.15);
+  color: var(--text-muted);
+}
+
+.badgeLOSS {
+  background: rgba(255, 90, 90, 0.12);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.finalScore {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.reward {
+  margin: 0;
+  font-size: 14px;
+  color: #f2c744;
+  font-weight: 600;
+}
+
+.statsCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.statsTitle {
+  margin: 0 0 8px;
+  font-size: 14px;
+  text-align: center;
+}
+
+.statsTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.statsTable th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+
+.statsTable td {
+  padding: 5px 4px;
+}
+
+.homeCol {
+  text-align: left;
+  width: 35%;
+}
+
+.awayCol {
+  text-align: right;
+  width: 35%;
+}
+
+.statLabel {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.toLobby {
+  padding: 14px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 16px;
+  font-weight: 700;
+}
