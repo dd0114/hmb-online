@@ -24,14 +24,14 @@ class PlayerCatalogSeedImportTest {
     @Test
     void bootImportsFixturePlayersAndRecordsVersion() {
         long playerCount = jdbcClient.sql("SELECT COUNT(*) FROM players").query(Long.class).single();
-        assertThat(playerCount).isEqualTo(5);
+        assertThat(playerCount).isEqualTo(16);
 
         String version = jdbcClient.sql("SELECT value FROM meta_kv WHERE key = 'players_version'")
                 .query(String.class)
                 .single();
         assertThat(version).isEqualTo("v1");
 
-        String grade = jdbcClient.sql("SELECT grade FROM players WHERE id = 'P005'")
+        String grade = jdbcClient.sql("SELECT grade FROM players WHERE id = 'P016'")
                 .query(String.class)
                 .single();
         assertThat(grade).isEqualTo("LEGEND");
