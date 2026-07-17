@@ -1,0 +1,248 @@
+{
+  "seed": "4815162342",
+  "team": {
+    "formation": "4-3-3",
+    "defensiveLineHeight": 0.85,
+    "compactness": 0.7,
+    "tempo": 0.85,
+    "width": 0.85,
+    "pressingScheme": {
+      "intensity": 0.85,
+      "triggerLine": 0.75
+    },
+    "offsideTrap": true
+  },
+  "players": [
+    {
+      "playerId": "H0",
+      "role": "GK",
+      "duty": "defend",
+      "basePosition": {
+        "x": 0.08,
+        "y": 0.5
+      },
+      "behavior": {
+        "positioningFreedom": 0.2,
+        "forwardRunFreq": 0.05,
+        "widthTendency": 0.2,
+        "supportDepth": 0.2,
+        "pressAggression": 0.15,
+        "passRisk": 0.3,
+        "passDirectness": 0.5,
+        "dribbleTendency": 0.1,
+        "shootTendency": 0
+      },
+      "mentalModifier": 0
+    },
+    {
+      "playerId": "H1",
+      "role": "LB",
+      "duty": "attack",
+      "basePosition": {
+        "x": 0.4,
+        "y": 0.15
+      },
+      "behavior": {
+        "positioningFreedom": 0.55,
+        "forwardRunFreq": 0.9,
+        "widthTendency": 0.85,
+        "supportDepth": 0.75,
+        "pressAggression": 0.7,
+        "passRisk": 0.55,
+        "passDirectness": 0.55,
+        "dribbleTendency": 0.5,
+        "shootTendency": 0.25
+      },
+      "mentalModifier": 0.2
+    },
+    {
+      "playerId": "H2",
+      "role": "LCB",
+      "duty": "defend",
+      "basePosition": {
+        "x": 0.2,
+        "y": 0.4
+      },
+      "behavior": {
+        "positioningFreedom": 0.3,
+        "forwardRunFreq": 0.2,
+        "widthTendency": 0.3,
+        "supportDepth": 0.35,
+        "pressAggression": 0.65,
+        "passRisk": 0.45,
+        "passDirectness": 0.55,
+        "dribbleTendency": 0.2,
+        "shootTendency": 0.03
+      },
+      "mentalModifier": 0.05
+    },
+    {
+      "playerId": "H3",
+      "role": "RCB",
+      "duty": "defend",
+      "basePosition": {
+        "x": 0.2,
+        "y": 0.6
+      },
+      "behavior": {
+        "positioningFreedom": 0.3,
+        "forwardRunFreq": 0.2,
+        "widthTendency": 0.3,
+        "supportDepth": 0.35,
+        "pressAggression": 0.65,
+        "passRisk": 0.45,
+        "passDirectness": 0.55,
+        "dribbleTendency": 0.2,
+        "shootTendency": 0.03
+      },
+      "mentalModifier": 0.05
+    },
+    {
+      "playerId": "H4",
+      "role": "RB",
+      "duty": "attack",
+      "basePosition": {
+        "x": 0.4,
+        "y": 0.85
+      },
+      "behavior": {
+        "positioningFreedom": 0.55,
+        "forwardRunFreq": 0.9,
+        "widthTendency": 0.85,
+        "supportDepth": 0.75,
+        "pressAggression": 0.7,
+        "passRisk": 0.55,
+        "passDirectness": 0.55,
+        "dribbleTendency": 0.5,
+        "shootTendency": 0.25
+      },
+      "mentalModifier": 0.2
+    },
+    {
+      "playerId": "H5",
+      "role": "LCM",
+      "duty": "support",
+      "basePosition": {
+        "x": 0.46,
+        "y": 0.32
+      },
+      "behavior": {
+        "positioningFreedom": 0.5,
+        "forwardRunFreq": 0.6,
+        "widthTendency": 0.45,
+        "supportDepth": 0.6,
+        "pressAggression": 0.75,
+        "passRisk": 0.65,
+        "passDirectness": 0.65,
+        "dribbleTendency": 0.5,
+        "shootTendency": 0.35
+      },
+      "mentalModifier": 0.15
+    },
+    {
+      "playerId": "H6",
+      "role": "CM",
+      "duty": "support",
+      "basePosition": {
+        "x": 0.42,
+        "y": 0.5
+      },
+      "behavior": {
+        "positioningFreedom": 0.45,
+        "forwardRunFreq": 0.5,
+        "widthTendency": 0.4,
+        "supportDepth": 0.55,
+        "pressAggression": 0.7,
+        "passRisk": 0.6,
+        "passDirectness": 0.6,
+        "dribbleTendency": 0.45,
+        "shootTendency": 0.3
+      },
+      "mentalModifier": 0.1
+    },
+    {
+      "playerId": "H7",
+      "role": "RCM",
+      "duty": "support",
+      "basePosition": {
+        "x": 0.46,
+        "y": 0.68
+      },
+      "behavior": {
+        "positioningFreedom": 0.5,
+        "forwardRunFreq": 0.6,
+        "widthTendency": 0.45,
+        "supportDepth": 0.6,
+        "pressAggression": 0.75,
+        "passRisk": 0.65,
+        "passDirectness": 0.65,
+        "dribbleTendency": 0.5,
+        "shootTendency": 0.35
+      },
+      "mentalModifier": 0.15
+    },
+    {
+      "playerId": "H8",
+      "role": "LW",
+      "duty": "attack",
+      "basePosition": {
+        "x": 0.75,
+        "y": 0.35
+      },
+      "behavior": {
+        "positioningFreedom": 0.6,
+        "forwardRunFreq": 0.65,
+        "widthTendency": 0.2,
+        "supportDepth": 0.55,
+        "pressAggression": 0.8,
+        "passRisk": 0.6,
+        "passDirectness": 0.6,
+        "dribbleTendency": 0.8,
+        "shootTendency": 0.85
+      },
+      "mentalModifier": 0.25
+    },
+    {
+      "playerId": "H9",
+      "role": "ST",
+      "duty": "attack",
+      "basePosition": {
+        "x": 0.82,
+        "y": 0.5
+      },
+      "behavior": {
+        "positioningFreedom": 0.65,
+        "forwardRunFreq": 0.9,
+        "widthTendency": 0.3,
+        "supportDepth": 0.45,
+        "pressAggression": 0.8,
+        "passRisk": 0.55,
+        "passDirectness": 0.6,
+        "dribbleTendency": 0.55,
+        "shootTendency": 0.9
+      },
+      "mentalModifier": 0.3
+    },
+    {
+      "playerId": "H10",
+      "role": "RW",
+      "duty": "attack",
+      "basePosition": {
+        "x": 0.75,
+        "y": 0.65
+      },
+      "behavior": {
+        "positioningFreedom": 0.6,
+        "forwardRunFreq": 0.65,
+        "widthTendency": 0.2,
+        "supportDepth": 0.55,
+        "pressAggression": 0.8,
+        "passRisk": 0.6,
+        "passDirectness": 0.6,
+        "dribbleTendency": 0.8,
+        "shootTendency": 0.85
+      },
+      "mentalModifier": 0.25
+    }
+  ]
+}
