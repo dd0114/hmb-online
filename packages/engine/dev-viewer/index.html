@@ -503,18 +503,36 @@
               if (captionDelay && !st.pauseOnly && !st.isGoal) hold.pendingCaption = { text: st.big, col: st.bigCol };
               // 골 정지: 세리머니 동안 선수들을 킥오프 포메이션(restart 스냅)으로 트윈 → hold 해제 시 순간이동 제거.
               if (st.isGoal) { hold.formFrom = idxOfTick(st.causeTick); hold.koIdx = idxOfTick(st.restartTick); hold.tween = 0; }
-              // #52: 데드볼 정지 재생 — 정적 홀드 대신 정지 구간(공이 스팟 유지되는 틱들)을 재생해
-              // 선수들이 정비(리포지셔닝)하는 걸 보여준다. 정지 끝(공이 스팟 떠남=실행)에서 재개.
-              if (st.setPiece || st.pauseOnly) {
+              // #52/#56: 데드볼 정지 재생 — 정적 홀드 대신 정지 구간(공이 스팟 유지되는 틱들)을 재생해
+              // 선수 정비를 보여준다. 정지 끝(공이 스팟 떠남=실행)에서 재개.
+              // #56(A): setPiece/pauseOnly 뿐 아니라 파울/페널티/오프사이드(CAUSE→프리킥/PK)도 커버.
+              const foulEv = log.events.find((e) => e.tick === st.causeTick && (e.type === "foul" || e.type === "penalty" || e.type === "offside"));
+              if (st.setPiece || st.pauseOnly || foulEv) {
                 const ci = idxOfTick(st.causeTick);
                 const end = freezeSpanEndIdx(snaps, st.causeTick);
                 if (end > ci) {
                   hold.playFrom = ci; hold.playTo = end; hold.jumpTo = end;
-                  // #52: taker 워크인 — causeTick 에 스팟으로 순간이동하는 taker 를 직전 위치에서
-                  // 걸어오게 오버레이(공은 스팟 고정). 정지 재생 진행도에 맞춰 from→스팟 트윈.
+                  // taker 워크인 시작점: 파울이면 태클러 접촉점(#56 C — "접촉 → 스팟"), 아니면 직전 위치.
                   const takerId = snaps[ci].ballOwner;
-                  const pp = takerId && snaps[ci - 1] && snaps[ci - 1].players.find((p) => p.playerId === takerId);
-                  if (pp) hold.takerWalk = { id: takerId, fx: pp.pos.x, fy: pp.pos.y };
+                  const cur = takerId && snaps[ci].players.find((p) => p.playerId === takerId);
+                  let fx = null, fy = null;
+                  const fEv = log.events.find((e) => e.tick === st.causeTick && e.type === "foul");
+                  const tackler = fEv && snaps[ci].players.find((p) => p.playerId === fEv.playerId);
+                  if (tackler) { fx = tackler.pos.x; fy = tackler.pos.y; }
+                  else { const pp = takerId && snaps[ci - 1] && snaps[ci - 1].players.find((p) => p.playerId === takerId); if (pp) { fx = pp.pos.x; fy = pp.pos.y; } }
+                  if (fx != null && cur) {
+                    // #56(B): 워크인 시작점을 스팟에서 최대 MAX_WALK 로 클램프 — 코너 taker 는 직전 위치가
+                    // 원거리 포메이션 리셋 컷(30m+)이라, 그대로 재생하면 전력질주로 보인다(QA). 마지막 구간만
+                    // 조깅(≈5m/s)하게 시작점을 당긴다. 근거리 파울 접촉(≤MAX_WALK)은 그대로 유지.
+                    const MAX_WALK = 12;
+                    const wd0 = Math.hypot(fx - cur.pos.x, fy - cur.pos.y);
+                    if (wd0 > MAX_WALK) { const k = MAX_WALK / wd0; fx = cur.pos.x + (fx - cur.pos.x) * k; fy = cur.pos.y + (fy - cur.pos.y) * k; }
+                    hold.takerWalk = { id: takerId, fx, fy };
+                    // 속도 현실화: 클램프된 워크거리 기준 ≈5m/s(최대 3.5s). walkDist ≤ MAX_WALK 라 캡에 안 눌림.
+                    const walkDist = Math.min(wd0, MAX_WALK);
+                    const paceDur = Math.min(3500, Math.max(hold.dur, (walkDist / 5) * 1000));
+                    hold.dur = paceDur; hold.until = ts + paceDur;
+                  }
                 }
               }
               break;

@@ -50,7 +50,11 @@
 - [x] **AC4** #51 순서 유지. Evidence: caption-order(#49/#51) + setpiece-outflight(#47) e2e green(playwright 34).
 - [x] **AC5** 회귀 0: #26·#47/#49/#50/#51 계약 유지. Evidence: `npx playwright test` **34 green** + `npm test` **82 green**.
 - [x] **AC6** 결정론/엔진 불변(뷰어 전용). Evidence: `git diff packages/engine/src` 에 #52 변경 없음(index.html/playback.mjs/subsample + e2e/unit 만) + qa-match·6/6.
-- [ ] **AC7** 실화면 + 독립 QA PASS (blocker 0). 진행 중. (실화면: `deadball52_walkin.png` — taker 필드에서 사이드라인 공으로 워킹, 자막 표시, 선수 정비.)
+- [~] **AC7** 독립 QA — **FAIL (blocker 1 + major 1)**. 재작업 필요.
+  - **Blocker**: 파울→프리킥(tick 828 등, `foul`+`card`+`free_kick` 겹침)은 `foul`이 CAUSE 분기라 `st.setPiece || st.pauseOnly` 조건에 안 걸림 → 정지-재생/워크인 미발동. 파울 정지 1.1s 전원 정지 + 재개 시 32m 순간이동. **hero "파울도 마찬가지" 미충족.** save/off_target/offside/penalty 동일 구조.
+  - **Major**: setPiece 정지-재생 정비가 겉보기 18~24m/s(과속) — freezeSpan(10~14 game-tick)을 hold.dur(650~1250ms)에 압축. 프레임간은 매끄러우나(≤0.23m) 집계속도 비현실적.
+  - **정상 확인**: setPiece(코너/스로인) taker 워크인·비-taker 정비·자막순서·기계검증 6/6 정상.
+  - → **재작업**: 정지-재생/워크인 조건을 CAUSE 스토피지(파울 등)로 확장 + 압축비(hold.dur↑ 또는 정지 tick 제한) 재검토. #52 는 PR #53 로 merge 됐으므로 follow-up.
 
 ### Sub-goals
 - SG1: E2E-TDD — "정지 중 선수 이동 렌더 + taker 워크인" 계약 박제.
