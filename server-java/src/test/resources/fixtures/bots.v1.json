@@ -1,0 +1,15 @@
+[
+  {
+    "id": "BOT_BAL",
+    "name": "Balanced FC",
+    "persona": "균형 잡힌 전술로 안정적인 경기를 운영한다.",
+    "analysisText": "공수 밸런스형 — 뚜렷한 약점이 없다.",
+    "deck": {
+      "formation": "4-4-2",
+      "starters": [
+        {"playerId": "P001", "slotIndex": 0}
+      ],
+      "bench": ["P002"]
+    }
+  }
+]

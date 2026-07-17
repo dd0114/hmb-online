@@ -1,0 +1,38 @@
+{
+  "version": "v1",
+  "initialPoints": 3000,
+  "starterPack": [
+    "P001",
+    "P013",
+    "P014",
+    "P015",
+    "P016",
+    "P017",
+    "P049",
+    "P050",
+    "P051",
+    "P052",
+    "P053",
+    "P085",
+    "P086",
+    "P087"
+  ],
+  "gacha": {
+    "singleCost": 300,
+    "tenCost": 3000,
+    "tenCount": 11,
+    "rates": {
+      "BRONZE": 0.45,
+      "SILVER": 0.3,
+      "GOLD": 0.15,
+      "DIA": 0.08,
+      "LEGEND": 0.02
+    },
+    "tenPityMinGrade": "GOLD"
+  },
+  "rewards": {
+    "win": 500,
+    "draw": 200,
+    "loss": 100
+  }
+}

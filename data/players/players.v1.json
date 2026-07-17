@@ -1,0 +1,1872 @@
+[
+  {
+    "id": "P001",
+    "name": "임지수",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 55,
+      "physical": 47,
+      "passing": 41,
+      "shooting": 44,
+      "tackling": 49,
+      "pace": 45,
+      "stamina": 50,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P002",
+    "name": "문호현",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 53,
+      "mental": 48,
+      "physical": 48,
+      "passing": 41,
+      "shooting": 49,
+      "tackling": 50,
+      "pace": 40,
+      "stamina": 40,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P003",
+    "name": "홍욱율",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 51,
+      "physical": 50,
+      "passing": 54,
+      "shooting": 55,
+      "tackling": 51,
+      "pace": 55,
+      "stamina": 52,
+      "positioning": 53
+    }
+  },
+  {
+    "id": "P004",
+    "name": "장재혁",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 48,
+      "physical": 43,
+      "passing": 54,
+      "shooting": 53,
+      "tackling": 46,
+      "pace": 43,
+      "stamina": 49,
+      "positioning": 48
+    }
+  },
+  {
+    "id": "P005",
+    "name": "김진서",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 61,
+      "physical": 57,
+      "passing": 60,
+      "shooting": 58,
+      "tackling": 51,
+      "pace": 53,
+      "stamina": 59,
+      "positioning": 57
+    }
+  },
+  {
+    "id": "P006",
+    "name": "신찬도",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 61,
+      "physical": 54,
+      "passing": 61,
+      "shooting": 59,
+      "tackling": 58,
+      "pace": 59,
+      "stamina": 60,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P007",
+    "name": "류서우",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 60,
+      "physical": 60,
+      "passing": 62,
+      "shooting": 50,
+      "tackling": 62,
+      "pace": 52,
+      "stamina": 55,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P008",
+    "name": "류영빈",
+    "position": "GK",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 68,
+      "mental": 65,
+      "physical": 66,
+      "passing": 70,
+      "shooting": 69,
+      "tackling": 75,
+      "pace": 74,
+      "stamina": 64,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P009",
+    "name": "류현율",
+    "position": "GK",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 69,
+      "mental": 71,
+      "physical": 65,
+      "passing": 69,
+      "shooting": 71,
+      "tackling": 62,
+      "pace": 64,
+      "stamina": 66,
+      "positioning": 67
+    }
+  },
+  {
+    "id": "P010",
+    "name": "홍태호",
+    "position": "GK",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 70,
+      "mental": 85,
+      "physical": 84,
+      "passing": 79,
+      "shooting": 82,
+      "tackling": 73,
+      "pace": 85,
+      "stamina": 83,
+      "positioning": 81
+    }
+  },
+  {
+    "id": "P011",
+    "name": "조현빈",
+    "position": "GK",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 80,
+      "mental": 84,
+      "physical": 71,
+      "passing": 81,
+      "shooting": 78,
+      "tackling": 79,
+      "pace": 76,
+      "stamina": 85,
+      "positioning": 82
+    }
+  },
+  {
+    "id": "P012",
+    "name": "양민결",
+    "position": "GK",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 80,
+      "mental": 93,
+      "physical": 81,
+      "passing": 83,
+      "shooting": 86,
+      "tackling": 82,
+      "pace": 80,
+      "stamina": 83,
+      "positioning": 93
+    }
+  },
+  {
+    "id": "P013",
+    "name": "정건우",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 44,
+      "mental": 42,
+      "physical": 47,
+      "passing": 50,
+      "shooting": 48,
+      "tackling": 51,
+      "pace": 55,
+      "stamina": 43,
+      "positioning": 45
+    }
+  },
+  {
+    "id": "P014",
+    "name": "전진욱",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 54,
+      "physical": 45,
+      "passing": 55,
+      "shooting": 45,
+      "tackling": 55,
+      "pace": 47,
+      "stamina": 48,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P015",
+    "name": "송태빈",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 45,
+      "physical": 47,
+      "passing": 42,
+      "shooting": 55,
+      "tackling": 49,
+      "pace": 47,
+      "stamina": 52,
+      "positioning": 53
+    }
+  },
+  {
+    "id": "P016",
+    "name": "문훈수",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 50,
+      "physical": 47,
+      "passing": 40,
+      "shooting": 49,
+      "tackling": 50,
+      "pace": 44,
+      "stamina": 54,
+      "positioning": 50
+    }
+  },
+  {
+    "id": "P017",
+    "name": "장규현",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 41,
+      "physical": 41,
+      "passing": 45,
+      "shooting": 54,
+      "tackling": 55,
+      "pace": 43,
+      "stamina": 47,
+      "positioning": 49
+    }
+  },
+  {
+    "id": "P018",
+    "name": "최성수",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 52,
+      "mental": 50,
+      "physical": 43,
+      "passing": 54,
+      "shooting": 50,
+      "tackling": 53,
+      "pace": 46,
+      "stamina": 45,
+      "positioning": 49
+    }
+  },
+  {
+    "id": "P019",
+    "name": "한성빈",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 53,
+      "mental": 49,
+      "physical": 54,
+      "passing": 49,
+      "shooting": 53,
+      "tackling": 55,
+      "pace": 52,
+      "stamina": 55,
+      "positioning": 47
+    }
+  },
+  {
+    "id": "P020",
+    "name": "오호율",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 51,
+      "mental": 42,
+      "physical": 49,
+      "passing": 46,
+      "shooting": 45,
+      "tackling": 49,
+      "pace": 51,
+      "stamina": 46,
+      "positioning": 52
+    }
+  },
+  {
+    "id": "P021",
+    "name": "오욱준",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 47,
+      "physical": 50,
+      "passing": 49,
+      "shooting": 48,
+      "tackling": 55,
+      "pace": 49,
+      "stamina": 41,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P022",
+    "name": "송재훈",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 51,
+      "mental": 52,
+      "physical": 47,
+      "passing": 43,
+      "shooting": 40,
+      "tackling": 55,
+      "pace": 51,
+      "stamina": 45,
+      "positioning": 46
+    }
+  },
+  {
+    "id": "P023",
+    "name": "강지호",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 49,
+      "physical": 54,
+      "passing": 55,
+      "shooting": 47,
+      "tackling": 50,
+      "pace": 40,
+      "stamina": 40,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P024",
+    "name": "류재우",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 53,
+      "mental": 47,
+      "physical": 48,
+      "passing": 44,
+      "shooting": 50,
+      "tackling": 52,
+      "pace": 42,
+      "stamina": 54,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P025",
+    "name": "전준영",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 50,
+      "physical": 51,
+      "passing": 53,
+      "shooting": 48,
+      "tackling": 55,
+      "pace": 42,
+      "stamina": 48,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P026",
+    "name": "문건혁",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 51,
+      "mental": 44,
+      "physical": 55,
+      "passing": 41,
+      "shooting": 51,
+      "tackling": 51,
+      "pace": 49,
+      "stamina": 51,
+      "positioning": 45
+    }
+  },
+  {
+    "id": "P027",
+    "name": "이찬재",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 54,
+      "mental": 50,
+      "physical": 57,
+      "passing": 51,
+      "shooting": 59,
+      "tackling": 65,
+      "pace": 63,
+      "stamina": 59,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P028",
+    "name": "전욱혁",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 56,
+      "mental": 50,
+      "physical": 56,
+      "passing": 58,
+      "shooting": 60,
+      "tackling": 65,
+      "pace": 57,
+      "stamina": 52,
+      "positioning": 57
+    }
+  },
+  {
+    "id": "P029",
+    "name": "이서경",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 62,
+      "mental": 58,
+      "physical": 52,
+      "passing": 65,
+      "shooting": 61,
+      "tackling": 63,
+      "pace": 63,
+      "stamina": 61,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P030",
+    "name": "송서찬",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 53,
+      "physical": 54,
+      "passing": 62,
+      "shooting": 61,
+      "tackling": 59,
+      "pace": 56,
+      "stamina": 56,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P031",
+    "name": "이서도",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 59,
+      "physical": 65,
+      "passing": 61,
+      "shooting": 64,
+      "tackling": 60,
+      "pace": 59,
+      "stamina": 60,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P032",
+    "name": "강지서",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 65,
+      "physical": 56,
+      "passing": 57,
+      "shooting": 61,
+      "tackling": 62,
+      "pace": 57,
+      "stamina": 62,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P033",
+    "name": "홍도영",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 58,
+      "physical": 50,
+      "passing": 56,
+      "shooting": 51,
+      "tackling": 65,
+      "pace": 60,
+      "stamina": 61,
+      "positioning": 58
+    }
+  },
+  {
+    "id": "P034",
+    "name": "김호빈",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 55,
+      "mental": 64,
+      "physical": 52,
+      "passing": 63,
+      "shooting": 57,
+      "tackling": 65,
+      "pace": 57,
+      "stamina": 56,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P035",
+    "name": "서원현",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 56,
+      "mental": 58,
+      "physical": 50,
+      "passing": 54,
+      "shooting": 55,
+      "tackling": 63,
+      "pace": 57,
+      "stamina": 50,
+      "positioning": 58
+    }
+  },
+  {
+    "id": "P036",
+    "name": "양민율",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 53,
+      "mental": 58,
+      "physical": 52,
+      "passing": 62,
+      "shooting": 50,
+      "tackling": 56,
+      "pace": 55,
+      "stamina": 52,
+      "positioning": 57
+    }
+  },
+  {
+    "id": "P037",
+    "name": "안재현",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 62,
+      "mental": 74,
+      "physical": 63,
+      "passing": 61,
+      "shooting": 71,
+      "tackling": 65,
+      "pace": 63,
+      "stamina": 74,
+      "positioning": 72
+    }
+  },
+  {
+    "id": "P038",
+    "name": "이준훈",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 62,
+      "mental": 67,
+      "physical": 73,
+      "passing": 74,
+      "shooting": 63,
+      "tackling": 75,
+      "pace": 69,
+      "stamina": 60,
+      "positioning": 73
+    }
+  },
+  {
+    "id": "P039",
+    "name": "배재현",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 64,
+      "mental": 70,
+      "physical": 75,
+      "passing": 75,
+      "shooting": 75,
+      "tackling": 75,
+      "pace": 66,
+      "stamina": 68,
+      "positioning": 72
+    }
+  },
+  {
+    "id": "P040",
+    "name": "배형재",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 61,
+      "mental": 72,
+      "physical": 65,
+      "passing": 60,
+      "shooting": 62,
+      "tackling": 66,
+      "pace": 66,
+      "stamina": 74,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P041",
+    "name": "강윤수",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 61,
+      "mental": 64,
+      "physical": 74,
+      "passing": 75,
+      "shooting": 74,
+      "tackling": 75,
+      "pace": 62,
+      "stamina": 71,
+      "positioning": 66
+    }
+  },
+  {
+    "id": "P042",
+    "name": "황형훈",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 72,
+      "mental": 67,
+      "physical": 68,
+      "passing": 61,
+      "shooting": 71,
+      "tackling": 75,
+      "pace": 72,
+      "stamina": 72,
+      "positioning": 68
+    }
+  },
+  {
+    "id": "P043",
+    "name": "안건영",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 65,
+      "mental": 62,
+      "physical": 62,
+      "passing": 69,
+      "shooting": 62,
+      "tackling": 65,
+      "pace": 71,
+      "stamina": 61,
+      "positioning": 67
+    }
+  },
+  {
+    "id": "P044",
+    "name": "송찬민",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 73,
+      "mental": 75,
+      "physical": 76,
+      "passing": 83,
+      "shooting": 82,
+      "tackling": 80,
+      "pace": 84,
+      "stamina": 72,
+      "positioning": 85
+    }
+  },
+  {
+    "id": "P045",
+    "name": "박원우",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 77,
+      "mental": 79,
+      "physical": 70,
+      "passing": 85,
+      "shooting": 76,
+      "tackling": 81,
+      "pace": 74,
+      "stamina": 71,
+      "positioning": 76
+    }
+  },
+  {
+    "id": "P046",
+    "name": "오호영",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 77,
+      "mental": 76,
+      "physical": 82,
+      "passing": 72,
+      "shooting": 72,
+      "tackling": 85,
+      "pace": 72,
+      "stamina": 72,
+      "positioning": 85
+    }
+  },
+  {
+    "id": "P047",
+    "name": "전성혁",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 74,
+      "mental": 79,
+      "physical": 72,
+      "passing": 71,
+      "shooting": 76,
+      "tackling": 85,
+      "pace": 72,
+      "stamina": 74,
+      "positioning": 79
+    }
+  },
+  {
+    "id": "P048",
+    "name": "문건서",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 83,
+      "mental": 83,
+      "physical": 85,
+      "passing": 94,
+      "shooting": 92,
+      "tackling": 85,
+      "pace": 83,
+      "stamina": 80,
+      "positioning": 95
+    }
+  },
+  {
+    "id": "P049",
+    "name": "류성재",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 49,
+      "mental": 49,
+      "physical": 47,
+      "passing": 54,
+      "shooting": 48,
+      "tackling": 48,
+      "pace": 44,
+      "stamina": 48,
+      "positioning": 45
+    }
+  },
+  {
+    "id": "P050",
+    "name": "박서호",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 55,
+      "physical": 48,
+      "passing": 54,
+      "shooting": 55,
+      "tackling": 54,
+      "pace": 54,
+      "stamina": 49,
+      "positioning": 52
+    }
+  },
+  {
+    "id": "P051",
+    "name": "오태영",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 48,
+      "physical": 50,
+      "passing": 48,
+      "shooting": 44,
+      "tackling": 47,
+      "pace": 46,
+      "stamina": 47,
+      "positioning": 47
+    }
+  },
+  {
+    "id": "P052",
+    "name": "문호빈",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 47,
+      "mental": 55,
+      "physical": 50,
+      "passing": 52,
+      "shooting": 47,
+      "tackling": 46,
+      "pace": 45,
+      "stamina": 55,
+      "positioning": 53
+    }
+  },
+  {
+    "id": "P053",
+    "name": "장훈호",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 51,
+      "physical": 46,
+      "passing": 55,
+      "shooting": 44,
+      "tackling": 55,
+      "pace": 45,
+      "stamina": 50,
+      "positioning": 44
+    }
+  },
+  {
+    "id": "P054",
+    "name": "이서민",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 53,
+      "mental": 54,
+      "physical": 40,
+      "passing": 55,
+      "shooting": 50,
+      "tackling": 44,
+      "pace": 43,
+      "stamina": 55,
+      "positioning": 45
+    }
+  },
+  {
+    "id": "P055",
+    "name": "서욱민",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 51,
+      "mental": 51,
+      "physical": 42,
+      "passing": 51,
+      "shooting": 43,
+      "tackling": 43,
+      "pace": 44,
+      "stamina": 55,
+      "positioning": 42
+    }
+  },
+  {
+    "id": "P056",
+    "name": "손건영",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 46,
+      "mental": 49,
+      "physical": 43,
+      "passing": 45,
+      "shooting": 41,
+      "tackling": 43,
+      "pace": 52,
+      "stamina": 55,
+      "positioning": 48
+    }
+  },
+  {
+    "id": "P057",
+    "name": "전원서",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 55,
+      "physical": 40,
+      "passing": 55,
+      "shooting": 40,
+      "tackling": 42,
+      "pace": 48,
+      "stamina": 45,
+      "positioning": 45
+    }
+  },
+  {
+    "id": "P058",
+    "name": "최도환",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 52,
+      "mental": 51,
+      "physical": 47,
+      "passing": 47,
+      "shooting": 46,
+      "tackling": 52,
+      "pace": 49,
+      "stamina": 50,
+      "positioning": 46
+    }
+  },
+  {
+    "id": "P059",
+    "name": "한재재",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 44,
+      "mental": 46,
+      "physical": 51,
+      "passing": 46,
+      "shooting": 53,
+      "tackling": 46,
+      "pace": 43,
+      "stamina": 55,
+      "positioning": 51
+    }
+  },
+  {
+    "id": "P060",
+    "name": "장우우",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 46,
+      "physical": 43,
+      "passing": 53,
+      "shooting": 53,
+      "tackling": 52,
+      "pace": 47,
+      "stamina": 54,
+      "positioning": 40
+    }
+  },
+  {
+    "id": "P061",
+    "name": "배민결",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 43,
+      "mental": 55,
+      "physical": 53,
+      "passing": 54,
+      "shooting": 41,
+      "tackling": 48,
+      "pace": 46,
+      "stamina": 55,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P062",
+    "name": "배찬민",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 64,
+      "mental": 64,
+      "physical": 50,
+      "passing": 65,
+      "shooting": 57,
+      "tackling": 58,
+      "pace": 60,
+      "stamina": 65,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P063",
+    "name": "강윤빈",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 63,
+      "physical": 61,
+      "passing": 61,
+      "shooting": 59,
+      "tackling": 54,
+      "pace": 63,
+      "stamina": 62,
+      "positioning": 52
+    }
+  },
+  {
+    "id": "P064",
+    "name": "전욱경",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 50,
+      "physical": 65,
+      "passing": 55,
+      "shooting": 58,
+      "tackling": 54,
+      "pace": 57,
+      "stamina": 61,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P065",
+    "name": "강욱서",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 50,
+      "physical": 63,
+      "passing": 56,
+      "shooting": 65,
+      "tackling": 54,
+      "pace": 51,
+      "stamina": 56,
+      "positioning": 58
+    }
+  },
+  {
+    "id": "P066",
+    "name": "송민현",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 55,
+      "mental": 61,
+      "physical": 65,
+      "passing": 65,
+      "shooting": 64,
+      "tackling": 60,
+      "pace": 64,
+      "stamina": 61,
+      "positioning": 53
+    }
+  },
+  {
+    "id": "P067",
+    "name": "송호영",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 53,
+      "mental": 58,
+      "physical": 60,
+      "passing": 60,
+      "shooting": 52,
+      "tackling": 60,
+      "pace": 58,
+      "stamina": 61,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P068",
+    "name": "손지혁",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 63,
+      "physical": 65,
+      "passing": 65,
+      "shooting": 63,
+      "tackling": 53,
+      "pace": 63,
+      "stamina": 60,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P069",
+    "name": "홍영결",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 55,
+      "mental": 60,
+      "physical": 57,
+      "passing": 62,
+      "shooting": 53,
+      "tackling": 53,
+      "pace": 58,
+      "stamina": 65,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P070",
+    "name": "임찬민",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 52,
+      "mental": 53,
+      "physical": 63,
+      "passing": 64,
+      "shooting": 58,
+      "tackling": 53,
+      "pace": 54,
+      "stamina": 65,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P071",
+    "name": "최태환",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 53,
+      "mental": 54,
+      "physical": 55,
+      "passing": 63,
+      "shooting": 65,
+      "tackling": 50,
+      "pace": 60,
+      "stamina": 63,
+      "positioning": 50
+    }
+  },
+  {
+    "id": "P072",
+    "name": "장원찬",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 71,
+      "mental": 60,
+      "physical": 70,
+      "passing": 71,
+      "shooting": 66,
+      "tackling": 73,
+      "pace": 74,
+      "stamina": 71,
+      "positioning": 71
+    }
+  },
+  {
+    "id": "P073",
+    "name": "배훈빈",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 68,
+      "physical": 64,
+      "passing": 67,
+      "shooting": 71,
+      "tackling": 74,
+      "pace": 71,
+      "stamina": 75,
+      "positioning": 71
+    }
+  },
+  {
+    "id": "P074",
+    "name": "황재현",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 74,
+      "mental": 65,
+      "physical": 72,
+      "passing": 72,
+      "shooting": 71,
+      "tackling": 75,
+      "pace": 74,
+      "stamina": 75,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P075",
+    "name": "홍민훈",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 74,
+      "physical": 61,
+      "passing": 75,
+      "shooting": 66,
+      "tackling": 68,
+      "pace": 63,
+      "stamina": 66,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P076",
+    "name": "송규율",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 68,
+      "mental": 70,
+      "physical": 60,
+      "passing": 75,
+      "shooting": 60,
+      "tackling": 68,
+      "pace": 69,
+      "stamina": 74,
+      "positioning": 68
+    }
+  },
+  {
+    "id": "P077",
+    "name": "오지수",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 68,
+      "mental": 60,
+      "physical": 63,
+      "passing": 74,
+      "shooting": 62,
+      "tackling": 64,
+      "pace": 68,
+      "stamina": 68,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P078",
+    "name": "문지우",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 74,
+      "mental": 77,
+      "physical": 78,
+      "passing": 85,
+      "shooting": 70,
+      "tackling": 85,
+      "pace": 75,
+      "stamina": 82,
+      "positioning": 85
+    }
+  },
+  {
+    "id": "P079",
+    "name": "임욱현",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 76,
+      "mental": 81,
+      "physical": 77,
+      "passing": 83,
+      "shooting": 75,
+      "tackling": 82,
+      "pace": 80,
+      "stamina": 85,
+      "positioning": 78
+    }
+  },
+  {
+    "id": "P080",
+    "name": "오원민",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 80,
+      "mental": 77,
+      "physical": 78,
+      "passing": 76,
+      "shooting": 81,
+      "tackling": 83,
+      "pace": 83,
+      "stamina": 85,
+      "positioning": 82
+    }
+  },
+  {
+    "id": "P081",
+    "name": "홍현수",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 76,
+      "mental": 76,
+      "physical": 81,
+      "passing": 85,
+      "shooting": 80,
+      "tackling": 78,
+      "pace": 72,
+      "stamina": 82,
+      "positioning": 73
+    }
+  },
+  {
+    "id": "P082",
+    "name": "배형수",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 85,
+      "mental": 73,
+      "physical": 78,
+      "passing": 83,
+      "shooting": 80,
+      "tackling": 75,
+      "pace": 71,
+      "stamina": 85,
+      "positioning": 72
+    }
+  },
+  {
+    "id": "P083",
+    "name": "김형찬",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 89,
+      "mental": 81,
+      "physical": 90,
+      "passing": 87,
+      "shooting": 87,
+      "tackling": 92,
+      "pace": 92,
+      "stamina": 95,
+      "positioning": 93
+    }
+  },
+  {
+    "id": "P084",
+    "name": "최도훈",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 90,
+      "mental": 87,
+      "physical": 82,
+      "passing": 93,
+      "shooting": 95,
+      "tackling": 85,
+      "pace": 86,
+      "stamina": 95,
+      "positioning": 88
+    }
+  },
+  {
+    "id": "P085",
+    "name": "양영도",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 54,
+      "physical": 44,
+      "passing": 51,
+      "shooting": 52,
+      "tackling": 54,
+      "pace": 55,
+      "stamina": 47,
+      "positioning": 47
+    }
+  },
+  {
+    "id": "P086",
+    "name": "손민준",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 46,
+      "mental": 45,
+      "physical": 44,
+      "passing": 51,
+      "shooting": 55,
+      "tackling": 42,
+      "pace": 53,
+      "stamina": 52,
+      "positioning": 40
+    }
+  },
+  {
+    "id": "P087",
+    "name": "오건영",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 53,
+      "physical": 44,
+      "passing": 40,
+      "shooting": 55,
+      "tackling": 42,
+      "pace": 55,
+      "stamina": 45,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P088",
+    "name": "양호도",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 44,
+      "physical": 48,
+      "passing": 55,
+      "shooting": 53,
+      "tackling": 47,
+      "pace": 55,
+      "stamina": 46,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P089",
+    "name": "고준욱",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 48,
+      "physical": 40,
+      "passing": 51,
+      "shooting": 46,
+      "tackling": 44,
+      "pace": 50,
+      "stamina": 49,
+      "positioning": 53
+    }
+  },
+  {
+    "id": "P090",
+    "name": "안민욱",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 44,
+      "mental": 46,
+      "physical": 54,
+      "passing": 41,
+      "shooting": 54,
+      "tackling": 53,
+      "pace": 54,
+      "stamina": 49,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P091",
+    "name": "신태찬",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 51,
+      "physical": 55,
+      "passing": 49,
+      "shooting": 53,
+      "tackling": 42,
+      "pace": 52,
+      "stamina": 44,
+      "positioning": 50
+    }
+  },
+  {
+    "id": "P092",
+    "name": "박성진",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 52,
+      "mental": 44,
+      "physical": 54,
+      "passing": 54,
+      "shooting": 55,
+      "tackling": 51,
+      "pace": 45,
+      "stamina": 53,
+      "positioning": 49
+    }
+  },
+  {
+    "id": "P093",
+    "name": "안원영",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 47,
+      "physical": 48,
+      "passing": 47,
+      "shooting": 50,
+      "tackling": 51,
+      "pace": 55,
+      "stamina": 44,
+      "positioning": 51
+    }
+  },
+  {
+    "id": "P094",
+    "name": "양진결",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 56,
+      "physical": 58,
+      "passing": 53,
+      "shooting": 64,
+      "tackling": 51,
+      "pace": 65,
+      "stamina": 57,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P095",
+    "name": "권훈호",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 60,
+      "mental": 60,
+      "physical": 63,
+      "passing": 52,
+      "shooting": 60,
+      "tackling": 63,
+      "pace": 65,
+      "stamina": 59,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P096",
+    "name": "윤진훈",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 55,
+      "mental": 60,
+      "physical": 55,
+      "passing": 65,
+      "shooting": 65,
+      "tackling": 51,
+      "pace": 56,
+      "stamina": 65,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P097",
+    "name": "황태현",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 51,
+      "physical": 60,
+      "passing": 53,
+      "shooting": 57,
+      "tackling": 58,
+      "pace": 65,
+      "stamina": 55,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P098",
+    "name": "문지결",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 62,
+      "mental": 61,
+      "physical": 56,
+      "passing": 52,
+      "shooting": 58,
+      "tackling": 58,
+      "pace": 58,
+      "stamina": 60,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P099",
+    "name": "황원욱",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 51,
+      "physical": 63,
+      "passing": 58,
+      "shooting": 62,
+      "tackling": 59,
+      "pace": 65,
+      "stamina": 58,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P100",
+    "name": "이도재",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 53,
+      "mental": 58,
+      "physical": 63,
+      "passing": 59,
+      "shooting": 61,
+      "tackling": 56,
+      "pace": 65,
+      "stamina": 59,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P101",
+    "name": "홍지욱",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 66,
+      "mental": 69,
+      "physical": 60,
+      "passing": 73,
+      "shooting": 67,
+      "tackling": 69,
+      "pace": 70,
+      "stamina": 74,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P102",
+    "name": "임욱서",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 66,
+      "mental": 68,
+      "physical": 74,
+      "passing": 68,
+      "shooting": 75,
+      "tackling": 72,
+      "pace": 70,
+      "stamina": 74,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P103",
+    "name": "안현경",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 66,
+      "mental": 61,
+      "physical": 75,
+      "passing": 70,
+      "shooting": 75,
+      "tackling": 64,
+      "pace": 69,
+      "stamina": 68,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P104",
+    "name": "손준우",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 69,
+      "mental": 72,
+      "physical": 65,
+      "passing": 62,
+      "shooting": 67,
+      "tackling": 67,
+      "pace": 69,
+      "stamina": 60,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P105",
+    "name": "송민빈",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 63,
+      "mental": 67,
+      "physical": 68,
+      "passing": 72,
+      "shooting": 72,
+      "tackling": 75,
+      "pace": 75,
+      "stamina": 74,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P106",
+    "name": "한욱도",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 85,
+      "mental": 73,
+      "physical": 85,
+      "passing": 84,
+      "shooting": 79,
+      "tackling": 84,
+      "pace": 83,
+      "stamina": 77,
+      "positioning": 83
+    }
+  },
+  {
+    "id": "P107",
+    "name": "송재율",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 78,
+      "mental": 78,
+      "physical": 82,
+      "passing": 75,
+      "shooting": 85,
+      "tackling": 80,
+      "pace": 85,
+      "stamina": 79,
+      "positioning": 76
+    }
+  },
+  {
+    "id": "P108",
+    "name": "황우진",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 82,
+      "mental": 73,
+      "physical": 78,
+      "passing": 84,
+      "shooting": 82,
+      "tackling": 78,
+      "pace": 85,
+      "stamina": 76,
+      "positioning": 76
+    }
+  },
+  {
+    "id": "P109",
+    "name": "고규경",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 86,
+      "mental": 93,
+      "physical": 80,
+      "passing": 87,
+      "shooting": 95,
+      "tackling": 88,
+      "pace": 89,
+      "stamina": 89,
+      "positioning": 84
+    }
+  },
+  {
+    "id": "P110",
+    "name": "손성경",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 86,
+      "mental": 85,
+      "physical": 92,
+      "passing": 91,
+      "shooting": 88,
+      "tackling": 82,
+      "pace": 86,
+      "stamina": 85,
+      "positioning": 92
+    }
+  }
+]

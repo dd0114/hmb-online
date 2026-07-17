@@ -1,0 +1,46 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: hmb-server
+  datasource:
+    url: jdbc:sqlite:${hmb.db.path:./.data/hmb.db}?foreign_keys=on&journal_mode=WAL&busy_timeout=5000
+    driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 5   # WAL이라 동시 읽기는 가능, 쓰기 직렬화는 busy_timeout이 흡수
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jackson:
+    property-naming-strategy: LOWER_CAMEL_CASE
+    default-property-inclusion: non_null
+
+hmb:
+  db:
+    path: ./.data/hmb.db
+  data:
+    players-file: ../data/players/players.v1.json     # 부팅 임포트(버전 upsert, meta_kv 기록)
+    economy-file: ../data/players/economy.v1.json      # 확률표·경제 수치 로딩
+    bots-file:    ../data/players/bots.v1.json
+  auth:
+    session-ttl-hours: 720
+  deck:
+    bench-max: 7
+    player-prompt-max-chars: 500
+  match:
+    prompt-timer-sec: 180          # 표시용 (D5)
+    enforce-prompt-timer: false    # 강제 전환 플래그
+    halftime-subs-max: 3
+    ai-job-timeout-sec: 240        # GEN 상태에서 이걸 넘으면 FAILED
+    lease-sec: 120                 # ai_jobs 가시성 타임아웃
+    max-attempts: 3
+  servant:
+    engine-runner-url: http://localhost:8790
+    internal-token: change-me      # /internal/* shared secret (AC-Q3)
+
+springdoc:
+  api-docs:
+    path: /internal/openapi-generated
+  swagger-ui:
+    enabled: false
