@@ -109,6 +109,36 @@ class MatchFailureTest extends MatchTestBase {
 
     // ── complete(ok=false): attempts<max → queued / 초과 → failed + 매치 FAILED ──
 
+    // ── F1(W3 검증 레이스): timeout→FAILED→retry 후 잡 완료 전 sweep이 재-FAIL시키지 않아야 ──
+
+    @Test
+    void retryAfterTimeoutSurvivesNextSweepBeforeJobsComplete() {
+        String token = setupUserWithDeck("m_retry_race");
+        String matchId = createMatch(token, "BOT_BAL");
+        authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
+        assertThat(matchState(matchId)).isEqualTo("GEN1");
+
+        // 잡을 타임아웃(240s) 너머로 백데이트 → sweep이 FAILED 처리
+        jdbcClient.sql("UPDATE ai_jobs SET created_at = ? WHERE match_id = ?")
+                .params(Instant.now().minus(1, ChronoUnit.HOURS).toString(), matchId)
+                .update();
+        assertThat(sweeper.failTimedOutMatches()).isGreaterThanOrEqualTo(1);
+        assertThat(matchState(matchId)).isEqualTo("FAILED");
+
+        // 유저 retry → GEN1 복귀. F1 수정 전엔 잡 created_at이 과거 그대로라 즉시 재-타임아웃 자격.
+        ResponseEntity<Map> retry = authPost("/api/matches/" + matchId + "/retry", token, Map.of(), Map.class);
+        assertThat(retry.getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(matchState(matchId)).isEqualTo("GEN1");
+
+        // 실 서번트(초~분 지연)가 완료하기 전에 sweep이 한 번 더 돈다 → 재-FAIL되면 안 됨(F1 회귀 가드)
+        assertThat(sweeper.failTimedOutMatches()).isEqualTo(0);
+        assertThat(matchState(matchId)).isEqualTo("GEN1");
+
+        // 이제 잡 완료 → 정상 완주
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+    }
+
     @Test
     void failedCompletionRequeuesUntilMaxAttemptsThenFailsMatch() {
         String token = setupUserWithDeck("m_jobfail");

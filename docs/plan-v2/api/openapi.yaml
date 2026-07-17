@@ -418,6 +418,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "409":
+          $ref: "#/components/responses/InvalidState"
 
   /api/matches/{id}/halftime:
     parameters:

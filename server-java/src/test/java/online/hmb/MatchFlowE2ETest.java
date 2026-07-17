@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import online.hmb.common.Hashes;
 import online.hmb.match.MatchOrchestrator;
+import online.hmb.match.MatchService;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -19,6 +20,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * AC-M2(서버측 스텁 풀 E2E): 로그인→덱→매치→프롬프트→킥오프→(가짜 서번트)→H1_BREAK→하프타임→
@@ -47,6 +49,9 @@ class MatchFlowE2ETest extends MatchTestBase {
 
     @Resource
     private MatchOrchestrator orchestrator;
+
+    @Resource
+    private MatchService matchService;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -244,5 +249,89 @@ class MatchFlowE2ETest extends MatchTestBase {
         String botId = jdbcClient.sql("SELECT bot_id FROM matches WHERE id = ?")
                 .param(matchId).query(String.class).single();
         assertThat(botId).isIn("BOT_BAL", "BOT_ATK");
+    }
+
+    /**
+     * F2(carried, AC-M6 최내곽 가드): FINISHED 후 state를 GEN2로 강제(테스트 스캐폴딩) + h2 halfRow
+     * 존재 상태에서 종료 처리(finishMatch)를 직접 재호출 → CAS는 다시 통과하지만 원장 유니크 인덱스
+     * (INSERT OR IGNORE)가 이중 보상을 막아 reward 원장은 정확히 1행 유지.
+     */
+    @Test
+    void finishHandlingReinvokedKeepsExactlyOneRewardRow() {
+        String token = setupUserWithDeck("m_reward_guard");
+        String matchId = driveToFinished(token);
+        String userId = userIdOf("m_reward_guard");
+
+        assertThat(rewardRows(matchId)).isEqualTo(1L);
+        long pointsBefore = jdbcClient.sql("SELECT points FROM wallets WHERE user_id = ?")
+                .param(userId).query(Long.class).single();
+
+        MatchService.MatchRow row = matchService.find(matchId).orElseThrow();
+        assertThat(matchState(matchId)).isEqualTo("FINISHED");
+        // h2 halfRow가 실제로 존재하는지 확인(가드 전제)
+        long h2Rows = jdbcClient.sql("SELECT COUNT(*) FROM match_halves WHERE match_id = ? AND half = 2")
+                .param(matchId).query(Long.class).single();
+        assertThat(h2Rows).isEqualTo(1L);
+
+        // state를 GEN2로 되돌린 뒤 finishMatch를 직접(reflection) 재호출 — 최내곽 보상 가드만 겨냥
+        forceState(matchId, "GEN2");
+        ReflectionTestUtils.invokeMethod(orchestrator, "finishMatch", row, 0, 0);
+
+        assertThat(matchState(matchId)).isEqualTo("FINISHED"); // CAS 재통과로 다시 FINISHED
+        assertThat(rewardRows(matchId)).isEqualTo(1L);         // 원장은 여전히 1행
+        long pointsAfter = jdbcClient.sql("SELECT points FROM wallets WHERE user_id = ?")
+                .param(userId).query(Long.class).single();
+        assertThat(pointsAfter).isEqualTo(pointsBefore);       // 지갑 무변화
+    }
+
+    /**
+     * F3(carried, AC-M): team-scope 프롬프트 UPSERT dedupe — 같은 {phase, scope:team}로 두 번 POST하면
+     * match_prompts에 1행만 남고 text는 두 번째 값으로 갱신(player_id NULL의 NULL-유니크 함정 회귀 가드).
+     */
+    @Test
+    void teamScopePromptUpsertsToSingleRow() {
+        String token = setupUserWithDeck("m_prompt_upsert");
+        String matchId = createMatch(token, "BOT_BAL");
+
+        assertThat(authPost("/api/matches/" + matchId + "/prompts", token,
+                Map.of("phase", "pre", "scope", "team", "text", "첫 번째 지시"), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(authPost("/api/matches/" + matchId + "/prompts", token,
+                Map.of("phase", "pre", "scope", "team", "text", "두 번째 지시"), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        long rows = jdbcClient.sql("""
+                        SELECT COUNT(*) FROM match_prompts
+                        WHERE match_id = ? AND phase = 'pre' AND scope = 'team' AND player_id IS NULL
+                        """)
+                .param(matchId).query(Long.class).single();
+        assertThat(rows).isEqualTo(1L);
+        String text = jdbcClient.sql("""
+                        SELECT text FROM match_prompts
+                        WHERE match_id = ? AND phase = 'pre' AND scope = 'team' AND player_id IS NULL
+                        """)
+                .param(matchId).query(String.class).single();
+        assertThat(text).isEqualTo("두 번째 지시");
+    }
+
+    /** 매치를 FINISHED까지 몰고 간다(교체 없음, 가짜 서번트/러너). */
+    private String driveToFinished(String token) {
+        String matchId = createMatch(token, "BOT_BAL");
+        authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of()), Map.class);
+        authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("FINISHED");
+        return matchId;
+    }
+
+    private long rewardRows(String matchId) {
+        return jdbcClient.sql("""
+                        SELECT COUNT(*) FROM point_ledger WHERE ref_id = ? AND reason LIKE 'reward_%'
+                        """)
+                .param(matchId).query(Long.class).single();
     }
 }

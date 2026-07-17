@@ -317,13 +317,21 @@ public class MatchService {
         if (!ok) {
             throw invalidState(currentState(matchId), "retry");
         }
-        // 실패한/미완 잡 재큐잉: done이 아닌 해당 half 잡을 queued로 리셋(수동 재시도 = attempts 초기화)
+        // 실패한/미완 잡 재큐잉: done이 아닌 해당 half 잡을 queued로 리셋(수동 재시도 = attempts 초기화).
+        // F1(W3 검증 발견 레이스): created_at도 now로 리셋한다. timedOutGenMatches는 GEN 타임아웃을
+        // created_at 기준(=현재 pending 사이클 시작 시각)으로 판정하는데, 리셋하지 않으면 timeout으로
+        // FAILED됐던 매치를 유저가 retry한 순간 잡의 created_at이 여전히 과거라 즉시 재-타임아웃 자격을
+        // 얻어 다음 sweep(≤10s)이 실 서번트(초~분 지연)가 완료하기도 전에 다시 FAILED시킨다.
+        // updated_at 기준으로 바꾸지 않는 이유: updated_at은 lease/재큐잉마다 갱신되므로 죽은 워커의
+        // lease 만료→재배포가 반복되면 타임아웃 데드라인이 무한정 밀려 타임아웃 자체가 무력화된다.
+        // created_at = "현재 pending 사이클 시작"으로 두고 retry에서만 리셋하는 게 lease churn에 면역이다.
         jdbcClient.sql("""
                         UPDATE ai_jobs SET status = 'queued', attempts = 0, error = NULL,
-                               lease_until = NULL, worker_id = NULL, updated_at = ?
+                               lease_until = NULL, worker_id = NULL,
+                               created_at = ?, updated_at = ?
                         WHERE match_id = ? AND half = ? AND status != 'done'
                         """)
-                .params(Instant.now().toString(), matchId, half)
+                .params(Instant.now().toString(), Instant.now().toString(), matchId, half)
                 .update();
         return half;
     }
