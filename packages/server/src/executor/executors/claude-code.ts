@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process";
 import type { AiExecutor } from "../executor.js";
-import type { AiJob } from "../protocol.js";
+import type { ExecutorJob } from "../kinds.js";
 import { KINDS } from "../kinds.js";
+import { parseUsage, type JobUsage } from "../metrics.js";
 
 /**
- * claude-code executor — 정액제(구독) 헤드리스 실행 (에픽 #32 옵션 D, hero 승인 2026-07-11).
+ * claude-code executor — 정액제(구독) 헤드리스 실행 (구 #32 옵션 D, hero 승인 2026-07-11 → W3 자산 이관).
  * 잡 1건 = `claude -p --output-format json --model <AI_MODEL> --json-schema <스키마>` subprocess 1회.
  * 인증: `ANTHROPIC_API_KEY` 없으면 로컬 `claude` 로그인(구독)으로 과금 — 키 있으면 메터드로 샘.
- * Agent SDK 미사용(zod v4 peer 충돌 회피, 프리즈 shared 무변경).
+ * Agent SDK 미사용(zod v4 peer 충돌 회피, shared 무변경).
  */
 
 /** claude CLI 실행 결과. */
@@ -28,6 +29,8 @@ export interface ClaudeCodeOptions {
   timeoutMs?: number;
   /** 러너 주입(테스트/모의). 미지정 시 실제 claude subprocess. */
   runner?: ClaudeRunner;
+  /** W3 AC1: 잡당 토큰 usage 콜백(CacheMetrics.recordUsage + complete body 전달). 미지정 시 로그만. */
+  onUsage?: (usage: JobUsage, jobId: string, model: string) => void;
 }
 
 const DEFAULT_MODEL = "sonnet";
@@ -63,7 +66,7 @@ function spawnRunner(): ClaudeRunner {
     });
 }
 
-/** 실패 분류(에픽 §5) — 폴백 스위치 판단 근거. */
+/** 실패 분류(구 #32 §5) — 재시도/폴백 스위치 판단 근거. */
 function classify(text: string): "AUTH" | "CAP" | "OUTPUT" {
   if (/unauthor|authentication|not logged|log ?in|credential|api[_ ]?key|invalid[_ ]?key|401|403|forbidden/i.test(text)) {
     return "AUTH";
@@ -92,23 +95,30 @@ function extractJson(text: string): unknown | null {
   return null;
 }
 
-/** usage 계측(AC5) — 봉투에 있으면 잡당 로그(W3 리포트 원천). 없으면 생략. */
-function logUsage(jobId: string, model: string, env: Record<string, unknown>): void {
-  const u = env["usage"] as Record<string, unknown> | undefined;
-  if (!u) return;
+/** usage 계측(W3 AC1) — 봉투에 있으면 잡당 로그 + onUsage 콜백(리포트 집계 원천). 없으면 생략. */
+function reportUsage(
+  jobId: string,
+  model: string,
+  env: Record<string, unknown>,
+  onUsage?: (usage: JobUsage, jobId: string, model: string) => void,
+): void {
+  const usage = parseUsage(env);
+  if (usage === null) return;
   console.log(
-    `[claude-code] job=${jobId.slice(0, 8)} model=${model} in=${String(u["input_tokens"] ?? "?")} out=${String(u["output_tokens"] ?? "?")} cacheRead=${String(u["cache_read_input_tokens"] ?? 0)} cacheCreate=${String(u["cache_creation_input_tokens"] ?? 0)} costUSD=${String(env["total_cost_usd"] ?? "?")}`,
+    `[claude-code] job=${jobId.slice(0, 8)} model=${model} in=${usage.inputTokens} out=${usage.outputTokens} cacheRead=${usage.cacheReadTokens} cacheCreate=${usage.cacheCreateTokens} costUSD=${usage.costUSD}`,
   );
+  onUsage?.(usage, jobId, model);
 }
 
 export function claudeCodeExecutor(opts: ClaudeCodeOptions = {}): AiExecutor {
   const model = opts.model ?? process.env["AI_MODEL"] ?? DEFAULT_MODEL;
   const timeoutMs = opts.timeoutMs ?? Number(process.env["AI_JOB_TIMEOUT_MS"] ?? DEFAULT_TIMEOUT_MS);
   const runner = opts.runner ?? spawnRunner();
+  const onUsage = opts.onUsage;
 
   return {
     name: `claude-code:${model}`,
-    async execute(job: AiJob, attempt?: { feedback: string }): Promise<unknown> {
+    async execute(job: ExecutorJob, attempt?: { feedback: string }): Promise<unknown> {
       const spec = KINDS[job.kind];
       const prompt = spec.buildPrompt(job.context, attempt?.feedback);
       const args = [
@@ -139,7 +149,7 @@ export function claudeCodeExecutor(opts: ClaudeCodeOptions = {}): AiExecutor {
         throw new Error(`${classify(text)}: claude 오류 — ${text.slice(0, 300)}`);
       }
 
-      logUsage(job.id, model, env);
+      reportUsage(job.id, model, env, onUsage);
 
       // 구조화 출력 우선 → result 문자열 파싱 → JSON 블록 추출 순.
       const structured = env["structured_output"];
@@ -159,7 +169,7 @@ export function claudeCodeExecutor(opts: ClaudeCodeOptions = {}): AiExecutor {
   };
 }
 
-/** 워커 기동 시 인증 self-check(AC2) — claude-code executor 일 때만 호출. */
+/** 실행기 기동 시 인증 self-check — claude-code executor 일 때만 호출(경고 로그). */
 export function claudeCodeAuthSelfCheck(): void {
   if (process.env["ANTHROPIC_API_KEY"]) {
     console.warn(

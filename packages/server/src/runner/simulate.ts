@@ -229,7 +229,8 @@ export function simulate(
 
   // half === 2, resumeState 없음: 로스터 교체 폴백 — 독립 후반 시뮬(연속성 손실 PoC 허용,
   // LLD-server-java §5.4). 엔진에 "이어받지 않는 단독 하프" 전용 API 가 없어 runFirstHalf 를
-  // 재사용한다 — 자세한 갭은 최종 보고 참고.
+  // 재사용한다(틱 0 기점·홈 킥오프·half_whistle 종료 — 코스메틱 한계).
+  // R2(#66) 지원 시 이 분기 제거.
   const carry = runFirstHalf(req.seed, req.homeInput, req.awayInput, req.selectData, config);
   const matchLog = carryToMatchLog(carry);
   return { matchLog, lastHash: lastHashOf(matchLog) };

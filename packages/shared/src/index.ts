@@ -5,3 +5,4 @@ export * from "./select-data.js";
 export * from "./match-log.js";
 export * from "./clamp.js";
 export * from "./simulate.js";
+export * from "./team-input-job.js";
