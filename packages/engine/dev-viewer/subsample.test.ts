@@ -35,7 +35,7 @@ describe("subsampleSnapshots (#50 홀수틱 이벤트 드롭 방지)", () => {
     const log = JSON.parse(readFileSync(matchLogPath, "utf8"));
     const out = subsampleSnapshots(log.tickSnapshots, log.events, 2);
     const ticks = new Set(out.map((s) => s.tick));
-    const missing = log.events.map((e) => e.tick).filter((t) => !ticks.has(t));
+    const missing = log.events.map((e: { tick: number }) => e.tick).filter((t: number) => !ticks.has(t));
     expect(missing, `서브샘플에서 빠진 이벤트 틱: ${missing.join(",")}`).toEqual([]);
     // 크기 회귀 가드: 순수 STEP=2(≈절반) 대비 과증가 없어야.
     expect(out.length).toBeLessThanOrEqual(Math.ceil(log.tickSnapshots.length / 2) + log.events.length);

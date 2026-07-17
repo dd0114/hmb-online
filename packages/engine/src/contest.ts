@@ -26,6 +26,41 @@ function giveBallTo(state: SimState, player: SimPlayer): void {
   state.possession = player.side;
 }
 
+/**
+ * #59: 재시작 taker 를 공에 즉시 순간배치하지 않는다 — 공을 스팟에 두고(정지 stationary), taker 는
+ * 소유만 부여받되 posFx 는 **현재 위치 그대로 유지**(순간이동/클램프 없음) + targetFx=스팟 → 정지
+ * 루프에서 평소 속도(speedStep)로 공까지 걸어간다. 도달(controlRange) 시 정지 루프가 공을 글루(match.ts).
+ * "선수가 공한테 가서 잡는" 자연 무브먼트를 뷰어 트릭 없이 데이터로 방출. taker 가 멀면(전환 코너 등)
+ * 위치를 당기지 않고 **정지 시간을 늘려**(walkStoppage) 끝까지 걸어오게 한다 — 그래야 점프가 안 생긴다.
+ * 반환값 = taker→스팟 거리(fixed): 호출부가 도달 가능한 정지 틱을 산정하는 데 쓴다.
+ */
+function assignWalkingTaker(state: SimState, taker: SimPlayer, spotX: number, spotY: number): number {
+  const d = fdist(taker.posFx.x, taker.posFx.y, spotX, spotY);
+  taker.targetFx = { x: spotX, y: spotY };
+  state.ball.owner = taker.id;
+  state.ball.ownerSide = taker.side;
+  state.ball.flight = null;
+  state.ball.posFx.x = spotX;
+  state.ball.posFx.y = spotY;
+  state.possession = taker.side;
+  return d;
+}
+
+/**
+ * taker 가 dist(fixed) 를 평소 속도로 걸어와 도달하는 데 필요한 정지 틱. base 이상, base+16 상한 클램프.
+ * 걷기 속도는 match.ts speedStep 과 동일 공식(pace + 피로) — 도달 보장(순간배치 대신 시간을 준다).
+ * 대부분(근거리 스로인/코너/프리킥)은 base 로 수렴, 먼 전환 코너만 연장.
+ */
+function walkStoppage(config: EngineConfig, taker: SimPlayer, dist: number, base: number): number {
+  const { minPerTick, maxPerTick, fatigueFloor } = config.speed;
+  const paceFrac = taker.attrs.pace / 100;
+  const perTickM = (minPerTick + (maxPerTick - minPerTick) * paceFrac) * (1 - (1 - fatigueFloor) * taker.fatigue);
+  const stepFx = toFixed(perTickM, config.fixedScale);
+  if (stepFx <= 0) return base;
+  const ticks = Math.ceil(dist / stepFx) + 2; // +2 = 도착 후 잡는(글루) 프레임 버퍼.
+  return Math.min(Math.max(base, ticks), base + 16);
+}
+
 /** side 팀에서 (x,y) 에 가장 가까운 비-GK 선수. */
 function nearestOfSide(state: SimState, side: TeamSide, x: number, y: number): SimPlayer | null {
   let best: SimPlayer | null = null;
@@ -114,22 +149,21 @@ function placeRestart(
     kind === "goal_kick"
       ? goalkeeperOf(state, side)
       : (nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side));
+  const base = config.setPiece.stoppageTicks;
   if (taker) {
-    taker.posFx.x = spot.x;
-    taker.posFx.y = spot.y;
-    // targetFx 도 스팟으로 리셋: 안 하면 정지(stoppage) 동안 위치적분 루프가 오픈플레이 잔여
-    // targetFx 로 taker 를 계속 걸어가게 해 공이 코너/스로인 스팟에서 드리프트한다(#31 독립 QA 발견).
-    taker.targetFx = { x: spot.x, y: spot.y };
-    giveBallTo(state, taker);
+    // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 루프가 도달 시 글루.
+    // 정지 시간 = taker 가 걸어와 도달하는 데 필요한 만큼(멀면 연장) → 점프 없이 끝까지 걸어옴.
+    const dist = assignWalkingTaker(state, taker, spot.x, spot.y);
+    state.stoppage = walkStoppage(config, taker, dist, base);
   } else {
     state.ball.posFx = { x: spot.x, y: spot.y };
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
     state.possession = side;
+    state.stoppage = base;
   }
   state.setPiece = { kind, side, x: spot.x, y: spot.y };
-  state.stoppage = config.setPiece.stoppageTicks;
   return taker;
 }
 
@@ -244,23 +278,20 @@ export function restartFreeKick(
 ): MatchEvent {
   const spot = clampToPitch(pitch, x, y);
   const taker = nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side);
+  const base = config.rules.freeKickStoppageTicks;
   if (taker) {
-    taker.posFx.x = spot.x;
-    taker.posFx.y = spot.y;
-    // targetFx 도 스팟으로 핀: 안 하면 정지 동안 위치적분 루프(match.ts)가 오픈플레이 잔여
-    // targetFx 로 taker 를 걸어나가게 해 공이 스팟에서 드리프트한다(#48 penalty/free_kick —
-    // 코너/스로인 #31 과 동일 메커니즘. restartSetPiece 는 이미 핀, 이 둘만 누락됐음).
-    taker.targetFx = { x: spot.x, y: spot.y };
-    giveBallTo(state, taker);
+    // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 = 도달까지(멀면 연장).
+    const dist = assignWalkingTaker(state, taker, spot.x, spot.y);
+    state.stoppage = walkStoppage(config, taker, dist, base);
   } else {
     state.ball.posFx = { x: spot.x, y: spot.y };
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
     state.possession = side;
+    state.stoppage = base;
   }
   state.setPiece = { kind: "free_kick", side, x: spot.x, y: spot.y };
-  state.stoppage = config.rules.freeKickStoppageTicks;
   return { tick, minute, type: "free_kick", team: side, playerId: taker?.id, detail };
 }
 
@@ -281,23 +312,20 @@ export function restartPenalty(
   const spotX = g.x - sign * toFixed(config.rules.penalty.spotM, config.fixedScale);
   const spot = clampToPitch(pitch, spotX, g.y);
   const taker = nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side);
+  const base = config.rules.penalty.stoppageTicks;
   if (taker) {
-    taker.posFx.x = spot.x;
-    taker.posFx.y = spot.y;
-    // targetFx 도 스팟으로 핀: 안 하면 정지 동안 위치적분 루프(match.ts)가 오픈플레이 잔여
-    // targetFx 로 taker 를 걸어나가게 해 공이 스팟에서 드리프트한다(#48 penalty/free_kick —
-    // 코너/스로인 #31 과 동일 메커니즘. restartSetPiece 는 이미 핀, 이 둘만 누락됐음).
-    taker.targetFx = { x: spot.x, y: spot.y };
-    giveBallTo(state, taker);
+    // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 = 도달까지(멀면 연장).
+    const dist = assignWalkingTaker(state, taker, spot.x, spot.y);
+    state.stoppage = walkStoppage(config, taker, dist, base);
   } else {
     state.ball.posFx = { x: spot.x, y: spot.y };
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
     state.possession = side;
+    state.stoppage = base;
   }
   state.setPiece = { kind: "penalty", side, x: spot.x, y: spot.y };
-  state.stoppage = config.rules.penalty.stoppageTicks;
   void tick;
   void minute;
 }

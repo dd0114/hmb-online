@@ -16,7 +16,7 @@ import type { Rng } from "./rng";
 import { defaultEngineConfig } from "./config";
 import { createRng, hashSeed } from "./rng";
 import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
-import { toFixed, fromFixed, stepToward } from "./fixedmath";
+import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
 import { glueBallToOwner, advanceBall } from "./ball";
 import { decideBallOwner, decideOffBall, assignPresser } from "./decision";
 import {
@@ -217,10 +217,9 @@ function stepTick(carry: Carry): void {
       p.posFx.x = c.x;
       p.posFx.y = c.y;
     }
-    if (heldId) {
-      const o = state.byId.get(heldId);
-      if (o) glueBallToOwner(state.ball, o.posFx.x, o.posFx.y);
-    }
+    // #59: 정지 중 공은 배치된 스팟에 그대로 둔다(글루 안 함) — taker 는 targetFx(스팟)로 걸어와
+    // 공을 잡는 자연 무브먼트가 스냅샷에 남고, 공은 스팟에서 드리프트하지 않는다. 재시작(freeze-end)은
+    // 공(스팟)으로 실행. (기존: 공을 owner 에 글루 → taker 가 걸으면 공이 딸려가 드리프트했음.)
     // 정지가 끝나면 재개 처리.
     if (state.stoppage === 0) {
       const sp = state.setPiece;
