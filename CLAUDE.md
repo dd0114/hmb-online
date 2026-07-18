@@ -106,9 +106,11 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 
 **완료(닫힘)**: #13 Phase 1 PoC 에픽 — Wave 1(S1·S2 엔진+스키마, Gate G1 PASS) + Wave 1.5(V1~V3 이벤트↔연출 신뢰성, PR #18) + S3 PoC(#19 프롬프트→움직임 증명) + E0 병렬 환경(PR #20). #21/#9/#23/PR#27 은 대체·종결. **#32 AI 워커 W1~W3 완료** — 자산(executor·resilience·metrics·claude CLI)은 #63 이 승계, 파일 큐는 퇴역 예정.
 
+**게임 시스템 v2 초기 개발 완료(2026-07-18, PR #70 머지)**: 에픽 #61 data·#62 server-java·#63 ts-servants **완료(닫힘)**, #64 web은 W3(뷰어 통합, R1 #65 의존)만 잔여. 통합 게이트 G-A(3프로세스 stub·리플레이 bit-identical)·G-B(브라우저 AC-W1)·G-C(라이브 AI — 프롬프트→전술 파라미터 방향성 3/3 분리) 전부 PASS. **데모 실행법 = #60 마지막 코멘트.**
+
 | 활성 트랙 | SoT | owned-glob | 내용 |
 |---|---|---|---|
-| **게임 시스템 v2 A-to-Z** (§10) | 트래킹 **#60** | 에픽별(§10 표) | 로그인→덱→매치플로우→상점→도감 전체 PoC. 계획 SoT = `docs/plan-v2/` |
+| **모듈별 QA·피처 심화** (병렬 세션) | 트래킹 **#60** + 모듈별 에픽/이슈 | 각 모듈 CLAUDE.md | v2 초기 개발 위에서 모듈별 별도 세션으로 QA·심화. `server-java/` `apps/web/` `packages/server/` `data/` 의 CLAUDE.md가 위임 가이드 |
 | **엔진/뷰어 QA** (QA 세션, 상시) | **에픽 #25** (epic:qa) | `packages/engine/**` | §2.5 상시 루프. G1.5 판정 #17 포함. v2 요청 이슈 #65·#66 수신측 |
 
 **백로그(open 유지, 추후 wave 재편)**: S4 #10(밸런스 Go/No-Go) · S5 #11(세션 상태머신) · S6 #12(PixiJS 정식 렌더).
