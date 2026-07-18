@@ -1,0 +1,2926 @@
+[
+  {
+    "id": "P001",
+    "name": "Lev Yashin",
+    "position": "GK",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 85,
+      "mental": 95,
+      "physical": 86,
+      "passing": 92,
+      "shooting": 92,
+      "tackling": 87,
+      "pace": 80,
+      "stamina": 81,
+      "positioning": 95
+    }
+  },
+  {
+    "id": "P002",
+    "name": "Franz Beckenbauer",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 89,
+      "mental": 84,
+      "physical": 90,
+      "passing": 95,
+      "shooting": 92,
+      "tackling": 95,
+      "pace": 88,
+      "stamina": 82,
+      "positioning": 95
+    }
+  },
+  {
+    "id": "P003",
+    "name": "Paolo Maldini",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 90,
+      "mental": 90,
+      "physical": 80,
+      "passing": 91,
+      "shooting": 95,
+      "tackling": 95,
+      "pace": 92,
+      "stamina": 85,
+      "positioning": 95
+    }
+  },
+  {
+    "id": "P004",
+    "name": "Franco Baresi",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 85,
+      "mental": 92,
+      "physical": 93,
+      "passing": 91,
+      "shooting": 91,
+      "tackling": 95,
+      "pace": 85,
+      "stamina": 85,
+      "positioning": 87
+    }
+  },
+  {
+    "id": "P005",
+    "name": "Diego Maradona",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 93,
+      "mental": 95,
+      "physical": 92,
+      "passing": 93,
+      "shooting": 95,
+      "tackling": 86,
+      "pace": 93,
+      "stamina": 95,
+      "positioning": 89
+    }
+  },
+  {
+    "id": "P006",
+    "name": "Zinedine Zidane",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 95,
+      "mental": 94,
+      "physical": 88,
+      "passing": 93,
+      "shooting": 93,
+      "tackling": 84,
+      "pace": 80,
+      "stamina": 88,
+      "positioning": 82
+    }
+  },
+  {
+    "id": "P007",
+    "name": "Michel Platini",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 94,
+      "mental": 91,
+      "physical": 84,
+      "passing": 95,
+      "shooting": 93,
+      "tackling": 92,
+      "pace": 91,
+      "stamina": 95,
+      "positioning": 93
+    }
+  },
+  {
+    "id": "P008",
+    "name": "Lothar Matthäus",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 86,
+      "mental": 88,
+      "physical": 93,
+      "passing": 95,
+      "shooting": 90,
+      "tackling": 90,
+      "pace": 83,
+      "stamina": 92,
+      "positioning": 93
+    }
+  },
+  {
+    "id": "P009",
+    "name": "Pelé",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 89,
+      "mental": 91,
+      "physical": 89,
+      "passing": 90,
+      "shooting": 95,
+      "tackling": 86,
+      "pace": 89,
+      "stamina": 93,
+      "positioning": 93
+    }
+  },
+  {
+    "id": "P010",
+    "name": "Ronaldo Nazário",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 85,
+      "mental": 94,
+      "physical": 82,
+      "passing": 80,
+      "shooting": 95,
+      "tackling": 94,
+      "pace": 95,
+      "stamina": 83,
+      "positioning": 90
+    }
+  },
+  {
+    "id": "P011",
+    "name": "Johan Cruyff",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 95,
+      "mental": 89,
+      "physical": 89,
+      "passing": 95,
+      "shooting": 90,
+      "tackling": 86,
+      "pace": 89,
+      "stamina": 84,
+      "positioning": 89
+    }
+  },
+  {
+    "id": "P012",
+    "name": "Marco van Basten",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 90,
+      "mental": 91,
+      "physical": 95,
+      "passing": 85,
+      "shooting": 95,
+      "tackling": 95,
+      "pace": 95,
+      "stamina": 91,
+      "positioning": 95
+    }
+  },
+  {
+    "id": "P013",
+    "name": "Alisson",
+    "position": "GK",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 79,
+      "mental": 85,
+      "physical": 72,
+      "passing": 75,
+      "shooting": 83,
+      "tackling": 77,
+      "pace": 72,
+      "stamina": 80,
+      "positioning": 81
+    }
+  },
+  {
+    "id": "P014",
+    "name": "Thibaut Courtois",
+    "position": "GK",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 72,
+      "mental": 75,
+      "physical": 84,
+      "passing": 77,
+      "shooting": 84,
+      "tackling": 75,
+      "pace": 70,
+      "stamina": 76,
+      "positioning": 81
+    }
+  },
+  {
+    "id": "P015",
+    "name": "Virgil van Dijk",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 73,
+      "mental": 84,
+      "physical": 85,
+      "passing": 78,
+      "shooting": 80,
+      "tackling": 81,
+      "pace": 80,
+      "stamina": 80,
+      "positioning": 76
+    }
+  },
+  {
+    "id": "P016",
+    "name": "Rúben Dias",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 78,
+      "mental": 85,
+      "physical": 84,
+      "passing": 80,
+      "shooting": 75,
+      "tackling": 84,
+      "pace": 79,
+      "stamina": 76,
+      "positioning": 85
+    }
+  },
+  {
+    "id": "P017",
+    "name": "Achraf Hakimi",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 83,
+      "mental": 85,
+      "physical": 82,
+      "passing": 71,
+      "shooting": 76,
+      "tackling": 82,
+      "pace": 85,
+      "stamina": 83,
+      "positioning": 79
+    }
+  },
+  {
+    "id": "P018",
+    "name": "Alphonso Davies",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 78,
+      "mental": 79,
+      "physical": 76,
+      "passing": 84,
+      "shooting": 83,
+      "tackling": 85,
+      "pace": 78,
+      "stamina": 84,
+      "positioning": 85
+    }
+  },
+  {
+    "id": "P019",
+    "name": "Antonio Rüdiger",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 72,
+      "mental": 78,
+      "physical": 85,
+      "passing": 84,
+      "shooting": 72,
+      "tackling": 85,
+      "pace": 70,
+      "stamina": 83,
+      "positioning": 77
+    }
+  },
+  {
+    "id": "P020",
+    "name": "William Saliba",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 84,
+      "mental": 82,
+      "physical": 79,
+      "passing": 74,
+      "shooting": 76,
+      "tackling": 85,
+      "pace": 83,
+      "stamina": 80,
+      "positioning": 85
+    }
+  },
+  {
+    "id": "P021",
+    "name": "Theo Hernández",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 80,
+      "mental": 85,
+      "physical": 84,
+      "passing": 70,
+      "shooting": 85,
+      "tackling": 85,
+      "pace": 85,
+      "stamina": 83,
+      "positioning": 85
+    }
+  },
+  {
+    "id": "P022",
+    "name": "Kim Min-jae",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 84,
+      "mental": 76,
+      "physical": 79,
+      "passing": 75,
+      "shooting": 71,
+      "tackling": 85,
+      "pace": 85,
+      "stamina": 81,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P023",
+    "name": "Rodri",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 80,
+      "mental": 82,
+      "physical": 85,
+      "passing": 85,
+      "shooting": 70,
+      "tackling": 73,
+      "pace": 81,
+      "stamina": 82,
+      "positioning": 82
+    }
+  },
+  {
+    "id": "P024",
+    "name": "Kevin De Bruyne",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 76,
+      "mental": 82,
+      "physical": 76,
+      "passing": 85,
+      "shooting": 79,
+      "tackling": 85,
+      "pace": 81,
+      "stamina": 83,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P025",
+    "name": "Jude Bellingham",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 70,
+      "mental": 79,
+      "physical": 85,
+      "passing": 83,
+      "shooting": 85,
+      "tackling": 83,
+      "pace": 81,
+      "stamina": 78,
+      "positioning": 82
+    }
+  },
+  {
+    "id": "P026",
+    "name": "Federico Valverde",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 73,
+      "mental": 81,
+      "physical": 85,
+      "passing": 85,
+      "shooting": 83,
+      "tackling": 78,
+      "pace": 71,
+      "stamina": 85,
+      "positioning": 84
+    }
+  },
+  {
+    "id": "P027",
+    "name": "Luka Modrić",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 85,
+      "mental": 74,
+      "physical": 83,
+      "passing": 85,
+      "shooting": 83,
+      "tackling": 75,
+      "pace": 79,
+      "stamina": 83,
+      "positioning": 70
+    }
+  },
+  {
+    "id": "P028",
+    "name": "Toni Kroos",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 72,
+      "mental": 82,
+      "physical": 78,
+      "passing": 85,
+      "shooting": 81,
+      "tackling": 70,
+      "pace": 72,
+      "stamina": 81,
+      "positioning": 83
+    }
+  },
+  {
+    "id": "P029",
+    "name": "Martin Ødegaard",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 85,
+      "mental": 76,
+      "physical": 78,
+      "passing": 82,
+      "shooting": 82,
+      "tackling": 73,
+      "pace": 78,
+      "stamina": 76,
+      "positioning": 71
+    }
+  },
+  {
+    "id": "P030",
+    "name": "Pedri",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 79,
+      "mental": 82,
+      "physical": 72,
+      "passing": 83,
+      "shooting": 82,
+      "tackling": 84,
+      "pace": 73,
+      "stamina": 84,
+      "positioning": 83
+    }
+  },
+  {
+    "id": "P031",
+    "name": "Erling Haaland",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 84,
+      "mental": 79,
+      "physical": 85,
+      "passing": 70,
+      "shooting": 81,
+      "tackling": 73,
+      "pace": 76,
+      "stamina": 78,
+      "positioning": 77
+    }
+  },
+  {
+    "id": "P032",
+    "name": "Kylian Mbappé",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 71,
+      "mental": 76,
+      "physical": 70,
+      "passing": 78,
+      "shooting": 85,
+      "tackling": 84,
+      "pace": 85,
+      "stamina": 72,
+      "positioning": 79
+    }
+  },
+  {
+    "id": "P033",
+    "name": "Vinícius Júnior",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 85,
+      "mental": 82,
+      "physical": 83,
+      "passing": 74,
+      "shooting": 81,
+      "tackling": 85,
+      "pace": 85,
+      "stamina": 81,
+      "positioning": 74
+    }
+  },
+  {
+    "id": "P034",
+    "name": "Harry Kane",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 84,
+      "mental": 73,
+      "physical": 73,
+      "passing": 85,
+      "shooting": 85,
+      "tackling": 75,
+      "pace": 84,
+      "stamina": 72,
+      "positioning": 76
+    }
+  },
+  {
+    "id": "P035",
+    "name": "Mohamed Salah",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 79,
+      "mental": 76,
+      "physical": 70,
+      "passing": 70,
+      "shooting": 85,
+      "tackling": 73,
+      "pace": 85,
+      "stamina": 72,
+      "positioning": 81
+    }
+  },
+  {
+    "id": "P036",
+    "name": "Lautaro Martínez",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 78,
+      "mental": 81,
+      "physical": 84,
+      "passing": 75,
+      "shooting": 85,
+      "tackling": 78,
+      "pace": 85,
+      "stamina": 81,
+      "positioning": 76
+    }
+  },
+  {
+    "id": "P037",
+    "name": "Son Heung-min",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 78,
+      "mental": 83,
+      "physical": 81,
+      "passing": 71,
+      "shooting": 85,
+      "tackling": 77,
+      "pace": 85,
+      "stamina": 79,
+      "positioning": 77
+    }
+  },
+  {
+    "id": "P038",
+    "name": "Ederson",
+    "position": "GK",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 68,
+      "mental": 73,
+      "physical": 75,
+      "passing": 66,
+      "shooting": 64,
+      "tackling": 68,
+      "pace": 66,
+      "stamina": 75,
+      "positioning": 71
+    }
+  },
+  {
+    "id": "P039",
+    "name": "Gianluigi Donnarumma",
+    "position": "GK",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 68,
+      "mental": 72,
+      "physical": 69,
+      "passing": 68,
+      "shooting": 62,
+      "tackling": 73,
+      "pace": 63,
+      "stamina": 62,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P040",
+    "name": "Jan Oblak",
+    "position": "GK",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 62,
+      "mental": 75,
+      "physical": 63,
+      "passing": 62,
+      "shooting": 60,
+      "tackling": 65,
+      "pace": 62,
+      "stamina": 63,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P041",
+    "name": "Trent Alexander-Arnold",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 72,
+      "mental": 69,
+      "physical": 74,
+      "passing": 75,
+      "shooting": 74,
+      "tackling": 75,
+      "pace": 74,
+      "stamina": 67,
+      "positioning": 73
+    }
+  },
+  {
+    "id": "P042",
+    "name": "Kyle Walker",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 73,
+      "mental": 73,
+      "physical": 75,
+      "passing": 70,
+      "shooting": 62,
+      "tackling": 72,
+      "pace": 66,
+      "stamina": 75,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P043",
+    "name": "Marquinhos",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 65,
+      "mental": 66,
+      "physical": 70,
+      "passing": 73,
+      "shooting": 65,
+      "tackling": 75,
+      "pace": 68,
+      "stamina": 60,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P044",
+    "name": "Éder Militão",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 72,
+      "mental": 72,
+      "physical": 75,
+      "passing": 72,
+      "shooting": 69,
+      "tackling": 75,
+      "pace": 68,
+      "stamina": 63,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P045",
+    "name": "Ronald Araújo",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 62,
+      "mental": 60,
+      "physical": 69,
+      "passing": 73,
+      "shooting": 62,
+      "tackling": 75,
+      "pace": 69,
+      "stamina": 64,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P046",
+    "name": "Josko Gvardiol",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 61,
+      "mental": 68,
+      "physical": 75,
+      "passing": 60,
+      "shooting": 69,
+      "tackling": 75,
+      "pace": 72,
+      "stamina": 67,
+      "positioning": 69
+    }
+  },
+  {
+    "id": "P047",
+    "name": "Jules Koundé",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 69,
+      "mental": 70,
+      "physical": 73,
+      "passing": 61,
+      "shooting": 71,
+      "tackling": 75,
+      "pace": 75,
+      "stamina": 75,
+      "positioning": 68
+    }
+  },
+  {
+    "id": "P048",
+    "name": "Reece James",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 61,
+      "mental": 68,
+      "physical": 69,
+      "passing": 73,
+      "shooting": 74,
+      "tackling": 65,
+      "pace": 67,
+      "stamina": 67,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P049",
+    "name": "João Cancelo",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 63,
+      "physical": 67,
+      "passing": 75,
+      "shooting": 68,
+      "tackling": 70,
+      "pace": 72,
+      "stamina": 61,
+      "positioning": 70
+    }
+  },
+  {
+    "id": "P050",
+    "name": "David Alaba",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 75,
+      "physical": 74,
+      "passing": 72,
+      "shooting": 65,
+      "tackling": 75,
+      "pace": 75,
+      "stamina": 63,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P051",
+    "name": "Matthijs de Ligt",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 70,
+      "mental": 72,
+      "physical": 75,
+      "passing": 62,
+      "shooting": 74,
+      "tackling": 75,
+      "pace": 68,
+      "stamina": 74,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P052",
+    "name": "Andrew Robertson",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 63,
+      "mental": 61,
+      "physical": 71,
+      "passing": 74,
+      "shooting": 60,
+      "tackling": 71,
+      "pace": 66,
+      "stamina": 75,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P053",
+    "name": "Bruno Fernandes",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 63,
+      "mental": 70,
+      "physical": 61,
+      "passing": 75,
+      "shooting": 75,
+      "tackling": 74,
+      "pace": 69,
+      "stamina": 75,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P054",
+    "name": "Bernardo Silva",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 72,
+      "mental": 72,
+      "physical": 71,
+      "passing": 74,
+      "shooting": 65,
+      "tackling": 72,
+      "pace": 73,
+      "stamina": 75,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P055",
+    "name": "Frenkie de Jong",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 71,
+      "mental": 65,
+      "physical": 69,
+      "passing": 75,
+      "shooting": 66,
+      "tackling": 73,
+      "pace": 73,
+      "stamina": 74,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P056",
+    "name": "Declan Rice",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 68,
+      "physical": 72,
+      "passing": 74,
+      "shooting": 64,
+      "tackling": 74,
+      "pace": 68,
+      "stamina": 75,
+      "positioning": 72
+    }
+  },
+  {
+    "id": "P057",
+    "name": "Ilkay Gündogan",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 62,
+      "physical": 67,
+      "passing": 75,
+      "shooting": 70,
+      "tackling": 69,
+      "pace": 71,
+      "stamina": 74,
+      "positioning": 70
+    }
+  },
+  {
+    "id": "P058",
+    "name": "Nicolò Barella",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 63,
+      "mental": 71,
+      "physical": 60,
+      "passing": 73,
+      "shooting": 63,
+      "tackling": 64,
+      "pace": 73,
+      "stamina": 75,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P059",
+    "name": "Jamal Musiala",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 62,
+      "physical": 60,
+      "passing": 74,
+      "shooting": 73,
+      "tackling": 60,
+      "pace": 75,
+      "stamina": 67,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P060",
+    "name": "Enzo Fernández",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 65,
+      "mental": 75,
+      "physical": 61,
+      "passing": 75,
+      "shooting": 66,
+      "tackling": 63,
+      "pace": 63,
+      "stamina": 75,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P061",
+    "name": "Aurélien Tchouaméni",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 74,
+      "mental": 69,
+      "physical": 70,
+      "passing": 75,
+      "shooting": 65,
+      "tackling": 73,
+      "pace": 65,
+      "stamina": 71,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P062",
+    "name": "Casemiro",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 63,
+      "mental": 64,
+      "physical": 72,
+      "passing": 74,
+      "shooting": 71,
+      "tackling": 74,
+      "pace": 60,
+      "stamina": 75,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P063",
+    "name": "Joshua Kimmich",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 62,
+      "mental": 71,
+      "physical": 70,
+      "passing": 75,
+      "shooting": 66,
+      "tackling": 71,
+      "pace": 75,
+      "stamina": 75,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P064",
+    "name": "Phil Foden",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 72,
+      "mental": 64,
+      "physical": 75,
+      "passing": 75,
+      "shooting": 69,
+      "tackling": 69,
+      "pace": 69,
+      "stamina": 75,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P065",
+    "name": "Bruno Guimarães",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 63,
+      "mental": 75,
+      "physical": 72,
+      "passing": 75,
+      "shooting": 70,
+      "tackling": 69,
+      "pace": 72,
+      "stamina": 75,
+      "positioning": 66
+    }
+  },
+  {
+    "id": "P066",
+    "name": "Bukayo Saka",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 67,
+      "physical": 63,
+      "passing": 74,
+      "shooting": 74,
+      "tackling": 72,
+      "pace": 75,
+      "stamina": 67,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P067",
+    "name": "Rafael Leão",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 70,
+      "physical": 75,
+      "passing": 72,
+      "shooting": 75,
+      "tackling": 74,
+      "pace": 73,
+      "stamina": 68,
+      "positioning": 70
+    }
+  },
+  {
+    "id": "P068",
+    "name": "Julián Álvarez",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 70,
+      "mental": 74,
+      "physical": 68,
+      "passing": 71,
+      "shooting": 75,
+      "tackling": 64,
+      "pace": 70,
+      "stamina": 75,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P069",
+    "name": "Victor Osimhen",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 67,
+      "mental": 67,
+      "physical": 63,
+      "passing": 71,
+      "shooting": 75,
+      "tackling": 75,
+      "pace": 75,
+      "stamina": 66,
+      "positioning": 68
+    }
+  },
+  {
+    "id": "P070",
+    "name": "Marcus Rashford",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 69,
+      "physical": 61,
+      "passing": 63,
+      "shooting": 75,
+      "tackling": 73,
+      "pace": 75,
+      "stamina": 73,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P071",
+    "name": "Lamine Yamal",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 71,
+      "mental": 65,
+      "physical": 72,
+      "passing": 60,
+      "shooting": 70,
+      "tackling": 74,
+      "pace": 75,
+      "stamina": 63,
+      "positioning": 70
+    }
+  },
+  {
+    "id": "P072",
+    "name": "Khvicha Kvaratskhelia",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 63,
+      "physical": 63,
+      "passing": 74,
+      "shooting": 68,
+      "tackling": 68,
+      "pace": 75,
+      "stamina": 65,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P073",
+    "name": "Robert Lewandowski",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 62,
+      "mental": 67,
+      "physical": 75,
+      "passing": 66,
+      "shooting": 71,
+      "tackling": 65,
+      "pace": 75,
+      "stamina": 64,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P074",
+    "name": "André Onana",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 62,
+      "physical": 57,
+      "passing": 65,
+      "shooting": 56,
+      "tackling": 64,
+      "pace": 60,
+      "stamina": 62,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P075",
+    "name": "Yann Sommer",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 63,
+      "physical": 60,
+      "passing": 59,
+      "shooting": 61,
+      "tackling": 52,
+      "pace": 60,
+      "stamina": 59,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P076",
+    "name": "David Raya",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 61,
+      "physical": 65,
+      "passing": 63,
+      "shooting": 57,
+      "tackling": 59,
+      "pace": 56,
+      "stamina": 51,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P077",
+    "name": "Raphaël Varane",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 57,
+      "physical": 59,
+      "passing": 61,
+      "shooting": 63,
+      "tackling": 65,
+      "pace": 61,
+      "stamina": 50,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P078",
+    "name": "Lisandro Martínez",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 65,
+      "mental": 64,
+      "physical": 56,
+      "passing": 60,
+      "shooting": 63,
+      "tackling": 65,
+      "pace": 64,
+      "stamina": 58,
+      "positioning": 57
+    }
+  },
+  {
+    "id": "P079",
+    "name": "Cristian Romero",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 55,
+      "mental": 65,
+      "physical": 62,
+      "passing": 56,
+      "shooting": 65,
+      "tackling": 65,
+      "pace": 62,
+      "stamina": 61,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P080",
+    "name": "Gabriel Magalhães",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 63,
+      "physical": 65,
+      "passing": 61,
+      "shooting": 50,
+      "tackling": 62,
+      "pace": 55,
+      "stamina": 54,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P081",
+    "name": "Ben White",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 51,
+      "physical": 59,
+      "passing": 65,
+      "shooting": 61,
+      "tackling": 65,
+      "pace": 64,
+      "stamina": 61,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P082",
+    "name": "Pau Torres",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 58,
+      "mental": 63,
+      "physical": 63,
+      "passing": 65,
+      "shooting": 51,
+      "tackling": 62,
+      "pace": 65,
+      "stamina": 62,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P083",
+    "name": "Nathan Aké",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 52,
+      "physical": 56,
+      "passing": 63,
+      "shooting": 63,
+      "tackling": 62,
+      "pace": 65,
+      "stamina": 54,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P084",
+    "name": "Manuel Akanji",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 53,
+      "mental": 51,
+      "physical": 58,
+      "passing": 60,
+      "shooting": 53,
+      "tackling": 65,
+      "pace": 54,
+      "stamina": 51,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P085",
+    "name": "Alessandro Bastoni",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 53,
+      "mental": 65,
+      "physical": 60,
+      "passing": 58,
+      "shooting": 65,
+      "tackling": 65,
+      "pace": 53,
+      "stamina": 64,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P086",
+    "name": "Federico Dimarco",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 54,
+      "mental": 62,
+      "physical": 53,
+      "passing": 62,
+      "shooting": 62,
+      "tackling": 56,
+      "pace": 50,
+      "stamina": 64,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P087",
+    "name": "Destiny Udogie",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 61,
+      "mental": 60,
+      "physical": 63,
+      "passing": 54,
+      "shooting": 57,
+      "tackling": 65,
+      "pace": 65,
+      "stamina": 61,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P088",
+    "name": "Marcos Acuña",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 64,
+      "mental": 60,
+      "physical": 50,
+      "passing": 55,
+      "shooting": 52,
+      "tackling": 65,
+      "pace": 63,
+      "stamina": 65,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P089",
+    "name": "Jeremie Frimpong",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 63,
+      "mental": 62,
+      "physical": 65,
+      "passing": 65,
+      "shooting": 64,
+      "tackling": 60,
+      "pace": 61,
+      "stamina": 56,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P090",
+    "name": "Kieran Trippier",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 54,
+      "physical": 55,
+      "passing": 65,
+      "shooting": 62,
+      "tackling": 65,
+      "pace": 53,
+      "stamina": 60,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P091",
+    "name": "Raphaël Guerreiro",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 62,
+      "mental": 65,
+      "physical": 54,
+      "passing": 65,
+      "shooting": 58,
+      "tackling": 64,
+      "pace": 61,
+      "stamina": 57,
+      "positioning": 59
+    }
+  },
+  {
+    "id": "P092",
+    "name": "Mason Mount",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 54,
+      "mental": 55,
+      "physical": 62,
+      "passing": 65,
+      "shooting": 61,
+      "tackling": 62,
+      "pace": 58,
+      "stamina": 65,
+      "positioning": 58
+    }
+  },
+  {
+    "id": "P093",
+    "name": "Kai Havertz",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 54,
+      "mental": 57,
+      "physical": 65,
+      "passing": 60,
+      "shooting": 65,
+      "tackling": 53,
+      "pace": 64,
+      "stamina": 65,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P094",
+    "name": "James Maddison",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 62,
+      "mental": 53,
+      "physical": 53,
+      "passing": 65,
+      "shooting": 62,
+      "tackling": 65,
+      "pace": 55,
+      "stamina": 63,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P095",
+    "name": "Dominik Szoboszlai",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 52,
+      "physical": 55,
+      "passing": 56,
+      "shooting": 59,
+      "tackling": 59,
+      "pace": 51,
+      "stamina": 65,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P096",
+    "name": "Alexis Mac Allister",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 52,
+      "mental": 59,
+      "physical": 60,
+      "passing": 65,
+      "shooting": 65,
+      "tackling": 61,
+      "pace": 50,
+      "stamina": 65,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P097",
+    "name": "Youri Tielemans",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 58,
+      "mental": 65,
+      "physical": 60,
+      "passing": 65,
+      "shooting": 61,
+      "tackling": 62,
+      "pace": 60,
+      "stamina": 56,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P098",
+    "name": "Sandro Tonali",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 60,
+      "physical": 64,
+      "passing": 65,
+      "shooting": 50,
+      "tackling": 61,
+      "pace": 65,
+      "stamina": 58,
+      "positioning": 51
+    }
+  },
+  {
+    "id": "P099",
+    "name": "Eduardo Camavinga",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 57,
+      "physical": 60,
+      "passing": 56,
+      "shooting": 52,
+      "tackling": 65,
+      "pace": 59,
+      "stamina": 61,
+      "positioning": 59
+    }
+  },
+  {
+    "id": "P100",
+    "name": "Ryan Gravenberch",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 65,
+      "physical": 64,
+      "passing": 60,
+      "shooting": 53,
+      "tackling": 59,
+      "pace": 62,
+      "stamina": 65,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P101",
+    "name": "Fabián Ruiz",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 58,
+      "mental": 56,
+      "physical": 56,
+      "passing": 65,
+      "shooting": 54,
+      "tackling": 51,
+      "pace": 63,
+      "stamina": 65,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P102",
+    "name": "Teun Koopmeiners",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 55,
+      "mental": 58,
+      "physical": 50,
+      "passing": 65,
+      "shooting": 63,
+      "tackling": 54,
+      "pace": 51,
+      "stamina": 59,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P103",
+    "name": "Weston McKennie",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 61,
+      "physical": 61,
+      "passing": 65,
+      "shooting": 57,
+      "tackling": 52,
+      "pace": 58,
+      "stamina": 65,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P104",
+    "name": "Hakan Çalhanoğlu",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 61,
+      "mental": 58,
+      "physical": 64,
+      "passing": 65,
+      "shooting": 58,
+      "tackling": 56,
+      "pace": 62,
+      "stamina": 55,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P105",
+    "name": "Amadou Onana",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 65,
+      "mental": 54,
+      "physical": 63,
+      "passing": 60,
+      "shooting": 52,
+      "tackling": 58,
+      "pace": 50,
+      "stamina": 57,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P106",
+    "name": "Gabriel Jesus",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 65,
+      "mental": 53,
+      "physical": 60,
+      "passing": 63,
+      "shooting": 64,
+      "tackling": 59,
+      "pace": 65,
+      "stamina": 57,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P107",
+    "name": "Marcus Thuram",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 54,
+      "mental": 53,
+      "physical": 59,
+      "passing": 60,
+      "shooting": 56,
+      "tackling": 60,
+      "pace": 65,
+      "stamina": 57,
+      "positioning": 58
+    }
+  },
+  {
+    "id": "P108",
+    "name": "Rasmus Højlund",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 51,
+      "physical": 58,
+      "passing": 62,
+      "shooting": 58,
+      "tackling": 63,
+      "pace": 65,
+      "stamina": 52,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P109",
+    "name": "Randal Kolo Muani",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 57,
+      "mental": 61,
+      "physical": 65,
+      "passing": 50,
+      "shooting": 65,
+      "tackling": 65,
+      "pace": 65,
+      "stamina": 62,
+      "positioning": 57
+    }
+  },
+  {
+    "id": "P110",
+    "name": "Cody Gakpo",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 56,
+      "physical": 54,
+      "passing": 55,
+      "shooting": 62,
+      "tackling": 65,
+      "pace": 65,
+      "stamina": 61,
+      "positioning": 58
+    }
+  },
+  {
+    "id": "P111",
+    "name": "Ollie Watkins",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 60,
+      "physical": 60,
+      "passing": 64,
+      "shooting": 65,
+      "tackling": 56,
+      "pace": 64,
+      "stamina": 57,
+      "positioning": 50
+    }
+  },
+  {
+    "id": "P112",
+    "name": "Alexander Isak",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 63,
+      "mental": 55,
+      "physical": 63,
+      "passing": 65,
+      "shooting": 65,
+      "tackling": 55,
+      "pace": 57,
+      "stamina": 62,
+      "positioning": 51
+    }
+  },
+  {
+    "id": "P113",
+    "name": "Dušan Vlahović",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 54,
+      "mental": 54,
+      "physical": 60,
+      "passing": 58,
+      "shooting": 61,
+      "tackling": 51,
+      "pace": 56,
+      "stamina": 63,
+      "positioning": 57
+    }
+  },
+  {
+    "id": "P114",
+    "name": "Nicolas Jackson",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 60,
+      "mental": 59,
+      "physical": 55,
+      "passing": 55,
+      "shooting": 65,
+      "tackling": 60,
+      "pace": 65,
+      "stamina": 65,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P115",
+    "name": "Serhou Guirassy",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 60,
+      "mental": 64,
+      "physical": 65,
+      "passing": 59,
+      "shooting": 65,
+      "tackling": 62,
+      "pace": 65,
+      "stamina": 57,
+      "positioning": 51
+    }
+  },
+  {
+    "id": "P116",
+    "name": "Giorgi Mamardashvili",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 45,
+      "mental": 53,
+      "physical": 53,
+      "passing": 51,
+      "shooting": 48,
+      "tackling": 49,
+      "pace": 54,
+      "stamina": 53,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P117",
+    "name": "Guglielmo Vicario",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 51,
+      "physical": 50,
+      "passing": 53,
+      "shooting": 45,
+      "tackling": 42,
+      "pace": 54,
+      "stamina": 55,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P118",
+    "name": "Rico Lewis",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 51,
+      "mental": 50,
+      "physical": 40,
+      "passing": 50,
+      "shooting": 44,
+      "tackling": 55,
+      "pace": 40,
+      "stamina": 51,
+      "positioning": 53
+    }
+  },
+  {
+    "id": "P119",
+    "name": "Levi Colwill",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 52,
+      "mental": 50,
+      "physical": 50,
+      "passing": 53,
+      "shooting": 50,
+      "tackling": 51,
+      "pace": 52,
+      "stamina": 44,
+      "positioning": 48
+    }
+  },
+  {
+    "id": "P120",
+    "name": "Leny Yoro",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 42,
+      "physical": 55,
+      "passing": 55,
+      "shooting": 52,
+      "tackling": 53,
+      "pace": 43,
+      "stamina": 55,
+      "positioning": 48
+    }
+  },
+  {
+    "id": "P121",
+    "name": "Nico Schlotterbeck",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 51,
+      "physical": 49,
+      "passing": 48,
+      "shooting": 49,
+      "tackling": 54,
+      "pace": 52,
+      "stamina": 52,
+      "positioning": 45
+    }
+  },
+  {
+    "id": "P122",
+    "name": "Castello Lukeba",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 49,
+      "mental": 55,
+      "physical": 55,
+      "passing": 52,
+      "shooting": 48,
+      "tackling": 55,
+      "pace": 55,
+      "stamina": 46,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P123",
+    "name": "Riccardo Calafiori",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 54,
+      "physical": 53,
+      "passing": 53,
+      "shooting": 47,
+      "tackling": 53,
+      "pace": 53,
+      "stamina": 54,
+      "positioning": 45
+    }
+  },
+  {
+    "id": "P124",
+    "name": "Giorgio Scalvini",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 52,
+      "mental": 45,
+      "physical": 55,
+      "passing": 49,
+      "shooting": 53,
+      "tackling": 55,
+      "pace": 40,
+      "stamina": 51,
+      "positioning": 47
+    }
+  },
+  {
+    "id": "P125",
+    "name": "Jarrad Branthwaite",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 45,
+      "mental": 47,
+      "physical": 46,
+      "passing": 48,
+      "shooting": 51,
+      "tackling": 55,
+      "pace": 41,
+      "stamina": 42,
+      "positioning": 47
+    }
+  },
+  {
+    "id": "P126",
+    "name": "Micky van de Ven",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 45,
+      "mental": 49,
+      "physical": 55,
+      "passing": 49,
+      "shooting": 43,
+      "tackling": 55,
+      "pace": 46,
+      "stamina": 42,
+      "positioning": 47
+    }
+  },
+  {
+    "id": "P127",
+    "name": "Warren Zaïre-Emery",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 52,
+      "mental": 55,
+      "physical": 44,
+      "passing": 55,
+      "shooting": 53,
+      "tackling": 55,
+      "pace": 47,
+      "stamina": 53,
+      "positioning": 50
+    }
+  },
+  {
+    "id": "P128",
+    "name": "Kobbie Mainoo",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 47,
+      "mental": 55,
+      "physical": 44,
+      "passing": 50,
+      "shooting": 41,
+      "tackling": 55,
+      "pace": 50,
+      "stamina": 50,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P129",
+    "name": "Gavi",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 40,
+      "physical": 50,
+      "passing": 55,
+      "shooting": 49,
+      "tackling": 47,
+      "pace": 48,
+      "stamina": 55,
+      "positioning": 46
+    }
+  },
+  {
+    "id": "P130",
+    "name": "Arda Güler",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 53,
+      "mental": 51,
+      "physical": 43,
+      "passing": 52,
+      "shooting": 55,
+      "tackling": 51,
+      "pace": 51,
+      "stamina": 48,
+      "positioning": 40
+    }
+  },
+  {
+    "id": "P131",
+    "name": "Carlos Baleba",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 52,
+      "physical": 51,
+      "passing": 47,
+      "shooting": 40,
+      "tackling": 48,
+      "pace": 54,
+      "stamina": 53,
+      "positioning": 43
+    }
+  },
+  {
+    "id": "P132",
+    "name": "Adam Wharton",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 49,
+      "mental": 55,
+      "physical": 47,
+      "passing": 55,
+      "shooting": 45,
+      "tackling": 42,
+      "pace": 50,
+      "stamina": 55,
+      "positioning": 40
+    }
+  },
+  {
+    "id": "P133",
+    "name": "João Neves",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 43,
+      "physical": 52,
+      "passing": 55,
+      "shooting": 54,
+      "tackling": 49,
+      "pace": 42,
+      "stamina": 55,
+      "positioning": 44
+    }
+  },
+  {
+    "id": "P134",
+    "name": "Manu Koné",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 43,
+      "physical": 46,
+      "passing": 55,
+      "shooting": 40,
+      "tackling": 45,
+      "pace": 42,
+      "stamina": 55,
+      "positioning": 53
+    }
+  },
+  {
+    "id": "P135",
+    "name": "Ángel Gomes",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 41,
+      "physical": 44,
+      "passing": 55,
+      "shooting": 47,
+      "tackling": 51,
+      "pace": 52,
+      "stamina": 55,
+      "positioning": 49
+    }
+  },
+  {
+    "id": "P136",
+    "name": "Endrick",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 42,
+      "physical": 42,
+      "passing": 44,
+      "shooting": 52,
+      "tackling": 53,
+      "pace": 55,
+      "stamina": 45,
+      "positioning": 41
+    }
+  },
+  {
+    "id": "P137",
+    "name": "Mathys Tel",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 50,
+      "physical": 41,
+      "passing": 55,
+      "shooting": 46,
+      "tackling": 41,
+      "pace": 53,
+      "stamina": 49,
+      "positioning": 43
+    }
+  },
+  {
+    "id": "P138",
+    "name": "Benjamin Šeško",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 48,
+      "physical": 55,
+      "passing": 44,
+      "shooting": 55,
+      "tackling": 53,
+      "pace": 54,
+      "stamina": 45,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P139",
+    "name": "Johan Bakayoko",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 54,
+      "physical": 54,
+      "passing": 41,
+      "shooting": 49,
+      "tackling": 43,
+      "pace": 55,
+      "stamina": 54,
+      "positioning": 41
+    }
+  },
+  {
+    "id": "P140",
+    "name": "Karim Adeyemi",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 52,
+      "mental": 41,
+      "physical": 44,
+      "passing": 47,
+      "shooting": 54,
+      "tackling": 43,
+      "pace": 55,
+      "stamina": 50,
+      "positioning": 51
+    }
+  },
+  {
+    "id": "P141",
+    "name": "Hugo Ekitike",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 53,
+      "mental": 46,
+      "physical": 50,
+      "passing": 54,
+      "shooting": 55,
+      "tackling": 46,
+      "pace": 54,
+      "stamina": 48,
+      "positioning": 45
+    }
+  },
+  {
+    "id": "P142",
+    "name": "Alejandro Garnacho",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 43,
+      "physical": 47,
+      "passing": 51,
+      "shooting": 55,
+      "tackling": 50,
+      "pace": 55,
+      "stamina": 41,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P143",
+    "name": "Park Ji-sung",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 87,
+      "mental": 86,
+      "physical": 94,
+      "passing": 86,
+      "shooting": 80,
+      "tackling": 92,
+      "pace": 94,
+      "stamina": 95,
+      "positioning": 82
+    }
+  },
+  {
+    "id": "P144",
+    "name": "Cha Bum-kun",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 86,
+      "mental": 92,
+      "physical": 95,
+      "passing": 82,
+      "shooting": 95,
+      "tackling": 88,
+      "pace": 93,
+      "stamina": 93,
+      "positioning": 93
+    }
+  },
+  {
+    "id": "P145",
+    "name": "Lee Kang-in",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 73,
+      "mental": 66,
+      "physical": 68,
+      "passing": 75,
+      "shooting": 63,
+      "tackling": 69,
+      "pace": 73,
+      "stamina": 75,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P146",
+    "name": "Ki Sung-yueng",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 69,
+      "mental": 67,
+      "physical": 69,
+      "passing": 75,
+      "shooting": 75,
+      "tackling": 74,
+      "pace": 68,
+      "stamina": 73,
+      "positioning": 66
+    }
+  },
+  {
+    "id": "P147",
+    "name": "Yoo Sang-chul",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 65,
+      "mental": 63,
+      "physical": 75,
+      "passing": 68,
+      "shooting": 67,
+      "tackling": 63,
+      "pace": 60,
+      "stamina": 65,
+      "positioning": 74
+    }
+  },
+  {
+    "id": "P148",
+    "name": "Hong Myung-bo",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 68,
+      "mental": 61,
+      "physical": 67,
+      "passing": 74,
+      "shooting": 66,
+      "tackling": 74,
+      "pace": 66,
+      "stamina": 68,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P149",
+    "name": "Lee Young-pyo",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 66,
+      "mental": 75,
+      "physical": 60,
+      "passing": 63,
+      "shooting": 75,
+      "tackling": 70,
+      "pace": 69,
+      "stamina": 75,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P150",
+    "name": "Kim Joo-sung",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 75,
+      "mental": 65,
+      "physical": 68,
+      "passing": 66,
+      "shooting": 64,
+      "tackling": 75,
+      "pace": 60,
+      "stamina": 60,
+      "positioning": 67
+    }
+  },
+  {
+    "id": "P151",
+    "name": "Hwang Hee-chan",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 68,
+      "mental": 68,
+      "physical": 71,
+      "passing": 66,
+      "shooting": 66,
+      "tackling": 62,
+      "pace": 71,
+      "stamina": 60,
+      "positioning": 60
+    }
+  },
+  {
+    "id": "P152",
+    "name": "Ahn Jung-hwan",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 74,
+      "mental": 75,
+      "physical": 69,
+      "passing": 66,
+      "shooting": 75,
+      "tackling": 69,
+      "pace": 75,
+      "stamina": 66,
+      "positioning": 71
+    }
+  },
+  {
+    "id": "P153",
+    "name": "Lee Dong-gook",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 64,
+      "physical": 72,
+      "passing": 63,
+      "shooting": 75,
+      "tackling": 70,
+      "pace": 66,
+      "stamina": 73,
+      "positioning": 75
+    }
+  },
+  {
+    "id": "P154",
+    "name": "Hwang Sun-hong",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 61,
+      "mental": 75,
+      "physical": 75,
+      "passing": 75,
+      "shooting": 75,
+      "tackling": 66,
+      "pace": 67,
+      "stamina": 62,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P155",
+    "name": "Lee Jae-sung",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 53,
+      "mental": 56,
+      "physical": 50,
+      "passing": 65,
+      "shooting": 59,
+      "tackling": 54,
+      "pace": 62,
+      "stamina": 65,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P156",
+    "name": "Hwang In-beom",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 65,
+      "mental": 56,
+      "physical": 54,
+      "passing": 65,
+      "shooting": 52,
+      "tackling": 59,
+      "pace": 64,
+      "stamina": 57,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P157",
+    "name": "Koo Ja-cheol",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 59,
+      "physical": 63,
+      "passing": 65,
+      "shooting": 60,
+      "tackling": 62,
+      "pace": 54,
+      "stamina": 62,
+      "positioning": 56
+    }
+  },
+  {
+    "id": "P158",
+    "name": "Lee Chung-yong",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 60,
+      "physical": 51,
+      "passing": 65,
+      "shooting": 60,
+      "tackling": 58,
+      "pace": 51,
+      "stamina": 65,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P159",
+    "name": "Kim Young-gwon",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 63,
+      "mental": 64,
+      "physical": 56,
+      "passing": 52,
+      "shooting": 58,
+      "tackling": 63,
+      "pace": 53,
+      "stamina": 51,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P160",
+    "name": "Kim Jin-su",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 63,
+      "mental": 59,
+      "physical": 62,
+      "passing": 62,
+      "shooting": 51,
+      "tackling": 56,
+      "pace": 60,
+      "stamina": 65,
+      "positioning": 65
+    }
+  },
+  {
+    "id": "P161",
+    "name": "Cho Hyun-woo",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 65,
+      "physical": 62,
+      "passing": 50,
+      "shooting": 60,
+      "tackling": 57,
+      "pace": 51,
+      "stamina": 65,
+      "positioning": 61
+    }
+  },
+  {
+    "id": "P162",
+    "name": "Park Chu-young",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 60,
+      "mental": 52,
+      "physical": 50,
+      "passing": 61,
+      "shooting": 65,
+      "tackling": 63,
+      "pace": 59,
+      "stamina": 63,
+      "positioning": 62
+    }
+  },
+  {
+    "id": "P163",
+    "name": "Seol Ki-hyeon",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 54,
+      "mental": 55,
+      "physical": 65,
+      "passing": 51,
+      "shooting": 65,
+      "tackling": 62,
+      "pace": 65,
+      "stamina": 50,
+      "positioning": 63
+    }
+  },
+  {
+    "id": "P164",
+    "name": "Cho Gue-sung",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 59,
+      "mental": 57,
+      "physical": 63,
+      "passing": 62,
+      "shooting": 65,
+      "tackling": 62,
+      "pace": 63,
+      "stamina": 59,
+      "positioning": 64
+    }
+  },
+  {
+    "id": "P165",
+    "name": "Bae Jun-ho",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 40,
+      "physical": 52,
+      "passing": 51,
+      "shooting": 54,
+      "tackling": 41,
+      "pace": 55,
+      "stamina": 53,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P166",
+    "name": "Hong Hyun-seok",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 48,
+      "mental": 50,
+      "physical": 41,
+      "passing": 55,
+      "shooting": 53,
+      "tackling": 42,
+      "pace": 48,
+      "stamina": 55,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P167",
+    "name": "Paik Seung-ho",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 54,
+      "mental": 50,
+      "physical": 45,
+      "passing": 55,
+      "shooting": 49,
+      "tackling": 49,
+      "pace": 51,
+      "stamina": 53,
+      "positioning": 43
+    }
+  },
+  {
+    "id": "P168",
+    "name": "Seol Young-woo",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 47,
+      "mental": 41,
+      "physical": 50,
+      "passing": 52,
+      "shooting": 53,
+      "tackling": 55,
+      "pace": 52,
+      "stamina": 53,
+      "positioning": 54
+    }
+  },
+  {
+    "id": "P169",
+    "name": "Kim Seung-gyu",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 53,
+      "mental": 55,
+      "physical": 50,
+      "passing": 41,
+      "shooting": 53,
+      "tackling": 45,
+      "pace": 41,
+      "stamina": 55,
+      "positioning": 55
+    }
+  },
+  {
+    "id": "P170",
+    "name": "Yang Min-hyuk",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 45,
+      "physical": 49,
+      "passing": 41,
+      "shooting": 52,
+      "tackling": 52,
+      "pace": 55,
+      "stamina": 41,
+      "positioning": 41
+    }
+  },
+  {
+    "id": "P171",
+    "name": "Oh Hyeon-gyu",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 55,
+      "mental": 49,
+      "physical": 54,
+      "passing": 50,
+      "shooting": 55,
+      "tackling": 46,
+      "pace": 55,
+      "stamina": 51,
+      "positioning": 52
+    }
+  },
+  {
+    "id": "P172",
+    "name": "Yang Hyun-jun",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 51,
+      "mental": 45,
+      "physical": 49,
+      "passing": 40,
+      "shooting": 55,
+      "tackling": 52,
+      "pace": 55,
+      "stamina": 46,
+      "positioning": 44
+    }
+  }
+]

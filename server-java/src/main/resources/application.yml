@@ -22,9 +22,9 @@ hmb:
   db:
     path: ./.data/hmb.db
   data:
-    players-file: ../data/players/players.v1.json     # 부팅 임포트(버전 upsert, meta_kv 기록)
-    economy-file: ../data/players/economy.v1.json      # 확률표·경제 수치 로딩
-    bots-file:    ../data/players/bots.v1.json
+    players-file: ../data/players/players.v2.json     # 부팅 임포트(버전 upsert, meta_kv 기록) — v2=실선수(#84)
+    economy-file: ../data/players/economy.v2.json      # 확률표·경제 수치 로딩
+    bots-file:    ../data/players/bots.v2.json
   auth:
     session-ttl-hours: 720
   deck:
