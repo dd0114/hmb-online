@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildTeamInputPrompt, validateTeamInputOutput, tacticalJsonSchema } from "./coach.js";
 import { stubExecutor } from "../executor/executors/stub.js";
-import { makeTeamInputContext } from "../executor/test-fixtures.js";
+import { makeTeamInputContext, makeOpponentRoster } from "../executor/test-fixtures.js";
 
 // 프롬프트 빌더 + 검증 게이트(가드레일) — executor(AI) 무관 공통. 키/네트워크 0.
 describe("coach — buildTeamInputPrompt (W1: playerPrompts·prevSummary 반영)", () => {
@@ -46,10 +46,67 @@ describe("coach — buildTeamInputPrompt (W1: playerPrompts·prevSummary 반영)
     expect(p).toContain("11명");
   });
 
+  it("지시 카탈로그(지원 지시) 섹션이 프롬프트에 합성된다", () => {
+    const p = buildTeamInputPrompt(makeTeamInputContext());
+    expect(p).toContain("지원 지시 카탈로그");
+    expect(p).toContain("id: marking");
+    expect(p).toContain("id: overlap");
+    expect(p).toContain("id: tempo-control");
+  });
+
+  it("opponentRoster 없으면 상대 로스터 블록 생략 + marking 은 미제공 주의 표기", () => {
+    const p = buildTeamInputPrompt(makeTeamInputContext());
+    expect(p).not.toContain("상대 로스터(마킹 대상 해석용");
+    expect(p).toContain("opponentRoster 미제공"); // 카탈로그가 주의 표기
+  });
+
+  it("opponentRoster 제공 시 상대 로스터 블록(이름→playerId)이 포함되고 주의 표기 없음", () => {
+    const opponentRoster = makeOpponentRoster();
+    const p = buildTeamInputPrompt(makeTeamInputContext({ opponentRoster }));
+    expect(p).toContain("상대 로스터(마킹 대상 해석용");
+    expect(p).toContain("A9 Away ST"); // 상대 playerId + 이름
+    expect(p).not.toContain("미제공");
+  });
+
   it("tacticalJsonSchema: TacticalInput JSON Schema 파생($schema 제거)", () => {
     const s = tacticalJsonSchema();
     expect(s["type"]).toBe("object");
     expect(s["$schema"]).toBeUndefined();
+  });
+});
+
+describe("coach — 마킹(AC-C2): stub 이 카탈로그 marking 지시를 markTarget 으로 산출", () => {
+  it("개인 지시 '<상대> 막아' → 그 우리 선수의 markTarget=상대 playerId", async () => {
+    const opponentRoster = makeOpponentRoster();
+    const ctx = makeTeamInputContext({
+      opponentRoster,
+      playerPrompts: { H2: "A9 막아" }, // H2(LCB) 가 상대 A9(Away ST) 전담
+    });
+    const out = validateTeamInputOutput(await stubExecutor().execute({ id: "j", kind: "team-input", context: ctx }), ctx);
+    const marker = out.players.find((p) => p.playerId === "H2")!;
+    expect(marker.markTarget).toBe("A9");
+  });
+
+  it("팀 지시 복수 마킹 → 서로 다른 두 수비수에 1:1 분배", async () => {
+    const opponentRoster = makeOpponentRoster();
+    const ctx = makeTeamInputContext({
+      opponentRoster,
+      teamPrompt: "Away ST 랑 Away LW 둘 다 마크해",
+    });
+    const out = validateTeamInputOutput(await stubExecutor().execute({ id: "j", kind: "team-input", context: ctx }), ctx);
+    const targets = out.players.map((p) => p.markTarget).filter(Boolean);
+    expect(targets).toContain("A9"); // Away ST
+    expect(targets).toContain("A8"); // Away LW
+    // 서로 다른 수비수(중복 배정 없음)
+    expect(new Set(targets).size).toBe(targets.length);
+    const markers = out.players.filter((p) => p.markTarget);
+    expect(markers.length).toBe(2);
+  });
+
+  it("opponentRoster 없으면 마킹 지시라도 markTarget 을 지어내지 않는다", async () => {
+    const ctx = makeTeamInputContext({ playerPrompts: { H2: "A9 막아" } }); // opponentRoster 없음
+    const out = validateTeamInputOutput(await stubExecutor().execute({ id: "j", kind: "team-input", context: ctx }), ctx);
+    expect(out.players.every((p) => p.markTarget === undefined)).toBe(true);
   });
 });
 

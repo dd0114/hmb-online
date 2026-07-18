@@ -4,7 +4,7 @@
 게임 상태·큐·플로우는 **server-java 소유** — 여기서 게임 API를 만들지 말 것(과거 lab 실험 API는 퇴역 대상).
 
 ## 필독 (이 순서로)
-1. `docs/plan-v2/PRD-v2.md` §3.6 (AC-T1~T4) + `docs/plan-v2/LLD-ts-servants.md` (재편 구조·계약·함정)
+1. `docs/plan-v2/PRD-v2.md` §3.6 + `docs/plan-v2/LLD-ts-servants.md` (V1 구조·계약·함정) + **Phase 2: `docs/plan-v3/LLD-p2-servants.md`(지시 카탈로그·컨텍스트 확장·AI 예산 — 현행 SoT)**
 2. `docs/plan-v2/LLD-server-java.md` §6 (잡 프로토콜 — Java 측 정의가 SoT)
 3. 에픽 이슈(ts-servants) STATE
 

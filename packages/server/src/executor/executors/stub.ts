@@ -53,6 +53,34 @@ export function stubExecutor(): AiExecutor {
         const pp = ctx.playerPrompts[p.playerId];
         if (pp && /침투|런|run|forward/i.test(pp)) p.behavior.forwardRunFreq = 0.9;
       }
+
+      // 마킹(카탈로그 marking 지시의 stub 흉내 — AC-C2): 마킹 키워드 + opponentRoster 이름/ id 지목 →
+      // markTarget 설정. 라이브(claude-code)는 카탈로그 프롬프트로 해석, stub 은 키워드로 방향성만 재현.
+      const opp = ctx.opponentRoster ?? [];
+      if (opp.length > 0) {
+        const isMark = (s: string): boolean => /막아|막아라|마크|전담|mark/i.test(s);
+        const findTarget = (s: string): string | undefined =>
+          opp.find((o) => s.includes(o.playerId) || s.includes(o.name))?.playerId;
+
+        // 개인 지시로 특정 우리 선수에게 마킹을 붙인 경우 → 그 선수 markTarget.
+        for (const p of t.players) {
+          const pp = ctx.playerPrompts[p.playerId];
+          if (pp && isMark(pp)) {
+            const target = findTarget(pp);
+            if (target) p.markTarget = target;
+          }
+        }
+
+        // 팀 지시에 마킹이 있으면 지목된 상대들을 수비 자원에 1:1 분배(복수 마킹).
+        if (isMark(ctx.teamPrompt)) {
+          const mentioned = opp.filter((o) => ctx.teamPrompt.includes(o.name) || ctx.teamPrompt.includes(o.playerId));
+          const defenders = t.players.filter((p) => /(LB|CB|RB|DM|CDM)/i.test(p.role) && !p.markTarget);
+          mentioned.forEach((o, i) => {
+            const d = defenders[i];
+            if (d) d.markTarget = o.playerId;
+          });
+        }
+      }
       return Promise.resolve(t);
     },
   };

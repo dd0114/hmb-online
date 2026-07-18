@@ -5,6 +5,7 @@ import {
   TeamInputJobContext,
   type TeamInputRosterEntry,
 } from "@hmb/shared";
+import { synthesizeDirectivesSection, DIRECTIVES } from "./directives/index.js";
 
 /**
  * coach — "자연어 지시(팀+선수별) → TacticalInput" 프롬프트 빌더 + 검증 게이트 (방식1 핵심).
@@ -23,7 +24,7 @@ export const COACH_SYSTEM = [
   "- basePosition 은 포메이션 슬롯을 기본으로 하되 지시에 맞게 조정 가능(x=0 자기 골문→1 상대 골문, y=0..1 좌우 폭).",
   "- 선수의 능력치(0..100)를 고려해 현실적인 성향을 부여한다(예: pace 낮은 수비수에게 과도한 forwardRunFreq 금지).",
   "behavior 의미: forwardRunFreq=오프더볼 전진 침투, widthTendency=측면으로 벌림(풀백/윙어 오버랩), supportDepth=공격 가담 깊이, pressAggression=개인 압박, passRisk=위험 전진패스, passDirectness=직선 패스, dribbleTendency, shootTendency, positioningFreedom=로밍.",
-  "감독 지시의 의도를 파라미터로 충실히 반영하라(예: '풀백 오버랩' → 해당 풀백 widthTendency·forwardRunFreq↑; '로우블록' → defensiveLineHeight↓·compactness↑·pressAggression↓).",
+  "감독 지시의 의도를 파라미터로 충실히 반영하라 — 구체 해석은 아래 '지원 지시 카탈로그'를 따른다.",
 ].join("\n");
 
 /**
@@ -52,8 +53,16 @@ function rosterLine(p: TeamInputRosterEntry): string {
  */
 export function buildTeamInputPrompt(ctx: TeamInputJobContext, feedback?: string): string {
   const roster = [...ctx.roster].sort((a, b) => a.slotIndex - b.slotIndex);
+
+  // 이번 잡에 제공된 컨텍스트 키(카탈로그의 contextNeeds 충족 판단) — 현재 additive 필드는 opponentRoster.
+  const satisfied = new Set<string>();
+  if (ctx.opponentRoster && ctx.opponentRoster.length > 0) satisfied.add("opponentRoster");
+
   const parts = [
     COACH_SYSTEM,
+    "",
+    // 지시 카탈로그(고정 콘텐츠) — 안정 프리픽스에 두어 프롬프트 캐시 최적. 순수 합성(A/B 프롬프트 공용).
+    synthesizeDirectivesSection(DIRECTIVES, satisfied),
     "",
     `포메이션: ${ctx.formation} (${ctx.side} 팀, ${ctx.half === 1 ? "전반" : "후반"})`,
     `팀 로스터(선발 11명, 능력치 0..100):`,
@@ -61,6 +70,16 @@ export function buildTeamInputPrompt(ctx: TeamInputJobContext, feedback?: string
     "",
     `seed: ${ctx.seed}`,
   ];
+
+  // 상대 로스터(마킹 등 opponentRoster 의존 지시의 이름→playerId 해석 근거). additive optional.
+  if (ctx.opponentRoster && ctx.opponentRoster.length > 0) {
+    const opp = [...ctx.opponentRoster].sort((a, b) => a.slotIndex - b.slotIndex);
+    parts.push(
+      "",
+      "상대 로스터(마킹 대상 해석용 — 이름을 playerId 로 매핑):",
+      ...opp.map((p) => `- ${p.playerId} ${p.name} (${p.position})`),
+    );
+  }
 
   const team = ctx.teamPrompt.trim();
   parts.push(`감독 지시(팀 전체):\n${team.length > 0 ? team : "(별도 지시 없음 — 포메이션 기본 성향으로)"}`);

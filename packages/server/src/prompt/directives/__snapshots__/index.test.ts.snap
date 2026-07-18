@@ -1,0 +1,45 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`synthesizeDirectivesSection — 순수 합성(A/B 프롬프트 공용) > 스냅샷: 카탈로그 증감 시 diff 가시화(전체 섹션) 1`] = `
+"지원 지시 카탈로그 — 감독의 자연어 지시를 아래 유형으로 해석해 지정된 필드에 반영한다:
+
+[전담 마크(마킹)] (id: marking)
+  해석: 감독이 특정 상대 선수를 지목하며 '막아라/마크해라/전담해라'라고 하면 대인 마킹 지시다. 상대 선수 이름은 opponentRoster 에서 playerId 로 해석한다(이름 부분 일치 허용, 대소문자·공백 무시). 가장 적합한 우리 수비수/수비형 미드필더의 players[].markTarget 에 그 상대 playerId 를 넣는다(태클·포지셔닝·pace 를 고려). 복수 지목('둘 다 마크')이면 복수의 서로 다른 수비수에게 각 대상을 1:1 로 분배한다 — 한 수비수에 여러 markTarget 금지, 한 대상에 여러 수비수 금지. 지목 대상이 opponentRoster 에 없거나 opponentRoster 가 제공되지 않으면 마킹을 생략한다(존재하지 않는 id 를 지어내지 말 것).
+  출력 필드: players[].markTarget
+  필요 컨텍스트: opponentRoster
+  예시:
+    · "손흥민 막아" → opponentRoster 에서 '손흥민'의 playerId 를 찾아, 대인 수비가 강한 우리 수비수 1명의 markTarget 에 설정.
+    · "메시랑 음바페 둘 다 마크해" → 두 상대 playerId 를 서로 다른 두 수비수의 markTarget 에 각각 배정(1:1 분배, 중복 없음).
+
+[오버랩(측면 전진 가담)] (id: overlap)
+  해석: '풀백 오버랩', '측면 밀고 올라가', '윙백 공격 가담' 류는 측면 수비수/윙어의 전진 오버랩 지시다. 해당 풀백(LB/RB)·윙어의 behavior.widthTendency 와 behavior.forwardRunFreq 를 높이고, 필요 시 team.width 를 넓힌다. pace/stamina 가 낮은 선수에게 과도한 오버랩을 부여하지 않는다(현실성).
+  출력 필드: players[].behavior.widthTendency, players[].behavior.forwardRunFreq, team.width
+  예시:
+    · "양쪽 풀백 적극적으로 오버랩" → LB·RB 의 widthTendency·forwardRunFreq↑, team.width↑(측면 폭 확대).
+
+[침투(오프더볼 전진 런)] (id: forward-run)
+  해석: '침투해라', '뒷공간 노려', '적극적으로 뛰어 들어가' 류는 오프더볼 전진 침투 지시다. 해당 선수의 behavior.forwardRunFreq 를 높이고, 공격 가담 깊이(supportDepth)도 함께 올린다. 최전방·2선 공격 자원에 우선 적용하며, pace 가 받쳐줄 때 더 강하게 반영한다.
+  출력 필드: players[].behavior.forwardRunFreq, players[].behavior.supportDepth
+  예시:
+    · "9번 계속 뒷공간 침투" → 지목된 공격수의 forwardRunFreq↑, supportDepth↑(라인 뒤 침투 빈도 상승).
+
+[롱볼/다이렉트] (id: long-ball)
+  해석: '롱볼 위주', '길게 붙여', '다이렉트하게', '뒤로 넘겨' 류는 직선적 전개 지시다. 관련 선수(주로 후방 빌드업 자원·타깃맨)의 behavior.passDirectness 를 높이고 passRisk 를 다소 올린다. 팀 템포를 빠르게 가져가려는 의도면 team.tempo 도 함께 상향한다.
+  출력 필드: players[].behavior.passDirectness, players[].behavior.passRisk, team.tempo
+  예시:
+    · "빌드업 생략하고 롱볼로 빠르게" → 후방 자원 passDirectness↑·passRisk↑, team.tempo↑(짧은 빌드업 대신 직선 전개).
+
+[압박/프레스 트리거] (id: press-trigger)
+  해석: '강하게 압박', '전방부터 압박', '하이프레스' 류는 압박 강도·시작 지점 지시다. team.pressingScheme.intensity 를 높이고 triggerLine 을 상대 진영 쪽(높게)으로 올린다. 특정 선수에게 앞선 압박을 맡기면 그 선수의 behavior.pressAggression 을 높인다. 반대로 '내려서 수비', '로우블록', '압박 자제'면 intensity·triggerLine 을 낮추고 pressAggression 을 줄인다.
+  출력 필드: team.pressingScheme.intensity, team.pressingScheme.triggerLine, players[].behavior.pressAggression
+  예시:
+    · "전방부터 강하게 압박" → pressingScheme.intensity↑·triggerLine↑(상대 진영), 전방 자원 pressAggression↑.
+    · "무리하지 말고 내려서 로우블록" → pressingScheme.intensity↓·triggerLine↓, pressAggression↓(자기 진영 블록).
+
+[템포/라인 높이 조절] (id: tempo-control)
+  해석: '빠른 템포로', '천천히 점유', '하이라인', '라인 내려' 류는 경기 속도·수비 라인 높이 지시다. 빠른 템포는 team.tempo↑, 느린 점유는 team.tempo↓. 하이라인은 team.defensiveLineHeight↑, 라인 하강은 defensiveLineHeight↓ + compactness↑(간격 압축). '수비 컴팩트하게'는 compactness↑, '넓게 벌려'는 team.width↑.
+  출력 필드: team.tempo, team.defensiveLineHeight, team.compactness, team.width
+  예시:
+    · "하이라인에 빠른 템포" → team.defensiveLineHeight↑, team.tempo↑(전방 압박형 빠른 전개).
+    · "라인 내리고 천천히 점유" → defensiveLineHeight↓·compactness↑, team.tempo↓(안정 지향)."
+`;

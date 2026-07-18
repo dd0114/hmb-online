@@ -52,5 +52,10 @@ export const TeamInputJobContext = z.object({
   playerPrompts: z.record(z.string(), z.string()),
   /** half=2 만: 전반 요약. */
   prevSummary: PrevHalfSummary.nullish(),
+  /**
+   * 상대 선발 로스터(마킹 지시의 상대 이름→playerId 해석용). **additive optional**(구계약 호환).
+   * (P2-servants W0, PRD-v3 AC-C2 — Java MatchOrchestrator 가 상대 팀 SelectData 에서 채운다.)
+   */
+  opponentRoster: z.array(TeamInputRosterEntry).optional(),
 });
 export type TeamInputJobContext = z.infer<typeof TeamInputJobContext>;
