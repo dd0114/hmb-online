@@ -995,22 +995,35 @@ components:
       type: object
       required: [id, mode, opponentName, result, createdAt]
       properties:
-        id: { type: string }
+        id: { type: string, description: matchId — 상세 하프 로그 재생 링크에 사용 }
         mode:
           type: string
           enum: [practice, league]
         opponentName: { type: string }
-        scoreHome: { type: [integer, "null"] }
-        scoreAway: { type: [integer, "null"] }
+        scoreHome:
+          type: [integer, "null"]
+          description: 픽스처(=엔진) 관점 홈 득점. 유저 관점은 userWasHome 로 오리엔트.
+        scoreAway:
+          type: [integer, "null"]
+          description: 픽스처(=엔진) 관점 어웨이 득점. 유저 관점은 userWasHome 로 오리엔트.
         result:
           type: [string, "null"]
           enum: [WIN, DRAW, LOSS]
+          description: 유저 관점 결과(어웨이 리그경기면 flip 반영).
         seasonNo:
           type: [integer, "null"]
           description: 리그 경기면 시즌 번호
         round:
           type: [integer, "null"]
           description: 리그 경기면 라운드
+        userWasHome:
+          type: boolean
+          description: >-
+            additive(W4). 유저가 이 경기에서 홈 사이드였는지. scoreHome/scoreAway 가 픽스처
+            관점이라 유저 득점=userWasHome?scoreHome:scoreAway 로 오리엔트한다. 연습·유저홈 리그경기는 true.
+        hasHalves:
+          type: boolean
+          description: additive(W4). 하프 로그(match_halves)가 존재해 상세 재생이 가능한지.
         createdAt:
           type: string
           format: date-time

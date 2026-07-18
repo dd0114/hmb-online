@@ -749,6 +749,9 @@ components:
       type: object
       required: [id, opponentName, scoreHome, scoreAway, result, createdAt]
       properties:
+        userWasHome:
+          type: boolean
+          description: "P2 additive — 유저 관점 오리엔트 키(연습=true, 리그 어웨이=false). scoreHome/Away는 픽스처 관점 유지"
         id: { type: string }
         opponentName: { type: string }
         scoreHome: { type: [integer, "null"] }

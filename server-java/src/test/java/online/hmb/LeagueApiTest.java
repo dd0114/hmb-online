@@ -404,7 +404,86 @@ class LeagueApiTest extends MatchTestBase {
         assertThat(playedFixtureCount(seasonId)).isEqualTo(playedBefore); // 리그 픽스처 무변화
     }
 
+    // ── 어웨이 유저 리그경기 풀 플로우 → 유저 관점 flip (W3 이월 / W4 오리엔트) ──
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void awayUserLeagueMatchDrivesToFinishedFlipsResultAndRewardUserPerspective() {
+        String token = setupUserWithDeck("lg_away_e2e");
+        String uid = userIdOf("lg_away_e2e");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        // 라운드 1~9 유저 픽스처를 직접 정산해 스케줄 전진 → 다음 유저 경기 = 라운드10(서클 메서드상 유저 어웨이).
+        List<Map<String, Object>> userFx = userFixturesOrdered(seasonId);
+        for (int i = 0; i < 9; i++) {
+            Map<String, Object> f = userFx.get(i);
+            leagueService.settleUserFixture((String) f.get("id"), 0, 0); // 무승부(관계/보상 경로 미개입)
+        }
+
+        ResponseEntity<Map> nm = authPost("/api/league/next-match", token, null, Map.class);
+        Map<?, ?> match = (Map<?, ?>) nm.getBody().get("match");
+        String matchId = (String) match.get("id");
+        Map<?, ?> fixture = (Map<?, ?>) nm.getBody().get("fixture");
+        String fixtureId = (String) fixture.get("id");
+        assertThat(leagueService.userIsHomeForFixture(fixtureId)).isFalse(); // 유저 어웨이
+
+        // 풀 플로우 드라이브 → FINISHED. 엔진(=픽스처) home:1 away:0(h1) → 유저(어웨이) 관점 패(flip).
+        authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        authPost("/api/matches/" + matchId + "/halftime", token, Map.of("substitutions", List.of()), Map.class);
+        authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("FINISHED");
+
+        // result flip: 엔진 home 승이지만 유저 어웨이 → LOSS. score_home/away 는 엔진(=픽스처) 관점 저장.
+        Map<String, Object> m = matchRow(matchId);
+        assertThat(m.get("result")).isEqualTo("LOSS");
+        assertThat(((Number) m.get("score_home")).intValue()).isEqualTo(1);
+        assertThat(((Number) m.get("score_away")).intValue()).isEqualTo(0);
+
+        // 픽스처 정산도 엔진(=픽스처) 관점(직접 매핑).
+        Map<String, Object> settled = fixtureById(fixtureId);
+        assertThat(((Number) settled.get("score_home")).intValue()).isEqualTo(1);
+        assertThat(((Number) settled.get("score_away")).intValue()).isEqualTo(0);
+
+        // 보상 = 유저 관점(패배 보상 reward_loss, ref=matchId).
+        long lossReward = jdbcClient.sql(
+                        "SELECT COUNT(*) FROM point_ledger WHERE user_id=? AND reason='reward_loss' AND ref_id=?")
+                .params(uid, matchId).query(Long.class).single();
+        assertThat(lossReward).isEqualTo(1L);
+
+        // records = 유저 관점(패 → 사기 streak 음수).
+        int streak = jdbcClient.sql("SELECT streak FROM team_morale WHERE user_id=?")
+                .param(uid).query(Integer.class).single();
+        assertThat(streak).isLessThan(0);
+
+        // W4 오리엔트: 로그 엔드포인트가 유저 어웨이를 userWasHome=false 로 실어보낸다(실플로우 경로).
+        ResponseEntity<List> logs = authGet("/api/logs/matches?mode=league", token, List.class);
+        List<Map<String, Object>> items = logs.getBody();
+        Map<String, Object> logItem = items.stream()
+                .filter(it -> matchId.equals(it.get("id"))).findFirst().orElseThrow();
+        assertThat((Boolean) logItem.get("userWasHome")).isFalse();
+        assertThat(logItem.get("result")).isEqualTo("LOSS");
+        assertThat(((Number) logItem.get("scoreAway")).intValue()).isEqualTo(0); // 유저 득점 = away 슬롯
+    }
+
     // ── 헬퍼 ─────────────────────────────────────────────────────────────
+
+    private Map<String, Object> matchRow(String matchId) {
+        return jdbcClient.sql("SELECT id, result, score_home, score_away FROM matches WHERE id=?")
+                .param(matchId)
+                .query((rs, n) -> {
+                    Map<String, Object> mm = new java.util.HashMap<>();
+                    mm.put("id", rs.getString("id"));
+                    mm.put("result", rs.getString("result"));
+                    mm.put("score_home", rs.getObject("score_home"));
+                    mm.put("score_away", rs.getObject("score_away"));
+                    return mm;
+                })
+                .single();
+    }
 
     private String seasonId(String userId) {
         return jdbcClient.sql("SELECT id FROM league_seasons WHERE user_id=? ORDER BY season_no DESC LIMIT 1")
