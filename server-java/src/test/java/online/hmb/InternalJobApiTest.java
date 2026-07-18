@@ -260,6 +260,24 @@ class InternalJobApiTest extends MatchTestBase {
         assertThat(notFound.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     }
 
+    // ── ok=true인데 output 누락 → 400 VALIDATION_ERROR (leased 잡 대상) ───────
+
+    @Test
+    void completeOkTrueWithoutOutputReturns400() {
+        String matchId = kickoffToGen1("q_400");
+        jdbcClient.sql("DELETE FROM ai_jobs WHERE match_id = ? AND side = 'away'").param(matchId).update();
+
+        // 실제 lease → complete 검증이 leased 게이트(409)가 아니라 output 검증(400)에 걸리는지 확인
+        String jobId = leaseOne("w-400");
+        ResponseEntity<Map> response = completeRaw(SERVANT_TOKEN, jobId, Map.of("ok", true));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody().get("code")).isEqualTo("VALIDATION_ERROR");
+
+        // 잡은 여전히 leased(complete 미반영) — 재시도 가능
+        assertThat(jdbcClient.sql("SELECT status FROM ai_jobs WHERE id = ?").param(jobId)
+                .query(String.class).single()).isEqualTo("leased");
+    }
+
     // ── complete(ok=false) requeue → exhaust (HTTP 경유, 매치 FAILED 전파) ────
 
     @Test
