@@ -27,6 +27,25 @@ const devViewer = join(repoRoot, "packages", "engine", "dev-viewer");
 const matchLog = join(devViewer, "match-log.json");
 const standalone = join(devViewer, "viewer-standalone.html");
 const outPath = join(repoRoot, "apps", "web", "public", "viewer-embed.html");
+const engineConfig = join(repoRoot, "packages", "engine", "src", "config.ts");
+
+// 엔진 config 버전 SoT = packages/engine/src/config.ts 의 `version: "engine@x.y.z"`.
+// 아티팩트에 이 값을 마커로 박아 predev(ensure-viewer)가 값싸게 최신 여부를 판정한다.
+export const ENGINE_VERSION_MARKER = "hmb-engine-version";
+
+/** 현재 엔진 config 버전 문자열(예: "engine@0.9.0"). 소스 파일에서 정적으로 읽음(엔진 실행 없음). */
+export function readEngineVersion() {
+  const src = readFileSync(engineConfig, "utf8");
+  const m = src.match(/version:\s*["']([^"']+)["']/);
+  if (!m) throw new Error("engine config.ts 에서 version 을 못 찾음");
+  return m[1];
+}
+
+/** 아티팩트 HTML 에 박힌 엔진 버전 마커를 읽음(없으면 null). */
+export function readEmbeddedVersion(html) {
+  const m = html.match(new RegExp(`${ENGINE_VERSION_MARKER}:\\s*([^\\s]+)\\s*-->`));
+  return m ? m[1] : null;
+}
 
 // 브리지 스크립트(임베드 로그 대신 부모 주입 로그 로드). dev-viewer 원본은 건드리지 않는다.
 export const BRIDGE_MARKER = "hmb-viewer-embed-bridge";
@@ -61,12 +80,14 @@ export const bridgeScript = `<script>
 </script>`;
 
 // index.html 원본을 후처리해 임베드 아티팩트 HTML 을 만든다(순수 함수 — 단위검증 용이).
-export function injectBridge(standaloneHtml) {
+export function injectBridge(standaloneHtml, engineVersion = "") {
   // 1) 임베드된 __LOG__ 플레이스홀더 스크립트 제거(용량↓, fetch 경로 강제). 없으면 브리지가 런타임에 null 처리.
   let out = standaloneHtml.replace(/\s*<script>window\.__LOG__ = [\s\S]*?;<\/script>/, "");
   // 2) 원본 module 스크립트 앞에 브리지(classic) 주입 — classic 은 deferred module 보다 먼저 실행.
+  //    엔진 버전 마커도 같이 박아 predev(ensure-viewer)가 최신 여부를 값싸게 비교하게 한다.
+  const version = engineVersion ? `<!-- ${ENGINE_VERSION_MARKER}: ${engineVersion} -->\n    ` : "";
   const before = out;
-  out = out.replace(/(<script type="module">)/, `${bridgeScript}\n    $1`);
+  out = out.replace(/(<script type="module">)/, `${version}${bridgeScript}\n    $1`);
   if (out === before) throw new Error("주입 지점(<script type=module>) 을 못 찾음 — dev-viewer index.html 구조 변경?");
   return out;
 }
@@ -83,12 +104,13 @@ function run() {
   console.log("[build-viewer] build-standalone 실행(dev-viewer 원본, 무수정)");
   execFileSync("node", [join(devViewer, "build-standalone.mjs")], { cwd: repoRoot, stdio: "inherit" });
 
+  const engineVersion = readEngineVersion();
   const html = readFileSync(standalone, "utf8");
-  const out = injectBridge(html);
+  const out = injectBridge(html, engineVersion);
   if (!out.includes(BRIDGE_MARKER)) throw new Error("브리지 주입 실패(마커 없음)");
   writeFileSync(outPath, out);
   const mb = (Buffer.byteLength(out) / 1e6).toFixed(2);
-  console.log(`[build-viewer] wrote ${outPath} (${mb} MB, bridge=${BRIDGE_MARKER})`);
+  console.log(`[build-viewer] wrote ${outPath} (${mb} MB, bridge=${BRIDGE_MARKER}, ${engineVersion})`);
 }
 
 // 직접 실행 시에만 파이프라인 구동(import 시엔 순수 함수만 노출 — 테스트용).
