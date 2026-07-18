@@ -1072,6 +1072,7 @@ components:
       description: "선수별 관계 컨텍스트 {playerId: {trust, personality}}"
       additionalProperties:
         type: object
+        required: [trust, personality]
         properties:
           trust:
             type: integer
@@ -1095,6 +1096,7 @@ components:
           $ref: "#/components/schemas/RelationContext"
         teamMorale:
           type: object
+          required: [morale, streak]
           properties:
             morale:
               type: integer

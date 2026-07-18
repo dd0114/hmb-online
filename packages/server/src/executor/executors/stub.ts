@@ -59,8 +59,11 @@ export function stubExecutor(): AiExecutor {
       const opp = ctx.opponentRoster ?? [];
       if (opp.length > 0) {
         const isMark = (s: string): boolean => /막아|막아라|마크|전담|mark/i.test(s);
+        // playerId 는 **단어경계** 매칭("A10 막아"가 A1 을 매칭하지 않게, W0 이월 수정). 이름은 부분일치.
+        const escapeRe = (x: string): string => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const mentionsId = (s: string, id: string): boolean => new RegExp(`\\b${escapeRe(id)}\\b`).test(s);
         const findTarget = (s: string): string | undefined =>
-          opp.find((o) => s.includes(o.playerId) || s.includes(o.name))?.playerId;
+          opp.find((o) => mentionsId(s, o.playerId) || s.includes(o.name))?.playerId;
 
         // 개인 지시로 특정 우리 선수에게 마킹을 붙인 경우 → 그 선수 markTarget.
         for (const p of t.players) {
@@ -73,13 +76,41 @@ export function stubExecutor(): AiExecutor {
 
         // 팀 지시에 마킹이 있으면 지목된 상대들을 수비 자원에 1:1 분배(복수 마킹).
         if (isMark(ctx.teamPrompt)) {
-          const mentioned = opp.filter((o) => ctx.teamPrompt.includes(o.name) || ctx.teamPrompt.includes(o.playerId));
+          const mentioned = opp.filter(
+            (o) => ctx.teamPrompt.includes(o.name) || mentionsId(ctx.teamPrompt, o.playerId),
+          );
           const defenders = t.players.filter((p) => /(LB|CB|RB|DM|CDM)/i.test(p.role) && !p.markTarget);
           mentioned.forEach((o, i) => {
             const d = defenders[i];
             if (d) d.markTarget = o.playerId;
           });
         }
+      }
+
+      // 관계·사기 방향성 흉내(AC-C4 계약 테스트용, 최소한). 라이브는 성격 규칙 프롬프트로 해석 —
+      // stub 은 성격+톤 키워드로 mentalModifier 방향만 재현(값 정확성 아님).
+      const rel = ctx.relations ?? {};
+      const scold = (s: string): boolean => /질책|혼|정신차려|압박해|blame|scold|criticiz/i.test(s);
+      const strongAttack = (s: string): boolean => /공격|과감|밀어붙|강하게|attack|aggress|push/i.test(s);
+      const clampM = (v: number): number => Math.max(-1, Math.min(1, v));
+      for (const p of t.players) {
+        const r = rel[p.playerId];
+        if (!r) continue;
+        const tone = `${ctx.teamPrompt} ${ctx.playerPrompts[p.playerId] ?? ""}`;
+        if (r.personality === "GLASS" && scold(tone)) {
+          p.mentalModifier = clampM(p.mentalModifier - 0.4); // 유리멘탈: 질책에 위축(역효과)
+        } else if (r.personality === "FIERY" && strongAttack(tone)) {
+          p.mentalModifier = clampM(p.mentalModifier + 0.4); // 불꽃: 강한 지시에 과반응
+        } else if (r.personality === "AMBITIOUS" && strongAttack(tone)) {
+          p.mentalModifier = clampM(p.mentalModifier + 0.3); // 야심가: 공격 지시 선호
+          p.behavior.shootTendency = clampM(p.behavior.shootTendency + 0.2);
+        }
+        // 신뢰 낮으면 지시 이행도 완화 — 반응을 중립 쪽으로 절반 눌러 보수화.
+        if (r.trust < 40) p.mentalModifier = p.mentalModifier * 0.5;
+      }
+      // 팀 사기: 연패 흐름(streak<0)이면 팀 전반 mentalModifier 소폭 하향(문맥 흉내).
+      if (ctx.teamMorale && ctx.teamMorale.streak < 0) {
+        for (const p of t.players) p.mentalModifier = clampM(p.mentalModifier - 0.1);
       }
       return Promise.resolve(t);
     },

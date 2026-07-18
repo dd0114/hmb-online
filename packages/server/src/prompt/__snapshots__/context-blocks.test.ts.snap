@@ -1,7 +1,16 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`synthesizeDirectivesSection — 순수 합성(A/B 프롬프트 공용) > 스냅샷: 카탈로그 증감 시 diff 가시화(전체 섹션) 1`] = `
-"지원 지시 카탈로그 — 감독의 자연어 지시를 아래 유형으로 해석해 지정된 필드에 반영한다:
+exports[`coach — Phase2 컨텍스트 블록 통합 > 스냅샷: Phase2 컨텍스트 풀 블록 프롬프트(블록 렌더 diff 가시화) 1`] = `
+"너는 축구 게임의 AI 감독이다. 감독의 자연어 지시를 시뮬레이션 엔진의 전술 파라미터(TacticalInput)로 번역한다.
+규칙:
+- players 는 주어진 로스터의 playerId 를 정확히 그대로 사용한다(11명 전원, 추가/누락 금지).
+- 모든 behavior 값과 team 수치는 0..1, mentalModifier 는 -1..1 범위.
+- basePosition 은 포메이션 슬롯을 기본으로 하되 지시에 맞게 조정 가능(x=0 자기 골문→1 상대 골문, y=0..1 좌우 폭).
+- 선수의 능력치(0..100)를 고려해 현실적인 성향을 부여한다(예: pace 낮은 수비수에게 과도한 forwardRunFreq 금지).
+behavior 의미: forwardRunFreq=오프더볼 전진 침투, widthTendency=측면으로 벌림(풀백/윙어 오버랩), supportDepth=공격 가담 깊이, pressAggression=개인 압박, passRisk=위험 전진패스, passDirectness=직선 패스, dribbleTendency, shootTendency, positioningFreedom=로밍.
+감독 지시의 의도를 파라미터로 충실히 반영하라 — 구체 해석은 아래 '지원 지시 카탈로그'를 따른다.
+
+지원 지시 카탈로그 — 감독의 자연어 지시를 아래 유형으로 해석해 지정된 필드에 반영한다:
 
 [전담 마크(마킹)] (id: marking)
   해석: 감독이 특정 상대 선수를 지목하며 '막아라/마크해라/전담해라'라고 하면 대인 마킹 지시다. 상대 선수 이름은 opponentRoster 에서 playerId 로 해석한다(이름 부분 일치 허용, 대소문자·공백 무시). 가장 적합한 우리 수비수/수비형 미드필더의 players[].markTarget 에 그 상대 playerId 를 넣는다(태클·포지셔닝·pace 를 고려). 복수 지목('둘 다 마크')이면 복수의 서로 다른 수비수에게 각 대상을 1:1 로 분배한다 — 한 수비수에 여러 markTarget 금지, 한 대상에 여러 수비수 금지. 지목 대상이 opponentRoster 에 없거나 opponentRoster 가 제공되지 않으면 마킹을 생략한다(존재하지 않는 id 를 지어내지 말 것).
@@ -41,5 +50,46 @@ exports[`synthesizeDirectivesSection — 순수 합성(A/B 프롬프트 공용) 
   출력 필드: team.tempo, team.defensiveLineHeight, team.compactness, team.width
   예시:
     · "하이라인에 빠른 템포" → team.defensiveLineHeight↑, team.tempo↑(전방 압박형 빠른 전개).
-    · "라인 내리고 천천히 점유" → defensiveLineHeight↓·compactness↑, team.tempo↓(안정 지향)."
+    · "라인 내리고 천천히 점유" → defensiveLineHeight↓·compactness↑, team.tempo↓(안정 지향).
+
+포메이션: 4-3-3 (home 팀, 전반)
+팀 로스터(선발 11명, 능력치 0..100):
+- slot0 H0 Home GK (GK) — tech 45/mental 72/phys 66 · pass 56·shoot 22·tackle 23·pace 53·stam 52·pos 87
+- slot1 H1 Home LB (DF) — tech 60/mental 62/phys 66 · pass 56·shoot 41·tackle 62·pace 78·stam 76·pos 66
+- slot2 H2 Home LCB (DF) — tech 57/mental 71/phys 81 · pass 58·shoot 37·tackle 85·pace 54·stam 73·pos 79
+- slot3 H3 Home RCB (DF) — tech 47/mental 61/phys 75 · pass 62·shoot 34·tackle 75·pace 56·stam 59·pos 83
+- slot4 H4 Home RB (DF) — tech 61/mental 55/phys 67 · pass 52·shoot 33·tackle 72·pace 77·stam 80·pos 65
+- slot5 H5 Home LCM (MF) — tech 77/mental 65/phys 59 · pass 70·shoot 61·tackle 56·pace 69·stam 72·pos 63
+- slot6 H6 Home CM (MF) — tech 69/mental 60/phys 73 · pass 69·shoot 53·tackle 57·pace 66·stam 79·pos 67
+- slot7 H7 Home RCM (MF) — tech 74/mental 66/phys 72 · pass 76·shoot 55·tackle 53·pace 63·stam 81·pos 70
+- slot8 H8 Home LW (FW) — tech 66/mental 57/phys 57 · pass 62·shoot 62·tackle 35·pace 76·stam 64·pos 67
+- slot9 H9 Home ST (FW) — tech 68/mental 62/phys 70 · pass 60·shoot 76·tackle 42·pace 75·stam 68·pos 77
+- slot10 H10 Home RW (FW) — tech 78/mental 67/phys 62 · pass 60·shoot 64·tackle 44·pace 80·stam 71·pos 66
+
+seed: 4815162342
+
+수동 팀 전술(감독이 슬라이더로 설정한 베이스 값 — 각 0..1):
+- 라인 0.8 · 압박 0.7 · 템포 0.6 · 폭 0.5
+이 값을 팀 전술의 베이스로 삼는다(line→team.defensiveLineHeight, press→team.pressingScheme.intensity, tempo→team.tempo, width→team.width). 감독의 자연어 지시는 이 베이스 위에 보정만 하라 — 지시가 없는 축은 베이스 값을 유지하고, 지시가 있는 축만 조정한다.
+
+라인업 컨디션(0=최저 … 1=최상, 시드 롤):
+- H0 Home GK: 0.90 (최상)
+컨디션이 저조한 선수는 무리한 성향(과도한 forwardRunFreq·pressAggression 등)을 자제하고 보수적으로 잡는다.
+
+팀 사기: 72/100 (3연승).
+사기가 높으면 팀 전반을 적극적·과감하게, 낮으면(연패 흐름) 안정 지향으로 문맥을 반영한다.
+
+감독-선수 관계(성격·신뢰도 — 지시 반응성에 반영):
+성격별 반응 규칙(mentalModifier -1..1 및 관련 behavior 강도에 반영):
+- FIERY(불꽃): 강하거나 공격적인 지시에 과반응한다 — 관련 behavior 를 더 크게 잡고 mentalModifier 를 상향한다.
+- GLASS(유리멘탈): 질책·압박성 문구에 위축된다 — 역효과로 mentalModifier 를 하향하고, 지시 강도를 무리하게 올리지 않는다.
+- AMBITIOUS(야심가): 공격·전진 지시를 선호한다 — 공격 성향(shootTendency·forwardRunFreq 등)에 적극 반응하고 mentalModifier 를 상향한다.
+- CALM(침착): 지시 톤에 흔들리지 않는다 — 과반응·위축 없이 안정적으로 반영한다.
+신뢰도(trust)가 낮은 선수(대략 40 미만)는 지시 이행도를 완화한다 — 지시 강도를 그대로 반영하지 말고 보수적으로 조정한다.
+선수별:
+- H9 Home ST: 성격 AMBITIOUS · 신뢰 78
+감독 지시(팀 전체):
+하이라인·강한 압박
+
+제공된 JSON 스키마에 맞는 TacticalInput JSON 을 정확히 한 번 제출한다. 다른 설명·행동 금지."
 `;

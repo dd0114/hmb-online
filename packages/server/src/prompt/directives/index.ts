@@ -30,13 +30,13 @@ export const DIRECTIVES: readonly Directive[] = [
  * 향후 #82 A+B 린패치 프롬프트에도 동일 카탈로그를 그대로 끼워 넣을 수 있다.
  * A(수동전술 베이스) 프롬프트든 B(관계·사기 델타) 프롬프트든 이 섹션은 불변으로 재사용된다.
  *
+ * 이 섹션은 **안정 프리픽스**(프롬프트 캐시)다 — 요청별 컨텍스트 유무로 갈라지지 않도록,
+ * contextNeeds 는 **고정 문구**로 렌더한다("컨텍스트 없으면 생략"). 실제 제공 여부는 프롬프트
+ * 하단(가변부)의 해당 컨텍스트 블록 유무로만 전달된다(W0 이월: satisfied 2변형 → 단일 렌더).
+ *
  * @param directives  렌더할 지시 목록(기본 = 전체 레지스트리). 부분집합을 넘기면 그만큼만 합성(AC-C3 제거).
- * @param satisfiedContext  이번 요청에 제공된 컨텍스트 키 집합. 주면 미충족 contextNeeds 를 주의 표기.
  */
-export function synthesizeDirectivesSection(
-  directives: readonly Directive[] = DIRECTIVES,
-  satisfiedContext?: ReadonlySet<string>,
-): string {
+export function synthesizeDirectivesSection(directives: readonly Directive[] = DIRECTIVES): string {
   const lines: string[] = [
     "지원 지시 카탈로그 — 감독의 자연어 지시를 아래 유형으로 해석해 지정된 필드에 반영한다:",
   ];
@@ -45,13 +45,9 @@ export function synthesizeDirectivesSection(
     lines.push(`  해석: ${d.promptGuide}`);
     lines.push(`  출력 필드: ${d.outputFields.join(", ")}`);
     if (d.contextNeeds.length > 0) {
-      lines.push(`  필요 컨텍스트: ${d.contextNeeds.join(", ")}`);
-      if (satisfiedContext) {
-        const missing = d.contextNeeds.filter((c) => !satisfiedContext.has(c));
-        if (missing.length > 0) {
-          lines.push(`  (주의: ${missing.join(", ")} 미제공 — 이 지시는 이번 요청에서 생략)`);
-        }
-      }
+      lines.push(
+        `  필요 컨텍스트: ${d.contextNeeds.join(", ")} (이 컨텍스트가 프롬프트 하단에 제공되지 않으면 해당 지시는 생략)`,
+      );
     }
     lines.push("  예시:");
     for (const ex of d.examples) {

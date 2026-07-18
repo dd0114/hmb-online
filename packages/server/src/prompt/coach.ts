@@ -6,6 +6,12 @@ import {
   type TeamInputRosterEntry,
 } from "@hmb/shared";
 import { synthesizeDirectivesSection, DIRECTIVES } from "./directives/index.js";
+import {
+  renderManualTacticsBlock,
+  renderConditionsBlock,
+  renderRelationsBlock,
+  renderTeamMoraleBlock,
+} from "./context-blocks.js";
 
 /**
  * coach — "자연어 지시(팀+선수별) → TacticalInput" 프롬프트 빌더 + 검증 게이트 (방식1 핵심).
@@ -54,15 +60,12 @@ function rosterLine(p: TeamInputRosterEntry): string {
 export function buildTeamInputPrompt(ctx: TeamInputJobContext, feedback?: string): string {
   const roster = [...ctx.roster].sort((a, b) => a.slotIndex - b.slotIndex);
 
-  // 이번 잡에 제공된 컨텍스트 키(카탈로그의 contextNeeds 충족 판단) — 현재 additive 필드는 opponentRoster.
-  const satisfied = new Set<string>();
-  if (ctx.opponentRoster && ctx.opponentRoster.length > 0) satisfied.add("opponentRoster");
-
   const parts = [
     COACH_SYSTEM,
     "",
     // 지시 카탈로그(고정 콘텐츠) — 안정 프리픽스에 두어 프롬프트 캐시 최적. 순수 합성(A/B 프롬프트 공용).
-    synthesizeDirectivesSection(DIRECTIVES, satisfied),
+    // contextNeeds 는 고정 문구로 렌더 → 요청별 컨텍스트 유무는 아래 가변부 블록으로만 전달(단일 변형).
+    synthesizeDirectivesSection(DIRECTIVES),
     "",
     `포메이션: ${ctx.formation} (${ctx.side} 팀, ${ctx.half === 1 ? "전반" : "후반"})`,
     `팀 로스터(선발 11명, 능력치 0..100):`,
@@ -71,13 +74,27 @@ export function buildTeamInputPrompt(ctx: TeamInputJobContext, feedback?: string
     `seed: ${ctx.seed}`,
   ];
 
+  // ─── Phase 2 컨텍스트 블록(가변부, additive optional) — 순수 렌더러 재사용(W3 A+B 공용). 없으면 생략.
+  // manualTactics = A-base(있으면 "베이스, 프롬프트로 보정만"). 로스터 다음에 두어 전술 베이스를 먼저 고정.
+  const manualTacticsBlock = renderManualTacticsBlock(ctx.manualTactics);
+  if (manualTacticsBlock) parts.push("", manualTacticsBlock);
+
+  const conditionsBlock = renderConditionsBlock(ctx.conditions, roster);
+  if (conditionsBlock) parts.push("", conditionsBlock);
+
+  const teamMoraleBlock = renderTeamMoraleBlock(ctx.teamMorale);
+  if (teamMoraleBlock) parts.push("", teamMoraleBlock);
+
+  const relationsBlock = renderRelationsBlock(ctx.relations, roster);
+  if (relationsBlock) parts.push("", relationsBlock);
+
   // 상대 로스터(마킹 등 opponentRoster 의존 지시의 이름→playerId 해석 근거). additive optional.
+  // OpponentRosterEntry = 3필드(playerId/name/position, slotIndex 없음) — 제공 순서 유지.
   if (ctx.opponentRoster && ctx.opponentRoster.length > 0) {
-    const opp = [...ctx.opponentRoster].sort((a, b) => a.slotIndex - b.slotIndex);
     parts.push(
       "",
       "상대 로스터(마킹 대상 해석용 — 이름을 playerId 로 매핑):",
-      ...opp.map((p) => `- ${p.playerId} ${p.name} (${p.position})`),
+      ...ctx.opponentRoster.map((p) => `- ${p.playerId} ${p.name} (${p.position})`),
     );
   }
 

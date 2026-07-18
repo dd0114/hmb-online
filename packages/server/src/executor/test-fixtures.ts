@@ -1,5 +1,11 @@
 import { makeSelectData } from "@hmb/engine";
-import { TeamInputJobContext, type TeamInputRosterEntry } from "@hmb/shared";
+import {
+  TeamInputJobContext,
+  type ManualTactics,
+  type OpponentRosterEntry,
+  type PlayerRelationContext,
+  type TeamInputRosterEntry,
+} from "@hmb/shared";
 
 const sel = makeSelectData();
 const toEntries = (players: typeof sel.home.players): TeamInputRosterEntry[] =>
@@ -11,9 +17,50 @@ const toEntries = (players: typeof sel.home.players): TeamInputRosterEntry[] =>
     slotIndex: i,
   }));
 
-/** 상대(away) 로스터 엔트리(A0..A10) — 마킹 테스트용 opponentRoster 소재. */
-export function makeOpponentRoster(): TeamInputRosterEntry[] {
-  return toEntries(sel.away.players);
+/** 상대(away) 로스터 엔트리(A0..A10) — 마킹 테스트용 opponentRoster 소재(3필드, openapi 정합). */
+export function makeOpponentRoster(): OpponentRosterEntry[] {
+  return sel.away.players.map((p) => ({
+    playerId: p.playerId,
+    name: p.name,
+    position: p.position,
+  }));
+}
+
+/** 홈 로스터 playerId 목록(H0..H10) — Phase2 컨텍스트 픽스처 키. */
+export function homeRosterIds(): string[] {
+  return sel.home.players.map((p) => p.playerId);
+}
+
+/** manualTactics 픽스처(P2-D4). */
+export function makeManualTactics(overrides: Partial<ManualTactics> = {}): ManualTactics {
+  return { line: 0.7, press: 0.6, tempo: 0.55, width: 0.5, ...overrides };
+}
+
+/** conditions 픽스처 {playerId: 0..1} — 로스터 전원에 결정론 값 부여. */
+export function makeConditions(): Record<string, number> {
+  const ids = homeRosterIds();
+  const out: Record<string, number> = {};
+  ids.forEach((id, i) => {
+    out[id] = Number((0.3 + ((i * 7) % 10) / 14).toFixed(2)); // 0.3..~0.94, 결정론
+  });
+  return out;
+}
+
+/** relations 픽스처 {playerId: {trust, personality}} — 성격 4종을 로테이션 배치. */
+export function makeRelations(
+  overrides: Record<string, Partial<PlayerRelationContext>> = {},
+): Record<string, PlayerRelationContext> {
+  const personalities = ["FIERY", "CALM", "GLASS", "AMBITIOUS"] as const;
+  const ids = homeRosterIds();
+  const out: Record<string, PlayerRelationContext> = {};
+  ids.forEach((id, i) => {
+    out[id] = {
+      trust: 50 + ((i * 13) % 45), // 50..94, 결정론
+      personality: personalities[i % personalities.length]!,
+      ...overrides[id],
+    };
+  });
+  return out;
 }
 
 /**

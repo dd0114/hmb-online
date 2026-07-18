@@ -54,17 +54,20 @@ describe("coach — buildTeamInputPrompt (W1: playerPrompts·prevSummary 반영)
     expect(p).toContain("id: tempo-control");
   });
 
-  it("opponentRoster 없으면 상대 로스터 블록 생략 + marking 은 미제공 주의 표기", () => {
+  it("opponentRoster 없으면 상대 로스터 블록만 생략(카탈로그 고정 문구는 유지)", () => {
     const p = buildTeamInputPrompt(makeTeamInputContext());
     expect(p).not.toContain("상대 로스터(마킹 대상 해석용");
-    expect(p).toContain("opponentRoster 미제공"); // 카탈로그가 주의 표기
+    // 카탈로그의 필요 컨텍스트 문구는 요청 무관 고정(단일 변형) — 제공 여부는 가변부 블록으로만 전달.
+    expect(p).toContain("필요 컨텍스트: opponentRoster");
+    expect(p).not.toContain("미제공");
   });
 
-  it("opponentRoster 제공 시 상대 로스터 블록(이름→playerId)이 포함되고 주의 표기 없음", () => {
+  it("opponentRoster 제공 시 상대 로스터 블록(이름→playerId)이 포함되고 카탈로그 문구는 동일", () => {
     const opponentRoster = makeOpponentRoster();
     const p = buildTeamInputPrompt(makeTeamInputContext({ opponentRoster }));
     expect(p).toContain("상대 로스터(마킹 대상 해석용");
     expect(p).toContain("A9 Away ST"); // 상대 playerId + 이름
+    expect(p).toContain("필요 컨텍스트: opponentRoster");
     expect(p).not.toContain("미제공");
   });
 
@@ -107,6 +110,55 @@ describe("coach — 마킹(AC-C2): stub 이 카탈로그 marking 지시를 markT
     const ctx = makeTeamInputContext({ playerPrompts: { H2: "A9 막아" } }); // opponentRoster 없음
     const out = validateTeamInputOutput(await stubExecutor().execute({ id: "j", kind: "team-input", context: ctx }), ctx);
     expect(out.players.every((p) => p.markTarget === undefined)).toBe(true);
+  });
+
+  it("W0 이월: playerId 단어경계 매칭 — 'A10 막아'는 A1 을 매칭하지 않는다", async () => {
+    // away 로스터는 A0..A10(11명). 'A10 막아' → markTarget 은 정확히 A10, 접두 A1 오매칭 금지.
+    const opponentRoster = makeOpponentRoster();
+    const ctx = makeTeamInputContext({ opponentRoster, playerPrompts: { H2: "A10 막아" } });
+    const out = validateTeamInputOutput(await stubExecutor().execute({ id: "j", kind: "team-input", context: ctx }), ctx);
+    const marker = out.players.find((p) => p.playerId === "H2")!;
+    expect(marker.markTarget).toBe("A10");
+    expect(out.players.some((p) => p.markTarget === "A1")).toBe(false);
+  });
+});
+
+describe("coach — 관계·사기 방향성(AC-C4): stub 이 mentalModifier 방향을 흉내", () => {
+  const H = makeTeamInputContext().roster.map((r) => r.playerId);
+
+  async function run(ctx: Parameters<typeof buildTeamInputPrompt>[0]) {
+    return validateTeamInputOutput(await stubExecutor().execute({ id: "j", kind: "team-input", context: ctx }), ctx);
+  }
+
+  it("GLASS + 질책성 개인 지시 → 그 선수 mentalModifier 하향(위축)", async () => {
+    const target = H[3]!;
+    const ctx = makeTeamInputContext({
+      relations: { [target]: { trust: 70, personality: "GLASS" } }, // trust 높아 완화 안 걸림
+      playerPrompts: { [target]: "정신차려, 이렇게 하면 질책받는다" },
+    });
+    const out = await run(ctx);
+    expect(out.players.find((p) => p.playerId === target)!.mentalModifier).toBeLessThan(0);
+  });
+
+  it("FIERY + 강한 공격 팀 지시 → mentalModifier 상향(과반응)", async () => {
+    const target = H[8]!;
+    const ctx = makeTeamInputContext({
+      teamPrompt: "전방부터 강하게 밀어붙이고 과감하게 공격해라",
+      relations: { [target]: { trust: 70, personality: "FIERY" } },
+    });
+    const out = await run(ctx);
+    expect(out.players.find((p) => p.playerId === target)!.mentalModifier).toBeGreaterThan(0);
+  });
+
+  it("연패(streak<0) 팀 사기 → 팀 전반 mentalModifier 하향", async () => {
+    const ctx = makeTeamInputContext({ teamMorale: { morale: 20, streak: -5 } });
+    const out = await run(ctx);
+    expect(out.players.every((p) => p.mentalModifier < 0)).toBe(true);
+  });
+
+  it("관계 컨텍스트 없으면 mentalModifier 는 베이스(0) 유지", async () => {
+    const out = await run(makeTeamInputContext());
+    expect(out.players.every((p) => p.mentalModifier === 0)).toBe(true);
   });
 });
 

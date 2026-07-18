@@ -64,11 +64,16 @@ describe("synthesizeDirectivesSection — 순수 합성(A/B 프롬프트 공용)
     for (const d of reduced) expect(s).toContain(`id: ${d.id}`);
   });
 
-  it("satisfiedContext 미제공 시 marking 에 'opponentRoster 미제공' 주의를 표기", () => {
-    const withMissing = synthesizeDirectivesSection(DIRECTIVES, new Set());
-    expect(withMissing).toContain("opponentRoster 미제공");
-    const withCtx = synthesizeDirectivesSection(DIRECTIVES, new Set(["opponentRoster"]));
-    expect(withCtx).not.toContain("미제공");
+  it("W0 이월: contextNeeds 는 고정 문구로 단일 렌더(요청별 satisfied 2변형 없음)", () => {
+    // 카탈로그는 안정 프리픽스 — 컨텍스트 제공 여부와 무관하게 항상 동일 문자열이어야 한다.
+    const a = synthesizeDirectivesSection();
+    const b = synthesizeDirectivesSection(DIRECTIVES);
+    expect(a).toBe(b);
+    // marking 은 필요 컨텍스트를 고정 문구(생략 조건 포함)로 명시.
+    expect(a).toContain("필요 컨텍스트: opponentRoster");
+    expect(a).toContain("제공되지 않으면 해당 지시는 생략");
+    // 요청별 '미제공' 조건부 주의줄은 더 이상 카탈로그에 없다.
+    expect(a).not.toContain("미제공");
   });
 
   it("스냅샷: 카탈로그 증감 시 diff 가시화(전체 섹션)", () => {
