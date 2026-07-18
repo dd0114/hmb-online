@@ -1,0 +1,137 @@
+.panel {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  margin: 0;
+}
+.pos {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.layerTag {
+  display: inline-block;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+/* 상단 전술 지시 레이어 — 시각적으로 구분(강조 배경 + 좌측 악센트 바) */
+.tacticalLayer {
+  padding: 12px;
+  background: rgba(79, 140, 255, 0.06);
+  border-left: 3px solid var(--accent);
+}
+.roleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.roleLabel {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.roleSelect {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip,
+.chipActive {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.chipActive {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.directivePreview {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* 하단 자유 프롬프트 레이어 — 구분되는 배경 */
+.promptLayer {
+  padding: 12px;
+  border-top: 1px dashed var(--border);
+}
+.textarea,
+.textareaOver {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+}
+.textareaOver {
+  border-color: var(--danger);
+}
+.counterRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.counter {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.counterOver {
+  font-size: 12px;
+  color: var(--danger);
+}
+.remove {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  color: var(--danger);
+  cursor: pointer;
+  font-size: 12px;
+}

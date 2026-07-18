@@ -11,27 +11,33 @@ import {
   type CatalogPlayer,
   type Deck,
 } from "../api/hooks";
+import {
+  duplicateRequest,
+  useApplyTeamPreset,
+  useSaveTeamPreset,
+  useTeamPresets,
+} from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import {
-  assignPlayer,
   bulkApplyPreset,
   emptyDraft,
-  findPlayerSlot,
-  firstEmptySlot,
   FORMATION_LAYOUTS,
-  getSlot,
-  removePlayer,
-  setPrompt,
   STARTER_COUNT,
   toUpdateRequest,
   validateDraft,
   type DeckDraft,
 } from "./deck-logic";
-import { SlotGrid, type SlotRef } from "./SlotGrid";
-import { PlayerPicker } from "./PlayerPicker";
-import { PromptEditor } from "./PromptEditor";
 import { PresetPanel } from "./PresetPanel";
+import {
+  DEFAULT_TEAM_TACTICS,
+  editorToSaveRequest,
+  snapshotSaveable,
+  snapshotToEditor,
+  type EditorState,
+} from "./tactics-logic";
+import { DeckEditor } from "./DeckEditor";
+import { TeamPresetSlots } from "./TeamPresetSlots";
 import styles from "./DeckPage.module.css";
 
 interface ServerDeckError {
@@ -57,23 +63,24 @@ export function DeckPage() {
   const navigate = useNavigate();
   const { data: deck, isLoading: deckLoading, isError: deckError } = useDeck();
   const { data: players, isLoading: playersLoading } = usePlayers();
-  const { data: presets } = usePresets();
+  const { data: presets } = useTeamPresets();
+  const { data: promptPresets } = usePresets();
   const updateDeck = useUpdateDeck();
   const createPreset = useCreatePreset();
   const deletePreset = useDeletePreset();
+  const saveTeamPreset = useSaveTeamPreset();
+  const applyTeamPreset = useApplyTeamPreset();
 
-  const [draft, setDraft] = useState<DeckDraft | null>(null);
-  const [selectedSlot, setSelectedSlot] = useState<SlotRef | null>(null);
-  const [editingPlayerId, setEditingPlayerId] = useState<string | null>(null);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [aiManaged, setAiManaged] = useState(false);
   const [serverError, setServerError] = useState<ServerDeckError | null>(null);
   const [savedNote, setSavedNote] = useState(false);
 
-  // initialize draft once from the server deck (404 → empty deck state)
   useEffect(() => {
-    if (draft === null && !deckLoading && !deckError) {
-      setDraft(draftFromDeck(deck ?? null));
+    if (editor === null && !deckLoading && !deckError) {
+      setEditor({ draft: draftFromDeck(deck ?? null), tactics: { ...DEFAULT_TEAM_TACTICS }, teamPrompt: "" });
     }
-  }, [draft, deck, deckLoading, deckError]);
+  }, [editor, deck, deckLoading, deckError]);
 
   const playersById = useMemo(() => {
     const map = new Map<string, CatalogPlayer>();
@@ -83,7 +90,7 @@ export function DeckPage() {
 
   const ownedPlayers = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
 
-  if (deckLoading || playersLoading || draft === null) {
+  if (deckLoading || playersLoading || editor === null) {
     return (
       <Layout>
         {deckError ? <ErrorToast message="덱을 불러오지 못했습니다" /> : <p>불러오는 중…</p>}
@@ -91,43 +98,22 @@ export function DeckPage() {
     );
   }
 
+  const draft = editor.draft;
   const starterCount = draft.slots.filter((s) => s.role === "starter").length;
   const preIssues = validateDraft(draft, (id) => playersById.get(id)?.position);
-  const editingPlayer = editingPlayerId ? playersById.get(editingPlayerId) : undefined;
-  const editingSlot = editingPlayerId ? findPlayerSlot(draft, editingPlayerId) : undefined;
 
-  function mutateDraft(next: DeckDraft) {
-    setDraft(next);
+  function mutateEditor(next: EditorState) {
+    setEditor(next);
     setSavedNote(false);
     setServerError(null);
-  }
-
-  function handleSlotTap(slot: SlotRef) {
-    const occupant = getSlot(draft!, slot.role, slot.slotIndex);
-    if (occupant) {
-      setEditingPlayerId(occupant.playerId);
-      setSelectedSlot(slot);
-    } else {
-      setSelectedSlot((prev) =>
-        prev?.role === slot.role && prev.slotIndex === slot.slotIndex ? null : slot,
-      );
-      setEditingPlayerId(null);
-    }
-  }
-
-  function handlePick(playerId: string) {
-    const target = selectedSlot ?? firstEmptySlot(draft!);
-    if (!target) return; // deck full
-    mutateDraft(assignPlayer(draft!, target.role, target.slotIndex, playerId));
-    setSelectedSlot(null);
   }
 
   function handleSave() {
     setServerError(null);
     setSavedNote(false);
-    updateDeck.mutate(toUpdateRequest(draft!), {
+    updateDeck.mutate(toUpdateRequest(editor!.draft), {
       onSuccess: (saved) => {
-        setDraft(draftFromDeck(saved));
+        setEditor((prev) => ({ ...prev!, draft: draftFromDeck(saved) }));
         setSavedNote(true);
       },
       onError: (err) => {
@@ -145,7 +131,34 @@ export function DeckPage() {
     });
   }
 
-  // 클라 사전검증(preIssues)에서 걸린 덱은 서버 왕복 전에 저장을 막는다(#73 P2).
+  const slots = presets ?? [];
+
+  async function handleSnapshotSave(slot: number, name: string) {
+    if (!snapshotSaveable(editor!.draft)) {
+      throw new Error(`선발 ${STARTER_COUNT}명을 채워야 스냅샷을 저장할 수 있습니다`);
+    }
+    await saveTeamPreset.mutateAsync({ slot, body: editorToSaveRequest(editor!, name) });
+  }
+
+  async function handleSnapshotLoad(slot: number) {
+    await applyTeamPreset.mutateAsync(slot); // server: snapshot → active deck
+    const src = slots.find((s) => s.slot === slot);
+    if (src?.snapshot) mutateEditor(snapshotToEditor(src.snapshot));
+  }
+
+  async function handleSnapshotRename(slot: number, name: string) {
+    const src = slots.find((s) => s.slot === slot);
+    if (!src?.snapshot) return;
+    await saveTeamPreset.mutateAsync({ slot, body: editorToSaveRequest(snapshotToEditor(src.snapshot), name) });
+  }
+
+  async function handleSnapshotDuplicate(from: number, to: number) {
+    const src = slots.find((s) => s.slot === from);
+    const body = src ? duplicateRequest(src) : null;
+    if (!body) throw new Error("복제할 스냅샷이 없습니다");
+    await saveTeamPreset.mutateAsync({ slot: to, body });
+  }
+
   const saveDisabled =
     updateDeck.isPending || starterCount !== STARTER_COUNT || preIssues.length > 0;
 
@@ -154,7 +167,7 @@ export function DeckPage() {
       <button type="button" className={styles.back} onClick={() => navigate("/lobby")}>
         ← 로비
       </button>
-      <h1 className={styles.pageTitle}>덱 구성</h1>
+      <h1 className={styles.pageTitle}>덱 · 전술보드</h1>
       <button
         type="button"
         className={styles.save}
@@ -162,7 +175,7 @@ export function DeckPage() {
         disabled={saveDisabled}
         onClick={handleSave}
       >
-        {updateDeck.isPending ? "저장 중…" : "저장"}
+        {updateDeck.isPending ? "저장 중…" : "덱 저장"}
       </button>
     </div>
   );
@@ -178,7 +191,7 @@ export function DeckPage() {
           data-testid="formation-select"
           className={styles.formationSelect}
           value={draft.formation}
-          onChange={(e) => mutateDraft({ ...draft, formation: e.target.value })}
+          onChange={(e) => mutateEditor({ ...editor, draft: { ...draft, formation: e.target.value } })}
         >
           {Object.keys(FORMATION_LAYOUTS).map((f) => (
             <option key={f} value={f}>
@@ -191,15 +204,16 @@ export function DeckPage() {
         </span>
       </div>
 
-      <SlotGrid
-        draft={draft}
+      <DeckEditor
+        state={editor}
+        onChange={mutateEditor}
+        aiManaged={aiManaged}
+        onToggleAi={setAiManaged}
+        players={ownedPlayers}
         playersById={playersById}
-        selectedSlot={selectedSlot}
         errorPlayerId={serverError?.playerId ?? null}
-        onSlotTap={handleSlotTap}
       />
 
-      {/* inline validation: client pre-check + server 400 DECK_INVALID detail (AC-W2) */}
       {preIssues.length > 0 && (
         <ul className={styles.issueList} data-testid="deck-pre-issues">
           {preIssues.map((issue) => (
@@ -223,25 +237,18 @@ export function DeckPage() {
         </p>
       )}
 
-      {editingPlayer && editingSlot && (
-        <PromptEditor
-          player={editingPlayer}
-          promptText={editingSlot.promptText ?? ""}
-          presets={presets ?? []}
-          onChange={(text) => mutateDraft(setPrompt(draft, editingPlayer.id, text))}
-          onRemoveFromDeck={() => {
-            mutateDraft(removePlayer(draft, editingPlayer.id));
-            setEditingPlayerId(null);
-            setSelectedSlot(null);
-          }}
-          onClose={() => setEditingPlayerId(null)}
-        />
-      )}
+      <TeamPresetSlots
+        slots={slots}
+        saving={saveTeamPreset.isPending || applyTeamPreset.isPending}
+        onSave={handleSnapshotSave}
+        onLoad={handleSnapshotLoad}
+        onRename={handleSnapshotRename}
+        onDuplicate={handleSnapshotDuplicate}
+      />
 
-      <PlayerPicker players={ownedPlayers} draft={draft} onPick={handlePick} />
-
+      {/* 프롬프트 프리셋 일괄 적용(AC-W2, phase1) — 팀 스냅샷과 별개의 선수-프롬프트 도구 */}
       <PresetPanel
-        presets={presets ?? []}
+        presets={promptPresets ?? []}
         draft={draft}
         playersById={playersById}
         creating={createPreset.isPending}
@@ -249,7 +256,9 @@ export function DeckPage() {
           createPreset.mutateAsync({ name, promptText }).then(() => undefined)
         }
         onDelete={(id) => deletePreset.mutateAsync(id).then(() => undefined)}
-        onBulkApply={(playerIds, text) => mutateDraft(bulkApplyPreset(draft, playerIds, text))}
+        onBulkApply={(playerIds, text) =>
+          mutateEditor({ ...editor, draft: bulkApplyPreset(draft, playerIds, text) })
+        }
       />
     </Layout>
   );

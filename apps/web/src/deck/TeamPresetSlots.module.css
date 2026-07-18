@@ -1,0 +1,84 @@
+.panel {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+.title {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.slot {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.slotHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.slotNo {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.slotName {
+  font-size: 14px;
+  font-weight: 600;
+}
+.nameInput {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.primary,
+.secondary {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+.primary {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+.secondary {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.primary:disabled,
+.secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--success);
+}
+.error {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--danger);
+}

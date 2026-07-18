@@ -120,12 +120,25 @@ export function useGacha() {
 
 // ── match flow (LLD-web §2 /match/:id) ─────────────────────────────────
 
-export type MatchDetail = components["schemas"]["MatchDetail"];
+import type { ConditionMap, TeamTactics } from "./v2";
+
+/**
+ * MatchDetail (V1) + Phase2 additive fields (openapi-v2 MatchDetailPhase2Fields): conditions
+ * (AC-C1 시계), mode(practice|league), leagueFixtureId. All optional — old responses stay valid.
+ */
+export type MatchDetail = components["schemas"]["MatchDetail"] & {
+  conditions?: ConditionMap;
+  mode?: "practice" | "league";
+  leagueFixtureId?: string | null;
+};
 export type MatchResult = components["schemas"]["MatchResult"];
 export type MatchLog = components["schemas"]["MatchLog"];
 export type MatchPromptRequest = components["schemas"]["MatchPromptRequest"];
 export type HalftimeRequest = components["schemas"]["HalftimeRequest"];
-export type CreateMatchRequest = components["schemas"]["CreateMatchRequest"];
+/** V1 CreateMatchRequest {botId?} + Phase2 teamTactics (openapi-v2 CreateMatchRequestPhase2). */
+export type CreateMatchRequest = components["schemas"]["CreateMatchRequest"] & {
+  teamTactics?: TeamTactics;
+};
 
 /**
  * GET /api/matches/:id — 3s polling ONLY while the server is generating (GEN1/GEN2);
@@ -167,9 +180,23 @@ function useMatchAction(id: string, action: "kickoff" | "resume" | "retry") {
   });
 }
 
-/** POST /api/matches/:id/kickoff — BRIEFING → GEN1. */
+/**
+ * POST /api/matches/:id/kickoff — BRIEFING → GEN1. Optional body {teamTactics} triggers the
+ * server's kickoff re-capture (AC-B2): the active deck + these tactics become the final match
+ * snapshot, so briefing-time edits are reflected. Omit body to keep the create-time snapshot.
+ */
 export function useKickoff(id: string) {
-  return useMatchAction(id, "kickoff");
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body?: { teamTactics?: TeamTactics }) =>
+      apiFetch<MatchDetail>(`/api/matches/${id}/kickoff`, {
+        method: "POST",
+        body: body && body.teamTactics ? body : undefined,
+      }),
+    onSuccess: (match) => {
+      queryClient.setQueryData(["match", id], match);
+    },
+  });
 }
 
 /** POST /api/matches/:id/resume — H1_BREAK → GEN2. */

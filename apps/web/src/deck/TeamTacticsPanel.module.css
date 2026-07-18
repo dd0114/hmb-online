@@ -1,0 +1,64 @@
+.panel {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.title {
+  font-size: 15px;
+  margin: 0;
+}
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.sliders {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.slidersDisabled {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  opacity: 0.45;
+}
+.sliderRow {
+  display: grid;
+  grid-template-columns: 56px 40px 1fr 40px 30px;
+  align-items: center;
+  gap: 6px;
+}
+.sliderLabel {
+  font-size: 13px;
+}
+.endpoint {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+.range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.value {
+  font-size: 12px;
+  color: var(--accent);
+  text-align: right;
+}
+.aiNote {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}

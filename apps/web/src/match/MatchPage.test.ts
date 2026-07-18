@@ -41,6 +41,7 @@ vi.mock("../api/hooks", () => {
     useHalfLog: () => query(undefined),
     useMatchResult: () => query(undefined),
     useSubmitMatchPrompt: mutation,
+    useUpdateDeck: mutation,
     useKickoff: mutation,
     useResume: mutation,
     useRetry: mutation,

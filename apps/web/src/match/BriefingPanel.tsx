@@ -1,84 +1,103 @@
 import { useEffect, useMemo, useState } from "react";
-import { useDeck, usePlayers, useKickoff, useSubmitMatchPrompt, type MatchDetail } from "../api/hooks";
+import {
+  useDeck,
+  usePlayers,
+  useKickoff,
+  useUpdateDeck,
+  useSubmitMatchPrompt,
+  type CatalogPlayer,
+  type Deck,
+  type MatchDetail,
+} from "../api/hooks";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
 import { ErrorToast } from "../common/ErrorToast";
-import { PromptFields, type RosterEntry } from "./PromptFields";
+import { DeckEditor } from "../deck/DeckEditor";
+import { emptyDraft, toUpdateRequest, type DeckDraft } from "../deck/deck-logic";
+import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
+import { opponentPowerFromGrades } from "../deck/team-power";
+import { ConditionClock } from "./ConditionClock";
 import styles from "./BriefingPanel.module.css";
 
-/**
- * 브리핑 타이머 표시 초 (D5: 표시만, 강제 안 함 — 만료돼도 진행 가능).
- * 서버 API는 타이머 설정을 노출하지 않아 표시값은 웹 상수(서버 enforce=false).
- */
 const BRIEFING_TIMER_SECONDS = 180;
 
 interface BriefingPanelProps {
   match: MatchDetail;
 }
 
+function draftFromDeck(deck: Deck | null): DeckDraft {
+  if (!deck) return emptyDraft();
+  return {
+    formation: deck.formation,
+    slots: deck.slots.map((s) => ({
+      playerId: s.playerId,
+      role: s.role,
+      slotIndex: s.slotIndex,
+      promptText: s.promptText ?? null,
+    })),
+  };
+}
+
+/**
+ * Briefing (AC-B2): embeds the SAME DeckEditor used on the deck screen so the snapshot can be
+ * fully edited before kickoff. On kickoff we persist deck edits (PUT /api/deck) then call kickoff
+ * with the final teamTactics — the server re-captures the active deck + tactics as the match
+ * snapshot (recaptureSnapshotAtKickoff). The team-level prompt is sent via the prompt UPSERT.
+ */
 export function BriefingPanel({ match }: BriefingPanelProps) {
   const { data: deck, isLoading: deckLoading, isError: deckError } = useDeck();
   const { data: players, isLoading: playersLoading, isError: playersError } = usePlayers();
+  const updateDeck = useUpdateDeck();
   const submitPrompt = useSubmitMatchPrompt(match.id);
   const kickoff = useKickoff(match.id);
 
-  const [teamPrompt, setTeamPrompt] = useState("");
-  const [playerPrompts, setPlayerPrompts] = useState<Record<string, string>>({});
-  const [prefilled, setPrefilled] = useState(false);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [aiManaged, setAiManaged] = useState(false);
   const [remaining, setRemaining] = useState(BRIEFING_TIMER_SECONDS);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const playersById = useMemo(() => {
-    const map = new Map<string, NonNullable<typeof players>[number]>();
+    const map = new Map<string, CatalogPlayer>();
     for (const p of players ?? []) map.set(p.id, p);
     return map;
   }, [players]);
+  const ownedPlayers = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
 
-  // 덱의 사전 프롬프트를 기본값으로 프리필 (편집 가능 — pre phase로 전송)
+  // initialize the editor from the active deck once (snapshot to fully edit — AC-B2)
   useEffect(() => {
-    if (prefilled || !deck) return;
-    const initial: Record<string, string> = {};
-    for (const slot of deck.slots) {
-      if (slot.promptText) initial[slot.playerId] = slot.promptText;
+    if (editor === null && !deckLoading && !deckError) {
+      setEditor({ draft: draftFromDeck(deck ?? null), tactics: { ...DEFAULT_TEAM_TACTICS }, teamPrompt: "" });
     }
-    setPlayerPrompts(initial);
-    setPrefilled(true);
-  }, [deck, prefilled]);
+  }, [editor, deck, deckLoading, deckError]);
 
-  // 타이머 카운트다운 — 표시 전용(D5). 0이 되어도 킥오프 가능.
   useEffect(() => {
     const t = window.setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
     return () => window.clearInterval(t);
   }, []);
 
-  const roster: RosterEntry[] = useMemo(
-    () =>
-      (deck?.slots ?? [])
-        .slice()
-        .sort((a, b) => (a.role === b.role ? a.slotIndex - b.slotIndex : a.role === "starter" ? -1 : 1))
-        .map((s) => ({
-          playerId: s.playerId,
-          name: playersById.get(s.playerId)?.name ?? s.playerId,
-          position: playersById.get(s.playerId)?.position ?? "?",
-          role: s.role,
-        })),
-    [deck, playersById],
+  const starters = useMemo(
+    () => (editor?.draft.slots ?? []).filter((s) => s.role === "starter"),
+    [editor],
   );
+
+  // opponent power ≈ grade-based (briefing opponent deck exposes only grade). First 11 = XI.
+  const opponentPower = useMemo(() => {
+    const grades = (match.opponent?.deck ?? []).slice(0, 11).map((p) => p.grade);
+    return grades.length ? opponentPowerFromGrades(grades) : undefined;
+  }, [match.opponent]);
 
   async function handleKickoff() {
     setError(null);
     setSubmitting(true);
     try {
-      // 프롬프트 전송(phase=pre, UPSERT) — 비어있지 않은 것만, 순차 전송 후 킥오프
-      if (teamPrompt.trim()) {
-        await submitPrompt.mutateAsync({ phase: "pre", scope: "team", text: teamPrompt });
+      // 1) persist deck edits so the server recapture reads them (per-player prompts included)
+      await updateDeck.mutateAsync(toUpdateRequest(editor!.draft));
+      // 2) team-level prompt (orthogonal to the deck snapshot) via UPSERT
+      if (editor!.teamPrompt.trim()) {
+        await submitPrompt.mutateAsync({ phase: "pre", scope: "team", text: editor!.teamPrompt });
       }
-      for (const [playerId, text] of Object.entries(playerPrompts)) {
-        if (text.trim()) {
-          await submitPrompt.mutateAsync({ phase: "pre", scope: "player", playerId, text });
-        }
-      }
-      await kickoff.mutateAsync();
+      // 3) kickoff → server recaptures active deck + teamTactics as the match snapshot
+      await kickoff.mutateAsync(aiManaged ? undefined : { teamTactics: editor!.tactics });
     } catch (err) {
       setError(err instanceof Error ? err.message : "킥오프에 실패했습니다");
     } finally {
@@ -89,10 +108,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
   const mm = Math.floor(remaining / 60);
   const ss = String(remaining % 60).padStart(2, "0");
 
-  // 로스터를 불러오지 못하면 빈 라인업으로 킥오프되는 것을 막는다(#73 P0).
-  // 로딩 중에는 에러 문구를 띄우지 않고 버튼만 막는다(shop 과 동일한 로딩 vs 에러 구분, #73 nit A).
-  const rosterLoading = deckLoading || playersLoading;
-  const rosterMissing = !rosterLoading && (deckError || playersError || roster.length === 0);
+  const rosterLoading = deckLoading || playersLoading || editor === null;
+  const rosterMissing = !rosterLoading && (deckError || playersError || starters.length === 0);
   const rosterUnavailable = rosterLoading || rosterMissing;
 
   return (
@@ -131,16 +148,35 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
         </section>
       )}
 
-      <PromptFields
-        roster={roster}
-        teamPrompt={teamPrompt}
-        onTeamChange={setTeamPrompt}
-        playerPrompts={playerPrompts}
-        onPlayerChange={(playerId, text) =>
-          setPlayerPrompts((prev) => ({ ...prev, [playerId]: text }))
-        }
-        idPrefix="briefing"
-      />
+      {/* 라인업 컨디션 시계 요약 (AC-C1) */}
+      {match.conditions && starters.length > 0 && (
+        <section className={styles.conditions} data-testid="briefing-conditions">
+          <h4 className={styles.condTitle}>선발 컨디션</h4>
+          <ul className={styles.condList}>
+            {starters.map((s) => (
+              <li key={s.playerId} className={styles.condItem} data-testid={`cond-${s.playerId}`}>
+                <ConditionClock value={match.conditions![s.playerId] ?? 0.5} size={26} testId={`cond-clock-${s.playerId}`} />
+                <span className={styles.condName}>{playersById.get(s.playerId)?.name ?? s.playerId}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {editor && (
+        <DeckEditor
+          state={editor}
+          onChange={setEditor}
+          aiManaged={aiManaged}
+          onToggleAi={setAiManaged}
+          players={ownedPlayers}
+          playersById={playersById}
+          conditions={match.conditions}
+          opponentPower={opponentPower}
+          opponentName={match.opponent?.name}
+          opponentApprox
+        />
+      )}
 
       {rosterMissing && (
         <ErrorToast message="내 로스터를 불러오지 못했습니다 — 새로고침 후 다시 시도하세요" />

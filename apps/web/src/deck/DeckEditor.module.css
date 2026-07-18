@@ -1,0 +1,43 @@
+.editor {
+  display: flex;
+  flex-direction: column;
+}
+.starterHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.errorNote {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+.teamPromptSection {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.teamPromptLabel {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.teamPromptInput {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+  font-family: inherit;
+}
+
+/* ≥1024px: keep the editor centered/legible (true board+side 2-col = responsive wave W6). */
+@media (min-width: 1024px) {
+  .editor {
+    max-width: 760px;
+    margin: 0 auto;
+  }
+}
