@@ -358,6 +358,9 @@
         if (banner) { bannerEl.textContent = banner.text; bannerEl.style.color = banner.col; bannerEl.classList.add("show"); }
         else bannerEl.classList.remove("show");
         ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "bold 15px sans-serif";
+        // #69 BL-1: 같은 틱·같은 앵커(파울+카드 등)로 동시에 뜨는 토스트는 같은 위치라 겹쳐 아래 글자가
+        // 깨져 보였다. (at:anchor) 키로 세로 스택 오프셋을 줘 겹치지 않게 위로 쌓는다.
+        const toastRow = new Map();
         for (const a of annos) {
           if (a.kind !== "toast") continue;
           const age = curTick - a.tick;
@@ -368,7 +371,9 @@
           // 가버려 카드가 파울러/파울지점과 어긋났음(선수 사건인데 공에 앵커). 선수 없으면 공 폴백.
           let ax = s.ball.x, ay = s.ball.y;
           if (a.anchor) { const pl = s.players.find((p) => p.playerId === a.anchor); if (pl) { ax = pl.pos.x; ay = pl.pos.y; } }
-          const px = sx(ax), py = sy(ay) - 18 - prog * 22;
+          const key = `${a.at}:${a.anchor || "ball"}`;
+          const row = toastRow.get(key) || 0; toastRow.set(key, row + 1);
+          const px = sx(ax), py = sy(ay) - 18 - prog * 22 - row * 17; // row 마다 위로 17px 스택.
           ctx.globalAlpha = 1 - prog;
           ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.strokeText(a.text, px, py);
           ctx.fillStyle = a.col; ctx.fillText(a.text, px, py);

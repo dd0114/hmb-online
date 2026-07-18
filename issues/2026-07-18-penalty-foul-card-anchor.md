@@ -48,8 +48,8 @@
 - [x] **AC4** 결정론/기계게이트 무영향(뷰어 전용) — npm test 엔진/뷰어 102 passed·qa-match·perceptibility 6/6·playwright 29 green, **골든 unchanged**(엔진 미변경). (server 5실패=별 트랙 #32.)
 - [x] **AC5** 실화면 + 독립 QA PASS(blocker 0). Evidence: independent-qa 픽셀단위 교차검증(fillText 후킹 ↔ cam/curPlayers 역산) — t163 "옐로" 토스트가 A2 파울위치(96.3,38.1) 일치(공/스팟/피해자 아님), 회귀 t828(A8)·t938(H6) 정상, 카메라 급변 0건(부드러운 팬). PASS.
 
-### 후속 백로그 (에픽 #25, 이 이슈 밖)
-- **BL-1** 같은 틱 foul+card 토스트가 동일 픽셀에 겹쳐 "파울"이 "옐로" 뒤로 깨져 보임(가독성, minor). 기존부터 존재(둘 다 같은 앵커). 방향: 동시 발생 시 세로 스태킹 또는 "😠 파울 · 🟨 옐로" 단일 병합. (independent-qa #69 재검 발견.)
+### 후속 (같이 처리)
+- [x] **BL-1** 같은 틱 foul+card 토스트 겹침 → **해소**. `index.html` 토스트 렌더에 (at:anchor) 키 세로 스택(row 마다 17px 위로). 실측 t163: A2 위에 "🟨 옐로"(위)+"파울"(아래) 둘 다 읽힘. 렌더 전용(데이터·테스트 무영향), playwright 29 green.
 
 ### Sub-goals
 - SG1: E2E-TDD — 카드 토스트 앵커=파울러 계약 박제.
