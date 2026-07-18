@@ -381,7 +381,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 큐 깊이·lease 중 개수(운영 확인용) — W0에는 인증 미부착(TODO W4) */
+        /** 큐 깊이·lease 중 개수(운영 확인용) — /internal/** 전체가 X-Servant-Token 보호(W4, AC-Q3) */
         get: operations["internalHealth"];
         put?: never;
         post?: never;
@@ -419,6 +419,11 @@ export interface components {
             } | null;
         };
         LoginRequest: {
+            /**
+             * @description Phase2 additive — 생략 시 guest (server 9c51446 구현 정합)
+             * @enum {string}
+             */
+            provider?: "guest" | "mock:google" | "mock:apple";
             nickname: string;
         };
         UserRef: {
@@ -1224,6 +1229,7 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            409: components["responses"]["InvalidState"];
         };
     };
     submitHalftimeSubs: {
@@ -1368,6 +1374,7 @@ export interface operations {
                 };
                 content?: never;
             };
+            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
         };
     };
@@ -1396,8 +1403,10 @@ export interface operations {
                     "application/json": components["schemas"]["AiJob"];
                 };
             };
+            400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidState"];
         };
     };
     internalHealth: {
@@ -1418,6 +1427,7 @@ export interface operations {
                     "application/json": components["schemas"]["InternalHealth"];
                 };
             };
+            401: components["responses"]["Unauthorized"];
         };
     };
 }

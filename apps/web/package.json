@@ -12,7 +12,9 @@
     "preview": "vite preview",
     "e2e": "playwright test",
     "build:viewer": "node scripts/build-viewer.mjs",
-    "gen:types": "openapi-typescript ../../docs/plan-v2/api/openapi.yaml -o src/api/schema.d.ts"
+    "gen:types": "npm run gen:types:v1 && npm run gen:types:v2",
+    "gen:types:v1": "openapi-typescript ../../docs/plan-v2/api/openapi.yaml -o src/api/schema.d.ts",
+    "gen:types:v2": "openapi-typescript ../../docs/plan-v3/api/openapi-v2.yaml -o src/api/schema-v2.d.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.0",

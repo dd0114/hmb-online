@@ -83,9 +83,11 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
 
   const nickname = `w3smoke_${Date.now().toString(36)}`;
 
+  // 신 /login: provider stage(게스트) → 닉네임 → "계속" (AC-A1 개편)
   await page.goto("/login");
+  await page.getByTestId("provider-guest").click();
   await page.getByPlaceholder("2~16자").fill(nickname);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await page.getByRole("button", { name: "계속" }).click();
   await page.getByRole("button", { name: "확인" }).click();
   await expect(page).toHaveURL(/\/lobby$/);
 

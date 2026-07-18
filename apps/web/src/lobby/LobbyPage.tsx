@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useCreateMatch, useMe, useModes } from "../api/hooks";
 import { useToken } from "../auth/TokenContext";
+import { providerMeta } from "../auth/login-flow";
 import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
@@ -11,7 +12,7 @@ import styles from "./LobbyPage.module.css";
 
 export function LobbyPage() {
   const { data: me, isLoading, isError } = useMe();
-  const { logout } = useToken();
+  const { logout, provider } = useToken();
   const navigate = useNavigate();
   const [modeModalOpen, setModeModalOpen] = useState(false);
 
@@ -20,7 +21,14 @@ export function LobbyPage() {
   const header = (
     <div className={styles.headerRow}>
       <div>
-        <div className={styles.nickname}>{me ? me.user.nickname : "감독님"}</div>
+        <div className={styles.nickname}>
+          {me ? me.user.nickname : "감독님"}
+          {provider && (
+            <span className={styles.providerBadge} data-testid="provider-badge">
+              {providerMeta(provider).badge}
+            </span>
+          )}
+        </div>
         {me && (
           <div className={styles.record}>
             {me.records.wins}승 {me.records.draws}무 {me.records.losses}패
@@ -37,7 +45,7 @@ export function LobbyPage() {
   );
 
   return (
-    <Layout header={header}>
+    <Layout header={header} nav>
       {isLoading && <p>불러오는 중…</p>}
       {isError && <ErrorToast message="내 정보를 불러오지 못했습니다" />}
 

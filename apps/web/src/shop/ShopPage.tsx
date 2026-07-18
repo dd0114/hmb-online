@@ -59,7 +59,7 @@ export function ShopPage() {
   const ten = gachaButtonState({ loaded: !!me, points, cost: GACHA_COST_TEN, pending: gacha.isPending });
 
   return (
-    <Layout header={header}>
+    <Layout header={header} nav>
       {meError && <ErrorToast message="지갑 정보를 불러오지 못했습니다" />}
 
       <div className={styles.pulls}>

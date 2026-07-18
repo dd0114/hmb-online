@@ -15,6 +15,70 @@
   margin-bottom: 32px;
 }
 
+.providerList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.providerButton {
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 16px;
+  text-align: center;
+}
+
+.providerButton:hover {
+  border-color: var(--accent);
+}
+
+.guestButton {
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.disclaimer {
+  margin: 8px 0 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chosenProvider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.providerBadge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.textButton {
+  margin-top: 4px;
+  padding: 8px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  text-decoration: underline;
+}
+
 .form {
   display: flex;
   flex-direction: column;

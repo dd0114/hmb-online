@@ -8,6 +8,12 @@
  */
 
 export const TOKEN_STORAGE_KEY = "hmb.auth.token";
+/**
+ * 로그인에 쓴 provider(guest|mock:google|mock:apple)를 클라에 보관 — /api/me 는 provider 를
+ * 돌려주지 않으므로(V1 MeResponse 미포함) 로비 provider 뱃지는 로그인 시점 값에서 읽는다.
+ * (서버가 me 에 provider 를 추가하면 그 쪽을 SoT 로 옮길 수 있다 — 이슈 레이즈 후보.)
+ */
+export const PROVIDER_STORAGE_KEY = "hmb.auth.provider";
 
 export function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -20,6 +26,19 @@ export function setToken(token: string): void {
 
 export function clearToken(): void {
   window.localStorage.removeItem(TOKEN_STORAGE_KEY);
+}
+
+export function getProvider(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(PROVIDER_STORAGE_KEY);
+}
+
+export function setProvider(provider: string): void {
+  window.localStorage.setItem(PROVIDER_STORAGE_KEY, provider);
+}
+
+export function clearProvider(): void {
+  window.localStorage.removeItem(PROVIDER_STORAGE_KEY);
 }
 
 /** Mirrors components.schemas.ErrorCode in openapi.yaml. */
@@ -101,6 +120,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
 
   if (res.status === 401) {
     clearToken();
+    clearProvider();
     const body = await parseErrorBody(res);
     onUnauthorized();
     throw new ApiError(401, body);

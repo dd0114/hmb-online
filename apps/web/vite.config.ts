@@ -5,9 +5,10 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: {
+    // 프록시 대상은 기본 8080(데모). 대체 서버(예: W0 스모크 8084)는 VITE_API_TARGET 로 덮어쓴다.
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: process.env.VITE_API_TARGET || "http://localhost:8080",
         changeOrigin: true,
       },
     },

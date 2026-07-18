@@ -52,10 +52,11 @@ test("AC-W1: login → deck save → full match → result → record", async ({
 
   const nickname = `e2e_${Date.now().toString(36)}`;
 
-  // 1) 신규 로그인 → 스타터 팩 모달
+  // 1) 신규 로그인(게스트 플로우) → 스타터 팩 모달
   await page.goto("/login");
+  await page.getByTestId("provider-guest").click();
   await page.getByPlaceholder("2~16자").fill(nickname);
-  await page.getByRole("button", { name: "로그인" }).click();
+  await page.getByRole("button", { name: "계속" }).click();
   await page.getByRole("button", { name: "확인" }).click(); // 스타터 팩 확인
   await expect(page).toHaveURL(/\/lobby$/);
 

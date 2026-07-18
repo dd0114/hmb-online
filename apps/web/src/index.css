@@ -58,3 +58,11 @@ a {
     max-width: 720px;
   }
 }
+
+/* nav 있는 화면은 데스크탑에서 고정 사이드바(200px) 옆으로 콘텐츠를 밀어 겹침을 없앤다. */
+@media (min-width: 1024px) {
+  .app-container--nav {
+    margin-left: 200px;
+    margin-right: auto;
+  }
+}

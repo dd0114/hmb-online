@@ -8,3 +8,15 @@
   flex: 1;
   padding: 16px;
 }
+
+/* 하단 탭바(fixed)에 콘텐츠가 가리지 않도록 하단 여백 확보. */
+.mainWithNav {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0));
+}
+
+/* 데스크탑: 사이드바(200px) 폭만큼 컨테이너를 오른쪽으로 밀고 하단탭 여백 제거. */
+@media (min-width: 1024px) {
+  .mainWithNav {
+    padding-bottom: 16px;
+  }
+}

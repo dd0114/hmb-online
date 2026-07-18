@@ -168,7 +168,7 @@ export function DeckPage() {
   );
 
   return (
-    <Layout header={header}>
+    <Layout header={header} nav>
       <div className={styles.formationRow}>
         <label htmlFor="formation" className={styles.formationLabel}>
           포메이션

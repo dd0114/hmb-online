@@ -43,7 +43,7 @@ export function CodexPage() {
   );
 
   return (
-    <Layout header={header}>
+    <Layout header={header} nav>
       {isLoading && <p>불러오는 중…</p>}
       {isError && <ErrorToast message="도감을 불러오지 못했습니다" />}
 
