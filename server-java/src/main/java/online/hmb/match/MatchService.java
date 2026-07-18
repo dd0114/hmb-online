@@ -117,15 +117,25 @@ public class MatchService {
     // ── 생성 (BRIEFING 진입) ────────────────────────────────────────────
 
     public MatchRow createMatch(String userId, String botId) {
+        return createMatch(userId, botId, null);
+    }
+
+    /**
+     * teamTactics(P2-D4, 선택): 브리핑 최종 수동 전술 {line,press,tempo,width}(0..1). 있으면 매치
+     * 스냅샷(user_deck_json)에 포함돼 AI 컨텍스트로 전달된다(LLD-p2-server §2·§4). 매치 시작 후
+     * 덱/전술을 바꿔도 진행 중 매치는 이 스냅샷으로 격리된다.
+     */
+    public MatchRow createMatch(String userId, String botId, JsonNode teamTactics) {
         // 활성 덱 재검증 (AC-S2 규칙 재사용, LLD §5.1)
         DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
         deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
+        online.hmb.meta.TeamTactics.validate(teamTactics); // 있으면 0..1 범위
 
         BotService.BotRow bot = botId == null ? botService.pickRandom() : botService.get(botId);
 
         String matchId = Ulid.next();
         String seed = randomSeedHex();
-        String snapshot = snapshotDeck(deck);
+        String snapshot = snapshotDeck(deck, teamTactics);
         String now = Instant.now().toString();
 
         txRunner.run(() -> jdbcClient.sql("""
@@ -152,7 +162,7 @@ public class MatchService {
         return sb.toString();
     }
 
-    private String snapshotDeck(DeckService.DeckResponse deck) {
+    private String snapshotDeck(DeckService.DeckResponse deck, JsonNode teamTactics) {
         ObjectNode snapshot = objectMapper.createObjectNode();
         snapshot.put("formation", deck.formation());
         ArrayNode starters = snapshot.putArray("starters");
@@ -165,6 +175,10 @@ public class MatchService {
                 entry.put("promptText", slot.promptText());
             }
             (DeckService.ROLE_STARTER.equals(slot.role()) ? starters : bench).add(entry);
+        }
+        // P2-D4: 수동 팀 전술을 매치 스냅샷에 포함(있을 때만) — AI 컨텍스트로 전달(§4).
+        if (teamTactics != null && teamTactics.isObject()) {
+            snapshot.set("teamTactics", teamTactics);
         }
         return snapshot.toString();
     }

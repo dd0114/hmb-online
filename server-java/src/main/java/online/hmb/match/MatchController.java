@@ -24,14 +24,19 @@ public class MatchController {
         this.orchestrator = orchestrator;
     }
 
-    public record CreateMatchRequest(String botId) {
+    /**
+     * teamTactics(P2-D4): 브리핑 최종 수동 전술 {line,press,tempo,width}(0..1) — 매치 스냅샷
+     * (user_deck_json)에 포함돼 AI 컨텍스트로 전달된다(LLD-p2-server §2·§4). 생략 시 미포함(additive).
+     */
+    public record CreateMatchRequest(String botId, com.fasterxml.jackson.databind.JsonNode teamTactics) {
     }
 
     @PostMapping("/api/matches")
     public ResponseEntity<MatchDetail> create(@RequestAttribute("userId") String userId,
                                               @RequestBody(required = false) CreateMatchRequest request) {
         MatchService.MatchRow row = matchService.createMatch(userId,
-                request == null ? null : request.botId());
+                request == null ? null : request.botId(),
+                request == null ? null : request.teamTactics());
         // #1 프리페치: 봇(away) h1 잡을 브리핑 진입 즉시 enqueue — 유저가 프롬프트 쓰는 동안 백그라운드 생성.
         // 봇은 유저 입력 무관이라 킥오프 때 enqueueHalf 와 동일 promptHash(멱등). 크리티컬 패스에서 봇 제거.
         orchestrator.prefetchBotHalf(row.id(), 1);

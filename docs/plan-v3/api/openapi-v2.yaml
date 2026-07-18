@@ -1,0 +1,1108 @@
+openapi: 3.1.0
+info:
+  title: HMB 온라인 — server-java API (Phase 2 증분)
+  version: "0.2.0"
+  license:
+    name: Proprietary
+    identifier: "UNLICENSED"
+  description: |
+    Phase 2(메타 확장) API 계약. **V1 계약(`docs/plan-v2/api/openapi.yaml`)에 대한 증분**이다 —
+    이 파일은 신규 엔드포인트/스키마와 V1 응답에 대한 additive 확장만 담는다. 웹(p2-web)은 두 스펙
+    (V1 + 이 파일)을 병합해 타입을 생성한다. 요구사항/AC = `docs/plan-v3/PRD-v3.md`. DB =
+    `docs/plan-v3/ERD-v2.md`(Flyway V2__phase2.sql). 구현 상세 = `docs/plan-v3/LLD-p2-server.md`.
+
+    규약(전부 V1과 동일):
+    - `/api/**` 는 `Authorization: Bearer <token>` 필요. 에러는 공통 `ApiError`(code = `ErrorCode`).
+    - `TacticalInput`/`SelectData`/`MatchLog`/`TeamInputJobContext` 상세는 `packages/shared`(zod)가 SoT.
+      여기서는 필드명(camelCase)만 zod와 일치시키고 느슨히 계약한다.
+    - **V1 응답 확장(additive)**: MatchDetail(컨디션·모드), CreateMatchRequest(teamTactics),
+      AiJobContext(관계·전술·컨디션 컨텍스트), CatalogPlayer(personality)는 V1 스키마에 아래
+      `*Phase2Fields` 스키마의 프로퍼티가 **추가**된 형태다(기존 필드 불변). 웹은 병합 시 이 필드를 합친다.
+    - 공통 스키마(ApiError/ErrorCode/Position/Grade)는 V1과 동일 정의를 재수록(자립 생성용) — 병합 도구가
+      동일 정의를 dedupe한다는 전제. code enum은 Phase 2 신규 코드를 포함한 superset.
+
+servers:
+  - url: http://localhost:8080
+    description: local dev
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: presets-team
+    description: 팀 스냅샷 프리셋 3슬롯(포메이션+선발/벤치+선수 프롬프트+수동 전술) — AC-B1~B2
+  - name: matches-ext
+    description: 매치 확장(컨디션·수동 전술·모드) — V1 matches에 additive
+  - name: relations
+    description: 감독 관계(선수 신뢰도·성격·팀 사기) 조회 — AC-C4 표시용
+  - name: trade
+    description: 트레이드 3슬롯(FA/트레이드, 대기·포인트 단축) — AC-D
+  - name: league
+    description: 리그 모드(10팀 더블 라운드로빈 18R, 봇전 간이결과) — AC-F
+  - name: logs
+    description: 로그(경기·트레이드 이력) — AC-E1/E3
+  - name: rankings
+    description: 랭킹(유저 리더보드 + 개인 기록) — AC-E2
+  - name: internal-ext
+    description: 서번트 AI 잡 컨텍스트 additive 확장(관계·전술·컨디션) — AC-C2~C4
+
+paths:
+  # ─────────────────────────── 팀 스냅샷 프리셋 (AC-B) ───────────────────────────
+  /api/presets/team:
+    get:
+      tags: [presets-team]
+      operationId: listTeamPresets
+      summary: 팀 스냅샷 3슬롯 목록(빈 슬롯 포함) — 빈 슬롯은 name/snapshot/updatedAt=null
+      responses:
+        "200":
+          description: 항상 3개(slot 1..3)
+          content:
+            application/json:
+              schema:
+                type: array
+                minItems: 3
+                maxItems: 3
+                items:
+                  $ref: "#/components/schemas/TeamPresetSlot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/presets/team/{slot}:
+    parameters:
+      - $ref: "#/components/parameters/PresetSlot"
+    put:
+      tags: [presets-team]
+      operationId: saveTeamPreset
+      summary: |
+        스냅샷 저장(전체 교체). 검증 = 덱 검증 재사용(보유·선발 11·GK≥1·중복·프롬프트 길이,
+        code=DECK_INVALID) + teamTactics 범위 0..1(code=VALIDATION_ERROR).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamSnapshotSaveRequest"
+      responses:
+        "200":
+          description: 저장된 슬롯
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamPresetSlot"
+        "400":
+          description: 스냅샷 검증 실패. code=DECK_INVALID(덱 규칙) 또는 VALIDATION_ERROR(teamTactics/slot)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/presets/team/{slot}/apply:
+    parameters:
+      - $ref: "#/components/parameters/PresetSlot"
+    post:
+      tags: [presets-team]
+      operationId: applyTeamPreset
+      summary: |
+        스냅샷 → 현재 편집 상태(활성 덱 decks/deck_slots)로 반영. 덱 저장 재검증 수행(스냅샷 저장 후
+        보유 풀이 바뀌었으면 DECK_INVALID). teamTactics는 덱에 컬럼이 없어 반영 대상 아님(스냅샷/매치
+        스냅샷에만 존재하며 AI 컨텍스트로 전달).
+      responses:
+        "200":
+          description: 반영된 활성 덱(V1 Deck 스키마)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deck"
+        "400":
+          description: 스냅샷을 덱으로 반영할 때 검증 실패. code=DECK_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: 비어 있는 슬롯. code=NOT_FOUND
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  # 매치 확장(AC-C1, 수동전술)은 V1 `POST /api/matches`·`GET /api/matches/{id}`에 additive이므로
+  # 별도 path를 두지 않는다(경로 중복/`#` fragment 회피). 요청/응답 확장은 아래 컴포넌트 스키마로 계약:
+  #   - 요청 바디 확장 = CreateMatchRequestPhase2 (V1 CreateMatchRequest + teamTactics)
+  #   - 응답 확장       = MatchDetailPhase2Fields (V1 MatchDetail에 conditions/mode/leagueFixtureId 추가)
+  # 웹은 V1 경로에 이 스키마들을 병합해 타입을 만든다.
+
+  # ─────────────────────────── 관계 (AC-C4 표시) ───────────────────────────
+  /api/relations:
+    get:
+      tags: [relations]
+      operationId: getRelations
+      summary: |
+        내 감독 관계 — 팀 사기(morale/streak) + 선수별 신뢰도(trust) & 성격(personality).
+        브리핑/덱 화면 표시용(AC-C4). 관계 갱신은 매치 FINISHED 트랜잭션에서 서버가 처리(config 규칙).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelationsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ─────────────────────────── 트레이드 (AC-D) ───────────────────────────
+  /api/trade:
+    get:
+      tags: [trade]
+      operationId: getTradeSlots
+      summary: 트레이드 3슬롯 상태(WAITING 남은 시간·단축 비용, OPEN 오퍼 내용·확률) + 지갑
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeSlotsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/trade/{slot}/speedup:
+    parameters:
+      - $ref: "#/components/parameters/TradeSlotNo"
+    post:
+      tags: [trade]
+      operationId: speedupTradeSlot
+      summary: |
+        WAITING 슬롯 대기 단축 — 남은시간 비례 포인트 차감(config), opens_at 앞당김. 원장
+        ref=slotId+회차(멱등). 잔액 부족 시 402/400 INSUFFICIENT_POINTS.
+      responses:
+        "200":
+          description: 단축됨(갱신된 슬롯 + 지갑 + 차감 포인트)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeSpeedupResponse"
+        "400":
+          description: 슬롯 상태가 WAITING이 아님 등. code=TRADE_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "402":
+          description: 잔액 부족. code=INSUFFICIENT_POINTS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/trade/{slot}/propose:
+    parameters:
+      - $ref: "#/components/parameters/TradeSlotNo"
+    post:
+      tags: [trade]
+      operationId: proposeTradeFa
+      summary: |
+        FA 오퍼에 제안(내 보유 선수 + 포인트) → 가치비교 확률로 성공/실패(시드+제안해시 롤).
+        실패해도 제안 자원 소실 없음(재제안 쿨타임 config). 성공 시 대상 선수 영입 반영.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FaProposeRequest"
+      responses:
+        "200":
+          description: 판정 결과(성공/실패) + 갱신 지갑/보유
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResolveResponse"
+        "400":
+          description: 슬롯이 OPEN-FA가 아님·미보유 선수 제안·쿨타임 등. code=TRADE_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/trade/{slot}/accept:
+    parameters:
+      - $ref: "#/components/parameters/TradeSlotNo"
+    post:
+      tags: [trade]
+      operationId: acceptTrade
+      summary: |
+        TRADE 오퍼 수락(상대가 지목한 내 선수 ↔ 대가 선수) → 높은 확률(config, 예 0.8) 성공.
+        성공 시 내 선수 이탈 + 대가 선수 영입. 결과는 trade_log 기록·슬롯 재생성.
+      responses:
+        "200":
+          description: 판정 결과 + 갱신 보유
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResolveResponse"
+        "400":
+          description: 슬롯이 OPEN-TRADE가 아님. code=TRADE_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/trade/{slot}/decline:
+    parameters:
+      - $ref: "#/components/parameters/TradeSlotNo"
+    post:
+      tags: [trade]
+      operationId: declineTrade
+      summary: TRADE 오퍼 거절 → 슬롯 재대기(WAITING 재생성). trade_log에 DECLINED 기록.
+      responses:
+        "200":
+          description: 거절됨(재대기 슬롯)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResolveResponse"
+        "400":
+          description: 슬롯이 OPEN-TRADE가 아님. code=TRADE_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─────────────────────────── 리그 (AC-F) ───────────────────────────
+  /api/league/start:
+    post:
+      tags: [league]
+      operationId: startLeagueSeason
+      summary: |
+        시즌 시작 — ACTIVE 시즌 없으면 생성(봇 9팀 시드 구성 + 더블 라운드로빈 18R 일정 + 유저 18경기
+        + 봇전 72경기). 직전 시즌이 FINISHED면 season_no+1로 새 시즌.
+      responses:
+        "200":
+          description: 생성/조회된 ACTIVE 시즌
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueResponse"
+        "400":
+          description: 이미 ACTIVE 시즌 진행 중 등. code=LEAGUE_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/league:
+    get:
+      tags: [league]
+      operationId: getLeague
+      summary: 현재 시즌 상태·순위표(승점 3-1-0, 골득실→다득점→승자승)·일정·다음 유저 경기
+      responses:
+        "200":
+          description: OK. 시즌이 없으면 season=null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/league/next-match:
+    post:
+      tags: [league]
+      operationId: startNextLeagueMatch
+      summary: |
+        다음 SCHEDULED 유저 픽스처로 매치 생성(mode=league, 상대=봇 로스터/성향, 홈/어웨이 반영) →
+        이후 기존 매치 플로우. FINISHED 시 서버가 픽스처 정산 + 같은 라운드 봇전 간이결과 일괄 생성.
+      responses:
+        "201":
+          description: 매치 생성됨(리그 뱃지·라운드 포함) — MatchDetail + Phase2 필드
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeagueNextMatchResponse"
+        "400":
+          description: ACTIVE 시즌 없음·남은 유저 픽스처 없음(시즌 종료). code=LEAGUE_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ─────────────────────────── 로그 (AC-E1/E3) ───────────────────────────
+  /api/logs/matches:
+    get:
+      tags: [logs]
+      operationId: listMatchLogs
+      summary: 경기 기록 리스트(모드·상대·스코어·리그 라운드). 필터=mode/season.
+      parameters:
+        - name: mode
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [practice, league]
+        - name: season
+          in: query
+          required: false
+          schema:
+            type: integer
+            description: 리그 시즌 번호(season_no) 필터
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 30
+            maximum: 100
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MatchLogItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/logs/trades:
+    get:
+      tags: [logs]
+      operationId: listTradeLogs
+      summary: 트레이드 이력(성공/실패/거절/만료 + 상세)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 30
+            maximum: 100
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TradeLogItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  # ─────────────────────────── 랭킹 (AC-E2) ───────────────────────────
+  /api/rankings:
+    get:
+      tags: [rankings]
+      operationId: getRankings
+      summary: 유저 승수/승률 리더보드 상위 N + 내 순위 + 개인 기록(최다 득점 선수·연승 등)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RankingsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "/api/** 전체(로그인 제외). sessions 테이블 조회."
+    servantToken:
+      type: apiKey
+      in: header
+      name: X-Servant-Token
+      description: "/internal/** 전용 고정 shared secret(AC-Q3)."
+
+  parameters:
+    PresetSlot:
+      name: slot
+      in: path
+      required: true
+      description: 프리셋 슬롯 번호(1|2|3)
+      schema:
+        type: integer
+        enum: [1, 2, 3]
+    TradeSlotNo:
+      name: slot
+      in: path
+      required: true
+      description: 트레이드 슬롯 번호(1|2|3)
+      schema:
+        type: integer
+        enum: [1, 2, 3]
+
+  responses:
+    Unauthorized:
+      description: 인증 실패(토큰 없음/만료/무효). code=UNAUTHORIZED
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+    NotFound:
+      description: 리소스 없음. code=NOT_FOUND
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
+
+  schemas:
+    # ─────────────────────────── 공통(V1 미러 + Phase2 superset) ───────────────────────────
+    ErrorCode:
+      type: string
+      description: |
+        전 엔드포인트 공통 에러 코드(V1 열거 + Phase2 신규 TRADE_INVALID/LEAGUE_INVALID).
+      enum:
+        - VALIDATION_ERROR
+        - UNAUTHORIZED
+        - NOT_FOUND
+        - DECK_INVALID
+        - INSUFFICIENT_POINTS
+        - INVALID_STATE
+        - SUBSTITUTION_INVALID
+        - AI_JOB_FAILED
+        - TRADE_INVALID
+        - LEAGUE_INVALID
+        - INTERNAL_ERROR
+
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          $ref: "#/components/schemas/ErrorCode"
+        message:
+          type: string
+        detail:
+          type: [object, "null"]
+          additionalProperties: true
+
+    Position:
+      type: string
+      enum: [GK, DF, MF, FW]
+
+    Grade:
+      type: string
+      enum: [BRONZE, SILVER, GOLD, DIA, LEGEND]
+
+    Personality:
+      type: string
+      description: 선수 성격(P2-D7) — AI 컨텍스트 반응성에 영향. players.personality(data v2.1).
+      enum: [FIERY, CALM, GLASS, AMBITIOUS]
+
+    PlayerRef:
+      type: object
+      description: 선수 요약 참조(트레이드/리그 표시용)
+      required: [playerId, name, position, grade]
+      properties:
+        playerId: { type: string }
+        name: { type: string }
+        position:
+          $ref: "#/components/schemas/Position"
+        grade:
+          $ref: "#/components/schemas/Grade"
+
+    # V1 Deck(참조) — apply 응답. V1 openapi.yaml Deck과 동일 형태(병합 시 dedupe).
+    Deck:
+      type: object
+      required: [id, formation, slots]
+      properties:
+        id: { type: string }
+        formation: { type: string }
+        slots:
+          type: array
+          items:
+            type: object
+            required: [playerId, role, slotIndex]
+            properties:
+              playerId: { type: string }
+              role:
+                type: string
+                enum: [starter, bench]
+              slotIndex: { type: integer }
+              promptText:
+                type: [string, "null"]
+                maxLength: 500
+        updatedAt:
+          type: string
+          format: date-time
+
+    # ─────────────────────────── 팀 스냅샷 (AC-B) ───────────────────────────
+    TeamTactics:
+      type: object
+      description: |
+        수동 팀 전술(P2-D4) — 각 0.0~1.0. zod manualTactics와 필드명 일치. AI는 이 값을 베이스(A)로
+        받고 프롬프트로 보정만 한다(#82 A+B 구조 정합).
+      required: [line, press, tempo, width]
+      properties:
+        line: { type: number, minimum: 0, maximum: 1, description: 수비 라인 높이 }
+        press: { type: number, minimum: 0, maximum: 1, description: 압박 강도 }
+        tempo: { type: number, minimum: 0, maximum: 1, description: 템포 }
+        width: { type: number, minimum: 0, maximum: 1, description: 폭 }
+
+    SnapshotSlot:
+      type: object
+      required: [playerId, slotIndex]
+      properties:
+        playerId: { type: string }
+        slotIndex:
+          type: integer
+          description: "starter: 0..10(포메이션 슬롯), bench: 0.."
+        promptText:
+          type: [string, "null"]
+          maxLength: 500
+
+    TeamSnapshot:
+      type: object
+      description: 스냅샷 본문 — team_presets.snapshot_json 정규화 형태(name은 슬롯 메타로 분리).
+      required: [formation, starters, bench]
+      properties:
+        formation:
+          type: string
+          description: "'4-4-2' 등 — 엔진 config 포메이션 키와 일치"
+        starters:
+          type: array
+          minItems: 11
+          maxItems: 11
+          items:
+            $ref: "#/components/schemas/SnapshotSlot"
+        bench:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotSlot"
+        teamTactics:
+          $ref: "#/components/schemas/TeamTactics"
+        teamPrompt:
+          type: [string, "null"]
+          description: 팀 전체 사전 프롬프트
+
+    TeamPresetSlot:
+      type: object
+      description: GET 응답 슬롯 항목. 빈 슬롯은 name/snapshot/updatedAt=null.
+      required: [slot]
+      properties:
+        slot:
+          type: integer
+          enum: [1, 2, 3]
+        name:
+          type: [string, "null"]
+        snapshot:
+          oneOf:
+            - $ref: "#/components/schemas/TeamSnapshot"
+            - type: "null"
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+
+    TeamSnapshotSaveRequest:
+      type: object
+      description: PUT 바디 — TeamSnapshot + 선택적 name(슬롯 이름).
+      required: [formation, starters, bench]
+      properties:
+        name:
+          type: string
+          default: 프리셋
+        formation: { type: string }
+        starters:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotSlot"
+        bench:
+          type: array
+          items:
+            $ref: "#/components/schemas/SnapshotSlot"
+        teamTactics:
+          $ref: "#/components/schemas/TeamTactics"
+        teamPrompt:
+          type: [string, "null"]
+
+    # ─────────────────────────── 매치 확장 (AC-C1) ───────────────────────────
+    ConditionMap:
+      type: object
+      description: "{playerId: 0.0~1.0} 시드 결정론 컨디션 롤. 12시(1.0)=최고/6시(0.0)=최저 시계 UI."
+      additionalProperties:
+        type: number
+        minimum: 0
+        maximum: 1
+
+    CreateMatchRequestPhase2:
+      type: object
+      description: |
+        V1 CreateMatchRequest {botId?} 에 teamTactics(선택) 추가. teamTactics는 매치 스냅샷
+        (user_deck_json)에 포함돼 AI 컨텍스트로 전달된다.
+      properties:
+        botId:
+          type: [string, "null"]
+        teamTactics:
+          $ref: "#/components/schemas/TeamTactics"
+
+    MatchDetailPhase2Fields:
+      type: object
+      description: |
+        V1 MatchDetail에 **추가되는** Phase2 필드(기존 필드 불변). 웹은 병합 시 MatchDetail에 아래를 합친다.
+      properties:
+        conditions:
+          $ref: "#/components/schemas/ConditionMap"
+        mode:
+          type: string
+          enum: [practice, league]
+          default: practice
+        leagueFixtureId:
+          type: [string, "null"]
+          description: 리그 경기면 league_fixtures 참조
+
+    MatchDetailPhase2:
+      type: object
+      description: MatchDetail(V1) + Phase2 필드 — createMatch/next-match 응답 표현.
+      allOf:
+        - $ref: "#/components/schemas/MatchDetailPhase2Fields"
+      properties:
+        id: { type: string }
+        state:
+          type: string
+          enum: [BRIEFING, GEN1, H1_BREAK, GEN2, FINISHED, FAILED]
+        createdAt:
+          type: string
+          format: date-time
+
+    # ─────────────────────────── 관계 (AC-C4) ───────────────────────────
+    PlayerRelation:
+      type: object
+      required: [playerId, trust, personality]
+      properties:
+        playerId: { type: string }
+        trust:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: 신뢰도(기용/승패/교체로 변동, config 규칙)
+        personality:
+          $ref: "#/components/schemas/Personality"
+
+    RelationsResponse:
+      type: object
+      required: [morale, streak, players]
+      properties:
+        morale:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: 팀 사기(연승/연패로 변동)
+        streak:
+          type: integer
+          description: "+연승 / -연패"
+        players:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlayerRelation"
+
+    CatalogPlayerPhase2Fields:
+      type: object
+      description: V1 CatalogPlayer에 추가되는 personality 필드(도감/덱 표시용).
+      properties:
+        personality:
+          $ref: "#/components/schemas/Personality"
+
+    # ─────────────────────────── 트레이드 (AC-D) ───────────────────────────
+    TradeState:
+      type: string
+      enum: [WAITING, OPEN, RESOLVING]
+
+    TradeOfferKind:
+      type: string
+      enum: [FA, TRADE]
+
+    WalletInfo:
+      type: object
+      required: [points]
+      properties:
+        points:
+          type: integer
+          minimum: 0
+
+    TradeSlot:
+      type: object
+      description: |
+        슬롯 상태. WAITING: remainingSec/speedupCost. OPEN-FA: target(등장 선수) + 제안 확률 파라미터.
+        OPEN-TRADE: target(대가 선수) + demand(상대가 지목한 내 선수) + acceptProbability.
+      required: [slot, state]
+      properties:
+        slot:
+          type: integer
+          enum: [1, 2, 3]
+        state:
+          $ref: "#/components/schemas/TradeState"
+        offerKind:
+          oneOf:
+            - $ref: "#/components/schemas/TradeOfferKind"
+            - type: "null"
+        target:
+          oneOf:
+            - $ref: "#/components/schemas/PlayerRef"
+            - type: "null"
+          description: FA=등장 선수 / TRADE=대가 선수
+        demand:
+          oneOf:
+            - $ref: "#/components/schemas/PlayerRef"
+            - type: "null"
+          description: TRADE=상대가 지목한 내 선수
+        opensAt:
+          type: string
+          format: date-time
+        remainingSec:
+          type: integer
+          minimum: 0
+          description: WAITING 남은 대기 초(0이면 곧 OPEN)
+        speedupCost:
+          type: [integer, "null"]
+          description: 지금 단축 시 포인트 비용(잔여시간 비례, config)
+        targetValue:
+          type: [number, "null"]
+          description: 대상 선수 가치(제안 확률 계산 근거, 표시용)
+        acceptProbability:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: TRADE 수락 성공 확률(config, 서버 계산값)
+
+    TradeSlotsResponse:
+      type: object
+      required: [slots, wallet]
+      properties:
+        slots:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/TradeSlot"
+        wallet:
+          $ref: "#/components/schemas/WalletInfo"
+
+    TradeSpeedupResponse:
+      type: object
+      required: [slot, wallet, spent]
+      properties:
+        slot:
+          $ref: "#/components/schemas/TradeSlot"
+        wallet:
+          $ref: "#/components/schemas/WalletInfo"
+        spent:
+          type: integer
+          description: 차감된 포인트
+
+    FaProposeRequest:
+      type: object
+      required: [playerIds, points]
+      properties:
+        playerIds:
+          type: array
+          items:
+            type: string
+          description: 제안에 포함할 내 보유 선수 id들
+        points:
+          type: integer
+          minimum: 0
+          description: 함께 제안할 포인트
+
+    TradeResult:
+      type: string
+      enum: [SUCCESS, FAIL, DECLINED, EXPIRED]
+
+    TradeResolveResponse:
+      type: object
+      description: propose/accept/decline 판정 결과. 성공 시 보유 풀 변동 포함.
+      required: [result, slot]
+      properties:
+        result:
+          $ref: "#/components/schemas/TradeResult"
+        probability:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+        roll:
+          type: [number, "null"]
+          description: 시드+제안해시 롤(감사/표시용)
+        acquired:
+          oneOf:
+            - $ref: "#/components/schemas/PlayerRef"
+            - type: "null"
+          description: 영입된 선수(성공 시)
+        released:
+          oneOf:
+            - $ref: "#/components/schemas/PlayerRef"
+            - type: "null"
+          description: 이탈한 내 선수(TRADE 성공 시)
+        wallet:
+          $ref: "#/components/schemas/WalletInfo"
+        slot:
+          $ref: "#/components/schemas/TradeSlot"
+          description: 판정 후 재생성된 슬롯
+
+    TradeLogItem:
+      type: object
+      required: [id, kind, result, createdAt]
+      properties:
+        id: { type: integer }
+        kind:
+          $ref: "#/components/schemas/TradeOfferKind"
+        result:
+          $ref: "#/components/schemas/TradeResult"
+        detail:
+          type: object
+          additionalProperties: true
+          description: "{target, offered:[...], points, probability, roll} — trade_log.detail_json"
+        createdAt:
+          type: string
+          format: date-time
+
+    # ─────────────────────────── 리그 (AC-F) ───────────────────────────
+    LeagueTeam:
+      type: object
+      required: [teamId, name, isUser]
+      properties:
+        teamId: { type: string }
+        name: { type: string }
+        persona:
+          type: [string, "null"]
+          description: 봇 팀 성향(공격/수비/압박/역습…)
+        power:
+          type: [number, "null"]
+          description: 팀 파워(봇전 간이결과 확률 모델 입력)
+        isUser:
+          type: boolean
+
+    LeagueStanding:
+      type: object
+      description: 순위표 행 — league_fixtures 파생(승점 3-1-0, 골득실→다득점→승자승).
+      required: [teamId, name, played, won, drawn, lost, goalsFor, goalsAgainst, goalDiff, points, rank, isUser]
+      properties:
+        teamId: { type: string }
+        name: { type: string }
+        played: { type: integer }
+        won: { type: integer }
+        drawn: { type: integer }
+        lost: { type: integer }
+        goalsFor: { type: integer }
+        goalsAgainst: { type: integer }
+        goalDiff: { type: integer }
+        points: { type: integer }
+        rank: { type: integer }
+        isUser: { type: boolean }
+
+    LeagueFixture:
+      type: object
+      required: [id, round, homeTeam, awayTeam, isUser, state]
+      properties:
+        id: { type: string }
+        round:
+          type: integer
+          minimum: 1
+          maximum: 18
+        homeTeam: { type: string, description: teamId }
+        awayTeam: { type: string, description: teamId }
+        isUser: { type: boolean }
+        state:
+          type: string
+          enum: [SCHEDULED, PLAYED]
+        scoreHome: { type: [integer, "null"] }
+        scoreAway: { type: [integer, "null"] }
+        matchId:
+          type: [string, "null"]
+          description: 유저 경기만(풀 시뮬 매치 참조)
+
+    LeagueSeason:
+      type: object
+      required: [id, seasonNo, state, teams, standings, fixtures]
+      properties:
+        id: { type: string }
+        seasonNo: { type: integer }
+        state:
+          type: string
+          enum: [ACTIVE, FINISHED]
+        teams:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeagueTeam"
+        standings:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeagueStanding"
+        fixtures:
+          type: array
+          items:
+            $ref: "#/components/schemas/LeagueFixture"
+        nextUserFixture:
+          oneOf:
+            - $ref: "#/components/schemas/LeagueFixture"
+            - type: "null"
+          description: 다음 SCHEDULED 유저 경기(없으면 시즌 종료 임박)
+
+    LeagueResponse:
+      type: object
+      properties:
+        season:
+          oneOf:
+            - $ref: "#/components/schemas/LeagueSeason"
+            - type: "null"
+          description: ACTIVE 시즌 없으면 null(시작 CTA)
+
+    LeagueNextMatchResponse:
+      type: object
+      required: [match, fixture]
+      properties:
+        match:
+          $ref: "#/components/schemas/MatchDetailPhase2"
+        fixture:
+          $ref: "#/components/schemas/LeagueFixture"
+
+    # ─────────────────────────── 로그·랭킹 (AC-E) ───────────────────────────
+    MatchLogItem:
+      type: object
+      required: [id, mode, opponentName, result, createdAt]
+      properties:
+        id: { type: string }
+        mode:
+          type: string
+          enum: [practice, league]
+        opponentName: { type: string }
+        scoreHome: { type: [integer, "null"] }
+        scoreAway: { type: [integer, "null"] }
+        result:
+          type: [string, "null"]
+          enum: [WIN, DRAW, LOSS]
+        seasonNo:
+          type: [integer, "null"]
+          description: 리그 경기면 시즌 번호
+        round:
+          type: [integer, "null"]
+          description: 리그 경기면 라운드
+        createdAt:
+          type: string
+          format: date-time
+
+    RankingEntry:
+      type: object
+      required: [userId, nickname, wins, winRate, rank]
+      properties:
+        userId: { type: string }
+        nickname: { type: string }
+        wins: { type: integer }
+        winRate:
+          type: number
+          minimum: 0
+          maximum: 1
+        rank: { type: integer }
+
+    PersonalRecords:
+      type: object
+      description: 개인 기록(매치 이벤트 파생) — 최다 득점 선수·최다 연승 등.
+      properties:
+        topScorer:
+          oneOf:
+            - $ref: "#/components/schemas/PlayerRef"
+            - type: "null"
+        topScorerGoals:
+          type: [integer, "null"]
+        longestWinStreak:
+          type: integer
+        totalMatches:
+          type: integer
+
+    RankingsResponse:
+      type: object
+      required: [leaderboard, me, personalRecords]
+      properties:
+        leaderboard:
+          type: array
+          items:
+            $ref: "#/components/schemas/RankingEntry"
+        me:
+          $ref: "#/components/schemas/RankingEntry"
+        personalRecords:
+          $ref: "#/components/schemas/PersonalRecords"
+
+    # ─────────────────────────── AI 컨텍스트 additive (AC-C2~C4) ───────────────────────────
+    OpponentRosterEntry:
+      type: object
+      description: 마킹 지시 해석용(상대 이름→playerId 매핑 근거)
+      required: [playerId, name, position]
+      properties:
+        playerId: { type: string }
+        name: { type: string }
+        position:
+          $ref: "#/components/schemas/Position"
+
+    RelationContext:
+      type: object
+      description: "선수별 관계 컨텍스트 {playerId: {trust, personality}}"
+      additionalProperties:
+        type: object
+        properties:
+          trust:
+            type: integer
+            minimum: 0
+            maximum: 100
+          personality:
+            $ref: "#/components/schemas/Personality"
+
+    AiJobContextPhase2Fields:
+      type: object
+      description: |
+        V1 AiJobContext(=shared TeamInputJobContext)에 **추가되는** additive optional 필드
+        (LLD-p2-server §4 / LLD-p2-servants §2). zod `.optional()`이라 구계약 호환 — 출력 스키마
+        (TacticalInput)는 불변(P2-D8). p2-servants가 shared zod를 동기 확장(매니저 조율).
+      properties:
+        manualTactics:
+          $ref: "#/components/schemas/TeamTactics"
+        conditions:
+          $ref: "#/components/schemas/ConditionMap"
+        relations:
+          $ref: "#/components/schemas/RelationContext"
+        teamMorale:
+          type: object
+          properties:
+            morale:
+              type: integer
+              minimum: 0
+              maximum: 100
+            streak:
+              type: integer
+        opponentRoster:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpponentRosterEntry"
