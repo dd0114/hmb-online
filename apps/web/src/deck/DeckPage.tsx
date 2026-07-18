@@ -145,7 +145,9 @@ export function DeckPage() {
     });
   }
 
-  const saveDisabled = updateDeck.isPending || starterCount !== STARTER_COUNT;
+  // 클라 사전검증(preIssues)에서 걸린 덱은 서버 왕복 전에 저장을 막는다(#73 P2).
+  const saveDisabled =
+    updateDeck.isPending || starterCount !== STARTER_COUNT || preIssues.length > 0;
 
   const header = (
     <div className={styles.headerRow}>
@@ -243,8 +245,10 @@ export function DeckPage() {
         draft={draft}
         playersById={playersById}
         creating={createPreset.isPending}
-        onCreate={(name, promptText) => createPreset.mutate({ name, promptText })}
-        onDelete={(id) => deletePreset.mutate(id)}
+        onCreate={(name, promptText) =>
+          createPreset.mutateAsync({ name, promptText }).then(() => undefined)
+        }
+        onDelete={(id) => deletePreset.mutateAsync(id).then(() => undefined)}
         onBulkApply={(playerIds, text) => mutateDraft(bulkApplyPreset(draft, playerIds, text))}
       />
     </Layout>

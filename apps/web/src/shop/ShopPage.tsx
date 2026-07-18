@@ -6,6 +6,7 @@ import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { GachaReveal } from "./GachaReveal";
+import { gachaButtonState } from "./shop-logic";
 import styles from "./ShopPage.module.css";
 
 /**
@@ -17,7 +18,7 @@ export const GACHA_COST_TEN = 3000;
 
 export function ShopPage() {
   const navigate = useNavigate();
-  const { data: me } = useMe();
+  const { data: me, isLoading: meLoading, isError: meError } = useMe();
   const gacha = useGacha();
   const [reveal, setReveal] = useState<GachaResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,11 +54,14 @@ export function ShopPage() {
     </div>
   );
 
-  const singleShort = points < GACHA_COST_SINGLE;
-  const tenShort = points < GACHA_COST_TEN;
+  // 잔액을 아직 모를 때는 '부족' 문구를 띄우지 않는다(#73 P0 — points ?? 0 로 오판하던 플래시 방지).
+  const single = gachaButtonState({ loaded: !!me, points, cost: GACHA_COST_SINGLE, pending: gacha.isPending });
+  const ten = gachaButtonState({ loaded: !!me, points, cost: GACHA_COST_TEN, pending: gacha.isPending });
 
   return (
     <Layout header={header}>
+      {meError && <ErrorToast message="지갑 정보를 불러오지 못했습니다" />}
+
       <div className={styles.pulls}>
         <div className={styles.pullCard}>
           <h2 className={styles.pullTitle}>단뽑</h2>
@@ -66,12 +70,12 @@ export function ShopPage() {
             type="button"
             className={styles.pullButton}
             data-testid="gacha-single"
-            disabled={gacha.isPending || singleShort}
+            disabled={single.disabled}
             onClick={() => pull("single")}
           >
             {GACHA_COST_SINGLE.toLocaleString("ko-KR")} P
           </button>
-          {singleShort && <p className={styles.shortNote}>포인트가 부족합니다</p>}
+          {single.showShort && <p className={styles.shortNote}>포인트가 부족합니다</p>}
         </div>
 
         <div className={styles.pullCard}>
@@ -81,15 +85,16 @@ export function ShopPage() {
             type="button"
             className={styles.pullButton}
             data-testid="gacha-ten"
-            disabled={gacha.isPending || tenShort}
+            disabled={ten.disabled}
             onClick={() => pull("ten")}
           >
             {GACHA_COST_TEN.toLocaleString("ko-KR")} P
           </button>
-          {tenShort && <p className={styles.shortNote}>포인트가 부족합니다</p>}
+          {ten.showShort && <p className={styles.shortNote}>포인트가 부족합니다</p>}
         </div>
       </div>
 
+      {meLoading && <p className={styles.pending}>지갑 불러오는 중…</p>}
       {gacha.isPending && <p className={styles.pending}>뽑는 중…</p>}
       <ErrorToast message={error} onDismiss={() => setError(null)} />
 
