@@ -3,8 +3,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { PlayerCard } from "@hmb/shared";
-import { generateAll, type PlayerSeed, type Position, type Grade } from "./generate";
+import { generateAll, type PlayerSeed, type Position, type Grade, type Personality } from "./generate";
 import { ROSTER } from "./roster";
+import { PERSONALITY } from "./personality";
 
 const POSITIONS: Position[] = ["GK", "DF", "MF", "FW"];
 const GRADES: Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
@@ -47,7 +48,81 @@ const PRIMARY: Record<Position, readonly (keyof PlayerSeed["attributes"])[]> = {
 };
 const RANK: Record<Grade, number> = { BRONZE: 0, SILVER: 1, GOLD: 2, DIA: 3, LEGEND: 4 };
 
-const { players, economy, bots } = generateAll();
+const PERSONALITIES: Personality[] = ["FIERY", "CALM", "GLASS", "AMBITIOUS"];
+
+// personality 목표 분포(PRD-v3 P2-D7): 대략 FIERY 25 / CALM 40 / GLASS 15 / AMBITIOUS 20 (%).
+// "대략" 이므로 밴드로 검증(정확 카운트 강제 금지 — 큐레이션 여지 유지). data 독립 리터럴.
+const PERSONALITY_BANDS: Record<Personality, readonly [number, number]> = {
+  FIERY: [0.2, 0.3],
+  CALM: [0.34, 0.46],
+  GLASS: [0.1, 0.2],
+  AMBITIOUS: [0.15, 0.25],
+};
+
+// 리그 봇 클럽명 실클럽 denylist — data 와 독립인 리터럴(유명 실클럽 정규화 풀네임 + 도시/고유 토큰).
+// 가상 클럽명이 이 중 하나와 같거나(정확 일치) 도시 토큰을 포함하면 실패.
+const REAL_CLUB_NAMES: readonly string[] = [
+  "Manchester United",
+  "Manchester City",
+  "Liverpool",
+  "Chelsea",
+  "Arsenal",
+  "Tottenham Hotspur",
+  "Newcastle United",
+  "Aston Villa",
+  "West Ham United",
+  "Real Madrid",
+  "Barcelona",
+  "Atletico Madrid",
+  "Sevilla",
+  "Valencia",
+  "Bayern Munich",
+  "Borussia Dortmund",
+  "RB Leipzig",
+  "Bayer Leverkusen",
+  "Juventus",
+  "Inter Milan",
+  "AC Milan",
+  "Napoli",
+  "AS Roma",
+  "Paris Saint-Germain",
+  "Marseille",
+  "Ajax",
+  "PSV Eindhoven",
+  "Feyenoord",
+  "Benfica",
+  "Porto",
+  "Sporting CP",
+  "Celtic",
+  "Rangers",
+];
+// 실클럽 고유 도시/식별 토큰(가상명에 섞이면 안 됨) — 일반 접미사(United/FC/Athletic 등)는 제외.
+const REAL_CLUB_TOKENS: readonly string[] = [
+  "Manchester",
+  "Liverpool",
+  "Chelsea",
+  "Arsenal",
+  "Tottenham",
+  "Newcastle",
+  "Madrid",
+  "Barcelona",
+  "Atletico",
+  "Sevilla",
+  "Munich",
+  "Dortmund",
+  "Leipzig",
+  "Leverkusen",
+  "Juventus",
+  "Napoli",
+  "Milan",
+  "Roma",
+  "Ajax",
+  "Benfica",
+  "Porto",
+  "Celtic",
+];
+
+const { players, playersV21, economy, bots, league } = generateAll();
 
 describe("players.v2 — counts/distribution (AC-PL1)", () => {
   it(`총 ${TOTAL}명`, () => {
@@ -388,12 +463,198 @@ describe("bots.v2 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)
   });
 });
 
+describe("players.v2.1 — personality 부여 (PRD-v3 P2-D7, additive)", () => {
+  it(`v2.1 도 ${TOTAL}명 — v2 와 동일 개수`, () => {
+    expect(playersV21.length).toBe(TOTAL);
+  });
+
+  it("v2.1 = v2 필드 완전 동일 + personality 만 additive(id/name/position/grade/attributes 무변경)", () => {
+    playersV21.forEach((p, i) => {
+      const base = players[i]!;
+      expect(p.id).toBe(base.id);
+      expect(p.name).toBe(base.name);
+      expect(p.position).toBe(base.position);
+      expect(p.grade).toBe(base.grade);
+      expect(p.attributes).toEqual(base.attributes);
+      // personality 를 뺀 나머지가 v2 와 정확히 같아야 한다(순수 additive).
+      const { personality, ...rest } = p;
+      expect(rest).toEqual(base);
+      expect(personality).toBeDefined();
+    });
+  });
+
+  it("모든 personality 가 4종 enum(FIERY/CALM/GLASS/AMBITIOUS) 내", () => {
+    for (const p of playersV21) {
+      expect(PERSONALITIES, `${p.id}:${p.name} personality`).toContain(p.personality);
+    }
+  });
+
+  it("PERSONALITY 매핑 ↔ ROSTER 이름 전단사(bijection) — 누락/잉여 0", () => {
+    const rosterNames = new Set(ROSTER.map((r) => r.name));
+    const mapNames = new Set(Object.keys(PERSONALITY));
+    // 모든 로스터 선수가 매핑을 가진다.
+    for (const n of rosterNames) expect(mapNames.has(n), `매핑 누락: ${n}`).toBe(true);
+    // 매핑에 로스터 밖 이름(오타 등)이 없다.
+    for (const n of mapNames) expect(rosterNames.has(n), `로스터 밖 매핑 키: ${n}`).toBe(true);
+    expect(mapNames.size).toBe(TOTAL);
+  });
+
+  it("분포가 목표 밴드 내 — 대략 FIERY25/CALM40/GLASS15/AMBITIOUS20 (%)", () => {
+    const counts: Record<Personality, number> = { FIERY: 0, CALM: 0, GLASS: 0, AMBITIOUS: 0 };
+    for (const p of playersV21) counts[p.personality]++;
+    for (const k of PERSONALITIES) {
+      const ratio = counts[k] / TOTAL;
+      const [lo, hi] = PERSONALITY_BANDS[k];
+      expect(ratio, `${k} 비율 ${(ratio * 100).toFixed(1)}% in [${lo * 100},${hi * 100}]%`).toBeGreaterThanOrEqual(lo);
+      expect(ratio, `${k} 비율`).toBeLessThanOrEqual(hi);
+    }
+  });
+
+  it("CALM 이 최다(기본 성격) — 나머지 3종보다 많다", () => {
+    const counts: Record<Personality, number> = { FIERY: 0, CALM: 0, GLASS: 0, AMBITIOUS: 0 };
+    for (const p of playersV21) counts[p.personality]++;
+    expect(counts.CALM).toBeGreaterThan(counts.FIERY);
+    expect(counts.CALM).toBeGreaterThan(counts.AMBITIOUS);
+    expect(counts.CALM).toBeGreaterThan(counts.GLASS);
+  });
+
+  it("큐레이션 대표 선수 성격 고정(회귀 가드)", () => {
+    const byName = new Map(playersV21.map((p) => [p.name, p.personality]));
+    expect(byName.get("Toni Kroos")).toBe("CALM");
+    expect(byName.get("Antonio Rüdiger")).toBe("FIERY");
+    expect(byName.get("Marcus Rashford")).toBe("GLASS");
+    expect(byName.get("Erling Haaland")).toBe("AMBITIOUS");
+    expect(byName.get("Park Ji-sung")).toBe("AMBITIOUS");
+    expect(byName.get("Son Heung-min")).toBe("CALM");
+  });
+});
+
+describe("league.v1 — 봇 리그 시드(클럽명·성향·보상)", () => {
+  it("version === 'v1'", () => {
+    expect(league.version).toBe("v1");
+  });
+
+  it("가상 클럽명 20개+ · 전부 유일", () => {
+    expect(league.clubNames.length).toBeGreaterThanOrEqual(20);
+    expect(new Set(league.clubNames).size).toBe(league.clubNames.length);
+    for (const n of league.clubNames) expect(n.trim().length).toBeGreaterThan(0);
+  });
+
+  it("실클럽 denylist — 어떤 클럽명도 실클럽 풀네임과 정확 일치하지 않음(대소문자 무시)", () => {
+    const deny = new Set(REAL_CLUB_NAMES.map((n) => n.toLowerCase()));
+    for (const n of league.clubNames) {
+      expect(deny.has(n.toLowerCase()), `가상 클럽명 "${n}" 이 실클럽과 일치`).toBe(false);
+    }
+  });
+
+  it("실클럽 고유 도시/식별 토큰 미포함(일반 접미사 제외) — 실명 유출 방지", () => {
+    for (const n of league.clubNames) {
+      for (const tok of REAL_CLUB_TOKENS) {
+        expect(n.includes(tok), `클럽명 "${n}" 에 실클럽 토큰 "${tok}" 포함`).toBe(false);
+      }
+    }
+  });
+
+  it("팀 성향 프리셋 6종+ · id 유일 · tactics 4축 0..1", () => {
+    expect(league.personaPresets.length).toBeGreaterThanOrEqual(6);
+    const ids = league.personaPresets.map((p) => p.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const preset of league.personaPresets) {
+      expect(preset.name.length, `${preset.id} name`).toBeGreaterThan(0);
+      expect(preset.description.length, `${preset.id} description`).toBeGreaterThan(0);
+      expect(preset.formation.length, `${preset.id} formation`).toBeGreaterThan(0);
+      for (const axis of ["line", "press", "tempo", "width"] as const) {
+        const v = preset.tactics[axis];
+        expect(v, `${preset.id}.${axis}`).toBeGreaterThanOrEqual(0);
+        expect(v, `${preset.id}.${axis}`).toBeLessThanOrEqual(1);
+      }
+    }
+  });
+
+  it("순위 보상표 — rank 1..10 연속 · 포인트 단조 감소 · 전원 양수", () => {
+    expect(league.rewards.length).toBe(10);
+    league.rewards.forEach((r, i) => {
+      expect(r.rank, `보상[${i}].rank`).toBe(i + 1);
+      expect(r.points, `rank ${r.rank} points>0`).toBeGreaterThan(0);
+      if (i > 0) {
+        expect(r.points, `rank ${r.rank} < rank ${i}`).toBeLessThan(league.rewards[i - 1]!.points);
+      }
+    });
+  });
+});
+
+describe("economy.v2 — 트레이드 수치(P2-D9 / LLD-p2-server §5)", () => {
+  const t = economy.trade;
+
+  it("슬롯 3 · kindWeights 합=1", () => {
+    expect(t.slots).toBe(3);
+    expect(t.kindWeights.FA + t.kindWeights.TRADE).toBeCloseTo(1, 10);
+  });
+
+  it("레어도별 대기시간 — BRONZE1/SILVER6/GOLD24/DIA48/LEGEND72 (h)", () => {
+    expect(t.waitHours).toEqual({ BRONZE: 1, SILVER: 6, GOLD: 24, DIA: 48, LEGEND: 72 });
+  });
+
+  it("대기시간 단조 증가 — 레어도 높을수록 길다", () => {
+    const order: Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
+    for (let i = 1; i < order.length; i++) {
+      expect(t.waitHours[order[i]!]).toBeGreaterThan(t.waitHours[order[i - 1]!]);
+    }
+  });
+
+  it("target 레어도 가중 합=1 · 전부 양수 · 저등급이 더 흔함", () => {
+    const w = t.targetRarityWeights;
+    const sum = (Object.values(w) as number[]).reduce((s, x) => s + x, 0);
+    expect(sum).toBeCloseTo(1, 10);
+    for (const g of GRADES) expect(w[g], `${g} weight>0`).toBeGreaterThan(0);
+    expect(w.LEGEND).toBeLessThan(w.DIA);
+    expect(w.DIA).toBeLessThan(w.GOLD);
+  });
+
+  it("단축 비용 계수 — pointsPerHour>0, minPoints>0 (잔여시간 비례, AC-D4)", () => {
+    expect(t.speedup.pointsPerHour).toBeGreaterThan(0);
+    expect(t.speedup.minPoints).toBeGreaterThan(0);
+  });
+
+  it("FA 확률 곡선 — base/k 범위 · minProb<maxProb · 쿨타임>0 (AC-D2)", () => {
+    expect(t.fa.base).toBeGreaterThanOrEqual(0);
+    expect(t.fa.base).toBeLessThanOrEqual(1);
+    expect(t.fa.k).toBeGreaterThan(0);
+    expect(t.fa.minProb).toBeGreaterThanOrEqual(0);
+    expect(t.fa.maxProb).toBeLessThanOrEqual(1);
+    expect(t.fa.minProb).toBeLessThan(t.fa.maxProb);
+    expect(t.fa.reproposalCooldownHours).toBeGreaterThan(0);
+  });
+
+  it("TRADE 수락 확률 = 0.8 (AC-D3) · 0..1", () => {
+    expect(t.tradeOffer.acceptProb).toBe(0.8);
+    expect(t.tradeOffer.acceptProb).toBeGreaterThan(0);
+    expect(t.tradeOffer.acceptProb).toBeLessThanOrEqual(1);
+  });
+
+  it("가치함수 — 등급 기본값 단조 증가 · attrSumCoeff>0", () => {
+    const v = t.value;
+    const order: Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
+    for (let i = 1; i < order.length; i++) {
+      expect(v.byGrade[order[i]!], `${order[i]} value`).toBeGreaterThan(v.byGrade[order[i - 1]!]);
+    }
+    expect(v.attrSumCoeff).toBeGreaterThan(0);
+  });
+
+  it("리그 보상 참조 — league.v1.json#rewards 를 가리킨다(단일 원천)", () => {
+    expect(economy.league.rewardsFile).toBe("league.v1.json");
+    expect(economy.league.rewardsRef).toBe("rewards");
+  });
+});
+
 describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const cases: readonly [string, unknown][] = [
     ["players.v2.json", players],
+    ["players.v2.1.json", playersV21],
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
+    ["league.v1.json", league],
   ];
 
   it.each(cases)("%s 가 디스크에서 바이트 동일(수정·재생성 누락 검출)", (file, data) => {
@@ -407,7 +668,9 @@ describe("재생성 결정론 (AC-PL1)", () => {
     const a = generateAll();
     const b = generateAll();
     expect(JSON.stringify(a.players, null, 2)).toBe(JSON.stringify(b.players, null, 2));
+    expect(JSON.stringify(a.playersV21, null, 2)).toBe(JSON.stringify(b.playersV21, null, 2));
     expect(JSON.stringify(a.economy, null, 2)).toBe(JSON.stringify(b.economy, null, 2));
     expect(JSON.stringify(a.bots, null, 2)).toBe(JSON.stringify(b.bots, null, 2));
+    expect(JSON.stringify(a.league, null, 2)).toBe(JSON.stringify(b.league, null, 2));
   });
 });

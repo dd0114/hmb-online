@@ -58,3 +58,31 @@ v1(가상 선수 110명)을 **유명 실선수 172명**으로 전량 교체한�
 ## 7. 검증 (data.test.ts)
 
 분포(172·포지션·등급 리터럴)·한국선수 존재·등급 희소 단조·ID 순차/유일·**실명 allowlist(=ROSTER 일치)**·밴드·trait 반영·zod PlayerCard·starterPack 구성·gacha 합=1·봇 덱 유효성·**봇 DIA/LEGEND 미편성**·디스크 바이트 동일·재생성 결정론. 루트 `npm test` 포함.
+
+---
+
+## 8. 선수 성격(personality) 매핑 기준 — players **v2.1** (Phase 2, PRD-v3 P2-D7)
+
+> Phase 2 증분. `players.v2` 위에 **additive** 로 `personality` 만 부여 → `players.v2.1.json`. v2 필드(id/name/position/grade/attributes)는 **무변경**(바이트 동일). 큐레이션 원천 = `data/players/personality.ts`(이름→성격), 파생 = `generate.ts buildPlayersV21()`. 등급 매핑(§2)과 **별개 축** — 성격은 능력 위상이 아니라 "감독 관계 반응 유형"이다.
+
+### 8.1 성격 4종과 판단 기준
+등급이 "얼마나 잘하나"라면, 성격은 "감독의 지시·질책·프롬프트에 **어떻게 반응하나**"의 층위다. 선수의 실제 이미지(기질·커리어 서사·미디어 페르소나)로 배정한다.
+
+| 성격 | 뜻 | 배정 기준(실선수 이미지) | AI 반응 방향(servants가 소비) | 예시 |
+|---|---|---|---|---|
+| **FIERY** (불꽃) | 다혈질·투쟁적 | 감정 표출형 리더·투사, 카드/충돌 잦음, 승부처에서 끓어오름 | 강한 압박·공격 지시에 과반응(잘 먹힘), 과한 질책은 역효과(충돌) | Maradona, Rüdiger, Casemiro, Gavi, Lee Kang-in, Cho Hyun-woo |
+| **CALM** (침착) | 냉정·안정 | 압박 상황에서 흔들리지 않는 프로, 메트로놈형·클래식 리더 | 지시에 꾸준히 반응, 변동 적음(**기본값**) | Kroos, Modrić, van Dijk, Son Heung-min, Ki Sung-yueng |
+| **GLASS** (유리멘탈) | 자신감 의존·기복 | 폼 편차 큰 선수·프레셔 취약·슬럼프형, 어린 프로스펙트 | 질책성 프롬프트에 위축(`mentalModifier`↓), 격려엔 살아남 | Rashford, Havertz, Arda Güler, Park Chu-young |
+| **AMBITIOUS** (야심가) | 승부욕·자기주도 | 상위 이동/기록 지향, 헝그리한 슈퍼스타·떠오르는 유망주 | 공격·도전적 목표에 동기부여, 큰 역할 부여 시 상승 | Ronaldo Nazário, Mbappé, Haaland, Park Ji-sung |
+
+- **한국 선수**: 세계무대 서사 반영(박지성·차범근=야심가형 개척자 → AMBITIOUS, 손흥민=꾸준·프로페셔널 → CALM, 이강인=다혈질 → FIERY).
+- **어린 프로스펙트 처리**: 폼/기복이 서사면 GLASS(예: Rashford·Arda Güler·Karim Adeyemi), 헝그리·상승세가 서사면 AMBITIOUS(예: Endrick·Yamal·Yang Min-hyuk). 둘 다 어리지만 축이 다르다.
+
+### 8.2 분포
+목표(P2-D7): 대략 **FIERY 25 / CALM 40 / GLASS 15 / AMBITIOUS 20** (%). CALM 이 기본값이라 최다.
+실제(172명): **FIERY 41 (23.8%) / CALM 69 (40.1%) / GLASS 25 (14.5%) / AMBITIOUS 37 (21.5%)**.
+검증은 `data.test.ts` 가 **밴드**로(정확 카운트 강제 X — 큐레이션 여지 유지) + 전원 매핑(ROSTER↔PERSONALITY 전단사) + enum + CALM 최다 + 대표 선수 회귀 가드로 수행.
+
+### 8.3 economy / league v2 (Phase 2 추가)
+- **economy.v2.json**(additive 확장, 발행명 유지): 기존 v2 필드(gacha·rewards·starterPack) 무변경 + `trade`(P2-D9: 레어도별 대기 h BRONZE1/SILVER6/GOLD24/DIA48/LEGEND72·단축 비용 계수·FA 확률 base/k·TRADE 수락 0.8·가치함수 테이블) + `league`(순위 보상 참조 → `league.v1.json#rewards`). 서버(server-java)는 이 블록만 읽는다(하드코딩 금지).
+- **league.v1.json**(신규): 가상 클럽명 24개(실클럽 denylist 가드)·팀 성향 프리셋 7종(BALANCED/ATTACK/DEFENSE/GEGENPRESS/COUNTER/POSSESSION/WING_PLAY, tactics 0..1)·순위별 포인트 보상표(10팀, 우승 3000 → 10위 200, 단조 감소).

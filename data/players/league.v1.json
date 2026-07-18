@@ -1,0 +1,157 @@
+{
+  "version": "v1",
+  "clubNames": [
+    "Ironclad FC",
+    "Crimson Vanguard",
+    "Azure Sentinels",
+    "Emerald Dynamo",
+    "Golden Griffins",
+    "Shadow Wolves",
+    "Thunder Bay United",
+    "Silver Phoenix",
+    "Obsidian Rovers",
+    "Scarlet Lions",
+    "Cobalt Titans",
+    "Frostgard FC",
+    "Ember Athletic",
+    "Nova Rangers",
+    "Stormbreak United",
+    "Onyx Harbor",
+    "Verdant Stallions",
+    "Crimson Peak",
+    "Aurora Athletic",
+    "Granite Guardians",
+    "Zephyr FC",
+    "Blazing Comets",
+    "Twilight Wanderers",
+    "Halcyon United"
+  ],
+  "personaPresets": [
+    {
+      "id": "BALANCED",
+      "name": "밸런스",
+      "description": "특정 강점 없이 고르게 — 점유·수비 균형. 어느 상대에도 무난.",
+      "formation": "4-4-2",
+      "tactics": {
+        "line": 0.5,
+        "press": 0.5,
+        "tempo": 0.5,
+        "width": 0.5
+      }
+    },
+    {
+      "id": "ATTACK",
+      "name": "공격형",
+      "description": "하이라인·빠른 템포로 전방 압박. 뒷공간 역습에 취약.",
+      "formation": "4-3-3",
+      "tactics": {
+        "line": 0.75,
+        "press": 0.65,
+        "tempo": 0.7,
+        "width": 0.7
+      }
+    },
+    {
+      "id": "DEFENSE",
+      "name": "수비형",
+      "description": "로우블록·낮은 라인으로 진영을 지킴. 지공에 빈틈을 내주기도.",
+      "formation": "5-3-2",
+      "tactics": {
+        "line": 0.3,
+        "press": 0.35,
+        "tempo": 0.4,
+        "width": 0.4
+      }
+    },
+    {
+      "id": "GEGENPRESS",
+      "name": "압박",
+      "description": "강한 전방 압박·즉시 회수. 체력 소모가 크고 라인이 높다.",
+      "formation": "4-2-3-1",
+      "tactics": {
+        "line": 0.8,
+        "press": 0.85,
+        "tempo": 0.75,
+        "width": 0.55
+      }
+    },
+    {
+      "id": "COUNTER",
+      "name": "역습",
+      "description": "낮게 서다 빠른 전환으로 배후 침투. 지공 전개는 느리다.",
+      "formation": "4-4-2",
+      "tactics": {
+        "line": 0.35,
+        "press": 0.45,
+        "tempo": 0.8,
+        "width": 0.5
+      }
+    },
+    {
+      "id": "POSSESSION",
+      "name": "점유",
+      "description": "느린 템포·짧은 패스로 볼 소유. 결정력 부족 시 무득점 위험.",
+      "formation": "4-3-3",
+      "tactics": {
+        "line": 0.55,
+        "press": 0.55,
+        "tempo": 0.35,
+        "width": 0.55
+      }
+    },
+    {
+      "id": "WING_PLAY",
+      "name": "측면",
+      "description": "넓은 폭·측면 크로스 중심. 중앙이 비어 역습 허용 가능.",
+      "formation": "4-2-3-1",
+      "tactics": {
+        "line": 0.55,
+        "press": 0.5,
+        "tempo": 0.6,
+        "width": 0.85
+      }
+    }
+  ],
+  "rewards": [
+    {
+      "rank": 1,
+      "points": 3000
+    },
+    {
+      "rank": 2,
+      "points": 2000
+    },
+    {
+      "rank": 3,
+      "points": 1500
+    },
+    {
+      "rank": 4,
+      "points": 1000
+    },
+    {
+      "rank": 5,
+      "points": 800
+    },
+    {
+      "rank": 6,
+      "points": 600
+    },
+    {
+      "rank": 7,
+      "points": 500
+    },
+    {
+      "rank": 8,
+      "points": 400
+    },
+    {
+      "rank": 9,
+      "points": 300
+    },
+    {
+      "rank": 10,
+      "points": 200
+    }
+  ]
+}
