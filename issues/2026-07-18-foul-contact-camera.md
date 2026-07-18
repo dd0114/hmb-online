@@ -1,6 +1,6 @@
 # 파울 순간 두 선수 충돌이 안 보임 (와이드 카메라 → 접촉 줌)
 
-- **GH 이슈**: (등록 예정, 에픽 #25 하위)
+- **GH 이슈**: #74 (에픽 #25 하위)
 - **트랙**: QA 에픽 #25 (`epic:qa`) 하위 · **owned-glob**: `packages/engine/**`
 - **발견**: hero 뷰어 관전 2026-07-18 — "파울도 선수 겹침 없이 일어나. 두 선수 충돌이 보여야 하는데. 엔진 문제야 렌더링 문제야?"
 - **상태**: ✅ 완료 (2026-07-18) — 렌더링 진단 + 접촉 줌 구현, 게이트 green.
@@ -23,7 +23,7 @@
 - [x] **AC1** 파울/페널티 정지에 contactAnchor(파울러) 부여. Evidence: `playback.test.ts` "파울/페널티 정지는 접촉 앵커" green(28/28).
 - [x] **AC2** 파울 순간 카메라가 접촉 지점으로 줌해 두 선수 겹침이 보인다. Evidence: 실측 재생 t828 hold 프레임 zoom=2.54, victim H4(#4)+파울러 A8(#8) 겹쳐 충돌 캡처. (이전 와이드 1.0 작은 점.)
 - [x] **AC3** 엔진/결정론/골든 무영향(뷰어 전용). Evidence: npm test 엔진/뷰어 103 passed·골든 unchanged·playwright 29·qa-match·6/6.
-- [ ] **AC4** 독립 QA PASS(blocker 0) — 충돌 가시화 + 전환(줌아웃→프리킥/페널티) 회귀 없음.
+- [x] **AC4** 독립 QA PASS(blocker 0). Evidence: independent-qa — 파울 4건(t828/t938/t163/t1247) 모두 접촉 줌에서 파울러↔victim(0.2~1.5m) 겹쳐 보임(픽셀 역산+크롭 확인), 줌 1.0→2.6 단조 부드러움(rate cap 준수, 워블 없음), freeze ~1000ms(선방1300보다 짧음), 골/코너/세이브 회귀 없음(playwright 29/29·playback 28/28). 비-blocker: 파울→프리킥은 SETPIECE_ZOOM 워크업 없이 와이드 복귀(기존 설계, 범위 밖).
 
 ---
 
