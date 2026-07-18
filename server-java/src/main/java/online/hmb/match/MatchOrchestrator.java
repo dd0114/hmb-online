@@ -97,6 +97,35 @@ public class MatchOrchestrator {
         maybeSimulate(matchId, half);
     }
 
+    /**
+     * 봇(away) 잡 선(先)enqueue — #1 프리페치. 크리티컬 패스 밖(브리핑 h1 · H1_BREAK h2)에서 미리 생성해
+     * 유저 대기시간을 봇 콜만큼 줄인다. 봇 컨텍스트는 유저 입력과 무관(buildBotContext 는 match.id/seed·
+     * bot·half·prevSummary 만 사용)이라, 이후 kickoff/resume 의 enqueueHalf 가 만드는 away 컨텍스트와
+     * 동일 promptHash → INSERT OR IGNORE 멱등(중복 잡 없음). 프리페치 실패는 로그만 — 매치를 막지 않고
+     * enqueueHalf 가 다시 시도한다. h2 는 h1 로그(prevSummary)가 필요하므로 아직 없으면 조용히 스킵.
+     */
+    public void prefetchBotHalf(String matchId, int half) {
+        try {
+            MatchService.MatchRow match = matchService.find(matchId).orElse(null);
+            if (match == null) {
+                return;
+            }
+            BotService.BotRow bot = botService.get(match.botId());
+            Map<String, Object> prevSummary = null;
+            if (half == 2) {
+                Optional<JsonNode> h1Log = halfRow(matchId, 1).map(r -> matchService.readJson(r.matchLogJson()));
+                if (h1Log.isEmpty()) {
+                    return; // h1 아직 미완 — 재개 때 enqueueHalf 가 처리
+                }
+                prevSummary = contextBuilder.prevSummaryFrom(h1Log.get());
+            }
+            Map<String, Object> awayContext = contextBuilder.buildBotContext(match, half, bot, prevSummary);
+            jobQueue.enqueue(matchId, "away", half, awayContext);
+        } catch (Exception e) {
+            log.warn("봇 프리페치(match {} h{}) 실패 — 무시(kickoff/resume 때 재시도): {}", matchId, half, e.toString());
+        }
+    }
+
     // ── 잡 완료 콜백 (AiJobQueue.complete → 여기) ────────────────────────
 
     public void onJobDone(String jobId) {
@@ -195,6 +224,12 @@ public class MatchOrchestrator {
                 finishMatch(match, scoreHome, scoreAway);
             }
         });
+
+        // #1 프리페치: h1 저장·H1_BREAK 후, 재개 전에 봇 h2 를 미리 생성(하프타임 대기시간 활용).
+        // 트랜잭션 밖에서 호출(프리페치 실패가 h1 커밋을 롤백하지 않도록) — h1 로그가 이제 존재해 prevSummary 확보 가능.
+        if (half == 1) {
+            prefetchBotHalf(match.id(), 2);
+        }
     }
 
     /**

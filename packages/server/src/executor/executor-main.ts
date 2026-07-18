@@ -24,6 +24,12 @@ export interface ExecutorLoopOptions {
   takeUsage?: (jobId: string) => JobUsage | undefined;
   /** long-poll waitMs. 기본 25000(openapi 상한). */
   pollWaitMs?: number;
+  /**
+   * 동시 처리 워커 수(①). 기본 1(순차, 기존 동작). >1 이면 그만큼 폴링/처리 워커가 병렬로 돈다 —
+   * lease 가 원자 CAS(Java)라 각 워커가 서로 다른 잡을 받는다(home/away 동시). singleplayer 하프당
+   * 잡 2개라 2가 자연값. claude subprocess N개 동시 = 실측상 락/rate-limit 없이 병렬(하프 −46%).
+   */
+  concurrency?: number;
   log?: (msg: string) => void;
 }
 
@@ -35,6 +41,7 @@ export interface ExecutorLoopOptions {
 export class ExecutorLoop {
   private readonly takeUsage: (jobId: string) => JobUsage | undefined;
   private readonly pollWaitMs: number;
+  private readonly concurrency: number;
   private readonly log: (msg: string) => void;
 
   constructor(
@@ -44,6 +51,7 @@ export class ExecutorLoop {
   ) {
     this.takeUsage = opts.takeUsage ?? (() => undefined);
     this.pollWaitMs = opts.pollWaitMs ?? 25_000;
+    this.concurrency = Math.max(1, Math.floor(opts.concurrency ?? 1));
     this.log = opts.log ?? ((m) => console.log(m));
   }
 
@@ -107,16 +115,23 @@ export class ExecutorLoop {
    * poll 오류(Java 다운 등)는 로그 후 idleMs 대기하고 재시도.
    */
   async run(stop: AbortSignal, idleMs = 1_000): Promise<void> {
-    this.log(`[ai-executor] executor=${this.executor.name} 폴링 시작 (waitMs=${this.pollWaitMs})`);
-    while (!stop.aborted) {
-      try {
-        await this.processOnce(stop);
-      } catch (e) {
-        if (stop.aborted) break; // long-poll abort = 정상 종료 경로
-        console.error(`[ai-executor] 폴링/처리 오류(재시도):`, e instanceof Error ? e.message : e);
-        await new Promise((r) => setTimeout(r, idleMs));
+    this.log(
+      `[ai-executor] executor=${this.executor.name} 폴링 시작 (waitMs=${this.pollWaitMs}, concurrency=${this.concurrency})`,
+    );
+    // concurrency 개의 워커가 각자 독립 폴링·처리(병렬). 각 워커는 잡 완료 후 다음을 lease —
+    // Java lease 가 원자 CAS 라 워커끼리 같은 잡을 중복 처리하지 않는다(①). concurrency=1 이면 기존 순차.
+    const worker = async (): Promise<void> => {
+      while (!stop.aborted) {
+        try {
+          await this.processOnce(stop);
+        } catch (e) {
+          if (stop.aborted) break; // long-poll abort = 정상 종료 경로
+          console.error(`[ai-executor] 폴링/처리 오류(재시도):`, e instanceof Error ? e.message : e);
+          await new Promise((r) => setTimeout(r, idleMs));
+        }
       }
-    }
+    };
+    await Promise.all(Array.from({ length: this.concurrency }, () => worker()));
     this.log("[ai-executor] 종료 (진행 중 잡 없음)");
   }
 }
@@ -143,6 +158,13 @@ export function parsePollWaitMs(raw: string | undefined): number {
   return Math.min(25_000, Math.max(1_000, n));
 }
 
+/** AI_CONCURRENCY 파싱(①) — 동시 처리 워커 수. 기본 2(home/away 동시), [1, 8] 클램프, 비수치→2. */
+export function parseConcurrency(raw: string | undefined): number {
+  const n = Number(raw ?? 2);
+  if (!Number.isFinite(n)) return 2;
+  return Math.min(8, Math.max(1, Math.floor(n)));
+}
+
 const isMainModule =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
@@ -154,6 +176,7 @@ if (isMainModule) {
   const TOKEN = process.env["SERVANT_TOKEN"] ?? "";
   const WORKER_ID = process.env["AI_WORKER_ID"] ?? `ts-executor-${process.pid}`;
   const POLL_WAIT_MS = parsePollWaitMs(process.env["AI_POLL_WAIT_MS"]);
+  const CONCURRENCY = parseConcurrency(process.env["AI_CONCURRENCY"]);
 
   if (!TOKEN) console.warn("[ai-executor] ⚠️ SERVANT_TOKEN 미설정 — Java 가 401 을 줄 수 있음.");
 
@@ -168,6 +191,7 @@ if (isMainModule) {
   const client = new JavaClient({ baseUrl: JAVA_URL, token: TOKEN, workerId: WORKER_ID });
   const loop = new ExecutorLoop(client, executor, {
     pollWaitMs: POLL_WAIT_MS,
+    concurrency: CONCURRENCY,
     takeUsage: (id) => {
       const u = usageByJob.get(id);
       usageByJob.delete(id);
@@ -179,7 +203,9 @@ if (isMainModule) {
   process.on("SIGINT", () => stop.abort());
   process.on("SIGTERM", () => stop.abort());
 
-  console.log(`[ai-executor] java=${JAVA_URL} workerId=${WORKER_ID} executor=${EXECUTOR_KIND}`);
+  console.log(
+    `[ai-executor] java=${JAVA_URL} workerId=${WORKER_ID} executor=${EXECUTOR_KIND} concurrency=${CONCURRENCY}`,
+  );
   void loop.run(stop.signal).then(() => {
     console.log(metrics.format());
   });
