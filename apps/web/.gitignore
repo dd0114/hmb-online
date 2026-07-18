@@ -15,6 +15,9 @@ dist-ssr
 # integration smoke screenshots/logs (not build artifacts, just QA evidence)
 .smoke/
 
+# QA 뷰어 임베드 아티팩트 — `npm run build:viewer` 로 재현(엔진 결정론 생성물). 엔진 버전 바뀌면 재빌드.
+public/viewer-embed.html
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

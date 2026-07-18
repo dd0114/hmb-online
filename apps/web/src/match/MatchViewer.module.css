@@ -5,6 +5,46 @@
   background: var(--bg-elevated);
 }
 
+.modeTabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tab {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tabActive {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* 시각 재생 iframe 스테이지 — 모바일 우선(가로 100%, 390px 오버플로 0).
+   임베드된 dev-viewer 페이지는 피치+컨트롤+티커가 세로로 쌓이므로 뷰포트 상대 높이로
+   피치가 보이게 하고 상한을 둔다. iframe 내부는 자체 스크롤. */
+.stageWrap {
+  width: 100%;
+}
+
+.stage {
+  display: block;
+  width: 100%;
+  height: min(72vh, 600px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #0f1420;
+}
+
 .scoreboard {
   display: flex;
   align-items: center;
