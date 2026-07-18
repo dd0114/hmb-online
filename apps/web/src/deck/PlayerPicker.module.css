@@ -15,7 +15,9 @@
 
 .tab,
 .tabActive {
-  padding: 6px 12px;
+  /* 44px 최소 탭 타깃(#73 P1). */
+  min-height: 44px;
+  padding: 8px 14px;
   border-radius: 999px;
   border: 1px solid var(--border);
   background: none;

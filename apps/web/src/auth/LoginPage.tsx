@@ -6,6 +6,7 @@ import type { components } from "../api/schema";
 import { useToken } from "./TokenContext";
 import { isValidNickname } from "./validation";
 import { ErrorToast } from "../common/ErrorToast";
+import { Modal } from "../common/Modal";
 import styles from "./LoginPage.module.css";
 
 type LoginResponse = components["schemas"]["LoginResponse"];
@@ -76,15 +77,18 @@ export function LoginPage() {
       <ErrorToast message={serverError} onDismiss={() => setServerError(null)} />
 
       {starterPackOpen && (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modal}>
-            <h2>스타터 팩 지급</h2>
-            <p>신규 감독님을 환영합니다! 선수 14명과 3,000P가 지급되었습니다.</p>
-            <button type="button" className={styles.submit} onClick={handleStarterPackConfirm}>
-              확인
-            </button>
-          </div>
-        </div>
+        <Modal
+          onClose={handleStarterPackConfirm}
+          labelledBy="starter-pack-title"
+          overlayClassName={styles.modalOverlay}
+          className={styles.modal}
+        >
+          <h2 id="starter-pack-title">스타터 팩 지급</h2>
+          <p>신규 감독님을 환영합니다! 선수 14명과 3,000P가 지급되었습니다.</p>
+          <button type="button" className={styles.submit} onClick={handleStarterPackConfirm}>
+            확인
+          </button>
+        </Modal>
       )}
     </div>
   );

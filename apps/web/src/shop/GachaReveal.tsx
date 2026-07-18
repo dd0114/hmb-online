@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { GachaResponse } from "../api/hooks";
+import { Modal } from "../common/Modal";
 import { GRADE_COLORS, GRADE_LABELS, isHighGrade } from "../common/grades";
 import {
   initialReveal,
@@ -28,9 +29,18 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
   }
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" data-testid="gacha-reveal">
-      <div className={styles.sheet}>
-        <h2 className={styles.title}>뽑기 결과 ({response.results.length}명)</h2>
+    // 공개 도중에는 Escape/백드롭으로 닫히지 않게 dismissable=done (실수로 결과를 놓치지 않도록).
+    <Modal
+      onClose={onClose}
+      labelledBy="gacha-reveal-title"
+      dismissable={done}
+      overlayClassName={styles.overlay}
+      className={styles.sheet}
+      testId="gacha-reveal"
+    >
+      <h2 id="gacha-reveal-title" className={styles.title}>
+        뽑기 결과 ({response.results.length}명)
+      </h2>
 
         <div className={styles.grid}>
           {response.results.map((item, i) => {
@@ -50,6 +60,11 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
                   .join(" ")}
                 data-testid={`gacha-card-${i}`}
                 data-revealed={revealed ? "true" : "false"}
+                aria-label={
+                  revealed
+                    ? `${item.player.name} · ${item.player.position} · ${GRADE_LABELS[grade]}${item.isNew ? " · 신규" : ""}`
+                    : "카드 공개"
+                }
                 onClick={handleAdvance}
               >
                 <span className={styles.cardInner}>
@@ -89,7 +104,6 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

@@ -61,6 +61,8 @@ export function PromptFields({
                 type="button"
                 className={styles.playerHead}
                 data-testid={`${idPrefix}-player-toggle-${p.playerId}`}
+                aria-expanded={open}
+                aria-controls={`${idPrefix}-player-prompt-${p.playerId}`}
                 onClick={() => setOpenPlayerId(open ? null : p.playerId)}
               >
                 <span className={styles.playerPos}>{p.position}</span>

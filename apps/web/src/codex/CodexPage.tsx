@@ -84,16 +84,22 @@ export function CodexPage() {
         {filtered.length}명
       </p>
 
-      <div className={styles.grid} data-testid="codex-grid">
-        {filtered.map((p) => (
-          <PlayerCard
-            key={p.id}
-            player={p}
-            expanded={expandedId === p.id}
-            onToggle={() => setExpandedId((cur) => (cur === p.id ? null : p.id))}
-          />
-        ))}
-      </div>
+      {!isLoading && !isError && filtered.length === 0 ? (
+        <p className={styles.emptyNote} data-testid="codex-empty">
+          조건에 맞는 선수가 없습니다
+        </p>
+      ) : (
+        <div className={styles.grid} data-testid="codex-grid">
+          {filtered.map((p) => (
+            <PlayerCard
+              key={p.id}
+              player={p}
+              expanded={expandedId === p.id}
+              onToggle={() => setExpandedId((cur) => (cur === p.id ? null : p.id))}
+            />
+          ))}
+        </div>
+      )}
     </Layout>
   );
 }
