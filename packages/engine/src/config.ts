@@ -176,6 +176,8 @@ export interface EngineConfig {
       xg: number;
       /** 페널티 준비 정지(dead ball) 틱. */
       stoppageTicks: number;
+      /** 박스 파울 후 공을 접촉 지점에 두는 "파울 비트" 정지 틱(2단계 페널티: 이후 스팟 배치+런업). */
+      foulBeatTicks: number;
     };
     /** 오프사이드. */
     offside: {
@@ -318,7 +320,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.9.0",
+  version: "engine@0.10.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -398,6 +400,7 @@ export const defaultEngineConfig: EngineConfig = {
       spotM: 11.0,
       xg: 0.76,
       stoppageTicks: 8,
+      foulBeatTicks: 6,
     },
     offside: {
       enabled: true,

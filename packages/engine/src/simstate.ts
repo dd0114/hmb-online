@@ -57,7 +57,9 @@ export interface BallFlight {
  */
 export type DeferredRestart =
   | { kind: "corner"; side: TeamSide; nearY: number }
-  | { kind: "goal_kick"; side: TeamSide };
+  | { kind: "goal_kick"; side: TeamSide }
+  // 박스 파울 → 공을 접촉 지점에 두는 "파울 비트" 정지 후 페널티 스팟 배치+런업(2단계, 코너 패턴).
+  | { kind: "penalty"; side: TeamSide };
 
 /** 진행 중인 세트피스 컨텍스트(정지 동안 재배치에 사용). */
 export interface SetPiece {

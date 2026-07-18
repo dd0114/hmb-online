@@ -29,6 +29,7 @@ import {
   restartGoalKick,
   restartCorner,
   restartFreeKick,
+  restartPenalty,
   launchCornerCross,
   checkOffside,
 } from "./contest";
@@ -242,6 +243,12 @@ function stepTick(carry: Carry): void {
           keepSetPiece = true;
         } else if (r && r.kind === "goal_kick") {
           carry.events.push(restartGoalKick(state, pitch, config, r.side, state.tick, minute));
+          keepSetPiece = true;
+        } else if (r && r.kind === "penalty") {
+          // 2단계 페널티: 파울 비트 정지 종료 → 이제 공을 페널티 스팟에 배치(테이커 걸어옴) + penalty
+          // 이벤트 emit(뷰어가 "페널티킥!" + 공 컷으로 스팟 이동을 가림). 다음 정지 종료 시 킥 발사.
+          restartPenalty(state, pitch, config, r.side, state.tick, minute);
+          carry.events.push({ tick: state.tick, minute, type: "penalty", team: r.side });
           keepSetPiece = true;
         }
       } else if (sp && sp.kind === "penalty") {

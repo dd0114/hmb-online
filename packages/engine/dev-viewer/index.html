@@ -133,6 +133,8 @@
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
       const SETPIECE_ZOOM = 1.7;               // #59: 세트피스 걷기 구간 줌(박스 + 걸어오는 taker 가 보이게 팔로우보다 넓게)
+      const CONTACT_ZOOM = 2.6, FOUL_CONTACT_TICKS = 3; // 파울 접촉 순간 줌(두 선수 충돌 보이게) + 지속 틱
+      const FOUL_HOLD_MS = 1000; // 파울/페널티 정지는 길게 — 카메라가 접촉점으로 줌 완료(~730ms)+충돌을 보여줄 여유
       const CAM_SMOOTH = 0.12;                 // 정지(freeze) 중 카메라 팬 속도(0..1/frame). 정지→정지 줌 순간이동 방지.
       const CAM_MAX_PAN_PXPS = 900;            // #45: 카메라 팬 속도 상한(스크린px/s) — 와이드↔팔로우 급전환도 글라이드
       const CAM_MAX_ZOOM_PS = 2.2;             // #45: 줌 변화 속도 상한(zoom/s)
@@ -219,15 +221,28 @@
         // 박스 배치를 안정적으로 보여준다. 공이 스팟을 떠나면(딜리버리/스로인) 해제 → 팔로우로 자연 전환.
         // 공이 정지라 팬이 스팟에 수렴해 멈춰 wobble(줌아웃→줌인 반전)이 없다(구: 450ms hold 가 강제
         // wide 팬을 걸었다가 미완인 채 nearKey 팔로우로 되돌아가 줌이 튐 — QA #59 blocker2).
+        // 세트피스/접촉 줌은 자동 연출(autoPace) 전용 — autoPace off(수동 스크럽·지오메트리 검사)면
+        // 평범한 카메라로 둬 줌에 가려지는 것 없이 실제 배치를 본다. nearKey(하이라이트)와 동일 정책.
         let spSpot = null;
-        for (const st of stoppages) {
+        if (autoPace) for (const st of stoppages) {
           if (st.isGoal || !(st.setPiece || st.pauseOnly) || curTick < st.causeTick || curTick > st.causeTick + 32) continue;
           const csnap = snapByTick.get(st.causeTick);
           if (csnap && Math.hypot(bx - csnap.ball.x, by - csnap.ball.y) < 3) { spSpot = csnap.ball; break; }
         }
+        // 파울 접촉 줌(최우선): 파울/페널티 정지의 causeTick 부근엔 접촉 지점(파울러=victim 도 2m 내)으로
+        // 줌해 "두 선수 충돌"을 보여준다. 파울 순간 와이드로 작은 점 되던 것 해소(#59 후 파울 접촉 소실).
+        let contactPos = null;
+        if (autoPace) for (const st of stoppages) {
+          if (st.isGoal || !st.contactAnchor || curTick < st.causeTick || curTick > st.causeTick + FOUL_CONTACT_TICKS) continue;
+          const csnap = snapByTick.get(st.causeTick);
+          const pl = csnap && csnap.players.find((p) => p.playerId === st.contactAnchor);
+          if (pl) { contactPos = pl.pos; break; }
+        }
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
-        const useFollow = !koTweening && !spSpot && (follow || nearKey || (hold ? !!hold.zoom : false));
-        const camTarget = spSpot
+        const useFollow = !koTweening && !contactPos && !spSpot && (follow || nearKey || (hold ? !!hold.zoom : false));
+        const camTarget = contactPos
+          ? { cx: contactPos.x, cy: contactPos.y, zoom: CONTACT_ZOOM }
+          : spSpot
           ? { cx: spSpot.x, cy: spSpot.y, zoom: SETPIECE_ZOOM }
           : useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
         // 재생 중 카메라를 항상 목표로 부드럽게 팬 → 정지 전환·하이라이트 줌인/줌아웃·정지 재개
@@ -358,13 +373,22 @@
         if (banner) { bannerEl.textContent = banner.text; bannerEl.style.color = banner.col; bannerEl.classList.add("show"); }
         else bannerEl.classList.remove("show");
         ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "bold 15px sans-serif";
+        // #69 BL-1: 같은 틱·같은 앵커(파울+카드 등)로 동시에 뜨는 토스트는 같은 위치라 겹쳐 아래 글자가
+        // 깨져 보였다. (at:anchor) 키로 세로 스택 오프셋을 줘 겹치지 않게 위로 쌓는다.
+        const toastRow = new Map();
         for (const a of annos) {
           if (a.kind !== "toast") continue;
           const age = curTick - a.tick;
           if (age < 0 || age > TOAST_TICKS) continue;
           const s = snapByTick.get(a.at); if (!s) continue;
           const prog = age / TOAST_TICKS;
-          const px = sx(s.ball.x), py = sy(s.ball.y) - 18 - prog * 22;
+          // #69: anchor 있으면 그 선수(파울러 등) 위치에 앵커 — 공이 아니라. 페널티는 공이 스팟으로
+          // 가버려 카드가 파울러/파울지점과 어긋났음(선수 사건인데 공에 앵커). 선수 없으면 공 폴백.
+          let ax = s.ball.x, ay = s.ball.y;
+          if (a.anchor) { const pl = s.players.find((p) => p.playerId === a.anchor); if (pl) { ax = pl.pos.x; ay = pl.pos.y; } }
+          const key = `${a.at}:${a.anchor || "ball"}`;
+          const row = toastRow.get(key) || 0; toastRow.set(key, row + 1);
+          const px = sx(ax), py = sy(ay) - 18 - prog * 22 - row * 17; // row 마다 위로 17px 스택.
           ctx.globalAlpha = 1 - prog;
           ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.strokeText(a.text, px, py);
           ctx.fillStyle = a.col; ctx.fillText(a.text, px, py);
@@ -472,7 +496,7 @@
               // #59: 데드볼은 짧은 자막 정지 후 causeTick 부터 **스킵 없이 정상 재생** → 엔진이 낸
               // "taker 가 공한테 정상 속도로 걸어가 잡고 나머지 정비"가 그대로 보인다. 뷰어 트릭(synth/워크인/
               // freeze-play/pacing/자막지연) 제거 — 엔진이 자연 무브먼트를 방출(#59). 골만 기존 세리머니 유지.
-              const holdMs = st.isGoal ? st.hold : DEADBALL_PAUSE_MS;
+              const holdMs = st.isGoal ? st.hold : (st.contactAnchor ? FOUL_HOLD_MS : DEADBALL_PAUSE_MS);
               hold = { until: ts + holdMs, start: ts, dur: holdMs, jumpTo: idxOfTick(st.isGoal ? st.restartTick : st.causeTick), zoom: !!st.isGoal, wide: !!st.wide || !!st.pauseOnly || !!st.setPiece };
               // 골 정지: 세리머니 동안 선수들을 킥오프 포메이션으로 트윈 → hold 해제 시 순간이동 제거.
               if (st.isGoal) { hold.formFrom = idxOfTick(st.causeTick); hold.koIdx = idxOfTick(st.restartTick); hold.tween = 0; }

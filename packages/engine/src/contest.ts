@@ -467,8 +467,23 @@ function commitFoul(
   if (sentOff) sendOff(state, tackler);
 
   if (inBox) {
-    events.push({ tick, minute, type: "penalty", team: victim.side });
-    restartPenalty(state, pitch, config, victim.side, tick, minute);
+    // 2단계 페널티(코너 shot_out 패턴): 파울 순간엔 공을 **접촉 지점**(victim 위치)에 파킹(정지) →
+    // 파울 비트 정지 종료 시 페널티 스팟 배치+런업 + penalty 이벤트 emit. 순간이동(오픈플레이 공→스팟)이
+    // 장면 전환(캡션·카메라) 뒤로 가려져, 움직이던 공이 선수들에게서 튀어나가 보이던 점프가 사라진다.
+    // (기존: 파울 틱에 즉시 스팟 배치 → 접촉 지점에서 스팟으로 4m+ 순간이동이 접촉 줌에 그대로 보임.)
+    state.ball.posFx = { x: victim.posFx.x, y: victim.posFx.y };
+    state.ball.owner = null;
+    state.ball.ownerSide = null;
+    state.ball.flight = null;
+    state.possession = victim.side;
+    state.stoppage = config.rules.penalty.foulBeatTicks;
+    state.setPiece = {
+      kind: "shot_out",
+      side: victim.side,
+      x: victim.posFx.x,
+      y: victim.posFx.y,
+      restart: { kind: "penalty", side: victim.side },
+    };
   } else {
     events.push(
       restartFreeKick(state, pitch, config, victim.side, victim.posFx.x, victim.posFx.y, tick, minute, "foul"),
