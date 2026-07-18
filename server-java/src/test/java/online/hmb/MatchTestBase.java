@@ -6,6 +6,7 @@ import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -18,6 +19,16 @@ abstract class MatchTestBase extends ApiTestBase {
 
     @Resource
     protected JdbcClient jdbcClient;
+
+    /**
+     * ai_jobs 는 클래스 단위로 DB 를 공유하므로(테스트 메서드 간) 각 메서드 시작 시 큐를 비운다.
+     * #1 봇 프리페치 이후 createMatch 가 봇 잡을 enqueue 하므로, 드레인/카운트 검증이 다른 메서드가
+     * 남긴 잡에 오염되지 않도록 클린 슬레이트로 시작한다. (InternalJobApiTest 의 clearJobQueue 와 동일 취지)
+     */
+    @BeforeEach
+    void clearAiJobsBeforeEach() {
+        jdbcClient.sql("DELETE FROM ai_jobs").update();
+    }
 
     protected String setupUserWithDeck(String nickname) {
         String token = login(nickname);

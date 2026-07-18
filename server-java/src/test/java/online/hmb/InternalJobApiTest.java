@@ -219,6 +219,9 @@ class InternalJobApiTest extends MatchTestBase {
         // BRIEFING 매치 준비 — 1.5s 뒤 kickoff로 잡 enqueue
         String token = setupUserWithDeck("q_early");
         String matchId = createMatch(token, "BOT_BAL");
+        // #1 프리페치로 봇 away h1 이 이미 큐에 있음 — 롱폴 "빈 큐 대기" 검증 전에 소비(리스)해 큐를 비운다.
+        assertThat(pollRaw(SERVANT_TOKEN, Map.of("workerId", "w-drain", "waitMs", 1000)).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
 
         Thread enqueuer = new Thread(() -> {
             try {

@@ -32,6 +32,9 @@ public class MatchController {
                                               @RequestBody(required = false) CreateMatchRequest request) {
         MatchService.MatchRow row = matchService.createMatch(userId,
                 request == null ? null : request.botId());
+        // #1 프리페치: 봇(away) h1 잡을 브리핑 진입 즉시 enqueue — 유저가 프롬프트 쓰는 동안 백그라운드 생성.
+        // 봇은 유저 입력 무관이라 킥오프 때 enqueueHalf 와 동일 promptHash(멱등). 크리티컬 패스에서 봇 제거.
+        orchestrator.prefetchBotHalf(row.id(), 1);
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 
