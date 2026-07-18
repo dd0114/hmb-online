@@ -59,9 +59,12 @@ a {
   }
 }
 
-/* nav 있는 화면은 데스크탑에서 고정 사이드바(200px) 옆으로 콘텐츠를 밀어 겹침을 없앤다. */
+/* nav 있는 화면은 데스크탑에서 고정 사이드바(200px) 옆으로 콘텐츠를 밀어 겹침을 없앤다.
+   또한 확장 레이아웃(전술보드 2컬럼·리그 병렬·로그 여유폭, LLD §7)이 실제 폭을 쓰도록
+   nav 화면 한정으로 max-width 를 넓힌다(비-nav = 로그인·매치·로비는 모바일 중심 폭 유지). */
 @media (min-width: 1024px) {
   .app-container--nav {
+    max-width: 1120px;
     margin-left: 200px;
     margin-right: auto;
   }

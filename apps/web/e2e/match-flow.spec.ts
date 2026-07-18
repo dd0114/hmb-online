@@ -1,16 +1,19 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 /**
- * AC-W1 — 신규 닉네임 로그인 → (덱 저장) → 매치 완주 → 결과 → 전적 반영이 브라우저에서
- * 끝까지 동작함을 검증한다. stub AI(ts-servants) + server-java 가 떠 있을 때만 실행되고,
- * 안 떠 있으면 test.skip 한다(graceful — 통합 게이트 W4 에서 orchestrator 가 실제로 돌린다).
+ * AC-W1 / Phase 2 연습 플로우 — 신규 닉네임 로그인 → **덱 구성(UI)** → 연습 경기 완주 →
+ * 결과 → 전적 반영이 브라우저에서 끝까지 동작함을 검증한다. stub AI(ts-servants) + server-java
+ * 가 떠 있을 때만 실행되고, 안 떠 있으면 test.skip 한다(graceful — 통합 게이트에서 orchestrator
+ * 가 실제로 돌린다).
  *
- * NOTE(덱 저장): 덱 UI(11명 배치)는 AC-W2 자체 E2E 범위다. 이 스펙은 매치플로우(W2)에
- * 집중하려고 덱을 브라우저 컨텍스트 내 fetch(같은 토큰/프록시)로 저장한다 — 실제 서버 저장이라
- * "덱 저장" 전제는 동일하게 충족된다.
+ * NOTE(덱 구성 스텝): 11명 슬롯 채움은 브라우저 컨텍스트 fetch(같은 토큰/프록시)로 시드한다 —
+ * 슬롯별 D&D 자체 검증은 AC-W2 덱 E2E 범위이고, 여기서는 시드된 덱을 **덱 화면 UI 로 열어
+ * 확인·저장**(전술보드 렌더 + 선발 11/11 + 저장 성공 노트)해 "덱 구성" 스텝을 실 UI 로 박제한다.
+ * 실제 서버 저장이므로 연습·리그가 요구하는 "활성 덱" 전제는 동일하게 충족된다.
  */
 
-const API_ORIGIN = "http://localhost:8080";
+// 기본 데모 8080. 격리 스모크(대체 포트)는 HMB_E2E_API_ORIGIN 로 덮어쓴다(8080 무접촉).
+const API_ORIGIN = process.env.HMB_E2E_API_ORIGIN ?? "http://localhost:8080";
 
 async function apiLive(request: APIRequestContext): Promise<boolean> {
   // /internal/health 는 인증 무관 — 어떤 HTTP 응답이라도 오면 서버가 살아있다는 뜻.
@@ -47,8 +50,9 @@ async function seedDeck(page: Page): Promise<boolean> {
   });
 }
 
-test("AC-W1: login → deck save → full match → result → record", async ({ page, request }) => {
-  test.skip(!(await apiLive(request)), "server-java/ts-servants 미기동 — 통합 게이트(W4)에서 실행");
+test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → 전적 반영", async ({ page, request }) => {
+  test.skip(!(await apiLive(request)), "server-java/ts-servants 미기동 — 통합 게이트에서 실행");
+  test.setTimeout(300_000);
 
   const nickname = `e2e_${Date.now().toString(36)}`;
 
@@ -60,33 +64,38 @@ test("AC-W1: login → deck save → full match → result → record", async ({
   await page.getByRole("button", { name: "확인" }).click(); // 스타터 팩 확인
   await expect(page).toHaveURL(/\/lobby$/);
 
-  // 2) 덱 저장(브라우저 컨텍스트 fetch — NOTE 참고)
+  // 2) 덱 시드(fetch, NOTE 참고) → 덱 화면 UI 로 구성 확인·저장
   expect(await seedDeck(page)).toBe(true);
+  await page.goto("/deck");
+  await expect(page.getByTestId("deck-editor")).toBeVisible();
+  await expect(page.getByTestId("tactics-board")).toBeVisible();
+  await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
+  await page.getByTestId("save-deck").click();
+  await expect(page.getByTestId("deck-saved-note")).toBeVisible();
 
-  // 전적 baseline (경기 후 +1 검증용)
+  // 3) 로비 → 전적 baseline (경기 후 +1 검증용)
+  await page.goto("/lobby");
   const recordBefore = (await page.getByText(/\d+승 \d+무 \d+패/).textContent()) ?? "";
 
-  // 3) 게임 시작 → 싱글 → /match/:id
-  await page.getByRole("button", { name: "게임 시작" }).click();
-  await page.getByRole("button", { name: "싱글" }).click();
+  // 4) 게임 시작 → 연습 경기 → /match/:id  (로비 개편: 게임시작=연습/리그 선택 모달)
+  await page.getByTestId("play-cta").click();
+  await page.getByTestId("mode-practice").click();
   await expect(page).toHaveURL(/\/match\//);
 
-  // 4) BRIEFING — 상대 분석 + 프롬프트 입력 → 킥오프
+  // 5) BRIEFING — 상대 분석 + 프롬프트 입력 → 킥오프
   await expect(page.getByTestId("briefing-panel")).toBeVisible();
   await expect(page.getByTestId("opponent-analysis")).toBeVisible();
   await page.getByTestId("editor-team-prompt").fill("초반부터 강하게 압박, 측면 활용");
   await page.getByTestId("kickoff-button").click();
 
-  // 5) GEN1 대기 → H1_BREAK (stub servant 가 잡 처리)
+  // 6) GEN1 대기 → H1_BREAK (stub servant 가 잡 처리)
   await expect(page.getByTestId("genwait-panel").or(page.getByTestId("halftime-panel"))).toBeVisible();
   await expect(page.getByTestId("halftime-panel")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("h1-score")).toBeVisible();
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
 
-  // 6) 하프타임 — 교체 1건 + 추가 프롬프트 → 후반 시작
+  // 7) 하프타임 — 교체 1건 + 추가 프롬프트 → 후반 시작
   // OUT 은 반드시 non-GK 선발이어야 한다 — GK 를 빼면 GK_REQUIRED 로 후반 시작이 막힌다.
-  // 옵션 라벨은 "{position} {name}"(HalftimePanel) 이므로 슬롯 순서에 무관하게
-  // GK 가 아닌 첫 실값 옵션을 골라 선택한다(index 고정 금지 — 슬롯 순서 변동에 견고).
   const outSelect = page.getByTestId("sub-out-select");
   const inSelect = page.getByTestId("sub-in-select");
   const outValue = await outSelect.evaluate((el) => {
@@ -102,14 +111,14 @@ test("AC-W1: login → deck save → full match → result → record", async ({
   await page.getByTestId("halftime-team-prompt").fill("후반은 점유율 위주로 안정적으로");
   await page.getByTestId("resume-button").click();
 
-  // 7) GEN2 대기 → FINISHED (결과 화면)
+  // 8) GEN2 대기 → FINISHED (결과 화면)
   await expect(page.getByTestId("result-page")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("final-score")).toBeVisible();
   await expect(page.getByTestId("result-badge")).toBeVisible();
   await expect(page.getByTestId("team-stats")).toBeVisible();
   await expect(page.getByTestId("match-viewer-half2")).toBeVisible();
 
-  // 8) 로비로 → 전적 반영(승/무/패 합 +1)
+  // 9) 로비로 → 전적 반영(승/무/패 합 +1)
   await page.getByTestId("to-lobby").click();
   await expect(page).toHaveURL(/\/lobby$/);
   const recordAfter = (await page.getByText(/\d+승 \d+무 \d+패/).textContent()) ?? "";

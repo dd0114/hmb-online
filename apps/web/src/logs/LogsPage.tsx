@@ -267,7 +267,7 @@ function RankingsTab() {
   if (isLoading || !data) return <p className={styles.pending}>불러오는 중…</p>;
 
   return (
-    <div data-testid="logs-rankings">
+    <div data-testid="logs-rankings" className={styles.rankingsGrid}>
       <Leaderboard data={data} />
       <PersonalRecordsCard data={data} catalog={catalog} />
     </div>

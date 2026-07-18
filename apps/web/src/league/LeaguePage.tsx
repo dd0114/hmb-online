@@ -133,8 +133,11 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
         )}
       </section>
 
-      <StandingsTable standings={season.standings} />
-      <Schedule fixtures={season.fixtures} names={names} />
+      {/* ≥1024px: 순위표·일정 병렬(LLD §7). 모바일은 세로 스택. */}
+      <div className={styles.dashGrid}>
+        <StandingsTable standings={season.standings} />
+        <Schedule fixtures={season.fixtures} names={names} />
+      </div>
     </div>
   );
 }

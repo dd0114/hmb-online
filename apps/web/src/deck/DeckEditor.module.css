@@ -34,10 +34,25 @@
   font-family: inherit;
 }
 
-/* ≥1024px: keep the editor centered/legible (true board+side 2-col = responsive wave W6). */
+/* ≥1024px: board+side 2-col (LLD §2·§7 W6). 보드는 좌측 고정폭·sticky, 사이드패널은 우측 가변. */
 @media (min-width: 1024px) {
   .editor {
-    max-width: 760px;
+    display: grid;
+    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    max-width: 940px;
     margin: 0 auto;
+  }
+  .boardCol {
+    position: sticky;
+    top: 16px;
+  }
+  /* 사이드패널 children 간 간격(모바일은 각자 margin, 데스크탑은 gap 으로 정돈). */
+  .sideCol {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
   }
 }

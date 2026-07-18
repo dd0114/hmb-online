@@ -220,14 +220,19 @@
   font-size: 22px;
 }
 
-/* Desktop: 순위표·일정 병렬(LLD §7). */
+/* Desktop: 순위표·일정 병렬(LLD §7) — 2컬럼 그리드(순서 무관·견고). */
 @media (min-width: 1024px) {
-  .card {
-    display: inline-block;
-    width: calc(50% - 7px);
-    vertical-align: top;
+  .dashGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
   }
-  .card:nth-of-type(odd) {
-    margin-right: 14px;
+  .dashGrid .card {
+    margin-bottom: 0;
+  }
+  /* 일정 컬럼은 세로로 길어 화면 높이만큼 스크롤(순위표 옆에서 병렬 유지). */
+  .dashGrid .schedule {
+    max-height: 70vh;
   }
 }

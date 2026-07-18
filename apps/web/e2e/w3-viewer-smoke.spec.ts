@@ -7,7 +7,8 @@ import { mkdirSync } from "node:fs";
  * 확인하고 스크린샷을 apps/web/.smoke/ 에 남긴다. (라이브 executor 면 ~2분/하프 → 긴 타임아웃.)
  */
 
-const API_ORIGIN = "http://localhost:8080";
+// 기본 데모 8080. 격리 스모크(대체 포트)는 HMB_E2E_API_ORIGIN 로 덮어쓴다(8080 무접촉).
+const API_ORIGIN = process.env.HMB_E2E_API_ORIGIN ?? "http://localhost:8080";
 const SMOKE_DIR = new URL("../.smoke/", import.meta.url).pathname;
 
 async function apiLive(request: APIRequestContext): Promise<boolean> {
@@ -93,8 +94,9 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
 
   expect(await seedDeck(page)).toBe(true);
 
-  await page.getByRole("button", { name: "게임 시작" }).click();
-  await page.getByRole("button", { name: "싱글" }).click();
+  // 로비 개편(W5): 게임시작 → 연습/리그 모달 → 연습 경기(mode-practice).
+  await page.getByTestId("play-cta").click();
+  await page.getByTestId("mode-practice").click();
   await expect(page).toHaveURL(/\/match\//);
 
   await expect(page.getByTestId("briefing-panel")).toBeVisible();

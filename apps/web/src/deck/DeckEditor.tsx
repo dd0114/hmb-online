@@ -109,76 +109,81 @@ export function DeckEditor(props: DeckEditorProps) {
 
   return (
     <div className={styles.editor} data-testid="deck-editor">
-      <div className={styles.starterHint}>
-        선발 {starterCount}/{STARTER_COUNT} · 토큰을 끌어 배치하거나 슬롯을 탭해 선택하세요
+      {/* ≥1024px: 좌 보드 / 우 사이드패널 2컬럼(LLD §2·§7 W6). 모바일은 세로 스택 그대로. */}
+      <div className={styles.boardCol}>
+        <div className={styles.starterHint}>
+          선발 {starterCount}/{STARTER_COUNT} · 토큰을 끌어 배치하거나 슬롯을 탭해 선택하세요
+        </div>
+
+        <TacticsBoard
+          draft={draft}
+          playersById={playersById}
+          conditions={conditions}
+          selectedSlot={selectedSlot}
+          selectedPlayerId={selectedPlayerId}
+          onSlotTap={handleSlotTap}
+          onMove={handleMove}
+        />
       </div>
 
-      <TacticsBoard
-        draft={draft}
-        playersById={playersById}
-        conditions={conditions}
-        selectedSlot={selectedSlot}
-        selectedPlayerId={selectedPlayerId}
-        onSlotTap={handleSlotTap}
-        onMove={handleMove}
-      />
+      <div className={styles.sideCol}>
+        {errorPlayerId && playersById.get(errorPlayerId) && (
+          <p className={styles.errorNote} data-testid="editor-error-player">
+            문제 선수: {playersById.get(errorPlayerId)!.name}
+          </p>
+        )}
 
-      {errorPlayerId && playersById.get(errorPlayerId) && (
-        <p className={styles.errorNote} data-testid="editor-error-player">
-          문제 선수: {playersById.get(errorPlayerId)!.name}
-        </p>
-      )}
+        {editingPlayer && editingSlot && (
+          <PlayerSheet
+            key={editingPlayer.id}
+            player={editingPlayer}
+            promptText={editingSlot.promptText ?? ""}
+            condition={conditions?.[editingPlayer.id]}
+            trust={relationOf(relations, editingPlayer.id)?.trust}
+            personality={relationOf(relations, editingPlayer.id)?.personality}
+            onChange={(text) => mutateDraft(setPrompt(draft, editingPlayer.id, text))}
+            onRemoveFromDeck={() => {
+              mutateDraft(removePlayer(draft, editingPlayer.id));
+              setSelectedPlayerId(null);
+              setSelectedSlot(null);
+            }}
+            onClose={() => setSelectedPlayerId(null)}
+          />
+        )}
 
-      {editingPlayer && editingSlot && (
-        <PlayerSheet
-          key={editingPlayer.id}
-          player={editingPlayer}
-          promptText={editingSlot.promptText ?? ""}
-          condition={conditions?.[editingPlayer.id]}
-          trust={relationOf(relations, editingPlayer.id)?.trust}
-          personality={relationOf(relations, editingPlayer.id)?.personality}
-          onChange={(text) => mutateDraft(setPrompt(draft, editingPlayer.id, text))}
-          onRemoveFromDeck={() => {
-            mutateDraft(removePlayer(draft, editingPlayer.id));
-            setSelectedPlayerId(null);
-            setSelectedSlot(null);
-          }}
-          onClose={() => setSelectedPlayerId(null)}
+        <TeamPowerBar
+          power={power}
+          starterCount={starterCount}
+          opponentPower={opponentPower}
+          opponentName={opponentName}
+          opponentApprox={opponentApprox}
         />
-      )}
 
-      <TeamPowerBar
-        power={power}
-        starterCount={starterCount}
-        opponentPower={opponentPower}
-        opponentName={opponentName}
-        opponentApprox={opponentApprox}
-      />
-
-      <TeamTacticsPanel
-        tactics={state.tactics}
-        aiManaged={aiManaged}
-        onChange={(tactics) => onChange({ ...state, tactics })}
-        onToggleAi={onToggleAi}
-      />
-
-      <section className={styles.teamPromptSection}>
-        <label className={styles.teamPromptLabel} htmlFor="team-prompt">
-          팀 전체 지시
-        </label>
-        <textarea
-          id="team-prompt"
-          data-testid="editor-team-prompt"
-          className={styles.teamPromptInput}
-          rows={2}
-          maxLength={PROMPT_MAX_CHARS}
-          placeholder="팀 전체에 내릴 작전 (예: 초반부터 강하게 압박, 역습 위주)"
-          value={state.teamPrompt}
-          onChange={(e) => onChange({ ...state, teamPrompt: e.target.value })}
+        <TeamTacticsPanel
+          tactics={state.tactics}
+          aiManaged={aiManaged}
+          onChange={(tactics) => onChange({ ...state, tactics })}
+          onToggleAi={onToggleAi}
         />
-      </section>
 
-      <PlayerPicker players={players} draft={draft} onPick={handlePick} />
+        <section className={styles.teamPromptSection}>
+          <label className={styles.teamPromptLabel} htmlFor="team-prompt">
+            팀 전체 지시
+          </label>
+          <textarea
+            id="team-prompt"
+            data-testid="editor-team-prompt"
+            className={styles.teamPromptInput}
+            rows={2}
+            maxLength={PROMPT_MAX_CHARS}
+            placeholder="팀 전체에 내릴 작전 (예: 초반부터 강하게 압박, 역습 위주)"
+            value={state.teamPrompt}
+            onChange={(e) => onChange({ ...state, teamPrompt: e.target.value })}
+          />
+        </section>
+
+        <PlayerPicker players={players} draft={draft} onPick={handlePick} />
+      </div>
     </div>
   );
 }

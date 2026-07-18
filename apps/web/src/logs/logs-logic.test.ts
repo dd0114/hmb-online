@@ -51,6 +51,13 @@ describe("orientScore — 유저 관점 오리엔트 (관점 계약 핵심)", ()
       opp: null,
     });
   });
+
+  it("userWasHome 미지정(undefined)이면 홈(true)으로 기본 처리 — 연습·구로그 관점 안뒤집힘", () => {
+    // 서버가 userWasHome 을 생략해도(연습·구 로그) 홈 관점으로 my=scoreHome 이어야 한다.
+    const { userWasHome: _omit, ...rest } = item({ scoreHome: 3, scoreAway: 1 });
+    expect(orientScore(rest)).toEqual({ my: 3, opp: 1 });
+    expect(formatMyScore(rest)).toBe("3 : 1");
+  });
 });
 
 describe("formatMyScore — '내 득점 : 상대 득점'", () => {

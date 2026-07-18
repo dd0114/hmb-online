@@ -24,11 +24,13 @@ type ScoreFields = Pick<MatchLogItem, "scoreHome" | "scoreAway" | "userWasHome">
  * 픽스처 관점 스코어를 유저 관점으로 오리엔트한다.
  * - userWasHome=true  → my=scoreHome,  opp=scoreAway  (연습·유저홈 리그)
  * - userWasHome=false → my=scoreAway,  opp=scoreHome  (어웨이 리그)
+ * - userWasHome=undefined → 홈(true)으로 취급 — 연습 경기는 항상 유저=홈이므로 서버가
+ *   userWasHome 을 생략(구 로그·연습)해도 관점이 뒤집히지 않게 홈을 기본값으로 둔다.
  */
 export function orientScore(item: ScoreFields): OrientedScore {
   const home = item.scoreHome ?? null;
   const away = item.scoreAway ?? null;
-  return item.userWasHome ? { my: home, opp: away } : { my: away, opp: home };
+  return (item.userWasHome ?? true) ? { my: home, opp: away } : { my: away, opp: home };
 }
 
 /** "내 득점 : 상대 득점" 표시 문자열. 미확정(null)이면 '-'. 원값 직표시 금지. */
