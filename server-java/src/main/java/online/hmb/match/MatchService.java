@@ -44,6 +44,7 @@ public class MatchService {
     private final TxRunner txRunner;
     private final DeckService deckService;
     private final BotService botService;
+    private final ConditionService conditionService;
     private final ObjectMapper objectMapper;
     private final int halftimeSubsMax;
     private final int promptMaxChars;
@@ -53,6 +54,7 @@ public class MatchService {
                         TxRunner txRunner,
                         DeckService deckService,
                         BotService botService,
+                        ConditionService conditionService,
                         ObjectMapper objectMapper,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
@@ -60,6 +62,7 @@ public class MatchService {
         this.txRunner = txRunner;
         this.deckService = deckService;
         this.botService = botService;
+        this.conditionService = conditionService;
         this.objectMapper = objectMapper;
         this.halftimeSubsMax = halftimeSubsMax;
         this.promptMaxChars = promptMaxChars;
@@ -70,7 +73,8 @@ public class MatchService {
     public record MatchRow(String id, String userId, String botId, String state, String failReason,
                            String seed, String engineVersion, String userDeckJson, String subsJson,
                            Integer scoreH1Home, Integer scoreH1Away, Integer scoreHome, Integer scoreAway,
-                           String result, String createdAt, String finishedAt) {
+                           String result, String createdAt, String finishedAt,
+                           String conditionsJson, String mode, String leagueFixtureId) {
     }
 
     public MatchRow getOwned(String userId, String matchId) {
@@ -86,7 +90,8 @@ public class MatchService {
         return jdbcClient.sql("""
                         SELECT id, user_id, bot_id, state, fail_reason, seed, engine_version,
                                user_deck_json, subs_json, score_h1_home, score_h1_away,
-                               score_home, score_away, result, created_at, finished_at
+                               score_home, score_away, result, created_at, finished_at,
+                               conditions_json, mode, league_fixture_id
                         FROM matches WHERE id = ?
                         """)
                 .param(matchId)
@@ -97,7 +102,9 @@ public class MatchService {
                         rs.getString("subs_json"),
                         (Integer) rs.getObject("score_h1_home"), (Integer) rs.getObject("score_h1_away"),
                         (Integer) rs.getObject("score_home"), (Integer) rs.getObject("score_away"),
-                        rs.getString("result"), rs.getString("created_at"), rs.getString("finished_at")))
+                        rs.getString("result"), rs.getString("created_at"), rs.getString("finished_at"),
+                        rs.getString("conditions_json"), rs.getString("mode"),
+                        rs.getString("league_fixture_id")))
                 .optional();
     }
 
@@ -136,14 +143,15 @@ public class MatchService {
         String matchId = Ulid.next();
         String seed = randomSeedHex();
         String snapshot = snapshotDeck(deck, teamTactics);
+        String conditionsJson = computeConditionsJson(seed, rosterPlayerIdsOf(readJson(snapshot)));
         String now = Instant.now().toString();
 
         txRunner.run(() -> jdbcClient.sql("""
                         INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
-                                            user_deck_json, created_at)
-                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?)
+                                            user_deck_json, conditions_json, mode, created_at)
+                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'practice', ?)
                         """)
-                .params(matchId, userId, bot.id(), seed, snapshot, now)
+                .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, now)
                 .update());
         // engine_version='pending' — 실제 EngineConfig.version은 h1 시뮬 응답의
         // matchLog.configVersion으로 갱신된다(러너가 버전의 SoT).
@@ -183,6 +191,68 @@ public class MatchService {
         return snapshot.toString();
     }
 
+    // ── 컨디션 (AC-C1, LLD §3) ──────────────────────────────────────────
+
+    /** 스냅샷의 선발+벤치 playerId 집합(컨디션 롤 대상 = 후반 교체 투입 포함). */
+    private List<String> rosterPlayerIdsOf(JsonNode snapshot) {
+        List<String> ids = new ArrayList<>();
+        snapshot.path("starters").forEach(s -> ids.add(s.path("playerId").asText()));
+        snapshot.path("bench").forEach(s -> ids.add(s.path("playerId").asText()));
+        return ids;
+    }
+
+    /** conditions_json = {playerId: 0.0~1.0} 시드 결정론 롤(playerId 정렬 — 재현·안정 직렬화). */
+    private String computeConditionsJson(String seed, List<String> playerIds) {
+        ObjectNode node = objectMapper.createObjectNode();
+        new java.util.TreeSet<>(playerIds).forEach(pid -> node.put(pid, conditionService.roll(seed, pid)));
+        return node.toString();
+    }
+
+    /**
+     * 킥오프 시 스냅샷 재캡처(W0 이월 a, AC-B2): 브리핑 중 덱/전술 수정을 매치 스냅샷에 반영한다.
+     * create 시점 캡처는 폴백이고, kickoff 직전의 현재 활성 덱 + 요청 teamTactics(없으면 기존
+     * 스냅샷 teamTactics 유지)로 user_deck_json 을 재구성하고 conditions 를 새 로스터로 재롤한다.
+     * BRIEFING 상태에서만 수행(그 외엔 no-op — 진행 중 매치 스냅샷 불변 계약 유지).
+     */
+    public void recaptureSnapshotAtKickoff(String userId, String matchId, JsonNode teamTactics) {
+        MatchRow row = getOwned(userId, matchId);
+        if (!row.state().equals(S_BRIEFING)) {
+            return; // 킥오프 재캡처는 브리핑에서만 — 이미 진행 중이면 create/기존 스냅샷 유지
+        }
+        DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
+        deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
+
+        JsonNode effectiveTactics;
+        if (teamTactics != null && !teamTactics.isNull()) {
+            online.hmb.meta.TeamTactics.validate(teamTactics); // 있으면 0..1
+            effectiveTactics = teamTactics;
+        } else {
+            // 폴백: 기존 스냅샷(create/직전 브리핑)의 teamTactics 유지
+            JsonNode existing = readJson(row.userDeckJson()).get("teamTactics");
+            effectiveTactics = (existing != null && existing.isObject()) ? existing : null;
+        }
+
+        String snapshot = snapshotDeck(deck, effectiveTactics);
+        String conditionsJson = computeConditionsJson(row.seed(), rosterPlayerIdsOf(readJson(snapshot)));
+        txRunner.run(() -> jdbcClient.sql("""
+                        UPDATE matches SET user_deck_json = ?, conditions_json = ?
+                        WHERE id = ? AND state = 'BRIEFING'
+                        """)
+                .params(snapshot, conditionsJson, matchId)
+                .update());
+    }
+
+    /** conditions_json → {playerId: condition}. 없으면 빈 맵. */
+    public Map<String, Double> conditionsOf(MatchRow row) {
+        Map<String, Double> map = new LinkedHashMap<>();
+        if (row.conditionsJson() == null || row.conditionsJson().isBlank()) {
+            return map;
+        }
+        JsonNode node = readJson(row.conditionsJson());
+        node.properties().forEach(e -> map.put(e.getKey(), e.getValue().asDouble()));
+        return map;
+    }
+
     // ── 조회 (MatchDetail / 상대 분석) ──────────────────────────────────
 
     public record OpponentPlayer(String name, String position, String grade, boolean hasPrompt) {
@@ -194,13 +264,17 @@ public class MatchService {
     public record MatchDetail(String id, String state, String failReason, Opponent opponent,
                                Integer scoreH1Home, Integer scoreH1Away,
                                Integer scoreHome, Integer scoreAway,
-                               String result, String createdAt, String finishedAt) {
+                               String result, String createdAt, String finishedAt,
+                               Map<String, Double> conditions, String mode, String leagueFixtureId) {
     }
 
     public MatchDetail toDetail(MatchRow row) {
+        // Phase2 additive(MatchDetailPhase2Fields): conditions/mode/leagueFixtureId — 시계 UI·리그 뱃지용.
+        String mode = row.mode() == null ? "practice" : row.mode();
         return new MatchDetail(row.id(), row.state(), row.failReason(), buildOpponent(row),
                 row.scoreH1Home(), row.scoreH1Away(), row.scoreHome(), row.scoreAway(),
-                row.result(), row.createdAt(), row.finishedAt());
+                row.result(), row.createdAt(), row.finishedAt(),
+                conditionsOf(row), mode, row.leagueFixtureId());
     }
 
     private Opponent buildOpponent(MatchRow row) {

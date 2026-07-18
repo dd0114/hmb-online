@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import online.hmb.common.TxRunner;
@@ -113,18 +114,21 @@ public class PlayerCatalogService implements ApplicationRunner {
                 }
 
                 String attributesJson = attributes.toString();
+                // C4(AC-C4): data v2.1 성격 필드. 구파일(personality 없음)은 기본 CALM 으로 안전 임포트.
+                String personality = normalizePersonality(p.path("personality").asText(null));
 
                 jdbcClient.sql("""
-                                INSERT INTO players(id, name, position, grade, attributes_json, data_version)
-                                VALUES (?, ?, ?, ?, ?, ?)
+                                INSERT INTO players(id, name, position, grade, attributes_json, data_version, personality)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
                                 ON CONFLICT(id) DO UPDATE SET
                                   name = excluded.name,
                                   position = excluded.position,
                                   grade = excluded.grade,
                                   attributes_json = excluded.attributes_json,
-                                  data_version = excluded.data_version
+                                  data_version = excluded.data_version,
+                                  personality = excluded.personality
                                 """)
-                        .params(id, name, position, grade, attributesJson, version)
+                        .params(id, name, position, grade, attributesJson, version, personality)
                         .update();
                 count++;
             }
@@ -149,7 +153,19 @@ public class PlayerCatalogService implements ApplicationRunner {
         }
     }
 
-    private static final Pattern FILENAME_VERSION = Pattern.compile("\\.([a-zA-Z0-9]+)\\.json$");
+    private static final Set<String> VALID_PERSONALITIES = Set.of("FIERY", "CALM", "GLASS", "AMBITIOUS");
+
+    /** 성격 정규화 — 없거나 미허용 값이면 기본 CALM (구파일 안전 + DB CHECK 위반 방지). */
+    private static String normalizePersonality(String raw) {
+        if (raw == null) {
+            return "CALM";
+        }
+        String upper = raw.trim().toUpperCase(java.util.Locale.ROOT);
+        return VALID_PERSONALITIES.contains(upper) ? upper : "CALM";
+    }
+
+    // 파일명 규약 players.<version>.json 에서 <version> 전체를 캡처(점 포함 — 예: v2.1).
+    private static final Pattern FILENAME_VERSION = Pattern.compile("^[^.]+\\.(.+)\\.json$");
 
     /** JSON 내부에 "version" 필드가 있으면 그것을, 없으면(예: 최상위 배열) 파일명에서 유도한다. */
     private static String versionOf(JsonNode root, File file) {
@@ -157,7 +173,7 @@ public class PlayerCatalogService implements ApplicationRunner {
             return root.path("version").asText();
         }
         Matcher m = FILENAME_VERSION.matcher(file.getName());
-        return m.find() ? m.group(1) : "v1";
+        return m.matches() ? m.group(1) : "v1";
     }
 
     private void setMetaKv(String key, String value) {

@@ -29,10 +29,13 @@ public class PromptContextBuilder {
 
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
+    private final RelationService relationService;
 
-    public PromptContextBuilder(JdbcClient jdbcClient, ObjectMapper objectMapper) {
+    public PromptContextBuilder(JdbcClient jdbcClient, ObjectMapper objectMapper,
+                                RelationService relationService) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
+        this.relationService = relationService;
     }
 
     /** 로스터 항목 — 컨텍스트/SelectData 공용 원료. */
@@ -68,11 +71,12 @@ public class PromptContextBuilder {
                 .orElseThrow(() -> new IllegalStateException("카탈로그에 없는 선수: " + playerId));
     }
 
-    /** 유저팀(home) 컨텍스트. */
+    /** 유저팀(home) 컨텍스트. opponentDeck = 봇 덱 JSON(마킹용 opponentRoster 근거). */
     public Map<String, Object> buildUserContext(MatchService.MatchRow match, int half,
                                                  JsonNode snapshot,
                                                  List<MatchService.Substitution> subs,
-                                                 Map<String, Object> prevSummary) {
+                                                 Map<String, Object> prevSummary,
+                                                 JsonNode opponentDeck) {
         // 팀 프롬프트: h2면 halftime 우선 → pre → ""
         String teamPrompt = teamPromptOf(match.id(), half);
 
@@ -97,8 +101,87 @@ public class PromptContextBuilder {
         // 로스터에 없는 선수의 프롬프트는 제거(교체 아웃 등)
         playerPrompts.keySet().retainAll(roster.stream().map(RosterEntry::playerId).toList());
 
-        return context(match, "home", half, snapshot.path("formation").asText(),
+        Map<String, Object> context = context(match, "home", half, snapshot.path("formation").asText(),
                 roster, teamPrompt, playerPrompts, prevSummary);
+        // ── Phase2 additive AI 컨텍스트(AC-C2~C4, openapi-v2 AiJobContextPhase2Fields — 필드명 자구 준수) ──
+        addPhase2Context(context, match, snapshot, roster, opponentDeck);
+        return context;
+    }
+
+    /**
+     * openapi-v2 {@code AiJobContextPhase2Fields} 자구대로 additive 필드 주입(zod .optional 호환):
+     * manualTactics / conditions / relations / teamMorale / opponentRoster. 없는 값은 키 생략.
+     */
+    private void addPhase2Context(Map<String, Object> context, MatchService.MatchRow match,
+                                  JsonNode snapshot, List<RosterEntry> roster, JsonNode opponentDeck) {
+        List<String> rosterIds = roster.stream().map(RosterEntry::playerId).toList();
+
+        // manualTactics: 매치 스냅샷의 teamTactics(있으면).
+        JsonNode teamTactics = snapshot.get("teamTactics");
+        if (teamTactics != null && teamTactics.isObject()) {
+            context.put("manualTactics", objectMapper.convertValue(teamTactics, Map.class));
+        }
+
+        // conditions: {playerId: 0..1} — 로스터 선수만(match.conditions_json 파생).
+        Map<String, Double> allConditions = parseConditions(match.conditionsJson());
+        if (!allConditions.isEmpty()) {
+            Map<String, Double> rosterConditions = new LinkedHashMap<>();
+            for (String pid : rosterIds) {
+                if (allConditions.containsKey(pid)) {
+                    rosterConditions.put(pid, allConditions.get(pid));
+                }
+            }
+            if (!rosterConditions.isEmpty()) {
+                context.put("conditions", rosterConditions);
+            }
+        }
+
+        // relations: {playerId: {trust, personality}} — 로스터 선수만.
+        Map<String, Map<String, Object>> relations = relationService.relationContextFor(match.userId(), rosterIds);
+        if (!relations.isEmpty()) {
+            context.put("relations", relations);
+        }
+
+        // teamMorale: {morale, streak}.
+        RelationService.Morale morale = relationService.moraleOf(match.userId());
+        Map<String, Object> moraleMap = new LinkedHashMap<>();
+        moraleMap.put("morale", morale.morale());
+        moraleMap.put("streak", morale.streak());
+        context.put("teamMorale", moraleMap);
+
+        // opponentRoster: [{playerId, name, position}] — 마킹 지시 해석용(상대 이름→playerId).
+        if (opponentDeck != null) {
+            List<Map<String, Object>> opponentRoster = new ArrayList<>();
+            for (JsonNode starter : opponentDeck.path("starters")) {
+                String pid = starter.path("playerId").asText();
+                Map<String, String> nameGrade = playerNamePosition(pid);
+                Map<String, Object> entry = new LinkedHashMap<>();
+                entry.put("playerId", pid);
+                entry.put("name", nameGrade.get("name"));
+                entry.put("position", nameGrade.get("position"));
+                opponentRoster.add(entry);
+            }
+            if (!opponentRoster.isEmpty()) {
+                context.put("opponentRoster", opponentRoster);
+            }
+        }
+    }
+
+    private Map<String, Double> parseConditions(String conditionsJson) {
+        Map<String, Double> map = new LinkedHashMap<>();
+        if (conditionsJson == null || conditionsJson.isBlank()) {
+            return map;
+        }
+        readJson(conditionsJson).properties().forEach(e -> map.put(e.getKey(), e.getValue().asDouble()));
+        return map;
+    }
+
+    private Map<String, String> playerNamePosition(String playerId) {
+        return jdbcClient.sql("SELECT name, position FROM players WHERE id = ?")
+                .param(playerId)
+                .query((rs, n) -> Map.of("name", rs.getString("name"), "position", rs.getString("position")))
+                .optional()
+                .orElse(Map.of("name", playerId, "position", "?"));
     }
 
     /** 봇팀(away) 컨텍스트. */

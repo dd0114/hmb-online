@@ -44,15 +44,18 @@ public class MockOAuthProvider implements AuthProvider {
     private final TxRunner txRunner;
     private final EconomyService economyService;
     private final WalletService walletService;
+    private final online.hmb.match.RelationService relationService;
 
     public MockOAuthProvider(JdbcClient jdbcClient,
                              TxRunner txRunner,
                              EconomyService economyService,
-                             WalletService walletService) {
+                             WalletService walletService,
+                             online.hmb.match.RelationService relationService) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.economyService = economyService;
         this.walletService = walletService;
+        this.relationService = relationService;
     }
 
     @Override
@@ -118,6 +121,9 @@ public class MockOAuthProvider implements AuthProvider {
                     .update();
 
             grantStarterPack(userId, now);
+
+            // AC-C4: 관계 초기화(team_morale + 보유 선수 신뢰도 기본 행) — 스타터 팩 지급 직후 같은 tx.
+            relationService.initForUser(userId);
 
             return new AuthResult(userId, nickname, true);
         });

@@ -20,6 +20,8 @@ ALTER TABLE matches ADD COLUMN conditions_json TEXT;      -- {playerId: 0.0~1.0}
 ALTER TABLE matches ADD COLUMN mode TEXT NOT NULL DEFAULT 'practice'
   CHECK (mode IN ('practice','league'));
 ALTER TABLE matches ADD COLUMN league_fixture_id TEXT;    -- 리그 경기면 참조
+-- (V3__relations_applied.sql) 관계 변동 멱등 플래그 — V2 체크섬 불변 위해 별도 마이그레이션
+-- ALTER TABLE matches ADD COLUMN relations_applied INTEGER NOT NULL DEFAULT 0;
 
 -- C4. 감독 관계 (성격은 players 확장, 신뢰도/사기는 유저 상태)
 ALTER TABLE players ADD COLUMN personality TEXT NOT NULL DEFAULT 'CALM'

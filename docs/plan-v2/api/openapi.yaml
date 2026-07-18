@@ -687,6 +687,10 @@ components:
       type: object
       required: [nickname]
       properties:
+        provider:
+          type: string
+          enum: [guest, "mock:google", "mock:apple"]
+          description: "Phase2 additive — 생략 시 guest (server 9c51446 구현 정합)"
         nickname:
           type: string
           pattern: "^[\\p{L}\\p{N}_-]{2,16}$"

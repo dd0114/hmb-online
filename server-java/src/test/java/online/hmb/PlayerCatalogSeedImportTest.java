@@ -37,6 +37,15 @@ class PlayerCatalogSeedImportTest {
         assertThat(grade).isEqualTo("LEGEND");
     }
 
+    /** W1: 구파일(personality 없는 v1 fixture)은 안전하게 기본 CALM 으로 임포트된다. */
+    @Test
+    void personalityDefaultsToCalmForFilesWithoutPersonality() {
+        long nonCalm = jdbcClient.sql(
+                        "SELECT COUNT(*) FROM players WHERE personality IS NULL OR personality <> 'CALM'")
+                .query(Long.class).single();
+        assertThat(nonCalm).isZero();
+    }
+
     @Test
     void bootRecordsEconomyAndBotsVersionsWhenFixturesPresent() {
         String economyVersion = jdbcClient.sql("SELECT value FROM meta_kv WHERE key = 'economy_version'")

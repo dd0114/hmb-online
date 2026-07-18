@@ -42,6 +42,8 @@ public class MatchOrchestrator {
     private final MatchService matchService;
     private final PromptContextBuilder contextBuilder;
     private final BotService botService;
+    private final ConditionService conditionService;
+    private final RelationService relationService;
     private final EngineRunnerClient runnerClient;
     private final AiJobQueue jobQueue;
     private final WalletService walletService;
@@ -53,6 +55,8 @@ public class MatchOrchestrator {
                              MatchService matchService,
                              PromptContextBuilder contextBuilder,
                              BotService botService,
+                             ConditionService conditionService,
+                             RelationService relationService,
                              EngineRunnerClient runnerClient,
                              AiJobQueue jobQueue,
                              WalletService walletService,
@@ -63,6 +67,8 @@ public class MatchOrchestrator {
         this.matchService = matchService;
         this.contextBuilder = contextBuilder;
         this.botService = botService;
+        this.conditionService = conditionService;
+        this.relationService = relationService;
         this.runnerClient = runnerClient;
         this.jobQueue = jobQueue;
         this.walletService = walletService;
@@ -87,7 +93,8 @@ public class MatchOrchestrator {
             prevSummary = contextBuilder.prevSummaryFrom(h1Log);
         }
 
-        Map<String, Object> homeContext = contextBuilder.buildUserContext(match, half, snapshot, subs, prevSummary);
+        Map<String, Object> homeContext = contextBuilder.buildUserContext(
+                match, half, snapshot, subs, prevSummary, contextBuilder.readJson(bot.deckJson()));
         Map<String, Object> awayContext = contextBuilder.buildBotContext(match, half, bot, prevSummary);
 
         jobQueue.enqueue(matchId, "home", half, homeContext);
@@ -252,6 +259,9 @@ public class MatchOrchestrator {
             return; // 경합 — 이미 완료 처리됨
         }
 
+        // AC-C4: 관계/사기 변동 — FINISHED 전이 트랜잭션 내 멱등 적용(relations_applied 플래그 CAS).
+        relationService.applyMatchResult(match.userId(), match.id(), result);
+
         economyService.get().ifPresentOrElse(economy -> {
             int amount = switch (result) {
                 case "WIN" -> economy.rewards().win();
@@ -286,13 +296,18 @@ public class MatchOrchestrator {
         List<PromptContextBuilder.RosterEntry> awayRoster =
                 contextBuilder.buildRoster(contextBuilder.readJson(bot.deckJson()), List.of());
 
+        // AC-C1: 유저팀 능력치에 컨디션 배율 적용(교체 투입 포함 — conditions_json 은 선발+벤치 롤).
+        // 봇팀은 컨디션 미적용(빈 맵) — 원본 능력치.
+        Map<String, Double> conditions = matchService.conditionsOf(match);
+
         Map<String, Object> selectData = new LinkedHashMap<>();
-        selectData.put("home", teamRoster(nickname, homeRoster));
-        selectData.put("away", teamRoster(bot.name(), awayRoster));
+        selectData.put("home", teamRoster(nickname, homeRoster, conditions));
+        selectData.put("away", teamRoster(bot.name(), awayRoster, Map.of()));
         return selectData;
     }
 
-    private Map<String, Object> teamRoster(String name, List<PromptContextBuilder.RosterEntry> roster) {
+    private Map<String, Object> teamRoster(String name, List<PromptContextBuilder.RosterEntry> roster,
+                                           Map<String, Double> conditions) {
         Map<String, Object> team = new LinkedHashMap<>();
         team.put("name", name);
         team.put("players", roster.stream().map(r -> {
@@ -300,10 +315,27 @@ public class MatchOrchestrator {
             card.put("playerId", r.playerId());
             card.put("name", r.name());
             card.put("position", r.position());
-            card.put("attributes", r.attributes());
+            Double condition = conditions.get(r.playerId());
+            card.put("attributes", condition == null
+                    ? r.attributes()
+                    : scaleAttributes(r.attributes(), condition));
             return card;
         }).toList());
         return team;
+    }
+
+    /** 능력치 맵에 컨디션 배율 적용(숫자값만 스케일, 그 외 원본 유지). 반올림 후 0..100 클램프. */
+    private Map<String, Object> scaleAttributes(Map<String, Object> attributes, double condition) {
+        Map<String, Object> scaled = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> e : attributes.entrySet()) {
+            Object v = e.getValue();
+            if (v instanceof Number number) {
+                scaled.put(e.getKey(), conditionService.scaleAttribute(number.intValue(), condition));
+            } else {
+                scaled.put(e.getKey(), v);
+            }
+        }
+        return scaled;
     }
 
     private Optional<String> latestDoneResult(String matchId, int half, String side) {

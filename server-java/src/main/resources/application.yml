@@ -22,9 +22,10 @@ hmb:
   db:
     path: ./.data/hmb.db
   data:
-    players-file: ../data/players/players.v2.json     # 부팅 임포트(버전 upsert, meta_kv 기록) — v2=실선수(#84)
-    economy-file: ../data/players/economy.v2.json      # 확률표·경제 수치 로딩
+    players-file: ../data/players/players.v2.1.json   # 부팅 임포트(버전 upsert, meta_kv 기록) — v2.1=실선수+성격(#94)
+    economy-file: ../data/players/economy.v2.json      # 확률표·경제 수치 + trade/league 블록 로딩
     bots-file:    ../data/players/bots.v2.json
+    league-file:  ../data/players/league.v1.json       # 리그 클럽명·페르소나·보상표(W3 소비, W1 로더만)
   auth:
     session-ttl-hours: 720
   deck:
@@ -39,6 +40,19 @@ hmb:
     max-attempts: 3
     sweep-interval-ms: 10000       # JobLeaseSweeper 주기 (LLD §6: 10s)
     poll-interval-ms: 1000         # /internal/ai-jobs/poll long-poll 재조회 간격 (LLD §6: 1s)
+    condition:                     # AC-C1 컨디션 능력치 배율 (LLD-p2-server §3)
+      min-mul: 0.85                # 6시(condition=0.0) = -15%
+      max-mul: 1.10                # 12시(condition=1.0) = +10%
+  relation:                        # AC-C4 관계/사기 변동 규칙 (LLD-p2-server §4) — 하드코딩 금지(config)
+    starter-bonus: 2               # 선발 기용 +2
+    win-bonus: 3                   # 승리 전원 +3
+    loss-penalty: -2               # 패배 -2
+    sub-out-penalty: -1            # 교체 아웃 -1
+    absent-streak-penalty: -3      # 결장 연속 threshold 경기째부터 -3/경기
+    absent-streak-threshold: 2     # 연속 2경기째부터
+    morale-win: 8                  # 사기 승 +8
+    morale-draw: 2                 # 사기 무 +2
+    morale-loss: -8                # 사기 패 -8
   servant:
     engine-runner-url: http://localhost:8790
     internal-token: change-me      # /internal/* shared secret (AC-Q3)

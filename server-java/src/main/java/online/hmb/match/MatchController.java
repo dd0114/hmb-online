@@ -56,9 +56,20 @@ public class MatchController {
         return matchService.toDetail(matchService.getOwned(userId, id));
     }
 
+    /**
+     * kickoff 바디(선택): teamTactics — 브리핑 최종 수동 전술. W0 이월 a(AC-B2): 킥오프 시점에
+     * 현재 활성 덱 + 이 teamTactics 로 매치 스냅샷을 <b>재캡처</b>해 브리핑 중 수정을 반영한다
+     * (create 시점 캡처는 폴백; teamTactics 생략 시 기존 스냅샷 전술 유지).
+     */
+    public record KickoffRequest(com.fasterxml.jackson.databind.JsonNode teamTactics) {
+    }
+
     @PostMapping("/api/matches/{id}/kickoff")
     public ResponseEntity<MatchDetail> kickoff(@RequestAttribute("userId") String userId,
-                                               @PathVariable("id") String id) {
+                                               @PathVariable("id") String id,
+                                               @RequestBody(required = false) KickoffRequest request) {
+        // 재캡처는 CAS 전(BRIEFING 상태에서만) — 현재 덱 편집 상태를 매치 스냅샷에 반영(AC-B2).
+        matchService.recaptureSnapshotAtKickoff(userId, id, request == null ? null : request.teamTactics());
         MatchService.MatchRow row = matchService.kickoffCas(userId, id);
         orchestrator.enqueueHalf(id, 1);
         return ResponseEntity.status(HttpStatus.ACCEPTED)

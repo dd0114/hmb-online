@@ -58,12 +58,38 @@ class FlywayV2MigrationTest {
 
     @Test
     void matchesModeDefaultsToPracticeAndPersonalityToCalm() {
-        // CHECK + NOT NULL DEFAULT 가 ALTER ADD COLUMN 으로 적용됐는지 — 기존 행 삽입 경로로 확인.
-        // matches.mode CHECK: practice|league 만 허용
-        Integer bad = jdbcClient.sql(
-                        "SELECT COUNT(*) FROM pragma_table_info('matches') WHERE name = 'mode'")
+        // W0 이월 b: 이름이 주장하는 default 를 실제 삽입→읽기로 검증(컬럼 존재만 확인하던 약한 단언 교체).
+        // players.personality: 컬럼 미지정 INSERT → DEFAULT 'CALM'
+        jdbcClient.sql("""
+                        INSERT INTO players(id, name, position, grade, attributes_json, data_version)
+                        VALUES ('PX01', 'No Personality', 'MF', 'BRONZE', '{}', 'vtest')
+                        """).update();
+        String personality = jdbcClient.sql("SELECT personality FROM players WHERE id = 'PX01'")
+                .query(String.class).single();
+        assertThat(personality).isEqualTo("CALM");
+
+        // matches.mode: 컬럼 미지정 INSERT → DEFAULT 'practice'; relations_applied → DEFAULT 0 (V3)
+        seedUserAndBot();
+        jdbcClient.sql("""
+                        INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
+                                            user_deck_json, created_at)
+                        VALUES ('MX01', 'UX01', 'BX01', 'BRIEFING', 'seedhex', 'pending', '{}', '2026-01-01T00:00:00Z')
+                        """).update();
+        String mode = jdbcClient.sql("SELECT mode FROM matches WHERE id = 'MX01'")
+                .query(String.class).single();
+        assertThat(mode).isEqualTo("practice");
+        Integer relationsApplied = jdbcClient.sql("SELECT relations_applied FROM matches WHERE id = 'MX01'")
                 .query(Integer.class).single();
-        assertThat(bad).isEqualTo(1);
+        assertThat(relationsApplied).isZero();
+    }
+
+    private void seedUserAndBot() {
+        jdbcClient.sql("INSERT INTO users(id, nickname, created_at) VALUES ('UX01','ux01','2026-01-01T00:00:00Z')")
+                .update();
+        jdbcClient.sql("""
+                        INSERT INTO bots(id, name, persona, analysis_text, deck_json)
+                        VALUES ('BX01','Bot X','p','a','{}')
+                        """).update();
     }
 
     @Test
