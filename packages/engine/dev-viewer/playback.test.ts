@@ -7,6 +7,7 @@ import {
   buildAnnotations,
   isContinuousOut,
   buildBallCutTicks,
+  inHighlight,
 } from "./playback.mjs";
 
 describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 컷 (하이라이트 순간이동 버그 회귀방지)", () => {
@@ -53,6 +54,26 @@ describe("#51 isContinuousOut / buildBallCutTicks — 연속 아웃은 공 라�
     const cut = buildBallCutTicks(events, snaps);
     expect(cut.has(2)).toBe(false); // 연속 스로인 공 라이브
     expect(cut.has(5)).toBe(true); // 코너 컷
+  });
+});
+
+describe("#83 inHighlight — 비대칭 하이라이트 창(세이브 후 늦은 릴리스 방지)", () => {
+  const keys = [100];
+  it("keyTick 후엔 POST 만큼만(짧게 풀림), 앞엔 PRE 만큼(빌드업)", () => {
+    // 뒤(post=3): kt+3 까지만 하이라이트, kt+4 부터 풀림 — 구 대칭(±8)이면 kt+8 까지라 늦음.
+    expect(inHighlight(103, keys, 8, 3)).toBe(true);
+    expect(inHighlight(104, keys, 8, 3)).toBe(false);
+    expect(inHighlight(108, keys, 8, 3)).toBe(false); // 대칭이면 true(늦은 릴리스 버그)
+    // 앞(pre=8): 빌드업 유지.
+    expect(inHighlight(92, keys, 8, 3)).toBe(true);
+    expect(inHighlight(91, keys, 8, 3)).toBe(false);
+    // keyTick 자체.
+    expect(inHighlight(100, keys, 8, 3)).toBe(true);
+  });
+  it("post < pre (비대칭) + keyTick 없으면 false", () => {
+    expect(inHighlight(50, [], 8, 3)).toBe(false);
+    // 다중 keyTick: 어느 하나의 창에 들면 true.
+    expect(inHighlight(203, [100, 200], 8, 3)).toBe(true);
   });
 });
 

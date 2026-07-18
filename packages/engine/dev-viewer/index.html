@@ -128,7 +128,7 @@
     <input type="file" id="fileInput" accept="application/json" title="match-log.json 직접 불러오기" />
 
     <script type="module">
-      import { buildPlayback, spansReposition } from "./playback.mjs";
+      import { buildPlayback, spansReposition, inHighlight } from "./playback.mjs";
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
@@ -142,7 +142,9 @@
       const DEADBALL_PAUSE_MS = 450;           // #59: 데드볼 자막 표시용 짧은 정지 — 그 뒤 정상 재생(엔진이 taker 걸음 방출)
       const BALL_TRAIL = 6, PLAYER_TRAIL = 10; // 잔상 길이(틱). 공 트레일은 짧은 최근 꼬리(피치 가로지르는 지그재그 클러터 방지).
       const TICKS_PER_SEC = 2;                  // 1x = 2 게임초/실초 (거의 실시간, 공이 눈에 따라감)
-      const CRUISE_SPEED = 4, HL_SPEED = 1, HL_WINDOW = 8; // 하이라이트 자동페이싱: 빌드업 4x → 찬스 근처 1x
+      const CRUISE_SPEED = 4, HL_SPEED = 1; // 하이라이트 자동페이싱: 빌드업 4x → 찬스 근처 1x
+      // #83 하이라이트 창 비대칭: 앞(빌드업 기대감) 넉넉, 뒤(클라이맥스 후) 짧게 — 세이브 후 늦게 풀리던 것 해소.
+      const HL_PRE = 8, HL_POST = 3;
 
       const canvas = document.getElementById("pitch");
       const ctx = canvas.getContext("2d");
@@ -213,7 +215,7 @@
 
         // 카메라: 수동 공따라가기 OR 하이라이트(찬스/골) 근처면 자동 줌인
         const curTick = A.tick;
-        const nearKey = autoPace && keyTicks.some((kt) => Math.abs(kt - curTick) <= HL_WINDOW);
+        const nearKey = autoPace && inHighlight(curTick, keyTicks, HL_PRE, HL_POST);
         // 골 세리머니 후반(트윈>0.4)엔 줌을 풀어 선수들이 포메이션으로 걸어 복귀하는 걸 전체뷰로 보여줌.
         const koTweening = hold && hold.koIdx != null && hold.tween > 0.4;
         // #59: 세트피스 재시작 **걷기 구간** — 공이 스팟에 정지한 채 taker 가 평소 속도로 걸어와 잡는다
@@ -456,7 +458,13 @@
         tickerEl.querySelectorAll("[data-tick]").forEach((el) => el.onclick = () => jumpToTick(+el.dataset.tick));
       }
 
+      // #65 렌더 루프 방어: 한 프레임의 예외(예: 손상된 주입 데이터 잔재)가 rAF 체인을 영구히 끊어
+      // 화면을 통째로 멈추지 않게 — 래퍼가 예외를 잡고 다음 프레임을 재스케줄한다(다음 유효 주입 시 회복).
       function tickLoop(ts) {
+        try { tickLoopInner(ts); }
+        catch (e) { console.error("tickLoop error:", e); requestAnimationFrame(tickLoop); }
+      }
+      function tickLoopInner(ts) {
         if (!lastTs) lastTs = ts;
         const dt = (ts - lastTs) / 1000; lastTs = ts;
         frameDt = dt;
@@ -474,7 +482,7 @@
         }
         if (playing && snaps.length > 1) {
           const beforeTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
-          const nearKey = autoPace && keyTicks.some((kt) => Math.abs(kt - beforeTick) <= HL_WINDOW);
+          const nearKey = autoPace && inHighlight(beforeTick, keyTicks, HL_PRE, HL_POST);
           const eff = autoPace ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed;
           tickPos += dt * TICKS_PER_SEC * eff;
           if (tickPos >= snaps.length - 1) { tickPos = snaps.length - 1; setPlaying(false); }
@@ -547,6 +555,11 @@
       scrub.oninput = () => { tickPos = (parseFloat(scrub.value) / 100) * (snaps.length - 1); lastGoalShown = -1; resetStops(); draw(); };
 
       function loadLog(data) {
+        // #65: 신뢰 경계 밖(부모/서버) 주입 대비 — 상태 변경 **전에** 최소 검증(원자성). 실패 시
+        // throw 만 하고 기존 상태는 그대로 유지 → 손상 페이로드가 뷰어를 반쯤 갈아엎지 않는다.
+        if (!data || !Array.isArray(data.tickSnapshots) || !Array.isArray(data.events) || !data.finalScore) {
+          throw new Error("잘못된 MatchLog(tickSnapshots·events·finalScore 필요)");
+        }
         log = data; snaps = data.tickSnapshots;
         // 골 + 모든 슛(유효슛 포함) + 페널티 근처에서 하이라이트(슬로우+자동 줌인).
         keyTicks = data.events.filter((e) => e.type === "goal" || e.type === "penalty" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target")).map((e) => e.tick);
@@ -584,12 +597,34 @@
         statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
       }
 
+      // #65 소비 주입 계약(정식화): iframe 임베드 시 부모가 postMessage 로 MatchLog 를 주입한다.
+      //   parent → iframe : {type:'loadMatchLog', matchLog}  → loadLog(멱등 재초기화, 하프 전환 재주입 OK)
+      //   iframe → parent : {type:'viewerReady'}             → 로드 완료·주입 준비 알림
+      // 리스너를 **먼저** 등록(먼저 온 loadMatchLog 도 수신) → viewerReady 송신. web build-viewer.mjs 의
+      // fetch-가로채기 브리지를 대체(뷰어 네이티브 지원 → web 은 브리지 제거만). 계약 = viewer-bridge.ts.
+      const embedded = window.parent && window.parent !== window;
+      window.addEventListener("message", (ev) => {
+        const d = ev && ev.data;
+        if (d && d.type === "loadMatchLog" && d.matchLog) {
+          // 손상 주입이 예외로 렌더를 죽이지 않게 — 실패 시 이전 상태 유지 + 상태줄에 표시.
+          try { loadLog(d.matchLog); }
+          catch (e) { statusEl.textContent = "주입된 MatchLog 로드 실패: " + e; }
+        }
+      });
       if (window.__LOG__) {
-        // 단일 파일(standalone) 모드: 데이터가 HTML 에 내장됨. 서버 불필요.
+        // 단일 파일(standalone) 모드: 데이터가 HTML 에 내장됨. 서버 불필요. (임베드면 이후 주입이 override.)
         loadLog(window.__LOG__);
+      } else if (embedded) {
+        // 임베드 + 내장 로그 없음: fetch 대신 부모 주입 대기(서버 불필요).
+        statusEl.textContent = "호스트로부터 MatchLog 주입 대기…";
       } else {
         fetch("./match-log.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(loadLog)
           .catch((err) => { statusEl.textContent = "match-log.json fetch 실패(" + err + "). 아래 파일 선택으로 열거나 standalone 파일을 여세요."; });
+      }
+      if (embedded) {
+        const announceReady = () => { try { window.parent.postMessage({ type: "viewerReady" }, "*"); } catch (e) {} };
+        announceReady();
+        window.addEventListener("load", announceReady);
       }
       document.getElementById("fileInput").onchange = (e) => {
         const f = e.target.files[0]; if (!f) return;

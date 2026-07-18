@@ -21,6 +21,15 @@ export function buildRestartTicks(events) {
 }
 
 /**
+ * 하이라이트(슬로우+줌) 창 판정 — **비대칭**. keyTick(유효슛/골/PK) 앞은 pre 틱(빌드업 기대감),
+ * 뒤는 post 틱(클라이맥스 후 빨리 풀림). 대칭(±)이면 슛 이후로도 pre 만큼 슬로우가 이어져
+ * 세이브(키퍼 처리) 후 열린 플레이까지 늦게 풀렸다(#83). post<pre 로 뒤를 짧게.
+ */
+export function inHighlight(tick, keyTicks, pre, post) {
+  return keyTicks.some((kt) => tick >= kt - pre && tick <= kt + post);
+}
+
+/**
  * 스냅샷 A(aTick)→B(bTick) 보간 구간에 데드볼 재배치가 있으면 true(그 구간은 컷).
  * 슛 궤적은 재배치 이벤트가 없으므로 거리와 무관하게 false → 부드럽게 보간된다.
  */
