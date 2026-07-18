@@ -221,8 +221,10 @@
         // 박스 배치를 안정적으로 보여준다. 공이 스팟을 떠나면(딜리버리/스로인) 해제 → 팔로우로 자연 전환.
         // 공이 정지라 팬이 스팟에 수렴해 멈춰 wobble(줌아웃→줌인 반전)이 없다(구: 450ms hold 가 강제
         // wide 팬을 걸었다가 미완인 채 nearKey 팔로우로 되돌아가 줌이 튐 — QA #59 blocker2).
+        // 세트피스/접촉 줌은 자동 연출(autoPace) 전용 — autoPace off(수동 스크럽·지오메트리 검사)면
+        // 평범한 카메라로 둬 줌에 가려지는 것 없이 실제 배치를 본다. nearKey(하이라이트)와 동일 정책.
         let spSpot = null;
-        for (const st of stoppages) {
+        if (autoPace) for (const st of stoppages) {
           if (st.isGoal || !(st.setPiece || st.pauseOnly) || curTick < st.causeTick || curTick > st.causeTick + 32) continue;
           const csnap = snapByTick.get(st.causeTick);
           if (csnap && Math.hypot(bx - csnap.ball.x, by - csnap.ball.y) < 3) { spSpot = csnap.ball; break; }
@@ -230,7 +232,7 @@
         // 파울 접촉 줌(최우선): 파울/페널티 정지의 causeTick 부근엔 접촉 지점(파울러=victim 도 2m 내)으로
         // 줌해 "두 선수 충돌"을 보여준다. 파울 순간 와이드로 작은 점 되던 것 해소(#59 후 파울 접촉 소실).
         let contactPos = null;
-        for (const st of stoppages) {
+        if (autoPace) for (const st of stoppages) {
           if (st.isGoal || !st.contactAnchor || curTick < st.causeTick || curTick > st.causeTick + FOUL_CONTACT_TICKS) continue;
           const csnap = snapByTick.get(st.causeTick);
           const pl = csnap && csnap.players.find((p) => p.playerId === st.contactAnchor);

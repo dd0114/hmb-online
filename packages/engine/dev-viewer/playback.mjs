@@ -60,9 +60,29 @@ export function buildBallCutTicks(events, snaps) {
 }
 
 /**
+ * @typedef {Object} Stoppage
+ * @property {number} causeTick
+ * @property {number} restartTick
+ * @property {string} big
+ * @property {string} bigCol
+ * @property {number} hold
+ * @property {boolean} isGoal
+ * @property {boolean} done
+ * @property {boolean} [wide]        정지 중 카메라 전체뷰 여부(세트피스로 이어지는 원인 정지).
+ * @property {boolean} [setPiece]    코너/스로인 세트피스 정지.
+ * @property {boolean} [pauseOnly]   자막 없는 짧은 비트(프리킥 등).
+ * @property {string}  [kind]        setPiece 종류(corner/throw_in).
+ * @property {string}  [contactAnchor] 파울/페널티: 접촉 지점 줌 앵커(파울러 playerId).
+ * @property {boolean} [continuous]  연속 아웃 스로인.
+ * @property {number}  [formFrom]    골 정지: 포메이션 트윈 시작 idx.
+ * @property {number}  [koIdx]       골 정지: 킥오프 idx.
+ * @property {number}  [tween]       골 정지: 트윈 진행.
+ */
+/**
  * 데드볼 정지 시퀀스(원인 → 큰 자막 + freeze → 재시작으로 skip).
  * 골은 isGoal:true(GOAL 자막 + 색종이), 나머지(선방/빗나감/파울/오프사이드/PK)는 isGoal:false(상황 카드).
  * → '선방인데 골처럼' 방지: 골과 상황 자막을 데이터 레벨에서 구분.
+ * @returns {Stoppage[]}
  */
 export function buildStoppages(events) {
   const CAUSE = {
@@ -161,7 +181,19 @@ export function buildStoppages(events) {
 // #59: synthOutFlight(아웃비행 합성)·freezeSpanEndIdx(정지 재생) 제거 — 엔진이 taker 걸음/정비를
 // 자연 데이터로 방출하므로 뷰어 트릭 불필요. 뷰어는 데드볼도 정상 속도로 재생만 한다.
 
-/** 액션 토스트(선수 근처) + 상황 배너(상단) + 돌파 추론 주석. */
+/**
+ * @typedef {Object} Annotation
+ * @property {string} kind    "toast" | "banner"
+ * @property {number} tick
+ * @property {number} [at]    토스트: 앵커 스냅샷 틱.
+ * @property {string} text
+ * @property {string} [col]
+ * @property {string} [anchor] 토스트: 공 대신 이 playerId 선수 위치에 앵커(파울/카드 등 선수 사건).
+ */
+/**
+ * 액션 토스트(선수 근처) + 상황 배너(상단) + 돌파 추론 주석.
+ * @returns {Annotation[]}
+ */
 export function buildAnnotations(events, snaps) {
   const annos = [];
   for (const e of events) {
@@ -175,7 +207,7 @@ export function buildAnnotations(events, snaps) {
     else if (k === "shot_off_target") T("빗나감", "#94a3b8");
     else if (k === "tackle") T("태클", "#cbd5e1");
     else if (k === "interception") T("차단", "#cbd5e1");
-    else if (k === "foul") { T("파울", "#fb923c", e.playerId); B("😠 파울 → 프리킥", "#fb923c"); }
+    else if (k === "foul") { T("파울", "#fb923c", e.playerId); B("😠 파울", "#fb923c"); } // 재시작(프리킥/페널티)은 후속 배너가 표시 — 박스 파울에 "프리킥" 오표기 방지.
     else if (k === "card") T(e.detail === "red" ? "🟥 레드!" : "🟨 옐로", e.detail === "red" ? "#ef4444" : "#fde047", e.playerId);
     else if (k === "offside") B("🚩 오프사이드", "#f59e0b");
     else if (k === "penalty") B("⚽ 페널티킥!", "#22c55e");
