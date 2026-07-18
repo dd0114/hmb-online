@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { TacticalInput } from "@hmb/shared";
-import { ExecutorLoop, prepareExecutorEnv, parsePollWaitMs } from "./executor-main.js";
+import { ExecutorLoop, prepareExecutorEnv, parsePollWaitMs, parseConcurrency } from "./executor-main.js";
 import { JavaClient } from "./java-client.js";
 import { stubExecutor } from "./executors/stub.js";
 import { claudeCodeExecutor, type ClaudeRunner } from "./executors/claude-code.js";
@@ -237,6 +237,61 @@ describe("AI실행기 폴링 루프 — 가짜 Java 큐 (AC-T2, 오프라인)", 
     await expect(loop.processOnce()).rejects.toThrow(/401/);
   });
 
+  it("concurrency=2: 두 잡을 동시 처리(병렬) — 둘 다 in-flight 후에야 진행(①)", async () => {
+    java.queue.push({ id: "job-a", context: makeTeamInputContext() });
+    java.queue.push({ id: "job-b", context: makeTeamInputContext() });
+    java.delay204Ms = 30; // 빈 큐 재폴 hot-spin 방지
+
+    let inflight = 0;
+    let maxInflight = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((r) => (release = r));
+    const gated: AiExecutor = {
+      name: "gated",
+      execute: async (job, attempt) => {
+        inflight += 1;
+        maxInflight = Math.max(maxInflight, inflight);
+        if (inflight >= 2) release(); // 둘 다 진입해야 barrier 해제 → concurrency=1 이면 영영 안 열림
+        await barrier;
+        const out = await stubExecutor().execute(job, attempt);
+        inflight -= 1;
+        return out;
+      },
+    };
+
+    const stop = new AbortController();
+    const loop = new ExecutorLoop(client(java), gated, { concurrency: 2, log: () => {} });
+    const done = loop.run(stop.signal);
+    await vi.waitFor(() => expect(java.completes).toHaveLength(2), { timeout: 3_000 });
+    stop.abort();
+    await done;
+
+    expect(maxInflight).toBe(2); // 동시 2개 in-flight = 병렬 증명
+    expect(java.completes.every((c) => c.body.ok)).toBe(true);
+  });
+
+  it("concurrency 기본=1: 순차 처리(기존 동작 불변)", async () => {
+    java.queue.push({ id: "seq-1", context: makeTeamInputContext() });
+    java.queue.push({ id: "seq-2", context: makeTeamInputContext() });
+    let inflight = 0;
+    let maxInflight = 0;
+    const tracked: AiExecutor = {
+      name: "tracked",
+      execute: async (job, attempt) => {
+        inflight += 1;
+        maxInflight = Math.max(maxInflight, inflight);
+        await new Promise((r) => setTimeout(r, 20));
+        const out = await stubExecutor().execute(job, attempt);
+        inflight -= 1;
+        return out;
+      },
+    };
+    const loop = new ExecutorLoop(client(java), tracked, { log: () => {} }); // concurrency 미지정 → 1
+    expect(await loop.processOnce()).toBe(true);
+    expect(await loop.processOnce()).toBe(true);
+    expect(maxInflight).toBe(1); // 한 번에 하나
+  });
+
   it("run(stop): 대기 중(빈 큐 long-poll) abort → 진행 중 잡 없이 즉시 종료(SIGTERM 계약)", async () => {
     java.delay204Ms = 3_000; // long-poll 대기 흉내
     const loop = new ExecutorLoop(client(java), stubExecutor(), { log: () => {} });
@@ -303,5 +358,15 @@ describe("executor-main env 헬퍼", () => {
     expect(parsePollWaitMs("1")).toBe(1_000); // 하한
     expect(parsePollWaitMs("5000")).toBe(5_000);
     expect(parsePollWaitMs("abc")).toBe(25_000); // NaN → 기본
+  });
+
+  it("parseConcurrency: 기본 2, [1, 8] 클램프, 비수치→2 (①)", () => {
+    expect(parseConcurrency(undefined)).toBe(2); // 기본 = 2 (home/away 동시)
+    expect(parseConcurrency("2")).toBe(2);
+    expect(parseConcurrency("1")).toBe(1);
+    expect(parseConcurrency("0")).toBe(1); // 하한
+    expect(parseConcurrency("99")).toBe(8); // 상한
+    expect(parseConcurrency("2.9")).toBe(2); // floor
+    expect(parseConcurrency("abc")).toBe(2); // NaN → 기본
   });
 });
