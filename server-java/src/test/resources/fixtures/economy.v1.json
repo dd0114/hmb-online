@@ -34,5 +34,50 @@
     "win": 500,
     "draw": 200,
     "loss": 100
+  },
+  "trade": {
+    "slots": 3,
+    "kindWeights": {
+      "FA": 0.5,
+      "TRADE": 0.5
+    },
+    "waitHours": {
+      "BRONZE": 1,
+      "SILVER": 6,
+      "GOLD": 24,
+      "DIA": 48,
+      "LEGEND": 72
+    },
+    "targetRarityWeights": {
+      "BRONZE": 0.3,
+      "SILVER": 0.3,
+      "GOLD": 0.22,
+      "DIA": 0.13,
+      "LEGEND": 0.05
+    },
+    "speedup": {
+      "pointsPerHour": 50,
+      "minPoints": 20
+    },
+    "fa": {
+      "base": 0.5,
+      "k": 0.8,
+      "minProb": 0.05,
+      "maxProb": 0.95,
+      "reproposalCooldownHours": 6
+    },
+    "tradeOffer": {
+      "acceptProb": 0.8
+    },
+    "value": {
+      "byGrade": {
+        "BRONZE": 100,
+        "SILVER": 250,
+        "GOLD": 600,
+        "DIA": 1400,
+        "LEGEND": 3000
+      },
+      "attrSumCoeff": 2
+    }
   }
 }
