@@ -25,7 +25,7 @@
 - [x] **AC2** 순간이동이 "페널티킥!" 캡션/장면 전환 뒤로 가려짐(접촉 줌 중 공이 날아가지 않음). Evidence: 캡처 foul_contact(공 선수와 함께)→penalty_set(t169 "페널티킥!"+공 스팟).
 - [x] **AC3** 결정론 유지 + 골든 갱신. Evidence: 엔진 19/19·desync 0·resume·hygiene·골든 재생성. npm test 103.
 - [x] **AC4** 밸런스·회귀 무영향. Evidence: qa-match·perceptibility 6/6·playwright 29(코너 taker 가시성 autoPace 게이트로 정합, fixture 시드 재선정 1000000006).
-- [ ] **AC5** 실화면 + 독립 QA PASS(blocker 0) — 페널티 점프 해소, 스로인·코너·골 회귀 없음.
+- [x] **AC5** 실화면 + 독립 QA PASS(blocker 0). Evidence: independent-qa autoPace on play() 재생 — 공이 t161~168 접촉점(96,37.7) 고정 → **캡션 "파울!"→"페널티킥!" 전환과 같은 렌더 프레임(t169)에 스팟(94,34) 스냅**(허공 비행 중간상태 없음). 카메라 부드러운 팬. 배너 "프리킥" 오표기 없음. 회귀 없음(코너 t148·골킥·스로인·박스밖 파울 t510/578 "프리킥" 정상·골 세리머니). PASS.
 
 ---
 
