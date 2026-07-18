@@ -1,0 +1,68 @@
+{
+  "mode": "offline-approx",
+  "tokenizer": "chars/4 heuristic (실측 아님 — --live 의 usage.input_tokens 로 채움)",
+  "base": {
+    "chars": 4980,
+    "approxTokens": 1245
+  },
+  "catalogSection": {
+    "chars": 3040,
+    "approxTokens": 760
+  },
+  "baseSansCatalog": {
+    "chars": 1940,
+    "approxTokens": 485
+  },
+  "blocks": [
+    {
+      "id": "manualTactics",
+      "chars": 5250,
+      "approxTokens": 1313,
+      "deltaChars": 270,
+      "deltaTokens": 68
+    },
+    {
+      "id": "conditions",
+      "chars": 5353,
+      "approxTokens": 1339,
+      "deltaChars": 373,
+      "deltaTokens": 94
+    },
+    {
+      "id": "relations",
+      "chars": 5815,
+      "approxTokens": 1454,
+      "deltaChars": 835,
+      "deltaTokens": 209
+    },
+    {
+      "id": "teamMorale",
+      "chars": 5054,
+      "approxTokens": 1264,
+      "deltaChars": 74,
+      "deltaTokens": 19
+    },
+    {
+      "id": "opponentRoster",
+      "chars": 5223,
+      "approxTokens": 1306,
+      "deltaChars": 243,
+      "deltaTokens": 61
+    },
+    {
+      "id": "catalog(full)",
+      "chars": 4980,
+      "approxTokens": 1245,
+      "deltaChars": 3040,
+      "deltaTokens": 760,
+      "note": "지시 카탈로그 섹션은 안정 프리픽스로 base 에 상주(항상 on). Δ = 카탈로그 제외 base 대비 카탈로그 차지분."
+    }
+  ],
+  "allOn": {
+    "chars": 6775,
+    "approxTokens": 1694,
+    "deltaChars": 1795,
+    "deltaTokens": 449
+  },
+  "live": null
+}
