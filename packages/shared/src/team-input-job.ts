@@ -2,6 +2,7 @@ import { z } from "zod";
 import { TeamSide } from "./match-log.js";
 import { PlayerAttributes } from "./select-data.js";
 import { SimulateHalf } from "./simulate.js";
+import { TacticalInput } from "./tactical-input.js";
 
 /**
  * TeamInputJobContext — AI실행기(ts-servants ②) 잡 컨텍스트 계약.
@@ -115,3 +116,20 @@ export const TeamInputJobContext = z.object({
   teamMorale: TeamMoraleContext.optional(),
 });
 export type TeamInputJobContext = z.infer<typeof TeamInputJobContext>;
+
+/**
+ * TeamInputPatchJobContext — B(패치 생성) 잡 컨텍스트 (A+B 린패치 분리, #82 인계 / W3).
+ *
+ * kind='team-input-patch'. team-input 컨텍스트 전 필드(로스터·프롬프트·관계·사기·컨디션·상대로스터 …)를
+ * **그대로 재사용**(context-blocks 순수 렌더러 공용) + `base`(A 결과 TacticalInput)를 추가로 싣는다.
+ * 실행기는 이 컨텍스트로 B 프롬프트를 빌드→TacticalPatch 를 생성→applyPatch(base, patch, {seed})→**최종 TacticalInput 반환**.
+ * (Java 는 결과를 team-input 과 동일하게 TacticalInput 으로 소비 — 패치는 실행기 내부 구현 세부.)
+ *
+ * seed 는 통과 필드 — 머지 시 base.seed 를 이 seed(halfSeed)로 주입. base 콘텐츠의 seed 는 무시된다.
+ */
+export const TeamInputPatchJobContext = TeamInputJobContext.omit({ kind: true }).extend({
+  kind: z.literal("team-input-patch"),
+  /** A(베이스 생성) 결과 — 이 위에 패치를 정적 머지한다(프리컴퓨트/캐시된 값). */
+  base: TacticalInput,
+});
+export type TeamInputPatchJobContext = z.infer<typeof TeamInputPatchJobContext>;

@@ -8,7 +8,8 @@ import { stubExecutor } from "./executors/stub.js";
 import { claudeCodeExecutor, type ClaudeRunner } from "./executors/claude-code.js";
 import { CacheMetrics, type JobUsage } from "./metrics.js";
 import type { AiExecutor } from "./executor.js";
-import { makeTeamInputContext } from "./test-fixtures.js";
+import { makeTeamInputContext, makeTeamInputPatchContext } from "./test-fixtures.js";
+import { makeOpponentRoster } from "./test-fixtures.js";
 
 /**
  * AC-T2 (오프라인): 가짜 Java 서버(node:http, openapi `/internal/ai-jobs` poll/complete)로
@@ -321,6 +322,56 @@ describe("AI실행기 폴링 루프 — 가짜 Java 큐 (AC-T2, 오프라인)", 
     expect(java.completes[0]!.id).toBe("job-sig");
     expect(java.completes[0]!.body.ok).toBe(true);
     expect(TacticalInput.parse(java.completes[0]!.body.output).players).toHaveLength(11);
+  });
+});
+
+describe("AI실행기 폴링 루프 — B(team-input-patch) 잡 라우팅 (A+B, W3)", () => {
+  let java: FakeJava;
+  beforeEach(async () => {
+    java = new FakeJava();
+    await java.start();
+  });
+  afterEach(async () => {
+    await java.stop();
+  });
+
+  it("team-input-patch 잡 → stub 패치 → 게이트가 applyPatch → 최종 TacticalInput 으로 complete(ok:true)", async () => {
+    const ctx = makeTeamInputPatchContext({ teamPrompt: "하이라인·와이드 공격" });
+    java.queue.push({ id: "patch-1", context: ctx });
+
+    const loop = new ExecutorLoop(client(java), stubExecutor(), { log: () => {} });
+    expect(await loop.processOnce()).toBe(true);
+
+    expect(java.completes).toHaveLength(1);
+    const c = java.completes[0]!;
+    expect(c.body.ok).toBe(true);
+    // Java 는 team-input 과 동일하게 완전한 TacticalInput 을 받는다(패치는 실행기 내부 세부).
+    const out = TacticalInput.parse(c.body.output);
+    expect(out.players).toHaveLength(11);
+    expect(out.team.defensiveLineHeight).toBe(0.85); // 공격 지시 반영
+    expect(out.seed).toBe(ctx.seed); // halfSeed 주입
+  });
+
+  it("team-input(구계약) 잡은 patch 도입 후에도 그대로 동작(하위 호환)", async () => {
+    const ctx = makeTeamInputContext({ teamPrompt: "하이라인·와이드 공격" });
+    java.queue.push({ id: "legacy-1", context: ctx });
+    const loop = new ExecutorLoop(client(java), stubExecutor(), { log: () => {} });
+    await loop.processOnce();
+    const out = TacticalInput.parse(java.completes[0]!.body.output);
+    expect(out.players).toHaveLength(11);
+    expect(out.team.defensiveLineHeight).toBeGreaterThan(0.7);
+  });
+
+  it("patch 마킹 잡: 개인 지시 '<상대> 막아' → 최종 markTarget 착지", async () => {
+    const ctx = makeTeamInputPatchContext({
+      opponentRoster: makeOpponentRoster(),
+      playerPrompts: { H2: "A9 막아" },
+    });
+    java.queue.push({ id: "patch-mark", context: ctx });
+    const loop = new ExecutorLoop(client(java), stubExecutor(), { log: () => {} });
+    await loop.processOnce();
+    const out = TacticalInput.parse(java.completes[0]!.body.output);
+    expect(out.players.find((p) => p.playerId === "H2")!.markTarget).toBe("A9");
   });
 });
 

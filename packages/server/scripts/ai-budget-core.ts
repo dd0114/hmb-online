@@ -1,10 +1,11 @@
 // ai-budget-core — AC-C5 / P2-D8 예산 하네스의 **순수 계측 코어**(부수효과·IO·rng·date 0).
 // ai-budget.mjs(CLI + 라이브 claude 콜)와 ai-budget.test.ts(회귀 가드)가 공유한다.
 // (.ts 로 두어 vite/vitest·tsx 양쪽에서 동일 해상도 — .mjs→.js 임포트 해상도 불일치 회피.)
-import { buildTeamInputPrompt } from "../src/prompt/coach.js";
+import { buildTeamInputPrompt, buildTeamInputPatchPrompt } from "../src/prompt/coach.js";
 import { synthesizeDirectivesSection, DIRECTIVES } from "../src/prompt/directives/index.js";
 import {
   makeTeamInputContext,
+  makeTeamInputPatchContext,
   makeManualTactics,
   makeConditions,
   makeRelations,
@@ -67,6 +68,15 @@ export interface BudgetBlock {
   note?: string;
 }
 
+/** B(패치 생성) 프롬프트 입력 계측 — full-gen(A/team-input) 대비 입력 증분(A 참조·글로서리)을 본다. */
+export interface PatchBudget {
+  id: string;
+  chars: number;
+  approxTokens: number;
+  /** full-gen(team-input) 같은 컨텍스트 프롬프트 대비 입력 Δchars(양수=B 가 더 김: A 참조+글로서리). */
+  deltaVsFullGen: number;
+}
+
 export interface BudgetReport {
   mode: string;
   tokenizer: string;
@@ -75,7 +85,41 @@ export interface BudgetReport {
   baseSansCatalog: { chars: number; approxTokens: number };
   blocks: BudgetBlock[];
   allOn: { chars: number; approxTokens: number; deltaChars: number; deltaTokens: number };
+  /** B(team-input-patch) 프롬프트 입력 계측(base=Phase2 off, allOn=전부 on). */
+  patch: { base: PatchBudget; allOn: PatchBudget };
   live: unknown;
+}
+
+/**
+ * B(패치) 프롬프트 입력 계측. 같은 컨텍스트에서 full-gen(team-input) 프롬프트와 나란히 비교해
+ * B 입력 증분(A 스칼라 참조 + 글로서리)을 드러낸다. 출력 절감(패치 스키마 < 전량)은 --live out_tok 으로 확인.
+ */
+export function measurePatchBudget(): { base: PatchBudget; allOn: PatchBudget } {
+  const allBlocks = {
+    manualTactics: makeManualTactics(),
+    conditions: makeConditions(),
+    relations: makeRelations(),
+    teamMorale: { morale: 66, streak: 2 } as const,
+    opponentRoster: makeOpponentRoster(),
+  };
+  const mk = (id: string, patchPrompt: string, fullGenPrompt: string): PatchBudget => ({
+    id,
+    chars: patchPrompt.length,
+    approxTokens: approxTokens(patchPrompt),
+    deltaVsFullGen: patchPrompt.length - fullGenPrompt.length,
+  });
+  return {
+    base: mk(
+      "patch-base",
+      buildTeamInputPatchPrompt(makeTeamInputPatchContext()),
+      buildTeamInputPrompt(makeTeamInputContext()),
+    ),
+    allOn: mk(
+      "patch-allOn",
+      buildTeamInputPatchPrompt(makeTeamInputPatchContext(allBlocks)),
+      buildTeamInputPrompt(makeTeamInputContext(allBlocks)),
+    ),
+  };
 }
 
 /**
@@ -130,6 +174,7 @@ export function measureBudget(): BudgetReport {
       deltaChars: allOn.chars - base.chars,
       deltaTokens: allOn.approxTokens - base.approxTokens,
     },
+    patch: measurePatchBudget(),
     live: null,
   };
 }

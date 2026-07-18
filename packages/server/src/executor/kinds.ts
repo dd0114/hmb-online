@@ -1,6 +1,13 @@
 import type { z } from "zod";
-import { TeamInputJobContext } from "@hmb/shared";
-import { buildTeamInputPrompt, validateTeamInputOutput, tacticalJsonSchema } from "../prompt/coach.js";
+import { TeamInputJobContext, TeamInputPatchJobContext } from "@hmb/shared";
+import {
+  buildTeamInputPrompt,
+  validateTeamInputOutput,
+  tacticalJsonSchema,
+  buildTeamInputPatchPrompt,
+  validateTeamInputPatchOutput,
+  tacticalPatchJsonSchema,
+} from "../prompt/coach.js";
 
 /**
  * kind 레지스트리 — AI 판단 종류별 (컨텍스트 스키마 · JSON 스키마 · 프롬프트 · 검증 게이트).
@@ -25,6 +32,13 @@ export const KINDS = {
     jsonSchema: tacticalJsonSchema,
     buildPrompt: (context, feedback) => buildTeamInputPrompt(TeamInputJobContext.parse(context), feedback),
     validate: (raw, context) => validateTeamInputOutput(raw, TeamInputJobContext.parse(context)),
+  } satisfies KindSpec,
+  // B(패치 생성) — A 위에 벌크 패치를 정적 머지. validate 가 최종 TacticalInput 을 반환(Java 무변경 소비).
+  "team-input-patch": {
+    contextSchema: TeamInputPatchJobContext,
+    jsonSchema: tacticalPatchJsonSchema,
+    buildPrompt: (context, feedback) => buildTeamInputPatchPrompt(TeamInputPatchJobContext.parse(context), feedback),
+    validate: (raw, context) => validateTeamInputPatchOutput(raw, TeamInputPatchJobContext.parse(context)),
   } satisfies KindSpec,
 } as const;
 

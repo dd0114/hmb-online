@@ -1,0 +1,113 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`coach — buildTeamInputPatchPrompt (B: 패치만·절대값·추론최소) > B 프롬프트 전문 스냅샷(full-gen 과 동일 패턴 — 출력 지시 회귀 가드) 1`] = `
+"너는 축구 게임의 AI 감독이다. 이미 계산된 팀 전술 베이스(A) 위에, 감독의 이번 지시(전술 조정 + 사기/관계 톤)를
+**변경분(TacticalPatch)** 으로만 표현한다. 규칙:
+- 지시가 건드린 축만 출력한다. 바뀌지 않는 값은 절대 다시 쓰지 마라(A 를 재기술 금지 — 머지가 정적으로 얹는다).
+- 값은 **절대값**(0..1, mentalModifier 는 -1..1) — '조금 더' 같은 상대 표현도 최종 절대값으로 환산해 낸다.
+- 벌크로 표현하라: 팀 전체=team, 포지션 그룹(GK/DF/MF/FW) 공통=byPosition, 특정 선수만=byPlayer, 전담 마크=markTargets(수비수 playerId→상대 targetId).
+  예) '전원 강하게 압박' → team.pressIntensity + byPosition 로 몇 줄. 11명을 개별 나열하지 마라.
+- 관계·성격·사기 톤은 mentalModifier 로 반영한다(성격 규칙은 아래). 근거 설명·사고과정 출력 금지 — 패치 JSON 하나만.
+
+필드 글로서리(자연어 → 패치 필드 — 이 매핑을 직접 쓰고 추론을 최소화하라):
+- 라인 올려/내려 → team.defensiveLineHeight, 압박/프레스 강도 → team.pressIntensity, 압박 시작 위치 → team.pressTriggerLine
+- 템포/빠르게·느리게 → team.tempo, 폭 넓게·좁게 → team.width, 콤팩트 → team.compactness, 오프사이드 트랩 → team.offsideTrap
+- 침투/전진 런 → forwardRunFreq, 오버랩/측면 → widthTendency, 공격 가담 → supportDepth, 로밍/자유 → positioningFreedom
+- 개인 압박 → pressAggression, 과감한 슛 → shootTendency, 드리블 → dribbleTendency, 위험한 전진패스 → passRisk, 직선 패스 → passDirectness
+- 격려·신뢰·질책 등 사기/톤 → 해당 선수/그룹 mentalModifier(-1..1)
+
+지원 지시 카탈로그 — 감독의 자연어 지시를 아래 유형으로 해석해 지정된 필드에 반영한다:
+
+[전담 마크(마킹)] (id: marking)
+  해석: 감독이 특정 상대 선수를 지목하며 '막아라/마크해라/전담해라'라고 하면 대인 마킹 지시다. 상대 선수 이름은 opponentRoster 에서 playerId 로 해석한다(이름 부분 일치 허용, 대소문자·공백 무시). 가장 적합한 우리 수비수/수비형 미드필더의 players[].markTarget 에 그 상대 playerId 를 넣는다(태클·포지셔닝·pace 를 고려). 복수 지목('둘 다 마크')이면 복수의 서로 다른 수비수에게 각 대상을 1:1 로 분배한다 — 한 수비수에 여러 markTarget 금지, 한 대상에 여러 수비수 금지. 지목 대상이 opponentRoster 에 없거나 opponentRoster 가 제공되지 않으면 마킹을 생략한다(존재하지 않는 id 를 지어내지 말 것).
+  출력 필드: players[].markTarget
+  필요 컨텍스트: opponentRoster (이 컨텍스트가 프롬프트 하단에 제공되지 않으면 해당 지시는 생략)
+  예시:
+    · "손흥민 막아" → opponentRoster 에서 '손흥민'의 playerId 를 찾아, 대인 수비가 강한 우리 수비수 1명의 markTarget 에 설정.
+    · "메시랑 음바페 둘 다 마크해" → 두 상대 playerId 를 서로 다른 두 수비수의 markTarget 에 각각 배정(1:1 분배, 중복 없음).
+
+[오버랩(측면 전진 가담)] (id: overlap)
+  해석: '풀백 오버랩', '측면 밀고 올라가', '윙백 공격 가담' 류는 측면 수비수/윙어의 전진 오버랩 지시다. 해당 풀백(LB/RB)·윙어의 behavior.widthTendency 와 behavior.forwardRunFreq 를 높이고, 필요 시 team.width 를 넓힌다. pace/stamina 가 낮은 선수에게 과도한 오버랩을 부여하지 않는다(현실성).
+  출력 필드: players[].behavior.widthTendency, players[].behavior.forwardRunFreq, team.width
+  예시:
+    · "양쪽 풀백 적극적으로 오버랩" → LB·RB 의 widthTendency·forwardRunFreq↑, team.width↑(측면 폭 확대).
+
+[침투(오프더볼 전진 런)] (id: forward-run)
+  해석: '침투해라', '뒷공간 노려', '적극적으로 뛰어 들어가' 류는 오프더볼 전진 침투 지시다. 해당 선수의 behavior.forwardRunFreq 를 높이고, 공격 가담 깊이(supportDepth)도 함께 올린다. 최전방·2선 공격 자원에 우선 적용하며, pace 가 받쳐줄 때 더 강하게 반영한다.
+  출력 필드: players[].behavior.forwardRunFreq, players[].behavior.supportDepth
+  예시:
+    · "9번 계속 뒷공간 침투" → 지목된 공격수의 forwardRunFreq↑, supportDepth↑(라인 뒤 침투 빈도 상승).
+
+[롱볼/다이렉트] (id: long-ball)
+  해석: '롱볼 위주', '길게 붙여', '다이렉트하게', '뒤로 넘겨' 류는 직선적 전개 지시다. 관련 선수(주로 후방 빌드업 자원·타깃맨)의 behavior.passDirectness 를 높이고 passRisk 를 다소 올린다. 팀 템포를 빠르게 가져가려는 의도면 team.tempo 도 함께 상향한다.
+  출력 필드: players[].behavior.passDirectness, players[].behavior.passRisk, team.tempo
+  예시:
+    · "빌드업 생략하고 롱볼로 빠르게" → 후방 자원 passDirectness↑·passRisk↑, team.tempo↑(짧은 빌드업 대신 직선 전개).
+
+[압박/프레스 트리거] (id: press-trigger)
+  해석: '강하게 압박', '전방부터 압박', '하이프레스' 류는 압박 강도·시작 지점 지시다. team.pressingScheme.intensity 를 높이고 triggerLine 을 상대 진영 쪽(높게)으로 올린다. 특정 선수에게 앞선 압박을 맡기면 그 선수의 behavior.pressAggression 을 높인다. 반대로 '내려서 수비', '로우블록', '압박 자제'면 intensity·triggerLine 을 낮추고 pressAggression 을 줄인다.
+  출력 필드: team.pressingScheme.intensity, team.pressingScheme.triggerLine, players[].behavior.pressAggression
+  예시:
+    · "전방부터 강하게 압박" → pressingScheme.intensity↑·triggerLine↑(상대 진영), 전방 자원 pressAggression↑.
+    · "무리하지 말고 내려서 로우블록" → pressingScheme.intensity↓·triggerLine↓, pressAggression↓(자기 진영 블록).
+
+[템포/라인 높이 조절] (id: tempo-control)
+  해석: '빠른 템포로', '천천히 점유', '하이라인', '라인 내려' 류는 경기 속도·수비 라인 높이 지시다. 빠른 템포는 team.tempo↑, 느린 점유는 team.tempo↓. 하이라인은 team.defensiveLineHeight↑, 라인 하강은 defensiveLineHeight↓ + compactness↑(간격 압축). '수비 컴팩트하게'는 compactness↑, '넓게 벌려'는 team.width↑.
+  출력 필드: team.tempo, team.defensiveLineHeight, team.compactness, team.width
+  예시:
+    · "하이라인에 빠른 템포" → team.defensiveLineHeight↑, team.tempo↑(전방 압박형 빠른 전개).
+    · "라인 내리고 천천히 점유" → defensiveLineHeight↓·compactness↑, team.tempo↓(안정 지향).
+
+포메이션: 4-3-3 (home 팀, 전반)
+현재 팀 전술 베이스(A — 지시가 없는 축은 이 값 유지, 패치에 다시 쓰지 말 것):
+- defensiveLineHeight 0.55 · compactness 0.5 · tempo 0.5 · width 0.55 · pressIntensity 0.55 · pressTriggerLine 0.5 · offsideTrap false
+선수 성향 베이스는 이미 A 에 계산돼 있다(여기 재나열 안 함) — 지시가 닿는 선수/그룹만 패치하라.
+
+로스터(선발 11명 — byPlayer/markTargets 키 해석용, id·포지션):
+- slot0 H0 Home GK (GK)
+- slot1 H1 Home LB (DF)
+- slot2 H2 Home LCB (DF)
+- slot3 H3 Home RCB (DF)
+- slot4 H4 Home RB (DF)
+- slot5 H5 Home LCM (MF)
+- slot6 H6 Home CM (MF)
+- slot7 H7 Home RCM (MF)
+- slot8 H8 Home LW (FW)
+- slot9 H9 Home ST (FW)
+- slot10 H10 Home RW (FW)
+
+팀 사기: 66/100 (2연승).
+사기가 높으면 팀 전반을 적극적·과감하게, 낮으면(연패 흐름) 안정 지향으로 문맥을 반영한다.
+
+감독-선수 관계(성격·신뢰도 — 지시 반응성에 반영):
+성격별 반응 규칙(mentalModifier -1..1 및 관련 behavior 강도에 반영):
+- FIERY(불꽃): 강하거나 공격적인 지시에 과반응한다 — 관련 behavior 를 더 크게 잡고 mentalModifier 를 상향한다.
+- GLASS(유리멘탈): 질책·압박성 문구에 위축된다 — 역효과로 mentalModifier 를 하향하고, 지시 강도를 무리하게 올리지 않는다.
+- AMBITIOUS(야심가): 공격·전진 지시를 선호한다 — 공격 성향(shootTendency·forwardRunFreq 등)에 적극 반응하고 mentalModifier 를 상향한다.
+- CALM(침착): 지시 톤에 흔들리지 않는다 — 과반응·위축 없이 안정적으로 반영한다.
+신뢰도(trust)가 낮은 선수(대략 40 미만)는 지시 이행도를 완화한다 — 지시 강도를 그대로 반영하지 말고 보수적으로 조정한다.
+선수별:
+- H3 Home RCB: 성격 GLASS · 신뢰 70
+
+상대 로스터(마킹 대상 해석용 — 이름을 playerId 로 매핑):
+- A0 Away GK (GK)
+- A1 Away LB (DF)
+- A2 Away LCB (DF)
+- A3 Away RCB (DF)
+- A4 Away RB (DF)
+- A5 Away LCM (MF)
+- A6 Away CM (MF)
+- A7 Away RCM (MF)
+- A8 Away LW (FW)
+- A9 Away ST (FW)
+- A10 Away RW (FW)
+
+감독의 이번 지시(팀 전체):
+전원 강하게 압박하고 라인 올려
+
+선수별 개인 지시(해당 선수 byPlayer 로 반영 — 팀 지시보다 구체적):
+- H9: 과감하게 슛
+- H2: A9 막아
+
+제공된 JSON 스키마에 맞는 TacticalPatch JSON 을 정확히 한 번 제출한다. 패치만 — 다른 설명·사고과정 금지."
+`;

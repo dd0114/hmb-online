@@ -1,8 +1,11 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   TacticalInput,
+  TacticalPatch,
+  applyPatch,
   clampTacticalInput,
   TeamInputJobContext,
+  TeamInputPatchJobContext,
   type TeamInputRosterEntry,
 } from "@hmb/shared";
 import { synthesizeDirectivesSection, DIRECTIVES } from "./directives/index.js";
@@ -127,23 +130,179 @@ export function buildTeamInputPrompt(ctx: TeamInputJobContext, feedback?: string
 }
 
 /**
+ * 로스터 정합 가드(순수) — 산출 TacticalInput 이 정확히 로스터 11명(중복·유령 id 없음)을 담는지 검사.
+ * team-input(전량 생성)·team-input-patch(머지 산출) 두 경로가 공유(단일 규칙).
+ */
+export function assertRosterConsistency(input: TacticalInput, roster: readonly TeamInputRosterEntry[]): void {
+  if (input.players.length !== 11) {
+    throw new Error(`선수는 11명이어야 함 (got ${input.players.length})`);
+  }
+  const rosterIds = new Set(roster.map((p) => p.playerId));
+  for (const p of input.players) {
+    if (!rosterIds.has(p.playerId)) {
+      throw new Error(`로스터에 없는 playerId: ${p.playerId}`);
+    }
+  }
+  const outIds = new Set(input.players.map((p) => p.playerId));
+  if (outIds.size !== 11) {
+    throw new Error(`playerId 중복 — 로스터 11명 전원이 정확히 1회씩 있어야 함`);
+  }
+}
+
+/**
  * 검증 게이트(가드레일) — AI 산출 raw → zod 스키마 검증 + sanity(11명·로스터 playerId 정합) + clamp.
  * 어떤 executor(AI)가 만들었든 이 게이트를 통과해야 complete(ok:true) 가 된다. 순수 함수.
  */
 export function validateTeamInputOutput(raw: unknown, ctx: TeamInputJobContext): TacticalInput {
   const parsed = TacticalInput.parse(raw); // zod 스키마 검증(형태·타입)
-  if (parsed.players.length !== 11) {
-    throw new Error(`선수는 11명이어야 함 (got ${parsed.players.length})`);
-  }
-  const rosterIds = new Set(ctx.roster.map((p) => p.playerId));
-  for (const p of parsed.players) {
-    if (!rosterIds.has(p.playerId)) {
-      throw new Error(`로스터에 없는 playerId: ${p.playerId}`);
-    }
-  }
-  const outIds = new Set(parsed.players.map((p) => p.playerId));
-  if (outIds.size !== 11) {
-    throw new Error(`playerId 중복 — 로스터 11명 전원이 정확히 1회씩 있어야 함`);
-  }
+  assertRosterConsistency(parsed, ctx.roster);
   return clampTacticalInput(parsed); // 모든 수치를 유효 범위로 클램프
+}
+
+// ─────────────────────── B(패치 생성) — team-input-patch 경로 (A+B 린패치, #82/W3) ───────────────────────
+
+/**
+ * TacticalPatch → JSON Schema(claude `--json-schema`). shared 계약(zod)에서 파생 — 단일 출처.
+ * 출력은 **패치**(벌크 연산)라 TacticalInput 전량보다 훨씬 얕다 → 출력 토큰 억제(목표 ~1–2k).
+ */
+export function tacticalPatchJsonSchema(): Record<string, unknown> {
+  const raw = zodToJsonSchema(TacticalPatch, { $refStrategy: "none" }) as Record<string, unknown>;
+  delete raw["$schema"];
+  return raw;
+}
+
+/**
+ * 필드 글로서리(#82 실측: 글로서리 → 15.5s·정확). 자연어 지시어 → TacticalInput/TacticalPatch 필드 직결 매핑.
+ * B 프롬프트에 두어 모델이 A 를 재대조(기계적 추론 낭비)하지 않고 **지시된 축의 절대값만** 내게 한다.
+ */
+export const PATCH_FIELD_GLOSSARY = [
+  "필드 글로서리(자연어 → 패치 필드 — 이 매핑을 직접 쓰고 추론을 최소화하라):",
+  "- 라인 올려/내려 → team.defensiveLineHeight, 압박/프레스 강도 → team.pressIntensity, 압박 시작 위치 → team.pressTriggerLine",
+  "- 템포/빠르게·느리게 → team.tempo, 폭 넓게·좁게 → team.width, 콤팩트 → team.compactness, 오프사이드 트랩 → team.offsideTrap",
+  "- 침투/전진 런 → forwardRunFreq, 오버랩/측면 → widthTendency, 공격 가담 → supportDepth, 로밍/자유 → positioningFreedom",
+  "- 개인 압박 → pressAggression, 과감한 슛 → shootTendency, 드리블 → dribbleTendency, 위험한 전진패스 → passRisk, 직선 패스 → passDirectness",
+  "- 격려·신뢰·질책 등 사기/톤 → 해당 선수/그룹 mentalModifier(-1..1)",
+].join("\n");
+
+/** B 프롬프트 시스템(고정 — 패치만·절대값·추론최소). */
+export const PATCH_SYSTEM = [
+  "너는 축구 게임의 AI 감독이다. 이미 계산된 팀 전술 베이스(A) 위에, 감독의 이번 지시(전술 조정 + 사기/관계 톤)를",
+  "**변경분(TacticalPatch)** 으로만 표현한다. 규칙:",
+  "- 지시가 건드린 축만 출력한다. 바뀌지 않는 값은 절대 다시 쓰지 마라(A 를 재기술 금지 — 머지가 정적으로 얹는다).",
+  "- 값은 **절대값**(0..1, mentalModifier 는 -1..1) — '조금 더' 같은 상대 표현도 최종 절대값으로 환산해 낸다.",
+  "- 벌크로 표현하라: 팀 전체=team, 포지션 그룹(GK/DF/MF/FW) 공통=byPosition, 특정 선수만=byPlayer, 전담 마크=markTargets(수비수 playerId→상대 targetId).",
+  "  예) '전원 강하게 압박' → team.pressIntensity + byPosition 로 몇 줄. 11명을 개별 나열하지 마라.",
+  "- 관계·성격·사기 톤은 mentalModifier 로 반영한다(성격 규칙은 아래). 근거 설명·사고과정 출력 금지 — 패치 JSON 하나만.",
+].join("\n");
+
+/** 로스터 1명 → B 프롬프트 한 줄(id·role·그룹만 — 능력치 재나열 없이 키 해석 근거). */
+function patchRosterLine(p: TeamInputRosterEntry): string {
+  return `- slot${p.slotIndex} ${p.playerId} ${p.name} (${p.position})`;
+}
+
+/**
+ * team-input-patch 프롬프트 조립(B). 안정 프리픽스(system + 글로서리 + 카탈로그) 먼저,
+ * 가변부(A 베이스 요약·로스터·관계/사기/컨디션·감독 지시·전반요약) 나중 → 프롬프트 캐시 최적.
+ *
+ * A(base)는 **팀 스칼라 요약**만 참조로 싣는다(선수 11명 성향 전량 덤프 금지 — #82: A 전량 노출 시 diff 추론 낭비).
+ * 컨텍스트 블록 렌더러(manualTactics/relations/conditions/teamMorale)는 team-input 과 **동일 재사용**.
+ */
+export function buildTeamInputPatchPrompt(ctx: TeamInputPatchJobContext, feedback?: string): string {
+  const roster = [...ctx.roster].sort((a, b) => a.slotIndex - b.slotIndex);
+  const t = ctx.base.team;
+
+  const parts = [
+    PATCH_SYSTEM,
+    "",
+    PATCH_FIELD_GLOSSARY,
+    "",
+    // 카탈로그(고정 콘텐츠) — 안정 프리픽스. A/B 공용 순수 합성.
+    synthesizeDirectivesSection(DIRECTIVES),
+    "",
+    `포메이션: ${ctx.base.team.formation} (${ctx.side} 팀, ${ctx.half === 1 ? "전반" : "후반"})`,
+    // A 베이스 = 팀 스칼라 값만(참고). 이 위에 지시된 축만 덮어쓴다.
+    "현재 팀 전술 베이스(A — 지시가 없는 축은 이 값 유지, 패치에 다시 쓰지 말 것):",
+    `- defensiveLineHeight ${t.defensiveLineHeight} · compactness ${t.compactness} · tempo ${t.tempo} · width ${t.width}` +
+      ` · pressIntensity ${t.pressingScheme.intensity} · pressTriggerLine ${t.pressingScheme.triggerLine} · offsideTrap ${t.offsideTrap}`,
+    "선수 성향 베이스는 이미 A 에 계산돼 있다(여기 재나열 안 함) — 지시가 닿는 선수/그룹만 패치하라.",
+    "",
+    "로스터(선발 11명 — byPlayer/markTargets 키 해석용, id·포지션):",
+    ...roster.map(patchRosterLine),
+  ];
+
+  // ─── 컨텍스트 블록(가변부) — team-input 과 동일 순수 렌더러 재사용. 없으면 생략. ───
+  const manualTacticsBlock = renderManualTacticsBlock(ctx.manualTactics);
+  if (manualTacticsBlock) parts.push("", manualTacticsBlock);
+
+  const conditionsBlock = renderConditionsBlock(ctx.conditions, roster);
+  if (conditionsBlock) parts.push("", conditionsBlock);
+
+  const teamMoraleBlock = renderTeamMoraleBlock(ctx.teamMorale);
+  if (teamMoraleBlock) parts.push("", teamMoraleBlock);
+
+  const relationsBlock = renderRelationsBlock(ctx.relations, roster);
+  if (relationsBlock) parts.push("", relationsBlock);
+
+  if (ctx.opponentRoster && ctx.opponentRoster.length > 0) {
+    parts.push(
+      "",
+      "상대 로스터(마킹 대상 해석용 — 이름을 playerId 로 매핑):",
+      ...ctx.opponentRoster.map((p) => `- ${p.playerId} ${p.name} (${p.position})`),
+    );
+  }
+
+  const team = ctx.teamPrompt.trim();
+  parts.push(
+    "",
+    `감독의 이번 지시(팀 전체):\n${team.length > 0 ? team : "(전술 지시 없음 — 사기/톤 위주면 mentalModifier 만, 없으면 빈 패치 {} 로)"}`,
+  );
+
+  const pp = Object.entries(ctx.playerPrompts).filter(([, v]) => v.trim());
+  if (pp.length > 0) {
+    parts.push(
+      "",
+      "선수별 개인 지시(해당 선수 byPlayer 로 반영 — 팀 지시보다 구체적):",
+      ...pp.map(([pid, prompt]) => `- ${pid}: ${prompt.trim()}`),
+    );
+  }
+
+  if (ctx.half === 2 && ctx.prevSummary) {
+    const s = ctx.prevSummary;
+    parts.push(
+      "",
+      "전반 결과 요약(후반 조정에 반영):",
+      `- 스코어 home ${s.scoreHome} : ${s.scoreAway} away · 슛 ${s.shots} · 흐름: ${String(s.possessionHint)}`,
+    );
+  }
+
+  if (feedback) {
+    parts.push("", `[이전 산출 거부됨] 사유: ${feedback} — 이 문제를 고쳐서 패치를 다시 제출.`);
+  }
+  parts.push("", "제공된 JSON 스키마에 맞는 TacticalPatch JSON 을 정확히 한 번 제출한다. 패치만 — 다른 설명·사고과정 금지.");
+  return parts.join("\n");
+}
+
+/**
+ * B 검증 게이트 — raw(TacticalPatch) → applyPatch(A, patch, {seed}) → 최종 TacticalInput 로스터 정합 검사.
+ * **complete 는 최종 TacticalInput 을 반환**(Java 는 team-input 과 동일하게 소비 — 패치는 실행기 내부 세부).
+ */
+export function validateTeamInputPatchOutput(raw: unknown, ctx: TeamInputPatchJobContext): TacticalInput {
+  const patch = TacticalPatch.parse(raw); // 패치 형태 검증(strict — 헛필드 거부)
+  const merged = applyPatch(ctx.base, patch, { seed: ctx.seed }); // 정적 머지(내부 zod+clamp) + halfSeed 주입
+  assertRosterConsistency(merged, ctx.roster); // 최종 산출이 로스터 11명 정합
+
+  // 유령 마크 타깃 제거 — opponentRoster 가 있으면 그 안에 없는 markTarget 을 떨군다(team-input 과 동일 수위:
+  // 없는 상대 id 를 지어내지 않는다). opponentRoster 미제공이면 검증 생략(통과).
+  if (ctx.opponentRoster && ctx.opponentRoster.length > 0) {
+    const validTargets = new Set(ctx.opponentRoster.map((o) => o.playerId));
+    return {
+      ...merged,
+      players: merged.players.map((p) =>
+        p.markTarget !== undefined && !validTargets.has(p.markTarget)
+          ? { ...p, markTarget: undefined }
+          : p,
+      ),
+    };
+  }
+  return merged;
 }

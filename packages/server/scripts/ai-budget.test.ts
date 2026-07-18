@@ -5,7 +5,7 @@ import {
   PlayerInput,
   PlayerBehavior,
 } from "@hmb/shared";
-import { measureBudget, buildVariants, approxTokens } from "./ai-budget-core.js";
+import { measureBudget, buildVariants, approxTokens, measurePatchBudget } from "./ai-budget-core.js";
 
 /**
  * AI 예산 회귀 가드 (AC-C5 / P2-D8).
@@ -76,6 +76,24 @@ describe("출력 스키마 불변 가드 (b) — P2-D8: 컨텍스트는 입력�
         "widthTendency",
       ],
     );
+  });
+});
+
+describe("B(team-input-patch) 프롬프트 입력 계측 (W3 — A+B 린패치)", () => {
+  it("measurePatchBudget: base/allOn 결정론 + full-gen 대비 Δ 산출", () => {
+    const a = measurePatchBudget();
+    const b = measurePatchBudget();
+    expect(a).toEqual(b); // 결정론
+    expect(a.base.chars).toBeGreaterThan(0);
+    expect(a.allOn.chars).toBeGreaterThan(a.base.chars); // 컨텍스트 블록 켜면 길어짐
+    // deltaVsFullGen = B 입력 − full-gen 입력. A 스칼라 참조+글로서리 vs full-gen 로스터 능력치 — 유한한 정수.
+    expect(Number.isInteger(a.base.deltaVsFullGen)).toBe(true);
+  });
+
+  it("measureBudget().patch 가 리포트에 포함(하네스 통합)", () => {
+    const report = measureBudget();
+    expect(report.patch.base.id).toBe("patch-base");
+    expect(report.patch.allOn.id).toBe("patch-allOn");
   });
 });
 

@@ -1,9 +1,11 @@
-import { makeSelectData } from "@hmb/engine";
+import { makeSelectData, makeTacticalInput } from "@hmb/engine";
 import {
   TeamInputJobContext,
+  TeamInputPatchJobContext,
   type ManualTactics,
   type OpponentRosterEntry,
   type PlayerRelationContext,
+  type TacticalInput,
   type TeamInputRosterEntry,
 } from "@hmb/shared";
 
@@ -80,6 +82,29 @@ export function makeTeamInputContext(overrides: Partial<TeamInputJobContext> = {
     roster,
     teamPrompt: "풀백 오버랩·와이드",
     playerPrompts: {},
+    ...overrides,
+  });
+}
+
+/**
+ * A(베이스) TacticalInput 픽스처 — 엔진 makeTacticalInput("H", seed)가 곧 홈 로스터(H0..H10)와 정합하는 유효 A.
+ * (roster = 홈팀 H0..H10, ROLES 순서 = slotIndex 순서 → playerId·role 이 그대로 일치.)
+ */
+export function makeBaseTacticalInput(seed = "4815162342"): TacticalInput {
+  return makeTacticalInput("H", seed);
+}
+
+/**
+ * B(패치) 잡 컨텍스트 픽스처 — team-input 필드 재사용 + base(A) 추가. kind='team-input-patch'.
+ */
+export function makeTeamInputPatchContext(
+  overrides: Partial<TeamInputPatchJobContext> = {},
+): TeamInputPatchJobContext {
+  const t = makeTeamInputContext();
+  return TeamInputPatchJobContext.parse({
+    ...t,
+    kind: "team-input-patch",
+    base: makeBaseTacticalInput(t.seed),
     ...overrides,
   });
 }

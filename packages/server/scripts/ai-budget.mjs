@@ -80,6 +80,13 @@ function printTable(report) {
   console.log("  " + "-".repeat(54));
   const a = report.allOn;
   console.log(`  ${pad("전부 on", 20)} ${padL(a.chars, 8)} ${padL(a.approxTokens, 7)} ${padL("+" + a.deltaChars, 9)} ${padL("+" + a.deltaTokens, 7)}`);
+  if (report.patch) {
+    console.log("\n  [B/team-input-patch 프롬프트 입력] (full-gen 대비 ΔvsFullGen)");
+    console.log(`  ${pad("변형", 14)} ${padL("chars", 8)} ${padL("≈tok", 7)} ${padL("ΔvsFullGen", 12)}`);
+    for (const b of [report.patch.base, report.patch.allOn]) {
+      console.log(`  ${pad(b.id, 14)} ${padL(b.chars, 8)} ${padL(b.approxTokens, 7)} ${padL((b.deltaVsFullGen >= 0 ? "+" : "") + b.deltaVsFullGen, 12)}`);
+    }
+  }
   if (report.live) {
     console.log("\n  [live] 실측(claude):");
     console.log(`  ${pad("변형", 14)} ${padL("in_tok", 8)} ${padL("out_tok", 8)} ${padL("ttft_ms", 9)} ${padL("total_ms", 9)}`);
