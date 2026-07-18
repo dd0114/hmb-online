@@ -1,0 +1,519 @@
+package online.hmb;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import online.hmb.league.LeagueService;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+
+/**
+ * AC-F1~F5 리그 (LLD-p2-server §6). 일정(서클 메서드 더블 라운드로빈)·순위 타이브레이커·봇전 간이결과
+ * 결정론·시즌 라이프사이클·홈어웨이 반영·mode=league 격리를 검증한다. 규칙 고증 = league-rules.md.
+ *
+ * <p>봇 로스터는 시드로 실선수 풀에서 샘플(테스트 카탈로그 17명, 팀 간 공유 허용) — 결정론은 저장 seed
+ * 재계산 일치로 증명한다. 유저 매치는 가짜 서번트/러너로 풀 플로우를 돌린다.
+ */
+@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
+@Import(FakeServantsConfig.class)
+class LeagueApiTest extends MatchTestBase {
+
+    static final FakeEngineRunner RUNNER = new FakeEngineRunner();
+
+    @DynamicPropertySource
+    static void props(DynamicPropertyRegistry registry) {
+        TestDbSupport.registerTempDb(registry);
+        registry.add("hmb.data.league-file", () -> "../data/players/league.v1.json");
+        registry.add("hmb.servant.engine-runner-url", RUNNER::url);
+    }
+
+    @AfterAll
+    static void stopRunner() {
+        RUNNER.stop();
+    }
+
+    @jakarta.annotation.Resource
+    private LeagueService leagueService;
+
+    @jakarta.annotation.Resource
+    private FakeServants fakeServants;
+
+    // ── 일정: 서클 메서드 더블 라운드로빈 (AC-F1) ─────────────────────────
+
+    @Test
+    void circleMethodProducesBalancedDoubleRoundRobin() {
+        // 순수 알고리즘: 10팀 단일 RR = 9라운드, 라운드당 5쌍, 각 팀 라운드당 1경기.
+        List<List<int[]>> rounds = LeagueService.circleMethod(10);
+        assertThat(rounds).hasSize(9);
+        Set<String> allPairs = new HashSet<>();
+        for (List<int[]> round : rounds) {
+            assertThat(round).hasSize(5);
+            Set<Integer> seen = new HashSet<>();
+            for (int[] p : round) {
+                assertThat(seen.add(p[0])).isTrue();
+                assertThat(seen.add(p[1])).isTrue();
+                allPairs.add(p[0] + "-" + p[1]);
+            }
+            assertThat(seen).hasSize(10); // 모든 팀 정확히 1회
+        }
+        // 단일 RR: 45개 무순서쌍 전부 등장(방향 무관 유일).
+        Set<String> unordered = new HashSet<>();
+        for (String pair : allPairs) {
+            String[] ab = pair.split("-");
+            int a = Integer.parseInt(ab[0]);
+            int b = Integer.parseInt(ab[1]);
+            unordered.add(Math.min(a, b) + ":" + Math.max(a, b));
+        }
+        assertThat(unordered).hasSize(45);
+    }
+
+    @Test
+    void seasonScheduleIs18RoundsWithHomeAwaySymmetry() {
+        String token = setupUserWithDeck("lg_sched");
+        String uid = userIdOf("lg_sched");
+        ResponseEntity<Map> start = authPost("/api/league/start", token, null, Map.class);
+        assertThat(start.getStatusCode()).isEqualTo(HttpStatus.OK);
+        String seasonId = seasonId(uid);
+
+        // 90 픽스처, 18라운드, 라운드당 5경기.
+        List<Map<String, Object>> fx = fixtureRows(seasonId);
+        assertThat(fx).hasSize(90);
+        Set<Integer> roundNos = new HashSet<>();
+        Map<Integer, Integer> perRound = new java.util.HashMap<>();
+        Map<Integer, Set<String>> teamsPerRound = new java.util.HashMap<>();
+        Set<String> orderedPairs = new HashSet<>();
+        int userFixtures = 0;
+        for (Map<String, Object> f : fx) {
+            int round = ((Number) f.get("round")).intValue();
+            String home = (String) f.get("home_team");
+            String away = (String) f.get("away_team");
+            roundNos.add(round);
+            perRound.merge(round, 1, Integer::sum);
+            teamsPerRound.computeIfAbsent(round, k -> new HashSet<>()).add(home);
+            teamsPerRound.get(round).add(away);
+            assertThat(orderedPairs.add(home + "->" + away)).as("각 순서쌍 1회").isTrue();
+            if ("USER".equals(home) || "USER".equals(away)) {
+                userFixtures++;
+            }
+        }
+        assertThat(roundNos).hasSize(18);
+        assertThat(perRound.values()).allMatch(c -> c == 5);
+        assertThat(teamsPerRound.values()).allMatch(s -> s.size() == 10); // 라운드마다 전 팀 1경기
+        assertThat(userFixtures).isEqualTo(18); // 유저 경기 18(라운드당 1)
+        // 홈/어웨이 대칭: 각 무순서쌍이 정확히 2회(홈 1 + 어웨이 1) — 90/45.
+        Map<String, Integer> unorderedCount = new java.util.HashMap<>();
+        for (String op : orderedPairs) {
+            String[] ab = op.split("->");
+            String key = ab[0].compareTo(ab[1]) < 0 ? ab[0] + "|" + ab[1] : ab[1] + "|" + ab[0];
+            unorderedCount.merge(key, 1, Integer::sum);
+        }
+        assertThat(unorderedCount).hasSize(45);
+        assertThat(unorderedCount.values()).allMatch(c -> c == 2);
+    }
+
+    // ── 봇팀 구성 + 봇전 결과 결정론 (AC-F1/F2) ───────────────────────────
+
+    @Test
+    void botTeamsBuiltAndBotResultsAreSeedDeterministic() {
+        String token = setupUserWithDeck("lg_det");
+        String uid = userIdOf("lg_det");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        // teams_json: 유저 1 + 봇 9, 봇은 로스터·파워·고유 클럽명.
+        JsonNode teams = readSeasonTeams(seasonId);
+        assertThat(teams).hasSize(10);
+        Set<String> clubNames = new HashSet<>();
+        int bots = 0;
+        for (JsonNode t : teams) {
+            if (t.path("isUser").asBoolean()) {
+                assertThat(t.path("teamId").asText()).isEqualTo("USER");
+                continue;
+            }
+            bots++;
+            assertThat(clubNames.add(t.path("name").asText())).as("클럽명 고유").isTrue();
+            assertThat(t.path("rosterPlayerIds").size()).isEqualTo(15); // 선발 11 + 벤치 4
+            assertThat(t.path("power").asInt()).isGreaterThan(0);
+        }
+        assertThat(bots).isEqualTo(9);
+
+        // 봇 bots 행 삽입 확인(deck_json 선발 11, GK 슬롯0) — 매치 상대로 소비 가능.
+        String botTeamId = seasonId + "-T1";
+        String deckJson = jdbcClient.sql("SELECT deck_json FROM bots WHERE id = ?")
+                .param(botTeamId).query(String.class).single();
+        JsonNode deck = matchServiceReadJson(deckJson);
+        assertThat(deck.path("starters").size()).isEqualTo(11);
+
+        // 결정론: 라운드1 봇전을 생성한 뒤, 저장 스코어 == 저장 seed+fixtureId 재계산.
+        leagueService.generateRoundBotResults(seasonId, 1);
+        String seed = seasonSeed(seasonId);
+        Map<String, Integer> powers = teamPowers(teams);
+        List<Map<String, Object>> round1Bots = fixtureRows(seasonId).stream()
+                .filter(f -> ((Number) f.get("round")).intValue() == 1
+                        && ((Number) f.get("is_user")).intValue() == 0)
+                .toList();
+        assertThat(round1Bots).hasSize(4); // 라운드당 봇전 4
+        for (Map<String, Object> f : round1Bots) {
+            assertThat(f.get("state")).isEqualTo("PLAYED");
+            LeagueService.BotScore recomputed = leagueService.botMatchResult(seed, (String) f.get("id"),
+                    powers.get((String) f.get("home_team")), powers.get((String) f.get("away_team")));
+            assertThat(((Number) f.get("score_home")).intValue()).isEqualTo(recomputed.home());
+            assertThat(((Number) f.get("score_away")).intValue()).isEqualTo(recomputed.away());
+        }
+    }
+
+    @Test
+    void expectedGoalsAppliesHomeAdvantageDirection() {
+        // 파워 동일 → 홈 기대득점 > 어웨이(홈 어드밴티지 방향).
+        double[] equal = leagueService.expectedGoals(500, 500);
+        assertThat(equal[0]).isGreaterThan(equal[1]);
+        // 홈이 훨씬 강하면 홈 기대득점이 더 커진다.
+        double[] strongHome = leagueService.expectedGoals(800, 300);
+        assertThat(strongHome[0]).isGreaterThan(equal[0]);
+        assertThat(strongHome[1]).isLessThan(equal[1]);
+        // 재현: 같은 인자 → 같은 스코어.
+        LeagueService.BotScore a = leagueService.botMatchResult("seed-xyz", "FX1", 500, 400);
+        LeagueService.BotScore b = leagueService.botMatchResult("seed-xyz", "FX1", 500, 400);
+        assertThat(a).isEqualTo(b);
+    }
+
+    // ── 순위 타이브레이커 3단(동점 → 승자승) (AC-F3) ─────────────────────
+
+    @Test
+    void standingsTiebreakFallsThroughToHeadToHead() {
+        String token = setupUserWithDeck("lg_tie");
+        String uid = userIdOf("lg_tie");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        // 깨끗한 무대: 기존 SCHEDULED 픽스처 제거 후 통제된 PLAYED 픽스처만 삽입.
+        jdbcClient.sql("DELETE FROM league_fixtures WHERE season_id = ?").param(seasonId).update();
+        List<String> botIds = botTeamIds(seasonId);
+        String a = botIds.get(0);
+        String b = botIds.get(1);
+        String d = botIds.get(2);
+        String e = botIds.get(3);
+        // A와 B를 승점3·골득실0·다득점3 로 동률, 맞대결에서 A가 B에 승 → A가 위.
+        insertPlayed(seasonId, 1, a, b, 2, 1); // A win vs B (h2h A>B)
+        insertPlayed(seasonId, 2, a, d, 1, 2); // A loss  → A: P3 gf3 ga3 gd0
+        insertPlayed(seasonId, 3, b, e, 2, 1); // B win   → B: P3 gf3 ga3 gd0
+
+        List<LeagueService.LeagueStanding> standings = leagueService.computeStandings(seasonId);
+        LeagueService.LeagueStanding sa = standings.stream().filter(s -> s.teamId().equals(a)).findFirst().orElseThrow();
+        LeagueService.LeagueStanding sb = standings.stream().filter(s -> s.teamId().equals(b)).findFirst().orElseThrow();
+        // 3단 동률 확인 후 승자승으로 A가 B보다 위.
+        assertThat(sa.points()).isEqualTo(sb.points()).isEqualTo(3);
+        assertThat(sa.goalDiff()).isEqualTo(sb.goalDiff()).isEqualTo(0);
+        assertThat(sa.goalsFor()).isEqualTo(sb.goalsFor()).isEqualTo(3);
+        assertThat(sa.rank()).isLessThan(sb.rank());
+    }
+
+    // ── 어웨이 사이드 반영 (AC-F2, 홈/어웨이) ─────────────────────────────
+
+    @Test
+    void awayUserFixtureMapsUserGoalsToAwaySlot() {
+        String token = setupUserWithDeck("lg_away");
+        String uid = userIdOf("lg_away");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        // 유저가 어웨이인 픽스처(home_team != USER).
+        Map<String, Object> awayFx = fixtureRows(seasonId).stream()
+                .filter(f -> ((Number) f.get("is_user")).intValue() == 1 && !"USER".equals(f.get("home_team")))
+                .findFirst().orElseThrow();
+        String fixtureId = (String) awayFx.get("id");
+        assertThat(leagueService.userIsHomeForFixture(fixtureId)).isFalse();
+
+        // 엔진(=픽스처) 관점 home 3 : away 1 정산 → 유저(어웨이) 골=1, 실점=3 → 유저 패.
+        leagueService.settleUserFixture(fixtureId, 3, 1);
+        Map<String, Object> settled = fixtureById(fixtureId);
+        assertThat(settled.get("state")).isEqualTo("PLAYED");
+        assertThat(((Number) settled.get("score_home")).intValue()).isEqualTo(3);
+        assertThat(((Number) settled.get("score_away")).intValue()).isEqualTo(1);
+
+        LeagueService.LeagueStanding user = leagueService.computeStandings(seasonId).stream()
+                .filter(LeagueService.LeagueStanding::isUser).findFirst().orElseThrow();
+        assertThat(user.goalsFor()).isEqualTo(1);       // 유저 득점 = away 슬롯
+        assertThat(user.goalsAgainst()).isEqualTo(3);
+        assertThat(user.lost()).isEqualTo(1);
+        assertThat(user.points()).isEqualTo(0);
+    }
+
+    // ── 유저 매치 정산 → 같은 라운드 봇전 일괄 생성 (AC-F2) ───────────────
+
+    @Test
+    void settlingUserFixtureGeneratesThatRoundsBotResults() {
+        String token = setupUserWithDeck("lg_settle");
+        String uid = userIdOf("lg_settle");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        Map<String, Object> userFx = fixtureRows(seasonId).stream()
+                .filter(f -> ((Number) f.get("is_user")).intValue() == 1)
+                .min(java.util.Comparator.comparingInt(f -> ((Number) f.get("round")).intValue())).orElseThrow();
+        int round = ((Number) userFx.get("round")).intValue();
+        long scheduledBotsBefore = fixtureRows(seasonId).stream()
+                .filter(f -> ((Number) f.get("round")).intValue() == round
+                        && ((Number) f.get("is_user")).intValue() == 0
+                        && f.get("state").equals("SCHEDULED"))
+                .count();
+        assertThat(scheduledBotsBefore).isEqualTo(4);
+
+        leagueService.settleUserFixture((String) userFx.get("id"), 2, 0);
+
+        long playedInRound = fixtureRows(seasonId).stream()
+                .filter(f -> ((Number) f.get("round")).intValue() == round && f.get("state").equals("PLAYED"))
+                .count();
+        assertThat(playedInRound).isEqualTo(5); // 유저 1 + 봇전 4 전부 PLAYED
+    }
+
+    // ── 시즌 종료 → 보상 멱등 → 재시작 (AC-F4) ────────────────────────────
+
+    @Test
+    void seasonCompletesAwardsRewardIdempotentlyAndRestarts() {
+        String token = setupUserWithDeck("lg_full");
+        String uid = userIdOf("lg_full");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        // 유저가 전 경기 승리하도록 18개 유저 픽스처 정산(홈=3:0 / 어웨이=0:3) → 최종 1위.
+        for (Map<String, Object> f : userFixturesOrdered(seasonId)) {
+            boolean userHome = "USER".equals(f.get("home_team"));
+            leagueService.settleUserFixture((String) f.get("id"), userHome ? 3 : 0, userHome ? 0 : 3);
+        }
+
+        // 시즌 FINISHED + 유저 1위 + 보상(rank1=3000) 원장 1행.
+        String state = jdbcClient.sql("SELECT state FROM league_seasons WHERE id = ?")
+                .param(seasonId).query(String.class).single();
+        assertThat(state).isEqualTo("FINISHED");
+        LeagueService.LeagueStanding user = leagueService.computeStandings(seasonId).stream()
+                .filter(LeagueService.LeagueStanding::isUser).findFirst().orElseThrow();
+        assertThat(user.rank()).isEqualTo(1);
+        assertThat(user.won()).isEqualTo(18);
+
+        long rewardRows = jdbcClient.sql(
+                        "SELECT COUNT(*) FROM point_ledger WHERE user_id=? AND reason='league_reward' AND ref_id=?")
+                .params(uid, seasonId).query(Long.class).single();
+        assertThat(rewardRows).isEqualTo(1L);
+        long rewardDelta = jdbcClient.sql(
+                        "SELECT delta FROM point_ledger WHERE user_id=? AND reason='league_reward' AND ref_id=?")
+                .params(uid, seasonId).query(Long.class).single();
+        assertThat(rewardDelta).isEqualTo(3000L); // league.v1 rewards[rank=1]
+
+        // 멱등: 이미 PLAYED 픽스처 재정산 → no-op(보상 원장 여전히 1행).
+        leagueService.settleUserFixture((String) userFixturesOrdered(seasonId).get(0).get("id"), 3, 0);
+        assertThat(jdbcClient.sql(
+                        "SELECT COUNT(*) FROM point_ledger WHERE user_id=? AND reason='league_reward' AND ref_id=?")
+                .params(uid, seasonId).query(Long.class).single()).isEqualTo(1L);
+
+        // 재시작: season_no+1 새 ACTIVE 시즌.
+        ResponseEntity<Map> restart = authPost("/api/league/start", token, null, Map.class);
+        assertThat(restart.getStatusCode()).isEqualTo(HttpStatus.OK);
+        int newSeasonNo = jdbcClient.sql(
+                        "SELECT season_no FROM league_seasons WHERE user_id=? AND state='ACTIVE'")
+                .param(uid).query(Integer.class).single();
+        assertThat(newSeasonNo).isEqualTo(2);
+    }
+
+    // ── GET 순위표(초기 0점·1R) + next-match(mode=league) + 격리 (AC-F2/F3) ─
+
+    @Test
+    void getLeagueShowsInitialStandingsThenNextMatchIsLeagueMode() {
+        String token = setupUserWithDeck("lg_get");
+        authPost("/api/league/start", token, null, Map.class);
+
+        ResponseEntity<Map> get = authGet("/api/league", token, Map.class);
+        assertThat(get.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> season = (Map<?, ?>) get.getBody().get("season");
+        List<Map<String, Object>> standings = (List<Map<String, Object>>) season.get("standings");
+        assertThat(standings).hasSize(10);
+        assertThat(standings).allMatch(s -> ((Number) s.get("points")).intValue() == 0);
+        assertThat(standings).allMatch(s -> ((Number) s.get("played")).intValue() == 0);
+        Map<?, ?> next = (Map<?, ?>) season.get("nextUserFixture");
+        assertThat(((Number) next.get("round")).intValue()).isEqualTo(1);
+
+        ResponseEntity<Map> nm = authPost("/api/league/next-match", token, null, Map.class);
+        assertThat(nm.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        Map<?, ?> match = (Map<?, ?>) nm.getBody().get("match");
+        assertThat(match.get("state")).isEqualTo("BRIEFING");
+        assertThat(match.get("mode")).isEqualTo("league");
+    }
+
+    @Test
+    void leagueMatchDrivesToFinishedSettlesFixtureAndIsolatedFromPractice() {
+        String token = setupUserWithDeck("lg_e2e");
+        String uid = userIdOf("lg_e2e");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        ResponseEntity<Map> nm = authPost("/api/league/next-match", token, null, Map.class);
+        Map<?, ?> match = (Map<?, ?>) nm.getBody().get("match");
+        String matchId = (String) match.get("id");
+        Map<?, ?> fixture = (Map<?, ?>) nm.getBody().get("fixture");
+        String fixtureId = (String) fixture.get("id");
+        int round = ((Number) fixture.get("round")).intValue();
+
+        // 라운드1은 유저 홈(서클 메서드) — 풀 플로우 드라이브 → FINISHED(1-0 유저 승).
+        authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        authPost("/api/matches/" + matchId + "/halftime", token, Map.of("substitutions", List.of()), Map.class);
+        authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("FINISHED");
+
+        // 픽스처 정산됨 + 같은 라운드 봇전 4경기 PLAYED.
+        Map<String, Object> settled = fixtureById(fixtureId);
+        assertThat(settled.get("state")).isEqualTo("PLAYED");
+        assertThat(settled.get("match_id")).isEqualTo(matchId);
+        long playedInRound = fixtureRows(seasonId).stream()
+                .filter(f -> ((Number) f.get("round")).intValue() == round && f.get("state").equals("PLAYED"))
+                .count();
+        assertThat(playedInRound).isEqualTo(5);
+
+        // 순위표에 유저 1경기 반영.
+        LeagueService.LeagueStanding user = leagueService.computeStandings(seasonId).stream()
+                .filter(LeagueService.LeagueStanding::isUser).findFirst().orElseThrow();
+        assertThat(user.played()).isEqualTo(1);
+
+        // 격리: 연습 매치 종료가 리그 픽스처를 건드리지 않는다.
+        long playedBefore = playedFixtureCount(seasonId);
+        String practiceId = createMatch(token, "BOT_BAL");
+        assertThat(jdbcClient.sql("SELECT mode FROM matches WHERE id=?").param(practiceId)
+                .query(String.class).single()).isEqualTo("practice");
+        authPost("/api/matches/" + practiceId + "/kickoff", token, Map.of(), Map.class);
+        fakeServants.drain();
+        authPost("/api/matches/" + practiceId + "/halftime", token, Map.of("substitutions", List.of()), Map.class);
+        authPost("/api/matches/" + practiceId + "/resume", token, Map.of(), Map.class);
+        fakeServants.drain();
+        assertThat(matchState(practiceId)).isEqualTo("FINISHED");
+        assertThat(jdbcClient.sql("SELECT league_fixture_id FROM matches WHERE id=?").param(practiceId)
+                .query(String.class).optional().orElse(null)).isNull();
+        assertThat(playedFixtureCount(seasonId)).isEqualTo(playedBefore); // 리그 픽스처 무변화
+    }
+
+    // ── 헬퍼 ─────────────────────────────────────────────────────────────
+
+    private String seasonId(String userId) {
+        return jdbcClient.sql("SELECT id FROM league_seasons WHERE user_id=? ORDER BY season_no DESC LIMIT 1")
+                .param(userId).query(String.class).single();
+    }
+
+    private String seasonSeed(String seasonId) {
+        return jdbcClient.sql("SELECT seed FROM league_seasons WHERE id=?")
+                .param(seasonId).query(String.class).single();
+    }
+
+    private JsonNode readSeasonTeams(String seasonId) {
+        String json = jdbcClient.sql("SELECT teams_json FROM league_seasons WHERE id=?")
+                .param(seasonId).query(String.class).single();
+        return matchServiceReadJson(json);
+    }
+
+    private JsonNode matchServiceReadJson(String json) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private Map<String, Integer> teamPowers(JsonNode teams) {
+        Map<String, Integer> powers = new java.util.HashMap<>();
+        for (JsonNode t : teams) {
+            powers.put(t.path("teamId").asText(), t.path("power").asInt());
+        }
+        return powers;
+    }
+
+    private List<String> botTeamIds(String seasonId) {
+        List<String> ids = new ArrayList<>();
+        for (JsonNode t : readSeasonTeams(seasonId)) {
+            if (!t.path("isUser").asBoolean()) {
+                ids.add(t.path("teamId").asText());
+            }
+        }
+        return ids;
+    }
+
+    private List<Map<String, Object>> fixtureRows(String seasonId) {
+        return jdbcClient.sql("""
+                        SELECT id, round, home_team, away_team, is_user, state, score_home, score_away, match_id
+                        FROM league_fixtures WHERE season_id=? ORDER BY round, home_team
+                        """)
+                .param(seasonId)
+                .query((rs, n) -> {
+                    Map<String, Object> m = new java.util.HashMap<>();
+                    m.put("id", rs.getString("id"));
+                    m.put("round", rs.getInt("round"));
+                    m.put("home_team", rs.getString("home_team"));
+                    m.put("away_team", rs.getString("away_team"));
+                    m.put("is_user", rs.getInt("is_user"));
+                    m.put("state", rs.getString("state"));
+                    m.put("score_home", rs.getObject("score_home"));
+                    m.put("score_away", rs.getObject("score_away"));
+                    m.put("match_id", rs.getString("match_id"));
+                    return m;
+                })
+                .list();
+    }
+
+    private Map<String, Object> fixtureById(String fixtureId) {
+        return fixtureRows0(fixtureId);
+    }
+
+    private Map<String, Object> fixtureRows0(String fixtureId) {
+        return jdbcClient.sql("""
+                        SELECT id, round, home_team, away_team, is_user, state, score_home, score_away, match_id
+                        FROM league_fixtures WHERE id=?
+                        """)
+                .param(fixtureId)
+                .query((rs, n) -> {
+                    Map<String, Object> m = new java.util.HashMap<>();
+                    m.put("id", rs.getString("id"));
+                    m.put("round", rs.getInt("round"));
+                    m.put("home_team", rs.getString("home_team"));
+                    m.put("away_team", rs.getString("away_team"));
+                    m.put("is_user", rs.getInt("is_user"));
+                    m.put("state", rs.getString("state"));
+                    m.put("score_home", rs.getObject("score_home"));
+                    m.put("score_away", rs.getObject("score_away"));
+                    m.put("match_id", rs.getString("match_id"));
+                    return m;
+                })
+                .single();
+    }
+
+    private List<Map<String, Object>> userFixturesOrdered(String seasonId) {
+        return fixtureRows(seasonId).stream()
+                .filter(f -> ((Number) f.get("is_user")).intValue() == 1)
+                .sorted(java.util.Comparator.comparingInt(f -> ((Number) f.get("round")).intValue()))
+                .toList();
+    }
+
+    private long playedFixtureCount(String seasonId) {
+        return fixtureRows(seasonId).stream().filter(f -> f.get("state").equals("PLAYED")).count();
+    }
+
+    private void insertPlayed(String seasonId, int round, String home, String away, int sh, int sa) {
+        jdbcClient.sql("""
+                        INSERT INTO league_fixtures(id, season_id, round, home_team, away_team, is_user, state,
+                                                    score_home, score_away)
+                        VALUES (?, ?, ?, ?, ?, 0, 'PLAYED', ?, ?)
+                        """)
+                .params(online.hmb.common.Ulid.next(), seasonId, round, home, away, sh, sa)
+                .update();
+    }
+}

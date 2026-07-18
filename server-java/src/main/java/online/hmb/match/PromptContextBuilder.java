@@ -71,12 +71,25 @@ public class PromptContextBuilder {
                 .orElseThrow(() -> new IllegalStateException("카탈로그에 없는 선수: " + playerId));
     }
 
-    /** 유저팀(home) 컨텍스트. opponentDeck = 봇 덱 JSON(마킹용 opponentRoster 근거). */
+    /** 유저팀 컨텍스트(기본 side='home' — 연습/유저 홈경기). */
     public Map<String, Object> buildUserContext(MatchService.MatchRow match, int half,
                                                  JsonNode snapshot,
                                                  List<MatchService.Substitution> subs,
                                                  Map<String, Object> prevSummary,
                                                  JsonNode opponentDeck) {
+        return buildUserContext(match, half, snapshot, subs, prevSummary, opponentDeck, "home");
+    }
+
+    /**
+     * 유저팀 컨텍스트. opponentDeck = 봇 덱 JSON(마킹용 opponentRoster 근거). side = 엔진 사이드
+     * ('home'|'away') — 리그 어웨이 경기면 유저가 'away'(jobSeed·SelectData 배치가 이 사이드로 정렬).
+     */
+    public Map<String, Object> buildUserContext(MatchService.MatchRow match, int half,
+                                                 JsonNode snapshot,
+                                                 List<MatchService.Substitution> subs,
+                                                 Map<String, Object> prevSummary,
+                                                 JsonNode opponentDeck,
+                                                 String side) {
         // 팀 프롬프트: h2면 halftime 우선 → pre → ""
         String teamPrompt = teamPromptOf(match.id(), half);
 
@@ -101,7 +114,7 @@ public class PromptContextBuilder {
         // 로스터에 없는 선수의 프롬프트는 제거(교체 아웃 등)
         playerPrompts.keySet().retainAll(roster.stream().map(RosterEntry::playerId).toList());
 
-        Map<String, Object> context = context(match, "home", half, snapshot.path("formation").asText(),
+        Map<String, Object> context = context(match, side, half, snapshot.path("formation").asText(),
                 roster, teamPrompt, playerPrompts, prevSummary);
         // ── Phase2 additive AI 컨텍스트(AC-C2~C4, openapi-v2 AiJobContextPhase2Fields — 필드명 자구 준수) ──
         addPhase2Context(context, match, snapshot, roster, opponentDeck);
@@ -184,10 +197,18 @@ public class PromptContextBuilder {
                 .orElse(Map.of("name", playerId, "position", "?"));
     }
 
-    /** 봇팀(away) 컨텍스트. */
+    /** 봇팀 컨텍스트(기본 side='away' — 연습/유저 홈경기). */
     public Map<String, Object> buildBotContext(MatchService.MatchRow match, int half,
                                                 BotService.BotRow bot,
                                                 Map<String, Object> prevSummary) {
+        return buildBotContext(match, half, bot, prevSummary, "away");
+    }
+
+    /** 봇팀 컨텍스트. side = 엔진 사이드 — 리그 어웨이 경기면 봇이 'home'. */
+    public Map<String, Object> buildBotContext(MatchService.MatchRow match, int half,
+                                                BotService.BotRow bot,
+                                                Map<String, Object> prevSummary,
+                                                String side) {
         JsonNode deck = readJson(bot.deckJson());
         Map<String, String> playerPrompts = new TreeMap<>();
         for (JsonNode starter : deck.path("starters")) {
@@ -196,7 +217,7 @@ public class PromptContextBuilder {
             }
         }
         List<RosterEntry> roster = buildRoster(deck, List.of()); // 봇은 교체 없음(PoC)
-        return context(match, "away", half, deck.path("formation").asText(),
+        return context(match, side, half, deck.path("formation").asText(),
                 roster, bot.persona(), playerPrompts, prevSummary);
     }
 

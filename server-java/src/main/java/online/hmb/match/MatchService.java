@@ -159,6 +159,33 @@ public class MatchService {
         return getOwned(userId, matchId);
     }
 
+    /**
+     * 리그 매치 생성(AC-F2): mode='league' + league_fixture_id 연결. 상대 봇(botTeamId)은 리그 시즌이
+     * bots 테이블에 삽입한 봇팀 로스터/성향. 홈/어웨이는 픽스처가 결정하며 오케스트레이터가 반영한다
+     * (매치 스냅샷·컨디션·플로우는 연습 매치와 동일 — 여기선 mode/fixture 만 다르다).
+     */
+    public MatchRow createLeagueMatch(String userId, String botTeamId, String leagueFixtureId) {
+        DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
+        deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
+
+        BotService.BotRow bot = botService.get(botTeamId);
+        String matchId = Ulid.next();
+        String seed = randomSeedHex();
+        String snapshot = snapshotDeck(deck, null);
+        String conditionsJson = computeConditionsJson(seed, rosterPlayerIdsOf(readJson(snapshot)));
+        String now = Instant.now().toString();
+
+        txRunner.run(() -> jdbcClient.sql("""
+                        INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
+                                            user_deck_json, conditions_json, mode, league_fixture_id, created_at)
+                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'league', ?, ?)
+                        """)
+                .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, leagueFixtureId, now)
+                .update());
+
+        return getOwned(userId, matchId);
+    }
+
     /** 매치 시드 — 감사·halfSeed 파생용 랜덤 hex(SecureRandom). 결정론은 halfSeed 파생부터 시작. */
     private String randomSeedHex() {
         byte[] bytes = new byte[16];

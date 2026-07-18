@@ -53,6 +53,14 @@ hmb:
     morale-win: 8                  # 사기 승 +8
     morale-draw: 2                 # 사기 무 +2
     morale-loss: -8                # 사기 패 -8
+  league:                          # AC-F 리그 (LLD-p2-server §6) — 봇전 간이결과 확률 모델 계수(하드코딩 금지)
+    bot-team-count: 9              # 유저 제외 봇 팀 수(총 10팀 더블 라운드로빈 18R)
+    roster-size: 15               # 봇 팀 로스터(선발 11 + 벤치 4)
+    sim:                           # 봇 vs 봇 간이 결과(팀 파워 + 홈보정 → 푸아송 근사, docs/plan-v3/league-rules.md)
+      base-goals: 1.10             # 파워 동일·중립 시 팀당 기대 득점
+      power-divisor: 120.0         # 파워차 → 기대 득점 변환(Δ기대 = (myPower-oppPower)/divisor)
+      home-advantage: 0.35         # 홈 팀 기대 득점 가산(홈 어드밴티지)
+      max-goals: 8                 # 한 팀 최대 득점 클램프(푸아송 꼬리 방어)
   servant:
     engine-runner-url: http://localhost:8790
     internal-token: change-me      # /internal/* shared secret (AC-Q3)

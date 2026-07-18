@@ -69,6 +69,11 @@ class TradeApiTest extends ApiTestBase {
                 .param(nickname).query(String.class).single();
     }
 
+    private String gradeOf(String playerId) {
+        return jdbcClient.sql("SELECT grade FROM players WHERE id=?")
+                .param(playerId).query(String.class).single();
+    }
+
     private long ownedCount(String userId, String playerId) {
         return jdbcClient.sql("SELECT COALESCE(count,0) FROM user_players WHERE user_id = ? AND player_id = ?")
                 .params(userId, playerId).query(Long.class).optional().orElse(0L);
@@ -162,6 +167,10 @@ class TradeApiTest extends ApiTestBase {
     void speedupChargesProportionalPointsShortensAndIsIdempotent() {
         String token = login("trade_speed");
         String uid = userId("trade_speed");
+        // 슬롯1 대상이 LEGEND(waitHours=72 → 비용 3600 > 잔액 3000)면 402 로 플래키하므로, 저비용
+        // 대상(비-LEGEND) 시드를 주입해 speedup 비용이 잔액 이하가 되도록 결정론 고정(회귀 가드).
+        String seed = findSeed(s -> !"LEGEND".equals(gradeOf(tradeService.deriveOffer(uid, s).targetPlayerId())));
+        SEEDS.addAll(List.of(seed, "sp2", "sp3"));
         authGet("/api/trade", token, Map.class); // 슬롯 생성
 
         long before = jdbcClient.sql("SELECT points FROM wallets WHERE user_id=?")

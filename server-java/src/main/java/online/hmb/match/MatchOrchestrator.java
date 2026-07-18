@@ -48,6 +48,7 @@ public class MatchOrchestrator {
     private final AiJobQueue jobQueue;
     private final WalletService walletService;
     private final EconomyService economyService;
+    private final online.hmb.league.LeagueService leagueService;
     private final ObjectMapper objectMapper;
 
     public MatchOrchestrator(JdbcClient jdbcClient,
@@ -61,6 +62,7 @@ public class MatchOrchestrator {
                              AiJobQueue jobQueue,
                              WalletService walletService,
                              EconomyService economyService,
+                             online.hmb.league.LeagueService leagueService,
                              ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
@@ -73,7 +75,20 @@ public class MatchOrchestrator {
         this.jobQueue = jobQueue;
         this.walletService = walletService;
         this.economyService = economyService;
+        this.leagueService = leagueService;
         this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 엔진 사이드 배치: 엔진 home = 픽스처 home_team 계약. 연습 매치·유저 홈 리그경기는 유저=home,
+     * 유저 어웨이 리그경기는 유저=away(홈 어드밴티지가 봇에게, 픽스처 정산이 직접 매핑). league_fixture
+     * 없으면 항상 true(연습 경로 불변).
+     */
+    private boolean userIsHome(MatchService.MatchRow match) {
+        if (!"league".equals(match.mode()) || match.leagueFixtureId() == null) {
+            return true;
+        }
+        return leagueService.userIsHomeForFixture(match.leagueFixtureId());
     }
 
     // ── 잡 enqueue (kickoff/resume/retry 직후) ──────────────────────────
@@ -93,12 +108,15 @@ public class MatchOrchestrator {
             prevSummary = contextBuilder.prevSummaryFrom(h1Log);
         }
 
-        Map<String, Object> homeContext = contextBuilder.buildUserContext(
-                match, half, snapshot, subs, prevSummary, contextBuilder.readJson(bot.deckJson()));
-        Map<String, Object> awayContext = contextBuilder.buildBotContext(match, half, bot, prevSummary);
+        boolean userHome = userIsHome(match);
+        String userSide = userHome ? "home" : "away";
+        String botSide = userHome ? "away" : "home";
+        Map<String, Object> userContext = contextBuilder.buildUserContext(
+                match, half, snapshot, subs, prevSummary, contextBuilder.readJson(bot.deckJson()), userSide);
+        Map<String, Object> botContext = contextBuilder.buildBotContext(match, half, bot, prevSummary, botSide);
 
-        jobQueue.enqueue(matchId, "home", half, homeContext);
-        jobQueue.enqueue(matchId, "away", half, awayContext);
+        jobQueue.enqueue(matchId, userSide, half, userContext);
+        jobQueue.enqueue(matchId, botSide, half, botContext);
 
         // 이미 done인 행 재사용(L1) — enqueue가 no-op이었고 양측 다 done이면 즉시 진행 (AC-Q2)
         maybeSimulate(matchId, half);
@@ -126,8 +144,9 @@ public class MatchOrchestrator {
                 }
                 prevSummary = contextBuilder.prevSummaryFrom(h1Log.get());
             }
-            Map<String, Object> awayContext = contextBuilder.buildBotContext(match, half, bot, prevSummary);
-            jobQueue.enqueue(matchId, "away", half, awayContext);
+            String botSide = userIsHome(match) ? "away" : "home";
+            Map<String, Object> botContext = contextBuilder.buildBotContext(match, half, bot, prevSummary, botSide);
+            jobQueue.enqueue(matchId, botSide, half, botContext);
         } catch (Exception e) {
             log.warn("봇 프리페치(match {} h{}) 실패 — 무시(kickoff/resume 때 재시도): {}", matchId, half, e.toString());
         }
@@ -244,9 +263,14 @@ public class MatchOrchestrator {
      * CAS가 실패하면(이미 FINISHED) 보상도 건드리지 않는다 + 원장 유니크 인덱스가 이중 방어.
      */
     private void finishMatch(MatchService.MatchRow match, int h2ScoreHome, int h2ScoreAway) {
+        // totalHome/totalAway = 엔진(=픽스처) home/away 관점. score_home/away 컬럼도 이 관점으로 저장.
         int totalHome = nvl(match.scoreH1Home()) + h2ScoreHome;
         int totalAway = nvl(match.scoreH1Away()) + h2ScoreAway;
-        String result = totalHome > totalAway ? "WIN" : totalHome < totalAway ? "LOSS" : "DRAW";
+        // result·보상·관계는 유저 관점(어웨이 리그경기면 유저 골=away). 연습/홈경기는 userHome=true 라 불변.
+        boolean userHome = userIsHome(match);
+        int userGoals = userHome ? totalHome : totalAway;
+        int oppGoals = userHome ? totalAway : totalHome;
+        String result = userGoals > oppGoals ? "WIN" : userGoals < oppGoals ? "LOSS" : "DRAW";
 
         int updated = jdbcClient.sql("""
                         UPDATE matches SET state = 'FINISHED', score_home = ?, score_away = ?,
@@ -257,6 +281,11 @@ public class MatchOrchestrator {
                 .update();
         if (updated != 1) {
             return; // 경합 — 이미 완료 처리됨
+        }
+
+        // AC-F2: 리그 매치면 픽스처 정산 + 같은 라운드 봇전 일괄 + 시즌 완료/보상(멱등, LeagueService).
+        if ("league".equals(match.mode()) && match.leagueFixtureId() != null) {
+            leagueService.settleUserFixture(match.leagueFixtureId(), totalHome, totalAway);
         }
 
         // AC-C4: 관계/사기 변동 — FINISHED 전이 트랜잭션 내 멱등 적용(relations_applied 플래그 CAS).
@@ -292,17 +321,22 @@ public class MatchOrchestrator {
         String nickname = jdbcClient.sql("SELECT nickname FROM users WHERE id = ?")
                 .param(match.userId()).query(String.class).single();
 
-        List<PromptContextBuilder.RosterEntry> homeRoster = contextBuilder.buildRoster(snapshot, subs);
-        List<PromptContextBuilder.RosterEntry> awayRoster =
+        List<PromptContextBuilder.RosterEntry> userRoster = contextBuilder.buildRoster(snapshot, subs);
+        List<PromptContextBuilder.RosterEntry> botRoster =
                 contextBuilder.buildRoster(contextBuilder.readJson(bot.deckJson()), List.of());
 
         // AC-C1: 유저팀 능력치에 컨디션 배율 적용(교체 투입 포함 — conditions_json 은 선발+벤치 롤).
         // 봇팀은 컨디션 미적용(빈 맵) — 원본 능력치.
         Map<String, Double> conditions = matchService.conditionsOf(match);
+        Map<String, Object> userTeam = teamRoster(nickname, userRoster, conditions);
+        Map<String, Object> botTeam = teamRoster(bot.name(), botRoster, Map.of());
 
+        // 엔진 home = 픽스처 home_team(어웨이 리그경기면 유저가 away 사이드). homeInput/awayInput 도
+        // 같은 사이드 라벨로 enqueue 되므로 selectData.home 팀과 정합.
+        boolean userHome = userIsHome(match);
         Map<String, Object> selectData = new LinkedHashMap<>();
-        selectData.put("home", teamRoster(nickname, homeRoster, conditions));
-        selectData.put("away", teamRoster(bot.name(), awayRoster, Map.of()));
+        selectData.put("home", userHome ? userTeam : botTeam);
+        selectData.put("away", userHome ? botTeam : userTeam);
         return selectData;
     }
 

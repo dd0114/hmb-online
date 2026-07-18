@@ -334,6 +334,7 @@ public class TradeService {
             if (!"OPEN".equals(row.state()) || !"FA".equals(row.offerKind())) {
                 throw tradeInvalid("OPEN 상태의 FA 오퍼가 아닙니다");
             }
+            claimOpen(row); // W2 이월(b): 상태-CAS(OPEN→RESOLVING) — 동시 중복 판정 차단
             // 제안 선수는 모두 현재 보유 중이어야 한다(중복 포함 개수 검증).
             Map<String, Long> need = new LinkedHashMap<>();
             for (String pid : offered) {
@@ -367,7 +368,13 @@ public class TradeService {
                     decrementOwned(userId, pid);
                 }
                 if (offeredPoints > 0) {
-                    walletService.apply(userId, -offeredPoints, "trade_fa", row.id() + ":" + row.seed());
+                    // W2 이월(a): apply 반환값 확인 — 미차감(멱등 충돌 등)이면 영입 전 방어 예외(→ 롤백).
+                    boolean charged = walletService.apply(userId, -offeredPoints, "trade_fa",
+                            row.id() + ":" + row.seed());
+                    if (!charged) {
+                        throw new ApiException(HttpStatus.CONFLICT, "TRADE_CONFLICT",
+                                "제안 포인트가 차감되지 않았습니다(중복 처리 감지) — 트레이드를 취소합니다");
+                    }
                 }
                 acquireOwned(userId, targetId);
                 acquired = refOf(targetId);
@@ -415,6 +422,7 @@ public class TradeService {
             if (!"OPEN".equals(row.state()) || !"TRADE".equals(row.offerKind())) {
                 throw tradeInvalid("OPEN 상태의 TRADE 오퍼가 아닙니다");
             }
+            claimOpen(row); // W2 이월(b): 상태-CAS(OPEN→RESOLVING)
             String demandId = row.demandPlayerId();
             String targetId = row.targetPlayerId();
             if (demandId == null || ownedCount(userId, demandId) < 1) {
@@ -452,6 +460,7 @@ public class TradeService {
             if (!"OPEN".equals(row.state()) || !"TRADE".equals(row.offerKind())) {
                 throw tradeInvalid("OPEN 상태의 TRADE 오퍼가 아닙니다");
             }
+            claimOpen(row); // W2 이월(b): 상태-CAS(OPEN→RESOLVING)
             logTrade(userId, "TRADE", "DECLINED", row.targetPlayerId(),
                     row.demandPlayerId() == null ? List.of() : List.of(row.demandPlayerId()), 0, null, null);
             regenerate(userId, row, cfg);
@@ -622,6 +631,21 @@ public class TradeService {
             (rs, n) -> new SlotRow(rs.getString("id"), rs.getInt("slot_no"), rs.getString("state"),
                     rs.getString("offer_kind"), rs.getString("target_player_id"),
                     rs.getString("demand_player_id"), rs.getString("seed"), rs.getString("opens_at"));
+
+    /**
+     * W2 이월(b): 판정 진입 상태-CAS. OPEN→RESOLVING 을 원자적으로 claim 해 동시 요청의 이중 판정을
+     * 막는다(claim 실패 = 다른 요청이 선점 → TRADE_INVALID). 판정 종료 시 regenerate/fail 이 상태를
+     * WAITING 으로 되돌리며, 판정 중 예외는 트랜잭션 롤백으로 claim 이 무효화된다.
+     */
+    private void claimOpen(SlotRow row) {
+        int claimed = jdbcClient.sql(
+                        "UPDATE trade_slots SET state = 'RESOLVING' WHERE id = ? AND state = 'OPEN'")
+                .param(row.id())
+                .update();
+        if (claimed != 1) {
+            throw tradeInvalid("이미 처리 중이거나 OPEN 상태가 아닌 오퍼입니다");
+        }
+    }
 
     /** WAITING + opens_at≤now → OPEN 으로 lazy 전이(스케줄러 없이 접근 시). */
     private void openIfDue(SlotRow row) {
