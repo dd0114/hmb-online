@@ -541,6 +541,8 @@ paths:
                 $ref: "#/components/schemas/AiJob"
         "204":
           description: waitMs까지 대기했지만 큐가 비어 있음
+        "400":
+          $ref: "#/components/responses/ValidationError" # workerId 누락
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -571,17 +573,22 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AiJob"
+        "400":
+          $ref: "#/components/responses/ValidationError" # ok=true인데 output 누락
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidState" # 잡이 leased 상태가 아님
 
   /internal/health:
     get:
       tags: [internal]
       operationId: internalHealth
-      summary: 큐 깊이·lease 중 개수(운영 확인용) — W0에는 인증 미부착(TODO W4)
-      security: []
+      summary: 큐 깊이·lease 중 개수(운영 확인용) — /internal/** 전체가 X-Servant-Token 보호(W4, AC-Q3)
+      security:
+        - servantToken: []
       responses:
         "200":
           description: OK
@@ -589,6 +596,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InternalHealth"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
 components:
   securitySchemes:
