@@ -74,3 +74,16 @@ export function bridgeReducer(state: BridgeState, event: BridgeEvent): BridgeSta
 export function shouldPostLog(state: BridgeState): boolean {
   return state.viewerReady && state.logLoaded && !state.posted;
 }
+
+/**
+ * iframe 이 마운트 후 이 시간(ms) 안에 viewerReady 를 안 보내면 폴백한다.
+ * onError 로 못 잡는 케이스 방어: vite SPA-fallback 이 없는 viewer-embed.html 요청에
+ * index.html(HTTP 200)을 돌려주면 iframe 은 "로드 성공"이라 onError 가 안 뜨고 앱이
+ * iframe 안에 재귀 렌더된다. 그 페이지엔 브리지가 없어 viewerReady 가 영영 안 온다 → 타임아웃 감지.
+ */
+export const VIEWER_READY_TIMEOUT_MS = 4000;
+
+/** 타임아웃 만료 시점에 아직 viewerReady 가 아니면 타임라인으로 폴백해야 한다. */
+export function shouldFallbackAfterTimeout(viewerReady: boolean): boolean {
+  return !viewerReady;
+}

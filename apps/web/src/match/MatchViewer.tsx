@@ -13,8 +13,10 @@ import {
   initialBridgeState,
   isViewerReadyMessage,
   loadMatchLogMessage,
+  shouldFallbackAfterTimeout,
   shouldPostLog,
   VIEWER_EMBED_SRC,
+  VIEWER_READY_TIMEOUT_MS,
 } from "./viewer-bridge";
 import styles from "./MatchViewer.module.css";
 
@@ -95,6 +97,12 @@ function VisualPlayback({ log, half, onFallback }: VisualPlaybackProps) {
   const [state, dispatch] = useReducer(bridgeReducer, initialBridgeState);
   const [failed, setFailed] = useState(false);
 
+  // 로드 실패 통합 처리: in-place 폴백 표시 + 부모 모드를 타임라인으로 전환.
+  const fail = () => {
+    setFailed(true);
+    onFallback();
+  };
+
   // half 전환/재마운트 시 시퀀스 초기화 + 로그 준비 반영.
   useEffect(() => {
     dispatch({ kind: "reset" });
@@ -112,6 +120,21 @@ function VisualPlayback({ log, half, onFallback }: VisualPlaybackProps) {
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
   }, []);
+
+  // viewerReady 타임아웃 폴백(onError 로 못 잡는 SPA-fallback 200 케이스 방어, viewer-bridge 참조).
+  // readyRef 로 타임아웃 콜백 안에서 최신 viewerReady 를 본다(클로저 stale 방지).
+  const readyRef = useRef(false);
+  useEffect(() => {
+    readyRef.current = state.viewerReady;
+  }, [state.viewerReady]);
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (shouldFallbackAfterTimeout(readyRef.current)) fail();
+    }, VIEWER_READY_TIMEOUT_MS);
+    return () => window.clearTimeout(t);
+    // half 별 재마운트마다 타이머 재시작.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [half]);
 
   // 준비 완료 시 1회 주입.
   useEffect(() => {
@@ -146,7 +169,7 @@ function VisualPlayback({ log, half, onFallback }: VisualPlaybackProps) {
         // postMessage 통신. 외부 리소스/네트워크 없음(fetch 는 브리지가 가로챔).
         sandbox="allow-scripts allow-same-origin"
         loading="lazy"
-        onError={() => setFailed(true)}
+        onError={fail}
         data-posted={state.posted ? "1" : "0"}
       />
     </div>

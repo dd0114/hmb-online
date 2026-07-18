@@ -4,8 +4,10 @@ import {
   initialBridgeState,
   isViewerReadyMessage,
   loadMatchLogMessage,
+  shouldFallbackAfterTimeout,
   shouldPostLog,
   VIEWER_EMBED_SRC,
+  VIEWER_READY_TIMEOUT_MS,
   type BridgeEvent,
   type BridgeState,
 } from "./viewer-bridge";
@@ -66,6 +68,15 @@ describe("viewer-bridge — 주입 시퀀스(레이스 무관)", () => {
   it("한 번 주입하면 다시 주입하지 않는다(중복 방지)", () => {
     const s = run([{ kind: "viewerReady" }, { kind: "logLoaded" }, { kind: "posted" }]);
     expect(shouldPostLog(s)).toBe(false);
+  });
+
+  it("타임아웃 만료 시 viewerReady 면 폴백 안 함, 아니면 폴백한다(onError 못 잡는 케이스 방어)", () => {
+    expect(shouldFallbackAfterTimeout(false)).toBe(true); // 브리지 없는 페이지(SPA-fallback 200) → 폴백
+    expect(shouldFallbackAfterTimeout(true)).toBe(false); // 정상 로드 → 유지
+  });
+
+  it("타임아웃 상수는 양수(합리적 대기)다", () => {
+    expect(VIEWER_READY_TIMEOUT_MS).toBeGreaterThan(0);
   });
 
   it("reset(half 전환/재마운트) 후엔 다시 준비되면 재주입한다", () => {
