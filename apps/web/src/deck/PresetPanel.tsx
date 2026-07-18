@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { CatalogPlayer, PromptPreset } from "../api/hooks";
+import { ErrorToast } from "../common/ErrorToast";
 import { PROMPT_MAX_CHARS, type DeckDraft } from "./deck-logic";
 import styles from "./PresetPanel.module.css";
 
@@ -8,8 +9,9 @@ interface PresetPanelProps {
   draft: DeckDraft;
   playersById: Map<string, CatalogPlayer>;
   creating: boolean;
-  onCreate: (name: string, promptText: string) => void;
-  onDelete: (id: string) => void;
+  /** Resolves on success so inputs clear ONLY then; rejects surface an inline error (#73 P0 — no silent data loss). */
+  onCreate: (name: string, promptText: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   /** AC-W2: copies the chosen preset's body into each selected player's prompt (by value). */
   onBulkApply: (playerIds: string[], presetText: string) => void;
 }
@@ -28,6 +30,7 @@ export function PresetPanel({
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const deckPlayers = draft.slots
     .map((s) => ({ slot: s, player: playersById.get(s.playerId) }))
@@ -42,11 +45,26 @@ export function PresetPanel({
     });
   }
 
-  function handleCreate() {
-    if (!name.trim() || !body.trim()) return;
-    onCreate(name.trim(), body);
-    setName("");
-    setBody("");
+  async function handleCreate() {
+    if (!name.trim() || !body.trim() || creating) return;
+    setError(null);
+    try {
+      await onCreate(name.trim(), body);
+      // 성공했을 때만 입력을 비운다 — 실패 시 작성 내용 유실 방지(#73 P0).
+      setName("");
+      setBody("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "프리셋 저장에 실패했습니다");
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setError(null);
+    try {
+      await onDelete(id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "프리셋 삭제에 실패했습니다");
+    }
   }
 
   function handleBulkApply() {
@@ -72,7 +90,7 @@ export function PresetPanel({
               type="button"
               className={styles.delete}
               data-testid={`preset-delete-${p.id}`}
-              onClick={() => onDelete(p.id)}
+              onClick={() => handleDelete(p.id)}
             >
               삭제
             </button>
@@ -107,6 +125,7 @@ export function PresetPanel({
         >
           프리셋 만들기
         </button>
+        <ErrorToast message={error} onDismiss={() => setError(null)} />
       </div>
 
       <div className={styles.bulkSection}>

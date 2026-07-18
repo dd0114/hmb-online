@@ -32,7 +32,13 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
       data-testid={`codex-card-${player.id}`}
       data-owned={player.owned ? "true" : "false"}
     >
-      <button type="button" className={styles.summary} onClick={onToggle}>
+      <button
+        type="button"
+        className={styles.summary}
+        aria-expanded={expanded}
+        aria-controls={`codex-attrs-${player.id}`}
+        onClick={onToggle}
+      >
         <span className={styles.topRow}>
           <span className={styles.pos}>{player.position}</span>
           {player.owned ? (

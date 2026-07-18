@@ -22,8 +22,8 @@ interface HalftimePanelProps {
  * useDeck에서 파생한다. 전반 중 퇴장 등 엔진 내 로스터 변화는 반영 못함 — 서버(AC-M4)가 최종 검증.
  */
 export function HalftimePanel({ match }: HalftimePanelProps) {
-  const { data: deck } = useDeck();
-  const { data: players } = usePlayers();
+  const { data: deck, isError: deckError } = useDeck();
+  const { data: players, isError: playersError } = usePlayers();
   const submitPrompt = useSubmitMatchPrompt(match.id);
   const halftime = useHalftime(match.id);
   const resume = useResume(match.id);
@@ -201,13 +201,16 @@ export function HalftimePanel({ match }: HalftimePanelProps) {
         idPrefix="halftime"
       />
 
+      {(deckError || playersError) && (
+        <ErrorToast message="내 로스터를 불러오지 못했습니다 — 새로고침 후 다시 시도하세요" />
+      )}
       <ErrorToast message={error} onDismiss={() => setError(null)} />
 
       <button
         type="button"
         className={styles.resume}
         data-testid="resume-button"
-        disabled={submitting || currentIssues.length > 0}
+        disabled={submitting || currentIssues.length > 0 || deckError || playersError}
         onClick={handleResume}
       >
         {submitting ? "전송 중…" : "후반 시작"}

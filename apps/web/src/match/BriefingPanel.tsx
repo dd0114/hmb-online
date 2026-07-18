@@ -16,8 +16,8 @@ interface BriefingPanelProps {
 }
 
 export function BriefingPanel({ match }: BriefingPanelProps) {
-  const { data: deck } = useDeck();
-  const { data: players } = usePlayers();
+  const { data: deck, isLoading: deckLoading, isError: deckError } = useDeck();
+  const { data: players, isLoading: playersLoading, isError: playersError } = usePlayers();
   const submitPrompt = useSubmitMatchPrompt(match.id);
   const kickoff = useKickoff(match.id);
 
@@ -89,6 +89,12 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
   const mm = Math.floor(remaining / 60);
   const ss = String(remaining % 60).padStart(2, "0");
 
+  // 로스터를 불러오지 못하면 빈 라인업으로 킥오프되는 것을 막는다(#73 P0).
+  // 로딩 중에는 에러 문구를 띄우지 않고 버튼만 막는다(shop 과 동일한 로딩 vs 에러 구분, #73 nit A).
+  const rosterLoading = deckLoading || playersLoading;
+  const rosterMissing = !rosterLoading && (deckError || playersError || roster.length === 0);
+  const rosterUnavailable = rosterLoading || rosterMissing;
+
   return (
     <div className={styles.panel} data-testid="briefing-panel">
       <div className={styles.timerRow}>
@@ -136,13 +142,16 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
         idPrefix="briefing"
       />
 
+      {rosterMissing && (
+        <ErrorToast message="내 로스터를 불러오지 못했습니다 — 새로고침 후 다시 시도하세요" />
+      )}
       <ErrorToast message={error} onDismiss={() => setError(null)} />
 
       <button
         type="button"
         className={styles.kickoff}
         data-testid="kickoff-button"
-        disabled={submitting}
+        disabled={submitting || rosterUnavailable}
         onClick={handleKickoff}
       >
         {submitting ? "전송 중…" : "킥오프"}
