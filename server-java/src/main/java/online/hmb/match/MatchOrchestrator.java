@@ -111,44 +111,148 @@ public class MatchOrchestrator {
         boolean userHome = userIsHome(match);
         String userSide = userHome ? "home" : "away";
         String botSide = userHome ? "away" : "home";
-        Map<String, Object> userContext = contextBuilder.buildUserContext(
-                match, half, snapshot, subs, prevSummary, contextBuilder.readJson(bot.deckJson()), userSide);
-        Map<String, Object> botContext = contextBuilder.buildBotContext(match, half, bot, prevSummary, botSide);
 
-        jobQueue.enqueue(matchId, userSide, half, userContext);
-        jobQueue.enqueue(matchId, botSide, half, botContext);
+        // A+B 분기(#95): 각 side 를 A재사용(콜0) / B패치 / 풀생성(폴백) 중 하나로 해소한다.
+        resolveSide(match, half, userSide, false, snapshot, bot, subs, prevSummary);
+        resolveSide(match, half, botSide, true, snapshot, bot, List.of(), prevSummary);
 
-        // 이미 done인 행 재사용(L1) — enqueue가 no-op이었고 양측 다 done이면 즉시 진행 (AC-Q2)
+        // 재사용(materialize)·이미 done인 행이 양측 다 준비되면 즉시 진행 (AC-Q2)
         maybeSimulate(matchId, half);
     }
 
     /**
-     * 봇(away) 잡 선(先)enqueue — #1 프리페치. 크리티컬 패스 밖(브리핑 h1 · H1_BREAK h2)에서 미리 생성해
-     * 유저 대기시간을 봇 콜만큼 줄인다. 봇 컨텍스트는 유저 입력과 무관(buildBotContext 는 match.id/seed·
-     * bot·half·prevSummary 만 사용)이라, 이후 kickoff/resume 의 enqueueHalf 가 만드는 away 컨텍스트와
-     * 동일 promptHash → INSERT OR IGNORE 멱등(중복 잡 없음). 프리페치 실패는 로그만 — 매치를 막지 않고
-     * enqueueHalf 가 다시 시도한다. h2 는 h1 로그(prevSummary)가 필요하므로 아직 없으면 조용히 스킵.
+     * side 1개의 잡을 A+B 분기(#95)로 해소한다.
+     *
+     * <p><b>half 1</b> — 베이스 = 덱 A(프리컴퓨트/캐시). ① A done + 매치시점 프롬프트 있음 → B잡
+     * (team-input-patch, base=A) ② A done + 프롬프트 없음 → A 재사용(seed 교체 후 materialize, 콜0)
+     * ③ A 미완 → 풀 생성(team-input) 폴백.
+     * <p><b>half 2</b> — 베이스 = h1 최종 인풋. 교체 있음 → 풀 생성(로스터 변경, 패치 부적합) / 하프타임
+     * 프롬프트만 있음 → B잡(base=h1 인풋, prevSummary 포함) / 둘 다 없음 → h1 인풋 재사용(seed 교체, 콜0).
+     * 봇(isBot)은 매치시점 입력이 없어 항상 재사용 또는 폴백(B 없음).
      */
-    public void prefetchBotHalf(String matchId, int half) {
+    private void resolveSide(MatchService.MatchRow match, int half, String side, boolean isBot,
+                             JsonNode snapshot, BotService.BotRow bot,
+                             List<MatchService.Substitution> subs, Map<String, Object> prevSummary) {
+        String matchId = match.id();
+        String jobSeed = Hashes.jobSeed(match.seed(), half, side);
+
+        if (half == 1) {
+            PromptContextBuilder.BaseJob base = isBot
+                    ? contextBuilder.botBaseJob(match, bot)
+                    : contextBuilder.userBaseJob(match, snapshot);
+            String baseResult = doneResultOf(base.baseId());
+            boolean hasInput = !isBot && hasPhasePrompts(matchId, "pre");
+            if (baseResult != null && hasInput) {
+                enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary, isBot);
+            } else if (baseResult != null) {
+                jobQueue.insertMaterialized(matchId, side, half, seedSwap(baseResult, jobSeed));
+            } else {
+                enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot);
+            }
+            return;
+        }
+
+        // half 2 — base = h1 최종 인풋(해당 side 컬럼).
+        String h1Input = h1InputForSide(matchId, side);
+        boolean subsPresent = !isBot && !subs.isEmpty();
+        boolean halftimePrompts = !isBot && hasPhasePrompts(matchId, "halftime");
+        if (h1Input != null && !subsPresent && halftimePrompts) {
+            enqueuePatch(match, half, side, h1Input, snapshot, bot, subs, prevSummary, isBot);
+        } else if (h1Input != null && !subsPresent) {
+            jobQueue.insertMaterialized(matchId, side, half, seedSwap(h1Input, jobSeed));
+        } else {
+            enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot);
+        }
+    }
+
+    /** B(패치) 잡 enqueue — 풀 컨텍스트(매치시점 프롬프트·phase2·prevSummary)에 kind=team-input-patch + base. */
+    private void enqueuePatch(MatchService.MatchRow match, int half, String side, String baseResultJson,
+                              JsonNode snapshot, BotService.BotRow bot,
+                              List<MatchService.Substitution> subs, Map<String, Object> prevSummary,
+                              boolean isBot) {
+        Map<String, Object> ctx = isBot // 봇은 B 없음(방어적 — 실경로는 유저만)
+                ? contextBuilder.buildBotContext(match, half, bot, prevSummary, side)
+                : contextBuilder.buildUserContext(match, half, snapshot, subs, prevSummary,
+                        contextBuilder.readJson(bot.deckJson()), side);
+        ctx.put("kind", "team-input-patch");
+        ctx.put("base", matchService.readJson(baseResultJson)); // A/h1 결과 위에 실행기가 패치 정적 머지.
+        jobQueue.enqueue(match.id(), side, half, ctx);
+    }
+
+    /** 풀 생성(team-input) 폴백 — 기존 경로(A 미완·교체 등). */
+    private void enqueueFull(MatchService.MatchRow match, int half, String side,
+                             JsonNode snapshot, BotService.BotRow bot,
+                             List<MatchService.Substitution> subs, Map<String, Object> prevSummary,
+                             boolean isBot) {
+        Map<String, Object> ctx = isBot
+                ? contextBuilder.buildBotContext(match, half, bot, prevSummary, side)
+                : contextBuilder.buildUserContext(match, half, snapshot, subs, prevSummary,
+                        contextBuilder.readJson(bot.deckJson()), side);
+        jobQueue.enqueue(match.id(), side, half, ctx);
+    }
+
+    /**
+     * A(베이스) 프리컴퓨트 — 매치 생성(BRIEFING 진입) 즉시 유저팀 A + 봇 A 를 크로스매치 캐시로 enqueue.
+     * 유저가 프롬프트를 쓰는 동안 백그라운드에서 A 가 생성돼, 킥오프 때 프롬프트 없으면 콜0(재사용) /
+     * 있으면 가벼운 B 패치만 태운다. A-id = sha256(baseContextKeyMaterial)(덱만) → 같은 덱 재경기·양팀 재사용.
+     * 봇은 B 가 없으므로 봇 A 가 곧 봇 인풋(크로스매치 캐시 자동). 실패는 로그만(킥오프 enqueueHalf 가 폴백).
+     */
+    public void prefetchBaseInputs(String matchId) {
         try {
             MatchService.MatchRow match = matchService.find(matchId).orElse(null);
             if (match == null) {
                 return;
             }
+            JsonNode snapshot = matchService.readJson(match.userDeckJson());
             BotService.BotRow bot = botService.get(match.botId());
-            Map<String, Object> prevSummary = null;
-            if (half == 2) {
-                Optional<JsonNode> h1Log = halfRow(matchId, 1).map(r -> matchService.readJson(r.matchLogJson()));
-                if (h1Log.isEmpty()) {
-                    return; // h1 아직 미완 — 재개 때 enqueueHalf 가 처리
-                }
-                prevSummary = contextBuilder.prevSummaryFrom(h1Log.get());
-            }
-            String botSide = userIsHome(match) ? "away" : "home";
-            Map<String, Object> botContext = contextBuilder.buildBotContext(match, half, bot, prevSummary, botSide);
-            jobQueue.enqueue(matchId, botSide, half, botContext);
+            PromptContextBuilder.BaseJob userBase = contextBuilder.userBaseJob(match, snapshot);
+            PromptContextBuilder.BaseJob botBase = contextBuilder.botBaseJob(match, bot);
+            jobQueue.enqueueBase(userBase.baseId(), userBase.context());
+            jobQueue.enqueueBase(botBase.baseId(), botBase.context());
         } catch (Exception e) {
-            log.warn("봇 프리페치(match {} h{}) 실패 — 무시(kickoff/resume 때 재시도): {}", matchId, half, e.toString());
+            log.warn("A 프리페치(match {}) 실패 — 무시(킥오프 때 풀생성 폴백): {}", matchId, e.toString());
+        }
+    }
+
+    /** done 인 A(베이스) 잡의 result_json(없거나 미완이면 null). */
+    private String doneResultOf(String baseId) {
+        return jobQueue.find(baseId)
+                .filter(j -> "done".equals(j.status()) && j.resultJson() != null)
+                .map(AiJobQueue.JobRow::resultJson)
+                .orElse(null);
+    }
+
+    /** h1 최종 인풋(해당 side): match_halves 의 home_input_json/away_input_json. 없으면 null. */
+    private String h1InputForSide(String matchId, String side) {
+        String column = "home".equals(side) ? "home_input_json" : "away_input_json";
+        return jdbcClient.sql("SELECT " + column + " FROM match_halves WHERE match_id = ? AND half = 1")
+                .param(matchId)
+                .query(String.class)
+                .optional()
+                .orElse(null);
+    }
+
+    /** 매치시점 프롬프트 존재 여부(phase='pre' or 'halftime', team|player 무관). */
+    private boolean hasPhasePrompts(String matchId, String phase) {
+        Integer n = jdbcClient.sql(
+                        "SELECT COUNT(*) FROM match_prompts WHERE match_id = ? AND phase = ?")
+                .params(matchId, phase)
+                .query(Integer.class)
+                .single();
+        return n != null && n > 0;
+    }
+
+    /** A/h1 결과의 seed 필드를 halfSeed 로 교체(구조 불변 — 엔진 통과 필드). */
+    private String seedSwap(String resultJson, String halfSeed) {
+        try {
+            JsonNode node = objectMapper.readTree(resultJson);
+            if (!node.isObject()) {
+                throw new IllegalStateException("TacticalInput 이 오브젝트가 아님");
+            }
+            ((com.fasterxml.jackson.databind.node.ObjectNode) node).put("seed", halfSeed);
+            return objectMapper.writeValueAsString(node);
+        } catch (Exception e) {
+            throw new IllegalStateException("seed 교체 실패", e);
         }
     }
 
@@ -251,11 +355,8 @@ public class MatchOrchestrator {
             }
         });
 
-        // #1 프리페치: h1 저장·H1_BREAK 후, 재개 전에 봇 h2 를 미리 생성(하프타임 대기시간 활용).
-        // 트랜잭션 밖에서 호출(프리페치 실패가 h1 커밋을 롤백하지 않도록) — h1 로그가 이제 존재해 prevSummary 확보 가능.
-        if (half == 1) {
-            prefetchBotHalf(match.id(), 2);
-        }
+        // h2 는 별도 A-잡이 없다(#95): h2 베이스 = h1 최종 인풋 → 재개 때 resolveSide 가 재사용(콜0) 또는
+        // 하프타임 프롬프트가 있으면 B 패치로 태운다. 봇 h2 도 재사용(콜0)이라 프리페치할 콜이 없다.
     }
 
     /**

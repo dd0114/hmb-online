@@ -120,6 +120,10 @@ class InternalJobApiTest extends MatchTestBase {
         String matchId = createMatch(token, "BOT_BAL");
         authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
         assertThat(matchState(matchId)).isEqualTo("GEN1");
+        // 킥오프 전 A(베이스) 미완 → 이 매치의 h1 은 풀생성 폴백(home+away 2 side 잡). 이 내부-잡 프로토콜
+        // 테스트는 per-match side 잡만 다루므로, 브리핑에 프리페치된 A(match_id NULL, #95) 캐시 잡을 제거해
+        // 큐를 결정론적으로 유지한다(A 는 크로스매치 캐시라 이 테스트의 lease/count 대상이 아님).
+        jdbcClient.sql("DELETE FROM ai_jobs WHERE match_id IS NULL").update();
         return matchId;
     }
 
@@ -219,9 +223,11 @@ class InternalJobApiTest extends MatchTestBase {
         // BRIEFING 매치 준비 — 1.5s 뒤 kickoff로 잡 enqueue
         String token = setupUserWithDeck("q_early");
         String matchId = createMatch(token, "BOT_BAL");
-        // #1 프리페치로 봇 away h1 이 이미 큐에 있음 — 롱폴 "빈 큐 대기" 검증 전에 소비(리스)해 큐를 비운다.
-        assertThat(pollRaw(SERVANT_TOKEN, Map.of("workerId", "w-drain", "waitMs", 1000)).getStatusCode())
-                .isEqualTo(HttpStatus.OK);
+        // A 프리페치(#95)로 유저 A + 봇 A 가 이미 큐에 있음 — 롱폴 "빈 큐 대기" 검증 전에 비운다.
+        // (BRIEFING 이라 아직 per-match side 잡은 없다.) A 는 크로스매치 캐시라 이 롱폴 타이밍 검증과 무관.
+        jdbcClient.sql("DELETE FROM ai_jobs WHERE match_id IS NULL").update();
+        assertThat(pollRaw(SERVANT_TOKEN, Map.of("workerId", "w-drain", "waitMs", 300)).getStatusCode())
+                .isEqualTo(HttpStatus.NO_CONTENT);
 
         Thread enqueuer = new Thread(() -> {
             try {

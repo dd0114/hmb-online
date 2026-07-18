@@ -65,6 +65,46 @@ public class AiJobQueue {
         return id;
     }
 
+    /**
+     * A(베이스 생성) 잡 enqueue — 크로스매치 캐시. id = sha256(baseContextKeyMaterial)[:32]
+     * (BaseContextKey, 덱 스냅샷만 — matchId/side/half/seed 제외)라 <b>여러 매치·양팀이 같은 행을 공유</b>한다.
+     * 그래서 큐 라우팅 메타(match_id/side/half)는 NULL 로 둔다(특정 매치·half 에 매이지 않음 → onJobDone·
+     * latestDoneResult 의 per-side/half 조회에 걸리지 않는다). INSERT OR IGNORE(id 멱등) — 이미 있으면 no-op.
+     *
+     * @param baseId sha256(material)[:32]
+     */
+    public void enqueueBase(String baseId, Map<String, Object> context) {
+        String now = Instant.now().toString();
+        jdbcClient.sql("""
+                        INSERT OR IGNORE INTO ai_jobs(id, match_id, side, half, status, context_json,
+                                                      attempts, created_at, updated_at)
+                        VALUES (?, NULL, NULL, NULL, 'queued', ?, 0, ?, ?)
+                        """)
+                .params(baseId, Hashes.canonicalJson(context), now, now)
+                .update();
+    }
+
+    /**
+     * A 결과(또는 h1 최종 인풋) 재사용을 per-match·per-side·per-half done 행으로 <b>물질화</b>(콜 0).
+     * B(패치) 없이 A/h1 인풋을 그대로 쓸 때(추가 프롬프트/교체 없음), Java 가 seed 만 교체한 TacticalInput 을
+     * 이 매치의 (side,half) done 행으로 직접 삽입해 maybeSimulate 가 집도록 한다(서번트 콜 없음).
+     * id 는 (matchId,half,side) 결정 — INSERT OR IGNORE 멱등(재개/재시도 재-enqueue 안전).
+     *
+     * @param resultJson seed 가 이미 해당 halfSeed 로 교체된 완전한 TacticalInput
+     */
+    public void insertMaterialized(String matchId, String side, int half, String resultJson) {
+        String id = Hashes.sha256Hex("materialized:" + matchId + ":" + half + ":" + side).substring(0, 32);
+        String now = Instant.now().toString();
+        jdbcClient.sql("""
+                        INSERT OR IGNORE INTO ai_jobs(id, match_id, side, half, status, context_json,
+                                                      result_json, attempts, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, 'done', ?, ?, 0, ?, ?)
+                        """)
+                .params(id, matchId, side, half,
+                        "{\"kind\":\"materialized\"}", resultJson, now, now)
+                .update();
+    }
+
     public Optional<JobRow> find(String jobId) {
         return jdbcClient.sql("""
                         SELECT id, match_id, side, half, status, context_json, result_json, attempts

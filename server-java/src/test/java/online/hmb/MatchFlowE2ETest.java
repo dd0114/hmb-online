@@ -85,8 +85,9 @@ class MatchFlowE2ETest extends MatchTestBase {
         assertThat(kickoff.getBody().get("state")).isEqualTo("GEN1");
 
         int processed = fakeServants.drain();
-        // home h1 + away h1 + (h1 완료 직후 #1 프리페치된) away h2 = 3. 봇 h2 가 하프타임 전에 미리 생성됨.
-        assertThat(processed).isEqualTo(3);
+        // A 프리페치(#95): 브리핑에 유저 A + 봇 A 2개 enqueue. 킥오프 전 A 미완이라 h1 은 풀생성 폴백
+        // (home h1 + away h1). 드레인은 A 2개 + 풀생성 side 2개 = 4개를 처리한다(h2 는 별도 A-잡 없음).
+        assertThat(processed).isEqualTo(4);
 
         ResponseEntity<Map> afterH1 = authGet("/api/matches/" + matchId, token, Map.class);
         assertThat(afterH1.getBody().get("state")).isEqualTo("H1_BREAK");

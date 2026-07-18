@@ -57,6 +57,19 @@ public class FakeServants {
     public String stubTacticalInput(String contextJson) {
         try {
             JsonNode context = objectMapper.readTree(contextJson);
+
+            // B(패치) 잡: 실행기 계약 = complete 가 **완전한 TacticalInput** 을 반환(패치는 실행기 내부 세부).
+            // Fake 는 base(A 결과)에 applyPatch(빈 패치, {seed}) = base + seed 교체 를 흉내 → 완전 인풋 반환.
+            if ("team-input-patch".equals(context.path("kind").asText())) {
+                JsonNode base = context.path("base");
+                if (!base.isObject()) {
+                    throw new IllegalStateException("team-input-patch 컨텍스트에 base(TacticalInput) 누락");
+                }
+                ObjectNode merged = base.deepCopy();
+                merged.put("seed", context.path("seed").asText()); // halfSeed 주입(applyPatch seed 통과).
+                return objectMapper.writeValueAsString(merged);
+            }
+
             String seed = context.path("seed").asText();
             String teamPrompt = context.path("teamPrompt").asText("");
 

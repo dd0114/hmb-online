@@ -249,6 +249,85 @@ public class PromptContextBuilder {
         return context;
     }
 
+    // ── A(베이스 생성) 컨텍스트 — 크로스매치 캐시(#95 A+B) ────────────────────
+    // A = 덱 스냅샷만(매치 가변요소 제외): formation + roster + 덱 teamPrompt/playerPrompts + manualTactics.
+    // 매치시점 요소(pre/halftime 프롬프트·relations/morale/conditions/opponentRoster/prevSummary)는 제외 →
+    // 같은 덱이면 매치·양팀 무관하게 같은 A. seed/matchId/side/half 는 캐시키에서 빠지고 컨텍스트엔 상수로 담는다.
+
+    /** A(베이스) 잡 = 캐시 키 재료 + 그 위 team-input 컨텍스트(상수 매치필드) 한 묶음. */
+    public record BaseJob(String material, String baseId, Map<String, Object> context) {
+    }
+
+    private static final String BASE_MATCH_ID = "BASE"; // A 컨텍스트의 상수 matchId(캐시키에서는 제외됨).
+
+    /** 유저팀 A 잡(덱 스냅샷 기준). 덱-레벨 팀 프롬프트는 이 모델에 없으므로 teamPrompt="". */
+    public BaseJob userBaseJob(MatchService.MatchRow match, JsonNode snapshot) {
+        List<RosterEntry> roster = buildRoster(snapshot, List.of());
+        Map<String, String> playerPrompts = deckBasePlayerPrompts(snapshot, roster);
+        Map<String, Object> manualTactics = manualTacticsOf(snapshot);
+        return baseJob(match, snapshot.path("formation").asText(), roster, "", playerPrompts, manualTactics);
+    }
+
+    /** 봇팀 A 잡(봇 덱 기준). teamPrompt = 봇 페르소나(고정). */
+    public BaseJob botBaseJob(MatchService.MatchRow match, BotService.BotRow bot) {
+        JsonNode deck = readJson(bot.deckJson());
+        List<RosterEntry> roster = buildRoster(deck, List.of());
+        Map<String, String> playerPrompts = deckBasePlayerPrompts(deck, roster);
+        Map<String, Object> manualTactics = manualTacticsOf(deck);
+        return baseJob(match, deck.path("formation").asText(), roster, bot.persona(), playerPrompts,
+                manualTactics);
+    }
+
+    private BaseJob baseJob(MatchService.MatchRow match, String formation, List<RosterEntry> roster,
+                            String teamPrompt, Map<String, String> playerPrompts,
+                            Map<String, Object> manualTactics) {
+        List<BaseContextKey.RosterKey> keyRoster = roster.stream()
+                .map(r -> new BaseContextKey.RosterKey(r.playerId(), r.slotIndex(), r.attributes()))
+                .toList();
+        String material = BaseContextKey.material(formation, keyRoster, teamPrompt, playerPrompts,
+                manualTactics);
+        String baseId = BaseContextKey.baseId(material);
+
+        // A 컨텍스트: team-input(실행기가 풀 생성) — 매치필드는 상수(캐시키에서 제외되므로 결과 재현엔 무해).
+        // seed 는 재료 파생 상수(엔진 통과 필드 — 재사용/머지 시 Java 가 halfSeed 로 교체). half=1(prevSummary 없음).
+        Map<String, Object> context = context(match /*미사용 side/seed는 아래서 덮음*/, "home", 1, formation,
+                roster, teamPrompt, playerPrompts, null);
+        context.put("matchId", BASE_MATCH_ID);
+        context.put("seed", Hashes.deriveUint64Seed(material));
+        if (manualTactics != null) {
+            context.put("manualTactics", manualTactics); // A-base 슬라이더(있으면).
+        }
+        return new BaseJob(material, baseId, context);
+    }
+
+    /** 덱 스냅샷(또는 봇 덱)의 선수 promptText → {playerId:text}, 로스터(선발)로 한정. */
+    private Map<String, String> deckBasePlayerPrompts(JsonNode deck, List<RosterEntry> roster) {
+        Map<String, String> prompts = new TreeMap<>();
+        for (JsonNode entry : deck.path("starters")) {
+            if (entry.hasNonNull("promptText")) {
+                prompts.put(entry.path("playerId").asText(), entry.path("promptText").asText());
+            }
+        }
+        for (JsonNode entry : deck.path("bench")) {
+            if (entry.hasNonNull("promptText")) {
+                prompts.put(entry.path("playerId").asText(), entry.path("promptText").asText());
+            }
+        }
+        prompts.keySet().retainAll(roster.stream().map(RosterEntry::playerId).toList());
+        return prompts;
+    }
+
+    /** 덱/스냅샷의 teamTactics(수동 전술) → Map, 없으면 null(캐시키 규약: manualTactics=null). */
+    private Map<String, Object> manualTacticsOf(JsonNode deck) {
+        JsonNode tt = deck.get("teamTactics");
+        if (tt != null && tt.isObject()) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = objectMapper.convertValue(tt, Map.class);
+            return map;
+        }
+        return null;
+    }
+
     private String teamPromptOf(String matchId, int half) {
         if (half == 2) {
             String halftime = phaseTeamPrompt(matchId, "halftime");

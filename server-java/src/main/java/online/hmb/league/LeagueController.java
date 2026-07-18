@@ -37,8 +37,8 @@ public class LeagueController {
     public ResponseEntity<LeagueService.LeagueNextMatchResponse> nextMatch(
             @RequestAttribute("userId") String userId) {
         LeagueService.LeagueNextMatchResponse response = leagueService.nextMatch(userId);
-        // #1 프리페치: 봇 h1 잡을 브리핑 진입 즉시 enqueue(기존 매치 플로우와 동일 — 크리티컬 패스에서 봇 제거).
-        orchestrator.prefetchBotHalf(response.match().id(), 1);
+        // A 프리페치(#95): 유저팀 A + 봇 A 를 브리핑 진입 즉시 크로스매치 캐시로 enqueue(매치 플로우와 동일).
+        orchestrator.prefetchBaseInputs(response.match().id());
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }

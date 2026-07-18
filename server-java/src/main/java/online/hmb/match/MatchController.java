@@ -37,9 +37,9 @@ public class MatchController {
         MatchService.MatchRow row = matchService.createMatch(userId,
                 request == null ? null : request.botId(),
                 request == null ? null : request.teamTactics());
-        // #1 프리페치: 봇(away) h1 잡을 브리핑 진입 즉시 enqueue — 유저가 프롬프트 쓰는 동안 백그라운드 생성.
-        // 봇은 유저 입력 무관이라 킥오프 때 enqueueHalf 와 동일 promptHash(멱등). 크리티컬 패스에서 봇 제거.
-        orchestrator.prefetchBotHalf(row.id(), 1);
+        // A 프리페치(#95): 유저팀 A + 봇 A(덱 베이스)를 브리핑 진입 즉시 크로스매치 캐시로 enqueue.
+        // 유저가 프롬프트 쓰는 동안 A 생성 → 킥오프 때 프롬프트 없으면 콜0 재사용, 있으면 가벼운 B 패치.
+        orchestrator.prefetchBaseInputs(row.id());
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 
