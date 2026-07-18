@@ -156,6 +156,18 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
   // #42: CAUSE 정지 skip 은 "원인→재시작 사이 = 데드타임"일 때만. 세이브 후 공이 라이브인
   // 체인(패스→2차슛→빗나감→골킥)을 스킵하면 라이브 플레이가 사라지고(2차 슛 미표시),
   // 중간 상황자막이 드롭되며, 착지 프레임에 토스트/궤적선/선수 잔상이 유령처럼 몰아 나타난다.
+  it("파울/페널티 정지는 접촉 앵커(파울러)를 갖는다 — 카메라 접촉 줌용(충돌 가시화)", () => {
+    const foul = buildStoppages([{ type: "foul", tick: 30, team: "away", playerId: "A2" }]);
+    expect(foul.find((s) => s.causeTick === 30)?.contactAnchor, "파울 정지 contactAnchor=파울러").toBe("A2");
+    // 페널티: 같은 틱 파울 이벤트의 playerId 를 접촉 앵커로(페널티 이벤트엔 pid 없음).
+    const pen = buildStoppages([
+      { type: "foul", tick: 40, team: "away", playerId: "A5" },
+      { type: "penalty", tick: 40, team: "home" },
+    ]);
+    // 병합 후 살아남는 40틱 정지(페널티가 이김)가 접촉앵커=파울러 A5.
+    expect(pen.find((s) => s.causeTick === 40)?.contactAnchor, "페널티 정지 contactAnchor=같은 틱 파울러").toBe("A5");
+  });
+
   describe("#42 — 라이브 플레이 개입 시 skip 금지", () => {
     const chain = [
       { type: "save", tick: 96 },

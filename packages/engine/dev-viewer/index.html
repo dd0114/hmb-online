@@ -133,6 +133,8 @@
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
       const SETPIECE_ZOOM = 1.7;               // #59: 세트피스 걷기 구간 줌(박스 + 걸어오는 taker 가 보이게 팔로우보다 넓게)
+      const CONTACT_ZOOM = 2.6, FOUL_CONTACT_TICKS = 3; // 파울 접촉 순간 줌(두 선수 충돌 보이게) + 지속 틱
+      const FOUL_HOLD_MS = 1000; // 파울/페널티 정지는 길게 — 카메라가 접촉점으로 줌 완료(~730ms)+충돌을 보여줄 여유
       const CAM_SMOOTH = 0.12;                 // 정지(freeze) 중 카메라 팬 속도(0..1/frame). 정지→정지 줌 순간이동 방지.
       const CAM_MAX_PAN_PXPS = 900;            // #45: 카메라 팬 속도 상한(스크린px/s) — 와이드↔팔로우 급전환도 글라이드
       const CAM_MAX_ZOOM_PS = 2.2;             // #45: 줌 변화 속도 상한(zoom/s)
@@ -225,9 +227,20 @@
           const csnap = snapByTick.get(st.causeTick);
           if (csnap && Math.hypot(bx - csnap.ball.x, by - csnap.ball.y) < 3) { spSpot = csnap.ball; break; }
         }
+        // 파울 접촉 줌(최우선): 파울/페널티 정지의 causeTick 부근엔 접촉 지점(파울러=victim 도 2m 내)으로
+        // 줌해 "두 선수 충돌"을 보여준다. 파울 순간 와이드로 작은 점 되던 것 해소(#59 후 파울 접촉 소실).
+        let contactPos = null;
+        for (const st of stoppages) {
+          if (st.isGoal || !st.contactAnchor || curTick < st.causeTick || curTick > st.causeTick + FOUL_CONTACT_TICKS) continue;
+          const csnap = snapByTick.get(st.causeTick);
+          const pl = csnap && csnap.players.find((p) => p.playerId === st.contactAnchor);
+          if (pl) { contactPos = pl.pos; break; }
+        }
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
-        const useFollow = !koTweening && !spSpot && (follow || nearKey || (hold ? !!hold.zoom : false));
-        const camTarget = spSpot
+        const useFollow = !koTweening && !contactPos && !spSpot && (follow || nearKey || (hold ? !!hold.zoom : false));
+        const camTarget = contactPos
+          ? { cx: contactPos.x, cy: contactPos.y, zoom: CONTACT_ZOOM }
+          : spSpot
           ? { cx: spSpot.x, cy: spSpot.y, zoom: SETPIECE_ZOOM }
           : useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
         // 재생 중 카메라를 항상 목표로 부드럽게 팬 → 정지 전환·하이라이트 줌인/줌아웃·정지 재개
@@ -481,7 +494,7 @@
               // #59: 데드볼은 짧은 자막 정지 후 causeTick 부터 **스킵 없이 정상 재생** → 엔진이 낸
               // "taker 가 공한테 정상 속도로 걸어가 잡고 나머지 정비"가 그대로 보인다. 뷰어 트릭(synth/워크인/
               // freeze-play/pacing/자막지연) 제거 — 엔진이 자연 무브먼트를 방출(#59). 골만 기존 세리머니 유지.
-              const holdMs = st.isGoal ? st.hold : DEADBALL_PAUSE_MS;
+              const holdMs = st.isGoal ? st.hold : (st.contactAnchor ? FOUL_HOLD_MS : DEADBALL_PAUSE_MS);
               hold = { until: ts + holdMs, start: ts, dur: holdMs, jumpTo: idxOfTick(st.isGoal ? st.restartTick : st.causeTick), zoom: !!st.isGoal, wide: !!st.wide || !!st.pauseOnly || !!st.setPiece };
               // 골 정지: 세리머니 동안 선수들을 킥오프 포메이션으로 트윈 → hold 해제 시 순간이동 제거.
               if (st.isGoal) { hold.formFrom = idxOfTick(st.causeTick); hold.koIdx = idxOfTick(st.restartTick); hold.tween = 0; }
