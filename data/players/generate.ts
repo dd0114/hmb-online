@@ -1,8 +1,12 @@
 /**
- * generate.ts — 선수·경제·봇 시드 데이터 결정론 생성기.
+ * generate.ts — 선수·경제·봇 시드 데이터 결정론 생성기 (v2 = 실선수).
  *
- * 실행: `npx tsx data/players/generate.ts` (players.v1.json / economy.v1.json / bots.v1.json 재생성)
+ * 실행: `npx tsx data/players/generate.ts` (players.v2.json / economy.v2.json / bots.v2.json 재생성)
  * 결정론(AC-D2): SEED 고정 + 시드 RNG만 사용(Math.random/Date.now 금지) — 재실행 바이트 동일.
+ *
+ * v2(이슈 #84): 이름·포지션·등급은 큐레이션 로스터(`roster.ts`, 실선수 150명)에서 오고,
+ * 능력치 9종만 시드 RNG로 등급 밴드 내에서 결정론 파생한다(포지션 주스탯 +5, trait +6, 밴드 클램프).
+ * ⚠️ 실명 사용 — 상용화 전 라이선스 해결 필수(백로그, data/CLAUDE.md·PRD-v2 D4 참조).
  *
  * 순서: 이 파일을 import 만 해도(부수효과 없음) `generateAll()`을 호출해 세 산출물을 순수 계산할
  * 수 있다. 파일 쓰기는 CLI로 직접 실행했을 때만 일어난다(맨 아래 entrypoint 가드).
@@ -11,10 +15,13 @@ import { writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRng } from "./rng";
-import { nextUniqueName } from "./names";
+import { ROSTER } from "./roster";
 
-/** 생성 결정론 시드(LLD-data §2). 절대 변경 금지 — 바꾸면 v2 발행 대상. */
-export const SEED = "hmb-players-v1";
+/** 생성 결정론 시드. 절대 변경 금지 — 바꾸면 새 버전 발행 대상. */
+export const SEED = "hmb-players-v2";
+
+/** 발행 버전 태그(파일명·economy.version). */
+export const DATA_VERSION = "v2";
 
 export type Position = "GK" | "DF" | "MF" | "FW";
 export type Grade = "BRONZE" | "SILVER" | "GOLD" | "DIA" | "LEGEND";
@@ -51,36 +58,8 @@ const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "positioning",
 ];
 
-const POSITIONS: readonly Position[] = ["GK", "DF", "MF", "FW"];
-const GRADES: readonly Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
-
-/** 포지션 총원 (LLD §2). 합계 110. */
-const POSITION_TOTALS: Record<Position, number> = { GK: 12, DF: 36, MF: 36, FW: 26 };
-
-/** 등급 총원 (LLD §2). 합계 110. */
-const GRADE_TOTALS: Record<Grade, number> = {
-  BRONZE: 40,
-  SILVER: 30,
-  GOLD: 20,
-  DIA: 14,
-  LEGEND: 6,
-};
-
-/**
- * 포지션×등급 분포 행렬 — "비례 배분, GK는 등급별 최소 1" (LLD §2).
- *
- * 유도: 행(포지션)마다 등급 비중(40/30/20/14/6 / 110)에 largest-remainder 방법으로 반올림
- * 배분 → 열(등급) 합이 GRADE_TOTALS 와 어긋나는 만큼(BRONZE -1 / GOLD -1 / DIA +1 / LEGEND +1)을
- * 행 합을 보존하며 DF 행 내부에서 재배분(DIA→BRONZE +1, LEGEND→GOLD +1)해 양쪽 합을 정확히
- * 맞췄다. GK 행은 largest-remainder 결과 자체로 이미 등급별 ≥1 을 만족한다.
- * 행 합계 = POSITION_TOTALS, 열 합계 = GRADE_TOTALS 를 data.test.ts 가 기계 검증한다.
- */
-const DISTRIBUTION: Record<Position, Record<Grade, number>> = {
-  GK: { BRONZE: 4, SILVER: 3, GOLD: 2, DIA: 2, LEGEND: 1 },
-  DF: { BRONZE: 14, SILVER: 10, GOLD: 7, DIA: 4, LEGEND: 1 },
-  MF: { BRONZE: 13, SILVER: 10, GOLD: 6, DIA: 5, LEGEND: 2 },
-  FW: { BRONZE: 9, SILVER: 7, GOLD: 5, DIA: 3, LEGEND: 2 },
-};
+/** trait 시그니처 능력치 바이어스(+, 밴드 상한 클램프). */
+const TRAIT_BIAS = 6;
 
 /** 등급별 능력치 밴드 [min, max] (LLD §2). */
 export const GRADE_BANDS: Record<Grade, readonly [number, number]> = {
@@ -112,11 +91,16 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/** 시드 RNG로 한 선수의 능력치 9종을 굴린다(등급 밴드 + 포지션 주스탯 +5 클램프). */
+/**
+ * 시드 RNG로 한 선수의 능력치 9종을 굴린다.
+ * 등급 밴드 내 균등 롤 → 포지션 주스탯 +5 → 개인 trait +6 (모두 밴드 상한 클램프).
+ * RNG 소비는 base 롤 9회뿐 — 바이어스는 순수 결정론 가산이라 재현 바이트 동일.
+ */
 function rollAttributes(
   rng: ReturnType<typeof createRng>,
   grade: Grade,
   position: Position,
+  traits: readonly (keyof PlayerAttributes)[],
 ): PlayerAttributes {
   const [lo, hi] = GRADE_BANDS[grade];
   const attrs = {} as PlayerAttributes;
@@ -125,6 +109,9 @@ function rollAttributes(
   }
   for (const key of PRIMARY_STATS[position]) {
     attrs[key] = clamp(attrs[key] + 5, lo, hi);
+  }
+  for (const key of traits) {
+    attrs[key] = clamp(attrs[key] + TRAIT_BIAS, lo, hi);
   }
   return attrs;
 }
@@ -275,25 +262,17 @@ export interface GeneratedData {
   bots: BotSeed[];
 }
 
-/** 순수 함수 — SEED 로부터 세 산출물을 계산한다(부수효과 없음, 파일 I/O 없음). */
+/** 순수 함수 — SEED + ROSTER 로부터 세 산출물을 계산한다(부수효과 없음, 파일 I/O 없음). */
 export function generateAll(): GeneratedData {
   const rng = createRng(SEED);
-  const used = new Set<string>();
   const players: PlayerSeed[] = [];
-  let seq = 1;
 
-  for (const position of POSITIONS) {
-    for (const grade of GRADES) {
-      const count = DISTRIBUTION[position][grade];
-      for (let i = 0; i < count; i++) {
-        const id = `P${String(seq).padStart(3, "0")}`;
-        seq++;
-        const name = nextUniqueName(rng, used);
-        const attributes = rollAttributes(rng, grade, position);
-        players.push({ id, name, position, grade, attributes });
-      }
-    }
-  }
+  // 로스터 순서 = ID 배정 순서(P001..). 능력치만 시드 RNG로 밴드 내 결정론 파생.
+  ROSTER.forEach((entry, i) => {
+    const id = `P${String(i + 1).padStart(3, "0")}`;
+    const attributes = rollAttributes(rng, entry.grade, entry.position, entry.traits);
+    players.push({ id, name: entry.name, position: entry.position, grade: entry.grade, attributes });
+  });
 
   // -- economy.v1.json --------------------------------------------------
   const starterExclude = new Set<string>();
@@ -328,7 +307,7 @@ export function generateAll(): GeneratedData {
   const starterPack = [...starterGk, ...starterDf, ...starterMf, ...starterFw].map((p) => p.id);
 
   const economy: EconomySeed = {
-    version: "v1",
+    version: DATA_VERSION,
     initialPoints: 3000,
     starterPack,
     gacha: {
@@ -342,33 +321,34 @@ export function generateAll(): GeneratedData {
   };
 
   // -- bots.v1.json -------------------------------------------------------
-  // BOT_ATK 공격형 — FW/MF 골드↑ 위주 (LLD §4)
+  // BOT_ATK 공격형 — FW/MF 골드 위주 (LLD §4). DIA/LEGEND(rank 3~4)은 봇에 쓰지 않고
+  // 가챠 열망 카드로 예약 — 모든 봇 픽은 maxRank=GOLD(2) 로 캡한다.
   const botAtkDeck = buildBotDeck(players, {
     starterGroups: [
-      { position: "GK", count: 1, minRank: 0, maxRank: 4 },
-      { position: "DF", count: 4, minRank: 0, maxRank: 4 },
-      { position: "MF", count: 3, minRank: 2, maxRank: 4 },
-      { position: "FW", count: 3, minRank: 2, maxRank: 4 },
+      { position: "GK", count: 1, minRank: 0, maxRank: 2 },
+      { position: "DF", count: 4, minRank: 0, maxRank: 2 },
+      { position: "MF", count: 3, minRank: 2, maxRank: 2 },
+      { position: "FW", count: 3, minRank: 2, maxRank: 2 },
     ],
     fwPromptCount: 2,
     fwPromptText: "적극 침투",
     benchMinRank: 0,
-    benchMaxRank: 4,
+    benchMaxRank: 2,
   });
   botAtkDeck.formation = "4-3-3";
 
-  // BOT_DEF 수비형 — DF 골드↑ 위주 (LLD §4)
+  // BOT_DEF 수비형 — DF 골드 위주 (LLD §4)
   const botDefDeck = buildBotDeck(players, {
     starterGroups: [
-      { position: "GK", count: 1, minRank: 0, maxRank: 4 },
-      { position: "DF", count: 5, minRank: 2, maxRank: 4 },
-      { position: "MF", count: 3, minRank: 0, maxRank: 4 },
-      { position: "FW", count: 2, minRank: 0, maxRank: 4 },
+      { position: "GK", count: 1, minRank: 0, maxRank: 2 },
+      { position: "DF", count: 5, minRank: 2, maxRank: 2 },
+      { position: "MF", count: 3, minRank: 0, maxRank: 2 },
+      { position: "FW", count: 2, minRank: 0, maxRank: 2 },
     ],
     fwPromptCount: 0,
     fwPromptText: "",
     benchMinRank: 0,
-    benchMaxRank: 4,
+    benchMaxRank: 2,
   });
   botDefDeck.formation = "5-3-2";
 
@@ -435,11 +415,11 @@ const isMain = (() => {
 if (isMain) {
   const { players, economy, bots } = generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
-  writeFileSync(join(here, "players.v1.json"), JSON.stringify(players, null, 2) + "\n");
-  writeFileSync(join(here, "economy.v1.json"), JSON.stringify(economy, null, 2) + "\n");
-  writeFileSync(join(here, "bots.v1.json"), JSON.stringify(bots, null, 2) + "\n");
+  writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(players, null, 2) + "\n");
+  writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
+  writeFileSync(join(here, `bots.${DATA_VERSION}.json`), JSON.stringify(bots, null, 2) + "\n");
   // eslint-disable-next-line no-console
   console.log(
-    `generated ${players.length} players, economy.v1.json, ${bots.length} bots -> data/players/`,
+    `generated ${players.length} players, economy.${DATA_VERSION}.json, ${bots.length} bots -> data/players/`,
   );
 }

@@ -16,7 +16,7 @@
 | D1 | 서버 스택 | **Java Spring 지금 도입** (ADR-1 실행). Java 21 + Spring Boot 3.x + Gradle + SQLite(JDBC+Flyway) |
 | D2 | 저장소 | **SQLite** 단일 파일. ERD 그대로 반영, 추후 Postgres 전환 가능 구조 |
 | D3 | AI 실행 | **라이브(claude CLI 구독)+stub 토글**. 상대팀(봇)도 AI 생성(프리셋 지시문, promptHash 캐시로 절감) |
-| D4 | 선수 풀 | **100명+ · 5등급** (가상 이름·고유 ID, 추후 전량 교체 가능) |
+| D4 | 선수 풀 | **100명+ · 5등급**. ~~가상 이름~~ → **v2(#84): 실선수 전량 교체**(유럽 빅클럽 현역+역대 레전드 150명, 고유 ID `P###`). 등급 매핑=`grade-mapping-v2.md`. ⚠️ **상용화 전 실명/초상권 라이선스 해결 필수**(백로그, §7 비범위 정합) |
 | D5 | 입력 타이머 | **표시만, 강제 안 함** (config 플래그로 강제 전환 가능하게) |
 | D6 | 경제 수치 | 초기 3,000 / 단뽑 300 / 10연뽑 3,000에 11개 / 승 +500 · 무 +200 · 패 +100 — **전부 config** |
 | D7 | 에픽 구조 | **모듈별 에픽** = 세션 = owned-glob 1:1 + 상위 트래킹 이슈 |
@@ -68,12 +68,14 @@ packages/shared   [계약 — 프리즈]    zod 계약 (PlayerCard·TacticalInpu
 
 ### 3.1 [data] 선수 데이터·경제 시드
 
-- R: 선수 110명(GK12/DF36/MF36/FW26), 5등급(BRONZE/SILVER/GOLD/DIA/LEGEND), 등급→능력치 밴드, 가상 이름+고유 ID(`P001`~). 실선수 사용 금지(분포만 참고). 시드 고정 생성 스크립트로 재생성 결정론.
-- R: 뽑기 확률표·경제 수치·스타터 팩 구성의 데이터 SoT(`data/players/economy.v1.json`).
-- **AC-D1**: `players.v1.json`에 110명, 포지션·등급 분포가 명세(LLD-data)와 일치, ID 유일, 능력치가 등급 밴드 내.
+- R: 선수 풀, 5등급(BRONZE/SILVER/GOLD/DIA/LEGEND), 등급→능력치 밴드, 고유 ID(`P001`~). 시드 고정 생성 스크립트로 재생성 결정론.
+  - **v1(이력)**: 가상 이름 110명(GK12/DF36/MF36/FW26), 실선수 금지.
+  - **v2(#84, 현행)**: **실선수 150명**(GK19/DF47/MF48/FW36) 전량 교체 — 큐레이션 로스터(`data/players/roster.ts`)로 등급 매핑, 능력치 9종만 시드 RNG로 밴드 내 파생. 등급 기준=`grade-mapping-v2.md`. ⚠️ **상용화 전 실명 라이선스 해결 필수**(백로그, §7).
+- R: 뽑기 확률표·경제 수치·스타터 팩 구성의 데이터 SoT(현행 `data/players/economy.v2.json`).
+- **AC-D1**: `players.<ver>.json`에 명세 인원(v1=110 / **v2=150**), 포지션·등급 분포가 명세(LLD-data / grade-mapping-v2.md)와 일치, ID 유일, 능력치가 등급 밴드 내.
 - **AC-D2**: 생성 스크립트 2회 실행 결과 바이트 동일(시드 고정).
 - **AC-D3**: 검증 테스트(vitest)가 스키마(zod PlayerCard 확장)·분포·밴드를 기계 검증.
-- **AC-D4**: 파일 버전(`v1`)으로 발행 — 소비자(server-java)는 버전 파일만 읽는다. 교체 시 v2 발행.
+- **AC-D4**: 파일 버전으로 발행 — 소비자(server-java)는 버전 파일만 읽는다. 교체 시 새 버전 발행(현행 **v2**).
 
 ### 3.2 [server-java] 권위 서버 — auth·메타
 

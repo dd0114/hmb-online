@@ -4,13 +4,22 @@ import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { PlayerCard } from "@hmb/shared";
 import { generateAll, type PlayerSeed, type Position, type Grade } from "./generate";
-import { REAL_NAME_DENYLIST } from "./names";
+import { ROSTER } from "./roster";
 
 const POSITIONS: Position[] = ["GK", "DF", "MF", "FW"];
 const GRADES: Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
 
-// LLD-data §2 리터럴 값을 테스트에 직접 박제 — generate.ts 의 상수(GRADE_BANDS 등)를
-// 재사용하면 자기참조 검증이 되어 generate.ts 오타를 못 잡는다(독립 QA minor-3).
+// 문서화된 총원(LLD-data §2 v2 / grade-mapping-v2.md)을 테스트에 직접 박제 — roster/generate 의
+// 상수를 재사용하면 자기참조 검증이 되어 데이터 드리프트를 못 잡는다. 리터럴로 독립 검증한다.
+const TOTAL = 150;
+const POSITION_TOTALS: Record<Position, number> = { GK: 19, DF: 47, MF: 48, FW: 36 };
+const GRADE_TOTALS: Record<Grade, number> = {
+  BRONZE: 30,
+  SILVER: 44,
+  GOLD: 40,
+  DIA: 24,
+  LEGEND: 12,
+};
 const BANDS: Record<Grade, readonly [number, number]> = {
   BRONZE: [40, 55],
   SILVER: [50, 65],
@@ -28,18 +37,18 @@ const RANK: Record<Grade, number> = { BRONZE: 0, SILVER: 1, GOLD: 2, DIA: 3, LEG
 
 const { players, economy, bots } = generateAll();
 
-describe("players.v1 — counts/distribution (AC-D1)", () => {
-  it("총 110명", () => {
-    expect(players.length).toBe(110);
+describe("players.v2 — counts/distribution (AC-PL1)", () => {
+  it(`총 ${TOTAL}명`, () => {
+    expect(players.length).toBe(TOTAL);
   });
 
-  it("포지션 분포 GK12/DF36/MF36/FW26", () => {
+  it("포지션 분포 GK19/DF47/MF48/FW36", () => {
     const counts: Record<Position, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
     for (const p of players) counts[p.position]++;
-    expect(counts).toEqual({ GK: 12, DF: 36, MF: 36, FW: 26 });
+    expect(counts).toEqual(POSITION_TOTALS);
   });
 
-  it("등급 분포 BRONZE40/SILVER30/GOLD20/DIA14/LEGEND6", () => {
+  it("등급 분포 BRONZE30/SILVER44/GOLD40/DIA24/LEGEND12 (레전드 희소)", () => {
     const counts: Record<Grade, number> = {
       BRONZE: 0,
       SILVER: 0,
@@ -48,10 +57,17 @@ describe("players.v1 — counts/distribution (AC-D1)", () => {
       LEGEND: 0,
     };
     for (const p of players) counts[p.grade]++;
-    expect(counts).toEqual({ BRONZE: 40, SILVER: 30, GOLD: 20, DIA: 14, LEGEND: 6 });
+    expect(counts).toEqual(GRADE_TOTALS);
   });
 
-  it("포지션×등급 교차 분포 — 행/열 합이 각 총원과 일치", () => {
+  it("등급 희소성 단조 — LEGEND < DIA < GOLD, 저등급이 더 흔함(수집 열망)", () => {
+    const counts: Record<Grade, number> = { BRONZE: 0, SILVER: 0, GOLD: 0, DIA: 0, LEGEND: 0 };
+    for (const p of players) counts[p.grade]++;
+    expect(counts.LEGEND).toBeLessThan(counts.DIA);
+    expect(counts.DIA).toBeLessThan(counts.GOLD);
+  });
+
+  it("포지션×등급 교차 — 행/열 합이 각 총원과 일치", () => {
     const table: Record<Position, Record<Grade, number>> = {
       GK: { BRONZE: 0, SILVER: 0, GOLD: 0, DIA: 0, LEGEND: 0 },
       DF: { BRONZE: 0, SILVER: 0, GOLD: 0, DIA: 0, LEGEND: 0 },
@@ -62,17 +78,15 @@ describe("players.v1 — counts/distribution (AC-D1)", () => {
 
     for (const pos of POSITIONS) {
       const rowSum = GRADES.reduce((s, g) => s + table[pos][g], 0);
-      const expected = { GK: 12, DF: 36, MF: 36, FW: 26 }[pos];
-      expect(rowSum, `${pos} 행 합`).toBe(expected);
+      expect(rowSum, `${pos} 행 합`).toBe(POSITION_TOTALS[pos]);
     }
     for (const g of GRADES) {
       const colSum = POSITIONS.reduce((s, pos) => s + table[pos][g], 0);
-      const expected = { BRONZE: 40, SILVER: 30, GOLD: 20, DIA: 14, LEGEND: 6 }[g];
-      expect(colSum, `${g} 열 합`).toBe(expected);
+      expect(colSum, `${g} 열 합`).toBe(GRADE_TOTALS[g]);
     }
   });
 
-  it("GK는 등급별 최소 1명씩 보유", () => {
+  it("GK는 등급별 최소 1명씩 보유(전 등급 GK 확보)", () => {
     const gkGradeCounts: Record<Grade, number> = {
       BRONZE: 0,
       SILVER: 0,
@@ -87,12 +101,12 @@ describe("players.v1 — counts/distribution (AC-D1)", () => {
   });
 });
 
-describe("players.v1 — ID/이름 유일성", () => {
-  it("ID가 P001..P110 순차·유일", () => {
+describe("players.v2 — ID/이름 유일성 + 실선수(로스터 일치)", () => {
+  it(`ID가 P001..P${TOTAL} 순차·유일`, () => {
     const ids = players.map((p) => p.id);
-    expect(new Set(ids).size).toBe(110);
+    expect(new Set(ids).size).toBe(TOTAL);
     const expectedIds = Array.from(
-      { length: 110 },
+      { length: TOTAL },
       (_, i) => `P${String(i + 1).padStart(3, "0")}`,
     );
     expect(ids).toEqual(expectedIds);
@@ -100,24 +114,33 @@ describe("players.v1 — ID/이름 유일성", () => {
 
   it("이름이 전부 유일", () => {
     const names = players.map((p) => p.name);
-    expect(new Set(names).size).toBe(110);
+    expect(new Set(names).size).toBe(TOTAL);
   });
 
-  it("실선수 이름 형태가 아닌 가상 한글 이름(음절 조합, 3자)", () => {
+  it("실선수 이름(로스터 allowlist) — 생성 이름 = ROSTER 이름 (순서·값 일치)", () => {
+    // v2는 실명 허용(이슈 #84). 이름은 큐레이션 로스터에서만 오고, 절차 생성 가상 이름이 아니다.
+    expect(ROSTER.length).toBe(TOTAL);
+    expect(players.map((p) => p.name)).toEqual(ROSTER.map((r) => r.name));
+    const allow = new Set(ROSTER.map((r) => r.name));
+    for (const p of players) expect(allow.has(p.name), `${p.id}:${p.name}`).toBe(true);
+  });
+
+  it("이름이 실선수 형태(라틴 문자 포함) — 구 가상 한글 3음절 패턴 아님", () => {
     for (const p of players) {
-      expect(p.name).toMatch(/^[가-힣]{3}$/);
+      expect(p.name, `${p.id} 라틴 문자 포함`).toMatch(/[A-Za-z]/);
+      expect(p.name, `${p.id} 구 가상 패턴 아님`).not.toMatch(/^[가-힣]{3}$/);
     }
   });
 
-  it("실선수 거부 목록(REAL_NAME_DENYLIST)과 충돌 0 — 실선수 이름 금지", () => {
-    expect(REAL_NAME_DENYLIST.length).toBeGreaterThanOrEqual(100);
-    const deny = new Set(REAL_NAME_DENYLIST);
-    const collisions = players.filter((p) => deny.has(p.name)).map((p) => `${p.id}:${p.name}`);
-    expect(collisions, `실선수 이름 충돌: ${collisions.join(", ")}`).toEqual([]);
+  it("로스터 position/grade 가 생성 선수와 일치(파생 정합)", () => {
+    players.forEach((p, i) => {
+      expect(p.position).toBe(ROSTER[i].position);
+      expect(p.grade).toBe(ROSTER[i].grade);
+    });
   });
 });
 
-describe("players.v1 — 능력치 밴드 (AC-D1)", () => {
+describe("players.v2 — 능력치 밴드 + trait 반영 (AC-PL1)", () => {
   const ATTR_KEYS = [
     "technical",
     "mental",
@@ -160,9 +183,30 @@ describe("players.v1 — 능력치 밴드 (AC-D1)", () => {
       expect(primaryAvg, `${pos} 주스탯 평균 > 비주스탯 평균`).toBeGreaterThan(otherAvg);
     }
   });
+
+  it("각 선수의 trait 스탯이 밴드 내 상위(비trait 평균 이상) — 시그니처 반영", () => {
+    // trait 는 +6 바이어스 대상. 개별 롤 편차가 있으므로 모집단(전체 trait vs 전체 비trait) 평균으로 검증.
+    let traitSum = 0,
+      traitN = 0,
+      restSum = 0,
+      restN = 0;
+    players.forEach((p, i) => {
+      const traits = new Set(ROSTER[i].traits as string[]);
+      for (const key of ATTR_KEYS) {
+        if (traits.has(key)) {
+          traitSum += p.attributes[key];
+          traitN++;
+        } else {
+          restSum += p.attributes[key];
+          restN++;
+        }
+      }
+    });
+    expect(traitSum / traitN, "trait 평균 > 비trait 평균").toBeGreaterThan(restSum / restN);
+  });
 });
 
-describe("players.v1 — zod PlayerCard 호환 (AC-D3)", () => {
+describe("players.v2 — zod PlayerCard 호환 (AC-PL1)", () => {
   it("모든 선수가 shared PlayerCard 스키마로 파싱된다(id→playerId 매핑)", () => {
     for (const p of players) {
       const card = PlayerCard.parse({
@@ -176,9 +220,9 @@ describe("players.v1 — zod PlayerCard 호환 (AC-D3)", () => {
   });
 });
 
-describe("economy.v1 — 스타터팩·확률표", () => {
-  it("economy.version === 'v1'", () => {
-    expect(economy.version).toBe("v1");
+describe("economy.v2 — 스타터팩·확률표", () => {
+  it("economy.version === 'v2'", () => {
+    expect(economy.version).toBe("v2");
   });
 
   it("initialPoints === 3000", () => {
@@ -193,7 +237,7 @@ describe("economy.v1 — 스타터팩·확률표", () => {
     const counts: Record<Position, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
     for (const id of economy.starterPack) {
       const p = byId.get(id);
-      expect(p, `starterPack id ${id} exists in players.v1`).toBeDefined();
+      expect(p, `starterPack id ${id} exists in players.v2`).toBeDefined();
       if (!p) continue;
       counts[p.position]++;
       expect(
@@ -216,12 +260,20 @@ describe("economy.v1 — 스타터팩·확률표", () => {
     expect(economy.gacha.tenPityMinGrade).toBe("GOLD");
   });
 
+  it("gacha 레전드 희소 — LEGEND rate ≤ DIA ≤ GOLD (희소성 반영)", () => {
+    const r = economy.gacha.rates;
+    expect(r.LEGEND).toBeLessThanOrEqual(r.DIA);
+    expect(r.DIA).toBeLessThanOrEqual(r.GOLD);
+  });
+
   it("rewards — 승500/무200/패100", () => {
     expect(economy.rewards).toEqual({ win: 500, draw: 200, loss: 100 });
   });
 });
 
-describe("bots.v1 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)", () => {
+describe("bots.v2 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)", () => {
+  const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
+
   it("봇 3종 존재: BOT_ATK/BOT_DEF/BOT_BAL", () => {
     expect(bots.map((b) => b.id).sort()).toEqual(["BOT_ATK", "BOT_BAL", "BOT_DEF"]);
   });
@@ -235,8 +287,6 @@ describe("bots.v1 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)
 
     const allIds = [...bot.deck.starters.map((s) => s.playerId), ...bot.deck.bench];
     expect(new Set(allIds).size).toBe(15);
-
-    const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
     for (const id of allIds) {
       expect(byId.get(id), `${botId} 선수 ${id} exists`).toBeDefined();
     }
@@ -245,28 +295,38 @@ describe("bots.v1 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)
   it.each(["BOT_ATK", "BOT_DEF", "BOT_BAL"])("%s: 선발에 GK 최소 1명", (botId) => {
     const bot = bots.find((b) => b.id === botId);
     if (!bot) return;
-    const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
     const gkCount = bot.deck.starters.filter((s) => byId.get(s.playerId)?.position === "GK")
       .length;
     expect(gkCount).toBeGreaterThanOrEqual(1);
   });
 
+  it.each(["BOT_ATK", "BOT_DEF", "BOT_BAL"])(
+    "%s: DIA/LEGEND 미편성 — 상위 등급은 가챠 열망 카드로 예약",
+    (botId) => {
+      const bot = bots.find((b) => b.id === botId);
+      if (!bot) return;
+      const allIds = [...bot.deck.starters.map((s) => s.playerId), ...bot.deck.bench];
+      for (const id of allIds) {
+        const g = byId.get(id)!.grade;
+        expect(RANK[g], `${botId} ${id} ${g} ≤ GOLD`).toBeLessThanOrEqual(RANK.GOLD);
+      }
+    },
+  );
+
   it("BOT_ATK: FW 2명에 promptText('적극 침투') 부여", () => {
     const bot = bots.find((b) => b.id === "BOT_ATK");
     expect(bot).toBeDefined();
     if (!bot) return;
-    const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
     const promptedFw = bot.deck.starters.filter(
       (s) => byId.get(s.playerId)?.position === "FW" && s.promptText === "적극 침투",
     );
     expect(promptedFw.length).toBe(2);
   });
 
-  it("BOT_ATK: 미드필더/공격수가 GOLD 이상 위주", () => {
+  it("BOT_ATK: 미드필더/공격수가 GOLD 위주", () => {
     const bot = bots.find((b) => b.id === "BOT_ATK");
     expect(bot).toBeDefined();
     if (!bot) return;
-    const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
     const mfFw = bot.deck.starters.filter((s) => {
       const pos = byId.get(s.playerId)?.position;
       return pos === "MF" || pos === "FW";
@@ -275,11 +335,10 @@ describe("bots.v1 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)
     expect(goldUp.length).toBe(mfFw.length);
   });
 
-  it("BOT_DEF: 수비수가 GOLD 이상 위주", () => {
+  it("BOT_DEF: 수비수가 GOLD 위주", () => {
     const bot = bots.find((b) => b.id === "BOT_DEF");
     expect(bot).toBeDefined();
     if (!bot) return;
-    const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
     const df = bot.deck.starters.filter((s) => byId.get(s.playerId)?.position === "DF");
     const goldUp = df.filter((s) => RANK[byId.get(s.playerId)!.grade] >= RANK.GOLD);
     expect(goldUp.length).toBe(df.length);
@@ -289,7 +348,6 @@ describe("bots.v1 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)
     const bot = bots.find((b) => b.id === "BOT_BAL");
     expect(bot).toBeDefined();
     if (!bot) return;
-    const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
     const counts: Record<Grade, number> = { BRONZE: 0, SILVER: 0, GOLD: 0, DIA: 0, LEGEND: 0 };
     for (const s of bot.deck.starters) {
       const p = byId.get(s.playerId);
@@ -304,12 +362,12 @@ describe("bots.v1 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)
   });
 });
 
-describe("발행 파일 동기화 — v1 파일 = generateAll() 직렬화 결과", () => {
+describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const cases: readonly [string, unknown][] = [
-    ["players.v1.json", players],
-    ["economy.v1.json", economy],
-    ["bots.v1.json", bots],
+    ["players.v2.json", players],
+    ["economy.v2.json", economy],
+    ["bots.v2.json", bots],
   ];
 
   it.each(cases)("%s 가 디스크에서 바이트 동일(수정·재생성 누락 검출)", (file, data) => {
@@ -318,7 +376,7 @@ describe("발행 파일 동기화 — v1 파일 = generateAll() 직렬화 결과
   });
 });
 
-describe("재생성 결정론 (AC-D2)", () => {
+describe("재생성 결정론 (AC-PL1)", () => {
   it("generateAll()을 두 번 호출하면 바이트(JSON.stringify) 동일", () => {
     const a = generateAll();
     const b = generateAll();
