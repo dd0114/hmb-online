@@ -5,16 +5,23 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 import { useToken } from "../auth/TokenContext";
-import type { Deck } from "./hooks";
+import type { Deck, MatchDetail } from "./hooks";
 import type {
   FaProposeRequest,
+  LeagueNextMatchResponse,
+  LeagueResponse,
+  MatchLogItem,
+  RankingsResponse,
   RelationsResponse,
   TeamPresetSlot,
   TeamSnapshotSaveRequest,
+  TradeLogItem,
   TradeResolveResponse,
   TradeSlotsResponse,
   TradeSpeedupResponse,
 } from "./v2";
+import type { MatchLogFilter } from "../logs/logs-logic";
+import { matchLogQuery } from "../logs/logs-logic";
 
 /** GET /api/presets/team — always 3 slots (empty slots have name/snapshot=null). AC-B1. */
 export function useTeamPresets() {
@@ -128,6 +135,80 @@ export function useDeclineTrade() {
     mutationFn: (slot: number) =>
       apiFetch<TradeResolveResponse>(`/api/trade/${slot}/decline`, { method: "POST" }),
     onSuccess: () => invalidateAfterTrade(queryClient),
+  });
+}
+
+// ─────────────────────────── 로그·랭킹 (W4, AC-E) ───────────────────────────
+
+/**
+ * GET /api/logs/matches?mode&season — 경기 기록 리스트. 필터는 서버 쿼리(matchLogQuery)로 직렬화.
+ * queryKey 에 필터를 담아 필터 변경 시 재조회한다.
+ */
+export function useMatchLogs(filter: MatchLogFilter) {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: ["logs-matches", filter.mode, filter.season],
+    queryFn: () => apiFetch<MatchLogItem[]>(`/api/logs/matches${matchLogQuery(filter)}`),
+    enabled: Boolean(token),
+  });
+}
+
+/** GET /api/logs/trades — 트레이드 이력(성공/실패/거절/만료 + 상세). AC-E3. */
+export function useTradeLogs() {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: ["logs-trades"],
+    queryFn: () => apiFetch<TradeLogItem[]>("/api/logs/trades"),
+    enabled: Boolean(token),
+  });
+}
+
+/** GET /api/rankings — 리더보드 + 내 순위 + 개인 기록. AC-E2. */
+export function useRankings() {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: ["rankings"],
+    queryFn: () => apiFetch<RankingsResponse>("/api/rankings"),
+    enabled: Boolean(token),
+  });
+}
+
+// ─────────────────────────── 리그 (W5, AC-F) ───────────────────────────
+
+/** GET /api/league — 현재 시즌 상태·순위표·일정·다음 유저 경기. season=null 이면 시작 CTA. */
+export function useLeague() {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: ["league"],
+    queryFn: () => apiFetch<LeagueResponse>("/api/league"),
+    enabled: Boolean(token),
+  });
+}
+
+/** POST /api/league/start — ACTIVE 시즌 없으면 생성(봇 9팀 + 18R 일정). FINISHED 뒤엔 다음 시즌. */
+export function useStartLeague() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<LeagueResponse>("/api/league/start", { method: "POST" }),
+    onSuccess: (res) => {
+      queryClient.setQueryData(["league"], res);
+    },
+  });
+}
+
+/**
+ * POST /api/league/next-match — 다음 SCHEDULED 유저 픽스처로 매치 생성(mode=league, 홈/어웨이 반영).
+ * 반환 match 를 match 캐시에 시드해 /match/:id 진입 시 즉시 렌더되게 한다. league 캐시는 무효화
+ * (직전 라운드 봇전 정산이 순위표에 반영되도록).
+ */
+export function useStartNextLeagueMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<LeagueNextMatchResponse>("/api/league/next-match", { method: "POST" }),
+    onSuccess: (res) => {
+      queryClient.setQueryData(["match", res.match.id], res.match as unknown as MatchDetail);
+      queryClient.invalidateQueries({ queryKey: ["league"] });
+    },
   });
 }
 

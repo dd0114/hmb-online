@@ -42,6 +42,7 @@ export type TradeLogItem = SchemasV2["TradeLogItem"];
 export type MatchLogItem = SchemasV2["MatchLogItem"];
 export type RankingEntry = SchemasV2["RankingEntry"];
 export type RankingsResponse = SchemasV2["RankingsResponse"];
+export type PersonalRecords = SchemasV2["PersonalRecords"];
 
 // 리그 (W5)
 export type LeagueTeam = SchemasV2["LeagueTeam"];

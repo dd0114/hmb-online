@@ -24,6 +24,7 @@ describe("activeNavKey", () => {
     expect(activeNavKey("/deck")).toBe("deck");
     expect(activeNavKey("/codex")).toBe("codex");
     expect(activeNavKey("/trade")).toBe("trade"); // W3 활성
+    expect(activeNavKey("/logs")).toBe("logs"); // W4 활성
     expect(activeNavKey("/deck/anything")).toBe("deck");
     expect(activeNavKey("/shop")).toBeNull(); // 상점은 nav 항목 아님
   });
@@ -47,17 +48,14 @@ describe("AppNav render (LLD §7)", () => {
     }
   });
 
-  it("marks pending items (로그) as '준비중' + aria-disabled", () => {
+  it("has no '준비중' items — 로그(W4)·트레이드(W3) 모두 활성", () => {
     renderNav("/lobby");
     const bottom = within(screen.getByTestId("nav-bottom"));
-    for (const key of ["logs"]) {
+    for (const key of ["logs", "trade"]) {
       const btn = bottom.getByTestId(`nav-${key}`);
-      expect(btn.getAttribute("aria-disabled")).toBe("true");
-      expect(within(btn).getByText("준비중")).toBeTruthy();
+      expect(btn.getAttribute("aria-disabled")).toBeNull();
     }
-    // 트레이드(W3)는 더 이상 '준비중'이 아니다.
-    const tradeBtn = bottom.getByTestId("nav-trade");
-    expect(tradeBtn.getAttribute("aria-disabled")).toBeNull();
+    expect(NAV_ITEMS.every((i) => !i.pending)).toBe(true);
   });
 
   it("marks the active item for the current route (aria-current=page)", () => {

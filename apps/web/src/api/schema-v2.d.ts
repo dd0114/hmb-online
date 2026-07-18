@@ -577,18 +577,28 @@ export interface components {
             fixture: components["schemas"]["LeagueFixture"];
         };
         MatchLogItem: {
+            /** @description matchId — 상세 하프 로그 재생 링크에 사용 */
             id: string;
             /** @enum {string} */
             mode: "practice" | "league";
             opponentName: string;
+            /** @description 픽스처(=엔진) 관점 홈 득점. 유저 관점은 userWasHome 로 오리엔트. */
             scoreHome?: number | null;
+            /** @description 픽스처(=엔진) 관점 어웨이 득점. 유저 관점은 userWasHome 로 오리엔트. */
             scoreAway?: number | null;
-            /** @enum {string|null} */
+            /**
+             * @description 유저 관점 결과(어웨이 리그경기면 flip 반영).
+             * @enum {string|null}
+             */
             result: "WIN" | "DRAW" | "LOSS" | null;
             /** @description 리그 경기면 시즌 번호 */
             seasonNo?: number | null;
             /** @description 리그 경기면 라운드 */
             round?: number | null;
+            /** @description additive(W4). 유저가 이 경기에서 홈 사이드였는지. scoreHome/scoreAway 가 픽스처 관점이라 유저 득점=userWasHome?scoreHome:scoreAway 로 오리엔트한다. 연습·유저홈 리그경기는 true. */
+            userWasHome?: boolean;
+            /** @description additive(W4). 하프 로그(match_halves)가 존재해 상세 재생이 가능한지. */
+            hasHalves?: boolean;
             /** Format: date-time */
             createdAt: string;
         };

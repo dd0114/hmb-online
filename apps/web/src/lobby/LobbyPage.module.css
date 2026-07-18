@@ -126,6 +126,12 @@
   padding: 2px 8px;
 }
 
+.modeHint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
 .close {
   width: 100%;
   padding: 10px;

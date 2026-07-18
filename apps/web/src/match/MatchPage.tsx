@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMatch, useMe } from "../api/hooks";
 import { Layout } from "../common/Layout";
@@ -29,7 +29,11 @@ const STATE_LABELS: Record<string, string> = {
 export function MatchPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
+  // 리그 next-match 진입 시 라운드를 navigation state 로 전달받는다(MatchDetail 은 round 미포함,
+  // mode/leagueFixtureId 만 제공 — openapi-v2 MatchDetailPhase2Fields).
+  const leagueRound = (location.state as { leagueRound?: number } | null)?.leagueRound ?? null;
   const { data: me } = useMe();
   const { data: match, isLoading, isError } = useMatch(id);
 
@@ -55,6 +59,11 @@ export function MatchPage() {
       <h1 className={styles.pageTitle} data-testid="match-state-title">
         {match ? (STATE_LABELS[match.state] ?? match.state) : "매치"}
       </h1>
+      {(match?.mode === "league" || match?.leagueFixtureId) && (
+        <span className={styles.leagueBadge} data-testid="match-league-badge">
+          리그{leagueRound != null ? ` R${leagueRound}` : ""}
+        </span>
+      )}
       <span className={styles.stateTag} data-testid="match-state">
         {match?.state ?? "…"}
       </span>

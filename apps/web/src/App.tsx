@@ -9,6 +9,8 @@ import { DeckPage } from "./deck/DeckPage";
 import { ShopPage } from "./shop/ShopPage";
 import { CodexPage } from "./codex/CodexPage";
 import { TradePage } from "./trade/TradePage";
+import { LogsPage } from "./logs/LogsPage";
+import { LeaguePage } from "./league/LeaguePage";
 import { MatchPage } from "./match/MatchPage";
 import { setUnauthorizedHandler } from "./api/client";
 
@@ -83,6 +85,22 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <TradePage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/logs"
+          element={
+            <RequireAuth>
+              <LogsPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/league"
+          element={
+            <RequireAuth>
+              <LeaguePage />
             </RequireAuth>
           }
         />

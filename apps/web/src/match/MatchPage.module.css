@@ -26,6 +26,15 @@
   padding: 2px 8px;
 }
 
+.leagueBadge {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.15);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 .halftimeWrap {
   display: flex;
   flex-direction: column;

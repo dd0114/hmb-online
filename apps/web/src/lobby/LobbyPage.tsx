@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { useCreateMatch, useMe, useModes } from "../api/hooks";
+import { useCreateMatch, useMe } from "../api/hooks";
 import { useRelations } from "../api/hooks-v2";
 import { useToken } from "../auth/TokenContext";
 import { providerMeta } from "../auth/login-flow";
@@ -55,7 +55,12 @@ export function LobbyPage() {
       <TeamMoraleWidget relations={relations} />
 
       <div className={styles.menu}>
-        <button type="button" className={styles.menuButton} onClick={() => setModeModalOpen(true)}>
+        <button
+          type="button"
+          className={styles.menuButton}
+          data-testid="play-cta"
+          onClick={() => setModeModalOpen(true)}
+        >
           게임 시작
         </button>
         <button type="button" className={styles.menuButton} onClick={() => navigate("/deck")}>
@@ -74,15 +79,18 @@ export function LobbyPage() {
   );
 }
 
+/**
+ * 게임 시작 = 연습/리그 선택(AC-F1, LLD-p2-web §6 로비 개편).
+ * - 연습: POST /api/matches → BRIEFING → /match/:id (기존 싱글 풀 플로우).
+ * - 리그: /league 로 이동(시즌 없으면 시작 CTA, 있으면 대시보드).
+ */
 function ModeModal({ onClose }: { onClose: () => void }) {
-  const { data: modes, isLoading, isError } = useModes();
   const createMatch = useCreateMatch();
   const navigate = useNavigate();
   const [createError, setCreateError] = useState<string | null>(null);
 
-  function startSingle() {
+  function startPractice() {
     setCreateError(null);
-    // POST /api/matches → BRIEFING 매치 생성 → /match/:id (LLD-web §2 /lobby)
     createMatch.mutate(
       {},
       {
@@ -108,31 +116,30 @@ function ModeModal({ onClose }: { onClose: () => void }) {
       className={styles.modal}
     >
       <h2 id="mode-modal-title">모드 선택</h2>
-      {isLoading && <p>불러오는 중…</p>}
-      {isError && <ErrorToast message="모드 목록을 불러오지 못했습니다" />}
       <ul className={styles.modeList}>
-        {modes?.map((mode) => (
-          <li key={mode.id}>
-            <button
-              type="button"
-              className={styles.modeButton}
-              disabled={!mode.available || createMatch.isPending}
-              onClick={() => {
-                if (!mode.available) return;
-                if (mode.id === "single") startSingle();
-              }}
-            >
-              <span>
-                {mode.id === "single"
-                  ? createMatch.isPending
-                    ? "매치 생성 중…"
-                    : "싱글"
-                  : "멀티"}
-              </span>
-              {!mode.available && <span className={styles.badge}>{mode.label ?? "준비중"}</span>}
-            </button>
-          </li>
-        ))}
+        <li>
+          <button
+            type="button"
+            className={styles.modeButton}
+            disabled={createMatch.isPending}
+            data-testid="mode-practice"
+            onClick={startPractice}
+          >
+            <span>{createMatch.isPending ? "매치 생성 중…" : "연습 경기"}</span>
+            <span className={styles.modeHint}>봇과 단판</span>
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            className={styles.modeButton}
+            data-testid="mode-league"
+            onClick={() => navigate("/league")}
+          >
+            <span>리그</span>
+            <span className={styles.modeHint}>10팀 18라운드</span>
+          </button>
+        </li>
       </ul>
       <ErrorToast message={createError} onDismiss={() => setCreateError(null)} />
       <button type="button" className={styles.close} onClick={onClose}>
