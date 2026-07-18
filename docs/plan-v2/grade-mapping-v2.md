@@ -6,7 +6,9 @@
 
 ## 1. 배경
 
-v1(가상 선수 110명)을 **유명 실선수 150명**으로 전량 교체한다(유럽 빅클럽 현역 + 역대 레전드). '일단 풀부터 채운다' — 등급/버전 구조 심화는 #85 결과에 따라 후속.
+v1(가상 선수 110명)을 **유명 실선수 172명**으로 전량 교체한다: **인터내셔널 142명**(유럽 빅클럽 현역 + 역대 레전드) + **한국 유명 선수 30명**(hero 요청 — 국내/세계 위상 반영, 로마자 표기로 통일). '일단 풀부터 채운다' — 등급/버전 구조 심화는 #85 결과에 따라 후속.
+
+> 이름 표기: 기존 인터내셔널 선수와 **일관되게 전원 로마자**(예: `Son Heung-min`, `Park Ji-sung`). 한국 간판 손흥민·김민재는 국내 위상 반영해 **DIA 격상** 배치.
 
 ## 2. 등급 5단계 매핑 기준 (능력 위상 반영)
 
@@ -14,21 +16,23 @@ v1(가상 선수 110명)을 **유명 실선수 150명**으로 전량 교체한�
 
 | 등급 | 밴드 | 매핑 기준 | 예시 | 인원 |
 |---|---|---|---|---|
-| **LEGEND** | 80–95 | 역대 레전드 **전성기**(축구사 정상급, 은퇴/올타임) | Pelé, Maradona, Cruyff, Beckenbauer, Zidane, Ronaldo Nazário, van Basten, Yashin, Maldini | 12 |
-| **DIA** | 70–85 | 현역 **월드클래스** 빅클럽 주전(발롱도르권/세계 최정상) | Haaland, Mbappé, Bellingham, Vinícius, Rodri, De Bruyne, van Dijk, Modrić, Kane, Salah | 24 |
-| **GOLD** | 60–75 | 빅클럽 **확실한 주전** | Saka, Osimhen, Son Heung-min, Bruno Fernandes, Marquinhos, Lewandowski, Musiala | 40 |
-| **SILVER** | 50–65 | **로테이션·준주전**(좋은 클럽) | Havertz, Isak, Gakpo, Bastoni, Camavinga, Varane | 44 |
-| **BRONZE** | 40–55 | **백업·유망주**(프로스펙트) | Endrick, Yamal? no(GOLD), Kobbie Mainoo, Gavi, Leny Yoro, Warren Zaïre-Emery | 30 |
+| **LEGEND** | 80–95 | 역대 레전드 **전성기**(축구사 정상급, 은퇴/올타임) | Pelé, Maradona, Cruyff, Beckenbauer, Zidane, Ronaldo Nazário, Yashin, Maldini, **Park Ji-sung, Cha Bum-kun** | 14 |
+| **DIA** | 70–85 | 현역 **월드클래스** 빅클럽 주전(발롱도르권/세계 최정상) | Haaland, Mbappé, Bellingham, Vinícius, Rodri, De Bruyne, van Dijk, Kane, Salah, **Son Heung-min, Kim Min-jae** | 25 |
+| **GOLD** | 60–75 | 빅클럽 **확실한 주전** | Saka, Osimhen, Bruno Fernandes, Marquinhos, Lewandowski, **Lee Kang-in, Hwang Hee-chan, Hong Myung-bo** | 46 |
+| **SILVER** | 50–65 | **로테이션·준주전**(좋은 클럽) | Havertz, Isak, Gakpo, Bastoni, Varane, **Lee Jae-sung, Cho Hyun-woo, Cho Gue-sung** | 52 |
+| **BRONZE** | 40–55 | **백업·유망주**(프로스펙트) | Endrick, Kobbie Mainoo, Gavi, Leny Yoro, **Yang Min-hyuk, Oh Hyeon-gyu, Bae Jun-ho** | 35 |
 
-> 등급 경계는 절대적 랭킹이 아니라 **수집 게임의 희소성 층위**다: 레전드는 극소수(열망 카드), 하위 등급으로 갈수록 흔하다. 능력이 애매한 선수는 팀 내 위상·최근 폼으로 배정.
+> 등급 경계는 절대적 랭킹이 아니라 **수집 게임의 희소성 층위**다: 레전드는 극소수(열망 카드), 하위 등급으로 갈수록 흔하다. 능력이 애매한 선수는 팀 내 위상·최근 폼으로 배정. 한국 선수는 국내/아시아 위상을 반영(박지성·차범근=세계무대 레전드 → LEGEND, 손흥민·김민재=현역 간판 → DIA).
 
 ## 3. 포지션 분포
 
 | GK | DF | MF | FW | 계 |
 |---|---|---|---|---|
-| 19 | 47 | 48 | 36 | **150** |
+| 13 | 53 | 59 | 47 | **172** |
 
 - 실축구 스쿼드 비율(수비·미드 다수) 근사. 등급별로 전 포지션이 고루 존재하도록 배분(GK는 전 등급 ≥1).
+- **GK 비중 축소**(hero 지적): 초기 v2안(GK 19)은 컬렉션에서 GK가 과다 → **13명(전체의 ~7.5%)** 으로 감축. 팀당 선발 GK 1명이므로 수집 비중을 낮춘다.
+- **한국 선수 30명 추가**(hero 요청): GK 2(조현우·김승규) / DF 6 / MF 11(박지성 포함) / FW 11(차범근 포함). 손흥민·김민재는 인터내셔널 DIA 블록에 격상 배치(위 30명과 별개, 한국 선수 총 32명).
 
 ## 4. 능력치 9종 파생 규칙 (실선수 특성 반영)
 
@@ -42,7 +46,7 @@ v1(가상 선수 110명)을 **유명 실선수 150명**으로 전량 교체한�
 
 ## 5. ID 체계
 
-- `P###` **유지**(P001~P150). 소비자(server-java)는 문자열 id만 참조하므로 스킴 불변.
+- `P###` **유지**(P001~P172). 소비자(server-java)는 문자열 id만 참조하므로 스킴 불변.
 - v2는 **P-공간을 실선수로 재배정**한다(구 v1의 P001..P110 가상선수 의미는 폐기). starterPack·봇 덱 id도 v2 기준으로 재구성.
 - ⚠️ 이 때문에 **기존 DB 리셋 필요**(구 P-덱 보유 유저와 섞이면 스테일). PoC 범위 리셋 — hero 확인 대상(#84).
 
@@ -53,4 +57,4 @@ v1(가상 선수 110명)을 **유명 실선수 150명**으로 전량 교체한�
 
 ## 7. 검증 (data.test.ts)
 
-분포(150·포지션·등급 리터럴)·등급 희소 단조·ID 순차/유일·**실명 allowlist(=ROSTER 일치)**·밴드·trait 반영·zod PlayerCard·starterPack 구성·gacha 합=1·봇 덱 유효성·**봇 DIA/LEGEND 미편성**·디스크 바이트 동일·재생성 결정론. 루트 `npm test` 포함.
+분포(172·포지션·등급 리터럴)·한국선수 존재·등급 희소 단조·ID 순차/유일·**실명 allowlist(=ROSTER 일치)**·밴드·trait 반영·zod PlayerCard·starterPack 구성·gacha 합=1·봇 덱 유효성·**봇 DIA/LEGEND 미편성**·디스크 바이트 동일·재생성 결정론. 루트 `npm test` 포함.

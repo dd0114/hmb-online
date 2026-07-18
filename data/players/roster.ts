@@ -18,7 +18,7 @@
  *   BRONZE = 백업·유망주(프로스펙트)
  *
  * traits = 그 선수의 시그니처 능력치(밴드 내 +6 바이어스). 능력치 9종 키만 허용.
- * 로스터 순서 = ID 배정 순서(P001..P150). 등급 desc → 포지션(GK,DF,MF,FW) 블록으로 정렬.
+ * 로스터 순서 = ID 배정 순서(P001..P172). 등급 desc → 포지션(GK,DF,MF,FW) 블록으로 정렬.
  */
 import type { Position, Grade, PlayerAttributes } from "./generate";
 
@@ -31,8 +31,11 @@ export interface RosterEntry {
 }
 
 /**
- * 실선수 150명. 등급 분포: LEGEND 12 / DIA 24 / GOLD 40 / SILVER 44 / BRONZE 30.
- * 포지션 분포: GK 19 / DF 47 / MF 48 / FW 36. (문서화된 총원 — data.test.ts 가 리터럴로 검증)
+ * 실선수 172명(인터내셔널 142 + 한국 30, hero 요청 #84). 등급 분포:
+ *   LEGEND 14 / DIA 25 / GOLD 46 / SILVER 52 / BRONZE 35.
+ * 포지션 분포: GK 13 / DF 53 / MF 59 / FW 47. (문서화된 총원 — data.test.ts 가 리터럴로 검증)
+ * GK 는 컬렉션 비중을 낮춤(팀당 선발 1명) — hero 지적 반영해 19→13.
+ * 아래 섹션 헤더의 (n) 은 그 블록 인원(인터내셔널 블록은 국제 선수 기준, 한국 블록은 별도 30).
  */
 export const ROSTER: readonly RosterEntry[] = [
   // ── LEGEND (12) — 역대 레전드 전성기 ─────────────────────────────
@@ -49,10 +52,9 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "Johan Cruyff", position: "FW", grade: "LEGEND", traits: ["technical", "passing"] },
   { name: "Marco van Basten", position: "FW", grade: "LEGEND", traits: ["shooting", "positioning"] },
 
-  // ── DIA (24) — 현역 월드클래스 빅클럽 주전 ────────────────────────
+  // ── DIA (25) — 현역 월드클래스 빅클럽 주전 (한국 간판 손흥민·김민재 격상 포함) ──
   { name: "Alisson", position: "GK", grade: "DIA", traits: ["positioning", "mental"] },
   { name: "Thibaut Courtois", position: "GK", grade: "DIA", traits: ["positioning", "physical"] },
-  { name: "Marc-André ter Stegen", position: "GK", grade: "DIA", traits: ["passing", "positioning"] },
   { name: "Virgil van Dijk", position: "DF", grade: "DIA", traits: ["tackling", "physical"] },
   { name: "Rúben Dias", position: "DF", grade: "DIA", traits: ["tackling", "positioning"] },
   { name: "Achraf Hakimi", position: "DF", grade: "DIA", traits: ["pace", "stamina"] },
@@ -60,6 +62,7 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "Antonio Rüdiger", position: "DF", grade: "DIA", traits: ["physical", "tackling"] },
   { name: "William Saliba", position: "DF", grade: "DIA", traits: ["tackling", "pace"] },
   { name: "Theo Hernández", position: "DF", grade: "DIA", traits: ["pace", "shooting"] },
+  { name: "Kim Min-jae", position: "DF", grade: "DIA", traits: ["physical", "tackling"] },
   { name: "Rodri", position: "MF", grade: "DIA", traits: ["passing", "positioning"] },
   { name: "Kevin De Bruyne", position: "MF", grade: "DIA", traits: ["passing", "shooting"] },
   { name: "Jude Bellingham", position: "MF", grade: "DIA", traits: ["physical", "shooting"] },
@@ -74,13 +77,12 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "Harry Kane", position: "FW", grade: "DIA", traits: ["shooting", "passing"] },
   { name: "Mohamed Salah", position: "FW", grade: "DIA", traits: ["pace", "shooting"] },
   { name: "Lautaro Martínez", position: "FW", grade: "DIA", traits: ["shooting", "positioning"] },
+  { name: "Son Heung-min", position: "FW", grade: "DIA", traits: ["shooting", "pace"] },
 
-  // ── GOLD (40) — 빅클럽 확실한 주전 ───────────────────────────────
+  // ── GOLD (36) — 빅클럽 확실한 주전 ───────────────────────────────
   { name: "Ederson", position: "GK", grade: "GOLD", traits: ["passing", "positioning"] },
   { name: "Gianluigi Donnarumma", position: "GK", grade: "GOLD", traits: ["positioning", "physical"] },
   { name: "Jan Oblak", position: "GK", grade: "GOLD", traits: ["positioning", "mental"] },
-  { name: "Mike Maignan", position: "GK", grade: "GOLD", traits: ["positioning", "physical"] },
-  { name: "Emiliano Martínez", position: "GK", grade: "GOLD", traits: ["mental", "positioning"] },
   { name: "Trent Alexander-Arnold", position: "DF", grade: "GOLD", traits: ["passing", "technical"] },
   { name: "Kyle Walker", position: "DF", grade: "GOLD", traits: ["pace", "physical"] },
   { name: "Marquinhos", position: "DF", grade: "GOLD", traits: ["tackling", "positioning"] },
@@ -91,7 +93,6 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "Reece James", position: "DF", grade: "GOLD", traits: ["physical", "passing"] },
   { name: "João Cancelo", position: "DF", grade: "GOLD", traits: ["passing", "technical"] },
   { name: "David Alaba", position: "DF", grade: "GOLD", traits: ["passing", "positioning"] },
-  { name: "Kim Min-jae", position: "DF", grade: "GOLD", traits: ["physical", "tackling"] },
   { name: "Matthijs de Ligt", position: "DF", grade: "GOLD", traits: ["tackling", "physical"] },
   { name: "Andrew Robertson", position: "DF", grade: "GOLD", traits: ["stamina", "passing"] },
   { name: "Bruno Fernandes", position: "MF", grade: "GOLD", traits: ["passing", "shooting"] },
@@ -111,18 +112,15 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "Rafael Leão", position: "FW", grade: "GOLD", traits: ["pace", "technical"] },
   { name: "Julián Álvarez", position: "FW", grade: "GOLD", traits: ["shooting", "stamina"] },
   { name: "Victor Osimhen", position: "FW", grade: "GOLD", traits: ["pace", "shooting"] },
-  { name: "Son Heung-min", position: "FW", grade: "GOLD", traits: ["shooting", "pace"] },
   { name: "Marcus Rashford", position: "FW", grade: "GOLD", traits: ["pace", "shooting"] },
   { name: "Lamine Yamal", position: "FW", grade: "GOLD", traits: ["technical", "pace"] },
   { name: "Khvicha Kvaratskhelia", position: "FW", grade: "GOLD", traits: ["technical", "pace"] },
   { name: "Robert Lewandowski", position: "FW", grade: "GOLD", traits: ["shooting", "positioning"] },
 
-  // ── SILVER (44) — 로테이션·준주전 ────────────────────────────────
+  // ── SILVER (42) — 로테이션·준주전 ────────────────────────────────
   { name: "André Onana", position: "GK", grade: "SILVER", traits: ["passing", "positioning"] },
-  { name: "Gregor Kobel", position: "GK", grade: "SILVER", traits: ["positioning", "physical"] },
   { name: "Yann Sommer", position: "GK", grade: "SILVER", traits: ["positioning", "mental"] },
   { name: "David Raya", position: "GK", grade: "SILVER", traits: ["passing", "positioning"] },
-  { name: "Diogo Costa", position: "GK", grade: "SILVER", traits: ["positioning", "mental"] },
   { name: "Raphaël Varane", position: "DF", grade: "SILVER", traits: ["tackling", "positioning"] },
   { name: "Lisandro Martínez", position: "DF", grade: "SILVER", traits: ["tackling", "technical"] },
   { name: "Cristian Romero", position: "DF", grade: "SILVER", traits: ["tackling", "physical"] },
@@ -163,12 +161,9 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "Nicolas Jackson", position: "FW", grade: "SILVER", traits: ["pace", "stamina"] },
   { name: "Serhou Guirassy", position: "FW", grade: "SILVER", traits: ["shooting", "physical"] },
 
-  // ── BRONZE (30) — 백업·유망주(프로스펙트) ────────────────────────
+  // ── BRONZE (27) — 백업·유망주(프로스펙트) ────────────────────────
   { name: "Giorgi Mamardashvili", position: "GK", grade: "BRONZE", traits: ["positioning", "physical"] },
-  { name: "Bart Verbruggen", position: "GK", grade: "BRONZE", traits: ["positioning", "passing"] },
   { name: "Guglielmo Vicario", position: "GK", grade: "BRONZE", traits: ["positioning", "mental"] },
-  { name: "Đorđe Petrović", position: "GK", grade: "BRONZE", traits: ["positioning", "physical"] },
-  { name: "Filip Jörgensen", position: "GK", grade: "BRONZE", traits: ["positioning", "passing"] },
   { name: "Rico Lewis", position: "DF", grade: "BRONZE", traits: ["passing", "stamina"] },
   { name: "Levi Colwill", position: "DF", grade: "BRONZE", traits: ["tackling", "passing"] },
   { name: "Leny Yoro", position: "DF", grade: "BRONZE", traits: ["tackling", "physical"] },
@@ -194,4 +189,41 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "Karim Adeyemi", position: "FW", grade: "BRONZE", traits: ["pace", "stamina"] },
   { name: "Hugo Ekitike", position: "FW", grade: "BRONZE", traits: ["pace", "technical"] },
   { name: "Alejandro Garnacho", position: "FW", grade: "BRONZE", traits: ["pace", "technical"] },
+
+  // ── 한국 유명 선수 (30, hero 요청) — 로마자 표기, 국내/세계 위상 반영 ──
+  // (간판 손흥민·김민재는 위 DIA 블록으로 격상 배치 — 여기 30명은 신규 추가분)
+  // LEGEND (2) — 세계 무대 한국 레전드
+  { name: "Park Ji-sung", position: "MF", grade: "LEGEND", traits: ["stamina", "mental"] },
+  { name: "Cha Bum-kun", position: "FW", grade: "LEGEND", traits: ["shooting", "physical"] },
+  // GOLD (10)
+  { name: "Lee Kang-in", position: "MF", grade: "GOLD", traits: ["technical", "passing"] },
+  { name: "Ki Sung-yueng", position: "MF", grade: "GOLD", traits: ["passing", "mental"] },
+  { name: "Yoo Sang-chul", position: "MF", grade: "GOLD", traits: ["physical", "shooting"] },
+  { name: "Hong Myung-bo", position: "DF", grade: "GOLD", traits: ["positioning", "passing"] },
+  { name: "Lee Young-pyo", position: "DF", grade: "GOLD", traits: ["pace", "stamina"] },
+  { name: "Kim Joo-sung", position: "DF", grade: "GOLD", traits: ["tackling", "physical"] },
+  { name: "Hwang Hee-chan", position: "FW", grade: "GOLD", traits: ["pace", "physical"] },
+  { name: "Ahn Jung-hwan", position: "FW", grade: "GOLD", traits: ["technical", "shooting"] },
+  { name: "Lee Dong-gook", position: "FW", grade: "GOLD", traits: ["shooting", "positioning"] },
+  { name: "Hwang Sun-hong", position: "FW", grade: "GOLD", traits: ["shooting", "physical"] },
+  // SILVER (10)
+  { name: "Lee Jae-sung", position: "MF", grade: "SILVER", traits: ["stamina", "passing"] },
+  { name: "Hwang In-beom", position: "MF", grade: "SILVER", traits: ["passing", "technical"] },
+  { name: "Koo Ja-cheol", position: "MF", grade: "SILVER", traits: ["passing", "shooting"] },
+  { name: "Lee Chung-yong", position: "MF", grade: "SILVER", traits: ["technical", "passing"] },
+  { name: "Kim Young-gwon", position: "DF", grade: "SILVER", traits: ["positioning", "tackling"] },
+  { name: "Kim Jin-su", position: "DF", grade: "SILVER", traits: ["stamina", "passing"] },
+  { name: "Cho Hyun-woo", position: "GK", grade: "SILVER", traits: ["positioning", "mental"] },
+  { name: "Park Chu-young", position: "FW", grade: "SILVER", traits: ["technical", "shooting"] },
+  { name: "Seol Ki-hyeon", position: "FW", grade: "SILVER", traits: ["physical", "pace"] },
+  { name: "Cho Gue-sung", position: "FW", grade: "SILVER", traits: ["physical", "shooting"] },
+  // BRONZE (8) — 백업·유망주
+  { name: "Bae Jun-ho", position: "MF", grade: "BRONZE", traits: ["technical", "pace"] },
+  { name: "Hong Hyun-seok", position: "MF", grade: "BRONZE", traits: ["passing", "shooting"] },
+  { name: "Paik Seung-ho", position: "MF", grade: "BRONZE", traits: ["passing", "stamina"] },
+  { name: "Seol Young-woo", position: "DF", grade: "BRONZE", traits: ["stamina", "pace"] },
+  { name: "Kim Seung-gyu", position: "GK", grade: "BRONZE", traits: ["positioning", "mental"] },
+  { name: "Yang Min-hyuk", position: "FW", grade: "BRONZE", traits: ["pace", "technical"] },
+  { name: "Oh Hyeon-gyu", position: "FW", grade: "BRONZE", traits: ["physical", "pace"] },
+  { name: "Yang Hyun-jun", position: "FW", grade: "BRONZE", traits: ["pace", "technical"] },
 ];

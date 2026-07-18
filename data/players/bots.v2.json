@@ -8,57 +8,57 @@
       "formation": "4-3-3",
       "starters": [
         {
-          "playerId": "P037",
+          "playerId": "P038",
           "slotIndex": 0
         },
         {
-          "playerId": "P042",
+          "playerId": "P041",
           "slotIndex": 1
         },
         {
-          "playerId": "P043",
+          "playerId": "P042",
           "slotIndex": 2
         },
         {
-          "playerId": "P044",
+          "playerId": "P043",
           "slotIndex": 3
         },
         {
-          "playerId": "P045",
+          "playerId": "P044",
           "slotIndex": 4
         },
         {
-          "playerId": "P055",
+          "playerId": "P053",
           "slotIndex": 5
         },
         {
-          "playerId": "P056",
+          "playerId": "P054",
           "slotIndex": 6
         },
         {
-          "playerId": "P057",
+          "playerId": "P055",
           "slotIndex": 7
         },
         {
-          "playerId": "P068",
+          "playerId": "P066",
           "slotIndex": 8,
           "promptText": "적극 침투"
         },
         {
-          "playerId": "P069",
+          "playerId": "P067",
           "slotIndex": 9,
           "promptText": "적극 침투"
         },
         {
-          "playerId": "P070",
+          "playerId": "P068",
           "slotIndex": 10
         }
       ],
       "bench": [
-        "P038",
-        "P046",
-        "P058",
-        "P071"
+        "P039",
+        "P045",
+        "P056",
+        "P069"
       ]
     }
   },
@@ -71,55 +71,55 @@
       "formation": "5-3-2",
       "starters": [
         {
-          "playerId": "P037",
+          "playerId": "P038",
           "slotIndex": 0
         },
         {
-          "playerId": "P042",
+          "playerId": "P041",
           "slotIndex": 1
         },
         {
-          "playerId": "P043",
+          "playerId": "P042",
           "slotIndex": 2
         },
         {
-          "playerId": "P044",
+          "playerId": "P043",
           "slotIndex": 3
         },
         {
-          "playerId": "P045",
+          "playerId": "P044",
           "slotIndex": 4
         },
         {
-          "playerId": "P046",
+          "playerId": "P045",
           "slotIndex": 5
         },
         {
-          "playerId": "P055",
+          "playerId": "P053",
           "slotIndex": 6
         },
         {
-          "playerId": "P056",
+          "playerId": "P054",
           "slotIndex": 7
         },
         {
-          "playerId": "P057",
+          "playerId": "P055",
           "slotIndex": 8
         },
         {
-          "playerId": "P068",
+          "playerId": "P066",
           "slotIndex": 9
         },
         {
-          "playerId": "P069",
+          "playerId": "P067",
           "slotIndex": 10
         }
       ],
       "bench": [
-        "P038",
-        "P047",
-        "P058",
-        "P070"
+        "P039",
+        "P046",
+        "P056",
+        "P068"
       ]
     }
   },
@@ -132,55 +132,55 @@
       "formation": "4-4-2",
       "starters": [
         {
-          "playerId": "P077",
+          "playerId": "P074",
           "slotIndex": 0
         },
         {
-          "playerId": "P126",
+          "playerId": "P118",
           "slotIndex": 1
         },
         {
-          "playerId": "P127",
+          "playerId": "P119",
           "slotIndex": 2
         },
         {
-          "playerId": "P082",
+          "playerId": "P077",
           "slotIndex": 3
         },
         {
-          "playerId": "P083",
+          "playerId": "P078",
           "slotIndex": 4
         },
         {
-          "playerId": "P097",
+          "playerId": "P092",
           "slotIndex": 5
         },
         {
-          "playerId": "P098",
+          "playerId": "P093",
           "slotIndex": 6
         },
         {
-          "playerId": "P099",
+          "playerId": "P094",
           "slotIndex": 7
         },
         {
-          "playerId": "P100",
+          "playerId": "P095",
           "slotIndex": 8
         },
         {
-          "playerId": "P111",
+          "playerId": "P106",
           "slotIndex": 9
         },
         {
-          "playerId": "P068",
+          "playerId": "P066",
           "slotIndex": 10
         }
       ],
       "bench": [
-        "P078",
-        "P084",
-        "P101",
-        "P112"
+        "P075",
+        "P079",
+        "P096",
+        "P107"
       ]
     }
   }

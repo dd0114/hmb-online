@@ -11,15 +11,27 @@ const GRADES: Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
 
 // 문서화된 총원(LLD-data §2 v2 / grade-mapping-v2.md)을 테스트에 직접 박제 — roster/generate 의
 // 상수를 재사용하면 자기참조 검증이 되어 데이터 드리프트를 못 잡는다. 리터럴로 독립 검증한다.
-const TOTAL = 150;
-const POSITION_TOTALS: Record<Position, number> = { GK: 19, DF: 47, MF: 48, FW: 36 };
+const TOTAL = 172;
+const POSITION_TOTALS: Record<Position, number> = { GK: 13, DF: 53, MF: 59, FW: 47 };
 const GRADE_TOTALS: Record<Grade, number> = {
-  BRONZE: 30,
-  SILVER: 44,
-  GOLD: 40,
-  DIA: 24,
-  LEGEND: 12,
+  BRONZE: 35,
+  SILVER: 52,
+  GOLD: 46,
+  DIA: 25,
+  LEGEND: 14,
 };
+
+// hero 요청(#84): 한국 유명 선수 추가. 대표 선수의 존재·등급을 명시 검증(도감 반영 보장).
+const EXPECTED_KOREANS: readonly { name: string; grade: Grade }[] = [
+  { name: "Son Heung-min", grade: "DIA" },
+  { name: "Kim Min-jae", grade: "DIA" },
+  { name: "Park Ji-sung", grade: "LEGEND" },
+  { name: "Cha Bum-kun", grade: "LEGEND" },
+  { name: "Lee Kang-in", grade: "GOLD" },
+  { name: "Hwang Hee-chan", grade: "GOLD" },
+  { name: "Cho Hyun-woo", grade: "SILVER" },
+  { name: "Yang Min-hyuk", grade: "BRONZE" },
+];
 const BANDS: Record<Grade, readonly [number, number]> = {
   BRONZE: [40, 55],
   SILVER: [50, 65],
@@ -42,13 +54,18 @@ describe("players.v2 — counts/distribution (AC-PL1)", () => {
     expect(players.length).toBe(TOTAL);
   });
 
-  it("포지션 분포 GK19/DF47/MF48/FW36", () => {
+  it("포지션 분포 GK13/DF53/MF59/FW47 (GK 비중 축소)", () => {
     const counts: Record<Position, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
     for (const p of players) counts[p.position]++;
     expect(counts).toEqual(POSITION_TOTALS);
   });
 
-  it("등급 분포 BRONZE30/SILVER44/GOLD40/DIA24/LEGEND12 (레전드 희소)", () => {
+  it("GK 비중이 낮다 — 컬렉션의 12% 미만(팀당 선발 1명, hero 지적 반영)", () => {
+    const gk = players.filter((p) => p.position === "GK").length;
+    expect(gk / players.length).toBeLessThan(0.12);
+  });
+
+  it("등급 분포 BRONZE35/SILVER52/GOLD46/DIA25/LEGEND14 (레전드 희소)", () => {
     const counts: Record<Grade, number> = {
       BRONZE: 0,
       SILVER: 0,
@@ -137,6 +154,15 @@ describe("players.v2 — ID/이름 유일성 + 실선수(로스터 일치)", () 
       expect(p.position).toBe(ROSTER[i].position);
       expect(p.grade).toBe(ROSTER[i].grade);
     });
+  });
+
+  it("한국 유명 선수 포함(hero 요청 #84) — 대표 선수 존재 + 등급 일치", () => {
+    const byName = new Map(players.map((p) => [p.name, p]));
+    for (const k of EXPECTED_KOREANS) {
+      const p = byName.get(k.name);
+      expect(p, `한국 선수 ${k.name} 존재`).toBeDefined();
+      expect(p?.grade, `${k.name} 등급`).toBe(k.grade);
+    }
   });
 });
 
