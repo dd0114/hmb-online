@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- #65 임베드 핸드셰이크 테스트 호스트(동종 오리진 file://). viewer-test.html 을 iframe 으로 임베드해
+     viewerReady 수신 → loadMatchLog 주입 → 결과를 window.__HANDSHAKE__ 에 노출. embed-inject.spec.ts 가 읽는다. -->
+<html>
+  <head><meta charset="utf-8" /><title>embed-host</title></head>
+  <body>
+    <script>
+      window.__HANDSHAKE__ = { readyCount: 0, injected: null, done: false };
+      const INJECT_LOG = {
+        configVersion: "embed-test@1",
+        seed: "inject-marker-777",
+        finalScore: { home: 3, away: 0 },
+        events: [
+          { tick: 2, minute: 0, type: "shot", team: "home", playerId: "H9" },
+          { tick: 3, minute: 0, type: "goal", team: "home", playerId: "H9" },
+        ],
+        tickSnapshots: [
+          { tick: 0, minute: 0, ball: { x: 52.5, y: 34 }, ballOwner: "H9", players: [{ playerId: "H9", team: "home", pos: { x: 52.5, y: 34 } }] },
+          { tick: 1, minute: 0, ball: { x: 80, y: 34 }, ballOwner: "H9", players: [{ playerId: "H9", team: "home", pos: { x: 80, y: 34 } }] },
+          { tick: 2, minute: 0, ball: { x: 100, y: 34 }, ballOwner: "H9", players: [{ playerId: "H9", team: "home", pos: { x: 100, y: 34 } }] },
+          { tick: 3, minute: 0, ball: { x: 105, y: 34 }, ballOwner: null, players: [{ playerId: "H9", team: "home", pos: { x: 103, y: 34 } }] },
+        ],
+      };
+      const iframe = document.createElement("iframe");
+      iframe.style.width = "1000px";
+      iframe.style.height = "700px";
+      // viewerReady 수신 시 loadMatchLog 주입. (iframe __viewer 검증은 테스트가 Playwright frame API 로 —
+      // file:// 크로스프레임 JS 접근은 브라우저가 막으므로 호스트에선 핸드셰이크만.)
+      window.addEventListener("message", function (ev) {
+        var d = ev && ev.data;
+        if (d && d.type === "viewerReady") {
+          window.__HANDSHAKE__.readyCount++;
+          iframe.contentWindow.postMessage({ type: "loadMatchLog", matchLog: INJECT_LOG }, "*");
+          window.__HANDSHAKE__.done = true;
+        }
+      });
+      // viewer-test.html 은 같은 e2e 디렉토리 → 동종 오리진.
+      iframe.src = "./viewer-test.html";
+      document.body.appendChild(iframe);
+    </script>
+  </body>
+</html>
