@@ -1,0 +1,99 @@
+.card {
+  position: relative;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.reveal {
+  animation: pop 0.35s ease;
+}
+
+@keyframes pop {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.caption {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.pos {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grade {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.personality {
+  margin-top: 2px;
+}
+
+.attrs {
+  margin: 6px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.attrRow {
+  display: grid;
+  grid-template-columns: 44px 1fr 22px;
+  align-items: center;
+  gap: 6px;
+}
+
+.attrLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.attrValue {
+  display: contents;
+}
+
+.attrBar {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  background: #232838;
+  overflow: hidden;
+}
+
+.attrFill {
+  display: block;
+  height: 100%;
+}
+
+.attrNum {
+  font-size: 10px;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

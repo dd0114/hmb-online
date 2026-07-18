@@ -8,6 +8,7 @@ import { LobbyPage } from "./lobby/LobbyPage";
 import { DeckPage } from "./deck/DeckPage";
 import { ShopPage } from "./shop/ShopPage";
 import { CodexPage } from "./codex/CodexPage";
+import { TradePage } from "./trade/TradePage";
 import { MatchPage } from "./match/MatchPage";
 import { setUnauthorizedHandler } from "./api/client";
 
@@ -74,6 +75,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <CodexPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/trade"
+          element={
+            <RequireAuth>
+              <TradePage />
             </RequireAuth>
           }
         />

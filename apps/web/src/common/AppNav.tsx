@@ -7,8 +7,8 @@ import styles from "./AppNav.module.css";
  * - 데스크탑(≥1024px): 좌측 사이드바.
  * 두 표현 모두 같은 항목을 렌더하고 CSS 미디어쿼리로 전환한다(단일 소스).
  *
- * 항목: 홈(로비)/덱/트레이드/로그/도감. 트레이드(W3)·로그(W4)는 라우트 미구현 —
- * '준비중' 비활성. 상점·리그는 로비 진입 유지(LLD §6).
+ * 항목: 홈(로비)/덱/트레이드/로그/도감. 로그(W4)는 라우트 미구현 — '준비중' 비활성.
+ * 트레이드(W3)는 활성. 상점·리그는 로비 진입 유지(LLD §6).
  */
 export interface NavItem {
   key: string;
@@ -22,7 +22,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "home", label: "홈", icon: "🏠", to: "/lobby" },
   { key: "deck", label: "덱", icon: "🃏", to: "/deck" },
-  { key: "trade", label: "트레이드", icon: "🔄", to: "/trade", pending: true },
+  { key: "trade", label: "트레이드", icon: "🔄", to: "/trade" },
   { key: "logs", label: "로그", icon: "📋", to: "/logs", pending: true },
   { key: "codex", label: "도감", icon: "📖", to: "/codex" },
 ];

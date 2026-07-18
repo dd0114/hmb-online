@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { duplicateRequest } from "./hooks-v2";
+import { describe, expect, it, vi } from "vitest";
+import { duplicateRequest, invalidateAfterTrade, TRADE_INVALIDATE_KEYS } from "./hooks-v2";
 import type { TeamPresetSlot } from "./v2";
 
 const filled: TeamPresetSlot = {
@@ -32,5 +32,15 @@ describe("duplicateRequest", () => {
   it("returns null for an empty slot", () => {
     const empty: TeamPresetSlot = { slot: 2, name: null, snapshot: null, updatedAt: null };
     expect(duplicateRequest(empty)).toBeNull();
+  });
+});
+
+describe("invalidateAfterTrade", () => {
+  it("invalidates trade + wallet(me) + owned/codex(players) caches (W3)", () => {
+    const invalidateQueries = vi.fn();
+    invalidateAfterTrade({ invalidateQueries });
+    const calledKeys = invalidateQueries.mock.calls.map((c) => c[0].queryKey);
+    expect(calledKeys).toEqual([["trade"], ["me"], ["players"]]);
+    expect(invalidateQueries).toHaveBeenCalledTimes(TRADE_INVALIDATE_KEYS.length);
   });
 });

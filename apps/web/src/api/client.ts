@@ -51,6 +51,9 @@ export type ErrorCode =
   | "INVALID_STATE"
   | "SUBSTITUTION_INVALID"
   | "AI_JOB_FAILED"
+  // Phase2 superset (openapi-v2 §ErrorCode) — added on the trade/league waves (v2.ts W0 note).
+  | "TRADE_INVALID"
+  | "LEAGUE_INVALID"
   | "INTERNAL_ERROR";
 
 export interface ApiErrorBody {

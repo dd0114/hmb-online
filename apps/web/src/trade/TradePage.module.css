@@ -1,0 +1,43 @@
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 4px;
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: 17px;
+}
+
+.slots {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pending {
+  margin-top: 14px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Desktop: 3 slots side-by-side. */
+@media (min-width: 1024px) {
+  .slots {
+    flex-direction: row;
+    align-items: flex-start;
+  }
+  .slots > * {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+}

@@ -30,6 +30,7 @@ export type RelationsResponse = SchemasV2["RelationsResponse"];
 export type Personality = SchemasV2["Personality"];
 
 // 트레이드 (W3)
+export type PlayerRef = SchemasV2["PlayerRef"];
 export type TradeSlot = SchemasV2["TradeSlot"];
 export type TradeSlotsResponse = SchemasV2["TradeSlotsResponse"];
 export type TradeSpeedupResponse = SchemasV2["TradeSpeedupResponse"];
