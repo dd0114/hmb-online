@@ -702,8 +702,14 @@ export function resolveShot(
     gkSaver.posFx.y = keeperSpot.y;
   }
   if (rng.next() < config.contest.saveCornerProb) {
-    // 세이브 굴절 코너: 공은 키퍼 위치에 먼저 놓이고(shot_out 프레임) → 정지 후 코너 세트피스.
-    parkForRestart(keeperSpot.x, keeperSpot.y, { kind: "corner", side: scorerSide, nearY: cornerNearY });
+    // #91: 세이브 굴절 코너 — 공을 키퍼(라인 앞)에 세워 멈추게(freeze) 하지 말고, 키퍼를 스쳐 **골라인
+    // 밖으로 굴절돼 나가는** 지점에 둔다(빗맞은슛 오버런과 동일). 뷰어가 슛→이 지점을 보간하므로 공이
+    // 실제로 나가는 게 보이고 "키퍼가 잡아 멈춤" 부자연 freeze 가 사라진다(엔진 데이터 자연화, 뷰어 트릭 X).
+    const outSign = keeperGoal.x === 0 ? -1 : 1;
+    const overrunX = keeperGoal.x + outSign * toFixed(config.contest.offTargetOverrunM, scale);
+    const towardCorner = cornerNearY < line.y ? -1 : 1; // 굴절 코너 쪽(위/아래)으로 라인 밖.
+    const overrunY = line.y + towardCorner * (halfPost + toFixed(config.contest.offTargetWideMarginM, scale));
+    parkForRestart(overrunX, overrunY, { kind: "corner", side: scorerSide, nearY: cornerNearY });
     return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, saveEv];
   }
   // GK 캐치: 키퍼가 공을 잡고 인플레이 지속(정지 없음).

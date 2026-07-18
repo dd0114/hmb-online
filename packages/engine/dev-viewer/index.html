@@ -132,7 +132,6 @@
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
-      const SETPIECE_ZOOM = 1.7;               // #59: 세트피스 걷기 구간 줌(박스 + 걸어오는 taker 가 보이게 팔로우보다 넓게)
       const CONTACT_ZOOM = 2.6, FOUL_CONTACT_TICKS = 3; // 파울 접촉 순간 줌(두 선수 충돌 보이게) + 지속 틱
       const FOUL_HOLD_MS = 1000; // 파울/페널티 정지는 길게 — 카메라가 접촉점으로 줌 완료(~730ms)+충돌을 보여줄 여유
       const CAM_SMOOTH = 0.12;                 // 정지(freeze) 중 카메라 팬 속도(0..1/frame). 정지→정지 줌 순간이동 방지.
@@ -201,6 +200,18 @@
         ctx.fillRect(sx(PITCH_W), sy(g0), 5, sy(g0 + 7.32) - sy(g0));
       }
 
+      // #90: 세트피스(코너/스로인) 재시작 **대기 구간**(공이 스팟에 정지, taker 워크인) 판정.
+      // 이 구간엔 클로즈업이 없어야 하는데, spSpot 제거만으론 nearKey(인접 하이라이트 사전 줌/슬로우)가
+      // 같은 자리를 다시 침범해 2.6 줌이 새어나왔다(독립 QA 발견). → 이 구간엔 nearKey 를 억제해 와이드 유지.
+      function inSetpieceWait(tick) {
+        for (const st of stoppages) {
+          if (st.isGoal || !st.setPiece || tick < st.causeTick || tick > st.causeTick + 32) continue;
+          const cs = snapByTick.get(st.causeTick), now = snapByTick.get(tick);
+          if (cs && now && Math.hypot(now.ball.x - cs.ball.x, now.ball.y - cs.ball.y) < 3) return true;
+        }
+        return false;
+      }
+
       function draw() {
         if (snaps.length === 0) { drawPitch(); return; }
         const i = Math.min(Math.floor(tickPos), snaps.length - 1);
@@ -215,24 +226,13 @@
 
         // 카메라: 수동 공따라가기 OR 하이라이트(찬스/골) 근처면 자동 줌인
         const curTick = A.tick;
-        const nearKey = autoPace && inHighlight(curTick, keyTicks, HL_PRE, HL_POST);
+        const nearKey = autoPace && !inSetpieceWait(curTick) && inHighlight(curTick, keyTicks, HL_PRE, HL_POST);
         // 골 세리머니 후반(트윈>0.4)엔 줌을 풀어 선수들이 포메이션으로 걸어 복귀하는 걸 전체뷰로 보여줌.
         const koTweening = hold && hold.koIdx != null && hold.tween > 0.4;
-        // #59: 세트피스 재시작 **걷기 구간** — 공이 스팟에 정지한 채 taker 가 평소 속도로 걸어와 잡는다
-        // (엔진이 낸 자연 무브먼트). 그동안 카메라를 스팟(정지 공)에 고정(SETPIECE_ZOOM)해 taker 워크인·
-        // 박스 배치를 안정적으로 보여준다. 공이 스팟을 떠나면(딜리버리/스로인) 해제 → 팔로우로 자연 전환.
-        // 공이 정지라 팬이 스팟에 수렴해 멈춰 wobble(줌아웃→줌인 반전)이 없다(구: 450ms hold 가 강제
-        // wide 팬을 걸었다가 미완인 채 nearKey 팔로우로 되돌아가 줌이 튐 — QA #59 blocker2).
-        // 세트피스/접촉 줌은 자동 연출(autoPace) 전용 — autoPace off(수동 스크럽·지오메트리 검사)면
-        // 평범한 카메라로 둬 줌에 가려지는 것 없이 실제 배치를 본다. nearKey(하이라이트)와 동일 정책.
-        let spSpot = null;
-        if (autoPace) for (const st of stoppages) {
-          if (st.isGoal || !(st.setPiece || st.pauseOnly) || curTick < st.causeTick || curTick > st.causeTick + 32) continue;
-          const csnap = snapByTick.get(st.causeTick);
-          if (csnap && Math.hypot(bx - csnap.ball.x, by - csnap.ball.y) < 3) { spSpot = csnap.ball; break; }
-        }
-        // 파울 접촉 줌(최우선): 파울/페널티 정지의 causeTick 부근엔 접촉 지점(파울러=victim 도 2m 내)으로
-        // 줌해 "두 선수 충돌"을 보여준다. 파울 순간 와이드로 작은 점 되던 것 해소(#59 후 파울 접촉 소실).
+        // #90: 스로인·코너킥 등 세트피스 재시작 클로즈업(구 spSpot 세트피스 줌) 제거 — hero 요구.
+        //   세트피스는 일반(와이드/팔로우) 카메라로 재생한다. (파울/페널티 접촉 줌 #74 는 별개로 유지.)
+        // 파울 접촉 줌: 파울/페널티 정지의 causeTick 부근엔 접촉 지점(파울러=victim 도 2m 내)으로 줌해
+        // "두 선수 충돌"을 보여준다. autoPace 전용(수동 스크럽·지오메트리 검사면 평범한 카메라).
         let contactPos = null;
         if (autoPace) for (const st of stoppages) {
           if (st.isGoal || !st.contactAnchor || curTick < st.causeTick || curTick > st.causeTick + FOUL_CONTACT_TICKS) continue;
@@ -241,11 +241,9 @@
           if (pl) { contactPos = pl.pos; break; }
         }
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
-        const useFollow = !koTweening && !contactPos && !spSpot && (follow || nearKey || (hold ? !!hold.zoom : false));
+        const useFollow = !koTweening && !contactPos && (follow || nearKey || (hold ? !!hold.zoom : false));
         const camTarget = contactPos
           ? { cx: contactPos.x, cy: contactPos.y, zoom: CONTACT_ZOOM }
-          : spSpot
-          ? { cx: spSpot.x, cy: spSpot.y, zoom: SETPIECE_ZOOM }
           : useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
         // 재생 중 카메라를 항상 목표로 부드럽게 팬 → 정지 전환·하이라이트 줌인/줌아웃·정지 재개
         // (전체뷰↔줌) 모두 순간이동 없이 이어진다(코너-하이라이트 겹침 프레임 튐 방지).
@@ -482,7 +480,7 @@
         }
         if (playing && snaps.length > 1) {
           const beforeTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
-          const nearKey = autoPace && inHighlight(beforeTick, keyTicks, HL_PRE, HL_POST);
+          const nearKey = autoPace && !inSetpieceWait(beforeTick) && inHighlight(beforeTick, keyTicks, HL_PRE, HL_POST);
           const eff = autoPace ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed;
           tickPos += dt * TICKS_PER_SEC * eff;
           if (tickPos >= snaps.length - 1) { tickPos = snaps.length - 1; setPlaying(false); }

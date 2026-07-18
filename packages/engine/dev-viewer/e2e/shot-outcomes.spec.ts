@@ -20,6 +20,25 @@ test("off_target → 공이 골라인 밖으로 벗어난다(옆/뒤)", async ({
   }
 });
 
+test("#91 save→corner → 공이 골라인 밖 와이드로 나간다(키퍼에 안 멈춤, 골 오인 없음)", async ({ page }) => {
+  const saves = await eventsOfType(page, "save");
+  const corners = await eventsOfType(page, "kickoff", "corner");
+  let checked = 0;
+  for (const s of saves) {
+    // 코너로 굴절된 세이브만(다음 재시작이 코너).
+    const corner = corners.find((c) => c.tick > s.tick && c.tick <= s.tick + 8);
+    if (!corner) continue;
+    const ball = await ballAtTick(page, s.tick);
+    if (!ball) continue;
+    // 공이 골라인 밖으로 나감(키퍼 앞에 잡혀 멈추지 않음) = off_target 처럼 라이브로 나가는 게 보임.
+    expect(outsideGoalLine(ball), `save→corner t${s.tick}: 공이 골라인 밖으로 나가야 (${ball.x.toFixed(1)},${ball.y.toFixed(1)})`).toBe(true);
+    // 골문 안(포스트 사이)이 아님 = 와이드 굴절 → 골 오인 없음(V2 #15 보존).
+    expect(inGoalMouth(ball), `save→corner t${s.tick}: 공이 골문 안이면 골 오인 (${ball.x.toFixed(1)},${ball.y.toFixed(1)})`).toBe(false);
+    checked++;
+  }
+  expect(checked, "판정 가능한 save→corner 없음").toBeGreaterThan(0);
+});
+
 test("one_on_one → 슛 이벤트로 발행되고 팀이 명시된다", async ({ page }) => {
   const one = await eventsOfType(page, "shot", "one_on_one");
   expect(one.length).toBeGreaterThan(0);
