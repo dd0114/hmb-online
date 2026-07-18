@@ -14,11 +14,13 @@ import {
 import {
   duplicateRequest,
   useApplyTeamPreset,
+  useRelations,
   useSaveTeamPreset,
   useTeamPresets,
 } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
+import { TeamMoraleWidget } from "../common/RelationBits";
 import {
   bulkApplyPreset,
   emptyDraft,
@@ -65,6 +67,7 @@ export function DeckPage() {
   const { data: players, isLoading: playersLoading } = usePlayers();
   const { data: presets } = useTeamPresets();
   const { data: promptPresets } = usePresets();
+  const { data: relations } = useRelations();
   const updateDeck = useUpdateDeck();
   const createPreset = useCreatePreset();
   const deletePreset = useDeletePreset();
@@ -182,6 +185,8 @@ export function DeckPage() {
 
   return (
     <Layout header={header} nav>
+      <TeamMoraleWidget relations={relations} />
+
       <div className={styles.formationRow}>
         <label htmlFor="formation" className={styles.formationLabel}>
           포메이션
@@ -211,6 +216,7 @@ export function DeckPage() {
         onToggleAi={setAiManaged}
         players={ownedPlayers}
         playersById={playersById}
+        relations={relations}
         errorPlayerId={serverError?.playerId ?? null}
       />
 

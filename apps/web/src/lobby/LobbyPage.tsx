@@ -2,16 +2,19 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useCreateMatch, useMe, useModes } from "../api/hooks";
+import { useRelations } from "../api/hooks-v2";
 import { useToken } from "../auth/TokenContext";
 import { providerMeta } from "../auth/login-flow";
 import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
+import { TeamMoraleWidget } from "../common/RelationBits";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import styles from "./LobbyPage.module.css";
 
 export function LobbyPage() {
   const { data: me, isLoading, isError } = useMe();
+  const { data: relations } = useRelations();
   const { logout, provider } = useToken();
   const navigate = useNavigate();
   const [modeModalOpen, setModeModalOpen] = useState(false);
@@ -48,6 +51,8 @@ export function LobbyPage() {
     <Layout header={header} nav>
       {isLoading && <p>불러오는 중…</p>}
       {isError && <ErrorToast message="내 정보를 불러오지 못했습니다" />}
+
+      <TeamMoraleWidget relations={relations} />
 
       <div className={styles.menu}>
         <button type="button" className={styles.menuButton} onClick={() => setModeModalOpen(true)}>

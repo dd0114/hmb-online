@@ -98,7 +98,7 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   await expect(page).toHaveURL(/\/match\//);
 
   await expect(page.getByTestId("briefing-panel")).toBeVisible();
-  await page.getByTestId("briefing-team-prompt").fill("측면 활용, 강하게 압박");
+  await page.getByTestId("editor-team-prompt").fill("측면 활용, 강하게 압박");
   await page.getByTestId("kickoff-button").click();
 
   // === H1_BREAK: 전반 시각 재생 ===

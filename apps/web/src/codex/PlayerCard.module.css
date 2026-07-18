@@ -69,6 +69,10 @@
   font-weight: 700;
 }
 
+.personality {
+  margin-top: 2px;
+}
+
 .attrs {
   margin: 0;
   padding: 8px 10px 10px;

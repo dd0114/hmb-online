@@ -1,0 +1,134 @@
+/* 관계 표시 위젯 (AC-C4) — 성격 뱃지 · 신뢰도 게이지 · 팀 사기 위젯 */
+
+.badge,
+.badgeXs {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #1b2029;
+  border: 1px solid #2b323d;
+  color: #c8d0dc;
+  white-space: nowrap;
+}
+
+.badge {
+  font-size: 12px;
+}
+
+.badgeXs {
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.badgeLabel {
+  font-weight: 600;
+}
+
+/* ── 신뢰도 게이지 ── */
+.trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #9aa4b2;
+}
+
+.trustLabel {
+  font-weight: 600;
+}
+
+.trustBar {
+  position: relative;
+  display: inline-block;
+  width: 72px;
+  height: 6px;
+  border-radius: 999px;
+  background: #262c36;
+  overflow: hidden;
+}
+
+.trustFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.trustValue {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  min-width: 22px;
+  text-align: right;
+}
+
+/* ── 팀 사기 위젯 ── */
+.morale,
+.moraleCompact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #161a21;
+  border: 1px solid #262c36;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.moraleCompact {
+  padding: 8px 10px;
+}
+
+.moraleHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.moraleTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c8d0dc;
+}
+
+.moraleTierLabel {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.moraleBar {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: #262c36;
+  overflow: hidden;
+}
+
+.moraleFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+
+.streak {
+  font-size: 11px;
+  font-weight: 700;
+  align-self: flex-start;
+}
+
+.streakWin {
+  color: #3fb950;
+}
+
+.streakLoss {
+  color: #da3633;
+}
+
+.streakNone {
+  color: #6b7482;
+}

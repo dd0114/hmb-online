@@ -50,6 +50,11 @@ vi.mock("../api/hooks", () => {
   };
 });
 
+// BriefingPanel(AC-C4)이 hooks-v2 의 useRelations 를 쓴다 — 라우팅 렌더 테스트에선 무데이터로 목.
+vi.mock("../api/hooks-v2", () => ({
+  useRelations: () => ({ data: undefined, isLoading: false, isError: false }),
+}));
+
 import { MatchPage } from "./MatchPage";
 
 function renderWithState(match: Partial<MatchDetail> | undefined) {

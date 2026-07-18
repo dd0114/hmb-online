@@ -74,7 +74,7 @@ test("AC-W1: login → deck save → full match → result → record", async ({
   // 4) BRIEFING — 상대 분석 + 프롬프트 입력 → 킥오프
   await expect(page.getByTestId("briefing-panel")).toBeVisible();
   await expect(page.getByTestId("opponent-analysis")).toBeVisible();
-  await page.getByTestId("briefing-team-prompt").fill("초반부터 강하게 압박, 측면 활용");
+  await page.getByTestId("editor-team-prompt").fill("초반부터 강하게 압박, 측면 활용");
   await page.getByTestId("kickoff-button").click();
 
   // 5) GEN1 대기 → H1_BREAK (stub servant 가 잡 처리)

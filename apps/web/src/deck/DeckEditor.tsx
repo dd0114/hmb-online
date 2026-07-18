@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { CatalogPlayer } from "../api/hooks";
-import type { ConditionMap } from "../api/v2";
+import type { ConditionMap, RelationsResponse } from "../api/v2";
+import { relationOf } from "../common/relations";
 import {
   assignPlayer,
   findPlayerSlot,
@@ -32,6 +33,8 @@ export interface DeckEditorProps {
   playersById: Map<string, CatalogPlayer>;
   /** briefing-only extras. */
   conditions?: ConditionMap;
+  /** relations (AC-C4) — feeds the player sheet trust gauge + personality badge. */
+  relations?: RelationsResponse;
   opponentPower?: number;
   opponentName?: string;
   opponentApprox?: boolean;
@@ -52,6 +55,7 @@ export function DeckEditor(props: DeckEditorProps) {
     players,
     playersById,
     conditions,
+    relations,
     opponentPower,
     opponentName,
     opponentApprox,
@@ -131,6 +135,8 @@ export function DeckEditor(props: DeckEditorProps) {
           player={editingPlayer}
           promptText={editingSlot.promptText ?? ""}
           condition={conditions?.[editingPlayer.id]}
+          trust={relationOf(relations, editingPlayer.id)?.trust}
+          personality={relationOf(relations, editingPlayer.id)?.personality}
           onChange={(text) => mutateDraft(setPrompt(draft, editingPlayer.id, text))}
           onRemoveFromDeck={() => {
             mutateDraft(removePlayer(draft, editingPlayer.id));

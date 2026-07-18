@@ -7,6 +7,7 @@ import { apiFetch } from "./client";
 import { useToken } from "../auth/TokenContext";
 import type { Deck } from "./hooks";
 import type {
+  RelationsResponse,
   TeamPresetSlot,
   TeamSnapshotSaveRequest,
 } from "./v2";
@@ -45,6 +46,19 @@ export function useApplyTeamPreset() {
     onSuccess: (deck) => {
       queryClient.setQueryData(["deck"], deck);
     },
+  });
+}
+
+/**
+ * GET /api/relations — 팀 사기(morale/streak) + 선수별 신뢰도(trust)·성격(personality). AC-C4.
+ * 관계는 경기 결과/기용으로 변동하므로 me/players 갱신과 함께 무효화된다(호출부에서 처리).
+ */
+export function useRelations() {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: ["relations"],
+    queryFn: () => apiFetch<RelationsResponse>("/api/relations"),
+    enabled: Boolean(token),
   });
 }
 

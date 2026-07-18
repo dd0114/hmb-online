@@ -4,9 +4,17 @@ import type { components } from "./schema";
 import { useToken } from "../auth/TokenContext";
 import { shouldPoll } from "../match/match-logic";
 
+import type { Personality } from "./v2";
+
 export type MeResponse = components["schemas"]["MeResponse"];
 export type ModeInfo = components["schemas"]["ModeInfo"];
-export type CatalogPlayer = components["schemas"]["CatalogPlayer"];
+/**
+ * V1 CatalogPlayer + Phase2 additive personality (openapi-v2 CatalogPlayerPhase2Fields) — 도감/
+ * 덱 표시용. optional 이라 personality 미제공 응답도 유효(관계 표시만 생략).
+ */
+export type CatalogPlayer = components["schemas"]["CatalogPlayer"] & {
+  personality?: Personality;
+};
 export type Deck = components["schemas"]["Deck"];
 export type DeckUpdateRequest = components["schemas"]["DeckUpdateRequest"];
 export type PromptPreset = components["schemas"]["PromptPreset"];

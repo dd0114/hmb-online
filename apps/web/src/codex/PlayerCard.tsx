@@ -1,5 +1,6 @@
 import type { CatalogPlayer } from "../api/hooks";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
+import { PersonalityBadge } from "../common/RelationBits";
 import styles from "./PlayerCard.module.css";
 
 const ATTRIBUTE_LABELS: Array<[key: keyof CatalogPlayer["attributes"], label: string]> = [
@@ -53,6 +54,11 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
         <span className={styles.grade} style={{ color: gradeColor }}>
           {GRADE_LABELS[player.grade]}
         </span>
+        {player.personality && (
+          <span className={styles.personality}>
+            <PersonalityBadge personality={player.personality} size="xs" />
+          </span>
+        )}
       </button>
 
       {expanded && (

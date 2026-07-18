@@ -11,6 +11,8 @@ import {
   type DirectiveState,
 } from "./directives";
 import { ConditionClock } from "../match/ConditionClock";
+import { PersonalityBadge, TrustGauge } from "../common/RelationBits";
+import type { Personality } from "../api/v2";
 import styles from "./PlayerSheet.module.css";
 
 interface PlayerSheetProps {
@@ -19,6 +21,9 @@ interface PlayerSheetProps {
   promptText: string;
   /** optional condition for the clock header (briefing). */
   condition?: number;
+  /** optional relation (AC-C4) — trust gauge + personality badge in the header. */
+  trust?: number;
+  personality?: Personality;
   onChange: (text: string) => void;
   onRemoveFromDeck: () => void;
   onClose: () => void;
@@ -32,7 +37,8 @@ interface PlayerSheetProps {
  * the promptText sent to the server. Chip/role state is sheet-local (an input aid) — on open the
  * whole stored promptText is treated as the free layer.
  */
-export function PlayerSheet({ player, promptText, condition, onChange, onRemoveFromDeck, onClose }: PlayerSheetProps) {
+export function PlayerSheet({ player, promptText, condition, trust, personality, onChange, onRemoveFromDeck, onClose }: PlayerSheetProps) {
+  const personalityValue = personality ?? player.personality;
   const [directive, setDirective] = useState<DirectiveState>(emptyDirectiveState());
   const [freeText, setFreeText] = useState<string>(promptText);
 
@@ -64,6 +70,14 @@ export function PlayerSheet({ player, promptText, condition, onChange, onRemoveF
           닫기
         </button>
       </div>
+
+      {/* ── 관계 (AC-C4): 성격 뱃지 + 신뢰도 게이지 ── */}
+      {(personalityValue || trust != null) && (
+        <div className={styles.relationRow} data-testid="sheet-relation">
+          {personalityValue && <PersonalityBadge personality={personalityValue} />}
+          {trust != null && <TrustGauge trust={trust} />}
+        </div>
+      )}
 
       {/* ── 상단: 전술 지시 (정형 UI) ── */}
       <div className={styles.tacticalLayer} data-testid="sheet-tactical-layer">
