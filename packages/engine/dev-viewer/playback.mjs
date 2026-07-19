@@ -69,6 +69,32 @@ export function buildBallCutTicks(events, snaps) {
 }
 
 /**
+ * R1 정련(#100, hero): 슛/패스 **비행 구간**(공 owner=null)을 발사팀 색으로 칠하기 위한 tick→side 맵.
+ * 슛하면 공이 무소유(루즈볼)가 돼 트레일이 중립으로 빠지던 것 방지 — "슛 판정(세이브/골/빗나감)까지
+ * 소유권을 슛한 팀으로". 슛 시도(결과마커 saved/off_target 제외)·패스의 발사팀을, 그 이벤트 틱부터
+ * 공이 다시 점유될 때까지의 무소유 틱들에 부여한다. 결정론(순수).
+ * @returns {Map<number, "home"|"away">}
+ */
+export function buildFlightSides(events, snaps) {
+  const map = new Map();
+  const idxByTick = new Map(snaps.map((s, i) => [s.tick, i]));
+  const isLaunch = (e) => e.team && (e.type === "pass" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target"));
+  for (const e of events) {
+    if (!isLaunch(e)) continue;
+    const i = idxByTick.get(e.tick);
+    if (i == null) continue;
+    // 발사 틱부터 앞으로: 무소유 틱은 발사팀으로 마킹. 발사 이후 점유되면(리시버/키퍼) 비행 종료.
+    for (let j = i; j < snaps.length && j < i + 24; j++) {
+      const o = snaps[j].ballOwner;
+      if (o == null) { map.set(snaps[j].tick, e.team); continue; }
+      if (j > i) break; // 발사 후 점유 → 비행 끝.
+      // j===i 인데 발사자가 아직 명목상 소유 → 마킹 스킵하고 뒤의 무소유(진짜 비행)로 계속.
+    }
+  }
+  return map;
+}
+
+/**
  * @typedef {Object} Stoppage
  * @property {number} causeTick
  * @property {number} restartTick
@@ -257,5 +283,6 @@ export function buildPlayback(events, snaps) {
     stoppages,
     restartTicks: buildRestartTicks(events),
     ballCutTicks: buildBallCutTicks(events, snaps),
+    flightSides: buildFlightSides(events, snaps),
   };
 }

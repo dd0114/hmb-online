@@ -154,6 +154,7 @@
       <button id="followBtn">🔍 Follow ball</button>
       <button id="trailBtn" class="active">✦ Player trails</button>
       <button id="highlightBtn" class="active">🎬 Highlights</button>
+      <button id="statsBtn" class="active">📊 Stats</button>
       <span class="sp">Speed</span>
       <button data-speed="0.25">0.25x</button>
       <button data-speed="0.5">0.5x</button>
@@ -222,6 +223,7 @@
       let fx = [], passEvents = [], interceptEvents = [], surgeTicks = [];
       let cardMarks = [], lastCardMarks = []; // R4(#100): 카드 받은 선수 표시(마커+번호).
       let annos = [], snapByTick = new Map(), restartTickSet = new Set(), ballCutTickSet = new Set(), totalMinutes = 0;
+      let flightSides = new Map(); // R1 정련: 슛/패스 비행 틱 → 발사팀 side(무소유 트레일 색 소스).
       let stoppages = [], hold = null; // 데드볼: freeze→skip 시퀀스
       let lastRender = null; // 마지막 draw()의 렌더된 공(보간 후) — Playwright 계약검증용(__viewer.render()).
       let lastGeom = null;   // 마지막 draw()의 화면좌표 기하(캔버스px) — taker/공 클리핑 계약검증용(__viewer.screenGeom()).
@@ -344,14 +346,17 @@
         // R1(#100): 세그먼트 색 = 그 구간 **소유팀 색**(home 파랑/away 빨강). 소유자 없으면(비행 중
         // 패스/슛) 직전 소유팀 색을 carry-forward(출발팀 색), 진짜 루즈볼(carry 도 없음)은 중립 회색.
         ctx.lineWidth = 2.8;
-        // 트레일 창 시작 직전까지 스캔해 carry-forward 시드(비행 시작 전 마지막 소유팀).
+        // 세그먼트 side 우선순위: 실소유(s) → 비행팀(발사팀, s) → 실소유(s−1) → 비행팀(s−1) → carry.
+        // 비행팀(flightSides): 슛/패스로 공이 무소유가 돼도 발사팀 색 유지(hero: 슛 판정까지 슛한 팀).
+        const segSideAt = (s) => ownerSideOf(snaps[s].ballOwner) || flightSides.get(snaps[s].tick) || null;
+        // 트레일 창 시작 직전까지 스캔해 carry-forward 시드(비행 시작 전 마지막 소유/비행팀).
         let trailSide = null;
         for (let b = Math.max(0, i - BALL_TRAIL); b >= Math.max(0, i - BALL_TRAIL - 8); b--) {
-          const sd = ownerSideOf(snaps[b].ballOwner); if (sd) { trailSide = sd; break; }
+          const sd = segSideAt(b); if (sd) { trailSide = sd; break; }
         }
         const trailRender = [];
         for (let s = Math.max(1, i - BALL_TRAIL + 1); s <= i; s++) {
-          const segSide = ownerSideOf(snaps[s].ballOwner) || ownerSideOf(snaps[s - 1].ballOwner) || trailSide;
+          const segSide = segSideAt(s) || segSideAt(s - 1) || trailSide;
           if (segSide) trailSide = segSide;
           if (spansReposition(snaps[s - 1].tick, snaps[s].tick, ballCutTickSet)) continue; // #51: 연속 아웃 공 트레일 유지
           const a = (s - (i - BALL_TRAIL)) / BALL_TRAIL; // 0..1 (최신일수록 1)
@@ -755,6 +760,11 @@
       trailBtn.onclick = () => { showTrail = !showTrail; trailBtn.classList.toggle("active", showTrail); draw(); };
       const hlBtn = document.getElementById("highlightBtn");
       hlBtn.onclick = () => { autoPace = !autoPace; hlBtn.classList.toggle("active", autoPace); };
+      // F1 정련(#100): 통계 HUD 온/오프 토글(기본 켜짐). 다른 토글처럼 .active 표시.
+      const hudEl = document.getElementById("hud");
+      const statsBtn = document.getElementById("statsBtn");
+      let showStats = true;
+      statsBtn.onclick = () => { showStats = !showStats; statsBtn.classList.toggle("active", showStats); hudEl.style.display = showStats ? "flex" : "none"; };
       document.getElementById("nextShot").onclick = () => jumpEvent("shot", 1);
       document.getElementById("prevShot").onclick = () => jumpEvent("shot", -1);
       document.getElementById("nextGoal").onclick = () => jumpEvent("goal", 1);
@@ -780,7 +790,7 @@
         snapByTick = new Map(snaps.map((s) => [s.tick, s]));
         cumPoss = computeCumulativePossession(snaps); lastHudTick = -1; // F1 실시간 통계 준비.
         const pb = buildPlayback(data.events, snaps); // playback.mjs (vitest 검증)
-        annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks; ballCutTickSet = pb.ballCutTicks;
+        annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks; ballCutTickSet = pb.ballCutTicks; flightSides = pb.flightSides;
         // R2 이펙트 소스: 패스완성 펄스·가로챔 스틸플래시·돌파(SURGE) 스피드라인.
         passEvents = data.events.filter((e) => e.type === "pass").map((e) => ({ tick: e.tick, side: e.team || null, playerId: e.playerId || null }));
         interceptEvents = data.events.filter((e) => e.type === "interception").map((e) => ({ tick: e.tick, side: e.team || null }));

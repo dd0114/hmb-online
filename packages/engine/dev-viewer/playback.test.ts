@@ -8,6 +8,7 @@ import {
   isContinuousOut,
   buildBallCutTicks,
   inHighlight,
+  buildFlightSides,
 } from "./playback.mjs";
 
 describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 컷 (하이라이트 순간이동 버그 회귀방지)", () => {
@@ -321,5 +322,28 @@ describe("buildAnnotations", () => {
     s.push({ tick: 8, ballOwner: "H6", ball: { x: 64, y: 34 } }); // 소유 변경으로 run 종료
     const a = buildAnnotations([], s);
     expect(a.find((x) => x.text === "SURGE!")).toBeTruthy();
+  });
+
+  it("buildFlightSides — 슛 비행(무소유) 틱을 슛한 팀으로, 재점유 시 종료", () => {
+    const snaps = [
+      { tick: 10, ballOwner: "H9" },
+      { tick: 11, ballOwner: null }, // 슛 발사(무소유)
+      { tick: 12, ballOwner: null }, // 비행
+      { tick: 13, ballOwner: null }, // 골문 안착(무소유)
+      { tick: 14, ballOwner: "A1" }, // 상대 재점유 → 비행 끝
+    ];
+    const m = buildFlightSides([{ type: "shot", tick: 11, team: "home" }], snaps);
+    expect(m.get(11)).toBe("home");
+    expect(m.get(12)).toBe("home");
+    expect(m.get(13)).toBe("home");
+    expect(m.has(14)).toBe(false);
+    expect(m.has(10)).toBe(false); // 발사 전은 실소유(H9)로 이미 처리.
+  });
+
+  it("buildFlightSides — 패스 발사팀 색, 결과마커(saved/off_target)는 발사 아님", () => {
+    const snaps = [{ tick: 1, ballOwner: "A3" }, { tick: 2, ballOwner: null }, { tick: 3, ballOwner: "A5" }];
+    expect(buildFlightSides([{ type: "pass", tick: 2, team: "away" }], snaps).get(2)).toBe("away");
+    expect(buildFlightSides([{ type: "shot", tick: 2, detail: "saved", team: "home" }], snaps).has(2)).toBe(false);
+    expect(buildFlightSides([{ type: "shot", tick: 2, detail: "off_target", team: "home" }], snaps).has(2)).toBe(false);
   });
 });
