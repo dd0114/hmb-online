@@ -1,4 +1,14 @@
 import { useMemo, useState } from "react";
+import {
+  closestCenter,
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
 import type { CatalogPlayer } from "../api/hooks";
 import type { ConditionMap, RelationsResponse } from "../api/v2";
 import { relationOf } from "../common/relations";
@@ -14,7 +24,7 @@ import {
 } from "./deck-logic";
 import { movePlayerToSlot, type EditorState } from "./tactics-logic";
 import { teamPower } from "./team-power";
-import { TacticsBoard, type SlotRef } from "./TacticsBoard";
+import { TacticsBoard, parseDroppableId, playerIdFromDragId, type SlotRef } from "./TacticsBoard";
 import { PlayerSheet } from "./PlayerSheet";
 import { TeamTacticsPanel } from "./TeamTacticsPanel";
 import { TeamPowerBar } from "./TeamPowerBar";
@@ -66,6 +76,21 @@ export function DeckEditor(props: DeckEditorProps) {
   const [selectedSlot, setSelectedSlot] = useState<SlotRef | null>(null);
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
+  // Single DndContext spans the board slots + bench (token sources) AND the owned-player pool list
+  // (pool: source, 요구 5). Sensors moved up here from TacticsBoard — pointer/touch/keyboard all kept.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(KeyboardSensor),
+  );
+
+  function handleDragEnd(e: DragEndEvent) {
+    if (!e.over) return;
+    const playerId = playerIdFromDragId(String(e.active.id));
+    const target = parseDroppableId(String(e.over.id));
+    handleMove(playerId, target.role, target.slotIndex);
+  }
+
   const starterSlots = draft.slots.filter((s) => s.role === "starter");
   const starterCount = starterSlots.length;
 
@@ -108,6 +133,7 @@ export function DeckEditor(props: DeckEditorProps) {
   const editingSlot = selectedPlayerId ? findPlayerSlot(draft, selectedPlayerId) : undefined;
 
   return (
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
     <div className={styles.editor} data-testid="deck-editor">
       {/* ≥1024px: 좌 보드 / 우 사이드패널 2컬럼(LLD §2·§7 W6). 모바일은 세로 스택 그대로. */}
       <div className={styles.boardCol}>
@@ -185,5 +211,6 @@ export function DeckEditor(props: DeckEditorProps) {
         <PlayerPicker players={players} draft={draft} onPick={handlePick} />
       </div>
     </div>
+    </DndContext>
   );
 }

@@ -1,15 +1,5 @@
 import { useMemo } from "react";
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CatalogPlayer } from "../api/hooks";
 import type { ConditionMap } from "../api/v2";
 import { GRADE_COLORS } from "../common/grades";
@@ -42,9 +32,31 @@ function slotDroppableId(role: SlotRole, slotIndex: number): string {
   return `${role}:${slotIndex}`;
 }
 
-function parseDroppableId(id: string): SlotRef {
+/**
+ * Parse a slot droppable id (`${role}:${slotIndex}`) back to a SlotRef. Exported so the
+ * DeckEditor-level DndContext (which also hosts the pool-list drag source) can resolve drop targets.
+ */
+export function parseDroppableId(id: string): SlotRef {
   const [role, idx] = id.split(":");
   return { role: role as SlotRole, slotIndex: Number(idx) };
+}
+
+/**
+ * Drag-source id convention (single DndContext at DeckEditor):
+ *   - board token  → the raw `playerId` (a player already placed on the board/bench),
+ *   - pool list item → `pool:${playerId}` (a player being dragged in FROM the owned-player list).
+ * Prefixing the pool source keeps the two apart even when the same playerId exists in both places
+ * (a placed player is disabled in the pool, but the namespace stays unambiguous regardless).
+ */
+export const POOL_DRAG_PREFIX = "pool:";
+
+export function poolDraggableId(playerId: string): string {
+  return `${POOL_DRAG_PREFIX}${playerId}`;
+}
+
+/** Resolve a drag active.id to the underlying playerId (strips the pool: prefix if present). */
+export function playerIdFromDragId(activeId: string): string {
+  return activeId.startsWith(POOL_DRAG_PREFIX) ? activeId.slice(POOL_DRAG_PREFIX.length) : activeId;
 }
 
 interface TokenProps {
@@ -123,28 +135,19 @@ function SlotCell(props: SlotCellProps) {
 
 /**
  * Drag-and-drop tactics board (AC-B3): pitch background with formation-snapped starter slots +
- * a bench strip. Players drag between slots (@dnd-kit, pointer+touch+keyboard sensors) and can
- * also be placed by tap-tap (select slot → tap player, handled by the parent via selectedSlot).
+ * a bench strip. Players drag between slots (@dnd-kit) and can also be placed by tap-tap (select
+ * slot → tap player, handled by the parent via selectedSlot).
+ *
+ * The DndContext (sensors + onDragEnd) is hosted one level up in DeckEditor so a single context
+ * spans the board slots, bench, AND the owned-player pool list (요구 5: 리스트→보드 드래그). The
+ * board itself only renders the droppable slots + draggable tokens.
  */
 export function TacticsBoard(props: TacticsBoardProps) {
-  const { draft, onMove } = props;
+  const { draft } = props;
   const coords = useMemo(() => starterCoords(draft.formation), [draft.formation]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
-    useSensor(KeyboardSensor),
-  );
-
-  function handleDragEnd(e: DragEndEvent) {
-    if (!e.over) return;
-    const playerId = String(e.active.id);
-    const target = parseDroppableId(String(e.over.id));
-    onMove(playerId, target.role, target.slotIndex);
-  }
-
   return (
-    <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+    <>
       <div className={styles.pitch} data-testid="tactics-board">
         {coords.map((c) => (
           <SlotCell
@@ -171,6 +174,6 @@ export function TacticsBoard(props: TacticsBoardProps) {
           ))}
         </div>
       </div>
-    </DndContext>
+    </>
   );
 }
