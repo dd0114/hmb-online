@@ -88,6 +88,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/conditions/today": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 오늘(KST)의 내 보유 선수 컨디션 — {playerId: 0.0~1.0}. 날짜 시드
+         *     sha256(userId:yyyy-MM-dd:cond:playerId) 결정론 롤이라 KST 자정에만 갱신되고 매치와 무관하게
+         *     하루 고정이다(덱/선수 리스트 상시 표시용). 매치 생성·킥오프 재캡처는 같은 값을
+         *     matches.conditions_json 에 스냅샷하므로 엔진 입력·재현 계약은 불변.
+         */
+        get: operations["getTodayConditions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/trade": {
         parameters: {
             query?: never;
@@ -418,6 +440,12 @@ export interface components {
             mode: "practice" | "league";
             /** @description 리그 경기면 league_fixtures 참조 */
             leagueFixtureId?: string | null;
+            /**
+             * @description 이 매치에 실제로 사용된 덱 스냅샷(matches.user_deck_json 을 읽어 노출만 — 새 저장 로직 없음).
+             *     "과거 세팅 로그 → 프리셋으로 저장" 플로우 입력(#98 요구 2). 스냅샷이 없거나(구 매치) 형상이
+             *     깨진 매치는 null.
+             */
+            userDeckSnapshot?: components["schemas"]["TeamSnapshot"] | null;
         };
         /** @description MatchDetail(V1) + Phase2 필드 — createMatch/next-match 응답 표현. */
         MatchDetailPhase2: {
@@ -649,6 +677,85 @@ export interface components {
             };
             opponentRoster?: components["schemas"]["OpponentRosterEntry"][];
         };
+        /**
+         * @description B(패치 생성) 잡 컨텍스트의 **추가 필드**(additive) — kind 를 `team-input-patch` 로 두고
+         *     A(베이스 생성) 결과 TacticalInput 을 `base` 로 싣는다. 나머지 필드는 V1 AiJobContext
+         *     (=shared `TeamInputJobContext`) + `AiJobContextPhase2Fields` 를 **그대로 재사용**한다
+         *     (shared `TeamInputPatchJobContext` = TeamInputJobContext.omit(kind).extend({kind, base})).
+         *     상세·검증은 `packages/shared/src/team-input-job.ts`·`tactical-patch.ts`(zod)가 SoT —
+         *     여기서는 느슨히 계약한다. 실행기는 이 컨텍스트로 `TacticalPatch` 를 생성→`applyPatch(base, patch,
+         *     {seed})`→**완전한 TacticalInput** 을 반환한다(Java 는 team-input 과 동일하게 TacticalInput 소비).
+         */
+        AiJobContextPatchFields: {
+            /**
+             * @description V1 은 `team-input` 만. A+B 분리에서 `team-input-patch` 추가(B 잡). 크로스매치 캐시된 A 결과
+             *     위에 패치를 정적 머지 → 출력 토큰 억제(perf #82: 6805→~1193). seed 는 통과 필드로 머지 시
+             *     halfSeed 주입(A/B 콘텐츠의 seed 는 무시).
+             * @enum {string}
+             */
+            kind?: "team-input" | "team-input-patch";
+            /**
+             * @description A(베이스 생성) 결과 TacticalInput. 이 위에 B 의 TacticalPatch 를 정적 머지한다.
+             *     `team-input-patch` 잡에만 존재. 형태는 V1 AiJobResult(=shared TacticalInput) zod 가 SoT라
+             *     여기서는 느슨히(오브젝트) 계약한다.
+             */
+            base?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * @description B(패치 생성) 잡의 출력 — A(베이스) TacticalInput 에 **정적 머지**하면 완전한 TacticalInput 이 된다
+         *     (`applyPatch`). "전원 압박"·"수비진 라인 올려" 류 벌크 지시를 몇 줄로 표현해 출력 토큰을 억제.
+         *     모든 필드 additive optional, 값은 **절대값**(상대 증분 아님). 적용 순서 team → byPosition →
+         *     byPlayer → markTargets. **SoT = shared `packages/shared/src/tactical-patch.ts`(zod, 전계층 strict)** —
+         *     여기서는 느슨히(형태만) 계약한다. 최종 zod 검증 + 클램프는 **머지 산출물**에 적용(B 출력 자체 아님).
+         */
+        TacticalPatch: {
+            /** @description 팀 전술 평탄 패치(pressIntensity/pressTriggerLine 는 pressingScheme 로 되돌림). */
+            team?: {
+                defensiveLineHeight?: number;
+                compactness?: number;
+                tempo?: number;
+                width?: number;
+                pressIntensity?: number;
+                pressTriggerLine?: number;
+                offsideTrap?: boolean;
+            };
+            /** @description 포지션 그룹(GK/DF/MF/FW) 벌크 조정 — 그룹 전원에 적용. */
+            byPosition?: {
+                GK?: components["schemas"]["PositionPatch"];
+                DF?: components["schemas"]["PositionPatch"];
+                MF?: components["schemas"]["PositionPatch"];
+                FW?: components["schemas"]["PositionPatch"];
+            };
+            /** @description {playerId: 개별 패치}. */
+            byPlayer?: {
+                [key: string]: {
+                    /** @description PlayerBehavior 부분 패치(9필드 0..1, shared zod SoT). */
+                    behavior?: {
+                        [key: string]: unknown;
+                    };
+                    basePosition?: {
+                        x?: number;
+                        y?: number;
+                    };
+                    mentalModifier?: number;
+                    duty?: string;
+                };
+            };
+            /** @description 전담 마크 {수비수 playerId: 상대 targetId} — 마지막에 적용. */
+            markTargets?: {
+                [key: string]: string;
+            };
+        };
+        /** @description 포지션 그룹 벌크 패치 값(그룹 전원 적용). */
+        PositionPatch: {
+            /** @description PlayerBehavior 부분 패치(shared zod SoT). */
+            behavior?: {
+                [key: string]: unknown;
+            };
+            mentalModifier?: number;
+        };
     };
     responses: {
         /** @description 인증 실패(토큰 없음/만료/무효). code=UNAUTHORIZED */
@@ -798,6 +905,27 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RelationsResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getTodayConditions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 보유 선수만(미보유 제외). 보유 0이면 빈 객체. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConditionMap"];
                 };
             };
             401: components["responses"]["Unauthorized"];

@@ -159,6 +159,37 @@ test("W1 deck-preset: 첫 진입 → 새 프리셋 저장 → 로드 → dirty �
   await expect(page.getByTestId("editor-team-prompt")).toHaveValue("측면 오버래핑 적극 활용");
   await expect(page.getByTestId("deck-dirty-badge")).toBeVisible();
 
+  // 5a) a11y 계약(W6b-1): 다이얼로그가 열리면 포커스가 내부로 이동하고, Tab/Shift+Tab 이 다이얼로그
+  //     밖으로 새지 않으며, Esc = 취소(편집 상태·선택 슬롯 무변경) + 포커스는 트리거로 복원된다.
+  await page.getByTestId("slot-chip-1").click();
+  await expect(page.getByTestId("leave-confirm-dialog")).toBeVisible();
+  const focusedTestId = () =>
+    page.evaluate(() => document.activeElement?.getAttribute("data-testid") ?? "");
+  const focusInsideDialog = () =>
+    page.evaluate(() => {
+      const dlg = document.querySelector('[data-testid="leave-confirm-dialog"]');
+      return Boolean(dlg && document.activeElement && dlg.contains(document.activeElement));
+    });
+  expect(await focusInsideDialog()).toBe(true);
+  const cycle: string[] = [await focusedTestId()];
+  for (let i = 0; i < 5; i += 1) {
+    await page.keyboard.press("Tab");
+    expect(await focusInsideDialog()).toBe(true);
+    cycle.push(await focusedTestId());
+  }
+  await page.keyboard.press("Shift+Tab");
+  expect(await focusInsideDialog()).toBe(true);
+  console.log(`[smoke] leave-dialog focus cycle = ${cycle.join(" > ")}`);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("leave-confirm-dialog")).toHaveCount(0);
+  await expect(page.getByTestId("slot-chip-2")).toHaveAttribute("data-selected", "true");
+  await expect(page.getByTestId("editor-team-prompt")).toHaveValue("측면 오버래핑 적극 활용");
+  await expect(page.getByTestId("deck-dirty-badge")).toBeVisible();
+  expect(await focusedTestId()).toBe("slot-chip-1"); // 포커스 복원
+
+  // 5b) 칩 이름 툴팁(잘린 이름 확인용) — 채워진 슬롯은 전체 이름을 title 로 노출.
+  await expect(page.getByTestId("slot-chip-1")).toHaveAttribute("title", /메인 4-4-2/);
+
   // 6) N1 — dirty 중 다른 슬롯 클릭 → 다이얼로그 → "버리고 전환" 시 이동(편집 폐기, 슬롯1 로드).
   await page.getByTestId("slot-chip-1").click();
   await expect(page.getByTestId("leave-confirm-dialog")).toBeVisible();
@@ -190,13 +221,25 @@ test("W1 deck-preset: 첫 진입 → 새 프리셋 저장 → 로드 → dirty �
   console.log(`[smoke] 390px horizontal overflow px = ${overflow}`);
   expect(overflow).toBeLessThanOrEqual(0);
 
-  // 10) 데스크탑(≥1024px): 2컬럼 레이아웃 가로 오버플로 0.
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.waitForTimeout(200);
-  const overflowDesk = await page.evaluate(
-    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
-  );
-  console.log(`[smoke] 1280px horizontal overflow px = ${overflowDesk}`);
-  expect(overflowDesk).toBeLessThanOrEqual(0);
+  // 10) 데스크탑(≥1024px): 2컬럼 레이아웃 가로 오버플로 0 + 상단 요약/칩 행이 보드 컬럼과 정렬(W6b-1).
+  for (const width of [1024, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.waitForTimeout(200);
+    const overflowDesk = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    console.log(`[smoke] ${width}px horizontal overflow px = ${overflowDesk}`);
+    expect(overflowDesk).toBeLessThanOrEqual(0);
+
+    const summary = (await page.getByTestId("preset-summary").boundingBox())!;
+    const editor = (await page.getByTestId("deck-editor").boundingBox())!;
+    console.log(
+      `[smoke] ${width}px summary.x=${summary.x} w=${summary.width} / editor.x=${editor.x} w=${editor.width}`,
+    );
+    expect(Math.abs(summary.x - editor.x)).toBeLessThanOrEqual(2); // 좌측 정렬
+    expect(summary.width).toBeLessThanOrEqual(editor.width + 2); // 요약이 보드보다 넓게 늘어지지 않음
+    await expect(page.getByTestId("slot-selector")).toBeVisible();
+    await expect(page.getByTestId("auto-fill")).toBeVisible();
+  }
   await page.screenshot({ path: `${SMOKE_DIR}w1-deck-desktop.png`, fullPage: false });
 });

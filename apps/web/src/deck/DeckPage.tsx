@@ -14,11 +14,13 @@ import {
 import {
   useApplyTeamPreset,
   useRelations,
+  useTodayConditions,
   useSaveTeamPreset,
   useTeamPresets,
 } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
+import { Modal } from "../common/Modal";
 import { TeamMoraleWidget } from "../common/RelationBits";
 import { useNavGuardRun, useRegisterNavGuard, type NavGuard } from "../common/NavGuard";
 import {
@@ -45,6 +47,7 @@ import {
   slotByNumber,
   type EditorBaseline,
 } from "./preset-selector-logic";
+import { autoBuildLineup, canAutoBuild } from "./auto-lineup";
 import { DeckEditor } from "./DeckEditor";
 import { SlotSelector } from "./SlotSelector";
 import { PresetSummary } from "./PresetSummary";
@@ -92,6 +95,8 @@ export function DeckPage() {
   const presets = presetsQuery.data;
   const { data: promptPresets } = usePresets();
   const { data: relations } = useRelations();
+  // 요구 6: 당일(KST) 컨디션 — 보드 토큰/선수 시트/보유 선수 리스트에 표시. 실패해도 화면은 그대로.
+  const { data: conditions } = useTodayConditions();
   const updateDeck = useUpdateDeck();
   const createPreset = useCreatePreset();
   const deletePreset = useDeletePreset();
@@ -319,25 +324,30 @@ export function DeckPage() {
 
   return (
     <Layout header={header} nav>
-      <PresetSummary
-        slot={selectedSlotData}
-        playersById={playersById}
-        dirty={dirty}
-        busy={busy}
-        onRename={handleRename}
-      />
+      {/* ≥1024px: 페이지 전체를 DeckEditor 2컬럼(940px)과 같은 폭으로 정렬한다(W6b-1). */}
+      <div className={styles.page}>
+      <div className={styles.topGrid}>
+        <PresetSummary
+          slot={selectedSlotData}
+          playersById={playersById}
+          dirty={dirty}
+          busy={busy}
+          onRename={handleRename}
+        />
 
-      <SlotSelector
-        slots={slots}
-        selectedSlot={selectedSlot}
-        busy={busy}
-        saveable={saveable}
-        onSelect={handleSelectSlot}
-        onNew={handleSaveNew}
-      />
+        <SlotSelector
+          slots={slots}
+          selectedSlot={selectedSlot}
+          busy={busy}
+          saveable={saveable}
+          onSelect={handleSelectSlot}
+          onNew={handleSaveNew}
+        />
+      </div>
 
       <TeamMoraleWidget relations={relations} />
 
+      <div className={styles.controlsRow}>
       <div className={styles.formationRow}>
         <label htmlFor="formation" className={styles.formationLabel}>
           포메이션
@@ -360,6 +370,25 @@ export function DeckPage() {
         </span>
       </div>
 
+      {/* 요구 3 — Auto 구성: 보유 선수만으로 결정론적 최적 스쿼드 자동 구성(RNG·AI 콜 없음). */}
+      <div className={styles.autoRow}>
+        <button
+          type="button"
+          className={styles.autoBtn}
+          data-testid="auto-fill"
+          disabled={busy || !canAutoBuild(ownedPlayers)}
+          onClick={() => mutateEditor(autoBuildLineup(ownedPlayers))}
+        >
+          Auto 구성
+        </button>
+        <span className={styles.autoHint}>
+          {canAutoBuild(ownedPlayers)
+            ? "보유 선수로 최적 포메이션·선발·기본 지시를 자동 배치합니다"
+            : `보유 선수 부족 (${ownedPlayers.length}/${STARTER_COUNT})`}
+        </span>
+      </div>
+      </div>
+
       <DeckEditor
         state={editor}
         onChange={mutateEditor}
@@ -368,6 +397,7 @@ export function DeckPage() {
         players={ownedPlayers}
         playersById={playersById}
         relations={relations}
+        conditions={conditions}
         errorPlayerId={serverError?.playerId ?? null}
       />
 
@@ -408,40 +438,49 @@ export function DeckPage() {
           mutateEditor({ ...editor, draft: bulkApplyPreset(draft, playerIds, text) })
         }
       />
+      </div>
 
+      {/* 미저장 이탈 확인(요구 5) — a11y 셸은 공통 Modal 재사용(포커스 트랩·Esc=취소·포커스 복원). */}
       {pendingNav && (
-        <div className={styles.dialogBackdrop} data-testid="leave-confirm-backdrop">
-          <div className={styles.dialog} role="dialog" aria-modal="true" data-testid="leave-confirm-dialog">
-            <p className={styles.dialogText}>저장하지 않은 변경사항이 있습니다. 저장할까요?</p>
-            <div className={styles.dialogActions}>
-              <button
-                type="button"
-                className={styles.dialogSave}
-                data-testid="leave-save"
-                disabled={saveDisabled}
-                onClick={handleDialogSave}
-              >
-                저장
-              </button>
-              <button
-                type="button"
-                className={styles.dialogDiscard}
-                data-testid="leave-discard"
-                onClick={handleDialogDiscard}
-              >
-                버리고 이동
-              </button>
-              <button
-                type="button"
-                className={styles.dialogCancel}
-                data-testid="leave-cancel"
-                onClick={() => setPendingNav(null)}
-              >
-                취소
-              </button>
-            </div>
+        <Modal
+          onClose={() => setPendingNav(null)}
+          labelledBy="leave-confirm-title"
+          overlayClassName={styles.dialogBackdrop}
+          overlayTestId="leave-confirm-backdrop"
+          className={styles.dialog}
+          testId="leave-confirm-dialog"
+        >
+          <p id="leave-confirm-title" className={styles.dialogText}>
+            저장하지 않은 변경사항이 있습니다. 저장할까요?
+          </p>
+          <div className={styles.dialogActions}>
+            <button
+              type="button"
+              className={styles.dialogSave}
+              data-testid="leave-save"
+              disabled={saveDisabled}
+              onClick={handleDialogSave}
+            >
+              저장
+            </button>
+            <button
+              type="button"
+              className={styles.dialogDiscard}
+              data-testid="leave-discard"
+              onClick={handleDialogDiscard}
+            >
+              버리고 이동
+            </button>
+            <button
+              type="button"
+              className={styles.dialogCancel}
+              data-testid="leave-cancel"
+              onClick={() => setPendingNav(null)}
+            >
+              취소
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </Layout>
   );

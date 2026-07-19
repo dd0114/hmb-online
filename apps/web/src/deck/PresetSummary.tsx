@@ -52,6 +52,12 @@ export function PresetSummary({ slot, playersById, dirty, busy = false, onRename
           <p className={styles.emptyDesc}>
             아래에서 팀을 구성한 뒤 <span className={styles.hi}>[+ 새 프리셋]</span> 으로 저장하세요.
           </p>
+          {/* No slot selected yet, but edits (예: Auto 구성) can still be pending → show dirty. */}
+          {dirty && (
+            <span className={styles.dirty} data-testid="deck-dirty-badge">
+              미저장 변경
+            </span>
+          )}
         </div>
       </section>
     );

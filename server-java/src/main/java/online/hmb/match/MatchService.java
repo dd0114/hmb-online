@@ -18,6 +18,8 @@ import online.hmb.common.ApiException;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
 import online.hmb.meta.DeckService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -33,6 +35,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class MatchService {
 
+    private static final Logger log = LoggerFactory.getLogger(MatchService.class);
+
     public static final String S_BRIEFING = "BRIEFING";
     public static final String S_GEN1 = "GEN1";
     public static final String S_H1_BREAK = "H1_BREAK";
@@ -46,6 +50,7 @@ public class MatchService {
     private final BotService botService;
     private final ConditionService conditionService;
     private final ObjectMapper objectMapper;
+    private final java.time.Clock clock;
     private final int halftimeSubsMax;
     private final int promptMaxChars;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -56,6 +61,7 @@ public class MatchService {
                         BotService botService,
                         ConditionService conditionService,
                         ObjectMapper objectMapper,
+                        java.time.Clock clock,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
         this.jdbcClient = jdbcClient;
@@ -64,6 +70,7 @@ public class MatchService {
         this.botService = botService;
         this.conditionService = conditionService;
         this.objectMapper = objectMapper;
+        this.clock = clock;
         this.halftimeSubsMax = halftimeSubsMax;
         this.promptMaxChars = promptMaxChars;
     }
@@ -143,8 +150,11 @@ public class MatchService {
         String matchId = Ulid.next();
         String seed = randomSeedHex();
         String snapshot = snapshotDeck(deck, teamTactics);
-        String conditionsJson = computeConditionsJson(seed, rosterPlayerIdsOf(readJson(snapshot)));
-        String now = Instant.now().toString();
+        Instant createdAt = Instant.now(clock);
+        String now = createdAt.toString();
+        // 컨디션 날짜는 **매치 생성 시각(KST)** 에 앵커 — 킥오프 재캡처가 자정을 넘겨도 같은 시드(아래 참조).
+        String conditionsJson =
+                computeConditionsJson(userId, conditionService.dateOf(createdAt), rosterPlayerIdsOf(readJson(snapshot)));
 
         txRunner.run(() -> jdbcClient.sql("""
                         INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
@@ -172,8 +182,10 @@ public class MatchService {
         String matchId = Ulid.next();
         String seed = randomSeedHex();
         String snapshot = snapshotDeck(deck, null);
-        String conditionsJson = computeConditionsJson(seed, rosterPlayerIdsOf(readJson(snapshot)));
-        String now = Instant.now().toString();
+        Instant createdAt = Instant.now(clock);
+        String now = createdAt.toString();
+        String conditionsJson =
+                computeConditionsJson(userId, conditionService.dateOf(createdAt), rosterPlayerIdsOf(readJson(snapshot)));
 
         txRunner.run(() -> jdbcClient.sql("""
                         INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
@@ -228,10 +240,40 @@ public class MatchService {
         return ids;
     }
 
-    /** conditions_json = {playerId: 0.0~1.0} 시드 결정론 롤(playerId 정렬 — 재현·안정 직렬화). */
-    private String computeConditionsJson(String seed, List<String> playerIds) {
+    /**
+     * 매치의 컨디션 앵커 날짜 — <b>matches.created_at(KST)</b>. 새 컬럼 없이 기존 값으로 파생하므로
+     * 마이그레이션이 필요 없고, 이 변경 이전에 만들어진 매치도 자연스럽게 정합된다(created_at 은
+     * 매치 수명 동안 불변). 파싱 불가한 이례 값이면 오늘로 폴백(재캡처가 실패하지 않게).
+     */
+    private String conditionDateOf(MatchRow row) {
+        try {
+            return conditionService.dateOf(Instant.parse(row.createdAt()));
+        } catch (RuntimeException e) {
+            // 폴백이 발동하면 컨디션 앵커가 무력화된다(create↔kickoff 재캡처가 다른 날짜 시드를
+            // 쓸 수 있음). 현재 created_at 은 항상 Instant.now().toString() 이라 도달 불가하지만,
+            // 포맷이 바뀌면 조용히 느슨해지므로 반드시 신호를 남긴다.
+            log.warn("condition date anchor fallback: unparsable matches.created_at={} (matchId={}) — "
+                    + "falling back to today; create/kickoff conditions may diverge", row.createdAt(), row.id(), e);
+            return conditionService.todayDate();
+        }
+    }
+
+    /**
+     * conditions_json = {playerId: 0.0~1.0} 결정론 롤(playerId 정렬 — 재현·안정 직렬화).
+     *
+     * <p>롤 입력은 매치 시드가 아니라 <b>userId + 날짜(KST)</b> 다(#98 계약 A) — 같은 날은 매치와
+     * 무관하게 값이 고정되고(덱/리스트 상시 표시), 매치는 그 값을 <b>그대로 스냅샷</b>한다. 저장
+     * 컬럼·소비 경로(SelectData 배율·AI 컨텍스트)는 불변이므로 엔진 재현 계약은 영향받지 않는다.
+     *
+     * <p><b>날짜 앵커(중요)</b>: 매치 경로의 date 는 '오늘'이 아니라 <b>매치 생성 시각(created_at, KST)</b>
+     * 이다. 브리핑 중 자정을 넘겨 킥오프해도 재캡처가 create 시점과 같은 시드를 쓰므로, 유저가 브리핑에서
+     * 본 컨디션(= AI 컨텍스트에 들어간 값)과 실제 경기 값이 어긋나지 않는다. 반면 덱 리스트용
+     * {@code GET /api/conditions/today} 는 계속 '오늘'이다(앵커는 매치 경로에만 적용).
+     */
+    private String computeConditionsJson(String userId, String date, List<String> playerIds) {
         ObjectNode node = objectMapper.createObjectNode();
-        new java.util.TreeSet<>(playerIds).forEach(pid -> node.put(pid, conditionService.roll(seed, pid)));
+        new java.util.TreeSet<>(playerIds)
+                .forEach(pid -> node.put(pid, conditionService.rollDaily(userId, date, pid)));
         return node.toString();
     }
 
@@ -260,7 +302,7 @@ public class MatchService {
         }
 
         String snapshot = snapshotDeck(deck, effectiveTactics);
-        String conditionsJson = computeConditionsJson(row.seed(), rosterPlayerIdsOf(readJson(snapshot)));
+        String conditionsJson = computeConditionsJson(userId, conditionDateOf(row), rosterPlayerIdsOf(readJson(snapshot)));
         txRunner.run(() -> jdbcClient.sql("""
                         UPDATE matches SET user_deck_json = ?, conditions_json = ?
                         WHERE id = ? AND state = 'BRIEFING'
@@ -292,16 +334,77 @@ public class MatchService {
                                Integer scoreH1Home, Integer scoreH1Away,
                                Integer scoreHome, Integer scoreAway,
                                String result, String createdAt, String finishedAt,
-                               Map<String, Double> conditions, String mode, String leagueFixtureId) {
+                               Map<String, Double> conditions, String mode, String leagueFixtureId,
+                               JsonNode userDeckSnapshot) {
     }
 
     public MatchDetail toDetail(MatchRow row) {
         // Phase2 additive(MatchDetailPhase2Fields): conditions/mode/leagueFixtureId — 시계 UI·리그 뱃지용.
+        // + userDeckSnapshot(#98 요구 2): 이 매치에 쓴 덱 스냅샷을 읽어서 노출만(저장 로직 변경 0).
         String mode = row.mode() == null ? "practice" : row.mode();
         return new MatchDetail(row.id(), row.state(), row.failReason(), buildOpponent(row),
                 row.scoreH1Home(), row.scoreH1Away(), row.scoreHome(), row.scoreAway(),
                 row.result(), row.createdAt(), row.finishedAt(),
-                conditionsOf(row), mode, row.leagueFixtureId());
+                conditionsOf(row), mode, row.leagueFixtureId(), userDeckSnapshotOf(row));
+    }
+
+    /**
+     * 저장된 {@code matches.user_deck_json} → openapi-v2 {@code TeamSnapshot} 형상(#98 요구 2 계약 B).
+     *
+     * <p>저장 포맷은 {@link #snapshotDeck}이 쓰는 그대로 두고(엔진/재현 계약 영향 0), 응답 조립 시점에
+     * <b>TeamSnapshot 이 정의한 필드만 투영</b>한다: {formation, starters[], bench[], teamTactics?,
+     * teamPrompt?}. 미지의 잉여 필드가 생겨도 계약 밖으로 새지 않는다.
+     *
+     * <p>값이 없거나(구 매치) 파싱 불가/형상 불일치면 <b>null</b>(필드 생략) — 500 금지. 프리셋 저장
+     * 플로우는 웹에서 비활성 + 안내로 처리한다.
+     */
+    JsonNode userDeckSnapshotOf(MatchRow row) {
+        String raw = row.userDeckJson();
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(raw);
+        } catch (Exception e) {
+            log.warn("user_deck_json parse failed (matchId={}) — userDeckSnapshot omitted", row.id(), e);
+            return null;
+        }
+        if (node == null || !node.isObject()
+                || !node.path("formation").isTextual()
+                || !node.path("starters").isArray()
+                || !node.path("bench").isArray()) {
+            return null; // TeamSnapshot 필수 필드(formation/starters/bench) 미충족 → 노출 안 함
+        }
+        ObjectNode out = objectMapper.createObjectNode();
+        out.put("formation", node.get("formation").asText());
+        out.set("starters", projectSnapshotSlots(node.get("starters")));
+        out.set("bench", projectSnapshotSlots(node.get("bench")));
+        if (node.path("teamTactics").isObject()) {
+            out.set("teamTactics", node.get("teamTactics").deepCopy());
+        }
+        if (node.path("teamPrompt").isTextual()) {
+            out.put("teamPrompt", node.get("teamPrompt").asText());
+        }
+        return out;
+    }
+
+    /** SnapshotSlot {playerId, slotIndex, promptText?} 만 투영. 형상이 깨진 항목은 건너뛴다. */
+    private ArrayNode projectSnapshotSlots(JsonNode slots) {
+        ArrayNode out = objectMapper.createArrayNode();
+        for (JsonNode slot : slots) {
+            if (!slot.isObject() || !slot.path("playerId").isTextual() || !slot.path("slotIndex").isInt()) {
+                continue;
+            }
+            ObjectNode entry = objectMapper.createObjectNode();
+            entry.put("playerId", slot.get("playerId").asText());
+            entry.put("slotIndex", slot.get("slotIndex").asInt());
+            if (slot.path("promptText").isTextual()) {
+                entry.put("promptText", slot.get("promptText").asText());
+            }
+            out.add(entry);
+        }
+        return out;
     }
 
     private Opponent buildOpponent(MatchRow row) {

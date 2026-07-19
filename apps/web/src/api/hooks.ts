@@ -128,16 +128,18 @@ export function useGacha() {
 
 // ── match flow (LLD-web §2 /match/:id) ─────────────────────────────────
 
-import type { ConditionMap, TeamTactics } from "./v2";
+import type { ConditionMap, TeamSnapshot, TeamTactics } from "./v2";
 
 /**
  * MatchDetail (V1) + Phase2 additive fields (openapi-v2 MatchDetailPhase2Fields): conditions
- * (AC-C1 시계), mode(practice|league), leagueFixtureId. All optional — old responses stay valid.
+ * (AC-C1 시계), mode(practice|league), leagueFixtureId, userDeckSnapshot(그 경기에 쓴 덱 스냅샷 —
+ * 과거 세팅 로그 → 프리셋, #98 요구 2). All optional — old responses stay valid.
  */
 export type MatchDetail = components["schemas"]["MatchDetail"] & {
   conditions?: ConditionMap;
   mode?: "practice" | "league";
   leagueFixtureId?: string | null;
+  userDeckSnapshot?: TeamSnapshot | null;
 };
 export type MatchResult = components["schemas"]["MatchResult"];
 export type MatchLog = components["schemas"]["MatchLog"];

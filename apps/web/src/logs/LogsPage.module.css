@@ -280,3 +280,22 @@ button.row:hover {
     margin-bottom: 0;
   }
 }
+
+/* 로그 행 하단 액션 줄 — "이 경기 세팅 보기"(#98 요구 2). 행 버튼과 중첩 불가라 형제로 둔다. */
+.rowActions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+.snapshotButton {
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.snapshotButton:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
