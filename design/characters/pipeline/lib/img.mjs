@@ -131,15 +131,17 @@ export function hardAlpha(s, threshold = 128) {
  * 배경 제거. 이미 알파가 있으면 손대지 않는다(SPEC 권장 경로).
  *
  * 불투명 배경일 때는 **지역 기울기 영역확장(region growing)** 을 쓴다.
- * 전역 tolerance flood fill 은 어두운 배경 위의 어두운 캐릭터를 분리하지 못한다 —
- * 배경 그라디언트를 덮을 만큼 tol 을 키우면 캐릭터의 검은 머리·의상까지 먹어버린다
- * (검증 실측: tol=40 에서 라그나 불투명 픽셀이 31% 까지 파괴됨).
- * 지역 기울기는 "이웃 픽셀과의 차"로 전파하므로 완만한 배경 그라디언트는 따라가고
- * 캐릭터 경계의 급격한 색 점프에서 멈춘다.
+ * 이웃 픽셀과의 차로 전파하므로 완만한 배경 그라디언트는 따라가고 캐릭터 경계의
+ * 급격한 색 점프에서 멈춘다.
+ *
+ * ⚠️ `localTol` 은 **절벽 파라미터**다. 어두운 배경 위 어두운 캐릭터에서
+ * 8 이하는 캐릭터를 100% 보존하지만 10 이상은 급격히 잠식한다(라그나 portrait:
+ * tol 8 → 최대덩어리 100%, tol 10 → 74%, tol 14 → 40%). 기본값은 절벽 이전으로 둔다.
+ * 올리려면 반드시 `cutoutQuality` 로 손상을 확인할 것.
  *
  * @returns { image, stats } — stats 로 손상 여부를 상위(clean)에서 게이트한다.
  */
-export function removeBackground(s, { localTol = 14, globalTol = 90 } = {}) {
+export function removeBackground(s, { localTol = 8, globalTol = 90 } = {}) {
   let transparent = 0;
   for (let i = 3; i < s.data.length; i += 4) if (s.data[i] < 250) transparent++;
   const hadAlpha = transparent > s.width * s.height * 0.02;

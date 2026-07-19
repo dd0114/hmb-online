@@ -1,4 +1,4 @@
-// 카드 프레임 합성 — ref-2 실측 규격(226×425, 금테 8px, 밴드 배치).
+// 카드 프레임 합성 — ref-2 실측 규격(226×425, 금테 7px, 밴드 배치).
 // 한글 텍스트(이름/설명)는 파이프라인이 그리지 않는다 — 게임 UI(React)가 실제 폰트로 오버레이한다.
 // 여기서는 프레임·아트·밴드·별·포지션 뱃지까지만 만든다(폰트 임베딩 없이 결정론 유지).
 import { img, blit, fillRect, blendRect, setPx, hex2rgb, shade, fitCanvas } from './img.mjs';
@@ -102,19 +102,38 @@ export function composeCard(art, meta) {
     }
 
   // 6) 프레임 (바깥→안쪽 4개 띠)
+  // ref-2 는 프레임 본체가 **시그니처 hue** 이고 금색은 코너·국소 하이라이트다
+  //  (다중 행 스캔 결과 y=300 에만 금색, y=200/400 은 시그니처 계열).
+  //  한 카드 = 한 색 원칙(SPEC §4)을 지키려면 금색을 사방에 두르면 안 된다.
   const bands = [
     [CARD.bevelOuter, shade(frame, 0.35)],
-    [CARD.gold, null], // 금속 그라디언트
+    [CARD.gold, null], // 시그니처 금속 그라디언트
     [CARD.bevelInner, shade(frame, 0.25)],
   ];
   let off = 0;
   for (const [thick, col] of bands) {
     for (let k = 0; k < thick; k++) {
       const i = off + k;
-      const c = col || goldMetal(k, thick);
+      const c = col || signatureMetal(frame, k, thick);
       ring(o, i, [...c, 255]);
     }
     off += thick;
+  }
+  // 코너 금속 장식 — 금색은 여기서만(ref-2 의 코너 세공)
+  const cl = 26;
+  for (let k = 0; k < CARD.gold; k++) {
+    const i = CARD.bevelOuter + k;
+    const c = goldMetal(k, CARD.gold);
+    for (let t = 0; t < cl; t++) {
+      fillRect(o, i + t, i, 1, 1, [...c, 255]);
+      fillRect(o, w - 1 - i - t, i, 1, 1, [...c, 255]);
+      fillRect(o, i + t, h - 1 - i, 1, 1, [...c, 255]);
+      fillRect(o, w - 1 - i - t, h - 1 - i, 1, 1, [...c, 255]);
+      fillRect(o, i, i + t, 1, 1, [...c, 255]);
+      fillRect(o, i, h - 1 - i - t, 1, 1, [...c, 255]);
+      fillRect(o, w - 1 - i, i + t, 1, 1, [...c, 255]);
+      fillRect(o, w - 1 - i, h - 1 - i - t, 1, 1, [...c, 255]);
+    }
   }
 
   // 7) 포지션 뱃지 (좌상단, 프레임 위)
@@ -129,8 +148,13 @@ export function composeCard(art, meta) {
 
 const goldMetal = (k, thick) => {
   const t = k / Math.max(1, thick - 1);
-  const a = t < 0.35 ? GOLD_HI : t < 0.75 ? GOLD : GOLD_DEEP;
-  return a;
+  return t < 0.35 ? GOLD_HI : t < 0.75 ? GOLD : GOLD_DEEP;
+};
+
+/** 시그니처 색의 금속 그라디언트 — 바깥이 밝고 안쪽이 어둡다. */
+const signatureMetal = (frame, k, thick) => {
+  const t = k / Math.max(1, thick - 1);
+  return shade(frame, 1.35 - 0.75 * t);
 };
 
 function ring(s, i, c) {

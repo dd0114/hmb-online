@@ -39,6 +39,8 @@ export const SPRITE_LADDER = [
 ];
 export const TEAM_RING = { blue: '#3da9f1', red: '#ef4f44' };
 
+// 배경 제거 tolerance 는 소스마다 자동 선택된다(autoTol). 강제하려면 incoming/<id>.json 의 "bgTol".
+
 const readImage = (file) => {
   if (path.extname(file).toLowerCase() !== '.png') {
     const tmp = path.join(OUT, '.tmp-' + path.basename(file) + '.png');
@@ -56,22 +58,49 @@ const write = (file, im) => {
   fs.writeFileSync(file, encodePNG(im));
 };
 
+const TOL_SWEEP = [4, 5, 6, 7, 8, 9, 10, 11, 12, 14];
+const KNEE_DROP = 2.0; // %p — 이보다 크게 면적이 꺾이면 캐릭터를 먹기 시작한 것
+
+/**
+ * localTol 자동 선택. tolerance 를 올리면 배경이 더 지워지다가(완만한 감소)
+ * 어느 지점부터 캐릭터를 먹기 시작한다(급격한 감소). 그 **무릎 직전** 값을 고른다.
+ *
+ * 고정 기본값은 위험하다 — 무릎 위치가 소스마다 다르다(라그나 8, 아우라 6).
+ * 초판이 14 로 고정 출하해 3종 모두 훼손시킨 것이 이 함수를 만든 이유다.
+ */
+function autoTol(im) {
+  let prev = null, chosen = TOL_SWEEP[0];
+  const curve = [];
+  for (const t of TOL_SWEEP) {
+    const q = cutoutQuality(removeBackground(im, { localTol: t }).image);
+    curve.push({ tol: t, opaquePct: Number(q.opaquePct.toFixed(2)) });
+    if (prev !== null && prev - q.opaquePct > KNEE_DROP) break; // 무릎 — 직전 값 유지
+    prev = q.opaquePct;
+    chosen = t;
+  }
+  return { chosen, curve };
+}
+
 /**
  * 원화 → 정리된 소스(배경 제거 + 트림). 산출 3형태의 공통 입력.
- * 배경 제거는 **조용히 실패하면 안 된다** — 어두운 배경 위 어두운 캐릭터는
- * 원리적으로 분리되지 않고 캐릭터가 잠식된다(검증 실측). 손상은 여기서 게이트한다.
+ * tolerance 는 무릎 검출로 자동 선택하고, 남는 손상은 파편화·내부구멍으로 검출해 경고한다.
  */
-function clean(im, warnings, label) {
-  const { image, stats } = removeBackground(im);
+function clean(im, warnings, label, override) {
+  const auto = override === undefined ? autoTol(im) : { chosen: override, curve: [] };
+  const localTol = auto.chosen;
+  const { image, stats } = removeBackground(im, { localTol });
   if (!stats.hadAlpha) {
-    warnings.push(`${label}: 배경이 불투명 — SPEC §2 는 투명 배경을 요구한다. 자동 분리를 시도했으나 손상 위험.`);
+    warnings.push(`${label}: 배경이 불투명 — SPEC §2 는 투명 배경을 요구한다(자동 분리는 보조 수단).`);
   }
   const q = cutoutQuality(image);
-  // 정상 컷아웃 = 큰 덩어리 1~2개. 파편이 많거나 몸통에 구멍이 생기면 캐릭터가 잠식된 것.
+  q.localTol = localTol;
+  q.tolCurve = auto.curve;
+
+  // 파편화(흩어진 손실) — 연속적 손실은 이걸로 안 잡히므로 tolerance 자동선택이 1차 방어다.
   if (q.largestShare < 0.7)
     warnings.push(
       `${label}: 컷아웃 파편화(조각 ${q.components}개, 최대 덩어리 ${(q.largestShare * 100).toFixed(0)}%)` +
-      ` — 배경 제거가 캐릭터를 잠식했을 가능성이 높다. 투명 배경으로 다시 입고할 것.`,
+      ` — 배경 제거가 캐릭터를 잠식했다. 투명 배경으로 재입고할 것.`,
     );
   if (q.holes > image.width * image.height * 0.005)
     warnings.push(`${label}: 컷아웃 내부 구멍 ${q.holes}px — 캐릭터 내부가 배경으로 오인됐다.`);
@@ -87,7 +116,8 @@ function loadMeta(id) {
   const f = path.join(IN, `${id}.json`);
   const m = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {};
   return { id, name: m.name || id, title: m.title || '', position: m.position || 'MF',
-           stars: m.stars || 5, desc: m.desc || '', signature: m.signature, frame: m.frame };
+           stars: m.stars || 5, desc: m.desc || '', signature: m.signature, frame: m.frame,
+           bgTol: Number.isFinite(m.bgTol) ? m.bgTol : undefined };
 }
 
 export function processCharacter(id, files) {
@@ -103,7 +133,7 @@ export function processCharacter(id, files) {
       report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 최소 512×512 미달`);
     if (raw.width !== raw.height)
       report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 은 정사각을 요구(레터박싱되어 해상도 손실)`);
-    const { src, quality } = clean(raw, report.warnings, 'portrait');
+    const { src, quality } = clean(raw, report.warnings, 'portrait', meta.bgTol);
     report.portraitCutout = quality;
     for (const st of AVATAR_LADDER) {
       const dot = dotify(src, st.size, st.size, st.colors);
@@ -125,7 +155,7 @@ export function processCharacter(id, files) {
     const ar = raw.height / raw.width;
     if (ar < 1.6 || ar > 2.4)
       report.warnings.push(`full 비율 1:${ar.toFixed(2)} — SPEC 은 세로 1:2 를 요구`);
-    const { src, quality } = clean(raw, report.warnings, 'full');
+    const { src, quality } = clean(raw, report.warnings, 'full', meta.bgTol);
     report.fullCutout = quality;
     const sig = meta.signature ? hex2rgb(meta.signature) : dominantColor(src);
     const frame = meta.frame ? hex2rgb(meta.frame) : shade(sig, 0.72);
