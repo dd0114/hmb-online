@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { TokenProvider, useToken } from "./auth/TokenContext";
+import { NavGuardProvider } from "./common/NavGuard";
 import { LoginPage } from "./auth/LoginPage";
 import { LobbyPage } from "./lobby/LobbyPage";
 import { DeckPage } from "./deck/DeckPage";
@@ -44,7 +45,7 @@ function UnauthorizedBridge() {
 function AppRoutes() {
   const { token } = useToken();
   return (
-    <>
+    <NavGuardProvider>
       <UnauthorizedBridge />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
@@ -115,7 +116,7 @@ function AppRoutes() {
         <Route path="/" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
         <Route path="*" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
       </Routes>
-    </>
+    </NavGuardProvider>
   );
 }
 

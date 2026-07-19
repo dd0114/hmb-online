@@ -89,3 +89,70 @@
   font-size: 13px;
   color: var(--success);
 }
+
+.dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 340px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.dialogText {
+  margin: 0 0 16px;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.dialogActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dialogSave,
+.dialogDiscard,
+.dialogCancel {
+  flex: 1 1 auto;
+  padding: 9px 12px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+}
+
+.dialogSave {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+
+.dialogSave:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dialogDiscard {
+  background: var(--bg-elevated);
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.dialogCancel {
+  background: var(--bg-elevated);
+  color: var(--text);
+}
