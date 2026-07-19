@@ -19,6 +19,32 @@
       #scoreboard { display: flex; align-items: center; gap: 14px; font-size: 22px; font-weight: 700; }
       #scoreboard .home { color: var(--home); } #scoreboard .away { color: var(--away); }
       #minute { color: var(--muted); font-size: 14px; }
+      /* F1(#100) 실시간 통계 HUD */
+      #hud {
+        width: 100%; max-width: 1040px; background: var(--panel); border-radius: 8px;
+        padding: 10px 14px; display: flex; flex-direction: column; gap: 7px;
+      }
+      .hud-top { display: flex; align-items: center; gap: 10px; }
+      .poss-val { font-size: 15px; font-weight: 800; min-width: 42px; }
+      .poss-val.home { color: var(--home); text-align: right; } .poss-val.away { color: var(--away); }
+      .poss-bar { flex: 1; height: 12px; border-radius: 6px; overflow: hidden; display: flex; background: #0d1220; }
+      .poss-bar i { background: var(--home); transition: width .25s ease; }
+      .poss-bar b { background: var(--away); transition: width .25s ease; }
+      .hud-caption { text-align: center; font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-top: -4px; text-transform: uppercase; }
+      #hudGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 22px; }
+      @media (max-width: 640px) { #hudGrid { grid-template-columns: 1fr; } }
+      .srow { display: grid; grid-template-columns: 38px 1fr 38px; align-items: center; column-gap: 8px; row-gap: 2px; }
+      .srow .sv { font-size: 13px; font-weight: 700; }
+      .srow .sv.h { text-align: right; color: #dbe6f7; } .srow .sv.a { text-align: left; color: #f7dede; }
+      .srow .slbl { text-align: center; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+      .srow .sbar { grid-column: 1 / -1; height: 5px; border-radius: 3px; overflow: hidden; display: flex; background: #0d1220; }
+      .srow .sbar i { background: var(--home); transition: width .25s ease; }
+      .srow .sbar b { background: var(--away); transition: width .25s ease; }
+      .mom-wrap { display: flex; align-items: center; gap: 10px; }
+      .mom-cap { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; min-width: 74px; }
+      .mom-track { position: relative; flex: 1; height: 10px; border-radius: 5px; background: #0d1220; overflow: hidden; }
+      .mom-track .mom-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #33415f; }
+      .mom-track i { position: absolute; top: 0; bottom: 0; transition: left .3s ease, width .3s ease, background .3s ease; }
       #wrap { width: 100%; max-width: 1040px; position: relative; }
       canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: #14532d; }
       #flash {
@@ -102,6 +128,20 @@
       <span class="away" id="awayName">AWAY</span>
       <span id="minute">0'</span>
     </div>
+    <!-- F1(#100): 실시간 경기 통계 HUD — 재생 중 현재 틱까지 누적 갱신(점유율·슛·xG·패스%·코너·파울·카드·모멘텀). -->
+    <div id="hud">
+      <div class="hud-top">
+        <span class="poss-val home" id="possH">50%</span>
+        <div class="poss-bar"><i id="possFillH"></i><b id="possFillA"></b></div>
+        <span class="poss-val away" id="possA">50%</span>
+      </div>
+      <div class="hud-caption">Possession</div>
+      <div id="hudGrid"></div>
+      <div class="mom-wrap">
+        <span class="mom-cap">Momentum</span>
+        <div class="mom-track"><span class="mom-mid"></span><i id="momFill"></i></div>
+      </div>
+    </div>
     <div id="wrap">
       <canvas id="pitch" width="1050" height="680"></canvas>
       <div id="flash"></div>
@@ -138,6 +178,7 @@
 
     <script type="module">
       import { buildPlayback, spansReposition, inHighlight } from "./playback.mjs";
+      import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.mjs";
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
@@ -168,6 +209,11 @@
       const situationEl = document.getElementById("situation");
       const marksEl = document.getElementById("marks");
       const clockEl = document.getElementById("clock");
+      // F1 HUD refs.
+      const possHEl = document.getElementById("possH"), possAEl = document.getElementById("possA");
+      const possFillHEl = document.getElementById("possFillH"), possFillAEl = document.getElementById("possFillA");
+      const hudGridEl = document.getElementById("hudGrid"), momFillEl = document.getElementById("momFill");
+      let cumPoss = { cumHome: [], cumAway: [] }, lastHudTick = -1;
 
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
       let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
@@ -528,9 +574,41 @@
         situationEl.textContent = text; situationEl.style.color = col;
         situationEl.classList.remove("show"); void situationEl.offsetWidth; situationEl.classList.add("show");
       }
+      // F1(#100): 실시간 통계 HUD 렌더 — 현재 틱(idx)까지 누적. tick 바뀔 때만 갱신(throttle).
+      function renderHud(idx, tick) {
+        if (!log) return;
+        const st = liveEventStats(log.events, tick);
+        const h = st.home, a = st.away;
+        const posH = possessionPct(cumPoss.cumHome, cumPoss.cumAway, idx);
+        possHEl.textContent = posH + "%"; possAEl.textContent = 100 - posH + "%";
+        possFillHEl.style.width = posH + "%"; possFillAEl.style.width = 100 - posH + "%";
+        // [label, homeDisplay, awayDisplay, homeWeight?, awayWeight?] — weight 없으면 표시값을 수치화.
+        const rows = [
+          ["Shots", h.shots, a.shots],
+          ["On target", h.onTarget, a.onTarget],
+          ["xG", h.xg.toFixed(2), a.xg.toFixed(2), h.xg, a.xg],
+          ["Pass %", h.passPct + "%", a.passPct + "%", h.passPct, a.passPct],
+          ["Corners", h.corners, a.corners],
+          ["Fouls", h.fouls, a.fouls],
+          ["Cards", `${h.yellow}/${h.red}`, `${a.yellow}/${a.red}`, h.yellow + h.red, a.yellow + a.red],
+        ];
+        hudGridEl.innerHTML = rows.map(([label, hv, av, hw, aw]) => {
+          const hn = hw != null ? hw : parseFloat(hv) || 0, an = aw != null ? aw : parseFloat(av) || 0;
+          const tot = hn + an, hp = tot > 0 ? (hn / tot) * 100 : 50;
+          return `<div class="srow"><span class="sv h">${hv}</span><span class="slbl">${label}</span><span class="sv a">${av}</span>` +
+            `<div class="sbar"><i style="width:${hp.toFixed(1)}%"></i><b style="width:${(100 - hp).toFixed(1)}%"></b></div></div>`;
+        }).join("");
+        // 모멘텀: 중앙 기준, 홈 우세면 왼쪽(파랑)·어웨이 우세면 오른쪽(빨강)으로.
+        const m = momentum(cumPoss.cumHome, cumPoss.cumAway, idx, 30);
+        const half = Math.min(1, Math.abs(m)) * 50;
+        if (m >= 0) { momFillEl.style.left = 50 - half + "%"; momFillEl.style.background = "var(--home)"; }
+        else { momFillEl.style.left = "50%"; momFillEl.style.background = "var(--away)"; }
+        momFillEl.style.width = half + "%";
+      }
       function updateHud(snap) {
         const s = scoreAt(snap.tick);
         scoreEl.textContent = `${s.h} : ${s.a}`;
+        if (snap.tick !== lastHudTick) { lastHudTick = snap.tick; renderHud(Math.min(Math.floor(tickPos), snaps.length - 1), snap.tick); }
         // 시:초 세분화(1틱=1게임초). mm'ss".
         const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
         const lastTick = snaps.length ? snaps[snaps.length - 1].tick : 0;
@@ -699,6 +777,7 @@
         // 유효슛(온타겟) = 골로 이어진/막힌/1대1/PK 슛(빗나감 제외) → 링 이펙트 대상.
         shotFxTicks = new Set(data.events.filter((e) => e.type === "shot" && e.detail !== "off_target").map((e) => e.tick));
         snapByTick = new Map(snaps.map((s) => [s.tick, s]));
+        cumPoss = computeCumulativePossession(snaps); lastHudTick = -1; // F1 실시간 통계 준비.
         const pb = buildPlayback(data.events, snaps); // playback.mjs (vitest 검증)
         annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks; ballCutTickSet = pb.ballCutTicks;
         // R2 이펙트 소스: 패스완성 펄스·가로챔 스틸플래시·돌파(SURGE) 스피드라인.
@@ -805,6 +884,12 @@
         fx: () => fx.map((f) => ({ type: f.type, rgb: f.rgb })),
         // 마지막 draw()의 카드 마커 [{playerId,num,red,side,px,py}] — R4 카드 받은 선수 표시 계약검증용.
         cardMarks: () => lastCardMarks.map((c) => ({ ...c })),
+        // 현재 틱까지의 실시간 통계(F1) — HUD 증분 계약검증용.
+        liveStats: () => {
+          const idx = Math.min(Math.floor(tickPos), snaps.length - 1);
+          const tick = snaps[idx].tick;
+          return { tick, ...liveEventStats(log.events, tick), possessionHome: possessionPct(cumPoss.cumHome, cumPoss.cumAway, idx), momentum: momentum(cumPoss.cumHome, cumPoss.cumAway, idx, 30) };
+        },
         // seek(tick) 후 렌더한 트레일 세그먼트 side 배열(최신 세그먼트가 마지막).
         trailAt: (tick) => { setPlaying(false); resetStops(); tickPos = idxOfTick(tick); draw(); return lastTrail.map((t) => ({ ...t })); },
         // 현재 카메라 상태 {cx,cy,zoom} — 재생 중 카메라 점프/팬 검출용.
