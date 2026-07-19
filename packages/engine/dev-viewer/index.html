@@ -163,6 +163,8 @@
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
       let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
       let shotFx = [], shotFxTicks = new Set(); // 유효슛 링 이펙트(정지 없음, 순수 시각)
+      // R2(#100): 재미 이펙트 소스 — 패스완성/가로챔/돌파. 재생 중 플레이헤드가 틱을 지나면 스폰(shotFx 방식).
+      let fx = [], passEvents = [], interceptEvents = [], surgeTicks = [];
       let annos = [], snapByTick = new Map(), restartTickSet = new Set(), ballCutTickSet = new Set(), totalMinutes = 0;
       let stoppages = [], hold = null; // 데드볼: freeze→skip 시퀀스
       let lastRender = null; // 마지막 draw()의 렌더된 공(보간 후) — Playwright 계약검증용(__viewer.render()).
@@ -371,6 +373,41 @@
           ctx.globalAlpha = 1;
         }
 
+        // R2 재미 이펙트: 패스완성(펄스)·가로챔(스틸 플래시)·돌파(스피드라인). 팀 색·수명기반.
+        if (fx.length) {
+          for (const f of fx) {
+            f.life -= f.type === "steal" ? 0.05 : f.type === "surge" ? 0.06 : 0.09;
+            if (f.r != null) f.r += f.type === "steal" ? 2.4 : 1.3;
+          }
+          fx = fx.filter((f) => f.life > 0);
+          for (const f of fx) {
+            const a = Math.max(0, f.life);
+            if (f.type === "pass") {
+              // 패스완성: 팀색 작은 펄스 링(짧게 퍼지고 사라짐) — "깔끔한 연결".
+              ctx.globalAlpha = a * 0.55; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 2.5 + f.r, 0, Math.PI * 2); ctx.stroke();
+            } else if (f.type === "steal") {
+              // 가로챔: 밝은 스틸 링 + 중앙 플래시(가로챈 팀 색) — 소유 전환 강조.
+              ctx.globalAlpha = a * 0.9; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 3;
+              ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 5 + f.r, 0, Math.PI * 2); ctx.stroke();
+              ctx.globalAlpha = a * 0.45; ctx.fillStyle = `rgb(${f.rgb})`;
+              ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 4.5, 0, Math.PI * 2); ctx.fill();
+            } else if (f.type === "surge") {
+              // 돌파: 진행 반대로 뻗는 3줄 스피드라인(팀 색) — 속도감.
+              ctx.globalAlpha = a * 0.7; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 2.4;
+              const Lm = 5, back = f.back; // m
+              for (let k = -1; k <= 1; k++) {
+                const oy = k * 1.5; // 수직 오프셋(m)
+                ctx.beginPath();
+                ctx.moveTo(sx(f.x), sy(f.y + oy));
+                ctx.lineTo(sx(f.x + back * Lm), sy(f.y + oy));
+                ctx.stroke();
+              }
+            }
+          }
+          ctx.globalAlpha = 1;
+        }
+
         // 골 세리머니 색종이
         if (confetti.length) {
           for (const c of confetti) { c.x += c.vx; c.y += c.vy; c.vy += 0.16; c.life -= 0.012; }
@@ -432,6 +469,22 @@
         }
       }
       function celebrate() { bigCaption("⚽ GOAL!", "#22c55e", true); }
+      // R2 이펙트 스폰 헬퍼. rgb = 팀 색(home 파랑/away 빨강, 무소유 회색).
+      const teamRgb = (side) => (side === "home" ? "59,130,246" : side === "away" ? "239,68,68" : "203,213,225");
+      function spawnPassFx(pe) {
+        const ss = snapByTick.get(pe.tick); if (!ss) return;
+        fx.push({ type: "pass", x: ss.ball.x, y: ss.ball.y, rgb: teamRgb(pe.side), r: 0, life: 1 });
+      }
+      function spawnInterceptFx(ie) {
+        const ss = snapByTick.get(ie.tick); if (!ss) return;
+        fx.push({ type: "steal", x: ss.ball.x, y: ss.ball.y, rgb: teamRgb(ie.side), r: 0, life: 1 });
+      }
+      function spawnSurgeFx(tick) {
+        const ss = snapByTick.get(tick); if (!ss) return;
+        const side = ownerSideOf(ss.ballOwner);
+        // 스피드라인은 진행(공격) 방향 반대로 뻗는다: home 은 +x 공격 → 뒤(−x), away 는 반대.
+        fx.push({ type: "surge", x: ss.ball.x, y: ss.ball.y, rgb: teamRgb(side), back: side === "away" ? 1 : -1, life: 1 });
+      }
       // 상황 카드 — 골과 다른 스타일(중간 크기·색종이 없음)로 '선방/빗나감/파울/오프사이드/PK' 안내.
       function situationCaption(text, col) {
         situationEl.textContent = text; situationEl.style.color = col;
@@ -509,6 +562,10 @@
               const ss = snapByTick.get(shk); if (ss) shotFx.push({ x: ss.ball.x, y: ss.ball.y, r: 0, life: 1 });
             }
           }
+          // R2: 패스완성/가로챔/돌파 이펙트 스폰(플레이헤드 크로싱 시). 수명기반 → 동시 활성 적음(클러터 X).
+          for (const pe of passEvents) if (pe.tick > beforeTick && pe.tick <= afterTick) spawnPassFx(pe);
+          for (const ie of interceptEvents) if (ie.tick > beforeTick && ie.tick <= afterTick) spawnInterceptFx(ie);
+          for (const st of surgeTicks) if (st > beforeTick && st <= afterTick) spawnSurgeFx(st);
           for (const st of stoppages) {
             // >= beforeTick: 선행 정지가 restartTick 으로 skip 해 다른 정지의 causeTick 에 정확히
             // 착지해도(예: 세이브→코너) 그 정지를 놓치지 않는다. 재발화는 st.done 이 막는다.
@@ -532,7 +589,7 @@
         requestAnimationFrame(tickLoop);
       }
       function clearCaptions() {
-        confetti = []; shotFx = [];
+        confetti = []; shotFx = []; fx = [];
         flashEl.classList.remove("show"); situationEl.classList.remove("show"); bannerEl.classList.remove("show");
       }
       function resetStops() { stoppages.forEach((s) => (s.done = false)); hold = null; clearCaptions(); }
@@ -584,6 +641,10 @@
         snapByTick = new Map(snaps.map((s) => [s.tick, s]));
         const pb = buildPlayback(data.events, snaps); // playback.mjs (vitest 검증)
         annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks; ballCutTickSet = pb.ballCutTicks;
+        // R2 이펙트 소스: 패스완성 펄스·가로챔 스틸플래시·돌파(SURGE) 스피드라인.
+        passEvents = data.events.filter((e) => e.type === "pass").map((e) => ({ tick: e.tick, side: e.team || null, playerId: e.playerId || null }));
+        interceptEvents = data.events.filter((e) => e.type === "interception").map((e) => ({ tick: e.tick, side: e.team || null }));
+        surgeTicks = annos.filter((a) => a.text === "SURGE!").map((a) => a.tick);
         totalMinutes = snaps.length ? snaps[snaps.length - 1].minute : 0;
         // 타임라인 이벤트 핀(타입별 색·높이, 클릭 점프). 골>PK>선방>유효슛>코너 순으로 위에 그림.
         const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
@@ -675,6 +736,8 @@
         curPlayers: () => lastPlayers.map((p) => ({ ...p })),
         // 마지막 draw()의 공 트레일 세그먼트 side 배열(오래→최신) — R1 소유팀 색 계약검증용.
         trail: () => lastTrail.map((t) => ({ ...t })),
+        // 현재 활성 R2 이펙트 [{type,rgb}] — 패스/가로챔/돌파 이펙트 스폰 계약검증용.
+        fx: () => fx.map((f) => ({ type: f.type, rgb: f.rgb })),
         // seek(tick) 후 렌더한 트레일 세그먼트 side 배열(최신 세그먼트가 마지막).
         trailAt: (tick) => { setPlaying(false); resetStops(); tickPos = idxOfTick(tick); draw(); return lastTrail.map((t) => ({ ...t })); },
         // 현재 카메라 상태 {cx,cy,zoom} — 재생 중 카메라 점프/팬 검출용.
