@@ -8,6 +8,7 @@ import {
   isContinuousOut,
   buildBallCutTicks,
   inHighlight,
+  buildFlightSides,
 } from "./playback.mjs";
 
 describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 컷 (하이라이트 순간이동 버그 회귀방지)", () => {
@@ -108,7 +109,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     ];
     const save = buildStoppages(ev).find((s) => s.causeTick === 96)!;
     expect(save).toBeTruthy();
-    expect(save.big).toContain("선방");
+    expect(save.big).toContain("SAVE");
     expect(save.restartTick).toBe(100);
   });
   it("빗나감 + 골킥 → '빗나감!' + 골킥으로 skip", () => {
@@ -117,7 +118,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
       { type: "kickoff", detail: "goal_kick", tick: 164 },
     ];
     const st = buildStoppages(ev);
-    expect(st[0]!.big).toContain("빗나감");
+    expect(st[0]!.big).toContain("OFF TARGET");
     expect(st[0]!.restartTick).toBe(164);
   });
   it("일반 패스/슛은 정지 시퀀스를 만들지 않는다", () => {
@@ -136,7 +137,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     expect(goal.big).toContain("GOAL");
     expect(goal.restartTick).toBe(60); // 킥오프로 skip
     expect(save.isGoal).toBeFalsy();
-    expect(save.big).toContain("선방");
+    expect(save.big).toContain("SAVE");
     expect(save.big).not.toContain("GOAL");
   });
   // #29: hero 요구 — 코너/스로인도 "코너킥!/스로인!" 큰 자막 + 정지 → 제자리 재개(관전 인지).
@@ -147,7 +148,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     ]);
     const corner = st.find((x) => x.causeTick === 200)!;
     expect(corner, "코너 정지 있어야").toBeTruthy();
-    expect(corner.big).toContain("코너킥"); // 큰 상황자막(무음 pauseOnly 아님)
+    expect(corner.big).toContain("CORNER"); // 큰 상황자막(무음 pauseOnly 아님)
     expect(corner.pauseOnly).toBeFalsy();
     expect(corner.setPiece).toBe(true); // freeze 중 taker 로 줌 표시
     expect(corner.restartTick).toBe(200); // 제자리 재개(프레임 스킵 없음)
@@ -156,7 +157,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
 
     const thr = st.find((x) => x.causeTick === 500)!;
     expect(thr, "스로인 정지 있어야").toBeTruthy();
-    expect(thr.big).toContain("스로인");
+    expect(thr.big).toContain("THROW");
     expect(thr.pauseOnly).toBeFalsy();
     expect(thr.setPiece).toBe(true);
     expect(thr.restartTick).toBe(500);
@@ -205,7 +206,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     });
     it("체인 안의 빗나감 정지는 정상 유지(빗나감→골킥은 진짜 데드타임 → 스킵)", () => {
       const off = buildStoppages(chain).find((s) => s.causeTick === 101)!;
-      expect(off.big).toContain("빗나감");
+      expect(off.big).toContain("OFF TARGET");
       expect(off.restartTick).toBe(104);
     });
     it("card 는 북키핑 이벤트라 스킵을 막지 않는다(파울→카드→프리킥은 기존대로 스킵)", () => {
@@ -240,7 +241,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
       ]);
       const at163 = st.filter((s) => s.causeTick === 163);
       expect(at163).toHaveLength(1);
-      expect(at163[0]!.big).toContain("페널티"); // 더 구체적인(나중) 이벤트가 이긴다
+      expect(at163[0]!.big).toContain("PENALTY"); // 더 구체적인(나중) 이벤트가 이긴다
     });
     it("같은 틱 파울+프리킥(pauseOnly) → 상황카드(파울)가 이긴다(자막 없는 비트가 카드를 지우면 안 됨)", () => {
       const st = buildStoppages([
@@ -249,7 +250,7 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
       ]);
       const at300 = st.filter((s) => s.causeTick === 300);
       expect(at300).toHaveLength(1);
-      expect(at300[0]!.big).toContain("파울");
+      expect(at300[0]!.big).toContain("FOUL");
     });
     it("정지→라이브 이벤트가 멀면 라이브 2틱 전까지 스킵(PK 준비 데드타임 회수)", () => {
       const st = buildStoppages([
@@ -295,10 +296,10 @@ describe("buildAnnotations", () => {
       ],
       snaps,
     );
-    expect(a.find((x) => x.text === "슛!" && x.kind === "toast")).toBeTruthy();
-    expect(a.find((x) => x.text.includes("선방"))).toBeTruthy();
-    expect(a.find((x) => x.text.includes("오프사이드") && x.kind === "banner")).toBeTruthy();
-    expect(a.find((x) => x.text === "코너킥" && x.kind === "banner")).toBeTruthy();
+    expect(a.find((x) => x.text === "SHOT!" && x.kind === "toast")).toBeTruthy();
+    expect(a.find((x) => x.text.includes("SAVE"))).toBeTruthy();
+    expect(a.find((x) => x.text.includes("OFFSIDE") && x.kind === "banner")).toBeTruthy();
+    expect(a.find((x) => x.text === "CORNER" && x.kind === "banner")).toBeTruthy();
   });
   it("#69 파울/카드 토스트는 선수(파울러)에 앵커된다 — 공 아님(페널티 스팟 불일치 방지)", () => {
     const a = buildAnnotations(
@@ -309,8 +310,8 @@ describe("buildAnnotations", () => {
       ],
       snaps,
     );
-    const foul = a.find((x) => x.text === "파울" && x.kind === "toast");
-    const card = a.find((x) => x.text.includes("옐로") && x.kind === "toast");
+    const foul = a.find((x) => x.text === "FOUL" && x.kind === "toast");
+    const card = a.find((x) => x.text.includes("YELLOW") && x.kind === "toast");
     // 카드/파울은 '선수 사건' → anchor=파울러 playerId. 렌더가 공 아니라 그 선수 위치에 그린다.
     expect(foul?.anchor, "파울 토스트 anchor=파울러").toBe("A2");
     expect(card?.anchor, "카드 토스트 anchor=파울러").toBe("A2");
@@ -320,6 +321,29 @@ describe("buildAnnotations", () => {
     for (let t = 0; t < 8; t++) s.push({ tick: t, ballOwner: "H9", ball: { x: 40 + t * 3, y: 34 } });
     s.push({ tick: 8, ballOwner: "H6", ball: { x: 64, y: 34 } }); // 소유 변경으로 run 종료
     const a = buildAnnotations([], s);
-    expect(a.find((x) => x.text === "돌파!")).toBeTruthy();
+    expect(a.find((x) => x.text === "SURGE!")).toBeTruthy();
+  });
+
+  it("buildFlightSides — 슛 비행(무소유) 틱을 슛한 팀으로, 재점유 시 종료", () => {
+    const snaps = [
+      { tick: 10, ballOwner: "H9" },
+      { tick: 11, ballOwner: null }, // 슛 발사(무소유)
+      { tick: 12, ballOwner: null }, // 비행
+      { tick: 13, ballOwner: null }, // 골문 안착(무소유)
+      { tick: 14, ballOwner: "A1" }, // 상대 재점유 → 비행 끝
+    ];
+    const m = buildFlightSides([{ type: "shot", tick: 11, team: "home" }], snaps);
+    expect(m.get(11)).toBe("home");
+    expect(m.get(12)).toBe("home");
+    expect(m.get(13)).toBe("home");
+    expect(m.has(14)).toBe(false);
+    expect(m.has(10)).toBe(false); // 발사 전은 실소유(H9)로 이미 처리.
+  });
+
+  it("buildFlightSides — 패스 발사팀 색, 결과마커(saved/off_target)는 발사 아님", () => {
+    const snaps = [{ tick: 1, ballOwner: "A3" }, { tick: 2, ballOwner: null }, { tick: 3, ballOwner: "A5" }];
+    expect(buildFlightSides([{ type: "pass", tick: 2, team: "away" }], snaps).get(2)).toBe("away");
+    expect(buildFlightSides([{ type: "shot", tick: 2, detail: "saved", team: "home" }], snaps).has(2)).toBe(false);
+    expect(buildFlightSides([{ type: "shot", tick: 2, detail: "off_target", team: "home" }], snaps).has(2)).toBe(false);
   });
 });

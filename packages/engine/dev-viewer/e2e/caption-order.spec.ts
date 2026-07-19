@@ -23,7 +23,7 @@ test("#49 throw_in → '스로인!' 자막이 뜨는 순간 공이 사이드라�
   const throwins = await eventsOfType(page, "kickoff", "throw_in");
   expect(throwins.length).toBeGreaterThan(0);
   for (const t of throwins.slice(0, 3)) {
-    const ball = await ballWhenCaption(page, t.tick, "스로인");
+    const ball = await ballWhenCaption(page, t.tick, "THROW");
     // 사이드라인(y=0 또는 68) ±3m 이내여야 한다 = 공이 나간 뒤 자막.
     const onSideline = Math.abs(ball.y - 0) <= 3 || Math.abs(ball.y - PITCH_H) <= 3;
     expect(
@@ -59,7 +59,7 @@ test("#49 corner → '코너킥!' 자막이 뜨는 순간 공이 골라인(스�
   const corners = await eventsOfType(page, "kickoff", "corner");
   expect(corners.length).toBeGreaterThan(0);
   for (const c of corners.slice(0, 3)) {
-    const ball = await ballWhenCaption(page, c.tick, "코너킥");
+    const ball = await ballWhenCaption(page, c.tick, "CORNER");
     // 골라인(x=0 또는 105) ±3m 이내여야 한다.
     const onGoalLine = Math.abs(ball.x - 0) <= 3 || Math.abs(ball.x - 105) <= 3;
     expect(

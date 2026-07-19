@@ -69,7 +69,7 @@ test("#65 손상 페이로드 주입해도 뷰어가 죽지 않고 회복한다"
   await page.evaluate(() => window.postMessage({ type: "loadMatchLog", matchLog: { foo: 1 } }, "*"));
   await page.waitForTimeout(200);
   const status = await page.evaluate(() => document.getElementById("status")?.textContent || "");
-  expect(status, "손상 주입은 실패 표시").toContain("실패");
+  expect(status, "손상 주입은 실패 표시").toContain("Failed");
   // 유효 로그 재주입 → 회복(events 반영 + play 로 tick 진행 = 렌더 루프 살아있음).
   await page.evaluate((log) => window.postMessage({ type: "loadMatchLog", matchLog: log }, "*"), INJECT_LOG);
   await page.waitForFunction(() => (window as any).__viewer.events().length === 2, null, { timeout: 5000 });
