@@ -14,6 +14,8 @@ interface ModalProps {
   /** Dialog-box class. */
   className?: string;
   testId?: string;
+  /** Overlay(백드롭) data-testid — 기존 확인 다이얼로그의 백드롭 계약을 그대로 유지하기 위한 훅. */
+  overlayTestId?: string;
 }
 
 const FOCUSABLE =
@@ -31,6 +33,7 @@ export function Modal({
   overlayClassName,
   className,
   testId,
+  overlayTestId,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -75,6 +78,7 @@ export function Modal({
   return (
     <div
       className={overlayClassName}
+      data-testid={overlayTestId}
       onMouseDown={(e) => {
         if (dismissable && e.target === e.currentTarget) onClose();
       }}

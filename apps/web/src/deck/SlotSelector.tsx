@@ -63,6 +63,8 @@ export function SlotSelector({ slots, selectedSlot, busy, saveable, onSelect, on
               data-testid={`slot-chip-${slot.slot}`}
               data-filled={filled ? "true" : "false"}
               data-selected={selected ? "true" : "false"}
+              /* 칩 이름은 ellipsis 로 잘릴 수 있다 — 전체 이름을 툴팁으로 노출. */
+              title={filled ? `${slot.slot}. ${slot.name ?? `프리셋 ${slot.slot}`}` : `슬롯 ${slot.slot} — 빈 슬롯`}
               disabled={busy}
               onClick={() => onSelect(slot.slot)}
             >

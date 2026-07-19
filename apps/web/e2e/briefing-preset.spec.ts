@@ -247,6 +247,36 @@ test("W6a briefing-preset: 매치용 수정 후 다른 프리셋 선택 → 덮�
   await expect(page.getByTestId("editor-team-prompt")).toHaveValue("오늘은 수비적으로");
   await expect(page.getByTestId("token-MAIN1")).toBeVisible();
 
+  // a11y 계약(W6b-1): 열림 시 포커스가 다이얼로그 내부 · Tab 순환이 밖으로 새지 않음 ·
+  // Esc = 취소(매치 수정·선택 슬롯 무변경) · 닫힌 뒤 포커스는 트리거 칩으로 복원.
+  await page.getByTestId("briefing-preset-chip-2").click();
+  await expect(page.getByTestId("briefing-preset-confirm")).toBeVisible();
+  const focusedTestId = () =>
+    page.evaluate(() => document.activeElement?.getAttribute("data-testid") ?? "");
+  const focusInsideDialog = () =>
+    page.evaluate(() => {
+      const dlg = document.querySelector('[data-testid="briefing-preset-confirm"]');
+      return Boolean(dlg && document.activeElement && dlg.contains(document.activeElement));
+    });
+  expect(await focusInsideDialog()).toBe(true);
+  const cycle: string[] = [await focusedTestId()];
+  for (let i = 0; i < 4; i += 1) {
+    await page.keyboard.press("Tab");
+    expect(await focusInsideDialog()).toBe(true);
+    cycle.push(await focusedTestId());
+  }
+  await page.keyboard.press("Shift+Tab");
+  expect(await focusInsideDialog()).toBe(true);
+  console.log(`[smoke] briefing-confirm focus cycle = ${cycle.join(" > ")}`);
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("briefing-preset-confirm")).toHaveCount(0);
+  await expect(page.getByTestId("editor-team-prompt")).toHaveValue("오늘은 수비적으로");
+  await expect(page.getByTestId("briefing-preset-chip-1")).toHaveAttribute("data-selected", "true");
+  expect(await focusedTestId()).toBe("briefing-preset-chip-2"); // 포커스 복원
+
+  // 칩 이름 툴팁(잘린 이름 확인용).
+  await expect(page.getByTestId("briefing-preset-chip-1")).toHaveAttribute("title", /메인 전술/);
+
   // 불러오기 → 수정 폐기하고 슬롯 2 로드
   await page.getByTestId("briefing-preset-chip-2").click();
   await expect(page.getByTestId("briefing-preset-confirm")).toBeVisible();

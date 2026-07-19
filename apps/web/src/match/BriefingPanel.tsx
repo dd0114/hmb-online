@@ -12,6 +12,7 @@ import {
 import { useRelations, useTeamPresets } from "../api/hooks-v2";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
 import { ErrorToast } from "../common/ErrorToast";
+import { Modal } from "../common/Modal";
 import { DeckEditor } from "../deck/DeckEditor";
 import { emptyDraft, setPrompt, toUpdateRequest, type DeckDraft } from "../deck/deck-logic";
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
@@ -243,6 +244,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
                 data-testid={`briefing-preset-chip-${c.slot}`}
                 data-filled={c.filled ? "true" : "false"}
                 data-selected={selectedPreset === c.slot ? "true" : "false"}
+                /* 칩 이름은 ellipsis 로 잘릴 수 있다 — 전체 이름을 툴팁으로 노출. */
+                title={c.filled ? `${c.slot}. ${c.name}` : "비어 있음"}
                 disabled={!c.filled || submitting}
                 onClick={() => handleSelectPreset(c.slot)}
               >
@@ -392,34 +395,36 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
 
       {/* 덮어쓰기 확인(요구 2): 매치용 수정이 있는 상태에서 프리셋을 다시 고르면 그 수정이 사라진다. */}
       {pendingPreset != null && (
-        <div className={styles.confirmBackdrop} data-testid="briefing-preset-confirm-backdrop">
-          <div
-            className={styles.confirmDialog}
-            role="dialog"
-            aria-modal="true"
-            data-testid="briefing-preset-confirm"
-          >
-            <p className={styles.confirmText}>현재 매치 수정사항이 사라집니다. 불러올까요?</p>
-            <div className={styles.confirmActions}>
-              <button
-                type="button"
-                className={styles.confirmLoad}
-                data-testid="briefing-preset-confirm-load"
-                onClick={() => loadPreset(pendingPreset)}
-              >
-                불러오기
-              </button>
-              <button
-                type="button"
-                className={styles.confirmCancel}
-                data-testid="briefing-preset-confirm-cancel"
-                onClick={() => setPendingPreset(null)}
-              >
-                취소
-              </button>
-            </div>
+        <Modal
+          onClose={() => setPendingPreset(null)}
+          labelledBy="briefing-preset-confirm-title"
+          overlayClassName={styles.confirmBackdrop}
+          overlayTestId="briefing-preset-confirm-backdrop"
+          className={styles.confirmDialog}
+          testId="briefing-preset-confirm"
+        >
+          <p id="briefing-preset-confirm-title" className={styles.confirmText}>
+            현재 매치 수정사항이 사라집니다. 불러올까요?
+          </p>
+          <div className={styles.confirmActions}>
+            <button
+              type="button"
+              className={styles.confirmLoad}
+              data-testid="briefing-preset-confirm-load"
+              onClick={() => loadPreset(pendingPreset)}
+            >
+              불러오기
+            </button>
+            <button
+              type="button"
+              className={styles.confirmCancel}
+              data-testid="briefing-preset-confirm-cancel"
+              onClick={() => setPendingPreset(null)}
+            >
+              취소
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
