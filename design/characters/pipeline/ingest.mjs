@@ -39,7 +39,8 @@ export const SPRITE_LADDER = [
 ];
 export const TEAM_RING = { blue: '#3da9f1', red: '#ef4f44' };
 
-// 배경 제거 tolerance 는 소스마다 자동 선택된다(autoTol). 강제하려면 incoming/<id>.json 의 "bgTol".
+// 배경 제거 파라미터는 자동 선택하지 않는다 — incoming/<id>.json 의 "bgTol" 로 사람이 지정한다.
+// 이유는 clean() 주석 참조(자동 선택 5회 시도 → 지표마다 반례).
 
 const readImage = (file) => {
   if (path.extname(file).toLowerCase() !== '.png') {
@@ -59,7 +60,11 @@ const write = (file, im) => {
 };
 
 // 자동 탐색은 폐기했다. 아래 "왜"를 반드시 읽을 것.
-const CONSERVATIVE = { localTol: 2, globalTol: 40 };
+// 폴백 = **정확색 제거**(localTol 0, globalTol 0): 시드와 정확히 같은 색만 지운다.
+// SPEC §2 준수 입력(캐릭터에 없는 단색 + 하드 엣지)에서는 이게 정답이고,
+// 위반 입력에서는 배경 대부분이 남아 실패가 즉시 보인다(파일럿 6장 실측 제거율 3~8%).
+// 2/40 은 AA 램프를 타고 배경색과 대비가 낮은 부위를 먹을 수 있어 폴백으로 부적합하다.
+const CONSERVATIVE = { localTol: 0, globalTol: 0 };
 const DIAG_LOCAL = [2, 4, 6, 8, 10, 12, 14, 18, 24];
 const DIAG_GLOBAL = [30, 40, 60, 90, 140, 255];
 
@@ -101,9 +106,12 @@ function diagnoseTol(im) {
  * 캐릭터를 먹는 지점을 고른다. 이건 일반 이미지 매팅 문제이고 이 트랙의 범위가 아니다.
  *
  * 그래서: **값은 사람이 정한다**(`incoming/<id>.json` 의 `bgTol`).
- * 지정이 없으면 **가장 보수적인 설정**으로 물러난다 — 배경이 남을지언정 캐릭터는 안 먹는다.
- * 실패를 **눈에 보이는 쪽**(배경 상자)으로만 내는 것이 설계 의도다.
- * 보이지 않는 손상(캐릭터 소실)은 게이트에서 정상으로 오인되지만, 배경 상자는 즉시 보인다.
+ * 지정이 없으면 **정확색 제거**로 물러난다 — 배경이 남을지언정 캐릭터는 사실상 건드리지 않는다.
+ * 실패를 **눈에 보이는 쪽**(남은 배경)으로만 내는 것이 설계 의도다.
+ * 보이지 않는 손상(캐릭터 소실)은 게이트에서 정상으로 오인되지만, 남은 배경은 즉시 보인다.
+ *
+ * ⚠️ 단 **절대 안전은 아니다**: 배경색과 **정확히 같은 색**이 캐릭터 안에 있으면 그 부분도 지워진다.
+ * SPEC §2 가 "캐릭터에 없는 단색"을 요구하는 이유다. 그래서 이 경로는 항상 육안 확인을 요구한다.
  *
  * SPEC §2 대로 **투명 배경으로 입고하면 이 경로 자체를 타지 않는다.**
  */
@@ -120,7 +128,7 @@ function clean(im, warnings, label, override) {
   const cfg = override || CONSERVATIVE;
   if (!override)
     warnings.push(
-      `${label}: bgTol 미지정 → 보수적 설정(localTol=${CONSERVATIVE.localTol})으로 처리했다.` +
+      `${label}: bgTol 미지정 → 정확색 제거(localTol=${CONSERVATIVE.localTol}, globalTol=${CONSERVATIVE.globalTol})로 처리했다.` +
       ` **배경이 남는다.** 값을 고르려면 report.json 의 tolDiagnostic 표를 보고` +
       ` incoming/<id>.json 에 bgTol 을 지정할 것. 자동 선택은 하지 않는다(신뢰할 수 없어서).`);
 
@@ -151,19 +159,25 @@ function dotify(src, w, h, colors, alignY = 'center') {
 }
 
 /**
- * bgTol 해석 → `{localTol, globalTol}` 또는 undefined(자동 탐색).
+ * bgTol 해석 → `{localTol, globalTol}` 또는 undefined(미지정 → 보수적 폴백).
  * 허용 형태: `8` · `{portrait:9, full:8}` · `{localTol:8, globalTol:60}` ·
  *            `{portrait:{localTol:9,globalTol:40}, full:8}`
- * globalTol 을 지정 못 하면 자동선택이 고른 축(실측 6건 중 4건이 90 아님)에 손이 안 닿는다.
+ * globalTol 도 지정 가능해야 한다 — 파일럿 실측 6건의 최적값이 30~140 으로 제각각이다.
+ * 형식이 어긋나면 조용히 넘어가지 않고 경고한다.
  */
-const pickTol = (bgTol, variant) => {
+const pickTol = (bgTol, variant, warnings, label) => {
   const norm = (v) => {
     if (Number.isFinite(v)) return { localTol: v, globalTol: 90 };
     if (v && Number.isFinite(v.localTol))
       return { localTol: v.localTol, globalTol: Number.isFinite(v.globalTol) ? v.globalTol : 90 };
     return undefined;
   };
-  return norm(bgTol) || (bgTol ? norm(bgTol[variant]) : undefined);
+  const r = norm(bgTol) || (bgTol ? norm(bgTol[variant]) : undefined);
+  // 형식 오류를 조용히 폴백으로 흘리지 않는다 — "지정했는데 안 먹었다"가 제일 나쁜 실패다.
+  if (bgTol !== undefined && !r)
+    warnings.push(`${label}: bgTol 형식 오류 — 무시하고 폴백으로 처리했다. ` +
+      `허용: 8 · {localTol,globalTol} · {portrait,full}. 받은 값: ${JSON.stringify(bgTol)}`);
+  return r;
 };
 
 function loadMeta(id) {
@@ -189,7 +203,7 @@ export function processCharacter(id, files) {
       report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 최소 512×512 미달`);
     if (raw.width !== raw.height)
       report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 은 정사각을 요구(레터박싱되어 해상도 손실)`);
-    const { src, quality } = clean(raw, report.warnings, 'portrait', pickTol(meta.bgTol, 'portrait'));
+    const { src, quality } = clean(raw, report.warnings, 'portrait', pickTol(meta.bgTol, 'portrait', report.warnings, 'portrait'));
     report.portraitCutout = quality;
     for (const st of AVATAR_LADDER) {
       const dot = dotify(src, st.size, st.size, st.colors);
@@ -211,7 +225,7 @@ export function processCharacter(id, files) {
     const ar = raw.height / raw.width;
     if (ar < 1.6 || ar > 2.4)
       report.warnings.push(`full 비율 1:${ar.toFixed(2)} — SPEC 은 세로 1:2 를 요구`);
-    const { src, quality } = clean(raw, report.warnings, 'full', pickTol(meta.bgTol, 'full'));
+    const { src, quality } = clean(raw, report.warnings, 'full', pickTol(meta.bgTol, 'full', report.warnings, 'full'));
     report.fullCutout = quality;
     const sig = meta.signature ? hex2rgb(meta.signature) : dominantColor(src);
     const frame = meta.frame ? hex2rgb(meta.frame) : shade(sig, 0.72);
