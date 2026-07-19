@@ -15,9 +15,9 @@ test("foul → 파울 상황카드 + 후속 free_kick 이벤트 (PK 파울은 �
   const plain = fouls.find((f) => !pens.has(f.tick));
   expect(plain, "PK 아닌 일반 파울이 로그에 있어야").toBeTruthy();
   // 파울 배너("파울→프리킥")는 같은 틱의 free_kick 배너로 즉시 덮이므로, 상황카드로 검증.
-  expect((await situationCaptions(page, plain!.tick)).situation).toContain("파울");
+  expect((await situationCaptions(page, plain!.tick)).situation).toContain("FOUL");
   const pkFoul = fouls.find((f) => pens.has(f.tick));
-  if (pkFoul) expect((await situationCaptions(page, pkFoul.tick)).situation).toContain("페널티");
+  if (pkFoul) expect((await situationCaptions(page, pkFoul.tick)).situation).toContain("PENALTY");
   const fk = await eventsOfType(page, "free_kick", "foul");
   expect(fk.length).toBeGreaterThan(0);
 });
@@ -29,7 +29,7 @@ test.describe("real config 뷰어(offside/card)", () => {
     const offs = await eventsOfType(page, "offside");
     expect(offs.length).toBeGreaterThan(0);
     // 오프사이드 배너도 같은 틱 free_kick 배너로 덮이므로 상황카드로 검증.
-    expect((await situationCaptions(page, offs[0].tick)).situation).toContain("오프사이드");
+    expect((await situationCaptions(page, offs[0].tick)).situation).toContain("OFFSIDE");
     const fk = await eventsOfType(page, "free_kick", "offside");
     expect(fk.length).toBeGreaterThan(0);
   });
@@ -39,6 +39,6 @@ test.describe("real config 뷰어(offside/card)", () => {
     expect(cards.length).toBeGreaterThan(0);
     const rendered = await tickerCards(page);
     expect(rendered.length).toBeGreaterThan(0);
-    expect(rendered.join(" ")).toMatch(/레드|옐로/);
+    expect(rendered.join(" ")).toMatch(/Red|Yellow/);
   });
 });

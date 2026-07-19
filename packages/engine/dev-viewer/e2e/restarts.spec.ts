@@ -110,8 +110,8 @@ test("세이브→라이브 체인→골킥: 중간 '빗나감' 상황카드가 
   }
   expect(found, "real 픽스처에 세이브→라이브 체인→빗나감 케이스가 있어야(없으면 픽스처 시드 확인)").toBeTruthy();
   // 세이브 직전부터 실제 재생 → '선방!' 정지를 지나 라이브 체인이 재생되고 '빗나감!' 카드가 떠야 한다.
-  const caps = await playUntilSituationContains(page, found!.save - 2, "빗나감", 20000);
-  expect(caps.situation).toContain("빗나감");
+  const caps = await playUntilSituationContains(page, found!.save - 2, "OFF TARGET", 20000);
+  expect(caps.situation).toContain("OFF TARGET");
 });
 
 test("goal_kick → 공이 골라인 부근 골에어리어에 있다", async ({ page }) => {

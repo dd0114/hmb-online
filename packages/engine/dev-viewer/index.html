@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HMB 엔진 디버그 뷰어</title>
+    <title>HMB Engine Debug Viewer</title>
     <style>
       :root {
         --bg: #0f1420; --panel: #1a2233; --ink: #e7edf6; --muted: #8ea0bd;
@@ -86,7 +86,7 @@
     </style>
   </head>
   <body>
-    <h1>HMB TIER-B 엔진 · 디버그 뷰어</h1>
+    <h1>HMB TIER-B ENGINE · DEBUG VIEWER</h1>
     <div id="scoreboard">
       <span class="home" id="homeName">HOME</span>
       <span id="score">0 : 0</span>
@@ -100,12 +100,12 @@
       <div id="banner"></div>
     </div>
     <div class="controls">
-      <button id="playBtn">▶ 재생</button>
-      <button id="restartBtn">⟲ 처음</button>
-      <button id="followBtn">🔍 공 따라가기</button>
-      <button id="trailBtn" class="active">✦ 선수 잔상</button>
-      <button id="highlightBtn" class="active">🎬 하이라이트</button>
-      <span class="sp">수동배속</span>
+      <button id="playBtn">▶ Play</button>
+      <button id="restartBtn">⟲ Restart</button>
+      <button id="followBtn">🔍 Follow ball</button>
+      <button id="trailBtn" class="active">✦ Player trails</button>
+      <button id="highlightBtn" class="active">🎬 Highlights</button>
+      <span class="sp">Speed</span>
       <button data-speed="0.25">0.25x</button>
       <button data-speed="0.5">0.5x</button>
       <button data-speed="1" class="active">1x</button>
@@ -113,10 +113,10 @@
       <button data-speed="4">4x</button>
     </div>
     <div class="controls">
-      <button id="prevShot">◀ 이전 슛</button>
-      <button id="nextShot">다음 슛 ▶</button>
-      <button id="prevGoal">◀ 이전 골</button>
-      <button id="nextGoal">다음 골 ▶</button>
+      <button id="prevShot">◀ Prev shot</button>
+      <button id="nextShot">Next shot ▶</button>
+      <button id="prevGoal">◀ Prev goal</button>
+      <button id="nextGoal">Next goal ▶</button>
       <div id="scrubwrap">
         <input id="scrub" type="range" min="0" max="100" value="0" step="0.01" />
         <div id="marks"></div>
@@ -124,8 +124,8 @@
       <span id="clock">0' / 0'</span>
     </div>
     <div id="ticker"></div>
-    <div id="status">match-log.json 로딩 중…</div>
-    <input type="file" id="fileInput" accept="application/json" title="match-log.json 직접 불러오기" />
+    <div id="status">Loading match-log.json…</div>
+    <input type="file" id="fileInput" accept="application/json" title="Load match-log.json directly" />
 
     <script type="module">
       import { buildPlayback, spansReposition, inHighlight } from "./playback.mjs";
@@ -434,10 +434,10 @@
       }
 
       const EV_LABEL = {
-        goal: "⚽ 골", shot: "슛", tackle: "태클", interception: "인터셉트",
-        foul: "파울", offside: "🚩 오프사이드", free_kick: "프리킥",
-        penalty: "⚽ 페널티!", save: "🧤 세이브", card: "카드",
-        half_whistle: "전반 종료", full_whistle: "경기 종료",
+        goal: "⚽ Goal", shot: "Shot", tackle: "Tackle", interception: "Interception",
+        foul: "Foul", offside: "🚩 Offside", free_kick: "Free kick",
+        penalty: "⚽ Penalty!", save: "🧤 Save", card: "Card",
+        half_whistle: "Half-time", full_whistle: "Full-time",
       };
       function renderTicker() {
         tickerEl.innerHTML = log.events
@@ -449,9 +449,9 @@
             const xg = e.xg != null ? ` (xG ${e.xg.toFixed(2)})` : "";
             let label;
             if (e.type === "kickoff") label = e.detail || "kickoff";
-            else if (e.type === "card") label = e.detail === "red" ? "🟥 레드카드" : "🟨 옐로카드";
-            else if (e.type === "shot" && e.detail) label = `슛 (${e.detail})`;
-            else if (e.type === "free_kick" && e.detail) label = `프리킥 (${e.detail})`;
+            else if (e.type === "card") label = e.detail === "red" ? "🟥 Red card" : "🟨 Yellow card";
+            else if (e.type === "shot" && e.detail) label = `Shot (${e.detail})`;
+            else if (e.type === "free_kick" && e.detail) label = `Free kick (${e.detail})`;
             else label = EV_LABEL[e.type] || e.type;
             return `<div class="ev-${e.type}" data-tick="${e.tick}" style="cursor:pointer">${e.minute}' · ${label}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
           }).join("");
@@ -520,7 +520,7 @@
         flashEl.classList.remove("show"); situationEl.classList.remove("show"); bannerEl.classList.remove("show");
       }
       function resetStops() { stoppages.forEach((s) => (s.done = false)); hold = null; clearCaptions(); }
-      function setPlaying(p) { playing = p; playBtn.textContent = p ? "⏸ 일시정지" : "▶ 재생"; }
+      function setPlaying(p) { playing = p; playBtn.textContent = p ? "⏸ Pause" : "▶ Play"; }
       function jumpToTick(tick) {
         const idx = snaps.findIndex((s) => s.tick >= tick);
         tickPos = idx < 0 ? snaps.length - 1 : Math.max(0, idx - 3);
@@ -558,7 +558,7 @@
         // #65: 신뢰 경계 밖(부모/서버) 주입 대비 — 상태 변경 **전에** 최소 검증(원자성). 실패 시
         // throw 만 하고 기존 상태는 그대로 유지 → 손상 페이로드가 뷰어를 반쯤 갈아엎지 않는다.
         if (!data || !Array.isArray(data.tickSnapshots) || !Array.isArray(data.events) || !data.finalScore) {
-          throw new Error("잘못된 MatchLog(tickSnapshots·events·finalScore 필요)");
+          throw new Error("Invalid MatchLog (tickSnapshots · events · finalScore required)");
         }
         log = data; snaps = data.tickSnapshots;
         // 골 + 모든 슛(유효슛 포함) + 페널티 근처에서 하이라이트(슬로우+자동 줌인).
@@ -572,11 +572,11 @@
         // 타임라인 이벤트 핀(타입별 색·높이, 클릭 점프). 골>PK>선방>유효슛>코너 순으로 위에 그림.
         const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
         const PIN = {
-          goal: (e) => ({ h: 16, w: 3, col: e.team === "home" ? "#3b82f6" : "#ef4444", z: 5, label: `${mmss(e.tick)} ${e.team} 골` }),
+          goal: (e) => ({ h: 16, w: 3, col: e.team === "home" ? "#3b82f6" : "#ef4444", z: 5, label: `${mmss(e.tick)} ${e.team} GOAL` }),
           penalty: () => ({ h: 14, w: 3, col: "#22c55e", z: 4, label: "PK" }),
-          save: () => ({ h: 11, w: 2, col: "#38bdf8", z: 3, label: "선방" }),
-          shot_on: () => ({ h: 8, w: 2, col: "#fbbf24", z: 2, label: "유효슛" }),
-          corner: () => ({ h: 8, w: 2, col: "#94a3b8", z: 1, label: "코너" }),
+          save: () => ({ h: 11, w: 2, col: "#38bdf8", z: 3, label: "Save" }),
+          shot_on: () => ({ h: 8, w: 2, col: "#fbbf24", z: 2, label: "On target" }),
+          corner: () => ({ h: 8, w: 2, col: "#94a3b8", z: 1, label: "Corner" }),
         };
         const pins = [];
         for (const e of data.events) {
@@ -594,7 +594,7 @@
         marksEl.innerHTML = pins.join("");
         marksEl.querySelectorAll("[data-tick]").forEach((el) => (el.onclick = () => jumpToTick(+el.dataset.tick)));
         renderTicker(); tickPos = 0; lastGoalShown = 0; setPlaying(true);
-        statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
+        statusEl.textContent = `Loaded · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · final ${data.finalScore.home}:${data.finalScore.away} · tip: turn on "Follow ball" and jump with "Next shot"`;
       }
 
       // #65 소비 주입 계약(정식화): iframe 임베드 시 부모가 postMessage 로 MatchLog 를 주입한다.
@@ -608,7 +608,7 @@
         if (d && d.type === "loadMatchLog" && d.matchLog) {
           // 손상 주입이 예외로 렌더를 죽이지 않게 — 실패 시 이전 상태 유지 + 상태줄에 표시.
           try { loadLog(d.matchLog); }
-          catch (e) { statusEl.textContent = "주입된 MatchLog 로드 실패: " + e; }
+          catch (e) { statusEl.textContent = "Failed to load injected MatchLog: " + e; }
         }
       });
       if (window.__LOG__) {
@@ -616,10 +616,10 @@
         loadLog(window.__LOG__);
       } else if (embedded) {
         // 임베드 + 내장 로그 없음: fetch 대신 부모 주입 대기(서버 불필요).
-        statusEl.textContent = "호스트로부터 MatchLog 주입 대기…";
+        statusEl.textContent = "Waiting for MatchLog injection from host…";
       } else {
         fetch("./match-log.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(loadLog)
-          .catch((err) => { statusEl.textContent = "match-log.json fetch 실패(" + err + "). 아래 파일 선택으로 열거나 standalone 파일을 여세요."; });
+          .catch((err) => { statusEl.textContent = "match-log.json fetch failed (" + err + "). Use the file picker below or open the standalone file."; });
       }
       if (embedded) {
         const announceReady = () => { try { window.parent.postMessage({ type: "viewerReady" }, "*"); } catch (e) {} };
