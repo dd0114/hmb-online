@@ -23,22 +23,154 @@ const body = (col) => ({
   w: R3_COL_X[col + 1] - R3_COL_X[col] - 6, h: 197, scale: 6,
 });
 
+// ref-2 에서 읽은 12캐릭터 메타 + measurements 의 시그니처 실측색.
+// face(col,row): ref-1 얼굴 격자 / body(col): ref-3 전신 격자 — 순서 동일.
+// 배경 제거값 — 자동 선택하지 않는다(ingest.mjs clean() 주석 참조).
+// 진단 스윕이 제안한 값을 **24장 전부 마젠타 렌더로 육안 확인**해 확정했다.
+// 어두운 캐릭터(나츠트·바르크·벨라)는 제약을 통과한 후보가 없어 손으로 잡았다.
+const BGTOL = {
+  "ragna": {
+    "portrait": {
+      "localTol": 16,
+      "globalTol": 30
+    },
+    "full": {
+      "localTol": 6,
+      "globalTol": 60
+    }
+  },
+  "sail": {
+    "portrait": {
+      "localTol": 20,
+      "globalTol": 30
+    },
+    "full": {
+      "localTol": 12,
+      "globalTol": 30
+    }
+  },
+  "lupus": {
+    "portrait": {
+      "localTol": 11,
+      "globalTol": 40
+    },
+    "full": {
+      "localTol": 12,
+      "globalTol": 30
+    }
+  },
+  "aura": {
+    "portrait": {
+      "localTol": 11,
+      "globalTol": 60
+    },
+    "full": {
+      "localTol": 18,
+      "globalTol": 255
+    }
+  },
+  "natzt": {
+    "portrait": {
+      "localTol": 24,
+      "globalTol": 30
+    },
+    "full": {
+      "localTol": 6,
+      "globalTol": 30
+    }
+  },
+  "mio": {
+    "portrait": {
+      "localTol": 24,
+      "globalTol": 60
+    },
+    "full": {
+      "localTol": 12,
+      "globalTol": 90
+    }
+  },
+  "leo": {
+    "portrait": {
+      "localTol": 14,
+      "globalTol": 60
+    },
+    "full": {
+      "localTol": 9,
+      "globalTol": 60
+    }
+  },
+  "riya": {
+    "portrait": {
+      "localTol": 18,
+      "globalTol": 60
+    },
+    "full": {
+      "localTol": 9,
+      "globalTol": 60
+    }
+  },
+  "anubis": {
+    "portrait": {
+      "localTol": 18,
+      "globalTol": 30
+    },
+    "full": {
+      "localTol": 9,
+      "globalTol": 40
+    }
+  },
+  "penguin-king": {
+    "portrait": {
+      "localTol": 14,
+      "globalTol": 30
+    },
+    "full": {
+      "localTol": 11,
+      "globalTol": 90
+    }
+  },
+  "bark": {
+    "portrait": {
+      "localTol": 8,
+      "globalTol": 40
+    },
+    "full": {
+      "localTol": 6,
+      "globalTol": 30
+    }
+  },
+  "bella": {
+    "portrait": {
+      "localTol": 4,
+      "globalTol": 30
+    },
+    "full": {
+      "localTol": 6,
+      "globalTol": 30
+    }
+  }
+};
+
+const C = (id, name, title, position, stars, sig, frame, fc, fr, bc) => ({
+  id, portrait: face(fc, fr), full: body(bc),
+  meta: { name, title, position, stars, signature: sig, ...(frame ? { frame } : {}), bgTol: BGTOL[id] },
+});
+
 const PILOT = [
-  // bgTol = 배경 제거 파라미터. 파일럿 입력은 SPEC 위반(불투명 다크 배경)이라 자동으로
-  // 안전한 값을 고를 수 없다(ingest.mjs clean() 주석 참조) → **마젠타 렌더로 육안 검증해 고정**했다.
-  { id: 'ragna', portrait: face(0, 0), full: body(0),
-    meta: { name: '라그나', title: '불꽃의 스트라이커', position: 'FW', stars: 6,
-            desc: '차원을 가르는 강슛, 필드 전체에 볼을 지핀다.',
-            bgTol: { portrait: { localTol: 9, globalTol: 40 }, full: { localTol: 8, globalTol: 60 } } } },
-  { id: 'aura', portrait: face(3, 0), full: body(3),
-    meta: { name: '아우라', title: '성스러운 골키퍼', position: 'GK', stars: 5,
-            desc: '신의 가호로 팀의 골문을 지키며 위기 앞에서 더욱 빛난다.',
-            bgTol: { portrait: { localTol: 11, globalTol: 60 }, full: { localTol: 9, globalTol: 140 } } } },
-  { id: 'penguin-king', portrait: face(3, 1), full: body(9),
-    meta: { name: '펭킹킹', title: '빙하의 수호자', position: 'GK', stars: 5,
-            desc: '차가운 빙벽으로 슈팅을 막아내며 팀을 지키는 왕.',
-            bgTol: { portrait: { localTol: 14, globalTol: 30 }, full: { localTol: 11, globalTol: 40 } } } },
+  C('ragna', '라그나', '불꽃의 스트라이커', 'FW', 6, '#f7a051', '#c82813', 0, 0, 0),
+  C('sail', '세일', '바람의 미드필더', 'MF', 5, '#66d8bd', '#50a1d3', 1, 0, 1),
+  C('lupus', '루프스', '숲의 수호자', 'DF', 5, '#95d36d', '#aa8e3e', 2, 0, 2),
+  C('aura', '아우라', '성스러운 골키퍼', 'GK', 5, '#eec830', '#f1bc47', 3, 0, 3),
+  C('natzt', '나츠트', '암흑의 드리블러', 'FW', 5, '#a864c8', '#3a266b', 4, 0, 4),
+  C('mio', '미오', '번개의 테크니션', 'MF', 5, '#45b4e5', '#1d4776', 5, 0, 5),
+  C('leo', '레오', '사자의 수비수', 'DF', 5, '#d84515', null, 0, 1, 6),
+  C('riya', '리야', '자연의 연주자', 'MF', 5, '#69cd68', null, 1, 1, 7),
+  C('anubis', '아누비스', '사막의 침투자', 'FW', 5, '#8b6227', null, 2, 1, 8),
+  C('penguin-king', '펭킹킹', '빙하의 수호자', 'GK', 5, '#326e8a', null, 3, 1, 9),
+  C('bark', '바르크', '미노타우로스', 'DF', 5, '#b2823c', null, 4, 1, 10),
+  C('bella', '벨라', '마도학자', 'MF', 5, '#983eb4', null, 5, 1, 11),
 ];
+
 
 const cache = new Map();
 const ref = (f) => {
