@@ -32,6 +32,19 @@ test("최종 liveStats 합 = 실제 스코어(골) + 점유율 0..100", async ({
   expect(s.momentum).toBeLessThanOrEqual(1);
 });
 
+test("통계 HUD 는 피치 캔버스 아래에 위치 (오버레이/위 아님, 피치 전체 폭)", async ({ page }) => {
+  const r = await page.evaluate(() => {
+    const pitch = document.getElementById("pitch")!.getBoundingClientRect();
+    const hud = document.getElementById("hud")!.getBoundingClientRect();
+    return { pitchTop: pitch.top, pitchBottom: pitch.bottom, pitchWidth: pitch.width, hudTop: hud.top };
+  });
+  // HUD 상단이 피치 하단 이하 = 피치 아래(hero: 게임 장면 밑으로).
+  expect(r.hudTop, `hudTop ${r.hudTop} 이 pitchBottom ${r.pitchBottom} 이상이어야`).toBeGreaterThanOrEqual(r.pitchBottom - 1);
+  // 피치는 위쪽 + 전체 폭(좁아지지 않음).
+  expect(r.pitchTop).toBeLessThan(r.hudTop);
+  expect(r.pitchWidth, "피치 캔버스가 전체 폭(좁아지지 않음)").toBeGreaterThan(600);
+});
+
 test("통계 HUD 토글 버튼 — 클릭 시 패널 표시/숨김 (기본 켜짐)", async ({ page }) => {
   // 기본 상태: HUD 보임 + 버튼 active.
   const visible = () => page.evaluate(() => getComputedStyle(document.getElementById("hud")!).display);

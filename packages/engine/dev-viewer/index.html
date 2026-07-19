@@ -128,20 +128,6 @@
       <span class="away" id="awayName">AWAY</span>
       <span id="minute">0'</span>
     </div>
-    <!-- F1(#100): 실시간 경기 통계 HUD — 재생 중 현재 틱까지 누적 갱신(점유율·슛·xG·패스%·코너·파울·카드·모멘텀). -->
-    <div id="hud">
-      <div class="hud-top">
-        <span class="poss-val home" id="possH">50%</span>
-        <div class="poss-bar"><i id="possFillH"></i><b id="possFillA"></b></div>
-        <span class="poss-val away" id="possA">50%</span>
-      </div>
-      <div class="hud-caption">Possession</div>
-      <div id="hudGrid"></div>
-      <div class="mom-wrap">
-        <span class="mom-cap">Momentum</span>
-        <div class="mom-track"><span class="mom-mid"></span><i id="momFill"></i></div>
-      </div>
-    </div>
     <div id="wrap">
       <canvas id="pitch" width="1050" height="680"></canvas>
       <div id="flash"></div>
@@ -172,6 +158,20 @@
         <div id="marks"></div>
       </div>
       <span id="clock">0' / 0'</span>
+    </div>
+    <!-- F1(#100): 실시간 경기 통계 HUD — 피치 아래 분석 영역(hero: 게임 장면 밑으로). 재생 중 현재 틱까지 누적 갱신. -->
+    <div id="hud">
+      <div class="hud-top">
+        <span class="poss-val home" id="possH">50%</span>
+        <div class="poss-bar"><i id="possFillH"></i><b id="possFillA"></b></div>
+        <span class="poss-val away" id="possA">50%</span>
+      </div>
+      <div class="hud-caption">Possession</div>
+      <div id="hudGrid"></div>
+      <div class="mom-wrap">
+        <span class="mom-cap">Momentum</span>
+        <div class="mom-track"><span class="mom-mid"></span><i id="momFill"></i></div>
+      </div>
     </div>
     <div id="ticker"></div>
     <div id="status">Loading match-log.json…</div>
