@@ -141,8 +141,17 @@ test("W4 리스트 추천정렬 + 스탯총량 + 리스트→보드 드래그", 
   await expect(page.getByTestId("pick-FW_TOP")).toContainText("선발");
   await page.screenshot({ path: `${SMOKE_DIR}w4-after-drag.png`, fullPage: true });
 
-  // 5) 탭-투-플레이스 병행 유지(회귀 가드): 다른 선수 탭 → 첫 빈 슬롯 배치.
+  // 5) 탭-투-플레이스(#106 R1 부터 **1급 배치 수단**): 두 번 탭이 계약이다.
+  //    구 계약("선수 1탭 → 첫 빈 슬롯 자동 배치")은 #106 에서 폐기됐다 — 전술보드가 SoT 이므로
+  //    "어디에 놓을지"를 유저가 정한다(양방향: 슬롯→선수 / 선수→슬롯).
+  // 드롭 직후 첫 클릭은 @dnd-kit 의 **클릭 억제 창**(MouseSensor.detach 가 setTimeout(...,50) 으로
+  // 클릭 리스너를 늦게 떼는 구간, ≈50ms)에 먹힌다 — 0/10ms 는 씹히고 60ms+ 는 정상(실측).
+  // 사람이 드래그를 놓고 50ms 안에 다른 항목을 누르는 일은 없으므로 여유(300ms)를 주고 진행한다.
+  await page.waitForTimeout(300);
   await page.getByTestId("pick-MF_TOP").click();
+  await expect(page.getByTestId("pick-MF_TOP")).toHaveAttribute("data-pending", "true");
+  await expect(page.getByTestId("starter-count")).toHaveText(/1\/11/); // 아직 배치 전
+  await page.getByTestId("board-slot-starter-6").click();
   await expect(page.getByTestId("pick-MF_TOP")).toBeDisabled();
   await expect(page.getByTestId("starter-count")).toHaveText(/2\/11/);
 

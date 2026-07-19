@@ -131,7 +131,8 @@ test("실폰(390x844, 터치): 짧은 스와이프=리스트 스크롤 / 롱프�
   const source = page.getByTestId("pick-FW_TOP");
   await page.evaluate(() => {
     const list = document.querySelector("ul")!;
-    window.scrollBy(0, list.getBoundingClientRect().top - (window.innerHeight - 220));
+    // 하단 지시 독(#106 R1: 접힌 상태 ≈90px, 하단탭 위)에 가리지 않는 위치까지만 올린다.
+    window.scrollBy(0, list.getBoundingClientRect().top - (window.innerHeight - 330));
   });
   await page.waitForTimeout(200);
   await expect(source).toBeInViewport();

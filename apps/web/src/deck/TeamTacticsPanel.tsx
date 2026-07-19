@@ -1,3 +1,8 @@
+/**
+ * ⚠️ 이슈 #106 R1 — 이 패널은 **화면에서 내렸다**(렌더 중단, 파일 존치). 팀 전술 4슬라이더는
+ * DirectiveRail 의 "팀 지시" 컨텍스트로 이식됐다(testid `tactics-*` 동일). 프리셋과 함께
+ * 되돌릴 여지가 있어 파일을 남긴다 — 새로 쓰지 말고 DirectiveRail 을 고쳐라.
+ */
 import type { TeamTactics } from "../api/v2";
 import { TACTICS_KEYS, TACTICS_LABELS } from "./tactics-logic";
 import styles from "./TeamTacticsPanel.module.css";

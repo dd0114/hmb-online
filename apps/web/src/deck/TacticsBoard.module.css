@@ -1,12 +1,16 @@
+/* ② 전술보드 카드 — 피치 + 벤치 + 하단 바가 한 덩어리(#106 R1, 목업 `.board`). */
+.card {
+  position: relative;
+  border: 1px solid #23502f;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #16351f 0%, #0f2716 100%);
+}
+
 .pitch {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4;
-  max-height: 62vh;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #16351f 0%, #0f2716 100%);
-  border: 1px solid #23502f;
-  overflow: hidden;
+  aspect-ratio: 68 / 56;
   touch-action: none; /* let @dnd-kit own touch gestures on the board */
 }
 
@@ -31,74 +35,120 @@
   border-radius: 50%;
 }
 
+.tokens {
+  position: absolute;
+  inset: 32px 10px 36px;
+}
+
 .pitchSlot {
   position: absolute;
-  width: 64px;
-  height: 56px;
+  width: 62px;
+  min-height: 56px;
+  /* sticky 시트 바(위) / 하단 지시 독(아래)에 가리지 않게 스크롤 여백을 준다 —
+     탭-투-플레이스로 슬롯을 누를 때 브라우저 scrollIntoView 가 이 여백을 존중한다. */
+  scroll-margin: 140px 0 200px;
   transform: translate(-50%, -50%);
   padding: 0;
-  border-radius: 10px;
-  border: 1px dashed rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.15);
+  border: none;
+  background: none;
   color: var(--text);
   cursor: pointer;
 }
 
+/* ── 벤치 = 같은 카드 안 ── */
 .benchSection {
-  margin-top: 12px;
+  border-top: 1px solid #23502f;
+  padding: 8px 10px 9px;
+  background: rgba(15, 17, 21, 0.55);
+  position: relative;
+  z-index: 2;
 }
 .benchLabel {
+  display: block;
+  margin-bottom: 6px;
   font-size: 12px;
+  font-weight: 600;
   color: var(--text-muted);
 }
 .benchRow {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   overflow-x: auto;
-  padding: 6px 0;
+  padding-bottom: 2px;
 }
+/* 7칸이 카드 폭 안에 다 들어가도록 줄어들 수 있게 한다(고정폭이면 데스크탑에서 7번째가 잘렸다).
+   그래도 모자라면 .benchRow 가 가로 스크롤한다. */
 .benchCell {
-  flex: 0 0 auto;
-  width: 64px;
-  height: 56px;
+  flex: 1 1 44px;
+  width: auto;
+  min-width: 44px;
+  max-width: 60px;
+  min-height: 52px;
   padding: 0;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: var(--bg-elevated);
+  border: none;
+  background: none;
   color: var(--text);
   cursor: pointer;
 }
 
+/* ── 보드 하단 바 (초기화 / Auto 배치) ── */
+.boardBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid #23502f;
+  background: rgba(15, 17, 21, 0.55);
+  position: relative;
+  z-index: 2;
+}
+
+/* ── 슬롯 상태 ── */
+.cellEmpty .emptyMark,
 .cellEmpty {
-  opacity: 0.85;
+  color: rgba(255, 255, 255, 0.5);
 }
-.cellFilled {
-  border-style: solid;
-  border-color: #2f7d45;
+.cellEmpty .emptyMark {
+  display: inline-grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.18);
+  font-size: 16px;
 }
-.cellOver {
+/* 채워진 슬롯은 토큰 디스크가 스스로 상태를 말한다 — 버튼에는 테두리를 주지 않는다
+   (border:none 위에 border-style 만 켜면 currentColor 흰 사각형이 그려진다 — 캡처로 발견). */
+.cellOver .disc,
+.cellOver .emptyMark {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent);
 }
-.cellSelected {
+.cellSelected .disc,
+.cellSelected .emptyMark {
   border-color: var(--accent);
-  background: rgba(79, 140, 255, 0.16);
+  background: rgba(79, 140, 255, 0.22);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.cellCandidate .emptyMark {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .emptyMark {
   font-size: 18px;
-  color: rgba(255, 255, 255, 0.5);
 }
 
+/* ── 토큰 ── */
 .token {
   position: relative;
   width: 100%;
-  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1px;
+  gap: 3px;
   border-radius: 9px;
   cursor: grab;
   touch-action: none;
@@ -109,20 +159,39 @@
 .tokenDragging {
   opacity: 0.4;
 }
-.tokenSelected {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  border-radius: 9px;
+
+.disc {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid #2f7d45;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
+.tokenSelected .disc {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  background: rgba(79, 140, 255, 0.18);
+}
+
 .tokenName {
   font-size: 11px;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1.15;
   text-align: center;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .tokenMeta {
   font-size: 10px;
@@ -132,8 +201,9 @@
 }
 .tokenClock {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: -6px;
+  right: -6px;
+  line-height: 0;
 }
 .promptDot {
   width: 5px;
@@ -141,4 +211,35 @@
   border-radius: 50%;
   background: var(--accent);
   display: inline-block;
+  flex: none;
+}
+
+/* 모바일: 토큰을 한 단계 줄이고 포지션 라벨을 감춰 11명이 겹치지 않게 한다(목업 규칙). */
+@media (max-width: 1023px) {
+  .pitch {
+    aspect-ratio: 68 / 60;
+  }
+  .pitchSlot {
+    width: 58px;
+  }
+  .disc {
+    width: 36px;
+    height: 36px;
+    font-size: 13px;
+  }
+  .tokenMeta {
+    display: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pitch {
+    aspect-ratio: 68 / 72;
+  }
+  .tokens {
+    inset: 40px 14px 44px;
+  }
+  .pitchSlot {
+    width: 68px;
+  }
 }

@@ -1,58 +1,214 @@
-.editor {
-  display: flex;
-  flex-direction: column;
+/*
+ * 팀 시트 레이아웃 (#106 R1).
+ * 모바일: 시트 바(sticky) → 보드 카드 → 보유 선수 → 지시 레일(하단 고정 독).
+ * ≥1024px: 좌(보드 위, 리스트 아래) / 우(지시 레일 sticky).
+ * ≥1280px: 목업 그대로 3컬럼 — 보유 선수 | 전술보드 | 지시 레일.
+ *   (nav 사이드바 200px + app-container 1120px 상한 때문에 3컬럼은 1280px 부터 여유가 생긴다.)
+ */
+.sheet {
+  display: block;
+  min-width: 0;
 }
-.starterHint {
+
+.wrap {
+  display: block;
+  min-width: 0;
+}
+
+.boardCol,
+.poolCol {
+  min-width: 0;
+}
+
+.boardHint {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   color: var(--text-muted);
-  margin-bottom: 8px;
 }
+
+/* 배치 대기 안내 — 취소 버튼과 한 줄. */
+.pendingHint {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.boardBtn,
+.boardBtnPrimary {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  min-height: 36px;
+  font-size: 13px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  flex: none;
+}
+.boardBtnPrimary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+.boardBtnPrimary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.autoHint {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 모바일에서는 AUTO 가 시트 바에 있다(목업) — 보드 하단 바의 Auto/힌트는 중복이라 감춘다.
+   초기화 + 조작 힌트는 남긴다(모바일에서도 필요). */
+@media (max-width: 1023px) {
+  .boardBtnPrimary,
+  .autoHint {
+    display: none;
+  }
+}
+
 .errorNote {
   margin: 8px 0 0;
   font-size: 13px;
   color: var(--danger);
 }
-.teamPromptSection {
-  margin-top: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.teamPromptLabel {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-.teamPromptInput {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  resize: vertical;
-  font-family: inherit;
+
+/* ── 모바일: 지시 레일 = 하단 독 ───────────────────────────────
+   AppNav 하단탭(고정) 위에 얹는다. 접힌 상태는 헤드 한 줄만 보이고, 선수를 탭하면 펼쳐진다. */
+.railCol {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+  z-index: 15;
+  padding: 0 10px 8px;
+  background: linear-gradient(180deg, rgba(15, 17, 21, 0), rgba(15, 17, 21, 0.94) 22%);
 }
 
-/* ≥1024px: board+side 2-col (LLD §2·§7 W6). 보드는 좌측 고정폭·sticky, 사이드패널은 우측 가변. */
+/* 독 펼침/접힘 토글 — 상단 가장자리 전체가 탭 타깃이다(핸들만 노리게 하면 안 잡힌다).
+   접힌 상태에서는 팀 지시(팀 프롬프트)가 여기서 열린다. */
+.grab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 24px;
+  padding: 6px 0 4px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.grab::before {
+  content: "";
+  display: block;
+  width: 34px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.grab::after {
+  content: "▲";
+  font-size: 9px;
+  line-height: 1;
+}
+.railCol[data-open="true"] .grab::after {
+  content: "▼";
+}
+
+/* 접힘: 레일 헤드만 (보드 맥락을 가리지 않는다) */
+.railCol[data-open="false"] [data-rail-body] {
+  display: none;
+}
+.railCol[data-open="true"] [data-rail-body] {
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+/* 독이 리스트 끝을 가리지 않도록 여백 확보 */
+.poolCol {
+  padding-bottom: 132px;
+}
+
+/*
+ * ⚠️ 다중 컬럼 전환은 **뷰포트가 아니라 컨테이너 폭** 기준이다(#106 R1 검증 B1).
+ * DeckEditor 는 덱 화면(컨테이너 ~1048px)과 **브리핑(컨테이너 ~688px)** 에 동시에 임베드된다.
+ * 뷰포트 기준으로 걸면 넓은 모니터에서 브리핑 보드가 0 으로 붕괴해(실측 pitch 50x53, 11 슬롯이
+ * 한 점에 겹쳐 GK 외 선택 불가) 선수별 프롬프트 주입이 아예 막힌다.
+ *
+ * container-type 은 `@media (min-width:1024px)` **안에서만** 켠다 — inline-size 컨테이너는
+ * layout containment 를 걸어 fixed 자손의 컨테이닝 블록이 되므로, 모바일 하단 독(position:fixed)이
+ * 뷰포트가 아니라 이 요소 기준으로 붙어버린다. 데스크탑에서는 독이 sticky 라 무해하다.
+ */
 @media (min-width: 1024px) {
-  .editor {
+  .sheet {
+    container-type: inline-size;
+    container-name: teamsheet;
+  }
+  .poolCol {
+    padding-bottom: 0;
+  }
+  .railCol {
+    grid-area: rail;
+    position: sticky;
+    top: 132px;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    z-index: 1;
+    padding: 0;
+    background: none;
+  }
+  .grab {
+    display: none;
+  }
+  .railCol[data-open="false"] [data-rail-body] {
+    display: flex;
+  }
+  .railCol[data-open="true"] [data-rail-body],
+  .railCol[data-open="false"] [data-rail-body] {
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+  }
+}
+
+/* 2컬럼: 보드(위)+리스트(아래) | 지시 레일. 컨테이너가 640px 이상일 때만. */
+@container teamsheet (min-width: 640px) {
+  .wrap {
     display: grid;
-    grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
-    gap: 24px;
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+    grid-template-areas:
+      "board rail"
+      "pool  rail";
+    gap: 18px;
     align-items: start;
-    max-width: 940px;
-    margin: 0 auto;
   }
   .boardCol {
-    position: sticky;
-    top: 16px;
+    grid-area: board;
   }
-  /* 사이드패널 children 간 간격(모바일은 각자 margin, 데스크탑은 gap 으로 정돈). */
-  .sideCol {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    min-width: 0;
+  .poolCol {
+    grid-area: pool;
+  }
+  .railCol {
+    grid-area: rail;
+  }
+}
+
+/* 3컬럼(목업 구성): 보유 선수 | 전술보드 | 지시 레일. 컨테이너 1000px 이상 = 덱 화면 넓은 뷰포트. */
+@container teamsheet (min-width: 1000px) {
+  .wrap {
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(300px, 340px);
+    grid-template-areas: "pool board rail";
   }
 }

@@ -114,7 +114,13 @@ afterEach(() => {
   fx.presetsState.value = fx.presets;
 });
 
-describe("BriefingPanel 프리셋 선택 (요구 2, W6a)", () => {
+/**
+ * ⚠️ 이슈 #106 — 브리핑의 프리셋 시작점 칩은 **화면에서 내렸다**(삭제가 아니라 렌더 중단).
+ * 아래 describe 는 그 칩 배선을 박제한 것이라 지금은 성립하지 않으므로 **skip 으로 보류**한다.
+ * 지우지 않는 이유: 프리셋 재도입 시 이 계약을 그대로 되살려야 하기 때문(로직 모듈
+ * `briefing-preset-logic.ts` 와 그 단위테스트 15개는 계속 green 이다).
+ */
+describe.skip("BriefingPanel 프리셋 선택 (요구 2, W6a) — #106 으로 화면에서 내림(보류)", () => {
   it("저장된 프리셋이 하나도 없으면(신규 유저) 칩 행 자체를 숨긴다", () => {
     fx.presetsState.value = [
       { slot: 1, name: null, snapshot: null },
@@ -208,5 +214,26 @@ describe("BriefingPanel 프리셋 선택 (요구 2, W6a)", () => {
     });
     expect(screen.queryByTestId("briefing-preset-confirm")).toBeNull();
     expect(screen.getByTestId("token-BACK1")).toBeTruthy();
+  });
+});
+
+/** #106 R1 계약: 브리핑에 프리셋 진입점이 없고, 시작점은 항상 활성 덱이다. */
+describe("BriefingPanel 프리셋 진입점 부재 (#106 R1)", () => {
+  it("프리셋 칩/힌트/확인 다이얼로그가 렌더되지 않는다", () => {
+    renderPanel();
+    expect(screen.queryByTestId("briefing-presets")).toBeNull();
+    expect(screen.queryByTestId("briefing-preset-chip-1")).toBeNull();
+    expect(screen.queryByTestId("briefing-preset-chip-2")).toBeNull();
+    expect(screen.queryByTestId("briefing-preset-chip-3")).toBeNull();
+    expect(screen.queryByTestId("briefing-preset-hint")).toBeNull();
+    expect(screen.queryByTestId("briefing-preset-confirm")).toBeNull();
+  });
+
+  it("저장된 프리셋이 있어도 시작점은 활성 덱(회귀 금지)", () => {
+    renderPanel();
+    expect(screen.getByTestId("token-DECK1")).toBeTruthy();
+    expect(screen.queryByTestId("token-MAIN1")).toBeNull();
+    // 팀 지시(레일)는 그대로 살아 있다
+    expect(teamPrompt().value).toBe("");
   });
 });

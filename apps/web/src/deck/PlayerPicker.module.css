@@ -1,5 +1,5 @@
 .picker {
-  margin-top: 16px;
+  margin-top: 14px;
 }
 
 .header {
@@ -11,8 +11,9 @@
 }
 
 .title {
-  font-size: 15px;
+  font-size: 14px;
   margin: 0;
+  font-weight: 600;
 }
 
 .sortNote {
@@ -28,6 +29,8 @@
   display: flex;
   gap: 6px;
   margin-bottom: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .tab,
@@ -40,12 +43,15 @@
   background: none;
   color: var(--text-muted);
   font-size: 13px;
+  white-space: nowrap;
+  flex: none;
 }
 
 .tabActive {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
+  font-weight: 600;
 }
 
 .list {
@@ -63,10 +69,12 @@
 .item,
 .itemPlaced {
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 8px 12px;
+  min-height: 52px;
   border: none;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
@@ -78,8 +86,8 @@
      로 두어도 드래그·스크롤 모두 정상이다. 이 선언의 실효는 **더블탭 줌/탭 지연 제거**로,
      탭-투-플레이스 반응성에 이득이라 남긴다.
      반대로 `none`(보드 .pitch/.token 방식)은 쓰면 안 된다: 이 행이 리스트(.list=overflow-y:auto)를
-     빈틈없이 채워(행 42px, padding/gap 0) **리스트 터치 스크롤이 죽고**(실측 scrollTop 0)
-     탭-투-플레이스까지 마비된다. e2e/deck-list-dnd-touch.spec.ts 가 그 회귀를 잡는다. */
+     빈틈없이 채워 **리스트 터치 스크롤이 죽고** 탭-투-플레이스까지 마비된다.
+     e2e/deck-list-dnd-touch.spec.ts 가 그 회귀를 잡는다. */
   touch-action: manipulation;
 }
 
@@ -88,32 +96,48 @@
   cursor: default;
 }
 
-.pos {
-  width: 28px;
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--text-muted);
+/* 리스트에서 집어든(배치 대기) 행 — 슬롯을 누르면 여기로 들어간다(#106 R1 역방향 탭). */
+.itemPending {
+  background: rgba(79, 140, 255, 0.16);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.who {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
 }
 
 .name {
-  flex: 1;
+  font-size: 14px;
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .overall {
   flex-shrink: 0;
   min-width: 26px;
   text-align: right;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
 
 .grade {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
 }
 
@@ -123,6 +147,26 @@
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 1px 8px;
+  white-space: nowrap;
+}
+
+.fitBest,
+.fitMid,
+.fitLow {
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.fitBest {
+  color: var(--success);
+  border-color: #2f7d45;
+}
+.fitMid {
+  color: #f0b64a;
+  border-color: #5a4a22;
 }
 
 .emptyNote {

@@ -86,12 +86,13 @@ test("W2 Auto 구성: 빈 편집기 → Auto 클릭 → 선발 11 채움 + dirty
   await page.goto("/deck");
 
   // 1) 첫 진입: 활성 덱 없음 → 선발 0/11, Auto 버튼 활성(보유 14명 ≥ 11).
+  //    (#106 R1: 모바일에서 AUTO 는 시트 바(auto-fill-top), 데스크탑은 보드 하단 바(auto-fill).)
   await expect(page.getByTestId("starter-count")).toHaveText(/0\/11/);
-  await expect(page.getByTestId("auto-fill")).toBeEnabled();
+  await expect(page.getByTestId("auto-fill-top")).toBeEnabled();
   await page.screenshot({ path: `${SMOKE_DIR}w2-auto-before.png`, fullPage: true });
 
   // 2) Auto 클릭 → 결정론 로직으로 선발 11 채워짐 + dirty 뱃지.
-  await page.getByTestId("auto-fill").click();
+  await page.getByTestId("auto-fill-top").click();
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
   await expect(page.getByTestId("deck-dirty-badge")).toBeVisible();
   // GK 슬롯(slotIndex 0)에 실제 GK 토큰이 놓였는지(우선 배정).
@@ -99,14 +100,12 @@ test("W2 Auto 구성: 빈 편집기 → Auto 클릭 → 선발 11 채움 + dirty
   await page.screenshot({ path: `${SMOKE_DIR}w2-auto-after.png`, fullPage: true });
 
   // 3) 결정론: 다시 Auto 눌러도 동일 선발 유지(11/11).
-  await page.getByTestId("auto-fill").click();
+  await page.getByTestId("auto-fill-top").click();
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
 
-  // 4) 저장 가능: [+새 프리셋] → 슬롯1 채워지고 dirty 해제.
-  await page.getByTestId("slot-new-button").click();
-  await page.getByTestId("slot-new-name-input").fill("자동 전술");
-  await page.getByTestId("slot-new-confirm").click();
-  await expect(page.getByTestId("slot-chip-1")).toHaveAttribute("data-filled", "true");
+  // 4) 저장: #106 R1 부터 이 화면은 **활성 덱 하나**만 저장한다(프리셋 슬롯 UI 는 화면에서 내림).
+  //    구 스텝("[+새 프리셋] → 슬롯1 채워짐")을 [저장] → 저장 완료 + dirty 해제로 대체.
+  await page.getByTestId("save-deck").click();
   await expect(page.getByTestId("deck-saved-note")).toBeVisible();
   await expect(page.getByTestId("deck-dirty-badge")).toHaveCount(0);
 
@@ -125,6 +124,6 @@ test("W2 Auto 구성: 보유 선수 < 11 → 버튼 비활성 + 안내", async (
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/deck");
 
-  await expect(page.getByTestId("auto-fill")).toBeDisabled();
-  await expect(page.getByTestId("auto-fill").locator("xpath=following-sibling::span")).toContainText("보유 선수 부족");
+  await expect(page.getByTestId("auto-fill-top")).toBeDisabled();
+  await expect(page.getByTestId("auto-hint-top")).toContainText("보유 선수 부족");
 });

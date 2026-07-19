@@ -9,10 +9,9 @@ import {
   type Deck,
   type MatchDetail,
 } from "../api/hooks";
-import { useRelations, useTeamPresets } from "../api/hooks-v2";
+import { useRelations } from "../api/hooks-v2";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
 import { ErrorToast } from "../common/ErrorToast";
-import { Modal } from "../common/Modal";
 import { DeckEditor } from "../deck/DeckEditor";
 import { emptyDraft, setPrompt, toUpdateRequest, type DeckDraft } from "../deck/deck-logic";
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
@@ -24,14 +23,7 @@ import {
   type DefenderCandidate,
 } from "../deck/one-tap-directives";
 import { ConditionClock } from "./ConditionClock";
-import {
-  briefingBaseline,
-  briefingPresetChoices,
-  hasAnyPreset,
-  isMatchEditDirty,
-  presetEditorFor,
-  selectionOutcome,
-} from "./briefing-preset-logic";
+// briefing-preset-logic(프리셋 시작점 선택)은 #106 으로 화면에서 내렸다 — 모듈·테스트는 존치.
 import styles from "./BriefingPanel.module.css";
 
 const BRIEFING_TIMER_SECONDS = 180;
@@ -72,7 +64,6 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
   const { data: deck, isLoading: deckLoading, isError: deckError } = useDeck();
   const { data: players, isLoading: playersLoading, isError: playersError } = usePlayers();
   const { data: relations } = useRelations();
-  const { data: presetSlots } = useTeamPresets();
   const updateDeck = useUpdateDeck();
   const submitPrompt = useSubmitMatchPrompt(match.id);
   const kickoff = useKickoff(match.id);
@@ -86,10 +77,6 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
   const [markTarget, setMarkTarget] = useState<string | null>(null);
   const [markDefenderId, setMarkDefenderId] = useState<string>("");
   const [markNote, setMarkNote] = useState<string | null>(null);
-  // 프리셋 시작점 선택(W6a, 요구 2): 선택 슬롯 · 로드 시점 지문(매치용 수정 감지) · 덮어쓰기 확인 대상.
-  const [selectedPreset, setSelectedPreset] = useState<number | null>(null);
-  const [baseline, setBaseline] = useState<string | null>(null);
-  const [pendingPreset, setPendingPreset] = useState<number | null>(null);
 
   const playersById = useMemo(() => {
     const map = new Map<string, CatalogPlayer>();
@@ -99,7 +86,7 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
   const ownedPlayers = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
 
   // initialize the editor from the active deck once (snapshot to fully edit — AC-B2).
-  // 프리셋 미선택 시의 기본 시작점 = 활성 덱(현행 동작 유지, W6a 회귀 금지).
+  // 시작점은 항상 활성 덱이다 — 프리셋 시작점 선택은 #106 으로 화면에서 내렸다.
   useEffect(() => {
     if (editor === null && !deckLoading && !deckError) {
       const ed: EditorState = {
@@ -108,40 +95,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
         teamPrompt: "",
       };
       setEditor(ed);
-      setBaseline(briefingBaseline(ed));
     }
   }, [editor, deck, deckLoading, deckError]);
-
-  const presetChoices = useMemo(() => briefingPresetChoices(presetSlots), [presetSlots]);
-  const matchEditsDirty =
-    editor != null && baseline != null && isMatchEditDirty(editor, baseline);
-
-  /** 프리셋 스냅샷을 매치 작업사본으로 로드(활성 덱/프리셋은 건드리지 않는다 — apply 미호출). */
-  function loadPreset(slot: number) {
-    const ed = presetEditorFor(presetSlots, slot);
-    if (!ed) return;
-    setEditor(ed);
-    setBaseline(briefingBaseline(ed));
-    setSelectedPreset(slot);
-    setPendingPreset(null);
-    setMarkNote(null);
-  }
-
-  /** 칩 탭: 매치용 수정이 있으면 덮어쓰기 확인을 먼저 띄운다(요구 2 데이터손실 방지). */
-  function handleSelectPreset(slot: number) {
-    const outcome = selectionOutcome({
-      slots: presetSlots,
-      slot,
-      selectedSlot: selectedPreset,
-      dirty: matchEditsDirty,
-    });
-    if (outcome === "ignore") return;
-    if (outcome === "confirm") {
-      setPendingPreset(slot);
-      return;
-    }
-    loadPreset(slot);
-  }
 
   useEffect(() => {
     const t = window.setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
@@ -225,40 +180,10 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
         <span className={styles.timerNote}>만료돼도 진행 가능</span>
       </div>
 
-      {/* 프리셋 시작점 선택(요구 2) — 컴팩트 칩 [1][2][3]. 채워진 슬롯만 선택 가능.
-          저장된 프리셋이 하나도 없으면(신규 유저) 행 자체를 숨긴다 — 서버는 항상 3슬롯을 준다. */}
-      {hasAnyPreset(presetChoices) && (
-        <section className={styles.presetRow} data-testid="briefing-presets">
-          <div className={styles.presetChips}>
-            {presetChoices.map((c) => (
-              <button
-                key={c.slot}
-                type="button"
-                className={[
-                  styles.presetChip,
-                  c.filled ? styles.presetChipFilled : styles.presetChipEmpty,
-                  selectedPreset === c.slot ? styles.presetChipSelected : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                data-testid={`briefing-preset-chip-${c.slot}`}
-                data-filled={c.filled ? "true" : "false"}
-                data-selected={selectedPreset === c.slot ? "true" : "false"}
-                /* 칩 이름은 ellipsis 로 잘릴 수 있다 — 전체 이름을 툴팁으로 노출. */
-                title={c.filled ? `${c.slot}. ${c.name}` : "비어 있음"}
-                disabled={!c.filled || submitting}
-                onClick={() => handleSelectPreset(c.slot)}
-              >
-                <span className={styles.presetChipNo}>{c.slot}</span>
-                <span className={styles.presetChipName}>{c.name}</span>
-              </button>
-            ))}
-          </div>
-          <p className={styles.presetHint} data-testid="briefing-preset-hint">
-            프리셋을 고르면 그걸로 시작합니다 — 고르지 않으면 현재 덱으로 진행합니다.
-          </p>
-        </section>
-      )}
+      {/* 프리셋 시작점 선택(#98 W6a)은 **화면에서 내렸다** — 이슈 #106: 컨셉이 잡히기 전의 프리셋은
+          시기상조라 세팅 하나(활성 덱)로 축소한다. 삭제가 아니라 렌더 중단이며,
+          `briefing-preset-logic.ts`(순수 로직·단위테스트)·`useTeamPresets`·서버 `/api/presets/team`
+          계약은 그대로 둔다 — 컨셉 확정 후 이 자리에 다시 붙이면 된다. */}
 
       {match.opponent && (
         <section className={styles.opponent} data-testid="opponent-analysis">
@@ -393,39 +318,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
         {submitting ? "전송 중…" : "킥오프"}
       </button>
 
-      {/* 덮어쓰기 확인(요구 2): 매치용 수정이 있는 상태에서 프리셋을 다시 고르면 그 수정이 사라진다. */}
-      {pendingPreset != null && (
-        <Modal
-          onClose={() => setPendingPreset(null)}
-          labelledBy="briefing-preset-confirm-title"
-          overlayClassName={styles.confirmBackdrop}
-          overlayTestId="briefing-preset-confirm-backdrop"
-          className={styles.confirmDialog}
-          testId="briefing-preset-confirm"
-        >
-          <p id="briefing-preset-confirm-title" className={styles.confirmText}>
-            현재 매치 수정사항이 사라집니다. 불러올까요?
-          </p>
-          <div className={styles.confirmActions}>
-            <button
-              type="button"
-              className={styles.confirmLoad}
-              data-testid="briefing-preset-confirm-load"
-              onClick={() => loadPreset(pendingPreset)}
-            >
-              불러오기
-            </button>
-            <button
-              type="button"
-              className={styles.confirmCancel}
-              data-testid="briefing-preset-confirm-cancel"
-              onClick={() => setPendingPreset(null)}
-            >
-              취소
-            </button>
-          </div>
-        </Modal>
-      )}
+      {/* 프리셋 덮어쓰기 확인 다이얼로그도 함께 내렸다(#106) — 프리셋 선택 자체가 없으므로 불필요.
+          CSS(.confirm*)·공용 Modal 은 그대로 있어 재도입 시 이 자리에 복원하면 된다. */}
     </div>
   );
 }
