@@ -334,16 +334,77 @@ public class MatchService {
                                Integer scoreH1Home, Integer scoreH1Away,
                                Integer scoreHome, Integer scoreAway,
                                String result, String createdAt, String finishedAt,
-                               Map<String, Double> conditions, String mode, String leagueFixtureId) {
+                               Map<String, Double> conditions, String mode, String leagueFixtureId,
+                               JsonNode userDeckSnapshot) {
     }
 
     public MatchDetail toDetail(MatchRow row) {
         // Phase2 additive(MatchDetailPhase2Fields): conditions/mode/leagueFixtureId — 시계 UI·리그 뱃지용.
+        // + userDeckSnapshot(#98 요구 2): 이 매치에 쓴 덱 스냅샷을 읽어서 노출만(저장 로직 변경 0).
         String mode = row.mode() == null ? "practice" : row.mode();
         return new MatchDetail(row.id(), row.state(), row.failReason(), buildOpponent(row),
                 row.scoreH1Home(), row.scoreH1Away(), row.scoreHome(), row.scoreAway(),
                 row.result(), row.createdAt(), row.finishedAt(),
-                conditionsOf(row), mode, row.leagueFixtureId());
+                conditionsOf(row), mode, row.leagueFixtureId(), userDeckSnapshotOf(row));
+    }
+
+    /**
+     * 저장된 {@code matches.user_deck_json} → openapi-v2 {@code TeamSnapshot} 형상(#98 요구 2 계약 B).
+     *
+     * <p>저장 포맷은 {@link #snapshotDeck}이 쓰는 그대로 두고(엔진/재현 계약 영향 0), 응답 조립 시점에
+     * <b>TeamSnapshot 이 정의한 필드만 투영</b>한다: {formation, starters[], bench[], teamTactics?,
+     * teamPrompt?}. 미지의 잉여 필드가 생겨도 계약 밖으로 새지 않는다.
+     *
+     * <p>값이 없거나(구 매치) 파싱 불가/형상 불일치면 <b>null</b>(필드 생략) — 500 금지. 프리셋 저장
+     * 플로우는 웹에서 비활성 + 안내로 처리한다.
+     */
+    JsonNode userDeckSnapshotOf(MatchRow row) {
+        String raw = row.userDeckJson();
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        JsonNode node;
+        try {
+            node = objectMapper.readTree(raw);
+        } catch (Exception e) {
+            log.warn("user_deck_json parse failed (matchId={}) — userDeckSnapshot omitted", row.id(), e);
+            return null;
+        }
+        if (node == null || !node.isObject()
+                || !node.path("formation").isTextual()
+                || !node.path("starters").isArray()
+                || !node.path("bench").isArray()) {
+            return null; // TeamSnapshot 필수 필드(formation/starters/bench) 미충족 → 노출 안 함
+        }
+        ObjectNode out = objectMapper.createObjectNode();
+        out.put("formation", node.get("formation").asText());
+        out.set("starters", projectSnapshotSlots(node.get("starters")));
+        out.set("bench", projectSnapshotSlots(node.get("bench")));
+        if (node.path("teamTactics").isObject()) {
+            out.set("teamTactics", node.get("teamTactics").deepCopy());
+        }
+        if (node.path("teamPrompt").isTextual()) {
+            out.put("teamPrompt", node.get("teamPrompt").asText());
+        }
+        return out;
+    }
+
+    /** SnapshotSlot {playerId, slotIndex, promptText?} 만 투영. 형상이 깨진 항목은 건너뛴다. */
+    private ArrayNode projectSnapshotSlots(JsonNode slots) {
+        ArrayNode out = objectMapper.createArrayNode();
+        for (JsonNode slot : slots) {
+            if (!slot.isObject() || !slot.path("playerId").isTextual() || !slot.path("slotIndex").isInt()) {
+                continue;
+            }
+            ObjectNode entry = objectMapper.createObjectNode();
+            entry.put("playerId", slot.get("playerId").asText());
+            entry.put("slotIndex", slot.get("slotIndex").asInt());
+            if (slot.path("promptText").isTextual()) {
+                entry.put("promptText", slot.get("promptText").asText());
+            }
+            out.add(entry);
+        }
+        return out;
     }
 
     private Opponent buildOpponent(MatchRow row) {

@@ -440,6 +440,12 @@ export interface components {
             mode: "practice" | "league";
             /** @description 리그 경기면 league_fixtures 참조 */
             leagueFixtureId?: string | null;
+            /**
+             * @description 이 매치에 실제로 사용된 덱 스냅샷(matches.user_deck_json 을 읽어 노출만 — 새 저장 로직 없음).
+             *     "과거 세팅 로그 → 프리셋으로 저장" 플로우 입력(#98 요구 2). 스냅샷이 없거나(구 매치) 형상이
+             *     깨진 매치는 null.
+             */
+            userDeckSnapshot?: components["schemas"]["TeamSnapshot"] | null;
         };
         /** @description MatchDetail(V1) + Phase2 필드 — createMatch/next-match 응답 표현. */
         MatchDetailPhase2: {
