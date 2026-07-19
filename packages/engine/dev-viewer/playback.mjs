@@ -217,7 +217,7 @@ export function buildAnnotations(events, snaps) {
     else if (k === "tackle") T("TACKLE", "#cbd5e1");
     else if (k === "interception") T("INTERCEPT", "#cbd5e1");
     else if (k === "foul") { T("FOUL", "#fb923c", e.playerId); B("😠 FOUL", "#fb923c"); } // 재시작(프리킥/페널티)은 후속 배너가 표시 — 박스 파울에 "프리킥" 오표기 방지.
-    else if (k === "card") T(e.detail === "red" ? "🟥 RED!" : "🟨 YELLOW", e.detail === "red" ? "#ef4444" : "#fde047", e.playerId);
+    else if (k === "card") { const num = e.playerId ? e.playerId.replace(/[HA]/, "") : "?"; T(e.detail === "red" ? `🟥 RED #${num}` : `🟨 YELLOW #${num}`, e.detail === "red" ? "#ef4444" : "#fde047", e.playerId); }
     else if (k === "offside") B("🚩 OFFSIDE", "#f59e0b");
     else if (k === "penalty") B("⚽ PENALTY!", "#22c55e");
     else if (k === "corner") B("CORNER", "#e7edf6");

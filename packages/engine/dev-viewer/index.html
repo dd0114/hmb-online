@@ -165,6 +165,7 @@
       let shotFx = [], shotFxTicks = new Set(); // 유효슛 링 이펙트(정지 없음, 순수 시각)
       // R2(#100): 재미 이펙트 소스 — 패스완성/가로챔/돌파. 재생 중 플레이헤드가 틱을 지나면 스폰(shotFx 방식).
       let fx = [], passEvents = [], interceptEvents = [], surgeTicks = [];
+      let cardMarks = [], lastCardMarks = []; // R4(#100): 카드 받은 선수 표시(마커+번호).
       let annos = [], snapByTick = new Map(), restartTickSet = new Set(), ballCutTickSet = new Set(), totalMinutes = 0;
       let stoppages = [], hold = null; // 데드볼: freeze→skip 시퀀스
       let lastRender = null; // 마지막 draw()의 렌더된 공(보간 후) — Playwright 계약검증용(__viewer.render()).
@@ -172,7 +173,7 @@
       let lastPlayers = [];  // 마지막 draw()의 렌더된(보간 후) 선수 피치좌표 — 세트피스 taker 슬라이드 검출용.
       let lastTrail = [];    // 마지막 draw()의 공 트레일 세그먼트 [{side}] — R1 소유팀 색 계약검증용.
       let frameDt = 1 / 60;  // 직전 프레임 실경과(초). 카메라 팬을 주사율 무관하게(dt 정규화).
-      const TOAST_TICKS = 5, BANNER_TICKS = 16;
+      const TOAST_TICKS = 5, BANNER_TICKS = 16, CARD_SHOW_TICKS = 12; // 카드 마커 표시 지속(틱).
       const idxOfTick = (tick) => { const i = snaps.findIndex((s) => s.tick >= tick); return i < 0 ? snaps.length - 1 : i; };
       // 가로·세로 양쪽에 MARGIN 이 남도록 letterbox-fit(작은 배율 채택). 예전엔 폭만 맞춰
       // 피치가 캔버스 상하를 거의 채워, 터치라인/코너 위 taker 마커와 공이 캔버스 끝에서 잘렸다(#26).
@@ -343,6 +344,34 @@
           if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);
         }
         lastPlayers = playerRender;
+        // R4(#100): 카드 받은 선수 표시 — 카드 발생 후 CARD_SHOW_TICKS 동안 그 선수 마커에 카드색
+        // 하이라이트 링 + 카드 아이콘 + "🟨/🟥 #번호" 라벨. "어떤 선수가 받았는지" 명확(좌표추론 금지, 실화면 검증).
+        lastCardMarks = [];
+        for (const cm of cardMarks) {
+          if (curTick < cm.tick || curTick > cm.tick + CARD_SHOW_TICKS) continue;
+          const pr = playerRender.find((p) => p.id === cm.playerId);
+          if (!pr) continue;
+          const px = sx(pr.x), py = sy(pr.y);
+          const cardCol = cm.red ? "#ef4444" : "#eab308";
+          // 하이라이트 링(카드색).
+          ctx.beginPath(); ctx.arc(px, py, R + 6, 0, Math.PI * 2);
+          ctx.strokeStyle = cardCol; ctx.lineWidth = 3; ctx.stroke();
+          // 카드 아이콘(둥근 사각형) — 마커 우상단.
+          const iw = 12, ih = 16, ix = px + R + 3, iy = py - R - ih - 2;
+          ctx.fillStyle = cardCol; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.lineWidth = 2;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(ix, iy, iw, ih, 2); else ctx.rect(ix, iy, iw, ih);
+          ctx.fill(); ctx.stroke();
+          // "#번호" 라벨 — 카드 아이콘(색=카드종류) 오른쪽, 외곽선으로 항상 읽힘. 아이콘이 색을 전하므로
+          // 라벨은 번호만(이모지 중복 제거 → 클러터↓).
+          const label = `#${cm.num}`;
+          ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+          const lx = ix + iw + 3, ly = iy + ih / 2;
+          ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.strokeText(label, lx, ly);
+          ctx.fillStyle = cardCol; ctx.fillText(label, lx, ly);
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          lastCardMarks.push({ playerId: cm.playerId, num: cm.num, red: cm.red, side: cm.side, px, py });
+        }
         // 공 (밝은 노랑 + 글로우). 소유자면 발 아래로 살짝 오프셋해 번호를 안 가림.
         const br = useFollow ? 7 : 5.5;
         const boy = ownerDraw ? R + br + 1 : 0; // 소유 시 공을 아래로
@@ -517,7 +546,7 @@
             const who = e.playerId ? ` ${e.playerId}` : "";
             const xg = e.xg != null ? ` (xG ${e.xg.toFixed(2)})` : "";
             let label;
-            if (e.type === "kickoff") label = e.detail || "kickoff";
+            if (e.type === "kickoff") label = { corner: "Corner", goal_kick: "Goal kick", throw_in: "Throw-in" }[e.detail] || "Kick-off";
             else if (e.type === "card") label = e.detail === "red" ? "🟥 Red card" : "🟨 Yellow card";
             else if (e.type === "shot" && e.detail) label = `Shot (${e.detail})`;
             else if (e.type === "free_kick" && e.detail) label = `Free kick (${e.detail})`;
@@ -645,6 +674,11 @@
         passEvents = data.events.filter((e) => e.type === "pass").map((e) => ({ tick: e.tick, side: e.team || null, playerId: e.playerId || null }));
         interceptEvents = data.events.filter((e) => e.type === "interception").map((e) => ({ tick: e.tick, side: e.team || null }));
         surgeTicks = annos.filter((a) => a.text === "SURGE!").map((a) => a.tick);
+        // R4: 카드 받은 선수 마커. num=번호(H/A 접두 제거), red=레드 여부, side=팀.
+        cardMarks = data.events.filter((e) => e.type === "card").map((e) => ({
+          tick: e.tick, playerId: e.playerId || null, red: e.detail === "red",
+          num: e.playerId ? e.playerId.replace(/[HA]/, "") : "?", side: e.playerId ? (e.playerId[0] === "H" ? "home" : "away") : null,
+        }));
         totalMinutes = snaps.length ? snaps[snaps.length - 1].minute : 0;
         // 타임라인 이벤트 핀(타입별 색·높이, 클릭 점프). 골>PK>선방>유효슛>코너 순으로 위에 그림.
         const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
@@ -738,6 +772,8 @@
         trail: () => lastTrail.map((t) => ({ ...t })),
         // 현재 활성 R2 이펙트 [{type,rgb}] — 패스/가로챔/돌파 이펙트 스폰 계약검증용.
         fx: () => fx.map((f) => ({ type: f.type, rgb: f.rgb })),
+        // 마지막 draw()의 카드 마커 [{playerId,num,red,side,px,py}] — R4 카드 받은 선수 표시 계약검증용.
+        cardMarks: () => lastCardMarks.map((c) => ({ ...c })),
         // seek(tick) 후 렌더한 트레일 세그먼트 side 배열(최신 세그먼트가 마지막).
         trailAt: (tick) => { setPlaying(false); resetStops(); tickPos = idxOfTick(tick); draw(); return lastTrail.map((t) => ({ ...t })); },
         // 현재 카메라 상태 {cx,cy,zoom} — 재생 중 카메라 점프/팬 검출용.
