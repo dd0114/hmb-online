@@ -105,6 +105,9 @@ export interface EngineConfig {
     saveCornerProb: number;
     /** GK 세이브 캐치 지점 = 골라인에서 필드 안쪽으로 이 거리(m). 0 이면 골라인 위(=골문 안, 골 오인). */
     saveCatchDepthM: number;
+    /** 세이브 굴절 코너 시 공이 포스트 밖으로 나가는 옆 거리(m). 키퍼가 이 지점 앞으로 다이빙해 쳐낸다
+     *  (키퍼 궤적 위 = 세이브 가시). 작게(≈1.5) 잡아 키퍼 근처 = 터치 보이되 골문 밖(골 오인 방지). */
+    saveCornerWideMarginM: number;
     /** 빗맞은 슛이 수비 블록에 맞고 코너로 굴절될 확률(나머지는 골킥). */
     offTargetBlockCornerProb: number;
     /**
@@ -370,6 +373,7 @@ export const defaultEngineConfig: EngineConfig = {
     onTargetBase: 0.28,
     saveCornerProb: 0.6,
     saveCatchDepthM: 2.5, // 골라인 2.5m 앞에서 캐치 → 골문 밖(골 오인 방지). 0 이면 골라인 위.
+    saveCornerWideMarginM: 1.5, // 세이브 굴절 코너: 공이 포스트 1.5m 밖(키퍼 근처=터치 보임 + 골 오인 방지).
     offTargetBlockCornerProb: 0.32,
     offTargetWideMarginM: 3.0,
     offTargetOverrunM: 3.5,

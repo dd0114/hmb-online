@@ -708,8 +708,16 @@ export function resolveShot(
     const outSign = keeperGoal.x === 0 ? -1 : 1;
     const overrunX = keeperGoal.x + outSign * toFixed(config.contest.offTargetOverrunM, scale);
     const towardCorner = cornerNearY < line.y ? -1 : 1; // 굴절 코너 쪽(위/아래)으로 라인 밖.
-    const overrunY = line.y + towardCorner * (halfPost + toFixed(config.contest.offTargetWideMarginM, scale));
-    parkForRestart(overrunX, overrunY, { kind: "corner", side: scorerSide, nearY: cornerNearY });
+    // 공은 포스트 살짝 밖(saveCornerWideMarginM)으로 나가고, **키퍼는 그 지점 앞(catchX)에서 같은 y 로
+    // 다이빙해 쳐낸다** → 키퍼가 공 궤적 위(≈0.5m)에 있어 "키퍼가 공을 건드려 굴절 코너"가 보인다.
+    // (hero 지적: 구 — 공이 포스트 3m 밖·키퍼는 중앙(y=34) → 공↔키퍼 9m, 터치 없이 선방처럼 보였음.)
+    const deflY = line.y + towardCorner * (halfPost + toFixed(config.contest.saveCornerWideMarginM, scale));
+    if (gkSaver) {
+      const dive = clampToPitch(pitch, catchX, deflY);
+      gkSaver.posFx.x = dive.x;
+      gkSaver.posFx.y = dive.y;
+    }
+    parkForRestart(overrunX, deflY, { kind: "corner", side: scorerSide, nearY: cornerNearY });
     return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, saveEv];
   }
   // GK 캐치: 키퍼가 공을 잡고 인플레이 지속(정지 없음).

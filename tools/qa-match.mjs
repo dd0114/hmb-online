@@ -49,6 +49,12 @@ for (const s of ev.filter((e) => e.type === "save")) {
   if (!leadsToCorner) {
     if (b.x <= 1 || b.x >= 104) P(`선방 t${s.tick}: 공 x 가 골라인 위 (${b.x.toFixed(1)}) — 캐치는 앞이어야`);
     if (!inPosts(b.y)) P(`선방 t${s.tick}: 공 y 가 포스트 밖 (${b.y.toFixed(1)}) — 키퍼 위치 아님`);
+  } else {
+    // 코너 굴절: 키퍼가 공 궤적 위에서 쳐낸 게 보여야 = 키퍼 y 가 공 y 와 정렬(±2m). (구: 키퍼 중앙, 공
+    // 와이드 → 9m 떨어져 "터치 없이 선방"처럼 보였던 회귀 가드. #91b.)
+    const sn = log.tickSnapshots.find((x) => x.tick === s.tick);
+    const gk = sn && sn.players.find((p) => p.playerId === s.playerId);
+    if (gk && Math.abs(gk.pos.y - b.y) > 2) P(`선방 t${s.tick}(코너 굴절): 키퍼 y(${gk.pos.y.toFixed(1)})가 공 y(${b.y.toFixed(1)})와 어긋남 — 키퍼가 안 건드린 듯`);
   }
 }
 
