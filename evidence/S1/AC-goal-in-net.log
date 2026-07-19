@@ -7,7 +7,7 @@
   #4 tick=1270 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
 
-=== AC-goal-in-net: real(default) (engine@0.12.0, seed 4815162342) ===
+=== AC-goal-in-net: real(default) (engine@0.13.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
 총 골: 7
   #1 tick=84 team=away ball=(0.50,34.27) 골라인=O 포스트내=O => PASS

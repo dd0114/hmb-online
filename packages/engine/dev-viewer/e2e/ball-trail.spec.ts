@@ -47,10 +47,14 @@ test("슛 비행(무소유) 트레일 = 슛한 팀 색 (중립/상대 아님)", 
     let matched = 0, mismatched = 0, neutral = 0;
     const bad: any[] = [];
     for (const sh of shots) {
+      let flying = false; // 슛 비행이 시작됐는가(선행 슈터 명목소유 스킵 후).
       for (let t = sh.tick; t <= sh.tick + 4; t++) {
         v.seek(t);
         const cur = v.cur();
-        if (cur.ballOwner !== null) continue; // 소유되면 비행 아님(리시버/키퍼 잡음)
+        // 소유되면 비행 아님. 비행 시작 전(슈터 명목소유)이면 스킵, 시작 후 점유되면 슛 비행 종료(세이브/
+        // 리시버) → 이후 무소유는 그 팀 소유 플레이(예: 키퍼 배급)라 슛 트레일이 아님 → 이 슛은 끝.
+        if (cur.ballOwner !== null) { if (flying) break; else continue; }
+        flying = true;
         const seg = v.trailAt(t).filter((x: any) => x.endTick === t).pop();
         if (!seg) continue; // 그 틱에 그려진 세그먼트 없음(공 정지)
         if (seg.side === sh.team) matched++;

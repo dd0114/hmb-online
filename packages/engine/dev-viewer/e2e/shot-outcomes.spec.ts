@@ -25,8 +25,9 @@ test("#91 save→corner → 공이 골라인 밖 와이드로 나간다(키퍼�
   const corners = await eventsOfType(page, "kickoff", "corner");
   let checked = 0;
   for (const s of saves) {
-    // 코너로 굴절된 세이브만(다음 재시작이 코너).
-    const corner = corners.find((c) => c.tick > s.tick && c.tick <= s.tick + 8);
+    // 코너로 굴절된 세이브만: 굴절 코너는 **공격팀**(세이브한 키퍼 팀의 상대)에게 주어진다.
+    // team 이 같은 근접 코너는 반대 골문의 무관한 플레이(오탐) — 제외해야 평범한 GK 캐치를 오판하지 않는다.
+    const corner = corners.find((c) => c.tick > s.tick && c.tick <= s.tick + 8 && c.team !== s.team);
     if (!corner) continue;
     const ball = await ballAtTick(page, s.tick);
     if (!ball) continue;
