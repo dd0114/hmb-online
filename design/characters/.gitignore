@@ -5,3 +5,5 @@ incoming/
 out/
 # 시트 HTML 은 out/ 을 참조하므로 단독으로는 깨진다. 증빙은 contact-sheet.png 를 커밋한다.
 contact-sheet.html
+# dist/ 는 **커밋한다** — 게임(web)이 소비하는 발행물이라 체크아웃 직후 플레이 가능해야 한다.
+!dist/

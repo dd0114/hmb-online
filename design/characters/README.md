@@ -15,7 +15,27 @@ pipeline/        인제스트 스크립트 (node, 외부 의존 0, 결정론)
 refs/            레퍼 3장 사본 (gitignore — 아래 참조)
 incoming/        hero 드롭 지점 (gitignore)
 out/             산출물 (gitignore — 재생성 가능)
+dist/            **발행물(커밋)** — 게임이 소비하는 디폴트 에셋 + manifest
 ```
+
+## dist/ — 디폴트(플레이스홀더) 에셋
+
+hero 원화가 없어도 **게임이 플레이 가능**하도록 선수 172명 전원의 임시 에셋을 발행한다.
+선수 id 해시로 머리색·피부톤·체형을 정하므로 **선수별로 구분**되고, 포지션 색(GK 금·DF 파랑·MF 초록·FW 빨강)이 키트에 들어간다.
+
+```bash
+node design/characters/pipeline/make-defaults.mjs   # data/players/players.v2.json → dist/
+```
+
+| 파일 | 내용 |
+|---|---|
+| `avatars-{64,32,16}.png` | 얼굴 아틀라스(14열 격자) |
+| `sprites-{64,32,16,8}.png` | 전신 아틀라스(피치 위 렌더용) |
+| `frame-{LEGEND,DIA,GOLD,SILVER,BRONZE}.png` | 등급별 카드 프레임 226×425 |
+| `manifest.json` | 선수 id → 타일 좌표(`col`,`row`) + 포지션·등급·이니셜 |
+
+소비법: `manifest.players[playerId]` 의 `col`/`row` × `atlases[x].tile` 로 스프라이트시트 오프셋을 잡는다.
+`manifest.source === 'default-placeholder'` 면 아직 실제 원화가 아니다 — 원화 입고 시 `ingest.mjs` 산출물로 대체된다.
 
 ## 쓰는 법
 
