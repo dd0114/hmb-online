@@ -571,6 +571,7 @@ export function resolveArrival(
   // passBase/페널티 config 가 성공률의 실제 노브가 된다(E1). 기존 순수 기하는 실패 롤도 의도 리시버가
   // 우연히 되찾아 "완성"으로 집계되어 성공률이 계획보다 과하게 높던(패스 정확도 과다) 문제가 있었다.
   // 세트피스 크로스/루즈볼(passOutcome 없음)은 항상 기하 판정.
+  const longDetail = f.long ? { detail: "long" } : {};
   if (config.contest.passOutcomeAuthoritative && f.kind === "pass" && f.passOutcome) {
     const oppSide: TeamSide = fromSide === "home" ? "away" : "home";
     if (f.passOutcome === "success") {
@@ -578,13 +579,13 @@ export function resolveArrival(
         (f.target ? state.byId.get(f.target) : null) ?? nearestOfSide(state, fromSide, bx, by);
       if (mate) {
         giveBallTo(state, mate);
-        return [{ tick, minute, type: "pass", team: fromSide, playerId: mate.id }];
+        return [{ tick, minute, type: "pass", team: fromSide, playerId: mate.id, ...longDetail }];
       }
     } else if (f.passOutcome === "fail_intercept") {
       const thief = nearestOfSide(state, oppSide, bx, by);
       if (thief) {
         giveBallTo(state, thief);
-        return [{ tick, minute, type: "interception", team: oppSide, playerId: thief.id }];
+        return [{ tick, minute, type: "interception", team: oppSide, playerId: thief.id, ...longDetail }];
       }
     }
   }
@@ -607,9 +608,9 @@ export function resolveArrival(
   giveBallTo(state, controller);
   if (f.kind === "loose") return [];
   if (controller.side === fromSide) {
-    return [{ tick, minute, type: "pass", team: fromSide, playerId: controller.id }];
+    return [{ tick, minute, type: "pass", team: fromSide, playerId: controller.id, ...longDetail }];
   }
-  return [{ tick, minute, type: "interception", team: controller.side, playerId: controller.id }];
+  return [{ tick, minute, type: "interception", team: controller.side, playerId: controller.id, ...longDetail }];
 }
 
 /**

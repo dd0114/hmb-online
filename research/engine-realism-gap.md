@@ -57,15 +57,16 @@
 - **결과(0.11.0, 20시드)**: 패스 성공률 **79.3% (OK)** · 구조 short≈0.92 / **forward≈0.71** / **long≈0.44**(전진/롱 ≪ 숏, 벤치 정합) · 스로인 14.88→**19.9**(LOW 갭 개선) · **슛 20.1 / 골 2.68 (G-A 무회귀)**. 게이트: npm test 530 pass·desync0·golden 갱신·qa-match·perceptibility 6/6.
 - **계약**: `packages/engine/src/realism/pass-accuracy.test.ts` — A) computePassProb 단조성(전진/롱<숏) B) 20시드 평균 78–85%(회귀 가드).
 
-### E2 — 롱패스/롱킥 액션 추가 (mandated, 엔진 피처)
-- **현상**: `Action = shoot|pass|dribble|hold`, **롱 개념 없음**. 리시버는 perception 반경(33m) 내 근접만. GK/수비의 의도적 롱볼·클리어 없음.
-- **목표치 (AC)**: **의도적 롱패스가 패스 시도의 12–15%**(벤치) 를 차지. **롱패스 성공률이 숏보다 낮게**(현실적, ~55–70%대). MatchEvent `detail`(예: `long`)로 뷰어(β3)가 구분. 결정론 유지(골든·desync0·resume·hygiene) · qa-match·6/6 · 독립 QA PASS.
-- **설계 방향(초안)**:
-  - 롱패스 = `pass` 의 long 변형(별도 액션 kind 신설보다 detail + 판정 분기 우선 검토 — 계약 파급 최소).
-  - **롱 후보 생성**: perception 반경 밖(예: ≥`longPassMinM`)의 전진 리시버를 별도 옵션으로 추가(전방 공간/윙 전환/스루볼). 롱 성공확률 = 숏보다 낮은 곡선(거리·압박 가중↑).
-  - **GK/수비 롱킥**: 골킥·클리어·후방 소유 시 전방 롱 배급 분기(다이렉트 플레이).
-  - config knob 신설: `longPassMinM`·`longPassBaseProb`·`longPassBias`(성향/템포 가중) 등 §2-4.
-  - **shared 계약**: MatchEvent 에 long 구분(`detail:"long"`)만 추가하면 스키마 변경 최소 — 그래도 **β와 프리즈·조율**(에픽 #99/#100 코멘트에 명시).
+### E2 — 롱패스/롱킥 액션 추가 (mandated, 엔진 피처) — ✅ 완료 (engine@0.12.0)
+- **현상(0.11.0)**: `Action = shoot|pass|dribble|hold`, 리시버는 perception 반경(33m) 내 근접만 → **의도적 롱볼 = 0**.
+- **구현**:
+  - `passOptions` 가 인식 반경 밖(**`longPass.minM`~`maxM`** = 30~55m)의 **전진** 동료를 롱볼 후보로 추가(`PassOption.long`). 전환/스루볼/다이렉트.
+  - `scoreOption` 롱 분기: 원거리 롱볼의 큰 forwardGain 이 선택을 지배하지 않게 **`fwdCapM`**(22m) 캡 + **`distPenalty`**(0.22) 강화 → argmax 독점 방지, **`selectBias`**(6.0, ×passDirectness)로 시도율 튜닝.
+  - 롱 성공률은 **별도 곡선 없이 `computePassProb` 거리 페널티**로 숏보다 낮음(합성 short≈0.95 vs long≈0.47).
+  - `long` 플래그 관통: Action.pass → BallFlight.long → `resolveArrival` 이 **MatchEvent(pass/interception) `detail:"long"`** 방출 → 뷰어(β) 구분.
+- **결과(0.12.0, 20시드)**: **의도적 롱패스 시도 비율 14.58% (OK, 벤치 12-15)** · 롱 성공 ≪ 숏 · 패스 성공률 79.78%(passBase 0.94→0.97 재보정으로 밴드 유지) · 스로인 16.5. 게이트: npm test 532 pass·desync0·golden 갱신·penalty-spot 시드(2→3)·qa-match·perceptibility 6/6.
+- **shared 계약**: `MatchEvent.detail` 은 이미 free-form `z.string().optional()` → **스키마 변경 없음**. β(#100)엔 새 detail 값 `"long"` 통지만(프리즈 불필요).
+- **주의(G-A 악화)**: 롱볼 전진 → 슛 **20.1→23.85**(팀당, 벤치 12-14 초과 심화), 골 2.68→2.88. **슛 과다(G-A)가 이제 최상위 잔여 갭** — 다음 서브태스크로 슛 트리거 하향 강력 권장.
 
 ### 백로그(프리오리티) — E1/E2 밖, #99 또는 후속 wave
 | 우선 | 갭 | 데이터 | 방향(모두 config 우선) |

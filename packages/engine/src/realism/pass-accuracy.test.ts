@@ -45,17 +45,18 @@ function mkOpt(fwdM: number, distM: number, receiverXm: number): PassOption {
     dist: toFixed(distM, scale),
     laneDanger: toFixed(10, scale),
     forwardGain: toFixed(fwdM, scale),
+    long: distM >= 30,
   };
 }
 
-describe("E1-A computePassProb 단조성 (전진/롱 < 숏)", () => {
-  const owner = mkPlayer("H6", 40, 34);
-  // 압박 없음(상대 0명) → pressers 0. 순수 forward/dist/finalThird 효과만.
-  const state = { players: [owner], teams: {}, ball: {} } as unknown as SimState;
+// 압박 없음(상대 0명) → pressers 0. 순수 forward/dist/finalThird 효과만(모듈 공용).
+const owner0 = mkPlayer("H6", 40, 34);
+const state0 = { players: [owner0], teams: {}, ball: {} } as unknown as SimState;
 
-  const shortCentral = computePassProb(state, owner, mkOpt(2, 10, 45), cfg, pitch); // 숏·횡
-  const forward = computePassProb(state, owner, mkOpt(18, 18, 60), cfg, pitch); // 전진
-  const longForward = computePassProb(state, owner, mkOpt(20, 35, 75), cfg, pitch); // 롱·전진·파이널서드
+describe("E1-A computePassProb 단조성 (전진/롱 < 숏)", () => {
+  const shortCentral = computePassProb(state0, owner0, mkOpt(2, 10, 45), cfg, pitch); // 숏·횡
+  const forward = computePassProb(state0, owner0, mkOpt(18, 18, 60), cfg, pitch); // 전진
+  const longForward = computePassProb(state0, owner0, mkOpt(20, 35, 75), cfg, pitch); // 롱·전진·파이널서드
 
   it("숏·중앙 패스가 전체 벤치(78–85%) 근처로 가장 높다", () => {
     expect(shortCentral).toBeGreaterThan(0.78);
@@ -71,14 +72,30 @@ describe("E1-A computePassProb 단조성 (전진/롱 < 숏)", () => {
   });
 });
 
+// E1-B/E2 공용: 10 시드(팀-경기 20)로도 SD 작아 평균 안정. 벤치 밴드 검증.
+const SEEDS10 = [
+  "4815162342", "9999999999", "1234567890", "2718281828", "1414213562",
+  "1618033988", "31415926", "27182818", "16180339", "14142135",
+];
+const agg = aggregateRealism(cfg, SEEDS10);
+
 describe("E1-B 리얼 config 다수시드 패스 성공률 ∈ [78,85]%", () => {
-  // 10 시드(팀-경기 20)로도 SD ~1.3 → 평균 매우 안정. 벤치 밴드 검증.
-  const agg = aggregateRealism(cfg, [
-    "4815162342", "9999999999", "1234567890", "2718281828", "1414213562",
-    "1618033988", "31415926", "27182818", "16180339", "14142135",
-  ]);
   it(`평균 패스 성공률 78–85% (측정 ${agg.mean.passSuccessPct}%)`, () => {
     expect(agg.mean.passSuccessPct).toBeGreaterThanOrEqual(78);
     expect(agg.mean.passSuccessPct).toBeLessThanOrEqual(85);
+  });
+});
+
+describe("E2 의도적 롱패스 시도 비율 ∈ [12,15]% (벤치)", () => {
+  it(`롱패스 시도 비율(detail=long) 12–15% (측정 ${agg.mean.longShareOfAttempts}%)`, () => {
+    expect(agg.mean.longShareOfAttempts).toBeGreaterThanOrEqual(11.5);
+    expect(agg.mean.longShareOfAttempts).toBeLessThanOrEqual(15.5);
+  });
+  it("롱패스 성공률(long)이 숏(short)보다 낮다 — computePassProb 거리 페널티 (E2 현실성)", () => {
+    // (E1-A 단조성과 동일 구조: long 옵션은 거리·전진 페널티로 short 보다 낮은 성공확률)
+    const short = computePassProb(state0, owner0, mkOpt(2, 10, 45), cfg, pitch);
+    const long = computePassProb(state0, owner0, mkOpt(20, 40, 78), cfg, pitch);
+    expect(long).toBeLessThan(short - 0.2);
+    expect(long).toBeLessThan(0.7);
   });
 });

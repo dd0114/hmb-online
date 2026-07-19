@@ -19,7 +19,7 @@ export type PassOutcome = "success" | "fail_intercept" | "fail_out";
 
 export type Action =
   | { kind: "shoot"; xg: number; toX: number; toY: number; detail?: string }
-  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome }
+  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome; long: boolean }
   | { kind: "dribble"; toX: number; toY: number }
   | { kind: "hold" };
 
@@ -84,7 +84,20 @@ function scoreOption(
   const directness = owner.behavior.passDirectness;
   const riskTol = owner.behavior.passRisk;
   // 안전도(위험할수록 감점, passRisk 높으면 관대) + 전진 이득 + 거리 페널티.
-  let score = safeM * (1.2 - riskTol) + fwdM * (0.4 + directness) - distM * 0.15;
+  let score: number;
+  if (opt.long) {
+    // 롱(E2): 원거리 롱볼의 큰 전진값이 선택을 지배하지 않게 forwardGain 캡 + 거리 페널티 강화.
+    // 그래서 롱은 argmax 를 자동 독점하지 않고, selectBias(×directness)로 시도율(12-15%)을 튜닝.
+    const lp = config.longPass;
+    const cappedFwd = Math.min(fwdM, lp.fwdCapM);
+    score =
+      safeM * (1.2 - riskTol) +
+      cappedFwd * (0.4 + directness) -
+      distM * lp.distPenalty +
+      lp.selectBias * (0.3 + directness) * (0.6 + 0.4 * riskTol);
+  } else {
+    score = safeM * (1.2 - riskTol) + fwdM * (0.4 + directness) - distM * 0.15;
+  }
   // 파이널서드(공격 진영) 후진 패스 페널티: 뒤로(음수 forwardGain) 빼는 패스를 감점 →
   // 전진/횡 패스·슛을 우선. directness 높은 선수일수록 후진을 더 싫어함.
   if (ownerInFinalThird && fwdM < 0) {
@@ -354,6 +367,7 @@ export function decideBallOwner(
       toX: plan.toX,
       toY: plan.toY,
       outcome: plan.outcome,
+      long: bestOpt.long,
     };
   }
   if ((r -= wDribble) < 0) {

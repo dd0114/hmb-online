@@ -103,10 +103,32 @@ export interface DerivedTeam {
   avgWidthM: number;
   avgLengthM: number;
   avgDistanceKm: number;
-  longPassPct: number; // 롱패스(>=30m) 비율
+  longPassPct: number; // 롱패스(>=30m) 비율 (재구성, 노이즈 포함)
   mediumPassPct: number;
   shortPassPct: number;
   xgPerShot: number; // 슛 이벤트 평균 xG
+  longShareOfAttempts: number; // 의도적 롱패스 시도 비율(detail=long), E2 벤치 12-15%
+}
+
+/** 팀별 롱패스 시도 비율 = detail="long" (pass+interception) / 전체 (pass+interception). (E2) */
+function longShareBySide(log: MatchLog): { home: number; away: number } {
+  const acc: Record<TeamSide, { long: number; all: number }> = {
+    home: { long: 0, all: 0 },
+    away: { long: 0, all: 0 },
+  };
+  for (const e of log.events) {
+    // 패스 시도 = 완결 pass(passer 팀) + interception(passer=상대팀). passer 팀 기준 집계.
+    let passerSide: TeamSide | null = null;
+    if (e.type === "pass" && e.team) passerSide = e.team;
+    else if (e.type === "interception" && e.team) passerSide = e.team === "home" ? "away" : "home";
+    if (!passerSide) continue;
+    acc[passerSide].all += 1;
+    if (e.detail === "long") acc[passerSide].long += 1;
+  }
+  return {
+    home: acc.home.all > 0 ? (acc.home.long / acc.home.all) * 100 : 0,
+    away: acc.away.all > 0 ? (acc.away.long / acc.away.all) * 100 : 0,
+  };
 }
 
 /** 팀별 슛 이벤트 평균 xG(shot 킥 이벤트, 결과마커 제외). */
@@ -128,7 +150,7 @@ function xgPerShotBySide(log: MatchLog): { home: number; away: number } {
   };
 }
 
-function deriveTeam(t: TeamStats, possession: number, longPct: number, medPct: number, shortPct: number, xgPerShot: number): DerivedTeam {
+function deriveTeam(t: TeamStats, possession: number, longPct: number, medPct: number, shortPct: number, xgPerShot: number, longShare: number): DerivedTeam {
   return {
     shots: t.shots,
     onTarget: t.onTarget,
@@ -152,6 +174,7 @@ function deriveTeam(t: TeamStats, possession: number, longPct: number, medPct: n
     mediumPassPct: medPct,
     shortPassPct: shortPct,
     xgPerShot,
+    longShareOfAttempts: longShare,
   };
 }
 
@@ -196,8 +219,9 @@ export function aggregateRealism(config: EngineConfig, seeds: string[] = REALISM
     const medPct = (pl.medium / totPl) * 100;
     const shortPct = (pl.short / totPl) * 100;
     const xgps = xgPerShotBySide(log);
-    teamRows.push(deriveTeam(stats.home, poss.home, longPct, medPct, shortPct, xgps.home));
-    teamRows.push(deriveTeam(stats.away, poss.away, longPct, medPct, shortPct, xgps.away));
+    const ls = longShareBySide(log);
+    teamRows.push(deriveTeam(stats.home, poss.home, longPct, medPct, shortPct, xgps.home, ls.home));
+    teamRows.push(deriveTeam(stats.away, poss.away, longPct, medPct, shortPct, xgps.away, ls.away));
     goalSum += stats.home.goals + stats.away.goals;
     lastHash = log.tickSnapshots[log.tickSnapshots.length - 1]?.hash ?? lastHash;
   }

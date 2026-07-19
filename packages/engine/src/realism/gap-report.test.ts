@@ -22,7 +22,8 @@ interface Bench {
 // 벤치마크(팀-경기 기준, football-stats.md). goalsPerMatch 는 양팀 합.
 const BENCH: Bench[] = [
   { key: "passSuccessPct", label: "패스 성공률", lo: 78, hi: 85, unit: "%" },
-  { key: "longPassPct", label: "롱패스 비율(>=30m)", lo: 12, hi: 15, unit: "%", note: "E2 목표" },
+  { key: "longShareOfAttempts", label: "의도적 롱패스 시도 비율", lo: 12, hi: 15, unit: "%", note: "E2, detail=long" },
+  { key: "longPassPct", label: "롱볼 이동(>=30m, 재구성)", lo: 12, hi: 15, unit: "%", note: "노이즈 포함(참고)" },
   { key: "possessionPct", label: "점유율", lo: 30, hi: 65, unit: "%", note: "대칭→평균~50" },
   { key: "shots", label: "슛(시도)", lo: 12, hi: 14 },
   { key: "onTarget", label: "유효슛", lo: 4.5, hi: 5.5 },

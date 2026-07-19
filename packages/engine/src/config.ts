@@ -245,6 +245,26 @@ export interface EngineConfig {
     roamPeriodTicks: number;
   };
 
+  /**
+   * longPass — 의도적 롱패스/롱킥(E2). 인식 반경 밖(minM~maxM) 전진 동료를 롱볼 후보로 추가.
+   * 롱패스 성공률은 computePassProb 의 거리 페널티로 숏보다 낮게 나온다(별도 곡선 아님).
+   * MatchEvent(pass/interception) detail="long" 으로 뷰어(β)가 구분. 비율은 selectBias 로 12–15%.
+   */
+  longPass: {
+    /** 롱패스 후보 생성 활성화. false 면 반경 내 숏만(레거시). */
+    enabled: boolean;
+    /** 롱으로 치는 최소 거리(m) — 인식 반경보다 커야 의미(반경 내는 숏). */
+    minM: number;
+    /** 롱패스 후보 최대 거리(m). 이보다 먼 동료는 후보 제외. */
+    maxM: number;
+    /** 롱 옵션 선택 가중(scoreOption 가산). passDirectness 로 추가 가중. 클수록 롱 비율↑. */
+    selectBias: number;
+    /** 롱 옵션 점수의 전진 이득(forwardGain) 캡(m). 원거리 롱볼의 큰 전진값이 선택을 지배하지 않게. */
+    fwdCapM: number;
+    /** 롱 옵션 점수의 거리 페널티 계수(m당). 숏(0.15)보다 크게 두어 롱을 상황적으로만 선택. */
+    distPenalty: number;
+  },
+
   /** 세트피스(코너/스로인/골킥/골 후) 재시작 튜닝. */
   setPiece: {
     /** 재시작 전 정지(dead ball) 틱 수 — 인플레이 시간 하향 + 재배치. */
@@ -335,7 +355,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.11.0",
+  version: "engine@0.12.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -367,9 +387,10 @@ export const defaultEngineConfig: EngineConfig = {
   },
   contest: {
     // E1(0.11.0): 패스 도착이 계획 outcome 존중(passOutcomeAuthoritative) → passBase/페널티가
-    // 성공률의 실제 노브가 됨. 리얼 20시드 평균 패스성공 ≈80%(벤치 78-85), 전진<숏(short≈0.92
-    // fwd≈0.71 long≈0.44). 압박은 근접(passPressureRangeM 6m)만. 스로인은 pfo 로 복원(≈19).
-    passBase: 0.94,
+    // 성공률의 실제 노브가 됨. 전진<숏(short≈0.95 fwd≈0.74 long≈0.47). 압박은 근접(6m)만.
+    // E2(0.12.0): 롱패스(longPass) 추가로 평균이 낮아져 passBase 0.94→0.97 로 재보정 →
+    // 리얼 20시드 패스성공 ≈80%(벤치 78-85) 유지. 스로인은 pfo 로 복원(≈17).
+    passBase: 0.97,
     passForwardPenalty: 0.2,
     passFinalThirdPenalty: 0.12,
     passPressurePenalty: 0.06,
@@ -443,6 +464,15 @@ export const defaultEngineConfig: EngineConfig = {
     decisionTemperature: 0.4,
     roamNoiseAmp: 3.0,
     roamPeriodTicks: 25,
+  },
+  longPass: {
+    // E2(0.12.0): 의도적 롱볼. 리얼 20시드 롱 시도 비율 ≈14.6%(벤치 12-15), 롱 성공<숏.
+    enabled: true,
+    minM: 30, // perceptionRadius(33) 근처 밖부터 롱볼 — 30m+ 전진 볼.
+    maxM: 55, // 하프라인 넘는 전환/롱볼 상한.
+    selectBias: 6.0,
+    fwdCapM: 22,
+    distPenalty: 0.22,
   },
   setPiece: {
     stoppageTicks: 12,
