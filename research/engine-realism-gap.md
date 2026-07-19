@@ -46,11 +46,16 @@
 
 ## 2. 부족분 → 작업 매핑 & 목표치 (E1/E2 확정)
 
-### E1 — 패스 정확도 하향 (mandated, config only)
-- **현상**: 전체 패스 성공률 **85.99%** — 벤치 상한(85%) 초과. 벤치 밴드 중심 ~81% 를 목표.
-- **목표치 (AC)**: 리얼 config 20시드 평균 패스 성공률 **78–85% (목표 중앙 ≈ 80–82%)**. **전진/롱 패스가 숏보다 유의미하게 낮게**(벤치: 파이널서드/전진 55–70%). `perceptibility 6/6`·`qa-match` 유지 · 골든 갱신 · desync0 · 독립 QA PASS.
-- **노브(하드코딩 금지, §2-4)**: `contest.passBase`(0.84 하향) 1차. 보조로 `passForwardPenalty`(0.22)·`passFinalThirdPenalty`(0.14)·`passPressurePenalty`(0.05)·`passDistancePenalty`(0.008)·`passBaseDistM`(12) 로 **전진·롱·압박 패스의 성공률을 숏보다 더 낮춤**. 목표는 "평균 80–82% + 숏≫전진/롱" 분포.
-- **주의**: 패스 실패↑ 는 턴오버↑ → 슛/골 빈도에 간접 영향(아래 G-A 와 함께 재계측).
+### E1 — 패스 정확도 하향 (mandated, config only) — ✅ 완료 (engine@0.11.0)
+- **현상(0.10.0)**: 전체 패스 성공률 **85.99%** — 벤치 상한(85%) 초과.
+- **근본원인(E1에서 발견)**: `resolveArrival` 이 계획된 `passOutcome`(computePassProb 롤)을 무시하고 **순수 기하(도착점 최근접 아무나)** 로 소유를 판정 → **실패 롤 패스도 의도 리시버가 우연히 되찾아 "완성"으로 집계**. 그래서 `passBase` 를 8pt 내려도 완성률이 거의 안 움직였다(0.84→0.76 = 86.0→85.3%). "패스 정확도 과다"의 진짜 원인.
+- **수정**:
+  1. `resolveArrival` 이 `passOutcome` 을 존중(`contest.passOutcomeAuthoritative`) — 성공 롤→동료, 실패 롤→상대 컨트롤. 실측 완성률 == 계획 확률 → **passBase/페널티가 성공률의 실제 노브가 됨**.
+  2. 패스 압박은 근접만: `contest.passPressureRangeM`(6m) 신설 — 기존 `movement.pressRange`(22m, 압박 배정용)는 거의 모든 패스에 3~4명 적용돼 성공률을 광범위 하향(합성 프로브 91% vs 실경기 66%)했음.
+  3. `computePassProb` 순수 함수 추출(planPass 가 호출) → 단조성 계약 단위테스트 가능.
+- **최종 config**: passBase 0.84→**0.94** · passForwardPenalty 0.22→**0.20** · passFinalThirdPenalty 0.14→**0.12** · passPressurePenalty 0.05→**0.06**(범위 6m) · passFailOutProb 0.16→**0.45**(스로인 복원, 완성률엔 무관 — 실패의 out/intercept 분배만).
+- **결과(0.11.0, 20시드)**: 패스 성공률 **79.3% (OK)** · 구조 short≈0.92 / **forward≈0.71** / **long≈0.44**(전진/롱 ≪ 숏, 벤치 정합) · 스로인 14.88→**19.9**(LOW 갭 개선) · **슛 20.1 / 골 2.68 (G-A 무회귀)**. 게이트: npm test 530 pass·desync0·golden 갱신·qa-match·perceptibility 6/6.
+- **계약**: `packages/engine/src/realism/pass-accuracy.test.ts` — A) computePassProb 단조성(전진/롱<숏) B) 20시드 평균 78–85%(회귀 가드).
 
 ### E2 — 롱패스/롱킥 액션 추가 (mandated, 엔진 피처)
 - **현상**: `Action = shoot|pass|dribble|hold`, **롱 개념 없음**. 리시버는 perception 반경(33m) 내 근접만. GK/수비의 의도적 롱볼·클리어 없음.

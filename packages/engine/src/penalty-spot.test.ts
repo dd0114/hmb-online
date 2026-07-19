@@ -13,8 +13,8 @@ import type { MatchLog, TickSnapshot } from "@hmb/shared";
  */
 const config = defaultEngineConfig;
 const CENTER_Y = config.pitch.height / 2; // 34
-// default config 에서 페널티가 발생하는 시드(1..400 스캔으로 확정). 재현 고정.
-const PK_SEED = "8";
+// default config(engine@0.11.0)에서 페널티가 발생하는 시드(1..300 스캔으로 확정). 재현 고정.
+const PK_SEED = "2";
 
 function snapByTick(log: MatchLog): Map<number, TickSnapshot> {
   return new Map(log.tickSnapshots.map((s) => [s.tick, s]));

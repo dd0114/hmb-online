@@ -75,6 +75,12 @@ export interface EngineConfig {
     passFinalThirdPenalty: number;
     /** 볼 소유자를 압박하는 상대 1명당 성공확률 페널티. */
     passPressurePenalty: number;
+    /**
+     * 패스 압박 카운트 반경(m) — 이 안의 상대만 패스 압박으로 센다. movement.pressRange(22m,
+     * 압박 배정용)는 패스 성공률 페널티엔 과도(거의 모든 패스에 3~4명 적용 → 성공률 광범위 하향).
+     * 근접(~6m) 압박만 세어 패스 성공률을 벤치에 정합시키고 압박 효과를 국소화한다.
+     */
+    passPressureRangeM: number;
     /** 패스 거리(m)가 baseDist 를 넘는 매 m 당 성공확률 페널티. */
     passDistancePenalty: number;
     /** passDistancePenalty 가 적용되기 시작하는 기준 거리(m). */
@@ -83,6 +89,15 @@ export interface EngineConfig {
     passAttrSwing: number;
     /** 패스 실패 시 아웃오브바운즈(스로인/골킥)로 나갈 비율(나머지는 인플레이 턴오버). */
     passFailOutProb: number;
+    /**
+     * 패스 도착 소유 판정이 계획된 passOutcome(computePassProb 롤)을 존중하는가.
+     * true: 성공 롤이면 도착점 최근접 동료(의도 리시버)가, 실패(fail_intercept) 롤이면 도착점 최근접
+     *   상대가 컨트롤 → 실측 완성률 == 계획 확률. passBase 등 config 가 성공률의 실제 노브가 된다(E1).
+     * false(레거시): 순수 기하(도착점 최근접 아무나) — 실패 롤이라도 의도 리시버가 우연히 되찾아
+     *   "완성"으로 집계되어 성공률이 계획보다 높아짐(패스 정확도 과다의 원인).
+     * 세트피스 크로스/루즈볼(passOutcome 없음)은 항상 기하 판정.
+     */
+    passOutcomeAuthoritative: boolean;
     /** 레인 수비수의 인터셉트 기준선. */
     interceptBase: number;
     /** 태클 성공 기준선. */
@@ -320,7 +335,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.10.0",
+  version: "engine@0.11.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -351,14 +366,19 @@ export const defaultEngineConfig: EngineConfig = {
     shootCentralBonus: 1.35,
   },
   contest: {
-    passBase: 0.84,
-    passForwardPenalty: 0.22,
-    passFinalThirdPenalty: 0.14,
-    passPressurePenalty: 0.05,
+    // E1(0.11.0): 패스 도착이 계획 outcome 존중(passOutcomeAuthoritative) → passBase/페널티가
+    // 성공률의 실제 노브가 됨. 리얼 20시드 평균 패스성공 ≈80%(벤치 78-85), 전진<숏(short≈0.92
+    // fwd≈0.71 long≈0.44). 압박은 근접(passPressureRangeM 6m)만. 스로인은 pfo 로 복원(≈19).
+    passBase: 0.94,
+    passForwardPenalty: 0.2,
+    passFinalThirdPenalty: 0.12,
+    passPressurePenalty: 0.06,
+    passPressureRangeM: 6.0,
     passDistancePenalty: 0.008,
     passBaseDistM: 12,
     passAttrSwing: 0.14,
-    passFailOutProb: 0.16,
+    passFailOutProb: 0.45,
+    passOutcomeAuthoritative: true,
     interceptBase: 0.06,
     tackleBase: 0.14,
     xgBase: 0.225,

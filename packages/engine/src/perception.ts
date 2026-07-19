@@ -42,8 +42,13 @@ export function nearestOpponent(
 }
 
 /** player 를 압박하는 상대 수(pressRange 안). */
-export function pressureCount(state: SimState, player: SimPlayer, config: EngineConfig): number {
-  const range = config.movement.pressRange * config.fixedScale;
+export function pressureCount(
+  state: SimState,
+  player: SimPlayer,
+  config: EngineConfig,
+  rangeM?: number,
+): number {
+  const range = (rangeM ?? config.movement.pressRange) * config.fixedScale;
   let c = 0;
   for (const p of state.players) {
     if (p.side === player.side) continue;
