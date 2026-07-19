@@ -1,16 +1,20 @@
 // 카드 프레임 합성 — ref-2 실측 규격(226×425, 금테 8px, 밴드 배치).
 // 한글 텍스트(이름/설명)는 파이프라인이 그리지 않는다 — 게임 UI(React)가 실제 폰트로 오버레이한다.
 // 여기서는 프레임·아트·밴드·별·포지션 뱃지까지만 만든다(폰트 임베딩 없이 결정론 유지).
-import { img, blit, fillRect, setPx, hex2rgb, shade, fitCanvas } from './img.mjs';
+import { img, blit, fillRect, blendRect, setPx, hex2rgb, shade, fitCanvas } from './img.mjs';
 
+// ref-2 원본 재실측(카드 원점 x=22, y=300 좌측 가로스캔):
+//   local x0 = 어두운 금(#5f3e16) 1px / x1..x7 = 금 밴드 7px / x8 = 안쪽 베벨 / x9+ = 내부
+// → 인셋 ≈ 9~10px. measurements.ref103.json 의 ref2_frame_scan_y300(x17-33)은
+//   절대좌표라 카드 밖 글로우 5px 를 포함하고 있어 인셋이 17px 로 과대 측정됐다(#103 이슈 레이즈 대상).
 export const CARD = {
   w: 226, h: 425,
-  bevelOuter: 3, gap: 2, gold: 8, bevelInner: 4, // 합 17px 인셋
-  get inset() { return this.bevelOuter + this.gap + this.gold + this.bevelInner; },
-  artBottom: 331,   // 카드 상단 ~78%
+  bevelOuter: 1, gold: 7, bevelInner: 2, // 합 10px 인셋
+  get inset() { return this.bevelOuter + this.gold + this.bevelInner; },
+  artBottom: 331,   // 카드 상단 ~78% (331/425 = 77.9%)
   nameY: 330, nameH: 32,
   starsY: 362, starsH: 24,
-  descY: 386,
+  descY: 386,       // 설명판 = 별 밴드 아래부터 하단 프레임까지 꽉 채움(ref-2)
 };
 
 export const POS_COLOR = { FW: '#f17869', MF: '#57b775', DF: '#0b90d8', GK: '#fce148' };
@@ -74,10 +78,11 @@ export function composeCard(art, meta) {
   blit(o, fitCanvas(art, aw, ah, { alignY: 'bottom' }), inset, inset);
 
   // 3) 하단 밴드: 네임플레이트 / 별 / 설명판 (텍스트는 게임 UI 가 얹는다)
-  fillRect(o, inset, CARD.nameY, w - inset * 2, CARD.nameH, [...PLATE, 240]);
+  //    반투명 밴드는 blendRect 로 합성한다 — fillRect 는 덮어쓰기라 반투명 알파가 산출물에 남는다.
+  blendRect(o, inset, CARD.nameY, w - inset * 2, CARD.nameH, [...PLATE, 240]);
   fillRect(o, inset, CARD.nameY, w - inset * 2, 1, [...GOLD_DEEP, 255]);
-  fillRect(o, inset, CARD.starsY + CARD.starsH, w - inset * 2, 1, [...GOLD_DEEP, 255]);
-  fillRect(o, inset, CARD.descY, w - inset * 2, h - inset - CARD.descY, [...shade(PLATE, 1.4), 235]);
+  blendRect(o, inset, CARD.descY, w - inset * 2, h - inset - CARD.descY, [...shade(PLATE, 1.4), 235]);
+  fillRect(o, inset, CARD.descY - 1, w - inset * 2, 1, [...GOLD_DEEP, 255]); // 별 밴드 하단 구분선
 
   // 4) 별
   const n = Math.max(1, Math.min(6, meta.stars || 5));
@@ -85,9 +90,10 @@ export function composeCard(art, meta) {
   let sx = Math.round((w - (n * sw - 3)) / 2);
   for (let i = 0; i < n; i++) { drawStar(o, sx, CARD.starsY + 3, 2); sx += sw; }
 
-  // 5) 설명판 좌측 원형 아이콘 (시그니처 색)
-  // 반지름은 설명판 내부 높이(descY..h-inset)에 맞춘다 — 크면 프레임에 잘린다(파일럿 실측).
-  const ic = 9, icx = inset + 13, icy = CARD.descY + 11;
+  // 5) 설명판 좌측 원형 아이콘 (시그니처 색) — 설명판 내부 높이에 맞춘 최대 크기.
+  const panelH = h - inset - CARD.descY;
+  const ic = Math.floor((panelH - 4) / 2);
+  const icx = inset + ic + 4, icy = CARD.descY + Math.floor(panelH / 2);
   for (let y = -ic; y <= ic; y++)
     for (let x = -ic; x <= ic; x++) {
       const d = Math.sqrt(x * x + y * y);
@@ -98,7 +104,6 @@ export function composeCard(art, meta) {
   // 6) 프레임 (바깥→안쪽 4개 띠)
   const bands = [
     [CARD.bevelOuter, shade(frame, 0.35)],
-    [CARD.gap, [8, 8, 8]],
     [CARD.gold, null], // 금속 그라디언트
     [CARD.bevelInner, shade(frame, 0.25)],
   ];

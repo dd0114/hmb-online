@@ -48,8 +48,27 @@ export function blit(dst, src, dx, dy) {
   }
 }
 
+/** 덮어쓰기 채우기(알파 포함 그대로 기록). 반투명 합성이 필요하면 blendRect 를 쓸 것. */
 export function fillRect(s, x0, y0, w, h, c) {
   for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) setPx(s, x, y, c);
+}
+
+/** src-over 합성 채우기 — 반투명 밴드용(fillRect 는 덮어쓰기라 반투명이 그대로 남는다). */
+export function blendRect(s, x0, y0, w, h, [r, g, b, a]) {
+  const A = a / 255;
+  for (let y = y0; y < y0 + h; y++) {
+    for (let x = x0; x < x0 + w; x++) {
+      if (x < 0 || y < 0 || x >= s.width || y >= s.height) continue;
+      const o = (y * s.width + x) * 4;
+      const da = s.data[o + 3] / 255;
+      const oa = A + da * (1 - A);
+      if (oa === 0) continue;
+      s.data[o] = Math.round((r * A + s.data[o] * da * (1 - A)) / oa);
+      s.data[o + 1] = Math.round((g * A + s.data[o + 1] * da * (1 - A)) / oa);
+      s.data[o + 2] = Math.round((b * A + s.data[o + 2] * da * (1 - A)) / oa);
+      s.data[o + 3] = Math.round(oa * 255);
+    }
+  }
 }
 
 export function crop(s, x0, y0, w, h) {
@@ -109,36 +128,123 @@ export function hardAlpha(s, threshold = 128) {
 }
 
 /**
- * 배경 제거: 이미 알파가 있으면 그대로, 없으면 모서리 색에서 flood fill.
- * tol = 0~255 유클리드 거리 임계.
+ * 배경 제거. 이미 알파가 있으면 손대지 않는다(SPEC 권장 경로).
+ *
+ * 불투명 배경일 때는 **지역 기울기 영역확장(region growing)** 을 쓴다.
+ * 전역 tolerance flood fill 은 어두운 배경 위의 어두운 캐릭터를 분리하지 못한다 —
+ * 배경 그라디언트를 덮을 만큼 tol 을 키우면 캐릭터의 검은 머리·의상까지 먹어버린다
+ * (검증 실측: tol=40 에서 라그나 불투명 픽셀이 31% 까지 파괴됨).
+ * 지역 기울기는 "이웃 픽셀과의 차"로 전파하므로 완만한 배경 그라디언트는 따라가고
+ * 캐릭터 경계의 급격한 색 점프에서 멈춘다.
+ *
+ * @returns { image, stats } — stats 로 손상 여부를 상위(clean)에서 게이트한다.
  */
-export function removeBackground(s, tol = 40) {
+export function removeBackground(s, { localTol = 14, globalTol = 90 } = {}) {
   let transparent = 0;
   for (let i = 3; i < s.data.length; i += 4) if (s.data[i] < 250) transparent++;
-  if (transparent > s.width * s.height * 0.05) return clone(s); // 이미 투명 배경
+  const hadAlpha = transparent > s.width * s.height * 0.02;
+  if (hadAlpha) {
+    return { image: clone(s), stats: { hadAlpha: true, removedPct: (100 * transparent) / (s.width * s.height) } };
+  }
 
   const o = clone(s);
   const { width: w, height: h } = s;
   const seen = new Uint8Array(w * h);
   const stack = [];
-  const corners = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]];
-  const refs = corners.map(([x, y]) => px(s, x, y));
-  for (const [x, y] of corners) stack.push(y * w + x);
-  const near = (c) => refs.some((r) => (c[0] - r[0]) ** 2 + (c[1] - r[1]) ** 2 + (c[2] - r[2]) ** 2 <= tol * tol);
+  const seedAt = new Int32Array(w * h).fill(-1);
+  const seeds = [];
+  const pushSeed = (x, y) => {
+    const i = y * w + x;
+    seeds.push(px(s, x, y));
+    seedAt[i] = seeds.length - 1;
+    stack.push(i);
+  };
+  for (let x = 0; x < w; x++) { pushSeed(x, 0); pushSeed(x, h - 1); }
+  for (let y = 1; y < h - 1; y++) { pushSeed(0, y); pushSeed(w - 1, y); }
 
+  const d2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
+  let removed = 0;
   while (stack.length) {
     const i = stack.pop();
     if (seen[i]) continue;
     seen[i] = 1;
     const x = i % w, y = (i / w) | 0;
-    if (!near(px(s, x, y))) continue;
+    const c = px(s, x, y);
+    // 시드(이미지 테두리) 색에서 너무 멀어지면 중단 — 그라디언트를 타고 캐릭터로 새는 것 방지
+    if (d2(c, seeds[seedAt[i]]) > globalTol * globalTol) continue;
     o.data[i * 4 + 3] = 0;
+    removed++;
+    const nb = [];
+    if (x > 0) nb.push(i - 1);
+    if (x < w - 1) nb.push(i + 1);
+    if (y > 0) nb.push(i - w);
+    if (y < h - 1) nb.push(i + w);
+    for (const j of nb) {
+      if (seen[j]) continue;
+      const nx = j % w, ny = (j / w) | 0;
+      if (d2(c, px(s, nx, ny)) > localTol * localTol) continue; // 급격한 색 점프 = 캐릭터 경계
+      if (seedAt[j] < 0) seedAt[j] = seedAt[i];
+      stack.push(j);
+    }
+  }
+  return { image: o, stats: { hadAlpha: false, removedPct: (100 * removed) / (w * h) } };
+}
+
+/**
+ * 컷아웃 품질 측정 — 배경 제거가 캐릭터를 먹었는지 자동 판별한다.
+ * 정상 컷아웃은 큰 덩어리 1~2개. 캐릭터가 잠식되면 파편이 수십 개로 흩어지고
+ * 몸통 내부에 구멍이 생긴다. (검증 실측: 라그나는 어떤 tolerance 에서도 파편화)
+ * @returns { opaquePct, components, largestShare, holes }
+ */
+export function cutoutQuality(s) {
+  const { width: w, height: h } = s;
+  const n = w * h;
+  const op = (i) => s.data[i * 4 + 3] > 8;
+  const label = new Int32Array(n).fill(-1);
+  let components = 0, largest = 0, opaque = 0;
+  for (let i = 0; i < n; i++) if (op(i)) opaque++;
+  for (let start = 0; start < n; start++) {
+    if (label[start] >= 0 || !op(start)) continue;
+    let size = 0;
+    const stack = [start];
+    label[start] = components;
+    while (stack.length) {
+      const i = stack.pop();
+      size++;
+      const x = i % w, y = (i / w) | 0;
+      const nb = [];
+      if (x > 0) nb.push(i - 1);
+      if (x < w - 1) nb.push(i + 1);
+      if (y > 0) nb.push(i - w);
+      if (y < h - 1) nb.push(i + w);
+      for (const j of nb) if (label[j] < 0 && op(j)) { label[j] = components; stack.push(j); }
+    }
+    if (size > largest) largest = size;
+    components++;
+  }
+  // 구멍 = 테두리와 연결되지 않은 투명 영역
+  const seenT = new Uint8Array(n);
+  const stack = [];
+  for (let x = 0; x < w; x++) { stack.push(x); stack.push((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { stack.push(y * w); stack.push(y * w + w - 1); }
+  while (stack.length) {
+    const i = stack.pop();
+    if (seenT[i] || op(i)) continue;
+    seenT[i] = 1;
+    const x = i % w, y = (i / w) | 0;
     if (x > 0) stack.push(i - 1);
     if (x < w - 1) stack.push(i + 1);
     if (y > 0) stack.push(i - w);
     if (y < h - 1) stack.push(i + w);
   }
-  return o;
+  let holes = 0;
+  for (let i = 0; i < n; i++) if (!op(i) && !seenT[i]) holes++;
+  return {
+    opaquePct: (100 * opaque) / n,
+    components,
+    largestShare: opaque ? largest / opaque : 0,
+    holes,
+  };
 }
 
 /** 불투명 픽셀의 바운딩 박스로 크롭 + 여백(비율) 부여. */
@@ -169,6 +275,7 @@ export function fitCanvas(s, w, h, { alignY = 'center' } = {}) {
 
 /** 원형 마스크 + 팀 링. d = 지름(=출력 크기). stroke 는 지름의 4.5%(ref-1 실측). */
 export function circleWithRing(s, d, ringHex) {
+  if (s.width !== d || s.height !== d) s = resize(s, d, d); // 소스 크기 가정 방지(조용한 크롭 금지)
   const stroke = Math.max(1, Math.round(d * 0.045));
   const o = img(d, d);
   const c = (d - 1) / 2;
@@ -181,7 +288,7 @@ export function circleWithRing(s, d, ringHex) {
       if (dist > rOuter - 0.5) continue;
       if (ring && dist > rInner - 0.5) { setPx(o, x, y, [...ring, 255]); continue; }
       const p = px(s, Math.min(s.width - 1, x), Math.min(s.height - 1, y));
-      setPx(o, x, y, p[3] === 0 ? [12, 17, 23, 255] : p); // 링 안쪽 빈 곳은 서피스로 채움
+      setPx(o, x, y, p[3] === 0 ? [11, 17, 23, 255] : p); // 링 안쪽 빈 곳 = 배경 root #0b1117
     }
   }
   return o;

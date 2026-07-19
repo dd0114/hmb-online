@@ -97,12 +97,13 @@ figcaption{font-size:10px;color:var(--muted);margin-top:6px;max-width:112px;line
 figcaption b{color:var(--text)}
 img.orig{max-width:150px;max-height:230px;background:#0006;border:1px solid #2a3640;border-radius:4px}
 img.card{width:226px;border-radius:6px;display:block;image-rendering:pixelated}
-/* 카드 밴드 좌표 = card.mjs 의 CARD 상수와 동일(226×425 기준) */
+/* 카드 밴드 좌표 = card.mjs 의 CARD 상수와 동일(226×425, inset 10) */
 .cardwrap{position:relative;width:226px}
-.cname{position:absolute;left:17px;right:17px;top:336px;height:26px;line-height:26px;
+.cname{position:absolute;left:10px;right:10px;top:334px;height:26px;line-height:26px;
   text-align:center;font-size:12px;color:#f8e8a0;pointer-events:none;overflow:hidden}
-.cdesc{position:absolute;left:52px;right:20px;top:388px;font-size:9px;color:#a7a090;
-  text-align:left;line-height:1.4;pointer-events:none}
+/* 설명은 설명판(386..415) 안에 가둔다 — 넘치면 잘라낸다(프레임 밖으로 새면 안 됨) */
+.cdesc{position:absolute;left:46px;right:12px;top:389px;height:24px;overflow:hidden;
+  font-size:9px;color:#a7a090;text-align:left;line-height:1.35;pointer-events:none}
 .note{font-size:10px;color:var(--muted);margin:8px 0 0;max-width:226px}
 footer{color:var(--muted);font-size:12px;margin-top:8px}
 </style>

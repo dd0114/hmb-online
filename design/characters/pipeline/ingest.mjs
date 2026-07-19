@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { decodePNG, encodePNG } from './lib/png.mjs';
 import {
-  removeBackground, trim, resize, hardAlpha, fitCanvas, circleWithRing,
+  removeBackground, cutoutQuality, trim, hardAlpha, fitCanvas, circleWithRing,
   dominantColor, shade, rgb2hex, hex2rgb,
 } from './lib/img.mjs';
 import { quantize } from './lib/quantize.mjs';
@@ -56,9 +56,26 @@ const write = (file, im) => {
   fs.writeFileSync(file, encodePNG(im));
 };
 
-/** 원화 → 정리된 소스(배경 제거 + 트림). 산출 3형태의 공통 입력. */
-function clean(im) {
-  return trim(removeBackground(im), 0.02);
+/**
+ * 원화 → 정리된 소스(배경 제거 + 트림). 산출 3형태의 공통 입력.
+ * 배경 제거는 **조용히 실패하면 안 된다** — 어두운 배경 위 어두운 캐릭터는
+ * 원리적으로 분리되지 않고 캐릭터가 잠식된다(검증 실측). 손상은 여기서 게이트한다.
+ */
+function clean(im, warnings, label) {
+  const { image, stats } = removeBackground(im);
+  if (!stats.hadAlpha) {
+    warnings.push(`${label}: 배경이 불투명 — SPEC §2 는 투명 배경을 요구한다. 자동 분리를 시도했으나 손상 위험.`);
+  }
+  const q = cutoutQuality(image);
+  // 정상 컷아웃 = 큰 덩어리 1~2개. 파편이 많거나 몸통에 구멍이 생기면 캐릭터가 잠식된 것.
+  if (q.largestShare < 0.7)
+    warnings.push(
+      `${label}: 컷아웃 파편화(조각 ${q.components}개, 최대 덩어리 ${(q.largestShare * 100).toFixed(0)}%)` +
+      ` — 배경 제거가 캐릭터를 잠식했을 가능성이 높다. 투명 배경으로 다시 입고할 것.`,
+    );
+  if (q.holes > image.width * image.height * 0.005)
+    warnings.push(`${label}: 컷아웃 내부 구멍 ${q.holes}px — 캐릭터 내부가 배경으로 오인됐다.`);
+  return { src: trim(image, 0.02), quality: q };
 }
 
 /** 도트화 = 박스 다운스케일 → 하드 알파(안티에일리어싱 제거) → 팔레트 양자화. */
@@ -81,9 +98,13 @@ export function processCharacter(id, files) {
   // ── 아바타 (portrait) ──
   if (files.portrait) {
     const raw = readImage(files.portrait);
-    if (Math.min(raw.width, raw.height) < 256)
-      report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 최소 512 미달`);
-    const src = clean(raw);
+    // SPEC §2: portrait 512×512 이상 정사각(필수)
+    if (raw.width < 512 || raw.height < 512)
+      report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 최소 512×512 미달`);
+    if (raw.width !== raw.height)
+      report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 은 정사각을 요구(레터박싱되어 해상도 손실)`);
+    const { src, quality } = clean(raw, report.warnings, 'portrait');
+    report.portraitCutout = quality;
     for (const st of AVATAR_LADDER) {
       const dot = dotify(src, st.size, st.size, st.colors);
       write(path.join(outDir, `avatar-${st.size}.png`), dot);
@@ -98,8 +119,14 @@ export function processCharacter(id, files) {
   // ── 스프라이트 + 카드 (full) ──
   if (files.full) {
     const raw = readImage(files.full);
-    if (raw.height < 512) report.warnings.push(`full 높이 ${raw.height} — SPEC 최소 1024 미달`);
-    const src = clean(raw);
+    // SPEC §2: full 512×1024 이상, 세로 1:2
+    if (raw.width < 512 || raw.height < 1024)
+      report.warnings.push(`full ${raw.width}×${raw.height} — SPEC 최소 512×1024 미달`);
+    const ar = raw.height / raw.width;
+    if (ar < 1.6 || ar > 2.4)
+      report.warnings.push(`full 비율 1:${ar.toFixed(2)} — SPEC 은 세로 1:2 를 요구`);
+    const { src, quality } = clean(raw, report.warnings, 'full');
+    report.fullCutout = quality;
     const sig = meta.signature ? hex2rgb(meta.signature) : dominantColor(src);
     const frame = meta.frame ? hex2rgb(meta.frame) : shade(sig, 0.72);
     report.meta.signatureResolved = rgb2hex(sig);
@@ -128,6 +155,12 @@ export function scanIncoming() {
   for (const f of fs.readdirSync(IN).sort()) {
     const m = f.match(/^(.+?)__(portrait|full)\.(png|jpg|jpeg|webp)$/i);
     if (!m) continue;
+    // SPEC §2: charId = 소문자 ASCII kebab-case. 대문자를 허용하면 Ragna/ragna 가
+    // 경고 없이 서로 다른 캐릭터 2개가 된다.
+    if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(m[1])) {
+      console.log(`⚠ 건너뜀 ${f} — charId "${m[1]}" 가 SPEC 네이밍(소문자 kebab-case) 위반`);
+      continue;
+    }
     (chars[m[1]] ||= {})[m[2].toLowerCase()] = path.join(IN, f);
   }
   return chars;

@@ -53,6 +53,9 @@ export function decodePNG(buf) {
   const rowBytes = Math.ceil((width * bitsPerPixel) / 8);
 
   const raw = zlib.inflateSync(Buffer.concat(idat));
+  const expected = height * (rowBytes + 1);
+  if (raw.length < expected)
+    throw new Error(`IDAT 손상: 압축해제 ${raw.length}바이트, ${expected} 필요 (잘린 PNG)`);
   const out = Buffer.alloc(height * rowBytes);
   let prev = Buffer.alloc(rowBytes);
   for (let y = 0; y < height; y++) {
