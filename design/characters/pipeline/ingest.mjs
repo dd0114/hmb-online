@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { decodePNG, encodePNG } from './lib/png.mjs';
 import {
-  removeBackground, cutoutQuality, trim, hardAlpha, fitCanvas, circleWithRing,
+  removeBackground, cutoutQuality, trim, hardAlpha, fitCanvas, circleWithRing, nearest,
   dominantColor, shade, rgb2hex, hex2rgb,
 } from './lib/img.mjs';
 import { quantize } from './lib/quantize.mjs';
@@ -58,42 +58,97 @@ const write = (file, im) => {
   fs.writeFileSync(file, encodePNG(im));
 };
 
-const TOL_SWEEP = [4, 5, 6, 7, 8, 9, 10, 11, 12, 14];
-const KNEE_DROP = 2.0; // %p — 이보다 크게 면적이 꺾이면 캐릭터를 먹기 시작한 것
+const LOCAL_SWEEP = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28];
+const GLOBAL_SWEEP = [40, 60, 90, 140, 255];
+const INTEGRITY = 0.98;   // 최대 덩어리 비율 — 이 아래면 캐릭터가 잘려나간 것
+const PROXY_MAX = 320;    // 파라미터 탐색은 축소 프록시에서(하드 엣지 보존 위해 nearest)
 
 /**
- * localTol 자동 선택. tolerance 를 올리면 배경이 더 지워지다가(완만한 감소)
- * 어느 지점부터 캐릭터를 먹기 시작한다(급격한 감소). 그 **무릎 직전** 값을 고른다.
+ * 배경 제거 파라미터 자동 선택.
  *
- * 고정 기본값은 위험하다 — 무릎 위치가 소스마다 다르다(라그나 8, 아우라 6).
- * 초판이 14 로 고정 출하해 3종 모두 훼손시킨 것이 이 함수를 만든 이유다.
+ * **목표는 명시적 최적화다**: 캐릭터 무결성을 유지하는 범위에서 **배경을 최대한 제거**한다.
+ *   maximize removedPct  subject to  largestShare ≥ 0.98 ∧ holes 작음
+ *
+ * 왜 이 형태여야 하는가 — 검증에서 두 번 실패한 지점이다:
+ *  - **과잉 제거**(캐릭터를 먹음)는 largestShare 가 떨어져서 잡힌다.
+ *  - **과소 제거**(배경 잔류)는 largestShare 로 **잡히지 않는다** — 잔류 배경은 캐릭터에
+ *    붙어 같은 연결요소로 병합돼 오히려 지표를 올린다. 그래서 "제거량 최대화"가
+ *    목적함수에 반드시 들어가야 한다. 무릎 검출(v3)은 이걸 놓쳐 스윕 시작점을 반환했다.
+ *  - `globalTol` 도 함께 탐색한다. 고정해두면 그 축의 더 나은 값을 영영 못 찾는다(v3 결함).
  */
 function autoTol(im) {
-  let prev = null, chosen = TOL_SWEEP[0];
+  const scale = Math.min(1, PROXY_MAX / Math.max(im.width, im.height));
+  const proxy = scale < 1
+    ? nearest(im, Math.max(1, Math.round(im.width * scale)), Math.max(1, Math.round(im.height * scale)))
+    : im;
+  const holeLimit = proxy.width * proxy.height * 0.005;
+
+  let best = null;
   const curve = [];
-  for (const t of TOL_SWEEP) {
-    const q = cutoutQuality(removeBackground(im, { localTol: t }).image);
-    curve.push({ tol: t, opaquePct: Number(q.opaquePct.toFixed(2)) });
-    if (prev !== null && prev - q.opaquePct > KNEE_DROP) break; // 무릎 — 직전 값 유지
-    prev = q.opaquePct;
-    chosen = t;
+  for (const globalTol of GLOBAL_SWEEP) {
+    for (const localTol of LOCAL_SWEEP) {
+      const { image, stats } = removeBackground(proxy, { localTol, globalTol });
+      const q = cutoutQuality(image);
+      const ok = q.largestShare >= INTEGRITY && q.holes <= holeLimit;
+      if (globalTol === 90) {
+        curve.push({ localTol, removedPct: Number(stats.removedPct.toFixed(2)),
+                     largestShare: Number(q.largestShare.toFixed(4)), ok });
+      }
+      if (!ok) continue;
+      if (!best || stats.removedPct > best.removedPct)
+        best = { localTol, globalTol, removedPct: stats.removedPct };
+    }
   }
-  return { chosen, curve };
+  // 후보가 하나도 없으면 가장 보수적인 설정으로 폴백(배경은 남지만 캐릭터는 보존).
+  if (!best) best = { localTol: LOCAL_SWEEP[0], globalTol: GLOBAL_SWEEP[0], removedPct: 0, fallback: true };
+  best.atBoundary =
+    best.localTol === LOCAL_SWEEP[LOCAL_SWEEP.length - 1] || best.localTol === LOCAL_SWEEP[0];
+  return { ...best, curve };
 }
 
 /**
  * 원화 → 정리된 소스(배경 제거 + 트림). 산출 3형태의 공통 입력.
- * tolerance 는 무릎 검출로 자동 선택하고, 남는 손상은 파편화·내부구멍으로 검출해 경고한다.
+ * 배경 제거 파라미터는 autoTol 로 최적화 선택하고, 남는 손상은 파편화·내부구멍으로 경고한다.
  */
 function clean(im, warnings, label, override) {
-  const auto = override === undefined ? autoTol(im) : { chosen: override, curve: [] };
-  const localTol = auto.chosen;
-  const { image, stats } = removeBackground(im, { localTol });
-  if (!stats.hadAlpha) {
-    warnings.push(`${label}: 배경이 불투명 — SPEC §2 는 투명 배경을 요구한다(자동 분리는 보조 수단).`);
+  // 투명 배경(SPEC 권장 경로)이면 파라미터 탐색 자체가 불필요하다.
+  const preAlpha = removeBackground(im, { localTol: LOCAL_SWEEP[0] });
+  if (preAlpha.stats.hadAlpha) {
+    const q0 = cutoutQuality(preAlpha.image);
+    return { src: trim(preAlpha.image, 0.02), quality: { ...q0, localTol: null, alphaPreserved: true } };
   }
+
+  warnings.push(`${label}: 배경이 불투명 — SPEC §2 는 투명 배경을 요구한다(자동 분리는 보조 수단).`);
+  const auto = override === undefined
+    ? autoTol(im)
+    : { localTol: override, globalTol: 90, curve: [], atBoundary: false };
+  // 프록시에서 고른 값이 원본 해상도에서도 무결한지 재검증한다.
+  // 프록시(320px)와 원본은 지역 기울기가 미세하게 달라 통과값이 어긋날 수 있다
+  // (실측: 펭킹킹 full 이 프록시 통과 후 원본에서 96.2% → 망토 소실).
+  let { localTol, globalTol } = auto;
+  let image = removeBackground(im, { localTol, globalTol }).image;
+  if (override === undefined) {
+    const holeLimitFull = im.width * im.height * 0.005;
+    let guard = 0;
+    while (guard++ < LOCAL_SWEEP.length) {
+      const qq = cutoutQuality(image);
+      if (qq.largestShare >= INTEGRITY && qq.holes <= holeLimitFull) break;
+      const i = LOCAL_SWEEP.indexOf(localTol);
+      if (i <= 0) break;
+      localTol = LOCAL_SWEEP[i - 1]; // 한 단계 보수적으로 물러난다
+      image = removeBackground(im, { localTol, globalTol }).image;
+      auto.backedOff = true;
+    }
+  }
+  if (auto.backedOff)
+    warnings.push(`${label}: 프록시 탐색값이 원본에서 무결성 미달 → localTol=${localTol} 로 후퇴.`);
+  if (auto.fallback)
+    warnings.push(`${label}: 무결성을 만족하는 배경제거 설정을 못 찾았다 — 배경이 남는다. 투명 배경으로 재입고할 것.`);
+  if (auto.atBoundary)
+    warnings.push(`${label}: 선택된 localTol=${localTol} 이 탐색 범위 경계 — 더 나은 값이 범위 밖에 있을 수 있다.`);
   const q = cutoutQuality(image);
   q.localTol = localTol;
+  q.globalTol = globalTol;
   q.tolCurve = auto.curve;
 
   // 파편화(흩어진 손실) — 연속적 손실은 이걸로 안 잡히므로 tolerance 자동선택이 1차 방어다.
@@ -112,12 +167,21 @@ function dotify(src, w, h, colors, alignY = 'center') {
   return quantize(hardAlpha(fitCanvas(src, w, h, { alignY })), colors);
 }
 
+/** bgTol: 숫자면 공통, {portrait,full} 객체면 variant 별. 없으면 undefined(자동 탐색). */
+const pickTol = (bgTol, variant) => {
+  if (Number.isFinite(bgTol)) return bgTol;
+  if (bgTol && Number.isFinite(bgTol[variant])) return bgTol[variant];
+  return undefined;
+};
+
 function loadMeta(id) {
   const f = path.join(IN, `${id}.json`);
   const m = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : {};
   return { id, name: m.name || id, title: m.title || '', position: m.position || 'MF',
            stars: m.stars || 5, desc: m.desc || '', signature: m.signature, frame: m.frame,
-           bgTol: Number.isFinite(m.bgTol) ? m.bgTol : undefined };
+           // bgTol 은 variant 별로 다를 수 있다(실측: 라그나 portrait 9 / full 8).
+           // 숫자면 양쪽 공통, 객체면 {portrait, full} 개별 지정.
+           bgTol: m.bgTol };
 }
 
 export function processCharacter(id, files) {
@@ -133,7 +197,7 @@ export function processCharacter(id, files) {
       report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 최소 512×512 미달`);
     if (raw.width !== raw.height)
       report.warnings.push(`portrait ${raw.width}×${raw.height} — SPEC 은 정사각을 요구(레터박싱되어 해상도 손실)`);
-    const { src, quality } = clean(raw, report.warnings, 'portrait', meta.bgTol);
+    const { src, quality } = clean(raw, report.warnings, 'portrait', pickTol(meta.bgTol, 'portrait'));
     report.portraitCutout = quality;
     for (const st of AVATAR_LADDER) {
       const dot = dotify(src, st.size, st.size, st.colors);
@@ -155,7 +219,7 @@ export function processCharacter(id, files) {
     const ar = raw.height / raw.width;
     if (ar < 1.6 || ar > 2.4)
       report.warnings.push(`full 비율 1:${ar.toFixed(2)} — SPEC 은 세로 1:2 를 요구`);
-    const { src, quality } = clean(raw, report.warnings, 'full', meta.bgTol);
+    const { src, quality } = clean(raw, report.warnings, 'full', pickTol(meta.bgTol, 'full'));
     report.fullCutout = quality;
     const sig = meta.signature ? hex2rgb(meta.signature) : dominantColor(src);
     const frame = meta.frame ? hex2rgb(meta.frame) : shade(sig, 0.72);

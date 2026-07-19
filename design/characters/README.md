@@ -9,6 +9,7 @@ contact-sheet.png 대조 시트 증빙 (hero 게이트 제출물)
 pipeline/        인제스트 스크립트 (node, 외부 의존 0, 결정론)
   ingest.mjs       incoming/ → out/ 3형태 산출
   sheet.mjs        out/ → contact-sheet.html
+  shoot-sheet.mjs  contact-sheet.html → contact-sheet.png (게이트 제출물)
   pilot-crop.mjs   레퍼에서 파일럿 입력 크롭 (파일럿 전용)
   lib/             png(코덱) · img(연산) · quantize(양자화) · card(프레임 합성)
 refs/            레퍼 3장 사본 (gitignore — 아래 참조)
@@ -23,6 +24,7 @@ out/             산출물 (gitignore — 재생성 가능)
 #    <charId>__portrait.png / <charId>__full.png  (+ 선택 <charId>.json)
 node design/characters/pipeline/ingest.mjs      # 3형태 산출 → out/<charId>/
 node design/characters/pipeline/sheet.mjs       # 대조 시트 → contact-sheet.html
+node design/characters/pipeline/shoot-sheet.mjs # 시트 PNG (playwright 필요, PLAYWRIGHT_PATH 로 경로 지정 가능)
 # 2) 시트를 #104 에 올려 hero 승인 게이트
 ```
 
