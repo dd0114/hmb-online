@@ -1,4 +1,5 @@
 import { useLocation, useNavigate } from "react-router-dom";
+import { useNavGuardRun } from "./NavGuard";
 import styles from "./AppNav.module.css";
 
 /**
@@ -35,6 +36,7 @@ export function activeNavKey(pathname: string, items: readonly NavItem[] = NAV_I
 
 export function AppNav() {
   const navigate = useNavigate();
+  const runGuard = useNavGuardRun();
   const location = useLocation();
   const activeKey = activeNavKey(location.pathname);
 
@@ -59,7 +61,8 @@ export function AppNav() {
         aria-disabled={item.pending ? "true" : undefined}
         onClick={() => {
           if (item.pending) return;
-          navigate(item.to);
+          // Route through the nav guard so a dirty page (e.g. /deck) can confirm before leaving.
+          runGuard(() => navigate(item.to));
         }}
       >
         <span className={styles.icon} aria-hidden="true">
