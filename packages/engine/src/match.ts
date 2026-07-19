@@ -371,6 +371,7 @@ function stepTick(carry: Carry): void {
             target: action.receiver.id,
             fromSide: owner.side,
             passOutcome: action.outcome,
+            long: action.long,
           };
           owner.dribbleStreak = 0;
           state.ball.owner = null;

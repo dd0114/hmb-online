@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>HMB 엔진 디버그 뷰어</title>
+    <title>HMB Engine Debug Viewer</title>
     <style>
       :root {
         --bg: #0f1420; --panel: #1a2233; --ink: #e7edf6; --muted: #8ea0bd;
@@ -19,6 +19,32 @@
       #scoreboard { display: flex; align-items: center; gap: 14px; font-size: 22px; font-weight: 700; }
       #scoreboard .home { color: var(--home); } #scoreboard .away { color: var(--away); }
       #minute { color: var(--muted); font-size: 14px; }
+      /* F1(#100) 실시간 통계 HUD */
+      #hud {
+        width: 100%; max-width: 1040px; background: var(--panel); border-radius: 8px;
+        padding: 10px 14px; display: flex; flex-direction: column; gap: 7px;
+      }
+      .hud-top { display: flex; align-items: center; gap: 10px; }
+      .poss-val { font-size: 15px; font-weight: 800; min-width: 42px; }
+      .poss-val.home { color: var(--home); text-align: right; } .poss-val.away { color: var(--away); }
+      .poss-bar { flex: 1; height: 12px; border-radius: 6px; overflow: hidden; display: flex; background: #0d1220; }
+      .poss-bar i { background: var(--home); transition: width .25s ease; }
+      .poss-bar b { background: var(--away); transition: width .25s ease; }
+      .hud-caption { text-align: center; font-size: 10px; color: var(--muted); letter-spacing: 1px; margin-top: -4px; text-transform: uppercase; }
+      #hudGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 22px; }
+      @media (max-width: 640px) { #hudGrid { grid-template-columns: 1fr; } }
+      .srow { display: grid; grid-template-columns: 38px 1fr 38px; align-items: center; column-gap: 8px; row-gap: 2px; }
+      .srow .sv { font-size: 13px; font-weight: 700; }
+      .srow .sv.h { text-align: right; color: #dbe6f7; } .srow .sv.a { text-align: left; color: #f7dede; }
+      .srow .slbl { text-align: center; font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+      .srow .sbar { grid-column: 1 / -1; height: 5px; border-radius: 3px; overflow: hidden; display: flex; background: #0d1220; }
+      .srow .sbar i { background: var(--home); transition: width .25s ease; }
+      .srow .sbar b { background: var(--away); transition: width .25s ease; }
+      .mom-wrap { display: flex; align-items: center; gap: 10px; }
+      .mom-cap { font-size: 10px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; min-width: 74px; }
+      .mom-track { position: relative; flex: 1; height: 10px; border-radius: 5px; background: #0d1220; overflow: hidden; }
+      .mom-track .mom-mid { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #33415f; }
+      .mom-track i { position: absolute; top: 0; bottom: 0; transition: left .3s ease, width .3s ease, background .3s ease; }
       #wrap { width: 100%; max-width: 1040px; position: relative; }
       canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: #14532d; }
       #flash {
@@ -73,20 +99,29 @@
       #clock { color: var(--ink); font-size: 13px; font-weight: 700; min-width: 84px; text-align: right; }
       .sp { color: var(--muted); font-size: 12px; }
       #ticker {
-        width: 100%; max-width: 1040px; height: 90px; overflow-y: auto;
-        background: var(--panel); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.7;
+        width: 100%; max-width: 1040px; height: 116px; overflow-y: auto;
+        background: var(--panel); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.55;
       }
-      .ev-goal { color: var(--accent); font-weight: 700; } .ev-shot { color: #fbbf24; }
+      #ticker > div { cursor: pointer; border-radius: 4px; padding: 0 4px; }
+      #ticker > div:hover { background: rgba(255,255,255,0.05); }
+      .ev-goal { color: var(--accent); } .ev-shot { color: #fbbf24; }
       .ev-tackle, .ev-interception { color: var(--muted); }
       .ev-foul { color: #f59e0b; } .ev-offside { color: #a78bfa; }
-      .ev-free_kick { color: #94a3b8; } .ev-penalty { color: #22c55e; font-weight: 700; }
+      .ev-free_kick { color: #94a3b8; } .ev-penalty { color: #22c55e; }
       .ev-card { color: #eab308; } .ev-save { color: #38bdf8; }
+      .ev-substitution { color: #34d399; }
+      .ev-half_whistle, .ev-full_whistle { color: #cbd5e1; }
+      /* F2(#100) 중요도별 타이포(FM 코멘터리): major=굵게·크게+좌측 강조선, minor=작게·흐리게. */
+      .tier-major { font-size: 13.5px; font-weight: 800; border-left: 3px solid currentColor; margin: 2px 0; padding-left: 7px; }
+      .tier-normal { font-size: 12px; font-weight: 500; }
+      .tier-minor { font-size: 10.5px; opacity: 0.6; }
+      .ev-min { color: var(--muted); font-weight: 400; }
       #status { color: var(--muted); font-size: 12px; min-height: 16px; }
       input[type="file"] { color: var(--muted); font-size: 12px; }
     </style>
   </head>
   <body>
-    <h1>HMB TIER-B 엔진 · 디버그 뷰어</h1>
+    <h1>HMB TIER-B ENGINE · DEBUG VIEWER</h1>
     <div id="scoreboard">
       <span class="home" id="homeName">HOME</span>
       <span id="score">0 : 0</span>
@@ -100,12 +135,13 @@
       <div id="banner"></div>
     </div>
     <div class="controls">
-      <button id="playBtn">▶ 재생</button>
-      <button id="restartBtn">⟲ 처음</button>
-      <button id="followBtn">🔍 공 따라가기</button>
-      <button id="trailBtn" class="active">✦ 선수 잔상</button>
-      <button id="highlightBtn" class="active">🎬 하이라이트</button>
-      <span class="sp">수동배속</span>
+      <button id="playBtn">▶ Play</button>
+      <button id="restartBtn">⟲ Restart</button>
+      <button id="followBtn">🔍 Follow ball</button>
+      <button id="trailBtn" class="active">✦ Player trails</button>
+      <button id="highlightBtn" class="active">🎬 Highlights</button>
+      <button id="statsBtn" class="active">📊 Stats</button>
+      <span class="sp">Speed</span>
       <button data-speed="0.25">0.25x</button>
       <button data-speed="0.5">0.5x</button>
       <button data-speed="1" class="active">1x</button>
@@ -113,26 +149,40 @@
       <button data-speed="4">4x</button>
     </div>
     <div class="controls">
-      <button id="prevShot">◀ 이전 슛</button>
-      <button id="nextShot">다음 슛 ▶</button>
-      <button id="prevGoal">◀ 이전 골</button>
-      <button id="nextGoal">다음 골 ▶</button>
+      <button id="prevShot">◀ Prev shot</button>
+      <button id="nextShot">Next shot ▶</button>
+      <button id="prevGoal">◀ Prev goal</button>
+      <button id="nextGoal">Next goal ▶</button>
       <div id="scrubwrap">
         <input id="scrub" type="range" min="0" max="100" value="0" step="0.01" />
         <div id="marks"></div>
       </div>
       <span id="clock">0' / 0'</span>
     </div>
+    <!-- F1(#100): 실시간 경기 통계 HUD — 피치 아래 분석 영역(hero: 게임 장면 밑으로). 재생 중 현재 틱까지 누적 갱신. -->
+    <div id="hud">
+      <div class="hud-top">
+        <span class="poss-val home" id="possH">50%</span>
+        <div class="poss-bar"><i id="possFillH"></i><b id="possFillA"></b></div>
+        <span class="poss-val away" id="possA">50%</span>
+      </div>
+      <div class="hud-caption">Possession</div>
+      <div id="hudGrid"></div>
+      <div class="mom-wrap">
+        <span class="mom-cap">Momentum</span>
+        <div class="mom-track"><span class="mom-mid"></span><i id="momFill"></i></div>
+      </div>
+    </div>
     <div id="ticker"></div>
-    <div id="status">match-log.json 로딩 중…</div>
-    <input type="file" id="fileInput" accept="application/json" title="match-log.json 직접 불러오기" />
+    <div id="status">Loading match-log.json…</div>
+    <input type="file" id="fileInput" accept="application/json" title="Load match-log.json directly" />
 
     <script type="module">
       import { buildPlayback, spansReposition, inHighlight } from "./playback.mjs";
+      import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.mjs";
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
-      const SETPIECE_ZOOM = 1.7;               // #59: 세트피스 걷기 구간 줌(박스 + 걸어오는 taker 가 보이게 팔로우보다 넓게)
       const CONTACT_ZOOM = 2.6, FOUL_CONTACT_TICKS = 3; // 파울 접촉 순간 줌(두 선수 충돌 보이게) + 지속 틱
       const FOUL_HOLD_MS = 1000; // 파울/페널티 정지는 길게 — 카메라가 접촉점으로 줌 완료(~730ms)+충돌을 보여줄 여유
       const CAM_SMOOTH = 0.12;                 // 정지(freeze) 중 카메라 팬 속도(0..1/frame). 정지→정지 줌 순간이동 방지.
@@ -159,17 +209,27 @@
       const situationEl = document.getElementById("situation");
       const marksEl = document.getElementById("marks");
       const clockEl = document.getElementById("clock");
+      // F1 HUD refs.
+      const possHEl = document.getElementById("possH"), possAEl = document.getElementById("possA");
+      const possFillHEl = document.getElementById("possFillH"), possFillAEl = document.getElementById("possFillA");
+      const hudGridEl = document.getElementById("hudGrid"), momFillEl = document.getElementById("momFill");
+      let cumPoss = { cumHome: [], cumAway: [] }, lastHudTick = -1;
 
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
       let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
       let shotFx = [], shotFxTicks = new Set(); // 유효슛 링 이펙트(정지 없음, 순수 시각)
+      // R2(#100): 재미 이펙트 소스 — 패스완성/가로챔/돌파. 재생 중 플레이헤드가 틱을 지나면 스폰(shotFx 방식).
+      let fx = [], passEvents = [], interceptEvents = [], surgeTicks = [];
+      let cardMarks = [], lastCardMarks = []; // R4(#100): 카드 받은 선수 표시(마커+번호).
       let annos = [], snapByTick = new Map(), restartTickSet = new Set(), ballCutTickSet = new Set(), totalMinutes = 0;
+      let flightSides = new Map(); // R1 정련: 슛/패스 비행 틱 → 발사팀 side(무소유 트레일 색 소스).
       let stoppages = [], hold = null; // 데드볼: freeze→skip 시퀀스
       let lastRender = null; // 마지막 draw()의 렌더된 공(보간 후) — Playwright 계약검증용(__viewer.render()).
       let lastGeom = null;   // 마지막 draw()의 화면좌표 기하(캔버스px) — taker/공 클리핑 계약검증용(__viewer.screenGeom()).
       let lastPlayers = [];  // 마지막 draw()의 렌더된(보간 후) 선수 피치좌표 — 세트피스 taker 슬라이드 검출용.
+      let lastTrail = [];    // 마지막 draw()의 공 트레일 세그먼트 [{side}] — R1 소유팀 색 계약검증용.
       let frameDt = 1 / 60;  // 직전 프레임 실경과(초). 카메라 팬을 주사율 무관하게(dt 정규화).
-      const TOAST_TICKS = 5, BANNER_TICKS = 16;
+      const TOAST_TICKS = 5, BANNER_TICKS = 16, CARD_SHOW_TICKS = 12; // 카드 마커 표시 지속(틱).
       const idxOfTick = (tick) => { const i = snaps.findIndex((s) => s.tick >= tick); return i < 0 ? snaps.length - 1 : i; };
       // 가로·세로 양쪽에 MARGIN 이 남도록 letterbox-fit(작은 배율 채택). 예전엔 폭만 맞춰
       // 피치가 캔버스 상하를 거의 채워, 터치라인/코너 위 taker 마커와 공이 캔버스 끝에서 잘렸다(#26).
@@ -182,6 +242,8 @@
       function sx(x) { return canvas.width / 2 + (x - cam.cx) * baseScale * cam.zoom; }
       function sy(y) { return canvas.height / 2 + (y - cam.cy) * baseScale * cam.zoom; }
       const lerp = (a, b, t) => a + (b - a) * t;
+      // ballOwner playerId(H*/A*) → 소유팀 side. null 이면 무소유(비행/루즈볼).
+      const ownerSideOf = (o) => (o ? (o[0] === "H" ? "home" : "away") : null);
 
       function drawPitch() {
         ctx.fillStyle = "#14532d"; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -201,6 +263,18 @@
         ctx.fillRect(sx(PITCH_W), sy(g0), 5, sy(g0 + 7.32) - sy(g0));
       }
 
+      // #90: 세트피스(코너/스로인) 재시작 **대기 구간**(공이 스팟에 정지, taker 워크인) 판정.
+      // 이 구간엔 클로즈업이 없어야 하는데, spSpot 제거만으론 nearKey(인접 하이라이트 사전 줌/슬로우)가
+      // 같은 자리를 다시 침범해 2.6 줌이 새어나왔다(독립 QA 발견). → 이 구간엔 nearKey 를 억제해 와이드 유지.
+      function inSetpieceWait(tick) {
+        for (const st of stoppages) {
+          if (st.isGoal || !st.setPiece || tick < st.causeTick || tick > st.causeTick + 32) continue;
+          const cs = snapByTick.get(st.causeTick), now = snapByTick.get(tick);
+          if (cs && now && Math.hypot(now.ball.x - cs.ball.x, now.ball.y - cs.ball.y) < 3) return true;
+        }
+        return false;
+      }
+
       function draw() {
         if (snaps.length === 0) { drawPitch(); return; }
         const i = Math.min(Math.floor(tickPos), snaps.length - 1);
@@ -215,24 +289,13 @@
 
         // 카메라: 수동 공따라가기 OR 하이라이트(찬스/골) 근처면 자동 줌인
         const curTick = A.tick;
-        const nearKey = autoPace && inHighlight(curTick, keyTicks, HL_PRE, HL_POST);
+        const nearKey = autoPace && !inSetpieceWait(curTick) && inHighlight(curTick, keyTicks, HL_PRE, HL_POST);
         // 골 세리머니 후반(트윈>0.4)엔 줌을 풀어 선수들이 포메이션으로 걸어 복귀하는 걸 전체뷰로 보여줌.
         const koTweening = hold && hold.koIdx != null && hold.tween > 0.4;
-        // #59: 세트피스 재시작 **걷기 구간** — 공이 스팟에 정지한 채 taker 가 평소 속도로 걸어와 잡는다
-        // (엔진이 낸 자연 무브먼트). 그동안 카메라를 스팟(정지 공)에 고정(SETPIECE_ZOOM)해 taker 워크인·
-        // 박스 배치를 안정적으로 보여준다. 공이 스팟을 떠나면(딜리버리/스로인) 해제 → 팔로우로 자연 전환.
-        // 공이 정지라 팬이 스팟에 수렴해 멈춰 wobble(줌아웃→줌인 반전)이 없다(구: 450ms hold 가 강제
-        // wide 팬을 걸었다가 미완인 채 nearKey 팔로우로 되돌아가 줌이 튐 — QA #59 blocker2).
-        // 세트피스/접촉 줌은 자동 연출(autoPace) 전용 — autoPace off(수동 스크럽·지오메트리 검사)면
-        // 평범한 카메라로 둬 줌에 가려지는 것 없이 실제 배치를 본다. nearKey(하이라이트)와 동일 정책.
-        let spSpot = null;
-        if (autoPace) for (const st of stoppages) {
-          if (st.isGoal || !(st.setPiece || st.pauseOnly) || curTick < st.causeTick || curTick > st.causeTick + 32) continue;
-          const csnap = snapByTick.get(st.causeTick);
-          if (csnap && Math.hypot(bx - csnap.ball.x, by - csnap.ball.y) < 3) { spSpot = csnap.ball; break; }
-        }
-        // 파울 접촉 줌(최우선): 파울/페널티 정지의 causeTick 부근엔 접촉 지점(파울러=victim 도 2m 내)으로
-        // 줌해 "두 선수 충돌"을 보여준다. 파울 순간 와이드로 작은 점 되던 것 해소(#59 후 파울 접촉 소실).
+        // #90: 스로인·코너킥 등 세트피스 재시작 클로즈업(구 spSpot 세트피스 줌) 제거 — hero 요구.
+        //   세트피스는 일반(와이드/팔로우) 카메라로 재생한다. (파울/페널티 접촉 줌 #74 는 별개로 유지.)
+        // 파울 접촉 줌: 파울/페널티 정지의 causeTick 부근엔 접촉 지점(파울러=victim 도 2m 내)으로 줌해
+        // "두 선수 충돌"을 보여준다. autoPace 전용(수동 스크럽·지오메트리 검사면 평범한 카메라).
         let contactPos = null;
         if (autoPace) for (const st of stoppages) {
           if (st.isGoal || !st.contactAnchor || curTick < st.causeTick || curTick > st.causeTick + FOUL_CONTACT_TICKS) continue;
@@ -241,11 +304,9 @@
           if (pl) { contactPos = pl.pos; break; }
         }
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
-        const useFollow = !koTweening && !contactPos && !spSpot && (follow || nearKey || (hold ? !!hold.zoom : false));
+        const useFollow = !koTweening && !contactPos && (follow || nearKey || (hold ? !!hold.zoom : false));
         const camTarget = contactPos
           ? { cx: contactPos.x, cy: contactPos.y, zoom: CONTACT_ZOOM }
-          : spSpot
-          ? { cx: spSpot.x, cy: spSpot.y, zoom: SETPIECE_ZOOM }
           : useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
         // 재생 중 카메라를 항상 목표로 부드럽게 팬 → 정지 전환·하이라이트 줌인/줌아웃·정지 재개
         // (전체뷰↔줌) 모두 순간이동 없이 이어진다(코너-하이라이트 겹침 프레임 튐 방지).
@@ -280,16 +341,32 @@
         }
         // 공 궤적: 짧은 comet 꼬리(오래될수록 흐리게). 데드볼 재배치 구간은 세그먼트를 건너뛰어
         // 피치를 가로지르는 지그재그 클러터를 없앤다.
-        ctx.lineWidth = 2.5;
+        // R1(#100): 세그먼트 색 = 그 구간 **소유팀 색**(home 파랑/away 빨강). 소유자 없으면(비행 중
+        // 패스/슛) 직전 소유팀 색을 carry-forward(출발팀 색), 진짜 루즈볼(carry 도 없음)은 중립 회색.
+        ctx.lineWidth = 2.8;
+        // 세그먼트 side 우선순위: 실소유(s) → 비행팀(발사팀, s) → 실소유(s−1) → 비행팀(s−1) → carry.
+        // 비행팀(flightSides): 슛/패스로 공이 무소유가 돼도 발사팀 색 유지(hero: 슛 판정까지 슛한 팀).
+        const segSideAt = (s) => ownerSideOf(snaps[s].ballOwner) || flightSides.get(snaps[s].tick) || null;
+        // 트레일 창 시작 직전까지 스캔해 carry-forward 시드(비행 시작 전 마지막 소유/비행팀).
+        let trailSide = null;
+        for (let b = Math.max(0, i - BALL_TRAIL); b >= Math.max(0, i - BALL_TRAIL - 8); b--) {
+          const sd = segSideAt(b); if (sd) { trailSide = sd; break; }
+        }
+        const trailRender = [];
         for (let s = Math.max(1, i - BALL_TRAIL + 1); s <= i; s++) {
+          const segSide = segSideAt(s) || segSideAt(s - 1) || trailSide;
+          if (segSide) trailSide = segSide;
           if (spansReposition(snaps[s - 1].tick, snaps[s].tick, ballCutTickSet)) continue; // #51: 연속 아웃 공 트레일 유지
           const a = (s - (i - BALL_TRAIL)) / BALL_TRAIL; // 0..1 (최신일수록 1)
-          ctx.strokeStyle = `rgba(255,230,0,${(0.12 + 0.45 * Math.max(0, a)).toFixed(3)})`;
+          const rgb = segSide === "home" ? "59,130,246" : segSide === "away" ? "239,68,68" : "203,213,225";
+          ctx.strokeStyle = `rgba(${rgb},${(0.18 + 0.55 * Math.max(0, a)).toFixed(3)})`;
           ctx.beginPath();
           ctx.moveTo(sx(snaps[s - 1].ball.x), sy(snaps[s - 1].ball.y));
           ctx.lineTo(sx(snaps[s].ball.x), sy(snaps[s].ball.y));
           ctx.stroke();
+          trailRender.push({ side: segSide || null, endTick: snaps[s].tick });
         }
+        lastTrail = trailRender;
 
         // 선수 (실제 대비 비율감 위해 마커 축소). 번호는 외곽선으로 항상 읽히게.
         const R = useFollow ? 11 : 8;
@@ -325,6 +402,34 @@
           if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);
         }
         lastPlayers = playerRender;
+        // R4(#100): 카드 받은 선수 표시 — 카드 발생 후 CARD_SHOW_TICKS 동안 그 선수 마커에 카드색
+        // 하이라이트 링 + 카드 아이콘 + "🟨/🟥 #번호" 라벨. "어떤 선수가 받았는지" 명확(좌표추론 금지, 실화면 검증).
+        lastCardMarks = [];
+        for (const cm of cardMarks) {
+          if (curTick < cm.tick || curTick > cm.tick + CARD_SHOW_TICKS) continue;
+          const pr = playerRender.find((p) => p.id === cm.playerId);
+          if (!pr) continue;
+          const px = sx(pr.x), py = sy(pr.y);
+          const cardCol = cm.red ? "#ef4444" : "#eab308";
+          // 하이라이트 링(카드색).
+          ctx.beginPath(); ctx.arc(px, py, R + 6, 0, Math.PI * 2);
+          ctx.strokeStyle = cardCol; ctx.lineWidth = 3; ctx.stroke();
+          // 카드 아이콘(둥근 사각형) — 마커 우상단.
+          const iw = 12, ih = 16, ix = px + R + 3, iy = py - R - ih - 2;
+          ctx.fillStyle = cardCol; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.lineWidth = 2;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(ix, iy, iw, ih, 2); else ctx.rect(ix, iy, iw, ih);
+          ctx.fill(); ctx.stroke();
+          // "#번호" 라벨 — 카드 아이콘(색=카드종류) 오른쪽, 외곽선으로 항상 읽힘. 아이콘이 색을 전하므로
+          // 라벨은 번호만(이모지 중복 제거 → 클러터↓).
+          const label = `#${cm.num}`;
+          ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+          const lx = ix + iw + 3, ly = iy + ih / 2;
+          ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.strokeText(label, lx, ly);
+          ctx.fillStyle = cardCol; ctx.fillText(label, lx, ly);
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          lastCardMarks.push({ playerId: cm.playerId, num: cm.num, red: cm.red, side: cm.side, px, py });
+        }
         // 공 (밝은 노랑 + 글로우). 소유자면 발 아래로 살짝 오프셋해 번호를 안 가림.
         const br = useFollow ? 7 : 5.5;
         const boy = ownerDraw ? R + br + 1 : 0; // 소유 시 공을 아래로
@@ -351,6 +456,42 @@
             ctx.globalAlpha = Math.max(0, f.life) * 0.9;
             ctx.strokeStyle = "#fbbf24"; ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 6 + f.r, 0, Math.PI * 2); ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+        }
+
+        // R2 재미 이펙트: 패스완성(펄스)·가로챔(스틸 플래시)·돌파(스피드라인). 팀 색·수명기반.
+        if (fx.length) {
+          for (const f of fx) {
+            f.life -= f.type === "steal" ? 0.05 : f.type === "surge" ? 0.06 : 0.09;
+            if (f.r != null) f.r += f.type === "steal" ? 2.4 : 1.3;
+          }
+          fx = fx.filter((f) => f.life > 0);
+          for (const f of fx) {
+            const a = Math.max(0, f.life);
+            if (f.type === "pass") {
+              // 패스완성: 팀색 펄스 링(짧게 퍼지고 사라짐) — "깔끔한 연결". 시작 반경을 공 글로우 밖(≈8px)에서
+              // 시작해 스폰 순간에도 공에 안 가려지고 보이게(독립 QA nit — 스폰시 공 글로우에 묻힘).
+              ctx.globalAlpha = a * 0.6; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 2.2;
+              ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 8 + f.r, 0, Math.PI * 2); ctx.stroke();
+            } else if (f.type === "steal") {
+              // 가로챔: 밝은 스틸 링 + 중앙 플래시(가로챈 팀 색) — 소유 전환 강조.
+              ctx.globalAlpha = a * 0.9; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 3;
+              ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 5 + f.r, 0, Math.PI * 2); ctx.stroke();
+              ctx.globalAlpha = a * 0.45; ctx.fillStyle = `rgb(${f.rgb})`;
+              ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 4.5, 0, Math.PI * 2); ctx.fill();
+            } else if (f.type === "surge") {
+              // 돌파: 진행 반대로 뻗는 3줄 스피드라인(팀 색) — 속도감.
+              ctx.globalAlpha = a * 0.7; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 2.4;
+              const Lm = 5, back = f.back; // m
+              for (let k = -1; k <= 1; k++) {
+                const oy = k * 1.5; // 수직 오프셋(m)
+                ctx.beginPath();
+                ctx.moveTo(sx(f.x), sy(f.y + oy));
+                ctx.lineTo(sx(f.x + back * Lm), sy(f.y + oy));
+                ctx.stroke();
+              }
+            }
           }
           ctx.globalAlpha = 1;
         }
@@ -416,14 +557,62 @@
         }
       }
       function celebrate() { bigCaption("⚽ GOAL!", "#22c55e", true); }
+      // R2 이펙트 스폰 헬퍼. rgb = 팀 색(home 파랑/away 빨강, 무소유 회색).
+      const teamRgb = (side) => (side === "home" ? "59,130,246" : side === "away" ? "239,68,68" : "203,213,225");
+      function spawnPassFx(pe) {
+        const ss = snapByTick.get(pe.tick); if (!ss) return;
+        fx.push({ type: "pass", x: ss.ball.x, y: ss.ball.y, rgb: teamRgb(pe.side), r: 0, life: 1 });
+      }
+      function spawnInterceptFx(ie) {
+        const ss = snapByTick.get(ie.tick); if (!ss) return;
+        fx.push({ type: "steal", x: ss.ball.x, y: ss.ball.y, rgb: teamRgb(ie.side), r: 0, life: 1 });
+      }
+      function spawnSurgeFx(tick) {
+        const ss = snapByTick.get(tick); if (!ss) return;
+        const side = ownerSideOf(ss.ballOwner);
+        // 스피드라인은 진행(공격) 방향 반대로 뻗는다: home 은 +x 공격 → 뒤(−x), away 는 반대.
+        fx.push({ type: "surge", x: ss.ball.x, y: ss.ball.y, rgb: teamRgb(side), back: side === "away" ? 1 : -1, life: 1 });
+      }
       // 상황 카드 — 골과 다른 스타일(중간 크기·색종이 없음)로 '선방/빗나감/파울/오프사이드/PK' 안내.
       function situationCaption(text, col) {
         situationEl.textContent = text; situationEl.style.color = col;
         situationEl.classList.remove("show"); void situationEl.offsetWidth; situationEl.classList.add("show");
       }
+      // F1(#100): 실시간 통계 HUD 렌더 — 현재 틱(idx)까지 누적. tick 바뀔 때만 갱신(throttle).
+      function renderHud(idx, tick) {
+        if (!log) return;
+        const st = liveEventStats(log.events, tick);
+        const h = st.home, a = st.away;
+        const posH = possessionPct(cumPoss.cumHome, cumPoss.cumAway, idx);
+        possHEl.textContent = posH + "%"; possAEl.textContent = 100 - posH + "%";
+        possFillHEl.style.width = posH + "%"; possFillAEl.style.width = 100 - posH + "%";
+        // [label, homeDisplay, awayDisplay, homeWeight?, awayWeight?] — weight 없으면 표시값을 수치화.
+        const rows = [
+          ["Shots", h.shots, a.shots],
+          ["On target", h.onTarget, a.onTarget],
+          ["xG", h.xg.toFixed(2), a.xg.toFixed(2), h.xg, a.xg],
+          ["Pass %", h.passPct + "%", a.passPct + "%", h.passPct, a.passPct],
+          ["Corners", h.corners, a.corners],
+          ["Fouls", h.fouls, a.fouls],
+          ["Cards", `${h.yellow}/${h.red}`, `${a.yellow}/${a.red}`, h.yellow + h.red, a.yellow + a.red],
+        ];
+        hudGridEl.innerHTML = rows.map(([label, hv, av, hw, aw]) => {
+          const hn = hw != null ? hw : parseFloat(hv) || 0, an = aw != null ? aw : parseFloat(av) || 0;
+          const tot = hn + an, hp = tot > 0 ? (hn / tot) * 100 : 50;
+          return `<div class="srow"><span class="sv h">${hv}</span><span class="slbl">${label}</span><span class="sv a">${av}</span>` +
+            `<div class="sbar"><i style="width:${hp.toFixed(1)}%"></i><b style="width:${(100 - hp).toFixed(1)}%"></b></div></div>`;
+        }).join("");
+        // 모멘텀: 중앙 기준, 홈 우세면 왼쪽(파랑)·어웨이 우세면 오른쪽(빨강)으로.
+        const m = momentum(cumPoss.cumHome, cumPoss.cumAway, idx, 30);
+        const half = Math.min(1, Math.abs(m)) * 50;
+        if (m >= 0) { momFillEl.style.left = 50 - half + "%"; momFillEl.style.background = "var(--home)"; }
+        else { momFillEl.style.left = "50%"; momFillEl.style.background = "var(--away)"; }
+        momFillEl.style.width = half + "%";
+      }
       function updateHud(snap) {
         const s = scoreAt(snap.tick);
         scoreEl.textContent = `${s.h} : ${s.a}`;
+        if (snap.tick !== lastHudTick) { lastHudTick = snap.tick; renderHud(Math.min(Math.floor(tickPos), snaps.length - 1), snap.tick); }
         // 시:초 세분화(1틱=1게임초). mm'ss".
         const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
         const lastTick = snaps.length ? snaps[snaps.length - 1].tick : 0;
@@ -434,26 +623,48 @@
       }
 
       const EV_LABEL = {
-        goal: "⚽ 골", shot: "슛", tackle: "태클", interception: "인터셉트",
-        foul: "파울", offside: "🚩 오프사이드", free_kick: "프리킥",
-        penalty: "⚽ 페널티!", save: "🧤 세이브", card: "카드",
-        half_whistle: "전반 종료", full_whistle: "경기 종료",
+        goal: "⚽ Goal", shot: "Shot", tackle: "Tackle", interception: "Interception",
+        foul: "Foul", offside: "🚩 Offside", free_kick: "Free kick",
+        penalty: "⚽ Penalty!", save: "🧤 Save", card: "Card",
+        half_whistle: "Half-time", full_whistle: "Full-time",
       };
+      // F2(#100): 중요도 3단계(FM 코멘터리 관례). major=골/PK/카드/교체/휘슬(굵게·크게),
+      // minor=세트피스·태클·차단·빗나간슛(작게·흐리게), 나머지=normal. 클릭 점프 유지.
+      const MAJOR_EV = new Set(["goal", "penalty", "card", "substitution", "half_whistle", "full_whistle"]);
+      const MINOR_EV = new Set(["tackle", "interception", "kickoff"]);
+      function evTier(e) {
+        if (MAJOR_EV.has(e.type)) return "major";
+        if (MINOR_EV.has(e.type)) return "minor";
+        if (e.type === "shot" && e.detail === "off_target") return "minor";
+        return "normal";
+      }
+      // 짧은 팀 태그(대문자 약어). detail 상세 표기(슛 결과·프리킥 유형).
+      const teamTag = (t) => (t ? (t === "home" ? "H" : "A") : "");
+      function shotLabel(e) {
+        const d = { saved: "Shot · saved 🧤", off_target: "Shot · off target", one_on_one: "1-on-1 chance!", penalty: "Penalty shot" }[e.detail];
+        return d || "Shot on goal";
+      }
       function renderTicker() {
         tickerEl.innerHTML = log.events
-          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "foul", "offside", "free_kick", "penalty", "card", "save", "half_whistle", "full_whistle"].includes(e.type))
-          // 세트피스(코너/스로인/골킥)는 type=kickoff + detail 로 표기됨.
+          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "foul", "offside", "free_kick", "penalty", "card", "save", "substitution", "half_whistle", "full_whistle"].includes(e.type))
+          // 세트피스(코너/스로인/골킥)는 type=kickoff + detail 로 표기됨. 경기중 무-detail 킥오프는 숨김.
           .filter((e) => !(e.type === "kickoff" && e.detail == null && e.minute > 0))
           .map((e) => {
-            const who = e.playerId ? ` ${e.playerId}` : "";
-            const xg = e.xg != null ? ` (xG ${e.xg.toFixed(2)})` : "";
-            let label;
-            if (e.type === "kickoff") label = e.detail || "kickoff";
-            else if (e.type === "card") label = e.detail === "red" ? "🟥 레드카드" : "🟨 옐로카드";
-            else if (e.type === "shot" && e.detail) label = `슛 (${e.detail})`;
-            else if (e.type === "free_kick" && e.detail) label = `프리킥 (${e.detail})`;
+            const tier = evTier(e);
+            const who = e.playerId ? ` <b>#${e.playerId.replace(/[HA]/, "")}</b>` : "";
+            const tag = e.team ? ` <span class="ev-min">[${teamTag(e.team)}]</span>` : "";
+            const xg = e.xg != null ? ` <span class="ev-min">xG ${e.xg.toFixed(2)}</span>` : "";
+            let label, extra = "";
+            if (e.type === "goal") { const s = scoreAt(e.tick); label = "⚽ GOAL"; extra = ` <b>${s.h}-${s.a}</b>`; }
+            else if (e.type === "penalty") label = "⚽ PENALTY awarded";
+            else if (e.type === "card") label = e.detail === "red" ? "🟥 Red card" : "🟨 Yellow card";
+            else if (e.type === "substitution") label = "🔄 Substitution";
+            else if (e.type === "kickoff") label = { corner: "Corner", goal_kick: "Goal kick", throw_in: "Throw-in" }[e.detail] || "Kick-off";
+            else if (e.type === "shot") label = shotLabel(e);
+            else if (e.type === "free_kick" && e.detail) label = `Free kick (${e.detail})`;
             else label = EV_LABEL[e.type] || e.type;
-            return `<div class="ev-${e.type}" data-tick="${e.tick}" style="cursor:pointer">${e.minute}' · ${label}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
+            const showXg = e.type === "shot" ? xg : "";
+            return `<div class="ev-${e.type} tier-${tier}" data-tick="${e.tick}"><span class="ev-min">${e.minute}'</span> ${label}${who}${extra}${tag}${showXg}</div>`;
           }).join("");
         tickerEl.querySelectorAll("[data-tick]").forEach((el) => el.onclick = () => jumpToTick(+el.dataset.tick));
       }
@@ -482,7 +693,7 @@
         }
         if (playing && snaps.length > 1) {
           const beforeTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
-          const nearKey = autoPace && inHighlight(beforeTick, keyTicks, HL_PRE, HL_POST);
+          const nearKey = autoPace && !inSetpieceWait(beforeTick) && inHighlight(beforeTick, keyTicks, HL_PRE, HL_POST);
           const eff = autoPace ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed;
           tickPos += dt * TICKS_PER_SEC * eff;
           if (tickPos >= snaps.length - 1) { tickPos = snaps.length - 1; setPlaying(false); }
@@ -493,6 +704,10 @@
               const ss = snapByTick.get(shk); if (ss) shotFx.push({ x: ss.ball.x, y: ss.ball.y, r: 0, life: 1 });
             }
           }
+          // R2: 패스완성/가로챔/돌파 이펙트 스폰(플레이헤드 크로싱 시). 수명기반 → 동시 활성 적음(클러터 X).
+          for (const pe of passEvents) if (pe.tick > beforeTick && pe.tick <= afterTick) spawnPassFx(pe);
+          for (const ie of interceptEvents) if (ie.tick > beforeTick && ie.tick <= afterTick) spawnInterceptFx(ie);
+          for (const st of surgeTicks) if (st > beforeTick && st <= afterTick) spawnSurgeFx(st);
           for (const st of stoppages) {
             // >= beforeTick: 선행 정지가 restartTick 으로 skip 해 다른 정지의 causeTick 에 정확히
             // 착지해도(예: 세이브→코너) 그 정지를 놓치지 않는다. 재발화는 st.done 이 막는다.
@@ -516,11 +731,11 @@
         requestAnimationFrame(tickLoop);
       }
       function clearCaptions() {
-        confetti = []; shotFx = [];
+        confetti = []; shotFx = []; fx = [];
         flashEl.classList.remove("show"); situationEl.classList.remove("show"); bannerEl.classList.remove("show");
       }
       function resetStops() { stoppages.forEach((s) => (s.done = false)); hold = null; clearCaptions(); }
-      function setPlaying(p) { playing = p; playBtn.textContent = p ? "⏸ 일시정지" : "▶ 재생"; }
+      function setPlaying(p) { playing = p; playBtn.textContent = p ? "⏸ Pause" : "▶ Play"; }
       function jumpToTick(tick) {
         const idx = snaps.findIndex((s) => s.tick >= tick);
         tickPos = idx < 0 ? snaps.length - 1 : Math.max(0, idx - 3);
@@ -543,6 +758,11 @@
       trailBtn.onclick = () => { showTrail = !showTrail; trailBtn.classList.toggle("active", showTrail); draw(); };
       const hlBtn = document.getElementById("highlightBtn");
       hlBtn.onclick = () => { autoPace = !autoPace; hlBtn.classList.toggle("active", autoPace); };
+      // F1 정련(#100): 통계 HUD 온/오프 토글(기본 켜짐). 다른 토글처럼 .active 표시.
+      const hudEl = document.getElementById("hud");
+      const statsBtn = document.getElementById("statsBtn");
+      let showStats = true;
+      statsBtn.onclick = () => { showStats = !showStats; statsBtn.classList.toggle("active", showStats); hudEl.style.display = showStats ? "flex" : "none"; };
       document.getElementById("nextShot").onclick = () => jumpEvent("shot", 1);
       document.getElementById("prevShot").onclick = () => jumpEvent("shot", -1);
       document.getElementById("nextGoal").onclick = () => jumpEvent("goal", 1);
@@ -558,7 +778,7 @@
         // #65: 신뢰 경계 밖(부모/서버) 주입 대비 — 상태 변경 **전에** 최소 검증(원자성). 실패 시
         // throw 만 하고 기존 상태는 그대로 유지 → 손상 페이로드가 뷰어를 반쯤 갈아엎지 않는다.
         if (!data || !Array.isArray(data.tickSnapshots) || !Array.isArray(data.events) || !data.finalScore) {
-          throw new Error("잘못된 MatchLog(tickSnapshots·events·finalScore 필요)");
+          throw new Error("Invalid MatchLog (tickSnapshots · events · finalScore required)");
         }
         log = data; snaps = data.tickSnapshots;
         // 골 + 모든 슛(유효슛 포함) + 페널티 근처에서 하이라이트(슬로우+자동 줌인).
@@ -566,17 +786,27 @@
         // 유효슛(온타겟) = 골로 이어진/막힌/1대1/PK 슛(빗나감 제외) → 링 이펙트 대상.
         shotFxTicks = new Set(data.events.filter((e) => e.type === "shot" && e.detail !== "off_target").map((e) => e.tick));
         snapByTick = new Map(snaps.map((s) => [s.tick, s]));
+        cumPoss = computeCumulativePossession(snaps); lastHudTick = -1; // F1 실시간 통계 준비.
         const pb = buildPlayback(data.events, snaps); // playback.mjs (vitest 검증)
-        annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks; ballCutTickSet = pb.ballCutTicks;
+        annos = pb.annos; stoppages = pb.stoppages; restartTickSet = pb.restartTicks; ballCutTickSet = pb.ballCutTicks; flightSides = pb.flightSides;
+        // R2 이펙트 소스: 패스완성 펄스·가로챔 스틸플래시·돌파(SURGE) 스피드라인.
+        passEvents = data.events.filter((e) => e.type === "pass").map((e) => ({ tick: e.tick, side: e.team || null, playerId: e.playerId || null }));
+        interceptEvents = data.events.filter((e) => e.type === "interception").map((e) => ({ tick: e.tick, side: e.team || null }));
+        surgeTicks = annos.filter((a) => a.text === "SURGE!").map((a) => a.tick);
+        // R4: 카드 받은 선수 마커. num=번호(H/A 접두 제거), red=레드 여부, side=팀.
+        cardMarks = data.events.filter((e) => e.type === "card").map((e) => ({
+          tick: e.tick, playerId: e.playerId || null, red: e.detail === "red",
+          num: e.playerId ? e.playerId.replace(/[HA]/, "") : "?", side: e.playerId ? (e.playerId[0] === "H" ? "home" : "away") : null,
+        }));
         totalMinutes = snaps.length ? snaps[snaps.length - 1].minute : 0;
         // 타임라인 이벤트 핀(타입별 색·높이, 클릭 점프). 골>PK>선방>유효슛>코너 순으로 위에 그림.
         const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
         const PIN = {
-          goal: (e) => ({ h: 16, w: 3, col: e.team === "home" ? "#3b82f6" : "#ef4444", z: 5, label: `${mmss(e.tick)} ${e.team} 골` }),
+          goal: (e) => ({ h: 16, w: 3, col: e.team === "home" ? "#3b82f6" : "#ef4444", z: 5, label: `${mmss(e.tick)} ${e.team} GOAL` }),
           penalty: () => ({ h: 14, w: 3, col: "#22c55e", z: 4, label: "PK" }),
-          save: () => ({ h: 11, w: 2, col: "#38bdf8", z: 3, label: "선방" }),
-          shot_on: () => ({ h: 8, w: 2, col: "#fbbf24", z: 2, label: "유효슛" }),
-          corner: () => ({ h: 8, w: 2, col: "#94a3b8", z: 1, label: "코너" }),
+          save: () => ({ h: 11, w: 2, col: "#38bdf8", z: 3, label: "Save" }),
+          shot_on: () => ({ h: 8, w: 2, col: "#fbbf24", z: 2, label: "On target" }),
+          corner: () => ({ h: 8, w: 2, col: "#94a3b8", z: 1, label: "Corner" }),
         };
         const pins = [];
         for (const e of data.events) {
@@ -594,7 +824,7 @@
         marksEl.innerHTML = pins.join("");
         marksEl.querySelectorAll("[data-tick]").forEach((el) => (el.onclick = () => jumpToTick(+el.dataset.tick)));
         renderTicker(); tickPos = 0; lastGoalShown = 0; setPlaying(true);
-        statusEl.textContent = `로드 완료 · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · 최종 ${data.finalScore.home}:${data.finalScore.away} · 팁: "공 따라가기" 켜고 "다음 슛"으로 점프해 보세요`;
+        statusEl.textContent = `Loaded · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · final ${data.finalScore.home}:${data.finalScore.away} · tip: turn on "Follow ball" and jump with "Next shot"`;
       }
 
       // #65 소비 주입 계약(정식화): iframe 임베드 시 부모가 postMessage 로 MatchLog 를 주입한다.
@@ -608,7 +838,7 @@
         if (d && d.type === "loadMatchLog" && d.matchLog) {
           // 손상 주입이 예외로 렌더를 죽이지 않게 — 실패 시 이전 상태 유지 + 상태줄에 표시.
           try { loadLog(d.matchLog); }
-          catch (e) { statusEl.textContent = "주입된 MatchLog 로드 실패: " + e; }
+          catch (e) { statusEl.textContent = "Failed to load injected MatchLog: " + e; }
         }
       });
       if (window.__LOG__) {
@@ -616,10 +846,10 @@
         loadLog(window.__LOG__);
       } else if (embedded) {
         // 임베드 + 내장 로그 없음: fetch 대신 부모 주입 대기(서버 불필요).
-        statusEl.textContent = "호스트로부터 MatchLog 주입 대기…";
+        statusEl.textContent = "Waiting for MatchLog injection from host…";
       } else {
         fetch("./match-log.json").then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); }).then(loadLog)
-          .catch((err) => { statusEl.textContent = "match-log.json fetch 실패(" + err + "). 아래 파일 선택으로 열거나 standalone 파일을 여세요."; });
+          .catch((err) => { statusEl.textContent = "match-log.json fetch failed (" + err + "). Use the file picker below or open the standalone file."; });
       }
       if (embedded) {
         const announceReady = () => { try { window.parent.postMessage({ type: "viewerReady" }, "*"); } catch (e) {} };
@@ -646,7 +876,7 @@
           if (st) situationCaption(st.big, st.bigCol);
           draw();
         },
-        cur: () => { const s = snaps[Math.floor(tickPos)]; return { tickPosIdx: Math.floor(tickPos), tick: s.tick, ball: s.ball, follow }; },
+        cur: () => { const s = snaps[Math.floor(tickPos)]; return { tickPosIdx: Math.floor(tickPos), tick: s.tick, ball: s.ball, ballOwner: s.ballOwner, follow }; },
         // 마지막 프레임의 렌더된(보간 후) 공 위치. cur()는 원시 스냅샷이라 보간 컷(순간이동)을 못 봄 → 이 훅으로 검출.
         render: () => (lastRender ? { ...lastRender } : null),
         // 임의 tickPos(분수 포함)로 렌더 후 렌더된 공 반환 — 슛 비행 보간 샘플링용.
@@ -657,6 +887,20 @@
         renderPlayersAt: (tp) => { setPlaying(false); resetStops(); tickPos = tp; draw(); return lastPlayers.map((p) => ({ ...p })); },
         // 현재 프레임의 렌더된 선수(리셋 없이) — 정지 재생/워크인 검출용(#52).
         curPlayers: () => lastPlayers.map((p) => ({ ...p })),
+        // 마지막 draw()의 공 트레일 세그먼트 side 배열(오래→최신) — R1 소유팀 색 계약검증용.
+        trail: () => lastTrail.map((t) => ({ ...t })),
+        // 현재 활성 R2 이펙트 [{type,rgb}] — 패스/가로챔/돌파 이펙트 스폰 계약검증용.
+        fx: () => fx.map((f) => ({ type: f.type, rgb: f.rgb })),
+        // 마지막 draw()의 카드 마커 [{playerId,num,red,side,px,py}] — R4 카드 받은 선수 표시 계약검증용.
+        cardMarks: () => lastCardMarks.map((c) => ({ ...c })),
+        // 현재 틱까지의 실시간 통계(F1) — HUD 증분 계약검증용.
+        liveStats: () => {
+          const idx = Math.min(Math.floor(tickPos), snaps.length - 1);
+          const tick = snaps[idx].tick;
+          return { tick, ...liveEventStats(log.events, tick), possessionHome: possessionPct(cumPoss.cumHome, cumPoss.cumAway, idx), momentum: momentum(cumPoss.cumHome, cumPoss.cumAway, idx, 30) };
+        },
+        // seek(tick) 후 렌더한 트레일 세그먼트 side 배열(최신 세그먼트가 마지막).
+        trailAt: (tick) => { setPlaying(false); resetStops(); tickPos = idxOfTick(tick); draw(); return lastTrail.map((t) => ({ ...t })); },
         // 현재 카메라 상태 {cx,cy,zoom} — 재생 중 카메라 점프/팬 검출용.
         cam: () => ({ cx: cam.cx, cy: cam.cy, zoom: cam.zoom }),
         idxOfTick: (tick) => idxOfTick(tick),

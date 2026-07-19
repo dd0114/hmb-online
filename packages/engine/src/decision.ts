@@ -19,7 +19,7 @@ export type PassOutcome = "success" | "fail_intercept" | "fail_out";
 
 export type Action =
   | { kind: "shoot"; xg: number; toX: number; toY: number; detail?: string }
-  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome }
+  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome; long: boolean }
   | { kind: "dribble"; toX: number; toY: number }
   | { kind: "hold" };
 
@@ -84,7 +84,20 @@ function scoreOption(
   const directness = owner.behavior.passDirectness;
   const riskTol = owner.behavior.passRisk;
   // 안전도(위험할수록 감점, passRisk 높으면 관대) + 전진 이득 + 거리 페널티.
-  let score = safeM * (1.2 - riskTol) + fwdM * (0.4 + directness) - distM * 0.15;
+  let score: number;
+  if (opt.long) {
+    // 롱(E2): 원거리 롱볼의 큰 전진값이 선택을 지배하지 않게 forwardGain 캡 + 거리 페널티 강화.
+    // 그래서 롱은 argmax 를 자동 독점하지 않고, selectBias(×directness)로 시도율(12-15%)을 튜닝.
+    const lp = config.longPass;
+    const cappedFwd = Math.min(fwdM, lp.fwdCapM);
+    score =
+      safeM * (1.2 - riskTol) +
+      cappedFwd * (0.4 + directness) -
+      distM * lp.distPenalty +
+      lp.selectBias * (0.3 + directness) * (0.6 + 0.4 * riskTol);
+  } else {
+    score = safeM * (1.2 - riskTol) + fwdM * (0.4 + directness) - distM * 0.15;
+  }
   // 파이널서드(공격 진영) 후진 패스 페널티: 뒤로(음수 forwardGain) 빼는 패스를 감점 →
   // 전진/횡 패스·슛을 우선. directness 높은 선수일수록 후진을 더 싫어함.
   if (ownerInFinalThird && fwdM < 0) {
@@ -122,7 +135,41 @@ function nearestOpponentTo(
 }
 
 /**
- * 패스 결과 계획(결정론). 성공확률 = passBase − 전진/파이널서드/압박/거리 페널티 + passing 가감.
+ * 패스 성공확률(결정론, 순수). = passBase − 전진/파이널서드/압박/거리 페널티 + passing 가감, clamp.
+ * planPass 가 이 값으로 성공/실패를 롤한다. 전진·롱·압박 패스가 숏보다 낮게 나오도록 config 로 제어.
+ * (E1: 벤치 78–85% 평균 + 전진/롱 < 숏. 단조성은 pass-prob 단위테스트로 계약 박제.)
+ */
+export function computePassProb(
+  state: SimState,
+  owner: SimPlayer,
+  opt: PassOption,
+  config: EngineConfig,
+  pitch: Pitch,
+): number {
+  const c = config.contest;
+  const scale = config.fixedScale;
+  const receiver = opt.receiver;
+
+  const fwdM = fromFixed(opt.forwardGain, scale);
+  const forwardFrac = fclamp(fwdM / 20, 0, 1);
+  const inFinalThird =
+    attackProgress(pitch, owner.side, receiver.posFx.x) >= config.setPiece.finalThirdLine;
+  // 패스 압박은 근접(passPressureRangeM) 상대만 — pressRange(22m, 압박배정용)는 패스엔 과도.
+  const pressers = pressureCount(state, owner, config, c.passPressureRangeM);
+  const distM = fromFixed(opt.dist, scale);
+  const attrBonus = ((owner.attrs.passing - 50) / 50) * c.passAttrSwing;
+
+  let prob = c.passBase;
+  prob -= c.passForwardPenalty * forwardFrac;
+  prob -= inFinalThird ? c.passFinalThirdPenalty : 0;
+  prob -= c.passPressurePenalty * pressers;
+  prob -= c.passDistancePenalty * Math.max(0, distM - c.passBaseDistM);
+  prob += attrBonus;
+  return fclamp(prob, 0.05, 0.98);
+}
+
+/**
+ * 패스 결과 계획(결정론). 성공확률 = computePassProb.
  * 실패면 인플레이 턴오버(상대 위치로 유도) 또는 아웃오브바운즈(경계 밖으로 유도)로 목표를 바꾼다.
  * → 성공률·파이널서드 페널티를 config 로 직접 제어하고, 턴오버가 전환·움직임을 유발한다.
  */
@@ -138,21 +185,7 @@ export function planPass(
   const scale = config.fixedScale;
   const receiver = opt.receiver;
 
-  const fwdM = fromFixed(opt.forwardGain, scale);
-  const forwardFrac = fclamp(fwdM / 20, 0, 1);
-  const inFinalThird =
-    attackProgress(pitch, owner.side, receiver.posFx.x) >= config.setPiece.finalThirdLine;
-  const pressers = pressureCount(state, owner, config);
-  const distM = fromFixed(opt.dist, scale);
-  const attrBonus = ((owner.attrs.passing - 50) / 50) * c.passAttrSwing;
-
-  let prob = c.passBase;
-  prob -= c.passForwardPenalty * forwardFrac;
-  prob -= inFinalThird ? c.passFinalThirdPenalty : 0;
-  prob -= c.passPressurePenalty * pressers;
-  prob -= c.passDistancePenalty * Math.max(0, distM - c.passBaseDistM);
-  prob += attrBonus;
-  prob = fclamp(prob, 0.05, 0.98);
+  const prob = computePassProb(state, owner, opt, config, pitch);
 
   if (rng.next() < prob) {
     return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success" };
@@ -179,6 +212,7 @@ export function planPass(
   }
 
   // 인플레이 턴오버: 수신자 근처 상대에게 유도(도착 시 상대 컨트롤 → interception).
+  // 실제 소유 판정은 resolveArrival 이 passOutcome 을 존중(authoritative)해 상대에게 준다.
   const thief = nearestOpponentTo(state, owner.side, receiver.posFx.x, receiver.posFx.y);
   if (thief) {
     return { toX: thief.posFx.x, toY: thief.posFx.y, outcome: "fail_intercept" };
@@ -333,6 +367,7 @@ export function decideBallOwner(
       toX: plan.toX,
       toY: plan.toY,
       outcome: plan.outcome,
+      long: bestOpt.long,
     };
   }
   if ((r -= wDribble) < 0) {

@@ -69,6 +69,32 @@ export function buildBallCutTicks(events, snaps) {
 }
 
 /**
+ * R1 정련(#100, hero): 슛/패스 **비행 구간**(공 owner=null)을 발사팀 색으로 칠하기 위한 tick→side 맵.
+ * 슛하면 공이 무소유(루즈볼)가 돼 트레일이 중립으로 빠지던 것 방지 — "슛 판정(세이브/골/빗나감)까지
+ * 소유권을 슛한 팀으로". 슛 시도(결과마커 saved/off_target 제외)·패스의 발사팀을, 그 이벤트 틱부터
+ * 공이 다시 점유될 때까지의 무소유 틱들에 부여한다. 결정론(순수).
+ * @returns {Map<number, "home"|"away">}
+ */
+export function buildFlightSides(events, snaps) {
+  const map = new Map();
+  const idxByTick = new Map(snaps.map((s, i) => [s.tick, i]));
+  const isLaunch = (e) => e.team && (e.type === "pass" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target"));
+  for (const e of events) {
+    if (!isLaunch(e)) continue;
+    const i = idxByTick.get(e.tick);
+    if (i == null) continue;
+    // 발사 틱부터 앞으로: 무소유 틱은 발사팀으로 마킹. 발사 이후 점유되면(리시버/키퍼) 비행 종료.
+    for (let j = i; j < snaps.length && j < i + 24; j++) {
+      const o = snaps[j].ballOwner;
+      if (o == null) { map.set(snaps[j].tick, e.team); continue; }
+      if (j > i) break; // 발사 후 점유 → 비행 끝.
+      // j===i 인데 발사자가 아직 명목상 소유 → 마킹 스킵하고 뒤의 무소유(진짜 비행)로 계속.
+    }
+  }
+  return map;
+}
+
+/**
  * @typedef {Object} Stoppage
  * @property {number} causeTick
  * @property {number} restartTick
@@ -95,11 +121,11 @@ export function buildBallCutTicks(events, snaps) {
  */
 export function buildStoppages(events) {
   const CAUSE = {
-    save: { big: "🧤 선방!", col: "#38bdf8", hold: 1300 },
-    shot_off_target: { big: "빗나감!", col: "#94a3b8", hold: 1100 },
-    foul: { big: "😠 파울!", col: "#fb923c", hold: 1100 },
-    offside: { big: "🚩 오프사이드!", col: "#f59e0b", hold: 1300 },
-    penalty: { big: "⚽ 페널티킥!", col: "#22c55e", hold: 1500 },
+    save: { big: "🧤 SAVE!", col: "#38bdf8", hold: 1300 },
+    shot_off_target: { big: "OFF TARGET!", col: "#94a3b8", hold: 1100 },
+    foul: { big: "😠 FOUL!", col: "#fb923c", hold: 1100 },
+    offside: { big: "🚩 OFFSIDE!", col: "#f59e0b", hold: 1300 },
+    penalty: { big: "⚽ PENALTY!", col: "#22c55e", hold: 1500 },
   };
   const RESTART = new Set(["corner", "goal_kick", "throw_in", "free_kick", "kickoff"]);
   // #42: 원인→재시작 skip 은 그 사이가 데드타임일 때만 유효하다. 세이브 후 공이 라이브인
@@ -141,8 +167,8 @@ export function buildStoppages(events) {
   // 줌해 "던지는/차는 선수"를 크게 보여준다(#26 taker 잘림 수정이 전제). hold 는 관전 페이싱 튜닝값 —
   // 스로인은 빈도 높아 짧게. 배너(annotation)는 보조로 병행.
   const SETPIECE_STOP = {
-    corner: { big: "⛳ 코너킥!", col: "#e7edf6", hold: 900 },
-    throw_in: { big: "🙌 스로인!", col: "#e7edf6", hold: 650 },
+    corner: { big: "⛳ CORNER!", col: "#e7edf6", hold: 900 },
+    throw_in: { big: "🙌 THROW-IN!", col: "#e7edf6", hold: 650 },
   };
   // 프리킥만 자막 없는 짧은 정지 비트 유지(골킥은 빈도 높아 무정지).
   const PAUSE_BEAT = { free_kick: 600 };
@@ -210,21 +236,21 @@ export function buildAnnotations(events, snaps) {
     // anchor(선택): 토스트를 공이 아니라 그 playerId 선수 위치에 앵커(선수 사건용). #69.
     const T = (text, col, anchor) => annos.push({ kind: "toast", tick: e.tick, at: e.tick, text, col, ...(anchor ? { anchor } : {}) });
     const B = (text, col) => annos.push({ kind: "banner", tick: e.tick, text, col });
-    if (k === "shot") T("슛!", "#fbbf24");
-    else if (k === "shot_one_on_one") T("1:1 찬스!", "#fbbf24");
-    else if (k === "save") T("🧤 선방!", "#38bdf8");
-    else if (k === "shot_off_target") T("빗나감", "#94a3b8");
-    else if (k === "tackle") T("태클", "#cbd5e1");
-    else if (k === "interception") T("차단", "#cbd5e1");
-    else if (k === "foul") { T("파울", "#fb923c", e.playerId); B("😠 파울", "#fb923c"); } // 재시작(프리킥/페널티)은 후속 배너가 표시 — 박스 파울에 "프리킥" 오표기 방지.
-    else if (k === "card") T(e.detail === "red" ? "🟥 레드!" : "🟨 옐로", e.detail === "red" ? "#ef4444" : "#fde047", e.playerId);
-    else if (k === "offside") B("🚩 오프사이드", "#f59e0b");
-    else if (k === "penalty") B("⚽ 페널티킥!", "#22c55e");
-    else if (k === "corner") B("코너킥", "#e7edf6");
-    else if (k === "goal_kick") B("골킥", "#e7edf6");
-    else if (k === "throw_in") B("스로인", "#e7edf6");
-    else if (k === "free_kick") B("프리킥", "#e7edf6");
-    else if (k === "kickoff" && e.minute > 0) B("▶ 킥오프", "#e7edf6");
+    if (k === "shot") T("SHOT!", "#fbbf24");
+    else if (k === "shot_one_on_one") T("1-ON-1!", "#fbbf24");
+    else if (k === "save") T("🧤 SAVE!", "#38bdf8");
+    else if (k === "shot_off_target") T("OFF TARGET", "#94a3b8");
+    else if (k === "tackle") T("TACKLE", "#cbd5e1");
+    else if (k === "interception") T("INTERCEPT", "#cbd5e1");
+    else if (k === "foul") { T("FOUL", "#fb923c", e.playerId); B("😠 FOUL", "#fb923c"); } // 재시작(프리킥/페널티)은 후속 배너가 표시 — 박스 파울에 "프리킥" 오표기 방지.
+    else if (k === "card") { const num = e.playerId ? e.playerId.replace(/[HA]/, "") : "?"; T(e.detail === "red" ? `🟥 RED #${num}` : `🟨 YELLOW #${num}`, e.detail === "red" ? "#ef4444" : "#fde047", e.playerId); }
+    else if (k === "offside") B("🚩 OFFSIDE", "#f59e0b");
+    else if (k === "penalty") B("⚽ PENALTY!", "#22c55e");
+    else if (k === "corner") B("CORNER", "#e7edf6");
+    else if (k === "goal_kick") B("GOAL KICK", "#e7edf6");
+    else if (k === "throw_in") B("THROW-IN", "#e7edf6");
+    else if (k === "free_kick") B("FREE KICK", "#e7edf6");
+    else if (k === "kickoff" && e.minute > 0) B("▶ KICK-OFF", "#e7edf6");
   }
   // 돌파(롱 드리블) 추론: 같은 소유자 유지 + 전진.
   let start = 0;
@@ -237,7 +263,7 @@ export function buildAnnotations(events, snaps) {
         const a = snaps[start].ball, b = snaps[i - 1].ball;
         const fwd = prevO[0] === "H" ? b.x - a.x : a.x - b.x;
         const mid = snaps[start + Math.floor(run / 2)];
-        if (fwd >= 9 && mid) annos.push({ kind: "toast", tick: mid.tick, at: mid.tick, text: "돌파!", col: "#a78bfa" });
+        if (fwd >= 9 && mid) annos.push({ kind: "toast", tick: mid.tick, at: mid.tick, text: "SURGE!", col: "#a78bfa" });
       }
       start = i;
     }
@@ -257,5 +283,6 @@ export function buildPlayback(events, snaps) {
     stoppages,
     restartTicks: buildRestartTicks(events),
     ballCutTicks: buildBallCutTicks(events, snaps),
+    flightSides: buildFlightSides(events, snaps),
   };
 }

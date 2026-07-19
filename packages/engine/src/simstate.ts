@@ -48,6 +48,8 @@ export interface BallFlight {
   xg?: number;
   /** 패스 계획 결과: 성공/인플레이 턴오버/아웃오브바운즈. (성공률 결정론 제어) */
   passOutcome?: "success" | "fail_intercept" | "fail_out";
+  /** 의도적 롱패스(E2) — 도착 이벤트 detail="long" 로 뷰어 구분. */
+  long?: boolean;
 }
 
 /**

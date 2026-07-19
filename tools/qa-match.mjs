@@ -40,9 +40,22 @@ for (const s of ev.filter((e) => e.type === "save")) {
   if (goalNear) P(`선방 t${s.tick} ${s.team}: 근처(±2)에 골 이벤트 t${goalNear.tick} — 선방↔골 혼동 위험`);
   const bScore = scoreAt(s.tick - 1), aScore = scoreAt(s.tick + 3);
   if (aScore.h + aScore.a > bScore.h + bScore.a) P(`선방 t${s.tick}: 직후 score 증가(선방인데 득점 처리?)`);
-  // 새 계약(V2): 공이 골라인 위(±1m, 골문 안)면 골로 오인 → 캐치는 골라인 앞이어야 한다.
-  if (b.x <= 1 || b.x >= 104) P(`선방 t${s.tick}: 공 x 가 골라인 위 (${b.x.toFixed(1)}) — 골문 안, 골 오인`);
-  if (!inPosts(b.y)) P(`선방 t${s.tick}: 공 y 가 포스트 밖 (${b.y.toFixed(1)}) — 키퍼 위치 아님`);
+  // #91: 선방이 코너로 굴절되면(다음 재시작 코너) 공이 골라인 밖으로 **와이드하게** 나간다(off_target 동일).
+  // 골 오인(V2 #15)의 진짜 조건은 "공이 **골문 안**(골라인×포스트 사이)". 와이드(포스트 밖)로 나가면 코너 굴절.
+  const leadsToCorner = ev.some((e) => e.tick > s.tick && e.tick <= s.tick + 8 && e.type === "kickoff" && e.detail === "corner");
+  // 골 오인: 공이 골문 안(골라인 위 × 포스트 사이) — 언제나 금지(선방인데 골처럼).
+  if ((b.x <= 1 || b.x >= 104) && inPosts(b.y)) P(`선방 t${s.tick}: 공이 골문 안(골라인×포스트 사이) — 골 오인`);
+  // 클린 세이브(코너 굴절 아님): 공이 키퍼 위치(골라인 앞·포스트 사이)여야. 코너 굴절이면 와이드 아웃 정상.
+  if (!leadsToCorner) {
+    if (b.x <= 1 || b.x >= 104) P(`선방 t${s.tick}: 공 x 가 골라인 위 (${b.x.toFixed(1)}) — 캐치는 앞이어야`);
+    if (!inPosts(b.y)) P(`선방 t${s.tick}: 공 y 가 포스트 밖 (${b.y.toFixed(1)}) — 키퍼 위치 아님`);
+  } else {
+    // 코너 굴절: 키퍼가 공 궤적 위에서 쳐낸 게 보여야 = 키퍼 y 가 공 y 와 정렬(±2m). (구: 키퍼 중앙, 공
+    // 와이드 → 9m 떨어져 "터치 없이 선방"처럼 보였던 회귀 가드. #91b.)
+    const sn = log.tickSnapshots.find((x) => x.tick === s.tick);
+    const gk = sn && sn.players.find((p) => p.playerId === s.playerId);
+    if (gk && Math.abs(gk.pos.y - b.y) > 2) P(`선방 t${s.tick}(코너 굴절): 키퍼 y(${gk.pos.y.toFixed(1)})가 공 y(${b.y.toFixed(1)})와 어긋남 — 키퍼가 안 건드린 듯`);
+  }
 }
 
 // 3) 빗나감: 공이 골라인 넘어(x<0 또는 x>105) 옆으로 + 포스트 바깥.

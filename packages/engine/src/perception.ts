@@ -16,6 +16,8 @@ export interface PassOption {
   laneDanger: number;
   /** 이 패스가 상대 골에 얼마나 가까워지는가(전진 이득) fixed(양수=전진). */
   forwardGain: number;
+  /** 롱패스(인식 반경 밖 원거리 동료 대상 = 의도적 롱볼/전환/스루볼) 여부. (E2) */
+  long: boolean;
 }
 
 /** 두 선수 거리(fixed). */
@@ -42,8 +44,13 @@ export function nearestOpponent(
 }
 
 /** player 를 압박하는 상대 수(pressRange 안). */
-export function pressureCount(state: SimState, player: SimPlayer, config: EngineConfig): number {
-  const range = config.movement.pressRange * config.fixedScale;
+export function pressureCount(
+  state: SimState,
+  player: SimPlayer,
+  config: EngineConfig,
+  rangeM?: number,
+): number {
+  const range = (rangeM ?? config.movement.pressRange) * config.fixedScale;
   let c = 0;
   for (const p of state.players) {
     if (p.side === player.side) continue;
@@ -88,12 +95,24 @@ export function passOptions(
 ): PassOption[] {
   const radius = config.perceptionRadius * config.fixedScale;
   const ownGoalDist = distToAttackGoal(pitch, owner.side, owner.posFx.x, owner.posFx.y);
+  // 롱패스(E2): 인식 반경 밖(longPassMinM~longPassMaxM) 동료도 의도적 롱볼 후보로.
+  const lp = config.longPass;
+  const longMinFx = lp.minM * config.fixedScale;
+  const longMaxFx = lp.maxM * config.fixedScale;
   const options: PassOption[] = [];
 
   for (const mate of state.players) {
     if (mate.side !== owner.side || mate.id === owner.id) continue;
     const d = fdist(owner.posFx.x, owner.posFx.y, mate.posFx.x, mate.posFx.y);
-    if (d > radius || d === 0) continue;
+    if (d === 0) continue;
+    const inShort = d <= radius;
+    // 롱 후보: 반경 밖이지만 longMax 이내 + 전진(뒤로 빼는 롱볼은 제외).
+    const mateGoalDist = distToAttackGoal(pitch, owner.side, mate.posFx.x, mate.posFx.y);
+    const forwardGain = ownGoalDist - mateGoalDist; // 양수면 골에 더 가까워짐
+    const isLong = !inShort && lp.enabled && d <= longMaxFx && forwardGain > 0;
+    if (!inShort && !isLong) continue;
+    // 롱은 최소 거리 이상만(짧은 롱은 숏에서 이미 커버).
+    if (isLong && d < longMinFx) continue;
 
     // 레인 위험: 상대들 중 패스선에 가장 가까운 거리.
     let laneDanger = Infinity;
@@ -110,10 +129,7 @@ export function passOptions(
       if (sd < laneDanger) laneDanger = sd;
     }
 
-    const mateGoalDist = distToAttackGoal(pitch, owner.side, mate.posFx.x, mate.posFx.y);
-    const forwardGain = ownGoalDist - mateGoalDist; // 양수면 골에 더 가까워짐
-
-    options.push({ receiver: mate, dist: d, laneDanger, forwardGain });
+    options.push({ receiver: mate, dist: d, laneDanger, forwardGain, long: !inShort });
   }
   return options;
 }
