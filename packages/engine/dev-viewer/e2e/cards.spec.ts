@@ -44,7 +44,7 @@ test("real 뷰어: 카드 받은 선수 마커 표시 + 티커에 선수 병기"
   const c = cards[0];
   const marks = await page.evaluate((tick: number) => { (window as any).__viewer.seek(tick); return (window as any).__viewer.cardMarks(); }, c.tick);
   expect(marks.find((x: any) => x.playerId === c.playerId), "받은 선수 마커").toBeTruthy();
-  // 티커 항목에 받은 선수 id 가 병기된다.
+  // 티커 항목에 받은 선수 번호(#N)가 병기된다.
   const tickerText = await page.$$eval(".ev-card", (els) => els.map((e) => e.textContent || "").join(" "));
-  expect(tickerText).toContain(c.playerId);
+  expect(tickerText).toContain("#" + c.playerId.replace(/[HA]/, ""));
 });

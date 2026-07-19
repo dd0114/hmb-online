@@ -73,14 +73,23 @@
       #clock { color: var(--ink); font-size: 13px; font-weight: 700; min-width: 84px; text-align: right; }
       .sp { color: var(--muted); font-size: 12px; }
       #ticker {
-        width: 100%; max-width: 1040px; height: 90px; overflow-y: auto;
-        background: var(--panel); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.7;
+        width: 100%; max-width: 1040px; height: 116px; overflow-y: auto;
+        background: var(--panel); border-radius: 8px; padding: 8px 12px; font-size: 12px; line-height: 1.55;
       }
-      .ev-goal { color: var(--accent); font-weight: 700; } .ev-shot { color: #fbbf24; }
+      #ticker > div { cursor: pointer; border-radius: 4px; padding: 0 4px; }
+      #ticker > div:hover { background: rgba(255,255,255,0.05); }
+      .ev-goal { color: var(--accent); } .ev-shot { color: #fbbf24; }
       .ev-tackle, .ev-interception { color: var(--muted); }
       .ev-foul { color: #f59e0b; } .ev-offside { color: #a78bfa; }
-      .ev-free_kick { color: #94a3b8; } .ev-penalty { color: #22c55e; font-weight: 700; }
+      .ev-free_kick { color: #94a3b8; } .ev-penalty { color: #22c55e; }
       .ev-card { color: #eab308; } .ev-save { color: #38bdf8; }
+      .ev-substitution { color: #34d399; }
+      .ev-half_whistle, .ev-full_whistle { color: #cbd5e1; }
+      /* F2(#100) 중요도별 타이포(FM 코멘터리): major=굵게·크게+좌측 강조선, minor=작게·흐리게. */
+      .tier-major { font-size: 13.5px; font-weight: 800; border-left: 3px solid currentColor; margin: 2px 0; padding-left: 7px; }
+      .tier-normal { font-size: 12px; font-weight: 500; }
+      .tier-minor { font-size: 10.5px; opacity: 0.6; }
+      .ev-min { color: var(--muted); font-weight: 400; }
       #status { color: var(--muted); font-size: 12px; min-height: 16px; }
       input[type="file"] { color: var(--muted); font-size: 12px; }
     </style>
@@ -537,21 +546,43 @@
         penalty: "⚽ Penalty!", save: "🧤 Save", card: "Card",
         half_whistle: "Half-time", full_whistle: "Full-time",
       };
+      // F2(#100): 중요도 3단계(FM 코멘터리 관례). major=골/PK/카드/교체/휘슬(굵게·크게),
+      // minor=세트피스·태클·차단·빗나간슛(작게·흐리게), 나머지=normal. 클릭 점프 유지.
+      const MAJOR_EV = new Set(["goal", "penalty", "card", "substitution", "half_whistle", "full_whistle"]);
+      const MINOR_EV = new Set(["tackle", "interception", "kickoff"]);
+      function evTier(e) {
+        if (MAJOR_EV.has(e.type)) return "major";
+        if (MINOR_EV.has(e.type)) return "minor";
+        if (e.type === "shot" && e.detail === "off_target") return "minor";
+        return "normal";
+      }
+      // 짧은 팀 태그(대문자 약어). detail 상세 표기(슛 결과·프리킥 유형).
+      const teamTag = (t) => (t ? (t === "home" ? "H" : "A") : "");
+      function shotLabel(e) {
+        const d = { saved: "Shot · saved 🧤", off_target: "Shot · off target", one_on_one: "1-on-1 chance!", penalty: "Penalty shot" }[e.detail];
+        return d || "Shot on goal";
+      }
       function renderTicker() {
         tickerEl.innerHTML = log.events
-          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "foul", "offside", "free_kick", "penalty", "card", "save", "half_whistle", "full_whistle"].includes(e.type))
-          // 세트피스(코너/스로인/골킥)는 type=kickoff + detail 로 표기됨.
+          .filter((e) => ["goal", "shot", "tackle", "interception", "kickoff", "foul", "offside", "free_kick", "penalty", "card", "save", "substitution", "half_whistle", "full_whistle"].includes(e.type))
+          // 세트피스(코너/스로인/골킥)는 type=kickoff + detail 로 표기됨. 경기중 무-detail 킥오프는 숨김.
           .filter((e) => !(e.type === "kickoff" && e.detail == null && e.minute > 0))
           .map((e) => {
-            const who = e.playerId ? ` ${e.playerId}` : "";
-            const xg = e.xg != null ? ` (xG ${e.xg.toFixed(2)})` : "";
-            let label;
-            if (e.type === "kickoff") label = { corner: "Corner", goal_kick: "Goal kick", throw_in: "Throw-in" }[e.detail] || "Kick-off";
+            const tier = evTier(e);
+            const who = e.playerId ? ` <b>#${e.playerId.replace(/[HA]/, "")}</b>` : "";
+            const tag = e.team ? ` <span class="ev-min">[${teamTag(e.team)}]</span>` : "";
+            const xg = e.xg != null ? ` <span class="ev-min">xG ${e.xg.toFixed(2)}</span>` : "";
+            let label, extra = "";
+            if (e.type === "goal") { const s = scoreAt(e.tick); label = "⚽ GOAL"; extra = ` <b>${s.h}-${s.a}</b>`; }
+            else if (e.type === "penalty") label = "⚽ PENALTY awarded";
             else if (e.type === "card") label = e.detail === "red" ? "🟥 Red card" : "🟨 Yellow card";
-            else if (e.type === "shot" && e.detail) label = `Shot (${e.detail})`;
+            else if (e.type === "substitution") label = "🔄 Substitution";
+            else if (e.type === "kickoff") label = { corner: "Corner", goal_kick: "Goal kick", throw_in: "Throw-in" }[e.detail] || "Kick-off";
+            else if (e.type === "shot") label = shotLabel(e);
             else if (e.type === "free_kick" && e.detail) label = `Free kick (${e.detail})`;
             else label = EV_LABEL[e.type] || e.type;
-            return `<div class="ev-${e.type}" data-tick="${e.tick}" style="cursor:pointer">${e.minute}' · ${label}${who}${e.team ? " [" + e.team + "]" : ""}${xg}</div>`;
+            const showXg = e.type === "shot" ? xg : "";
+            return `<div class="ev-${e.type} tier-${tier}" data-tick="${e.tick}"><span class="ev-min">${e.minute}'</span> ${label}${who}${extra}${tag}${showXg}</div>`;
           }).join("");
         tickerEl.querySelectorAll("[data-tick]").forEach((el) => el.onclick = () => jumpToTick(+el.dataset.tick));
       }
