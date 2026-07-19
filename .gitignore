@@ -13,3 +13,4 @@ playwright-report/
 tools/qa_*.mjs
 tools/reqa*.mjs
 tools/*_log.json
+research/engine-realism-gap.data.md
