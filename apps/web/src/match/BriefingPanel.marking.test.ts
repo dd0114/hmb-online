@@ -57,6 +57,8 @@ vi.mock("../api/hooks-v2", () => ({
       streak: 3,
       players: [{ playerId: "DF1", trust: 84, personality: "CALM" }],
     }),
+  // W6a: BriefingPanel 이 프리셋 칩(요구 2)을 위해 소비 — 이 스펙은 프리셋 없는 상태를 본다.
+  useTeamPresets: () => fx.query([]),
 }));
 
 import { BriefingPanel } from "./BriefingPanel";
