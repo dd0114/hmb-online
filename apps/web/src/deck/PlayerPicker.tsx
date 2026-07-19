@@ -7,6 +7,8 @@ import { rankPlayers } from "./player-ranking";
 import { playerOverall } from "./team-power";
 import { poolDraggableId } from "./TacticsBoard";
 import type { components } from "../api/schema";
+import type { ConditionMap } from "../api/v2";
+import { ConditionClock } from "../match/ConditionClock";
 import styles from "./PlayerPicker.module.css";
 
 type Position = components["schemas"]["Position"];
@@ -17,12 +19,18 @@ interface PlayerPickerProps {
   players: CatalogPlayer[];
   draft: DeckDraft;
   onPick: (playerId: string) => void;
+  /**
+   * 요구 6(#98): 당일 컨디션 {playerId: 0..1}. 덱 화면은 GET /api/conditions/today(useTodayConditions),
+   * 브리핑은 매치 스냅샷(match.conditions)을 넘긴다. optional — 없으면 시계를 그리지 않는다(graceful).
+   */
+  conditions?: ConditionMap;
 }
 
 interface PoolItemProps {
   player: CatalogPlayer;
   placed: ReturnType<typeof findPlayerSlot>;
   onPick: (playerId: string) => void;
+  condition?: number;
 }
 
 /**
@@ -31,7 +39,7 @@ interface PoolItemProps {
  * (PointerSensor distance:6 → a click with no drag still fires onClick — accessibility fallback).
  * A player already placed on the board is disabled (no drag, no tap) — no duplicates.
  */
-function PoolItem({ player, placed, onPick }: PoolItemProps) {
+function PoolItem({ player, placed, onPick, condition }: PoolItemProps) {
   const overall = Math.round(playerOverall(player.attributes));
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: poolDraggableId(player.id),
@@ -56,6 +64,10 @@ function PoolItem({ player, placed, onPick }: PoolItemProps) {
       <span className={styles.overall} data-testid={`pick-overall-${player.id}`} title="종합 능력치">
         {overall}
       </span>
+      {/* 컨디션(요구 6) = 당일 롤. 값이 없으면(로딩/미응답) 이 칸 자체를 생략한다. */}
+      {condition !== undefined && (
+        <ConditionClock value={condition} size={18} testId={`pick-cond-${player.id}`} />
+      )}
       <span className={styles.grade} style={{ color: GRADE_COLORS[player.grade] }}>
         {GRADE_LABELS[player.grade]}
       </span>
@@ -71,7 +83,7 @@ function PoolItem({ player, placed, onPick }: PoolItemProps) {
  * fit for the active position filter, or overall for ALL. Drag a row onto a board slot, or tap it
  * to place into the selected/first-empty slot.
  */
-export function PlayerPicker({ players, draft, onPick }: PlayerPickerProps) {
+export function PlayerPicker({ players, draft, onPick, conditions }: PlayerPickerProps) {
   const [filter, setFilter] = useState<Position | "ALL">("ALL");
 
   const ranked = useMemo(() => {
@@ -105,7 +117,12 @@ export function PlayerPicker({ players, draft, onPick }: PlayerPickerProps) {
       <ul className={styles.list}>
         {ranked.map((p) => (
           <li key={p.id}>
-            <PoolItem player={p} placed={findPlayerSlot(draft, p.id)} onPick={onPick} />
+            <PoolItem
+              player={p}
+              placed={findPlayerSlot(draft, p.id)}
+              onPick={onPick}
+              condition={conditions?.[p.id]}
+            />
           </li>
         ))}
         {ranked.length === 0 && (

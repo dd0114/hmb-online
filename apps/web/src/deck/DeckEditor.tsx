@@ -41,7 +41,10 @@ export interface DeckEditorProps {
   /** owned players (pool). */
   players: CatalogPlayer[];
   playersById: Map<string, CatalogPlayer>;
-  /** briefing-only extras. */
+  /**
+   * 컨디션 {playerId: 0..1} — 보드 토큰 시계 + 선수 시트 + 리스트 행 시계(요구 6)에 쓰인다.
+   * 덱 화면 = 당일 롤(GET /api/conditions/today), 브리핑 = 매치 스냅샷(match.conditions).
+   */
   conditions?: ConditionMap;
   /** relations (AC-C4) — feeds the player sheet trust gauge + personality badge. */
   relations?: RelationsResponse;
@@ -208,7 +211,7 @@ export function DeckEditor(props: DeckEditorProps) {
           />
         </section>
 
-        <PlayerPicker players={players} draft={draft} onPick={handlePick} />
+        <PlayerPicker players={players} draft={draft} onPick={handlePick} conditions={conditions} />
       </div>
     </div>
     </DndContext>

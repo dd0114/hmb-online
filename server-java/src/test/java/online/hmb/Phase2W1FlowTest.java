@@ -75,13 +75,12 @@ class Phase2W1FlowTest extends MatchTestBase {
         String token = setupUserWithDeck("w1_cond");
         String matchId = createMatchWithTactics(token, "BOT_BAL", tactics(0.7, 0.6, 0.55, 0.45));
 
-        // 저장값 == 재계산 (AC-C1 재현)
-        String seed = jdbcClient.sql("SELECT seed FROM matches WHERE id = ?").param(matchId)
-                .query(String.class).single();
+        // 저장값 == 재계산 (AC-C1 재현). #98 계약 A: 롤 입력 = userId + 당일(KST), 매치 시드 아님.
+        String userId = userIdOf("w1_cond");
         JsonNode stored = readMatchJson(matchId, "conditions_json");
         assertThat(stored.size()).isEqualTo(13); // 선발11 + 벤치2
         stored.properties().forEach(e -> {
-            double recomputed = conditionService.roll(seed, e.getKey());
+            double recomputed = conditionService.rollToday(userId, e.getKey());
             assertThat(e.getValue().asDouble()).as("condition " + e.getKey())
                     .isCloseTo(recomputed, org.assertj.core.data.Offset.offset(1e-9));
             assertThat(e.getValue().asDouble()).isBetween(0.0, 1.0);

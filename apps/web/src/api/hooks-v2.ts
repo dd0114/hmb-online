@@ -7,6 +7,7 @@ import { apiFetch } from "./client";
 import { useToken } from "../auth/TokenContext";
 import type { Deck, MatchDetail } from "./hooks";
 import type {
+  ConditionMap,
   FaProposeRequest,
   LeagueNextMatchResponse,
   LeagueResponse,
@@ -70,6 +71,27 @@ export function useRelations() {
     queryKey: ["relations"],
     queryFn: () => apiFetch<RelationsResponse>("/api/relations"),
     enabled: Boolean(token),
+  });
+}
+
+/**
+ * 오늘(KST) 컨디션 캐시 키 — 매치 상세의 conditions(스냅샷)와 구분되는 "당일 파생값"이다.
+ * 상수로 노출해 무효화 계약을 단위 테스트할 수 있게 한다(TRADE_INVALIDATE_KEYS 와 같은 취지).
+ */
+export const TODAY_CONDITIONS_KEY = ["conditions-today"];
+
+/**
+ * GET /api/conditions/today — {playerId: 0.0~1.0} 보유 선수 당일 컨디션(이슈 #98 요구 6).
+ * 날짜시드 롤이라 하루 동안 값이 고정 → staleTime 을 길게 두고 덱/리스트에서 상시 표시한다.
+ * 실패해도 화면은 컨디션 없이 정상 동작해야 한다(소비처가 optional 로 처리).
+ */
+export function useTodayConditions() {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: TODAY_CONDITIONS_KEY,
+    queryFn: () => apiFetch<ConditionMap>("/api/conditions/today"),
+    enabled: Boolean(token),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

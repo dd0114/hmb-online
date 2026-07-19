@@ -43,6 +43,7 @@ hmb:
     condition:                     # AC-C1 컨디션 능력치 배율 (LLD-p2-server §3)
       min-mul: 0.85                # 6시(condition=0.0) = -15%
       max-mul: 1.10                # 12시(condition=1.0) = +10%
+      zone: Asia/Seoul             # 컨디션 '당일' 판정 존(#98 계약 A) — 날짜시드 = userId:yyyy-MM-dd
   relation:                        # AC-C4 관계/사기 변동 규칙 (LLD-p2-server §4) — 하드코딩 금지(config)
     starter-bonus: 2               # 선발 기용 +2
     win-bonus: 3                   # 승리 전원 +3

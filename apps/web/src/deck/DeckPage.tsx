@@ -14,6 +14,7 @@ import {
 import {
   useApplyTeamPreset,
   useRelations,
+  useTodayConditions,
   useSaveTeamPreset,
   useTeamPresets,
 } from "../api/hooks-v2";
@@ -94,6 +95,8 @@ export function DeckPage() {
   const presets = presetsQuery.data;
   const { data: promptPresets } = usePresets();
   const { data: relations } = useRelations();
+  // 요구 6: 당일(KST) 컨디션 — 보드 토큰/선수 시트/보유 선수 리스트에 표시. 실패해도 화면은 그대로.
+  const { data: conditions } = useTodayConditions();
   const updateDeck = useUpdateDeck();
   const createPreset = useCreatePreset();
   const deletePreset = useDeletePreset();
@@ -394,6 +397,7 @@ export function DeckPage() {
         players={ownedPlayers}
         playersById={playersById}
         relations={relations}
+        conditions={conditions}
         errorPlayerId={serverError?.playerId ?? null}
       />
 

@@ -154,6 +154,26 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  # ─────────────────── 컨디션 당일 조회 (AC-C1 · 이슈 #98 요구 6) ───────────────────
+  /api/conditions/today:
+    get:
+      tags: [matches-ext]
+      operationId: getTodayConditions
+      summary: |
+        오늘(KST)의 내 보유 선수 컨디션 — {playerId: 0.0~1.0}. 날짜 시드
+        sha256(userId:yyyy-MM-dd:cond:playerId) 결정론 롤이라 KST 자정에만 갱신되고 매치와 무관하게
+        하루 고정이다(덱/선수 리스트 상시 표시용). 매치 생성·킥오프 재캡처는 같은 값을
+        matches.conditions_json 에 스냅샷하므로 엔진 입력·재현 계약은 불변.
+      responses:
+        "200":
+          description: 보유 선수만(미보유 제외). 보유 0이면 빈 객체.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConditionMap"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   # ─────────────────────────── 트레이드 (AC-D) ───────────────────────────
   /api/trade:
     get:
