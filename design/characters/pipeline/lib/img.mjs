@@ -165,7 +165,18 @@ export function removeBackground(s, { localTol = 8, globalTol = 90 } = {}) {
   for (let y = 1; y < h - 1; y++) { pushSeed(0, y); pushSeed(w - 1, y); }
 
   const d2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
-  let removed = 0;
+
+  // 배경 색 모델 = 테두리 시드의 평균 + 퍼짐. 제거된 픽셀이 이 모델에서 크게 벗어나면
+  // "배경답지 않은 것을 지웠다" = 캐릭터 침식이다. 위상(파편·구멍)이 안 변하는
+  // **연속 침식**은 largestShare/holes 로 잡히지 않으므로 이 축이 반드시 필요하다.
+  const seedMean = [0, 0, 0];
+  for (const s0 of seeds) { seedMean[0] += s0[0]; seedMean[1] += s0[1]; seedMean[2] += s0[2]; }
+  for (let c = 0; c < 3; c++) seedMean[c] /= seeds.length;
+  const spreads = seeds.map((s0) => Math.sqrt(d2(s0, seedMean))).sort((a, b) => a - b);
+  const seedSpread = spreads[Math.floor(spreads.length * 0.9)] || 0;
+  const erosionD2 = Math.max(seedSpread * 1.25, 55) ** 2;
+
+  let removed = 0, eroded = 0;
   while (stack.length) {
     const i = stack.pop();
     if (seen[i]) continue;
@@ -176,6 +187,7 @@ export function removeBackground(s, { localTol = 8, globalTol = 90 } = {}) {
     if (d2(c, seeds[seedAt[i]]) > globalTol * globalTol) continue;
     o.data[i * 4 + 3] = 0;
     removed++;
+    if (d2(c, seedMean) > erosionD2) eroded++;
     const nb = [];
     if (x > 0) nb.push(i - 1);
     if (x < w - 1) nb.push(i + 1);
@@ -189,7 +201,14 @@ export function removeBackground(s, { localTol = 8, globalTol = 90 } = {}) {
       stack.push(j);
     }
   }
-  return { image: o, stats: { hadAlpha: false, removedPct: (100 * removed) / (w * h) } };
+  return {
+    image: o,
+    stats: {
+      hadAlpha: false,
+      removedPct: (100 * removed) / (w * h),
+      erodedPct: (100 * eroded) / (w * h), // 배경 모델에서 벗어난 것을 지운 비율 = 침식 추정
+    },
+  };
 }
 
 /**
