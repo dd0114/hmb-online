@@ -95,6 +95,11 @@ export async function ballAtTick(page: Page, tick: number): Promise<Ball> {
   return page.evaluate((t) => { (window as any).__viewer.seek(t); return (window as any).__viewer.cur().ball; }, tick);
 }
 
+/** seek(tick) 후 원시 스냅샷 공 소유자(cur().ballOwner). 캐치(키퍼 소유) vs 굴절(소유 null) 구분용. */
+export async function ballOwnerAtTick(page: Page, tick: number): Promise<string | null> {
+  return page.evaluate((t) => { (window as any).__viewer.seek(t); return (window as any).__viewer.cur().ballOwner ?? null; }, tick);
+}
+
 export type ScreenGeom = {
   cw: number; ch: number;
   ball: { px: number; py: number; r: number };

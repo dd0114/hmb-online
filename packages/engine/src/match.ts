@@ -193,8 +193,10 @@ function resolveOut(carry: Carry, out: OutCross, tick: number, minute: number): 
     // 공격팀이 냄 → 골킥(수비팀).
     carry.events.push(restartGoalKick(state, pitch, config, opp, tick, minute));
   } else {
-    // 수비팀이 냄(클리어 등) → 코너(공격팀).
-    carry.events.push(restartCorner(state, pitch, config, fromSide, out.y, tick, minute));
+    // 수비팀(fromSide)이 자기 골라인 밖으로 냄(클리어 등) → 코너는 **공격팀**(attackerOfLine)에게.
+    // (구버전은 fromSide=수비팀을 restartCorner(side=..)에 넘겨 반대편 골라인에 수비팀 코너를
+    //  만드는 스퓨리어스 코너 버그였음 — #110. restartCorner 의 side 는 코너를 얻는 공격팀.)
+    carry.events.push(restartCorner(state, pitch, config, attackerOfLine, out.y, tick, minute));
   }
 }
 
