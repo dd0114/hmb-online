@@ -14,3 +14,5 @@ tools/qa_*.mjs
 tools/reqa*.mjs
 tools/*_log.json
 research/engine-realism-gap.data.md
+# design 세션 격리 스택 DB(로컬 전용)
+server-java/.data-design/
