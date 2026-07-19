@@ -75,6 +75,12 @@ export interface EngineConfig {
     passFinalThirdPenalty: number;
     /** 볼 소유자를 압박하는 상대 1명당 성공확률 페널티. */
     passPressurePenalty: number;
+    /**
+     * 패스 압박 카운트 반경(m) — 이 안의 상대만 패스 압박으로 센다. movement.pressRange(22m,
+     * 압박 배정용)는 패스 성공률 페널티엔 과도(거의 모든 패스에 3~4명 적용 → 성공률 광범위 하향).
+     * 근접(~6m) 압박만 세어 패스 성공률을 벤치에 정합시키고 압박 효과를 국소화한다.
+     */
+    passPressureRangeM: number;
     /** 패스 거리(m)가 baseDist 를 넘는 매 m 당 성공확률 페널티. */
     passDistancePenalty: number;
     /** passDistancePenalty 가 적용되기 시작하는 기준 거리(m). */
@@ -83,6 +89,15 @@ export interface EngineConfig {
     passAttrSwing: number;
     /** 패스 실패 시 아웃오브바운즈(스로인/골킥)로 나갈 비율(나머지는 인플레이 턴오버). */
     passFailOutProb: number;
+    /**
+     * 패스 도착 소유 판정이 계획된 passOutcome(computePassProb 롤)을 존중하는가.
+     * true: 성공 롤이면 도착점 최근접 동료(의도 리시버)가, 실패(fail_intercept) 롤이면 도착점 최근접
+     *   상대가 컨트롤 → 실측 완성률 == 계획 확률. passBase 등 config 가 성공률의 실제 노브가 된다(E1).
+     * false(레거시): 순수 기하(도착점 최근접 아무나) — 실패 롤이라도 의도 리시버가 우연히 되찾아
+     *   "완성"으로 집계되어 성공률이 계획보다 높아짐(패스 정확도 과다의 원인).
+     * 세트피스 크로스/루즈볼(passOutcome 없음)은 항상 기하 판정.
+     */
+    passOutcomeAuthoritative: boolean;
     /** 레인 수비수의 인터셉트 기준선. */
     interceptBase: number;
     /** 태클 성공 기준선. */
@@ -233,6 +248,26 @@ export interface EngineConfig {
     roamPeriodTicks: number;
   };
 
+  /**
+   * longPass — 의도적 롱패스/롱킥(E2). 인식 반경 밖(minM~maxM) 전진 동료를 롱볼 후보로 추가.
+   * 롱패스 성공률은 computePassProb 의 거리 페널티로 숏보다 낮게 나온다(별도 곡선 아님).
+   * MatchEvent(pass/interception) detail="long" 으로 뷰어(β)가 구분. 비율은 selectBias 로 12–15%.
+   */
+  longPass: {
+    /** 롱패스 후보 생성 활성화. false 면 반경 내 숏만(레거시). */
+    enabled: boolean;
+    /** 롱으로 치는 최소 거리(m) — 인식 반경보다 커야 의미(반경 내는 숏). */
+    minM: number;
+    /** 롱패스 후보 최대 거리(m). 이보다 먼 동료는 후보 제외. */
+    maxM: number;
+    /** 롱 옵션 선택 가중(scoreOption 가산). passDirectness 로 추가 가중. 클수록 롱 비율↑. */
+    selectBias: number;
+    /** 롱 옵션 점수의 전진 이득(forwardGain) 캡(m). 원거리 롱볼의 큰 전진값이 선택을 지배하지 않게. */
+    fwdCapM: number;
+    /** 롱 옵션 점수의 거리 페널티 계수(m당). 숏(0.15)보다 크게 두어 롱을 상황적으로만 선택. */
+    distPenalty: number;
+  },
+
   /** 세트피스(코너/스로인/골킥/골 후) 재시작 튜닝. */
   setPiece: {
     /** 재시작 전 정지(dead ball) 틱 수 — 인플레이 시간 하향 + 재배치. */
@@ -323,7 +358,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.10.0",
+  version: "engine@0.13.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -354,14 +389,20 @@ export const defaultEngineConfig: EngineConfig = {
     shootCentralBonus: 1.35,
   },
   contest: {
-    passBase: 0.84,
-    passForwardPenalty: 0.22,
-    passFinalThirdPenalty: 0.14,
-    passPressurePenalty: 0.05,
+    // E1(0.11.0): 패스 도착이 계획 outcome 존중(passOutcomeAuthoritative) → passBase/페널티가
+    // 성공률의 실제 노브가 됨. 전진<숏(short≈0.95 fwd≈0.74 long≈0.47). 압박은 근접(6m)만.
+    // E2(0.12.0): 롱패스(longPass) 추가로 평균이 낮아져 passBase 0.94→0.97 로 재보정 →
+    // 리얼 20시드 패스성공 ≈80%(벤치 78-85) 유지. 스로인은 pfo 로 복원(≈17).
+    passBase: 0.97,
+    passForwardPenalty: 0.2,
+    passFinalThirdPenalty: 0.12,
+    passPressurePenalty: 0.06,
+    passPressureRangeM: 6.0,
     passDistancePenalty: 0.008,
     passBaseDistM: 12,
     passAttrSwing: 0.14,
-    passFailOutProb: 0.16,
+    passFailOutProb: 0.45,
+    passOutcomeAuthoritative: true,
     interceptBase: 0.06,
     tackleBase: 0.14,
     xgBase: 0.225,
@@ -427,6 +468,15 @@ export const defaultEngineConfig: EngineConfig = {
     decisionTemperature: 0.4,
     roamNoiseAmp: 3.0,
     roamPeriodTicks: 25,
+  },
+  longPass: {
+    // E2(0.12.0): 의도적 롱볼. 리얼 20시드 롱 시도 비율 ≈14.6%(벤치 12-15), 롱 성공<숏.
+    enabled: true,
+    minM: 30, // perceptionRadius(33) 근처 밖부터 롱볼 — 30m+ 전진 볼.
+    maxM: 55, // 하프라인 넘는 전환/롱볼 상한.
+    selectBias: 6.0,
+    fwdCapM: 22,
+    distPenalty: 0.22,
   },
   setPiece: {
     stoppageTicks: 12,
