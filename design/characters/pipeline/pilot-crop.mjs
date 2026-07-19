@@ -24,15 +24,20 @@ const body = (col) => ({
 });
 
 const PILOT = [
+  // bgTol = 배경 제거 파라미터. 파일럿 입력은 SPEC 위반(불투명 다크 배경)이라 자동으로
+  // 안전한 값을 고를 수 없다(ingest.mjs clean() 주석 참조) → **마젠타 렌더로 육안 검증해 고정**했다.
   { id: 'ragna', portrait: face(0, 0), full: body(0),
     meta: { name: '라그나', title: '불꽃의 스트라이커', position: 'FW', stars: 6,
-            desc: '차원을 가르는 강슛, 필드 전체에 볼을 지핀다.' } },
+            desc: '차원을 가르는 강슛, 필드 전체에 볼을 지핀다.',
+            bgTol: { portrait: { localTol: 9, globalTol: 40 }, full: { localTol: 8, globalTol: 60 } } } },
   { id: 'aura', portrait: face(3, 0), full: body(3),
     meta: { name: '아우라', title: '성스러운 골키퍼', position: 'GK', stars: 5,
-            desc: '신의 가호로 팀의 골문을 지키며 위기 앞에서 더욱 빛난다.' } },
+            desc: '신의 가호로 팀의 골문을 지키며 위기 앞에서 더욱 빛난다.',
+            bgTol: { portrait: { localTol: 11, globalTol: 60 }, full: { localTol: 9, globalTol: 140 } } } },
   { id: 'penguin-king', portrait: face(3, 1), full: body(9),
     meta: { name: '펭킹킹', title: '빙하의 수호자', position: 'GK', stars: 5,
-            desc: '차가운 빙벽으로 슈팅을 막아내며 팀을 지키는 왕.' } },
+            desc: '차가운 빙벽으로 슈팅을 막아내며 팀을 지키는 왕.',
+            bgTol: { portrait: { localTol: 14, globalTol: 30 }, full: { localTol: 11, globalTol: 40 } } } },
 ];
 
 const cache = new Map();

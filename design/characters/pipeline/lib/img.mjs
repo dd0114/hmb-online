@@ -134,10 +134,13 @@ export function hardAlpha(s, threshold = 128) {
  * 이웃 픽셀과의 차로 전파하므로 완만한 배경 그라디언트는 따라가고 캐릭터 경계의
  * 급격한 색 점프에서 멈춘다.
  *
- * ⚠️ `localTol` 은 **절벽 파라미터**다. 어두운 배경 위 어두운 캐릭터에서
- * 8 이하는 캐릭터를 100% 보존하지만 10 이상은 급격히 잠식한다(라그나 portrait:
- * tol 8 → 최대덩어리 100%, tol 10 → 74%, tol 14 → 40%). 기본값은 절벽 이전으로 둔다.
- * 올리려면 반드시 `cutoutQuality` 로 손상을 확인할 것.
+ * ⚠️ **이 함수는 자동으로 안전한 값을 고를 수 없다.** `localTol`/`globalTol` 은 절벽
+ * 파라미터이고 안전 구간이 소스마다 다르다(실측: 라그나 portrait 9/40, 펭킹킹 portrait
+ * 14/30, 아우라 full 9/140). 자동 탐색을 다섯 번 시도했고 그때마다 새로운 실패 모드가
+ * 나왔다 — 캐릭터 잠식, 배경 잔류, 연속 침식. 파편·구멍·색모델 지표 전부 반례가 있다.
+ * 그래서 **값은 사람이 정하고**(`incoming/<id>.json` 의 `bgTol`), 지정이 없으면
+ * 파이프라인은 가장 보수적인 설정으로 물러난다 — 배경이 남을지언정 캐릭터는 안 먹는다.
+ * 실패가 **눈에 보이는 쪽**(배경 상자)으로만 나게 하는 것이 설계 의도다.
  *
  * @returns { image, stats } — stats 로 손상 여부를 상위(clean)에서 게이트한다.
  */
@@ -166,17 +169,7 @@ export function removeBackground(s, { localTol = 8, globalTol = 90 } = {}) {
 
   const d2 = (a, b) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2;
 
-  // 배경 색 모델 = 테두리 시드의 평균 + 퍼짐. 제거된 픽셀이 이 모델에서 크게 벗어나면
-  // "배경답지 않은 것을 지웠다" = 캐릭터 침식이다. 위상(파편·구멍)이 안 변하는
-  // **연속 침식**은 largestShare/holes 로 잡히지 않으므로 이 축이 반드시 필요하다.
-  const seedMean = [0, 0, 0];
-  for (const s0 of seeds) { seedMean[0] += s0[0]; seedMean[1] += s0[1]; seedMean[2] += s0[2]; }
-  for (let c = 0; c < 3; c++) seedMean[c] /= seeds.length;
-  const spreads = seeds.map((s0) => Math.sqrt(d2(s0, seedMean))).sort((a, b) => a - b);
-  const seedSpread = spreads[Math.floor(spreads.length * 0.9)] || 0;
-  const erosionD2 = Math.max(seedSpread * 1.25, 55) ** 2;
-
-  let removed = 0, eroded = 0;
+  let removed = 0;
   while (stack.length) {
     const i = stack.pop();
     if (seen[i]) continue;
@@ -187,7 +180,6 @@ export function removeBackground(s, { localTol = 8, globalTol = 90 } = {}) {
     if (d2(c, seeds[seedAt[i]]) > globalTol * globalTol) continue;
     o.data[i * 4 + 3] = 0;
     removed++;
-    if (d2(c, seedMean) > erosionD2) eroded++;
     const nb = [];
     if (x > 0) nb.push(i - 1);
     if (x < w - 1) nb.push(i + 1);
@@ -201,14 +193,7 @@ export function removeBackground(s, { localTol = 8, globalTol = 90 } = {}) {
       stack.push(j);
     }
   }
-  return {
-    image: o,
-    stats: {
-      hadAlpha: false,
-      removedPct: (100 * removed) / (w * h),
-      erodedPct: (100 * eroded) / (w * h), // 배경 모델에서 벗어난 것을 지운 비율 = 침식 추정
-    },
-  };
+  return { image: o, stats: { hadAlpha: false, removedPct: (100 * removed) / (w * h) } };
 }
 
 /**

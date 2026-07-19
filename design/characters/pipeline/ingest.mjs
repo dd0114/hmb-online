@@ -58,119 +58,79 @@ const write = (file, im) => {
   fs.writeFileSync(file, encodePNG(im));
 };
 
-const LOCAL_SWEEP = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28];
-const GLOBAL_SWEEP = [40, 60, 90, 140, 255];
-const INTEGRITY = 0.98;   // 최대 덩어리 비율 — 이 아래면 캐릭터가 조각난 것
-const EROSION_LIMIT = 1.0; // % — 배경 모델에서 벗어난 것을 지운 비율. 연속 침식 방어.
-const PROXY_MAX = 320;    // 파라미터 탐색은 축소 프록시에서(하드 엣지 보존 위해 nearest)
+// 자동 탐색은 폐기했다. 아래 "왜"를 반드시 읽을 것.
+const CONSERVATIVE = { localTol: 2, globalTol: 40 };
+const DIAG_LOCAL = [2, 4, 6, 8, 10, 12, 14, 18, 24];
+const DIAG_GLOBAL = [30, 40, 60, 90, 140, 255];
 
 /**
- * 배경 제거 파라미터 자동 선택.
- *
- * **목표는 명시적 최적화다**: 캐릭터 무결성을 유지하는 범위에서 **배경을 최대한 제거**한다.
- *   maximize removedPct  subject to  largestShare ≥ 0.98 ∧ holes 작음
- *
- * 세 가지 실패 모드를 **각각 다른 항**이 막는다 — 검증에서 네 번 실패하며 하나씩 추가됐다:
- *  - **파편형 과잉 제거**(캐릭터가 조각남) → `largestShare ≥ 0.98` 제약.
- *  - **과소 제거**(배경 잔류) → 목적함수 `maximize removedPct`.
- *    largestShare 로는 안 잡힌다(잔류 배경이 캐릭터에 병합돼 지표를 오히려 올린다).
- *  - **연속형 과잉 제거**(외곽부터 갉아먹기) → `erodedPct ≤ 1%` 제약.
- *    위상이 안 변해서 파편·구멍 지표에 안 걸리는데, 목적함수는 오히려 이 방향을
- *    선호한다(제거량이 늘므로). 실측: 아우라 full 24/255 는 largestShare 98.1% 로
- *    제약을 통과하면서 날개를 먹었다 — erodedPct 는 0.23% → 4.30% 로 18배 반응한다.
- *  - `globalTol` 도 함께 탐색한다. 고정하면 그 축의 더 나은 값을 영영 못 찾는다.
+ * 진단용 스윕 표 — **선택에 쓰지 않는다.** 운영자가 `bgTol` 값을 고를 때 참고하는 자료다.
+ * 자동 선택에 쓰지 않는 이유는 clean() 주석 참조.
  */
-function autoTol(im) {
-  const scale = Math.min(1, PROXY_MAX / Math.max(im.width, im.height));
+function diagnoseTol(im) {
+  const scale = Math.min(1, 320 / Math.max(im.width, im.height));
   const proxy = scale < 1
     ? nearest(im, Math.max(1, Math.round(im.width * scale)), Math.max(1, Math.round(im.height * scale)))
     : im;
-  const holeLimit = proxy.width * proxy.height * 0.005;
-
-  let best = null;
-  const all = [];
-
-  for (const globalTol of GLOBAL_SWEEP) {
-    for (const localTol of LOCAL_SWEEP) {
+  const rows = [];
+  for (const globalTol of DIAG_GLOBAL)
+    for (const localTol of DIAG_LOCAL) {
       const { image, stats } = removeBackground(proxy, { localTol, globalTol });
       const q = cutoutQuality(image);
-      const ok = q.largestShare >= INTEGRITY && q.holes <= holeLimit
-        && stats.erodedPct <= EROSION_LIMIT;
-      all.push({ localTol, globalTol, removedPct: Number(stats.removedPct.toFixed(2)),
-                 erodedPct: Number(stats.erodedPct.toFixed(2)),
-                 largestShare: Number(q.largestShare.toFixed(4)), ok });
-      if (!ok) continue;
-      if (!best || stats.removedPct > best.removedPct)
-        best = { localTol, globalTol, removedPct: stats.removedPct, erodedPct: stats.erodedPct };
+      rows.push({ localTol, globalTol,
+                  removedPct: Number(stats.removedPct.toFixed(1)),
+                  largestShare: Number(q.largestShare.toFixed(3)) });
     }
-  }
-  // 후보가 하나도 없으면 가장 보수적인 설정으로 폴백(배경은 남지만 캐릭터는 보존).
-  if (!best) best = { localTol: LOCAL_SWEEP[0], globalTol: GLOBAL_SWEEP[0], removedPct: 0, fallback: true };
-
-  // 경계 포화 경고는 **위쪽 경계에서만** 의미가 있다. 제거량을 최대화하므로 최적점은
-  // 제약에 걸릴 때까지 위로 밀린다 → 위쪽 끝에서 멈췄다면 범위 밖에 더 나은 값이 있을 수 있다.
-  // 아래쪽 끝은 "입력이 어려워 제약이 즉시 걸린 것"이지 범위 문제가 아니다(경고 오탐).
-  const lastL = LOCAL_SWEEP[LOCAL_SWEEP.length - 1], lastG = GLOBAL_SWEEP[GLOBAL_SWEEP.length - 1];
-  best.atBoundary = best.localTol === lastL || best.globalTol === lastG;
-  // 진단 곡선은 **채택된 globalTol** 행을 남긴다(고정 행은 선택과 무관해 쓸모가 없다).
-  const curve = all.filter((r) => r.globalTol === best.globalTol).map(({ globalTol, ...r }) => r);
-  return { ...best, curve };
+  return rows;
 }
 
 /**
  * 원화 → 정리된 소스(배경 제거 + 트림). 산출 3형태의 공통 입력.
- * 배경 제거 파라미터는 autoTol 로 최적화 선택하고, 남는 손상은 파편화·내부구멍으로 경고한다.
+ *
+ * ## 배경 제거 파라미터를 자동으로 고르지 않는 이유 (중요)
+ *
+ * 자동 선택을 **다섯 번** 시도했고 매번 독립 검증이 새로운 실패 모드를 찾았다:
+ *  1. 전역 tolerance 고정 → 어두운 캐릭터를 먹었다.
+ *  2. "분리 불가"로 단정 → 더 낮은 값으로 반증됐다.
+ *  3. 무릎 검출 → 최적점이 아니라 스윕 시작점을 반환, 배경이 대량 잔류했다.
+ *  4. `maximize 제거량 s.t. 무결성` → **연속 침식**(외곽부터 갉아먹기)을 선호했다.
+ *  5. 침식률 지표 추가 → 글로우 배경에서 정답을 탈락시키고(위양성),
+ *     그라디언트 배경에서 캐릭터 전멸을 통과시켰다(위음성).
+ *
+ * 지표(파편·구멍·색모델)마다 반례가 있고, 탐색 격자를 넓히면 목적함수가
+ * 캐릭터를 먹는 지점을 고른다. 이건 일반 이미지 매팅 문제이고 이 트랙의 범위가 아니다.
+ *
+ * 그래서: **값은 사람이 정한다**(`incoming/<id>.json` 의 `bgTol`).
+ * 지정이 없으면 **가장 보수적인 설정**으로 물러난다 — 배경이 남을지언정 캐릭터는 안 먹는다.
+ * 실패를 **눈에 보이는 쪽**(배경 상자)으로만 내는 것이 설계 의도다.
+ * 보이지 않는 손상(캐릭터 소실)은 게이트에서 정상으로 오인되지만, 배경 상자는 즉시 보인다.
+ *
+ * SPEC §2 대로 **투명 배경으로 입고하면 이 경로 자체를 타지 않는다.**
  */
 function clean(im, warnings, label, override) {
-  // 투명 배경(SPEC 권장 경로)이면 파라미터 탐색이 불필요하다.
-  // 단 품질 게이트는 **건너뛰지 않는다** — 알파가 있어도 컷아웃이 나쁠 수 있다.
-  const preAlpha = removeBackground(im, { localTol: LOCAL_SWEEP[0] });
+  // 투명 배경(SPEC 권장 경로) — 파라미터가 아예 필요 없다. 품질 게이트는 그대로 적용.
+  const preAlpha = removeBackground(im, CONSERVATIVE);
   if (preAlpha.stats.hadAlpha) {
     const q0 = cutoutQuality(preAlpha.image);
     gateQuality(q0, preAlpha.image, warnings, label);
-    return { src: trim(preAlpha.image, 0.02), quality: { ...q0, localTol: null, alphaPreserved: true } };
+    return { src: trim(preAlpha.image, 0.02), quality: { ...q0, alphaPreserved: true } };
   }
 
-  warnings.push(`${label}: 배경이 불투명 — SPEC §2 는 투명 배경을 요구한다(자동 분리는 보조 수단).`);
-  const auto = override === undefined
-    ? autoTol(im)
-    : { localTol: override.localTol, globalTol: override.globalTol, curve: [], atBoundary: false };
-  // 프록시에서 고른 값이 원본 해상도에서도 무결한지 재검증한다.
-  // 프록시(320px)와 원본은 지역 기울기가 미세하게 달라 통과값이 어긋날 수 있다
-  // (실측: 펭킹킹 full 이 프록시 통과 후 원본에서 96.2% → 망토 소실).
-  let { localTol, globalTol } = auto;
-  let image = removeBackground(im, { localTol, globalTol }).image;
-  let exhausted = false;
-  if (override === undefined) {
-    const holeLimitFull = im.width * im.height * 0.005;
-    let guard = 0, stats = removeBackground(im, { localTol, globalTol }).stats;
-    while (guard++ < LOCAL_SWEEP.length) {
-      const qq = cutoutQuality(image);
-      const ok = qq.largestShare >= INTEGRITY && qq.holes <= holeLimitFull
-        && stats.erodedPct <= EROSION_LIMIT;
-      if (ok) break;
-      const i = LOCAL_SWEEP.indexOf(localTol);
-      if (i <= 0) { exhausted = true; break; } // 더 물러날 곳이 없는데 여전히 미달
-      localTol = LOCAL_SWEEP[i - 1]; // 한 단계 보수적으로 물러난다
-      const r = removeBackground(im, { localTol, globalTol });
-      image = r.image; stats = r.stats;
-      auto.backedOff = true;
-    }
-  }
-  if (auto.backedOff)
-    warnings.push(`${label}: 프록시 탐색값이 원본에서 기준 미달 → localTol=${localTol} 로 후퇴.`);
-  if (exhausted || auto.fallback)
+  warnings.push(`${label}: 배경이 불투명 — SPEC §2 위반(투명 배경 필수).`);
+  const cfg = override || CONSERVATIVE;
+  if (!override)
     warnings.push(
-      `${label}: **기준을 만족하는 배경제거 설정을 찾지 못했다** — 배경 잔류 또는 캐릭터 손상이 남는다.` +
-      ` 투명 배경으로 재입고할 것.`);
-  if (auto.atBoundary)
-    warnings.push(`${label}: 선택값(localTol=${localTol}, globalTol=${globalTol})이 탐색 범위 경계 — 더 나은 값이 범위 밖에 있을 수 있다.`);
-  const q = cutoutQuality(image);
-  q.localTol = localTol;
-  q.globalTol = globalTol;
-  q.tolCurve = auto.curve;
+      `${label}: bgTol 미지정 → 보수적 설정(localTol=${CONSERVATIVE.localTol})으로 처리했다.` +
+      ` **배경이 남는다.** 값을 고르려면 report.json 의 tolDiagnostic 표를 보고` +
+      ` incoming/<id>.json 에 bgTol 을 지정할 것. 자동 선택은 하지 않는다(신뢰할 수 없어서).`);
 
+  const { image } = removeBackground(im, cfg);
+  const q = cutoutQuality(image);
+  q.localTol = cfg.localTol;
+  q.globalTol = cfg.globalTol;
+  if (!override) q.tolDiagnostic = diagnoseTol(im);
   gateQuality(q, image, warnings, label);
+  warnings.push(`${label}: 컷아웃은 **육안 확인 필수** — 지표만으로는 손상을 보증할 수 없다(대조 시트 확인).`);
   return { src: trim(image, 0.02), quality: q };
 }
 
