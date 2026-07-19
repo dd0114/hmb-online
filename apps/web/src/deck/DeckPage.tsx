@@ -45,6 +45,7 @@ import {
   slotByNumber,
   type EditorBaseline,
 } from "./preset-selector-logic";
+import { autoBuildLineup, canAutoBuild } from "./auto-lineup";
 import { DeckEditor } from "./DeckEditor";
 import { SlotSelector } from "./SlotSelector";
 import { PresetSummary } from "./PresetSummary";
@@ -357,6 +358,24 @@ export function DeckPage() {
         </select>
         <span className={styles.starterCount} data-testid="starter-count">
           선발 {starterCount}/{STARTER_COUNT}
+        </span>
+      </div>
+
+      {/* 요구 3 — Auto 구성: 보유 선수만으로 결정론적 최적 스쿼드 자동 구성(RNG·AI 콜 없음). */}
+      <div className={styles.autoRow}>
+        <button
+          type="button"
+          className={styles.autoBtn}
+          data-testid="auto-fill"
+          disabled={busy || !canAutoBuild(ownedPlayers)}
+          onClick={() => mutateEditor(autoBuildLineup(ownedPlayers))}
+        >
+          Auto 구성
+        </button>
+        <span className={styles.autoHint}>
+          {canAutoBuild(ownedPlayers)
+            ? "보유 선수로 최적 포메이션·선발·기본 지시를 자동 배치합니다"
+            : `보유 선수 부족 (${ownedPlayers.length}/${STARTER_COUNT})`}
         </span>
       </div>
 
