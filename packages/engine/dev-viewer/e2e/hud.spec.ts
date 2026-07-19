@@ -32,6 +32,22 @@ test("최종 liveStats 합 = 실제 스코어(골) + 점유율 0..100", async ({
   expect(s.momentum).toBeLessThanOrEqual(1);
 });
 
+test("통계 HUD 토글 버튼 — 클릭 시 패널 표시/숨김 (기본 켜짐)", async ({ page }) => {
+  // 기본 상태: HUD 보임 + 버튼 active.
+  const visible = () => page.evaluate(() => getComputedStyle(document.getElementById("hud")!).display);
+  const active = () => page.evaluate(() => document.getElementById("statsBtn")!.classList.contains("active"));
+  expect(await visible()).not.toBe("none");
+  expect(await active()).toBe(true);
+  // 클릭 → 숨김 + active 해제.
+  await page.click("#statsBtn");
+  expect(await visible()).toBe("none");
+  expect(await active()).toBe(false);
+  // 다시 클릭 → 복귀.
+  await page.click("#statsBtn");
+  expect(await visible()).not.toBe("none");
+  expect(await active()).toBe(true);
+});
+
 test("HUD DOM 이 실시간 갱신 — 점유율%·통계 그리드가 재생 중 값 반영", async ({ page }) => {
   // 초반 seek → 그리드의 Shots 홈값.
   const readShots = () => page.evaluate(() => {
