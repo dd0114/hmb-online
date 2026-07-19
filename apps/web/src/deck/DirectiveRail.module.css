@@ -111,31 +111,46 @@
   flex: none;
 }
 
-/* ── 팀 전술 4슬라이더 (기존 TeamTacticsPanel 이식) ── */
+/* ── 팀 전술 4종 = 5스텝 세그먼트 (#106 R2, 슬라이더 대체) ── */
 .dial {
   display: grid;
-  grid-template-columns: 60px auto minmax(0, 1fr) auto 28px;
+  grid-template-columns: 58px minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   padding: 3px 0;
 }
 .dialLabel {
   font-size: 12px;
   color: var(--text-muted);
 }
-.endpoint {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-.range {
-  width: 100%;
+.steps {
+  display: flex;
+  gap: 3px;
   min-width: 0;
-  accent-color: var(--accent);
 }
-.dialValue {
-  font-size: 12px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
+.steps button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 34px;
+  padding: 4px 2px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.15;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.steps button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+.steps button:disabled {
+  opacity: 0.5;
 }
 .dialsDisabled {
   opacity: 0.5;
@@ -146,16 +161,38 @@
   color: var(--text-muted);
 }
 
-/* ── 역할 / 세부 지시 ── */
-.roleSelect {
-  min-height: 40px;
-  padding: 8px 10px;
-  border-radius: 8px;
+/* ── 역할 = 세그먼트 컨트롤 (#106 R2, 셀렉트 대체) ── */
+.seg {
+  display: flex;
   border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
   background: var(--bg);
-  color: var(--text);
-  font-size: 13px;
-  width: 100%;
+}
+.seg button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 4px;
+  border: none;
+  border-right: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seg button:last-child {
+  border-right: 0;
+}
+.seg button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+.seg button:disabled {
+  opacity: 0.5;
 }
 
 .chips {
@@ -182,10 +219,63 @@
   opacity: 0.4;
 }
 
-.preview {
-  margin: 2px 0 0;
+/* ── `AI에 전달될 지시문` 미리보기 = A안의 핵심 전달물 (#106 R2) ──────────────────────────
+   현재 스킨은 단색 accent 라 목업처럼 **색으로** 두 레이어를 가를 수 없다(아트디렉션 승격은 별도
+   결정으로 분리됨). 대신 **라벨(선택지에서 / 내가 쓴 문장) + 구분선 + 좌측 룰 + 들여쓰기**로
+   출처를 인코딩한다 — 규칙은 레일 다른 곳과 같다: 채움=고른 것, 선·틴트=내가 쓴 것. */
+.compose {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.cap {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+}
+.cline {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+.clab {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-top: 1px;
+}
+.ctext {
+  margin: 0;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.6;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* 내가 쓴 문장 = 감독의 한마디 블록과 같은 시각 규칙(좌측 룰 + 옅은 틴트)으로 묶어 읽힌다. */
+.own {
+  margin-left: -4px;
+  padding-left: 4px;
+  border-left: 2px solid var(--accent);
+  background: rgba(79, 140, 255, 0.06);
+  border-radius: 0 6px 6px 0;
+}
+.own .clab {
+  color: var(--accent);
+  font-weight: 600;
+}
+.own .ctext {
+  color: var(--text);
+}
+.cempty {
+  margin: 0;
+  font-size: 12px;
   color: var(--text-muted);
 }
 

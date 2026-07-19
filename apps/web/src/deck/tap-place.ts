@@ -54,8 +54,12 @@ export function tapSlot(draft: DeckDraft, sel: TapSelection, slot: SlotRef): Tap
   if (sel.playerId) {
     const holding = sel.playerId;
     if (occupant?.playerId === holding) {
-      // 자기 자신을 다시 탭 → 선택 해제
-      return { draft, selection: NO_SELECTION };
+      // R2 r1 (UX 마찰 수정): 자기 자신 재탭은 **해제가 아니라 그 선수 지시 유지**다.
+      // 예전엔 여기서 NO_SELECTION 을 돌려줬는데, 방금 배치한 선수는 이미 선택 상태로 남아 있어
+      // "이 선수에게 지시 넣자"는 가장 직관적인 제스처(토큰 탭)가 **팀 지시로 튕기고** 한 번 더
+      // 탭해야 열렸다(모바일 독은 접힌 채라 더 헛돌았다). 이제 한 번 탭이면 항상 그 선수다.
+      // 해제는 레일 ×(rail-close) · 보드 바 [선택 해제](select-clear) · 배치 대기 [취소] 로 한다.
+      return { draft, selection: { slot, playerId: holding, source: "board" } };
     }
     return {
       draft: movePlayerToSlot(draft, holding, slot.role, slot.slotIndex),

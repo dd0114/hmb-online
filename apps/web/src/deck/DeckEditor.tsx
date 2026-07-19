@@ -165,7 +165,11 @@ export function DeckEditor(props: DeckEditorProps) {
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <div className={styles.sheet} data-testid="deck-editor">
+      <div
+        className={dockOpen ? `${styles.sheet} ${styles.sheetDockOpen}` : styles.sheet}
+        data-testid="deck-editor"
+        data-dock-open={dockOpen ? "true" : "false"}
+      >
         {/* ① 시트 바 */}
         <TeamSheetBar
           draft={draft}
@@ -209,9 +213,25 @@ export function DeckEditor(props: DeckEditorProps) {
                       </button>
                     </>
                   ) : (
-                    <span className={styles.boardHint}>
-                      슬롯 → 선수 순서로 누르면 배치. 선수끼리 누르면 자리 교체.
-                    </span>
+                    <>
+                      <span className={styles.boardHint}>
+                        {selectedPlayer
+                          ? `${selectedPlayer.name} 지시 편집 중 — 다른 슬롯을 누르면 이동`
+                          : "슬롯 → 선수 순서로 누르면 배치. 선수끼리 누르면 자리 교체."}
+                      </span>
+                      {/* r1 로 토큰 재탭이 해제가 아니게 됐으므로(그 선수 지시 유지),
+                          해제 어피던스를 보드 바에 명시적으로 둔다(레일 × 와 동치). */}
+                      {selectedPlayer && (
+                        <button
+                          type="button"
+                          className={styles.boardBtn}
+                          data-testid="select-clear"
+                          onClick={() => setSelection(NO_SELECTION)}
+                        >
+                          선택 해제
+                        </button>
+                      )}
+                    </>
                   )}
                   <button
                     type="button"

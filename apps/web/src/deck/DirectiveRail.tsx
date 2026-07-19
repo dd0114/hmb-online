@@ -5,24 +5,16 @@ import { PersonalityBadge, TrustGauge } from "../common/RelationBits";
 import { conditionLabel } from "../match/condition-clock";
 import { PROMPT_MAX_CHARS, type DraftSlot } from "./deck-logic";
 import {
-  composePrompt,
+  composeLayers,
   DIRECTIVE_CHIPS,
-  emptyDirectiveState,
+  parseDirectiveText,
   ROLE_OPTIONS,
-  synthesizeDirectiveText,
   toggleChip,
   type DirectiveState,
 } from "./directives";
 import { TACTICS_KEYS, TACTICS_LABELS } from "./tactics-logic";
+import { STEP_LABELS, stepAriaLabel, stepIndexOf, valueOfStep } from "./tactics-steps";
 import styles from "./DirectiveRail.module.css";
-
-/** low/high hint labels per slider so 0..1 reads as a football concept. */
-const ENDPOINTS: Record<keyof TeamTactics, [string, string]> = {
-  line: ["낮게", "높게"],
-  press: ["약하게", "강하게"],
-  tempo: ["느리게", "빠르게"],
-  width: ["좁게", "넓게"],
-};
 
 export interface DirectiveRailProps {
   /** 선택된 선수 — null 이면 팀 지시 컨텍스트. */
@@ -58,8 +50,14 @@ export interface DirectiveRailProps {
  *   (b) "기존 전략 포맷 위에 프롬프트가 extend" → 레일은 위에서부터 익숙한 전술 입력(역할/세부 지시,
  *       팀은 라인·압박·템포·폭)을 세우고, 그 **아래**에 자유 프롬프트("감독의 한마디")를 얹는다.
  *
- * R1 은 골격이다 — 내용물은 기존 입력(PlayerSheet 의 역할/칩/프롬프트, TeamTacticsPanel 의 4슬라이더,
- * 팀 프롬프트)을 **그대로 이식**했다. A안 상세 구성(세그먼트/5단 다이얼/합성 미리보기)은 R2.
+ * R2 = 레일 내용물을 **A안**으로 만든 웨이브(#106 hero 확정):
+ *   · 선수: 역할 세그먼트 → 세부 지시 칩 → 감독의 한마디 → **`AI에 전달될 지시문` 미리보기**
+ *     (칩에서 합성된 문장 / 내가 쓴 문장을 라벨·구분선으로 갈라 보여준다. 단색 accent 스킨이라
+ *      색으로 못 가르는 대신 라벨 + 좌측 룰 + 들여쓰기로 레이어를 인코딩한다.)
+ *   · 팀: 라인/압박/템포/폭 슬라이더 → **5스텝 세그먼트**(0/.25/.5/.75/1) + 팀 한마디.
+ *
+ * 미리보기 ↔ 전송값 일치는 `composeLayers` 한 곳에서 보장한다 — 화면에 그리는 두 줄과 서버로
+ * 보내는 문자열이 같은 호출의 산출물이다(directives.test.ts 불변식).
  *
  * 컨텍스트 규칙: 선택 없음 → 팀 지시 / 보드에서 선수 탭 → 그 선수 지시.
  */
@@ -103,28 +101,39 @@ function TeamContext(props: DirectiveRailProps) {
               AI에 맡기기
             </label>
           </span>
+          {/* 5스텝 세그먼트 — 서버 계약은 0..1 실수 그대로이고 위젯만 이산화한다(#106 확정).
+              `tactics-{key}` testid 는 그룹으로 유지하고 실제 값은 data-value 로 노출한다. */}
           <div className={aiManaged ? styles.dialsDisabled : undefined} aria-disabled={aiManaged}>
-            {TACTICS_KEYS.map((key) => (
-              <div key={key} className={styles.dial}>
-                <span className={styles.dialLabel}>{TACTICS_LABELS[key]}</span>
-                <span className={styles.endpoint}>{ENDPOINTS[key][0]}</span>
-                <input
-                  type="range"
-                  className={styles.range}
-                  data-testid={`tactics-${key}`}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={tactics[key]}
-                  disabled={aiManaged}
-                  onChange={(e) => onTacticsChange({ ...tactics, [key]: Number(e.target.value) })}
-                />
-                <span className={styles.endpoint}>{ENDPOINTS[key][1]}</span>
-                <span className={styles.dialValue} data-testid={`tactics-value-${key}`}>
-                  {Math.round(tactics[key] * 100)}
-                </span>
-              </div>
-            ))}
+            {TACTICS_KEYS.map((key) => {
+              const active = stepIndexOf(tactics[key]);
+              return (
+                <div key={key} className={styles.dial}>
+                  <span className={styles.dialLabel}>{TACTICS_LABELS[key]}</span>
+                  <div
+                    className={styles.steps}
+                    role="group"
+                    aria-label={TACTICS_LABELS[key]}
+                    data-testid={`tactics-${key}`}
+                    data-value={tactics[key]}
+                    data-step={active}
+                  >
+                    {STEP_LABELS[key].map((label, i) => (
+                      <button
+                        key={label}
+                        type="button"
+                        data-testid={`tactics-${key}-step-${i}`}
+                        aria-pressed={i === active}
+                        aria-label={stepAriaLabel(key, i)}
+                        disabled={aiManaged}
+                        onClick={() => onTacticsChange({ ...tactics, [key]: valueOfStep(i) })}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           {aiManaged && (
             <p className={styles.aiNote} data-testid="tactics-ai-note">
@@ -172,25 +181,29 @@ function PlayerContext(props: PlayerContextProps) {
   const promptText = slot?.promptText ?? "";
   const placed = Boolean(slot);
 
-  const [directive, setDirective] = useState<DirectiveState>(emptyDirectiveState());
-  const [freeText, setFreeText] = useState<string>(promptText);
+  // 영속된 promptText 를 두 레이어로 **되돌려** 채운다(#106 R2). 안 그러면 저장된 합성문이
+  // 통째로 자유 문장으로 들어가 칩을 한 번만 눌러도 문장이 중복 누적된다.
+  const [directive, setDirective] = useState<DirectiveState>(() => parseDirectiveText(promptText).state);
+  const [freeText, setFreeText] = useState<string>(() => parseDirectiveText(promptText).freeText);
 
-  // 다른 선수로 전환되면 로컬 레이어를 초기화한다(컴포넌트는 key=player.id 로 재마운트되지만
-  // 같은 선수의 slot 이 나중에 도착하는 경우를 위해 유지).
+  // 다른 선수로 전환되면 그 선수의 프롬프트로 다시 갈라 담는다(컴포넌트는 key=player.id 로
+  // 재마운트되지만 같은 선수의 slot 이 나중에 도착하는 경우를 위해 유지).
   useEffect(() => {
-    setDirective(emptyDirectiveState());
-    setFreeText(promptText);
+    const parsed = parseDirectiveText(promptText);
+    setDirective(parsed.state);
+    setFreeText(parsed.freeText);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player.id]);
 
   function push(nextDirective: DirectiveState, nextFree: string) {
     setDirective(nextDirective);
     setFreeText(nextFree);
-    onPlayerPromptChange(player.id, composePrompt(nextDirective, nextFree));
+    onPlayerPromptChange(player.id, composeLayers(nextDirective, nextFree).text);
   }
 
-  const preview = synthesizeDirectiveText(directive);
-  const combinedLen = composePrompt(directive, freeText).length;
+  // 미리보기와 전송값의 **유일한 출처**. 화면에 그리는 두 줄과 push() 가 보내는 문자열이 같다.
+  const composed = composeLayers(directive, freeText);
+  const combinedLen = composed.text.length;
   const over = combinedLen > PROMPT_MAX_CHARS;
   const personalityValue = personality ?? player.personality;
 
@@ -219,25 +232,27 @@ function PlayerContext(props: PlayerContextProps) {
       </div>
 
       <div className={styles.body} data-rail-body>
+        {/* ① 익숙한 전술 포맷 — 역할 세그먼트 */}
         <div className={styles.group} data-testid="rail-tactical-layer">
           <span className={styles.eyebrow}>
             역할<span className={styles.tail} />
           </span>
-          <select
-            className={styles.roleSelect}
-            data-testid="rail-role-select"
-            aria-label="역할"
-            value={directive.role}
-            disabled={!placed}
-            onChange={(e) => push({ ...directive, role: e.target.value }, freeText)}
-          >
+          <div className={styles.seg} role="group" aria-label="역할" data-testid="rail-role">
             {ROLE_OPTIONS.map((r) => (
-              <option key={r.id} value={r.id}>
+              <button
+                key={r.id}
+                type="button"
+                data-testid={`rail-role-${r.id}`}
+                aria-pressed={directive.role === r.id}
+                disabled={!placed}
+                onClick={() => push({ ...directive, role: r.id }, freeText)}
+              >
                 {r.label}
-              </option>
+              </button>
             ))}
-          </select>
+          </div>
 
+          {/* ② 세부 지시 칩 (서번트 지시 카탈로그 6종과 1:1) */}
           <span className={styles.eyebrow}>
             세부 지시<span className={styles.tail} />
           </span>
@@ -259,13 +274,9 @@ function PlayerContext(props: PlayerContextProps) {
               );
             })}
           </div>
-          {preview && (
-            <p className={styles.preview} data-testid="rail-directive-preview">
-              {preview}
-            </p>
-          )}
         </div>
 
+        {/* ③ 우리 차별점 레이어 — 자유 문장 */}
         <div className={styles.mark}>
           <span className={styles.markLabel}>감독의 한마디</span>
           <textarea
@@ -273,6 +284,7 @@ function PlayerContext(props: PlayerContextProps) {
             data-testid="rail-prompt-input"
             aria-label="감독의 한마디"
             rows={3}
+            maxLength={PROMPT_MAX_CHARS}
             disabled={!placed}
             placeholder="이 선수에게 자유롭게 한마디 (예: 오늘 너만 믿는다, 과감하게 슛 노려)"
             value={freeText}
@@ -291,6 +303,34 @@ function PlayerContext(props: PlayerContextProps) {
               </button>
             )}
           </div>
+        </div>
+
+        {/* ④ A안의 핵심 전달물 — 두 레이어가 한 자리에서 **구분된 채** 합쳐진 결과.
+            단색 accent 스킨이라 색으로 못 가르므로 라벨 + 좌측 룰 + 들여쓰기로 출처를 인코딩한다.
+            여기 보이는 두 줄을 이어붙인 것이 곧 서버로 가는 promptText 다(composeLayers 단일 출처). */}
+        <div className={styles.compose} data-testid="rail-compose">
+          <span className={styles.cap}>AI에 전달될 지시문</span>
+          {composed.directiveText && (
+            <div className={styles.cline}>
+              <span className={styles.clab}>선택지에서</span>
+              <p className={styles.ctext} data-testid="rail-compose-directive">
+                {composed.directiveText}
+              </p>
+            </div>
+          )}
+          {composed.ownText && (
+            <div className={`${styles.cline} ${styles.own}`}>
+              <span className={styles.clab}>내가 쓴 문장</span>
+              <p className={styles.ctext} data-testid="rail-compose-own">
+                {composed.ownText}
+              </p>
+            </div>
+          )}
+          {!composed.text && (
+            <p className={styles.cempty} data-testid="rail-compose-empty">
+              아직 이 선수에게 전달될 지시가 없습니다.
+            </p>
+          )}
         </div>
       </div>
     </>

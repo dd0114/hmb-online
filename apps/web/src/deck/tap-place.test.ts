@@ -109,11 +109,29 @@ describe("보드 토큰 탭", () => {
     expect(b.draft.slots).toHaveLength(2);
   });
 
-  it("선택된 토큰을 다시 탭하면 해제된다", () => {
+  /**
+   * R2 r1: 예전 계약("재탭 = 해제")을 뒤집는다. 재탭이 해제였을 때는 **방금 배치한 선수의 토큰을
+   * 한 번 탭하면 지시가 열리는 게 아니라 팀 지시로 튕겼다**(배치 후 선택이 남아 있으므로 재탭으로
+   * 취급됨). 지시 넣기가 가장 흔한 다음 동작이라 이쪽을 우선한다.
+   */
+  it("선택된 토큰을 다시 탭해도 그 선수 선택이 유지된다(지시가 열린 채, r1)", () => {
     const a = tapSlot(placed(), NO_SELECTION, { role: "starter", slotIndex: 6 });
     const b = tapSlot(a.draft, a.selection, { role: "starter", slotIndex: 6 });
-    expect(b.selection).toEqual(NO_SELECTION);
+    expect(b.selection.playerId).toBe("A");
+    expect(b.selection.source).toBe("board");
+    expect(b.draft).toBe(a.draft);
     expect(getSlot(b.draft, "starter", 6)?.playerId).toBe("A");
+  });
+
+  it("리스트에서 배치한 직후 그 토큰을 **한 번** 탭하면 그 선수 지시가 열린다(r1 회귀)", () => {
+    // 리스트 선수 집어듦 → 빈 슬롯 탭 = 배치. 여기서 선택은 그 선수로 남는다.
+    const held = tapPoolPlayer(empty(), NO_SELECTION, "P1");
+    const placedOne = tapSlot(held.draft, held.selection, { role: "starter", slotIndex: 6 });
+    expect(placedOne.selection.playerId).toBe("P1");
+    // 이어서 그 토큰을 탭 — 예전엔 여기서 해제(팀 지시)로 튕겼다.
+    const tapped = tapSlot(placedOne.draft, placedOne.selection, { role: "starter", slotIndex: 6 });
+    expect(tapped.selection.playerId).toBe("P1");
+    expect(tapped.selection.source).toBe("board");
   });
 
   it("토큰 → 벤치 빈칸 탭 = 벤치로 내림", () => {
