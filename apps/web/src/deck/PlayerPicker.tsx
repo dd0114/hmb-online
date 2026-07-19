@@ -36,7 +36,8 @@ interface PoolItemProps {
 /**
  * One owned-player row. Draggable (@dnd-kit, source id = `pool:${id}`) so it can be dragged onto a
  * board slot within the DeckEditor-level DndContext (요구 5); the same button also tap-to-places
- * (PointerSensor distance:6 → a click with no drag still fires onClick — accessibility fallback).
+ * (mouse = MouseSensor distance:6, touch = TouchSensor delay:150 — either way a plain click/tap
+ * with no drag still fires onClick, so tap-to-place stays the accessible fallback).
  * A player already placed on the board is disabled (no drag, no tap) — no duplicates.
  */
 function PoolItem({ player, placed, onPick, condition }: PoolItemProps) {

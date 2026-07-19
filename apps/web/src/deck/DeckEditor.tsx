@@ -3,7 +3,7 @@ import {
   closestCenter,
   DndContext,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -81,8 +81,13 @@ export function DeckEditor(props: DeckEditorProps) {
 
   // Single DndContext spans the board slots + bench (token sources) AND the owned-player pool list
   // (pool: source, 요구 5). Sensors moved up here from TacticsBoard — pointer/touch/keyboard all kept.
+  // MouseSensor(터치 아님) + TouchSensor 로 분리한다 — PointerSensor 를 쓰면 터치에서도
+  // pointerdown 이 먼저 잡혀 TouchSensor 의 delay(롱프레스) 활성화가 영영 안 걸리고,
+  // 거리 기반(distance) 활성화라 손가락이 6px 움직이는 순간 브라우저가 네이티브 스크롤을
+  // 시작해 pointercancel 로 드래그가 죽는다(실측). 분리하면 터치는 롱프레스 150ms 로만
+  // 드래그가 시작되고, 짧은 스와이프는 리스트 스크롤로 남는다(스크롤·드래그 양립).
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
     useSensor(KeyboardSensor),
   );

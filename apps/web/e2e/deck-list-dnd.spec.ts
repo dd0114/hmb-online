@@ -9,6 +9,13 @@ import { mkdirSync } from "node:fs";
  *   3) 포지션 필터(DF) 시 그 포지션 내 추천순(overall 내림차순).
  * 드래그는 pointer(mouse) 이벤트 시뮬(@dnd-kit PointerSensor, distance:6 초과 후 target 센터로 이동).
  * 스크린샷 = apps/web/.smoke/.
+ *
+ * ⚠️ 이 스펙의 뷰포트 390x2200 은 **실재하지 않는 폰 크기**다(보드+리스트가 한 화면에 다 들어와
+ * 스크롤 자체가 불필요해지는 인공 조건). 남겨두는 이유 = **데스크탑/포인터 경로 회귀 가드**
+ * (정렬·스탯총량·필터·탭투플레이스 + 마우스 드래그). 그래서 이 스펙만으로는 실제 폰 버그를
+ * 구조적으로 못 잡는다 — 실제로 리스트 행에 `touch-action: none` 이 빠져 폰에서 드래그가
+ * 100% 실패했는데 이 스펙은 통과했다.
+ * **실제 폰 조건(390x844 + hasTouch + 실터치 이벤트)은 `deck-list-dnd-touch.spec.ts` 가 담당한다.**
  */
 
 const SMOKE_DIR = new URL("../.smoke/", import.meta.url).pathname;
@@ -97,6 +104,7 @@ test("W4 리스트 추천정렬 + 스탯총량 + 리스트→보드 드래그", 
     localStorage.setItem("hmb.auth.provider", "guest");
   });
   // Tall viewport so board (top) + pool list (bottom) are both on-screen for a single mouse drag.
+  // (인공 조건 — 실폰 터치 경로는 deck-list-dnd-touch.spec.ts. 위 헤더 주석 참고.)
   await page.setViewportSize({ width: 390, height: 2200 });
   await page.goto("/deck");
 
