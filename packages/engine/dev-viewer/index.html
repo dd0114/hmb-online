@@ -467,9 +467,10 @@
           for (const f of fx) {
             const a = Math.max(0, f.life);
             if (f.type === "pass") {
-              // 패스완성: 팀색 작은 펄스 링(짧게 퍼지고 사라짐) — "깔끔한 연결".
-              ctx.globalAlpha = a * 0.55; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 2;
-              ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 2.5 + f.r, 0, Math.PI * 2); ctx.stroke();
+              // 패스완성: 팀색 펄스 링(짧게 퍼지고 사라짐) — "깔끔한 연결". 시작 반경을 공 글로우 밖(≈8px)에서
+              // 시작해 스폰 순간에도 공에 안 가려지고 보이게(독립 QA nit — 스폰시 공 글로우에 묻힘).
+              ctx.globalAlpha = a * 0.6; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 2.2;
+              ctx.beginPath(); ctx.arc(sx(f.x), sy(f.y), 8 + f.r, 0, Math.PI * 2); ctx.stroke();
             } else if (f.type === "steal") {
               // 가로챔: 밝은 스틸 링 + 중앙 플래시(가로챈 팀 색) — 소유 전환 강조.
               ctx.globalAlpha = a * 0.9; ctx.strokeStyle = `rgb(${f.rgb})`; ctx.lineWidth = 3;
