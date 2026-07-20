@@ -1,0 +1,149 @@
+/* ① 시트 바 (sticky) — #106 R1. 목업 deck-a-skin.html `.sheet` 대응. */
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  margin: -16px -16px 12px; /* Layout main padding(16px) 밖으로 빼서 화면 폭 전체를 쓴다 */
+  padding: 10px 16px 8px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.auto {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 13px;
+  font-weight: 600;
+}
+.auto:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.formationLabel {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+}
+.auto + .formationLabel {
+  margin-left: 0;
+}
+
+.formation {
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.power {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.me,
+.op {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+  white-space: nowrap;
+}
+.me {
+  color: var(--text);
+}
+.op {
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gauge {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+  height: 6px;
+  border-radius: 3px;
+  background: #242832;
+  overflow: hidden;
+}
+.gauge i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.fill {
+  display: flex;
+  gap: 12px;
+  margin-top: 7px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+}
+.ok {
+  color: var(--text);
+}
+.ink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text);
+}
+.dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+  flex: none;
+}
+
+.autoHint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 데스크탑: AUTO 는 보드 하단 바가 담당(목업) — 시트 바에서는 감춘다. */
+@media (min-width: 1024px) {
+  .auto,
+  .autoHint {
+    display: none;
+  }
+  .bar {
+    margin: -16px -16px 16px;
+    padding: 12px 16px 10px;
+  }
+}

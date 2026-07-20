@@ -1,56 +1,23 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import {
-  useCreatePreset,
-  useDeck,
-  useDeletePreset,
-  usePlayers,
-  usePresets,
-  useUpdateDeck,
-  type CatalogPlayer,
-  type Deck,
-} from "../api/hooks";
-import {
-  useApplyTeamPreset,
-  useRelations,
-  useTodayConditions,
-  useSaveTeamPreset,
-  useTeamPresets,
-} from "../api/hooks-v2";
+import { useDeck, usePlayers, useUpdateDeck, type CatalogPlayer, type Deck } from "../api/hooks";
+import { useRelations, useTodayConditions } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
-import { TeamMoraleWidget } from "../common/RelationBits";
 import { useNavGuardRun, useRegisterNavGuard, type NavGuard } from "../common/NavGuard";
 import {
-  bulkApplyPreset,
   emptyDraft,
-  FORMATION_LAYOUTS,
   STARTER_COUNT,
   toUpdateRequest,
   validateDraft,
   type DeckDraft,
 } from "./deck-logic";
-import { PresetPanel } from "./PresetPanel";
-import {
-  DEFAULT_TEAM_TACTICS,
-  editorToSaveRequest,
-  snapshotSaveable,
-  snapshotToEditor,
-  type EditorState,
-} from "./tactics-logic";
-import {
-  isDirty,
-  makeBaseline,
-  nextEmptySlot,
-  slotByNumber,
-  type EditorBaseline,
-} from "./preset-selector-logic";
+import { DEFAULT_TEAM_TACTICS, type EditorState } from "./tactics-logic";
+import { isDirty, makeBaseline, type EditorBaseline } from "./preset-selector-logic";
 import { autoBuildLineup, canAutoBuild } from "./auto-lineup";
 import { DeckEditor } from "./DeckEditor";
-import { SlotSelector } from "./SlotSelector";
-import { PresetSummary } from "./PresetSummary";
 import styles from "./DeckPage.module.css";
 
 interface ServerDeckError {
@@ -73,72 +40,51 @@ function draftFromDeck(deck: Deck | null): DeckDraft {
 }
 
 /**
- * Preset-centric deck screen (이슈 #98 W1). Reorganized from "active-deck editor + bottom 3 slots"
- * into "SELECTED preset on top → editor below → compact slot selector".
+ * 덱 화면 = **팀 시트 하나** (이슈 #106 R1 재설계).
  *
- * ── 활성덱 ↔ 프리셋 동기화 결정 (요구 3) ──────────────────────────────────────────────────
- * 게임 시작(연습/리그)은 서버 활성 덱(PUT /api/deck)을 읽는다. 이 화면은 프리셋을 편집하되 활성 덱을
- * 항상 최신 상태로 유지한다:
- *   - 슬롯 선택(칩 클릭) → POST /api/presets/team/{slot}/apply 로 활성 덱을 그 스냅샷으로 동기화.
- *   - "저장" → PUT /api/deck(활성 덱) + (슬롯 선택 시) PUT /api/presets/team/{slot}(프리셋). 둘 다 같은
- *     편집 상태에서 직렬화하므로 활성 덱과 프리셋이 일치한다.
- *   - "새 프리셋" → PUT preset + apply → 새 프리셋이 활성 덱이 된다.
- * 결과: 마지막으로 저장/선택한 프리셋이 항상 활성 덱과 일치 → 게임 시작이 보이는 라인업을 그대로 쓴다.
- * (첫 진입/프리셋 미선택 시엔 활성 덱 자체를 편집·저장하므로 연습·리그가 요구하는 "활성 덱" 전제는 유지.)
+ * ── 프리셋 UI 를 화면에서 내린 이유 (#106) ─────────────────────────────────────────────────
+ * #98 은 이 화면을 "프리셋 중심"(3슬롯 선택기 + 선택 프리셋 요약 카드 + 프롬프트 프리셋 패널)으로
+ * 조립했으나, hero 실플레이 판정은 **컨셉이 잡히기 전의 프리셋은 시기상조**였다 — 저장/불러오기/
+ * 이력이 먼저 들어와 복잡도만 올리고, 무엇이 무엇을 결정하는지(전술보드가 SoT) 인지선을 끊었다.
+ * 그래서 R1 은 **세팅 하나만** 편집·저장한다: 이 화면은 항상 활성 덱(PUT /api/deck)을 대상으로 한다.
+ *
+ * ⚠️ 삭제가 아니라 **화면에서 내린 것**이다 — 컨셉 확정 후 재도입에 대비해
+ *   - 컴포넌트 파일: `SlotSelector.tsx` · `PresetSummary.tsx` · `PresetPanel.tsx` (렌더만 중단, 파일 존치)
+ *   - 훅/계약: `useTeamPresets`/`useSaveTeamPreset`/`useApplyTeamPreset`(hooks-v2, `/api/presets/team`),
+ *     `usePresets`/`useCreatePreset`/`useDeletePreset`(`/api/presets`), 서버 `userDeckSnapshot`
+ *   - 순수 로직: `preset-selector-logic.ts`(dirty 추적은 여기서 계속 쓴다) · `tactics-logic` 스냅샷 직렬화
+ *   는 전부 그대로 둔다. 되돌리려면 이 파일에서 다시 렌더하면 된다.
+ *
+ * dirty 가드(요구 5, #98)는 유지한다 — 프리셋 슬롯 개념만 사라지고(slot=null) 미저장 이탈 확인은 그대로.
  */
 export function DeckPage() {
   const navigate = useNavigate();
   const runGuard = useNavGuardRun();
   const { data: deck, isLoading: deckLoading, isError: deckError } = useDeck();
   const { data: players, isLoading: playersLoading } = usePlayers();
-  const presetsQuery = useTeamPresets();
-  const presets = presetsQuery.data;
-  const { data: promptPresets } = usePresets();
   const { data: relations } = useRelations();
-  // 요구 6: 당일(KST) 컨디션 — 보드 토큰/선수 시트/보유 선수 리스트에 표시. 실패해도 화면은 그대로.
+  // 당일(KST) 컨디션 — 보드 토큰/리스트/레일 헤드에 표시. 실패해도 화면은 그대로.
   const { data: conditions } = useTodayConditions();
   const updateDeck = useUpdateDeck();
-  const createPreset = useCreatePreset();
-  const deletePreset = useDeletePreset();
-  const saveTeamPreset = useSaveTeamPreset();
-  const applyTeamPreset = useApplyTeamPreset();
 
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [editorName, setEditorName] = useState("");
-  const [selectedSlot, setSelectedSlot] = useState<number | null>(null);
   const [baseline, setBaseline] = useState<EditorBaseline | null>(null);
   const [aiManaged, setAiManaged] = useState(false);
   const [serverError, setServerError] = useState<ServerDeckError | null>(null);
   const [savedNote, setSavedNote] = useState(false);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
 
-  const slots = useMemo(() => presets ?? [], [presets]);
-  const presetsSettled = presetsQuery.isSuccess || presetsQuery.isError;
-
-  // Initial load: display the lowest saved preset (game-start SoT already persisted server-side, so
-  // this is display-only — no apply). No presets yet → fall back to the active deck (first entry).
+  // 첫 진입: 활성 덱 하나만 로드한다(프리셋 조회/적용 없음 — #106).
   useEffect(() => {
-    if (editor !== null || deckLoading || deckError || playersLoading || !presetsSettled) return;
-    const filled = [...slots].sort((a, b) => a.slot - b.slot).find((s) => s.snapshot);
-    if (filled?.snapshot) {
-      const ed = snapshotToEditor(filled.snapshot);
-      const name = filled.name ?? `프리셋 ${filled.slot}`;
-      setEditor(ed);
-      setEditorName(name);
-      setSelectedSlot(filled.slot);
-      setBaseline(makeBaseline(ed, name, filled.slot));
-    } else {
-      const ed: EditorState = {
-        draft: draftFromDeck(deck ?? null),
-        tactics: { ...DEFAULT_TEAM_TACTICS },
-        teamPrompt: "",
-      };
-      setEditor(ed);
-      setEditorName("");
-      setSelectedSlot(null);
-      setBaseline(makeBaseline(ed, "", null));
-    }
-  }, [editor, deck, deckLoading, deckError, playersLoading, presetsSettled, slots]);
+    if (editor !== null || deckLoading || deckError || playersLoading) return;
+    const ed: EditorState = {
+      draft: draftFromDeck(deck ?? null),
+      tactics: { ...DEFAULT_TEAM_TACTICS },
+      teamPrompt: "",
+    };
+    setEditor(ed);
+    setBaseline(makeBaseline(ed, "", null));
+  }, [editor, deck, deckLoading, deckError, playersLoading]);
 
   const playersById = useMemo(() => {
     const map = new Map<string, CatalogPlayer>();
@@ -148,7 +94,7 @@ export function DeckPage() {
 
   const ownedPlayers = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
 
-  const dirty = editor != null && baseline != null && isDirty(editor, editorName, baseline);
+  const dirty = editor != null && baseline != null && isDirty(editor, "", baseline);
 
   // Navigation guard (요구 5): while dirty, defer any in-app navigation to the confirm dialog.
   const guard = useCallback<NavGuard>((commit) => setPendingNav(() => commit), []);
@@ -165,7 +111,7 @@ export function DeckPage() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [dirty]);
 
-  if (deckLoading || playersLoading || !presetsSettled || editor === null) {
+  if (deckLoading || playersLoading || editor === null) {
     return (
       <Layout>
         {deckError ? <ErrorToast message="덱을 불러오지 못했습니다" /> : <p>불러오는 중…</p>}
@@ -176,9 +122,7 @@ export function DeckPage() {
   const draft = editor.draft;
   const starterCount = draft.slots.filter((s) => s.role === "starter").length;
   const preIssues = validateDraft(draft, (id) => playersById.get(id)?.position);
-  const saveable = snapshotSaveable(draft);
-  const selectedSlotData = slotByNumber(slots, selectedSlot);
-  const busy = updateDeck.isPending || saveTeamPreset.isPending || applyTeamPreset.isPending;
+  const busy = updateDeck.isPending;
 
   function mutateEditor(next: EditorState) {
     setEditor(next);
@@ -199,86 +143,19 @@ export function DeckPage() {
     }
   }
 
-  /** "저장" — overwrite: active deck (always) + the selected preset slot (if any). Returns success. */
+  /** "저장" — 활성 덱 하나만 덮어쓴다(PUT /api/deck). 프리셋 슬롯 저장 경로는 화면에서 내렸다(#106). */
   async function handleSave(): Promise<boolean> {
     setServerError(null);
     setSavedNote(false);
     try {
       await updateDeck.mutateAsync(toUpdateRequest(editor!.draft));
-      if (selectedSlot != null && snapshotSaveable(editor!.draft)) {
-        await saveTeamPreset.mutateAsync({
-          slot: selectedSlot,
-          body: editorToSaveRequest(editor!, editorName || `프리셋 ${selectedSlot}`),
-        });
-      }
-      setBaseline(makeBaseline(editor!, editorName, selectedSlot));
+      setBaseline(makeBaseline(editor!, "", null));
       setSavedNote(true);
       return true;
     } catch (err) {
       setServerErrorFrom(err, "저장에 실패했습니다");
       return false;
     }
-  }
-
-  /** "새 프리셋" — save into the next empty slot under `name`, then apply → active deck (요구 2·4). */
-  async function handleSaveNew(name: string) {
-    const target = nextEmptySlot(slots);
-    if (target == null) throw new Error("빈 슬롯이 없습니다");
-    if (!snapshotSaveable(editor!.draft)) {
-      throw new Error(`선발 ${STARTER_COUNT}명을 채워야 저장할 수 있습니다`);
-    }
-    await saveTeamPreset.mutateAsync({ slot: target, body: editorToSaveRequest(editor!, name) });
-    await applyTeamPreset.mutateAsync(target); // active deck = 새 프리셋
-    setSelectedSlot(target);
-    setEditorName(name);
-    setBaseline(makeBaseline(editor!, name, target));
-    setSavedNote(true);
-    setServerError(null);
-  }
-
-  /** Actually load a slot: filled → snapshot into editor + apply to active deck; empty → target only. */
-  function performSelectSlot(slot: number) {
-    setSavedNote(false);
-    setSelectedSlot(slot);
-    const src = slotByNumber(slots, slot);
-    if (!src?.snapshot) return; // empty slot: just the target; keep current editor
-    const ed = snapshotToEditor(src.snapshot);
-    const name = src.name ?? `프리셋 ${slot}`;
-    setEditor(ed);
-    setEditorName(name);
-    setBaseline(makeBaseline(ed, name, slot));
-    setServerError(null);
-    applyTeamPreset.mutate(slot, {
-      onError: (err) => setServerErrorFrom(err, "프리셋 적용에 실패했습니다"),
-    });
-  }
-
-  /**
-   * Slot select entry (N1 데이터손실 방지): loading a FILLED slot replaces the editor, so when the
-   * current editor is dirty we route it through the same nav guard → confirm dialog (저장 후 전환 /
-   * 버리고 전환 / 취소). Selecting an EMPTY slot only sets the save target (no editor loss) → immediate.
-   */
-  function handleSelectSlot(slot: number) {
-    const src = slotByNumber(slots, slot);
-    if (!src?.snapshot) {
-      performSelectSlot(slot);
-      return;
-    }
-    runGuard(() => performSelectSlot(slot));
-  }
-
-  /** Inline rename of the selected filled slot (요구 2 이름 저장): re-save the SAVED snapshot under a
-   * new name (content unchanged), then sync the local name so dirty tracking stays consistent. */
-  async function handleRename(newName: string) {
-    if (selectedSlot == null) return;
-    const src = slotByNumber(slots, selectedSlot);
-    if (!src?.snapshot) return;
-    await saveTeamPreset.mutateAsync({
-      slot: selectedSlot,
-      body: editorToSaveRequest(snapshotToEditor(src.snapshot), newName),
-    });
-    setEditorName(newName);
-    setBaseline((b) => (b ? { ...b, name: newName } : b));
   }
 
   function handleDialogSave() {
@@ -296,8 +173,7 @@ export function DeckPage() {
     go?.();
   }
 
-  const saveDisabled =
-    busy || starterCount !== STARTER_COUNT || preIssues.length > 0;
+  const saveDisabled = busy || starterCount !== STARTER_COUNT || preIssues.length > 0;
 
   const header = (
     <div className={styles.headerRow}>
@@ -310,6 +186,11 @@ export function DeckPage() {
         ← 로비
       </button>
       <h1 className={styles.pageTitle}>덱 · 전술보드</h1>
+      {dirty && (
+        <span className={styles.dirtyBadge} data-testid="deck-dirty-badge">
+          미저장
+        </span>
+      )}
       <button
         type="button"
         className={styles.save}
@@ -324,71 +205,6 @@ export function DeckPage() {
 
   return (
     <Layout header={header} nav>
-      {/* ≥1024px: 페이지 전체를 DeckEditor 2컬럼(940px)과 같은 폭으로 정렬한다(W6b-1). */}
-      <div className={styles.page}>
-      <div className={styles.topGrid}>
-        <PresetSummary
-          slot={selectedSlotData}
-          playersById={playersById}
-          dirty={dirty}
-          busy={busy}
-          onRename={handleRename}
-        />
-
-        <SlotSelector
-          slots={slots}
-          selectedSlot={selectedSlot}
-          busy={busy}
-          saveable={saveable}
-          onSelect={handleSelectSlot}
-          onNew={handleSaveNew}
-        />
-      </div>
-
-      <TeamMoraleWidget relations={relations} />
-
-      <div className={styles.controlsRow}>
-      <div className={styles.formationRow}>
-        <label htmlFor="formation" className={styles.formationLabel}>
-          포메이션
-        </label>
-        <select
-          id="formation"
-          data-testid="formation-select"
-          className={styles.formationSelect}
-          value={draft.formation}
-          onChange={(e) => mutateEditor({ ...editor, draft: { ...draft, formation: e.target.value } })}
-        >
-          {Object.keys(FORMATION_LAYOUTS).map((f) => (
-            <option key={f} value={f}>
-              {f}
-            </option>
-          ))}
-        </select>
-        <span className={styles.starterCount} data-testid="starter-count">
-          선발 {starterCount}/{STARTER_COUNT}
-        </span>
-      </div>
-
-      {/* 요구 3 — Auto 구성: 보유 선수만으로 결정론적 최적 스쿼드 자동 구성(RNG·AI 콜 없음). */}
-      <div className={styles.autoRow}>
-        <button
-          type="button"
-          className={styles.autoBtn}
-          data-testid="auto-fill"
-          disabled={busy || !canAutoBuild(ownedPlayers)}
-          onClick={() => mutateEditor(autoBuildLineup(ownedPlayers))}
-        >
-          Auto 구성
-        </button>
-        <span className={styles.autoHint}>
-          {canAutoBuild(ownedPlayers)
-            ? "보유 선수로 최적 포메이션·선발·기본 지시를 자동 배치합니다"
-            : `보유 선수 부족 (${ownedPlayers.length}/${STARTER_COUNT})`}
-        </span>
-      </div>
-      </div>
-
       <DeckEditor
         state={editor}
         onChange={mutateEditor}
@@ -399,45 +215,38 @@ export function DeckPage() {
         relations={relations}
         conditions={conditions}
         errorPlayerId={serverError?.playerId ?? null}
-      />
-
-      {preIssues.length > 0 && (
-        <ul className={styles.issueList} data-testid="deck-pre-issues">
-          {preIssues.map((issue) => (
-            <li key={issue.rule + (issue.playerId ?? "")} className={styles.issue}>
-              {issue.message}
-            </li>
-          ))}
-        </ul>
-      )}
-      {serverError && (
-        <p className={styles.serverError} data-testid="deck-server-error">
-          저장 실패 [{serverError.rule}] {serverError.message}
-          {serverError.playerId && playersById.get(serverError.playerId)
-            ? ` — ${playersById.get(serverError.playerId)!.name}`
-            : ""}
-        </p>
-      )}
-      {savedNote && (
-        <p className={styles.savedNote} data-testid="deck-saved-note">
-          저장되었습니다
-        </p>
-      )}
-
-      {/* 프롬프트 프리셋 일괄 적용(AC-W2, phase1) — 팀 스냅샷과 별개의 선수-프롬프트 도구 */}
-      <PresetPanel
-        presets={promptPresets ?? []}
-        draft={draft}
-        playersById={playersById}
-        creating={createPreset.isPending}
-        onCreate={(name, promptText) =>
-          createPreset.mutateAsync({ name, promptText }).then(() => undefined)
-        }
-        onDelete={(id) => deletePreset.mutateAsync(id).then(() => undefined)}
-        onBulkApply={(playerIds, text) =>
-          mutateEditor({ ...editor, draft: bulkApplyPreset(draft, playerIds, text) })
+        onAuto={() => mutateEditor(autoBuildLineup(ownedPlayers))}
+        autoDisabled={busy || !canAutoBuild(ownedPlayers)}
+        autoHint={
+          canAutoBuild(ownedPlayers)
+            ? "보유 선수로 최적 포메이션·선발·기본 지시를 자동 배치합니다"
+            : `보유 선수 부족 (${ownedPlayers.length}/${STARTER_COUNT})`
         }
       />
+
+      <div className={styles.notes}>
+        {preIssues.length > 0 && (
+          <ul className={styles.issueList} data-testid="deck-pre-issues">
+            {preIssues.map((issue) => (
+              <li key={issue.rule + (issue.playerId ?? "")} className={styles.issue}>
+                {issue.message}
+              </li>
+            ))}
+          </ul>
+        )}
+        {serverError && (
+          <p className={styles.serverError} data-testid="deck-server-error">
+            저장 실패 [{serverError.rule}] {serverError.message}
+            {serverError.playerId && playersById.get(serverError.playerId)
+              ? ` — ${playersById.get(serverError.playerId)!.name}`
+              : ""}
+          </p>
+        )}
+        {savedNote && (
+          <p className={styles.savedNote} data-testid="deck-saved-note">
+            저장되었습니다
+          </p>
+        )}
       </div>
 
       {/* 미저장 이탈 확인(요구 5) — a11y 셸은 공통 Modal 재사용(포커스 트랩·Esc=취소·포커스 복원). */}

@@ -1,3 +1,7 @@
+/**
+ * ⚠️ 이슈 #106 R1 — 로그 탭의 [이 경기 세팅 보기] 진입점을 **내리면서** 이 다이얼로그도 렌더되지
+ * 않는다(삭제가 아니라 진입점 제거). 컴포넌트·단위테스트·서버 계약(userDeckSnapshot)은 존치.
+ */
 import { useMemo, useState } from "react";
 import { useMatch, usePlayers, type CatalogPlayer } from "../api/hooks";
 import { useSaveTeamPreset, useTeamPresets } from "../api/hooks-v2";
