@@ -28,6 +28,9 @@ hmb:
     league-file:  ../data/players/league.v1.json       # 리그 클럽명·페르소나·보상표(W3 소비, W1 로더만)
   auth:
     session-ttl-hours: 720
+    local:                           # P3 §A 자체 로그인(P3-D2) — 비번 평문 목업, 해시 전환은 백로그
+      password-min-length: 4         # 가입 검증 하한(하드코딩 금지 — config)
+      password-max-length: 64        # 상한(과대 입력 방어)
   deck:
     bench-max: 7
     player-prompt-max-chars: 500
@@ -67,6 +70,14 @@ hmb:
     internal-token: change-me      # /internal/* shared secret (AC-Q3)
     simulate-timeout-sec: 30       # LLD §5.3
     simulate-retries: 1            # LLD §5.3: 실패 1회 재시도 후 FAILED
+
+logging:
+  level:
+    # AC-A2 하드닝: 이 로거는 TRACE 에서 **SQL 바인딩 파라미터 값을 그대로** 찍는다
+    # ("Setting SQL statement parameter value: ... parameter value [...]") — users.password 가
+    # 평문인 P3-D2 동안에는 그게 곧 비번 유출이다. DEBUG 로 고정해 root 를 TRACE 로 올려도
+    # 파라미터 값이 로그에 나오지 않게 한다(명시 레벨이 root 보다 우선). 비번 해시 전환 시 해소.
+    org.springframework.jdbc.core.StatementCreatorUtils: DEBUG
 
 springdoc:
   api-docs:

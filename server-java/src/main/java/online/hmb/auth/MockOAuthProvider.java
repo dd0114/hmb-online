@@ -1,19 +1,10 @@
 package online.hmb.auth;
 
-import java.time.Instant;
 import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
-import online.hmb.catalog.EconomyService;
 import online.hmb.common.ApiException;
 import online.hmb.common.SqliteErrors;
-import online.hmb.common.TxRunner;
-import online.hmb.common.Ulid;
-import online.hmb.meta.WalletService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 /**
@@ -21,41 +12,30 @@ import org.springframework.stereotype.Component;
  * {@code mock:google} / {@code mock:apple} — 어느 경우든 닉네임으로 세션을 발급하고
  * {@code users.auth_provider} 에 provider 값을 기록한다(mock 동의 화면·닉네임 입력은 웹 목업).
  * 신규 닉네임이면 하나의 트랜잭션으로 users + wallets + 스타터 팩(user_players, economy starterPack)
- * + 원장('starter', ref=userId)을 생성한다(AC-S1).
+ * + 원장('starter', ref=userId)을 생성한다(AC-S1) — 온보딩 본체는
+ * {@link UserOnboardingService}(전 provider 공용 SoT)에 있다.
  *
  * <p><b>실 OAuth 교체 지점(AC-A2)</b>: 실제 구글/애플 연동이 필요하면 {@link AuthProvider} 를
- * 구현한 별도 클래스(예: {@code GoogleOAuthProvider})를 추가하고 이 빈을 교체하면 된다 —
- * {@link AuthController}/{@link SessionService}/온보딩 로직은 <b>불변</b>이다. 컨트롤러는
- * provider 값을 해석하지 않고 이 인터페이스에만 의존한다(AuthProviderSwapTest 로 증명).
+ * 구현한 별도 클래스(예: {@code GoogleOAuthProvider})를 추가하고 {@link DelegatingAuthProvider}
+ * 라우팅에 provider 값을 얹으면 된다 — {@link AuthController}/{@link SessionService}/온보딩 로직은
+ * <b>불변</b>이다. 컨트롤러는 provider 값을 해석하지 않고 이 인터페이스에만 의존한다
+ * (AuthProviderSwapTest 로 증명). 이 목업은 비밀번호를 다루지 않는다(비번은 {@link LocalAuthProvider}
+ * 전용이며 평문 저장은 P3-D2 의 임시 목업 — 해시 전환은 백로그).
  */
 @Component
 public class MockOAuthProvider implements AuthProvider {
 
-    private static final Logger log = LoggerFactory.getLogger(MockOAuthProvider.class);
-    private static final Pattern NICKNAME_PATTERN = Pattern.compile("^[\\p{L}\\p{N}_-]{2,16}$");
-
     /** 지원 provider (P2-D1). 실 OAuth 구현체는 이 목록 밖의 값을 자기 방식으로 처리한다. */
     static final Set<String> SUPPORTED_PROVIDERS = Set.of("guest", "mock:google", "mock:apple");
 
-    /** 원장 사유 — ERD point_ledger.reason 주석의 열거값. */
-    static final String LEDGER_REASON_STARTER = "starter";
+    private final UserOnboardingService onboarding;
+    private final AccountLookup accounts;
+    private final CredentialGate gate;
 
-    private final JdbcClient jdbcClient;
-    private final TxRunner txRunner;
-    private final EconomyService economyService;
-    private final WalletService walletService;
-    private final online.hmb.match.RelationService relationService;
-
-    public MockOAuthProvider(JdbcClient jdbcClient,
-                             TxRunner txRunner,
-                             EconomyService economyService,
-                             WalletService walletService,
-                             online.hmb.match.RelationService relationService) {
-        this.jdbcClient = jdbcClient;
-        this.txRunner = txRunner;
-        this.economyService = economyService;
-        this.walletService = walletService;
-        this.relationService = relationService;
+    public MockOAuthProvider(UserOnboardingService onboarding, AccountLookup accounts, CredentialGate gate) {
+        this.onboarding = onboarding;
+        this.accounts = accounts;
+        this.gate = gate;
     }
 
     @Override
@@ -67,90 +47,37 @@ public class MockOAuthProvider implements AuthProvider {
         }
 
         String nickname = request == null ? null : request.nickname();
-        if (nickname == null || !NICKNAME_PATTERN.matcher(nickname).matches()) {
-            throw ApiException.validation("닉네임은 2~16자의 문자/숫자/_/-만 허용됩니다");
+        if (!Nicknames.isValid(nickname)) {
+            throw ApiException.validation(Nicknames.RULE_MESSAGE);
         }
 
-        Optional<String> existingId = jdbcClient.sql("SELECT id FROM users WHERE nickname = ?")
-                .param(nickname)
-                .query(String.class)
-                .optional();
-
-        if (existingId.isPresent()) {
+        Optional<AccountLookup.Account> existing = accounts.findByNickname(nickname);
+        if (existing.isPresent()) {
             // 기존 유저 재로그인 — auth_provider 는 최초 가입 값 유지(재기록 안 함).
-            return new AuthResult(existingId.get(), nickname, false);
+            // 자격 검사는 CredentialGate 가 한다(비번 걸린 계정이면 401): P3-D2 는 해시를 유예할 뿐
+            // 자격 검사를 유예하지 않으며, local 계정은 목업 provider 로 우회 로그인될 수 없다.
+            return gate.acceptExistingWithoutCredentials(existing.get(), nickname);
         }
 
         try {
-            return createNewUser(nickname, provider);
+            // 비번 없는 계정(users.password NULL) — local 로그인 대상이 아니다.
+            UserOnboardingService.OnboardingResult result = onboarding.createUser(nickname, provider, null);
+            // sealed 타입이라 두 경우를 모두 다뤄야 한다. 경합에서 졌으면(다른 요청이 먼저 커밋)
+            // 기존 계정 수용은 반드시 관문을 거친다 — 예전엔 이 경로가 검사 없이 통과했다.
+            if (result instanceof UserOnboardingService.OnboardingResult.Created created) {
+                return new AuthResult(created.userId(), nickname, true);
+            }
+            AccountLookup.Account raced =
+                    ((UserOnboardingService.OnboardingResult.AlreadyExists) result).account();
+            return gate.acceptExistingWithoutCredentials(raced, nickname);
         } catch (DataAccessException e) {
             // 동시 첫 로그인 경합: 다른 요청이 먼저 같은 닉네임을 커밋한 경우(users.nickname
             // UNIQUE 위반, tx 전체 롤백됨) → 기존 유저 재조회로 로그인 처리 (W1 이월사항 c)
             if (!SqliteErrors.isUniqueViolation(e)) {
                 throw e;
             }
-            String racedId = jdbcClient.sql("SELECT id FROM users WHERE nickname = ?")
-                    .param(nickname)
-                    .query(String.class)
-                    .optional()
-                    .orElseThrow(() -> e);
-            return new AuthResult(racedId, nickname, false);
+            AccountLookup.Account raced = accounts.findByNickname(nickname).orElseThrow(() -> e);
+            return gate.acceptExistingWithoutCredentials(raced, nickname);
         }
-    }
-
-    private AuthResult createNewUser(String nickname, String provider) {
-        return txRunner.run(() -> {
-            // 동시 로그인 경합 대비: 트랜잭션 안에서 재확인.
-            Optional<String> raced = jdbcClient.sql("SELECT id FROM users WHERE nickname = ?")
-                    .param(nickname)
-                    .query(String.class)
-                    .optional();
-            if (raced.isPresent()) {
-                return new AuthResult(raced.get(), nickname, false);
-            }
-
-            String userId = Ulid.next();
-            String now = Instant.now().toString();
-
-            jdbcClient.sql("INSERT INTO users(id, nickname, auth_provider, created_at) VALUES (?, ?, ?, ?)")
-                    .params(userId, nickname, provider, now)
-                    .update();
-
-            jdbcClient.sql("INSERT INTO wallets(user_id, points) VALUES (?, 0)")
-                    .param(userId)
-                    .update();
-
-            grantStarterPack(userId, now);
-
-            // AC-C4: 관계 초기화(team_morale + 보유 선수 신뢰도 기본 행) — 스타터 팩 지급 직후 같은 tx.
-            relationService.initForUser(userId);
-
-            return new AuthResult(userId, nickname, true);
-        });
-    }
-
-    /**
-     * 스타터 팩 지급 — 신규 유저 생성 트랜잭션의 일부(같은 tx, 실패 시 전체 롤백).
-     * 수치·구성은 economy.v1.json에서만 온다(AC-S5). 원장 ref=userId라 재실행돼도 멱등
-     * (기존 유저 재로그인은 이 경로에 오지도 않는다 — isNew 분기).
-     */
-    private void grantStarterPack(String userId, String now) {
-        Optional<EconomyService.Economy> economyOpt = economyService.get();
-        if (economyOpt.isEmpty()) {
-            log.warn("economy config unavailable — user {} created WITHOUT starter pack", userId);
-            return;
-        }
-        EconomyService.Economy economy = economyOpt.get();
-
-        for (String playerId : economy.starterPack()) {
-            jdbcClient.sql("""
-                            INSERT OR IGNORE INTO user_players(user_id, player_id, count, acquired_at)
-                            VALUES (?, ?, 1, ?)
-                            """)
-                    .params(userId, playerId, now)
-                    .update();
-        }
-
-        walletService.apply(userId, economy.initialPoints(), LEDGER_REASON_STARTER, userId);
     }
 }
