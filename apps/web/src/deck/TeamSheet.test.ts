@@ -393,7 +393,12 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
     expect(get().tactics.tempo).toBe(0.5);
   });
 
-  it("서버에서 온 중간값(0.6)도 가장 가까운 스텝으로 표시된다(값 자체는 유지)", () => {
+  /**
+   * R3a m2 — 이 테스트는 원래 "0.6 도 가장 가까운 스텝(보통)이 **눌린 것으로** 표시된다"를 박제했는데,
+   * 그게 곧 팀 레이어의 표시(0.5)≠전송(0.6) 이었다. 계약을 정직한 표기로 갱신한다:
+   * 눌림이 아니라 **근사 표시**(aria-pressed=mixed + 실제 값 배지), 값은 그대로 0.6.
+   */
+  it("서버에서 온 중간값(0.6)은 눌림이 아니라 근사로 표시되고 실제 값을 노출한다", () => {
     render(
       h(function Wrap() {
         const [state, setState] = useState<EditorState>({
@@ -411,8 +416,15 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
         });
       }),
     );
-    expect(screen.getByTestId("tactics-line-step-2").getAttribute("aria-pressed")).toBe("true");
+    // 표시 = 전송: 어느 스텝도 "눌림"이 아니고, 가장 가까운 스텝은 근사(mixed)로만 표시된다
+    expect(screen.getByTestId("tactics-line-step-2").getAttribute("aria-pressed")).toBe("mixed");
+    expect(screen.getByTestId("tactics-line").getAttribute("data-approx")).toBe("true");
+    expect(screen.getByTestId("tactics-line-approx").textContent).toContain("0.6");
+    // 값 자체는 사용자가 누르기 전까지 그대로다(정규화 금지)
     expect(screen.getByTestId("tactics-line").getAttribute("data-value")).toBe("0.6");
+    // 정확한 스텝값인 다른 축은 근사 표시가 없다(잡음 금지)
+    expect(screen.getByTestId("tactics-press").getAttribute("data-approx")).toBe("false");
+    expect(screen.queryByTestId("tactics-press-approx")).toBeNull();
   });
 
   it("AI에 맡기기면 스텝이 비활성화된다", () => {

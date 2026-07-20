@@ -382,3 +382,265 @@ test("R1 반응형: 390 / 1024 / 1280px 가로 오버플로 0", async ({ page })
   });
   expect(geom.railLeft).toBeGreaterThanOrEqual(geom.boardRight - 1);
 });
+
+/**
+ * ── R3a m1 (데이터 손실) ───────────────────────────────────────────────────────────────────
+ * 감독의 한마디에 **카탈로그와 똑같은 문장**을 쓰면(우연 일치) 재진입 때 칩으로 인식된다 —
+ * 저장 포맷이 단일 문자열(서버 계약)이라 문자열만으로는 구별이 불가능해서 이건 못 없앤다.
+ * 계약은 그래서 "칩을 꺼도 **유저 문장이 소리 없이 사라지지 않는다**": 사라진 문장을 보여주고
+ * 한 번에 되돌릴 수 있어야 하며, 되돌리면 저장 문자열이 **글자 단위로** 원복돼야 한다.
+ */
+test("R3a m1: 우연히 카탈로그와 같은 한마디 → 재진입 → 칩 끄기 → 문장이 사라지지 않는다", async ({ page }) => {
+  mkdirSync(SMOKE_DIR, { recursive: true });
+  const puts: DeckPut[] = [];
+  await mockApi(page, seededDeck(), puts);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openDeck(page);
+
+  const typed = "높은 위치에서 강하게 압박한다.";
+  await page.getByTestId("token-FW2").click();
+  await page.getByTestId("rail-prompt-input").fill(typed);
+  await expect(page.getByTestId("rail-compose-own")).toHaveText(typed);
+  await page.getByTestId("save-deck").click();
+  await expect(page.getByTestId("deck-saved-note")).toBeVisible();
+  expect(puts[0]!.slots.find((s) => s.playerId === "FW2")!.promptText).toBe(typed);
+
+  // 재진입(새로고침) — 문자열만 보고는 구별 불가라 압박 칩이 켜진 채 복원된다(불가피).
+  await page.reload();
+  await expect(page.getByTestId("deck-editor")).toBeVisible();
+  await page.getByTestId("token-FW2").click();
+  await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("rail-prompt-input")).toHaveValue("");
+
+  // 칩을 끄면 → 그 문장이 **즉시 감독의 한마디로 이동**한다(사후 복구 버튼 없음 = 놓칠 경로 없음)
+  await page.getByTestId("rail-chip-press").click();
+  await expect(page.getByTestId("rail-moved")).toBeVisible();
+  await expect(page.getByTestId("rail-moved-phrase")).toContainText("높은 위치에서 강하게 압박한다");
+  await page.screenshot({ path: `${SMOKE_DIR}r3a-m1-dropped-1280.png`, fullPage: true });
+
+  await expect(page.getByTestId("rail-prompt-input")).toHaveValue(typed);
+  await expect(page.getByTestId("rail-compose-own")).toHaveText(typed);
+  await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "false");
+
+  // 저장 문자열이 글자 단위로 원복된다(왕복 무손실)
+  await page.getByTestId("save-deck").click();
+  await expect(page.getByTestId("deck-saved-note")).toBeVisible();
+  const sent = puts[puts.length - 1]!.slots.find((s) => s.playerId === "FW2")!.promptText;
+  console.log(`[smoke] m1 restored promptText = ${JSON.stringify(sent)}`);
+  expect(sent).toBe(typed);
+});
+
+test("R3a m1: 이번 세션에 직접 켠 칩을 끄는 건 안내를 띄우지 않는다(잡음 금지)", async ({ page }) => {
+  await mockApi(page, seededDeck());
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openDeck(page);
+
+  await page.getByTestId("token-FW2").click();
+  await page.getByTestId("rail-chip-press").click();
+  await expect(page.getByTestId("rail-compose-directive")).toContainText("압박");
+  await page.getByTestId("rail-chip-press").click();
+  await expect(page.getByTestId("rail-moved")).toHaveCount(0);
+  await expect(page.getByTestId("rail-compose-empty")).toBeVisible();
+});
+
+/**
+ * ── R3a r2/m5 (모바일 마감) ───────────────────────────────────────────────────────────────
+ * 390 에서 펼친 독은 화면 절반을 덮는다. **판정 기준 두 가지**를 브라우저 실물로 박제한다:
+ *   ① 지시를 쓰는 동안 "지금 누구에게 쓰는지" 를 알 수 있다 — 레일 헤드 신원 + 보드의 그 토큰이
+ *      실제로 **가려지지 않는다**(독을 펼칠 때 가시 띠로 오토스크롤).
+ *   ② A안의 핵심 전달물 `AI에 전달될 지시문` 두 줄에 **추가 스크롤 없이** 도달한다
+ *      (독 스크롤러 바닥 sticky).
+ * 가림 여부는 좌표가 아니라 `elementFromPoint` 히트테스트로 본다(자동 스크롤이 가림을 숨기지 못하게).
+ */
+test("R3a r2/m5: 390 펼친 독 — 대상 식별 + `AI에 전달될 지시문` 도달(스크롤 없이)", async ({ page }) => {
+  mkdirSync(SMOKE_DIR, { recursive: true });
+  await mockApi(page, seededDeck());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDeck(page);
+
+  const hit = (testId: string) =>
+    page.evaluate((id) => {
+      const el = document.querySelector(`[data-testid="${id}"]`);
+      if (!el) return { found: false, isSelf: false, top: 0, bottom: 0 };
+      const r = el.getBoundingClientRect();
+      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return { found: true, isSelf: at?.closest(`[data-testid="${id}"]`) != null, top: r.top, bottom: r.bottom };
+    }, testId);
+
+  for (const [playerId, name] of [["GK1", "골리원"], ["MF1", "미드하나"], ["FW1", "공격하나"]] as const) {
+    await page.getByTestId(`token-${playerId}`).click();
+    await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "true");
+    await expect(page.getByTestId("rail-title")).toHaveText(name);
+    await page.waitForTimeout(150);
+
+    // ① 누구에게 쓰는지: 레일 헤드(위)뿐 아니라 보드의 그 토큰이 실제로 보인다
+    const token = await hit(`token-${playerId}`);
+    console.log(`[smoke] ${playerId} token visible=${token.isSelf} top=${token.top.toFixed(0)}`);
+    expect(token.isSelf, `${playerId} 토큰이 펼친 독/시트 바에 가려 대상이 안 보인다`).toBe(true);
+
+    // ② 미리보기 도달: 두 줄이 있는 상태로 만들고 히트테스트(독 안 추가 스크롤 없이)
+    await page.getByTestId("rail-chip-press").click();
+    await page.getByTestId("rail-prompt-input").fill("오늘 너만 믿는다");
+    const cap = await hit("rail-compose");
+    const own = await hit("rail-compose-own");
+    console.log(`[smoke] ${playerId} compose visible=${cap.isSelf} own=${own.isSelf} top=${cap.top.toFixed(0)}`);
+    expect(cap.isSelf, "`AI에 전달될 지시문` 블록이 독 fold 아래에 묻혔다").toBe(true);
+    expect(own.isSelf, "내가 쓴 문장 줄에 스크롤 없이 도달하지 못한다").toBe(true);
+
+    await page.getByTestId("rail-close").click(); // 다음 선수로 (토큰↔토큰 탭은 자리 교체라 해제 먼저)
+  }
+  // 접고 → 리스트까지 스크롤 → 다시 펼치는 실사용 경로에서도 대상 토큰을 되찾아온다
+  await page.getByTestId("token-MF1").click();
+  await page.getByTestId("rail-dock-toggle").click(); // 접기
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(150);
+  const hidden = await hit("token-MF1");
+  console.log(`[smoke] 스크롤 후(접힘) MF1 보임=${hidden.isSelf} top=${hidden.top.toFixed(0)}`);
+  await page.getByTestId("rail-dock-toggle").click(); // 다시 펼치기 → 오토스크롤
+  await page.waitForTimeout(200);
+  const regained = await hit("token-MF1");
+  console.log(`[smoke] 재펼침 후 MF1 보임=${regained.isSelf} top=${regained.top.toFixed(0)}`);
+  expect(regained.isSelf, "독을 다시 펼쳤을 때 대상 토큰이 화면에 없다").toBe(true);
+  await page.screenshot({ path: `${SMOKE_DIR}r3a-dock-390.png` });
+});
+
+/**
+ * R3a m6/m7 — 펼친 독의 문서 런웨이를 60vh 고정치에서 **실측치**로 바꾼 효과.
+ * (착수 시점 실측: 최대 스크롤 죽은 띠 175px / 접힘 점프 507px.)
+ */
+test("R3a m6/m7: 펼친 독 최대 스크롤 죽은 띠 축소 + 접힘 점프 축소", async ({ page }) => {
+  await mockApi(page, seededDeck());
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDeck(page);
+
+  await page.getByTestId("token-MF1").click();
+  await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "true");
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(200);
+
+  const gap = await page.evaluate(() => {
+    const dock = document.querySelector('[data-testid="rail-dock"]')!.getBoundingClientRect();
+    const pool = document.querySelector('[data-testid="player-pool"]')!.getBoundingClientRect();
+    return dock.top - pool.bottom;
+  });
+  console.log(`[smoke] m6 펼친 독 최대 스크롤 죽은 띠 = ${gap.toFixed(1)}px (착수 시점 175.4)`);
+  expect(gap, "리스트가 펼친 독에 가려지면 안 된다").toBeGreaterThanOrEqual(0);
+  expect(gap, "펼친 독 최대 스크롤의 죽은 띠").toBeLessThanOrEqual(24);
+
+  const before = await page.evaluate(() => window.scrollY);
+  await page.getByTestId("rail-dock-toggle").click();
+  await page.waitForTimeout(250);
+  const after = await page.evaluate(() => window.scrollY);
+  console.log(`[smoke] m7 접힘 점프 = ${before - after}px (착수 시점 507)`);
+  expect(before - after, "접을 때 스크롤 점프").toBeLessThan(400);
+});
+
+/** m1 안내는 **폰에서도 보여야** 한다(데이터는 이미 안전하지만, 무슨 일이 있었는지 알려야 한다). */
+test("R3a m1 × 모바일: 390 에서 문장이 한마디로 옮겨지고 안내가 독 안에 보인다", async ({ page }) => {
+  const seeded = seededDeck().map((s) =>
+    s.playerId === "MF1" ? { ...s, promptText: "높은 위치에서 강하게 압박한다." } : s,
+  );
+  await mockApi(page, seeded);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await openDeck(page);
+
+  await page.getByTestId("token-MF1").click();
+  await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "true");
+  await page.getByTestId("rail-chip-press").click();
+  await page.waitForTimeout(200);
+
+  const hit = await page.evaluate(() => {
+    const r = document.querySelector('[data-testid="rail-moved"]')!.getBoundingClientRect();
+    const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { isSelf: at?.closest('[data-testid="rail-moved"]') != null, top: r.top };
+  });
+  console.log(`[smoke] m1 모바일 안내 보임=${hit.isSelf} top=${hit.top.toFixed(0)}`);
+  expect(hit.isSelf, "안내가 독 fold 아래에 묻혔다").toBe(true);
+  await page.screenshot({ path: `${SMOKE_DIR}r3a-m1-dropped-390.png` });
+
+  await expect(page.getByTestId("rail-prompt-input")).toHaveValue("높은 위치에서 강하게 압박한다.");
+  await expect(page.getByTestId("rail-compose-own")).toHaveText("높은 위치에서 강하게 압박한다.");
+});
+
+/**
+ * ── R3a 재검증 blocker-1 재현 (브라우저 실물) ──────────────────────────────────────────────
+ * 검증자 실측: 저장값 `"공격 가담을 늘려 전진한다. 수비에 집중해 위치를 지킨다."` 로 재진입해
+ * 한마디에 한 글자만 쳐도 PUT 이 `"수비에 집중해 위치를 지킨다.\nㅇ"` 이 됐다 — 첫 문장이
+ * **파싱 시점에** 사라져 안내 경로조차 타지 않았다. 왕복 검증 파싱으로 구조적으로 막았다.
+ */
+test("R3a blocker-1: 재구성 불가한 저장 문자열도 편집 후 PUT 에 원문이 전부 남는다", async ({ page }) => {
+  const CASES = [
+    { id: "MF1", saved: "공격 가담을 늘려 전진한다. 수비에 집중해 위치를 지킨다." }, // 역할 2개
+    { id: "FW1", saved: "높은 위치에서 강하게 압박한다. 높은 위치에서 강하게 압박한다." }, // 중복 문구
+  ];
+  const puts: DeckPut[] = [];
+  await mockApi(
+    page,
+    seededDeck().map((s) => {
+      const hit = CASES.find((c) => c.id === s.playerId);
+      return hit ? { ...s, promptText: hit.saved } : s;
+    }),
+    puts,
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openDeck(page);
+
+  for (const c of CASES) {
+    await page.getByTestId(`token-${c.id}`).click();
+    // 미리보기가 이미 저장값과 같아야 한다(파싱이 문장을 삼키면 여기서부터 어긋난다)
+    await expect(page.getByTestId("rail-compose-own")).toHaveText(c.saved);
+    await expect(page.getByTestId("rail-prompt-input")).toHaveValue(c.saved);
+    await page.getByTestId("rail-prompt-input").fill(`${c.saved}\nㅇ`);
+    await page.getByTestId("rail-close").click();
+  }
+  await page.getByTestId("save-deck").click();
+  await expect(page.getByTestId("deck-saved-note")).toBeVisible();
+
+  for (const c of CASES) {
+    const sent = puts[puts.length - 1]!.slots.find((s) => s.playerId === c.id)!.promptText!;
+    console.log(`[smoke] blocker-1 ${c.id} PUT = ${JSON.stringify(sent)}`);
+    expect(sent, `${c.id}: 저장 문장이 소실됐다`).toBe(`${c.saved}\nㅇ`);
+  }
+});
+
+/**
+ * ── R3a 재검증 blocker-2 재현 (브라우저 실물) ──────────────────────────────────────────────
+ * 연속 해제(안내 덮어쓰기) + 안내 미소비 이탈(레일 닫고 복귀) 두 경로 모두에서 문장이 남아야 한다.
+ */
+test("R3a blocker-2: 연속 해제 + 안내 미소비 이탈에도 두 문장이 모두 남는다", async ({ page }) => {
+  const saved = "상대 핵심 선수를 밀착 마크한다. 높은 위치에서 강하게 압박한다.";
+  const puts: DeckPut[] = [];
+  await mockApi(
+    page,
+    seededDeck().map((s) => (s.playerId === "MF1" ? { ...s, promptText: saved } : s)),
+    puts,
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openDeck(page);
+
+  await page.getByTestId("token-MF1").click();
+  await expect(page.getByTestId("rail-chip-marking")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "true");
+
+  // 칩 2개 연달아 끄기 — 안내를 소비하지 않는다
+  await page.getByTestId("rail-chip-marking").click();
+  await page.getByTestId("rail-chip-press").click();
+  // 안내 소비 없이 이탈 후 복귀
+  await page.getByTestId("rail-close").click();
+  await page.getByTestId("token-MF1").click();
+
+  // 복귀하면 저장 문자열을 다시 두 레이어로 가른다(왕복 검증을 통과하는 형태면 칩으로 되돌아갈 수
+  // 있다 — **손실이 아니다**). 판정은 "화면에 보이는 전문 = 저장값에 두 문장이 다 있는가"로 한다.
+  const composed = (await page.getByTestId("rail-compose").textContent())!;
+  const value = await page.getByTestId("rail-prompt-input").inputValue();
+  console.log(`[smoke] blocker-2 한마디=${JSON.stringify(value)} 미리보기=${JSON.stringify(composed)}`);
+  expect(composed).toContain("상대 핵심 선수를 밀착 마크한다");
+  expect(composed).toContain("높은 위치에서 강하게 압박한다");
+
+  await page.getByTestId("save-deck").click();
+  await expect(page.getByTestId("deck-saved-note")).toBeVisible();
+  const sent = puts[puts.length - 1]!.slots.find((s) => s.playerId === "MF1")!.promptText!;
+  console.log(`[smoke] blocker-2 PUT = ${JSON.stringify(sent)}`);
+  expect(sent).toContain("상대 핵심 선수를 밀착 마크한다");
+  expect(sent).toContain("높은 위치에서 강하게 압박한다");
+});

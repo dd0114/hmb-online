@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   closestCenter,
   DndContext,
@@ -23,6 +23,7 @@ import {
   type SlotRef,
 } from "./TacticsBoard";
 import { autoFilterFor, NO_SELECTION, tapPoolPlayer, tapSlot, type TapSelection } from "./tap-place";
+import { runwayPx, scrollDeltaForToken } from "./dock-geometry";
 import { TeamSheetBar } from "./TeamSheetBar";
 import { DirectiveRail } from "./DirectiveRail";
 import { PlayerPicker } from "./PlayerPicker";
@@ -88,6 +89,80 @@ export function DeckEditor(props: DeckEditorProps) {
   const [selection, setSelection] = useState<TapSelection>(NO_SELECTION);
   /** 모바일 하단 독 펼침 상태 (데스크탑은 항상 펼침). */
   const [dockOpen, setDockOpen] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLElement>(null);
+
+  /**
+   * 모바일 독을 펼칠 때의 두 가지 보정 (#106 R3a r2·m6/m7) — 계산은 `dock-geometry`(순수).
+   *
+   *   ① **런웨이 실측**: 펼친 독이 덮은 만큼만 문서를 늘린다. 예전엔 `padding-bottom:60vh` 고정치라
+   *      최대 스크롤에서 죽은 띠(실측 175px)가 남고 접을 때 507px 튀었다. (CSS 폴백은 60vh 유지 —
+   *      JS 가 못 돌아도 보드 하단 바가 독에 갇히지 않는다: R2 blocker-1 계약.)
+   *   ② **선택 토큰 오토스크롤**: 독이 화면 절반을 덮어도 "지금 누구에게 쓰는지"가 보이도록
+   *      시트 바와 독 사이 가시 띠로 그 토큰을 끌어올린다.
+   */
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    const rail = railRef.current;
+    if (!sheet || !rail) return;
+    // jsdom 등 matchMedia 가 없는 환경에서도 죽지 않게(폭으로 폴백).
+    const mobile =
+      typeof window.matchMedia === "function"
+        ? window.matchMedia("(max-width: 1023px)").matches
+        : window.innerWidth <= 1023;
+    if (!dockOpen || !mobile) {
+      sheet.style.removeProperty("--dock-runway");
+      return;
+    }
+    /** 런웨이 재측정 — 문서 높이가 변하면(리스트 필터·선수 추가) 다시 부른다(stale 방지). */
+    const measure = () => {
+      // 측정 중 문서가 잠깐 짧아지면 브라우저가 스크롤을 잘라버린다(선수 전환 시 화면이 튄다) →
+      // 앞뒤로 스크롤 위치를 복원한다.
+      const keepY = window.scrollY;
+      sheet.style.setProperty("--dock-runway", "0px"); // 런웨이 없는 상태의 뒷여백을 먼저 잰다
+      const dockTop = rail.getBoundingClientRect().top;
+      const trailingHeight =
+        document.documentElement.scrollHeight - (sheet.getBoundingClientRect().bottom + window.scrollY);
+      sheet.style.setProperty(
+        "--dock-runway",
+        `${runwayPx({ innerHeight: window.innerHeight, dockTop, trailingHeight })}px`,
+      );
+      if (window.scrollY !== keepY) window.scrollTo({ top: keepY, behavior: "auto" });
+    };
+    measure();
+
+    // 독이 열린 동안 문서 높이가 바뀌면 런웨이가 낡는다(필터로 리스트가 줄거나 블록이 늘 때).
+    // 자기 자신이 만든 padding 변화로 되먹임하지 않도록 **런웨이를 뺀 높이**가 바뀔 때만 다시 잰다.
+    let lastContent = -1;
+    const ro =
+      typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => {
+            const runway = parseFloat(sheet.style.getPropertyValue("--dock-runway")) || 0;
+            const content = Math.round(document.documentElement.scrollHeight - runway);
+            if (Math.abs(content - lastContent) <= 2) return;
+            lastContent = content;
+            measure();
+          })
+        : null;
+    ro?.observe(document.body);
+
+    const token = selection.playerId
+      ? document.querySelector(`[data-testid="token-${selection.playerId}"]`)
+      : null;
+    if (token) {
+      const t = token.getBoundingClientRect();
+      const headerBottom =
+        document.querySelector('[data-testid="team-sheet-bar"]')?.getBoundingClientRect().bottom ?? 0;
+      const delta = scrollDeltaForToken({
+        tokenTop: t.top,
+        tokenBottom: t.bottom,
+        dockTop: rail.getBoundingClientRect().top,
+        headerBottom,
+      });
+      if (delta !== 0) window.scrollBy({ top: delta, behavior: "auto" });
+    }
+    return () => ro?.disconnect();
+  }, [dockOpen, selection.playerId]);
 
   // Single DndContext spans the board slots + bench (token sources) AND the owned-player pool list.
   // MouseSensor(터치 아님) + TouchSensor 로 분리한다 — PointerSensor 를 쓰면 터치에서도
@@ -166,6 +241,7 @@ export function DeckEditor(props: DeckEditorProps) {
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <div
+        ref={sheetRef}
         className={dockOpen ? `${styles.sheet} ${styles.sheetDockOpen}` : styles.sheet}
         data-testid="deck-editor"
         data-dock-open={dockOpen ? "true" : "false"}
@@ -283,7 +359,7 @@ export function DeckEditor(props: DeckEditorProps) {
           </section>
 
           {/* ③ 컨텍스트 지시 레일 (데스크탑=우측 고정 컬럼 / 모바일=하단 독) */}
-          <section className={styles.railCol} data-testid="rail-dock" data-open={dockOpen ? "true" : "false"}>
+          <section ref={railRef} className={styles.railCol} data-testid="rail-dock" data-open={dockOpen ? "true" : "false"}>
             <button
               type="button"
               className={styles.grab}

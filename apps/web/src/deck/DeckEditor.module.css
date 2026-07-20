@@ -23,7 +23,12 @@
  */
 @media (max-width: 1023px) {
   .sheetDockOpen {
-    padding-bottom: 60vh;
+    /*
+     * R3a m6/m7: 60vh 고정치는 필요보다 커서 최대 스크롤에 죽은 띠(실측 175px)를 남기고 접을 때
+     * 507px 튀었다. DeckEditor 가 **실측**해 `--dock-runway` 로 덮은 만큼만 넣는다(dock-geometry).
+     * 폴백은 그대로 60vh — JS 가 못 돌아도 R2 blocker-1(보드 하단 바가 독에 갇히지 않는다)은 지킨다.
+     */
+    padding-bottom: var(--dock-runway, 60vh);
   }
 }
 
@@ -151,6 +156,29 @@
 .railCol[data-open="true"] [data-rail-body] {
   max-height: 42vh;
   overflow-y: auto;
+}
+
+/*
+ * R3a m5: 폰에서 A안의 **핵심 전달물**(`AI에 전달될 지시문`)이 독 fold 아래로 밀려, 그걸 보려면
+ * 독 안을 또 스크롤해야 했다 — "무엇이 AI에게 가는지"가 이 화면의 존재 이유인데 기본 상태에서
+ * 안 보이면 A안이 전달되지 않는다. 독 스크롤러 **바닥에 고정**해 항상 보이게 한다
+ * (역할/칩/한마디는 그 위에서 스크롤). 데스크탑은 레일이 통짜라 그대로 흐른다.
+ */
+@media (max-width: 1023px) {
+  .railCol[data-open="true"] [data-testid="rail-compose"] {
+    position: sticky;
+    bottom: -12px; /* 스크롤러의 아래 패딩(12px)까지 덮어 뒤 문장이 비쳐 보이지 않게 */
+    z-index: 1;
+    /* flex 자식이라 `overflow:auto` 를 주는 순간 min-height:auto 가 풀려 납작하게 눌린다
+       (실측: 높이 32px 로 찌그러지고 두 줄이 독 밖으로 새어나갔다) → 수축 금지. */
+    flex: 0 0 auto;
+    margin-bottom: -12px;
+    padding-bottom: 21px;
+    max-height: 34vh;
+    overflow-y: auto;
+    background: var(--bg);
+    box-shadow: 0 -8px 12px -8px rgba(0, 0, 0, 0.55);
+  }
 }
 
 /*

@@ -340,3 +340,67 @@
   padding: 4px 10px;
   min-height: 30px;
 }
+
+/* ── m2: 단계 사이 값(서버/프리셋 유입)은 **눌림이 아니라 근사**로 그린다 (#106 R3a) ──
+   채움(=내가 고른 단계)과 헷갈리지 않게 점선 테두리 + 틴트만. 실제 값은 아래 배지가 말한다. */
+.stepApprox {
+  border-style: dashed !important;
+  border-color: var(--accent) !important;
+  color: var(--text) !important;
+  background: rgba(79, 140, 255, 0.1) !important;
+  font-weight: 600;
+}
+.approxNote {
+  grid-column: 2;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── m1: 사라진(사라질 뻔한) 내 문장 복구 제안 (#106 R3a) ──
+   조용한 삭제 대신 **문장을 그대로 보여주고** 한 번에 되돌린다. */
+.recover {
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(79, 140, 255, 0.08);
+  padding: 9px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.recoverText {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.recoverText b {
+  color: var(--text);
+  font-weight: 600;
+}
+.recoverActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.recoverBtn {
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  min-height: 34px;
+}
+.recoverDismiss {
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 8px;
+  min-height: 34px;
+}

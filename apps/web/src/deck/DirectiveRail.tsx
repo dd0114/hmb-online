@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CatalogPlayer } from "../api/hooks";
 import type { Personality, TeamTactics } from "../api/v2";
 import { PersonalityBadge, TrustGauge } from "../common/RelationBits";
@@ -9,11 +9,13 @@ import {
   DIRECTIVE_CHIPS,
   parseDirectiveText,
   ROLE_OPTIONS,
-  toggleChip,
+  setRoleSafely,
+  toggleChipSafely,
+  type DirectiveEditResult,
   type DirectiveState,
 } from "./directives";
 import { TACTICS_KEYS, TACTICS_LABELS } from "./tactics-logic";
-import { STEP_LABELS, stepAriaLabel, stepIndexOf, valueOfStep } from "./tactics-steps";
+import { STEP_LABELS, stepAriaLabel, stepDisplayOf, valueOfStep } from "./tactics-steps";
 import styles from "./DirectiveRail.module.css";
 
 export interface DirectiveRailProps {
@@ -105,7 +107,10 @@ function TeamContext(props: DirectiveRailProps) {
               `tactics-{key}` testid 는 그룹으로 유지하고 실제 값은 data-value 로 노출한다. */}
           <div className={aiManaged ? styles.dialsDisabled : undefined} aria-disabled={aiManaged}>
             {TACTICS_KEYS.map((key) => {
-              const active = stepIndexOf(tactics[key]);
+              // m2: 서버/프리셋에서 온 중간값(예: 0.6)을 "보통"(=0.5)이 눌린 것처럼 그리면
+              // 팀 레이어에서 표시≠전송이 된다. 근사일 때는 눌림이 아니라 **근사 표시**로 그리고
+              // 실제 전송값을 배지로 노출한다(값은 사용자가 스텝을 누를 때만 바뀐다).
+              const d = stepDisplayOf(key, tactics[key]);
               return (
                 <div key={key} className={styles.dial}>
                   <span className={styles.dialLabel}>{TACTICS_LABELS[key]}</span>
@@ -115,15 +120,21 @@ function TeamContext(props: DirectiveRailProps) {
                     aria-label={TACTICS_LABELS[key]}
                     data-testid={`tactics-${key}`}
                     data-value={tactics[key]}
-                    data-step={active}
+                    data-step={d.index}
+                    data-approx={d.approx ? "true" : "false"}
                   >
                     {STEP_LABELS[key].map((label, i) => (
                       <button
                         key={label}
                         type="button"
+                        className={i === d.index && d.approx ? styles.stepApprox : undefined}
                         data-testid={`tactics-${key}-step-${i}`}
-                        aria-pressed={i === active}
-                        aria-label={stepAriaLabel(key, i)}
+                        aria-pressed={i === d.index ? (d.approx ? "mixed" : true) : false}
+                        aria-label={
+                          i === d.index && d.approx
+                            ? `${stepAriaLabel(key, i)} 근사 (실제 ${d.valueText})`
+                            : stepAriaLabel(key, i)
+                        }
                         disabled={aiManaged}
                         onClick={() => onTacticsChange({ ...tactics, [key]: valueOfStep(i) })}
                       >
@@ -131,6 +142,15 @@ function TeamContext(props: DirectiveRailProps) {
                       </button>
                     ))}
                   </div>
+                  {d.approx && (
+                    <span
+                      className={styles.approxNote}
+                      data-testid={`tactics-${key}-approx`}
+                      title="저장된 값이 단계와 정확히 맞지 않습니다. 단계를 누르면 그 값으로 바뀝니다."
+                    >
+                      실제 {d.valueText} · 단계 사이 값
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -185,6 +205,21 @@ function PlayerContext(props: PlayerContextProps) {
   // 통째로 자유 문장으로 들어가 칩을 한 번만 눌러도 문장이 중복 누적된다.
   const [directive, setDirective] = useState<DirectiveState>(() => parseDirectiveText(promptText).state);
   const [freeText, setFreeText] = useState<string>(() => parseDirectiveText(promptText).freeText);
+  /**
+   * m1 — 방금 **감독의 한마디로 옮겨진** 문장(안내용).
+   *
+   * 저장 포맷이 단일 문자열이라 "칩이 만든 문장"과 "내가 우연히 똑같이 쓴 문장"은 구별할 수 없다.
+   * 그래서 추론된 항목을 끄면 그 문장을 **즉시 자유 문장으로 옮기고**, 이 안내는 무슨 일이
+   * 있었는지만 알려준다 — 안내를 놓치거나 덮여도 데이터는 이미 안전하다(재검증 blocker-2).
+   */
+  const [moved, setMoved] = useState<string | null>(null);
+  const movedRef = useRef<HTMLDivElement>(null);
+
+  // 안내는 **보여야** 의미가 있다 — 모바일 독은 내부 스크롤러라 그냥 두면 fold 아래에 뜬다.
+  // ("nearest" 는 최소 이동이라 바닥 sticky 미리보기 뒤에 가려 붙었다 → 스크롤러 가운데로.)
+  useEffect(() => {
+    if (moved) movedRef.current?.scrollIntoView({ block: "center" });
+  }, [moved]);
 
   // 다른 선수로 전환되면 그 선수의 프롬프트로 다시 갈라 담는다(컴포넌트는 key=player.id 로
   // 재마운트되지만 같은 선수의 slot 이 나중에 도착하는 경우를 위해 유지).
@@ -192,6 +227,7 @@ function PlayerContext(props: PlayerContextProps) {
     const parsed = parseDirectiveText(promptText);
     setDirective(parsed.state);
     setFreeText(parsed.freeText);
+    setMoved(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [player.id]);
 
@@ -199,6 +235,12 @@ function PlayerContext(props: PlayerContextProps) {
     setDirective(nextDirective);
     setFreeText(nextFree);
     onPlayerPromptChange(player.id, composeLayers(nextDirective, nextFree).text);
+  }
+
+  /** 역할·칩 편집 — 추론 문장은 자유 문장으로 **이미 옮겨진 채** 들어온다(소실 경로 없음). */
+  function pushEdit(edit: DirectiveEditResult) {
+    push(edit.state, edit.freeText);
+    if (edit.moved) setMoved(edit.moved);
   }
 
   // 미리보기와 전송값의 **유일한 출처**. 화면에 그리는 두 줄과 push() 가 보내는 문자열이 같다.
@@ -245,7 +287,7 @@ function PlayerContext(props: PlayerContextProps) {
                 data-testid={`rail-role-${r.id}`}
                 aria-pressed={directive.role === r.id}
                 disabled={!placed}
-                onClick={() => push({ ...directive, role: r.id }, freeText)}
+                onClick={() => pushEdit(setRoleSafely(directive, freeText, r.id))}
               >
                 {r.label}
               </button>
@@ -267,7 +309,7 @@ function PlayerContext(props: PlayerContextProps) {
                   data-testid={`rail-chip-${chip.id}`}
                   aria-pressed={active}
                   disabled={!placed}
-                  onClick={() => push(toggleChip(directive, chip.id), freeText)}
+                  onClick={() => pushEdit(toggleChipSafely(directive, freeText, chip.id))}
                 >
                   {chip.label}
                 </button>
@@ -304,6 +346,29 @@ function PlayerContext(props: PlayerContextProps) {
             )}
           </div>
         </div>
+
+        {/* m1 안내 — 저장된 프롬프트에서 인식해 켰던 항목을 끄면 그 문장을 **감독의 한마디로 옮긴다**.
+            (칩이 만든 문장인지 내가 쓴 문장인지 문자열로는 구별할 수 없으므로, 지우는 대신 옮긴다.)
+            이 안내는 알림일 뿐이라 놓쳐도 데이터는 이미 위 한마디 칸에 들어가 있다. */}
+        {moved && (
+          <div ref={movedRef} className={styles.recover} data-testid="rail-moved" role="status">
+            <p className={styles.recoverText}>
+              <b data-testid="rail-moved-phrase">{moved}</b> 문장을 <b>감독의 한마디</b>로 옮겼습니다.
+              저장된 프롬프트에서 인식한 문장이라 지우지 않았습니다 — 필요 없으면 위에서 지우세요.
+            </p>
+            <div className={styles.recoverActions}>
+              <button
+                type="button"
+                className={styles.recoverDismiss}
+                data-testid="rail-moved-dismiss"
+                aria-label="알림 닫기"
+                onClick={() => setMoved(null)}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ④ A안의 핵심 전달물 — 두 레이어가 한 자리에서 **구분된 채** 합쳐진 결과.
             단색 accent 스킨이라 색으로 못 가르므로 라벨 + 좌측 룰 + 들여쓰기로 출처를 인코딩한다.
