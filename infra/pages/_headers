@@ -1,0 +1,36 @@
+# Cloudflare Pages 응답 헤더. 빌드 산출물 루트에 복사되어야 적용된다(infra/pages/build.sh).
+#
+# 형식: 셀렉터는 컬럼 0, 그 아래 헤더는 들여쓰기.
+# 주석(#)은 **컬럼 0 의 독립 라인으로만** 둔다 — 블록 안에 들여쓴 주석은 CF 문서에 규정이 없어
+# 블록 전체가 무시될 위험이 있다.
+#
+# ⚠️ _redirects 의 리다이렉트가 헤더보다 **우선**한다. catch-all rewrite 를 추가하면
+#    이 파일 전체가 무력화된다(_redirects 주석 참조).
+
+# X-Frame-Options: DENY 로 하면 안 된다 — web 이 viewer-embed.html 을 **같은 오리진 iframe**
+# 으로 임베드해 경기를 재생한다(apps/web/src/match/viewer-bridge.ts 의 VIEWER_EMBED_SRC =
+# "/viewer-embed.html"). SAMEORIGIN 이어야 그게 산다.
+/*
+  X-Frame-Options: SAMEORIGIN
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=()
+
+# vite 가 콘텐츠 해시를 붙인 자산 → 영구 캐시 가능.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# 해시가 없는 파일들은 캐시하면 배포가 반영되지 않는다.
+/index.html
+  Cache-Control: no-cache
+
+/viewer-embed.html
+  Cache-Control: no-cache
+
+/favicon.svg
+  Cache-Control: public, max-age=86400
+
+# ⚠️ CSP 는 의도적으로 넣지 않았다.
+# 뷰어 임베드(인라인 스크립트 다수, blob/data URL)와 API 오리진(터널 URL, 가변)을 모두
+# 커버하는 정책을 실측 없이 쓰면 화면이 깨진다. 오픈 후 실제 오리진이 고정되면
+# connect-src(API 오리진) + frame-src 'self' 기준으로 추가할 것. → open-checklist.md 보안 항목.

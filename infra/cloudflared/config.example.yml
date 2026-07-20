@@ -1,0 +1,38 @@
+# cloudflared named tunnel 설정 템플릿.
+#
+#   cp config.example.yml ~/.cloudflared/config.yml   # 후 아래 <...> 치환
+#
+# ⚠️ 이 파일은 **템플릿만** 커밋한다. 실제 config.yml 과 자격증명 JSON
+#    (~/.cloudflared/<TUNNEL_ID>.json) 은 **절대 리포에 넣지 않는다** —
+#    자격증명 JSON 은 터널을 대신 실행할 수 있는 비밀이다.
+#
+# 전제: `cloudflared tunnel login` + `cloudflared tunnel create hmb-api` 완료(hero 게이트).
+# 절차 전체는 ../../docs/plan-v4/deploy.md §5.
+
+tunnel: <TUNNEL_ID>                          # `cloudflared tunnel list` 로 확인
+credentials-file: /Users/<YOU>/.cloudflared/<TUNNEL_ID>.json
+
+# 로그 (테스터 오픈 중 문제 추적용)
+loglevel: info
+
+ingress:
+  # 백엔드 API — compose 의 java 서비스 호스트 포트(기본 18080).
+  # ⚠️ 8080 아님. 데모가 8080 을 쓰고 있어 무접촉(infra/README.md).
+  - hostname: <api.your-domain.com>
+    service: http://localhost:18080
+    originRequest:
+      connectTimeout: 30s
+      # 매치 시뮬 + AI 잡은 길다. 기본(100s)보다 넉넉히.
+      # server-java 의 롱폴링(AI_POLL_WAIT_MS 최대 25s)도 이 안에 들어와야 한다.
+      noTLSVerify: false
+
+  # catch-all — 반드시 마지막. 없으면 cloudflared 가 설정을 거부한다.
+  - service: http_status:404
+
+# ── 노출 범위 주의 ────────────────────────────────────────────────────────────
+# 위 ingress 는 java(18080) **전체**를 공개한다. 여기엔 `/internal/**` 도 포함된다.
+# /internal/** 는 X-Servant-Token 으로 보호되지만(ServantTokenInterceptor), 공개 인터넷에
+# 노출할 이유가 없다. 강화 옵션은 deploy.md §5.4:
+#   - Cloudflare Access 로 /internal/* 경로 차단, 또는
+#   - SERVANT_TOKEN 을 openssl rand -hex 32 로 교체(기본 change-me 금지)
+# 최소 조건: **오픈 전 SERVANT_TOKEN 을 반드시 교체**한다(open-checklist.md 보안 항목).

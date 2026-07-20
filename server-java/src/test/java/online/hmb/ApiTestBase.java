@@ -2,6 +2,7 @@ package online.hmb;
 
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.HttpStatus;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpEntity;
@@ -23,6 +24,51 @@ abstract class ApiTestBase {
 
     protected String baseUrl(String path) {
         return "http://localhost:" + port + path;
+    }
+
+    /**
+     * TestRestTemplate(HttpURLConnection)은 <b>POST 에 401</b>이 오면 본문을 주지 않고
+     * HttpRetryException("cannot retry due to server authentication")을 던진다 —
+     * 인증 실패(401) 본문을 검사해야 하는 테스트는 JDK HttpClient 로 직접 친다.
+     */
+    private final java.net.http.HttpClient httpClient = java.net.http.HttpClient.newHttpClient();
+
+    protected static final com.fasterxml.jackson.databind.ObjectMapper MAPPER =
+            new com.fasterxml.jackson.databind.ObjectMapper();
+
+    /** JSON POST — status + raw body(널 필드도 그대로 직렬화). */
+    protected HttpResult postJson(String path, Map<String, Object> body) {
+        try {
+            java.net.http.HttpRequest req = java.net.http.HttpRequest.newBuilder()
+                    .uri(java.net.URI.create(baseUrl(path)))
+                    .header("Content-Type", "application/json")
+                    .POST(java.net.http.HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)))
+                    .build();
+            java.net.http.HttpResponse<String> res =
+                    httpClient.send(req, java.net.http.HttpResponse.BodyHandlers.ofString());
+            return new HttpResult(HttpStatus.valueOf(res.statusCode()), res.body());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    protected Map<String, Object> asMap(HttpResult res) {
+        try {
+            return MAPPER.readValue(res.body(), Map.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("bad json: " + res.body(), e);
+        }
+    }
+
+    protected record HttpResult(HttpStatus status, String body) {
+        public HttpStatus getStatusCode() {
+            return status;
+        }
+
+        public String getBody() {
+            return body;
+        }
     }
 
     /** 로그인 후 세션 토큰 반환(신규면 스타터 팩 지급됨). */

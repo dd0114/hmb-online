@@ -19,7 +19,8 @@ import {
   type MatchLogFilter,
   type ModeFilter,
 } from "./logs-logic";
-import { MatchSnapshotDialog } from "./MatchSnapshotDialog";
+// MatchSnapshotDialog(그 경기 세팅 보기 → 프리셋 저장, #98 W5)는 이슈 #106 으로 **화면에서 내렸다**
+// — 프리셋 개념 자체를 보류했기 때문. 컴포넌트/테스트/서버 계약은 존치(재도입 대비).
 import styles from "./LogsPage.module.css";
 
 type Tab = "matches" | "trades" | "rankings";
@@ -83,7 +84,6 @@ export function LogsPage() {
 function MatchLogsTab() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState<MatchLogFilter>(DEFAULT_MATCH_LOG_FILTER);
-  const [snapshotOf, setSnapshotOf] = useState<MatchLogItem | null>(null);
   const { data, isLoading, isError } = useMatchLogs(filter);
 
   const modeOptions: Array<[ModeFilter, string]> = [
@@ -140,20 +140,10 @@ function MatchLogsTab() {
             key={item.id}
             item={item}
             onOpen={() => navigate(`/match/${item.id}`)}
-            onOpenSnapshot={() => setSnapshotOf(item)}
           />
         ))}
       </ul>
 
-      {/* 그 경기에 쓴 세팅 보기 → 프리셋으로 저장 (#98 요구 2) */}
-      {snapshotOf && (
-        <MatchSnapshotDialog
-          matchId={snapshotOf.id}
-          opponentName={snapshotOf.opponentName}
-          createdAt={snapshotOf.createdAt}
-          onClose={() => setSnapshotOf(null)}
-        />
-      )}
     </div>
   );
 }
@@ -161,11 +151,9 @@ function MatchLogsTab() {
 function MatchLogRow({
   item,
   onOpen,
-  onOpenSnapshot,
 }: {
   item: MatchLogItem;
   onOpen: () => void;
-  onOpenSnapshot: () => void;
 }) {
   const oriented = orientScore(item);
   const rl = roundLabel(item);
@@ -213,17 +201,6 @@ function MatchLogRow({
         </div>
       </button>
 
-      {/* 행 버튼 안에 중첩할 수 없어(버튼 중첩 금지) 카드 아래 액션 줄로 분리한다. */}
-      <div className={styles.rowActions}>
-        <button
-          type="button"
-          className={styles.snapshotButton}
-          data-testid={`match-snapshot-open-${item.id}`}
-          onClick={onOpenSnapshot}
-        >
-          이 경기 세팅 보기
-        </button>
-      </div>
     </li>
   );
 }

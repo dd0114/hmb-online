@@ -1,4 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
+
+/**
+ * ⚠️ 이슈 #106 — 프리셋 UI 를 **화면에서 내렸다**(삭제가 아니라 렌더 중단: 컴포넌트 파일·훅·서버
+ * 계약은 전부 존치). 이 파일의 스펙들은 그 진입점을 통해서만 성립하므로 **보류(skip)** 한다.
+ * 지우지 않는 이유 = 프리셋 재도입 시 이 계약을 그대로 되살리기 위함.
+ * (프리셋 부재 자체의 계약은 e2e/deck-teamsheet.spec.ts + 단위테스트가 담당한다.)
+ */
+test.skip(true, "#106: 프리셋 UI 를 화면에서 내림 — 재도입 시 이 스펙을 해제한다");
+
 import { mkdirSync } from "node:fs";
 
 /**
@@ -106,7 +115,8 @@ async function openLogs(page: Page) {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "guest");
   });
-  await page.setViewportSize({ width: 390, height: 1200 });
+  // R3b E: 실기기 크기(390×844). 1200 은 존재하지 않는 폰 높이다.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/logs");
   await expect(page.getByTestId("logs-matches")).toBeVisible();
 }

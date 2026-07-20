@@ -1,0 +1,113 @@
+# HMB 백엔드 3프로세스 (PRD-v4 §G / AC-G1).
+#
+#   java     = server-java 권위 서버 (Spring Boot 3.3, SQLite+Flyway)
+#   runner   = 엔진 러너 RPC        (packages/server, 무상태 simulate/resume)
+#   executor = AI 실행기            (packages/server, Java 잡 롱폴링)
+#
+# 실행: cd infra && cp .env.example .env && docker compose up -d --build
+#
+# ⚠️ 포트: 데모(호스트 native)가 8080/8790 을 쓰고 있어 **무접촉**. 여기선 대체 포트로만 노출한다.
+#      java  → 호스트 18080   runner → 호스트 18790
+#      컨테이너 내부/서비스간 통신은 원래 포트(8080/8790) 그대로 — 서비스명 DNS 로 붙는다.
+#
+# ⚠️ 시크릿은 .env (gitignore) 로만. 이 파일에 토큰을 literal 로 적지 않는다.
+#
+# AI 실행기 모드 (자세한 비교·근거는 ../docs/plan-v4/deploy.md §AI 실행기):
+#   A. 호스트 실행 (권장) — `docker compose up -d java runner` 후 executor 는 호스트에서.
+#                            구독 CLI 세션(~/.claude)을 그대로 쓰므로 가장 안전.
+#   B. 컨테이너 + 마운트   — `docker compose -f docker-compose.yml -f docker-compose.ai-live.yml up -d`
+#                            ~/.claude 를 마운트. 세션 파일 공유 리스크 있음(deploy.md 경고 참조).
+#   기본(override 없음)    — AI_EXECUTOR=stub. 오프라인 E2E·AC-G1 검증용, claude CLI 불필요.
+
+name: hmb-p3
+
+services:
+  java:
+    build:
+      context: ..                      # 리포 루트 — data/ 시드가 컨텍스트에 필요
+      dockerfile: server-java/Dockerfile
+    image: hmb/server-java:p3
+    container_name: hmb-java
+    restart: unless-stopped
+    env_file: [.env]
+    environment:
+      # 서번트 호출 대상 = compose 네트워크 DNS (localhost 아님)
+      HMB_SERVANT_ENGINERUNNERURL: http://runner:8790
+      # /internal/** 게이트 토큰. executor 와 반드시 동일해야 한다.
+      HMB_SERVANT_INTERNALTOKEN: ${SERVANT_TOKEN:?SERVANT_TOKEN must be set in infra/.env}
+      HMB_DB_PATH: /var/lib/hmb/hmb.db
+    volumes:
+      - hmb-db:/var/lib/hmb           # SQLite 영속(WAL 포함). 유일한 상태 보관소.
+    ports:
+      - "${JAVA_HOST_PORT:-18080}:8080"
+    healthcheck:
+      # actuator 미탑재 + /internal/** 는 토큰 보호 → 헤더 실어서 확인.
+      # $$ = compose 이스케이프 → healthcheck **문자열 자체**에는 토큰이 남지 않는다(컨테이너 셸이 전개).
+      # ⚠️ 다만 `docker compose config` 는 environment: 의 토큰을 **그대로 출력한다**.
+      #    그 출력을 이슈/PR 에 붙여넣지 말 것.
+      test: ["CMD-SHELL", "curl -fsS -H \"X-Servant-Token: $$HMB_SERVANT_INTERNALTOKEN\" http://localhost:8080/internal/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s               # Flyway 마이그레이션 + 시드 임포트 여유
+
+  runner:
+    build:
+      context: ..
+      dockerfile: packages/server/Dockerfile
+    image: hmb/servants:p3
+    container_name: hmb-runner
+    restart: unless-stopped
+    # 최소권한: runner 는 인증하는 것이 없다 → env_file(.env) 통째로 주지 않고
+    # 필요한 것만 준다(SERVANT_TOKEN 이 새어들어가지 않도록).
+    user: "node"
+    environment:
+      RUNNER_PORT: 8790
+    # packages/server 는 start 스크립트가 없다(runner/executor 두 진입점).
+    # 해당 Dockerfile 은 다른 도메인 소유라 수정하지 않고 command 로 진입점만 지정한다.
+    command: ["npm", "run", "runner", "--workspace=@hmb/server"]
+    ports:
+      - "${RUNNER_HOST_PORT:-18790}:8790"
+    healthcheck:
+      # node20 글로벌 fetch — 이미지에 curl 이 없다(node slim).
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8790/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  executor:
+    build:
+      context: ..
+      dockerfile: packages/server/Dockerfile
+    image: hmb/servants:p3
+    container_name: hmb-executor
+    restart: unless-stopped
+    user: "node"
+    volumes:
+      # 헬스체크 스크립트(읽기전용). 인라인 one-liner 로는 표현이 어려워 파일로 분리했다.
+      - ./healthcheck-executor.mjs:/opt/hc/executor.mjs:ro
+    environment:
+      JAVA_URL: http://java:8080
+      SERVANT_TOKEN: ${SERVANT_TOKEN:?SERVANT_TOKEN must be set in infra/.env}
+      # 기본 stub — claude CLI 없이도 AC-G1 이 성립한다. 라이브는 모드 A/B 참조.
+      AI_EXECUTOR: ${AI_EXECUTOR:-stub}
+      AI_CONCURRENCY: ${AI_CONCURRENCY:-2}
+      AI_MODEL: ${AI_MODEL:-sonnet}
+    command: ["npm", "run", "executor", "--workspace=@hmb/server"]
+    depends_on:
+      java:
+        condition: service_healthy
+    healthcheck:
+      # executor 는 listen 포트가 없다(롱폴링 클라이언트).
+      # Java 도달성만 보면 executor 와 무관한 검사가 된다(SIGSTOP 된 워커도 healthy 로 남았다) →
+      # 워커 프로세스 상태 + Java 도달성을 함께 본다. 상세·한계는 스크립트 주석 참조.
+      test: ["CMD", "node", "/opt/hc/executor.mjs"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+
+volumes:
+  hmb-db:
+    name: hmb-p3-db

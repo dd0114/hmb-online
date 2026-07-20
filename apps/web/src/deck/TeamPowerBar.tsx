@@ -1,3 +1,7 @@
+/**
+ * ⚠️ 이슈 #106 R1 — 이 바는 **화면에서 내렸다**(렌더 중단, 파일 존치). 팀 파워/상대 비교 게이지는
+ * 시트 바(TeamSheetBar)로 이식됐다. 새로 쓰지 말고 TeamSheetBar 를 고쳐라.
+ */
 import { powerShare } from "./team-power";
 import styles from "./TeamPowerBar.module.css";
 

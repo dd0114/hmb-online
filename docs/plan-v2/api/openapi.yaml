@@ -70,6 +70,41 @@ paths:
                 $ref: "#/components/schemas/LoginResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          description: |
+            자체 로그인(provider=local) 인증 실패 — 계정 미존재/비번 불일치/비번 없는 계정.
+            code=BAD_CREDENTIALS(계정 존재 여부를 누설하지 않도록 사유를 구분하지 않는다). P3 §A.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /api/auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: |
+        자체 로그인 회원가입(P3-D2, additive) — id(=nickname)+비번. 성공 시 로그인과 동일한
+        세션 토큰을 즉시 발급하고 신규 유저 온보딩(지갑+스타터 팩+원장)을 태운다.
+        ⚠️ 비번 평문 저장은 내부 테스터 배포용 임시 목업 — 해시 전환은 백로그.
+      security: [] # 가입 자체는 인증 불필요
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "200":
+          description: 가입 성공(isNew=true) — 응답에 비번은 절대 포함되지 않는다(AC-A2)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/DuplicateNickname"
 
   # ───────────────────────────── me ─────────────────────────────
   /api/me:
@@ -638,6 +673,13 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ApiError"
+    DuplicateNickname:
+      description: |
+        이미 사용 중인 닉네임(= 자체 로그인 id). code=DUPLICATE_NICKNAME. P3 §A(AC-A1).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiError"
     InvalidState:
       description: |
         현재 매치 상태에서 허용되지 않는 액션(§5.1 전이표 외). code=INVALID_STATE. AC-M1.
@@ -663,6 +705,9 @@ components:
         - SUBSTITUTION_INVALID
         - AI_JOB_FAILED
         - INTERNAL_ERROR
+        # P3 §A 자체 로그인(additive)
+        - BAD_CREDENTIALS
+        - DUPLICATE_NICKNAME
 
     ApiError:
       type: object
@@ -689,11 +734,31 @@ components:
       properties:
         provider:
           type: string
-          enum: [guest, "mock:google", "mock:apple"]
-          description: "Phase2 additive — 생략 시 guest (server 9c51446 구현 정합)"
+          enum: [guest, "mock:google", "mock:apple", local]
+          description: |
+            Phase2 additive — 생략 시 guest (server 9c51446 구현 정합).
+            P3 additive: local = 자체 로그인(비번 필요, P3-D2).
         nickname:
           type: string
           pattern: "^[\\p{L}\\p{N}_-]{2,16}$"
+          description: "provider=local 에서는 이 닉네임이 곧 로그인 id 다(별도 식별자 없음)"
+        password:
+          type: string
+          description: |
+            P3 additive(옵션) — provider=local 일 때만 사용한다. 다른 provider 는 무시.
+            ⚠️ 평문 저장 목업(P3-D2, 해시 전환 백로그). 응답·로그 어디에도 반환되지 않는다(AC-A2).
+
+    RegisterRequest:
+      type: object
+      required: [nickname, password]
+      description: 자체 로그인 회원가입 바디(P3 §A). nickname = 로그인 id(users.nickname UNIQUE 재사용).
+      properties:
+        nickname:
+          type: string
+          pattern: "^[\\p{L}\\p{N}_-]{2,16}$"
+        password:
+          type: string
+          description: "길이 규칙은 서버 config(hmb.auth.local.password-*-length). 평문 목업(P3-D2)."
 
     UserRef:
       type: object

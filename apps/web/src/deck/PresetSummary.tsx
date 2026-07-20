@@ -1,3 +1,8 @@
+/**
+ * ⚠️ 이슈 #106 R1 — 선택 프리셋 요약 카드는 덱 화면에서 **내렸다**(삭제가 아니라 렌더 중단).
+ * hero 판정: 컨셉 확정 전의 프리셋은 시기상조 → 세팅 하나(활성 덱)만 편집·저장한다.
+ * 이 파일·훅·서버 계약(/api/presets*)은 재도입 대비로 존치한다. 되돌리려면 DeckPage 에서 다시 렌더.
+ */
 import { useState } from "react";
 import type { CatalogPlayer } from "../api/hooks";
 import type { TeamPresetSlot } from "../api/v2";
