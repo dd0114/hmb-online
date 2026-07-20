@@ -115,7 +115,8 @@ async function openLogs(page: Page) {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "guest");
   });
-  await page.setViewportSize({ width: 390, height: 1200 });
+  // R3b E: 실기기 크기(390×844). 1200 은 존재하지 않는 폰 높이다.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/logs");
   await expect(page.getByTestId("logs-matches")).toBeVisible();
 }

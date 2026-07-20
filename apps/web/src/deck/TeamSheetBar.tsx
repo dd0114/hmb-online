@@ -34,7 +34,13 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
   const share = opponentPower != null ? powerShare(power, opponentPower) : 1;
 
   return (
-    <header className={styles.bar} data-testid="team-sheet-bar">
+    <header
+      className={styles.bar}
+      data-testid="team-sheet-bar"
+      /* 빈 상태(#106 R3b A) — 선발 0 이면 보드가 안내 오버레이를 띄운다(같은 조건을 여기도 노출해
+         E2E 가 "바 3지표 0 ↔ 보드 안내"를 한 상태로 검증한다). */
+      data-empty={m.starters === 0 ? "true" : "false"}
+    >
       <div className={styles.top}>
         <h2 className={styles.title}>팀 시트</h2>
         {onAuto && (

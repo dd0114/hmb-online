@@ -65,7 +65,7 @@ export function toggleChip(state: DirectiveState, chipId: string): DirectiveStat
 export type DirectiveItemKind = "role" | "chip";
 
 /** 추론 항목 키 — 상태 안에서 role/chip 을 한 목록으로 다룬다. */
-export function itemKey(kind: DirectiveItemKind, id: string): string {
+function itemKey(kind: DirectiveItemKind, id: string): string {
   return `${kind}:${id}`;
 }
 
@@ -90,7 +90,7 @@ function withoutInferred(state: DirectiveState, key: string): string[] {
 }
 
 /** 칩 토글 — 끄는 대상이 추론된 항목이면 그 문장을 함께 돌려준다(복구 제안용). */
-export function applyChipToggle(state: DirectiveState, chipId: string): DirectiveEdit {
+function applyChipToggle(state: DirectiveState, chipId: string): DirectiveEdit {
   const has = state.chipIds.includes(chipId);
   const key = itemKey("chip", chipId);
   if (!has) {
@@ -112,7 +112,7 @@ export function applyChipToggle(state: DirectiveState, chipId: string): Directiv
 }
 
 /** 역할 변경 — 이전 역할이 추론된 것이었다면 사라지는 그 문장을 돌려준다. */
-export function applyRole(state: DirectiveState, roleId: string): DirectiveEdit {
+function applyRole(state: DirectiveState, roleId: string): DirectiveEdit {
   if (state.role === roleId) return { state, droppedInferred: null };
   const prevKey = itemKey("role", state.role);
   const wasInferred = (state.inferred ?? []).includes(prevKey);
@@ -127,13 +127,38 @@ export function applyRole(state: DirectiveState, roleId: string): DirectiveEdit 
   };
 }
 
+/** 합성문에서의 문장 순서 = 역할 문구 → 칩 문구(카탈로그 순). 이동된 문장 정렬 기준. */
+function catalogOrderOf(line: string): number {
+  const roles = ROLE_OPTIONS.filter((r) => r.phrase);
+  const ri = roles.findIndex((r) => `${r.phrase}.` === line);
+  if (ri >= 0) return ri;
+  const ci = DIRECTIVE_CHIPS.findIndex((c) => `${c.phrase}.` === line);
+  return ci >= 0 ? roles.length + ci : -1;
+}
+
 /**
- * 사라질 뻔한 문장을 **내가 쓴 문장(감독의 한마디)** 맨 앞줄로 되돌린다.
+ * 사라질 뻔한 문장을 **내가 쓴 문장(감독의 한마디)** 앞쪽으로 되돌린다.
  * 합성문과 같은 표기(마침표)로 넣어 화면·전송 문자열이 원래 프롬프트와 같은 문장 집합을 유지한다.
+ *
+ * #106 R3b F1 — 예전엔 무조건 맨 앞에 prepend 했다. 그러면 문장을 **연속으로** 옮길 때
+ * (예: 마킹 칩 끄고 이어서 압박 칩 끄기) 나중 것이 앞에 붙어 원래 합성문과 **순서가 뒤집혔다**.
+ * 내용 보존·편집 가능이라 손실은 아니지만 재저장 시 파싱 왕복이 깨져 지시 레이어로 안 돌아온다.
+ * → 이미 옮겨져 있는 **선두 카탈로그 문장 블록** 안에서 카탈로그 순서 자리에 끼워 넣는다.
+ *   · 옮겨진 게 하나뿐이면 맨 앞 = 기존 동작(글자 단위 복원 계약 유지, directives.test.ts).
+ *   · 여러 개면 `역할 → 칩(카탈로그 순)` 으로 정렬돼 원래 합성문 순서를 되찾는다.
  */
-export function restoreSentence(freeText: string, phrase: string): string {
+function restoreSentence(freeText: string, phrase: string): string {
   const line = phrase.trim().endsWith(".") ? phrase.trim() : `${phrase.trim()}.`;
-  return [line, freeText.trim()].filter(Boolean).join("\n");
+  const rest = freeText.trim();
+  if (!rest) return line;
+  const lines = rest.split("\n");
+  // 선두의 "이미 옮겨진 카탈로그 문장" 블록만 재정렬 대상으로 본다(유저가 쓴 줄은 건드리지 않는다).
+  let head = 0;
+  while (head < lines.length && catalogOrderOf(lines[head]!.trim()) >= 0) head++;
+  const mine = catalogOrderOf(line);
+  let at = 0;
+  while (at < head && catalogOrderOf(lines[at]!.trim()) < mine) at++;
+  return [...lines.slice(0, at), line, ...lines.slice(at)].join("\n");
 }
 
 /**
@@ -289,3 +314,10 @@ export function parseDirectiveText(promptText: string | null | undefined): Parse
   }
   return { state: { ...state, inferred }, freeText: rest.trim() };
 }
+
+/**
+ * 내부 구현 — UI 소비처는 없다(공개 표면은 `toggleChipSafely`/`setRoleSafely`/`composeLayers`/
+ * `parseDirectiveText` 뿐). 테스트가 단계별 불변식을 박제할 수 있게 여기로만 노출한다(#106 R3b D).
+ * 새 화면 코드가 이걸 직접 쓰면 "손실 없는 레이어 이동" 보장을 우회하게 되므로 쓰지 말 것.
+ */
+export const __internal = { applyChipToggle, applyRole, restoreSentence, itemKey };

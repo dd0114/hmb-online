@@ -125,7 +125,10 @@
   justify-content: center;
   gap: 6px;
   width: 100%;
-  min-height: 24px;
+  /* 44px 탭 타깃(#106 R3b C) — 독 여닫기는 폰에서 가장 자주 누르는 컨트롤인데 24px 였다.
+     ⚠️ 이 높이는 **접힌 독 높이**에 그대로 더해지므로 `DeckPage.module.css .notes` 클리어런스와
+     한 쌍이다(둘 중 하나만 바꾸면 e2e "R2 r3" 의 gap 계약이 깨진다). */
+  min-height: 44px;
   padding: 6px 0 4px;
   border: none;
   background: none;
@@ -267,4 +270,38 @@
     grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(300px, 340px);
     grid-template-areas: "pool board rail";
   }
+}
+
+/* ── 빈 상태 오버레이 내용물 (#106 R3b A) ── */
+.emptyTitle {
+  font-size: 14px;
+  font-weight: 700;
+}
+.emptyHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+/* 빈 상태 CTA — **보드 하단 바**(피치 밖)에 산다. `.boardBtnPrimary`(auto-fill)와 달리
+   모바일에서도 보인다: 첫 진입 = 정확히 이 CTA 가 필요한 화면. R3b blocker-1 참조. */
+.emptyCta {
+  min-height: 44px;
+  padding: 10px 16px;
+  flex: none;
+  white-space: nowrap;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 13px;
+  font-weight: 700;
+}
+.emptyCta:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.emptyNote {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
 }

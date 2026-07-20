@@ -243,3 +243,35 @@
     width: 68px;
   }
 }
+
+/* ── 빈 상태 (#106 R3b A) — 선발 0/11 첫 진입 ──────────────────────────────────────────────
+   보드 중앙에 "무엇부터 하면 되는지"를 띄운다.
+
+   ⚠️ **완전 비대화형**이어야 한다. 1차 구현은 `pointer-events:none` 위에 `.empty button{auto}` 로
+   CTA 를 되살렸는데, `none` 은 컨테이너에만 먹으므로 되살린 버튼이 피치 중앙에서 **선발 슬롯
+   2·3 을 가로챘다**(독립 검증 실측 4조합 전부 + 실클릭 무반응). CTA 는 피치 밖 보드 하단 바로
+   내렸다. 여기에 button/a/input 등 포인터를 받는 요소를 다시 넣지 말 것 — 같은 가림이 재발한다.
+   (E2E `R3b A` 가 11 슬롯 전수 hit-test 로 회귀를 막는다.) */
+.empty {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: min(300px, 86%);
+  padding: 14px 16px;
+  text-align: center;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(15, 17, 21, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  /* 자손까지 전부 통과 — 슬롯 탭이 11/11 살아 있어야 한다. */
+  pointer-events: none;
+}
+.empty * {
+  pointer-events: none;
+}

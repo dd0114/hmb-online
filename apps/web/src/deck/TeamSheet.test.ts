@@ -274,13 +274,18 @@ describe("⑥ 지시 레일 A안 — 선수 컨텍스트", () => {
     return () => latest!;
   }
 
-  it("역할은 세그먼트 컨트롤(4종) — 누르면 pressed 가 옮겨간다", () => {
+  // R3b C: 역할은 **배타 선택**이라 radiogroup/radio 시맨틱이다(toggle 버튼 aria-pressed 아님).
+  it("역할은 라디오 세그먼트(4종) — 누르면 checked 가 옮겨간다", () => {
     renderSheet(placedDraft());
     fireEvent.click(screen.getByTestId("board-slot-starter-9")); // FW1 (프롬프트 없음)
-    expect(screen.getByTestId("rail-role-balanced").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("rail-role").getAttribute("role")).toBe("radiogroup");
+    expect(screen.getByTestId("rail-role-balanced").getAttribute("role")).toBe("radio");
+    expect(screen.getByTestId("rail-role-balanced").getAttribute("aria-checked")).toBe("true");
     fireEvent.click(screen.getByTestId("rail-role-attack"));
-    expect(screen.getByTestId("rail-role-attack").getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("rail-role-balanced").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByTestId("rail-role-attack").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByTestId("rail-role-balanced").getAttribute("aria-checked")).toBe("false");
+    // 세부 지시 칩은 다중 토글이라 aria-pressed 를 유지한다(둘을 섞지 않는다).
+    expect(screen.getByTestId("rail-chip-press").getAttribute("aria-pressed")).toBe("false");
   });
 
   it("역할·칩이 미리보기 문장에 즉시 반영된다(칩은 카탈로그 순서)", () => {
@@ -377,7 +382,8 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
       const group = screen.getByTestId(`tactics-${key}`);
       expect(group.tagName).not.toBe("INPUT");
       expect(group.querySelectorAll("button")).toHaveLength(5);
-      expect(screen.getByTestId(`tactics-${key}-step-2`).getAttribute("aria-pressed")).toBe("true");
+      expect(group.getAttribute("role")).toBe("radiogroup");
+      expect(screen.getByTestId(`tactics-${key}-step-2`).getAttribute("aria-checked")).toBe("true");
     }
   });
 
@@ -396,7 +402,11 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
   /**
    * R3a m2 — 이 테스트는 원래 "0.6 도 가장 가까운 스텝(보통)이 **눌린 것으로** 표시된다"를 박제했는데,
    * 그게 곧 팀 레이어의 표시(0.5)≠전송(0.6) 이었다. 계약을 정직한 표기로 갱신한다:
-   * 눌림이 아니라 **근사 표시**(aria-pressed=mixed + 실제 값 배지), 값은 그대로 0.6.
+   * 눌림이 아니라 **근사 표시**(어느 스텝도 checked 아님 + 실제 값 배지), 값은 그대로 0.6.
+   *
+   * R3b C — 예전엔 가장 가까운 스텝에 `aria-pressed="mixed"` 를 줬다. SR 은 mixed 를 "부분적으로
+   * 눌림"(체크박스 3-state)으로 읽어 "값이 단계 사이"라는 실제 의미와 어긋났고, radio 롤은 mixed 를
+   * 지원하지도 않는다 → `aria-checked=false` + 상태를 **말로** 설명하는 aria-label + aria-describedby.
    */
   it("서버에서 온 중간값(0.6)은 눌림이 아니라 근사로 표시되고 실제 값을 노출한다", () => {
     render(
@@ -416,8 +426,13 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
         });
       }),
     );
-    // 표시 = 전송: 어느 스텝도 "눌림"이 아니고, 가장 가까운 스텝은 근사(mixed)로만 표시된다
-    expect(screen.getByTestId("tactics-line-step-2").getAttribute("aria-pressed")).toBe("mixed");
+    // 표시 = 전송: 어느 스텝도 선택 상태가 아니고, 가장 가까운 스텝이 근사로만 표시된다
+    for (let i = 0; i < 5; i++) {
+      expect(screen.getByTestId(`tactics-line-step-${i}`).getAttribute("aria-checked")).toBe("false");
+    }
+    expect(screen.getByTestId("tactics-line-step-2").getAttribute("aria-label")).toContain("단계 사이");
+    // 근사 배지가 그룹의 설명으로 연결돼 SR 이 "왜 아무것도 안 눌렸는지"를 듣는다
+    expect(screen.getByTestId("tactics-line").getAttribute("aria-describedby")).toBe("tactics-line-approx");
     expect(screen.getByTestId("tactics-line").getAttribute("data-approx")).toBe("true");
     expect(screen.getByTestId("tactics-line-approx").textContent).toContain("0.6");
     // 값 자체는 사용자가 누르기 전까지 그대로다(정규화 금지)
@@ -469,5 +484,107 @@ describe("⑤ 프리셋 진입점 부재", () => {
     expect(screen.queryByTestId("preset-summary")).toBeNull();
     expect(screen.queryByTestId("preset-name")).toBeNull();
     expect(screen.queryByTestId("slot-new-button")).toBeNull();
+  });
+});
+
+/**
+ * ⑥ 빈 상태 (#106 R3b A) — 선발 0/11 첫 진입.
+ * 피치가 "+" 11개짜리 무언의 격자라 무엇부터 해야 하는지가 없었다. 보드가 직접 말한다.
+ */
+describe("⑥ 빈 상태 — 선발 0/11", () => {
+  function renderEmpty(opts: { onAuto?: () => void; autoDisabled?: boolean; autoHint?: string } = {}) {
+    function Wrap() {
+      const [state, setState] = useState(initialState());
+      return h(DeckEditor, {
+        state,
+        onChange: setState,
+        aiManaged: false,
+        onToggleAi: () => {},
+        players: PLAYERS,
+        playersById: byId,
+        ...opts,
+      });
+    }
+    return render(h(Wrap));
+  }
+
+  it("보드 중앙 안내 + 시트 바 3지표가 모두 0", () => {
+    renderEmpty();
+    expect(screen.getByTestId("board-empty-hint").textContent).toContain("슬롯을 눌러");
+    expect(screen.getByTestId("team-sheet-bar").getAttribute("data-empty")).toBe("true");
+    expect(screen.getByTestId("starter-count").textContent).toBe("선발 0/11");
+    expect(screen.getByTestId("bench-count").textContent).toBe("벤치 0/7");
+    expect(screen.getByTestId("directive-count").textContent).toContain("지시 0/11");
+  });
+
+  it("Auto 배치 CTA 가 보드 안에 있고 눌린다", () => {
+    let calls = 0;
+    renderEmpty({ onAuto: () => calls++ });
+    const cta = screen.getByTestId("board-empty-auto");
+    expect(screen.getByTestId("board-card").contains(cta)).toBe(true);
+    fireEvent.click(cta);
+    expect(calls).toBe(1);
+  });
+
+  it("보유 선수 < 11 이면 CTA 는 비활성이지만 직접 배치 길이 열려 있다(막다른 길 금지)", () => {
+    renderEmpty({ onAuto: () => {}, autoDisabled: true, autoHint: "보유 선수 부족 (5/11)" });
+    expect((screen.getByTestId("board-empty-auto") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("board-empty-note").textContent).toContain("직접 배치");
+    // 슬롯은 여전히 눌린다 → 탭-투-플레이스로 한 명 넣으면 안내가 사라진다.
+    fireEvent.click(screen.getByTestId("board-slot-starter-0"));
+    fireEvent.click(screen.getByTestId("pick-GK1"));
+    expect(screen.queryByTestId("board-empty")).toBeNull();
+    expect(screen.getByTestId("team-sheet-bar").getAttribute("data-empty")).toBe("false");
+  });
+
+  it("선발이 하나라도 있으면 안내는 뜨지 않는다", () => {
+    renderSheet(placedDraft());
+    expect(screen.queryByTestId("board-empty")).toBeNull();
+  });
+});
+
+/**
+ * ⑦ 색각 대응 (#106 R3b B) — 컨디션 3단계가 **색으로만** 갈리지 않는다.
+ * 색과 독립인 축: 바늘 각도 + 링 파선 + (리스트 행) 글자.
+ */
+describe("⑦ 컨디션 — 색 외 축", () => {
+  it("리스트 행: 등급이 글자로도 읽힌다", () => {
+    renderSheet(placedDraft());
+    expect(screen.getByTestId("pick-cond-tier-FW1").textContent).toBe("최상"); // 0.9
+    expect(screen.getByTestId("pick-cond-tier-MF1").textContent).toBe("보통"); // 0.5
+  });
+
+  it("리스트·보드 토큰 모두 등급을 data 축으로 노출한다(색 아님)", () => {
+    renderSheet(placedDraft());
+    expect(screen.getByTestId("pick-cond-FW1").getAttribute("data-condition-tier")).toBe("high");
+    expect(screen.getByTestId("token-clock-MF1").getAttribute("data-condition-tier")).toBe("mid");
+  });
+
+  it("레일 헤드는 컨디션을 글자로 말한다", () => {
+    renderSheet(placedDraft());
+    fireEvent.click(screen.getByTestId("board-slot-starter-9")); // FW1 0.9
+    expect(screen.getByTestId("rail-subtitle").textContent).toContain("컨디션 최상");
+  });
+});
+
+/** ⑧ a11y 골격 (#106 R3b C) */
+describe("⑧ a11y", () => {
+  it("독 토글이 여는 대상을 aria-controls 로 가리킨다", () => {
+    renderSheet(placedDraft());
+    const toggle = screen.getByTestId("rail-dock-toggle");
+    expect(toggle.getAttribute("aria-controls")).toBe("directive-rail");
+    expect(document.getElementById("directive-rail")).toBeTruthy();
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("문장 이동 알림 라이브 리전은 **내용이 오기 전에** 이미 DOM 에 있다", () => {
+    renderSheet(placedDraft());
+    fireEvent.click(screen.getByTestId("board-slot-starter-9"));
+    const live = screen.getByTestId("rail-moved-live");
+    // 알림이 아직 없어도 리전 자체는 존재한다(등록 후 텍스트만 갈아끼워야 SR 이 읽는다).
+    expect(live.getAttribute("role")).toBe("status");
+    expect(live.getAttribute("aria-live")).toBe("polite");
+    expect(live.textContent).toBe("");
+    expect(screen.queryByTestId("rail-moved")).toBeNull();
   });
 });

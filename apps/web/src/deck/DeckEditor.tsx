@@ -131,9 +131,21 @@ export function DeckEditor(props: DeckEditorProps) {
     };
     measure();
 
-    // 독이 열린 동안 문서 높이가 바뀌면 런웨이가 낡는다(필터로 리스트가 줄거나 블록이 늘 때).
-    // 자기 자신이 만든 padding 변화로 되먹임하지 않도록 **런웨이를 뺀 높이**가 바뀔 때만 다시 잰다.
+    /*
+     * 독이 열린 동안 문서 높이가 바뀌면 런웨이가 낡는다(저장 알림·검증 이슈·에러 문구가 시트 **뒤**에
+     * 붙거나 사라질 때 — 이 경로들은 effect 의존성[dockOpen, selection.playerId]을 건드리지 않아
+     * 재측정 기회가 여기밖에 없다).
+     *
+     * ⚠️ 관찰 대상이 `document.body` 였던 것은 **한 번도 발화하지 않는 데드코드**였다(R3b 실측):
+     * `index.css` 가 `html, body, #root { height: 100% }` 로 못 박아 두어 콘텐츠가 아무리 늘어도
+     * 이 셋의 border-box 는 뷰포트 높이 그대로다 — ResizeObserver 는 border-box 변화만 본다.
+     * (documentElement 로 바꿔도 같은 이유로 죽는다.) 실제로 자라는 건 그 아래 **스크롤 콘텐츠
+     * 컨테이너**(Layout 의 <main>) 다 → 시트의 부모를 관찰한다. 부모는 시트 자신 + 뒤따르는
+     * 블록(DeckPage 의 notes)을 모두 품으므로 한 번의 관찰로 둘 다 잡힌다.
+     * 자기 자신이 만든 padding 변화로 되먹임하지 않도록 **런웨이를 뺀 높이**가 바뀔 때만 다시 잰다.
+     */
     let lastContent = -1;
+    const growTarget = sheet.parentElement ?? sheet;
     const ro =
       typeof ResizeObserver === "function"
         ? new ResizeObserver(() => {
@@ -144,7 +156,7 @@ export function DeckEditor(props: DeckEditorProps) {
             measure();
           })
         : null;
-    ro?.observe(document.body);
+    ro?.observe(growTarget);
 
     const token = selection.playerId
       ? document.querySelector(`[data-testid="token-${selection.playerId}"]`)
@@ -270,6 +282,34 @@ export function DeckEditor(props: DeckEditorProps) {
               selectedPlayerId={selection.playerId}
               pendingPlace={selection.source === "pool"}
               onSlotTap={handleSlotTap}
+              /* 빈 상태(#106 R3b A): 선발 0/11 로 처음 들어오면 피치가 "+" 11개짜리 무언의 격자라
+                 무엇부터 해야 하는지가 없었다. 배치 대기(리스트에서 집어든 상태)에는 이미 보드 바가
+                 "배치할 슬롯을 누르세요"를 말하므로 겹치지 않게 감춘다.
+
+                 ⚠️ 이 오버레이는 **완전히 비대화형**이다(텍스트만). R3b 1차 구현은 여기에 Auto CTA
+                 버튼을 넣고 `.empty{pointer-events:none}` + `.empty button{pointer-events:auto}` 로
+                 되살렸는데, 되살린 버튼이 피치 중앙에 얹혀 **선발 슬롯 2·3 을 가로챘다**(독립 검증
+                 실측: 390/1280 × 보유 12명/6명 4조합 전부, 실클릭 무반응). 특히 보유<11 화면은
+                 "슬롯을 눌러 직접 배치" 라고 **지시하면서** 두 슬롯이 죽어 있어 최악이었다.
+                 → CTA 는 피치 밖 **보드 하단 바**로 내렸다(아래 footer). 오버레이 안에는 포커스
+                 가능한 요소를 절대 넣지 말 것 — 넣는 순간 같은 가림이 재발한다. */
+              emptyOverlay={
+                pendingPlayer ? null : (
+                  <>
+                    <b className={styles.emptyTitle}>선발이 비어 있습니다</b>
+                    <span className={styles.emptyHint} data-testid="board-empty-hint">
+                      슬롯을 눌러 선수를 배치하거나, 아래 [Auto 배치로 시작]을 누르세요
+                    </span>
+                    {/* 보유 선수가 11 미만이면 Auto 가 비활성이라 "왜 안 눌리는지"를 여기서 말한다 —
+                        그 경우에도 슬롯 탭으로 직접 배치는 가능하다(막다른 길 금지). */}
+                    {autoDisabled && autoHint && (
+                      <span className={styles.emptyNote} data-testid="board-empty-note">
+                        {autoHint} · 슬롯을 눌러 직접 배치할 수 있습니다
+                      </span>
+                    )}
+                  </>
+                )
+              }
               footer={
                 <>
                   {pendingPlayer ? (
@@ -308,6 +348,20 @@ export function DeckEditor(props: DeckEditorProps) {
                         </button>
                       )}
                     </>
+                  )}
+                  {/* 빈 상태 CTA — **피치 밖**(보드 하단 바)이라 어떤 슬롯도 가리지 않는다.
+                      데스크탑 전용인 `auto-fill` 과 달리 모든 폭에서 보인다(모바일 첫 진입이
+                      정확히 이 CTA 가 필요한 화면이다). R3b blocker-1 참조. */}
+                  {onAuto && starterSlots.length === 0 && !pendingPlayer && (
+                    <button
+                      type="button"
+                      className={styles.emptyCta}
+                      data-testid="board-empty-auto"
+                      disabled={autoDisabled}
+                      onClick={onAuto}
+                    >
+                      Auto 배치로 시작
+                    </button>
                   )}
                   <button
                     type="button"
@@ -365,6 +419,7 @@ export function DeckEditor(props: DeckEditorProps) {
               className={styles.grab}
               data-testid="rail-dock-toggle"
               aria-expanded={dockOpen}
+              aria-controls="directive-rail"
               aria-label={dockOpen ? "지시 접기" : "지시 펼치기"}
               onClick={() => setDockOpen((v) => !v)}
             />

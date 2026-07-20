@@ -143,7 +143,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.steps button[aria-pressed="true"] {
+.steps button[aria-checked="true"] {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-contrast);
@@ -186,7 +186,7 @@
 .seg button:last-child {
   border-right: 0;
 }
-.seg button[aria-pressed="true"] {
+.seg button[aria-checked="true"] {
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 600;
@@ -403,4 +403,35 @@
   line-height: 1;
   padding: 4px 8px;
   min-height: 34px;
+}
+
+/* 시각적으로 감춘 라이브 리전(문장 이동 알림). display:none 이면 SR 이 못 읽으므로 클립으로 숨긴다. */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── 모바일 44px 탭 타깃 (#106 R3b C / #73 P1) ────────────────────────────────────────────
+   데스크탑은 마우스라 34~40px 로도 정확하지만, 폰에서는 손가락 히트영역이 44px 미만이면
+   옆 스텝이 눌린다(5스텝이 한 줄에 붙어 있어 특히 위험). 독은 내부 스크롤러라 높이가 늘어도
+   보드/리스트를 더 가리지 않는다(클리어런스 계약은 e2e r3 가 계속 지킨다). */
+@media (max-width: 1023px) {
+  .steps button,
+  .chip,
+  .seg button {
+    min-height: 44px;
+  }
+  .close,
+  .remove {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }

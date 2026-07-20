@@ -10,6 +10,7 @@ import { poolDraggableId } from "./TacticsBoard";
 import type { components } from "../api/schema";
 import type { ConditionMap } from "../api/v2";
 import { ConditionClock } from "../match/ConditionClock";
+import { conditionLabel } from "../match/condition-clock";
 import styles from "./PlayerPicker.module.css";
 
 type Position = components["schemas"]["Position"];
@@ -79,9 +80,16 @@ function PoolItem({ player, placed, onPick, condition, fit, pending }: PoolItemP
       {...listeners}
       {...attributes}
     >
-      {/* 컨디션(당일 롤). 값이 없으면(로딩/미응답) 이 칸 자체를 생략한다. */}
+      {/* 컨디션(당일 롤). 값이 없으면(로딩/미응답) 이 칸 자체를 생략한다.
+          색각 대응(#106 R3b B): 리스트 행은 공간이 있으므로 시계(각도·파선) 위에 **글자 축**을
+          하나 더 얹는다 — 색을 전혀 못 봐도 "최상/보통/저조"로 등급이 읽힌다. */}
       {condition !== undefined && (
-        <ConditionClock value={condition} size={18} testId={`pick-cond-${player.id}`} />
+        <span className={styles.cond}>
+          <ConditionClock value={condition} size={18} testId={`pick-cond-${player.id}`} />
+          <span className={styles.condTier} data-testid={`pick-cond-tier-${player.id}`}>
+            {conditionLabel(condition)}
+          </span>
+        </span>
       )}
       <span className={styles.who}>
         <b className={styles.name}>{player.name}</b>

@@ -14,8 +14,9 @@ import {
   type DirectiveEditResult,
   type DirectiveState,
 } from "./directives";
+import { radioKeyIndex, rovingTabIndex } from "./radio-group";
 import { TACTICS_KEYS, TACTICS_LABELS } from "./tactics-logic";
-import { STEP_LABELS, stepAriaLabel, stepDisplayOf, valueOfStep } from "./tactics-steps";
+import { STEP_COUNT, STEP_LABELS, stepAriaLabel, stepDisplayOf, valueOfStep } from "./tactics-steps";
 import styles from "./DirectiveRail.module.css";
 
 export interface DirectiveRailProps {
@@ -63,10 +64,33 @@ export interface DirectiveRailProps {
  *
  * 컨텍스트 규칙: 선택 없음 → 팀 지시 / 보드에서 선수 탭 → 그 선수 지시.
  */
+/**
+ * radiogroup 컨테이너의 키보드 핸들러 — APG 대로 방향키가 선택을 옮기고 포커스를 따라가게 한다.
+ * 이동 후 포커스는 DOM 순서상 i 번째 `[role=radio]` 로 옮긴다(roving tabindex 와 짝).
+ */
+function radioGroupKeyDown(
+  e: React.KeyboardEvent<HTMLDivElement>,
+  current: number,
+  count: number,
+  onSelect: (index: number) => void,
+) {
+  const next = radioKeyIndex(e.key, current, count);
+  if (next === null) return;
+  e.preventDefault(); // 방향키의 기본 스크롤을 막는다(독 안에서 특히 거슬린다)
+  onSelect(next);
+  const radios = e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]');
+  radios[next]?.focus();
+}
+
 export function DirectiveRail(props: DirectiveRailProps) {
   const { player, slot } = props;
   return (
-    <section className={styles.rail} data-testid="directive-rail" data-mode={player ? "player" : "team"}>
+    <section
+      id="directive-rail"
+      className={styles.rail}
+      data-testid="directive-rail"
+      data-mode={player ? "player" : "team"}
+    >
       {player ? (
         <PlayerContext key={player.id} {...props} player={player} slot={slot} />
       ) : (
@@ -114,25 +138,42 @@ function TeamContext(props: DirectiveRailProps) {
               return (
                 <div key={key} className={styles.dial}>
                   <span className={styles.dialLabel}>{TACTICS_LABELS[key]}</span>
+                  {/* 5스텝 = **하나만 고르는** 선택지 → radiogroup/radio 가 정확한 시맨틱이다(R3b C).
+                      R2 는 toggle 버튼(aria-pressed)으로 그렸는데, 스크린리더가 "5개의 독립 토글"로
+                      읽어 "지금 몇 단계인지"가 전달되지 않았다. radio 는 "3/5 선택됨"으로 읽힌다. */}
                   <div
                     className={styles.steps}
-                    role="group"
+                    role="radiogroup"
                     aria-label={TACTICS_LABELS[key]}
+                    aria-describedby={d.approx ? `tactics-${key}-approx` : undefined}
                     data-testid={`tactics-${key}`}
                     data-value={tactics[key]}
                     data-step={d.index}
                     data-approx={d.approx ? "true" : "false"}
+                    onKeyDown={(e) =>
+                      radioGroupKeyDown(e, d.index, STEP_COUNT, (i) =>
+                        onTacticsChange({ ...tactics, [key]: valueOfStep(i) }),
+                      )
+                    }
                   >
                     {STEP_LABELS[key].map((label, i) => (
                       <button
                         key={label}
                         type="button"
+                        role="radio"
+                        /* roving tabindex — 그룹 전체가 탭스톱 하나(APG). */
+                        tabIndex={aiManaged ? -1 : rovingTabIndex(i, d.index)}
                         className={i === d.index && d.approx ? styles.stepApprox : undefined}
                         data-testid={`tactics-${key}-step-${i}`}
-                        aria-pressed={i === d.index ? (d.approx ? "mixed" : true) : false}
+                        /* 근사(저장값이 단계 사이)일 때는 **어떤 단계도 선택된 게 아니다**.
+                           예전엔 가장 가까운 단계에 `aria-pressed="mixed"` 를 줬는데, SR 은 이를
+                           "부분적으로 눌림"(체크박스의 3-state)으로 읽어 "단계 사이 값"이라는 실제
+                           의미와 어긋났다 — 게다가 radio 는 mixed 를 지원하지 않는다. 그래서
+                           aria-checked=false 로 두고 **말로** 상태를 준다(#106 R3b C). */
+                        aria-checked={i === d.index && !d.approx}
                         aria-label={
                           i === d.index && d.approx
-                            ? `${stepAriaLabel(key, i)} 근사 (실제 ${d.valueText})`
+                            ? `${stepAriaLabel(key, i)} — 저장된 값 ${d.valueText}은 단계 사이입니다. 누르면 이 단계 값으로 바뀝니다`
                             : stepAriaLabel(key, i)
                         }
                         disabled={aiManaged}
@@ -145,6 +186,7 @@ function TeamContext(props: DirectiveRailProps) {
                   {d.approx && (
                     <span
                       className={styles.approxNote}
+                      id={`tactics-${key}-approx`}
                       data-testid={`tactics-${key}-approx`}
                       title="저장된 값이 단계와 정확히 맞지 않습니다. 단계를 누르면 그 값으로 바뀝니다."
                     >
@@ -244,6 +286,7 @@ function PlayerContext(props: PlayerContextProps) {
   }
 
   // 미리보기와 전송값의 **유일한 출처**. 화면에 그리는 두 줄과 push() 가 보내는 문자열이 같다.
+  const roleIndex = Math.max(0, ROLE_OPTIONS.findIndex((r) => r.id === directive.role));
   const composed = composeLayers(directive, freeText);
   const combinedLen = composed.text.length;
   const over = combinedLen > PROMPT_MAX_CHARS;
@@ -279,13 +322,27 @@ function PlayerContext(props: PlayerContextProps) {
           <span className={styles.eyebrow}>
             역할<span className={styles.tail} />
           </span>
-          <div className={styles.seg} role="group" aria-label="역할" data-testid="rail-role">
-            {ROLE_OPTIONS.map((r) => (
+          {/* 역할 = 배타 선택 → radiogroup/radio (세부 지시 칩은 다중 토글이라 aria-pressed 유지). */}
+          <div
+            className={styles.seg}
+            role="radiogroup"
+            aria-label="역할"
+            data-testid="rail-role"
+            onKeyDown={(e) =>
+              radioGroupKeyDown(e, roleIndex, ROLE_OPTIONS.length, (i) =>
+                pushEdit(setRoleSafely(directive, freeText, ROLE_OPTIONS[i]!.id)),
+              )
+            }
+          >
+            {ROLE_OPTIONS.map((r, i) => (
               <button
                 key={r.id}
                 type="button"
+                role="radio"
+                /* roving tabindex — 그룹 전체가 탭스톱 하나(APG). */
+                tabIndex={!placed ? -1 : rovingTabIndex(i, roleIndex)}
                 data-testid={`rail-role-${r.id}`}
-                aria-pressed={directive.role === r.id}
+                aria-checked={directive.role === r.id}
                 disabled={!placed}
                 onClick={() => pushEdit(setRoleSafely(directive, freeText, r.id))}
               >
@@ -350,8 +407,17 @@ function PlayerContext(props: PlayerContextProps) {
         {/* m1 안내 — 저장된 프롬프트에서 인식해 켰던 항목을 끄면 그 문장을 **감독의 한마디로 옮긴다**.
             (칩이 만든 문장인지 내가 쓴 문장인지 문자열로는 구별할 수 없으므로, 지우는 대신 옮긴다.)
             이 안내는 알림일 뿐이라 놓쳐도 데이터는 이미 위 한마디 칸에 들어가 있다. */}
+        {/* 라이브 리전은 **미리 DOM 에 있어야** 한다 — `role="status"` 노드를 내용과 함께 새로
+            삽입하면 SR 이 리전 등록 전에 내용이 들어와 읽지 않는 경우가 많다(브라우저/SR 조합에 따라
+            무음). 그래서 빈 리전을 상시 유지하고 문장만 갈아끼운다(#106 R3b C). 시각 배너는 아래
+            별도로 그린다 — 배너에는 닫기 버튼(포커스 가능)이 있어 `aria-hidden` 을 걸 수 없으므로
+            배너 자체는 라이브가 아닌 일반 콘텐츠로 두고, 알림 역할만 이 리전이 진다. */}
+        <div className={styles.srOnly} role="status" aria-live="polite" data-testid="rail-moved-live">
+          {moved ? `${moved} 문장을 감독의 한마디로 옮겼습니다.` : ""}
+        </div>
+
         {moved && (
-          <div ref={movedRef} className={styles.recover} data-testid="rail-moved" role="status">
+          <div ref={movedRef} className={styles.recover} data-testid="rail-moved">
             <p className={styles.recoverText}>
               <b data-testid="rail-moved-phrase">{moved}</b> 문장을 <b>감독의 한마디</b>로 옮겼습니다.
               저장된 프롬프트에서 인식한 문장이라 지우지 않았습니다 — 필요 없으면 위에서 지우세요.

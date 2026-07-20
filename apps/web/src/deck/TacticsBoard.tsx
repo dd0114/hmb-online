@@ -27,6 +27,11 @@ interface TacticsBoardProps {
   onSlotTap: (slot: SlotRef) => void;
   /** 보드 카드 하단 바(초기화 / Auto 배치) — 벤치와 같은 카드 안에 붙는다. */
   footer?: ReactNode;
+  /**
+   * 선발 0/11 첫 진입 안내(#106 R3b A) — 피치 **위**에 얹힌다. 슬롯 자체는 계속 눌려야 하므로
+   * 오버레이는 `pointer-events:none` 이고 그 안의 CTA 만 다시 켠다(TacticsBoard.module.css).
+   */
+  emptyOverlay?: ReactNode;
 }
 
 function slotDroppableId(role: SlotRole, slotIndex: number): string {
@@ -86,6 +91,11 @@ function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberL
     >
       <span className={styles.disc}>
         {numberLabel}
+        {/* 색각 대응(#106 R3b B): 보드 토큰의 시계는 14px 이라 **글자 축을 의도적으로 넣지 않는다** —
+            11개 토큰이 겹치는 피치에서 등급 텍스트까지 얹으면 판독성이 오히려 떨어진다. 여기서는
+            색과 독립인 두 축(바늘 각도 + 링 파선)으로 충분하고, 글자 축은 공간이 있는 소비처
+            (보유 선수 리스트 행 · 레일 헤드)가 담당한다. 토큰을 탭하면 레일 헤드가
+            `컨디션 최상` 처럼 글자로 말해주므로 정보 접근 경로는 끊기지 않는다. */}
         {condition != null && (
           <span className={styles.tokenClock}>
             <ConditionClock value={condition} size={14} testId={`token-clock-${playerId}`} />
@@ -177,9 +187,11 @@ function SlotCell(props: SlotCellProps) {
  * 배치 수단: 탭-투-플레이스(1급, tap-place.ts) + 드래그(보조, @dnd-kit — 센서는 DeckEditor 소유).
  */
 export function TacticsBoard(props: TacticsBoardProps) {
-  const { draft, footer } = props;
+  const { draft, footer, emptyOverlay } = props;
   const coords = useMemo(() => starterCoords(draft.formation), [draft.formation]);
   const benchCount = draft.slots.filter((s) => s.role === "bench").length;
+  // 선발이 하나도 없으면 "무엇부터 해야 하는지"를 보드가 직접 말한다(벤치만 채운 상태는 제외).
+  const noStarters = !draft.slots.some((s) => s.role === "starter");
   const cellProps = {
     draft: props.draft,
     playersById: props.playersById,
@@ -191,7 +203,7 @@ export function TacticsBoard(props: TacticsBoardProps) {
   };
 
   return (
-    <div className={styles.card} data-testid="board-card">
+    <div className={styles.card} data-testid="board-card" data-empty={noStarters ? "true" : "false"}>
       <div className={styles.pitch} data-testid="tactics-board">
         {/* 토큰 레이어를 피치 안쪽으로 인셋한다 — 안 그러면 최전방/GK 토큰이 피치 경계에서 잘린다. */}
         <div className={styles.tokens}>
@@ -206,6 +218,11 @@ export function TacticsBoard(props: TacticsBoardProps) {
             />
           ))}
         </div>
+        {noStarters && emptyOverlay && (
+          <div className={styles.empty} data-testid="board-empty">
+            {emptyOverlay}
+          </div>
+        )}
       </div>
 
       {/* 벤치 = 보드 카드의 일부 (#106: 별도 블록 금지) */}

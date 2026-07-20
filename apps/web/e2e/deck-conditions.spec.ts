@@ -63,7 +63,9 @@ async function openDeck(page: Page) {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "guest");
   });
-  await page.setViewportSize({ width: 390, height: 1400 });
+  // R3b E: 실기기 크기(iPhone 12/13/14 = 390×844). 1400 은 존재하지 않는 폰 높이라
+  // "스크롤 없이 다 보인다"는 비현실 조건을 만들어 가림 결함을 숨긴다.
+  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/deck");
   await expect(page.getByTestId("deck-editor")).toBeVisible();
 }

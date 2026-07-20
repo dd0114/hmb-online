@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyChipToggle,
-  applyRole,
+  __internal,
   setRoleSafely,
   toggleChipSafely,
   composeLayers,
@@ -9,7 +8,6 @@ import {
   DIRECTIVE_CHIPS,
   emptyDirectiveState,
   parseDirectiveText,
-  restoreSentence,
   ROLE_OPTIONS,
   synthesizeDirectiveText,
   toggleChip,
@@ -207,33 +205,33 @@ describe("m1 — 재진입 후 칩을 꺼도 유저 문장이 소리 없이 사�
     expect(parsed.freeText).toBe("");
 
     // 칩을 끄면 프롬프트에서는 빠지지만 **문장을 돌려준다**(=복구 제안).
-    const edit = applyChipToggle(parsed.state, "press");
+    const edit = __internal.applyChipToggle(parsed.state, "press");
     expect(edit.droppedInferred).toBe(PRESS.phrase);
     assertNoSilentLoss(parsed.state, parsed.freeText, edit);
     expect(composePrompt(edit.state, parsed.freeText)).toBe("");
 
     // 되돌리면 원본 프롬프트가 글자 단위로 복원된다.
-    const restoredFree = restoreSentence(parsed.freeText, edit.droppedInferred!);
+    const restoredFree = __internal.restoreSentence(parsed.freeText, edit.droppedInferred!);
     expect(composePrompt(edit.state, restoredFree)).toBe(saved);
   });
 
   it("이번 세션에 직접 켠 칩을 끄는 건 손실이 아니다(복구 제안 잡음 없음)", () => {
-    const on = applyChipToggle(emptyDirectiveState(), "press");
+    const on = __internal.applyChipToggle(emptyDirectiveState(), "press");
     expect(on.droppedInferred).toBeNull();
-    const off = applyChipToggle(on.state, "press");
+    const off = __internal.applyChipToggle(on.state, "press");
     expect(off.droppedInferred).toBeNull();
     // 이 문장은 유저가 쓴 게 아니라 칩이 만든 것이므로 사라져도 손실이 아니다(복구 제안 없음).
     expect(composePrompt(off.state, "")).toBe("");
   });
 
   it("직접 켰다가 저장·재진입하면 다시 추론이 되고, 끌 때 문장을 돌려준다", () => {
-    const on = applyChipToggle(emptyDirectiveState(), "press").state;
+    const on = __internal.applyChipToggle(emptyDirectiveState(), "press").state;
     const saved = composePrompt(on, "오늘 잘하자");
     const parsed = parseDirectiveText(saved);
-    const off = applyChipToggle(parsed.state, "press");
+    const off = __internal.applyChipToggle(parsed.state, "press");
     expect(off.droppedInferred).toBe(PRESS.phrase);
     // 되돌리면 문장 집합이 보존된다(레이어 경계만 이동).
-    const restored = restoreSentence(parsed.freeText, off.droppedInferred!);
+    const restored = __internal.restoreSentence(parsed.freeText, off.droppedInferred!);
     expect(sentences(composePrompt(off.state, restored)).sort()).toEqual(sentences(saved).sort());
   });
 
@@ -241,20 +239,20 @@ describe("m1 — 재진입 후 칩을 꺼도 유저 문장이 소리 없이 사�
     const saved = composePrompt({ role: "attack", chipIds: [], inferred: [] }, "");
     const parsed = parseDirectiveText(saved);
     expect(parsed.state.role).toBe("attack");
-    const edit = applyRole(parsed.state, "defend");
+    const edit = __internal.applyRole(parsed.state, "defend");
     expect(edit.droppedInferred).toBe(ATTACK.phrase);
     assertNoSilentLoss(parsed.state, parsed.freeText, edit);
     // 직접 고른 뒤 다시 바꾸는 건 손실이 아니다
-    expect(applyRole(edit.state, "support").droppedInferred).toBeNull();
+    expect(__internal.applyRole(edit.state, "support").droppedInferred).toBeNull();
   });
 
   it("여러 줄 자유 문장이 섞여 있어도 문장 집합이 보존된다", () => {
     const saved = `${PRESS.phrase}.\n오늘 잘하자\n둘째 줄`;
     const parsed = parseDirectiveText(saved);
     expect(parsed.freeText).toBe("오늘 잘하자\n둘째 줄");
-    const edit = applyChipToggle(parsed.state, "press");
+    const edit = __internal.applyChipToggle(parsed.state, "press");
     assertNoSilentLoss(parsed.state, parsed.freeText, edit);
-    const restored = restoreSentence(parsed.freeText, edit.droppedInferred!);
+    const restored = __internal.restoreSentence(parsed.freeText, edit.droppedInferred!);
     expect(composePrompt(edit.state, restored)).toBe(saved);
   });
 
@@ -281,17 +279,17 @@ describe("m1 — 재진입 후 칩을 꺼도 유저 문장이 소리 없이 사�
         // 켜져 있는 칩을 하나 끈다 → 손실은 반드시 보고되고, 되돌리면 문장 집합이 유지된다
         const chipId = parsed.state.chipIds[0];
         if (chipId) {
-          const edit = applyChipToggle(parsed.state, chipId);
+          const edit = __internal.applyChipToggle(parsed.state, chipId);
           assertNoSilentLoss(parsed.state, parsed.freeText, edit);
           const free = edit.droppedInferred
-            ? restoreSentence(parsed.freeText, edit.droppedInferred)
+            ? __internal.restoreSentence(parsed.freeText, edit.droppedInferred)
             : parsed.freeText;
           text = composePrompt(edit.state, free);
         } else {
-          const edit = applyRole(parsed.state, parsed.state.role === "attack" ? "defend" : "attack");
+          const edit = __internal.applyRole(parsed.state, parsed.state.role === "attack" ? "defend" : "attack");
           assertNoSilentLoss(parsed.state, parsed.freeText, edit);
           text = composePrompt(edit.state, edit.droppedInferred
-            ? restoreSentence(parsed.freeText, edit.droppedInferred)
+            ? __internal.restoreSentence(parsed.freeText, edit.droppedInferred)
             : parsed.freeText);
         }
       }
@@ -459,5 +457,51 @@ describe("blocker-2 — 연속 편집·이탈 후에도 원본 문장이 남는�
         }
       }
     }
+  });
+});
+
+/**
+ * F1(#106 R3b) — **다문장 이동 시 순서가 뒤집히지 않는다**.
+ *
+ * `restoreSentence` 는 원래 무조건 맨 앞에 prepend 했다. 그래서 추론 항목을 **연속으로** 끄면
+ * (마킹 끄고 → 압박 끄기) 나중 것이 앞에 붙어 원래 합성문과 순서가 뒤집혔다. 내용은 보존되므로
+ * 손실은 아니지만, 뒤집힌 문자열은 재저장 시 파싱 왕복 검증을 통과하지 못해(카탈로그 순서가 아님)
+ * 지시 레이어로 되돌아오지 못하고 통째로 자유 문장이 된다.
+ */
+describe("F1 — 연속 이동 후에도 카탈로그 순서가 보존된다", () => {
+  it("두 칩을 잇달아 끄면 옮겨진 두 문장이 카탈로그 순서로 남는다", () => {
+    const saved = composePrompt(
+      { role: "balanced", chipIds: ["marking", "press"], inferred: [] },
+      "",
+    );
+    // 저장 문자열은 카탈로그 순서(마킹 → 압박)
+    expect(saved.indexOf("마크")).toBeLessThan(saved.indexOf("압박"));
+
+    // 재진입 후 마킹 → 압박 순으로 끈다(각각 자유 문장으로 이동).
+    let p = parseDirectiveText(saved);
+    let r = toggleChipSafely(p.state, p.freeText, "marking");
+    let text = composePrompt(r.state, r.freeText);
+    p = parseDirectiveText(text);
+    r = toggleChipSafely(p.state, p.freeText, "press");
+    text = composePrompt(r.state, r.freeText);
+
+    // 두 문장이 모두 남아 있고, 순서가 원본과 같다(뒤집힘 없음).
+    expect(text).toContain("마크");
+    expect(text).toContain("압박");
+    expect(text.indexOf("마크"), "연속 이동 후 순서가 뒤집혔다").toBeLessThan(text.indexOf("압박"));
+  });
+
+  it("한 문장만 옮길 때는 기존 동작(맨 앞) 그대로 — 글자 단위 복원 계약 유지", () => {
+    const free = "오늘 잘하자";
+    const out = __internal.restoreSentence(free, PRESS.phrase);
+    expect(out).toBe(`${PRESS.phrase}.\n${free}`);
+  });
+
+  it("유저가 쓴 줄은 재정렬 대상이 아니다(선두 카탈로그 블록만 정렬)", () => {
+    const free = `${DIRECTIVE_CHIPS.find((c) => c.id === "tempo")!.phrase}.\n내 문장`;
+    const out = __internal.restoreSentence(free, PRESS.phrase);
+    // 압박(카탈로그 5번)은 템포(6번)보다 앞 → 선두 블록 안에서 앞자리, "내 문장"은 그대로 뒤에.
+    expect(out.split("\n")[2]).toBe("내 문장");
+    expect(out.indexOf("압박")).toBeLessThan(out.indexOf("템포"));
   });
 });
