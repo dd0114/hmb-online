@@ -22,6 +22,7 @@ import org.springframework.stereotype.Component;
  * ({formation, starters[11:{playerId,slotIndex,promptText?}], bench[]} — bench는 문자열 배열).
  */
 @Component
+@org.springframework.core.annotation.Order(0)   // 시드 임포트 러너 — 순서 명시(관계: PlayerCatalogService 와 동급, AdminBootstrap 보다 먼저).
 public class BotService implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(BotService.class);

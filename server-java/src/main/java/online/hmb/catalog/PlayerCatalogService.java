@@ -37,6 +37,7 @@ import org.springframework.stereotype.Component;
  * W0에서는 존재 여부·버전만 확인해 meta_kv에 기록한다(파싱 실패해도 부팅은 계속).
  */
 @Component
+@org.springframework.core.annotation.Order(0)   // 부팅 임포트는 다른 러너보다 먼저 — AdminBootstrap 의 온보딩이 players FK 를 필요로 한다.
 public class PlayerCatalogService implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(PlayerCatalogService.class);

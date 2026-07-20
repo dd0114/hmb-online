@@ -31,6 +31,12 @@ hmb:
     local:                           # P3 §A 자체 로그인(P3-D2) — 비번 평문 목업, 해시 전환은 백로그
       password-min-length: 4         # 가입 검증 하한(하드코딩 금지 — config)
       password-max-length: 64        # 상한(과대 입력 방어)
+  admin:                             # P3 §C admin 격리(P3-D4) — 자격은 코드가 아니라 env 가 정한다.
+    # 둘 다 비어 있으면 **admin 0명**(기본 안전). 부팅 시 잔존 is_admin 플래그도 회수한다.
+    # 둘 다 채우면 그 닉네임 계정에만 is_admin=1 을 부여(계정이 없으면 생성). 하나만 채우면 부팅 실패.
+    # ⚠️ 값을 여기 하드코딩하지 말 것 — 배포는 env 로만 주입한다(비번은 로그에 절대 찍지 않는다).
+    nickname: ${HMB_ADMIN_NICKNAME:}
+    password: ${HMB_ADMIN_PASSWORD:}
   deck:
     bench-max: 7
     player-prompt-max-chars: 500
