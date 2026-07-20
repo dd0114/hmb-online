@@ -144,8 +144,9 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 |---|---|---|---|
 | **v1** | engine@0.10.0 | 데드볼 엔진 네이티브(#59) + 페널티 2단계(#75) + 파울/카드 연출(#69/#74). 독립 QA PASS. | ✅ 안정 |
 | **v2** | engine@0.10.0 | (뷰어 전용, v1 엔진 계약 불변) 하이라이트 창 비대칭화(세이브 후 늦은 릴리스 해소, #83) + **뷰어 소비 주입 계약 네이티브화**(postMessage viewerReady/loadMatchLog, web 임베드용, #65) + 손상입력 하드닝. 독립 QA PASS. | ✅ 안정 |
+| **v3** | engine@0.14.0 | **v2.1 게임성 확장 + 코너 버그픽스 + 뷰 모드.** 엔진(α #99): 패스정확도 하향(0.11.0)·롱패스/롱킥(0.12.0). 세이브→코너 라이브아웃+키퍼 쳐냄(#91, 0.13.0). **세이브 후 반대편 스퓨리어스 코너 버그 픽스**(#110/#113 — `resolveOut` 코너 side 오배정, v0.2.0 잠복, 0.14.0). 뷰어(β #100): 전면 영어·소유팀 트레일색·패스/가로챔/돌파 이펙트·카드 선수표시·FM식 상세로그·실시간 통계 HUD(토글) + **Auto/Fix 뷰 모드 토글·줌 조정**(#114). 코너/스로인 클로즈업 제거(#90). 독립 QA PASS ×다수. | ✅ 안정 |
 
-- **메인 세션 소비법**: `git checkout v2`(최신) 또는 해당 커밋 고정. 엔진 = `packages/engine/src`(무상태 simulate/resume), 뷰어 = `packages/engine/dev-viewer/viewer-standalone.html`(자립 재생) 또는 `index.html`+`playback.mjs`. **web 임베드**: iframe src=뷰어 → `{type:'viewerReady'}` 수신 후 `{type:'loadMatchLog', matchLog}` 주입(v2+, #65).
+- **메인 세션 소비법**: `git checkout v3`(최신) 또는 해당 커밋 고정. 엔진 = `packages/engine/src`(무상태 simulate/resume), 뷰어 = `packages/engine/dev-viewer/viewer-standalone.html`(자립 재생) 또는 `index.html`+`playback.mjs`. **web 임베드**: iframe src=뷰어 → `{type:'viewerReady'}` 수신 후 `{type:'loadMatchLog', matchLog}` 주입(v2+, #65).
 - **태그 vs config.version(두 축)**: 릴리스 **태그**(v1,v2,…)는 안정 스냅샷마다 증가(엔진 OR 뷰어 변경 무관). **config.version**(engine@x.y.z)은 **엔진 동작/재현 계약**이 바뀔 때만 범프 — 뷰어 전용 릴리스는 태그만 올리고 config.version 은 유지(v2 가 v1 과 같은 0.10.0 인 이유).
 - **다음 안정화**: 변경이 독립 QA PASS + 전 게이트 green 이면 새 태그. 엔진 동작이 바뀌면 config.version 도 범프. 불안정 중간 커밋은 태깅하지 않는다.
 
