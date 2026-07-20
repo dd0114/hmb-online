@@ -209,28 +209,65 @@ curl -fsS -X POST https://api.your-domain.com/api/auth/login \
 
 ## 6. web — Cloudflare Pages
 
-> ⚠️ **이 절은 결정 대기 중이다** (에픽 #122 W2 코멘트). 확정 후 갱신한다.
->
-> 확인된 제약 2가지:
-> 1. Pages `_redirects` 의 프록시는 **자기 사이트 상대경로만** 지원 — 외부 오리진 프록시 불가
->    ([CF 문서](https://developers.cloudflare.com/pages/configuration/redirects/)). "코드 변경 0" 경로는 없다.
-> 2. `server-java` 에 **CORS 설정이 없다**(`grep -rn "Cors" server-java/src/main/` → 0 hits).
->    Pages 오리진에서 Tunnel 오리진을 부르면 브라우저가 전부 차단한다.
->
-> → web(`VITE_API_BASE` 1줄) + server-java(CORS 1빈) 양쪽이 필요하다. 각 도메인 오너 결정·구현 대기.
-
-결정 확정 후 채울 내용:
+### 6.1 Pages 프로젝트 설정
 
 ```
-Pages 프로젝트 설정
-  Build command      : npm run build --workspace=@hmb/web
-  Build output dir   : apps/web/dist
-  Root directory     : (리포 루트 — prebuild 가 모노레포 전체를 필요로 함)
-  환경변수           : VITE_API_BASE = https://api.your-domain.com
+Build command     : bash infra/pages/build.sh
+Build output dir  : apps/web/dist
+Root directory    : (비움 = 리포 루트)
+환경변수          : VITE_API_BASE = https://api.<your-domain>
 ```
 
-> `apps/web` 의 `prebuild`(`scripts/ensure-viewer.mjs`)가 엔진에서 뷰어를 생성하므로
-> **모노레포 전체가 빌드 컨텍스트에 있어야 한다** — Pages root directory 를 `apps/web` 으로 좁히면 깨진다.
+`infra/pages/build.sh` 가 `npm ci` → `npm run build --workspace=@hmb/web` → `_redirects`·`_headers`
+복사까지 한다. **빌드 자체는 검증 완료** (아래 6.3).
+
+- ⚠️ **Root directory 를 `apps/web` 으로 좁히면 깨진다** — `prebuild`(`ensure-viewer.mjs`)가
+  `packages/engine` 에서 뷰어를 생성하므로 모노레포 전체가 필요하다.
+- ⚠️ **`VITE_API_BASE` 는 빌드 타임에 인라인**된다(런타임 설정 아님) → 백엔드 오리진이 바뀌면
+  **재빌드·재배포** 필요. quick tunnel(§5.1)이 상시 운영에 부적합한 이유다.
+
+### 6.2 🚫 미해결 — 현재 이 설정만으로는 동작하지 않는다
+
+두 가지가 빠져 있고, **둘 다 `infra/` 밖 도메인** 소유다.
+
+| # | 문제 | 이슈 |
+|---|---|---|
+| 1 | `apps/web` 이 `VITE_API_BASE` 를 **읽지 않는다**. `client.ts:118` 이 상대경로로 fetch → 요청이 Pages 오리진으로 나가 404 | **#129** |
+| 2 | `server-java` 에 **CORS 가 없다**(0 hits) → 교차 오리진 요청이 브라우저에서 전부 차단 | **#128** (오픈 blocker B1) |
+
+**"코드 변경 0" 우회는 존재하지 않는다**: Pages `_redirects` 의 200 rewrite 는 자기 사이트
+상대경로만 지원하고 **외부 도메인 프록시가 불가**하다
+([CF 문서](https://developers.cloudflare.com/pages/configuration/redirects/)).
+
+### 6.2.1 ⚠️ `_redirects` 함정 — SPA 폴백을 직접 쓰지 말 것
+
+`/*  /index.html  200` 은 SPA 폴백처럼 보이지만 **사이트를 죽인다**:
+
+> "Redirects are always followed, **regardless of whether or not an asset matches the incoming
+> request**." — [Pages · Redirects](https://developers.cloudflare.com/pages/configuration/redirects/)
+
+- `/assets/index-*.js`·`.css` 까지 index.html 로 rewrite → **백지 화면**
+- `/viewer-embed.html` 도 index.html 을 반환 → 앱이 자기 iframe 안에서 재귀 렌더, `viewerReady` 미수신
+- 리다이렉트가 **헤더보다 우선**하므로 `_headers` 전체가 무력화
+
+**필요 없다.** 산출물에 top-level `404.html` 이 없으면 Pages 가 SPA 로 간주해 자동 폴백한다
+([Serving Pages](https://developers.cloudflare.com/pages/configuration/serving-pages/)). 현 산출물이 그 조건을 만족한다.
+→ `infra/pages/_redirects` 는 **규칙 없이 주석만** 두었다(의도적).
+
+### 6.3 검증 상태 (실측)
+
+```bash
+VITE_API_BASE=https://api.example.test bash infra/pages/build.sh
+```
+
+| 항목 | 결과 |
+|---|---|
+| 빌드 성공 | ✅ exit 0 (prebuild 뷰어 생성 → tsc → vite build) |
+| 산출물 | ✅ `index.html` · `assets/*` · `viewer-embed.html`(88KB) · `favicon.svg` · `_redirects` · `_headers` — 총 552KB |
+| `_redirects`·`_headers` | ⚠️ **파일 복사만 확인**. Pages 런타임 적용은 **미검증**(실 배포 필요) |
+| **API base 주입** | ❌ **번들에 반영 안 됨** — `VITE_API_BASE` 미설정 빌드와 **번들 해시 동일**(`index-DILS_GHH.js`), 번들에 `api.example.test` **0회**, `"/api/me"` 상대경로 잔존 |
+
+→ **AC-G1 의 web 반쪽은 미충족**. #129 머지 후 재검증한다(번들 해시 변화 + 절대 오리진 인라인 확인).
 
 ---
 
