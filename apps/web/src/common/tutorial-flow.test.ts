@@ -87,33 +87,44 @@ function Nav() {
     ),
     h(
       "button",
+      { type: "button", "data-testid": "go-deck", onClick: () => navigate("/deck") },
+      "덱",
+    ),
+    h(
+      "button",
       { type: "button", "data-testid": "go-lobby", onClick: () => navigate("/lobby") },
       "로비",
     ),
   );
 }
 
-function tree(steps: TutorialStep[], extra: ReturnType<typeof h>[]) {
+function tree(steps: TutorialStep[], extra: ReturnType<typeof h>[], missingGraceMs = 0) {
   return h(
     MemoryRouter,
     { initialEntries: ["/lobby"] },
     h(
       TutorialProvider,
-      { steps, missingGraceMs: 0 },
+      { steps, missingGraceMs },
       h("button", { type: "button", "data-testid": "t1" }, "대상1"),
       h("button", { type: "button", "data-testid": "t2" }, "대상2"),
+      h("button", { type: "button", "data-testid": "t3" }, "대상3"),
       h(Nav, { key: "nav" }),
       ...extra,
     ),
   );
 }
 
-function renderApp(steps: TutorialStep[] = STEPS, extra: ReturnType<typeof h>[] = []) {
-  const utils = render(tree(steps, extra));
+function renderApp(
+  steps: TutorialStep[] = STEPS,
+  extra: ReturnType<typeof h>[] = [],
+  /** 기본 0 = 즉시 스킵(동기 단언용). 유예의 **체감**을 봐야 하는 테스트만 올려 쓴다. */
+  missingGraceMs = 0,
+) {
+  const utils = render(tree(steps, extra, missingGraceMs));
   return {
     ...utils,
     /** 훅 모킹(fx)을 바꾼 뒤 같은 인스턴스를 다시 렌더한다(언마운트 없음). */
-    refresh: () => utils.rerender(tree(steps, extra)),
+    refresh: () => utils.rerender(tree(steps, extra, missingGraceMs)),
   };
 }
 
@@ -474,6 +485,159 @@ describe("seen 집합이 완료를 결정한다 (BLK-2)", () => {
     });
     fireEvent.click(screen.getByTestId("tutorial-next"));
     expect(readLocalDone("u1")).toBe(false);
+  });
+});
+
+/**
+ * 라우트를 넘나드는 스텝(로비 → 덱, #106 머지 후 실연결).
+ *
+ * 계약 두 줄:
+ *  1. 다른 화면의 스텝은 **여기서 소비되지 않는다** — 로비에서 헛되이 스킵해 시도 횟수를
+ *     태우지 않고, 완료 저장도 되지 않는다(그 스텝을 아직 안 보여줬으므로).
+ *  2. 그 화면에 실제로 들어가면 **이어서 뜬다** — 안 그러면 못 본 스텝이 영구히 남아
+ *     완료가 절대 저장되지 않는다(요구 3의 시나리오).
+ */
+describe("라우트 넘나듦 (로비 → 덱)", () => {
+  /** lobby1 → deck1(덱 화면 전용) → lobby2. 실제 TUTORIAL_STEPS 와 같은 모양. */
+  const CROSS_STEPS: TutorialStep[] = [
+    { id: "lobby1", targetTestId: "t1", title: "로비1", body: "b", enabled: true, route: "/lobby" },
+    { id: "deck1", targetTestId: "t2", title: "덱보드", body: "b", enabled: true, route: "/deck" },
+    { id: "lobby2", targetTestId: "t3", title: "로비2", body: "b", enabled: true, route: "/lobby" },
+  ];
+
+  /** 화면 전환 = 그 화면에 없는 대상은 실제로 사라진다(rect 제거). */
+  function goDeck() {
+    act(() => {
+      delete rects.t1;
+      delete rects.t3;
+      rects.t2 = { left: 40, top: 300, width: 200, height: 200 };
+      fireEvent.click(screen.getByTestId("go-deck"));
+      window.dispatchEvent(new Event("resize"));
+    });
+  }
+
+  function goLobby() {
+    act(() => {
+      delete rects.t2;
+      rects.t1 = { left: 40, top: 100, width: 120, height: 44 };
+      rects.t3 = { left: 40, top: 200, width: 120, height: 44 };
+      fireEvent.click(screen.getByTestId("go-lobby"));
+      window.dispatchEvent(new Event("resize"));
+    });
+  }
+
+  beforeEach(() => {
+    delete rects.t2; // 로비에서 시작 — 덱 화면 대상은 아직 없다
+    rects.t3 = { left: 40, top: 200, width: 120, height: 44 };
+  });
+
+  it("로비에서는 덱 스텝을 건너뛰지 않고 로비 스텝만 진행한다", () => {
+    markTutorialPending();
+    renderApp(CROSS_STEPS);
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비1");
+
+    fireEvent.click(screen.getByTestId("tutorial-next"));
+    // deck1 은 이 화면 후보가 아니다 → 곧바로 lobby2.
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비2");
+  });
+
+  /**
+   * 라우트 필터가 **실제로 일하는지**를 가르는 테스트.
+   *
+   * 필터가 없으면 로비의 '다음'이 덱 스텝을 먼저 집어 들고, 그 스텝은 대상이 없으니
+   * **유예(운영 400ms)가 만료될 때까지 아무것도 안 그린다** — 유저에겐 말풍선이 사라졌다가
+   * 뒤늦게 다음 스텝이 튀어나오는 공백으로 보인다(스텝마다 누적된다). 게다가 그 사이
+   * 덱 스텝의 시도 횟수(MAX_ATTEMPTS)까지 태워서, 정작 덱 화면에 도착했을 때 기회를 잃는다.
+   * 그래서 유예를 켜 두고 **'다음' 직후에 곧바로 다음 로비 스텝이 그려져 있는지**를 본다.
+   */
+  it("'다음' 이 다른 화면 스텝을 거치느라 화면을 비우지 않는다", () => {
+    markTutorialPending();
+    renderApp(CROSS_STEPS, [], 200); // 유예 200ms — 거쳐 갔다면 여기서 화면이 빈다
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비1");
+
+    fireEvent.click(screen.getByTestId("tutorial-next"));
+
+    expect(screen.queryByTestId("tutorial-overlay")).not.toBeNull();
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비2");
+  });
+
+  /** 라벨이 저장과 어긋나면 안 된다 — '시작하기'인데 완료가 안 되면 유저는 끝난 줄 안다. */
+  it("다른 화면에 못 본 스텝이 남아 있으면 '시작하기'라고 하지 않는다", () => {
+    markTutorialPending();
+    renderApp(CROSS_STEPS);
+    fireEvent.click(screen.getByTestId("tutorial-next")); // 로비의 마지막 스텝(로비2)
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비2");
+    // 이 화면엔 다음 후보가 없지만 덱 스텝이 남아 있다 → 아직 끝이 아니다.
+    expect(screen.getByTestId("tutorial-next").textContent).toBe("다음");
+  });
+
+  it("덱 스텝을 못 봤으면 로비를 다 봐도 완료로 저장하지 않는다", () => {
+    markTutorialPending();
+    renderApp(CROSS_STEPS);
+    fireEvent.click(screen.getByTestId("tutorial-next")); // lobby2
+    fireEvent.click(screen.getByTestId("tutorial-next")); // 더 볼 게 없다 → 중단
+
+    expect(screen.queryByTestId("tutorial-overlay")).toBeNull();
+    expect(readLocalDone("u1")).toBe(false);
+  });
+
+  it("덱 화면에 들어가면 못 본 덱 스텝이 이어서 뜨고, 그때 완료된다", () => {
+    markTutorialPending();
+    renderApp(CROSS_STEPS);
+    fireEvent.click(screen.getByTestId("tutorial-next"));
+    fireEvent.click(screen.getByTestId("tutorial-next")); // 로비 몫 종료(저장 없음)
+    expect(readLocalDone("u1")).toBe(false);
+
+    goDeck();
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("덱보드");
+    // 마지막 남은 스텝이므로 여기서 끝내면 저장된다.
+    expect(screen.getByTestId("tutorial-next").textContent).toBe("시작하기");
+    fireEvent.click(screen.getByTestId("tutorial-next"));
+    expect(readLocalDone("u1")).toBe(true);
+  });
+
+  it("골든 패스: 하이라이트된 버튼으로 덱에 들어가면 진행 중인 튜토리얼이 그대로 이어진다", () => {
+    markTutorialPending();
+    renderApp(CROSS_STEPS);
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비1");
+
+    // lobby1 을 보고 있는 상태에서 그대로 덱으로 이동(코치마크는 클릭을 막지 않는다).
+    goDeck();
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("덱보드");
+  });
+
+  /**
+   * 자동시작 잠금이 **경로가 바뀔 때마다** 풀리는지 — 잠금이 남으면 덱에 다녀온 뒤
+   * 로비로 돌아왔을 때 남은 로비 스텝이 영영 재개되지 않는다(effect 선언 순서 회귀 가드).
+   */
+  it("덱에 다녀온 뒤 로비로 돌아오면 남은 로비 스텝이 재개된다", () => {
+    markTutorialPending();
+    renderApp(CROSS_STEPS);
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비1");
+
+    goDeck();
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("덱보드");
+    fireEvent.click(screen.getByTestId("tutorial-next")); // 덱에서는 더 볼 게 없다 → 중단
+    expect(screen.queryByTestId("tutorial-overlay")).toBeNull();
+
+    goLobby();
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비2");
+    expect(readLocalDone("u1")).toBe(false);
+
+    fireEvent.click(screen.getByTestId("tutorial-next"));
+    expect(readLocalDone("u1")).toBe(true);
+  });
+
+  it("스텝 대상이 없는 화면(/shop)에서는 자동 시작하지 않는다", () => {
+    markTutorialPending();
+    renderApp(CROSS_STEPS);
+    fireEvent.click(screen.getByTestId("tutorial-skip"));
+    localStorage.clear(); // 완료 기록만 지우고 세션은 유지
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("go-away")); // /shop
+    });
+    expect(screen.queryByTestId("tutorial-overlay")).toBeNull();
   });
 });
 

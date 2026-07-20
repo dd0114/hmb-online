@@ -15,11 +15,35 @@ export interface TutorialStep {
   body: string;
   /** false = 실행 목록에서 제외(미완 기능 stub). */
   enabled: boolean;
+  /**
+   * 이 스텝의 대상이 **살아 있는 라우트**(pathname). 생략하면 어디서나 후보.
+   *
+   * 라우트를 넘나드는 스텝(로비 → 덱)을 안전하게 다루기 위한 힌트다. 이게 없으면
+   * 프로바이더가 로비에서 덱 화면 스텝을 억지로 찾아가 매번 '대상 부재 → 스킵'을
+   * 소모하고(시도 횟수까지 태운다), 유저에게는 아무것도 안 보이는 공백만 남는다.
+   * 힌트가 있으면 **그 화면에 실제로 도착했을 때만** 후보가 된다(TutorialProvider).
+   *
+   * ⚠️ 진행 상태의 SoT 는 여전히 `seen`(실제로 그려준 스텝) 이다. 라우트 힌트는
+   * "언제 보여줄 수 있나"만 좁힐 뿐, **안 본 스텝을 완료 처리하는 우회로가 아니다** —
+   * 덱 스텝을 못 본 채로는 완료 저장이 되지 않고, 유저가 처음 덱 화면에 들어갔을 때
+   * 이어서 뜬다(= PRD 의 "각 주요 탭 첫 진입 시 코치마크").
+   */
+  route?: string;
 }
 
 /**
- * 기본 스텝 — 전부 **로비 화면에 존재하는 요소**를 대상으로 한다(간단 수준 허용, P3-D6).
- * 라우트를 강제로 옮기지 않으므로 "탭 이동 중 튜토리얼이 길을 잃는" 상태가 없다.
+ * 기본 스텝 — 로비 5개(게임시작·상점·도감·리그·덱 진입) + **덱 화면 안** 2개(배치·저장).
+ *
+ * 순서의 뜻: 로비 설명을 마친 뒤 **마지막 로비 스텝이 '덱 구성' 버튼을 가리키는 CTA** 다.
+ * 코치마크는 비-모달이라 하이라이트된 버튼 클릭이 그대로 통과하므로, 유저가 그 버튼을 누르면
+ * /deck 으로 이동하고 대상이 사라진 자리에서 **같은 화면(/deck)의 다음 스텝**인 전술보드 →
+ * 저장이 이어서 뜬다. 즉 튜토리얼이 유저를 따라간다 — 강제 네비게이션은 하지 않는다
+ * (PRD-v4 §B: "덱 셋팅→게임 시작 클릭 유도"). 이 골든 패스가 그대로 완료로 끝난다.
+ *
+ * 유저가 대신 '다음'을 눌러 로비에 머무르면 덱 스텝은 이 화면 후보가 아니므로 오버레이가
+ * 조용히 닫히고 **완료 저장은 되지 않는다**(못 본 스텝이 남았으므로 — seen 이 SoT).
+ * 로비를 다시 와도 보여줄 게 없으니 다시 뜨지 않고, **처음 덱 화면에 들어가는 순간**
+ * 덱 스텝 2개가 이어서 뜬다. 그때 비로소 완료로 저장된다.
  */
 export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
@@ -28,16 +52,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     title: "여기서 경기를 시작합니다",
     body: "‘게임 시작’을 누르면 연습 경기와 리그 중에서 고를 수 있어요. 연습 경기는 봇과의 단판입니다.",
     enabled: true,
-  },
-  {
-    // TODO(#106): 덱 재설계 머지 후 **덱 화면 안의 실제 요소** testid 로 바꾸고 enabled:true.
-    // 지금 대상은 로비의 '덱 구성' 버튼(실재하는 요소)이라 켜기만 해도 깨지지 않는다.
-    // src/deck/** 는 #106 세션 소유라 이 웨이브에서 건드리지 않는다.
-    id: "deck",
-    targetTestId: "lobby-deck",
-    title: "덱을 구성하세요",
-    body: "선발 11명과 벤치, 선수별 프롬프트를 여기서 설정합니다.",
-    enabled: false,
+    route: "/lobby",
   },
   {
     id: "shop",
@@ -45,6 +60,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     title: "상점에서 선수를 모읍니다",
     body: "포인트로 뽑기를 돌려 카드를 얻습니다. 포인트가 모자라면 충전 탭을 확인하세요.",
     enabled: true,
+    route: "/lobby",
   },
   {
     id: "codex",
@@ -52,6 +68,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     title: "도감에서 보유 선수를 확인",
     body: "등급·포지션별로 모은 선수를 모아 봅니다. 아직 못 얻은 선수도 여기서 확인할 수 있어요.",
     enabled: true,
+    route: "/lobby",
   },
   {
     // 리그 진입점은 ‘게임 시작’ 모달 안(mode-league)이라 로비에서는 같은 버튼을 다시 가리킨다.
@@ -60,5 +77,34 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     title: "리그로 시즌을 치릅니다",
     body: "‘게임 시작 → 리그’ 를 고르면 10팀 18라운드 시즌이 열리고, 시즌이 끝나면 순위 보상을 받습니다.",
     enabled: true,
+    route: "/lobby",
+  },
+  {
+    // 로비 → 덱 진입 유도. 이 버튼을 누르면 아래 deck-board/deck-save 로 이어진다(#106 머지 반영).
+    id: "deck",
+    targetTestId: "lobby-deck",
+    title: "덱을 구성하세요",
+    body: "여기를 눌러 전술보드를 엽니다. 선발 11명과 벤치, 선수별 지시를 거기서 정합니다.",
+    enabled: true,
+    route: "/lobby",
+  },
+  {
+    // 덱 화면 안. testid 는 src/deck/TacticsBoard.tsx(읽기 전용, #106 세션 소유) 것을 그대로 쓴다.
+    id: "deck-board",
+    targetTestId: "tactics-board",
+    title: "전술보드에 선발을 배치",
+    // 'AUTO/Auto 배치' 버튼은 폭에 따라 상단 바(모바일)와 보드 바(데스크탑) 중 한 곳에 뜬다
+    // → "위의" 같은 위치 표현을 쓰지 않는다(한쪽에서 틀린 말이 된다, 실캡처 확인).
+    body: "슬롯 → 선수 순서로 누르면 배치됩니다. ‘Auto 배치’를 누르면 보유 선수로 한 번에 채울 수도 있어요.",
+    enabled: true,
+    route: "/deck",
+  },
+  {
+    id: "deck-save",
+    targetTestId: "save-deck",
+    title: "저장해야 반영됩니다",
+    body: "선발 11명이 채워지면 ‘저장’이 활성화됩니다. 저장한 덱으로 다음 경기를 치릅니다.",
+    enabled: true,
+    route: "/deck",
   },
 ];

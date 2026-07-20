@@ -7,7 +7,7 @@ import { useToken } from "../auth/TokenContext";
 import { TutorialContext } from "./tutorial-context";
 import type { TutorialControls } from "./tutorial-context";
 import { TutorialOverlay } from "./TutorialOverlay";
-import { enabledSteps, shouldStartTutorial } from "./tutorial-logic";
+import { enabledSteps, shouldStartTutorial, stepOnRoute } from "./tutorial-logic";
 import { TUTORIAL_STEPS } from "./tutorial-steps";
 import type { TutorialStep } from "./tutorial-steps";
 import {
@@ -25,6 +25,9 @@ import {
  */
 const MAX_ATTEMPTS = 2;
 
+/** 스텝 대상이 실재하는 화면들(TUTORIAL_STEPS 의 route 집합과 일치시켜 둔다). */
+const DEFAULT_AUTO_START_PATHS = ["/lobby", "/deck"] as const;
+
 /**
  * 온보딩 튜토리얼 상태 (PRD-v4 §B, AC-B1).
  *
@@ -39,7 +42,7 @@ export function TutorialProvider({
   children,
   steps = TUTORIAL_STEPS,
   missingGraceMs,
-  autoStartPath = "/lobby",
+  autoStartPaths = DEFAULT_AUTO_START_PATHS,
 }: {
   children?: ReactNode;
   /** 테스트에서 스텝을 주입하기 위한 훅. 운영은 기본값. */
@@ -47,11 +50,15 @@ export function TutorialProvider({
   /** 대상 부재를 스킵으로 확정하기까지의 유예(ms). 테스트에서 0 으로 낮춘다. */
   missingGraceMs?: number;
   /**
-   * 자동 시작을 허용하는 경로. 기본 스텝이 전부 로비 요소를 대상으로 하므로 로비에서만
-   * 시작한다 — 로그인 화면(스타터팩 모달 단계)에서 떠서 대상을 못 찾고 그대로
-   * ‘완료’ 처리돼 버리는 것을 막는다. 수동 다시보기는 이 게이트를 거치지 않는다.
+   * 자동 시작(=재개)을 허용하는 경로들. 스텝 대상이 존재하는 화면만 넣는다 —
+   * 로그인 화면(스타터팩 모달 단계)에서 떠서 대상을 못 찾고 그대로 ‘완료’ 처리돼 버리는
+   * 것을 막는 게이트다. 수동 다시보기는 이 게이트를 거치지 않는다.
+   *
+   * `/deck` 이 들어 있는 이유: 덱 스텝(전술보드·저장)은 그 화면에서만 보여줄 수 있어서,
+   * 유저가 로비에서 '다음'으로 지나갔다면 **처음 덱 화면에 들어갔을 때** 이어서 떠야 한다.
+   * 안 그러면 못 본 스텝이 영구히 남아 완료 저장이 절대 일어나지 않는다.
    */
-  autoStartPath?: string;
+  autoStartPaths?: readonly string[];
 }) {
   const { token } = useToken();
   const location = useLocation();
@@ -106,8 +113,15 @@ export function TutorialProvider({
   }, []);
 
   /**
-   * 다음으로 데려갈 스텝 = **아직 못 봤고 시도 여력이 남은** 첫 스텝. 없으면 -1.
+   * 다음으로 데려갈 스텝 = **아직 못 봤고, 지금 화면에서 보여줄 수 있고, 시도 여력이 남은**
+   * 첫 스텝. 없으면 -1.
+   *
    * 순서상 뒤가 아니라 **앞쪽일 수도 있다** — 잠깐 대상이 없어 건너뛴 스텝을 회수하는 경로다.
+   *
+   * 라우트 힌트(`step.route`)로 후보를 좁히는 것은 **줄이기만 하는** 필터다. 다른 화면의
+   * 스텝을 여기서 억지로 골라봐야 어차피 '대상 부재 → 스킵'인데, 그 과정에서 시도 횟수만
+   * 태우고(그 스텝은 정작 제 화면에 도착했을 때 기회를 잃는다) 유저에게는 아무것도 안 보이는
+   * 공백만 남는다. 완료 판정은 계속 `seen` 이 쥐고 있으므로 이 필터로 저장이 앞당겨지는 일은 없다.
    */
   const nextCandidate = useCallback(
     (excludeId?: string) =>
@@ -115,9 +129,10 @@ export function TutorialProvider({
         (s) =>
           s.id !== excludeId &&
           !seen.has(s.id) &&
+          stepOnRoute(s, location.pathname) &&
           (attempts.current.get(s.id) ?? 0) < MAX_ATTEMPTS,
       ),
-    [runSteps, seen],
+    [runSteps, seen, location.pathname],
   );
 
   /** 해당 스텝으로 이동(시도 횟수 증가). */
@@ -150,25 +165,45 @@ export function TutorialProvider({
     lastUserId.current = userId;
   }, [token, userId, resetSession]);
 
+  /**
+   * 화면이 바뀌면 자동시작 잠금을 푼다 — 중단된 튜토리얼이 (같은 화면이든 다른 화면이든)
+   * 다시 들어왔을 때 재개될 수 있게 한다. 같은 화면에 머무는 동안에는 잠금이 유지되므로
+   * 재시작 루프는 생기지 않는다.
+   *
+   * ⚠️ 이 effect 는 **자동 시작 effect 보다 먼저 선언돼 있어야 한다**. 같은 커밋에서
+   * effect 는 선언 순서로 실행되므로, 뒤에 두면 경로가 바뀐 그 렌더에서는 잠금이 아직
+   * 걸린 채 시작 판정이 돌고(=재개 실패), 다음 리렌더가 올 때까지 튜토리얼이 멈춰 있게 된다.
+   */
+  const lastPath = useRef(location.pathname);
+  useEffect(() => {
+    if (lastPath.current === location.pathname) return;
+    lastPath.current = location.pathname;
+    autoStartedFor.current = null;
+  }, [location.pathname]);
+
   useEffect(() => {
     if (!token) return;
     if (!userId || autoStartedFor.current === userId) return;
     // 이미 진행 중이면 손대지 않는다 — 잠깐 다른 화면에 다녀오는 사이(유예 만료 전)
     // 재시작이 걸리면 진행하던 스텝이 0 으로 되감긴다.
     if (active) return;
-    // 대상이 있는 화면(로비)에 실제로 도착한 다음에만 시작한다.
-    if (location.pathname !== autoStartPath) return;
+    // 대상이 있는 화면(로비·덱)에 실제로 도착한 다음에만 시작한다.
+    if (!autoStartPaths.includes(location.pathname)) return;
     const start = shouldStartTutorial({
       serverDone,
       localDone: readLocalDone(userId),
       pending: readTutorialPending(),
     });
     if (!start || runSteps.length === 0) return;
-    // 재개 지점은 저장해 둔 인덱스가 아니라 **아직 안 본 첫 스텝**이다.
+    // 재개 지점은 저장해 둔 인덱스가 아니라 **아직 안 봤고 이 화면에서 보여줄 수 있는** 첫 스텝이다.
     // 새 방문이므로 시도 횟수는 리셋한다(지난 방문에 대상이 없던 스텝도 다시 기회를 준다).
     attempts.current = new Map();
-    const resumeAt = runSteps.findIndex((s) => !seen.has(s.id));
-    if (resumeAt < 0) return; // 전부 봤는데 명시적 종료를 안 한 상태 — 다시 띄우지 않는다.
+    const resumeAt = runSteps.findIndex(
+      (s) => !seen.has(s.id) && stepOnRoute(s, location.pathname),
+    );
+    // 이 화면에서 보여줄 게 없다 = 전부 봤거나, 남은 게 다른 화면 스텝이다.
+    // 후자는 그 화면에 들어갔을 때 여기서 다시 걸린다(그때까지 유저를 방해하지 않는다).
+    if (resumeAt < 0) return;
     autoStartedFor.current = userId;
     ownerUserId.current = userId;
     goTo(resumeAt);
@@ -179,17 +214,11 @@ export function TutorialProvider({
     serverDone,
     runSteps,
     location.pathname,
-    autoStartPath,
+    autoStartPaths,
     active,
     seen,
     goTo,
   ]);
-
-  // 대상이 있는 화면을 떠나면 자동시작 잠금을 푼다 — 중단된 튜토리얼이 돌아왔을 때
-  // 재개될 수 있게 한다(같은 화면에 머무는 동안 재시작 루프는 생기지 않는다).
-  useEffect(() => {
-    if (location.pathname !== autoStartPath) autoStartedFor.current = null;
-  }, [location.pathname, autoStartPath]);
 
   /**
    * 완료 저장 — **시작한 계정과 지금 계정이 같을 때만** 쓴다.
@@ -243,9 +272,12 @@ export function TutorialProvider({
     attempts.current = new Map();
     autoStartedFor.current = userId;
     ownerUserId.current = userId;
-    setIndex(0);
+    // 다시보기 진입점이 어느 화면에 붙든 **그 화면에서 보여줄 수 있는** 첫 스텝부터 연다
+    // (0 으로 고정하면 다른 화면에서는 첫 스텝이 대상 부재 스킵으로 낭비된다).
+    const first = runSteps.findIndex((s) => stepOnRoute(s, location.pathname));
+    setIndex(first < 0 ? 0 : first);
     setActive(true);
-  }, [userId]);
+  }, [userId, runSteps, location.pathname]);
 
   const value = useMemo<TutorialControls>(() => ({ active, restart }), [active, restart]);
   const step = active ? runSteps[index] : undefined;
@@ -263,7 +295,15 @@ export function TutorialProvider({
           onSkip={optOut}
           onMissingTarget={advanceOrEnd}
           onShown={markSeen}
-          isLast={nextCandidate(runSteps[index]?.id) < 0}
+          /**
+           * '시작하기' 라벨은 **이번 클릭으로 튜토리얼이 진짜 끝날 때만** 단다.
+           * 이 화면에 다음 후보가 없다는 것만으로는 부족하다 — 다른 화면(덱)에 못 본 스텝이
+           * 남아 있으면 저장도 안 되고 그 화면에서 이어지므로, '시작하기'는 거짓말이 된다.
+           */
+          isLast={
+            nextCandidate(step.id) < 0 &&
+            runSteps.every((s) => s.id === step.id || seen.has(s.id))
+          }
           missingGraceMs={missingGraceMs}
         />
       )}

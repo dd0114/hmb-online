@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
   hasFieldErrors,
-  isValidLoginId,
   isValidNickname,
   isValidPassword,
-  validateLocalLogin,
-  validateLocalRegister,
+  validateLocalCredentials,
 } from "./validation";
 
 describe("isValidNickname", () => {
@@ -28,49 +28,60 @@ describe("isValidNickname", () => {
   });
 });
 
-/* ── 자체 로그인(local) 검증 — PRD-v4 §A ── */
+/* ── 자체 로그인(local) 검증 — PRD-v4 §A. 규칙 SoT = server-java ──
+ * 식별자는 nickname 하나뿐이다(별도 loginId 없음 — RegisterRequest.java).
+ * 비번 길이는 LocalAuthProvider 의 password-min/max-length(기본 4~64).
+ */
 
-describe("isValidLoginId (4~20자 영문/숫자/_/-)", () => {
-  it.each(["abcd", "tester01", "user_1", "user-1", "a".repeat(20)])(
-    "accepts %s",
-    (id) => expect(isValidLoginId(id)).toBe(true),
-  );
+describe("식별자 규칙 = 서버 Nicknames.PATTERN 과 동일 (별도 loginId 규칙 없음)", () => {
+  it("서버가 허용하는 유니코드/기호 조합을 그대로 허용한다", () => {
+    // 구 loginId 규칙(영문/숫자 4~20)이 살아 있으면 아래가 전부 깨진다 — 이중 규칙 재발 방지.
+    for (const id of ["감독", "유저123", "ab", "u-1", "u_1", "a".repeat(16)]) {
+      expect(isValidNickname(id)).toBe(true);
+    }
+  });
 
-  it.each([
-    "", "abc", "a".repeat(21), "has space", "user@name", "유저아이디", "user.name", "user!",
-  ])("rejects %s", (id) => expect(isValidLoginId(id)).toBe(false));
+  it("서버 패턴 밖은 거부한다", () => {
+    for (const id of ["", "a", "a".repeat(17), "has space", "user@name", "user.name"]) {
+      expect(isValidNickname(id)).toBe(false);
+    }
+  });
 });
 
-describe("isValidPassword (목업 최소 4자)", () => {
-  it.each(["1234", "pass", "a-very-long-passphrase"])(
-    "accepts length>=4 (%s)",
-    (pw) => expect(isValidPassword(pw)).toBe(true),
-  );
+describe("isValidPassword (서버 4~64자)", () => {
+  it("경계값: min-1 거부 / min 허용 / max 허용 / max+1 거부", () => {
+    expect(MIN_PASSWORD_LENGTH).toBe(4);
+    expect(MAX_PASSWORD_LENGTH).toBe(64);
+    expect(isValidPassword("a".repeat(MIN_PASSWORD_LENGTH - 1))).toBe(false);
+    expect(isValidPassword("a".repeat(MIN_PASSWORD_LENGTH))).toBe(true);
+    expect(isValidPassword("a".repeat(MAX_PASSWORD_LENGTH))).toBe(true);
+    expect(isValidPassword("a".repeat(MAX_PASSWORD_LENGTH + 1))).toBe(false);
+  });
+
   it.each(["", "1", "abc"])("rejects short (%s)", (pw) => expect(isValidPassword(pw)).toBe(false));
 });
 
-describe("validateLocalLogin / validateLocalRegister", () => {
+describe("validateLocalCredentials (로그인·회원가입 공통)", () => {
   it("유효 입력이면 에러 없음", () => {
-    expect(validateLocalLogin({ loginId: "tester01", password: "1234" })).toEqual({});
-    expect(
-      validateLocalRegister({ loginId: "tester01", password: "1234", nickname: "감독" }),
-    ).toEqual({});
+    expect(validateLocalCredentials({ nickname: "감독", password: "1234" })).toEqual({});
   });
 
-  it("필드별로 에러를 나눠 돌려준다", () => {
-    const errors = validateLocalRegister({ loginId: "ab", password: "1", nickname: "x" });
-    expect(Object.keys(errors).sort()).toEqual(["loginId", "nickname", "password"]);
+  it("필드별로 에러를 나눠 돌려준다 (필드는 nickname/password 둘뿐)", () => {
+    const errors = validateLocalCredentials({ nickname: "x", password: "1" });
+    expect(Object.keys(errors).sort()).toEqual(["nickname", "password"]);
     expect(hasFieldErrors(errors)).toBe(true);
     expect(hasFieldErrors({})).toBe(false);
   });
 
-  it("로그인 검증은 닉네임을 요구하지 않는다", () => {
-    expect(validateLocalLogin({ loginId: "tester01", password: "1234" }).nickname).toBeUndefined();
+  it("64자 초과 비밀번호도 왕복 전에 막는다 (서버 max 미러)", () => {
+    const errors = validateLocalCredentials({ nickname: "감독", password: "a".repeat(65) });
+    expect(errors.password).toBeTruthy();
+    expect(errors.nickname).toBeUndefined();
   });
 
   it("AC-A2: 에러 메시지에 입력한 비밀번호가 섞이지 않는다", () => {
     const secret = "sup3rs3cret";
-    const errors = validateLocalRegister({ loginId: "ab", password: secret, nickname: "x" });
+    const errors = validateLocalCredentials({ nickname: "x", password: secret });
     expect(JSON.stringify(errors)).not.toContain(secret);
   });
 });

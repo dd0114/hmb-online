@@ -105,6 +105,32 @@ export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
+/* ─────────────────────────── API base (PRD-v4 §G / P3-D1, 이슈 #129) ───────────────────────────
+ * CF Pages 는 web 을 **정적**으로만 서빙한다 — /api 를 받아줄 서버가 그 오리진에 없다.
+ * 그래서 배포 빌드는 `VITE_API_BASE` 로 Tunnel 백엔드 오리진(예: https://api.example.com)을
+ * 주입하고, 모든 요청이 그리로 나간다. **빌드 타임 인라인**이므로 오리진이 바뀌면 재빌드가
+ * 필요하다(docs/plan-v4/deploy.md §6.1 과 동일한 변수명·빌드 방식).
+ *
+ * 기본값 `""` = 지금까지와 **완전히 동일한 상대경로 동작**(vite dev proxy / 데모 8080 무회귀).
+ * 적용 지점은 apiFetch **한 곳**뿐이다 — 호출부는 계속 "/api/..." 를 넘긴다.
+ */
+
+/** 끝 슬래시를 제거한 API base. 미설정이면 "". */
+export function apiBase(): string {
+  const raw: unknown = import.meta.env?.VITE_API_BASE;
+  return typeof raw === "string" ? raw.trim().replace(/\/+$/, "") : "";
+}
+
+/**
+ * 호출부 경로("/api/me")에 base 를 붙인다.
+ * 이미 절대 URL 이거나 base 가 없으면 그대로 — 중복 접두를 만들지 않는다.
+ */
+export function apiUrl(path: string): string {
+  if (!path.startsWith("/")) return path; // 절대 URL(http…) 또는 상대 세그먼트 — 손대지 않는다
+  const base = apiBase();
+  return base ? `${base}${path}` : path;
+}
+
 /**
  * 인증 엔드포인트 접두 — 이 경로들의 401 은 **인증 실패**(잘못된 자격)이지 **세션 만료**가 아니다.
  * 자체 로그인(PRD-v4 §A) 도입으로 "오타 비번 = 일상적 401" 이 생겼기 때문에 구분이 필요하다.
@@ -114,19 +140,41 @@ export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
  */
 const AUTH_PATH_PREFIX = "/api/auth/";
 
-/** 상대/절대 URL 모두에서 pathname 을 뽑는다(API base 환경변수화 대비 — P3-D1). */
+/** 상대/절대 URL 모두에서 pathname 을 뽑는다(API base 환경변수화 — P3-D1). */
 function pathnameOf(path: string): string {
-  const base =
+  const origin =
     typeof window !== "undefined" && window.location ? window.location.origin : "http://localhost";
   try {
-    return new URL(path, base).pathname;
+    return new URL(path, origin).pathname;
   } catch {
     return path;
   }
 }
 
+/**
+ * VITE_API_BASE 의 **경로 부분**("https://api.x/backend" → "/backend"). 오리진만이면 "".
+ * base 가 서브패스를 포함하면 붙인 뒤의 pathname 이 "/backend/api/auth/login" 이 되어
+ * 접두 판별이 조용히 깨진다 — 그래서 판별 전에 이 부분을 되벗긴다.
+ */
+function basePathname(): string {
+  const base = apiBase();
+  if (!base) return "";
+  const p = pathnameOf(base);
+  return p === "/" ? "" : p.replace(/\/+$/, "");
+}
+
+/**
+ * 인증 엔드포인트 판별. base 적용 **전/후 어느 형태를 넘겨도** 같은 답이 나와야 한다
+ * (상대경로 / 절대 URL / base 서브패스 포함) — 틀리면 로그인 오답 401 이 다시 전역 세션을
+ * 파기한다. client.test.ts 가 4조합 전부 박제.
+ */
 export function isAuthEndpoint(path: string): boolean {
-  return pathnameOf(path).startsWith(AUTH_PATH_PREFIX);
+  let pathname = pathnameOf(path);
+  const prefix = basePathname();
+  if (prefix && pathname.startsWith(prefix)) {
+    pathname = pathname.slice(prefix.length) || "/";
+  }
+  return pathname.startsWith(AUTH_PATH_PREFIX);
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
@@ -139,7 +187,10 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const res = await fetch(path, {
+  // API base 적용 지점은 여기 **한 곳**뿐이다(#129).
+  const url = apiUrl(path);
+
+  const res = await fetch(url, {
     ...options,
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
@@ -148,7 +199,8 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   if (res.status === 401) {
     const body = await parseErrorBody(res);
     // 인증 엔드포인트의 401 = 자격 오류(폼 에러) → 세션을 건드리지 않고 호출자에게 위임.
-    if (!isAuthEndpoint(path)) {
+    // 판별은 base 가 붙은 최종 url 로 한다(붙기 전 path 로 해도 같은 답이어야 함 — 테스트 박제).
+    if (!isAuthEndpoint(url)) {
       clearToken();
       clearProvider();
       onUnauthorized();

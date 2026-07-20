@@ -1,7 +1,11 @@
 /**
- * 자체 로그인(id/비번) 패널 — PRD-v4 §A (AC-A1, AC-A2), P3-D2.
+ * 자체 로그인(아이디/비번) 패널 — PRD-v4 §A (AC-A1, AC-A2), P3-D2.
  *
  * 기존 게스트/OAuth목 3버튼 플로우에 **추가**되는 경로다(무회귀 — 기존 코드 경로 불변).
+ *
+ * ⚠️ **식별자는 하나뿐이다(서버 계약)**: server-java 는 별도 로그인 id 컬럼을 두지 않고
+ * 기존 `users.nickname`(UNIQUE)을 로그인 id 로 재사용한다(RegisterRequest = {nickname, password}).
+ * 그래서 회원가입 폼에도 "아이디"·"닉네임" 이중 입력이 **없다** — 한 필드가 둘을 겸한다.
  *
  * ⚠️ **평문 비밀번호 목업**이다. 실 OAuth/해시 교체 지점:
  *   - 서버: users.password 평문 → 해시 컬럼(백로그). body shape 은 그대로.
@@ -26,7 +30,7 @@ import {
   buildRegisterBody,
   localAuthErrorToFields,
 } from "./login-flow";
-import { hasFieldErrors, validateLocalLogin, validateLocalRegister } from "./validation";
+import { hasFieldErrors, validateLocalCredentials } from "./validation";
 import type { LocalAuthFieldErrors } from "./validation";
 import styles from "./LoginPage.module.css";
 
@@ -41,9 +45,9 @@ interface Props {
 
 export function LocalAuthPanel({ onAuthenticated, onBack, initialMode = "login" }: Props) {
   const [mode, setMode] = useState<LocalAuthMode>(initialMode);
-  const [loginId, setLoginId] = useState("");
-  const [password, setPassword] = useState("");
+  /** 로그인 id 겸 표시 닉네임 — 서버가 하나만 두므로 클라도 필드 하나다. */
   const [nickname, setNickname] = useState("");
+  const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<LocalAuthFieldErrors>({});
   const [pending, setPending] = useState(false);
 
@@ -58,9 +62,7 @@ export function LocalAuthPanel({ onAuthenticated, onBack, initialMode = "login" 
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const validation = isRegister
-      ? validateLocalRegister({ loginId, password, nickname })
-      : validateLocalLogin({ loginId, password });
+    const validation = validateLocalCredentials({ nickname, password });
     if (hasFieldErrors(validation)) {
       setErrors(validation);
       return;
@@ -73,8 +75,8 @@ export function LocalAuthPanel({ onAuthenticated, onBack, initialMode = "login" 
         {
           method: "POST",
           body: isRegister
-            ? buildRegisterBody({ loginId, password, nickname })
-            : buildLocalLoginBody({ loginId, password }),
+            ? buildRegisterBody({ nickname, password })
+            : buildLocalLoginBody({ nickname, password }),
         },
       );
       onAuthenticated(res.token, res.isNew);
@@ -94,23 +96,24 @@ export function LocalAuthPanel({ onAuthenticated, onBack, initialMode = "login" 
         <span>{isRegister ? "새 계정을 만듭니다" : "아이디와 비밀번호를 입력하세요"}</span>
       </div>
 
-      <label className={styles.label} htmlFor="local-login-id">
-        아이디
+      {/* 서버가 nickname 하나를 로그인 id 로 쓰므로 필드도 하나다(가입/로그인 동일). */}
+      <label className={styles.label} htmlFor="local-nickname">
+        아이디 <span className={styles.labelHint}>(닉네임으로도 표시됩니다)</span>
       </label>
       <input
-        id="local-login-id"
+        id="local-nickname"
         className={styles.input}
-        data-testid="local-login-id"
-        value={loginId}
-        onChange={(event) => setLoginId(event.target.value)}
-        placeholder="4~20자 영문/숫자"
+        data-testid="local-nickname"
+        value={nickname}
+        onChange={(event) => setNickname(event.target.value)}
+        placeholder="2~16자 문자/숫자/_/-"
         autoComplete="username"
         disabled={pending}
         autoFocus
       />
-      {errors.loginId && (
-        <p className={styles.fieldError} data-testid="local-error-loginId">
-          {errors.loginId}
+      {errors.nickname && (
+        <p className={styles.fieldError} data-testid="local-error-nickname">
+          {errors.nickname}
         </p>
       )}
 
@@ -124,7 +127,7 @@ export function LocalAuthPanel({ onAuthenticated, onBack, initialMode = "login" 
         data-testid="local-password"
         value={password}
         onChange={(event) => setPassword(event.target.value)}
-        placeholder="4자 이상"
+        placeholder="4~64자"
         autoComplete={isRegister ? "new-password" : "current-password"}
         disabled={pending}
       />
@@ -132,29 +135,6 @@ export function LocalAuthPanel({ onAuthenticated, onBack, initialMode = "login" 
         <p className={styles.fieldError} data-testid="local-error-password">
           {errors.password}
         </p>
-      )}
-
-      {isRegister && (
-        <>
-          <label className={styles.label} htmlFor="local-nickname">
-            닉네임
-          </label>
-          <input
-            id="local-nickname"
-            className={styles.input}
-            data-testid="local-nickname"
-            value={nickname}
-            onChange={(event) => setNickname(event.target.value)}
-            placeholder="2~16자"
-            autoComplete="nickname"
-            disabled={pending}
-          />
-          {errors.nickname && (
-            <p className={styles.fieldError} data-testid="local-error-nickname">
-              {errors.nickname}
-            </p>
-          )}
-        </>
       )}
 
       {errors.form && (

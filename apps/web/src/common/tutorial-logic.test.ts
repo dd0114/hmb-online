@@ -9,15 +9,24 @@ import {
   isTargetUsable,
   resolveTutorialDone,
   shouldStartTutorial,
+  stepOnRoute,
 } from "./tutorial-logic";
 import { TUTORIAL_STEPS } from "./tutorial-steps";
+import type { TutorialStep } from "./tutorial-steps";
 
 const VP = { width: 390, height: 844 };
 
 describe("enabledSteps", () => {
-  it("drops disabled stubs (deck step waits for #106)", () => {
-    const ids = enabledSteps(TUTORIAL_STEPS).map((s) => s.id);
-    expect(ids).not.toContain("deck");
+  it("drops disabled stubs", () => {
+    const stub: TutorialStep = {
+      id: "stub",
+      targetTestId: "not-yet",
+      title: "t",
+      body: "b",
+      enabled: false,
+    };
+    const ids = enabledSteps([...TUTORIAL_STEPS, stub]).map((s) => s.id);
+    expect(ids).not.toContain("stub");
     expect(ids.length).toBeGreaterThan(0);
   });
 
@@ -26,6 +35,53 @@ describe("enabledSteps", () => {
       expect(step.targetTestId).toMatch(/\S/);
       expect(step.title).toMatch(/\S/);
     }
+  });
+
+  /** #106 머지 반영 — 덱 동선(진입·배치·저장)이 실제로 실행 목록에 들어 있어야 한다. */
+  it("덱 동선이 켜져 있고 덱 화면 요소를 가리킨다 (PRD-v4 §B)", () => {
+    const run = enabledSteps(TUTORIAL_STEPS);
+    const ids = run.map((s) => s.id);
+    expect(ids).toContain("deck");
+    expect(ids).toContain("deck-board");
+    expect(ids).toContain("deck-save");
+
+    const byId = (id: string) => run.find((s) => s.id === id)!;
+    // 로비 진입 유도는 로비 버튼, 배치/저장은 덱 화면 요소(src/deck/** 의 실제 testid).
+    expect(byId("deck").targetTestId).toBe("lobby-deck");
+    expect(byId("deck").route).toBe("/lobby");
+    expect(byId("deck-board").targetTestId).toBe("tactics-board");
+    expect(byId("deck-board").route).toBe("/deck");
+    expect(byId("deck-save").targetTestId).toBe("save-deck");
+    expect(byId("deck-save").route).toBe("/deck");
+  });
+
+  /** 진입 유도(로비) → 배치 → 저장 순서가 뒤집히면 동선 안내가 성립하지 않는다. */
+  it("덱 스텝 순서 = 진입 → 배치 → 저장", () => {
+    const ids = enabledSteps(TUTORIAL_STEPS).map((s) => s.id);
+    expect(ids.indexOf("deck")).toBeLessThan(ids.indexOf("deck-board"));
+    expect(ids.indexOf("deck-board")).toBeLessThan(ids.indexOf("deck-save"));
+  });
+});
+
+describe("stepOnRoute — 라우트 힌트", () => {
+  const step = (route?: string): TutorialStep => ({
+    id: "s",
+    targetTestId: "t",
+    title: "t",
+    body: "b",
+    enabled: true,
+    ...(route === undefined ? {} : { route }),
+  });
+
+  it("힌트가 없으면 어느 화면에서도 후보다(기존 동작 무회귀)", () => {
+    expect(stepOnRoute(step(), "/lobby")).toBe(true);
+    expect(stepOnRoute(step(), "/deck")).toBe(true);
+    expect(stepOnRoute(step(), "/anything")).toBe(true);
+  });
+
+  it("힌트가 있으면 그 화면에서만 후보다", () => {
+    expect(stepOnRoute(step("/deck"), "/deck")).toBe(true);
+    expect(stepOnRoute(step("/deck"), "/lobby")).toBe(false);
   });
 });
 

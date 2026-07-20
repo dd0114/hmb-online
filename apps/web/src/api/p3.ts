@@ -7,7 +7,8 @@
  * (도메인 경계: web 은 서버 코드를 만들지 않는다 — 계약 불일치는 이슈 레이즈. CLAUDE.md §10)
  *
  * 통합 시 정합 체크리스트:
- *  - [ ] 필드명/열거값이 openapi-v3 와 일치하는지
+ *  - [x] **§A(자체 로그인)** — server-java 구현 대조 완료(아래 §A 주석의 파일 목록). 잠정 아님.
+ *  - [ ] §C/§E — 필드명/열거값이 openapi-v3 와 일치하는지
  *  - [ ] 에러 code 가 client.ts 의 ErrorCode 유니온에 포함되는지
  *  - [ ] 여기 선언한 경로 상수가 실제 라우트와 같은지
  */
@@ -21,6 +22,19 @@ type MatchRecordSummary = components["schemas"]["MatchRecordSummary"];
 /* ─────────────────────────── A. 자체 로그인 (PRD-v4 §A, P3-D2) ─────────────────────────── */
 
 /**
+ * ✅ **이 §A 블록은 더 이상 가정이 아니다** — server-java 구현(main 머지)에 실측 정합시켰다.
+ * 대조 SoT (읽고 맞춘 파일):
+ *   - `server-java/.../auth/RegisterRequest.java`  → body = {nickname, password}
+ *   - `server-java/.../auth/LoginRequest.java`     → body = {nickname, provider, password}
+ *   - `server-java/.../auth/AuthErrors.java`       → 409 DUPLICATE_NICKNAME / 401 BAD_CREDENTIALS
+ *   - `server-java/.../auth/LocalAuthController.java` → POST /api/auth/register, 응답 = LoginResponse
+ *   - `server-java/.../auth/Nicknames.java`        → 식별자 규칙(2~16, \p{L}\p{N}_-)
+ *
+ * ⚠️ **식별자는 하나다**: 서버에 별도 로그인 id 컬럼이 없고 기존 `users.nickname`(UNIQUE)이
+ * 곧 로그인 id 다. 따라서 클라도 "아이디"와 "닉네임"을 나눠 받지 않는다(단일 필드).
+ */
+
+/**
  * 로컬(자체) 계정 provider 값. 기존 guest|mock:google|mock:apple 과 **공존**한다
  * (additive — 기존 플로우 무회귀, AC-A1).
  */
@@ -31,28 +45,31 @@ export const AUTH_REGISTER_PATH = "/api/auth/register";
 export const AUTH_LOGIN_PATH = "/api/auth/login";
 
 /**
- * POST /api/auth/register — id/비번 회원가입.
+ * POST /api/auth/register — 회원가입(= RegisterRequest.java).
  * ⚠️ 비번은 **평문 목업**(P3-D2). 실서비스 전 해시 전환은 백로그 — 서버가 SoT고 클라는
  * 여기서 절대 저장/로깅하지 않는다(AC-A2: 응답·로그 노출 0).
  */
 export interface RegisterRequest {
-  loginId: string;
-  password: string;
+  /** 로그인 id 겸 표시 닉네임. */
   nickname: string;
-}
-
-/** POST /api/auth/login (provider="local") — id/비번 로그인. 오답 401. */
-export interface LocalLoginRequest {
-  provider: LocalProvider;
-  loginId: string;
   password: string;
 }
 
-/** 두 엔드포인트 공통 응답 — V1 LoginResponse 와 동일 shape(token/isNew). */
+/**
+ * POST /api/auth/login (provider="local") — 자체 로그인(= LoginRequest.java).
+ * 실패는 전부 401 BAD_CREDENTIALS(서버가 계정 존재 여부를 누설하지 않는다).
+ */
+export interface LocalLoginRequest {
+  nickname: string;
+  provider: LocalProvider;
+  password: string;
+}
+
+/** 두 엔드포인트 공통 응답 — V1 LoginResponse 와 동일 shape(token/user/isNew). */
 export type AuthResponse = components["schemas"]["LoginResponse"];
 
-/** 서버 에러 code (client.ts ErrorCode 유니온 확장 후보 — 통합 시 정합). */
-export const AUTH_DUPLICATE_ID_CODE = "DUPLICATE_LOGIN_ID"; // 409
+/** 서버 에러 code — AuthErrors.java 상수와 1:1. */
+export const AUTH_DUPLICATE_NICKNAME_CODE = "DUPLICATE_NICKNAME"; // 409
 export const AUTH_BAD_CREDENTIALS_CODE = "BAD_CREDENTIALS"; // 401
 
 /* ─────────────────────────── C. admin (PRD-v4 §C, P3-D4) ─────────────────────────── */

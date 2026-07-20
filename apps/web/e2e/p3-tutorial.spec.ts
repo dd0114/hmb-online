@@ -11,6 +11,7 @@ import { expect, test, type Page } from "@playwright/test";
  *    glob 은 vite 소스(/src/api/*.ts)까지 잡아 모듈 로딩을 깨고 흰 화면이 된다(선례 있음).
  */
 
+/** 로그인 id 겸 닉네임(서버 단일 식별자 — users.nickname 재사용). */
 const LOGIN_ID = "newbie01";
 const PASSWORD = "sup3rs3cret";
 
@@ -19,6 +20,39 @@ const json = (body: unknown, status = 200) => ({
   contentType: "application/json",
   body: JSON.stringify(body),
 });
+
+// ── 덱 화면(/deck) 목 데이터 ────────────────────────────────────────────────
+// 튜토리얼이 로비 → 덱으로 넘어가는 스텝을 갖게 되면서 덱 화면도 실제로 렌더돼야 한다.
+// src/deck/** 는 읽기 전용(#106 세션 소유)이라 화면은 그대로 두고 API 만 목킹한다.
+const attrs = (v: number) => ({
+  technical: v, mental: v, physical: v, passing: v, shooting: v,
+  tackling: v, pace: v, stamina: v, positioning: v,
+});
+
+const POSITIONS = ["GK", "DF", "DF", "DF", "DF", "MF", "MF", "MF", "MF", "FW", "FW"] as const;
+
+/** 선발 11명을 정확히 채운 상태 — '저장'이 활성인 실제 화면을 코치마크가 가리키게 한다. */
+const PLAYERS = POSITIONS.map((position, i) => ({
+  id: `P${i}`,
+  name: `선수${i}`,
+  position,
+  grade: "SILVER",
+  owned: true,
+  ownedCount: 1,
+  attributes: attrs(70),
+  personality: "CALM",
+}));
+
+const DECK = {
+  id: "d1",
+  formation: "4-4-2",
+  slots: PLAYERS.map((p, i) => ({
+    playerId: p.id,
+    role: "starter",
+    slotIndex: i,
+    promptText: null,
+  })),
+};
 
 interface MockOptions {
   /** /api/me 가 내려줄 유저 id — 계정 격리 검증에 쓴다. */
@@ -69,6 +103,15 @@ async function mockApi(page: Page, opts: MockOptions = {}): Promise<MockState> {
       );
     },
   );
+  // 덱 화면(/deck) — 튜토리얼 덱 스텝의 대상이 실제로 그려지도록 최소 목킹.
+  await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json(PLAYERS)));
+  await page.route((url) => url.pathname === "/api/deck", (route) => route.fulfill(json(DECK)));
+  await page.route((url) => url.pathname === "/api/relations", (route) =>
+    route.fulfill(json({ morale: 60, streak: 0, players: [] })),
+  );
+  await page.route((url) => url.pathname === "/api/conditions/today", (route) =>
+    route.fulfill(json(Object.fromEntries(PLAYERS.map((p) => [p.id, 0.7])))),
+  );
   await page.route(
     (url) => url.pathname === "/api/auth/register",
     (route) => route.fulfill(json({ token: "tok_new", isNew: true })),
@@ -88,9 +131,8 @@ async function mockApi(page: Page, opts: MockOptions = {}): Promise<MockState> {
 async function fillRegister(page: Page) {
   await page.getByTestId("provider-local").click();
   await page.getByTestId("local-mode-toggle").click();
-  await page.getByTestId("local-login-id").fill(LOGIN_ID);
+  await page.getByTestId("local-nickname").fill(LOGIN_ID);
   await page.getByTestId("local-password").fill(PASSWORD);
-  await page.getByTestId("local-nickname").fill("신규감독");
   await page.getByTestId("local-submit").click();
   await page.getByRole("button", { name: "확인" }).click();
   await expect(page).toHaveURL(/\/lobby$/);
@@ -98,7 +140,7 @@ async function fillRegister(page: Page) {
 
 async function fillLogin(page: Page) {
   await page.getByTestId("provider-local").click();
-  await page.getByTestId("local-login-id").fill(LOGIN_ID);
+  await page.getByTestId("local-nickname").fill(LOGIN_ID);
   await page.getByTestId("local-password").fill(PASSWORD);
   await page.getByTestId("local-submit").click();
   await expect(page).toHaveURL(/\/lobby$/);
@@ -231,19 +273,18 @@ test.describe("AC-B1 — 신규 유저 온보딩", () => {
     await registerNewUser(page);
 
     await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
-    await expect(page.getByTestId("tutorial-progress")).toHaveText("1 / 4");
+    await expect(page.getByTestId("tutorial-progress")).toHaveText("1 / 7");
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "play");
     await expectBubblePointsAt(page, "play-cta");
   });
 
-  test("'다음' 으로 상점·도감·리그 스텝을 지나 완료하면 오버레이가 닫힌다", async ({ page }) => {
+  test("'다음' 으로 상점·도감·리그를 지나 마지막 로비 스텝(덱 진입)까지 간다", async ({ page }) => {
     await mockApi(page);
     await registerNewUser(page);
 
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "play");
     await page.getByTestId("tutorial-next").click();
 
-    // deck 스텝은 enabled:false (TODO(#106)) 라 아예 실행 목록에 없다.
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "shop");
     await expectBubblePointsAt(page, "lobby-shop");
     await page.getByTestId("tutorial-next").click();
@@ -253,13 +294,21 @@ test.describe("AC-B1 — 신규 유저 온보딩", () => {
     await page.getByTestId("tutorial-next").click();
 
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "league");
-    await expect(page.getByTestId("tutorial-progress")).toHaveText("4 / 4");
-    await expect(page.getByTestId("tutorial-next")).toHaveText("시작하기");
+    await expect(page.getByTestId("tutorial-progress")).toHaveText("4 / 7");
     await page.getByTestId("tutorial-next").click();
 
+    // 로비의 마지막 스텝 = '덱 구성' 버튼을 가리키는 CTA(다음 두 스텝은 덱 화면 안에 있다).
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck");
+    await expect(page.getByTestId("tutorial-progress")).toHaveText("5 / 7");
+    await expectBubblePointsAt(page, "lobby-deck");
+    // 덱 스텝을 아직 안 봤으므로 '시작하기'(=끝)라고 말하지 않는다.
+    await expect(page.getByTestId("tutorial-next")).toHaveText("다음");
+
+    await page.getByTestId("tutorial-next").click();
+    // 이 화면에서 보여줄 게 없으니 조용히 닫히고 — 완료로 저장하지도 않는다.
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
-    // 로비는 그대로 조작 가능하다.
     await expect(page.getByTestId("play-cta")).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBeNull();
   });
 
   test("건너뛰기 → 즉시 종료", async ({ page }) => {
@@ -340,7 +389,7 @@ test.describe("AC-B1 — 신규 유저 온보딩", () => {
 
     await page.getByTestId("tutorial-replay").click();
     await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
-    await expect(page.getByTestId("tutorial-progress")).toHaveText("1 / 4");
+    await expect(page.getByTestId("tutorial-progress")).toHaveText("1 / 7");
   });
 });
 
@@ -371,14 +420,16 @@ test.describe("AC-B2 — 모바일/데스크탑 배치", () => {
       await mockApi(page);
       await registerNewUser(page);
 
-      const steps: [string, string][] = [
+      // 로비 5스텝 — 마지막(deck)은 '다음'이 아니라 **하이라이트된 버튼**으로 넘어간다(골든 패스).
+      const lobbySteps: [string, string][] = [
         ["play", "play-cta"],
         ["shop", "lobby-shop"],
         ["codex", "lobby-codex"],
         ["league", "play-cta"],
+        ["deck", "lobby-deck"],
       ];
 
-      for (const [stepId, targetId] of steps) {
+      const shot = async (stepId: string, targetId: string) => {
         await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", stepId);
         await expectBubblePointsAt(page, targetId);
         expect(await horizontalOverflow(page), `${stepId} 가로 오버플로`).toBeLessThanOrEqual(0);
@@ -386,9 +437,23 @@ test.describe("AC-B2 — 모바일/데스크탑 배치", () => {
           path: `test-results/tutorial-${vp.name}-${stepId}.png`,
           fullPage: false,
         });
-        await page.getByTestId("tutorial-next").click();
+      };
+
+      for (const [stepId, targetId] of lobbySteps) {
+        await shot(stepId, targetId);
+        if (stepId !== "deck") await page.getByTestId("tutorial-next").click();
       }
 
+      // 덱 화면으로 따라 들어간다 — 코치마크는 비-모달이라 대상 클릭이 그대로 통과한다.
+      await page.getByTestId("lobby-deck").click();
+      await expect(page).toHaveURL(/\/deck$/);
+
+      await shot("deck-board", "tactics-board");
+      await page.getByTestId("tutorial-next").click();
+      await shot("deck-save", "save-deck");
+
+      await expect(page.getByTestId("tutorial-next")).toHaveText("시작하기");
+      await page.getByTestId("tutorial-next").click();
       await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
     });
   }
@@ -459,10 +524,20 @@ test.describe("유저 이탈 — 온보딩을 삼키지 않는다 (blocker-1 회
     expect(await doneFlag(page)).toBe("1");
   });
 
-  test("마지막 스텝 '시작하기'(명시적 완료)도 저장한다", async ({ page }) => {
+  test("골든 패스(덱까지 끝까지) 의 '시작하기'(명시적 완료)는 저장한다", async ({ page }) => {
     await mockApi(page);
     await registerNewUser(page);
-    for (let i = 0; i < 3; i += 1) await page.getByTestId("tutorial-next").click();
+    for (let i = 0; i < 4; i += 1) await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck");
+
+    // 로비 마지막 스텝에서는 아직 완료가 아니다(덱 스텝 2개가 남았다).
+    expect(await doneFlag(page)).toBeNull();
+
+    await page.getByTestId("lobby-deck").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
+    await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-save");
+
     await expect(page.getByTestId("tutorial-next")).toHaveText("시작하기");
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
@@ -554,7 +629,7 @@ test.describe("계정 전환 — 세션 상태 격리 (BLK-1 회귀 가드)", ()
 
     await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
     // u1 의 재개 지점(2/4)을 물려받으면 u2 는 못 본 스텝이 완료 저장된다.
-    await expect(page.getByTestId("tutorial-progress")).toHaveText("1 / 4");
+    await expect(page.getByTestId("tutorial-progress")).toHaveText("1 / 7");
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "play");
     // 이전 계정의 완료 기록도 남기지 않는다.
     expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBeNull();
@@ -587,14 +662,18 @@ test.describe("못 본 스텝은 완료를 막는다 (BLK-2 회귀 가드)", () 
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "shop");
     expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBeNull();
 
-    // 남은 league 까지 보여준 뒤에야 저장된다.
+    // 남은 로비 스텝(league → deck CTA)을 차례로 보여준다.
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "league");
     expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBeNull();
 
     await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck");
+
+    // 덱 화면 스텝이 남아 있으므로 여기서 닫혀도 완료가 아니다 — 덱에 들어가면 이어진다.
+    await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
-    expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBe("1");
+    expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBeNull();
   });
 
   test("브라우저 뒤로가기로 돌아와도 못 본 스텝부터 재개된다", async ({ page }) => {
@@ -668,7 +747,7 @@ test.describe("대상 부재 — 깨짐 0", () => {
     await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
 
     await page.evaluate(() => {
-      for (const id of ["play-cta", "lobby-shop", "lobby-codex"]) {
+      for (const id of ["play-cta", "lobby-shop", "lobby-codex", "lobby-deck"]) {
         document.querySelector(`[data-testid="${id}"]`)?.remove();
       }
       window.dispatchEvent(new Event("resize"));
@@ -679,5 +758,135 @@ test.describe("대상 부재 — 깨짐 0", () => {
     expect(
       await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1")),
     ).toBeNull();
+  });
+});
+
+/**
+ * 라우트를 넘나드는 스텝(로비 → 덱, #106 머지 후 실연결).
+ *
+ * 덱 스텝(전술보드·저장)은 /deck 에서만 보여줄 수 있다. 여기서 검증하는 계약:
+ *  (a) 골든 패스 — 하이라이트된 '덱 구성'을 누르면 튜토리얼이 따라 들어와 이어진다.
+ *  (b) 유저가 로비에서 '다음'으로 지나가도 **완료로 저장되지 않고**(못 본 스텝),
+ *      로비를 다시 와도 **다시 뜨지 않으며**(방해 0), 처음 덱 화면에 들어갔을 때 이어진다.
+ *      → "덱에 영영 안 가면 완료가 영구히 안 되는" 시나리오가 유저를 괴롭히지 않는지.
+ */
+test.describe("덱 스텝 — 라우트 넘나듦", () => {
+  async function doneFlag(page: Page): Promise<string | null> {
+    return page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"));
+  }
+
+  /** 로비 스텝 5개를 '다음'으로 지나 마지막(deck CTA)에 선다. */
+  async function toDeckCta(page: Page) {
+    for (let i = 0; i < 4; i += 1) await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck");
+  }
+
+  test("(a) 하이라이트된 '덱 구성'을 누르면 덱 화면에서 그대로 이어진다", async ({ page }) => {
+    await mockApi(page);
+    await registerNewUser(page);
+    await toDeckCta(page);
+
+    await page.getByTestId("lobby-deck").click();
+    await expect(page).toHaveURL(/\/deck$/);
+
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
+    await expect(page.getByTestId("tutorial-progress")).toHaveText("6 / 7");
+    await expectBubblePointsAt(page, "tactics-board");
+
+    await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-save");
+    await expectBubblePointsAt(page, "save-deck");
+    expect(await horizontalOverflow(page), "덱 화면 가로 오버플로").toBeLessThanOrEqual(0);
+
+    await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
+    expect(await doneFlag(page)).toBe("1");
+  });
+
+  test("(b) 로비에서 지나쳐도 로비를 괴롭히지 않고, 첫 덱 진입에서 이어져 완료된다", async ({
+    page,
+  }) => {
+    await mockApi(page);
+    await registerNewUser(page);
+    await toDeckCta(page);
+
+    // '다음' 으로 로비 몫을 끝낸다 — 덱 스텝은 못 봤으므로 저장 없음.
+    await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
+    expect(await doneFlag(page)).toBeNull();
+
+    // 로비를 떠났다 돌아와도 다시 뜨지 않는다(로비에서 보여줄 스텝이 없다).
+    await page.getByTestId("lobby-shop").click();
+    await expect(page).toHaveURL(/\/shop$/);
+    await page.locator('[data-testid="nav-home"]:visible').click();
+    await expect(page).toHaveURL(/\/lobby$/);
+    await page.waitForTimeout(1200);
+    await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
+
+    // 그러다 유저가 스스로 덱 화면에 들어가면 남은 스텝이 이어서 뜬다.
+    await page.getByTestId("lobby-deck").click();
+    await expect(page).toHaveURL(/\/deck$/);
+    await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
+
+    await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-save");
+    await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
+    expect(await doneFlag(page)).toBe("1");
+  });
+
+  test("(c) 덱 화면에서 '건너뛰기' 해도 즉시 종료하고 저장한다", async ({ page }) => {
+    await mockApi(page);
+    await registerNewUser(page);
+    await toDeckCta(page);
+    await page.getByTestId("lobby-deck").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
+
+    await page.getByTestId("tutorial-skip").click();
+    await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
+    expect(await doneFlag(page)).toBe("1");
+  });
+});
+
+/**
+ * 덱 화면이 **느리게 뜨는** 경우(쿼리 지연) — 대상이 아직 없으니 덱 스텝은 유예 만료로
+ * 스킵된다. 그래도 **완료로 저장하면 안 된다**(못 본 스텝이다). 다음 덱 방문에서 다시 뜬다.
+ */
+test.describe("덱 스텝 — 느린 로딩", () => {
+  test("덱 화면이 늦게 그려지면 스킵하되 완료로 저장하지 않고, 재방문에서 다시 뜬다", async ({
+    page,
+  }) => {
+    await mockApi(page);
+    await registerNewUser(page);
+    for (let i = 0; i < 4; i += 1) await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck");
+
+    // 이 시점부터 /api/deck 이 아주 느리다(나중에 등록한 핸들러가 우선).
+    let slow = true;
+    await page.route(
+      (url) => url.pathname === "/api/deck",
+      async (route) => {
+        if (slow) await new Promise((r) => setTimeout(r, 3000));
+        return route.fulfill(json(DECK));
+      },
+    );
+
+    await page.getByTestId("lobby-deck").click();
+    await expect(page).toHaveURL(/\/deck$/);
+    // 대상이 없는 동안 덱 스텝들이 유예를 소진하고 오버레이가 내려간다.
+    await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
+    await expect(page.getByTestId("tactics-board")).toBeVisible(); // 뒤늦게 로드됨
+    expect(
+      await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1")),
+      "못 본 덱 스텝이 완료로 저장되면 안 된다",
+    ).toBeNull();
+
+    // 로비에 다녀와 다시 들어오면(이번엔 빠르다) 덱 스텝이 다시 뜬다.
+    slow = false;
+    await page.getByTestId("deck-back").click();
+    await expect(page).toHaveURL(/\/lobby$/);
+    await page.getByTestId("lobby-deck").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
   });
 });

@@ -21,6 +21,8 @@ import { LoginPage } from "./LoginPage";
 import { TokenProvider } from "./TokenContext";
 
 const PASSWORD = "sup3rs3cret";
+/** 로그인 id 겸 표시 닉네임 — 서버가 식별자를 하나만 둔다(RegisterRequest.java). */
+const NICKNAME = "테스터01";
 
 function renderLogin() {
   return render(h(MemoryRouter, { initialEntries: ["/login"] }, h(TokenProvider, null, h(LoginPage))));
@@ -36,8 +38,8 @@ function type(testId: string, value: string) {
   fireEvent.change(screen.getByTestId(testId), { target: { value } });
 }
 
-function fillLogin(loginId = "tester01", password = PASSWORD) {
-  type("local-login-id", loginId);
+function fillLogin(nickname = NICKNAME, password = PASSWORD) {
+  type("local-nickname", nickname);
   type("local-password", password);
 }
 
@@ -58,23 +60,26 @@ describe("local auth entry point (AC-A1, additive)", () => {
     expect(screen.getByTestId("provider-local")).toBeTruthy();
   });
 
-  it("아이디 경로는 OAuth 동의 모달을 거치지 않고 바로 id/비번 폼", () => {
+  it("아이디 경로는 OAuth 동의 모달을 거치지 않고 바로 아이디/비번 폼", () => {
     openLocalPanel();
     expect(screen.queryByTestId("consent-modal")).toBeNull();
     expect(screen.getByTestId("local-auth-form").getAttribute("data-mode")).toBe("login");
-    expect(screen.getByTestId("local-login-id")).toBeTruthy();
+    expect(screen.getByTestId("local-nickname")).toBeTruthy();
     expect(screen.getByTestId("local-password")).toBeTruthy();
-    // 로그인 모드에는 닉네임 입력이 없다.
-    expect(screen.queryByTestId("local-nickname")).toBeNull();
   });
 
-  it("로그인 ↔ 회원가입 폼 전환 (회원가입에만 닉네임)", () => {
+  it("서버 계약대로 식별자 입력은 **하나뿐**이다 (아이디/닉네임 이중 입력 없음)", () => {
+    // 서버 RegisterRequest = {nickname, password}. 별도 loginId 입력이 남아 있으면 계약 이탈.
     openLocalPanel();
+    expect(screen.queryByTestId("local-login-id")).toBeNull();
     fireEvent.click(screen.getByTestId("local-mode-toggle"));
     expect(screen.getByTestId("local-auth-form").getAttribute("data-mode")).toBe("register");
-    expect(screen.getByTestId("local-nickname")).toBeTruthy();
-    fireEvent.click(screen.getByTestId("local-mode-toggle"));
-    expect(screen.queryByTestId("local-nickname")).toBeNull();
+    expect(screen.queryByTestId("local-login-id")).toBeNull();
+    // 회원가입 모드의 텍스트 입력 = 식별자 1 + 비번 1, 총 2개.
+    const inputs = screen
+      .getByTestId("local-auth-form")
+      .querySelectorAll("input");
+    expect(inputs.length).toBe(2);
   });
 
   it("평문 목업 안내가 화면에 명시된다 (AC-A2)", () => {
@@ -91,18 +96,17 @@ describe("local auth entry point (AC-A1, additive)", () => {
 });
 
 describe("register (AC-A1)", () => {
-  it("성공 시 POST /api/auth/register {loginId,password,nickname}", async () => {
+  it("성공 시 POST /api/auth/register {nickname,password} (서버 2필드 계약)", async () => {
     apiFetch.mockResolvedValue({ token: "tok_new", user: { id: "u2", nickname: "신규" }, isNew: true });
     openLocalPanel();
     fireEvent.click(screen.getByTestId("local-mode-toggle"));
-    fillLogin();
-    type("local-nickname", "신규감독");
+    fillLogin("신규감독");
     fireEvent.click(screen.getByTestId("local-submit"));
 
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
     expect(apiFetch).toHaveBeenCalledWith("/api/auth/register", {
       method: "POST",
-      body: { loginId: "tester01", password: PASSWORD, nickname: "신규감독" },
+      body: { nickname: "신규감독", password: PASSWORD },
     });
     // isNew=true → 기존과 동일하게 스타터팩 모달.
     await waitFor(() => expect(screen.getByText("스타터 팩 지급")).toBeTruthy());
@@ -110,39 +114,45 @@ describe("register (AC-A1)", () => {
     expect(window.localStorage.getItem("hmb.auth.provider")).toBe("local");
   });
 
-  it("409 DUPLICATE_LOGIN_ID → 아이디 필드 에러", async () => {
+  it("409 DUPLICATE_NICKNAME → 아이디 필드 에러", async () => {
     apiFetch.mockRejectedValue(
-      new ApiError(409, { code: "DUPLICATE_LOGIN_ID", message: "duplicate" }),
+      new ApiError(409, { code: "DUPLICATE_NICKNAME", message: "duplicate" }),
     );
     openLocalPanel();
     fireEvent.click(screen.getByTestId("local-mode-toggle"));
-    fillLogin();
-    type("local-nickname", "신규감독");
+    fillLogin("신규감독");
     fireEvent.click(screen.getByTestId("local-submit"));
 
     await waitFor(() =>
-      expect(screen.getByTestId("local-error-loginId").textContent).toBe("이미 사용 중인 아이디입니다"),
+      expect(screen.getByTestId("local-error-nickname").textContent).toBe("이미 사용 중인 아이디입니다"),
     );
     expect(window.localStorage.getItem("hmb.auth.token")).toBeNull();
   });
 
-  it("클라 검증 실패(짧은 아이디/비번/닉네임)는 요청을 막는다", () => {
+  it("클라 검증 실패(짧은 아이디/비번)는 요청을 막는다", () => {
     openLocalPanel();
     fireEvent.click(screen.getByTestId("local-mode-toggle"));
-    type("local-login-id", "ab");
-    type("local-password", "1");
-    type("local-nickname", "x");
+    fillLogin("x", "1");
     fireEvent.click(screen.getByTestId("local-submit"));
 
     expect(apiFetch).not.toHaveBeenCalled();
-    expect(screen.getByTestId("local-error-loginId")).toBeTruthy();
-    expect(screen.getByTestId("local-error-password")).toBeTruthy();
     expect(screen.getByTestId("local-error-nickname")).toBeTruthy();
+    expect(screen.getByTestId("local-error-password")).toBeTruthy();
+  });
+
+  it("64자 초과 비밀번호도 왕복 전에 막는다 (서버 max 미러)", () => {
+    openLocalPanel();
+    fireEvent.click(screen.getByTestId("local-mode-toggle"));
+    fillLogin("신규감독", "a".repeat(65));
+    fireEvent.click(screen.getByTestId("local-submit"));
+
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(screen.getByTestId("local-error-password")).toBeTruthy();
   });
 });
 
 describe("login (AC-A1)", () => {
-  it("성공 시 POST /api/auth/login {provider:'local',loginId,password}", async () => {
+  it("성공 시 POST /api/auth/login {nickname,provider:'local',password}", async () => {
     openLocalPanel();
     fillLogin();
     fireEvent.click(screen.getByTestId("local-submit"));
@@ -150,7 +160,7 @@ describe("login (AC-A1)", () => {
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
     expect(apiFetch).toHaveBeenCalledWith("/api/auth/login", {
       method: "POST",
-      body: { provider: "local", loginId: "tester01", password: PASSWORD },
+      body: { nickname: NICKNAME, provider: "local", password: PASSWORD },
     });
     await waitFor(() => expect(window.localStorage.getItem("hmb.auth.token")).toBe("tok_local"));
     expect(window.localStorage.getItem("hmb.auth.provider")).toBe("local");
@@ -161,7 +171,7 @@ describe("login (AC-A1)", () => {
       new ApiError(401, { code: "BAD_CREDENTIALS", message: "bad" }),
     );
     openLocalPanel();
-    fillLogin("tester01", "wrongpw");
+    fillLogin(NICKNAME, "wrongpw");
     fireEvent.click(screen.getByTestId("local-submit"));
 
     await waitFor(() =>
@@ -169,7 +179,7 @@ describe("login (AC-A1)", () => {
         "아이디 또는 비밀번호가 올바르지 않습니다",
       ),
     );
-    expect(screen.queryByTestId("local-error-loginId")).toBeNull();
+    expect(screen.queryByTestId("local-error-nickname")).toBeNull();
     expect(screen.queryByTestId("local-error-password")).toBeNull();
   });
 });
@@ -200,8 +210,7 @@ describe("AC-A2 — 비밀번호가 어디에도 남지 않는다", () => {
     apiFetch.mockResolvedValue({ token: "tok_new", user: { id: "u2", nickname: "신규" }, isNew: true });
     openLocalPanel();
     fireEvent.click(screen.getByTestId("local-mode-toggle"));
-    fillLogin();
-    type("local-nickname", "신규감독");
+    fillLogin("신규감독");
     fireEvent.click(screen.getByTestId("local-submit"));
 
     await waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1));
@@ -231,7 +240,7 @@ describe("AC-A2 — 비밀번호가 어디에도 남지 않는다", () => {
     fireEvent.click(screen.getByTestId("local-mode-toggle"));
     expect((screen.getByTestId("local-password") as HTMLInputElement).value).toBe("");
     // 아이디는 유지(재입력 부담 완화).
-    expect((screen.getByTestId("local-login-id") as HTMLInputElement).value).toBe("tester01");
+    expect((screen.getByTestId("local-nickname") as HTMLInputElement).value).toBe(NICKNAME);
   });
 
   it("비밀번호를 console 로 출력하지 않는다", async () => {

@@ -4,7 +4,7 @@ import {
   AUTH_LOGIN_PATH,
   AUTH_REGISTER_PATH,
   BAD_CREDENTIALS_MESSAGE,
-  DUPLICATE_LOGIN_ID_MESSAGE,
+  DUPLICATE_NICKNAME_MESSAGE,
   LOCAL_PROVIDER,
   OAUTH_PROVIDERS,
   buildLocalLoginBody,
@@ -81,17 +81,27 @@ describe("local provider (additive, 기존 플로우 무회귀)", () => {
   });
 });
 
-describe("local request builders", () => {
-  it("buildRegisterBody = {loginId,password,nickname} (여분 필드 없음)", () => {
-    const body = buildRegisterBody({ loginId: "tester01", password: "pw1234", nickname: "감독" });
-    expect(body).toEqual({ loginId: "tester01", password: "pw1234", nickname: "감독" });
-    expect(Object.keys(body).sort()).toEqual(["loginId", "nickname", "password"]);
+describe("local request builders (서버 계약 = Register/LoginRequest.java)", () => {
+  it("buildRegisterBody = {nickname,password} — 별도 loginId 를 만들지 않는다", () => {
+    const body = buildRegisterBody({ nickname: "감독", password: "pw1234" });
+    expect(body).toEqual({ nickname: "감독", password: "pw1234" });
+    // 서버 RegisterRequest 는 2필드뿐 — 여분 식별자를 보내면 계약 이탈이다.
+    expect(Object.keys(body).sort()).toEqual(["nickname", "password"]);
+    expect(Object.keys(body)).not.toContain("loginId");
   });
 
-  it("buildLocalLoginBody = {provider:'local',loginId,password} — 닉네임 미전송", () => {
-    const body = buildLocalLoginBody({ loginId: "tester01", password: "pw1234" });
-    expect(body).toEqual({ provider: "local", loginId: "tester01", password: "pw1234" });
-    expect(Object.keys(body)).not.toContain("nickname");
+  it("buildLocalLoginBody = {nickname,provider:'local',password} — LoginRequest.java 3필드", () => {
+    const body = buildLocalLoginBody({ nickname: "감독", password: "pw1234" });
+    expect(body).toEqual({ nickname: "감독", provider: "local", password: "pw1234" });
+    expect(Object.keys(body).sort()).toEqual(["nickname", "password", "provider"]);
+    expect(Object.keys(body)).not.toContain("loginId");
+  });
+
+  it("local 로그인 body 는 guest/OAuth목 body 와 같은 필드 집합을 쓴다 (엔드포인트 공유)", () => {
+    const guest = buildLoginBody("guest", "게스트1");
+    const local = buildLocalLoginBody({ nickname: "게스트1", password: "pw1234" });
+    expect(local.nickname).toBe(guest.nickname);
+    expect(Object.keys(guest).every((k) => k in local)).toBe(true);
   });
 
   it("buildLoginBody(기존 닉네임 경로)는 그대로 동작한다 (무회귀)", () => {
@@ -100,9 +110,19 @@ describe("local request builders", () => {
 });
 
 describe("localAuthErrorToFields (서버 에러 → 화면 필드)", () => {
-  it("409 DUPLICATE_LOGIN_ID → loginId 필드 에러", () => {
-    const err = new ApiError(409, { code: "DUPLICATE_LOGIN_ID", message: "dup" });
-    expect(localAuthErrorToFields(err)).toEqual({ loginId: DUPLICATE_LOGIN_ID_MESSAGE });
+  it("409 DUPLICATE_NICKNAME → nickname(아이디) 필드 에러 (AuthErrors.java)", () => {
+    const err = new ApiError(409, { code: "DUPLICATE_NICKNAME", message: "dup" });
+    expect(localAuthErrorToFields(err)).toEqual({ nickname: DUPLICATE_NICKNAME_MESSAGE });
+  });
+
+  it("구 코드 DUPLICATE_LOGIN_ID 는 서버가 보내지 않는다 — code 매칭 대상이 아니다", () => {
+    // 매핑이 옛 상수로 되돌아가면 실 서버(DUPLICATE_NICKNAME)에서 조용히 일반 에러가 된다.
+    // 라벨 있는 미지의 code 는 status 폴백을 타지 않으므로 폼 전역 일반 문구로 간다.
+    const fields = localAuthErrorToFields(
+      new ApiError(409, { code: "DUPLICATE_LOGIN_ID", message: "dup" }),
+    );
+    expect(fields.nickname).toBeUndefined();
+    expect(fields.form).toBeTruthy();
   });
 
   it("401 BAD_CREDENTIALS → 폼 전역 에러(계정 열거 방지)", () => {
@@ -129,7 +149,7 @@ describe("localAuthErrorToFields — code 우선", () => {
   it("로그인 폼의 임의 409(중복ID 아님)를 '이미 사용 중인 아이디'로 오표기하지 않는다", () => {
     const err = new ApiError(409, { code: "INVALID_STATE", message: "conflict" });
     const fields = localAuthErrorToFields(err);
-    expect(fields.loginId).toBeUndefined();
+    expect(fields.nickname).toBeUndefined();
     expect(fields.form).toBeTruthy();
   });
 
@@ -139,8 +159,8 @@ describe("localAuthErrorToFields — code 우선", () => {
   });
 
   it("code 가 명시되면 status 가 달라도 code 를 따른다", () => {
-    expect(localAuthErrorToFields(new ApiError(400, { code: "DUPLICATE_LOGIN_ID", message: "d" })))
-      .toEqual({ loginId: DUPLICATE_LOGIN_ID_MESSAGE });
+    expect(localAuthErrorToFields(new ApiError(400, { code: "DUPLICATE_NICKNAME", message: "d" })))
+      .toEqual({ nickname: DUPLICATE_NICKNAME_MESSAGE });
     expect(localAuthErrorToFields(new ApiError(403, { code: "BAD_CREDENTIALS", message: "b" })))
       .toEqual({ form: BAD_CREDENTIALS_MESSAGE });
   });
@@ -148,7 +168,7 @@ describe("localAuthErrorToFields — code 우선", () => {
   it("code 가 일반 봉투(INTERNAL_ERROR 등)면 status 폴백으로 판별한다", () => {
     // 서버가 code 를 세분화하지 않고 status 만 맞게 주는 경우의 하위호환.
     expect(localAuthErrorToFields(new ApiError(409, { code: "INTERNAL_ERROR", message: "x" })))
-      .toEqual({ loginId: DUPLICATE_LOGIN_ID_MESSAGE });
+      .toEqual({ nickname: DUPLICATE_NICKNAME_MESSAGE });
     expect(localAuthErrorToFields(new ApiError(401, { code: "INTERNAL_ERROR", message: "x" })))
       .toEqual({ form: BAD_CREDENTIALS_MESSAGE });
   });

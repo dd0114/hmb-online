@@ -11,7 +11,12 @@ import { expect, test, type Page, type Route } from "@playwright/test";
  */
 
 const PASSWORD = "sup3rs3cret";
-const LOGIN_ID = "tester01";
+/**
+ * 로그인 id 겸 표시 닉네임. 서버(server-java)는 별도 로그인 id 컬럼 없이
+ * `users.nickname`(UNIQUE)을 재사용한다 — RegisterRequest={nickname,password},
+ * LoginRequest={nickname,provider,password}. 그래서 폼 입력도 하나뿐이다.
+ */
+const NICKNAME = "테스터01";
 
 const json = (body: unknown, status = 200) => ({
   status,
@@ -70,8 +75,8 @@ async function openLocalPanel(page: Page) {
   await expect(page.getByTestId("local-auth-form")).toBeVisible();
 }
 
-async function fillCredentials(page: Page, loginId = LOGIN_ID, password = PASSWORD) {
-  await page.getByTestId("local-login-id").fill(loginId);
+async function fillCredentials(page: Page, nickname = NICKNAME, password = PASSWORD) {
+  await page.getByTestId("local-nickname").fill(nickname);
   await page.getByTestId("local-password").fill(password);
 }
 
@@ -120,6 +125,17 @@ test.describe("AC-A1 — 자체 로그인 진입점 (기존 플로우 무회귀)
     await expect(page.getByTestId("consent-modal")).toHaveCount(0);
     await expect(page.getByTestId("local-auth-form")).toHaveAttribute("data-mode", "login");
   });
+
+  test("회원가입 폼에 아이디/닉네임 이중 입력이 없다 (서버 단일 식별자 계약)", async ({ page }) => {
+    await mockApi(page);
+    await openLocalPanel(page);
+    await page.getByTestId("local-mode-toggle").click();
+    await expect(page.getByTestId("local-auth-form")).toHaveAttribute("data-mode", "register");
+    // 구 계약의 별도 아이디 입력이 남아 있으면 실패한다.
+    await expect(page.getByTestId("local-login-id")).toHaveCount(0);
+    // 필드 = 식별자 1 + 비번 1.
+    await expect(page.getByTestId("local-auth-form").locator("input")).toHaveCount(2);
+  });
 });
 
 test.describe("AC-A1 — 회원가입", () => {
@@ -127,8 +143,7 @@ test.describe("AC-A1 — 회원가입", () => {
     const requests = await mockApi(page);
     await openLocalPanel(page);
     await page.getByTestId("local-mode-toggle").click();
-    await fillCredentials(page);
-    await page.getByTestId("local-nickname").fill("신규감독");
+    await fillCredentials(page, "신규감독");
     await page.getByTestId("local-submit").click();
 
     // isNew=true → 기존 신규 동선과 동일한 스타터팩 모달.
@@ -137,26 +152,23 @@ test.describe("AC-A1 — 회원가입", () => {
     await expect(page).toHaveURL(/\/lobby$/);
     await expect(page.getByTestId("provider-badge")).toHaveText("아이디");
 
+    // 서버 RegisterRequest.java 와 정확히 같은 2필드(여분 필드 0).
     expect(requests).toEqual([
-      {
-        path: "/api/auth/register",
-        body: { loginId: LOGIN_ID, password: PASSWORD, nickname: "신규감독" },
-      },
+      { path: "/api/auth/register", body: { nickname: "신규감독", password: PASSWORD } },
     ]);
   });
 
-  test("409 DUPLICATE_LOGIN_ID → 아이디 필드 에러, 화면 유지", async ({ page }) => {
+  test("409 DUPLICATE_NICKNAME → 아이디 필드 에러, 화면 유지 (AuthErrors.java)", async ({ page }) => {
     await mockApi(page, {
       register: (route) =>
-        route.fulfill(json({ code: "DUPLICATE_LOGIN_ID", message: "duplicate login id" }, 409)),
+        route.fulfill(json({ code: "DUPLICATE_NICKNAME", message: "이미 사용 중인 아이디입니다" }, 409)),
     });
     await openLocalPanel(page);
     await page.getByTestId("local-mode-toggle").click();
-    await fillCredentials(page);
-    await page.getByTestId("local-nickname").fill("신규감독");
+    await fillCredentials(page, "신규감독");
     await page.getByTestId("local-submit").click();
 
-    await expect(page.getByTestId("local-error-loginId")).toHaveText("이미 사용 중인 아이디입니다");
+    await expect(page.getByTestId("local-error-nickname")).toHaveText("이미 사용 중인 아이디입니다");
     await expect(page).toHaveURL(/\/login$/);
     expect(await storageDump(page)).not.toContain("hmb.auth.token");
   });
@@ -170,8 +182,9 @@ test.describe("AC-A1 — 로그인", () => {
     await page.getByTestId("local-submit").click();
 
     await expect(page).toHaveURL(/\/lobby$/);
+    // 서버 LoginRequest.java 3필드 — guest 경로와 같은 엔드포인트/같은 바디 형태.
     expect(requests).toEqual([
-      { path: "/api/auth/login", body: { provider: "local", loginId: LOGIN_ID, password: PASSWORD } },
+      { path: "/api/auth/login", body: { nickname: NICKNAME, provider: "local", password: PASSWORD } },
     ]);
   });
 
@@ -180,14 +193,14 @@ test.describe("AC-A1 — 로그인", () => {
       login: (route) => route.fulfill(json({ code: "BAD_CREDENTIALS", message: "bad" }, 401)),
     });
     await openLocalPanel(page);
-    await fillCredentials(page, LOGIN_ID, "wrongpw");
+    await fillCredentials(page, NICKNAME, "wrongpw");
     await page.getByTestId("local-submit").click();
 
     await expect(page.getByTestId("local-error-form")).toHaveText(
       "아이디 또는 비밀번호가 올바르지 않습니다",
     );
     // 어느 필드가 틀렸는지는 노출하지 않는다(계정 열거 방지).
-    await expect(page.getByTestId("local-error-loginId")).toHaveCount(0);
+    await expect(page.getByTestId("local-error-nickname")).toHaveCount(0);
     await expect(page.getByTestId("local-error-password")).toHaveCount(0);
     await expect(page).toHaveURL(/\/login$/);
   });
@@ -195,10 +208,10 @@ test.describe("AC-A1 — 로그인", () => {
   test("클라 검증 실패는 네트워크 요청을 만들지 않는다", async ({ page }) => {
     const requests = await mockApi(page);
     await openLocalPanel(page);
-    await fillCredentials(page, "ab", "1");
+    await fillCredentials(page, "x", "1");
     await page.getByTestId("local-submit").click();
 
-    await expect(page.getByTestId("local-error-loginId")).toBeVisible();
+    await expect(page.getByTestId("local-error-nickname")).toBeVisible();
     await expect(page.getByTestId("local-error-password")).toBeVisible();
     expect(requests).toEqual([]);
   });

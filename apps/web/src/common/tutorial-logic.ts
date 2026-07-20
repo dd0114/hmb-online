@@ -24,6 +24,17 @@ export function enabledSteps(steps: readonly TutorialStep[]): TutorialStep[] {
 }
 
 /**
+ * 지금 화면에서 **보여줄 수 있는** 스텝인가 = 라우트 힌트가 없거나 현재 경로와 같다.
+ *
+ * 힌트 없는 스텝(레거시·화면 무관 요소)은 언제나 후보다 — 즉 이 함수는 기존 동작을
+ * 좁히기만 하고 넓히지 않는다. 반대로 힌트가 붙은 스텝은 그 화면에 실제로 도착해야
+ * 후보가 되므로, 다른 화면에서 헛되이 '대상 부재 스킵'을 소모하지 않는다.
+ */
+export function stepOnRoute(step: TutorialStep, pathname: string): boolean {
+  return step.route === undefined || step.route === pathname;
+}
+
+/**
  * 하이라이트할 수 있는 대상인가.
  * 부재(null)·크기 0(display:none 등)·뷰포트 완전 이탈이면 false → 그 스텝은 건너뛴다.
  */
