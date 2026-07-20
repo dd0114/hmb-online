@@ -1,0 +1,25 @@
+# AI 실행기 모드 B — 컨테이너에서 구독 claude CLI 를 쓴다 (호스트 ~/.claude 마운트).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.ai-live.yml up -d
+#
+# ⚠️ 모드 A(호스트 실행)가 **권장**이다. 근거·트레이드오프는 ../docs/plan-v4/deploy.md §AI 실행기.
+#    요약 경고:
+#      - ~/.claude 는 세션 자격 + 갱신 토큰이 들어있는 쓰기 대상이다. 컨테이너가 갱신하면
+#        호스트 세션에 그대로 반영된다(공유 상태). 호스트에서 claude 를 동시에 쓰면 경합 가능.
+#      - 구독 세션은 머신 바인딩 요소가 있어 컨테이너에서 거부될 수 있다 — 검증은 hero 게이트.
+#      - ANTHROPIC_API_KEY 는 절대 넣지 않는다(있으면 종량 과금으로 전환된다). executor 가
+#        기동 시 강제 삭제하지만, 애초에 주입하지 않는 것이 원칙.
+
+services:
+  executor:
+    build:
+      context: ..
+      dockerfile: infra/executor-live.Dockerfile
+    image: hmb/servants-ai:p3
+    environment:
+      AI_EXECUTOR: claude-code
+      # claude CLI 는 $HOME/.claude 를 본다 → HOME 을 마운트 지점의 부모로 고정.
+      HOME: /home/node
+    volumes:
+      # 호스트 구독 세션. 기본 ~/.claude, 필요 시 .env 의 CLAUDE_HOME 으로 교체.
+      - ${CLAUDE_HOME:-~/.claude}:/home/node/.claude
