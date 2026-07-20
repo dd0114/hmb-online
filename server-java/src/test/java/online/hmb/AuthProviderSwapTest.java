@@ -24,8 +24,14 @@ import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * AC-A2: AuthController/SessionService 는 {@link AuthProvider} 인터페이스에만 의존한다 — 실 OAuth
- * 구현체로 교체해도 컨트롤러/세션 로직은 불변임을 증명한다. 여기서는 임의의 AuthProvider 목을
- * 주입(MockOAuthProvider 대체)해도 로그인 응답(token 발급·user·isNew)이 동일하게 동작함을 검증한다.
+ * 구현체로 교체해도 컨트롤러/세션 로직은 불변임을 증명한다. 임의의 AuthProvider 목을 주입해도
+ * 로그인 응답(token 발급·user·isNew)이 동일하게 동작함을 검증한다.
+ *
+ * <p>P3 §A 이후 컨텍스트에는 AuthProvider 빈이 셋(DelegatingAuthProvider·MockOAuthProvider·
+ * LocalAuthProvider) 있고, 아래 {@code @MockBean} 은 그중 <b>{@code @Primary} 인
+ * DelegatingAuthProvider</b>(= 컨트롤러가 실제로 주입받는 빈)를 대체한다. 즉 이 테스트는 여전히
+ * "컨트롤러가 보는 AuthProvider 를 통째로 갈아끼워도 동작 불변"을 증명한다 —
+ * 앞으로 AuthProvider 구현체를 추가할 때 이 @Primary 규약을 깨면 안 된다.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class AuthProviderSwapTest {
