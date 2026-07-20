@@ -13,6 +13,9 @@ import { TradePage } from "./trade/TradePage";
 import { LogsPage } from "./logs/LogsPage";
 import { LeaguePage } from "./league/LeaguePage";
 import { MatchPage } from "./match/MatchPage";
+import { AdminPage } from "./admin/AdminPage";
+import { AdminFlagProvider } from "./admin/AdminFlagProvider";
+import { RequireAdmin } from "./admin/RequireAdmin";
 import { setUnauthorizedHandler } from "./api/client";
 
 const queryClient = new QueryClient({
@@ -113,6 +116,17 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
+        {/* 운영자 전용 (PRD-v4 §C). RequireAuth(미로그인→/login) 다음 RequireAdmin(비admin→/lobby). */}
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth>
+              <RequireAdmin>
+                <AdminPage />
+              </RequireAdmin>
+            </RequireAuth>
+          }
+        />
         <Route path="/" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
         <Route path="*" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
       </Routes>
@@ -125,7 +139,11 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <TokenProvider>
-          <AppRoutes />
+          {/* admin 플래그(/api/me additive)를 네비까지 내려준다 — AppNav 가 쿼리 컨텍스트에
+              직접 의존하지 않도록(src/admin/admin-flag.ts 주석 참조). */}
+          <AdminFlagProvider>
+            <AppRoutes />
+          </AdminFlagProvider>
         </TokenProvider>
       </BrowserRouter>
     </QueryClientProvider>

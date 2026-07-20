@@ -1,5 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { useNavGuardRun } from "./NavGuard";
+import { useAdminFlag } from "../admin/admin-flag";
 import styles from "./AppNav.module.css";
 
 /**
@@ -28,6 +29,14 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "codex", label: "도감", icon: "📖", to: "/codex" },
 ];
 
+/** 운영자 전용 항목 (PRD-v4 §C) — admin 계정에만 붙인다. 비admin 에겐 DOM 에도 없다. */
+export const ADMIN_NAV_ITEM: NavItem = { key: "admin", label: "운영", icon: "🛠", to: "/admin" };
+
+/** 표시할 항목 = 기본 5개 + (admin 이면) 운영. */
+export function navItemsFor(isAdmin: boolean): readonly NavItem[] {
+  return isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+}
+
 /** 현재 경로가 어느 탭에 속하는지 (prefix 매칭). */
 export function activeNavKey(pathname: string, items: readonly NavItem[] = NAV_ITEMS): string | null {
   const match = items.find((it) => !it.pending && (pathname === it.to || pathname.startsWith(it.to + "/")));
@@ -38,7 +47,8 @@ export function AppNav() {
   const navigate = useNavigate();
   const runGuard = useNavGuardRun();
   const location = useLocation();
-  const activeKey = activeNavKey(location.pathname);
+  const items = navItemsFor(useAdminFlag());
+  const activeKey = activeNavKey(location.pathname, items);
 
   function renderItem(
     item: NavItem,
@@ -77,13 +87,13 @@ export function AppNav() {
   return (
     <>
       <nav className={styles.bottomTab} data-testid="nav-bottom" aria-label="주 메뉴">
-        {NAV_ITEMS.map((it) =>
+        {items.map((it) =>
           renderItem(it, styles.tabItem, styles.tabActive, styles.tabPending),
         )}
       </nav>
       <nav className={styles.sidebar} data-testid="nav-sidebar" aria-label="주 메뉴">
         <div className={styles.sidebarBrand}>HMB</div>
-        {NAV_ITEMS.map((it) =>
+        {items.map((it) =>
           renderItem(it, styles.sideItem, styles.sideActive, styles.sidePending),
         )}
       </nav>
