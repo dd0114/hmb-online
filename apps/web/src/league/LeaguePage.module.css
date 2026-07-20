@@ -220,6 +220,154 @@
   font-size: 22px;
 }
 
+/* ── 시즌 종료 보상 연출(PRD-v4 §E) — 과하지 않게: 순위 강조 + 포인트 카운트업/페이드.
+   라이브러리 없이 CSS 애니메이션만. prefers-reduced-motion: reduce 면 전부 정지. ── */
+.rankPop {
+  display: inline-block;
+  animation: rankPop 480ms cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+@keyframes rankPop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.rewardCard {
+  text-align: center;
+}
+.rewardEnter {
+  animation: rewardFade 420ms ease-out 120ms both;
+}
+@keyframes rewardFade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.rewardStatus {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+}
+.tone_success {
+  color: var(--accent);
+}
+.tone_pending {
+  color: var(--text-muted);
+}
+.tone_error {
+  color: #ff6b6b;
+}
+
+.rewardPoints {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-variant-numeric: tabular-nums;
+}
+.rewardPointsValue {
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+.rewardPointsUnit {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+.rewardPointsNote {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff6b6b;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 4px;
+}
+.rewardDetail {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.rewardAt {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.secondary {
+  margin-top: 12px;
+  width: 100%;
+  background: none;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.secondary:disabled {
+  opacity: 0.6;
+}
+
+/* 시즌 요약 — 모바일 2열, 데스크탑 4열. 가로 오버플로 0(minmax 0). */
+.summaryGrid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.summaryItem {
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.summaryItem dt {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.summaryItem dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.summaryDiff {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 4px;
+}
+@media (min-width: 600px) {
+  .summaryGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rankPop,
+  .rewardEnter {
+    animation: none !important;
+  }
+}
+
 /* Desktop: 순위표·일정 병렬(LLD §7) — 2컬럼 그리드(순서 무관·견고). */
 @media (min-width: 1024px) {
   .dashGrid {

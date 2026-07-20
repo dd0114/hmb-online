@@ -1,14 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeague, useStartLeague, useStartNextLeagueMatch } from "../api/hooks-v2";
 import type { LeagueFixture, LeagueSeason, LeagueStanding } from "../api/v2";
+import type { LeagueResponseP3, LeagueSeasonReward } from "../api/p3";
 import { ApiError } from "../api/client";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
+import type { SeasonSummary } from "./league-logic";
 import {
   fixtureScore,
+  formatAwardedAt,
   groupByRound,
   isSeasonFinished,
+  pickSeasonReward,
+  seasonRewardView,
+  seasonSummary,
   sortByRank,
   teamNameMap,
   userRank,
@@ -17,10 +23,12 @@ import styles from "./LeaguePage.module.css";
 
 export function LeaguePage() {
   const navigate = useNavigate();
-  const { data, isLoading, isError } = useLeague();
+  const { data, isLoading, isError, refetch, isFetching } = useLeague();
   const [error, setError] = useState<string | null>(null);
 
   const season = data?.season ?? null;
+  // Phase3 additive — 구 서버(필드 부재)면 null → 기존 종료 화면 그대로(폴백).
+  const reward = useMemo(() => pickSeasonReward(data as LeagueResponseP3 | undefined), [data]);
 
   const header = (
     <div className={styles.headerRow}>
@@ -43,7 +51,15 @@ export function LeaguePage() {
 
       {!isLoading && !season && <StartSeasonCta onError={setError} />}
       {season && !isSeasonFinished(season) && <Dashboard season={season} onError={setError} />}
-      {season && isSeasonFinished(season) && <SeasonEnd season={season} onError={setError} />}
+      {season && isSeasonFinished(season) && (
+        <SeasonEnd
+          season={season}
+          reward={reward}
+          onError={setError}
+          onRefresh={() => void refetch()}
+          refreshing={isFetching}
+        />
+      )}
 
       <ErrorToast message={error} onDismiss={() => setError(null)} />
     </Layout>
@@ -228,21 +244,43 @@ function Schedule({
   );
 }
 
-function SeasonEnd({ season, onError }: { season: LeagueSeason; onError: (m: string) => void }) {
+/**
+ * 시즌 종료 화면 — 최종 순위 + (Phase3) 보상 + 시즌 요약.
+ *
+ * ⚠️ 멱등성: 이 화면은 **지급을 트리거하지 않는다**. 보상 지급은 서버 소관(AC-F4)이고 여기서
+ * 발생하는 네트워크는 GET /api/league refetch 뿐이라, 재진입/재조회해도 중복 지급이 없다(AC-E1).
+ */
+function SeasonEnd({
+  season,
+  reward,
+  onError,
+  onRefresh,
+  refreshing,
+}: {
+  season: LeagueSeason;
+  reward: LeagueSeasonReward | null;
+  onError: (m: string) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
   const start = useStartLeague();
   const handleErr = useStartError(onError);
   const rank = userRank(season.standings);
   const sorted = useMemo(() => sortByRank(season.standings), [season.standings]);
+  const summary = useMemo(() => seasonSummary(season.standings), [season.standings]);
   return (
     <div data-testid="season-end">
       <section className={styles.endHero}>
         <p className={styles.endTitle}>시즌 {season.seasonNo} 종료</p>
         {rank != null && (
           <p className={styles.endRank} data-testid="final-rank">
-            최종 순위 <strong>{rank}위</strong>
+            최종 순위 <strong className={styles.rankPop}>{rank}위</strong>
           </p>
         )}
       </section>
+      {/* reward 부재(구 서버) = 렌더 안 함 → 기존 화면 그대로. */}
+      {reward && <SeasonRewardCard reward={reward} onRefresh={onRefresh} refreshing={refreshing} />}
+      {summary && <SeasonSummaryCard summary={summary} />}
       <StandingsTable standings={sorted} />
       <button
         type="button"
@@ -254,5 +292,137 @@ function SeasonEnd({ season, onError }: { season: LeagueSeason; onError: (m: str
         {start.isPending ? "새 시즌 생성 중…" : "새 시즌 시작"}
       </button>
     </div>
+  );
+}
+
+/** prefers-reduced-motion: reduce → 연출(카운트업·페이드) 끄기. */
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() =>
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      : false,
+  );
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setReduced(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return reduced;
+}
+
+/** 0→target 카운트업(rAF, ~700ms). enabled=false 면 즉시 target(모션 없음). */
+function useCountUp(target: number, enabled: boolean): number {
+  const [value, setValue] = useState(enabled ? 0 : target);
+  const frame = useRef(0);
+  useEffect(() => {
+    if (!enabled) {
+      setValue(target);
+      return;
+    }
+    const startedAt = performance.now();
+    const DURATION = 700;
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - startedAt) / DURATION);
+      const eased = 1 - (1 - t) * (1 - t); // easeOutQuad
+      setValue(Math.round(target * eased));
+      if (t < 1) frame.current = requestAnimationFrame(tick);
+    };
+    frame.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame.current);
+  }, [target, enabled]);
+  return value;
+}
+
+function SeasonRewardCard({
+  reward,
+  onRefresh,
+  refreshing,
+}: {
+  reward: LeagueSeasonReward;
+  onRefresh: () => void;
+  refreshing: boolean;
+}) {
+  const view = useMemo(() => seasonRewardView(reward), [reward]);
+  const reducedMotion = usePrefersReducedMotion();
+  const shown = useCountUp(reward.points, view.animate && !reducedMotion);
+  return (
+    <section
+      className={[styles.card, styles.rewardCard, reducedMotion ? "" : styles.rewardEnter]
+        .filter(Boolean)
+        .join(" ")}
+      data-testid="season-reward"
+      data-status={view.status}
+      data-tone={view.tone}
+    >
+      <h3 className={styles.cardTitle}>시즌 보상</h3>
+      <p
+        className={[styles.rewardStatus, styles[`tone_${view.tone}`]].join(" ")}
+        data-testid="season-reward-status"
+        data-status={view.status}
+      >
+        {view.headline}
+      </p>
+      <p
+        className={styles.rewardPoints}
+        data-testid="season-reward-points"
+        data-points={reward.points}
+        data-awarded={view.showPoints ? "true" : "false"}
+      >
+        <span className={styles.rewardPointsValue}>{shown.toLocaleString()}</span>
+        <span className={styles.rewardPointsUnit}>P</span>
+        {!view.showPoints && <span className={styles.rewardPointsNote}>미지급</span>}
+      </p>
+      <p className={styles.rewardDetail} data-testid="season-reward-message">
+        {view.detail}
+      </p>
+      {reward.awardedAt && view.status === "AWARDED" && (
+        <p className={styles.rewardAt} data-testid="season-reward-at">
+          지급 {formatAwardedAt(reward.awardedAt)}
+        </p>
+      )}
+      {view.canRetry && (
+        // GET refetch 만 — 지급 트리거 POST 를 보내지 않는다(멱등, AC-E1).
+        <button
+          type="button"
+          className={styles.secondary}
+          data-testid="season-reward-retry"
+          disabled={refreshing}
+          onClick={onRefresh}
+        >
+          {refreshing ? "조회 중…" : "다시 조회"}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function SeasonSummaryCard({ summary }: { summary: SeasonSummary }) {
+  return (
+    <section className={styles.card} data-testid="season-summary">
+      <h3 className={styles.cardTitle}>시즌 요약</h3>
+      <dl className={styles.summaryGrid}>
+        <div className={styles.summaryItem}>
+          <dt>경기</dt>
+          <dd data-testid="season-summary-played">{summary.played}</dd>
+        </div>
+        <div className={styles.summaryItem}>
+          <dt>전적</dt>
+          <dd data-testid="season-summary-record">{summary.record}</dd>
+        </div>
+        <div className={styles.summaryItem}>
+          <dt>득실</dt>
+          <dd data-testid="season-summary-goals">
+            {summary.goalsLabel}
+            <span className={styles.summaryDiff}>({summary.goalDiffLabel})</span>
+          </dd>
+        </div>
+        <div className={styles.summaryItem}>
+          <dt>승점</dt>
+          <dd data-testid="season-summary-points">{summary.points}</dd>
+        </div>
+      </dl>
+    </section>
   );
 }

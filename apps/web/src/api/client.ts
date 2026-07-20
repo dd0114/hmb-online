@@ -105,6 +105,30 @@ export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
+/**
+ * 인증 엔드포인트 접두 — 이 경로들의 401 은 **인증 실패**(잘못된 자격)이지 **세션 만료**가 아니다.
+ * 자체 로그인(PRD-v4 §A) 도입으로 "오타 비번 = 일상적 401" 이 생겼기 때문에 구분이 필요하다.
+ * 여기 걸리면 401 부수효과(토큰 클리어 + onUnauthorized 리다이렉트)를 건너뛰고 ApiError 만 던진다
+ * — 유효 세션을 보유한 채 /login 에서 오답을 내도 기존 세션이 파기되지 않는다.
+ * 그 외 모든 경로의 401 은 기존대로 세션 파기(회귀 테스트로 박제 — client.test.ts).
+ */
+const AUTH_PATH_PREFIX = "/api/auth/";
+
+/** 상대/절대 URL 모두에서 pathname 을 뽑는다(API base 환경변수화 대비 — P3-D1). */
+function pathnameOf(path: string): string {
+  const base =
+    typeof window !== "undefined" && window.location ? window.location.origin : "http://localhost";
+  try {
+    return new URL(path, base).pathname;
+  } catch {
+    return path;
+  }
+}
+
+export function isAuthEndpoint(path: string): boolean {
+  return pathnameOf(path).startsWith(AUTH_PATH_PREFIX);
+}
+
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(options.headers);
@@ -122,10 +146,13 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   });
 
   if (res.status === 401) {
-    clearToken();
-    clearProvider();
     const body = await parseErrorBody(res);
-    onUnauthorized();
+    // 인증 엔드포인트의 401 = 자격 오류(폼 에러) → 세션을 건드리지 않고 호출자에게 위임.
+    if (!isAuthEndpoint(path)) {
+      clearToken();
+      clearProvider();
+      onUnauthorized();
+    }
     throw new ApiError(401, body);
   }
 

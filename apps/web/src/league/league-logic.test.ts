@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { LeagueFixture, LeagueStanding, LeagueTeam } from "../api/v2";
+import type { LeagueSeasonReward } from "../api/p3";
 import {
   fixtureScore,
+  formatAwardedAt,
   groupByRound,
   isSeasonFinished,
+  pickSeasonReward,
+  seasonRewardView,
+  seasonSummary,
   sortByRank,
   standingsComparator,
   teamNameMap,
@@ -128,5 +133,133 @@ describe("teamNameMap / userRank / isSeasonFinished", () => {
     expect(isSeasonFinished({ state: "FINISHED" } as never)).toBe(true);
     expect(isSeasonFinished({ state: "ACTIVE" } as never)).toBe(false);
     expect(isSeasonFinished(null)).toBe(false);
+  });
+});
+
+/* ───────────── 시즌 종료 보상 (PRD-v4 §E / AC-E1) ───────────── */
+
+describe("seasonSummary — standings 의 isUser 행에서 시즌 요약 계산", () => {
+  const rows = [
+    st({ teamId: "bot", rank: 1, played: 18, won: 14, points: 44 }),
+    st({
+      teamId: "me",
+      rank: 3,
+      isUser: true,
+      played: 18,
+      won: 10,
+      drawn: 4,
+      lost: 4,
+      goalsFor: 31,
+      goalsAgainst: 22,
+      goalDiff: 9,
+      points: 34,
+    }),
+  ];
+
+  it("유저 행의 승/무/패·득실·승점을 요약", () => {
+    const s = seasonSummary(rows)!;
+    expect(s.rank).toBe(3);
+    expect(s.played).toBe(18);
+    expect(s.record).toBe("10승 4무 4패");
+    expect(s.goalsLabel).toBe("31 - 22");
+    expect(s.goalDiffLabel).toBe("+9");
+    expect(s.points).toBe(34);
+  });
+
+  it("골득실 부호 표기(음수/0)", () => {
+    expect(seasonSummary([st({ isUser: true, goalDiff: -4 })])!.goalDiffLabel).toBe("-4");
+    expect(seasonSummary([st({ isUser: true, goalDiff: 0 })])!.goalDiffLabel).toBe("0");
+  });
+
+  it("유저 행이 없으면 null(요약 숨김)", () => {
+    expect(seasonSummary([st({ isUser: false })])).toBeNull();
+    expect(seasonSummary([])).toBeNull();
+  });
+});
+
+describe("pickSeasonReward — Phase3 additive 소비 + 구서버 폴백", () => {
+  const reward: LeagueSeasonReward = { rank: 3, points: 500, status: "AWARDED" };
+
+  it("season 안의 seasonReward 를 읽는다", () => {
+    expect(pickSeasonReward({ season: { seasonReward: reward } as never })).toEqual(reward);
+  });
+  it("응답 루트의 seasonReward 도 수용(계약 미확정 관용)", () => {
+    expect(pickSeasonReward({ seasonReward: reward })).toEqual(reward);
+  });
+  it("season 위치가 루트보다 우선", () => {
+    const rootOnly: LeagueSeasonReward = { rank: 9, points: 0, status: "FAILED" };
+    expect(pickSeasonReward({ season: { seasonReward: reward } as never, seasonReward: rootOnly })).toEqual(
+      reward,
+    );
+  });
+  it("필드 부재(구 서버) → null → 기존 화면 폴백", () => {
+    expect(pickSeasonReward({ season: {} as never })).toBeNull();
+    expect(pickSeasonReward({})).toBeNull();
+    expect(pickSeasonReward(null)).toBeNull();
+    expect(pickSeasonReward(undefined)).toBeNull();
+    expect(pickSeasonReward({ season: { seasonReward: null } as never })).toBeNull();
+  });
+  it("원시값(계약 밖 타입)도 감추지 않고 FAILED 로 승격 — 카드가 사라지면 안 된다", () => {
+    for (const bad of ["boom", 42, true]) {
+      const v = pickSeasonReward({ seasonReward: bad as never })!;
+      expect(v, `seasonReward=${JSON.stringify(bad)} 는 폴백이 아니라 FAILED 노출`).not.toBeNull();
+      expect(v.status).toBe("FAILED");
+      expect(v.rank).toBe(0);
+      expect(v.points).toBe(0);
+      expect(v.message).toContain("확인할 수 없습니다");
+    }
+  });
+  it("경계 유지: 부재/null/undefined 만 폴백(구 서버), 값이 있으면 언제나 노출", () => {
+    expect(pickSeasonReward({ seasonReward: undefined })).toBeNull();
+    expect(pickSeasonReward({ seasonReward: null })).toBeNull();
+    expect(pickSeasonReward({ seasonReward: 0 as never })).not.toBeNull(); // falsy 지만 값은 존재
+    expect(pickSeasonReward({ seasonReward: "" as never })).not.toBeNull();
+  });
+  it("계약 밖 status 는 감추지 않고 FAILED 로 승격(노출 유지)", () => {
+    const weird = pickSeasonReward({ seasonReward: { rank: 3, points: 500, status: "WAT" } as never })!;
+    expect(weird.status).toBe("FAILED");
+    expect(weird.message).toContain("확인할 수 없습니다");
+  });
+  it("rank/points 가 숫자가 아니면 FAILED 로 승격", () => {
+    const bad = pickSeasonReward({ seasonReward: { points: 500, status: "AWARDED" } as never })!;
+    expect(bad.status).toBe("FAILED");
+    expect(bad.rank).toBe(0);
+  });
+});
+
+describe("formatAwardedAt — 지급 시각 표시(순수 문자열, Date 미사용)", () => {
+  it("ISO → 'YYYY-MM-DD HH:mm'", () => {
+    expect(formatAwardedAt("2026-07-20T09:00:00Z")).toBe("2026-07-20 09:00");
+    expect(formatAwardedAt("2026-07-20 09:05:33")).toBe("2026-07-20 09:05");
+  });
+  it("파싱 불가는 원문 유지, 부재는 null", () => {
+    expect(formatAwardedAt("방금")).toBe("방금");
+    expect(formatAwardedAt(null)).toBeNull();
+    expect(formatAwardedAt(undefined)).toBeNull();
+  });
+});
+
+describe("seasonRewardView — status 3분기(조용한 숨김 금지)", () => {
+  it("AWARDED = 포인트 표시 + 카운트업 연출 + 재조회 없음", () => {
+    const v = seasonRewardView({ rank: 2, points: 1200, status: "AWARDED" });
+    expect(v).toMatchObject({ showPoints: true, animate: true, canRetry: false, tone: "success" });
+    expect(v.detail).toContain("1,200P");
+    expect(v.detail).toContain("2위");
+  });
+  it("PENDING = 처리 중 안내 + 재조회 가능 + 지급액 미확정", () => {
+    const v = seasonRewardView({ rank: 5, points: 300, status: "PENDING" });
+    expect(v).toMatchObject({ showPoints: false, animate: false, canRetry: true, tone: "pending" });
+    expect(v.headline).toContain("처리 중");
+  });
+  it("FAILED = 서버 message 를 그대로 노출 + 재조회 가능", () => {
+    const v = seasonRewardView({ rank: 7, points: 0, status: "FAILED", message: "지갑 반영 실패(원장 충돌)" });
+    expect(v).toMatchObject({ showPoints: false, animate: false, canRetry: true, tone: "error" });
+    expect(v.detail).toBe("지갑 반영 실패(원장 충돌)");
+  });
+  it("FAILED 인데 message 가 비면 기본 사유 문구(빈 화면 금지)", () => {
+    expect(seasonRewardView({ rank: 7, points: 0, status: "FAILED", message: "  " }).detail.length).toBeGreaterThan(
+      0,
+    );
+    expect(seasonRewardView({ rank: 7, points: 0, status: "FAILED" }).detail).toContain("실패");
   });
 });

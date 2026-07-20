@@ -6,7 +6,7 @@ interface PointsBadgeProps {
 
 export function PointsBadge({ points }: PointsBadgeProps) {
   return (
-    <span className={styles.badge}>
+    <span className={styles.badge} data-testid="points-badge" data-points={points}>
       <span className={styles.icon} aria-hidden="true">
         ●
       </span>
