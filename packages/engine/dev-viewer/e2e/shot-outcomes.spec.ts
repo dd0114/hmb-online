@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loadViewer, eventsOfType, ballAtTick, outsideGoalLine, inGoalMouth, VIEWER_REAL_URL } from "./fixture";
+import { loadViewer, eventsOfType, ballAtTick, ballOwnerAtTick, outsideGoalLine, inGoalMouth, VIEWER_REAL_URL } from "./fixture";
 
 // 슛 결과 공 위치 의미론: 결과 타입별로 공이 서로 다른 곳에 있어 관객이 구분 가능한가.
 test.beforeEach(async ({ page }) => { await loadViewer(page); });
@@ -25,8 +25,12 @@ test("#91 save→corner → 공이 골라인 밖 와이드로 나간다(키퍼�
   const corners = await eventsOfType(page, "kickoff", "corner");
   let checked = 0;
   for (const s of saves) {
-    // 코너로 굴절된 세이브만: 굴절 코너는 **공격팀**(세이브한 키퍼 팀의 상대)에게 주어진다.
-    // team 이 같은 근접 코너는 반대 골문의 무관한 플레이(오탐) — 제외해야 평범한 GK 캐치를 오판하지 않는다.
+    // #91 굴절 세이브만 판정한다(캐치 제외). 굴절은 공을 라인 밖에 **소유자 없이**(parkForRestart)
+    // 세워 shot_out→코너로 이어진다. 캐치(giveBallTo)는 키퍼가 공을 **소유**하므로 여기서 배제한다.
+    // (구: `c.team !== s.team` 로 캐치를 걸렀는데, 이는 #110 스퓨리어스 반대편 코너 버그에 의존한
+    //  프록시였다. 버그 수정 후 캐치→상대 코너(정상)가 되어 프록시가 깨지므로, 소유자로 직접 구분.)
+    const owner = await ballOwnerAtTick(page, s.tick);
+    if (owner) continue; // 키퍼가 공 소유 = 캐치 → #91 대상 아님.
     const corner = corners.find((c) => c.tick > s.tick && c.tick <= s.tick + 8 && c.team !== s.team);
     if (!corner) continue;
     const ball = await ballAtTick(page, s.tick);
