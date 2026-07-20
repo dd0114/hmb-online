@@ -141,6 +141,14 @@
       <button id="trailBtn" class="active">✦ Player trails</button>
       <button id="highlightBtn" class="active">🎬 Highlights</button>
       <button id="statsBtn" class="active">📊 Stats</button>
+      <span class="sp">View</span>
+      <button id="viewAutoBtn" class="active">🎥 Auto</button>
+      <button id="viewFixBtn">📌 Fix</button>
+      <span id="fixZoomWrap" style="display:none; align-items:center; gap:6px;">
+        <span class="sp">Zoom</span>
+        <input id="fixZoom" type="range" min="1" max="3" step="0.1" value="1" style="width:110px;" title="Fix 뷰 화면크기(줌)" />
+        <span id="fixZoomVal" class="sp">1.0×</span>
+      </span>
       <span class="sp">Speed</span>
       <button data-speed="0.25">0.25x</button>
       <button data-speed="0.5">0.5x</button>
@@ -217,6 +225,9 @@
 
       let log = null, snaps = [], playing = false, speed = 1, tickPos = 0, lastTs = 0;
       let follow = false, showTrail = true, autoPace = true, keyTicks = [], confetti = [];
+      // #114 뷰 모드: "auto"=하이라이트 카메라(찬스/골 자동 줌·팔로우) / "fix"=한 화면 고정(정적 카메라).
+      // fixZoom = Fix 모드 고정 뷰 줌 레벨(1=전체피치 letterbox-fit ↔ 3=확대). 재생 내내 불변.
+      let viewMode = "auto", fixZoom = 1;
       let shotFx = [], shotFxTicks = new Set(); // 유효슛 링 이펙트(정지 없음, 순수 시각)
       // R2(#100): 재미 이펙트 소스 — 패스완성/가로챔/돌파. 재생 중 플레이헤드가 틱을 지나면 스폰(shotFx 방식).
       let fx = [], passEvents = [], interceptEvents = [], surgeTicks = [];
@@ -289,7 +300,11 @@
 
         // 카메라: 수동 공따라가기 OR 하이라이트(찬스/골) 근처면 자동 줌인
         const curTick = A.tick;
-        const nearKey = autoPace && !inSetpieceWait(curTick) && inHighlight(curTick, keyTicks, HL_PRE, HL_POST);
+        // #114 Fix 뷰 모드: 한 화면 고정 — 자동 팔로우/하이라이트/데드볼·접촉·골 줌을 전부 억제하고
+        //   피치 중앙에 고정 줌(fixZoom)으로 정적 카메라 유지. fixMode 면 아래 nearKey/contactPos/useFollow
+        //   가 모두 무력화되고 camTarget 이 상수라 재생 내내 zoom/center 가 불변한다.
+        const fixMode = viewMode === "fix";
+        const nearKey = !fixMode && autoPace && !inSetpieceWait(curTick) && inHighlight(curTick, keyTicks, HL_PRE, HL_POST);
         // 골 세리머니 후반(트윈>0.4)엔 줌을 풀어 선수들이 포메이션으로 걸어 복귀하는 걸 전체뷰로 보여줌.
         const koTweening = hold && hold.koIdx != null && hold.tween > 0.4;
         // #90: 스로인·코너킥 등 세트피스 재시작 클로즈업(구 spSpot 세트피스 줌) 제거 — hero 요구.
@@ -297,17 +312,23 @@
         // 파울 접촉 줌: 파울/페널티 정지의 causeTick 부근엔 접촉 지점(파울러=victim 도 2m 내)으로 줌해
         // "두 선수 충돌"을 보여준다. autoPace 전용(수동 스크럽·지오메트리 검사면 평범한 카메라).
         let contactPos = null;
-        if (autoPace) for (const st of stoppages) {
+        if (!fixMode && autoPace) for (const st of stoppages) {
           if (st.isGoal || !st.contactAnchor || curTick < st.causeTick || curTick > st.causeTick + FOUL_CONTACT_TICKS) continue;
           const csnap = snapByTick.get(st.causeTick);
           const pl = csnap && csnap.players.find((p) => p.playerId === st.contactAnchor);
           if (pl) { contactPos = pl.pos; break; }
         }
         // 골 freeze 중에는 공(골문)으로 줌해 '네트 인'을 보여준다(세이브처럼).
-        const useFollow = !koTweening && !contactPos && (follow || nearKey || (hold ? !!hold.zoom : false));
-        const camTarget = contactPos
+        const useFollow = !fixMode && !koTweening && !contactPos && (follow || nearKey || (hold ? !!hold.zoom : false));
+        const camTarget = fixMode
+          ? { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: fixZoom }
+          : contactPos
           ? { cx: contactPos.x, cy: contactPos.y, zoom: CONTACT_ZOOM }
           : useFollow ? { cx: bx, cy: by, zoom: FOLLOW_ZOOM } : { cx: PITCH_W / 2, cy: PITCH_H / 2, zoom: 1 };
+        if (fixMode) {
+          // Fix: 스무딩·속도상한 없이 고정 목표(중앙·fixZoom)로 즉시 스냅 → 재생 내내 zoom/center 완전 불변.
+          cam = { cx: camTarget.cx, cy: camTarget.cy, zoom: camTarget.zoom };
+        } else {
         // 재생 중 카메라를 항상 목표로 부드럽게 팬 → 정지 전환·하이라이트 줌인/줌아웃·정지 재개
         // (전체뷰↔줌) 모두 순간이동 없이 이어진다(코너-하이라이트 겹침 프레임 튐 방지).
         // 하이라이트 슬로모 중 공은 프레임당 <1m 이동이라 팬 랙 미미(공 중앙 유지). seek/일시정지는 스냅.
@@ -327,6 +348,7 @@
           if (Math.abs(nz - cam.zoom) > maxDz) nz = cam.zoom + Math.sign(nz - cam.zoom) * maxDz;
         }
         cam = { cx: ncx, cy: ncy, zoom: nz };
+        }
         drawPitch();
 
         // 선수 잔상(옵션)
@@ -693,8 +715,10 @@
         }
         if (playing && snaps.length > 1) {
           const beforeTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
-          const nearKey = autoPace && !inSetpieceWait(beforeTick) && inHighlight(beforeTick, keyTicks, HL_PRE, HL_POST);
-          const eff = autoPace ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed;
+          // #114 Fix 모드는 하이라이트 자동페이싱을 끄고 수동 배속(speed)으로 일정하게 재생.
+          const fixMode = viewMode === "fix";
+          const nearKey = !fixMode && autoPace && !inSetpieceWait(beforeTick) && inHighlight(beforeTick, keyTicks, HL_PRE, HL_POST);
+          const eff = (!fixMode && autoPace) ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed;
           tickPos += dt * TICKS_PER_SEC * eff;
           if (tickPos >= snaps.length - 1) { tickPos = snaps.length - 1; setPlaying(false); }
           const afterTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
@@ -758,6 +782,33 @@
       trailBtn.onclick = () => { showTrail = !showTrail; trailBtn.classList.toggle("active", showTrail); draw(); };
       const hlBtn = document.getElementById("highlightBtn");
       hlBtn.onclick = () => { autoPace = !autoPace; hlBtn.classList.toggle("active", autoPace); };
+      // #114 Auto/Fix 뷰 모드 토글 + Fix 고정 줌 컨트롤.
+      const viewAutoBtn = document.getElementById("viewAutoBtn");
+      const viewFixBtn = document.getElementById("viewFixBtn");
+      const fixZoomWrap = document.getElementById("fixZoomWrap");
+      const fixZoomInput = document.getElementById("fixZoom");
+      const fixZoomVal = document.getElementById("fixZoomVal");
+      function setFixZoom(z) {
+        fixZoom = Math.max(1, Math.min(3, Number.isFinite(z) ? z : 1));
+        fixZoomInput.value = String(fixZoom);
+        fixZoomVal.textContent = fixZoom.toFixed(1) + "×";
+        draw();
+      }
+      function setViewMode(mode) {
+        viewMode = mode === "fix" ? "fix" : "auto";
+        const fix = viewMode === "fix";
+        viewFixBtn.classList.toggle("active", fix);
+        viewAutoBtn.classList.toggle("active", !fix);
+        // 줌 컨트롤은 Fix 모드에서만 노출(Auto 에선 숨김 — 하이라이트 카메라가 줌을 자동 제어).
+        fixZoomWrap.style.display = fix ? "inline-flex" : "none";
+        // Fix 모드에선 공따라가기·하이라이트가 무의미 → 비활성(정합). Auto 복귀 시 재활성.
+        hlBtn.disabled = fix; followBtn.disabled = fix;
+        hlBtn.style.opacity = fix ? "0.4" : ""; followBtn.style.opacity = fix ? "0.4" : "";
+        draw();
+      }
+      viewAutoBtn.onclick = () => setViewMode("auto");
+      viewFixBtn.onclick = () => setViewMode("fix");
+      fixZoomInput.oninput = () => setFixZoom(parseFloat(fixZoomInput.value));
       // F1 정련(#100): 통계 HUD 온/오프 토글(기본 켜짐). 다른 토글처럼 .active 표시.
       const hudEl = document.getElementById("hud");
       const statsBtn = document.getElementById("statsBtn");
@@ -903,6 +954,11 @@
         trailAt: (tick) => { setPlaying(false); resetStops(); tickPos = idxOfTick(tick); draw(); return lastTrail.map((t) => ({ ...t })); },
         // 현재 카메라 상태 {cx,cy,zoom} — 재생 중 카메라 점프/팬 검출용.
         cam: () => ({ cx: cam.cx, cy: cam.cy, zoom: cam.zoom }),
+        // #114 뷰 모드/Fix 고정 줌 훅 — Auto↔Fix 카메라 계약검증용.
+        viewMode: () => viewMode,
+        setViewMode: (m) => setViewMode(m),
+        fixZoom: () => fixZoom,
+        setFixZoom: (z) => setFixZoom(z),
         idxOfTick: (tick) => idxOfTick(tick),
         captions: () => ({
           flash: getComputedStyle(flashEl).opacity !== "0" ? flashEl.textContent : "",
