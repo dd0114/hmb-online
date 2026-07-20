@@ -28,7 +28,23 @@ docker compose ps             # java/runner/executor 3개 healthy 확인
 | `docker-compose.ai-live.yml` | **모드 B** override — 컨테이너에서 구독 claude CLI(`~/.claude` 마운트) |
 | `executor-live.Dockerfile` | 모드 B 전용 이미지(서번트 + claude CLI) |
 | `.env.example` | 환경변수 템플릿. **실토큰 금지** — `.env` 로 복사해 채운다 |
+| `healthcheck-executor.mjs` | executor 헬스체크(워커 프로세스 상태 + Java 도달성). 컨테이너에 ro 마운트 |
+| `cloudflared/config.example.yml` | named tunnel 설정 **템플릿**(자격증명 JSON 은 커밋 금지) |
+| `pages/build.sh` | Cloudflare Pages 빌드 커맨드(리포 루트에서 실행) |
+| `pages/_redirects`·`_headers` | SPA 폴백 + 보안/캐시 헤더. build.sh 가 `apps/web/dist/` 로 복사 |
 | `../server-java/Dockerfile` | Boot3 멀티스테이지(JDK21 빌드 → JRE21 런타임, 비루트) |
+
+## web (Cloudflare Pages)
+
+```
+Build command    : bash infra/pages/build.sh
+Build output dir : apps/web/dist
+Root directory   : (비움 = 리포 루트 — prebuild 가 모노레포 전체를 필요로 함)
+환경변수         : VITE_API_BASE = https://api.<your-domain>
+```
+
+> 🚫 **현재 미동작**: `apps/web` 이 아직 `VITE_API_BASE` 를 읽지 않고(#129), server-java 에 CORS 가
+> 없다(#128). 빌드 파이프라인은 검증됐지만 API 왕복은 두 이슈 해소 후 가능하다. deploy.md §6.
 
 ## AI 실행기 모드
 
