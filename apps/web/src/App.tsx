@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import type { ReactElement } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { TokenProvider, useToken } from "./auth/TokenContext";
 import { NavGuardProvider } from "./common/NavGuard";
 import { LoginPage } from "./auth/LoginPage";
@@ -16,11 +16,9 @@ import { MatchPage } from "./match/MatchPage";
 import { AdminPage } from "./admin/AdminPage";
 import { AdminFlagProvider } from "./admin/AdminFlagProvider";
 import { RequireAdmin } from "./admin/RequireAdmin";
+import { TutorialProvider } from "./common/TutorialProvider";
 import { setUnauthorizedHandler } from "./api/client";
-
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
-});
+import { queryClient } from "./api/query-client";
 
 function RequireAuth({ children }: { children: ReactElement }) {
   const { token } = useToken();
@@ -142,7 +140,12 @@ function App() {
           {/* admin 플래그(/api/me additive)를 네비까지 내려준다 — AppNav 가 쿼리 컨텍스트에
               직접 의존하지 않도록(src/admin/admin-flag.ts 주석 참조). */}
           <AdminFlagProvider>
-            <AppRoutes />
+            {/* 신규 유저 온보딩 코치마크(PRD-v4 §B). 라우트 바깥 1겹 —
+                오버레이가 화면 전환과 무관하게 유지되고, 다시보기 진입점이
+                useTutorial() 로 어디서든 붙는다(src/common/tutorial-context.ts). */}
+            <TutorialProvider>
+              <AppRoutes />
+            </TutorialProvider>
           </AdminFlagProvider>
         </TokenProvider>
       </BrowserRouter>

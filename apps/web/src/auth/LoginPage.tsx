@@ -14,6 +14,7 @@ import {
 import type { AuthProviderId } from "./login-flow";
 import { LOCAL_PROVIDER } from "../api/p3";
 import { LocalAuthPanel } from "./LocalAuthPanel";
+import { markTutorialPending } from "../common/tutorial-storage";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import styles from "./LoginPage.module.css";
@@ -59,6 +60,9 @@ export function LoginPage() {
   function completeLogin(token: string, isNew: boolean, usedProvider: AuthProviderId) {
     login(token, usedProvider);
     if (isNew) {
+      // 신규 가입 신호 → 로비 진입 시 온보딩 튜토리얼 자동 시작(PRD-v4 §B, AC-B1).
+      // 완료/건너뛰기 저장은 TutorialProvider 가 한다(여기서는 신호만).
+      markTutorialPending();
       setStarterPackOpen(true);
     } else {
       navigate("/lobby", { replace: true });

@@ -8,6 +8,7 @@ import {
   setProvider as persistProvider,
   setToken as persistToken,
 } from "../api/client";
+import { queryClient } from "../api/query-client";
 import type { AuthProviderId } from "./login-flow";
 
 interface TokenContextValue {
@@ -38,6 +39,11 @@ export function TokenProvider({ children }: { children: ReactNode }) {
     clearProvider();
     setTokenState(null);
     setProviderState(null);
+    // 캐시를 비우지 않으면 **다음 계정이 이전 계정 데이터를 본다**. /api/me 왕복(모바일에서
+    // 수백 ms)이 끝나기 전까지 useMe() 가 이전 유저를 돌려주기 때문이다. 실제로 그 stale 창에서
+    // 튜토리얼이 이전 계정 id 로 완료 저장을 해버렸다(그 계정은 한 스텝도 못 봤는데).
+    // 지갑/덱/전적 등 다른 화면도 같은 위험을 공유하므로 전체를 비운다.
+    queryClient.clear();
   }, []);
 
   const value = useMemo<TokenContextValue>(

@@ -10,6 +10,7 @@ import { PointsBadge } from "../common/PointsBadge";
 import { TeamMoraleWidget } from "../common/RelationBits";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
+import { useTutorial } from "../common/tutorial-context";
 import styles from "./LobbyPage.module.css";
 
 export function LobbyPage() {
@@ -18,6 +19,7 @@ export function LobbyPage() {
   const { logout, provider } = useToken();
   const navigate = useNavigate();
   const [modeModalOpen, setModeModalOpen] = useState(false);
+  const { restart: restartTutorial } = useTutorial();
 
   // me 로딩 실패로 header 가 통째로 사라지면 로그아웃 버튼까지 없어져 불량 세션 탈출이 불가했다(#73 P1).
   // 로그아웃은 항상 노출한다.
@@ -63,16 +65,42 @@ export function LobbyPage() {
         >
           게임 시작
         </button>
-        <button type="button" className={styles.menuButton} onClick={() => navigate("/deck")}>
+        {/* data-testid = 튜토리얼 코치마크 대상(src/common/tutorial-steps.ts). */}
+        <button
+          type="button"
+          className={styles.menuButton}
+          data-testid="lobby-deck"
+          onClick={() => navigate("/deck")}
+        >
           덱 구성
         </button>
-        <button type="button" className={styles.menuButton} onClick={() => navigate("/shop")}>
+        <button
+          type="button"
+          className={styles.menuButton}
+          data-testid="lobby-shop"
+          onClick={() => navigate("/shop")}
+        >
           상점
         </button>
-        <button type="button" className={styles.menuButton} onClick={() => navigate("/codex")}>
+        <button
+          type="button"
+          className={styles.menuButton}
+          data-testid="lobby-codex"
+          onClick={() => navigate("/codex")}
+        >
           도감
         </button>
       </div>
+
+      {/* 설정 진입점이 아직 없으므로 로비에 다시보기 1개(PRD-v4 §B "설정에서 다시보기 옵션"). */}
+      <button
+        type="button"
+        className={styles.tutorialReplay}
+        data-testid="tutorial-replay"
+        onClick={restartTutorial}
+      >
+        튜토리얼 다시 보기
+      </button>
 
       {modeModalOpen && <ModeModal onClose={() => setModeModalOpen(false)} />}
     </Layout>

@@ -140,3 +140,15 @@
   background: none;
   color: var(--text-muted);
 }
+
+/* 튜토리얼 다시 보기 — 주 메뉴보다 약한 위계의 텍스트 버튼(PRD-v4 §B). */
+.tutorialReplay {
+  display: block;
+  margin: 16px auto 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+}
