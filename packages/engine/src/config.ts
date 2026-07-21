@@ -246,20 +246,6 @@ export interface EngineConfig {
     roamNoiseAmp: number;
     /** 로밍 노이즈 시간 버킷 길이(틱) — 이 주기로 목표 오프셋이 갱신된다. */
     roamPeriodTicks: number;
-    /**
-     * 시드 노이즈(로밍·오버랩) 시간 버킷의 **위상을 선수별로 어긋나게** 할지(idHash 오프셋). (#147 W2)
-     * false(레거시)면 `floor(tick/period)` 라 전 선수가 **같은 틱에 동시에** 노이즈를 다시 뽑는다 →
-     * 버킷 경계마다 팀 전원이 한꺼번에 방향을 틀고(경계 틱 평균 방향전환각 46.6° vs 평시 30°),
-     * 버킷 내부 25틱 동안은 개인 오프셋이 상수라 선수를 구분하는 항이 사라진다(동기 이동 원인 ③).
-     * true 면 갱신 시점이 선수마다 흩어져 개인차가 상시 유지된다.
-     */
-    noisePhasePerPlayer: boolean;
-    /**
-     * 로밍 오프셋을 버킷 사이 보간으로 **연속** 변화시킬지. (#147 W2)
-     * false(레거시)면 버킷 안에서 오프셋이 상수 → 개인 움직임에 기여 0(팀 형태 병진만 남음),
-     * 경계에서만 계단식 점프. true 면 매 틱 조금씩 흘러 선수마다 다른 방향 성분이 상시 생긴다.
-     */
-    roamContinuous: boolean;
   };
 
   /**
@@ -346,47 +332,6 @@ export interface EngineConfig {
     roamFactor: number;
     /** 드리블 1틱당 골 방향 전진 비율(0..1). 박스 침투 속도. */
     dribbleReach: number;
-    /**
-     * 오프더볼 목표 관성(0..1). 이상 목표로 매 틱 이 비율만큼만 수렴한다. 1 = 레거시(즉시 점프).
-     * 레거시는 소유권 전환 틱에 목표가 20~30m 통째로 튀어 전원이 같은 방향으로 전속 질주했고,
-     * 팀 변위의 65%가 강체 병진이었다(#147). 목표를 서서히 옮기면 위치 오차가 작게 유지되어
-     * 블록이 미끄러지는 속도가 떨어지고 개인 움직임 비중이 올라간다. 압박 담당은 예외(긴급).
-     * **기본 1(off)** — #147 W2 실측에서 병진(1.9→1.33)과 잔차(1.09→0.81)가 **같은 비율로** 줄어
-     * 병진비는 63.5%→62.3% 로 거의 그대로였고 R 은 0.729→0.808 로 악화했다(전체를 느리게 하는 건
-     * 해법이 아니다 — 필요한 건 *방향* 다양성). W4 에서 재평가.
-     */
-    targetLerp: number;
-    /**
-     * 소유권 전환 반응 지연(#147 W2 — 동기 이동 원인 ①).
-     * 레거시는 소유권이 바뀌는 **그 틱에 10명 전원이 동시에** 공격↔수비 목표식을 갈아탔다.
-     * 목표가 x축으로 20~30m 한꺼번에 이동 → 전원이 같은 방향으로 전속 수렴(전환 후 t+4~t+11 에
-     * 정렬도 R 0.91~0.94 고평탄 = "다 같이 동일 방향으로 동일 틱씩"). 선수마다 반응 시점을
-     * 흩뿌려 그 행진을 깨뜨린다.
-     */
-    transition: {
-      /**
-       * 반응 지연 활성화. **기본 false** — #147 W2 실측에서 정렬도 R 을 0.729→0.756 으로 *악화*시켰다.
-       * (전환을 늦추면 행진 시작 시점만 흩어지고 행진 자체는 남는데, 지연된 선수가 뒤늦게 같은 방향으로
-       *  합류해 정렬 구간이 오히려 길어진다.) 방향 다양성이 확보되는 W4 에서 재평가.
-       */
-      enabled: boolean;
-      /** 반응 지연 하한(틱). 0 이면 가장 빠른 선수는 즉시 반응. */
-      minTicks: number;
-      /** 반응 지연 상한(틱). 선수별 지연은 min..max 사이에서 결정론적으로 정해진다. */
-      maxTicks: number;
-      /**
-       * 인지 속성(mental·positioning)이 지연을 결정하는 비중(0..1). 나머지 (1-attrWeight) 는
-       * 전환마다 다시 뽑는 시드 지터 → 같은 선수라도 매 턴오버마다 반응 순서가 달라진다.
-       */
-      attrWeight: number;
-    };
-    /**
-     * 오프더볼 목표 도달 톨러런스(m). 목표와 이 거리 안이면 이번 틱은 움직이지 않는다. (#147 W2)
-     * **기본 0(off)** — #147 W2 실측에서 R 을 0.729→0.830 으로 크게 악화시켰다(작게 움직이는 선수가
-     * 멈춰 표본에서 빠지면 크게·같은 방향으로 움직이는 선수만 남는다). 볼 소유자·GK·정지(세트피스
-     * taker 워크인)에는 적용하지 않는다 — 공까지 걸어가 잡는 데드볼 연출(#59)이 깨지므로.
-     */
-    arriveToleranceM: number;
   };
 
   /** 포메이션 정규화 슬롯(0..1, 공격 방향 +x 프레임). 최소 4-3-3 정의. */
@@ -413,7 +358,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.17.0",
+  version: "engine@0.16.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -436,7 +381,7 @@ export const defaultEngineConfig: EngineConfig = {
     pass: 0.5,
     dribble: 0.46,
     // G-A(#99): 슛 과다(팀 23.85→~13.6, 벤치 12-14). shoot 0.5→0.35 로 슛 성향 하향.
-    shoot: 0.32,
+    shoot: 0.34,
     hold: 0.42,
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
     // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
@@ -463,7 +408,7 @@ export const defaultEngineConfig: EngineConfig = {
     interceptBase: 0.06,
     tackleBase: 0.14,
     // G-A(#99): 슛당 xG 하향(0.13→~0.12, 벤치 0.10-0.12). 0.225→0.19.
-    xgBase: 0.178,
+    xgBase: 0.19,
     shotBallSpeed: 14,
     shootXgThreshold: 0.07,
     // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
@@ -530,8 +475,6 @@ export const defaultEngineConfig: EngineConfig = {
     decisionTemperature: 0.4,
     roamNoiseAmp: 3.0,
     roamPeriodTicks: 25,
-    noisePhasePerPlayer: true,
-    roamContinuous: true,
   },
   longPass: {
     // E2(0.12.0): 의도적 롱볼. 리얼 20시드 롱 시도 비율 ≈14.6%(벤치 12-15), 롱 성공<숏.
@@ -569,11 +512,6 @@ export const defaultEngineConfig: EngineConfig = {
     supportPull: 0.08,
     roamFactor: 0.08,
     dribbleReach: 0.12,
-    // #147 W2 실측: 아래 3개는 동기 이동을 **악화**시켜 기본 off(레거시). 각 주석의 측정치 참조.
-    // W4(시야 기반 개인 이동)에서 방향 다양성이 확보된 뒤 재평가한다.
-    transition: { enabled: false, minTicks: 0, maxTicks: 4, attrWeight: 0.5 },
-    arriveToleranceM: 0,
-    targetLerp: 1,
   },
   formations: {
     "4-3-3": formation433,

@@ -105,16 +105,6 @@ export interface SimState {
   seedHash: number;
   /** 팀 전술 파라미터(라인/압박/폭). 움직임 결정에 사용. */
   teams: { home: TeamInput; away: TeamInput };
-  /**
-   * 소유권 전환 추적(전환 반응 지연용, #147 W2). stepTick 시작에서 possession 과 대조해 갱신한다.
-   *  - possessionCur: 이번 틱 기준 확정 소유팀(= possession 의 틱 단위 미러).
-   *  - possessionPrev: 그 직전 소유팀. 아직 전환을 인지 못 한 선수가 따르는 소유.
-   *  - possessionSince: 현 소유가 시작된 tick. 경과틱으로 선수별 반응 여부를 판정한다.
-   * 재개(resume) 시에도 carry state 로 관통하므로 하프 분할/통짜 동일성이 유지된다.
-   */
-  possessionCur: TeamSide;
-  possessionPrev: TeamSide;
-  possessionSince: number;
   /** 남은 정지(dead ball) 틱. >0 이면 결정/경합/공비행 없이 재배치만. */
   stoppage: number;
   /** 진행 중 세트피스(정지 동안). 없으면 null. */

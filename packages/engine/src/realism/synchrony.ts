@@ -24,8 +24,8 @@ import { makeTacticalInput, makeSelectData } from "../fixtures";
  *  3) **bigMoveR** — |d| ≥ BIG_MOVE_M 인 선수들만의 정렬도. 관객 눈에 실제로 보이는 큰 움직임
  *     (질주·복귀)만 골라 본다. 미세 표류가 섞여 희석되지 않는다.
  *  4) **lockstepPct** — 정렬도가 0.99 이상(= 전원이 *정확히* 같은 방향)인 팀-틱 비율.
- *     계단식 시드 노이즈가 전 선수를 같은 틱에 동시 전환시키던 이산 아티팩트의 지문이다
- *     (W2 로밍 연속화가 없앤 것이 바로 이것 — 독립 QA 가 R=1.00 스파이크 소멸로 육안 확인).
+ *     전 선수를 같은 틱에 동시 전환시키는 이산 아티팩트의 지문. 3)·4) 는 단위벡터를 쓰므로
+ *     반드시 `ALIGN_FLOOR_M` 하한과 `MIN_PLAYERS` 를 함께 건다(안 걸면 1)과 같은 함정).
  *
  * 추가로 **소유권 전환 후 경과틱별 weightedR** 을 낸다. 전환 시 전원이 같은 틱에 공격↔수비
  * 목표식으로 갈아타면 전환 직후 여러 틱 동안 값이 고평탄(plateau)하게 유지된다.
@@ -37,6 +37,13 @@ import { makeTacticalInput, makeSelectData } from "../fixtures";
 const TELEPORT_M = 12;
 /** "관객 눈에 보이는 큰 움직임" 기준(m/tick). 이 이상만 bigMoveR 표본. */
 const BIG_MOVE_M = 2;
+/**
+ * 정렬도 표본의 **크기 하한**(m/tick). 이보다 작은 변위는 방향 표본에서 뺀다.
+ * 105m 피치에서 0.25m 는 렌더 2px 미만 — 관객에게 보이지 않는 표류가 단위벡터로 full-weight
+ * 잡히면 "완전정지 → 미세표류" 같은 변화만으로 지표가 통째로 움직인다(표본구성 아티팩트).
+ * 초판은 하한이 사실상 `>0` 이라 이 함정에 두 번 걸렸다(검증 세션 B1·B5).
+ */
+const ALIGN_FLOOR_M = 0.25;
 /** 완전 동조(lockstep) 판정 정렬도 임계. */
 const LOCKSTEP_R = 0.99;
 /** 지표를 낼 최소 인원(팀당). */
@@ -63,7 +70,7 @@ export interface SynchronyReport {
   rigidPct: number;
   /** 큰 움직임(|d| ≥ 2m/tick)만의 정렬도 — 관객 눈에 보이는 행진. */
   bigMoveR: number;
-  /** 완전 동조(정렬도 ≥ 0.99)인 팀-틱 비율(%) — 이산 동시전환 아티팩트의 지문. */
+  /** 완전 동조(크기 하한 위 정렬도 ≥ 0.99)인 팀-틱 비율(%) — 이산 동시전환 아티팩트의 지문. */
   lockstepPct: number;
   /** 소유권 전환 후 경과틱 0..20 별 weightedR. 전환 직후 동기 행진 구간이 드러난다. */
   postFlipR: number[];
@@ -97,20 +104,22 @@ function deadTicks(log: MatchLog): Set<number> {
   return s;
 }
 
-/** 단위 변위벡터 정렬도(mean resultant length). 표본이 없으면 null. */
-function unitAlignment(disp: Pt[]): number | null {
-  if (disp.length === 0) return null;
+/**
+ * 단위 변위벡터 정렬도(mean resultant length). **크기 하한 + 최소 인원**을 건다.
+ * 최소 인원이 없으면 움직인 선수가 1명일 때 R=1.0 이 되는 퇴화 표본이 lockstep 으로 잡힌다
+ * (레거시 lockstep 표본의 20%가 그 케이스였다 — 검증 세션 B5).
+ */
+function unitAlignment(disp: Pt[], floorM: number): number | null {
+  const mv = disp.filter((d) => Math.hypot(d.x, d.y) >= floorM);
+  if (mv.length < MIN_PLAYERS) return null;
   let ux = 0;
   let uy = 0;
-  let used = 0;
-  for (const d of disp) {
+  for (const d of mv) {
     const m = Math.hypot(d.x, d.y);
-    if (m === 0) continue;
     ux += d.x / m;
     uy += d.y / m;
-    used++;
   }
-  return used > 0 ? Math.hypot(ux, uy) / used : null;
+  return Math.hypot(ux, uy) / mv.length;
 }
 
 /** 한 매치로그의 인플레이 팀-틱 동기 지표를 누적기에 더한다. */
@@ -158,17 +167,14 @@ function accumulate(log: MatchLog, acc: Acc, flip: { num: number; den: number }[
       acc.resid += disp.reduce((s, d) => s + Math.hypot(d.x - cx, d.y - cy), 0) / disp.length;
 
       // 3) 큰 움직임만의 정렬도.
-      const big = disp.filter((d) => Math.hypot(d.x, d.y) >= BIG_MOVE_M);
-      if (big.length >= MIN_PLAYERS) {
-        const r = unitAlignment(big);
-        if (r != null) {
-          acc.bigNum += r;
-          acc.bigDen += 1;
-        }
+      const big = unitAlignment(disp, BIG_MOVE_M);
+      if (big != null) {
+        acc.bigNum += big;
+        acc.bigDen += 1;
       }
 
-      // 4) 완전 동조(이산 동시전환 아티팩트).
-      const all = unitAlignment(disp);
+      // 4) 완전 동조(이산 동시전환 아티팩트). 크기 하한 위에서만 판정.
+      const all = unitAlignment(disp, ALIGN_FLOOR_M);
       if (all != null && all >= LOCKSTEP_R) acc.lock += 1;
       acc.n += 1;
 

@@ -3,35 +3,36 @@
 
 총 골: 10
 #  goalTick  team  koTick  koEvt  ball(x,y)       소유    전dev(dwell)   후dev(kickoff)   판정
-1  143       away  168     O      (52.5,34.0)     home  43.60m        0.00m(21/21)    PASS
-2  244       home  269     O      (52.5,34.0)     away  43.48m        0.00m(20/20)    PASS
-3  380       away  405     O      (52.5,34.0)     home  44.11m        0.00m(21/21)    PASS
-4  502       away  527     O      (52.5,34.0)     home  42.84m        0.00m(21/21)    PASS
-5  743       away  768     O      (52.5,34.0)     home  44.34m        0.00m(21/21)    PASS
-6  1010      home  1035    O      (52.5,34.0)     away  44.20m        0.00m(20/20)    PASS
-7  1065      away  1090    O      (52.5,34.0)     home  43.76m        0.00m(21/21)    PASS
-8  1113      away  1138    O      (52.5,34.0)     home  43.21m        0.00m(21/21)    PASS
-9  1191      away  1216    O      (52.5,34.0)     home  44.29m        0.00m(21/21)    PASS
-10 1300      away  1325    O      (52.5,34.0)     home  43.28m        0.00m(21/21)    PASS
+1  104       away  129     O      (52.5,34.0)     home  42.03m        0.00m(21/21)    PASS
+2  230       home  255     O      (52.5,34.0)     away  43.57m        0.00m(20/20)    PASS
+3  358       away  383     O      (52.5,34.0)     home  42.30m        0.00m(20/20)    PASS
+4  410       away  435     O      (52.5,34.0)     home  43.80m        0.00m(20/20)    PASS
+5  774       home  799     O      (52.5,34.0)     away  41.95m        0.00m(20/20)    PASS
+6  862       home  887     O      (52.5,34.0)     away  43.81m        0.00m(20/20)    PASS
+7  1036      home  1061    O      (52.5,34.0)     away  44.21m        0.00m(20/20)    PASS
+8  1114      home  1139    O      (52.5,34.0)     away  42.61m        0.00m(20/20)    PASS
+9  1274      away  1299    O      (52.5,34.0)     home  42.80m        0.00m(20/20)    PASS
+10 1424      away  1449    X      없음              -!    Infinitym     Infinitym(0/0)  FAIL
 
-후반 시작(tick 720): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=29.09m 후dev=0.00m(20/20) => PASS
+후반 시작(tick 720): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=42.57m 후dev=0.00m(20/20) => PASS
 
 개시(t0) 킥오프: team=home taker=H6 ball=(52.5,34.0) (t0 가 기준 슬롯)
 
-결과: ALL PASS  (전dev=세리머니 dwell 흩어짐 → 후dev≈0 = 포메이션 리셋 확인)
+결과: FAIL  (전dev=세리머니 dwell 흩어짐 → 후dev≈0 = 포메이션 리셋 확인)
 
-=== AC-kickoff: real(default) (engine@0.17.0, seed 4815162342) ===
+=== AC-kickoff: real(default) (engine@0.16.0, seed 4815162342) ===
 판정: 각 골 → 25틱 뒤 kickoff 이벤트 존재 + 킥오프틱 공=센터(52.5,34)·실점팀 소유 + 포메이션 t0 슬롯 복귀(테이커 제외, 허용오차 0.1m)
 
-총 골: 5
+총 골: 6
 #  goalTick  team  koTick  koEvt  ball(x,y)       소유    전dev(dwell)   후dev(kickoff)   판정
-1  148       away  173     O      (52.5,34.0)     home  43.94m        0.00m(21/21)    PASS
-2  290       home  315     O      (52.5,34.0)     away  44.57m        0.00m(20/20)    PASS
-3  2394      home  2419    O      (52.5,34.0)     away  43.52m        0.00m(20/20)    PASS
-4  2607      away  2632    O      (52.5,34.0)     home  42.82m        0.00m(21/21)    PASS
-5  4067      away  4092    O      (52.5,34.0)     home  44.79m        0.00m(21/21)    PASS
+1  1458      away  1483    O      (52.5,34.0)     home  44.09m        0.00m(21/21)    PASS
+2  2421      away  2446    O      (52.5,34.0)     home  43.37m        0.00m(21/21)    PASS
+3  2828      away  2853    O      (52.5,34.0)     home  43.82m        0.00m(21/21)    PASS
+4  3682      home  3707    O      (52.5,34.0)     away  43.39m        0.00m(20/20)    PASS
+5  3849      home  3874    O      (52.5,34.0)     away  43.46m        0.00m(20/20)    PASS
+6  5079      away  5104    O      (52.5,34.0)     home  43.16m        0.00m(21/21)    PASS
 
-후반 시작(tick 2700): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=45.40m 후dev=0.00m(20/20) => PASS
+후반 시작(tick 2700): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=34.21m 후dev=0.00m(20/20) => PASS
 
 개시(t0) 킥오프: team=home taker=H6 ball=(52.5,34.0) (t0 가 기준 슬롯)
 

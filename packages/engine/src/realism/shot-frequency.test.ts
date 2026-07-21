@@ -35,7 +35,7 @@ describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
 });
 
 describe("G-A 단조성: shoot 성향↑ → 슛 수↑ (config 가 실제 레버)", () => {
-  it("shoot 0.35→0.6 로 올리면 팀당 슛이 유의미하게(≥2) 증가", () => {
+  it("shoot 0.34→0.6 로 올리면 팀당 슛이 유의미하게(≥2) 증가", () => {
     const hotter: EngineConfig = {
       ...cfg,
       decisionWeights: { ...cfg.decisionWeights, shoot: 0.6 },

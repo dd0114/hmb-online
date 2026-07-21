@@ -51,82 +51,6 @@ function varietyNoise(a: number, b: number, c: number): number {
   return (h >>> 0) / 4294967296;
 }
 
-/**
- * 시드 노이즈 시간 버킷. noisePhasePerPlayer 면 선수별 위상 오프셋(idHash)만큼 밀어
- * 갱신 시점을 흩뿌린다 — 전 선수가 같은 틱에 동시에 노이즈를 다시 뽑는(=팀 전체 동시 방향전환)
- * 동기 이동을 없앤다(#147 W2). false 면 레거시 floor(tick/period).
- */
-function noiseBucket(tick: number, periodTicks: number, player: SimPlayer, config: EngineConfig): number {
-  const p = Math.max(1, periodTicks);
-  const phase = config.variety.noisePhasePerPlayer ? player.idHash % p : 0;
-  return Math.floor((tick + phase) / p);
-}
-
-/**
- * 이 선수의 소유권 전환 반응 지연(틱). 인지 속성(mental·positioning)이 좋을수록 빠르고,
- * 나머지는 **전환마다 다시 뽑는** 시드 지터라 매 턴오버의 반응 순서가 달라진다.
- * 순수·결정론(전역 난수 없음, Rng 미소모) — state.possessionSince 만으로 재개 시에도 동일.
- */
-function reactionTicks(state: SimState, player: SimPlayer, config: EngineConfig): number {
-  const tr = config.movement.transition;
-  const span = tr.maxTicks - tr.minTicks;
-  if (span <= 0) return tr.minTicks;
-  const awareness = fclamp((player.attrs.mental + player.attrs.positioning) / 200, 0, 1);
-  const jitter = varietyNoise(
-    (state.seedHash ^ 0x5bf03635) >>> 0,
-    player.idHash,
-    state.possessionSince >>> 0,
-  );
-  const mix = fclamp(tr.attrWeight * (1 - awareness) + (1 - tr.attrWeight) * jitter, 0, 1);
-  return tr.minTicks + Math.round(span * mix);
-}
-
-/**
- * 이 선수가 지금 **인지하고 반응한** 소유팀. 전환 직후 reactionTicks 동안은 이전 소유로 움직인다.
- * 전원이 같은 틱에 공수 목표식을 갈아타는 동기 행진(#147 원인 ①)을 깨는 지점.
- */
-export function perceivedPossession(
-  state: SimState,
-  player: SimPlayer,
-  config: EngineConfig,
-): SimPlayer["side"] {
-  const tr = config.movement.transition;
-  if (!tr.enabled) return state.possessionCur;
-  const elapsed = state.tick - state.possessionSince;
-  if (elapsed >= tr.maxTicks) return state.possessionCur; // 전원 반응 완료 구간(빠른 경로)
-  return elapsed >= reactionTicks(state, player, config) ? state.possessionCur : state.possessionPrev;
-}
-
-/** 부드러운 보간 계수(smoothstep) — 0..1 을 0..1 로, 양끝 미분 0. */
-function smoothstep(f: number): number {
-  return f * f * (3 - 2 * f);
-}
-
-/**
- * 이 선수의 로밍 오프셋(정규화 -1..1). (#147 W2)
- * roamContinuous 면 버킷 사이를 보간해 **매 틱 조금씩 다른 방향으로** 흐른다 — 레거시(계단식)는
- * 버킷 안에서 오프셋이 상수라 개인 움직임에 전혀 기여하지 못했고(팀 형태 병진만 남음),
- * 버킷 경계에서만 전원이 동시에 튀었다.
- */
-function roamOffset(
-  state: SimState,
-  player: SimPlayer,
-  config: EngineConfig,
-): { x: number; y: number } {
-  const vr = config.variety;
-  const period = Math.max(1, vr.roamPeriodTicks);
-  const phase = vr.noisePhasePerPlayer ? player.idHash % period : 0;
-  const pos = state.tick + phase;
-  const b = Math.floor(pos / period);
-  const n = (bk: number, k: number): number => varietyNoise(state.seedHash, player.idHash, bk * 2 + k) * 2 - 1;
-  if (!vr.roamContinuous) return { x: n(b, 1), y: n(b, 2) };
-  const f = smoothstep((pos % period) / period);
-  return {
-    x: n(b, 1) + (n(b + 1, 1) - n(b, 1)) * f,
-    y: n(b, 2) + (n(b + 1, 2) - n(b, 2)) * f,
-  };
-}
-
 /** 슛 xG 계산(거리·각도·슈팅속성). */
 function computeXg(
   owner: SimPlayer,
@@ -521,8 +445,7 @@ export function decideOffBall(
 
   let tx = player.baseFx.x;
   let ty = player.baseFx.y;
-  // 전환 반응 지연: 아직 턴오버를 인지 못 한 선수는 이전 소유 기준으로 계속 움직인다(#147 W2).
-  const attacking = perceivedPossession(state, player, config) === player.side;
+  const attacking = state.possession === player.side;
 
   if (attacking) {
     // 전진 런: 역할 위치에서 골 방향으로.
@@ -545,7 +468,7 @@ export function decideOffBall(
     const vr = config.variety;
     const baseProg = attackProgress(pitch, player.side, player.baseFx.x);
     if (vr.defenderOverlapProb > 0 && baseProg < vr.overlapBaseLine) {
-      const obucket = noiseBucket(state.tick, vr.overlapPeriodTicks, player, config);
+      const obucket = Math.floor(state.tick / Math.max(1, vr.overlapPeriodTicks));
       const on = varietyNoise((state.seedHash ^ 0x9e3779b9) >>> 0, player.idHash, obucket);
       const drive = 0.5 * team.tempo + 0.5 * team.defensiveLineHeight;
       const thresh = vr.defenderOverlapProb * (0.5 + player.behavior.widthTendency) * (0.5 + drive);
@@ -593,29 +516,15 @@ export function decideOffBall(
   // --- 포지셔널 로밍: 시드 노이즈로 목표 위치에 시간가변 오프셋(슬롯 고착 방지, 팀 형태는 유지) ---
   const rn = config.variety.roamNoiseAmp;
   if (rn > 0) {
-    const off = roamOffset(state, player, config);
+    const bucket = Math.floor(state.tick / Math.max(1, config.variety.roamPeriodTicks));
+    const nx = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 1);
+    const ny = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 2);
     const ampFx = Math.round(rn * scale * player.behavior.positioningFreedom);
-    tx += Math.round(off.x * ampFx);
-    ty += Math.round(off.y * ampFx);
+    tx += Math.round((nx * 2 - 1) * ampFx);
+    ty += Math.round((ny * 2 - 1) * ampFx);
   }
 
-  const ideal = clampToPitch(pitch, tx, ty);
-  // --- 목표 관성(#147 W2): 이상 목표로 즉시 점프하지 않고 선수별 속도로 수렴한다 ---
-  // 레거시(targetLerp=1)는 소유권이 바뀌는 틱에 목표가 20~30m 통째로 튀어 전원이 같은 방향으로
-  // 전속 질주했다(팀 변위의 65%가 강체 병진). 목표 자체를 서서히 옮기면 위치 오차가 작게 유지되어
-  // 블록이 미끄러지는 속도가 떨어지고, 개인 움직임(로밍·압박)의 비중이 올라간다.
-  // 압박 담당은 예외 — 공을 향한 긴급 행동이라 지연시키면 태클/압박 밸런스가 깨진다.
-  const lerp = config.movement.targetLerp;
-  const isPresser = pressAssignee != null && pressAssignee.id === player.id;
-  if (lerp >= 1 || isPresser) {
-    player.targetFx = ideal;
-    return;
-  }
-  const cur = player.targetFx;
-  player.targetFx = {
-    x: cur.x + Math.round((ideal.x - cur.x) * lerp),
-    y: cur.y + Math.round((ideal.y - cur.y) * lerp),
-  };
+  player.targetFx = clampToPitch(pitch, tx, ty);
 }
 
 /** side 팀의 압박 담당(공 최근접) 지정. */
