@@ -1,0 +1,21 @@
+/* 캐릭터 아바타 타일 (#145). 도트 원본이라 확대/축소 모두 pixelated 유지. */
+.avatar {
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.06);
+  vertical-align: middle;
+}
+
+/* 에셋이 없을 때의 CSS 폴백 — 등급색 링 + 이니셜. 외부 요청 0. */
+.fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid currentColor;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.04);
+}

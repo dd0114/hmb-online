@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import type { CatalogPlayer } from "../api/hooks";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
+import { CharAvatar } from "../common/CharAvatar";
 import { findPlayerSlot, type DeckDraft } from "./deck-logic";
 import { positionWeight } from "./auto-lineup";
 import { rankPlayers } from "./player-ranking";
@@ -91,6 +92,7 @@ function PoolItem({ player, placed, onPick, condition, fit, pending }: PoolItemP
           </span>
         </span>
       )}
+      <CharAvatar playerId={player.id} name={player.name} grade={player.grade} size={34} />
       <span className={styles.who}>
         <b className={styles.name}>{player.name}</b>
         <span className={styles.sub}>

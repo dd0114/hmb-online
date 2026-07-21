@@ -142,3 +142,10 @@
   color: var(--text-muted);
   font-size: 14px;
 }
+
+/* 뽑기 카드 얼굴의 캐릭터 아트 (#145). 카드 폭에 맞춰 축소되되 비율 유지. */
+.cardFaceArt {
+  margin-bottom: 2px;
+  max-width: 76%;
+  max-height: 46%;
+}

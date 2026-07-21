@@ -1,0 +1,1044 @@
+{
+  "version": "v1",
+  "rule": "B: 전원 커버·중복 허용 (LEGEND 14 는 1:1 독점, 비-LEGEND 는 포지션 풀 해시)",
+  "note": "#145 확정. 캐릭터 발행물 = design/characters/dist/characters. 소비자는 playerId 로 조인한다.",
+  "charsSource": "ref-pixel-fantasy-football",
+  "playerCount": 172,
+  "players": {
+    "P001": "aura",
+    "P002": "lupus",
+    "P003": "leo",
+    "P004": "bark",
+    "P005": "sail",
+    "P006": "mio",
+    "P007": "riya",
+    "P008": "bella",
+    "P009": "ragna",
+    "P010": "natzt",
+    "P011": "anubis",
+    "P012": "penguin-king",
+    "P013": "aura",
+    "P014": "penguin-king",
+    "P015": "lupus",
+    "P016": "bark",
+    "P017": "leo",
+    "P018": "lupus",
+    "P019": "bark",
+    "P020": "leo",
+    "P021": "lupus",
+    "P022": "bark",
+    "P023": "mio",
+    "P024": "riya",
+    "P025": "sail",
+    "P026": "bella",
+    "P027": "mio",
+    "P028": "riya",
+    "P029": "sail",
+    "P030": "bella",
+    "P031": "anubis",
+    "P032": "natzt",
+    "P033": "ragna",
+    "P034": "anubis",
+    "P035": "natzt",
+    "P036": "ragna",
+    "P037": "anubis",
+    "P038": "aura",
+    "P039": "penguin-king",
+    "P040": "aura",
+    "P041": "leo",
+    "P042": "lupus",
+    "P043": "bark",
+    "P044": "leo",
+    "P045": "lupus",
+    "P046": "bark",
+    "P047": "leo",
+    "P048": "lupus",
+    "P049": "bark",
+    "P050": "leo",
+    "P051": "lupus",
+    "P052": "bark",
+    "P053": "mio",
+    "P054": "riya",
+    "P055": "sail",
+    "P056": "bella",
+    "P057": "mio",
+    "P058": "riya",
+    "P059": "sail",
+    "P060": "bella",
+    "P061": "mio",
+    "P062": "riya",
+    "P063": "sail",
+    "P064": "bella",
+    "P065": "mio",
+    "P066": "natzt",
+    "P067": "ragna",
+    "P068": "anubis",
+    "P069": "natzt",
+    "P070": "ragna",
+    "P071": "anubis",
+    "P072": "natzt",
+    "P073": "ragna",
+    "P074": "penguin-king",
+    "P075": "aura",
+    "P076": "penguin-king",
+    "P077": "leo",
+    "P078": "lupus",
+    "P079": "bark",
+    "P080": "leo",
+    "P081": "lupus",
+    "P082": "bark",
+    "P083": "leo",
+    "P084": "lupus",
+    "P085": "bark",
+    "P086": "leo",
+    "P087": "lupus",
+    "P088": "bark",
+    "P089": "leo",
+    "P090": "lupus",
+    "P091": "bark",
+    "P092": "riya",
+    "P093": "sail",
+    "P094": "bella",
+    "P095": "mio",
+    "P096": "riya",
+    "P097": "sail",
+    "P098": "bella",
+    "P099": "mio",
+    "P100": "riya",
+    "P101": "sail",
+    "P102": "bella",
+    "P103": "mio",
+    "P104": "riya",
+    "P105": "sail",
+    "P106": "anubis",
+    "P107": "natzt",
+    "P108": "ragna",
+    "P109": "anubis",
+    "P110": "natzt",
+    "P111": "ragna",
+    "P112": "anubis",
+    "P113": "natzt",
+    "P114": "ragna",
+    "P115": "anubis",
+    "P116": "aura",
+    "P117": "penguin-king",
+    "P118": "leo",
+    "P119": "lupus",
+    "P120": "bark",
+    "P121": "leo",
+    "P122": "lupus",
+    "P123": "bark",
+    "P124": "leo",
+    "P125": "lupus",
+    "P126": "bark",
+    "P127": "bella",
+    "P128": "mio",
+    "P129": "riya",
+    "P130": "sail",
+    "P131": "bella",
+    "P132": "mio",
+    "P133": "riya",
+    "P134": "sail",
+    "P135": "bella",
+    "P136": "natzt",
+    "P137": "ragna",
+    "P138": "anubis",
+    "P139": "natzt",
+    "P140": "ragna",
+    "P141": "anubis",
+    "P142": "natzt",
+    "P143": "sail-h150",
+    "P144": "ragna-h210",
+    "P145": "mio",
+    "P146": "riya",
+    "P147": "sail",
+    "P148": "leo",
+    "P149": "lupus",
+    "P150": "bark",
+    "P151": "ragna",
+    "P152": "anubis",
+    "P153": "natzt",
+    "P154": "ragna",
+    "P155": "bella",
+    "P156": "mio",
+    "P157": "riya",
+    "P158": "sail",
+    "P159": "leo",
+    "P160": "lupus",
+    "P161": "aura",
+    "P162": "anubis",
+    "P163": "natzt",
+    "P164": "ragna",
+    "P165": "bella",
+    "P166": "mio",
+    "P167": "riya",
+    "P168": "bark",
+    "P169": "penguin-king",
+    "P170": "anubis",
+    "P171": "natzt",
+    "P172": "ragna"
+  },
+  "detail": [
+    {
+      "playerId": "P001",
+      "charId": "aura",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P002",
+      "charId": "lupus",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P003",
+      "charId": "leo",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P004",
+      "charId": "bark",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P005",
+      "charId": "sail",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P006",
+      "charId": "mio",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P007",
+      "charId": "riya",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P008",
+      "charId": "bella",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P009",
+      "charId": "ragna",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P010",
+      "charId": "natzt",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P011",
+      "charId": "anubis",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P012",
+      "charId": "penguin-king",
+      "rule": "legend-exclusive",
+      "crossPosition": true
+    },
+    {
+      "playerId": "P013",
+      "charId": "aura",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P014",
+      "charId": "penguin-king",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P015",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P016",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P017",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P018",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P019",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P020",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P021",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P022",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P023",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P024",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P025",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P026",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P027",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P028",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P029",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P030",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P031",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P032",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P033",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P034",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P035",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P036",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P037",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P038",
+      "charId": "aura",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P039",
+      "charId": "penguin-king",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P040",
+      "charId": "aura",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P041",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P042",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P043",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P044",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P045",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P046",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P047",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P048",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P049",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P050",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P051",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P052",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P053",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P054",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P055",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P056",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P057",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P058",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P059",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P060",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P061",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P062",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P063",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P064",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P065",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P066",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P067",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P068",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P069",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P070",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P071",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P072",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P073",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P074",
+      "charId": "penguin-king",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P075",
+      "charId": "aura",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P076",
+      "charId": "penguin-king",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P077",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P078",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P079",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P080",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P081",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P082",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P083",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P084",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P085",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P086",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P087",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P088",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P089",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P090",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P091",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P092",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P093",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P094",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P095",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P096",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P097",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P098",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P099",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P100",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P101",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P102",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P103",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P104",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P105",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P106",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P107",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P108",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P109",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P110",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P111",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P112",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P113",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P114",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P115",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P116",
+      "charId": "aura",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P117",
+      "charId": "penguin-king",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P118",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P119",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P120",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P121",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P122",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P123",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P124",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P125",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P126",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P127",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P128",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P129",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P130",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P131",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P132",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P133",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P134",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P135",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P136",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P137",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P138",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P139",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P140",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P141",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P142",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P143",
+      "charId": "sail-h150",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P144",
+      "charId": "ragna-h210",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P145",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P146",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P147",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P148",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P149",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P150",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P151",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P152",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P153",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P154",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P155",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P156",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P157",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P158",
+      "charId": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P159",
+      "charId": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P160",
+      "charId": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P161",
+      "charId": "aura",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P162",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P163",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P164",
+      "charId": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P165",
+      "charId": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P166",
+      "charId": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P167",
+      "charId": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P168",
+      "charId": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P169",
+      "charId": "penguin-king",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P170",
+      "charId": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P171",
+      "charId": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P172",
+      "charId": "ragna",
+      "rule": "position-pool"
+    }
+  ]
+}

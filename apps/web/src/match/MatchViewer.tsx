@@ -18,6 +18,8 @@ import {
   VIEWER_EMBED_SRC,
   VIEWER_READY_TIMEOUT_MS,
 } from "./viewer-bridge";
+import { buildViewerSkins } from "./viewer-skins";
+import { useCharAssets } from "../common/useCharAssets";
 import styles from "./MatchViewer.module.css";
 
 interface MatchViewerProps {
@@ -94,6 +96,9 @@ interface VisualPlaybackProps {
  */
 function VisualPlayback({ log, half, onFallback }: VisualPlaybackProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // 경기장 캐릭터 스킨(#145). 에셋이 아직/영영 없으면 null → 뷰어는 현행 단색 원(무회귀).
+  const charAssets = useCharAssets();
+  const skins = useMemo(() => buildViewerSkins(charAssets, log), [charAssets, log]);
   const [state, dispatch] = useReducer(bridgeReducer, initialBridgeState);
   const [failed, setFailed] = useState(false);
 
@@ -136,13 +141,13 @@ function VisualPlayback({ log, half, onFallback }: VisualPlaybackProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [half]);
 
-  // 준비 완료 시 1회 주입.
+  // 준비 완료 시 1회 주입. 스킨은 같은 메시지에 실어 보낸다(뷰어가 로그 로드 전에 아틀라스 예열).
   useEffect(() => {
     if (shouldPostLog(state) && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(loadMatchLogMessage(log), "*");
+      iframeRef.current.contentWindow.postMessage(loadMatchLogMessage(log, skins ?? undefined), "*");
       dispatch({ kind: "posted" });
     }
-  }, [state, log]);
+  }, [state, log, skins]);
 
   if (failed) {
     // iframe 로드 실패 → 텍스트 타임라인으로 폴백 유도.
