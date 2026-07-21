@@ -20,6 +20,7 @@ import type {
   TradeResolveResponse,
   TradeSlotsResponse,
   TradeSpeedupResponse,
+  TradeStartResponse,
 } from "./v2";
 import type { MatchLogFilter } from "../logs/logs-logic";
 import { matchLogQuery } from "../logs/logs-logic";
@@ -120,6 +121,21 @@ export function useTradeSlots() {
   });
 }
 
+/**
+ * POST /api/trade/{slot}/start — **[장 시작!]**(IDLE) / **[거래 안함]**(OPEN). 새 시드로 오퍼를
+ * 확정하고 WAITING + 카운트다운으로 진입시킨다(등급만 공개). WAITING/RESOLVING 이면 서버가
+ * 400 TRADE_INVALID. 캐시 무효화는 speedup/propose 와 같은 계약(invalidateAfterTrade) — 거래 안함이
+ * 원장/보유를 건드리진 않지만 slots·wallet 은 갱신돼야 한다. (#149)
+ */
+export function useStartTrade() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slot: number) =>
+      apiFetch<TradeStartResponse>(`/api/trade/${slot}/start`, { method: "POST" }),
+    onSuccess: () => invalidateAfterTrade(queryClient),
+  });
+}
+
 /** POST /api/trade/{slot}/speedup — shorten WAITING for points (402/400 handled by caller). */
 export function useSpeedupTrade() {
   const queryClient = useQueryClient();
@@ -150,7 +166,12 @@ export function useAcceptTrade() {
   });
 }
 
-/** POST /api/trade/{slot}/decline — TRADE decline → slot re-WAITING. */
+/**
+ * POST /api/trade/{slot}/decline — TRADE decline → slot **IDLE**(장 종료, #149).
+ * 현재 UI 에서는 미사용(도달 불가): OPEN-TRADE 액션은 [수락] + [거래 안함](= start 재실행)
+ * 둘뿐이라 "거절 후 장이 닫힘"과 "거절하고 새 오퍼"가 중복되지 않게 정리했다. 서버 계약에는
+ * 남아 있어 훅도 존치한다(다른 진입점이 생기면 그대로 재사용).
+ */
 export function useDeclineTrade() {
   const queryClient = useQueryClient();
   return useMutation({

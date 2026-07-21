@@ -4,9 +4,9 @@ import { ApiError } from "../api/client";
 import { usePlayers, type CatalogPlayer } from "../api/hooks";
 import {
   useAcceptTrade,
-  useDeclineTrade,
   useProposeFa,
   useSpeedupTrade,
+  useStartTrade,
   useTradeSlots,
 } from "../api/hooks-v2";
 import type { FaProposeRequest, TradeResolveResponse } from "../api/v2";
@@ -15,7 +15,7 @@ import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { TradeSlotCard } from "./TradeSlotCard";
 import { TradeResultModal } from "./TradeResultModal";
-import { countdownSec } from "./trade-logic";
+import { countdownSec, slotView } from "./trade-logic";
 import styles from "./TradePage.module.css";
 
 export function TradePage() {
@@ -23,10 +23,10 @@ export function TradePage() {
   const { data, isLoading, isError } = useTradeSlots();
   const { data: players } = usePlayers();
 
+  const start = useStartTrade();
   const speedup = useSpeedupTrade();
   const propose = useProposeFa();
   const accept = useAcceptTrade();
-  const decline = useDeclineTrade();
 
   const [result, setResult] = useState<TradeResolveResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export function TradePage() {
 
   const walletPoints = data?.wallet.points ?? 0;
   const walletLoaded = Boolean(data);
-  const busy = speedup.isPending || propose.isPending || accept.isPending || decline.isPending;
+  const busy = start.isPending || speedup.isPending || propose.isPending || accept.isPending;
 
   function handleError(err: unknown, fallback: string) {
     if (err instanceof ApiError) {
@@ -86,7 +86,7 @@ export function TradePage() {
       <div className={styles.slots} data-testid="trade-slots">
         {data?.slots.map((slot) => {
           const live =
-            slot.state === "WAITING"
+            slotView(slot) === "WAITING"
               ? countdownSec(slot.remainingSec ?? 0, Date.now() - fetchedAtRef.current)
               : 0;
           return (
@@ -99,6 +99,9 @@ export function TradePage() {
               catalog={catalog}
               owned={owned}
               busy={busy}
+              onStart={(s) =>
+                start.mutate(s, { onError: (e) => handleError(e, "장을 열지 못했습니다") })
+              }
               onSpeedup={(s) =>
                 speedup.mutate(s, { onError: (e) => handleError(e, "단축에 실패했습니다") })
               }
@@ -112,12 +115,6 @@ export function TradePage() {
                 accept.mutate(s, {
                   onSuccess: onResolved,
                   onError: (e) => handleError(e, "수락에 실패했습니다"),
-                })
-              }
-              onDecline={(s) =>
-                decline.mutate(s, {
-                  onSuccess: onResolved,
-                  onError: (e) => handleError(e, "거절에 실패했습니다"),
                 })
               }
             />

@@ -34,6 +34,8 @@ export type PlayerRef = SchemasV2["PlayerRef"];
 export type TradeSlot = SchemasV2["TradeSlot"];
 export type TradeSlotsResponse = SchemasV2["TradeSlotsResponse"];
 export type TradeSpeedupResponse = SchemasV2["TradeSpeedupResponse"];
+/** [장 시작!] / [거래 안함] 결과 — 새 오퍼로 WAITING 진입한 슬롯 + 지갑 (#149). */
+export type TradeStartResponse = SchemasV2["TradeStartResponse"];
 export type FaProposeRequest = SchemasV2["FaProposeRequest"];
 export type TradeResolveResponse = SchemasV2["TradeResolveResponse"];
 export type TradeLogItem = SchemasV2["TradeLogItem"];
