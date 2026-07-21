@@ -198,3 +198,19 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 - **세션 토폴로지(2026-07-19)**: **hmb-online 매니저 세션**이 상위 조율(크로스 모듈 계약·통합 게이트·PR 머지·#60 트래킹·git 커밋 직렬화). 모듈 세션들(server-java·web·servants·data·QA)은 **각자 체크아웃**에서 자기 모듈 CLAUDE.md 기반으로 독립 작업 — 경계 밖 필요는 이슈 레이즈(#57 원칙).
 - **통합 게이트**(#60): G-A stub 풀 E2E(AC-M2) → G-B 브라우저 E2E(AC-W1) → G-C 라이브 AI 스모크(AC-T3) → hero 실플레이 데모 → 모듈별 세션 QA 트랙 전환.
 - **Phase 2 (2026-07-19 착수)**: v1은 태그 `phase1-v1`로 보존. Phase 2 계획 SoT = **`docs/plan-v3/`**(PRD-v3 · ERD-v2 · LLD-p2-{server,servants,web,data}) — 프리셋 스냅샷 개편·전술보드 D&D·OAuth목·컨디션 실효·지시 카탈로그·감독 관계 3축·AI 예산 가드·트레이드·로그/랭킹·리그 모드(10팀 18R). 구현 = 매니저(hmb:main)가 module-implementer/verifier 서브에이전트로 오케스트레이션.
+
+## 11. 배포 (Phase 3 — 테스터 오픈) 좌표
+
+> 내부 테스터에게 실제 배포해 플레이시키는 상태. 계획 SoT = `docs/plan-v4/`(PRD-v4 §G·§H). 배포 세션 = hmb:p3dep(에픽 #122), owned-glob `infra/**` + `server-java/Dockerfile`.
+
+- **테스터 접속**: **https://hmb-online.pages.dev** (web=Cloudflare Pages 정적)
+- **구성**: web=CF Pages · 백엔드=hero 머신 도커(java 18080 + runner 18790, **데모 8080/8790 무접촉**) · 인터넷 노출=**Cloudflare quick tunnel**(ngrok 무료는 앱 로드 동시요청에서 커넥션 끊김 — 실측 CF 8/8 vs ngrok 0/8) · AI=호스트 구독 claude CLI(모드 A). CORS 결선: web `VITE_API_BASE`=터널URL(빌드 인라인) ↔ 백엔드 `WEB_ORIGINS`=Pages URL.
+- **운영 플레이북 = `docs/plan-v4/deploy-playbook.md`** (상태확인·기동·URL변경·디버깅·정지 전부). 상세 근거·아키텍처 = `docs/plan-v4/deploy.md`. 오픈 갭 = `docs/plan-v4/open-checklist.md`.
+- **핵심 커맨드** (전부 `infra/`):
+  - `bash infra/status.sh` — 배포 상태 한눈에(전부 ✓면 정상)
+  - `bash infra/start-tunnel.sh` — 터널 기동+URL캡처+web재배포 원클릭(재부팅/URL변경 후)
+  - `bash infra/deploy-web.sh <터널URL>` — web 만 재배포(URL 바뀐 경우)
+  - `cd infra && docker compose up -d java runner` — 백엔드 도커
+- **시크릿**: `infra/.env`(gitignore, 커밋 금지). `SERVANT_TOKEN`=openssl rand, admin 자격 등. 리포엔 `.env.example`만.
+- **디버깅 순서**: `status.sh`(인프라 배제) → 터널 인스펙터(실 요청/응답) → 코드. `/api/deck 404`=새유저 빈덱(정상). `Failed to fetch`(응답 없음)=터널/네트워크.
+- **상시 고정 URL 승격(선택)**: named tunnel(도메인 필요) 또는 ngrok 유료 — deploy.md §5.2·§6.
