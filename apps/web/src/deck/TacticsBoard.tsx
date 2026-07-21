@@ -3,6 +3,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CatalogPlayer } from "../api/hooks";
 import type { ConditionMap } from "../api/v2";
 import { GRADE_COLORS } from "../common/grades";
+import { CharAvatar } from "../common/CharAvatar";
 import { BENCH_MAX, getSlot, type DeckDraft, type SlotRole } from "./deck-logic";
 import { starterCoords } from "./tactics-logic";
 import { ConditionClock } from "../match/ConditionClock";
@@ -90,7 +91,18 @@ function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberL
       {...attributes}
     >
       <span className={styles.disc}>
-        {numberLabel}
+        {/* 캐릭터 얼굴은 디스크 **배경 층**(#145). 슬롯 번호·컨디션 시계는 그 위에 그대로 남는다 —
+            보드는 11개 토큰이 겹치는 화면이라 정보를 빼지 않고 얼굴만 더한다. */}
+        {player && (
+          <CharAvatar
+            playerId={player.id}
+            name={player.name}
+            grade={player.grade}
+            size={38}
+            className={styles.tokenFace}
+          />
+        )}
+        <span className={styles.discNum}>{numberLabel}</span>
         {/* 색각 대응(#106 R3b B): 보드 토큰의 시계는 14px 이라 **글자 축을 의도적으로 넣지 않는다** —
             11개 토큰이 겹치는 피치에서 등급 텍스트까지 얹으면 판독성이 오히려 떨어진다. 여기서는
             색과 독립인 두 축(바늘 각도 + 링 파선)으로 충분하고, 글자 축은 공간이 있는 소비처
