@@ -71,6 +71,11 @@ hmb:
       power-divisor: 120.0         # 파워차 → 기대 득점 변환(Δ기대 = (myPower-oppPower)/divisor)
       home-advantage: 0.35         # 홈 팀 기대 득점 가산(홈 어드밴티지)
       max-goals: 8                 # 한 팀 최대 득점 클램프(푸아송 꼬리 방어)
+  cors:                              # CORS 허용 오리진(이슈 #128, 오픈 blocker B1) — /api/** 대상
+    # 콤마 구분. env HMB_CORS_ALLOWEDORIGINS 로 재빌드 없이 교체(quick tunnel/Pages URL 은 재시작마다 바뀜).
+    # 기본값 = 로컬 dev 오리진 하나(와일드카드 아님) — 미설정 시 아무 데서나 열리지 않게(무회귀).
+    # 배포: HMB_CORS_ALLOWEDORIGINS="https://<pages>.pages.dev" (여러 개면 콤마).
+    allowed-origins: ${HMB_CORS_ALLOWEDORIGINS:http://localhost:5173}
   servant:
     engine-runner-url: http://localhost:8790
     internal-token: change-me      # /internal/* shared secret (AC-Q3)
