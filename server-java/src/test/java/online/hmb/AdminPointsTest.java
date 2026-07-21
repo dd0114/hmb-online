@@ -322,6 +322,52 @@ class AdminPointsTest extends ApiTestBase {
 
     // ───────────────────────── 입력 검증 ─────────────────────────
 
+    /**
+     * <b>minor-C</b>: malformed 요청 본문은 <b>내부 파서 메시지를 노출하지 않는다</b>.
+     *
+     * <p>W1·W2 교훈대로 상태코드만 보지 않는다 — leading {@code '+'}(Jackson 기본 파서 거부),
+     * 잘린 JSON, 구분자 누락, 비-JSON 모두 <b>깨끗한 400</b>(code=VALIDATION_ERROR)으로 변환되고
+     * 응답 본문에 Jackson 내부(예: {@code JsonReadFeature.ALLOW_LEADING_PLUS_SIGN} 힌트,
+     * {@code com.fasterxml}, 파서 위치 {@code line:/column:})가 <b>부재</b>함을 <b>바디 문자열로 단정</b>한다.
+     * 이 하드닝({@code AdminErrorHandler.handleUnreadableBody}) 을 제거하면 이 테스트가 FAIL 한다(뮤테이션 확인).
+     * 부수효과도 0.
+     */
+    @Test
+    void malformedRequestBodyIsCleanBadRequestWithoutLeak() {
+        String admin = adminToken();
+        String target = user("pts_malformed");
+        long walletBefore = points(target);
+        long ledgerBefore = adminLedgerCount(target);
+        long auditBefore = auditCount(target);
+
+        List<String> malformed = List.of(
+                "{\"delta\": +5, \"reason\": \"x\"}",   // leading '+' — 검증자 실측 재현(파서 힌트 노출)
+                "{\"delta\": 5, \"reason\":",            // 잘린 JSON
+                "{\"delta\": 5 \"reason\": \"x\"}",      // 구분자 누락
+                "not json at all",                      // 비-JSON
+                "");                                     // 빈 본문(누락)
+
+        for (String raw : malformed) {
+            HttpResult res = grantRaw(admin, target, raw);
+            assertThat(res.status()).as("malformed 바디인데 400 이 아니다: " + res.body())
+                    .isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(asMap(res).get("code")).as("code 가 규약값이 아니다: " + res.body())
+                    .isEqualTo("VALIDATION_ERROR");
+            assertThat(res.body()).as("파서 내부 구현이 응답으로 노출됐다: " + res.body())
+                    .doesNotContain("JsonReadFeature").doesNotContain("JsonParseException")
+                    .doesNotContain("JsonMappingException").doesNotContain("JsonEOFException")
+                    .doesNotContain("com.fasterxml").doesNotContain("ALLOW_LEADING_PLUS_SIGN")
+                    .doesNotContain("Unexpected character").doesNotContain("Unexpected end-of-input")
+                    .doesNotContain("line: ").doesNotContain("column: ")
+                    .doesNotContain("org.springframework");
+        }
+
+        // 부수효과 0 — malformed 는 컨트롤러 진입 전에 걸러지므로 지갑·원장·감사 불변.
+        assertThat(points(target)).isEqualTo(walletBefore);
+        assertThat(adminLedgerCount(target)).isEqualTo(ledgerBefore);
+        assertThat(auditCount(target)).isEqualTo(auditBefore);
+    }
+
     @Test
     void invalidRequestsAreRejectedWithNoSideEffects() {
         String admin = adminToken();
@@ -356,6 +402,23 @@ class AdminPointsTest extends ApiTestBase {
             }
             java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient().send(
                     builder.POST(java.net.http.HttpRequest.BodyPublishers.ofString(MAPPER.writeValueAsString(body)))
+                            .build(),
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+            return new HttpResult(HttpStatus.valueOf(res.statusCode()), res.body());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** 직렬화 없이 raw 바디를 그대로 전송 — malformed JSON 재현용. */
+    private HttpResult grantRaw(String adminToken, String targetId, String rawBody) {
+        try {
+            java.net.http.HttpResponse<String> res = java.net.http.HttpClient.newHttpClient().send(
+                    java.net.http.HttpRequest.newBuilder()
+                            .uri(java.net.URI.create(baseUrl("/api/admin/users/" + targetId + "/points")))
+                            .header("Content-Type", "application/json")
+                            .header("Authorization", "Bearer " + adminToken)
+                            .POST(java.net.http.HttpRequest.BodyPublishers.ofString(rawBody))
                             .build(),
                     java.net.http.HttpResponse.BodyHandlers.ofString());
             return new HttpResult(HttpStatus.valueOf(res.statusCode()), res.body());

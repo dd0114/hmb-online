@@ -181,6 +181,25 @@ class AdminUsersApiTest extends ApiTestBase {
         assertLeakFree(busy.body());
     }
 
+    /**
+     * <b>minor-C 인접 점검</b>: admin 경로의 잘못된 쿼리 파라미터 타입({@code limit=abc})이
+     * 프레임워크 내부(변환기·{@code NumberFormatException}·JDK 타입명)를 응답으로 흘리지 않는지 본다.
+     * 상태코드는 이 웨이브의 관심이 아니다(선재 정책 불변) — <b>노출 여부만</b> 단정한다.
+     * {@code AdminErrorHandler.handleTypeMismatch} 하드닝을 제거하면 이 단정이 FAIL 한다(뮤테이션 확인).
+     */
+    @Test
+    void malformedQueryParamDoesNotLeakInternals() {
+        String admin = adminToken();
+        for (String bad : List.of("/api/admin/users?limit=abc", "/api/admin/users?offset=NaN")) {
+            HttpResult res = get(bad, admin);
+            assertThat(res.body()).as("타입 변환 실패가 내부를 노출했다: " + res.body())
+                    .doesNotContain("NumberFormatException").doesNotContain("For input string")
+                    .doesNotContain("java.lang.Integer").doesNotContain("java.lang.String")
+                    .doesNotContain("MethodArgumentTypeMismatch").doesNotContain("ConversionFailed")
+                    .doesNotContain("com.fasterxml").doesNotContain("org.springframework");
+        }
+    }
+
     private void assertLeakFree(String body) {
         assertThat(body).as("응답에 내부 SQL/스키마가 노출됐다: " + body)
                 .doesNotContain("INSERT").doesNotContain("SELECT")
