@@ -46,9 +46,12 @@ docker compose up -d --build java runner
 until [ "$(docker inspect -f '{{.State.Health.Status}}' hmb-java)" = healthy ]; do sleep 3; done
 
 # 3) AI 실행기 (모드 A — 호스트 구독 CLI). 백그라운드로.
+#    ⚠️ AI_CONCURRENCY=1 + AI_JOB_TIMEOUT_MS=240000 권장 — concurrency=2 는 SQLite lease 경합으로
+#       매치 FAILED 유발(#166/#72 실측), 전술생성이 120s 넘어 타임아웃되기도. (근본해결은 #166 도메인.)
 cd ~/spider10/hmb-online
 source infra/.env
 JAVA_URL=http://localhost:18080 SERVANT_TOKEN="$SERVANT_TOKEN" AI_EXECUTOR=claude-code AI_MODEL=sonnet \
+  AI_CONCURRENCY=1 AI_JOB_TIMEOUT_MS=240000 \
   nohup npm run executor --workspace=@hmb/server > /tmp/hmb-executor.log 2>&1 &
 
 # 4) 터널 + web 재배포 (원클릭)
