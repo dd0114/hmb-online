@@ -18,16 +18,19 @@ const agg = aggregateRealism(cfg, REALISM_SEEDS);
 describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
   it(`팀당 슛 12–14 (측정 ${agg.mean.shots})`, () => {
     expect(agg.mean.shots).toBeGreaterThanOrEqual(12);
-    expect(agg.mean.shots).toBeLessThanOrEqual(14.5);
+    // 상한은 D4 확정 벤치(12-14)와 일치시킨다. 이전엔 14.5 로 느슨해 제목(12-14)과 어긋났고,
+    // #147 W2 때 실측 14.15 가 그 슬랙에 숨었다(검증 세션 지적) → 재튜닝 후 13.23.
+    expect(agg.mean.shots).toBeLessThanOrEqual(14);
   });
   it(`슛당 xG 0.10–0.12 밴드 근처 (측정 ${agg.mean.xgPerShot}) — 슛만 깎고 질 왜곡 금지`, () => {
     expect(agg.mean.xgPerShot).toBeGreaterThanOrEqual(0.1);
     expect(agg.mean.xgPerShot).toBeLessThanOrEqual(0.13);
   });
   it(`골 가뭄 아님: 팀당 골 ∈ [1.4, 2.5] (측정 ${agg.mean.goals})`, () => {
-    // 슛만 과하게 줄여 골 가뭄을 만들지 않는다(§ 매니저 요구). 벤치 1.4–1.65 + 여유.
+    // 슛만 과하게 줄여 골 가뭄을 만들지 않는다(§ 매니저 요구). 벤치 1.4–1.65 + 시드분산 여유.
+    // 상한 2.5 는 과도한 슬랙이었다(#147 W2 의 1.78 이 여기 숨음) → 1.9 로 조임. 현재 1.65.
     expect(agg.mean.goals).toBeGreaterThanOrEqual(1.4);
-    expect(agg.mean.goals).toBeLessThanOrEqual(2.5);
+    expect(agg.mean.goals).toBeLessThanOrEqual(1.9);
   });
 });
 

@@ -15,11 +15,10 @@
 
 === AC-goal-in-net: real(default) (engine@0.17.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
-총 골: 6
-  #1 tick=326 team=away ball=(0.50,34.01) 골라인=O 포스트내=O => PASS
-  #2 tick=732 team=home ball=(104.50,33.83) 골라인=O 포스트내=O => PASS
-  #3 tick=1587 team=away ball=(0.50,34.80) 골라인=O 포스트내=O => PASS
-  #4 tick=3135 team=away ball=(0.50,34.30) 골라인=O 포스트내=O => PASS
-  #5 tick=4354 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #6 tick=4493 team=away ball=(0.50,34.88) 골라인=O 포스트내=O => PASS
+총 골: 5
+  #1 tick=148 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #2 tick=290 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #3 tick=2394 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #4 tick=2607 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #5 tick=4067 team=away ball=(0.50,34.74) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
