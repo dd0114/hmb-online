@@ -375,6 +375,13 @@ export interface EngineConfig {
      * 도달비용이 과하면 붙지 않는다. (팀 레벨 상대별 가중치 opponentFocus 는 계약 #167 대기)
      */
     markTargetBias: number;
+    /**
+     * 마킹 가치의 기준선(m). 가치 = 기준선 − 내골까지거리 − 도달비용·가중 + markTarget 가산 이고,
+     * 가치 ≤ 0 이면 **아무도 안 붙고 자리를 지킨다**. 즉 이 값이 "붙을 만한가" 의 임계 자체다.
+     * 피치 대각(≈125m) 근처가 자연스러운 출발점이지만 **실측상 밸런스를 크게 흔드는 살아있는 노브**
+     * 다(90 이면 골 +40%). 하드코딩 금지 대상이라 config 로 뺀다.
+     */
+    markValueBaseM: number;
   };
 
   /** 포메이션 정규화 슬롯(0..1, 공격 방향 +x 프레임). 최소 4-3-3 정의. */
@@ -567,6 +574,7 @@ export const defaultEngineConfig: EngineConfig = {
     markReach: 3,
     markCostWeight: 2,
     markTargetBias: 40,
+    markValueBaseM: 125,
   },
   formations: {
     "4-3-3": formation433,

@@ -488,9 +488,21 @@ export function decideOffBall(
     ty += widthDir * Math.round(pitch.hFx * mv.defendWidthReach * player.behavior.widthTendency);
     ty += Math.round((ball.posFx.y - ty) * mv.defendCompactY * compact);
 
-    // 마크는 아래 시야 계층이 처리한다(#147 W3). 레거시는 여기서 markTarget 을 하드 오버라이드로
-    // 잡아 다른 판단을 전부 무시했는데, 그게 "무조건 붙는" 동작의 원인이었다 —
-    // 이제 markTarget 은 대상 선택 가치의 **강한 가산**(vision.markTargetBias)으로만 작용한다.
+    // 마크: 시야 계층이 켜져 있으면 아래에서 가치 기반으로 처리한다(#147 W3) — markTarget 은
+    // 하드 오버라이드가 아니라 **강한 가산**(vision.markTargetBias)으로만 작용한다.
+    // 시야가 꺼져 있으면(롤백) 레거시 하드 오버라이드를 그대로 쓴다 — 안 그러면 롤백 스위치가
+    // markTarget(정식 AI 마킹 지시 경로)을 **완전 무음 no-op** 으로 만들어 "롤백" 이 아니게 된다.
+    if (!config.vision.enabled && player.markTarget) {
+      const mark = state.byId.get(player.markTarget);
+      if (mark) {
+        const gap = mv.markGap * scale;
+        const dx = ownGoal.x - mark.posFx.x;
+        const dy = ownGoal.y - mark.posFx.y;
+        const len = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
+        tx = mark.posFx.x + Math.round((dx * gap) / len);
+        ty = mark.posFx.y + Math.round((dy * gap) / len);
+      }
+    }
 
     // 압박: 지정된 최근접 수비수이고 압박 성향이면 공으로 돌진.
     if (
@@ -601,21 +613,21 @@ export function perceiveOpponents(
   inRange.sort((a, b) => a.d - b.d || (a.p.id < b.p.id ? -1 : 1));
 
   // 주의 예산 안 = 정밀 인지 → 기억 갱신.
-  // 방어: 소비자(서버 RPC 등)가 직렬화 왕복에서 seen 을 떨구면 undefined 로 들어온다 — 크래시 대신
-  // 빈 기억으로 복구한다. 단 **재개 동일성은 이것만으로 복구되지 않는다**(기억이 유실되므로)
-  // → 계약 정합은 #154 소관.
-  if (!player.seen) player.seen = new Map();
+  // 방어: 소비자가 스키마에 seen 을 선언하지 않으면 undefined 로 들어온다(zod strip). 크래시 대신
+  // 빈 기억으로 복구하되, **이 경로를 타면 재개 동일성이 깨진다**(기억 유실 = 무음 desync).
+  // 표현은 Record 라 JSON 왕복 자체는 안전하므로, 남은 건 소비자 스키마 선언뿐이다(#154).
+  if (!player.seen) player.seen = {};
   const budget = attentionBudget(player, config);
   for (let i = 0; i < inRange.length && i < budget; i++) {
     const r = inRange[i]!;
-    player.seen.set(r.p.id, { x: r.p.posFx.x, y: r.p.posFx.y, tick: state.tick });
+    player.seen[r.p.id] = { x: r.p.posFx.x, y: r.p.posFx.y, tick: state.tick };
   }
 
   // 판단 입력 = 기억. 낡은 기억은 폐기하고, 반경 밖으로 기억된 상대도 제외.
   const known: KnownOpponent[] = [];
   for (const o of state.players) {
     if (o.side === player.side) continue;
-    const m = player.seen.get(o.id);
+    const m = player.seen[o.id];
     if (!m) continue;
     const age = state.tick - m.tick;
     if (age > v.memoryTicks) continue;
@@ -647,7 +659,7 @@ export function chooseMarkTarget(
     const costFx = k.dist * v.markCostWeight;
     const biasFx = player.markTarget === k.id ? v.markTargetBias * scale : 0;
     // 피치 대각(≈125m) 기준으로 위협을 양수화해 비교 가능하게.
-    const val = threatFx - costFx + biasFx + 125 * scale;
+    const val = threatFx - costFx + biasFx + v.markValueBaseM * scale;
     if (val > bestVal) {
       bestVal = val;
       best = k;
