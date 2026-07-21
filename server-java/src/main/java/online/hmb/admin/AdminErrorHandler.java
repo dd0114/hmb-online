@@ -10,8 +10,10 @@ import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * admin 컨트롤러 <b>전용</b> 예외 변환({@code assignableTypes} 로 범위를 못박는다).
@@ -62,4 +64,41 @@ public class AdminErrorHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiError("INTERNAL_ERROR", "일시적인 오류로 요청을 처리하지 못했습니다"));
     }
+
+    /**
+     * <b>요청 본문 파싱 실패(minor-C)</b> — malformed/누락 JSON 바디.
+     *
+     * <p>왜 필요한가: 이 예외가 {@code AdminController} 진입 전에 던져지면 전역
+     * {@code GlobalExceptionHandler.handleUnexpected} 가 {@code ex.getMessage()} 를 그대로 실어
+     * <b>Jackson 파서 내부</b>(예 {@code enable JsonReadFeature.ALLOW_LEADING_PLUS_SIGN_FOR_NUMBERS},
+     * {@code Unexpected character}, 파서 위치)를 admin 응답으로 흘린다(검증자 실측). 여기서 <b>깨끗한
+     * 400</b> 으로 변환하고 원본은 <b>서버 로그에만</b> 남긴다 — 응답에는 일반 메시지만 나간다.
+     * 상태코드는 프레임워크 기본과 일치하는 400(파싱 실패는 클라이언트 잘못) — openapi 의 기존 400 응답 규약.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleUnreadableBody(HttpMessageNotReadableException ex) {
+        log.warn("admin API 요청 본문 파싱 실패 (응답에는 상세를 싣지 않는다)", ex);
+        return ResponseEntity.badRequest()
+                .body(new ApiError("VALIDATION_ERROR", "요청 본문을 해석할 수 없습니다"));
+    }
+
+    /**
+     * <b>쿼리/경로 파라미터 타입 불일치(minor-C 인접)</b> — 예 {@code ?limit=abc}({@code Integer} 로 변환 실패).
+     *
+     * <p>미변환 시 전역 핸들러가 {@code "Failed to convert value of type 'java.lang.String' to required type
+     * 'java.lang.Integer'; For input string: \"abc\""} 를 그대로 노출한다(검증자 실측 — JDK 타입명·입력값 유출).
+     * admin 파라미터 중 타입 변환이 걸리는 건 {@code /users} 의 {@code limit}/{@code offset}(Integer) 뿐이고
+     * 경로변수는 전부 {@code String} 이라 이 예외가 안 난다. 여기서도 <b>깨끗한 400</b> 으로 막는다.
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiError> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("admin API 파라미터 타입 불일치 (응답에는 상세를 싣지 않는다)", ex);
+        return ResponseEntity.badRequest()
+                .body(new ApiError("VALIDATION_ERROR", "요청 파라미터가 올바르지 않습니다"));
+    }
+
+    // 의도적 제외(과잉 방지):
+    //  · MissingServletRequestParameterException — admin 파라미터는 전부 required=false 라 발생 불가(죽은 핸들러).
+    //  · HttpMessageNotWritableException — 잘 정의된 DTO/record 직렬화라 정상 운영에서 발생 불가.
+    //    (클라이언트가 유발할 수 없는 서버측 버그 경로 — admin 노출 벡터가 아니다.)
 }
