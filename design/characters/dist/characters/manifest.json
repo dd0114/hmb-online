@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "kind": "characters",
+  "note": "hero 확정(2026-07-21): 레퍼 12캐릭터를 게임 자산으로 확정. #121 LEGEND 매핑 소비용.",
+  "source": "ref-pixel-fantasy-football",
+  "count": 14,
+  "variantRule": "LEGEND 14 - 캐릭터 12 = 부족분 2. 선수 id 정렬순 + 포지션 매칭. hue 회전(채도·명도·피부톤 보존).",
+  "atlases": {
+    "avatars-64": {
+      "file": "characters/avatars-64.png",
+      "tile": 64,
+      "cols": 4,
+      "rows": 4
+    },
+    "avatars-32": {
+      "file": "characters/avatars-32.png",
+      "tile": 32,
+      "cols": 4,
+      "rows": 4
+    },
+    "avatars-16": {
+      "file": "characters/avatars-16.png",
+      "tile": 16,
+      "cols": 4,
+      "rows": 4
+    },
+    "sprites-64": {
+      "file": "characters/sprites-64.png",
+      "tile": 64,
+      "cols": 4,
+      "rows": 4
+    },
+    "sprites-32": {
+      "file": "characters/sprites-32.png",
+      "tile": 32,
+      "cols": 4,
+      "rows": 4
+    },
+    "sprites-16": {
+      "file": "characters/sprites-16.png",
+      "tile": 16,
+      "cols": 4,
+      "rows": 4
+    },
+    "sprites-8": {
+      "file": "characters/sprites-8.png",
+      "tile": 8,
+      "cols": 4,
+      "rows": 4
+    }
+  },
+  "characters": {
+    "ragna": {
+      "index": 0,
+      "col": 0,
+      "row": 0,
+      "position": "FW",
+      "card": "characters/card-ragna.png"
+    },
+    "sail": {
+      "index": 1,
+      "col": 1,
+      "row": 0,
+      "position": "MF",
+      "card": "characters/card-sail.png"
+    },
+    "lupus": {
+      "index": 2,
+      "col": 2,
+      "row": 0,
+      "position": "DF",
+      "card": "characters/card-lupus.png"
+    },
+    "aura": {
+      "index": 3,
+      "col": 3,
+      "row": 0,
+      "position": "GK",
+      "card": "characters/card-aura.png"
+    },
+    "natzt": {
+      "index": 4,
+      "col": 0,
+      "row": 1,
+      "position": "FW",
+      "card": "characters/card-natzt.png"
+    },
+    "mio": {
+      "index": 5,
+      "col": 1,
+      "row": 1,
+      "position": "MF",
+      "card": "characters/card-mio.png"
+    },
+    "leo": {
+      "index": 6,
+      "col": 2,
+      "row": 1,
+      "position": "DF",
+      "card": "characters/card-leo.png"
+    },
+    "riya": {
+      "index": 7,
+      "col": 3,
+      "row": 1,
+      "position": "MF",
+      "card": "characters/card-riya.png"
+    },
+    "anubis": {
+      "index": 8,
+      "col": 0,
+      "row": 2,
+      "position": "FW",
+      "card": "characters/card-anubis.png"
+    },
+    "penguin-king": {
+      "index": 9,
+      "col": 1,
+      "row": 2,
+      "position": "GK",
+      "card": "characters/card-penguin-king.png"
+    },
+    "bark": {
+      "index": 10,
+      "col": 2,
+      "row": 2,
+      "position": "DF",
+      "card": "characters/card-bark.png"
+    },
+    "bella": {
+      "index": 11,
+      "col": 3,
+      "row": 2,
+      "position": "MF",
+      "card": "characters/card-bella.png"
+    },
+    "sail-h150": {
+      "index": 12,
+      "col": 0,
+      "row": 3,
+      "position": "MF",
+      "card": "characters/card-sail-h150.png",
+      "variant": {
+        "of": "sail",
+        "hueDeg": 150
+      },
+      "forSlot": 13,
+      "forPlayer": "P143"
+    },
+    "ragna-h210": {
+      "index": 13,
+      "col": 1,
+      "row": 3,
+      "position": "FW",
+      "card": "characters/card-ragna-h210.png",
+      "variant": {
+        "of": "ragna",
+        "hueDeg": 210
+      },
+      "forSlot": 14,
+      "forPlayer": "P144"
+    }
+  }
+}

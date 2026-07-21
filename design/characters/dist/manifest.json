@@ -1,0 +1,1458 @@
+{
+  "version": 1,
+  "source": "default-placeholder",
+  "note": "hero 원화 입고 전 임시 에셋. ingest.mjs 산출물이 들어오면 대체된다.",
+  "playerCount": 172,
+  "atlases": {
+    "avatars-64": {
+      "file": "avatars-64.png",
+      "tile": 64,
+      "cols": 14,
+      "rows": 13
+    },
+    "avatars-32": {
+      "file": "avatars-32.png",
+      "tile": 32,
+      "cols": 14,
+      "rows": 13
+    },
+    "avatars-16": {
+      "file": "avatars-16.png",
+      "tile": 16,
+      "cols": 14,
+      "rows": 13
+    },
+    "sprites-64": {
+      "file": "sprites-64.png",
+      "tile": 64,
+      "cols": 14,
+      "rows": 13
+    },
+    "sprites-32": {
+      "file": "sprites-32.png",
+      "tile": 32,
+      "cols": 14,
+      "rows": 13
+    },
+    "sprites-16": {
+      "file": "sprites-16.png",
+      "tile": 16,
+      "cols": 14,
+      "rows": 13
+    },
+    "sprites-8": {
+      "file": "sprites-8.png",
+      "tile": 8,
+      "cols": 14,
+      "rows": 13
+    },
+    "frame-LEGEND": {
+      "file": "frame-LEGEND.png",
+      "w": 226,
+      "h": 425,
+      "stars": 6
+    },
+    "frame-DIA": {
+      "file": "frame-DIA.png",
+      "w": 226,
+      "h": 425,
+      "stars": 5
+    },
+    "frame-GOLD": {
+      "file": "frame-GOLD.png",
+      "w": 226,
+      "h": 425,
+      "stars": 4
+    },
+    "frame-SILVER": {
+      "file": "frame-SILVER.png",
+      "w": 226,
+      "h": 425,
+      "stars": 3
+    },
+    "frame-BRONZE": {
+      "file": "frame-BRONZE.png",
+      "w": 226,
+      "h": 425,
+      "stars": 2
+    }
+  },
+  "players": {
+    "P001": {
+      "index": 0,
+      "col": 0,
+      "row": 0,
+      "position": "GK",
+      "grade": "LEGEND",
+      "initials": "LY"
+    },
+    "P002": {
+      "index": 1,
+      "col": 1,
+      "row": 0,
+      "position": "DF",
+      "grade": "LEGEND",
+      "initials": "FB"
+    },
+    "P003": {
+      "index": 2,
+      "col": 2,
+      "row": 0,
+      "position": "DF",
+      "grade": "LEGEND",
+      "initials": "PM"
+    },
+    "P004": {
+      "index": 3,
+      "col": 3,
+      "row": 0,
+      "position": "DF",
+      "grade": "LEGEND",
+      "initials": "FB"
+    },
+    "P005": {
+      "index": 4,
+      "col": 4,
+      "row": 0,
+      "position": "MF",
+      "grade": "LEGEND",
+      "initials": "DM"
+    },
+    "P006": {
+      "index": 5,
+      "col": 5,
+      "row": 0,
+      "position": "MF",
+      "grade": "LEGEND",
+      "initials": "ZZ"
+    },
+    "P007": {
+      "index": 6,
+      "col": 6,
+      "row": 0,
+      "position": "MF",
+      "grade": "LEGEND",
+      "initials": "MP"
+    },
+    "P008": {
+      "index": 7,
+      "col": 7,
+      "row": 0,
+      "position": "MF",
+      "grade": "LEGEND",
+      "initials": "LM"
+    },
+    "P009": {
+      "index": 8,
+      "col": 8,
+      "row": 0,
+      "position": "FW",
+      "grade": "LEGEND",
+      "initials": "P"
+    },
+    "P010": {
+      "index": 9,
+      "col": 9,
+      "row": 0,
+      "position": "FW",
+      "grade": "LEGEND",
+      "initials": "RN"
+    },
+    "P011": {
+      "index": 10,
+      "col": 10,
+      "row": 0,
+      "position": "FW",
+      "grade": "LEGEND",
+      "initials": "JC"
+    },
+    "P012": {
+      "index": 11,
+      "col": 11,
+      "row": 0,
+      "position": "FW",
+      "grade": "LEGEND",
+      "initials": "MV"
+    },
+    "P013": {
+      "index": 12,
+      "col": 12,
+      "row": 0,
+      "position": "GK",
+      "grade": "DIA",
+      "initials": "A"
+    },
+    "P014": {
+      "index": 13,
+      "col": 13,
+      "row": 0,
+      "position": "GK",
+      "grade": "DIA",
+      "initials": "TC"
+    },
+    "P015": {
+      "index": 14,
+      "col": 0,
+      "row": 1,
+      "position": "DF",
+      "grade": "DIA",
+      "initials": "VV"
+    },
+    "P016": {
+      "index": 15,
+      "col": 1,
+      "row": 1,
+      "position": "DF",
+      "grade": "DIA",
+      "initials": "RD"
+    },
+    "P017": {
+      "index": 16,
+      "col": 2,
+      "row": 1,
+      "position": "DF",
+      "grade": "DIA",
+      "initials": "AH"
+    },
+    "P018": {
+      "index": 17,
+      "col": 3,
+      "row": 1,
+      "position": "DF",
+      "grade": "DIA",
+      "initials": "AD"
+    },
+    "P019": {
+      "index": 18,
+      "col": 4,
+      "row": 1,
+      "position": "DF",
+      "grade": "DIA",
+      "initials": "AR"
+    },
+    "P020": {
+      "index": 19,
+      "col": 5,
+      "row": 1,
+      "position": "DF",
+      "grade": "DIA",
+      "initials": "WS"
+    },
+    "P021": {
+      "index": 20,
+      "col": 6,
+      "row": 1,
+      "position": "DF",
+      "grade": "DIA",
+      "initials": "TH"
+    },
+    "P022": {
+      "index": 21,
+      "col": 7,
+      "row": 1,
+      "position": "DF",
+      "grade": "DIA",
+      "initials": "KM"
+    },
+    "P023": {
+      "index": 22,
+      "col": 8,
+      "row": 1,
+      "position": "MF",
+      "grade": "DIA",
+      "initials": "R"
+    },
+    "P024": {
+      "index": 23,
+      "col": 9,
+      "row": 1,
+      "position": "MF",
+      "grade": "DIA",
+      "initials": "KD"
+    },
+    "P025": {
+      "index": 24,
+      "col": 10,
+      "row": 1,
+      "position": "MF",
+      "grade": "DIA",
+      "initials": "JB"
+    },
+    "P026": {
+      "index": 25,
+      "col": 11,
+      "row": 1,
+      "position": "MF",
+      "grade": "DIA",
+      "initials": "FV"
+    },
+    "P027": {
+      "index": 26,
+      "col": 12,
+      "row": 1,
+      "position": "MF",
+      "grade": "DIA",
+      "initials": "LM"
+    },
+    "P028": {
+      "index": 27,
+      "col": 13,
+      "row": 1,
+      "position": "MF",
+      "grade": "DIA",
+      "initials": "TK"
+    },
+    "P029": {
+      "index": 28,
+      "col": 0,
+      "row": 2,
+      "position": "MF",
+      "grade": "DIA",
+      "initials": "MØ"
+    },
+    "P030": {
+      "index": 29,
+      "col": 1,
+      "row": 2,
+      "position": "MF",
+      "grade": "DIA",
+      "initials": "P"
+    },
+    "P031": {
+      "index": 30,
+      "col": 2,
+      "row": 2,
+      "position": "FW",
+      "grade": "DIA",
+      "initials": "EH"
+    },
+    "P032": {
+      "index": 31,
+      "col": 3,
+      "row": 2,
+      "position": "FW",
+      "grade": "DIA",
+      "initials": "KM"
+    },
+    "P033": {
+      "index": 32,
+      "col": 4,
+      "row": 2,
+      "position": "FW",
+      "grade": "DIA",
+      "initials": "VJ"
+    },
+    "P034": {
+      "index": 33,
+      "col": 5,
+      "row": 2,
+      "position": "FW",
+      "grade": "DIA",
+      "initials": "HK"
+    },
+    "P035": {
+      "index": 34,
+      "col": 6,
+      "row": 2,
+      "position": "FW",
+      "grade": "DIA",
+      "initials": "MS"
+    },
+    "P036": {
+      "index": 35,
+      "col": 7,
+      "row": 2,
+      "position": "FW",
+      "grade": "DIA",
+      "initials": "LM"
+    },
+    "P037": {
+      "index": 36,
+      "col": 8,
+      "row": 2,
+      "position": "FW",
+      "grade": "DIA",
+      "initials": "SH"
+    },
+    "P038": {
+      "index": 37,
+      "col": 9,
+      "row": 2,
+      "position": "GK",
+      "grade": "GOLD",
+      "initials": "E"
+    },
+    "P039": {
+      "index": 38,
+      "col": 10,
+      "row": 2,
+      "position": "GK",
+      "grade": "GOLD",
+      "initials": "GD"
+    },
+    "P040": {
+      "index": 39,
+      "col": 11,
+      "row": 2,
+      "position": "GK",
+      "grade": "GOLD",
+      "initials": "JO"
+    },
+    "P041": {
+      "index": 40,
+      "col": 12,
+      "row": 2,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "TA"
+    },
+    "P042": {
+      "index": 41,
+      "col": 13,
+      "row": 2,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "KW"
+    },
+    "P043": {
+      "index": 42,
+      "col": 0,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "M"
+    },
+    "P044": {
+      "index": 43,
+      "col": 1,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "ÉM"
+    },
+    "P045": {
+      "index": 44,
+      "col": 2,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "RA"
+    },
+    "P046": {
+      "index": 45,
+      "col": 3,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "JG"
+    },
+    "P047": {
+      "index": 46,
+      "col": 4,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "JK"
+    },
+    "P048": {
+      "index": 47,
+      "col": 5,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "RJ"
+    },
+    "P049": {
+      "index": 48,
+      "col": 6,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "JC"
+    },
+    "P050": {
+      "index": 49,
+      "col": 7,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "DA"
+    },
+    "P051": {
+      "index": 50,
+      "col": 8,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "MD"
+    },
+    "P052": {
+      "index": 51,
+      "col": 9,
+      "row": 3,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "AR"
+    },
+    "P053": {
+      "index": 52,
+      "col": 10,
+      "row": 3,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "BF"
+    },
+    "P054": {
+      "index": 53,
+      "col": 11,
+      "row": 3,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "BS"
+    },
+    "P055": {
+      "index": 54,
+      "col": 12,
+      "row": 3,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "FD"
+    },
+    "P056": {
+      "index": 55,
+      "col": 13,
+      "row": 3,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "DR"
+    },
+    "P057": {
+      "index": 56,
+      "col": 0,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "IG"
+    },
+    "P058": {
+      "index": 57,
+      "col": 1,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "NB"
+    },
+    "P059": {
+      "index": 58,
+      "col": 2,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "JM"
+    },
+    "P060": {
+      "index": 59,
+      "col": 3,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "EF"
+    },
+    "P061": {
+      "index": 60,
+      "col": 4,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "AT"
+    },
+    "P062": {
+      "index": 61,
+      "col": 5,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "C"
+    },
+    "P063": {
+      "index": 62,
+      "col": 6,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "JK"
+    },
+    "P064": {
+      "index": 63,
+      "col": 7,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "PF"
+    },
+    "P065": {
+      "index": 64,
+      "col": 8,
+      "row": 4,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "BG"
+    },
+    "P066": {
+      "index": 65,
+      "col": 9,
+      "row": 4,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "BS"
+    },
+    "P067": {
+      "index": 66,
+      "col": 10,
+      "row": 4,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "RL"
+    },
+    "P068": {
+      "index": 67,
+      "col": 11,
+      "row": 4,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "JÁ"
+    },
+    "P069": {
+      "index": 68,
+      "col": 12,
+      "row": 4,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "VO"
+    },
+    "P070": {
+      "index": 69,
+      "col": 13,
+      "row": 4,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "MR"
+    },
+    "P071": {
+      "index": 70,
+      "col": 0,
+      "row": 5,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "LY"
+    },
+    "P072": {
+      "index": 71,
+      "col": 1,
+      "row": 5,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "KK"
+    },
+    "P073": {
+      "index": 72,
+      "col": 2,
+      "row": 5,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "RL"
+    },
+    "P074": {
+      "index": 73,
+      "col": 3,
+      "row": 5,
+      "position": "GK",
+      "grade": "SILVER",
+      "initials": "AO"
+    },
+    "P075": {
+      "index": 74,
+      "col": 4,
+      "row": 5,
+      "position": "GK",
+      "grade": "SILVER",
+      "initials": "YS"
+    },
+    "P076": {
+      "index": 75,
+      "col": 5,
+      "row": 5,
+      "position": "GK",
+      "grade": "SILVER",
+      "initials": "DR"
+    },
+    "P077": {
+      "index": 76,
+      "col": 6,
+      "row": 5,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "RV"
+    },
+    "P078": {
+      "index": 77,
+      "col": 7,
+      "row": 5,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "LM"
+    },
+    "P079": {
+      "index": 78,
+      "col": 8,
+      "row": 5,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "CR"
+    },
+    "P080": {
+      "index": 79,
+      "col": 9,
+      "row": 5,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "GM"
+    },
+    "P081": {
+      "index": 80,
+      "col": 10,
+      "row": 5,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "BW"
+    },
+    "P082": {
+      "index": 81,
+      "col": 11,
+      "row": 5,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "PT"
+    },
+    "P083": {
+      "index": 82,
+      "col": 12,
+      "row": 5,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "NA"
+    },
+    "P084": {
+      "index": 83,
+      "col": 13,
+      "row": 5,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "MA"
+    },
+    "P085": {
+      "index": 84,
+      "col": 0,
+      "row": 6,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "AB"
+    },
+    "P086": {
+      "index": 85,
+      "col": 1,
+      "row": 6,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "FD"
+    },
+    "P087": {
+      "index": 86,
+      "col": 2,
+      "row": 6,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "DU"
+    },
+    "P088": {
+      "index": 87,
+      "col": 3,
+      "row": 6,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "MA"
+    },
+    "P089": {
+      "index": 88,
+      "col": 4,
+      "row": 6,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "JF"
+    },
+    "P090": {
+      "index": 89,
+      "col": 5,
+      "row": 6,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "KT"
+    },
+    "P091": {
+      "index": 90,
+      "col": 6,
+      "row": 6,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "RG"
+    },
+    "P092": {
+      "index": 91,
+      "col": 7,
+      "row": 6,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "MM"
+    },
+    "P093": {
+      "index": 92,
+      "col": 8,
+      "row": 6,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "KH"
+    },
+    "P094": {
+      "index": 93,
+      "col": 9,
+      "row": 6,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "JM"
+    },
+    "P095": {
+      "index": 94,
+      "col": 10,
+      "row": 6,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "DS"
+    },
+    "P096": {
+      "index": 95,
+      "col": 11,
+      "row": 6,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "AM"
+    },
+    "P097": {
+      "index": 96,
+      "col": 12,
+      "row": 6,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "YT"
+    },
+    "P098": {
+      "index": 97,
+      "col": 13,
+      "row": 6,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "ST"
+    },
+    "P099": {
+      "index": 98,
+      "col": 0,
+      "row": 7,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "EC"
+    },
+    "P100": {
+      "index": 99,
+      "col": 1,
+      "row": 7,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "RG"
+    },
+    "P101": {
+      "index": 100,
+      "col": 2,
+      "row": 7,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "FR"
+    },
+    "P102": {
+      "index": 101,
+      "col": 3,
+      "row": 7,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "TK"
+    },
+    "P103": {
+      "index": 102,
+      "col": 4,
+      "row": 7,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "WM"
+    },
+    "P104": {
+      "index": 103,
+      "col": 5,
+      "row": 7,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "HÇ"
+    },
+    "P105": {
+      "index": 104,
+      "col": 6,
+      "row": 7,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "AO"
+    },
+    "P106": {
+      "index": 105,
+      "col": 7,
+      "row": 7,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "GJ"
+    },
+    "P107": {
+      "index": 106,
+      "col": 8,
+      "row": 7,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "MT"
+    },
+    "P108": {
+      "index": 107,
+      "col": 9,
+      "row": 7,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "RH"
+    },
+    "P109": {
+      "index": 108,
+      "col": 10,
+      "row": 7,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "RK"
+    },
+    "P110": {
+      "index": 109,
+      "col": 11,
+      "row": 7,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "CG"
+    },
+    "P111": {
+      "index": 110,
+      "col": 12,
+      "row": 7,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "OW"
+    },
+    "P112": {
+      "index": 111,
+      "col": 13,
+      "row": 7,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "AI"
+    },
+    "P113": {
+      "index": 112,
+      "col": 0,
+      "row": 8,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "DV"
+    },
+    "P114": {
+      "index": 113,
+      "col": 1,
+      "row": 8,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "NJ"
+    },
+    "P115": {
+      "index": 114,
+      "col": 2,
+      "row": 8,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "SG"
+    },
+    "P116": {
+      "index": 115,
+      "col": 3,
+      "row": 8,
+      "position": "GK",
+      "grade": "BRONZE",
+      "initials": "GM"
+    },
+    "P117": {
+      "index": 116,
+      "col": 4,
+      "row": 8,
+      "position": "GK",
+      "grade": "BRONZE",
+      "initials": "GV"
+    },
+    "P118": {
+      "index": 117,
+      "col": 5,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "RL"
+    },
+    "P119": {
+      "index": 118,
+      "col": 6,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "LC"
+    },
+    "P120": {
+      "index": 119,
+      "col": 7,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "LY"
+    },
+    "P121": {
+      "index": 120,
+      "col": 8,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "NS"
+    },
+    "P122": {
+      "index": 121,
+      "col": 9,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "CL"
+    },
+    "P123": {
+      "index": 122,
+      "col": 10,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "RC"
+    },
+    "P124": {
+      "index": 123,
+      "col": 11,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "GS"
+    },
+    "P125": {
+      "index": 124,
+      "col": 12,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "JB"
+    },
+    "P126": {
+      "index": 125,
+      "col": 13,
+      "row": 8,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "MV"
+    },
+    "P127": {
+      "index": 126,
+      "col": 0,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "WZ"
+    },
+    "P128": {
+      "index": 127,
+      "col": 1,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "KM"
+    },
+    "P129": {
+      "index": 128,
+      "col": 2,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "G"
+    },
+    "P130": {
+      "index": 129,
+      "col": 3,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "AG"
+    },
+    "P131": {
+      "index": 130,
+      "col": 4,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "CB"
+    },
+    "P132": {
+      "index": 131,
+      "col": 5,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "AW"
+    },
+    "P133": {
+      "index": 132,
+      "col": 6,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "JN"
+    },
+    "P134": {
+      "index": 133,
+      "col": 7,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "MK"
+    },
+    "P135": {
+      "index": 134,
+      "col": 8,
+      "row": 9,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "ÁG"
+    },
+    "P136": {
+      "index": 135,
+      "col": 9,
+      "row": 9,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "E"
+    },
+    "P137": {
+      "index": 136,
+      "col": 10,
+      "row": 9,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "MT"
+    },
+    "P138": {
+      "index": 137,
+      "col": 11,
+      "row": 9,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "BŠ"
+    },
+    "P139": {
+      "index": 138,
+      "col": 12,
+      "row": 9,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "JB"
+    },
+    "P140": {
+      "index": 139,
+      "col": 13,
+      "row": 9,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "KA"
+    },
+    "P141": {
+      "index": 140,
+      "col": 0,
+      "row": 10,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "HE"
+    },
+    "P142": {
+      "index": 141,
+      "col": 1,
+      "row": 10,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "AG"
+    },
+    "P143": {
+      "index": 142,
+      "col": 2,
+      "row": 10,
+      "position": "MF",
+      "grade": "LEGEND",
+      "initials": "PJ"
+    },
+    "P144": {
+      "index": 143,
+      "col": 3,
+      "row": 10,
+      "position": "FW",
+      "grade": "LEGEND",
+      "initials": "CB"
+    },
+    "P145": {
+      "index": 144,
+      "col": 4,
+      "row": 10,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "LK"
+    },
+    "P146": {
+      "index": 145,
+      "col": 5,
+      "row": 10,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "KS"
+    },
+    "P147": {
+      "index": 146,
+      "col": 6,
+      "row": 10,
+      "position": "MF",
+      "grade": "GOLD",
+      "initials": "YS"
+    },
+    "P148": {
+      "index": 147,
+      "col": 7,
+      "row": 10,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "HM"
+    },
+    "P149": {
+      "index": 148,
+      "col": 8,
+      "row": 10,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "LY"
+    },
+    "P150": {
+      "index": 149,
+      "col": 9,
+      "row": 10,
+      "position": "DF",
+      "grade": "GOLD",
+      "initials": "KJ"
+    },
+    "P151": {
+      "index": 150,
+      "col": 10,
+      "row": 10,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "HH"
+    },
+    "P152": {
+      "index": 151,
+      "col": 11,
+      "row": 10,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "AJ"
+    },
+    "P153": {
+      "index": 152,
+      "col": 12,
+      "row": 10,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "LD"
+    },
+    "P154": {
+      "index": 153,
+      "col": 13,
+      "row": 10,
+      "position": "FW",
+      "grade": "GOLD",
+      "initials": "HS"
+    },
+    "P155": {
+      "index": 154,
+      "col": 0,
+      "row": 11,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "LJ"
+    },
+    "P156": {
+      "index": 155,
+      "col": 1,
+      "row": 11,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "HI"
+    },
+    "P157": {
+      "index": 156,
+      "col": 2,
+      "row": 11,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "KJ"
+    },
+    "P158": {
+      "index": 157,
+      "col": 3,
+      "row": 11,
+      "position": "MF",
+      "grade": "SILVER",
+      "initials": "LC"
+    },
+    "P159": {
+      "index": 158,
+      "col": 4,
+      "row": 11,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "KY"
+    },
+    "P160": {
+      "index": 159,
+      "col": 5,
+      "row": 11,
+      "position": "DF",
+      "grade": "SILVER",
+      "initials": "KJ"
+    },
+    "P161": {
+      "index": 160,
+      "col": 6,
+      "row": 11,
+      "position": "GK",
+      "grade": "SILVER",
+      "initials": "CH"
+    },
+    "P162": {
+      "index": 161,
+      "col": 7,
+      "row": 11,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "PC"
+    },
+    "P163": {
+      "index": 162,
+      "col": 8,
+      "row": 11,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "SK"
+    },
+    "P164": {
+      "index": 163,
+      "col": 9,
+      "row": 11,
+      "position": "FW",
+      "grade": "SILVER",
+      "initials": "CG"
+    },
+    "P165": {
+      "index": 164,
+      "col": 10,
+      "row": 11,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "BJ"
+    },
+    "P166": {
+      "index": 165,
+      "col": 11,
+      "row": 11,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "HH"
+    },
+    "P167": {
+      "index": 166,
+      "col": 12,
+      "row": 11,
+      "position": "MF",
+      "grade": "BRONZE",
+      "initials": "PS"
+    },
+    "P168": {
+      "index": 167,
+      "col": 13,
+      "row": 11,
+      "position": "DF",
+      "grade": "BRONZE",
+      "initials": "SY"
+    },
+    "P169": {
+      "index": 168,
+      "col": 0,
+      "row": 12,
+      "position": "GK",
+      "grade": "BRONZE",
+      "initials": "KS"
+    },
+    "P170": {
+      "index": 169,
+      "col": 1,
+      "row": 12,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "YM"
+    },
+    "P171": {
+      "index": 170,
+      "col": 2,
+      "row": 12,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "OH"
+    },
+    "P172": {
+      "index": 171,
+      "col": 3,
+      "row": 12,
+      "position": "FW",
+      "grade": "BRONZE",
+      "initials": "YH"
+    }
+  }
+}
