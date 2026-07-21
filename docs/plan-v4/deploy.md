@@ -228,13 +228,26 @@ curl -fsS -X POST https://api.your-domain.com/api/auth/login \
 
 ### 6.0 API 토큰 배포 (로그인 없음) — **원클릭**
 
+**표준 배포 흐름 = 백엔드(터널) 먼저 → 웹이 그 주소에 맞춰 재배포.** quick tunnel URL 이 바뀌면
+`deploy-pages.sh <새-백엔드URL>` 한 줄로 web 을 재빌드+재배포한다(Pages URL 은 고정).
+
+**토큰은 spider 전역 파일 1곳** — `~/.config/hmb/deploy.env`(리포 밖, gitignore, chmod 600).
+`deploy-pages.sh` 가 자동 source 하므로 **어느 spider\* 워크트리에서든** 로그인·per-worktree 설정 없이 배포된다.
+(로컬 `infra/.env` 에 넣으면 그게 override — 보통 불필요.)
+
 ```bash
-# 1) infra/.env 에 토큰 채우기 (gitignore — 절대 커밋 금지)
-#    CLOUDFLARE_API_TOKEN=...   (My Profile → API Tokens → Pages:Edit 권한)
-#    CLOUDFLARE_ACCOUNT_ID=...  (대시보드 account id)
-# 2) 배포 (백엔드 quick tunnel URL 자동 추출, 또는 인자로 명시)
+# 최초 1회: 전역 토큰 파일 (모든 워크트리 공유)
+mkdir -p ~/.config/hmb && cat > ~/.config/hmb/deploy.env <<'X'
+CLOUDFLARE_API_TOKEN=...    # My Profile → API Tokens → Pages:Edit 권한
+CLOUDFLARE_ACCOUNT_ID=...   # 대시보드 account id (6675a80f…)
+X
+chmod 600 ~/.config/hmb/deploy.env
+
+# 배포 (백엔드 quick tunnel URL 자동 추출, 또는 인자로 명시)
 bash infra/deploy-pages.sh [https://<backend>.trycloudflare.com]
 ```
+> ⚠️ `~/.config/hmb/deploy.env` 와 `infra/.env` **둘 다 리포 밖/gitignore — 절대 커밋 금지.**
+> 실측 확정: 전역 토큰만으로(로컬 .env 에 토큰 없이) 배포 성공 → 왕복 200·포인트 3000.
 `deploy-pages.sh` 가 한 번에: web 빌드(VITE_API_BASE=백엔드URL) → 버전 매니페스트 →
 `wrangler pages deploy`(토큰 인증) → 백엔드 `WEB_ORIGINS` 에 `hmb-online.pages.dev` **추가·java `--force-recreate`**
 (⭕ DB 볼륨 유지) → 완료. **✅ 실측 확정**: 토큰 배포 성공, `pages.dev/login` → 로그인 200 · me 200 · 포인트 3000,

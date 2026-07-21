@@ -16,10 +16,15 @@
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 
-# .env 에서 토큰/계정ID 로드 (export)
-set -a; [ -f infra/.env ] && . infra/.env; set +a
-: "${CLOUDFLARE_API_TOKEN:?infra/.env 에 CLOUDFLARE_API_TOKEN 필요 (커밋 금지)}"
-: "${CLOUDFLARE_ACCOUNT_ID:?infra/.env 에 CLOUDFLARE_ACCOUNT_ID 필요}"
+# 토큰/계정ID 로드 (export). 우선순위: ① 전역(~/.config/hmb/deploy.env, 모든 워크트리 공유)
+# → ② 로컬 infra/.env(override). 전역이 있으면 어느 spider* 워크트리에서든 로그인 없이 배포된다.
+# 둘 다 리포 밖·gitignore — 절대 커밋 금지.
+set -a
+[ -f "$HOME/.config/hmb/deploy.env" ] && . "$HOME/.config/hmb/deploy.env"
+[ -f infra/.env ] && . infra/.env
+set +a
+: "${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN 필요 — ~/.config/hmb/deploy.env(전역) 또는 infra/.env}"
+: "${CLOUDFLARE_ACCOUNT_ID:?CLOUDFLARE_ACCOUNT_ID 필요 — ~/.config/hmb/deploy.env(전역) 또는 infra/.env}"
 export CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
 
 PROJECT="${PAGES_PROJECT:-hmb-online}"
