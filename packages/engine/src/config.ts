@@ -358,7 +358,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.14.0",
+  version: "engine@0.15.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -377,14 +377,16 @@ export const defaultEngineConfig: EngineConfig = {
     looseDecay: 0.82,
   },
   decisionWeights: {
-    // 슛 대폭 하향(37→~14/팀), 홀드/드리블 비중↑(패스 볼륨·찬스 남발 억제).
+    // 슛 하향(37→~13.5/팀), 홀드/드리블 비중↑(패스 볼륨·찬스 남발 억제).
     pass: 0.5,
     dribble: 0.46,
-    shoot: 0.5,
+    // G-A(#99): 슛 과다(팀 23.85→~13.6, 벤치 12-14). shoot 0.5→0.35 로 슛 성향 하향.
+    shoot: 0.35,
     hold: 0.42,
-    // 파이널서드 슛 지배 + 후진 패스 페널티 + 중앙 슛 부스트(스트라이커 후진 리사이클 버그 강화 수정).
-    // 슛 볼륨은 벤치마크(팀 12-16) 안(≈16)으로 유지하면서 후진 리사이클을 억제하도록 튜닝.
-    shootInBox: 1.38,
+    // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
+    // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
+    // 슛 지배를 완화(후진 리사이클은 backwardPassPenalty 2.4 + shootCentralBonus 1.35 로 계속 억제).
+    shootInBox: 0.6,
     backwardPassPenalty: 2.4,
     shootCentralBonus: 1.35,
   },
@@ -405,10 +407,13 @@ export const defaultEngineConfig: EngineConfig = {
     passOutcomeAuthoritative: true,
     interceptBase: 0.06,
     tackleBase: 0.14,
-    xgBase: 0.225,
+    // G-A(#99): 슛당 xG 하향(0.13→~0.12, 벤치 0.10-0.12). 0.225→0.19.
+    xgBase: 0.19,
     shotBallSpeed: 14,
     shootXgThreshold: 0.07,
-    shootRange: 20,
+    // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
+    // 달리 저xG 근거리 슛은 남겨 평균 xG 를 밴드에 유지).
+    shootRange: 19,
     shootAngleFactor: 0.7,
     shootDistanceFactor: 0.025,
     onTargetBase: 0.28,
@@ -425,7 +430,9 @@ export const defaultEngineConfig: EngineConfig = {
     controlRange: 2.5,
     oneOnOneClearM: 10.0,
     oneOnOneXgMult: 1.3,
-    oneOnOneShootBias: 3.2,
+    // G-A(#99): 1대1 강제슛 배수 3.2→1.8. 여전히 단독찬스는 슛을 선호하되(1v1은 슛이 정답),
+    // 슛 과다에 기여하던 과도한 강제를 완화.
+    oneOnOneShootBias: 1.8,
   },
   rules: {
     foul: {
