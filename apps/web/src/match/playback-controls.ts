@@ -2,27 +2,19 @@
 //
 // 문제(hero): 경기 진행 화면에 컨트롤이 너무 많아 "게임이 아니라 녹화본 보는 느낌".
 // 해법: 컨트롤을 **관객용(play)** 과 **검수용(full)** 두 모드로 가른다.
-//   - play : 업계 표준(FM/FIFA) — 진행 위주. 재생/일시정지 + 배속 몇 단계뿐.
-//            되감기·프레임 점프·타임라인 스크럽·배율(zoom)·디버그 토글은 **숨김**.
+//   - play : 관객용 — 경기는 **자동 진행**하고 컨트롤은 **하이라이트 토글 하나**뿐이다.
+//            재생/일시정지·배속·되감기·프레임 점프·스크럽·배율(zoom)·디버그 토글 전부 **숨김**
+//            (hero 2026-07-21 재지시: "유일한 컨트롤은 하이라이트 껐다 켜기 하나").
 //   - full : 뷰어(QA dev-viewer) 자체 컨트롤 전부 노출 — admin 계정(#119) 또는 QA 플래그.
 //
 // 판정 우선순위: QA 오버라이드(쿼리 > localStorage) > 계정(admin ? full : play).
 
 export type ControlMode = "play" | "full";
 
-/** 플레이 모드에서 제공하는 배속 단계(진행 방향만 — 슬로우/되감기 없음). */
-export const PLAY_SPEEDS = [1, 2, 4] as const;
-export type PlaySpeed = (typeof PLAY_SPEEDS)[number];
-
 /** QA 오버라이드 쿼리 키 (`?viewerControls=full|play`, 단축 `?qa=1`). */
 export const CONTROL_MODE_PARAM = "viewerControls";
 /** QA 오버라이드 localStorage 키(세션 간 유지용 — 값은 쿼리와 동일 어휘). */
 export const CONTROL_MODE_STORAGE_KEY = "hmb.viewerControls";
-
-/** 뷰어로 보낼 배속인지(화이트리스트 밖 값은 브리지로 흘리지 않는다). */
-export function isPlaySpeed(v: unknown): v is PlaySpeed {
-  return typeof v === "number" && (PLAY_SPEEDS as readonly number[]).includes(v);
-}
 
 /** 저장된 QA 오버라이드를 지우는 값들(`?viewerControls=reset`) — 고착 해제용 탈출구. */
 const RESET_VALUES = ["reset", "off", "clear", "default"];

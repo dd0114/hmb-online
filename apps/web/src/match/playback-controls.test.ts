@@ -1,15 +1,13 @@
 /**
  * 재생 컨트롤 모드 판정 순수 로직 계약 (#148).
- * 플레이 모드 = 업계 표준(FM/FIFA): 진행 위주 + 배속 몇 단계. 되감기·배율·스크럽 없음.
+ * 플레이 모드 = 자동 진행 + 하이라이트 토글 하나뿐(배속·되감기·배율·스크럽 없음).
  * admin/QA 모드 = 뷰어 풀컨트롤 노출(디버그·검수).
  */
 import { describe, expect, it } from "vitest";
 import {
   canSwitchControlMode,
   isControlModeReset,
-  isPlaySpeed,
   parseControlOverride,
-  PLAY_SPEEDS,
   resolveControlMode,
 } from "./playback-controls";
 
@@ -65,16 +63,3 @@ describe("playback-controls — 모드 판정", () => {
   });
 });
 
-describe("playback-controls — 배속 단계", () => {
-  it("플레이 모드 배속은 진행 방향 몇 단계뿐(슬로우·되감기 없음)", () => {
-    expect([...PLAY_SPEEDS]).toEqual([1, 2, 4]);
-    expect(PLAY_SPEEDS.every((s) => s >= 1)).toBe(true);
-  });
-
-  it("뷰어로 보낼 배속은 화이트리스트만 통과(임의 값 주입 차단)", () => {
-    expect(isPlaySpeed(2)).toBe(true);
-    expect(isPlaySpeed(0.25)).toBe(false);
-    expect(isPlaySpeed(8)).toBe(false);
-    expect(isPlaySpeed(Number.NaN)).toBe(false);
-  });
-});

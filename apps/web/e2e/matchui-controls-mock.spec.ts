@@ -4,10 +4,10 @@ import { mkdirSync, readFileSync } from "node:fs";
 /**
  * #148 매치 화면 컨트롤 간소화 — 백엔드 없이 route-mock 으로 실화면 계약을 박제한다.
  *
- * 계약:
- *  - 플레이 모드(일반 유저): iframe 안 뷰어의 디버그 컨트롤(되감기·프레임점프·스크럽·배율·토글)이
- *    **화면에 보이지 않고**, web 이 그린 간소 바(재생/일시정지 + 1·2·4x)만 보인다.
- *    간소 바 조작은 실제로 뷰어를 몬다(배속 반영·재생 시작).
+ * 계약(hero 재지시 2026-07-21):
+ *  - 플레이 모드(일반 유저): 경기는 **자동 진행**하고 컨트롤은 **하이라이트 토글 하나뿐**이다.
+ *    재생/일시정지·배속·되감기·프레임점프·스크럽·배율은 web 에도 iframe 안에도 없다.
+ *    토글은 실제로 뷰어 연출을 끄고 켠다(자동페이싱 on/off + 꺼도 진행이 멈추거나 느려지지 않음).
  *  - admin/QA 모드: 뷰어 원래 컨트롤이 전부 보인다(디버그·검수).
  *
  * ⚠️ 라우트 매칭은 pathname 술어로 한다. glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지
@@ -112,7 +112,7 @@ async function measureRate(page: Page, frame: Frame, ms: number): Promise<number
 
 test.beforeAll(() => mkdirSync(CAP_DIR, { recursive: true }));
 
-test("#148 플레이 모드: 뷰어 디버그 컨트롤 숨김 + 간소 바만 노출, 조작은 실제로 뷰어를 몬다", async ({ page }) => {
+test("#148 플레이 모드: 컨트롤은 하이라이트 토글 하나뿐이고 경기는 자동 진행한다", async ({ page }) => {
   const frame = await openHalftime(page, false);
 
   // (1) iframe 안 디버그 컨트롤 전부 비노출 — 경기 장면은 그대로.
@@ -127,67 +127,49 @@ test("#148 플레이 모드: 뷰어 디버그 컨트롤 숨김 + 간소 바만 �
     scoreboard: true,
   });
 
-  // (2) web 간소 바: 재생/일시정지 + 1·2·4x 뿐(되감기·스크럽 없음).
-  await expect(page.getByTestId("viewer-play-toggle-half1")).toBeVisible();
-  for (const s of [1, 2, 4]) await expect(page.getByTestId(`viewer-speed-${s}-half1`)).toBeVisible();
+  // (2) web 바에도 하이라이트 토글 외에는 아무 컨트롤이 없다.
+  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toBeVisible();
+  await expect(page.getByTestId("viewer-play-toggle-half1")).toHaveCount(0);
+  for (const s of [1, 2, 4]) await expect(page.getByTestId(`viewer-speed-${s}-half1`)).toHaveCount(0);
   await expect(page.getByTestId("viewer-mode-toggle-half1")).toHaveCount(0);
+  const buttons = await page.getByTestId("viewer-controls-half1").locator("button").count();
+  expect(buttons, "플레이 모드 컨트롤 바의 버튼은 하이라이트 토글 하나뿐").toBe(1);
+
   // 컨트롤을 찾으러 스크롤하지 않아도 되게 — 데스크탑 기본 뷰포트에서 바가 화면 안에 있어야 한다.
   const bar = await page.getByTestId("viewer-controls-half1").boundingBox();
   const vh = page.viewportSize()!.height;
-  expect(bar!.y + bar!.height, "간소 컨트롤 바가 첫 화면 안에 보여야 함").toBeLessThanOrEqual(vh);
+  expect(bar!.y + bar!.height, "컨트롤 바가 첫 화면 안에 보여야 함").toBeLessThanOrEqual(vh);
   await page.screenshot({ path: `${CAP_DIR}play-mode.png`, fullPage: false });
 
-  // (3) 배속 칩 → 뷰어의 실제 배속이 바뀐다.
-  await page.getByTestId("viewer-speed-2-half1").click();
-  await expect
-    .poll(() => frame.evaluate(() => document.querySelector("[data-speed].active")?.getAttribute("data-speed")))
-    .toBe("2");
-  await expect(page.getByTestId("viewer-speed-2-half1")).toHaveAttribute("aria-pressed", "true");
-  // 배속은 뷰어의 하이라이트 자동페이싱이 켜져 있으면 무시된다(index.html eff 분기) →
-  // 배속 선택 시 자동페이싱이 실제로 꺼져 있어야 한다.
-  expect(await autoPaceOn(frame), "배속 선택 시 자동페이싱 off").toBe(false);
-
-  // (4) 뷰어는 로드 직후 자동 재생 — 간소 바 라벨이 실제 상태(일시정지 가능)를 미러링한다.
-  const toggle = page.getByTestId("viewer-play-toggle-half1");
-  await expect(toggle).toContainText("일시정지");
-  await page.screenshot({ path: `${CAP_DIR}play-mode-playing.png`, fullPage: false });
-
-  // (5) 일시정지 → 실제로 틱이 멈춘다.
-  await toggle.click();
-  await expect(toggle).toContainText("재생");
-  const paused = await tickNow(frame);
-  await page.waitForTimeout(800);
-  expect(await tickNow(frame)).toBe(paused);
-
-  // (6) 다시 재생 → 실제로 틱이 전진한다.
-  await toggle.click();
-  await expect(toggle).toContainText("일시정지");
-  await expect.poll(() => tickNow(frame), { timeout: 10_000 }).toBeGreaterThan(paused);
+  // (3) 아무 조작 없이도 경기가 진행된다(자동 진행 — 재생 버튼이 없으므로 이게 유일한 시작 경로).
+  const t0 = await tickNow(frame);
+  await expect.poll(() => tickNow(frame), { timeout: 10_000 }).toBeGreaterThan(t0);
 });
 
-test("#148 플레이 모드 페이스 단계가 실제 재생속도를 바꾼다(칩이 무동작이 아니다)", async ({ page }) => {
+test("#148 하이라이트 토글이 실제로 연출을 끄고 켠다(끄면 일정 속도로 계속 진행)", async ({ page }) => {
   const frame = await openHalftime(page, false);
-  const toggle = page.getByTestId("viewer-play-toggle-half1");
-  await expect(toggle).toContainText("일시정지"); // 자동 재생 중
+  const toggle = page.getByTestId("viewer-highlight-toggle-half1");
 
-  // 기본은 하이라이트 자동페이싱(빌드업 빠르게·찬스 근처 느리게).
-  await expect(page.getByTestId("viewer-pace-auto-half1")).toHaveAttribute("aria-pressed", "true");
+  // 기본은 하이라이트 on — 뷰어 자동페이싱(주요장면 슬로우·접촉 줌)이 켜져 있다.
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
   expect(await autoPaceOn(frame)).toBe(true);
 
-  // 1x → 4x 로 올리면 실제 진행 속도(게임틱/실초)가 유의미하게 빨라져야 한다.
-  await page.getByTestId("viewer-speed-1-half1").click();
-  await expect(page.getByTestId("viewer-speed-1-half1")).toHaveAttribute("aria-pressed", "true");
-  const rate1 = await measureRate(page, frame, 4000);
-  await page.getByTestId("viewer-speed-4-half1").click();
-  const rate4 = await measureRate(page, frame, 4000);
-  console.log(`[#148] 진행 속도 — 1x: ${rate1.toFixed(2)} tick/s, 4x: ${rate4.toFixed(2)} tick/s`);
-  expect(rate1, "1x 도 진행은 해야 함").toBeGreaterThan(0);
-  expect(rate4, "4x 가 1x 보다 확실히 빨라야 함(칩이 무동작이면 여기서 잡힌다)").toBeGreaterThan(rate1 * 1.5);
+  // 끄면: 뷰어 자동페이싱 off + 진행은 계속(멈추거나 1x 로 처지지 않아야 한다 — 배속 컨트롤이 없으므로).
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect.poll(() => autoPaceOn(frame)).toBe(false);
+  const rateOff = await measureRate(page, frame, 4000);
+  console.log(`[#148] 하이라이트 off 진행 속도: ${rateOff.toFixed(2)} tick/s`);
+  expect(rateOff, "연출을 꺼도 경기는 계속 진행해야 함").toBeGreaterThan(0);
+  expect(rateOff, "뷰어 기본 1x(=2 tick/s)에 갇히면 안 됨 — 배속 컨트롤이 없다").toBeGreaterThan(3);
 
-  // 하이라이트로 되돌리면 뷰어 자동페이싱이 다시 켜지고, 배속 칩은 활성 표시가 풀린다.
-  await page.getByTestId("viewer-pace-auto-half1").click();
+  // 다시 켜면 자동페이싱 복귀 + 진행 유지.
+  await toggle.click();
   await expect.poll(() => autoPaceOn(frame)).toBe(true);
-  await expect(page.getByTestId("viewer-speed-4-half1")).toHaveAttribute("aria-pressed", "false");
+  await expect(toggle).toHaveAttribute("aria-pressed", "true");
+  const rateOn = await measureRate(page, frame, 3000);
+  expect(rateOn, "하이라이트 on 에서도 진행은 계속").toBeGreaterThan(0);
+  await page.screenshot({ path: `${CAP_DIR}play-mode-highlight-on.png`, fullPage: false });
 });
 
 test("#148 admin 모드: 뷰어 풀컨트롤 노출 + 모드 토글로 플레이어 체감 전환", async ({ page }) => {
@@ -200,14 +182,14 @@ test("#148 admin 모드: 뷰어 풀컨트롤 노출 + 모드 토글로 플레이
     prevGoal: true,
   });
   expect(chrome.controlRows).toBeGreaterThan(0);
-  // 풀컨트롤에선 web 간소 바를 중복 노출하지 않는다.
-  await expect(page.getByTestId("viewer-play-toggle-half1")).toHaveCount(0);
+  // 풀컨트롤에선 web 바를 중복 노출하지 않는다.
+  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toHaveCount(0);
   await expect(page.getByTestId("viewer-mode-toggle-half1")).toBeVisible();
   await page.screenshot({ path: `${CAP_DIR}admin-full-mode.png`, fullPage: false });
 
   // 모드 토글 → 플레이어가 보는 화면으로 즉시 전환(디버그 컨트롤 사라짐).
   await page.getByTestId("viewer-mode-play-half1").click();
-  await expect(page.getByTestId("viewer-play-toggle-half1")).toBeVisible();
+  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toBeVisible();
   await expect.poll(() => viewerChromeVisible(frame).then((c) => c.scrub)).toBe(false);
   await page.screenshot({ path: `${CAP_DIR}admin-switched-to-play.png`, fullPage: false });
 });
@@ -247,7 +229,7 @@ test("#148 플레이 모드에서도 뷰어 로드 실패는 화면 안에 보�
 test("#148 모바일 390px: 간소 컨트롤 가로 오버플로 0", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openHalftime(page, false);
-  await expect(page.getByTestId("viewer-play-toggle-half1")).toBeVisible();
+  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toBeVisible();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );

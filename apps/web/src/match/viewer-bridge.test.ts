@@ -7,7 +7,7 @@ import {
   shouldFallbackAfterTimeout,
   shouldPostLog,
   setChromeMessage,
-  viewerControlMessage,
+  highlightMessage,
   isViewerStateMessage,
   VIEWER_EMBED_SRC,
   VIEWER_READY_TIMEOUT_MS,
@@ -105,13 +105,9 @@ describe("viewer-bridge — 컨트롤 크롬/명령 메시지", () => {
     expect(setChromeMessage("full")).toEqual({ type: "setViewerChrome", mode: "full" });
   });
 
-  it("재생 명령은 {type,cmd} 형태 — 배속은 화이트리스트 값만 싣는다", () => {
-    expect(viewerControlMessage("toggle")).toEqual({ type: "viewerControl", cmd: "toggle" });
-    expect(viewerControlMessage("auto")).toEqual({ type: "viewerControl", cmd: "auto" });
-    expect(viewerControlMessage("speed", 2)).toEqual({ type: "viewerControl", cmd: "speed", speed: 2 });
-    // 화이트리스트 밖 배속은 명령 자체를 만들지 않는다(브리지로 흘리지 않음).
-    expect(viewerControlMessage("speed", 8 as never)).toBeNull();
-    expect(viewerControlMessage("speed")).toBeNull();
+  it("플레이 모드가 보내는 명령은 하이라이트 on/off 하나뿐이다", () => {
+    expect(highlightMessage(true)).toEqual({ type: "viewerControl", cmd: "highlight", on: true });
+    expect(highlightMessage(false)).toEqual({ type: "viewerControl", cmd: "highlight", on: false });
   });
 
   it("viewerState(iframe→parent)만 상태로 인정하고, 필드 타입을 검증한다", () => {

@@ -12,6 +12,7 @@ import {
   bridgeReducer,
   initialBridgeState,
   isViewerReadyMessage,
+  highlightMessage,
   isViewerStateMessage,
   loadMatchLogMessage,
   setChromeMessage,
@@ -19,8 +20,6 @@ import {
   shouldPostLog,
   VIEWER_EMBED_SRC,
   VIEWER_READY_TIMEOUT_MS,
-  viewerControlMessage,
-  type ViewerCommand,
 } from "./viewer-bridge";
 import { useAdminFlag } from "../admin/admin-flag";
 import {
@@ -29,7 +28,6 @@ import {
   isControlModeReset,
   resolveControlMode,
   type ControlMode,
-  type PlaySpeed,
 } from "./playback-controls";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildViewerSkins } from "./viewer-skins";
@@ -172,8 +170,9 @@ function VisualPlayback({
   const skins = useMemo(() => buildViewerSkins(charAssets, log), [charAssets, log]);
   const [state, dispatch] = useReducer(bridgeReducer, initialBridgeState);
   const [failed, setFailed] = useState(false);
-  // 뷰어가 미러링해주는 실제 재생 상태(#148) — 버튼 라벨/활성 배속의 SoT.
-  const [playback, setPlayback] = useState({ playing: false, speed: 1, ended: false, auto: true });
+  // 뷰어가 미러링해주는 실제 하이라이트 연출 상태(#148) — 토글 표시의 SoT.
+  // 뷰어 기본은 Highlights on 이고, 경기는 로드 직후 자동 진행한다(재생 컨트롤 없음).
+  const [highlight, setHighlight] = useState(true);
 
   // 로드 실패 통합 처리: in-place 폴백 표시 + 부모 모드를 타임라인으로 전환.
   const fail = () => {
@@ -194,10 +193,7 @@ function VisualPlayback({
     function onMsg(ev: MessageEvent) {
       if (iframeRef.current && ev.source !== iframeRef.current.contentWindow) return;
       if (isViewerReadyMessage(ev.data)) dispatch({ kind: "viewerReady" });
-      else if (isViewerStateMessage(ev.data)) {
-        const { playing, speed, ended, auto } = ev.data;
-        setPlayback({ playing, speed, ended, auto });
-      }
+      else if (isViewerStateMessage(ev.data)) setHighlight(ev.data.auto);
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
@@ -233,9 +229,8 @@ function VisualPlayback({
     iframeRef.current?.contentWindow?.postMessage(setChromeMessage(controlMode), "*");
   }, [state.viewerReady, controlMode]);
 
-  const send = (cmd: ViewerCommand, speed?: PlaySpeed) => {
-    const msg = viewerControlMessage(cmd, speed);
-    if (msg) iframeRef.current?.contentWindow?.postMessage(msg, "*");
+  const sendHighlight = (on: boolean) => {
+    iframeRef.current?.contentWindow?.postMessage(highlightMessage(on), "*");
   };
 
   if (failed) {
@@ -270,13 +265,8 @@ function VisualPlayback({
         half={half}
         mode={controlMode}
         canSwitch={canSwitch}
-        playing={playback.playing}
-        ended={playback.ended}
-        speed={playback.speed}
-        auto={playback.auto}
-        onToggle={() => send("toggle")}
-        onSpeed={(s) => send("speed", s)}
-        onAuto={() => send("auto")}
+        highlight={highlight}
+        onHighlight={sendHighlight}
         onMode={onControlMode}
       />
     </div>
