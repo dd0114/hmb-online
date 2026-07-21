@@ -5,15 +5,19 @@ import { useToken } from "../auth/TokenContext";
 import { shouldPoll } from "../match/match-logic";
 
 import type { Personality } from "./v2";
+import type { PlayerImageRef } from "../common/char-assets";
 
 export type MeResponse = components["schemas"]["MeResponse"];
 export type ModeInfo = components["schemas"]["ModeInfo"];
 /**
  * V1 CatalogPlayer + Phase2 additive personality (openapi-v2 CatalogPlayerPhase2Fields) — 도감/
  * 덱 표시용. optional 이라 personality 미제공 응답도 유효(관계 표시만 생략).
+ * + Phase3 additive imageRef(도트 아바타, PRD-v4 §F). TODO(openapi-v3): #104/data 확정 시
+ * 생성 스키마로 이관. 전부 optional — 부재 시 placeholder 폴백(무회귀).
  */
 export type CatalogPlayer = components["schemas"]["CatalogPlayer"] & {
   personality?: Personality;
+  imageRef?: PlayerImageRef | null;
 };
 export type Deck = components["schemas"]["Deck"];
 export type DeckUpdateRequest = components["schemas"]["DeckUpdateRequest"];
