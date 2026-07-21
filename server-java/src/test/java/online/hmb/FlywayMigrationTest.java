@@ -30,7 +30,9 @@ class FlywayMigrationTest {
             "bots", "matches", "match_prompts", "match_halves", "ai_jobs", "meta_kv",
             // V2 phase2 (7)
             "team_presets", "player_relations", "team_morale",
-            "trade_slots", "trade_log", "league_seasons", "league_fixtures"
+            "trade_slots", "trade_log", "league_seasons", "league_fixtures",
+            // V5 p3 admin (1) — V4 는 컬럼 추가만이라 테이블 목록 불변
+            "admin_audit"
     );
 
     @Test

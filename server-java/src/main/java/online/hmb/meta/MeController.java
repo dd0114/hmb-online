@@ -2,6 +2,7 @@ package online.hmb.meta;
 
 import java.util.List;
 import java.util.Map;
+import online.hmb.admin.AdminAccess;
 import online.hmb.common.ApiException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -11,6 +12,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * GET /api/me — user + wallet.points + records{wins,draws,losses}(matches 파생, LLD §4).
+ * P3 §C additive: user.isAdmin — web 이 /admin 라우트를 **표시**할지 정하는 힌트다.
+ * 권한 판정이 아니다(실제 접근 차단은 서버의 AdminInterceptor 가 한다) — 이 값을 클라이언트가
+ * 조작해도 admin API 는 열리지 않는다.
  * GET /api/me/matches — 전적 리스트(최근 20).
  * 전적은 별도 테이블 없이 matches에서 COUNT by result로 파생(ERD 설계 노트).
  */
@@ -19,10 +23,12 @@ public class MeController {
 
     private final JdbcClient jdbcClient;
     private final WalletService walletService;
+    private final AdminAccess adminAccess;
 
-    public MeController(JdbcClient jdbcClient, WalletService walletService) {
+    public MeController(JdbcClient jdbcClient, WalletService walletService, AdminAccess adminAccess) {
         this.jdbcClient = jdbcClient;
         this.walletService = walletService;
+        this.adminAccess = adminAccess;
     }
 
     @GetMapping("/api/me")
@@ -47,7 +53,7 @@ public class MeController {
                 .forEach(e -> byResult.put(e.getKey(), e.getValue()));
 
         return new MeResponse(
-                new UserRef(userId, nickname),
+                new UserRef(userId, nickname, adminAccess.isAdmin(userId)),
                 new WalletInfo(points),
                 new Records(
                         byResult.getOrDefault("WIN", 0L),
@@ -82,7 +88,8 @@ public class MeController {
                 .list();
     }
 
-    public record UserRef(String id, String nickname) {
+    /** isAdmin 은 P3 §C additive — 기존 필드(id, nickname)는 불변. */
+    public record UserRef(String id, String nickname, boolean isAdmin) {
     }
 
     public record WalletInfo(long points) {

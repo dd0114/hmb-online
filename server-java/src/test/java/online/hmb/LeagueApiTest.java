@@ -469,6 +469,158 @@ class LeagueApiTest extends MatchTestBase {
         assertThat(((Number) logItem.get("scoreAway")).intValue()).isEqualTo(0); // 유저 득점 = away 슬롯
     }
 
+    // ── W3: 리그 보상 실지급 검증 + seasonReward 노출 (AC-E1) ──────────────
+
+    /** league.v1.json rewards 미러(테스트 측 기대값 — rank→points). */
+    private static final Map<Integer, Integer> REWARD_TIERS = Map.ofEntries(
+            Map.entry(1, 3000), Map.entry(2, 2000), Map.entry(3, 1500), Map.entry(4, 1000),
+            Map.entry(5, 800), Map.entry(6, 600), Map.entry(7, 500), Map.entry(8, 400),
+            Map.entry(9, 300), Map.entry(10, 200));
+
+    /**
+     * AC-E1 실지급: stub 서번트로 시즌 18R 완주(유저 전승 → 1위) → FINISHED → <b>지갑 잔액이 정확히
+     * 보상액만큼 증가</b> + 원장 delta 정확 + seasonReward=GRANTED 노출. <b>멱등을 값 불변으로 2중 검증</b>:
+     * (1) maybeFinishSeason 재호출(FINISHED CAS 가드로 no-op), (2) awardSeasonRewards 직접 재호출(원장
+     * 백스톱으로 apply=false). 두 경로 모두 지갑·원장 값 불변.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void seasonRewardGrantedReflectsExactWalletDeltaAndReentryIsNoOp() {
+        String token = setupUserWithDeck("lg_reward_win");
+        String uid = userIdOf("lg_reward_win");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        long walletBefore = walletPoints(uid); // 시즌 시작 후·보상 전 잔액.
+
+        // 유저 전승(홈=3:0 / 어웨이=0:3)으로 18경기 정산 → 1위. (직접 정산 경로 = 승/무/패 보상 미개입.)
+        for (Map<String, Object> f : userFixturesOrdered(seasonId)) {
+            boolean userHome = "USER".equals(f.get("home_team"));
+            leagueService.settleUserFixture((String) f.get("id"), userHome ? 3 : 0, userHome ? 0 : 3);
+        }
+
+        // 지갑 잔액 델타 = 정확히 rank1 보상(3000). 다른 원장 유입 없음(직접 정산이라 win 보상 없음).
+        long walletAfter = walletPoints(uid);
+        assertThat(walletAfter - walletBefore).isEqualTo(3000L);
+
+        // 원장: league_reward, ref=seasonId, delta=3000 정확히 1행.
+        assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
+        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(3000L);
+
+        // seasonReward 노출(GET /api/league) = GRANTED, points=원장 delta, rank=1, awardedAt 비null.
+        Map<String, Object> reward = seasonRewardOf(token);
+        assertThat(reward.get("status")).isEqualTo("GRANTED");
+        assertThat(((Number) reward.get("rank")).intValue()).isEqualTo(1);
+        assertThat(((Number) reward.get("points")).intValue()).isEqualTo(3000);
+        assertThat(reward.get("awardedAt")).isNotNull();
+
+        // ── 멱등 1: maybeFinishSeason 재호출 → 이미 FINISHED(CAS 가드) → no-op. 값 불변.
+        invokeSeasonHook("maybeFinishSeason", seasonId);
+        assertThat(walletPoints(uid)).isEqualTo(walletAfter);
+        assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
+        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(3000L);
+
+        // ── 멱등 2: awardSeasonRewards 직접 재호출(CAS 우회) → 원장 백스톱(apply=false) → no-op. 값 불변.
+        invokeSeasonHook("awardSeasonRewards", seasonId);
+        assertThat(walletPoints(uid)).isEqualTo(walletAfter);
+        assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
+        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(3000L);
+    }
+
+    /**
+     * AC-E1 순위별 분기: 유저 전패(홈=0:3 / 어웨이=3:0)로 완주 → 1위가 아닌 순위로 종료 →
+     * 해당 순위 티어 보상이 지갑에 지급되고 seasonReward.points 가 그 티어와 일치.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void seasonRewardGrantsRankTierForNonFirstFinish() {
+        String token = setupUserWithDeck("lg_reward_lose");
+        String uid = userIdOf("lg_reward_lose");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        long walletBefore = walletPoints(uid);
+
+        for (Map<String, Object> f : userFixturesOrdered(seasonId)) {
+            boolean userHome = "USER".equals(f.get("home_team"));
+            leagueService.settleUserFixture((String) f.get("id"), userHome ? 0 : 3, userHome ? 3 : 0);
+        }
+
+        LeagueService.LeagueStanding user = leagueService.computeStandings(seasonId).stream()
+                .filter(LeagueService.LeagueStanding::isUser).findFirst().orElseThrow();
+        int rank = user.rank();
+        assertThat(rank).as("전패 → 1위 아님").isGreaterThan(1);
+        int expectedTier = REWARD_TIERS.get(rank);
+
+        // 지갑 델타 = 원장 delta = seasonReward.points = 해당 순위 티어. 세 출처가 일치.
+        assertThat(walletPoints(uid) - walletBefore).isEqualTo((long) expectedTier);
+        assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
+        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo((long) expectedTier);
+
+        Map<String, Object> reward = seasonRewardOf(token);
+        assertThat(reward.get("status")).isEqualTo("GRANTED");
+        assertThat(((Number) reward.get("rank")).intValue()).isEqualTo(rank);
+        assertThat(((Number) reward.get("points")).intValue()).isEqualTo(expectedTier);
+    }
+
+    /**
+     * seasonReward = PENDING 노출(시즌 ACTIVE·미종료). points=0(예정액 아님 — web 오인 방지),
+     * awardedAt=null, rank=현재 잠정 순위(1~10). 원장에 지급행 없음.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void seasonRewardIsPendingWhileSeasonActive() {
+        String token = setupUserWithDeck("lg_pending");
+        String uid = userIdOf("lg_pending");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        Map<String, Object> reward = seasonRewardOf(token);
+        assertThat(reward.get("status")).isEqualTo("PENDING");
+        assertThat(((Number) reward.get("points")).intValue()).isEqualTo(0); // 예정액 채우지 않음.
+        assertThat(reward.get("awardedAt")).isNull();
+        int rank = ((Number) reward.get("rank")).intValue();
+        assertThat(rank).isBetween(1, 10);
+
+        // 미종료 → 원장 지급행 없음.
+        assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(0L);
+    }
+
+    private long walletPoints(String userId) {
+        return jdbcClient.sql("SELECT points FROM wallets WHERE user_id=?")
+                .param(userId).query(Long.class).single();
+    }
+
+    private long rewardLedgerCount(String userId, String seasonId) {
+        return jdbcClient.sql(
+                        "SELECT COUNT(*) FROM point_ledger WHERE user_id=? AND reason='league_reward' AND ref_id=?")
+                .params(userId, seasonId).query(Long.class).single();
+    }
+
+    private long rewardLedgerDelta(String userId, String seasonId) {
+        return jdbcClient.sql(
+                        "SELECT delta FROM point_ledger WHERE user_id=? AND reason='league_reward' AND ref_id=?")
+                .params(userId, seasonId).query(Long.class).single();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> seasonRewardOf(String token) {
+        ResponseEntity<Map> get = authGet("/api/league", token, Map.class);
+        Map<?, ?> season = (Map<?, ?>) get.getBody().get("season");
+        return (Map<String, Object>) season.get("seasonReward");
+    }
+
+    /** 시즌 종료 훅(package-private)을 재호출해 멱등 재진입을 검증(리플렉션 — production API 무확장). */
+    private void invokeSeasonHook(String method, String seasonId) {
+        try {
+            java.lang.reflect.Method m = LeagueService.class.getDeclaredMethod(method, String.class);
+            m.setAccessible(true);
+            m.invoke(leagueService, seasonId);
+        } catch (Exception e) {
+            throw new IllegalStateException("훅 재호출 실패: " + method, e);
+        }
+    }
+
     // ── 헬퍼 ─────────────────────────────────────────────────────────────
 
     private Map<String, Object> matchRow(String matchId) {

@@ -999,6 +999,30 @@ components:
             - $ref: "#/components/schemas/LeagueFixture"
             - type: "null"
           description: 다음 SCHEDULED 유저 경기(없으면 시즌 종료 임박)
+        seasonReward:
+          $ref: "#/components/schemas/SeasonReward"
+          description: >-
+            시즌 보상 요약(additive, 시즌종료 연출용 — P3-D8/AC-E1). SoT=point_ledger 지급행 + 순위 파생.
+
+    SeasonReward:
+      type: object
+      required: [rank, points, status]
+      description: >-
+        시즌 보상 요약. status 로만 지급 여부를 구분한다(PENDING 에서 points 는 예정액이 아니라 0).
+      properties:
+        rank:
+          type: integer
+          description: 유저 최종 순위(진행 중이면 현재 잠정 순위, 미확인 방어 케이스는 -1)
+        points:
+          type: integer
+          description: 실지급 포인트(원장 delta). PENDING/NONE 이면 0
+        status:
+          type: string
+          enum: [PENDING, GRANTED, NONE]
+          description: PENDING=시즌 진행 중(미지급) / GRANTED=지급됨 / NONE=종료됐으나 보상 없음(방어)
+        awardedAt:
+          type: [string, "null"]
+          description: 지급 시각(원장 created_at). 미지급이면 null
 
     LeagueResponse:
       type: object
