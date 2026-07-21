@@ -44,13 +44,25 @@ else
   bad "터널: 없음 (테스터 접속 불가 — 'bash infra/start-tunnel.sh' 로 재기동)"
 fi
 
-# 5) web (Pages)
-wcode=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$PAGES/" 2>/dev/null)
-[ "$wcode" = "200" ] && ok "web(Pages): $PAGES → 200" || bad "web(Pages): $PAGES → $wcode"
+# 5) web — 두 방식 지원: quick-tunnel serve(현 매니저 채택) 또는 Pages
+if [ -f /tmp/hmb-web-serve.pid ] && ps -p "$(cat /tmp/hmb-web-serve.pid)" >/dev/null 2>&1; then
+  scode=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://localhost:${WEB_PORT:-4321}/" 2>/dev/null)
+  [ "$scode" = "200" ] && ok "web 정적서버(로컬 ${WEB_PORT:-4321}): 200" || bad "web 정적서버: $scode"
+fi
+if [ -f /tmp/hmb-web-tunnel.pid ] && ps -p "$(cat /tmp/hmb-web-tunnel.pid)" >/dev/null 2>&1; then
+  WURL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb-web-tunnel.log 2>/dev/null | tail -1)
+  ok "web 터널: 실행 중 (pid $(cat /tmp/hmb-web-tunnel.pid))  ⇒ 테스터 URL=$WURL"
+  warn "테스터 URL 은 외부에서 열림 — 로컬 DNS 캐시로 이 머신 curl 은 실패할 수 있음(정상)"
+else
+  # Pages 방식 폴백 확인
+  wcode=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$PAGES/" 2>/dev/null)
+  [ "$wcode" = "200" ] && ok "web(Pages): $PAGES → 200" || warn "web 터널 없음 / Pages $PAGES → $wcode"
+fi
 
-# 6) CORS 결선 확인 (백엔드가 허용하는 오리진 = Pages 여야 함)
+# 6) CORS 결선 확인 (백엔드 허용 오리진 = 현재 web 오리진 = 테스터 URL 이어야 함)
 cors=$(docker exec hmb-java sh -c 'echo $HMB_CORS_ALLOWEDORIGINS' 2>/dev/null)
-[ "$cors" = "$PAGES" ] && ok "CORS 결선: $cors" || warn "CORS: '$cors' (Pages URL '$PAGES' 와 다름 — 왕복 막힐 수 있음)"
+if [ -n "${WURL:-}" ]; then EXPECT="$WURL"; else EXPECT="$PAGES"; fi
+[ "$cors" = "$EXPECT" ] && ok "CORS 결선: $cors" || warn "CORS: '$cors' (web 오리진 '$EXPECT' 와 다름 — 왕복 막힐 수 있음)"
 
 echo "═══════════════════════════════"
-echo "테스터 접속: $PAGES"
+echo "테스터 접속: ${WURL:-$PAGES}"

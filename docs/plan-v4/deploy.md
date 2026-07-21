@@ -353,11 +353,24 @@ curl -fsS -X POST https://<TUNNEL>/api/auth/login \
 
 ## 8. 운영
 
+### 8.0 ⚠️ DB 영속 — 테스터 데이터는 유지된다 (절대 지우지 말 것)
+
+SQLite 는 **Docker named volume `hmb-p3-db`**(컨테이너 `/var/lib/hmb/hmb.db`, `HMB_DB_PATH`)에
+파일로 보존된다. 다음은 **DB 를 건드리지 않는다** — 테스터 계정·덱·진행 그대로 유지:
+- `docker compose up -d` / `restart` / `up -d java`(CORS 반영 재시작) — 컨테이너 재생성돼도 볼륨은 유지
+- 터널 재시작(`start-tunnel.sh`·web 터널) · web 재배포(`deploy-web.sh`) — DB 무관
+- 머신 재부팅 후 `docker compose up -d` — 볼륨 그대로 다시 마운트
+
+**DB 를 지우는 건 오직 `docker compose down -v`(볼륨 삭제) 하나뿐이다.** 배포 스크립트
+(`start-tunnel.sh`·`deploy-web.sh`·`status.sh`) 어디에도 `down -v`·`.data` 삭제는 **없다**(검증됨).
+> 참고: 네이티브 실행(데모)은 `server-java/.data/hmb.db` 를 쓰지만, **배포본은 볼륨**을 쓴다 — 둘은 별개다.
+> 재배포 시 URL 만 바뀌고 DB 는 파일로 보존된다.
+
 ```bash
 docker compose logs -f java          # 로그
 docker compose restart executor      # 개별 재시작
-docker compose down                  # 정지 (데이터 유지)
-docker compose down -v               # ⚠️ 볼륨 삭제 = 전 데이터 소멸
+docker compose down                  # 정지 (⭕ 데이터 유지 — 볼륨 보존)
+docker compose down -v               # ⚠️ 볼륨 삭제 = 전 데이터 소멸 (이것만 지운다)
 ```
 
 **백업** (테스터 데이터 보존):
@@ -369,6 +382,28 @@ docker compose exec java sh -c 'cp /var/lib/hmb/hmb.db /tmp/backup.db' \
 
 **데이터 리셋**(테스터 초기화): `docker compose down -v && docker compose up -d`
 → 마이그레이션·시드가 처음부터 다시 실행된다.
+
+---
+
+## 8.5 배포 버전 매니페스트 (#164)
+
+**배포할 때마다 버전 스냅샷을 남긴다** — "지금 떠있는 게 정확히 뭔지"(git SHA·엔진·이미지 다이제스트·
+터널)를 추적하기 위함. `deploy-quicktunnel.sh` 가 자동 생성하고, 수동으로도:
+
+```bash
+bash infra/version-manifest.sh            # → infra/deploy-manifest.json + apps/web/dist/version.json
+```
+
+담기는 내용: `git{sha,branch,dirty}` · `versions{engine(런타임)·serverJava·web·servants}` ·
+`images{server-java·servants 다이제스트}` · `tunnel{kind,apiUrl,webUrl}` · `deployedAt`(UTC).
+
+**런타임 노출**: 매니페스트가 web dist 에 `version.json` 으로 복사돼 **`<WEB_URL>/version.json`** 으로 확인 가능
+(별도 백엔드 `/version` 엔드포인트는 server-java 도메인 몫 — #164 후속). `infra/deploy-manifest.json`
+은 에페메럴 URL 포함이라 gitignore(생성물) — 스냅샷은 배포 보고에 첨부한다.
+
+```bash
+curl -s <WEB_URL>/version.json    # 테스터/운영이 현재 배포 버전 확인
+```
 
 ---
 
