@@ -1,0 +1,58 @@
+/* 재생 컨트롤 바 (#148) — 모바일 우선. 플레이 모드는 큰 재생 버튼 + 배속 칩만. */
+.bar {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+/* 플레이 모드의 유일한 컨트롤 — 하이라이트 연출 on/off. */
+.highlight {
+  padding: 10px 20px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.highlight:hover {
+  border-color: var(--text-muted);
+}
+
+.highlightOn {
+  color: var(--text);
+  border-color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--text-muted);
+}
+
+.fullNote {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.modes {
+  display: flex;
+  gap: 4px;
+}
+
+.mode {
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.modeOn {
+  border-style: solid;
+  border-color: var(--text-muted);
+  color: var(--text);
+}

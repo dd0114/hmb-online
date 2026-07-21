@@ -63,6 +63,16 @@ hmb:
     morale-win: 8                  # 사기 승 +8
     morale-draw: 2                 # 사기 무 +2
     morale-loss: -8                # 사기 패 -8
+  trade:                           # AC-D 트레이드 (#149 능동화) — 수치 SoT 는 economy.v2 trade 블록.
+    # 레어도별 카운트다운은 economy trade.waitHours[grade](시간) 가 기본. 데모/로컬에서만 초 단위로
+    # 줄이고 싶을 때 등급별 오버라이드를 준다(하드코딩 금지 — 값은 전부 config).
+    # 기본은 비움 = 무회귀(waitHours 사용). env 로 주입: HMB_TRADE_WAITSECONDS_GOLD=10
+    wait-seconds: {}               # 예) { BRONZE: 5, SILVER: 8, GOLD: 10, DIA: 15, LEGEND: 20 }
+    busy-retry:                    # #152 동시 쓰기(SQLITE_BUSY_SNAPSHOT) 시 트랜잭션 통째 재시도.
+      # WAL 에서 읽기→쓰기 승격이 막히면 SQLite 가 busy_timeout 을 무시하고 즉시 실패시키므로,
+      # 대기가 아니라 롤백 후 재시도만이 해법이다. 소진 시 5xx 대신 TRADE_INVALID(계약 코드)로 내린다.
+      max-attempts: 4              # 최초 시도 포함 총 시도 횟수
+      backoff-ms: 20               # 회차 비례 선형 백오프(20/40/60ms)
   league:                          # AC-F 리그 (LLD-p2-server §6) — 봇전 간이결과 확률 모델 계수(하드코딩 금지)
     bot-team-count: 9              # 유저 제외 봇 팀 수(총 10팀 더블 라운드로빈 18R)
     roster-size: 15               # 봇 팀 로스터(선발 11 + 벤치 4)

@@ -6,6 +6,9 @@ import {
   loadMatchLogMessage,
   shouldFallbackAfterTimeout,
   shouldPostLog,
+  setChromeMessage,
+  highlightMessage,
+  isViewerStateMessage,
   VIEWER_EMBED_SRC,
   VIEWER_READY_TIMEOUT_MS,
   type BridgeEvent,
@@ -92,5 +95,27 @@ describe("viewer-bridge — 주입 시퀀스(레이스 무관)", () => {
     );
     expect(afterReset).toEqual({ viewerReady: true, logLoaded: true, posted: false });
     expect(shouldPostLog(afterReset)).toBe(true);
+  });
+});
+
+// ── #148: 컨트롤 크롬(뷰어 내부 컨트롤 표시) + 재생 명령 프로토콜 ──────────────
+describe("viewer-bridge — 컨트롤 크롬/명령 메시지", () => {
+  it("setViewerChrome 메시지는 모드를 그대로 싣는다", () => {
+    expect(setChromeMessage("play")).toEqual({ type: "setViewerChrome", mode: "play" });
+    expect(setChromeMessage("full")).toEqual({ type: "setViewerChrome", mode: "full" });
+  });
+
+  it("플레이 모드가 보내는 명령은 하이라이트 on/off 하나뿐이다", () => {
+    expect(highlightMessage(true)).toEqual({ type: "viewerControl", cmd: "highlight", on: true });
+    expect(highlightMessage(false)).toEqual({ type: "viewerControl", cmd: "highlight", on: false });
+  });
+
+  it("viewerState(iframe→parent)만 상태로 인정하고, 필드 타입을 검증한다", () => {
+    expect(isViewerStateMessage({ type: "viewerState", playing: true, speed: 2, ended: false, auto: true })).toBe(true);
+    expect(isViewerStateMessage({ type: "viewerState", playing: "yes", speed: 2, ended: false, auto: true })).toBe(false);
+    // auto 누락 = 구 브리지 아티팩트 → 계약 불일치로 거른다(재빌드 유도).
+    expect(isViewerStateMessage({ type: "viewerState", playing: true, speed: 2, ended: false })).toBe(false);
+    expect(isViewerStateMessage({ type: "viewerReady" })).toBe(false);
+    expect(isViewerStateMessage(null)).toBe(false);
   });
 });

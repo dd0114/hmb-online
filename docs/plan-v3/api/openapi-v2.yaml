@@ -190,6 +190,36 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/trade/{slot}/start:
+    parameters:
+      - $ref: "#/components/parameters/TradeSlotNo"
+    post:
+      tags: [trade]
+      operationId: startTradeSlot
+      summary: |
+        **[장 시작!]** — 슬롯의 장을 연다(능동 진입, #149). 새 시드로 오퍼를 확정하고
+        `state=WAITING` + 레어도별 카운트다운(config) 시작, **등급만 공개**(targetGrade).
+        IDLE 에서는 최초 시작, **OPEN 에서는 [거래 안함]**(공개된 선수를 버리고 새 오퍼·새 대기 —
+        "장 시작을 다시 누른 것과 동일") 이며 이 경우 trade_log 에 DECLINED(detail.action=skip) 기록.
+        WAITING/RESOLVING 에서는 400(TRADE_INVALID).
+      responses:
+        "200":
+          description: 새 오퍼로 WAITING 진입한 슬롯 + 지갑
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeStartResponse"
+        "400":
+          description: 슬롯이 IDLE·OPEN 이 아님(카운트다운 중 재시작 불가). code=TRADE_INVALID
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/trade/{slot}/speedup:
     parameters:
       - $ref: "#/components/parameters/TradeSlotNo"
@@ -264,7 +294,8 @@ paths:
       operationId: acceptTrade
       summary: |
         TRADE 오퍼 수락(상대가 지목한 내 선수 ↔ 대가 선수) → 높은 확률(config, 예 0.8) 성공.
-        성공 시 내 선수 이탈 + 대가 선수 영입. 결과는 trade_log 기록·슬롯 재생성.
+        성공 시 내 선수 이탈 + 대가 선수 영입. 결과는 trade_log 기록 + **슬롯 IDLE**(다음 장은
+        [장 시작!] 로 유저가 연다, #149).
       responses:
         "200":
           description: 판정 결과 + 갱신 보유
@@ -289,10 +320,12 @@ paths:
     post:
       tags: [trade]
       operationId: declineTrade
-      summary: TRADE 오퍼 거절 → 슬롯 재대기(WAITING 재생성). trade_log에 DECLINED 기록.
+      summary: |
+        TRADE 오퍼 거절 → **슬롯 IDLE**(장 종료, #149 능동화). trade_log에 DECLINED 기록.
+        새 오퍼를 바로 받으려면 `POST /{slot}/start`([거래 안함]) 를 쓴다.
       responses:
         "200":
-          description: 거절됨(재대기 슬롯)
+          description: 거절됨(IDLE 슬롯)
           content:
             application/json:
               schema:
@@ -769,7 +802,11 @@ components:
     # ─────────────────────────── 트레이드 (AC-D) ───────────────────────────
     TradeState:
       type: string
-      enum: [WAITING, OPEN, RESOLVING]
+      description: |
+        IDLE: 장이 닫힘(오퍼 없음) — 유저가 `POST /{slot}/start`("장 시작!")를 눌러야 오퍼가 생성된다.
+        WAITING: 오퍼 확정 + 카운트다운(등급만 공개, 선수 정체는 비공개). OPEN: 거래 가능(전면 공개).
+        RESOLVING: 판정 진행 중(과도 상태).
+      enum: [IDLE, WAITING, OPEN, RESOLVING]
 
     TradeOfferKind:
       type: string
@@ -786,7 +823,13 @@ components:
     TradeSlot:
       type: object
       description: |
-        슬롯 상태. WAITING: remainingSec/speedupCost. OPEN-FA: target(등장 선수) + 제안 확률 파라미터.
+        슬롯 상태. IDLE: 오퍼 없음(모든 오퍼 필드 null) — [장 시작!] 대기.
+        WAITING: targetGrade(등급만 공개) + remainingSec/speedupCost. **아직 한 번도 공개된 적 없는
+        오퍼면 target/demand/targetValue 는 null**(선수 정체는 카운트다운 만료 전까지 비공개).
+        단 **이미 OPEN 으로 공개됐던 오퍼가 다시 WAITING 이 된 경우(FA 제안 실패 후 재제안 쿨타임)는
+        계속 공개 상태를 유지**한다 — 유저가 이미 본 선수를 도로 가리지 않는다(인지 부조화 방지).
+        클라이언트 분기 기준 = `target == null`(가려짐) vs `target != null`(공개된 채 쿨타임 대기).
+        OPEN-FA: target(등장 선수) + 제안 확률 파라미터.
         OPEN-TRADE: target(대가 선수) + demand(상대가 지목한 내 선수) + acceptProbability.
       required: [slot, state]
       properties:
@@ -810,8 +853,9 @@ components:
             - type: "null"
           description: TRADE=상대가 지목한 내 선수
         opensAt:
-          type: string
+          type: [string, "null"]
           format: date-time
+          description: 카운트다운 만료 시각. IDLE(오퍼 없음)이면 null.
         remainingSec:
           type: integer
           minimum: 0
@@ -827,6 +871,21 @@ components:
           minimum: 0
           maximum: 1
           description: TRADE 수락 성공 확률(config, 서버 계산값)
+        targetGrade:
+          type: [string, "null"]
+          description: |
+            대상 선수 등급(BRONZE|SILVER|GOLD|DIA|LEGEND). **WAITING 부터 공개** — 카운트다운
+            중에는 등급만 알고 선수 정체는 모른다. IDLE 이면 null.
+
+    TradeStartResponse:
+      type: object
+      description: "[장 시작!] / [거래 안함] 결과 — 새 오퍼 생성 후 WAITING 슬롯"
+      required: [slot, wallet]
+      properties:
+        slot:
+          $ref: "#/components/schemas/TradeSlot"
+        wallet:
+          $ref: "#/components/schemas/WalletInfo"
 
     TradeSlotsResponse:
       type: object
