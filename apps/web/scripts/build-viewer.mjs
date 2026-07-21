@@ -47,15 +47,141 @@ export function readEmbeddedVersion(html) {
   return m ? m[1] : null;
 }
 
+/** 아티팩트 HTML 에 박힌 브리지 계약 버전을 읽음(#148 이전 아티팩트면 null). */
+export function readEmbeddedBridgeVersion(html) {
+  const m = html.match(new RegExp(`${BRIDGE_VERSION_MARKER}:\\s*([^\\s]+)\\s*-->`));
+  return m ? m[1] : null;
+}
+
 // 브리지 스크립트(임베드 로그 대신 부모 주입 로그 로드). dev-viewer 원본은 건드리지 않는다.
 export const BRIDGE_MARKER = "hmb-viewer-embed-bridge";
+/**
+ * 브리지 자체의 계약 버전(#148 컨트롤 크롬/명령 추가). 엔진 버전이 그대로여도 브리지가 바뀌면
+ * 기존 아티팩트는 낡은 것이므로 ensure-viewer 가 재빌드하도록 마커로 박는다.
+ */
+export const BRIDGE_VERSION_MARKER = "hmb-viewer-bridge-version";
+export const BRIDGE_VERSION = "3";
+/** 플레이 모드에서 뷰어 내부 컨트롤을 감추는 클래스(문서 루트에 건다). */
+export const CHROME_PLAY_CLASS = "hmb-chrome-play";
 export const bridgeScript = `<script>
 /* ${BRIDGE_MARKER} — apps/web/scripts/build-viewer.mjs 주입. dev-viewer 원본 무수정.
    부모(iframe host)로 viewerReady 를 알리고, {type:'loadMatchLog', matchLog} 수신 시
    임베드 로그 대신 주입 로그로 뷰어를 초기화한다. 원본의 fetch("./match-log.json") 지점을
-   가로채 주입 로그로 resolve → 원본 loadLog 가 그대로 호출된다(훅 추가 0). */
+   가로채 주입 로그로 resolve → 원본 loadLog 가 그대로 호출된다(훅 추가 0).
+
+   #148: 컨트롤 크롬 2모드. 기본(play)은 디버그 컨트롤 행/제목/상태줄/파일입력을 CSS 로 숨기고,
+   부모의 간소 컨트롤이 {type:'viewerControl'} 로 뷰어의 원래 버튼을 **클릭**해 몬다
+   (뷰어 로직 재구현 0). admin/QA 는 {mode:'full'} 로 원래 컨트롤을 전부 되살린다. */
 (function () {
   try { window.__LOG__ = null; } catch (e) {}
+
+  // ── 컨트롤 크롬(#148) ─────────────────────────────────────────────────────
+  var CHROME_CLASS = "${CHROME_PLAY_CLASS}";
+  var ALLOWED_SPEEDS = [1, 2, 4]; // 부모가 보낼 수 있는 배속 화이트리스트
+  var ERROR_CLASS = "hmb-chrome-error";
+  function ensureChromeStyle() {
+    if (document.getElementById("hmb-chrome-style")) return;
+    var st = document.createElement("style");
+    st.id = "hmb-chrome-style";
+    var h = "html." + CHROME_CLASS + " ";
+    st.textContent =
+      h + "h1," + h + ".controls," + h + "#status," + h + "input[type=file]" +
+      "{display:none !important;}" +
+      h + "body{padding-top:8px;}" +
+      // 로드/주입 실패는 숨기지 않는다 — 안 그러면 "멈춘 피치"로만 보인다(원인 비가시).
+      // 상태줄은 문서 맨 아래(HUD·티커 뒤)라 display 만 켜면 iframe 접힘 밖이다 → 화면 상단에 고정.
+      "html." + CHROME_CLASS + "." + ERROR_CLASS + " #status{display:block !important;color:#ff5a5a;" +
+      "position:fixed;top:8px;left:8px;right:8px;z-index:99999;padding:8px 10px;border-radius:8px;" +
+      "background:rgba(15,17,21,0.95);border:1px solid #ff5a5a;font-size:12px;}";
+    (document.head || document.documentElement).appendChild(st);
+  }
+  /* 뷰어 상태줄이 실패 문구가 되면 플레이 모드에서도 보이게 한다(위 CSS).
+     ⚠️ 클래스는 **바뀔 때만** 건드린다 — 무변경 write 도 mutation 으로 잡혀 옵저버가 자기 자신을
+     다시 깨우는 무한 루프가 된다. */
+  function syncErrorVisibility() {
+    var el = document.getElementById("status");
+    var bad = !!el && /fail|invalid|error/i.test(el.textContent || "");
+    var cl = document.documentElement.classList;
+    if (bad === cl.contains(ERROR_CLASS)) return;
+    if (bad) cl.add(ERROR_CLASS); else cl.remove(ERROR_CLASS);
+  }
+  function setChrome(mode) {
+    ensureChromeStyle();
+    var cl = document.documentElement.classList;
+    if (mode === "full") cl.remove(CHROME_CLASS); else cl.add(CHROME_CLASS);
+  }
+  // 기본 = 관객용. 부모가 full 을 보내기 전까진 디버그 크롬을 노출하지 않는다.
+  setChrome("play");
+
+  function playBtn() { return document.getElementById("playBtn"); }
+  function hlBtn() { return document.getElementById("highlightBtn"); }
+  function isPlaying() { var b = playBtn(); return !!b && b.textContent.indexOf("Pause") !== -1; }
+  function isAuto() { var b = hlBtn(); return !!b && b.classList.contains("active"); }
+  /* 하이라이트 자동페이싱 on/off. 켜져 있으면 뷰어가 speed 를 무시하고 자체 페이스로 돈다
+     (index.html: eff = autoPace ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed) → 배속을
+     유효하게 하려면 반드시 꺼야 한다. 플레이 모드는 이 토글을 숨기므로 브리지가 대신 누른다. */
+  function setAuto(on) {
+    var b = hlBtn();
+    if (b && isAuto() !== on) b.click();
+  }
+  function curSpeed() {
+    var a = document.querySelector("[data-speed].active");
+    var v = a ? parseFloat(a.getAttribute("data-speed")) : 1;
+    return isFinite(v) ? v : 1;
+  }
+  function atEnd() {
+    var s = document.getElementById("scrub");
+    var v = s ? parseFloat(s.value) : 0;
+    return isFinite(v) && v >= 99.99;
+  }
+  function stateSnapshot() { return { playing: isPlaying(), speed: curSpeed(), ended: atEnd(), auto: isAuto() }; }
+  function stateKey(s) { return s.playing + "|" + s.speed + "|" + s.ended + "|" + s.auto; }
+  function postState() {
+    var s = stateSnapshot();
+    lastState = stateKey(s);
+    try {
+      window.parent.postMessage(
+        { type: "viewerState", playing: s.playing, speed: s.speed, ended: s.ended, auto: s.auto },
+        "*"
+      );
+    } catch (e) {}
+  }
+  var lastState = "";
+  function handleControl(d) {
+    var pb = playBtn();
+    if (d.cmd === "toggle") { if (pb) pb.click(); }
+    else if (d.cmd === "play") { if (pb && !isPlaying()) pb.click(); }
+    else if (d.cmd === "pause") { if (pb && isPlaying()) pb.click(); }
+    else if (d.cmd === "auto") { setAuto(true); }
+    else if (d.cmd === "speed") {
+      if (ALLOWED_SPEEDS.indexOf(d.speed) === -1) return; // 화이트리스트 밖은 무시
+      var b = document.querySelector('[data-speed="' + d.speed + '"]');
+      if (!b) return;
+      setAuto(false); // 자동페이싱이 켜져 있으면 배속이 무동작이 된다 → 먼저 끈다
+      b.click();
+    } else return;
+    postState();
+  }
+  // 부모가 모르는 상태 변화(재생 진행/종료, 뷰어 자체 컨트롤 조작) 미러링.
+  // 변화 즉시 반영이 우선(라벨 지연 최소화) — MutationObserver 가 놓치는 것만 폴링이 줍는다.
+  function mirrorIfChanged() {
+    syncErrorVisibility();
+    if (stateKey(stateSnapshot()) !== lastState) postState();
+  }
+  // 관찰 대상은 상태를 담은 노드만 — 문서 전체를 보면 매 프레임 갱신되는 티커/HUD 까지 끌고 오고,
+  // 루트 클래스 변경이 콜백으로 되돌아온다.
+  if (typeof MutationObserver === "function") {
+    var mo = new MutationObserver(mirrorIfChanged);
+    var watchText = [playBtn(), document.getElementById("status")];
+    for (var i = 0; i < watchText.length; i++) {
+      if (watchText[i]) mo.observe(watchText[i], { childList: true, characterData: true, subtree: true });
+    }
+    var rows = document.querySelectorAll(".controls");
+    for (var j = 0; j < rows.length; j++) {
+      mo.observe(rows[j], { attributes: true, attributeFilter: ["class"], subtree: true });
+    }
+  }
+  setInterval(mirrorIfChanged, 300);
   var resolveLog;
   var pending = new Promise(function (res) { resolveLog = res; });
   var realFetch = (typeof window.fetch === "function") ? window.fetch.bind(window) : null;
@@ -69,8 +195,13 @@ export const bridgeScript = `<script>
     return realFetch ? realFetch.apply(window, arguments) : Promise.reject(new Error("fetch disabled"));
   };
   window.addEventListener("message", function (ev) {
+    // 호스트(부모 프레임)가 보낸 것만 받는다 — 다른 프레임/창의 postMessage 소음 차단.
+    if (ev && ev.source && ev.source !== window.parent) return;
     var d = ev && ev.data;
-    if (d && d.type === "loadMatchLog" && d.matchLog) { resolveLog(d.matchLog); }
+    if (!d) return;
+    if (d.type === "loadMatchLog" && d.matchLog) { resolveLog(d.matchLog); }
+    else if (d.type === "setViewerChrome") { setChrome(d.mode); }
+    else if (d.type === "viewerControl") { handleControl(d); }
   });
   function announce() { try { window.parent.postMessage({ type: "viewerReady" }, "*"); } catch (e) {} }
   if (document.readyState === "loading") window.addEventListener("DOMContentLoaded", announce);
@@ -169,7 +300,9 @@ export function injectBridge(standaloneHtml, engineVersion = "") {
   let out = standaloneHtml.replace(/\s*<script>window\.__LOG__ = [\s\S]*?;<\/script>/, "");
   // 2) 원본 module 스크립트 앞에 브리지(classic) 주입 — classic 은 deferred module 보다 먼저 실행.
   //    엔진 버전 마커도 같이 박아 predev(ensure-viewer)가 최신 여부를 값싸게 비교하게 한다.
-  const version = engineVersion ? `<!-- ${ENGINE_VERSION_MARKER}: ${engineVersion} -->\n    ` : "";
+  const version =
+    (engineVersion ? `<!-- ${ENGINE_VERSION_MARKER}: ${engineVersion} -->\n    ` : "") +
+    `<!-- ${BRIDGE_VERSION_MARKER}: ${BRIDGE_VERSION} -->\n    `;
   const before = out;
   out = out.replace(
     /(<script type="module">)/,
