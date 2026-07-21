@@ -37,10 +37,10 @@ describe("G-A 단조성: shoot 성향↑ → 슛 수↑ (config 가 실제 레�
       ...cfg,
       decisionWeights: { ...cfg.decisionWeights, shoot: 0.6 },
     };
-    // 8 시드로 충분(방향성 확인, 비용 절감).
-    const seeds8 = REALISM_SEEDS.slice(0, 8);
-    const base = aggregateRealism(cfg, seeds8).mean.shots;
-    const more = aggregateRealism(hotter, seeds8).mean.shots;
+    // 전체 20 시드. 8 시드는 표본 분산이 너무 커 효과크기가 요동친다(같은 대비에서 Δ가
+    // 8시드 4.00 vs 20시드 2.65 로 흔들림) — 임계를 낮추는 대신 표본을 늘려 계약을 강화한다.
+    const base = aggregateRealism(cfg, REALISM_SEEDS).mean.shots;
+    const more = aggregateRealism(hotter, REALISM_SEEDS).mean.shots;
     expect(more).toBeGreaterThan(base + 2);
   });
 });

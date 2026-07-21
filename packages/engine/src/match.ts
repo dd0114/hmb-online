@@ -205,6 +205,15 @@ function stepTick(carry: Carry): void {
   const { state, rng, config, pitch } = carry;
   const minute = tickToMinute(state.tick, config);
 
+  // --- 소유권 전환 추적(반응 지연용, #147 W2) ---
+  // 지난 틱의 경합 결과로 possession 이 바뀌었으면 직전 소유·전환 시점을 기록한다.
+  // decideOffBall 이 선수별 반응 지연을 이 값으로 판정한다(전원 동시 전환 = 동기 행진 방지).
+  if (state.possession !== state.possessionCur) {
+    state.possessionPrev = state.possessionCur;
+    state.possessionCur = state.possession;
+    state.possessionSince = state.tick;
+  }
+
   // --- 세트피스 정지(dead ball): 재배치만 하고 결정/경합/공비행 스킵 ---
   if (state.stoppage > 0) {
     state.stoppage--;
@@ -400,7 +409,19 @@ function stepTick(carry: Carry): void {
   if (state.stoppage > 0) return;
 
   // --- act: 선수 이동 ---
+  // 도달 톨러런스(#147 W2): 오프더볼 선수는 목표 근처면 멈춘다 — 전원이 목표점에 정확히 수렴하려
+  // 매 틱 미세 표류하며 팀 전체가 같이 꿈틀대는 걸 없앤다. 볼 소유자·GK 는 정밀 위치가 필요해 제외.
+  const tolFx = Math.round(config.movement.arriveToleranceM * config.fixedScale);
+  const holderId = state.ball.owner;
   for (const p of state.players) {
+    if (
+      tolFx > 0 &&
+      !p.isGK &&
+      p.id !== holderId &&
+      fdist(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y) <= tolFx
+    ) {
+      continue;
+    }
     const step = speedStep(p, config);
     const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
     const c = clampToPitch(pitch, next.x, next.y);
@@ -480,6 +501,9 @@ function initCarry(
     ball: { posFx: { x: 0, y: 0 }, owner: null, ownerSide: null, flight: null },
     score: { home: 0, away: 0 },
     possession: "home",
+    possessionCur: "home",
+    possessionPrev: "home",
+    possessionSince: 0,
     tick: 0,
     seedHash: hashSeed(seed),
     teams: { home: home.team, away: away.team },

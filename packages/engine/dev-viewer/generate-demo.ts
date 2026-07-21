@@ -47,6 +47,13 @@ export const showcaseConfig = {
     oneOnOneClearM: 7.0,
     oneOnOneXgMult: 2.0, // 1대1 하이라이트 더 강하게
   },
+  rules: {
+    ...defaultEngineConfig.rules,
+    foul: { ...defaultEngineConfig.rules.foul, base: 0.02 },
+    // 24분짜리 쇼케이스는 리얼 빈도로는 카드가 안 나올 때가 많다(파울 ~3건 × 옐로 0.17).
+    // 관전 데모는 카드 연출도 보여줘야 하므로 쇼케이스에서만 상향(리얼 config 는 무변경).
+    card: { ...defaultEngineConfig.rules.card, yellowProb: 0.5 },
+  },
   variety: {
     ...defaultEngineConfig.variety,
     dribbleChainProb: 0.8,
