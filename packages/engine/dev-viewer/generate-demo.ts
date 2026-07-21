@@ -31,7 +31,9 @@ export function buildDemoLog(): MatchLog {
  */
 export const showcaseConfig = {
   ...defaultEngineConfig,
-  version: "engine@0.9.0-showcase",
+  // 엔진 버전에서 파생 — 하드코딩하면 엔진이 올라가도 그대로 남아 qa-match/perceptibility 출력이
+  // 실제와 다른 버전을 보고한다(0.9.0 로 굳어 있었음).
+  version: `${defaultEngineConfig.version}-showcase`,
   matchMinutes: 24,
   decisionWeights: {
     ...defaultEngineConfig.decisionWeights,

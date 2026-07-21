@@ -1,4 +1,4 @@
-=== AC-goal-in-net: showcase(viewer) (engine@0.9.0-showcase, seed 4815162342) ===
+=== AC-goal-in-net: showcase(viewer) (engine@0.16.0-showcase, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
 총 골: 10
   #1 tick=104 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
