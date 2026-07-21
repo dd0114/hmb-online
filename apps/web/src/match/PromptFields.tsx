@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { CharAvatar } from "../common/CharAvatar";
 import styles from "./PromptFields.module.css";
 
 const PROMPT_MAX = 500;
@@ -66,6 +67,7 @@ export function PromptFields({
                 onClick={() => setOpenPlayerId(open ? null : p.playerId)}
               >
                 <span className={styles.playerPos}>{p.position}</span>
+                <CharAvatar playerId={p.playerId} name={p.name} size={26} />
                 <span className={styles.playerName}>{p.name}</span>
                 <span className={styles.playerRole}>{p.role === "starter" ? "선발" : "벤치"}</span>
                 {text && <span className={styles.hasPrompt} title="프롬프트 있음" />}
