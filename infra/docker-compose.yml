@@ -36,6 +36,9 @@ services:
       # /internal/** 게이트 토큰. executor 와 반드시 동일해야 한다.
       HMB_SERVANT_INTERNALTOKEN: ${SERVANT_TOKEN:?SERVANT_TOKEN must be set in infra/.env}
       HMB_DB_PATH: /var/lib/hmb/hmb.db
+      # CORS 허용 오리진(#128). web(Pages/Tunnel)은 교차 오리진이라 이게 없으면 브라우저가 차단.
+      # 콤마 구분. 미설정 시 server 기본값(http://localhost:5173)만 — 배포 시 반드시 Pages URL 지정.
+      HMB_CORS_ALLOWEDORIGINS: ${WEB_ORIGINS:-http://localhost:5173}
     volumes:
       - hmb-db:/var/lib/hmb           # SQLite 영속(WAL 포함). 유일한 상태 보관소.
     ports:
