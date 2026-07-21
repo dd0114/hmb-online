@@ -1,7 +1,7 @@
 import type { CatalogPlayer } from "../api/hooks";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
+import { CharAvatar } from "../common/CharAvatar";
 import { PersonalityBadge } from "../common/RelationBits";
-import { PlayerAvatar } from "../common/PlayerAvatar";
 import styles from "./PlayerCard.module.css";
 
 const ATTRIBUTE_LABELS: Array<[key: keyof CatalogPlayer["attributes"], label: string]> = [
@@ -51,10 +51,14 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
             </span>
           )}
         </span>
-        <span className={styles.identity}>
-          <PlayerAvatar player={player} size="md" />
-          <span className={styles.name}>{player.name}</span>
-        </span>
+        <CharAvatar
+          playerId={player.id}
+          name={player.name}
+          grade={player.grade}
+          size={48}
+          className={styles.avatar}
+        />
+        <span className={styles.name}>{player.name}</span>
         <span className={styles.grade} style={{ color: gradeColor }}>
           {GRADE_LABELS[player.grade]}
         </span>

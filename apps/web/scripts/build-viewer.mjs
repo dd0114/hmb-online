@@ -79,6 +79,90 @@ export const bridgeScript = `<script>
 })();
 </script>`;
 
+// ── 캐릭터 스킨 주입 (#145) ─────────────────────────────────────────────────
+//
+// 경기장 선수 토큰(단색 원 + 등번호)에 캐릭터 얼굴을 얹는다. **dev-viewer 원본은 여전히 무수정** —
+// 생성물 HTML 의 draw 블록을 여기서 치환한다(브리지 주입과 같은 규약).
+//
+// 트리트먼트는 실캡처 A/B(#145)로 확정한 값이다: 전신 sprites 는 토큰 지름 16~22px 에서 판독
+// 불가라 **얼굴 아바타**를 쓰고, 얼굴만 얹으면 팀 구분이 죽으므로 ①팀색 반투명 디스크
+// ②타일 바깥 팀색 링 ③팀색 등번호 뱃지 3종으로 현행 정보량(팀·소유·등번호)을 전부 보존한다.
+//
+// 스킨이 주입되지 않으면(구버전 부모·에셋 없음) `__HMB_SKIN` 이 비어 원본 분기로 떨어진다 —
+// 그 경로는 원본 코드와 **동일**하다.
+export const SKIN_MARKER = "hmb-viewer-char-skin";
+
+/** 치환 대상 = dev-viewer 의 선수 토큰 draw 블록. 바뀌면 빌드가 시끄럽게 실패한다. */
+const PLAYER_DRAW_NEEDLE = `          ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
+          ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
+          if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
+          const num = pa.playerId.replace(/[HA]/, "");
+          if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);`;
+
+const PLAYER_DRAW_SKINNED = `          /* ${SKIN_MARKER} — apps/web/scripts/build-viewer.mjs 주입. 스킨 없으면 원본과 동일. */
+          const _skin = window.__HMB_SKIN, _cell = _skin && _skin.ready && _skin.byPlayer[pa.playerId];
+          const _num = (_cell && _cell.num) || pa.playerId.replace(/[HA]/, "");
+          if (!_cell) {
+            ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
+            ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
+            if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
+            if (owner) ownerDraw = { num: _num, px, py }; else drawNum(_num, px, py);
+          } else {
+            const _rr = owner ? R + 2 : R, _S = _rr * 2 * 1.55, _ring = _S / 2 + 2.5;
+            const _team = isHome ? "#3b82f6" : "#ef4444";
+            ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
+            ctx.fillStyle = isHome ? "rgba(37,99,235,0.55)" : "rgba(220,38,38,0.55)"; ctx.fill();
+            const _sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(_skin.img, _cell.col * _skin.tile, _cell.row * _skin.tile, _skin.tile, _skin.tile,
+              px - _S / 2, py - _S / 2, _S, _S);
+            ctx.imageSmoothingEnabled = _sm;
+            ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
+            ctx.strokeStyle = owner ? "#fde047" : _team; ctx.lineWidth = owner ? 3.2 : 2.2; ctx.stroke();
+            const _bx = px + _ring * 0.78, _by = py + _ring * 0.78, _br = Math.max(5, _rr * 0.62);
+            ctx.beginPath(); ctx.arc(_bx, _by, _br, 0, Math.PI * 2);
+            ctx.fillStyle = _team; ctx.fill();
+            ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = 1; ctx.stroke();
+            ctx.save(); ctx.font = "bold " + Math.round(_br * 1.5) + "px monospace";
+            ctx.fillStyle = "#fff"; ctx.fillText(_num, _bx, _by); ctx.restore();
+            if (owner) ownerDraw = { num: "", px, py };
+          }`;
+
+/** 부모가 보낸 스킨 페이로드를 받아 아틀라스를 로드하는 브리지 조각(classic script 안에 들어간다). */
+export const skinBridgeScript = `<script>
+/* ${SKIN_MARKER} bridge — {type:'loadMatchLog', matchLog, skins} 의 skins 를 받아 아틀라스를 로드한다.
+   skins = { atlasUrl, tile, byPlayer: { <playerId>: {col,row} } }. 없거나 로드 실패면 원본 렌더. */
+(function () {
+  window.__HMB_SKIN = null;
+  window.addEventListener("message", function (ev) {
+    var d = ev && ev.data;
+    if (!d || d.type !== "loadMatchLog" || !d.skins) return;
+    var s = d.skins;
+    if (!s.atlasUrl || !s.tile || !s.byPlayer) return;
+    var img = new Image();
+    var skin = { img: img, tile: s.tile, byPlayer: s.byPlayer, ready: false };
+    img.onload = function () { skin.ready = true; };
+    img.onerror = function () { window.__HMB_SKIN = null; };  /* 에셋 없으면 조용히 원본 렌더 */
+    img.src = s.atlasUrl;
+    window.__HMB_SKIN = skin;
+  });
+})();
+</script>`;
+
+/**
+ * 생성물 HTML 의 선수 draw 블록을 스킨 가능 버전으로 치환한다.
+ * 대상 블록을 못 찾으면 **throw** — dev-viewer 가 바뀐 걸 조용히 넘기면 스킨이 사라진 채로
+ * 배포된다(무음 실패). 빌드 에러로 드러내서 여기 needle 을 갱신하게 만든다.
+ */
+export function injectSkin(html) {
+  if (!html.includes(PLAYER_DRAW_NEEDLE)) {
+    throw new Error(
+      "선수 draw 블록을 못 찾음 — dev-viewer index.html 이 바뀌었다. " +
+        "build-viewer.mjs 의 PLAYER_DRAW_NEEDLE 을 갱신해야 캐릭터 스킨(#145)이 유지된다.",
+    );
+  }
+  return html.replace(PLAYER_DRAW_NEEDLE, PLAYER_DRAW_SKINNED);
+}
+
 // index.html 원본을 후처리해 임베드 아티팩트 HTML 을 만든다(순수 함수 — 단위검증 용이).
 export function injectBridge(standaloneHtml, engineVersion = "") {
   // 1) 임베드된 __LOG__ 플레이스홀더 스크립트 제거(용량↓, fetch 경로 강제). 없으면 브리지가 런타임에 null 처리.
@@ -87,9 +171,13 @@ export function injectBridge(standaloneHtml, engineVersion = "") {
   //    엔진 버전 마커도 같이 박아 predev(ensure-viewer)가 최신 여부를 값싸게 비교하게 한다.
   const version = engineVersion ? `<!-- ${ENGINE_VERSION_MARKER}: ${engineVersion} -->\n    ` : "";
   const before = out;
-  out = out.replace(/(<script type="module">)/, `${version}${bridgeScript}\n    $1`);
+  out = out.replace(
+    /(<script type="module">)/,
+    `${version}${bridgeScript}\n    ${skinBridgeScript}\n    $1`,
+  );
   if (out === before) throw new Error("주입 지점(<script type=module>) 을 못 찾음 — dev-viewer index.html 구조 변경?");
-  return out;
+  // 3) 선수 토큰 draw 블록을 스킨 가능 버전으로 치환(#145). 못 찾으면 throw.
+  return injectSkin(out);
 }
 
 function run() {

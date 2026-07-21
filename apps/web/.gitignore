@@ -19,6 +19,9 @@ dist-ssr
 # QA 뷰어 임베드 아티팩트 — `npm run build:viewer` 로 재현(엔진 결정론 생성물). 엔진 버전 바뀌면 재빌드.
 public/viewer-embed.html
 
+# 캐릭터 에셋 스테이징 — `npm run build:chars` 로 재현(design/characters/dist 복사본).
+public/chars/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
