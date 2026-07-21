@@ -34,7 +34,7 @@ function mkPlayer(id: string, xM: number, yM: number): SimPlayer {
   return {
     id, side: "home", role: "CM", duty: "support", behavior: { ...BEH },
     mentalModifier: 0, attrs: { ...ATTRS }, baseFx: { ...fx }, posFx: { ...fx },
-    targetFx: { ...fx }, fatigue: 0, isGK: false, idHash: 1, dribbleStreak: 0, yellowCards: 0,
+    targetFx: { ...fx }, fatigue: 0, isGK: false, idHash: 1, dribbleStreak: 0, yellowCards: 0, seen: new Map(),
   };
 }
 

@@ -334,6 +334,49 @@ export interface EngineConfig {
     dribbleReach: number;
   };
 
+  /**
+   * vision — 오프더볼 시야 기반 인지·판단. (#147 W3, 후보 E)
+   *
+   * 레거시(enabled=false)는 오프더볼 선수가 **상대를 아예 안 봤다**(이동 목표가 상대 위치와
+   * 완전 독립). 그 위에 "반경 안 전원에게 끌림" 을 얹으면 전원이 같은 정보로 같은 결론을 내
+   * 공 쪽으로 몰린다. 그래서 두 계층을 함께 넣는다:
+   *  1) **인지** — 1틱에 정밀 추적 가능한 상대 수가 유한(주의 예산). 나머지는 **마지막 본 위치**
+   *     로 판단하고, 오래되면 잊는다 → 선수마다 아는 것이 달라진다.
+   *  2) **판단** — 인지한 상대에게 무조건 붙지 않는다. 위협도 대비 도달비용으로 **한 명만** 고른다.
+   *
+   * 설계 근거(조사): 실제 시스템은 존재 여부를 하드 기하로 자르고 불확실성은 *정보의 질*에 둔다
+   * (RoboCup 2D·SimSpark·UE·Thief 공통, "매 틱 보일 확률" 을 굴리는 사례는 없다). 기억은
+   * "정확하지만 낡은" 값이며(librcsc pos_count: 선수 30틱=3초 폐기), 위치를 점점 흐리는 건
+   * 표준이 아니라 연구 주제다. 우리는 1초 틱이라 순간 시야각/시선 스캔은 해상도 불일치로 기각
+   * (RoboCup 은 360° 스윕이 600ms — 우리 1틱 안에 이미 한 바퀴 훑는다). 그래서 남는 이식 가능
+   * 요소가 **주의 예산 + 기억/스테일** 이다.
+   */
+  vision: {
+    /** 활성화. false 면 레거시(오프더볼이 상대를 전혀 안 봄) — 회귀 기준. */
+    enabled: boolean;
+    /** 인지 반경(m). 이 밖은 아예 모른다. 실측상 몰림의 레버가 아니므로 크게 흔들 값이 아니다. */
+    radiusM: number;
+    /** 주의 예산 기준값 — 1틱에 정밀 추적(기억 갱신)하는 상대 수. */
+    attentionBase: number;
+    /** 인지 속성(positioning·mental 평균)이 주의 예산에 주는 최대 가감(±명). 스탯이 시야를 넓히는 게 아니라 **주의를 늘린다**. */
+    attentionAttrSwing: number;
+    /** 기억 폐기 틱. 이 틱 넘게 못 본 상대는 판단에서 제외(librcsc pos_count 방식). */
+    memoryTicks: number;
+    /** 공격 시 아는 상대에게서 멀어지는 최대 거리(m) — 공간 찾기. */
+    spaceReach: number;
+    /** 수비 시 **선택한** 상대에게 붙는 최대 거리(m). */
+    markReach: number;
+    /** 마킹 대상 선택의 도달비용 가중(자기→상대 거리 계수). 클수록 먼 상대를 포기하고 자리를 지킨다. */
+    markCostWeight: number;
+    /**
+     * `markTarget`(AI 전담 마크 지시)이 대상 선택 가치에 주는 가산(m 환산).
+     * 레거시는 markTarget 을 **하드 오버라이드**(다른 판단 무시, 상대-내골 사이로 강제 이동)로
+     * 처리해 "무조건" 동작의 원인이었다. 이제는 **강한 가중치**로만 작용해 지시는 먹히되
+     * 도달비용이 과하면 붙지 않는다. (팀 레벨 상대별 가중치 opponentFocus 는 계약 #167 대기)
+     */
+    markTargetBias: number;
+  };
+
   /** 포메이션 정규화 슬롯(0..1, 공격 방향 +x 프레임). 최소 4-3-3 정의. */
   formations: Record<string, Vec2[]>;
 }
@@ -358,7 +401,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.16.0",
+  version: "engine@0.17.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -381,7 +424,8 @@ export const defaultEngineConfig: EngineConfig = {
     pass: 0.5,
     dribble: 0.46,
     // G-A(#99): 슛 과다(팀 23.85→~13.6, 벤치 12-14). shoot 0.5→0.35 로 슛 성향 하향.
-    shoot: 0.34,
+    // #147 W3: 시야 계층(vision)이 수비 효율을 바꿔 슛이 14.0→14.7 로 올랐다 → 벤치(12-14) 복귀용 재튜닝.
+    shoot: 0.30,
     hold: 0.42,
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
     // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
@@ -408,7 +452,7 @@ export const defaultEngineConfig: EngineConfig = {
     interceptBase: 0.06,
     tackleBase: 0.14,
     // G-A(#99): 슛당 xG 하향(0.13→~0.12, 벤치 0.10-0.12). 0.225→0.19.
-    xgBase: 0.19,
+    xgBase: 0.185,
     shotBallSpeed: 14,
     shootXgThreshold: 0.07,
     // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
@@ -512,6 +556,17 @@ export const defaultEngineConfig: EngineConfig = {
     supportPull: 0.08,
     roamFactor: 0.08,
     dribbleReach: 0.12,
+  },
+  vision: {
+    enabled: true,
+    radiusM: 20,
+    attentionBase: 3,
+    attentionAttrSwing: 2,
+    memoryTicks: 3,
+    spaceReach: 6,
+    markReach: 3,
+    markCostWeight: 2,
+    markTargetBias: 40,
   },
   formations: {
     "4-3-3": formation433,

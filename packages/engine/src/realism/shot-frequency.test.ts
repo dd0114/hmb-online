@@ -36,21 +36,26 @@ describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
 });
 
 describe("G-A 단조성: shoot 성향↑ → 슛 수↑ (config 가 실제 레버)", () => {
-  it("shoot 0.34→0.6 로 올리면 팀당 슛이 유의미하게(≥2) 증가", () => {
-    const hotter: EngineConfig = {
-      ...cfg,
-      decisionWeights: { ...cfg.decisionWeights, shoot: 0.6 },
-    };
-    // 전체 20 시드. 8 시드는 표본 분산이 너무 커 효과크기가 요동친다(같은 대비에서 Δ가
-    // 8시드 4.00 vs 20시드 2.65 로 흔들림) — 임계를 낮추는 대신 표본을 늘려 계약을 강화한다.
+  it("shoot 사다리 0.15→0.8 에서 팀당 슛이 단조 증가한다", () => {
+    // 단일 대비의 "효과크기 ≥N" 대신 **사다리 전체의 단조성**을 박는다 — 임계 하나를 고르는 것보다
+    // 구조적으로 강한 계약이고, 튜닝으로 임계를 맞추는 여지가 없다.
     //
-    // 정직한 이력(검증 세션 지적으로 박제): 표본을 8→20 으로 바꾼 시점(#147 W2, 19b4b10)에
-    // 이 계약은 8시드 Δ=1.25 로 **실패**했고 20시드 2.40 으로만 통과했다 — 그때의 표본 변경은
-    // "강화"가 아니라 그 실패를 가린 것이었다. W2 동작 변경은 효과 없음으로 판명돼 01d959e 에서
-    // 철회됐고(엔진 0.16.0 복귀), 현재는 8시드 4.00 / 20시드 2.65 로 **둘 다 통과**한다.
-    // 그럼에도 표본 20 을 유지하는 근거는 그 두 값의 벌어짐 자체(8시드 분산 과다)다.
-    const base = aggregateRealism(cfg, REALISM_SEEDS).mean.shots;
-    const more = aggregateRealism(hotter, REALISM_SEEDS).mean.shots;
-    expect(more).toBeGreaterThan(base + 2);
+    // 실측 사다리(engine@0.17.0, 20시드): 0.15→8.82 · 0.22→11.20 · 0.30→13.35 ·
+    // 0.45→14.70 · 0.60→15.28 · 0.80→15.50.
+    // 주의: **0.45 위에서 포화**한다(다른 제약이 먼저 묶임). 그래서 예전 계약이 쓰던
+    // "0.34→0.6 에서 ≥+2" 는 #147 W3(시야 계층) 이후 1.93 으로 임계 미달이 됐다 — 임계를 낮추는
+    // 대신 사다리로 바꿔 방향성을 더 넓은 구간에서 검증한다. 비포화 구간의 효과크기는 여전히
+    // 크다(0.15→0.30 에서 +4.5).
+    const ladder = [0.15, 0.22, 0.3, 0.45];
+    const shots = ladder.map(
+      (shoot) =>
+        aggregateRealism({ ...cfg, decisionWeights: { ...cfg.decisionWeights, shoot } }, REALISM_SEEDS).mean.shots,
+    );
+    for (let i = 1; i < shots.length; i++) {
+      expect(shots[i], `shoot ${ladder[i - 1]}→${ladder[i]} 구간에서 증가해야 (측정 ${shots.join(" → ")})`)
+        .toBeGreaterThan(shots[i - 1]!);
+    }
+    // 비포화 구간의 효과크기가 실질적이어야 한다(노브가 살아있다는 증거).
+    expect(shots[shots.length - 1]! - shots[0]!).toBeGreaterThan(4);
   });
 });

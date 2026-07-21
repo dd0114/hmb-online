@@ -31,6 +31,14 @@ export interface SimPlayer {
   dribbleStreak: number;
   /** 받은 옐로카드 수(2장 누적 시 퇴장). */
   yellowCards: number;
+  /**
+   * 상대별 마지막으로 본 위치와 시점(시야 기억, #147 W3). key = 상대 playerId.
+   * 값은 **정확하지만 낡을 수 있다** — 본 순간의 좌표를 그대로 담고, 갱신 시점(tick)으로
+   * 신선도를 판단한다(librcsc pos_count 방식: 위치를 흐리는 게 아니라 나이로 신뢰도를 잰다).
+   * `config.vision.memoryTicks` 를 넘긴 기억은 판단에서 제외된다.
+   * 재개(resume) 시에도 carry state 로 관통하므로 하프 분할/통짜 동일성이 유지된다.
+   */
+  seen: Map<string, { x: number; y: number; tick: number }>;
 }
 
 /** 공 비행 상태(패스/슛/루즈볼). */
