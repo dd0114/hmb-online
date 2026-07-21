@@ -6,17 +6,18 @@
 //   parent → iframe : { type: "loadMatchLog", matchLog, skins? } (해당 half MatchLog 주입,
 //                     skins = 경기장 캐릭터 스킨 #145 — optional additive)
 //   parent → iframe : { type: "setViewerChrome", mode }   (#148 뷰어 내부 컨트롤 표시/숨김)
-//   parent → iframe : { type: "viewerControl", cmd, speed }(#148 재생/일시정지/배속/자동페이싱)
+//   parent → iframe : { type: "viewerControl", cmd: "highlight", on } (#148 하이라이트 연출 on/off)
 //   iframe → parent : { type: "viewerState", playing, speed, ended, auto } (#148 상태 미러링)
 //
-// #148: 플레이 모드에선 뷰어 내부 컨트롤(되감기·프레임점프·스크럽·배율·디버그 토글)을 숨기고,
-// web 이 그린 간소 컨트롤이 위 명령으로 뷰어를 몬다. 뷰어(dev-viewer) 원본은 무수정 —
-// 크롬 CSS·명령 핸들러는 apps/web/scripts/build-viewer.mjs 가 주입하는 브리지가 담당한다.
+// #148: 플레이 모드에선 뷰어 내부 컨트롤(재생/일시정지·배속·되감기·프레임점프·스크럽·배율·
+// 디버그 토글)을 전부 숨긴다. 경기는 **자동 진행**하고 유일한 컨트롤은 **하이라이트 토글**이다
+// (hero 재지시). 뷰어(dev-viewer) 원본은 무수정 — 크롬 CSS·명령 핸들러는
+// apps/web/scripts/build-viewer.mjs 가 주입하는 브리지가 담당한다.
 //
 // 레이스: viewerReady 와 half 로그(useHalfLog) 는 어느 쪽이 먼저 올지 모른다.
 // 그래서 "둘 다 준비 && 아직 안 보냄" 일 때만 주입한다(shouldPostLog / bridgeReducer).
 
-import { isPlaySpeed, type ControlMode, type PlaySpeed } from "./playback-controls";
+import { type ControlMode } from "./playback-controls";
 
 /** iframe src (vite public → 루트 서빙). 생성물 = apps/web/scripts/build-viewer.mjs. */
 export const VIEWER_EMBED_SRC = "/viewer-embed.html";
@@ -54,12 +55,13 @@ export interface SetChromeMessage {
   mode: ControlMode;
 }
 
-export type ViewerCommand = "toggle" | "play" | "pause" | "speed" | "auto";
+export type ViewerCommand = "highlight";
 
 export interface ViewerControlMessage {
   type: "viewerControl";
   cmd: ViewerCommand;
-  speed?: PlaySpeed;
+  /** 하이라이트 연출(주요장면 슬로우·접촉 줌) 켜기/끄기. */
+  on: boolean;
 }
 
 export interface ViewerStateMessage {
@@ -77,15 +79,11 @@ export function setChromeMessage(mode: ControlMode): SetChromeMessage {
 }
 
 /**
- * 재생 명령 생성. 배속은 화이트리스트(PLAY_SPEEDS) 값만 통과 —
- * 밖의 값이면 null 을 돌려 명령 자체를 만들지 않는다(브리지로 흘리지 않음).
+ * 하이라이트 연출 on/off 명령. 플레이 모드의 **유일한** 컨트롤이다
+ * (재생/일시정지·배속 명령은 없다 — 경기는 자동 진행).
  */
-export function viewerControlMessage(cmd: ViewerCommand, speed?: PlaySpeed): ViewerControlMessage | null {
-  if (cmd === "speed") {
-    if (!isPlaySpeed(speed)) return null;
-    return { type: "viewerControl", cmd, speed };
-  }
-  return { type: "viewerControl", cmd };
+export function highlightMessage(on: boolean): ViewerControlMessage {
+  return { type: "viewerControl", cmd: "highlight", on };
 }
 
 /** iframe 이 보낸 재생 상태 미러링 메시지인지(필드 타입까지 검증). */

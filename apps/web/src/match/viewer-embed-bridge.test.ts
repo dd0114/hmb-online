@@ -3,8 +3,9 @@
  * iframe 쪽 브리지(#148 컨트롤 크롬/명령) 동작 계약. build-viewer.mjs 가 주입하는 스크립트를
  * dev-viewer 컨트롤 마크업 복제본 위에서 **실제로 실행**해 검증한다(문자열 grep 아님).
  *
- * 계약: 플레이 모드는 뷰어 내부 컨트롤(제목·컨트롤 행·상태줄·파일입력)을 숨기고,
- * 부모 명령은 뷰어의 **원래 버튼을 클릭**해 처리한다(재생 로직 재구현 0, 원본 무수정).
+ * 계약: 플레이 모드는 뷰어 내부 컨트롤(제목·컨트롤 행·상태줄·파일입력)을 숨기고, 경기는 자동
+ * 진행한다. 부모가 보내는 유일한 명령 = 하이라이트 on/off 이며, 뷰어의 **원래 버튼을 클릭**해
+ * 처리한다(재생 로직 재구현 0, 원본 무수정).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bridgeScript, CHROME_PLAY_CLASS } from "../../scripts/build-viewer.mjs";
@@ -153,74 +154,41 @@ describe("embed bridge — 컨트롤 크롬", () => {
   });
 });
 
-describe("embed bridge — 재생 명령", () => {
-  it("toggle 은 뷰어의 재생 버튼을 클릭한다(재생 로직 재구현 0)", () => {
-    send({ type: "viewerControl", cmd: "toggle" });
-    expect(clicks).toEqual(["play"]);
+describe("embed bridge — 하이라이트 명령(플레이 모드의 유일한 컨트롤)", () => {
+  it("로그 주입 시 기본 배속 4x 를 박는다(뷰어 자체 기본 1x 는 너무 느리다)", async () => {
+    send({ type: "loadMatchLog", matchLog: { tickSnapshots: [], events: [], finalScore: {} } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(clicks).toEqual(["speed:4"]);
+    expect(document.querySelector("[data-speed].active")?.getAttribute("data-speed")).toBe("4");
   });
 
-  it("play/pause 는 현재 상태를 보고 필요한 때만 클릭한다(토글 꼬임 방지)", () => {
-    send({ type: "viewerControl", cmd: "play" });
-    expect(clicks).toEqual(["play"]); // 정지 → 재생
-    send({ type: "viewerControl", cmd: "play" });
-    expect(clicks).toEqual(["play"]); // 이미 재생 중 → 클릭 없음
-    send({ type: "viewerControl", cmd: "pause" });
-    expect(clicks).toEqual(["play", "play"]);
-  });
-
-  it("배속은 화이트리스트(1·2·4)만 적용 — 슬로우/미지의 값은 무시한다", () => {
-    send({ type: "viewerControl", cmd: "speed", speed: 2 });
-    expect(clicks.filter((c) => c.startsWith("speed"))).toEqual(["speed:2"]);
-    send({ type: "viewerControl", cmd: "speed", speed: 0.25 });
-    send({ type: "viewerControl", cmd: "speed", speed: 8 });
-    send({ type: "viewerControl", cmd: "speed", speed: '2"]/../..//[data-speed="4' });
-    expect(clicks.filter((c) => c.startsWith("speed"))).toEqual(["speed:2"]);
-  });
-
-  // 회귀 가드: 배속을 눌러도 하이라이트 자동페이싱이 켜져 있으면 뷰어는 speed 를 무시한다
-  // (index.html:729 `eff = autoPace ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed`).
-  // 플레이 모드는 뷰어의 Highlights 토글을 숨기므로, 배속 명령이 직접 꺼줘야 실제로 빨라진다.
-  it("배속 명령은 하이라이트 자동페이싱을 끈다(안 끄면 배속이 무동작)", () => {
-    send({ type: "viewerControl", cmd: "speed", speed: 4 });
+  it("off 는 뷰어 Highlights 를 끄고, 기본 속도(4x)로 진행시킨다", () => {
+    // 배속 컨트롤이 없으므로 연출을 끄면 뷰어 기본 1x(≈실시간)에 갇힌다 → 브리지가 4x 로 올린다.
+    send({ type: "viewerControl", cmd: "highlight", on: false });
     expect(clicks).toEqual(["highlight", "speed:4"]);
     expect(document.getElementById("highlightBtn")!.classList.contains("active")).toBe(false);
-    // 이미 꺼져 있으면 다시 토글하지 않는다(꼬임 방지).
-    send({ type: "viewerControl", cmd: "speed", speed: 2 });
-    expect(clicks).toEqual(["highlight", "speed:4", "speed:2"]);
+    expect(document.querySelector("[data-speed].active")?.getAttribute("data-speed")).toBe("4");
   });
 
-  it("auto 명령은 하이라이트 자동페이싱을 되돌린다(기본 관람 페이스)", () => {
-    send({ type: "viewerControl", cmd: "speed", speed: 2 }); // 자동페이싱 off
-    send({ type: "viewerControl", cmd: "auto" });
+  it("on 은 Highlights 를 되살린다(이미 그 상태면 아무것도 안 누른다)", () => {
+    send({ type: "viewerControl", cmd: "highlight", on: true }); // 기본이 on → 무동작
+    expect(clicks).toEqual([]);
+    send({ type: "viewerControl", cmd: "highlight", on: false });
+    send({ type: "viewerControl", cmd: "highlight", on: true });
     expect(document.getElementById("highlightBtn")!.classList.contains("active")).toBe(true);
-    send({ type: "viewerControl", cmd: "auto" }); // 이미 켜짐 → 무동작
     expect(clicks.filter((c) => c === "highlight")).toHaveLength(2);
   });
 
-  it("미러링 상태에 자동페이싱 여부(auto)가 포함된다", async () => {
-    await new Promise((r) => setTimeout(r, 0));
-    expect(lastState()).toMatchObject({ auto: true });
-    send({ type: "viewerControl", cmd: "speed", speed: 2 });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(lastState()).toMatchObject({ auto: false, speed: 2 });
-  });
-
-  it("명령 처리 후 재생 상태를 부모로 미러링한다(버튼 라벨 동기화용)", async () => {
-    send({ type: "viewerControl", cmd: "toggle" });
-    send({ type: "viewerControl", cmd: "speed", speed: 4 });
-    await new Promise((r) => setTimeout(r, 0));
-    expect(lastState()).toEqual({
-      type: "viewerState",
-      playing: true,
-      speed: 4,
-      ended: false,
-      auto: false,
-    });
-  });
-
-  it("알 수 없는 cmd 는 아무것도 하지 않는다", () => {
-    send({ type: "viewerControl", cmd: "restart" });
-    send({ type: "viewerControl" });
+  it("재생/일시정지·배속 명령은 더 이상 존재하지 않는다(경기는 자동 진행)", () => {
+    for (const cmd of ["toggle", "play", "pause", "speed", "auto", "restart"]) {
+      send({ type: "viewerControl", cmd, speed: 2 });
+    }
     expect(clicks).toEqual([]);
+  });
+
+  it("명령 처리 후 하이라이트 상태를 부모로 미러링한다", async () => {
+    send({ type: "viewerControl", cmd: "highlight", on: false });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(lastState()).toMatchObject({ auto: false, speed: 4 });
   });
 });
