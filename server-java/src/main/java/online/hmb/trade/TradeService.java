@@ -72,8 +72,11 @@ import org.springframework.stereotype.Service;
  * <p><b>TRADE 판정</b>: accept = {@code acceptProb}(0.8) 롤 → 성공 시 demand 이탈 + target 영입,
  * 실패/거절도 장을 닫는다({@code IDLE}). 모든 결과는 trade_log 기록.
  *
- * <p><b>멱등</b>: speedup 지출은 point_ledger(reason='trade_speedup', ref=slotId:seed) — 같은 오퍼
- * 회차 내 중복 차감 방지(uq_ledger 재사용). FA 성공 포인트 지출도 ref=slotId:seed.
+ * <p><b>멱등</b>: speedup 지출은 point_ledger(reason='trade_speedup',
+ * ref={@code slotId:seed:opensAt}) — <b>대기 회차 단위</b> 중복 차감 방지(uq_ledger 재사용, #151).
+ * seed 는 FA 실패 재대기에서 그대로 유지되므로 회차 구분은 매번 새로 찍히는 {@code opens_at} 이 한다
+ * (구 {@code slotId:seed} 키는 쿨타임 단축을 2회차부터 0P 로 만들었다). FA 성공 포인트 지출은
+ * 오퍼당 1회뿐이라 ref={@code slotId:seed} 유지.
  */
 @Service
 public class TradeService {
@@ -151,6 +154,50 @@ public class TradeService {
                 byGrade, t.path("value").path("attrSumCoeff").asInt());
     }
 
+    // ── 트랜잭션 실행 (SQLITE_BUSY 바운디드 재시도, #152) ────────────────
+
+    /**
+     * 서비스 트랜잭션 실행 래퍼. SQLite WAL 에서 <b>읽기로 시작한 트랜잭션이 쓰기로 승격</b>할 때
+     * 그 사이 다른 커넥션이 커밋했으면 {@code SQLITE_BUSY_SNAPSHOT} 이 <b>busy_timeout 을 무시하고
+     * 즉시</b> 난다(기다려도 낡은 스냅샷은 되살아나지 않으므로 busy handler 자체가 호출되지 않는다).
+     * 트레이드 진입점은 전부 SELECT→UPDATE 순서라 이 패턴에 정확히 해당해, 동시 [장 시작!] 연타가
+     * 500 으로 새어나갔다(#152).
+     *
+     * <p>해법은 <b>롤백 후 트랜잭션 통째 재시도</b>다(같은 트랜잭션 안에서 재시도하면 스냅샷이 그대로라
+     * 소용없다) — 그래서 재시도는 반드시 {@code txRunner.run} <b>바깥</b>에 있다. 실패한 시도는 전부
+     * 롤백되므로 부분 쓰기는 남지 않는다. 재시도 후 대개는 정상 경로(예: "이미 WAITING" → 400)로
+     * 수렴한다. 횟수를 소진하면 5xx 대신 계약 코드({@code TRADE_INVALID})로 내린다 — 유저에게 5xx 를
+     * 노출하지 않는다. 시도 횟수·백오프는 config({@code hmb.trade.busy-retry.*}).
+     */
+    private <T> T inTxWithBusyRetry(java.util.function.Supplier<T> action) {
+        int maxAttempts = Math.max(1, tradeProperties.getBusyRetry().getMaxAttempts());
+        long backoffMs = Math.max(0, tradeProperties.getBusyRetry().getBackoffMs());
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return txRunner.run(action);
+            } catch (DataAccessException e) {
+                if (!SqliteErrors.isBusy(e)) {
+                    throw e;
+                }
+                if (attempt >= maxAttempts) {
+                    throw tradeInvalid("요청이 동시에 몰려 처리하지 못했습니다 — 잠시 후 다시 시도하세요");
+                }
+                sleepQuietly(backoffMs * attempt); // 선형 백오프
+            }
+        }
+    }
+
+    private static void sleepQuietly(long millis) {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     // ── 슬롯 보장 (lazy 생성) ────────────────────────────────────────────
 
     /**
@@ -199,7 +246,7 @@ public class TradeService {
      * (trade_log CHECK 제약을 건드리지 않도록 result 는 기존 enum 재사용).
      */
     public TradeStartResponse start(String userId, int slotNo) {
-        return txRunner.run(() -> {
+        return inTxWithBusyRetry(() -> {
             ensureSlots(userId);
             TradeConfig cfg = config();
             SlotRow row = requireSlot(userId, slotNo);
@@ -330,7 +377,7 @@ public class TradeService {
     // ── 조회 (GET /api/trade) ───────────────────────────────────────────
 
     public TradeSlotsResponse getSlots(String userId) {
-        return txRunner.run(() -> {
+        return inTxWithBusyRetry(() -> {
             ensureSlots(userId);
             TradeConfig cfg = config();
             List<TradeSlot> slots = new ArrayList<>();
@@ -345,7 +392,7 @@ public class TradeService {
     // ── 대기 단축 (POST /{slot}/speedup) ────────────────────────────────
 
     public TradeSpeedupResponse speedup(String userId, int slotNo) {
-        return txRunner.run(() -> {
+        return inTxWithBusyRetry(() -> {
             ensureSlots(userId);
             TradeConfig cfg = config();
             SlotRow row = requireSlot(userId, slotNo);
@@ -362,7 +409,10 @@ public class TradeService {
                 throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "INSUFFICIENT_POINTS",
                         "포인트가 부족합니다", Map.of("balance", balance, "cost", cost));
             }
-            String refId = row.id() + ":" + row.seed();
+            // #151: 멱등키는 "이 대기 회차"까지 좁힌다 — opens_at 은 start/FA실패 재대기마다 새로
+            // 찍히므로 회차가 자연 분리된다. (구 refId=slotId:seed 는 FA 실패가 같은 seed 를 유지해
+            // 2회차부터 charged=false → 0P 무제한 즉시 재도전이 됐다.)
+            String refId = row.id() + ":" + row.seed() + ":" + row.opensAt();
             boolean charged;
             try {
                 charged = walletService.apply(userId, -cost, "trade_speedup", refId);
@@ -373,7 +423,12 @@ public class TradeService {
                 }
                 throw e;
             }
-            int spent = charged ? cost : 0; // 멱등: 같은 오퍼 회차에 이미 지불했으면 재차감 없음
+            // #151 백스톱(심층방어): 차감이 실제로 일어나지 않았으면 단축하지 않는다. 정상 더블클릭은
+            // 첫 요청이 이미 OPEN 으로 바꿔놔 위 "WAITING 아님 → 400" 에서 걸리므로 여기 오지 않는다.
+            if (!charged) {
+                throw tradeInvalid("이번 대기 회차의 단축 비용이 이미 청구돼 있습니다 — 잠시 후 다시 시도하세요");
+            }
+            int spent = cost;
             // opens_at 을 now 로 앞당겨 즉시 OPEN (남은시간 비례 비용을 지불하고 대기 전량 소거).
             String now = Instant.now().toString();
             jdbcClient.sql("UPDATE trade_slots SET opens_at = ?, state = 'OPEN', revealed = 1 WHERE id = ?")
@@ -406,7 +461,7 @@ public class TradeService {
         }
         final List<String> offered = List.copyOf(playerIds);
         final int offeredPoints = points;
-        return txRunner.run(() -> {
+        return inTxWithBusyRetry(() -> {
             ensureSlots(userId);
             TradeConfig cfg = config();
             SlotRow row = requireSlot(userId, slotNo);
@@ -494,7 +549,7 @@ public class TradeService {
     // ── TRADE 수락/거절 (POST /{slot}/accept | decline) ─────────────────
 
     public TradeResolveResponse accept(String userId, int slotNo) {
-        return txRunner.run(() -> {
+        return inTxWithBusyRetry(() -> {
             ensureSlots(userId);
             TradeConfig cfg = config();
             SlotRow row = requireSlot(userId, slotNo);
@@ -532,7 +587,7 @@ public class TradeService {
     }
 
     public TradeResolveResponse decline(String userId, int slotNo) {
-        return txRunner.run(() -> {
+        return inTxWithBusyRetry(() -> {
             ensureSlots(userId);
             TradeConfig cfg = config();
             SlotRow row = requireSlot(userId, slotNo);
