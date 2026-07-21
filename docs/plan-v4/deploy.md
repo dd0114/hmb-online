@@ -222,7 +222,29 @@ curl -fsS -X POST https://api.your-domain.com/api/auth/login \
 
 ## 6. web — Cloudflare Pages
 
-### 6.1 Pages 프로젝트 설정
+> **채택 방식 = API 토큰 배포(§6.0).** web=Pages(고정 `hmb-online.pages.dev`) + 백엔드=quick tunnel.
+> 로그인·대시보드 없이 `wrangler pages deploy` 를 **API 토큰**으로 돌린다. 순수 quick-tunnel web(§5.1/
+> `deploy-quicktunnel.sh`)은 **폴백**으로 유지(토큰 없을 때/오프라인).
+
+### 6.0 API 토큰 배포 (로그인 없음) — **원클릭**
+
+```bash
+# 1) infra/.env 에 토큰 채우기 (gitignore — 절대 커밋 금지)
+#    CLOUDFLARE_API_TOKEN=...   (My Profile → API Tokens → Pages:Edit 권한)
+#    CLOUDFLARE_ACCOUNT_ID=...  (대시보드 account id)
+# 2) 배포 (백엔드 quick tunnel URL 자동 추출, 또는 인자로 명시)
+bash infra/deploy-pages.sh [https://<backend>.trycloudflare.com]
+```
+`deploy-pages.sh` 가 한 번에: web 빌드(VITE_API_BASE=백엔드URL) → 버전 매니페스트 →
+`wrangler pages deploy`(토큰 인증) → 백엔드 `WEB_ORIGINS` 에 `hmb-online.pages.dev` **추가·java 재시작**
+(⭕ DB 볼륨 유지) → 완료.
+
+- **결과**: `https://hmb-online.pages.dev` (**고정 주소** — Pages 는 안 바뀐다).
+- ⚠️ **백엔드 quick tunnel URL 이 재시작으로 바뀌면 web 재빌드+재배포 필요**(`VITE_API_BASE` 빌드타임
+  인라인). → `bash infra/deploy-pages.sh <새-백엔드URL>` 재실행. Pages URL 은 그대로.
+- ⚠️ **토큰·계정ID 는 `infra/.env` 에만.** 리포엔 `.env.example` 자리표시자만.
+
+### 6.1 (참고) Pages 대시보드 Git 연동 설정
 
 ```
 Build command     : bash infra/pages/build.sh
