@@ -152,20 +152,33 @@ AC-G1 검증·오프라인 E2E·CI 는 이 모드로 충분하다.
 
 백엔드는 hero 머신의 도커에 있다. 공인 IP·포트포워딩 없이 외부에 노출하는 수단이 Tunnel 이다.
 
-### 5.1 빠른 터널 (도메인 불필요 — 1회성 데모용)
+> **실배포 채택 = Cloudflare quick tunnel (§5.1).** 근거: ngrok 무료를 먼저 썼으나 **앱 로드 시
+> 동시 API 요청(덱·선수·컨디션·관계 병렬)에서 커넥션이 끊겨** "덱 정보 불러올 수 없음" 유발.
+> 실측 폭주(8 fresh 컨텍스트 × 병렬4요청): **CF quick 8/8 성공 vs ngrok 무료 0/8**.
+> quick tunnel 은 URL 이 바뀌지만 **web 재배포 한 줄**(`infra/deploy-web.sh`)로 흡수한다.
+> 상시 고정 URL 이 필요해지면 named tunnel(§5.2, 도메인 필요) 또는 ngrok 유료로 승격.
 
+### 5.1 빠른 터널 (도메인·로그인 불필요) — **현 채택안**
+
+원클릭 (백엔드가 이미 떠 있을 때):
 ```bash
-cloudflared tunnel --url http://localhost:18080
-#  → https://<무작위>.trycloudflare.com 발급
+bash infra/start-tunnel.sh
+#  → cloudflared quick tunnel 기동 + URL 캡처 + web 을 그 URL 로 Pages 재배포까지 자동
+#  → 테스터 접속: https://hmb-online.pages.dev
 ```
 
-| 장점 | 단점 |
-|---|---|
-| 로그인·도메인 불필요, 즉시 | **재시작마다 URL 이 바뀐다** |
-| | URL 이 바뀌면 web 의 `VITE_API_BASE` 도 바꿔 **Pages 재배포** 필요 |
-| | CF 의 무보장 서비스 — 테스터 오픈 상시 운영엔 부적합 |
+URL 만 바뀐 경우(터널은 이미 떠 있음):
+```bash
+bash infra/deploy-web.sh https://<새-URL>.trycloudflare.com
+```
 
-→ **연결 확인용으로만.** 실제 테스터 오픈은 5.2.
+| 장점 | 단점 / 대응 |
+|---|---|
+| 로그인·도메인 불필요, 즉시 | 재시작마다 URL 바뀜 → `deploy-web.sh` 한 줄로 재배포(자동) |
+| **동시요청 부하 견딤**(ngrok 무료와 결정적 차이) | CF 무보장 서비스 — 상시 대규모엔 named/유료 승격 |
+| WEB_ORIGINS(CORS)=Pages URL 고정 → java 재시작 불필요 | |
+
+→ 상시 고정 URL 오픈은 5.2(named).
 
 ### 5.2 named tunnel (권장 — 안정 URL)
 
