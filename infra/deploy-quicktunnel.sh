@@ -45,7 +45,7 @@ echo "[deploy-qt]    WEB_URL = $WEB_URL"
 
 echo "[deploy-qt] 5) CORS = WEB_URL, java 재시작 (⭕ DB 볼륨 유지 — down 아님)"
 cd infra && sed -i '' "s|^WEB_ORIGINS=.*|WEB_ORIGINS=${WEB_URL}|" .env
-docker compose up -d java >/dev/null
+docker compose up -d --force-recreate java >/dev/null   # --force-recreate: env 변경 확실히 반영
 until [ "$(docker inspect -f '{{.State.Health.Status}}' hmb-java 2>/dev/null)" = healthy ]; do sleep 3; done
 cd ..
 

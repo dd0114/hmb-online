@@ -38,6 +38,11 @@ API_URL="${API_URL:-$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb
 WEB_URL="${WEB_URL:-$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb-web-tunnel.log 2>/dev/null | tail -1 || true)}"
 TUNNEL_KIND="${TUNNEL_KIND:-cloudflare-quick}"
 
+# ⚠️ node 의 process.env 가 보려면 export 필요(그냥 쉘 변수는 자식 프로세스에 안 넘어감).
+export OUT TS GIT_SHA GIT_SHORT GIT_BRANCH GIT_DIRTY \
+       ENGINE_RT ENGINE_VER SERVER_JAVA_VER WEB_VER SERVANTS_VER \
+       JAVA_IMG SERVANTS_IMG API_URL WEB_URL TUNNEL_KIND
+
 node -e '
 const m={
   deployedAt: process.env.TS,

@@ -47,7 +47,8 @@ case ",$CUR," in
   ""|",,") NEW="$PAGES_URL";;
   *) NEW="$CUR,$PAGES_URL";;                            # 콤마 추가(기존 quick-tunnel 오리진 유지)
 esac
-( cd infra && sed -i '' "s|^WEB_ORIGINS=.*|WEB_ORIGINS=$NEW|" .env && docker compose up -d java >/dev/null )
+# --force-recreate: `up -d` 만으론 env 변경(WEB_ORIGINS)이 실행 컨테이너에 반영 안 될 때가 있다(실측).
+( cd infra && sed -i '' "s|^WEB_ORIGINS=.*|WEB_ORIGINS=$NEW|" .env && docker compose up -d --force-recreate java >/dev/null )
 until [ "$(docker inspect -f '{{.State.Health.Status}}' hmb-java 2>/dev/null)" = healthy ]; do sleep 3; done
 echo "[pages]    WEB_ORIGINS=$NEW"
 

@@ -236,8 +236,10 @@ curl -fsS -X POST https://api.your-domain.com/api/auth/login \
 bash infra/deploy-pages.sh [https://<backend>.trycloudflare.com]
 ```
 `deploy-pages.sh` 가 한 번에: web 빌드(VITE_API_BASE=백엔드URL) → 버전 매니페스트 →
-`wrangler pages deploy`(토큰 인증) → 백엔드 `WEB_ORIGINS` 에 `hmb-online.pages.dev` **추가·java 재시작**
-(⭕ DB 볼륨 유지) → 완료.
+`wrangler pages deploy`(토큰 인증) → 백엔드 `WEB_ORIGINS` 에 `hmb-online.pages.dev` **추가·java `--force-recreate`**
+(⭕ DB 볼륨 유지) → 완료. **✅ 실측 확정**: 토큰 배포 성공, `pages.dev/login` → 로그인 200 · me 200 · 포인트 3000,
+`pages.dev/version.json` 노출. (⚠️ `up -d` 만으론 CORS env 변경이 반영 안 돼 `--force-recreate` 필수 —
+실측 버그. 매니페스트 export 버그도 수정.)
 
 - **결과**: `https://hmb-online.pages.dev` (**고정 주소** — Pages 는 안 바뀐다).
 - ⚠️ **백엔드 quick tunnel URL 이 재시작으로 바뀌면 web 재빌드+재배포 필요**(`VITE_API_BASE` 빌드타임
