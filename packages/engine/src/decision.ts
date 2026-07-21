@@ -454,7 +454,7 @@ export function decideOffBall(
     // 인포제션 폭 확장: 자기 반쪽 기준 바깥으로 벌림.
     // 정확히 중앙(y=center) 선수(4-3-3 의 ST·CM)는 idHash 패리티로 좌/우 분배 — 구 `<center?-1:1` 은
     // 중앙 선수를 항상 +y(아래)로 밀어 공격이 하프 아래로 쏠렸다(슛 96%·코너 98.6% 편중 → 코너 반복
-    // 단조로움, #25). 패리티 분배로 결정론 유지하며 좌우 균형 회복(Math.random 없음).
+    // 단조로움, #25). idHash 패리티는 결정론을 유지하며(전역 난수 미사용) 좌우 균형을 회복한다.
     const widthDir = player.baseFx.y < center ? -1 : player.baseFx.y > center ? 1 : ((player.idHash & 1) ? 1 : -1);
     ty += widthDir * Math.round(pitch.hFx * mv.attackWidthReach * player.behavior.widthTendency);
     // 팀 업필드 push: 볼 x 를 따라 라인 전진 → length 압축 + 다이내믹(제자리 방지).
