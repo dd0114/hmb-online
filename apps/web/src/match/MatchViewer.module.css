@@ -45,6 +45,12 @@
   background: #0f1420;
 }
 
+/* 플레이 모드(#148): 뷰어 디버그 크롬이 숨겨져 내부 높이가 줄고, 간소 컨트롤 바가 화면 안에
+   들어오도록 스테이지를 조금 낮춘다(컨트롤을 찾으러 스크롤하지 않게). */
+.stagePlay {
+  height: min(64vh, 520px);
+}
+
 .scoreboard {
   display: flex;
   align-items: center;
