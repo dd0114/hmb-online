@@ -11,15 +11,16 @@
 
 | # | 항목 | 심각도 | 소유 | 상태 |
 |---|---|---|---|---|
-| B1 | server-java **CORS 부재** — Pages(정적) → Tunnel(다른 오리진) 호출이 브라우저에서 전부 차단 | **blocker** | server-java | **#128** 등록 |
-| B1b | `apps/web` 이 `VITE_API_BASE` 를 읽지 않음 — 빌드해도 API 요청이 Pages 오리진으로 나가 404 | **blocker** | web | **#129** 등록. *실측: env 설정해도 번들 해시 불변·미인라인* |
+| ~~B1~~ | ~~server-java CORS 부재~~ | ~~blocker~~ | server-java | ✅ **해소** (#128 / PR #133). `CorsConfig` — 허용오리진 env(`HMB_CORS_ALLOWEDORIGINS`), `/internal/**` 제외. *브라우저 실측: 허용→200+ACAO, 미허용→403, internal→CORS없음* |
+| ~~B1b~~ | ~~web 이 VITE_API_BASE 를 안 읽음~~ | ~~blocker~~ | web | ✅ **해소** (#129 / PR #136). *실측: env 주입 시 번들 해시 변함(BILcWrfu)·오리진 인라인* |
 | B2 | `SERVANT_TOKEN` 기본값 `change-me` 로 외부 노출 시 `/internal/**` 무방비 | **blocker** | infra | 런북에 교체 절차 명시(§5.4) — **오픈 시 실제 교체 확인 필요** |
 | B3 | 비밀번호 **평문 저장**(P3-D2 목업 확정) | major(의도된 목업) | server-java | 범위 명시 필요(§7) |
 | B4 | AI 실행기 헬스체크가 **livelock 미검출**(프로세스는 살아있고 폴 루프만 멈춘 경우) | minor | packages/server | **#125** 등록. 프로세스 stop/zombie 는 검출됨 |
+| B5 | 배포 시 `WEB_ORIGINS`(CORS)와 web `VITE_API_BASE` 가 **짝**이어야 함 — 한쪽만 맞으면 왕복 실패 | 운영 | infra | deploy.md §7.0 명시. quick tunnel 은 재시작마다 양쪽 갱신 |
 
-> **B1 + B1b 가 열려 있는 한 오픈 GO 불가** — 테스터가 로그인조차 못 한다.
-> 둘은 **함께** 해소돼야 한다(하나만으론 왕복이 성립하지 않는다): #129 로 요청이 올바른 오리진으로
-> 나가고, #128 로 그 요청이 브라우저에서 차단되지 않아야 한다.
+> **B1·B1b 해소로 브라우저 왕복 메커니즘은 검증 완료**(deploy.md §7.1 — 실 chromium 교차오리진
+> 로그인→`/api/me` 200). 남은 오픈 blocker = **B2**(토큰 교체) + **AC-G2 터널 전송**(hero
+> `cloudflared login` 게이트, §7.2). B3 는 고지 항목.
 
 ---
 
@@ -75,6 +76,7 @@
 - [x] 시크릿이 리포에 없음 — `.env` 는 gitignore, `.env.example` 은 자리표시자만
 - [x] `/internal/**` 토큰 게이트 동작 — *실측: 토큰 없이 401*
 - [x] java 컨테이너 **비루트** 실행(uid 10001), DB 볼륨 소유권 정상
+- [x] **CORS 격리** — *실측: `/api/**` 는 허용 오리진만(미허용 403), `/internal/**` 은 CORS 미노출* (#128)
 - [ ] **`SERVANT_TOKEN` 실제 교체 확인** (B2 — 오픈 직전 필수)
 - [ ] admin 격리: 비admin 접근 403, 일반 토큰으로 admin API 접근 불가 (AC-C1·C2)
 - [ ] `/internal/*` 를 Cloudflare Access 로 차단(권장, deploy.md §5.4)
@@ -103,12 +105,13 @@
 ## 오픈 GO 판정
 
 ```
-[ ] B1 해소 (CORS — 테스터 로그인 가능)
-[ ] B2 해소 (SERVANT_TOKEN 교체)
+[x] B1 해소 (CORS — #128/PR133, 브라우저 실측)
+[x] B1b 해소 (web VITE_API_BASE — #129/PR136, 번들 인라인 실측)
+[ ] B2 해소 (SERVANT_TOKEN 교체 — 오픈 직전, hero)
 [ ] B3 고지 (평문 비번 목업 안내)
-[ ] §1~§9 중 blocker 0
-[ ] AC-G2 왕복 스모크 통과 (CF URL → web → 백엔드)
-[ ] hero 실플레이 1회
+[~] AC-G2 왕복 — 브라우저 교차오리진 왕복 검증(§7.1), **터널 전송만 잔여**(§7.2, hero cloudflared)
+[ ] §1~§9 중 blocker 0 (잔여 = B2 + 도메인별 미점검)
+[ ] hero 실플레이 1회 (§7.3 — 덱→매치 생성 포함)
 ```
 
 > 발견 항목은 **이슈로 등록**하고 이 표에 링크한다(AC-H1).

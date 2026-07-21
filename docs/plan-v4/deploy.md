@@ -254,31 +254,73 @@ Root directory    : (비움 = 리포 루트)
 ([Serving Pages](https://developers.cloudflare.com/pages/configuration/serving-pages/)). 현 산출물이 그 조건을 만족한다.
 → `infra/pages/_redirects` 는 **규칙 없이 주석만** 두었다(의도적).
 
-### 6.3 검증 상태 (실측)
+### 6.3 검증 상태 (실측 — #129 머지 후 재검증 완료)
 
 ```bash
-VITE_API_BASE=https://api.example.test bash infra/pages/build.sh
+VITE_API_BASE=http://localhost:18080 bash infra/pages/build.sh
 ```
 
 | 항목 | 결과 |
 |---|---|
 | 빌드 성공 | ✅ exit 0 (prebuild 뷰어 생성 → tsc → vite build) |
-| 산출물 | ✅ `index.html` · `assets/*` · `viewer-embed.html`(88KB) · `favicon.svg` · `_redirects` · `_headers` — 총 552KB |
+| 산출물 | ✅ `index.html` · `assets/*` · `viewer-embed.html`(88KB) · `favicon.svg` · `_redirects` · `_headers` |
 | `_redirects`·`_headers` | ⚠️ **파일 복사만 확인**. Pages 런타임 적용은 **미검증**(실 배포 필요) |
-| **API base 주입** | ❌ **번들에 반영 안 됨** — `VITE_API_BASE` 미설정 빌드와 **번들 해시 동일**(`index-DILS_GHH.js`), 번들에 `api.example.test` **0회**, `"/api/me"` 상대경로 잔존 |
+| **API base 주입** | ✅ **번들에 인라인됨** — 미설정 빌드와 번들 해시가 **달라지고**(설정 시 `index-BILcWrfu.js`, 미설정 시 상이한 해시), 주입 오리진 문자열이 설정 빌드에만 존재(미설정 빌드엔 0회). (`"/api/me"` 등 상대 리터럴은 잔존 — 클라이언트가 런타임에 `apiUrl()` 로 base 를 붙인다) |
 
-→ **AC-G1 의 web 반쪽은 미충족**. #129 머지 후 재검증한다(번들 해시 변화 + 절대 오리진 인라인 확인).
+→ **AC-G1 web 반쪽 충족.** #129(web `VITE_API_BASE`) + #128(server CORS) 머지로 이전 미충족이 해소됐다.
 
 ---
 
-## 7. 오픈 전 스모크 (AC-G2)
+## 7. 왕복 스모크 (AC-G2)
 
-`docs/plan-v4/open-checklist.md` 를 함께 돌린다.
+### 7.0 CORS ↔ 오리진 결선 (필수 이해)
 
-1. Pages URL 접속 → 로그인
-2. 덱 구성 → 매치 생성 → 결과까지
+web(Pages)과 백엔드(Tunnel)는 **다른 오리진**이라 브라우저가 CORS 를 집행한다. 두 값이 **짝**이어야 왕복이 성립한다:
+
+- web 빌드: `VITE_API_BASE = <백엔드 오리진>`  (요청이 그리로 나감)
+- 백엔드: `WEB_ORIGINS = <web 오리진>`  (그 오리진의 요청만 허용 → `infra/.env` → `HMB_CORS_ALLOWEDORIGINS`)
+
+한쪽만 맞으면 실패한다. quick tunnel(§5.1)은 재시작마다 URL 이 바뀌므로 **양쪽 다** 갱신해야 한다.
+
+### 7.1 로컬 왕복 검증 (터널 제외 — 실측 완료)
+
+터널은 전송 계층일 뿐이고, 터널이 새로 들이는 실패요인은 **교차 오리진(CORS)** 이다. 그 부분은
+실제 chromium 으로 검증했다 — web dist 를 오리진 A(`localhost:4321`)에서 서빙하고 백엔드를
+오리진 B(`localhost:18080`)에 두고, 브라우저가 CORS 를 실집행하는 상태로:
+
+| 단계 | 결과 |
+|---|---|
+| CORS preflight (허용 오리진) | ✅ 200 + `Access-Control-Allow-Origin` |
+| CORS preflight (미허용 오리진) | ✅ **403**, ACAO 없음 |
+| `/internal/**` preflight | ✅ **CORS 헤더 없음**(서번트 전용, 의도적 미노출) |
+| 브라우저 교차오리진 로그인 | ✅ 200, 유저 생성 |
+| 브라우저 교차오리진 `GET /api/me` (Authorization → 진짜 preflight) | ✅ 200, wallet 3000 |
+| `POST /api/matches` | ⚠️ 404 `활성 덱이 없습니다` — **CORS 통과**(응답 본문이 교차오리진으로 읽힘). 매치 생성은 덱 구성이 선행돼야 하는 **앱 플로우**라 7.3(hero 실플레이)에서 다룬다 |
+
+→ **브라우저 왕복 메커니즘 검증 완료.** 남은 것은 터널 전송뿐(7.2, hero 게이트).
+
+### 7.2 터널 왕복 (hero 게이트 — cloudflared 로그인 필요)
+
+§5.1(quick) 또는 §5.2(named)로 터널을 띄운 뒤:
+
+```bash
+# 터널 URL 을 <TUNNEL> 로 두고, 그 오리진을 백엔드 CORS 에 넣는다.
+# (Pages web 은 <TUNNEL> 을 VITE_API_BASE 로 빌드해 배포돼 있어야 한다)
+curl -fsS -X POST https://<TUNNEL>/api/auth/login \
+  -H 'Content-Type: application/json' -d '{"nickname":"tunnel-smoke","provider":"guest"}'
+#   → {"token":...}  이면 터널 전송 OK
+
+# 브라우저 왕복: 배포된 Pages URL 접속 → 로그인 → 개발자도구 Network 에
+#   /api/auth/login 200 + Access-Control-Allow-Origin 확인
+```
+
+### 7.3 hero 실플레이 (오픈 직전)
+
+1. 배포 Pages URL 접속 → 로그인
+2. 덱 구성 → **매치 생성** → 결과까지 (7.1 의 404 를 여기서 해소)
 3. `docker compose logs -f executor` 로 AI 잡 처리 확인
 4. 모바일 실기기 1대 이상
+5. `docs/plan-v4/open-checklist.md` 병행
 
 ---
 
