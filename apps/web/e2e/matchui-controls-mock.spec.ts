@@ -144,6 +144,11 @@ test("#148 플레이 모드: 컨트롤은 하이라이트 토글 하나뿐이고
   // (3) 아무 조작 없이도 경기가 진행된다(자동 진행 — 재생 버튼이 없으므로 이게 유일한 시작 경로).
   const t0 = await tickNow(frame);
   await expect.poll(() => tickNow(frame), { timeout: 10_000 }).toBeGreaterThan(t0);
+
+  // (4) 기본 배속은 4x — 조작 없이도 뷰어 speed 가 4 로 박혀 있다(뷰어 자체 기본 1x 는 너무 느림).
+  await expect
+    .poll(() => frame.evaluate(() => document.querySelector("[data-speed].active")?.getAttribute("data-speed")))
+    .toBe("4");
 });
 
 test("#148 하이라이트 토글이 실제로 연출을 끄고 켠다(끄면 일정 속도로 계속 진행)", async ({ page }) => {

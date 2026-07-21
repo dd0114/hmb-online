@@ -60,7 +60,7 @@ export const BRIDGE_MARKER = "hmb-viewer-embed-bridge";
  * 기존 아티팩트는 낡은 것이므로 ensure-viewer 가 재빌드하도록 마커로 박는다.
  */
 export const BRIDGE_VERSION_MARKER = "hmb-viewer-bridge-version";
-export const BRIDGE_VERSION = "4";
+export const BRIDGE_VERSION = "5";
 /** 플레이 모드에서 뷰어 내부 컨트롤을 감추는 클래스(문서 루트에 건다). */
 export const CHROME_PLAY_CLASS = "hmb-chrome-play";
 export const bridgeScript = `<script>
@@ -78,7 +78,7 @@ export const bridgeScript = `<script>
 
   // ── 컨트롤 크롬(#148) ─────────────────────────────────────────────────────
   var CHROME_CLASS = "${CHROME_PLAY_CLASS}";
-  var STEADY_SPEED = 4; // 하이라이트 off 일 때의 일정 속도(뷰어 CRUISE_SPEED 와 동일)
+  var DEFAULT_SPEED = 4; // 기본 재생 속도(hero 지시). 뷰어 자체 기본은 1x(≈실시간)라 느리다.
   var ERROR_CLASS = "hmb-chrome-error";
   function ensureChromeStyle() {
     if (document.getElementById("hmb-chrome-style")) return;
@@ -125,6 +125,14 @@ export const bridgeScript = `<script>
     var b = hlBtn();
     if (b && isAuto() !== on) b.click();
   }
+  /* 재생 속도를 기본값(4x)으로 맞춘다. 뷰어 자체 기본은 1x(≈2 게임초/실초 → 한 하프 8분)이고
+     플레이 모드엔 배속 컨트롤이 없으므로, 로드 시점에 한 번 4x 로 박아둔다.
+     하이라이트가 켜져 있는 동안엔 뷰어가 speed 를 무시하지만(자체 페이싱), 끄는 순간 이 값이 쓰인다. */
+  function setDefaultSpeed() {
+    if (curSpeed() === DEFAULT_SPEED) return;
+    var b = document.querySelector('[data-speed="' + DEFAULT_SPEED + '"]');
+    if (b) b.click();
+  }
   function curSpeed() {
     var a = document.querySelector("[data-speed].active");
     var v = a ? parseFloat(a.getAttribute("data-speed")) : 1;
@@ -150,17 +158,12 @@ export const bridgeScript = `<script>
   var lastState = "";
   /* 플레이 모드의 유일한 명령 = 하이라이트 연출 on/off.
        on  : 뷰어 자동페이싱 — 빌드업은 빠르게(cruise), 골·파울 등 주요장면은 슬로우+접촉 줌.
-       off : 연출 없이 일정 속도로 쭉 진행. 이때 speed 를 STEADY 로 맞춘다 — 뷰어 기본 speed 는
-             1x(≈실시간)라 배속 컨트롤이 없는 플레이 모드에선 한 하프가 지나치게 길어진다.
-             STEADY=4 는 자동페이싱의 cruise 와 같은 값이라 총 관람시간이 비슷하게 유지된다. */
+       off : 연출 없이 기본 속도(4x)로 쭉 진행. */
   function handleControl(d) {
     if (d.cmd !== "highlight") return;
     var on = d.on !== false;
     setAuto(on);
-    if (!on) {
-      var b = document.querySelector('[data-speed="' + STEADY_SPEED + '"]');
-      if (b && curSpeed() !== STEADY_SPEED) b.click();
-    }
+    if (!on) setDefaultSpeed(); // 연출을 끄면 이 속도로 쭉 진행(뷰어 기본 1x 로 처지지 않게)
     postState();
   }
   // 부모가 모르는 상태 변화(재생 진행/종료, 뷰어 자체 컨트롤 조작) 미러링.
@@ -200,7 +203,11 @@ export const bridgeScript = `<script>
     if (ev && ev.source && ev.source !== window.parent) return;
     var d = ev && ev.data;
     if (!d) return;
-    if (d.type === "loadMatchLog" && d.matchLog) { resolveLog(d.matchLog); }
+    if (d.type === "loadMatchLog" && d.matchLog) {
+      resolveLog(d.matchLog);
+      // 뷰어가 로그를 물고 컨트롤을 초기화한 뒤 기본 배속을 박는다(주입 직후엔 아직 이르다).
+      setTimeout(setDefaultSpeed, 0);
+    }
     else if (d.type === "setViewerChrome") { setChrome(d.mode); }
     else if (d.type === "viewerControl") { handleControl(d); }
   });

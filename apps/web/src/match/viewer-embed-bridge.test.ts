@@ -155,8 +155,15 @@ describe("embed bridge — 컨트롤 크롬", () => {
 });
 
 describe("embed bridge — 하이라이트 명령(플레이 모드의 유일한 컨트롤)", () => {
-  it("off 는 뷰어 Highlights 를 끄고, 일정 속도(4x)로 맞춘다", () => {
-    // 배속 컨트롤이 없으므로 연출을 끄면 뷰어 기본 1x(≈실시간)에 갇힌다 → 브리지가 STEADY 로 올린다.
+  it("로그 주입 시 기본 배속 4x 를 박는다(뷰어 자체 기본 1x 는 너무 느리다)", async () => {
+    send({ type: "loadMatchLog", matchLog: { tickSnapshots: [], events: [], finalScore: {} } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(clicks).toEqual(["speed:4"]);
+    expect(document.querySelector("[data-speed].active")?.getAttribute("data-speed")).toBe("4");
+  });
+
+  it("off 는 뷰어 Highlights 를 끄고, 기본 속도(4x)로 진행시킨다", () => {
+    // 배속 컨트롤이 없으므로 연출을 끄면 뷰어 기본 1x(≈실시간)에 갇힌다 → 브리지가 4x 로 올린다.
     send({ type: "viewerControl", cmd: "highlight", on: false });
     expect(clicks).toEqual(["highlight", "speed:4"]);
     expect(document.getElementById("highlightBtn")!.classList.contains("active")).toBe(false);
