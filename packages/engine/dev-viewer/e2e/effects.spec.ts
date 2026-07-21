@@ -39,18 +39,11 @@ test("가로챔 → 스틸 플래시(steal) 이펙트 스폰, 가로챈 팀 색"
 });
 
 test("돌파(SURGE) → 스피드라인(surge) 이펙트 스폰", async ({ page }) => {
-  // SURGE 토스트 틱을 찾는다: 긴 드리블 추론이라 이벤트가 아니라 annos 파생. 뷰어에서 직접 재생으로 검출.
-  // showcase 에 SURGE 가 없으면 skip(엔진 시드 의존) — 하지만 대개 존재.
-  const hasSurge = await page.evaluate(async () => {
-    const v = (window as any).__viewer;
-    v.autoPace(true); v.seek(0); v.play();
-    return await new Promise<boolean>((resolve) => {
-      const t0 = Date.now();
-      const iv = setInterval(() => {
-        if (v.fx().some((f: any) => f.type === "surge")) { clearInterval(iv); v.pause(); resolve(true); }
-        else if (Date.now() - t0 > 25000) { clearInterval(iv); v.pause(); resolve(false); }
-      }, 50);
-    });
-  });
-  expect(hasSurge, "재생 중 돌파(SURGE) 스피드라인 이펙트가 스폰되어야").toBe(true);
+  // SURGE 는 이벤트가 아니라 긴 전진 소유 런에서 파생되는 annos → __viewer.surgeTicks() 로 결정론적으로
+  // 겨냥한다(autoPace 방랑 대신 그 틱을 실제 재생으로 통과 → spawnSurgeFx). 패스/스틸 이펙트와 동일 패턴.
+  const surges = await page.evaluate(() => (window as any).__viewer.surgeTicks());
+  expect(surges.length, "showcase 에 돌파(SURGE) 런이 있어야").toBeGreaterThan(0);
+  await playUntilFx(page, surges[0], "surge");
+  const spawned = await page.evaluate(() => (window as any).__viewer.fx().some((f: any) => f.type === "surge"));
+  expect(spawned, "재생 중 돌파(SURGE) 스피드라인 이펙트가 스폰되어야").toBe(true);
 });

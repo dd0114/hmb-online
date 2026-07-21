@@ -942,6 +942,8 @@
         trail: () => lastTrail.map((t) => ({ ...t })),
         // 현재 활성 R2 이펙트 [{type,rgb}] — 패스/가로챔/돌파 이펙트 스폰 계약검증용.
         fx: () => fx.map((f) => ({ type: f.type, rgb: f.rgb })),
+        // 파생된 돌파(SURGE) 틱들 — 이펙트 스폰을 결정론적으로 겨냥하기 위한 계약검증용(이벤트 아님, annos 파생).
+        surgeTicks: () => surgeTicks.slice(),
         // 마지막 draw()의 카드 마커 [{playerId,num,red,side,px,py}] — R4 카드 받은 선수 표시 계약검증용.
         cardMarks: () => lastCardMarks.map((c) => ({ ...c })),
         // 현재 틱까지의 실시간 통계(F1) — HUD 증분 계약검증용.

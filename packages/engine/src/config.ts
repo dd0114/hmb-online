@@ -358,7 +358,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.15.0",
+  version: "engine@0.16.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -381,7 +381,7 @@ export const defaultEngineConfig: EngineConfig = {
     pass: 0.5,
     dribble: 0.46,
     // G-A(#99): 슛 과다(팀 23.85→~13.6, 벤치 12-14). shoot 0.5→0.35 로 슛 성향 하향.
-    shoot: 0.35,
+    shoot: 0.34,
     hold: 0.42,
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
     // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
@@ -414,7 +414,7 @@ export const defaultEngineConfig: EngineConfig = {
     // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
     // 달리 저xG 근거리 슛은 남겨 평균 xG 를 밴드에 유지).
     shootRange: 19,
-    shootAngleFactor: 0.7,
+    shootAngleFactor: 0.85,
     shootDistanceFactor: 0.025,
     onTargetBase: 0.28,
     saveCornerProb: 0.6,
