@@ -212,5 +212,7 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
   - `bash infra/deploy-web.sh <터널URL>` — web 만 재배포(URL 바뀐 경우)
   - `cd infra && docker compose up -d java runner` — 백엔드 도커
 - **시크릿**: `infra/.env`(gitignore, 커밋 금지). `SERVANT_TOKEN`=openssl rand, admin 자격 등. 리포엔 `.env.example`만.
+  **CF 배포 토큰은 spider 전역** `~/.config/hmb/deploy.env`(리포 밖·gitignore·chmod 600, `CLOUDFLARE_API_TOKEN`+`CLOUDFLARE_ACCOUNT_ID`) — 모든 워크트리 공유, `deploy-pages.sh` 자동 source.
+- **web 배포**: `bash infra/deploy-pages.sh <백엔드URL>` = CF Pages(고정 `hmb-online.pages.dev`, 토큰 배포·로그인X). 표준 = **백엔드 터널 배포 → 웹 그 주소로 재배포**. quick-tunnel web(`deploy-quicktunnel.sh`)은 폴백.
 - **디버깅 순서**: `status.sh`(인프라 배제) → 터널 인스펙터(실 요청/응답) → 코드. `/api/deck 404`=새유저 빈덱(정상). `Failed to fetch`(응답 없음)=터널/네트워크.
 - **상시 고정 URL 승격(선택)**: named tunnel(도메인 필요) 또는 ngrok 유료 — deploy.md §5.2·§6.
