@@ -108,6 +108,17 @@ class TradeApiTest extends ApiTestBase {
                 .params(userId, slotNo).query(String.class).optional().orElse(null);
     }
 
+    private long points(String userId) {
+        return jdbcClient.sql("SELECT points FROM wallets WHERE user_id=?")
+                .param(userId).query(Long.class).single();
+    }
+
+    private long speedupLedgerRows(String userId) {
+        return jdbcClient.sql(
+                        "SELECT COUNT(*) FROM point_ledger WHERE user_id=? AND reason='trade_speedup'")
+                .param(userId).query(Long.class).single();
+    }
+
     private String slotState(String userId, int slotNo) {
         return jdbcClient.sql("SELECT state FROM trade_slots WHERE user_id=? AND slot_no=?")
                 .params(userId, slotNo).query(String.class).single();
@@ -385,16 +396,117 @@ class TradeApiTest extends ApiTestBase {
                 .param(uid).query(Long.class).single();
         assertThat(after).isEqualTo(before - spent);
 
-        // 원장 멱등: trade_speedup 1행 (ref=slotId:seed)
-        long ledgerRows = jdbcClient.sql(
-                        "SELECT COUNT(*) FROM point_ledger WHERE user_id=? AND reason='trade_speedup'")
-                .param(uid).query(Long.class).single();
-        assertThat(ledgerRows).isEqualTo(1L);
+        // 원장 멱등: trade_speedup 1행 (ref=slotId:seed:opensAt — 대기 회차 단위)
+        assertThat(speedupLedgerRows(uid)).isEqualTo(1L);
 
-        // 이미 OPEN → 재단축 400 TRADE_INVALID
+        // 같은 대기 창 더블클릭 → 이미 OPEN 이라 400 TRADE_INVALID + 재과금 없음(#151 멱등 무회귀)
         ResponseEntity<Map> again = authPost("/api/trade/1/speedup", token, null, Map.class);
         assertThat(again.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(again.getBody().get("code")).isEqualTo("TRADE_INVALID");
+        assertThat(speedupLedgerRows(uid)).isEqualTo(1L);
+        assertThat(jdbcClient.sql("SELECT points FROM wallets WHERE user_id=?")
+                .param(uid).query(Long.class).single()).isEqualTo(after);
+    }
+
+    // ── #151: FA 재제안 쿨타임 단축은 회차마다 과금된다(0P 우회 금지) ────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void cooldownSpeedupChargesEveryRound() {
+        String token = login("trade_cool_pay");
+        String uid = userId("trade_cool_pay");
+        TradeService.TradeConfig cfg = tradeService.config();
+        // 빈 제안(offerValue 0 → p=minProb)으로 항상 FAIL 하는 FA 오퍼 + 잔액 내 비용(저등급 대상)
+        String seed = findSeed(s -> {
+            TradeService.Offer o = tradeService.deriveOffer(uid, s);
+            return "FA".equals(o.kind())
+                    && List.of("BRONZE", "SILVER", "GOLD").contains(gradeOf(o.targetPlayerId()))
+                    && tradeService.faRoll(s, List.of(), 0) >= cfg.faMinProb();
+        });
+        SEEDS.add(seed);
+        authGet("/api/trade", token, Map.class);
+        startSlot(token, 1);
+
+        long balance = points(uid);
+        long totalSpent = 0;
+        for (int round = 1; round <= 3; round++) {
+            // 대기 단축 — 매 회차 실제로 과금돼야 한다(현행 버그: 2회차부터 spent=0)
+            ResponseEntity<Map> res = authPost("/api/trade/1/speedup", token, null, Map.class);
+            assertThat(res.getStatusCode()).as("round " + round).isEqualTo(HttpStatus.OK);
+            int spent = ((Number) res.getBody().get("spent")).intValue();
+            assertThat(spent).as("round " + round + " 과금액").isGreaterThan(0);
+            totalSpent += spent;
+            long now = points(uid);
+            assertThat(now).as("round " + round + " 잔액").isEqualTo(balance - spent);
+            balance = now;
+            assertThat(((Map<String, Object>) res.getBody().get("slot")).get("state")).isEqualTo("OPEN");
+            assertThat(speedupLedgerRows(uid)).as("round " + round + " 원장 행수").isEqualTo(round);
+
+            if (round < 3) {
+                // FA 실패 → 같은 오퍼로 쿨타임 재대기(= 다음 회차)
+                assertThat(tradeService.proposeFa(uid, 1, List.of(), 0).result()).isEqualTo("FAIL");
+                assertThat(slotSeed(uid, 1)).isEqualTo(seed); // 시드는 그대로(회차 구분은 opens_at)
+            }
+        }
+        // 원장 합계 == 실제 차감 총액
+        long ledgerSum = jdbcClient.sql(
+                        "SELECT COALESCE(SUM(delta),0) FROM point_ledger WHERE user_id=? AND reason='trade_speedup'")
+                .param(uid).query(Long.class).single();
+        assertThat(ledgerSum).isEqualTo(-totalSpent);
+    }
+
+    // ── #151 백스톱: 이번 회차 원장이 이미 있으면 단축하지 않는다 ────────
+
+    @Test
+    void speedupRefusesWhenAlreadyChargedForThisWaitWindow() {
+        String token = login("trade_cool_dup");
+        String uid = userId("trade_cool_dup");
+        String seed = findSeed(s -> !"LEGEND".equals(gradeOf(tradeService.deriveOffer(uid, s).targetPlayerId())));
+        SEEDS.add(seed);
+        authGet("/api/trade", token, Map.class);
+        startSlot(token, 1);
+
+        // 이번 대기 회차의 원장 키를 미리 선점(동시 요청/충돌 잔여 케이스 시뮬)
+        Map<String, Object> row = jdbcClient.sql("SELECT id, seed, opens_at FROM trade_slots WHERE user_id=? AND slot_no=1")
+                .param(uid).query((rs, n) -> Map.<String, Object>of(
+                        "id", rs.getString("id"), "seed", rs.getString("seed"),
+                        "opensAt", rs.getString("opens_at")))
+                .single();
+        jdbcClient.sql("""
+                        INSERT INTO point_ledger(user_id, delta, reason, ref_id, created_at)
+                        VALUES (?, 0, 'trade_speedup', ?, ?)
+                        """)
+                .params(uid, row.get("id") + ":" + row.get("seed") + ":" + row.get("opensAt"),
+                        java.time.Instant.now().toString())
+                .update();
+        long before = points(uid);
+
+        ResponseEntity<Map> res = authPost("/api/trade/1/speedup", token, null, Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(res.getBody().get("code")).isEqualTo("TRADE_INVALID");
+        // 단축되지 않았다: 여전히 WAITING + 잔액 불변
+        assertThat(slotState(uid, 1)).isEqualTo("WAITING");
+        assertThat(points(uid)).isEqualTo(before);
+    }
+
+    // ── #151 무회귀: 잔액 부족이면 402 + 단축·과금 없음 ─────────────────
+
+    @Test
+    void speedupRejectedWhenInsufficientPoints() {
+        String token = login("trade_cool_poor");
+        String uid = userId("trade_cool_poor");
+        String seed = findSeed(s -> !"LEGEND".equals(gradeOf(tradeService.deriveOffer(uid, s).targetPlayerId())));
+        SEEDS.add(seed);
+        authGet("/api/trade", token, Map.class);
+        startSlot(token, 1);
+        jdbcClient.sql("UPDATE wallets SET points = 0 WHERE user_id = ?").param(uid).update();
+
+        ResponseEntity<Map> res = authPost("/api/trade/1/speedup", token, null, Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.PAYMENT_REQUIRED);
+        assertThat(res.getBody().get("code")).isEqualTo("INSUFFICIENT_POINTS");
+        assertThat(slotState(uid, 1)).isEqualTo("WAITING");
+        assertThat(points(uid)).isEqualTo(0L);
+        assertThat(speedupLedgerRows(uid)).isEqualTo(0L);
     }
 
     // ── AC-D2: FA 확률 경계(공식 = LLD SoT) ─────────────────────────────

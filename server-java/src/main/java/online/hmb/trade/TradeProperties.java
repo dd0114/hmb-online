@@ -30,6 +30,42 @@ public class TradeProperties {
     /** grade(BRONZE|SILVER|GOLD|DIA|LEGEND) → 대기 초. 비어 있으면 economy waitHours 를 쓴다. */
     private Map<String, Integer> waitSeconds = new LinkedHashMap<>();
 
+    /** 동시 쓰기 경합(SQLITE_BUSY) 시 트랜잭션 재시도 정책(#152) — 수치 하드코딩 금지. */
+    private BusyRetry busyRetry = new BusyRetry();
+
+    public BusyRetry getBusyRetry() {
+        return busyRetry;
+    }
+
+    public void setBusyRetry(BusyRetry busyRetry) {
+        this.busyRetry = busyRetry == null ? new BusyRetry() : busyRetry;
+    }
+
+    /**
+     * {@code hmb.trade.busy-retry.*} — SQLITE_BUSY(특히 BUSY_SNAPSHOT)로 실패한 트랜잭션을 몇 번,
+     * 얼마 간격으로 다시 시도할지. 백오프는 시도 회차에 비례(선형)한다.
+     */
+    public static class BusyRetry {
+        private int maxAttempts = 4;
+        private long backoffMs = 20;
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = maxAttempts;
+        }
+
+        public long getBackoffMs() {
+            return backoffMs;
+        }
+
+        public void setBackoffMs(long backoffMs) {
+            this.backoffMs = backoffMs;
+        }
+    }
+
     public Map<String, Integer> getWaitSeconds() {
         return waitSeconds;
     }
