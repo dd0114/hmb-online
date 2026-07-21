@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { GachaResponse } from "../api/hooks";
 import { Modal } from "../common/Modal";
 import { GRADE_COLORS, GRADE_LABELS, isHighGrade } from "../common/grades";
+import { CharAvatar } from "../common/CharAvatar";
 import {
   initialReveal,
   isAllRevealed,
@@ -71,6 +72,16 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
                   <span className={styles.cardBack}>?</span>
                   <span className={styles.cardFace} style={{ borderColor: GRADE_COLORS[grade] }}>
                     {item.isNew && <span className={styles.newBadge}>NEW</span>}
+                    {/* 공개된 카드만 얼굴을 그린다 — 뒷면 상태에서 미리 새지 않게. */}
+                    {revealed && (
+                      <CharAvatar
+                        playerId={item.player.id}
+                        name={item.player.name}
+                        grade={grade}
+                        size={64}
+                        className={styles.cardFaceArt}
+                      />
+                    )}
                     <span className={styles.cardName}>{item.player.name}</span>
                     <span className={styles.cardPos}>{item.player.position}</span>
                     <span className={styles.cardGrade} style={{ color: GRADE_COLORS[grade] }}>

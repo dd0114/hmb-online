@@ -17,6 +17,11 @@ export interface ViewerReadyMessage {
 export interface LoadMatchLogMessage {
   type: "loadMatchLog";
   matchLog: unknown;
+  /**
+   * 경기장 캐릭터 스킨(#145) — **optional additive**. 없으면 뷰어가 현행 단색 원으로 그린다
+   * (구버전 뷰어 아티팩트와도 호환: 모르는 필드는 무시된다).
+   */
+  skins?: unknown;
 }
 
 /** iframe 이 보낸 viewerReady 메시지인지 판별(다른 postMessage 소음과 구분). */
@@ -28,9 +33,9 @@ export function isViewerReadyMessage(data: unknown): data is ViewerReadyMessage 
   );
 }
 
-/** parent → iframe 주입 메시지 생성. */
-export function loadMatchLogMessage(matchLog: unknown): LoadMatchLogMessage {
-  return { type: "loadMatchLog", matchLog };
+/** parent → iframe 주입 메시지 생성. skins 는 있을 때만 실어 보낸다(무회귀). */
+export function loadMatchLogMessage(matchLog: unknown, skins?: unknown): LoadMatchLogMessage {
+  return skins ? { type: "loadMatchLog", matchLog, skins } : { type: "loadMatchLog", matchLog };
 }
 
 // ── 시퀀스 상태머신 ──────────────────────────────────────────────────────────
