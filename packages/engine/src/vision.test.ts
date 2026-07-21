@@ -116,32 +116,38 @@ describe("판단 — 붙을지 말지 (#147 W3)", () => {
     expect(t!.id).toBe("A1");
   });
 
-  it("붙을 가치가 없으면(너무 멀어 비용이 큼) **아무도 고르지 않는다** — 자리를 지킨다", () => {
-    const me = mkPlayer("H1", "home", 30, 34);
-    // 상대가 우리 골에서 아주 멀고(위협 낮음) 나에게서도 멀다(비용 큼) → 가치 ≤ 0.
-    const far = [{ id: "A1", x: toFixed(100, scale), y: toFixed(60, scale), dist: toFixed(75, scale), age: 0 }];
+  it("붙을 가치가 없으면 **아무도 고르지 않는다** — 자리를 지킨다", () => {
+    // 인지 반경(radiusM 20) 안에서 실제로 도달 가능한 값만 쓴다 — dist 70 같은 값은
+    // perceiveOpponents 가 만들 수 없어 계약이 헛돈다(검증 세션 minor-1).
+    const me = mkPlayer("H1", "home", 90, 40);
+    const far = [{ id: "A1", x: toFixed(100, scale), y: toFixed(55, scale), dist: toFixed(18, scale), age: 0 }];
     expect(chooseMarkTarget(far, me, cfg, ownGoal)).toBeNull();
   });
 
-  it("내 골에 더 가까운(위협적인) 상대를 고른다", () => {
-    const me = mkPlayer("H1", "home", 30, 34);
-    const near = { id: "A1", x: toFixed(20, scale), y: toFixed(34, scale), dist: toFixed(10, scale), age: 0 };
-    const far = { id: "A2", x: toFixed(40, scale), y: toFixed(34, scale), dist: toFixed(10, scale), age: 0 };
-    const t = chooseMarkTarget([far, near], me, cfg, ownGoal);
-    expect(t!.id).toBe("A1"); // home 은 왼쪽(x=0)을 지킨다 → x 가 작을수록 위협
-  });
-
   it("markTarget 은 하드 오버라이드가 아니라 **가중치**다 — 비용이 가산을 이기면 지시를 따르지 않는다", () => {
+    // 인지 반경 안에서 **실제로 도달 가능한** 배치로 경계를 박는다. 반경 밖 값(dist 70 등)을 쓰면
+    // perceiveOpponents 가 그런 후보를 못 만들어 계약이 무력해진다(검증 세션 minor-1).
     const me = mkPlayer("H1", "home", 30, 34);
     me.markTarget = "A9";
-    const other = { id: "A1", x: toFixed(20, scale), y: toFixed(34, scale), dist: toFixed(10, scale), age: 0 };
-    // 지시 대상이 적당히 가까우면 가산(markTargetBias)이 이겨 선택된다.
-    const near = { id: "A9", x: toFixed(45, scale), y: toFixed(34, scale), dist: toFixed(15, scale), age: 0 };
-    expect(chooseMarkTarget([other, near], me, cfg, ownGoal)!.id).toBe("A9");
-    // 같은 지시라도 **비용이 가산을 넘길 만큼 멀면** 지시를 따르지 않는다.
-    // (하드 오버라이드였다면 거리와 무관하게 A9 가 선택된다 → 이 단언이 그 변이를 죽인다.)
-    const tooFar = { id: "A9", x: toFixed(95, scale), y: toFixed(60, scale), dist: toFixed(70, scale), age: 0 };
-    expect(chooseMarkTarget([other, tooFar], me, cfg, ownGoal)!.id).toBe("A1");
+    const cheap = { id: "A1", x: toFixed(29, scale), y: toFixed(34, scale), dist: toFixed(1, scale), age: 0 };
+    const commanded = { id: "A9", x: toFixed(50, scale), y: toFixed(34, scale), dist: toFixed(20, scale), age: 0 };
+    // 비용 차이가 가산을 넘으면 지시를 따르지 않는다(하드 오버라이드였다면 항상 A9).
+    expect(chooseMarkTarget([cheap, commanded], me, cfg, ownGoal)!.id).toBe("A1");
+    // 반대로 지시 대상이 충분히 쌀 땐 가산이 이겨 선택된다.
+    const near = { id: "A9", x: toFixed(36, scale), y: toFixed(34, scale), dist: toFixed(6, scale), age: 0 };
+    expect(chooseMarkTarget([cheap, near], me, cfg, ownGoal)!.id).toBe("A9");
+  });
+
+  it("markTargetBias 가 60 이상이면 반경 안에서 하드 오버라이드와 구별 불가 — 그 경계를 박는다", () => {
+    // 도메인 전수탐색상 bias≥60 은 인지 반경(20m) 안에서 지시 거부율이 0% 가 된다(검증 세션 minor-1).
+    // 즉 이 계약이 없으면 bias 를 올려 "가중치" 를 사실상 오버라이드로 되돌려도 아무도 못 잡는다.
+    const me = mkPlayer("H1", "home", 30, 34);
+    me.markTarget = "A9";
+    const cheap = { id: "A1", x: toFixed(29, scale), y: toFixed(34, scale), dist: toFixed(1, scale), age: 0 };
+    const commanded = { id: "A9", x: toFixed(50, scale), y: toFixed(34, scale), dist: toFixed(20, scale), age: 0 };
+    const hard: EngineConfig = { ...cfg, vision: { ...cfg.vision, markTargetBias: 60 } };
+    expect(chooseMarkTarget([cheap, commanded], me, hard, ownGoal)!.id).toBe("A9"); // 거부 불가
+    expect(cfg.vision.markTargetBias).toBeLessThan(60); // 출하값은 경계 아래여야 한다
   });
 });
 
@@ -154,9 +160,21 @@ describe("롤백 스위치 (#147 W3)", () => {
     return runMatch(seed, home, makeTacticalInput("A", seed), makeSelectData(), c);
   };
   const lastHash = (l: ReturnType<typeof runMatch>) => l.tickSnapshots[l.tickSnapshots.length - 1]!.hash;
+  // 레거시 회귀 가드. **현재 트리 출력을 그대로 베낀 게 아니라**, 0.16.0 트리(6d49580)를 별도로
+  // 체크아웃해 0.17.0 의 shoot/xgBase/attackWidthReach 만 맞춰 실행한 값이다(독립 대조).
+  const LEGACY_HASH = "57f371d6";
+  const LEGACY_HASH_MARKED = "7e6fbf89";
 
   it("vision.enabled=true 는 실제로 결과를 바꾼다(계층이 죽어있지 않다)", () => {
     expect(lastHash(run(cfg))).not.toBe(lastHash(run(off)));
+  });
+
+  it("롤백(enabled=false)은 **레거시 0.16.0 과 bit-identical** 이다 — 골든 해시로 박제", () => {
+    // "레거시와 동일" 을 문장이 아니라 상수로 고정한다. 이게 없으면 롤백 스위치가 조용히
+    // 레거시와 어긋나도 아무도 못 잡는다(검증 세션 minor-5). 값은 6d49580(0.16.0) 트리에
+    // 0.17.0 의 shoot/xgBase/attackWidthReach 를 맞춰 실행한 최종 해시.
+    expect(lastHash(run(off))).toBe(LEGACY_HASH);
+    expect(lastHash(run(off, "A9"))).toBe(LEGACY_HASH_MARKED);
   });
 
   it("롤백(enabled=false)에서도 markTarget 은 살아있다 — 무음 no-op 이 되면 안 된다", () => {

@@ -1,20 +1,21 @@
 === AC-goal-in-net: showcase(viewer) (engine@0.17.0-showcase, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
-총 골: 7
-  #1 tick=46 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #2 tick=135 team=away ball=(0.50,34.07) 골라인=O 포스트내=O => PASS
-  #3 tick=351 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #4 tick=439 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #5 tick=939 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #6 tick=1187 team=away ball=(0.50,34.01) 골라인=O 포스트내=O => PASS
-  #7 tick=1392 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+총 골: 8
+  #1 tick=54 team=away ball=(0.50,33.94) 골라인=O 포스트내=O => PASS
+  #2 tick=138 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #3 tick=297 team=away ball=(0.50,33.85) 골라인=O 포스트내=O => PASS
+  #4 tick=399 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #5 tick=580 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #6 tick=653 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #7 tick=803 team=home ball=(104.50,33.99) 골라인=O 포스트내=O => PASS
+  #8 tick=1404 team=away ball=(0.50,35.30) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
 
 === AC-goal-in-net: real(default) (engine@0.17.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
 총 골: 4
-  #1 tick=296 team=away ball=(0.50,34.24) 골라인=O 포스트내=O => PASS
-  #2 tick=3110 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #3 tick=3190 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #4 tick=3330 team=home ball=(104.50,33.31) 골라인=O 포스트내=O => PASS
+  #1 tick=417 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #2 tick=576 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #3 tick=3196 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #4 tick=5262 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
