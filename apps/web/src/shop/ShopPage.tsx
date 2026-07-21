@@ -6,7 +6,9 @@ import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { GachaReveal } from "./GachaReveal";
+import { TopupPanel } from "./TopupPanel";
 import { gachaButtonState } from "./shop-logic";
+import type { ShopTab } from "./topup-logic";
 import styles from "./ShopPage.module.css";
 
 /**
@@ -22,6 +24,8 @@ export function ShopPage() {
   const gacha = useGacha();
   const [reveal, setReveal] = useState<GachaResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 탭 전환은 순수 로컬 상태 — 어떤 fetch/invalidate 도 유발하지 않는다(AC-D1).
+  const [tab, setTab] = useState<ShopTab>("gacha");
 
   const points = me?.wallet.points ?? 0;
 
@@ -62,6 +66,35 @@ export function ShopPage() {
     <Layout header={header} nav>
       {meError && <ErrorToast message="지갑 정보를 불러오지 못했습니다" />}
 
+      <div className={styles.tabs} role="tablist" aria-label="상점 탭">
+        <button
+          type="button"
+          role="tab"
+          className={styles.tab}
+          data-testid="shop-tab-gacha"
+          aria-selected={tab === "gacha"}
+          data-active={tab === "gacha"}
+          onClick={() => setTab("gacha")}
+        >
+          뽑기
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={styles.tab}
+          data-testid="shop-tab-topup"
+          aria-selected={tab === "topup"}
+          data-active={tab === "topup"}
+          onClick={() => setTab("topup")}
+        >
+          충전
+        </button>
+      </div>
+
+      {tab === "topup" ? (
+        <TopupPanel />
+      ) : (
+        <>
       <div className={styles.pulls}>
         <div className={styles.pullCard}>
           <h2 className={styles.pullTitle}>단뽑</h2>
@@ -96,6 +129,9 @@ export function ShopPage() {
 
       {meLoading && <p className={styles.pending}>지갑 불러오는 중…</p>}
       {gacha.isPending && <p className={styles.pending}>뽑는 중…</p>}
+        </>
+      )}
+
       <ErrorToast message={error} onDismiss={() => setError(null)} />
 
       {reveal && <GachaReveal response={reveal} onClose={() => setReveal(null)} />}

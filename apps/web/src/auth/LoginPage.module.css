@@ -90,6 +90,12 @@
   color: var(--text-muted);
 }
 
+/* "아이디" 라벨 옆 보조 설명 — 아이디=닉네임(서버 단일 식별자)임을 알린다. */
+.labelHint {
+  opacity: 0.75;
+  font-size: 12px;
+}
+
 .input {
   padding: 12px 14px;
   border-radius: 8px;

@@ -12,14 +12,20 @@ import {
   providerMeta,
 } from "./login-flow";
 import type { AuthProviderId } from "./login-flow";
+import { LOCAL_PROVIDER } from "../api/p3";
+import { LocalAuthPanel } from "./LocalAuthPanel";
+import { markTutorialPending } from "../common/tutorial-storage";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import styles from "./LoginPage.module.css";
 
 type LoginResponse = components["schemas"]["LoginResponse"];
 
-/** 로그인 화면 단계: provider 선택 → (OAuth 는 동의 모달) → 닉네임 입력. */
-type Stage = "choose" | "nickname";
+/**
+ * 로그인 화면 단계: provider 선택 → (OAuth 는 동의 모달) → 닉네임 입력.
+ * "local" 은 Phase3 추가 분기 — 닉네임 단계 대신 id/비번 패널로 간다(PRD-v4 §A).
+ */
+type Stage = "choose" | "nickname" | "local";
 
 export function LoginPage() {
   const [stage, setStage] = useState<Stage>("choose");
@@ -44,6 +50,25 @@ export function LoginPage() {
     setConsentProvider(id);
   }
 
+  // 자체 계정(id/비번, PRD-v4 §A): 동의 모달 없이 전용 폼으로. 기존 경로는 건드리지 않는다.
+  function chooseLocal() {
+    setProviderChoice(LOCAL_PROVIDER);
+    setStage("local");
+  }
+
+  /** 토큰 확보 후 공통 후처리 — 기존(닉네임) 경로와 local 경로가 같은 동선을 탄다. */
+  function completeLogin(token: string, isNew: boolean, usedProvider: AuthProviderId) {
+    login(token, usedProvider);
+    if (isNew) {
+      // 신규 가입 신호 → 로비 진입 시 온보딩 튜토리얼 자동 시작(PRD-v4 §B, AC-B1).
+      // 완료/건너뛰기 저장은 TutorialProvider 가 한다(여기서는 신호만).
+      markTutorialPending();
+      setStarterPackOpen(true);
+    } else {
+      navigate("/lobby", { replace: true });
+    }
+  }
+
   function confirmConsent() {
     if (!consentProvider) return;
     setProviderChoice(consentProvider);
@@ -66,7 +91,8 @@ export function LoginPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setServerError(null);
-    if (!provider) return;
+    // local 은 이 폼을 쓰지 않는다(LocalAuthPanel 이 자체 제출) — 방어적 가드 겸 타입 좁히기.
+    if (!provider || provider === LOCAL_PROVIDER) return;
 
     if (!isValidNickname(nickname)) {
       setClientError("닉네임은 2~16자의 문자/숫자/_/- 만 사용할 수 있습니다");
@@ -79,12 +105,7 @@ export function LoginPage() {
         method: "POST",
         body: buildLoginBody(provider, nickname),
       });
-      login(res.token, provider);
-      if (res.isNew) {
-        setStarterPackOpen(true);
-      } else {
-        navigate("/lobby", { replace: true });
-      }
+      completeLogin(res.token, res.isNew, provider);
     } catch (err) {
       setServerError(err instanceof ApiError ? err.message : "로그인에 실패했습니다");
     } finally {
@@ -114,6 +135,15 @@ export function LoginPage() {
               {p.label}
             </button>
           ))}
+          {/* Phase3 추가(PRD-v4 §A): 자체 계정 진입점. 기존 버튼들은 그대로. */}
+          <button
+            type="button"
+            className={styles.providerButton}
+            data-testid="provider-local"
+            onClick={chooseLocal}
+          >
+            아이디로 로그인
+          </button>
           <button
             type="button"
             className={`${styles.providerButton} ${styles.guestButton}`}
@@ -155,6 +185,13 @@ export function LoginPage() {
             다른 방법으로 로그인
           </button>
         </form>
+      )}
+
+      {stage === "local" && (
+        <LocalAuthPanel
+          onAuthenticated={(token, isNew) => completeLogin(token, isNew, LOCAL_PROVIDER)}
+          onBack={backToChoose}
+        />
       )}
 
       <ErrorToast message={serverError} onDismiss={() => setServerError(null)} />
