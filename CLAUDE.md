@@ -135,6 +135,7 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 | 0.13.0 | **v2.1 통합**(setpiece #91/#91b + α): 세이브 굴절 코너를 키퍼 라인앞 freeze 가 아니라 **공이 포스트 밖(`saveCornerWideMarginM` 1.5m)으로 라이브아웃 + 키퍼가 그 궤적 위에서 다이빙해 쳐냄**(contest.ts) — "선방인데 멈춤/골 오인" 해소. α의 패스정확도(0.11.0)·롱패스(0.12.0)와 결합되어 새 골든 스냅샷. (뷰어: #90 코너/스로인 클로즈업 제거.) |
 | 0.12.0 | **E2 롱패스/롱킥**(#99 Track α): `passOptions` 가 인식반경 밖(`longPass.minM~maxM` 30~55m) 전진 동료를 롱볼 후보로 추가(`PassOption.long`), `scoreOption` 롱 분기(fwdCap+distPenalty+selectBias)로 시도율 튜닝, `computePassProb` 거리페널티로 롱 성공<숏. `MatchEvent detail="long"`(pass/interception) 관통(shared 스키마 무변경). 리얼 20시드 **의도적 롱 시도 14.6%**(벤치 12-15), 패스성공 79.8% 유지(passBase 0.94→0.97 재보정). 잔여 최상위 갭 = 슛 과다(G-A). |
 | 0.15.0 | **슛 과다 하향 — G-A**(#99 Track α): E2 롱볼 전진이 남긴 슛 과다(팀당 **23.85→13.58**, 벤치 12-14)를 config-only 로 정합. 5개 노브: `decisionWeights.shoot` 0.5→0.35, `shootInBox` 1.38→**0.6**(파이널서드 슛 "지배" 완화 — 후진 리사이클은 `backwardPassPenalty`·`shootCentralBonus` 로 계속 억제), `contest.xgBase` 0.225→0.19, `shootRange` 20→19(원거리 speculative 억제), `oneOnOneShootBias` 3.2→1.8. 리얼 20시드: **골 2.98→1.63**(벤치 1.4-1.65)·**슛당 xG 0.13→0.12**(벤치 0.10-0.12)·전환 13.6→11.9%·코너 8.3→5.4(G-B 동반 해소)·스로인 16.6→17.6. **E1/E2 무회귀**(패스 79.9%·롱 14.5%). 회귀가드=`realism/shot-frequency.test.ts`(단조성+다시드 12-14 밴드). 새 골든. |
+| 0.16.0 | **좌우(y) 대칭 버그 픽스 — 코너 반복**(#25/#99 Track α): `decision.ts:decideOffBall` 폭확장 tie-break 가 정확히 중앙(y=center)에 선 4-3-3 ST·CM 을 항상 +y 로 밀어 공격이 피치 아래로 쏠림 → **코너 side top/bottom 3:213(98.6% 편중)**="같은 장면 반복" 인상의 실체(스퓨리어스 #110/#113 과 별개 축). 중앙 선수 `idHash` 패리티로 좌/우 분배(결정론 유지, `Math.random` 無). 균형화로 늘어난 저xG 와이드슛은 `shoot` 0.35→0.34·`shootAngleFactor` 0.7→0.85 재보정. 리얼 20시드: 코너 top/bottom **108:107**(균형)·슛14.0·골1.65·xG0.11·패스79.5% 전부 밴드. 회귀가드=`realism/lateral-balance.test.ts`. 새 골든. **리얼리즘 회귀 스윕(#139)**: 0.16.0 전지표 밴드(6/6 회귀0)·`research/engine-realism-gap.md` 갱신 + 하이진 게이트 주석 오탐 복구(코멘트 온리). |
 
 뷰어(연출): 데드볼 정지→상황자막→skip, 골(GOAL, 골문 줌)과 상황카드(선방/빗나감/파울/오프사이드/PK) 분리, 하이라이트 자동페이싱, 타임라인 멀티 이벤트 핀(골/PK/선방/유효슛/코너, 클릭점프)+시:초 시계, 유효슛 링 이펙트, 코너·프리킥 pause 비트, **골 인바운드 보간 유지(순간이동 제거, V3 #16)**, playback.mjs 순수화+테스트. **데드볼 정상 재생(트릭 제거, #59)**, **파울/카드 자막 파울러 앵커 + 동시 토스트 세로 스택(#69)**, **파울 접촉 카메라 줌(두 선수 충돌 가시화, #74)**, **페널티 2단계 배치(#75)**, 연출 줌 autoPace 게이트. 이벤트↔연출 E2E 계약(`e2e/*.spec.ts`)로 회귀 방지.
 
@@ -146,8 +147,9 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 | **v1** | engine@0.10.0 | 데드볼 엔진 네이티브(#59) + 페널티 2단계(#75) + 파울/카드 연출(#69/#74). 독립 QA PASS. | ✅ 안정 |
 | **v2** | engine@0.10.0 | (뷰어 전용, v1 엔진 계약 불변) 하이라이트 창 비대칭화(세이브 후 늦은 릴리스 해소, #83) + **뷰어 소비 주입 계약 네이티브화**(postMessage viewerReady/loadMatchLog, web 임베드용, #65) + 손상입력 하드닝. 독립 QA PASS. | ✅ 안정 |
 | **v3** | engine@0.14.0 | **v2.1 게임성 확장 + 코너 버그픽스 + 뷰 모드.** 엔진(α #99): 패스정확도 하향(0.11.0)·롱패스/롱킥(0.12.0). 세이브→코너 라이브아웃+키퍼 쳐냄(#91, 0.13.0). **세이브 후 반대편 스퓨리어스 코너 버그 픽스**(#110/#113 — `resolveOut` 코너 side 오배정, v0.2.0 잠복, 0.14.0). 뷰어(β #100): 전면 영어·소유팀 트레일색·패스/가로챔/돌파 이펙트·카드 선수표시·FM식 상세로그·실시간 통계 HUD(토글) + **Auto/Fix 뷰 모드 토글·줌 조정**(#114). 코너/스로인 클로즈업 제거(#90). 독립 QA PASS ×다수. | ✅ 안정 |
+| **v4** | engine@0.16.0 | **v2.1 완료 — α 밸런스 마무리 + β 클러터.** 엔진(α #99): 슛 과다 하향 #131(0.15.0, 팀당 23→14 벤치정합)·**좌우(y) 대칭 버그 #135(0.16.0**, 코너 98.6% 편중→균형·공격 y-쏠림 해소)·리얼리즘 회귀 스윕 #139(0.16.0 전지표 밴드 6/6 회귀0 + main 하이진 오탐 복구). 뷰어(β #100): **킥오프 선수 잔상 클러터 제거 #142**(잔상 도트가 포메이션 재배치 경계 미컷 → `spansReposition` 클립, 뷰어 전용·골든 무변경). 게이트 engine+shared 106·desync0×80·playwright 58/58. 독립 QA PASS ×다수. α 리얼리즘=0.16.0 in-band 마일스톤. | ✅ 안정 |
 
-- **메인 세션 소비법**: `git checkout v3`(최신) 또는 해당 커밋 고정. 엔진 = `packages/engine/src`(무상태 simulate/resume), 뷰어 = `packages/engine/dev-viewer/viewer-standalone.html`(자립 재생) 또는 `index.html`+`playback.mjs`. **web 임베드**: iframe src=뷰어 → `{type:'viewerReady'}` 수신 후 `{type:'loadMatchLog', matchLog}` 주입(v2+, #65).
+- **메인 세션 소비법**: `git checkout v4`(최신) 또는 해당 커밋 고정. 엔진 = `packages/engine/src`(무상태 simulate/resume), 뷰어 = `packages/engine/dev-viewer/viewer-standalone.html`(자립 재생) 또는 `index.html`+`playback.mjs`. **web 임베드**: iframe src=뷰어 → `{type:'viewerReady'}` 수신 후 `{type:'loadMatchLog', matchLog}` 주입(v2+, #65).
 - **태그 vs config.version(두 축)**: 릴리스 **태그**(v1,v2,…)는 안정 스냅샷마다 증가(엔진 OR 뷰어 변경 무관). **config.version**(engine@x.y.z)은 **엔진 동작/재현 계약**이 바뀔 때만 범프 — 뷰어 전용 릴리스는 태그만 올리고 config.version 은 유지(v2 가 v1 과 같은 0.10.0 인 이유).
 - **다음 안정화**: 변경이 독립 QA PASS + 전 게이트 green 이면 새 태그. 엔진 동작이 바뀌면 config.version 도 범프. 불안정 중간 커밋은 태깅하지 않는다.
 
@@ -168,8 +170,8 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 ## 8. 알려진 비-blocker (Backlog, 낮은 우선순위)
 
 - ~~슛 접근 하드컷(순간이동)~~ → **해결(0.9.0/V3 #16)**: 골 인바운드 보간 유지. 잔여: 슛 비행이 1~3틱뿐(shotBallSpeed 높음)이라 아주 빠름 — 더 부드럽게 하려면 sub-tick 샘플/속도↓(엔진).
-- 킥오프 직후 궤적 잔상선이 피치 가로질러 지그재그로 그려짐(시각 클러터).
-- freeze→킥오프 렌더/자막 1프레임 desync(코스메틱).
+- ~~킥오프 직후 궤적 잔상선이 피치 가로질러 지그재그로 그려짐(시각 클러터).~~ → **해결(v4 #142)**: 선수 잔상 도트가 포메이션 재배치 경계를 미컷하던 것 → `spansReposition` 클립. (공 트레일은 이미 #51 컷됨.)
+- freeze→킥오프 렌더/자막 1프레임 desync(코스메틱). *(#142 캡처에선 재현 안 됨 — 원인 미겹침, open 유지.)*
 - 선방 슛은 keyTicks(하이라이트 슬로우) 대상이 아니라 빠르게 지나감 — 필요 시 keyTicks 에 포함.
 
 ---
