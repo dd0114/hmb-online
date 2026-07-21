@@ -129,7 +129,25 @@ public class LeagueService {
 
     public record LeagueSeason(String id, int seasonNo, String state, List<LeagueTeam> teams,
                                List<LeagueStanding> standings, List<LeagueFixture> fixtures,
-                               LeagueFixture nextUserFixture) {
+                               LeagueFixture nextUserFixture, SeasonReward seasonReward) {
+    }
+
+    /**
+     * 시즌 보상 요약(additive, web 시즌종료 연출용 — P3-D8/AC-E1). <b>SoT = 기존 데이터에서 파생</b>:
+     * 지급 사실·금액·시각은 {@code point_ledger}(reason='league_reward', ref=seasonId)에서,
+     * {@code rank} 은 {@link #computeStandings} 유저 순위에서. 별도 상태 컬럼을 두지 않는다(원장과 드리프트 방지).
+     *
+     * <ul>
+     *   <li>{@code status=PENDING}: 시즌 ACTIVE(미종료) — 아직 미지급. 이때 {@code rank} 은 <b>현재 잠정 순위</b>,
+     *       {@code points=0}(예정 보상액이 아님 — 채우면 web 이 "이미 받았다"로 오인하므로 0으로 고정),
+     *       {@code awardedAt=null}.</li>
+     *   <li>{@code status=GRANTED}: FINISHED + 원장에 지급 행 존재. {@code points} = <b>원장 delta(실지급액)</b>,
+     *       {@code awardedAt} = 원장 created_at, {@code rank} = 최종 순위.</li>
+     *   <li>{@code status=NONE}: FINISHED 인데 원장 없음(방어 케이스 — userRank 미확인 또는 보상액 0).
+     *       {@code points=0}, {@code awardedAt=null}.</li>
+     * </ul>
+     */
+    public record SeasonReward(int rank, int points, String status, String awardedAt) {
     }
 
     public record LeagueResponse(LeagueSeason season) {
@@ -266,7 +284,8 @@ public class LeagueService {
         }
     }
 
-    private void maybeFinishSeason(String seasonId) {
+    // 패키지 가시성(테스트 재진입 검증용) — 외부 모듈은 서비스 API 로만 소비.
+    void maybeFinishSeason(String seasonId) {
         long remaining = jdbcClient.sql(
                         "SELECT COUNT(*) FROM league_fixtures WHERE season_id = ? AND state = 'SCHEDULED'")
                 .param(seasonId).query(Long.class).single();
@@ -285,7 +304,8 @@ public class LeagueService {
     }
 
     /** 순위별 포인트 보상(league.v1 rewards) — 유저 순위 기준, 원장 ref=seasonId 멱등(AC-F4). */
-    private void awardSeasonRewards(String seasonId) {
+    // 패키지 가시성(테스트: 재호출해도 원장 백스톱으로 중복 지급 0 검증용).
+    void awardSeasonRewards(String seasonId) {
         SeasonRow season = seasonById(seasonId).orElseThrow();
         List<LeagueStanding> standings = computeStandings(seasonId);
         int userRank = standings.stream().filter(LeagueStanding::isUser)
@@ -654,8 +674,40 @@ public class LeagueService {
         List<LeagueStanding> standings = computeStandings(season.id());
         List<LeagueFixture> fixtures = allFixtures(season.id()).stream().map(this::toDto).toList();
         LeagueFixture next = nextUserFixtureRow(season.id()).map(this::toDto).orElse(null);
+        SeasonReward reward = buildSeasonReward(season, standings);
         return new LeagueSeason(season.id(), season.seasonNo(), season.state(),
-                teams, standings, fixtures, next);
+                teams, standings, fixtures, next, reward);
+    }
+
+    /** {@link SeasonReward} 파생(SoT = point_ledger 지급행 + computeStandings 순위 — 새 컬럼 없음). */
+    private SeasonReward buildSeasonReward(SeasonRow season, List<LeagueStanding> standings) {
+        int userRank = standings.stream().filter(LeagueStanding::isUser)
+                .map(LeagueStanding::rank).findFirst().orElse(-1);
+        if (!"FINISHED".equals(season.state())) {
+            // 시즌 진행 중: rank 은 현재 잠정 순위, 아직 미지급. points=0(예정액을 채우지 않아 web 오인 방지).
+            return new SeasonReward(userRank, 0, "PENDING", null);
+        }
+        // 종료: 지급 진실은 원장(reason='league_reward', ref=seasonId)이다. 원장이 SoT.
+        Optional<RewardLedgerRow> ledger = leagueRewardLedger(season.userId(), season.id());
+        if (ledger.isPresent()) {
+            return new SeasonReward(userRank, (int) ledger.get().delta(), "GRANTED", ledger.get().createdAt());
+        }
+        // 종료인데 원장 없음 = 방어 케이스(userRank 미확인 또는 보상액 0).
+        return new SeasonReward(userRank, 0, "NONE", null);
+    }
+
+    private record RewardLedgerRow(long delta, String createdAt) {
+    }
+
+    /** 리그 보상 원장 행(있으면) — 지급 여부·금액·시각의 SoT. */
+    private Optional<RewardLedgerRow> leagueRewardLedger(String userId, String seasonId) {
+        return jdbcClient.sql("""
+                        SELECT delta, created_at FROM point_ledger
+                        WHERE user_id = ? AND reason = 'league_reward' AND ref_id = ?
+                        """)
+                .params(userId, seasonId)
+                .query((rs, n) -> new RewardLedgerRow(rs.getLong("delta"), rs.getString("created_at")))
+                .optional();
     }
 
     private LeagueFixture toDto(FixtureRow f) {
