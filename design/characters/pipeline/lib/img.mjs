@@ -360,3 +360,51 @@ export const shade = ([r, g, b], f) => [
   Math.max(0, Math.min(255, Math.round(g * f))),
   Math.max(0, Math.min(255, Math.round(b * f))),
 ];
+
+const rgb2hsl = (R, G, B) => {
+  R /= 255; G /= 255; B /= 255;
+  const mx = Math.max(R, G, B), mn = Math.min(R, G, B), l = (mx + mn) / 2, d = mx - mn;
+  if (d === 0) return [0, 0, l];
+  const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+  let h;
+  if (mx === R) h = ((G - B) / d + (G < B ? 6 : 0)) / 6;
+  else if (mx === G) h = ((B - R) / d + 2) / 6;
+  else h = ((R - G) / d + 4) / 6;
+  return [h, s, l];
+};
+const hsl2rgb = (h, s, l) => {
+  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+  const f = (t) => {
+    t = (t + 1) % 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [Math.round(f(h + 1 / 3) * 255), Math.round(f(h) * 255), Math.round(f(h - 1 / 3) * 255)];
+};
+// 피부톤 대역 — 이 안의 색은 hue 시프트에서 제외한다(초록/파랑 피부 방지).
+const isSkin = (h, s, l) => {
+  const deg = h * 360;
+  return deg >= 18 && deg <= 48 && s >= 0.18 && s <= 0.8 && l >= 0.35 && l <= 0.92;
+};
+
+/**
+ * 진짜 HSL hue 회전 — **채도·명도 보존**(CSS filter:hue-rotate 는 선형근사라 채도를 깎는다).
+ * 아트에만 적용하므로 팀 링·등급 프레임은 오염되지 않는다(합성 전 단계).
+ * @param protectSkin 피부톤 대역 제외(기본 true) — 캐릭터 정체성 유지.
+ */
+export function hueShift(s, deg, protectSkin = true) {
+  const o = clone(s);
+  const shift = deg / 360;
+  for (let i = 0; i < o.data.length; i += 4) {
+    if (o.data[i + 3] === 0) continue;
+    const [h, sat, l] = rgb2hsl(o.data[i], o.data[i + 1], o.data[i + 2]);
+    if (sat === 0) continue; // 무채색(검정·흰색·회색)은 hue 가 없다 → 유지
+    if (protectSkin && isSkin(h, sat, l)) continue;
+    const [R, G, B] = hsl2rgb((h + shift + 1) % 1, sat, l);
+    o.data[i] = R; o.data[i + 1] = G; o.data[i + 2] = B;
+  }
+  return o;
+}

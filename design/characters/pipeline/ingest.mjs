@@ -239,10 +239,15 @@ export function processCharacter(id, files) {
       report.produced.push(`sprite-${st.size}.png`);
     }
     // 카드 아트 = 아트 영역(192×314)의 정확히 1/2 로 도트화 → nearest ×2 업스케일(픽셀 격자 보존).
+    // 아트를 **별도로 저장**한다 — hue 변형 카드는 아트에만 색을 걸고 카드를 재합성해야
+    // 포지션 뱃지·프레임·별이 규칙대로 나온다(카드 완성본에 hue 를 걸면 뱃지 색이 돌아 포지션 오인).
     const art = dotify(src, 96, 157, 32, 'bottom');
+    write(path.join(outDir, 'card-art.png'), art);
+    report.produced.push('card-art.png');
     const card = composeCard(art, { position: meta.position, stars: meta.stars, signature: sig, frame });
     write(path.join(outDir, 'card.png'), card);
     report.produced.push('card.png');
+    report.meta.stars = meta.stars;
   } else report.warnings.push('full 없음 — 스프라이트·카드 미산출');
 
   fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 2) + '\n');

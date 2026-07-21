@@ -37,6 +37,26 @@ node design/characters/pipeline/make-defaults.mjs   # data/players/players.v2.js
 소비법: `manifest.players[playerId]` 의 `col`/`row` × `atlases[x].tile` 로 스프라이트시트 오프셋을 잡는다.
 `manifest.source === 'default-placeholder'` 면 아직 실제 원화가 아니다 — 원화 입고 시 `ingest.mjs` 산출물로 대체된다.
 
+### dist/characters/ — 확정 캐릭터 에셋 (#121 소비)
+
+hero 가 레퍼 12캐릭터를 게임 자산으로 확정(2026-07-21). LEGEND 14명 매핑용.
+
+```bash
+node design/characters/pipeline/pilot-crop.mjs      # refs → incoming (12캐릭터 크롭)
+node design/characters/pipeline/ingest.mjs          # → out/ (3형태 + card-art)
+node design/characters/pipeline/make-characters.mjs # → dist/characters/ (아틀라스 + hue변형 + manifest)
+```
+
+| 파일 | 내용 |
+|---|---|
+| `avatars-{64,32,16}.png` · `sprites-{64,32,16,8}.png` | 14종(원본 12 + 변형 2) 아틀라스 |
+| `card-<id>.png` | 캐릭터별 카드 226×425 (개별 파일) |
+| `manifest.json` | `characters[id]` = `{col,row,position,card}` + 변형은 `{variant:{of,hueDeg}, forPlayer}` |
+
+- 두 축(`dist/` 172명 플레이스홀더 vs `dist/characters/` 14종 확정)은 **별도 manifest** — 충돌 없음.
+- #121 은 `characters[id]` 타일 좌표만 소비. **선수↔캐릭터 매핑은 #121(data/) 소유** — 여기서 안 한다.
+- 변형(`sail-h150`·`ragna-h210`)은 §4.5 규격. web 은 일반 캐릭터와 동일 렌더(CSS 필터 불필요).
+
 ## 쓰는 법
 
 ```bash
