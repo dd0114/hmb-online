@@ -11,7 +11,7 @@ import { demoSelect, makeTacticalInput } from "../../src/fixtures";
 // 없을 수 있다. 이 시드(real config)는 셋 다 포함하므로, 그 타입 계약검증용 풀해상도 로그를
 // e2e/fixture-real.json 으로 만든다. (생성물은 gitignore.)
 const here = dirname(fileURLToPath(import.meta.url));
-const SEED = "1000000006"; // real config 에서 offside+card+penalty + #42(세이브→라이브체인→빗나감) 패턴을 모두 포함하는 시드. (#59 데드볼 동적 정지로 타임라인이 바뀌어 재선정 — 이전 1000000015.)
+const SEED = "1000000007"; // real config 에서 offside+card+penalty + #42(세이브→라이브체인→빗나감) 패턴을 모두 포함하는 시드. (engine@0.16.0 좌우대칭 픽스로 타임라인이 바뀌어 재선정 — 이전 1000000006.)
 
 describe("e2e fixtures", () => {
   it("writes fixture-real.json containing offside + card + penalty events", () => {
