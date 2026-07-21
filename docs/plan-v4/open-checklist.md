@@ -13,14 +13,14 @@
 |---|---|---|---|---|
 | ~~B1~~ | ~~server-java CORS 부재~~ | ~~blocker~~ | server-java | ✅ **해소** (#128 / PR #133). `CorsConfig` — 허용오리진 env(`HMB_CORS_ALLOWEDORIGINS`), `/internal/**` 제외. *브라우저 실측: 허용→200+ACAO, 미허용→403, internal→CORS없음* |
 | ~~B1b~~ | ~~web 이 VITE_API_BASE 를 안 읽음~~ | ~~blocker~~ | web | ✅ **해소** (#129 / PR #136). *실측: env 주입 시 번들 해시 변함(BILcWrfu)·오리진 인라인* |
-| B2 | `SERVANT_TOKEN` 기본값 `change-me` 로 외부 노출 시 `/internal/**` 무방비 | **blocker** | infra | 런북에 교체 절차 명시(§5.4) — **오픈 시 실제 교체 확인 필요** |
+| ~~B2~~ | ~~`SERVANT_TOKEN` 기본값 `change-me`~~ | ~~blocker~~ | infra | ✅ **해소** (배포 실행): `openssl rand -hex 32` 로 교체. *실측: 터널 노출 상태에서 change-me→401, 교체토큰→200* |
 | B3 | 비밀번호 **평문 저장**(P3-D2 목업 확정) | major(의도된 목업) | server-java | 범위 명시 필요(§7) |
 | B4 | AI 실행기 헬스체크가 **livelock 미검출**(프로세스는 살아있고 폴 루프만 멈춘 경우) | minor | packages/server | **#125** 등록. 프로세스 stop/zombie 는 검출됨 |
 | B5 | 배포 시 `WEB_ORIGINS`(CORS)와 web `VITE_API_BASE` 가 **짝**이어야 함 — 한쪽만 맞으면 왕복 실패 | 운영 | infra | deploy.md §7.0 명시. quick tunnel 은 재시작마다 양쪽 갱신 |
 
-> **B1·B1b 해소로 브라우저 왕복 메커니즘은 검증 완료**(deploy.md §7.1 — 실 chromium 교차오리진
-> 로그인→`/api/me` 200). 남은 오픈 blocker = **B2**(토큰 교체) + **AC-G2 터널 전송**(hero
-> `cloudflared login` 게이트, §7.2). B3 는 고지 항목.
+> **AC-G2 풀체인 검증 완료**(deploy.md §7.2): 실 chromium 로컬 web → **공개 quick tunnel** → java,
+> 브라우저 CORS 집행, 로그인→`/api/me` 200. B1·B1b·B2 모두 해소. 남은 것 = **상시 URL(named
+> tunnel, hero `cloudflared login`)** + **Pages 호스팅(hero 대시보드)** + B3 고지 + 도메인별 §1~§9.
 
 ---
 
@@ -107,10 +107,11 @@
 ```
 [x] B1 해소 (CORS — #128/PR133, 브라우저 실측)
 [x] B1b 해소 (web VITE_API_BASE — #129/PR136, 번들 인라인 실측)
-[ ] B2 해소 (SERVANT_TOKEN 교체 — 오픈 직전, hero)
-[ ] B3 고지 (평문 비번 목업 안내)
-[~] AC-G2 왕복 — 브라우저 교차오리진 왕복 검증(§7.1), **터널 전송만 잔여**(§7.2, hero cloudflared)
-[ ] §1~§9 중 blocker 0 (잔여 = B2 + 도메인별 미점검)
+[x] B2 해소 (SERVANT_TOKEN openssl rand 교체 — 터널 노출 상태 실측)
+[x] AC-G2 왕복 — 브라우저 풀체인(로컬 web→공개 quick tunnel→java) 로그인→/api/me 200 (§7.2)
+[ ] B3 고지 (평문 비번 목업 안내 — 오픈 UI/공지)
+[ ] 상시 URL: named tunnel (hero cloudflared login) + Pages 호스팅 (hero 대시보드)
+[ ] §1~§9 중 blocker 0 (잔여 = 도메인별 미점검: 계정 무회귀·모바일·법적 등)
 [ ] hero 실플레이 1회 (§7.3 — 덱→매치 생성 포함)
 ```
 
