@@ -28,6 +28,13 @@ public class TradeController {
         return tradeService.getSlots(userId);
     }
 
+    /** [장 시작!] (#149) — IDLE 최초 시작 / OPEN 에서는 [거래 안함](오퍼 폐기 후 새 장). */
+    @PostMapping("/api/trade/{slot}/start")
+    public TradeService.TradeStartResponse start(@RequestAttribute("userId") String userId,
+                                                 @PathVariable("slot") int slot) {
+        return tradeService.start(userId, requireSlotNo(slot));
+    }
+
     @PostMapping("/api/trade/{slot}/speedup")
     public TradeService.TradeSpeedupResponse speedup(@RequestAttribute("userId") String userId,
                                                      @PathVariable("slot") int slot) {

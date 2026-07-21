@@ -28,9 +28,29 @@ import org.springframework.stereotype.Service;
  * 트레이드 (AC-D1~D5, LLD-p2-server §5).
  *
  * <p><b>슬롯</b>: 유저별 {@code slots}(=3)개 보장 — 로그인/조회 시 lazy 생성({@link #ensureSlots}).
- * 각 슬롯은 생성 시 시드로 오퍼(kind·target·demand·대기)를 <b>즉시 확정</b>하고 {@code opens_at}만
- * 미래로 둔다(LLD §5: "생성 시 시드로 즉시 확정"). WAITING→OPEN 전이는 스케줄러 없이 접근 시
- * lazy 하게({@code opens_at ≤ now} 이면 OPEN) 처리한다.
+ * 슬롯은 <b>{@code IDLE}(장 닫힘, 오퍼 없음)</b> 로 생성된다(#149 능동화). 유저가 <b>[장 시작!]</b>
+ * ({@link #start})을 눌러야 새 시드로 오퍼(kind·target·demand)가 <b>즉시 확정</b>되고
+ * {@code WAITING} + 카운트다운이 시작된다. WAITING→OPEN 전이는 스케줄러 없이 접근 시 lazy 하게
+ * ({@code opens_at ≤ now} 이면 OPEN) 처리한다.
+ *
+ * <p><b>상태머신(#149, openapi-v2 계약)</b>:
+ * <pre>
+ *   IDLE    --start-->             WAITING(등급만 공개)
+ *   WAITING --(만료 | speedup)-->  OPEN(전면 공개)
+ *   WAITING --start-->             400 TRADE_INVALID (카운트다운 중 재시작 불가)
+ *   OPEN    --start-->             WAITING(새 시드) + trade_log DECLINED(action=skip)  [= 거래 안함]
+ *   OPEN    --accept/decline/FA성공--> IDLE (다음 장은 유저가 연다)
+ *   OPEN    --FA실패-->            WAITING(같은 오퍼, reproposalCooldownHours 재대기)
+ * </pre>
+ *
+ * <p><b>공개 범위</b>: {@code WAITING} 에서는 <b>등급만</b> 공개하고({@code targetGrade})
+ * {@code target/demand/targetValue} 는 뷰에서 마스킹한다 — 카운트다운 중에는 선수 정체를 모른다.
+ * 단 마스킹 대상은 <b>아직 한 번도 OPEN 된 적 없는 오퍼</b>({@code revealed=0})뿐이다. 이미 공개됐던
+ * 오퍼가 다시 WAITING 이 된 경우(= FA 제안 실패 후 재제안 쿨타임)는 계속 전면 공개한다 — 유저가 이미
+ * 본 선수를 도로 가리지 않는다(인지 부조화 방지). {@code revealed} 는 WAITING→OPEN 두 경로
+ * ({@link #openIfDue} lazy 만료 / speedup 즉시 OPEN)에서 1 이 되고, {@link #start}(새 오퍼)와
+ * {@code clearSlot}(IDLE)에서 0 으로 리셋된다.
+ * 마스킹은 <b>DTO 에서만</b>이고 DB 에는 오퍼가 확정 저장돼 있다(시드 재현·감사).
  *
  * <p><b>오퍼 생성(시드 결정론)</b> — 저장된 seed에서 파생된 PRNG로 재현 가능:
  * <ol>
@@ -50,7 +70,7 @@ import org.springframework.stereotype.Service;
  * 무손실</b>(AC-D2) + 재제안 쿨타임({@code reproposalCooldownHours} 동안 같은 오퍼 유지·WAITING 재대기).
  *
  * <p><b>TRADE 판정</b>: accept = {@code acceptProb}(0.8) 롤 → 성공 시 demand 이탈 + target 영입,
- * 실패/거절은 슬롯 재생성(새 시드·새 대기). 모든 결과는 trade_log 기록.
+ * 실패/거절도 장을 닫는다({@code IDLE}). 모든 결과는 trade_log 기록.
  *
  * <p><b>멱등</b>: speedup 지출은 point_ledger(reason='trade_speedup', ref=slotId:seed) — 같은 오퍼
  * 회차 내 중복 차감 방지(uq_ledger 재사용). FA 성공 포인트 지출도 ref=slotId:seed.
@@ -68,19 +88,22 @@ public class TradeService {
     private final WalletService walletService;
     private final TradeSeedSource seedSource;
     private final ObjectMapper objectMapper;
+    private final TradeProperties tradeProperties;
 
     public TradeService(JdbcClient jdbcClient,
                         TxRunner txRunner,
                         EconomyService economyService,
                         WalletService walletService,
                         TradeSeedSource seedSource,
-                        ObjectMapper objectMapper) {
+                        ObjectMapper objectMapper,
+                        TradeProperties tradeProperties) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.economyService = economyService;
         this.walletService = walletService;
         this.seedSource = seedSource;
         this.objectMapper = objectMapper;
+        this.tradeProperties = tradeProperties;
     }
 
     // ── config (economy.v2 trade 블록 — 수치 SoT) ────────────────────────
@@ -130,7 +153,11 @@ public class TradeService {
 
     // ── 슬롯 보장 (lazy 생성) ────────────────────────────────────────────
 
-    /** 유저별 슬롯 {@code slots}개 보장. 없는 slot_no 만 새 시드로 생성(UNIQUE(user,slot_no) 경합 안전). */
+    /**
+     * 유저별 슬롯 {@code slots}개 보장. 없는 slot_no 만 <b>IDLE(오퍼 없음)</b> 로 생성
+     * (UNIQUE(user,slot_no) 경합 안전). #149: 생성 시 오퍼를 만들지 않는다 — 유저가 [장 시작!] 을
+     * 눌러야 열린다.
+     */
     public void ensureSlots(String userId) {
         TradeConfig cfg = config();
         List<Integer> existing = jdbcClient.sql("SELECT slot_no FROM trade_slots WHERE user_id = ?")
@@ -139,30 +166,84 @@ public class TradeService {
             if (existing.contains(slotNo)) {
                 continue;
             }
-            createSlot(userId, slotNo, cfg);
+            createSlot(userId, slotNo);
         }
     }
 
-    private void createSlot(String userId, int slotNo, TradeConfig cfg) {
-        String seed = seedSource.newSeed();
-        Offer offer = deriveOffer(userId, seed, cfg);
-        Instant now = Instant.now();
-        String opensAt = now.plusSeconds((long) offer.waitHours() * SECONDS_PER_HOUR).toString();
+    private void createSlot(String userId, int slotNo) {
         try {
             jdbcClient.sql("""
                             INSERT OR IGNORE INTO trade_slots
                               (id, user_id, slot_no, state, offer_kind, target_player_id,
-                               demand_player_id, seed, opens_at, created_at)
-                            VALUES (?, ?, ?, 'WAITING', ?, ?, ?, ?, ?, ?)
+                               demand_player_id, seed, opens_at, revealed, created_at)
+                            VALUES (?, ?, ?, 'IDLE', NULL, NULL, NULL, NULL, NULL, 0, ?)
                             """)
-                    .params(Ulid.next(), userId, slotNo, offer.kind(), offer.targetPlayerId(),
-                            offer.demandPlayerId(), seed, opensAt, now.toString())
+                    .params(Ulid.next(), userId, slotNo, Instant.now().toString())
                     .update();
         } catch (DataAccessException e) {
             if (!SqliteErrors.isUniqueViolation(e)) {
                 throw e; // 경합으로 다른 요청이 먼저 만든 경우만 무시
             }
         }
+    }
+
+    // ── [장 시작!] (POST /{slot}/start) ──────────────────────────────────
+
+    /**
+     * #149 능동 진입. {@code IDLE}(최초 시작) 또는 {@code OPEN}([거래 안함] — 공개된 오퍼를 버림)
+     * 에서만 허용하고, 새 시드로 오퍼를 확정해 {@code WAITING} + 레어도별 카운트다운을 시작한다.
+     * {@code WAITING}/{@code RESOLVING} 이면 400 TRADE_INVALID(카운트다운 중 재시작 불가).
+     *
+     * <p>상태전이는 CAS({@code WHERE state IN ('IDLE','OPEN')}) — 동시 요청의 이중 롤을 막는다.
+     * {@code OPEN} 에서 눌렀다면 버린 오퍼를 trade_log 에 {@code DECLINED(action=skip)} 로 1건 남긴다
+     * (trade_log CHECK 제약을 건드리지 않도록 result 는 기존 enum 재사용).
+     */
+    public TradeStartResponse start(String userId, int slotNo) {
+        return txRunner.run(() -> {
+            ensureSlots(userId);
+            TradeConfig cfg = config();
+            SlotRow row = requireSlot(userId, slotNo);
+            openIfDue(row);
+            row = refresh(row.id());
+            if (!"IDLE".equals(row.state()) && !"OPEN".equals(row.state())) {
+                throw tradeInvalid("카운트다운 중인 슬롯은 다시 시작할 수 없습니다(현재 " + row.state() + ")");
+            }
+            boolean skipping = "OPEN".equals(row.state()); // [거래 안함] — 공개 오퍼 폐기
+
+            String seed = seedSource.newSeed();
+            Offer offer = deriveOffer(userId, seed, cfg);
+            Instant now = Instant.now();
+            String opensAt = now.plusSeconds(waitSecondsFor(offer.targetPlayerId(), cfg)).toString();
+            int updated = jdbcClient.sql("""
+                            UPDATE trade_slots SET state = 'WAITING', offer_kind = ?, target_player_id = ?,
+                              demand_player_id = ?, seed = ?, opens_at = ?, revealed = 0, created_at = ?
+                            WHERE id = ? AND state IN ('IDLE','OPEN')
+                            """)
+                    .params(offer.kind(), offer.targetPlayerId(), offer.demandPlayerId(), seed,
+                            opensAt, now.toString(), row.id())
+                    .update();
+            if (updated != 1) {
+                throw tradeInvalid("이미 처리 중인 슬롯입니다 — 잠시 후 다시 시도하세요");
+            }
+            if (skipping && row.offerKind() != null) {
+                logTrade(userId, row.offerKind(), "DECLINED", row.targetPlayerId(),
+                        row.demandPlayerId() == null ? List.of() : List.of(row.demandPlayerId()),
+                        0, null, null, "skip");
+            }
+            return new TradeStartResponse(viewOf(refresh(row.id()), cfg),
+                    new WalletInfo(walletService.points(userId)));
+        });
+    }
+
+    /**
+     * 레어도별 카운트다운(초) — SoT 는 economy {@code trade.waitHours[grade]}(시간). 데모/로컬용
+     * {@code hmb.trade.wait-seconds.{GRADE}} 오버라이드가 있으면 그 초를 쓴다(하드코딩 금지).
+     */
+    long waitSecondsFor(String targetPlayerId, TradeConfig cfg) {
+        String grade = metaOf(targetPlayerId).grade();
+        return tradeProperties.waitSecondsFor(grade)
+                .map(Integer::longValue)
+                .orElseGet(() -> (long) cfg.waitHours().getOrDefault(grade, 1) * SECONDS_PER_HOUR);
     }
 
     // ── 오퍼 생성 (시드 결정론) ──────────────────────────────────────────
@@ -295,7 +376,7 @@ public class TradeService {
             int spent = charged ? cost : 0; // 멱등: 같은 오퍼 회차에 이미 지불했으면 재차감 없음
             // opens_at 을 now 로 앞당겨 즉시 OPEN (남은시간 비례 비용을 지불하고 대기 전량 소거).
             String now = Instant.now().toString();
-            jdbcClient.sql("UPDATE trade_slots SET opens_at = ?, state = 'OPEN' WHERE id = ?")
+            jdbcClient.sql("UPDATE trade_slots SET opens_at = ?, state = 'OPEN', revealed = 1 WHERE id = ?")
                     .params(now, row.id())
                     .update();
             SlotRow updated = refresh(row.id());
@@ -379,7 +460,7 @@ public class TradeService {
                 acquireOwned(userId, targetId);
                 acquired = refOf(targetId);
                 logTrade(userId, "FA", "SUCCESS", targetId, offered, offeredPoints, p, roll);
-                regenerate(userId, row, cfg);
+                clearSlot(row); // #149: 판정 끝 → 장 닫힘(IDLE)
             } else {
                 // 실패: 자원 무손실 + 재제안 쿨타임(같은 오퍼 유지, WAITING 재대기).
                 logTrade(userId, "FA", "FAIL", targetId, offered, offeredPoints, p, roll);
@@ -443,7 +524,7 @@ public class TradeService {
             } else {
                 logTrade(userId, "TRADE", "FAIL", targetId, List.of(demandId), 0, p, roll);
             }
-            regenerate(userId, row, cfg);
+            clearSlot(row); // #149: 성공/실패 모두 장 닫힘(IDLE)
             SlotRow after = refresh(row.id());
             return new TradeResolveResponse(success ? "SUCCESS" : "FAIL", p, roll,
                     acquired, released, new WalletInfo(walletService.points(userId)), viewOf(after, cfg));
@@ -463,7 +544,7 @@ public class TradeService {
             claimOpen(row); // W2 이월(b): 상태-CAS(OPEN→RESOLVING)
             logTrade(userId, "TRADE", "DECLINED", row.targetPlayerId(),
                     row.demandPlayerId() == null ? List.of() : List.of(row.demandPlayerId()), 0, null, null);
-            regenerate(userId, row, cfg);
+            clearSlot(row); // #149: 거절 = 장 종료(IDLE)
             SlotRow after = refresh(row.id());
             return new TradeResolveResponse("DECLINED", null, null, null, null,
                     new WalletInfo(walletService.points(userId)), viewOf(after, cfg));
@@ -475,20 +556,19 @@ public class TradeService {
         return rngFromSeed(seed + ":accept").nextDouble();
     }
 
-    // ── 슬롯 재생성 (판정 후 새 시드·새 대기) ────────────────────────────
+    // ── 장 종료 (판정 후 IDLE — #149) ────────────────────────────────────
 
-    private void regenerate(String userId, SlotRow row, TradeConfig cfg) {
-        String seed = seedSource.newSeed();
-        Offer offer = deriveOffer(userId, seed, cfg);
-        Instant now = Instant.now();
-        String opensAt = now.plusSeconds((long) offer.waitHours() * SECONDS_PER_HOUR).toString();
+    /**
+     * 판정이 끝난 슬롯을 <b>IDLE</b>(오퍼 없음) 로 닫는다. #149 이전의 {@code regenerate}(새 오퍼 자동
+     * 재생성)를 대체 — 다음 장은 유저가 [장 시작!] 으로 연다.
+     */
+    private void clearSlot(SlotRow row) {
         jdbcClient.sql("""
-                        UPDATE trade_slots SET state = 'WAITING', offer_kind = ?, target_player_id = ?,
-                          demand_player_id = ?, seed = ?, opens_at = ?, created_at = ?
+                        UPDATE trade_slots SET state = 'IDLE', offer_kind = NULL, target_player_id = NULL,
+                          demand_player_id = NULL, seed = NULL, opens_at = NULL, revealed = 0, created_at = ?
                         WHERE id = ?
                         """)
-                .params(offer.kind(), offer.targetPlayerId(), offer.demandPlayerId(), seed,
-                        opensAt, now.toString(), row.id())
+                .params(Instant.now().toString(), row.id())
                 .update();
     }
 
@@ -599,12 +679,12 @@ public class TradeService {
     // ── 슬롯 로우 / 뷰 ───────────────────────────────────────────────────
 
     record SlotRow(String id, int slotNo, String state, String offerKind, String targetPlayerId,
-                   String demandPlayerId, String seed, String opensAt) {
+                   String demandPlayerId, String seed, String opensAt, boolean revealed) {
     }
 
     private List<SlotRow> slotRows(String userId) {
         return jdbcClient.sql("""
-                        SELECT id, slot_no, state, offer_kind, target_player_id, demand_player_id, seed, opens_at
+                        SELECT id, slot_no, state, offer_kind, target_player_id, demand_player_id, seed, opens_at, revealed
                         FROM trade_slots WHERE user_id = ? ORDER BY slot_no
                         """)
                 .param(userId).query(SLOT_MAPPER).list();
@@ -612,7 +692,7 @@ public class TradeService {
 
     private SlotRow refresh(String slotId) {
         return jdbcClient.sql("""
-                        SELECT id, slot_no, state, offer_kind, target_player_id, demand_player_id, seed, opens_at
+                        SELECT id, slot_no, state, offer_kind, target_player_id, demand_player_id, seed, opens_at, revealed
                         FROM trade_slots WHERE id = ?
                         """)
                 .param(slotId).query(SLOT_MAPPER).single();
@@ -620,7 +700,7 @@ public class TradeService {
 
     private SlotRow requireSlot(String userId, int slotNo) {
         return jdbcClient.sql("""
-                        SELECT id, slot_no, state, offer_kind, target_player_id, demand_player_id, seed, opens_at
+                        SELECT id, slot_no, state, offer_kind, target_player_id, demand_player_id, seed, opens_at, revealed
                         FROM trade_slots WHERE user_id = ? AND slot_no = ?
                         """)
                 .params(userId, slotNo).query(SLOT_MAPPER).optional()
@@ -630,7 +710,8 @@ public class TradeService {
     private static final org.springframework.jdbc.core.RowMapper<SlotRow> SLOT_MAPPER =
             (rs, n) -> new SlotRow(rs.getString("id"), rs.getInt("slot_no"), rs.getString("state"),
                     rs.getString("offer_kind"), rs.getString("target_player_id"),
-                    rs.getString("demand_player_id"), rs.getString("seed"), rs.getString("opens_at"));
+                    rs.getString("demand_player_id"), rs.getString("seed"), rs.getString("opens_at"),
+                    rs.getInt("revealed") == 1);
 
     /**
      * W2 이월(b): 판정 진입 상태-CAS. OPEN→RESOLVING 을 원자적으로 claim 해 동시 요청의 이중 판정을
@@ -653,7 +734,7 @@ public class TradeService {
             return;
         }
         jdbcClient.sql("""
-                        UPDATE trade_slots SET state = 'OPEN'
+                        UPDATE trade_slots SET state = 'OPEN', revealed = 1
                         WHERE id = ? AND state = 'WAITING' AND opens_at <= ?
                         """)
                 .params(row.id(), Instant.now().toString())
@@ -661,33 +742,66 @@ public class TradeService {
     }
 
     private long remainingSec(SlotRow row) {
+        if (row.opensAt() == null) {
+            return 0; // IDLE — 카운트다운 없음
+        }
         long diff = Instant.parse(row.opensAt()).getEpochSecond() - Instant.now().getEpochSecond();
         return Math.max(0, diff);
     }
 
+    /**
+     * 슬롯 뷰(openapi-v2 {@code TradeSlot}). #149 공개 범위:
+     * <ul>
+     *   <li>{@code IDLE}: 전부 null, remainingSec 0, speedupCost null</li>
+     *   <li>{@code WAITING} + 미공개({@code revealed=0}): <b>targetGrade 만</b> 공개 +
+     *       remainingSec/speedupCost — target/demand/targetValue 는 마스킹(선수 정체 비공개)</li>
+     *   <li>{@code WAITING} + 공개이력 있음({@code revealed=1}, = FA 실패 후 재제안 쿨타임):
+     *       <b>전면 공개 유지</b> + remainingSec/speedupCost — 이미 본 선수를 도로 가리지 않는다
+     *       (인지 부조화 방지). 쿨타임도 speedup 으로 줄일 수 있다(허용 상태가 WAITING 이므로 그대로 동작).</li>
+     *   <li>{@code OPEN}(및 과도 상태 RESOLVING): 전면 공개 + targetGrade</li>
+     * </ul>
+     * 클라 분기 기준 = {@code target == null}(가려짐) vs {@code target != null}(공개).
+     * 마스킹은 <b>뷰에서만</b>이며 DB 행은 손대지 않는다(시드 재현·감사).
+     */
     private TradeSlot viewOf(SlotRow row, TradeConfig cfg) {
         long remainingSec = remainingSec(row);
         boolean waiting = "WAITING".equals(row.state());
         boolean open = "OPEN".equals(row.state());
         Integer speedupCost = waiting ? speedupCost(remainingSec, cfg) : null;
-        PlayerRef target = row.targetPlayerId() != null ? refOf(row.targetPlayerId()) : null;
-        PlayerRef demand = row.demandPlayerId() != null ? refOf(row.demandPlayerId()) : null;
-        Long targetValue = row.targetPlayerId() != null ? valueOf(row.targetPlayerId(), cfg) : null;
+        String targetGrade = row.targetPlayerId() != null ? metaOf(row.targetPlayerId()).grade() : null;
+        // 아직 한 번도 공개된 적 없는 오퍼만 가린다(공개 이력이 있으면 쿨타임 중에도 계속 공개).
+        boolean masked = waiting && !row.revealed();
+        PlayerRef target = (!masked && row.targetPlayerId() != null) ? refOf(row.targetPlayerId()) : null;
+        PlayerRef demand = (!masked && row.demandPlayerId() != null) ? refOf(row.demandPlayerId()) : null;
+        Long targetValue = (!masked && row.targetPlayerId() != null) ? valueOf(row.targetPlayerId(), cfg) : null;
         Double acceptProbability = (open && "TRADE".equals(row.offerKind())) ? cfg.tradeAcceptProb() : null;
         return new TradeSlot(row.slotNo(), row.state(), row.offerKind(), target, demand,
-                row.opensAt(), (int) remainingSec, speedupCost, targetValue, acceptProbability);
+                row.opensAt(), (int) remainingSec, speedupCost, targetValue, acceptProbability, targetGrade);
     }
 
     // ── trade_log ────────────────────────────────────────────────────────
 
     private void logTrade(String userId, String kind, String result, String targetId,
                           List<String> offered, int points, Double probability, Double roll) {
+        logTrade(userId, kind, result, targetId, offered, points, probability, roll, null);
+    }
+
+    /**
+     * trade_log 1건. {@code action} 은 결과의 세부 구분(예: {@code "skip"} = [거래 안함]으로 버린 오퍼)
+     * 으로 detail_json 에만 들어간다 — result 는 CHECK 제약의 기존 enum 을 재사용한다.
+     */
+    private void logTrade(String userId, String kind, String result, String targetId,
+                          List<String> offered, int points, Double probability, Double roll,
+                          String action) {
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("target", targetId);
         detail.put("offered", offered);
         detail.put("points", points);
         detail.put("probability", probability);
         detail.put("roll", roll);
+        if (action != null) {
+            detail.put("action", action);
+        }
         String detailJson;
         try {
             detailJson = objectMapper.writeValueAsString(detail);
@@ -732,10 +846,14 @@ public class TradeService {
 
     public record TradeSlot(int slot, String state, String offerKind, PlayerRef target, PlayerRef demand,
                             String opensAt, int remainingSec, Integer speedupCost, Long targetValue,
-                            Double acceptProbability) {
+                            Double acceptProbability, String targetGrade) {
     }
 
     public record TradeSlotsResponse(List<TradeSlot> slots, WalletInfo wallet) {
+    }
+
+    /** [장 시작!] / [거래 안함] 결과 — 새 오퍼로 WAITING 진입한 슬롯 + 지갑. */
+    public record TradeStartResponse(TradeSlot slot, WalletInfo wallet) {
     }
 
     public record TradeSpeedupResponse(TradeSlot slot, WalletInfo wallet, int spent) {

@@ -127,6 +127,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/trade/{slot}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 트레이드 슬롯 번호(1|2|3) */
+                slot: components["parameters"]["TradeSlotNo"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * **[장 시작!]** — 슬롯의 장을 연다(능동 진입, #149). 새 시드로 오퍼를 확정하고
+         *     `state=WAITING` + 레어도별 카운트다운(config) 시작, **등급만 공개**(targetGrade).
+         *     IDLE 에서는 최초 시작, **OPEN 에서는 [거래 안함]**(공개된 선수를 버리고 새 오퍼·새 대기 —
+         *     "장 시작을 다시 누른 것과 동일") 이며 이 경우 trade_log 에 DECLINED(detail.action=skip) 기록.
+         *     WAITING/RESOLVING 에서는 400(TRADE_INVALID).
+         */
+        post: operations["startTradeSlot"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/trade/{slot}/speedup": {
         parameters: {
             query?: never;
@@ -187,7 +213,8 @@ export interface paths {
         put?: never;
         /**
          * TRADE 오퍼 수락(상대가 지목한 내 선수 ↔ 대가 선수) → 높은 확률(config, 예 0.8) 성공.
-         *     성공 시 내 선수 이탈 + 대가 선수 영입. 결과는 trade_log 기록·슬롯 재생성.
+         *     성공 시 내 선수 이탈 + 대가 선수 영입. 결과는 trade_log 기록 + **슬롯 IDLE**(다음 장은
+         *     [장 시작!] 로 유저가 연다, #149).
          */
         post: operations["acceptTrade"];
         delete?: never;
@@ -208,7 +235,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** TRADE 오퍼 거절 → 슬롯 재대기(WAITING 재생성). trade_log에 DECLINED 기록. */
+        /**
+         * TRADE 오퍼 거절 → **슬롯 IDLE**(장 종료, #149 능동화). trade_log에 DECLINED 기록.
+         *     새 오퍼를 바로 받으려면 `POST /{slot}/start`([거래 안함]) 를 쓴다.
+         */
         post: operations["declineTrade"];
         delete?: never;
         options?: never;
@@ -472,15 +502,26 @@ export interface components {
         CatalogPlayerPhase2Fields: {
             personality?: components["schemas"]["Personality"];
         };
-        /** @enum {string} */
-        TradeState: "WAITING" | "OPEN" | "RESOLVING";
+        /**
+         * @description IDLE: 장이 닫힘(오퍼 없음) — 유저가 `POST /{slot}/start`("장 시작!")를 눌러야 오퍼가 생성된다.
+         *     WAITING: 오퍼 확정 + 카운트다운(등급만 공개, 선수 정체는 비공개). OPEN: 거래 가능(전면 공개).
+         *     RESOLVING: 판정 진행 중(과도 상태).
+         * @enum {string}
+         */
+        TradeState: "IDLE" | "WAITING" | "OPEN" | "RESOLVING";
         /** @enum {string} */
         TradeOfferKind: "FA" | "TRADE";
         WalletInfo: {
             points: number;
         };
         /**
-         * @description 슬롯 상태. WAITING: remainingSec/speedupCost. OPEN-FA: target(등장 선수) + 제안 확률 파라미터.
+         * @description 슬롯 상태. IDLE: 오퍼 없음(모든 오퍼 필드 null) — [장 시작!] 대기.
+         *     WAITING: targetGrade(등급만 공개) + remainingSec/speedupCost. **아직 한 번도 공개된 적 없는
+         *     오퍼면 target/demand/targetValue 는 null**(선수 정체는 카운트다운 만료 전까지 비공개).
+         *     단 **이미 OPEN 으로 공개됐던 오퍼가 다시 WAITING 이 된 경우(FA 제안 실패 후 재제안 쿨타임)는
+         *     계속 공개 상태를 유지**한다 — 유저가 이미 본 선수를 도로 가리지 않는다(인지 부조화 방지).
+         *     클라이언트 분기 기준 = `target == null`(가려짐) vs `target != null`(공개된 채 쿨타임 대기).
+         *     OPEN-FA: target(등장 선수) + 제안 확률 파라미터.
          *     OPEN-TRADE: target(대가 선수) + demand(상대가 지목한 내 선수) + acceptProbability.
          */
         TradeSlot: {
@@ -492,8 +533,11 @@ export interface components {
             target?: components["schemas"]["PlayerRef"] | null;
             /** @description TRADE=상대가 지목한 내 선수 */
             demand?: components["schemas"]["PlayerRef"] | null;
-            /** Format: date-time */
-            opensAt?: string;
+            /**
+             * Format: date-time
+             * @description 카운트다운 만료 시각. IDLE(오퍼 없음)이면 null.
+             */
+            opensAt?: string | null;
             /** @description WAITING 남은 대기 초(0이면 곧 OPEN) */
             remainingSec?: number;
             /** @description 지금 단축 시 포인트 비용(잔여시간 비례, config) */
@@ -502,6 +546,16 @@ export interface components {
             targetValue?: number | null;
             /** @description TRADE 수락 성공 확률(config, 서버 계산값) */
             acceptProbability?: number | null;
+            /**
+             * @description 대상 선수 등급(BRONZE|SILVER|GOLD|DIA|LEGEND). **WAITING 부터 공개** — 카운트다운
+             *     중에는 등급만 알고 선수 정체는 모른다. IDLE 이면 null.
+             */
+            targetGrade?: string | null;
+        };
+        /** @description [장 시작!] / [거래 안함] 결과 — 새 오퍼 생성 후 WAITING 슬롯 */
+        TradeStartResponse: {
+            slot: components["schemas"]["TradeSlot"];
+            wallet: components["schemas"]["WalletInfo"];
         };
         TradeSlotsResponse: {
             slots: components["schemas"]["TradeSlot"][];
@@ -595,6 +649,22 @@ export interface components {
             fixtures: components["schemas"]["LeagueFixture"][];
             /** @description 다음 SCHEDULED 유저 경기(없으면 시즌 종료 임박) */
             nextUserFixture?: components["schemas"]["LeagueFixture"] | null;
+            /** @description 시즌 보상 요약(additive, 시즌종료 연출용 — P3-D8/AC-E1). SoT=point_ledger 지급행 + 순위 파생. */
+            seasonReward?: components["schemas"]["SeasonReward"];
+        };
+        /** @description 시즌 보상 요약. status 로만 지급 여부를 구분한다(PENDING 에서 points 는 예정액이 아니라 0). */
+        SeasonReward: {
+            /** @description 유저 최종 순위(진행 중이면 현재 잠정 순위, 미확인 방어 케이스는 -1) */
+            rank: number;
+            /** @description 실지급 포인트(원장 delta). PENDING/NONE 이면 0 */
+            points: number;
+            /**
+             * @description PENDING=시즌 진행 중(미지급) / GRANTED=지급됨 / NONE=종료됐으나 보상 없음(방어)
+             * @enum {string}
+             */
+            status: "PENDING" | "GRANTED" | "NONE";
+            /** @description 지급 시각(원장 created_at). 미지급이면 null */
+            awardedAt?: string | null;
         };
         LeagueResponse: {
             /** @description ACTIVE 시즌 없으면 null(시작 CTA) */
@@ -952,6 +1022,40 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    startTradeSlot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 트레이드 슬롯 번호(1|2|3) */
+                slot: components["parameters"]["TradeSlotNo"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 새 오퍼로 WAITING 진입한 슬롯 + 지갑 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TradeStartResponse"];
+                };
+            };
+            /** @description 슬롯이 IDLE·OPEN 이 아님(카운트다운 중 재시작 불가). code=TRADE_INVALID */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     speedupTradeSlot: {
         parameters: {
             query?: never;
@@ -1079,7 +1183,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 거절됨(재대기 슬롯) */
+            /** @description 거절됨(IDLE 슬롯) */
             200: {
                 headers: {
                     [name: string]: unknown;
