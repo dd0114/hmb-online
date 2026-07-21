@@ -34,7 +34,107 @@
   gap: 12px;
 }
 
-/* WAITING */
+/* IDLE — 빈 장 + [장 시작!] */
+.emptyMarket {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 22px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  opacity: 0.75;
+}
+
+.emptyIcon {
+  font-size: 26px;
+  filter: grayscale(0.6);
+}
+
+.emptyText {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.start {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.start:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.startHint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.startHint strong {
+  color: var(--text);
+}
+
+/* OPEN — 공개된 선수를 버리고 새 오퍼로(= 장 시작 재실행) */
+.skip {
+  width: 100%;
+  padding: 9px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.skip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* WAITING — 등급만 공개(선수 정체 비공개) */
+.gradeReveal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #1b2030;
+}
+
+.gradeMask {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #2a3145;
+  color: var(--text-muted);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.gradeText {
+  font-size: 14px;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .countdown {
   display: flex;
   flex-direction: column;
@@ -150,17 +250,7 @@
   font-size: 14px;
 }
 
-.decline {
-  padding: 10px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: none;
-  color: var(--text-muted);
-  font-size: 14px;
-}
-
-.accept:disabled,
-.decline:disabled {
+.accept:disabled {
   opacity: 0.5;
   cursor: default;
 }

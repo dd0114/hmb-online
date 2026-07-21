@@ -3,10 +3,11 @@
 //
 // 계약:
 //   iframe → parent : { type: "viewerReady" }            (뷰어 로드 완료, 로그 주입 받을 준비)
-//   parent → iframe : { type: "loadMatchLog", matchLog }  (해당 half MatchLog 주입)
+//   parent → iframe : { type: "loadMatchLog", matchLog, skins? } (해당 half MatchLog 주입,
+//                     skins = 경기장 캐릭터 스킨 #145 — optional additive)
 //   parent → iframe : { type: "setViewerChrome", mode }   (#148 뷰어 내부 컨트롤 표시/숨김)
-//   parent → iframe : { type: "viewerControl", cmd, speed }(#148 재생/일시정지/배속)
-//   iframe → parent : { type: "viewerState", playing, speed, ended } (#148 상태 미러링)
+//   parent → iframe : { type: "viewerControl", cmd, speed }(#148 재생/일시정지/배속/자동페이싱)
+//   iframe → parent : { type: "viewerState", playing, speed, ended, auto } (#148 상태 미러링)
 //
 // #148: 플레이 모드에선 뷰어 내부 컨트롤(되감기·프레임점프·스크럽·배율·디버그 토글)을 숨기고,
 // web 이 그린 간소 컨트롤이 위 명령으로 뷰어를 몬다. 뷰어(dev-viewer) 원본은 무수정 —
@@ -26,6 +27,11 @@ export interface ViewerReadyMessage {
 export interface LoadMatchLogMessage {
   type: "loadMatchLog";
   matchLog: unknown;
+  /**
+   * 경기장 캐릭터 스킨(#145) — **optional additive**. 없으면 뷰어가 현행 단색 원으로 그린다
+   * (구버전 뷰어 아티팩트와도 호환: 모르는 필드는 무시된다).
+   */
+  skins?: unknown;
 }
 
 /** iframe 이 보낸 viewerReady 메시지인지 판별(다른 postMessage 소음과 구분). */
@@ -37,9 +43,9 @@ export function isViewerReadyMessage(data: unknown): data is ViewerReadyMessage 
   );
 }
 
-/** parent → iframe 주입 메시지 생성. */
-export function loadMatchLogMessage(matchLog: unknown): LoadMatchLogMessage {
-  return { type: "loadMatchLog", matchLog };
+/** parent → iframe 주입 메시지 생성. skins 는 있을 때만 실어 보낸다(무회귀). */
+export function loadMatchLogMessage(matchLog: unknown, skins?: unknown): LoadMatchLogMessage {
+  return skins ? { type: "loadMatchLog", matchLog, skins } : { type: "loadMatchLog", matchLog };
 }
 
 // ── #148 컨트롤 크롬/명령 ────────────────────────────────────────────────────

@@ -32,6 +32,8 @@ import {
   type PlaySpeed,
 } from "./playback-controls";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildViewerSkins } from "./viewer-skins";
+import { useCharAssets } from "../common/useCharAssets";
 import styles from "./MatchViewer.module.css";
 
 interface MatchViewerProps {
@@ -165,6 +167,9 @@ function VisualPlayback({
   onControlMode,
 }: VisualPlaybackProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // 경기장 캐릭터 스킨(#145). 에셋이 아직/영영 없으면 null → 뷰어는 현행 단색 원(무회귀).
+  const charAssets = useCharAssets();
+  const skins = useMemo(() => buildViewerSkins(charAssets, log), [charAssets, log]);
   const [state, dispatch] = useReducer(bridgeReducer, initialBridgeState);
   const [failed, setFailed] = useState(false);
   // 뷰어가 미러링해주는 실제 재생 상태(#148) — 버튼 라벨/활성 배속의 SoT.
@@ -213,13 +218,13 @@ function VisualPlayback({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [half]);
 
-  // 준비 완료 시 1회 주입.
+  // 준비 완료 시 1회 주입. 스킨은 같은 메시지에 실어 보낸다(뷰어가 로그 로드 전에 아틀라스 예열).
   useEffect(() => {
     if (shouldPostLog(state) && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(loadMatchLogMessage(log), "*");
+      iframeRef.current.contentWindow.postMessage(loadMatchLogMessage(log, skins ?? undefined), "*");
       dispatch({ kind: "posted" });
     }
-  }, [state, log]);
+  }, [state, log, skins]);
 
   // 컨트롤 크롬 지시(#148): 뷰어 준비 후 + 모드가 바뀔 때마다 재전송.
   // 브리지 기본값이 play 라 관객은 디버그 크롬을 볼 일이 없고, admin/QA 만 full 로 되살린다.

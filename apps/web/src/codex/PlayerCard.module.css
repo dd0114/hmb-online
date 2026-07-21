@@ -55,6 +55,12 @@
   padding: 0 4px;
 }
 
+/* 캐릭터 얼굴 (#145) — summary 가 세로 flex 라 가운데 정렬로 얹는다. */
+.avatar {
+  align-self: center;
+  margin: 2px 0 4px;
+}
+
 .name {
   font-size: 13px;
   font-weight: 600;
