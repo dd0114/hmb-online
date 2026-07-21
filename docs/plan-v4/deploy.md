@@ -299,13 +299,27 @@ web(Pages)과 백엔드(Tunnel)는 **다른 오리진**이라 브라우저가 CO
 
 → **브라우저 왕복 메커니즘 검증 완료.** 남은 것은 터널 전송뿐(7.2, hero 게이트).
 
-### 7.2 터널 왕복 (hero 게이트 — cloudflared 로그인 필요)
+### 7.2 터널 왕복 (quick tunnel — **실측 완료**)
 
-§5.1(quick) 또는 §5.2(named)로 터널을 띄운 뒤:
+quick tunnel(§5.1)은 로그인이 필요 없어 p3dep 가 직접 검증했다. 배포 실행(hero 승인) 시 실측:
 
+- 터널: `cloudflared tunnel --url http://localhost:18080` → `https://<rand>.trycloudflare.com`
+  (QUIC 커넥션 icn05 등록)
+- `WEB_ORIGINS=http://localhost:4321` 로 java 재시작, web 을 `VITE_API_BASE=<터널 URL>` 로 빌드
+
+| 단계 | 결과 |
+|---|---|
+| curl 로그인 through 터널 | ✅ 200 + token |
+| `/internal/**` through 터널, 토큰 없이 | ✅ **401**(노출돼도 보호됨) |
+| `/internal/**` through 터널, 교체된 토큰 | ✅ 200 |
+| **브라우저 풀체인**: 로컬 web(오리진 A) → **공개 터널** → java, 브라우저 CORS 집행 → 로그인 | ✅ 200, 유저 생성 |
+| 브라우저 풀체인 `GET /api/me`(Authorization → 진짜 preflight) | ✅ 200, wallet 3000 |
+
+→ **AC-G2 의 터널 전송 + 브라우저 CORS 풀체인 검증 완료.** quick tunnel URL 은 재시작마다 바뀌므로
+상시 오픈은 named tunnel(§5.2, hero 로그인 게이트)이 필요하다. Pages **호스팅**도 hero 게이트(§6.1 대시보드).
+
+절차(재현):
 ```bash
-# 터널 URL 을 <TUNNEL> 로 두고, 그 오리진을 백엔드 CORS 에 넣는다.
-# (Pages web 은 <TUNNEL> 을 VITE_API_BASE 로 빌드해 배포돼 있어야 한다)
 curl -fsS -X POST https://<TUNNEL>/api/auth/login \
   -H 'Content-Type: application/json' -d '{"nickname":"tunnel-smoke","provider":"guest"}'
 #   → {"token":...}  이면 터널 전송 OK
