@@ -97,3 +97,9 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* 캐릭터 얼굴 (#145). 카드가 세로 스택이라 가운데 정렬만 얹는다. */
+.face {
+  align-self: center;
+  margin: 2px 0;
+}

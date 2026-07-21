@@ -1,6 +1,7 @@
 import type { PlayerRef } from "../api/v2";
 import type { CatalogPlayer } from "../api/hooks";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
+import { CharAvatar } from "../common/CharAvatar";
 import { PersonalityBadge } from "../common/RelationBits";
 import styles from "./TradePlayerCard.module.css";
 
@@ -37,6 +38,13 @@ export function TradePlayerCard({ player, detail, caption, reveal = true, testId
     >
       {caption && <span className={styles.caption}>{caption}</span>}
       <span className={styles.pos}>{player.position}</span>
+      <CharAvatar
+        playerId={player.playerId}
+        name={player.name}
+        grade={player.grade}
+        size={44}
+        className={styles.face}
+      />
       <span className={styles.name}>{player.name}</span>
       <span className={styles.grade} style={{ color: gradeColor }}>
         {GRADE_LABELS[player.grade]}
