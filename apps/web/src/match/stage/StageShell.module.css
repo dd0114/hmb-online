@@ -136,13 +136,15 @@
   max-height: 58svh;
 }
 
+/* 패널이 없을 때: 무대를 늘려 채우면 캔버스가 비율을 지키느라 위아래로 시커먼 띠만 커진다
+   (실캡처 확인). 대신 무대를 피치 비율 그대로 두고 **세로 가운데** 정렬한다. */
 .bodyNoSheet {
   grid-template-rows: minmax(0, 1fr);
+  align-items: center;
 }
 
 .bodyNoSheet .stage {
-  aspect-ratio: auto;
-  max-height: none;
+  max-height: 100%;
 }
 
 /* ── [D] 정보 시트(모바일) ────────────────────────────────────── */

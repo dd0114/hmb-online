@@ -15,6 +15,7 @@ import { LeaguePage } from "./league/LeaguePage";
 import { MatchPage } from "./match/MatchPage";
 import { AdminPage } from "./admin/AdminPage";
 import { AdminFlagProvider } from "./admin/AdminFlagProvider";
+import { StagePreview } from "./design/StagePreview";
 import { RequireAdmin } from "./admin/RequireAdmin";
 import { TutorialProvider } from "./common/TutorialProvider";
 import { setUnauthorizedHandler } from "./api/client";
@@ -125,6 +126,10 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
+        {/* 디자인 확인 전용(#169 S1) — dev 빌드에서만 존재한다. 로그인 없이 관전 셸을 상태별로
+            열어볼 수 있게 하는 리뷰 하니스이지, 제품 화면이 아니다(프로덕션 번들엔 경로 없음). */}
+        {import.meta.env.DEV && <Route path="/design/stage" element={<StagePreview />} />}
+
         <Route path="/" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
         <Route path="*" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
       </Routes>

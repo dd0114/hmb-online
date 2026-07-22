@@ -421,3 +421,30 @@ hero 리뷰 PASS. 결정: **범위 = S1 먼저**, **코어 위치 = `packages/vi
 두면 방금 고친 것과 **같은 종류의 모순**이 화면에 남는다 → 엔진 SoT 정의(`saved`/`off_target` 제외)로
 통일하고 회귀 테스트를 추가했다. 기존 픽스처는 detail 없는 슛이라 무영향(테스트 그대로 통과).
 자잘한 것 2건도 함께: 죽은 CSS(`.halftimeWrap/.h1Score`) 제거, 확정 스코어가 비었을 때 `0 : 0` 대신 `- : -`.
+
+### 9.9 디자인 리뷰용 로컬 프리뷰 (hero 요청)
+
+캡처만으로는 판단이 어려워, **백엔드 없이 실제 브라우저에서 눌러볼 수 있는 로컬 하니스**를 붙였다.
+
+```
+cd apps/web && npm run design:preview
+  → http://localhost:8131/design/stage            (데스크탑)
+  → http://localhost:8131/design/stage?frame=phone (390×844 폰 프레임)
+```
+
+- `apps/web/scripts/design-mock-server.mjs` — 127.0.0.1:8132 목 API. 응답은 e2e 목 하니스와 같은 형태고,
+  **스코어를 실제 `match-log.json` 의 골 수에서 파생**한다(전반 5:5 · 최종 10:10) → 스코어바·결과카드·팀스탯이
+  서로 어긋나지 않는다. `design-preview.mjs` 가 vite dev(8131, `/api`→목)와 함께 띄운다.
+- `apps/web/src/design/StagePreview.tsx` — **dev 전용 라우트**(`import.meta.env.DEV` 가드, 프로덕션 번들에
+  문자열 0건 확인). 제품 라우팅은 하프타임/종료만 셸로 보내서 **"기본=경기장면만"(패널 0개) 화면을 실제로 볼 수
+  없기 때문에**(W3 라이브 상태가 생겨야 도달) 여기서 상태를 직접 주입한다. UI 는 `StageShell` 그대로 — 프리뷰용 복제 없음.
+- 상태 전환 = 화면 우하단 칩 또는 `?state=FIRST_HALF|H1_BREAK|FINISHED`. 제품 경로(`/match/live|h1break|finished`)도 동작(목 로그인 포함).
+
+**프리뷰를 눈으로 보고 고친 것**
+- 패널이 하나도 없을 때 무대를 늘려 채우다 보니 캔버스 위아래로 시커먼 띠만 커졌다 → 무대를 피치 비율로 두고
+  **세로 가운데 정렬**(`.bodyNoSheet { align-items: center }`).
+- 상태 뱃지가 `FIRST_HALF` 원문 노출 → 사람 말 라벨(`STATE_TAGS`, W2/W3 상태 미리 포함).
+
+**hero 판단이 필요한 지점(이 화면에서 바로 보임)**: 폰에서 패널을 다 끄면 화면의 약 58%가 빈 공간이다
+(가로 피치 + 세로 화면의 기하학적 결과). 선택지 = ① 그대로 둔다(경기장면 집중) ② 기본으로 통계/로그 하나를 켠다
+③ 빈 공간에 하이라이트 카메라를 더 확대해 채운다(엔진/뷰어 카메라 변경 — S2 이후). 지금은 ①로 두고 물어본다.

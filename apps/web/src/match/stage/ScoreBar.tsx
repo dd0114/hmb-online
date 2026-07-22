@@ -14,6 +14,15 @@ interface ScoreBarProps {
   onBack: () => void;
 }
 
+/** 상태 뱃지 문구. W2/W3(#170)가 추가할 라이브 상태도 미리 사람 말로 보여준다(모르면 원문 노출). */
+const STATE_TAGS: Record<string, string> = {
+  FINISHED: "경기 종료",
+  H1_BREAK: "하프타임",
+  HALFTIME: "감독시간",
+  FIRST_HALF: "전반 진행 중",
+  SECOND_HALF: "후반 진행 중",
+};
+
 /** 틱(=경기 초) → `67'` 표기. 엔진 1틱 = 1 게임초. */
 function minuteLabel(tick: number): string {
   return `${Math.floor(tick / 60)}'`;
@@ -78,7 +87,7 @@ export function ScoreBar({
           className={`${styles.phaseTag} ${isBreak ? styles.phaseLive : ""}`}
           data-testid="match-state"
         >
-          {isFinished ? "경기 종료" : isBreak ? "하프타임" : match.state}
+          {STATE_TAGS[match.state] ?? match.state}
         </span>
       </div>
     </header>
