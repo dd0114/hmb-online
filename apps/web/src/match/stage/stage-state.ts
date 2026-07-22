@@ -80,3 +80,14 @@ export function resolveActiveTab(tabs: readonly TabKey[], preferred: TabKey | nu
   if (preferred && tabs.includes(preferred)) return preferred;
   return tabs[0] ?? null;
 }
+
+/**
+ * 시트 높이 등급 — **콘텐츠와 무관**하다(내용이 쌓여도 높이가 안 변한다). 탭 종류로만 갈린다:
+ *  · info(통계·로그·후반지시) = 낮게 → 무대를 크게 본다(관전이 주목적).
+ *  · state(감독·결과) = 높게 → 실제로 조작해야 하는 폼/표라 볼 게 많다.
+ * 실제 픽셀은 CSS 가 정한다(데스크탑만 구분, 모바일은 무대가 폭으로 정해져 남는 높이를 시트가 가짐).
+ */
+export function sheetHeight(tab: TabKey | null): "info" | "state" | null {
+  if (!tab) return null;
+  return tab === "halftime" || tab === "result" ? "state" : "info";
+}

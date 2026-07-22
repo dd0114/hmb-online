@@ -300,4 +300,33 @@ test.describe("AC-W1-1 경기장면 고정 (데스크탑 1280×800)", () => {
     expect(canvas!.width, "데스크탑 캔버스도 무대 폭을 채운다").toBeGreaterThan(480);
     await page.screenshot({ path: `${CAP_DIR}desktop-panels.png` });
   });
+
+  test("g. 로그가 쌓여도 무대 크기가 변하지 않는다(시트 높이는 콘텐츠와 무관)", async ({ page }) => {
+    await openMatch(page);
+    await toggle(page, "log");
+    await expect(page.getByTestId("stage-panel-log")).toBeVisible();
+
+    const lines = page.locator('[data-testid="stage-panel-log"] li');
+    const before = (await page.getByTestId("stage-canvas").boundingBox())!;
+    const beforeCount = await lines.count();
+
+    // 재생이 진행되며 로그가 실제로 늘어날 때까지 기다린다(가짜 통과 방지 — 안 늘면 이 테스트는 의미 없다).
+    await expect
+      .poll(() => lines.count(), { timeout: 30_000, message: "재생 중 로그 라인이 늘어야 한다" })
+      .toBeGreaterThan(beforeCount + 2);
+
+    const after = (await page.getByTestId("stage-canvas").boundingBox())!;
+    // 시트가 내용만큼 자라면 무대가 그만큼 줄어든다(실제로 그랬다) → 크기 불변을 못박는다.
+    expect(after.height, "로그가 늘어도 무대 높이 불변").toBeCloseTo(before.height, 0);
+    expect(after.width, "로그가 늘어도 무대 폭 불변").toBeCloseTo(before.width, 0);
+    expect(after.y, "무대 위치도 그대로").toBeCloseTo(before.y, 0);
+
+    // 넘치는 로그는 패널 **안에서만** 스크롤된다(문서는 여전히 스크롤 0).
+    const panelScroll = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="stage-panel-log"]')?.parentElement;
+      return el ? { scrollH: el.scrollHeight, clientH: el.clientHeight } : null;
+    });
+    expect(panelScroll, "로그 패널 스크롤 컨테이너가 있어야 함").not.toBeNull();
+    expect((await pageScroll(page)).vScroll).toBeLessThanOrEqual(1);
+  });
 });

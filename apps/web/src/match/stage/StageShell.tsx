@@ -15,6 +15,7 @@ import {
   parseToggles,
   resolveActiveTab,
   serializeToggles,
+  sheetHeight,
   statePanelFor,
   tabsFor,
   TAB_LABELS,
@@ -64,6 +65,7 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
   const statePanel = statePanelFor(match.state);
   const tabs = tabsFor(toggles, statePanel);
   const activeTab = resolveActiveTab(tabs, preferredTab);
+  const sheetKind = sheetHeight(activeTab);
 
   const { data: log } = useHalfLog(match.id, half);
   const liveScore = useMemo(() => {
@@ -112,7 +114,11 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
         </section>
 
         {activeTab && (
-          <aside className={styles.sheet} data-testid="stage-sheet">
+          <aside
+            className={`${styles.sheet} ${sheetKind === "state" ? styles.sheetState : styles.sheetInfo}`}
+            data-testid="stage-sheet"
+            data-sheet={sheetKind}
+          >
             {tabs.length > 1 && (
               <div className={styles.tabs} role="tablist" aria-label="정보 패널">
                 {tabs.map((t) => (

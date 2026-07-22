@@ -5,6 +5,7 @@ import {
   parseToggles,
   resolveActiveTab,
   serializeToggles,
+  sheetHeight,
   statePanelFor,
   tabsFor,
   type TabKey,
@@ -67,6 +68,15 @@ describe("탭 구성", () => {
     const after = tabsFor({ stats: false, log: true, brief: false }, null);
     expect(before).toEqual(["stats", "log"]);
     expect(after).toEqual(["log"]);
+  });
+
+  it("시트 높이 등급은 탭 종류로만 갈린다(콘텐츠 무관 — 내용이 쌓여도 무대가 안 줄어든다)", () => {
+    expect(sheetHeight(null)).toBeNull();
+    expect(sheetHeight("stats")).toBe("info");
+    expect(sheetHeight("log")).toBe("info");
+    expect(sheetHeight("brief")).toBe("info");
+    expect(sheetHeight("halftime")).toBe("state");
+    expect(sheetHeight("result")).toBe("state");
   });
 
   it("활성 탭: 고른 탭이 살아 있으면 유지, 사라지면 첫 탭(상태 패널 우선)", () => {

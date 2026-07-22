@@ -99,6 +99,35 @@
   color: #ff8f8f;
 }
 
+/* 데스크탑: 시트 높이를 고정(무대 우선)했으므로 세로로 6줄을 쌓으면 스크롤해야 본다.
+   가로 여유는 남으니 QA 뷰어 HUD 와 같은 2열 배치로 바꿔 **한 눈에** 들어오게 한다. */
+@media (min-width: 1024px) {
+  .statsBody {
+    max-width: 1000px;
+  }
+
+  /* 3열 — 시트 높이를 고정(무대 우선)했으므로 세로로 쌓으면 스크롤해야 본다. 가로 여유를 써서
+     스크롤 없이 한 눈에 들어오게 한다(QA 뷰어 HUD 와 같은 그리드 idiom). */
+  .statsGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    column-gap: 28px;
+  }
+
+  /* 고정 시트(약 160px) 안에 6개 지표가 스크롤 없이 딱 들어가도록 여백을 조인다. */
+  .statRow {
+    margin-bottom: 4px;
+  }
+
+  .possRow {
+    margin-bottom: 2px;
+  }
+
+  .possCaption {
+    margin-bottom: 6px;
+  }
+}
+
 .possCaption {
   text-align: center;
   font-size: 10px;
