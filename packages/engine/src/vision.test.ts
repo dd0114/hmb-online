@@ -162,8 +162,8 @@ describe("롤백 스위치 (#147 W3)", () => {
   const lastHash = (l: ReturnType<typeof runMatch>) => l.tickSnapshots[l.tickSnapshots.length - 1]!.hash;
   // 레거시 회귀 가드. **현재 트리 출력을 그대로 베낀 게 아니라**, 0.16.0 트리(6d49580)를 별도로
   // 체크아웃해 0.17.0 의 shoot/xgBase/attackWidthReach 만 맞춰 실행한 값이다(독립 대조).
-  const LEGACY_HASH = "57f371d6";
-  const LEGACY_HASH_MARKED = "7e6fbf89";
+  const LEGACY_HASH = "4c090d70";
+  const LEGACY_HASH_MARKED = "4b201082";
 
   it("vision.enabled=true 는 실제로 결과를 바꾼다(계층이 죽어있지 않다)", () => {
     expect(lastHash(run(cfg))).not.toBe(lastHash(run(off)));

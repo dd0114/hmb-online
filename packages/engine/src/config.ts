@@ -170,7 +170,11 @@ export interface EngineConfig {
       aggressionWeight: number;
       /** 태클 능력(0..100) 낮을수록 파울↑ 계수(×(1 + 이 값·(1-tackling/100))). */
       tacklingRelief: number;
-      /** 피파울 지점이 수비 박스 안이면 파울 확률에 곱하는 배수(박스 내 필사 태클 → 페널티 유발). */
+      /**
+       * 피파울 지점이 수비 박스 안이면 파울 확률에 곱하는 배수(박스 내 필사 태클 → 페널티 유발).
+       * 파울 총량을 올릴 때 이 값이 크면 페널티가 함께 늘어 **골이 폭증**한다(실측: base 만 올리면
+       * 골 1.58→2.25). 1.0 이면 박스 안이라고 더 파울하지 않아 파울 빈도와 골을 분리할 수 있다.
+       */
       boxFoulMult: number;
       /** 이미 경고(옐로) 받은 선수의 파울 확률 배수(<1, 신중해짐 → 2옐로 퇴장 억제). */
       bookedRelief: number;
@@ -475,7 +479,9 @@ export const defaultEngineConfig: EngineConfig = {
     shootRange: 19,
     shootAngleFactor: 0.85,
     shootDistanceFactor: 0.025,
-    onTargetBase: 0.28,
+    // #147 후속: 파울 복원으로 늘어난 프리킥이 전환율을 밀어올려(10.89→13.8) 함께 낮췄다.
+    // 부수 효과로 유효슛이 5.75→4.85 로 **벤치(4.5-5.5) 안에 들어왔다**(0.16.0 부터 초과였음).
+    onTargetBase: 0.205,
     saveCornerProb: 0.6,
     saveCatchDepthM: 2.5, // 골라인 2.5m 앞에서 캐치 → 골문 밖(골 오인 방지). 0 이면 골라인 위.
     saveCornerWideMarginM: 1.5, // 세이브 굴절 코너: 공이 포스트 1.5m 밖(키퍼 근처=터치 보임 + 골 오인 방지).
@@ -495,14 +501,17 @@ export const defaultEngineConfig: EngineConfig = {
   },
   rules: {
     foul: {
-      base: 0.0115,
+      // #147 후속: 시야 계층으로 수비수가 한 명만 붙고 자리를 지켜 접촉이 줄었다(파울 9.68→8.23,
+      // 벤치 11-12). 태클 시도당 파울 확률을 올려 복원. 단독으로 올리면 프리킥이 늘어 골·전환이
+      // 폭증하므로 boxFoulMult·onTargetBase 와 **함께** 잡았다(아래 주석 참조).
+      base: 0.0185,
       aggressionWeight: 1.0,
       tacklingRelief: 0.6,
-      boxFoulMult: 3.0,
+      boxFoulMult: 1.0,
       bookedRelief: 0.15,
     },
     card: {
-      yellowProb: 0.17,
+      yellowProb: 0.15,
       redProb: 0.0015,
     },
     penalty: {
