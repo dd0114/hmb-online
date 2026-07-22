@@ -33,7 +33,16 @@ description: hmb 매니저(hmb:main)가 하위 워커 세션 상태를 점검할
 - 브랜치 커밋 시각이 마지막 확인 대비 안 늘고 IDLE/STUCK이면 즉시 개입.
 - WORKING만 믿고 지나치지 말 것 — WORKING이어도 다음 확인 때 커밋이 안 늘었으면 그 서브에이전트가 hang일 수 있다(브랜치 시각 교차검증).
 
+## 정적 순찰 (비용 0 — Claude 무조건 깨우지 않기)
+매니저를 매 20분 무조건 깨우던 ScheduleWakeup 순찰은 **비쌌다**(아무 일 없어도 Claude 턴 소비).
+대신 **`patrol-static.sh`** 를 **launchd(5분 주기, `~/Library/LaunchAgents/com.hmb.patrol.plist`)** 로 돌린다 — 순수 bash, **Claude 0호출**.
+- 정적으로 각 워커 판정(check.sh 로직). **STUCK 또는 IDLE 일 때만** `fleet send hmb:main` 으로 매니저 Claude 를 깨운다. WORKING/RECENT 면 조용히 종료(비용 0).
+- 쿨다운(STUCK 20분·IDLE 60분, `~/.cache/hmb-patrol/last_*`)으로 같은 상황 반복 호출 방지. 로그=`~/.cache/hmb-patrol/patrol.log`.
+- 제어: `launchctl list com.hmb.patrol` · 중단 `launchctl bootout gui/$(id -u)/com.hmb.patrol` · 재로드 `launchctl bootstrap gui/$(id -u) <plist>`.
+- **원칙**: 비싼 Claude 개입은 "실상황(STUCK/IDLE) 감지 시에만". 시스템 cron 은 macOS TCC 로 막혀 launchd 사용.
+
 ## 도구
+- `patrol-static.sh [session]` — 정적 감시+조건부 에스컬레이션(launchd 가 주기 실행).
 - `check.sh [session]` — 한 방 점검 표(기본 hmb).
 - `fleet status` — 트리 전체 프로세스/브랜치.
 - 이슈 실시각: `gh issue view N --json comments -q '.comments[-1].updatedAt'`.
