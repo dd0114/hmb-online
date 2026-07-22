@@ -194,10 +194,9 @@ hero 가 본 "생각 없이 공 쪽으로만 붙는다" 는 **두 원인의 합�
   재튜닝 총합 = `shoot` 0.34→0.30 · `xgBase` 0.19→0.185 · `attackWidthReach` 0.13→0.10
 
 - [~] AC3: 팀 형태 — 폭 50.42m(벤치 40-50, **+0.42 초과** — AC2 참조) · 길이 41.35m(벤치 25-40, 초과이나 **0.16.0 의 40.35 에서 이어진 선행 이탈**) · 주행거리 10.97km(10-12 ✅). 형태 붕괴는 없다 — 지표만 좋게 하는 해(공추종 0)는 길이 64m 였고 기각됨. 엄밀히는 폭·길이 모두 초과이며 이번 변경 기여는 폭 +1.05m·길이 +1.0m 다
-- [~] AC4: 결정론 — **엔진 내부 전부 통과**(desync 0 ×80회 · 하프분할=통짜 동일 · hygiene · typecheck · playwright 58 · qa-match ✅ · perceptibility 6/6). 남은 1건 = 서버 RPC 재개.
-  - **진단 정정(검증 세션 지적)**: 처음엔 "서버 zod 가 `seen` 을 strip" 만 원인으로 봤으나, 더 근본 원인은 **엔진이 고른 표현**이었다. `Map` 은 `JSON.stringify` 로 `{}` 가 되어 **스키마를 고쳐도 전송에서 또 유실**된다. 표현 선택은 owned-glob 안이므로 "소관 밖" 은 절반만 맞는 변명이었다. → `SimPlayer.seen` 을 **JSON 안전한 `Record`** 로 변경.
-  - **검증**: 복제 트리에서 서버 스키마에 **한 줄**(`seen: z.record(...).optional()`) 추가 → 서버 테스트 **7개 전부 통과**(재개 동일성 포함). 즉 #154 는 이제 진짜 한 줄로 닫힌다.
-  - 방어코드(`if (!player.seen) player.seen = {}`)는 크래시만 막고 **재개 동일성은 복구하지 못한다**(무음 desync). 주석·커밋에 명시.
+- [x] AC4: 결정론 — **전부 통과**. `npm test` **965 pass / 0 fail** · desync 0 ×80회 · 하프분할=통짜 동일 · 서버 RPC 재개 동일 · hygiene · typecheck · playwright 58 · qa-match ✅ · perceptibility 6/6.
+  - **진단 정정(검증 세션 지적)**: 처음엔 "서버 zod 가 `seen` 을 strip" 만 원인으로 봤으나 더 근본 원인은 **엔진이 고른 표현**이었다. `Map` 은 `JSON.stringify` 로 `{}` 가 되어 **스키마를 고쳐도 전송에서 또 유실**된다. 표현 선택은 owned-glob 안이므로 "소관 밖" 은 절반만 맞는 변명이었다 → `SimPlayer.seen` 을 **JSON 안전한 `Record`** 로 변경.
+  - **경계 넘음(hero 명시 승인, 2026-07-22)**: `packages/server/src/runner/simulate.ts` 의 `SimPlayerSchema` 에 `seen` 한 줄 추가(#154). 원래 별도 세션 배정이었으나 hero 가 직접 넣으라 지시. `.optional()` 이라 하위호환.
 
 - [x] AC5: **hero 실관전으로 1개 채택** — **E 채택**(2026-07-22, hero 뷰어 5안 비교). Evidence: localhost:8099 A~E 비교 재생 후 선택
 - [x] AC6: **독립 QA PASS**(blocker 0 — 위험존 무방비 vision 35 = legacy 35, 스테일 기억 부작용 미재현, 코너 마크 8쌍 페어링 확인) + **module-verifier PASS**(2라운드, blocker 4건 전부 독립 재현으로 해소 확인)
