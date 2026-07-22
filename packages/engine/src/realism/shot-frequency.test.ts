@@ -18,29 +18,42 @@ const agg = aggregateRealism(cfg, REALISM_SEEDS);
 describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
   it(`팀당 슛 12–14 (측정 ${agg.mean.shots})`, () => {
     expect(agg.mean.shots).toBeGreaterThanOrEqual(12);
-    expect(agg.mean.shots).toBeLessThanOrEqual(14.5);
+    // 상한은 D4 확정 벤치(12-14)와 일치시킨다. 이전엔 14.5 로 느슨해 제목(12-14)과 어긋났고,
+    // #147 W2 때 실측 14.15 가 그 슬랙에 숨었다(검증 세션 지적). W2 철회 후 현재 14.00 —
+    // 밴드 상단에 정확히 걸터앉아 있어 여유가 없다(밸런스 여유 확보는 S4 #10 소관).
+    expect(agg.mean.shots).toBeLessThanOrEqual(14);
   });
   it(`슛당 xG 0.10–0.12 밴드 근처 (측정 ${agg.mean.xgPerShot}) — 슛만 깎고 질 왜곡 금지`, () => {
     expect(agg.mean.xgPerShot).toBeGreaterThanOrEqual(0.1);
     expect(agg.mean.xgPerShot).toBeLessThanOrEqual(0.13);
   });
-  it(`골 가뭄 아님: 팀당 골 ∈ [1.4, 2.5] (측정 ${agg.mean.goals})`, () => {
-    // 슛만 과하게 줄여 골 가뭄을 만들지 않는다(§ 매니저 요구). 벤치 1.4–1.65 + 여유.
+  it(`골 가뭄 아님: 팀당 골 ∈ [1.4, 1.9] (측정 ${agg.mean.goals})`, () => {
+    // 슛만 과하게 줄여 골 가뭄을 만들지 않는다(§ 매니저 요구). 벤치 1.4–1.65 + 시드분산 여유.
+    // 상한 2.5 는 과도한 슬랙이었다(#147 W2 의 1.78 이 여기 숨음) → 1.9 로 조임. 현재 1.65.
     expect(agg.mean.goals).toBeGreaterThanOrEqual(1.4);
-    expect(agg.mean.goals).toBeLessThanOrEqual(2.5);
+    expect(agg.mean.goals).toBeLessThanOrEqual(1.9);
   });
 });
 
 describe("G-A 단조성: shoot 성향↑ → 슛 수↑ (config 가 실제 레버)", () => {
-  it("shoot 0.35→0.6 로 올리면 팀당 슛이 유의미하게(≥2) 증가", () => {
-    const hotter: EngineConfig = {
-      ...cfg,
-      decisionWeights: { ...cfg.decisionWeights, shoot: 0.6 },
-    };
-    // 8 시드로 충분(방향성 확인, 비용 절감).
-    const seeds8 = REALISM_SEEDS.slice(0, 8);
-    const base = aggregateRealism(cfg, seeds8).mean.shots;
-    const more = aggregateRealism(hotter, seeds8).mean.shots;
-    expect(more).toBeGreaterThan(base + 2);
+  it("shoot 사다리 0.15→0.80 **전 구간** 단조 증가한다", () => {
+    // 단일 대비의 "효과크기 ≥N" 대신 사다리 단조성을 박는다 — rung 선택이 튜닝 여지가 되지 않도록
+    // 직전 기본값(0.34)을 포함한 **전 구간**을 쓴다.
+    //
+    // 실측(engine@0.17.0, 20시드):
+    //   0.15→10.70 · 0.22→12.85 · 0.30→13.45 · 0.34→14.23 · 0.45→16.20 · 0.60→16.38 · 0.80→17.27
+    // 이력: 직전 튜닝(attackWidthReach 0.13)에서는 0.34→0.45 구간이 15.25→14.70 으로 **감소**해
+    // 계약 구간을 0.15-0.34 로 한정했었다. awr 0.10 으로 조정하니 포화·역전이 사라져 전 구간
+    // 단조가 됐다 — 즉 그 비단조는 엔진의 본질이 아니라 그 config 지점의 성질이었다.
+    const ladder = [0.15, 0.22, 0.3, 0.34, 0.45, 0.6, 0.8];
+    const shots = ladder.map(
+      (shoot) =>
+        aggregateRealism({ ...cfg, decisionWeights: { ...cfg.decisionWeights, shoot } }, REALISM_SEEDS).mean.shots,
+    );
+    for (let i = 1; i < shots.length; i++) {
+      expect(shots[i], `shoot ${ladder[i - 1]}→${ladder[i]} 구간에서 증가해야 (측정 ${shots.join(" → ")})`)
+        .toBeGreaterThan(shots[i - 1]!);
+    }
+    expect(shots[shots.length - 1]! - shots[0]!).toBeGreaterThan(4);
   });
 });

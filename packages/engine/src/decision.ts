@@ -488,12 +488,14 @@ export function decideOffBall(
     ty += widthDir * Math.round(pitch.hFx * mv.defendWidthReach * player.behavior.widthTendency);
     ty += Math.round((ball.posFx.y - ty) * mv.defendCompactY * compact);
 
-    // 마크: 지정 상대 뒤(자기 골 쪽)에 붙는다.
-    if (player.markTarget) {
+    // 마크: 시야 계층이 켜져 있으면 아래에서 가치 기반으로 처리한다(#147 W3) — markTarget 은
+    // 하드 오버라이드가 아니라 **강한 가산**(vision.markTargetBias)으로만 작용한다.
+    // 시야가 꺼져 있으면(롤백) 레거시 하드 오버라이드를 그대로 쓴다 — 안 그러면 롤백 스위치가
+    // markTarget(정식 AI 마킹 지시 경로)을 **완전 무음 no-op** 으로 만들어 "롤백" 이 아니게 된다.
+    if (!config.vision.enabled && player.markTarget) {
       const mark = state.byId.get(player.markTarget);
       if (mark) {
         const gap = mv.markGap * scale;
-        // 상대와 자기 골 사이.
         const dx = ownGoal.x - mark.posFx.x;
         const dy = ownGoal.y - mark.posFx.y;
         const len = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
@@ -513,6 +515,39 @@ export function decideOffBall(
     }
   }
 
+  // --- 시야 기반 인지·판단 (#147 W3) ---
+  // 인지: 주의 예산만큼만 정밀 추적(기억 갱신), 나머지는 마지막 본 위치로 판단하고 오래되면 잊는다.
+  // 판단: 수비 시 아는 상대 전원에게 끌리지 않고, 위협도−도달비용이 가장 큰 **한 명만** 고른다.
+  const vis = config.vision;
+  if (vis.enabled) {
+    const known = perceiveOpponents(state, player, config);
+    let px = 0;
+    let py = 0;
+    if (attacking) {
+      // 공격: 아는 상대들에게서 밀려나 공간을 찾는다(가까울수록 강하게).
+      const radFx = vis.radiusM * scale;
+      for (const k of known) {
+        const w = Math.round(vis.spaceReach * scale * (1 - k.dist / radFx));
+        if (w <= 0) continue;
+        px += Math.round(((player.posFx.x - k.x) * w) / k.dist);
+        py += Math.round(((player.posFx.y - k.y) * w) / k.dist);
+      }
+    } else {
+      // 수비: 붙을 가치가 가장 큰 상대 하나만.
+      const target = chooseMarkTarget(known, player, config, ownGoal);
+      if (target) {
+        const radFx = vis.radiusM * scale;
+        const w = Math.round(vis.markReach * scale * (1 - target.dist / radFx));
+        if (w > 0) {
+          px -= Math.round(((player.posFx.x - target.x) * w) / target.dist);
+          py -= Math.round(((player.posFx.y - target.y) * w) / target.dist);
+        }
+      }
+    }
+    tx += px;
+    ty += py;
+  }
+
   // --- 포지셔널 로밍: 시드 노이즈로 목표 위치에 시간가변 오프셋(슬롯 고착 방지, 팀 형태는 유지) ---
   const rn = config.variety.roamNoiseAmp;
   if (rn > 0) {
@@ -525,6 +560,112 @@ export function decideOffBall(
   }
 
   player.targetFx = clampToPitch(pitch, tx, ty);
+}
+
+/** 시야 기억에서 복원한 "이 선수가 아는 상대" 하나. 위치는 마지막으로 본 값(정확하지만 낡을 수 있음). */
+export interface KnownOpponent {
+  id: string;
+  /** 마지막으로 본 위치(fixed). */
+  x: number;
+  y: number;
+  /** 자기 위치에서 그 기억 위치까지 거리(fixed). */
+  dist: number;
+  /** 그 기억이 몇 틱 낡았는지(0 = 이번 틱에 봄). */
+  age: number;
+}
+
+/**
+ * 이 선수의 주의 예산(1틱에 정밀 추적할 상대 수). 인지 속성(positioning·mental)으로 가감한다.
+ * 스탯이 **시야 반경을 넓히는 게 아니라 주의를 늘린다** — 반경은 실측상 몰림/동조의 레버가 아니었고,
+ * 조사에서도 능력치는 콘 길이가 아니라 스캔 예산·기억 유지에 거는 것이 권장됐다.
+ */
+function attentionBudget(player: SimPlayer, config: EngineConfig): number {
+  const v = config.vision;
+  const aware = fclamp((player.attrs.positioning + player.attrs.mental) / 200, 0, 1);
+  const n = Math.round(v.attentionBase + v.attentionAttrSwing * (aware * 2 - 1));
+  return Math.max(1, n);
+}
+
+/**
+ * 인지 단계. 반경 안 상대를 가까운 순으로 **주의 예산만큼만** 정밀 추적해 기억을 갱신하고,
+ * 판단에는 **기억만** 쓴다(정밀 추적 못 한 상대는 마지막 본 위치 = 낡은 정보). memoryTicks 를
+ * 넘긴 기억은 버린다. 이 구조 때문에 같은 상황에서도 선수마다 아는 것이 달라진다.
+ *
+ * 결정론: state.players 순회 순서 + id 안정 정렬만 사용(Map 순회 의존 없음), 전역 난수 없음.
+ */
+export function perceiveOpponents(
+  state: SimState,
+  player: SimPlayer,
+  config: EngineConfig,
+): KnownOpponent[] {
+  const v = config.vision;
+  const scale = config.fixedScale;
+  const radFx = v.radiusM * scale;
+
+  // 반경 안 상대를 거리순(동률은 id)으로 — 결정론 안정 정렬.
+  const inRange: { p: SimPlayer; d: number }[] = [];
+  for (const o of state.players) {
+    if (o.side === player.side) continue;
+    const d = fdist(player.posFx.x, player.posFx.y, o.posFx.x, o.posFx.y);
+    if (d === 0 || d > radFx) continue;
+    inRange.push({ p: o, d });
+  }
+  inRange.sort((a, b) => a.d - b.d || (a.p.id < b.p.id ? -1 : 1));
+
+  // 주의 예산 안 = 정밀 인지 → 기억 갱신.
+  // 방어: 소비자가 스키마에 seen 을 선언하지 않으면 undefined 로 들어온다(zod strip). 크래시 대신
+  // 빈 기억으로 복구하되, **이 경로를 타면 재개 동일성이 깨진다**(기억 유실 = 무음 desync).
+  // 표현은 Record 라 JSON 왕복 자체는 안전하므로, 남은 건 소비자 스키마 선언뿐이다(#154).
+  if (!player.seen) player.seen = {};
+  const budget = attentionBudget(player, config);
+  for (let i = 0; i < inRange.length && i < budget; i++) {
+    const r = inRange[i]!;
+    player.seen[r.p.id] = { x: r.p.posFx.x, y: r.p.posFx.y, tick: state.tick };
+  }
+
+  // 판단 입력 = 기억. 낡은 기억은 폐기하고, 반경 밖으로 기억된 상대도 제외.
+  const known: KnownOpponent[] = [];
+  for (const o of state.players) {
+    if (o.side === player.side) continue;
+    const m = player.seen[o.id];
+    if (!m) continue;
+    const age = state.tick - m.tick;
+    if (age > v.memoryTicks) continue;
+    const d = fdist(player.posFx.x, player.posFx.y, m.x, m.y);
+    if (d === 0 || d > radFx) continue;
+    known.push({ id: o.id, x: m.x, y: m.y, dist: d, age });
+  }
+  return known;
+}
+
+/**
+ * 판단 단계. "붙는 게 이득인가" 를 물어 **한 명만** 고른다(아는 상대 전원에게 끌리지 않는다).
+ *   가치 = 위협도(내 골에 가까울수록 큼) − 도달비용(멀수록 큼) + markTarget 가산
+ * markTarget(AI 전담 지시)은 하드 오버라이드가 아니라 이 가산으로만 작용한다 — 지시는 먹히되
+ * 도달비용이 과하면 붙지 않는다. 아무 대상도 가치가 없으면 null(자기 위치를 지킨다).
+ */
+export function chooseMarkTarget(
+  known: KnownOpponent[],
+  player: SimPlayer,
+  config: EngineConfig,
+  ownGoal: { x: number; y: number },
+): KnownOpponent | null {
+  const v = config.vision;
+  const scale = config.fixedScale;
+  let best: KnownOpponent | null = null;
+  let bestVal = 0; // 0 이하면 붙을 가치 없음 → 자리 지킴
+  for (const k of known) {
+    const threatFx = -fdist(k.x, k.y, ownGoal.x, ownGoal.y); // 내 골에 가까울수록 큼(음수, 덜 음수가 위협)
+    const costFx = k.dist * v.markCostWeight;
+    const biasFx = player.markTarget === k.id ? v.markTargetBias * scale : 0;
+    // 피치 대각(≈125m) 기준으로 위협을 양수화해 비교 가능하게.
+    const val = threatFx - costFx + biasFx + v.markValueBaseM * scale;
+    if (val > bestVal) {
+      bestVal = val;
+      best = k;
+    }
+  }
+  return best;
 }
 
 /** side 팀의 압박 담당(공 최근접) 지정. */

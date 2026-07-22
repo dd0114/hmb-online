@@ -95,6 +95,7 @@ function buildPlayers(
       idHash: hashSeed(pi.playerId),
       dribbleStreak: 0,
       yellowCards: 0,
+      seen: {},
     } satisfies SimPlayer;
   });
 }
