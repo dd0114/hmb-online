@@ -9,7 +9,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      // 관전 렌더/투영 코어(#169 P4-D3). vite.config.ts 의 alias 와 짝 — 둘 다 있어야
+      // 타입체크와 번들이 같은 파일을 본다.
+      "@hmb/viewer-core": ["../../packages/viewer-core/src/index.ts"]
+    }
   },
   "include": ["src", "vite.config.ts"]
 }

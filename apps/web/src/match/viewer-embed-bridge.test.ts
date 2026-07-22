@@ -121,16 +121,26 @@ afterEach(() => {
 });
 
 describe("embed bridge — 컨트롤 크롬", () => {
-  it("기본은 플레이 크롬: 디버그 제목·컨트롤 행·상태줄·파일입력이 숨겨진다", () => {
+  it("기본은 플레이 크롬: 디버그 크롬 + 호스트가 소유하는 정보 UI 가 숨겨진다", () => {
     expect(document.documentElement.classList.contains(CHROME_PLAY_CLASS)).toBe(true);
     const css = document.getElementById("hmb-chrome-style")!.textContent!;
-    for (const sel of ["h1", ".controls", "#status", "input[type=file]"]) {
+    // 디버그 크롬(#148) + #169 S1 부터는 스코어보드·통계 HUD·티커도 — 호스트(게임화면)가 소유한다.
+    for (const sel of ["h1", ".controls", "#status", "input[type=file]", "#scoreboard", "#hud", "#ticker"]) {
       expect(css).toContain(`html.${CHROME_PLAY_CLASS} ${sel}`);
     }
     expect(css).toContain("display:none !important");
-    // 경기 장면(스코어보드·피치)은 숨김 대상이 아니다.
-    expect(css).not.toContain("#wrap");
-    expect(css).not.toContain("#scoreboard");
+  });
+
+  it("#169 S1: 무대 fit — 문서 스크롤을 없애고 캔버스를 박스에 letterbox-fit 한다", () => {
+    const css = document.getElementById("hmb-chrome-style")!.textContent!;
+    // 피치(#wrap/canvas)는 **숨김 대상이 아니라 맞춤 대상**이다 — 무대는 경기장면 전용.
+    expect(css).toContain(`html.${CHROME_PLAY_CLASS} body{padding:0;gap:0;height:100vh;`);
+    expect(css).toContain("overflow:hidden;");
+    expect(css).toContain(`html.${CHROME_PLAY_CLASS} canvas{width:auto;height:auto;max-width:100%;max-height:100vh;`);
+    // 숨김 규칙 안에 캔버스/피치가 섞여 들어가면 무대가 통째로 사라진다 — 방어.
+    const hideRule = css.slice(0, css.indexOf("{display:none !important;}"));
+    expect(hideRule).not.toContain("#wrap");
+    expect(hideRule).not.toContain("canvas");
   });
 
   it("로드/주입 실패 문구는 플레이 모드에서도 보인다(원인 없는 '멈춘 피치' 방지)", async () => {

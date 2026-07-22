@@ -175,7 +175,10 @@ export function deriveTeamStats(events: MatchEventLike[]): TeamStatsPair {
     const t = stats[e.team];
     switch (e.type) {
       case "shot":
-        t.shots += 1;
+        // 결과 마커(saved/off_target)는 **같은 슛의 결과** 이벤트다 — 시도로 또 세면 안 된다.
+        // 정의는 엔진 쪽 SoT(`stats.mjs liveEventStats` · `match-stats.ts`)와 동일해야 한다:
+        // 결과 화면 팀스탯과 관전 통계 패널이 같은 화면에 나란히 놓이므로 정의가 갈라지면 바로 보인다.
+        if (e.detail !== "saved" && e.detail !== "off_target") t.shots += 1;
         break;
       case "goal":
         t.goals += 1;

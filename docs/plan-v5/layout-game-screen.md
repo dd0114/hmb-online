@@ -4,7 +4,7 @@
 > 대상 = P4-D4(경기장면 고정+정보 토글) · P4-D3(게임화면 렌더코어 = SoT, QA 뷰어는 부분집합 소비).
 > **이 문서는 설계안이다. 구현은 hero 시각 리뷰 PASS 후.**
 >
-> 상태: 🟡 리뷰 대기 — §8 에 hero 결정이 필요한 3건.
+> 상태: 🟢 **S1 구현 완료(hero 리뷰 PASS 후)** — 결정 결과와 구현 기록은 §9. §8 은 리뷰 당시의 결정 요청(이력).
 
 ---
 
@@ -321,3 +321,103 @@ section.viewer (border/padding 12)
 
 부가 확인 요청: `docs/plan-v5/PRD-v5.md` 가 **아직 리포에 없다**(main·현 브랜치 모두). 이번 안은 **#168/#169 본문의
 D1~D5·AC** 를 SoT 로 삼아 작성했다. PRD-v5 가 따로 있으면 대조가 필요하다.
+
+---
+
+## 9. S1 구현 기록 (2026-07-22, #169)
+
+hero 리뷰 PASS. 결정: **범위 = S1 먼저**, **코어 위치 = `packages/viewer-core/` 신규 패키지**(owned-glob 확장 승인),
+**결과 화면 = "무대 + 결과 탭" 흡수 승인**(§8-3). S2(코어 추출)·S3(iframe 제거)는 후속 웨이브.
+
+### 9.1 실제로 만든 것
+
+| 경로 | 내용 |
+|---|---|
+| `packages/viewer-core/` | **P4-D3 SoT 표면 개설.** `log-lines.ts`(게임로그 투영 — 라벨·중요도·스코어, 순수·8테스트) + `stats.ts`(dev-viewer 검증 모듈에 타입을 입힌 표면, S2 에서 구현 흡수) + `index.ts` |
+| `apps/web/src/match/stage/` | `StageShell`(3영역 고정 셸) · `ScoreBar` · `StatsPanel` · `LogPanel` · `SecondHalfBriefPanel`(비활성 스텁) · `ResultPanel`(구 ResultPage 흡수) · `stage-state.ts`(순수 상태, 9테스트) |
+| `MatchViewer` | `variant="stage"` 추가 — 모드탭·카드 테두리 없이 무대를 채우고 컨트롤은 모서리 오버레이. `onTick` 으로 플레이헤드 미러링 |
+| `MatchPage` | 관전 상태(하프타임·종료)만 셸로 분기. BRIEFING/GEN* 은 기존 페이지 유지(W2 가 흐름 개편 시 흡수) |
+| `build-viewer.mjs` | 브리지 v5→**v6**: 플레이 크롬이 `#scoreboard·#hud·#ticker` 도 숨김(호스트가 소유) + 무대 letterbox-fit CSS + `viewerState.tick` 미러링 |
+| `ResultPage.tsx` | **삭제**(ResultPanel 로 흡수, testid 전부 보존) |
+
+### 9.2 설계안과 달라진 점 (실행하며 확정)
+
+1. **ResizeObserver 불필요.** 무대 fit 은 전부 CSS 로 된다 — 셸이 `aspect-ratio: 1050/680` 으로 무대 박스를
+   잡고, iframe 안에서는 `canvas{width:auto;height:auto;max-width:100%;max-height:100vh}` 가 letterbox-fit 한다.
+   JS 리사이즈 경로가 없으니 리플로우 연쇄도, jsdom 폴리필도 필요 없다.
+2. **시트 높이는 고정값이 아니라 "무대가 비율만큼 먹고 나머지 전부".** 처음엔 compact/tall 고정 높이를
+   뒀는데, 실캡처에서 무대 위아래에 **빈 띠(letterbox)** 가 크게 남았다 → 무대를 비율로 잡고 시트를 `1fr` 로
+   바꿔 해소(`sheetSize()` 제거). 결정 근거 = 캡처, 좌표 추론 아님.
+3. **"상태 패널" 개념 도입**(설계안엔 없던 구분). 하프타임 감독 패널·종료 결과 패널은 *유저 토글*이 아니라
+   **매치 상태가 소유**하고 자동으로 열린다. 3토글(통계·로그·후반지시)은 그때도 기본 off — 그래서
+   AC-W1-1 "기본은 경기장면만"과 기존 하프타임 플로우(교체·후반 시작)가 동시에 성립한다.
+4. **컨트롤 오버레이 축소.** 첫 캡처에서 "하이라이트" 알약이 골문 앞을 덮어 폰트/패딩을 줄이고 투명도를 넣었다.
+5. **`.app-container--stage`(데스크탑 1120px) 불필요.** 셸이 `position:fixed; inset:0` 이라 앱 컨테이너를
+   아예 거치지 않는다 — 데스크탑에서 무대가 화면 폭을 그대로 쓴다(P8 은 컨테이너 확장이 아니라 우회로 해결).
+6. **데스크탑 도크도 탭 방식.** 설계안은 "도크엔 패널을 세로로 나란히"였으나, 같은 시트 컴포넌트를 재사용해
+   탭으로 통일했다(코드 1벌·동작 일관). 세로 병렬은 필요해지면 후속으로 — 지금은 과설계다.
+
+### 9.3 게이트 결과
+
+- `npm test`(루트) **1124 passed** — 엔진 결정론 desync 0 ×80회 유지(엔진 무변경, §2-5).
+- dev-viewer e2e **58/58 passed**(17 spec) — AC-W1-2 "기존 계약 무회귀".
+- web e2e: 신규 `match-stage.spec.ts` **8/8**(AC-W1-1a~f) + `matchui-controls-mock.spec.ts` 5/5 + `p3-char-skin` 4/4.
+- 단위: viewer-core 8 + stage-state 9 + stats-rows 4, web 802 passed(+viewer-core 는 루트에서 실행).
+- 실화면 캡처(before/after, 390×844 · 1280×800) = `apps/web/.stage-capture/`(gitignore).
+
+### 9.4 의도적 계약 변경 (기존 테스트 수정)
+
+- `matchui-controls-mock.spec.ts`: 플레이 모드 `scoreboard: true → false`. 스코어는 사라진 게 아니라
+  **호스트 스코어바로 이전**(중복 제거) — 같은 테스트에 `stage-scorebar` 가시성 단언을 추가했다.
+- `viewer-embed-bridge.test.ts`: 크롬 CSS 계약을 새 규칙(정보 UI 숨김 + 무대 fit)으로 갱신. 숨김 규칙에
+  `#wrap`/`canvas` 가 섞여 들어가지 않는지 검사하는 가드를 추가했다(무대가 통째로 사라지는 사고 방지).
+
+### 9.5 곁다리 수정
+
+`packages/engine/dev-viewer/e2e/global-setup.ts` 의 `repoRoot` 가 3단계(`packages/`)를 가리켜, **fixture 생성물이
+없는 새 워크트리에서 dev-viewer e2e 가 부팅부터 실패**했다(`No test files found`). 4단계로 수정 — 잠복 버그였다
+(생성물이 이미 있으면 이 경로를 안 탄다).
+
+### 9.6 남은 판단거리 (hero 확인용)
+
+- **게임 로그 라벨이 영어**("Kick-off", "Shot · saved 🧤"). QA 뷰어 티커 문구를 그대로 승계한 결과인데,
+  게임 화면의 나머지는 한국어다. 한글화하려면 viewer-core 에 라벨 로케일을 두는 게 맞다(QA 는 영어 유지).
+- 하프타임 스코어바가 **재생 스코어(0:0에서 시작)** 와 **전반 최종(2:1)** 을 같이 보여준다. 라이브 관전의
+  정직한 표기지만 "왜 0:0?" 이 될 수 있다 — 라벨 보강 여지.
+
+### 9.7 독립 검증(module-verifier) 결과와 후속 수정
+
+1차 판정 **FAIL** — blocker 1건. 검증자가 게이트를 전부 재현하고 수치를 재계산했으며, 런타임에서
+`position:fixed`/`overflow:hidden` 을 제거해 e2e 가 실제로 회귀를 잡는지(자기충족 아닌지)까지 공격했다.
+
+| 등급 | 발견 | 조치 |
+|---|---|---|
+| 🔴 blocker | **통계 "슛"이 정확히 2배.** `shots + onTarget + offTarget` 으로 합산했는데 `onTarget`/`offTarget` 은 `shots` 의 **분할**이다(실측: home 9 = 8+1, away 14 = 10+4). QA 뷰어 HUD 와 수치가 갈라졌다 — `viewer-core/stats.ts` 헤더가 경고한 실패 모드 그대로 | `statRows()` 를 순수 모듈로 분리하고 `t.shots` 를 그대로 쓰도록 수정. **대조 테스트 추가**(`stats-rows.test.ts` — 실제 match-log 로 QA HUD 정의와 동치 + `onTarget+offTarget===shots` 계약 확인). 설계 §6 이 요구했는데 빠뜨렸던 테스트다 |
+| 🟠 major | **FINISHED 스코어바가 `0 : 0`** 인데 같은 화면 결과 탭은 `3 : 2` — 재생 플레이헤드 스코어가 확정 스코어를 이겼다("보이는 것 vs 데이터" 인지 갭) | 확정 스코어 우선으로 변경(FINISHED=최종, H1_BREAK=전반). 재생 진행은 옆 시계가 보여준다. 하프타임의 `h1-score` 중복 표기도 함께 해소 |
+| 🟡 minor-6 | 리그 뱃지(`match-league-badge`) 소실 — 리그 매치 라운드 표시가 사라짐 | 스코어바에 복원(`leagueRound` 를 MatchPage → StageShell → ScoreBar 로 전달) |
+| 🟡 minor-2 | e2e 가 컨테이너(`stage-canvas`)만 재서 **iframe 이 죽어도 통과** | iframe 안 `canvas#pitch` 의 실제 렌더 크기를 재는 단언 추가(모바일 e·데스크탑 b) |
+| 🟡 minor-1 | "기본은 경기장면만"이 토글 패널 부재만 검사 | 탭 줄(`tablist`) 부재 단언 추가 + 도달 조건을 주석으로 명시(시트 자체가 없는 화면은 W3 라이브 상태에서 도달) |
+| 🟡 minor-5 | `MatchViewer variant="page"` 가 호출자 0(사문화) | **제거** — 모드탭 UI·전용 CSS 삭제. 무대가 유일한 렌더 형태고 폴백만 타임라인 |
+| 🟡 minor-8 | 문서 테스트 수 드리프트 | §9.3 수치 정정 |
+
+**검증자가 못 잡은 것(내가 추가로 찾음)**: `e2e/w3-viewer-smoke.spec.ts`(라이브 스펙, 목킹 실행 불가라 검증
+범위 밖)가 `viewer-tab-visual-half*`의 `aria-selected` 를 단언한다 — 모드탭 제거로 깨진다. 같은 의도의
+`viewer-visual-half*` 가시성 단언으로 교체했다.
+
+**남긴 것(non-blocker, 기록)**: minor-3(가로 폰 구간 여백) · minor-4(`viewer-core` 가 alias 2벌 + dev-viewer
+상대경로 탈출에 의존 — S2 에서 해소되는 구조적 임시성) · minor-7(브리지 CSS 리터럴 비교는 change-detector
+성격) · minor-9(로그 라벨 영어, §9.6).
+
+### 9.8 재검증 결과 — **PASS** (2차)
+
+검증자가 게이트를 전부 재현하고, 1차 blocker 지점(tick=482, 같은 화면)에서 수치를 독립 재계산했다:
+홈 `4 (2) → 2 (2)`, 원정 `14 (5) → 7 (5)` — 진실값과 일치. 새 가드 테스트는 **뮤테이션 공격**으로
+검증됐다(버그를 되살린 mutant 를 주입하니 합성·실로그 케이스가 둘 다 실패). FINISHED 스코어 모순도
+실화면에서 해소 확인(`3 : 2` 일치). testid 계약·라이브 스펙 교체·폴백 경로 전부 무회귀.
+
+**PASS 후 추가로 처리한 것**(검증자가 후속 이슈로 권고한 선재 결함):
+`match-logic.ts deriveTeamStats` 가 `shot` 이벤트를 **결과 마커까지 전부** 세고 있어(데모 홈 13),
+같은 화면의 `결과` 탭과 `통계` 탭이 13 vs 9 로 갈렸다. 새 화면이 두 값을 나란히 놓기 때문에 그대로
+두면 방금 고친 것과 **같은 종류의 모순**이 화면에 남는다 → 엔진 SoT 정의(`saved`/`off_target` 제외)로
+통일하고 회귀 테스트를 추가했다. 기존 픽스처는 detail 없는 슛이라 무영향(테스트 그대로 통과).
+자잘한 것 2건도 함께: 죽은 CSS(`.halftimeWrap/.h1Score`) 제거, 확정 스코어가 비었을 때 `0 : 0` 대신 `- : -`.

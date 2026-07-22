@@ -1,0 +1,256 @@
+/* 관전 셸 — 경기장면 고정 메인 + 정보 토글 (P4-E1 S1, #169).
+   설계 = docs/plan-v5/layout-game-screen.md §2. 리서치 근거(R1) = research-spectator-ux.md §5.
+
+   핵심: 문서가 스크롤되지 않는다. 셸을 뷰포트에 고정(position:fixed)하고 내부를 그리드로 나눈다.
+   스크롤은 **패널 내부에만** 존재한다. 높이 단위는 svh — dvh 는 모바일 툴바가 접힐 때마다
+   높이가 변해 캔버스 리사이즈를 연쇄시킨다(research §5). */
+
+.shell {
+  position: fixed;
+  inset: 0;
+  height: 100svh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── [A] 스코어바 ─────────────────────────────────────────────── */
+.scorebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  padding-top: calc(8px + env(safe-area-inset-top, 0));
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  min-width: 0;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 4px 2px;
+  flex-shrink: 0;
+}
+
+.teams {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.teamName {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamName.home {
+  text-align: right;
+  color: #7ab0ff;
+}
+
+.teamName.away {
+  text-align: left;
+  color: #ff8f8f;
+}
+
+.score {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.clock {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.phaseTag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.phaseLive {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
+}
+
+.leagueBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.15);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+/* ── [B]+[D] 본문: 모바일 = 무대 위 / 시트 아래, 데스크탑 = 무대 옆 도크 ── */
+/* 무대는 피치 비율(1050×680)로 잡고, 남는 세로는 시트가 가져간다.
+   무대를 1fr 로 늘리면 캔버스가 비율을 지키느라 위아래에 빈 띠(letterbox)가 생겨 화면이
+   낭비된다(실캡처로 확인). 패널이 없을 때만 무대가 전체를 채운다. */
+.body {
+  display: grid;
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  background: #0f1420;
+  overflow: hidden;
+  aspect-ratio: 1050 / 680;
+  /* 가로가 아주 넓거나 세로가 짧은 창에서 무대가 화면을 다 먹지 않게(캔버스는 안에서 다시 fit). */
+  max-height: 58svh;
+}
+
+.bodyNoSheet {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.bodyNoSheet .stage {
+  aspect-ratio: auto;
+  max-height: none;
+}
+
+/* ── [D] 정보 시트(모바일) ────────────────────────────────────── */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.tabActive {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* 유일한 스크롤 영역 — 문서는 절대 스크롤하지 않는다(R1). */
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 12px;
+  overscroll-behavior: contain;
+}
+
+/* ── [C] 토글바 ───────────────────────────────────────────────── */
+.togglebar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.toggle {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toggleOn {
+  background: rgba(79, 140, 255, 0.16);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ── 데스크탑: 시트 대신 우측 도크(무대는 남는 폭에 재fit) ───────── */
+@media (min-width: 1024px) {
+  .body {
+    grid-template-rows: none;
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+
+  .bodyNoSheet {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 무대는 비율을 지킨 채 세로 가운데 정렬(늘려서 빈 띠를 만들지 않는다). */
+  .stage,
+  .bodyNoSheet .stage {
+    align-self: center;
+    aspect-ratio: 1050 / 680;
+    max-height: 100%;
+  }
+
+  .sheet {
+    border-top: none;
+    border-left: 1px solid var(--border);
+  }
+
+  /* 토글은 화면 폭만큼 늘어나면 우스꽝스럽다 — 가운데 모아 적당한 폭으로. */
+  .togglebar {
+    justify-content: center;
+  }
+
+  .toggle {
+    flex: 0 1 200px;
+  }
+}

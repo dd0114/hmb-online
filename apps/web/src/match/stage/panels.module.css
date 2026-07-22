@@ -1,0 +1,224 @@
+/* 정보 패널 공통 스타일 — 통계(대칭 막대, 리서치 R5) · 게임 로그(FM 코멘터리) · 후반 지시(스텁). */
+
+.note {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+/* ── 통계: 좌/우 대칭 막대 (표 아님 — research §2.3/R5) ────────── */
+.statRow {
+  display: grid;
+  grid-template-columns: 52px 1fr 52px;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 3px;
+  margin-bottom: 9px;
+}
+
+.statVal {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.statVal.home {
+  text-align: right;
+  color: #cfe0fb;
+}
+
+.statVal.away {
+  text-align: left;
+  color: #fbd6d6;
+}
+
+.statLabel {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+}
+
+.bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  background: #0d1220;
+}
+
+.barHome {
+  background: #3b82f6;
+  transition: width 0.25s ease;
+}
+
+.barAway {
+  background: #ef4444;
+  transition: width 0.25s ease;
+}
+
+.possRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.possVal {
+  font-size: 16px;
+  font-weight: 800;
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+.possVal.home {
+  text-align: right;
+  color: #7ab0ff;
+}
+
+.possVal.away {
+  color: #ff8f8f;
+}
+
+.possCaption {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  margin: 0 0 12px;
+}
+
+/* ── 게임 로그 ────────────────────────────────────────────────── */
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.logRow {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  border-radius: 4px;
+  padding: 1px 3px;
+}
+
+.minute {
+  color: var(--text-muted);
+  font-size: 11px;
+  min-width: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side,
+.xg {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+/* 중요도 3단계(뷰어 티커와 같은 문법 — viewer-core eventTier). */
+.major {
+  font-size: 13.5px;
+  font-weight: 800;
+  border-left: 3px solid currentColor;
+  padding-left: 6px;
+  margin: 2px 0;
+}
+
+.normal {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.minor {
+  font-size: 10.5px;
+  opacity: 0.6;
+}
+
+.evgoal {
+  color: #22c55e;
+}
+
+.evshot {
+  color: #fbbf24;
+}
+
+.evsave {
+  color: #38bdf8;
+}
+
+.evfoul {
+  color: #f59e0b;
+}
+
+.evcard {
+  color: #eab308;
+}
+
+.evoffside {
+  color: #a78bfa;
+}
+
+.evpenalty {
+  color: #22c55e;
+}
+
+.evsubstitution {
+  color: #34d399;
+}
+
+/* ── 후반 지시(W2 스텁) ───────────────────────────────────────── */
+.briefHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.briefTitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.countdown {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.briefInput {
+  width: 100%;
+  min-height: 72px;
+  resize: none;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  opacity: 0.55;
+}
+
+.pending {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}

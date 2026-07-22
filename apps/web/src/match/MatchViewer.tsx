@@ -39,19 +39,22 @@ interface MatchViewerProps {
   half: 1 | 2;
   homeName: string;
   awayName: string;
+  /** 재생 플레이헤드 미러링 — 호스트(스코어바·통계·로그)가 "지금까지"를 계산하는 기준. */
+  onTick?: (tick: number) => void;
 }
 
 type ViewMode = "visual" | "timeline";
 
 /**
- * 경기 재생 뷰어 (LLD-web §3, AC-W5). 두 모드:
- *  - [시각 재생](기본): QA dev-viewer 번들(viewer-embed.html)을 iframe 임베드 →
- *    viewerReady 수신 후 해당 half MatchLog 를 postMessage 로 주입해 피치/선수/공 재생.
- *    (QA 뷰어 소비만 — 캔버스 렌더러 자체 구현 금지, #57.)
- *  - [타임라인]: MatchLog 키 이벤트를 ~30초로 압축해 순차 공개하는 텍스트 하이라이트(폴백).
- * 로딩/에러 시 자동으로 타임라인 폴백.
+ * 경기 재생 무대 (LLD-web §3, AC-W5 / #169 S1).
+ * QA dev-viewer 번들(viewer-embed.html)을 iframe 임베드 → viewerReady 수신 후 해당 half MatchLog 를
+ * postMessage 로 주입해 피치/선수/공을 재생한다(QA 뷰어 소비만 — 캔버스 렌더러 자체 구현 금지, #57.
+ * 렌더 코어 수렴은 S2/S3 에서).
+ *
+ * 관전 셸의 고정 무대를 꽉 채우고, 시각 재생이 실패했을 때만 같은 자리에서 텍스트 타임라인으로
+ * 폴백한다(모드 탭은 #169 S1 에서 제거 — 무대 위 상시 40px 를 먹었고, 관객이 고를 일이 아니다).
  */
-export function MatchViewer({ matchId, half, homeName, awayName }: MatchViewerProps) {
+export function MatchViewer({ matchId, half, homeName, awayName, onTick }: MatchViewerProps) {
   const { data: log, isLoading, isError } = useHalfLog(matchId, half);
   const [mode, setMode] = useState<ViewMode>("visual");
   // #148 컨트롤 모드: 계정/QA 플래그로 판정하되, admin/QA 가 토글하면 그 선택이 이긴다.
@@ -94,30 +97,7 @@ export function MatchViewer({ matchId, half, homeName, awayName }: MatchViewerPr
   }
 
   return (
-    <section className={styles.viewer} data-testid={`match-viewer-half${half}`}>
-      <div className={styles.modeTabs} role="tablist" aria-label="재생 모드">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "visual"}
-          className={[styles.tab, mode === "visual" ? styles.tabActive : ""].join(" ")}
-          data-testid={`viewer-tab-visual-half${half}`}
-          onClick={() => setMode("visual")}
-        >
-          🎬 시각 재생
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "timeline"}
-          className={[styles.tab, mode === "timeline" ? styles.tabActive : ""].join(" ")}
-          data-testid={`viewer-tab-timeline-half${half}`}
-          onClick={() => setMode("timeline")}
-        >
-          📝 타임라인
-        </button>
-      </div>
-
+    <div className={styles.stageRoot} data-testid={`match-viewer-half${half}`}>
       {mode === "visual" ? (
         <VisualPlayback
           log={log}
@@ -126,11 +106,14 @@ export function MatchViewer({ matchId, half, homeName, awayName }: MatchViewerPr
           controlMode={controlMode}
           canSwitch={canSwitch}
           onControlMode={chooseMode}
+          onTick={onTick}
         />
       ) : (
-        <TimelineView log={log} half={half} homeName={homeName} awayName={awayName} />
+        <div className={styles.timelineFill}>
+          <TimelineView log={log} half={half} homeName={homeName} awayName={awayName} />
+        </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -150,6 +133,7 @@ interface VisualPlaybackProps {
   controlMode: ControlMode;
   canSwitch: boolean;
   onControlMode: (m: ControlMode) => void;
+  onTick?: (tick: number) => void;
 }
 
 /**
@@ -163,6 +147,7 @@ function VisualPlayback({
   controlMode,
   canSwitch,
   onControlMode,
+  onTick,
 }: VisualPlaybackProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // 경기장 캐릭터 스킨(#145). 에셋이 아직/영영 없으면 null → 뷰어는 현행 단색 원(무회귀).
@@ -180,6 +165,12 @@ function VisualPlayback({
     onFallback();
   };
 
+  // 메시지 리스너는 마운트 시 1회만 붙는다(재구독 X) → 최신 콜백은 ref 로 본다(stale closure 방지).
+  const onTickRef = useRef(onTick);
+  useEffect(() => {
+    onTickRef.current = onTick;
+  }, [onTick]);
+
   // half 전환/재마운트 시 시퀀스 초기화 + 로그 준비 반영.
   useEffect(() => {
     dispatch({ kind: "reset" });
@@ -193,7 +184,11 @@ function VisualPlayback({
     function onMsg(ev: MessageEvent) {
       if (iframeRef.current && ev.source !== iframeRef.current.contentWindow) return;
       if (isViewerReadyMessage(ev.data)) dispatch({ kind: "viewerReady" });
-      else if (isViewerStateMessage(ev.data)) setHighlight(ev.data.auto);
+      else if (isViewerStateMessage(ev.data)) {
+        setHighlight(ev.data.auto);
+        // 플레이헤드 미러링(#169 S1). 구버전 아티팩트는 tick 을 안 보낸다 → 그대로 무시.
+        if (typeof ev.data.tick === "number") onTickRef.current?.(ev.data.tick);
+      }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
@@ -246,12 +241,12 @@ function VisualPlayback({
   }
 
   return (
-    <div className={styles.stageWrap} data-testid={`viewer-visual-half${half}`}>
+    <div className={styles.stageWrapFill} data-testid={`viewer-visual-half${half}`}>
       <iframe
         ref={iframeRef}
         // key: half 별로 새 iframe → 새 viewerReady → 해당 half 재주입.
         key={`viewer-half${half}`}
-        className={[styles.stage, controlMode === "play" ? styles.stagePlay : ""].join(" ")}
+        className={styles.stageFill}
         src={VIEWER_EMBED_SRC}
         title={`${half === 1 ? "전반" : "후반"} 경기 재생`}
         // 1st-party 생성물(build:viewer). 스크립트 실행 허용 + same-origin(vite public 서빙)로
@@ -261,14 +256,17 @@ function VisualPlayback({
         onError={fail}
         data-posted={state.posted ? "1" : "0"}
       />
-      <PlaybackControls
-        half={half}
-        mode={controlMode}
-        canSwitch={canSwitch}
-        highlight={highlight}
-        onHighlight={sendHighlight}
-        onMode={onControlMode}
-      />
+      {/* 무대 모드에선 컨트롤을 화면 모서리에 겹친다(리서치 R6 — 뷰 컨트롤은 무대 가장자리). */}
+      <div className={styles.controlsOverlay}>
+        <PlaybackControls
+          half={half}
+          mode={controlMode}
+          canSwitch={canSwitch}
+          highlight={highlight}
+          onHighlight={sendHighlight}
+          onMode={onControlMode}
+        />
+      </div>
     </div>
   );
 }

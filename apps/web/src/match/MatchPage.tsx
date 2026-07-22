@@ -7,9 +7,7 @@ import { ErrorToast } from "../common/ErrorToast";
 import { panelForState } from "./match-logic";
 import { BriefingPanel } from "./BriefingPanel";
 import { GenWaitPanel } from "./GenWaitPanel";
-import { HalftimePanel } from "./HalftimePanel";
-import { MatchViewer } from "./MatchViewer";
-import { ResultPage } from "./ResultPage";
+import { StageShell } from "./stage/StageShell";
 import styles from "./MatchPage.module.css";
 
 const STATE_LABELS: Record<string, string> = {
@@ -51,6 +49,15 @@ export function MatchPage() {
 
   const panel = panelForState(match?.state);
 
+  // 관전 상태(하프타임·종료) = 경기장면 고정 셸(#169 S1, P4-D4). 준비 상태(BRIEFING/GEN*)는
+  // 아직 경기장면이 없는 폼 화면이라 기존 페이지 레이아웃을 그대로 쓴다 — W2(#170, 감독시간
+  // 단계분리)가 흐름을 바꿀 때 함께 셸로 흡수한다.
+  if (match && (panel === "halftime" || panel === "result")) {
+    return (
+      <StageShell match={match} homeName={homeName} awayName={awayName} leagueRound={leagueRound} />
+    );
+  }
+
   const header = (
     <div className={styles.headerRow}>
       <button type="button" className={styles.back} onClick={() => navigate("/lobby")}>
@@ -80,20 +87,6 @@ export function MatchPage() {
       {match && panel === "briefing" && <BriefingPanel match={match} />}
 
       {match && (panel === "genwait" || panel === "failed") && <GenWaitPanel match={match} />}
-
-      {match && panel === "halftime" && (
-        <div className={styles.halftimeWrap}>
-          <p className={styles.h1Score} data-testid="h1-score">
-            전반 스코어 {match.scoreH1Home ?? "-"} : {match.scoreH1Away ?? "-"}
-          </p>
-          <MatchViewer matchId={match.id} half={1} homeName={homeName} awayName={awayName} />
-          <HalftimePanel match={match} />
-        </div>
-      )}
-
-      {match && panel === "result" && (
-        <ResultPage match={match} homeName={homeName} awayName={awayName} />
-      )}
 
       {match && panel === "unknown" && (
         <p data-testid="unknown-state">알 수 없는 매치 상태: {match.state}</p>
