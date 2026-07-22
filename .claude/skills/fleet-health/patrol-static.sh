@@ -37,10 +37,14 @@ should_notify(){ # $1=sigkey $2=cooldown
 while read -r s w dir _; do
   [ "$w" = "main" ] && continue
   dir="${dir/#\~/$HOME}"
+  # hero 가 직접 모는 세션은 제외(타이핑 중 clobber 방지) — ~/.cache/hmb-patrol/exclude 한 줄당 윈도우명
+  if [ -f "${STATE_DIR}/exclude" ] && grep -qxF "$w" "${STATE_DIR}/exclude" 2>/dev/null; then continue; fi
   pane=$(tmux_cap "=$SESS:$w")
   [ -z "$pane" ] && continue   # DEAD/부재 = 조용히 skip(종료된 세션)
   seenf="${STATE_DIR}/seen_$w"; [ -f "$seenf" ] || echo "$now" > "$seenf"  # 스폰 유예 기준시각(첫 사격)
-  busy=$(echo "$pane" | grep -c "esc to interrupt")
+  # WORKING 신호: 메인 생성중(esc to interrupt) 또는 백그라운드 서브에이전트 대기/실행중
+  #   (백그라운드 에이전트 대기 시 메인 루프는 생성 안 해 esc 미표시 → IDLE 오판 방지)
+  busy=$(echo "$pane" | grep -cE "esc to interrupt|background agent to finish|[◯◉] .*Running|Running.*subagent")
   pend=$(echo "$pane" | grep -E "^❯ .+" | grep -vE "^❯ *$" | tail -1 | sed 's/^❯ //' | cut -c1-40)
   ct=$(git -C "$dir" log -1 --format=%ct 2>/dev/null)
   if [ -n "$ct" ]; then age=$(( (now-ct)/60 )); else age=99999; fi
