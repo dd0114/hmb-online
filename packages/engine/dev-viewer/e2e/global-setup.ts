@@ -8,7 +8,10 @@ import { buildAllTestViewers } from "./build-test-viewer.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const viewerDir = dirname(here);
-const repoRoot = join(here, "..", "..", "..");
+// e2e → dev-viewer → engine → packages → repoRoot (4단계). 3단계면 `packages/` 를 가리켜
+// vitest 가 거기서 실행되고 "No test files found" 로 fixture 생성이 실패한다(새 워크트리에서만
+// 드러나는 잠복 버그 — 생성물이 이미 있으면 이 경로를 안 탄다).
+const repoRoot = join(here, "..", "..", "..", "..");
 
 export default function globalSetup() {
   const showcaseLog = join(viewerDir, "match-log.json");

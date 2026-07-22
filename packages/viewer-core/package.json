@@ -1,0 +1,11 @@
+{
+  "name": "@hmb/viewer-core",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "게임화면 관전 렌더/투영 코어 (P4-D3 SoT). web 이 원본, QA dev-viewer 가 부분집합 소비.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts"
+}

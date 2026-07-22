@@ -1,0 +1,271 @@
+/* 정보 패널 공통 스타일 — 통계(대칭 막대, 리서치 R5) · 게임 로그(FM 코멘터리) · 후반 지시(스텁). */
+
+.note {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 4px 0;
+}
+
+/* ── 통계: 좌/우 대칭 막대 (표 아님 — research §2.3/R5) ────────── */
+/* 넓은 화면에서 값이 양 끝으로 흩어지면 좌우 비교가 안 된다 — 블록 폭을 묶어 가운데로. */
+.statsBody {
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+.logBody {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
+.statRow {
+  display: grid;
+  grid-template-columns: 52px 1fr 52px;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 3px;
+  margin-bottom: 9px;
+}
+
+.statVal {
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.statVal.home {
+  text-align: right;
+  color: #cfe0fb;
+}
+
+.statVal.away {
+  text-align: left;
+  color: #fbd6d6;
+}
+
+.statLabel {
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.4px;
+}
+
+.bar {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  background: #0d1220;
+}
+
+.barHome {
+  background: #3b82f6;
+  transition: width 0.25s ease;
+}
+
+.barAway {
+  background: #ef4444;
+  transition: width 0.25s ease;
+}
+
+.possRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+/* .bar 는 스탯 행(그리드)용이라 flex 컨테이너인 점유율 행에선 폭이 0으로 접힌다 — 여기서만 늘린다.
+   (실캡처로 발견: 43% 57% 만 붙어 나오고 막대가 아예 안 보였다.) */
+.possRow .bar {
+  flex: 1;
+}
+
+.possVal {
+  font-size: 16px;
+  font-weight: 800;
+  min-width: 44px;
+  font-variant-numeric: tabular-nums;
+}
+
+.possVal.home {
+  text-align: right;
+  color: #7ab0ff;
+}
+
+.possVal.away {
+  color: #ff8f8f;
+}
+
+/* 데스크탑: 시트 높이를 고정(무대 우선)했으므로 세로로 6줄을 쌓으면 스크롤해야 본다.
+   가로 여유는 남으니 QA 뷰어 HUD 와 같은 2열 배치로 바꿔 **한 눈에** 들어오게 한다. */
+@media (min-width: 1024px) {
+  .statsBody {
+    max-width: 1000px;
+  }
+
+  /* 3열 — 시트 높이를 고정(무대 우선)했으므로 세로로 쌓으면 스크롤해야 본다. 가로 여유를 써서
+     스크롤 없이 한 눈에 들어오게 한다(QA 뷰어 HUD 와 같은 그리드 idiom). */
+  .statsGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    column-gap: 28px;
+  }
+
+  /* 고정 시트(약 160px) 안에 6개 지표가 스크롤 없이 딱 들어가도록 여백을 조인다. */
+  .statRow {
+    margin-bottom: 4px;
+  }
+
+  .possRow {
+    margin-bottom: 2px;
+  }
+
+  .possCaption {
+    margin-bottom: 6px;
+  }
+}
+
+.possCaption {
+  text-align: center;
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 1px;
+  margin: 0 0 12px;
+}
+
+/* ── 게임 로그 ────────────────────────────────────────────────── */
+.log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.logRow {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  border-radius: 4px;
+  padding: 1px 3px;
+}
+
+.minute {
+  color: var(--text-muted);
+  font-size: 11px;
+  min-width: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.side,
+.xg {
+  color: var(--text-muted);
+  font-size: 10.5px;
+  flex-shrink: 0;
+}
+
+/* 중요도 3단계(뷰어 티커와 같은 문법 — viewer-core eventTier). */
+.major {
+  font-size: 13.5px;
+  font-weight: 800;
+  border-left: 3px solid currentColor;
+  padding-left: 6px;
+  margin: 2px 0;
+}
+
+.normal {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.minor {
+  font-size: 10.5px;
+  opacity: 0.6;
+}
+
+.evgoal {
+  color: #22c55e;
+}
+
+.evshot {
+  color: #fbbf24;
+}
+
+.evsave {
+  color: #38bdf8;
+}
+
+.evfoul {
+  color: #f59e0b;
+}
+
+.evcard {
+  color: #eab308;
+}
+
+.evoffside {
+  color: #a78bfa;
+}
+
+.evpenalty {
+  color: #22c55e;
+}
+
+.evsubstitution {
+  color: #34d399;
+}
+
+/* ── 후반 지시(W2 스텁) ───────────────────────────────────────── */
+.briefHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.briefTitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.countdown {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.briefInput {
+  width: 100%;
+  min-height: 72px;
+  resize: none;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 13px;
+  opacity: 0.55;
+}
+
+.pending {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}

@@ -7,7 +7,8 @@
 //                     skins = 경기장 캐릭터 스킨 #145 — optional additive)
 //   parent → iframe : { type: "setViewerChrome", mode }   (#148 뷰어 내부 컨트롤 표시/숨김)
 //   parent → iframe : { type: "viewerControl", cmd: "highlight", on } (#148 하이라이트 연출 on/off)
-//   iframe → parent : { type: "viewerState", playing, speed, ended, auto } (#148 상태 미러링)
+//   iframe → parent : { type: "viewerState", playing, speed, ended, auto, tick? } (#148 상태 미러링,
+//                     tick = #169 S1 플레이헤드 — 호스트가 통계/로그/시계를 그리는 기준)
 //
 // #148: 플레이 모드에선 뷰어 내부 컨트롤(재생/일시정지·배속·되감기·프레임점프·스크럽·배율·
 // 디버그 토글)을 전부 숨긴다. 경기는 **자동 진행**하고 유일한 컨트롤은 **하이라이트 토글**이다
@@ -71,6 +72,11 @@ export interface ViewerStateMessage {
   ended: boolean;
   /** 하이라이트 자동페이싱(뷰어 Highlights) 여부 — true 면 speed 는 무시된다. */
   auto: boolean;
+  /**
+   * 재생 플레이헤드(게임 틱=초). #169 S1 추가 — 호스트가 소유한 실시간 통계·게임로그·시계가
+   * "지금까지"를 계산하는 기준. 구버전 아티팩트(브리지 v5 이하)는 안 보내므로 optional.
+   */
+  tick?: number | null;
 }
 
 /** 뷰어 내부 컨트롤 표시 모드 지시(play=숨김, full=노출). */

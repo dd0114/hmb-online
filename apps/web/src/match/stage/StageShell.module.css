@@ -1,0 +1,291 @@
+/* 관전 셸 — 경기장면 고정 메인 + 정보 토글 (P4-E1 S1, #169).
+   설계 = docs/plan-v5/layout-game-screen.md §2. 리서치 근거(R1) = research-spectator-ux.md §5.
+
+   핵심: 문서가 스크롤되지 않는다. 셸을 뷰포트에 고정(position:fixed)하고 내부를 그리드로 나눈다.
+   스크롤은 **패널 내부에만** 존재한다. 높이 단위는 svh — dvh 는 모바일 툴바가 접힐 때마다
+   높이가 변해 캔버스 리사이즈를 연쇄시킨다(research §5). */
+
+.shell {
+  position: fixed;
+  inset: 0;
+  height: 100svh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── [A] 스코어바 ─────────────────────────────────────────────── */
+.scorebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  padding-top: calc(8px + env(safe-area-inset-top, 0));
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elevated);
+  min-width: 0;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 4px 2px;
+  flex-shrink: 0;
+}
+
+.teams {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.teamName {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamName.home {
+  text-align: right;
+  color: #7ab0ff;
+}
+
+.teamName.away {
+  text-align: left;
+  color: #ff8f8f;
+}
+
+.score {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.clock {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.phaseTag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.phaseLive {
+  color: #ff6b6b;
+  border-color: #ff6b6b;
+}
+
+.leagueBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.15);
+  border-radius: 999px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+
+/* ── [B]+[D] 본문: 모바일 = 무대 위 / 시트 아래, 데스크탑 = 무대 옆 도크 ── */
+/* 무대는 피치 비율(1050×680)로 잡고, 남는 세로는 시트가 가져간다.
+   무대를 1fr 로 늘리면 캔버스가 비율을 지키느라 위아래에 빈 띠(letterbox)가 생겨 화면이
+   낭비된다(실캡처로 확인). 패널이 없을 때만 무대가 전체를 채운다. */
+.body {
+  display: grid;
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+
+.stage {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  background: #0f1420;
+  overflow: hidden;
+  aspect-ratio: 1050 / 680;
+  /* 가로가 아주 넓거나 세로가 짧은 창에서 무대가 화면을 다 먹지 않게(캔버스는 안에서 다시 fit). */
+  max-height: 58svh;
+}
+
+/* 패널이 없을 때: 무대를 늘려 채우면 캔버스가 비율을 지키느라 위아래로 시커먼 띠만 커진다
+   (실캡처 확인). 대신 무대를 피치 비율 그대로 두고 **세로 가운데** 정렬한다. */
+.bodyNoSheet {
+  grid-template-rows: minmax(0, 1fr);
+  align-items: center;
+}
+
+.bodyNoSheet .stage {
+  max-height: 100%;
+}
+
+/* ── [D] 정보 시트(모바일) ────────────────────────────────────── */
+.sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.tabActive {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* 유일한 스크롤 영역 — 문서는 절대 스크롤하지 않는다(R1). */
+.panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 12px;
+  overscroll-behavior: contain;
+}
+
+/* ── [C] 토글바 ───────────────────────────────────────────────── */
+.togglebar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
+  border-top: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.toggle {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toggleOn {
+  background: rgba(79, 140, 255, 0.16);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* ── 데스크탑: **폰과 같은 형태**(hero 결정 2026-07-22) ────────────────────
+   우측 도크(360px)는 폐기했다 — 무대가 좌로 쏠려 화면이 비대칭으로 보였다.
+   데스크탑은 "폰의 넓은 버전"이다: 무대는 **가운데**, 시트와 토글바는 **아래**.
+   폰과 다른 점은 여유 폭뿐 — 무대는 세로에 맞춰 커지고, 패널 내용은 읽기 좋은 폭으로 묶는다. */
+@media (min-width: 1024px) {
+  /* 무대가 남는 세로를 쓰고, 시트는 제 높이(상한 있음)만 가져간다.
+     폰과 반대인 이유: 폰은 가로가, 데스크탑은 세로가 무대 크기를 결정한다. */
+  .body {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .bodyNoSheet {
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  /* 높이에 맞춰 폭을 정하고(비율 유지) 가로·세로 모두 가운데 — 좌 쏠림 없음. */
+  .stage,
+  .bodyNoSheet .stage {
+    justify-self: center;
+    align-self: center;
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    max-height: none;
+    aspect-ratio: 1050 / 680;
+  }
+
+  /* 시트 높이는 **콘텐츠와 무관하게 고정**한다(hero 지시 2026-07-23).
+     `max-height` 만 두면 내용이 쌓이는 만큼(로그가 계속 늘어난다) 시트가 자라고 무대가 그만큼
+     작아진다 — 실제로 로그를 켜두면 무대가 점점 줄었다. 높이를 못박아 무대 크기를 불변으로 만들고,
+     넘치는 내용은 패널 안에서만 스크롤한다.
+     값은 무대 우선으로 잡았다: 데스크탑은 **세로**가 무대 크기를 정하므로, 시트를 줄인 만큼
+     무대가 커진다(1280×800 기준 무대 폭 548 → 815, 약 1.5배). */
+  .sheet {
+    max-height: none;
+    flex-shrink: 0;
+  }
+
+  /* 정보 패널(통계·로그·후반지시): 무대 우선 — 낮게 고정(1280×800 기준 무대 폭 548 → 820, 약 1.5배). */
+  .sheetInfo {
+    height: clamp(150px, 20svh, 260px);
+  }
+
+  /* 상태 패널(감독·결과): 교체·프롬프트·결과표를 실제로 조작하는 자리라 더 준다.
+     이것도 **콘텐츠와 무관한 고정값**이다 — 내용이 늘어도 무대는 그대로다. */
+  .sheetState {
+    height: clamp(260px, 40svh, 420px);
+  }
+
+  /* 넓은 화면에서 글줄이 지나치게 길어지지 않게 패널 내용만 가운데로 묶는다. */
+  .tabs,
+  .panel {
+    width: 100%;
+    max-width: 1040px;
+    margin-inline: auto;
+  }
+
+  /* 토글은 화면 폭만큼 늘어나면 우스꽝스럽다 — 가운데 모아 적당한 폭으로. */
+  .togglebar {
+    justify-content: center;
+  }
+
+  .toggle {
+    flex: 0 1 200px;
+  }
+}

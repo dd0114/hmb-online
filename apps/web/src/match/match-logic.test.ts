@@ -129,6 +129,18 @@ describe("deriveTeamStats (both halves' events, events only)", () => {
     expect(stats.away).toEqual({ shots: 0, goals: 0, corners: 0, fouls: 1, cards: 1, offsides: 1 });
   });
 
+  it("결과 마커(saved/off_target)를 시도로 중복 집계하지 않는다 (엔진 stats 정의와 동일)", () => {
+    const events = [
+      ev("shot", { team: "home" }), // 시도
+      ev("shot", { team: "home", detail: "saved" }), // 그 시도의 결과 — 새 시도가 아님
+      ev("shot", { team: "away", detail: "off_target" }),
+      ev("shot", { team: "away", detail: "one_on_one" }), // 시도(상황 표기)
+    ];
+    const stats = deriveTeamStats(events);
+    expect(stats.home.shots).toBe(1);
+    expect(stats.away.shots).toBe(1);
+  });
+
   it("ignores events without a team side", () => {
     const stats = deriveTeamStats([ev("shot"), ev("goal")]);
     expect(stats.home.shots).toBe(0);

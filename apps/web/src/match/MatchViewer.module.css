@@ -1,54 +1,57 @@
-.viewer {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
-  background: var(--bg-elevated);
+/* ── 무대 모드(#169 S1) — 관전 셸의 고정 무대를 꽉 채운다 ─────────────────────
+   iframe 은 100%×100%, 내부 캔버스는 브리지 크롬 CSS 가 letterbox-fit 시킨다
+   (apps/web/scripts/build-viewer.mjs). 여기선 박스만 준다. */
+.stageRoot {
+  position: absolute;
+  inset: 0;
 }
 
-.modeTabs {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
+.stageWrapFill {
+  position: absolute;
+  inset: 0;
 }
 
-.tab {
-  flex: 1;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.tabActive {
-  background: var(--bg-elevated);
-  color: var(--text);
-  border-color: var(--text-muted);
-}
-
-/* 시각 재생 iframe 스테이지 — 모바일 우선(가로 100%, 390px 오버플로 0).
-   임베드된 dev-viewer 페이지는 피치+컨트롤+티커가 세로로 쌓이므로 뷰포트 상대 높이로
-   피치가 보이게 하고 상한을 둔다. iframe 내부는 자체 스크롤. */
-.stageWrap {
-  width: 100%;
-}
-
-.stage {
+.stageFill {
   display: block;
   width: 100%;
-  height: min(72vh, 600px);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  height: 100%;
+  border: none;
+  border-radius: 0;
   background: #0f1420;
 }
 
-/* 플레이 모드(#148): 뷰어 디버그 크롬이 숨겨져 내부 높이가 줄고, 간소 컨트롤 바가 화면 안에
-   들어오도록 스테이지를 조금 낮춘다(컨트롤을 찾으러 스크롤하지 않게). */
-.stagePlay {
-  height: min(64vh, 520px);
+/* 컨트롤은 무대 위 오버레이(모서리) — 무대 높이를 갉아먹지 않는다.
+   경기장을 가리지 않도록 작게: 실캡처에서 큰 알약이 골문 앞을 덮었다(#169 S1 캡처 리뷰). */
+.controlsOverlay {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  max-width: calc(100% - 12px);
+  opacity: 0.9;
+}
+
+/* PlaybackControls 의 바(자체 모듈 클래스)는 이름으로 못 잡으므로 직계 자식으로 여백만 제거. */
+.controlsOverlay > div {
+  margin-top: 0;
+}
+
+.controlsOverlay button {
+  font-size: 11px;
+  padding: 4px 9px;
+}
+
+.controlsOverlay:hover {
+  opacity: 1;
+}
+
+/* 시각 재생 실패 시 같은 무대 자리에 텍스트 타임라인(스크롤은 이 안에서만). */
+.timelineFill {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px;
 }
 
 .scoreboard {

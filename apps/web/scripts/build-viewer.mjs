@@ -60,7 +60,7 @@ export const BRIDGE_MARKER = "hmb-viewer-embed-bridge";
  * 기존 아티팩트는 낡은 것이므로 ensure-viewer 가 재빌드하도록 마커로 박는다.
  */
 export const BRIDGE_VERSION_MARKER = "hmb-viewer-bridge-version";
-export const BRIDGE_VERSION = "5";
+export const BRIDGE_VERSION = "6";
 /** 플레이 모드에서 뷰어 내부 컨트롤을 감추는 클래스(문서 루트에 건다). */
 export const CHROME_PLAY_CLASS = "hmb-chrome-play";
 export const bridgeScript = `<script>
@@ -86,9 +86,17 @@ export const bridgeScript = `<script>
     st.id = "hmb-chrome-style";
     var h = "html." + CHROME_CLASS + " ";
     st.textContent =
-      h + "h1," + h + ".controls," + h + "#status," + h + "input[type=file]" +
+      // #169 S1: 스코어보드·통계 HUD·티커도 숨긴다 — 이제 **호스트(게임화면)가 소유**한다.
+      // (iframe 안에 남겨두면 같은 정보가 두 번 나오고, 호스트가 켜고 끌 수도 없다.)
+      h + "h1," + h + ".controls," + h + "#status," + h + "input[type=file]," +
+      h + "#scoreboard," + h + "#hud," + h + "#ticker" +
       "{display:none !important;}" +
-      h + "body{padding-top:8px;}" +
+      // #169 S1: iframe 은 **경기장면 전용 무대**다. 문서 스크롤을 없애고 캔버스를 박스에
+      // letterbox-fit 시킨다(호스트가 박스 크기를 정하고, 맞추는 건 여기서).
+      h + "body{padding:0;gap:0;height:100vh;justify-content:center;overflow:hidden;}" +
+      h + "#wrap{max-width:none;width:100%;}" +
+      h + "canvas{width:auto;height:auto;max-width:100%;max-height:100vh;" +
+      "margin:0 auto;border-radius:0;}" +
       // 로드/주입 실패는 숨기지 않는다 — 안 그러면 "멈춘 피치"로만 보인다(원인 비가시).
       // 상태줄은 문서 맨 아래(HUD·티커 뒤)라 display 만 켜면 iframe 접힘 밖이다 → 화면 상단에 고정.
       "html." + CHROME_CLASS + "." + ERROR_CLASS + " #status{display:block !important;color:#ff5a5a;" +
@@ -143,14 +151,27 @@ export const bridgeScript = `<script>
     var v = s ? parseFloat(s.value) : 0;
     return isFinite(v) && v >= 99.99;
   }
-  function stateSnapshot() { return { playing: isPlaying(), speed: curSpeed(), ended: atEnd(), auto: isAuto() }; }
-  function stateKey(s) { return s.playing + "|" + s.speed + "|" + s.ended + "|" + s.auto; }
+  /* #169 S1: 재생 플레이헤드 틱. 호스트가 소유한 실시간 통계·게임로그가 "지금까지"를 계산하려면
+     이 값이 필요하다(뷰어 내부 HUD/티커를 숨겼으므로 호스트가 대신 그린다). 뷰어가 아직
+     준비 전이면 null → 호스트는 이전 값을 유지한다. */
+  function curTick() {
+    try {
+      var v = window.__viewer;
+      if (!v || typeof v.cur !== "function") return null;
+      var c = v.cur();
+      return c && typeof c.tick === "number" ? c.tick : null;
+    } catch (e) { return null; }
+  }
+  function stateSnapshot() {
+    return { playing: isPlaying(), speed: curSpeed(), ended: atEnd(), auto: isAuto(), tick: curTick() };
+  }
+  function stateKey(s) { return s.playing + "|" + s.speed + "|" + s.ended + "|" + s.auto + "|" + s.tick; }
   function postState() {
     var s = stateSnapshot();
     lastState = stateKey(s);
     try {
       window.parent.postMessage(
-        { type: "viewerState", playing: s.playing, speed: s.speed, ended: s.ended, auto: s.auto },
+        { type: "viewerState", playing: s.playing, speed: s.speed, ended: s.ended, auto: s.auto, tick: s.tick },
         "*"
       );
     } catch (e) {}

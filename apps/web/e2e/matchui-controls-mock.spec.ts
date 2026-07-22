@@ -116,6 +116,8 @@ test("#148 플레이 모드: 컨트롤은 하이라이트 토글 하나뿐이고
   const frame = await openHalftime(page, false);
 
   // (1) iframe 안 디버그 컨트롤 전부 비노출 — 경기 장면은 그대로.
+  // #169 S1: 스코어보드도 iframe 안에선 숨는다 — 호스트(게임화면 스코어바)가 소유하게 바뀌었다.
+  // 둘 다 보이면 같은 스코어가 두 번 나온다.
   const chrome = await viewerChromeVisible(frame);
   expect(chrome, "플레이 모드에선 컨트롤 행/스크럽/슬로우배속/프레임점프/디버그 제목이 안 보여야 함").toMatchObject({
     controlRows: 0,
@@ -124,8 +126,11 @@ test("#148 플레이 모드: 컨트롤은 하이라이트 토글 하나뿐이고
     prevGoal: false,
     title: false,
     pitch: true,
-    scoreboard: true,
+    scoreboard: false,
   });
+  // 스코어는 사라진 게 아니라 호스트로 옮겨졌다(중복 없이 한 곳에서).
+  await expect(page.getByTestId("stage-scorebar")).toBeVisible();
+  await expect(page.getByTestId("stage-score")).toBeVisible();
 
   // (2) web 바에도 하이라이트 토글 외에는 아무 컨트롤이 없다.
   await expect(page.getByTestId("viewer-highlight-toggle-half1")).toBeVisible();

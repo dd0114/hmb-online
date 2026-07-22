@@ -12,6 +12,8 @@
     "preview": "vite preview",
     "e2e": "playwright test",
     "build:viewer": "node scripts/build-viewer.mjs",
+    "design:mock": "node scripts/design-mock-server.mjs",
+    "design:preview": "node scripts/design-preview.mjs",
     "build:chars": "node scripts/build-chars.mjs",
     "gen:types": "npm run gen:types:v1 && npm run gen:types:v2",
     "gen:types:v1": "openapi-typescript ../../docs/plan-v2/api/openapi.yaml -o src/api/schema.d.ts",

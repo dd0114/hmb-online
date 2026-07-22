@@ -1,9 +1,8 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useHalfLog, useMatchResult, type MatchDetail } from "../api/hooks";
-import { deriveTeamStats, TEAM_STAT_LABELS, type MatchEventLike } from "./match-logic";
-import { MatchViewer } from "./MatchViewer";
-import styles from "./ResultPage.module.css";
+import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
+import { deriveTeamStats, TEAM_STAT_LABELS, type MatchEventLike } from "../match-logic";
+import styles from "../ResultPage.module.css";
 
 const RESULT_LABELS: Record<string, string> = {
   WIN: "승리",
@@ -11,17 +10,20 @@ const RESULT_LABELS: Record<string, string> = {
   LOSS: "패배",
 };
 
-interface ResultPageProps {
+interface ResultPanelProps {
   match: MatchDetail;
   homeName: string;
   awayName: string;
 }
 
 /**
- * FINISHED — 후반 텍스트 재생 + 최종 결과(스코어·승패·보상) + 팀 스탯(양 하프 이벤트 합산,
- * 이벤트만 사용 — tick 계산 없음) + [로비로]. 전적 갱신은 MatchPage가 useMe invalidate.
+ * [D] 결과 패널 — 종료(FINISHED) 상태가 소유하는 시트 탭.
+ *
+ * 기존 `ResultPage`(무대 아래로 세로로 쌓이던 페이지)를 흡수한 것이다(#169, layout §2.6):
+ * 무대는 계속 살아있는 채로 결과를 본다(리서치 R2). 스코어·승패·보상·팀스탯·[로비로]의
+ * **testid 는 전부 보존**한다 — 기존 e2e(match-flow·league-season·w3-viewer-smoke)가 참조한다.
  */
-export function ResultPage({ match, homeName, awayName }: ResultPageProps) {
+export function ResultPanel({ match, homeName, awayName }: ResultPanelProps) {
   const navigate = useNavigate();
   const { data: result } = useMatchResult(match.id);
   const { data: log1 } = useHalfLog(match.id, 1);
@@ -40,9 +42,7 @@ export function ResultPage({ match, homeName, awayName }: ResultPageProps) {
   const scoreAway = result?.scoreAway ?? match.scoreAway;
 
   return (
-    <div className={styles.page} data-testid="result-page">
-      <MatchViewer matchId={match.id} half={2} homeName={homeName} awayName={awayName} />
-
+    <div data-testid="result-page">
       <section className={styles.resultCard}>
         {resultKey && (
           <span

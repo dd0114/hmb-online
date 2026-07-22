@@ -106,8 +106,8 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   // === H1_BREAK: 전반 시각 재생 ===
   await expect(page.getByTestId("halftime-panel")).toBeVisible({ timeout: 300_000 });
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
-  // 시각 재생 탭이 기본 활성 + iframe 존재.
-  await expect(page.getByTestId("viewer-tab-visual-half1")).toHaveAttribute("aria-selected", "true");
+  // 무대가 곧 시각 재생이다(#169 S1: 모드 탭 제거 — 폴백일 때만 텍스트 타임라인으로 바뀐다).
+  await expect(page.getByTestId("viewer-visual-half1")).toBeVisible();
   const h1 = await assertViewerRendered(page, 1);
   console.log(`[smoke] half1 viewer rendered — score ${h1.score}, tick ${h1.tick}`);
   await page.locator('[data-testid="viewer-visual-half1"] iframe').screenshot({
@@ -131,7 +131,7 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   // === FINISHED: 후반 시각 재생 ===
   await expect(page.getByTestId("result-page")).toBeVisible({ timeout: 300_000 });
   await expect(page.getByTestId("match-viewer-half2")).toBeVisible();
-  await expect(page.getByTestId("viewer-tab-visual-half2")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("viewer-visual-half2")).toBeVisible();
   const h2 = await assertViewerRendered(page, 2);
   console.log(`[smoke] half2 viewer rendered — score ${h2.score}, tick ${h2.tick}`);
   await page.locator('[data-testid="viewer-visual-half2"] iframe').screenshot({

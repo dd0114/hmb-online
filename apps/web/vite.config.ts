@@ -1,9 +1,17 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      // 관전 렌더/투영 코어(P4-D3 SoT, #169). 워크스페이스 소스를 그대로 번들한다 —
+      // 별도 빌드 산출물이 없어 alias 로 붙인다(tsconfig paths 와 짝).
+      "@hmb/viewer-core": fileURLToPath(new URL("../../packages/viewer-core/src/index.ts", import.meta.url)),
+    },
+  },
   server: {
     // 프록시 대상은 기본 8080(데모). 대체 서버(예: W0 스모크 8084)는 VITE_API_TARGET 로 덮어쓴다.
     proxy: {
