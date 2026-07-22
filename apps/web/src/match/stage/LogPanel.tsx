@@ -56,7 +56,7 @@ export function LogPanel({ matchId, half, homeName, awayName, tick }: LogPanelPr
   if (isError || !log) return <p className={styles.note}>로그를 불러오지 못했습니다</p>;
 
   return (
-    <ol className={styles.log} data-testid="stage-panel-log">
+    <ol className={`${styles.log} ${styles.logBody}`} data-testid="stage-panel-log">
       {lines.length === 0 && <li className={styles.note}>아직 기록된 장면이 없습니다</li>}
       {lines.map((l, i) => (
         <li

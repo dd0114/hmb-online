@@ -268,7 +268,7 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
 test.describe("AC-W1-1 경기장면 고정 (데스크탑 1280×800)", () => {
   test.use({ viewport: DESKTOP });
 
-  test("b. 데스크탑도 문서 스크롤 0 + 무대가 뷰포트 안", async ({ page }) => {
+  test("b. 데스크탑도 문서 스크롤 0 + 무대가 뷰포트 안 + **가운데 정렬**(도크 없음)", async ({ page }) => {
     await openMatch(page);
 
     const base = await pageScroll(page);
@@ -279,12 +279,23 @@ test.describe("AC-W1-1 경기장면 고정 (데스크탑 1280×800)", () => {
     await toggle(page, "stats");
     await toggle(page, "log");
     const s = await pageScroll(page);
-    expect(s.vScroll, "도크를 열어도 문서 스크롤 0").toBeLessThanOrEqual(1);
+    expect(s.vScroll, "패널을 열어도 문서 스크롤 0").toBeLessThanOrEqual(1);
     expect(s.hScroll).toBeLessThanOrEqual(1);
 
-    const box = await page.getByTestId("stage-canvas").boundingBox();
-    expect(box!.y + box!.height).toBeLessThanOrEqual(DESKTOP.height + 1);
-    expect(box!.width, "데스크탑에서 무대가 모바일 폭(480)에 갇히면 안 됨").toBeGreaterThan(480);
+    const box = (await page.getByTestId("stage-canvas").boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(DESKTOP.height + 1);
+    expect(box.width, "데스크탑에서 무대가 모바일 폭(480)에 갇히면 안 됨").toBeGreaterThan(480);
+
+    // hero 결정(2026-07-22): 데스크탑은 **폰의 넓은 버전**이다 — 우측 도크를 없애고 무대를 가운데 둔다.
+    // 도크 시절엔 무대 중심이 왼쪽으로 180px 쏠려 화면이 비대칭이었다. 그 회귀를 여기서 막는다.
+    const stageCenter = box.x + box.width / 2;
+    expect(Math.abs(stageCenter - DESKTOP.width / 2), "무대가 가로 가운데에 있어야 함(좌 쏠림 금지)").toBeLessThanOrEqual(4);
+
+    // 시트는 무대 **옆**이 아니라 **아래**에 있다(도크 폐기의 실체).
+    const sheet = (await page.getByTestId("stage-sheet").boundingBox())!;
+    expect(sheet.y, "시트는 무대 아래에서 시작").toBeGreaterThanOrEqual(box.y + box.height - 1);
+    expect(sheet.width, "시트는 화면 폭을 쓴다(측면 도크 아님)").toBeGreaterThan(DESKTOP.width * 0.9);
+
     const canvas = await pitchCanvasBox(page);
     expect(canvas!.width, "데스크탑 캔버스도 무대 폭을 채운다").toBeGreaterThan(480);
     await page.screenshot({ path: `${CAP_DIR}desktop-panels.png` });

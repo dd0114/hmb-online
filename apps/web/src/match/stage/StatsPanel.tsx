@@ -41,7 +41,7 @@ export function StatsPanel({ matchId, half, tick }: StatsPanelProps) {
   const { stats, poss } = view;
 
   return (
-    <div data-testid="stage-panel-stats">
+    <div className={styles.statsBody} data-testid="stage-panel-stats">
       <div className={styles.possRow}>
         <span className={`${styles.possVal} ${styles.home}`} data-testid="stat-possession-home">
           {poss}%

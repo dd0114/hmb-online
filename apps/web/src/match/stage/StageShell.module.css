@@ -223,28 +223,44 @@
   color: var(--text);
 }
 
-/* ── 데스크탑: 시트 대신 우측 도크(무대는 남는 폭에 재fit) ───────── */
+/* ── 데스크탑: **폰과 같은 형태**(hero 결정 2026-07-22) ────────────────────
+   우측 도크(360px)는 폐기했다 — 무대가 좌로 쏠려 화면이 비대칭으로 보였다.
+   데스크탑은 "폰의 넓은 버전"이다: 무대는 **가운데**, 시트와 토글바는 **아래**.
+   폰과 다른 점은 여유 폭뿐 — 무대는 세로에 맞춰 커지고, 패널 내용은 읽기 좋은 폭으로 묶는다. */
 @media (min-width: 1024px) {
+  /* 무대가 남는 세로를 쓰고, 시트는 제 높이(상한 있음)만 가져간다.
+     폰과 반대인 이유: 폰은 가로가, 데스크탑은 세로가 무대 크기를 결정한다. */
   .body {
-    grid-template-rows: none;
-    grid-template-columns: minmax(0, 1fr) 360px;
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 
   .bodyNoSheet {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
 
-  /* 무대는 비율을 지킨 채 세로 가운데 정렬(늘려서 빈 띠를 만들지 않는다). */
+  /* 높이에 맞춰 폭을 정하고(비율 유지) 가로·세로 모두 가운데 — 좌 쏠림 없음. */
   .stage,
   .bodyNoSheet .stage {
+    justify-self: center;
     align-self: center;
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    max-height: none;
     aspect-ratio: 1050 / 680;
-    max-height: 100%;
   }
 
+  /* 시트가 화면을 삼키면 무대가 급격히 작아진다(데스크탑은 세로가 무대 크기) → 상한을 둔다. */
   .sheet {
-    border-top: none;
-    border-left: 1px solid var(--border);
+    max-height: 42svh;
+  }
+
+  /* 넓은 화면에서 글줄이 지나치게 길어지지 않게 패널 내용만 가운데로 묶는다. */
+  .tabs,
+  .panel {
+    width: 100%;
+    max-width: 1040px;
+    margin-inline: auto;
   }
 
   /* 토글은 화면 폭만큼 늘어나면 우스꽝스럽다 — 가운데 모아 적당한 폭으로. */

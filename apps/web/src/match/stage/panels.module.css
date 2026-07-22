@@ -7,6 +7,18 @@
 }
 
 /* ── 통계: 좌/우 대칭 막대 (표 아님 — research §2.3/R5) ────────── */
+/* 넓은 화면에서 값이 양 끝으로 흩어지면 좌우 비교가 안 된다 — 블록 폭을 묶어 가운데로. */
+.statsBody {
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+.logBody {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+}
 .statRow {
   display: grid;
   grid-template-columns: 52px 1fr 52px;
@@ -63,6 +75,12 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 4px;
+}
+
+/* .bar 는 스탯 행(그리드)용이라 flex 컨테이너인 점유율 행에선 폭이 0으로 접힌다 — 여기서만 늘린다.
+   (실캡처로 발견: 43% 57% 만 붙어 나오고 막대가 아예 안 보였다.) */
+.possRow .bar {
+  flex: 1;
 }
 
 .possVal {
