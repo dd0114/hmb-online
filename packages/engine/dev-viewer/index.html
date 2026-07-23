@@ -378,7 +378,7 @@
       window.addEventListener("message", (ev) => {
         const d = ev && ev.data;
         if (d && d.type === "loadMatchLog" && d.matchLog) {
-          try { viewer.load(d.matchLog); }
+          try { if (d.skins) viewer.setSkin(d.skins); viewer.load(d.matchLog); }
           catch (e) { statusEl.textContent = "Failed to load injected MatchLog: " + e; }
         }
       });

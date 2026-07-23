@@ -53,6 +53,7 @@ export function createViewer(canvas, chrome = {}) {
   let cumPoss = { cumHome: [], cumAway: [] }, lastHudTick = -1;
   let lastGoalShown = -1;
   let rafId = 0;
+  let skin = null; // 캐릭터 스킨(#145) — setSkin 으로 주입. null 이면 현행 단색 원(무회귀).
 
   const baseScale = Math.min(
     (canvas.width - 2 * MARGIN) / PITCH_W,
@@ -204,11 +205,34 @@ export function createViewer(canvas, chrome = {}) {
       const isHome = pa.team === "home", owner = A.ballOwner === pa.playerId;
       playerRender.push({ id: pa.playerId, x, y });
       const px = sx(x), py = sy(y);
-      ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
-      ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
-      if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
-      const num = pa.playerId.replace(/[HA]/, "");
-      if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);
+      // 캐릭터 스킨(#145, S3): setSkin 으로 아틀라스가 주입됐고 이 선수 셀이 있으면 얼굴 아바타 +
+      // 팀색 링/디스크/번호 뱃지로 그린다. 없으면(QA·미주입·로드전) 현행 단색 원(무회귀).
+      const cell = skin && skin.ready && skin.byPlayer[pa.playerId];
+      const num = (cell && cell.num) || pa.playerId.replace(/[HA]/, "");
+      if (!cell) {
+        ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
+        ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
+        if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
+        if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);
+      } else {
+        const _rr = owner ? R + 2 : R, _S = _rr * 2 * 1.55, _ring = _S / 2 + 2.5;
+        const _team = isHome ? "#3b82f6" : "#ef4444";
+        ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
+        ctx.fillStyle = isHome ? "rgba(37,99,235,0.55)" : "rgba(220,38,38,0.55)"; ctx.fill();
+        const _sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(skin.img, cell.col * skin.tile, cell.row * skin.tile, skin.tile, skin.tile,
+          px - _S / 2, py - _S / 2, _S, _S);
+        ctx.imageSmoothingEnabled = _sm;
+        ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
+        ctx.strokeStyle = owner ? "#fde047" : _team; ctx.lineWidth = owner ? 3.2 : 2.2; ctx.stroke();
+        const _bx = px + _ring * 0.78, _by = py + _ring * 0.78, _br = Math.max(5, _rr * 0.62);
+        ctx.beginPath(); ctx.arc(_bx, _by, _br, 0, Math.PI * 2);
+        ctx.fillStyle = _team; ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.save(); ctx.font = "bold " + Math.round(_br * 1.5) + "px monospace";
+        ctx.fillStyle = "#fff"; ctx.fillText(num, _bx, _by); ctx.restore();
+        if (owner) ownerDraw = { num: "", px, py };
+      }
     }
     lastPlayers = playerRender;
     // R4(#100): 카드 받은 선수 표시.
@@ -462,6 +486,17 @@ export function createViewer(canvas, chrome = {}) {
   function setSpeed(n) { speed = parseFloat(n); }
   function setFixZoom(z) { fixZoom = Math.max(1, Math.min(3, Number.isFinite(z) ? z : 1)); draw(); return fixZoom; }
   function setViewMode(mode) { viewMode = mode === "fix" ? "fix" : "auto"; draw(); }
+  // 캐릭터 스킨(#145, S3): {atlasUrl, tile, byPlayer:{playerId:{col,row,num?}}} → 아틀라스 로드.
+  // 로드 전/실패/미주입이면 draw 가 단색 원으로 폴백(무회귀). QA(dev-viewer)는 호출하지 않는다.
+  function setSkin(payload) {
+    if (!payload || !payload.atlasUrl || !payload.tile || !payload.byPlayer) { skin = null; return; }
+    const img = new Image();
+    const s = { img, tile: payload.tile, byPlayer: payload.byPlayer, ready: false };
+    img.onload = () => { s.ready = true; };
+    img.onerror = () => { if (skin === s) skin = null; };
+    img.src = payload.atlasUrl;
+    skin = s;
+  }
   function scrubTo(pct) { tickPos = (parseFloat(pct) / 100) * (snaps.length - 1); lastGoalShown = -1; resetStops(); draw(); }
 
   function loadLog(data) {
@@ -528,6 +563,9 @@ export function createViewer(canvas, chrome = {}) {
     fixZoom: () => fixZoom,
     setFixZoom: (z) => setFixZoom(z),
     idxOfTick: (tick) => idxOfTick(tick),
+    // 캐릭터 스킨(#145, S3) — 주입/준비 상태 훅(계약검증용). setSkin(null) 로 비활성.
+    setSkin: (payload) => setSkin(payload),
+    skinReady: () => !!(skin && skin.ready),
   };
 
   function start() { drawPitch(); rafId = requestAnimationFrame(tickLoop); }
@@ -536,7 +574,7 @@ export function createViewer(canvas, chrome = {}) {
     start, load: loadLog,
     play: () => setPlaying(true), pause: () => setPlaying(false), togglePlay,
     restart, scrubTo, jumpToTick, jumpEvent,
-    setFollow, setTrail, setAutoPace, setSpeed, setViewMode, setFixZoom,
+    setFollow, setTrail, setAutoPace, setSpeed, setViewMode, setFixZoom, setSkin,
     hooks,
   };
 }

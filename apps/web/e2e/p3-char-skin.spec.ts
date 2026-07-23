@@ -146,11 +146,9 @@ test("경기장: 뷰어 iframe 이 스킨을 받아 캐릭터 토큰으로 그�
   );
 
   // 아틀라스가 실제로 로드돼 렌더 경로가 열렸는가(못 받으면 조용히 원본 원으로 떨어지므로 명시 검증).
+  // S3: 스킨은 viewer-core 네이티브 — 준비 상태는 __viewer.skinReady() 로 본다(구 window.__HMB_SKIN 대체).
   await page.waitForFunction(
-    () => {
-      const s = (window as { __HMB_SKIN?: { ready?: boolean } }).__HMB_SKIN;
-      return !!s && s.ready === true;
-    },
+    () => (window as { __viewer?: { skinReady?(): boolean } }).__viewer?.skinReady?.() === true,
     null,
     { timeout: 20_000 },
   );
@@ -176,8 +174,9 @@ test("경기장: 뷰어 iframe 이 스킨을 받아 캐릭터 토큰으로 그�
     return (document.querySelector("canvas") as HTMLCanvasElement).toDataURL();
   });
   const withoutSkin = await page.evaluate(() => {
-    (window as { __HMB_SKIN?: unknown }).__HMB_SKIN = null;
-    const v = window as unknown as { __viewer: { seek(t: number): void } };
+    // S3: 네이티브 스킨 비활성 = setSkin(null)(구 window.__HMB_SKIN=null 대체).
+    const v = window as unknown as { __viewer: { setSkin(p: unknown): void; seek(t: number): void } };
+    v.__viewer.setSkin(null);
     v.__viewer.seek(900);
     return (document.querySelector("canvas") as HTMLCanvasElement).toDataURL();
   });
