@@ -1,6 +1,5 @@
-/* ── 무대 모드(#169 S1) — 관전 셸의 고정 무대를 꽉 채운다 ─────────────────────
-   iframe 은 100%×100%, 내부 캔버스는 브리지 크롬 CSS 가 letterbox-fit 시킨다
-   (apps/web/scripts/build-viewer.mjs). 여기선 박스만 준다. */
+/* ── 무대 모드(#169 S3) — viewer-core 직접 마운트. iframe 제거 ──────────────────
+   React 가 캔버스를 소유하고 코어가 그린다. 캔버스는 무대 박스에 letterbox-fit. */
 .stageRoot {
   position: absolute;
   inset: 0;
@@ -9,15 +8,96 @@
 .stageWrapFill {
   position: absolute;
   inset: 0;
+  background: #0f1420;
 }
 
-.stageFill {
+/* 캔버스(1050×680 backing)를 무대 박스에 맞춘다. 무대 박스는 셸이 피치 비율(≈1050/680)로
+   잡으므로 여백 없이 꽉 찬다(비율이 어긋나면 object-fit 이 letterbox). */
+.stageCanvas {
   display: block;
   width: 100%;
   height: 100%;
-  border: none;
-  border-radius: 0;
+  object-fit: contain;
   background: #0f1420;
+}
+
+/* ── 자막 오버레이 (호스트 DOM, 코어가 chrome 콜백으로 토글) ───────────────────
+   dev-viewer #flash/#situation/#banner 와 같은 연출을 web 캔버스 위에 얹는다. */
+.capFlash,
+.capSituation,
+.capBanner {
+  position: absolute;
+  left: 50%;
+  pointer-events: none;
+  opacity: 0;
+  white-space: nowrap;
+  text-shadow: 0 1px 8px #000;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+
+/* 골 거대 자막(중앙 상단, 골문 안 가리게 위쪽). */
+.capFlash {
+  top: 10%;
+  left: 0;
+  right: 0;
+  transform: none;
+  text-align: center;
+  font-size: clamp(28px, 8vw, 60px);
+  font-weight: 900;
+  letter-spacing: 4px;
+  color: #22c55e;
+}
+
+.capFlash.capShow {
+  animation: goalPop 1.9s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+@keyframes goalPop {
+  0% { opacity: 0; transform: scale(0.3) rotate(-6deg); }
+  12% { opacity: 1; transform: scale(1.25) rotate(3deg); }
+  26% { transform: scale(0.95) rotate(-1deg); }
+  40% { transform: scale(1.05); }
+  82% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.1); }
+}
+
+/* 상황 카드(선방/빗나감/파울/오프사이드/PK) — 골과 구분되는 중간 크기. */
+.capSituation {
+  top: 12%;
+  padding: 8px 22px;
+  border-radius: 12px;
+  border: 2px solid currentColor;
+  background: rgba(10, 14, 22, 0.9);
+  font-size: clamp(16px, 4vw, 30px);
+  font-weight: 800;
+}
+
+.capSituation.capShow {
+  animation: sitIn 1.3s ease forwards;
+}
+
+@keyframes sitIn {
+  0% { opacity: 0; transform: translateX(-50%) translateY(-14px); }
+  12% { opacity: 1; transform: translateX(-50%) translateY(0); }
+  82% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* 상황 배너(프레임별 유지·즉시 토글). */
+.capBanner {
+  top: 6px;
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid #33415f;
+  background: rgba(10, 14, 22, 0.85);
+  font-size: 14px;
+  font-weight: 800;
+  transition: opacity 0.12s;
+}
+
+.capBanner.capShow {
+  opacity: 1;
 }
 
 /* 컨트롤은 무대 위 오버레이(모서리) — 무대 높이를 갉아먹지 않는다.

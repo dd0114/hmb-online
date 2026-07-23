@@ -1,3 +1,5 @@
+import { useRef } from "react";
+import type { ViewerController } from "@hmb/viewer-core";
 import type { ControlMode } from "./playback-controls";
 import styles from "./PlaybackControls.module.css";
 
@@ -6,19 +8,22 @@ interface PlaybackControlsProps {
   mode: ControlMode;
   /** admin/QA 자격 — 모드 전환 토글 노출 여부. */
   canSwitch: boolean;
-  /** 하이라이트 연출(주요장면 슬로우·접촉 줌)이 켜져 있는지 — 뷰어가 미러링한 실제 상태. */
+  /** 하이라이트 연출(주요장면 슬로우·접촉 줌)이 켜져 있는지 — 뷰어 상태(autoPace). */
   highlight: boolean;
   onHighlight: (on: boolean) => void;
   onMode: (m: ControlMode) => void;
+  /** 직접 마운트한 코어 컨트롤러(#169 S3) — full 모드 풀컨트롤이 이걸 조작한다. */
+  viewer: ViewerController | null;
 }
 
+const SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
+
 /**
- * 경기 재생 컨트롤 바 (#148). 플레이 모드에는 **하이라이트 토글 하나뿐**이다 —
- * 경기는 자동 진행하고 재생/일시정지·배속·되감기·프레임점프·스크럽·배율은 노출하지 않는다
- * (hero 재지시 2026-07-21: "유일한 컨트롤은 하이라이트 껐다 켜기 하나").
- *
- * 하이라이트 = 골·파울 등 주요장면 연출(슬로우 + 접촉 줌). 끄면 연출 없이 일정 속도로 쭉 진행한다.
- * admin/QA(풀컨트롤)에선 뷰어 iframe 내부의 원래 컨트롤을 그대로 쓰므로 web 바는 중복 노출하지 않는다.
+ * 경기 재생 컨트롤 바 (#148, #169 S3 직접 마운트).
+ *  - 플레이 모드(일반 유저): **하이라이트 토글 하나뿐**. 경기는 자동 진행(재생/일시정지·배속·되감기·
+ *    프레임점프·스크럽 없음). 토글은 실제로 뷰어 연출(autoPace)을 끄고 켠다.
+ *  - full 모드(admin/QA): 코어 풀컨트롤(재생·배속·스크럽·프레임점프·뷰모드) — 디버그/검수용.
+ *    (S2 이전엔 iframe 안 dev-viewer 컨트롤을 썼으나, S3 에서 iframe 이 사라져 web 이 직접 그린다.)
  */
 export function PlaybackControls({
   half,
@@ -27,6 +32,7 @@ export function PlaybackControls({
   highlight,
   onHighlight,
   onMode,
+  viewer,
 }: PlaybackControlsProps) {
   return (
     <div className={styles.bar} data-testid={`viewer-controls-half${half}`} data-mode={mode}>
@@ -42,9 +48,7 @@ export function PlaybackControls({
           🎬 하이라이트 {highlight ? "켜짐" : "꺼짐"}
         </button>
       ) : (
-        <span className={styles.fullNote} data-testid={`viewer-full-note-half${half}`}>
-          🛠 풀컨트롤(admin/QA) — 되감기·배속·타임라인은 화면 안 뷰어 컨트롤을 사용하세요
-        </span>
+        <AdminControls half={half} viewer={viewer} />
       )}
 
       {canSwitch && (
@@ -69,6 +73,68 @@ export function PlaybackControls({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** admin/QA 풀컨트롤 — 코어 컨트롤러 직접 조작(#169 S3). 뷰어 준비 전이면 비활성. */
+function AdminControls({ half, viewer }: { half: 1 | 2; viewer: ViewerController | null }) {
+  const scrubRef = useRef<HTMLInputElement>(null);
+  const v = viewer;
+  const disabled = !v;
+  return (
+    <div className={styles.admin} data-testid={`viewer-admin-half${half}`}>
+      <button
+        type="button"
+        className={styles.mode}
+        data-testid={`viewer-play-toggle-half${half}`}
+        disabled={disabled}
+        onClick={() => v?.togglePlay()}
+      >
+        ⏯ 재생/정지
+      </button>
+      <button type="button" className={styles.mode} data-testid={`viewer-restart-half${half}`} disabled={disabled} onClick={() => v?.restart()}>
+        ⟲ 처음
+      </button>
+      <span className={styles.speeds} role="group" aria-label="배속">
+        {SPEEDS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={styles.mode}
+            data-testid={`viewer-speed-${s}-half${half}`}
+            disabled={disabled}
+            onClick={() => v?.setSpeed(s)}
+          >
+            {s}x
+          </button>
+        ))}
+      </span>
+      <button type="button" className={styles.mode} data-testid={`viewer-prev-goal-half${half}`} disabled={disabled} onClick={() => v?.jumpEvent("goal", -1)}>
+        ◀골
+      </button>
+      <button type="button" className={styles.mode} data-testid={`viewer-next-goal-half${half}`} disabled={disabled} onClick={() => v?.jumpEvent("goal", 1)}>
+        골▶
+      </button>
+      <button type="button" className={styles.mode} data-testid={`viewer-prev-shot-half${half}`} disabled={disabled} onClick={() => v?.jumpEvent("shot", -1)}>
+        ◀슛
+      </button>
+      <button type="button" className={styles.mode} data-testid={`viewer-next-shot-half${half}`} disabled={disabled} onClick={() => v?.jumpEvent("shot", 1)}>
+        슛▶
+      </button>
+      <input
+        ref={scrubRef}
+        type="range"
+        min={0}
+        max={100}
+        step={0.1}
+        defaultValue={0}
+        className={styles.scrub}
+        data-testid={`viewer-scrub-half${half}`}
+        disabled={disabled}
+        onInput={(e) => v?.scrubTo((e.target as HTMLInputElement).value)}
+        aria-label="스크럽"
+      />
     </div>
   );
 }

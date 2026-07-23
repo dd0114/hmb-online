@@ -123,10 +123,10 @@ function pageScroll(page: Page) {
   });
 }
 
-/** iframe 안에서 실제로 그려지는 피치 캔버스의 렌더 크기(무대가 살아있는지의 진짜 지표). */
+/** 실제로 그려지는 피치 캔버스의 렌더 크기(무대가 살아있는지의 진짜 지표).
+ *  S3: iframe 제거 — web 이 코어를 직접 마운트하므로 캔버스는 무대 안 직계 요소다. */
 async function pitchCanvasBox(page: Page): Promise<{ width: number; height: number } | null> {
-  const frame = page.frameLocator('[data-testid^="viewer-visual-half"] iframe');
-  const canvas = frame.locator("canvas#pitch");
+  const canvas = page.locator('[data-testid^="viewer-canvas-half"]');
   await canvas.waitFor({ state: "visible", timeout: 20_000 });
   return canvas.evaluate((el) => {
     const r = el.getBoundingClientRect();

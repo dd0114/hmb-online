@@ -406,6 +406,7 @@ export function createViewer(canvas, chrome = {}) {
     cb("onMinute", mmss(snap.tick));
     cb("onClock", `${mmss(snap.tick)} / ${mmss(lastTick)}`);
     cb("onScrub", ((tickPos / (snaps.length - 1)) * 100));
+    cb("onTick", snap.tick); // 원시 플레이헤드 틱 — 호스트가 통계/로그/시계 "지금까지"를 계산.
   }
 
   // #65 렌더 루프 방어: 한 프레임 예외가 rAF 체인을 영구히 끊지 않게.
@@ -569,9 +570,11 @@ export function createViewer(canvas, chrome = {}) {
   };
 
   function start() { drawPitch(); rafId = requestAnimationFrame(tickLoop); }
+  // 마운트 해제(React unmount·half 전환) 시 rAF 루프 정지 — 좀비 루프/누수 방지.
+  function stop() { if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } playing = false; }
 
   return {
-    start, load: loadLog,
+    start, stop, load: loadLog,
     play: () => setPlaying(true), pause: () => setPlaying(false), togglePlay,
     restart, scrubTo, jumpToTick, jumpEvent,
     setFollow, setTrail, setAutoPace, setSpeed, setViewMode, setFixZoom, setSkin,

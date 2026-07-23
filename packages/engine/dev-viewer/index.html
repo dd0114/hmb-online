@@ -189,7 +189,7 @@
       // ===== QA 셸(dev-viewer) — 렌더 엔진은 @hmb/viewer-core 가 소유(SoT). 이 파일은 캔버스에
       // 아무것도 그리지 않는다(캔버스 2D 컨텍스트 호출 0). 코어를 마운트하고 DOM 크롬(스코어보드·HUD 그리드·
       // 티커·상황자막·타임라인·컨트롤)만 제공 + window.__viewer 훅을 노출한다(#169 S2). =====
-      import { createViewer } from "../../viewer-core/src/viewer.mjs";
+      import { createViewer } from "../../viewer-core/src/viewer.impl.mjs";
       import { logLines } from "../../viewer-core/src/log-lines.impl.mjs";
 
       // DOM refs (모두 QA 셸 소유).

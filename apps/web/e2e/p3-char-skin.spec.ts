@@ -95,14 +95,14 @@ test("에셋 스테이징이 실제로 서빙된다(/chars 3파일)", async ({ p
   expect(Object.keys(mapping.players)).toHaveLength(172);
 });
 
-test("경기장: 뷰어 iframe 이 스킨을 받아 캐릭터 토큰으로 그린다", async ({ page }) => {
-  // 앱 전체를 띄우지 않고 임베드 아티팩트를 직접 태운다 — 주입된 스킨 브리지 + draw 치환 검증.
+test("경기장: web 이 코어를 직접 마운트해 스킨 캐릭터 토큰으로 그린다(S3)", async ({ page }) => {
+  // S3: iframe·임베드 아티팩트 제거 — 앱 매치 화면이 viewer-core 를 직접 마운트하고,
+  // useCharAssets 로 스킨을 자동 적용한다. 실제 앱 경로로 "스킨이 캔버스에 그려지는지"를 픽셀로 본다.
   const matchLog = JSON.parse(
     readFileSync(new URL("../../../packages/engine/dev-viewer/match-log.json", import.meta.url).pathname, "utf8"),
   );
-  // 데모 로그의 playerId 는 엔진 픽스처(H1/A1…). 실경기 로그는 실제 선수 id 라(#145 확인)
-  // 매핑이 붙는다 — 여기서도 같은 형태가 되도록 리매핑해 실경로를 재현한다.
-  // ⚠️ 스냅샷 배열 키는 `tickSnapshots` 다(`snapshots` 아님 — 오타 시 리매핑이 조용히 no-op).
+  // 데모 로그 playerId(H1/A1…)를 실경기 형태(P001…)로 리매핑 → 앱 스킨 매핑(mapping.players)이 붙는다.
+  // ⚠️ 스냅샷 배열 키는 `tickSnapshots`(오타 시 리매핑이 조용히 no-op).
   const snapshots = matchLog.tickSnapshots as Array<{ players: Array<{ playerId: string }>; ballOwner?: string }>;
   expect(snapshots?.length, "tickSnapshots 가 있어야 한다").toBeGreaterThan(0);
   const ids = new Map<string, string>();
@@ -118,44 +118,39 @@ test("경기장: 뷰어 iframe 이 스킨을 받아 캐릭터 토큰으로 그�
     if (snap.ballOwner && ids.has(snap.ballOwner)) snap.ballOwner = ids.get(snap.ballOwner)!;
   }
 
-  await page.goto("/viewer-embed.html");
-  await page.waitForFunction(() => !!(window as { __viewer?: unknown }).__viewer, null, { timeout: 20_000 });
-
+  // 리매핑 id 가 실제 스킨 매핑에 있어야 스킨이 붙는다(no-op 함정 방지 — 원래 계약 유지).
   const mapping = await (await page.request.get("/chars/player-chars.json")).json();
-  const characters = await (await page.request.get("/chars/characters/manifest.json")).json();
-  // 등번호는 실제 프로덕션 함수를 그대로 태운다(스펙 전용 사본을 만들면 드리프트한다).
-  const jerseys = jerseyNumbers(matchLog);
-  const byPlayer: Record<string, { col: number; row: number; num?: string }> = {};
-  for (const [playerId, charId] of Object.entries(mapping.players as Record<string, string>)) {
-    const c = characters.characters[charId];
-    if (c) byPlayer[playerId] = { col: c.col, row: c.row, num: jerseys[playerId] };
-  }
-  // 등번호가 1~11 로 나와야 한다 — 안 그러면 토큰에 선수 id(P022)가 그대로 찍힌다(실화면 확인).
-  const nums = logIdsPreview(jerseys);
-  expect(nums.every((n) => /^([1-9]|1[01])$/.test(n)), `등번호 1~11: ${nums.join(",")}`).toBe(true);
-  const skins = { atlasUrl: "/chars/characters/avatars-64.png", tile: 64, byPlayer };
-  // 로그에 등장하는 선수가 실제로 스킨 표에 있어야 한다 — 이게 어긋나면 렌더는 조용히
-  // 원본 원으로 떨어진다(실제로 겪은 함정: 스냅샷 키 오타로 리매핑이 no-op 이었는데
-  // "아틀라스 로드됨"만 보는 계약은 그대로 통과했다).
   const logIds = [...ids.values()];
-  expect(logIds.filter((id) => byPlayer[id]).length, "로그 선수 ↔ 스킨 표 교집합").toBe(logIds.length);
+  expect(logIds.filter((id) => mapping.players[id]).length, "로그 선수 ↔ 스킨 매핑 교집합").toBe(logIds.length);
+  // 등번호가 1~11 로 나와야 한다(안 그러면 토큰에 선수 id 가 찍힘 — 실화면 확인).
+  const nums = logIdsPreview(jerseyNumbers(matchLog));
+  expect(nums.every((x) => /^([1-9]|1[01])$/.test(x)), `등번호 1~11: ${nums.join(",")}`).toBe(true);
 
-  await page.evaluate(
-    ([log, sk]) => window.postMessage({ type: "loadMatchLog", matchLog: log, skins: sk }, "*"),
-    [matchLog, skins] as const,
+  const MATCH_ID = "m-skin";
+  await login(page);
+  await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.fulfill(json({})));
+  await page.route((url) => url.pathname === "/api/me", (route) =>
+    route.fulfill(json({ user: { id: "u1", nickname: "tester", points: 100, wins: 0, draws: 0, losses: 0, isAdmin: false } })),
   );
+  await page.route((url) => url.pathname === `/api/matches/${MATCH_ID}`, (route) =>
+    route.fulfill(json({ id: MATCH_ID, state: "H1_BREAK", scoreH1Home: 1, scoreH1Away: 0, createdAt: "2026-07-24T00:00:00Z", opponent: { name: "봇 FC" } })),
+  );
+  await page.route((url) => /\/api\/matches\/.+\/halves\/1\/log$/.test(url.pathname), (route) =>
+    route.fulfill(json(matchLog)),
+  );
+  await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json([])));
+  await page.route((url) => url.pathname === "/api/deck", (route) => route.fulfill(json({ formation: "4-4-2", slots: [] })));
 
-  // 아틀라스가 실제로 로드돼 렌더 경로가 열렸는가(못 받으면 조용히 원본 원으로 떨어지므로 명시 검증).
-  // S3: 스킨은 viewer-core 네이티브 — 준비 상태는 __viewer.skinReady() 로 본다(구 window.__HMB_SKIN 대체).
+  await page.goto(`/match/${MATCH_ID}`);
+  await expect(page.getByTestId("viewer-canvas-half1")).toBeVisible({ timeout: 20_000 });
+  await page.waitForFunction(() => (window as { __viewer?: { ready(): boolean } }).__viewer?.ready?.() === true, null, { timeout: 20_000 });
+  // 앱이 useCharAssets → setSkin 으로 아틀라스를 붙일 때까지(못 붙으면 조용히 원본 원).
   await page.waitForFunction(
     () => (window as { __viewer?: { skinReady?(): boolean } }).__viewer?.skinReady?.() === true,
     null,
     { timeout: 20_000 },
   );
 
-  await page.waitForFunction(() => (window as { __viewer?: { ready(): boolean } }).__viewer!.ready(), null, {
-    timeout: 20_000,
-  });
   await page.evaluate(() => {
     const v = window as unknown as { __viewer: { autoPace(on: boolean): void; setViewMode(m: string): void; seek(t: number): void } };
     v.__viewer.autoPace(false);
@@ -163,18 +158,16 @@ test("경기장: 뷰어 iframe 이 스킨을 받아 캐릭터 토큰으로 그�
     v.__viewer.seek(900);
   });
   await page.waitForTimeout(300);
-  await page.locator("canvas").first().screenshot({ path: `${SHOTS}char-skin-arena.png` });
+  await page.getByTestId("viewer-canvas-half1").screenshot({ path: `${SHOTS}char-skin-arena.png` });
 
   // ── 진짜 계약: 픽셀이 실제로 달라져야 한다 ──────────────────────────────
-  // "스킨 객체가 준비됐다"는 렌더를 증명하지 못한다. 같은 틱을 스킨 on/off 로 그려
-  // 캔버스가 달라지는지 본다(달라지지 않으면 draw 치환이 안 먹은 것).
   const withSkin = await page.evaluate(() => {
     const v = window as unknown as { __viewer: { seek(t: number): void } };
     v.__viewer.seek(900);
     return (document.querySelector("canvas") as HTMLCanvasElement).toDataURL();
   });
   const withoutSkin = await page.evaluate(() => {
-    // S3: 네이티브 스킨 비활성 = setSkin(null)(구 window.__HMB_SKIN=null 대체).
+    // S3: 네이티브 스킨 비활성 = setSkin(null).
     const v = window as unknown as { __viewer: { setSkin(p: unknown): void; seek(t: number): void } };
     v.__viewer.setSkin(null);
     v.__viewer.seek(900);
@@ -182,10 +175,8 @@ test("경기장: 뷰어 iframe 이 스킨을 받아 캐릭터 토큰으로 그�
   });
   expect(withSkin.length, "스킨 렌더가 비어있지 않다").toBeGreaterThan(1000);
   expect(withSkin, "스킨 on/off 렌더가 달라야 한다 — 같으면 캐릭터가 안 그려진 것").not.toBe(withoutSkin);
-
-  await page.locator("canvas").first().screenshot({ path: `${SHOTS}char-skin-arena-nosk.png` });
+  await page.getByTestId("viewer-canvas-half1").screenshot({ path: `${SHOTS}char-skin-arena-nosk.png` });
 });
-
 test("덱 전술보드: 슬롯 토큰에 캐릭터 얼굴 + 번호가 함께 보인다", async ({ page }) => {
   await login(page);
   await mockApi(page);

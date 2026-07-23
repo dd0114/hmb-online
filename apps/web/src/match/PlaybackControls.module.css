@@ -56,3 +56,35 @@
   border-color: var(--text-muted);
   color: var(--text);
 }
+
+/* full(admin) 풀컨트롤 — 작은 칩들. 무대 위 오버레이라 촘촘히. */
+.admin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 20, 32, 0.72);
+  padding: 5px 7px;
+  border-radius: 8px;
+}
+
+.admin .mode {
+  font-size: 11px;
+  padding: 3px 7px;
+  border-style: solid;
+}
+
+.admin .mode:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.speeds {
+  display: flex;
+  gap: 2px;
+}
+
+.scrub {
+  width: 120px;
+  max-width: 40vw;
+}

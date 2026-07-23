@@ -20,7 +20,7 @@ function toGlobal(src) {
 
 /** 코어 모듈들을 의존 순서로 읽어 전역화한 소스(하나의 클래식 스크립트 본문)를 만든다. */
 export function inlineCore() {
-  const mods = ["playback.mjs", "stats.impl.mjs", "log-lines.impl.mjs", "viewer.mjs"];
+  const mods = ["playback.mjs", "stats.impl.mjs", "log-lines.impl.mjs", "viewer.impl.mjs"];
   const coreSrc = mods.map((m) => toGlobal(readFileSync(join(coreDir, m), "utf8"))).join("\n");
   return { coreSrc };
 }
@@ -28,7 +28,7 @@ export function inlineCore() {
 /** index.html 모듈 스크립트에서 코어 import(viewer·log-lines.impl) 를 제거한다(전역으로 대체하므로). */
 export function stripCoreImports(html) {
   let out = html;
-  for (const file of ["viewer.mjs", "log-lines.impl.mjs"]) {
+  for (const file of ["viewer.impl.mjs", "log-lines.impl.mjs"]) {
     const esc = file.replace(/[.]/g, "\\$&");
     const re = new RegExp(`\\n\\s*import\\s*\\{[^}]*\\}\\s*from\\s*["'][^"']*\\/${esc}["'];?`);
     const before = out;
