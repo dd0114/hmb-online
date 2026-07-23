@@ -6,8 +6,9 @@
  * QA(뷰어 HUD)와 게임화면 수치가 갈라진다. **S2(코어 추출)에서 `stats.mjs` 원본이 이 패키지로
  * 이동**하고, 그때 이 파일이 구현을 흡수하며 dev-viewer 가 여기서 import 하게 된다(방향 반전 완료).
  */
-// dev-viewer 의 plain ESM 모듈(JSDoc 만 있음). 아래에서 타입을 입혀 재수출한다.
-import * as devViewerStats from "../../engine/dev-viewer/stats.mjs";
+// 실시간 통계 순수 모듈(JSDoc 만 있음). S2 에서 dev-viewer → 이 패키지로 이동(방향 반전 완료).
+// 아래에서 타입을 입혀 재수출한다. dev-viewer(QA)는 이 .mjs 를 인라인 소비.
+import * as devViewerStats from "./stats.mjs";
 import type { LogEvent } from "./log-lines";
 
 export interface TeamLiveStats {

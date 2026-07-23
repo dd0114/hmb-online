@@ -186,8 +186,8 @@
     <input type="file" id="fileInput" accept="application/json" title="Load match-log.json directly" />
 
     <script type="module">
-      import { buildPlayback, spansReposition, inHighlight } from "./playback.mjs";
-      import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.mjs";
+      import { buildPlayback, spansReposition, inHighlight } from "../../viewer-core/src/playback.mjs";
+      import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "../../viewer-core/src/stats.mjs";
       // ===== 뷰어 재생. 순수 로직은 playback.mjs(vitest 검증). 외부 CDN 없음. =====
       const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백(surround)px. 경계(코너/터치라인) 위 taker·공이 잘리지 않게.
       const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율

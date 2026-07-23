@@ -28,13 +28,14 @@ export function buildTestViewer(logPath, outName) {
   };
 
   const html = readFileSync(join(viewerDir, "index.html"), "utf8");
-  const playbackSrc = readFileSync(join(viewerDir, "playback.mjs"), "utf8").replace(/^export\s+/gm, "");
-  const statsSrc = readFileSync(join(viewerDir, "stats.mjs"), "utf8").replace(/^export\s+/gm, "");
+  const coreDir = join(viewerDir, "..", "..", "viewer-core", "src");
+  const playbackSrc = readFileSync(join(coreDir, "playback.mjs"), "utf8").replace(/^export\s+/gm, "");
+  const statsSrc = readFileSync(join(coreDir, "stats.mjs"), "utf8").replace(/^export\s+/gm, "");
 
-  let out = html.replace(/\n\s*import\s*\{[^}]*\}\s*from\s*["']\.\/playback\.mjs["'];?/, "");
+  let out = html.replace(/\n\s*import\s*\{[^}]*\}\s*from\s*["'][^"']*\/playback\.mjs["'];?/, "");
   if (out === html) throw new Error("playback import 라인을 못 찾음");
   const beforeStats = out;
-  out = out.replace(/\n\s*import\s*\{[^}]*\}\s*from\s*["']\.\/stats\.mjs["'];?/, "");
+  out = out.replace(/\n\s*import\s*\{[^}]*\}\s*from\s*["'][^"']*\/stats\.mjs["'];?/, "");
   if (out === beforeStats) throw new Error("stats import 라인을 못 찾음");
   const inject = `\n    <script>window.__LOG__ = ${JSON.stringify(compact)};</script>\n    <script>\n${playbackSrc}\n${statsSrc}\n    </script>`;
   const out2 = out.replace(/(\n\s*<script type="module">)/, `${inject}$1`);
