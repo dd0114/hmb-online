@@ -543,3 +543,31 @@ hero 프리뷰 확인 후 2건:
 ### 10.5 남은 것 = S3 (iframe 제거 = sync 달성)
 
 web(`MatchViewer.tsx`)이 iframe(`viewer-embed.html`)·`viewer-bridge`·postMessage·needle 치환 대신 **코어를 직접 마운트**. 스킨(#145)·컨트롤모드(#148)를 `createViewer` mount 옵션으로 이관. 완료 시 QA 뷰어=게임화면 완전 수렴 → hero 대조 리뷰.
+
+---
+
+## 11. S3 구현 기록 (2026-07-24, #169) — iframe 제거 = 뷰어 SoT 완전 수렴
+
+커밋 3개(브랜치 `p4-game-screen/base`): `f80a775`(S3-A 스킨 네이티브) · `78451d9`(S3-B iframe 제거). AC-W1-2 완성.
+
+### 11.1 S3-A — 스킨(#145) 코어 네이티브 (`f80a775`)
+
+문자열 needle 치환 + `window.__HMB_SKIN` 브리지 → **`viewer.setSkin({atlasUrl,tile,byPlayer})`** 정식 옵션. draw 가 스킨 셀 있으면 얼굴 아바타+팀색 링/디스크/번호, 없으면 단색 원(무회귀). dev-viewer 셸이 postMessage `{loadMatchLog, skins}` 의 skins 를 setSkin 으로 넘겨 **iframe 경로도 needle 없이** 네이티브 렌더 → `build-viewer.mjs` needle/skinBridge/injectSkin 86줄 삭제. 스킨 준비/비활성 계약은 `__viewer.skinReady()`/`setSkin(null)`.
+
+### 11.2 S3-B — web 직접 마운트 (iframe 제거, `78451d9`)
+
+- **`MatchViewer.tsx`**: `<iframe src=viewer-embed.html>` → `<canvas>` + `createViewer(canvas, chrome)`. 골/상황/배너 자막은 캔버스 위 **호스트 DOM 오버레이**(코어 `chrome.onBigCaption/onSituation/onBanner` 콜백 + CSS goalPop/sitIn). `onTick` 으로 호스트 플레이헤드 미러. `window.__viewer=코어 훅` 노출(QA/e2e). 손상 로그 = `load()` throw → 실패 안내(빈 피치 방지).
+- **컨트롤모드(#148)**: play=하이라이트 토글(→`setAutoPace`) / full(admin)=코어 풀컨트롤(재생·배속·스크럽·프레임점프, 컨트롤러 직접 조작). iframe 안 dev-viewer 컨트롤 의존 제거.
+- **코어**: `viewer.mjs`→`viewer.impl.mjs` + `viewer.ts` 타입 래퍼(createViewer 타입) `index.ts` 노출. `stop()`(언마운트 rAF 정지)·`onTick`·`setSkin` 추가.
+- **삭제**: `viewer-bridge.ts`(+test)·`build-viewer.mjs`(+`viewer-embed-bridge.test`)·`ensure-viewer.mjs`·`viewer-embed.html`·`package.json` predev/prebuild ensure-viewer·`build:viewer`. `viewer-skins.ts` 는 payload 계산 유지(→setSkin).
+- **e2e 계약 직접마운트 재작성**: `match-stage`(frameLocator canvas#pitch → 직접 `viewer-canvas-half*`) · `matchui-controls-mock`(iframe 디버그크롬 → React 컨트롤 계약, `window.__viewer` 로 재생상태) · `p3-char-skin #3`(embed goto → 앱 match-flow, 스킨 픽셀 diff) · `w3-viewer-smoke`(라이브, iframe→canvas). `MatchViewer.controls.test.ts` createViewer 목킹으로 재작성.
+
+### 11.3 잡은 회귀
+
+로드 실패 시 catch 가 `setFailed`+`onFallback()` 를 둘 다 호출 → onFallback 이 즉시 timeline 전환해 **에러 안내가 언마운트**(손상 로그는 timeline 도 비어 "빈 화면"). → catch 에서 자동 fallback 제거, 에러 div 표시(타임라인 전환은 유저 버튼). matchui 로드실패 e2e 가 검출.
+
+### 11.4 게이트 + sync 증명
+
+- dev-viewer e2e **58/58**(코어 무회귀) · web e2e **22**(match-stage 9·matchui 5·p3 4·stage-capture 4) · `npm test` **1119**(engine desync 0×80·골든·하이진 무영향, `git diff -- packages/engine/src` 공집합; 브리지 테스트 2파일 삭제분 감소) · typecheck root+web · web units 767.
+- **sync 픽셀 대조**: 같은 match-log·tick 900·fix 카메라·스킨 off 로 QA 뷰어(`viewer-test.html`)와 게임화면(web 직접 마운트) 캔버스 캡처 → **동일 장면**(선수·공·패스라인·포메이션 일치). 구조적 보증 = 양쪽이 **동일 `viewer.impl.mjs`** import. 게임화면은 호스트 오버레이(컨트롤)+스킨(캐릭터 얼굴)만 additive.
+- **로컬 나란히 서빙**(hero 대조): QA = `cd packages/engine/dev-viewer && node build-standalone.mjs && open viewer-standalone.html` / 게임화면 = `cd apps/web && npm run design:preview`(§9.9).
