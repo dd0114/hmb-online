@@ -8,7 +8,7 @@
  */
 // 실시간 통계 순수 모듈(JSDoc 만 있음). S2 에서 dev-viewer → 이 패키지로 이동(방향 반전 완료).
 // 아래에서 타입을 입혀 재수출한다. dev-viewer(QA)는 이 .mjs 를 인라인 소비.
-import * as devViewerStats from "./stats.mjs";
+import * as devViewerStats from "./stats.impl.mjs";
 import type { LogEvent } from "./log-lines";
 
 export interface TeamLiveStats {

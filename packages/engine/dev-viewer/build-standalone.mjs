@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { subsampleSnapshots } from "./subsample.mjs";
+import { inlineCore, stripCoreImports } from "./inline-core.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const log = JSON.parse(readFileSync(join(here, "match-log.json"), "utf8"));
@@ -20,20 +21,13 @@ const compact = {
 };
 
 const html = readFileSync(join(here, "index.html"), "utf8");
-// 코어(viewer-core/src)의 playback/stats 를 인라인(standalone 은 file:// 라 외부 모듈 fetch 불가). export 제거 → 전역 함수.
-const coreDir = join(here, "..", "..", "viewer-core", "src");
-const playbackSrc = readFileSync(join(coreDir, "playback.mjs"), "utf8").replace(/^export\s+/gm, "");
-const statsSrc = readFileSync(join(coreDir, "stats.mjs"), "utf8").replace(/^export\s+/gm, "");
+const { coreSrc } = inlineCore();
 
 let out = html;
-// 1) 모듈 스크립트의 playback/stats import 제거(전역으로 대체). 경로 무관하게 파일명으로 매치.
-out = out.replace(/\n\s*import\s*\{[^}]*\}\s*from\s*["'][^"']*\/playback\.mjs["'];?/, "");
-if (out === html) throw new Error("playback import 라인을 못 찾음");
-const beforeStats = out;
-out = out.replace(/\n\s*import\s*\{[^}]*\}\s*from\s*["'][^"']*\/stats\.mjs["'];?/, "");
-if (out === beforeStats) throw new Error("stats import 라인을 못 찾음");
-// 2) 모듈 스크립트 앞에 데이터 + playback/stats 전역을 주입.
-const inject = `\n    <script>window.__LOG__ = ${JSON.stringify(compact)};</script>\n    <script>\n${playbackSrc}\n${statsSrc}\n    </script>`;
+// 1) 모듈 스크립트의 코어 import(viewer/log-lines) 제거(전역으로 대체). 경로 무관하게 파일명으로 매치.
+out = stripCoreImports(out);
+// 2) 모듈 스크립트 앞에 데이터 + 코어(전역화) 를 주입.
+const inject = `\n    <script>window.__LOG__ = ${JSON.stringify(compact)};</script>\n    <script>\n${coreSrc}\n    </script>`;
 const out2 = out.replace(/(\n\s*<script type="module">)/, `${inject}$1`);
 if (out2 === out) throw new Error("주입 지점(<script type=module>) 을 못 찾음");
 out = out2;

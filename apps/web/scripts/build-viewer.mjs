@@ -252,40 +252,41 @@ export const bridgeScript = `<script>
 // 그 경로는 원본 코드와 **동일**하다.
 export const SKIN_MARKER = "hmb-viewer-char-skin";
 
-/** 치환 대상 = dev-viewer 의 선수 토큰 draw 블록. 바뀌면 빌드가 시끄럽게 실패한다. */
-const PLAYER_DRAW_NEEDLE = `          ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
-          ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
-          if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
-          const num = pa.playerId.replace(/[HA]/, "");
-          if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);`;
+/** 치환 대상 = viewer-core 의 선수 토큰 draw 블록(S2 에서 dev-viewer index.html → viewer.mjs 이동,
+ *  standalone 에 6칸 들여쓰기로 인라인됨). 바뀌면 빌드가 시끄럽게 실패한다. (S3 에서 정식 옵션으로 대체.) */
+const PLAYER_DRAW_NEEDLE = `      ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
+      ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
+      if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
+      const num = pa.playerId.replace(/[HA]/, "");
+      if (owner) ownerDraw = { num, px, py }; else drawNum(num, px, py);`;
 
-const PLAYER_DRAW_SKINNED = `          /* ${SKIN_MARKER} — apps/web/scripts/build-viewer.mjs 주입. 스킨 없으면 원본과 동일. */
-          const _skin = window.__HMB_SKIN, _cell = _skin && _skin.ready && _skin.byPlayer[pa.playerId];
-          const _num = (_cell && _cell.num) || pa.playerId.replace(/[HA]/, "");
-          if (!_cell) {
-            ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
-            ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
-            if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
-            if (owner) ownerDraw = { num: _num, px, py }; else drawNum(_num, px, py);
-          } else {
-            const _rr = owner ? R + 2 : R, _S = _rr * 2 * 1.55, _ring = _S / 2 + 2.5;
-            const _team = isHome ? "#3b82f6" : "#ef4444";
-            ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
-            ctx.fillStyle = isHome ? "rgba(37,99,235,0.55)" : "rgba(220,38,38,0.55)"; ctx.fill();
-            const _sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(_skin.img, _cell.col * _skin.tile, _cell.row * _skin.tile, _skin.tile, _skin.tile,
-              px - _S / 2, py - _S / 2, _S, _S);
-            ctx.imageSmoothingEnabled = _sm;
-            ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
-            ctx.strokeStyle = owner ? "#fde047" : _team; ctx.lineWidth = owner ? 3.2 : 2.2; ctx.stroke();
-            const _bx = px + _ring * 0.78, _by = py + _ring * 0.78, _br = Math.max(5, _rr * 0.62);
-            ctx.beginPath(); ctx.arc(_bx, _by, _br, 0, Math.PI * 2);
-            ctx.fillStyle = _team; ctx.fill();
-            ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = 1; ctx.stroke();
-            ctx.save(); ctx.font = "bold " + Math.round(_br * 1.5) + "px monospace";
-            ctx.fillStyle = "#fff"; ctx.fillText(_num, _bx, _by); ctx.restore();
-            if (owner) ownerDraw = { num: "", px, py };
-          }`;
+const PLAYER_DRAW_SKINNED = `      /* ${SKIN_MARKER} — apps/web/scripts/build-viewer.mjs 주입. 스킨 없으면 원본과 동일. */
+      const _skin = window.__HMB_SKIN, _cell = _skin && _skin.ready && _skin.byPlayer[pa.playerId];
+      const _num = (_cell && _cell.num) || pa.playerId.replace(/[HA]/, "");
+      if (!_cell) {
+        ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
+        ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
+        if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
+        if (owner) ownerDraw = { num: _num, px, py }; else drawNum(_num, px, py);
+      } else {
+        const _rr = owner ? R + 2 : R, _S = _rr * 2 * 1.55, _ring = _S / 2 + 2.5;
+        const _team = isHome ? "#3b82f6" : "#ef4444";
+        ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
+        ctx.fillStyle = isHome ? "rgba(37,99,235,0.55)" : "rgba(220,38,38,0.55)"; ctx.fill();
+        const _sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(_skin.img, _cell.col * _skin.tile, _cell.row * _skin.tile, _skin.tile, _skin.tile,
+          px - _S / 2, py - _S / 2, _S, _S);
+        ctx.imageSmoothingEnabled = _sm;
+        ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
+        ctx.strokeStyle = owner ? "#fde047" : _team; ctx.lineWidth = owner ? 3.2 : 2.2; ctx.stroke();
+        const _bx = px + _ring * 0.78, _by = py + _ring * 0.78, _br = Math.max(5, _rr * 0.62);
+        ctx.beginPath(); ctx.arc(_bx, _by, _br, 0, Math.PI * 2);
+        ctx.fillStyle = _team; ctx.fill();
+        ctx.strokeStyle = "rgba(0,0,0,0.75)"; ctx.lineWidth = 1; ctx.stroke();
+        ctx.save(); ctx.font = "bold " + Math.round(_br * 1.5) + "px monospace";
+        ctx.fillStyle = "#fff"; ctx.fillText(_num, _bx, _by); ctx.restore();
+        if (owner) ownerDraw = { num: "", px, py };
+      }`;
 
 /** 부모가 보낸 스킨 페이로드를 받아 아틀라스를 로드하는 브리지 조각(classic script 안에 들어간다). */
 export const skinBridgeScript = `<script>
