@@ -3,8 +3,8 @@ import { mkdirSync } from "node:fs";
 
 /**
  * W3 뷰어 통합 스모크 (AC-W5) — 실동작 증적용. 풀스택(server-java + ts-servants) 이 떠 있을 때만
- * 실행. H1_BREAK / FINISHED 에서 [시각 재생] 탭의 QA 뷰어 iframe 이 실제로 피치·선수·공을 렌더하는지
- * 확인하고 스크린샷을 apps/web/.smoke/ 에 남긴다. (라이브 executor 면 ~2분/하프 → 긴 타임아웃.)
+ * 실행. H1_BREAK / FINISHED 에서 무대(#169 S3: web 이 직접 마운트한 viewer-core 캔버스)가 실제로
+ * 피치·선수·공을 렌더하는지 확인하고 스크린샷을 apps/web/.smoke/ 에 남긴다. (라이브 executor 면 ~2분/하프.)
  */
 
 // 기본 데모 8080. 격리 스모크(대체 포트)는 HMB_E2E_API_ORIGIN 로 덮어쓴다(8080 무접촉).
