@@ -505,3 +505,41 @@ hero 프리뷰 확인 후 2건:
 
 무대 중앙 정렬(중심 640 = 뷰포트 중심)·시트 고정(콘텐츠 무관)·회귀가드 g 전부 그대로. 상태 패널(감독·결과)
 높이는 미변경(`clamp(260px, 40svh, 420px)`).
+
+---
+
+## 10. S2 구현 기록 (2026-07-24, #169) — 렌더 코어 추출
+
+**module-verifier PASS**(6/6 AC CONFIRMED, 적대검증). 커밋 2개(브랜치 `p4-game-screen/base`):
+`ad1b778`(C1 이동) · `43d2c35`(C2 추출).
+
+### 10.1 실제로 만든 것
+
+| 경로 | 내용 |
+|---|---|
+| `packages/viewer-core/src/viewer.mjs` (신규) | **렌더 코어(SoT).** `createViewer(canvas, chrome)` — 선수·공·카메라·FX·하이라이트 페이싱·정지 시퀀스(freeze/skip)·실시간 통계 파생·재생 루프·`window.__viewer` 읽기 훅 전체를 소유. **캔버스에 그리는 유일한 곳**(`ctx.` 67콜·`getContext` 1). |
+| `packages/viewer-core/src/{stats,log-lines}.impl.mjs` | 런타임 순수 모듈. `stats.mjs`(C1 이동)→`stats.impl.mjs`, 신규 `log-lines.impl.mjs`(티커 투영 SoT). `.impl` 접미 = **basename 충돌 차단**(§10.3). |
+| `packages/viewer-core/src/{stats,log-lines}.ts` | 타입 래퍼 — `.impl.mjs` 를 `as unknown as` 로 재해석해 web 이 타입과 함께 소비(`@hmb/viewer-core` → index.ts). |
+| `packages/engine/dev-viewer/index.html` | **얇은 QA 셸(985→406줄, `ctx.` 0).** 코어 마운트 + DOM 크롬(스코어보드·HUD그리드·티커·상황자막·타임라인·컨트롤)만 `chrome` 콜백으로 제공 + `window.__viewer = {...hooks, captions}`. 티커는 코어 `logLines` 투영으로 렌더(인라인 중복 제거). |
+| `packages/engine/dev-viewer/inline-core.mjs` (신규) | 빌드 인라인 공용 헬퍼 — 코어 .mjs 들의 `export`/`import` 를 제거해 전역화, build-standalone·build-test-viewer 가 공유. |
+| `apps/web/scripts/build-viewer.mjs` | 스킨 needle(#145)을 이동한 draw 블록(6칸 들여쓰기)으로 갱신. S3 에서 정식 옵션으로 대체 예정. |
+
+### 10.2 설계와 달라진 점
+
+- **render.mjs/viewer.mjs 분리 → viewer.mjs 단일.** `draw()` 가 ~30개 클로저 상태에 밀결합이라 순수 함수로 쪼개면 파라미터 스레딩 위험이 컸다. "캔버스 그리기 = 코어 **한 곳**" 검증정의는 단일 파일이 더 부합. 순수 이동(로직 무변경)이 목표라 응집 유지.
+- **HUD/티커 DOM 은 셸이 소유(코어는 수치만).** 코어가 `chrome.onHud({home,away,possHome,momentum})` 로 숫자를 넘기고, 셸이 `#hudGrid` HTML(QA idiom)을 그린다 → web(S3)은 같은 코어로 자기 React 패널을 그린다. HUD/티커 **레이아웃**은 호스트별이라 호스트 소유가 맞다.
+
+### 10.3 잡은 회귀 — vite 확장자 해석 충돌 (web e2e 가 검출)
+
+`stats`/`log-lines` 를 `.mjs`(런타임)+`.ts`(타입)로 나누니 **vite 의 확장자없는 import 해석이 `.mjs` > `.ts`** 순이라, `@hmb/viewer-core`(index.ts `export * from "./stats"`)가 런타임 `.mjs` 를 집어 **web 부팅 실패**(`snapshotIndexOfTick` 미존재 — .ts 전용 export). tsc/vitest 는 `.ts` 선호라 **못 잡았고**, S1 게이트 목록의 **web e2e(match-stage/matchui/p3-char-skin) 가 잡았다**(16 fail → 앱 부팅 실패 신호). → 런타임을 **`.impl.mjs`** 로 개명해 `./stats`·`./log-lines` 가 .ts 로 명확히 해석되게 차단. (교훈: 같은 폴더 `name.ts`+`name.mjs` 공존 금지.)
+
+### 10.4 게이트 결과
+
+- dev-viewer e2e **58/58** · web e2e **18/18**(match-stage 9·matchui 5·p3-char-skin 4, iframe 스킨 포함).
+- `npm test` **1147 passed**(engine desync 0×80·골든·하이진 무영향, `git diff -- packages/engine/src` 공집합).
+- viewer-core 44 · web units 795 · typecheck root+web clean · build-standalone/viewer OK · **앱 부팅 clean**(pageerror 0).
+- **검증정의**: `grep 'ctx\.' index.html` = 0 · `getContext` = 0 · 캔버스 그리기 = viewer.mjs 한 곳.
+
+### 10.5 남은 것 = S3 (iframe 제거 = sync 달성)
+
+web(`MatchViewer.tsx`)이 iframe(`viewer-embed.html`)·`viewer-bridge`·postMessage·needle 치환 대신 **코어를 직접 마운트**. 스킨(#145)·컨트롤모드(#148)를 `createViewer` mount 옵션으로 이관. 완료 시 QA 뷰어=게임화면 완전 수렴 → hero 대조 리뷰.
