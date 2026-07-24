@@ -31,6 +31,27 @@ try {
   process.exit(1);
 }
 
+// 게임화면 캐릭터 스킨(#145)은 **실선수 id**(P001..)에 매핑돼 있다. 데모 로그는 엔진 픽스처
+// id(H0/A0..)라 그대로면 스킨이 안 붙어 프리뷰가 단색 원으로 보인다 → 실게임처럼 캐릭터 얼굴이
+// 나오게 스냅샷 player/ballOwner 를 실선수 id 로 리매핑한다(e2e p3-char-skin 과 같은 규약).
+function remapToRealIds(log) {
+  const map = new Map();
+  let n = 1;
+  for (const s of log.tickSnapshots ?? [])
+    for (const pl of s.players ?? [])
+      if (!map.has(pl.playerId)) map.set(pl.playerId, `P${String(n++).padStart(3, "0")}`);
+  const mid = (id) => (id && map.has(id) ? map.get(id) : id);
+  return {
+    ...log,
+    tickSnapshots: (log.tickSnapshots ?? []).map((s) => ({
+      ...s,
+      players: (s.players ?? []).map((pl) => ({ ...pl, playerId: mid(pl.playerId) })),
+      ballOwner: mid(s.ballOwner),
+    })),
+  };
+}
+const SKINNED_LOG = remapToRealIds(MATCH_LOG);
+
 /** 로그가 실제로 담고 있는 골 수 — 스코어를 여기서 파생해야 화면 어디를 봐도 값이 어긋나지 않는다. */
 function goalsOf(log) {
   let home = 0;
@@ -122,7 +143,7 @@ const server = createServer((req, res) => {
   if (p === "/api/presets" || p === "/api/team-presets" || p === "/api/relations") return json(res, []);
 
   const logMatch = p.match(/^\/api\/matches\/([^/]+)\/halves\/([12])\/log$/);
-  if (logMatch) return json(res, MATCH_LOG);
+  if (logMatch) return json(res, SKINNED_LOG); // 실선수 id → 캐릭터 스킨 적용(실게임처럼)
 
   const resultMatch = p.match(/^\/api\/matches\/([^/]+)\/result$/);
   if (resultMatch) {

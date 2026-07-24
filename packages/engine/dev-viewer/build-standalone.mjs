@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { subsampleSnapshots } from "./subsample.mjs";
 import { inlineCore, stripCoreImports } from "./inline-core.mjs";
+import { buildQaSkin } from "./qa-skin.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const log = JSON.parse(readFileSync(join(here, "match-log.json"), "utf8"));
@@ -26,8 +27,11 @@ const { coreSrc } = inlineCore();
 let out = html;
 // 1) 모듈 스크립트의 코어 import(viewer/log-lines) 제거(전역으로 대체). 경로 무관하게 파일명으로 매치.
 out = stripCoreImports(out);
-// 2) 모듈 스크립트 앞에 데이터 + 코어(전역화) 를 주입.
-const inject = `\n    <script>window.__LOG__ = ${JSON.stringify(compact)};</script>\n    <script>\n${coreSrc}\n    </script>`;
+// 2) 모듈 스크립트 앞에 데이터 + (있으면)캐릭터 스킨 + 코어(전역화) 를 주입.
+//    스킨은 셸 토글이 켜면 setSkin 으로 적용(기본 off — 엔진 디버그는 단색 원). 에셋 없으면 생략.
+const qaSkin = buildQaSkin(log);
+const skinJs = qaSkin ? ` window.__SKIN__ = ${JSON.stringify(qaSkin)};` : "";
+const inject = `\n    <script>window.__LOG__ = ${JSON.stringify(compact)};${skinJs}</script>\n    <script>\n${coreSrc}\n    </script>`;
 const out2 = out.replace(/(\n\s*<script type="module">)/, `${inject}$1`);
 if (out2 === out) throw new Error("주입 지점(<script type=module>) 을 못 찾음");
 out = out2;

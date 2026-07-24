@@ -141,6 +141,7 @@
       <button id="trailBtn" class="active">✦ Player trails</button>
       <button id="highlightBtn" class="active">🎬 Highlights</button>
       <button id="statsBtn" class="active">📊 Stats</button>
+      <button id="skinBtn" style="display:none;">🎭 Skin</button>
       <span class="sp">View</span>
       <button id="viewAutoBtn" class="active">🎥 Auto</button>
       <button id="viewFixBtn">📌 Fix</button>
@@ -358,6 +359,16 @@
       const statsBtn = document.getElementById("statsBtn");
       let showStats = true;
       statsBtn.onclick = () => { showStats = !showStats; statsBtn.classList.toggle("active", showStats); hudEl.style.display = showStats ? "flex" : "none"; };
+
+      // 캐릭터 스킨 토글(#169 S3) — 기본 off(엔진 디버그=단색 원). 켜면 게임화면과 같은 얼굴 스킨.
+      // 스킨 페이로드(window.__SKIN__)는 build-standalone/build-test-viewer 가 임베드(에셋 있을 때만).
+      const skinBtn = document.getElementById("skinBtn");
+      const skinPayload = window.__SKIN__;
+      if (skinPayload) {
+        skinBtn.style.display = "";
+        let skinOn = false;
+        skinBtn.onclick = () => { skinOn = !skinOn; skinBtn.classList.toggle("active", skinOn); viewer.setSkin(skinOn ? skinPayload : null); };
+      }
 
       document.getElementById("nextShot").onclick = () => viewer.jumpEvent("shot", 1);
       document.getElementById("prevShot").onclick = () => viewer.jumpEvent("shot", -1);
