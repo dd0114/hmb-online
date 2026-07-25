@@ -45,6 +45,18 @@ export interface EngineConfig {
     shotSpeed: number;
     /** 굴러가는(주인 없는) 공 감속 배수/틱. */
     looseDecay: number;
+    /**
+     * 비행 도착 판정 허용 거리(m). 공이 목표에서 이만큼 안으로 들어오면 도착.
+     * 0 = 목표에 정확히 닿아야 도착(#181). 이 값이 크면 공이 목표 한참 앞에서 "도착"으로
+     * 처리돼 소유 이전 시 남은 거리만큼 순간이동한다(구버전은 사실상 passSpeed=18m 였다).
+     */
+    arriveToleranceM: number;
+    /**
+     * #181: 도착했는데 잡을 사람이 controlRange 밖일 때, 공이 그 사람 쪽으로 **굴러가는** 속도(m/tick).
+     * 순간이동(구 무제한 대입) 대신 굴러서 만난다. 0 이면 공이 그 자리에 멈춰 기다린다(템포 손실 큼:
+     * 실측 슛/팀 13.5→5.3). 살짝 빗나간 패스가 굴러가고 선수가 달려와 잡는 그림.
+     */
+    settleSpeed: number;
   };
 
   /** 행동 선택 기본 성향 계수(볼 소유자). behavior 로 가중. */
@@ -149,6 +161,12 @@ export interface EngineConfig {
     interceptRange: number;
     /** 도착·루즈볼을 잡을 수 있는 컨트롤 거리(m). */
     controlRange: number;
+    /**
+     * #181: 공이 낙하점에 닿았는데 claimant 가 아직 controlRange 밖일 때, 공을 그 자리에 세워두고
+     * 기다릴 최대 틱 수. 이 틱을 넘기면 기존 기하 판정으로 폴백(교착 방지).
+     * 0 이면 레거시 동작(즉시 소유 이전 = 공이 사람에게 순간이동).
+     */
+    arrivalWaitMaxTicks: number;
     /** 1대1(단독 찬스) 판정: 슈터 반경 이 거리(m) 안에 비-GK 상대가 없으면 단독 찬스로 본다. */
     oneOnOneClearM: number;
     /** 1대1 시 xG 배수(하이라이트·높은 xg). 1 이면 비활성(부스트 없음). */
@@ -332,6 +350,12 @@ export interface EngineConfig {
     markGap: number;
     /** 볼 소유팀이 공을 향해 지원 오는 최대 당김(정규화). */
     supportPull: number;
+    /**
+     * 리드패스 강도(0..1) — 패스를 리시버의 **미래 위치**로 조준하는 비율(#181).
+     * 1 = 비행시간만큼 앞을 보고 찬다(= 공과 사람이 만난다). 0 = 레거시(현재 위치 조준 → 공이
+     * 아무도 없는 곳에 떨어지고 도착 처리가 순간이동으로 메움).
+     */
+    passLeadWeight: number;
     /** positioningFreedom 기반 roam 계수(공 쪽 추가 당김). */
     roamFactor: number;
     /** 드리블 1틱당 골 방향 전진 비율(0..1). 박스 침투 속도. */
@@ -420,7 +444,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.18.0",
+  version: "engine@0.19.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -437,6 +461,12 @@ export const defaultEngineConfig: EngineConfig = {
     passSpeed: 18,
     shotSpeed: 26,
     looseDecay: 0.82,
+    // #181: 구버전은 `remaining <= f.speed` 라 사실상 18m 였다 — 공이 목표 18m 앞에서 도착 처리되고
+    // 소유 이전이 그 간격을 순간이동으로 메워 "빈 공간에서 공이 스스로 휘는" 궤적을 만들었다.
+    arriveToleranceM: 0,
+    // 0 = 공이 낙하점에 **멈춰서** 선수가 오길 기다린다(계약 green). >0 으로 굴려보내면 템포는
+    // 살아나지만 경계 클램프가 구르는 방향을 꺾어 "빈 공간 꺾임"이 다시 생긴다(실측 172건·최악 16.2m).
+    settleSpeed: 0,
   },
   decisionWeights: {
     // 슛 하향(37→~13.5/팀), 홀드/드리블 비중↑(패스 볼륨·찬스 남발 억제).
@@ -444,7 +474,9 @@ export const defaultEngineConfig: EngineConfig = {
     dribble: 0.46,
     // G-A(#99): 슛 과다(팀 23.85→~13.6, 벤치 12-14). shoot 0.5→0.35 로 슛 성향 하향.
     // #147 W3: 시야 계층(vision)이 수비 효율을 바꿔 슛이 14.0→14.7 로 올랐다 → 벤치(12-14) 복귀용 재튜닝.
-    shoot: 0.30,
+    // #181: 공이 **손 닿는 사람에게만** 가고 못 닿으면 낙하점에 멈추므로, 공이 무소유로 있는 틱이
+    // 늘어 공격 볼륨(슛)이 줄었다 → 밴드(12-14) 복귀용 재튜닝 0.30→0.55(실측 슛/팀 13.68).
+    shoot: 0.55,
     hold: 0.42,
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
     // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
@@ -463,19 +495,25 @@ export const defaultEngineConfig: EngineConfig = {
     // E2(0.12.0): 롱패스(longPass) 추가로 평균이 낮아져 passBase 0.94→0.97 로 재보정 →
     // 리얼 20시드 패스성공 ≈80%(벤치 78-85) 유지. 스로인은 pfo 로 복원(≈17).
     passBase: 0.97,
-    passForwardPenalty: 0.2,
+    // #181 재보정: 도착/아웃 판정이 정확해지며 계획 실패가 전부 실현된다(구버전은 fail_out 패스가
+    // 조기 도착으로 완성 처리돼 성공률이 실제보다 높게 측정됐다) → 페널티를 완화해 **실제** 성공률을
+    // 벤치(78-85%)로 되돌린다. 계획확률 자체는 구버전도 ~0.70 이었다(측정만 79%로 부풀었음).
+    passForwardPenalty: 0.12,
     passFinalThirdPenalty: 0.12,
     passPressurePenalty: 0.06,
     passPressureRangeM: 6.0,
-    passDistancePenalty: 0.008,
+    passDistancePenalty: 0.004, // #181 재보정(위와 동일 사유)
     passBaseDistM: 12,
     passAttrSwing: 0.14,
-    passFailOutProb: 0.45,
+    // #181: 사이드라인 위에서 찬 공의 아웃 미검출(ball.boundaryCross t=0 누락)이 고쳐지고 조기
+    // 도착이 사라지면서 계획된 fail_out 이 전부 실제 아웃이 됐다 → 같은 값이면 스로인 35(벤치 17-19).
+    // 0.45→0.3 으로 스로인 20.0 (밴드 상단 근처).
+    passFailOutProb: 0.26,
     passOutcomeAuthoritative: true,
     interceptBase: 0.06,
     tackleBase: 0.14,
     // G-A(#99): 슛당 xG 하향(0.13→~0.12, 벤치 0.10-0.12). 0.225→0.19.
-    xgBase: 0.185,
+    xgBase: 0.205, // #181: 슛당 xG 0.10 · 골 1.63 (둘 다 밴드). v5.01 값 유지.
     shotBallSpeed: 14,
     shootXgThreshold: 0.07,
     // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
@@ -485,7 +523,7 @@ export const defaultEngineConfig: EngineConfig = {
     shootDistanceFactor: 0.025,
     // #147 후속: 파울 복원으로 늘어난 프리킥이 전환율을 밀어올려(10.89→13.8) 함께 낮췄다.
     // 부수 효과로 유효슛이 5.75→4.85 로 **벤치(4.5-5.5) 안에 들어왔다**(0.16.0 부터 초과였음).
-    onTargetBase: 0.205,
+    onTargetBase: 0.235, // #181 재보정: 유효슛/골을 밴드로(#178 재보정과 합산).
     saveCornerProb: 0.6,
     saveCatchDepthM: 2.5, // 골라인 2.5m 앞에서 캐치 → 골문 밖(골 오인 방지). 0 이면 골라인 위.
     saveCornerWideMarginM: 1.5, // 세이브 굴절 코너: 공이 포스트 1.5m 밖(키퍼 근처=터치 보임 + 골 오인 방지).
@@ -496,7 +534,14 @@ export const defaultEngineConfig: EngineConfig = {
     centralShootHalfM: 12.0,
     tackleRange: 2.0,
     interceptRange: 1.5,
-    controlRange: 2.5,
+    // #181: 2.5m → 3.5m. 공은 이제 **손 닿는 사람에게만** 가고(순간이동 금지) 못 닿으면 낙하점에
+    // 멈춰 기다리므로, 이 반경이 곧 템포다. 2.5m 면 공이 그라운드에 서 있는 시간이 과해 경기가
+    // 죽는다(슛/팀 5.1). 3.5m = 한 걸음 뻗어 잡는 거리.
+    controlRange: 3.5,
+    // #181: 리드패스가 조준을 맞춰주므로 대부분 대기 0틱이다. 예측이 빗나간 패스만 1~2틱 기다린다.
+    // 스윕(10시드): 대기 0 → 빈공간꺾임 2건·최악 10.8m / **2 → 0건·최악 6.1m** / 3 → 0건이지만
+    // 공이 멈춰 있는 시간(무소유틱)이 28.7% 로 과해 템포를 해친다.
+    arrivalWaitMaxTicks: 2,
     oneOnOneClearM: 10.0,
     oneOnOneXgMult: 1.3,
     // G-A(#99): 1대1 강제슛 배수 3.2→1.8. 여전히 단독찬스는 슛을 선호하되(1v1은 슛이 정답),
@@ -509,15 +554,17 @@ export const defaultEngineConfig: EngineConfig = {
       // 벤치 11-12). 태클 시도당 파울 확률을 올려 복원. 단독으로 올리면 프리킥이 늘어 골·전환이
       // 폭증하므로 boxFoulMult·onTargetBase 와 **함께** 잡았다(아래 주석 참조).
       // #178: 마크 당김 오버슛 제거로 수비수가 마크 옆에 **지속적으로** 머물게 되자 접촉이 늘어
-      // 파울이 11.93→14.10(벤치 11-12, 3.7σ)으로 튀었다 → 0.0185→0.016 으로 재보정(11.90).
-      base: 0.016,
+      // 파울이 11.93→14.10 으로 튀었다 → 0.0185→0.016 으로 재보정(11.90).
+      // #181: 패스가 실제 비행시간을 갖게 되며 틱당 태클 기회가 줄어 파울이 다시 내려갔다 →
+      // 두 변경을 합친 상태에서 재측정해 벤치(11-12)로 맞춘 값(아래 §gap §5).
+      base: 0.017,
       aggressionWeight: 1.0,
       tacklingRelief: 0.6,
       boxFoulMult: 1.0,
       bookedRelief: 0.15,
     },
     card: {
-      yellowProb: 0.15,
+      yellowProb: 0.15, // #181: #178 과 합산된 파울 총량에서 카드 밴드(1.8-2.0) 유지.
       redProb: 0.0015,
     },
     penalty: {
@@ -555,7 +602,7 @@ export const defaultEngineConfig: EngineConfig = {
     enabled: true,
     minM: 30, // perceptionRadius(33) 근처 밖부터 롱볼 — 30m+ 전진 볼.
     maxM: 55, // 하프라인 넘는 전환/롱볼 상한.
-    selectBias: 6.0,
+    selectBias: 4.2, // #181: 패스 도착이 정확해지며 롱 시도 비율이 올라(16.5%) 밴드(12-15)로 재보정.
     fwdCapM: 22,
     distPenalty: 0.22,
   },
@@ -588,6 +635,7 @@ export const defaultEngineConfig: EngineConfig = {
     pressRange: 22,
     markGap: 2.5,
     supportPull: 0.08,
+    passLeadWeight: 1,
     roamFactor: 0.08,
     dribbleReach: 0.12,
   },

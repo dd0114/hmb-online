@@ -160,24 +160,28 @@ describe("롤백 스위치 (#147 W3)", () => {
     return runMatch(seed, home, makeTacticalInput("A", seed), makeSelectData(), c);
   };
   const lastHash = (l: ReturnType<typeof runMatch>) => l.tickSnapshots[l.tickSnapshots.length - 1]!.hash;
-  // 레거시 회귀 가드. **현재 트리 출력을 그대로 베낀 게 아니라**, 0.16.0 트리(6d49580)를 별도로
-  // 체크아웃해 0.17.0 의 shoot/xgBase/attackWidthReach 만 맞춰 실행한 값이다(독립 대조).
-  // #178 재보정(foul.base 0.016 · shootInBox 0.9)으로 값 재도출 — 6d49580(0.16.0) 트리에
-  // 현 튜닝값을 넣어 별도로 실행한 결과가 현 롤백 출력과 일치했다(내 출력 베끼기 아님).
-  // = 시야 픽스(#178)가 롤백 경로를 건드리지 않았다는 증거.
-  const LEGACY_HASH = "a3277aa1";
-  const LEGACY_HASH_MARKED = "7a9e5fe6";
+  // 롤백 회귀 가드(#181 기준선).
+  //
+  // ⚠️ 0.18.0 까지 이 상수는 **0.16.0 과 bit-identical** 을 주장했다(0.16.0 트리를 따로 체크아웃해
+  // 대조). #181 에서 그 주장은 더 이상 성립하지 않는다 — vision 스위치는 **시야 계층만** 되돌리는데,
+  // #181 은 그 아래 공 물리(도착 판정·리드패스 조준·사이드라인 아웃 검출)를 바꿨기 때문이다.
+  // 특히 `boundaryCross` 의 아웃 미검출은 **순수 버그 수정**이라 config 토글을 두지 않았다
+  // (버그 재현용 스위치는 만들지 않는다) → 0.16.0 재현 불가.
+  //
+  // 그래서 "레거시와 같다" 대신 **"조용히 드리프트하지 않는다"** 를 지킨다: 현 트리의 vision-off
+  // 출력을 상수로 박제해, 이후 변경이 롤백 경로를 건드리면 반드시 diff 로 드러나게 한다.
+  const ROLLBACK_HASH = "9bc816ea";
+  const ROLLBACK_HASH_MARKED = "d63d417e";
 
   it("vision.enabled=true 는 실제로 결과를 바꾼다(계층이 죽어있지 않다)", () => {
     expect(lastHash(run(cfg))).not.toBe(lastHash(run(off)));
   });
 
-  it("롤백(enabled=false)은 **레거시 0.16.0 과 bit-identical** 이다 — 골든 해시로 박제", () => {
-    // "레거시와 동일" 을 문장이 아니라 상수로 고정한다. 이게 없으면 롤백 스위치가 조용히
-    // 레거시와 어긋나도 아무도 못 잡는다(검증 세션 minor-5). 값은 6d49580(0.16.0) 트리에
-    // 0.17.0 의 shoot/xgBase/attackWidthReach 를 맞춰 실행한 최종 해시.
-    expect(lastHash(run(off))).toBe(LEGACY_HASH);
-    expect(lastHash(run(off, "A9"))).toBe(LEGACY_HASH_MARKED);
+  it("롤백(enabled=false)은 조용히 드리프트하지 않는다 — 골든 해시로 박제", () => {
+    // "롤백 경로가 안 바뀌었다" 를 문장이 아니라 상수로 고정한다. 이게 없으면 롤백 스위치가
+    // 조용히 어긋나도 아무도 못 잡는다(검증 세션 minor-5).
+    expect(lastHash(run(off))).toBe(ROLLBACK_HASH);
+    expect(lastHash(run(off, "A9"))).toBe(ROLLBACK_HASH_MARKED);
   });
 
   it("롤백(enabled=false)에서도 markTarget 은 살아있다 — 무음 no-op 이 되면 안 된다", () => {

@@ -34,33 +34,48 @@ export interface PassLenBuckets {
   long: number; // >=30m
 }
 
+/** 데드볼 재배치 이벤트 — 이 틱을 건너뛴 소유 이전은 패스가 아니다(스로인/골킥/코너/프리킥/PK/킥오프). */
+const RESTART_KINDS = new Set(["corner", "goal_kick", "throw_in", "free_kick", "penalty", "kickoff"]);
+
 /**
  * 스냅샷 소유권 이전으로 완결 패스의 비행 거리(m) 분포를 재구성한다.
  * 동팀 소유자 A→B 로 바뀌는 지점에서, A 가 마지막 소유한 틱의 공 위치와
  * B 가 처음 소유한 틱의 공 위치 사이 거리 = 패스 길이 근사.
+ *
+ * #181: 데드볼 재배치를 사이에 낀 이전은 **제외**한다. 아웃 → 반대편 스팟 재시작처럼 공이
+ * 규칙상 순간이동한 구간까지 "패스 비행"으로 세면 롱볼 비율이 과대(39%)로 부풀었다.
  */
 export function reconstructPassLengths(log: MatchLog): PassLenBuckets {
   const samples: number[] = [];
-  let prevOwner: string | null = null;
-  let prevBall: { x: number; y: number } | null = null;
-  let releaseBall: { x: number; y: number } | null = null;
-  for (const sn of log.tickSnapshots) {
-    const o = sn.ballOwner;
-    if (o != null && prevOwner != null && o !== prevOwner) {
-      const sameTeam = o[0] === prevOwner[0];
-      if (sameTeam && releaseBall) {
-        const dx = sn.ball.x - releaseBall.x;
-        const dy = sn.ball.y - releaseBall.y;
-        samples.push(Math.sqrt(dx * dx + dy * dy));
-      }
-    }
-    // 소유자가 유지되는 동안 마지막 위치를 release 후보로 갱신.
-    if (o != null) {
-      if (o === prevOwner || prevOwner == null) releaseBall = prevBall ?? { x: sn.ball.x, y: sn.ball.y };
-    }
-    prevOwner = o;
-    prevBall = { x: sn.ball.x, y: sn.ball.y };
+  const restartTicks = new Set<number>();
+  for (const e of log.events) {
+    const kind = e.type === "kickoff" && e.detail ? e.detail : e.type;
+    if (RESTART_KINDS.has(kind) || RESTART_KINDS.has(e.type)) restartTicks.add(e.tick);
   }
+  // #181: **마지막으로 공을 가졌던 사람과 그때의 공 위치**를 비행 구간 너머로 기억한다.
+  // 구버전은 직전 스냅샷의 ballOwner 만 봐서, 비행이 2틱 이상인 패스는 사이에 owner=null 이 끼어
+  // 표본에서 통째로 빠졌다(도착 관용 18m 시절엔 대부분 패스가 1틱이라 드러나지 않았다).
+  // 그 결과 긴 패스만 선택적으로 누락돼 길이 분포가 짧은 쪽으로 붕괴했다(측정 아티팩트).
+  // release = 그 사람이 공을 **마지막으로 지녔던 틱의 공 위치**(= 찬 지점).
+  let lastOwner: string | null = null;
+  let releaseBall: { x: number; y: number } | null = null;
+  let releaseTick = -1;
+  let restartBetween = false;
+  for (const sn of log.tickSnapshots) {
+    if (restartTicks.has(sn.tick)) restartBetween = true;
+    const o = sn.ballOwner;
+    if (o == null) continue; // 비행/루즈 구간은 건너뛴다(소유 이전이 아니다).
+    if (lastOwner != null && o !== lastOwner && releaseBall && o[0] === lastOwner[0] && !restartBetween) {
+      const dx = sn.ball.x - releaseBall.x;
+      const dy = sn.ball.y - releaseBall.y;
+      samples.push(Math.sqrt(dx * dx + dy * dy));
+    }
+    lastOwner = o;
+    releaseBall = { x: sn.ball.x, y: sn.ball.y };
+    releaseTick = sn.tick;
+    restartBetween = false;
+  }
+  void releaseTick;
   let short = 0, medium = 0, long = 0;
   for (const d of samples) {
     if (d < 15) short++;

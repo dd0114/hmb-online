@@ -18,7 +18,7 @@ import { createRng, hashSeed } from "./rng";
 import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
 import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
 import { glueBallToOwner, advanceBall } from "./ball";
-import { decideBallOwner, decideOffBall, assignPresser } from "./decision";
+import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
 import {
   tryIntercept,
   tryTackle,
@@ -119,15 +119,6 @@ function applyDelta(
     const base = slotToReal(pitch, pi.basePosition.x, pi.basePosition.y, side);
     p.baseFx = { x: base.x, y: base.y };
   }
-}
-
-/** 선수의 이번 틱 이동량(fixed). pace 와 피로 반영. */
-function speedStep(p: SimPlayer, config: EngineConfig): number {
-  const { minPerTick, maxPerTick, fatigueFloor } = config.speed;
-  const paceFrac = p.attrs.pace / 100;
-  const base = minPerTick + (maxPerTick - minPerTick) * paceFrac;
-  const fatigueMult = 1 - (1 - fatigueFloor) * p.fatigue;
-  return toFixed(base * fatigueMult, config.fixedScale);
 }
 
 interface Carry {
@@ -375,6 +366,10 @@ function stepTick(carry: Carry): void {
             fromSide: owner.side,
             passOutcome: action.outcome,
             long: action.long,
+            // #181: 이 공을 결국 잡을 사람 — 리드패스로 조준해 공과 만난다(순간이동 제거).
+            claimant: action.claimant ? action.claimant.id : undefined,
+            fromX: state.ball.posFx.x,
+            fromY: state.ball.posFx.y,
           };
           owner.dribbleStreak = 0;
           state.ball.owner = null;

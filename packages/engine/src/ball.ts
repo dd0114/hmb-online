@@ -1,7 +1,7 @@
 import type { EngineConfig } from "./config";
 import type { Ball } from "./simstate";
 import type { Pitch } from "./pitch";
-import { stepToward, isqrt } from "./fixedmath";
+import { stepToward, isqrt, toFixed } from "./fixedmath";
 
 /**
  * ball — 공 상태 전이(고정소수). 순간이동 금지: 비행 중에는 목표를 향해 속도만큼만 전진.
@@ -48,7 +48,12 @@ function boundaryCross(
   let bestT = Infinity;
   let best: OutCross | null = null;
   const consider = (t: number, edge: OutCross["edge"], cx: number, cy: number): void => {
-    if (!(t > 0) || t > 1) return;
+    // #181: t=0(현재 위치가 이미 그 라인 위)도 허용한다. 스로인 재시작은 taker 를 사이드라인
+    // **위**(y=0 또는 y=h)에 세우므로, 거기서 밖으로 찬 공은 크로싱 파라미터가 정확히 0 이라
+    // 구 `t > 0` 조건에서 걸러졌다 → 아웃 판정이 통째로 누락되고 공이 피치 밖을 날아간 뒤
+    // 소유 이전으로 필드 안으로 되돌아 순간이동(=빈 공간 꺾임)했다.
+    // 잘못된 t=0 검출(라인 위에서 **안쪽**으로 차는 정상 스로인)은 호출부의 방향 가드가 막는다.
+    if (t < 0 || t > 1) return;
     if (cx < -1 || cx > w + 1 || cy < -1 || cy > h + 1) return;
     if (t < bestT) {
       const px = cx < 0 ? 0 : cx > w ? w : cx;
@@ -57,16 +62,21 @@ function boundaryCross(
       best = { edge, x: Math.round(px), y: Math.round(py) };
     }
   };
-  if (dx !== 0) {
-    let t = (0 - fx) / dx;
+  // 방향 가드: 각 라인은 **그 라인 밖으로 나가는 방향**일 때만 크로싱 후보다(위 t=0 허용의 짝).
+  if (dx < 0) {
+    const t = (0 - fx) / dx;
     consider(t, "left", 0, fy + dy * t);
-    t = (w - fx) / dx;
+  }
+  if (dx > 0) {
+    const t = (w - fx) / dx;
     consider(t, "right", w, fy + dy * t);
   }
-  if (dy !== 0) {
-    let t = (0 - fy) / dy;
+  if (dy < 0) {
+    const t = (0 - fy) / dy;
     consider(t, "top", fx + dx * t, 0);
-    t = (h - fy) / dy;
+  }
+  if (dy > 0) {
+    const t = (h - fy) / dy;
     consider(t, "bottom", fx + dx * t, h);
   }
   return best;
@@ -106,5 +116,9 @@ export function advanceBall(ball: Ball, config: EngineConfig, pitch: Pitch): Adv
     return { arrived: false, out: null };
   }
 
-  return { arrived: remaining <= f.speed, out: null };
+  // #181: 도착은 **목표에 실제로 닿았을 때**만. 구버전은 `remaining <= f.speed`(=passSpeed 18m)라
+  // 공이 목표 한참 앞에서 도착 처리됐고, 그 남은 거리를 소유 이전(giveBallTo)이 순간이동으로
+  // 메워 "아무도 없는데 공이 각을 만들며 휘는" 궤적이 됐다. stepToward 는 목표를 넘지 않으므로
+  // 도달한 틱에 remaining 이 정확히 0 이 된다.
+  return { arrived: remaining <= toFixed(config.ball.arriveToleranceM, config.fixedScale), out: null };
 }
