@@ -443,27 +443,65 @@ function closestToBall(state: SimState, side: SimPlayer["side"]): SimPlayer | nu
 }
 
 /**
+ * 선수가 "코너 때 올라가려는" 성향(0..1). 프롬프트가 만든 behavior 에서 파생한다 —
+ * 침투 빈도(forwardRunFreq)와 공격 가담 깊이(supportDepth)가 곧 세트피스 가담 의사다.
+ * (전용 필드는 계약 확장 시 여기만 갈아끼우면 된다 — #182 후속.)
+ */
+function cornerRunTendency(p: SimPlayer): number {
+  return 0.5 * p.behavior.forwardRunFreq + 0.5 * p.behavior.supportDepth;
+}
+
+/**
+ * 팀의 코너 가담도(0=최대한 남긴다 … 1=올인). 수비 기조(라인 높이)·템포에서 파생 —
+ * 라인을 낮게 쓰는 팀은 코너에서도 뒤를 더 남기고, 하이라인·고템포 팀은 더 올라간다.
+ * 즉 **팀마다 기본값이 다르고, 전술을 바꾸면 코너 배치도 같이 바뀐다**(hero 확정 구조).
+ */
+function teamCornerCommit(team: SimState["teams"]["home"], cn: EngineConfig["setPiece"]["corner"]): number {
+  const v =
+    0.5 + (team.defensiveLineHeight - 0.5) * cn.commitLineWeight + (team.tempo - 0.5) * cn.commitTempoWeight;
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * 코너 때 "얼마나 올라가고 싶은가" 점수. 클수록 박스로 간다.
+ * = 포메이션 슬롯 깊이(자연 순서: ST > 미드 > 풀백 > CB) + 프롬프트 오버라이드.
+ * playerOverrideWeight 가 충분히 크면 성향이 슬롯 순서를 **뒤집는다** — 원래 남을 CB 가
+ * 올라가고("코너 때 올라가라"), 원래 올라갈 공격수가 남는다("뒤를 봐라").
+ */
+function cornerGoScore(pitch: Pitch, p: SimPlayer, cn: EngineConfig["setPiece"]["corner"]): number {
+  return attackProgress(pitch, p.side, p.baseFx.x) + (cornerRunTendency(p) - 0.5) * cn.playerOverrideWeight;
+}
+
+/**
  * 코너 시 박스에 안 들어가고 남는 선수인가(#182).
- *  - 공격팀(attacking=true): base 슬롯이 가장 **깊은** N명 = rest defence(4-3-3 이면 CB 둘).
- *  - 수비팀(attacking=false): base 슬롯이 가장 **높은** N명 = 하이 아웃렛(ST/윙).
+ *  - 공격팀(attacking=true): cornerGoScore 가 가장 **낮은** N명 = rest defence.
+ *  - 수비팀(attacking=false): 가장 **높은** N명 = 하이 아웃렛.
+ * N 은 상수가 아니라 팀 가담도에서 매핑된다(teamCornerCommit).
  * 테이커(공 소유자)는 코너 아크에 있으므로 후보에서 제외 → 잔류 인원이 그만큼 줄지 않는다.
- * 결정론: base 슬롯 x → idHash → id 의 전순서로만 뽑는다(전역 난수·시각 의존 없음).
+ * 결정론: 점수 → idHash → id 의 전순서로만 뽑는다(전역 난수·시각 의존 없음).
  */
 function isCornerHolder(
   state: SimState,
   player: SimPlayer,
   pitch: Pitch,
-  count: number,
+  config: EngineConfig,
   attacking: boolean,
 ): boolean {
-  if (player.isGK || state.ball.owner === player.id) return false;
-  const mine = attackProgress(pitch, player.side, player.baseFx.x);
+  const cn = config.setPiece.corner;
+  if (!cn.enabled || player.isGK || state.ball.owner === player.id) return false;
+  const commit = teamCornerCommit(state.teams[player.side], cn);
+  // 공격팀: 가담도가 높을수록 적게 남긴다(Max→Min). 수비팀: 높을수록 많이 올려둔다(Min→Max).
+  const count = attacking
+    ? Math.round(cn.stayBackMax + (cn.stayBackMin - cn.stayBackMax) * commit)
+    : Math.round(cn.leaveHighMin + (cn.leaveHighMax - cn.leaveHighMin) * commit);
+  if (count <= 0) return false;
+  const mine = cornerGoScore(pitch, player, cn);
   let ahead = 0;
   for (const p of state.players) {
     if (p.side !== player.side || p.isGK || p.id === player.id) continue;
     if (state.ball.owner === p.id) continue;
-    const r = attackProgress(pitch, p.side, p.baseFx.x);
-    // 동률(예: LCB/RCB 둘 다 x=0.16)은 idHash → id 로 안정 정렬.
+    const r = cornerGoScore(pitch, p, cn);
+    // 동률(예: LCB/RCB 가 슬롯·성향 모두 같음)은 idHash → id 로 안정 정렬.
     const tie = p.idHash !== player.idHash ? p.idHash < player.idHash : p.id < player.id;
     const better = r === mine ? tie : attacking ? r < mine : r > mine;
     if (better && ++ahead >= count) return false;
@@ -523,10 +561,9 @@ export function decideOffBall(
   if (sp && sp.kind === "corner") {
     const attackingCorner = sp.side === player.side;
     // #182: 전원이 박스로 올라가지 않는다 — 공격팀은 rest defence 로 뒤에, 수비팀은 아웃렛으로
-    // 앞에 남는 인원이 있다(count=0 이면 레거시 전원 전진).
+    // 앞에 남는 인원이 있다. 인원은 팀 전략에서, 누가 남는지는 선수 성향(프롬프트)에서 나온다.
     const cn = config.setPiece.corner;
-    const holdCount = attackingCorner ? cn.attackStayBack : cn.defendLeaveHigh;
-    if (holdCount > 0 && isCornerHolder(state, player, pitch, holdCount, attackingCorner)) {
+    if (isCornerHolder(state, player, pitch, config, attackingCorner)) {
       const lineX = attackingCorner ? cn.stayBackLineX : cn.leaveHighLineX;
       const hx = player.side === "home" ? lineX : 1 - lineX;
       player.targetFx = clampToPitch(pitch, Math.round(hx * pitch.wFx), player.baseFx.y);

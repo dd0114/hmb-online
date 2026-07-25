@@ -321,17 +321,34 @@ export interface EngineConfig {
     /** 코너 크로스 낙하점 중앙 기준 좌우 산포 최대(m). 시드로 ±이 범위. */
     crossWidthM: number;
     /**
-     * 코너 시 "박스로 안 올라가는" 선수 배치(#182). 레거시(전원 전진)는 두 count 를 0 으로.
-     * 실제 축구: 공격팀은 역습 대비로 1~2명을 뒤에 남기고(rest defence), 수비팀은 클리어 후
-     * 아웃렛으로 1~2명을 높이 남긴다. 누가 남는지는 base 슬롯 깊이로 결정(공격=최심, 수비=최전방).
+     * 코너 시 "박스로 안 올라가는" 선수 배치(#182). 실제 축구의 rest defence(공격팀이 역습
+     * 대비로 뒤에 남기는 1~2명)·하이 아웃렛(수비팀이 앞에 남기는 1~2명)에 해당한다.
+     *
+     * **인원은 여기 상수로 고정되지 않는다** — 팀 전략과 선수 성향으로 정해진다(hero 확정):
+     *  (1) 팀 축: 가담도 commit = f(defensiveLineHeight, tempo) 0..1 → 잔류 인원을
+     *      stayBackMax(수비적)~stayBackMin(올인) 사이로 매핑. 팀마다 기본값이 다르고
+     *      전술을 바꾸면 같이 바뀐다.
+     *  (2) 선수 축: 프롬프트가 만든 behavior(forwardRunFreq·supportDepth)가 슬롯 깊이를
+     *      **뒤집는다** — 원래 남을 CB 가 올라가고, 원래 올라갈 공격수가 남는다.
+     *      뒤집는 힘 = playerOverrideWeight.
+     * 여기 값들은 그 매핑의 튜닝 상수일 뿐이다.
      */
     corner: {
-      /** 공격 코너 시 뒤에 남기는 아웃필더 수(base 슬롯 최심 N명 = 4-3-3 이면 CB). 0=레거시. */
-      attackStayBack: number;
+      /** false = 레거시(전원 전진). 롤백 스위치 — 켜기 전과 bit-identical. */
+      enabled: boolean;
+      /** 공격 코너 잔류 인원 매핑. commit=1(올인) → Min, commit=0(수비적) → Max. */
+      stayBackMin: number;
+      stayBackMax: number;
+      /** 수비 코너 하이 아웃렛 인원 매핑. 0/0 이면 끔(수비팀은 전원 박스). */
+      leaveHighMin: number;
+      leaveHighMax: number;
+      /** 팀 가담도 commit 을 만들 때 수비라인 높이·템포에 주는 가중치. */
+      commitLineWeight: number;
+      commitTempoWeight: number;
+      /** 선수 성향(프롬프트)이 슬롯 깊이 순서를 뒤집는 힘. 0 이면 슬롯 깊이만으로 결정. */
+      playerOverrideWeight: number;
       /** 잔류 선수가 서는 라인(공격 진행도 0:자기골 ~ 1:상대골). 0.5=하프라인. */
       stayBackLineX: number;
-      /** 수비 코너 시 앞에 남기는 아웃필더 수(base 슬롯 최전방 N명 = ST/윙). 0=레거시. */
-      defendLeaveHigh: number;
       /** 하이 아웃렛이 서는 라인(자기 공격 진행도). */
       leaveHighLineX: number;
     };
@@ -632,11 +649,21 @@ export const defaultEngineConfig: EngineConfig = {
     crossSpeed: 16,
     crossDepthM: 10,
     crossWidthM: 12,
-    // #182 결정 대기 중 — 0/0 = engine@0.17.0 과 bit-identical(레거시 전원 전진).
+    // #182. 중립 팀(라인 0.55·템포 0.5)은 잔류 2명 = PL 표준. 수비적 팀 3명, 올인 1명.
+    // 수비팀 아웃렛(leaveHigh)은 0/0 = 끔 — 양팀 동시 변경을 피하려 별도 이슈로 분리.
     corner: {
-      attackStayBack: 0,
+      enabled: true,
+      stayBackMin: 1,
+      stayBackMax: 3,
+      leaveHighMin: 0,
+      leaveHighMax: 0,
+      commitLineWeight: 1.0,
+      commitTempoWeight: 0.5,
+      // 2.2 = "양방향 완전 오버라이드"에 필요한 하한. 슬롯 깊이 폭(CB 0.16~ST 0.78 = 0.62)을
+      // 성향 폭(±0.5)이 넘어서려면 W>2.0 이어야 공격수를 잔류시킬 수 있다. 이 값에서도
+      // 아키타입 기본 성향은 슬롯 순서와 같은 방향이라 자연 순서(ST>윙>미드>풀백>CB)는 보존된다.
+      playerOverrideWeight: 2.2,
       stayBackLineX: 0.5,
-      defendLeaveHigh: 0,
       leaveHighLineX: 0.5,
     },
   },
