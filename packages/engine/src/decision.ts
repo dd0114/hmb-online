@@ -537,7 +537,18 @@ export function decideOffBall(
       const target = chooseMarkTarget(known, player, config, ownGoal);
       if (target) {
         const radFx = vis.radiusM * scale;
-        const w = Math.round(vis.markReach * scale * (1 - target.dist / radFx));
+        // 당김은 **고정 길이 스텝**이라 그대로 두면 이미 붙어 있는 마크를 지나쳐 반대편을 목표로
+        // 잡는다 → 다음 틱엔 방향이 뒤집혀 매 틱 ±markReach 왕복(제자리 진동, #178). 게다가
+        // w 는 가까울수록 커져서(1 − dist/rad) 진동을 키운다. 그래서 **마크 간격(markGap)까지만**
+        // 당긴다 — 이미 그 안이면 당기지 않는다(스탠드오프). 시야 판단은 그대로 유지된다.
+        //
+        // ⚠️ 잔여(독립 QA 발견, QA #25 후속): 이 클램프는 진폭을 3~5m → ~1.1m 로 줄이지만
+        // markGap 경계에서 **주기-2 리밋사이클**이 남는다(링 밖=당김, 링 위=당김 0 → 블록 목표가
+        // 도로 밀어냄). 근본 해소는 마킹을 "당김 델타" 가 아니라 **위치 목표**(마크의 자기골 쪽
+        // markGap 지점)로 재정식화해야 한다 — 결과 목표를 링 위로 미는 방식은 시도했으나
+        // (tx − mark) 방향이 이미 마크를 지나쳐 있어 원래 오버슛을 재현했다(bigReversal 43.5로 복귀).
+        const standoff = Math.max(0, target.dist - Math.round(mv.markGap * scale));
+        const w = Math.min(Math.round(vis.markReach * scale * (1 - target.dist / radFx)), standoff);
         if (w > 0) {
           px -= Math.round(((player.posFx.x - target.x) * w) / target.dist);
           py -= Math.round(((player.posFx.y - target.y) * w) / target.dist);

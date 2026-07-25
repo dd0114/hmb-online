@@ -1,7 +1,7 @@
 // QA: match-log 의 각 상황(골/선방/빗나감/코너/골킥/오프사이드/파울/PK)이
 // 실제 공 궤적·점수·후속 재시작과 맞는지, 그리고 뷰어가 붙일 자막이 상황에 맞는지 전수 검수한다.
 import { readFileSync } from "node:fs";
-import { buildStoppages, buildAnnotations, eventKind } from "../packages/engine/dev-viewer/playback.mjs";
+import { buildStoppages, buildAnnotations, eventKind } from "../packages/viewer-core/src/playback.mjs";
 
 const path = process.argv[2] || "packages/engine/dev-viewer/match-log.json";
 const log = JSON.parse(readFileSync(path, "utf8"));
@@ -43,10 +43,14 @@ for (const s of ev.filter((e) => e.type === "save")) {
   // #91: 선방이 코너로 굴절되면(다음 재시작 코너) 공이 골라인 밖으로 **와이드하게** 나간다(off_target 동일).
   // 골 오인(V2 #15)의 진짜 조건은 "공이 **골문 안**(골라인×포스트 사이)". 와이드(포스트 밖)로 나가면 코너 굴절.
   const leadsToCorner = ev.some((e) => e.tick > s.tick && e.tick <= s.tick + 8 && e.type === "kickoff" && e.detail === "corner");
+  // 하프/경기 종료 휘슬이 곧바로 뒤따르면 **후속 재시작이 잘려** leadsToCorner 를 볼 수 없다
+  // (#178 후속: 경계에서 비행 슛을 마저 해소하면서 생기는 정상 케이스). 그 경우 굴절 여부를
+  // 판정할 근거가 없으므로 클린세이브 기하 검사를 건너뛴다 — 골 오인 검사(위)는 그대로 적용된다.
+  const whistleCuts = ev.some((e) => (e.type === "half_whistle" || e.type === "full_whistle") && e.tick >= s.tick && e.tick <= s.tick + 8);
   // 골 오인: 공이 골문 안(골라인 위 × 포스트 사이) — 언제나 금지(선방인데 골처럼).
   if ((b.x <= 1 || b.x >= 104) && inPosts(b.y)) P(`선방 t${s.tick}: 공이 골문 안(골라인×포스트 사이) — 골 오인`);
   // 클린 세이브(코너 굴절 아님): 공이 키퍼 위치(골라인 앞·포스트 사이)여야. 코너 굴절이면 와이드 아웃 정상.
-  if (!leadsToCorner) {
+  if (!leadsToCorner && !whistleCuts) {
     if (b.x <= 1 || b.x >= 104) P(`선방 t${s.tick}: 공 x 가 골라인 위 (${b.x.toFixed(1)}) — 캐치는 앞이어야`);
     if (!inPosts(b.y)) P(`선방 t${s.tick}: 공 y 가 포스트 밖 (${b.y.toFixed(1)}) — 키퍼 위치 아님`);
   } else {

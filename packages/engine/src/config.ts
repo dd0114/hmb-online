@@ -449,7 +449,11 @@ export const defaultEngineConfig: EngineConfig = {
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
     // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
     // 슛 지배를 완화(후진 리사이클은 backwardPassPenalty 2.4 + shootCentralBonus 1.35 로 계속 억제).
-    shootInBox: 0.6,
+    // #178: 마크 당김 오버슛(진동) 제거로 수비 블록이 형태를 유지하게 되자 슛이 13.95→11.65 로
+    // 밴드 아래로 떨어졌다(진동하던 수비수가 마크를 지나쳐 자리를 비우던 것이 슛 기회였다).
+    // 0.6→0.9 로 파이널서드 슛 의지를 복원해 13.28(밴드 12-14)로 되돌린다. `shoot` 사다리 단조성
+    // (shot-frequency A)은 이 값에서도 유지된다(11.63→11.68→13.28→14.35→15.28→15.78→16.83).
+    shootInBox: 0.9,
     backwardPassPenalty: 2.4,
     shootCentralBonus: 1.35,
   },
@@ -504,7 +508,9 @@ export const defaultEngineConfig: EngineConfig = {
       // #147 후속: 시야 계층으로 수비수가 한 명만 붙고 자리를 지켜 접촉이 줄었다(파울 9.68→8.23,
       // 벤치 11-12). 태클 시도당 파울 확률을 올려 복원. 단독으로 올리면 프리킥이 늘어 골·전환이
       // 폭증하므로 boxFoulMult·onTargetBase 와 **함께** 잡았다(아래 주석 참조).
-      base: 0.0185,
+      // #178: 마크 당김 오버슛 제거로 수비수가 마크 옆에 **지속적으로** 머물게 되자 접촉이 늘어
+      // 파울이 11.93→14.10(벤치 11-12, 3.7σ)으로 튀었다 → 0.0185→0.016 으로 재보정(11.90).
+      base: 0.016,
       aggressionWeight: 1.0,
       tacklingRelief: 0.6,
       boxFoulMult: 1.0,

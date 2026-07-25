@@ -162,8 +162,11 @@ describe("롤백 스위치 (#147 W3)", () => {
   const lastHash = (l: ReturnType<typeof runMatch>) => l.tickSnapshots[l.tickSnapshots.length - 1]!.hash;
   // 레거시 회귀 가드. **현재 트리 출력을 그대로 베낀 게 아니라**, 0.16.0 트리(6d49580)를 별도로
   // 체크아웃해 0.17.0 의 shoot/xgBase/attackWidthReach 만 맞춰 실행한 값이다(독립 대조).
-  const LEGACY_HASH = "4c090d70";
-  const LEGACY_HASH_MARKED = "4b201082";
+  // #178 재보정(foul.base 0.016 · shootInBox 0.9)으로 값 재도출 — 6d49580(0.16.0) 트리에
+  // 현 튜닝값을 넣어 별도로 실행한 결과가 현 롤백 출력과 일치했다(내 출력 베끼기 아님).
+  // = 시야 픽스(#178)가 롤백 경로를 건드리지 않았다는 증거.
+  const LEGACY_HASH = "a3277aa1";
+  const LEGACY_HASH_MARKED = "7a9e5fe6";
 
   it("vision.enabled=true 는 실제로 결과를 바꾼다(계층이 죽어있지 않다)", () => {
     expect(lastHash(run(cfg))).not.toBe(lastHash(run(off)));

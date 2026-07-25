@@ -459,6 +459,43 @@ function simulateRange(carry: Carry, endTick: number): void {
   carry.nextTick = endTick;
 }
 
+/**
+ * 하프/경기 경계에서 **비행 중인 슛을 마저 해소**한다(#178 후속).
+ *
+ * 슛은 발사 틱에 공이 움직이지 않고(슈터 발밑 프레임, `shotLaunchedThisTick`) 다음 틱부터
+ * 비행한다. 하프 **마지막 틱**에 쏘면 그 "다음 틱"이 하프타임 킥오프 리셋이라 `ball.flight` 가
+ * 통째로 버려져 유효/빗나감/골 판정이 영원히 안 나온다 → `onTarget + offTarget ≠ shots`
+ * (실측: 쇼케이스 데모 t719 홈 슛 1개 증발). 경기 종료 틱도 같다.
+ * 실제 축구도 공이 죽을 때까지는 플레이하므로 경계에서 비행을 끝까지 진행시켜 결과를 남긴다.
+ *
+ * 결정론: `runMatch`(통짜)와 `runFirstHalf`+`resumeSecondHalf`(분할)에서 **같은 지점**에 호출해야
+ * rng 소비가 일치한다(계약 = shot-settle.test.ts 재개 동일성). 해소 후 마지막 스냅샷을 갱신해
+ * "골 이벤트인데 공은 슈터 발밑" 같은 이벤트↔화면 불일치도 막는다.
+ */
+function settleInFlightShot(carry: Carry): void {
+  const { state, rng, config, pitch } = carry;
+  if (state.ball.flight?.kind !== "shot") return;
+  const minute = tickToMinute(state.tick, config);
+  // 상한은 하드코딩이 아니라 기하로 도출: 피치를 가로지르는 데 필요한 틱 + 여유.
+  const maxSteps = Math.ceil(config.pitch.width / config.contest.shotBallSpeed) + 2;
+  for (let i = 0; i < maxSteps; i++) {
+    if (state.ball.flight?.kind !== "shot") break;
+    const res = advanceBall(state.ball, config, pitch);
+    if (res.out) {
+      // 슛은 목표가 골문이라 여기 오기 어렵다(advanceBall 주석). 와도 하프가 끝났으므로
+      // 재시작 세트피스를 만들지 않고 비행만 정리한다.
+      state.ball.flight = null;
+      break;
+    }
+    if (res.arrived) {
+      for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) carry.events.push(e);
+      break;
+    }
+  }
+  // 해소 결과를 마지막 스냅샷에 반영(이벤트와 화면이 어긋나지 않게).
+  if (carry.snapshots.length > 0) carry.snapshots[carry.snapshots.length - 1] = snapshot(state, config);
+}
+
 /** 초기 상태 구성 + 킥오프. */
 function initCarry(
   seed: string,
@@ -550,6 +587,7 @@ export function runMatch(
   const half = Math.floor(total / 2);
 
   simulateRange(carry, half);
+  settleInFlightShot(carry); // #178 후속: 하프 마지막 틱 슛이 증발하지 않게.
   carry.events.push({
     tick: half,
     minute: tickToMinute(half, config),
@@ -558,6 +596,7 @@ export function runMatch(
   // 후반 시작: 어웨이 킥오프 + 포메이션 리셋(하프타임 후에도 정렬 배치로 재개).
   secondHalfKickoff(carry);
   simulateRange(carry, total);
+  settleInFlightShot(carry); // 경기 종료 틱도 동일.
   carry.events.push({
     tick: total - 1,
     minute: config.matchMinutes,
@@ -582,6 +621,7 @@ export function runFirstHalf(
   const carry = initCarry(seed, home, away, select, config);
   const half = Math.floor(totalTicks(config) / 2);
   simulateRange(carry, half);
+  settleInFlightShot(carry); // runMatch(통짜)와 **동일 지점** — rng 소비 일치(재개 동일성).
   carry.events.push({
     tick: half,
     minute: tickToMinute(half, config),
@@ -606,6 +646,7 @@ export function resumeSecondHalf(
   secondHalfKickoff(carry);
   const total = totalTicks(config);
   simulateRange(carry, total);
+  settleInFlightShot(carry); // runMatch(통짜)와 **동일 지점**.
   carry.events.push({
     tick: total - 1,
     minute: config.matchMinutes,
