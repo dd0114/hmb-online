@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
-import { aggregateRealism, REALISM_SEEDS } from "./harness";
+import { aggregateRealism, GUARD_SEEDS } from "./harness";
 
 /**
  * G-A 슛 빈도 계약 (#99, §2.5 E2E-TDD).
@@ -13,7 +13,7 @@ import { aggregateRealism, REALISM_SEEDS } from "./harness";
 const cfg = defaultEngineConfig;
 
 // 20 시드(팀-경기 40). SD 크지만 평균은 밴드 내 안정.
-const agg = aggregateRealism(cfg, REALISM_SEEDS);
+const agg = aggregateRealism(cfg, GUARD_SEEDS);
 
 describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
   it(`팀당 슛 12–14 (측정 ${agg.mean.shots})`, () => {
@@ -40,15 +40,19 @@ describe("G-A 단조성: shoot 성향↑ → 슛 수↑ (config 가 실제 레�
     // 단일 대비의 "효과크기 ≥N" 대신 사다리 단조성을 박는다 — rung 선택이 튜닝 여지가 되지 않도록
     // 직전 기본값(0.34)을 포함한 **전 구간**을 쓴다.
     //
-    // 실측(engine@0.17.0, 20시드):
-    //   0.15→10.70 · 0.22→12.85 · 0.30→13.45 · 0.34→14.23 · 0.45→16.20 · 0.60→16.38 · 0.80→17.27
+    // 실측(#182 코너 rest defence 후, GUARD_SEEDS=40시드):
+    //   0.15→11.03 · 0.22→12.09 · 0.30→13.19 · 0.34→13.71 · 0.45→15.94 · 0.60→15.96 · 0.80→17.43
     // 이력: 직전 튜닝(attackWidthReach 0.13)에서는 0.34→0.45 구간이 15.25→14.70 으로 **감소**해
     // 계약 구간을 0.15-0.34 로 한정했었다. awr 0.10 으로 조정하니 포화·역전이 사라져 전 구간
     // 단조가 됐다 — 즉 그 비단조는 엔진의 본질이 아니라 그 config 지점의 성질이었다.
+    // #182: 20시드에서 0.30→0.34·0.45→0.60 이 각각 −0.25/−0.33 으로 뒤집혔는데, 같은 config 를
+    // n=40·60 으로 재면 전 구간 단조였다(11.03→…→17.43 / 11.26→…→17.46). 즉 그 dip 은 엔진이
+    // 아니라 **표본오차**(SE≈0.8 > rung 간격)였다 → 측정 표본을 GUARD_SEEDS 로 올린다.
+    // 단조성 주장 자체는 그대로 유지(느슨하게 하지 않음).
     const ladder = [0.15, 0.22, 0.3, 0.34, 0.45, 0.6, 0.8];
     const shots = ladder.map(
       (shoot) =>
-        aggregateRealism({ ...cfg, decisionWeights: { ...cfg.decisionWeights, shoot } }, REALISM_SEEDS).mean.shots,
+        aggregateRealism({ ...cfg, decisionWeights: { ...cfg.decisionWeights, shoot } }, GUARD_SEEDS).mean.shots,
     );
     // #181: 소유 이전이 controlRange 안에서만 일어나게 되면서 **경기당 소유 횟수 자체가 상한**을
     // 갖는다 → shoot 을 계속 올려도 어느 지점부터 슛이 더 늘지 않는다(포화). 실측(20시드):

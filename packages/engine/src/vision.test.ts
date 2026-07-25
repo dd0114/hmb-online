@@ -153,7 +153,13 @@ describe("판단 — 붙을지 말지 (#147 W3)", () => {
 
 describe("롤백 스위치 (#147 W3)", () => {
   const seed = "4815162342";
-  const off: EngineConfig = { ...cfg, vision: { ...cfg.vision, enabled: false } };
+  // 레거시(0.16.0) 재현이므로 그 이후 추가된 기능 스위치도 함께 끈다 — 시야(#147)와
+  // 코너 rest defence(#182). 하나라도 켜져 있으면 "0.16.0 과 동일"이 성립하지 않는다.
+  const off: EngineConfig = {
+    ...cfg,
+    vision: { ...cfg.vision, enabled: false },
+    setPiece: { ...cfg.setPiece, corner: { ...cfg.setPiece.corner, enabled: false } },
+  };
   const run = (c: EngineConfig, mark?: string) => {
     const home = makeTacticalInput("H", seed);
     if (mark) home.players[4]!.markTarget = mark;

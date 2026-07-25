@@ -13,9 +13,10 @@ import type { MatchLog, TickSnapshot } from "@hmb/shared";
  */
 const config = defaultEngineConfig;
 const CENTER_Y = config.pitch.height / 2; // 34
-// default config(engine@0.16.0)에서 페널티가 발생하는 시드(스캔으로 확정). 재현 고정.
-// (0.16.0 좌우대칭 픽스로 매치 전개가 바뀌어 구 시드 "3" 은 더는 PK 를 만들지 않음 → 재스캔.)
-const PK_SEED = "2";
+// default config 에서 페널티가 발생하는 시드(스캔으로 확정). 재현 고정.
+// 매치 전개가 바뀔 때마다 재스캔한다: "3"(~0.15.0) → "2"(0.16.0 좌우대칭 픽스) →
+// "1"(#182 코너 rest defence). 스캔 결과 보유 시드: 1/3/4/5/9/17.
+const PK_SEED = "1";
 
 function snapByTick(log: MatchLog): Map<number, TickSnapshot> {
   return new Map(log.tickSnapshots.map((s) => [s.tick, s]));

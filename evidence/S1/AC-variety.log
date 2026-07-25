@@ -1,4 +1,5 @@
 === HMB S1 엔진 변주(다이나믹) 전/후 대조 — AC-variety ===
+<<<<<<< HEAD
 before=engine@0.8.0-baseline(변주 OFF)  after=engine@0.19.0(변주 ON)  seed 4815162342
 baseline lastHash=695a1545  (0.8.0 는 골 후/후반/개시 킥오프 포메이션 리셋으로 이전 앵커와 불일치가 정상)
 variety(after) lastHash=885f153e
@@ -19,4 +20,26 @@ off_target                14          23
 슛→코너 전환                   5           5           
 슛→골킥 전환                   9           18          
 코너                        6           8           
+=======
+before=engine@0.8.0-baseline(변주 OFF)  after=engine@0.18.0(변주 ON)  seed 4815162342
+baseline lastHash=11e6d163  (0.8.0 는 골 후/후반/개시 킥오프 포메이션 리셋으로 이전 앵커와 불일치가 정상)
+variety(after) lastHash=28357ef4
+
+지표(양팀 합/평균)               before      after       해석
+평균 드리블 체인(틱)              1.1         1.2         롱드리블(연속 돌파)
+최대 드리블 체인(틱)              6           9           
+드리블 체인 수                  292         278         
+수비 오버랩(횟수)                117         197         돌발 전진(뒤공간 노출)
+수비 오버랩(player-틱)          888         1890        
+위치 분산(RMS m)              15.2        16          슬롯 고착 완화(로밍)
+
+슛(시도)                     31          32          
+유효슛                       12          17          세이브 상황↑
+세이브                       9           12          
+off_target                19          15          
+1대1 찬스                    0           4           하이라이트
+슛→코너 전환                   9           7           
+슛→골킥 전환                   10          8           
+코너                        15          17          
+>>>>>>> 8f4e7f1 ([Spider] test(engine): #182 골든 갱신 + 시드 핀 재스캔 + 가드 표본 40시드 (#182))
 골                         3           5           
