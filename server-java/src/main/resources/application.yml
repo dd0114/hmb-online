@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: hmb-server
+  task:
+    scheduling:
+      # @Scheduled 기본 풀은 1이라 시계 스위퍼가 오래 걸리면 JobLeaseSweeper 까지 멈춘다(#170).
+      pool:
+        size: 4
   threads:
     virtual:
       enabled: true   # W4: /internal/ai-jobs/poll long-poll가 블로킹으로 대기해도 요청 스레드 풀을 고갈시키지 않게 (LLD §6)
@@ -53,6 +58,7 @@ hmb:
       halftime-ms: 60000           # 감독시간(P4-D2 = 60초)
       auto-resume-on-expiry: true  # 만료 시 후반 자동 시작(전반 프롬프트 승계)
       sweep-interval-ms: 1000      # 시계 스위퍼 주기(잡 스위퍼 10s 와 별도 — 초 단위 경계)
+      sweep-parallelism: 4         # 만료 스윕 동시 매치 수(후반 시작이 동기 시뮬이라 순차면 서로를 막는다)
       seek:
         forward-blocked: true      # 라이브 앞서가기 금지(뒤로 스크럽은 자유)
         grace-ms: 1500             # 지연·클럭 스큐 허용 오차

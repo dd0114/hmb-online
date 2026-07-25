@@ -33,6 +33,12 @@ public class MatchClockProperties {
     /** 시계 스위퍼 주기(ms). 잡 스위퍼(10s)와 별도 — 초 단위 경계라 촘촘히 돈다. */
     private long sweepIntervalMs = 1_000;
 
+    /**
+     * 만료 스윕 동시 실행 매치 수. 후반 시작은 동기 엔진 RPC 를 물고 있어, 순차로 돌면 한 매치의
+     * 시뮬이 도는 동안 다른 모든 매치의 시계가 멈춘다(독립검증 major).
+     */
+    private int sweepParallelism = 4;
+
     private Seek seek = new Seek();
 
     public boolean isEnabled() {
@@ -73,6 +79,14 @@ public class MatchClockProperties {
 
     public void setSweepIntervalMs(long sweepIntervalMs) {
         this.sweepIntervalMs = sweepIntervalMs;
+    }
+
+    public int getSweepParallelism() {
+        return sweepParallelism;
+    }
+
+    public void setSweepParallelism(int sweepParallelism) {
+        this.sweepParallelism = sweepParallelism;
     }
 
     public Seek getSeek() {

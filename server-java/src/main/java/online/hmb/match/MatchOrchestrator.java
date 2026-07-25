@@ -451,14 +451,14 @@ public class MatchOrchestrator {
                                        result = ?, finished_at = ?, phase_start_at = NULL, phase_ends_at = NULL
                                 WHERE id = ? AND state = ?
                                 """)
-                        .params(totalHome, totalAway, result, Instant.now().toString(), match.id(), fromState)
+                        .params(totalHome, totalAway, result, clockService.nowText(), match.id(), fromState)
                         .update()
                 : jdbcClient.sql("""
                                 UPDATE matches SET state = 'FINISHED', score_home = ?, score_away = ?,
                                        result = ?, finished_at = ?, phase_start_at = NULL, phase_ends_at = NULL
                                 WHERE id = ? AND state = ? AND phase_ends_at = ?
                                 """)
-                        .params(totalHome, totalAway, result, Instant.now().toString(), match.id(),
+                        .params(totalHome, totalAway, result, clockService.nowText(), match.id(),
                                 fromState, boundary)
                         .update();
         if (updated != 1) {

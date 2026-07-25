@@ -44,6 +44,9 @@ class MatchClockFlowTest extends MatchTestBase {
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
+        // 배경 @Scheduled 스위퍼를 사실상 끈다 — 이 테스트는 sweep() 을 직접 호출해
+        // 단계 전환 시점을 스스로 통제한다(스케줄러가 끼면 상태가 앞서가 판정이 흔들린다).
+        registry.add("hmb.match.clock.sweep-interval-ms", () -> "3600000");
         registry.add("hmb.match.clock.enabled", () -> "true");
         registry.add("hmb.match.clock.half-real-ms", () -> String.valueOf(HALF_REAL_MS));
         registry.add("hmb.match.clock.halftime-ms", () -> String.valueOf(HALFTIME_MS));
@@ -62,6 +65,9 @@ class MatchClockFlowTest extends MatchTestBase {
 
     @Resource
     private MatchClockSweeper clockSweeper;
+
+    @Resource
+    private online.hmb.match.MatchOrchestrator orchestrator;
 
     @Resource
     private ObjectMapper objectMapper;
@@ -295,6 +301,47 @@ class MatchClockFlowTest extends MatchTestBase {
         // 시계 켜짐/꺼짐과 무관하게 같은 시드·같은 인풋이면 같은 결과여야 한다. 재현 지문(last_hash)이
         // 시계 없는 경로(MatchClockDisabledTest)와 **같은 값**인지로 박제한다.
         assertThat(halfLastHash(matchId, 1)).isEqualTo(FIXTURE_H1_LAST_HASH);
+    }
+
+    // ── 정산 CAS 는 "그 창"에만 유효하다(경계값 일치) ─────────────────────
+
+    @Test
+    void settlementIgnoresAStaleBoundary() {
+        String token = setupUserWithDeck("clk_stale");
+        String matchId = kickoffAndSimulateH1(token);
+        expireInto(matchId, "HALFTIME");
+        expireNow(matchId);
+        clockSweeper.sweep();
+        assertThat(matchState(matchId)).isEqualTo("SECOND_HALF");
+
+        // 지나간 창의 경계값으로는 정산되지 않는다 — 다른 스레드가 이미 창을 갱신했다는 뜻이므로.
+        boolean settled = orchestrator.settleFinishedIfDue(matchId, "2000-01-01T00:00:00.000Z");
+        assertThat(settled).isFalse();
+        assertThat(matchState(matchId)).isEqualTo("SECOND_HALF");
+        assertThat(rewardLedgerRows(matchId)).isZero();
+
+        // 현재 창의 경계값이면 정산된다.
+        String boundary = clockColumn(matchId, "phase_ends_at");
+        assertThat(orchestrator.settleFinishedIfDue(matchId, boundary)).isTrue();
+        assertThat(matchState(matchId)).isEqualTo("FINISHED");
+    }
+
+    // ── 후반 시작은 스위퍼 몫이다(요청 스레드는 엔진 RPC 를 물지 않는다) ────
+
+    @Test
+    void secondHalfStartsFromTheSweeperNotFromReads() {
+        String token = setupUserWithDeck("clk_read_light");
+        String matchId = kickoffAndSimulateH1(token);
+        expireInto(matchId, "HALFTIME");
+        expireNow(matchId);
+
+        // 조회 경로(GET)는 무거운 전이를 하지 않는다 — 1초 폴링이 후반 시뮬에 붙잡히면 안 된다.
+        assertThat(detail(token, matchId).get("state")).isEqualTo("HALFTIME");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
+
+        // 스위퍼가 집어가면 그때 후반이 시작된다(체감 지연 ≤ sweep-interval-ms).
+        clockSweeper.sweep();
+        assertThat(matchState(matchId)).isEqualTo("SECOND_HALF");
     }
 
     // ── 지연 평가: 스위퍼가 없어도 보고 있는 화면은 정확하다 ────────────────

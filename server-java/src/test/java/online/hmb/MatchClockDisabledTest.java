@@ -29,6 +29,9 @@ class MatchClockDisabledTest extends MatchTestBase {
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
+        // 배경 @Scheduled 스위퍼를 사실상 끈다 — 이 테스트는 sweep() 을 직접 호출해
+        // 단계 전환 시점을 스스로 통제한다(스케줄러가 끼면 상태가 앞서가 판정이 흔들린다).
+        registry.add("hmb.match.clock.sweep-interval-ms", () -> "3600000");
         registry.add("hmb.match.clock.enabled", () -> "false");
     }
 

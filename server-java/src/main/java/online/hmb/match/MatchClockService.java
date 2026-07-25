@@ -51,6 +51,8 @@ public class MatchClockService {
     private final MatchClockProperties props;
     private final Clock clock;
     private final org.springframework.beans.factory.ObjectProvider<MatchOrchestrator> orchestrator;
+    /** 만료 스윕 실행 풀 — 매치 간 head-of-line 블로킹 방지(스케줄러 스레드와 분리). */
+    private final java.util.concurrent.ExecutorService sweepPool;
 
     public MatchClockService(JdbcClient jdbcClient,
                              TxRunner txRunner,
@@ -62,6 +64,18 @@ public class MatchClockService {
         this.props = props;
         this.clock = clock;
         this.orchestrator = orchestrator;
+        this.sweepPool = java.util.concurrent.Executors.newFixedThreadPool(
+                Math.max(1, props.getSweepParallelism()),
+                r -> {
+                    Thread t = new Thread(r, "match-clock-sweep");
+                    t.setDaemon(true);
+                    return t;
+                });
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void shutdown() {
+        sweepPool.shutdownNow();
     }
 
     /** openapi {@code MatchClock} — MatchDetail 에 실리는 시계 블록. */
@@ -161,14 +175,21 @@ public class MatchClockService {
         log.warn("clock advance chain 상한 도달 — match {} (설정 오류 의심)", matchId);
     }
 
+    /**
+     * 만료 판정 — 경계 <b>동치도 만료</b>다(`now == phaseEndsAt` 이면 그 단계는 끝났다).
+     * 두 값 모두 {@link #format} 의 고정 폭 표기라 문자열 비교 = 시각 비교다(클래스 주석 참고).
+     */
+    public static boolean isDue(String now, String phaseEndsAt) {
+        return phaseEndsAt != null && now.compareTo(phaseEndsAt) >= 0;
+    }
+
     /** @return 전이가 1회 일어났으면 true. */
     private boolean advanceOnce(String matchId, boolean allowHeavy) {
         ClockRow row = clockRow(matchId).orElse(null);
         if (row == null || row.phaseEndsAt() == null) {
             return false; // 시계 미적용(레거시·롤백) 또는 생성/종료 단계
         }
-        String now = nowText();
-        if (now.compareTo(row.phaseEndsAt()) < 0) {
+        if (!isDue(nowText(), row.phaseEndsAt())) {
             return false; // 아직 창 안
         }
 
@@ -234,12 +255,28 @@ public class MatchClockService {
                 .params(halftimeCandidate, now)
                 .query(String.class)
                 .list();
+        // 무거운 전이(후반 시작 = 동기 엔진 RPC)가 하나 끼면 순차 처리로는 그 시간만큼 **다른 모든 매치의
+        // 시계가 멈춘다**(독립검증 major). 매치별로 병렬 실행하되 완료를 기다려 semantics 는 동기로 둔다
+        // (테스트가 sweep() 반환 후 상태를 그대로 단정할 수 있어야 한다).
+        List<java.util.concurrent.Future<?>> pending = new java.util.ArrayList<>(due.size());
         for (String matchId : due) {
+            pending.add(sweepPool.submit(() -> {
+                try {
+                    advanceDue(matchId);
+                } catch (Exception e) {
+                    // 한 매치의 실패가 나머지 매치의 시계를 멈추게 두지 않는다.
+                    log.error("clock advance 실패 — match {}: {}", matchId, e.toString());
+                }
+            }));
+        }
+        for (java.util.concurrent.Future<?> f : pending) {
             try {
-                advanceDue(matchId);
+                f.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
             } catch (Exception e) {
-                // 한 매치의 실패가 나머지 매치의 시계를 멈추게 두지 않는다.
-                log.error("clock advance 실패 — match {}: {}", matchId, e.toString());
+                log.error("clock sweep 작업 실패: {}", e.toString());
             }
         }
         return due.size();
