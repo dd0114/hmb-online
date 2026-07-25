@@ -32,7 +32,9 @@ class FlywayMigrationTest {
             "team_presets", "player_relations", "team_morale",
             "trade_slots", "trade_log", "league_seasons", "league_fixtures",
             // V5 p3 admin (1) — V4 는 컬럼 추가만이라 테이블 목록 불변
-            "admin_audit"
+            "admin_audit",
+            // V8 growth (1) — #179 성장 정산 멱등. V6/V7 은 컬럼·인덱스 추가만이라 테이블 목록 불변
+            "growth_applied"
     );
 
     @Test
