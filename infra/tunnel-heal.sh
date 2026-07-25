@@ -70,7 +70,16 @@ current_url(){ grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2
 probe(){
   local url="$1" host ip_r ip res code
   host="${url#https://}"; host="${host%%/*}"
-  if ! ip_r=$(resolve_ip "$host"); then printf 'dns 해석기(%s) 전부 실패' "$RESOLVERS"; return 1; fi
+  if ! ip_r=$(resolve_ip "$host"); then
+    # 해석기가 전부 빈손이어도 **터널이 죽었다고 단정하지 않는다**: 실측에서 dig 4개가 모두
+    # 빈손인 순간에도 브라우저는 정상 왕복했다(해석기 일시 장애/레이트리밋). curl 자체 해석으로
+    # 한 번 더 확인하고, 그것까지 실패해야 사망으로 본다. (없으면 멀쩡한 터널을 죽이게 된다.)
+    code=$(curl -s -o /dev/null -w '%{http_code}' -m "$PROBE_TIMEOUT" "https://$host/internal/health" 2>/dev/null)
+    case "$code" in
+      200|401|403|404) printf 'ok http=%s via=curl-direct(해석기 전멸)' "$code"; return 0;;
+      *) printf 'dns 해석기(%s) 전부 실패 + curl 직결 http=%s' "$RESOLVERS" "${code:-000}"; return 1;;
+    esac
+  fi
   ip="${ip_r%% *}"; res="${ip_r##* }"
   code=$(curl -s -o /dev/null -w '%{http_code}' -m "$PROBE_TIMEOUT" \
          --resolve "$host:443:$ip" "https://$host/internal/health" 2>/dev/null)
@@ -88,10 +97,42 @@ backend_alive(){
   case "$code" in 200|401|403|404) return 0;; *) return 1;; esac
 }
 
+# 상한은 **시도** 기준으로 센다. 성공만 세면 "매번 실패하는 치유" 가 상한에 안 걸려 무한
+# 재기동으로 번진다(실측: 전파가 3연속 실패하자 매 틱 새 터널을 만들어 URL 이 4번 바뀌었다).
 heals_last_hour(){
   local cutoff; cutoff=$(( $(now) - 3600 ))
   [ -f "$HEALS_FILE" ] || { echo 0; return; }
   awk -F'\t' -v c="$cutoff" '$1 >= c' "$HEALS_FILE" | wc -l | tr -d ' '
+}
+
+# Pages 가 현재 서빙 중인 백엔드 주소(실패하면 빈 문자열).
+pages_backend(){
+  curl -fsS -m 10 -H 'Cache-Control: no-cache' \
+    "https://${PAGES_PROJECT:-hmb-online}.pages.dev/config.json?t=$(now)" 2>/dev/null \
+    | sed -n 's/.*"apiBase" *: *"\([^"]*\)".*/\1/p' | head -1
+}
+
+# 터널은 멀쩡한데 web 만 옛 주소를 보고 있는 경우 = **터널을 건드릴 이유가 없다**.
+# config 만 다시 올린다(수동 재기동·전파 실패 후 복구가 여기로 흡수된다).
+publish_only(){
+  local url="$1"
+  [ -x "$PUBLISH" ] || { record PUBLISH_FAIL "스크립트 없음: $PUBLISH"; return 1; }
+  if ! try_lock; then say "· 다른 배포/치유 진행 중 — 전파 보류"; return 0; fi
+  say "▶ 터널은 정상인데 web 이 다른 주소를 본다 → config 만 재전파"
+  if HMB_LOCK_HELD=1 HMB_PUBLISH_SOURCE=heal-publish-only "$PUBLISH" "$url" >> "$HEAL_LOG.publish" 2>&1; then
+    record PUBLISH_ONLY "url=$url"; say "✓ 전파 완료 — web → $url"; return 0
+  fi
+  record PUBLISH_FAIL "url=$url (로그: $HEAL_LOG.publish)"; say "✗ 전파 실패 — $HEAL_LOG.publish"; return 1
+}
+
+# 방금 띄운 터널은 CF 엣지에 퍼지는 데 시간이 걸린다 — 갓 만든 터널을 죽이지 않기 위한 유예.
+tunnel_age(){
+  local pid; pid=$(cat "$TUNNEL_PID" 2>/dev/null)
+  [ -n "$pid" ] || { echo 99999; return; }
+  local et; et=$(ps -p "$pid" -o etime= 2>/dev/null | tr -d ' ')
+  [ -z "$et" ] && { echo 99999; return; }
+  # etime: [[dd-]hh:]mm:ss
+  echo "$et" | awk -F'[:-]' '{ if (NF==2) print $1*60+$2; else if (NF==3) print $1*3600+$2*60+$3; else print 99999 }'
 }
 
 # ── 락 (사람의 수동 배포와 겹치지 않게) ────────────────────────────────────────────
@@ -131,6 +172,7 @@ heal(){
 
   old_url=$(current_url)
   record HEAL_START "reason=$reason old=${old_url:-<없음>}"
+  printf '%s\t%s\tattempt\n' "$(now)" "$(iso)" >> "$HEALS_FILE"   # 상한은 시도 기준(위 주석)
   say "▶ 치유 시작 (사유: $reason, 기존 URL: ${old_url:-없음})"
 
   # 1) 기존 터널 종료 — **PID 로만**, 그리고 그 PID 가 정말 cloudflared 인지 확인하고서.
@@ -177,7 +219,6 @@ heal(){
     say "✗ 전파 스크립트가 없다: $PUBLISH (install-tunnel-heal.sh 재실행 필요)"; return 1
   fi
   if HMB_LOCK_HELD=1 HMB_PUBLISH_SOURCE=heal "$PUBLISH" "$new_url" >> "$HEAL_LOG.publish" 2>&1; then
-    printf '%s\t%s\t%s\n' "$(now)" "$(iso)" "$new_url" >> "$HEALS_FILE"
     record HEAL_OK "old=${old_url:-<없음>} new=$new_url"
     say "✓ 치유 완료 — web 이 $new_url 을 가리킨다"
     return 0
@@ -217,10 +258,26 @@ case "$MODE" in
     fi
     if out=$(probe "$url"); then
       say "✓ 터널 정상 — $url ($out)"
+      # 터널이 살아있어도 web 이 옛 주소를 보고 있으면 테스터는 여전히 죽어 있다.
+      # (수동 터널 재기동 후 재배포를 잊었거나, 직전 전파가 실패한 경우 — 실측으로 나온 상태다.)
+      served=$(pages_backend)
+      # 방금 전파한 직후엔 엣지마다 반영 시점이 달라 옛 값이 잠깐 보인다(실측: HEAL_OK 30초 뒤
+      # 불필요한 재전파가 한 번 더 돌았다). 쿨다운 동안은 불일치를 무시한다.
+      last_pub=$(awk -F'\t' '$3=="HEAL_OK"||$3=="PUBLISH_ONLY"{t=$1} END{print t+0}' "$HEAL_LOG" 2>/dev/null)
+      if [ -n "$served" ] && [ "$served" != "$url" ] \
+         && [ $(( $(now) - ${last_pub:-0} )) -ge "${HMB_PUBLISH_COOLDOWN:-180}" ]; then
+        say "! web 은 $served 을 본다 (현재 터널 $url)"
+        [ "$MODE" = "--check" ] && { say "  (--check 모드: 아무것도 하지 않음)"; exit 1; }
+        publish_only "$url"; exit $?
+      fi
       exit 0
     fi
     say "! 1차 실패 — $url ($out)"
     [ "$MODE" = "--check" ] && { say "  (--check 모드: 아무것도 하지 않음)"; exit 1; }
+    age=$(tunnel_age)
+    if [ "$age" -lt "${HMB_TUNNEL_GRACE:-90}" ]; then
+      say "· 터널이 뜬 지 ${age}s 밖에 안 됐다 — 엣지 전파 유예(치유 보류)"; exit 0
+    fi
     sleep "$CONFIRM_SLEEP"
     if out2=$(probe "$url"); then
       say "✓ 재확인에서 회복 — $url ($out2). 일시적 blip 으로 판단, 치유 안 함"

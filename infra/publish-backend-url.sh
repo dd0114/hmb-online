@@ -83,8 +83,40 @@ printf '{\n  "apiBase": "%s",\n  "updatedAt": "%s",\n  "source": "%s"\n}\n' \
 log "config.json: ${PREV:-<없음>} → $BACKEND"
 
 # ── 3) Pages 재업로드 (빌드 없음 — 바뀐 파일만 올라간다) ────────────────────────────
-log "wrangler pages deploy $CACHE"
-npx -y wrangler pages deploy "$CACHE" --project-name="$PROJECT" --branch=main --commit-dirty=true >/dev/null
+# ⚠️ wrangler 는 **cwd 아래에 .wrangler/tmp 를 만든다**. launchd 는 cwd 가 `/` 라서 그대로 두면
+#    `Missing file or directory: /.wrangler/tmp` 로 매번 실패한다(실측 — 워치독 1차 실행에서 3연속
+#    실패했다). 그래서 쓰기 가능한 작업 디렉토리로 옮기고 나서 실행한다.
+# 작업 디렉토리는 **$HOME 밖**에 둔다: wrangler 는 cwd 에서 위로 올라가며 설정을 찾다가 $HOME 의
+# 보호 디렉토리(.Trash 등)를 건드린다(실측 경고). launchd 컨텍스트에선 그 접근이 TCC 에 막혀
+# 조용히 매달릴 수 있다 — 애초에 건드릴 게 없는 곳에서 돌린다.
+WORKDIR="${HMB_WORK_DIR:-/tmp/hmb-wrangler-work}"
+mkdir -p "$WORKDIR"
+cd "$WORKDIR"
+export WRANGLER_SEND_METRICS=false   # 원격 메트릭 POST 를 임계 경로에서 제거(행 지점 직전에 찍힘)
+
+# `npx -y wrangler` 는 매 실행마다 레지스트리를 확인해 **수 분** 걸릴 수 있다(실측 ~4분:
+# 자가복구 MTTR 을 통째로 잡아먹는다). 설치된 바이너리가 있으면 그걸 쓴다.
+WRANGLER="${HMB_WRANGLER:-$(command -v wrangler 2>/dev/null || true)}"
+log "wrangler pages deploy $CACHE  (${WRANGLER:-npx -y wrangler})"
+
+# ⏱ 반드시 상한을 건다. 실측: launchd 컨텍스트에서 wrangler 가 첫 CF API 요청에 **6분 넘게 매달렸다**
+#    (같은 명령이 셸에선 2초). 상한이 없으면 워치독 한 틱이 영원히 안 끝나 자가복구가 통째로 멈춘다.
+#    실패로 처리하면 다음 틱이 다시 시도하고, 시도 상한이 무한 반복을 막는다.
+TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
+run_deploy(){
+  if [ -n "$WRANGLER" ]; then set -- "$WRANGLER"; else set -- npx -y wrangler; fi
+  if [ -n "$TIMEOUT_BIN" ]; then
+    "$TIMEOUT_BIN" -k 10 "${HMB_DEPLOY_TIMEOUT:-150}" "$@" pages deploy "$CACHE" \
+      --project-name="$PROJECT" --branch=main --commit-dirty=true >/dev/null
+  else
+    "$@" pages deploy "$CACHE" --project-name="$PROJECT" --branch=main --commit-dirty=true >/dev/null
+  fi
+}
+if ! run_deploy; then
+  rc=$?
+  [ "$rc" = 124 ] && echo "[publish] ✗ wrangler 시간초과(${HMB_DEPLOY_TIMEOUT:-150}s) — 다음 틱에서 재시도된다" >&2
+  exit "$rc"
+fi
 
 # ── 4) 검증 — Pages 가 실제로 새 주소를 서빙하는가 (전파에 몇 초 걸린다) ────────────
 for i in $(seq 1 10); do

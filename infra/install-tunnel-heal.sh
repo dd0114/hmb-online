@@ -45,6 +45,15 @@ install_one infra/publish-backend-url.sh  "$BIN/hmb-publish-backend-url.sh"
 
 # launchd 는 최소 환경으로 뜬다 — node(nvm)·homebrew 경로를 명시하지 않으면 npx/cloudflared 를 못 찾는다.
 NODE_BIN=$(dirname "$(command -v node)")
+WORKDIR="${HMB_WORK_DIR:-/tmp/hmb-wrangler-work}"
+mkdir -p "$WORKDIR"
+
+# wrangler 선설치: `npx -y wrangler` 는 실행마다 레지스트리 확인으로 **수 분**이 걸릴 수 있다
+# (실측 ~4분 — 자가복구 MTTR 을 통째로 잡아먹었다). 전역 설치본이 있으면 전파가 수십 초로 떨어진다.
+if ! command -v wrangler >/dev/null 2>&1 && [ "${HMB_SKIP_WRANGLER_INSTALL:-0}" != "1" ]; then
+  echo "[install] wrangler 전역 설치 (자가복구 전파 속도용 — 건너뛰려면 HMB_SKIP_WRANGLER_INSTALL=1)"
+  npm i -g wrangler >/dev/null 2>&1 || echo "[install] ⚠️ 전역 설치 실패 — npx 폴백으로 동작하나 느리다"
+fi
 cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -58,6 +67,13 @@ cat > "$PLIST" <<EOF
   </array>
   <key>StartInterval</key><integer>$INTERVAL</integer>
   <key>RunAtLoad</key><true/>
+  <!-- ⚠️ 이게 없으면 워치독이 띄운 cloudflared 를 **launchd 가 회수한다**(잡이 끝나면 같은 프로세스
+       그룹을 정리하는 게 기본값). 실측: 치유가 새 터널을 만들자마자 죽어 매 틱 새 터널을 만드는
+       스래시 루프가 됐다. 자가복구가 성립하려면 반드시 true. -->
+  <key>AbandonProcessGroup</key><true/>
+  <!-- wrangler 는 cwd 밑에 .wrangler/tmp 를 만든다. launchd 기본 cwd 는 루트라 쓰기 실패한다.
+       (이 heredoc 은 변수 확장용이라 따옴표가 없다 — 백틱·달러를 주석에 쓰면 실행된다.) -->
+  <key>WorkingDirectory</key><string>$WORKDIR</string>
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>$NODE_BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>

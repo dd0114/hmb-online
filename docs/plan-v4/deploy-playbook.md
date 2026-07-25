@@ -67,16 +67,52 @@ bash infra/status.sh
 
 ## 3. 터널 URL 이 바뀌었을 때 (quick tunnel 재시작 시)
 
+> **보통은 아무것도 안 해도 된다 — 워치독이 자동으로 복구한다(§3.5, #183).** 아래는 수동 개입용.
+
 quick tunnel 은 재시작마다 URL 이 바뀐다. web 이 옛 주소를 가리키면 왕복이 깨진다. 흡수법:
 
 ```bash
-# 터널까지 새로 띄우고 web 재배포까지 한 번에
-bash infra/start-tunnel.sh
+# 터널이 살아있고 URL 만 새로 알릴 때 — **가장 빠름(≈10초, 빌드 없음)**
+bash infra/publish-backend-url.sh https://<새-URL>.trycloudflare.com
 
-# 터널은 살아있고 URL만 새로 알 때
+# 코드까지 새로 배포해야 할 때 (web 변경 반영)
 bash infra/deploy-web.sh https://<새-URL>.trycloudflare.com
+
+# 터널까지 새로 띄우고 재배포까지 한 번에
+bash infra/start-tunnel.sh
 ```
 `WEB_ORIGINS`(백엔드 CORS)는 Pages URL(고정)이라 **안 바뀐다** → java 재시작 불필요.
+
+---
+
+## 3.5 자가복구 워치독 (터널이 죽어도 사람이 안 가도 된다 — #183)
+
+quick tunnel 은 **유휴 중에도 죽는다**. 그때마다 URL 이 바뀌는데 web 은 부팅 시
+`https://hmb-online.pages.dev/config.json` 에서 백엔드 주소를 읽으므로(런타임 config),
+워치독이 **터널을 되살리고 그 파일만 갱신**하면 재빌드·사람 개입 없이 복구된다.
+
+```bash
+bash infra/install-tunnel-heal.sh              # 설치/갱신 (launchd, 60초마다, Claude 호출 0)
+bash infra/install-tunnel-heal.sh --status     # 등록 상태 + 최근 이벤트
+bash infra/install-tunnel-heal.sh --uninstall  # 해제
+bash infra/tunnel-heal.sh --check              # 지금 상태만 진단(아무것도 안 바꿈)
+bash infra/tunnel-heal.sh --selftest           # 도구·해석기·자격증명 사전점검
+tail -f ~/.local/state/hmb/tunnel-heal.log     # 이벤트(HEAL_OK / PUBLISH_ONLY / DEGRADED …)
+```
+
+| 이벤트 | 뜻 | 사람이 할 일 |
+|---|---|---|
+| `HEAL_OK` | 터널 죽음 → 재기동 → web 전파까지 완료 | 없음 |
+| `PUBLISH_ONLY` | 터널은 멀쩡한데 web 만 옛 주소 → config 만 재전파 | 없음 |
+| `BACKEND_DOWN` | 로컬 java 가 죽어 터널 재기동을 **보류** | `cd infra && docker compose up -d java runner` |
+| `DEGRADED` | 1시간에 3번 넘게 치유 시도 → 백오프 | 반복 사망 원인 확인(로그·네트워크) |
+| `HEAL_FAIL` | 재기동은 됐는데 전파 실패 | `~/.local/state/hmb/tunnel-heal.log.publish` 확인 |
+
+**실측(2026-07-26)**: 터널 강제 kill → **98초**만에 사람 개입 0 으로 복구. 프로세스는 살아있고
+터널만 죽은 경우(2026-07-22 실장애 패턴)도 **53초**. 자세한 근거·설계 = `tunnel-resilience.md`.
+
+**주의**: 배포 스크립트와 워치독은 같은 락(`~/.local/state/hmb/deploy.lock`)으로 직렬화된다.
+수동 배포 중 "워치독/다른 배포가 진행 중" 이 뜨면 잠깐 기다리면 된다.
 
 ---
 
