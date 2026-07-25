@@ -1,7 +1,8 @@
-# 성장·과금 계획 (천장+속도 모델) + 4-세그먼트 밸런스 시나리오
+# 성장·과금 — 설계 근거 (천장+속도 모델) + 4-세그먼트 밸런스 시나리오
 
-> SoT = 이슈 **#172** → 성장 에픽으로 승계. 세션 = hmb:research. owned-glob = `docs/research/**`. **코드 변경 0 — 계획·설계.**
-> 작성 2026-07-25. **hero 확정: 과금 = "천장 + 속도" 모델.** 이 문서 = 그 계획 + 4개 유저군 대전 시나리오 + 밸런스 검증 계획 + epic-flow 분할.
+> ⚠️ **SoT = GitHub 에픽 #179** (epic-flow). **이 md 는 SoT 아님 — 조사→설계 상세 근거(reference)일 뿐.** 결정·계획·AC·진행은 #179 및 산하 이슈에 기록한다.
+> 세션 = hmb:research. owned-glob = `docs/research/**`. **코드 변경 0.** 작성 2026-07-25.
+> 이 문서 = 4개 유저군 대전 시나리오 상술 + 밸런스 검증 근거 + 곱셈 파워 모델 도출. #179 가 이걸 참조.
 > 선행: [`gacha-growth-dual-track.md`](./gacha-growth-dual-track.md)(이중 트랙·우마무스메) · [`fm-youth-growth.md`](./fm-youth-growth.md) · [`../plan-v2/PRD-cards.md`](../plan-v2/PRD-cards.md)(가챠 강화 = 안 A).
 
 ---
