@@ -756,7 +756,9 @@ components:
         id: { type: string }
         state:
           type: string
-          enum: [BRIEFING, GEN1, H1_BREAK, GEN2, FINISHED, FAILED]
+          # P4-E2(#170): V1 MatchState 와 동일하게 확장 유지(FIRST_HALF/HALFTIME/SECOND_HALF 추가,
+          # H1_BREAK 은 레거시 전용). 두 파일이 갈라지면 web 타입이 조용히 틀어진다.
+          enum: [BRIEFING, GEN1, FIRST_HALF, HALFTIME, SECOND_HALF, GEN2, FINISHED, FAILED, H1_BREAK]
         createdAt:
           type: string
           format: date-time

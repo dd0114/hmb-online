@@ -21,6 +21,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 자체 로그인 회원가입(P3-D2, additive) — id(=nickname)+비번. 성공 시 로그인과 동일한
+         *     세션 토큰을 즉시 발급하고 신규 유저 온보딩(지갑+스타터 팩+원장)을 태운다.
+         *     ⚠️ 비번 평문 저장은 내부 테스터 배포용 임시 목업 — 해시 전환은 백로그.
+         */
+        post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me": {
         parameters: {
             query?: never;
@@ -214,7 +235,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 팀/선수 프롬프트 입력(phase=pre|halftime) — 같은 대상 재입력은 UPSERT */
+        /**
+         * 팀/선수 프롬프트 입력(phase=pre|halftime) — 같은 대상 재입력은 UPSERT
+         * @description 허용 상태(그 외 409 INVALID_STATE): phase=`pre` → BRIEFING /
+         *     phase=`halftime` → **FIRST_HALF 또는 HALFTIME**(P4-E2 #170 — 전반을 보면서 후반 지시를
+         *     미리 써두고, 감독시간에 마저 고칠 수 있다).
+         */
         post: operations["submitMatchPrompt"];
         delete?: never;
         options?: never;
@@ -251,7 +277,14 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** half별 MatchLog(재생용) — AC-M3, zod MatchLog 스키마와 계약 */
+        /**
+         * half별 MatchLog(재생용) — AC-M3, zod MatchLog 스키마와 계약
+         * @description 허용 상태(그 외 409): half=1 → FIRST_HALF·HALFTIME·GEN2·SECOND_HALF·FINISHED /
+         *     half=2 → **SECOND_HALF·FINISHED**.
+         *
+         *     로그는 해당 하프 **전체**를 내려준다. 라이브 재생 중 "앞서가기 금지"는 `MatchDetail.clock`
+         *     기반 **클라 강제**다(P4-E2 R3 — 서버 절단은 PvP 백로그, 루트 §7 PvP-ready 경계와 정합).
+         */
         get: operations["getHalfLog"];
         put?: never;
         post?: never;
@@ -272,7 +305,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 하프타임 교체 저장(≤3, 벤치→선발만, resume 시 반영) — §5.4, AC-M4 */
+        /**
+         * 하프타임 교체 저장(≤3, 벤치→선발만, resume 시 반영) — §5.4, AC-M4
+         * @description 허용 상태(그 외 409): **FIRST_HALF·HALFTIME**(P4-E2 #170 — 전반 중 미리 짜두고 감독시간에 확정).
+         *     상태 전이는 없다(후반 시뮬에서 반영).
+         */
         post: operations["submitHalftimeSubs"];
         delete?: never;
         options?: never;
@@ -291,7 +328,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 후반 시작 — half2 AI 잡 enqueue(전반 요약 컨텍스트 포함), H1_BREAK → GEN2 */
+        /**
+         * 후반 시작 — half2 AI 잡 enqueue(전반 요약 컨텍스트 포함), HALFTIME → GEN2
+         * @description 허용 상태 = **HALFTIME 만**. FIRST_HALF 에서 호출하면 409 — 후반 앞당기기는 금지다(P4-D1).
+         *
+         *     감독시간(`clock.phaseEndsAt`)이 만료되면 **서버가 같은 전이를 자동 수행**한다
+         *     (`hmb.match.clock.auto-resume-on-expiry`). 이때 하프타임 프롬프트가 없으면 **전반 인풋이
+         *     그대로 승계**된다(AI 콜 0 — AC-W2-2).
+         */
         post: operations["resumeMatch"];
         delete?: never;
         options?: never;
@@ -391,6 +435,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 유저 목록·닉네임 검색·페이징(운영). 비밀번호는 어떤 필드로도 반환되지 않는다. */
+        get: operations["adminListUsers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        /** 유저 상태(지갑·보유 선수·활성 덱/프리셋 요약·전적) */
+        get: operations["adminGetUser"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}/points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 포인트 지급(delta>0)/차감(delta<0) — AC-C1. 지갑·point_ledger(reason='admin_grant')·
+         *     admin_audit 세 곳이 **하나의 트랜잭션**으로 갱신된다. 음수 잔액은 허용되지 않는다.
+         */
+        post: operations["adminGrantPoints"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -400,7 +502,7 @@ export interface components {
          *     (openapi.yaml이 계약 SoT).
          * @enum {string}
          */
-        ErrorCode: "VALIDATION_ERROR" | "UNAUTHORIZED" | "NOT_FOUND" | "DECK_INVALID" | "INSUFFICIENT_POINTS" | "INVALID_STATE" | "SUBSTITUTION_INVALID" | "AI_JOB_FAILED" | "INTERNAL_ERROR";
+        ErrorCode: "VALIDATION_ERROR" | "UNAUTHORIZED" | "NOT_FOUND" | "DECK_INVALID" | "INSUFFICIENT_POINTS" | "INVALID_STATE" | "SUBSTITUTION_INVALID" | "AI_JOB_FAILED" | "INTERNAL_ERROR" | "BAD_CREDENTIALS" | "DUPLICATE_NICKNAME" | "FORBIDDEN" | "CONFLICT";
         /**
          * @example {
          *       "code": "DECK_INVALID",
@@ -420,16 +522,35 @@ export interface components {
         };
         LoginRequest: {
             /**
-             * @description Phase2 additive — 생략 시 guest (server 9c51446 구현 정합)
+             * @description Phase2 additive — 생략 시 guest (server 9c51446 구현 정합).
+             *     P3 additive: local = 자체 로그인(비번 필요, P3-D2).
              * @enum {string}
              */
-            provider?: "guest" | "mock:google" | "mock:apple";
+            provider?: "guest" | "mock:google" | "mock:apple" | "local";
+            /** @description provider=local 에서는 이 닉네임이 곧 로그인 id 다(별도 식별자 없음) */
             nickname: string;
+            /**
+             * @description P3 additive(옵션) — provider=local 일 때만 사용한다. 다른 provider 는 무시.
+             *     ⚠️ 평문 저장 목업(P3-D2, 해시 전환 백로그). 응답·로그 어디에도 반환되지 않는다(AC-A2).
+             */
+            password?: string;
+        };
+        /** @description 자체 로그인 회원가입 바디(P3 §A). nickname = 로그인 id(users.nickname UNIQUE 재사용). */
+        RegisterRequest: {
+            nickname: string;
+            /** @description 길이 규칙은 서버 config(hmb.auth.local.password-*-length). 평문 목업(P3-D2). */
+            password: string;
         };
         UserRef: {
             /** @description ULID */
             id: string;
             nickname: string;
+            /**
+             * @description P3 §C additive(선택 필드 — required 불변). GET /api/me 응답에만 담긴다.
+             *     web 이 /admin 라우트를 **표시**할지 정하는 힌트일 뿐 권한 판정이 아니다 —
+             *     실제 접근 차단은 서버의 /api/admin/** 게이트가 한다.
+             */
+            isAdmin?: boolean;
         };
         LoginResponse: {
             /** @description 불투명 세션 토큰(Bearer로 사용) */
@@ -452,6 +573,8 @@ export interface components {
             records: components["schemas"]["MatchRecordSummary"];
         };
         MatchListItem: {
+            /** @description P2 additive — 유저 관점 오리엔트 키(연습=true, 리그 어웨이=false). scoreHome/Away는 픽스처 관점 유지 */
+            userWasHome?: boolean;
             id: string;
             opponentName: string;
             scoreHome: number | null;
@@ -545,10 +668,60 @@ export interface components {
             label?: string | null;
         };
         /**
-         * @description LLD §5.1 상태머신
+         * @description LLD §5.1 상태머신 + **P4-E2(#170) 확장** — docs/plan-v5/LLD-e2-flow-clock.md §2.
+         *
+         *     BRIEFING → GEN1 → **FIRST_HALF**(전반 라이브 재생 창) → **HALFTIME**(감독시간 60초)
+         *     → GEN2 → **SECOND_HALF** → FINISHED. 라이브 단계 전이는 **서버 시계가 소유**한다
+         *     (화면을 안 봐도 진행 — P4-D1/D2).
+         *
+         *     `H1_BREAK` 은 **레거시 전용**(P4 이전 배포본의 진행 중 매치를 V8 마이그레이션이 HALFTIME 으로
+         *     옮긴다). 신규 매치는 이 값이 되지 않는다.
          * @enum {string}
          */
-        MatchState: "BRIEFING" | "GEN1" | "H1_BREAK" | "GEN2" | "FINISHED" | "FAILED";
+        MatchState: "BRIEFING" | "GEN1" | "FIRST_HALF" | "HALFTIME" | "SECOND_HALF" | "GEN2" | "FINISHED" | "FAILED" | "H1_BREAK";
+        /**
+         * @description **서버 권위 시계**(P4-D1, #170). 서버는 "지금 어느 단계이고 그 단계가 언제 시작해 언제
+         *     끝나는가"(=창)만 소유하고, 재생 위치(틱)는 클라가 그 창 안에서 계산한다
+         *     (`packages/shared/src/match-clock.ts` 가 매핑의 단일 SoT).
+         *
+         *     `MatchDetail.clock = null` 인 경우: 라이브 단계가 아님(BRIEFING/GEN*\/FINISHED/FAILED),
+         *     또는 `hmb.match.clock.enabled=false`(롤백), 또는 레거시 매치.
+         */
+        MatchClock: {
+            /**
+             * @description 현재 단계(state 파생 — SoT 는 state).
+             * @enum {string}
+             */
+            phase: "FIRST_HALF" | "HALFTIME" | "SECOND_HALF";
+            /**
+             * Format: date-time
+             * @description 전반이 라이브로 열린 시각(AC-W3-3). 전반 로그 저장 시점이며 킥오프 요청 시점이 아니다.
+             */
+            kickoffAt?: string | null;
+            /**
+             * Format: date-time
+             * @description 현재 단계 시작. null = 시계 미적용(레거시·롤백).
+             */
+            phaseStartAt?: string | null;
+            /**
+             * Format: date-time
+             * @description 현재 단계 종료 예정. HALFTIME 이면 **감독시간 deadline**.
+             */
+            phaseEndsAt?: string | null;
+            /**
+             * Format: date-time
+             * @description 응답 생성 시각 — 클라 시계 스큐 보정 기준.
+             */
+            serverNow: string;
+            /** @description 하프당 실시간 재생 길이(config `hmb.match.clock.half-real-ms`). 압축비는 이 값에서 파생. */
+            halfRealMs: number;
+            /** @description 감독시간 길이(config, P4-D2 = 60000). */
+            halftimeMs: number;
+            /** @description 라이브 앞서가기 금지(config). 뒤로 스크럽은 항상 자유. */
+            seekForwardBlocked: boolean;
+            /** @description 지연·스큐 허용 오차(config). */
+            seekGraceMs: number;
+        };
         OpponentAnalysisPlayer: {
             name: string;
             position: components["schemas"]["Position"];
@@ -561,8 +734,10 @@ export interface components {
             deck: components["schemas"]["OpponentAnalysisPlayer"][];
         };
         /**
-         * @description state에 따라 일부 필드만 채워진다: BRIEFING → opponent 포함. H1_BREAK 이후 →
+         * @description state에 따라 일부 필드만 채워진다: BRIEFING → opponent 포함. HALFTIME(구 H1_BREAK) 이후 →
          *     scoreH1Home/Away. FINISHED → scoreHome/Away+result. FAILED → failReason.
+         *     라이브 단계(FIRST_HALF/HALFTIME/SECOND_HALF) → clock(P4-E2 #170).
+         *     후반 스코어는 **FINISHED 전까지 노출하지 않는다**(재생 중 스포일러 금지).
          */
         MatchDetail: {
             id: string;
@@ -579,6 +754,8 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             finishedAt?: string | null;
+            /** @description 서버 권위 시계(P4-E2 #170, additive). 라이브 단계가 아니거나 시계 비활성이면 null. */
+            clock?: components["schemas"]["MatchClock"] | null;
         };
         CreateMatchRequest: {
             /** @description 생략 시 랜덤 봇(BOT_ATK/BOT_DEF/BOT_BAL 중, PRD §3.4) */
@@ -747,6 +924,91 @@ export interface components {
             /** @description status='leased' 개수 */
             leasedCount: number;
         };
+        /**
+         * @description 운영 목록/상세의 유저 요약. **비밀번호 필드는 존재하지 않는다**(AC-A2 연장) —
+         *     서버 조회 SQL 도 users.password 를 나열하지 않는다.
+         */
+        AdminUserRow: {
+            id: string;
+            nickname: string;
+            /** @description guest / mock:google / mock:apple / local */
+            authProvider: string;
+            isAdmin: boolean;
+            /**
+             * Format: int64
+             * @description 지갑 잔액
+             */
+            points: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        AdminUserPage: {
+            items: components["schemas"]["AdminUserRow"][];
+            /**
+             * Format: int64
+             * @description 검색 조건에 맞는 전체 건수(페이지 크기 아님)
+             */
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        AdminUserDetail: {
+            user: components["schemas"]["AdminUserRow"];
+            players: {
+                /**
+                 * Format: int64
+                 * @description 보유 선수 종류 수
+                 */
+                distinct: number;
+                /**
+                 * Format: int64
+                 * @description 중복 포함 총 보유 수
+                 */
+                total: number;
+            };
+            /** @description 활성 덱 요약(없으면 null) */
+            deck?: {
+                id: string;
+                name: string;
+                formation: string;
+                starters: number;
+                bench: number;
+                /** Format: date-time */
+                updatedAt: string;
+            } | null;
+            presets: {
+                /** Format: int64 */
+                promptPresets: number;
+                /** Format: int64 */
+                teamPresets: number;
+            };
+            records: components["schemas"]["MatchRecordSummary"];
+        };
+        AdminGrantPointsRequest: {
+            /**
+             * Format: int64
+             * @description 0 이 아닌 정수. 양수=지급, 음수=차감(차감 후 잔액이 음수면 400).
+             */
+            delta: number;
+            /** @description 운영 사유(감사 로그에 그대로 기록된다). 공백만이면 400. */
+            reason: string;
+        };
+        AdminGrantPointsResult: {
+            userId: string;
+            /** Format: int64 */
+            delta: number;
+            /** @description false = 같은 멱등키의 재전송이라 아무것도 바뀌지 않았다. */
+            applied: boolean;
+            /**
+             * Format: int64
+             * @description 처리 후 지갑 잔액(재전송이면 현재 잔액).
+             */
+            balance: number;
+            /** @description 실제 사용된 멱등키(헤더 미제공 시 서버가 채번한 값). */
+            idempotencyKey: string;
+            /** @description 기록된 admin_audit 행 ID(재전송이면 null). */
+            auditId?: string | null;
+        };
     };
     responses: {
         /** @description 인증 실패(토큰 없음/만료/무효). code=UNAUTHORIZED */
@@ -769,6 +1031,24 @@ export interface components {
         };
         /** @description 입력 검증 실패. code=VALIDATION_ERROR */
         ValidationError: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 이미 사용 중인 닉네임(= 자체 로그인 id). code=DUPLICATE_NICKNAME. P3 §A(AC-A1). */
+        DuplicateNickname: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ApiError"];
+            };
+        };
+        /** @description 인증은 됐으나 권한이 없음(admin 전용 API 에 일반 유저 토큰). code=FORBIDDEN. P3 §C(AC-C2). */
+        Forbidden: {
             headers: {
                 [name: string]: unknown;
             };
@@ -818,6 +1098,44 @@ export interface operations {
                 };
             };
             400: components["responses"]["ValidationError"];
+            /**
+             * @description 자체 로그인(provider=local) 인증 실패 — 계정 미존재/비번 불일치/비번 없는 계정.
+             *     code=BAD_CREDENTIALS(계정 존재 여부를 누설하지 않도록 사유를 구분하지 않는다). P3 §A.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    register: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description 가입 성공(isNew=true) — 응답에 비번은 절대 포함되지 않는다(AC-A2) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            409: components["responses"]["DuplicateNickname"];
         };
     };
     getMe: {
@@ -1428,6 +1746,118 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    adminListUsers: {
+        parameters: {
+            query?: {
+                /** @description 닉네임 부분 일치. LIKE 와일드카드(%, _)는 리터럴로 취급된다. */
+                q?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserPage"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminGetUser: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUserDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminGrantPoints: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 선택. 주면 같은 키의 재전송은 **중복 지급되지 않는다**(원장 유니크 인덱스로 보장,
+                 *     재전송 응답은 200 + applied=false). 주지 않으면 서버가 키를 채번하므로 재전송은
+                 *     별개의 지급으로 처리된다 — 운영 UI 는 항상 이 헤더를 보낼 것.
+                 */
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminGrantPointsRequest"];
+            };
+        };
+        responses: {
+            /** @description 적용됨(applied=true) 또는 멱등 재전송(applied=false, 상태 변화 없음) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminGrantPointsResult"];
+                };
+            };
+            /**
+             * @description delta 가 0/누락, reason 누락, 또는 차감 후 잔액이 음수가 되는 경우.
+             *     code=VALIDATION_ERROR 또는 INSUFFICIENT_POINTS.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description 멱등키 충돌(같은 키가 이미 다른 지급에 쓰였다). code=CONFLICT.
+             *     응답 본문에는 내부 SQL·스키마가 포함되지 않는다.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
 }
