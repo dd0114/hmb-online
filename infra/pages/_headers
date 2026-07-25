@@ -24,6 +24,11 @@
 /index.html
   Cache-Control: no-cache
 
+# 런타임 백엔드 주소(#183). 터널이 죽어 URL 이 바뀌면 워치독이 **이 파일만** 갈아끼운다 —
+# 캐시되면 자가복구가 캐시 TTL 만큼 늦어지므로 절대 캐시하지 않는다.
+/config.json
+  Cache-Control: no-store
+
 /viewer-embed.html
   Cache-Control: no-cache
 

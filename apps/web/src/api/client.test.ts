@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
+  __resetRuntimeConfig,
   apiBase,
   apiFetch,
   apiUrl,
@@ -298,6 +299,157 @@ describe("apiFetch", () => {
       );
       expect(handler).not.toHaveBeenCalled();
       expect(getToken()).toBe("still-valid-token");
+    });
+  });
+
+  /* ── 런타임 백엔드 config (에픽 #183 접근 A + E) ──────────────────────────────
+   * quick tunnel URL 은 터널이 죽을 때마다 바뀐다. 빌드타임 인라인만 쓰면 그 순간 배포된 web 이
+   * 죽은 주소를 계속 부른다(테스터 전원 Failed to fetch). 그래서 배포 빌드는
+   * VITE_RUNTIME_CONFIG_URL(=/config.json) 을 켜고, 자가복구 워치독이 그 파일만 갱신하면
+   * 재빌드 없이 web 이 새 주소를 따라간다.
+   *
+   * 여기서 박제하는 계약 3가지:
+   *   (1) 플래그 미설정 = 지금까지와 **완전히 동일**(추가 네트워크 호출 0) — dev·테스트·데모 무회귀
+   *   (2) config 값이 빌드타임 값을 이긴다 / config 를 못 읽으면 빌드타임으로 폴백(앱이 죽지 않는다)
+   *   (3) **자가복구**: 네트워크 도달 실패 시 config 재조회 → 주소가 바뀌었으면 그 주소로 1회 재시도.
+   *       주소가 그대로면 재시도하지 않는다(무한 루프 금지).
+   */
+  describe("런타임 config (#183)", () => {
+    const CONFIG_URL = "/config.json";
+
+    /** config.json 과 API 를 URL 로 분기하는 fetch 목. */
+    function mockRouted(opts: {
+      configApiBase?: string | null; // null = config 조회 실패(404)
+      apiResults?: Array<"ok" | "network-error">;
+    }) {
+      const apiResults = opts.apiResults ?? ["ok"];
+      let apiCall = 0;
+      const fetchMock = vi.fn(async (url: string) => {
+        if (String(url).startsWith(CONFIG_URL)) {
+          if (opts.configApiBase == null) return new Response("nope", { status: 404 });
+          return new Response(JSON.stringify({ apiBase: opts.configApiBase }), { status: 200 });
+        }
+        const outcome = apiResults[Math.min(apiCall++, apiResults.length - 1)];
+        if (outcome === "network-error") throw new TypeError("Failed to fetch");
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+      return fetchMock;
+    }
+
+    const apiCalls = (m: ReturnType<typeof vi.fn>) =>
+      m.mock.calls.map((c) => String(c[0])).filter((u) => !u.startsWith(CONFIG_URL));
+    const configCalls = (m: ReturnType<typeof vi.fn>) =>
+      m.mock.calls.map((c) => String(c[0])).filter((u) => u.startsWith(CONFIG_URL));
+
+    beforeEach(() => {
+      __resetRuntimeConfig();
+    });
+
+    afterEach(() => {
+      vi.unstubAllEnvs();
+      __resetRuntimeConfig();
+    });
+
+    it("플래그 미설정이면 config 를 아예 조회하지 않는다 (dev·데모 무회귀)", async () => {
+      vi.stubEnv("VITE_API_BASE", "https://build-time.example.com");
+      const fetchMock = mockRouted({ configApiBase: "https://runtime.example.com" });
+
+      await apiFetch("/api/me");
+
+      expect(configCalls(fetchMock)).toHaveLength(0);
+      expect(apiCalls(fetchMock)).toEqual(["https://build-time.example.com/api/me"]);
+    });
+
+    it("config 의 apiBase 가 빌드타임 값을 이긴다", async () => {
+      vi.stubEnv("VITE_API_BASE", "https://stale-tunnel.example.com");
+      vi.stubEnv("VITE_RUNTIME_CONFIG_URL", CONFIG_URL);
+      const fetchMock = mockRouted({ configApiBase: "https://fresh-tunnel.example.com" });
+
+      await apiFetch("/api/me");
+
+      expect(apiCalls(fetchMock)).toEqual(["https://fresh-tunnel.example.com/api/me"]);
+      expect(apiBase()).toBe("https://fresh-tunnel.example.com");
+    });
+
+    it("config 를 못 읽으면 빌드타임 값으로 폴백한다 (앱이 죽지 않는다)", async () => {
+      vi.stubEnv("VITE_API_BASE", "https://build-time.example.com");
+      vi.stubEnv("VITE_RUNTIME_CONFIG_URL", CONFIG_URL);
+      const fetchMock = mockRouted({ configApiBase: null });
+
+      await expect(apiFetch("/api/me")).resolves.toEqual({ ok: true });
+      expect(apiCalls(fetchMock)).toEqual(["https://build-time.example.com/api/me"]);
+    });
+
+    it("config 는 한 번만 로드한다 (요청마다 재조회 금지)", async () => {
+      vi.stubEnv("VITE_RUNTIME_CONFIG_URL", CONFIG_URL);
+      const fetchMock = mockRouted({ configApiBase: "https://fresh.example.com" });
+
+      await apiFetch("/api/me");
+      await apiFetch("/api/deck");
+
+      expect(configCalls(fetchMock)).toHaveLength(1);
+    });
+
+    it("네트워크 실패 시 config 를 재조회해 **새 주소로 1회 재시도**한다 (자가복구 핵심)", async () => {
+      // 시나리오: 부팅 시 config = 터널A → 터널A 사망(도달 실패) → 워치독이 config 를 터널B 로 갱신
+      vi.stubEnv("VITE_RUNTIME_CONFIG_URL", CONFIG_URL);
+      let served = "https://tunnel-a.example.com";
+      let apiCall = 0;
+      const fetchMock = vi.fn(async (url: string) => {
+        if (String(url).startsWith(CONFIG_URL)) {
+          return new Response(JSON.stringify({ apiBase: served }), { status: 200 });
+        }
+        apiCall += 1;
+        if (apiCall === 1) {
+          served = "https://tunnel-b.example.com"; // 워치독이 그 사이 갱신
+          throw new TypeError("Failed to fetch");
+        }
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      await expect(apiFetch("/api/me")).resolves.toEqual({ ok: true });
+
+      expect(apiCalls(fetchMock)).toEqual([
+        "https://tunnel-a.example.com/api/me", // 죽은 주소로 1회
+        "https://tunnel-b.example.com/api/me", // 재조회한 새 주소로 재시도 → 성공
+      ]);
+      expect(configCalls(fetchMock)).toHaveLength(2); // 부팅 1 + 실패 후 재조회 1
+    });
+
+    it("config 조회가 매달려도 앱이 멈추지 않는다 (타임아웃 → 빌드타임 폴백)", async () => {
+      vi.stubEnv("VITE_API_BASE", "https://build-time.example.com");
+      vi.stubEnv("VITE_RUNTIME_CONFIG_URL", CONFIG_URL);
+      const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+        if (String(url).startsWith(CONFIG_URL)) {
+          // 영원히 안 끝나는 응답 — abort 시그널로만 풀린다.
+          return await new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          });
+        }
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      });
+      global.fetch = fetchMock as unknown as typeof fetch;
+
+      vi.useFakeTimers();
+      const pending = apiFetch("/api/me");
+      await vi.advanceTimersByTimeAsync(3100);
+      vi.useRealTimers();
+
+      await expect(pending).resolves.toEqual({ ok: true });
+      expect(apiCalls(fetchMock)).toEqual(["https://build-time.example.com/api/me"]);
+    });
+
+    it("재조회해도 주소가 그대로면 재시도하지 않고 원래 에러를 던진다 (무한 루프 금지)", async () => {
+      vi.stubEnv("VITE_RUNTIME_CONFIG_URL", CONFIG_URL);
+      const fetchMock = mockRouted({
+        configApiBase: "https://same.example.com",
+        apiResults: ["network-error"],
+      });
+
+      await expect(apiFetch("/api/me")).rejects.toBeInstanceOf(TypeError);
+      expect(apiCalls(fetchMock)).toHaveLength(1);
     });
   });
 });

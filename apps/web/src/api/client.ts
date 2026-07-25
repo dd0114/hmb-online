@@ -115,8 +115,88 @@ export interface ApiFetchOptions extends Omit<RequestInit, "body"> {
  * 적용 지점은 apiFetch **한 곳**뿐이다 — 호출부는 계속 "/api/..." 를 넘긴다.
  */
 
-/** 끝 슬래시를 제거한 API base. 미설정이면 "". */
+/* ─────────────────── 런타임 백엔드 config (에픽 #183, 접근 A) ───────────────────
+ * 빌드타임 인라인만으로는 **터널이 죽는 순간 앱이 통째로 먹통**이 된다: quick tunnel 은 사망할
+ * 때마다 새 URL 을 받는데(유휴 중에도 죽는다 — deploy-log 2026-07-22·07-25), 배포된 web 은
+ * 죽은 주소를 계속 부른다. 그래서 배포 빌드는 `VITE_RUNTIME_CONFIG_URL`(=/config.json)을 켜고
+ * 현재 백엔드 오리진을 **런타임에** 읽는다. 자가복구 워치독(infra/tunnel-heal.sh)이 터널을
+ * 되살린 뒤 이 파일만 갱신하면 web 은 재빌드 없이 새 주소를 따라간다.
+ *
+ * 플래그가 없으면(dev·테스트·데모 8080) 추가 네트워크 호출 **0** — 기존 동작과 완전히 동일하다.
+ * 빌드타임 `VITE_API_BASE` 는 config 를 못 읽었을 때의 폴백으로 계속 살아 있다.
+ */
+
+interface RuntimeConfig {
+  apiBase?: unknown;
+}
+
+/** config 에서 읽어 온 오리진(런타임 승자). 미로드/실패면 null → 빌드타임 폴백. */
+let runtimeBase: string | null = null;
+/** 부팅 1회 로드 메모이즈 — 요청마다 config 를 다시 읽지 않는다. */
+let runtimeLoad: Promise<void> | null = null;
+
+/** 테스트 전용 상태 리셋(모듈 스코프 캐시 때문에 필요). */
+export function __resetRuntimeConfig(): void {
+  runtimeBase = null;
+  runtimeLoad = null;
+}
+
+function runtimeConfigUrl(): string {
+  const raw: unknown = import.meta.env?.VITE_RUNTIME_CONFIG_URL;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+function normalizeBase(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim().replace(/\/+$/, "");
+  return trimmed || null; // "" 는 "지정 안 함"으로 본다 — 빌드타임 폴백을 지우지 않는다
+}
+
+/** config 조회 상한(ms). 이게 없으면 config 가 매달릴 때 **모든 API 호출이 같이 멈춘다**. */
+const RUNTIME_CONFIG_TIMEOUT_MS = 3000;
+
+/** config 를 읽어 오리진을 돌려준다. **절대 throw 하지 않는다**(config 장애가 앱을 죽이면 안 됨). */
+async function fetchRuntimeConfig(bust: boolean): Promise<string | null> {
+  const url = runtimeConfigUrl();
+  if (!url) return null;
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), RUNTIME_CONFIG_TIMEOUT_MS) : null;
+  try {
+    const target = bust ? `${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}` : url;
+    const res = await fetch(target, { cache: "no-store", signal: ctrl?.signal });
+    if (!res.ok) return null;
+    return normalizeBase((await res.json() as RuntimeConfig)?.apiBase);
+  } catch {
+    return null; // 오프라인·404·JSON 깨짐·타임아웃 — 전부 폴백으로 흡수
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** 첫 API 호출 전에 한 번만 로드. 실패는 조용히 폴백. */
+function ensureRuntimeConfig(): Promise<void> {
+  if (!runtimeConfigUrl()) return Promise.resolve();
+  runtimeLoad ??= fetchRuntimeConfig(false).then((base) => {
+    if (base) runtimeBase = base;
+  });
+  return runtimeLoad;
+}
+
+/**
+ * 네트워크 도달 실패 후 config 재조회(캐시버스팅). **주소가 실제로 바뀌었을 때만** true —
+ * 같은 주소면 재시도해도 또 실패하므로 무한 루프를 막는다.
+ */
+async function refreshRuntimeConfig(): Promise<boolean> {
+  const next = await fetchRuntimeConfig(true);
+  if (!next || next === apiBase()) return false;
+  runtimeBase = next;
+  runtimeLoad = Promise.resolve();
+  return true;
+}
+
+/** 끝 슬래시를 제거한 API base. 런타임 config > 빌드타임 값 > "". */
 export function apiBase(): string {
+  if (runtimeBase) return runtimeBase;
   const raw: unknown = import.meta.env?.VITE_API_BASE;
   return typeof raw === "string" ? raw.trim().replace(/\/+$/, "") : "";
 }
@@ -187,14 +267,28 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  // API base 적용 지점은 여기 **한 곳**뿐이다(#129).
-  const url = apiUrl(path);
+  // 배포 빌드는 여기서 현재 백엔드 오리진을 확보한다(#183). 플래그가 없으면 즉시 resolve.
+  await ensureRuntimeConfig();
 
-  const res = await fetch(url, {
+  const init: RequestInit = {
     ...options,
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-  });
+  };
+
+  // API base 적용 지점은 여기 **한 곳**뿐이다(#129).
+  let url = apiUrl(path);
+
+  let res: Response;
+  try {
+    res = await fetch(url, init);
+  } catch (err) {
+    // 응답 자체가 안 온다 = 터널 사망/주소 스테일이 유력하다(playbook §4 의 "Failed to fetch").
+    // 워치독이 이미 새 터널을 올려 config 를 갱신했을 수 있으니 재조회 → 바뀌었으면 1회만 재시도.
+    if (!(await refreshRuntimeConfig())) throw err;
+    url = apiUrl(path);
+    res = await fetch(url, init);
+  }
 
   if (res.status === 401) {
     const body = await parseErrorBody(res);

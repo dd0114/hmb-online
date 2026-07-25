@@ -2,7 +2,8 @@
 
 > **이 문서 = 접근안 비교·근거.** SoT = 에픽 **#183**. 운영 절차는 [`deploy-playbook.md`](./deploy-playbook.md), 아키텍처 근거는 [`deploy.md`](./deploy.md).
 > owned: hmb:infra 세션 (`infra/**` + `apps/web` 런타임 config 배선). 엔진·게임로직 무관.
-> **상태: 접근 설계 완료 — hero 승인 게이트 대기(구현 착수 전).**
+> **상태: hero 승인 완료(2026-07-26) — 채택 = `C(정적 워치독) + A(런타임 config) + E(클라 재시도)`. 구현 진행.**
+> 미채택: **B**(프록시) — KV 토큰 없이는 복구 속도 이득 0인데 API 핫패스에 Functions 표면만 추가. **D**(도메인) — "도메인 없이" 전제 유지.
 
 ---
 

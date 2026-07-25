@@ -45,6 +45,14 @@ API_URL="$BACKEND" WEB_URL="$PAGES_URL" TUNNEL_KIND="cloudflare-quick(backend)+p
 echo "[pages] 3) wrangler pages deploy (토큰 인증, 로그인 없음)"
 npx -y wrangler pages deploy apps/web/dist --project-name="$PROJECT" --branch=main --commit-dirty=true
 
+# 자가복구(#183)용 dist 스냅샷 보존 — deploy-web.sh 와 동일. 없으면 워치독이 전파를 못 한다.
+CACHE="${HMB_DIST_CACHE:-$HOME/.cache/hmb/dist-current}"
+mkdir -p "$CACHE" && rsync -a --delete apps/web/dist/ "$CACHE/"
+printf 'deployedAt=%s\nbackend=%s\ngit=%s\nfrom=%s\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BACKEND" "$(git rev-parse --short HEAD 2>/dev/null || echo ?)" "$PWD" \
+  > "$CACHE.meta"
+echo "[pages]    dist 스냅샷 보존 → $CACHE"
+
 echo "[pages] 4) 백엔드 CORS 에 $PAGES_URL 추가·재결선 (⭕ DB 유지 — down 아님)"
 CUR=$(grep -E '^WEB_ORIGINS=' infra/.env | cut -d= -f2-)
 case ",$CUR," in
