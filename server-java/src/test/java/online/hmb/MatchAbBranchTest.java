@@ -29,6 +29,8 @@ class MatchAbBranchTest extends MatchTestBase {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
+        // 이 테스트의 주제는 시계가 아니다 — 레거시(즉시 전개) 흐름으로 고정한다(§7.7 롤백 경로).
+        TestDbSupport.disableMatchClock(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
     }
 
@@ -107,7 +109,7 @@ class MatchAbBranchTest extends MatchTestBase {
         assertThat(patchJobCount(matchId, 1)).isZero();
         assertThat(fullTeamInputCount(matchId, 1)).isZero();
         assertThat(materializedCount(matchId, 1)).isEqualTo(2L);
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
     }
 
     @Test
@@ -125,7 +127,7 @@ class MatchAbBranchTest extends MatchTestBase {
         assertThat(fullTeamInputCount(matchId, 1)).isZero();
 
         fakeServants.drain();
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
     }
 
     @Test
@@ -141,7 +143,7 @@ class MatchAbBranchTest extends MatchTestBase {
         assertThat(materializedCount(matchId, 1)).isZero();
 
         fakeServants.drain();
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
     }
 
     // ── h2 분기 2종 ──────────────────────────────────────────────────────
@@ -150,7 +152,7 @@ class MatchAbBranchTest extends MatchTestBase {
         fakeServants.drain(); // A done
         authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
         fakeServants.drain(); // h1 sim(재사용이면 즉시였지만 안전하게)
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
         return matchId;
     }
 

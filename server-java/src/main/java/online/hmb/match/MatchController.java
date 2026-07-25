@@ -18,10 +18,13 @@ public class MatchController {
 
     private final MatchService matchService;
     private final MatchOrchestrator orchestrator;
+    private final MatchClockService clockService;
 
-    public MatchController(MatchService matchService, MatchOrchestrator orchestrator) {
+    public MatchController(MatchService matchService, MatchOrchestrator orchestrator,
+                           MatchClockService clockService) {
         this.matchService = matchService;
         this.orchestrator = orchestrator;
+        this.clockService = clockService;
     }
 
     /**
@@ -43,8 +46,14 @@ public class MatchController {
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 
+    /**
+     * 시계 지연 평가(P4-E2 #170): 조회 시점에 만료된 단계를 먼저 진행시킨다. 스위퍼(1s)가 죽어 있어도
+     * <b>보고 있는 화면은 정확</b>하고, 스위퍼는 아무도 안 보는 매치를 진행시킨다 — 서로의 백스톱이다.
+     */
     @GetMapping("/api/matches/{id}")
     public MatchDetail get(@RequestAttribute("userId") String userId, @PathVariable("id") String id) {
+        matchService.getOwned(userId, id); // 소유권 먼저(남의 매치 시계를 밀지 않게)
+        clockService.advanceDue(id);
         return matchService.toDetail(matchService.getOwned(userId, id));
     }
 
@@ -101,6 +110,8 @@ public class MatchController {
     public String halfLog(@RequestAttribute("userId") String userId,
                           @PathVariable("id") String id,
                           @PathVariable("half") int half) {
+        matchService.getOwned(userId, id);
+        clockService.advanceDue(id); // 재생 요청 시점 기준으로 단계를 맞춘 뒤 허용 여부를 판정한다
         return matchService.halfLogJson(userId, id, half); // match_log_json 그대로 (AC-M3)
     }
 

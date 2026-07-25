@@ -44,6 +44,18 @@ hmb:
     prompt-timer-sec: 180          # 표시용 (D5)
     enforce-prompt-timer: false    # 강제 전환 플래그
     halftime-subs-max: 3
+    clock:                         # P4-D1/D2 서버 권위 시계 (#170, LLD-e2-flow-clock §5)
+      # 하드코딩 0(AC-W3-2): 압축비·감독시간·seek 정책이 전부 여기 있다. 압축비는 노브가 아니라
+      # 파생값 — 노브는 half-real-ms 이고 클라가 tickCount*msPerTick/halfRealMs 로 계산한다.
+      # 리얼 config(하프 2700틱) 기준 240s → 11.25배 압축.
+      enabled: true                # false = 롤백 스위치(시계 이전 즉시 전개 동작)
+      half-real-ms: 240000         # 하프당 실시간 재생 길이(≈4분)
+      halftime-ms: 60000           # 감독시간(P4-D2 = 60초)
+      auto-resume-on-expiry: true  # 만료 시 후반 자동 시작(전반 프롬프트 승계)
+      sweep-interval-ms: 1000      # 시계 스위퍼 주기(잡 스위퍼 10s 와 별도 — 초 단위 경계)
+      seek:
+        forward-blocked: true      # 라이브 앞서가기 금지(뒤로 스크럽은 자유)
+        grace-ms: 1500             # 지연·클럭 스큐 허용 오차
     ai-job-timeout-sec: 240        # GEN 상태에서 이걸 넘으면 FAILED
     lease-sec: 120                 # ai_jobs 가시성 타임아웃
     max-attempts: 3

@@ -20,12 +20,14 @@ export type MatchClockPhase = z.infer<typeof MatchClockPhase>;
 export const MatchClock = z.object({
   /** 현재 단계. SoT 는 서버의 match state 이고 이 값은 그 파생이다. */
   phase: MatchClockPhase,
+  // 아래 세 시각은 openapi 에서 **선택 필드**(required 목록 밖)다 → 키가 아예 없는 응답도 합법이다.
+  // 그래서 nullable 이 아니라 nullish 로 받는다(둘이 어긋나면 스펙상 합법인 응답을 SoT 파서가 거부한다).
   /** 전반이 라이브로 열린 시각(=킥오프, AC-W3-3). 레거시 매치는 null. */
-  kickoffAt: z.string().nullable(),
+  kickoffAt: z.string().nullish(),
   /** 현재 단계 시작 시각. null = 시계 미적용(레거시 매치·clock.enabled=false). */
-  phaseStartAt: z.string().nullable(),
+  phaseStartAt: z.string().nullish(),
   /** 현재 단계 종료 예정 시각. HALFTIME 이면 감독시간 deadline. */
-  phaseEndsAt: z.string().nullable(),
+  phaseEndsAt: z.string().nullish(),
   /** 응답 생성 시각 — 클라 시계 스큐 보정 기준. */
   serverNow: z.string(),
   /** 하프당 실시간 재생 길이(ms, config). 압축비는 여기서 파생한다(compressionOf). */

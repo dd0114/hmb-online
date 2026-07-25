@@ -65,13 +65,25 @@ class MatchTransitionMatrixTest extends MatchTestBase {
         };
     }
 
-    /** §5.1 전이표의 "허용" 집합 — 그 외 전부 409 대상. */
+    /**
+     * §5.1 전이표의 "허용" 집합 — 그 외 전부 409 대상. P4-E2(#170)로 라이브 단계가 들어오면서:
+     * <ul>
+     *   <li>FIRST_HALF — 전반을 보면서 후반 지시·교체를 <b>미리</b> 넣을 수 있다. 단 RESUME 은 금지
+     *       (후반 앞당기기 금지, P4-D1).</li>
+     *   <li>HALFTIME — 구 H1_BREAK 자리. 여기서만 RESUME 이 열린다.</li>
+     *   <li>GEN2·SECOND_HALF — 후반 생성/재생 중에도 전반 다시보기(LOG1)는 계속 가능.</li>
+     * </ul>
+     */
     private static final Map<String, List<MatchAction>> ALLOWED = Map.of(
             "BRIEFING", List.of(MatchAction.PROMPTS_PRE, MatchAction.KICKOFF),
             "GEN1", List.of(),
-            "H1_BREAK", List.of(MatchAction.PROMPTS_HALFTIME, MatchAction.HALFTIME,
+            "FIRST_HALF", List.of(MatchAction.PROMPTS_HALFTIME, MatchAction.HALFTIME, MatchAction.LOG1),
+            "HALFTIME", List.of(MatchAction.PROMPTS_HALFTIME, MatchAction.HALFTIME,
                     MatchAction.RESUME, MatchAction.LOG1),
-            "GEN2", List.of(),
+            "H1_BREAK", List.of(MatchAction.PROMPTS_HALFTIME, MatchAction.HALFTIME,
+                    MatchAction.RESUME, MatchAction.LOG1), // 레거시 행(V8 이전 배포본)도 같은 대우
+            "GEN2", List.of(MatchAction.LOG1),
+            "SECOND_HALF", List.of(MatchAction.LOG1, MatchAction.LOG2),
             "FINISHED", List.of(MatchAction.RESULT, MatchAction.LOG1, MatchAction.LOG2),
             "FAILED", List.of(MatchAction.RETRY));
 

@@ -42,6 +42,11 @@ describe("liveTick — 경과 실시간 → 라이브 상한 틱 (T-S-1)", () =>
     expect(liveTick(clock(), T0 + HALF_REAL_MS / 2, TICKS)).toBe(TICKS / 2);
   });
 
+  it("정수 틱에 안 떨어지는 지점은 내림 — 아직 안 지난 틱을 보여주지 않는다", () => {
+    // 1초 경과 × 11.25 압축 = 11.25틱 → 11 (ceil 이면 12 = 미래 1틱 노출)
+    expect(liveTick(clock(), T0 + 1000, TICKS)).toBe(11);
+  });
+
   it("창이 끝나면 로그 전체", () => {
     expect(liveTick(clock(), T0 + HALF_REAL_MS, TICKS)).toBe(TICKS);
   });

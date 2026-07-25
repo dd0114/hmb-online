@@ -43,7 +43,9 @@ tags:
   - name: modes
     description: 게임 모드 목록(싱글/멀티)
   - name: matches
-    description: 매치 상태머신(BRIEFING→GEN1→H1_BREAK→GEN2→FINISHED, §5.1)
+    description: >-
+      매치 상태머신(BRIEFING→GEN1→FIRST_HALF→HALFTIME→GEN2→SECOND_HALF→FINISHED, §5.1 +
+      P4-E2 #170 서버 권위 시계. H1_BREAK 은 레거시 전용)
   - name: internal
     description: 서번트 전용 AI 잡 큐 프로토콜(X-Servant-Token)
 

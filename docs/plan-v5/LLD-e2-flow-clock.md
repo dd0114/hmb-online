@@ -216,6 +216,12 @@ export function liveTick(clock: MatchClock | null, nowMs: number, tickCount: num
 export function clampSeek(target: number, live: number, clock: MatchClock | null, msPerTick: number): number;
 /** 서버-클라 시각 오프셋(serverNow − clientNow). 폴링마다 갱신. */
 export function clockOffsetMs(clock: MatchClock, clientNowMs: number): number;
+/** 이 하프에 시계가 걸리나 — 지나간 하프는 게이트하지 않는다(§4.3 "뒤는 자유"의 하프 단위 판정). */
+export function liveClockForHalf(clock: MatchClock | null, half: 1 | 2): MatchClock | null;
+/** 현재 단계 잔여 ms — 감독시간 카운트다운(§9 SecondHalfBriefPanel/HalftimePanel). */
+export function phaseRemainingMs(clock: MatchClock | null, nowMs: number): number | null;
+/** 압축비(파생값, §4.2) — 뷰어 setSpeed 기준. */
+export function compressionOf(clock: MatchClock | null, tickCount: number, msPerTick: number): number | null;
 ```
 - `index.ts` 에 `export * from "./match-clock.js"` 추가.
 - **왜 shared 인가**: web 과 QA 뷰어가 같은 매핑을 써야 "게임화면 = QA화면"(P4-D3)이 유지된다. 선례 =

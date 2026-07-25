@@ -30,6 +30,8 @@ class MatchSubsTest extends MatchTestBase {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
+        // 이 테스트의 주제는 시계가 아니다 — 레거시(즉시 전개) 흐름으로 고정한다(§7.7 롤백 경로).
+        TestDbSupport.disableMatchClock(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
     }
 
@@ -49,7 +51,7 @@ class MatchSubsTest extends MatchTestBase {
         String matchId = createMatch(token, "BOT_BAL");
         authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
         fakeServants.drain();
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
         return token + "|" + matchId;
     }
 
@@ -135,7 +137,7 @@ class MatchSubsTest extends MatchTestBase {
                 Map.of("out", "P002", "in", "P012"), Map.of("out", "P002", "in", "P013"))), "DUPLICATE_OUT");
 
         // 위반들이 상태를 바꾸지 않음 + 유효 교체는 통과
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
         assertThat(postSubs(token, matchId, List.of(Map.of("out", "P002", "in", "P012")))
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
     }
