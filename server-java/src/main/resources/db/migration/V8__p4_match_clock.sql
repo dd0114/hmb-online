@@ -5,13 +5,16 @@
 -- 2) state CHECK 확장: FIRST_HALF / HALFTIME / SECOND_HALF 추가. SQLite 는 CHECK 를 ALTER 로
 --    바꿀 수 없어 표준 12단계 테이블 재작성을 한다.
 --    ⚠️ trade_slots(V7)와 달리 matches 는 **자식이 참조한다**(match_prompts·match_halves·ai_jobs).
---    Flyway 가 마이그레이션을 트랜잭션으로 감싸므로 `PRAGMA foreign_keys` 는 여기서 무효(no-op)다 →
---    `PRAGMA defer_foreign_keys=ON` 으로 FK 검사를 커밋 시점까지 미룬다(그 시점엔 새 matches 가 제자리).
+--    `defer_foreign_keys=ON` 으로는 부족하다 — 검사 시점만 미룰 뿐, DROP TABLE matches(부모 암묵
+--    DELETE)가 올린 위반 카운터는 같은 이름으로 RENAME 해도 줄지 않아 COMMIT 에서 터진다.
+--    (독립검증 blocker: 자식 행 1개만 있어도 실 배포 DB 에서 부팅이 죽는 걸 재현했다.)
+--    SQLite 12단계 원문대로 **트랜잭션 밖에서 PRAGMA foreign_keys=OFF** 를 써야 하므로 짝 파일
+--    `V8__p4_match_clock.sql.conf` 로 executeInTransaction=false 를 지정한다.
 -- 3) 레거시 H1_BREAK → HALFTIME 이관: 이미 배포된 진행 중 매치를 살린다. phase_* 는 NULL 로 두어
 --    "시계 미적용 = 수동 제출만"이 되게 한다(만료 스위퍼는 phase_ends_at IS NULL 행을 건드리지 않는다).
 --    H1_BREAK 은 CHECK 에 남겨두되(감사·부분롤백 대비) 쓰기 경로는 만들지 않는다.
 
-PRAGMA defer_foreign_keys = ON;
+PRAGMA foreign_keys = OFF;
 
 CREATE TABLE matches_new (
   id            TEXT PRIMARY KEY,
@@ -59,3 +62,6 @@ ALTER TABLE matches_new RENAME TO matches;
 CREATE INDEX idx_matches_user ON matches(user_id, created_at DESC);
 -- 만료 후보 스캔(스위퍼): 라이브 단계 + 종료시각 경과.
 CREATE INDEX idx_matches_clock ON matches(state, phase_ends_at);
+
+-- FK 강제를 원상복구(연결 단위 설정 — 트랜잭션 밖이라 여기서 유효하다).
+PRAGMA foreign_keys = ON;

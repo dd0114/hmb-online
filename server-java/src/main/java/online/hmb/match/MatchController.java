@@ -111,13 +111,15 @@ public class MatchController {
                           @PathVariable("id") String id,
                           @PathVariable("half") int half) {
         matchService.getOwned(userId, id);
-        clockService.advanceDue(id); // 재생 요청 시점 기준으로 단계를 맞춘 뒤 허용 여부를 판정한다
+        clockService.advanceDueForRead(id); // 재생 요청 시점 기준으로 단계를 맞춘 뒤 허용 여부를 판정
         return matchService.halfLogJson(userId, id, half); // match_log_json 그대로 (AC-M3)
     }
 
     @GetMapping("/api/matches/{id}/result")
     public MatchService.MatchResult result(@RequestAttribute("userId") String userId,
                                            @PathVariable("id") String id) {
+        matchService.getOwned(userId, id);
+        clockService.advanceDueForRead(id); // 후반 창이 방금 끝났으면 여기서 정산하고 결과를 준다
         return matchService.result(userId, id);
     }
 

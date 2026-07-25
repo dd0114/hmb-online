@@ -261,9 +261,11 @@ UPDATE matches SET state='FIRST_HALF', score_h1_home=?, score_h1_away=?, engine_
  WHERE id=? AND state='GEN1'
 
 // FIRST_HALF → HALFTIME  (시계 만료 — now 가 아니라 경계값을 쓴다: I4)
-UPDATE matches SET state='HALFTIME', phase_start_at=phase_ends_at,
-       phase_ends_at=datetime(phase_ends_at + halftimeMs)
- WHERE id=? AND state='FIRST_HALF' AND phase_ends_at <= :now
+// CAS 조건은 `<= now` 가 아니라 **읽어온 경계값과의 정확 일치**다(그 사이 다른 스레드가 전이시켰다면
+// 값이 달라져 실패 = 정확히 1회). 만료 여부는 읽는 시점에 Java 가 판정한다.
+UPDATE matches SET state='HALFTIME', phase_start_at=:boundary,
+       phase_ends_at=:boundary+halftimeMs
+ WHERE id=? AND state='FIRST_HALF' AND phase_ends_at=:boundary
 
 // HALFTIME → GEN2  (만료 자동 or 유저 제출 — 같은 CAS, 호출자만 다름)
 UPDATE matches SET state='GEN2', phase_start_at=NULL, phase_ends_at=NULL
@@ -276,7 +278,7 @@ UPDATE matches SET state='SECOND_HALF', score_h2_home=?, score_h2_away=?,
 
 // SECOND_HALF → FINISHED (시계 만료) — 여기서 정산(스코어 합산·result·보상·리그·관계)
 UPDATE matches SET state='FINISHED', score_home=?, score_away=?, result=?, finished_at=:now
- WHERE id=? AND state='SECOND_HALF' AND phase_ends_at <= :now
+ WHERE id=? AND state='SECOND_HALF' AND phase_ends_at=:boundary
 ```
 - **정산(`finishMatch`)이 `SECOND_HALF→FINISHED` 로 이동**하는 게 이번 변경의 유일한 부작용 이동이다.
   보상·리그 정산·관계 갱신은 지금도 CAS 성공(1행)일 때만 실행되므로 **멱등성은 그대로**다.
@@ -291,9 +293,14 @@ UPDATE matches SET state='FINISHED', score_home=?, score_away=?, result=?, finis
   연쇄 전이한다(최대 반복 = 상태 수, 무한루프 가드 포함). GEN2 진입 시 `orchestrator.enqueueHalf(2)` 호출.
 
 ### 7.4 누가 시계를 돌리나 (이중화)
-1. **스위퍼(주)** — `@Scheduled` 1초. `SELECT id FROM matches WHERE state IN ('FIRST_HALF','HALFTIME','SECOND_HALF') AND phase_ends_at <= now` → 각 `advanceDue`. (인덱스 `idx_matches_clock(state, phase_ends_at)`)
-2. **지연 평가(보조)** — `GET /api/matches/{id}` · `GET /halves/{half}/log` 진입 시 해당 매치만 `advanceDue`.
+1. **스위퍼(주)** — `@Scheduled` 1초. `SELECT id FROM matches WHERE state IN (…) AND phase_ends_at <= now` → 각 `advanceDue`(**무거운 전이 포함**). 인덱스 `idx_matches_clock(state, phase_ends_at)`.
+   `auto-resume-on-expiry=false` 면 HALFTIME 은 후보에서 제외한다(만료된 채 남아 매초 헛도는 재선택 방지).
+2. **지연 평가(보조)** — `GET /api/matches/{id}` · `/halves/{half}/log` · `/result` 진입 시 해당 매치만
+   `advanceDueForRead` = **가벼운 전이만**(전반 종료→감독시간, 후반 종료→정산).
    스위퍼가 죽어도 **보고 있는 유저의 화면은 정확**하고, 스위퍼는 **안 보는 매치도 진행**시킨다.
+- **무거운 전이 = HALFTIME→GEN2**: 인풋 승계(AI 콜 0)면 그 자리에서 엔진 RPC 로 후반을 통째로 시뮬한다.
+  요청 스레드에서 하면 **1초 폴링 GET 이 그 시간만큼 블록**되므로(독립검증 major) 스위퍼 전용으로 둔다.
+  유저 체감 지연은 최대 `sweep-interval-ms`(1초).
 
 ### 7.5 감독시간 = 전반 프롬프트 승계 (AC-W2-2 후단)
 만료 경로는 **추가 코드가 필요 없다**. `MatchOrchestrator.resolveSide(half=2)` 가 이미:
@@ -333,11 +340,17 @@ CHECK (state IN ('BRIEFING','GEN1','FIRST_HALF','HALFTIME','SECOND_HALF','GEN2',
 UPDATE matches SET state='HALFTIME' WHERE state='H1_BREAK';  -- 진행 중 매치 구제(phase_ends_at=NULL → 수동 제출)
 ```
 - `H1_BREAK` 을 CHECK 에 남기는 이유: 마이그레이션 도중 실패/부분 롤백 대비 + 과거 데이터 감사. **쓰기 경로는 절대 만들지 않는다.**
-- **FK 주의**: `matches` 를 참조하는 자식 테이블(`match_prompts`·`match_halves`·`ai_jobs`)이 있다.
-  V7(trade_slots)은 자식이 없어 단순 재작성이었지만 여기는 다르다. Flyway 가 마이그레이션을 트랜잭션으로
-  감싸므로 **`PRAGMA foreign_keys` 는 트랜잭션 안에서 무효**(no-op)다 → **`PRAGMA defer_foreign_keys=ON`**
-  으로 FK 검사를 커밋 시점까지 미루고 DROP→RENAME 을 수행한다(커밋 시 새 `matches` 로 해소).
-  인덱스(`idx_matches_user`)도 재생성한다. 검증 = T-M-2 + 마이그레이션 후 `PRAGMA foreign_key_check` 0행.
+- **FK 주의(실제로 여기서 한 번 깨졌다)**: `matches` 를 참조하는 자식(`match_prompts`·`match_halves`·`ai_jobs`)이
+  있다. V7(trade_slots)은 자식이 없어 단순 재작성이었지만 여기는 다르다.
+  - ❌ `PRAGMA defer_foreign_keys=ON` 은 **부족하다** — 검사 시점만 미룰 뿐, `DROP TABLE matches`(부모 암묵
+    DELETE)가 올린 위반 카운터는 같은 이름으로 RENAME 해도 줄지 않아 **COMMIT 에서 터진다**. 자식 행이
+    1개만 있어도 재현된다(= 실 배포 DB 에서 Flyway 실패 → Spring 부팅 실패 → 백엔드 다운).
+  - ✅ SQLite 12단계 원문대로 **트랜잭션 밖에서 `PRAGMA foreign_keys=OFF`** → 재작성 → `ON`.
+    Flyway 는 기본으로 트랜잭션을 감싸므로 짝 파일 **`V8__p4_match_clock.sql.conf`(`executeInTransaction=false`)**
+    로 이 마이그레이션만 트랜잭션 밖에서 실행한다.
+  인덱스(`idx_matches_user`·`idx_matches_clock`)도 재생성한다.
+  검증 = **`FlywayV8LegacyDataMigrationTest`** — V1~V7 DB에 진행 중 매치 + 자식 행을 넣고 V8 을 돌린다
+  (빈 DB 로 부팅하는 `@SpringBootTest` 마이그레이션 테스트로는 이 결함을 절대 못 잡는다).
 
 ---
 
@@ -380,7 +393,9 @@ UPDATE matches SET state='HALFTIME' WHERE state='H1_BREAK';  -- 진행 중 매�
 | T-W2-2 | `HALFTIME` 에서 `POST /resume` → GEN2(즉시), deadline 잔여와 무관 | W2-1 |
 | T-W2-3 | deadline 만료 → 자동 GEN2, 이후 유저 `/resume` 은 409 | W2-1 |
 | T-W2-4 | 하프타임 프롬프트 **미제출** 만료 → h2 인풋 == h1 인풋(seed 만 상이) = **AI 콜 0 승계** / 제출 시 patch 잡 생성 | W2-2 |
-| T-W2-5 | 시계 on/off 두 경로의 `match_halves.last_hash` 동일 = 시각이 시뮬에 안 샘 | W2-3, I1 |
+| T-W2-5 | 시계 on/off 두 경로의 `match_halves.last_hash` 가 같은 픽스처 지문 = 시각이 시뮬에 안 샘 | W2-3, I1 |
+| T-M-3 | **후반 스코어 왕복**: `score_h2_*` 저장 → 정산 합산(픽스처 h2 가 0-0 이라 임의값으로 덮어 태운다) | 무회귀 |
+| T-M-4 | 정산은 **스위퍼 단독**으로도 된다(지연평가 없이) = "화면 안 봐도 정산" | W3-1 |
 | T-W2-6 | 전이 매트릭스 확장(§2.3 전 조합 409 검증) | W2-3 |
 | T-M-1 | 정산 이동 회귀: 보상·리그 정산·관계는 `SECOND_HALF→FINISHED` 에서 **정확히 1회** | 무회귀 |
 | T-M-2 | V8 마이그레이션: 기존 `H1_BREAK` 행 → `HALFTIME`+ends NULL, 이후 수동 resume 정상 | 무회귀 |

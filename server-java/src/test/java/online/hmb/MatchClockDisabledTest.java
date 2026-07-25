@@ -67,5 +67,11 @@ class MatchClockDisabledTest extends MatchTestBase {
         assertThat(finished.get("result")).isEqualTo("WIN");
         assertThat(authGet("/api/matches/" + matchId + "/result", token, Map.class).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
+
+        // 시계 on/off 로 시뮬 번들이 달라지지 않는다 — 재현 지문이 같은 값이어야 한다
+        // (MatchClockFlowTest.clockDoesNotChangeTheSimulationBundle 과 같은 상수, 루트 §2-5).
+        String lastHash = jdbcClient.sql("SELECT last_hash FROM match_halves WHERE match_id = ? AND half = 1")
+                .param(matchId).query(String.class).single();
+        assertThat(lastHash).isEqualTo(MatchClockFlowTest.FIXTURE_H1_LAST_HASH);
     }
 }

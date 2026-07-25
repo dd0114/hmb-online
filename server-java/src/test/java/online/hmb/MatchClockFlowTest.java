@@ -32,6 +32,9 @@ import org.springframework.test.context.DynamicPropertySource;
 @Import(FakeServantsConfig.class)
 class MatchClockFlowTest extends MatchTestBase {
 
+    /** 픽스처 h1 재현 지문 — 시계 on/off 양쪽에서 같아야 한다(docs/plan-v2/fixtures/matchlog-h1.json). */
+    static final String FIXTURE_H1_LAST_HASH = "1a7317ce";
+
     private static final long HALF_REAL_MS = 240_000;
     private static final long HALFTIME_MS = 60_000;
 
@@ -246,6 +249,12 @@ class MatchClockFlowTest extends MatchTestBase {
         fakeServants.drain();
 
         assertThat(matchState(matchId)).isEqualTo("SECOND_HALF");
+        // 후반 스코어는 DB 에 보관된다(응답엔 안 나가지만 정산 때 합산돼야 한다). 픽스처 h2 = 0-0 이라
+        // 여기서 임의 값으로 덮어 **합산 경로**를 실제로 태운다 — 안 그러면 "저장 안 함"과 구분되지 않는다.
+        assertThat(clockColumn(matchId, "score_h2_home")).isNotNull();
+        assertThat(clockColumn(matchId, "score_h2_away")).isNotNull();
+        jdbcClient.sql("UPDATE matches SET score_h2_home = 2, score_h2_away = 1 WHERE id = ?")
+                .param(matchId).update();
         // 재생 중에는 결과도, 최종 스코어도, 보상도 없다(스포일러 금지 + 라이브 모델 정합).
         assertThat(authGet("/api/matches/" + matchId + "/result", token, Map.class).getStatusCode())
                 .isEqualTo(HttpStatus.CONFLICT);
@@ -254,17 +263,17 @@ class MatchClockFlowTest extends MatchTestBase {
         assertThat(live.get("result")).isNull();
         assertThat(rewardLedgerRows(matchId)).isZero();
 
-        // 후반 창 만료 → FINISHED + 정산. 여러 번 돌려도 보상은 1회.
+        // 후반 창 만료 → FINISHED + 정산. **스위퍼 단독으로** 돌린다 — "화면을 안 봐도 정산된다"가
+        // 이 경로의 계약이고, 여기서 GET 지연평가를 같이 부르면 스위퍼 결함이 가려진다(독립검증 major).
         expireNow(matchId);
         clockSweeper.sweep();
-        clockSweeper.sweep();
-        clockService.advanceDue(matchId);
+        clockSweeper.sweep(); // 여러 번 돌아도 보상은 1회(멱등)
 
         assertThat(matchState(matchId)).isEqualTo("FINISHED");
         Map<?, ?> finished = detail(token, matchId);
         assertThat(finished.get("clock")).isNull();
-        assertThat(finished.get("scoreHome")).isEqualTo(1); // 픽스처 h1 1-0 + h2 0-0
-        assertThat(finished.get("scoreAway")).isEqualTo(0);
+        assertThat(finished.get("scoreHome")).isEqualTo(3); // h1 1-0 + h2 2-1
+        assertThat(finished.get("scoreAway")).isEqualTo(1);
         assertThat(finished.get("result")).isEqualTo("WIN");
         assertThat(rewardLedgerRows(matchId)).isEqualTo(1);
         // 정산의 나머지 side effect(관계/사기, AC-C4)도 이 전이에서 정확히 1회 적용된다.
@@ -274,6 +283,18 @@ class MatchClockFlowTest extends MatchTestBase {
                 .isEqualTo(HttpStatus.OK);
         assertThat(authGet("/api/matches/" + matchId + "/halves/2/log", token, String.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    // ── T-W2-5: 시계는 시뮬 입력에 흘러들지 않는다(결정론 불변, 루트 §2-5) ──
+
+    @Test
+    void clockDoesNotChangeTheSimulationBundle() {
+        String token = setupUserWithDeck("clk_determinism");
+        String matchId = kickoffAndSimulateH1(token);
+
+        // 시계 켜짐/꺼짐과 무관하게 같은 시드·같은 인풋이면 같은 결과여야 한다. 재현 지문(last_hash)이
+        // 시계 없는 경로(MatchClockDisabledTest)와 **같은 값**인지로 박제한다.
+        assertThat(halfLastHash(matchId, 1)).isEqualTo(FIXTURE_H1_LAST_HASH);
     }
 
     // ── 지연 평가: 스위퍼가 없어도 보고 있는 화면은 정확하다 ────────────────
@@ -327,6 +348,11 @@ class MatchClockFlowTest extends MatchTestBase {
     private String clockColumn(String matchId, String column) {
         return jdbcClient.sql("SELECT " + column + " FROM matches WHERE id = ?")
                 .param(matchId).query(String.class).single();
+    }
+
+    private String halfLastHash(String matchId, int half) {
+        return jdbcClient.sql("SELECT last_hash FROM match_halves WHERE match_id = ? AND half = ?")
+                .params(matchId, half).query(String.class).single();
     }
 
     private String halfInput(String matchId, int half) {

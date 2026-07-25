@@ -135,10 +135,26 @@ public class MatchClockService {
     /**
      * 이 매치의 만료된 단계를 <b>연쇄로</b> 진행시킨다(멱등). 서버가 오래 죽어 있었으면 한 호출에서
      * FIRST_HALF→HALFTIME→GEN2 까지 따라잡는다. 만료 전이가 없으면 아무 것도 하지 않는다.
+     *
+     * <p>후반 시작(HALFTIME→GEN2)은 <b>무거운</b> 전이다 — 인풋 승계(AI 콜 0)면 그 자리에서 엔진 RPC 로
+     * 후반 한 하프를 통째로 시뮬한다. 그래서 이 메서드는 <b>스위퍼(백그라운드)</b> 전용이고,
+     * 요청 스레드(GET)는 {@link #advanceDueForRead} 를 쓴다(독립검증 major: 1초 폴링이 시뮬 동안 블록됨).
      */
     public void advanceDue(String matchId) {
+        advanceChain(matchId, true);
+    }
+
+    /**
+     * 조회 경로용 — <b>가벼운 만료 전이만</b> 반영한다(전반 종료→감독시간, 후반 종료→정산).
+     * 후반 시작처럼 엔진 RPC 가 딸린 전이는 스위퍼(≤ sweep-interval-ms)에 맡겨 요청을 붙잡지 않는다.
+     */
+    public void advanceDueForRead(String matchId) {
+        advanceChain(matchId, false);
+    }
+
+    private void advanceChain(String matchId, boolean allowHeavy) {
         for (int i = 0; i < MAX_CHAIN; i++) {
-            if (!advanceOnce(matchId)) {
+            if (!advanceOnce(matchId, allowHeavy)) {
                 return;
             }
         }
@@ -146,7 +162,7 @@ public class MatchClockService {
     }
 
     /** @return 전이가 1회 일어났으면 true. */
-    private boolean advanceOnce(String matchId) {
+    private boolean advanceOnce(String matchId, boolean allowHeavy) {
         ClockRow row = clockRow(matchId).orElse(null);
         if (row == null || row.phaseEndsAt() == null) {
             return false; // 시계 미적용(레거시·롤백) 또는 생성/종료 단계
@@ -158,7 +174,8 @@ public class MatchClockService {
 
         return switch (row.state()) {
             case MatchService.S_FIRST_HALF -> openHalftime(matchId, row.phaseEndsAt());
-            case MatchService.S_HALFTIME -> resumeOnExpiry(matchId, row.phaseEndsAt());
+            // 후반 시작은 엔진 RPC 를 물고 있다 — 조회 경로에서는 하지 않는다(스위퍼가 곧 집어간다).
+            case MatchService.S_HALFTIME -> allowHeavy && resumeOnExpiry(matchId, row.phaseEndsAt());
             case MatchService.S_SECOND_HALF ->
                     orchestrator.getObject().settleFinishedIfDue(matchId, row.phaseEndsAt());
             default -> false;
@@ -206,12 +223,15 @@ public class MatchClockService {
     /** 만료된 라이브 매치를 전부 진행시킨다. @return 진행시킨 매치 수. */
     public int advanceAllDue() {
         String now = nowText();
+        // auto-resume 이 꺼져 있으면 감독시간은 유저 제출로만 끝난다 → 후보에서 빼서 매초 헛도는
+        // 재선택(만료된 채 영원히 남는 행)을 만들지 않는다.
+        String halftimeCandidate = props.isAutoResumeOnExpiry() ? MatchService.S_HALFTIME : "";
         List<String> due = jdbcClient.sql("""
                         SELECT id FROM matches
-                        WHERE state IN ('FIRST_HALF','HALFTIME','SECOND_HALF')
+                        WHERE state IN ('FIRST_HALF','SECOND_HALF', ?)
                           AND phase_ends_at IS NOT NULL AND phase_ends_at <= ?
                         """)
-                .param(now)
+                .params(halftimeCandidate, now)
                 .query(String.class)
                 .list();
         for (String matchId : due) {
