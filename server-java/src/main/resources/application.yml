@@ -6,7 +6,9 @@ spring:
     name: hmb-server
   task:
     scheduling:
-      # @Scheduled 기본 풀은 1이라 시계 스위퍼가 오래 걸리면 JobLeaseSweeper 까지 멈춘다(#170).
+      # ⚠️ 아래 pool.size 는 **가상스레드가 켜져 있는 한 무효**다(Boot 가 SimpleAsyncTaskScheduler 를
+      # 고른다 — 스케줄 실행마다 새 가상스레드라 @Scheduled 끼리 서로 막지 않는다). 가상스레드를 끄는
+      # 날을 대비한 방어값으로만 둔다(#170 독립검증 minor: 선언≠효과였던 것 정정).
       pool:
         size: 4
   threads:
