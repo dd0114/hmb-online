@@ -443,6 +443,35 @@ function closestToBall(state: SimState, side: SimPlayer["side"]): SimPlayer | nu
 }
 
 /**
+ * 코너 시 박스에 안 들어가고 남는 선수인가(#182).
+ *  - 공격팀(attacking=true): base 슬롯이 가장 **깊은** N명 = rest defence(4-3-3 이면 CB 둘).
+ *  - 수비팀(attacking=false): base 슬롯이 가장 **높은** N명 = 하이 아웃렛(ST/윙).
+ * 테이커(공 소유자)는 코너 아크에 있으므로 후보에서 제외 → 잔류 인원이 그만큼 줄지 않는다.
+ * 결정론: base 슬롯 x → idHash → id 의 전순서로만 뽑는다(전역 난수·시각 의존 없음).
+ */
+function isCornerHolder(
+  state: SimState,
+  player: SimPlayer,
+  pitch: Pitch,
+  count: number,
+  attacking: boolean,
+): boolean {
+  if (player.isGK || state.ball.owner === player.id) return false;
+  const mine = attackProgress(pitch, player.side, player.baseFx.x);
+  let ahead = 0;
+  for (const p of state.players) {
+    if (p.side !== player.side || p.isGK || p.id === player.id) continue;
+    if (state.ball.owner === p.id) continue;
+    const r = attackProgress(pitch, p.side, p.baseFx.x);
+    // 동률(예: LCB/RCB 둘 다 x=0.16)은 idHash → id 로 안정 정렬.
+    const tie = p.idHash !== player.idHash ? p.idHash < player.idHash : p.id < player.id;
+    const better = r === mine ? tie : attacking ? r < mine : r > mine;
+    if (better && ++ahead >= count) return false;
+  }
+  return true;
+}
+
+/**
  * 오프더볼/수비 이동 목표 계산. player.targetFx 를 설정.
  * (볼 소유자는 match 에서 행동에 따라 별도 처리)
  */
@@ -493,6 +522,16 @@ export function decideOffBall(
   const sp = state.setPiece;
   if (sp && sp.kind === "corner") {
     const attackingCorner = sp.side === player.side;
+    // #182: 전원이 박스로 올라가지 않는다 — 공격팀은 rest defence 로 뒤에, 수비팀은 아웃렛으로
+    // 앞에 남는 인원이 있다(count=0 이면 레거시 전원 전진).
+    const cn = config.setPiece.corner;
+    const holdCount = attackingCorner ? cn.attackStayBack : cn.defendLeaveHigh;
+    if (holdCount > 0 && isCornerHolder(state, player, pitch, holdCount, attackingCorner)) {
+      const lineX = attackingCorner ? cn.stayBackLineX : cn.leaveHighLineX;
+      const hx = player.side === "home" ? lineX : 1 - lineX;
+      player.targetFx = clampToPitch(pitch, Math.round(hx * pitch.wFx), player.baseFx.y);
+      return;
+    }
     const boxGoal = attackingCorner ? g : ownGoal;
     const pull = config.setPiece.cornerBoxReach;
     const cx = boxGoal.x + Math.round((player.baseFx.x - boxGoal.x) * (1 - pull));

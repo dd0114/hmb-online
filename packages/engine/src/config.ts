@@ -320,6 +320,21 @@ export interface EngineConfig {
     crossDepthM: number;
     /** 코너 크로스 낙하점 중앙 기준 좌우 산포 최대(m). 시드로 ±이 범위. */
     crossWidthM: number;
+    /**
+     * 코너 시 "박스로 안 올라가는" 선수 배치(#182). 레거시(전원 전진)는 두 count 를 0 으로.
+     * 실제 축구: 공격팀은 역습 대비로 1~2명을 뒤에 남기고(rest defence), 수비팀은 클리어 후
+     * 아웃렛으로 1~2명을 높이 남긴다. 누가 남는지는 base 슬롯 깊이로 결정(공격=최심, 수비=최전방).
+     */
+    corner: {
+      /** 공격 코너 시 뒤에 남기는 아웃필더 수(base 슬롯 최심 N명 = 4-3-3 이면 CB). 0=레거시. */
+      attackStayBack: number;
+      /** 잔류 선수가 서는 라인(공격 진행도 0:자기골 ~ 1:상대골). 0.5=하프라인. */
+      stayBackLineX: number;
+      /** 수비 코너 시 앞에 남기는 아웃필더 수(base 슬롯 최전방 N명 = ST/윙). 0=레거시. */
+      defendLeaveHigh: number;
+      /** 하이 아웃렛이 서는 라인(자기 공격 진행도). */
+      leaveHighLineX: number;
+    };
   };
 
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
@@ -617,6 +632,13 @@ export const defaultEngineConfig: EngineConfig = {
     crossSpeed: 16,
     crossDepthM: 10,
     crossWidthM: 12,
+    // #182 결정 대기 중 — 0/0 = engine@0.17.0 과 bit-identical(레거시 전원 전진).
+    corner: {
+      attackStayBack: 0,
+      stayBackLineX: 0.5,
+      defendLeaveHigh: 0,
+      leaveHighLineX: 0.5,
+    },
   },
   softCap: 0.25,
   fatiguePerTick: 0.0009,
