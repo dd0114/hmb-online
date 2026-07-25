@@ -420,7 +420,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.17.0",
+  version: "engine@0.18.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
