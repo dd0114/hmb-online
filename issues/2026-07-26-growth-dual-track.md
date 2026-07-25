@@ -135,9 +135,45 @@ MatchGrowthReport = { entries: [{playerId, name, xpDelta, ovrBefore, ovrAfter, l
 - **G0 계약**(shared): §5 zod 프리즈. → **G1 data**(economy config §7) ∥ **G2 server**(V8·계산·API·정산) → **G3 servants**(execMatch) → **G4 web**(카드 상세·강화·성장리포트·시안3) → **G6 E2E/밸런스** → 통합·런북.
 - 각 웨이브 module-implementer → module-verifier PASS → 커밋. STATE는 #179에 갱신.
 
-## 11. 로컬 실행/테스트 런북 (morning — 이 섹션 완성이 AC7)
-> hero가 아침에 게임시작으로 테스트하는 방법. 웨이브 완료 시 실제 커맨드로 채운다.
-- (예정) `docker compose -f infra/docker-compose.yml up -d java runner` + servants + `cd apps/web && npm run dev` → 브라우저 → 로그인(목) → 게임시작 → 매치 → 성장 확인 → 도감 강화.
+## 11. 로컬 실행/테스트 런북 (AC7 — 아침 테스트) ✅ 스택 기동 상태로 남김
+
+> **격리 원칙**: 라이브 배포(hmb-online.pages.dev 백엔드 = docker `hmb-java`/`hmb-runner` on 18080/18790)는 **절대 무접촉**. 이 테스트 스택은 별도 이름(`hmb-growth-*`)·별도 볼륨(`hmb-growth-db`)·별도 포트(19080/19790/web5301)로 완전 격리.
+
+### 이미 떠 있음 (아침에 바로 열기)
+- **웹: http://localhost:5301** ← 여기 열고 테스트
+- 백엔드 docker: `hmb-growth-java`(19080) · `hmb-growth-runner`(19790) · `hmb-growth-executor`(stub AI)
+
+### 꺼졌으면 재기동 (2커맨드)
+```bash
+# 0) 격리 override 재작성 (라이브 이름/볼륨 충돌 회피 — infra 커밋 안 함)
+cat > /tmp/dc.growth.yml <<'YAML'
+services:
+  java: { container_name: hmb-growth-java }
+  runner: { container_name: hmb-growth-runner }
+  executor: { container_name: hmb-growth-executor }
+volumes:
+  hmb-db: { name: hmb-growth-db }
+YAML
+# 1) 백엔드 (이미지 빌드됨 — 빠름). infra/.env 에 JAVA_HOST_PORT=19080·RUNNER_HOST_PORT=19790·AI_EXECUTOR=stub·SERVANT_TOKEN=<rand> 설정.
+cd /Users/peter.park/spider8/hmb-growth/infra && \
+  docker compose -p hmb-growth -f docker-compose.yml -f /tmp/dc.growth.yml up -d java runner executor
+# 2) 웹 (프록시로 19080에 붙음 — CORS 없음)
+cd /Users/peter.park/spider8/hmb-growth/apps/web && \
+  VITE_API_TARGET=http://localhost:19080 npm run dev -- --port 5301 --strictPort
+```
+
+### 테스트 시나리오 (게임시작→성장→강화)
+1. http://localhost:5301 → **로그인(게스트)** — 신규 유저 = 스타터팩 14명 + 3000P.
+2. **덱 편성**(신규 유저 필수): 덱 탭 → 선발 11 구성·저장.
+3. **게임시작** → 매치(전반→하프타임→후반→결과).
+4. **결과 화면 = 성장 리포트**(S1): 기용 선수 +xp·OVR↑·레벨업 뱃지.
+5. **도감** → 그 선수 카드 탭 → **시안3 상세**(OVR 링·완성도%·돌파★·능력치 현재/천장/기본). 완성도가 0→증가 확인.
+6. **강화 테스트**: 강화엔 **중복**이 필요 → 상점 가챠(10연 3000P)로 같은 선수 중복 확보 → 도감 카드 상세 "강화"(중복1+200P) → 스탯↑ → 밴드상한 도달 시 "한계돌파"(중복3) → **등급 승급**(프레임색 전환).
+
+### 확인된 것 (2026-07-26 자율구현 스모크)
+- 스택 healthy, V8 마이그레이션 적용, `GET /api/growth/card/P074` 200(ovr 61.12·completion 0·caps=밴드상한).
+- web:5301 → `/api` 프록시 → 19080 도달(401 정상).
+- 매치→성장·강화·돌파 라이브 검증 = module-verifier 진행(결과는 진행 로그/§AC).
 
 ---
 
