@@ -1,0 +1,290 @@
+/* 시안3 카드 성장 상세 — 바텀시트(모바일) / 중앙카드(데스크탑). */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 50;
+}
+
+.sheet {
+  width: 100%;
+  max-width: 420px;
+  outline: none;
+}
+
+.frame {
+  position: relative;
+  background: linear-gradient(160deg, #1e232c, #171b22);
+  border: 2px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  padding: 18px 16px 20px;
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
+.close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.avatar {
+  flex: none;
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.gradeTag {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.name {
+  font-size: 17px;
+  font-weight: 800;
+  margin: 0;
+}
+
+.pos {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.stars {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.star {
+  color: #e7c24c;
+  font-size: 15px;
+  filter: drop-shadow(0 0 3px rgba(231, 194, 76, 0.5));
+  line-height: 1;
+}
+
+.starOff {
+  color: #3a424e;
+  filter: none;
+}
+
+.tier {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.loading {
+  color: var(--text-muted);
+  text-align: center;
+  padding: 20px 0;
+}
+
+.ringWrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  margin: 14px auto 2px;
+}
+
+.ringCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.ovr {
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.ovrLbl {
+  font-size: 9px;
+  color: var(--text-muted);
+  letter-spacing: 0.14em;
+  font-weight: 800;
+}
+
+.completion {
+  font-size: 12px;
+  color: #5cc98b;
+  font-weight: 800;
+  text-align: center;
+  margin: 0 0 12px;
+}
+
+.attrs {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 16px;
+}
+
+.attrRow {
+  display: grid;
+  grid-template-columns: 56px 1fr 48px;
+  gap: 8px;
+  align-items: center;
+}
+
+.attrName {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.attrBarCell {
+  margin: 0;
+}
+
+.bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  border-radius: 5px;
+  background: #20262f;
+}
+
+.fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+  transition: width 0.4s ease;
+}
+
+.reach {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px;
+  background: repeating-linear-gradient(90deg, #39424f 0 4px, transparent 4px 8px);
+  opacity: 0.7;
+}
+
+.capLine {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: #e7c24c;
+  border-radius: 2px;
+}
+
+.baseLine {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: #5f6b7a;
+  opacity: 0.6;
+}
+
+.attrNum {
+  font-size: 11px;
+  font-weight: 800;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.attrCap {
+  color: #e7c24c;
+  font-size: 9px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.enhance,
+.limitBreak {
+  flex: 1;
+  padding: 12px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.enhance {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+}
+
+.limitBreak {
+  background: transparent;
+  color: var(--text);
+}
+
+.limitBreakReady {
+  border-color: #e7c24c;
+  color: #e7c24c;
+  box-shadow: 0 0 0 1px #e7c24c66 inset;
+}
+
+.enhance:disabled,
+.limitBreak:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.readyBadge {
+  margin: 10px 0 0;
+  font-size: 12px;
+  color: #e7c24c;
+  text-align: center;
+  font-weight: 700;
+}
+
+.promoted {
+  margin: 12px 0 0;
+  padding: 10px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 900;
+  color: #141a20;
+  background: linear-gradient(120deg, #e7c24c, #f2d97a);
+  border-radius: 10px;
+}
+
+@media (min-width: 640px) {
+  .overlay {
+    align-items: center;
+  }
+  .frame {
+    border-radius: 18px;
+  }
+}

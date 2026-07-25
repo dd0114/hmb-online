@@ -111,3 +111,85 @@
   font-size: 16px;
   font-weight: 700;
 }
+
+/* 성장 리포트(S1) */
+.growthCard {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  padding: 14px;
+}
+
+.growthTitle {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.growthList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.growthRow {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.growthMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.growthName {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.growthLevel {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  color: #141a20;
+  background: linear-gradient(120deg, #5cc98b, #63d193);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.growthMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+
+.growthXp {
+  color: #5cc98b;
+  font-weight: 800;
+}
+
+.growthOvr {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.growthAttrs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.growthAttrTag {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}

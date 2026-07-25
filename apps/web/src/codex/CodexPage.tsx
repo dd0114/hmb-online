@@ -6,6 +6,8 @@ import { ErrorToast } from "../common/ErrorToast";
 import { GRADE_LABELS, GRADE_ORDER, type Grade } from "../common/grades";
 import type { components } from "../api/schema";
 import { PlayerCard } from "./PlayerCard";
+import { CardGrowthDetail } from "./CardGrowthDetail";
+import type { CatalogPlayer } from "../api/hooks";
 import styles from "./CodexPage.module.css";
 
 type Position = components["schemas"]["Position"];
@@ -17,6 +19,8 @@ export function CodexPage() {
   const [gradeFilter, setGradeFilter] = useState<Grade | "ALL">("ALL");
   const [positionFilter, setPositionFilter] = useState<Position | "ALL">("ALL");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // 보유 카드 = 성장 상세 시트(시안3), 미보유 = 기존 인라인 능력치 확장(잠금).
+  const [detailPlayer, setDetailPlayer] = useState<CatalogPlayer | null>(null);
 
   const filtered = useMemo(
     () =>
@@ -95,10 +99,18 @@ export function CodexPage() {
               key={p.id}
               player={p}
               expanded={expandedId === p.id}
-              onToggle={() => setExpandedId((cur) => (cur === p.id ? null : p.id))}
+              onToggle={() =>
+                p.owned
+                  ? setDetailPlayer(p)
+                  : setExpandedId((cur) => (cur === p.id ? null : p.id))
+              }
             />
           ))}
         </div>
+      )}
+
+      {detailPlayer && (
+        <CardGrowthDetail player={detailPlayer} onClose={() => setDetailPlayer(null)} />
       )}
     </Layout>
   );
