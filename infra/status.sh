@@ -23,13 +23,27 @@ for c in hmb-java hmb-runner; do
 done
 
 # 2) AI 실행기 (호스트 프로세스)
-n=$(ps aux | grep "executor-main" | grep -v grep | grep -c "$(pwd | sed 's|/*$||')" 2>/dev/null || echo 0)
-[ "${n:-0}" -ge 1 ] && ok "executor: 실행 중 ($n proc)" || warn "executor: 없음 (AI 매치 안 돌아감 — 모드 A 재기동 필요)"
+# ⚠️ 체크아웃(pwd)으로 필터하면 안 된다 — executor 는 다른 워크트리에서 떠 있는 게 정상이고
+#    (실측: spider10 에서 가동 중인데 spider14 에서 "없음" 오보), 그 grep -c 는 여러 줄을 세어
+#    `[: 0\n0: integer expression expected` 도 냈다. 머신 전역으로 세고 어느 체크아웃인지 보여준다.
+# (macOS pgrep 에는 -c 가 없다 — 셌다가 조용히 0 이 된다. wc 로 센다.)
+n=$(ps -eo command | grep -c "[e]xecutor-main" | tr -d ' \n'); n=${n:-0}
+if [ "$n" -ge 1 ]; then
+  where=$(ps -eo command | grep "[e]xecutor-main" | grep -oE '/Users/[^ ]*/hmb-online' | head -1)
+  ok "executor: 실행 중 ($n proc${where:+, $where})"
+else
+  warn "executor: 없음 (AI 매치 안 돌아감 — 모드 A 재기동 필요)"
+fi
 
-# 3) 백엔드 로컬(18080) — .env 토큰으로 health
+# 3) 백엔드 로컬(18080) — health. 토큰이 있으면 200, 없어도 **401 이면 java 는 살아있다**
+#    (워크트리마다 infra/.env 가 있는 게 아니라, 토큰 부재를 백엔드 사망으로 오판하면 안 된다 — 실측).
 TOK=$(grep -E '^SERVANT_TOKEN=' infra/.env 2>/dev/null | cut -d= -f2)
 code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 -H "X-Servant-Token: $TOK" http://localhost:18080/internal/health 2>/dev/null)
-[ "$code" = "200" ] && ok "백엔드 로컬(18080): health 200" || bad "백엔드 로컬(18080): $code"
+case "$code" in
+  200) ok "백엔드 로컬(18080): health 200";;
+  401|403) ok "백엔드 로컬(18080): 응답함($code — 이 체크아웃에 SERVANT_TOKEN 없음, 백엔드는 정상)";;
+  *) bad "백엔드 로컬(18080): $code";;
+esac
 
 # 4) 터널 (cloudflared) + 현재 URL
 PIDF=/tmp/hmb-cf-tunnel.pid; LOG=/tmp/hmb-cf-tunnel.log
@@ -37,8 +51,24 @@ if [ -f "$PIDF" ] && ps -p "$(cat "$PIDF")" >/dev/null 2>&1; then
   URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" 2>/dev/null | tail -1)
   ok "터널: 실행 중 (pid $(cat "$PIDF"))  URL=$URL"
   if [ -n "$URL" ]; then
-    tcode=$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 -X POST "$URL/api/auth/login" -H 'Content-Type: application/json' -d '{"nickname":"status","provider":"guest"}' 2>/dev/null)
-    [ "$tcode" = "200" ] && ok "터널 경유 백엔드: 로그인 200" || bad "터널 경유 백엔드: $tcode"
+    # 워치독(#183)과 **같은 방식**으로 판정한다: ① 이 머신 ISP DNS 는 trycloudflare 를 못 풀 때가
+    # 있으므로 공개 해석기로 폴백해 IP 를 고정하고 ② 토큰 없는 GET /internal/health 의 401 을
+    # "java 가 응답했다" 는 증거로 쓴다. (기존 POST 로그인 방식은 DNS 때문에 000 을 내며
+    # 멀쩡한 터널을 죽었다고 보고했다 — 실측.)
+    THOST="${URL#https://}"; THOST="${THOST%%/*}"; TIP=""
+    for r in "" "@8.8.8.8" "@9.9.9.9"; do
+      TIP=$(dig +short +time=3 +tries=1 $r "$THOST" 2>/dev/null | grep -E '^[0-9.]+$' | head -1)
+      [ -n "$TIP" ] && break
+    done
+    if [ -n "$TIP" ]; then
+      tcode=$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 --resolve "$THOST:443:$TIP" "https://$THOST/internal/health" 2>/dev/null)
+    else
+      tcode=$(curl -s -o /dev/null -w '%{http_code}' --max-time 12 "$URL/internal/health" 2>/dev/null)
+    fi
+    case "$tcode" in
+      200|401|403|404) ok "터널 경유 백엔드: 응답 $tcode (경로 정상)";;
+      *) bad "터널 경유 백엔드: $tcode";;
+    esac
   fi
 else
   bad "터널: 없음 (테스터 접속 불가 — 'bash infra/start-tunnel.sh' 로 재기동)"
@@ -63,6 +93,21 @@ fi
 cors=$(docker exec hmb-java sh -c 'echo $HMB_CORS_ALLOWEDORIGINS' 2>/dev/null)
 if [ -n "${WURL:-}" ]; then EXPECT="$WURL"; else EXPECT="$PAGES"; fi
 [ "$cors" = "$EXPECT" ] && ok "CORS 결선: $cors" || warn "CORS: '$cors' (web 오리진 '$EXPECT' 와 다름 — 왕복 막힐 수 있음)"
+
+# 7) 자가복구 워치독 (#183) — 터널이 죽어도 사람이 안 가도 되는지
+if launchctl print "gui/$(id -u)/online.hmb.tunnel-heal" >/dev/null 2>&1; then
+  LAST=$(tail -1 "${HMB_STATE_DIR:-$HOME/.local/state/hmb}/tunnel-heal.log" 2>/dev/null | cut -f2,3)
+  ok "자가복구 워치독: 가동 중${LAST:+ (최근: $LAST)}"
+else
+  warn "자가복구 워치독: 미설치 — 터널이 죽으면 사람이 가야 한다 ('bash infra/install-tunnel-heal.sh')"
+fi
+
+# 8) web 이 실제로 가리키는 백엔드 (런타임 config) — 터널과 어긋나면 테스터는 죽어 있다
+SERVED=$(curl -fsS --max-time 10 "$PAGES/config.json?t=$(date +%s)" 2>/dev/null | sed -n 's/.*"apiBase" *: *"\([^"]*\)".*/\1/p' | head -1)
+if [ -n "$SERVED" ]; then
+  if [ -z "${URL:-}" ] || [ "$SERVED" = "$URL" ]; then ok "web→백엔드 결선: $SERVED"
+  else warn "web 은 '$SERVED' 을 보는데 현재 터널은 '$URL' (워치독이 곧 맞춘다 / 급하면 'bash infra/publish-backend-url.sh $URL')"; fi
+fi
 
 echo "═══════════════════════════════"
 echo "테스터 접속: ${WURL:-$PAGES}"
