@@ -20,6 +20,8 @@ import {
   type ControlMode,
 } from "./playback-controls";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildTimelinePins, type TimelinePin } from "./timeline-pins";
+import { indexFromPct } from "./qa-time-controls";
 import { buildViewerSkins } from "./viewer-skins";
 import { useCharAssets } from "../common/useCharAssets";
 import styles from "./MatchViewer.module.css";
@@ -161,6 +163,15 @@ function VisualPlayback({
   const situationRef = useRef<HTMLDivElement>(null);
   const bannerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<ViewerController | null>(null);
+  // QA 시계·스크럽(#177)은 코어가 **프레임마다** 갱신한다 → state 가 아니라 ref 로 DOM 을 직접
+  // 건드린다(자막 오버레이와 같은 패턴). state 로 받으면 초당 60회 리렌더가 난다.
+  const clockRef = useRef<HTMLSpanElement>(null);
+  const scrubRef = useRef<HTMLInputElement>(null);
+  const [pins, setPins] = useState<TimelinePin[]>([]);
+  // 재생 범위 메타(#180) — 초단위 스텝/스크럽이 "어디까지 갈 수 있나"를 알아야 한다.
+  const [range, setRange] = useState<{ snapCount: number; lastTick: number }>({ snapCount: 0, lastTick: 0 });
+  // onScrub 은 프레임마다 오는 콜백이라 마운트 시점 클로저에 갇힌다 → 스냅샷 수는 ref 로 본다.
+  const snapCountRef = useRef(0);
   const [viewerReady, setViewerReady] = useState(false);
   // 경기장 캐릭터 스킨(#145). 에셋이 아직/영영 없으면 null → 코어는 현행 단색 원(무회귀).
   const charAssets = useCharAssets();
@@ -185,6 +196,8 @@ function VisualPlayback({
     const canvas = canvasRef.current;
     if (!canvas || !log) return;
 
+    // 코어 인스턴스 지역 참조 — chrome 콜백이 마운트 도중(load 안)에도 코어 훅을 볼 수 있게.
+    let created: ViewerController | null = null;
     const SHOW = styles.capShow as string;
     const showAnim = (el: HTMLElement | null, text: string, col: string) => {
       if (!el) return;
@@ -212,11 +225,35 @@ function VisualPlayback({
       onClearCaptions: () => {
         for (const el of [flashRef.current, situationRef.current, bannerRef.current]) el?.classList.remove(SHOW);
       },
+      // --- QA 관전 도구(#177): 코어가 이미 내보내던 시계/스크럽/로드정보를 호스트가 받는다.
+      //     S3(iframe 제거) 때 이 배선이 빠져 "몇 분 몇 초"를 볼 수 없었다.
+      onClock: (text) => {
+        if (clockRef.current) clockRef.current.textContent = text;
+      },
+      onScrub: (pct) => {
+        // 드래그 중에는 사용자 입력이 이긴다(핸들이 손에서 튀지 않게).
+        // 슬라이더 눈금은 % 가 아니라 **스냅샷 인덱스**다(1칸 = 1초, #180).
+        const el = scrubRef.current;
+        if (el && document.activeElement !== el) el.value = String(indexFromPct(pct, snapCountRef.current));
+      },
+      onLoaded: ({ events, snapCount }) => {
+        // onLoaded 는 v.load() 안에서 불린다 = viewerRef 대입 **전** → 지역 참조(created)를 본다.
+        const hooks = created?.hooks as { idxOfTick?: (t: number) => number } | undefined;
+        const idxOf = typeof hooks?.idxOfTick === "function" ? hooks.idxOfTick : (t: number) => t;
+        setPins(buildTimelinePins(events as { tick: number }[], idxOf, snapCount));
+        // 마지막 틱: 서브샘플 로그면 인덱스≠틱이라 스냅샷에서 직접 읽고, 없으면 인덱스로 근사.
+        const snaps = (log as { tickSnapshots?: { tick: number }[] } | null)?.tickSnapshots ?? [];
+        const lastSnap = snaps[snaps.length - 1];
+        const lastTick = lastSnap ? lastSnap.tick : Math.max(0, snapCount - 1);
+        snapCountRef.current = snapCount;
+        setRange({ snapCount, lastTick });
+      },
     };
 
     let v: ViewerController;
     try {
       v = createViewer(canvas, chrome);
+      created = v;
       if (skins) v.setSkin(skins);
       v.setSpeed(4); // 기본 배속(hero 지시) — 하이라이트 off 시 이 속도로 진행.
       v.load(log); // 손상 로그면 throw
@@ -324,6 +361,11 @@ function VisualPlayback({
           onHighlight={onHighlight}
           onMode={onControlMode}
           viewer={viewerReady ? viewerRef.current : null}
+          clockRef={clockRef}
+          scrubRef={scrubRef}
+          pins={pins}
+          snapCount={range.snapCount}
+          lastTick={range.lastTick}
         />
       </div>
     </div>

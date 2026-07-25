@@ -19,14 +19,22 @@ const argPort = process.argv.indexOf("--port");
 const PORT = Number(argPort > -1 ? process.argv[argPort + 1] : (process.env.DESIGN_MOCK_PORT ?? 8132));
 
 // 결정론 데모 로그(build:viewer 생성물) — 진짜 MatchLog 를 그대로 먹여야 화면이 진짜처럼 움직인다.
-const LOG_PATH = join(repoRoot, "packages", "engine", "dev-viewer", "match-log.json");
+// DESIGN_LOG=real 이면 **리얼 config 풀매치**(e2e/fixture-real.json, 90분·벤치마크 튜닝)를 먹인다.
+// 쇼케이스 로그는 관전 재미용(짧게·골 多)이라 게임 QA(밸런스·규칙 인상)에는 리얼이 맞다(루트 §2-6).
+const LOG_KIND = (process.env.DESIGN_LOG ?? "showcase").toLowerCase() === "real" ? "real" : "showcase";
+const LOG_PATH =
+  LOG_KIND === "real"
+    ? join(repoRoot, "packages", "engine", "dev-viewer", "e2e", "fixture-real.json")
+    : join(repoRoot, "packages", "engine", "dev-viewer", "match-log.json");
 let MATCH_LOG;
 try {
   MATCH_LOG = JSON.parse(readFileSync(LOG_PATH, "utf8"));
 } catch {
   console.error(
-    `[design-mock] match-log.json 이 없다: ${LOG_PATH}\n` +
-      `  → cd apps/web && npm run build:viewer  (또는 npx vitest run packages/engine/dev-viewer/generate-demo.test.ts)`,
+    `[design-mock] 로그가 없다(${LOG_KIND}): ${LOG_PATH}\n` +
+      (LOG_KIND === "real"
+        ? `  → npx vitest run packages/engine/dev-viewer/e2e/gen-fixtures.test.ts`
+        : `  → cd apps/web && npm run build:viewer  (또는 npx vitest run packages/engine/dev-viewer/generate-demo.test.ts)`),
   );
   process.exit(1);
 }
@@ -103,8 +111,10 @@ const DECK = {
   ],
 };
 
+// isAdmin=true — 이 하니스는 **QA 관전용**이라 기본이 풀컨트롤(시계·스크럽·타임라인 핀)이어야 한다.
+// 관객 화면(하이라이트 토글 하나)이 보고 싶으면 `?viewerControls=play` 로 바꿔 볼 수 있다(#177).
 const ME = {
-  user: { id: "u-design", nickname: "디자인프리뷰", points: 1200, wins: 3, draws: 1, losses: 2, isAdmin: false },
+  user: { id: "u-design", nickname: "디자인프리뷰", points: 1200, wins: 3, draws: 1, losses: 2, isAdmin: true },
   wallet: { points: 1200 },
   records: { wins: 3, draws: 1, losses: 2 },
 };
@@ -167,6 +177,6 @@ const server = createServer((req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(
-    `[design-mock] http://127.0.0.1:${PORT} — 전반 ${H1.home}:${H1.away} · 최종 ${FULL.home}:${FULL.away} (${RESULT})`,
+    `[design-mock] http://127.0.0.1:${PORT} [${LOG_KIND}] — 전반 ${H1.home}:${H1.away} · 최종 ${FULL.home}:${FULL.away} (${RESULT})`,
   );
 });
