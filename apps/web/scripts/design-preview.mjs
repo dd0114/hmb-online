@@ -18,8 +18,17 @@ const repoRoot = resolve(webRoot, "..", "..");
 const PORT = Number(process.env.DESIGN_PORT ?? 8131);
 const MOCK_PORT = Number(process.env.DESIGN_MOCK_PORT ?? 8132);
 
-if (!existsSync(join(repoRoot, "packages", "engine", "dev-viewer", "match-log.json"))) {
-  console.error("[design-preview] match-log.json 이 없다 → 먼저 `npm run build:viewer` 를 돌려라.");
+// DESIGN_LOG=real 이면 리얼 config 풀매치 픽스처를 먹인다(목 서버와 같은 규약).
+const REAL_LOG = (process.env.DESIGN_LOG ?? "").toLowerCase() === "real";
+const LOG_FILE = REAL_LOG
+  ? join(repoRoot, "packages", "engine", "dev-viewer", "e2e", "fixture-real.json")
+  : join(repoRoot, "packages", "engine", "dev-viewer", "match-log.json");
+if (!existsSync(LOG_FILE)) {
+  console.error(
+    REAL_LOG
+      ? "[design-preview] fixture-real.json 이 없다 → `npx vitest run packages/engine/dev-viewer/e2e/gen-fixtures.test.ts`"
+      : "[design-preview] match-log.json 이 없다 → 먼저 `npm run build:viewer` 를 돌려라.",
+  );
   process.exit(1);
 }
 

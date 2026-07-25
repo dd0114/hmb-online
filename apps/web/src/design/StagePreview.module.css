@@ -3,7 +3,8 @@
 .switcher {
   position: fixed;
   right: 8px;
-  bottom: calc(72px + env(safe-area-inset-bottom, 0));
+  /* 무대 **위쪽**에 둔다 — 아래쪽은 QA 재생바(시계·타임라인 핀, #177)가 차지하며 서로 덮었다. */
+  top: calc(56px + env(safe-area-inset-top, 0));
   z-index: 9999;
   display: flex;
   flex-wrap: wrap;
