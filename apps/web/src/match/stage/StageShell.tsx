@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { scoreAt, type LogEvent } from "@hmb/viewer-core";
 import { useHalfLog, type MatchDetail } from "../../api/hooks";
+import { captureOffsetMs, logAvailableFor } from "../live-clock";
 import { MatchViewer } from "../MatchViewer";
 import { HalftimePanel } from "../HalftimePanel";
 import { ScoreBar } from "./ScoreBar";
@@ -67,7 +68,16 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
   const activeTab = resolveActiveTab(tabs, preferredTab);
   const sheetKind = sheetHeight(activeTab);
 
-  const { data: log } = useHalfLog(match.id, half);
+  const logEnabled = logAvailableFor(match.state, half);
+  const { data: log } = useHalfLog(match.id, half, logEnabled);
+
+  // 서버 시계(P4-E2 #170). 오프셋은 **응답이 도착한 그 순간에 한 번** 잰다 — 프레임마다 다시 재면
+  // serverNow 에 고정돼 시계가 멈춘다(live-clock.captureOffsetMs 주석).
+  const clock = match.clock ?? null;
+  const [offsetMs, setOffsetMs] = useState(0);
+  useEffect(() => {
+    if (clock) setOffsetMs(captureOffsetMs(clock, Date.now()));
+  }, [clock?.serverNow]);
   const liveScore = useMemo(() => {
     if (!log || tick == null) return null;
     return scoreAt(((log.events ?? []) as unknown as LogEvent[]) ?? [], tick);
@@ -110,6 +120,9 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
             homeName={homeName}
             awayName={awayName}
             onTick={setTick}
+            clock={clock}
+            clockOffsetMs={offsetMs}
+            logEnabled={logEnabled}
           />
         </section>
 
@@ -142,8 +155,12 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
               {activeTab === "log" && (
                 <LogPanel matchId={match.id} half={half} homeName={homeName} awayName={awayName} tick={tick} />
               )}
-              {activeTab === "brief" && <SecondHalfBriefPanel />}
-              {activeTab === "halftime" && <HalftimePanel match={match} />}
+              {activeTab === "brief" && (
+                <SecondHalfBriefPanel match={match} clockOffsetMs={offsetMs} />
+              )}
+              {activeTab === "halftime" && (
+                <HalftimePanel match={match} clockOffsetMs={offsetMs} />
+              )}
               {activeTab === "result" && (
                 <ResultPanel match={match} homeName={homeName} awayName={awayName} />
               )}

@@ -9,11 +9,15 @@ import {
 } from "../api/hooks";
 import { ErrorToast } from "../common/ErrorToast";
 import { MAX_SUBS, validateSubs, type SubPair } from "./match-logic";
+import { countdownLabel } from "./live-clock";
+import { useCountdown } from "./useCountdown";
 import { PromptFields, type RosterEntry } from "./PromptFields";
 import styles from "./HalftimePanel.module.css";
 
 interface HalftimePanelProps {
   match: MatchDetail;
+  /** 폴링 때 잡아둔 서버-클라 시각차(live-clock.captureOffsetMs). */
+  clockOffsetMs?: number;
 }
 
 /**
@@ -21,12 +25,18 @@ interface HalftimePanelProps {
  * NOTE: match GET 응답에는 내 로스터가 없어(openapi MatchDetail — opponent만) 선발/벤치를
  * useDeck에서 파생한다. 전반 중 퇴장 등 엔진 내 로스터 변화는 반영 못함 — 서버(AC-M4)가 최종 검증.
  */
-export function HalftimePanel({ match }: HalftimePanelProps) {
+export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) {
   const { data: deck, isError: deckError } = useDeck();
   const { data: players, isError: playersError } = usePlayers();
   const submitPrompt = useSubmitMatchPrompt(match.id);
   const halftime = useHalftime(match.id);
   const resume = useResume(match.id);
+
+  // 감독시간 카운트다운(P4-D2). 0 이 되면 서버가 후반을 자동 시작하므로 화면도 제출을 닫는다 —
+  // 눌러봐야 409 가 오는 버튼을 열어두면 "냈는데 안 들어갔다"는 오해가 된다.
+  const remaining = useCountdown(match.clock ?? null, clockOffsetMs);
+  const deadlineLabel = countdownLabel(remaining);
+  const expired = remaining != null && remaining <= 0;
 
   const [subs, setSubs] = useState<SubPair[]>([]);
   const [outPick, setOutPick] = useState("");
@@ -110,6 +120,17 @@ export function HalftimePanel({ match }: HalftimePanelProps) {
 
   return (
     <div className={styles.panel} data-testid="halftime-panel">
+      {deadlineLabel && (
+        <p
+          className={`${styles.deadline} ${expired ? styles.deadlineOver : ""}`}
+          data-testid="halftime-countdown"
+        >
+          {expired
+            ? "감독시간 종료 — 전반 지시 그대로 후반이 진행됩니다"
+            : `감독시간 ${deadlineLabel} 남음 — 시간이 지나면 전반 지시로 후반이 시작됩니다`}
+        </p>
+      )}
+
       <section className={styles.subsSection}>
         <h3 className={styles.subTitle}>
           선수 교체 ({subs.length}/{MAX_SUBS})
@@ -210,10 +231,10 @@ export function HalftimePanel({ match }: HalftimePanelProps) {
         type="button"
         className={styles.resume}
         data-testid="resume-button"
-        disabled={submitting || currentIssues.length > 0 || deckError || playersError}
+        disabled={submitting || expired || currentIssues.length > 0 || deckError || playersError}
         onClick={handleResume}
       >
-        {submitting ? "전송 중…" : "후반 시작"}
+        {submitting ? "전송 중…" : expired ? "후반 시작됨" : "후반 시작"}
       </button>
     </div>
   );

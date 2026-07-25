@@ -260,7 +260,50 @@
   color: var(--text);
   padding: 8px 10px;
   font-size: 13px;
+}
+
+/* 쓸 수 없는 상태(전반 전·후반 시작 후)에서만 흐리게 — 활성일 땐 또렷해야 "되는 자리"로 읽힌다. */
+.briefInput:disabled {
   opacity: 0.55;
+}
+
+.briefActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.briefSave {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--accent, #2f6fed);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.briefSave:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.savedNote {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.issue {
+  font-size: 11px;
+  color: var(--danger, #d9534f);
+}
+
+/* 감독시간 잔여가 얼마 없을 때 — 숫자만으로도 급한 걸 알게. */
+.countdownUrgent {
+  color: var(--danger, #d9534f);
 }
 
 .pending {

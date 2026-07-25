@@ -115,3 +115,18 @@
 .resume:disabled {
   opacity: 0.6;
 }
+
+/* 감독시간(P4-D2) 카운트다운 — 패널 맨 위, 지금 시간이 흐르고 있다는 걸 먼저 알린다. */
+.deadline {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg-soft, rgba(127, 127, 127, 0.12));
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.deadlineOver {
+  color: var(--danger, #d9534f);
+}
