@@ -299,8 +299,14 @@ UPDATE matches SET state='FINISHED', score_home=?, score_away=?, result=?, finis
    `advanceDueForRead` = **가벼운 전이만**(전반 종료→감독시간, 후반 종료→정산).
    스위퍼가 죽어도 **보고 있는 유저의 화면은 정확**하고, 스위퍼는 **안 보는 매치도 진행**시킨다.
 - **무거운 전이 = HALFTIME→GEN2**: 인풋 승계(AI 콜 0)면 그 자리에서 엔진 RPC 로 후반을 통째로 시뮬한다.
-  요청 스레드에서 하면 **1초 폴링 GET 이 그 시간만큼 블록**되므로(독립검증 major) 스위퍼 전용으로 둔다.
+  요청 스레드에서 하면 **1초 폴링 GET 이 그 시간만큼 블록**되므로(독립검증 blocker) 스위퍼 전용으로 둔다.
   유저 체감 지연은 최대 `sweep-interval-ms`(1초).
+- **그 대가 = 후반 시작이 스위퍼 단독 의존**이 된다. 그래서 스위퍼를 다음 두 가지로 보강한다:
+  ① `spring.task.scheduling.pool.size=4` — `@Scheduled` 기본 풀은 1이라 시계 스윕이 길어지면
+  `JobLeaseSweeper` 까지 함께 멈춘다. ② `advanceAllDue` 는 매치별 **병렬**(`sweep-parallelism`, 데몬 풀)로
+  돌되 완료를 기다린다 — 한 매치의 후반 시뮬이 다른 모든 매치의 시계를 멈추는 head-of-line 블로킹 제거.
+  (테스트는 `sweep-interval-ms` 를 크게 줘 배경 스케줄러를 끄고 `sweep()` 을 직접 호출한다 — 스케줄러가
+  끼면 단계가 앞서가 판정이 흔들린다.)
 
 ### 7.5 감독시간 = 전반 프롬프트 승계 (AC-W2-2 후단)
 만료 경로는 **추가 코드가 필요 없다**. `MatchOrchestrator.resolveSide(half=2)` 가 이미:
@@ -351,6 +357,10 @@ UPDATE matches SET state='HALFTIME' WHERE state='H1_BREAK';  -- 진행 중 매�
   인덱스(`idx_matches_user`·`idx_matches_clock`)도 재생성한다.
   검증 = **`FlywayV8LegacyDataMigrationTest`** — V1~V7 DB에 진행 중 매치 + 자식 행을 넣고 V8 을 돌린다
   (빈 DB 로 부팅하는 `@SpringBootTest` 마이그레이션 테스트로는 이 결함을 절대 못 잡는다).
+- ⚠️ **배포 주의(비원자성)**: `executeInTransaction=false` 는 12단계 절차상 불가피하지만, 그 대가로 이
+  마이그레이션은 **원자적이지 않다** — `DROP TABLE matches` 와 `RENAME` 사이에서 프로세스가 죽으면
+  `matches` 없는 DB + Flyway failed 로 남아 수동 복구가 필요하다. **V8 이 적용되는 첫 배포 전에 DB 파일을
+  백업**할 것(배포 세션 #122 / `docs/plan-v4/deploy-playbook.md` 반영 대상).
 
 ---
 
@@ -396,6 +406,9 @@ UPDATE matches SET state='HALFTIME' WHERE state='H1_BREAK';  -- 진행 중 매�
 | T-W2-5 | 시계 on/off 두 경로의 `match_halves.last_hash` 가 같은 픽스처 지문 = 시각이 시뮬에 안 샘 | W2-3, I1 |
 | T-M-3 | **후반 스코어 왕복**: `score_h2_*` 저장 → 정산 합산(픽스처 h2 가 0-0 이라 임의값으로 덮어 태운다) | 무회귀 |
 | T-M-4 | 정산은 **스위퍼 단독**으로도 된다(지연평가 없이) = "화면 안 봐도 정산" | W3-1 |
+| T-M-5 | 만료 판정 술어 `isDue` — **경계 동치(`now == endsAt`)도 만료**(통합테스트는 항상 과거로 밀어 이 경계를 못 본다) | W2-3 |
+| T-M-6 | 경계 CAS: 지난 창의 경계값으로는 정산되지 않고 현재 창 값이면 정산된다 | W2-3 |
+| T-M-7 | 후반 시작은 **스위퍼 몫** — GET 만 계속 와도 HALFTIME 유지, `sweep()` 후 SECOND_HALF | major(요청 블로킹) |
 | T-W2-6 | 전이 매트릭스 확장(§2.3 전 조합 409 검증) | W2-3 |
 | T-M-1 | 정산 이동 회귀: 보상·리그 정산·관계는 `SECOND_HALF→FINISHED` 에서 **정확히 1회** | 무회귀 |
 | T-M-2 | V8 마이그레이션: 기존 `H1_BREAK` 행 → `HALFTIME`+ends NULL, 이후 수동 resume 정상 | 무회귀 |
