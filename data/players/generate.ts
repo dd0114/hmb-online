@@ -167,6 +167,41 @@ export interface EconomyLeagueRef {
   rewardsRef: string;
 }
 
+/** 능력치 9종 성장 방향 벡터(합=1, 정규화). §4 방향 w 의 포지션 baseline. */
+export interface GrowthBaselineVec {
+  technical: number;
+  mental: number;
+  physical: number;
+  passing: number;
+  shooting: number;
+  tackling: number;
+  pace: number;
+  stamina: number;
+  positioning: number;
+}
+
+/** 성장(경기·무과금 트랙) config — 매치 정산 xp·방향. #179 §7 (하드코딩 금지). */
+export interface GrowthConfig {
+  xpBase: number;
+  xpPerLevel: number;
+  completeMatches: number;
+  benchGrowthMult: number;
+  execMatchDefault: number;
+  speedMaxMult: number;
+  /** 포지션별 성장 방향 baseline(각 벡터 합=1). */
+  baselineByPosition: Record<Position, GrowthBaselineVec>;
+}
+
+/** 강화(가챠·과금 트랙) config — cap↑·소량 fill·한계돌파. #179 §7 (하드코딩 금지). */
+export interface EnhanceConfig {
+  maxEnhance: number;
+  enhanceStep: number;
+  autoFillRatio: number;
+  limitBreakCopies: number;
+  maxLimitBreak: number;
+  pointCost: number;
+}
+
 export interface EconomySeed {
   version: string;
   initialPoints: number;
@@ -183,6 +218,10 @@ export interface EconomySeed {
   trade: TradeConfig;
   /** P2 추가(additive): 리그 보상표 참조. */
   league: EconomyLeagueRef;
+  /** #179 추가(additive): 성장(경기·무과금 트랙) config. */
+  growth: GrowthConfig;
+  /** #179 추가(additive): 강화(가챠·과금 트랙) config. */
+  enhance: EnhanceConfig;
 }
 
 /** 팀 성향 프리셋 — 봇 팀 성격 + 유저 수동 전술 프리셋(P2-D4/D10). tactics 는 0..1 (line/press/tempo/width). */
@@ -540,6 +579,32 @@ export function generateAll(): GeneratedData {
     },
     // 리그 순위 보상표는 league.v1.json#rewards 참조(단일 원천, 중복 금지) — LLD-p2-data §3.
     league: { rewardsFile: `league.${LEAGUE_VERSION}.json`, rewardsRef: "rewards" },
+    // -- #179 성장(경기·무과금 트랙) config (§7) — server/servants 는 이 블록만 읽음(하드코딩 금지) --
+    // Δxp = xpBase × minutesMult × execMatch × personaMult × conditionMult × gapDecay, 미출전=benchGrowthMult.
+    // baselineByPosition: 성장 방향 w 의 포지션 baseline(각 벡터 합=1, 정규화).
+    growth: {
+      xpBase: 100,
+      xpPerLevel: 300,
+      completeMatches: 36,
+      benchGrowthMult: 0.2,
+      execMatchDefault: 0.6,
+      speedMaxMult: 3.0,
+      baselineByPosition: {
+        FW: { shooting: 0.22, pace: 0.18, positioning: 0.15, technical: 0.13, passing: 0.1, stamina: 0.08, physical: 0.07, mental: 0.05, tackling: 0.02 },
+        MF: { passing: 0.2, technical: 0.16, stamina: 0.14, positioning: 0.12, mental: 0.1, pace: 0.1, shooting: 0.08, tackling: 0.06, physical: 0.04 },
+        DF: { tackling: 0.22, positioning: 0.18, physical: 0.15, mental: 0.12, passing: 0.1, stamina: 0.09, pace: 0.08, technical: 0.04, shooting: 0.02 },
+        GK: { positioning: 0.24, mental: 0.2, physical: 0.14, tackling: 0.12, passing: 0.1, stamina: 0.08, pace: 0.06, technical: 0.04, shooting: 0.02 },
+      },
+    },
+    // -- #179 강화(가챠·과금 트랙) config (§7) — cap↑·소량 fill·한계돌파 재료/비용(하드코딩 금지) --
+    enhance: {
+      maxEnhance: 5,
+      enhanceStep: 2.0,
+      autoFillRatio: 0.25,
+      limitBreakCopies: 3,
+      maxLimitBreak: 4,
+      pointCost: 200,
+    },
   };
 
   // -- bots.v1.json -------------------------------------------------------

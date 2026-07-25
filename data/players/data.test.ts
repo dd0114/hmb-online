@@ -372,6 +372,79 @@ describe("economy.v2 — 스타터팩·확률표", () => {
   });
 });
 
+describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
+  const ATTR_KEYS = [
+    "technical",
+    "mental",
+    "physical",
+    "passing",
+    "shooting",
+    "tackling",
+    "pace",
+    "stamina",
+    "positioning",
+  ] as const;
+
+  it("growth 블록 존재 + 스칼라 수치(hero 확정 C1~C6)", () => {
+    const g = economy.growth;
+    expect(g).toBeDefined();
+    expect(g.xpBase).toBe(100);
+    expect(g.xpPerLevel).toBe(300);
+    expect(g.completeMatches).toBe(36);
+    expect(g.benchGrowthMult).toBe(0.2);
+    expect(g.execMatchDefault).toBe(0.6);
+    expect(g.speedMaxMult).toBe(3.0);
+  });
+
+  it("baselineByPosition — 4포지션 전부 존재 · 9종 능력치 완비 · 각 값 양수", () => {
+    const b = economy.growth.baselineByPosition;
+    for (const pos of POSITIONS) {
+      const vec = b[pos];
+      expect(vec, `${pos} baseline 존재`).toBeDefined();
+      const keys = Object.keys(vec).sort();
+      expect(keys, `${pos} 능력치 9종`).toEqual([...ATTR_KEYS].sort());
+      for (const k of ATTR_KEYS) {
+        expect(vec[k], `${pos}.${k} > 0`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("각 baseline 벡터 합 = 1.0 (정규화)", () => {
+    const b = economy.growth.baselineByPosition;
+    for (const pos of POSITIONS) {
+      const sum = ATTR_KEYS.reduce((s, k) => s + b[pos][k], 0);
+      expect(sum, `${pos} 벡터 합=1`).toBeCloseTo(1, 10);
+    }
+  });
+
+  it("포지션 주스탯이 성장 방향 최대치(baseline 최상위)", () => {
+    // 성장 방향은 포지션 주스탯을 가장 크게 밀어야 한다(§4 방향 w).
+    const b = economy.growth.baselineByPosition;
+    const topOf = (pos: Position) =>
+      ATTR_KEYS.reduce((best, k) => (b[pos][k] > b[pos][best] ? k : best), ATTR_KEYS[0]);
+    expect(topOf("FW")).toBe("shooting");
+    expect(topOf("MF")).toBe("passing");
+    expect(topOf("DF")).toBe("tackling");
+    expect(topOf("GK")).toBe("positioning");
+  });
+
+  it("enhance 블록 존재 + 수치(강화5/돌파3장/최대돌파4/비용200)", () => {
+    const e = economy.enhance;
+    expect(e).toBeDefined();
+    expect(e.maxEnhance).toBe(5);
+    expect(e.enhanceStep).toBe(2.0);
+    expect(e.autoFillRatio).toBe(0.25);
+    expect(e.limitBreakCopies).toBe(3);
+    expect(e.maxLimitBreak).toBe(4);
+    expect(e.pointCost).toBe(200);
+  });
+
+  it("불변식 — autoFillRatio ∈ (0,1) (과금은 cap↑·소량만 채움)", () => {
+    expect(economy.enhance.autoFillRatio).toBeGreaterThan(0);
+    expect(economy.enhance.autoFillRatio).toBeLessThan(1);
+  });
+});
+
 describe("bots.v2 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)", () => {
   const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
 

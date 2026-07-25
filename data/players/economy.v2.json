@@ -83,5 +83,67 @@
   "league": {
     "rewardsFile": "league.v1.json",
     "rewardsRef": "rewards"
+  },
+  "growth": {
+    "xpBase": 100,
+    "xpPerLevel": 300,
+    "completeMatches": 36,
+    "benchGrowthMult": 0.2,
+    "execMatchDefault": 0.6,
+    "speedMaxMult": 3,
+    "baselineByPosition": {
+      "FW": {
+        "shooting": 0.22,
+        "pace": 0.18,
+        "positioning": 0.15,
+        "technical": 0.13,
+        "passing": 0.1,
+        "stamina": 0.08,
+        "physical": 0.07,
+        "mental": 0.05,
+        "tackling": 0.02
+      },
+      "MF": {
+        "passing": 0.2,
+        "technical": 0.16,
+        "stamina": 0.14,
+        "positioning": 0.12,
+        "mental": 0.1,
+        "pace": 0.1,
+        "shooting": 0.08,
+        "tackling": 0.06,
+        "physical": 0.04
+      },
+      "DF": {
+        "tackling": 0.22,
+        "positioning": 0.18,
+        "physical": 0.15,
+        "mental": 0.12,
+        "passing": 0.1,
+        "stamina": 0.09,
+        "pace": 0.08,
+        "technical": 0.04,
+        "shooting": 0.02
+      },
+      "GK": {
+        "positioning": 0.24,
+        "mental": 0.2,
+        "physical": 0.14,
+        "tackling": 0.12,
+        "passing": 0.1,
+        "stamina": 0.08,
+        "pace": 0.06,
+        "technical": 0.04,
+        "shooting": 0.02
+      }
+    }
+  },
+  "enhance": {
+    "maxEnhance": 5,
+    "enhanceStep": 2,
+    "autoFillRatio": 0.25,
+    "limitBreakCopies": 3,
+    "maxLimitBreak": 4,
+    "pointCost": 200
   }
 }
