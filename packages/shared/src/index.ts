@@ -4,6 +4,7 @@ export * from "./tactical-input.js";
 export * from "./tactical-patch.js";
 export * from "./select-data.js";
 export * from "./match-log.js";
+export * from "./match-clock.js";
 export * from "./clamp.js";
 export * from "./simulate.js";
 export * from "./team-input-job.js";

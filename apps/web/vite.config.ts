@@ -10,6 +10,8 @@ export default defineConfig({
       // 관전 렌더/투영 코어(P4-D3 SoT, #169). 워크스페이스 소스를 그대로 번들한다 —
       // 별도 빌드 산출물이 없어 alias 로 붙인다(tsconfig paths 와 짝).
       "@hmb/viewer-core": fileURLToPath(new URL("../../packages/viewer-core/src/index.ts", import.meta.url)),
+      // 서버 권위 시계 매핑(P4-E2 #170) — 시각→틱 계산의 SoT 를 서버/QA뷰어와 공유한다.
+      "@hmb/shared": fileURLToPath(new URL("../../packages/shared/src/index.ts", import.meta.url)),
     },
   },
   server: {

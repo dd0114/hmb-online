@@ -18,10 +18,13 @@ public class MatchController {
 
     private final MatchService matchService;
     private final MatchOrchestrator orchestrator;
+    private final MatchClockService clockService;
 
-    public MatchController(MatchService matchService, MatchOrchestrator orchestrator) {
+    public MatchController(MatchService matchService, MatchOrchestrator orchestrator,
+                           MatchClockService clockService) {
         this.matchService = matchService;
         this.orchestrator = orchestrator;
+        this.clockService = clockService;
     }
 
     /**
@@ -43,8 +46,18 @@ public class MatchController {
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 
+    /**
+     * 시계 지연 평가(P4-E2 #170): 조회 시점에 만료된 단계를 먼저 진행시킨다 — 스위퍼(1s)가 죽어 있어도
+     * <b>보고 있는 화면은 정확</b>하고, 스위퍼는 아무도 안 보는 매치를 진행시킨다(서로의 백스톱).
+     *
+     * <p>단 <b>가벼운 전이만</b>이다({@link MatchClockService#advanceDueForRead}). 후반 시작은 엔진 RPC 를
+     * 물고 있어 요청 스레드에서 하면 1초 폴링이 그만큼 붙잡힌다(독립검증 blocker) — 그건 스위퍼 몫이고
+     * 유저 체감 지연은 최대 sweep-interval-ms 다.
+     */
     @GetMapping("/api/matches/{id}")
     public MatchDetail get(@RequestAttribute("userId") String userId, @PathVariable("id") String id) {
+        matchService.getOwned(userId, id); // 소유권 먼저(남의 매치 시계를 밀지 않게)
+        clockService.advanceDueForRead(id);
         return matchService.toDetail(matchService.getOwned(userId, id));
     }
 
@@ -101,12 +114,16 @@ public class MatchController {
     public String halfLog(@RequestAttribute("userId") String userId,
                           @PathVariable("id") String id,
                           @PathVariable("half") int half) {
+        matchService.getOwned(userId, id);
+        clockService.advanceDueForRead(id); // 재생 요청 시점 기준으로 단계를 맞춘 뒤 허용 여부를 판정
         return matchService.halfLogJson(userId, id, half); // match_log_json 그대로 (AC-M3)
     }
 
     @GetMapping("/api/matches/{id}/result")
     public MatchService.MatchResult result(@RequestAttribute("userId") String userId,
                                            @PathVariable("id") String id) {
+        matchService.getOwned(userId, id);
+        clockService.advanceDueForRead(id); // 후반 창이 방금 끝났으면 여기서 정산하고 결과를 준다
         return matchService.result(userId, id);
     }
 

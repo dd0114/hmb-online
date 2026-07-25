@@ -14,7 +14,10 @@ const STATE_LABELS: Record<string, string> = {
   BRIEFING: "경기 전 브리핑",
   GEN1: "전반 준비",
   GEN2: "후반 준비",
-  H1_BREAK: "하프타임",
+  FIRST_HALF: "전반 진행 중",
+  HALFTIME: "감독시간",
+  SECOND_HALF: "후반 진행 중",
+  H1_BREAK: "하프타임", // 레거시(P4 이전 배포본)
   FINISHED: "경기 종료",
   FAILED: "오류",
 };
@@ -49,10 +52,10 @@ export function MatchPage() {
 
   const panel = panelForState(match?.state);
 
-  // 관전 상태(하프타임·종료) = 경기장면 고정 셸(#169 S1, P4-D4). 준비 상태(BRIEFING/GEN*)는
-  // 아직 경기장면이 없는 폼 화면이라 기존 페이지 레이아웃을 그대로 쓴다 — W2(#170, 감독시간
-  // 단계분리)가 흐름을 바꿀 때 함께 셸로 흡수한다.
-  if (match && (panel === "halftime" || panel === "result")) {
+  // 관전 상태(라이브 전/후반·감독시간·종료) = 경기장면 고정 셸(#169 S1, P4-D4).
+  // 준비 상태(BRIEFING/GEN*)는 아직 경기장면이 없는 폼 화면이라 기존 페이지 레이아웃을 쓴다.
+  // GEN2(후반 생성)는 보통 재사용이라 눈 깜짝할 사이지만, AI 를 태우면 대기 화면이 필요하다.
+  if (match && (panel === "live" || panel === "halftime" || panel === "result")) {
     return (
       <StageShell match={match} homeName={homeName} awayName={awayName} leagueRound={leagueRound} />
     );

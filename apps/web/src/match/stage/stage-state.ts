@@ -50,14 +50,15 @@ export function serializeToggles(t: Toggles): string {
 
 /** 매치 상태가 소유하는 패널(없으면 null). */
 export function statePanelFor(state: string | undefined): StatePanelKey | null {
-  if (state === "H1_BREAK") return "halftime";
+  // HALFTIME = 감독시간(P4-E2 #170). H1_BREAK 은 그 자리의 레거시 이름.
+  if (state === "HALFTIME" || state === "H1_BREAK") return "halftime";
   if (state === "FINISHED") return "result";
   return null;
 }
 
-/** 이 상태에서 무대가 재생할 하프. */
+/** 이 상태에서 무대가 재생할 하프. 후반이 열린 뒤로는 후반을 튼다. */
 export function halfForState(state: string | undefined): 1 | 2 {
-  return state === "FINISHED" ? 2 : 1;
+  return state === "SECOND_HALF" || state === "FINISHED" ? 2 : 1;
 }
 
 /**

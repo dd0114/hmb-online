@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createViewer, type ViewerChrome, type ViewerController } from "@hmb/viewer-core";
+import type { MatchClock } from "@hmb/shared";
 import { useHalfLog } from "../api/hooks";
+import { liveGate } from "./live-clock";
 import {
   eventDisplay,
   formatClock,
@@ -29,6 +31,12 @@ interface MatchViewerProps {
   awayName: string;
   /** 재생 플레이헤드 미러링 — 호스트(스코어바·통계·로그)가 "지금까지"를 계산하는 기준. */
   onTick?: (tick: number) => void;
+  /** 서버 권위 시계(P4-E2 #170). 이 하프가 라이브면 재생이 "지금"까지로 제한된다. */
+  clock?: MatchClock | null;
+  /** 폴링 시점에 잡아둔 서버-클라 시각차(live-clock.captureOffsetMs). */
+  clockOffsetMs?: number;
+  /** 이 상태에서 로그를 요청해도 되는가(서버 허용표 미러 — 409 방지). */
+  logEnabled?: boolean;
 }
 
 type ViewMode = "visual" | "timeline";
@@ -39,8 +47,17 @@ type ViewMode = "visual" | "timeline";
  * `createViewer(canvas, chrome)` 로 QA 뷰어와 **같은 렌더 코어**를 돌린다 → QA 화면 = 게임 화면.
  * 시각 재생이 실패했을 때만 같은 자리에서 텍스트 타임라인으로 폴백한다.
  */
-export function MatchViewer({ matchId, half, homeName, awayName, onTick }: MatchViewerProps) {
-  const { data: log, isLoading, isError } = useHalfLog(matchId, half);
+export function MatchViewer({
+  matchId,
+  half,
+  homeName,
+  awayName,
+  onTick,
+  clock = null,
+  clockOffsetMs = 0,
+  logEnabled = true,
+}: MatchViewerProps) {
+  const { data: log, isLoading, isError } = useHalfLog(matchId, half, logEnabled);
   const [mode, setMode] = useState<ViewMode>("visual");
   // #148 컨트롤 모드: 계정/QA 플래그로 판정하되, admin/QA 가 토글하면 그 선택이 이긴다.
   const isAdmin = useAdminFlag();
@@ -90,6 +107,8 @@ export function MatchViewer({ matchId, half, homeName, awayName, onTick }: Match
           canSwitch={canSwitch}
           onControlMode={chooseMode}
           onTick={onTick}
+          clock={clock}
+          clockOffsetMs={clockOffsetMs}
         />
       ) : (
         <div className={styles.timelineFill}>
@@ -117,6 +136,8 @@ interface VisualPlaybackProps {
   canSwitch: boolean;
   onControlMode: (m: ControlMode) => void;
   onTick?: (tick: number) => void;
+  clock: MatchClock | null;
+  clockOffsetMs: number;
 }
 
 /**
@@ -132,6 +153,8 @@ function VisualPlayback({
   canSwitch,
   onControlMode,
   onTick,
+  clock,
+  clockOffsetMs,
 }: VisualPlaybackProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
@@ -220,6 +243,46 @@ function VisualPlayback({
     // 스킨은 위 별도 effect 로 반영(마운트 재실행 트리거에서 제외).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log, half]);
+
+  // ── 라이브 게이트(P4-E2 #170 / AC-W3-1) ───────────────────────────────
+  // 늦게 접속하면 **경과 시점부터** 재생하고, 그 뒤로는 "지금"을 앞질러 가지 못한다(되감기는 자유).
+  // viewer-core 는 자체 프레임 루프를 도므로 코어를 고치지 않고 호스트가 주기적으로 플레이헤드를
+  // 확인해 상한 밖이면 되돌린다(코어는 QA 뷰어와 공유하는 SoT — 여기서 건드리지 않는다).
+  const gateInput = useRef({ clock, clockOffsetMs, half });
+  gateInput.current = { clock, clockOffsetMs, half };
+  const tickCount = useMemo(() => {
+    const snaps = (log as { tickSnapshots?: unknown[] } | null)?.tickSnapshots;
+    return Array.isArray(snaps) ? snaps.length : 0;
+  }, [log]);
+
+  useEffect(() => {
+    const v = viewerRef.current;
+    if (!viewerReady || !v || tickCount <= 0) return;
+    const gateNow = () => {
+      const { clock: c, clockOffsetMs: off, half: h } = gateInput.current;
+      return liveGate(c, h, tickCount, Date.now(), off);
+    };
+
+    const entry = gateNow();
+    if (!entry.isLive) return; // 지나간 하프·종료·레거시 = 제한 없음(기존 동작 그대로)
+
+    // 라이브에서는 하이라이트 연출(autoPace)을 끈다 — 줌·슬로우가 실시간을 따라가지 못한다.
+    setHighlight(false);
+    v.setAutoPace(false);
+    if (entry.speed) v.setSpeed(entry.speed);
+    v.jumpToTick(entry.liveTick); // seek-to-now
+    v.play();
+
+    const timer = window.setInterval(() => {
+      const gate = gateNow();
+      if (!gate.isLive) return;
+      const cur = Number(v.hooks.cur()?.tick ?? 0);
+      if (cur > gate.clamp(cur)) {
+        v.jumpToTick(gate.liveTick); // 앞질러 갔으면(스크럽·배속) 지금으로 되돌린다
+      }
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [viewerReady, tickCount, clock?.phase, clock?.phaseStartAt]);
 
   const onHighlight = (on: boolean) => {
     setHighlight(on);

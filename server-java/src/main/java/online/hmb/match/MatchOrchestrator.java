@@ -49,6 +49,7 @@ public class MatchOrchestrator {
     private final WalletService walletService;
     private final EconomyService economyService;
     private final online.hmb.league.LeagueService leagueService;
+    private final MatchClockService clockService;
     private final ObjectMapper objectMapper;
 
     public MatchOrchestrator(JdbcClient jdbcClient,
@@ -63,6 +64,7 @@ public class MatchOrchestrator {
                              WalletService walletService,
                              EconomyService economyService,
                              online.hmb.league.LeagueService leagueService,
+                             MatchClockService clockService,
                              ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
@@ -76,6 +78,7 @@ public class MatchOrchestrator {
         this.walletService = walletService;
         this.economyService = economyService;
         this.leagueService = leagueService;
+        this.clockService = clockService;
         this.objectMapper = objectMapper;
     }
 
@@ -343,15 +346,9 @@ public class MatchOrchestrator {
             }
 
             if (half == 1) {
-                jdbcClient.sql("""
-                                UPDATE matches SET state = 'H1_BREAK', score_h1_home = ?, score_h1_away = ?,
-                                       engine_version = ?
-                                WHERE id = ? AND state = 'GEN1'
-                                """)
-                        .params(scoreHome, scoreAway, engineVersion, match.id())
-                        .update();
+                enterFirstHalf(match.id(), scoreHome, scoreAway, engineVersion);
             } else {
-                finishMatch(match, scoreHome, scoreAway);
+                enterSecondHalf(match, scoreHome, scoreAway);
             }
         });
 
@@ -360,10 +357,85 @@ public class MatchOrchestrator {
     }
 
     /**
+     * 전반 시뮬 완료 → <b>전반 라이브 재생 창</b> 진입(P4-E2 #170). "킥오프"는 요청 시각이 아니라
+     * <b>경기를 실제로 볼 수 있게 된 이 순간</b>이다 — AI 생성이 수 초~수 분 걸리므로 요청 시각을
+     * 기준 삼으면 열자마자 전반이 끝나 있다(LLD §2.2).
+     *
+     * <p>시계가 꺼져 있으면(롤백) 곧바로 감독시간 대기 = 시계 이전 동작(§7.7).
+     */
+    private void enterFirstHalf(String matchId, int scoreHome, int scoreAway, String engineVersion) {
+        if (!clockService.enabled()) {
+            jdbcClient.sql("""
+                            UPDATE matches SET state = 'HALFTIME', score_h1_home = ?, score_h1_away = ?,
+                                   engine_version = ?
+                            WHERE id = ? AND state = 'GEN1'
+                            """)
+                    .params(scoreHome, scoreAway, engineVersion, matchId)
+                    .update();
+            return;
+        }
+        Instant kickoff = clockService.now();
+        jdbcClient.sql("""
+                        UPDATE matches SET state = 'FIRST_HALF', score_h1_home = ?, score_h1_away = ?,
+                               engine_version = ?, kickoff_at = ?, phase_start_at = ?, phase_ends_at = ?
+                        WHERE id = ? AND state = 'GEN1'
+                        """)
+                .params(scoreHome, scoreAway, engineVersion, MatchClockService.format(kickoff),
+                        MatchClockService.format(kickoff), clockService.liveWindowEnd(kickoff), matchId)
+                .update();
+    }
+
+    /**
+     * 후반 시뮬 완료 → <b>후반 라이브 재생 창</b> 진입. 정산(스코어 합산·보상·리그·관계)은 이 창이
+     * 끝날 때 한다({@link #settleFinishedIfDue}) — 라이브 모델 정합 + 재생 중 스포일러 방지(매니저 R2 결정).
+     * 그 사이 후반 스코어는 score_h2_* 에만 보관하고 응답에는 싣지 않는다.
+     */
+    private void enterSecondHalf(MatchService.MatchRow match, int scoreHome, int scoreAway) {
+        if (!clockService.enabled()) {
+            finishMatch(match, scoreHome, scoreAway, MatchService.S_GEN2);
+            return;
+        }
+        Instant start = clockService.now();
+        jdbcClient.sql("""
+                        UPDATE matches SET state = 'SECOND_HALF', score_h2_home = ?, score_h2_away = ?,
+                               phase_start_at = ?, phase_ends_at = ?
+                        WHERE id = ? AND state = 'GEN2'
+                        """)
+                .params(scoreHome, scoreAway, MatchClockService.format(start),
+                        clockService.liveWindowEnd(start), match.id())
+                .update();
+    }
+
+    /**
+     * 후반 재생 창 만료 → FINISHED + 정산(MatchClockService 가 호출). 경계값 CAS 라 스위퍼 N개와
+     * 지연평가 GET M개가 동시에 들어와도 정확히 1회만 성공한다 = 보상도 1회(AC-M6 멱등 유지).
+     *
+     * @return 이번 호출이 실제로 종료·정산했으면 true
+     */
+    public boolean settleFinishedIfDue(String matchId, String boundary) {
+        MatchService.MatchRow match = matchService.find(matchId).orElse(null);
+        if (match == null || !MatchService.S_SECOND_HALF.equals(match.state())) {
+            return false;
+        }
+        return Boolean.TRUE.equals(txRunner.run(() ->
+                finishMatch(match, nvl(match.scoreH2Home()), nvl(match.scoreH2Away()),
+                        MatchService.S_SECOND_HALF, boundary)));
+    }
+
+    private boolean finishMatch(MatchService.MatchRow match, int h2ScoreHome, int h2ScoreAway,
+                                String fromState) {
+        return finishMatch(match, h2ScoreHome, h2ScoreAway, fromState, null);
+    }
+
+    /**
      * FINISHED 전이 트랜잭션 (LLD §5.5, AC-M6): 스코어 합산 → result → CAS → 보상(멱등).
      * CAS가 실패하면(이미 FINISHED) 보상도 건드리지 않는다 + 원장 유니크 인덱스가 이중 방어.
+     *
+     * <p>{@code fromState} = GEN2(시계 꺼짐: 시뮬 직후 종료) 또는 SECOND_HALF(시계 켜짐: 재생 창 만료).
+     * 후자는 {@code boundary}(그 창의 phase_ends_at)까지 CAS 조건에 넣어 경계 재현·경합 안전을 지킨다.
      */
-    private void finishMatch(MatchService.MatchRow match, int h2ScoreHome, int h2ScoreAway) {
+    private boolean finishMatch(MatchService.MatchRow match, int h2ScoreHome, int h2ScoreAway,
+                                String fromState, String boundary) {
         // totalHome/totalAway = 엔진(=픽스처) home/away 관점. score_home/away 컬럼도 이 관점으로 저장.
         int totalHome = nvl(match.scoreH1Home()) + h2ScoreHome;
         int totalAway = nvl(match.scoreH1Away()) + h2ScoreAway;
@@ -373,15 +445,24 @@ public class MatchOrchestrator {
         int oppGoals = userHome ? totalAway : totalHome;
         String result = userGoals > oppGoals ? "WIN" : userGoals < oppGoals ? "LOSS" : "DRAW";
 
-        int updated = jdbcClient.sql("""
-                        UPDATE matches SET state = 'FINISHED', score_home = ?, score_away = ?,
-                               result = ?, finished_at = ?
-                        WHERE id = ? AND state = 'GEN2'
-                        """)
-                .params(totalHome, totalAway, result, Instant.now().toString(), match.id())
-                .update();
+        int updated = boundary == null
+                ? jdbcClient.sql("""
+                                UPDATE matches SET state = 'FINISHED', score_home = ?, score_away = ?,
+                                       result = ?, finished_at = ?, phase_start_at = NULL, phase_ends_at = NULL
+                                WHERE id = ? AND state = ?
+                                """)
+                        .params(totalHome, totalAway, result, clockService.nowText(), match.id(), fromState)
+                        .update()
+                : jdbcClient.sql("""
+                                UPDATE matches SET state = 'FINISHED', score_home = ?, score_away = ?,
+                                       result = ?, finished_at = ?, phase_start_at = NULL, phase_ends_at = NULL
+                                WHERE id = ? AND state = ? AND phase_ends_at = ?
+                                """)
+                        .params(totalHome, totalAway, result, clockService.nowText(), match.id(),
+                                fromState, boundary)
+                        .update();
         if (updated != 1) {
-            return; // 경합 — 이미 완료 처리됨
+            return false; // 경합 — 이미 완료 처리됨
         }
 
         // AC-F2: 리그 매치면 픽스처 정산 + 같은 라운드 봇전 일괄 + 시즌 완료/보상(멱등, LeagueService).
@@ -401,6 +482,7 @@ public class MatchOrchestrator {
             String reason = "reward_" + result.toLowerCase();
             walletService.apply(match.userId(), amount, reason, match.id());
         }, () -> log.warn("economy unavailable — match {} finished without reward", match.id()));
+        return true;
     }
 
     /** GEN* → FAILED (AC-M7). 그 외 상태면 no-op. */

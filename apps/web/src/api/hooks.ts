@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "./client";
 import type { components } from "./schema";
 import { useToken } from "../auth/TokenContext";
-import { shouldPoll } from "../match/match-logic";
+import { pollIntervalFor } from "../match/live-clock";
 
 import type { Personality } from "./v2";
 import type { PlayerImageRef } from "../common/char-assets";
@@ -155,8 +155,9 @@ export type CreateMatchRequest = components["schemas"]["CreateMatchRequest"] & {
 };
 
 /**
- * GET /api/matches/:id — 3s polling ONLY while the server is generating (GEN1/GEN2);
- * interactive/terminal states stop the interval (LLD-web §2, AC-W4).
+ * GET /api/matches/:id — 생성 중(GEN1/GEN2)은 3초, **라이브 단계(FIRST_HALF/HALFTIME/SECOND_HALF)는
+ * 1초** 폴링(P4-E2 #170: 단계 전환을 서버 시계가 소유하므로 화면이 그걸 따라가야 한다).
+ * 상호작용/종료 상태는 폴링하지 않는다(LLD-web §2, AC-W4).
  */
 export function useMatch(id: string | undefined) {
   const { token } = useToken();
@@ -164,7 +165,7 @@ export function useMatch(id: string | undefined) {
     queryKey: ["match", id],
     queryFn: () => apiFetch<MatchDetail>(`/api/matches/${id}`),
     enabled: Boolean(token) && Boolean(id),
-    refetchInterval: (query) => (shouldPoll(query.state.data?.state) ? 3000 : false),
+    refetchInterval: (query) => pollIntervalFor(query.state.data?.state),
   });
 }
 

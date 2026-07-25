@@ -39,10 +39,25 @@ public class MatchService {
 
     public static final String S_BRIEFING = "BRIEFING";
     public static final String S_GEN1 = "GEN1";
-    public static final String S_H1_BREAK = "H1_BREAK";
+    /** 전반 라이브 재생 창 (P4-E2 #170). */
+    public static final String S_FIRST_HALF = "FIRST_HALF";
+    /** 감독시간 — 구 H1_BREAK 의 자리(60초 데드라인, P4-D2). */
+    public static final String S_HALFTIME = "HALFTIME";
+    /** 후반 라이브 재생 창. 이 창이 끝나야 FINISHED·정산이다. */
+    public static final String S_SECOND_HALF = "SECOND_HALF";
     public static final String S_GEN2 = "GEN2";
     public static final String S_FINISHED = "FINISHED";
     public static final String S_FAILED = "FAILED";
+    /**
+     * 레거시 전용(P4 이전 배포본). V8 마이그레이션이 HALFTIME 으로 옮기지만, 감사·부분롤백 대비로
+     * CHECK 에 남겨두고 읽기 경로에서만 HALFTIME 과 동등 취급한다(쓰기 경로 없음).
+     */
+    public static final String S_H1_BREAK = "H1_BREAK";
+
+    /** 감독시간에 해당하는 상태들(신규 + 레거시). */
+    private static final Set<String> HALFTIME_STATES = Set.of(S_HALFTIME, S_H1_BREAK);
+    /** 후반 지시·교체를 미리 넣어둘 수 있는 상태 — 전반을 보면서 준비한다(#169 S1 "후반 지시" 패널). */
+    private static final Set<String> PRE_SECOND_HALF_STATES = Set.of(S_FIRST_HALF, S_HALFTIME, S_H1_BREAK);
 
     private final JdbcClient jdbcClient;
     private final TxRunner txRunner;
@@ -51,6 +66,7 @@ public class MatchService {
     private final ConditionService conditionService;
     private final ObjectMapper objectMapper;
     private final java.time.Clock clock;
+    private final MatchClockService clockService;
     private final int halftimeSubsMax;
     private final int promptMaxChars;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -62,6 +78,7 @@ public class MatchService {
                         ConditionService conditionService,
                         ObjectMapper objectMapper,
                         java.time.Clock clock,
+                        MatchClockService clockService,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
         this.jdbcClient = jdbcClient;
@@ -71,17 +88,21 @@ public class MatchService {
         this.conditionService = conditionService;
         this.objectMapper = objectMapper;
         this.clock = clock;
+        this.clockService = clockService;
         this.halftimeSubsMax = halftimeSubsMax;
         this.promptMaxChars = promptMaxChars;
     }
 
     // ── 행 모델 ─────────────────────────────────────────────────────────
 
+    /** kickoffAt/phaseStartAt/phaseEndsAt = P4 시계 컬럼(#170). 시계 미적용 매치는 전부 null. */
     public record MatchRow(String id, String userId, String botId, String state, String failReason,
                            String seed, String engineVersion, String userDeckJson, String subsJson,
                            Integer scoreH1Home, Integer scoreH1Away, Integer scoreHome, Integer scoreAway,
                            String result, String createdAt, String finishedAt,
-                           String conditionsJson, String mode, String leagueFixtureId) {
+                           String conditionsJson, String mode, String leagueFixtureId,
+                           String kickoffAt, String phaseStartAt, String phaseEndsAt,
+                           Integer scoreH2Home, Integer scoreH2Away) {
     }
 
     public MatchRow getOwned(String userId, String matchId) {
@@ -98,7 +119,9 @@ public class MatchService {
                         SELECT id, user_id, bot_id, state, fail_reason, seed, engine_version,
                                user_deck_json, subs_json, score_h1_home, score_h1_away,
                                score_home, score_away, result, created_at, finished_at,
-                               conditions_json, mode, league_fixture_id
+                               conditions_json, mode, league_fixture_id,
+                               kickoff_at, phase_start_at, phase_ends_at,
+                               score_h2_home, score_h2_away
                         FROM matches WHERE id = ?
                         """)
                 .param(matchId)
@@ -111,7 +134,10 @@ public class MatchService {
                         (Integer) rs.getObject("score_home"), (Integer) rs.getObject("score_away"),
                         rs.getString("result"), rs.getString("created_at"), rs.getString("finished_at"),
                         rs.getString("conditions_json"), rs.getString("mode"),
-                        rs.getString("league_fixture_id")))
+                        rs.getString("league_fixture_id"),
+                        rs.getString("kickoff_at"), rs.getString("phase_start_at"),
+                        rs.getString("phase_ends_at"),
+                        (Integer) rs.getObject("score_h2_home"), (Integer) rs.getObject("score_h2_away")))
                 .optional();
     }
 
@@ -335,17 +361,23 @@ public class MatchService {
                                Integer scoreHome, Integer scoreAway,
                                String result, String createdAt, String finishedAt,
                                Map<String, Double> conditions, String mode, String leagueFixtureId,
-                               JsonNode userDeckSnapshot) {
+                               JsonNode userDeckSnapshot, MatchClockService.MatchClock clock) {
     }
 
     public MatchDetail toDetail(MatchRow row) {
         // Phase2 additive(MatchDetailPhase2Fields): conditions/mode/leagueFixtureId — 시계 UI·리그 뱃지용.
         // + userDeckSnapshot(#98 요구 2): 이 매치에 쓴 덱 스냅샷을 읽어서 노출만(저장 로직 변경 0).
+        // + clock(P4-E2 #170): 라이브 단계에서만 채워지는 서버 권위 시계.
         String mode = row.mode() == null ? "practice" : row.mode();
+        // 스포일러 금지: 전반이 아직 재생 중이면 전반 스코어를 내려주지 않는다(계약상 scoreH1* 은
+        // "감독시간 이후"에 채워지는 필드다). 후반 스코어·결과는 FINISHED 전까지 애초에 null 이다.
+        boolean h1Live = S_FIRST_HALF.equals(row.state());
         return new MatchDetail(row.id(), row.state(), row.failReason(), buildOpponent(row),
-                row.scoreH1Home(), row.scoreH1Away(), row.scoreHome(), row.scoreAway(),
+                h1Live ? null : row.scoreH1Home(), h1Live ? null : row.scoreH1Away(),
+                row.scoreHome(), row.scoreAway(),
                 row.result(), row.createdAt(), row.finishedAt(),
-                conditionsOf(row), mode, row.leagueFixtureId(), userDeckSnapshotOf(row));
+                conditionsOf(row), mode, row.leagueFixtureId(), userDeckSnapshotOf(row),
+                clockService.clockOf(row));
     }
 
     /**
@@ -446,9 +478,12 @@ public class MatchService {
             throw ApiException.validation("scope는 team|player만 허용됩니다");
         }
 
-        // 전이표: pre↔BRIEFING, halftime↔H1_BREAK — 그 외 409 (AC-M1)
-        String requiredState = "pre".equals(phase) ? S_BRIEFING : S_H1_BREAK;
-        if (!row.state().equals(requiredState)) {
+        // 전이표: pre↔BRIEFING / halftime↔FIRST_HALF·HALFTIME(P4-E2 #170 — 전반을 보면서 후반 지시를
+        // 미리 써두고 감독시간에 마저 고친다). 그 외 409 (AC-M1)
+        boolean allowed = "pre".equals(phase)
+                ? row.state().equals(S_BRIEFING)
+                : PRE_SECOND_HALF_STATES.contains(row.state());
+        if (!allowed) {
             throw invalidState(row.state(), "prompts(" + phase + ")");
         }
 
@@ -514,9 +549,19 @@ public class MatchService {
         return getOwned(userId, matchId);
     }
 
+    /**
+     * 감독시간 → 후반 시뮬(유저 제출). <b>HALFTIME 에서만</b> 허용한다 — 전반 재생 중에 눌러
+     * 후반을 앞당기는 건 금지다(P4-D1). 만료 시엔 서버(MatchClockService)가 같은 전이를 수행한다.
+     */
     public MatchRow resumeCas(String userId, String matchId) {
         MatchRow row = getOwned(userId, matchId);
-        if (!casTransition(matchId, S_H1_BREAK, S_GEN2)) {
+        boolean moved = jdbcClient.sql("""
+                        UPDATE matches SET state = ?, phase_start_at = NULL, phase_ends_at = NULL
+                        WHERE id = ? AND state IN ('HALFTIME', 'H1_BREAK')
+                        """)
+                .params(S_GEN2, matchId)
+                .update() == 1;
+        if (!moved) {
             throw invalidState(currentState(matchId), "resume");
         }
         return getOwned(userId, matchId);
@@ -566,7 +611,8 @@ public class MatchService {
 
     public MatchRow submitHalftime(String userId, String matchId, List<Substitution> substitutions) {
         MatchRow row = getOwned(userId, matchId);
-        if (!row.state().equals(S_H1_BREAK)) {
+        // 전반 중에도 교체를 미리 짜둘 수 있다(P4-E2 #170) — 반영은 후반 시뮬에서.
+        if (!PRE_SECOND_HALF_STATES.contains(row.state())) {
             throw invalidState(row.state(), "halftime");
         }
         List<Substitution> subs = substitutions == null ? List.of() : substitutions;
@@ -621,7 +667,10 @@ public class MatchService {
         }
 
         String subsJson = toJson(subs);
-        txRunner.run(() -> jdbcClient.sql("UPDATE matches SET subs_json = ? WHERE id = ? AND state = 'H1_BREAK'")
+        txRunner.run(() -> jdbcClient.sql("""
+                        UPDATE matches SET subs_json = ?
+                        WHERE id = ? AND state IN ('FIRST_HALF', 'HALFTIME', 'H1_BREAK')
+                        """)
                 .params(subsJson, matchId)
                 .update());
         return getOwned(userId, matchId);
@@ -657,11 +706,21 @@ public class MatchService {
 
     // ── half 로그 / 결과 ────────────────────────────────────────────────
 
-    /** GET halves/{n}/log — H1_BREAK(1) / FINISHED(1,2) 외 409, 데이터 없으면 404. */
+    /**
+     * GET halves/{n}/log — half1 은 전반이 열린 뒤(FIRST_HALF)부터, half2 는 후반이 열린 뒤
+     * (SECOND_HALF)부터. 그 외 409, 데이터 없으면 404.
+     *
+     * <p>로그는 하프 <b>전체</b>를 준다. 라이브 중 "앞서가기 금지"는 clock 기반 클라 강제다
+     * (서버 절단은 PvP 백로그 — LLD §11 R3).
+     */
     public String halfLogJson(String userId, String matchId, int half) {
         MatchRow row = getOwned(userId, matchId);
-        boolean allowed = (row.state().equals(S_H1_BREAK) && half == 1)
-                || row.state().equals(S_FINISHED);
+        boolean h1Available = half == 1 && (row.state().equals(S_FIRST_HALF)
+                || HALFTIME_STATES.contains(row.state())
+                || row.state().equals(S_GEN2)
+                || row.state().equals(S_SECOND_HALF));
+        boolean h2Available = half == 2 && row.state().equals(S_SECOND_HALF);
+        boolean allowed = h1Available || h2Available || row.state().equals(S_FINISHED);
         if (!allowed) {
             throw invalidState(row.state(), "halves/" + half + "/log");
         }
