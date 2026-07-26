@@ -156,6 +156,18 @@
 .railCol[data-open="false"] [data-rail-body] {
   display: none;
 }
+
+/* 유닛 정보 풀아트(#187)는 **펼친 독에서만**. 접힌 독은 한 줄 신원만 유지한다 —
+   접힘 높이는 위 `.grab` 주석대로 리스트 클리어런스와 한 쌍이라, 여기에 카드를 상주시키면
+   리스트가 덮여 탭이 막힌다(deck-teamsheet R1/R2/R3a 계약). */
+.railCol[data-open="false"] [data-rail-art] {
+  display: none;
+}
+
+.railCol [data-rail-art] {
+  display: block;
+  line-height: 0;
+}
 .railCol[data-open="true"] [data-rail-body] {
   max-height: 42vh;
   overflow-y: auto;
@@ -234,6 +246,10 @@
   }
   .railCol[data-open="false"] [data-rail-body] {
     display: flex;
+  }
+  /* 데스크탑 레일은 접힘 개념이 없다(.grab 숨김) — 풀아트도 항상 보인다. */
+  .railCol[data-open="false"] [data-rail-art] {
+    display: block;
   }
   .railCol[data-open="true"] [data-rail-body],
   .railCol[data-open="false"] [data-rail-body] {

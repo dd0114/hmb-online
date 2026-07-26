@@ -16,6 +16,24 @@
   min-width: 0;
 }
 
+/* 유닛 정보의 풀아트 (#187). 모바일 독에서는 헤드가 세로를 많이 못 쓰므로 위쪽 정렬로 붙인다. */
+.head:has(.headArt) {
+  align-items: flex-start;
+}
+
+.headArt {
+  flex: none;
+}
+
+/* 모바일 하단 독: 세로 예산이 #106 계약으로 묶여 있어 카드를 줄인다(full-art.ts railCompact 주석).
+   `--fa-w` 만 덮으면 되고 비율·층 좌표는 컴포넌트가 알아서 따라온다. */
+@media (max-width: 1023px) {
+  /* 조상에 걸어야 인라인 `--fa-w` 를 이긴다(FullArtCard.module.css 의 --fa-w-force 주석). */
+  .head [data-rail-art] {
+    --fa-w-force: 52px;
+  }
+}
+
 .mini {
   width: 30px;
   height: 30px;

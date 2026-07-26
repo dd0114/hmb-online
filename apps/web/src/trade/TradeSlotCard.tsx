@@ -97,6 +97,8 @@ export function TradeSlotCard(props: TradeSlotCardProps) {
             detail={target}
             caption="영입 대상"
             testId={`trade-slot-${slot.slot}-target`}
+            /* 협상의 주인공만 풀아트 (#187) — 대가/요구는 아이콘 유지. */
+            fullArt
           />
           {slot.targetValue != null && (
             <p className={styles.targetValue} data-testid={`trade-slot-${slot.slot}-value`}>
@@ -128,6 +130,9 @@ export function TradeSlotCard(props: TradeSlotCardProps) {
               detail={target}
               caption="대가"
               testId={`trade-slot-${slot.slot}-target`}
+              /* 트레이드 오퍼에서도 `slot.target` 이 **내가 받는 선수** = 영입 대상이다 (#187).
+                 요구(내 선수)는 아이콘 유지 — 둘 다 풀아트로 하면 390 에서 안 읽힌다. */
+              fullArt
             />
           </div>
           {slot.acceptProbability != null && (
@@ -230,6 +235,7 @@ function WaitingBody({
           detail={targetDetail}
           caption="영입 대상"
           testId={`trade-slot-${slot.slot}-target`}
+          fullArt
         />
       )}
       {reveal === "MASKED" && grade && (

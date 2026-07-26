@@ -16,6 +16,7 @@ import { MatchPage } from "./match/MatchPage";
 import { AdminPage } from "./admin/AdminPage";
 import { AdminFlagProvider } from "./admin/AdminFlagProvider";
 import { StagePreview } from "./design/StagePreview";
+import { CardArtPreview } from "./design/CardArtPreview";
 import { RequireAdmin } from "./admin/RequireAdmin";
 import { TutorialProvider } from "./common/TutorialProvider";
 import { setUnauthorizedHandler } from "./api/client";
@@ -129,6 +130,8 @@ function AppRoutes() {
         {/* 디자인 확인 전용(#169 S1) — dev 빌드에서만 존재한다. 로그인 없이 관전 셸을 상태별로
             열어볼 수 있게 하는 리뷰 하니스이지, 제품 화면이 아니다(프로덕션 번들엔 경로 없음). */}
         {import.meta.env.DEV && <Route path="/design/stage" element={<StagePreview />} />}
+        {/* 카드 풀아트 배치안(#187) 리뷰 하니스 — 로그인·백엔드 불필요(정적 에셋만). */}
+        {import.meta.env.DEV && <Route path="/design/cards" element={<CardArtPreview />} />}
 
         <Route path="/" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
         <Route path="*" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />

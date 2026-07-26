@@ -79,10 +79,25 @@
   margin-top: 2px;
 }
 
+/* 펼침 영역 (#187) — 풀아트 카드 + 능력치를 나란히. 확장 카드는 grid-column:1/-1 이라
+   가로가 넉넉하고, 좁아지면 wrap 돼 카드가 위로 올라간다(가로 오버플로 0). */
+.detail {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.detailArt {
+  /* 흑백 처리(미보유)는 summary 에만 걸린다 — 여기선 원본 색으로 보여준다. */
+  flex: 0 0 auto;
+}
+
 .attrs {
   margin: 0;
-  padding: 8px 10px 10px;
-  border-top: 1px solid var(--border);
+  flex: 1 1 240px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
