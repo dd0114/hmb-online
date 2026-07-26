@@ -273,7 +273,7 @@ CREATE TABLE dice_rolls (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, player_id T
 **스펙 (GM8s data · GM8 server · GM9 web)**
 - **V10__gems.sql**: `ALTER TABLE wallets ADD COLUMN gems INTEGER NOT NULL DEFAULT 0 CHECK (gems >= 0);` + `gem_ledger`(point_ledger 와 동형: user_id·delta·reason·ref_id·created_at, 멱등 유니크).
 - **가격 개정**: 노말 다이스 = 500P(유지) / **캐시 다이스 = 10젬**(`dice.cashGemCost`, 기존 cashCost 5000P 제거). 캐시 다이스 = 젬 전용.
-- **충전 목업**: `gems.topupPacks` config = `[{id:"p1",gems:60,mockPrice:"₩1,200"},{id:"p2",gems:330,mockPrice:"₩5,900"},{id:"p3",gems:720,mockPrice:"₩11,900"}]`. `POST /api/shop/gems/topup {packId}` → 즉시 지급(reason='gem_topup_mock', 멱등), 실결제 없음 — UI에 "목업 충전" 명시.
+- **충전 목업**: `gems.topupPacks` config = `[{id:"p1",gems:60,mockPrice:"₩1,200"},{id:"p2",gems:330,mockPrice:"₩5,900"},{id:"p3",gems:720,mockPrice:"₩11,900"}]`. `POST /api/shop/gems/topup {packId}` → 즉시 지급(reason='gem_topup_mock', **매 호출 지급** — 충전은 반복 구매가 의도, m2 문구 정정), 실결제 없음 — UI에 "목업 충전" 명시.
 - **API/계약**: `/api/me` 지갑에 `gems` additive. `POST /api/shop/dice` CASH → 젬 차감(gem_ledger). `DiceBuyResult.wallet = {points, gems}`. 신규 `GemTopupResult {packId, granted, wallet:{points,gems}}`. 부족 = `INSUFFICIENT_GEMS`.
 - **web**: 지갑 표시 P·젬 병기(상단), 상점 다이스탭에 젬 가격·충전(목업) 버튼+팩 3종, 캐시 다이스 버튼 비용칩 "젬 −10".
 - 규제 노트: 젬 = 유상 재화 → 다이스 확률·천장 공개 의무 대상(이미 구조 존재 — 확률 공개 UI는 후속 이슈).

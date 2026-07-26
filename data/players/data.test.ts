@@ -423,8 +423,8 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
         expect(w, `${key}.${stat} > 0`).toBeGreaterThan(0);
       }
     }
-    expect(e.goal).toEqual({ shooting: 3, positioning: 1 });
-    expect(e.save).toEqual({ positioning: 3, mental: 1 });
+    expect(e.goal).toEqual({ shooting: 0.3, positioning: 0.1 }); // M2: baseline 스케일 정합(#179 gverify)
+    expect(e.save).toEqual({ positioning: 0.3, mental: 0.1 }); // M2 스케일
   });
 
   it("baselineByPosition — 4포지션 전부 존재 · 9종 능력치 완비 · 각 값 양수", () => {
@@ -564,11 +564,11 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
       expect(maxPct("EPIC")).toBeLessThan(maxPct("UNIQUE"));
     });
 
-    it("tables — CONDITION_RECOVERY·TEAM_MORALE 각 티어 정확히 2개씩(V2.1-2 2스텝: 저/고)", () => {
+    it("tables — CONDITION_RECOVERY·TEAM_MORALE 부재(M3 #179 gverify: 서버 효과 배선 전까지 제외)", () => {
       for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
         const rows = economy.potential.tables[tier];
-        expect(rows.filter((r) => r.type === "CONDITION_RECOVERY").length).toBe(2);
-        expect(rows.filter((r) => r.type === "TEAM_MORALE").length).toBe(2);
+        expect(rows.filter((r) => r.type === "CONDITION_RECOVERY").length).toBe(0);
+        expect(rows.filter((r) => r.type === "TEAM_MORALE").length).toBe(0);
       }
     });
 
@@ -578,12 +578,6 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
         EPIC: { steps: [4, 5, 6, 8], weights: [35, 30, 25, 10] },
         UNIQUE: { steps: [8, 10, 12, 15], weights: [35, 30, 25, 10] },
       } as const;
-      const rmStepsWeights = {
-        RARE: { steps: [2, 4], weights: [70, 30] },
-        EPIC: { steps: [5, 8], weights: [70, 30] },
-        UNIQUE: { steps: [9, 15], weights: [70, 30] },
-      } as const;
-
       it.each(["RARE", "EPIC", "UNIQUE"] as const)(
         "%s — STAT_PCT/STAT_FLAT 각 스탯 4스텝, 값·weight 가 스펙과 정확히 일치",
         (tier) => {
@@ -608,20 +602,6 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
         const { weights } = stepsWeights[tier];
         expect(weights.reduce((a, b) => a + b, 0)).toBe(100);
       });
-
-      it.each(["RARE", "EPIC", "UNIQUE"] as const)(
-        "%s — CONDITION_RECOVERY/TEAM_MORALE 2스텝 값·weight 가 스펙과 일치, weight 합 100",
-        (tier) => {
-          const rows = economy.potential.tables[tier];
-          const { steps, weights } = rmStepsWeights[tier];
-          for (const type of ["CONDITION_RECOVERY", "TEAM_MORALE"] as const) {
-            const optRows = rows.filter((r) => r.type === type).sort((a, b) => a.value - b.value);
-            expect(optRows.map((r) => r.value), `${tier}.${type} 값`).toEqual([...steps]);
-            expect(optRows.map((r) => r.weight), `${tier}.${type} weight`).toEqual([...weights]);
-          }
-          expect(weights.reduce((a, b) => a + b, 0)).toBe(100);
-        },
-      );
 
       it("티어 바닥 = 아래 티어 천장(승급 체감 상승) — EPIC 최소=RARE 최대, UNIQUE 최소=EPIC 최대", () => {
         expect(stepsWeights.EPIC.steps[0]).toBe(stepsWeights.RARE.steps[3]);
@@ -653,16 +633,6 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
         }
       });
 
-      it("premium — CONDITION_RECOVERY/TEAM_MORALE 은 상위 1스텝(고값)만 premium(구조 일관성 택1)", () => {
-        for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
-          for (const type of ["CONDITION_RECOVERY", "TEAM_MORALE"] as const) {
-            const optRows = economy.potential.tables[tier]
-              .filter((r) => r.type === type)
-              .sort((a, b) => a.value - b.value);
-            expect(optRows.map((r) => r.premium), `${tier}.${type} premium 순서`).toEqual([false, true]);
-          }
-        }
-      });
     });
   });
 
