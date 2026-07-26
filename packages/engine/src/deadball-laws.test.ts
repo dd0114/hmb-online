@@ -164,7 +164,8 @@ function scanLaws(log: MatchLog, config: EngineConfig, tag: string): {
     const spot = { x: s0.ball.x, y: s0.ball.y };
     const zone = lawZone(kind, e.team, spot, config);
     if (!zone) continue;
-    if (whistles.some((w) => w > e.tick && w <= e.tick + MAX_WINDOW)) continue;
+    // `>=` 인 이유: 종료 휘슬은 마지막 틱(total-1)에 나므로 재시작과 **같은 틱**일 수 있다.
+    if (whistles.some((w) => w >= e.tick && w <= e.tick + MAX_WINDOW)) continue;
     const oppPrefix = e.team === "home" ? "A" : "H";
     const oppGk = `${oppPrefix}0`;
     windows++;

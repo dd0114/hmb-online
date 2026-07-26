@@ -231,7 +231,14 @@ function stepTick(carry: Carry): void {
         p.targetFx = deadBallRetreatPoint(pitch, zone, config, p.posFx.x, p.posFx.y);
       }
     }
-    const walkCap = toFixed(config.rules.deadBall.walkSpeedM, config.fixedScale);
+    // 코너는 **더 느슨한 상한**을 쓴다 — 코너 정지 중 배치(rest defence, #182)는 하프라인까지 40m 를
+    // 오가야 성립하는데 걷기 속도로 묶으면 정지 안에 도달을 못 해 그 계약이 깨진다(실측: '뒤를 봐라'
+    // 지시받은 공격수의 잔류율 0). 무제한으로 두면 정지 중 최대 변위가 질주 수준으로 남으므로(#174)
+    // 중간값을 쓴다. 정적 배치에서 코너를 뺀 것과 같은 경계다.
+    const walkCap = toFixed(
+      shapeSp != null ? config.rules.deadBall.walkSpeedM : config.rules.deadBall.cornerWalkSpeedM,
+      config.fixedScale,
+    );
     for (const p of state.players) {
       // #174: 데드볼엔 뛰지 않고 **걸어서** 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만
       // 풀스피드로 가로지르면 "공보다 선수가 빠른" 그림이 된다(실측 최대 6.4 m/tick).

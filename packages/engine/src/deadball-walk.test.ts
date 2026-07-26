@@ -45,6 +45,12 @@ function scanRestarts(seed: string = demoSeed): Scan {
   const restarts = log.events.filter(
     (e) => e.type === "kickoff" && (e.detail === "corner" || e.detail === "throw_in"),
   );
+  // **새 재시작이 선언되면 이전 창은 끝난다.** 라인 위 스로인이 곧장 다시 아웃돼 같은 스팟에서
+  // 상대에게 재선언되는 경우가 있는데(아웃 판정이 엄격해진 #181 이후 늘었다), 그 **새 taker** 를
+  // "차기 전 강탈"로 세면 오탐이다 — 규칙 위반이 아니라 정당한 소유 이전이다.
+  const anyRestartTicks = new Set(
+    log.events.filter((e) => e.type === "kickoff" || e.type === "free_kick" || e.type === "penalty").map((e) => e.tick),
+  );
   const out: Scan = { checked: 0, jumps: [], unreached: [], drifts: [] };
 
   for (const r of restarts) {
@@ -71,17 +77,21 @@ function scanRestarts(seed: string = demoSeed): Scan {
       if (!tk) continue;
       const drift = Math.hypot(s.ball.x - spot.x, s.ball.y - spot.y);
       if (t > ci && drift > 3) { ballLeft = true; break; } // 재시작 실행(크로스/스로인) → 정지 종료.
+      if (t > ci && anyRestartTicks.has(t)) { ballLeft = true; break; } // 새 재시작 선언 → 이 창 종료.
       if (prevPos && t >= ci) {
         maxStep = Math.max(maxStep, Math.hypot(tk.pos.x - prevPos.x, tk.pos.y - prevPos.y));
       }
       prevPos = { x: tk.pos.x, y: tk.pos.y };
       if (Math.hypot(tk.pos.x - spot.x, tk.pos.y - spot.y) <= config.contest.controlRange + 0.5) reached = true;
-      // 공이 스팟을 떠났는데 **소유가 상대팀**이면 = taker 가 차기 전에 뺏긴 것(#176 원 버그).
-      // taker 본인이 드리블로 재시작해 공이 딸려가는 것은 정상이므로 소유팀으로 구분한다
-      // (구 계약은 거리만 봐서 드리블 재시작을 드리프트로 셌다).
+      // **taker 가 차기 전에 뺏겼는가** = 공이 아직 스팟에 놓여 있는데(≤0.3m) 소유가 상대팀으로 넘어감.
+      // 판정을 두 번 좁혔다(둘 다 오탐 실적이 있다):
+      //  · 거리만 보면(구 계약) taker 본인의 **드리블 재시작**을 드리프트로 센다.
+      //  · 소유팀만 더해도 부족하다 — taker 가 공을 찬 **뒤**(스팟에서 1.9m 이동) 벌어지는 정상 태클을
+      //    3m 창이 여전히 포함한다(실측: seed 4815162347 t573 드리블 → t576 태클).
+      // 규칙상 공이 인플레이가 되는 순간은 **taker 가 공을 움직인 때**이므로 그 전만 본다.
       const stolen = s.ballOwner != null && s.ballOwner[0] !== takerId[0];
-      if (t >= ci && drift >= 1.5 && stolen) {
-        drifts.push(`restart@${ci} 차기 전 강탈 t${t} 공이 스팟에서 ${drift.toFixed(2)}m, 소유 ${s.ballOwner}`);
+      if (t >= ci && drift <= 0.3 && stolen) {
+        drifts.push(`restart@${ci} 차기 전 강탈 t${t} 소유 ${s.ballOwner}(공은 아직 스팟)`);
       }
     }
     // 경기 끝에 걸려 재시작 미완(공 안 떠남 + 스냅샷 소진 + 미도달) → 판정 불가, 제외.

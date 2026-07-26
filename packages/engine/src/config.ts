@@ -270,6 +270,12 @@ export interface EngineConfig {
        */
       walkSpeedM: number;
       /**
+       * 코너 정지 중 상한(m/tick). 코너는 rest defence 배치(#182)를 위해 하프라인까지 40m 를 오가야
+       * 해서 일반 데드볼 상한(walkSpeedM)으로 묶으면 정지 안에 **도달을 못 한다**(잔류율 0).
+       * 그렇다고 무제한이면 정지 중 최대 변위가 질주 수준(6.4 m/tick)으로 남는다(#174) → 중간값.
+       */
+      cornerWalkSpeedM: number;
+      /**
        * 정지 중 대기 동작(#174 수용기준: "동상으로 보이지 않을 것"). 규칙기반 배치는 목표가 고정이라
        * 전원이 수렴하면 완전히 굳는다 → 시드 노이즈로 배치에 느린 오프셋을 준다.
        * 주기(틱)를 충분히 길게 잡아 **매 틱 방향 반전(#185)이 되지 않게** 한다(주기 1틱이면 그게 곧 진동).
@@ -527,7 +533,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.20.0",
+  version: "engine@0.21.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -597,7 +603,11 @@ export const defaultEngineConfig: EngineConfig = {
     interceptBase: 0.06,
     tackleBase: 0.14,
     // G-A(#99): 슛당 xG 하향(0.13→~0.12, 벤치 0.10-0.12). 0.225→0.19.
-    xgBase: 0.205, // #181: 슛당 xG 0.10 · 골 1.63 (둘 다 밴드). v5.01 값 유지.
+    // #181: 슛당 xG 0.10 · 골 1.63(둘 다 밴드). v5.01 값(0.205) 유지였다.
+    // #176: 데드볼 규칙으로 전개가 바뀌며 재보정. 20시드 골 1.45 · 60시드 1.53 · 슛당 xG 0.10/0.11
+    // (둘 다 밴드). 코너를 걷기 캡에서 제외한 뒤 다시 잡은 값이다 — 캡 적용 시점에 맞춘 0.215 는
+    // 코너 예외 후 골이 1.68 로 넘쳤다.
+    xgBase: 0.195,
     shotBallSpeed: 14,
     shootXgThreshold: 0.07,
     // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
@@ -641,7 +651,9 @@ export const defaultEngineConfig: EngineConfig = {
       // 파울이 11.93→14.10 으로 튀었다 → 0.0185→0.016 으로 재보정(11.90).
       // #181: 패스가 실제 비행시간을 갖게 되며 틱당 태클 기회가 줄어 파울이 다시 내려갔다 →
       // 두 변경을 합친 상태에서 재측정해 벤치(11-12)로 맞춘 값(아래 §gap §5).
-      base: 0.0178,
+      // #176: 데드볼 재시작이 규칙대로 정리되며 정지 부근 접촉이 줄어 파울이 11.28→10.38(20시드)로
+      // 밴드 아래로 내려갔다 → 0.0178→**0.0188**. 20시드 11.65 · 60시드 11.63(둘 다 밴드 11-12).
+      base: 0.0188,
       aggressionWeight: 1.0,
       tacklingRelief: 0.6,
       boxFoulMult: 1.0,
@@ -675,6 +687,7 @@ export const defaultEngineConfig: EngineConfig = {
       shapeReachX: 0.35,
       shapeReachY: 0.25,
       walkSpeedM: 2.5,
+      cornerWalkSpeedM: 4.5,
       idleAmpM: 0.8,
       idlePeriodTicks: 6,
     },
