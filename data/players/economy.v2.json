@@ -1811,6 +1811,25 @@
   },
   "dice": {
     "normalCost": 500,
-    "cashCost": 5000
+    "cashGemCost": 10
+  },
+  "gems": {
+    "topupPacks": [
+      {
+        "id": "p1",
+        "gems": 60,
+        "mockPrice": "₩1,200"
+      },
+      {
+        "id": "p2",
+        "gems": 330,
+        "mockPrice": "₩5,900"
+      },
+      {
+        "id": "p3",
+        "gems": 720,
+        "mockPrice": "₩11,900"
+      }
+    ]
   }
 }

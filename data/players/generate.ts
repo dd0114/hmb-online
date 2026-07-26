@@ -244,10 +244,23 @@ export interface PotentialConfig {
   tables: Record<PotentialTier, PotentialOption[]>;
 }
 
-/** 다이스(큐브 아날로그) 상점 비용. V2-5 `dice` 블록. */
+/** 다이스(큐브 아날로그) 상점 비용. V2-5 `dice` 블록, V2.2 재화 이원화로 캐시 다이스는 젬 결제로 개정
+ * (`cashCost` P 결제 폐기 → `cashGemCost` 젬 결제). */
 export interface DiceConfig {
   normalCost: number;
-  cashCost: number;
+  cashGemCost: number;
+}
+
+/** 젬 충전(목업) 팩 1개. */
+export interface GemTopupPack {
+  id: string;
+  gems: number;
+  mockPrice: string;
+}
+
+/** V2.2 재화 이원화: 충전형 젬 상점 config(`gems` 블록). */
+export interface GemsConfig {
+  topupPacks: GemTopupPack[];
 }
 
 export interface EconomySeed {
@@ -274,6 +287,8 @@ export interface EconomySeed {
   potential: PotentialConfig;
   /** V2 신규: 다이스 상점 비용. */
   dice: DiceConfig;
+  /** V2.2 신규(additive): 충전형 젬 상점(목업). */
+  gems: GemsConfig;
 }
 
 /** 팀 성향 프리셋 — 봇 팀 성격 + 유저 수동 전술 프리셋(P2-D4/D10). tactics 는 0..1 (line/press/tempo/width). */
@@ -730,8 +745,17 @@ export function generateAll(): GeneratedData {
     },
     // -- V2 신규: 잠재능력(다이스) config (V2-5 `potential`) — 메이플 이식, 안 ㄴ(성 게이트형) --
     potential: buildPotentialConfig(),
-    // -- V2 신규: 다이스 상점 비용 (V2-5 `dice`, V2-4 POST /api/shop/dice 목업) --
-    dice: { normalCost: 500, cashCost: 5000 },
+    // -- V2 신규 → V2.2 재화 이원화로 개정: 다이스 상점 비용 (`dice`, POST /api/shop/dice 목업).
+    // 캐시 다이스는 P 결제(cashCost) 폐기 → 젬 결제(cashGemCost)로 전환. --
+    dice: { normalCost: 500, cashGemCost: 10 },
+    // -- V2.2 신규: 충전형 젬 상점(목업, POST /api/shop/gems/topup) --
+    gems: {
+      topupPacks: [
+        { id: "p1", gems: 60, mockPrice: "₩1,200" },
+        { id: "p2", gems: 330, mockPrice: "₩5,900" },
+        { id: "p3", gems: 720, mockPrice: "₩11,900" },
+      ],
+    },
   };
 
   // -- bots.v1.json -------------------------------------------------------

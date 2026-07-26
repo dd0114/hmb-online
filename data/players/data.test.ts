@@ -666,13 +666,35 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
     });
   });
 
-  describe("dice — 다이스 상점 config (V2-5)", () => {
-    it("normalCost·cashCost > 0, 캐시가 더 비쌈(500/5000)", () => {
-      const d = economy.dice;
+  describe("dice — 다이스 상점 config (V2-5, V2.2 재화 이원화 개정)", () => {
+    it("normalCost=500(P) · cashGemCost=10(젬), 구 cashCost(P) 필드는 부재", () => {
+      const d = economy.dice as unknown as Record<string, unknown>;
       expect(d.normalCost).toBe(500);
-      expect(d.cashCost).toBe(5000);
-      expect(d.normalCost).toBeGreaterThan(0);
-      expect(d.cashCost).toBeGreaterThan(d.normalCost);
+      expect(d.cashGemCost).toBe(10);
+      expect(d.normalCost as number).toBeGreaterThan(0);
+      expect(d.cashGemCost as number).toBeGreaterThan(0);
+      expect(d.cashCost).toBeUndefined();
+    });
+  });
+
+  describe("gems — 충전형 젬 상점 config (V2.2 재화 이원화)", () => {
+    it("topupPacks 3종: id 유일 · gems>0 · mockPrice 문자열", () => {
+      const packs = economy.gems.topupPacks;
+      expect(packs.length).toBe(3);
+      const ids = packs.map((p) => p.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      for (const p of packs) {
+        expect(p.gems).toBeGreaterThan(0);
+        expect(typeof p.mockPrice).toBe("string");
+        expect(p.mockPrice.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("팩이 클수록 젬이 많다(단조 증가, 오름차순 시드 순서 가정)", () => {
+      const packs = economy.gems.topupPacks;
+      for (let i = 1; i < packs.length; i++) {
+        expect(packs[i].gems).toBeGreaterThan(packs[i - 1].gems);
+      }
     });
   });
 });
