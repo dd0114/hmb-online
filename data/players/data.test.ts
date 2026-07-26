@@ -385,15 +385,46 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
     "positioning",
   ] as const;
 
-  it("growth 블록 존재 + 스칼라 수치(hero 확정 C1~C6)", () => {
+  it("growth 블록 존재 + 스칼라 수치(V2 메이플 피벗, 이슈 V2-5)", () => {
     const g = economy.growth;
     expect(g).toBeDefined();
     expect(g.xpBase).toBe(100);
-    expect(g.xpPerLevel).toBe(300);
-    expect(g.completeMatches).toBe(36);
-    expect(g.benchGrowthMult).toBe(0.2);
-    expect(g.execMatchDefault).toBe(0.6);
-    expect(g.speedMaxMult).toBe(3.0);
+    expect(g.xpLvBase).toBe(100);
+    expect(g.xpLvGrowth).toBe(1.7);
+  });
+
+  it("gradeXpMult — 5개 등급 전부 + hero 확정값(브/실 0.4·골 1.0·다 1.5·레 3.0)", () => {
+    const m = economy.growth.gradeXpMult;
+    expect(Object.keys(m).sort()).toEqual([...GRADES].sort());
+    expect(m.BRONZE).toBe(0.4);
+    expect(m.SILVER).toBe(0.4);
+    expect(m.GOLD).toBe(1.0);
+    expect(m.DIA).toBe(1.5);
+    expect(m.LEGEND).toBe(3.0);
+  });
+
+  it("minutesMult — starter 1.0 / partial 0.5 / bench 0 (미출전 XP=0, V2-1①)", () => {
+    const m = economy.growth.minutesMult;
+    expect(m.starter).toBe(1.0);
+    expect(m.partial).toBe(0.5);
+    expect(m.bench).toBe(0);
+  });
+
+  it("eventStatMap — 7종 이벤트 전부 존재 + 스탯 가중 양수", () => {
+    const e = economy.growth.eventStatMap;
+    const expectedEvents = ["goal", "shot", "pass", "interception", "tackle", "save", "dribble"];
+    expect(Object.keys(e).sort()).toEqual([...expectedEvents].sort());
+    for (const key of expectedEvents) {
+      const bonus = e[key];
+      expect(bonus, `${key} 존재`).toBeDefined();
+      if (!bonus) continue;
+      expect(Object.keys(bonus).length, `${key} 가중 ≥1개`).toBeGreaterThan(0);
+      for (const [stat, w] of Object.entries(bonus)) {
+        expect(w, `${key}.${stat} > 0`).toBeGreaterThan(0);
+      }
+    }
+    expect(e.goal).toEqual({ shooting: 3, positioning: 1 });
+    expect(e.save).toEqual({ positioning: 3, mental: 1 });
   });
 
   it("baselineByPosition — 4포지션 전부 존재 · 9종 능력치 완비 · 각 값 양수", () => {
@@ -428,20 +459,131 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
     expect(topOf("GK")).toBe("positioning");
   });
 
-  it("enhance 블록 존재 + 수치(강화5/돌파3장/최대돌파4/비용200)", () => {
-    const e = economy.enhance;
-    expect(e).toBeDefined();
-    expect(e.maxEnhance).toBe(5);
-    expect(e.enhanceStep).toBe(2.0);
-    expect(e.autoFillRatio).toBe(0.25);
-    expect(e.limitBreakCopies).toBe(3);
-    expect(e.maxLimitBreak).toBe(4);
-    expect(e.pointCost).toBe(200);
+  it("구 enhance 블록 제거됨(V2 메이플 피벗 — 강화 폐기)", () => {
+    expect((economy as unknown as Record<string, unknown>).enhance).toBeUndefined();
   });
 
-  it("불변식 — autoFillRatio ∈ (0,1) (과금은 cap↑·소량만 채움)", () => {
-    expect(economy.enhance.autoFillRatio).toBeGreaterThan(0);
-    expect(economy.enhance.autoFillRatio).toBeLessThan(1);
+  describe("star — ★ 승급(중복) config (V2-5)", () => {
+    it("copies — 누진(2★<3★<4★), hero 확정값(2/3/5)", () => {
+      const c = economy.star.copies;
+      expect(c["2"]).toBe(2);
+      expect(c["3"]).toBe(3);
+      expect(c["4"]).toBe(5);
+      expect(c["2"]).toBeLessThan(c["3"]);
+      expect(c["3"]).toBeLessThan(c["4"]);
+    });
+
+    it("starFrac — 1★→4★ 단조 증가, 4★=1.0(밴드 상한 완전 개방)", () => {
+      const f = economy.star.starFrac;
+      expect(f["1"]).toBe(0.25);
+      expect(f["2"]).toBe(0.5);
+      expect(f["3"]).toBe(0.75);
+      expect(f["4"]).toBe(1.0);
+      expect(f["1"]).toBeLessThan(f["2"]);
+      expect(f["2"]).toBeLessThan(f["3"]);
+      expect(f["3"]).toBeLessThan(f["4"]);
+    });
+  });
+
+  describe("potential — 잠재능력 config (V2-5, 안 ㄴ 성 게이트형)", () => {
+    it("linesByGrade — 브/실 1줄 · 골 2줄 · 다/레 3줄", () => {
+      const l = economy.potential.linesByGrade;
+      expect(l.BRONZE).toBe(1);
+      expect(l.SILVER).toBe(1);
+      expect(l.GOLD).toBe(2);
+      expect(l.DIA).toBe(3);
+      expect(l.LEGEND).toBe(3);
+    });
+
+    it("gradeTierCap × starTierCap 매트릭스(AC-V5) — 골드=EPIC·다이아 이상=UNIQUE, 성 캡 정확", () => {
+      const g = economy.potential.gradeTierCap;
+      expect(g.BRONZE).toBe("RARE");
+      expect(g.SILVER).toBe("RARE");
+      expect(g.GOLD).toBe("EPIC");
+      expect(g.DIA).toBe("UNIQUE");
+      expect(g.LEGEND).toBe("UNIQUE");
+
+      const s = economy.potential.starTierCap;
+      expect(s["2"]).toBe("RARE");
+      expect(s["3"]).toBe("EPIC");
+      expect(s["4"]).toBe("UNIQUE");
+    });
+
+    it("tierUp 확률 — 0~1 구간, 상위 승급일수록 낮음(레어→에픽 6% > 에픽→유니크 1.8%)", () => {
+      const t = economy.potential.tierUp;
+      expect(t.rareToEpic).toBeGreaterThan(0);
+      expect(t.rareToEpic).toBeLessThan(1);
+      expect(t.epicToUnique).toBeGreaterThan(0);
+      expect(t.epicToUnique).toBeLessThan(1);
+      expect(t.epicToUnique).toBeLessThan(t.rareToEpic);
+    });
+
+    it("breakout — 노말<캐시(캐시가 동일 티어 이탈 확률 더 높음, D-M2)", () => {
+      const b = economy.potential.breakout;
+      expect(b.normal).toBe(0.08);
+      expect(b.cash).toBe(0.2);
+      expect(b.normal).toBeLessThan(b.cash);
+    });
+
+    it("ceilingMult·cashPremiumMult > 0", () => {
+      expect(economy.potential.ceilingMult).toBeGreaterThan(0);
+      expect(economy.potential.cashPremiumMult).toBeGreaterThan(0);
+    });
+
+    it("tables — RARE/EPIC/UNIQUE 3티어 전부 비어있지 않고, weight > 0", () => {
+      const tables = economy.potential.tables;
+      for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
+        const rows = tables[tier];
+        expect(rows.length, `${tier} 비어있지 않음`).toBeGreaterThan(0);
+        for (const row of rows) {
+          expect(row.weight, `${tier} ${row.type}${row.stat ? "." + row.stat : ""} weight>0`).toBeGreaterThan(0);
+          expect(row.value, `${tier} ${row.type} value>0`).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it("tables — STAT_PCT/STAT_FLAT 이 9종 스탯 전부 커버(각 티어)", () => {
+      const attrKeys = [
+        "technical", "mental", "physical", "passing", "shooting",
+        "tackling", "pace", "stamina", "positioning",
+      ] as const;
+      for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
+        const rows = economy.potential.tables[tier];
+        for (const type of ["STAT_PCT", "STAT_FLAT"] as const) {
+          const stats = new Set(rows.filter((r) => r.type === type).map((r) => r.stat));
+          expect([...stats].sort(), `${tier}.${type} 9종 스탯`).toEqual([...attrKeys].sort());
+        }
+      }
+    });
+
+    it("tables — 상위 티어일수록 STAT_PCT premium 값이 큼(레어<에픽<유니크)", () => {
+      const maxPct = (tier: "RARE" | "EPIC" | "UNIQUE") =>
+        Math.max(
+          ...economy.potential.tables[tier]
+            .filter((r) => r.type === "STAT_PCT")
+            .map((r) => r.value),
+        );
+      expect(maxPct("RARE")).toBeLessThan(maxPct("EPIC"));
+      expect(maxPct("EPIC")).toBeLessThan(maxPct("UNIQUE"));
+    });
+
+    it("tables — CONDITION_RECOVERY·TEAM_MORALE 각 티어 정확히 1개씩(단일 고정값 옵션)", () => {
+      for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
+        const rows = economy.potential.tables[tier];
+        expect(rows.filter((r) => r.type === "CONDITION_RECOVERY").length).toBe(1);
+        expect(rows.filter((r) => r.type === "TEAM_MORALE").length).toBe(1);
+      }
+    });
+  });
+
+  describe("dice — 다이스 상점 config (V2-5)", () => {
+    it("normalCost·cashCost > 0, 캐시가 더 비쌈(500/5000)", () => {
+      const d = economy.dice;
+      expect(d.normalCost).toBe(500);
+      expect(d.cashCost).toBe(5000);
+      expect(d.normalCost).toBeGreaterThan(0);
+      expect(d.cashCost).toBeGreaterThan(d.normalCost);
+    });
   });
 });
 
