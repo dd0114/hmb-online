@@ -13,6 +13,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MatchDetail } from "../api/hooks";
+import { TokenProvider } from "../auth/TokenContext";
 
 const mockMatch = vi.fn();
 
@@ -61,16 +62,21 @@ import { MatchPage } from "./MatchPage";
 
 function renderWithState(match: Partial<MatchDetail> | undefined) {
   mockMatch.mockReturnValue({ data: match, isLoading: false, isError: false });
-  // MatchPage uses useQueryClient directly (me invalidation on FINISHED) → provider required
+  // MatchPage uses useQueryClient directly (me invalidation on FINISHED) → provider required.
+  // ResultPage 는 성장 리포트 훅(useMatchGrowthReport→useToken)을 쓰므로 TokenProvider 도 필요(#179).
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     h(
       QueryClientProvider,
       { client: qc },
       h(
-        MemoryRouter,
-        { initialEntries: ["/match/m1"] },
-        h(Routes, null, h(Route, { path: "/match/:id", element: h(MatchPage) })),
+        TokenProvider,
+        null,
+        h(
+          MemoryRouter,
+          { initialEntries: ["/match/m1"] },
+          h(Routes, null, h(Route, { path: "/match/:id", element: h(MatchPage) })),
+        ),
       ),
     ),
   );
