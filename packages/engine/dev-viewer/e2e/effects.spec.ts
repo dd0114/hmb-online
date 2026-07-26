@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loadViewer } from "./fixture";
+import { loadViewer, VIEWER_REAL_URL } from "./fixture";
 
 // R2(#100) 계약: 패스완성/가로챔/돌파 이벤트를 재생으로 지나면 그에 맞는 재미 이펙트가 스폰된다.
 // 이펙트는 canvas 파티클이라 __viewer.fx()(활성 이펙트 [{type,rgb}])로 스폰 여부를 박제한다.
@@ -41,6 +41,9 @@ test("가로챔 → 스틸 플래시(steal) 이펙트 스폰, 가로챈 팀 색"
 test("돌파(SURGE) → 스피드라인(surge) 이펙트 스폰", async ({ page }) => {
   // SURGE 는 이벤트가 아니라 긴 전진 소유 런에서 파생되는 annos → __viewer.surgeTicks() 로 결정론적으로
   // 겨냥한다(autoPace 방랑 대신 그 틱을 실제 재생으로 통과 → spawnSurgeFx). 패스/스틸 이펙트와 동일 패턴.
+  // #181 이후 쇼케이스(짧은 데모) 시드엔 조건(같은 소유자 6틱+ & 전진 9m+)을 만족하는 런이 없다 →
+  // offside/card/penalty 계약처럼 **리얼 config 풀매치 뷰어**로 겨냥한다(실측: 6시드에 6틱+ 런 1255개).
+  await loadViewer(page, VIEWER_REAL_URL);
   const surges = await page.evaluate(() => (window as any).__viewer.surgeTicks());
   expect(surges.length, "showcase 에 돌파(SURGE) 런이 있어야").toBeGreaterThan(0);
   await playUntilFx(page, surges[0], "surge");

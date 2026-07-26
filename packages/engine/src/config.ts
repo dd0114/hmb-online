@@ -45,6 +45,18 @@ export interface EngineConfig {
     shotSpeed: number;
     /** 굴러가는(주인 없는) 공 감속 배수/틱. */
     looseDecay: number;
+    /**
+     * 비행 도착 판정 허용 거리(m). 공이 목표에서 이만큼 안으로 들어오면 도착.
+     * 0 = 목표에 정확히 닿아야 도착(#181). 이 값이 크면 공이 목표 한참 앞에서 "도착"으로
+     * 처리돼 소유 이전 시 남은 거리만큼 순간이동한다(구버전은 사실상 passSpeed=18m 였다).
+     */
+    arriveToleranceM: number;
+    /**
+     * #181: 도착했는데 잡을 사람이 controlRange 밖일 때, 공이 그 사람 쪽으로 **굴러가는** 속도(m/tick).
+     * 순간이동(구 무제한 대입) 대신 굴러서 만난다. 0 이면 공이 그 자리에 멈춰 기다린다(템포 손실 큼:
+     * 실측 슛/팀 13.5→5.3). 살짝 빗나간 패스가 굴러가고 선수가 달려와 잡는 그림.
+     */
+    settleSpeed: number;
   };
 
   /** 행동 선택 기본 성향 계수(볼 소유자). behavior 로 가중. */
@@ -149,6 +161,12 @@ export interface EngineConfig {
     interceptRange: number;
     /** 도착·루즈볼을 잡을 수 있는 컨트롤 거리(m). */
     controlRange: number;
+    /**
+     * #181: 공이 낙하점에 닿았는데 claimant 가 아직 controlRange 밖일 때, 공을 그 자리에 세워두고
+     * 기다릴 최대 틱 수. 이 틱을 넘기면 기존 기하 판정으로 폴백(교착 방지).
+     * 0 이면 레거시 동작(즉시 소유 이전 = 공이 사람에게 순간이동).
+     */
+    arrivalWaitMaxTicks: number;
     /** 1대1(단독 찬스) 판정: 슈터 반경 이 거리(m) 안에 비-GK 상대가 없으면 단독 찬스로 본다. */
     oneOnOneClearM: number;
     /** 1대1 시 xG 배수(하이라이트·높은 xg). 1 이면 비활성(부스트 없음). */
@@ -170,7 +188,11 @@ export interface EngineConfig {
       aggressionWeight: number;
       /** 태클 능력(0..100) 낮을수록 파울↑ 계수(×(1 + 이 값·(1-tackling/100))). */
       tacklingRelief: number;
-      /** 피파울 지점이 수비 박스 안이면 파울 확률에 곱하는 배수(박스 내 필사 태클 → 페널티 유발). */
+      /**
+       * 피파울 지점이 수비 박스 안이면 파울 확률에 곱하는 배수(박스 내 필사 태클 → 페널티 유발).
+       * 파울 총량을 올릴 때 이 값이 크면 페널티가 함께 늘어 **골이 폭증**한다(실측: base 만 올리면
+       * 골 1.58→2.25). 1.0 이면 박스 안이라고 더 파울하지 않아 파울 빈도와 골을 분리할 수 있다.
+       */
       boxFoulMult: number;
       /** 이미 경고(옐로) 받은 선수의 파울 확률 배수(<1, 신중해짐 → 2옐로 퇴장 억제). */
       bookedRelief: number;
@@ -217,6 +239,50 @@ export interface EngineConfig {
     };
     /** 프리킥(파울/오프사이드) 준비 정지 틱. */
     freeKickStoppageTicks: number;
+
+    /**
+     * 데드볼(세트피스) 정지 중 상대 접근 금지 — 실제 축구 규칙(#176).
+     * IFAB: Law 8 킥오프·13 프리킥·14 페널티·17 코너 = 9.15m, Law 15 스로인 = 2m,
+     * Law 16 골킥 = 차는 팀 페널티에어리어 밖. 상대는 밀려나지 않고 **걸어서** 물러난다(#59 철학).
+     * 거리는 규칙 상수라 사실상 고정이지만, 밸런스가 흔들릴 때 되돌리는 대신 **여기를 조정**한다.
+     */
+    deadBall: {
+      /** 프리킥/코너/킥오프/페널티에서 상대가 스팟에서 떨어져야 할 거리(m). Law 상 9.15. */
+      opponentDistanceM: number;
+      /** 스로인에서 상대가 떨어져야 할 거리(m). Law 상 2. */
+      throwInDistanceM: number;
+      /** 골킥·페널티·자기박스 프리킥에서 상대를 페널티박스 밖으로 물릴지(Law 16/14/13). */
+      boxClear: boolean;
+      /** 금지구역 경계 바깥 여유(m). 고정소수 반올림으로 경계에 걸치지 않게 하는 마진. */
+      marginM: number;
+      /**
+       * 정지 중 규칙기반 배치(#185/#174): 기본 배치를 재시작 스팟 쪽으로 당기는 비율(x/y, 0..1).
+       * 정지 구간에서 평소 오프더볼 로직(자기 위치 피드백)을 대체해 제자리 왕복·단독 질주를
+       * 원인 단계에서 없앤다. 0 이면 정지 중 전원이 포메이션 기본 배치를 지킨다.
+       */
+      shapeReachX: number;
+      shapeReachY: number;
+      /**
+       * 정지 중 taker 를 뺀 선수들의 이동 속도 상한(m/tick, #174). 데드볼엔 뛰지 않고 걸어서
+       * 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만 풀스피드로 가로지르면 "공보다 선수가
+       * 빠른" 그림이 된다. taker 는 제외한다: `walkStoppage`(#59)가 taker 의 **평소 속도**로
+       * 도달 틱을 산정하므로 taker 를 캡하면 정지가 끝나도 공에 못 닿는다.
+       */
+      walkSpeedM: number;
+      /**
+       * 코너 정지 중 상한(m/tick). 코너는 rest defence 배치(#182)를 위해 하프라인까지 40m 를 오가야
+       * 해서 일반 데드볼 상한(walkSpeedM)으로 묶으면 정지 안에 **도달을 못 한다**(잔류율 0).
+       * 그렇다고 무제한이면 정지 중 최대 변위가 질주 수준(6.4 m/tick)으로 남는다(#174) → 중간값.
+       */
+      cornerWalkSpeedM: number;
+      /**
+       * 정지 중 대기 동작(#174 수용기준: "동상으로 보이지 않을 것"). 규칙기반 배치는 목표가 고정이라
+       * 전원이 수렴하면 완전히 굳는다 → 시드 노이즈로 배치에 느린 오프셋을 준다.
+       * 주기(틱)를 충분히 길게 잡아 **매 틱 방향 반전(#185)이 되지 않게** 한다(주기 1틱이면 그게 곧 진동).
+       */
+      idleAmpM: number;
+      idlePeriodTicks: number;
+    };
   };
 
   /**
@@ -298,6 +364,51 @@ export interface EngineConfig {
     crossDepthM: number;
     /** 코너 크로스 낙하점 중앙 기준 좌우 산포 최대(m). 시드로 ±이 범위. */
     crossWidthM: number;
+    /**
+     * 코너 시 "박스로 안 올라가는" 선수 배치(#182). 실제 축구의 rest defence(공격팀이 역습
+     * 대비로 뒤에 남기는 1~2명)·하이 아웃렛(수비팀이 앞에 남기는 1~2명)에 해당한다.
+     *
+     * **인원은 여기 상수로 고정되지 않는다** — 팀 전략과 선수 성향으로 정해진다(hero 확정):
+     *  (1) 팀 축: 가담도 commit = f(defensiveLineHeight, tempo) 0..1 → 잔류 인원을
+     *      stayBackMax(수비적)~stayBackMin(올인) 사이로 매핑. 팀마다 기본값이 다르고
+     *      전술을 바꾸면 같이 바뀐다.
+     *  (2) 선수 축: 프롬프트가 만든 behavior(forwardRunFreq·supportDepth)가 슬롯 깊이를
+     *      **뒤집는다** — 원래 남을 CB 가 올라가고, 원래 올라갈 공격수가 남는다.
+     *      뒤집는 힘 = playerOverrideWeight.
+     * 여기 값들은 그 매핑의 튜닝 상수일 뿐이다.
+     */
+    corner: {
+      /** false = 레거시(전원 전진). 롤백 스위치 — 켜기 전과 bit-identical. */
+      enabled: boolean;
+      /** 공격 코너 잔류 인원 매핑. commit=1(올인) → Min, commit=0(수비적) → Max. */
+      stayBackMin: number;
+      stayBackMax: number;
+      /** 수비 코너 하이 아웃렛 인원 매핑. 0/0 이면 끔(수비팀은 전원 박스). */
+      leaveHighMin: number;
+      leaveHighMax: number;
+      /** 팀 가담도 commit 을 만들 때 수비라인 높이·템포에 주는 가중치. */
+      commitLineWeight: number;
+      commitTempoWeight: number;
+      /** 선수 성향(프롬프트)이 슬롯 깊이 순서를 뒤집는 힘. 0 이면 슬롯 깊이만으로 결정. */
+      playerOverrideWeight: number;
+      /** 잔류 선수가 서는 라인(공격 진행도 0:자기골 ~ 1:상대골). 0.5=하프라인. */
+      stayBackLineX: number;
+      /** 하이 아웃렛이 서는 라인(자기 공격 진행도). */
+      leaveHighLineX: number;
+      /**
+       * 잔류/아웃렛이 **한 줄로 정렬되지 않게** 하는 깊이 산포(#182 폴리시).
+       * 실제 rest defence 는 전원이 같은 깊이에 서지 않는다 — CB 는 좀 더 깊게, 남은 미드는
+       * 좀 더 앞에. 두 축으로 만든다(둘 다 0 이면 구 동작 = 전원 같은 라인):
+       *  - slotSpread: 자기 포메이션 슬롯 깊이를 얼마나 유지하는가(0=완전 정렬, 1=원래 깊이).
+       *    역할 기반이라 "CB 가 풀백보다 뒤"라는 자연 층이 생긴다.
+       *  - jitterX: 잔류 그룹 **내 순위**로 깊이를 균등 배분하는 간격(rank 당 이만큼 차이).
+       *    슬롯이 같은 좌우 대칭 선수(LCB/RCB)도 이걸로 갈라진다. 난수가 아니라 순위 기반이라
+       *    **충돌이 구조적으로 없다** — idHash 난수 편차로 벌렸을 땐 특정 선수쌍이 우연히
+       *    겹쳐 그 팀이 매 코너 일자 정렬이 됐다(실측 11/52 코너).
+       */
+      slotSpread: number;
+      jitterX: number;
+    };
   };
 
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
@@ -328,10 +439,74 @@ export interface EngineConfig {
     markGap: number;
     /** 볼 소유팀이 공을 향해 지원 오는 최대 당김(정규화). */
     supportPull: number;
+    /**
+     * 리드패스 강도(0..1) — 패스를 리시버의 **미래 위치**로 조준하는 비율(#181).
+     * 1 = 비행시간만큼 앞을 보고 찬다(= 공과 사람이 만난다). 0 = 레거시(현재 위치 조준 → 공이
+     * 아무도 없는 곳에 떨어지고 도착 처리가 순간이동으로 메움).
+     */
+    passLeadWeight: number;
     /** positioningFreedom 기반 roam 계수(공 쪽 추가 당김). */
     roamFactor: number;
     /** 드리블 1틱당 골 방향 전진 비율(0..1). 박스 침투 속도. */
     dribbleReach: number;
+  };
+
+  /**
+   * vision — 오프더볼 시야 기반 인지·판단. (#147 W3, 후보 E)
+   *
+   * 레거시(enabled=false)는 오프더볼 선수가 **상대를 아예 안 봤다**(이동 목표가 상대 위치와
+   * 완전 독립). 그 위에 "반경 안 전원에게 끌림" 을 얹으면 전원이 같은 정보로 같은 결론을 내
+   * 공 쪽으로 몰린다. 그래서 두 계층을 함께 넣는다:
+   *  1) **인지** — 1틱에 정밀 추적 가능한 상대 수가 유한(주의 예산). 나머지는 **마지막 본 위치**
+   *     로 판단하고, 오래되면 잊는다 → 선수마다 아는 것이 달라진다.
+   *  2) **판단** — 인지한 상대에게 무조건 붙지 않는다. 위협도 대비 도달비용으로 **한 명만** 고른다.
+   *
+   * 설계 근거(조사): 실제 시스템은 존재 여부를 하드 기하로 자르고 불확실성은 *정보의 질*에 둔다
+   * (RoboCup 2D·SimSpark·UE·Thief 공통, "매 틱 보일 확률" 을 굴리는 사례는 없다). 기억은
+   * "정확하지만 낡은" 값이며(librcsc pos_count: 선수 30틱=3초 폐기), 위치를 점점 흐리는 건
+   * 표준이 아니라 연구 주제다. 우리는 1초 틱이라 순간 시야각/시선 스캔은 해상도 불일치로 기각
+   * (RoboCup 은 360° 스윕이 600ms — 우리 1틱 안에 이미 한 바퀴 훑는다). 그래서 남는 이식 가능
+   * 요소가 **주의 예산 + 기억/스테일** 이다.
+   */
+  vision: {
+    /** 활성화. false 면 레거시(오프더볼이 상대를 전혀 안 봄) — 회귀 기준. */
+    enabled: boolean;
+    /** 인지 반경(m). 이 밖은 아예 모른다. 실측상 몰림의 레버가 아니므로 크게 흔들 값이 아니다. */
+    radiusM: number;
+    /** 주의 예산 기준값 — 1틱에 정밀 추적(기억 갱신)하는 상대 수. */
+    attentionBase: number;
+    /** 인지 속성(positioning·mental 평균)이 주의 예산에 주는 최대 가감(±명). 스탯이 시야를 넓히는 게 아니라 **주의를 늘린다**. */
+    attentionAttrSwing: number;
+    /** 기억 폐기 틱. 이 틱 넘게 못 본 상대는 판단에서 제외(librcsc pos_count 방식). */
+    memoryTicks: number;
+    /** 공격 시 아는 상대에게서 멀어지는 최대 거리(m) — 공간 찾기. */
+    spaceReach: number;
+    /** 수비 시 **선택한** 상대에게 붙는 최대 거리(m). */
+    markReach: number;
+    /** 마킹 대상 선택의 도달비용 가중(자기→상대 거리 계수). 클수록 먼 상대를 포기하고 자리를 지킨다. */
+    markCostWeight: number;
+    /**
+     * `markTarget`(AI 전담 마크 지시)이 대상 선택 가치에 주는 가산(m 환산).
+     * 레거시는 markTarget 을 **하드 오버라이드**(다른 판단 무시, 상대-내골 사이로 **목표 순간이동**)로
+     * 처리했다. 이제는 대상 선택 가치의 가산이라, 실제 차이는 주로 **끌림의 형태**다 —
+     * 목표를 통째로 덮어쓰는 대신 `markReach` 만큼만 당긴다.
+     * 실측(4경기, chooseMarkTarget 208k 호출): 지시 대상이 인지됐을 때 **99.97% 는 지시를 따른다**
+     * (bias 40 기준). 즉 "비용이 과하면 지시를 무시" 는 이론적 경계일 뿐 실경기에선 드물다.
+     * ⚠️ bias 를 60 이상으로 올리면 인지 반경(radiusM 20) 안에서는 **하드 오버라이드와 구별 불가**
+     * 해진다(도메인 전수탐색상 거부율 0%). 그래서 40 을 쓰고 계약이 그 경계를 지킨다.
+     * (팀 레벨 상대별 가중치 opponentFocus 는 계약 #167 대기)
+     */
+    markTargetBias: number;
+    /**
+     * 마킹 가치의 기준선(m). 가치 = 기준선 − 내골까지거리 − 도달비용·가중 + markTarget 가산 이고,
+     * 가치 ≤ 0 이면 **아무도 안 붙고 자리를 지킨다**. 즉 이 값이 "붙을 만한가" 의 임계 자체다.
+     * 피치 대각(≈125m) 근처가 자연스러운 출발점이지만 **실측상 살아있는 노브**다 — 20시드에서
+     * 90 으로 낮추면 슛 13.35→12.40(−7%), 슛→골 전환 11.15→12.43% 로 **벤치(10-12)를 벗어난다**.
+     * (초판 주석은 "골 +40%" 라 적었는데 그건 4시드 표본구성 아티팩트였다 — 20시드로는 골 +3%.
+     *  이 프로젝트가 반복해 밟은 함정이라 수치를 재측정해 교체했다. synchrony.ts 헤더 참조.)
+     * 하드코딩 금지 대상이라 config 로 뺀다.
+     */
+    markValueBaseM: number;
   };
 
   /** 포메이션 정규화 슬롯(0..1, 공격 방향 +x 프레임). 최소 4-3-3 정의. */
@@ -358,7 +533,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.16.0",
+  version: "engine@0.21.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -375,18 +550,32 @@ export const defaultEngineConfig: EngineConfig = {
     passSpeed: 18,
     shotSpeed: 26,
     looseDecay: 0.82,
+    // #181: 구버전은 `remaining <= f.speed` 라 사실상 18m 였다 — 공이 목표 18m 앞에서 도착 처리되고
+    // 소유 이전이 그 간격을 순간이동으로 메워 "빈 공간에서 공이 스스로 휘는" 궤적을 만들었다.
+    arriveToleranceM: 0,
+    // 0 = 공이 낙하점에 **멈춰서** 선수가 오길 기다린다(계약 green). >0 으로 굴려보내면 템포는
+    // 살아나지만 경계 클램프가 구르는 방향을 꺾어 "빈 공간 꺾임"이 다시 생긴다(실측 172건·최악 16.2m).
+    settleSpeed: 0,
   },
   decisionWeights: {
     // 슛 하향(37→~13.5/팀), 홀드/드리블 비중↑(패스 볼륨·찬스 남발 억제).
     pass: 0.5,
     dribble: 0.46,
     // G-A(#99): 슛 과다(팀 23.85→~13.6, 벤치 12-14). shoot 0.5→0.35 로 슛 성향 하향.
-    shoot: 0.34,
+    // #147 W3: 시야 계층(vision)이 수비 효율을 바꿔 슛이 14.0→14.7 로 올랐다 → 벤치(12-14) 복귀용 재튜닝.
+    // #181: 공이 **손 닿는 사람에게만** 가고 못 닿으면 낙하점에 멈추므로, 공이 무소유로 있는 틱이
+    // 늘어 공격 볼륨(슛)이 줄었다 → 밴드(12-14) 복귀용 재튜닝 0.30→0.55(실측 슛/팀 13.68).
+    // #176 리베이스: 데드볼 규칙 위에서 재도출한다(아래 재스윕 결과로 확정).
+    shoot: 0.55,
     hold: 0.42,
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
     // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
     // 슛 지배를 완화(후진 리사이클은 backwardPassPenalty 2.4 + shootCentralBonus 1.35 로 계속 억제).
-    shootInBox: 0.6,
+    // #178: 마크 당김 오버슛(진동) 제거로 수비 블록이 형태를 유지하게 되자 슛이 13.95→11.65 로
+    // 밴드 아래로 떨어졌다(진동하던 수비수가 마크를 지나쳐 자리를 비우던 것이 슛 기회였다).
+    // 0.6→0.9 로 파이널서드 슛 의지를 복원해 13.28(밴드 12-14)로 되돌린다. `shoot` 사다리 단조성
+    // (shot-frequency A)은 이 값에서도 유지된다(11.63→11.68→13.28→14.35→15.28→15.78→16.83).
+    shootInBox: 0.9,
     backwardPassPenalty: 2.4,
     shootCentralBonus: 1.35,
   },
@@ -396,19 +585,29 @@ export const defaultEngineConfig: EngineConfig = {
     // E2(0.12.0): 롱패스(longPass) 추가로 평균이 낮아져 passBase 0.94→0.97 로 재보정 →
     // 리얼 20시드 패스성공 ≈80%(벤치 78-85) 유지. 스로인은 pfo 로 복원(≈17).
     passBase: 0.97,
-    passForwardPenalty: 0.2,
+    // #181 재보정: 도착/아웃 판정이 정확해지며 계획 실패가 전부 실현된다(구버전은 fail_out 패스가
+    // 조기 도착으로 완성 처리돼 성공률이 실제보다 높게 측정됐다) → 페널티를 완화해 **실제** 성공률을
+    // 벤치(78-85%)로 되돌린다. 계획확률 자체는 구버전도 ~0.70 이었다(측정만 79%로 부풀었음).
+    passForwardPenalty: 0.12,
     passFinalThirdPenalty: 0.12,
     passPressurePenalty: 0.06,
     passPressureRangeM: 6.0,
-    passDistancePenalty: 0.008,
+    passDistancePenalty: 0.004, // #181 재보정(위와 동일 사유)
     passBaseDistM: 12,
     passAttrSwing: 0.14,
-    passFailOutProb: 0.45,
+    // #181: 사이드라인 위에서 찬 공의 아웃 미검출(ball.boundaryCross t=0 누락)이 고쳐지고 조기
+    // 도착이 사라지면서 계획된 fail_out 이 전부 실제 아웃이 됐다 → 같은 값이면 스로인 35(벤치 17-19).
+    // 0.45→0.3 으로 스로인 20.0 (밴드 상단 근처).
+    passFailOutProb: 0.26,
     passOutcomeAuthoritative: true,
     interceptBase: 0.06,
     tackleBase: 0.14,
     // G-A(#99): 슛당 xG 하향(0.13→~0.12, 벤치 0.10-0.12). 0.225→0.19.
-    xgBase: 0.19,
+    // #181: 슛당 xG 0.10 · 골 1.63(둘 다 밴드). v5.01 값(0.205) 유지였다.
+    // #176: 데드볼 규칙으로 전개가 바뀌며 재보정. 20시드 골 1.45 · 60시드 1.53 · 슛당 xG 0.10/0.11
+    // (둘 다 밴드). 코너를 걷기 캡에서 제외한 뒤 다시 잡은 값이다 — 캡 적용 시점에 맞춘 0.215 는
+    // 코너 예외 후 골이 1.68 로 넘쳤다.
+    xgBase: 0.195,
     shotBallSpeed: 14,
     shootXgThreshold: 0.07,
     // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
@@ -416,7 +615,9 @@ export const defaultEngineConfig: EngineConfig = {
     shootRange: 19,
     shootAngleFactor: 0.85,
     shootDistanceFactor: 0.025,
-    onTargetBase: 0.28,
+    // #147 후속: 파울 복원으로 늘어난 프리킥이 전환율을 밀어올려(10.89→13.8) 함께 낮췄다.
+    // 부수 효과로 유효슛이 5.75→4.85 로 **벤치(4.5-5.5) 안에 들어왔다**(0.16.0 부터 초과였음).
+    onTargetBase: 0.235, // #181 재보정: 유효슛/골을 밴드로(#178 재보정과 합산).
     saveCornerProb: 0.6,
     saveCatchDepthM: 2.5, // 골라인 2.5m 앞에서 캐치 → 골문 밖(골 오인 방지). 0 이면 골라인 위.
     saveCornerWideMarginM: 1.5, // 세이브 굴절 코너: 공이 포스트 1.5m 밖(키퍼 근처=터치 보임 + 골 오인 방지).
@@ -427,7 +628,14 @@ export const defaultEngineConfig: EngineConfig = {
     centralShootHalfM: 12.0,
     tackleRange: 2.0,
     interceptRange: 1.5,
-    controlRange: 2.5,
+    // #181: 2.5m → 3.5m. 공은 이제 **손 닿는 사람에게만** 가고(순간이동 금지) 못 닿으면 낙하점에
+    // 멈춰 기다리므로, 이 반경이 곧 템포다. 2.5m 면 공이 그라운드에 서 있는 시간이 과해 경기가
+    // 죽는다(슛/팀 5.1). 3.5m = 한 걸음 뻗어 잡는 거리.
+    controlRange: 3.5,
+    // #181: 리드패스가 조준을 맞춰주므로 대부분 대기 0틱이다. 예측이 빗나간 패스만 1~2틱 기다린다.
+    // 스윕(10시드): 대기 0 → 빈공간꺾임 2건·최악 10.8m / **2 → 0건·최악 6.1m** / 3 → 0건이지만
+    // 공이 멈춰 있는 시간(무소유틱)이 28.7% 로 과해 템포를 해친다.
+    arrivalWaitMaxTicks: 2,
     oneOnOneClearM: 10.0,
     oneOnOneXgMult: 1.3,
     // G-A(#99): 1대1 강제슛 배수 3.2→1.8. 여전히 단독찬스는 슛을 선호하되(1v1은 슛이 정답),
@@ -436,14 +644,23 @@ export const defaultEngineConfig: EngineConfig = {
   },
   rules: {
     foul: {
-      base: 0.0115,
+      // #147 후속: 시야 계층으로 수비수가 한 명만 붙고 자리를 지켜 접촉이 줄었다(파울 9.68→8.23,
+      // 벤치 11-12). 태클 시도당 파울 확률을 올려 복원. 단독으로 올리면 프리킥이 늘어 골·전환이
+      // 폭증하므로 boxFoulMult·onTargetBase 와 **함께** 잡았다(아래 주석 참조).
+      // #178: 마크 당김 오버슛 제거로 수비수가 마크 옆에 **지속적으로** 머물게 되자 접촉이 늘어
+      // 파울이 11.93→14.10 으로 튀었다 → 0.0185→0.016 으로 재보정(11.90).
+      // #181: 패스가 실제 비행시간을 갖게 되며 틱당 태클 기회가 줄어 파울이 다시 내려갔다 →
+      // 두 변경을 합친 상태에서 재측정해 벤치(11-12)로 맞춘 값(아래 §gap §5).
+      // #176: 데드볼 재시작이 규칙대로 정리되며 정지 부근 접촉이 줄어 파울이 11.28→10.38(20시드)로
+      // 밴드 아래로 내려갔다 → 0.0178→**0.0188**. 20시드 11.65 · 60시드 11.63(둘 다 밴드 11-12).
+      base: 0.0188,
       aggressionWeight: 1.0,
       tacklingRelief: 0.6,
-      boxFoulMult: 3.0,
+      boxFoulMult: 1.0,
       bookedRelief: 0.15,
     },
     card: {
-      yellowProb: 0.17,
+      yellowProb: 0.15, // #181: #178 과 합산된 파울 총량에서 카드 밴드(1.8-2.0) 유지.
       redProb: 0.0015,
     },
     penalty: {
@@ -462,6 +679,18 @@ export const defaultEngineConfig: EngineConfig = {
       trapCallMult: 1.8,
     },
     freeKickStoppageTicks: 8,
+    deadBall: {
+      opponentDistanceM: 9.15,
+      throwInDistanceM: 2,
+      boxClear: true,
+      marginM: 0.05,
+      shapeReachX: 0.35,
+      shapeReachY: 0.25,
+      walkSpeedM: 2.5,
+      cornerWalkSpeedM: 4.5,
+      idleAmpM: 0.8,
+      idlePeriodTicks: 6,
+    },
   },
   variety: {
     // 리얼 default: 벤치마크(슛 12-16/팀, 코너 ~5/팀 등)를 유지하는 모던한 변주.
@@ -481,7 +710,7 @@ export const defaultEngineConfig: EngineConfig = {
     enabled: true,
     minM: 30, // perceptionRadius(33) 근처 밖부터 롱볼 — 30m+ 전진 볼.
     maxM: 55, // 하프라인 넘는 전환/롱볼 상한.
-    selectBias: 6.0,
+    selectBias: 4.2, // #181: 패스 도착이 정확해지며 롱 시도 비율이 올라(16.5%) 밴드(12-15)로 재보정.
     fwdCapM: 22,
     distPenalty: 0.22,
   },
@@ -496,12 +725,37 @@ export const defaultEngineConfig: EngineConfig = {
     crossSpeed: 16,
     crossDepthM: 10,
     crossWidthM: 12,
+    // #182. 중립 팀(라인 0.55·템포 0.5)은 잔류 2명 = PL 표준. 수비적 팀 3명, 올인 1명.
+    // 수비팀 아웃렛(leaveHigh)은 0/0 = 끔 — 양팀 동시 변경을 피하려 별도 이슈로 분리.
+    corner: {
+      enabled: true,
+      stayBackMin: 1,
+      stayBackMax: 3,
+      leaveHighMin: 0,
+      leaveHighMax: 0,
+      commitLineWeight: 1.0,
+      commitTempoWeight: 0.5,
+      // 2.2 = "양방향 완전 오버라이드"에 필요한 하한. 슬롯 깊이 폭(CB 0.16~ST 0.78 = 0.62)을
+      // 성향 폭(±0.5)이 넘어서려면 W>2.0 이어야 공격수를 잔류시킬 수 있다. 이 값에서도
+      // 아키타입 기본 성향은 슬롯 순서와 같은 방향이라 자연 순서(ST>윙>미드>풀백>CB)는 보존된다.
+      playerOverrideWeight: 2.2,
+      stayBackLineX: 0.5,
+      leaveHighLineX: 0.5,
+      // 0.25 → CB(슬롯 0.16)는 라인보다 ~9m 깊게, 풀백(0.22)은 ~7m 깊게 = 역할 층.
+      // 지터 0.03(±3.15m)은 슬롯이 동일한 LCB/RCB 를 갈라준다.
+      slotSpread: 0.25,
+      jitterX: 0.03,
+    },
   },
   softCap: 0.25,
   fatiguePerTick: 0.0009,
   movement: {
     forwardRunReach: 0.275,
-    attackWidthReach: 0.13,
+    // #147 W3: 시야의 spaceReach(공격수가 상대에게서 밀려남)가 팀 폭을 +2.2m 넓혀 벤치(40-50)를
+    // 벗어났다. 스윕(20시드) 결과 0.10 이 폭 −1.1m 이면서 **슛당 xG 를 밴드로 되돌리고**(0.13→0.12)
+    // 골·전환·슛을 전부 밴드 안에 유지 — 출하 후보 중 이탈이 가장 적다. 노브 반응이 비단조라
+    // (0.115 가 양옆보다 나쁨) 단일 점이 아니라 스윕으로 골랐다.
+    attackWidthReach: 0.10,
     defendWidthReach: 0.09,
     attackLinePush: 0.56,
     defendCompactX: 0.16,
@@ -510,8 +764,21 @@ export const defaultEngineConfig: EngineConfig = {
     pressRange: 22,
     markGap: 2.5,
     supportPull: 0.08,
+    passLeadWeight: 1,
     roamFactor: 0.08,
     dribbleReach: 0.12,
+  },
+  vision: {
+    enabled: true,
+    radiusM: 20,
+    attentionBase: 3,
+    attentionAttrSwing: 2,
+    memoryTicks: 3,
+    spaceReach: 6,
+    markReach: 3,
+    markCostWeight: 2,
+    markTargetBias: 40,
+    markValueBaseM: 125,
   },
   formations: {
     "4-3-3": formation433,

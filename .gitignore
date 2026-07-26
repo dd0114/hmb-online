@@ -10,9 +10,15 @@ tools/shots/
 # Playwright 출력(루트)
 test-results/
 playwright-report/
+# 관전 화면 실캡처 증빙(#169 S1) — 재생성 가능한 로컬 산출물
+apps/web/.stage/
+apps/web/.stage-capture/
 tools/qa_*.mjs
 tools/reqa*.mjs
 tools/*_log.json
 research/engine-realism-gap.data.md
 # design 세션 격리 스택 DB(로컬 전용)
 server-java/.data-design/
+
+# 배포 매니페스트(#164) — 에페메럴 터널 URL 포함, 생성물
+infra/deploy-manifest.json

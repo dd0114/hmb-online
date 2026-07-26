@@ -35,6 +35,8 @@ class LeagueApiTest extends MatchTestBase {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
+        // 이 테스트의 주제는 시계가 아니다 — 레거시(즉시 전개) 흐름으로 고정한다(§7.7 롤백 경로).
+        TestDbSupport.disableMatchClock(registry);
         registry.add("hmb.data.league-file", () -> "../data/players/league.v1.json");
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
     }
@@ -368,7 +370,7 @@ class LeagueApiTest extends MatchTestBase {
         // 라운드1은 유저 홈(서클 메서드) — 풀 플로우 드라이브 → FINISHED(1-0 유저 승).
         authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
         fakeServants.drain();
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
         authPost("/api/matches/" + matchId + "/halftime", token, Map.of("substitutions", List.of()), Map.class);
         authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
         fakeServants.drain();
@@ -431,7 +433,7 @@ class LeagueApiTest extends MatchTestBase {
         // 풀 플로우 드라이브 → FINISHED. 엔진(=픽스처) home:1 away:0(h1) → 유저(어웨이) 관점 패(flip).
         authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
         fakeServants.drain();
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
         authPost("/api/matches/" + matchId + "/halftime", token, Map.of("substitutions", List.of()), Map.class);
         authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
         fakeServants.drain();

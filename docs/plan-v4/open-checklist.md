@@ -17,10 +17,11 @@
 | B3 | 비밀번호 **평문 저장**(P3-D2 목업 확정) | major(의도된 목업) | server-java | 범위 명시 필요(§7) |
 | B4 | AI 실행기 헬스체크가 **livelock 미검출**(프로세스는 살아있고 폴 루프만 멈춘 경우) | minor | packages/server | **#125** 등록. 프로세스 stop/zombie 는 검출됨 |
 | B5 | 배포 시 `WEB_ORIGINS`(CORS)와 web `VITE_API_BASE` 가 **짝**이어야 함 — 한쪽만 맞으면 왕복 실패 | 운영 | infra | deploy.md §7.0 명시. quick tunnel 은 재시작마다 양쪽 갱신 |
+| B6 | **라이브 AI 풀매치 FAILED** — SQLite lease 경합(#72) + claude 120s 타임아웃 | blocker(완화됨) | server-java+servants | **#166** 등록. **`AI_CONCURRENCY=1`+`AI_JOB_TIMEOUT_MS=240000` 로 완화 → 단일 매치 완주 확인**. 동시 매치 다수는 근본해결 필요 |
 
-> **AC-G2 풀체인 검증 완료**(deploy.md §7.2): 실 chromium 로컬 web → **공개 quick tunnel** → java,
-> 브라우저 CORS 집행, 로그인→`/api/me` 200. B1·B1b·B2 모두 해소. 남은 것 = **상시 URL(named
-> tunnel, hero `cloudflared login`)** + **Pages 호스팅(hero 대시보드)** + B3 고지 + 도메인별 §1~§9.
+> **AC-G2 풀체인 + 라이브 AI 완주 검증 완료**: web(Pages/quick tunnel) → 백엔드 → 로그인·`/api/me`·**풀 매치
+> 완주**(0-4, 보상지급, 양 하프 엔진로그). B1·B1b·B2 해소. **B6(#166)= concurrency=1 완화로 단일매치 통과**,
+> 동시 매치 다수 스케일은 미검증. 남은 것 = B3 고지 + 도메인별 §1~§9 + 상시 URL(선택).
 
 ---
 
@@ -36,9 +37,11 @@
 
 ## 2. 결정론·재현
 
+- [x] **라이브 AI 풀 매치 완주** — *p3dep 실측(배포본 API_URL): 로그인→덱(4-4-2)→매치→전반(GEN1,라이브AI)→
+      하프타임(H1_BREAK)→후반→FINISHED. 결과 0-4 LOSS, 보상 100P 지급, 양 하프 엔진로그 3.99MB/3.84MB(실 시뮬)*
 - [ ] 같은 매치 재조회 시 결과 동일(재생 bit-identical)
-- [ ] 엔진 버전 고정 확인 — *p3dep 실측: runner 가 `engine@0.14.0` 보고(v3 태그와 일치)*
-- [ ] AI 인풋 로그 보존 → 재현 가능
+- [x] 엔진 버전 고정 — *runner `engine@0.16.0`(현 배포). version.json 에 박제*
+- [x] AI 인풋 로그 보존 → 재현 가능 (`/api/matches/{id}/halves/{h}/log` 존재)
 
 ## 3. 에러 처리 (web)
 
@@ -57,18 +60,19 @@
 
 ## 5. 동시 접속 / 경합
 
-- [ ] **SQLite lease 경합(#72)** — 동시 매치 2건 이상에서 잡 중복 리스/유실 0
-- [ ] `AI_CONCURRENCY`(기본 2) 대비 동시 요청 초과 시 큐잉 동작
+- [!] **SQLite lease 경합(#72) — 실부하 재현·이슈화 #166**. *실측: `AI_CONCURRENCY=2` 에서 lease UPDATE
+      SQLException(HTTP 500) → 매치 FAILED. **`AI_CONCURRENCY=1` 로 완화**(단일 매치 완주 확인). 근본해결=#166.*
+- [x] `AI_CONCURRENCY=1` 채택 — deploy-playbook §2 반영. 동시 매치 다수는 #166 해결 후
 - [ ] Hikari max-pool **5** + `busy_timeout=5000` 로 동시 접속 몇 명까지 견디는지 실측
-- [ ] WAL 모드에서 쓰기 경합 시 `SQLITE_BUSY` 미발생 확인
-- [ ] 예상 동시 테스터 수 합의 (현 설정은 **소규모 전제** — 수십 명 동시는 미검증)
+- [!] WAL 쓰기 경합 시 `SQLITE_BUSY` **발생 확인됨**(#166) — concurrency=1 로 완화, 근본해결 대기
+- [ ] 예상 동시 테스터 수 합의 (현 설정 **소규모+concurrency=1 전제** — 동시 매치 여러 건은 미검증/#166)
 
 ## 6. 라이브 AI 부하
 
-- [ ] 동시 매치 N건에서 AI 잡 지연 실측(체감 대기)
+- [x] **라이브 AI 잡 실측** — 전술생성 잡당 ~$0.27(sonnet, out~7500토큰), 전반 생성 ~100s. 완주 확인(§2)
+- [!] `AI_JOB_TIMEOUT_MS` 기본 120s **초과로 타임아웃 발생**(#166) → **240s 로 상향**(deploy-playbook §2). 근본=프롬프트/출력 단축
 - [ ] 구독 rate limit 도달 시 거동(재시도·폴백) — `AI_MAX_RETRIES` 기본 2
-- [ ] `AI_JOB_TIMEOUT_MS`(기본 120s) 초과 시 사용자 경험
-- [ ] 모드 A/B 중 실제 채택안 라이브 검증 (**hero 게이트** — 모드 B 는 세션 거부 가능성)
+- [x] 모드 A(호스트 구독 CLI) 라이브 검증 — *실측: 잡 정상 처리·완주*
 - [x] `ANTHROPIC_API_KEY` 미주입 → 구독 과금 유지 (executor 가 강제 삭제 + `.env.example` 경고)
 
 ## 7. 보안 (목업 범위 명시) — *p3dep 직접 판정*
@@ -105,14 +109,27 @@
 ## 오픈 GO 판정
 
 ```
-[x] B1 해소 (CORS — #128/PR133, 브라우저 실측)
-[x] B1b 해소 (web VITE_API_BASE — #129/PR136, 번들 인라인 실측)
+[x] B1 해소 (CORS — #128/PR133, 브라우저 실측. 티켓 open이나 코드 main 머지·검증)
+[x] B1b 해소 (web VITE_API_BASE — #129/PR136, 번들 인라인 실측. 티켓 open이나 검증)
 [x] B2 해소 (SERVANT_TOKEN openssl rand 교체 — 터널 노출 상태 실측)
-[x] AC-G2 왕복 — 브라우저 풀체인(로컬 web→공개 quick tunnel→java) 로그인→/api/me 200 (§7.2)
+[x] AC-G2 왕복 — 브라우저 풀체인(web→quick tunnel/Pages→java) 로그인→/api/me 200
+[x] 라이브 AI 풀매치 완주 — 로그인→덱→매치→전후반→결과(0-4,보상,엔진로그). concurrency=1 필요(#166)
+[x] main 기준 배포 검증 — version.json git.sha=bfb3b16, 스킨(#145 캐릭터얼굴)·트레이드·전술보드 렌더, DB보존
+[~] B6(#166) SQLite lease 경합+AI 타임아웃 — concurrency=1 완화(단일매치 OK), 동시 다수 스케일 미해결
 [ ] B3 고지 (평문 비번 목업 안내 — 오픈 UI/공지)
-[ ] 상시 URL: named tunnel (hero cloudflared login) + Pages 호스팅 (hero 대시보드)
-[ ] §1~§9 중 blocker 0 (잔여 = 도메인별 미점검: 계정 무회귀·모바일·법적 등)
-[ ] hero 실플레이 1회 (§7.3 — 덱→매치 생성 포함)
+[ ] §1·§3·§8·§9 도메인별 미점검(계정 무회귀·에러처리·모바일 실기기·법적 판타지전환) — 각 도메인
+[ ] 상시 URL(선택): named tunnel(도메인 유료, hero 결정) / Pages 는 API토큰 방식 준비됨(#122)
 ```
 
-> 발견 항목은 **이슈로 등록**하고 이 표에 링크한다(AC-H1).
+**발견 이슈(전부 이슈화됨)**: #125(livelock, minor) · #128(CORS, 코드해소·티켓open) · #129(VITE_API_BASE, 코드해소·티켓open) · #165(백엔드 /version, low) · **#166(라이브AI 동시성, blocker-완화됨)**.
+
+### 최종 GO/NO-GO 판정 (p3dep W4)
+
+- **인프라·배포·라이브AI 단일매치·main 스킨/기능 = GREEN** (전부 실측 통과).
+- **오픈 blocker 잔여 = #166 1건**(라이브AI 동시성). **완화됨**: `AI_CONCURRENCY=1`+`AI_JOB_TIMEOUT_MS=240000`
+  로 **단일 매치 완주 확인**. 동시 매치 다수는 근본해결 대기.
+- **판정 = 조건부 GO (소규모 내부 테스트)**: 동시 매치 1~2건·사람 속도면 **오픈 가능**. 다수 동시 매치가
+  예상되면 **NO-GO → #166 선해결**. 추가로 **B3 고지**(평문비번) 필수 + 도메인별 §1·§3·§8·§9 점검(각 도메인).
+- **p3dep(인프라 W4) 몫 = 완료.** 최종 오픈 GO 선언 = 매니저(규모 판단·#166) + 도메인(§1·§3·§8·§9).
+
+> 발견 항목은 **이슈로 등록**하고 이 표에 링크한다(AC-H1) — 완료.

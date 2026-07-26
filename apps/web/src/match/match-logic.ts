@@ -7,13 +7,25 @@
  * "Java API only" dependency boundary (PRD §1: 웹은 Java API만 안다).
  */
 import type { components } from "../api/schema";
+import { pollIntervalFor } from "./live-clock";
 
 export type MatchState = components["schemas"]["MatchState"];
 
 // ── state router ───────────────────────────────────────────────────────
 
-export type MatchPanel = "briefing" | "genwait" | "halftime" | "result" | "failed" | "unknown";
+export type MatchPanel =
+  | "briefing"
+  | "genwait"
+  | "live"
+  | "halftime"
+  | "result"
+  | "failed"
+  | "unknown";
 
+/**
+ * 상태 → 화면. P4-E2(#170)로 라이브 단계가 들어왔다: FIRST_HALF/SECOND_HALF 는 "지금 경기 중"이라
+ * 감독시간/결과와 같은 관전 셸(StageShell)에서 돈다. GEN* 는 여전히 생성 대기 화면이다.
+ */
 export function panelForState(state: MatchState | string | undefined): MatchPanel {
   switch (state) {
     case "BRIEFING":
@@ -21,7 +33,11 @@ export function panelForState(state: MatchState | string | undefined): MatchPane
     case "GEN1":
     case "GEN2":
       return "genwait";
-    case "H1_BREAK":
+    case "FIRST_HALF":
+    case "SECOND_HALF":
+      return "live";
+    case "HALFTIME":
+    case "H1_BREAK": // 레거시(P4 이전 배포본의 진행 중 매치)
       return "halftime";
     case "FINISHED":
       return "result";
@@ -32,9 +48,12 @@ export function panelForState(state: MatchState | string | undefined): MatchPane
   }
 }
 
-/** Poll GET /api/matches/:id only while the server is generating (LLD-web §2). */
+/**
+ * GET /api/matches/:id 폴링 여부. 생성 중(GEN*)뿐 아니라 **라이브 단계**도 폴링한다 — 전반 종료·
+ * 감독시간 만료 같은 단계 전환을 서버가 소유하기 때문이다(주기는 live-clock.pollIntervalFor).
+ */
 export function shouldPoll(state: MatchState | string | undefined): boolean {
-  return state === "GEN1" || state === "GEN2";
+  return pollIntervalFor(state) !== false;
 }
 
 // ── MatchLog event display (shared MatchEventType mirror) ──────────────
@@ -175,7 +194,10 @@ export function deriveTeamStats(events: MatchEventLike[]): TeamStatsPair {
     const t = stats[e.team];
     switch (e.type) {
       case "shot":
-        t.shots += 1;
+        // 결과 마커(saved/off_target)는 **같은 슛의 결과** 이벤트다 — 시도로 또 세면 안 된다.
+        // 정의는 엔진 쪽 SoT(`stats.mjs liveEventStats` · `match-stats.ts`)와 동일해야 한다:
+        // 결과 화면 팀스탯과 관전 통계 패널이 같은 화면에 나란히 놓이므로 정의가 갈라지면 바로 보인다.
+        if (e.detail !== "saved" && e.detail !== "off_target") t.shots += 1;
         break;
       case "goal":
         t.goals += 1;

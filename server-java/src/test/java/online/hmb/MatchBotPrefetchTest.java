@@ -30,6 +30,8 @@ class MatchBotPrefetchTest extends MatchTestBase {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
+        // 이 테스트의 주제는 시계가 아니다 — 레거시(즉시 전개) 흐름으로 고정한다(§7.7 롤백 경로).
+        TestDbSupport.disableMatchClock(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
     }
 
@@ -79,7 +81,7 @@ class MatchBotPrefetchTest extends MatchTestBase {
         // 프롬프트 없음 → 양측 재사용(materialize) 각 1행, 정상 H1_BREAK.
         assertThat(sideJobCount(matchId, 1, "home")).isEqualTo(1L);
         assertThat(sideJobCount(matchId, 1, "away")).isEqualTo(1L);
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
     }
 
     @Test

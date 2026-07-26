@@ -1,0 +1,88 @@
+/* 디자인 프리뷰 하니스 스타일(#169 S1) — dev 전용. 리뷰 대상(관전 셸)을 가리지 않는 게 원칙. */
+
+.switcher {
+  position: fixed;
+  right: 8px;
+  /* 무대 **위쪽**에 둔다 — 아래쪽은 QA 재생바(시계·타임라인 핀, #177)가 차지하며 서로 덮었다. */
+  top: calc(56px + env(safe-area-inset-top, 0));
+  z-index: 9999;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px;
+  max-width: calc(100% - 16px);
+  opacity: 0.72;
+  transition: opacity 0.15s ease;
+}
+
+.switcher:hover {
+  opacity: 1;
+}
+
+.chip {
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px dashed var(--text-muted);
+  background: rgba(15, 17, 21, 0.9);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chipOn {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--text);
+  background: rgba(79, 140, 255, 0.2);
+}
+
+/* ── 폰 프레임 모드 ─────────────────────────────────────────────── */
+.frameWrap {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #0b0d12;
+}
+
+.frameHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.frameTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* 프레임 모드에선 전환기가 헤더 안에 들어가므로 fixed 를 푼다. */
+.frameHead .switcher {
+  position: static;
+  opacity: 1;
+  max-width: none;
+}
+
+.phone {
+  width: 390px;
+  height: 844px;
+  max-height: calc(100svh - 120px);
+  border: 8px solid #1c2130;
+  border-radius: 28px;
+  background: #0f1115;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.frameHint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}

@@ -3,7 +3,7 @@ import type { SimState, SimPlayer } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
-import { fromFixed, fclamp, fdist } from "./fixedmath";
+import { fromFixed, fclamp, fdist, toFixed, stepToward, isqrt } from "./fixedmath";
 import { attackGoal, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
 import { passOptions, nearestOpponent, pressureCount } from "./perception";
 
@@ -19,7 +19,7 @@ export type PassOutcome = "success" | "fail_intercept" | "fail_out";
 
 export type Action =
   | { kind: "shoot"; xg: number; toX: number; toY: number; detail?: string }
-  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome; long: boolean }
+  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome; long: boolean; claimant: SimPlayer | null }
   | { kind: "dribble"; toX: number; toY: number }
   | { kind: "hold" };
 
@@ -38,7 +38,7 @@ function attrFactor(v: number): number {
  * 무상태 결정론 노이즈 [0,1). (seed, playerId, timeBucket) 해시 → 시퀀셜 Rng 를 소모하지 않고
  * 선수·시간별로 재현 가능한 변주값을 준다(오프더볼 오버랩/로밍용). 재개 시에도 tick 만으로 동일.
  */
-function varietyNoise(a: number, b: number, c: number): number {
+export function varietyNoise(a: number, b: number, c: number): number {
   let h = 2166136261 >>> 0;
   h = Math.imul(h ^ (a >>> 0), 16777619);
   h = Math.imul(h ^ (b >>> 0), 16777619);
@@ -173,6 +173,45 @@ export function computePassProb(
  * 실패면 인플레이 턴오버(상대 위치로 유도) 또는 아웃오브바운즈(경계 밖으로 유도)로 목표를 바꾼다.
  * → 성공률·파이널서드 페널티를 config 로 직접 제어하고, 턴오버가 전환·움직임을 유발한다.
  */
+/** 선수의 이번 틱 이동량(fixed). pace 와 피로 반영. (match 의 act 단계와 동일 식 — 리드패스 예측에도 쓴다.) */
+export function speedStep(p: SimPlayer, config: EngineConfig): number {
+  const { minPerTick, maxPerTick, fatigueFloor } = config.speed;
+  const paceFrac = p.attrs.pace / 100;
+  const base = minPerTick + (maxPerTick - minPerTick) * paceFrac;
+  const fatigueMult = 1 - (1 - fatigueFloor) * p.fatigue;
+  return toFixed(base * fatigueMult, config.fixedScale);
+}
+
+/**
+ * #181 리드패스 조준 — **지금 있는 자리**가 아니라 **공이 도착할 때 그가 있을 자리**로 찬다.
+ *
+ * 구버전은 리시버의 현재 위치를 겨냥했다. 공이 날아가는 동안 리시버는 계속 뛰므로 공은 아무도 없는
+ * 지점에 떨어졌고, 도착 처리가 그 간극을 순간이동으로 메워 "빈 공간에서 공이 휘는" 궤적이 됐다.
+ * (리시버를 낙하점으로 되돌려 달리게 하는 방식은 전진 런을 취소시켜 공격을 죽인다 — 실측 슛/팀 9.6→4.9.)
+ *
+ * 예측: 비행틱 k ≈ 거리/공속. 리시버가 targetFx 방향으로 k 틱 이동한 지점을 조준.
+ * k 가 조준점에 의존하므로 2회 반복해 수렴시킨다(결정론: 전부 고정소수 산술).
+ */
+function leadAim(
+  from: { x: number; y: number },
+  mover: SimPlayer,
+  ballSpeed: number,
+  config: EngineConfig,
+  pitch: Pitch,
+): { x: number; y: number } {
+  const lead = config.movement.passLeadWeight;
+  if (lead <= 0 || ballSpeed <= 0) return { x: mover.posFx.x, y: mover.posFx.y };
+  const step = speedStep(mover, config);
+  let aim = { x: mover.posFx.x, y: mover.posFx.y };
+  for (let iter = 0; iter < 2; iter++) {
+    const ticks = Math.ceil(fdist(from.x, from.y, aim.x, aim.y) / ballSpeed);
+    const travel = Math.round(step * ticks * lead);
+    const p = stepToward(mover.posFx.x, mover.posFx.y, mover.targetFx.x, mover.targetFx.y, travel);
+    aim = clampToPitch(pitch, p.x, p.y);
+  }
+  return aim;
+}
+
 export function planPass(
   state: SimState,
   owner: SimPlayer,
@@ -180,7 +219,7 @@ export function planPass(
   config: EngineConfig,
   rng: Rng,
   pitch: Pitch,
-): { toX: number; toY: number; outcome: PassOutcome } {
+): { toX: number; toY: number; outcome: PassOutcome; claimant: SimPlayer | null } {
   const c = config.contest;
   const scale = config.fixedScale;
   const receiver = opt.receiver;
@@ -188,7 +227,9 @@ export function planPass(
   const prob = computePassProb(state, owner, opt, config, pitch);
 
   if (rng.next() < prob) {
-    return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success" };
+    // 리드패스(#181): 리시버가 **도착 시점에 있을 자리**로 찬다 → 공과 사람이 같은 지점에서 만난다.
+    const aim = leadAim(owner.posFx, receiver, toFixed(config.ball.passSpeed, scale), config, pitch);
+    return { toX: aim.x, toY: aim.y, outcome: "success", claimant: receiver };
   }
 
   // 실패: 아웃 vs 인플레이 턴오버.
@@ -208,16 +249,18 @@ export function planPass(
     else if (min === dBottom) toY = pitch.hFx + margin;
     else if (min === dLeft) toX = -margin;
     else toX = pitch.wFx + margin;
-    return { toX, toY, outcome: "fail_out" };
+    // 아웃으로 나가는 공은 아무도 잡지 않는다(경계에서 resolveOut).
+    return { toX, toY, outcome: "fail_out", claimant: null };
   }
 
   // 인플레이 턴오버: 수신자 근처 상대에게 유도(도착 시 상대 컨트롤 → interception).
   // 실제 소유 판정은 resolveArrival 이 passOutcome 을 존중(authoritative)해 상대에게 준다.
   const thief = nearestOpponentTo(state, owner.side, receiver.posFx.x, receiver.posFx.y);
   if (thief) {
-    return { toX: thief.posFx.x, toY: thief.posFx.y, outcome: "fail_intercept" };
+    const aim = leadAim(owner.posFx, thief, toFixed(config.ball.passSpeed, scale), config, pitch);
+    return { toX: aim.x, toY: aim.y, outcome: "fail_intercept", claimant: thief };
   }
-  return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success" };
+  return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success", claimant: receiver };
 }
 
 /**
@@ -368,6 +411,7 @@ export function decideBallOwner(
       toY: plan.toY,
       outcome: plan.outcome,
       long: bestOpt.long,
+      claimant: plan.claimant,
     };
   }
   if ((r -= wDribble) < 0) {
@@ -396,6 +440,78 @@ function closestToBall(state: SimState, side: SimPlayer["side"]): SimPlayer | nu
     }
   }
   return best;
+}
+
+/**
+ * 선수가 "코너 때 올라가려는" 성향(0..1). 프롬프트가 만든 behavior 에서 파생한다 —
+ * 침투 빈도(forwardRunFreq)와 공격 가담 깊이(supportDepth)가 곧 세트피스 가담 의사다.
+ * (전용 필드는 계약 확장 시 여기만 갈아끼우면 된다 — #182 후속.)
+ */
+function cornerRunTendency(p: SimPlayer): number {
+  return 0.5 * p.behavior.forwardRunFreq + 0.5 * p.behavior.supportDepth;
+}
+
+/**
+ * 팀의 코너 가담도(0=최대한 남긴다 … 1=올인). 수비 기조(라인 높이)·템포에서 파생 —
+ * 라인을 낮게 쓰는 팀은 코너에서도 뒤를 더 남기고, 하이라인·고템포 팀은 더 올라간다.
+ * 즉 **팀마다 기본값이 다르고, 전술을 바꾸면 코너 배치도 같이 바뀐다**(hero 확정 구조).
+ */
+function teamCornerCommit(team: SimState["teams"]["home"], cn: EngineConfig["setPiece"]["corner"]): number {
+  const v =
+    0.5 + (team.defensiveLineHeight - 0.5) * cn.commitLineWeight + (team.tempo - 0.5) * cn.commitTempoWeight;
+  return v < 0 ? 0 : v > 1 ? 1 : v;
+}
+
+/**
+ * 코너 때 "얼마나 올라가고 싶은가" 점수. 클수록 박스로 간다.
+ * = 포메이션 슬롯 깊이(자연 순서: ST > 미드 > 풀백 > CB) + 프롬프트 오버라이드.
+ * playerOverrideWeight 가 충분히 크면 성향이 슬롯 순서를 **뒤집는다** — 원래 남을 CB 가
+ * 올라가고("코너 때 올라가라"), 원래 올라갈 공격수가 남는다("뒤를 봐라").
+ */
+function cornerGoScore(pitch: Pitch, p: SimPlayer, cn: EngineConfig["setPiece"]["corner"]): number {
+  return attackProgress(pitch, p.side, p.baseFx.x) + (cornerRunTendency(p) - 0.5) * cn.playerOverrideWeight;
+}
+
+/**
+ * 코너 시 박스에 안 들어가고 남는 선수의 **그룹 내 순위**. 남지 않으면 -1.
+ *  - 공격팀(attacking=true): cornerGoScore 가 가장 **낮은** N명 = rest defence.
+ *  - 수비팀(attacking=false): 가장 **높은** N명 = 하이 아웃렛.
+ * N 은 상수가 아니라 팀 가담도에서 매핑된다(teamCornerCommit).
+ * 테이커(공 소유자)는 코너 아크에 있으므로 후보에서 제외 → 잔류 인원이 그만큼 줄지 않는다.
+ * 결정론: 점수 → idHash → id 의 전순서로만 뽑는다(전역 난수·시각 의존 없음).
+ *
+ * 순위를 반환하는 이유(#182 폴리시): 호출부가 순위로 깊이를 **균등 배분**해 잔류가 한 줄로
+ * 겹치지 않게 한다. idHash 난수 편차로 벌리면 특정 선수쌍이 우연히 충돌해(실측 11/52 코너가
+ * 0.5m 미만으로 겹침) 그 팀은 매 코너 일자 정렬이 된다 — 순위 배분은 충돌이 구조적으로 없다.
+ */
+function cornerHolderRank(
+  state: SimState,
+  player: SimPlayer,
+  pitch: Pitch,
+  config: EngineConfig,
+  attacking: boolean,
+): { rank: number; count: number } {
+  const miss = { rank: -1, count: 0 };
+  const cn = config.setPiece.corner;
+  if (!cn.enabled || player.isGK || state.ball.owner === player.id) return miss;
+  const commit = teamCornerCommit(state.teams[player.side], cn);
+  // 공격팀: 가담도가 높을수록 적게 남긴다(Max→Min). 수비팀: 높을수록 많이 올려둔다(Min→Max).
+  const count = attacking
+    ? Math.round(cn.stayBackMax + (cn.stayBackMin - cn.stayBackMax) * commit)
+    : Math.round(cn.leaveHighMin + (cn.leaveHighMax - cn.leaveHighMin) * commit);
+  if (count <= 0) return miss;
+  const mine = cornerGoScore(pitch, player, cn);
+  let ahead = 0;
+  for (const p of state.players) {
+    if (p.side !== player.side || p.isGK || p.id === player.id) continue;
+    if (state.ball.owner === p.id) continue;
+    const r = cornerGoScore(pitch, p, cn);
+    // 동률(예: LCB/RCB 가 슬롯·성향 모두 같음)은 idHash → id 로 안정 정렬.
+    const tie = p.idHash !== player.idHash ? p.idHash < player.idHash : p.id < player.id;
+    const better = r === mine ? tie : attacking ? r < mine : r > mine;
+    if (better && ++ahead >= count) return miss;
+  }
+  return { rank: ahead, count };
 }
 
 /**
@@ -430,10 +546,40 @@ export function decideOffBall(
     return;
   }
 
+  // --- 루즈볼 쟁탈(#181): 주인 없이 **멈춰 있는** 공은 가서 주워야 한다 ---
+  // 공은 손 닿는 사람에게만 간다(resolveArrival) → 아무도 없으면 떨어진 자리에 정지한다.
+  // 그때 아무도 안 가면 경기가 멈춘다(실측: 패스성공 19%·슛 1.7). 계획된 수신자(claimant)와
+  // 양 팀 최근접 아웃필더가 공으로 향한다 = 실제 축구의 루즈볼 경합.
+  // 패스 **비행 중**(kind="pass")에는 걸리지 않는다 — 날아가는 공을 향해 되돌아 달리면 전진 런이
+  // 취소돼 공격이 죽는다(실측 슛/팀 9.6→4.9). 도착 후 굴러가는 국면(kind="loose")에만 적용.
+  const loose = ball.flight;
+  if (loose && loose.kind === "loose" && ball.owner == null) {
+    const mine = closestToBall(state, player.side);
+    if (loose.claimant === player.id || (!loose.claimant && mine && mine.id === player.id)) {
+      player.targetFx = clampToPitch(pitch, ball.posFx.x, ball.posFx.y);
+      return;
+    }
+  }
+
   // --- 세트피스(코너) 박스 크라우딩: 공수 양팀 모두 해당 골 박스로 몰림 ---
   const sp = state.setPiece;
   if (sp && sp.kind === "corner") {
     const attackingCorner = sp.side === player.side;
+    // #182: 전원이 박스로 올라가지 않는다 — 공격팀은 rest defence 로 뒤에, 수비팀은 아웃렛으로
+    // 앞에 남는 인원이 있다. 인원은 팀 전략에서, 누가 남는지는 선수 성향(프롬프트)에서 나온다.
+    const cn = config.setPiece.corner;
+    const hold = cornerHolderRank(state, player, pitch, config, attackingCorner);
+    if (hold.rank >= 0) {
+      const lineX = attackingCorner ? cn.stayBackLineX : cn.leaveHighLineX;
+      // 한 줄로 세우지 않는다(#182 폴리시): ①슬롯 깊이를 일부 보존해 역할 층을 만들고
+      // (CB 가 풀백보다 뒤) ②그룹 내 순위로 깊이를 균등 배분해 동일 슬롯끼리도 겹치지 않게.
+      const baseProg = attackProgress(pitch, player.side, player.baseFx.x);
+      const centered = hold.rank - (hold.count - 1) / 2; // 그룹 중심 기준 ±
+      const prog = lineX + (baseProg - lineX) * cn.slotSpread + centered * cn.jitterX;
+      const hx = player.side === "home" ? prog : 1 - prog;
+      player.targetFx = clampToPitch(pitch, Math.round(hx * pitch.wFx), player.baseFx.y);
+      return;
+    }
     const boxGoal = attackingCorner ? g : ownGoal;
     const pull = config.setPiece.cornerBoxReach;
     const cx = boxGoal.x + Math.round((player.baseFx.x - boxGoal.x) * (1 - pull));
@@ -488,12 +634,14 @@ export function decideOffBall(
     ty += widthDir * Math.round(pitch.hFx * mv.defendWidthReach * player.behavior.widthTendency);
     ty += Math.round((ball.posFx.y - ty) * mv.defendCompactY * compact);
 
-    // 마크: 지정 상대 뒤(자기 골 쪽)에 붙는다.
-    if (player.markTarget) {
+    // 마크: 시야 계층이 켜져 있으면 아래에서 가치 기반으로 처리한다(#147 W3) — markTarget 은
+    // 하드 오버라이드가 아니라 **강한 가산**(vision.markTargetBias)으로만 작용한다.
+    // 시야가 꺼져 있으면(롤백) 레거시 하드 오버라이드를 그대로 쓴다 — 안 그러면 롤백 스위치가
+    // markTarget(정식 AI 마킹 지시 경로)을 **완전 무음 no-op** 으로 만들어 "롤백" 이 아니게 된다.
+    if (!config.vision.enabled && player.markTarget) {
       const mark = state.byId.get(player.markTarget);
       if (mark) {
         const gap = mv.markGap * scale;
-        // 상대와 자기 골 사이.
         const dx = ownGoal.x - mark.posFx.x;
         const dy = ownGoal.y - mark.posFx.y;
         const len = Math.max(1, Math.round(Math.sqrt(dx * dx + dy * dy)));
@@ -513,6 +661,50 @@ export function decideOffBall(
     }
   }
 
+  // --- 시야 기반 인지·판단 (#147 W3) ---
+  // 인지: 주의 예산만큼만 정밀 추적(기억 갱신), 나머지는 마지막 본 위치로 판단하고 오래되면 잊는다.
+  // 판단: 수비 시 아는 상대 전원에게 끌리지 않고, 위협도−도달비용이 가장 큰 **한 명만** 고른다.
+  const vis = config.vision;
+  if (vis.enabled) {
+    const known = perceiveOpponents(state, player, config);
+    let px = 0;
+    let py = 0;
+    if (attacking) {
+      // 공격: 아는 상대들에게서 밀려나 공간을 찾는다(가까울수록 강하게).
+      const radFx = vis.radiusM * scale;
+      for (const k of known) {
+        const w = Math.round(vis.spaceReach * scale * (1 - k.dist / radFx));
+        if (w <= 0) continue;
+        px += Math.round(((player.posFx.x - k.x) * w) / k.dist);
+        py += Math.round(((player.posFx.y - k.y) * w) / k.dist);
+      }
+    } else {
+      // 수비: 붙을 가치가 가장 큰 상대 하나만.
+      const target = chooseMarkTarget(known, player, config, ownGoal);
+      if (target) {
+        const radFx = vis.radiusM * scale;
+        // 당김은 **고정 길이 스텝**이라 그대로 두면 이미 붙어 있는 마크를 지나쳐 반대편을 목표로
+        // 잡는다 → 다음 틱엔 방향이 뒤집혀 매 틱 ±markReach 왕복(제자리 진동, #178). 게다가
+        // w 는 가까울수록 커져서(1 − dist/rad) 진동을 키운다. 그래서 **마크 간격(markGap)까지만**
+        // 당긴다 — 이미 그 안이면 당기지 않는다(스탠드오프). 시야 판단은 그대로 유지된다.
+        //
+        // ⚠️ 잔여(독립 QA 발견, QA #25 후속): 이 클램프는 진폭을 3~5m → ~1.1m 로 줄이지만
+        // markGap 경계에서 **주기-2 리밋사이클**이 남는다(링 밖=당김, 링 위=당김 0 → 블록 목표가
+        // 도로 밀어냄). 근본 해소는 마킹을 "당김 델타" 가 아니라 **위치 목표**(마크의 자기골 쪽
+        // markGap 지점)로 재정식화해야 한다 — 결과 목표를 링 위로 미는 방식은 시도했으나
+        // (tx − mark) 방향이 이미 마크를 지나쳐 있어 원래 오버슛을 재현했다(bigReversal 43.5로 복귀).
+        const standoff = Math.max(0, target.dist - Math.round(mv.markGap * scale));
+        const w = Math.min(Math.round(vis.markReach * scale * (1 - target.dist / radFx)), standoff);
+        if (w > 0) {
+          px -= Math.round(((player.posFx.x - target.x) * w) / target.dist);
+          py -= Math.round(((player.posFx.y - target.y) * w) / target.dist);
+        }
+      }
+    }
+    tx += px;
+    ty += py;
+  }
+
   // --- 포지셔널 로밍: 시드 노이즈로 목표 위치에 시간가변 오프셋(슬롯 고착 방지, 팀 형태는 유지) ---
   const rn = config.variety.roamNoiseAmp;
   if (rn > 0) {
@@ -525,6 +717,112 @@ export function decideOffBall(
   }
 
   player.targetFx = clampToPitch(pitch, tx, ty);
+}
+
+/** 시야 기억에서 복원한 "이 선수가 아는 상대" 하나. 위치는 마지막으로 본 값(정확하지만 낡을 수 있음). */
+export interface KnownOpponent {
+  id: string;
+  /** 마지막으로 본 위치(fixed). */
+  x: number;
+  y: number;
+  /** 자기 위치에서 그 기억 위치까지 거리(fixed). */
+  dist: number;
+  /** 그 기억이 몇 틱 낡았는지(0 = 이번 틱에 봄). */
+  age: number;
+}
+
+/**
+ * 이 선수의 주의 예산(1틱에 정밀 추적할 상대 수). 인지 속성(positioning·mental)으로 가감한다.
+ * 스탯이 **시야 반경을 넓히는 게 아니라 주의를 늘린다** — 반경은 실측상 몰림/동조의 레버가 아니었고,
+ * 조사에서도 능력치는 콘 길이가 아니라 스캔 예산·기억 유지에 거는 것이 권장됐다.
+ */
+function attentionBudget(player: SimPlayer, config: EngineConfig): number {
+  const v = config.vision;
+  const aware = fclamp((player.attrs.positioning + player.attrs.mental) / 200, 0, 1);
+  const n = Math.round(v.attentionBase + v.attentionAttrSwing * (aware * 2 - 1));
+  return Math.max(1, n);
+}
+
+/**
+ * 인지 단계. 반경 안 상대를 가까운 순으로 **주의 예산만큼만** 정밀 추적해 기억을 갱신하고,
+ * 판단에는 **기억만** 쓴다(정밀 추적 못 한 상대는 마지막 본 위치 = 낡은 정보). memoryTicks 를
+ * 넘긴 기억은 버린다. 이 구조 때문에 같은 상황에서도 선수마다 아는 것이 달라진다.
+ *
+ * 결정론: state.players 순회 순서 + id 안정 정렬만 사용(Map 순회 의존 없음), 전역 난수 없음.
+ */
+export function perceiveOpponents(
+  state: SimState,
+  player: SimPlayer,
+  config: EngineConfig,
+): KnownOpponent[] {
+  const v = config.vision;
+  const scale = config.fixedScale;
+  const radFx = v.radiusM * scale;
+
+  // 반경 안 상대를 거리순(동률은 id)으로 — 결정론 안정 정렬.
+  const inRange: { p: SimPlayer; d: number }[] = [];
+  for (const o of state.players) {
+    if (o.side === player.side) continue;
+    const d = fdist(player.posFx.x, player.posFx.y, o.posFx.x, o.posFx.y);
+    if (d === 0 || d > radFx) continue;
+    inRange.push({ p: o, d });
+  }
+  inRange.sort((a, b) => a.d - b.d || (a.p.id < b.p.id ? -1 : 1));
+
+  // 주의 예산 안 = 정밀 인지 → 기억 갱신.
+  // 방어: 소비자가 스키마에 seen 을 선언하지 않으면 undefined 로 들어온다(zod strip). 크래시 대신
+  // 빈 기억으로 복구하되, **이 경로를 타면 재개 동일성이 깨진다**(기억 유실 = 무음 desync).
+  // 표현은 Record 라 JSON 왕복 자체는 안전하므로, 남은 건 소비자 스키마 선언뿐이다(#154).
+  if (!player.seen) player.seen = {};
+  const budget = attentionBudget(player, config);
+  for (let i = 0; i < inRange.length && i < budget; i++) {
+    const r = inRange[i]!;
+    player.seen[r.p.id] = { x: r.p.posFx.x, y: r.p.posFx.y, tick: state.tick };
+  }
+
+  // 판단 입력 = 기억. 낡은 기억은 폐기하고, 반경 밖으로 기억된 상대도 제외.
+  const known: KnownOpponent[] = [];
+  for (const o of state.players) {
+    if (o.side === player.side) continue;
+    const m = player.seen[o.id];
+    if (!m) continue;
+    const age = state.tick - m.tick;
+    if (age > v.memoryTicks) continue;
+    const d = fdist(player.posFx.x, player.posFx.y, m.x, m.y);
+    if (d === 0 || d > radFx) continue;
+    known.push({ id: o.id, x: m.x, y: m.y, dist: d, age });
+  }
+  return known;
+}
+
+/**
+ * 판단 단계. "붙는 게 이득인가" 를 물어 **한 명만** 고른다(아는 상대 전원에게 끌리지 않는다).
+ *   가치 = 위협도(내 골에 가까울수록 큼) − 도달비용(멀수록 큼) + markTarget 가산
+ * markTarget(AI 전담 지시)은 하드 오버라이드가 아니라 이 가산으로만 작용한다 — 지시는 먹히되
+ * 도달비용이 과하면 붙지 않는다. 아무 대상도 가치가 없으면 null(자기 위치를 지킨다).
+ */
+export function chooseMarkTarget(
+  known: KnownOpponent[],
+  player: SimPlayer,
+  config: EngineConfig,
+  ownGoal: { x: number; y: number },
+): KnownOpponent | null {
+  const v = config.vision;
+  const scale = config.fixedScale;
+  let best: KnownOpponent | null = null;
+  let bestVal = 0; // 0 이하면 붙을 가치 없음 → 자리 지킴
+  for (const k of known) {
+    const threatFx = -fdist(k.x, k.y, ownGoal.x, ownGoal.y); // 내 골에 가까울수록 큼(음수, 덜 음수가 위협)
+    const costFx = k.dist * v.markCostWeight;
+    const biasFx = player.markTarget === k.id ? v.markTargetBias * scale : 0;
+    // 피치 대각(≈125m) 기준으로 위협을 양수화해 비교 가능하게.
+    const val = threatFx - costFx + biasFx + v.markValueBaseM * scale;
+    if (val > bestVal) {
+      bestVal = val;
+      best = k;
+    }
+  }
+  return best;
 }
 
 /** side 팀의 압박 담당(공 최근접) 지정. */

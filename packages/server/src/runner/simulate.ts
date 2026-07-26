@@ -52,6 +52,13 @@ const SimPlayerSchema = z.object({
   isGK: z.boolean(),
   idHash: z.number(),
   dribbleStreak: z.number(),
+  /**
+   * 시야 기억(engine@0.17.0, #147 W3). zod `.object()` 는 미선언 키를 **조용히 버리므로**
+   * 이 줄이 없으면 재개 시 기억이 유실돼 하프분할 ≠ 통짜가 된다(무음 desync). (#154)
+   * 엔진이 `Record` 로 담아 JSON 왕복에 안전하다 — `Map` 이던 시절엔 이 선언만으로는 부족했다.
+   * `.optional()` 이라 구 저장 상태도 그대로 통과한다.
+   */
+  seen: z.record(z.string(), z.object({ x: z.number(), y: z.number(), tick: z.number() })).optional(),
   yellowCards: z.number(),
 });
 

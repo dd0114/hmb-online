@@ -51,10 +51,15 @@ function assignWalkingTaker(state: SimState, taker: SimPlayer, spotX: number, sp
  * 걷기 속도는 match.ts speedStep 과 동일 공식(pace + 피로) — 도달 보장(순간배치 대신 시간을 준다).
  * 대부분(근거리 스로인/코너/프리킥)은 base 로 수렴, 먼 전환 코너만 연장.
  */
-function walkStoppage(config: EngineConfig, taker: SimPlayer, dist: number, base: number): number {
+function walkStoppage(config: EngineConfig, taker: SimPlayer, dist: number, base: number, capped = true): number {
   const { minPerTick, maxPerTick, fatigueFloor } = config.speed;
   const paceFrac = taker.attrs.pace / 100;
-  const perTickM = (minPerTick + (maxPerTick - minPerTick) * paceFrac) * (1 - (1 - fatigueFloor) * taker.fatigue);
+  const raw = (minPerTick + (maxPerTick - minPerTick) * paceFrac) * (1 - (1 - fatigueFloor) * taker.fatigue);
+  // #174: 정지 중엔 taker 도 걷기 속도 상한을 받는다(match.ts 이동 루프와 **동일한 상한**).
+  // 여기서 캡을 안 걸면 정지 틱을 평소 속도로 산정해 taker 가 도달하기 전에 재시작돼 #59 가 깨진다.
+  // match.ts 이동 루프와 **동일 상한**을 쓴다(코너는 더 느슨) — 안 맞추면 도달 전에 재시작된다.
+  const cap = capped ? config.rules.deadBall.walkSpeedM : config.rules.deadBall.cornerWalkSpeedM;
+  const perTickM = Math.min(raw, cap);
   const stepFx = toFixed(perTickM, config.fixedScale);
   if (stepFx <= 0) return base;
   const ticks = Math.ceil(dist / stepFx) + 2; // +2 = 도착 후 잡는(글루) 프레임 버퍼.
@@ -154,7 +159,7 @@ function placeRestart(
     // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 루프가 도달 시 글루.
     // 정지 시간 = taker 가 걸어와 도달하는 데 필요한 만큼(멀면 연장) → 점프 없이 끝까지 걸어옴.
     const dist = assignWalkingTaker(state, taker, spot.x, spot.y);
-    state.stoppage = walkStoppage(config, taker, dist, base);
+    state.stoppage = walkStoppage(config, taker, dist, base, kind !== "corner");
   } else {
     state.ball.posFx = { x: spot.x, y: spot.y };
     state.ball.owner = null;
@@ -572,41 +577,76 @@ export function resolveArrival(
   // 우연히 되찾아 "완성"으로 집계되어 성공률이 계획보다 과하게 높던(패스 정확도 과다) 문제가 있었다.
   // 세트피스 크로스/루즈볼(passOutcome 없음)은 항상 기하 판정.
   const longDetail = f.long ? { detail: "long" } : {};
-  if (config.contest.passOutcomeAuthoritative && f.kind === "pass" && f.passOutcome) {
-    const oppSide: TeamSide = fromSide === "home" ? "away" : "home";
-    if (f.passOutcome === "success") {
-      const mate =
-        (f.target ? state.byId.get(f.target) : null) ?? nearestOfSide(state, fromSide, bx, by);
-      if (mate) {
-        giveBallTo(state, mate);
-        return [{ tick, minute, type: "pass", team: fromSide, playerId: mate.id, ...longDetail }];
-      }
-    } else if (f.passOutcome === "fail_intercept") {
-      const thief = nearestOfSide(state, oppSide, bx, by);
-      if (thief) {
-        giveBallTo(state, thief);
-        return [{ tick, minute, type: "interception", team: oppSide, playerId: thief.id, ...longDetail }];
-      }
+
+  // #181: **공은 손 닿는 곳에 있는 사람에게만 간다.** 구버전은 도착 처리에서 공을 컨트롤러 위치로
+  // 거리 무제한 대입해(p50 5.9m·max 33.7m) "아무도 없는데 공이 스스로 휘는" 궤적을 만들었다.
+  // 아무도 못 닿았으면 공은 **떨어진 자리에 그대로 정지**하고(무소유), 비행 객체만 speed 0 으로
+  // 살려둬 다음 틱에 다시 판정한다 → 달려온 사람이 controlRange 안에 들어오는 순간 잡는다.
+  // (1차 수정은 여기에 "최대 N틱 대기 후 폴백" 을 뒀는데, 그 폴백이 여전히 무제한 순간이동이라
+  //  정지→16~20m 워프가 90분 128~169회 남았다 — 독립 QA blocker. 폴백 자체를 없앤다.)
+  const reach = toFixed(config.contest.controlRange, config.fixedScale);
+  /**
+   * 아무도 못 닿음 → **원래 가던 방향 그대로 굴려보낸다**(살짝 오버힛된 패스). 감속(looseDecay)으로
+   * 곧 멈추고, 달려온 선수가 주워간다(decideOffBall 루즈볼 쟁탈).
+   *  - 순간이동 금지: 공을 사람 위치로 대입하지 않는다(구버전 max 33.7m 워프).
+   *  - **재조준 금지**: 사람 쪽으로 방향을 틀며 쫓아가게 하면 공(5m/tick)과 선수(≤7m/tick)가
+   *    서로를 지나치며 leapfrog 진동해 경기가 멈춘다(실측: 슛 0.05 로 붕괴).
+   *  - 방향을 안 바꾸므로 "빈 공간에서 공이 꺾이는" 현상도 생기지 않는다.
+   */
+  const settle = (): MatchEvent[] => {
+    const dx = f.fromX != null ? bx - f.fromX : 0;
+    const dy = f.fromY != null ? by - f.fromY : 0;
+    const len = Math.round(Math.sqrt(dx * dx + dy * dy));
+    const roll = toFixed(config.ball.settleSpeed, config.fixedScale);
+    f.kind = "loose";
+    f.waited = (f.waited ?? 0) + 1;
+    if (len > 0 && roll > 0) {
+      f.speed = roll;
+      // 목표는 **방향만** 준다(감속으로 그 전에 멈춘다). 피치 안으로 클램프하지 않는다 —
+      // 클램프하면 경계 근처에서 구르는 방향이 꺾여 "빈 공간 꺾임"이 다시 생긴다(실측 172건).
+      // 경계를 넘으면 advanceBall 의 아웃 판정이 스로인/골킥으로 정상 처리한다(오버힛 패스 그대로).
+      const run = roll * 3;
+      f.toX = bx + Math.round((dx * run) / len);
+      f.toY = by + Math.round((dy * run) / len);
+    } else {
+      f.speed = 0;
+      f.toX = bx;
+      f.toY = by;
     }
-  }
-
-  // 도착점 최근접 선수(양팀). controlRange 안이면 그가, 아니면 의도 수신자.
-  const near = nearestAny(state, state.ball.posFx.x, state.ball.posFx.y);
-  let controller: SimPlayer | null = null;
-  if (near && near.dist <= config.contest.controlRange * config.fixedScale) {
-    controller = near.p;
-  } else if (f.target) {
-    controller = state.byId.get(f.target) ?? null;
-  }
-  if (!controller) controller = near ? near.p : null;
-  if (!controller) {
-    // 아무도 없으면 루즈볼로 방치(정지).
-    state.ball.flight = null;
+    state.ball.owner = null;
+    state.ball.ownerSide = null;
     return [];
+  };
+  const inReach = (p: SimPlayer | null | undefined): boolean =>
+    !!p && fdist(p.posFx.x, p.posFx.y, bx, by) <= reach;
+
+  // 1) 계획된 결과(passOutcome)를 존중하는 창 — claimant 가 닿으면 계획대로 준다.
+  //    아직 못 왔으면 arrivalWaitMaxTicks 동안 공을 세워두고 기다린다(계획 보존).
+  if (config.contest.passOutcomeAuthoritative && f.passOutcome && f.claimant) {
+    const oppSide: TeamSide = fromSide === "home" ? "away" : "home";
+    const claimant = state.byId.get(f.claimant);
+    if (inReach(claimant)) {
+      giveBallTo(state, claimant!);
+      if (f.passOutcome === "success") {
+        return [{ tick, minute, type: "pass", team: fromSide, playerId: claimant!.id, ...longDetail }];
+      }
+      return [{ tick, minute, type: "interception", team: oppSide, playerId: claimant!.id, ...longDetail }];
+    }
+    if ((f.waited ?? 0) < config.contest.arrivalWaitMaxTicks) return settle();
+    // 계획 창이 지났다 → 아래 기하 판정(먼저 닿은 사람이 임자)으로 넘어간다.
   }
 
+  // 2) 기하 판정 — 도착점 controlRange 안 최근접 선수. 없으면 공은 정지한 채 기다린다.
+  const near = nearestAny(state, bx, by);
+  let controller: SimPlayer | null = null;
+  if (near && near.dist <= reach) controller = near.p;
+  if (!controller) return settle();
+
+  const wasLoose = f.kind === "loose";
   giveBallTo(state, controller);
-  if (f.kind === "loose") return [];
+  // 정지해 있던 공(rest)을 주워간 경우에도, 계획된 패스였다면 그 결과를 이벤트로 남긴다
+  // (스탯의 패스 완성/가로챔 집계가 비지 않도록).
+  if (wasLoose && !f.passOutcome) return [];
   if (controller.side === fromSide) {
     return [{ tick, minute, type: "pass", team: fromSide, playerId: controller.id, ...longDetail }];
   }

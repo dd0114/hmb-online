@@ -36,6 +36,8 @@ class MatchFlowE2ETest extends MatchTestBase {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
+        // 이 테스트의 주제는 시계가 아니다 — 레거시(즉시 전개) 흐름으로 고정한다(§7.7 롤백 경로).
+        TestDbSupport.disableMatchClock(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
     }
 
@@ -90,7 +92,7 @@ class MatchFlowE2ETest extends MatchTestBase {
         assertThat(processed).isEqualTo(4);
 
         ResponseEntity<Map> afterH1 = authGet("/api/matches/" + matchId, token, Map.class);
-        assertThat(afterH1.getBody().get("state")).isEqualTo("H1_BREAK");
+        assertThat(afterH1.getBody().get("state")).isEqualTo("HALFTIME");
         assertThat(afterH1.getBody().get("scoreH1Home")).isEqualTo(1); // fixture h1 finalScore 1-0
         assertThat(afterH1.getBody().get("scoreH1Away")).isEqualTo(0);
 
@@ -276,9 +278,10 @@ class MatchFlowE2ETest extends MatchTestBase {
                 .param(matchId).query(Long.class).single();
         assertThat(h2Rows).isEqualTo(1L);
 
-        // state를 GEN2로 되돌린 뒤 finishMatch를 직접(reflection) 재호출 — 최내곽 보상 가드만 겨냥
+        // state를 GEN2로 되돌린 뒤 finishMatch를 직접(reflection) 재호출 — 최내곽 보상 가드만 겨냥.
+        // P4-E2(#170)로 fromState 인자가 붙었다(시계 꺼짐=GEN2 / 켜짐=SECOND_HALF 에서 CAS).
         forceState(matchId, "GEN2");
-        ReflectionTestUtils.invokeMethod(orchestrator, "finishMatch", row, 0, 0);
+        ReflectionTestUtils.invokeMethod(orchestrator, "finishMatch", row, 0, 0, "GEN2");
 
         assertThat(matchState(matchId)).isEqualTo("FINISHED"); // CAS 재통과로 다시 FINISHED
         assertThat(rewardRows(matchId)).isEqualTo(1L);         // 원장은 여전히 1행
@@ -322,7 +325,7 @@ class MatchFlowE2ETest extends MatchTestBase {
         String matchId = createMatch(token, "BOT_BAL");
         authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
         fakeServants.drain();
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
         authPost("/api/matches/" + matchId + "/halftime", token,
                 Map.of("substitutions", List.of()), Map.class);
         authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);

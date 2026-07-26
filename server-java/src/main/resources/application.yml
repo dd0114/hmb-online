@@ -4,6 +4,13 @@ server:
 spring:
   application:
     name: hmb-server
+  task:
+    scheduling:
+      # ⚠️ 아래 pool.size 는 **가상스레드가 켜져 있는 한 무효**다(Boot 가 SimpleAsyncTaskScheduler 를
+      # 고른다 — 스케줄 실행마다 새 가상스레드라 @Scheduled 끼리 서로 막지 않는다). 가상스레드를 끄는
+      # 날을 대비한 방어값으로만 둔다(#170 독립검증 minor: 선언≠효과였던 것 정정).
+      pool:
+        size: 4
   threads:
     virtual:
       enabled: true   # W4: /internal/ai-jobs/poll long-poll가 블로킹으로 대기해도 요청 스레드 풀을 고갈시키지 않게 (LLD §6)
@@ -44,6 +51,19 @@ hmb:
     prompt-timer-sec: 180          # 표시용 (D5)
     enforce-prompt-timer: false    # 강제 전환 플래그
     halftime-subs-max: 3
+    clock:                         # P4-D1/D2 서버 권위 시계 (#170, LLD-e2-flow-clock §5)
+      # 하드코딩 0(AC-W3-2): 압축비·감독시간·seek 정책이 전부 여기 있다. 압축비는 노브가 아니라
+      # 파생값 — 노브는 half-real-ms 이고 클라가 tickCount*msPerTick/halfRealMs 로 계산한다.
+      # 리얼 config(하프 2700틱) 기준 240s → 11.25배 압축.
+      enabled: true                # false = 롤백 스위치(시계 이전 즉시 전개 동작)
+      half-real-ms: 240000         # 하프당 실시간 재생 길이(≈4분)
+      halftime-ms: 60000           # 감독시간(P4-D2 = 60초)
+      auto-resume-on-expiry: true  # 만료 시 후반 자동 시작(전반 프롬프트 승계)
+      sweep-interval-ms: 1000      # 시계 스위퍼 주기(잡 스위퍼 10s 와 별도 — 초 단위 경계)
+      sweep-parallelism: 4         # 만료 스윕 동시 매치 수(후반 시작이 동기 시뮬이라 순차면 서로를 막는다)
+      seek:
+        forward-blocked: true      # 라이브 앞서가기 금지(뒤로 스크럽은 자유)
+        grace-ms: 1500             # 지연·클럭 스큐 허용 오차
     ai-job-timeout-sec: 240        # GEN 상태에서 이걸 넘으면 FAILED
     lease-sec: 120                 # ai_jobs 가시성 타임아웃
     max-attempts: 3

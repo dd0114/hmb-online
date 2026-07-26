@@ -7,16 +7,17 @@ import { ErrorToast } from "../common/ErrorToast";
 import { panelForState } from "./match-logic";
 import { BriefingPanel } from "./BriefingPanel";
 import { GenWaitPanel } from "./GenWaitPanel";
-import { HalftimePanel } from "./HalftimePanel";
-import { MatchViewer } from "./MatchViewer";
-import { ResultPage } from "./ResultPage";
+import { StageShell } from "./stage/StageShell";
 import styles from "./MatchPage.module.css";
 
 const STATE_LABELS: Record<string, string> = {
   BRIEFING: "경기 전 브리핑",
   GEN1: "전반 준비",
   GEN2: "후반 준비",
-  H1_BREAK: "하프타임",
+  FIRST_HALF: "전반 진행 중",
+  HALFTIME: "감독시간",
+  SECOND_HALF: "후반 진행 중",
+  H1_BREAK: "하프타임", // 레거시(P4 이전 배포본)
   FINISHED: "경기 종료",
   FAILED: "오류",
 };
@@ -51,6 +52,15 @@ export function MatchPage() {
 
   const panel = panelForState(match?.state);
 
+  // 관전 상태(라이브 전/후반·감독시간·종료) = 경기장면 고정 셸(#169 S1, P4-D4).
+  // 준비 상태(BRIEFING/GEN*)는 아직 경기장면이 없는 폼 화면이라 기존 페이지 레이아웃을 쓴다.
+  // GEN2(후반 생성)는 보통 재사용이라 눈 깜짝할 사이지만, AI 를 태우면 대기 화면이 필요하다.
+  if (match && (panel === "live" || panel === "halftime" || panel === "result")) {
+    return (
+      <StageShell match={match} homeName={homeName} awayName={awayName} leagueRound={leagueRound} />
+    );
+  }
+
   const header = (
     <div className={styles.headerRow}>
       <button type="button" className={styles.back} onClick={() => navigate("/lobby")}>
@@ -80,20 +90,6 @@ export function MatchPage() {
       {match && panel === "briefing" && <BriefingPanel match={match} />}
 
       {match && (panel === "genwait" || panel === "failed") && <GenWaitPanel match={match} />}
-
-      {match && panel === "halftime" && (
-        <div className={styles.halftimeWrap}>
-          <p className={styles.h1Score} data-testid="h1-score">
-            전반 스코어 {match.scoreH1Home ?? "-"} : {match.scoreH1Away ?? "-"}
-          </p>
-          <MatchViewer matchId={match.id} half={1} homeName={homeName} awayName={awayName} />
-          <HalftimePanel match={match} />
-        </div>
-      )}
-
-      {match && panel === "result" && (
-        <ResultPage match={match} homeName={homeName} awayName={awayName} />
-      )}
 
       {match && panel === "unknown" && (
         <p data-testid="unknown-state">알 수 없는 매치 상태: {match.state}</p>

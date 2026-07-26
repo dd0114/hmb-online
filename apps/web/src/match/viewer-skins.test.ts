@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ARENA_ATLAS, buildViewerSkins, jerseyNumbers } from "./viewer-skins";
 import type { CharAssets } from "../common/char-assets-store";
-import { loadMatchLogMessage } from "./viewer-bridge";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..");
@@ -116,23 +115,5 @@ describe("jerseyNumbers — 토큰에 선수 id 가 찍히는 문제 해결", ()
     expect(withLog.byPlayer.P001?.num).toBe("1");
     // 로그 없이 만들면 등번호 없이(뷰어 기존 방식) 나간다.
     expect(buildViewerSkins(full)!.byPlayer.P001?.num).toBeUndefined();
-  });
-});
-
-describe("브리지 메시지 additive 계약", () => {
-  it("스킨이 있으면 같은 메시지에 실린다", () => {
-    const skins = buildViewerSkins(full)!;
-    const msg = loadMatchLogMessage({ events: [] }, skins);
-    expect(msg.type).toBe("loadMatchLog");
-    expect(msg.skins).toBe(skins);
-  });
-
-  it("스킨이 없으면 필드 자체가 없다(구 뷰어 아티팩트 무회귀)", () => {
-    const msg = loadMatchLogMessage({ events: [] });
-    expect("skins" in msg).toBe(false);
-    expect(loadMatchLogMessage({ events: [] }, undefined)).toEqual({
-      type: "loadMatchLog",
-      matchLog: { events: [] },
-    });
   });
 });

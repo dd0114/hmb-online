@@ -152,20 +152,33 @@ AC-G1 검증·오프라인 E2E·CI 는 이 모드로 충분하다.
 
 백엔드는 hero 머신의 도커에 있다. 공인 IP·포트포워딩 없이 외부에 노출하는 수단이 Tunnel 이다.
 
-### 5.1 빠른 터널 (도메인 불필요 — 1회성 데모용)
+> **실배포 채택 = Cloudflare quick tunnel (§5.1).** 근거: ngrok 무료를 먼저 썼으나 **앱 로드 시
+> 동시 API 요청(덱·선수·컨디션·관계 병렬)에서 커넥션이 끊겨** "덱 정보 불러올 수 없음" 유발.
+> 실측 폭주(8 fresh 컨텍스트 × 병렬4요청): **CF quick 8/8 성공 vs ngrok 무료 0/8**.
+> quick tunnel 은 URL 이 바뀌지만 **web 재배포 한 줄**(`infra/deploy-web.sh`)로 흡수한다.
+> 상시 고정 URL 이 필요해지면 named tunnel(§5.2, 도메인 필요) 또는 ngrok 유료로 승격.
 
+### 5.1 빠른 터널 (도메인·로그인 불필요) — **현 채택안**
+
+원클릭 (백엔드가 이미 떠 있을 때):
 ```bash
-cloudflared tunnel --url http://localhost:18080
-#  → https://<무작위>.trycloudflare.com 발급
+bash infra/start-tunnel.sh
+#  → cloudflared quick tunnel 기동 + URL 캡처 + web 을 그 URL 로 Pages 재배포까지 자동
+#  → 테스터 접속: https://hmb-online.pages.dev
 ```
 
-| 장점 | 단점 |
-|---|---|
-| 로그인·도메인 불필요, 즉시 | **재시작마다 URL 이 바뀐다** |
-| | URL 이 바뀌면 web 의 `VITE_API_BASE` 도 바꿔 **Pages 재배포** 필요 |
-| | CF 의 무보장 서비스 — 테스터 오픈 상시 운영엔 부적합 |
+URL 만 바뀐 경우(터널은 이미 떠 있음):
+```bash
+bash infra/deploy-web.sh https://<새-URL>.trycloudflare.com
+```
 
-→ **연결 확인용으로만.** 실제 테스터 오픈은 5.2.
+| 장점 | 단점 / 대응 |
+|---|---|
+| 로그인·도메인 불필요, 즉시 | 재시작마다 URL 바뀜 → `deploy-web.sh` 한 줄로 재배포(자동) |
+| **동시요청 부하 견딤**(ngrok 무료와 결정적 차이) | CF 무보장 서비스 — 상시 대규모엔 named/유료 승격 |
+| WEB_ORIGINS(CORS)=Pages URL 고정 → java 재시작 불필요 | |
+
+→ 상시 고정 URL 오픈은 5.2(named).
 
 ### 5.2 named tunnel (권장 — 안정 URL)
 
@@ -209,7 +222,44 @@ curl -fsS -X POST https://api.your-domain.com/api/auth/login \
 
 ## 6. web — Cloudflare Pages
 
-### 6.1 Pages 프로젝트 설정
+> **채택 방식 = API 토큰 배포(§6.0).** web=Pages(고정 `hmb-online.pages.dev`) + 백엔드=quick tunnel.
+> 로그인·대시보드 없이 `wrangler pages deploy` 를 **API 토큰**으로 돌린다. 순수 quick-tunnel web(§5.1/
+> `deploy-quicktunnel.sh`)은 **폴백**으로 유지(토큰 없을 때/오프라인).
+
+### 6.0 API 토큰 배포 (로그인 없음) — **원클릭**
+
+**표준 배포 흐름 = 백엔드(터널) 먼저 → 웹이 그 주소에 맞춰 재배포.** quick tunnel URL 이 바뀌면
+`deploy-pages.sh <새-백엔드URL>` 한 줄로 web 을 재빌드+재배포한다(Pages URL 은 고정).
+
+**토큰은 spider 전역 파일 1곳** — `~/.config/hmb/deploy.env`(리포 밖, gitignore, chmod 600).
+`deploy-pages.sh` 가 자동 source 하므로 **어느 spider\* 워크트리에서든** 로그인·per-worktree 설정 없이 배포된다.
+(로컬 `infra/.env` 에 넣으면 그게 override — 보통 불필요.)
+
+```bash
+# 최초 1회: 전역 토큰 파일 (모든 워크트리 공유)
+mkdir -p ~/.config/hmb && cat > ~/.config/hmb/deploy.env <<'X'
+CLOUDFLARE_API_TOKEN=...    # My Profile → API Tokens → Pages:Edit 권한
+CLOUDFLARE_ACCOUNT_ID=...   # 대시보드 account id (6675a80f…)
+X
+chmod 600 ~/.config/hmb/deploy.env
+
+# 배포 (백엔드 quick tunnel URL 자동 추출, 또는 인자로 명시)
+bash infra/deploy-pages.sh [https://<backend>.trycloudflare.com]
+```
+> ⚠️ `~/.config/hmb/deploy.env` 와 `infra/.env` **둘 다 리포 밖/gitignore — 절대 커밋 금지.**
+> 실측 확정: 전역 토큰만으로(로컬 .env 에 토큰 없이) 배포 성공 → 왕복 200·포인트 3000.
+`deploy-pages.sh` 가 한 번에: web 빌드(VITE_API_BASE=백엔드URL) → 버전 매니페스트 →
+`wrangler pages deploy`(토큰 인증) → 백엔드 `WEB_ORIGINS` 에 `hmb-online.pages.dev` **추가·java `--force-recreate`**
+(⭕ DB 볼륨 유지) → 완료. **✅ 실측 확정**: 토큰 배포 성공, `pages.dev/login` → 로그인 200 · me 200 · 포인트 3000,
+`pages.dev/version.json` 노출. (⚠️ `up -d` 만으론 CORS env 변경이 반영 안 돼 `--force-recreate` 필수 —
+실측 버그. 매니페스트 export 버그도 수정.)
+
+- **결과**: `https://hmb-online.pages.dev` (**고정 주소** — Pages 는 안 바뀐다).
+- ⚠️ **백엔드 quick tunnel URL 이 재시작으로 바뀌면 web 재빌드+재배포 필요**(`VITE_API_BASE` 빌드타임
+  인라인). → `bash infra/deploy-pages.sh <새-백엔드URL>` 재실행. Pages URL 은 그대로.
+- ⚠️ **토큰·계정ID 는 `infra/.env` 에만.** 리포엔 `.env.example` 자리표시자만.
+
+### 6.1 (참고) Pages 대시보드 Git 연동 설정
 
 ```
 Build command     : bash infra/pages/build.sh
@@ -340,11 +390,24 @@ curl -fsS -X POST https://<TUNNEL>/api/auth/login \
 
 ## 8. 운영
 
+### 8.0 ⚠️ DB 영속 — 테스터 데이터는 유지된다 (절대 지우지 말 것)
+
+SQLite 는 **Docker named volume `hmb-p3-db`**(컨테이너 `/var/lib/hmb/hmb.db`, `HMB_DB_PATH`)에
+파일로 보존된다. 다음은 **DB 를 건드리지 않는다** — 테스터 계정·덱·진행 그대로 유지:
+- `docker compose up -d` / `restart` / `up -d java`(CORS 반영 재시작) — 컨테이너 재생성돼도 볼륨은 유지
+- 터널 재시작(`start-tunnel.sh`·web 터널) · web 재배포(`deploy-web.sh`) — DB 무관
+- 머신 재부팅 후 `docker compose up -d` — 볼륨 그대로 다시 마운트
+
+**DB 를 지우는 건 오직 `docker compose down -v`(볼륨 삭제) 하나뿐이다.** 배포 스크립트
+(`start-tunnel.sh`·`deploy-web.sh`·`status.sh`) 어디에도 `down -v`·`.data` 삭제는 **없다**(검증됨).
+> 참고: 네이티브 실행(데모)은 `server-java/.data/hmb.db` 를 쓰지만, **배포본은 볼륨**을 쓴다 — 둘은 별개다.
+> 재배포 시 URL 만 바뀌고 DB 는 파일로 보존된다.
+
 ```bash
 docker compose logs -f java          # 로그
 docker compose restart executor      # 개별 재시작
-docker compose down                  # 정지 (데이터 유지)
-docker compose down -v               # ⚠️ 볼륨 삭제 = 전 데이터 소멸
+docker compose down                  # 정지 (⭕ 데이터 유지 — 볼륨 보존)
+docker compose down -v               # ⚠️ 볼륨 삭제 = 전 데이터 소멸 (이것만 지운다)
 ```
 
 **백업** (테스터 데이터 보존):
@@ -356,6 +419,28 @@ docker compose exec java sh -c 'cp /var/lib/hmb/hmb.db /tmp/backup.db' \
 
 **데이터 리셋**(테스터 초기화): `docker compose down -v && docker compose up -d`
 → 마이그레이션·시드가 처음부터 다시 실행된다.
+
+---
+
+## 8.5 배포 버전 매니페스트 (#164)
+
+**배포할 때마다 버전 스냅샷을 남긴다** — "지금 떠있는 게 정확히 뭔지"(git SHA·엔진·이미지 다이제스트·
+터널)를 추적하기 위함. `deploy-quicktunnel.sh` 가 자동 생성하고, 수동으로도:
+
+```bash
+bash infra/version-manifest.sh            # → infra/deploy-manifest.json + apps/web/dist/version.json
+```
+
+담기는 내용: `git{sha,branch,dirty}` · `versions{engine(런타임)·serverJava·web·servants}` ·
+`images{server-java·servants 다이제스트}` · `tunnel{kind,apiUrl,webUrl}` · `deployedAt`(UTC).
+
+**런타임 노출**: 매니페스트가 web dist 에 `version.json` 으로 복사돼 **`<WEB_URL>/version.json`** 으로 확인 가능
+(별도 백엔드 `/version` 엔드포인트는 server-java 도메인 몫 — #164 후속). `infra/deploy-manifest.json`
+은 에페메럴 URL 포함이라 gitignore(생성물) — 스냅샷은 배포 보고에 첨부한다.
+
+```bash
+curl -s <WEB_URL>/version.json    # 테스터/운영이 현재 배포 버전 확인
+```
 
 ---
 

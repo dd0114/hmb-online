@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createViewer, type ViewerChrome, type ViewerController } from "@hmb/viewer-core";
+import type { MatchClock } from "@hmb/shared";
 import { useHalfLog } from "../api/hooks";
+import { liveGate } from "./live-clock";
 import {
   eventDisplay,
   formatClock,
@@ -8,19 +11,6 @@ import {
   runningScore,
   type MatchEventLike,
 } from "./match-logic";
-import {
-  bridgeReducer,
-  initialBridgeState,
-  isViewerReadyMessage,
-  highlightMessage,
-  isViewerStateMessage,
-  loadMatchLogMessage,
-  setChromeMessage,
-  shouldFallbackAfterTimeout,
-  shouldPostLog,
-  VIEWER_EMBED_SRC,
-  VIEWER_READY_TIMEOUT_MS,
-} from "./viewer-bridge";
 import { useAdminFlag } from "../admin/admin-flag";
 import {
   canSwitchControlMode,
@@ -30,6 +20,8 @@ import {
   type ControlMode,
 } from "./playback-controls";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildTimelinePins, type TimelinePin } from "./timeline-pins";
+import { indexFromPct } from "./qa-time-controls";
 import { buildViewerSkins } from "./viewer-skins";
 import { useCharAssets } from "../common/useCharAssets";
 import styles from "./MatchViewer.module.css";
@@ -39,23 +31,37 @@ interface MatchViewerProps {
   half: 1 | 2;
   homeName: string;
   awayName: string;
+  /** 재생 플레이헤드 미러링 — 호스트(스코어바·통계·로그)가 "지금까지"를 계산하는 기준. */
+  onTick?: (tick: number) => void;
+  /** 서버 권위 시계(P4-E2 #170). 이 하프가 라이브면 재생이 "지금"까지로 제한된다. */
+  clock?: MatchClock | null;
+  /** 폴링 시점에 잡아둔 서버-클라 시각차(live-clock.captureOffsetMs). */
+  clockOffsetMs?: number;
+  /** 이 상태에서 로그를 요청해도 되는가(서버 허용표 미러 — 409 방지). */
+  logEnabled?: boolean;
 }
 
 type ViewMode = "visual" | "timeline";
 
 /**
- * 경기 재생 뷰어 (LLD-web §3, AC-W5). 두 모드:
- *  - [시각 재생](기본): QA dev-viewer 번들(viewer-embed.html)을 iframe 임베드 →
- *    viewerReady 수신 후 해당 half MatchLog 를 postMessage 로 주입해 피치/선수/공 재생.
- *    (QA 뷰어 소비만 — 캔버스 렌더러 자체 구현 금지, #57.)
- *  - [타임라인]: MatchLog 키 이벤트를 ~30초로 압축해 순차 공개하는 텍스트 하이라이트(폴백).
- * 로딩/에러 시 자동으로 타임라인 폴백.
+ * 경기 재생 무대 (LLD-web §3, AC-W5 / #169 S3).
+ * **viewer-core 를 직접 마운트**한다(iframe·브리지 제거, S3): React 가 캔버스를 소유하고
+ * `createViewer(canvas, chrome)` 로 QA 뷰어와 **같은 렌더 코어**를 돌린다 → QA 화면 = 게임 화면.
+ * 시각 재생이 실패했을 때만 같은 자리에서 텍스트 타임라인으로 폴백한다.
  */
-export function MatchViewer({ matchId, half, homeName, awayName }: MatchViewerProps) {
-  const { data: log, isLoading, isError } = useHalfLog(matchId, half);
+export function MatchViewer({
+  matchId,
+  half,
+  homeName,
+  awayName,
+  onTick,
+  clock = null,
+  clockOffsetMs = 0,
+  logEnabled = true,
+}: MatchViewerProps) {
+  const { data: log, isLoading, isError } = useHalfLog(matchId, half, logEnabled);
   const [mode, setMode] = useState<ViewMode>("visual");
   // #148 컨트롤 모드: 계정/QA 플래그로 판정하되, admin/QA 가 토글하면 그 선택이 이긴다.
-  // (useAdminFlag 는 /api/me 응답 뒤 true 로 바뀔 수 있어 매 렌더 재계산 — 초기값 고정 금지.)
   const isAdmin = useAdminFlag();
   const [chosenMode, setChosenMode] = useState<ControlMode | null>(null);
   const modeInput = {
@@ -66,8 +72,7 @@ export function MatchViewer({ matchId, half, homeName, awayName }: MatchViewerPr
   const controlMode = chosenMode ?? resolveControlMode(modeInput);
   const canSwitch = canSwitchControlMode(modeInput);
 
-  // `?viewerControls=reset` — 저장된 QA 오버라이드 고착 해제(일반 유저 브라우저에 디버그 UI 가
-  // 영구히 남지 않게). 판정은 위에서 이미 저장값을 무시했고, 여기서 실제 저장도 지운다.
+  // `?viewerControls=reset` — 저장된 QA 오버라이드 고착 해제.
   useEffect(() => {
     if (!isControlModeReset(modeInput.search)) return;
     try {
@@ -94,30 +99,7 @@ export function MatchViewer({ matchId, half, homeName, awayName }: MatchViewerPr
   }
 
   return (
-    <section className={styles.viewer} data-testid={`match-viewer-half${half}`}>
-      <div className={styles.modeTabs} role="tablist" aria-label="재생 모드">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "visual"}
-          className={[styles.tab, mode === "visual" ? styles.tabActive : ""].join(" ")}
-          data-testid={`viewer-tab-visual-half${half}`}
-          onClick={() => setMode("visual")}
-        >
-          🎬 시각 재생
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={mode === "timeline"}
-          className={[styles.tab, mode === "timeline" ? styles.tabActive : ""].join(" ")}
-          data-testid={`viewer-tab-timeline-half${half}`}
-          onClick={() => setMode("timeline")}
-        >
-          📝 타임라인
-        </button>
-      </div>
-
+    <div className={styles.stageRoot} data-testid={`match-viewer-half${half}`}>
       {mode === "visual" ? (
         <VisualPlayback
           log={log}
@@ -126,11 +108,16 @@ export function MatchViewer({ matchId, half, homeName, awayName }: MatchViewerPr
           controlMode={controlMode}
           canSwitch={canSwitch}
           onControlMode={chooseMode}
+          onTick={onTick}
+          clock={clock}
+          clockOffsetMs={clockOffsetMs}
         />
       ) : (
-        <TimelineView log={log} half={half} homeName={homeName} awayName={awayName} />
+        <div className={styles.timelineFill}>
+          <TimelineView log={log} half={half} homeName={homeName} awayName={awayName} />
+        </div>
       )}
-    </section>
+    </div>
   );
 }
 
@@ -150,11 +137,15 @@ interface VisualPlaybackProps {
   controlMode: ControlMode;
   canSwitch: boolean;
   onControlMode: (m: ControlMode) => void;
+  onTick?: (tick: number) => void;
+  clock: MatchClock | null;
+  clockOffsetMs: number;
 }
 
 /**
- * QA 뷰어 iframe 임베드 + 브리지 주입. 순수 시퀀스 로직은 viewer-bridge.ts(검증됨).
- * viewerReady(iframe→) 와 log(useHalfLog) 는 어느 쪽이 먼저든, 둘 다 준비되면 1회 주입.
+ * viewer-core 직접 마운트(#169 S3). 캔버스에 createViewer 로 코어를 붙이고, 골/상황/배너 자막은
+ * 캔버스 위 오버레이(호스트 DOM)로 그린다. 컨트롤(플레이=하이라이트 토글 / admin=풀컨트롤)은
+ * 코어 컨트롤러를 직접 조작한다. 손상 로그는 load 가 throw → 텍스트 타임라인으로 폴백.
  */
 function VisualPlayback({
   log,
@@ -163,78 +154,179 @@ function VisualPlayback({
   controlMode,
   canSwitch,
   onControlMode,
+  onTick,
+  clock,
+  clockOffsetMs,
 }: VisualPlaybackProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  // 경기장 캐릭터 스킨(#145). 에셋이 아직/영영 없으면 null → 뷰어는 현행 단색 원(무회귀).
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const flashRef = useRef<HTMLDivElement>(null);
+  const situationRef = useRef<HTMLDivElement>(null);
+  const bannerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<ViewerController | null>(null);
+  // QA 시계·스크럽(#177)은 코어가 **프레임마다** 갱신한다 → state 가 아니라 ref 로 DOM 을 직접
+  // 건드린다(자막 오버레이와 같은 패턴). state 로 받으면 초당 60회 리렌더가 난다.
+  const clockRef = useRef<HTMLSpanElement>(null);
+  const scrubRef = useRef<HTMLInputElement>(null);
+  const [pins, setPins] = useState<TimelinePin[]>([]);
+  // 재생 범위 메타(#180) — 초단위 스텝/스크럽이 "어디까지 갈 수 있나"를 알아야 한다.
+  const [range, setRange] = useState<{ snapCount: number; lastTick: number }>({ snapCount: 0, lastTick: 0 });
+  // onScrub 은 프레임마다 오는 콜백이라 마운트 시점 클로저에 갇힌다 → 스냅샷 수는 ref 로 본다.
+  const snapCountRef = useRef(0);
+  const [viewerReady, setViewerReady] = useState(false);
+  // 경기장 캐릭터 스킨(#145). 에셋이 아직/영영 없으면 null → 코어는 현행 단색 원(무회귀).
   const charAssets = useCharAssets();
   const skins = useMemo(() => buildViewerSkins(charAssets, log), [charAssets, log]);
-  const [state, dispatch] = useReducer(bridgeReducer, initialBridgeState);
   const [failed, setFailed] = useState(false);
-  // 뷰어가 미러링해주는 실제 하이라이트 연출 상태(#148) — 토글 표시의 SoT.
-  // 뷰어 기본은 Highlights on 이고, 경기는 로드 직후 자동 진행한다(재생 컨트롤 없음).
+  // 하이라이트 연출(autoPace) 표시 상태 — 코어 기본 on.
   const [highlight, setHighlight] = useState(true);
 
-  // 로드 실패 통합 처리: in-place 폴백 표시 + 부모 모드를 타임라인으로 전환.
-  const fail = () => {
-    setFailed(true);
-    onFallback();
-  };
+  // 콜백은 마운트 시 고정하되 최신 onTick 은 ref 로 본다(stale closure 방지).
+  const onTickRef = useRef(onTick);
+  useEffect(() => {
+    onTickRef.current = onTick;
+  }, [onTick]);
 
-  // half 전환/재마운트 시 시퀀스 초기화 + 로그 준비 반영.
+  // 스킨은 아틀라스 매핑 로드가 늦을 수 있어, 마운트 후 준비되면 반영한다.
   useEffect(() => {
-    dispatch({ kind: "reset" });
-  }, [half]);
+    if (skins && viewerRef.current) viewerRef.current.setSkin(skins);
+  }, [skins]);
+
+  // 코어 마운트 — half/로그가 바뀌면 재마운트(캔버스 key 로 새 캔버스).
   useEffect(() => {
-    if (log) dispatch({ kind: "logLoaded" });
+    const canvas = canvasRef.current;
+    if (!canvas || !log) return;
+
+    // 코어 인스턴스 지역 참조 — chrome 콜백이 마운트 도중(load 안)에도 코어 훅을 볼 수 있게.
+    let created: ViewerController | null = null;
+    const SHOW = styles.capShow as string;
+    const showAnim = (el: HTMLElement | null, text: string, col: string) => {
+      if (!el) return;
+      el.textContent = text;
+      el.style.color = col;
+      el.classList.remove(SHOW);
+      void el.offsetWidth; // reflow → 애니메이션 재발화
+      el.classList.add(SHOW);
+    };
+    const chrome: ViewerChrome = {
+      onTick: (t) => onTickRef.current?.(t),
+      onBigCaption: (text, col) => showAnim(flashRef.current, text, col),
+      onSituation: (text, col) => showAnim(situationRef.current, text, col),
+      onBanner: (text, col) => {
+        const el = bannerRef.current;
+        if (!el) return;
+        if (text != null) {
+          el.textContent = text;
+          el.style.color = col ?? "";
+          el.classList.add(SHOW);
+        } else {
+          el.classList.remove(SHOW);
+        }
+      },
+      onClearCaptions: () => {
+        for (const el of [flashRef.current, situationRef.current, bannerRef.current]) el?.classList.remove(SHOW);
+      },
+      // --- QA 관전 도구(#177): 코어가 이미 내보내던 시계/스크럽/로드정보를 호스트가 받는다.
+      //     S3(iframe 제거) 때 이 배선이 빠져 "몇 분 몇 초"를 볼 수 없었다.
+      onClock: (text) => {
+        if (clockRef.current) clockRef.current.textContent = text;
+      },
+      onScrub: (pct) => {
+        // 드래그 중에는 사용자 입력이 이긴다(핸들이 손에서 튀지 않게).
+        // 슬라이더 눈금은 % 가 아니라 **스냅샷 인덱스**다(1칸 = 1초, #180).
+        const el = scrubRef.current;
+        if (el && document.activeElement !== el) el.value = String(indexFromPct(pct, snapCountRef.current));
+      },
+      onLoaded: ({ events, snapCount }) => {
+        // onLoaded 는 v.load() 안에서 불린다 = viewerRef 대입 **전** → 지역 참조(created)를 본다.
+        const hooks = created?.hooks as { idxOfTick?: (t: number) => number } | undefined;
+        const idxOf = typeof hooks?.idxOfTick === "function" ? hooks.idxOfTick : (t: number) => t;
+        setPins(buildTimelinePins(events as { tick: number }[], idxOf, snapCount));
+        // 마지막 틱: 서브샘플 로그면 인덱스≠틱이라 스냅샷에서 직접 읽고, 없으면 인덱스로 근사.
+        const snaps = (log as { tickSnapshots?: { tick: number }[] } | null)?.tickSnapshots ?? [];
+        const lastSnap = snaps[snaps.length - 1];
+        const lastTick = lastSnap ? lastSnap.tick : Math.max(0, snapCount - 1);
+        snapCountRef.current = snapCount;
+        setRange({ snapCount, lastTick });
+      },
+    };
+
+    let v: ViewerController;
+    try {
+      v = createViewer(canvas, chrome);
+      created = v;
+      if (skins) v.setSkin(skins);
+      v.setSpeed(4); // 기본 배속(hero 지시) — 하이라이트 off 시 이 속도로 진행.
+      v.load(log); // 손상 로그면 throw
+      v.start();
+    } catch {
+      // 로드 실패 → 같은 자리에 실패 안내 표시(빈 피치 방지). 텍스트 타임라인 전환은 유저 버튼으로
+      // (자동 전환하면 손상 로그의 빈 타임라인만 남아 "왜 안 나오지"가 된다).
+      setFailed(true);
+      return;
+    }
+    viewerRef.current = v;
+    setViewerReady(true);
+    setHighlight(true);
+    // QA/e2e 훅 — dev-viewer 가 제공하던 window.__viewer 와 동형(읽기 표면 + 스킨/뷰모드).
+    (window as unknown as { __viewer?: unknown }).__viewer = v.hooks;
+
+    return () => {
+      v.stop();
+      viewerRef.current = null;
+      setViewerReady(false);
+      const w = window as unknown as { __viewer?: unknown };
+      if (w.__viewer === v.hooks) delete w.__viewer;
+    };
+    // 스킨은 위 별도 effect 로 반영(마운트 재실행 트리거에서 제외).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [log, half]);
+
+  // ── 라이브 게이트(P4-E2 #170 / AC-W3-1) ───────────────────────────────
+  // 늦게 접속하면 **경과 시점부터** 재생하고, 그 뒤로는 "지금"을 앞질러 가지 못한다(되감기는 자유).
+  // viewer-core 는 자체 프레임 루프를 도므로 코어를 고치지 않고 호스트가 주기적으로 플레이헤드를
+  // 확인해 상한 밖이면 되돌린다(코어는 QA 뷰어와 공유하는 SoT — 여기서 건드리지 않는다).
+  const gateInput = useRef({ clock, clockOffsetMs, half });
+  gateInput.current = { clock, clockOffsetMs, half };
+  const tickCount = useMemo(() => {
+    const snaps = (log as { tickSnapshots?: unknown[] } | null)?.tickSnapshots;
+    return Array.isArray(snaps) ? snaps.length : 0;
   }, [log]);
 
-  // iframe 이 보내는 viewerReady / viewerState 수신(우리 iframe 것만).
   useEffect(() => {
-    function onMsg(ev: MessageEvent) {
-      if (iframeRef.current && ev.source !== iframeRef.current.contentWindow) return;
-      if (isViewerReadyMessage(ev.data)) dispatch({ kind: "viewerReady" });
-      else if (isViewerStateMessage(ev.data)) setHighlight(ev.data.auto);
-    }
-    window.addEventListener("message", onMsg);
-    return () => window.removeEventListener("message", onMsg);
-  }, []);
+    const v = viewerRef.current;
+    if (!viewerReady || !v || tickCount <= 0) return;
+    const gateNow = () => {
+      const { clock: c, clockOffsetMs: off, half: h } = gateInput.current;
+      return liveGate(c, h, tickCount, Date.now(), off);
+    };
 
-  // viewerReady 타임아웃 폴백(onError 로 못 잡는 SPA-fallback 200 케이스 방어, viewer-bridge 참조).
-  // readyRef 로 타임아웃 콜백 안에서 최신 viewerReady 를 본다(클로저 stale 방지).
-  const readyRef = useRef(false);
-  useEffect(() => {
-    readyRef.current = state.viewerReady;
-  }, [state.viewerReady]);
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      if (shouldFallbackAfterTimeout(readyRef.current)) fail();
-    }, VIEWER_READY_TIMEOUT_MS);
-    return () => window.clearTimeout(t);
-    // half 별 재마운트마다 타이머 재시작.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [half]);
+    const entry = gateNow();
+    if (!entry.isLive) return; // 지나간 하프·종료·레거시 = 제한 없음(기존 동작 그대로)
 
-  // 준비 완료 시 1회 주입. 스킨은 같은 메시지에 실어 보낸다(뷰어가 로그 로드 전에 아틀라스 예열).
-  useEffect(() => {
-    if (shouldPostLog(state) && iframeRef.current?.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(loadMatchLogMessage(log, skins ?? undefined), "*");
-      dispatch({ kind: "posted" });
-    }
-  }, [state, log, skins]);
+    // 라이브에서는 하이라이트 연출(autoPace)을 끈다 — 줌·슬로우가 실시간을 따라가지 못한다.
+    setHighlight(false);
+    v.setAutoPace(false);
+    if (entry.speed) v.setSpeed(entry.speed);
+    v.jumpToTick(entry.liveTick); // seek-to-now
+    v.play();
 
-  // 컨트롤 크롬 지시(#148): 뷰어 준비 후 + 모드가 바뀔 때마다 재전송.
-  // 브리지 기본값이 play 라 관객은 디버그 크롬을 볼 일이 없고, admin/QA 만 full 로 되살린다.
-  useEffect(() => {
-    if (!state.viewerReady) return;
-    iframeRef.current?.contentWindow?.postMessage(setChromeMessage(controlMode), "*");
-  }, [state.viewerReady, controlMode]);
+    const timer = window.setInterval(() => {
+      const gate = gateNow();
+      if (!gate.isLive) return;
+      const cur = Number(v.hooks.cur()?.tick ?? 0);
+      if (cur > gate.clamp(cur)) {
+        v.jumpToTick(gate.liveTick); // 앞질러 갔으면(스크럽·배속) 지금으로 되돌린다
+      }
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [viewerReady, tickCount, clock?.phase, clock?.phaseStartAt]);
 
-  const sendHighlight = (on: boolean) => {
-    iframeRef.current?.contentWindow?.postMessage(highlightMessage(on), "*");
+  const onHighlight = (on: boolean) => {
+    setHighlight(on);
+    viewerRef.current?.setAutoPace(on);
   };
 
   if (failed) {
-    // iframe 로드 실패 → 텍스트 타임라인으로 폴백 유도.
     return (
       <div className={styles.note} data-testid={`viewer-visual-error-half${half}`}>
         시각 재생을 불러오지 못했습니다.{" "}
@@ -246,29 +338,36 @@ function VisualPlayback({
   }
 
   return (
-    <div className={styles.stageWrap} data-testid={`viewer-visual-half${half}`}>
-      <iframe
-        ref={iframeRef}
-        // key: half 별로 새 iframe → 새 viewerReady → 해당 half 재주입.
-        key={`viewer-half${half}`}
-        className={[styles.stage, controlMode === "play" ? styles.stagePlay : ""].join(" ")}
-        src={VIEWER_EMBED_SRC}
-        title={`${half === 1 ? "전반" : "후반"} 경기 재생`}
-        // 1st-party 생성물(build:viewer). 스크립트 실행 허용 + same-origin(vite public 서빙)로
-        // postMessage 통신. 외부 리소스/네트워크 없음(fetch 는 브리지가 가로챔).
-        sandbox="allow-scripts allow-same-origin"
-        loading="lazy"
-        onError={fail}
-        data-posted={state.posted ? "1" : "0"}
+    <div className={styles.stageWrapFill} data-testid={`viewer-visual-half${half}`}>
+      <canvas
+        ref={canvasRef}
+        key={`viewer-canvas-half${half}`}
+        width={1050}
+        height={680}
+        className={styles.stageCanvas}
+        data-testid={`viewer-canvas-half${half}`}
       />
-      <PlaybackControls
-        half={half}
-        mode={controlMode}
-        canSwitch={canSwitch}
-        highlight={highlight}
-        onHighlight={sendHighlight}
-        onMode={onControlMode}
-      />
+      {/* 자막 오버레이(호스트 DOM) — 코어가 chrome 콜백으로 표시/숨김 토글. aria-live 로 골만 읽어줌. */}
+      <div ref={flashRef} className={styles.capFlash} aria-live="polite" />
+      <div ref={situationRef} className={styles.capSituation} aria-hidden="true" />
+      <div ref={bannerRef} className={styles.capBanner} aria-hidden="true" />
+      {/* 무대 모드에선 컨트롤을 화면 모서리에 겹친다(리서치 R6 — 뷰 컨트롤은 무대 가장자리). */}
+      <div className={styles.controlsOverlay}>
+        <PlaybackControls
+          half={half}
+          mode={controlMode}
+          canSwitch={canSwitch}
+          highlight={highlight}
+          onHighlight={onHighlight}
+          onMode={onControlMode}
+          viewer={viewerReady ? viewerRef.current : null}
+          clockRef={clockRef}
+          scrubRef={scrubRef}
+          pins={pins}
+          snapCount={range.snapCount}
+          lastTick={range.lastTick}
+        />
+      </div>
     </div>
   );
 }
@@ -281,7 +380,7 @@ interface TimelineViewProps {
 }
 
 /**
- * 텍스트 하이라이트(R1 전 임시 뷰어의 로직 그대로). 키 이벤트를 ~30초로 압축 순차 공개.
+ * 텍스트 하이라이트(폴백). 키 이벤트를 ~30초로 압축 순차 공개.
  */
 function TimelineView({ log, half, homeName, awayName }: TimelineViewProps) {
   const events = useMemo(

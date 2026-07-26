@@ -11,7 +11,13 @@ import { demoSelect, makeTacticalInput } from "../../src/fixtures";
 // 없을 수 있다. 이 시드(real config)는 셋 다 포함하므로, 그 타입 계약검증용 풀해상도 로그를
 // e2e/fixture-real.json 으로 만든다. (생성물은 gitignore.)
 const here = dirname(fileURLToPath(import.meta.url));
-const SEED = "1000000007"; // real config 에서 offside+card+penalty + #42(세이브→라이브체인→빗나감) 패턴을 모두 포함하는 시드. (engine@0.16.0 좌우대칭 픽스로 타임라인이 바뀌어 재선정 — 이전 1000000006.)
+const SEED = "1000000137";
+// ⚠️ 매치 전개가 바뀌면 **아래 5조건 전부**로 재스캔한다(gameqa 체크리스트, #186 이 스캐너 체크인 소유):
+//   ①offside ≥1  ②card ≥1  ③penalty ≥1  ④#42 패턴(세이브→라이브체인→빗나감) 포함
+//   ⑤**그 체인의 스팬이 짧을 것** — ④만 맞고 스팬이 길면 e2e 가 그 구간을 실제 재생하다 타임아웃한다
+//     (#181 실측: 1000000015 는 span41 로 실패). ⑤가 가장 빠뜨리기 쉽다.
+// 이력: 1000000000 → …004 → …013 → …076(#181) → …016(#182) → **…137**(#176 데드볼 규칙).
+//   재스캔(--count 200) 결과 후보(스팬): 1000000137:3 · 1000000015:8 · 1000000021:10 · 1000000033:20.
 
 describe("e2e fixtures", () => {
   it("writes fixture-real.json containing offside + card + penalty events", () => {

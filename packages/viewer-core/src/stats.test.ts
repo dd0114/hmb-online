@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.mjs";
+import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.impl.mjs";
 
 describe("stats.mjs — 실시간 통계 증분 계산", () => {
   const events = [

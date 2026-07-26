@@ -56,3 +56,107 @@
   border-color: var(--text-muted);
   color: var(--text);
 }
+
+/* full(admin) 풀컨트롤 — 작은 칩들. 무대 위 오버레이라 촘촘히. */
+.admin {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  background: rgba(15, 20, 32, 0.72);
+  padding: 5px 7px;
+  border-radius: 8px;
+}
+
+.admin .mode {
+  font-size: 11px;
+  padding: 3px 7px;
+  border-style: solid;
+}
+
+.admin .mode:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.speeds {
+  display: flex;
+  gap: 2px;
+}
+
+/* 초단위 시간 이동 그룹(#180) — 시계를 가운데 두고 좌우 대칭으로 스텝 버튼. */
+.timeGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px;
+}
+
+/* QA 시계(#177/#180) — 분:초. 지금 위치를 크게, 숫자가 흔들리지 않게 고정폭. */
+.clock {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  padding: 0 6px;
+  min-width: 128px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* mm:ss 직접 이동 입력 — 좁게(무대를 가리지 않게). */
+.goto {
+  width: 62px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* 타임라인 = 스크럽 + 키 장면 핀(절대배치). 90분 경기면 핀이 60개+ 라 트랙을 넓게 잡는다. */
+.timeline {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1 1 320px;
+  min-width: 220px;
+  max-width: 60vw;
+  padding: 12px 0; /* 위/아래 레인 공간 */
+}
+
+.scrub {
+  width: 100%;
+}
+
+/* 무대 오버레이의 `.controlsOverlay button { padding: 4px 9px }` 보다 강한 선택자여야 한다 —
+   안 그러면 핀이 18px 폭으로 부풀어 서로를 덮고 **클릭이 막힌다**(실측). */
+.timeline button.pin {
+  position: absolute;
+  transform: translateX(-50%);
+  padding: 0;
+  border: 0;
+  border-radius: 1px;
+  cursor: pointer;
+}
+
+/* 두 레인 — 큰 장면은 트랙 위, 작은 장면은 아래. 같은 시간대라도 서로를 덮지 않는다. */
+.pinMajor {
+  bottom: 62%;
+}
+
+.pinMinor {
+  top: 62%;
+}
+
+.pin:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pin:hover {
+  outline: 1px solid #fff;
+}

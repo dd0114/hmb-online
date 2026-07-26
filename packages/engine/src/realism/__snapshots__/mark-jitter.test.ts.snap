@@ -1,0 +1,21 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`마크 진동 골든 (#178) > 현 진동 지표를 스냅샷으로 박제한다(회귀·개선 모두 diff 로 드러남) 1`] = `
+{
+  "all": {
+    "avgMoveM": 1.76,
+    "bigReversalPer100": 5.44,
+    "maxMoveM": 11.2,
+    "reversalPer100": 10.89,
+    "samples": 163987,
+  },
+  "nearOwner": {
+    "avgMoveM": 1.66,
+    "bigReversalPer100": 7.37,
+    "maxMoveM": 6.18,
+    "reversalPer100": 11.57,
+    "samples": 7328,
+  },
+  "seeds": 4,
+}
+`;

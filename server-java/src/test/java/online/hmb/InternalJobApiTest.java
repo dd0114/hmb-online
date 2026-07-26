@@ -41,6 +41,8 @@ class InternalJobApiTest extends MatchTestBase {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
+        // 이 테스트의 주제는 시계가 아니다 — 레거시(즉시 전개) 흐름으로 고정한다(§7.7 롤백 경로).
+        TestDbSupport.disableMatchClock(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
     }
 
@@ -333,7 +335,7 @@ class InternalJobApiTest extends MatchTestBase {
         servant.start();
         try {
             authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
-            waitForState(token, matchId, "H1_BREAK", 30000);
+            waitForState(token, matchId, "HALFTIME", 30000);
 
             authPost("/api/matches/" + matchId + "/halftime", token,
                     Map.of("substitutions", java.util.List.of()), Map.class);

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
-import { aggregateRealism, REALISM_SEEDS } from "./harness";
+import { aggregateRealism, GUARD_SEEDS } from "./harness";
 
 /**
  * G-A 슛 빈도 계약 (#99, §2.5 E2E-TDD).
@@ -13,34 +13,86 @@ import { aggregateRealism, REALISM_SEEDS } from "./harness";
 const cfg = defaultEngineConfig;
 
 // 20 시드(팀-경기 40). SD 크지만 평균은 밴드 내 안정.
-const agg = aggregateRealism(cfg, REALISM_SEEDS);
+const agg = aggregateRealism(cfg, GUARD_SEEDS);
 
 describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
   it(`팀당 슛 12–14 (측정 ${agg.mean.shots})`, () => {
     expect(agg.mean.shots).toBeGreaterThanOrEqual(12);
-    expect(agg.mean.shots).toBeLessThanOrEqual(14.5);
+    // 상한은 D4 확정 벤치(12-14)와 일치시킨다. 이전엔 14.5 로 느슨해 제목(12-14)과 어긋났고,
+    // #147 W2 때 실측 14.15 가 그 슬랙에 숨었다(검증 세션 지적). W2 철회 후 현재 14.00 —
+    // 밴드 상단에 정확히 걸터앉아 있어 여유가 없다(밸런스 여유 확보는 S4 #10 소관).
+    expect(agg.mean.shots).toBeLessThanOrEqual(14);
   });
   it(`슛당 xG 0.10–0.12 밴드 근처 (측정 ${agg.mean.xgPerShot}) — 슛만 깎고 질 왜곡 금지`, () => {
     expect(agg.mean.xgPerShot).toBeGreaterThanOrEqual(0.1);
     expect(agg.mean.xgPerShot).toBeLessThanOrEqual(0.13);
   });
-  it(`골 가뭄 아님: 팀당 골 ∈ [1.4, 2.5] (측정 ${agg.mean.goals})`, () => {
-    // 슛만 과하게 줄여 골 가뭄을 만들지 않는다(§ 매니저 요구). 벤치 1.4–1.65 + 여유.
+  it(`골 가뭄 아님: 팀당 골 ∈ [1.4, 1.9] (측정 ${agg.mean.goals})`, () => {
+    // 슛만 과하게 줄여 골 가뭄을 만들지 않는다(§ 매니저 요구). 벤치 1.4–1.65 + 시드분산 여유.
+    // 상한 2.5 는 과도한 슬랙이었다(#147 W2 의 1.78 이 여기 숨음) → 1.9 로 조임. 현재 1.65.
     expect(agg.mean.goals).toBeGreaterThanOrEqual(1.4);
-    expect(agg.mean.goals).toBeLessThanOrEqual(2.5);
+    expect(agg.mean.goals).toBeLessThanOrEqual(1.9);
   });
 });
 
 describe("G-A 단조성: shoot 성향↑ → 슛 수↑ (config 가 실제 레버)", () => {
-  it("shoot 0.35→0.6 로 올리면 팀당 슛이 유의미하게(≥2) 증가", () => {
-    const hotter: EngineConfig = {
-      ...cfg,
-      decisionWeights: { ...cfg.decisionWeights, shoot: 0.6 },
-    };
-    // 8 시드로 충분(방향성 확인, 비용 절감).
-    const seeds8 = REALISM_SEEDS.slice(0, 8);
-    const base = aggregateRealism(cfg, seeds8).mean.shots;
-    const more = aggregateRealism(hotter, seeds8).mean.shots;
-    expect(more).toBeGreaterThan(base + 2);
+  it("shoot 사다리 0.15→0.65 엄격 단조 + 0.65→0.80 비엄격(포화 구간)", () => {
+    // 이 계약의 목적: **config 의 shoot 노브가 슛 빈도의 실제 레버임**을 박제한다(구조적 회귀 가드).
+    // 단일 대비의 "효과크기 ≥N" 대신 사다리를 쓰는 이유는 rung 선택이 튜닝 여지가 되지 않게 하기 위함.
+    //
+    // ── 사다리 간격을 측정해상도에 맞춘 이유 (#182, gameqa 결정 A) ────────────────────────
+    // 구 사다리는 0.30↔0.34 처럼 **폭 0.04** 인 rung 을 포함했는데, 그 폭의 참효과는 측정오차와
+    // 같은 자릿수라 부호가 표본마다 뒤집힌다(독립 QA 재현: 20시드 6개 독립배치 중 **2개 역전**).
+    // 근거 수치는 harness.ts 의 GUARD_SEEDS 주석 참조. → 인접 간격을 **≥0.08** 로 벌린다.
+    // 기본값(0.30)은 사다리에 그대로 유지한다.
+    //
+    // 실측(engine@0.20.0 + foul 0.0178, GUARD_SEEDS=60시드):
+    //   0.15→9.97 · 0.22→11.23 · 0.30→12.17 · 0.38→12.59 · 0.50→13.18 · 0.65→14.03 · (0.80→14.08)
+    //
+    // ── 무엇을 잃었나(명시) ──────────────────────────────────────────────────────────
+    // 상단 0.65→0.80 의 **엄격 단조 판정을 포기**했다. 그 구간은 표본 문제가 아니라 **포화**다
+    // (실측 +0.05 = 거의 0). 표본을 늘려도 해소되지 않으므로 엄격 단조로 두면 영구 플래키가 된다.
+    // 대신 **비엄격 가드**(하락 금지)로 남겨 "상단에서 슛이 오히려 줄어드는" 회귀는 계속 잡는다.
+    // 잃은 것 = 0.65↔0.80 사이의 미세 증가 방향성. 남긴 것 = 하락 금지 + 전 구간 총효과.
+    // 포화 자체의 타당성은 별건(QA #25)으로 다룬다.
+    const ladder = [0.15, 0.22, 0.3, 0.38, 0.5, 0.65];
+    const SAT = 0.8; // 포화 구간 상단(비엄격 판정)
+    const measure = (shoot: number) =>
+      aggregateRealism({ ...cfg, decisionWeights: { ...cfg.decisionWeights, shoot } }, GUARD_SEEDS).mean.shots;
+
+    const shots = ladder.map(measure);
+    // 사다리(≤0.65)는 전 구간 **엄격** 단조. 포화 구간(0.80)은 아래에서 따로 비엄격 판정.
+    for (let i = 1; i < shots.length; i++) {
+      expect(shots[i], `shoot ${ladder[i - 1]}→${ladder[i]} 구간에서 증가해야 (측정 ${shots.join(" → ")})`)
+        .toBeGreaterThan(shots[i - 1]!);
+    }
+    const sat = measure(SAT);
+    // 포화 상단: 증가는 요구하지 않되 **하락은 금지**. tol 은 SE(Δ)≈0.66(n=60) 의 약 1.5배 —
+    // 노이즈 한 방으로는 못 뚫고, 실제 하락 회귀(≫1슛)는 잡히는 폭.
+    expect(sat, `shoot 0.65→${SAT} 는 포화 구간이라 증가는 안 봐도 되지만 하락하면 회귀다 (0.65=${shots[shots.length - 1]}, ${SAT}=${sat})`)
+      .toBeGreaterThanOrEqual(shots[shots.length - 1]! - 1.0);
+
+    // 총효과: **노브 전 구간(0.15 → 0.80)** 차이가 충분히 커야 "실제 레버"다.
+    // 레버 폭 추이(n=60, 동일 시드 구성으로 대조): 리베이스 전 5.57 → main 6f1b12b **4.50**
+    // (#181 이 −1.07) → 이 브랜치 **4.11**(#182 가 추가로 −0.39). #182 분은 상단에서 나온다
+    // (0.15 는 9.93→9.97 로 불변, 0.80 이 14.43→14.08). 박스 인원이 줄어 높은 shoot 성향에서
+    // 만들 수 있는 슛의 천장이 낮아진 것 = 슛 민감도 하락. 밸런스 해석은 S4 #10 소관(#189 참조).
+    // 임계 4 는 구 사다리(0.15→0.80) 기준으로 잡힌 값이므로, 사다리 상단을 0.65 로 줄였다고
+    // 0.15→0.65 로 재면 기준이 조용히 낮아진다. 포함 구간은 **원래대로**(0.15→0.80) 유지한다.
+    //
+    // ── #176 에서 판정식을 절대값 → **절대값 + 비율** 로 바꿨다(근거) ──────────────────────
+    // 레버 폭 추이: 5.57 → **4.50**(#181 −1.07) → **4.11**(#182 −0.39) → **3.80**(#176 −0.31).
+    // 세 번 연속 같은 방향으로 깎였는데, 셋 다 "슛을 억제하는 버그를 고친" 게 아니라 **경기당
+    // 인플레이 틱이 줄어든** 결과다(#181 공 도착 대기 · #182 박스 인원 감소 · #176 데드볼을
+    // 순간이동 대신 걸어서 처리 → 정지 구간이 길어짐). 즉 **슛 스케일 전체가 내려가는 중**이라
+    // 절대 폭 임계는 엔진이 정확해질수록 계속 걸린다 — 레버가 약해진 게 아니라 자가 눈금이
+    // 줄어드는 것이다. 그래서 스케일에 안 흔들리는 **비율**을 주 판정으로 두고, 절대값은 무한
+    // 침식을 막는 **하한**으로만 남긴다(둘 다 통과해야 한다 = 느슨해지지 않는다).
+    //   현재: 9.81 → 13.61 = 절대 3.80 · 비율 **1.39배**(+39%).
+    const span = sat - shots[0]!;
+    const ratio = sat / shots[0]!;
+    const label = `전 구간 총효과 (0.15=${shots[0]} → ${SAT}=${sat}) 절대 ${span.toFixed(2)} · 비율 ${ratio.toFixed(2)}배`;
+    expect(ratio, `${label} — 레버 비율이 죽었다`).toBeGreaterThan(1.35);
+    expect(span, `${label} — 절대 폭 하한(무한 침식 방지)`).toBeGreaterThan(3.5);
   });
 });

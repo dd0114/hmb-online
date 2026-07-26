@@ -481,7 +481,7 @@ export interface components {
         MatchDetailPhase2: {
             id?: string;
             /** @enum {string} */
-            state?: "BRIEFING" | "GEN1" | "H1_BREAK" | "GEN2" | "FINISHED" | "FAILED";
+            state?: "BRIEFING" | "GEN1" | "FIRST_HALF" | "HALFTIME" | "SECOND_HALF" | "GEN2" | "FINISHED" | "FAILED" | "H1_BREAK";
             /** Format: date-time */
             createdAt?: string;
         } & components["schemas"]["MatchDetailPhase2Fields"];

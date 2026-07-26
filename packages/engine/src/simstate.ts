@@ -31,6 +31,17 @@ export interface SimPlayer {
   dribbleStreak: number;
   /** 받은 옐로카드 수(2장 누적 시 퇴장). */
   yellowCards: number;
+  /**
+   * 상대별 마지막으로 본 위치와 시점(시야 기억, #147 W3). key = 상대 playerId.
+   * 값은 **정확하지만 낡을 수 있다** — 본 순간의 좌표를 그대로 담고, 갱신 시점(tick)으로
+   * 신선도를 판단한다(librcsc pos_count 방식: 위치를 흐리는 게 아니라 나이로 신뢰도를 잰다).
+   * `config.vision.memoryTicks` 를 넘긴 기억은 판단에서 제외된다.
+   *
+   * **표현이 Map 이 아니라 Record 인 이유**: 서버 RPC 재개는 이 상태를 JSON 으로 왕복시키는데
+   * `JSON.stringify(new Map(...))` 는 `{}` 가 되어 **전송만으로 기억이 통째로 유실**된다(무음 desync).
+   * Record 면 JSON 왕복에서 살아남으므로, 남는 일은 소비자 스키마에 필드를 선언하는 것뿐이다(#154).
+   */
+  seen: Record<string, { x: number; y: number; tick: number }>;
 }
 
 /** 공 비행 상태(패스/슛/루즈볼). */
@@ -48,6 +59,17 @@ export interface BallFlight {
   xg?: number;
   /** 패스 계획 결과: 성공/인플레이 턴오버/아웃오브바운즈. (성공률 결정론 제어) */
   passOutcome?: "success" | "fail_intercept" | "fail_out";
+  /**
+   * #181: 이 패스를 **결국 잡을 사람**(성공=의도 수신자, fail_intercept=계획된 가로챈 수비수).
+   * 이 사람이 낙하점으로 마주 달리고(decideOffBall), 도착 판정도 이 사람 기준으로 한다 →
+   * 공이 사람에게 순간이동하는 대신 둘이 같은 지점에서 만난다.
+   */
+  claimant?: string;
+  /** #181: 낙하점에서 claimant 를 기다린 틱 수(arrivalWaitMaxTicks 초과 시 기하 판정으로 폴백). */
+  waited?: number;
+  /** #181: 발사 지점 — 도착했는데 아무도 못 닿았을 때 **같은 방향으로** 굴려보내기 위한 기준. */
+  fromX?: number;
+  fromY?: number;
   /** 의도적 롱패스(E2) — 도착 이벤트 detail="long" 로 뷰어 구분. */
   long?: boolean;
 }

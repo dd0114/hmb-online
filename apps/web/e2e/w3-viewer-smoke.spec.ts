@@ -1,10 +1,10 @@
-import { expect, test, type APIRequestContext, type Frame, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 /**
  * W3 뷰어 통합 스모크 (AC-W5) — 실동작 증적용. 풀스택(server-java + ts-servants) 이 떠 있을 때만
- * 실행. H1_BREAK / FINISHED 에서 [시각 재생] 탭의 QA 뷰어 iframe 이 실제로 피치·선수·공을 렌더하는지
- * 확인하고 스크린샷을 apps/web/.smoke/ 에 남긴다. (라이브 executor 면 ~2분/하프 → 긴 타임아웃.)
+ * 실행. H1_BREAK / FINISHED 에서 무대(#169 S3: web 이 직접 마운트한 viewer-core 캔버스)가 실제로
+ * 피치·선수·공을 렌더하는지 확인하고 스크린샷을 apps/web/.smoke/ 에 남긴다. (라이브 executor 면 ~2분/하프.)
  */
 
 // 기본 데모 8080. 격리 스모크(대체 포트)는 HMB_E2E_API_ORIGIN 로 덮어쓴다(8080 무접촉).
@@ -43,38 +43,30 @@ async function seedDeck(page: Page): Promise<boolean> {
   });
 }
 
-/** 시각 재생 iframe(해당 half)의 QA 뷰어가 로그 주입 후 렌더 상태에 도달했는지 확인. */
+/** 시각 재생(해당 half)의 코어가 로그 로드 후 렌더 상태에 도달했는지 확인.
+ *  S3: iframe 제거 — web 이 코어를 직접 마운트하므로 window.__viewer(코어 훅)를 메인 페이지에서 읽는다. */
 async function assertViewerRendered(page: Page, half: 1 | 2): Promise<{ score: string; tick: number }> {
-  const iframeEl = page.locator(`[data-testid="viewer-visual-half${half}"] iframe`);
-  await expect(iframeEl).toBeVisible({ timeout: 15_000 });
-  const handle = await iframeEl.elementHandle();
-  const frame = (await handle!.contentFrame()) as Frame;
-  // 주입(loadMatchLog) → 원본 loadLog → __viewer.ready() true 가 될 때까지 대기.
-  await frame.waitForFunction(
+  await expect(page.getByTestId(`viewer-canvas-half${half}`)).toBeVisible({ timeout: 15_000 });
+  await page.waitForFunction(
     () => (window as unknown as { __viewer?: { ready?: () => boolean } }).__viewer?.ready?.() === true,
     undefined,
     { timeout: 30_000 },
   );
-  // 재생을 잠깐 진행시켜 선수/공이 그려진 프레임을 만든다(정지 첫 프레임도 렌더되지만 확실히).
-  const info = await frame.evaluate(() => {
+  const info = await page.evaluate(() => {
     const v = (window as unknown as {
-      __viewer: {
-        events: () => unknown[];
-        cur: () => { tick: number };
-        captions: () => { score: string };
-        seek: (t: number) => void;
-      };
+      __viewer: { events: () => unknown[]; cur: () => { tick: number }; seek: (t: number) => void };
     }).__viewer;
     const evs = v.events();
-    // 첫 이벤트 근처로 seek 해 액션 프레임을 렌더(피치+선수+공 확실히 보이게).
     if (evs.length > 0) {
       const midTick = (evs[Math.floor(evs.length / 2)] as { tick: number }).tick;
       v.seek(midTick);
     }
-    return { evCount: evs.length, cur: v.cur(), caps: v.captions() };
+    return { evCount: evs.length, cur: v.cur() };
   });
-  expect(info.evCount, "주입된 MatchLog 에 이벤트가 있어야 함").toBeGreaterThan(0);
-  return { score: info.caps.score, tick: info.cur.tick };
+  expect(info.evCount, "MatchLog 에 이벤트가 있어야 함").toBeGreaterThan(0);
+  // 스코어는 무대가 아니라 호스트 스코어바가 소유한다(#169 S1).
+  const score = (await page.getByTestId("stage-score").textContent().catch(() => "")) ?? "";
+  return { score, tick: info.cur.tick };
 }
 
 test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + 스크린샷", async ({ page, request }) => {
@@ -106,11 +98,11 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   // === H1_BREAK: 전반 시각 재생 ===
   await expect(page.getByTestId("halftime-panel")).toBeVisible({ timeout: 300_000 });
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
-  // 시각 재생 탭이 기본 활성 + iframe 존재.
-  await expect(page.getByTestId("viewer-tab-visual-half1")).toHaveAttribute("aria-selected", "true");
+  // 무대가 곧 시각 재생이다(#169 S1: 모드 탭 제거 — 폴백일 때만 텍스트 타임라인으로 바뀐다).
+  await expect(page.getByTestId("viewer-visual-half1")).toBeVisible();
   const h1 = await assertViewerRendered(page, 1);
   console.log(`[smoke] half1 viewer rendered — score ${h1.score}, tick ${h1.tick}`);
-  await page.locator('[data-testid="viewer-visual-half1"] iframe').screenshot({
+  await page.getByTestId("viewer-canvas-half1").screenshot({
     path: `${SMOKE_DIR}w3-half1-visual.png`,
   });
   await page.screenshot({ path: `${SMOKE_DIR}w3-half1-page.png`, fullPage: false });
@@ -131,10 +123,10 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   // === FINISHED: 후반 시각 재생 ===
   await expect(page.getByTestId("result-page")).toBeVisible({ timeout: 300_000 });
   await expect(page.getByTestId("match-viewer-half2")).toBeVisible();
-  await expect(page.getByTestId("viewer-tab-visual-half2")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("viewer-visual-half2")).toBeVisible();
   const h2 = await assertViewerRendered(page, 2);
   console.log(`[smoke] half2 viewer rendered — score ${h2.score}, tick ${h2.tick}`);
-  await page.locator('[data-testid="viewer-visual-half2"] iframe').screenshot({
+  await page.getByTestId("viewer-canvas-half2").screenshot({
     path: `${SMOKE_DIR}w3-half2-visual.png`,
   });
 
