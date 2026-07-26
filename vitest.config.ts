@@ -10,6 +10,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["packages/**/*.test.ts", "apps/**/*.test.ts", "data/**/*.test.ts"],
+    // tools/** = QA 콘솔 레지스트리·CLI 코어(#191). 여기에 없으면 그 계약이 게이트에서 빠진다.
+    include: ["packages/**/*.test.ts", "apps/**/*.test.ts", "data/**/*.test.ts", "tools/**/*.test.ts"],
   },
 });
