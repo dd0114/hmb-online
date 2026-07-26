@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>캐릭터 아트 공용 프롬프트 v1</title>
+<style>
+:root{--bg:#0b1117;--surface:#111a1c;--surface2:#151d1f;--line:#2a3439;
+--gold:#e4991c;--gold-hi:#ffdb4a;--txt:#e0d8cf;--txt2:#a7a090;--muted:#7f7e79;--accent:#57b775}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);
+font:15px/1.75 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif}
+header{position:sticky;top:0;z-index:10;background:var(--surface);border-bottom:1px solid var(--line)}
+.hd{max-width:1000px;margin:0 auto;padding:14px 24px 0}
+h1.title{margin:0;font-size:17px;color:var(--gold-hi);letter-spacing:-.2px}
+.sub{color:var(--muted);font-size:12.5px;margin:2px 0 12px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{background:none;border:0;border-bottom:2px solid transparent;color:var(--txt2);
+font:inherit;font-size:13.5px;padding:8px 14px;cursor:pointer;border-radius:6px 6px 0 0}
+nav button:hover{color:var(--txt);background:var(--surface2)}
+nav button[aria-selected=true]{color:var(--gold-hi);border-bottom-color:var(--gold)}
+main{max-width:1000px;margin:0 auto;padding:26px 24px 96px}
+.note{color:var(--muted);font-size:12.5px;margin:0 0 18px;padding-left:10px;border-left:2px solid var(--line)}
+section[hidden]{display:none}
+h1{font-size:21px;color:var(--gold-hi);margin:34px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+h2{font-size:17px;color:var(--gold);margin:28px 0 10px}
+h3{font-size:15px;color:var(--txt);margin:22px 0 8px}
+h4{font-size:14px;color:var(--txt2);margin:18px 0 6px}
+p{margin:10px 0}
+a{color:var(--accent)}
+strong{color:var(--gold-hi);font-weight:600}
+code{background:#1a2023;color:#f0c674;padding:1px 5px;border-radius:4px;font-size:12.5px;
+font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+pre{background:#0e1416;border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto}
+pre code{background:none;color:#cfe3d0;padding:0;font-size:12.5px;line-height:1.6}
+blockquote{margin:14px 0;padding:2px 0 2px 16px;border-left:3px solid var(--gold);color:var(--txt2);background:rgba(228,153,28,.04)}
+blockquote p{margin:6px 0}
+hr{border:0;border-top:1px solid var(--line);margin:26px 0}
+ul,ol{margin:8px 0;padding-left:24px}
+li{margin:5px 0}
+li.cb{list-style:none;margin-left:-20px}
+li.cb .box{display:inline-block;width:15px;height:15px;border:1px solid var(--muted);border-radius:3px;
+margin-right:8px;vertical-align:-2px;text-align:center;line-height:14px;font-size:11px;color:var(--accent)}
+.tw{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--surface2);color:var(--gold);font-weight:600;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+.copybar{display:flex;align-items:center;gap:12px;margin:0 0 16px}
+.copybar button{background:var(--gold);color:#1a1206;border:0;border-radius:7px;font:inherit;
+font-size:13px;font-weight:600;padding:8px 16px;cursor:pointer}
+.copybar button:hover{background:var(--gold-hi)}
+.copybar span{color:var(--muted);font-size:12.5px}
+.paste{border:1px dashed var(--line);border-radius:10px;padding:4px 20px 18px;background:rgba(255,255,255,.012)}
+</style></head><body>
+<header><div class="hd">
+<h1 class="title">캐릭터 아트 공용 프롬프트 — v1</h1>
+<p class="sub">외부 이미지 AI 용 · 소비 규격 SoT = design/characters/pipeline + apps/web · 2026-07-27</p>
+<nav><button role="tab" data-t="prompt" aria-selected="true">📋 공용 프롬프트</button><button role="tab" data-t="diff" aria-selected="false">🔧 수정 diff (초안 대비)</button><button role="tab" data-t="spec" aria-selected="false">📐 실측 근거표</button><button role="tab" data-t="draft" aria-selected="false">📄 초안 v0 (원문)</button></nav>
+</div></header>
+<main>
+<section id="t-prompt">
+<p class="note">이미지 AI 에 레퍼런스와 함께 붙여넣는 본문. 테마는 다음 메시지로 따로 준다.</p>
+<div class="copybar"><button id="copy">프롬프트 전체 복사</button><span id="copied">레퍼런스 이미지와 함께 붙여넣는다</span></div>
+<div class="paste"><p>첨부한 레퍼런스 이미지는 <strong>시각 스타일(픽셀 밀도·색감·캐릭터 톤)만</strong> 참고합니다. 레퍼런스에 보이는 <strong>카드 테두리·이름표·별·설명판·배경 패널·원형 토큰은 재현하지 마세요.</strong> 그것들은 우리 게임 엔진이 따로 합성합니다. 당신이 만드는 것은 <strong>캐릭터 아트 그 자체</strong>뿐입니다.</p>
+<p>이번 세션의 테마와 캐릭터 목록은 <strong>다음 메시지로 전달</strong>합니다. 지금은 아래 규격만 숙지하세요.</p>
+<h1>0. 절대 규칙 (하나라도 어기면 파이프라인이 산출물을 만들 수 없습니다)</h1>
+<ol>
+<li><strong>배경은 완전 투명(알파 0) PNG.</strong> 배경을 그리지 마세요. 투명 출력이 불가능한 도구라면 <strong>순수 마젠타 <code>#FF00FF</code> 단색</strong> 배경 + <strong>안티앨리어싱 없는 하드 엣지</strong>로 출력하세요. 마젠타는 캐릭터 어디에도 쓰면 안 됩니다. (반투명 그라디언트 배경·어두운 패널 배경은 자동 제거가 불가능합니다.)</li>
+<li><strong>텍스트를 굽지 마세요.</strong> 이름·이명·희귀도·별·포지션 약어·능력치·설명·워터마크·서명 전부 금지. 모든 글자는 게임 UI 가 실제 폰트로 렌더합니다.</li>
+<li><strong>프레임을 굽지 마세요.</strong> 카드 테두리·금테·코너 세공·밴드·배경 패널 금지.</li>
+<li><strong>UI 요소를 굽지 마세요.</strong> 원형 토큰, 팀 컬러 링, 선택 링, 공 소유 마커, 등번호 뱃지, 체력/상태 바 — 전부 게임 런타임이 매 프레임 그립니다. 아트에 있으면 <strong>이중으로 겹칩니다.</strong></li>
+<li><strong>바닥 그림자·외곽 글로우·오라·파티클·마법진 금지.</strong> 실루엣 추출을 오염시킵니다.</li>
+<li><strong>캐릭터 1명당 이미지 2장</strong>(아래 §1). 여러 캐릭터를 한 장에 모은 시트는 기본 산출물이 아닙니다(불가피할 때만 §7 의 엄격 규격).</li>
+</ol>
+<h1>1. 산출물 — 캐릭터 1명당 PNG 2장 + 메타 1개</h1>
+<div class="tw"><table><thead><tr><th>파일</th><th>크기</th><th>내용</th></tr></thead><tbody><tr><td><code>&lt;charId&gt;__portrait.png</code></td><td><strong>정사각, 512×512 이상</strong> (정확히 1:1)</td><td>얼굴/가슴 위</td></tr><tr><td><code>&lt;charId&gt;__full.png</code></td><td><strong>세로 1:2, 512×1024 이상</strong> (허용 1:1.6~1:2.4)</td><td>전신 액션</td></tr></tbody></table></div>
+<ul>
+<li><code>charId</code> = <strong>소문자 ASCII kebab-case</strong> (<code>ragna</code>, <code>penguin-king</code>). 대문자·공백·한글 금지.</li>
+<li>구분자는 <strong>언더스코어 2개(<code>__</code>)</strong>.</li>
+<li>같은 charId 의 두 장은 <strong>같은 캐릭터·같은 의상·같은 색</strong>이어야 합니다(둘을 대조해 주는 로직은 없습니다).</li>
+<li>파일로 저장이 안 되는 환경이면, 이미지마다 어떤 charId 의 어떤 variant 인지 <strong>명시</strong>하세요.</li>
+</ul>
+<p>두 장이 서로 다른 사다리로 내려갑니다(같은 이미지의 크롭이 아닙니다):</p>
+<ul>
+<li><code>__portrait</code> → 얼굴 아바타 <strong>64 / 32 / 16px</strong> (경기 화면 선수 토큰)</li>
+<li><code>__full</code> → 전신 스프라이트 <strong>64 / 32 / 16 / 8px</strong> + <strong>카드 일러스트</strong></li>
+</ul>
+<h1>2. 메타 (기계가독 — 이미지와 함께 텍스트로 출력)</h1>
+<p>모든 캐릭터를 만든 뒤, 마지막에 <strong>JSON 배열 하나</strong>를 코드블록으로 출력하세요. 순서 = 캐릭터를 만든 순서. 누락 필드가 있으면 자동 폴백이 걸리고 색이 테마와 어긋납니다.</p>
+<pre><code>[
+  {
+    "id": "ragna",
+    "name": "라그나",
+    "title": "불꽃의 스트라이커",
+    "position": "FW",
+    "stars": 5,
+    "signature": "#f7a051",
+    "frame": "#c82813",
+    "desc": "차원을 가르는 강슛, 필드 전체에 볼을 지핀다."
+  }
+]</code></pre>
+<ul>
+<li><code>position</code> ∈ <code>FW</code> | <code>MF</code> | <code>DF</code> | <code>GK</code> (반드시 이 4개 중 하나, 대문자)</li>
+<li><code>stars</code> = 1~6 정수</li>
+<li><code>signature</code> = 캐릭터 대표색 1개(hex). <strong>아트에서 실제로 눈에 띄는 색</strong>을 고르세요 — 카드 프레임·이펙트가 이 색으로 구워집니다. 미지정 시 "면적이 가장 넓은 채도색"이 자동 선택되는데, 실측상 12종 중 다수가 테마색과 어긋났습니다(빙하 캐릭터 → 빨간 망토색).</li>
+<li><code>frame</code> = 프레임 금속색(hex). 생략하면 <code>signature</code> 를 어둡게 깎아 씁니다.</li>
+<li><code>desc</code> = 한 문장. 카드 하단에 게임 UI 가 렌더합니다(아트에 굽지 마세요).</li>
+</ul>
+<h1>3. 구도</h1>
+<h2><code>__portrait</code> (정사각)</h2>
+<ul>
+<li><strong>정면</strong>, 시선 정면 또는 아주 약한 3/4. 목·머리 기울기 최소, 좌우 대칭에 가깝게.</li>
+<li>크롭 = <strong>머리 장식 맨 위 ~ 가슴 위</strong>. 어깨는 살짝만.</li>
+<li><strong>얼굴+머리가 프레임의 55~70%</strong>, 사방 5~10% 여백(장식이 잘리면 안 됩니다).</li>
+<li><strong>머리 장식(뿔·왕관·후광·귀·모자)이 캐릭터 식별자</strong>입니다 — 절대 잘리지 않게.</li>
+<li>모든 캐릭터의 <strong>얼굴 크기·눈 높이·머리 중심</strong>을 통일하세요(한 세트로 보여야 합니다).</li>
+<li>축구공·전신·긴 무기·큰 날개 전체는 portrait 에 넣지 마세요.</li>
+</ul>
+<h2><code>__full</code> (세로 1:2)</h2>
+<ul>
+<li><strong>정면 액션 포즈 1개</strong> (달리기 / 슛 준비 / 드리블 / 태클 / 세이브).</li>
+<li>머리끝~발끝 전부 포함, 캐릭터가 세로의 <strong>85~90%</strong>.</li>
+<li><strong>축구공 1개를 발 근처에</strong>. 공이 캐릭터를 가리지 않게.</li>
+<li>팔다리가 몸통에 붙어 뭉개지지 않게 — <strong>8px 까지 줄여도 형태가 남아야</strong> 합니다.</li>
+<li>캐릭터마다 카메라 거리·비율을 바꾸지 마세요. 거대 종족도 다른 캐릭터와 <strong>비슷한 시각적 부피</strong>로, 작은 종족도 지나치게 작게 만들지 마세요.</li>
+</ul>
+<h1>4. 스타일 — 픽셀 아트 직접 생성</h1>
+<ul>
+<li><strong>고해상도 픽셀 아트</strong>. 픽셀 모서리 선명, <strong>안티앨리어싱 없음</strong>, 부드러운 디지털 페인팅 금지.</li>
+<li>업스케일이 필요하면 <strong>최근접 보간(nearest-neighbor) 정수 배율</strong>만. 흐린 확대는 규격 위반입니다.</li>
+<li>미세 노이즈 픽셀 남발 금지. 면 단위 명암 + 굵은 실루엣.</li>
+<li><strong>제한 팔레트</strong>: portrait 24색 이내, full 28색 이내 권장. 색 축소는 우리가 단계별로 합니다 (아바타 64→24색 / 32→14색 / 16→8색, 스프라이트 64→28 / 32→18 / 16→10 / 8→5색) — 당신이 미리 6~10색으로 줄이지 마세요. <strong>원본은 풍부하게, 대신 실루엣과 대비를 확보</strong>하세요.</li>
+</ul>
+<h2>저해상도 생존 규칙 (가장 자주 실패하는 지점)</h2>
+<p>실측: 12캐릭터를 16px 아바타로 내렸을 때 <strong>명확히 읽힌 것은 4종뿐</strong>이었고, 실패한 4종은 전부 <strong>어두운 머리 + 어두운 복장</strong> 조합이었습니다. 가른 변수는 해상도가 아니라 <strong>실루엣의 굵기와 명도 대비</strong>입니다.</p>
+<ul>
+<li>머리 실루엣을 <strong>굵고 독특하게</strong>(갈기·뿔·왕관·후드 등). 얇고 산발적인 머리카락은 사라집니다.</li>
+<li><strong>머리와 몸통의 명도를 다르게</strong>. 어두운 머리 + 어두운 옷 = 16px 에서 덩어리로 뭉개집니다.</li>
+<li>얼굴은 배경과, 배경은 의상과 <strong>명도 대비</strong>를 확보하세요.</li>
+<li>판정 기준: <strong>눈을 가늘게 뜨고 봐도 누구인지 구별되는가.</strong></li>
+</ul>
+<h1>5. 축구 선수로 읽힐 것</h1>
+<p>모든 캐릭터는 판타지/역사 인물이기 <strong>이전에 축구 선수</strong>여야 합니다.</p>
+<ul>
+<li>필수: 축구 유니폼(또는 유니폼으로 재해석한 의상), 축구화, 축구공(full 만), 축구 동작, 포지션 연상 자세.</li>
+<li>판타지·신화·역사·실존 인물 모티프는 <strong>머리 실루엣 / 표정 / 피부색 / 수염 / 헤어 / 종족 특징 / 유니폼 문양 / 색상 / 절제된 장식</strong>으로 표현합니다.</li>
+<li>무기·갑옷이 축구공과 축구 동작보다 커 보이면 안 됩니다. <strong>전사가 아니라 선수</strong>로 읽혀야 합니다.</li>
+<li><strong>실존 선수의 이름·얼굴을 쓰지 마세요.</strong></li>
+</ul>
+<h1>6. 색상 제약 (게임 시스템과 충돌하는 색)</h1>
+<p>우리 런타임이 <strong>아트 위에 겹쳐 그리는 색</strong>들이 있습니다. 이 색을 캐릭터 주조색으로 쓰면 경기 화면에서 팀·상태 표시와 섞여 판독이 무너집니다.</p>
+<div class="tw"><table><thead><tr><th>예약된 용도</th><th>색</th><th>아트에서</th></tr></thead><tbody><tr><td>팀 링 blue (아군)</td><td><code>#3b82f6</code> / <code>#3da9f1</code> 계열</td><td><strong>주조색 금지</strong> (보조·악센트는 가능)</td></tr><tr><td>팀 링 red (적팀)</td><td><code>#ef4444</code> / <code>#ef4f44</code> 계열</td><td><strong>주조색 금지</strong></td></tr><tr><td>공 소유 하이라이트</td><td><code>#fde047</code> (형광 노랑)</td><td>넓은 면적 금지</td></tr><tr><td>포지션 뱃지 FW/MF/DF/GK</td><td><code>#f17869</code> / <code>#57b775</code> / <code>#0b90d8</code> / <code>#fce148</code></td><td><strong>포지션을 색으로 표시하지 마세요</strong> — 뱃지는 우리가 그립니다</td></tr></tbody></table></div>
+<p>또 하나: 일부 캐릭터는 <strong>색상(hue) 회전으로 변형본</strong>을 만듭니다. 이때 <strong>피부톤 대역 (H 18~48°, S 0.18~0.8, L 0.35~0.92)은 보호되어 회전하지 않습니다.</strong> → <code>signature</code> 와 유니폼 주조색을 <strong>이 대역 밖</strong>(예: 청록·보라·청색·자홍)으로 잡으면 변형본이 확실히 달라 보입니다. 주황·황토색 계열을 주조색으로 쓰면 변형해도 거의 안 변합니다.</p>
+<h1>7. (예외) 한 장 시트로만 출력 가능한 경우</h1>
+<p>도구가 파일 여러 장을 못 내면 시트 1장으로 받되, <strong>자동 슬라이스가 가능한 형태</strong>여야 합니다. "빈 공간 없이 균형 있게 배치" 같은 유연한 레이아웃은 <strong>슬라이스가 불가능</strong>합니다(사람이 매번 좌표를 손으로 재야 합니다). 다음을 모두 지키세요.</p>
+<ul>
+<li><strong>정확히 균일한 격자</strong>: 모든 셀 크기 동일, 모든 거터 동일, 바깥 마진 동일. 눈대중 정렬 금지.</li>
+<li><strong>셀 크기·거터·마진·열/행 수를 픽셀 정수로 텍스트에 명시</strong>하세요. 예: <code>cell 512×1024, gutter 32, margin 32, cols 6, rows 2, order = row-major</code>.</li>
+<li>셀 개수 = 캐릭터 수. <strong>빈 셀이 남더라도 격자를 무너뜨리지 마세요</strong>(빈 셀은 비워 두면 됩니다).</li>
+<li>배경은 <strong>순수 마젠타 <code>#FF00FF</code> 단색</strong>, 안티앨리어싱 없음. 격자선·라벨·제목·범례 금지.</li>
+<li>캐릭터 순서 = §2 JSON 배열 순서.</li>
+<li>portrait 시트와 full 시트는 <strong>분리</strong>하세요(종횡비가 다릅니다).</li>
+</ul>
+<h1>8. 출력 전 체크리스트</h1>
+<ul>
+<li class="cb"><span class="box"></span>배경이 완전 투명(또는 순수 <code>#FF00FF</code> + 하드 엣지)인가</li>
+<li class="cb"><span class="box"></span>이름·희귀도·포지션·설명 <strong>글자가 하나도 없는가</strong></li>
+<li class="cb"><span class="box"></span>카드 테두리·프레임·배경 패널이 없는가</li>
+<li class="cb"><span class="box"></span>원형 토큰·팀 링·선택 링·공 마커·등번호가 없는가</li>
+<li class="cb"><span class="box"></span>바닥 그림자·글로우·오라·파티클이 없는가</li>
+<li class="cb"><span class="box"></span>portrait 정사각 512+ / full 세로 1:2 512×1024+ 인가</li>
+<li class="cb"><span class="box"></span>머리 장식이 잘리지 않았는가, 사방 여백 5~10% 있는가</li>
+<li class="cb"><span class="box"></span>full 에 축구공 1개, 정면 액션 포즈인가</li>
+<li class="cb"><span class="box"></span>모든 캐릭터의 얼굴 크기·눈 높이·카메라 거리가 통일됐는가</li>
+<li class="cb"><span class="box"></span>어두운 머리 + 어두운 복장 조합을 피했는가(16px 생존)</li>
+<li class="cb"><span class="box"></span>파일명이 <code>&lt;charId&gt;__portrait.png</code> / <code>&lt;charId&gt;__full.png</code>, 소문자 kebab-case 인가</li>
+<li class="cb"><span class="box"></span>§2 JSON 배열을 이미지 순서대로 출력했는가</li>
+</ul>
+<p><strong>이 작업의 최우선 목표 두 가지</strong></p>
+<ol>
+<li>모든 캐릭터가 <strong>동일한 규격·카메라·얼굴 크기</strong>로 한 세트처럼 보일 것</li>
+<li>각 캐릭터가 <strong>64px 얼굴 아바타까지 줄여도 누구인지 구별</strong>될 것</li>
+</ol>
+<p>이제 다음 메시지의 테마와 캐릭터 조건을 이 규격대로 제작해 주세요.</p></div>
+</section>
+<section id="t-diff" hidden>
+<p class="note">hero 초안 v0 의 어디를 왜 바꿨나 — 실측 근거와 함께.</p>
+<h1>부록 A. 초안 v0 대비 수정 diff 요약</h1>
+<p>의심 지점 6개는 <strong>전부 실측으로 확인됐고 6건 모두 수정</strong>했다. 추가로 초안에 없던 치명적 누락 1건(배경 투명)과 정정 2건을 더했다.</p>
+<h2>A-1. 확인된 6건</h2>
+<h3>① 카드 안에 이름·희귀도·포지션 텍스트를 굽게 함 → <strong>삭제. 아트는 텍스트리스·프레임리스</strong></h3>
+<ul>
+<li>초안: "카드 내부 구조 — 상단 포지션 표시 / 하단 이름·이명·희귀도 / 가장 아래 설명 영역".</li>
+<li>실측: <code>pipeline/lib/card.mjs</code> 가 <strong>226×425 카드를 우리가 합성</strong>한다(프레임 인셋 10px, 아트 영역 <code>artBottom=331</code>, 네임플레이트 <code>nameY=330</code>, 별 밴드 <code>starsY=362</code>, 설명판 <code>descY=386</code>, 포지션 뱃지는 내장 3×5 비트맵 폰트로 <code>POS_COLOR</code> 로 그린다). <code>card.mjs</code> 헤더 주석: <em>"한글 텍스트(이름/설명)는 파이프라인이 그리지 않는다 — 게임 UI(React)가 실제 폰트로 오버레이한다."</em></li>
+<li><code>apps/web/src/common/full-art.ts</code> 는 카드를 <strong>3층 합성</strong>으로 그린다: <code>[층1] frame-&lt;GRADE&gt;.png</code> → <code>[층2] card-&lt;char&gt;.png 의 아트 영역만</code> → <code>[층3] React 텍스트 오버레이</code>.</li>
+<li>→ 아트에 텍스트/프레임을 구우면 <strong>글자가 두 번, 프레임이 두 번</strong> 나온다. 초안 §3 "카드 내부 구조" 전체와 §2 "상단 제목·포지션 범례"를 삭제하고 §0-2·§0-3 금지 규칙으로 대체했다.</li>
+</ul>
+<h3>② 원형 토큰·팀 링·상태 표시를 아트 AI 에게 시킴 → <strong>삭제(런타임 소관)</strong></h3>
+<ul>
+<li>초안 §8·§10 전체가 24×24 원형 토큰, 팀 링 2px, 선택 시 금/흰 링, 공 소유 마커까지 지정.</li>
+<li>실측: <code>packages/viewer-core/src/viewer.impl.mjs:218-233</code> 이 매 프레임 직접 그린다 — 팀 디스크(<code>rgba(37,99,235,.55)</code> / <code>rgba(220,38,38,.55)</code>) → <strong>아틀라스 타일을 그 위에 사각으로 drawImage</strong> → 팀 링(<code>#3b82f6</code>/<code>#ef4444</code>) → 공 소유 링(<code>#fde047</code>, lineWidth 3.2) → 등번호 뱃지.</li>
+<li>발행 아틀라스(<code>dist/characters/avatars-*.png</code>)의 타일은 <strong>링이 없는 상태</strong>로 만들어진다 (<code>make-characters.mjs</code> 는 <code>avatar-&lt;size&gt;.png</code> 를 쓰고, 링이 구워진 <code>avatar-&lt;size&gt;-blue.png</code> 는 <code>out/</code> 프리뷰 전용).</li>
+<li>결정적으로 <strong>타일은 원형 클립 없이 정사각으로 그려진다</strong> → 아트에 어두운 원형 배경을 구우면 경기 화면에서 <strong>팀 디스크 위에 사각 덩어리</strong>로 얹힌다.</li>
+<li>→ 토큰 규격 전체를 산출물 요구에서 제거. 초안이 원한 "확인용 프리뷰"는 필요하면 별도로 받을 수 있으나 <strong>입고 대상이 아니다</strong>. §0-4 로 금지 명시.</li>
+</ul>
+<h3>③ "빈 공간 없이 균형 있게 정렬" 유연 그리드 → <strong>고정 셀·정수 그리드·정수 배율</strong></h3>
+<ul>
+<li>초안: "카드 수가 달라지더라도 빈 공간 없이 균형 있게 정렬합니다."</li>
+<li>실측: 운영 파이프라인에 <strong>시트 슬라이서가 없다</strong>. 유일한 슬라이서 <code>pilot-crop.mjs</code> 는 <em>"파일럿 전용"</em> 이고, 레퍼 시트의 격자가 균일하지 않아 <em>"세로 거터를 밝기 프로파일로 실측 → 격자가 균일하지 않아 공식 대신 경계 테이블을 쓴다"</em> 며 12개 열 경계를 <strong>손으로 박은 배열</strong>(<code>R3_COL_X</code>)로 처리한다.</li>
+<li>→ 유연 그리드 = <strong>매 시트마다 사람이 좌표를 다시 재는 비용</strong>. 근본 해결은 시트를 안 받는 것: 기본 산출물을 <strong>캐릭터별 개별 PNG 2장</strong>(§1)으로 바꾸고, 시트는 §7 의 <strong>정수 격자 계약</strong> (셀·거터·마진·열/행 수를 텍스트로 명시, row-major, 빈 셀 허용)이 있을 때만 예외 허용.</li>
+</ul>
+<h3>④ 종횡비 1:1.65~1.75 vs 실제 → <strong>둘 다 틀렸다. 애초에 카드 비율은 AI 소관이 아니다</strong></h3>
+<ul>
+<li>실측: 카드 = <strong>226×425 = 1:1.881</strong>(<code>dist/characters/card-*.png</code> 14장, <code>frame-*.png</code> 5장 전부). 초안의 1:1.65~1.75 와 불일치.</li>
+<li>더 중요한 건, <strong>카드는 우리가 만든다</strong>는 점이다. AI 가 맞춰야 할 비율은 카드가 아니라 <strong>아트 영역</strong>이고, 그 실치수는 <code>w - inset*2 = 206</code>, <code>artBottom - inset = 321</code> → <strong>206×321 = 1:1.558</strong>. 게다가 입고 이미지는 <code>fitCanvas(..., alignY:'bottom')</code> 로 <strong>비율 보존 레터박싱</strong>되므로 아트 영역 비율에 정확히 맞출 필요조차 없다.</li>
+<li>→ 카드 비율 요구를 삭제하고, <code>ingest.mjs</code> 가 실제로 <strong>검증하는 값</strong>으로 교체했다: portrait <strong>정확히 1:1, 512×512+</strong>, full <strong>1:2, 512×1024+</strong> (경고 임계 <code>ar &lt; 1.6 || ar &gt; 2.4</code>).</li>
+</ul>
+<h3>⑤ 슬러그·포지션·순서 매니페스트 누락 → <strong>JSON 블록 필수 출력으로 추가</strong></h3>
+<ul>
+<li>초안에는 파일명 규칙도, 기계가독 메타도 없다. 그런데 <code>ingest.mjs</code> 는 파일명으로 charId 를 파싱하고(<strong>소문자 kebab-case 위반 시 건너뜀</strong>), <code>incoming/&lt;charId&gt;.json</code> 에서 <code>position</code>·<code>stars</code>·<code>signature</code>·<code>frame</code> 을 읽어 카드를 합성한다.</li>
+<li><code>signature</code> 미지정 시 폴백은 <code>dominantColor</code> = "면적 최대 채도색"인데, 파일럿 실측에서 <strong>3종 중 2종이 테마색과 어긋났다</strong>(펭킹킹 빙하 테마 → 빨간 망토 <code>#c03025</code>).</li>
+<li>→ §1 네이밍 규칙 + §2 JSON 배열(필드 8개)을 신설. 순서 = 이미지 순서로 못 박아 시트/개별 어느 경로든 매핑이 결정된다.</li>
+</ul>
+<h3>⑥ "최종 기준 16×16" → <strong>경기 화면이 실제로 쓰는 건 64px 얼굴이다</strong></h3>
+<ul>
+<li>초안: "필요하면 32×32 보조 원본도 가능하지만 <strong>최종 경기용 기준은 16×16px</strong>".</li>
+<li>실측 1 — 사다리는 4단이다: 아바타 <strong>64/32/16</strong>(색 24/14/8), 스프라이트 <strong>64/32/16/8</strong>(28/18/10/5). 16 은 최종이 아니라 <strong>가장 아래 칸</strong>이다.</li>
+<li>실측 2 — 경기 화면이 고르는 아틀라스는 <code>viewer-skins.ts:ARENA_ATLAS = "avatars-64"</code> 이고, 주석에 A/B 실측 결론이 박혀 있다: <em>"전신 sprites 는 토큰 지름 16~22px 에서 판독 불가였고 얼굴 avatars-64(축소 렌더)가 확대·축소 양쪽에서 읽혔다."</em> 즉 <strong>16×16 타일은 경기장에서 안 쓴다.</strong></li>
+<li>실측 3 — <code>PILOT-P2.md</code> §3: 16px 아바타 <strong>명확 성공 4/12</strong>, 스프라이트 ≤16px <strong>0/12</strong>. 가른 변수는 해상도가 아니라 <strong>실루엣 굵기와 명도 대비</strong>.</li>
+<li>→ "16×16 논리 해상도로 그려라"를 삭제하고, <strong>512+ 원본을 풍부한 팔레트로 그리되 64px 로 줄였을 때 읽히게</strong> 라는 요구로 재정의(§4 저해상도 생존 규칙). 색 축소(6~10색)는 AI 가 아니라 <code>quantize</code> 가 단계별로 한다 — 미리 줄이면 64/32 단계가 빈약해진다. (32×32 마스터안도 검토했으나 채택하지 않았다: 경기장이 소비하는 건 64px 이고, ≤16px 은 <code>PILOT-P2</code> §6-2 의 <strong>손보정 오버라이드 슬롯</strong>(<code>__avatar16</code> 오버라이드, 미구현 P3)이 담당할 영역이다.)</li>
+</ul>
+<h2>A-2. 초안에 아예 없던 것 (추가) — <strong>배경 투명 요구</strong></h2>
+<p>초안 전체에 <strong>배경 처리 언급이 없다.</strong> 시트 1장 출력이라는 형식 자체가 불투명 배경을 전제한다. 이건 이 파이프라인에서 <strong>가장 비싼 실패 모드</strong>다:</p>
+<ul>
+<li><code>PILOT-P2.md</code> 철회 이력: 배경 제거 파라미터 자동 선택을 <strong>다섯 번 시도해 다섯 번 다 철회</strong>했다. 지표마다 반례가 있었고(<code>largestShare</code> 는 잔류를 못 잡고, <code>erodedPct</code> 는 캐릭터 99.77% 소실을 0.000 으로 통과시켰다), 결국 <strong>자동 선택 자체를 폐기</strong>했다.</li>
+<li>현재 설계: <code>bgTol</code> 을 <strong>사람이 눈으로 골라 <code>incoming/&lt;id&gt;.json</code> 에 박는다.</strong> 미지정이면 정확색 제거로 물러나 <strong>배경이 남는다</strong>(캐릭터를 먹느니 배경을 남긴다). 파일럿 12종의 실제 값은 <code>localTol 4~24 / globalTol 30~255</code> 로 <strong>소스마다 제각각</strong>이었다.</li>
+<li>즉 불투명 배경으로 들어오면 캐릭터당 사람 손이 2회(값 선택 + 육안 확인) 들어간다.</li>
+<li>→ §0-1 을 <strong>절대 규칙 1번</strong>으로 올리고, 불가 시 폴백을 <code>#FF00FF</code> 하드 엣지로 규정했다. 글로우·그림자·오라 금지(§0-5)도 같은 이유다 — 반투명 경계는 자동 제거가 불가능하다.</li>
+</ul>
+<h2>A-3. 정정 2건</h2>
+<ul>
+<li><strong>포지션 색을 아트에 칠하지 말 것</strong> — 초안 §11 은 FW 레드/MF 그린/DF 블루/GK 골드를 카드에 칠하라고 지시한다. 실제로는 <code>card.mjs</code> 의 <code>POS_COLOR</code>(<code>#f17869</code>/<code>#57b775</code>/<code>#0b90d8</code>/<code>#fce148</code>)로 <strong>우리가 뱃지를 그린다</strong>. 아트가 같은 색 규칙을 쓰면 등급 프레임·팀 링과 충돌한다. → 색 규칙은 유지하되 <strong>"아트에서 쓰지 말 것"</strong> 으로 방향을 뒤집어 §6 표에 넣었다.</li>
+<li><strong>hue 변형 대비 색 선택 가이드 추가</strong> — LEGEND 부족분은 캐릭터 재사용 + <strong>파이프라인 HSL 회전</strong> 으로 채운다(<code>make-characters.mjs</code>, web CSS 필터 아님). <code>img.mjs:388</code> 의 <code>isSkin</code> 이 <strong>H 18~48° / S 0.18~0.8 / L 0.35~0.92 를 회전에서 제외</strong>한다. → 주조색이 이 대역에 있으면 변형본이 원본과 거의 같아진다. §6 말미에 명시했다.</li>
+</ul>
+<h2>A-4. 유지한 것 (초안이 맞았다)</h2>
+<p>축구선수로 읽힐 것(§5) · 식별 요소 3개 이상 · 카메라 거리/얼굴 크기/시선 통일 · 머리 장식이 식별자 · 무기·갑옷이 공보다 커지지 않을 것 · 실존 선수 금지 · 안티앨리어싱 금지 / 최근접 확대 · 게임 UI 화면을 그리지 말 것 · 테마는 다음 메시지 구조.</p>
+<hr>
+</section>
+<section id="t-spec" hidden>
+<p class="note">우리 소비 규격의 SoT. 파일·라인 인용.</p>
+<h1>부록 B. 실측 근거표 (SoT)</h1>
+<div class="tw"><table><thead><tr><th>항목</th><th>실측값</th><th>출처</th></tr></thead><tbody><tr><td>카드</td><td><strong>226×425 (1:1.881)</strong> — <code>card-*.png</code> 14장, <code>frame-*.png</code> 5장 전부 동일</td><td><code>dist/characters/</code>, <code>dist/</code> PNG 헤더 실측</td></tr><tr><td>카드 아트 영역</td><td>인셋 10px(베벨1+금7+베벨2), <code>artBottom=331</code> → <strong>206×321 (1:1.558)</strong>, <code>alignY:'bottom'</code> 레터박싱</td><td><code>pipeline/lib/card.mjs:11-18</code>, <code>ingest.mjs:158</code></td></tr><tr><td>등급 프레임</td><td><code>frame-{BRONZE,SILVER,GOLD,DIA,LEGEND}.png</code> 226×425, 별 2/3/4/5/6</td><td><code>dist/manifest.json.atlases</code></td></tr><tr><td>카드 텍스트</td><td>파이프라인은 <strong>안 그린다</strong>; React 오버레이(3층 합성)</td><td><code>card.mjs:2</code>, <code>apps/web/src/common/full-art.ts</code></td></tr><tr><td>아바타 사다리</td><td>64(24색) / 32(14색) / 16(8색)</td><td><code>ingest.mjs:AVATAR_LADDER</code></td></tr><tr><td>스프라이트 사다리</td><td>64(28색) / 32(18색) / 16(10색) / 8(5색)</td><td><code>ingest.mjs:SPRITE_LADDER</code></td></tr><tr><td>경기장이 쓰는 아틀라스</td><td><strong><code>avatars-64</code></strong> (A/B 실측: 전신 스프라이트는 토큰 지름 16~22px 에서 판독 불가)</td><td><code>apps/web/src/match/viewer-skins.ts:18</code></td></tr><tr><td>토큰 렌더</td><td>팀 디스크 → <strong>타일 정사각 drawImage(원형 클립 없음)</strong> → 팀 링 → 공소유 링 <code>#fde047</code> → 등번호 뱃지</td><td><code>packages/viewer-core/src/viewer.impl.mjs:218-233</code></td></tr><tr><td>팀 링 색</td><td>런타임 <code>#3b82f6</code>/<code>#ef4444</code>, SPEC <code>#3da9f1</code>/<code>#ef4f44</code></td><td><code>viewer.impl.mjs</code>, <code>ingest.mjs:TEAM_RING</code></td></tr><tr><td>포지션 뱃지 색</td><td>FW <code>#f17869</code> · MF <code>#57b775</code> · DF <code>#0b90d8</code> · GK <code>#fce148</code></td><td><code>card.mjs:POS_COLOR</code></td></tr><tr><td>입고 검증</td><td>portrait ≥512×512 정사각 / full ≥512×1024, 경고 임계 <code>ar&lt;1.6 || ar&gt;2.4</code></td><td><code>ingest.mjs:201-227</code></td></tr><tr><td>네이밍 검증</td><td><code>&lt;charId&gt;__&lt;variant&gt;.png</code>, charId 소문자 kebab-case 위반 시 <strong>건너뜀</strong></td><td><code>ingest.mjs:263-266</code></td></tr><tr><td>시트 슬라이서</td><td>운영 경로에 <strong>없음</strong>. <code>pilot-crop.mjs</code>(파일럿 전용)는 비균일 격자를 손측정 경계 테이블로 처리</td><td><code>pipeline/pilot-crop.mjs:17-24</code></td></tr><tr><td>배경 제거</td><td>자동 선택 <strong>5회 시도·5회 철회 → 폐기</strong>. 값은 사람이 지정, 미지정 시 배경 잔류</td><td><code>PILOT-P2.md</code> 철회 이력, <code>ingest.mjs:clean()</code></td></tr><tr><td>파일럿 bgTol 실제값</td><td><code>localTol 4~24</code> / <code>globalTol 30~255</code> (12종 제각각)</td><td><code>pilot-crop.mjs:BGTOL</code></td></tr><tr><td>16px 판독</td><td>아바타 <strong>4/12 명확</strong>, 실패 4종 전부 "어두운 머리+어두운 복장"; 스프라이트 ≤16px <strong>0/12</strong></td><td><code>PILOT-P2.md</code> §3</td></tr><tr><td>hue 변형</td><td>파이프라인 HSL 회전(웹 CSS 아님), <strong>피부톤 대역 H18~48°/S.18~.8/L.35~.92 회전 제외</strong></td><td><code>make-characters.mjs:62-85</code>, <code>img.mjs:388</code></td></tr><tr><td>signature 자동추출</td><td>"면적 최대 채도색" — 파일럿 3종 중 <strong>2종 테마 불일치</strong></td><td><code>PILOT-P2.md</code> §5</td></tr></tbody></table></div>
+<hr>
+<h2>변경 이력</h2>
+<ul>
+<li>v1 (2026-07-27) 최초 — hero 초안 v0 을 소비측(<code>design/characters/pipeline/**</code> · <code>apps/web/**</code>) 실측 기준으로 교정. 의심 6건 전건 확인·수정 + 배경 투명 요구 신설 + 포지션 색/hue 변형 정정.</li>
+</ul>
+<p>뷰어: <code>node design/characters/prompt/build-viewer.mjs &amp;&amp; open design/characters/prompt/prompt-docs.html</code> (탭 = 프롬프트 / 수정 diff / 실측 근거표 / 초안 v0. .md 를 고치고 다시 구우면 된다.)</p>
+</section>
+<section id="t-draft" hidden>
+<p class="note">hero 원본. 비교용 보존.</p>
+<h1>카드 디자인 공용 프롬프트 — hero 초안 v0 (외부 이미지 AI용, 2026-07-27)</h1>
+<blockquote><p>hero: 카드 디자인은 별도 AI 에서 뽑는다. 어디서든 세션 시작 시 레퍼런스 이미지와 함께 전달할 <strong>공용 프롬프트 양식</strong>. 이 초안을 <strong>받는 입장(우리 에셋 파이프라인)</strong> 기준으로 수정하는 것이 과제. 아래는 초안 원문 그대로.</p></blockquote>
+<hr>
+<p>첨부한 레퍼런스 이미지를 이번 작업의 시각적 규격 참고 자료로 사용해 주세요.</p>
+<p>레퍼런스의 기존 캐릭터나 이름을 복제하는 것이 아니라, 다음 요소만 고정 기준으로 사용합니다.</p>
+<ul>
+<li>가로형 캐릭터 카드 시트 구성</li>
+<li>세로형 카드의 종횡비</li>
+<li>카드 크기와 간격</li>
+<li>캐릭터 픽셀 아트 밀도</li>
+<li>카드 프레임의 정보 구조</li>
+<li>전신 캐릭터와 경기용 얼굴 아이콘의 연결 방식</li>
+</ul>
+<p>이번 세션에서 별도로 전달할 테마에 맞춰 새로운 캐릭터들을 제작해 주세요.</p>
+<h1>1. 작업의 고정 요소와 가변 요소</h1>
+<p>고정 요소:</p>
+<ul>
+<li>카드 시트의 전체 비율</li>
+<li>카드의 세로 비율</li>
+<li>카드 크기와 정렬</li>
+<li>캐릭터가 카드 안에서 차지하는 크기</li>
+<li>픽셀 아트의 표현 밀도</li>
+<li>경기용 원형 픽셀 아이콘 규격</li>
+</ul>
+<p>가변 요소:</p>
+<ul>
+<li>국가</li>
+<li>시대</li>
+<li>신화</li>
+<li>전설</li>
+<li>실제 인물 모티프</li>
+<li>종족</li>
+<li>의상</li>
+<li>축구 포지션</li>
+<li>캐릭터의 능력과 연출</li>
+</ul>
+<p>레퍼런스의 캐릭터 내용은 고정하지 않습니다. 이번 세션에서 전달하는 새로운 테마를 우선 적용합니다.</p>
+<h1>2. 전체 결과물 규격</h1>
+<p>결과물은 가로형 캐릭터 카드 시트 한 장으로 제작합니다.</p>
+<p>기본 구성:</p>
+<ul>
+<li>상단: 제목과 포지션 범례</li>
+<li>중앙: 캐릭터 카드 그리드</li>
+<li>하단: 해당 캐릭터들의 경기용 픽셀 아이콘 예시</li>
+</ul>
+<p>기본 카드 수가 12장이라면:</p>
+<ul>
+<li>6열 × 2행</li>
+<li>모든 카드의 크기 동일</li>
+<li>모든 카드의 세로 비율 동일</li>
+<li>카드 사이의 간격 동일</li>
+<li>카드의 상단과 하단 정렬선 동일</li>
+</ul>
+<p>카드 수가 달라지더라도 빈 공간 없이 균형 있게 정렬합니다.</p>
+<p>게임 경기장, 전술판, 상점, 덱 설정 화면 등 별도의 게임 UI는 만들지 않습니다. 오직 캐릭터 카드 시트와 경기용 아이콘 예시만 출력합니다.</p>
+<h1>3. 카드 비율과 내부 구도</h1>
+<p>모든 카드는 동일한 세로형 비율을 사용합니다.</p>
+<p>권장 카드 비율:</p>
+<ul>
+<li>가로 1 : 세로 1.65~1.75</li>
+<li>레퍼런스 이미지와 유사한 길고 좁은 세로 카드</li>
+</ul>
+<p>모든 카드에서 캐릭터 크기를 통일합니다.</p>
+<p>캐릭터 배치:</p>
+<ul>
+<li>머리는 카드 상단에서 약 12~18% 아래에 위치</li>
+<li>발은 카드 일러스트 영역 하단에서 약 5~10% 위에 위치</li>
+<li>캐릭터 전신이 잘리지 않게 배치</li>
+<li>캐릭터 높이는 일러스트 영역의 약 70~80%</li>
+<li>캐릭터마다 카메라 거리와 비율을 크게 바꾸지 않음</li>
+<li>거대한 캐릭터도 다른 카드와 비슷한 시각적 부피로 조정</li>
+<li>작은 캐릭터도 지나치게 작게 표현하지 않음</li>
+</ul>
+<p>카드 내부 구조:</p>
+<ul>
+<li>상단: FW, MF, DF, GK 등의 포지션 표시</li>
+<li>중앙: 전신 또는 거의 전신 캐릭터 일러스트</li>
+<li>하단: 이름, 이명, 희귀도 또는 간단한 역할 영역</li>
+<li>가장 아래: 짧은 설명이나 속성 아이콘을 위한 영역</li>
+</ul>
+<p>카드마다 정보 배치 구조는 동일하게 유지합니다.</p>
+<h1>4. 픽셀 아트 스타일</h1>
+<p>전체 스타일은 고해상도 픽셀 아트입니다.</p>
+<ul>
+<li>픽셀의 모서리가 선명해야 함</li>
+<li>부드러운 디지털 페인팅처럼 표현하지 않음</li>
+<li>지나치게 작은 노이즈 픽셀을 남발하지 않음</li>
+<li>캐릭터 실루엣이 배경과 명확하게 구분되어야 함</li>
+<li>얼굴, 머리 형태, 의상, 자세가 카드마다 구별되어야 함</li>
+<li>축구공과 축구 동작이 명확하게 보여야 함</li>
+</ul>
+<p>카드 일러스트에서는 비교적 세밀한 픽셀 표현을 사용해도 됩니다. 다만 얼굴과 신체 비율은 모든 카드에서 같은 스타일로 유지합니다.</p>
+<h1>5. 축구 캐릭터 표현</h1>
+<p>모든 캐릭터는 판타지 인물이나 역사적 인물이기 전에 축구선수로 보여야 합니다.</p>
+<p>반드시 포함할 요소:</p>
+<ul>
+<li>축구 유니폼 또는 축구 유니폼으로 재해석한 의상</li>
+<li>축구화</li>
+<li>축구공</li>
+<li>패스, 드리블, 슈팅, 태클, 세이브 중 하나의 축구 동작</li>
+<li>포지션을 연상시킬 수 있는 자세</li>
+</ul>
+<p>판타지, 신화, 역사, 실제 인물 모티프는 다음 요소를 통해 표현합니다.</p>
+<ul>
+<li>머리 실루엣</li>
+<li>표정</li>
+<li>피부색</li>
+<li>수염</li>
+<li>헤어스타일</li>
+<li>종족 특징</li>
+<li>유니폼 문양</li>
+<li>색상</li>
+<li>제한된 장식</li>
+<li>캐릭터 주변의 속성 효과</li>
+</ul>
+<p>무기나 갑옷이 축구공과 축구 동작보다 중요하게 보이면 안 됩니다. 캐릭터는 전사가 아니라 축구선수로 읽혀야 합니다.</p>
+<h1>6. 캐릭터별 식별 요소</h1>
+<p>각 캐릭터는 다음 항목 중 최소 3개 이상으로 구분합니다.</p>
+<ul>
+<li>머리 외곽 실루엣</li>
+<li>헤어스타일</li>
+<li>헤어 컬러</li>
+<li>피부색</li>
+<li>눈매</li>
+<li>눈동자 색</li>
+<li>수염</li>
+<li>귀, 뿔, 왕관, 모자 등의 머리 장식</li>
+<li>얼굴 문양</li>
+<li>유니폼 주조색</li>
+<li>유니폼 보조색</li>
+<li>포지션에 맞는 자세</li>
+<li>대표 속성 효과</li>
+</ul>
+<p>같은 시트 안에서 서로 비슷한 머리와 얼굴을 반복하지 않습니다.</p>
+<h1>7. 경기용 픽셀 아이콘 제작 규격</h1>
+<p>각 카드 캐릭터마다 실제 경기 화면에 사용할 얼굴 중심 픽셀 아이콘을 함께 제작합니다.</p>
+<p>게임 화면 전체는 만들지 않습니다. 시트 하단에 캐릭터별 아이콘 샘플만 일렬로 보여줍니다.</p>
+<p>아이콘은 카드 일러스트와 별개의 캐릭터가 아니라, 동일한 캐릭터를 단순화한 파생 이미지여야 합니다.</p>
+<h2>아이콘 논리 해상도</h2>
+<p>기본 경기용 얼굴 스프라이트:</p>
+<ul>
+<li>논리 해상도 16×16px</li>
+<li>시트에서는 확인할 수 있도록 최근접 보간 방식으로 크게 확대하여 표시</li>
+<li>픽셀을 흐리게 확대하지 않음</li>
+<li>안티앨리어싱 사용 금지</li>
+<li>픽셀 경계가 선명해야 함</li>
+</ul>
+<p>필요하다면 보조 원본으로 32×32px 얼굴 아이콘을 함께 설계할 수 있지만, 최종 경기용 기준은 16×16px입니다.</p>
+<h2>16×16 얼굴 스프라이트 내부 구성</h2>
+<ul>
+<li>얼굴과 머리 중심</li>
+<li>가슴 아래 신체는 표현하지 않음</li>
+<li>어깨는 최대 1~2픽셀 정도만 허용</li>
+<li>머리와 얼굴이 캔버스의 약 75~85%를 차지</li>
+<li>상단, 좌우에 최소 1픽셀의 안전 여백 유지</li>
+<li>얼굴은 정면 또는 약한 3/4 방향</li>
+<li>캐릭터마다 시선 방향을 제각각 바꾸지 않음</li>
+<li>모든 캐릭터의 얼굴 크기를 동일하게 맞춤</li>
+</ul>
+<p>아이콘 안에서 우선 보존할 요소:</p>
+<ol>
+<li>머리 실루엣</li>
+<li>헤어 또는 머리 장식</li>
+<li>얼굴과 피부색</li>
+<li>눈매</li>
+<li>수염</li>
+<li>대표 색상</li>
+<li>작은 종족 특징</li>
+</ol>
+<p>아이콘에서 제거할 요소:</p>
+<ul>
+<li>복잡한 배경</li>
+<li>축구공</li>
+<li>전신</li>
+<li>긴 무기</li>
+<li>큰 날개 전체</li>
+<li>오라</li>
+<li>마법진</li>
+<li>파티클</li>
+<li>카드 프레임 장식</li>
+<li>작은 액세서리</li>
+<li>읽을 수 없는 미세 문양</li>
+</ul>
+<p>날개, 뿔, 왕관, 동물 귀 등 중요한 특징은 16×16에서도 알아볼 수 있도록 단순한 실루엣으로 축약합니다.</p>
+<h2>아이콘 색상 규칙</h2>
+<p>16×16 아이콘 하나에 사용하는 색상은 가급적 다음 수준으로 제한합니다.</p>
+<ul>
+<li>피부색: 1~2색</li>
+<li>머리색: 2~3색</li>
+<li>눈 또는 얼굴 포인트: 1색</li>
+<li>대표 장식색: 1~2색</li>
+<li>외곽선: 1색</li>
+</ul>
+<p>전체적으로 약 6~10색 안에서 표현합니다.</p>
+<p>카드의 모든 색을 축소해 넣지 않습니다. 캐릭터를 대표하는 핵심 색상만 남깁니다.</p>
+<h1>8. 원형 경기 토큰 규격</h1>
+<p>16×16 얼굴 스프라이트를 게임에서는 원형 토큰 안에 넣습니다.</p>
+<p>권장 논리 크기:</p>
+<ul>
+<li>전체 원형 토큰: 24×24px</li>
+<li>내부 얼굴 스프라이트: 16×16px</li>
+<li>얼굴 주변 내부 여백: 약 2px</li>
+<li>팀 컬러 외곽 링: 약 2px</li>
+<li>바깥쪽 투명 안전 여백: 약 1px</li>
+</ul>
+<p>원형 토큰의 구성:</p>
+<ul>
+<li>중앙: 캐릭터 얼굴</li>
+<li>내부 배경: 어두운 네이비 또는 매우 어두운 무채색</li>
+<li>외곽 링: 팀 컬러</li>
+<li>외부 장식: 최소화</li>
+</ul>
+<p>팀 구분:</p>
+<ul>
+<li>우리 팀: 선명한 블루 링</li>
+<li>상대 팀: 선명한 레드 링</li>
+<li>중립 또는 미지정: 회색 링</li>
+<li>선택된 선수: 기존 팀 링 바깥에 얇은 금색 또는 흰색 링 추가</li>
+<li>공 소유 선수: 토큰 하단에 작은 공 마커 또는 점 표시</li>
+</ul>
+<p>팀 컬러는 외곽 링에만 적용합니다. 캐릭터 얼굴이나 머리색을 팀 컬러로 변경하지 않습니다.</p>
+<p>캐릭터의 속성, 국가, 희귀도에 따라 원형 링 색상을 바꾸지 않습니다. 링은 오직 팀을 구분하는 용도입니다.</p>
+<h1>9. 아이콘의 통일성과 가독성</h1>
+<p>모든 경기 아이콘은 한 세트처럼 보여야 합니다.</p>
+<p>통일할 항목:</p>
+<ul>
+<li>얼굴 크기</li>
+<li>눈의 높이</li>
+<li>머리 중심 위치</li>
+<li>외곽선 두께</li>
+<li>빛의 방향</li>
+<li>명암 단계</li>
+<li>배경색</li>
+<li>원형 링 두께</li>
+<li>원 안의 여백</li>
+</ul>
+<p>멀리서 보았을 때는 팀 컬러 링이 가장 먼저 보여야 합니다. 가까이 보았을 때는 머리 실루엣과 대표 색상으로 캐릭터를 구별할 수 있어야 합니다.</p>
+<p>아이콘을 카드 일러스트처럼 화려하게 만들지 않습니다. 카드는 수집성과 캐릭터성을 보여주고, 경기 아이콘은 위치와 상태를 빠르게 확인하는 용도입니다.</p>
+<h1>10. 시트 하단 아이콘 샘플 표시</h1>
+<p>카드 그리드 아래에 모든 캐릭터의 경기용 아이콘을 카드 순서와 동일하게 배치합니다.</p>
+<p>각 캐릭터마다 다음 두 가지를 보여줍니다.</p>
+<ul>
+<li>16×16 얼굴 스프라이트 확대본</li>
+<li>블루팀 링이 적용된 원형 토큰</li>
+</ul>
+<p>공간이 충분하다면 대표 캐릭터 2~3명에 한해 다음 상태도 함께 보여줍니다.</p>
+<ul>
+<li>블루팀 기본 상태</li>
+<li>레드팀 기본 상태</li>
+<li>선택된 상태</li>
+<li>공 소유 상태</li>
+</ul>
+<p>하지만 게임 경기장 전체 화면은 출력하지 않습니다.</p>
+<h1>11. 포지션 규칙</h1>
+<p>포지션 표기는 다음 약어를 사용합니다.</p>
+<ul>
+<li>FW: 공격수</li>
+<li>MF: 미드필더</li>
+<li>DF: 수비수</li>
+<li>GK: 골키퍼</li>
+</ul>
+<p>포지션 색상은 전체 시트에서 통일합니다.</p>
+<ul>
+<li>FW: 레드 또는 오렌지 계열</li>
+<li>MF: 그린 계열</li>
+<li>DF: 블루 계열</li>
+<li>GK: 골드 또는 옐로 계열</li>
+</ul>
+<p>이 포지션 색상은 카드의 작은 포지션 표시와 분류에만 사용합니다. 경기용 원형 토큰의 외곽 링에는 포지션 색상을 사용하지 않습니다.</p>
+<h1>12. 출력 전 확인사항</h1>
+<p>결과물을 만들기 전에 다음을 반드시 확인합니다.</p>
+<ul>
+<li>모든 카드의 가로와 세로 크기가 동일한가</li>
+<li>모든 캐릭터의 전신 크기가 유사한가</li>
+<li>카드마다 카메라 거리가 일정한가</li>
+<li>카드가 잘리거나 프레임 밖으로 나가지 않았는가</li>
+<li>카드 순서와 하단 아이콘 순서가 같은가</li>
+<li>모든 아이콘의 얼굴 크기가 같은가</li>
+<li>16×16에서도 핵심 실루엣이 남아 있는가</li>
+<li>원형 토큰 링이 캐릭터 속성이 아니라 팀을 나타내는가</li>
+<li>게임 화면이나 불필요한 UI가 포함되지 않았는가</li>
+<li>이번 세션에서 전달한 테마가 정확히 반영되었는가</li>
+</ul>
+<p>이번 작업의 최우선 목표는 다음 두 가지입니다.</p>
+<ol>
+<li>모든 캐릭터 카드가 동일한 규격과 비율로 보이는 것</li>
+<li>카드 캐릭터가 일관된 16×16 경기용 얼굴 아이콘으로 변환되는 것</li>
+</ol>
+<p>이제 다음 메시지에서 전달할 테마와 캐릭터 조건을 적용해 동일한 카드 시트 규격으로 제작해 주세요.</p>
+</section>
+</main>
+<script>
+const tabs=[...document.querySelectorAll('nav button')];
+const show=id=>{tabs.forEach(b=>b.setAttribute('aria-selected',b.dataset.t===id));
+document.querySelectorAll('main section').forEach(s=>s.hidden=s.id!=='t-'+id);
+history.replaceState(null,'','#'+id);scrollTo(0,0)};
+tabs.forEach(b=>b.onclick=()=>show(b.dataset.t));
+if(location.hash)show(location.hash.slice(1));
+const RAW="첨부한 레퍼런스 이미지는 **시각 스타일(픽셀 밀도·색감·캐릭터 톤)만** 참고합니다.\n레퍼런스에 보이는 **카드 테두리·이름표·별·설명판·배경 패널·원형 토큰은 재현하지 마세요.**\n그것들은 우리 게임 엔진이 따로 합성합니다. 당신이 만드는 것은 **캐릭터 아트 그 자체**뿐입니다.\n\n이번 세션의 테마와 캐릭터 목록은 **다음 메시지로 전달**합니다. 지금은 아래 규격만 숙지하세요.\n\n# 0. 절대 규칙 (하나라도 어기면 파이프라인이 산출물을 만들 수 없습니다)\n\n1. **배경은 완전 투명(알파 0) PNG.** 배경을 그리지 마세요.\n   투명 출력이 불가능한 도구라면 **순수 마젠타 `#FF00FF` 단색** 배경 + **안티앨리어싱 없는\n   하드 엣지**로 출력하세요. 마젠타는 캐릭터 어디에도 쓰면 안 됩니다.\n   (반투명 그라디언트 배경·어두운 패널 배경은 자동 제거가 불가능합니다.)\n2. **텍스트를 굽지 마세요.** 이름·이명·희귀도·별·포지션 약어·능력치·설명·워터마크·서명 전부 금지.\n   모든 글자는 게임 UI 가 실제 폰트로 렌더합니다.\n3. **프레임을 굽지 마세요.** 카드 테두리·금테·코너 세공·밴드·배경 패널 금지.\n4. **UI 요소를 굽지 마세요.** 원형 토큰, 팀 컬러 링, 선택 링, 공 소유 마커, 등번호 뱃지,\n   체력/상태 바 — 전부 게임 런타임이 매 프레임 그립니다. 아트에 있으면 **이중으로 겹칩니다.**\n5. **바닥 그림자·외곽 글로우·오라·파티클·마법진 금지.** 실루엣 추출을 오염시킵니다.\n6. **캐릭터 1명당 이미지 2장**(아래 §1). 여러 캐릭터를 한 장에 모은 시트는 기본 산출물이\n   아닙니다(불가피할 때만 §7 의 엄격 규격).\n\n# 1. 산출물 — 캐릭터 1명당 PNG 2장 + 메타 1개\n\n| 파일 | 크기 | 내용 |\n|---|---|---|\n| `<charId>__portrait.png` | **정사각, 512×512 이상** (정확히 1:1) | 얼굴/가슴 위 |\n| `<charId>__full.png` | **세로 1:2, 512×1024 이상** (허용 1:1.6~1:2.4) | 전신 액션 |\n\n- `charId` = **소문자 ASCII kebab-case** (`ragna`, `penguin-king`). 대문자·공백·한글 금지.\n- 구분자는 **언더스코어 2개(`__`)**.\n- 같은 charId 의 두 장은 **같은 캐릭터·같은 의상·같은 색**이어야 합니다(둘을 대조해 주는 로직은 없습니다).\n- 파일로 저장이 안 되는 환경이면, 이미지마다 어떤 charId 의 어떤 variant 인지 **명시**하세요.\n\n두 장이 서로 다른 사다리로 내려갑니다(같은 이미지의 크롭이 아닙니다):\n- `__portrait` → 얼굴 아바타 **64 / 32 / 16px** (경기 화면 선수 토큰)\n- `__full` → 전신 스프라이트 **64 / 32 / 16 / 8px** + **카드 일러스트**\n\n# 2. 메타 (기계가독 — 이미지와 함께 텍스트로 출력)\n\n모든 캐릭터를 만든 뒤, 마지막에 **JSON 배열 하나**를 코드블록으로 출력하세요.\n순서 = 캐릭터를 만든 순서. 누락 필드가 있으면 자동 폴백이 걸리고 색이 테마와 어긋납니다.\n\n```json\n[\n  {\n    \"id\": \"ragna\",\n    \"name\": \"라그나\",\n    \"title\": \"불꽃의 스트라이커\",\n    \"position\": \"FW\",\n    \"stars\": 5,\n    \"signature\": \"#f7a051\",\n    \"frame\": \"#c82813\",\n    \"desc\": \"차원을 가르는 강슛, 필드 전체에 볼을 지핀다.\"\n  }\n]\n```\n\n- `position` ∈ `FW` | `MF` | `DF` | `GK` (반드시 이 4개 중 하나, 대문자)\n- `stars` = 1~6 정수\n- `signature` = 캐릭터 대표색 1개(hex). **아트에서 실제로 눈에 띄는 색**을 고르세요 —\n  카드 프레임·이펙트가 이 색으로 구워집니다. 미지정 시 \"면적이 가장 넓은 채도색\"이\n  자동 선택되는데, 실측상 12종 중 다수가 테마색과 어긋났습니다(빙하 캐릭터 → 빨간 망토색).\n- `frame` = 프레임 금속색(hex). 생략하면 `signature` 를 어둡게 깎아 씁니다.\n- `desc` = 한 문장. 카드 하단에 게임 UI 가 렌더합니다(아트에 굽지 마세요).\n\n# 3. 구도\n\n## `__portrait` (정사각)\n- **정면**, 시선 정면 또는 아주 약한 3/4. 목·머리 기울기 최소, 좌우 대칭에 가깝게.\n- 크롭 = **머리 장식 맨 위 ~ 가슴 위**. 어깨는 살짝만.\n- **얼굴+머리가 프레임의 55~70%**, 사방 5~10% 여백(장식이 잘리면 안 됩니다).\n- **머리 장식(뿔·왕관·후광·귀·모자)이 캐릭터 식별자**입니다 — 절대 잘리지 않게.\n- 모든 캐릭터의 **얼굴 크기·눈 높이·머리 중심**을 통일하세요(한 세트로 보여야 합니다).\n- 축구공·전신·긴 무기·큰 날개 전체는 portrait 에 넣지 마세요.\n\n## `__full` (세로 1:2)\n- **정면 액션 포즈 1개** (달리기 / 슛 준비 / 드리블 / 태클 / 세이브).\n- 머리끝~발끝 전부 포함, 캐릭터가 세로의 **85~90%**.\n- **축구공 1개를 발 근처에**. 공이 캐릭터를 가리지 않게.\n- 팔다리가 몸통에 붙어 뭉개지지 않게 — **8px 까지 줄여도 형태가 남아야** 합니다.\n- 캐릭터마다 카메라 거리·비율을 바꾸지 마세요. 거대 종족도 다른 캐릭터와 **비슷한 시각적 부피**로,\n  작은 종족도 지나치게 작게 만들지 마세요.\n\n# 4. 스타일 — 픽셀 아트 직접 생성\n\n- **고해상도 픽셀 아트**. 픽셀 모서리 선명, **안티앨리어싱 없음**, 부드러운 디지털 페인팅 금지.\n- 업스케일이 필요하면 **최근접 보간(nearest-neighbor) 정수 배율**만. 흐린 확대는 규격 위반입니다.\n- 미세 노이즈 픽셀 남발 금지. 면 단위 명암 + 굵은 실루엣.\n- **제한 팔레트**: portrait 24색 이내, full 28색 이내 권장. 색 축소는 우리가 단계별로 합니다\n  (아바타 64→24색 / 32→14색 / 16→8색, 스프라이트 64→28 / 32→18 / 16→10 / 8→5색) —\n  당신이 미리 6~10색으로 줄이지 마세요. **원본은 풍부하게, 대신 실루엣과 대비를 확보**하세요.\n\n## 저해상도 생존 규칙 (가장 자주 실패하는 지점)\n\n실측: 12캐릭터를 16px 아바타로 내렸을 때 **명확히 읽힌 것은 4종뿐**이었고,\n실패한 4종은 전부 **어두운 머리 + 어두운 복장** 조합이었습니다. 가른 변수는 해상도가 아니라\n**실루엣의 굵기와 명도 대비**입니다.\n\n- 머리 실루엣을 **굵고 독특하게**(갈기·뿔·왕관·후드 등). 얇고 산발적인 머리카락은 사라집니다.\n- **머리와 몸통의 명도를 다르게**. 어두운 머리 + 어두운 옷 = 16px 에서 덩어리로 뭉개집니다.\n- 얼굴은 배경과, 배경은 의상과 **명도 대비**를 확보하세요.\n- 판정 기준: **눈을 가늘게 뜨고 봐도 누구인지 구별되는가.**\n\n# 5. 축구 선수로 읽힐 것\n\n모든 캐릭터는 판타지/역사 인물이기 **이전에 축구 선수**여야 합니다.\n\n- 필수: 축구 유니폼(또는 유니폼으로 재해석한 의상), 축구화, 축구공(full 만), 축구 동작, 포지션 연상 자세.\n- 판타지·신화·역사·실존 인물 모티프는 **머리 실루엣 / 표정 / 피부색 / 수염 / 헤어 / 종족 특징 /\n  유니폼 문양 / 색상 / 절제된 장식**으로 표현합니다.\n- 무기·갑옷이 축구공과 축구 동작보다 커 보이면 안 됩니다. **전사가 아니라 선수**로 읽혀야 합니다.\n- **실존 선수의 이름·얼굴을 쓰지 마세요.**\n\n# 6. 색상 제약 (게임 시스템과 충돌하는 색)\n\n우리 런타임이 **아트 위에 겹쳐 그리는 색**들이 있습니다. 이 색을 캐릭터 주조색으로 쓰면\n경기 화면에서 팀·상태 표시와 섞여 판독이 무너집니다.\n\n| 예약된 용도 | 색 | 아트에서 |\n|---|---|---|\n| 팀 링 blue (아군) | `#3b82f6` / `#3da9f1` 계열 | **주조색 금지** (보조·악센트는 가능) |\n| 팀 링 red (적팀) | `#ef4444` / `#ef4f44` 계열 | **주조색 금지** |\n| 공 소유 하이라이트 | `#fde047` (형광 노랑) | 넓은 면적 금지 |\n| 포지션 뱃지 FW/MF/DF/GK | `#f17869` / `#57b775` / `#0b90d8` / `#fce148` | **포지션을 색으로 표시하지 마세요** — 뱃지는 우리가 그립니다 |\n\n또 하나: 일부 캐릭터는 **색상(hue) 회전으로 변형본**을 만듭니다. 이때 **피부톤 대역\n(H 18~48°, S 0.18~0.8, L 0.35~0.92)은 보호되어 회전하지 않습니다.**\n→ `signature` 와 유니폼 주조색을 **이 대역 밖**(예: 청록·보라·청색·자홍)으로 잡으면\n변형본이 확실히 달라 보입니다. 주황·황토색 계열을 주조색으로 쓰면 변형해도 거의 안 변합니다.\n\n# 7. (예외) 한 장 시트로만 출력 가능한 경우\n\n도구가 파일 여러 장을 못 내면 시트 1장으로 받되, **자동 슬라이스가 가능한 형태**여야 합니다.\n\"빈 공간 없이 균형 있게 배치\" 같은 유연한 레이아웃은 **슬라이스가 불가능**합니다(사람이 매번\n좌표를 손으로 재야 합니다). 다음을 모두 지키세요.\n\n- **정확히 균일한 격자**: 모든 셀 크기 동일, 모든 거터 동일, 바깥 마진 동일. 눈대중 정렬 금지.\n- **셀 크기·거터·마진·열/행 수를 픽셀 정수로 텍스트에 명시**하세요.\n  예: `cell 512×1024, gutter 32, margin 32, cols 6, rows 2, order = row-major`.\n- 셀 개수 = 캐릭터 수. **빈 셀이 남더라도 격자를 무너뜨리지 마세요**(빈 셀은 비워 두면 됩니다).\n- 배경은 **순수 마젠타 `#FF00FF` 단색**, 안티앨리어싱 없음. 격자선·라벨·제목·범례 금지.\n- 캐릭터 순서 = §2 JSON 배열 순서.\n- portrait 시트와 full 시트는 **분리**하세요(종횡비가 다릅니다).\n\n# 8. 출력 전 체크리스트\n\n- [ ] 배경이 완전 투명(또는 순수 `#FF00FF` + 하드 엣지)인가\n- [ ] 이름·희귀도·포지션·설명 **글자가 하나도 없는가**\n- [ ] 카드 테두리·프레임·배경 패널이 없는가\n- [ ] 원형 토큰·팀 링·선택 링·공 마커·등번호가 없는가\n- [ ] 바닥 그림자·글로우·오라·파티클이 없는가\n- [ ] portrait 정사각 512+ / full 세로 1:2 512×1024+ 인가\n- [ ] 머리 장식이 잘리지 않았는가, 사방 여백 5~10% 있는가\n- [ ] full 에 축구공 1개, 정면 액션 포즈인가\n- [ ] 모든 캐릭터의 얼굴 크기·눈 높이·카메라 거리가 통일됐는가\n- [ ] 어두운 머리 + 어두운 복장 조합을 피했는가(16px 생존)\n- [ ] 파일명이 `<charId>__portrait.png` / `<charId>__full.png`, 소문자 kebab-case 인가\n- [ ] §2 JSON 배열을 이미지 순서대로 출력했는가\n\n**이 작업의 최우선 목표 두 가지**\n1. 모든 캐릭터가 **동일한 규격·카메라·얼굴 크기**로 한 세트처럼 보일 것\n2. 각 캐릭터가 **64px 얼굴 아바타까지 줄여도 누구인지 구별**될 것\n\n이제 다음 메시지의 테마와 캐릭터 조건을 이 규격대로 제작해 주세요.";
+document.getElementById('copy').onclick=async()=>{
+  try{await navigator.clipboard.writeText(RAW);document.getElementById('copied').textContent='✔ 복사됐다 ('+RAW.length+'자)';}
+  catch(e){document.getElementById('copied').textContent='복사 실패 — 원문: shared-prompt-v1.md';}
+};
+</script></body></html>
