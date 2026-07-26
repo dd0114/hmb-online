@@ -402,6 +402,9 @@ export function buildDeltaPatchPrompt(ctx: TeamInputPatchJobContext, feedback?: 
     "",
     "**이 변경이 유발하는 변화만** TacticalPatch 로 출력하라. 변경과 무관한 축·선수는 절대 포함하지 마라.",
     "단 변경이 다른 선수에 파급되면(마킹·커버·트랩 등) 그 파급분은 포함하라.",
+    // #193 라운드2: 맞대결 1차 패인이 "파급 반쪽 구현"(팀 압박 상향에 team 스칼라만, 라인·개인 압박
+    // 무변경)이었다. 체크리스트 전면 확장은 지연 고분산으로 기각 — 한 줄만 더 준다.
+    "팀 지시의 강도·방향 변화(압박·라인·템포 등)는 team 스칼라뿐 아니라 관련 선수들의 behavior 에도 파급된다 — 변경이 요구하는 만큼 포함하라(무관한 선수는 여전히 제외).",
   );
 
   if (ctx.half === 2 && ctx.prevSummary) {

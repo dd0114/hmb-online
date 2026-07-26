@@ -47,6 +47,22 @@ describe("델타 모드 — buildTeamInputPatchPrompt(ctx.promptDelta)", () => {
     expect(p).toContain("TacticalPatch JSON");
   });
 
+  /**
+   * 맞대결 1차(#193 W3) 패인 = **파급 반쪽 구현** — "팀 압박 상향"에 team 스칼라 3개만 손대고 라인·개인
+   * 압박은 그대로였다(풀생성 4.38 vs 델타 3.13). 체크리스트 전면 확장은 지연 고분산(6~160s+타임아웃)으로
+   * 이미 기각됐으므로 **한 줄**만 더 준다: 팀 지시 변화는 선수 behavior 로도 내려간다.
+   */
+  it("팀 지시 변화가 선수 behavior 로 파급된다는 힌트가 한 줄 붙는다 (#193 라운드2)", () => {
+    expect(p).toContain(
+      "팀 지시의 강도·방향 변화(압박·라인·템포 등)는 team 스칼라뿐 아니라 관련 선수들의 behavior 에도 파급된다",
+    );
+    expect(p).toContain("변경이 요구하는 만큼 포함하라(무관한 선수는 여전히 제외)");
+    // 델타 모드 전용 — 비델타(풀 컨텍스트) 패치 프롬프트는 무변경(후방 호환).
+    expect(buildTeamInputPatchPrompt(makeTeamInputPatchContext())).not.toContain(
+      "team 스칼라뿐 아니라",
+    );
+  });
+
   it("풀 컨텍스트 나열을 하지 않는다 — 카탈로그·능력치 라인 없음(사고 토큰 억제)", () => {
     expect(p).not.toContain("지원 지시 카탈로그");
     expect(p).not.toMatch(/tech \d+\/mental \d+\/phys \d+/);
