@@ -4,10 +4,15 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import online.hmb.common.Hashes;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -41,6 +46,118 @@ public class PromptContextBuilder {
     /** 로스터 항목 — 컨텍스트/SelectData 공용 원료. */
     public record RosterEntry(String playerId, String name, String position,
                               Map<String, Object> attributes, int slotIndex) {
+    }
+
+    // ── 유효 프롬프트 세트 / 델타 (#193 W2b-B2) ─────────────────────────────
+
+    /**
+     * 어느 시점의 <b>유효 지시 세트</b>(팀 1개 + 선수별). 잡 컨텍스트에 실리는 값과 <b>같은 함수</b>로
+     * 만들어야 델타가 실제 컨텍스트와 어긋나지 않으므로, {@link #buildUserContext} 도 이걸 쓴다.
+     */
+    public record PromptSet(String teamPrompt, Map<String, String> playerPrompts) {
+    }
+
+    /** A(베이스) 잡이 쓴 지시 = 덱 사전 프롬프트만(매치시점 phase 미적용). */
+    public static final List<String> BASE_PHASES = List.of();
+    /** 전반(=킥오프) 시점 유효 지시: 덱 ← pre. */
+    public static final List<String> PRE_PHASES = List.of("pre");
+    /** 후반 시점 유효 지시: 덱 ← pre ← halftime. */
+    public static final List<String> HALFTIME_PHASES = List.of("pre", "halftime");
+
+    /** half → 그 half 의 매치시점 phase 목록(컨텍스트 병합 규칙 §5.2). */
+    public static List<String> phasesForHalf(int half) {
+        return half == 2 ? HALFTIME_PHASES : PRE_PHASES;
+    }
+
+    /**
+     * 유저팀 유효 지시 세트. 팀 지시는 phase 순서대로 덮어쓰고(뒤가 이김 — h2 는 halftime 우선),
+     * 선수 지시는 덱 promptText 위에 phase 별 지시를 덮어쓴 뒤 로스터로 한정한다.
+     *
+     * <p>{@code phases} 가 비면 {@link #userBaseJob} 이 A 잡에 실은 값과 같다(팀 지시 없음 = "").
+     */
+    public PromptSet userPromptSet(String matchId, JsonNode snapshot, Collection<String> rosterIds,
+                                   List<String> phases) {
+        String teamPrompt = "";
+        for (String phase : phases) {
+            String text = phaseTeamPrompt(matchId, phase);
+            if (text != null) {
+                teamPrompt = text;
+            }
+        }
+        Map<String, String> playerPrompts = deckPlayerPrompts(snapshot);
+        for (String phase : phases) {
+            playerPrompts.putAll(phasePlayerPrompts(matchId, phase));
+        }
+        playerPrompts.keySet().retainAll(new LinkedHashSet<>(rosterIds));
+        return new PromptSet(teamPrompt, playerPrompts);
+    }
+
+    /**
+     * old→new 지시 변경분 (shared {@code PromptDelta} 계약, #193 W2b-B2).
+     * 팀은 값이 다를 때만 {old,new}, 선수는 달라진 playerId 만 — old 없음=신규, new 없음=삭제.
+     *
+     * @return 변경이 하나도 없으면 <b>null</b>(컨텍스트에서 필드 자체를 생략한다)
+     */
+    public Map<String, Object> promptDelta(PromptSet oldSet, PromptSet newSet) {
+        Map<String, Object> delta = new LinkedHashMap<>();
+        if (!oldSet.teamPrompt().equals(newSet.teamPrompt())) {
+            Map<String, String> team = new LinkedHashMap<>();
+            team.put("old", oldSet.teamPrompt());
+            team.put("new", newSet.teamPrompt());
+            delta.put("team", team);
+        }
+        Map<String, Object> players = new TreeMap<>(); // playerId 정렬 = 잡 id 재현 안정
+        Set<String> ids = new TreeSet<>(oldSet.playerPrompts().keySet());
+        ids.addAll(newSet.playerPrompts().keySet());
+        for (String playerId : ids) {
+            String before = oldSet.playerPrompts().get(playerId);
+            String after = newSet.playerPrompts().get(playerId);
+            if (Objects.equals(before, after)) {
+                continue;
+            }
+            Map<String, String> entry = new LinkedHashMap<>();
+            if (before != null) {
+                entry.put("old", before);
+            }
+            if (after != null) {
+                entry.put("new", after);
+            }
+            players.put(playerId, entry);
+        }
+        if (!players.isEmpty()) {
+            delta.put("players", players);
+        }
+        return delta.isEmpty() ? null : delta;
+    }
+
+    /** deck(스냅샷/봇덱)의 선발+벤치 promptText → {playerId:text}(정렬). 로스터 한정은 호출측 몫. */
+    private Map<String, String> deckPlayerPrompts(JsonNode deck) {
+        Map<String, String> prompts = new TreeMap<>();
+        for (JsonNode entry : deck.path("starters")) {
+            if (entry.hasNonNull("promptText")) {
+                prompts.put(entry.path("playerId").asText(), entry.path("promptText").asText());
+            }
+        }
+        for (JsonNode entry : deck.path("bench")) {
+            if (entry.hasNonNull("promptText")) {
+                prompts.put(entry.path("playerId").asText(), entry.path("promptText").asText());
+            }
+        }
+        return prompts;
+    }
+
+    /** {@link #buildRoster} 의 playerId 만 — 카탈로그 조회 없이(11 쿼리 회피) 프롬프트 한정용. */
+    public Set<String> rosterIds(JsonNode deckJson, List<MatchService.Substitution> subs) {
+        Map<String, String> outToIn = new LinkedHashMap<>();
+        for (MatchService.Substitution sub : subs) {
+            outToIn.put(sub.out(), sub.in());
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        for (JsonNode starter : deckJson.path("starters")) {
+            String playerId = starter.path("playerId").asText();
+            ids.add(outToIn.getOrDefault(playerId, playerId));
+        }
+        return ids;
     }
 
     /**
@@ -90,32 +207,14 @@ public class PromptContextBuilder {
                                                  Map<String, Object> prevSummary,
                                                  JsonNode opponentDeck,
                                                  String side) {
-        // 팀 프롬프트: h2면 halftime 우선 → pre → ""
-        String teamPrompt = teamPromptOf(match.id(), half);
-
-        // 선수 프롬프트: 덱 스냅샷(기본) ← pre ← (h2) halftime
-        Map<String, String> playerPrompts = new TreeMap<>();
-        for (JsonNode entry : snapshot.path("starters")) {
-            if (entry.hasNonNull("promptText")) {
-                playerPrompts.put(entry.path("playerId").asText(), entry.path("promptText").asText());
-            }
-        }
-        for (JsonNode entry : snapshot.path("bench")) {
-            if (entry.hasNonNull("promptText")) {
-                playerPrompts.put(entry.path("playerId").asText(), entry.path("promptText").asText());
-            }
-        }
-        playerPrompts.putAll(phasePlayerPrompts(match.id(), "pre"));
-        if (half == 2) {
-            playerPrompts.putAll(phasePlayerPrompts(match.id(), "halftime"));
-        }
-
+        // 팀 프롬프트: h2면 halftime 우선 → pre → "" / 선수 프롬프트: 덱 스냅샷 ← pre ← (h2) halftime.
+        // 로스터에 없는 선수의 프롬프트는 제거(교체 아웃 등) — 전부 userPromptSet 한 곳에서(델타와 동일 함수).
         List<RosterEntry> roster = buildRoster(snapshot, half == 2 ? subs : List.of());
-        // 로스터에 없는 선수의 프롬프트는 제거(교체 아웃 등)
-        playerPrompts.keySet().retainAll(roster.stream().map(RosterEntry::playerId).toList());
+        PromptSet prompts = userPromptSet(match.id(), snapshot,
+                roster.stream().map(RosterEntry::playerId).toList(), phasesForHalf(half));
 
         Map<String, Object> context = context(match, side, half, snapshot.path("formation").asText(),
-                roster, teamPrompt, playerPrompts, prevSummary);
+                roster, prompts.teamPrompt(), prompts.playerPrompts(), prevSummary);
         // ── Phase2 additive AI 컨텍스트(AC-C2~C4, openapi-v2 AiJobContextPhase2Fields — 필드명 자구 준수) ──
         addPhase2Context(context, match, snapshot, roster, opponentDeck);
         return context;
@@ -302,17 +401,7 @@ public class PromptContextBuilder {
 
     /** 덱 스냅샷(또는 봇 덱)의 선수 promptText → {playerId:text}, 로스터(선발)로 한정. */
     private Map<String, String> deckBasePlayerPrompts(JsonNode deck, List<RosterEntry> roster) {
-        Map<String, String> prompts = new TreeMap<>();
-        for (JsonNode entry : deck.path("starters")) {
-            if (entry.hasNonNull("promptText")) {
-                prompts.put(entry.path("playerId").asText(), entry.path("promptText").asText());
-            }
-        }
-        for (JsonNode entry : deck.path("bench")) {
-            if (entry.hasNonNull("promptText")) {
-                prompts.put(entry.path("playerId").asText(), entry.path("promptText").asText());
-            }
-        }
+        Map<String, String> prompts = deckPlayerPrompts(deck);
         prompts.keySet().retainAll(roster.stream().map(RosterEntry::playerId).toList());
         return prompts;
     }
@@ -326,17 +415,6 @@ public class PromptContextBuilder {
             return map;
         }
         return null;
-    }
-
-    private String teamPromptOf(String matchId, int half) {
-        if (half == 2) {
-            String halftime = phaseTeamPrompt(matchId, "halftime");
-            if (halftime != null) {
-                return halftime;
-            }
-        }
-        String pre = phaseTeamPrompt(matchId, "pre");
-        return pre != null ? pre : "";
     }
 
     private String phaseTeamPrompt(String matchId, String phase) {

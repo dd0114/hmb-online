@@ -66,6 +66,11 @@ public class MatchController {
                                @PathVariable("id") String id,
                                @RequestBody MatchService.PromptRequest request) {
         matchService.submitPrompt(userId, id, request);
+        // 하프타임 지시는 전반 재생 중에도 낼 수 있다(#170) — 낸 그 순간 후반 잡을 다시 해소해
+        // AI 생성을 미리 태운다(#193 W2b-B2). 감독시간에 기다릴 게 남지 않는다.
+        if ("halftime".equals(request.phase())) {
+            orchestrator.resolveSecondHalfInputs(id);
+        }
         return matchService.toDetail(matchService.getOwned(userId, id));
     }
 
@@ -96,9 +101,11 @@ public class MatchController {
     public MatchDetail halftime(@RequestAttribute("userId") String userId,
                                 @PathVariable("id") String id,
                                 @RequestBody HalftimeRequest request) {
-        MatchService.MatchRow row = matchService.submitHalftime(userId, id,
-                request == null ? null : request.substitutions());
-        return matchService.toDetail(row);
+        matchService.submitHalftime(userId, id, request == null ? null : request.substitutions());
+        // 교체는 h2 해소 분기를 바꾼다(패치/재사용 → 풀 생성) — 선행 생성된 결과를 무효화하고 다시
+        // 태우기 위해 여기서도 재해소한다(#193 W2b-B2). 교체 없음(빈 배열)이면 같은 잡 → no-op.
+        orchestrator.resolveSecondHalfInputs(id);
+        return matchService.toDetail(matchService.getOwned(userId, id));
     }
 
     @PostMapping("/api/matches/{id}/resume")

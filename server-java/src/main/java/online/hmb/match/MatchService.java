@@ -56,8 +56,11 @@ public class MatchService {
 
     /** 감독시간에 해당하는 상태들(신규 + 레거시). */
     private static final Set<String> HALFTIME_STATES = Set.of(S_HALFTIME, S_H1_BREAK);
-    /** 후반 지시·교체를 미리 넣어둘 수 있는 상태 — 전반을 보면서 준비한다(#169 S1 "후반 지시" 패널). */
-    private static final Set<String> PRE_SECOND_HALF_STATES = Set.of(S_FIRST_HALF, S_HALFTIME, S_H1_BREAK);
+    /**
+     * 후반 지시·교체를 미리 넣어둘 수 있는 상태 — 전반을 보면서 준비한다(#169 S1 "후반 지시" 패널).
+     * h2 선행/재해소 창과 같은 집합이다(#193 W2b-B2, {@code MatchOrchestrator.resolveSecondHalfInputs}).
+     */
+    public static final Set<String> PRE_SECOND_HALF_STATES = Set.of(S_FIRST_HALF, S_HALFTIME, S_H1_BREAK);
 
     private final JdbcClient jdbcClient;
     private final TxRunner txRunner;

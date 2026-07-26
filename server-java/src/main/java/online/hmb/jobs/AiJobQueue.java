@@ -109,9 +109,10 @@ public class AiJobQueue {
      * id 는 (matchId,half,side) 결정 — INSERT OR IGNORE 멱등(재개/재시도 재-enqueue 안전).
      *
      * @param resultJson seed 가 이미 해당 halfSeed 로 교체된 완전한 TacticalInput
+     * @return 잡 id (materialize 행의 결정론 id)
      */
-    public void insertMaterialized(String matchId, String side, int half, String resultJson) {
-        String id = Hashes.sha256Hex("materialized:" + matchId + ":" + half + ":" + side).substring(0, 32);
+    public String insertMaterialized(String matchId, String side, int half, String resultJson) {
+        String id = materializedId(matchId, half, side);
         String now = Instant.now().toString();
         jdbcClient.sql("""
                         INSERT OR IGNORE INTO ai_jobs(id, match_id, side, half, status, context_json,
@@ -120,6 +121,53 @@ public class AiJobQueue {
                         """)
                 .params(id, matchId, side, half,
                         "{\"kind\":\"materialized\"}", resultJson, now, now)
+                .update();
+        return id;
+    }
+
+    /** materialize 행 id — (matchId, half, side) 결정론(멱등 재삽입·supersede 대상 식별). */
+    public static String materializedId(String matchId, int half, String side) {
+        return Hashes.sha256Hex("materialized:" + matchId + ":" + half + ":" + side).substring(0, 32);
+    }
+
+    /**
+     * (match, half, side) 의 유효 잡을 {@code targetId} 하나로 좁힌다 — h2 선행 생성(#193 W2b-B2)
+     * 때문에 <b>GEN 진입 전에 결과가 이미 존재</b>할 수 있고, 그 사이 지시(하프타임 프롬프트)·교체가
+     * 바뀌면 그 결과는 무효다. 무효 행이 남으면 {@code latestDoneResult} 가 그걸 집어 <b>유저의 최신
+     * 입력을 무시한 채</b> 시뮬해 버린다(교체 경로면 로스터-인풋 불일치).
+     *
+     * <p>지우는 대상은 <b>아무도 들고 있지 않은 행</b>뿐이다: {@code done}(이미 끝난 결과) 과
+     * 한 번도 배포되지 않은 {@code queued}(attempts=0). {@code leased}·재큐(attempts&gt;0)는 워커가
+     * 물고 있으므로 건드리지 않는다(complete 가 404 로 깨지지 않게). lease 는 status='queued' CAS 라
+     * 삭제와 경합해도 한쪽만 이긴다.
+     *
+     * @return 지운 행 수
+     */
+    public int supersede(String matchId, int half, String side, String targetId) {
+        return jdbcClient.sql("""
+                        DELETE FROM ai_jobs
+                        WHERE match_id = ? AND half = ? AND side = ? AND id <> ?
+                          AND (status = 'done' OR (status = 'queued' AND attempts = 0))
+                        """)
+                .params(matchId, half, side, targetId)
+                .update();
+    }
+
+    /**
+     * 해당 half 의 미완 잡 타임아웃 시계를 지금으로 리셋한다 — {@code timedOutGenMatches} 는
+     * created_at 을 "현재 pending 사이클 시작"으로 보는데(MatchService.retryCas 주석), h2 선행 생성은
+     * GEN2 진입보다 한 하프 앞서 잡을 만든다. 리셋하지 않으면 GEN2 에 들어서자마자 이미 타임아웃
+     * 자격을 갖춘 잡이 매치를 FAILED 시킨다(유예 0). GEN 진입 시점에만 호출한다.
+     *
+     * @return 리셋한 행 수
+     */
+    public int restartPendingTimeout(String matchId, int half) {
+        String now = Instant.now().toString();
+        return jdbcClient.sql("""
+                        UPDATE ai_jobs SET created_at = ?, updated_at = ?
+                        WHERE match_id = ? AND half = ? AND status != 'done'
+                        """)
+                .params(now, now, matchId, half)
                 .update();
     }
 
