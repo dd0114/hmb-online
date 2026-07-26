@@ -50,7 +50,9 @@ export function TradePlayerCard({
       data-grade={player.grade}
     >
       {caption && <span className={styles.caption}>{caption}</span>}
-      <span className={styles.pos}>{player.position}</span>
+      {/* 풀아트일 때는 카드 좌상단 뱃지가 포지션을 이미 말한다 → 캡션 줄에서 빼서 중복을 없앤다.
+          (뱃지 쪽을 빼면 아트에 구워진 **캐릭터** 포지션이 노출돼 교차 매핑 선수에서 틀린다.) */}
+      {!fullArt && <span className={styles.pos}>{player.position}</span>}
       {fullArt ? (
         <FullArtCard
           playerId={player.playerId}
@@ -58,8 +60,8 @@ export function TradePlayerCard({
           grade={player.grade}
           position={player.position}
           size="detail"
-          /* 이름·등급·능력치가 카드 밖에 이미 있다 → 아트만(빈 밴드 제거). 포지션도 캡션 줄이
-             갖고 있으므로 카드 뱃지를 안 그린다 — 같은 패널에 두 번 나오던 중복 해소(#187). */
+          /* 이름·등급·능력치는 카드 밖에 이미 있다 → 아트만(빈 밴드 제거). 포지션은 **카드 뱃지**가
+             맡고 캡션 줄에서 뺐다 — 뱃지는 선수 값으로 덮여 있어 교차 매핑에서도 정확하다(#187). */
           variant="art"
           className={styles.face}
         />

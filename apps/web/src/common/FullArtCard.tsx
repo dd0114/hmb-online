@@ -133,8 +133,8 @@ export function FullArtCard({
       {/* 층2 — 캐릭터 아트. 창을 잘라 원본의 아트 영역만 보이게 한다(full-art.ts 주석). */}
       {art && (
         <span
-          className={styles.artWindow}
-          style={(artOnly ? { inset: 0 } : L.window) as CSSProperties}
+          className={[styles.artWindow, artOnly ? styles.artFill : ""].filter(Boolean).join(" ")}
+          style={(artOnly ? undefined : L.window) as CSSProperties}
           aria-hidden
         >
           <img
@@ -152,7 +152,10 @@ export function FullArtCard({
 
       {/* 폴백 — 풀아트가 없으면 아트 창 자리에 아이콘을 크게 놓는다(빈 칸 0). */}
       {!art && (
-        <span className={styles.artWindow} style={(artOnly ? { inset: 0 } : L.window) as CSSProperties}>
+        <span
+          className={[styles.artWindow, artOnly ? styles.artFill : ""].filter(Boolean).join(" ")}
+          style={(artOnly ? undefined : L.window) as CSSProperties}
+        >
           <span className={styles.iconWrap}>
             <CharAvatar
               playerId={playerId}

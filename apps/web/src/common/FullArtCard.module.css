@@ -62,11 +62,16 @@ button.card:active {
 }
 
 /* 아트 창 — 원본의 아트 영역만 보이게 잘라내는 클리핑 박스.
-   `variant="art"` 에서는 이 창이 카드 박스 전체가 된다(inset:0 인라인). */
+   `variant="art"` 에서는 이 창이 카드 박스 전체가 된다(inset:0 인라인) — 그때만 모서리를
+   물려받는다. `card` 변형의 내부 창까지 라운딩하면 필요 범위를 넘는다(독립 검증 minor-3). */
 .artWindow {
   position: absolute;
   display: block;
   overflow: hidden;
+}
+
+.artFill {
+  inset: 0;
   border-radius: inherit;
 }
 

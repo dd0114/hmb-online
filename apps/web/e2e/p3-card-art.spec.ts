@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { readFileSync, mkdirSync } from "node:fs";
 
 /**
@@ -25,11 +25,24 @@ const SEED: Array<{ id: string; name: string; position: string; grade: string }>
 
 const pick = (grade: string, n: number) => SEED.filter((p) => p.grade === grade).slice(0, n);
 
+/**
+ * **교차 매핑 선수** — 선수 포지션 ≠ 캐릭터 포지션. `data/players/player-chars.v1.json` 의
+ * `detail[].crossPosition` 이 true 인 유일한 항목(P012 Marco van Basten, 선수 FW ← penguin-king GK).
+ * 카드 아트에는 캐릭터 포지션(`GK`)이 **구워져** 있으므로, 이 선수를 표본에 넣지 않으면
+ * "뱃지를 선수 포지션으로 덮는다"는 계약이 **아무것도 검사하지 않는다**(독립 검증 major-1:
+ * 강화 테스트가 P001 GK↔GK 만 써서 교차 경로를 표본에 넣지도 않았다).
+ */
+const CROSS = SEED.find((p) => p.id === "P012")!;
+
 /** 전 등급이 한 번씩 나오게 — ④ 등급↔프레임 정합을 5종 다 태우기 위해. */
 const CATALOG = [
+  // 첫 항목을 교차 매핑 선수로 고정 — 강화/뱃지 계약이 이 선수를 태워야 의미가 있다.
+  CROSS,
   ...pick("LEGEND", 2), ...pick("DIA", 2), ...pick("GOLD", 2),
   ...pick("SILVER", 2), ...pick("BRONZE", 3),
-].map((p, i) => ({
+]
+  .filter((p, i, arr) => arr.findIndex((q) => q.id === p.id) === i)
+  .map((p, i) => ({
   id: p.id,
   name: p.name,
   position: p.position,
@@ -109,6 +122,18 @@ async function brokenImages(page: Page): Promise<string[]> {
       .filter((i) => i.getAttribute("src") && i.complete && i.naturalWidth === 0)
       .map((i) => i.getAttribute("src") ?? "?"),
   );
+}
+
+/**
+ * `variant="art"` 계약 — 프레임 이미지를 안 받고(빈 밴드 0) 종횡비가 **아트 박스**여야 한다.
+ * 종횡비까지 보는 이유: `showLabels={false}` 로 되돌리면 프레임이 다시 붙어 빈 띠가 살아나는데
+ * 그걸 프레임 개수만으로는 잡지만, 반대로 프레임만 안 그리고 카드 비율을 쓰는 실수는 못 잡는다.
+ * (독립 검증 major-2: 적용처 3곳 중 2곳이 무보호였다.)
+ */
+async function expectArtCrop(card: Locator) {
+  await expect(card.locator('img[data-art-layer="frame"]'), "아트 변형인데 프레임을 받는다(빈 밴드)").toHaveCount(0);
+  const b = (await card.boundingBox())!;
+  expect(b.width / b.height, `아트 종횡비가 아니다 (${b.width}×${b.height})`).toBeCloseTo(206 / 321, 2);
 }
 
 async function horizontalOverflow(page: Page): Promise<{ sw: number; cw: number }> {
@@ -238,6 +263,7 @@ test("덱: 선수를 누르면 유닛 정보(지시 레일)에 풀아트가 같�
   await expect(head).toBeVisible();
   await expect(head.locator('[data-testid^="full-art-"]')).toHaveCount(1);
   await expect(head.locator('[data-testid^="full-art-"]')).toHaveAttribute("data-art-kind", "full-art");
+  await expectArtCrop(head.locator('[data-testid^="full-art-"]'));
   await page.screenshot({ path: `${SHOTS}card-art-deck-rail.png`, fullPage: true });
 });
 
@@ -348,6 +374,7 @@ for (const st of TRADE_STATES) {
       `${st.key} 의 영입 대상에 풀아트가 없다 (호출부 3곳 중 하나가 미배선)`,
     ).toHaveCount(1);
     await expect(targetCard.locator('[data-testid^="full-art-"]')).toHaveAttribute("data-art-kind", "full-art");
+    await expectArtCrop(targetCard.locator('[data-testid^="full-art-"]'));
 
     if (st.withDemand) {
       const demandCard = page.getByTestId("trade-slot-1-demand");
@@ -387,6 +414,20 @@ for (const [label, path] of [["도감", "/codex"], ["육성허브", "/growth"]] 
     // 아트만 쓰는 자리 = 프레임 이미지를 안 받는다(빈 밴드가 생기지 않는다는 뜻).
     await expect(card.locator('img[data-art-layer="frame"]')).toHaveCount(0);
     await expect(card.locator('img[data-art-layer="art"]')).toHaveCount(1);
+    await expectArtCrop(card);
+
+    /*
+     * 구워진 포지션 뱃지 덮기 — 표본이 **교차 매핑 선수**(선수 FW ← 캐릭터 GK)라
+     * 여기서 `GK` 가 보이면 캐릭터 것이 새어나온 것이다. 좌표까지 본다: 아트 변형은
+     * 컨테이너가 아트 박스라 카드 기준 좌표(`L.badge`)를 쓰면 우하단으로 밀려 구워진
+     * 뱃지를 못 덮는다 — 그 실수를 텍스트만으로는 못 잡는다.
+     */
+    const badge = card.locator('[class*="badge"]');
+    await expect(badge, "뱃지가 선수 포지션이 아니다(캐릭터 것이 노출됐다)").toHaveText(target.position);
+    const bb = (await badge.boundingBox())!;
+    const cb = (await card.boundingBox())!;
+    expect(bb.x - cb.x, "뱃지가 아트 좌상단에 붙지 않았다(카드 기준 좌표를 쓰고 있다)").toBeLessThanOrEqual(0.5);
+    expect(bb.y - cb.y, "뱃지가 아트 좌상단에 붙지 않았다").toBeLessThanOrEqual(0.5);
     expect(await brokenImages(page)).toEqual([]);
     await page.screenshot({ path: `${SHOTS}card-art-growth-${path.slice(1)}.png`, fullPage: true });
   });
