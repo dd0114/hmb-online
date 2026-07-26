@@ -144,32 +144,32 @@
     },
     "eventStatMap": {
       "goal": {
-        "shooting": 3,
-        "positioning": 1
+        "shooting": 0.3,
+        "positioning": 0.1
       },
       "shot": {
-        "shooting": 2,
-        "positioning": 1
+        "shooting": 0.2,
+        "positioning": 0.1
       },
       "pass": {
-        "passing": 2,
-        "technical": 1
+        "passing": 0.2,
+        "technical": 0.1
       },
       "interception": {
-        "tackling": 2,
-        "positioning": 1
+        "tackling": 0.2,
+        "positioning": 0.1
       },
       "tackle": {
-        "tackling": 2,
-        "physical": 1
+        "tackling": 0.2,
+        "physical": 0.1
       },
       "save": {
-        "positioning": 3,
-        "mental": 1
+        "positioning": 0.3,
+        "mental": 0.1
       },
       "dribble": {
-        "pace": 2,
-        "technical": 1
+        "pace": 0.2,
+        "technical": 0.1
       }
     }
   },
@@ -717,30 +717,6 @@
           "value": 4,
           "weight": 10,
           "premium": true
-        },
-        {
-          "type": "CONDITION_RECOVERY",
-          "value": 2,
-          "weight": 70,
-          "premium": false
-        },
-        {
-          "type": "CONDITION_RECOVERY",
-          "value": 4,
-          "weight": 30,
-          "premium": true
-        },
-        {
-          "type": "TEAM_MORALE",
-          "value": 2,
-          "weight": 70,
-          "premium": false
-        },
-        {
-          "type": "TEAM_MORALE",
-          "value": 4,
-          "weight": 30,
-          "premium": true
         }
       ],
       "EPIC": [
@@ -1247,30 +1223,6 @@
           "value": 8,
           "weight": 10,
           "premium": true
-        },
-        {
-          "type": "CONDITION_RECOVERY",
-          "value": 5,
-          "weight": 70,
-          "premium": false
-        },
-        {
-          "type": "CONDITION_RECOVERY",
-          "value": 8,
-          "weight": 30,
-          "premium": true
-        },
-        {
-          "type": "TEAM_MORALE",
-          "value": 5,
-          "weight": 70,
-          "premium": false
-        },
-        {
-          "type": "TEAM_MORALE",
-          "value": 8,
-          "weight": 30,
-          "premium": true
         }
       ],
       "UNIQUE": [
@@ -1776,30 +1728,6 @@
           "stat": "positioning",
           "value": 15,
           "weight": 10,
-          "premium": true
-        },
-        {
-          "type": "CONDITION_RECOVERY",
-          "value": 9,
-          "weight": 70,
-          "premium": false
-        },
-        {
-          "type": "CONDITION_RECOVERY",
-          "value": 15,
-          "weight": 30,
-          "premium": true
-        },
-        {
-          "type": "TEAM_MORALE",
-          "value": 9,
-          "weight": 70,
-          "premium": false
-        },
-        {
-          "type": "TEAM_MORALE",
-          "value": 15,
-          "weight": 30,
           "premium": true
         }
       ]

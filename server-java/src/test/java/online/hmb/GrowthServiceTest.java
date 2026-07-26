@@ -114,7 +114,7 @@ class GrowthServiceTest extends MatchTestBase {
     @Test
     void capMatrix_bronze2Star_rareOneLine() {
         String userId = onboard("g_cap_bronze");
-        setCount(userId, "P001", 2);
+        setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         growthService.starUp(userId, "P001"); // 1★→2★
         Map<String, Object> card = growthService.cardEffective(userId, "P001");
         Map<?, ?> potential = (Map<?, ?>) card.get("potential");
@@ -196,7 +196,7 @@ class GrowthServiceTest extends MatchTestBase {
     @Test
     void diceInsufficientDiceRejected() {
         String userId = onboard("g_dice_nodice");
-        setCount(userId, "P001", 2);
+        setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         growthService.starUp(userId, "P001");
         assertThat(catchStatus(() -> growthService.dice(userId, "P001", "NORMAL")))
                 .isEqualTo("INSUFFICIENT_DICE");
@@ -205,7 +205,7 @@ class GrowthServiceTest extends MatchTestBase {
     @Test
     void diceConsumesOneDiceAndPersistsLines() {
         String userId = onboard("g_dice_ok");
-        setCount(userId, "P001", 2);
+        setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         growthService.starUp(userId, "P001");
         setUserDice(userId, 3, 0);
 
@@ -350,7 +350,7 @@ class GrowthServiceTest extends MatchTestBase {
                 "P006", "P007", "P008", "P009", "P010", "P011");
         List<String> bench = List.of("P012", "P013");
 
-        growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of());
+        growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of(), true);
         long applied1 = appliedCount(matchId);
         int starterLvSum1 = statLvSum(userId, "P001");
         int benchLvSum1 = statLvSum(userId, "P012");
@@ -361,7 +361,7 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(starterLvSum1).isGreaterThanOrEqualTo(0);
 
         // 재정산 → growth_applied 중복 무시(멱등), 상태 변화 없음.
-        growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of());
+        growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of(), true);
         assertThat(appliedCount(matchId)).isEqualTo(13);
         assertThat(statLvSum(userId, "P001")).isEqualTo(starterLvSum1);
         assertThat(statLvSum(userId, "P012")).isEqualTo(0);
@@ -375,7 +375,7 @@ class GrowthServiceTest extends MatchTestBase {
         forceState(matchId, "FINISHED");
         List<String> starters = List.of("P001", "P002", "P003", "P004", "P005",
                 "P006", "P007", "P008", "P009", "P010", "P011");
-        growthService.settleMatch(matchId, userId, starters, List.of(), Set.of(), Set.of());
+        growthService.settleMatch(matchId, userId, starters, List.of(), Set.of(), Set.of(), true);
 
         Map<String, Object> report = growthService.growthReport(userId, matchId);
         assertThat(report.get("matchId")).isEqualTo(matchId);
@@ -497,6 +497,80 @@ class GrowthServiceTest extends MatchTestBase {
                         """)
                 .params(userId, playerId, tier, linesJson, rolls, java.time.Instant.now().toString())
                 .update();
+    }
+
+    // ── B1/B2 회귀 (#179 gverify blocker) ───────────────────────────────
+
+    @Test
+    void starUpNeverConsumesOriginalCard_b1Boundary() {
+        String userId = onboard("g_b1");
+        // 여분 1장뿐(총 2) → 승급 거절(필요 여분 2), have = 여분 수(1)로 보고.
+        setCount(userId, "P001", 2);
+        assertThat(catchStatus(() -> growthService.starUp(userId, "P001")))
+                .isEqualTo("INSUFFICIENT_MATERIALS");
+        // 딱 필요한 여분(2) + 원본 1 = 총 3 → 승급 성공, 원본 1장은 남는다(카드 소실 금지).
+        setCount(userId, "P001", 3);
+        Map<String, Object> res = growthService.starUp(userId, "P001");
+        assertThat(res.get("star")).isEqualTo(2);
+        assertThat(countOf(userId, "P001")).isEqualTo(1); // owned 유지 — 목록·덱에서 사라지지 않음
+    }
+
+    @Test
+    void settleMatchIgnoresOpponentSideEvents_b2() {
+        String userId = onboard("g_b2");
+        String matchId = "gb2-match";
+        // 봇 로스터가 같은 카탈로그를 쓰므로 playerId 가 겹친다 — away 이벤트는 귀속되면 안 된다.
+        StringBuilder events = new StringBuilder();
+        events.append("{\"type\":\"save\",\"playerId\":\"P001\",\"team\":\"home\",\"tick\":1}");
+        for (int i = 0; i < 100; i++) {
+            events.append(",{\"type\":\"goal\",\"playerId\":\"P001\",\"team\":\"away\",\"tick\":").append(i + 2).append("}");
+        }
+        String log = "{\"events\":[" + events + "]}";
+        jdbcClient.sql("""
+                        INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version, user_deck_json, created_at)
+                        VALUES (?, ?, 'BOT_BAL', 'FINISHED', 's', 'v', '{}', ?)
+                        """)
+                .params(matchId, userId, java.time.Instant.now().toString()).update();
+        jdbcClient.sql("""
+                        INSERT INTO match_halves(match_id, half, select_data_json, home_input_json,
+                            away_input_json, half_seed, match_log_json, last_hash)
+                        VALUES (?, 1, '{}', '{}', '{}', 's1', ?, 'h')
+                        """)
+                .params(matchId, log).update();
+
+        growthService.settleMatch(matchId, userId, List.of("P001"), List.of(), Set.of(), Set.of(), true);
+
+        Map<String, GrowthService.StatLevelState> levels = statLevelsOf(userId, "P001");
+        // away 골 100개가 귀속됐다면 shooting xp 가 폭증한다(이벤트당 0.3 × 100 × xpBase).
+        // 필터가 작동하면 shooting 은 baseline-only — save(home) 보정을 받은 positioning 보다 작아야 한다.
+        long shootingXp = cumulativeOf(levels.get("shooting"));
+        long positioningXp = cumulativeOf(levels.get("positioning"));
+        assertThat(positioningXp).isGreaterThan(shootingXp);
+        assertThat(shootingXp).isLessThan(100); // baseline 스케일(오귀속 시 수백 이상)
+    }
+
+    private Map<String, GrowthService.StatLevelState> statLevelsOf(String userId, String playerId) {
+        String json = jdbcClient.sql("SELECT stat_levels_json FROM user_players WHERE user_id=? AND player_id=?")
+                .params(userId, playerId).query(String.class).single();
+        try {
+            var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+            Map<String, GrowthService.StatLevelState> out = new java.util.LinkedHashMap<>();
+            node.fields().forEachRemaining(e -> out.put(e.getKey(),
+                    new GrowthService.StatLevelState(e.getValue().path("lv").asInt(), e.getValue().path("xp").asInt())));
+            return out;
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** 테스트 근사 누적 xp — 레벨 임계(fixture xpLvBase=100, growth=1.7)를 그대로 재현. */
+    private long cumulativeOf(GrowthService.StatLevelState s) {
+        long total = s == null ? 0 : s.xp();
+        int lv = s == null ? 0 : s.lv();
+        for (int n = 0; n < lv; n++) {
+            total += Math.round(100 * Math.pow(1.7, n));
+        }
+        return total;
     }
 
     private void setUserDice(String userId, int normal, int cash) {
