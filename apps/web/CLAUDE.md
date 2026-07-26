@@ -72,6 +72,21 @@
 - ⚠️ **모바일 하단 독의 카드 크기(`railCompact`)는 #106 R3a 세로 예산과 묶여 있다** — 키우면
   `e2e/deck-teamsheet.spec.ts` 가 깨진다(리스트가 덮인다). 숫자만 올리지 말 것.
 
+## 스타터/온보딩 (#209)
+
+| 자리 | 컴포넌트 | 비고 |
+|---|---|---|
+| 뽑기 결과 카드 1장 | `common/RevealCard` | GachaReveal 에서 **추출**(#209) — 뒤집기·풀아트·NEW 뱃지 |
+| 가입 지급 연출 | `auth/StarterReveal` | 같은 `RevealCard` 를 쓴다(모양이 갈라지지 않게) |
+
+- 가입 직후 `GET /api/me/starter-grant` 로 **최상위 유닛 1장**을 받아 덮인 카드로 연출한다.
+  지급이 없으면(구 계정·조회 실패) 카드 없이 문구만 — **연출이 없다고 가입 동선이 막히면 안 된다.**
+- 튜토리얼 완료/건너뛰기 저장은 `persistTutorialDone` **한 곳**이 `POST /api/me/tutorial-complete` 를 친다.
+  이 호출이 서버에서 **덱 지급**을 트리거하므로 TutorialProvider 가 `["deck"]`·`["me"]` 캐시를 무효화한다
+  (안 하면 유저가 빈 덱 화면에 남는다). 완료 SoT 는 이제 서버(`user.tutorialDone`), localStorage 는 폴백.
+- ‘다시 보기’는 **로컬만** 되돌린다 — 서버 플래그를 false 로 되돌리는 경로를 만들면 지급 경로를 반복해
+  두드리는 문이 된다. 계약 = `e2e/p4-starter-onboarding.spec.ts` + `src/auth/StarterReveal.test.ts`.
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - **e2e 전체 실행 금지** — `league-season`·`match-flow`·`w3-viewer-smoke` 는 :8080 라이브 데모에 붙는다.

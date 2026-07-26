@@ -1,0 +1,84 @@
+/* 가입 최상위 지급 연출 (#209 AC3). 카드 자체의 뒤집기는 common/RevealCard 가 그린다. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  z-index: 10;
+}
+
+.sheet {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  width: 100%;
+  max-width: 360px;
+  max-height: 90vh;
+  overflow-y: auto;
+  text-align: center;
+}
+
+.title {
+  margin: 0 0 4px;
+  font-size: 17px;
+}
+
+.lead {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 카드 자리 — 폭은 RevealCard 가 토큰(FULL_ART_SIZES)에서 인라인으로 준다. */
+.stage {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+/* 공개 전 "탭해서 확인" 안내. 공개 후에는 카드가 말을 하므로 사라진다. */
+.hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.grant {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.grantName {
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.primary {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* 폰(390) — 시트 패딩을 줄여 카드(detail 132px)와 문구가 한 화면에 들어오게. */
+@media (max-width: 430px) {
+  .overlay {
+    padding: 10px;
+  }
+  .sheet {
+    padding: 14px 12px;
+  }
+}

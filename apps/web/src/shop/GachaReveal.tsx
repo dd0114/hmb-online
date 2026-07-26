@@ -1,9 +1,7 @@
 import { useState } from "react";
 import type { GachaResponse } from "../api/hooks";
 import { Modal } from "../common/Modal";
-import { GRADE_LABELS, isHighGrade } from "../common/grades";
-import { FullArtCard } from "../common/FullArtCard";
-import { fullArtWidth } from "../common/full-art";
+import { RevealCard } from "../common/RevealCard";
 import {
   initialReveal,
   isAllRevealed,
@@ -50,52 +48,22 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
       </h2>
 
         <div className={styles.grid}>
-          {response.results.map((item, i) => {
-            const revealed = isCardRevealed(state, i);
-            const grade = item.player.grade;
-            const high = isHighGrade(grade);
-            return (
-              <button
-                key={`${item.player.id}-${i}`}
-                type="button"
-                className={[
-                  styles.card,
-                  revealed ? styles.flipped : "",
-                  revealed && high ? styles.high : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                /* 셀 폭 = 카드 폭. 토큰이 유일한 출처라 CSS 에 픽셀을 또 적지 않는다. */
-                style={{ width: fullArtWidth("grid") }}
-                data-testid={`gacha-card-${i}`}
-                data-revealed={revealed ? "true" : "false"}
-                aria-label={
-                  revealed
-                    ? `${item.player.name} · ${item.player.position} · ${GRADE_LABELS[grade]}${item.isNew ? " · 신규" : ""}`
-                    : "카드 공개"
-                }
-                onClick={handleAdvance}
-              >
-                <span className={styles.cardInner}>
-                  <span className={styles.cardBack}>?</span>
-                  <span className={styles.cardFace}>
-                    {item.isNew && <span className={styles.newBadge}>NEW</span>}
-                    {/* 공개된 카드만 그린다 — 뒷면 상태에서 미리 새지 않게(이미지 요청도 안 나간다). */}
-                    {revealed && (
-                      <FullArtCard
-                        playerId={item.player.id}
-                        name={item.player.name}
-                        grade={grade}
-                        position={item.player.position}
-                        size="grid"
-                        className={styles.cardFaceArt}
-                      />
-                    )}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
+          {response.results.map((item, i) => (
+            /* 카드 1장의 뒤집기·풀아트·NEW 뱃지는 공용 RevealCard 가 그린다(#209 로 추출 —
+               가입 최상위 지급 연출과 같은 컴포넌트를 쓴다). 여기 남은 것은 그리드와 진행 제어뿐. */
+            <RevealCard
+              key={`${item.player.id}-${i}`}
+              playerId={item.player.id}
+              name={item.player.name}
+              grade={item.player.grade}
+              position={item.player.position}
+              revealed={isCardRevealed(state, i)}
+              isNew={item.isNew}
+              size="grid"
+              testId={`gacha-card-${i}`}
+              onClick={handleAdvance}
+            />
+          ))}
         </div>
 
         <div className={styles.actions}>

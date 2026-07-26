@@ -12,8 +12,10 @@ import {
   providerMeta,
 } from "./login-flow";
 import type { AuthProviderId } from "./login-flow";
-import { LOCAL_PROVIDER } from "../api/p3";
+import { LOCAL_PROVIDER, STARTER_GRANT_PATH } from "../api/p3";
+import type { StarterGrantResponse } from "../api/p3";
 import { LocalAuthPanel } from "./LocalAuthPanel";
+import { StarterReveal } from "./StarterReveal";
 import { markTutorialPending } from "../common/tutorial-storage";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
@@ -36,6 +38,8 @@ export function LoginPage() {
   const [serverError, setServerError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [starterPackOpen, setStarterPackOpen] = useState(false);
+  /** 가입 지급된 최상위 유닛(#209). undefined = 아직 로딩, null = 없음(연출 생략). */
+  const [starterGrant, setStarterGrant] = useState<StarterGrantResponse | null | undefined>(undefined);
   const { login } = useToken();
   const navigate = useNavigate();
 
@@ -64,6 +68,11 @@ export function LoginPage() {
       // 완료/건너뛰기 저장은 TutorialProvider 가 한다(여기서는 신호만).
       markTutorialPending();
       setStarterPackOpen(true);
+      // 최상위 지급 카드를 읽어 온다(#209 AC3). 실패해도 연출만 빠지고 가입 동선은 그대로 —
+      // 지급 자체는 서버 트랜잭션에서 이미 끝났다.
+      apiFetch<StarterGrantResponse>(STARTER_GRANT_PATH)
+        .then(setStarterGrant)
+        .catch(() => setStarterGrant(null));
     } else {
       navigate("/lobby", { replace: true });
     }
@@ -223,19 +232,10 @@ export function LoginPage() {
         </Modal>
       )}
 
+      {/* #209: 지급의 하이라이트가 최상위 유닛 1장이 되면서 텍스트 모달 → 카드 리빌로 바뀌었다.
+          지급 내역은 서버가 박제한 값을 읽는다(계산 아님) — 못 읽으면 카드 없이 문구만 뜬다. */}
       {starterPackOpen && (
-        <Modal
-          onClose={handleStarterPackConfirm}
-          labelledBy="starter-pack-title"
-          overlayClassName={styles.modalOverlay}
-          className={styles.modal}
-        >
-          <h2 id="starter-pack-title">스타터 팩 지급</h2>
-          <p>신규 감독님을 환영합니다! 선수 14명과 3,000P가 지급되었습니다.</p>
-          <button type="button" className={styles.submit} onClick={handleStarterPackConfirm}>
-            확인
-          </button>
-        </Modal>
+        <StarterReveal grant={starterGrant} onClose={handleStarterPackConfirm} />
       )}
     </div>
   );

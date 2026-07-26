@@ -155,3 +155,31 @@ export interface LeagueResponseP3 {
   season?: (LeagueSeason & { seasonReward?: LeagueSeasonReward | null }) | null;
   seasonReward?: LeagueSeasonReward | null;
 }
+
+/* ───────────────── F. 스타터/온보딩 개편 (이슈 #209) ───────────────── */
+
+/**
+ * ✅ 서버 구현 대조 완료 (`server-java/.../meta/OnboardingController.java` · `OnboardingService.java`).
+ *
+ * 가입 지급이 "고정 14장"에서 **기본팩(SILVER/BRONZE) + 최상위 4중 1**(시드 결정론)로 바뀌었고,
+ * 덱은 가입이 아니라 **튜토리얼 완료 시점**에 지급된다. 최상위 후보 목록은 서버 코드가 아니라
+ * data 발행물(`economy.starterTop`)이라 #207 랜딩 시 데이터만 갈아끼운다 — 클라는 결과만 받는다.
+ */
+export const STARTER_GRANT_PATH = "/api/me/starter-grant";
+export const TUTORIAL_COMPLETE_PATH = "/api/me/tutorial-complete";
+
+/**
+ * GET /api/me/starter-grant — 가입 때 받은 최상위 유닛(연출 재료).
+ * 개편 이전에 가입한 계정은 `granted=false, player=null` 이다 — 그때는 연출을 생략한다.
+ *
+ * ⚠️ 이 §F 의 두 타입은 **손으로 적지 않는다** — openapi.yaml 에 스키마를 실었으므로
+ * 생성물(`schema.d.ts`)에서 그대로 가져온다(계약 드리프트 0).
+ */
+export type StarterGrantResponse = components["schemas"]["StarterGrantResponse"];
+
+/**
+ * POST /api/me/tutorial-complete — 완료/건너뛰기 저장(멱등).
+ * `deckGranted` 는 **이번 호출이 실제로 덱을 만들었는지**다. 이미 덱이 있으면 false 이고
+ * 서버는 기존 덱을 절대 덮어쓰지 않는다.
+ */
+export type TutorialCompleteResponse = components["schemas"]["TutorialCompleteResponse"];

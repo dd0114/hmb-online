@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { useMe } from "../api/hooks";
 import type { MeResponseP3 } from "../api/p3";
@@ -62,6 +63,7 @@ export function TutorialProvider({
 }) {
   const { token } = useToken();
   const location = useLocation();
+  const queryClient = useQueryClient();
   const me = useMe();
   const meData = me.data as MeResponseP3 | undefined;
   // `user` 까지 옵셔널로 읽는다 — /api/me 가 (목킹·부분 실패로) user 없이 오면
@@ -227,10 +229,18 @@ export function TutorialProvider({
    */
   const persistIfOwner = useCallback(() => {
     if (ownerUserId.current !== null && ownerUserId.current === userId) {
-      persistTutorialDone(userId);
+      // #209: 이 저장이 서버에서 **덱 지급**을 트리거한다(멱등). 지급이 실제로 일어났으면
+      // 덱 캐시를 무효화해야 유저가 덱 화면에서 빈 상태를 보지 않는다. tutorialDone 이
+      // 바뀌었으므로 me 도 함께 갱신한다(재진입 시 튜토리얼 재노출 방지의 서버 축).
+      void persistTutorialDone(userId).then((res) => {
+        queryClient.invalidateQueries({ queryKey: ["me"] });
+        if (res?.deckGranted) {
+          queryClient.invalidateQueries({ queryKey: ["deck"] });
+        }
+      });
     }
     resetSession();
-  }, [userId, resetSession]);
+  }, [userId, resetSession, queryClient]);
 
   /**
    * **유저가 스스로 그만둠**(건너뛰기·ESC) — 본인이 온보딩 전체를 거절한 것이므로

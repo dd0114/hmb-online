@@ -11,6 +11,7 @@
  */
 import { createElement as h } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TutorialStep } from "./tutorial-steps";
@@ -98,8 +99,18 @@ function Nav() {
   );
 }
 
+/**
+ * #209: 완료 저장이 서버 왕복(POST /api/me/tutorial-complete)을 트리거하고, 프로바이더가 그
+ * 결과로 덱/me 캐시를 무효화한다 → QueryClientProvider 가 필요하다. 여기서는 네트워크를
+ * 스텁하고(아래 beforeEach) 캐시는 매 테스트 새로 만든다(테스트 간 누수 0).
+ */
+let queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
 function tree(steps: TutorialStep[], extra: ReturnType<typeof h>[], missingGraceMs = 0) {
   return h(
+    QueryClientProvider,
+    { client: queryClient },
+    h(
     MemoryRouter,
     { initialEntries: ["/lobby"] },
     h(
@@ -110,6 +121,7 @@ function tree(steps: TutorialStep[], extra: ReturnType<typeof h>[], missingGrace
       h("button", { type: "button", "data-testid": "t3" }, "대상3"),
       h(Nav, { key: "nav" }),
       ...extra,
+    ),
     ),
   );
 }
@@ -149,6 +161,13 @@ function returnToLobby() {
 }
 
 beforeEach(() => {
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // 완료 저장의 서버 왕복(#209)은 여기서 성공 응답으로 스텁한다 — 이 파일의 주제는
+  // 상태 기계라 네트워크가 개입하면 안 된다(덱 지급 계약 자체는 서버 테스트·e2e 가 본다).
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(
+    JSON.stringify({ tutorialDone: true, deckGranted: false, deck: null }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  )));
   localStorage.clear();
   clearTutorialPending();
   fx.token = "t";

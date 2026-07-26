@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 /**
- * 튜토리얼 완료 저장 (PRD-v4 §B AC-B1) — **userId 별 격리**와 재노출 0.
- * 서버 필드(user.tutorialDone) 발행 전까지 localStorage 가 폴백 SoT 다(TODO(openapi-v3)).
+ * 튜토리얼 완료 저장 (PRD-v4 §B AC-B1 · #209) — **userId 별 격리**와 재노출 0,
+ * 그리고 저장이 서버(POST /api/me/tutorial-complete)까지 간다는 것. 서버가 SoT 이고
+ * localStorage 는 왕복이 실패한 세션을 위한 폴백이다.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearTutorialPending,
   markTutorialPending,
@@ -15,9 +16,45 @@ import {
 } from "./tutorial-storage";
 import { shouldStartTutorial } from "./tutorial-logic";
 
+let fetchMock: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
   localStorage.clear();
   clearTutorialPending();
+  fetchMock = vi.fn(async () => new Response(
+    JSON.stringify({ tutorialDone: true, deckGranted: true, deck: null }),
+    { status: 200, headers: { "Content-Type": "application/json" } },
+  ));
+  vi.stubGlobal("fetch", fetchMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe("서버 저장 (#209)", () => {
+  it("완료 저장이 POST /api/me/tutorial-complete 를 친다 — 덱 지급의 트리거", async () => {
+    const res = await persistTutorialDone("u1");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as [string, RequestInit];
+    expect(String(url)).toContain("/api/me/tutorial-complete");
+    expect(init.method).toBe("POST");
+    expect(res).toEqual({ tutorialDone: true, deckGranted: true, deck: null });
+  });
+
+  it("서버 왕복이 실패해도 로컬 폴백은 남고 예외를 던지지 않는다", async () => {
+    fetchMock.mockRejectedValueOnce(new Error("offline"));
+
+    await expect(persistTutorialDone("u1")).resolves.toBeNull();
+    expect(readLocalDone("u1")).toBe(true);
+  });
+
+  it("다시 보기는 서버 플래그를 되돌리지 않는다 — 지급 경로를 두드릴 문을 만들지 않는다", () => {
+    resetTutorialDone("u1");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readLocalDone("u1")).toBe(false);
+  });
 });
 
 describe("tutorialDoneKey", () => {

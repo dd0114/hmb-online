@@ -35,74 +35,8 @@
   gap: 9px;
 }
 
-.card {
-  perspective: 600px;
-  background: none;
-  border: none;
-  padding: 0;
-  /* 세로는 카드 비율이 정한다 — 고정 px 를 두면 풀아트가 잘린다. */
-  aspect-ratio: 226 / 425;
-  border-radius: 4px;
-}
-
-.cardInner {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: 100%;
-  transform-style: preserve-3d;
-  transition: transform 0.45s ease;
-}
-
-.flipped .cardInner {
-  transform: rotateY(180deg);
-}
-
-.cardBack,
-.cardFace {
-  position: absolute;
-  inset: 0;
-  backface-visibility: hidden;
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-}
-
-.cardBack {
-  background: #232838;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: 22px;
-  font-weight: 700;
-}
-
-.cardFace {
-  transform: rotateY(180deg);
-  /* 배경·테두리는 카드 프레임 에셋이 갖는다(등급색) — 여기서 또 두르면 이중 테두리가 된다. */
-  background: none;
-  border: none;
-  padding: 0;
-}
-
-/* 골드↑ 하이라이트(AC-W3). 등급색 링(#187 D4)은 카드 자체가 갖고, 이건 그 바깥의 임팩트 층이다. */
-.high {
-  box-shadow: 0 0 18px 3px rgba(242, 199, 68, 0.5);
-}
-
-.newBadge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--accent-contrast);
-  background: var(--accent);
-  border-radius: 4px;
-  padding: 1px 4px;
-}
+/* 카드 1장의 뒤집기·앞뒷면·NEW 뱃지·하이라이트는 공용 `common/RevealCard.module.css` 로
+   옮겼다(#209 — 가입 최상위 지급 연출과 공유). 여기에는 시트·그리드·액션 바만 남는다. */
 
 /*
  * 액션 바는 **시트 바닥에 고정**한다 (#187).
@@ -165,10 +99,4 @@
   .sheet {
     padding: 14px 12px;
   }
-}
-
-/* 풀아트 카드가 뒤집힌 면을 꽉 채운다 (#187). 이름·등급은 카드 안 밴드에 있다. */
-.cardFaceArt {
-  position: absolute;
-  inset: 0;
 }

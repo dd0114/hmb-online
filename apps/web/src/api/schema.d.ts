@@ -59,6 +59,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/starter-grant": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 가입 시 지급된 **최상위 유닛**(#209 AC1/AC3). 후보 목록은 서버 코드가 아니라 data 발행물
+         *     (economy.starterTop.pool)이고, 실제 지급은 가입 트랜잭션이 starter_grants 에 박제한다 —
+         *     이 엔드포인트는 그 박제를 읽을 뿐 재계산하지 않는다(목록이 바뀌어도 과거 지급이 안 흔들린다).
+         *     개편 이전 가입 계정은 granted=false.
+         */
+        get: operations["getStarterGrant"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/tutorial-complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 온보딩 튜토리얼 완료/건너뛰기 저장(#209 AC2). **멱등** — 몇 번을 불러도 덱은 한 번만 생긴다.
+         *     활성 덱이 없으면 보유 카드로 기본 덱을 지급하고(deckGranted=true), 이미 있으면 절대
+         *     덮어쓰지 않는다(deckGranted=false). 건너뛰기도 같은 경로다(덱 없이는 경기가 불가능하므로).
+         */
+        post: operations["completeTutorial"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me/matches": {
         parameters: {
             query?: never;
@@ -705,6 +748,13 @@ export interface components {
              *     실제 접근 차단은 서버의 /api/admin/** 게이트가 한다.
              */
             isAdmin?: boolean;
+            /**
+             * @description #209 additive(선택 필드 — required 불변). GET /api/me 응답에만 담긴다.
+             *     온보딩 튜토리얼 완료 여부의 **서버 SoT**(그 전까지는 클라 localStorage 폴백뿐이었다).
+             *     덱 지급이 완료 시점에 매달리므로 권위가 서버에 있어야 한다 — 저장은
+             *     POST /api/me/tutorial-complete 만 한다.
+             */
+            tutorialDone?: boolean;
         };
         LoginResponse: {
             /** @description 불투명 세션 토큰(Bearer로 사용) */
@@ -725,6 +775,17 @@ export interface components {
             user: components["schemas"]["UserRef"];
             wallet: components["schemas"]["WalletInfo"];
             records: components["schemas"]["MatchRecordSummary"];
+        };
+        /** @description #209 — 가입 지급된 최상위 유닛(연출 재료). 지급이 없으면 granted=false, player=null */
+        StarterGrantResponse: {
+            granted: boolean;
+            player: components["schemas"]["CatalogPlayer"] | null;
+        };
+        /** @description #209 — 튜토리얼 완료 저장 결과. deckGranted = 이번 호출이 실제로 덱을 만들었는가(멱등) */
+        TutorialCompleteResponse: {
+            tutorialDone: boolean;
+            deckGranted: boolean;
+            deck: components["schemas"]["Deck"] | null;
         };
         MatchListItem: {
             /** @description P2 additive — 유저 관점 오리엔트 키(연습=true, 리그 어웨이=false). scoreHome/Away는 픽스처 관점 유지 */
@@ -1468,6 +1529,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getStarterGrant: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StarterGrantResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    completeTutorial: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TutorialCompleteResponse"];
                 };
             };
             401: components["responses"]["Unauthorized"];
