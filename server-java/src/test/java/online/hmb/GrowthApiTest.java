@@ -126,14 +126,81 @@ class GrowthApiTest extends MatchTestBase {
         assertThat(res.getBody().get("code")).isEqualTo("INSUFFICIENT_DICE");
     }
 
+    // V2.2 재화 이원화: 캐시 다이스는 젬 전용 결제. 신규 유저는 젬 0 → INSUFFICIENT_GEMS.
     @SuppressWarnings("unchecked")
     @Test
-    void shopDiceInsufficientPointsRejected() {
+    void shopDiceCashInsufficientGemsRejected() {
         String token = login("api_dice_poor");
-        // 캐시 다이스 1개 = 5000P > 스타터 3000P.
         ResponseEntity<Map> res = authPost("/api/shop/dice", token, Map.of("kind", "CASH", "count", 1), Map.class);
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(res.getBody().get("code")).isEqualTo("INSUFFICIENT_POINTS");
+        assertThat(res.getBody().get("code")).isEqualTo("INSUFFICIENT_GEMS");
+    }
+
+    // 캐시 다이스 구매 = 젬 차감(gem_ledger, reason='dice'). 팩p2=330젬 충전 후 1개(10젬) 구매.
+    @SuppressWarnings("unchecked")
+    @Test
+    void shopDiceCashPurchaseDeductsGems() {
+        String token = login("api_dice_cash");
+        ResponseEntity<Map> topup = authPost("/api/shop/gems/topup", token, Map.of("packId", "p2"), Map.class);
+        assertThat(topup.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(topup.getBody().get("granted")).isEqualTo(330);
+        assertThat(((Map<?, ?>) topup.getBody().get("wallet")).get("gems")).isEqualTo(330);
+
+        ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "CASH", "count", 1), Map.class);
+        assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Map<?, ?>) buy.getBody().get("dice")).get("cash")).isEqualTo(1);
+        Map<?, ?> wallet = (Map<?, ?>) buy.getBody().get("wallet");
+        assertThat(wallet.get("gems")).isEqualTo(320); // 330 - 10(cashGemCost)
+        assertThat(wallet.get("points")).isEqualTo(3000); // 노말 다이스 미구매 — P 무변경(초기값 유지)
+    }
+
+    // 노말 다이스 구매는 여전히 P 결제 — CASH 결제(젬)와 분리 확인.
+    @SuppressWarnings("unchecked")
+    @Test
+    void shopDiceNormalPurchaseStillDeductsPoints() {
+        String token = login("api_dice_norm");
+        ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "NORMAL", "count", 1), Map.class);
+        assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> wallet = (Map<?, ?>) buy.getBody().get("wallet");
+        assertThat(wallet.get("points")).isEqualTo(2500); // 3000 - 500(normalCost)
+        assertThat(wallet.get("gems")).isEqualTo(0);
+    }
+
+    // 충전(목업) — 매 호출 신규 지급(멱등 아님, 스펙 §V2.2). 존재하지 않는 팩은 4xx.
+    @SuppressWarnings("unchecked")
+    @Test
+    void gemsTopupGrantsEveryCallAndRejectsUnknownPack() {
+        String token = login("api_gems_topup");
+        ResponseEntity<Map> first = authPost("/api/shop/gems/topup", token, Map.of("packId", "p1"), Map.class);
+        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(first.getBody().get("granted")).isEqualTo(60);
+        assertThat(((Map<?, ?>) first.getBody().get("wallet")).get("gems")).isEqualTo(60);
+
+        // 같은 packId 재호출 — 멱등 아님, 매번 신규 지급(스펙 확정).
+        ResponseEntity<Map> second = authPost("/api/shop/gems/topup", token, Map.of("packId", "p1"), Map.class);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(((Map<?, ?>) second.getBody().get("wallet")).get("gems")).isEqualTo(120);
+
+        ResponseEntity<Map> unknown = authPost("/api/shop/gems/topup", token, Map.of("packId", "nope"), Map.class);
+        assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    // /api/me 지갑에 gems additive — 기존 points 는 무변경.
+    @SuppressWarnings("unchecked")
+    @Test
+    void meExposesGemsAdditive() {
+        String token = login("api_me_gems");
+        ResponseEntity<Map> me = authGet("/api/me", token, Map.class);
+        assertThat(me.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<?, ?> wallet = (Map<?, ?>) me.getBody().get("wallet");
+        assertThat(((Number) wallet.get("points")).longValue()).isEqualTo(3000L);
+        assertThat(((Number) wallet.get("gems")).longValue()).isZero();
+
+        authPost("/api/shop/gems/topup", token, Map.of("packId", "p3"), Map.class);
+        ResponseEntity<Map> after = authGet("/api/me", token, Map.class);
+        Map<?, ?> walletAfter = (Map<?, ?>) after.getBody().get("wallet");
+        assertThat(((Number) walletAfter.get("gems")).longValue()).isEqualTo(720L);
+        assertThat(((Number) walletAfter.get("points")).longValue()).isEqualTo(3000L);
     }
 
     // 구 enhance/limitbreak 엔드포인트 제거 확인 — 이 서버의 GlobalExceptionHandler 는 미매핑 라우트를

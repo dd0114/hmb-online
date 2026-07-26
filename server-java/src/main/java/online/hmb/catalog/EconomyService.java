@@ -33,7 +33,7 @@ public class EconomyService {
      */
     public record Economy(String version, int initialPoints, List<String> starterPack,
                           Gacha gacha, Rewards rewards, JsonNode trade, JsonNode league,
-                          Growth growth, Star star, Potential potential, Dice dice) {
+                          Growth growth, Star star, Potential potential, Dice dice, Gems gems) {
     }
 
     /** economy.v1.json `gacha` 노드 — 뽑기 비용·확률표·pity (AC-S5: 여기서만 온다). */
@@ -74,8 +74,19 @@ public class EconomyService {
                             Map<String, List<PotentialOption>> tables) {
     }
 
-    /** economy.v2.json `dice` 노드 (에픽 #179 V2-5) — 다이스 상점 가격(목업). */
-    public record Dice(int normalCost, int cashCost) {
+    /**
+     * economy.v2.json `dice` 노드 (에픽 #179 V2-5, V2.2 재화 이원화로 cashCost→cashGemCost 개정) —
+     * 다이스 상점 가격. 노말=P, 캐시=젬 전용(cashGemCost).
+     */
+    public record Dice(int normalCost, int cashGemCost) {
+    }
+
+    /** economy.v2.json `gems` 노드 팩 1종 — 충전 목업(실결제 없음, 즉시 지급). */
+    public record GemTopupPack(String id, int gems, String mockPrice) {
+    }
+
+    /** economy.v2.json `gems` 노드 (V2.2 재화 이원화 GM8s) — 충전 팩 목록. */
+    public record Gems(List<GemTopupPack> topupPacks) {
     }
 
     private final Optional<Economy> economy;
@@ -122,18 +133,21 @@ public class EconomyService {
             Star star = parseStar(root.path("star"));
             Potential potential = parsePotential(root.path("potential"));
             Dice dice = parseDice(root.path("dice"));
+            // gems 블록(V2.2 재화 이원화 GM8s) — 구파일엔 없을 수 있어 null(충전 목업 기능 비활성).
+            Gems gems = parseGems(root.path("gems"));
 
             log.info("Loaded economy {} from {} (initialPoints={}, starterPack={} players, "
                             + "gacha single/ten={}/{} tenCount={} pity>={}, rewards {}/{}/{}, "
-                            + "trade={}, league={}, growth={}, star={}, potential={}, dice={})",
+                            + "trade={}, league={}, growth={}, star={}, potential={}, dice={}, gems={})",
                     version, file.getAbsolutePath(), initialPoints, starterPack.size(),
                     gacha.singleCost(), gacha.tenCost(), gacha.tenCount(), gacha.tenPityMinGrade(),
                     rewards.win(), rewards.draw(), rewards.loss(),
                     trade != null ? "present" : "absent", league != null ? "present" : "absent",
                     growth != null ? "present" : "absent", star != null ? "present" : "absent",
-                    potential != null ? "present" : "absent", dice != null ? "present" : "absent");
+                    potential != null ? "present" : "absent", dice != null ? "present" : "absent",
+                    gems != null ? "present" : "absent");
             return Optional.of(new Economy(version, initialPoints, List.copyOf(starterPack), gacha, rewards,
-                    trade, league, growth, star, potential, dice));
+                    trade, league, growth, star, potential, dice, gems));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());
@@ -210,12 +224,25 @@ public class EconomyService {
                 p.path("cashPremiumMult").asDouble(1.0), Map.copyOf(tables));
     }
 
-    /** `dice` 노드 파싱(V2-5) — 없으면 null. */
+    /** `dice` 노드 파싱(V2-5, V2.2 로 cashCost→cashGemCost 개정) — 없으면 null. */
     private static Dice parseDice(JsonNode d) {
         if (d == null || d.isMissingNode() || !d.isObject()) {
             return null;
         }
-        return new Dice(d.path("normalCost").asInt(500), d.path("cashCost").asInt(5000));
+        return new Dice(d.path("normalCost").asInt(500), d.path("cashGemCost").asInt(10));
+    }
+
+    /** `gems` 노드 파싱(V2.2 재화 이원화 GM8s) — 없으면 null(충전 목업 비활성). */
+    private static Gems parseGems(JsonNode g) {
+        if (g == null || g.isMissingNode() || !g.isObject()) {
+            return null;
+        }
+        List<GemTopupPack> packs = new ArrayList<>();
+        g.path("topupPacks").forEach(p -> packs.add(new GemTopupPack(
+                p.path("id").asText(),
+                p.path("gems").asInt(),
+                p.path("mockPrice").asText())));
+        return new Gems(List.copyOf(packs));
     }
 
     private static Map<String, Double> asDoubleMap(JsonNode node) {

@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * POST /api/shop/gacha {kind: single|ten} — LLD §4.1.
- * POST /api/shop/dice {kind: NORMAL|CASH, count} — 다이스 구매(에픽 #179 V2-4, point_ledger 원장·reason='dice').
+ * POST /api/shop/dice {kind: NORMAL|CASH, count} — 다이스 구매(에픽 #179 V2-4, NORMAL=point_ledger,
+ * CASH=gem_ledger 원장·reason='dice', V2.2 재화 이원화).
+ * POST /api/shop/gems/topup {packId} — 젬 충전(목업, V2.2 재화 이원화, 실결제 없음).
  */
 @RestController
 public class ShopController {
@@ -39,9 +41,21 @@ public class ShopController {
         return growthService.buyDice(userId, request.kind(), request.count());
     }
 
+    @PostMapping("/api/shop/gems/topup")
+    public Map<String, Object> gemsTopup(@RequestAttribute("userId") String userId,
+                                         @RequestBody(required = false) GemTopupRequest request) {
+        if (request == null || request.packId() == null) {
+            throw ApiException.validation("packId가 필요합니다");
+        }
+        return growthService.topupGems(userId, request.packId());
+    }
+
     public record GachaRequest(String kind) {
     }
 
     public record DiceRequest(String kind, int count) {
+    }
+
+    public record GemTopupRequest(String packId) {
     }
 }

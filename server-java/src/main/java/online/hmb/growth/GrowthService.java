@@ -165,6 +165,12 @@ public class GrowthService {
                         "다이스 설정(economy.dice)이 로드되지 않았습니다"));
     }
 
+    private EconomyService.Gems gemsCfg() {
+        return economyService.get().map(EconomyService.Economy::gems)
+                .orElseThrow(() -> new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "GEMS_CONFIG_MISSING",
+                        "젬 설정(economy.gems)이 로드되지 않았습니다"));
+    }
+
     // ── 유효스탯 계산 (순수, DB 무관 부분 static) ───────────────────────
 
     private static double clamp(double v, double lo, double hi) {
@@ -729,6 +735,10 @@ public class GrowthService {
 
     // ── POST /api/shop/dice — 다이스 구매(포인트, 목업) ─────────────────
 
+    /**
+     * V2.2 재화 이원화: 노말 다이스 = P 결제(기존), 캐시 다이스 = 젬 결제(gem_ledger, reason='dice').
+     * 부족 시 kind 별로 INSUFFICIENT_POINTS / INSUFFICIENT_GEMS.
+     */
     public Map<String, Object> buyDice(String userId, String kindRaw, int count) {
         String kind = switch (String.valueOf(kindRaw)) {
             case "NORMAL" -> "NORMAL";
@@ -739,17 +749,26 @@ public class GrowthService {
             throw ApiException.validation("count는 1 이상이어야 합니다");
         }
         EconomyService.Dice dc = diceCfg();
-        int unitCost = "NORMAL".equals(kind) ? dc.normalCost() : dc.cashCost();
-        long cost = (long) unitCost * count;
-        String col = "NORMAL".equals(kind) ? "normal" : "cash";
+        boolean cash = "CASH".equals(kind);
+        long cost = (long) (cash ? dc.cashGemCost() : dc.normalCost()) * count;
+        String col = cash ? "cash" : "normal";
         return txRunner.run(() -> {
-            long balance = walletService.points(userId);
-            if (balance < cost) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS", "포인트가 부족합니다",
-                        Map.of("balance", balance, "cost", cost));
-            }
             String refId = Ulid.next();
-            walletService.apply(userId, -cost, "dice", refId);
+            if (cash) {
+                long balance = walletService.gems(userId);
+                if (balance < cost) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_GEMS", "젬이 부족합니다",
+                            Map.of("balance", balance, "cost", cost));
+                }
+                walletService.applyGems(userId, -cost, "dice", refId);
+            } else {
+                long balance = walletService.points(userId);
+                if (balance < cost) {
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS", "포인트가 부족합니다",
+                            Map.of("balance", balance, "cost", cost));
+                }
+                walletService.apply(userId, -cost, "dice", refId);
+            }
             ensureUserDiceRow(userId);
             jdbcClient.sql("UPDATE user_dice SET " + col + " = " + col + " + ? WHERE user_id = ?")
                     .params(count, userId).update();
@@ -761,7 +780,29 @@ public class GrowthService {
             out.put("kind", kind);
             out.put("count", count);
             out.put("dice", row); // DiceBuyResult(shared): {normal, cash} 중첩
-            out.put("wallet", Map.of("points", walletService.points(userId)));
+            out.put("wallet", Map.of("points", walletService.points(userId), "gems", walletService.gems(userId)));
+            return out;
+        });
+    }
+
+    /**
+     * POST /api/shop/gems/topup — 젬 충전(목업, 실결제 없음). config 팩 검증 후 즉시 지급
+     * (reason='gem_topup_mock', ref=매 호출 신규 ULID — 재요청도 항상 새로 지급).
+     */
+    public Map<String, Object> topupGems(String userId, String packId) {
+        EconomyService.Gems cfg = gemsCfg();
+        EconomyService.GemTopupPack pack = cfg.topupPacks().stream()
+                .filter(p -> p.id().equals(packId))
+                .findFirst()
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                        "존재하지 않는 충전 팩입니다: " + packId, Map.of("packId", packId)));
+        return txRunner.run(() -> {
+            String refId = Ulid.next();
+            walletService.applyGems(userId, pack.gems(), "gem_topup_mock", refId);
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("packId", packId);
+            out.put("granted", pack.gems());
+            out.put("wallet", Map.of("points", walletService.points(userId), "gems", walletService.gems(userId)));
             return out;
         });
     }

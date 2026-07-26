@@ -1,6 +1,7 @@
 package online.hmb;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import jakarta.annotation.Resource;
 import java.util.List;
@@ -387,6 +388,42 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(((Number) e.get("ovrAfter")).doubleValue())
                 .isGreaterThanOrEqualTo(((Number) e.get("ovrBefore")).doubleValue());
         assertThat((Map<?, ?>) e.get("statXp")).isNotEmpty();
+    }
+
+    // ── V2.2 재화 이원화 (젬 지갑, WalletService.applyGems) ─────────────────
+
+    @Test
+    void applyGemsCreditsWalletAndLedger() {
+        String userId = onboard("g_gems_credit");
+        assertThat(walletService.gems(userId)).isZero();
+
+        boolean applied = walletService.applyGems(userId, 60, "gem_topup_mock", "pack-p1-1");
+        assertThat(applied).isTrue();
+        assertThat(walletService.gems(userId)).isEqualTo(60L);
+
+        Long rows = jdbcClient.sql("SELECT COUNT(*) FROM gem_ledger WHERE user_id=? AND reason='gem_topup_mock'")
+                .param(userId).query(Long.class).single();
+        assertThat(rows).isEqualTo(1L);
+    }
+
+    @Test
+    void applyGemsIsIdempotentPerReasonRef() {
+        String userId = onboard("g_gems_idem");
+        walletService.applyGems(userId, 10, "dice", "ref-1");
+        assertThat(walletService.gems(userId)).isEqualTo(10L);
+
+        // 같은 (user, reason, ref) 재적용 — 멱등: false 반환, 잔액 무변화(point_ledger 패턴과 동일).
+        boolean second = walletService.applyGems(userId, 10, "dice", "ref-1");
+        assertThat(second).isFalse();
+        assertThat(walletService.gems(userId)).isEqualTo(10L);
+    }
+
+    @Test
+    void applyGemsDebitCannotGoNegative_checkBackstop() {
+        String userId = onboard("g_gems_floor");
+        assertThatThrownBy(() -> walletService.applyGems(userId, -5, "dice", "over-debit"))
+                .isInstanceOf(Exception.class); // wallets.gems CHECK(gems>=0) 백스톱 — DB 레벨 방어
+        assertThat(walletService.gems(userId)).isZero(); // 실패 시 잔액 무변화
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────
