@@ -47,6 +47,14 @@ class MatchOverhaulRoutingTest extends MatchTestBase {
     private static final String DECK_P002 = "뒤로 처져서 커버";
 
     /**
+     * application.yml `hmb.match.delta.overhaul-effort` 기본값과 같은 값 — <b>기본이 곧 계약</b>이라
+     * 테스트가 프로퍼티를 덮어쓰지 않고 yml 기본을 그대로 검증한다(노브 자체는 MatchOverhaulKnobsTest).
+     * "low" 근거: 다축 풀생성이 low + 필수확인 서픽스에서 4.25/5 · 57.7s(#193 라운드1 A1) — 델타 3.13
+     * 보다 확실히 높고 풀 effort(4.75 · 121s) 대비 지연 절반.
+     */
+    private static final String DEFAULT_OVERHAUL_EFFORT = "low";
+
+    /**
      * 전반 팀 지시(=h2 델타의 old). 라운드2 하네스의 "수정 전" 지시와 같은 형태 —
      * 압박·라인·측면(폭)·슛 <b>4축</b>이라 그 자체로 대변경이다.
      */
@@ -170,9 +178,10 @@ class MatchOverhaulRoutingTest extends MatchTestBase {
         assertThat(ctx.has("base")).isFalse();                          // 베이스 위 패치가 아니다
         assertThat(ctx.has("promptDelta")).isFalse();
         assertThat(ctx.path("teamPrompt").asText()).isEqualTo(PRE_TEAM); // 매치 프롬프트 전체가 실린다
-        // effortHint = config(`hmb.match.delta.overhaul-effort`) 기본 "" = 세션 기본 effort(측정 근거 4.75).
+        // effortHint = config(`hmb.match.delta.overhaul-effort`) 기본 "low"
+        // (다축 풀생성 4.25/5 · 57.7s 실측 — 델타 3.13 보다 높고 풀 effort 4.75/121s 의 절반 지연).
         assertThat(ctx.has("effortHint")).isTrue();
-        assertThat(ctx.path("effortHint").asText()).isEmpty();
+        assertThat(ctx.path("effortHint").asText()).isEqualTo(DEFAULT_OVERHAUL_EFFORT);
 
         assertThat(effectiveRows(matchId, 1, "home")).isEqualTo(1L); // ⑤ 유효 잡 1개
 
@@ -266,7 +275,7 @@ class MatchOverhaulRoutingTest extends MatchTestBase {
         assertThat(ctx.path("kind").asText()).isEqualTo("team-input");
         assertThat(ctx.has("promptDelta")).isFalse();
         assertThat(ctx.path("teamPrompt").asText()).isEqualTo(HALFTIME_OVERHAUL);
-        assertThat(ctx.path("effortHint").asText()).isEmpty();
+        assertThat(ctx.path("effortHint").asText()).isEqualTo(DEFAULT_OVERHAUL_EFFORT);
         assertThat(ctx.has("effortHint")).isTrue();
         assertThat(ctx.path("prevSummary").isObject()).isTrue(); // 후반 컨텍스트는 그대로 실린다
         assertThat(effectiveRows(matchId, 2, "home")).isEqualTo(1L);
@@ -292,7 +301,7 @@ class MatchOverhaulRoutingTest extends MatchTestBase {
         submitPrompt(token, matchId, "halftime", "team", null, HALFTIME_OVERHAUL);
         JsonNode ctx = jobContext(matchId, 2, "home");
         assertThat(ctx.path("kind").asText()).isEqualTo("team-input");
-        assertThat(ctx.path("effortHint").asText()).isEmpty();
+        assertThat(ctx.path("effortHint").asText()).isEqualTo(DEFAULT_OVERHAUL_EFFORT);
         assertThat(effectiveRows(matchId, 2, "home")).isEqualTo(1L);
     }
 

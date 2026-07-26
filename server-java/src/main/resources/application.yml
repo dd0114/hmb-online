@@ -78,8 +78,12 @@ hmb:
       #    없다) 유사도가 늘 0 이라 팀 지시가 있는 모든 킥오프를 풀생성으로 보냈다(라운드2와 정면 충돌).
       overhaul-axis-count: 3
       # 대변경 풀생성 잡에만 실리는 effort 힌트(잡 컨텍스트 effortHint → 실행기 --effort).
-      # 빈 문자열 = 플래그 생략 = claude 세션 기본 effort — 맞대결 4.75 를 낸 그 조건이다.
-      overhaul-effort: ""
+      # 기본 "low" 근거: **다축 지시 풀생성은 effort low + 필수확인 서픽스에서 4.25/5 · 57.7s 실측**
+      # (#193 라운드1 A1). 이 값이 라우팅이 피하려던 델타(3.13)보다 **확실히 높으면서**, 풀 effort
+      # (4.75 · 121s)의 **절반 지연**이다 — 감독시간 60초(match.clock.halftime-ms) 안에 들어온다.
+      # 품질 최우선(지연 2배 수용)이면 "" 로 올려라: 빈 문자열 = --effort 플래그 생략 = claude 세션
+      # 기본 effort = 맞대결 4.75 를 낸 그 조건.
+      overhaul-effort: "low"
     ai-job-timeout-sec: 240        # GEN 상태에서 이걸 넘으면 FAILED
     # ai_jobs 가시성 타임아웃. ⚠️ lease-sec 은 **AI 잡 실제 소요(p99) + 버퍼 이상**이어야 한다 —
     # 짧으면 아직 살아 일하는 워커의 잡을 스위퍼가 queued 로 되돌려 결과를 폐기하고 같은 잡을

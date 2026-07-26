@@ -109,6 +109,57 @@ class OverhaulDetectorTest {
         assertThat(OverhaulDetector.axes("하지 마")).isEmpty();                     // "마"≠"마크"
     }
 
+    // ── 오매치 회귀(#193 최종검증 M-1) ────────────────────────────────────
+    // 두 글자 키워드도 **더 긴 무관한 낱말 안에** 그대로 들어 있으면 축을 헛센다. 검증자가 재현한
+    // 실제 오매치를 판정표로 박제한다 — 지시 한 줄이 축 1개를 헛세면 임계 3 에서 소변경이 대변경으로
+    // 뒤집히고(라운드2 기준 델타 4.63 → 풀 3.25), 그건 지연뿐 아니라 **품질 손실**이다.
+
+    /**
+     * "라인"은 전술 축(수비라인)이 아닌 낱말에도 흔히 들어 있다 — 온라인·가이드라인·사이드라인·라인업.
+     * 이 넷은 <b>뒤에 무엇이 오든</b> line 축이 아니다.
+     */
+    @Test
+    void nonTacticalLineCompoundsDoNotTriggerTheLineAxis() {
+        // 넷 다 이전 지표에서는 line 1축이 켜졌다 — 지금은 축이 하나도 없다(= 델타 유지).
+        assertThat(OverhaulDetector.axes("온라인 대전이니 침착하게")).isEmpty();
+        assertThat(OverhaulDetector.axes("가이드라인 대로")).isEmpty();
+        assertThat(OverhaulDetector.axes("사이드라인 밖으로 나가지 마라")).isEmpty();
+        assertThat(OverhaulDetector.axes("우리 라인업 그대로 간다")).isEmpty();
+
+        // 전술 문맥이 붙어도 마찬가지 — 막는 것은 "라인"이 아니라 **그 합성어**다.
+        assertThat(OverhaulDetector.axes("가이드라인 대로 유지해")).isEmpty();
+    }
+
+    /** "대인관계"·"대인전"은 마킹 지시가 아니다 — marking 축은 결합형(대인마크/대인방어)에서만. */
+    @Test
+    void personalityWordsDoNotTriggerTheMarkingAxis() {
+        assertThat(OverhaulDetector.axes("대인관계가 좋은 선수를 세워라")).isEmpty();
+
+        assertThat(OverhaulDetector.axes("대인마크 붙여")).contains("marking");   // 결합형은 잡는다
+        assertThat(OverhaulDetector.axes("대인방어로 전환")).contains("marking");
+    }
+
+    /** "사이드"도 같은 결함 — "오프사이드"(트랩 축)·"사이드라인"은 폭(width) 지시가 아니다. */
+    @Test
+    void offsideAndSidelineDoNotTriggerTheWidthAxis() {
+        assertThat(OverhaulDetector.axes("오프사이드 트랩 걸어라"))
+                .containsExactly("trap");                                    // width 헛셈 없음
+        assertThat(OverhaulDetector.axes("사이드라인 밖으로 나가지 마라")).isEmpty();
+
+        assertThat(OverhaulDetector.axes("오른쪽 사이드로 벌려")).contains("width"); // 진짜 폭 지시는 잡는다
+    }
+
+    /** 오매치 제거가 <b>정탐</b>까지 깎으면 안 된다 — 전술 문맥의 "라인"은 그대로 잡힌다. */
+    @Test
+    void tacticalLinePhrasesStillTriggerTheLineAxis() {
+        assertThat(OverhaulDetector.axes("라인 최대로 올리고")).containsExactly("line"); // K1 형
+        assertThat(OverhaulDetector.axes("라인을 내려라")).containsExactly("line");
+        assertThat(OverhaulDetector.axes("후반엔 라인 내려")).containsExactly("line");
+        assertThat(OverhaulDetector.axes("수비라인 신경 써")).containsExactly("line");
+        assertThat(OverhaulDetector.axes("하이라인")).containsExactly("line");
+        assertThat(OverhaulDetector.axes("백라인 간격 관리")).containsExactly("line");
+    }
+
     @Test
     void nullAndBlankHaveNoAxes() {
         assertThat(OverhaulDetector.axes(null)).isEmpty();

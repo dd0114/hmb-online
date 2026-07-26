@@ -148,26 +148,35 @@ public class AiJobQueue {
      * <b>남기되 {@code effective=0}</b> 으로 무효 표시한다. 대상은 {@code effective=1} 로 (재)지정 —
      * 되돌린 지시가 예전 done 행을 그대로 복권시킨다.
      *
+     * <p><b>세 문장은 한 트랜잭션이다</b>(#193 최종검증 m-3). "유효 잡 1행"은 세 문장이 <b>전부</b>
+     * 반영된 뒤에만 성립하는 불변식인데, 문장마다 커밋하면 그 중간 상태가 남에게 보인다. 실경로에 창이
+     * 있다: 프롬프트 제출의 <b>즉시 해소</b>와 <b>킥오프</b>가 같은 (match,half,side)를 동시에 해소할 수
+     * 있고, 두 supersede 가 ②(무효화)와 ③(대상 확정) 사이로 서로 끼어들면 각자의 대상이 모두
+     * effective=1 로 남는다 — 그러면 단일 행을 전제하는 {@code latestDoneResult} 가 유저의 최신 지시를
+     * 조용히 버릴 수 있다. 계약 = {@code AiJobSupersedeTxTest}.
+     *
      * @return 지우거나 무효화한 행 수
      */
     public int supersede(String matchId, int half, String side, String targetId) {
-        int removed = jdbcClient.sql("""
-                        DELETE FROM ai_jobs
-                        WHERE match_id = ? AND half = ? AND side = ? AND id <> ?
-                          AND status = 'queued' AND attempts = 0
-                        """)
-                .params(matchId, half, side, targetId)
-                .update();
-        int invalidated = jdbcClient.sql("""
-                        UPDATE ai_jobs SET effective = 0
-                        WHERE match_id = ? AND half = ? AND side = ? AND id <> ? AND effective = 1
-                        """)
-                .params(matchId, half, side, targetId)
-                .update();
-        jdbcClient.sql("UPDATE ai_jobs SET effective = 1 WHERE id = ? AND effective = 0")
-                .param(targetId)
-                .update();
-        return removed + invalidated;
+        return txRunner.run(() -> {
+            int removed = jdbcClient.sql("""
+                            DELETE FROM ai_jobs
+                            WHERE match_id = ? AND half = ? AND side = ? AND id <> ?
+                              AND status = 'queued' AND attempts = 0
+                            """)
+                    .params(matchId, half, side, targetId)
+                    .update();
+            int invalidated = jdbcClient.sql("""
+                            UPDATE ai_jobs SET effective = 0
+                            WHERE match_id = ? AND half = ? AND side = ? AND id <> ? AND effective = 1
+                            """)
+                    .params(matchId, half, side, targetId)
+                    .update();
+            jdbcClient.sql("UPDATE ai_jobs SET effective = 1 WHERE id = ? AND effective = 0")
+                    .param(targetId)
+                    .update();
+            return removed + invalidated;
+        });
     }
 
     /**
@@ -198,17 +207,6 @@ public class AiJobQueue {
                         rs.getString("side"), (Integer) rs.getObject("half"), rs.getString("status"),
                         rs.getString("context_json"), rs.getString("result_json"), rs.getInt("attempts")))
                 .optional();
-    }
-
-    public List<JobRow> queuedJobs() {
-        return jdbcClient.sql("""
-                        SELECT id, match_id, side, half, status, context_json, result_json, attempts
-                        FROM ai_jobs WHERE status = 'queued' ORDER BY created_at
-                        """)
-                .query((rs, n) -> new JobRow(rs.getString("id"), rs.getString("match_id"),
-                        rs.getString("side"), (Integer) rs.getObject("half"), rs.getString("status"),
-                        rs.getString("context_json"), rs.getString("result_json"), rs.getInt("attempts")))
-                .list();
     }
 
     /**
