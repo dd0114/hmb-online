@@ -59,6 +59,17 @@ export interface BallFlight {
   xg?: number;
   /** 패스 계획 결과: 성공/인플레이 턴오버/아웃오브바운즈. (성공률 결정론 제어) */
   passOutcome?: "success" | "fail_intercept" | "fail_out";
+  /**
+   * #181: 이 패스를 **결국 잡을 사람**(성공=의도 수신자, fail_intercept=계획된 가로챈 수비수).
+   * 이 사람이 낙하점으로 마주 달리고(decideOffBall), 도착 판정도 이 사람 기준으로 한다 →
+   * 공이 사람에게 순간이동하는 대신 둘이 같은 지점에서 만난다.
+   */
+  claimant?: string;
+  /** #181: 낙하점에서 claimant 를 기다린 틱 수(arrivalWaitMaxTicks 초과 시 기하 판정으로 폴백). */
+  waited?: number;
+  /** #181: 발사 지점 — 도착했는데 아무도 못 닿았을 때 **같은 방향으로** 굴려보내기 위한 기준. */
+  fromX?: number;
+  fromY?: number;
   /** 의도적 롱패스(E2) — 도착 이벤트 detail="long" 로 뷰어 구분. */
   long?: boolean;
 }

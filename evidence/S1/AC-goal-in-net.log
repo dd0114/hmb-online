@@ -1,22 +1,20 @@
-=== AC-goal-in-net: showcase(viewer) (engine@0.18.0-showcase, seed 4815162342) ===
+=== AC-goal-in-net: showcase(viewer) (engine@0.19.0-showcase, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
-총 골: 8
-  #1 tick=218 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #2 tick=295 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #3 tick=427 team=home ball=(104.50,30.34) 골라인=O 포스트내=O => PASS
-  #4 tick=577 team=away ball=(0.50,34.91) 골라인=O 포스트내=O => PASS
-  #5 tick=645 team=home ball=(104.50,33.67) 골라인=O 포스트내=O => PASS
-  #6 tick=776 team=away ball=(0.50,35.49) 골라인=O 포스트내=O => PASS
-  #7 tick=812 team=home ball=(104.50,33.35) 골라인=O 포스트내=O => PASS
-  #8 tick=1024 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+총 골: 6
+  #1 tick=406 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #2 tick=579 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #3 tick=666 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #4 tick=864 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #5 tick=1111 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #6 tick=1359 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
 
-=== AC-goal-in-net: real(default) (engine@0.18.0, seed 4815162342) ===
+=== AC-goal-in-net: real(default) (engine@0.19.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
 총 골: 5
-  #1 tick=182 team=home ball=(104.50,33.91) 골라인=O 포스트내=O => PASS
-  #2 tick=788 team=home ball=(104.50,33.41) 골라인=O 포스트내=O => PASS
-  #3 tick=2821 team=home ball=(104.50,33.98) 골라인=O 포스트내=O => PASS
-  #4 tick=3445 team=away ball=(0.50,34.21) 골라인=O 포스트내=O => PASS
-  #5 tick=3921 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #1 tick=387 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #2 tick=1231 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #3 tick=1933 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #4 tick=2129 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #5 tick=5398 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)

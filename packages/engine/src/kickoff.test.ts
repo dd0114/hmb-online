@@ -17,6 +17,15 @@ const config = defaultEngineConfig;
 const TOL_M = 0.1;
 const CENTER = { x: config.pitch.width / 2, y: config.pitch.height / 2 }; // (52.5, 34)
 const GOAL_STOPPAGE = config.setPiece.goalStoppageTicks; // 25
+/**
+ * 경기 종료 전에 재개될 수 있는 골만 대상으로 한다. 90분 막판(종료 GOAL_STOPPAGE 틱 이내)에 터진
+ * 골은 킥오프 전에 경기가 끝나므로 "골 뒤 킥오프" 계약의 반례가 아니다(실제 축구도 동일).
+ * (#181 로 타임라인이 바뀌며 t=5398 골이 나와 드러난 케이스.)
+ */
+function restartableGoals(log: MatchLog): { tick: number; team?: string }[] {
+  const total = log.tickSnapshots[log.tickSnapshots.length - 1]!.tick;
+  return log.events.filter((e) => e.type === "goal" && e.tick + GOAL_STOPPAGE <= total);
+}
 
 function runDemo(): MatchLog {
   return runMatch(demoSeed, demoHome, demoAway, demoSelect, config);
@@ -36,7 +45,7 @@ function isRestartKickoff(e: { type: string; detail?: string }): boolean {
 describe("goal restart kickoff (AC-kickoff)", () => {
   it("emits a kickoff event within 60 ticks after every goal", () => {
     const log = runDemo();
-    const goals = log.events.filter((e) => e.type === "goal");
+    const goals = restartableGoals(log);
     expect(goals.length).toBeGreaterThan(0);
 
     for (const g of goals) {
@@ -59,7 +68,7 @@ describe("goal restart kickoff (AC-kickoff)", () => {
     const t0Taker = t0.ballOwner; // 전반 킥오프 테이커(센터).
     const t0Pos = new Map(t0.players.map((p) => [p.playerId, p.pos]));
 
-    const goals = log.events.filter((e) => e.type === "goal");
+    const goals = restartableGoals(log);
     expect(goals.length).toBeGreaterThan(0);
 
     for (const g of goals) {
@@ -93,7 +102,7 @@ describe("goal restart kickoff (AC-kickoff)", () => {
   it("places the ball at center with the conceding team in possession after every goal", () => {
     const log = runDemo();
     const byTick = snapByTick(log);
-    const goals = log.events.filter((e) => e.type === "goal");
+    const goals = restartableGoals(log);
     expect(goals.length).toBeGreaterThan(0);
 
     for (const g of goals) {

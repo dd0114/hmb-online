@@ -3,7 +3,7 @@ import type { SimState, SimPlayer } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
-import { fromFixed, fclamp, fdist } from "./fixedmath";
+import { fromFixed, fclamp, fdist, toFixed, stepToward, isqrt } from "./fixedmath";
 import { attackGoal, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
 import { passOptions, nearestOpponent, pressureCount } from "./perception";
 
@@ -19,7 +19,7 @@ export type PassOutcome = "success" | "fail_intercept" | "fail_out";
 
 export type Action =
   | { kind: "shoot"; xg: number; toX: number; toY: number; detail?: string }
-  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome; long: boolean }
+  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome; long: boolean; claimant: SimPlayer | null }
   | { kind: "dribble"; toX: number; toY: number }
   | { kind: "hold" };
 
@@ -173,6 +173,45 @@ export function computePassProb(
  * 실패면 인플레이 턴오버(상대 위치로 유도) 또는 아웃오브바운즈(경계 밖으로 유도)로 목표를 바꾼다.
  * → 성공률·파이널서드 페널티를 config 로 직접 제어하고, 턴오버가 전환·움직임을 유발한다.
  */
+/** 선수의 이번 틱 이동량(fixed). pace 와 피로 반영. (match 의 act 단계와 동일 식 — 리드패스 예측에도 쓴다.) */
+export function speedStep(p: SimPlayer, config: EngineConfig): number {
+  const { minPerTick, maxPerTick, fatigueFloor } = config.speed;
+  const paceFrac = p.attrs.pace / 100;
+  const base = minPerTick + (maxPerTick - minPerTick) * paceFrac;
+  const fatigueMult = 1 - (1 - fatigueFloor) * p.fatigue;
+  return toFixed(base * fatigueMult, config.fixedScale);
+}
+
+/**
+ * #181 리드패스 조준 — **지금 있는 자리**가 아니라 **공이 도착할 때 그가 있을 자리**로 찬다.
+ *
+ * 구버전은 리시버의 현재 위치를 겨냥했다. 공이 날아가는 동안 리시버는 계속 뛰므로 공은 아무도 없는
+ * 지점에 떨어졌고, 도착 처리가 그 간극을 순간이동으로 메워 "빈 공간에서 공이 휘는" 궤적이 됐다.
+ * (리시버를 낙하점으로 되돌려 달리게 하는 방식은 전진 런을 취소시켜 공격을 죽인다 — 실측 슛/팀 9.6→4.9.)
+ *
+ * 예측: 비행틱 k ≈ 거리/공속. 리시버가 targetFx 방향으로 k 틱 이동한 지점을 조준.
+ * k 가 조준점에 의존하므로 2회 반복해 수렴시킨다(결정론: 전부 고정소수 산술).
+ */
+function leadAim(
+  from: { x: number; y: number },
+  mover: SimPlayer,
+  ballSpeed: number,
+  config: EngineConfig,
+  pitch: Pitch,
+): { x: number; y: number } {
+  const lead = config.movement.passLeadWeight;
+  if (lead <= 0 || ballSpeed <= 0) return { x: mover.posFx.x, y: mover.posFx.y };
+  const step = speedStep(mover, config);
+  let aim = { x: mover.posFx.x, y: mover.posFx.y };
+  for (let iter = 0; iter < 2; iter++) {
+    const ticks = Math.ceil(fdist(from.x, from.y, aim.x, aim.y) / ballSpeed);
+    const travel = Math.round(step * ticks * lead);
+    const p = stepToward(mover.posFx.x, mover.posFx.y, mover.targetFx.x, mover.targetFx.y, travel);
+    aim = clampToPitch(pitch, p.x, p.y);
+  }
+  return aim;
+}
+
 export function planPass(
   state: SimState,
   owner: SimPlayer,
@@ -180,7 +219,7 @@ export function planPass(
   config: EngineConfig,
   rng: Rng,
   pitch: Pitch,
-): { toX: number; toY: number; outcome: PassOutcome } {
+): { toX: number; toY: number; outcome: PassOutcome; claimant: SimPlayer | null } {
   const c = config.contest;
   const scale = config.fixedScale;
   const receiver = opt.receiver;
@@ -188,7 +227,9 @@ export function planPass(
   const prob = computePassProb(state, owner, opt, config, pitch);
 
   if (rng.next() < prob) {
-    return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success" };
+    // 리드패스(#181): 리시버가 **도착 시점에 있을 자리**로 찬다 → 공과 사람이 같은 지점에서 만난다.
+    const aim = leadAim(owner.posFx, receiver, toFixed(config.ball.passSpeed, scale), config, pitch);
+    return { toX: aim.x, toY: aim.y, outcome: "success", claimant: receiver };
   }
 
   // 실패: 아웃 vs 인플레이 턴오버.
@@ -208,16 +249,18 @@ export function planPass(
     else if (min === dBottom) toY = pitch.hFx + margin;
     else if (min === dLeft) toX = -margin;
     else toX = pitch.wFx + margin;
-    return { toX, toY, outcome: "fail_out" };
+    // 아웃으로 나가는 공은 아무도 잡지 않는다(경계에서 resolveOut).
+    return { toX, toY, outcome: "fail_out", claimant: null };
   }
 
   // 인플레이 턴오버: 수신자 근처 상대에게 유도(도착 시 상대 컨트롤 → interception).
   // 실제 소유 판정은 resolveArrival 이 passOutcome 을 존중(authoritative)해 상대에게 준다.
   const thief = nearestOpponentTo(state, owner.side, receiver.posFx.x, receiver.posFx.y);
   if (thief) {
-    return { toX: thief.posFx.x, toY: thief.posFx.y, outcome: "fail_intercept" };
+    const aim = leadAim(owner.posFx, thief, toFixed(config.ball.passSpeed, scale), config, pitch);
+    return { toX: aim.x, toY: aim.y, outcome: "fail_intercept", claimant: thief };
   }
-  return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success" };
+  return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success", claimant: receiver };
 }
 
 /**
@@ -368,6 +411,7 @@ export function decideBallOwner(
       toY: plan.toY,
       outcome: plan.outcome,
       long: bestOpt.long,
+      claimant: plan.claimant,
     };
   }
   if ((r -= wDribble) < 0) {
@@ -428,6 +472,21 @@ export function decideOffBall(
     const gx = ownGoal.x + sign * Math.round(pitch.wFx * 0.04);
     player.targetFx = clampToPitch(pitch, gx, gy);
     return;
+  }
+
+  // --- 루즈볼 쟁탈(#181): 주인 없이 **멈춰 있는** 공은 가서 주워야 한다 ---
+  // 공은 손 닿는 사람에게만 간다(resolveArrival) → 아무도 없으면 떨어진 자리에 정지한다.
+  // 그때 아무도 안 가면 경기가 멈춘다(실측: 패스성공 19%·슛 1.7). 계획된 수신자(claimant)와
+  // 양 팀 최근접 아웃필더가 공으로 향한다 = 실제 축구의 루즈볼 경합.
+  // 패스 **비행 중**(kind="pass")에는 걸리지 않는다 — 날아가는 공을 향해 되돌아 달리면 전진 런이
+  // 취소돼 공격이 죽는다(실측 슛/팀 9.6→4.9). 도착 후 굴러가는 국면(kind="loose")에만 적용.
+  const loose = ball.flight;
+  if (loose && loose.kind === "loose" && ball.owner == null) {
+    const mine = closestToBall(state, player.side);
+    if (loose.claimant === player.id || (!loose.claimant && mine && mine.id === player.id)) {
+      player.targetFx = clampToPitch(pitch, ball.posFx.x, ball.posFx.y);
+      return;
+    }
   }
 
   // --- 세트피스(코너) 박스 크라우딩: 공수 양팀 모두 해당 골 박스로 몰림 ---
