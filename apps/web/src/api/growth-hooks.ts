@@ -61,13 +61,12 @@ export interface DiceBalance {
 const DEFAULT_DICE_BALANCE: DiceBalance = { normal: 0, cash: 0 };
 export const diceBalanceKey = ["diceBalance"] as const;
 
+/** GET /api/growth/dice — 서버 보유 잔액. 새로고침에도 유지(GM2 계약 확정, DiceBalance). */
 export function useDiceBalance() {
   return useQuery({
     queryKey: diceBalanceKey,
-    queryFn: () => Promise.resolve(DEFAULT_DICE_BALANCE),
-    staleTime: Infinity,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
+    queryFn: () => apiFetch<DiceBalance>("/api/growth/dice"),
+    placeholderData: DEFAULT_DICE_BALANCE,
   });
 }
 

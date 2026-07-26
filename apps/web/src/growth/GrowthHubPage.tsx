@@ -47,7 +47,7 @@ export function GrowthHubPage() {
       {isLoading && <p>불러오는 중…</p>}
       {isError && <ErrorToast message="보유 선수를 불러오지 못했습니다" />}
 
-      <p className={styles.countNote}>탭하면 강화·한계돌파로 카드를 키울 수 있어요.</p>
+      <p className={styles.countNote}>탭하면 성★ 승급·잠재능력 다이스로 카드를 키울 수 있어요.</p>
 
       <div className={styles.filters}>
         <div className={styles.tabRow} role="tablist" aria-label="포지션 필터">

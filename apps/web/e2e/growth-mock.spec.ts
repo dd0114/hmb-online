@@ -132,6 +132,12 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
   await page.route(
     (url) => url.pathname === "/api/growth/dice",
     (route) => {
+      // GET = 잔액 조회(DiceBalance, GM2 계약) / POST = 롤.
+      if (route.request().method() === "GET") {
+        // 잔액은 항상 있음 — 부족 시나리오는 POST 4xx(서버 권위)로 검증한다(버튼 활성 유지).
+        route.fulfill(json({ normal: 5, cash: 3 }));
+        return;
+      }
       if (opts.diceAlwaysFails) {
         route.fulfill(err(409, "INSUFFICIENT_DICE", "다이스 부족"));
         return;
