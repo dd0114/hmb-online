@@ -58,7 +58,9 @@ export function TradePlayerCard({
           grade={player.grade}
           position={player.position}
           size="detail"
-          showLabels={false}
+          /* 이름·등급·능력치가 카드 밖에 이미 있다 → 아트만(빈 밴드 제거). 포지션도 캡션 줄이
+             갖고 있으므로 카드 뱃지를 안 그린다 — 같은 패널에 두 번 나오던 중복 해소(#187). */
+          variant="art"
           className={styles.face}
         />
       ) : (

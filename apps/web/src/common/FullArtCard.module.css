@@ -61,11 +61,13 @@ button.card:active {
   height: 100%;
 }
 
-/* 아트 창 — 원본의 (10,10)-(216,331) 만 보이게 잘라내는 클리핑 박스. */
+/* 아트 창 — 원본의 아트 영역만 보이게 잘라내는 클리핑 박스.
+   `variant="art"` 에서는 이 창이 카드 박스 전체가 된다(inset:0 인라인). */
 .artWindow {
   position: absolute;
   display: block;
   overflow: hidden;
+  border-radius: inherit;
 }
 
 /* 매핑 없는 선수의 폴백 아이콘 — 창 안 가운데. */

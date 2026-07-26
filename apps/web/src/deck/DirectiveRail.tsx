@@ -311,7 +311,8 @@ function PlayerContext(props: PlayerContextProps) {
             grade={player.grade}
             position={player.position}
             size="rail"
-            showLabels={false}
+            /* 이름·포지션·컨디션은 바로 옆 한 줄이 말한다 → 아트만(빈 밴드 제거, #187). */
+            variant="art"
             className={styles.headArt}
           />
         </span>

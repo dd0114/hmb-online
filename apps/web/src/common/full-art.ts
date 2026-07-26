@@ -108,6 +108,18 @@ export function resolveCardGeometry(manifest: CharactersManifest | null | undefi
 /** 카드 종횡비 — 컨테이너에 `aspect-ratio` 로 걸어 세로 흔들림 0. */
 export const cardAspect = (g: CardGeometry = DEFAULT_CARD_GEOMETRY) => `${g.w} / ${g.h}`;
 
+/**
+ * **아트 영역만**의 종횡비(`variant="art"`).
+ *
+ * 왜 필요한가: 이름·등급·별을 카드 **밖**에서 이미 보여주는 자리(덱 지시 레일 헤드,
+ * 트레이드 카드, 강화 상세 헤더)에서는 `showLabels={false}` 로 껐는데, 프레임 에셋이
+ * 하단 밴드(네임플레이트 + 설명판)를 **이미 그려놨기 때문에 빈 검은 띠가 남는다**
+ * (트레이드에서 카드 높이의 22%. hero·독립 검증이 같이 지적).
+ * 그럴 땐 프레임 통짜가 아니라 **아트만 잘라** 쓰고 등급은 링이 말하게 한다.
+ */
+export const artAspect = (g: CardGeometry = DEFAULT_CARD_GEOMETRY) =>
+  `${g.w - g.inset * 2} / ${g.artBottom - g.inset}`;
+
 const pct = (n: number) => `${(n * 100).toFixed(4)}%`;
 
 export interface FullArtLayout {
@@ -116,6 +128,8 @@ export interface FullArtLayout {
   name: { top: string; height: string };
   desc: { top: string; height: string };
   badge: { left: string; top: string; width: string; height: string };
+  /** `variant="art"` 용 — 컨테이너가 아트 박스(206×321)라 카드 기준 좌표를 쓸 수 없다. */
+  badgeArt: { left: string; top: string; width: string; height: string };
 }
 
 /**
@@ -154,6 +168,17 @@ export function fullArtLayout(g: CardGeometry = DEFAULT_CARD_GEOMETRY): FullArtL
       top: pct(g.badge.y / g.h),
       width: pct(g.badge.w / g.w),
       height: pct(g.badge.h / g.h),
+    },
+    /*
+     * 아트 변형의 뱃지 — 원본 뱃지는 (badge.x, badge.y) 에서 시작해 **인셋보다 위/왼쪽**이라
+     * 크롭 경계를 넘는다(8 < 10). 그래서 아트 박스 좌상단(0,0)에 붙이고, 크롭 안으로 들어온
+     * 부분만큼만 크기를 잡는다. 음수가 되는 조합(뱃지가 완전히 크롭 밖)이면 0 → 렌더 안 됨.
+     */
+    badgeArt: {
+      left: "0%",
+      top: "0%",
+      width: pct(Math.max(0, g.badge.x + g.badge.w - g.inset) / artW),
+      height: pct(Math.max(0, g.badge.y + g.badge.h - g.inset) / artH),
     },
   };
 }

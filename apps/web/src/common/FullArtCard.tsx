@@ -5,6 +5,7 @@ import { CharAvatar } from "./CharAvatar";
 import { charIdFor } from "./char-assets-store";
 import { useCharAssets } from "./useCharAssets";
 import {
+  artAspect,
   cardAspect,
   FULL_ART_DESIGN,
   fullArtLayers,
@@ -40,6 +41,12 @@ export interface FullArtCardProps {
   showLabels?: boolean;
   /** 등급색 링 1겹(D4). 기본 on — LEGEND/GOLD 프레임이 같은 금색이라 이게 등급 구분축이다. */
   ring?: boolean;
+  /**
+   * `"card"`(기본) = 프레임 통짜 카드(테두리·별·하단 밴드 포함).
+   * `"art"` = **아트만** 잘라 쓴다 — 이름·등급·별을 카드 **밖**에서 보여주는 자리용.
+   * 프레임 밴드를 안 그리므로 빈 띠가 남지 않고, 등급은 링이 말한다(`full-art.ts artAspect` 주석).
+   */
+  variant?: "card" | "art";
   className?: string;
   onClick?: () => void;
   testId?: string;
@@ -53,6 +60,7 @@ export function FullArtCard({
   size = "detail",
   showLabels = true,
   ring = true,
+  variant = "card",
   className,
   onClick,
   testId,
@@ -80,6 +88,9 @@ export function FullArtCard({
   const Tag = onClick ? "button" : "div";
 
   const font = (ratio: number, min: number) => Math.max(min, Math.round(width * ratio));
+  const artOnly = variant === "art";
+  // 아트만 쓸 때는 라벨·프레임이 없으므로 하단 밴드 텍스트도 그리지 않는다(그릴 판이 없다).
+  const labels = showLabels && !artOnly;
 
   return (
     <Tag
@@ -90,7 +101,7 @@ export function FullArtCard({
           /* 폭은 **CSS 변수**로 준다 — 인라인 `width` 로 박으면 소비처가 미디어쿼리로 못 줄인다.
              (모바일 독처럼 세로 예산이 빡빡한 자리에서 실제로 필요했다: `--fa-w` 만 덮으면 된다.) */
           "--fa-w": `${width}px`,
-          aspectRatio: cardAspect(geom),
+          aspectRatio: artOnly ? artAspect(geom) : cardAspect(geom),
           boxShadow: ring ? gradeRingShadow(grade) : undefined,
           borderColor: kind === "none" ? color : undefined,
         } as CSSProperties
@@ -103,8 +114,10 @@ export function FullArtCard({
          (역할 없는 제네릭 요소), 카드 안 이름·등급 텍스트가 이미 읽힌다. */
       aria-label={onClick ? `${name} · ${position ?? ""} · ${GRADE_LABELS[grade]}` : undefined}
     >
-      {/* 층1 — 등급 프레임(테두리·별·하단 밴드). lazy 라 화면 밖 카드는 안 받는다. */}
-      {frame && (
+      {/* 층1 — 등급 프레임(테두리·별·하단 밴드). lazy 라 화면 밖 카드는 안 받는다.
+          `variant="art"` 은 프레임을 그리지 않는다 — 아트만 쓰는 자리라 밴드가 필요 없다
+          (프레임 이미지 요청도 안 나간다). */}
+      {frame && !artOnly && (
         <img
           className={styles.frame}
           src={frame}
@@ -119,7 +132,11 @@ export function FullArtCard({
 
       {/* 층2 — 캐릭터 아트. 창을 잘라 원본의 아트 영역만 보이게 한다(full-art.ts 주석). */}
       {art && (
-        <span className={styles.artWindow} style={L.window as CSSProperties} aria-hidden>
+        <span
+          className={styles.artWindow}
+          style={(artOnly ? { inset: 0 } : L.window) as CSSProperties}
+          aria-hidden
+        >
           <img
             className={styles.art}
             style={L.art as CSSProperties}
@@ -135,7 +152,7 @@ export function FullArtCard({
 
       {/* 폴백 — 풀아트가 없으면 아트 창 자리에 아이콘을 크게 놓는다(빈 칸 0). */}
       {!art && (
-        <span className={styles.artWindow} style={L.window as CSSProperties}>
+        <span className={styles.artWindow} style={(artOnly ? { inset: 0 } : L.window) as CSSProperties}>
           <span className={styles.iconWrap}>
             <CharAvatar
               playerId={playerId}
@@ -148,15 +165,21 @@ export function FullArtCard({
       )}
 
       {/* 층3 — 텍스트 오버레이. 밴드 자체는 층1(프레임)이 이미 그려놨다. */}
+      {/* 포지션 뱃지는 **두 변형 모두** 그린다. 아트 영역 좌상단에는 원본에 구워진 뱃지가
+          걸쳐 있는데(원본 (8,8)-(42,26) 중 크롭 안쪽이 보인다) 그건 **캐릭터의** 포지션이라
+          교차 매핑 선수(예: FW 선수 ← GK 캐릭터)에서 틀린 값이 노출된다 → 불투명하게 덮는다. */}
       {position && (
         <span
           className={styles.badge}
-          style={{ ...(L.badge as CSSProperties), fontSize: font(D.badgeFontRatio, D.minBadgeFont) }}
+          style={{
+            ...((artOnly ? L.badgeArt : L.badge) as CSSProperties),
+            fontSize: font(D.badgeFontRatio, D.minBadgeFont),
+          }}
         >
           {position}
         </span>
       )}
-      {showLabels && (
+      {labels && (
         <>
           <span
             className={styles.name}

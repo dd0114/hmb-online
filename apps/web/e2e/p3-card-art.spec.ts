@@ -67,6 +67,28 @@ async function mockApi(page: Page) {
   );
   await page.route((url) => url.pathname === "/api/conditions", (route) => route.fulfill(json({ players: {} })));
   await page.route((url) => url.pathname === "/api/shop/gacha", (route) => route.fulfill(json(GACHA)));
+  // 강화 상세(`CardGrowthDetail`, #179)가 여는 카드 상태. 캐치올 `{}` 로는 모달이 못 뜬다.
+  await page.route(
+    (url) => url.pathname.startsWith("/api/growth/card/"),
+    (route) => {
+      const id = new URL(route.request().url()).pathname.split("/").pop()!;
+      const p = CATALOG.find((c) => c.id === id) ?? CATALOG[0]!;
+      const caps = Object.fromEntries(Object.entries(p.attributes).map(([k, v]) => [k, Math.min(99, v + 20)]));
+      const statLevels = Object.fromEntries(Object.keys(p.attributes).map((k) => [k, { level: 0, xp: 0 }]));
+      route.fulfill(
+        json({
+          playerId: p.id, grade: p.grade, star: 1,
+          attributes: p.attributes, prePotential: p.attributes, base: p.attributes,
+          caps, statLevels,
+          potential: { unlocked: false, tier: null, maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
+          ovr: 58, completion: 0.3,
+        }),
+      );
+    },
+  );
+  await page.route((url) => url.pathname === "/api/growth/dice", (route) =>
+    route.fulfill(json({ normal: 5, cash: 3 })),
+  );
 }
 
 async function login(page: Page) {
@@ -219,21 +241,26 @@ test("덱: 선수를 누르면 유닛 정보(지시 레일)에 풀아트가 같�
   await page.screenshot({ path: `${SHOTS}card-art-deck-rail.png`, fullPage: true });
 });
 
-test("도감: 카드를 펼치면 풀아트가 붙는다 (접힌 상태에는 없다)", async ({ page }) => {
+/**
+ * main(#179)에서 도감 흐름이 바뀌었다: **보유 선수 탭 → 강화 상세 모달**, 인라인 확장은
+ * **미보유(잠금) 전용**. 그래서 도감 자체는 어느 상태에서도 풀아트를 갖지 않는다 —
+ * 잠긴 카드에 원색 전신 일러스트를 띄우면 잠금 표현과 어긋난다. 풀아트는 강화 상세가 갖는다.
+ */
+test("도감: 그리드·미보유 확장 어디에도 풀아트가 없다 (풀아트는 강화 상세)", async ({ page }) => {
   await login(page);
   await mockApi(page);
+  await page.route((url) => url.pathname === "/api/players", (route) =>
+    route.fulfill(json(CATALOG.map((p, i) => (i === 0 ? { ...p, owned: false, ownedCount: 0 } : p)))),
+  );
   await page.goto("/codex");
-  const target = CATALOG[0]!;
-  await expect(page.getByTestId(`codex-card-${target.id}`)).toBeVisible();
-
-  // 접힘 = 그리드 = 밀집 UI → 풀아트 0
+  const locked = CATALOG[0]!;
+  await expect(page.getByTestId(`codex-card-${locked.id}`)).toBeVisible();
   await expect(cards(page)).toHaveCount(0);
 
-  await page.getByTestId(`codex-card-${target.id}`).getByRole("button").first().click();
-  await expect(page.getByTestId(`codex-attrs-${target.id}`)).toBeVisible();
-  await expect(cards(page)).toHaveCount(1);
-  await expect(cards(page).first()).toHaveAttribute("data-art-kind", "full-art");
-  await page.screenshot({ path: `${SHOTS}card-art-codex.png`, fullPage: true });
+  // 미보유 카드는 인라인 확장(능력치만) — 풀아트가 붙지 않는다.
+  await page.getByTestId(`codex-card-${locked.id}`).getByRole("button").first().click();
+  await expect(page.getByTestId(`codex-attrs-${locked.id}`)).toBeVisible();
+  await expect(cards(page), "잠긴 카드에 풀아트가 붙었다").toHaveCount(0);
 });
 
 // ── ② 아이콘/풀아트 경계 ────────────────────────────────────────────────────
@@ -331,6 +358,37 @@ for (const st of TRADE_STATES) {
     await page.setViewportSize({ width: 390, height: 844 });
     const ov = await horizontalOverflow(page);
     expect(ov.sw, `${st.key} 390 가로 오버플로`).toBeLessThanOrEqual(ov.cw);
+  });
+}
+
+/**
+ * **강화/카드 상세**(`CardGrowthDetail`, #179) — 이 게임에서 가장 큰 카드 자리다.
+ * 강화 화면이 일러스트를 고려하지 않고 만들어져 44px 아바타만 쓰고 있었고(hero 지적),
+ * 도감·육성허브 **두 진입점**이 같은 모달을 연다 — 한 쪽만 확인하면 다른 쪽 회귀를 놓친다.
+ */
+for (const [label, path] of [["도감", "/codex"], ["육성허브", "/growth"]] as const) {
+  test(`강화 상세(${label} 진입): 카드 풀아트가 뜬다`, async ({ page }) => {
+    await login(page);
+    await mockApi(page);
+    await page.goto(path);
+    const target = CATALOG[0]!;
+    const gridCard = page.getByTestId(`codex-card-${target.id}`);
+    await expect(gridCard).toBeVisible();
+
+    // 두 진입 모두 **보유 선수는 1탭에 상세**가 열린다(도감 `onToggle` 은 owned 면 곧장
+    // setDetailPlayer, 인라인 확장은 미보유 전용 — main #179). 2탭을 넣으면 모달을 다시 닫는다.
+    await gridCard.getByRole("button").first().click();
+
+    const detail = page.getByTestId("growth-detail");
+    await expect(detail, "강화 상세가 안 열렸다").toBeVisible();
+    const card = detail.locator('[data-testid^="full-art-"]');
+    await expect(card, "강화 상세에 풀아트가 없다").toHaveCount(1);
+    await expect(card).toHaveAttribute("data-art-kind", "full-art");
+    // 아트만 쓰는 자리 = 프레임 이미지를 안 받는다(빈 밴드가 생기지 않는다는 뜻).
+    await expect(card.locator('img[data-art-layer="frame"]')).toHaveCount(0);
+    await expect(card.locator('img[data-art-layer="art"]')).toHaveCount(1);
+    expect(await brokenImages(page)).toEqual([]);
+    await page.screenshot({ path: `${SHOTS}card-art-growth-${path.slice(1)}.png`, fullPage: true });
   });
 }
 
