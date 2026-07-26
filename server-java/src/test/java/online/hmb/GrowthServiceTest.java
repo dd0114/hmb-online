@@ -259,6 +259,83 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(res.get("tierAfter")).isEqualTo("RARE");
     }
 
+    // ── V2.1-1 전줄 동일 티어(전줄=티어업 후 티어) ──────────────────────
+
+    @Test
+    void diceRoll_tierUpRerollsAllLinesToNewTier_twoLineGrade() {
+        // GOLD/4★ → maxTier EPIC(min(gradeCap EPIC, starCap[4] UNIQUE)). RARE→EPIC p=0.06,
+        // ceilingAt=ceil(1.5/0.06)=25 → rollsBefore=24 로 강제 승급. GOLD linesByGrade=2.
+        Map<String, Object> res = growthService.previewDiceRoll("any-seed", "RARE", 24, "NORMAL", "GOLD", 4);
+        assertThat(res.get("tierUp")).isEqualTo(true);
+        assertThat(res.get("tierAfter")).isEqualTo("EPIC");
+        List<?> lines = (List<?>) res.get("lines");
+        assertThat(lines).hasSize(2);
+        for (Object l : lines) {
+            assertThat(((Map<?, ?>) l).get("tier")).isEqualTo("EPIC");
+        }
+    }
+
+    @Test
+    void diceRoll_tierUpRerollsAllLinesToNewTier_threeLineGrade() {
+        // DIA/4★ → maxTier UNIQUE(min(gradeCap UNIQUE, starCap[4] UNIQUE)), linesByGrade DIA=3.
+        // 승급 전 tier=EPIC → EPIC→UNIQUE p=0.018, ceilingAt=ceil(1.5/0.018)=84.
+        Map<String, Object> res = growthService.previewDiceRoll("any-seed", "EPIC", 83, "NORMAL", "DIA", 4);
+        assertThat(res.get("tierUp")).isEqualTo(true);
+        assertThat(res.get("tierAfter")).isEqualTo("UNIQUE");
+        List<?> lines = (List<?>) res.get("lines");
+        assertThat(lines).hasSize(3);
+        for (Object l : lines) {
+            assertThat(((Map<?, ?>) l).get("tier")).isEqualTo("UNIQUE");
+        }
+    }
+
+    @Test
+    void diceRoll_allLines_alwaysMatchTierAfter_acrossManySeedsAndKinds() {
+        // 불변식: 승급 여부·시드·다이스 종류와 무관하게 롤 결과 lines 는 전부 tierAfter 와 동일 티어.
+        List<String> seeds = List.of("s1", "s2", "s3", "alpha", "beta", "gamma", "zzz",
+                "seed-42", "cafe-babe", "random-1");
+        for (String seed : seeds) {
+            for (String kind : List.of("NORMAL", "CASH")) {
+                Map<String, Object> res = growthService.previewDiceRoll(seed, "RARE", 0, kind, "LEGEND", 4);
+                Object tierAfter = res.get("tierAfter");
+                List<?> lines = (List<?>) res.get("lines");
+                assertThat(lines).isNotEmpty();
+                for (Object l : lines) {
+                    assertThat(((Map<?, ?>) l).get("tier")).as("seed=%s kind=%s", seed, kind).isEqualTo(tierAfter);
+                }
+            }
+        }
+    }
+
+    @Test
+    void diceRoll_sameSeed_reproducesSameLineTiers() {
+        Map<String, Object> a = growthService.previewDiceRoll("fixed-seed-77", "RARE", 24, "NORMAL", "DIA", 4);
+        Map<String, Object> b = growthService.previewDiceRoll("fixed-seed-77", "RARE", 24, "NORMAL", "DIA", 4);
+        assertThat(a).isEqualTo(b);
+        List<?> lines = (List<?>) a.get("lines");
+        Object tierAfter = a.get("tierAfter");
+        for (Object l : lines) {
+            assertThat(((Map<?, ?>) l).get("tier")).isEqualTo(tierAfter);
+        }
+    }
+
+    @Test
+    void diceRoll_variesValueWithinSameTier_acrossSeeds_smoke() {
+        // BRONZE/2★ maxTier=RARE==현재 tier → 절대 승급 불가(티어 고정) → value 편차만 관찰(V2.1-2).
+        java.util.Set<Double> observedValues = new java.util.HashSet<>();
+        for (int i = 0; i < 30; i++) {
+            Map<String, Object> res = growthService.previewDiceRoll("smoke-seed-" + i, "RARE", 0, "NORMAL",
+                    "BRONZE", 2);
+            assertThat(res.get("tierAfter")).isEqualTo("RARE");
+            List<?> lines = (List<?>) res.get("lines");
+            for (Object l : lines) {
+                observedValues.add(((Number) ((Map<?, ?>) l).get("value")).doubleValue());
+            }
+        }
+        assertThat(observedValues.size()).as("롤 편차 스모크 — 30롤에서 서로 다른 value 가 나와야 함")
+                .isGreaterThan(1);
+    }
+
     // ── V2-1 성장 정산 멱등 ──────────────────────────────────────────────
 
     @Test

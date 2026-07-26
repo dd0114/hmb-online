@@ -70,7 +70,7 @@ public class EconomyService {
      */
     public record Potential(Map<String, Integer> linesByGrade, Map<String, String> gradeTierCap,
                             Map<Integer, String> starTierCap, Map<String, Double> tierUp,
-                            double ceilingMult, Map<String, Double> breakout, double cashPremiumMult,
+                            double ceilingMult, double cashPremiumMult,
                             Map<String, List<PotentialOption>> tables) {
     }
 
@@ -194,7 +194,6 @@ public class EconomyService {
         p.path("starTierCap").properties()
                 .forEach(e -> starTierCap.put(Integer.parseInt(e.getKey()), e.getValue().asText()));
         Map<String, Double> tierUp = asDoubleMap(p.path("tierUp"));
-        Map<String, Double> breakout = asDoubleMap(p.path("breakout"));
         Map<String, List<PotentialOption>> tables = new LinkedHashMap<>();
         p.path("tables").properties().forEach(tierEntry -> {
             List<PotentialOption> options = new ArrayList<>();
@@ -207,7 +206,7 @@ public class EconomyService {
             tables.put(tierEntry.getKey(), List.copyOf(options));
         });
         return new Potential(Map.copyOf(linesByGrade), Map.copyOf(gradeTierCap), Map.copyOf(starTierCap),
-                Map.copyOf(tierUp), p.path("ceilingMult").asDouble(1.5), Map.copyOf(breakout),
+                Map.copyOf(tierUp), p.path("ceilingMult").asDouble(1.5),
                 p.path("cashPremiumMult").asDouble(1.0), Map.copyOf(tables));
     }
 

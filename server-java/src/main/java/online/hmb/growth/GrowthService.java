@@ -189,12 +189,6 @@ public class GrowthService {
         return idx >= TIER_ORDER.size() - 1 ? tier : TIER_ORDER.get(idx + 1);
     }
 
-    /** 2·3줄 기본 티어 = 한 단계 아래(레어는 바닥이라 그대로). */
-    static String oneBelow(String tier) {
-        int idx = tierRank(tier);
-        return idx <= 0 ? tier : TIER_ORDER.get(idx - 1);
-    }
-
     static String maxTier(String grade, int star, EconomyService.Potential pc) {
         String gradeCap = pc.gradeTierCap().getOrDefault(grade, "RARE");
         int starKey = Math.max(2, star); // star<2 는 잠금 상태 — 참고용으로 2★ 캡 기준 계산
@@ -571,22 +565,21 @@ public class GrowthService {
         return new DiceOutcome(tierBefore, tierAfter, tierUp, byCeiling, lines, rollsAfter, ceilingAtOut);
     }
 
+    /**
+     * 전줄 동일 티어(V2.1-1): 모든 슬롯이 롤 결과 티어(resultTier)로 리롤된다 — 메이플식 "2·3줄 한 단계
+     * 아래 + 이탈" 모델은 폐기. 티어업(승급) 시 전줄이 즉시 새 티어로 리롤되는 게 승급의 맛.
+     */
     private static List<PotentialLine> rollLines(SplittableRandom rng, String resultTier, int lineCount,
                                                  String kind, EconomyService.Potential pc) {
         List<PotentialLine> lines = new ArrayList<>();
         Map<String, Integer> typeStatCount = new HashMap<>();
-        double breakoutP = pc.breakout().getOrDefault("cash".equals(kind) ? "cash" : "normal", 0.0);
 
         for (int slot = 1; slot <= lineCount; slot++) {
-            String slotTier = slot == 1 ? resultTier : oneBelow(resultTier);
-            if (slot > 1 && !slotTier.equals(resultTier) && rng.nextDouble() < breakoutP) {
-                slotTier = resultTier; // 이탈: 낮은 줄이 동일 티어로
-            }
-            EconomyService.PotentialOption opt = pickOption(rng, pc.tables().getOrDefault(slotTier, List.of()),
+            EconomyService.PotentialOption opt = pickOption(rng, pc.tables().getOrDefault(resultTier, List.of()),
                     kind, typeStatCount, pc.cashPremiumMult());
             String key = opt.type() + "|" + (opt.stat() == null ? "" : opt.stat());
             typeStatCount.merge(key, 1, Integer::sum);
-            lines.add(new PotentialLine(slot, slotTier, opt.type(), opt.stat(), opt.value()));
+            lines.add(new PotentialLine(slot, resultTier, opt.type(), opt.stat(), opt.value()));
         }
         return lines;
     }
@@ -999,7 +992,7 @@ public class GrowthService {
             EconomyService.Star sc = economyService.get().map(EconomyService.Economy::star)
                     .orElse(new EconomyService.Star(Map.of(), Map.of()));
             EconomyService.Potential pc = economyService.get().map(EconomyService.Economy::potential)
-                    .orElse(new EconomyService.Potential(Map.of(), Map.of(), Map.of(), Map.of(), 1.5, Map.of(), 1.0,
+                    .orElse(new EconomyService.Potential(Map.of(), Map.of(), Map.of(), Map.of(), 1.5, 1.0,
                             Map.of()));
             CardState card = cardState(userId, a.playerId());
             PotentialRow prow = potentialRow(userId, a.playerId()).orElse(PotentialRow.fresh());
