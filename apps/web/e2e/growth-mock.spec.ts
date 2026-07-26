@@ -23,6 +23,8 @@ const err = (status: number, code: string, message: string) => ({
 
 // GOLD 등급 카드로 고정 — linesByGrade G:2(잠재 2줄), gradeTierCap G:EPIC(RARE→EPIC 티어업 데모 가능).
 const OWNED_ID = "P001";
+// 포지션별 6축 검증용(hero 2026-07-26) — GK mock 카드, 1번 축 라벨 "선방위치" 확인.
+const GK_ID = "P002";
 const attrs = {
   technical: 44, mental: 41, physical: 40, passing: 42, shooting: 55,
   tackling: 30, pace: 60, stamina: 43, positioning: 45,
@@ -38,6 +40,7 @@ function statLevels(bump: number) {
 }
 const PLAYERS_RESPONSE = [
   { id: OWNED_ID, name: "양민혁", position: "FW", grade: "GOLD", owned: true, ownedCount: 6, attributes: attrs },
+  { id: GK_ID, name: "김골키퍼", position: "GK", grade: "GOLD", owned: true, ownedCount: 1, attributes: attrs },
   { id: "P099", name: "잠금 선수", position: "DF", grade: "GOLD", owned: false, ownedCount: 0, attributes: attrs },
 ];
 
@@ -135,6 +138,27 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
         }),
       );
     },
+  );
+
+  // GK mock 카드(고정, 상태ful 아님) — 포지션별 6축 매핑 검증 전용(1번 축 "선방위치").
+  await page.route(
+    (url) => url.pathname === `/api/growth/card/${GK_ID}`,
+    (route) =>
+      route.fulfill(
+        json({
+          playerId: GK_ID,
+          grade: "GOLD",
+          star: 1,
+          attributes: attrs,
+          prePotential: attrs,
+          base: attrs,
+          caps,
+          statLevels: statLevels(0),
+          potential: { unlocked: false, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
+          ovr: 58,
+          completion: 0.3,
+        }),
+      ),
   );
 
   await page.route(
@@ -266,8 +290,9 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   await expect(page.getByTestId("growth-star-cost")).toContainText("중복 −2");
 
   // 능력치 2단 레이어 — [레이더](기본) ↔ [막대]("+보너스" 탭은 hero 실시간 지시로 제거 — "잘 안 보여").
-  // 레이더 기본 렌더: SVG 폴리곤 6축(슛/스피드/패스/테크닉/수비/피지컬) + 멘탈 칩(레이더 밖)
-  // + 밴드 앵커 윈도우 라벨(GOLD 60-75 → [55,90], hero: "주식 y축처럼 하한 잘라 드라마틱하게").
+  // 레이더 기본 렌더(포지션별 6축, hero 2026-07-26: FW = 슛/스피드/공간지각/테크닉/패스/피지컬)
+  // + 사이드 칩 2개(레이더 밖, FW = 멘탈+태클) + 밴드 앵커 윈도우 라벨(GOLD 60-75 → [55,90],
+  // hero: "주식 y축처럼 하한 잘라 드라마틱하게").
   await expect(page.getByTestId("growth-layer-radar")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("growth-attrs")).toHaveCount(0); // 막대 dl 은 레이더 레이어에서 렌더 안 됨
   await expect(page.getByTestId("growth-layer-bonus")).toHaveCount(0); // +보너스 탭 제거됨
@@ -278,18 +303,20 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   for (const [k, label] of [
     ["shooting", "슛"],
     ["pace", "스피드"],
-    ["passing", "패스"],
+    ["positioning", "공간지각"],
     ["technical", "테크닉"],
-    ["defense", "수비"],
+    ["passing", "패스"],
     ["physical", "피지컬"],
   ]) {
     await expect(page.getByTestId(`growth-radar-axis-${k}`)).toContainText(label);
   }
   await expect(page.getByTestId("growth-radar-axis-shooting")).toContainText("55"); // shooting 원시값
   await expect(page.getByTestId("growth-radar-window")).toHaveText("55–90"); // GOLD [60,75] → [55,90]
-  await expect(page.getByTestId("growth-mental-chip")).toBeVisible();
-  await expect(page.getByTestId("growth-mental-chip")).toContainText("멘탈");
-  await expect(page.getByTestId("growth-mental-chip")).toContainText("41");
+  await expect(page.getByTestId("growth-side-chip-mental")).toBeVisible();
+  await expect(page.getByTestId("growth-side-chip-mental")).toContainText("멘탈");
+  await expect(page.getByTestId("growth-side-chip-mental")).toContainText("41");
+  await expect(page.getByTestId("growth-side-chip-tackling")).toBeVisible();
+  await expect(page.getByTestId("growth-side-chip-tackling")).toContainText("태클");
 
   await page.screenshot({ path: `${SMOKE_DIR}growth-radar.png`, fullPage: true });
 
@@ -341,6 +368,26 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   console.log(`[smoke] growth-detail 390px overflow px = ${overflow}`);
   expect(overflow).toBeLessThanOrEqual(0);
   await page.screenshot({ path: `${SMOKE_DIR}growth-detail-promoted.png`, fullPage: true });
+});
+
+test("G4 포지션별 레이더 6축(hero 2026-07-26): GK 카드 1번 축 = '선방위치'", async ({ page }) => {
+  await mockGrowth(page);
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/codex");
+
+  await page.getByTestId(`codex-card-${GK_ID}`).getByRole("button").first().click();
+  const sheet = page.getByTestId("growth-detail");
+  await expect(sheet).toBeVisible();
+
+  await expect(page.getByTestId("growth-radar-svg")).toBeVisible();
+  // GK 1번 축(positioning) = "선방위치"(FW/DF 의 "공간지각"·"위치선정"과 다른 GK 전용 라벨).
+  await expect(page.getByTestId("growth-radar-axis-positioning")).toContainText("선방위치");
+  // GK 사이드 칩(레이더 밖) = 슛 + 태클.
+  await expect(page.getByTestId("growth-side-chip-shooting")).toBeVisible();
+  await expect(page.getByTestId("growth-side-chip-shooting")).toContainText("슛");
+  await expect(page.getByTestId("growth-side-chip-tackling")).toBeVisible();
+  await expect(page.getByTestId("growth-side-chip-tackling")).toContainText("태클");
 });
 
 test("G4 성★ 승급 오버레이(GM7b): 클릭 → growth-starup-overlay 등장(2★ 달성!·잠재능력 해금) → 소멸", async ({ page }) => {

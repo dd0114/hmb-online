@@ -16,7 +16,8 @@ import {
 } from "../api/growth";
 import {
   GRADE_POTENTIAL_LINES,
-  RADAR_GROUPS,
+  RADAR_CHIP_STATS_BY_POSITION,
+  RADAR_GROUPS_BY_POSITION,
   STAR_COPY_COST,
   STAT_LABEL_MAP,
   STAT_LABELS,
@@ -26,6 +27,7 @@ import {
   normalizeInWindow,
   radarAxisValue,
   xpToNextLevel,
+  type Position,
 } from "../growth/growth-config";
 import type { CatalogPlayer } from "../api/hooks";
 import styles from "./CardGrowthDetail.module.css";
@@ -131,16 +133,20 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   // 밴드 앵커 축 윈도우(hero: "y축 하한 잘라서 드라마틱하게") — 막대·레이더 공통 정규화.
   const axisWindow = computeAxisWindow(grade);
   const pct = (v: number) => normalizeInWindow(v, axisWindow) * 100;
+  // 포지션별 6축 매핑(hero 2026-07-26: "FIFA 가 GK 에 다른 6축 쓰는 방식처럼") — 카드 position 으로 선택.
+  const position = player.position as Position;
+  const radarGroups = RADAR_GROUPS_BY_POSITION[position];
+  const chipStats = RADAR_CHIP_STATS_BY_POSITION[position];
   const radarAxes = card
-    ? RADAR_GROUPS.map((g) => ({
+    ? radarGroups.map((g) => ({
         key: g.key,
         label: g.label,
         value: radarAxisValue(g, card.attributes as unknown as Record<string, number>),
         cap: radarAxisValue(g, card.caps as unknown as Record<string, number>),
       }))
     : [];
-  const mentalAttrs = card?.attributes as unknown as Record<string, number> | undefined;
-  const mentalCaps = card?.caps as unknown as Record<string, number> | undefined;
+  const chipAttrs = card?.attributes as unknown as Record<string, number> | undefined;
+  const chipCaps = card?.caps as unknown as Record<string, number> | undefined;
   const completion = card ? Math.max(0, Math.min(1, card.completion)) : 0;
   const busy = starUp.isPending || diceRoll.isPending || rollingKind !== null;
   // V2.1-3: 잠재 승급 = 카드 전체 인상을 바꾼다 — 프레임 글로우를 잠재 티어색으로.
@@ -326,12 +332,16 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
             {layer === "radar" && (
               <div className={styles.radarRow} data-testid="growth-radar-row">
                 <StatRadar axes={radarAxes} window={axisWindow} size={200} accentColor={frameColor} testId="growth-radar" />
-                <div className={styles.mentalChip} data-testid="growth-mental-chip">
-                  <span className={styles.mentalLabel}>{STAT_LABEL_MAP.mental}</span>
-                  <span className={styles.mentalValue}>
-                    {Math.round(mentalAttrs?.mental ?? 0)}
-                    <span className={styles.mentalCap}> /{Math.round(mentalCaps?.mental ?? 0)}</span>
-                  </span>
+                <div className={styles.sideChips}>
+                  {chipStats.map((key) => (
+                    <div key={key} className={styles.mentalChip} data-testid={`growth-side-chip-${key}`}>
+                      <span className={styles.mentalLabel}>{STAT_LABEL_MAP[key]}</span>
+                      <span className={styles.mentalValue}>
+                        {Math.round(chipAttrs?.[key] ?? 0)}
+                        <span className={styles.mentalCap}> /{Math.round(chipCaps?.[key] ?? 0)}</span>
+                      </span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}

@@ -118,8 +118,11 @@ export function normalizeInWindow(value: number, win: AxisWindow): number {
 }
 
 /**
- * 레이더 6축 그룹핑(hero: "9각은 많아 → 6축 그룹"). 단일 스탯 축은 그대로, 겹치는 역할은
- * 평균(수비=태클+위치선정, 피지컬=피지컬+스태미나). 멘탈은 레이더 밖 칩으로 별도 표시.
+ * 레이더 6축 그룹핑 — **포지션별**(hero 2026-07-26 확정: "포지션마다 6축이 달라야 한다, FIFA 가
+ * GK 에 다른 6축 쓰는 방식처럼" — 구 전 포지션 공통 6축[슛/스피드/패스/테크닉/수비/피지컬] 폐기).
+ * 공간지각(positioning)이 모든 포지션에서 자기 축을 갖는다(구 버전엔 수비 축에 숨어있었음).
+ * 단일 스탯 축은 그대로, 겹치는 역할은 평균(피지컬=피지컬+스태미나, MF 는 스태미나 단독축).
+ * 레이더 밖 스탯은 칩 2개로 표시(§ RADAR_CHIP_STATS_BY_POSITION).
  */
 export interface RadarGroupDef {
   key: string;
@@ -127,17 +130,50 @@ export interface RadarGroupDef {
   statKeys: readonly string[];
 }
 
-export const RADAR_GROUPS: RadarGroupDef[] = [
-  { key: "shooting", label: "슛", statKeys: ["shooting"] },
-  { key: "pace", label: "스피드", statKeys: ["pace"] },
-  { key: "passing", label: "패스", statKeys: ["passing"] },
-  { key: "technical", label: "테크닉", statKeys: ["technical"] },
-  { key: "defense", label: "수비", statKeys: ["tackling", "positioning"] },
-  { key: "physical", label: "피지컬", statKeys: ["physical", "stamina"] },
-];
+export type Position = "FW" | "MF" | "DF" | "GK";
 
-/** RADAR_GROUPS 밖 — 레이더 옆 칩으로 표시(§ 위 주석). */
-export const RADAR_CHIP_STAT: keyof CatalogPlayer["attributes"] = "mental";
+export const RADAR_GROUPS_BY_POSITION: Record<Position, RadarGroupDef[]> = {
+  FW: [
+    { key: "shooting", label: "슛", statKeys: ["shooting"] },
+    { key: "pace", label: "스피드", statKeys: ["pace"] },
+    { key: "positioning", label: "공간지각", statKeys: ["positioning"] },
+    { key: "technical", label: "테크닉", statKeys: ["technical"] },
+    { key: "passing", label: "패스", statKeys: ["passing"] },
+    { key: "physical", label: "피지컬", statKeys: ["physical", "stamina"] },
+  ],
+  MF: [
+    { key: "passing", label: "패스", statKeys: ["passing"] },
+    { key: "technical", label: "테크닉", statKeys: ["technical"] },
+    { key: "pace", label: "스피드", statKeys: ["pace"] },
+    { key: "positioning", label: "공간지각", statKeys: ["positioning"] },
+    { key: "tackling", label: "수비", statKeys: ["tackling"] },
+    { key: "stamina", label: "스태미나", statKeys: ["stamina"] },
+  ],
+  DF: [
+    { key: "tackling", label: "수비", statKeys: ["tackling"] },
+    { key: "positioning", label: "공간지각", statKeys: ["positioning"] },
+    { key: "physical", label: "피지컬", statKeys: ["physical", "stamina"] },
+    { key: "pace", label: "스피드", statKeys: ["pace"] },
+    { key: "passing", label: "패스", statKeys: ["passing"] },
+    { key: "mental", label: "멘탈", statKeys: ["mental"] },
+  ],
+  GK: [
+    { key: "positioning", label: "선방위치", statKeys: ["positioning"] },
+    { key: "mental", label: "멘탈", statKeys: ["mental"] },
+    { key: "physical", label: "피지컬", statKeys: ["physical", "stamina"] },
+    { key: "passing", label: "패스", statKeys: ["passing"] },
+    { key: "technical", label: "테크닉", statKeys: ["technical"] },
+    { key: "pace", label: "스피드", statKeys: ["pace"] },
+  ],
+};
+
+/** RADAR_GROUPS_BY_POSITION 밖 — 레이더 옆 칩 2개로 표시(포지션별로 빠지는 축이 다르다). */
+export const RADAR_CHIP_STATS_BY_POSITION: Record<Position, ReadonlyArray<keyof CatalogPlayer["attributes"]>> = {
+  FW: ["mental", "tackling"],
+  MF: ["mental", "physical"],
+  DF: ["shooting", "technical"],
+  GK: ["shooting", "tackling"],
+};
 
 /** 그룹의 statKeys 평균값. source 는 card.attributes/caps(Record<string, number> 캐스트) 공용. */
 export function radarAxisValue(group: RadarGroupDef, source: Record<string, number>): number {

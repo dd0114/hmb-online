@@ -218,6 +218,13 @@
   flex-wrap: wrap;
 }
 
+/* 포지션별 사이드 칩 2개(레이더 밖 스탯) — 세로 스택. */
+.sideChips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .mentalChip {
   display: flex;
   flex-direction: column;
