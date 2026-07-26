@@ -226,9 +226,12 @@ CREATE TABLE dice_rolls (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, player_id T
 | GET | `/api/growth/card/{pid}` | 개정 CardEffective(스탯Lv/XP·★·잠재 lines·caps·ovr·완성도) |
 | POST | `/api/growth/star` | ★승급: 중복 소모 2★=2 / 3★=3 / 4★=5장. CAS·멱등 |
 | POST | `/api/growth/dice` | `{playerId, kind}` 다이스 1개 소모→롤 결과(tierUp?·lines·ceiling 카운터) |
-| POST | `/api/shop/dice` | `{kind, count}` 노말=500P·캐시=5,000P(목업) — point_ledger 멱등 |
+| POST | `/api/shop/dice` | `{kind, count}` 노말=500P·캐시=5,000P(목업) — point_ledger 멱등. **응답 = `DiceBuyResult {kind, count, dice:{normal,cash}, wallet:{points}}`** (shared 계약) |
+| **GET** | **`/api/growth/dice`** | **다이스 잔액 `DiceBalance {normal, cash}`** — web 페이지 로드 시 조회(새로고침 리셋 방지, GM3 발견 공백) |
 | GET | `/api/growth/report/{matchId}` | 스탯별 XP·레벨업 리포트(개정) |
 | ~~POST~~ | ~~enhance·limitbreak~~ | **제거** |
+
+에러코드 확정: 중복 부족 `INSUFFICIENT_MATERIALS` · 포인트 부족 `INSUFFICIENT_POINTS` · **다이스 부족 `INSUFFICIENT_DICE`** · 잠재 미해금(1★) `POTENTIAL_LOCKED`.
 
 ## V2-5. economy config (GM1 — additive 개정, `enhance` 블록 제거)
 `growth{xpBase100, xpLvBase100, xpLvGrowth1.7, gradeXpMult{B:0.4,S:0.4,G:1.0,D:1.5,L:3.0}, minutesMult{starter:1,partial:0.5,bench:0}, baselineByPosition(유지), eventStatMap{...}}` · `star{copies{2:2,3:3,4:5}, starFrac{1:0.25,2:0.5,3:0.75,4:1.0}}` · `potential{linesByGrade{B:1,S:1,G:2,D:3,L:3}, gradeTierCap{B:RARE,S:RARE,G:EPIC,D:UNIQUE,L:UNIQUE}, starTierCap{2:RARE,3:EPIC,4:UNIQUE}, tierUp{rareToEpic:0.06, epicToUnique:0.018}, ceilingMult:1.5, breakout{normal:0.08, cash:0.20}, tables{RARE:[...],EPIC:[...],UNIQUE:[...]}}` · `dice{normalCost:500, cashCost:5000}`

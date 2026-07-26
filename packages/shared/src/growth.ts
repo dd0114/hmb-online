@@ -86,6 +86,22 @@ export const DiceRollResult = z.object({
 });
 export type DiceRollResult = z.infer<typeof DiceRollResult>;
 
+/** 다이스 보유 잔액 (GET /api/growth/dice) — 페이지 로드 시 조회(세션 리셋 무관). */
+export const DiceBalance = z.object({
+  normal: z.number().int().min(0),
+  cash: z.number().int().min(0),
+});
+export type DiceBalance = z.infer<typeof DiceBalance>;
+
+/** 다이스 구매 결과 (POST /api/shop/dice). 부족 에러코드 = INSUFFICIENT_POINTS / 롤 부족 = INSUFFICIENT_DICE. */
+export const DiceBuyResult = z.object({
+  kind: z.enum(["NORMAL", "CASH"]),
+  count: z.number().int().min(1),
+  dice: DiceBalance, // 구매 후 잔액
+  wallet: z.object({ points: z.number().int().min(0) }),
+});
+export type DiceBuyResult = z.infer<typeof DiceBuyResult>;
+
 /** 매치 후 성장 리포트 1인분 — 스탯별 XP·레벨업 (GET /api/growth/report). */
 export const MatchGrowthEntry = z.object({
   playerId: z.string(),
