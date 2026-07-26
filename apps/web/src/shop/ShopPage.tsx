@@ -29,6 +29,7 @@ export function ShopPage() {
   const [tab, setTab] = useState<ShopTab>("gacha");
 
   const points = me?.wallet.points ?? 0;
+  const gems = me?.wallet.gems ?? 0;
 
   function pull(kind: "single" | "ten") {
     setError(null);
@@ -55,7 +56,7 @@ export function ShopPage() {
         ← 로비
       </button>
       <h1 className={styles.pageTitle}>상점</h1>
-      {me && <PointsBadge points={points} />}
+      {me && <PointsBadge points={points} gems={gems} />}
     </div>
   );
 
@@ -106,7 +107,7 @@ export function ShopPage() {
       {tab === "topup" ? (
         <TopupPanel />
       ) : tab === "dice" ? (
-        <DicePanel points={points} />
+        <DicePanel points={points} gems={gems} />
       ) : (
         <>
       <div className={styles.pulls}>

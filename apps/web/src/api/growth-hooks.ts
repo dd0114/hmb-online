@@ -15,6 +15,7 @@ import type {
   CardEffective,
   DiceBuyResult,
   DiceRollResult,
+  GemTopupResult,
   MatchGrowthReport,
   StarUpResult,
 } from "./growth";
@@ -93,6 +94,21 @@ export function useBuyDice() {
     onSuccess: (res) => {
       queryClient.setQueryData<DiceBalance>(diceBalanceKey, res.dice);
       queryClient.invalidateQueries({ queryKey: ["me"] }); // wallet.points 반영
+    },
+  });
+}
+
+/**
+ * POST /api/shop/gems/topup — 젬 충전(목업, V2.2 §스펙). 실결제 없음, 즉시 지급.
+ * 성공 시 지갑(me) invalidate — points 와 동일하게 서버 응답이 최종 권위.
+ */
+export function useGemTopup() {
+  const queryClient = useQueryClient();
+  return useMutation<GemTopupResult, ApiError, { packId: string }>({
+    mutationFn: (body) =>
+      apiFetch<GemTopupResult>("/api/shop/gems/topup", { method: "POST", body }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me"] });
     },
   });
 }

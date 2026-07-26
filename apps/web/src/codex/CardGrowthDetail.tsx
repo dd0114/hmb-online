@@ -484,8 +484,10 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                 onClick={() => handleRoll("CASH")}
                 disabled={busy || (diceBalance?.cash ?? 0) < 1}
               >
-                캐시 다이스 롤
-                <span className={styles.costChip}>보유 {diceBalance?.cash ?? 0} · −1</span>
+                캐시 다이스 롤 💎
+                <span className={styles.costChip} data-testid="growth-dice-cash-owned">
+                  보유 {diceBalance?.cash ?? 0} · −1
+                </span>
               </button>
             </div>
           </>

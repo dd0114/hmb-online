@@ -1,3 +1,10 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -8,9 +15,14 @@
   border: 1px solid var(--border);
   font-weight: 600;
   font-size: 14px;
+  white-space: nowrap;
 }
 
 .icon {
   color: #f5c542;
   font-size: 10px;
+}
+
+.gemIcon {
+  font-size: 11px;
 }

@@ -5,8 +5,16 @@ import { useToken } from "../auth/TokenContext";
 import { shouldPoll } from "../match/match-logic";
 
 import type { Personality } from "./v2";
+import type { WalletBalance } from "./growth";
 
-export type MeResponse = components["schemas"]["MeResponse"];
+/**
+ * MeResponse + V2.2 재화 이원화(에픽 #179 hero 확정): wallet 에 gems 가 additive 로 추가된다
+ * (packages/shared/src/growth.ts WalletBalance). openapi 의 WalletInfo(points 만)는 아직 GM8
+ * 서버 작업 진행 중이라 미편입 — CatalogPlayer.personality 와 같은 손 오버라이드 패턴.
+ */
+export type MeResponse = Omit<components["schemas"]["MeResponse"], "wallet"> & {
+  wallet: WalletBalance;
+};
 export type ModeInfo = components["schemas"]["ModeInfo"];
 /**
  * V1 CatalogPlayer + Phase2 additive personality (openapi-v2 CatalogPlayerPhase2Fields) — 도감/

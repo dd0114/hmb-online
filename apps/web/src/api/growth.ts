@@ -97,16 +97,39 @@ export interface MatchGrowthReport {
 }
 
 /**
+ * 지갑 — V2.2 재화 이원화(에픽 #179, hero 확정 2026-07-26): P(무료 게임머니) + 젬(충전형, 목업
+ * 충전). SoT = packages/shared/src/growth.ts WalletBalance. openapi 미편입이라 여기서도 손 미러링.
+ */
+export interface WalletBalance {
+  points: number;
+  gems: number;
+}
+
+/**
  * POST /api/shop/dice 응답 — **shared/growth.ts 에도 아직 없다**(V2-4 표에는 있지만 zod 스키마
  * 미정의). "지갑 차감·user_dice 증가"(§V2-4)만 명시돼 있어, 갱신된 다이스 잔고 + 지갑을 함께
  * 내려준다고 가정해 손으로 정의했다 — GM2 확정 시 이 타입을 교체할 것(리스크로 최종보고에 기록).
+ * V2.2: NORMAL=P 결제, CASH=젬 결제(10젬/개) — wallet 이 WalletBalance(points+gems)로 개정.
  */
 export interface DiceBuyResult {
   kind: "NORMAL" | "CASH";
   count: number;
   dice: { normal: number; cash: number };
-  wallet: { points: number };
+  wallet: WalletBalance;
 }
+
+/**
+ * 젬 충전(목업) 결과 (POST /api/shop/gems/topup). 실결제 없음 — mock 지급, 즉시 반영.
+ * SoT = packages/shared/src/growth.ts GemTopupResult.
+ */
+export interface GemTopupResult {
+  packId: string;
+  granted: number;
+  wallet: WalletBalance;
+}
+
+/** 젬 부족 4xx 코드 (POST /api/shop/dice CASH — V2.2 §스펙). */
+export const INSUFFICIENT_GEMS_CODE = "INSUFFICIENT_GEMS";
 
 /** 성★ 승급 시 중복 부족 4xx 코드 (V2-4 명시). */
 export const INSUFFICIENT_MATERIALS_CODE = "INSUFFICIENT_MATERIALS";

@@ -57,8 +57,29 @@ export const TIER_LABELS: Record<PotentialTier, string> = {
   UNIQUE: "유니크",
 };
 
-/** dice.normalCost/cashCost (V2-5) — 상점 다이스 구매 목업 가격(포인트). */
-export const DICE_BUY_COST = { NORMAL: 500, CASH: 5000 } as const;
+/**
+ * dice.normalCost (V2-5, 유지) — 노말 다이스 1개 구매 포인트 가격.
+ * V2.2(§ hero 확정 2026-07-26 — 재화 이원화)로 캐시 다이스는 P 결제가 아니라 **젬** 결제로
+ * 개정됐다(구 cashCost 5000P 는 제거) — 아래 DICE_CASH_GEM_COST 참조.
+ */
+export const DICE_BUY_COST = { NORMAL: 500 } as const;
+
+/** dice.cashGemCost (V2.2) — 캐시 다이스 1개 구매 젬 가격. */
+export const DICE_CASH_GEM_COST = 10;
+
+export interface GemTopupPack {
+  id: string;
+  gems: number;
+  /** 목업 표기 가격(원) — 실결제 없음. */
+  mockPrice: string;
+}
+
+/** gems.topupPacks (V2.2) — 젬 충전(목업) 3종. 클릭 즉시 지급, 실결제 없음(UI에 명시). */
+export const GEM_TOPUP_PACKS: readonly GemTopupPack[] = [
+  { id: "p1", gems: 60, mockPrice: "₩1,200" },
+  { id: "p2", gems: 330, mockPrice: "₩5,900" },
+  { id: "p3", gems: 720, mockPrice: "₩11,900" },
+];
 
 /**
  * 밴드 앵커 축 윈도우(#179 후속, hero 피드백 "주식 차트처럼 y축 하한 잘라서 드라마틱하게").
