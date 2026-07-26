@@ -121,14 +121,26 @@ function stubTeamInput(ctx: TeamInputJobContext): TacticalInput {
  */
 function stubPatch(ctx: TeamInputPatchJobContext): TacticalPatch {
   const patch: TacticalPatch = {};
-  const d = ctx.teamPrompt;
+  // #193 델타 모드: 변경분이 있으면 **변경 후(new) 지시**만 본다(옛 지시 무시, 삭제된 지시는 미반영).
+  // 라이브 claude 는 델타 프롬프트로 같은 의미를 해석 — 스텁은 오프라인 E2E 배선용 결정론 흉내.
+  const delta = ctx.promptDelta;
+  const isDelta = delta !== undefined && (delta.team !== undefined || Object.keys(delta.players ?? {}).length > 0);
+  const d = isDelta ? (delta?.team?.new ?? "") : ctx.teamPrompt;
+  const playerPrompts: Record<string, string> = isDelta
+    ? Object.fromEntries(
+        Object.entries(delta?.players ?? {})
+          .filter(([, e]) => e.new !== undefined && e.new.trim() !== "")
+          .map(([pid, e]) => [pid, e.new as string]),
+      )
+    : ctx.playerPrompts;
 
   if (/공격|오버랩|하이라인|와이드|빠른 템포|attack|wide|overlap/i.test(d)) {
     patch.team = { defensiveLineHeight: 0.85, width: 0.85, pressIntensity: 0.8 };
     patch.byPosition = { DF: { behavior: { widthTendency: 0.9, forwardRunFreq: 0.85 } } };
   }
   if (/수비|로우|콤팩트|back four|low|defensive|compact/i.test(d)) {
-    patch.team = { defensiveLineHeight: 0.2, compactness: 0.85, width: 0.35, pressIntensity: 0.2 };
+    // 라인을 내리면 오프사이드 트랩은 끈다 — 게이트 G1(자기모순) 위반 회피(베이스가 트랩 ON 일 수 있음).
+    patch.team = { defensiveLineHeight: 0.2, compactness: 0.85, width: 0.35, pressIntensity: 0.2, offsideTrap: false };
     patch.byPosition = { DF: { behavior: { widthTendency: 0.15, forwardRunFreq: 0.05 } } };
   }
   if (/전원|모두|다같이|전방부터|all|everyone/i.test(d) && /압박|프레스|press/i.test(d)) {
@@ -142,7 +154,7 @@ function stubPatch(ctx: TeamInputPatchJobContext): TacticalPatch {
 
   // 선수별 개인 지시 → byPlayer
   const byPlayer: Record<string, { behavior?: PlayerBehaviorPatch; mentalModifier?: number }> = {};
-  for (const [pid, prompt] of Object.entries(ctx.playerPrompts)) {
+  for (const [pid, prompt] of Object.entries(playerPrompts)) {
     if (!prompt.trim()) continue;
     if (/침투|런|run|forward/i.test(prompt)) {
       byPlayer[pid] = { ...byPlayer[pid], behavior: { ...byPlayer[pid]?.behavior, forwardRunFreq: 0.9 } };
@@ -160,15 +172,15 @@ function stubPatch(ctx: TeamInputPatchJobContext): TacticalPatch {
     const markTargets: Record<string, string> = {};
 
     // 개인 지시로 특정 우리 선수에게 마킹.
-    for (const [pid, prompt] of Object.entries(ctx.playerPrompts)) {
+    for (const [pid, prompt] of Object.entries(playerPrompts)) {
       if (prompt.trim() && isMark(prompt)) {
         const target = findTarget(prompt);
         if (target) markTargets[pid] = target;
       }
     }
     // 팀 마킹 → 지목 상대들을 수비 자원에 1:1 분배(base.players 의 role 로 수비수 선별).
-    if (isMark(ctx.teamPrompt)) {
-      const mentioned = opp.filter((o) => ctx.teamPrompt.includes(o.name) || mentionsId(ctx.teamPrompt, o.playerId));
+    if (isMark(d)) {
+      const mentioned = opp.filter((o) => d.includes(o.name) || mentionsId(d, o.playerId));
       const defenders = ctx.base.players.filter((p) => /(LB|CB|RB|DM|CDM)/i.test(p.role) && !markTargets[p.playerId]);
       mentioned.forEach((o, i) => {
         const dfd = defenders[i];
@@ -185,7 +197,7 @@ function stubPatch(ctx: TeamInputPatchJobContext): TacticalPatch {
   for (const p of ctx.base.players) {
     const r = rel[p.playerId];
     if (!r) continue;
-    const tone = `${ctx.teamPrompt} ${ctx.playerPrompts[p.playerId] ?? ""}`;
+    const tone = `${d} ${playerPrompts[p.playerId] ?? ""}`;
     let mm: number | undefined;
     if (r.personality === "GLASS" && scold(tone)) mm = -0.4;
     else if (r.personality === "FIERY" && strongAttack(tone)) mm = 0.4;

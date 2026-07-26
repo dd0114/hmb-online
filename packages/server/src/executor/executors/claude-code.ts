@@ -27,6 +27,13 @@ export interface ClaudeCodeOptions {
   model?: string;
   /** 잡당 강제 타임아웃(ms). 기본 env AI_JOB_TIMEOUT_MS → 120000. */
   timeoutMs?: number;
+  /**
+   * 사고(reasoning) 노력 수준 → CLI `--effort`. 기본 env AI_EFFORT → "low".
+   * **빈 문자열이면 플래그를 생략**(claude 세션 기본값 사용). kind 별 오버라이드는 env
+   * `AI_EFFORT_FULL`(team-input) / `AI_EFFORT_PATCH`(team-input-patch).
+   * (#193 실측: 지연의 지배 변수 = 사고 토큰 — low + 필수확인 서픽스가 품질/지연 최적점.)
+   */
+  effort?: string;
   /** 러너 주입(테스트/모의). 미지정 시 실제 claude subprocess. */
   runner?: ClaudeRunner;
   /** W3 AC1: 잡당 토큰 usage 콜백(CacheMetrics.recordUsage + complete body 전달). 미지정 시 로그만. */
@@ -35,6 +42,18 @@ export interface ClaudeCodeOptions {
 
 const DEFAULT_MODEL = "sonnet";
 const DEFAULT_TIMEOUT_MS = 120_000;
+/** #193: 사고 토큰이 지연을 지배 → 기본 low(품질은 프롬프트의 필수확인 서픽스 + 코드 게이트로 지킨다). */
+const DEFAULT_EFFORT = "low";
+
+/**
+ * 잡 kind 별 effort 해석 — 옵션 주입 > kind 별 env 오버라이드 > AI_EFFORT > 기본 low.
+ * 빈 문자열("")은 "플래그 생략"의 의미(세션 기본) — undefined 와 구분한다.
+ */
+export function resolveEffort(kind: string, injected?: string): string {
+  if (injected !== undefined) return injected;
+  const perKind = kind === "team-input-patch" ? process.env["AI_EFFORT_PATCH"] : process.env["AI_EFFORT_FULL"];
+  return perKind ?? process.env["AI_EFFORT"] ?? DEFAULT_EFFORT;
+}
 
 /** 실제 `claude` subprocess 러너 — 프롬프트는 stdin, 결과는 stdout(JSON 봉투). */
 function spawnRunner(): ClaudeRunner {
@@ -121,12 +140,14 @@ export function claudeCodeExecutor(opts: ClaudeCodeOptions = {}): AiExecutor {
     async execute(job: ExecutorJob, attempt?: { feedback: string }): Promise<unknown> {
       const spec = KINDS[job.kind];
       const prompt = spec.buildPrompt(job.context, attempt?.feedback);
+      const effort = resolveEffort(job.kind, opts.effort);
       const args = [
         "-p",
         "--output-format",
         "json",
         "--model",
         model,
+        ...(effort ? ["--effort", effort] : []), // 빈 값 = 플래그 생략(세션 기본)
         "--json-schema",
         JSON.stringify(spec.jsonSchema()),
       ];

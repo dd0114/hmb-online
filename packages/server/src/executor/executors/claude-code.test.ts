@@ -2,7 +2,24 @@ import { describe, it, expect, vi } from "vitest";
 import { claudeCodeExecutor, type ClaudeRunner, type ClaudeRunResult } from "./claude-code.js";
 import { makeTacticalInput } from "@hmb/engine";
 import type { ExecutorJob } from "../kinds.js";
-import { makeTeamInputContext } from "../test-fixtures.js";
+import { makeTeamInputContext, makeTeamInputPatchContext } from "../test-fixtures.js";
+
+/** env 를 임시 치환하고 복원(테스트 격리). undefined 값 = 삭제. */
+async function withEnv(vars: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
+  const prev = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  try {
+    for (const [k, v] of Object.entries(vars)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    await fn();
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
 
 // claude CLI 러너를 주입해 로그인/키 0 으로 executor 를 검증(구 W2 스위트 → team-input 으로 이관).
 const job: ExecutorJob = {
@@ -31,8 +48,19 @@ describe("claude-code executor (러너 주입)", () => {
     const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: valid }) });
     const out = await claudeCodeExecutor({ model: "haiku", runner }).execute(job);
 
-    expect(last.args).toEqual(["-p", "--output-format", "json", "--model", "haiku", "--json-schema", expect.any(String)]);
-    expect(JSON.parse(last.args[6]!)).toHaveProperty("type", "object"); // TacticalInput JSON Schema
+    // #193: effort 노브 기본 low(사고 토큰 = 지연의 지배 변수) → --effort 가 args 에 포함.
+    expect(last.args).toEqual([
+      "-p",
+      "--output-format",
+      "json",
+      "--model",
+      "haiku",
+      "--effort",
+      "low",
+      "--json-schema",
+      expect.any(String),
+    ]);
+    expect(JSON.parse(last.args[8]!)).toHaveProperty("type", "object"); // TacticalInput JSON Schema
     expect(last.prompt).toContain("풀백 오버랩·와이드"); // 팀 지시
     expect(last.prompt).toContain("H0"); // 로스터 playerId
     expect((out as { players: unknown[] }).players).toHaveLength(11);
@@ -96,6 +124,43 @@ describe("claude-code executor (러너 주입)", () => {
     expect(usages).toEqual([
       { inputTokens: 5, outputTokens: 9, cacheReadTokens: 123, cacheCreateTokens: 456, costUSD: 0.02 },
     ]);
+  });
+
+  it("AI_EFFORT env 로 교체 — 빈 문자열이면 플래그 생략(세션 기본 사용)", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "high" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(job);
+      expect(last.args).toContain("--effort");
+      expect(last.args[last.args.indexOf("--effort") + 1]).toBe("high");
+    });
+    await withEnv({ AI_EFFORT: "" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(job);
+      expect(last.args).not.toContain("--effort");
+    });
+  });
+
+  it("kind 별 오버라이드: AI_EFFORT_FULL(team-input) · AI_EFFORT_PATCH(team-input-patch)", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    const patchJob: ExecutorJob = {
+      id: "p1",
+      kind: "team-input-patch",
+      context: makeTeamInputPatchContext(),
+    };
+    await withEnv({ AI_EFFORT: "low", AI_EFFORT_FULL: "medium", AI_EFFORT_PATCH: "high" }, async () => {
+      const ex = claudeCodeExecutor({ runner });
+      await ex.execute(job); // team-input → FULL
+      expect(last.args[last.args.indexOf("--effort") + 1]).toBe("medium");
+      await ex.execute(patchJob); // team-input-patch → PATCH
+      expect(last.args[last.args.indexOf("--effort") + 1]).toBe("high");
+    });
+  });
+
+  it("effort 옵션 주입이 env 보다 우선", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "high" }, async () => {
+      await claudeCodeExecutor({ runner, effort: "low" }).execute(job);
+      expect(last.args[last.args.indexOf("--effort") + 1]).toBe("low");
+    });
   });
 
   it("모델 스왑: AI_MODEL env 로 교체(기본 sonnet)", async () => {

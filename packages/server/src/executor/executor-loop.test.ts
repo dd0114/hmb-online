@@ -362,6 +362,49 @@ describe("AI실행기 폴링 루프 — B(team-input-patch) 잡 라우팅 (A+B, 
     expect(out.team.defensiveLineHeight).toBeGreaterThan(0.7);
   });
 
+  it("게이트 위반(#193 G1) → throw 메시지가 그대로 1회 재시도 feedback 으로 전달되고, 고친 산출은 ok:true", async () => {
+    // 1회차: 낮은 라인 + 오프사이드 트랩(자기모순 패치) → 게이트 throw. 2회차: 트랩을 끄고 재제출.
+    const ctx = makeTeamInputPatchContext({ teamPrompt: "라인 내리고 콤팩트하게" });
+    java.queue.push({ id: "patch-gate", context: ctx });
+    const feedbacks: (string | undefined)[] = [];
+    let call = 0;
+    const flaky: AiExecutor = {
+      name: "flaky",
+      execute: (_job, attempt) => {
+        feedbacks.push(attempt?.feedback);
+        call += 1;
+        return Promise.resolve(
+          call === 1
+            ? { team: { defensiveLineHeight: 0.15, offsideTrap: true } }
+            : { team: { defensiveLineHeight: 0.15, offsideTrap: false } },
+        );
+      },
+    };
+    const loop = new ExecutorLoop(client(java), flaky, { log: () => {} });
+    await loop.processOnce();
+
+    expect(call).toBe(2);
+    expect(feedbacks[0]).toBeUndefined();
+    expect(feedbacks[1]).toContain("오프사이드트랩"); // 게이트 메시지가 곧 피드백
+    const c = java.completes[0]!;
+    expect(c.body.ok).toBe(true);
+    expect(TacticalInput.parse(c.body.output).team.offsideTrap).toBe(false);
+  });
+
+  it("게이트 위반이 2회 연속이면 VALIDATE 로 실패 complete(기존 의미론)", async () => {
+    const ctx = makeTeamInputPatchContext({ teamPrompt: "라인 내리고 콤팩트하게" });
+    java.queue.push({ id: "patch-gate-fail", context: ctx });
+    const stubborn: AiExecutor = {
+      name: "stubborn",
+      execute: () => Promise.resolve({ team: { defensiveLineHeight: 0.1, offsideTrap: true } }),
+    };
+    await new ExecutorLoop(client(java), stubborn, { log: () => {} }).processOnce();
+    const c = java.completes[0]!;
+    expect(c.body.ok).toBe(false);
+    expect(c.body.error).toMatch(/^VALIDATE:/);
+    expect(c.body.error).toContain("오프사이드트랩");
+  });
+
   it("patch 마킹 잡: 개인 지시 '<상대> 막아' → 최종 markTarget 착지", async () => {
     const ctx = makeTeamInputPatchContext({
       opponentRoster: makeOpponentRoster(),
