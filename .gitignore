@@ -22,3 +22,8 @@ server-java/.data-design/
 
 # 배포 매니페스트(#164) — 에페메럴 터널 URL 포함, 생성물
 infra/deploy-manifest.json
+
+# QA 콘솔(#191) 세션 로컬 산출물 — before/after 비교용 로그 사본 등(재생성 가능)
+.qa/
+# 레지스트리 폴백 경로(정상 위치는 리포 밖 ~/hmb-qa-console — §3.1). 실수로 리포에 생겨도 커밋되지 않게.
+.qa-console/
