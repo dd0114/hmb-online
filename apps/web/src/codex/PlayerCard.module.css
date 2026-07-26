@@ -79,6 +79,7 @@
   margin-top: 2px;
 }
 
+/* 펼침(미보유 카드 전용) 능력치 목록. 풀아트는 강화 상세가 갖는다(#187 · #179). */
 .attrs {
   margin: 0;
   padding: 8px 10px 10px;

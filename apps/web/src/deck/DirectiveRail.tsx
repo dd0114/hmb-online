@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CatalogPlayer } from "../api/hooks";
 import type { Personality, TeamTactics } from "../api/v2";
 import { PersonalityBadge, TrustGauge } from "../common/RelationBits";
+import { FullArtCard } from "../common/FullArtCard";
 import { conditionLabel } from "../match/condition-clock";
 import { PROMPT_MAX_CHARS, type DraftSlot } from "./deck-logic";
 import {
@@ -294,8 +295,27 @@ function PlayerContext(props: PlayerContextProps) {
 
   return (
     <>
-      {/* 한 줄 신원 = 구 선수정보 시트의 대체물 (#106 요구 2) */}
+      {/* 한 줄 신원 = 구 선수정보 시트의 대체물 (#106 요구 2).
+          #187: hero 가 "유닛 눌렀을 때 유닛 정보에 풀 일러도 같이" 를 요구했다. 새 시트를
+          되살리지 않고 **여기에 카드를 얹는다** — #106 이 시트를 없앤 이유(화면이 점프한다)를
+          그대로 지키면서 일러스트만 더한다. 보드 토큰 탭·리스트 탭 둘 다 이 헤드로 들어온다. */}
       <div className={styles.head} data-testid="rail-head">
+        {/* ⚠️ `data-rail-art` = **접힌 독에서는 숨는다**(DeckEditor.module.css).
+            모바일 독은 접혀도 헤드가 보이는 구조라, 여기에 165px 카드를 상주시키면 접힌 독이
+            그만큼 커져 보유 선수 리스트를 덮는다 — #106 R3a/R3b 의 죽은 띠·탭 타깃 계약이 깨진다
+            (실제로 deck-teamsheet e2e 5건이 이걸 잡았다). 데스크탑 레일은 항상 펼침이라 늘 보인다. */}
+        <span data-rail-art>
+          <FullArtCard
+            playerId={player.id}
+            name={player.name}
+            grade={player.grade}
+            position={player.position}
+            size="rail"
+            /* 이름·포지션·컨디션은 바로 옆 한 줄이 말한다 → 아트만(빈 밴드 제거, #187). */
+            variant="art"
+            className={styles.headArt}
+          />
+        </span>
         <span className={styles.mini}>{slotNumber ?? "—"}</span>
         <span className={styles.who}>
           <b data-testid="rail-title">{player.name}</b>

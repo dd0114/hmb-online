@@ -1,8 +1,9 @@
 import { useState } from "react";
 import type { GachaResponse } from "../api/hooks";
 import { Modal } from "../common/Modal";
-import { GRADE_COLORS, GRADE_LABELS, isHighGrade } from "../common/grades";
-import { CharAvatar } from "../common/CharAvatar";
+import { GRADE_LABELS, isHighGrade } from "../common/grades";
+import { FullArtCard } from "../common/FullArtCard";
+import { fullArtWidth } from "../common/full-art";
 import {
   initialReveal,
   isAllRevealed,
@@ -20,6 +21,11 @@ interface GachaRevealProps {
 /**
  * 뽑기 결과 연출 (AC-W3): 카드 뒤집기 순차 공개(CSS transition), 골드↑ 하이라이트, isNew 뱃지.
  * 순차 진행 상태는 reveal-logic.ts(순수, 테스트됨)가 소유.
+ *
+ * #187 (hero 확정 A안): 공개된 카드는 **전부 풀아트**다 — 수집의 하이라이트라 아이콘으로
+ * 때우지 않는다. 이름·포지션·등급은 카드 프레임의 하단 밴드가 이미 자리를 갖고 있어
+ * `FullArtCard` 가 그 위에 얹는다(카드 밖 텍스트 중복 제거).
+ * 카드 폭은 `FULL_ART_SIZES.grid` 토큰 — 크기 조정은 `full-art.ts` 한 줄.
  */
 export function GachaReveal({ response, onClose }: GachaRevealProps) {
   const [state, setState] = useState(() => initialReveal(response.results.length));
@@ -59,6 +65,8 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
                 ]
                   .filter(Boolean)
                   .join(" ")}
+                /* 셀 폭 = 카드 폭. 토큰이 유일한 출처라 CSS 에 픽셀을 또 적지 않는다. */
+                style={{ width: fullArtWidth("grid") }}
                 data-testid={`gacha-card-${i}`}
                 data-revealed={revealed ? "true" : "false"}
                 aria-label={
@@ -70,23 +78,19 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
               >
                 <span className={styles.cardInner}>
                   <span className={styles.cardBack}>?</span>
-                  <span className={styles.cardFace} style={{ borderColor: GRADE_COLORS[grade] }}>
+                  <span className={styles.cardFace}>
                     {item.isNew && <span className={styles.newBadge}>NEW</span>}
-                    {/* 공개된 카드만 얼굴을 그린다 — 뒷면 상태에서 미리 새지 않게. */}
+                    {/* 공개된 카드만 그린다 — 뒷면 상태에서 미리 새지 않게(이미지 요청도 안 나간다). */}
                     {revealed && (
-                      <CharAvatar
+                      <FullArtCard
                         playerId={item.player.id}
                         name={item.player.name}
                         grade={grade}
-                        size={64}
+                        position={item.player.position}
+                        size="grid"
                         className={styles.cardFaceArt}
                       />
                     )}
-                    <span className={styles.cardName}>{item.player.name}</span>
-                    <span className={styles.cardPos}>{item.player.position}</span>
-                    <span className={styles.cardGrade} style={{ color: GRADE_COLORS[grade] }}>
-                      {GRADE_LABELS[grade]}
-                    </span>
                   </span>
                 </span>
               </button>

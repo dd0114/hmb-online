@@ -89,5 +89,7 @@ export function relationOf(
   relations: RelationsResponse | undefined,
   playerId: string,
 ): PlayerRelation | undefined {
-  return relations?.players.find((r) => r.playerId === playerId);
+  // `players` 까지 옵셔널로 훑는다: 응답이 형식은 맞는데 배열이 빠져 오면(부분 배포·목 서버)
+  // 여기서 TypeError 가 나고 **덱 에디터가 통째로 언마운트**된다(흰 화면). #187 E2E 가 실제로 밟았다.
+  return relations?.players?.find((r) => r.playerId === playerId);
 }

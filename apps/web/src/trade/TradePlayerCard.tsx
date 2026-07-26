@@ -2,6 +2,7 @@ import type { PlayerRef } from "../api/v2";
 import type { CatalogPlayer } from "../api/hooks";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
 import { CharAvatar } from "../common/CharAvatar";
+import { FullArtCard } from "../common/FullArtCard";
 import { PersonalityBadge } from "../common/RelationBits";
 import styles from "./TradePlayerCard.module.css";
 
@@ -25,9 +26,21 @@ interface TradePlayerCardProps {
   caption?: string;
   reveal?: boolean;
   testId?: string;
+  /**
+   * 얼굴을 **풀아트 카드**로 그린다 (#187). 협상의 주인공(영입 대상)에만 켠다 —
+   * 대가/요구까지 켜면 모바일 390 에서 카드 3장이 90px 밑으로 내려가 일러스트가 안 읽힌다.
+   */
+  fullArt?: boolean;
 }
 
-export function TradePlayerCard({ player, detail, caption, reveal = true, testId }: TradePlayerCardProps) {
+export function TradePlayerCard({
+  player,
+  detail,
+  caption,
+  reveal = true,
+  testId,
+  fullArt = false,
+}: TradePlayerCardProps) {
   const gradeColor = GRADE_COLORS[player.grade];
   return (
     <div
@@ -37,14 +50,30 @@ export function TradePlayerCard({ player, detail, caption, reveal = true, testId
       data-grade={player.grade}
     >
       {caption && <span className={styles.caption}>{caption}</span>}
-      <span className={styles.pos}>{player.position}</span>
-      <CharAvatar
-        playerId={player.playerId}
-        name={player.name}
-        grade={player.grade}
-        size={44}
-        className={styles.face}
-      />
+      {/* 풀아트일 때는 카드 좌상단 뱃지가 포지션을 이미 말한다 → 캡션 줄에서 빼서 중복을 없앤다.
+          (뱃지 쪽을 빼면 아트에 구워진 **캐릭터** 포지션이 노출돼 교차 매핑 선수에서 틀린다.) */}
+      {!fullArt && <span className={styles.pos}>{player.position}</span>}
+      {fullArt ? (
+        <FullArtCard
+          playerId={player.playerId}
+          name={player.name}
+          grade={player.grade}
+          position={player.position}
+          size="detail"
+          /* 이름·등급·능력치는 카드 밖에 이미 있다 → 아트만(빈 밴드 제거). 포지션은 **카드 뱃지**가
+             맡고 캡션 줄에서 뺐다 — 뱃지는 선수 값으로 덮여 있어 교차 매핑에서도 정확하다(#187). */
+          variant="art"
+          className={styles.face}
+        />
+      ) : (
+        <CharAvatar
+          playerId={player.playerId}
+          name={player.name}
+          grade={player.grade}
+          size={44}
+          className={styles.face}
+        />
+      )}
       <span className={styles.name}>{player.name}</span>
       <span className={styles.grade} style={{ color: gradeColor }}>
         {GRADE_LABELS[player.grade]}

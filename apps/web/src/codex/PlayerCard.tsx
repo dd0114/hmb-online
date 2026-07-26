@@ -22,7 +22,11 @@ interface PlayerCardProps {
   onToggle: () => void;
 }
 
-/** 도감 카드 — 등급 색상, 미보유 흑백+잠금, 보유 수. 탭하면 9개 능력치 확장. */
+/**
+ * 도감 카드 — 등급 색상, 미보유 흑백+잠금, 보유 수. 탭하면 9개 능력치 확장.
+ *
+ * #187: 그리드는 172장이 깔리는 밀집 UI라 **아이콘 48 유지**. 풀아트는 강화 상세가 갖는다.
+ */
 export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
   const gradeColor = GRADE_COLORS[player.grade];
 
@@ -69,6 +73,10 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
         )}
       </button>
 
+      {/* 펼침 = **미보유(잠금) 카드 전용** 경로다 — main(#179)에서 보유 선수 탭은 강화 상세
+          모달로 바뀌었다(CodexPage `onToggle`). 그래서 여기에 풀아트를 두지 않는다:
+          잠긴 카드에 전신 일러스트를 원색으로 띄우면 잠금 표현과 어긋나고, 풀아트가 필요한
+          자리는 강화 상세(`CardGrowthDetail`)다(#187). */}
       {expanded && (
         <dl className={styles.attrs} data-testid={`codex-attrs-${player.id}`}>
           {ATTRIBUTE_LABELS.map(([key, label]) => (
