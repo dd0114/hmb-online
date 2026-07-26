@@ -267,8 +267,16 @@ CREATE TABLE dice_rolls (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, player_id T
 - **잠재 패널 승격**: 패널 배경·카드 프레임 글로우를 **잠재 티어색**으로(레어=흰/에픽=보라/유니크=금) — 승급이 카드 전체 인상을 바꿈. 티어 대형 뱃지.
 - **승급 연출 강화**: 티어업 시 전체 오버레이(티어색 플래시→전줄 리롤 순차 공개→프레임 글로우 전환). "승급 보장까지 N회" 프로그레스 바(숫자만→바+숫자).
 
-### V2.1-4 재화 이원화 (보류 — hero 컨펌 대기, 아래 계획 §제안)
-무료 게임머니(P) vs 충전형 재화(젬) 분리. 리서치 권장 = **지금·최소 스코프로**(캐시 다이스만 젬 결제 + 젬 지갑 + 목업 충전, 실결제는 백로그). 컨펌 시 GM8(서버 V10+상점)·GM9(웹 지갑/충전 목업).
+### V2.1-4 → **V2.2 재화 이원화 (hero 확정 2026-07-26 — "지금·최소로")**
+무료 게임머니 **P**(포인트) vs 충전형 **젬** 분리. P2-D11(신규화폐 금지)은 hero 결정으로 개정. 실결제 = 백로그(실명 라이선스와 같은 층위) — 충전은 **목업**.
+
+**스펙 (GM8s data · GM8 server · GM9 web)**
+- **V10__gems.sql**: `ALTER TABLE wallets ADD COLUMN gems INTEGER NOT NULL DEFAULT 0 CHECK (gems >= 0);` + `gem_ledger`(point_ledger 와 동형: user_id·delta·reason·ref_id·created_at, 멱등 유니크).
+- **가격 개정**: 노말 다이스 = 500P(유지) / **캐시 다이스 = 10젬**(`dice.cashGemCost`, 기존 cashCost 5000P 제거). 캐시 다이스 = 젬 전용.
+- **충전 목업**: `gems.topupPacks` config = `[{id:"p1",gems:60,mockPrice:"₩1,200"},{id:"p2",gems:330,mockPrice:"₩5,900"},{id:"p3",gems:720,mockPrice:"₩11,900"}]`. `POST /api/shop/gems/topup {packId}` → 즉시 지급(reason='gem_topup_mock', 멱등), 실결제 없음 — UI에 "목업 충전" 명시.
+- **API/계약**: `/api/me` 지갑에 `gems` additive. `POST /api/shop/dice` CASH → 젬 차감(gem_ledger). `DiceBuyResult.wallet = {points, gems}`. 신규 `GemTopupResult {packId, granted, wallet:{points,gems}}`. 부족 = `INSUFFICIENT_GEMS`.
+- **web**: 지갑 표시 P·젬 병기(상단), 상점 다이스탭에 젬 가격·충전(목업) 버튼+팩 3종, 캐시 다이스 버튼 비용칩 "젬 −10".
+- 규제 노트: 젬 = 유상 재화 → 다이스 확률·천장 공개 의무 대상(이미 구조 존재 — 확률 공개 UI는 후속 이슈).
 
 ## 진행 로그
 | 시각 | 이벤트 |

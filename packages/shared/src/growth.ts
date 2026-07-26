@@ -93,14 +93,32 @@ export const DiceBalance = z.object({
 });
 export type DiceBalance = z.infer<typeof DiceBalance>;
 
-/** 다이스 구매 결과 (POST /api/shop/dice). 부족 에러코드 = INSUFFICIENT_POINTS / 롤 부족 = INSUFFICIENT_DICE. */
+/** 지갑 — V2.2 재화 이원화: P(무료 게임머니) + 젬(충전형, 목업 충전). */
+export const WalletBalance = z.object({
+  points: z.number().int().min(0),
+  gems: z.number().int().min(0),
+});
+export type WalletBalance = z.infer<typeof WalletBalance>;
+
+/**
+ * 다이스 구매 결과 (POST /api/shop/dice). 노말=P·캐시=젬 결제.
+ * 부족 에러코드: INSUFFICIENT_POINTS / INSUFFICIENT_GEMS / 롤 시 INSUFFICIENT_DICE.
+ */
 export const DiceBuyResult = z.object({
   kind: z.enum(["NORMAL", "CASH"]),
   count: z.number().int().min(1),
   dice: DiceBalance, // 구매 후 잔액
-  wallet: z.object({ points: z.number().int().min(0) }),
+  wallet: WalletBalance,
 });
 export type DiceBuyResult = z.infer<typeof DiceBuyResult>;
+
+/** 젬 충전(목업) 결과 (POST /api/shop/gems/topup). 실결제 없음 — mock 지급. */
+export const GemTopupResult = z.object({
+  packId: z.string(),
+  granted: z.number().int().min(1),
+  wallet: WalletBalance,
+});
+export type GemTopupResult = z.infer<typeof GemTopupResult>;
 
 /** 매치 후 성장 리포트 1인분 — 스탯별 XP·레벨업 (GET /api/growth/report). */
 export const MatchGrowthEntry = z.object({
