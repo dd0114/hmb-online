@@ -19,6 +19,10 @@ const SEED = "1000000016";
 // 이력: 1000000000 → …004 → …013 → …076(#181 공 도착/아웃 판정) → **…016**(#182 코너 rest defence).
 //   #182 리베이스 후 …076 은 penalty·체인이 모두 사라져 실격(직접 확인). 재스캔 결과(스팬):
 //   1000000016:4 · 1000000022:4 · 1000000034:8 · 1000000111:19 · 1000000115:22 → 최단 스팬 채택.
+// 재선정은 손으로 하지 말고 **스캐너**를 쓴다(#186 체크인):
+//   npx tsx packages/engine/dev-viewer/e2e/scan-fixture-seed.mjs --count 200
+// 위 5조건을 한 번에 재고 후보를 **스팬 짧은 순**으로 뱉는다(120시드 ≈17초 실측). ④ 판정식은
+// restarts.spec.ts 와 동일하게 유지한다 — 느슨하게 잡으면 스캔은 통과인데 스펙이 깨진다.
 
 describe("e2e fixtures", () => {
   it("writes fixture-real.json containing offside + card + penalty events", () => {

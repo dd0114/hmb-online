@@ -250,9 +250,24 @@ interface Case {
 }
 
 /** 리얼 6시드 + 쇼케이스 데모(원 리포트 재현 환경). */
+/**
+ * **알려진 반례 시드** — 픽스 전에 실제로 강탈이 관측된 시드는 반드시 케이스에 포함한다.
+ *
+ * 이 버그의 회귀 계약은 오래 `deadball-walk` 의 **단일 데모 시드**에 의존했는데, 엔진 튜닝으로
+ * 타임라인이 밀리면 **"그 시드에 사례가 없다"** 는 이유만으로 초록이 되어 회귀를 놓친다
+ * (구 반례 t2051/t2064 가 실제로 그렇게 소멸했다). 규칙이 구현된 지금의 올바른 계약은
+ * "특정 시드에 사례가 없다" 가 아니라 **"어떤 시드에서도 규칙 거리 위반 0"** 이다 — 반례 시드는
+ * 다수 시드 전수 스캔에 흡수시켜 시드 의존성을 제거한다.
+ */
+const COUNTEREXAMPLE_SEEDS = [
+  "4815162345", // #182 가 deadball-walk 드리프트 계약에 전용으로 붙인 시드.
+];
+
 function buildCases(): Case[] {
   const select = makeSelectData();
-  const cases: Case[] = REALISM_SEEDS.map((seed) => ({
+  const seeds = [...REALISM_SEEDS];
+  for (const s of COUNTEREXAMPLE_SEEDS) if (!seeds.includes(s)) seeds.push(s);
+  const cases: Case[] = seeds.map((seed) => ({
     name: `real:${seed}`,
     log: runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, defaultEngineConfig),
     config: defaultEngineConfig,
@@ -296,6 +311,16 @@ describe("데드볼 접근 금지 — 실제 축구 규칙 (#176)", () => {
     expect(v.slice(0, 20), `${v.length}건\n${v.slice(0, 20).join("\n")}`).toEqual([]);
   });
 
+  /**
+   * ⚠️ D 의 변이체 킬은 **config 노브로는 안 된다** — 픽스가 세 겹이라 하나만 꺼도 증상이 안 나온다:
+   * ①정지 중 규칙기반 정적 배치(상대가 스팟으로 수렴 자체를 안 함) ②거리 금지구역 ③안 찬
+   * 세트피스는 글루·태클 없음(`match.ts` 볼 경합 분기). 거리 노브만 0 으로 두면(A/B/C 는 각각
+   * 849/489/743 건 실패) D 는 ①③ 때문에 0 건이라 통과해버린다 — 즉 config 뮤턴트로 D 를 검증했다고
+   * 말하면 안 된다.
+   * **D 의 올바른 기준선 = 픽스 전 트리**. origin/main(픽스 전)을 별도 워크트리로 체크아웃해 같은
+   * 스캔을 돌리면 **20시드 24건 · 40시드 49건 · 80시드 119건**이 잡힌다 = 이 계약은 원 버그를
+   * 확실히 잡는다. (세 겹 중 어느 하나라도 되돌리면 다시 잡힌다는 뜻이기도 하다.)
+   */
   it("D) taker 가 공을 차기 전에 상대에게 뺏기지 않는다(#176 원 증상)", () => {
     const v = collect((c) => scanPrePlaySteals(c.log));
     expect(v.slice(0, 20), `${v.length}건\n${v.slice(0, 20).join("\n")}`).toEqual([]);
