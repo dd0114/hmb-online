@@ -156,6 +156,46 @@ class StarterReworkTest extends ApiTestBase {
                 .isEqualTo(true);
     }
 
+    /**
+     * 지급 덱에서 최상위가 <b>자기 포지션</b>에 선다 — 여러 계정을 만들어 pool 4종이 실제로
+     * 골고루 지급되는 상황에서 확인한다(계정마다 다른 최상위를 받으므로 4종이 모두 표본에 든다).
+     *
+     * <p>이걸 보는 이유: 최상위는 기본팩보다 능력치가 압도적이라, 배치가 순수 적합도 그리디면
+     * FW/MF 최상위가 <b>센터백 슬롯</b>을 이겨서 차지한다(실제로 그랬다). 튜토리얼 직후 첫 화면이
+     * "펠레가 수비수" 인 그림이면 지급의 의미가 반감된다.
+     */
+    @Test
+    void grantedTopUnitStartsInItsOwnPosition() {
+        List<String> layout = List.of("GK", "DF", "DF", "DF", "DF", "MF", "MF", "MF", "FW", "FW", "FW");
+        Set<String> covered = new java.util.HashSet<>();
+
+        // 지급은 시드 결정론이라 계정 수가 적으면 특정 포지션이 표본에 안 들 수 있다 —
+        // 4종을 모두 덮을 때까지(상한 40) 계정을 늘린다. 상한은 무한루프 방지용이다.
+        for (int i = 0; i < 40 && covered.size() < 4; i++) {
+            String nickname = "slotfit_" + i;
+            String token = login(nickname);
+            String userId = userIdOf(nickname);
+            authPost("/api/me/tutorial-complete", token, Map.of(), Map.class);
+
+            String top = jdbcClient.sql("SELECT player_id FROM starter_grants WHERE user_id = ?")
+                    .param(userId).query(String.class).single();
+            String topPosition = jdbcClient.sql("SELECT position FROM players WHERE id = ?")
+                    .param(top).query(String.class).single();
+            Integer slotIndex = jdbcClient.sql("""
+                            SELECT ds.slot_index FROM deck_slots ds JOIN decks d ON d.id = ds.deck_id
+                            WHERE d.user_id = ? AND d.is_active = 1 AND ds.player_id = ? AND ds.role = 'starter'
+                            """)
+                    .params(userId, top).query(Integer.class).optional().orElse(null);
+
+            assertThat(slotIndex).as(nickname + ": 최상위(" + top + ")가 선발이 아니다").isNotNull();
+            assertThat(layout.get(slotIndex))
+                    .as(nickname + ": 최상위 " + top + "(" + topPosition + ") 가 slot " + slotIndex + " 에 섰다")
+                    .isEqualTo(topPosition);
+            covered.add(topPosition);
+        }
+        assertThat(covered).as("표본이 pool 4종(GK/DF/MF/FW)을 모두 덮는다").hasSize(4);
+    }
+
     @Test
     void tutorialCompleteIsIdempotent() {
         String token = login("tut_idem");

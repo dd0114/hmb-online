@@ -18,10 +18,12 @@ import org.springframework.stereotype.Service;
  *
  * <p>지금까지 완료 여부는 클라 localStorage 에만 있었다. 덱 지급을 거기에 매달면 스토리지를
  * 지우는 것만으로 덱이 다시 지급된다 — 그래서 완료를 서버 컬럼({@code users.tutorial_done})으로
- * 올리고, 지급 멱등은 <b>플래그가 아니라 "활성 덱이 이미 있는가"</b>로 판정한다. 두 겹인 이유:
- * 플래그만 보면 (수동 다시보기 등으로) 플래그가 되돌려졌을 때 남의 덱을 덮어쓸 수 있고, 덱만 보면
- * 유저가 덱을 지운 뒤 재지급받는 경로가 열린다. 실제 파괴적 동작(교체)은 어느 쪽도 하지 않는다 —
- * <b>덱이 없을 때만 만든다</b>.
+ * 올렸다.
+ *
+ * <p><b>지급 멱등의 축은 플래그가 아니라 "활성 덱이 이미 있는가" 하나다</b>(플래그는 무조건
+ * 1 로 갱신될 뿐 게이트가 아니다). 플래그를 게이트로 삼으면 '다시 보기'로 플래그가 되돌려졌을 때
+ * 남의 덱을 덮어쓰게 된다 — 그래서 축을 덱 쪽에 뒀고, 클라의 다시 보기는 서버 플래그를 건드리지
+ * 않는다. 어느 경우에도 파괴적 동작(교체)은 하지 않는다: <b>덱이 없을 때만 만든다</b>.
  */
 @Service
 public class OnboardingService {
@@ -47,6 +49,13 @@ public class OnboardingService {
         this.objectMapper = objectMapper;
         this.defaultFormation = defaultFormation;
         this.benchMax = benchMax;
+        // 부팅에서 막는다(fail-closed). 오타 난 포메이션을 그대로 두면 지급이 **조용히** 사라진다 —
+        // 에러도 안 나고 로그 한 줄만 남은 채 모든 신규 유저가 덱 없이 온보딩을 마친다.
+        if (!StarterDeckBuilder.supportsFormation(defaultFormation)) {
+            throw new IllegalStateException(
+                    "hmb.starter.deck-formation 이 지원되지 않는 값입니다: " + defaultFormation
+                            + " (지원: " + StarterDeckBuilder.supportedFormations() + ")");
+        }
     }
 
     /** 튜토리얼 완료 여부(GET /api/me 의 user.tutorialDone). */
