@@ -602,7 +602,7 @@ export const defaultEngineConfig: EngineConfig = {
       // 파울이 11.93→14.10 으로 튀었다 → 0.0185→0.016 으로 재보정(11.90).
       // #181: 패스가 실제 비행시간을 갖게 되며 틱당 태클 기회가 줄어 파울이 다시 내려갔다 →
       // 두 변경을 합친 상태에서 재측정해 벤치(11-12)로 맞춘 값(아래 §gap §5).
-      base: 0.017,
+      base: 0.0178,
       aggressionWeight: 1.0,
       tacklingRelief: 0.6,
       boxFoulMult: 1.0,

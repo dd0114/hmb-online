@@ -153,8 +153,9 @@ describe("판단 — 붙을지 말지 (#147 W3)", () => {
 
 describe("롤백 스위치 (#147 W3)", () => {
   const seed = "4815162342";
-  // 레거시(0.16.0) 재현이므로 그 이후 추가된 기능 스위치도 함께 끈다 — 시야(#147)와
-  // 코너 rest defence(#182). 하나라도 켜져 있으면 "0.16.0 과 동일"이 성립하지 않는다.
+  // 롤백 경로 = 그 이후 추가된 기능 스위치를 전부 끈 상태 — 시야(#147)와 코너 rest defence(#182).
+  // (#181 이후 이 계약은 "0.16.0 과 동일"이 아니라 "롤백 경로가 조용히 드리프트하지 않는다" 다.
+  //  아래 상수 주석 참조.)
   const off: EngineConfig = {
     ...cfg,
     vision: { ...cfg.vision, enabled: false },
@@ -177,7 +178,14 @@ describe("롤백 스위치 (#147 W3)", () => {
   // 그래서 "레거시와 같다" 대신 **"조용히 드리프트하지 않는다"** 를 지킨다: 현 트리의 vision-off
   // 출력을 상수로 박제해, 이후 변경이 롤백 경로를 건드리면 반드시 diff 로 드러나게 한다.
   const ROLLBACK_HASH = "9bc816ea";
-  const ROLLBACK_HASH_MARKED = "d63d417e";
+  // #182 재보정(foul.base 0.017→0.0178)으로 marked 변형의 해시가 바뀐다.
+  // ⚠️ **내 트리 출력을 베끼지 않았다** — `origin/main`(6f1b12b) 를 별도 워크트리로 체크아웃해
+  // 같은 foul.base 를 넣고 독립 도출한 값이다(main 에는 corner 기능 자체가 없다):
+  //   foul 0.017  → plain 9bc816ea · marked d63d417e
+  //   foul 0.0178 → plain 9bc816ea · marked **fb490748**
+  // plain 이 안 바뀐 건 그 매치에서 Δ0.0008 폭에 걸린 파울 롤이 하나도 없었기 때문(정상).
+  // 이 값이 현 브랜치의 corner-off 출력과 일치한다 = **롤백 = main 동등**이 유지된다는 증거.
+  const ROLLBACK_HASH_MARKED = "fb490748";
 
   it("vision.enabled=true 는 실제로 결과를 바꾼다(계층이 죽어있지 않다)", () => {
     expect(lastHash(run(cfg))).not.toBe(lastHash(run(off)));
