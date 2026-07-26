@@ -238,8 +238,6 @@ export interface PotentialConfig {
   tierUp: { rareToEpic: number; epicToUnique: number };
   /** 천장 배수(기댓값 대비) — ceil(ceilingMult / p) 회 미승급 시 확정 승급. */
   ceilingMult: number;
-  /** 2·3줄 "한 단계 아래" 대신 동일 티어로 이탈할 확률(노말/캐시). */
-  breakout: { normal: number; cash: number };
   /** 캐시 다이스가 premium 옵션 weight 에 곱하는 배수(하드코딩 금지 — config화). */
   cashPremiumMult: number;
   /** 티어별 옵션 풀. */
@@ -556,40 +554,52 @@ function buildLeague(): LeagueSeed {
 }
 
 /**
- * 티어 하나의 STAT_PCT/STAT_FLAT 옵션 9종×2값(저/고)을 만든다. 고값(range 상단) = premium:true —
- * 캐시 다이스가 이 옵션들의 weight 를 `cashPremiumMult` 배 해서 좋은 옵션 확률을 올린다(V2-2).
- * weight 는 "균등"(모두 1) — hero 초안(§V2-5 초안) 그대로, 밸런스 튜닝은 후속(config 값만 변경).
+ * 티어 하나의 STAT_PCT/STAT_FLAT 옵션 9종×4스텝(V2.1-2, 잭팟형 편차 확대)을 만든다.
+ * `steps`/`weights` 는 작은→큰 순 길이 4. premium = 상위 2스텝(3·4번째 — 캐시 다이스가 이
+ * 옵션들의 weight 를 `cashPremiumMult` 배 해서 좋은 옵션 확률을 올린다, V2-2/V2.1-2).
  */
-function buildStatOptions(type: "STAT_PCT" | "STAT_FLAT", lowValue: number, highValue: number): PotentialOption[] {
+function buildStatOptions(
+  type: "STAT_PCT" | "STAT_FLAT",
+  steps: readonly [number, number, number, number],
+  weights: readonly [number, number, number, number],
+): PotentialOption[] {
   const options: PotentialOption[] = [];
   for (const stat of ATTR_KEYS) {
-    options.push({ type, stat, value: lowValue, weight: 1, premium: false });
-    options.push({ type, stat, value: highValue, weight: 1, premium: true });
+    steps.forEach((value, i) => {
+      options.push({ type, stat, value, weight: weights[i], premium: i >= 2 });
+    });
   }
   return options;
 }
 
 /**
- * 티어별 잠재 옵션 테이블 — RARE/EPIC/UNIQUE (V2-2 초안 수치, hero: "초안은 리서치가, 조절은
- * hero가" → 전부 config, 이 함수 수치만 바꾸면 재조절). CONDITION_RECOVERY·TEAM_MORALE 은 값 범위가
- * 없어(단일 고정값) premium 플래그 없이 weight 만 티어별로 올린다(레어 낮게 눈에 덜 띔 → 유니크에서
- * 존재감 ↑).
+ * 티어별 잠재 옵션 테이블 — RARE/EPIC/UNIQUE (V2.1-2 수치 그대로, 밸런스 재조절은 이 함수
+ * 호출 인자만 변경). STAT_PCT/STAT_FLAT 은 9종×4스텝+가중(잭팟 희소) 동일 스텝값을 공유.
+ * CONDITION_RECOVERY·TEAM_MORALE 은 2스텝(저/고)만 있어 "premium=상위 2스텝" 룰을 그대로
+ * 적용하면 테이블 전체가 premium 이 돼 STAT 계열과의 구조 일관성이 깨진다 → **택1: 상위
+ * 1스텝(고값)만 premium** 으로 스텝수 비례 적용(4스텝의 절반=2, 2스텝의 절반=1과 동일 규칙).
  */
 function buildPotentialTable(
-  pctRange: readonly [number, number],
-  flatRange: readonly [number, number],
-  recoveryMoraleValue: number,
-  recoveryMoraleWeight: number,
+  statSteps: readonly [number, number, number, number],
+  statWeights: readonly [number, number, number, number],
+  recoveryMoraleSteps: readonly [number, number],
+  recoveryMoraleWeights: readonly [number, number],
 ): PotentialOption[] {
   return [
-    ...buildStatOptions("STAT_PCT", pctRange[0], pctRange[1]),
-    ...buildStatOptions("STAT_FLAT", flatRange[0], flatRange[1]),
-    { type: "CONDITION_RECOVERY", value: recoveryMoraleValue, weight: recoveryMoraleWeight, premium: false },
-    { type: "TEAM_MORALE", value: recoveryMoraleValue, weight: recoveryMoraleWeight, premium: false },
+    ...buildStatOptions("STAT_PCT", statSteps, statWeights),
+    ...buildStatOptions("STAT_FLAT", statSteps, statWeights),
+    { type: "CONDITION_RECOVERY", value: recoveryMoraleSteps[0], weight: recoveryMoraleWeights[0], premium: false },
+    { type: "CONDITION_RECOVERY", value: recoveryMoraleSteps[1], weight: recoveryMoraleWeights[1], premium: true },
+    { type: "TEAM_MORALE", value: recoveryMoraleSteps[0], weight: recoveryMoraleWeights[0], premium: false },
+    { type: "TEAM_MORALE", value: recoveryMoraleSteps[1], weight: recoveryMoraleWeights[1], premium: true },
   ];
 }
 
-/** V2-5 `potential` 블록 전체 — 등급/성 캡 매트릭스(안 ㄴ) + 티어별 옵션 테이블. */
+/**
+ * V2-5 `potential` 블록 전체 — 등급/성 캡 매트릭스(안 ㄴ) + 티어별 옵션 테이블.
+ * V2.1-1: `breakout` 필드 제거(전줄 동일 티어로 의미 소멸 — 서버·GM6 이 소비).
+ * V2.1-2: 티어 바닥 = 아래 티어 천장(EPIC 최소 4 = RARE 최대, UNIQUE 최소 8 = EPIC 최대).
+ */
 function buildPotentialConfig(): PotentialConfig {
   return {
     linesByGrade: { BRONZE: 1, SILVER: 1, GOLD: 2, DIA: 3, LEGEND: 3 },
@@ -597,12 +607,11 @@ function buildPotentialConfig(): PotentialConfig {
     starTierCap: { "2": "RARE", "3": "EPIC", "4": "UNIQUE" },
     tierUp: { rareToEpic: 0.06, epicToUnique: 0.018 },
     ceilingMult: 1.5,
-    breakout: { normal: 0.08, cash: 0.2 },
     cashPremiumMult: 2,
     tables: {
-      RARE: buildPotentialTable([1, 2], [1, 2], 2, 3),
-      EPIC: buildPotentialTable([3, 4], [3, 4], 4, 4),
-      UNIQUE: buildPotentialTable([6, 8], [6, 8], 7, 7),
+      RARE: buildPotentialTable([1, 2, 3, 4], [40, 30, 20, 10], [2, 4], [70, 30]),
+      EPIC: buildPotentialTable([4, 5, 6, 8], [35, 30, 25, 10], [5, 8], [70, 30]),
+      UNIQUE: buildPotentialTable([8, 10, 12, 15], [35, 30, 25, 10], [9, 15], [70, 30]),
     },
   };
 }
