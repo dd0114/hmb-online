@@ -211,7 +211,8 @@ class MatchFlowE2ETest extends MatchTestBase {
         String expectedHint = homeShare > 0.55 ? "home" : homeShare < 0.45 ? "away" : "balanced";
 
         String h2ContextJson = jdbcClient.sql("""
-                        SELECT context_json FROM ai_jobs WHERE match_id = ? AND half = 2 AND side = 'home'
+                        SELECT context_json FROM ai_jobs
+                        WHERE match_id = ? AND half = 2 AND side = 'home' AND effective = 1
                         """)
                 .param(matchId).query(String.class).single();
         JsonNode prevSummary = objectMapper.readTree(h2ContextJson).path("prevSummary");
@@ -222,7 +223,10 @@ class MatchFlowE2ETest extends MatchTestBase {
 
         // ── 보상 멱등 (AC-M6): 완료 처리 강제 재실행 → 원장 1행 유지 ──
         String h2HomeJobId = objectMapper.readTree(h2ContextJson) != null
-                ? jdbcClient.sql("SELECT id FROM ai_jobs WHERE match_id = ? AND half = 2 AND side = 'home'")
+                ? jdbcClient.sql("""
+                        SELECT id FROM ai_jobs
+                        WHERE match_id = ? AND half = 2 AND side = 'home' AND effective = 1
+                        """)
                         .param(matchId).query(String.class).single()
                 : null;
         orchestrator.onJobDone(h2HomeJobId); // 이미 FINISHED — no-op이어야 함

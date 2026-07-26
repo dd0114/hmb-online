@@ -164,16 +164,20 @@ public class MatchOrchestrator {
                     : contextBuilder.userBaseJob(match, snapshot);
             String baseResult = doneResultOf(base.baseId());
             boolean hasInput = !isBot && hasPhasePrompts(matchId, "pre");
+            String h1JobId;
             if (baseResult != null && hasInput) {
                 // 킥오프 B 패치: A 가 쓴 덱 사전 지시 → 매치시점(pre) 지시의 변경분만 델타로 얹는다.
-                enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary, isBot,
-                        promptDeltaFor(match, snapshot, List.of(), PromptContextBuilder.BASE_PHASES,
+                h1JobId = enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary,
+                        isBot, promptDeltaFor(match, snapshot, List.of(), PromptContextBuilder.BASE_PHASES,
                                 PromptContextBuilder.PRE_PHASES));
             } else if (baseResult != null) {
-                jobQueue.insertMaterialized(matchId, side, half, seedSwap(baseResult, jobSeed));
+                h1JobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(baseResult, jobSeed));
             } else {
-                enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot);
+                h1JobId = enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot);
             }
+            // h1 은 GEN1 안에서만 해소되므로 보통 행이 하나다 — 그래도 "유효 잡 = 이번 해소 대상"
+            // 불변식은 양쪽 half 에 똑같이 건다(재시도·폴백 경로가 행을 늘려도 선택이 흔들리지 않게).
+            jobQueue.supersede(matchId, half, side, h1JobId);
             return;
         }
 
@@ -671,10 +675,19 @@ public class MatchOrchestrator {
         return scaled;
     }
 
+    /**
+     * 이 (match, half, side) 의 <b>유효 잡</b>이 done 이면 그 결과 — 아니면 비어 있음(=기다린다).
+     *
+     * <p>"가장 최근 done"(updated_at DESC)이 아니다(#193 검증 B-2). 그 시각은 <b>워커가 언제 보고했나</b>
+     * 지 <b>유저가 언제 지시했나</b>가 아니어서, 지시가 바뀐 뒤 늦게 도착한 낡은 잡의 complete 가
+     * 최신 지시를 이겼다. 유효 잡은 {@link AiJobQueue#supersede} 가 해소 때마다 정하는 단 한 행이다
+     * (effective=1). 그 행이 아직 안 끝났으면 낡은 done 이 있어도 <b>기다린다</b>.
+     */
     private Optional<String> latestDoneResult(String matchId, int half, String side) {
         return jdbcClient.sql("""
                         SELECT result_json FROM ai_jobs
                         WHERE match_id = ? AND half = ? AND side = ? AND status = 'done'
+                          AND effective = 1
                         ORDER BY updated_at DESC, created_at DESC LIMIT 1
                         """)
                 .params(matchId, half, side)

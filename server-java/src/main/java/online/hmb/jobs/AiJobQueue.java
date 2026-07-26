@@ -131,26 +131,43 @@ public class AiJobQueue {
     }
 
     /**
-     * (match, half, side) 의 유효 잡을 {@code targetId} 하나로 좁힌다 — h2 선행 생성(#193 W2b-B2)
+     * (match, half, side) 의 <b>유효 잡</b>을 {@code targetId} 하나로 좁힌다 — h2 선행 생성(#193 W2b-B2)
      * 때문에 <b>GEN 진입 전에 결과가 이미 존재</b>할 수 있고, 그 사이 지시(하프타임 프롬프트)·교체가
      * 바뀌면 그 결과는 무효다. 무효 행이 남으면 {@code latestDoneResult} 가 그걸 집어 <b>유저의 최신
      * 입력을 무시한 채</b> 시뮬해 버린다(교체 경로면 로스터-인풋 불일치).
      *
-     * <p>지우는 대상은 <b>아무도 들고 있지 않은 행</b>뿐이다: {@code done}(이미 끝난 결과) 과
-     * 한 번도 배포되지 않은 {@code queued}(attempts=0). {@code leased}·재큐(attempts&gt;0)는 워커가
-     * 물고 있으므로 건드리지 않는다(complete 가 404 로 깨지지 않게). lease 는 status='queued' CAS 라
-     * 삭제와 경합해도 한쪽만 이긴다.
+     * <p><b>왜 삭제가 아니라 플래그인가</b>(#193 검증 B-2). 예전엔 done 행을 지워서 무효화했는데, 그건
+     * 두 구멍을 남겼다. ① 워커가 물고 있는 행(leased·재큐)은 complete 404 를 피하려고 살려뒀는데,
+     * 그 <b>늦은 complete</b> 가 {@code updated_at} 을 지금으로 밀어 "가장 최근 done" 이 되어버렸다 —
+     * 즉 낡은 결과가 최신 지시를 이겼다(시간은 "유저가 언제 지시했나"가 아니라 "워커가 언제 보고했나"다).
+     * ② done 행을 지우면 promptHash 멱등 캐시도 같이 날아가, 지시를 A→B→A 로 되돌리면 이미 만들어 둔
+     * 결과를 두고 AI 를 다시 태웠다.
      *
-     * @return 지운 행 수
+     * <p>그래서 이제: <b>아무도 안 들고 있고 재사용 가치도 없는 행</b>(한 번도 배포되지 않은
+     * {@code queued}, attempts=0)만 지우고, 나머지(done 캐시 · 워커가 물고 있는 leased/재큐)는
+     * <b>남기되 {@code effective=0}</b> 으로 무효 표시한다. 대상은 {@code effective=1} 로 (재)지정 —
+     * 되돌린 지시가 예전 done 행을 그대로 복권시킨다.
+     *
+     * @return 지우거나 무효화한 행 수
      */
     public int supersede(String matchId, int half, String side, String targetId) {
-        return jdbcClient.sql("""
+        int removed = jdbcClient.sql("""
                         DELETE FROM ai_jobs
                         WHERE match_id = ? AND half = ? AND side = ? AND id <> ?
-                          AND (status = 'done' OR (status = 'queued' AND attempts = 0))
+                          AND status = 'queued' AND attempts = 0
                         """)
                 .params(matchId, half, side, targetId)
                 .update();
+        int invalidated = jdbcClient.sql("""
+                        UPDATE ai_jobs SET effective = 0
+                        WHERE match_id = ? AND half = ? AND side = ? AND id <> ? AND effective = 1
+                        """)
+                .params(matchId, half, side, targetId)
+                .update();
+        jdbcClient.sql("UPDATE ai_jobs SET effective = 1 WHERE id = ? AND effective = 0")
+                .param(targetId)
+                .update();
+        return removed + invalidated;
     }
 
     /**
@@ -203,8 +220,10 @@ public class AiJobQueue {
             // 우선순위 (#193 D3): 매치 잡(유저가 화면에서 대기) > 배경 A-프리페치(match_id NULL).
             // 단일 FIFO(ORDER BY created_at)면 매치 생성 시 들어간 프리페치가 킥오프 잡을 앞질러
             // 워커를 점유해 head-of-line 블로킹이 된다(유저 대기시간이 프리페치 시간만큼 늘어남).
+            // effective=0 (supersede 된 잡)은 배포하지 않는다 — 결과가 쓰이지 않을 잡에 AI 콜을 태우지
+            // 않는다(#193 검증 B-2). 지우지 않고 남기는 이유는 supersede javadoc 참조.
             Optional<String> id = jdbcClient.sql("""
-                            SELECT id FROM ai_jobs WHERE status = 'queued'
+                            SELECT id FROM ai_jobs WHERE status = 'queued' AND effective = 1
                             ORDER BY (match_id IS NULL), created_at LIMIT 1
                             """)
                     .query(String.class)
@@ -286,7 +305,11 @@ public class AiJobQueue {
                 .update();
     }
 
-    /** 해당 half의 미완(done 아님) 잡이 있고 cutoff보다 오래된 GEN* 매치 id들. */
+    /**
+     * 해당 half의 미완(done 아님) <b>유효</b> 잡이 있고 cutoff보다 오래된 GEN* 매치 id들.
+     * supersede 된 잡(effective=0)은 매치가 기다리는 대상이 아니므로 타임아웃 근거가 될 수 없다 —
+     * 그걸로 FAILED 시키면 최신 지시 잡이 정상인데도 매치가 죽는다(#193 검증 B-2).
+     */
     public List<String> timedOutGenMatches(String cutoffIso) {
         return jdbcClient.sql("""
                         SELECT DISTINCT m.id FROM matches m
@@ -294,6 +317,7 @@ public class AiJobQueue {
                              AND j.half = CASE m.state WHEN 'GEN1' THEN 1 ELSE 2 END
                         WHERE m.state IN ('GEN1', 'GEN2')
                           AND j.status != 'done'
+                          AND j.effective = 1
                           AND j.created_at < ?
                         """)
                 .param(cutoffIso)

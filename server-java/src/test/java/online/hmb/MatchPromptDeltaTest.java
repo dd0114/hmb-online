@@ -86,10 +86,15 @@ class MatchPromptDeltaTest extends MatchTestBase {
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
     }
 
-    /** 해당 half·side 의 <b>유일한</b> 잡 컨텍스트(패치 경로 검증이라 단일이어야 한다). */
+    /**
+     * 해당 half·side 의 <b>유효</b> 잡 컨텍스트(유효 잡은 정의상 단일 — #193 검증 B-2).
+     * 무효화된 옛 행은 멱등 캐시로 남아 있을 수 있어 effective 로 좁힌다.
+     */
     private JsonNode jobContext(String matchId, int half, String side) {
-        String json = jdbcClient.sql(
-                        "SELECT context_json FROM ai_jobs WHERE match_id = ? AND half = ? AND side = ?")
+        String json = jdbcClient.sql("""
+                        SELECT context_json FROM ai_jobs
+                        WHERE match_id = ? AND half = ? AND side = ? AND effective = 1
+                        """)
                 .params(matchId, half, side).query(String.class).single();
         try {
             return objectMapper.readTree(json);

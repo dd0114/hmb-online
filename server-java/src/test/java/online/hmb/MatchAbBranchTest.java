@@ -49,9 +49,10 @@ class MatchAbBranchTest extends MatchTestBase {
     }
 
     // B(패치) 잡 — context.kind='team-input-patch' (canonicalJson: "kind":"team-input-patch").
+    // 경로 판정이므로 **유효 잡**만 센다 — 갈아탄 옛 행은 멱등 캐시로 남는다(#193 검증 B-2).
     private long patchJobCount(String matchId, int half) {
         return jdbcClient.sql("""
-                        SELECT COUNT(*) FROM ai_jobs WHERE match_id = ? AND half = ?
+                        SELECT COUNT(*) FROM ai_jobs WHERE match_id = ? AND half = ? AND effective = 1
                           AND context_json LIKE '%"kind":"team-input-patch"%'
                         """)
                 .params(matchId, half).query(Long.class).single();
@@ -61,7 +62,7 @@ class MatchAbBranchTest extends MatchTestBase {
     private long materializedCount(String matchId, int half) {
         return jdbcClient.sql("""
                         SELECT COUNT(*) FROM ai_jobs WHERE match_id = ? AND half = ? AND status = 'done'
-                          AND context_json = '{"kind":"materialized"}'
+                          AND effective = 1 AND context_json = '{"kind":"materialized"}'
                         """)
                 .params(matchId, half).query(Long.class).single();
     }
@@ -70,6 +71,7 @@ class MatchAbBranchTest extends MatchTestBase {
     private long fullTeamInputCount(String matchId, int half) {
         return jdbcClient.sql("""
                         SELECT COUNT(*) FROM ai_jobs WHERE match_id = ? AND half = ? AND side IS NOT NULL
+                          AND effective = 1
                           AND context_json LIKE '%"kind":"team-input"%'
                           AND context_json NOT LIKE '%"kind":"team-input-patch"%'
                         """)

@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
+import online.hmb.jobs.AiJobQueue;
 import online.hmb.jobs.JobLeaseSweeper;
 import online.hmb.match.MatchClockService;
 import online.hmb.match.MatchClockSweeper;
@@ -66,6 +67,9 @@ class SecondHalfPrefetchTest extends MatchTestBase {
     private JobLeaseSweeper jobSweeper;
 
     @Resource
+    private AiJobQueue jobQueue;
+
+    @Resource
     private MatchOrchestrator orchestrator;
 
     @Resource
@@ -112,8 +116,18 @@ class SecondHalfPrefetchTest extends MatchTestBase {
                 .params(matchId, half, status).query(Long.class).single();
     }
 
+    /**
+     * (match, half=2, side) 의 <b>유효</b> 잡 행 수 — 불변식상 항상 1이다.
+     *
+     * <p>무효화된 옛 행은 지우지 않고 {@code effective=0} 으로 남긴다(#193 검증 B-2): 워커가 물고 있는
+     * 행을 지우면 complete 가 404 로 깨지고, done 행을 지우면 promptHash 멱등 캐시(지시 되돌리기 =
+     * 콜 0)가 날아간다. "최신 입력이 이긴다"는 <b>행 수</b>가 아니라 <b>유효 표시</b>로 판정한다.
+     */
     private long h2JobRows(String matchId, String side) {
-        return jdbcClient.sql("SELECT COUNT(*) FROM ai_jobs WHERE match_id = ? AND half = 2 AND side = ?")
+        return jdbcClient.sql("""
+                        SELECT COUNT(*) FROM ai_jobs
+                        WHERE match_id = ? AND half = 2 AND side = ? AND effective = 1
+                        """)
                 .params(matchId, side).query(Long.class).single();
     }
 
@@ -122,9 +136,26 @@ class SecondHalfPrefetchTest extends MatchTestBase {
                 .params(matchId, half).query(Long.class).single() > 0;
     }
 
+    /** 후반에 실제로 쓰인 유저(home) 인풋 원문 — "어느 잡의 결과로 돌았나"를 내용으로 판정한다. */
+    private String h2HomeInputJson(String matchId) {
+        return jdbcClient.sql("SELECT home_input_json FROM match_halves WHERE match_id = ? AND half = 2")
+                .param(matchId).query(String.class).single();
+    }
+
+    /** 유효 h2 잡 id (해당 status) — 무효화돼 남아 있는 캐시 행은 제외한다. */
+    private List<String> h2JobIds(String matchId, String side, String status) {
+        return jdbcClient.sql("""
+                        SELECT id FROM ai_jobs
+                        WHERE match_id = ? AND half = 2 AND side = ? AND status = ? AND effective = 1
+                        """)
+                .params(matchId, side, status).query(String.class).list();
+    }
+
+    /** 유효 h2 유저(home) 잡의 컨텍스트 — 후반이 실제로 무엇으로 돌지를 결정하는 그 행. */
     private JsonNode h2HomeContext(String matchId) {
         String json = jdbcClient.sql("""
-                        SELECT context_json FROM ai_jobs WHERE match_id = ? AND half = 2 AND side = 'home'
+                        SELECT context_json FROM ai_jobs
+                        WHERE match_id = ? AND half = 2 AND side = 'home' AND effective = 1
                         """)
                 .param(matchId).query(String.class).single();
         try {
@@ -184,7 +215,8 @@ class SecondHalfPrefetchTest extends MatchTestBase {
 
         submitHalftimePrompt(token, matchId, "후반은 역습으로");
 
-        // 유저 사이드는 패치 잡으로 갈아탄다 — 옛 재사용 행은 무효화돼 **행이 1개**다(최신 입력이 이긴다).
+        // 유저 사이드는 패치 잡으로 갈아탄다 — 옛 재사용 행은 무효화(effective=0)돼 **유효 행은 1개**다
+        // (최신 입력이 이긴다). 무효 행 자체는 멱등 캐시로 남는다(#193 검증 B-2).
         assertThat(h2JobRows(matchId, "home")).isEqualTo(1L);
         JsonNode context = h2HomeContext(matchId);
         assertThat(context.path("kind").asText()).isEqualTo("team-input-patch");
@@ -234,7 +266,7 @@ class SecondHalfPrefetchTest extends MatchTestBase {
                 Map.of("substitutions", List.of(Map.of("out", "P002", "in", "P012"))), Map.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        // 교체는 패치가 부적합 → 풀 생성. 선행 재사용 행은 사라지고 새 잡만 남는다.
+        // 교체는 패치가 부적합 → 풀 생성. 선행 재사용 행은 무효화되고 새 잡이 유일한 유효 잡이 된다.
         assertThat(h2JobRows(matchId, "home")).isEqualTo(1L);
         JsonNode context = h2HomeContext(matchId);
         assertThat(context.path("kind").asText()).isEqualTo("team-input");
@@ -250,6 +282,102 @@ class SecondHalfPrefetchTest extends MatchTestBase {
 
         fakeServants.drain();
         assertThat(matchState(matchId)).isEqualTo("SECOND_HALF");
+    }
+
+    // ── B-2(#193 검증): 낡은 잡의 늦은 완료가 최신 지시를 덮지 않는다 ─────────
+
+    /**
+     * 워커가 물고 있던(leased) 1차 잡이 <b>지시가 바뀐 뒤</b> 완료 보고를 해 와도, 후반은 <b>최신 지시</b>
+     * 잡의 결과로만 돈다. 낡은 결과 수용 자체는 막지 않는다(#193 D2 — 거부하면 라이브락) — 다만
+     * "유효 잡"이 아니므로 시뮬 입력으로 선택되지 않아야 한다.
+     *
+     * <p>결함 재현: supersede 가 leased 행을 살려두고(complete 404 방지) 늦은 complete 가
+     * updated_at 을 지금으로 밀면, {@code ORDER BY updated_at DESC} 인 유효 잡 선택이 <b>낡은 결과</b>를
+     * 집어 유저의 최신 지시를 통째로 무시한 채 후반을 돌린다.
+     */
+    @Test
+    void lateCompletionOfASupersededJobDoesNotOverrideTheLatestInstruction() {
+        String[] parts = kickoffToFirstHalf("pf_stale").split("\\|");
+        String token = parts[0];
+        String matchId = parts[1];
+
+        // 1차 지시 → 워커가 그 잡을 물고 오래 걸린다(leased).
+        submitHalftimePrompt(token, matchId, "1차: 라인 올리고 강압박");
+        AiJobQueue.JobRow slow = jobQueue.lease("slow-worker").orElseThrow();
+        assertThat(slow.half()).isEqualTo(2);
+        assertThat(slow.side()).isEqualTo("home");
+
+        // 유저가 지시를 고친다 → 2차 잡이 유효 잡. (1차는 워커가 물고 있어 살아 있다.)
+        submitHalftimePrompt(token, matchId, "2차: 라인 내리고 역습");
+        List<String> queued = h2JobIds(matchId, "home", "queued");
+        assertThat(queued).hasSize(1);
+        assertThat(queued.get(0)).isNotEqualTo(slow.id());
+
+        // 재개 — 유효 잡(2차)이 아직이라 GEN2 에서 기다린다.
+        expireInto(matchId, "HALFTIME");
+        assertThat(authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(matchState(matchId)).isEqualTo("GEN2");
+
+        // 그 뒤에 1차 결과가 도착한다(느린 워커) — 수용은 된다(404/500 금지). 하지만 유효 잡이 아니다.
+        // 이 시점이 진짜 창이다: 재해소(supersede)는 이미 지나갔고, 늦은 complete 가 updated_at 을
+        // 지금으로 밀어 "가장 최근 done" 이 되어버린다.
+        jobQueue.complete(slow.id(), true, staleResult(slow.contextJson()), USAGE_JSON, null);
+        assertThat(jobQueue.find(slow.id())).isPresent(); // 워커의 보고가 깨지지 않았다
+
+        assertThat(matchState(matchId)).isEqualTo("GEN2"); // 낡은 결과로 후반을 열지 않았다
+        assertThat(halfSimulated(matchId, 2)).isFalse();
+
+        // 2차가 끝나면 그 결과로 돈다 — 낡은 결과의 지문은 어디에도 없다.
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("SECOND_HALF");
+        assertThat(h2HomeInputJson(matchId)).doesNotContain(STALE_MARK);
+    }
+
+    /**
+     * A→B→A(지시를 고쳤다가 되돌림)면 <b>기존 done 행을 그대로 재사용</b>한다 — promptHash 멱등의 값어치.
+     * 되돌린 순간 추가 AI 콜(queued)이 생기면 안 되고, 재개는 그 자리에서 후반으로 간다.
+     */
+    @Test
+    void revertingToAPreviousInstructionReusesTheDoneJobWithNoExtraCall() {
+        String[] parts = kickoffToFirstHalf("pf_revert").split("\\|");
+        String token = parts[0];
+        String matchId = parts[1];
+
+        submitHalftimePrompt(token, matchId, "A: 측면 활용");
+        assertThat(fakeServants.drain()).isEqualTo(1); // A 잡 = 콜 1회
+        List<String> doneA = h2JobIds(matchId, "home", "done");
+        assertThat(doneA).hasSize(1);
+        String aJobId = doneA.get(0);
+
+        submitHalftimePrompt(token, matchId, "B: 중앙 밀집"); // 갈아탄다 → 새 잡
+        assertThat(h2JobIds(matchId, "home", "queued")).hasSize(1);
+
+        submitHalftimePrompt(token, matchId, "A: 측면 활용"); // 되돌린다 → 같은 컨텍스트 = 같은 행
+        assertThat(h2JobIds(matchId, "home", "done")).containsExactly(aJobId); // 그 행이 다시 유효 잡
+        assertThat(jobCount(matchId, 2, "queued")).isZero(); // 추가 콜 0
+
+        expireInto(matchId, "HALFTIME");
+        assertThat(authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+        assertThat(matchState(matchId)).isEqualTo("SECOND_HALF"); // drain 없이 = 서번트 왕복 0
+        assertThat(halfSimulated(matchId, 2)).isTrue();
+    }
+
+    /** 낡은 잡의 결과에 남기는 지문 — 후반 인풋에 이게 있으면 낡은 결과가 이긴 것이다. */
+    private static final String STALE_MARK = "STALE-SUPERSEDED-RESULT";
+    private static final String USAGE_JSON =
+            "{\"inputTokens\":0,\"outputTokens\":0,\"cacheReadTokens\":0,\"cacheCreateTokens\":0,\"costUSD\":0}";
+
+    private String staleResult(String contextJson) {
+        try {
+            JsonNode input = objectMapper.readTree(fakeServants.stubTacticalInput(contextJson));
+            ((com.fasterxml.jackson.databind.node.ObjectNode) input.path("meta"))
+                    .put("promptHash", STALE_MARK);
+            return objectMapper.writeValueAsString(input);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     // ── 가드: 선행 생성이 GEN2 타임아웃·재시도와 충돌하지 않는다 ─────────────
