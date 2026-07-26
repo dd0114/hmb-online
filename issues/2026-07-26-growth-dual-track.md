@@ -154,7 +154,8 @@ services:
 volumes:
   hmb-db: { name: hmb-growth-db }
 YAML
-# 1) 백엔드 (이미지 빌드됨 — 빠름). infra/.env 에 JAVA_HOST_PORT=19080·RUNNER_HOST_PORT=19790·AI_EXECUTOR=stub·SERVANT_TOKEN=<rand> 설정.
+# 1) 백엔드 (이미지 빌드됨 — 빠름). infra/.env 에 JAVA_HOST_PORT=19080·RUNNER_HOST_PORT=19790·AI_EXECUTOR=stub·SERVANT_TOKEN=<rand>
+#    + ★CORS: WEB_ORIGINS=http://localhost:5301  (없으면 브라우저 로그인 403 "Invalid CORS request")
 cd /Users/peter.park/spider8/hmb-growth/infra && \
   docker compose -p hmb-growth -f docker-compose.yml -f /tmp/dc.growth.yml up -d java runner executor
 # 2) 웹 (프록시로 19080에 붙음 — CORS 없음)
@@ -181,3 +182,6 @@ cd /Users/peter.park/spider8/hmb-growth/apps/web && \
 | 시각 | 이벤트 |
 |---|---|
 | 2026-07-26 | 설계 SoT 작성, worktree growth/dual-track 생성, npm install green. G0 착수. |
+| 2026-07-26 | G0~G4 완료(shared·data·server·web). 격리 라이브 스택 기동(19080/web5301). |
+| 2026-07-26 | **AC 라이브 검증**: AC1 성장정산 멱등(verifier 구조확인 1행/선수)·AC3 강화 라이브 PASS(P140 ovr 50.88→51.7·+1 attrs·200P 차감·copy1)·AC5 서버 304테스트·카드상세 라이브 200. |
+| 2026-07-26 | **버그수정: 브라우저 로그인 403(CORS)** — WEB_ORIGINS 에 5301 없음 → 추가+java 재생성. 브라우저 플로우 재검증: 게스트→/lobby, 도감14장, 카드상세 /api/growth/card 200. |
