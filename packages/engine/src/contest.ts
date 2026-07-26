@@ -51,10 +51,15 @@ function assignWalkingTaker(state: SimState, taker: SimPlayer, spotX: number, sp
  * 걷기 속도는 match.ts speedStep 과 동일 공식(pace + 피로) — 도달 보장(순간배치 대신 시간을 준다).
  * 대부분(근거리 스로인/코너/프리킥)은 base 로 수렴, 먼 전환 코너만 연장.
  */
-function walkStoppage(config: EngineConfig, taker: SimPlayer, dist: number, base: number): number {
+function walkStoppage(config: EngineConfig, taker: SimPlayer, dist: number, base: number, capped = true): number {
   const { minPerTick, maxPerTick, fatigueFloor } = config.speed;
   const paceFrac = taker.attrs.pace / 100;
-  const perTickM = (minPerTick + (maxPerTick - minPerTick) * paceFrac) * (1 - (1 - fatigueFloor) * taker.fatigue);
+  const raw = (minPerTick + (maxPerTick - minPerTick) * paceFrac) * (1 - (1 - fatigueFloor) * taker.fatigue);
+  // #174: 정지 중엔 taker 도 걷기 속도 상한을 받는다(match.ts 이동 루프와 **동일한 상한**).
+  // 여기서 캡을 안 걸면 정지 틱을 평소 속도로 산정해 taker 가 도달하기 전에 재시작돼 #59 가 깨진다.
+  // match.ts 이동 루프와 **동일 상한**을 쓴다(코너는 더 느슨) — 안 맞추면 도달 전에 재시작된다.
+  const cap = capped ? config.rules.deadBall.walkSpeedM : config.rules.deadBall.cornerWalkSpeedM;
+  const perTickM = Math.min(raw, cap);
   const stepFx = toFixed(perTickM, config.fixedScale);
   if (stepFx <= 0) return base;
   const ticks = Math.ceil(dist / stepFx) + 2; // +2 = 도착 후 잡는(글루) 프레임 버퍼.
@@ -154,7 +159,7 @@ function placeRestart(
     // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 루프가 도달 시 글루.
     // 정지 시간 = taker 가 걸어와 도달하는 데 필요한 만큼(멀면 연장) → 점프 없이 끝까지 걸어옴.
     const dist = assignWalkingTaker(state, taker, spot.x, spot.y);
-    state.stoppage = walkStoppage(config, taker, dist, base);
+    state.stoppage = walkStoppage(config, taker, dist, base, kind !== "corner");
   } else {
     state.ball.posFx = { x: spot.x, y: spot.y };
     state.ball.owner = null;

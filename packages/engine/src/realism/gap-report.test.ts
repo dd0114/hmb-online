@@ -2,50 +2,15 @@ import { describe, it, expect } from "vitest";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { defaultEngineConfig } from "../config";
-import { aggregateRealism, type AggResult, type DerivedTeam } from "./harness";
+import { aggregateRealism, type AggResult } from "./harness";
+// 벤치 밴드는 bench.ts 가 단일 출처 — 리포트와 밸런스 스윕 도구가 같은 표를 본다(드리프트 방지).
+import { BENCH, benchVerdict, type Bench } from "./bench";
 
 /**
  * E3 리얼리즘 갭 리포트 생성기(env 가드). npm test 에서는 skip.
  * 실행: HMB_GEN_GAP=1 npx vitest run packages/engine/src/realism/gap-report.test.ts
  * → research/engine-realism-gap.md 의 데이터 표를 갱신하고 콘솔에 요약 출력.
  */
-
-interface Bench {
-  key: keyof DerivedTeam | "goalsPerMatch";
-  label: string;
-  lo: number;
-  hi: number;
-  unit?: string;
-  note?: string;
-}
-
-// 벤치마크(팀-경기 기준, football-stats.md). goalsPerMatch 는 양팀 합.
-const BENCH: Bench[] = [
-  { key: "passSuccessPct", label: "패스 성공률", lo: 78, hi: 85, unit: "%" },
-  { key: "longShareOfAttempts", label: "의도적 롱패스 시도 비율", lo: 12, hi: 15, unit: "%", note: "E2, detail=long" },
-  { key: "longPassPct", label: "롱볼 이동(>=30m, 재구성)", lo: 12, hi: 15, unit: "%", note: "노이즈 포함(참고)" },
-  { key: "possessionPct", label: "점유율", lo: 30, hi: 65, unit: "%", note: "대칭→평균~50" },
-  { key: "shots", label: "슛(시도)", lo: 12, hi: 14 },
-  { key: "onTarget", label: "유효슛", lo: 4.5, hi: 5.5 },
-  { key: "onTargetPct", label: "유효슛 비율", lo: 45, hi: 50, unit: "%" },
-  { key: "goals", label: "골", lo: 1.4, hi: 1.65 },
-  { key: "shotConvPct", label: "슛→골 전환", lo: 10, hi: 12, unit: "%" },
-  { key: "xgPerShot", label: "슛당 xG", lo: 0.1, hi: 0.12 },
-  { key: "corners", label: "코너", lo: 4, hi: 6 },
-  { key: "throwIns", label: "스로인", lo: 17, hi: 19 },
-  { key: "fouls", label: "파울", lo: 11, hi: 12 },
-  { key: "offsides", label: "오프사이드", lo: 1, hi: 3 },
-  { key: "yellowCards", label: "옐로카드", lo: 1.8, hi: 2.0 },
-  { key: "avgWidthM", label: "팀 width", lo: 40, hi: 50, unit: "m" },
-  { key: "avgLengthM", label: "팀 length", lo: 25, hi: 40, unit: "m" },
-  { key: "avgDistanceKm", label: "주행거리", lo: 10, hi: 12, unit: "km" },
-];
-
-function verdict(v: number, b: Bench): string {
-  if (v < b.lo) return `LOW (▼ ${(b.lo - v).toFixed(2)})`;
-  if (v > b.hi) return `HIGH (▲ ${(v - b.hi).toFixed(2)})`;
-  return "OK";
-}
 
 function fmt(v: number): string {
   return (Math.round(v * 100) / 100).toString();
@@ -66,7 +31,7 @@ function reportBody(agg: AggResult): string {
     }
     const u = b.unit ?? "";
     L.push(
-      `| ${b.label} | ${fmt(v)}${u} | ${fmt(s)} | ${b.lo}–${b.hi}${u}${b.note ? ` (${b.note})` : ""} | ${verdict(v, b)} |`,
+      `| ${b.label} | ${fmt(v)}${u} | ${fmt(s)} | ${b.lo}–${b.hi}${u}${b.note ? ` (${b.note})` : ""} | ${benchVerdict(v, b)} |`,
     );
   }
   L.push("");

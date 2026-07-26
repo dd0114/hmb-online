@@ -38,7 +38,7 @@ function attrFactor(v: number): number {
  * 무상태 결정론 노이즈 [0,1). (seed, playerId, timeBucket) 해시 → 시퀀셜 Rng 를 소모하지 않고
  * 선수·시간별로 재현 가능한 변주값을 준다(오프더볼 오버랩/로밍용). 재개 시에도 tick 만으로 동일.
  */
-function varietyNoise(a: number, b: number, c: number): number {
+export function varietyNoise(a: number, b: number, c: number): number {
   let h = 2166136261 >>> 0;
   h = Math.imul(h ^ (a >>> 0), 16777619);
   h = Math.imul(h ^ (b >>> 0), 16777619);

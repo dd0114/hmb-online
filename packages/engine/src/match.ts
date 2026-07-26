@@ -33,6 +33,15 @@ import {
   launchCornerCross,
   checkOffside,
 } from "./contest";
+import {
+  deadBallZone,
+  deadBallExcluded,
+  deadBallBlocked,
+  deadBallClearance,
+  deadBallRetreatPoint,
+  deadBallShapeTarget,
+  deadBallUsesShape,
+} from "./deadball";
 import { attackGoal } from "./pitch";
 import type { OutCross } from "./ball";
 import { hashState } from "./hash";
@@ -201,14 +210,43 @@ function stepTick(carry: Carry): void {
   if (state.stoppage > 0) {
     state.stoppage--;
     const heldId = state.ball.owner;
+    // #176: 실제 축구 규칙(Law 8/13/14/15/16/17) — 재시작 팀의 상대는 스팟에서 물러나 있어야 한다.
+    // 이게 없으면 상대가 정지 내내 스팟까지 걸어 들어와, 정지가 끝나는 순간 바로 옆에서
+    // 태클/인터셉트로 강탈한다(골킥이면 박스 안 키퍼에게서 뺏어 즉시 실점).
+    const zone = deadBallZone(state, config, pitch);
+    const shapeSp = state.setPiece && deadBallUsesShape(state.setPiece.kind) ? state.setPiece : null;
     for (const p of state.players) {
       if (p.id === heldId) continue;
-      decideOffBall(state, p, config, pitch, null);
+      // #185/#174: 정지 중엔 평소 오프더볼 로직(자기 위치·시야 피드백) 대신 **규칙기반 정적 배치**.
+      // 상황이 안 변하는 구간에서 매 틱 재계산하면 목표가 자기 위치를 따라 흔들려 제자리 왕복이
+      // 생기고(#185), 전원이 굳은 뒤 한 명만 기억 만료로 새 타깃을 받아 혼자 질주한다(#174).
+      if (shapeSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, shapeSp);
+      else decideOffBall(state, p, config, pitch, null);
+      if (!zone || !deadBallExcluded(p, zone)) continue;
+      // 구역 안에 있으면 전술 목표보다 **나가는 것이 우선**(안 그러면 반대편 목표로 가느라
+      // 스팟을 더 가깝게 지나친다). 목표만 안이면 경계까지 = 벽 세우고 서기.
+      const inside = deadBallClearance(zone, p.posFx.x, p.posFx.y) < 0;
+      const targetInside = deadBallClearance(zone, p.targetFx.x, p.targetFx.y) < 0;
+      if (inside || targetInside) {
+        p.targetFx = deadBallRetreatPoint(pitch, zone, config, p.posFx.x, p.posFx.y);
+      }
     }
+    // 코너는 **더 느슨한 상한**을 쓴다 — 코너 정지 중 배치(rest defence, #182)는 하프라인까지 40m 를
+    // 오가야 성립하는데 걷기 속도로 묶으면 정지 안에 도달을 못 해 그 계약이 깨진다(실측: '뒤를 봐라'
+    // 지시받은 공격수의 잔류율 0). 무제한으로 두면 정지 중 최대 변위가 질주 수준으로 남으므로(#174)
+    // 중간값을 쓴다. 정적 배치에서 코너를 뺀 것과 같은 경계다.
+    const walkCap = toFixed(
+      shapeSp != null ? config.rules.deadBall.walkSpeedM : config.rules.deadBall.cornerWalkSpeedM,
+      config.fixedScale,
+    );
     for (const p of state.players) {
-      const step = speedStep(p, config);
+      // #174: 데드볼엔 뛰지 않고 **걸어서** 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만
+      // 풀스피드로 가로지르면 "공보다 선수가 빠른" 그림이 된다(실측 최대 6.4 m/tick).
+      // taker 도 포함한다. walkStoppage(#59)가 **같은 상한**으로 도달 틱을 산정하므로 도달은 보장된다.
+      const step = Math.min(speedStep(p, config), walkCap);
       const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
       const c = clampToPitch(pitch, next.x, next.y);
+      if (zone && deadBallExcluded(p, zone) && deadBallBlocked(zone, p, c)) continue;
       p.posFx.x = c.x;
       p.posFx.y = c.y;
     }
@@ -276,6 +314,15 @@ function stepTick(carry: Carry): void {
         // setPiece 는 아래서 null → 다음 틱부터 크로스 비행이 advanceBall 로 진행, resolveArrival 로 경합.
         launchCornerCross(state, pitch, config, rng);
       }
+      // #176: 규칙상 상대가 물러나 있어야 하는 건 "공이 **인플레이 될 때까지**" 다 — 정지 카운터가
+      // 0 이 되는 순간이 아니다. taker 가 공을 발밑에 두고 서 있는(아직 안 찬) 재시작은 setPiece 를
+      // 살려둬 접근 금지를 유지하고, taker 가 실제로 공을 찰 때(패스/슛/드리블) 해제한다.
+      // 안 그러면 정지 종료 틱에 상대가 한 번에 몰려들어(실측 +0.06m → −4.8m 한 틱 점프) 픽스가
+      // 강탈을 8틱 미루는 데 그친다. 코너·페널티는 정지 종료 즉시 공이 떠나므로 해당 없음.
+      const held = state.setPiece;
+      if (held && (held.kind === "goal_kick" || held.kind === "throw_in" || held.kind === "free_kick" || held.kind === "kickoff")) {
+        keepSetPiece = true;
+      }
       if (!keepSetPiece) state.setPiece = null;
     }
     return;
@@ -287,12 +334,26 @@ function stepTick(carry: Carry): void {
 
   // --- decide: 오프더볼/수비 목표 ---
   const ownerId = state.ball.owner;
+  // #176: 아직 안 찬 세트피스(taker 가 공을 들고 서 있음)면 접근 금지가 계속 유효하다.
+  // 정지는 끝났지만 규칙상 공은 아직 인플레이가 아니다 → 압박 배정보다 규칙이 우선.
+  const liveZone = deadBallZone(state, config, pitch);
+  // 아직 안 찬 세트피스(taker 가 공을 들고 서 있음) = 규칙상 공이 인플레이가 아닌 구간.
+  // 정지 브랜치와 **같은 규율**(규칙기반 배치 + 걷기 속도)을 적용한다 — 안 그러면 정지가 끝나는
+  // 순간 이 구간에서만 평소 로직이 되살아나 왕복·단독질주가 그대로 남는다(실측 최대 6.3 m/tick).
+  const liveSp = state.setPiece && deadBallUsesShape(state.setPiece.kind) ? state.setPiece : null;
   for (const p of state.players) {
     if (p.id === ownerId) continue;
     // 볼을 안 가진 선수는 드리블 체인 리셋(활성 캐리어만 연속 누적).
     p.dribbleStreak = 0;
     const pa = p.side === defSide ? presser : null;
-    decideOffBall(state, p, config, pitch, pa);
+    if (liveSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, liveSp);
+    else decideOffBall(state, p, config, pitch, pa);
+    if (!liveZone || !deadBallExcluded(p, liveZone)) continue;
+    const inside = deadBallClearance(liveZone, p.posFx.x, p.posFx.y) < 0;
+    const targetInside = deadBallClearance(liveZone, p.targetFx.x, p.targetFx.y) < 0;
+    if (inside || targetInside) {
+      p.targetFx = deadBallRetreatPoint(pitch, liveZone, config, p.posFx.x, p.posFx.y);
+    }
   }
 
   // 이번 틱에 막 쏜 슛인지 — 그렇다면 이 틱엔 공을 슈터 발밑에 두고 다음 틱부터
@@ -300,10 +361,27 @@ function stepTick(carry: Carry): void {
   let shotLaunchedThisTick = false;
 
   // --- decide: 볼 소유자 행동 ---
-  if (ownerId && !state.ball.flight) {
+  // 아직 안 찬 세트피스에서 taker 가 스팟에 **도달하기 전**이면 행동 결정을 하지 않는다(#59/#176).
+  // 규칙상 공은 스팟에 놓여 있고 taker 는 걸어가 잡는 중이다 — 여기서 hold 를 결정하게 두면
+  // taker 가 그 자리에 서고 공이 taker 에게 글루돼 스팟에서 끌려간다(실측 2.5m 드리프트).
+  const takerWalkingIn =
+    liveSp != null &&
+    ownerId != null &&
+    (() => {
+      const o = state.byId.get(ownerId);
+      return o ? fdist(o.posFx.x, o.posFx.y, liveSp.x, liveSp.y) > config.contest.controlRange * config.fixedScale : false;
+    })();
+  if (takerWalkingIn && ownerId) {
+    const o = state.byId.get(ownerId);
+    if (o) o.targetFx = { x: liveSp!.x, y: liveSp!.y };
+  }
+  if (ownerId && !state.ball.flight && !takerWalkingIn) {
     const owner = state.byId.get(ownerId);
     if (owner) {
       const action = decideBallOwner(state, owner, rng, config, pitch);
+      // #176: taker 가 공을 실제로 플레이하면(패스/슛/드리블) 그 순간 공이 인플레이 → 접근 금지 해제.
+      // hold 는 아직 안 찬 것이므로 유지한다. (offside 등 새 세트피스는 아래서 setPiece 를 덮어쓴다.)
+      if (liveZone && action.kind !== "hold") state.setPiece = null;
       switch (action.kind) {
         case "shoot": {
           state.ball.flight = {
@@ -397,9 +475,13 @@ function stepTick(carry: Carry): void {
 
   // --- act: 선수 이동 ---
   for (const p of state.players) {
-    const step = speedStep(p, config);
+    // 아직 안 찬 세트피스 구간은 정지와 동일하게 걷기 속도(#174).
+    const raw = speedStep(p, config);
+    const step = liveSp ? Math.min(raw, toFixed(config.rules.deadBall.walkSpeedM, config.fixedScale)) : raw;
     const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
     const c = clampToPitch(pitch, next.x, next.y);
+    // #176: 아직 안 찬 세트피스면 정지 때와 같은 일방통행 벽을 유지(직선 경로 가로지르기 차단).
+    if (liveZone && deadBallExcluded(p, liveZone) && deadBallBlocked(liveZone, p, c)) continue;
     p.posFx.x = c.x;
     p.posFx.y = c.y;
   }
@@ -427,6 +509,10 @@ function stepTick(carry: Carry): void {
         carry.events.push(e);
       }
     }
+  } else if (curOwnerId && state.setPiece) {
+    // 아직 안 찬 세트피스: 규칙상 공은 **스팟에 놓여 있고 인플레이가 아니다**.
+    // 공을 taker 에게 글루하지 않고(끌려가면 스팟 이탈), 태클도 성립하지 않는다 —
+    // 이 두 줄이 #176 강탈 경로의 마지막 구멍이다(스로인 금지반경 2m ≈ tackleRange 2m 경계).
   } else if (curOwnerId) {
     const owner = state.byId.get(curOwnerId);
     if (owner) glueBallToOwner(state.ball, owner.posFx.x, owner.posFx.y);
