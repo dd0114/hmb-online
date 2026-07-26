@@ -2,10 +2,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 /**
- * G4 성장/강화 UI route-mock 스모크(에픽 #179) — **백엔드 없이** vite dev + page.route 로 /api 목킹.
- * 계약 박제: (1) 도감 보유카드 → 성장 상세 시안3 렌더(OVR 링·돌파★·완성도·능력치 현재/천장/기본),
- * (2) 강화 클릭 → 스탯 fill 증가, (3) 한계돌파 → promoted → 프레임 등급색 전환, (4) 성장 리포트 렌더.
- * 스펙 지정·대체포트(playwright.config PORT=5199, :8080 데모 무접촉)·pathname 매칭(glob 아님).
+ * G4 성장 시스템 v2(메이플 피벗) UI route-mock 스모크(에픽 #179 GM3, §V2-6/V2-7 AC-V6) —
+ * **백엔드 없이** vite dev + page.route 로 /api 목킹. 계약 박제:
+ * (1) 카드 상세 렌더 — ★·스탯Lv·잠재 3줄·티어색, (2) 성 승급 → ★+1·잠재 해금,
+ * (3) 다이스 롤 → 라인 갱신·티어업 연출, (4) 다이스 부족 4xx 메시지, (5) 390px 오버플로 0,
+ * (6) 성장 리포트(S1) 스탯별 XP 막대 + 레벨업 뱃지.
+ * 스펙 지정·대체포트(playwright.config PORT=5199, :8080 데모·5301 무접촉)·pathname 매칭(glob 아님).
  */
 
 const SMOKE_DIR = new URL("../.smoke/", import.meta.url).pathname;
@@ -16,34 +18,31 @@ const err = (status: number, code: string, message: string) => ({
   body: JSON.stringify({ code, message }),
 });
 
+// GOLD 등급 카드로 고정 — linesByGrade G:2(잠재 2줄), gradeTierCap G:EPIC(RARE→EPIC 티어업 데모 가능).
 const OWNED_ID = "P001";
 const attrs = {
   technical: 44, mental: 41, physical: 40, passing: 42, shooting: 55,
   tackling: 30, pace: 60, stamina: 43, positioning: 45,
 };
+const caps = {
+  technical: 70, mental: 68, physical: 65, passing: 69, shooting: 80,
+  tackling: 55, pace: 82, stamina: 66, positioning: 71,
+};
+function statLevels(bump: number) {
+  const out: Record<string, { lv: number; xp: number }> = {};
+  for (const k of Object.keys(attrs)) out[k] = { lv: bump, xp: 20 };
+  return out;
+}
 const PLAYERS_RESPONSE = [
-  { id: OWNED_ID, name: "양민혁", position: "FW", grade: "SILVER", owned: true, ownedCount: 3, attributes: attrs },
+  { id: OWNED_ID, name: "양민혁", position: "FW", grade: "GOLD", owned: true, ownedCount: 6, attributes: attrs },
   { id: "P099", name: "잠금 선수", position: "DF", grade: "GOLD", owned: false, ownedCount: 0, attributes: attrs },
 ];
 
 const ME_RESPONSE = {
   user: { id: "u1", nickname: "내 팀" },
-  wallet: { points: 5000 },
+  wallet: { points: 20000 },
   records: { wins: 0, draws: 0, losses: 0 },
 };
-
-/** cur/cap/base 능력치 세트 — enhance 로 cur/cap 이 오른다. */
-function attrSet(bump: number) {
-  const cur: Record<string, number> = {};
-  const caps: Record<string, number> = {};
-  const base: Record<string, number> = {};
-  for (const [k, v] of Object.entries(attrs)) {
-    base[k] = v;
-    cur[k] = Math.min(100, v + 8 + bump);
-    caps[k] = Math.min(100, v + 18 + bump);
-  }
-  return { cur, caps, base };
-}
 
 async function seedAuth(page: Page) {
   await page.addInitScript(() => {
@@ -52,14 +51,33 @@ async function seedAuth(page: Page) {
   });
 }
 
+interface GrowthMockOpts {
+  /** POST /api/growth/dice 를 항상 이 코드로 4xx 실패시킨다(다이스 부족 시나리오 전용). */
+  diceAlwaysFails?: boolean;
+}
+
 /**
- * 성장 카드 목 — 상태ful. enhance 마다 bump↑(cur/cap↑), limitbreak 시 effectiveGrade 승급.
- * enhanceCap 도달을 흉내내려면 opts.enhanceMaxAt 이후 POST enhance 가 4xx ENHANCE_MAX.
+ * 성장 카드/성/다이스/상점 목 — 상태ful. star-up 마다 star++·잠재 해금, dice 마다 lines 갱신
+ * (2회차에 RARE→EPIC 티어업), shop/dice 구매마다 diceBalance++.
  */
-async function mockGrowth(page: Page, opts: { enhanceMaxAt?: number } = {}) {
-  let bump = 0;
-  let enhanceCount = 0;
-  let effectiveGrade = "SILVER"; // baseGrade BRONZE → 돌파 1단계
+async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
+  let star = 1;
+  let statBump = 0;
+  let potentialUnlocked = false;
+  let tier: "RARE" | "EPIC" | "UNIQUE" = "RARE";
+  let rollsSinceTierUp = 0;
+  let diceNormal = 0;
+  let diceCash = 0;
+  let rollCount = 0;
+
+  function lines() {
+    if (!potentialUnlocked) return [];
+    const base = [
+      { slot: 1, tier, type: "STAT_PCT" as const, stat: "shooting", value: 3 },
+      { slot: 2, tier: "RARE" as const, type: "STAT_FLAT" as const, stat: "pace", value: 2 },
+    ];
+    return base;
+  }
 
   // catch-all 먼저(구체 라우트가 나중에 우선). pathname 매칭 — glob '**/api/**' 는 vite 소스까지 잡음.
   await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.fulfill(json({})));
@@ -69,50 +87,109 @@ async function mockGrowth(page: Page, opts: { enhanceMaxAt?: number } = {}) {
   await page.route(
     (url) => url.pathname === `/api/growth/card/${OWNED_ID}`,
     (route) => {
-      const { cur, caps, base } = attrSet(bump);
+      const cur: Record<string, number> = {};
+      for (const [k, v] of Object.entries(attrs)) cur[k] = Math.min(caps[k as keyof typeof caps], v + statBump);
       route.fulfill(
         json({
           playerId: OWNED_ID,
-          baseGrade: "BRONZE",
-          effectiveGrade,
+          grade: "GOLD",
+          star,
           attributes: cur,
+          prePotential: cur,
+          base: attrs,
           caps,
-          base,
-          ovr: 58 + bump,
-          completion: Math.min(1, 0.62 + enhanceCount * 0.08),
+          statLevels: statLevels(statBump > 0 ? 1 : 0),
+          potential: {
+            unlocked: potentialUnlocked,
+            tier,
+            maxTier: "EPIC",
+            lines: lines(),
+            rollsSinceTierUp,
+            ceilingAt: 9,
+          },
+          ovr: 58 + statBump,
+          completion: Math.min(1, 0.3 + statBump * 0.05),
         }),
       );
     },
   );
+
   await page.route(
-    (url) => url.pathname === "/api/growth/enhance",
+    (url) => url.pathname === "/api/growth/star",
     (route) => {
-      if (opts.enhanceMaxAt != null && enhanceCount >= opts.enhanceMaxAt) {
-        route.fulfill(err(409, "ENHANCE_MAX", "강화 상한"));
+      if (star >= 4) {
+        route.fulfill(err(409, "INSUFFICIENT_MATERIALS", "성 최대"));
         return;
       }
-      enhanceCount += 1;
-      bump += 4;
+      star += 1;
+      if (star === 2) potentialUnlocked = true;
       route.fulfill(
-        json({ playerId: OWNED_ID, enhanceLevel: enhanceCount, limitBreak: 1, effectiveGrade, ovr: 58 + bump, promoted: false, spent: { copies: 0, points: 200 } }),
+        json({ playerId: OWNED_ID, star, spentCopies: star === 2 ? 2 : star === 3 ? 3 : 5, potentialUnlocked: star === 2, maxTier: "EPIC" }),
       );
     },
   );
+
   await page.route(
-    (url) => url.pathname === "/api/growth/limitbreak",
+    (url) => url.pathname === "/api/growth/dice",
     (route) => {
-      effectiveGrade = "GOLD"; // 승급
-      bump += 2;
+      if (opts.diceAlwaysFails) {
+        route.fulfill(err(409, "INSUFFICIENT_DICE", "다이스 부족"));
+        return;
+      }
+      const body = route.request().postDataJSON() as { kind: "NORMAL" | "CASH" };
+      rollCount += 1;
+      statBump += 1;
+      const tierBefore = tier;
+      let tierUp = false;
+      if (body.kind === "NORMAL") {
+        rollsSinceTierUp += 1;
+        if (rollCount >= 2 && tier === "RARE") {
+          tier = "EPIC";
+          tierUp = true;
+          rollsSinceTierUp = 0;
+        }
+        diceNormal = Math.max(0, diceNormal - 1);
+      } else {
+        diceCash = Math.max(0, diceCash - 1);
+      }
       route.fulfill(
-        json({ playerId: OWNED_ID, enhanceLevel: enhanceCount, limitBreak: 2, effectiveGrade, ovr: 58 + bump, promoted: true, spent: { copies: 3, points: 0 } }),
+        json({
+          playerId: OWNED_ID,
+          kind: body.kind,
+          tierBefore,
+          tierAfter: tier,
+          tierUp,
+          byCeiling: false,
+          lines: lines(),
+          rollsSinceTierUp,
+          ceilingAt: 9,
+          diceLeft: body.kind === "NORMAL" ? diceNormal : diceCash,
+        }),
+      );
+    },
+  );
+
+  await page.route(
+    (url) => url.pathname === "/api/shop/dice",
+    (route) => {
+      const body = route.request().postDataJSON() as { kind: "NORMAL" | "CASH"; count: number };
+      if (body.kind === "NORMAL") diceNormal += body.count;
+      else diceCash += body.count;
+      route.fulfill(
+        json({
+          kind: body.kind,
+          count: body.count,
+          dice: { normal: diceNormal, cash: diceCash },
+          wallet: { points: ME_RESPONSE.wallet.points - (body.kind === "NORMAL" ? 500 : 5000) * body.count },
+        }),
       );
     },
   );
 }
 
-test("G4 도감 성장 상세(시안3): OVR 링·돌파★·완성도·능력치 3표시 + 강화→스탯↑ + 한계돌파→승급", async ({ page }) => {
+test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + 성 승급→★+1·잠재 해금", async ({ page }) => {
   mkdirSync(SMOKE_DIR, { recursive: true });
-  await mockGrowth(page, { enhanceMaxAt: 1 });
+  await mockGrowth(page);
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/codex");
@@ -122,41 +199,86 @@ test("G4 도감 성장 상세(시안3): OVR 링·돌파★·완성도·능력치
   const sheet = page.getByTestId("growth-detail");
   await expect(sheet).toBeVisible();
 
-  // 시안3 요소: OVR 링(중앙 숫자)·완성도%·돌파★(BRONZE→SILVER = 1단계).
+  // ★ 1(초기) · 스탯 Lv 뱃지 · 잠재 3슬롯(1★=잠김) · 등급 프레임 GOLD.
+  await expect(page.getByTestId("growth-frame")).toHaveAttribute("data-grade", "GOLD");
+  await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-star", "1");
+  await expect(page.getByTestId("growth-lv-shooting")).toHaveText("Lv.0");
+  await expect(page.getByTestId("growth-potential-locked")).toBeVisible();
+  await expect(page.getByTestId("growth-potential-slot-1")).toHaveAttribute("data-state", "locked-star");
   await expect(page.getByTestId("growth-ovr")).toHaveText("58");
   await expect(page.getByTestId("growth-completion")).toContainText("완성도");
-  await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-breakthrough", "1");
-  await expect(page.getByTestId("growth-frame")).toHaveAttribute("data-grade", "SILVER");
-  // 능력치 막대: 현재값(fill)이 값을 노출.
-  await expect(page.getByTestId("growth-attr-shooting")).toBeVisible();
-  const shootBefore = Number(await page.getByTestId("growth-fill-shooting").getAttribute("data-value"));
+  await expect(page.getByTestId("growth-star-up")).toContainText("2★");
+  await expect(page.getByTestId("growth-star-cost")).toContainText("중복 −2");
 
   await page.screenshot({ path: `${SMOKE_DIR}growth-detail-schema3.png`, fullPage: true });
 
-  // 강화 → 스탯 fill 증가(재조회 반영).
-  await page.getByTestId("growth-enhance").click();
-  await expect
-    .poll(async () => Number(await page.getByTestId("growth-fill-shooting").getAttribute("data-value")))
-    .toBeGreaterThan(shootBefore);
-  const ovrAfterEnhance = Number(await page.getByTestId("growth-ovr").innerText());
-  expect(ovrAfterEnhance).toBeGreaterThan(58);
-
-  // 강화 상한 도달 → ENHANCE_MAX → "한계돌파 가능" 배지 + limitbreak ready.
-  await page.getByTestId("growth-enhance").click(); // enhanceCount now 2 == max → 4xx
-  await expect(page.getByTestId("growth-limitbreak-badge")).toBeVisible();
-  await expect(page.getByTestId("growth-limitbreak")).toHaveAttribute("data-ready", "true");
-
-  // 한계돌파 → promoted → 프레임 등급색 GOLD 전환 + 돌파★ 2단계 + 승급 플래시.
-  await page.getByTestId("growth-limitbreak").click();
-  await expect(page.getByTestId("growth-promoted")).toBeVisible();
-  await expect(page.getByTestId("growth-frame")).toHaveAttribute("data-grade", "GOLD");
-  await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-breakthrough", "2");
+  // 성 승급 → ★2, 잠재 해금(2줄: GOLD=2줄), 티어 RARE 표시.
+  await page.getByTestId("growth-star-up").click();
+  await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-star", "2");
+  await expect(page.getByTestId("growth-potential-tier")).toBeVisible();
+  await expect(page.getByTestId("growth-potential-slot-1")).toHaveAttribute("data-state", "filled");
+  await expect(page.getByTestId("growth-potential-slot-1")).toHaveAttribute("data-tier", "RARE");
+  await expect(page.getByTestId("growth-potential-slot-2")).toHaveAttribute("data-state", "filled");
+  // GOLD 는 2줄까지만 — 3번째 슬롯은 등급 상한으로 영구 잠김.
+  await expect(page.getByTestId("growth-potential-slot-3")).toHaveAttribute("data-state", "locked-grade");
+  await expect(page.getByTestId("growth-dice-ceiling")).toBeVisible();
 
   // 390px 가로 오버플로 0.
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   console.log(`[smoke] growth-detail 390px overflow px = ${overflow}`);
   expect(overflow).toBeLessThanOrEqual(0);
   await page.screenshot({ path: `${SMOKE_DIR}growth-detail-promoted.png`, fullPage: true });
+});
+
+test("G4 다이스 롤: 라인 갱신 + 티어업 연출(RARE→EPIC 축하 배너)", async ({ page }) => {
+  await mockGrowth(page);
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // 상점에서 노말 다이스 2개 구매(롤 2회로 티어업 트리거).
+  // ⚠️ page.goto 는 풀 리로드(React Query 캐시 = 다이스 잔고 리셋) — nav 클릭으로 SPA 내 이동 유지.
+  await page.goto("/shop");
+  await page.getByTestId("shop-tab-dice").click();
+  await page.getByTestId("dice-buy-normal").click();
+  await expect(page.getByTestId("dice-wallet-flash")).toBeVisible();
+  await page.getByTestId("dice-buy-normal").click();
+
+  // 도감 카드 상세 → 2★ 아니므로 먼저 승급(잠재 해금) → 다이스 롤.
+  await page.getByTestId("nav-bottom").getByTestId("nav-codex").click();
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await page.getByTestId("growth-star-up").click();
+  await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-star", "2");
+
+  await expect(page.getByTestId("growth-dice-normal")).toBeEnabled();
+  const shootLvBefore = await page.getByTestId("growth-lv-shooting").innerText();
+
+  await page.getByTestId("growth-dice-normal").click(); // 1회차 — 아직 티어업 아님
+  await expect
+    .poll(async () => await page.getByTestId("growth-lv-shooting").innerText())
+    .not.toBe(shootLvBefore);
+
+  await page.getByTestId("growth-dice-normal").click(); // 2회차 — 목에서 RARE→EPIC 트리거
+  await expect(page.getByTestId("growth-tierup-banner")).toBeVisible();
+  await expect(page.getByTestId("growth-tierup-banner")).toHaveAttribute("data-tier", "EPIC");
+  await expect(page.getByTestId("growth-tierup-banner")).toContainText("에픽");
+  await expect(page.getByTestId("growth-potential-slot-1")).toHaveAttribute("data-tier", "EPIC");
+});
+
+test("G4 다이스 부족: POST /api/growth/dice 4xx → 에러 메시지", async ({ page }) => {
+  await mockGrowth(page, { diceAlwaysFails: true });
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/shop");
+  await page.getByTestId("shop-tab-dice").click();
+  await page.getByTestId("dice-buy-normal").click(); // 잔고 1로 만들어 버튼을 활성 상태로 둔다(SPA 이동으로 캐시 유지)
+
+  await page.getByTestId("nav-bottom").getByTestId("nav-codex").click();
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await expect(page.getByTestId("growth-dice-normal")).toBeEnabled();
+  await page.getByTestId("growth-dice-normal").click();
+
+  await expect(page.getByRole("alert")).toContainText("다이스가 부족합니다");
 });
 
 test("G4 미보유 카드는 성장 UI 없이 기존 인라인 확장(잠금)만", async ({ page }) => {
@@ -177,8 +299,22 @@ const MATCH_ID = "M777";
 const REPORT = {
   matchId: MATCH_ID,
   entries: [
-    { playerId: OWNED_ID, name: "양민혁", xpDelta: 120, ovrBefore: 58, ovrAfter: 60, leveledUp: true, topAttrs: ["슛", "스피드"] },
-    { playerId: "P042", name: "김수비", xpDelta: 45, ovrBefore: 62, ovrAfter: 62, leveledUp: false, topAttrs: ["태클"] },
+    {
+      playerId: OWNED_ID,
+      name: "양민혁",
+      statXp: { shooting: 80, pace: 40, technical: 0, mental: 0, physical: 0, passing: 0, tackling: 0, stamina: 0, positioning: 0 },
+      levelUps: ["shooting"],
+      ovrBefore: 58,
+      ovrAfter: 60,
+    },
+    {
+      playerId: "P042",
+      name: "김수비",
+      statXp: { tackling: 30, physical: 0, shooting: 0, pace: 0, technical: 0, mental: 0, passing: 0, stamina: 0, positioning: 0 },
+      levelUps: [],
+      ovrBefore: 62,
+      ovrAfter: 62,
+    },
   ],
 };
 const FINISHED_MATCH = {
@@ -191,7 +327,7 @@ const FINISHED_MATCH = {
   createdAt: "2026-07-26T00:00:00Z",
 };
 
-test("G4 성장 리포트(S1): ResultPage 하단 — 선수별 +xp·OVR before→after·레벨업 뱃지·topAttrs", async ({ page }) => {
+test("G4 성장 리포트(S1): ResultPage 하단 — 스탯별 XP 막대 + 레벨업 뱃지 + OVR before→after", async ({ page }) => {
   mkdirSync(SMOKE_DIR, { recursive: true });
   await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.fulfill(json({})));
   await page.route((url) => url.pathname === "/api/me", (route) => route.fulfill(json(ME_RESPONSE)));
@@ -210,11 +346,16 @@ test("G4 성장 리포트(S1): ResultPage 하단 — 선수별 +xp·OVR before�
   await expect(page.getByTestId("result-page")).toBeVisible();
   const report = page.getByTestId("growth-report");
   await expect(report).toBeVisible();
-  await expect(page.getByTestId(`growth-xp-${OWNED_ID}`)).toContainText("+120");
+  await expect(page.getByTestId(`growth-xp-total-${OWNED_ID}`)).toContainText("+120");
+  await expect(page.getByTestId(`growth-statxp-${OWNED_ID}-shooting`)).toContainText("+80");
+  await expect(page.getByTestId(`growth-statxp-${OWNED_ID}-pace`)).toContainText("+40");
   await expect(page.getByTestId(`growth-ovr-${OWNED_ID}`)).toContainText("58 → 60");
-  await expect(page.getByTestId(`growth-levelup-${OWNED_ID}`)).toBeVisible();
+  await expect(page.getByTestId(`growth-levelup-${OWNED_ID}-shooting`)).toContainText("슛 Lv up!");
   // 레벨업 안 한 선수는 뱃지 없음.
   await expect(page.getByTestId("growth-levelup-P042")).toHaveCount(0);
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
 
   await report.scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${SMOKE_DIR}growth-report.png`, fullPage: true });

@@ -1,4 +1,4 @@
-/* 시안3 카드 성장 상세 — 바텀시트(모바일) / 중앙카드(데스크탑). */
+/* 카드 성장 상세(§V2-6) — 바텀시트(모바일) / 중앙카드(데스크탑). */
 .overlay {
   position: fixed;
   inset: 0;
@@ -75,9 +75,9 @@
 
 .stars {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: 2px;
+  flex: none;
 }
 
 .star {
@@ -92,18 +92,53 @@
   filter: none;
 }
 
-.tier {
-  font-size: 9.5px;
-  color: var(--text-muted);
-  letter-spacing: 0.08em;
-  font-weight: 700;
-  margin-top: 2px;
-}
-
 .loading {
   color: var(--text-muted);
   text-align: center;
   padding: 20px 0;
+}
+
+/* 성 승급 */
+.starUpRow {
+  margin: 14px 0 0;
+}
+
+.starUpBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 10px;
+  border-radius: 10px;
+  border: 1px solid #e7c24c88;
+  background: linear-gradient(120deg, #2a2418, #1e2129);
+  color: #e7c24c;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.starUpBtn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.costChip {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: #20262f;
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.shortNote {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: var(--danger, #e9707a);
+  text-align: center;
 }
 
 .ringWrap {
@@ -140,29 +175,84 @@
   color: #5cc98b;
   font-weight: 800;
   text-align: center;
-  margin: 0 0 12px;
+  margin: 0 0 14px;
 }
 
 .attrs {
   display: grid;
-  gap: 7px;
+  gap: 10px;
   margin: 0 0 16px;
 }
 
 .attrRow {
   display: grid;
-  grid-template-columns: 56px 1fr 48px;
-  gap: 8px;
+  grid-template-columns: 1fr 48px;
+  gap: 6px 8px;
   align-items: center;
 }
 
 .attrName {
+  grid-column: 1 / 2;
   font-size: 11px;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lvBadge {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #63d193;
+  background: #182420;
+  border-radius: 5px;
+  padding: 1px 5px;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.lvBadgeUp {
+  animation: lvpop 0.7s;
+}
+
+@keyframes lvpop {
+  0% {
+    transform: scale(1);
+    background: #182420;
+  }
+  35% {
+    transform: scale(1.35);
+    background: #2c5c43;
+  }
+  100% {
+    transform: scale(1);
+    background: #182420;
+  }
 }
 
 .attrBarCell {
+  grid-column: 1 / 2;
   margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.xpBar {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: #20262f;
+  overflow: hidden;
+}
+
+.xpFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #38b3c9, #5cc98b);
+  transition: width 0.4s ease;
 }
 
 .bar {
@@ -181,6 +271,22 @@
   border-radius: 5px;
   background: linear-gradient(90deg, #3fa06a, #63d193);
   transition: width 0.4s ease;
+}
+
+.fillUp {
+  animation: fillflash 0.9s;
+}
+
+@keyframes fillflash {
+  0% {
+    box-shadow: 0 0 0 rgba(92, 201, 139, 0);
+  }
+  30% {
+    box-shadow: 0 0 10px 2px rgba(92, 201, 139, 0.85);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(92, 201, 139, 0);
+  }
 }
 
 .reach {
@@ -211,10 +317,13 @@
 }
 
 .attrNum {
+  grid-column: 2 / 3;
+  grid-row: 1 / 3;
   font-size: 11px;
   font-weight: 800;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  align-self: center;
 }
 
 .attrCap {
@@ -222,58 +331,140 @@
   font-size: 9px;
 }
 
-.actions {
+/* 잠재능력 */
+.sectionTitle {
+  margin: 0 0 6px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.potentialPanel {
+  margin: 0 0 16px;
+}
+
+.potentialLocked {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 6px 0;
+}
+
+.potentialTier {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ceilingNote {
+  font-size: 10.5px;
+  color: #e7c24c;
+  font-weight: 700;
+}
+
+.potentialSlots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.potentialSlot {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  text-align: center;
+  background: #171b22;
+}
+
+.potentialSlot[data-state="locked-star"],
+.potentialSlot[data-state="locked-grade"] {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+.slotTier {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.slotValue {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text);
+  word-break: keep-all;
+}
+
+.slotLockedLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.reelShuffle .potentialSlot {
+  animation: reel 0.18s infinite;
+}
+
+@keyframes reel {
+  0% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateY(-2px);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+}
+
+/* 다이스 */
+.diceRow {
   display: flex;
   gap: 8px;
 }
 
-.enhance,
-.limitBreak {
+.diceBtn {
   flex: 1;
-  padding: 12px 10px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 11px 6px;
   border-radius: 10px;
   border: 1px solid var(--border);
-  font-size: 14px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
 
-.enhance {
-  background: var(--accent);
-  color: var(--accent-contrast);
-  border-color: var(--accent);
-}
-
-.limitBreak {
-  background: transparent;
-  color: var(--text);
-}
-
-.limitBreakReady {
-  border-color: #e7c24c;
-  color: #e7c24c;
-  box-shadow: 0 0 0 1px #e7c24c66 inset;
-}
-
-.enhance:disabled,
-.limitBreak:disabled {
+.diceBtn:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.readyBadge {
-  margin: 10px 0 0;
-  font-size: 12px;
-  color: #e7c24c;
-  text-align: center;
-  font-weight: 700;
-}
-
-.promoted {
+.tierUpBanner {
   margin: 12px 0 0;
   padding: 10px;
   text-align: center;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 900;
   color: #141a20;
   background: linear-gradient(120deg, #e7c24c, #f2d97a);

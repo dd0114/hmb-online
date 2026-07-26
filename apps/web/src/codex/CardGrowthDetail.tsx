@@ -1,36 +1,27 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Modal } from "../common/Modal";
 import { ErrorToast } from "../common/ErrorToast";
-import { GRADE_COLORS, GRADE_LABELS, GRADE_ORDER, type Grade } from "../common/grades";
+import { GRADE_COLORS, GRADE_LABELS, type Grade } from "../common/grades";
 import { CharAvatar } from "../common/CharAvatar";
 import { ApiError } from "../api/client";
-import { useCardEffective, useEnhance, useLimitBreak } from "../api/growth-hooks";
-import { ENHANCE_MAX_CODE } from "../api/growth";
+import { useCardEffective, useDiceBalance, useDiceRoll, useStarUp } from "../api/growth-hooks";
+import { INSUFFICIENT_DICE_CODE, INSUFFICIENT_MATERIALS_CODE, type PotentialTier, type Star } from "../api/growth";
+import {
+  GRADE_POTENTIAL_LINES,
+  STAR_COPY_COST,
+  STAT_LABELS,
+  TIER_COLORS,
+  TIER_LABELS,
+  xpToNextLevel,
+} from "../growth/growth-config";
 import type { CatalogPlayer } from "../api/hooks";
 import styles from "./CardGrowthDetail.module.css";
 
-/** 능력치 표시 순서/라벨 — 시안3 목업과 동일(슛 우선, 태클 마지막). */
-const ATTRS: Array<[key: keyof CatalogPlayer["attributes"], label: string]> = [
-  ["shooting", "슛"],
-  ["pace", "스피드"],
-  ["positioning", "위치선정"],
-  ["technical", "테크닉"],
-  ["passing", "패스"],
-  ["stamina", "스태미나"],
-  ["physical", "피지컬"],
-  ["mental", "멘탈"],
-  ["tackling", "태클"],
-];
-
-const MAX_BREAKTHROUGH = 4; // enhance.maxLimitBreak (시안3 ★ 4칸)
 const RING_R = 42;
 const RING_C = 2 * Math.PI * RING_R; // ≈ 263.9
-
-/** effectiveGrade − baseGrade = 돌파 단계(0..4). */
-function breakthroughSteps(base: Grade, effective: Grade): number {
-  const d = GRADE_ORDER.indexOf(effective) - GRADE_ORDER.indexOf(base);
-  return Math.max(0, Math.min(MAX_BREAKTHROUGH, d));
-}
+const MAX_STAR = 4;
+const ROLL_ANIM_MS = 450;
+const clampPct = (n: number) => Math.max(0, Math.min(100, n));
 
 interface CardGrowthDetailProps {
   player: CatalogPlayer;
@@ -38,61 +29,115 @@ interface CardGrowthDetailProps {
 }
 
 /**
- * 보유 카드 성장 상세(시안3 — S2/S3/S4). OVR 원형 링 + 완성도% + 돌파★ + 능력치 막대(현재=green,
- * 천장=노란 마커, 기본=회색 마커). 강화/한계돌파 실행 후 useCardEffective 재조회로 스탯·프레임색 갱신.
- * 바텀시트형 모달(모바일 우선) — 데스크탑에선 중앙 카드.
+ * 보유 카드 성장 상세(에픽 #179 §V2-6, GM3) — S2/S3/S4/S6:
+ * OVR 링 + 완성도 · ★1~4(성 승급) · 스탯 9종(Lv+XP바+현재/천장) · 잠재 3줄(티어색) · 다이스 롤.
+ * 프레임 색은 등급(불변, 승급 없음) 고정 — ★는 별도 표시.
  */
 export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   const { data: card, isLoading, isError } = useCardEffective(player.id);
-  const enhance = useEnhance();
-  const limitBreak = useLimitBreak();
+  const starUp = useStarUp();
+  const diceRoll = useDiceRoll();
+  const { data: diceBalance } = useDiceBalance();
 
-  const [bandMaxed, setBandMaxed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [promotedFlash, setPromotedFlash] = useState(false);
+  const [rollingKind, setRollingKind] = useState<"NORMAL" | "CASH" | null>(null);
+  const [tierUpBanner, setTierUpBanner] = useState<PotentialTier | null>(null);
+  const [justUpAttrs, setJustUpAttrs] = useState<Set<string>>(new Set());
+  const [justUpLv, setJustUpLv] = useState<Set<string>>(new Set());
 
-  // effectiveGrade 는 서버 권위 — 로드 전에는 카탈로그 등급으로 프레임을 그린다.
-  const effectiveGrade: Grade = card?.effectiveGrade ?? player.grade;
-  const baseGrade: Grade = card?.baseGrade ?? player.grade;
-  const frameColor = GRADE_COLORS[effectiveGrade];
-  const steps = breakthroughSteps(baseGrade, effectiveGrade);
+  const prevAttrsRef = useRef<Record<string, number> | null>(null);
+  const prevLvRef = useRef<Record<string, number> | null>(null);
+
+  // 성장/롤/승급 후 카드가 갱신되면 어떤 스탯이 올랐는지 감지해 +1 델타 플래시(§V2-6, hero 피드백).
+  useEffect(() => {
+    if (!card) return;
+    const attrs = card.attributes as unknown as Record<string, number>;
+    const prev = prevAttrsRef.current;
+    prevAttrsRef.current = attrs;
+    if (!prev) return;
+    const up = new Set<string>();
+    for (const key of Object.keys(attrs)) {
+      const cur = attrs[key] ?? 0;
+      const before = prev[key] ?? cur;
+      if (cur > before) up.add(key);
+    }
+    if (up.size === 0) return;
+    setJustUpAttrs(up);
+    const t = window.setTimeout(() => setJustUpAttrs(new Set()), 900);
+    return () => window.clearTimeout(t);
+  }, [card]);
+
+  useEffect(() => {
+    if (!card) return;
+    const lvs = Object.fromEntries(Object.entries(card.statLevels).map(([k, v]) => [k, v.lv]));
+    const prev = prevLvRef.current;
+    prevLvRef.current = lvs;
+    if (!prev) return;
+    const up = new Set<string>();
+    for (const key of Object.keys(lvs)) {
+      const cur = lvs[key] ?? 0;
+      const before = prev[key] ?? cur;
+      if (cur > before) up.add(key);
+    }
+    if (up.size === 0) return;
+    setJustUpLv(up);
+    const t = window.setTimeout(() => setJustUpLv(new Set()), 1400);
+    return () => window.clearTimeout(t);
+  }, [card]);
+
+  const grade: Grade = card?.grade ?? player.grade;
+  const frameColor = GRADE_COLORS[grade];
+  const star: Star = card?.star ?? 1;
   const completion = card ? Math.max(0, Math.min(1, card.completion)) : 0;
-  const busy = enhance.isPending || limitBreak.isPending;
+  const busy = starUp.isPending || diceRoll.isPending || rollingKind !== null;
 
-  function handleEnhance() {
+  const nextStar = (star + 1) as Star;
+  const starMaxed = star >= MAX_STAR;
+  const starCost = starMaxed ? 0 : STAR_COPY_COST[nextStar as Exclude<Star, 1>];
+  const starShort = !starMaxed && player.ownedCount < starCost;
+
+  function handleStarUp() {
     setMessage(null);
-    enhance.mutate(player.id, {
-      onSuccess: () => {
-        setMessage(null);
-      },
+    starUp.mutate(player.id, {
       onError: (err) => {
-        if (err instanceof ApiError && err.code === ENHANCE_MAX_CODE) {
-          setBandMaxed(true);
-          setMessage("강화 상한 도달 — 한계돌파로 등급을 올리세요");
+        if (err instanceof ApiError && err.code === INSUFFICIENT_MATERIALS_CODE) {
+          setMessage(`중복이 부족합니다 — 보유 ${player.ownedCount} / 필요 ${starCost}`);
         } else {
-          setMessage(err instanceof ApiError ? err.message : "강화에 실패했습니다");
+          setMessage(err instanceof ApiError ? err.message : "성 승급에 실패했습니다");
         }
       },
     });
   }
 
-  function handleLimitBreak() {
+  function handleRoll(kind: "NORMAL" | "CASH") {
     setMessage(null);
-    limitBreak.mutate(player.id, {
-      onSuccess: (res) => {
-        setBandMaxed(false);
-        if (res.promoted) {
-          setPromotedFlash(true);
-          window.setTimeout(() => setPromotedFlash(false), 1600);
-        }
+    setRollingKind(kind);
+    diceRoll.mutate(
+      { playerId: player.id, kind },
+      {
+        onSuccess: (res) => {
+          window.setTimeout(() => {
+            setRollingKind(null);
+            if (res.tierUp) {
+              setTierUpBanner(res.tierAfter);
+              window.setTimeout(() => setTierUpBanner(null), 2200);
+            }
+          }, ROLL_ANIM_MS);
+        },
+        onError: (err) => {
+          setRollingKind(null);
+          if (err instanceof ApiError && err.code === INSUFFICIENT_DICE_CODE) {
+            setMessage("다이스가 부족합니다");
+          } else {
+            setMessage(err instanceof ApiError ? err.message : "다이스 롤에 실패했습니다");
+          }
+        },
       },
-      onError: (err) => {
-        setMessage(err instanceof ApiError ? err.message : "한계돌파에 실패했습니다");
-      },
-    });
+    );
   }
 
   const titleId = `growth-title-${player.id}`;
+  const gradeLines = GRADE_POTENTIAL_LINES[grade];
 
   return (
     <Modal
@@ -106,7 +151,7 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
       <div
         className={styles.frame}
         data-testid="growth-frame"
-        data-grade={effectiveGrade}
+        data-grade={grade}
         style={{ borderColor: frameColor, boxShadow: `0 0 0 1.5px ${frameColor}55 inset` }}
       >
         <button type="button" className={styles.close} onClick={onClose} aria-label="닫기">
@@ -114,35 +159,22 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
         </button>
 
         <div className={styles.header}>
-          <CharAvatar
-            playerId={player.id}
-            name={player.name}
-            grade={effectiveGrade}
-            size={44}
-            className={styles.avatar}
-          />
+          <CharAvatar playerId={player.id} name={player.name} grade={grade} size={44} className={styles.avatar} />
           <div className={styles.headText}>
             <span className={styles.gradeTag} style={{ color: frameColor }} data-testid="growth-grade">
-              {GRADE_LABELS[effectiveGrade]}
+              {GRADE_LABELS[grade]}
             </span>
             <h2 id={titleId} className={styles.name}>
               {player.name}
             </h2>
             <span className={styles.pos}>{player.position}</span>
           </div>
-          <div className={styles.stars} data-testid="growth-stars" data-breakthrough={steps}>
-            {Array.from({ length: MAX_BREAKTHROUGH }).map((_, i) => (
-              <span
-                key={i}
-                className={i < steps ? styles.star : `${styles.star} ${styles.starOff}`}
-                aria-hidden
-              >
+          <div className={styles.stars} data-testid="growth-stars" data-star={star}>
+            {Array.from({ length: MAX_STAR }).map((_, i) => (
+              <span key={i} className={i < star ? styles.star : `${styles.star} ${styles.starOff}`} aria-hidden>
                 ★
               </span>
             ))}
-            <span className={styles.tier}>
-              돌파 {steps} / {MAX_BREAKTHROUGH}
-            </span>
           </div>
         </div>
 
@@ -151,6 +183,28 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
 
         {card && (
           <>
+            <div className={styles.starUpRow}>
+              <button
+                type="button"
+                className={styles.starUpBtn}
+                data-testid="growth-star-up"
+                onClick={handleStarUp}
+                disabled={busy || starMaxed || starShort}
+              >
+                {starUp.isPending ? "승급 중…" : starMaxed ? "★ 최대" : `성 승급 → ${nextStar}★`}
+                {!starMaxed && (
+                  <span className={styles.costChip} data-testid="growth-star-cost">
+                    중복 −{starCost}
+                  </span>
+                )}
+              </button>
+              {starShort && (
+                <p className={styles.shortNote} data-testid="growth-star-short">
+                  중복 부족 (보유 {player.ownedCount} / 필요 {starCost})
+                </p>
+              )}
+            </div>
+
             <div className={styles.ringWrap}>
               <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden>
                 <circle cx="48" cy="48" r={RING_R} fill="none" stroke="#2a313c" strokeWidth="7" />
@@ -185,28 +239,40 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
             </p>
 
             <dl className={styles.attrs} data-testid="growth-attrs">
-              {ATTRS.map(([key, label]) => {
+              {STAT_LABELS.map(([key, label]) => {
                 const cur = card.attributes[key];
                 const cap = card.caps[key];
                 const base = card.base[key];
-                const clamp = (n: number) => Math.max(0, Math.min(100, n));
+                const sl = card.statLevels[key] ?? { lv: 0, xp: 0 };
+                const xpNeed = xpToNextLevel(sl.lv);
+                const xpPct = clampPct((sl.xp / Math.max(1, xpNeed)) * 100);
+                const lvUp = justUpLv.has(key);
+                const attrUp = justUpAttrs.has(key);
                 return (
                   <div key={key} className={styles.attrRow} data-testid={`growth-attr-${key}`}>
-                    <dt className={styles.attrName}>{label}</dt>
+                    <dt className={styles.attrName}>
+                      {label}
+                      <span
+                        className={lvUp ? `${styles.lvBadge} ${styles.lvBadgeUp}` : styles.lvBadge}
+                        data-testid={`growth-lv-${key}`}
+                      >
+                        Lv.{sl.lv}
+                      </span>
+                    </dt>
                     <dd className={styles.attrBarCell}>
+                      <span className={styles.xpBar} data-testid={`growth-xp-${key}`} data-value={Math.round(xpPct)}>
+                        <i className={styles.xpFill} style={{ width: `${xpPct}%` }} />
+                      </span>
                       <span className={styles.bar}>
+                        <i className={styles.reach} style={{ left: `${clampPct(cur)}%`, width: `${clampPct(cap - cur)}%` }} />
                         <i
-                          className={styles.reach}
-                          style={{ left: `${clamp(cur)}%`, width: `${clamp(cap - cur)}%` }}
-                        />
-                        <i
-                          className={styles.fill}
+                          className={attrUp ? `${styles.fill} ${styles.fillUp}` : styles.fill}
                           data-testid={`growth-fill-${key}`}
                           data-value={Math.round(cur)}
-                          style={{ width: `${clamp(cur)}%` }}
+                          style={{ width: `${clampPct(cur)}%` }}
                         />
-                        <i className={styles.capLine} style={{ left: `${clamp(cap)}%` }} />
-                        <i className={styles.baseLine} style={{ left: `${clamp(base)}%` }} />
+                        <i className={styles.capLine} style={{ left: `${clampPct(cap)}%` }} />
+                        <i className={styles.baseLine} style={{ left: `${clampPct(base)}%` }} />
                       </span>
                     </dd>
                     <span className={styles.attrNum}>
@@ -218,42 +284,107 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
               })}
             </dl>
 
-            <div className={styles.actions}>
+            <div className={styles.potentialPanel} data-testid="growth-potential">
+              <h3 className={styles.sectionTitle}>잠재능력</h3>
+              {!card.potential.unlocked ? (
+                <p className={styles.potentialLocked} data-testid="growth-potential-locked">
+                  2★에서 해금
+                </p>
+              ) : (
+                <p className={styles.potentialTier} data-testid="growth-potential-tier">
+                  현재 티어{" "}
+                  <b style={{ color: TIER_COLORS[card.potential.tier] }}>{TIER_LABELS[card.potential.tier]}</b>
+                  {card.potential.tier !== card.potential.maxTier && (
+                    <span className={styles.ceilingNote} data-testid="growth-dice-ceiling">
+                      승급 보장까지 {Math.max(0, card.potential.ceilingAt - card.potential.rollsSinceTierUp)}회
+                    </span>
+                  )}
+                </p>
+              )}
+              <div
+                className={rollingKind ? `${styles.potentialSlots} ${styles.reelShuffle}` : styles.potentialSlots}
+                data-rolling={rollingKind ? "true" : "false"}
+              >
+                {Array.from({ length: 3 }).map((_, i) => {
+                  const line = card.potential.lines[i];
+                  const state = line ? "filled" : !card.potential.unlocked ? "locked-star" : i >= gradeLines ? "locked-grade" : "locked-star";
+                  return (
+                    <div
+                      key={i}
+                      className={styles.potentialSlot}
+                      data-testid={`growth-potential-slot-${i + 1}`}
+                      data-state={state}
+                      data-tier={line?.tier ?? ""}
+                      style={line ? { borderColor: TIER_COLORS[line.tier], color: TIER_COLORS[line.tier] } : undefined}
+                    >
+                      {line ? (
+                        <>
+                          <span className={styles.slotTier}>{TIER_LABELS[line.tier]}</span>
+                          <span className={styles.slotValue}>{formatPotentialLine(line)}</span>
+                        </>
+                      ) : (
+                        <span className={styles.slotLockedLabel}>
+                          {state === "locked-grade" ? "등급 상한" : "2★ 해금"}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className={styles.diceRow}>
               <button
                 type="button"
-                className={styles.enhance}
-                data-testid="growth-enhance"
-                onClick={handleEnhance}
-                disabled={busy}
+                className={styles.diceBtn}
+                data-testid="growth-dice-normal"
+                onClick={() => handleRoll("NORMAL")}
+                disabled={busy || (diceBalance?.normal ?? 0) < 1}
               >
-                {enhance.isPending ? "강화 중…" : "강화 (천장↑)"}
+                노말 다이스 롤
+                <span className={styles.costChip}>보유 {diceBalance?.normal ?? 0} · −1</span>
               </button>
               <button
                 type="button"
-                className={bandMaxed ? `${styles.limitBreak} ${styles.limitBreakReady}` : styles.limitBreak}
-                data-testid="growth-limitbreak"
-                data-ready={bandMaxed ? "true" : "false"}
-                onClick={handleLimitBreak}
-                disabled={busy}
+                className={styles.diceBtn}
+                data-testid="growth-dice-cash"
+                onClick={() => handleRoll("CASH")}
+                disabled={busy || (diceBalance?.cash ?? 0) < 1}
               >
-                {limitBreak.isPending ? "돌파 중…" : "한계돌파 (등급↑)"}
+                캐시 다이스 롤
+                <span className={styles.costChip}>보유 {diceBalance?.cash ?? 0} · −1</span>
               </button>
             </div>
-            {bandMaxed && (
-              <p className={styles.readyBadge} data-testid="growth-limitbreak-badge">
-                한계돌파 가능 — 다음 등급 밴드를 개방하세요
-              </p>
-            )}
           </>
         )}
 
-        {promotedFlash && (
-          <div className={styles.promoted} data-testid="growth-promoted" role="status">
-            등급 승급!
+        {tierUpBanner && (
+          <div className={styles.tierUpBanner} data-testid="growth-tierup-banner" data-tier={tierUpBanner} role="status">
+            잠재 {TIER_LABELS[tierUpBanner]} 승급!
           </div>
         )}
         <ErrorToast message={message} onDismiss={() => setMessage(null)} />
       </div>
     </Modal>
   );
+}
+
+function formatPotentialLine(line: { type: string; stat?: string; value: number }): string {
+  const statLabel = line.stat ? statLabelOf(line.stat) : "";
+  switch (line.type) {
+    case "STAT_PCT":
+      return `${statLabel} +${line.value}%`;
+    case "STAT_FLAT":
+      return `${statLabel} +${line.value}`;
+    case "CONDITION_RECOVERY":
+      return `컨디션 회복 +${line.value}%`;
+    case "TEAM_MORALE":
+      return `팀 사기 +${line.value}%`;
+    default:
+      return `${statLabel} +${line.value}`;
+  }
+}
+
+function statLabelOf(key: string): string {
+  return STAT_LABELS.find(([k]) => k === key)?.[1] ?? key;
 }

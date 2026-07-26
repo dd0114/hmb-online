@@ -193,3 +193,48 @@
   border-radius: 999px;
   padding: 1px 8px;
 }
+
+/* 스탯별 XP 막대(§V2-6) */
+.growthStatBars {
+  display: grid;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.growthStatBarRow {
+  display: grid;
+  grid-template-columns: 44px 1fr 34px;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.growthStatLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.growthStatBarTrack {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: #20262f;
+  overflow: hidden;
+}
+
+.growthStatBarFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+}
+
+.growthStatBarXp {
+  font-size: 10px;
+  font-weight: 700;
+  color: #5cc98b;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

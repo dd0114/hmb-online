@@ -7,6 +7,7 @@ import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { GachaReveal } from "./GachaReveal";
 import { TopupPanel } from "./TopupPanel";
+import { DicePanel } from "./DicePanel";
 import { gachaButtonState } from "./shop-logic";
 import type { ShopTab } from "./topup-logic";
 import styles from "./ShopPage.module.css";
@@ -82,6 +83,17 @@ export function ShopPage() {
           type="button"
           role="tab"
           className={styles.tab}
+          data-testid="shop-tab-dice"
+          aria-selected={tab === "dice"}
+          data-active={tab === "dice"}
+          onClick={() => setTab("dice")}
+        >
+          다이스
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={styles.tab}
           data-testid="shop-tab-topup"
           aria-selected={tab === "topup"}
           data-active={tab === "topup"}
@@ -93,6 +105,8 @@ export function ShopPage() {
 
       {tab === "topup" ? (
         <TopupPanel />
+      ) : tab === "dice" ? (
+        <DicePanel points={points} />
       ) : (
         <>
       <div className={styles.pulls}>
