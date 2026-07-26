@@ -3,6 +3,7 @@ package online.hmb;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import jakarta.annotation.Resource;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.AfterAll;
@@ -14,9 +15,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import online.hmb.match.MatchClockService;
+import online.hmb.match.MatchClockSweeper;
 
 /**
- * AC1 통합: 실제 매치플로우(킥오프→가짜 서번트→H1_BREAK→재개→FINISHED)가 FINISHED CAS 통과 시
+ * AC1 통합: 실제 매치플로우(킥오프→가짜 서번트→시계만료 스윕→FINISHED)가 FINISHED CAS 통과 시
  * 성장 정산을 1회 트리거하는지 — growth_applied 행 + match_xp 증가 + report 노출 확인.
  * finishMatch 훅(MatchOrchestrator.settleGrowth)의 end-to-end 배선 검증.
  */
@@ -39,6 +42,9 @@ class GrowthSettlementFlowTest extends MatchTestBase {
 
     @Resource
     private FakeServants fakeServants;
+
+    @Resource
+    private MatchClockSweeper clockSweeper;
 
     @SuppressWarnings("unchecked")
     @Test
@@ -63,14 +69,23 @@ class GrowthSettlementFlowTest extends MatchTestBase {
         assertThat((List<?>) report.getBody().get("entries")).isNotEmpty();
     }
 
+    /**
+     * P4 매치클록(main 머지) 이후 플로우: 킥오프→시뮬 후 상태는 FIRST_HALF(서버 시계 게이트).
+     * 시계 창(phase_ends_at)을 강제 만료시키고 스위퍼로 FIRST_HALF→HALFTIME→(승계)→SECOND_HALF→FINISHED
+     * 를 밟는다 — MatchClockFlowTest 의 expire 패턴과 동일.
+     */
     private String driveToFinished(String token) {
         String matchId = createMatch(token, "BOT_BAL");
         authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
         fakeServants.drain();
-        assertThat(matchState(matchId)).isEqualTo("H1_BREAK");
-        authPost("/api/matches/" + matchId + "/halftime", token, Map.of("substitutions", List.of()), Map.class);
-        authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
-        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("FIRST_HALF");
+        for (int i = 0; i < 6 && !"FINISHED".equals(matchState(matchId)); i++) {
+            jdbcClient.sql("UPDATE matches SET phase_ends_at = ? WHERE id = ?")
+                    .params(MatchClockService.format(Instant.now().minusSeconds(1)), matchId)
+                    .update();
+            clockSweeper.sweep();
+            fakeServants.drain();
+        }
         assertThat(matchState(matchId)).isEqualTo("FINISHED");
         return matchId;
     }
