@@ -29,10 +29,11 @@ public class EconomyService {
     /**
      * 경제 수치 스냅샷 (W1: initialPoints/starterPack + trade/league 블록 로드, W2: gacha·trade, W3: rewards·league).
      * trade/league 는 economy.v2.json 의 신규 블록 — W1 은 로드만(소비는 W2/W3). 구파일(블록 없음)엔 null.
+     * growth/star/potential/dice = 에픽 #179 메이플 피벗(V2) — 구 enhance 블록은 폐기.
      */
     public record Economy(String version, int initialPoints, List<String> starterPack,
                           Gacha gacha, Rewards rewards, JsonNode trade, JsonNode league,
-                          Growth growth, Enhance enhance) {
+                          Growth growth, Star star, Potential potential, Dice dice) {
     }
 
     /** economy.v1.json `gacha` 노드 — 뽑기 비용·확률표·pity (AC-S5: 여기서만 온다). */
@@ -45,17 +46,36 @@ public class EconomyService {
     }
 
     /**
-     * economy.v2.json `growth` 노드 (에픽 #179 §7) — 경기 성장 트랙 수치. G1 이 프리즈한 값(하드코딩 금지).
-     * baselineByPosition = {FW|MF|DF|GK: {능력치: 방향 가중치}}(합≈1) — 성장 방향 w + OVR 가중치.
+     * economy.v2.json `growth` 노드 (에픽 #179 V2-5, 메이플 피벗 GM1) — 경기 스탯별 XP 트랙 수치.
+     * baselineByPosition = {FW|MF|DF|GK: {능력치: 방향 가중치}}(합≈1) — XP 방향 가중치 + OVR 가중치 겸용.
+     * eventStatMap = {이벤트타입: {능력치: 가중치}} — match-log 이벤트 카운트 × 가중치 = eventBonus.
      */
-    public record Growth(int xpBase, int xpPerLevel, int completeMatches,
-                         double benchGrowthMult, double execMatchDefault, double speedMaxMult,
-                         Map<String, Map<String, Double>> baselineByPosition) {
+    public record Growth(int xpBase, int xpLvBase, double xpLvGrowth,
+                         Map<String, Double> gradeXpMult, Map<String, Double> minutesMult,
+                         Map<String, Map<String, Double>> baselineByPosition,
+                         Map<String, Map<String, Double>> eventStatMap) {
     }
 
-    /** economy.v2.json `enhance` 노드 (에픽 #179 §7) — 가챠 강화·한계돌파 트랙 수치. */
-    public record Enhance(int maxEnhance, double enhanceStep, double autoFillRatio,
-                          int limitBreakCopies, int maxLimitBreak, int pointCost) {
+    /** economy.v2.json `star` 노드 (에픽 #179 V2-5) — 성★ 승급(중복 소모·스탯 천장 개방 비율). */
+    public record Star(Map<Integer, Integer> copies, Map<Integer, Double> starFrac) {
+    }
+
+    /** 잠재 옵션 테이블 1행 — type(STAT_PCT|STAT_FLAT|CONDITION_RECOVERY|TEAM_MORALE), stat(STAT_* 만). */
+    public record PotentialOption(String type, String stat, double value, double weight, boolean premium) {
+    }
+
+    /**
+     * economy.v2.json `potential` 노드 (에픽 #179 V2-5) — 잠재능력 3줄·티어·다이스 확률.
+     * cashPremiumMult = 캐시 다이스가 premium=true 옵션 weight 에 곱하는 배수(GM1 신설).
+     */
+    public record Potential(Map<String, Integer> linesByGrade, Map<String, String> gradeTierCap,
+                            Map<Integer, String> starTierCap, Map<String, Double> tierUp,
+                            double ceilingMult, Map<String, Double> breakout, double cashPremiumMult,
+                            Map<String, List<PotentialOption>> tables) {
+    }
+
+    /** economy.v2.json `dice` 노드 (에픽 #179 V2-5) — 다이스 상점 가격(목업). */
+    public record Dice(int normalCost, int cashCost) {
     }
 
     private final Optional<Economy> economy;
@@ -97,20 +117,23 @@ public class EconomyService {
             JsonNode trade = root.has("trade") ? root.get("trade") : null;
             JsonNode league = root.has("league") ? root.get("league") : null;
 
-            // growth/enhance 블록(#179, G1 프리즈) — 구파일엔 없을 수 있어 null 로 둔다(성장 기능 비활성).
+            // growth/star/potential/dice 블록(#179 V2-5, GM1 발행) — 구파일엔 없을 수 있어 null(성장 기능 비활성).
             Growth growth = parseGrowth(root.path("growth"));
-            Enhance enhance = parseEnhance(root.path("enhance"));
+            Star star = parseStar(root.path("star"));
+            Potential potential = parsePotential(root.path("potential"));
+            Dice dice = parseDice(root.path("dice"));
 
             log.info("Loaded economy {} from {} (initialPoints={}, starterPack={} players, "
                             + "gacha single/ten={}/{} tenCount={} pity>={}, rewards {}/{}/{}, "
-                            + "trade={}, league={}, growth={}, enhance={})",
+                            + "trade={}, league={}, growth={}, star={}, potential={}, dice={})",
                     version, file.getAbsolutePath(), initialPoints, starterPack.size(),
                     gacha.singleCost(), gacha.tenCost(), gacha.tenCount(), gacha.tenPityMinGrade(),
                     rewards.win(), rewards.draw(), rewards.loss(),
                     trade != null ? "present" : "absent", league != null ? "present" : "absent",
-                    growth != null ? "present" : "absent", enhance != null ? "present" : "absent");
+                    growth != null ? "present" : "absent", star != null ? "present" : "absent",
+                    potential != null ? "present" : "absent", dice != null ? "present" : "absent");
             return Optional.of(new Economy(version, initialPoints, List.copyOf(starterPack), gacha, rewards,
-                    trade, league, growth, enhance));
+                    trade, league, growth, star, potential, dice));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());
@@ -118,7 +141,7 @@ public class EconomyService {
         }
     }
 
-    /** `growth` 노드 파싱 — 없으면 null(성장 기능 비활성, 부팅은 계속). */
+    /** `growth` 노드 파싱(V2-5) — 없으면 null(성장 기능 비활성, 부팅은 계속). */
     private static Growth parseGrowth(JsonNode g) {
         if (g == null || g.isMissingNode() || !g.isObject()) {
             return null;
@@ -129,28 +152,79 @@ public class EconomyService {
             posEntry.getValue().properties().forEach(w -> weights.put(w.getKey(), w.getValue().asDouble()));
             baseline.put(posEntry.getKey(), Map.copyOf(weights));
         });
+        Map<String, Map<String, Double>> eventStatMap = new LinkedHashMap<>();
+        g.path("eventStatMap").properties().forEach(evEntry -> {
+            Map<String, Double> weights = new LinkedHashMap<>();
+            evEntry.getValue().properties().forEach(w -> weights.put(w.getKey(), w.getValue().asDouble()));
+            eventStatMap.put(evEntry.getKey(), Map.copyOf(weights));
+        });
         return new Growth(
                 g.path("xpBase").asInt(100),
-                g.path("xpPerLevel").asInt(300),
-                g.path("completeMatches").asInt(36),
-                g.path("benchGrowthMult").asDouble(0.2),
-                g.path("execMatchDefault").asDouble(0.6),
-                g.path("speedMaxMult").asDouble(3.0),
-                Map.copyOf(baseline));
+                g.path("xpLvBase").asInt(100),
+                g.path("xpLvGrowth").asDouble(1.7),
+                Map.copyOf(asDoubleMap(g.path("gradeXpMult"))),
+                Map.copyOf(asDoubleMap(g.path("minutesMult"))),
+                Map.copyOf(baseline),
+                Map.copyOf(eventStatMap));
     }
 
-    /** `enhance` 노드 파싱 — 없으면 null. */
-    private static Enhance parseEnhance(JsonNode e) {
-        if (e == null || e.isMissingNode() || !e.isObject()) {
+    /** `star` 노드 파싱(V2-5) — 없으면 null. 키(2/3/4)는 목표 성(★) 정수. */
+    private static Star parseStar(JsonNode s) {
+        if (s == null || s.isMissingNode() || !s.isObject()) {
             return null;
         }
-        return new Enhance(
-                e.path("maxEnhance").asInt(5),
-                e.path("enhanceStep").asDouble(2.0),
-                e.path("autoFillRatio").asDouble(0.25),
-                e.path("limitBreakCopies").asInt(3),
-                e.path("maxLimitBreak").asInt(4),
-                e.path("pointCost").asInt(200));
+        Map<Integer, Integer> copies = new LinkedHashMap<>();
+        s.path("copies").properties().forEach(e -> copies.put(Integer.parseInt(e.getKey()), e.getValue().asInt()));
+        Map<Integer, Double> starFrac = new LinkedHashMap<>();
+        s.path("starFrac").properties()
+                .forEach(e -> starFrac.put(Integer.parseInt(e.getKey()), e.getValue().asDouble()));
+        return new Star(Map.copyOf(copies), Map.copyOf(starFrac));
+    }
+
+    /** `potential` 노드 파싱(V2-5) — 없으면 null. tables[tier] = 옵션 리스트(고정 value·weight·premium). */
+    private static Potential parsePotential(JsonNode p) {
+        if (p == null || p.isMissingNode() || !p.isObject()) {
+            return null;
+        }
+        Map<String, Integer> linesByGrade = new LinkedHashMap<>();
+        p.path("linesByGrade").properties().forEach(e -> linesByGrade.put(e.getKey(), e.getValue().asInt()));
+        Map<String, String> gradeTierCap = new LinkedHashMap<>();
+        p.path("gradeTierCap").properties().forEach(e -> gradeTierCap.put(e.getKey(), e.getValue().asText()));
+        Map<Integer, String> starTierCap = new LinkedHashMap<>();
+        p.path("starTierCap").properties()
+                .forEach(e -> starTierCap.put(Integer.parseInt(e.getKey()), e.getValue().asText()));
+        Map<String, Double> tierUp = asDoubleMap(p.path("tierUp"));
+        Map<String, Double> breakout = asDoubleMap(p.path("breakout"));
+        Map<String, List<PotentialOption>> tables = new LinkedHashMap<>();
+        p.path("tables").properties().forEach(tierEntry -> {
+            List<PotentialOption> options = new ArrayList<>();
+            tierEntry.getValue().forEach(o -> options.add(new PotentialOption(
+                    o.path("type").asText(),
+                    o.hasNonNull("stat") ? o.path("stat").asText() : null,
+                    o.path("value").asDouble(),
+                    o.path("weight").asDouble(1.0),
+                    o.path("premium").asBoolean(false))));
+            tables.put(tierEntry.getKey(), List.copyOf(options));
+        });
+        return new Potential(Map.copyOf(linesByGrade), Map.copyOf(gradeTierCap), Map.copyOf(starTierCap),
+                Map.copyOf(tierUp), p.path("ceilingMult").asDouble(1.5), Map.copyOf(breakout),
+                p.path("cashPremiumMult").asDouble(1.0), Map.copyOf(tables));
+    }
+
+    /** `dice` 노드 파싱(V2-5) — 없으면 null. */
+    private static Dice parseDice(JsonNode d) {
+        if (d == null || d.isMissingNode() || !d.isObject()) {
+            return null;
+        }
+        return new Dice(d.path("normalCost").asInt(500), d.path("cashCost").asInt(5000));
+    }
+
+    private static Map<String, Double> asDoubleMap(JsonNode node) {
+        Map<String, Double> out = new LinkedHashMap<>();
+        if (node != null && node.isObject()) {
+            node.properties().forEach(e -> out.put(e.getKey(), e.getValue().asDouble()));
+        }
+        return out;
     }
 
     public Optional<Economy> get() {

@@ -15,10 +15,11 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 /**
- * GrowthService 성장·강화 계산·정산 검증(#179 §2~§4). 로그인으로 온보딩(지갑+스타터 user_players)한 뒤
- * user_players 를 SQL 로 조작하고 서비스를 직접 호출한다.
+ * GrowthService — 메이플 피벗 V2 계산·정산 검증(에픽 #179 §V2-2~V2-4). 로그인으로 온보딩(지갑+스타터
+ * user_players)한 뒤 user_players/card_potentials/user_dice 를 SQL 로 조작하고 서비스를 직접 호출한다.
  *
  * <p>테스트 픽스처 P001 = GK/BRONZE, attrs {technical:40..positioning:48}. BRONZE 밴드 [40,55].
+ * P010/P011 = GOLD/MF, P016 = LEGEND/FW, P017 = DIA/FW (AC-V5 캡 매트릭스).
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class GrowthServiceTest extends MatchTestBase {
@@ -34,115 +35,231 @@ class GrowthServiceTest extends MatchTestBase {
     @Resource
     private WalletService walletService;
 
-    // ── §2 유효스탯 계산 ─────────────────────────────────────────────────
+    // ── V2-2 유효스탯 계산 (무회귀) ──────────────────────────────────────
 
     @Test
-    void freshCardEqualsBase_noGrowthNoEnhance_regressionSafe() {
+    void freshCardEqualsBase_noGrowthNoPotential_regressionSafe() {
         String userId = onboard("g_fresh");
         Map<String, Object> card = growthService.cardEffective(userId, "P001");
 
-        assertThat(card.get("baseGrade")).isEqualTo("BRONZE");
-        assertThat(card.get("effectiveGrade")).isEqualTo("BRONZE");
-        // 성장 0 → 유효스탯 == 밴드 내 원본(무회귀: SelectData 주입이 원본과 동일해야 리플레이 bit-identical).
+        assertThat(card.get("grade")).isEqualTo("BRONZE");
+        assertThat(card.get("star")).isEqualTo(1);
+        // 성장·잠재 0 → 유효스탯 == 밴드 내 원본(무회귀: SelectData 주입이 원본과 동일해야 리플레이 bit-identical).
         Map<?, ?> attributes = (Map<?, ?>) card.get("attributes");
         Map<?, ?> base = (Map<?, ?>) card.get("base");
-        assertThat(attributes).isEqualTo(base);
+        assertThat(((Number) attributes.get("positioning")).doubleValue())
+                .isEqualTo(((Number) base.get("positioning")).doubleValue());
         assertThat(((Number) card.get("completion")).doubleValue()).isEqualTo(0.0);
-        // caps = BRONZE 밴드 상한 55.
-        assertThat(((Map<?, ?>) card.get("caps")).values()).allMatch(v -> ((Number) v).intValue() == 55);
+        assertThat(((Map<?, ?>) card.get("potential")).get("unlocked")).isEqualTo(false);
     }
 
     @Test
     void effectiveAttributesMatchBaseForZeroGrowth() {
         String userId = onboard("g_eff");
-        // 원본과 값이 동일해야 함(무회귀 가드).
         Map<String, Object> eff = growthService.effectiveAttributes(userId, "P001", Map.of("shooting", 999));
-        assertThat(eff.get("positioning")).isEqualTo(48);
-        assertThat(eff.get("technical")).isEqualTo(40);
+        assertThat(((Number) eff.get("positioning")).doubleValue()).isEqualTo(48.0);
+        assertThat(((Number) eff.get("technical")).doubleValue()).isEqualTo(40.0);
     }
 
     @Test
-    void growthRaisesTopWeightedStatTowardCap() {
+    void statLevelRaisesAttributeAndClampsAtStarCap() {
         String userId = onboard("g_grow");
-        double freshOvr = ((Number) growthService.cardEffective(userId, "P001").get("ovr")).doubleValue();
-
-        setGrowthLevel(userId, "P001", 10); // g = clamp(10/7.2) = 1.0 → 최상위 가중치 스탯이 천장 도달
+        // star=2 → starFrac 0.5 → GK positioning cap = 48 + 0.5*(55-48) = 51.5
+        setStar(userId, "P001", 2);
+        setStatLv(userId, "P001", "positioning", 999);
 
         Map<String, Object> card = growthService.cardEffective(userId, "P001");
         Map<?, ?> attrs = (Map<?, ?>) card.get("attributes");
-        // GK 최상위 방향 = positioning(가중치 0.24) → 천장 55 도달. mental(0.20) 은 부분 상승.
-        assertThat(((Number) attrs.get("positioning")).intValue()).isEqualTo(55);
-        assertThat(((Number) attrs.get("mental")).intValue()).isGreaterThan(41).isLessThanOrEqualTo(55);
-        // 완성도·OVR 상승.
+        assertThat(((Number) attrs.get("positioning")).doubleValue()).isEqualTo(51.5);
         assertThat(((Number) card.get("completion")).doubleValue()).isGreaterThan(0.0);
-        assertThat(((Number) card.get("ovr")).doubleValue()).isGreaterThan(freshOvr);
     }
 
     @Test
-    void allStatsClampedToBandCap() {
+    void allStatsClampedToStarFractionCap() {
         String userId = onboard("g_clamp");
-        setGrowthLevel(userId, "P001", 999);
-        setEnhance(userId, "P001", 5); // enhanceFill 도 더해도 cap 초과 금지
-        Map<?, ?> attrs = (Map<?, ?>) growthService.cardEffective(userId, "P001").get("attributes");
-        assertThat(attrs.values()).allMatch(v -> ((Number) v).intValue() <= 55);
-    }
-
-    // ── §3 강화 / 한계돌파 ───────────────────────────────────────────────
-
-    @Test
-    void enhanceSpendsPointsOnlyNoCopies() {
-        String userId = onboard("g_enh");
-        setCount(userId, "P001", 3);
-        long pointsBefore = walletService.points(userId);
-
-        Map<String, Object> res = growthService.enhance(userId, "P001");
-        assertThat(res.get("enhanceLevel")).isEqualTo(1);
-        assertThat(res.get("promoted")).isEqualTo(false);
-        assertThat(((Map<?, ?>) res.get("spent")).get("points")).isEqualTo(200);
-        assertThat(((Map<?, ?>) res.get("spent")).get("copies")).isEqualTo(0); // 강화는 중복 미소모
-        assertThat(walletService.points(userId)).isEqualTo(pointsBefore - 200);
-        assertThat(countOf(userId, "P001")).isEqualTo(3); // 중복 불변(한계돌파만 소모)
-    }
-
-    @Test
-    void limitBreakPromotesGradeAndReopensEnhanceCap() {
-        String userId = onboard("g_lb");
-        setCount(userId, "P001", 5);
-        // 강화를 상한(5)까지: 카운트 부족 방지 위해 count 를 넉넉히.
-        setCount(userId, "P001", 20);
-        for (int i = 0; i < 5; i++) {
-            growthService.enhance(userId, "P001");
+        setStar(userId, "P001", 1); // starFrac .25 → cap = base + .25*(55-base)
+        for (String stat : List.of("technical", "mental", "physical", "passing", "shooting",
+                "tackling", "pace", "stamina", "positioning")) {
+            setStatLv(userId, "P001", stat, 999);
         }
-        // 상한 도달 → 추가 강화 4xx.
-        assertThat(catchStatus(() -> growthService.enhance(userId, "P001"))).isEqualTo("ENHANCE_MAX");
-
-        Map<String, Object> lb = growthService.limitBreak(userId, "P001");
-        assertThat(lb.get("promoted")).isEqualTo(true);
-        assertThat(lb.get("limitBreak")).isEqualTo(1);
-        assertThat(lb.get("effectiveGrade")).isEqualTo("SILVER"); // BRONZE + 돌파1
-
-        // 등급 개방 → cap 65, 강화 상한 재개방(→10) → 다시 강화 가능.
-        Map<?, ?> card = (Map<?, ?>) growthService.cardEffective(userId, "P001");
-        assertThat(((Map<?, ?>) card.get("caps")).values()).allMatch(v -> ((Number) v).intValue() == 65);
-        Map<String, Object> again = growthService.enhance(userId, "P001");
-        assertThat(again.get("enhanceLevel")).isEqualTo(6);
+        Map<String, Object> card = growthService.cardEffective(userId, "P001");
+        Map<?, ?> attrs = (Map<?, ?>) card.get("attributes");
+        Map<?, ?> caps = (Map<?, ?>) card.get("caps");
+        for (Object key : attrs.keySet()) {
+            assertThat(((Number) attrs.get(key)).doubleValue())
+                    .isEqualTo(((Number) caps.get(key)).doubleValue());
+        }
     }
 
     @Test
-    void enhanceInsufficientCopiesRejected() {
-        String userId = onboard("g_nocopy");
-        setCount(userId, "P001", 0);
-        assertThat(catchStatus(() -> growthService.enhance(userId, "P001"))).isEqualTo("INSUFFICIENT_MATERIALS");
+    void potentialFlatThenPctAppliesOnTopOfPrePotential() {
+        String userId = onboard("g_pot");
+        setStar(userId, "P001", 2);
+        insertPotential(userId, "P001", "RARE", 0,
+                """
+                [{"slot":1,"tier":"RARE","type":"STAT_FLAT","stat":"positioning","value":2},
+                 {"slot":2,"tier":"RARE","type":"STAT_PCT","stat":"positioning","value":10}]
+                """);
+        Map<String, Object> card = growthService.cardEffective(userId, "P001");
+        Map<?, ?> attrs = (Map<?, ?>) card.get("attributes");
+        Map<?, ?> pre = (Map<?, ?>) card.get("prePotential");
+        // prePotential(lv0) = base 48. eff = (48+2) * 1.10 = 55.0
+        assertThat(((Number) pre.get("positioning")).doubleValue()).isEqualTo(48.0);
+        assertThat(((Number) attrs.get("positioning")).doubleValue()).isEqualTo(55.0);
+    }
+
+    // ── AC-V5 등급×성 캡 매트릭스 ────────────────────────────────────────
+
+    @Test
+    void capMatrix_bronze2Star_rareOneLine() {
+        String userId = onboard("g_cap_bronze");
+        setCount(userId, "P001", 2);
+        growthService.starUp(userId, "P001"); // 1★→2★
+        Map<String, Object> card = growthService.cardEffective(userId, "P001");
+        Map<?, ?> potential = (Map<?, ?>) card.get("potential");
+        assertThat(potential.get("maxTier")).isEqualTo("RARE");
+        assertThat(potential.get("unlocked")).isEqualTo(true);
     }
 
     @Test
-    void limitBreakInsufficientCopiesRejected() {
-        String userId = onboard("g_nolb");
-        setCount(userId, "P001", 2); // 필요 3
-        assertThat(catchStatus(() -> growthService.limitBreak(userId, "P001"))).isEqualTo("INSUFFICIENT_MATERIALS");
+    void capMatrix_gold4Star_epicTwoLines() {
+        String userId = onboard("g_cap_gold");
+        setCount(userId, "P010", 20); // GOLD/MF
+        starUpTo(userId, "P010", 4);
+        Map<String, Object> card = growthService.cardEffective(userId, "P010");
+        Map<?, ?> potential = (Map<?, ?>) card.get("potential");
+        assertThat(card.get("grade")).isEqualTo("GOLD");
+        assertThat(potential.get("maxTier")).isEqualTo("EPIC"); // min(gradeCap=EPIC, starCap[4]=UNIQUE) = EPIC
+        // 잠재 줄 수(linesByGrade) — 다이스 롤 후 lines 길이로 확인.
+        setUserDice(userId, 1, 0);
+        Map<String, Object> roll = growthService.dice(userId, "P010", "NORMAL");
+        assertThat((List<?>) roll.get("lines")).hasSize(2);
     }
 
-    // ── §4 성장 정산 멱등 ────────────────────────────────────────────────
+    @Test
+    void capMatrix_dia4Star_uniqueThreeLines() {
+        String userId = onboard("g_cap_dia");
+        setCount(userId, "P017", 20); // DIA/FW
+        starUpTo(userId, "P017", 4);
+        Map<String, Object> card = growthService.cardEffective(userId, "P017");
+        Map<?, ?> potential = (Map<?, ?>) card.get("potential");
+        assertThat(card.get("grade")).isEqualTo("DIA");
+        assertThat(potential.get("maxTier")).isEqualTo("UNIQUE"); // min(UNIQUE, UNIQUE)
+        setUserDice(userId, 1, 0);
+        Map<String, Object> roll = growthService.dice(userId, "P017", "NORMAL");
+        assertThat((List<?>) roll.get("lines")).hasSize(3);
+    }
+
+    // ── 성★ 승급 ─────────────────────────────────────────────────────────
+
+    @Test
+    void starUpConsumesCopiesAndUnlocksPotentialAt2Star() {
+        String userId = onboard("g_star");
+        setCount(userId, "P001", 5);
+        Map<String, Object> res = growthService.starUp(userId, "P001");
+        assertThat(res.get("star")).isEqualTo(2);
+        assertThat(res.get("spentCopies")).isEqualTo(2);
+        assertThat(res.get("potentialUnlocked")).isEqualTo(true);
+        assertThat(res.get("maxTier")).isEqualTo("RARE");
+        assertThat(countOf(userId, "P001")).isEqualTo(3);
+
+        Map<String, Object> card = growthService.cardEffective(userId, "P001");
+        assertThat(((Map<?, ?>) card.get("potential")).get("unlocked")).isEqualTo(true);
+    }
+
+    @Test
+    void starUpInsufficientCopiesRejected() {
+        String userId = onboard("g_star_no");
+        setCount(userId, "P001", 1); // 필요 2
+        assertThat(catchStatus(() -> growthService.starUp(userId, "P001"))).isEqualTo("INSUFFICIENT_MATERIALS");
+    }
+
+    @Test
+    void starUpBeyond4Rejected() {
+        String userId = onboard("g_star_max");
+        setCount(userId, "P001", 20);
+        starUpTo(userId, "P001", 4);
+        assertThat(catchStatus(() -> growthService.starUp(userId, "P001"))).isEqualTo("STAR_MAX");
+    }
+
+    // ── 다이스 (AC-V3 랙칫·천장·시드 재현) ──────────────────────────────
+
+    @Test
+    void diceRequiresPotentialUnlocked() {
+        String userId = onboard("g_dice_locked");
+        setUserDice(userId, 5, 0);
+        assertThat(catchStatus(() -> growthService.dice(userId, "P001", "NORMAL")))
+                .isEqualTo("POTENTIAL_LOCKED");
+    }
+
+    @Test
+    void diceInsufficientDiceRejected() {
+        String userId = onboard("g_dice_nodice");
+        setCount(userId, "P001", 2);
+        growthService.starUp(userId, "P001");
+        assertThat(catchStatus(() -> growthService.dice(userId, "P001", "NORMAL")))
+                .isEqualTo("INSUFFICIENT_DICE");
+    }
+
+    @Test
+    void diceConsumesOneDiceAndPersistsLines() {
+        String userId = onboard("g_dice_ok");
+        setCount(userId, "P001", 2);
+        growthService.starUp(userId, "P001");
+        setUserDice(userId, 3, 0);
+
+        Map<String, Object> roll = growthService.dice(userId, "P001", "NORMAL");
+        assertThat(roll.get("tierBefore")).isEqualTo("RARE");
+        // BRONZE 카드는 maxTier RARE == 현재 티어 → 절대 승급 못함(캡 매트릭스와 정합).
+        assertThat(roll.get("tierAfter")).isEqualTo("RARE");
+        assertThat(roll.get("tierUp")).isEqualTo(false);
+        assertThat((List<?>) roll.get("lines")).hasSize(1);
+        assertThat(roll.get("diceLeft")).isEqualTo(2);
+
+        Map<String, Object> card = growthService.cardEffective(userId, "P001");
+        assertThat((List<?>) ((Map<?, ?>) card.get("potential")).get("lines")).hasSize(1);
+    }
+
+    @Test
+    void dicePreview_sameSeedReproducesSameResult() {
+        String userId = onboard("g_dice_seed");
+        Map<String, Object> a = growthService.previewDiceRoll("fixed-seed-1", "RARE", 0, "NORMAL", "GOLD", 3);
+        Map<String, Object> b = growthService.previewDiceRoll("fixed-seed-1", "RARE", 0, "NORMAL", "GOLD", 3);
+        assertThat(a).isEqualTo(b);
+        Map<String, Object> c = growthService.previewDiceRoll("different-seed", "RARE", 0, "NORMAL", "GOLD", 3);
+        // 다른 시드는 (통계적으로) 다른 결과일 수 있음 — 최소한 API 가 결정론적으로 동작함만 확인.
+        assertThat(c).isNotNull();
+    }
+
+    @Test
+    void dicePreview_ceilingGuaranteesTierUpOnNormal() {
+        // GOLD/3★ → maxTier EPIC, RARE→EPIC p=0.06, ceilingAt = ceil(1.5/0.06) = 25.
+        // rollsBefore=24 → 24+1=25 >= ceilingAt → 강제 승급(byCeiling=true), 시드값과 무관.
+        for (String seed : List.of("s1", "s2", "s3", "zzz-anything")) {
+            Map<String, Object> res = growthService.previewDiceRoll(seed, "RARE", 24, "NORMAL", "GOLD", 3);
+            assertThat(res.get("tierUp")).as("seed=" + seed).isEqualTo(true);
+            assertThat(res.get("byCeiling")).as("seed=" + seed).isEqualTo(true);
+            assertThat(res.get("tierAfter")).isEqualTo("EPIC");
+        }
+    }
+
+    @Test
+    void dicePreview_cashNeverTiersUpAndDoesNotAdvanceCeilingCounter() {
+        Map<String, Object> res = growthService.previewDiceRoll("any-seed", "RARE", 24, "CASH", "GOLD", 3);
+        assertThat(res.get("tierUp")).isEqualTo(false);
+        assertThat(res.get("byCeiling")).isEqualTo(false);
+        assertThat(((Number) res.get("rollsSinceTierUp")).intValue()).isEqualTo(24); // 노말 다이스만 증가
+    }
+
+    @Test
+    void dicePreview_bronzeCappedAtRareNeverPromotes() {
+        // BRONZE maxTier=RARE, 현재 tier=RARE → canPromote=false → 아무리 천장 카운터가 커도 승급 불가.
+        Map<String, Object> res = growthService.previewDiceRoll("any-seed", "RARE", 999, "NORMAL", "BRONZE", 2);
+        assertThat(res.get("tierUp")).isEqualTo(false);
+        assertThat(res.get("tierAfter")).isEqualTo("RARE");
+    }
+
+    // ── V2-1 성장 정산 멱등 ──────────────────────────────────────────────
 
     @Test
     void settleMatchIsIdempotent_sameMatchAppliedOnce() {
@@ -157,40 +274,42 @@ class GrowthServiceTest extends MatchTestBase {
 
         growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of());
         long applied1 = appliedCount(matchId);
-        int starterXp1 = xpOf(userId, "P001");
-        int benchXp1 = xpOf(userId, "P012");
+        int starterLvSum1 = statLvSum(userId, "P001");
+        int benchLvSum1 = statLvSum(userId, "P012");
 
         assertThat(applied1).isEqualTo(13); // 11 선발 + 2 벤치
-        assertThat(starterXp1).isGreaterThan(0);
-        // 선발(minutesMult 1.0) > 미출전 벤치(benchGrowthMult 0.2).
-        assertThat(starterXp1).isGreaterThan(benchXp1);
+        // 미출전 벤치는 minutesMult=0 → XP 0 → 레벨 변화 없음(V2-1 "미출전 XP=0").
+        assertThat(benchLvSum1).isEqualTo(0);
+        assertThat(starterLvSum1).isGreaterThanOrEqualTo(0);
 
-        // 재정산 → growth_applied 중복 무시(멱등), xp 변화 없음.
+        // 재정산 → growth_applied 중복 무시(멱등), 상태 변화 없음.
         growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of());
         assertThat(appliedCount(matchId)).isEqualTo(13);
-        assertThat(xpOf(userId, "P001")).isEqualTo(starterXp1);
-        assertThat(xpOf(userId, "P012")).isEqualTo(benchXp1);
+        assertThat(statLvSum(userId, "P001")).isEqualTo(starterLvSum1);
+        assertThat(statLvSum(userId, "P012")).isEqualTo(0);
     }
 
-    @SuppressWarnings("unchecked")
     @Test
     void settlementFeedsGrowthReport() {
         String token = setupUserWithDeck("g_report");
         String userId = userIdOf("g_report");
         String matchId = createMatch(token, "BOT_BAL");
         forceState(matchId, "FINISHED");
-        growthService.settleMatch(matchId, userId, List.of("P001"), List.of(), Set.of(), Set.of());
+        List<String> starters = List.of("P001", "P002", "P003", "P004", "P005",
+                "P006", "P007", "P008", "P009", "P010", "P011");
+        growthService.settleMatch(matchId, userId, starters, List.of(), Set.of(), Set.of());
 
         Map<String, Object> report = growthService.growthReport(userId, matchId);
         assertThat(report.get("matchId")).isEqualTo(matchId);
         List<?> entries = (List<?>) report.get("entries");
-        assertThat(entries).hasSize(1);
-        Map<?, ?> e = (Map<?, ?>) entries.get(0);
+        assertThat(entries).hasSize(11);
+        Map<?, ?> e = (Map<?, ?>) entries.stream()
+                .filter(x -> "P001".equals(((Map<?, ?>) x).get("playerId")))
+                .findFirst().orElseThrow();
         assertThat(e.get("playerId")).isEqualTo("P001");
-        assertThat(((Number) e.get("xpDelta")).intValue()).isGreaterThan(0);
         assertThat(((Number) e.get("ovrAfter")).doubleValue())
                 .isGreaterThanOrEqualTo(((Number) e.get("ovrBefore")).doubleValue());
-        assertThat((List<String>) e.get("topAttrs")).contains("positioning"); // GK 방향 상위
+        assertThat((Map<?, ?>) e.get("statXp")).isNotEmpty();
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────
@@ -200,28 +319,92 @@ class GrowthServiceTest extends MatchTestBase {
         return userIdOf(nickname);
     }
 
-    private void setGrowthLevel(String userId, String playerId, int level) {
-        jdbcClient.sql("UPDATE user_players SET growth_level = ?, match_xp = ? WHERE user_id=? AND player_id=?")
-                .params(level, level * 300, userId, playerId).update();
+    private void starUpTo(String userId, String playerId, int targetStar) {
+        int current = jdbcClient.sql("SELECT star FROM user_players WHERE user_id=? AND player_id=?")
+                .params(userId, playerId).query(Integer.class).single();
+        while (current < targetStar) {
+            growthService.starUp(userId, playerId);
+            current++;
+        }
     }
 
-    private void setEnhance(String userId, String playerId, int level) {
-        jdbcClient.sql("UPDATE user_players SET enhance_level = ? WHERE user_id=? AND player_id=?")
-                .params(level, userId, playerId).update();
+    private void setStar(String userId, String playerId, int star) {
+        jdbcClient.sql("UPDATE user_players SET star = ? WHERE user_id=? AND player_id=?")
+                .params(star, userId, playerId).update();
+    }
+
+    private void setStatLv(String userId, String playerId, String stat, int lv) {
+        String json = jdbcClient.sql("SELECT stat_levels_json FROM user_players WHERE user_id=? AND player_id=?")
+                .params(userId, playerId).query(String.class).optional().orElse(null);
+        Map<String, Object> map = new java.util.LinkedHashMap<>();
+        if (json != null) {
+            try {
+                map = new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Map.class);
+            } catch (Exception ignored) {
+                map = new java.util.LinkedHashMap<>();
+            }
+        }
+        map.put(stat, Map.of("lv", lv, "xp", 0));
+        try {
+            String out = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(map);
+            jdbcClient.sql("UPDATE user_players SET stat_levels_json = ? WHERE user_id=? AND player_id=?")
+                    .params(out, userId, playerId).update();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private int statLvSum(String userId, String playerId) {
+        String json = jdbcClient.sql("SELECT stat_levels_json FROM user_players WHERE user_id=? AND player_id=?")
+                .params(userId, playerId).query(String.class).optional().orElse(null);
+        if (json == null) {
+            return 0;
+        }
+        try {
+            Map<String, Map<String, Object>> map = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(json, Map.class);
+            int sum = 0;
+            for (Map<String, Object> v : map.values()) {
+                sum += ((Number) v.get("lv")).intValue();
+            }
+            return sum;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    private void insertPotential(String userId, String playerId, String tier, int rolls, String linesJson) {
+        jdbcClient.sql("""
+                        INSERT INTO card_potentials(user_id, player_id, tier, lines_json, rolls_since_tierup, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(user_id, player_id) DO UPDATE SET
+                            tier=excluded.tier, lines_json=excluded.lines_json,
+                            rolls_since_tierup=excluded.rolls_since_tierup, updated_at=excluded.updated_at
+                        """)
+                .params(userId, playerId, tier, linesJson, rolls, java.time.Instant.now().toString())
+                .update();
+    }
+
+    private void setUserDice(String userId, int normal, int cash) {
+        jdbcClient.sql("""
+                        INSERT INTO user_dice(user_id, normal, cash) VALUES (?, ?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET normal=excluded.normal, cash=excluded.cash
+                        """)
+                .params(userId, normal, cash).update();
     }
 
     private void setCount(String userId, String playerId, int count) {
-        jdbcClient.sql("UPDATE user_players SET count = ? WHERE user_id=? AND player_id=?")
-                .params(count, userId, playerId).update();
+        jdbcClient.sql("""
+                        INSERT INTO user_players(user_id, player_id, count, acquired_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(user_id, player_id) DO UPDATE SET count=excluded.count
+                        """)
+                .params(userId, playerId, count, java.time.Instant.now().toString())
+                .update();
     }
 
     private int countOf(String userId, String playerId) {
         return jdbcClient.sql("SELECT count FROM user_players WHERE user_id=? AND player_id=?")
-                .params(userId, playerId).query(Integer.class).single();
-    }
-
-    private int xpOf(String userId, String playerId) {
-        return jdbcClient.sql("SELECT match_xp FROM user_players WHERE user_id=? AND player_id=?")
                 .params(userId, playerId).query(Integer.class).single();
     }
 

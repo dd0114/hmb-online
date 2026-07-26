@@ -52,10 +52,10 @@ class GrowthSettlementFlowTest extends MatchTestBase {
                 .params(matchId, userId).query(Long.class).single();
         assertThat(applied).isEqualTo(13);
 
-        // 선발 P001 match_xp 증가.
-        int xp = jdbcClient.sql("SELECT match_xp FROM user_players WHERE user_id=? AND player_id='P001'")
-                .param(userId).query(Integer.class).single();
-        assertThat(xp).isGreaterThan(0);
+        // 선발 P001 stat_levels_json 이 채워짐(V2: 스탯별 XP/레벨).
+        String statLevels = jdbcClient.sql("SELECT stat_levels_json FROM user_players WHERE user_id=? AND player_id='P001'")
+                .param(userId).query(String.class).single();
+        assertThat(statLevels).isNotNull();
 
         // 리포트 노출(ResultPage S1).
         ResponseEntity<Map> report = authGet("/api/growth/report/" + matchId, token, Map.class);
