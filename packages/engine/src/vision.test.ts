@@ -153,7 +153,14 @@ describe("판단 — 붙을지 말지 (#147 W3)", () => {
 
 describe("롤백 스위치 (#147 W3)", () => {
   const seed = "4815162342";
-  const off: EngineConfig = { ...cfg, vision: { ...cfg.vision, enabled: false } };
+  // 롤백 경로 = 그 이후 추가된 기능 스위치를 전부 끈 상태 — 시야(#147)와 코너 rest defence(#182).
+  // (#181 이후 이 계약은 "0.16.0 과 동일"이 아니라 "롤백 경로가 조용히 드리프트하지 않는다" 다.
+  //  아래 상수 주석 참조.)
+  const off: EngineConfig = {
+    ...cfg,
+    vision: { ...cfg.vision, enabled: false },
+    setPiece: { ...cfg.setPiece, corner: { ...cfg.setPiece.corner, enabled: false } },
+  };
   const run = (c: EngineConfig, mark?: string) => {
     const home = makeTacticalInput("H", seed);
     if (mark) home.players[4]!.markTarget = mark;
@@ -171,7 +178,21 @@ describe("롤백 스위치 (#147 W3)", () => {
   // 그래서 "레거시와 같다" 대신 **"조용히 드리프트하지 않는다"** 를 지킨다: 현 트리의 vision-off
   // 출력을 상수로 박제해, 이후 변경이 롤백 경로를 건드리면 반드시 diff 로 드러나게 한다.
   const ROLLBACK_HASH = "9bc816ea";
-  const ROLLBACK_HASH_MARKED = "d63d417e";
+  // #182 재보정(foul.base 0.017→0.0178)으로 marked 변형의 해시가 바뀐다.
+  // ⚠️ **내 트리 출력을 베끼지 않았다** — `origin/main`(6f1b12b) 를 별도 워크트리로 체크아웃해
+  // 같은 foul.base 를 넣고 독립 도출한 값이다(main 에는 corner 기능 자체가 없다):
+  //   foul 0.017  → plain 9bc816ea · marked d63d417e
+  //   foul 0.0178 → plain 9bc816ea · marked **fb490748**
+  // plain 이 안 바뀐 건 그 매치에서 Δ0.0008 폭에 걸린 파울 롤이 하나도 없었기 때문(정상).
+  //
+  // ⚠️ 이 대조가 말하는 것과 말하지 않는 것(gameqa 회귀판정 정정):
+  //  · 말하는 것 — **같은 튜닝값에서** corner 스위치를 끄면 코너 기능이 결과에 아무 기여도 하지
+  //    않는다(= 스위치가 제 일을 한다: 레거시 전원전진 동작 복원).
+  //  · 말하지 않는 것 — "롤백하면 main 을 재현한다"는 **아니다**. foul.base 0.017→0.0178 은
+  //    코너와 무관한 **전역 노브**라 롤백 상태에서도 경기가 달라진다(gameqa 실측: corner off 고정
+  //    후 foul 만 바꿔 7시드 대조 → **3건만 동일**). 이 스위치는 "코너 동작 롤백"이지
+  //    "main 비트동등 복원"이 아니다.
+  const ROLLBACK_HASH_MARKED = "fb490748";
 
   it("vision.enabled=true 는 실제로 결과를 바꾼다(계층이 죽어있지 않다)", () => {
     expect(lastHash(run(cfg))).not.toBe(lastHash(run(off)));

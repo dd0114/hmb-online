@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
-import { aggregateRealism, REALISM_SEEDS } from "./harness";
+import { aggregateRealism, GUARD_SEEDS } from "./harness";
 
 /**
  * G-A 슛 빈도 계약 (#99, §2.5 E2E-TDD).
@@ -13,7 +13,7 @@ import { aggregateRealism, REALISM_SEEDS } from "./harness";
 const cfg = defaultEngineConfig;
 
 // 20 시드(팀-경기 40). SD 크지만 평균은 밴드 내 안정.
-const agg = aggregateRealism(cfg, REALISM_SEEDS);
+const agg = aggregateRealism(cfg, GUARD_SEEDS);
 
 describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
   it(`팀당 슛 12–14 (측정 ${agg.mean.shots})`, () => {
@@ -36,32 +36,50 @@ describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
 });
 
 describe("G-A 단조성: shoot 성향↑ → 슛 수↑ (config 가 실제 레버)", () => {
-  it("shoot 사다리 0.15→0.80 **전 구간** 단조 증가한다", () => {
-    // 단일 대비의 "효과크기 ≥N" 대신 사다리 단조성을 박는다 — rung 선택이 튜닝 여지가 되지 않도록
-    // 직전 기본값(0.34)을 포함한 **전 구간**을 쓴다.
+  it("shoot 사다리 0.15→0.65 엄격 단조 + 0.65→0.80 비엄격(포화 구간)", () => {
+    // 이 계약의 목적: **config 의 shoot 노브가 슛 빈도의 실제 레버임**을 박제한다(구조적 회귀 가드).
+    // 단일 대비의 "효과크기 ≥N" 대신 사다리를 쓰는 이유는 rung 선택이 튜닝 여지가 되지 않게 하기 위함.
     //
-    // 실측(engine@0.17.0, 20시드):
-    //   0.15→10.70 · 0.22→12.85 · 0.30→13.45 · 0.34→14.23 · 0.45→16.20 · 0.60→16.38 · 0.80→17.27
-    // 이력: 직전 튜닝(attackWidthReach 0.13)에서는 0.34→0.45 구간이 15.25→14.70 으로 **감소**해
-    // 계약 구간을 0.15-0.34 로 한정했었다. awr 0.10 으로 조정하니 포화·역전이 사라져 전 구간
-    // 단조가 됐다 — 즉 그 비단조는 엔진의 본질이 아니라 그 config 지점의 성질이었다.
-    const ladder = [0.15, 0.22, 0.3, 0.34, 0.45, 0.6, 0.8];
-    const shots = ladder.map(
-      (shoot) =>
-        aggregateRealism({ ...cfg, decisionWeights: { ...cfg.decisionWeights, shoot } }, REALISM_SEEDS).mean.shots,
-    );
-    // #181: 소유 이전이 controlRange 안에서만 일어나게 되면서 **경기당 소유 횟수 자체가 상한**을
-    // 갖는다 → shoot 을 계속 올려도 어느 지점부터 슛이 더 늘지 않는다(포화). 실측(20시드):
-    //   0.15→10.05 · 0.22→11.68 · 0.30→12.10 · 0.34→13.13 · 0.45→13.53 · 0.60→13.53 · 0.80→14.68
-    // 0.45→0.60 이 정확히 동률이다. 이건 "레버가 죽었다"가 아니라 **모델의 성질**이므로,
-    // 레버가 여력을 갖는 구간(≤0.45)은 **엄격 증가**로, 포화 구간은 **비감소**로 박는다.
-    // (구간을 좁혀 통과시키면 그 자체가 튜닝 여지가 되므로 사다리는 전 구간 유지한다.)
-    const STRICT_UP_TO = 0.45;
+    // ── 사다리 간격을 측정해상도에 맞춘 이유 (#182, gameqa 결정 A) ────────────────────────
+    // 구 사다리는 0.30↔0.34 처럼 **폭 0.04** 인 rung 을 포함했는데, 그 폭의 참효과는 측정오차와
+    // 같은 자릿수라 부호가 표본마다 뒤집힌다(독립 QA 재현: 20시드 6개 독립배치 중 **2개 역전**).
+    // 근거 수치는 harness.ts 의 GUARD_SEEDS 주석 참조. → 인접 간격을 **≥0.08** 로 벌린다.
+    // 기본값(0.30)은 사다리에 그대로 유지한다.
+    //
+    // 실측(engine@0.20.0 + foul 0.0178, GUARD_SEEDS=60시드):
+    //   0.15→9.97 · 0.22→11.23 · 0.30→12.17 · 0.38→12.59 · 0.50→13.18 · 0.65→14.03 · (0.80→14.08)
+    //
+    // ── 무엇을 잃었나(명시) ──────────────────────────────────────────────────────────
+    // 상단 0.65→0.80 의 **엄격 단조 판정을 포기**했다. 그 구간은 표본 문제가 아니라 **포화**다
+    // (실측 +0.05 = 거의 0). 표본을 늘려도 해소되지 않으므로 엄격 단조로 두면 영구 플래키가 된다.
+    // 대신 **비엄격 가드**(하락 금지)로 남겨 "상단에서 슛이 오히려 줄어드는" 회귀는 계속 잡는다.
+    // 잃은 것 = 0.65↔0.80 사이의 미세 증가 방향성. 남긴 것 = 하락 금지 + 전 구간 총효과.
+    // 포화 자체의 타당성은 별건(QA #25)으로 다룬다.
+    const ladder = [0.15, 0.22, 0.3, 0.38, 0.5, 0.65];
+    const SAT = 0.8; // 포화 구간 상단(비엄격 판정)
+    const measure = (shoot: number) =>
+      aggregateRealism({ ...cfg, decisionWeights: { ...cfg.decisionWeights, shoot } }, GUARD_SEEDS).mean.shots;
+
+    const shots = ladder.map(measure);
+    // 사다리(≤0.65)는 전 구간 **엄격** 단조. 포화 구간(0.80)은 아래에서 따로 비엄격 판정.
     for (let i = 1; i < shots.length; i++) {
-      const msg = `shoot ${ladder[i - 1]}→${ladder[i]} (측정 ${shots.join(" → ")})`;
-      if (ladder[i]! <= STRICT_UP_TO) expect(shots[i], `${msg} 구간에서 증가해야`).toBeGreaterThan(shots[i - 1]!);
-      else expect(shots[i], `${msg} 포화 구간이라도 감소하면 안 된다`).toBeGreaterThanOrEqual(shots[i - 1]!);
+      expect(shots[i], `shoot ${ladder[i - 1]}→${ladder[i]} 구간에서 증가해야 (측정 ${shots.join(" → ")})`)
+        .toBeGreaterThan(shots[i - 1]!);
     }
-    expect(shots[shots.length - 1]! - shots[0]!).toBeGreaterThan(4);
+    const sat = measure(SAT);
+    // 포화 상단: 증가는 요구하지 않되 **하락은 금지**. tol 은 SE(Δ)≈0.66(n=60) 의 약 1.5배 —
+    // 노이즈 한 방으로는 못 뚫고, 실제 하락 회귀(≫1슛)는 잡히는 폭.
+    expect(sat, `shoot 0.65→${SAT} 는 포화 구간이라 증가는 안 봐도 되지만 하락하면 회귀다 (0.65=${shots[shots.length - 1]}, ${SAT}=${sat})`)
+      .toBeGreaterThanOrEqual(shots[shots.length - 1]! - 1.0);
+
+    // 총효과: **노브 전 구간(0.15 → 0.80)** 차이가 충분히 커야 "실제 레버"다.
+    // 레버 폭 추이(n=60, 동일 시드 구성으로 대조): 리베이스 전 5.57 → main 6f1b12b **4.50**
+    // (#181 이 −1.07) → 이 브랜치 **4.11**(#182 가 추가로 −0.39). #182 분은 상단에서 나온다
+    // (0.15 는 9.93→9.97 로 불변, 0.80 이 14.43→14.08). 박스 인원이 줄어 높은 shoot 성향에서
+    // 만들 수 있는 슛의 천장이 낮아진 것 = 슛 민감도 하락. 밸런스 해석은 S4 #10 소관(#189 참조).
+    // 임계 4 는 구 사다리(0.15→0.80) 기준으로 잡힌 값이므로, 사다리 상단을 0.65 로 줄였다고
+    // 0.15→0.65 로 재면 기준이 조용히 낮아진다(실측 3.99 로 아슬아슬하게 걸림). 포화점까지
+    // 포함한 **원래 구간 그대로** 재서 임계 4 를 손대지 않는다.
+    expect(sat - shots[0]!, `전 구간 총효과 (0.15=${shots[0]} → ${SAT}=${sat})`).toBeGreaterThan(4);
   });
 });

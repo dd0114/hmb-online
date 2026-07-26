@@ -320,6 +320,51 @@ export interface EngineConfig {
     crossDepthM: number;
     /** 코너 크로스 낙하점 중앙 기준 좌우 산포 최대(m). 시드로 ±이 범위. */
     crossWidthM: number;
+    /**
+     * 코너 시 "박스로 안 올라가는" 선수 배치(#182). 실제 축구의 rest defence(공격팀이 역습
+     * 대비로 뒤에 남기는 1~2명)·하이 아웃렛(수비팀이 앞에 남기는 1~2명)에 해당한다.
+     *
+     * **인원은 여기 상수로 고정되지 않는다** — 팀 전략과 선수 성향으로 정해진다(hero 확정):
+     *  (1) 팀 축: 가담도 commit = f(defensiveLineHeight, tempo) 0..1 → 잔류 인원을
+     *      stayBackMax(수비적)~stayBackMin(올인) 사이로 매핑. 팀마다 기본값이 다르고
+     *      전술을 바꾸면 같이 바뀐다.
+     *  (2) 선수 축: 프롬프트가 만든 behavior(forwardRunFreq·supportDepth)가 슬롯 깊이를
+     *      **뒤집는다** — 원래 남을 CB 가 올라가고, 원래 올라갈 공격수가 남는다.
+     *      뒤집는 힘 = playerOverrideWeight.
+     * 여기 값들은 그 매핑의 튜닝 상수일 뿐이다.
+     */
+    corner: {
+      /** false = 레거시(전원 전진). 롤백 스위치 — 켜기 전과 bit-identical. */
+      enabled: boolean;
+      /** 공격 코너 잔류 인원 매핑. commit=1(올인) → Min, commit=0(수비적) → Max. */
+      stayBackMin: number;
+      stayBackMax: number;
+      /** 수비 코너 하이 아웃렛 인원 매핑. 0/0 이면 끔(수비팀은 전원 박스). */
+      leaveHighMin: number;
+      leaveHighMax: number;
+      /** 팀 가담도 commit 을 만들 때 수비라인 높이·템포에 주는 가중치. */
+      commitLineWeight: number;
+      commitTempoWeight: number;
+      /** 선수 성향(프롬프트)이 슬롯 깊이 순서를 뒤집는 힘. 0 이면 슬롯 깊이만으로 결정. */
+      playerOverrideWeight: number;
+      /** 잔류 선수가 서는 라인(공격 진행도 0:자기골 ~ 1:상대골). 0.5=하프라인. */
+      stayBackLineX: number;
+      /** 하이 아웃렛이 서는 라인(자기 공격 진행도). */
+      leaveHighLineX: number;
+      /**
+       * 잔류/아웃렛이 **한 줄로 정렬되지 않게** 하는 깊이 산포(#182 폴리시).
+       * 실제 rest defence 는 전원이 같은 깊이에 서지 않는다 — CB 는 좀 더 깊게, 남은 미드는
+       * 좀 더 앞에. 두 축으로 만든다(둘 다 0 이면 구 동작 = 전원 같은 라인):
+       *  - slotSpread: 자기 포메이션 슬롯 깊이를 얼마나 유지하는가(0=완전 정렬, 1=원래 깊이).
+       *    역할 기반이라 "CB 가 풀백보다 뒤"라는 자연 층이 생긴다.
+       *  - jitterX: 잔류 그룹 **내 순위**로 깊이를 균등 배분하는 간격(rank 당 이만큼 차이).
+       *    슬롯이 같은 좌우 대칭 선수(LCB/RCB)도 이걸로 갈라진다. 난수가 아니라 순위 기반이라
+       *    **충돌이 구조적으로 없다** — idHash 난수 편차로 벌렸을 땐 특정 선수쌍이 우연히
+       *    겹쳐 그 팀이 매 코너 일자 정렬이 됐다(실측 11/52 코너).
+       */
+      slotSpread: number;
+      jitterX: number;
+    };
   };
 
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
@@ -444,7 +489,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.19.0",
+  version: "engine@0.20.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -557,7 +602,7 @@ export const defaultEngineConfig: EngineConfig = {
       // 파울이 11.93→14.10 으로 튀었다 → 0.0185→0.016 으로 재보정(11.90).
       // #181: 패스가 실제 비행시간을 갖게 되며 틱당 태클 기회가 줄어 파울이 다시 내려갔다 →
       // 두 변경을 합친 상태에서 재측정해 벤치(11-12)로 맞춘 값(아래 §gap §5).
-      base: 0.017,
+      base: 0.0178,
       aggressionWeight: 1.0,
       tacklingRelief: 0.6,
       boxFoulMult: 1.0,
@@ -617,6 +662,27 @@ export const defaultEngineConfig: EngineConfig = {
     crossSpeed: 16,
     crossDepthM: 10,
     crossWidthM: 12,
+    // #182. 중립 팀(라인 0.55·템포 0.5)은 잔류 2명 = PL 표준. 수비적 팀 3명, 올인 1명.
+    // 수비팀 아웃렛(leaveHigh)은 0/0 = 끔 — 양팀 동시 변경을 피하려 별도 이슈로 분리.
+    corner: {
+      enabled: true,
+      stayBackMin: 1,
+      stayBackMax: 3,
+      leaveHighMin: 0,
+      leaveHighMax: 0,
+      commitLineWeight: 1.0,
+      commitTempoWeight: 0.5,
+      // 2.2 = "양방향 완전 오버라이드"에 필요한 하한. 슬롯 깊이 폭(CB 0.16~ST 0.78 = 0.62)을
+      // 성향 폭(±0.5)이 넘어서려면 W>2.0 이어야 공격수를 잔류시킬 수 있다. 이 값에서도
+      // 아키타입 기본 성향은 슬롯 순서와 같은 방향이라 자연 순서(ST>윙>미드>풀백>CB)는 보존된다.
+      playerOverrideWeight: 2.2,
+      stayBackLineX: 0.5,
+      leaveHighLineX: 0.5,
+      // 0.25 → CB(슬롯 0.16)는 라인보다 ~9m 깊게, 풀백(0.22)은 ~7m 깊게 = 역할 층.
+      // 지터 0.03(±3.15m)은 슬롯이 동일한 LCB/RCB 를 갈라준다.
+      slotSpread: 0.25,
+      jitterX: 0.03,
+    },
   },
   softCap: 0.25,
   fatiguePerTick: 0.0009,
