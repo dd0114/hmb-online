@@ -208,6 +208,56 @@
   color: var(--text);
 }
 
+/* 레이더 레이어(기본) — StatRadar + 멘탈 칩(레이더 밖). */
+.radarRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 6px 0 16px;
+  flex-wrap: wrap;
+}
+
+.mentalChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #171b22;
+  min-width: 66px;
+}
+
+.mentalLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.mentalValue {
+  font-size: 18px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.mentalCap {
+  color: #e7c24c;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* 막대 레이어 축 라벨(밴드 앵커 윈도우 표시, 정직성 — hero: "주식 y축처럼"). */
+.axisWindowLabel {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-align: center;
+  font-weight: 700;
+}
+
 .attrs {
   display: grid;
   gap: 10px;
@@ -365,41 +415,6 @@
 .attrCap {
   color: #e7c24c;
   font-size: 9px;
-}
-
-/* [+보너스] 레이어(V2.1-3) — base → +성장(초록) +잠재(티어색) 분해. */
-.bonusCell {
-  grid-column: 1 / 2;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.bonusRow {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  font-size: 11.5px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-}
-
-.bonusBase {
-  color: var(--text-muted);
-}
-
-.bonusOp {
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
-.bonusGrowth {
-  color: #63d193;
-}
-
-.bonusPotential {
-  color: #e7c24c;
 }
 
 /* 잠재능력 */
@@ -594,26 +609,6 @@
   font-size: 24px;
   line-height: 1;
   filter: drop-shadow(0 0 6px currentColor);
-}
-
-/* +보너스 레이어 빈 상태 UX(GM7b, hero 피드백) — 성장·잠재가 전부 0인 카드는 레이어가 "고장"처럼
-   보인다 → 상단 힌트 한 줄(성장0/잠재0 각각 조건부) + 0인 델타는 흐리게. */
-.bonusHints {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0 0 10px;
-}
-
-.bonusHint {
-  margin: 0;
-  font-size: 11px;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.bonusZero {
-  opacity: 0.4;
 }
 
 @media (min-width: 640px) {

@@ -1,0 +1,73 @@
+/* 능력치 레이더 차트(StatRadar) — 색·치수는 여기 CSS 변수 토큰으로만 갈아끼운다(컴포넌트 주석 참고). */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  --radar-accent: #5cc98b;
+  --radar-fill-opacity: 0.28;
+  --radar-ring-color: #2a313c;
+  --radar-axis-color: #39424f;
+  --radar-cap-color: #e7c24c;
+  --radar-compare-color: #6b7683;
+}
+
+.svg {
+  overflow: visible;
+  display: block;
+}
+
+.ring {
+  fill: none;
+  stroke: var(--radar-ring-color);
+  stroke-width: 1;
+}
+
+.axisLine {
+  stroke: var(--radar-axis-color);
+  stroke-width: 1;
+}
+
+.valuePolygon {
+  fill: var(--radar-accent);
+  fill-opacity: var(--radar-fill-opacity);
+  stroke: var(--radar-accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.capPolygon {
+  fill: none;
+  stroke: var(--radar-cap-color);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  stroke-linejoin: round;
+}
+
+.comparePolygon {
+  fill: none;
+  stroke: var(--radar-compare-color);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 2;
+  stroke-linejoin: round;
+}
+
+.axisLabel {
+  fill: var(--text-muted, #8b96a5);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.axisValue {
+  fill: var(--text, #e7ecf2);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.windowLabel {
+  margin: 2px 0 0;
+  font-size: 10px;
+  color: var(--text-muted, #8b96a5);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}

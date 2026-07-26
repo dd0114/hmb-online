@@ -2,9 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 /**
- * G4 성장 시스템 v2(메이플 피벗 + V2.1 피드백 개정) UI route-mock 스모크(에픽 #179 GM3/GM7,
- * §V2-6/V2-7 AC-V6 + §V2.1-3) — **백엔드 없이** vite dev + page.route 로 /api 목킹. 계약 박제:
- * (1) 카드 상세 렌더 — ★·스탯Lv·잠재 3줄(전줄 동일 티어, V2.1-1)·능력치 2레이어 토글(총/보너스),
+ * G4 성장 시스템 v2(메이플 피벗 + V2.1 피드백 개정 + 레이더 후속) UI route-mock 스모크(에픽 #179
+ * GM3/GM7, §V2-6/V2-7 AC-V6 + §V2.1-3) — **백엔드 없이** vite dev + page.route 로 /api 목킹. 계약 박제:
+ * (1) 카드 상세 렌더 — ★·스탯Lv·잠재 3줄(전줄 동일 티어, V2.1-1)·능력치 2레이어 토글([레이더(기본)]
+ * SVG 폴리곤 6축+멘탈 칩+밴드 앵커 윈도우 라벨 / [막대] 윈도우 정규화 width+축 라벨,
+ * hero 실시간 지시로 "+보너스" 분해 탭은 제거),
  * (2) 성 승급 → ★+1·잠재 해금·패널/프레임 티어 글로우, (3) 다이스 롤 → 라인 갱신·티어업 전체
  * 오버레이(V2.1-3), (4) 다이스 부족 4xx 메시지, (5) 390px 오버플로 0,
  * (6) 성장 리포트(S1) 스탯별 XP 막대 + 레벨업 뱃지.
@@ -206,10 +208,9 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   const sheet = page.getByTestId("growth-detail");
   await expect(sheet).toBeVisible();
 
-  // ★ 1(초기) · 스탯 Lv 뱃지 · 잠재 3슬롯(1★=잠김) · 등급 프레임 GOLD.
+  // ★ 1(초기) · 잠재 3슬롯(1★=잠김) · 등급 프레임 GOLD.
   await expect(page.getByTestId("growth-frame")).toHaveAttribute("data-grade", "GOLD");
   await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-star", "1");
-  await expect(page.getByTestId("growth-lv-shooting")).toHaveText("Lv.0");
   await expect(page.getByTestId("growth-potential-locked")).toBeVisible();
   await expect(page.getByTestId("growth-potential-slot-1")).toHaveAttribute("data-state", "locked-star");
   await expect(page.getByTestId("growth-ovr")).toHaveText("58");
@@ -217,19 +218,58 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   await expect(page.getByTestId("growth-star-up")).toContainText("2★");
   await expect(page.getByTestId("growth-star-cost")).toContainText("중복 −2");
 
-  // V2.1-3 GM7: 능력치 2레이어 토글 — 기본 [총 능력치] → [+보너스] 전환 시 base→성장→잠재 분해가 뜬다.
-  await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "total");
-  await expect(page.getByTestId("growth-layer-total")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByTestId("growth-bonus-shooting")).toHaveCount(0);
-  await page.getByTestId("growth-layer-bonus").click();
-  await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "bonus");
-  await expect(page.getByTestId("growth-layer-bonus")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByTestId("growth-bonus-shooting")).toBeVisible();
-  await expect(page.getByTestId("growth-bonus-base-shooting")).toHaveText("55");
-  await expect(page.getByTestId("growth-fill-shooting")).toHaveCount(0); // 총 레이어 전용 요소는 사라진다
+  // 능력치 2단 레이어 — [레이더](기본) ↔ [막대]("+보너스" 탭은 hero 실시간 지시로 제거 — "잘 안 보여").
+  // 레이더 기본 렌더: SVG 폴리곤 6축(슛/스피드/패스/테크닉/수비/피지컬) + 멘탈 칩(레이더 밖)
+  // + 밴드 앵커 윈도우 라벨(GOLD 60-75 → [55,90], hero: "주식 y축처럼 하한 잘라 드라마틱하게").
+  await expect(page.getByTestId("growth-layer-radar")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("growth-attrs")).toHaveCount(0); // 막대 dl 은 레이더 레이어에서 렌더 안 됨
+  await expect(page.getByTestId("growth-layer-bonus")).toHaveCount(0); // +보너스 탭 제거됨
+  const radarSvg = page.getByTestId("growth-radar-svg");
+  await expect(radarSvg).toBeVisible();
+  await expect(page.getByTestId("growth-radar-polygon-value")).toBeVisible();
+  await expect(page.getByTestId("growth-radar-polygon-cap")).toBeVisible(); // cap 점선 폴리곤 — 성장/잠재 상한은 이걸로 표시
+  for (const [k, label] of [
+    ["shooting", "슛"],
+    ["pace", "스피드"],
+    ["passing", "패스"],
+    ["technical", "테크닉"],
+    ["defense", "수비"],
+    ["physical", "피지컬"],
+  ]) {
+    await expect(page.getByTestId(`growth-radar-axis-${k}`)).toContainText(label);
+  }
+  await expect(page.getByTestId("growth-radar-axis-shooting")).toContainText("55"); // shooting 원시값
+  await expect(page.getByTestId("growth-radar-window")).toHaveText("55–90"); // GOLD [60,75] → [55,90]
+  await expect(page.getByTestId("growth-mental-chip")).toBeVisible();
+  await expect(page.getByTestId("growth-mental-chip")).toContainText("멘탈");
+  await expect(page.getByTestId("growth-mental-chip")).toContainText("41");
+
+  await page.screenshot({ path: `${SMOKE_DIR}growth-radar.png`, fullPage: true });
+
+  // [막대] 전환 — 윈도우 정규화 막대(cap/base 마커로 성장/잠재 여지 표시) + 축 라벨(윈도우 min/max 숫자).
   await page.getByTestId("growth-layer-total").click();
   await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "total");
-  await expect(page.getByTestId("growth-fill-shooting")).toBeVisible();
+  await expect(page.getByTestId("growth-layer-total")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("growth-radar-svg")).toHaveCount(0); // 레이더는 사라진다
+  await expect(page.getByTestId("growth-attr-window")).toHaveText("스탯 축 55–90");
+  await expect(page.getByTestId("growth-lv-shooting")).toHaveText("Lv.0");
+  await expect(page.getByTestId("growth-fill-pace")).toBeVisible();
+  // shooting(55) 이 이 카드의 윈도우 하한(55, GOLD [55,90])과 정확히 겹친다 — 밴드 앵커 클램프로
+  // width 0%(밴드 아래는 안 보이게, hero: "y축 하한 잘라서 드라마틱하게"). raw 값은 data-value 로 유지.
+  await expect(page.getByTestId("growth-fill-shooting")).toHaveAttribute("data-value", "55");
+  await expect(page.getByTestId("growth-fill-shooting")).toHaveCSS("width", "0px");
+
+  // 레이더로 복귀도 가능(2단 순환).
+  await page.getByTestId("growth-layer-radar").click();
+  await expect(page.getByTestId("growth-radar-svg")).toBeVisible();
+  await expect(page.getByTestId("growth-attrs")).toHaveCount(0);
+  await expect(page.getByTestId("growth-attr-window")).toHaveCount(0); // 축 라벨은 막대 레이어 전용
+
+  // 이후 검증(성 승급 등)은 [막대] 레이어에서 진행.
+  await page.getByTestId("growth-layer-total").click();
+  await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "total");
+  await expect(page.getByTestId("growth-layer-total")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("growth-layer-radar")).toHaveAttribute("aria-selected", "false");
 
   await page.screenshot({ path: `${SMOKE_DIR}growth-detail-schema3.png`, fullPage: true });
 
@@ -299,6 +339,10 @@ test("G4 다이스 롤: 라인 갱신 + 티어업 전체 오버레이(RARE→EPI
   await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
   await page.getByTestId("growth-star-up").click();
   await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-star", "2");
+
+  // 레이더가 기본 레이어라 스탯 Lv 뱃지(growth-lv-*)는 [막대] 레이어에만 존재 — 전환.
+  await page.getByTestId("growth-layer-total").click();
+  await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "total");
 
   await expect(page.getByTestId("growth-dice-normal")).toBeEnabled();
   const shootLvBefore = await page.getByTestId("growth-lv-shooting").innerText();

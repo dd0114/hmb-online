@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Modal } from "../common/Modal";
 import { ErrorToast } from "../common/ErrorToast";
 import { CelebrationOverlay } from "../common/CelebrationOverlay";
+import { StatRadar } from "../common/StatRadar";
 import { GRADE_COLORS, GRADE_LABELS, type Grade } from "../common/grades";
 import { CharAvatar } from "../common/CharAvatar";
 import { ApiError } from "../api/client";
@@ -15,10 +16,15 @@ import {
 } from "../api/growth";
 import {
   GRADE_POTENTIAL_LINES,
+  RADAR_GROUPS,
   STAR_COPY_COST,
+  STAT_LABEL_MAP,
   STAT_LABELS,
   TIER_COLORS,
   TIER_LABELS,
+  computeAxisWindow,
+  normalizeInWindow,
+  radarAxisValue,
   xpToNextLevel,
 } from "../growth/growth-config";
 import type { CatalogPlayer } from "../api/hooks";
@@ -55,9 +61,11 @@ interface CardGrowthDetailProps {
 }
 
 /**
- * 보유 카드 성장 상세(에픽 #179 §V2-6, GM3 + V2.1-3 GM7) — S2/S3/S4/S6:
- * OVR 링 + 완성도 · 능력치 2레이어 토글(총/보너스) · ★1~4(성 승급) · 스탯 9종(Lv+XP바) ·
- * 잠재 패널(전줄 동일 티어, 패널·프레임 글로우 승격) · 다이스 롤 + 티어업 전체 오버레이.
+ * 보유 카드 성장 상세(에픽 #179 §V2-6, GM3 + V2.1-3 GM7 + 레이더 후속) — S2/S3/S4/S6:
+ * OVR 링 + 완성도 · 능력치 2레이어 토글([레이더(기본)]/[막대], 밴드 앵커 윈도우 정규화 공통 적용) ·
+ * ★1~4(성 승급) · 스탯 9종(Lv+XP바) · 잠재 패널(전줄 동일 티어, 패널·프레임 글로우 승격) ·
+ * 다이스 롤 + 티어업 전체 오버레이. 성장/잠재 기여는 별도 탭이 아니라 막대의 cap/base 마커 +
+ * 레이더의 cap 점선 폴리곤으로 표시(구 "+보너스" 분해 탭은 hero 피드백으로 제거).
  * 프레임 **테두리 색**은 등급(불변, 승급 없음) 고정 — **글로우**는 잠재 티어색(승급 시 전환).
  */
 export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
@@ -73,8 +81,9 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   const [starUpOverlay, setStarUpOverlay] = useState<StarUpResult | null>(null);
   const [justUpAttrs, setJustUpAttrs] = useState<Set<string>>(new Set());
   const [justUpLv, setJustUpLv] = useState<Set<string>>(new Set());
-  // V2.1-3 GM7: 능력치 표시 2레이어 — 총 능력치(기본) ↔ +보너스(base→성장→잠재 분해).
-  const [layer, setLayer] = useState<"total" | "bonus">("total");
+  // 레이더 후속(hero 실시간 지시 — "+보너스 탭 잘 안 보여" 제거): 능력치 표시 2레이어 — 레이더(기본) ↔ 막대.
+  // 성장/잠재 기여는 별도 탭이 아니라 막대의 cap/base 마커 + 레이더의 cap 점선 폴리곤으로 충분.
+  const [layer, setLayer] = useState<"radar" | "total">("radar");
 
   const prevAttrsRef = useRef<Record<string, number> | null>(null);
   const prevLvRef = useRef<Record<string, number> | null>(null);
@@ -119,6 +128,19 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   const grade: Grade = card?.grade ?? player.grade;
   const frameColor = GRADE_COLORS[grade];
   const star: Star = card?.star ?? 1;
+  // 밴드 앵커 축 윈도우(hero: "y축 하한 잘라서 드라마틱하게") — 막대·레이더 공통 정규화.
+  const axisWindow = computeAxisWindow(grade);
+  const pct = (v: number) => normalizeInWindow(v, axisWindow) * 100;
+  const radarAxes = card
+    ? RADAR_GROUPS.map((g) => ({
+        key: g.key,
+        label: g.label,
+        value: radarAxisValue(g, card.attributes as unknown as Record<string, number>),
+        cap: radarAxisValue(g, card.caps as unknown as Record<string, number>),
+      }))
+    : [];
+  const mentalAttrs = card?.attributes as unknown as Record<string, number> | undefined;
+  const mentalCaps = card?.caps as unknown as Record<string, number> | undefined;
   const completion = card ? Math.max(0, Math.min(1, card.completion)) : 0;
   const busy = starUp.isPending || diceRoll.isPending || rollingKind !== null;
   // V2.1-3: 잠재 승급 = 카드 전체 인상을 바꾼다 — 프레임 글로우를 잠재 티어색으로.
@@ -282,131 +304,98 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
               <button
                 type="button"
                 role="tab"
+                aria-selected={layer === "radar"}
+                className={layer === "radar" ? `${styles.layerBtn} ${styles.layerBtnActive}` : styles.layerBtn}
+                data-testid="growth-layer-radar"
+                onClick={() => setLayer("radar")}
+              >
+                레이더
+              </button>
+              <button
+                type="button"
+                role="tab"
                 aria-selected={layer === "total"}
                 className={layer === "total" ? `${styles.layerBtn} ${styles.layerBtnActive}` : styles.layerBtn}
                 data-testid="growth-layer-total"
                 onClick={() => setLayer("total")}
               >
-                총 능력치
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={layer === "bonus"}
-                className={layer === "bonus" ? `${styles.layerBtn} ${styles.layerBtnActive}` : styles.layerBtn}
-                data-testid="growth-layer-bonus"
-                onClick={() => setLayer("bonus")}
-              >
-                +보너스
+                막대
               </button>
             </div>
 
-            {layer === "bonus" &&
-              (() => {
-                // GM7b: 성장/잠재 보너스가 전부 0(막 뽑은 카드·1★ 미승급)이면 레이어가 "고장"처럼
-                // 보인다는 hero 피드백 — 전체 0일 때만 각각 조건부 힌트 한 줄씩.
-                const growthAllZero = STAT_LABELS.every(([key]) => {
-                  const d = Math.round((card.prePotential[key] - card.base[key]) * 10) / 10;
-                  return d === 0;
-                });
-                const potentialAllZero = STAT_LABELS.every(([key]) => {
-                  const d = Math.round((card.attributes[key] - card.prePotential[key]) * 10) / 10;
-                  return d === 0;
-                });
-                if (!growthAllZero && !potentialAllZero) return null;
-                return (
-                  <div className={styles.bonusHints} data-testid="growth-bonus-hint">
-                    {growthAllZero && (
-                      <p className={styles.bonusHint} data-testid="growth-bonus-hint-growth">
-                        경기 출전으로 성장을 얻어요
-                      </p>
-                    )}
-                    {potentialAllZero && (
-                      <p className={styles.bonusHint} data-testid="growth-bonus-hint-potential">
-                        다이스로 잠재를 얻어요
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
+            {layer === "radar" && (
+              <div className={styles.radarRow} data-testid="growth-radar-row">
+                <StatRadar axes={radarAxes} window={axisWindow} size={200} accentColor={frameColor} testId="growth-radar" />
+                <div className={styles.mentalChip} data-testid="growth-mental-chip">
+                  <span className={styles.mentalLabel}>{STAT_LABEL_MAP.mental}</span>
+                  <span className={styles.mentalValue}>
+                    {Math.round(mentalAttrs?.mental ?? 0)}
+                    <span className={styles.mentalCap}> /{Math.round(mentalCaps?.mental ?? 0)}</span>
+                  </span>
+                </div>
+              </div>
+            )}
 
-            <dl className={styles.attrs} data-testid="growth-attrs" data-layer={layer}>
-              {STAT_LABELS.map(([key, label]) => {
-                const cur = card.attributes[key];
-                const cap = card.caps[key];
-                const base = card.base[key];
-                const prePotential = card.prePotential[key];
-                const growthDelta = Math.round((prePotential - base) * 10) / 10;
-                const potentialDelta = Math.round((cur - prePotential) * 10) / 10;
-                const sl = card.statLevels[key] ?? { lv: 0, xp: 0 };
-                const xpNeed = xpToNextLevel(sl.lv);
-                const xpPct = clampPct((sl.xp / Math.max(1, xpNeed)) * 100);
-                const lvUp = justUpLv.has(key);
-                const attrUp = justUpAttrs.has(key);
-                return (
-                  <div key={key} className={styles.attrRow} data-testid={`growth-attr-${key}`}>
-                    <dt className={styles.attrName}>
-                      {label}
-                      <span
-                        className={lvUp ? `${styles.lvBadge} ${styles.lvBadgeUp}` : styles.lvBadge}
-                        data-testid={`growth-lv-${key}`}
-                      >
-                        Lv.{sl.lv}
-                      </span>
-                    </dt>
-                    {layer === "total" ? (
+            {layer === "total" && (
+              <p className={styles.axisWindowLabel} data-testid="growth-attr-window">
+                스탯 축 {Math.round(axisWindow.lo)}–{Math.round(axisWindow.hi)}
+              </p>
+            )}
+
+            {layer === "total" && (
+              <dl className={styles.attrs} data-testid="growth-attrs" data-layer={layer}>
+                {STAT_LABELS.map(([key, label]) => {
+                  const cur = card.attributes[key];
+                  const cap = card.caps[key];
+                  const base = card.base[key];
+                  const sl = card.statLevels[key] ?? { lv: 0, xp: 0 };
+                  const xpNeed = xpToNextLevel(sl.lv);
+                  const xpPct = clampPct((sl.xp / Math.max(1, xpNeed)) * 100);
+                  const lvUp = justUpLv.has(key);
+                  const attrUp = justUpAttrs.has(key);
+                  // 밴드 앵커 윈도우 정규화 — 막대 width%/left% 는 원시 능력치가 아니라 axisWindow 기준.
+                  const curPct = pct(cur);
+                  const capPct = pct(cap);
+                  const basePct = pct(base);
+                  return (
+                    <div key={key} className={styles.attrRow} data-testid={`growth-attr-${key}`}>
+                      <dt className={styles.attrName}>
+                        {label}
+                        <span
+                          className={lvUp ? `${styles.lvBadge} ${styles.lvBadgeUp}` : styles.lvBadge}
+                          data-testid={`growth-lv-${key}`}
+                        >
+                          Lv.{sl.lv}
+                        </span>
+                      </dt>
                       <dd className={styles.attrBarCell}>
                         <span className={styles.xpBar} data-testid={`growth-xp-${key}`} data-value={Math.round(xpPct)}>
                           <i className={styles.xpFill} style={{ width: `${xpPct}%` }} />
                         </span>
                         <span className={styles.bar}>
-                          <i className={styles.reach} style={{ left: `${clampPct(cur)}%`, width: `${clampPct(cap - cur)}%` }} />
+                          <i
+                            className={styles.reach}
+                            style={{ left: `${curPct}%`, width: `${Math.max(0, capPct - curPct)}%` }}
+                          />
                           <i
                             className={attrUp ? `${styles.fill} ${styles.fillUp}` : styles.fill}
                             data-testid={`growth-fill-${key}`}
                             data-value={Math.round(cur)}
-                            style={{ width: `${clampPct(cur)}%` }}
+                            style={{ width: `${curPct}%` }}
                           />
-                          <i className={styles.capLine} style={{ left: `${clampPct(cap)}%` }} />
-                          <i className={styles.baseLine} style={{ left: `${clampPct(base)}%` }} />
+                          <i className={styles.capLine} style={{ left: `${capPct}%` }} />
+                          <i className={styles.baseLine} style={{ left: `${basePct}%` }} />
                         </span>
                       </dd>
-                    ) : (
-                      <dd className={styles.bonusCell} data-testid={`growth-bonus-${key}`}>
-                        <span className={styles.xpBar} data-testid={`growth-xp-${key}`} data-value={Math.round(xpPct)}>
-                          <i className={styles.xpFill} style={{ width: `${xpPct}%` }} />
-                        </span>
-                        <span className={styles.bonusRow}>
-                          <span className={styles.bonusBase} data-testid={`growth-bonus-base-${key}`}>
-                            {Math.round(base)}
-                          </span>
-                          <span className={styles.bonusOp}>→</span>
-                          <span
-                            className={growthDelta === 0 ? `${styles.bonusGrowth} ${styles.bonusZero}` : styles.bonusGrowth}
-                            data-testid={`growth-bonus-growth-${key}`}
-                          >
-                            +{growthDelta}
-                          </span>
-                          <span
-                            className={
-                              potentialDelta === 0 ? `${styles.bonusPotential} ${styles.bonusZero}` : styles.bonusPotential
-                            }
-                            data-testid={`growth-bonus-potential-${key}`}
-                            style={potentialTier && potentialDelta !== 0 ? { color: TIER_COLORS[potentialTier] } : undefined}
-                          >
-                            +{potentialDelta}
-                          </span>
-                        </span>
-                      </dd>
-                    )}
-                    <span className={layer === "total" ? `${styles.attrNum} ${styles.attrNumBig}` : styles.attrNum}>
-                      {Math.round(cur)}
-                      <span className={styles.attrCap}> /{Math.round(cap)}</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </dl>
+                      <span className={`${styles.attrNum} ${styles.attrNumBig}`}>
+                        {Math.round(cur)}
+                        <span className={styles.attrCap}> /{Math.round(cap)}</span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </dl>
+            )}
 
             <div
               className={styles.potentialPanel}
