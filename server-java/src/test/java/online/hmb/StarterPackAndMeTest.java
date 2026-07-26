@@ -16,8 +16,12 @@ import org.springframework.test.context.DynamicPropertySource;
 
 /**
  * AC-S1(스타터 팩 + /api/me) + AC-S3(owned 플래그) + 스타터 팩 멱등(재로그인 무재지급).
- * fixture economy: initialPoints=3000, starterPack=P001..P014 (GK1/DF5/MF5/FW3 미러).
- * fixture players: 17명(P015/P016/P017은 미보유 확인용).
+ * fixture economy: initialPoints=3000, starterPack=P001..P014 (GK1/DF5/MF5/FW3 미러),
+ * starterTop.pool=P018..P021(#209 — 가입 시 여기서 1장이 더 지급된다 ⇒ 보유 15명).
+ * fixture players: 21명(P015/P016/P017은 미보유 확인용, P018~P021은 최상위 후보).
+ *
+ * <p>#209 로 바뀐 것은 <b>보유 장수(14→15)</b>뿐이다 — 원장·포인트·멱등 계약은 그대로다.
+ * 최상위 지급 자체의 규칙(4중 1·시드 결정론·박제)은 {@link StarterReworkTest} 가 본다.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class StarterPackAndMeTest extends ApiTestBase {
@@ -44,13 +48,13 @@ class StarterPackAndMeTest extends ApiTestBase {
         assertThat(((Number) records.get("draws")).longValue()).isZero();
         assertThat(((Number) records.get("losses")).longValue()).isZero();
 
-        // /api/players — 카탈로그 17명 전원 + owned 정확(스타터 14명만 owned)
+        // /api/players — 카탈로그 21명 전원 + owned 정확(기본팩 14 + 최상위 1 = 15명 owned)
         ResponseEntity<List> players = authGet("/api/players", token, List.class);
         assertThat(players.getStatusCode()).isEqualTo(HttpStatus.OK);
         List<Map<String, Object>> list = players.getBody();
-        assertThat(list).hasSize(17);
+        assertThat(list).hasSize(21);
         long ownedCount = list.stream().filter(p -> (Boolean) p.get("owned")).count();
-        assertThat(ownedCount).isEqualTo(14);
+        assertThat(ownedCount).isEqualTo(15);
 
         Map<String, Object> p001 = byId(list, "P001");
         assertThat((Boolean) p001.get("owned")).isTrue();
@@ -76,7 +80,7 @@ class StarterPackAndMeTest extends ApiTestBase {
 
         assertThat(walletPoints).isEqualTo(3000L);
         assertThat(ledgerRows).isEqualTo(1L);
-        assertThat(ownedRows).isEqualTo(14L);
+        assertThat(ownedRows).isEqualTo(15L);   // 기본팩 14 + 최상위 1(#209) — 재로그인해도 늘지 않는다
 
         String ledgerReason = jdbcClient.sql("SELECT reason FROM point_ledger WHERE user_id = ?")
                 .param(userId).query(String.class).single();

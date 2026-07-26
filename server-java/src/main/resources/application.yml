@@ -40,7 +40,10 @@ hmb:
     #   나오면 어드민 카탈로그 API 토글 한 번으로 **배포 없이** 켜진다(파트 A 가 정확히 이걸 위한 것).
     # 계약 = PlayerCatalogV23SeedTest(현행) · PlayerCatalogV22SeedTest(구 발행물 임포트 회귀 가드).
     players-file: ../data/players/players.v2.3.json
-    economy-file: ../data/players/economy.v2.json      # 확률표·경제 수치 + trade/league 블록 로딩
+    # economy 는 **v3**(#209) — v2 그대로 + starterTop(가입 최상위 후보) 블록. 값은 #212 리스케일까지
+    # 포함해 v2 와 동일하고(생성기 한 소스), 추가된 것은 그 블록 하나뿐이다.
+    # ⚠️ 이 경로는 Dockerfile 의 HMB_DATA_ECONOMYFILE 과 **둘 다** 올려야 한다.
+    economy-file: ../data/players/economy.v3.json
     bots-file:    ../data/players/bots.v2.json
     league-file:  ../data/players/league.v1.json       # 리그 클럽명·페르소나·보상표(W3 소비, W1 로더만)
   auth:
@@ -76,6 +79,12 @@ hmb:
   deck:
     bench-max: 7
     player-prompt-max-chars: 500
+  starter:                           # #209 스타터/온보딩
+    # 튜토리얼 완료 시 지급하는 기본 덱의 포메이션. 지급 덱은 "바로 뛸 수 있는" 기본값이고,
+    # 유저는 덱 화면에서 언제든 바꾼다. 지원 목록 = StarterDeckBuilder.FORMATION_SLOTS.
+    # ⚠️ 최상위 유닛 후보 목록은 여기가 아니라 **data 발행물**(economy.starterTop)이다 — #207 이
+    #    갈아끼우는 지점이 서버 config 로 새면 무배포 교체가 깨진다.
+    deck-formation: 4-3-3
   match:
     prompt-timer-sec: 180          # 표시용 (D5)
     enforce-prompt-timer: false    # 강제 전환 플래그

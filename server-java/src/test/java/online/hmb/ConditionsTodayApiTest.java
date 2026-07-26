@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
@@ -79,8 +80,15 @@ class ConditionsTodayApiTest extends MatchTestBase {
         assertThat(today(a)).isEqualTo(first); // 같은 날 재호출 = 동일(하루 고정)
 
         Map<String, Object> other = today(b);
-        assertThat(other.keySet()).isEqualTo(first.keySet()); // 스타터팩 동일 → 키셋 동일
-        assertThat(other).isNotEqualTo(first);                // userId 가 시드에 들어가므로 값은 다름
+        // #209 이후 두 계정의 보유는 **기본팩(공통) + 최상위 1장(계정마다 다를 수 있음)** 이다.
+        // 그래서 키셋 동일이 아니라 "기본팩은 양쪽 다 있고, 장수는 같다"로 본다.
+        assertThat(other.keySet()).hasSameSizeAs(first.keySet());
+        Set<String> basics = first.keySet().stream().filter(id -> id.compareTo("P015") < 0)
+                .collect(java.util.stream.Collectors.toSet());
+        assertThat(basics).hasSize(14);
+        assertThat(other.keySet()).containsAll(basics);
+        // userId 가 시드에 들어가므로 같은 선수라도 값이 다르다(그게 이 테스트의 본론).
+        assertThat(basics.stream().anyMatch(id -> !other.get(id).equals(first.get(id)))).isTrue();
     }
 
     /** 매치 생성/킥오프 재캡처가 '당일' 값을 그대로 conditions_json 에 저장(재현 계약 불변). */

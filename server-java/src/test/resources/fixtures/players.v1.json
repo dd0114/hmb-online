@@ -287,5 +287,73 @@
       "stamina": 70,
       "positioning": 79
     }
+  },
+  {
+    "id": "P018",
+    "name": "Test Top Keeper",
+    "position": "GK",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 91,
+      "mental": 91,
+      "physical": 91,
+      "passing": 91,
+      "shooting": 91,
+      "tackling": 91,
+      "pace": 91,
+      "stamina": 91,
+      "positioning": 91
+    }
+  },
+  {
+    "id": "P019",
+    "name": "Test Top Defender",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 92,
+      "mental": 92,
+      "physical": 92,
+      "passing": 92,
+      "shooting": 92,
+      "tackling": 92,
+      "pace": 92,
+      "stamina": 92,
+      "positioning": 92
+    }
+  },
+  {
+    "id": "P020",
+    "name": "Test Top Midfielder",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 93,
+      "mental": 93,
+      "physical": 93,
+      "passing": 93,
+      "shooting": 93,
+      "tackling": 93,
+      "pace": 93,
+      "stamina": 93,
+      "positioning": 93
+    }
+  },
+  {
+    "id": "P021",
+    "name": "Test Top Forward",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 94,
+      "mental": 94,
+      "physical": 94,
+      "passing": 94,
+      "shooting": 94,
+      "tackling": 94,
+      "pace": 94,
+      "stamina": 94,
+      "positioning": 94
+    }
   }
 ]

@@ -23,8 +23,9 @@ class PlayerCatalogSeedImportTest {
 
     @Test
     void bootImportsFixturePlayersAndRecordsVersion() {
+        // 21 = 기존 17 + #209 최상위 후보 픽스처 4명(P018~P021)
         long playerCount = jdbcClient.sql("SELECT COUNT(*) FROM players").query(Long.class).single();
-        assertThat(playerCount).isEqualTo(17);
+        assertThat(playerCount).isEqualTo(21);
 
         String version = jdbcClient.sql("SELECT value FROM meta_kv WHERE key = 'players_version'")
                 .query(String.class)

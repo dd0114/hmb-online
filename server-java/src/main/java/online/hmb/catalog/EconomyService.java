@@ -34,7 +34,18 @@ public class EconomyService {
     public record Economy(String version, int initialPoints, int initialGems, List<String> starterPack,
                           Gacha gacha, Rewards rewards, JsonNode trade, JsonNode league,
                           LeagueGemReward leagueGemReward,
-                          Growth growth, Star star, Potential potential, Dice dice, Gems gems) {
+                          Growth growth, Star star, Potential potential, Dice dice, Gems gems,
+                          StarterTop starterTop) {
+    }
+
+    /**
+     * economy.v3 `starterTop` 노드 (#209 AC1) — 가입 시 지급하는 <b>최상위 유닛 후보</b>와 장수.
+     *
+     * <p>목록이 코드가 아니라 데이터인 것이 요구의 핵심이다: #207(LEGEND 개편)이 랜딩하면
+     * economy 파일의 id 만 갈아끼우고 서버는 손대지 않는다(#207 랜딩 때 실제로 그렇게 교체했다). 구파일(v2)엔 없어 null 이며,
+     * 그때는 기본팩만 지급된다(부팅·가입 모두 계속 동작 — fail-open, 로그만 남긴다).
+     */
+    public record StarterTop(List<String> pool, int count) {
     }
 
     /**
@@ -180,11 +191,13 @@ public class EconomyService {
             Dice dice = parseDice(root.path("dice"));
             // gems 블록(V2.2 재화 이원화 GM8s) — 구파일엔 없을 수 있어 null(충전 목업 기능 비활성).
             Gems gems = parseGems(root.path("gems"));
+            // starterTop 블록(#209, economy.v3~) — 구파일엔 없어 null(그땐 기본팩만 지급).
+            StarterTop starterTop = parseStarterTop(root.path("starterTop"));
 
             log.info("Loaded economy {} from {} (initialPoints={}, initialGems={}, starterPack={} players, "
                             + "gacha[{}] single/ten={}/{} tenCount={} pity>={}, rewards {}/{}/{} byMode={}, "
                             + "leagueGemReward={}, trade={}, league={}, growth={}, star={}, potential={}, "
-                            + "dice={}, gems={})",
+                            + "dice={}, gems={}, starterTop={})",
                     version, file.getAbsolutePath(), initialPoints, initialGems, starterPack.size(),
                     gacha.currency(), gacha.singleCost(), gacha.tenCost(), gacha.tenCount(),
                     gacha.tenPityMinGrade(),
@@ -193,9 +206,11 @@ public class EconomyService {
                     league != null ? "present" : "absent",
                     growth != null ? "present" : "absent", star != null ? "present" : "absent",
                     potential != null ? "present" : "absent", dice != null ? "present" : "absent",
-                    gems != null ? "present" : "absent");
+                    gems != null ? "present" : "absent",
+                    starterTop != null ? starterTop.pool().size() + " pool/" + starterTop.count() : "absent");
             return Optional.of(new Economy(version, initialPoints, initialGems, List.copyOf(starterPack),
-                    gacha, rewards, trade, league, leagueGemReward, growth, star, potential, dice, gems));
+                    gacha, rewards, trade, league, leagueGemReward, growth, star, potential, dice, gems,
+                    starterTop));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());
@@ -280,6 +295,23 @@ public class EconomyService {
         // #212: normalCost 기본값을 500 → 5000 으로 맞춘다. 구값이 남아 있으면 `dice` 블록은 있는데
         // `normalCost` 만 빠진 파일에서 **10배 싼 다이스가 조용히 팔린다**(경제 구멍).
         return new Dice(d.path("normalCost").asInt(5000), d.path("cashGemCost").asInt(10));
+    }
+
+    /**
+     * `starterTop` 노드 파싱(#209) — 없거나 pool 이 비면 null(= 기본팩만 지급, 부팅은 계속).
+     * count 는 pool 크기를 넘지 못하게 클램프한다(데이터 오타가 가입을 깨지 않도록).
+     */
+    private static StarterTop parseStarterTop(JsonNode s) {
+        if (s == null || s.isMissingNode() || !s.isObject()) {
+            return null;
+        }
+        List<String> pool = new ArrayList<>();
+        s.path("pool").forEach(n -> pool.add(n.asText()));
+        if (pool.isEmpty()) {
+            return null;
+        }
+        int count = Math.max(0, Math.min(s.path("count").asInt(1), pool.size()));
+        return new StarterTop(List.copyOf(pool), count);
     }
 
     /** `gems` 노드 파싱(V2.2 재화 이원화 GM8s) — 없으면 null(충전 목업 비활성). */

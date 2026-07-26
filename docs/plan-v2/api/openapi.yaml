@@ -124,6 +124,43 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/me/starter-grant:
+    get:
+      tags: [me]
+      operationId: getStarterGrant
+      summary: |
+        가입 시 지급된 **최상위 유닛**(#209 AC1/AC3). 후보 목록은 서버 코드가 아니라 data 발행물
+        (economy.starterTop.pool)이고, 실제 지급은 가입 트랜잭션이 starter_grants 에 박제한다 —
+        이 엔드포인트는 그 박제를 읽을 뿐 재계산하지 않는다(목록이 바뀌어도 과거 지급이 안 흔들린다).
+        개편 이전 가입 계정은 granted=false.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StarterGrantResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/me/tutorial-complete:
+    post:
+      tags: [me]
+      operationId: completeTutorial
+      summary: |
+        온보딩 튜토리얼 완료/건너뛰기 저장(#209 AC2). **멱등** — 몇 번을 불러도 덱은 한 번만 생긴다.
+        활성 덱이 없으면 보유 카드로 기본 덱을 지급하고(deckGranted=true), 이미 있으면 절대
+        덮어쓰지 않는다(deckGranted=false). 건너뛰기도 같은 경로다(덱 없이는 경기가 불가능하므로).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorialCompleteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/me/matches:
     get:
       tags: [me]
@@ -1199,6 +1236,13 @@ components:
             P3 §C additive(선택 필드 — required 불변). GET /api/me 응답에만 담긴다.
             web 이 /admin 라우트를 **표시**할지 정하는 힌트일 뿐 권한 판정이 아니다 —
             실제 접근 차단은 서버의 /api/admin/** 게이트가 한다.
+        tutorialDone:
+          type: boolean
+          description: |
+            #209 additive(선택 필드 — required 불변). GET /api/me 응답에만 담긴다.
+            온보딩 튜토리얼 완료 여부의 **서버 SoT**(그 전까지는 클라 localStorage 폴백뿐이었다).
+            덱 지급이 완료 시점에 매달리므로 권위가 서버에 있어야 한다 — 저장은
+            POST /api/me/tutorial-complete 만 한다.
 
     LoginResponse:
       type: object
@@ -1271,6 +1315,32 @@ components:
           $ref: "#/components/schemas/WalletInfo"
         records:
           $ref: "#/components/schemas/MatchRecordSummary"
+
+    StarterGrantResponse:
+      type: object
+      required: [granted, player]
+      description: "#209 — 가입 지급된 최상위 유닛(연출 재료). 지급이 없으면 granted=false, player=null"
+      properties:
+        granted:
+          type: boolean
+        player:
+          oneOf:
+            - $ref: "#/components/schemas/CatalogPlayer"
+            - type: "null"
+
+    TutorialCompleteResponse:
+      type: object
+      required: [tutorialDone, deckGranted, deck]
+      description: "#209 — 튜토리얼 완료 저장 결과. deckGranted = 이번 호출이 실제로 덱을 만들었는가(멱등)"
+      properties:
+        tutorialDone:
+          type: boolean
+        deckGranted:
+          type: boolean
+        deck:
+          oneOf:
+            - $ref: "#/components/schemas/Deck"
+            - type: "null"
 
     MatchListItem:
       type: object

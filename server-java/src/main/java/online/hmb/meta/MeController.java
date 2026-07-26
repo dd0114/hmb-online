@@ -25,11 +25,14 @@ public class MeController {
     private final JdbcClient jdbcClient;
     private final WalletService walletService;
     private final AdminAccess adminAccess;
+    private final OnboardingService onboardingService;
 
-    public MeController(JdbcClient jdbcClient, WalletService walletService, AdminAccess adminAccess) {
+    public MeController(JdbcClient jdbcClient, WalletService walletService, AdminAccess adminAccess,
+                        OnboardingService onboardingService) {
         this.jdbcClient = jdbcClient;
         this.walletService = walletService;
         this.adminAccess = adminAccess;
+        this.onboardingService = onboardingService;
     }
 
     @GetMapping("/api/me")
@@ -55,7 +58,8 @@ public class MeController {
                 .forEach(e -> byResult.put(e.getKey(), e.getValue()));
 
         return new MeResponse(
-                new UserRef(userId, nickname, adminAccess.isAdmin(userId)),
+                new UserRef(userId, nickname, adminAccess.isAdmin(userId),
+                        onboardingService.tutorialDone(userId)),
                 new WalletInfo(points, gems),
                 new Records(
                         byResult.getOrDefault("WIN", 0L),
@@ -90,8 +94,12 @@ public class MeController {
                 .list();
     }
 
-    /** isAdmin 은 P3 §C additive — 기존 필드(id, nickname)는 불변. */
-    public record UserRef(String id, String nickname, boolean isAdmin) {
+    /**
+     * isAdmin 은 P3 §C additive — 기존 필드(id, nickname)는 불변.
+     * tutorialDone 은 #209 additive — web 이 그동안 옵셔널로 읽기만 하던 필드를 실제로 발행한다
+     * (SoT 가 클라 localStorage 에서 서버로 올라왔다. 덱 지급이 이 값에 매달리기 때문).
+     */
+    public record UserRef(String id, String nickname, boolean isAdmin, boolean tutorialDone) {
     }
 
     /** gems 는 V2.2 재화 이원화 additive — 기존 points 는 불변(웹 무회귀). */

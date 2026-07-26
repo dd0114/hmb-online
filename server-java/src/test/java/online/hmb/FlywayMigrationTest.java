@@ -43,7 +43,10 @@ class FlywayMigrationTest {
             // players.active/admin_locked 는 컬럼 추가라 목록 불변.
             "admin_catalog_audit",
             // V16 경제 정돈(1) — #212: 지갑 리스케일/젬 백필을 1회로 가두는 마커(데이터 테이블 아님)
-            "economy_rescale_v16"
+            "economy_rescale_v16",
+            // V17 스타터 개편(1) — #209: 가입 시 지급한 최상위 유닛 박제(연출이 읽는다).
+            //   users.tutorial_done 은 컬럼 추가라 목록 불변
+            "starter_grants"
     );
 
     @Test

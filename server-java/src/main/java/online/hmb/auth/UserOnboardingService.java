@@ -1,8 +1,11 @@
 package online.hmb.auth;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import online.hmb.catalog.EconomyService;
+import online.hmb.common.Hashes;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
 import online.hmb.match.RelationService;
@@ -114,6 +117,9 @@ public class UserOnboardingService {
     /**
      * 스타터 팩 지급 — 신규 유저 생성 트랜잭션의 일부(같은 tx, 실패 시 전체 롤백).
      * 수치·구성은 economy.v1.json에서만 온다(AC-S5). 원장 ref=userId라 재실행돼도 멱등.
+     *
+     * <p>#209: 구성이 "고정 14장"에서 <b>기본팩(SILVER/BRONZE) + 최상위 1장</b>으로 바뀌었다.
+     * 최상위는 {@code economy.starterTop.pool} 에서 {@link #pickStarterTop} 이 시드 결정론으로 고른다.
      */
     private void grantStarterPack(String userId, String now) {
         Optional<EconomyService.Economy> economyOpt = economyService.get();
@@ -124,12 +130,20 @@ public class UserOnboardingService {
         EconomyService.Economy economy = economyOpt.get();
 
         for (String playerId : economy.starterPack()) {
+            grantCard(userId, playerId, now);
+        }
+
+        for (String topPlayerId : pickStarterTop(userId, economy.starterTop())) {
+            grantCard(userId, topPlayerId, now);
+            // 지급 사실을 박제한다 — 후보 목록은 데이터라 나중에 갈아끼워지고(#207), 그러면
+            // 같은 userId 를 재계산해도 과거 지급을 복원할 수 없다(연출이 읽는 값이다).
             jdbcClient.sql("""
-                            INSERT OR IGNORE INTO user_players(user_id, player_id, count, acquired_at)
-                            VALUES (?, ?, 1, ?)
+                            INSERT OR IGNORE INTO starter_grants(user_id, player_id, granted_at)
+                            VALUES (?, ?, ?)
                             """)
-                    .params(userId, playerId, now)
+                    .params(userId, topPlayerId, now)
                     .update();
+            log.info("starter top unit granted: user={} player={}", userId, topPlayerId);
         }
 
         walletService.apply(userId, economy.initialPoints(), LEDGER_REASON_STARTER, userId);
@@ -138,5 +152,41 @@ public class UserOnboardingService {
         if (economy.initialGems() > 0) {
             walletService.applyGems(userId, economy.initialGems(), LEDGER_REASON_INITIAL_GEMS, userId);
         }
+    }
+
+    private void grantCard(String userId, String playerId, String now) {
+        jdbcClient.sql("""
+                        INSERT OR IGNORE INTO user_players(user_id, player_id, count, acquired_at)
+                        VALUES (?, ?, 1, ?)
+                        """)
+                .params(userId, playerId, now)
+                .update();
+    }
+
+    /**
+     * 가입 지급의 최상위 유닛 선택 (#209 AC1) — <b>시드 결정론</b>: 같은 userId 면 언제·몇 번
+     * 돌려도 같은 결과다({@code Math.random}·시계 의존 0, 재현 가능).
+     *
+     * <p>시드는 {@code sha256(userId + ":starterTop")} 의 상위 8 hex → pool 크기로 나눈 나머지.
+     * userId 는 ULID(생성 시각+엔트로피)라 계정마다 다르고, 해시를 한 번 거치므로 ULID 의
+     * 시간 접두사가 만드는 인접 계정 간 쏠림도 흩어진다.
+     *
+     * <p>{@code count > 1} 이면 pool 을 같은 시드로 회전시켜 중복 없이 앞에서부터 뽑는다.
+     * 설정이 없으면(구 economy 파일) 빈 목록 = 기본팩만 지급.
+     */
+    public static List<String> pickStarterTop(String userId, EconomyService.StarterTop starterTop) {
+        if (starterTop == null || starterTop.pool().isEmpty() || starterTop.count() <= 0) {
+            return List.of();
+        }
+        List<String> pool = starterTop.pool();
+        int start = (int) Long.remainderUnsigned(
+                Long.parseUnsignedLong(Hashes.sha256Hex(userId + ":starterTop").substring(0, 8), 16),
+                pool.size());
+        int count = Math.min(starterTop.count(), pool.size());
+        List<String> picked = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            picked.add(pool.get((start + i) % pool.size()));
+        }
+        return List.copyOf(picked);
     }
 }
