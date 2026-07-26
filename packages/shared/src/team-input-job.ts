@@ -127,9 +127,38 @@ export type TeamInputJobContext = z.infer<typeof TeamInputJobContext>;
  *
  * seed 는 통과 필드 — 머지 시 base.seed 를 이 seed(halfSeed)로 주입. base 콘텐츠의 seed 는 무시된다.
  */
+/**
+ * 프롬프트 변경분 1건(선수 지시) — old 없음=신규 추가, new 없음=삭제.
+ * 둘 다 있으면 수정(old→new). 값은 자연어 지시 원문.
+ */
+export const PromptDeltaEntry = z.object({
+  old: z.string().optional(),
+  new: z.string().optional(),
+});
+export type PromptDeltaEntry = z.infer<typeof PromptDeltaEntry>;
+
+/**
+ * PromptDelta — "직전 잡 대비 무엇이 바뀌었나"(#193 W2b-B3).
+ * 있으면 실행기가 **델타 모드** 패치 프롬프트를 조립한다(풀 컨텍스트 나열 대신 변경분만 제시 →
+ * 사고 토큰 = 지연의 지배 변수를 억제, 실측 8~16s). 없으면 기존 풀 컨텍스트 프롬프트(후방 호환).
+ * 팀 지시는 수정만(old/new 둘 다), 선수 지시는 신규/수정/삭제 3형태.
+ */
+export const PromptDelta = z.object({
+  /** 팀 전체 지시 변경(old → new). */
+  team: z.object({ old: z.string(), new: z.string() }).optional(),
+  /** 선수별 지시 변경 {playerId: {old?, new?}}. */
+  players: z.record(z.string(), PromptDeltaEntry).optional(),
+});
+export type PromptDelta = z.infer<typeof PromptDelta>;
+
 export const TeamInputPatchJobContext = TeamInputJobContext.omit({ kind: true }).extend({
   kind: z.literal("team-input-patch"),
   /** A(베이스 생성) 결과 — 이 위에 패치를 정적 머지한다(프리컴퓨트/캐시된 값). */
   base: TacticalInput,
+  /**
+   * 직전 잡 대비 지시 변경분. **additive optional**(구계약 호환 — 없으면 기존 프롬프트 경로).
+   * Java 가 감독시간 편집분에서 채운다(#193 W2b-B3).
+   */
+  promptDelta: PromptDelta.optional(),
 });
 export type TeamInputPatchJobContext = z.infer<typeof TeamInputPatchJobContext>;
