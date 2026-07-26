@@ -90,7 +90,7 @@ class GrowthServiceTest extends MatchTestBase {
     // ── §3 강화 / 한계돌파 ───────────────────────────────────────────────
 
     @Test
-    void enhanceConsumesCopyAndPointsRaisesLevel() {
+    void enhanceSpendsPointsOnlyNoCopies() {
         String userId = onboard("g_enh");
         setCount(userId, "P001", 3);
         long pointsBefore = walletService.points(userId);
@@ -99,8 +99,9 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(res.get("enhanceLevel")).isEqualTo(1);
         assertThat(res.get("promoted")).isEqualTo(false);
         assertThat(((Map<?, ?>) res.get("spent")).get("points")).isEqualTo(200);
+        assertThat(((Map<?, ?>) res.get("spent")).get("copies")).isEqualTo(0); // 강화는 중복 미소모
         assertThat(walletService.points(userId)).isEqualTo(pointsBefore - 200);
-        assertThat(countOf(userId, "P001")).isEqualTo(2); // 중복 1 소모
+        assertThat(countOf(userId, "P001")).isEqualTo(3); // 중복 불변(한계돌파만 소모)
     }
 
     @Test

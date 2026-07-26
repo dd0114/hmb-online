@@ -278,10 +278,7 @@ public class GrowthService {
                         "강화가 상한(" + cap + ")에 도달했습니다 — 한계돌파가 필요합니다",
                         Map.of("enhanceLevel", st.enhanceLevel(), "cap", cap));
             }
-            int owned = ownedCount(userId, playerId);
-            if (owned < ENHANCE_COPIES) {
-                throw insufficient("중복 카드가 부족합니다", "copies", ENHANCE_COPIES, owned);
-            }
+            // 강화는 중복(count)을 쓰지 않는다 — 포인트만. 중복은 한계돌파 전용(우마무스메: 육성=플레이/재화, 중복=천장).
             long points = walletService.points(userId);
             if (points < ec.pointCost()) {
                 throw insufficient("포인트가 부족합니다", "points", ec.pointCost(), points);
@@ -289,18 +286,18 @@ public class GrowthService {
             int newLevel = st.enhanceLevel() + 1;
             // 포인트 차감(원장 멱등: (user, 'enhance', playerId:newLevel) 유니크).
             walletService.apply(userId, -ec.pointCost(), "enhance", playerId + ":e" + newLevel);
-            // 중복 소모 + 강화 레벨 상향(조건부 CAS — count/enhance_level 재확인).
+            // 강화 레벨 상향(조건부 CAS — enhance_level 재확인). count(중복) 불변.
             int updated = jdbcClient.sql("""
                             UPDATE user_players
-                            SET count = count - ?, copies_used = copies_used + ?, enhance_level = enhance_level + 1
-                            WHERE user_id = ? AND player_id = ? AND count >= ? AND enhance_level = ?
+                            SET enhance_level = enhance_level + 1
+                            WHERE user_id = ? AND player_id = ? AND enhance_level = ?
                             """)
-                    .params(ENHANCE_COPIES, ENHANCE_COPIES, userId, playerId, ENHANCE_COPIES, st.enhanceLevel())
+                    .params(userId, playerId, st.enhanceLevel())
                     .update();
             if (updated != 1) {
                 throw new ApiException(HttpStatus.CONFLICT, "ENHANCE_CONFLICT", "강화 처리 경합 — 다시 시도하세요");
             }
-            return enhanceResult(userId, playerId, false, ENHANCE_COPIES, ec.pointCost());
+            return enhanceResult(userId, playerId, false, 0, ec.pointCost());
         });
     }
 

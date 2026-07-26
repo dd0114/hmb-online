@@ -37,7 +37,7 @@ class GrowthApiTest extends MatchTestBase {
 
     @SuppressWarnings("unchecked")
     @Test
-    void enhanceHappyPathThenInsufficient() {
+    void enhancePointsOnlyDoesNotConsumeCopies() {
         String token = login("api_enh");
         String userId = userIdOf("api_enh");
         setCount(userId, "P001", 1); // 스타터 기본 1
@@ -45,10 +45,15 @@ class GrowthApiTest extends MatchTestBase {
         ResponseEntity<Map> ok = authPost("/api/growth/enhance", token, Map.of("playerId", "P001"), Map.class);
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(ok.getBody().get("enhanceLevel")).isEqualTo(1);
+        assertThat(((Map<?, ?>) ok.getBody().get("spent")).get("copies")).isEqualTo(0);
 
-        // 중복 소진 → 두 번째 강화는 4xx.
-        ResponseEntity<Map> fail = authPost("/api/growth/enhance", token, Map.of("playerId", "P001"), Map.class);
-        assertThat(fail.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        // 강화는 중복 미소모 → 중복 1장만 있어도 두 번째 강화 성공, count 불변.
+        ResponseEntity<Map> ok2 = authPost("/api/growth/enhance", token, Map.of("playerId", "P001"), Map.class);
+        assertThat(ok2.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(ok2.getBody().get("enhanceLevel")).isEqualTo(2);
+        Integer count = jdbcClient.sql("SELECT count FROM user_players WHERE user_id=? AND player_id=?")
+                .params(userId, "P001").query(Integer.class).single();
+        assertThat(count).isEqualTo(1);
     }
 
     @SuppressWarnings("unchecked")
