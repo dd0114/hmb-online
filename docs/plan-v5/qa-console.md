@@ -29,14 +29,20 @@ hero 는 탭을 눌러 **① 뭘 봐야 하는지 읽고 ② 그 시점의 게�
 3. **컨펌 왕복이 tmux 창 순회다.** 세션 창을 찾아가 타이핑해야 하고, 그 피드백은 대화에만 남아 **세션 재시작 시 유실**된다.
 4. **세션 쪽 폴링 수단이 없다.** 지금은 hero 가 창에 와서 말해줄 때까지 세션이 그냥 멈춰 있다.
 
-체크아웃이 **16개로 물리적으로 분리**돼 있다는 점이 설계를 지배한다(git worktree 아님 — 각각 독립 클론):
+작업 디렉토리가 **16개로 분리**돼 있다는 점이 설계를 지배한다. 정확히는 **하나의 리포를 공유하는
+git worktree** 들이다(`git worktree list` 로 확인):
 
 ```
-/Users/peter.park/spider6/hmb-online   bug/176
-/Users/peter.park/spider9/hmb-online   bug/181
-/Users/peter.park/spider12/hmb-online  bug/182
-/Users/peter.park/spider16/hmb-online  qa-console/base   ← 콘솔 호스트
+/Users/peter.park/spider2/hmb-online   main             ← main 은 여기 체크아웃돼 있다
+/Users/peter.park/spider12/hmb-online  match-start/base
+/Users/peter.park/spider15/hmb-online  card-art/base
+/Users/peter.park/spider16/hmb-online  qa-console/base  ← 콘솔 호스트
 ```
+
+worktree 라는 사실이 제약을 **더 세게** 만든다:
+- 각 worktree 는 자기 작업 디렉토리를 가지므로 리포에 트래킹된 `.qa-console/` 는 **여전히 서로 안 보인다**.
+- 게다가 **같은 브랜치를 두 worktree 가 동시에 체크아웃할 수 없다** — "레지스트리 브랜치"를 두면 그건 어차피
+  한 곳에만 존재한다(= 고정 경로 하나). 그 한 곳을 리포·인덱스까지 공유시킬 이유는 없다.
 
 → **각 체크아웃의 `.qa-console/` 는 서로 안 보인다.** 레지스트리는 **모든 세션이 같은 파일을 보는 한 경로**여야 하고,
 동시에 **git 밑**이어야 한다(hero 요구: 히스토리 · 환경 이동). 그 둘을 같이 만족시키는 형태 = §3.1.
@@ -83,7 +89,7 @@ git 브랜치는 그걸 구현하는 **수단 중 하나**이고 필수가 아�
 
 그래서 레지스트리에 필요한 조건은 딱 셋이다.
 
-1. **한 경로** — 16 체크아웃이 같은 파일을 본다(라이브 전송 = 파일시스템, git 아님)
+1. **한 경로** — 16 worktree 가 같은 파일을 본다(라이브 전송 = 파일시스템, git 아님)
 2. **git 기록** — 히스토리 · 다른 환경 복원
 3. **main 의 브랜치 전환에 휩쓸리지 않음** — 워킹트리 안에 있으면 `git checkout` 한 번에 살아있는 탭·피드백이 디스크에서 사라진다
 
