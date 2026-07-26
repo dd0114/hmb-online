@@ -239,6 +239,44 @@ export interface EngineConfig {
     };
     /** 프리킥(파울/오프사이드) 준비 정지 틱. */
     freeKickStoppageTicks: number;
+
+    /**
+     * 데드볼(세트피스) 정지 중 상대 접근 금지 — 실제 축구 규칙(#176).
+     * IFAB: Law 8 킥오프·13 프리킥·14 페널티·17 코너 = 9.15m, Law 15 스로인 = 2m,
+     * Law 16 골킥 = 차는 팀 페널티에어리어 밖. 상대는 밀려나지 않고 **걸어서** 물러난다(#59 철학).
+     * 거리는 규칙 상수라 사실상 고정이지만, 밸런스가 흔들릴 때 되돌리는 대신 **여기를 조정**한다.
+     */
+    deadBall: {
+      /** 프리킥/코너/킥오프/페널티에서 상대가 스팟에서 떨어져야 할 거리(m). Law 상 9.15. */
+      opponentDistanceM: number;
+      /** 스로인에서 상대가 떨어져야 할 거리(m). Law 상 2. */
+      throwInDistanceM: number;
+      /** 골킥·페널티·자기박스 프리킥에서 상대를 페널티박스 밖으로 물릴지(Law 16/14/13). */
+      boxClear: boolean;
+      /** 금지구역 경계 바깥 여유(m). 고정소수 반올림으로 경계에 걸치지 않게 하는 마진. */
+      marginM: number;
+      /**
+       * 정지 중 규칙기반 배치(#185/#174): 기본 배치를 재시작 스팟 쪽으로 당기는 비율(x/y, 0..1).
+       * 정지 구간에서 평소 오프더볼 로직(자기 위치 피드백)을 대체해 제자리 왕복·단독 질주를
+       * 원인 단계에서 없앤다. 0 이면 정지 중 전원이 포메이션 기본 배치를 지킨다.
+       */
+      shapeReachX: number;
+      shapeReachY: number;
+      /**
+       * 정지 중 taker 를 뺀 선수들의 이동 속도 상한(m/tick, #174). 데드볼엔 뛰지 않고 걸어서
+       * 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만 풀스피드로 가로지르면 "공보다 선수가
+       * 빠른" 그림이 된다. taker 는 제외한다: `walkStoppage`(#59)가 taker 의 **평소 속도**로
+       * 도달 틱을 산정하므로 taker 를 캡하면 정지가 끝나도 공에 못 닿는다.
+       */
+      walkSpeedM: number;
+      /**
+       * 정지 중 대기 동작(#174 수용기준: "동상으로 보이지 않을 것"). 규칙기반 배치는 목표가 고정이라
+       * 전원이 수렴하면 완전히 굳는다 → 시드 노이즈로 배치에 느린 오프셋을 준다.
+       * 주기(틱)를 충분히 길게 잡아 **매 틱 방향 반전(#185)이 되지 않게** 한다(주기 1틱이면 그게 곧 진동).
+       */
+      idleAmpM: number;
+      idlePeriodTicks: number;
+    };
   };
 
   /**
@@ -521,6 +559,7 @@ export const defaultEngineConfig: EngineConfig = {
     // #147 W3: 시야 계층(vision)이 수비 효율을 바꿔 슛이 14.0→14.7 로 올랐다 → 벤치(12-14) 복귀용 재튜닝.
     // #181: 공이 **손 닿는 사람에게만** 가고 못 닿으면 낙하점에 멈추므로, 공이 무소유로 있는 틱이
     // 늘어 공격 볼륨(슛)이 줄었다 → 밴드(12-14) 복귀용 재튜닝 0.30→0.55(실측 슛/팀 13.68).
+    // #176 리베이스: 데드볼 규칙 위에서 재도출한다(아래 재스윕 결과로 확정).
     shoot: 0.55,
     hold: 0.42,
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
@@ -628,6 +667,17 @@ export const defaultEngineConfig: EngineConfig = {
       trapCallMult: 1.8,
     },
     freeKickStoppageTicks: 8,
+    deadBall: {
+      opponentDistanceM: 9.15,
+      throwInDistanceM: 2,
+      boxClear: true,
+      marginM: 0.05,
+      shapeReachX: 0.35,
+      shapeReachY: 0.25,
+      walkSpeedM: 2.5,
+      idleAmpM: 0.8,
+      idlePeriodTicks: 6,
+    },
   },
   variety: {
     // 리얼 default: 벤치마크(슛 12-16/팀, 코너 ~5/팀 등)를 유지하는 모던한 변주.

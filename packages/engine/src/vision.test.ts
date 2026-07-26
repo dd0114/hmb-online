@@ -194,6 +194,11 @@ describe("롤백 스위치 (#147 W3)", () => {
   //    "main 비트동등 복원"이 아니다.
   const ROLLBACK_HASH_MARKED = "fb490748";
 
+  // #176: 데드볼 접근 금지 규칙은 **롤백 스위치 없이 무조건 적용**(hero 결정)이라 vision-off 출력도
+  // 함께 움직인다. 이 상수의 목적은 "레거시와 같다"가 아니라 **"롤백 경로가 조용히 드리프트하지
+  // 않는다"** 이므로(#181 재정의) 규칙 도입으로 값이 바뀌는 것은 정상이다. 규칙이 롤백 대상이
+  // 아니라는 **의미**는 아래 구조 계약이 따로 지킨다(해시만으론 못 잡는다).
+
   it("vision.enabled=true 는 실제로 결과를 바꾼다(계층이 죽어있지 않다)", () => {
     expect(lastHash(run(cfg))).not.toBe(lastHash(run(off)));
   });
@@ -203,6 +208,47 @@ describe("롤백 스위치 (#147 W3)", () => {
     // 조용히 어긋나도 아무도 못 잡는다(검증 세션 minor-5).
     expect(lastHash(run(off))).toBe(ROLLBACK_HASH);
     expect(lastHash(run(off, "A9"))).toBe(ROLLBACK_HASH_MARKED);
+  /**
+   * ⚠️ 구 계약: "롤백(enabled=false)은 **레거시 0.16.0 과 bit-identical**"(골든 해시 a3277aa1 /
+   * 7a9e5fe6). **#176 에서 의도적으로 폐기**했다 — 데드볼 접근 금지 규칙(Law 8/13/14/15/16/17)은
+   * hero 결정으로 **롤백 스위치 없이 무조건 적용**되므로, 시야를 꺼도 0.16.0 과 같아질 수 없다.
+   *
+   * 해시를 현재 트리 출력으로 덮어쓰는 것은 하지 않았다(자기 출력 베끼기 = 가드 무력화).
+   * 대신 그 해시가 지키려던 성질 — "롤백 스위치는 **시야 계층만** 끈다" — 를 구조로 단언한다:
+   * 롤백해도 데드볼 규칙은 살아 있어야 한다(규칙은 롤백 대상이 아니다).
+   */
+  it("롤백(enabled=false)이 데드볼 규칙까지 끄지는 않는다 — 규칙은 롤백 대상이 아님(#176)", () => {
+    const log = run(off);
+    const byTick = new Map(log.tickSnapshots.map((s) => [s.tick, s]));
+    let checked = 0;
+    const viol: string[] = [];
+    for (const e of log.events) {
+      if (e.type !== "kickoff" || e.detail !== "goal_kick" || !e.team) continue;
+      const s0 = byTick.get(e.tick);
+      if (!s0) continue;
+      const gx = e.team === "home" ? 0 : cfg.pitch.width;
+      const oppPrefix = e.team === "home" ? "A" : "H";
+      // 골킥 선언 후 정지가 끝날 때까지(공이 스팟을 떠나기 전) 상대는 차는 팀 박스 밖이어야 한다.
+      let last = e.tick;
+      for (let t = e.tick + 1; t <= e.tick + 45; t++) {
+        const s = byTick.get(t);
+        if (!s || s.ballOwner == null) break;
+        if (Math.hypot(s.ball.x - s0.ball.x, s.ball.y - s0.ball.y) > 0.3) break;
+        last = t;
+      }
+      const sEnd = byTick.get(last);
+      if (!sEnd || last === e.tick) continue;
+      checked++;
+      for (const p of sEnd.players) {
+        if (!p.playerId.startsWith(oppPrefix) || p.playerId === `${oppPrefix}0`) continue;
+        const inBox =
+          Math.abs(p.pos.x - gx) < cfg.rules.penalty.boxDepthM - 0.05 &&
+          Math.abs(p.pos.y - cfg.pitch.height / 2) < cfg.rules.penalty.boxHalfWidthM - 0.05;
+        if (inBox) viol.push(`t${last} ${p.playerId} 박스 안`);
+      }
+    }
+    expect(checked).toBeGreaterThan(5);
+    expect(viol, viol.join(" | ")).toEqual([]);
   });
 
   it("롤백(enabled=false)에서도 markTarget 은 살아있다 — 무음 no-op 이 되면 안 된다", () => {

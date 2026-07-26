@@ -54,7 +54,10 @@ function assignWalkingTaker(state: SimState, taker: SimPlayer, spotX: number, sp
 function walkStoppage(config: EngineConfig, taker: SimPlayer, dist: number, base: number): number {
   const { minPerTick, maxPerTick, fatigueFloor } = config.speed;
   const paceFrac = taker.attrs.pace / 100;
-  const perTickM = (minPerTick + (maxPerTick - minPerTick) * paceFrac) * (1 - (1 - fatigueFloor) * taker.fatigue);
+  const raw = (minPerTick + (maxPerTick - minPerTick) * paceFrac) * (1 - (1 - fatigueFloor) * taker.fatigue);
+  // #174: 정지 중엔 taker 도 걷기 속도 상한을 받는다(match.ts 이동 루프와 **동일한 상한**).
+  // 여기서 캡을 안 걸면 정지 틱을 평소 속도로 산정해 taker 가 도달하기 전에 재시작돼 #59 가 깨진다.
+  const perTickM = Math.min(raw, config.rules.deadBall.walkSpeedM);
   const stepFx = toFixed(perTickM, config.fixedScale);
   if (stepFx <= 0) return base;
   const ticks = Math.ceil(dist / stepFx) + 2; // +2 = 도착 후 잡는(글루) 프레임 버퍼.
