@@ -9,6 +9,7 @@ import { LobbyPage } from "./lobby/LobbyPage";
 import { DeckPage } from "./deck/DeckPage";
 import { ShopPage } from "./shop/ShopPage";
 import { CodexPage } from "./codex/CodexPage";
+import { GrowthHubPage } from "./growth/GrowthHubPage";
 import { TradePage } from "./trade/TradePage";
 import { LogsPage } from "./logs/LogsPage";
 import { LeaguePage } from "./league/LeaguePage";
@@ -72,6 +73,14 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <ShopPage />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/growth"
+          element={
+            <RequireAuth>
+              <GrowthHubPage />
             </RequireAuth>
           }
         />

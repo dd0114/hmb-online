@@ -41,7 +41,7 @@ export function LobbyPage() {
         )}
       </div>
       <div className={styles.headerRight}>
-        {me && <PointsBadge points={me.wallet.points} />}
+        {me && <PointsBadge points={me.wallet.points} gems={me.wallet.gems ?? 0} />}
         <button type="button" className={styles.logout} onClick={logout}>
           로그아웃
         </button>

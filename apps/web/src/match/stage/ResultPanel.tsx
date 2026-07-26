@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
 import { deriveTeamStats, TEAM_STAT_LABELS, type MatchEventLike } from "../match-logic";
+import { GrowthReportSection } from "../GrowthReportSection";
 import styles from "../ResultPage.module.css";
 
 const RESULT_LABELS: Record<string, string> = {
@@ -87,6 +88,8 @@ export function ResultPanel({ match, homeName, awayName }: ResultPanelProps) {
           </tbody>
         </table>
       </section>
+
+      <GrowthReportSection matchId={match.id} />
 
       <button
         type="button"

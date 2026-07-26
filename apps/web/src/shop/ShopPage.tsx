@@ -7,6 +7,7 @@ import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { GachaReveal } from "./GachaReveal";
 import { TopupPanel } from "./TopupPanel";
+import { DicePanel } from "./DicePanel";
 import { gachaButtonState } from "./shop-logic";
 import type { ShopTab } from "./topup-logic";
 import styles from "./ShopPage.module.css";
@@ -28,6 +29,7 @@ export function ShopPage() {
   const [tab, setTab] = useState<ShopTab>("gacha");
 
   const points = me?.wallet.points ?? 0;
+  const gems = me?.wallet.gems ?? 0;
 
   function pull(kind: "single" | "ten") {
     setError(null);
@@ -54,7 +56,7 @@ export function ShopPage() {
         ← 로비
       </button>
       <h1 className={styles.pageTitle}>상점</h1>
-      {me && <PointsBadge points={points} />}
+      {me && <PointsBadge points={points} gems={gems} />}
     </div>
   );
 
@@ -82,6 +84,17 @@ export function ShopPage() {
           type="button"
           role="tab"
           className={styles.tab}
+          data-testid="shop-tab-dice"
+          aria-selected={tab === "dice"}
+          data-active={tab === "dice"}
+          onClick={() => setTab("dice")}
+        >
+          다이스
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={styles.tab}
           data-testid="shop-tab-topup"
           aria-selected={tab === "topup"}
           data-active={tab === "topup"}
@@ -93,6 +106,8 @@ export function ShopPage() {
 
       {tab === "topup" ? (
         <TopupPanel />
+      ) : tab === "dice" ? (
+        <DicePanel points={points} gems={gems} />
       ) : (
         <>
       <div className={styles.pulls}>

@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
  * P3 §C additive: user.isAdmin — web 이 /admin 라우트를 **표시**할지 정하는 힌트다.
  * 권한 판정이 아니다(실제 접근 차단은 서버의 AdminInterceptor 가 한다) — 이 값을 클라이언트가
  * 조작해도 admin API 는 열리지 않는다.
+ * V2.2 재화 이원화 additive: wallet.gems — 기존 wallet.points 는 불변.
  * GET /api/me/matches — 전적 리스트(최근 20).
  * 전적은 별도 테이블 없이 matches에서 COUNT by result로 파생(ERD 설계 노트).
  */
@@ -40,6 +41,7 @@ public class MeController {
                 .orElseThrow(() -> ApiException.notFound("유저를 찾을 수 없습니다"));
 
         long points = walletService.points(userId);
+        long gems = walletService.gems(userId);
 
         Map<String, Long> byResult = new java.util.HashMap<>();
         jdbcClient.sql("""
@@ -54,7 +56,7 @@ public class MeController {
 
         return new MeResponse(
                 new UserRef(userId, nickname, adminAccess.isAdmin(userId)),
-                new WalletInfo(points),
+                new WalletInfo(points, gems),
                 new Records(
                         byResult.getOrDefault("WIN", 0L),
                         byResult.getOrDefault("DRAW", 0L),
@@ -92,7 +94,8 @@ public class MeController {
     public record UserRef(String id, String nickname, boolean isAdmin) {
     }
 
-    public record WalletInfo(long points) {
+    /** gems 는 V2.2 재화 이원화 additive — 기존 points 는 불변(웹 무회귀). */
+    public record WalletInfo(long points, long gems) {
     }
 
     public record Records(long wins, long draws, long losses) {

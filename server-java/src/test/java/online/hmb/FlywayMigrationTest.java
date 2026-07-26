@@ -32,7 +32,13 @@ class FlywayMigrationTest {
             "team_presets", "player_relations", "team_morale",
             "trade_slots", "trade_log", "league_seasons", "league_fixtures",
             // V5 p3 admin (1) — V4 는 컬럼 추가만이라 테이블 목록 불변
-            "admin_audit"
+            "admin_audit",
+            // V8 growth (1) — #179 성장 정산 멱등. V6/V7 은 컬럼·인덱스 추가만이라 테이블 목록 불변
+            "growth_applied",
+            // V9 메이플 피벗(3) — #179 V2: 잠재능력·다이스 인벤·다이스 롤 감사로그
+            "card_potentials", "user_dice", "dice_rolls",
+            // V10 재화 이원화(1) — V2.2: 젬 원장(point_ledger 동형). wallets.gems 는 컬럼 추가라 목록 불변
+            "gem_ledger"
     );
 
     @Test

@@ -26,7 +26,9 @@ describe("activeNavKey", () => {
     expect(activeNavKey("/trade")).toBe("trade"); // W3 활성
     expect(activeNavKey("/logs")).toBe("logs"); // W4 활성
     expect(activeNavKey("/deck/anything")).toBe("deck");
-    expect(activeNavKey("/shop")).toBeNull(); // 상점은 nav 항목 아님
+    expect(activeNavKey("/shop")).toBe("shop"); // 상점 탭 (#179 성장 시스템, hero 확정)
+    expect(activeNavKey("/growth")).toBe("growth"); // 육성 탭 (#179)
+    expect(activeNavKey("/nowhere")).toBeNull();
   });
 });
 
@@ -37,9 +39,9 @@ describe("AppNav render (LLD §7)", () => {
     expect(screen.getByTestId("nav-sidebar")).toBeTruthy();
   });
 
-  it("renders all 5 items (홈/덱/트레이드/로그/도감) in each nav", () => {
+  it("renders all 7 items (홈/덱/육성/상점/트레이드/로그/도감) in each nav", () => {
     renderNav("/lobby");
-    expect(NAV_ITEMS.map((i) => i.label)).toEqual(["홈", "덱", "트레이드", "로그", "도감"]);
+    expect(NAV_ITEMS.map((i) => i.label)).toEqual(["홈", "덱", "육성", "상점", "트레이드", "로그", "도감"]);
     for (const nav of [screen.getByTestId("nav-bottom"), screen.getByTestId("nav-sidebar")]) {
       const scope = within(nav);
       for (const item of NAV_ITEMS) {
