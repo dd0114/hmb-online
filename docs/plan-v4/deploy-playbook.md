@@ -174,7 +174,64 @@ cd infra && docker compose down -v && docker compose up -d
 
 ---
 
-## 8. 오픈 GO 전 잔여 (인프라 밖)
+## 8. DB 백업·복원 (마이그레이션 있는 배포의 선행조건)
+
+> **언제 필수인가**: 새 Flyway 마이그레이션이 껴 있는 배포. 특히 **`executeInTransaction=false` 짝
+> 파일(`V*.sql.conf`)이 있는 마이그레이션은 원자적이지 않다** — 중간에 프로세스가 죽으면 테이블이
+> 사라진 DB + Flyway failed 로 남아 수동 복구가 필요하다(V8 = `docs/plan-v5/LLD-e2-flow-clock.md` §8).
+> 배포 직전에 뜬 백업 없이 그런 배포를 진행하지 않는다.
+
+```bash
+# 1) 백업 (라이브 무중단 — sqlite 온라인 .backup, hmb-java 무접촉)
+TS=$(date -u +%Y%m%dT%H%M%SZ)
+mkdir -p ~/.local/state/hmb/db-backups
+docker run --rm -v hmb-p3-db:/data:ro -v "$HOME/.local/state/hmb/db-backups:/backup" alpine:3.20 \
+  sh -c "apk add --no-cache sqlite >/dev/null && sqlite3 'file:/data/hmb.db?mode=ro' '.backup /backup/pre-<태그>-$TS.db'"
+
+# 2) 검증 (여기까지 통과해야 백업으로 인정)
+B=~/.local/state/hmb/db-backups/pre-<태그>-$TS.db
+sqlite3 "$B" 'PRAGMA integrity_check;'                 # → ok
+sqlite3 "$B" 'select max(version) from flyway_schema_history;'
+shasum -a 256 "$B"                                     # 기록용 — deploy-log 에 적는다
+
+# 3) 롤백용 현재 이미지 고정 (태그가 다른 세션 빌드로 덮이는 것 대비)
+docker tag "$(docker inspect hmb-java   --format '{{.Image}}')" hmb/server-java:prev-live
+docker tag "$(docker inspect hmb-runner --format '{{.Image}}')" hmb/servants:prev-live
+```
+
+**리허설(권장)** — 라이브를 건드리지 않고 마이그레이션을 미리 돌려본다:
+```bash
+docker volume create hmb-rehearsal-db
+docker run --rm -v hmb-rehearsal-db:/data -v "$HOME/.local/state/hmb/db-backups:/backup:ro" alpine:3.20 \
+  sh -c "cp /backup/<백업파일>.db /data/hmb.db && chown 10001:999 /data/hmb.db"
+docker build -f server-java/Dockerfile -t hmb/server-java:rc .          # 리포 루트에서
+docker run -d --name hmb-java-rehearsal -p 18081:8080 -v hmb-rehearsal-db:/var/lib/hmb \
+  -e HMB_DB_PATH=/var/lib/hmb/hmb.db -e HMB_SERVANT_INTERNALTOKEN=rehearsal \
+  -e HMB_SERVANT_ENGINERUNNERURL=http://127.0.0.1:9999 hmb/server-java:rc
+docker logs hmb-java-rehearsal 2>&1 | grep -E "Migrating|Successfully applied|ERROR"
+# 무손실 확인: PRAGMA foreign_key_check(위반 0) · 자식행 수 동일 · 기존 유저 로그인 isNew:false · 레거시 매치 판독 200
+docker rm -f hmb-java-rehearsal && docker volume rm hmb-rehearsal-db
+```
+
+**복원(배포 실패 시)**:
+```bash
+cd infra && docker compose stop java
+docker run --rm -v hmb-p3-db:/data -v "$HOME/.local/state/hmb/db-backups:/backup:ro" alpine:3.20 \
+  sh -c "rm -f /data/hmb.db /data/hmb.db-wal /data/hmb.db-shm && cp /backup/<백업파일>.db /data/hmb.db && chown 10001:999 /data/hmb.db"
+docker tag hmb/server-java:prev-live hmb/server-java:p3   # 이미지도 함께 되돌린다
+docker tag hmb/servants:prev-live   hmb/servants:p3
+docker compose up -d java runner
+bash infra/deploy-pages.sh <터널URL>                       # 옛 코드로 web 재배포(백엔드와 짝을 맞춘다)
+```
+
+⚠️ **이미지 태그는 머신 전역 공유다**: `hmb/server-java:p3`·`hmb/servants:p3` 를 다른 워크트리의
+스택(예: `hmb-growth`)도 쓴다. 내가 빌드하면 그쪽이 다음 recreate 때 내 빌드를 집어가고, 반대도
+성립한다. **"지금 라이브에 뜬 것"의 SoT 는 태그가 아니라 `docker inspect <컨테이너> --format '{{.Image}}'`
+digest** 다 — deploy-log 에는 그 digest 를 적는다.
+
+---
+
+## 9. 오픈 GO 전 잔여 (인프라 밖)
 
 - **B3 고지**: 로그인 화면/공지에 "평문 목업 — 실제 비번 입력 금지"
 - 도메인별 점검(`open-checklist.md` §1~§9): 계정 무회귀·모바일 실기기·법적 판타지 전환
