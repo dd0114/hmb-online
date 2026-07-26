@@ -63,7 +63,7 @@ ovr              = Σ(유효_i × posWeight_i) / Σ posWeight_i
 
 ## 3. 강화 (가챠·과금 트랙) — API
 
-- `POST /api/growth/enhance` `{playerId}` → 동일선수 중복 1 + 포인트 소모 → `enhance_level++`. `enhance_level`이 `maxEnhance`(5) 도달 시 추가 강화는 한계돌파 필요.
+- `POST /api/growth/enhance` `{playerId}` → **포인트만 소모(중복 미소모)** → `enhance_level++`. `enhance_level`이 `maxEnhance`(5) 도달 시 추가 강화는 한계돌파 필요. (hero 2026-07-26: 중복 의존도 완화 — 우마무스메 정합. 육성=재화/플레이, 중복=천장 전용.)
 - `POST /api/growth/limitbreak` `{playerId}` → 동일선수 중복 `lbCopies`(3)장 소모 → `limit_break++` → `effectiveGrade`↑(등급 승급) + `enhance_level` 상한 재개방(→10). 원장 `point_ledger`/`copies_used` 기록, 멱등.
 - 결정론: 계수만, RNG 없음. 재료 부족 시 4xx.
 
