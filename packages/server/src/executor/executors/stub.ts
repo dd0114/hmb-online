@@ -17,18 +17,60 @@ import type { ExecutorJob } from "../kinds.js";
 export function stubExecutor(): AiExecutor {
   return {
     name: "stub",
-    execute(job: ExecutorJob): Promise<unknown> {
-      if (job.kind === "team-input") return Promise.resolve(stubTeamInput(TeamInputJobContext.parse(job.context)));
-      if (job.kind === "team-input-patch") return Promise.resolve(stubPatch(TeamInputPatchJobContext.parse(job.context)));
+    execute(job: ExecutorJob, attempt?: { feedback: string }): Promise<unknown> {
+      const feedback = attempt?.feedback ?? "";
+      if (job.kind === "team-input")
+        return Promise.resolve(stubTeamInput(TeamInputJobContext.parse(job.context), feedback));
+      if (job.kind === "team-input-patch")
+        return Promise.resolve(stubPatch(TeamInputPatchJobContext.parse(job.context), feedback));
       throw new Error(`stub: 미지원 kind ${String(job.kind)}`);
     },
   };
 }
 
 const clampM = (v: number): number => Math.max(-1, Math.min(1, v));
+const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+
+/**
+ * 게이트 피드백(재시도 사유) 해석 — 라이브 claude 는 자연어로 읽고 고치지만, 스텁은 게이트 메시지의
+ * 키워드로 <b>결정론</b> 흉내를 낸다(#193 검증 M-2). 피드백을 무시하면 2회차도 같은 산출이라
+ * ExecutorLoop 의 1회 재시도가 구조적으로 무의미해진다(오프라인 E2E 가 재시도 경로를 못 태운다).
+ *
+ * 인덱스 기반만 사용 — Math.random/Date 금지(결정론, 루트 §2-5).
+ */
+interface GateFix {
+  markTarget: boolean;
+  offsideTrap: boolean;
+  spread: boolean;
+}
+
+function readFeedback(feedback: string): GateFix {
+  return {
+    markTarget: /markTarget/i.test(feedback),
+    offsideTrap: /오프사이드트랩|offsideTrap|오프사이드/i.test(feedback),
+    spread: /겹침|겹|배치 파손/.test(feedback),
+  };
+}
+
+/** 마킹 대상 폴백 — 지시가 지목한 상대(게이트와 같은 판정), 없으면 로스터 첫 상대. */
+function fallbackMarkTarget(
+  texts: readonly string[],
+  opponentRoster: readonly { playerId: string; name: string }[],
+): string | undefined {
+  const designated = opponentRoster.find((o) =>
+    texts.some((t) => t.includes(o.name) || new RegExp(`\\b${o.playerId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t)),
+  );
+  return (designated ?? opponentRoster[0])?.playerId;
+}
+
+/** 수비 자원 판별 — role 또는 position 문자열(두 계약 모두 커버). */
+const isDefenderRole = (role: string): boolean => /(LB|CB|RB|DM|CDM|DF)/i.test(role);
+
+/** 밀집 해소용 결정론 오프셋 — 인덱스마다 다른 y 를 준다(같은 입력 → 같은 값). */
+const spreadY = (y: number, index: number): number => Number(clamp01(y + (index % 11) * 0.02 + 0.01).toFixed(3));
 
 /** 'team-input' — 시드 결정론 베이스(4-3-3) + teamPrompt/개인지시/마킹/관계 키워드 반영(기존 W1 의미론). */
-function stubTeamInput(ctx: TeamInputJobContext): TacticalInput {
+function stubTeamInput(ctx: TeamInputJobContext, feedback = ""): TacticalInput {
   const t = makeTacticalInput("S", ctx.seed);
   const roster = [...ctx.roster].sort((a, b) => a.slotIndex - b.slotIndex);
   t.players.forEach((p, i) => {
@@ -112,6 +154,20 @@ function stubTeamInput(ctx: TeamInputJobContext): TacticalInput {
   if (ctx.teamMorale && ctx.teamMorale.streak < 0) {
     for (const p of t.players) p.mentalModifier = clampM(p.mentalModifier - 0.1);
   }
+
+  // ── 재시도: 게이트가 지적한 것만 고친다(#193 검증 M-2).
+  const fix = readFeedback(feedback);
+  if (fix.offsideTrap) t.team.offsideTrap = false;
+  if (fix.markTarget && opp.length > 0 && !t.players.some((p) => p.markTarget)) {
+    const target = fallbackMarkTarget([ctx.teamPrompt, ...Object.values(ctx.playerPrompts)], opp);
+    const defender = t.players.find((p) => isDefenderRole(p.role)) ?? t.players[1];
+    if (target && defender) defender.markTarget = target;
+  }
+  if (fix.spread) {
+    t.players.forEach((p, i) => {
+      p.basePosition.y = spreadY(p.basePosition.y, i);
+    });
+  }
   return t;
 }
 
@@ -119,7 +175,7 @@ function stubTeamInput(ctx: TeamInputJobContext): TacticalInput {
  * 'team-input-patch' — 벌크 패치를 키워드 결정론으로 산출(라이브 claude 는 프롬프트로 해석).
  * 게이트가 applyPatch(base) 로 최종 TacticalInput 을 만든다 → 스텁은 **패치만** 낸다(팀/그룹/개별/마킹 브랜치 재현).
  */
-function stubPatch(ctx: TeamInputPatchJobContext): TacticalPatch {
+function stubPatch(ctx: TeamInputPatchJobContext, feedback = ""): TacticalPatch {
   const patch: TacticalPatch = {};
   // #193 델타 모드: 변경분이 있으면 **변경 후(new) 지시**만 본다(옛 지시 무시, 삭제된 지시는 미반영).
   // 라이브 claude 는 델타 프롬프트로 같은 의미를 해석 — 스텁은 오프라인 E2E 배선용 결정론 흉내.
@@ -206,6 +262,25 @@ function stubPatch(ctx: TeamInputPatchJobContext): TacticalPatch {
       if (r.trust < 40) mm = mm * 0.5;
       byPlayer[p.playerId] = { ...byPlayer[p.playerId], mentalModifier: clampM(mm) };
     }
+  }
+
+  // ── 재시도: 게이트가 지적한 것만 고친다(#193 검증 M-2). 패치는 "변경분만" 계약이라 최소 필드만 얹는다.
+  const fix = readFeedback(feedback);
+  if (fix.offsideTrap) patch.team = { ...patch.team, offsideTrap: false };
+  if (fix.markTarget && opp.length > 0 && Object.keys(patch.markTargets ?? {}).length === 0) {
+    const target = fallbackMarkTarget([d, ...Object.values(playerPrompts)], opp);
+    const defender = ctx.base.players.find((p) => isDefenderRole(p.role)) ?? ctx.base.players[1];
+    if (target && defender) patch.markTargets = { [defender.playerId]: target };
+  }
+  if (fix.spread) {
+    const spread: Record<string, { basePosition: { y: number } }> = {};
+    ctx.base.players.forEach((p, i) => {
+      spread[p.playerId] = { basePosition: { y: spreadY(p.basePosition.y, i) } };
+    });
+    patch.byPlayer = Object.fromEntries(
+      Object.entries(spread).map(([pid, v]) => [pid, { ...byPlayer[pid], ...v }]),
+    );
+    return patch;
   }
 
   if (Object.keys(byPlayer).length > 0) patch.byPlayer = byPlayer;

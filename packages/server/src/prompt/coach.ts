@@ -381,7 +381,13 @@ export function buildDeltaPatchPrompt(ctx: TeamInputPatchJobContext, feedback?: 
 
   parts.push("", "다음 지시가 변경되었다(변경된 항목만 나열):");
   if (d.team) {
-    parts.push(`[이전 팀 지시] ${d.team.old}`, `[이후 팀 지시] ${d.team.new}`);
+    // 이전 지시가 없던 경우(신규 부여)엔 빈 "[이전 팀 지시] " 줄을 흘리지 않는다 — 모델에게
+    // "빈 지시가 있었다"로 읽히는 잡음이다(#193 검증 m-3).
+    parts.push(
+      ...(d.team.old.trim() === ""
+        ? [`[신규 팀 지시] ${d.team.new}`]
+        : [`[이전 팀 지시] ${d.team.old}`, `[이후 팀 지시] ${d.team.new}`]),
+    );
   }
   const playerEntries = Object.entries(d.players ?? {});
   if (playerEntries.length > 0) {

@@ -30,6 +30,17 @@ describe("델타 모드 — buildTeamInputPatchPrompt(ctx.promptDelta)", () => {
     expect(p).toContain("상대 CB 뒤 공간만 노려라. 수비 가담 최소화");
   });
 
+  it("이전 팀 지시가 비어 있으면(신규 부여) 빈 줄 대신 [신규 팀 지시] 로 제시한다 (#193 검증 m-3)", () => {
+    const fresh = buildTeamInputPatchPrompt(
+      makeTeamInputPatchContext({ promptDelta: { team: { old: "", new: "라인 내리고 역습" } } }),
+    );
+    expect(fresh).toContain("[신규 팀 지시] 라인 내리고 역습");
+    expect(fresh).not.toContain("[이전 팀 지시]"); // 빈 old 를 빈 줄로 흘리지 않는다
+    // old 가 있으면 기존 표기 그대로.
+    expect(p).toContain("[이전 팀 지시]");
+    expect(p).toContain("[이후 팀 지시]");
+  });
+
   it("변경이 유발하는 변화만 + 파급은 포함 지시", () => {
     expect(p).toContain("변경이 유발하는 변화만");
     expect(p).toContain("파급");

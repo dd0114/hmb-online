@@ -65,10 +65,52 @@ describe("게이트 G2 — 마킹 지시가 있는데 markTarget 0건", () => {
     ).toThrow(/markTarget/);
   });
 
-  it("개인 지시에 마킹 → markTarget 0건이면 throw", () => {
+  it("개인 지시에 마킹(대상 지목) → markTarget 0건이면 throw", () => {
     expect(() =>
-      assertTacticalSanity(ok(), { teamPrompt: "", playerPrompts: { H2: "상대 에이스 전담 마크" }, opponentRoster }),
+      assertTacticalSanity(ok(), { teamPrompt: "", playerPrompts: { H2: "A9 전담 마크" }, opponentRoster }),
     ).toThrow(/마킹 지시/);
+  });
+
+  // ── 오탐 제거(#193 검증 B-1): 지목이 없으면 게이트는 발동하지 않는다 ──
+  //    "누구를 마크할지"는 모델 재량이다(자유도 원칙). 게이트가 막는 것은 **지목된 지시의 미이행**뿐.
+
+  it("이름·ID 미지목 마킹은 발동하지 않는다 — '상대 에이스를 전담 마크'(모델 재량)", () => {
+    expect(() =>
+      assertTacticalSanity(ok(), { teamPrompt: "상대 에이스를 전담 마크해라", playerPrompts: {}, opponentRoster }),
+    ).not.toThrow();
+    expect(() =>
+      assertTacticalSanity(ok(), {
+        teamPrompt: "",
+        playerPrompts: { H2: "제일 잘하는 공격수 마크" },
+        opponentRoster,
+      }),
+    ).not.toThrow();
+  });
+
+  it("비마킹 '막아'(골·공간 차단)는 발동하지 않는다", () => {
+    expect(() =>
+      assertTacticalSanity(ok(), { teamPrompt: "", playerPrompts: { H0: "골을 막아라" }, opponentRoster }),
+    ).not.toThrow();
+    expect(() =>
+      assertTacticalSanity(ok(), { teamPrompt: "뒷공간을 막아라", playerPrompts: {}, opponentRoster }),
+    ).not.toThrow();
+  });
+
+  it("지목은 같은 문장 안에서만 — 다른 문장의 이름이 마킹 지시를 만들지 않는다", () => {
+    expect(() =>
+      assertTacticalSanity(ok(), {
+        teamPrompt: "뒷공간을 막아라. A9 는 빠르니 라인을 내려라",
+        playerPrompts: {},
+        opponentRoster,
+      }),
+    ).not.toThrow();
+  });
+
+  it("이름(문자열)으로 지목해도 발동한다 — playerId 뿐 아니라 name 매치", () => {
+    const name = opponentRoster[9]!.name;
+    expect(() =>
+      assertTacticalSanity(ok(), { teamPrompt: `${name} 전담 마크`, playerPrompts: {}, opponentRoster }),
+    ).toThrow(/markTarget/);
   });
 
   it("promptDelta.new 의 마킹 지시도 컨텍스트로 본다(델타 모드)", () => {
@@ -114,6 +156,60 @@ describe("게이트 G2 — 마킹 지시가 있는데 markTarget 0건", () => {
     expect(() =>
       assertTacticalSanity(ok(), { teamPrompt: "A9 막아라", playerPrompts: {} }),
     ).not.toThrow();
+  });
+});
+
+/**
+ * 델타 모드 검사 범위 (#193 검증 M-1) — 게이트가 보는 지시 = **이번에 바뀐 것(new)** 뿐.
+ *
+ * 모델에게는 변경분만 제시하면서(delta 프롬프트) 게이트는 전체 지시로 채점하면 비대칭이다:
+ * 전반부터 이어져 온 마킹 지시가 캐리오버로 남아 있으면, 이번 변경이 마킹과 무관해도 모델이
+ * markTarget 을 다시 내지 않았다는 이유로 계속 실패한다(캐리오버는 베이스 A/h1 인풋의 책임).
+ */
+describe("게이트 검사 범위 — 델타 모드", () => {
+  const opponentRoster = makeOpponentRoster();
+
+  it("델타가 있으면 캐리오버 지시(playerPrompts)의 마킹은 범위 밖", () => {
+    expect(() =>
+      assertTacticalSanity(ok(), {
+        teamPrompt: "템포를 올려라",
+        playerPrompts: { H2: "A9 전담 마크해라" }, // 전반부터 유효했던 지시(베이스가 이미 반영)
+        opponentRoster,
+        promptDelta: { team: { old: "무난하게", new: "템포를 올려라" } }, // 이번 변경엔 마킹 없음
+      }),
+    ).not.toThrow();
+  });
+
+  it("델타에 신규 마킹이라도 지목이 없으면 발동하지 않는다", () => {
+    expect(() =>
+      assertTacticalSanity(ok(), {
+        teamPrompt: "",
+        playerPrompts: {},
+        opponentRoster,
+        promptDelta: { players: { H2: { new: "상대 에이스 막아" } } },
+      }),
+    ).not.toThrow();
+  });
+
+  it("델타에 신규 마킹 + 지목이면 여전히 발동한다(게이트가 죽지 않았다)", () => {
+    expect(() =>
+      assertTacticalSanity(ok(), {
+        teamPrompt: "",
+        playerPrompts: {},
+        opponentRoster,
+        promptDelta: { players: { H2: { new: "A9 막아" } } },
+      }),
+    ).toThrow(/markTarget/);
+  });
+
+  it("델타가 없으면(구계약) 전체 지시를 본다 — 후방 호환", () => {
+    expect(() =>
+      assertTacticalSanity(ok(), {
+        teamPrompt: "A9 막아라",
+        playerPrompts: {},
+        opponentRoster,
+      }),
+    ).toThrow(/markTarget/);
   });
 });
 

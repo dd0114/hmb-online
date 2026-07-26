@@ -9,7 +9,7 @@ import { claudeCodeExecutor, type ClaudeRunner } from "./executors/claude-code.j
 import { CacheMetrics, type JobUsage } from "./metrics.js";
 import type { AiExecutor } from "./executor.js";
 import { makeTeamInputContext, makeTeamInputPatchContext } from "./test-fixtures.js";
-import { makeOpponentRoster } from "./test-fixtures.js";
+import { makeBaseTacticalInput, makeOpponentRoster } from "./test-fixtures.js";
 
 /**
  * AC-T2 (오프라인): 가짜 Java 서버(node:http, openapi `/internal/ai-jobs` poll/complete)로
@@ -403,6 +403,22 @@ describe("AI실행기 폴링 루프 — B(team-input-patch) 잡 라우팅 (A+B, 
     expect(c.body.ok).toBe(false);
     expect(c.body.error).toMatch(/^VALIDATE:/);
     expect(c.body.error).toContain("오프사이드트랩");
+  });
+
+  it("스텁도 게이트 피드백으로 자기 산출을 고친다 — 1회차 위반 → 2회차 ok:true (#193 검증 M-2)", async () => {
+    // 베이스가 이미 자기모순(낮은 라인 + 트랩)이라 무관한 지시의 빈 패치는 그대로 G1 위반이 된다.
+    const base = makeBaseTacticalInput();
+    const ctx = makeTeamInputPatchContext({
+      teamPrompt: "무난하게 운영",
+      base: { ...base, team: { ...base.team, offsideTrap: true, defensiveLineHeight: 0.1 } },
+    });
+    java.queue.push({ id: "patch-stub-retry", context: ctx });
+
+    await new ExecutorLoop(client(java), stubExecutor(), { log: () => {} }).processOnce();
+
+    const c = java.completes[0]!;
+    expect(c.body.ok).toBe(true); // 피드백을 무시하면 2연속 실패 → VALIDATE 였다
+    expect(TacticalInput.parse(c.body.output).team.offsideTrap).toBe(false);
   });
 
   it("patch 마킹 잡: 개인 지시 '<상대> 막아' → 최종 markTarget 착지", async () => {
