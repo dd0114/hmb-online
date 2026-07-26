@@ -148,9 +148,14 @@ function render(src) {
 const v1 = read('shared-prompt-v1.md');
 const draft = read('draft-hero-v0.md');
 
-const CUT = /여기부터 복사[^\n]*-->\n([\s\S]*?)<!--[^\n]*여기까지 복사/;
-const promptBody = (v1.match(CUT) ?? [, ''])[1].trim();
-if (!promptBody) throw new Error('프롬프트 구간(✂ 마커)을 찾지 못했다 — shared-prompt-v1.md 확인');
+/** ✂ 마커 구간 추출 — 마커 이름으로 짧은 판/상세판을 가른다. */
+const cut = (name) => {
+  const m = v1.match(new RegExp(`✂ ${name} 시작[^\\n]*-->\\n([\\s\\S]*?)<!--[^\\n]*✂ ${name} 끝`));
+  if (!m) throw new Error(`프롬프트 구간(✂ ${name})을 찾지 못했다 — shared-prompt-v1.md 확인`);
+  return m[1].trim();
+};
+const shortBody = cut('짧은 판');
+const longBody = cut('상세판');
 
 const section = (from, to) => {
   const s = v1.indexOf(from);
@@ -160,9 +165,14 @@ const section = (from, to) => {
 };
 
 const TABS = [
-  { id: 'prompt', label: '📋 공용 프롬프트', copy: true,
-    note: '이미지 AI 에 레퍼런스와 함께 붙여넣는 본문. 테마는 다음 메시지로 따로 준다.',
-    html: render(promptBody) },
+  { id: 'prompt', label: '📋 짧은 판 (권장)', copy: shortBody,
+    note: 'ChatGPT·Gemini 등 대화형 이미지 AI 용. 어기면 산출이 실제로 깨지는 규칙만 남겼다. '
+        + '레퍼런스와 함께 붙여넣고, 테마는 다음 메시지로 준다.',
+    html: render(shortBody) },
+  { id: 'full', label: '📜 상세판', copy: longBody,
+    note: '배치 생성 도구(Midjourney/SD)나 시트로 뽑을 때. 규격 근거 포함 — 사람이 규격을 '
+        + '재확인할 때도 이쪽을 본다.',
+    html: render(longBody) },
   { id: 'diff', label: '🔧 수정 diff (초안 대비)',
     note: 'hero 초안 v0 의 어디를 왜 바꿨나 — 실측 근거와 함께.',
     html: render(section('# 부록 A.', '# 부록 B.')) },
@@ -235,7 +245,7 @@ font-size:13px;font-weight:600;padding:8px 16px;cursor:pointer}
 <main>
 ${TABS.map((t, n) => `<section id="t-${t.id}"${n ? ' hidden' : ''}>
 <p class="note">${t.note}</p>
-${t.copy ? `<div class="copybar"><button id="copy">프롬프트 전체 복사</button><span id="copied">레퍼런스 이미지와 함께 붙여넣는다</span></div>
+${t.copy ? `<div class="copybar"><button class="copy" data-for="${t.id}">프롬프트 전체 복사</button><span class="copied">${t.copy.length.toLocaleString('en-US')}자 · 레퍼런스 이미지와 함께 붙여넣는다</span></div>
 <div class="paste">${t.html}</div>` : t.html}
 </section>`).join('\n')}
 </main>
@@ -246,13 +256,16 @@ document.querySelectorAll('main section').forEach(s=>s.hidden=s.id!=='t-'+id);
 history.replaceState(null,'','#'+id);scrollTo(0,0)};
 tabs.forEach(b=>b.onclick=()=>show(b.dataset.t));
 if(location.hash)show(location.hash.slice(1));
-const RAW=${JSON.stringify(promptBody)};
-document.getElementById('copy').onclick=async()=>{
-  try{await navigator.clipboard.writeText(RAW);document.getElementById('copied').textContent='✔ 복사됐다 ('+RAW.length+'자)';}
-  catch(e){document.getElementById('copied').textContent='복사 실패 — 원문: shared-prompt-v1.md';}
-};
+const RAW=${JSON.stringify(Object.fromEntries(TABS.filter((t) => t.copy).map((t) => [t.id, t.copy])))};
+document.querySelectorAll('button.copy').forEach(b=>{
+  const out=b.parentElement.querySelector('.copied'), txt=RAW[b.dataset.for];
+  b.onclick=async()=>{
+    try{await navigator.clipboard.writeText(txt);out.textContent='✔ 복사됐다 ('+txt.length.toLocaleString()+'자)';}
+    catch(e){out.textContent='복사 실패 — 원문: shared-prompt-v1.md';}
+  };
+});
 </script></body></html>
 `;
 
 fs.writeFileSync(path.join(DIR, 'prompt-docs.html'), html);
-console.log(`✓ prompt-docs.html  탭 ${TABS.length}개 · 프롬프트 ${promptBody.length}자 · ${html.length} bytes`);
+console.log(`✓ prompt-docs.html  탭 ${TABS.length}개 · 짧은 판 ${shortBody.length}자 / 상세판 ${longBody.length}자 · ${html.length} bytes`);
