@@ -3,6 +3,7 @@ import {
   deriveTeamStats,
   eventDisplay,
   formatClock,
+  genWaitCopy,
   keyEvents,
   panelForState,
   revealInterval,
@@ -43,6 +44,37 @@ describe("shouldPoll (poll gating)", () => {
     expect(shouldPoll("GEN2")).toBe(true);
     for (const s of ["BRIEFING", "H1_BREAK", "FINISHED", "FAILED", undefined]) {
       expect(shouldPoll(s)).toBe(false);
+    }
+  });
+});
+
+describe("genWaitCopy — 생성 대기 문구는 실측 대기시간과 맞아야 한다 (#193)", () => {
+  it("GEN1: 전반 제목 + 킥오프 대기 감각(10초 안팎, 대변경 시 1~2분)", () => {
+    const copy = genWaitCopy("GEN1");
+    expect(copy.title).toContain("전반");
+    expect(copy.note).toContain("10초");
+    expect(copy.note).toContain("1~2분");
+  });
+
+  it("GEN2: 후반 제목 + 하프타임 문구 — 실측 0.3초라 시간을 말하지 않는다", () => {
+    const copy = genWaitCopy("GEN2");
+    expect(copy.title).toContain("후반");
+    expect(copy.note).toContain("하프타임");
+    expect(copy.note).not.toMatch(/초|분/);
+  });
+
+  it("낡은 실측(팀당 70초 × 양팀)은 어느 단계에서도 남아 있지 않다", () => {
+    for (const s of ["GEN1", "GEN2"] as const) {
+      const { title, note } = genWaitCopy(s);
+      expect(`${title} ${note}`).not.toContain("70초");
+      expect(`${title} ${note}`).not.toContain("양팀");
+    }
+  });
+
+  it("이모지를 쓰지 않는다(패널 톤 유지)", () => {
+    for (const s of ["GEN1", "GEN2"] as const) {
+      const { title, note } = genWaitCopy(s);
+      expect(`${title} ${note}`).not.toMatch(/\p{Extended_Pictographic}/u);
     }
   });
 });

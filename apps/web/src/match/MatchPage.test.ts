@@ -114,11 +114,16 @@ describe("MatchPage state router", () => {
   it("GEN1 → GenWaitPanel with 전반 phase copy", () => {
     renderWithState({ ...base, state: "GEN1" });
     expect(screen.getByTestId("genwait-panel").textContent).toContain("전반 작전 반영 중");
+    // #193 — 낡은 실측("팀당 약 70초 × 양팀") 대신 실측 정합 문구.
+    const note = screen.getByTestId("genwait-note").textContent ?? "";
+    expect(note).toContain("10초");
+    expect(note).not.toContain("70초");
   });
 
   it("GEN2 → GenWaitPanel with 후반 phase copy", () => {
     renderWithState({ ...base, state: "GEN2" });
     expect(screen.getByTestId("genwait-panel").textContent).toContain("후반 작전 반영 중");
+    expect(screen.getByTestId("genwait-note").textContent).toContain("하프타임");
   });
 
   it("H1_BREAK → h1 score + half-1 viewer + HalftimePanel", () => {

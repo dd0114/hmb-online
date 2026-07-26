@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useRetry, type MatchDetail } from "../api/hooks";
 import { ErrorToast } from "../common/ErrorToast";
+import { genWaitCopy } from "./match-logic";
 import styles from "./GenWaitPanel.module.css";
 
 interface GenWaitPanelProps {
@@ -51,18 +52,21 @@ export function GenWaitPanel({ match }: GenWaitPanelProps) {
     );
   }
 
-  const phase = match.state === "GEN1" ? "전반" : "후반";
+  // 문구는 순수 로직(match-logic.genWaitCopy)이 SoT — 실측 대기시간 정합은 거기서 테스트한다(#193).
+  const copy = genWaitCopy(match.state);
   const mm = Math.floor(elapsed / 60);
   const ss = String(elapsed % 60).padStart(2, "0");
 
   return (
     <div className={styles.panel} data-testid="genwait-panel">
       <div className={styles.spinner} aria-hidden="true" />
-      <h3 className={styles.title}>AI 감독이 {phase} 작전 반영 중…</h3>
+      <h3 className={styles.title}>{copy.title}</h3>
       <p className={styles.elapsed} data-testid="genwait-elapsed">
         경과 {mm}:{ss}
       </p>
-      <p className={styles.note}>라이브 모드에서는 팀당 약 70초 × 양팀이 걸릴 수 있습니다</p>
+      <p className={styles.note} data-testid="genwait-note">
+        {copy.note}
+      </p>
     </div>
   );
 }

@@ -56,6 +56,33 @@ export function shouldPoll(state: MatchState | string | undefined): boolean {
   return pollIntervalFor(state) !== false;
 }
 
+// ── GEN 대기 문구 ──────────────────────────────────────────────────────
+
+export interface GenWaitCopy {
+  title: string;
+  note: string;
+}
+
+/**
+ * 생성 대기(GEN1/GEN2) 화면 문구. **실측 정합**(#193): 킥오프→관전은 6~14초, 전술을 크게 바꿔
+ * 대변경 라우팅을 타면 1~2분(단, 제출 시점부터 백그라운드로 돌아간다), 하프타임→후반은 0.3초다.
+ * 그래서 GEN1 만 시간 감각을 주고, GEN2 는 숫자를 말하지 않는다 — 문구를 읽을 새도 없이 넘어간다.
+ *
+ * 서버가 예상 소요를 내려주지 않으므로 수치는 **문구 안 서술**로만 둔다(튜닝 설정값이 아니다).
+ */
+export function genWaitCopy(state: MatchState | string | undefined): GenWaitCopy {
+  if (state === "GEN2") {
+    return {
+      title: "AI 감독이 후반 작전 반영 중…",
+      note: "하프타임 — 선수들이 후반 준비 중입니다",
+    };
+  }
+  return {
+    title: "AI 감독이 전반 작전 반영 중…",
+    note: "감독의 지시가 선수들에게 전달되고 있습니다 (보통 10초 안팎, 전술을 크게 바꾼 경우 1~2분)",
+  };
+}
+
 // ── MatchLog event display (shared MatchEventType mirror) ──────────────
 
 export interface MatchEventLike {
