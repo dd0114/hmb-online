@@ -477,14 +477,16 @@ public class GrowthService {
             }
             int targetStar = st.star() + 1;
             int copies = sc.copies().getOrDefault(targetStar, Integer.MAX_VALUE);
-            int owned = ownedCount(userId, playerId);
-            if (owned < copies) {
-                throw insufficient("중복 카드가 부족합니다", "copies", copies, owned);
+            // B1(#179 gverify): count = 총 보유(원본 포함). 소모 가능한 "중복"은 여분(count−1)뿐 —
+            // 원본 1장은 절대 소모하지 않는다(승급으로 카드가 미보유가 되는 사고 방지). UI 문구("중복 −N")와 정합.
+            int spareCopies = ownedCount(userId, playerId) - 1;
+            if (spareCopies < copies) {
+                throw insufficient("중복 카드가 부족합니다", "copies", copies, Math.max(0, spareCopies));
             }
             int updated = jdbcClient.sql("""
                             UPDATE user_players
                             SET count = count - ?, copies_used = copies_used + ?, star = star + 1
-                            WHERE user_id = ? AND player_id = ? AND count >= ? AND star = ?
+                            WHERE user_id = ? AND player_id = ? AND count >= ? + 1 AND star = ?
                             """)
                     .params(copies, copies, userId, playerId, copies, st.star())
                     .update();
@@ -829,13 +831,16 @@ public class GrowthService {
      */
     public void settleMatch(String matchId, String userId,
                             List<String> starters, List<String> bench,
-                            Set<String> subsOut, Set<String> subsIn) {
+                            Set<String> subsOut, Set<String> subsIn, boolean userHome) {
         EconomyService.Growth gc = economyService.get().map(EconomyService.Economy::growth).orElse(null);
         if (gc == null) {
             log.warn("growth config absent — match {} finished without growth settlement", matchId);
             return;
         }
-        Map<String, Map<String, Long>> eventsByPlayer = eventCountsByPlayer(matchId);
+        // B2(#179 gverify): 봇 로스터가 같은 카탈로그를 쓰므로 playerId 가 겹친다 —
+        // 유저 사이드 이벤트만 귀속(event.team 필터). 아니면 상대 동명 선수 행동으로 XP 가 적립된다.
+        String userSide = userHome ? "home" : "away";
+        Map<String, Map<String, Long>> eventsByPlayer = eventCountsByPlayer(matchId, userSide);
         String now = Instant.now().toString();
         List<String> roster = new ArrayList<>(starters);
         roster.addAll(bench);
@@ -856,7 +861,36 @@ public class GrowthService {
             }
             Map<String, Integer> perStat = computeStatXpDeltas(pb, minutesMult,
                     eventsByPlayer.getOrDefault(pid, Map.of()), gc);
-            applyStatXp(matchId, userId, pid, perStat, gc, now);
+            // M1(#179 gverify): 리포트는 재계산하지 않는다 — 정산 시점 스냅샷(report_json)을 저장.
+            double ovrBefore = ovrOf(userId, pid);
+            List<String> levelUps = applyStatXp(matchId, userId, pid, perStat, gc, now);
+            if (levelUps == null) {
+                continue; // 이미 정산됨(멱등 no-op) — 기존 report_json 보존
+            }
+            double ovrAfter = ovrOf(userId, pid);
+            persistReportSnapshot(matchId, userId, pid, perStat, levelUps, ovrBefore, ovrAfter);
+        }
+    }
+
+    private double ovrOf(String userId, String playerId) {
+        Object ovr = cardEffective(userId, playerId).get("ovr");
+        return ovr instanceof Number n ? n.doubleValue() : 0.0;
+    }
+
+    private void persistReportSnapshot(String matchId, String userId, String playerId,
+                                       Map<String, Integer> statXp, List<String> levelUps,
+                                       double ovrBefore, double ovrAfter) {
+        Map<String, Object> snap = new LinkedHashMap<>();
+        snap.put("statXp", statXp);
+        snap.put("levelUps", levelUps);
+        snap.put("ovrBefore", round2(ovrBefore));
+        snap.put("ovrAfter", round2(ovrAfter));
+        try {
+            jdbcClient.sql("UPDATE growth_applied SET report_json = ? WHERE match_id = ? AND user_id = ? AND player_id = ?")
+                    .params(objectMapper.writeValueAsString(snap), matchId, userId, playerId)
+                    .update();
+        } catch (Exception e) {
+            log.warn("report snapshot persist failed for match={} player={}: {}", matchId, playerId, e.toString());
         }
     }
 
@@ -885,8 +919,11 @@ public class GrowthService {
         return out;
     }
 
-    /** 이벤트 타입별 카운트(선수별) — match_halves(h1+h2) MatchLog.events 에서 파생(플레이어 태그 이벤트 전부). */
-    private Map<String, Map<String, Long>> eventCountsByPlayer(String matchId) {
+    /**
+     * 이벤트 타입별 카운트(선수별) — match_halves(h1+h2) MatchLog.events 에서 파생.
+     * userSide("home"|"away") 이벤트만 집계(B2 — 봇과 playerId 가 겹치므로 team 필터 필수).
+     */
+    private Map<String, Map<String, Long>> eventCountsByPlayer(String matchId, String userSide) {
         Map<String, Map<String, Long>> out = new LinkedHashMap<>();
         for (int half = 1; half <= 2; half++) {
             String logJson = jdbcClient.sql(
@@ -909,6 +946,9 @@ public class GrowthService {
                 if (playerId.isEmpty()) {
                     continue;
                 }
+                if (!userSide.equals(event.path("team").asText(""))) {
+                    continue; // 상대 사이드(동명 playerId 포함) 이벤트는 귀속 금지 (B2)
+                }
                 String type = event.path("type").asText();
                 out.computeIfAbsent(playerId, k -> new LinkedHashMap<>()).merge(type, 1L, Long::sum);
             }
@@ -916,9 +956,13 @@ public class GrowthService {
         return out;
     }
 
-    /** growth_applied 멱등 삽입 → 신규일 때만 stat_levels_json 갱신(레벨업 임계 지수 자동 반영). */
-    private void applyStatXp(String matchId, String userId, String playerId, Map<String, Integer> perStatDelta,
-                             EconomyService.Growth gc, String now) {
+    /**
+     * growth_applied 멱등 삽입 → 신규일 때만 stat_levels_json 갱신(레벨업 임계 지수 자동 반영).
+     *
+     * @return 이번 정산으로 레벨업한 스탯 키(없으면 빈 리스트). 이미 정산된 매치면 null(멱등 no-op).
+     */
+    private List<String> applyStatXp(String matchId, String userId, String playerId, Map<String, Integer> perStatDelta,
+                                     EconomyService.Growth gc, String now) {
         int total = perStatDelta.values().stream().mapToInt(Integer::intValue).sum();
         int inserted = jdbcClient.sql("""
                         INSERT OR IGNORE INTO growth_applied(match_id, user_id, player_id, xp_delta, applied_at)
@@ -927,15 +971,21 @@ public class GrowthService {
                 .params(matchId, userId, playerId, total, now)
                 .update();
         if (inserted != 1) {
-            return; // 이미 정산됨 — 멱등 no-op
+            return null; // 이미 정산됨 — 멱등 no-op
         }
         Map<String, StatLevelState> levels = loadStatLevels(userId, playerId);
+        List<String> levelUps = new ArrayList<>();
         for (String stat : ATTR_KEYS) {
             int delta = perStatDelta.getOrDefault(stat, 0);
             if (delta <= 0) {
                 continue;
             }
-            levels.put(stat, applyForward(levels.get(stat), delta, gc));
+            StatLevelState before = levels.get(stat);
+            StatLevelState after = applyForward(before, delta, gc);
+            if (after.lv() > before.lv()) {
+                levelUps.add(stat);
+            }
+            levels.put(stat, after);
         }
         int updated = jdbcClient.sql("UPDATE user_players SET stat_levels_json = ? WHERE user_id = ? AND player_id = ?")
                 .params(writeStatLevelsJson(levels), userId, playerId)
@@ -943,6 +993,7 @@ public class GrowthService {
         if (updated != 1) {
             log.warn("stat_levels_json update affected {} rows for user={} player={}", updated, userId, playerId);
         }
+        return levelUps;
     }
 
     private static StatLevelState applyForward(StatLevelState state, int delta, EconomyService.Growth gc) {
@@ -986,22 +1037,55 @@ public class GrowthService {
         List<Map<String, Object>> entries = new ArrayList<>();
         record Applied(String playerId, int xpDelta) {
         }
-        List<Applied> applied = jdbcClient.sql("""
-                        SELECT player_id, xp_delta FROM growth_applied
+        record AppliedRow(String playerId, int xpDelta, String reportJson) {
+        }
+        List<AppliedRow> rows = jdbcClient.sql("""
+                        SELECT player_id, xp_delta, report_json FROM growth_applied
                         WHERE match_id = ? AND user_id = ? ORDER BY player_id
                         """)
                 .params(matchId, userId)
-                .query((rs, n) -> new Applied(rs.getString("player_id"), rs.getInt("xp_delta")))
+                .query((rs, n) -> new AppliedRow(rs.getString("player_id"), rs.getInt("xp_delta"),
+                        rs.getString("report_json")))
                 .list();
+        if (rows.isEmpty()) {
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("matchId", matchId);
+            out.put("entries", entries);
+            return out;
+        }
+        // M1(#179 gverify): 정산 시점 스냅샷(report_json)이 있으면 그대로 반환 — 재계산 금지
+        // (교체 mult 불일치·과거 리포트 드리프트·사이드 오귀속 전부 원천 차단).
+        List<Applied> applied = new ArrayList<>();
+        for (AppliedRow row : rows) {
+            if (row.reportJson() != null) {
+                try {
+                    JsonNode snap = objectMapper.readTree(row.reportJson());
+                    Map<String, Object> entry = new LinkedHashMap<>();
+                    entry.put("playerId", row.playerId());
+                    entry.put("name", playerName(row.playerId()));
+                    entry.put("statXp", objectMapper.convertValue(snap.path("statXp"),
+                            new TypeReference<Map<String, Integer>>() { }));
+                    entry.put("levelUps", objectMapper.convertValue(snap.path("levelUps"),
+                            new TypeReference<List<String>>() { }));
+                    entry.put("ovrBefore", snap.path("ovrBefore").asDouble());
+                    entry.put("ovrAfter", snap.path("ovrAfter").asDouble());
+                    entries.add(entry);
+                    continue;
+                } catch (Exception e) {
+                    log.warn("report snapshot parse failed for match={} player={} — 레거시 역산 폴백", matchId, row.playerId());
+                }
+            }
+            applied.add(new Applied(row.playerId(), row.xpDelta()));
+        }
         if (applied.isEmpty()) {
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("matchId", matchId);
             out.put("entries", entries);
             return out;
         }
-        Map<String, Map<String, Long>> eventsByPlayer = eventCountsByPlayer(matchId);
+        // ── 레거시 폴백(스냅샷 없는 구 정산분) — 근사 재계산. 유저 사이드는 home 근사(연습매치 항상 home).
+        Map<String, Map<String, Long>> eventsByPlayer = eventCountsByPlayer(matchId, "home");
         Set<String> starters = snapshotStarters(matchId, userId);
-        Set<String> subsOutSet = Set.of(); // 정확 minutesMult 는 정산시점 고정 — report 는 표시용 근사(현재 선발여부 기준)
 
         for (Applied a : applied) {
             PlayerBase pb = playerBase(a.playerId()).orElse(null);

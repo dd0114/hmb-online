@@ -93,7 +93,7 @@ class GrowthApiTest extends MatchTestBase {
     void diceEndpointRollsAfterUnlockAndPurchase() {
         String token = login("api_dice_ok");
         String userId = userIdOf("api_dice_ok");
-        setCount(userId, "P001", 2);
+        setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         authPost("/api/growth/star", token, Map.of("playerId", "P001"), Map.class);
 
         // 상점에서 노말 다이스 1개 구매(500P, 스타터 3000P 지급 충분). DiceBuyResult(shared): dice{normal,cash} 중첩.
@@ -118,7 +118,7 @@ class GrowthApiTest extends MatchTestBase {
     void diceEndpointInsufficientDiceRejected() {
         String token = login("api_dice_none");
         String userId = userIdOf("api_dice_none");
-        setCount(userId, "P001", 2);
+        setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         authPost("/api/growth/star", token, Map.of("playerId", "P001"), Map.class);
         ResponseEntity<Map> res = authPost("/api/growth/dice", token,
                 Map.of("playerId", "P001", "kind", "NORMAL"), Map.class);
