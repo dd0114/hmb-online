@@ -2,10 +2,11 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 
 /**
- * G4 성장 시스템 v2(메이플 피벗) UI route-mock 스모크(에픽 #179 GM3, §V2-6/V2-7 AC-V6) —
- * **백엔드 없이** vite dev + page.route 로 /api 목킹. 계약 박제:
- * (1) 카드 상세 렌더 — ★·스탯Lv·잠재 3줄·티어색, (2) 성 승급 → ★+1·잠재 해금,
- * (3) 다이스 롤 → 라인 갱신·티어업 연출, (4) 다이스 부족 4xx 메시지, (5) 390px 오버플로 0,
+ * G4 성장 시스템 v2(메이플 피벗 + V2.1 피드백 개정) UI route-mock 스모크(에픽 #179 GM3/GM7,
+ * §V2-6/V2-7 AC-V6 + §V2.1-3) — **백엔드 없이** vite dev + page.route 로 /api 목킹. 계약 박제:
+ * (1) 카드 상세 렌더 — ★·스탯Lv·잠재 3줄(전줄 동일 티어, V2.1-1)·능력치 2레이어 토글(총/보너스),
+ * (2) 성 승급 → ★+1·잠재 해금·패널/프레임 티어 글로우, (3) 다이스 롤 → 라인 갱신·티어업 전체
+ * 오버레이(V2.1-3), (4) 다이스 부족 4xx 메시지, (5) 390px 오버플로 0,
  * (6) 성장 리포트(S1) 스탯별 XP 막대 + 레벨업 뱃지.
  * 스펙 지정·대체포트(playwright.config PORT=5199, :8080 데모·5301 무접촉)·pathname 매칭(glob 아님).
  */
@@ -70,13 +71,13 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
   let diceCash = 0;
   let rollCount = 0;
 
+  // V2.1-1: 전줄 동일 티어 — 모든 줄이 카드 잠재 티어를 그대로 따른다(구 "2줄=한 단계 아래" 폐기).
   function lines() {
     if (!potentialUnlocked) return [];
-    const base = [
+    return [
       { slot: 1, tier, type: "STAT_PCT" as const, stat: "shooting", value: 3 },
-      { slot: 2, tier: "RARE" as const, type: "STAT_FLAT" as const, stat: "pace", value: 2 },
+      { slot: 2, tier, type: "STAT_FLAT" as const, stat: "pace", value: 2 },
     ];
-    return base;
   }
 
   // catch-all 먼저(구체 라우트가 나중에 우선). pathname 매칭 — glob '**/api/**' 는 vite 소스까지 잡음.
@@ -216,15 +217,34 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   await expect(page.getByTestId("growth-star-up")).toContainText("2★");
   await expect(page.getByTestId("growth-star-cost")).toContainText("중복 −2");
 
+  // V2.1-3 GM7: 능력치 2레이어 토글 — 기본 [총 능력치] → [+보너스] 전환 시 base→성장→잠재 분해가 뜬다.
+  await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "total");
+  await expect(page.getByTestId("growth-layer-total")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("growth-bonus-shooting")).toHaveCount(0);
+  await page.getByTestId("growth-layer-bonus").click();
+  await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "bonus");
+  await expect(page.getByTestId("growth-layer-bonus")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("growth-bonus-shooting")).toBeVisible();
+  await expect(page.getByTestId("growth-bonus-base-shooting")).toHaveText("55");
+  await expect(page.getByTestId("growth-fill-shooting")).toHaveCount(0); // 총 레이어 전용 요소는 사라진다
+  await page.getByTestId("growth-layer-total").click();
+  await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "total");
+  await expect(page.getByTestId("growth-fill-shooting")).toBeVisible();
+
   await page.screenshot({ path: `${SMOKE_DIR}growth-detail-schema3.png`, fullPage: true });
 
-  // 성 승급 → ★2, 잠재 해금(2줄: GOLD=2줄), 티어 RARE 표시.
+  // 성 승급 → ★2, 잠재 해금(2줄: GOLD=2줄), 전줄 동일 티어(RARE) 표시(V2.1-1) + 패널 단일 대형 뱃지.
   await page.getByTestId("growth-star-up").click();
   await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-star", "2");
   await expect(page.getByTestId("growth-potential-tier")).toBeVisible();
+  await expect(page.getByTestId("growth-potential-tier")).toContainText("레어");
+  await expect(page.getByTestId("growth-potential")).toHaveAttribute("data-tier", "RARE");
+  await expect(page.getByTestId("growth-frame")).toHaveAttribute("data-potential-tier", "RARE");
   await expect(page.getByTestId("growth-potential-slot-1")).toHaveAttribute("data-state", "filled");
   await expect(page.getByTestId("growth-potential-slot-1")).toHaveAttribute("data-tier", "RARE");
   await expect(page.getByTestId("growth-potential-slot-2")).toHaveAttribute("data-state", "filled");
+  // V2.1-1: 전줄 동일 티어 — 2번째 슬롯도 1번째와 같은 RARE(구 "한 단계 아래" 폐기).
+  await expect(page.getByTestId("growth-potential-slot-2")).toHaveAttribute("data-tier", "RARE");
   // GOLD 는 2줄까지만 — 3번째 슬롯은 등급 상한으로 영구 잠김.
   await expect(page.getByTestId("growth-potential-slot-3")).toHaveAttribute("data-state", "locked-grade");
   await expect(page.getByTestId("growth-dice-ceiling")).toBeVisible();
@@ -236,7 +256,7 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   await page.screenshot({ path: `${SMOKE_DIR}growth-detail-promoted.png`, fullPage: true });
 });
 
-test("G4 다이스 롤: 라인 갱신 + 티어업 연출(RARE→EPIC 축하 배너)", async ({ page }) => {
+test("G4 다이스 롤: 라인 갱신 + 티어업 전체 오버레이(RARE→EPIC 승급 연출)", async ({ page }) => {
   await mockGrowth(page);
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -264,10 +284,22 @@ test("G4 다이스 롤: 라인 갱신 + 티어업 연출(RARE→EPIC 축하 배�
     .not.toBe(shootLvBefore);
 
   await page.getByTestId("growth-dice-normal").click(); // 2회차 — 목에서 RARE→EPIC 트리거
-  await expect(page.getByTestId("growth-tierup-banner")).toBeVisible();
-  await expect(page.getByTestId("growth-tierup-banner")).toHaveAttribute("data-tier", "EPIC");
-  await expect(page.getByTestId("growth-tierup-banner")).toContainText("에픽");
+
+  // V2.1-3: 티어업 = 전체 오버레이(구 하단 배너 폐기) — 플래시+뱃지+순차 리롤 dot.
+  const overlay = page.getByTestId("growth-tierup-overlay");
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute("data-tier", "EPIC");
+  await expect(overlay).toContainText("에픽");
+
+  // V2.1-1: 전줄 동일 티어 — 승급이 슬롯 1개가 아니라 전줄을 즉시 EPIC 으로 리롤한다.
   await expect(page.getByTestId("growth-potential-slot-1")).toHaveAttribute("data-tier", "EPIC");
+  await expect(page.getByTestId("growth-potential-slot-2")).toHaveAttribute("data-tier", "EPIC");
+
+  // 프레임 글로우도 새 티어로 전환.
+  await expect(page.getByTestId("growth-frame")).toHaveAttribute("data-potential-tier", "EPIC");
+
+  // 오버레이는 일정 시간 후 자동으로 걷힌다(전체 오버레이 → 카드 상시뷰 복귀).
+  await expect(overlay).toHaveCount(0, { timeout: 5000 });
 });
 
 test("G4 다이스 부족: POST /api/growth/dice 4xx → 에러 메시지", async ({ page }) => {

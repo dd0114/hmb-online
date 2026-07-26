@@ -21,6 +21,10 @@ const RING_R = 42;
 const RING_C = 2 * Math.PI * RING_R; // ≈ 263.9
 const MAX_STAR = 4;
 const ROLL_ANIM_MS = 450;
+// V2.1-3: 티어업 전체 오버레이 타이밍(UI 전용 상수 — 서버 계수 아님, ROLL_ANIM_MS 와 동일 성격).
+const TIERUP_OVERLAY_MS = 2400;
+const TIERUP_DOT_BASE_MS = 420;
+const TIERUP_DOT_STEP_MS = 240;
 const clampPct = (n: number) => Math.max(0, Math.min(100, n));
 
 interface CardGrowthDetailProps {
@@ -29,9 +33,10 @@ interface CardGrowthDetailProps {
 }
 
 /**
- * 보유 카드 성장 상세(에픽 #179 §V2-6, GM3) — S2/S3/S4/S6:
- * OVR 링 + 완성도 · ★1~4(성 승급) · 스탯 9종(Lv+XP바+현재/천장) · 잠재 3줄(티어색) · 다이스 롤.
- * 프레임 색은 등급(불변, 승급 없음) 고정 — ★는 별도 표시.
+ * 보유 카드 성장 상세(에픽 #179 §V2-6, GM3 + V2.1-3 GM7) — S2/S3/S4/S6:
+ * OVR 링 + 완성도 · 능력치 2레이어 토글(총/보너스) · ★1~4(성 승급) · 스탯 9종(Lv+XP바) ·
+ * 잠재 패널(전줄 동일 티어, 패널·프레임 글로우 승격) · 다이스 롤 + 티어업 전체 오버레이.
+ * 프레임 **테두리 색**은 등급(불변, 승급 없음) 고정 — **글로우**는 잠재 티어색(승급 시 전환).
  */
 export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   const { data: card, isLoading, isError } = useCardEffective(player.id);
@@ -41,9 +46,11 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
 
   const [message, setMessage] = useState<string | null>(null);
   const [rollingKind, setRollingKind] = useState<"NORMAL" | "CASH" | null>(null);
-  const [tierUpBanner, setTierUpBanner] = useState<PotentialTier | null>(null);
+  const [tierUpOverlay, setTierUpOverlay] = useState<PotentialTier | null>(null);
   const [justUpAttrs, setJustUpAttrs] = useState<Set<string>>(new Set());
   const [justUpLv, setJustUpLv] = useState<Set<string>>(new Set());
+  // V2.1-3 GM7: 능력치 표시 2레이어 — 총 능력치(기본) ↔ +보너스(base→성장→잠재 분해).
+  const [layer, setLayer] = useState<"total" | "bonus">("total");
 
   const prevAttrsRef = useRef<Record<string, number> | null>(null);
   const prevLvRef = useRef<Record<string, number> | null>(null);
@@ -90,6 +97,11 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   const star: Star = card?.star ?? 1;
   const completion = card ? Math.max(0, Math.min(1, card.completion)) : 0;
   const busy = starUp.isPending || diceRoll.isPending || rollingKind !== null;
+  // V2.1-3: 잠재 승급 = 카드 전체 인상을 바꾼다 — 프레임 글로우를 잠재 티어색으로.
+  const potentialTier: PotentialTier | null = card?.potential.unlocked ? card.potential.tier : null;
+  const frameGlow = potentialTier
+    ? `0 0 0 1.5px ${frameColor}55 inset, 0 0 22px 3px ${TIER_COLORS[potentialTier]}66, 0 0 2px 1px ${TIER_COLORS[potentialTier]}`
+    : `0 0 0 1.5px ${frameColor}55 inset`;
 
   const nextStar = (star + 1) as Star;
   const starMaxed = star >= MAX_STAR;
@@ -119,8 +131,8 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
           window.setTimeout(() => {
             setRollingKind(null);
             if (res.tierUp) {
-              setTierUpBanner(res.tierAfter);
-              window.setTimeout(() => setTierUpBanner(null), 2200);
+              setTierUpOverlay(res.tierAfter);
+              window.setTimeout(() => setTierUpOverlay(null), TIERUP_OVERLAY_MS);
             }
           }, ROLL_ANIM_MS);
         },
@@ -152,7 +164,8 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
         className={styles.frame}
         data-testid="growth-frame"
         data-grade={grade}
-        style={{ borderColor: frameColor, boxShadow: `0 0 0 1.5px ${frameColor}55 inset` }}
+        data-potential-tier={potentialTier ?? ""}
+        style={{ borderColor: frameColor, boxShadow: frameGlow }}
       >
         <button type="button" className={styles.close} onClick={onClose} aria-label="닫기">
           ×
@@ -238,11 +251,37 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
               완성도 {Math.round(completion * 100)}%
             </p>
 
-            <dl className={styles.attrs} data-testid="growth-attrs">
+            <div className={styles.layerToggle} role="tablist" aria-label="능력치 보기" data-testid="growth-attr-layer">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={layer === "total"}
+                className={layer === "total" ? `${styles.layerBtn} ${styles.layerBtnActive}` : styles.layerBtn}
+                data-testid="growth-layer-total"
+                onClick={() => setLayer("total")}
+              >
+                총 능력치
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={layer === "bonus"}
+                className={layer === "bonus" ? `${styles.layerBtn} ${styles.layerBtnActive}` : styles.layerBtn}
+                data-testid="growth-layer-bonus"
+                onClick={() => setLayer("bonus")}
+              >
+                +보너스
+              </button>
+            </div>
+
+            <dl className={styles.attrs} data-testid="growth-attrs" data-layer={layer}>
               {STAT_LABELS.map(([key, label]) => {
                 const cur = card.attributes[key];
                 const cap = card.caps[key];
                 const base = card.base[key];
+                const prePotential = card.prePotential[key];
+                const growthDelta = Math.round((prePotential - base) * 10) / 10;
+                const potentialDelta = Math.round((cur - prePotential) * 10) / 10;
                 const sl = card.statLevels[key] ?? { lv: 0, xp: 0 };
                 const xpNeed = xpToNextLevel(sl.lv);
                 const xpPct = clampPct((sl.xp / Math.max(1, xpNeed)) * 100);
@@ -259,23 +298,47 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                         Lv.{sl.lv}
                       </span>
                     </dt>
-                    <dd className={styles.attrBarCell}>
-                      <span className={styles.xpBar} data-testid={`growth-xp-${key}`} data-value={Math.round(xpPct)}>
-                        <i className={styles.xpFill} style={{ width: `${xpPct}%` }} />
-                      </span>
-                      <span className={styles.bar}>
-                        <i className={styles.reach} style={{ left: `${clampPct(cur)}%`, width: `${clampPct(cap - cur)}%` }} />
-                        <i
-                          className={attrUp ? `${styles.fill} ${styles.fillUp}` : styles.fill}
-                          data-testid={`growth-fill-${key}`}
-                          data-value={Math.round(cur)}
-                          style={{ width: `${clampPct(cur)}%` }}
-                        />
-                        <i className={styles.capLine} style={{ left: `${clampPct(cap)}%` }} />
-                        <i className={styles.baseLine} style={{ left: `${clampPct(base)}%` }} />
-                      </span>
-                    </dd>
-                    <span className={styles.attrNum}>
+                    {layer === "total" ? (
+                      <dd className={styles.attrBarCell}>
+                        <span className={styles.xpBar} data-testid={`growth-xp-${key}`} data-value={Math.round(xpPct)}>
+                          <i className={styles.xpFill} style={{ width: `${xpPct}%` }} />
+                        </span>
+                        <span className={styles.bar}>
+                          <i className={styles.reach} style={{ left: `${clampPct(cur)}%`, width: `${clampPct(cap - cur)}%` }} />
+                          <i
+                            className={attrUp ? `${styles.fill} ${styles.fillUp}` : styles.fill}
+                            data-testid={`growth-fill-${key}`}
+                            data-value={Math.round(cur)}
+                            style={{ width: `${clampPct(cur)}%` }}
+                          />
+                          <i className={styles.capLine} style={{ left: `${clampPct(cap)}%` }} />
+                          <i className={styles.baseLine} style={{ left: `${clampPct(base)}%` }} />
+                        </span>
+                      </dd>
+                    ) : (
+                      <dd className={styles.bonusCell} data-testid={`growth-bonus-${key}`}>
+                        <span className={styles.xpBar} data-testid={`growth-xp-${key}`} data-value={Math.round(xpPct)}>
+                          <i className={styles.xpFill} style={{ width: `${xpPct}%` }} />
+                        </span>
+                        <span className={styles.bonusRow}>
+                          <span className={styles.bonusBase} data-testid={`growth-bonus-base-${key}`}>
+                            {Math.round(base)}
+                          </span>
+                          <span className={styles.bonusOp}>→</span>
+                          <span className={styles.bonusGrowth} data-testid={`growth-bonus-growth-${key}`}>
+                            +{growthDelta}
+                          </span>
+                          <span
+                            className={styles.bonusPotential}
+                            data-testid={`growth-bonus-potential-${key}`}
+                            style={potentialTier ? { color: TIER_COLORS[potentialTier] } : undefined}
+                          >
+                            +{potentialDelta}
+                          </span>
+                        </span>
+                      </dd>
+                    )}
+                    <span className={layer === "total" ? `${styles.attrNum} ${styles.attrNumBig}` : styles.attrNum}>
                       {Math.round(cur)}
                       <span className={styles.attrCap}> /{Math.round(cap)}</span>
                     </span>
@@ -284,22 +347,45 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
               })}
             </dl>
 
-            <div className={styles.potentialPanel} data-testid="growth-potential">
-              <h3 className={styles.sectionTitle}>잠재능력</h3>
+            <div
+              className={styles.potentialPanel}
+              data-testid="growth-potential"
+              data-tier={potentialTier ?? "locked"}
+              style={potentialTier ? { borderColor: `${TIER_COLORS[potentialTier]}66` } : undefined}
+            >
+              <div className={styles.potentialHead}>
+                <h3 className={styles.sectionTitle}>잠재능력</h3>
+                {/* V2.1-3: 전줄 동일 티어라 슬롯별 뱃지 대신 패널 단일 대형 뱃지로 승급을 강조. */}
+                {potentialTier && (
+                  <span
+                    className={styles.tierBadge}
+                    data-testid="growth-potential-tier"
+                    style={{ color: TIER_COLORS[potentialTier], borderColor: TIER_COLORS[potentialTier] }}
+                  >
+                    {TIER_LABELS[potentialTier]}
+                  </span>
+                )}
+              </div>
               {!card.potential.unlocked ? (
                 <p className={styles.potentialLocked} data-testid="growth-potential-locked">
                   2★에서 해금
                 </p>
               ) : (
-                <p className={styles.potentialTier} data-testid="growth-potential-tier">
-                  현재 티어{" "}
-                  <b style={{ color: TIER_COLORS[card.potential.tier] }}>{TIER_LABELS[card.potential.tier]}</b>
-                  {card.potential.tier !== card.potential.maxTier && (
-                    <span className={styles.ceilingNote} data-testid="growth-dice-ceiling">
+                card.potential.tier !== card.potential.maxTier && (
+                  <div className={styles.ceilingWrap} data-testid="growth-dice-ceiling">
+                    <span className={styles.ceilingNote}>
                       승급 보장까지 {Math.max(0, card.potential.ceilingAt - card.potential.rollsSinceTierUp)}회
                     </span>
-                  )}
-                </p>
+                    <span className={styles.ceilingBar}>
+                      <i
+                        style={{
+                          width: `${clampPct((card.potential.rollsSinceTierUp / Math.max(1, card.potential.ceilingAt)) * 100)}%`,
+                          background: TIER_COLORS[card.potential.tier],
+                        }}
+                      />
+                    </span>
+                  </div>
+                )
               )}
               <div
                 className={rollingKind ? `${styles.potentialSlots} ${styles.reelShuffle}` : styles.potentialSlots}
@@ -318,10 +404,7 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                       style={line ? { borderColor: TIER_COLORS[line.tier], color: TIER_COLORS[line.tier] } : undefined}
                     >
                       {line ? (
-                        <>
-                          <span className={styles.slotTier}>{TIER_LABELS[line.tier]}</span>
-                          <span className={styles.slotValue}>{formatPotentialLine(line)}</span>
-                        </>
+                        <span className={styles.slotValue}>{formatPotentialLine(line)}</span>
                       ) : (
                         <span className={styles.slotLockedLabel}>
                           {state === "locked-grade" ? "등급 상한" : "2★ 해금"}
@@ -358,9 +441,31 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
           </>
         )}
 
-        {tierUpBanner && (
-          <div className={styles.tierUpBanner} data-testid="growth-tierup-banner" data-tier={tierUpBanner} role="status">
-            잠재 {TIER_LABELS[tierUpBanner]} 승급!
+        {tierUpOverlay && (
+          // V2.1-3: 티어업 = 전체 오버레이(티어색 플래시 → 전줄 순차 리롤 공개 → 프레임 글로우 전환).
+          <div className={styles.tierUpOverlay} data-testid="growth-tierup-overlay" data-tier={tierUpOverlay} role="status">
+            <div className={styles.tierUpFlash} style={{ background: TIER_COLORS[tierUpOverlay] }} />
+            <div className={styles.tierUpBody}>
+              <span
+                className={styles.tierUpBadge}
+                style={{ color: TIER_COLORS[tierUpOverlay], borderColor: TIER_COLORS[tierUpOverlay] }}
+              >
+                {TIER_LABELS[tierUpOverlay]}
+              </span>
+              <p className={styles.tierUpText}>잠재 {TIER_LABELS[tierUpOverlay]} 승급!</p>
+              <div className={styles.tierUpDots} aria-hidden>
+                {Array.from({ length: gradeLines }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={styles.tierUpDot}
+                    style={{
+                      background: TIER_COLORS[tierUpOverlay],
+                      animationDelay: `${TIERUP_DOT_BASE_MS + i * TIERUP_DOT_STEP_MS}ms`,
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         )}
         <ErrorToast message={message} onDismiss={() => setMessage(null)} />

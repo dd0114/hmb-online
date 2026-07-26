@@ -24,7 +24,7 @@ export type PotentialTier = (typeof POTENTIAL_TIERS)[number];
 /** 잠재 옵션 1줄. STAT_* 는 stat 지정, 나머지는 팀/컨디션 훅. */
 export interface PotentialLine {
   slot: 1 | 2 | 3;
-  tier: PotentialTier; // 1줄=카드 티어, 2·3줄=한 단계 아래(이탈 시 동일)
+  tier: PotentialTier; // V2.1-1: 전줄 = 카드 잠재 티어(동일). 구 "2·3줄=한 단계 아래" 모델 폐기.
   type: "STAT_PCT" | "STAT_FLAT" | "CONDITION_RECOVERY" | "TEAM_MORALE";
   stat?: string; // PlayerAttributes 키 (STAT_* 만)
   value: number; // pct 는 % 단위(예 4 = +4%), flat 은 절대값
