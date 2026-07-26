@@ -44,4 +44,31 @@ public class WalletService {
                 .query(Long.class)
                 .single();
     }
+
+    /**
+     * 젬 지급/차감(delta 음수 가능) + 원장 기록(gem_ledger, V2.2 재화 이원화). point_ledger/apply 와
+     * 동형 — 멱등은 uq_gem_ledger_reason_ref(user_id, reason, ref_id WHERE ref_id IS NOT NULL)가 보장한다.
+     */
+    public boolean applyGems(String userId, long delta, String reason, String refId) {
+        int inserted = jdbcClient.sql("""
+                        INSERT OR IGNORE INTO gem_ledger(user_id, delta, reason, ref_id, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                        """)
+                .params(userId, delta, reason, refId, Instant.now().toString())
+                .update();
+        if (inserted == 0) {
+            return false;
+        }
+        jdbcClient.sql("UPDATE wallets SET gems = gems + ? WHERE user_id = ?")
+                .params(delta, userId)
+                .update();
+        return true;
+    }
+
+    public long gems(String userId) {
+        return jdbcClient.sql("SELECT gems FROM wallets WHERE user_id = ?")
+                .param(userId)
+                .query(Long.class)
+                .single();
+    }
 }

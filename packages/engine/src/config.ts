@@ -239,6 +239,50 @@ export interface EngineConfig {
     };
     /** 프리킥(파울/오프사이드) 준비 정지 틱. */
     freeKickStoppageTicks: number;
+
+    /**
+     * 데드볼(세트피스) 정지 중 상대 접근 금지 — 실제 축구 규칙(#176).
+     * IFAB: Law 8 킥오프·13 프리킥·14 페널티·17 코너 = 9.15m, Law 15 스로인 = 2m,
+     * Law 16 골킥 = 차는 팀 페널티에어리어 밖. 상대는 밀려나지 않고 **걸어서** 물러난다(#59 철학).
+     * 거리는 규칙 상수라 사실상 고정이지만, 밸런스가 흔들릴 때 되돌리는 대신 **여기를 조정**한다.
+     */
+    deadBall: {
+      /** 프리킥/코너/킥오프/페널티에서 상대가 스팟에서 떨어져야 할 거리(m). Law 상 9.15. */
+      opponentDistanceM: number;
+      /** 스로인에서 상대가 떨어져야 할 거리(m). Law 상 2. */
+      throwInDistanceM: number;
+      /** 골킥·페널티·자기박스 프리킥에서 상대를 페널티박스 밖으로 물릴지(Law 16/14/13). */
+      boxClear: boolean;
+      /** 금지구역 경계 바깥 여유(m). 고정소수 반올림으로 경계에 걸치지 않게 하는 마진. */
+      marginM: number;
+      /**
+       * 정지 중 규칙기반 배치(#185/#174): 기본 배치를 재시작 스팟 쪽으로 당기는 비율(x/y, 0..1).
+       * 정지 구간에서 평소 오프더볼 로직(자기 위치 피드백)을 대체해 제자리 왕복·단독 질주를
+       * 원인 단계에서 없앤다. 0 이면 정지 중 전원이 포메이션 기본 배치를 지킨다.
+       */
+      shapeReachX: number;
+      shapeReachY: number;
+      /**
+       * 정지 중 taker 를 뺀 선수들의 이동 속도 상한(m/tick, #174). 데드볼엔 뛰지 않고 걸어서
+       * 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만 풀스피드로 가로지르면 "공보다 선수가
+       * 빠른" 그림이 된다. taker 는 제외한다: `walkStoppage`(#59)가 taker 의 **평소 속도**로
+       * 도달 틱을 산정하므로 taker 를 캡하면 정지가 끝나도 공에 못 닿는다.
+       */
+      walkSpeedM: number;
+      /**
+       * 코너 정지 중 상한(m/tick). 코너는 rest defence 배치(#182)를 위해 하프라인까지 40m 를 오가야
+       * 해서 일반 데드볼 상한(walkSpeedM)으로 묶으면 정지 안에 **도달을 못 한다**(잔류율 0).
+       * 그렇다고 무제한이면 정지 중 최대 변위가 질주 수준(6.4 m/tick)으로 남는다(#174) → 중간값.
+       */
+      cornerWalkSpeedM: number;
+      /**
+       * 정지 중 대기 동작(#174 수용기준: "동상으로 보이지 않을 것"). 규칙기반 배치는 목표가 고정이라
+       * 전원이 수렴하면 완전히 굳는다 → 시드 노이즈로 배치에 느린 오프셋을 준다.
+       * 주기(틱)를 충분히 길게 잡아 **매 틱 방향 반전(#185)이 되지 않게** 한다(주기 1틱이면 그게 곧 진동).
+       */
+      idleAmpM: number;
+      idlePeriodTicks: number;
+    };
   };
 
   /**
@@ -320,6 +364,51 @@ export interface EngineConfig {
     crossDepthM: number;
     /** 코너 크로스 낙하점 중앙 기준 좌우 산포 최대(m). 시드로 ±이 범위. */
     crossWidthM: number;
+    /**
+     * 코너 시 "박스로 안 올라가는" 선수 배치(#182). 실제 축구의 rest defence(공격팀이 역습
+     * 대비로 뒤에 남기는 1~2명)·하이 아웃렛(수비팀이 앞에 남기는 1~2명)에 해당한다.
+     *
+     * **인원은 여기 상수로 고정되지 않는다** — 팀 전략과 선수 성향으로 정해진다(hero 확정):
+     *  (1) 팀 축: 가담도 commit = f(defensiveLineHeight, tempo) 0..1 → 잔류 인원을
+     *      stayBackMax(수비적)~stayBackMin(올인) 사이로 매핑. 팀마다 기본값이 다르고
+     *      전술을 바꾸면 같이 바뀐다.
+     *  (2) 선수 축: 프롬프트가 만든 behavior(forwardRunFreq·supportDepth)가 슬롯 깊이를
+     *      **뒤집는다** — 원래 남을 CB 가 올라가고, 원래 올라갈 공격수가 남는다.
+     *      뒤집는 힘 = playerOverrideWeight.
+     * 여기 값들은 그 매핑의 튜닝 상수일 뿐이다.
+     */
+    corner: {
+      /** false = 레거시(전원 전진). 롤백 스위치 — 켜기 전과 bit-identical. */
+      enabled: boolean;
+      /** 공격 코너 잔류 인원 매핑. commit=1(올인) → Min, commit=0(수비적) → Max. */
+      stayBackMin: number;
+      stayBackMax: number;
+      /** 수비 코너 하이 아웃렛 인원 매핑. 0/0 이면 끔(수비팀은 전원 박스). */
+      leaveHighMin: number;
+      leaveHighMax: number;
+      /** 팀 가담도 commit 을 만들 때 수비라인 높이·템포에 주는 가중치. */
+      commitLineWeight: number;
+      commitTempoWeight: number;
+      /** 선수 성향(프롬프트)이 슬롯 깊이 순서를 뒤집는 힘. 0 이면 슬롯 깊이만으로 결정. */
+      playerOverrideWeight: number;
+      /** 잔류 선수가 서는 라인(공격 진행도 0:자기골 ~ 1:상대골). 0.5=하프라인. */
+      stayBackLineX: number;
+      /** 하이 아웃렛이 서는 라인(자기 공격 진행도). */
+      leaveHighLineX: number;
+      /**
+       * 잔류/아웃렛이 **한 줄로 정렬되지 않게** 하는 깊이 산포(#182 폴리시).
+       * 실제 rest defence 는 전원이 같은 깊이에 서지 않는다 — CB 는 좀 더 깊게, 남은 미드는
+       * 좀 더 앞에. 두 축으로 만든다(둘 다 0 이면 구 동작 = 전원 같은 라인):
+       *  - slotSpread: 자기 포메이션 슬롯 깊이를 얼마나 유지하는가(0=완전 정렬, 1=원래 깊이).
+       *    역할 기반이라 "CB 가 풀백보다 뒤"라는 자연 층이 생긴다.
+       *  - jitterX: 잔류 그룹 **내 순위**로 깊이를 균등 배분하는 간격(rank 당 이만큼 차이).
+       *    슬롯이 같은 좌우 대칭 선수(LCB/RCB)도 이걸로 갈라진다. 난수가 아니라 순위 기반이라
+       *    **충돌이 구조적으로 없다** — idHash 난수 편차로 벌렸을 땐 특정 선수쌍이 우연히
+       *    겹쳐 그 팀이 매 코너 일자 정렬이 됐다(실측 11/52 코너).
+       */
+      slotSpread: number;
+      jitterX: number;
+    };
   };
 
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
@@ -444,7 +533,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.19.0",
+  version: "engine@0.21.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -476,6 +565,7 @@ export const defaultEngineConfig: EngineConfig = {
     // #147 W3: 시야 계층(vision)이 수비 효율을 바꿔 슛이 14.0→14.7 로 올랐다 → 벤치(12-14) 복귀용 재튜닝.
     // #181: 공이 **손 닿는 사람에게만** 가고 못 닿으면 낙하점에 멈추므로, 공이 무소유로 있는 틱이
     // 늘어 공격 볼륨(슛)이 줄었다 → 밴드(12-14) 복귀용 재튜닝 0.30→0.55(실측 슛/팀 13.68).
+    // #176 리베이스: 데드볼 규칙 위에서 재도출한다(아래 재스윕 결과로 확정).
     shoot: 0.55,
     hold: 0.42,
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
@@ -513,7 +603,11 @@ export const defaultEngineConfig: EngineConfig = {
     interceptBase: 0.06,
     tackleBase: 0.14,
     // G-A(#99): 슛당 xG 하향(0.13→~0.12, 벤치 0.10-0.12). 0.225→0.19.
-    xgBase: 0.205, // #181: 슛당 xG 0.10 · 골 1.63 (둘 다 밴드). v5.01 값 유지.
+    // #181: 슛당 xG 0.10 · 골 1.63(둘 다 밴드). v5.01 값(0.205) 유지였다.
+    // #176: 데드볼 규칙으로 전개가 바뀌며 재보정. 20시드 골 1.45 · 60시드 1.53 · 슛당 xG 0.10/0.11
+    // (둘 다 밴드). 코너를 걷기 캡에서 제외한 뒤 다시 잡은 값이다 — 캡 적용 시점에 맞춘 0.215 는
+    // 코너 예외 후 골이 1.68 로 넘쳤다.
+    xgBase: 0.195,
     shotBallSpeed: 14,
     shootXgThreshold: 0.07,
     // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
@@ -557,7 +651,9 @@ export const defaultEngineConfig: EngineConfig = {
       // 파울이 11.93→14.10 으로 튀었다 → 0.0185→0.016 으로 재보정(11.90).
       // #181: 패스가 실제 비행시간을 갖게 되며 틱당 태클 기회가 줄어 파울이 다시 내려갔다 →
       // 두 변경을 합친 상태에서 재측정해 벤치(11-12)로 맞춘 값(아래 §gap §5).
-      base: 0.017,
+      // #176: 데드볼 재시작이 규칙대로 정리되며 정지 부근 접촉이 줄어 파울이 11.28→10.38(20시드)로
+      // 밴드 아래로 내려갔다 → 0.0178→**0.0188**. 20시드 11.65 · 60시드 11.63(둘 다 밴드 11-12).
+      base: 0.0188,
       aggressionWeight: 1.0,
       tacklingRelief: 0.6,
       boxFoulMult: 1.0,
@@ -583,6 +679,18 @@ export const defaultEngineConfig: EngineConfig = {
       trapCallMult: 1.8,
     },
     freeKickStoppageTicks: 8,
+    deadBall: {
+      opponentDistanceM: 9.15,
+      throwInDistanceM: 2,
+      boxClear: true,
+      marginM: 0.05,
+      shapeReachX: 0.35,
+      shapeReachY: 0.25,
+      walkSpeedM: 2.5,
+      cornerWalkSpeedM: 4.5,
+      idleAmpM: 0.8,
+      idlePeriodTicks: 6,
+    },
   },
   variety: {
     // 리얼 default: 벤치마크(슛 12-16/팀, 코너 ~5/팀 등)를 유지하는 모던한 변주.
@@ -617,6 +725,27 @@ export const defaultEngineConfig: EngineConfig = {
     crossSpeed: 16,
     crossDepthM: 10,
     crossWidthM: 12,
+    // #182. 중립 팀(라인 0.55·템포 0.5)은 잔류 2명 = PL 표준. 수비적 팀 3명, 올인 1명.
+    // 수비팀 아웃렛(leaveHigh)은 0/0 = 끔 — 양팀 동시 변경을 피하려 별도 이슈로 분리.
+    corner: {
+      enabled: true,
+      stayBackMin: 1,
+      stayBackMax: 3,
+      leaveHighMin: 0,
+      leaveHighMax: 0,
+      commitLineWeight: 1.0,
+      commitTempoWeight: 0.5,
+      // 2.2 = "양방향 완전 오버라이드"에 필요한 하한. 슬롯 깊이 폭(CB 0.16~ST 0.78 = 0.62)을
+      // 성향 폭(±0.5)이 넘어서려면 W>2.0 이어야 공격수를 잔류시킬 수 있다. 이 값에서도
+      // 아키타입 기본 성향은 슬롯 순서와 같은 방향이라 자연 순서(ST>윙>미드>풀백>CB)는 보존된다.
+      playerOverrideWeight: 2.2,
+      stayBackLineX: 0.5,
+      leaveHighLineX: 0.5,
+      // 0.25 → CB(슬롯 0.16)는 라인보다 ~9m 깊게, 풀백(0.22)은 ~7m 깊게 = 역할 층.
+      // 지터 0.03(±3.15m)은 슬롯이 동일한 LCB/RCB 를 갈라준다.
+      slotSpread: 0.25,
+      jitterX: 0.03,
+    },
   },
   softCap: 0.25,
   fatiguePerTick: 0.0009,

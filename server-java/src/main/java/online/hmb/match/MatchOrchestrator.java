@@ -4,10 +4,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import online.hmb.catalog.EconomyService;
 import online.hmb.common.Hashes;
 import online.hmb.common.SqliteErrors;
@@ -49,6 +52,7 @@ public class MatchOrchestrator {
     private final WalletService walletService;
     private final EconomyService economyService;
     private final online.hmb.league.LeagueService leagueService;
+    private final online.hmb.growth.GrowthService growthService;
     private final MatchClockService clockService;
     private final ObjectMapper objectMapper;
 
@@ -64,6 +68,7 @@ public class MatchOrchestrator {
                              WalletService walletService,
                              EconomyService economyService,
                              online.hmb.league.LeagueService leagueService,
+                             online.hmb.growth.GrowthService growthService,
                              MatchClockService clockService,
                              ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
@@ -78,6 +83,7 @@ public class MatchOrchestrator {
         this.walletService = walletService;
         this.economyService = economyService;
         this.leagueService = leagueService;
+        this.growthService = growthService;
         this.clockService = clockService;
         this.objectMapper = objectMapper;
     }
@@ -473,6 +479,9 @@ public class MatchOrchestrator {
         // AC-C4: 관계/사기 변동 — FINISHED 전이 트랜잭션 내 멱등 적용(relations_applied 플래그 CAS).
         relationService.applyMatchResult(match.userId(), match.id(), result);
 
+        // #179 §4: 성장 정산 — 기용 선수별 Δxp 적립(growth_applied PK 멱등). FINISHED CAS 통과 후 1회.
+        settleGrowth(match);
+
         economyService.get().ifPresentOrElse(economy -> {
             int amount = switch (result) {
                 case "WIN" -> economy.rewards().win();
@@ -483,6 +492,34 @@ public class MatchOrchestrator {
             walletService.apply(match.userId(), amount, reason, match.id());
         }, () -> log.warn("economy unavailable — match {} finished without reward", match.id()));
         return true;
+    }
+
+    /**
+     * 성장 정산 호출(#179 §4) — 매치 스냅샷 로스터(선발+벤치) + 교체를 GrowthService 에 넘긴다.
+     * 멱등은 GrowthService(growth_applied PK)에서 보장 — FINISHED CAS 통과 경로에서만 도달한다.
+     */
+    private void settleGrowth(MatchService.MatchRow match) {
+        try {
+            JsonNode snapshot = matchService.readJson(match.userDeckJson());
+            List<String> starters = new ArrayList<>();
+            List<String> bench = new ArrayList<>();
+            snapshot.path("starters").forEach(s -> starters.add(s.path("playerId").asText()));
+            snapshot.path("bench").forEach(b -> bench.add(b.path("playerId").asText()));
+            Set<String> subsOut = new HashSet<>();
+            Set<String> subsIn = new HashSet<>();
+            for (MatchService.Substitution sub : parseSubs(match.subsJson())) {
+                if (sub.out() != null) {
+                    subsOut.add(sub.out());
+                }
+                if (sub.in() != null) {
+                    subsIn.add(sub.in());
+                }
+            }
+            growthService.settleMatch(match.id(), match.userId(), starters, bench, subsOut, subsIn);
+        } catch (RuntimeException e) {
+            // 정산 실패가 매치 완료(보상/전적)를 되돌리지 않게 — 로그만(멱등이라 재정산 가능).
+            log.error("growth settlement failed for match {}: {}", match.id(), e.toString());
+        }
     }
 
     /** GEN* → FAILED (AC-M7). 그 외 상태면 no-op. */
@@ -511,8 +548,9 @@ public class MatchOrchestrator {
         // AC-C1: 유저팀 능력치에 컨디션 배율 적용(교체 투입 포함 — conditions_json 은 선발+벤치 롤).
         // 봇팀은 컨디션 미적용(빈 맵) — 원본 능력치.
         Map<String, Double> conditions = matchService.conditionsOf(match);
-        Map<String, Object> userTeam = teamRoster(nickname, userRoster, conditions);
-        Map<String, Object> botTeam = teamRoster(bot.name(), botRoster, Map.of());
+        // 유저팀만 성장·강화 유효스탯 주입(#179 §2·§6) — 봇팀은 원본. 성장 0 카드는 원본과 동일(무회귀).
+        Map<String, Object> userTeam = teamRoster(nickname, userRoster, conditions, match.userId());
+        Map<String, Object> botTeam = teamRoster(bot.name(), botRoster, Map.of(), null);
 
         // 엔진 home = 픽스처 home_team(어웨이 리그경기면 유저가 away 사이드). homeInput/awayInput 도
         // 같은 사이드 라벨로 enqueue 되므로 selectData.home 팀과 정합.
@@ -523,8 +561,11 @@ public class MatchOrchestrator {
         return selectData;
     }
 
+    /**
+     * @param growthUserId 유저팀이면 소유자 userId(성장·강화 유효스탯 주입), 봇팀이면 null(원본 유지).
+     */
     private Map<String, Object> teamRoster(String name, List<PromptContextBuilder.RosterEntry> roster,
-                                           Map<String, Double> conditions) {
+                                           Map<String, Double> conditions, String growthUserId) {
         Map<String, Object> team = new LinkedHashMap<>();
         team.put("name", name);
         team.put("players", roster.stream().map(r -> {
@@ -532,10 +573,12 @@ public class MatchOrchestrator {
             card.put("playerId", r.playerId());
             card.put("name", r.name());
             card.put("position", r.position());
-            Double condition = conditions.get(r.playerId());
-            card.put("attributes", condition == null
+            // 성장/강화 유효스탯 → 그 위에 컨디션 배율(주입 순서: 성장 먼저, 컨디션 나중 — §6 통합지점).
+            Map<String, Object> attrs = growthUserId == null
                     ? r.attributes()
-                    : scaleAttributes(r.attributes(), condition));
+                    : growthService.effectiveAttributes(growthUserId, r.playerId(), r.attributes());
+            Double condition = conditions.get(r.playerId());
+            card.put("attributes", condition == null ? attrs : scaleAttributes(attrs, condition));
             return card;
         }).toList());
         return team;

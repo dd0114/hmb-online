@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>강화 피드백 시안 — 재화·상승 가시화</title>
+<style>
+  :root{
+    --bg:#0e1116;--panel:#171b22;--panel2:#1e232c;--line:#2a313c;--txt:#e8edf4;--dim:#93a0b1;--dim2:#5f6b7a;
+    --legend:#ff5f7a;--gold:#e7c24c;--fill:#5cc98b;--pt:#57b7ff;--cp:#c98bff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"Segoe UI","Noto Sans KR",sans-serif;padding:20px 14px 60px}
+  h1{font-size:19px;margin:0 0 4px}
+  .sub{color:var(--dim);font-size:13px;margin:0 0 14px;line-height:1.6}
+  .toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:18px;position:sticky;top:8px;z-index:5}
+  .wallet{display:flex;gap:14px;font-size:13px;font-weight:700}
+  .wallet .p{color:var(--pt)} .wallet .c{color:var(--cp)}
+  .wallet .flash{animation:dip .5s}
+  @keyframes dip{0%{transform:scale(1)}30%{transform:scale(1.25);color:#ff7a7a}100%{transform:scale(1)}}
+  .btn{border:0;border-radius:9px;padding:9px 14px;font-weight:800;font-size:13px;cursor:pointer}
+  .enh{background:linear-gradient(120deg,#3b82f6,#2563eb);color:#fff}
+  .lb{background:linear-gradient(120deg,#e7c24c,#caa62f);color:#20160a}
+  .rst{background:#2a313c;color:var(--dim)}
+  .cost{font-size:11px;opacity:.85;font-weight:700;margin-left:4px}
+  .grid{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start}
+  .col{flex:1 1 300px;min-width:290px;max-width:360px}
+  .colhd{font-size:13px;color:var(--dim);text-align:center;margin:0 0 10px}
+  .colhd b{color:var(--txt);font-size:14px}
+  .note{font-size:11.5px;color:var(--dim2);text-align:center;margin:10px 4px 0;line-height:1.6}
+  .card{border-radius:18px;padding:16px 15px 14px;background:linear-gradient(160deg,var(--panel2),var(--panel));border:2px solid rgba(255,95,122,.5)}
+  .top{display:flex;justify-content:space-between;align-items:flex-start}
+  .name{font-size:16px;font-weight:800}.pos{font-size:11px;color:var(--dim)}
+  .gtag{font-size:10px;font-weight:800;letter-spacing:.06em;padding:3px 7px;border-radius:5px;background:linear-gradient(120deg,#ff5f7a,#c23),color:#fff;color:#fff}
+  /* 델타 배지 */
+  .delta{display:inline-block;color:var(--fill);font-weight:800;font-size:13px;opacity:0;transform:translateY(6px)}
+  .delta.show{animation:pop 1.1s}
+  @keyframes pop{0%{opacity:0;transform:translateY(6px)}20%{opacity:1;transform:translateY(0)}80%{opacity:1}100%{opacity:0}}
+  /* 강화 핍 (이산 게이지) */
+  .pips{display:flex;gap:5px;margin:8px 0}
+  .pip{flex:1;height:10px;border-radius:3px;background:#242c36;transition:background .25s,box-shadow .25s}
+  .pip.on{background:linear-gradient(90deg,#3b82f6,#5cc98b);box-shadow:0 0 8px rgba(92,201,139,.6)}
+  .pip.just{animation:pipflash .6s}
+  @keyframes pipflash{0%{transform:scaleY(1)}40%{transform:scaleY(1.8)}100%{transform:scaleY(1)}}
+  /* 별 돌파 */
+  .stars{letter-spacing:1px}.star{color:var(--gold)}.star.off{color:#3a424e}
+  /* 완성도 바 */
+  .compwrap{margin:10px 0 4px}
+  .compbar{height:16px;border-radius:9px;background:#242c36;overflow:hidden;position:relative}
+  .compbar>i{display:block;height:100%;background:linear-gradient(90deg,#3fa06a,#5cc98b);width:0;transition:width .5s cubic-bezier(.2,.8,.2,1)}
+  .compbar .lab{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800}
+  /* 링 */
+  .ringwrap{position:relative;width:120px;height:120px;margin:6px auto}
+  .ringwrap .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .ringwrap .c .n{font-size:30px;font-weight:900;line-height:1}
+  .ringwrap .c .t{font-size:9px;color:var(--dim);letter-spacing:.14em;font-weight:800}
+  .big{font-size:34px;font-weight:900;line-height:1}
+  .lbl{font-size:10px;color:var(--dim);font-weight:800;letter-spacing:.12em}
+  .row{display:flex;align-items:baseline;gap:8px;margin-top:4px}
+  .costline{font-size:11px;color:var(--dim);margin-top:10px;text-align:center}
+  .costline b{color:var(--pt)} .costline .cc{color:var(--cp)}
+  .attrs{margin-top:10px;display:grid;gap:5px}
+  .attr{display:grid;grid-template-columns:48px 1fr 46px;gap:8px;align-items:center;font-size:11px}
+  .attr .an{color:var(--dim)} .attr .av{text-align:right;font-weight:800;font-variant-numeric:tabular-nums}
+  .attr .av .up{color:var(--fill)}
+  .bar{height:7px;border-radius:4px;background:#20262f;position:relative;overflow:visible}
+  .bar>i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:linear-gradient(90deg,#3fa06a,#63d193);transition:width .5s}
+  .bar .cap{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--gold)}
+</style>
+</head>
+<body>
+  <h1>강화 피드백 시안 — 재화 소모 + 상승 가시화</h1>
+  <p class="sub">문제: ①어떤 재화 쓰는지 안 보임 ②강화해도 변화 안 보임 ③OVR 90→95라 상승 폭이 안 보임.<br>
+  <b>같은 카드(LEGEND, 밴드 80~95)</b>를 3가지로. 아래 <b>강화 실행</b>을 눌러 각 시안의 피드백을 비교하세요.</p>
+
+  <div class="toolbar">
+    <div class="wallet"><span class="p" id="wp">💰 500,000 P</span><span class="c" id="wc">🃏 중복 30</span></div>
+    <button class="btn enh" onclick="doEnhance()">강화 실행 <span class="cost">−200P</span></button>
+    <button class="btn lb" onclick="doBreak()">한계돌파 <span class="cost">중복−3</span></button>
+    <button class="btn rst" onclick="reset()">리셋</button>
+    <span id="msg" style="font-size:12px;color:var(--dim)"></span>
+  </div>
+
+  <div class="grid">
+    <!-- 시안 A -->
+    <div class="col">
+      <p class="colhd"><b>시안 A · 숫자 + 델타</b><br>OVR 숫자 옆에 +N, 능력치 +1 플래시</p>
+      <div class="card">
+        <div class="top"><div><div class="name">양민혁</div><div class="pos">FW</div></div><span class="gtag">LEGEND</span></div>
+        <div class="row"><span class="big" id="A_ovr">90.0</span><span class="lbl">OVR</span><span class="delta" id="A_d"></span></div>
+        <div class="compwrap"><div class="compbar"><i id="A_comp"></i><span class="lab" id="A_complab">완성도 0%</span></div></div>
+        <div class="attrs" id="A_attrs"></div>
+        <div class="costline">강화: <b>−200P</b>(포인트만) · 남은 강화 <span id="A_lv">0/5</span></div>
+      </div>
+      <p class="note">숫자를 크게 + "+0.6" 델타가 튐 + 능력치 막대에 +1 초록. "얼마 올랐나"가 명확.</p>
+    </div>
+
+    <!-- 시안 B -->
+    <div class="col">
+      <p class="colhd"><b>시안 B · 완성도% 주인공</b><br>OVR 대신 0→100% 링(크게 움직임)</p>
+      <div class="card">
+        <div class="top"><div><div class="name">양민혁</div><div class="pos">FW</div></div><span class="gtag">LEGEND</span></div>
+        <div class="ringwrap">
+          <svg width="120" height="120" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="#2a313c" stroke-width="9"/>
+            <circle id="B_ring" cx="60" cy="60" r="52" fill="none" stroke="url(#g)" stroke-width="9" stroke-linecap="round"
+              stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset .55s"/>
+            <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#38b3c9"/><stop offset="1" stop-color="#5cc98b"/></linearGradient></defs>
+          </svg>
+          <div class="c"><div class="n" id="B_pct">0%</div><div class="t">완성도</div></div>
+        </div>
+        <div class="row" style="justify-content:center"><span class="lbl">OVR</span><span id="B_ovr" style="font-weight:800">90.0</span><span class="delta" id="B_d"></span></div>
+        <div class="costline" style="margin-top:12px">지갑: <b id="B_wp">500,000P</b> · <span class="cc" id="B_wc">중복 30</span></div>
+      </div>
+      <p class="note">완성도는 0→100%라 <b>같은 강화도 크게 움직인다</b>(OVR 90→90.6은 완성도 0→12%). 재화 잔액을 카드에 직접 표시.</p>
+    </div>
+
+    <!-- 시안 C -->
+    <div class="col">
+      <p class="colhd"><b>시안 C · 강화 핍 + 밴드링</b><br>이산 게이지(누를때마다 한칸)+링을 밴드로 리스케일</p>
+      <div class="card">
+        <div class="top">
+          <div><div class="name">양민혁</div><div class="pos">FW</div></div>
+          <div style="text-align:right"><div class="stars" id="C_stars"><span class="star">★</span><span class="star off">★</span><span class="star off">★</span><span class="star off">★</span></div><div style="font-size:9px;color:var(--dim)">돌파</div></div>
+        </div>
+        <div class="ringwrap">
+          <svg width="120" height="120" viewBox="0 0 120 120">
+            <circle cx="60" cy="60" r="52" fill="none" stroke="#2a313c" stroke-width="9"/>
+            <circle id="C_ring" cx="60" cy="60" r="52" fill="none" stroke="url(#g)" stroke-width="9" stroke-linecap="round"
+              stroke-dasharray="326.7" stroke-dashoffset="326.7" transform="rotate(-90 60 60)" style="transition:stroke-dashoffset .55s"/>
+          </svg>
+          <div class="c"><div class="n" id="C_ovr">90.0</div><div class="t">OVR · 밴드80~95</div></div>
+        </div>
+        <div style="font-size:10px;color:var(--dim);text-align:center;margin-top:-2px">강화 게이지</div>
+        <div class="pips" id="C_pips"></div>
+        <div class="costline">−200P(포인트만) · <span id="C_lv">0/5</span> → 가득차면 <b style="color:var(--gold)">한계돌파</b></div>
+      </div>
+      <p class="note">링을 <b>밴드(80~95)로 리스케일</b>해 같은 상승도 크게 보임 + <b>강화 5핍</b>이 한 칸씩 확실히 참(이산). 별=돌파(등급).</p>
+    </div>
+  </div>
+
+<script>
+  const ATTRS=[["슛",54,68],["스피드",56,70],["위치선정",57,65],["패스",50,62],["피지컬",48,60]];
+  const BAND_LO=80,BAND_HI=95,OVR_BASE=90.0,PER=0.56,MAXENH=5,RING=326.7;
+  let S;
+  function reset(){ S={points:500000,copies:30,enh:0,star:1,ovr:OVR_BASE}; render(true); msg(''); }
+  function msg(t){ document.getElementById('msg').textContent=t; }
+  function doEnhance(){
+    if(S.enh>=MAXENH){ msg('강화 상한 — 한계돌파 필요'); return; }
+    if(S.points<200){ msg('포인트 부족'); return; }
+    S.points-=200; S.enh+=1; S.ovr=+(S.ovr+PER).toFixed(2);
+    render(false); flashWallet();
+  }
+  function doBreak(){
+    if(S.copies<3){ msg('중복 3장 필요'); return; }
+    S.copies-=3; S.star=Math.min(4,S.star+1); S.enh=0; render(false,true); flashWallet();
+    msg('한계돌파! 등급 천장 개방 ★'+S.star);
+  }
+  function comp(){ return Math.max(0,Math.min(1,(S.ovr-OVR_BASE)/(BAND_HI-OVR_BASE))); }
+  function bandFrac(){ return Math.max(0,Math.min(1,(S.ovr-BAND_LO)/(BAND_HI-BAND_LO))); }
+  function flashWallet(){ ['wp','wc'].forEach(id=>{const e=document.getElementById(id);e.classList.remove('flash');void e.offsetWidth;e.classList.add('flash');}); }
+  function showDelta(id,txt){ const e=document.getElementById(id); e.textContent=txt; e.classList.remove('show'); void e.offsetWidth; e.classList.add('show'); }
+  function render(init,broke){
+    // toolbar wallet
+    document.getElementById('wp').textContent='💰 '+S.points.toLocaleString()+' P';
+    document.getElementById('wc').textContent='🃏 중복 '+S.copies;
+    const c=comp(), pct=Math.round(c*100);
+    // A
+    document.getElementById('A_ovr').textContent=S.ovr.toFixed(1);
+    document.getElementById('A_comp').style.width=(c*100)+'%';
+    document.getElementById('A_complab').textContent='완성도 '+pct+'%';
+    document.getElementById('A_lv').textContent=S.enh+'/5';
+    // A attrs
+    const inc=S.enh; // 강화 레벨만큼 +
+    document.getElementById('A_attrs').innerHTML=ATTRS.map(([n,b,cap])=>{
+      const cur=Math.min(cap,b+inc); const w=cur;
+      return `<div class="attr"><span class="an">${n}</span><span class="bar"><i style="width:${w}%"></i><span class="cap" style="left:${cap}%"></span></span><span class="av">${cur}${inc>0?' <span class="up">+'+inc+'</span>':''}</span></div>`;
+    }).join('');
+    if(!init){ showDelta('A_d','+'+PER.toFixed(1)); }
+    // B
+    document.getElementById('B_pct').textContent=pct+'%';
+    document.getElementById('B_ovr').textContent=S.ovr.toFixed(1);
+    document.getElementById('B_ring').style.strokeDashoffset=RING*(1-c);
+    document.getElementById('B_wp').textContent=S.points.toLocaleString()+'P';
+    document.getElementById('B_wc').textContent='중복 '+S.copies;
+    if(!init){ showDelta('B_d','+'+PER.toFixed(1)); }
+    // C
+    document.getElementById('C_ovr').textContent=S.ovr.toFixed(1);
+    document.getElementById('C_ring').style.strokeDashoffset=RING*(1-bandFrac());
+    document.getElementById('C_lv').textContent=S.enh+'/5';
+    document.getElementById('C_pips').innerHTML=Array.from({length:MAXENH},(_,i)=>`<span class="pip ${i<S.enh?'on':''} ${(!init&&i===S.enh-1)?'just':''}"></span>`).join('');
+    document.getElementById('C_stars').innerHTML=Array.from({length:4},(_,i)=>`<span class="star ${i<S.star?'':'off'}">★</span>`).join('');
+  }
+  reset();
+</script>
+</body>
+</html>

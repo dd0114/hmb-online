@@ -8,3 +8,4 @@ export * from "./match-clock.js";
 export * from "./clamp.js";
 export * from "./simulate.js";
 export * from "./team-input-job.js";
+export * from "./growth.js";

@@ -372,6 +372,333 @@ describe("economy.v2 — 스타터팩·확률표", () => {
   });
 });
 
+describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
+  const ATTR_KEYS = [
+    "technical",
+    "mental",
+    "physical",
+    "passing",
+    "shooting",
+    "tackling",
+    "pace",
+    "stamina",
+    "positioning",
+  ] as const;
+
+  it("growth 블록 존재 + 스칼라 수치(V2 메이플 피벗, 이슈 V2-5)", () => {
+    const g = economy.growth;
+    expect(g).toBeDefined();
+    expect(g.xpBase).toBe(100);
+    expect(g.xpLvBase).toBe(100);
+    expect(g.xpLvGrowth).toBe(1.7);
+  });
+
+  it("gradeXpMult — 5개 등급 전부 + hero 확정값(브/실 0.4·골 1.0·다 1.5·레 3.0)", () => {
+    const m = economy.growth.gradeXpMult;
+    expect(Object.keys(m).sort()).toEqual([...GRADES].sort());
+    expect(m.BRONZE).toBe(0.4);
+    expect(m.SILVER).toBe(0.4);
+    expect(m.GOLD).toBe(1.0);
+    expect(m.DIA).toBe(1.5);
+    expect(m.LEGEND).toBe(3.0);
+  });
+
+  it("minutesMult — starter 1.0 / partial 0.5 / bench 0 (미출전 XP=0, V2-1①)", () => {
+    const m = economy.growth.minutesMult;
+    expect(m.starter).toBe(1.0);
+    expect(m.partial).toBe(0.5);
+    expect(m.bench).toBe(0);
+  });
+
+  it("eventStatMap — 7종 이벤트 전부 존재 + 스탯 가중 양수", () => {
+    const e = economy.growth.eventStatMap;
+    const expectedEvents = ["goal", "shot", "pass", "interception", "tackle", "save", "dribble"];
+    expect(Object.keys(e).sort()).toEqual([...expectedEvents].sort());
+    for (const key of expectedEvents) {
+      const bonus = e[key];
+      expect(bonus, `${key} 존재`).toBeDefined();
+      if (!bonus) continue;
+      expect(Object.keys(bonus).length, `${key} 가중 ≥1개`).toBeGreaterThan(0);
+      for (const [stat, w] of Object.entries(bonus)) {
+        expect(w, `${key}.${stat} > 0`).toBeGreaterThan(0);
+      }
+    }
+    expect(e.goal).toEqual({ shooting: 3, positioning: 1 });
+    expect(e.save).toEqual({ positioning: 3, mental: 1 });
+  });
+
+  it("baselineByPosition — 4포지션 전부 존재 · 9종 능력치 완비 · 각 값 양수", () => {
+    const b = economy.growth.baselineByPosition;
+    for (const pos of POSITIONS) {
+      const vec = b[pos];
+      expect(vec, `${pos} baseline 존재`).toBeDefined();
+      const keys = Object.keys(vec).sort();
+      expect(keys, `${pos} 능력치 9종`).toEqual([...ATTR_KEYS].sort());
+      for (const k of ATTR_KEYS) {
+        expect(vec[k], `${pos}.${k} > 0`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("각 baseline 벡터 합 = 1.0 (정규화)", () => {
+    const b = economy.growth.baselineByPosition;
+    for (const pos of POSITIONS) {
+      const sum = ATTR_KEYS.reduce((s, k) => s + b[pos][k], 0);
+      expect(sum, `${pos} 벡터 합=1`).toBeCloseTo(1, 10);
+    }
+  });
+
+  it("포지션 주스탯이 성장 방향 최대치(baseline 최상위)", () => {
+    // 성장 방향은 포지션 주스탯을 가장 크게 밀어야 한다(§4 방향 w).
+    const b = economy.growth.baselineByPosition;
+    const topOf = (pos: Position) =>
+      ATTR_KEYS.reduce((best, k) => (b[pos][k] > b[pos][best] ? k : best), ATTR_KEYS[0]);
+    expect(topOf("FW")).toBe("shooting");
+    expect(topOf("MF")).toBe("passing");
+    expect(topOf("DF")).toBe("tackling");
+    expect(topOf("GK")).toBe("positioning");
+  });
+
+  it("구 enhance 블록 제거됨(V2 메이플 피벗 — 강화 폐기)", () => {
+    expect((economy as unknown as Record<string, unknown>).enhance).toBeUndefined();
+  });
+
+  describe("star — ★ 승급(중복) config (V2-5)", () => {
+    it("copies — 누진(2★<3★<4★), hero 확정값(2/3/5)", () => {
+      const c = economy.star.copies;
+      expect(c["2"]).toBe(2);
+      expect(c["3"]).toBe(3);
+      expect(c["4"]).toBe(5);
+      expect(c["2"]).toBeLessThan(c["3"]);
+      expect(c["3"]).toBeLessThan(c["4"]);
+    });
+
+    it("starFrac — 1★→4★ 단조 증가, 4★=1.0(밴드 상한 완전 개방)", () => {
+      const f = economy.star.starFrac;
+      expect(f["1"]).toBe(0.25);
+      expect(f["2"]).toBe(0.5);
+      expect(f["3"]).toBe(0.75);
+      expect(f["4"]).toBe(1.0);
+      expect(f["1"]).toBeLessThan(f["2"]);
+      expect(f["2"]).toBeLessThan(f["3"]);
+      expect(f["3"]).toBeLessThan(f["4"]);
+    });
+  });
+
+  describe("potential — 잠재능력 config (V2-5, 안 ㄴ 성 게이트형)", () => {
+    it("linesByGrade — 브/실 1줄 · 골 2줄 · 다/레 3줄", () => {
+      const l = economy.potential.linesByGrade;
+      expect(l.BRONZE).toBe(1);
+      expect(l.SILVER).toBe(1);
+      expect(l.GOLD).toBe(2);
+      expect(l.DIA).toBe(3);
+      expect(l.LEGEND).toBe(3);
+    });
+
+    it("gradeTierCap × starTierCap 매트릭스(AC-V5) — 골드=EPIC·다이아 이상=UNIQUE, 성 캡 정확", () => {
+      const g = economy.potential.gradeTierCap;
+      expect(g.BRONZE).toBe("RARE");
+      expect(g.SILVER).toBe("RARE");
+      expect(g.GOLD).toBe("EPIC");
+      expect(g.DIA).toBe("UNIQUE");
+      expect(g.LEGEND).toBe("UNIQUE");
+
+      const s = economy.potential.starTierCap;
+      expect(s["2"]).toBe("RARE");
+      expect(s["3"]).toBe("EPIC");
+      expect(s["4"]).toBe("UNIQUE");
+    });
+
+    it("tierUp 확률 — 0~1 구간, 상위 승급일수록 낮음(레어→에픽 6% > 에픽→유니크 1.8%)", () => {
+      const t = economy.potential.tierUp;
+      expect(t.rareToEpic).toBeGreaterThan(0);
+      expect(t.rareToEpic).toBeLessThan(1);
+      expect(t.epicToUnique).toBeGreaterThan(0);
+      expect(t.epicToUnique).toBeLessThan(1);
+      expect(t.epicToUnique).toBeLessThan(t.rareToEpic);
+    });
+
+    it("breakout — V2.1-1 폐기(전줄 동일 티어로 의미 소멸) — 필드 부재", () => {
+      expect(economy.potential).not.toHaveProperty("breakout");
+    });
+
+    it("ceilingMult·cashPremiumMult > 0", () => {
+      expect(economy.potential.ceilingMult).toBeGreaterThan(0);
+      expect(economy.potential.cashPremiumMult).toBeGreaterThan(0);
+    });
+
+    it("tables — RARE/EPIC/UNIQUE 3티어 전부 비어있지 않고, weight > 0", () => {
+      const tables = economy.potential.tables;
+      for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
+        const rows = tables[tier];
+        expect(rows.length, `${tier} 비어있지 않음`).toBeGreaterThan(0);
+        for (const row of rows) {
+          expect(row.weight, `${tier} ${row.type}${row.stat ? "." + row.stat : ""} weight>0`).toBeGreaterThan(0);
+          expect(row.value, `${tier} ${row.type} value>0`).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it("tables — STAT_PCT/STAT_FLAT 이 9종 스탯 전부 커버(각 티어)", () => {
+      const attrKeys = [
+        "technical", "mental", "physical", "passing", "shooting",
+        "tackling", "pace", "stamina", "positioning",
+      ] as const;
+      for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
+        const rows = economy.potential.tables[tier];
+        for (const type of ["STAT_PCT", "STAT_FLAT"] as const) {
+          const stats = new Set(rows.filter((r) => r.type === type).map((r) => r.stat));
+          expect([...stats].sort(), `${tier}.${type} 9종 스탯`).toEqual([...attrKeys].sort());
+        }
+      }
+    });
+
+    it("tables — 상위 티어일수록 STAT_PCT premium 값이 큼(레어<에픽<유니크)", () => {
+      const maxPct = (tier: "RARE" | "EPIC" | "UNIQUE") =>
+        Math.max(
+          ...economy.potential.tables[tier]
+            .filter((r) => r.type === "STAT_PCT")
+            .map((r) => r.value),
+        );
+      expect(maxPct("RARE")).toBeLessThan(maxPct("EPIC"));
+      expect(maxPct("EPIC")).toBeLessThan(maxPct("UNIQUE"));
+    });
+
+    it("tables — CONDITION_RECOVERY·TEAM_MORALE 각 티어 정확히 2개씩(V2.1-2 2스텝: 저/고)", () => {
+      for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
+        const rows = economy.potential.tables[tier];
+        expect(rows.filter((r) => r.type === "CONDITION_RECOVERY").length).toBe(2);
+        expect(rows.filter((r) => r.type === "TEAM_MORALE").length).toBe(2);
+      }
+    });
+
+    describe("V2.1-2 — 4스텝+가중 옵션 테이블(롤 편차 확대)", () => {
+      const stepsWeights = {
+        RARE: { steps: [1, 2, 3, 4], weights: [40, 30, 20, 10] },
+        EPIC: { steps: [4, 5, 6, 8], weights: [35, 30, 25, 10] },
+        UNIQUE: { steps: [8, 10, 12, 15], weights: [35, 30, 25, 10] },
+      } as const;
+      const rmStepsWeights = {
+        RARE: { steps: [2, 4], weights: [70, 30] },
+        EPIC: { steps: [5, 8], weights: [70, 30] },
+        UNIQUE: { steps: [9, 15], weights: [70, 30] },
+      } as const;
+
+      it.each(["RARE", "EPIC", "UNIQUE"] as const)(
+        "%s — STAT_PCT/STAT_FLAT 각 스탯 4스텝, 값·weight 가 스펙과 정확히 일치",
+        (tier) => {
+          const rows = economy.potential.tables[tier];
+          const { steps, weights } = stepsWeights[tier];
+          for (const type of ["STAT_PCT", "STAT_FLAT"] as const) {
+            for (const stat of [
+              "technical", "mental", "physical", "passing", "shooting",
+              "tackling", "pace", "stamina", "positioning",
+            ] as const) {
+              const optRows = rows
+                .filter((r) => r.type === type && r.stat === stat)
+                .sort((a, b) => a.value - b.value);
+              expect(optRows.map((r) => r.value), `${tier}.${type}.${stat} 값`).toEqual([...steps]);
+              expect(optRows.map((r) => r.weight), `${tier}.${type}.${stat} weight`).toEqual([...weights]);
+            }
+          }
+        },
+      );
+
+      it.each(["RARE", "EPIC", "UNIQUE"] as const)("%s — STAT 계열 weight 합 = 100(4스텝)", (tier) => {
+        const { weights } = stepsWeights[tier];
+        expect(weights.reduce((a, b) => a + b, 0)).toBe(100);
+      });
+
+      it.each(["RARE", "EPIC", "UNIQUE"] as const)(
+        "%s — CONDITION_RECOVERY/TEAM_MORALE 2스텝 값·weight 가 스펙과 일치, weight 합 100",
+        (tier) => {
+          const rows = economy.potential.tables[tier];
+          const { steps, weights } = rmStepsWeights[tier];
+          for (const type of ["CONDITION_RECOVERY", "TEAM_MORALE"] as const) {
+            const optRows = rows.filter((r) => r.type === type).sort((a, b) => a.value - b.value);
+            expect(optRows.map((r) => r.value), `${tier}.${type} 값`).toEqual([...steps]);
+            expect(optRows.map((r) => r.weight), `${tier}.${type} weight`).toEqual([...weights]);
+          }
+          expect(weights.reduce((a, b) => a + b, 0)).toBe(100);
+        },
+      );
+
+      it("티어 바닥 = 아래 티어 천장(승급 체감 상승) — EPIC 최소=RARE 최대, UNIQUE 최소=EPIC 최대", () => {
+        expect(stepsWeights.EPIC.steps[0]).toBe(stepsWeights.RARE.steps[3]);
+        expect(stepsWeights.UNIQUE.steps[0]).toBe(stepsWeights.EPIC.steps[3]);
+        // 실제 생성 데이터로도 동일 불변식 확인(스펙 하드코딩이 아니라 산출물 검증).
+        const maxOf = (tier: "RARE" | "EPIC", type: "STAT_PCT" | "STAT_FLAT") =>
+          Math.max(...economy.potential.tables[tier].filter((r) => r.type === type).map((r) => r.value));
+        const minOf = (tier: "EPIC" | "UNIQUE", type: "STAT_PCT" | "STAT_FLAT") =>
+          Math.min(...economy.potential.tables[tier].filter((r) => r.type === type).map((r) => r.value));
+        for (const type of ["STAT_PCT", "STAT_FLAT"] as const) {
+          expect(minOf("EPIC", type)).toBe(maxOf("RARE", type));
+          expect(minOf("UNIQUE", type)).toBe(maxOf("EPIC", type));
+        }
+      });
+
+      it("premium — STAT_PCT/STAT_FLAT 은 상위 2스텝(3·4번째)만 premium, 하위 2스텝은 아님", () => {
+        for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
+          for (const type of ["STAT_PCT", "STAT_FLAT"] as const) {
+            const optRows = economy.potential.tables[tier]
+              .filter((r) => r.type === type && r.stat === "technical")
+              .sort((a, b) => a.value - b.value);
+            expect(optRows.map((r) => r.premium), `${tier}.${type}.technical premium 순서`).toEqual([
+              false,
+              false,
+              true,
+              true,
+            ]);
+          }
+        }
+      });
+
+      it("premium — CONDITION_RECOVERY/TEAM_MORALE 은 상위 1스텝(고값)만 premium(구조 일관성 택1)", () => {
+        for (const tier of ["RARE", "EPIC", "UNIQUE"] as const) {
+          for (const type of ["CONDITION_RECOVERY", "TEAM_MORALE"] as const) {
+            const optRows = economy.potential.tables[tier]
+              .filter((r) => r.type === type)
+              .sort((a, b) => a.value - b.value);
+            expect(optRows.map((r) => r.premium), `${tier}.${type} premium 순서`).toEqual([false, true]);
+          }
+        }
+      });
+    });
+  });
+
+  describe("dice — 다이스 상점 config (V2-5, V2.2 재화 이원화 개정)", () => {
+    it("normalCost=500(P) · cashGemCost=10(젬), 구 cashCost(P) 필드는 부재", () => {
+      const d = economy.dice as unknown as Record<string, unknown>;
+      expect(d.normalCost).toBe(500);
+      expect(d.cashGemCost).toBe(10);
+      expect(d.normalCost as number).toBeGreaterThan(0);
+      expect(d.cashGemCost as number).toBeGreaterThan(0);
+      expect(d.cashCost).toBeUndefined();
+    });
+  });
+
+  describe("gems — 충전형 젬 상점 config (V2.2 재화 이원화)", () => {
+    it("topupPacks 3종: id 유일 · gems>0 · mockPrice 문자열", () => {
+      const packs = economy.gems.topupPacks;
+      expect(packs.length).toBe(3);
+      const ids = packs.map((p) => p.id);
+      expect(new Set(ids).size).toBe(ids.length);
+      for (const p of packs) {
+        expect(p.gems).toBeGreaterThan(0);
+        expect(typeof p.mockPrice).toBe("string");
+        expect(p.mockPrice.length).toBeGreaterThan(0);
+      }
+    });
+
+    it("팩이 클수록 젬이 많다(단조 증가, 오름차순 시드 순서 가정)", () => {
+      const packs = economy.gems.topupPacks;
+      for (let i = 1; i < packs.length; i++) {
+        expect(packs[i].gems).toBeGreaterThan(packs[i - 1].gems);
+      }
+    });
+  });
+});
+
 describe("bots.v2 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)", () => {
   const byId = new Map<string, PlayerSeed>(players.map((p) => [p.id, p]));
 

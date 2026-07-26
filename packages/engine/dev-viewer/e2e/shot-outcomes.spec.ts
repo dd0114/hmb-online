@@ -21,6 +21,20 @@ test("off_target → 공이 골라인 밖으로 벗어난다(옆/뒤)", async ({
 });
 
 test("#91 save→corner → 공이 골라인 밖 와이드로 나간다(키퍼에 안 멈춤, 골 오인 없음)", async ({ page }) => {
+  // ── 왜 쇼케이스가 아니라 real 픽스처인가 (#182, gameqa 승인) ────────────────────────
+  // 이 계약의 본질은 "**굴절 세이브는 골문 밖 와이드로 라이브아웃**"이라는 엔진 의미론이다.
+  // 쇼케이스 시드에 그 사례가 들어있냐는 부수 사정이고, 실제로 #182(코너 rest defence)로 데모
+  // 매치 전개가 바뀌며 쇼케이스의 판정대상 굴절 save→corner 가 **2건 → 0건**이 됐다
+  // (쇼케이스 세이브 자체가 1건뿐이고 그마저 캐치). 그래서 real config 픽스처로 옮긴다 —
+  // 바로 위 off_target, 아래 penalty 테스트와 **같은 이유·같은 방식**.
+  //
+  // ⚠️ 오해 방지: 이건 "굴절 세이브가 줄었다"는 뜻이 **아니다**. 같은 real 픽스처에서 판정대상이
+  // main 4건 → 이 브랜치 6건으로 오히려 늘었다 = 쇼케이스 시드 노이즈일 뿐 엔진 회귀가 아니다.
+  // (#91 로직 소재인 contest.ts 는 main..HEAD 무변경.)
+  //
+  // 커버리지(반쪽 계약 아님을 확인): real 6건 = 세이브팀 home 4 / away 2, 골문도 좌(away) 4 /
+  // 우(home) 2 로 **양팀·양쪽 골문 모두** 포함한다.
+  await loadViewer(page, VIEWER_REAL_URL);
   const saves = await eventsOfType(page, "save");
   const corners = await eventsOfType(page, "kickoff", "corner");
   let checked = 0;

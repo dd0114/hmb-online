@@ -1,0 +1,403 @@
+/* QA 콘솔 (#191) — 관전 우선 레이아웃(목업 v2, hero 채택).
+   설명·확인포인트·피드백 이력은 좌측 레일로 보내고, 오른쪽은 경기 화면이 남은 높이를 전부 먹는다.
+   페이지 스크롤 0(고정 셸) — hero 가 스크롤하다 경기를 놓치지 않게. */
+
+.root {
+  --qa-bg: #0f1115;
+  --qa-panel: #161a21;
+  --qa-panel2: #1c222b;
+  --qa-line: #2a323d;
+  --qa-ink: #e6ebf2;
+  --qa-dim: #93a0b1;
+  --qa-dimmer: #6b7787;
+  --qa-accent: #4da3ff;
+  --qa-ok: #3ecf8e;
+  --qa-warn: #f0b429;
+  --qa-bad: #ff6b6b;
+
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--qa-bg);
+  color: var(--qa-ink);
+  font-size: 13px;
+  overflow: hidden;
+}
+
+/* ── 상단바 ───────────────────────────── */
+.top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 14px;
+  background: var(--qa-panel);
+  border-bottom: 1px solid var(--qa-line);
+}
+.brand {
+  font-weight: 700;
+}
+.brand small {
+  color: var(--qa-dimmer);
+  font-weight: 400;
+  margin-left: 6px;
+}
+.counts {
+  color: var(--qa-dim);
+  display: flex;
+  gap: 12px;
+}
+.counts b {
+  color: var(--qa-ink);
+}
+.counts .need {
+  color: var(--qa-accent);
+}
+.topRight {
+  margin-left: auto;
+  color: var(--qa-dimmer);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 11px;
+}
+.pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--qa-ok);
+}
+.pulseBad {
+  background: var(--qa-bad);
+}
+
+/* ── 셸 ───────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: 302px 1fr;
+  min-height: 0;
+}
+.rail {
+  background: var(--qa-panel);
+  border-right: 1px solid var(--qa-line);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+.railHead {
+  color: var(--qa-dimmer);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 7px 12px 4px;
+}
+.tabs {
+  padding: 0 8px 8px;
+  overflow-y: auto;
+  max-height: 34vh;
+  border-bottom: 1px solid var(--qa-line);
+}
+.tab {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  font: inherit;
+  border-radius: 8px;
+  padding: 7px 9px;
+  margin-bottom: 2px;
+  cursor: pointer;
+}
+.tab:hover {
+  background: var(--qa-panel2);
+}
+.tabOn {
+  background: var(--qa-panel2);
+  border-color: #31435a;
+}
+.tabL1 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.issue {
+  color: var(--qa-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tabTitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+.tabL2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+  color: var(--qa-dimmer);
+  font-size: 10.5px;
+}
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--qa-dimmer);
+}
+.dotWaiting {
+  background: var(--qa-accent);
+}
+.dotStale {
+  background: var(--qa-warn);
+}
+.badge {
+  margin-left: auto;
+  background: #2b3a4f;
+  color: #cfe2ff;
+  border-radius: 9px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.badgeZero {
+  background: transparent;
+  color: var(--qa-dimmer);
+  font-weight: 400;
+}
+
+/* 선택 탭 브리핑 = 레일 아래. hero 는 여기를 읽고 오른쪽을 본다 */
+.brief {
+  overflow-y: auto;
+  padding: 9px 12px 14px;
+}
+.briefTitle {
+  margin: 0 0 2px;
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.briefSub {
+  color: var(--qa-dimmer);
+  font-size: 10.5px;
+  margin-bottom: 9px;
+  word-break: break-all;
+}
+.briefSub code {
+  color: var(--qa-dim);
+  background: #12161c;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.k {
+  color: var(--qa-dimmer);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin: 10px 0 3px;
+}
+.v {
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}
+.vAsk {
+  color: #ffdca8;
+}
+.chips {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chip {
+  text-align: left;
+  background: #202934;
+  border: 1px solid #31435a;
+  color: #dbe7f5;
+  border-radius: 7px;
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.chip:hover {
+  background: #2b3a4f;
+}
+.chip b {
+  font-variant-numeric: tabular-nums;
+  color: #8fc4ff;
+  margin-right: 6px;
+}
+.fbItem {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 7px;
+  padding: 6px 0;
+  border-top: 1px solid #222933;
+  font-size: 11.5px;
+}
+.fbVerdict {
+  font-weight: 700;
+}
+.vApprove {
+  color: var(--qa-ok);
+}
+.vReject {
+  color: var(--qa-bad);
+}
+.vComment {
+  color: #8fc4ff;
+}
+.fbAt {
+  color: var(--qa-dimmer);
+  font-variant-numeric: tabular-nums;
+}
+.fbBody {
+  grid-column: 1 / -1;
+  white-space: pre-wrap;
+}
+.fbAck {
+  grid-column: 1 / -1;
+  color: var(--qa-ok);
+  font-size: 10.5px;
+}
+.fbAckPending {
+  color: var(--qa-warn);
+}
+.empty {
+  color: var(--qa-dimmer);
+  font-size: 11.5px;
+}
+
+/* ── 관전 ─────────────────────────────── */
+.main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 0 12px;
+}
+.views {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 7px 2px 6px;
+}
+.view {
+  background: transparent;
+  border: 1px solid var(--qa-line);
+  color: var(--qa-dim);
+  border-radius: 7px;
+  padding: 3px 11px;
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.viewOn {
+  background: #22303f;
+  border-color: #31435a;
+  color: var(--qa-ink);
+  font-weight: 600;
+}
+.logPath {
+  margin-left: auto;
+  color: var(--qa-dimmer);
+  font-size: 10.5px;
+  font-family: ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 45%;
+}
+/* 경기 화면 — 남은 높이를 전부 먹는다. VisualPlayback 이 이 안에 캔버스를 채운다. */
+.stage {
+  min-height: 0;
+  position: relative;
+  background: #0b0d11;
+  border: 1px solid var(--qa-line);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+}
+
+/* 피드백 = 한 줄 바(D9 — 적은 문장이 그대로 프롬프트) */
+.fbBar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 2px 9px;
+  border-top: 1px solid var(--qa-line);
+}
+.fbLabel {
+  font-weight: 600;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.fbInput {
+  flex: 1;
+  min-width: 0;
+  background: #11151b;
+  color: var(--qa-ink);
+  border: 1px solid var(--qa-line);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font: inherit;
+}
+.fbAttach {
+  color: var(--qa-dim);
+  font-size: 10.5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.tagSep {
+  color: var(--qa-dimmer);
+  font-size: 10px;
+  white-space: nowrap;
+  margin-left: 2px;
+}
+.send {
+  border: 0;
+  border-radius: 7px;
+  padding: 7px 12px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.send:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.sendComment {
+  background: #2b3a4f;
+  color: #cfe2ff;
+}
+.sendApprove {
+  background: #1d5c42;
+  color: #c6f4dd;
+}
+.sendReject {
+  background: #5c2020;
+  color: #ffd2d2;
+}
+.error {
+  color: var(--qa-bad);
+  font-size: 11px;
+  padding: 0 2px 6px;
+}
+.blank {
+  display: grid;
+  place-items: center;
+  color: var(--qa-dimmer);
+  text-align: center;
+  padding: 40px;
+  line-height: 1.8;
+}
+.blank code {
+  color: var(--qa-dim);
+  background: #12161c;
+  padding: 2px 6px;
+  border-radius: 4px;
+}

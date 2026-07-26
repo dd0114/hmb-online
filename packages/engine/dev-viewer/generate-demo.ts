@@ -49,6 +49,16 @@ export const showcaseConfig = {
     oneOnOneClearM: 7.0,
     oneOnOneXgMult: 2.0, // 1대1 하이라이트 더 강하게
   },
+  rules: {
+    ...defaultEngineConfig.rules,
+    card: {
+      ...defaultEngineConfig.rules.card,
+      // 쇼케이스는 **뷰어 이벤트 타입 커버리지**용이다 — 리얼 빈도(파울당 0.15)면 24분 데모에
+      // 파울이 5개뿐이라 카드가 시드 운에 따라 0개가 되고 카드 연출 E2E 계약이 픽스처 부족으로
+      // 깨진다(실측). 관전 재미용 config 이므로 여기서만 올려 카드가 반드시 등장하게 한다.
+      yellowProb: 0.6,
+    },
+  },
   variety: {
     ...defaultEngineConfig.variety,
     dribbleChainProb: 0.8,

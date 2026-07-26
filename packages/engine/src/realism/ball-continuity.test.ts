@@ -106,12 +106,20 @@ describe("공 연속성 — 접촉 없이 휘지 않는다 (#181)", () => {
     // 위 계약(TOUCH_REACH_M)은 원리에서 유도한 상한이라 여유가 있다. 실제 최악값도 함께 박제해
     // "조금씩 나빠지는" 회귀를 잡는다. 수정 전엔 도착 순간 공 점프만으로도 p90 13.7m·max 33.7m 였다.
     // 상한은 config 에서 파생시킨다(controlRange 를 조정해도 가드가 무의미해지지 않게).
+    //
+    // ⚠️ 이 값은 **물리 상한이 아니라 래칫**(실측 최악값 박제)이다 — 정당한 변경으로 움직이면
+    // 근거와 함께 재기준한다. #176(데드볼 규칙)으로 타이밍이 밀려 최악값 9.4 → **9.74m**.
+    // 원인 확인: 그 장면(seed 9999999999 t3165)은 **비행 중간 틱**이라 공 근처에 사람이 없는 게
+    // 정상이고, 꺾임을 만든 접촉은 **다음 틱 도착**(컨트롤러 거리 0m)이다. 도착 시 공 이동은
+    // #181 이 `giveBallTo` 를 controlRange(2.5m) 안으로 제한해 **이미 구조적으로 묶여 있다**
+    // (무제한 워프 → 최대 2.5m). 즉 엔진에 남은 결함이 아니라 지표가 비행 중간 틱을 보는 것이다.
+    // 물리 가드(위 "0건" 계약)는 그대로 통과하므로, 래칫만 0.5m 완화한다.
     let worst = 0;
     for (const seed of REALISM_SEEDS) {
       const log = runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, cfg);
       for (const k of lonelyKinks(seed, log, 0)) worst = Math.max(worst, k.nearestM);
     }
-    expect(worst, `꺾임 지점 최근접 선수 최악 거리 ${worst.toFixed(1)}m`).toBeLessThan(TOUCH_REACH_M - 1);
+    expect(worst, `꺾임 지점 최근접 선수 최악 거리 ${worst.toFixed(1)}m`).toBeLessThan(TOUCH_REACH_M - 0.5);
   });
 
   it("멈춰 있던 공은 사람이 와야 움직인다 — 정지→워프 금지", () => {

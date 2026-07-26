@@ -9,6 +9,7 @@ import { LobbyPage } from "./lobby/LobbyPage";
 import { DeckPage } from "./deck/DeckPage";
 import { ShopPage } from "./shop/ShopPage";
 import { CodexPage } from "./codex/CodexPage";
+import { GrowthHubPage } from "./growth/GrowthHubPage";
 import { TradePage } from "./trade/TradePage";
 import { LogsPage } from "./logs/LogsPage";
 import { LeaguePage } from "./league/LeaguePage";
@@ -17,6 +18,7 @@ import { AdminPage } from "./admin/AdminPage";
 import { AdminFlagProvider } from "./admin/AdminFlagProvider";
 import { StagePreview } from "./design/StagePreview";
 import { CardArtPreview } from "./design/CardArtPreview";
+import { QaConsolePage } from "./qa/QaConsolePage";
 import { RequireAdmin } from "./admin/RequireAdmin";
 import { TutorialProvider } from "./common/TutorialProvider";
 import { setUnauthorizedHandler } from "./api/client";
@@ -77,6 +79,14 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/growth"
+          element={
+            <RequireAuth>
+              <GrowthHubPage />
+            </RequireAuth>
+          }
+        />
+        <Route
           path="/codex"
           element={
             <RequireAuth>
@@ -132,6 +142,10 @@ function AppRoutes() {
         {import.meta.env.DEV && <Route path="/design/stage" element={<StagePreview />} />}
         {/* 카드 풀아트 배치안(#187) 리뷰 하니스 — 로그인·백엔드 불필요(정적 에셋만). */}
         {import.meta.env.DEV && <Route path="/design/cards" element={<CardArtPreview />} />}
+        {/* QA 콘솔(#191) — 워커 세션들이 등록한 탭을 hero 가 한 화면에서 보고 피드백하는 로컬 도구.
+            로그인 없이 열리며 **dev 빌드에만 존재**한다(프로덕션 번들엔 경로 없음). 기동은
+            `node tools/qa-console.mjs start`. 제품 화면이 아니다. */}
+        {import.meta.env.DEV && <Route path="/qa/console" element={<QaConsolePage />} />}
 
         <Route path="/" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
         <Route path="*" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />

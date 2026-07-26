@@ -83,4 +83,4 @@ export function findPackage(id: string, packages: readonly TopupPackage[] = TOPU
   return packages.find((p) => p.id === id) ?? null;
 }
 
-export type ShopTab = "gacha" | "topup";
+export type ShopTab = "gacha" | "dice" | "topup";

@@ -1,0 +1,113 @@
+/* 승급/축하 연출 공용 오버레이(GM7b) — 색·타이밍은 전부 CSS 변수 토큰.
+   디자인 개편 시 이 파일의 토큰/키프레임만 바꾸면 CelebrationOverlay.tsx 는 무변경으로 재사용된다. */
+.overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  /* 스텝(순차 공개) 타이밍 토큰 — 개별 스텝의 animation-delay 계산에 쓰인다. */
+  --celebration-step-base: 420ms;
+  --celebration-step-stagger: 240ms;
+}
+
+.flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background: var(--celebration-accent);
+  animation: celebrationFlash var(--celebration-duration) ease-out forwards;
+}
+
+@keyframes celebrationFlash {
+  0% {
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.55;
+  }
+  22% {
+    opacity: 0.12;
+  }
+  100% {
+    opacity: 0.12;
+  }
+}
+
+.body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 26px;
+  border-radius: 16px;
+  background: rgba(10, 12, 16, 0.72);
+  backdrop-filter: blur(2px);
+  animation: celebrationBodyIn 0.4s ease-out;
+}
+
+@keyframes celebrationBodyIn {
+  0% {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.badge {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  padding: 4px 18px;
+  border: 2px solid var(--celebration-accent);
+  border-radius: 999px;
+  color: var(--celebration-accent);
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+}
+
+.steps {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--celebration-accent);
+  opacity: 0;
+  transform: scale(0.4);
+  animation: celebrationStepPop 0.5s ease-out forwards;
+}
+
+@keyframes celebrationStepPop {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.25);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

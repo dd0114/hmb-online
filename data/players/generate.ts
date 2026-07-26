@@ -167,6 +167,102 @@ export interface EconomyLeagueRef {
   rewardsRef: string;
 }
 
+/** 능력치 9종 성장 방향 벡터(합=1, 정규화). §4 방향 w 의 포지션 baseline. */
+export interface GrowthBaselineVec {
+  technical: number;
+  mental: number;
+  physical: number;
+  passing: number;
+  shooting: number;
+  tackling: number;
+  pace: number;
+  stamina: number;
+  positioning: number;
+}
+
+/** 이벤트→스탯 XP 가중 (v2 §7 eventStatMap). match-log 이벤트 타입별 스탯 가산치. */
+export type EventStatBonus = Partial<Record<keyof PlayerAttributes, number>>;
+
+/**
+ * 스탯 성장(경기·무과금 트랙) config — 매치 정산 스탯별 xp·레벨 임계·방향.
+ * #179 V2 스펙(issues/2026-07-26-growth-dual-track.md V2-5) — 구 enhance/growth(강화·complete
+ * Matches 등)는 메이플 피벗으로 폐기, 이 블록이 대체한다(하드코딩 금지 — server/servants 는
+ * 이 블록만 읽는다).
+ */
+export interface GrowthConfig {
+  xpBase: number;
+  xpLvBase: number;
+  xpLvGrowth: number;
+  gradeXpMult: Record<Grade, number>;
+  minutesMult: { starter: number; partial: number; bench: number };
+  /** 포지션별 성장 방향 baseline(각 벡터 합=1). */
+  baselineByPosition: Record<Position, GrowthBaselineVec>;
+  /** match-log 이벤트 타입 → 스탯 가중(§B①, "헤딩 노림→heading류" 세분화 훅). */
+  eventStatMap: Record<string, EventStatBonus>;
+}
+
+/** 성(★, 중복 승급) config — 구 한계돌파 개칭·확장. V2-5 `star` 블록. */
+export interface StarConfig {
+  /** ★승급에 필요한 중복 소모량(누진) — 2★=2장 / 3★=3장 / 4★=5장. */
+  copies: Record<"2" | "3" | "4", number>;
+  /** ★별 스탯 성장 천장 개방 비율 — cap_i(star) = base_i + starFrac × (band.hi − base_i). */
+  starFrac: Record<"1" | "2" | "3" | "4", number>;
+}
+
+export type PotentialTier = "RARE" | "EPIC" | "UNIQUE";
+export type PotentialOptionType = "STAT_PCT" | "STAT_FLAT" | "CONDITION_RECOVERY" | "TEAM_MORALE";
+
+/**
+ * 잠재능력 옵션 풀 항목 (티어별 테이블 1행). `premium`=해당 (type,stat) 범위의 상위값 —
+ * 캐시 다이스는 이 옵션들의 weight 에 `potential.cashPremiumMult` 를 곱해 좋은 옵션 확률을 올린다
+ * (구현 단순화 택1 — RATIONALE: issues/2026-07-26-growth-dual-track.md V2-2 참고).
+ */
+export interface PotentialOption {
+  type: PotentialOptionType;
+  /** STAT_PCT/STAT_FLAT 에서만 사용. */
+  stat?: keyof PlayerAttributes;
+  value: number;
+  weight: number;
+  premium: boolean;
+}
+
+/** 잠재능력(다이스) config — 메이플 이식. V2-5 `potential` 블록. */
+export interface PotentialConfig {
+  /** 등급별 잠재 줄 수 — 브/실 1 · 골 2 · 다/레 3. */
+  linesByGrade: Record<Grade, number>;
+  /** 등급 캡 — 티어 상한(min(등급 캡, 성 캡) 중 등급 쪽). */
+  gradeTierCap: Record<Grade, PotentialTier>;
+  /** 성 캡 — 2★=레어 / 3★=에픽 / 4★=유니크. */
+  starTierCap: Record<"2" | "3" | "4", PotentialTier>;
+  /** 티어 승급 확률(노말 다이스만). */
+  tierUp: { rareToEpic: number; epicToUnique: number };
+  /** 천장 배수(기댓값 대비) — ceil(ceilingMult / p) 회 미승급 시 확정 승급. */
+  ceilingMult: number;
+  /** 캐시 다이스가 premium 옵션 weight 에 곱하는 배수(하드코딩 금지 — config화). */
+  cashPremiumMult: number;
+  /** 티어별 옵션 풀. */
+  tables: Record<PotentialTier, PotentialOption[]>;
+}
+
+/** 다이스(큐브 아날로그) 상점 비용. V2-5 `dice` 블록, V2.2 재화 이원화로 캐시 다이스는 젬 결제로 개정
+ * (`cashCost` P 결제 폐기 → `cashGemCost` 젬 결제). */
+export interface DiceConfig {
+  normalCost: number;
+  cashGemCost: number;
+}
+
+/** 젬 충전(목업) 팩 1개. */
+export interface GemTopupPack {
+  id: string;
+  gems: number;
+  mockPrice: string;
+}
+
+/** V2.2 재화 이원화: 충전형 젬 상점 config(`gems` 블록). */
+export interface GemsConfig {
+  topupPacks: GemTopupPack[];
+}
+
 export interface EconomySeed {
   version: string;
   initialPoints: number;
@@ -183,6 +279,16 @@ export interface EconomySeed {
   trade: TradeConfig;
   /** P2 추가(additive): 리그 보상표 참조. */
   league: EconomyLeagueRef;
+  /** #179 추가(additive), V2 메이플 피벗으로 개정: 스탯 성장(경기·무과금 트랙) config. */
+  growth: GrowthConfig;
+  /** V2 신규: 성(★, 중복 승급) config. */
+  star: StarConfig;
+  /** V2 신규: 잠재능력(다이스) config. */
+  potential: PotentialConfig;
+  /** V2 신규: 다이스 상점 비용. */
+  dice: DiceConfig;
+  /** V2.2 신규(additive): 충전형 젬 상점(목업). */
+  gems: GemsConfig;
 }
 
 /** 팀 성향 프리셋 — 봇 팀 성격 + 유저 수동 전술 프리셋(P2-D4/D10). tactics 는 0..1 (line/press/tempo/width). */
@@ -462,6 +568,69 @@ function buildLeague(): LeagueSeed {
   return { version: LEAGUE_VERSION, clubNames, personaPresets, rewards };
 }
 
+/**
+ * 티어 하나의 STAT_PCT/STAT_FLAT 옵션 9종×4스텝(V2.1-2, 잭팟형 편차 확대)을 만든다.
+ * `steps`/`weights` 는 작은→큰 순 길이 4. premium = 상위 2스텝(3·4번째 — 캐시 다이스가 이
+ * 옵션들의 weight 를 `cashPremiumMult` 배 해서 좋은 옵션 확률을 올린다, V2-2/V2.1-2).
+ */
+function buildStatOptions(
+  type: "STAT_PCT" | "STAT_FLAT",
+  steps: readonly [number, number, number, number],
+  weights: readonly [number, number, number, number],
+): PotentialOption[] {
+  const options: PotentialOption[] = [];
+  for (const stat of ATTR_KEYS) {
+    steps.forEach((value, i) => {
+      options.push({ type, stat, value, weight: weights[i], premium: i >= 2 });
+    });
+  }
+  return options;
+}
+
+/**
+ * 티어별 잠재 옵션 테이블 — RARE/EPIC/UNIQUE (V2.1-2 수치 그대로, 밸런스 재조절은 이 함수
+ * 호출 인자만 변경). STAT_PCT/STAT_FLAT 은 9종×4스텝+가중(잭팟 희소) 동일 스텝값을 공유.
+ * CONDITION_RECOVERY·TEAM_MORALE 은 2스텝(저/고)만 있어 "premium=상위 2스텝" 룰을 그대로
+ * 적용하면 테이블 전체가 premium 이 돼 STAT 계열과의 구조 일관성이 깨진다 → **택1: 상위
+ * 1스텝(고값)만 premium** 으로 스텝수 비례 적용(4스텝의 절반=2, 2스텝의 절반=1과 동일 규칙).
+ */
+function buildPotentialTable(
+  statSteps: readonly [number, number, number, number],
+  statWeights: readonly [number, number, number, number],
+  recoveryMoraleSteps: readonly [number, number],
+  recoveryMoraleWeights: readonly [number, number],
+): PotentialOption[] {
+  return [
+    ...buildStatOptions("STAT_PCT", statSteps, statWeights),
+    ...buildStatOptions("STAT_FLAT", statSteps, statWeights),
+    { type: "CONDITION_RECOVERY", value: recoveryMoraleSteps[0], weight: recoveryMoraleWeights[0], premium: false },
+    { type: "CONDITION_RECOVERY", value: recoveryMoraleSteps[1], weight: recoveryMoraleWeights[1], premium: true },
+    { type: "TEAM_MORALE", value: recoveryMoraleSteps[0], weight: recoveryMoraleWeights[0], premium: false },
+    { type: "TEAM_MORALE", value: recoveryMoraleSteps[1], weight: recoveryMoraleWeights[1], premium: true },
+  ];
+}
+
+/**
+ * V2-5 `potential` 블록 전체 — 등급/성 캡 매트릭스(안 ㄴ) + 티어별 옵션 테이블.
+ * V2.1-1: `breakout` 필드 제거(전줄 동일 티어로 의미 소멸 — 서버·GM6 이 소비).
+ * V2.1-2: 티어 바닥 = 아래 티어 천장(EPIC 최소 4 = RARE 최대, UNIQUE 최소 8 = EPIC 최대).
+ */
+function buildPotentialConfig(): PotentialConfig {
+  return {
+    linesByGrade: { BRONZE: 1, SILVER: 1, GOLD: 2, DIA: 3, LEGEND: 3 },
+    gradeTierCap: { BRONZE: "RARE", SILVER: "RARE", GOLD: "EPIC", DIA: "UNIQUE", LEGEND: "UNIQUE" },
+    starTierCap: { "2": "RARE", "3": "EPIC", "4": "UNIQUE" },
+    tierUp: { rareToEpic: 0.06, epicToUnique: 0.018 },
+    ceilingMult: 1.5,
+    cashPremiumMult: 2,
+    tables: {
+      RARE: buildPotentialTable([1, 2, 3, 4], [40, 30, 20, 10], [2, 4], [70, 30]),
+      EPIC: buildPotentialTable([4, 5, 6, 8], [35, 30, 25, 10], [5, 8], [70, 30]),
+      UNIQUE: buildPotentialTable([8, 10, 12, 15], [35, 30, 25, 10], [9, 15], [70, 30]),
+    },
+  };
+}
+
 /** 순수 함수 — SEED + ROSTER 로부터 세 산출물을 계산한다(부수효과 없음, 파일 I/O 없음). */
 export function generateAll(): GeneratedData {
   const rng = createRng(SEED);
@@ -540,6 +709,53 @@ export function generateAll(): GeneratedData {
     },
     // 리그 순위 보상표는 league.v1.json#rewards 참조(단일 원천, 중복 금지) — LLD-p2-data §3.
     league: { rewardsFile: `league.${LEAGUE_VERSION}.json`, rewardsRef: "rewards" },
+    // -- #179 V2 스탯 성장(경기·무과금 트랙) config (issues/2026-07-26-growth-dual-track.md V2-2/V2-5)
+    // — server/servants 는 이 블록만 읽음(하드코딩 금지). 구 growth(xpPerLevel·completeMatches·
+    // benchGrowthMult·execMatchDefault·speedMaxMult)는 메이플 피벗으로 폐기.
+    // xp_i = xpBase × (baseline_i + eventBonus_i) × minutesMult × gradeXpMult[grade].
+    // 레벨 임계: xpToNext(lv) = xpLvBase × xpLvGrowth^lv (지수) → 자동 레벨업, 스탯 +1/Lv.
+    // baselineByPosition: 성장 방향 w 의 포지션 baseline(각 벡터 합=1, 정규화) — 유지.
+    growth: {
+      xpBase: 100,
+      xpLvBase: 100,
+      xpLvGrowth: 1.7,
+      gradeXpMult: { BRONZE: 0.4, SILVER: 0.4, GOLD: 1.0, DIA: 1.5, LEGEND: 3.0 },
+      minutesMult: { starter: 1.0, partial: 0.5, bench: 0 },
+      baselineByPosition: {
+        FW: { shooting: 0.22, pace: 0.18, positioning: 0.15, technical: 0.13, passing: 0.1, stamina: 0.08, physical: 0.07, mental: 0.05, tackling: 0.02 },
+        MF: { passing: 0.2, technical: 0.16, stamina: 0.14, positioning: 0.12, mental: 0.1, pace: 0.1, shooting: 0.08, tackling: 0.06, physical: 0.04 },
+        DF: { tackling: 0.22, positioning: 0.18, physical: 0.15, mental: 0.12, passing: 0.1, stamina: 0.09, pace: 0.08, technical: 0.04, shooting: 0.02 },
+        GK: { positioning: 0.24, mental: 0.2, physical: 0.14, tackling: 0.12, passing: 0.1, stamina: 0.08, pace: 0.06, technical: 0.04, shooting: 0.02 },
+      },
+      // 이벤트→스탯 가중(§B① "헤딩 노림→heading류" 세분화 훅) — v2 이벤트 카탈로그 7종.
+      eventStatMap: {
+        goal: { shooting: 3, positioning: 1 },
+        shot: { shooting: 2, positioning: 1 },
+        pass: { passing: 2, technical: 1 },
+        interception: { tackling: 2, positioning: 1 },
+        tackle: { tackling: 2, physical: 1 },
+        save: { positioning: 3, mental: 1 },
+        dribble: { pace: 2, technical: 1 },
+      },
+    },
+    // -- V2 신규: 성(★, 중복 승급) config (V2-5 `star`) — 구 한계돌파 개칭·확장 --
+    star: {
+      copies: { "2": 2, "3": 3, "4": 5 },
+      starFrac: { "1": 0.25, "2": 0.5, "3": 0.75, "4": 1.0 },
+    },
+    // -- V2 신규: 잠재능력(다이스) config (V2-5 `potential`) — 메이플 이식, 안 ㄴ(성 게이트형) --
+    potential: buildPotentialConfig(),
+    // -- V2 신규 → V2.2 재화 이원화로 개정: 다이스 상점 비용 (`dice`, POST /api/shop/dice 목업).
+    // 캐시 다이스는 P 결제(cashCost) 폐기 → 젬 결제(cashGemCost)로 전환. --
+    dice: { normalCost: 500, cashGemCost: 10 },
+    // -- V2.2 신규: 충전형 젬 상점(목업, POST /api/shop/gems/topup) --
+    gems: {
+      topupPacks: [
+        { id: "p1", gems: 60, mockPrice: "₩1,200" },
+        { id: "p2", gems: 330, mockPrice: "₩5,900" },
+        { id: "p3", gems: 720, mockPrice: "₩11,900" },
+      ],
+    },
   };
 
   // -- bots.v1.json -------------------------------------------------------
