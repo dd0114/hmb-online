@@ -178,6 +178,74 @@ cd /Users/peter.park/spider8/hmb-growth/apps/web && \
 
 ---
 
+---
+
+# V2 스펙 — 메이플 피벗 (hero 확정 2026-07-26, 안 ㄴ) ★현행 SoT
+
+> §1~§5 의 강화(enhance)/한계돌파(limit_break→등급승급) 모델은 **폐기**. 이 섹션이 대체한다. 근거·조사 = `docs/research/maple-growth-model.md`. 아래 수치는 **밸런스 초안**(hero: "초안은 리서치가, 조절은 hero가") — 전부 config.
+
+## V2-1. 모델 (3축)
+- **① 스탯 성장(경기)**: 매 경기 스탯별 XP 적립 → 스탯별 Lv(지수 비용) → 스탯 +1/Lv. **미출전 XP=0**(벤치 성장 폐지). 등급 승급 없음 — 성장은 자기 등급 밴드 안.
+- **② 성★(중복)**: 1★~4★ 전 등급. 성 = **밴드 내 성장 천장 개방** + 잠재 게이트. 등급 변화 없음(프레임색 유지, ★ 별도 표시).
+- **③ 잠재능력(안 ㄴ)**: 2★ 해금. **줄 수 = 등급**(브/실 1줄 · 골 2줄 · 다/레 3줄), **티어 캡 = min(등급 캡, 성 캡)** — 등급 캡: 브/실=레어·골=에픽·다/레=유니크 / 성 캡: 2★=레어·3★=에픽·4★=유니크. 다이스로 리롤·승급.
+
+## V2-2. 계산 (server 권위, RNG는 다이스만·시드 저장)
+```
+스탯 XP:   xp_i = xpBase × (baselineByPosition[pos]_i + eventBonus_i(match-log)) × minutesMult × gradeXpMult[grade]
+           minutesMult: 선발 1.0 / 부분출전 0.5 / 미출전 0
+           eventBonus = eventStatMap(이벤트→스탯 가중, config) — "헤딩 노림→heading류" 세분화. promptBias(behavior) 가산
+레벨 임계: xpToNext(lv) = xpLvBase × xpLvGrowth^lv   (초안 100 × 1.7^lv) → 자동 레벨업, 스탯 +1/Lv
+성 천장:   cap_i(star) = base_i + starFrac[star] × (band.hi − base_i)   (starFrac 초안 1★.25/2★.5/3★.75/4★1.0)
+유효 스탯: eff_i = clamp(base_i + statLv_i, band.lo, cap_i(star)) → +Σ잠재flat_i → ×(1+Σ잠재pct_i)
+ovr:      Σ(eff_i × baselineByPosition[pos]_i)  /  완성도 = 성장 진행률(Σ statLv / Σ (cap−base))
+```
+- **다이스 롤**: `POST dice` → (노말이면) 티어업 판정(레어→에픽 6% · 에픽→유니크 1.8%, **천장** `ceil(1.5/p)`회 미승급 시 다음 확정) → 3줄 리롤: 1줄=현재 티어, 2·3줄=한 단계 아래 + 이탈확률(노말 8% / 캐시 20%)로 동일 티어. **캐시 다이스 = 티어업 없음, 옵션 테이블 상위 가중**. 시드 SecureRandom→`dice_rolls` 저장(가챠 패턴).
+- 잠재 옵션 풀(티어별 테이블, config): `STAT_PCT`(레어1~2%/에픽3~4%/유니크6~8%) · `STAT_FLAT`(1~2/3~4/6~8) · `CONDITION_RECOVERY`(P2-D5 훅) · `TEAM_MORALE`(P2-D7 훅). 동일 옵션 3줄 독점 금지(같은 (type,stat) 최대 2줄).
+
+## V2-3. 스키마 V9__maple_growth.sql
+```sql
+ALTER TABLE user_players ADD COLUMN stat_levels_json TEXT;                    -- {"shooting":{"lv":3,"xp":120},...} 9종
+ALTER TABLE user_players ADD COLUMN star INTEGER NOT NULL DEFAULT 1;          -- 1~4
+-- (구 enhance_level·limit_break·match_xp·growth_level·growth_vec_json 은 사용 중단 — 컬럼 유지, 코드 참조 제거)
+CREATE TABLE card_potentials (
+  user_id TEXT NOT NULL, player_id TEXT NOT NULL,
+  tier TEXT NOT NULL DEFAULT 'RARE' CHECK (tier IN ('RARE','EPIC','UNIQUE')),
+  lines_json TEXT,                       -- [{slot,tier,type,stat?,value}]
+  rolls_since_tierup INTEGER NOT NULL DEFAULT 0,   -- 천장 카운터(노말 다이스만 증가)
+  updated_at TEXT NOT NULL, PRIMARY KEY (user_id, player_id));
+CREATE TABLE user_dice (user_id TEXT PRIMARY KEY, normal INTEGER NOT NULL DEFAULT 0, cash INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE dice_rolls (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, player_id TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('NORMAL','CASH')), seed TEXT NOT NULL,
+  tier_before TEXT, tier_after TEXT, lines_json TEXT, created_at TEXT NOT NULL);
+-- growth_applied(멱등)는 그대로 재사용
+```
+
+## V2-4. API (GM2)
+| 메서드 | 경로 | 동작 |
+|---|---|---|
+| GET | `/api/growth/card/{pid}` | 개정 CardEffective(스탯Lv/XP·★·잠재 lines·caps·ovr·완성도) |
+| POST | `/api/growth/star` | ★승급: 중복 소모 2★=2 / 3★=3 / 4★=5장. CAS·멱등 |
+| POST | `/api/growth/dice` | `{playerId, kind}` 다이스 1개 소모→롤 결과(tierUp?·lines·ceiling 카운터) |
+| POST | `/api/shop/dice` | `{kind, count}` 노말=500P·캐시=5,000P(목업) — point_ledger 멱등 |
+| GET | `/api/growth/report/{matchId}` | 스탯별 XP·레벨업 리포트(개정) |
+| ~~POST~~ | ~~enhance·limitbreak~~ | **제거** |
+
+## V2-5. economy config (GM1 — additive 개정, `enhance` 블록 제거)
+`growth{xpBase100, xpLvBase100, xpLvGrowth1.7, gradeXpMult{B:0.4,S:0.4,G:1.0,D:1.5,L:3.0}, minutesMult{starter:1,partial:0.5,bench:0}, baselineByPosition(유지), eventStatMap{...}}` · `star{copies{2:2,3:3,4:5}, starFrac{1:0.25,2:0.5,3:0.75,4:1.0}}` · `potential{linesByGrade{B:1,S:1,G:2,D:3,L:3}, gradeTierCap{B:RARE,S:RARE,G:EPIC,D:UNIQUE,L:UNIQUE}, starTierCap{2:RARE,3:EPIC,4:UNIQUE}, tierUp{rareToEpic:0.06, epicToUnique:0.018}, ceilingMult:1.5, breakout{normal:0.08, cash:0.20}, tables{RARE:[...],EPIC:[...],UNIQUE:[...]}}` · `dice{normalCost:500, cashCost:5000}`
+
+## V2-6. UX (GM3)
+- 카드 상세 개정: 스탯 9종 **Lv·XP바**(레벨업=이산 체감) · **★1~4**(성 승급 버튼+중복 비용칩) · **잠재 패널 3줄**(티어 색: 레어=흰/에픽=보라/유니크=금) · **다이스 롤 버튼 2종**(비용칩: 노말 다이스1 / 캐시 다이스1) + 리롤 연출(줄 셔플→확정) · 티어업 시 축하 연출.
+- 상점: 다이스 구매 섹션(노말 500P/캐시 5,000P 목업). 성장 리포트: 스탯별 +XP·레벨업 뱃지.
+- 이전 hero 피드백 반영: 재화 비용칩 명시·지갑 플래시·레벨업 이산 핍·델타 표시.
+
+## V2-7. AC (개정)
+- AC-V1: 매치 정산 스탯별 XP 결정론·멱등(growth_applied), 미출전 XP=0.
+- AC-V2: 성★ 승급이 천장(starFrac)·잠재 티어 캡을 정확히 개방. 중복 부족 4xx.
+- AC-V3: 다이스 — 티어 랙칫(하락 없음)·천장 보장(1.5배)·시드 저장 재현·노말만 티어업. 캐시=테이블 가중만.
+- AC-V4: 잠재 유효스탯 반영(flat→pct 순) + SelectData 주입, 과거 리플레이 bit-identical.
+- AC-V5: 등급×성 캡 매트릭스(안 ㄴ) 전 조합 테스트(골드 4★=에픽 상한·2줄 등).
+- AC-V6: web — 롤 연출·비용칩·레벨업 체감(E2E 목킹) + 라이브 스모크.
+
 ## 진행 로그
 | 시각 | 이벤트 |
 |---|---|
