@@ -41,6 +41,8 @@ class MatchPromptDeltaTest extends MatchTestBase {
         TestDbSupport.registerTempDb(registry);
         TestDbSupport.disableMatchClock(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
+        // 이 클래스의 주제는 대변경 라우팅(#193 라운드2)이 아니다 — 델타/분기만 보게 라우팅은 끈다.
+        TestDbSupport.disableOverhaulRouting(registry);
     }
 
     @AfterAll

@@ -20,6 +20,7 @@ import online.hmb.jobs.AiJobQueue;
 import online.hmb.meta.WalletService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -55,6 +56,10 @@ public class MatchOrchestrator {
     private final online.hmb.growth.GrowthService growthService;
     private final MatchClockService clockService;
     private final ObjectMapper objectMapper;
+    /** #193 라운드2 — 지시 델타 라우팅 노브(전부 config, 하드코딩 금지). */
+    private final boolean deltaEnabled;
+    private final int overhaulAxisCount;
+    private final String overhaulEffort;
 
     public MatchOrchestrator(JdbcClient jdbcClient,
                              TxRunner txRunner,
@@ -70,7 +75,10 @@ public class MatchOrchestrator {
                              online.hmb.league.LeagueService leagueService,
                              online.hmb.growth.GrowthService growthService,
                              MatchClockService clockService,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
+                             @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
+                             @Value("${hmb.match.delta.overhaul-effort}") String overhaulEffort) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.matchService = matchService;
@@ -86,6 +94,9 @@ public class MatchOrchestrator {
         this.growthService = growthService;
         this.clockService = clockService;
         this.objectMapper = objectMapper;
+        this.deltaEnabled = deltaEnabled;
+        this.overhaulAxisCount = overhaulAxisCount;
+        this.overhaulEffort = overhaulEffort;
     }
 
     /**
@@ -167,13 +178,18 @@ public class MatchOrchestrator {
             String h1JobId;
             if (baseResult != null && hasInput) {
                 // 킥오프 B 패치: A 가 쓴 덱 사전 지시 → 매치시점(pre) 지시의 변경분만 델타로 얹는다.
-                h1JobId = enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary,
-                        isBot, promptDeltaFor(match, snapshot, List.of(), PromptContextBuilder.BASE_PHASES,
-                                PromptContextBuilder.PRE_PHASES));
+                Map<String, Object> delta = promptDeltaFor(match, snapshot, List.of(),
+                        PromptContextBuilder.BASE_PHASES, PromptContextBuilder.PRE_PHASES);
+                h1JobId = isTeamOverhaul(delta, matchId, half, side)
+                        // 대변경 → 이 사이드만 풀생성으로 (#193 라운드2)
+                        ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot,
+                                overhaulEffort)
+                        : enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary,
+                                isBot, delta);
             } else if (baseResult != null) {
                 h1JobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(baseResult, jobSeed));
             } else {
-                h1JobId = enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot);
+                h1JobId = enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, null);
             }
             // h1 은 GEN1 안에서만 해소되므로 보통 행이 하나다 — 그래도 "유효 잡 = 이번 해소 대상"
             // 불변식은 양쪽 half 에 똑같이 건다(재시도·폴백 경로가 행을 늘려도 선택이 흔들리지 않게).
@@ -188,13 +204,15 @@ public class MatchOrchestrator {
         String targetJobId;
         if (h1Input != null && !subsPresent && halftimePrompts) {
             // h2 B 패치: 전반에 유효했던 지시(pre) → 하프타임 지시의 변경분.
-            targetJobId = enqueuePatch(match, half, side, h1Input, snapshot, bot, subs, prevSummary, isBot,
-                    promptDeltaFor(match, snapshot, subs, PromptContextBuilder.PRE_PHASES,
-                            PromptContextBuilder.HALFTIME_PHASES));
+            Map<String, Object> delta = promptDeltaFor(match, snapshot, subs,
+                    PromptContextBuilder.PRE_PHASES, PromptContextBuilder.HALFTIME_PHASES);
+            targetJobId = isTeamOverhaul(delta, matchId, half, side)
+                    ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, overhaulEffort)
+                    : enqueuePatch(match, half, side, h1Input, snapshot, bot, subs, prevSummary, isBot, delta);
         } else if (h1Input != null && !subsPresent) {
             targetJobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(h1Input, jobSeed));
         } else {
-            targetJobId = enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot);
+            targetJobId = enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, null);
         }
         jobQueue.supersede(matchId, half, side, targetJobId);
     }
@@ -202,14 +220,50 @@ public class MatchOrchestrator {
     /**
      * 유저팀 프롬프트 델타(#193 W2b-B2). {@code oldPhases}→{@code newPhases} 두 시점의 유효 지시 세트를
      * 같은 함수로 만들어(=컨텍스트에 실리는 값과 동일) 차이만 뽑는다. 차이가 없으면 null(필드 생략).
+     *
+     * <p>{@code hmb.match.delta.enabled=false} 면 항상 null — 델타 도입 이전의 "베이스 위 <b>풀 패치</b>"
+     * 동작으로 통째 롤백된다(라우팅도 델타를 입력으로 하므로 함께 멈춘다).
      */
     private Map<String, Object> promptDeltaFor(MatchService.MatchRow match, JsonNode snapshot,
                                                List<MatchService.Substitution> subs,
                                                List<String> oldPhases, List<String> newPhases) {
+        if (!deltaEnabled) {
+            return null;
+        }
         Set<String> rosterIds = contextBuilder.rosterIds(snapshot, subs);
         return contextBuilder.promptDelta(
                 contextBuilder.userPromptSet(match.id(), snapshot, rosterIds, oldPhases),
                 contextBuilder.userPromptSet(match.id(), snapshot, rosterIds, newPhases));
+    }
+
+    /**
+     * <b>팀 지시 대변경</b> 판정 (#193 라운드2). 델타에 팀 지시 변경이 있고, <b>새 팀 지시가 건드리는
+     * 전술 축</b>({@link OverhaulDetector})이 {@code hmb.match.delta.overhaul-axis-count} 개 이상이면
+     * 이 사이드는 델타 패치가 아니라 <b>풀생성</b>으로 간다.
+     *
+     * <p>근거(블라인드 맞대결 라운드2): 풀생성이 이긴 것은 <b>다축 대변경 K1</b> 하나뿐이다
+     * (델타 3.13 vs 풀 4.75 — 델타가 파급을 반쪽만 구현). 반대로 소변경 K2(델타 4.63 vs 풀 3.25)·
+     * 돌발 3종(델타 3.83~5.00 PASS)·개인지시 K3(4.00)는 델타가 동급 이상이라 그대로 둔다. 즉 잘못
+     * 라우팅하면 지연뿐 아니라 <b>품질도 잃는다</b> → 신호는 "얼마나 다른 낱말인가"(자카드)가 아니라
+     * "<b>몇 개의 축을 동시에 건드리는가</b>"다. 자카드는 실 경로에서 old 가 항상 비어(덱에 팀 지시 없음)
+     * 모든 킥오프를 풀생성으로 보냈다 — 폐기 사유는 {@link OverhaulDetector} 참조.
+     *
+     * <p>판정 대상은 <b>팀 지시</b>뿐이다 — 선수 지시만 바뀐 변경은 여기서 항상 false.
+     */
+    private boolean isTeamOverhaul(Map<String, Object> delta, String matchId, int half, String side) {
+        if (delta == null || !(delta.get("team") instanceof Map<?, ?> team)) {
+            return false;
+        }
+        String newText = team.get("new") == null ? "" : String.valueOf(team.get("new"));
+        Set<String> axes = OverhaulDetector.axes(newText);
+        if (axes.size() < overhaulAxisCount) {
+            log.debug("팀 지시 소변경(match {} h{} {}) — 전술 축 {}개{} < {} → 델타 유지",
+                    matchId, half, side, axes.size(), axes, overhaulAxisCount);
+            return false;
+        }
+        log.info("팀 지시 대변경 감지(match {} h{} {}) — 전술 축 {}개{} ≥ {} → 풀생성 라우팅(effortHint='{}')",
+                matchId, half, side, axes.size(), axes, overhaulAxisCount, overhaulEffort);
+        return true;
     }
 
     /**
@@ -235,15 +289,27 @@ public class MatchOrchestrator {
         return jobQueue.enqueue(match.id(), side, half, ctx);
     }
 
-    /** 풀 생성(team-input) 폴백 — 기존 경로(A 미완·교체 등). @return 잡 id */
+    /**
+     * 풀 생성(team-input) — 기존 폴백 경로(A 미완·교체 등) + <b>대변경 라우팅</b>(#193 라운드2)의 목적지.
+     * 컨텍스트엔 매치시점 프롬프트 전체가 이미 들어 있다(buildUserContext).
+     *
+     * @param effortHint 대변경 라우팅으로 왔을 때만 non-null — 그 잡에만 {@code effortHint} 를 실어
+     *     실행기(claude-code)가 env 기본 대신 이 effort 로 돌게 한다(빈 문자열 = 세션 기본 effort,
+     *     맞대결 4.75 의 조건). <b>일반 폴백은 null</b> = 필드 미첨부(기존 동작 불변).
+     *     shared 계약은 무변경 — 비엄격 zod 가 통과시키고 실행기는 raw context 로 읽는다.
+     * @return 잡 id
+     */
     private String enqueueFull(MatchService.MatchRow match, int half, String side,
                                JsonNode snapshot, BotService.BotRow bot,
                                List<MatchService.Substitution> subs, Map<String, Object> prevSummary,
-                               boolean isBot) {
+                               boolean isBot, String effortHint) {
         Map<String, Object> ctx = isBot
                 ? contextBuilder.buildBotContext(match, half, bot, prevSummary, side)
                 : contextBuilder.buildUserContext(match, half, snapshot, subs, prevSummary,
                         contextBuilder.readJson(bot.deckJson()), side);
+        if (effortHint != null) {
+            ctx.put("effortHint", effortHint);
+        }
         return jobQueue.enqueue(match.id(), side, half, ctx);
     }
 

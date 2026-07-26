@@ -46,6 +46,8 @@ class SecondHalfPrefetchTest extends MatchTestBase {
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
         registry.add("hmb.servant.engine-runner-url", RUNNER::url);
+        // 이 클래스의 주제는 대변경 라우팅(#193 라운드2)이 아니다 — 델타/분기만 보게 라우팅은 끈다.
+        TestDbSupport.disableOverhaulRouting(registry);
         registry.add("hmb.match.clock.sweep-interval-ms", () -> "3600000"); // 배경 스위퍼 사실상 끔
         registry.add("hmb.match.clock.enabled", () -> "true");
         registry.add("hmb.match.clock.half-real-ms", () -> "240000");

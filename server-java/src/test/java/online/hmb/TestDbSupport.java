@@ -39,6 +39,21 @@ final class TestDbSupport {
         registry.add("hmb.match.clock.enabled", () -> "false");
     }
 
+    /**
+     * 팀 지시 <b>대변경 → 풀생성 라우팅</b>(#193 라운드2)을 끈 상태로 고정한다. 임계를 축 카탈로그 크기
+     * (12)보다 큰 값으로 올리면 어떤 지시도 임계를 못 넘는다 = 라우팅만 정지(델타는 그대로 붙는다).
+     *
+     * <p>왜 필요한가: 라우팅이 켜지면 "여러 축을 한꺼번에 건드린" 사이드는 델타 패치가 아니라 풀생성 잡이
+     * 된다. 델타 <b>내용</b>·A/B 분기·시계·선행 생성처럼 <b>라우팅이 주제가 아닌</b> 기존 테스트는 이걸
+     * 꺼서 자기 주제만 보게 한다(시계의 {@link #disableMatchClock} 과 같은 규율 — 지금은 그 클래스들의
+     * 지시 문장이 우연히 2축 이하라 켜도 결과가 같지만, 문장을 손볼 때 주제가 흔들리지 않도록 고정한다).
+     * 라우팅 동작 자체는 MatchOverhaulRoutingTest(기본값 켜짐)·MatchOverhaulKnobsTest(노브)·
+     * MatchDeltaDisabledTest(롤백)가 전담한다.
+     */
+    static void disableOverhaulRouting(DynamicPropertyRegistry registry) {
+        registry.add("hmb.match.delta.overhaul-axis-count", () -> "99");
+    }
+
     /** 시드 임포트 파일이 아예 없는 시나리오(부팅 warn-and-continue 확인용). */
     static void registerTempDbWithMissingData(DynamicPropertyRegistry registry) {
         try {
