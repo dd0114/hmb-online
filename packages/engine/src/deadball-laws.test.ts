@@ -151,6 +151,10 @@ function scanLaws(log: MatchLog, config: EngineConfig, tag: string): {
   // 하프/종료 휘슬은 데드볼을 도중에 잘라낸다(재시작이 실행되지 않고 킥오프로 리셋).
   // 그런 창은 "물러날 시간" 자체가 없으므로 규칙이 성립하지 않는다 → 계약에서 제외.
   const whistles = log.events.filter((w) => w.type === "half_whistle" || w.type === "full_whistle").map((w) => w.tick);
+  // **새 재시작이 선언되면 그 이전 창은 끝난다.** 안 그러면 같은 스팟에서 상대에게 재선언된
+  // 세트피스(예: 라인 위 스로인이 곧장 다시 아웃 → 상대 스로인)의 **새 taker** 를 "상대가 스팟에
+  // 서 있다"로 오판한다 — 규칙 위반이 아니라 정당한 소유 이전이다.
+  const restartTicks = log.events.filter((w) => restartKind(w) != null).map((w) => w.tick);
 
   for (const e of log.events) {
     const kind = restartKind(e);
@@ -175,6 +179,7 @@ function scanLaws(log: MatchLog, config: EngineConfig, tag: string): {
       const s = byTick.get(t);
       if (!s) break;
       if (t > e.tick && (s.ballOwner == null || Math.hypot(s.ball.x - spot.x, s.ball.y - spot.y) > 0.3)) break;
+      if (t > e.tick && restartTicks.includes(t)) break; // 새 재시작 선언 → 이 창 종료
       lastTick = t;
       for (const p of s.players) {
         if (!p.playerId.startsWith(oppPrefix) || p.playerId === oppGk) continue;
@@ -234,6 +239,8 @@ function scanPrePlaySteals(log: MatchLog): string[] {
       if (!s) break;
       // 소유가 비었거나(찼다) 공이 스팟을 떠났으면(드리블/비행) 인플레이 → 검사 종료.
       if (s.ballOwner == null || Math.hypot(s.ball.x - spot.x, s.ball.y - spot.y) > 0.3) break;
+      // 새 재시작이 선언됐으면(같은 스팟 재선언 포함) 그건 강탈이 아니라 정당한 소유 이전이다.
+      if (log.events.some((w) => w.tick === t && restartKind(w) != null)) break;
       if (s.ballOwner.startsWith(oppPrefix)) {
         out.push(`${kind} t${t} ${s.ballOwner} 이 차기 전 taker 에게서 강탈(스팟 ${spot.x.toFixed(1)},${spot.y.toFixed(1)})`);
         break;
