@@ -24,6 +24,8 @@ export interface NavItem {
 export const NAV_ITEMS: readonly NavItem[] = [
   { key: "home", label: "홈", icon: "🏠", to: "/lobby" },
   { key: "deck", label: "덱", icon: "🃏", to: "/deck" },
+  { key: "growth", label: "육성", icon: "🌱", to: "/growth" },
+  { key: "shop", label: "상점", icon: "🛒", to: "/shop" },
   { key: "trade", label: "트레이드", icon: "🔄", to: "/trade" },
   { key: "logs", label: "로그", icon: "📋", to: "/logs" },
   { key: "codex", label: "도감", icon: "📖", to: "/codex" },
