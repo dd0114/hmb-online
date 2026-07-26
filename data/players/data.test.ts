@@ -202,7 +202,7 @@ const REAL_CLUB_TOKENS: readonly string[] = [
   "Celtic",
 ];
 
-const { players, playersV2, playersV21, playersV22, playersV23, economy, bots, league } =
+const { players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league } =
   generateAll();
 
 describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
@@ -513,6 +513,71 @@ describe("economy.v2 — 스타터팩·확률표", () => {
       expect(g.min).toBeLessThanOrEqual(g.max);
       expect(g.min).toBeGreaterThan(0);
     });
+  });
+});
+
+/**
+ * #209 스타터 개편 — economy 는 v3 로 **부분 버전업**된다. v2 는 발행물이라 손대지 않고
+ * (아래 첫 테스트가 그걸 강제한다), v3 만 `starterTop` 블록을 얹는다.
+ */
+describe("economy.v3 — starterTop (#209 AC1)", () => {
+  it("v2 는 불변 — starterTop 블록이 v2 에는 없다(발행물 동결)", () => {
+    expect(economy.version).toBe("v2");
+    expect(economy.starterTop).toBeUndefined();
+  });
+
+  it("v3 = v2 + starterTop (다른 블록은 전부 동일)", () => {
+    expect(economyV3.version).toBe("v3");
+    const { starterTop, version, ...restV3 } = economyV3;
+    const { version: v2Version, ...restV2 } = economy;
+    expect(starterTop).toBeDefined();
+    expect(v2Version).toBe("v2");
+    expect(restV3).toEqual(restV2);
+  });
+
+  it("pool 은 중복 없는 5명 — count=1 (가입 시 '후보 중 1장')", () => {
+    const top = economyV3.starterTop!;
+    expect(top.pool.length).toBe(5);
+    expect(new Set(top.pool).size).toBe(5);
+    expect(top.count).toBe(1);
+    expect(top.count).toBeLessThanOrEqual(top.pool.length);
+  });
+
+  it("pool 전원이 카탈로그 실재 + 최상위 등급(LEGEND)", () => {
+    const byId = new Map(players.map((p) => [p.id, p]));
+    for (const id of economyV3.starterTop!.pool) {
+      const p = byId.get(id);
+      expect(p, `starterTop id ${id} exists in players`).toBeDefined();
+      expect(p!.grade).toBe("LEGEND");
+    }
+  });
+
+  /**
+   * #207 이 구 pool 4종을 전원 비활성시켰다. 비활성 = **신규 획득 차단**이 정책이고 가입 지급은
+   * 명백한 신규 획득이라, 비활성 유닛이 pool 에 남으면 정책을 정면으로 어긴다("도감엔 있는데
+   * 아무리 뽑아도 안 나오는" 유닛을 가입 선물로 주는 꼴). 이 검사가 그 회귀를 막는다.
+   */
+  it("pool 전원이 **활성** 유닛 — 비활성은 신규 획득 차단 대상이라 지급 후보가 될 수 없다", () => {
+    const activeById = new Map(playersV23.map((p) => [p.id, p.active]));
+    for (const id of economyV3.starterTop!.pool) {
+      expect(activeById.get(id), `${id} 는 현행 발행본(v2.3)에 있어야 한다`).toBeDefined();
+      expect(activeById.get(id), `${id} 가 비활성이다 — pool 에서 빼거나 활성화해야 한다`).toBe(true);
+    }
+  });
+
+  it("pool 과 기본팩은 서로소 — 최상위는 언제나 '기본 위에 얹히는 1장'", () => {
+    const basics = new Set(economyV3.starterPack);
+    for (const id of economyV3.starterTop!.pool) {
+      expect(basics.has(id), `${id} must not be in starterPack`).toBe(false);
+    }
+  });
+
+  it("기본팩은 SILVER/BRONZE 만 — 최상위는 오직 starterTop 경로로만 나온다", () => {
+    const byId = new Map(players.map((p) => [p.id, p]));
+    for (const id of economyV3.starterPack) {
+      const grade = byId.get(id)!.grade;
+      expect(grade === "SILVER" || grade === "BRONZE", `${id} grade ${grade}`).toBe(true);
+    }
   });
 });
 
@@ -1259,7 +1324,9 @@ describe("players.v2.3 — 유닛명 정정 + 활성 5/비활성 3 (#207 U-D5/U-
       LEGEND: 3.0,
     });
     expect(economy.trade.waitHours.LEGEND).toBe(72);
-    expect(economy.trade.value.byGrade.LEGEND).toBe(3000);
+    // #212 재화 정돈이 byGrade·attrSumCoeff 를 함께 ×10 했다(카드 대 카드 비율은 불변, 환율만 이동).
+    // 그 커밋이 생성기만 올리고 이 기대값을 놓쳐 main 이 red 였다 — 리스케일이 의도이므로 값을 맞춘다.
+    expect(economy.trade.value.byGrade.LEGEND).toBe(30000);
     expect(economy.trade.targetRarityWeights.LEGEND).toBe(0.05);
     expect(economy.potential.linesByGrade.LEGEND).toBe(3);
     expect(economy.potential.gradeTierCap.LEGEND).toBe("UNIQUE");
@@ -1323,7 +1390,9 @@ describe("동결 발행물 불변 — 기존 172명 바이트 동일 (#207 결�
       LEGEND: 3.0,
     });
     expect(economy.trade.waitHours.LEGEND).toBe(72);
-    expect(economy.trade.value.byGrade.LEGEND).toBe(3000);
+    // #212 재화 정돈이 byGrade·attrSumCoeff 를 함께 ×10 했다(카드 대 카드 비율은 불변, 환율만 이동).
+    // 그 커밋이 생성기만 올리고 이 기대값을 놓쳐 main 이 red 였다 — 리스케일이 의도이므로 값을 맞춘다.
+    expect(economy.trade.value.byGrade.LEGEND).toBe(30000);
     expect(economy.trade.targetRarityWeights.LEGEND).toBe(0.05);
     expect(economy.potential.linesByGrade.LEGEND).toBe(3);
     expect(economy.potential.gradeTierCap.LEGEND).toBe("UNIQUE");

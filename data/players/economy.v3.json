@@ -1,0 +1,1793 @@
+{
+  "version": "v3",
+  "initialPoints": 3000,
+  "initialGems": 6000,
+  "starterPack": [
+    "P074",
+    "P077",
+    "P078",
+    "P079",
+    "P080",
+    "P081",
+    "P092",
+    "P093",
+    "P094",
+    "P095",
+    "P096",
+    "P106",
+    "P107",
+    "P108"
+  ],
+  "gacha": {
+    "currency": "GEM",
+    "singleCost": 300,
+    "tenCost": 3000,
+    "tenCount": 11,
+    "rates": {
+      "BRONZE": 0.45,
+      "SILVER": 0.3,
+      "GOLD": 0.15,
+      "DIA": 0.08,
+      "LEGEND": 0.02
+    },
+    "tenPityMinGrade": "GOLD"
+  },
+  "rewards": {
+    "win": 500,
+    "draw": 200,
+    "loss": 100,
+    "byMode": {
+      "practice": {
+        "win": 500,
+        "draw": 200,
+        "loss": 100
+      },
+      "league": {
+        "win": 5000,
+        "draw": 2000,
+        "loss": 1000
+      }
+    }
+  },
+  "trade": {
+    "slots": 3,
+    "kindWeights": {
+      "FA": 0.5,
+      "TRADE": 0.5
+    },
+    "waitHours": {
+      "BRONZE": 1,
+      "SILVER": 6,
+      "GOLD": 24,
+      "DIA": 48,
+      "LEGEND": 72
+    },
+    "targetRarityWeights": {
+      "BRONZE": 0.3,
+      "SILVER": 0.3,
+      "GOLD": 0.22,
+      "DIA": 0.13,
+      "LEGEND": 0.05
+    },
+    "speedup": {
+      "pointsPerHour": 500,
+      "minPoints": 200
+    },
+    "fa": {
+      "base": 0.5,
+      "k": 0.8,
+      "minProb": 0.05,
+      "maxProb": 0.95,
+      "reproposalCooldownHours": 6
+    },
+    "tradeOffer": {
+      "acceptProb": 0.8
+    },
+    "value": {
+      "byGrade": {
+        "BRONZE": 1000,
+        "SILVER": 2500,
+        "GOLD": 6000,
+        "DIA": 14000,
+        "LEGEND": 30000
+      },
+      "attrSumCoeff": 20
+    }
+  },
+  "league": {
+    "rewardsFile": "league.v1.json",
+    "rewardsRef": "rewards",
+    "gemReward": {
+      "maxRank": 1,
+      "min": 500,
+      "max": 3000
+    }
+  },
+  "growth": {
+    "xpBase": 100,
+    "xpLvBase": 100,
+    "xpLvGrowth": 1.7,
+    "gradeXpMult": {
+      "BRONZE": 0.4,
+      "SILVER": 0.4,
+      "GOLD": 1,
+      "DIA": 1.5,
+      "LEGEND": 3
+    },
+    "minutesMult": {
+      "starter": 1,
+      "partial": 0.5,
+      "bench": 0
+    },
+    "baselineByPosition": {
+      "FW": {
+        "shooting": 0.22,
+        "pace": 0.18,
+        "positioning": 0.15,
+        "technical": 0.13,
+        "passing": 0.1,
+        "stamina": 0.08,
+        "physical": 0.07,
+        "mental": 0.05,
+        "tackling": 0.02
+      },
+      "MF": {
+        "passing": 0.2,
+        "technical": 0.16,
+        "stamina": 0.14,
+        "positioning": 0.12,
+        "mental": 0.1,
+        "pace": 0.1,
+        "shooting": 0.08,
+        "tackling": 0.06,
+        "physical": 0.04
+      },
+      "DF": {
+        "tackling": 0.22,
+        "positioning": 0.18,
+        "physical": 0.15,
+        "mental": 0.12,
+        "passing": 0.1,
+        "stamina": 0.09,
+        "pace": 0.08,
+        "technical": 0.04,
+        "shooting": 0.02
+      },
+      "GK": {
+        "positioning": 0.24,
+        "mental": 0.2,
+        "physical": 0.14,
+        "tackling": 0.12,
+        "passing": 0.1,
+        "stamina": 0.08,
+        "pace": 0.06,
+        "technical": 0.04,
+        "shooting": 0.02
+      }
+    },
+    "eventStatMap": {
+      "goal": {
+        "shooting": 0.3,
+        "positioning": 0.1
+      },
+      "shot": {
+        "shooting": 0.2,
+        "positioning": 0.1
+      },
+      "pass": {
+        "passing": 0.2,
+        "technical": 0.1
+      },
+      "interception": {
+        "tackling": 0.2,
+        "positioning": 0.1
+      },
+      "tackle": {
+        "tackling": 0.2,
+        "physical": 0.1
+      },
+      "save": {
+        "positioning": 0.3,
+        "mental": 0.1
+      },
+      "dribble": {
+        "pace": 0.2,
+        "technical": 0.1
+      }
+    }
+  },
+  "star": {
+    "copies": {
+      "2": 2,
+      "3": 3,
+      "4": 5
+    },
+    "starFrac": {
+      "1": 0.25,
+      "2": 0.5,
+      "3": 0.75,
+      "4": 1
+    }
+  },
+  "potential": {
+    "linesByGrade": {
+      "BRONZE": 1,
+      "SILVER": 1,
+      "GOLD": 2,
+      "DIA": 3,
+      "LEGEND": 3
+    },
+    "gradeTierCap": {
+      "BRONZE": "RARE",
+      "SILVER": "RARE",
+      "GOLD": "EPIC",
+      "DIA": "UNIQUE",
+      "LEGEND": "UNIQUE"
+    },
+    "starTierCap": {
+      "2": "RARE",
+      "3": "EPIC",
+      "4": "UNIQUE"
+    },
+    "tierUp": {
+      "rareToEpic": 0.06,
+      "epicToUnique": 0.018
+    },
+    "ceilingMult": 1.5,
+    "cashPremiumMult": 2,
+    "tables": {
+      "RARE": [
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 1,
+          "weight": 40,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 2,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 3,
+          "weight": 20,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 4,
+          "weight": 10,
+          "premium": true
+        }
+      ],
+      "EPIC": [
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 4,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 5,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 6,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 8,
+          "weight": 10,
+          "premium": true
+        }
+      ],
+      "UNIQUE": [
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "technical",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "mental",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "physical",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "passing",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "shooting",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "tackling",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "pace",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "stamina",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_PCT",
+          "stat": "positioning",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "technical",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "mental",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "physical",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "passing",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "shooting",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "tackling",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "pace",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "stamina",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 8,
+          "weight": 35,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 10,
+          "weight": 30,
+          "premium": false
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 12,
+          "weight": 25,
+          "premium": true
+        },
+        {
+          "type": "STAT_FLAT",
+          "stat": "positioning",
+          "value": 15,
+          "weight": 10,
+          "premium": true
+        }
+      ]
+    }
+  },
+  "dice": {
+    "normalCost": 5000,
+    "cashGemCost": 10
+  },
+  "gems": {
+    "topupEnabled": false,
+    "topupPacks": [
+      {
+        "id": "p1",
+        "gems": 60,
+        "mockPrice": "₩1,200"
+      },
+      {
+        "id": "p2",
+        "gems": 330,
+        "mockPrice": "₩5,900"
+      },
+      {
+        "id": "p3",
+        "gems": 720,
+        "mockPrice": "₩11,900"
+      }
+    ]
+  },
+  "starterTop": {
+    "pool": [
+      "P173",
+      "P175",
+      "P176",
+      "P177",
+      "P179"
+    ],
+    "count": 1
+  }
+}

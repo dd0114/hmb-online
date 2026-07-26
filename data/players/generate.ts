@@ -120,6 +120,37 @@ export const INACTIVE_PLAYER_IDS_V23: readonly string[] = [
 /** league 시드 데이터 버전(봇 클럽명·성향 프리셋·순위 보상). */
 export const LEAGUE_VERSION = "v1";
 
+/**
+ * economy 부분 버전업(additive, #209 스타터 개편). `economy.v2.json` 은 **바이트 불변**으로 남기고
+ * `starterTop` 블록만 얹은 v3 를 새로 발행한다(발행 후 수정 금지 규칙 — `PLAYERS_V21_VERSION` 선례).
+ * 소비자는 서버의 `hmb.data.economy-file` 하나뿐이라 스위치는 그 한 줄이다.
+ */
+export const ECONOMY_V3_VERSION = "v3";
+
+/**
+ * 가입 시 지급하는 **최상위 유닛 후보**(#209 AC1). 여기서 1장이 시드 결정론으로 뽑힌다.
+ *
+ * **#207 랜딩으로 실제 교체가 일어난 자리다.** 예정대로 서버·웹 코드는 한 줄도 건드리지 않고
+ * 이 배열만 갈아끼웠다(그러라고 목록을 데이터로 뺐다). 구 pool(P001 야신·P003 말디니·P005
+ * 마라도나·P009 펠레)은 #207 이 **전원 비활성**시켰다 — 비활성 유닛은 "신규 획득 차단"이 정책이고
+ * 가입 지급은 명백히 신규 획득이라, 그대로 뒀으면 정책을 정면으로 어겼을 것이다.
+ *
+ * 새 pool = **활성 신규 LEGEND 전원**. ⚠️ 포지션 축 분산은 더 이상 성립하지 않는다 — 활성 신규
+ * 최상위가 FW/MF 뿐이고 GK·DF(석신·권씨 등)는 비활성이기 때문이다. 그래도 지급 덱은 정포지션
+ * 배치라 받은 유닛은 자기 자리에 서고, GK/DF 라인은 기본팩이 채운다(플레이 가능성 무영향).
+ * 활성 GK/DF 최상위가 생기면 여기에 추가하면 된다.
+ */
+export const STARTER_TOP_POOL = [
+  "P173", // 보날두 (FW)
+  "P175", // 열라도나 (MF)
+  "P176", // 춘바페 (FW)
+  "P177", // 덕브라이너 (MF)
+  "P179", // 욱링엄 (MF) — hero 지명(2026-07-27)
+] as const;
+
+/** 가입 시 최상위 pool 에서 지급하는 장수. 1 = "후보 중 1장"(#209). */
+export const STARTER_TOP_COUNT = 1;
+
 export type Position = "GK" | "DF" | "MF" | "FW";
 export type Grade = "BRONZE" | "SILVER" | "GOLD" | "DIA" | "LEGEND";
 /** 선수 성격 4종 (PRD-v3 P2-D7 / ERD-v2 players.personality enum). */
@@ -424,6 +455,17 @@ export interface EconomySeed {
   dice: DiceConfig;
   /** V2.2 신규(additive): 충전형 젬 상점(목업). */
   gems: GemsConfig;
+  /** #209 신규(additive, economy v3~): 가입 시 최상위 유닛 지급 규칙. v2 파일엔 없다. */
+  starterTop?: StarterTopConfig;
+}
+
+/**
+ * 가입 지급의 최상위 유닛 규칙(#209 AC1) — `pool` 에서 `count` 장을 시드 결정론으로 뽑는다.
+ * 목록이 **코드가 아니라 데이터**인 것이 요구사항의 핵심이다(#207 랜딩 시 갈아끼우기).
+ */
+export interface StarterTopConfig {
+  pool: string[];
+  count: number;
 }
 
 /** 팀 성향 프리셋 — 봇 팀 성격 + 유저 수동 전술 프리셋(P2-D4/D10). tactics 는 0..1 (line/press/tempo/width). */
@@ -1095,7 +1137,14 @@ export function generateAll(): GeneratedData {
   const playersV23 = buildPlayersV23(playersV22);
   const league = buildLeague();
 
-  return { players, playersV2, playersV21, playersV22, playersV23, economy, bots, league };
+  // economy v3(#209) = v2 그대로 + starterTop 블록. v2 객체는 건드리지 않는다(발행물 불변).
+  const economyV3: EconomySeed = {
+    ...economy,
+    version: ECONOMY_V3_VERSION,
+    starterTop: { pool: [...STARTER_TOP_POOL], count: STARTER_TOP_COUNT },
+  };
+
+  return { players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league };
 }
 
 // -- CLI entrypoint (파일로 실행됐을 때만 쓰기 수행) -----------------------
@@ -1108,7 +1157,7 @@ const isMain = (() => {
 })();
 
 if (isMain) {
-  const { players, playersV2, playersV21, playersV22, playersV23, economy, bots, league } =
+  const { players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league } =
     generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
   writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(playersV2, null, 2) + "\n");
@@ -1125,13 +1174,17 @@ if (isMain) {
     JSON.stringify(playersV23, null, 2) + "\n",
   );
   writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
+  writeFileSync(
+    join(here, `economy.${ECONOMY_V3_VERSION}.json`),
+    JSON.stringify(economyV3, null, 2) + "\n",
+  );
   writeFileSync(join(here, `bots.${DATA_VERSION}.json`), JSON.stringify(bots, null, 2) + "\n");
   writeFileSync(join(here, `league.${LEAGUE_VERSION}.json`), JSON.stringify(league, null, 2) + "\n");
   // eslint-disable-next-line no-console
   console.log(
     `generated ${players.length} players (v2/v2.1 frozen ${playersV2.length}, v2.2 ${playersV22.length} ` +
       `with active, v2.3 ${playersV23.length} active=${playersV23.filter((p) => p.active).length}), ` +
-      `economy.${DATA_VERSION}.json, ${bots.length} bots, ` +
-      `league.${LEAGUE_VERSION}.json -> data/players/`,
+      `economy.${DATA_VERSION}.json + economy.${ECONOMY_V3_VERSION}.json(starterTop), ` +
+      `${bots.length} bots, league.${LEAGUE_VERSION}.json -> data/players/`,
   );
 }
