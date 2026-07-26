@@ -24,6 +24,7 @@ import online.hmb.jobs.AiJobQueue;
  */
 public class FakeServants {
 
+    private static final String WORKER_ID = "fake-servant";
     private static final String USAGE_JSON =
             "{\"inputTokens\":0,\"outputTokens\":0,\"cacheReadTokens\":0,\"cacheCreateTokens\":0,\"costUSD\":0}";
     private static final List<String> BEHAVIOR_FIELDS = List.of(
@@ -38,18 +39,22 @@ public class FakeServants {
         this.objectMapper = objectMapper;
     }
 
-    /** queued 잡 전부 처리(신규 enqueue가 생기면 반복). @return 처리한 잡 수 */
+    /**
+     * queued 잡 전부 처리(신규 enqueue가 생기면 반복). @return 처리한 잡 수
+     *
+     * <p>실 서번트와 <b>같은 프로토콜</b>로 돈다 — lease(poll) 후 complete. 예전엔 queued 를 곧바로
+     * complete 했는데, 그건 서번트가 절대 하지 않는 경로(배포되지 않은 잡의 유령 complete)라
+     * 픽스처만 통과하는 구멍이었다(#193 D2에서 수용 게이트 = "배포됐던 잡"으로 좁아짐).
+     */
     public int drain() {
         int processed = 0;
         while (true) {
-            List<AiJobQueue.JobRow> jobs = jobQueue.queuedJobs();
-            if (jobs.isEmpty()) {
+            AiJobQueue.JobRow job = jobQueue.lease(WORKER_ID).orElse(null);
+            if (job == null) {
                 return processed;
             }
-            for (AiJobQueue.JobRow job : jobs) {
-                jobQueue.complete(job.id(), true, stubTacticalInput(job.contextJson()), USAGE_JSON, null);
-                processed++;
-            }
+            jobQueue.complete(job.id(), true, stubTacticalInput(job.contextJson()), USAGE_JSON, null);
+            processed++;
         }
     }
 

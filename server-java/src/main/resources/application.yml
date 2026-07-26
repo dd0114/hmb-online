@@ -65,7 +65,13 @@ hmb:
         forward-blocked: true      # 라이브 앞서가기 금지(뒤로 스크럽은 자유)
         grace-ms: 1500             # 지연·클럭 스큐 허용 오차
     ai-job-timeout-sec: 240        # GEN 상태에서 이걸 넘으면 FAILED
-    lease-sec: 120                 # ai_jobs 가시성 타임아웃
+    # ai_jobs 가시성 타임아웃. ⚠️ lease-sec 은 **AI 잡 실제 소요(p99) + 버퍼 이상**이어야 한다 —
+    # 짧으면 아직 살아 일하는 워커의 잡을 스위퍼가 queued 로 되돌려 결과를 폐기하고 같은 잡을
+    # 무한 재실행하는 라이브락이 된다(#193 D2. 실측 AI 잡 130~170s 인데 120s 였음).
+    # ai-job-timeout-sec 이상으로 둔다: 그 전에 재배포해봐야 매치가 먼저 타임아웃돼 의미가 없고,
+    # 워커 사망 복구는 타임아웃 후 retry 경로가 담당한다. (수용 게이트는 AiJobQueue.completable 이
+    # 이중 안전망 — 만료 뒤 도착한 정상 결과도 버리지 않는다.)
+    lease-sec: 300
     max-attempts: 3
     sweep-interval-ms: 10000       # JobLeaseSweeper 주기 (LLD §6: 10s)
     poll-interval-ms: 1000         # /internal/ai-jobs/poll long-poll 재조회 간격 (LLD §6: 1s)

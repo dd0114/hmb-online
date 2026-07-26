@@ -49,6 +49,24 @@ public class AiJobQueue {
     }
 
     /**
+     * complete 수용 조건 (#193 D2) — <b>leased</b> 이거나, <b>한 번 이상 배포됐던 queued</b>(attempts&gt;0).
+     *
+     * <p>실제 AI 잡이 lease-sec 을 넘기면 {@link JobLeaseSweeper} 가 잡을 queued 로 되돌린다. 그 뒤
+     * 도착한 결과를 "leased 아님"으로 거부하면 <b>정상 결과가 폐기</b>되고 같은 잡이 무한 재실행되어
+     * ai-job-timeout 에 매치가 FAILED 된다(라이브락). 결과 자체는 유효하므로 수용한다 —
+     * 늦게 온 것이지 틀린 것이 아니다. (근본 예방은 lease-sec &ge; ai-job-timeout-sec, application.yml.)
+     *
+     * <p>attempts=0 인 queued(한 번도 lease 되지 않은 유령 complete)는 계속 409 로 막는다.
+     */
+    public static boolean completable(JobRow job) {
+        return "leased".equals(job.status()) || ("queued".equals(job.status()) && job.attempts() > 0);
+    }
+
+    /** {@link #completable(JobRow)} 의 SQL 술어 — 수용 UPDATE 의 CAS(정확히 1회)에 그대로 쓴다. */
+    private static final String COMPLETABLE_CAS =
+            "(status = 'leased' OR (status = 'queued' AND attempts > 0))";
+
+    /**
      * enqueue — INSERT OR IGNORE(id=promptHash 멱등). 이미 done인 행이면 재사용(AC-Q2).
      * @return 잡 id
      */
@@ -134,8 +152,13 @@ public class AiJobQueue {
      */
     public Optional<JobRow> lease(String workerId) {
         return txRunner.run(() -> {
-            Optional<String> id = jdbcClient.sql(
-                            "SELECT id FROM ai_jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1")
+            // 우선순위 (#193 D3): 매치 잡(유저가 화면에서 대기) > 배경 A-프리페치(match_id NULL).
+            // 단일 FIFO(ORDER BY created_at)면 매치 생성 시 들어간 프리페치가 킥오프 잡을 앞질러
+            // 워커를 점유해 head-of-line 블로킹이 된다(유저 대기시간이 프리페치 시간만큼 늘어남).
+            Optional<String> id = jdbcClient.sql("""
+                            SELECT id FROM ai_jobs WHERE status = 'queued'
+                            ORDER BY (match_id IS NULL), created_at LIMIT 1
+                            """)
                     .query(String.class)
                     .optional();
             if (id.isEmpty()) {
@@ -156,17 +179,24 @@ public class AiJobQueue {
     /**
      * 완료 보고 (LLD §6). ok=true → done + Orchestrator.onJobDone.
      * ok=false → attempts<max면 queued 복귀, 아니면 failed + 매치 FAILED 전파.
+     *
+     * <p>모든 상태 UPDATE 는 {@link #COMPLETABLE_CAS} 로 CAS — lease 만료로 재큐된 잡(queued,
+     * attempts&gt;0)의 결과도 수용하되(#193 D2) 중복 complete 는 정확히 1회만 반영한다(done 이 되면
+     * 술어가 더 이상 맞지 않는다).
      */
     public void complete(String jobId, boolean ok, String resultJson, String usageJson, String error) {
         JobRow job = find(jobId)
                 .orElseThrow(() -> new IllegalStateException("잡을 찾을 수 없습니다: " + jobId));
+        if (!"leased".equals(job.status()) && completable(job)) {
+            log.info("job {} complete accepted after lease expiry (status={}, attempts={}) — #193 D2",
+                    jobId, job.status(), job.attempts());
+        }
 
         if (ok) {
             int updated = jdbcClient.sql("""
                             UPDATE ai_jobs SET status = 'done', result_json = ?, usage_json = ?,
                                    error = NULL, updated_at = ?
-                            WHERE id = ? AND status IN ('queued', 'leased')
-                            """)
+                            WHERE id = ? AND """ + COMPLETABLE_CAS)
                     .params(resultJson, usageJson, Instant.now().toString(), jobId)
                     .update();
             if (updated == 1) {
@@ -179,16 +209,14 @@ public class AiJobQueue {
             jdbcClient.sql("""
                             UPDATE ai_jobs SET status = 'queued', error = ?, lease_until = NULL,
                                    worker_id = NULL, updated_at = ?
-                            WHERE id = ? AND status IN ('queued', 'leased')
-                            """)
+                            WHERE id = ? AND """ + COMPLETABLE_CAS)
                     .params(error, Instant.now().toString(), jobId)
                     .update();
             log.warn("job {} failed (attempts={}/{}) — requeued: {}", jobId, job.attempts(), maxAttempts, error);
         } else {
             jdbcClient.sql("""
                             UPDATE ai_jobs SET status = 'failed', error = ?, updated_at = ?
-                            WHERE id = ? AND status IN ('queued', 'leased')
-                            """)
+                            WHERE id = ? AND """ + COMPLETABLE_CAS)
                     .params(error, Instant.now().toString(), jobId)
                     .update();
             if (job.matchId() != null) {
