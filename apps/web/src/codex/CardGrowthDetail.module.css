@@ -580,109 +580,40 @@
   cursor: default;
 }
 
-/* 티어업 전체 오버레이(V2.1-3) — 기존 하단 배너보다 크게: 플래시 → 순차 리롤 공개(dot) → 홀드. */
-.tierUpOverlay {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: inherit;
-  overflow: hidden;
-  pointer-events: none;
-}
-
-.tierUpFlash {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  animation: tierFlash 2.4s ease-out forwards;
-}
-
-@keyframes tierFlash {
-  0% {
-    opacity: 0;
-  }
-  8% {
-    opacity: 0.55;
-  }
-  22% {
-    opacity: 0.12;
-  }
-  100% {
-    opacity: 0.12;
-  }
-}
-
-.tierUpBody {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 22px 26px;
-  border-radius: 16px;
-  background: rgba(10, 12, 16, 0.72);
-  backdrop-filter: blur(2px);
-  animation: tierBodyIn 0.4s ease-out;
-}
-
-@keyframes tierBodyIn {
-  0% {
-    transform: scale(0.85);
-    opacity: 0;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.tierUpBadge {
-  font-size: 22px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  padding: 4px 18px;
-  border: 2px solid currentColor;
-  border-radius: 999px;
-}
-
-.tierUpText {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 800;
-  color: #fff;
-}
-
-.tierUpDots {
-  display: flex;
-  gap: 8px;
-}
-
+/* 승급/축하 연출(V2.1-3 티어업 + GM7b 성★ 승급) — 오버레이 셸 자체는 재사용 컴포넌트
+   ../common/CelebrationOverlay 로 이동했다. 여기 남는 건 그 스텝(steps)에 얹는 도메인 콘텐츠뿐 —
+   색은 CelebrationOverlay 가 주입하는 --celebration-accent 를 currentColor 로 물려받는다. */
 .tierUpDot {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  opacity: 0;
-  transform: scale(0.4);
-  animation: tierDotPop 0.5s ease-out forwards;
+  background: currentColor;
 }
 
-@keyframes tierDotPop {
-  0% {
-    opacity: 0;
-    transform: scale(0.4);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.25);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
+.starPop {
+  font-size: 24px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+/* +보너스 레이어 빈 상태 UX(GM7b, hero 피드백) — 성장·잠재가 전부 0인 카드는 레이어가 "고장"처럼
+   보인다 → 상단 힌트 한 줄(성장0/잠재0 각각 조건부) + 0인 델타는 흐리게. */
+.bonusHints {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 10px;
+}
+
+.bonusHint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.bonusZero {
+  opacity: 0.4;
 }
 
 @media (min-width: 640px) {

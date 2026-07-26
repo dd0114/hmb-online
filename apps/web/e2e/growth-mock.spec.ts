@@ -256,6 +256,31 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   await page.screenshot({ path: `${SMOKE_DIR}growth-detail-promoted.png`, fullPage: true });
 });
 
+test("G4 성★ 승급 오버레이(GM7b): 클릭 → growth-starup-overlay 등장(2★ 달성!·잠재능력 해금) → 소멸", async ({ page }) => {
+  await mockGrowth(page);
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/codex");
+
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await expect(page.getByTestId("growth-detail")).toBeVisible();
+
+  const overlay = page.getByTestId("growth-starup-overlay");
+  await expect(overlay).toHaveCount(0);
+
+  await page.getByTestId("growth-star-up").click();
+  await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-star", "2");
+
+  // 이펙트 인터페이스화(CelebrationOverlay) — 성★ 승급도 티어업과 같은 재사용 오버레이로 뜬다.
+  await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute("data-variant", "starUp");
+  await expect(overlay).toContainText("2★");
+  await expect(overlay).toContainText("잠재능력 해금");
+
+  // 일정 시간 후 자동으로 걷힌다(부모가 onDone 에서 unmount).
+  await expect(overlay).toHaveCount(0, { timeout: 5000 });
+});
+
 test("G4 다이스 롤: 라인 갱신 + 티어업 전체 오버레이(RARE→EPIC 승급 연출)", async ({ page }) => {
   await mockGrowth(page);
   await seedAuth(page);

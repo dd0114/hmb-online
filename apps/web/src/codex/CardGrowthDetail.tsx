@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Modal } from "../common/Modal";
 import { ErrorToast } from "../common/ErrorToast";
+import { CelebrationOverlay } from "../common/CelebrationOverlay";
 import { GRADE_COLORS, GRADE_LABELS, type Grade } from "../common/grades";
 import { CharAvatar } from "../common/CharAvatar";
 import { ApiError } from "../api/client";
 import { useCardEffective, useDiceBalance, useDiceRoll, useStarUp } from "../api/growth-hooks";
-import { INSUFFICIENT_DICE_CODE, INSUFFICIENT_MATERIALS_CODE, type PotentialTier, type Star } from "../api/growth";
+import {
+  INSUFFICIENT_DICE_CODE,
+  INSUFFICIENT_MATERIALS_CODE,
+  type PotentialTier,
+  type Star,
+  type StarUpResult,
+} from "../api/growth";
 import {
   GRADE_POTENTIAL_LINES,
   STAR_COPY_COST,
@@ -21,11 +28,26 @@ const RING_R = 42;
 const RING_C = 2 * Math.PI * RING_R; // ≈ 263.9
 const MAX_STAR = 4;
 const ROLL_ANIM_MS = 450;
-// V2.1-3: 티어업 전체 오버레이 타이밍(UI 전용 상수 — 서버 계수 아님, ROLL_ANIM_MS 와 동일 성격).
+// V2.1-3 / GM7b: 축하 오버레이(CelebrationOverlay) 노출 시간(UI 전용 상수 — 서버 계수 아님).
 const TIERUP_OVERLAY_MS = 2400;
-const TIERUP_DOT_BASE_MS = 420;
-const TIERUP_DOT_STEP_MS = 240;
+const STARUP_OVERLAY_MS = 2000;
+// 성★ 승급 오버레이 액센트 — 기존 ★ 아이콘·성 승급 버튼과 같은 금색 토큰(styles.star 참고).
+const STARUP_ACCENT = "#e7c24c";
 const clampPct = (n: number) => Math.max(0, Math.min(100, n));
+
+/** 2★=잠재 해금, 3★/4★=다음 잠재 티어 개방 — 성★ 승급 오버레이 부제(GM7b). */
+function starUpSubtitle(star: Star): string | undefined {
+  switch (star) {
+    case 2:
+      return "잠재능력 해금!";
+    case 3:
+      return "에픽 개방 가능!";
+    case 4:
+      return "유니크 개방 가능!";
+    default:
+      return undefined;
+  }
+}
 
 interface CardGrowthDetailProps {
   player: CatalogPlayer;
@@ -47,6 +69,8 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   const [message, setMessage] = useState<string | null>(null);
   const [rollingKind, setRollingKind] = useState<"NORMAL" | "CASH" | null>(null);
   const [tierUpOverlay, setTierUpOverlay] = useState<PotentialTier | null>(null);
+  // GM7b: 성★ 승급 이펙트 — StarUpResult 자체를 들고 있어 오버레이가 승급된 star/해금 여부를 그대로 쓴다.
+  const [starUpOverlay, setStarUpOverlay] = useState<StarUpResult | null>(null);
   const [justUpAttrs, setJustUpAttrs] = useState<Set<string>>(new Set());
   const [justUpLv, setJustUpLv] = useState<Set<string>>(new Set());
   // V2.1-3 GM7: 능력치 표시 2레이어 — 총 능력치(기본) ↔ +보너스(base→성장→잠재 분해).
@@ -111,6 +135,9 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   function handleStarUp() {
     setMessage(null);
     starUp.mutate(player.id, {
+      onSuccess: (res) => {
+        setStarUpOverlay(res);
+      },
       onError: (err) => {
         if (err instanceof ApiError && err.code === INSUFFICIENT_MATERIALS_CODE) {
           setMessage(`중복이 부족합니다 — 보유 ${player.ownedCount} / 필요 ${starCost}`);
@@ -131,8 +158,8 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
           window.setTimeout(() => {
             setRollingKind(null);
             if (res.tierUp) {
+              // CelebrationOverlay 가 TIERUP_OVERLAY_MS 경과 후 onDone 을 호출해 스스로 정리한다.
               setTierUpOverlay(res.tierAfter);
-              window.setTimeout(() => setTierUpOverlay(null), TIERUP_OVERLAY_MS);
             }
           }, ROLL_ANIM_MS);
         },
@@ -274,6 +301,35 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
               </button>
             </div>
 
+            {layer === "bonus" &&
+              (() => {
+                // GM7b: 성장/잠재 보너스가 전부 0(막 뽑은 카드·1★ 미승급)이면 레이어가 "고장"처럼
+                // 보인다는 hero 피드백 — 전체 0일 때만 각각 조건부 힌트 한 줄씩.
+                const growthAllZero = STAT_LABELS.every(([key]) => {
+                  const d = Math.round((card.prePotential[key] - card.base[key]) * 10) / 10;
+                  return d === 0;
+                });
+                const potentialAllZero = STAT_LABELS.every(([key]) => {
+                  const d = Math.round((card.attributes[key] - card.prePotential[key]) * 10) / 10;
+                  return d === 0;
+                });
+                if (!growthAllZero && !potentialAllZero) return null;
+                return (
+                  <div className={styles.bonusHints} data-testid="growth-bonus-hint">
+                    {growthAllZero && (
+                      <p className={styles.bonusHint} data-testid="growth-bonus-hint-growth">
+                        경기 출전으로 성장을 얻어요
+                      </p>
+                    )}
+                    {potentialAllZero && (
+                      <p className={styles.bonusHint} data-testid="growth-bonus-hint-potential">
+                        다이스로 잠재를 얻어요
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
             <dl className={styles.attrs} data-testid="growth-attrs" data-layer={layer}>
               {STAT_LABELS.map(([key, label]) => {
                 const cur = card.attributes[key];
@@ -325,13 +381,18 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                             {Math.round(base)}
                           </span>
                           <span className={styles.bonusOp}>→</span>
-                          <span className={styles.bonusGrowth} data-testid={`growth-bonus-growth-${key}`}>
+                          <span
+                            className={growthDelta === 0 ? `${styles.bonusGrowth} ${styles.bonusZero}` : styles.bonusGrowth}
+                            data-testid={`growth-bonus-growth-${key}`}
+                          >
                             +{growthDelta}
                           </span>
                           <span
-                            className={styles.bonusPotential}
+                            className={
+                              potentialDelta === 0 ? `${styles.bonusPotential} ${styles.bonusZero}` : styles.bonusPotential
+                            }
                             data-testid={`growth-bonus-potential-${key}`}
-                            style={potentialTier ? { color: TIER_COLORS[potentialTier] } : undefined}
+                            style={potentialTier && potentialDelta !== 0 ? { color: TIER_COLORS[potentialTier] } : undefined}
                           >
                             +{potentialDelta}
                           </span>
@@ -442,31 +503,39 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
         )}
 
         {tierUpOverlay && (
-          // V2.1-3: 티어업 = 전체 오버레이(티어색 플래시 → 전줄 순차 리롤 공개 → 프레임 글로우 전환).
-          <div className={styles.tierUpOverlay} data-testid="growth-tierup-overlay" data-tier={tierUpOverlay} role="status">
-            <div className={styles.tierUpFlash} style={{ background: TIER_COLORS[tierUpOverlay] }} />
-            <div className={styles.tierUpBody}>
-              <span
-                className={styles.tierUpBadge}
-                style={{ color: TIER_COLORS[tierUpOverlay], borderColor: TIER_COLORS[tierUpOverlay] }}
-              >
-                {TIER_LABELS[tierUpOverlay]}
+          // V2.1-3 / GM7b: 티어업 = 전체 오버레이(티어색 플래시 → 전줄 순차 리롤 공개 → 프레임 글로우 전환).
+          // 연출 자체는 CelebrationOverlay(재사용 컴포넌트) — 이 파일은 잠재 티어 도메인 값만 채운다.
+          <CelebrationOverlay
+            variant="tierUp"
+            testId="growth-tierup-overlay"
+            dataAttrs={{ "data-tier": tierUpOverlay }}
+            accentColor={TIER_COLORS[tierUpOverlay]}
+            title={TIER_LABELS[tierUpOverlay]}
+            subtitle={`잠재 ${TIER_LABELS[tierUpOverlay]} 승급!`}
+            durationMs={TIERUP_OVERLAY_MS}
+            onDone={() => setTierUpOverlay(null)}
+            steps={Array.from({ length: gradeLines }).map((_, i) => (
+              <span key={i} className={styles.tierUpDot} />
+            ))}
+          />
+        )}
+
+        {starUpOverlay && (
+          // GM7b: 성★ 승급 이펙트(hero 피드백 — "승급에도 이펙트") — ★ 팝(현재 star 수만큼 순차 공개).
+          <CelebrationOverlay
+            variant="starUp"
+            testId="growth-starup-overlay"
+            accentColor={STARUP_ACCENT}
+            title={`${starUpOverlay.star}★ 달성!`}
+            subtitle={starUpSubtitle(starUpOverlay.star)}
+            durationMs={STARUP_OVERLAY_MS}
+            onDone={() => setStarUpOverlay(null)}
+            steps={Array.from({ length: starUpOverlay.star }).map((_, i) => (
+              <span key={i} className={styles.starPop}>
+                ★
               </span>
-              <p className={styles.tierUpText}>잠재 {TIER_LABELS[tierUpOverlay]} 승급!</p>
-              <div className={styles.tierUpDots} aria-hidden>
-                {Array.from({ length: gradeLines }).map((_, i) => (
-                  <span
-                    key={i}
-                    className={styles.tierUpDot}
-                    style={{
-                      background: TIER_COLORS[tierUpOverlay],
-                      animationDelay: `${TIERUP_DOT_BASE_MS + i * TIERUP_DOT_STEP_MS}ms`,
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
+            ))}
+          />
         )}
         <ErrorToast message={message} onDismiss={() => setMessage(null)} />
       </div>
