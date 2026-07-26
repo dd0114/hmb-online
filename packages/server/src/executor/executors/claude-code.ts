@@ -46,11 +46,28 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_EFFORT = "low";
 
 /**
- * 잡 kind 별 effort 해석 — 옵션 주입 > kind 별 env 오버라이드 > AI_EFFORT > 기본 low.
- * 빈 문자열("")은 "플래그 생략"의 의미(세션 기본) — undefined 와 구분한다.
+ * 잡 컨텍스트의 잡별 effort 힌트(#193 라운드2 라우팅). Java 가 <b>팀 지시 대변경</b>으로 판정해 그
+ * 사이드를 풀생성으로 돌릴 때 그 잡에만 실린다 — 대변경은 풀 effort 풀생성(4.75)이 델타(3.13)를
+ * 크게 이겼다는 맞대결 결과의 집행부다.
+ *
+ * <p>계약: shared zod 스키마엔 없는 <b>추가 필드</b>(비엄격 object 라 검증 통과, parse 결과에선 strip)
+ * → 여기서 <b>raw context</b> 로 읽는다. 문자열이 아니면 없는 셈 친다(타입 가드).
  */
-export function resolveEffort(kind: string, injected?: string): string {
+function contextEffortHint(context: unknown): string | undefined {
+  if (context === null || typeof context !== "object") return undefined;
+  const hint = (context as Record<string, unknown>)["effortHint"];
+  return typeof hint === "string" ? hint : undefined;
+}
+
+/**
+ * 잡 kind 별 effort 해석 — 옵션 주입 > <b>잡 context.effortHint</b> > kind 별 env 오버라이드 >
+ * AI_EFFORT > 기본 low. 빈 문자열("")은 "플래그 생략"의 의미(세션 기본) — undefined 와 구분한다.
+ * (옵션 주입은 프로세스 레벨 강제라 계측 스크립트가 전 잡을 고정할 때 쓴다 — 잡 힌트보다 위.)
+ */
+export function resolveEffort(kind: string, injected?: string, context?: unknown): string {
   if (injected !== undefined) return injected;
+  const hint = contextEffortHint(context);
+  if (hint !== undefined) return hint;
   const perKind = kind === "team-input-patch" ? process.env["AI_EFFORT_PATCH"] : process.env["AI_EFFORT_FULL"];
   return perKind ?? process.env["AI_EFFORT"] ?? DEFAULT_EFFORT;
 }
@@ -140,7 +157,7 @@ export function claudeCodeExecutor(opts: ClaudeCodeOptions = {}): AiExecutor {
     async execute(job: ExecutorJob, attempt?: { feedback: string }): Promise<unknown> {
       const spec = KINDS[job.kind];
       const prompt = spec.buildPrompt(job.context, attempt?.feedback);
-      const effort = resolveEffort(job.kind, opts.effort);
+      const effort = resolveEffort(job.kind, opts.effort, job.context);
       const args = [
         "-p",
         "--output-format",

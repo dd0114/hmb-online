@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { claudeCodeExecutor, type ClaudeRunner, type ClaudeRunResult } from "./claude-code.js";
+import { claudeCodeExecutor, resolveEffort, type ClaudeRunner, type ClaudeRunResult } from "./claude-code.js";
 import { makeTacticalInput } from "@hmb/engine";
 import type { ExecutorJob } from "../kinds.js";
 import { makeTeamInputContext, makeTeamInputPatchContext } from "../test-fixtures.js";
@@ -176,5 +176,75 @@ describe("claude-code executor (러너 주입)", () => {
       if (prev === undefined) delete process.env["AI_MODEL"];
       else process.env["AI_MODEL"] = prev;
     }
+  });
+});
+
+/**
+ * 잡별 effortHint (#193 라운드2 라우팅) — Java 가 <b>팀 지시 대변경</b>이라 판단해 그 사이드를
+ * 풀생성으로 돌릴 때, 그 잡에만 `context.effortHint` 를 실어 보낸다(측정 근거: 대변경은 풀 effort
+ * 풀생성 4.75 &gt; 델타 3.13). 나머지 잡은 지금까지대로 env 기본을 쓴다.
+ *
+ * <p>계약(shared 무변경): `effortHint` 는 zod 스키마에 없는 <b>추가 필드</b>다 — 비엄격 object 라
+ * 검증은 통과하고 parse 결과에선 사라지므로, 실행기는 <b>raw context</b>에서 직접 읽는다.
+ */
+describe("claude-code executor — 잡별 effortHint(#193 라우팅)", () => {
+  const withHint = (hint: unknown): ExecutorJob => ({
+    id: "hint-job",
+    kind: "team-input",
+    // Java 가 보내는 원본 JSON 모양(zod parse 를 거치지 않은 raw) — 실제 폴링 경로와 동일.
+    context: { ...makeTeamInputContext(), effortHint: hint },
+  });
+
+  const effortOf = (args: string[]): string | null => {
+    const i = args.indexOf("--effort");
+    return i < 0 ? null : args[i + 1]!;
+  };
+
+  it("effortHint 가 env 보다 우선한다", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low", AI_EFFORT_FULL: "medium" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(withHint("high"));
+      expect(effortOf(last.args)).toBe("high");
+    });
+  });
+
+  it("빈 문자열 effortHint = --effort 생략(세션 기본 effort — 라운드2 근거값)", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(withHint(""));
+      expect(last.args).not.toContain("--effort");
+    });
+  });
+
+  it("effortHint 없는 잡은 기존대로 env 기본", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(job); // effortHint 미첨부
+      expect(effortOf(last.args)).toBe("low");
+    });
+  });
+
+  it("문자열이 아닌 effortHint 는 무시(타입 가드) — env 기본으로 폴백", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low" }, async () => {
+      for (const bad of [42, null, { effort: "high" }, ["high"], true]) {
+        await claudeCodeExecutor({ runner }).execute(withHint(bad));
+        expect(effortOf(last.args)).toBe("low");
+      }
+    });
+  });
+
+  it("context 가 객체가 아니어도 터지지 않는다", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low" }, async () => {
+      // 프롬프트 빌드는 정상 컨텍스트가 필요하므로 resolveEffort 단독으로 계약을 본다.
+      expect(resolveEffort("team-input", undefined, null)).toBe("low");
+      expect(resolveEffort("team-input", undefined, "not-an-object")).toBe("low");
+      expect(resolveEffort("team-input", undefined, { effortHint: "high" })).toBe("high");
+      // 옵션 주입(프로세스 레벨 강제)은 잡 힌트보다도 우선 — 기존 계약 유지.
+      expect(resolveEffort("team-input", "medium", { effortHint: "high" })).toBe("medium");
+      await claudeCodeExecutor({ runner }).execute(job);
+      expect(effortOf(last.args)).toBe("low");
+    });
   });
 });
