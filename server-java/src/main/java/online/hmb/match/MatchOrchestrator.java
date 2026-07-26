@@ -416,6 +416,42 @@ public class MatchOrchestrator {
     }
 
     /**
+     * 전반 인풋 <b>즉시 해소</b> (#193 라운드2). {@code POST /prompts(phase=pre)} 마다 호출된다 —
+     * 킥오프를 기다리지 않고 <b>제출한 그 순간</b> h1 잡을 해소해, AI 생성을 "제출~킥오프" 사이(유저가
+     * 계속 지시를 쓰는 시간)에 숨긴다. h2 선행 생성({@link #resolveSecondHalfInputs})의 대칭이고,
+     * 여러 번 고쳐도 {@link AiJobQueue#supersede} 가 (match,half,side) 유효 잡 1개를 보장한다.
+     *
+     * <p><b>A(베이스) 미완이면 아무 것도 하지 않는다</b>. 그 상태에서 해소하면 {@link #resolveSide} 가
+     * 풀 생성 폴백을 타는데, 편집할 때마다 컨텍스트(=promptHash)가 달라져 <b>편집 횟수만큼 풀 생성</b>이
+     * 쌓인다(가장 비싼 잡을, 쓰이지도 않을 수로). 그건 킥오프의 {@link #enqueueHalf} 가 원래대로
+     * 소유한다(폴백 불변). 봇 사이드도 같은 이유로 폴백이 필요하면 통째로 미룬다 — 유저 A 만 done 이면
+     * 봇은 풀 생성이 되고, 그건 아직 돌고 있는 봇 A 프리페치와 중복 콜이다.
+     *
+     * <p>킥오프 시 이미 done 이어도 {@code enqueueHalf} 는 그대로 다시 돈다 — 같은 컨텍스트면
+     * promptHash 멱등이라 행이 늘지 않고, {@code supersede} 가 같은 잡을 유효로 재확정한다. 브리핑 중
+     * 잡이 done 이 돼도 시뮬로 넘어가지 않는다({@link #maybeSimulate} 의 GEN1 state 체크).
+     */
+    public void resolveFirstHalfInputs(String matchId) {
+        try {
+            MatchService.MatchRow match = matchService.find(matchId).orElse(null);
+            if (match == null || !MatchService.S_BRIEFING.equals(match.state())) {
+                return; // 킥오프 이후(GEN1~)는 기존 경로가 소유한다
+            }
+            JsonNode snapshot = matchService.readJson(match.userDeckJson());
+            BotService.BotRow bot = botService.get(match.botId());
+            boolean basesReady = doneResultOf(contextBuilder.userBaseJob(match, snapshot).baseId()) != null
+                    && doneResultOf(contextBuilder.botBaseJob(match, bot).baseId()) != null;
+            if (!basesReady) {
+                log.debug("h1 즉시 해소 스킵(match {}) — A 미완, 킥오프 폴백이 소유", matchId);
+                return;
+            }
+            enqueueHalf(matchId, 1);
+        } catch (Exception e) {
+            log.warn("h1 즉시 해소 실패(match {}) — 무시(킥오프 때 재해소): {}", matchId, e.toString());
+        }
+    }
+
+    /**
      * 후반 인풋 <b>선행/재해소</b> (#193 W2b-B2). 전반 라이브 진입 직후 한 번(선행 생성), 그리고 전반
      * 재생·감독시간 중 하프타임 지시·교체가 바뀔 때마다 다시 호출된다. 같은 컨텍스트면 promptHash 가
      * 같아 no-op(멱등), 바뀌었으면 새 잡 + {@link AiJobQueue#supersede} 로 옛 결과 무효화.

@@ -66,10 +66,14 @@ public class MatchController {
                                @PathVariable("id") String id,
                                @RequestBody MatchService.PromptRequest request) {
         matchService.submitPrompt(userId, id, request);
-        // 하프타임 지시는 전반 재생 중에도 낼 수 있다(#170) — 낸 그 순간 후반 잡을 다시 해소해
-        // AI 생성을 미리 태운다(#193 W2b-B2). 감독시간에 기다릴 게 남지 않는다.
+        // 제출한 그 순간 해당 하프의 잡을 (재)해소해 AI 생성을 유저가 지시를 쓰는 시간 뒤에 숨긴다.
+        // pre = 킥오프 전(#193 라운드2, hero 원 스펙 "프롬프트 제출하면 취합"),
+        // halftime = 전반 재생 중에도 낼 수 있다(#170) → 감독시간에 기다릴 게 남지 않는다(#193 W2b-B2).
+        // 둘 다 supersede 가 재편집 안전(유효 잡 1개)을 보장하고, 상태가 안 맞으면 각 메서드가 no-op.
         if ("halftime".equals(request.phase())) {
             orchestrator.resolveSecondHalfInputs(id);
+        } else if ("pre".equals(request.phase())) {
+            orchestrator.resolveFirstHalfInputs(id);
         }
         return matchService.toDetail(matchService.getOwned(userId, id));
     }
