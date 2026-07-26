@@ -351,6 +351,19 @@ export interface EngineConfig {
       stayBackLineX: number;
       /** 하이 아웃렛이 서는 라인(자기 공격 진행도). */
       leaveHighLineX: number;
+      /**
+       * 잔류/아웃렛이 **한 줄로 정렬되지 않게** 하는 깊이 산포(#182 폴리시).
+       * 실제 rest defence 는 전원이 같은 깊이에 서지 않는다 — CB 는 좀 더 깊게, 남은 미드는
+       * 좀 더 앞에. 두 축으로 만든다(둘 다 0 이면 구 동작 = 전원 같은 라인):
+       *  - slotSpread: 자기 포메이션 슬롯 깊이를 얼마나 유지하는가(0=완전 정렬, 1=원래 깊이).
+       *    역할 기반이라 "CB 가 풀백보다 뒤"라는 자연 층이 생긴다.
+       *  - jitterX: 잔류 그룹 **내 순위**로 깊이를 균등 배분하는 간격(rank 당 이만큼 차이).
+       *    슬롯이 같은 좌우 대칭 선수(LCB/RCB)도 이걸로 갈라진다. 난수가 아니라 순위 기반이라
+       *    **충돌이 구조적으로 없다** — idHash 난수 편차로 벌렸을 땐 특정 선수쌍이 우연히
+       *    겹쳐 그 팀이 매 코너 일자 정렬이 됐다(실측 11/52 코너).
+       */
+      slotSpread: number;
+      jitterX: number;
     };
   };
 
@@ -665,6 +678,10 @@ export const defaultEngineConfig: EngineConfig = {
       playerOverrideWeight: 2.2,
       stayBackLineX: 0.5,
       leaveHighLineX: 0.5,
+      // 0.25 → CB(슬롯 0.16)는 라인보다 ~9m 깊게, 풀백(0.22)은 ~7m 깊게 = 역할 층.
+      // 지터 0.03(±3.15m)은 슬롯이 동일한 LCB/RCB 를 갈라준다.
+      slotSpread: 0.25,
+      jitterX: 0.03,
     },
   },
   softCap: 0.25,

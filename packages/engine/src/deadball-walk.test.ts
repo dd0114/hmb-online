@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { runMatch } from "./match";
 import { defaultEngineConfig } from "./config";
-import { demoSeed, demoHome, demoAway, demoSelect } from "./fixtures";
+import { demoSeed, demoHome, demoAway, demoSelect, makeTacticalInput } from "./fixtures";
 import type { MatchLog, TickSnapshot } from "@hmb/shared";
 
 /**
@@ -37,8 +37,10 @@ interface Scan {
 }
 
 /** 데모 로그의 코너/스로인 재시작을 훑어 위반을 수집한다(단언 없음 — 계약별로 나눠 쓴다). */
-function scanRestarts(): Scan {
-  const log = runMatch(demoSeed, demoHome, demoAway, demoSelect, config);
+function scanRestarts(seed: string = demoSeed): Scan {
+  const home = seed === demoSeed ? demoHome : makeTacticalInput("H", seed);
+  const away = seed === demoSeed ? demoAway : makeTacticalInput("A", seed);
+  const log = runMatch(seed, home, away, demoSelect, config);
   const byTick = snapByTick(log);
   const restarts = log.events.filter(
     (e) => e.type === "kickoff" && (e.detail === "corner" || e.detail === "throw_in"),
@@ -92,6 +94,20 @@ function scanRestarts(): Scan {
 
 const scan = scanRestarts();
 
+/**
+ * #176 드리프트 계약 전용 시드. 걷기/도달 계약(위 `scan`)은 쇼케이스 데모(demoSeed)를 그대로 쓰고,
+ * **드리프트만** 별도 시드로 잰다.
+ *
+ * 이유: #182(코너 rest defence)로 매치 전개가 바뀌면서 demoSeed 에서는 강탈 타이밍이 더는
+ * 안 잡힌다(drift 0). 그렇다고 `it.fails` 를 `it` 으로 뒤집으면 **버그가 고쳐졌다고 거짓 신호**를
+ * 준다 — #176 은 아직 안 고쳐졌고, 스캔하면 여러 시드에서 그대로 재현된다:
+ *   4815162345(3) · 4815162346(1) · 4815162349(1) · 4815162351(1) · 4815162353(2) · 4815162367(15)
+ * 그래서 재현되는 시드로 **알려진버그 계약을 살려둔다**. #176 이 접근 금지를 넣으면 이 시드에서도
+ * drift 0 이 되어 `it.fails` 가 통과로 뒤집히고, 그때 `it` 으로 되돌린다(안전장치 유지).
+ */
+const DRIFT_SEED = "4815162345";
+const driftScan = scanRestarts(DRIFT_SEED);
+
 describe("deadball taker walk (#59)", () => {
   it("코너/스로인 taker 가 공으로 **걸어가** 도달한다(순간배치 아님)", () => {
     expect(scan.checked, "판정 가능한 코너/스로인 없음").toBeGreaterThan(0);
@@ -113,7 +129,13 @@ describe("deadball taker walk (#59)", () => {
    * 스위트가 깨진다. 그래서 `it` 으로 되돌리되, **#176 이 해결됐다는 뜻이 아님**을 여기 남긴다.
    * 시드에 의존하지 않는 진짜 규칙 계약(접근 금지)은 **#176 스코프**에서 작성한다.
    */
+<<<<<<< HEAD
   it("정지 중 공이 스팟에 머문다 — 이 시드 한정(#176 규칙 미구현, 위 주석)", () => {
     expect(scan.drifts, scan.drifts.join(" | ")).toEqual([]);
+=======
+  it.fails("정지 중 공이 스팟에 머문다 — #176 데드볼 taker 강탈 버그 의존(#176 머지 시 해제)", () => {
+    expect(driftScan.checked, "판정 가능한 재시작 없음").toBeGreaterThan(0);
+    expect(driftScan.drifts, driftScan.drifts.join(" | ")).toEqual([]);
+>>>>>>> 86d65b7 ([Spider] feat(engine): 코너 잔류 깊이 산포 — 세로 일자 정렬 해소 (#182))
   });
 });

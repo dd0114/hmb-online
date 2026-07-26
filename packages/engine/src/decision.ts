@@ -473,28 +473,33 @@ function cornerGoScore(pitch: Pitch, p: SimPlayer, cn: EngineConfig["setPiece"][
 }
 
 /**
- * 코너 시 박스에 안 들어가고 남는 선수인가(#182).
+ * 코너 시 박스에 안 들어가고 남는 선수의 **그룹 내 순위**. 남지 않으면 -1.
  *  - 공격팀(attacking=true): cornerGoScore 가 가장 **낮은** N명 = rest defence.
  *  - 수비팀(attacking=false): 가장 **높은** N명 = 하이 아웃렛.
  * N 은 상수가 아니라 팀 가담도에서 매핑된다(teamCornerCommit).
  * 테이커(공 소유자)는 코너 아크에 있으므로 후보에서 제외 → 잔류 인원이 그만큼 줄지 않는다.
  * 결정론: 점수 → idHash → id 의 전순서로만 뽑는다(전역 난수·시각 의존 없음).
+ *
+ * 순위를 반환하는 이유(#182 폴리시): 호출부가 순위로 깊이를 **균등 배분**해 잔류가 한 줄로
+ * 겹치지 않게 한다. idHash 난수 편차로 벌리면 특정 선수쌍이 우연히 충돌해(실측 11/52 코너가
+ * 0.5m 미만으로 겹침) 그 팀은 매 코너 일자 정렬이 된다 — 순위 배분은 충돌이 구조적으로 없다.
  */
-function isCornerHolder(
+function cornerHolderRank(
   state: SimState,
   player: SimPlayer,
   pitch: Pitch,
   config: EngineConfig,
   attacking: boolean,
-): boolean {
+): { rank: number; count: number } {
+  const miss = { rank: -1, count: 0 };
   const cn = config.setPiece.corner;
-  if (!cn.enabled || player.isGK || state.ball.owner === player.id) return false;
+  if (!cn.enabled || player.isGK || state.ball.owner === player.id) return miss;
   const commit = teamCornerCommit(state.teams[player.side], cn);
   // 공격팀: 가담도가 높을수록 적게 남긴다(Max→Min). 수비팀: 높을수록 많이 올려둔다(Min→Max).
   const count = attacking
     ? Math.round(cn.stayBackMax + (cn.stayBackMin - cn.stayBackMax) * commit)
     : Math.round(cn.leaveHighMin + (cn.leaveHighMax - cn.leaveHighMin) * commit);
-  if (count <= 0) return false;
+  if (count <= 0) return miss;
   const mine = cornerGoScore(pitch, player, cn);
   let ahead = 0;
   for (const p of state.players) {
@@ -504,9 +509,9 @@ function isCornerHolder(
     // 동률(예: LCB/RCB 가 슬롯·성향 모두 같음)은 idHash → id 로 안정 정렬.
     const tie = p.idHash !== player.idHash ? p.idHash < player.idHash : p.id < player.id;
     const better = r === mine ? tie : attacking ? r < mine : r > mine;
-    if (better && ++ahead >= count) return false;
+    if (better && ++ahead >= count) return miss;
   }
-  return true;
+  return { rank: ahead, count };
 }
 
 /**
@@ -563,9 +568,15 @@ export function decideOffBall(
     // #182: 전원이 박스로 올라가지 않는다 — 공격팀은 rest defence 로 뒤에, 수비팀은 아웃렛으로
     // 앞에 남는 인원이 있다. 인원은 팀 전략에서, 누가 남는지는 선수 성향(프롬프트)에서 나온다.
     const cn = config.setPiece.corner;
-    if (isCornerHolder(state, player, pitch, config, attackingCorner)) {
+    const hold = cornerHolderRank(state, player, pitch, config, attackingCorner);
+    if (hold.rank >= 0) {
       const lineX = attackingCorner ? cn.stayBackLineX : cn.leaveHighLineX;
-      const hx = player.side === "home" ? lineX : 1 - lineX;
+      // 한 줄로 세우지 않는다(#182 폴리시): ①슬롯 깊이를 일부 보존해 역할 층을 만들고
+      // (CB 가 풀백보다 뒤) ②그룹 내 순위로 깊이를 균등 배분해 동일 슬롯끼리도 겹치지 않게.
+      const baseProg = attackProgress(pitch, player.side, player.baseFx.x);
+      const centered = hold.rank - (hold.count - 1) / 2; // 그룹 중심 기준 ±
+      const prog = lineX + (baseProg - lineX) * cn.slotSpread + centered * cn.jitterX;
+      const hx = player.side === "home" ? prog : 1 - prog;
       player.targetFx = clampToPitch(pitch, Math.round(hx * pitch.wFx), player.baseFx.y);
       return;
     }

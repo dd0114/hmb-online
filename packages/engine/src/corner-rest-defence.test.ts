@@ -30,7 +30,7 @@ const prog = (side: TeamSide, x: number) => (side === "home" ? x / W : 1 - x / W
 /** 코너 딜리버리 직전(공이 아직 코너 아크에 있는 마지막) 틱들의 배치. */
 function cornerFrames(log: MatchLog) {
   const byTick = new Map(log.tickSnapshots.map((s) => [s.tick, s]));
-  const out: { side: TeamSide; stayBack: string[]; inBox: string[]; defHigh: string[] }[] = [];
+  const out: { side: TeamSide; stayBack: string[]; stayBackX: number[]; inBox: string[]; defHigh: string[] }[] = [];
   for (const e of log.events) {
     if (!(e.type === "kickoff" && e.detail === "corner") || !e.team) continue;
     const side = e.team;
@@ -48,6 +48,7 @@ function cornerFrames(log: MatchLog) {
     const s = byTick.get(last);
     if (!s) continue;
     const stayBack: string[] = [];
+    const stayBackX: number[] = [];
     const inBox: string[] = [];
     const defHigh: string[] = [];
     for (const p of s.players) {
@@ -55,11 +56,14 @@ function cornerFrames(log: MatchLog) {
       const ap = prog(p.team, p.pos.x);
       if (p.team === side) {
         // 잔류 = 자기 진영 절반 부근 이하(하프라인 ±6m 창 포함).
-        if (ap <= 0.56) stayBack.push(p.playerId);
+        if (ap <= 0.56) {
+          stayBack.push(p.playerId);
+          stayBackX.push(ap * W); // 자기 골대 기준 깊이(m) — 일자 정렬 검출용.
+        }
         if (ap >= 1 - BOX_DEPTH / W && Math.abs(p.pos.y - H / 2) <= BOX_HALFW) inBox.push(p.playerId);
       } else if (ap >= 0.44) defHigh.push(p.playerId);
     }
-    out.push({ side, stayBack, inBox, defHigh });
+    out.push({ side, stayBack, stayBackX, inBox, defHigh });
   }
   return out;
 }
@@ -144,7 +148,34 @@ describe("#182 (3) 선수 축 — 프롬프트가 슬롯 깊이를 뒤집는다"
   });
 });
 
-describe("#182 (4) 롤백 스위치", () => {
+describe("#182 (4) 잔류 배치가 '세로 일자'가 아니다 — 깊이가 제각각", () => {
+  // 독립 QA non-blocker: 잔류 선수가 전부 같은 x(하프라인)에 일렬로 서 있어 기계적으로 보인다.
+  // 실제 rest defence 는 역할·개인차로 깊이가 다르다(CB 는 좀 더 깊게, 남은 미드는 좀 더 앞).
+  // 계약: 잔류가 2명 이상인 코너에서 그들의 깊이가 유의미하게 벌어져 있어야 한다.
+  const multi = () =>
+    framesFor(defaultEngineConfig, baseHome, baseAway).filter((x) => x.stayBack.length >= 2);
+  const spread = (xs: number[]) => Math.max(...xs) - Math.min(...xs);
+
+  it("잔류 2명 이상인 코너에서 전원이 정확히 같은 깊이에 서지 않는다", () => {
+    const f = multi();
+    expect(f.length).toBeGreaterThan(5);
+    const flat = f.filter((x) => spread(x.stayBackX) < 0.5); // 0.5m 미만 = 사실상 일자
+    expect(flat.length, `일자 정렬 코너 ${flat.length}/${f.length}`).toBe(0);
+  });
+
+  it("잔류 깊이 산포가 평균 2m 이상이다(눈에 보이는 층)", () => {
+    const f = multi();
+    expect(avg(f.map((x) => spread(x.stayBackX)))).toBeGreaterThanOrEqual(2);
+  });
+
+  it("산포는 결정론적이다 — 같은 입력이면 같은 배치", () => {
+    const a = framesFor(defaultEngineConfig, baseHome, baseAway).map((x) => x.stayBackX.join(","));
+    const b = framesFor(defaultEngineConfig, baseHome, baseAway).map((x) => x.stayBackX.join(","));
+    expect(a).toEqual(b);
+  });
+});
+
+describe("#182 (5) 롤백 스위치", () => {
   it("corner.enabled=false 는 레거시(전원 전진)로 돌아간다", () => {
     const legacy: EngineConfig = {
       ...defaultEngineConfig,

@@ -2,14 +2,25 @@
 
 exports[`determinism (AC3) > golden summary snapshot (score + event count + final hash) 1`] = `
 {
+<<<<<<< HEAD
   "events": 1272,
+=======
+  "events": 1567,
+>>>>>>> 86d65b7 ([Spider] feat(engine): 코너 잔류 깊이 산포 — 세로 일자 정렬 해소 (#182))
   "firstHash": "2a09f6e6",
-  "goals": 5,
+  "goals": 2,
   "hashChain": 43200,
+<<<<<<< HEAD
   "lastHash": "885f153e",
   "score": {
     "away": 3,
     "home": 2,
+=======
+  "lastHash": "4dd9626b",
+  "score": {
+    "away": 1,
+    "home": 1,
+>>>>>>> 86d65b7 ([Spider] feat(engine): 코너 잔류 깊이 산포 — 세로 일자 정렬 해소 (#182))
   },
   "ticks": 5400,
 }

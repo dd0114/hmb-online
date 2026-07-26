@@ -24,6 +24,7 @@
 
 === AC-goal-in-net: real(default) (engine@0.19.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
+<<<<<<< HEAD
 총 골: 5
 <<<<<<< HEAD
   #1 tick=387 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
@@ -38,4 +39,9 @@
   #4 tick=5038 team=home ball=(104.50,33.99) 골라인=O 포스트내=O => PASS
   #5 tick=5171 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
 >>>>>>> 8f4e7f1 ([Spider] test(engine): #182 골든 갱신 + 시드 핀 재스캔 + 가드 표본 40시드 (#182))
+=======
+총 골: 2
+  #1 tick=182 team=home ball=(104.50,33.91) 골라인=O 포스트내=O => PASS
+  #2 tick=1695 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+>>>>>>> 86d65b7 ([Spider] feat(engine): 코너 잔류 깊이 산포 — 세로 일자 정렬 해소 (#182))
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
