@@ -6,6 +6,35 @@
 
 ---
 
+## 2026-07-27T15:52Z — **릴리스 태그 `v8.01`** (재생·시계정합·감독 180s #216 + 매치잠금 #217 V19 + 프리웜 #215 V20 + 아이콘 #218/#184)
+- **git**: **`bd00b07`** = **태그 `v8.01`(`fcb9a02`) + 배포 blocker 픽스 1건**(web 빌드 실패, 아래 ⚠️). 브랜치 `deploy/v7`.
+- **모듈 버전**: engine **`@0.21.0`**(변경 0) · server-java `0.1.0`(#216 서버시계 정합·감독시간 **180s**·하프 실시간 **420s** · #217 매치잠금/포기/방치 스윕 · #215 덱 저장 프리웜) · web `0.0.0`(하이라이트 단일모드 · `MatchLockGate` 8라우트 · LEGEND 아이콘) · servants `0.0.1` · 데이터 players `v2.3` / economy `v3`
+- **이미지**(라이브 digest): `hmb-java` `sha256:2147c1a03d3c…`(신규) · `hmb-runner` `sha256:5453f13811c1…`(신규)
+- **executor**: v8.01 코드로 재기동 — PID only(`18414`→`18411`→`18393`→`18387`) 종료 후 spider13 에서 동일 env 재기동(새 워커 **84740**). 종료 시점 미완 잡 0.
+- **DB 마이그레이션**: Flyway **v18 → v20** (`V19 match abandon` [**non-transactional**, V8 이후 두 번째] · `V20 deck prewarm`) — success, 66ms.
+  - **백업**: `~/.local/state/hmb/db-backups/pre-v8.01-20260727T154454Z.db` (113,565,696 B · sha256 `4c4f60786b70bcc8cfd0467a103e1675085836a97d95c25902540121f3eed15a` · `integrity_check=ok` · Flyway v18 · users 120 / matches 16 / user_players 1737).
+  - **리허설(라이브 무접촉)**: 백업 사본 + 새 이미지 → V19·V20 success · `foreign_key_check` 0 · 전 테이블 행수 보존(match_prompts 6·match_halves 28·ai_jobs 72·point_ledger 243·growth_applied 167) · 기존 유저 로그인/지갑 정상 · `GET /api/me/active-match` 200 · 새 매치 201 → 두 번째 **409 `MATCH_IN_PROGRESS`**(detail.matchId 포함).
+  - **V19 롤아웃 정합 별도 검증(#217 경고 지점)**: 실 데이터는 미완 매치가 2건뿐(각각 다른 유저)이라 회수 대상이 0 이었다 → **합성 데이터로 SQL 의미를 직접 확인**: U1(1건)·U2(1건)은 유지, U3(2건)은 **최신만 유지·오래된 것만 ABANDONED**. 즉 "유저별 최신 1건만 남긴다"가 실제로 유저별로 동작한다(전역 최신 1건이 아님). 별개로 리허설에서 6일 된 FAILED 1건이 ABANDONED 로 바뀐 것은 V19 가 아니라 **방치 백스톱 `sweepStale`**(`stale-after-min=720`)이 부팅 후 회수한 것 — 둘을 혼동하지 말 것.
+  - **라이브 적용 후**: `foreign_key_check` 0 · `integrity_check=ok` · users 120 / matches 16 / user_players 1737 **전건 보존**.
+  - 롤백 이미지: `hmb/server-java:prev-live`·`hmb/servants:prev-live`(= v7 세대). ⚠️ **v8 이미지로는 되돌릴 수 없다** — DB 가 v20 이라 v18 까지만 아는 이미지는 Flyway validate 에서 부팅 실패한다. 되돌리려면 **DB 를 pre-v8.01 백업으로 복원 + 그 세대 이미지**를 함께 써야 한다.
+- **tunnel/URL**: web=Pages **https://hmb-online.pages.dev** · backend=quick tunnel **`https://stayed-earth-toddler-distribute.trycloudflare.com`**(워치독이 13:19 HEAL_OK 로 세운 것, 배포 전 가용성 8/8 확인) · CORS 무변경.
+- **배포자**: hero(GO) + hmb:deploy(실행)
+- **결과**: ✅ GREEN — 요청 스모크 전 항목 통과(실패 요청 0 · JS 에러 0).
+  - **프리웜(#215)**: 덱 지급/저장 시 BASE 잡이 백그라운드 선실행(`deck_prewarm` 행 생성, BASE 잡 **19초** — v8 실측 65초) → **킥오프가 `GEN1` 을 건너뛰고 즉시 `FIRST_HALF`, 응답 0.86초**. 킥오프 시 매치 잡 4건 전부 `attempts=0`·0초(AI 호출 0).
+  - **감독시간 180초(#216)**: `clock.halftimeMs=**180000**` · 화면 `감독시간 2:14 남음 — 시간이 지나면 전반 지시로 후반이 시작됩니다` + 교체 0/3 + [후반 시작]. 하프 실시간은 `halfRealMs=420000`(7분).
+  - **매치 잠금·재입장(#217)**: 로그인 직후 `/match/:id` 로 착지 · 메타 **8개 라우트 전수**(`/lobby /deck /shop /growth /codex /trade /logs /league`)가 전부 `/match/:id` 로 강제 복귀 · 두 번째 매치 생성 **409**(`detail.matchId` = 이어가기 링크) · 종료 후 잠금 해제(`locked:false`) → 새 매치 201 · **포기 200 → ABANDONED**(탈출구 AC3).
+  - **하이라이트 단일모드(#216)**: 경기 화면 컨트롤에서 `🎬 하이라이트 켜짐/꺼짐` 토글이 사라지고 통계/로그/후반지시만 남음 — 단일 모드 통합 확인.
+  - **LEGEND 아이콘(#218/#184)**: 경기장 토큰이 **등번호 1~11**(v8 에서 보이던 `P0xx` id 노출 해소) + 활성 LEGEND 만 실아트 얼굴 토큰으로 렌더, 나머지 등급은 팀색 원(발행물 `forGrades` 정책대로).
+  - **기존 무회귀**: 신규가입 스타터 리빌(춘바페 레전드 + 15명 + 3,000P) · 육성 그리드/상세 · E2 클록 `FIRST_HALF`→정시 `HALFTIME`→자동 `SECOND_HALF`→`FINISHED 1:8` · 성장 리포트 15건 · 보상 100P.
+  - `version.json` = **`bd00b07`** / `engine@0.21.0` · `status.sh` 전 항목 ✓.
+- **비고**:
+  - ⚠️ **배포 blocker 1건 — main(`fcb9a02`)에서 web 빌드가 깨져 있었다**: `apps/web/src/match/live-clock.test.ts(9,3) TS6133 'MS_PER_TICK' is declared but its value is never read`. 빌드가 `tsc --noEmit && vite build` 라 **테스트 파일의 미사용 import 하나가 배포 전체를 막는다**(런타임 영향 0). 백엔드는 이미 v8.01 로 전환된 뒤라 web 만 옛 버전으로 두면 매치 잠금 409 UX 가 깨진 채 라이브가 되므로, 배포 세션이 **그 import 한 줄만** 제거하고(`live-clock.test.ts` 18/18 통과) 배포를 이어갔다 — 그래서 라이브 SHA 가 `fcb9a02` 가 아니라 **`bd00b07`**. **경계 밖(apps/web) 최소 수정**이며, 웹 빌드가 게이트를 통과해 머지된 경위는 web 세션 소관(재발 방지 = 머지 게이트에 `npm run build --workspace=@hmb/web` 포함).
+  - 관찰(비블로커, #216 후속 후보): **감독시간 화면 헤더가 `0 : 0` · `0'` 로 보인다** — 같은 시점 API 는 `scoreH1 0:4`. 전반을 4실점하고 하프타임에 들어온 유저에게 0:0 으로 보이는 건 오해를 부른다(재생 위치가 0으로 리셋되면서 헤더 점수도 따라간 것으로 보임). 최종 결과·정산에는 영향 없음(FINISHED 1:8 정상).
+  - 프로덕션에 검증 계정 `v801p15243`(잠금·포기·완주 프로브) + 메타 화면 프로브 1건 생성.
+  - 롤백 스위치(재배포 불필요): `hmb.prewarm.enabled=false`(#215 이전 동작) · `hmb.match.clock.enabled=false` · `hmb.match.delta.enabled=false`.
+
+---
+
 ## 2026-07-27T08:08Z — v8 후속: **AI 실행기(executor)를 v8 코드로 재기동** (#215 prewarm 진단, 코드 변경 0)
 - **무엇이 문제였나**: v8 배포(06:36) 당시 java·web 은 `0f14def` 로 갈렸지만, **호스트 프로세스인 AI 실행기는 01:53 에 뜬 그대로**였다 — 그 시점 spider13 체크아웃은 v7(`dc24665`)이라 **#193 servants 최적화(`--effort low` · 델타 프롬프트 · 게이트)가 미적용**. 도커 서비스와 달리 executor 는 배포 스크립트가 건드리지 않으므로 **배포 때마다 별도 재기동이 필요**하다(플레이북 §2-3).
 - **조치**: PID 로만 종료(`89753`→`89731`→`89707`→`89705`, 패턴킬 금지) 후 동일 env 로 재기동 — `AI_EXECUTOR=claude-code AI_MODEL=sonnet AI_CONCURRENCY=1 AI_JOB_TIMEOUT_MS=240000`, cwd=`spider13`(`23e3d94`), 로그 `/tmp/hmb-executor.log`(직전 로그는 `/tmp/hmb-executor-v7code.log` 로 보존). 새 워커 pid **18414**. 다른 세션 executor(`:28080`·데모 `:8080`)는 무접촉. 재기동 시점에 queued/leased 잡 0 = 유실 없음.
