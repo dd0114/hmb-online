@@ -6,6 +6,38 @@
 
 ---
 
+## 2026-07-27T06:36Z — **오픈베타 — 릴리스 태그 `v8`** (mstart #193 + units #207 + economy #212 + starter #209, **마이그레이션 V13~V18**)
+- **git**: **`0f14def`** = **태그 `v8`(`b3dbd01`) + 배포 전 blocker 픽스 1건**(아래 ⚠️ 참조). 브랜치 `deploy/v7`. v7(`dc24665`) 대비 mstart(#193)·유닛 카탈로그(#207)·재화 리스케일(#212)·스타터 개편(#209)·캐릭터 프롬프트.
+- **모듈 버전**: engine **`@0.21.0`** — v7 과 동일(엔진 변경 0) · server-java `0.1.0`(#193 스태틱 선행+대기 중계 · #207 어드민 유닛 카탈로그 · #209 스타터/튜토덱 · #212 재화 리스케일) · web `0.0.0` · servants `0.0.1` · **데이터 발행물 players `v2.3`(180명) · economy `v3`**
+- **이미지**(라이브 컨테이너 digest): `hmb-java` `sha256:87057f83fc4d…`(**신규**) · `hmb-runner` `sha256:0cfbfc8557de…`(**신규**)
+- **DB 마이그레이션**: Flyway **v12 → v18** (`V13 ai job effective` · `V14 admin unit catalog` · `V15 catalog create idem backstop` · `V16 economy rescale` · `V17 starter rework` · `V18 admin ops audit`) — 전부 success, 15ms. **V8 과 달리 전부 트랜잭션 안**(`.conf` 없음).
+  - **백업**: `~/.local/state/hmb/db-backups/pre-v8-20260727T063046Z.db` (32,927,744 B · sha256 `40b8e32b27703667d7d97b4a72a10b3ad4f6e7f80aab71d42be46bc4fd6c8e40` · `integrity_check=ok` · Flyway v12 · users 102 / matches 5 / user_players 1431). v7 배포 이후 **테스터 4명 신규 가입분 포함**.
+  - **리허설(라이브 무접촉)**: 백업 사본 + 새 이미지로 18081 기동 → V13~V18 success · `foreign_key_check` 위반 0 · 행수 보존 · **기존 유저 지갑 리스케일 확인**(3,500 → 35,000 P + 6,000 gems) · `tutorial_done` 102명 전원 1 백필 · 신규 가입 최상위 지급 동작.
+  - **라이브 적용 후**: `foreign_key_check` 0 · `integrity_check=ok` · users 102 / matches 5 / user_players 1431 **전건 보존** · players **180**(active 163 / inactive 17).
+  - 롤백 이미지 고정: `hmb/server-java:prev-live`(v7 `e5c44e2e…`) · `hmb/servants:prev-live`(v7 `57acd096…`).
+- **tunnel/URL**: web=Cloudflare Pages **https://hmb-online.pages.dev**(고정) · backend=quick tunnel — 배포 시 `ebooks-oriented-shakira-continuous`, **스모크 중 DNS 불안정으로 회전** → 최종 **`https://submission-relates-sites-geography.trycloudflare.com`**(아래 ⚠️). CORS `WEB_ORIGINS=https://hmb-online.pages.dev` 무변경.
+- **배포자**: hero(GO) + hmb:deploy(실행)
+- **결과**: ✅ GREEN — 요청된 스모크 전 항목 통과.
+  - **신규가입 스타터(#209)**: 리빌 연출(카드 뒤집기) → **"춘바페 · 레전드 영입! 선수 15명과 3,000P가 지급되었습니다"** = 최상위 1장 + 기본팩 14장. `GET /api/me/starter-grant` 200(다른 계정은 P177 덕브라이너·P173 보날두 — `sha256(userId)` 결정론 배정 확인). 신규 지갑 **3,000 P + 6,000 gems**.
+  - **튜토덱(#209)**: 가입 직후 `/api/deck` **404**(정상) → `POST /api/me/tutorial-complete` **200 `deckGranted:true`** → 4-3-3 **선발 11 + 벤치 4**. 실경기 라인업에 스타터 최상위(덕브라이너)가 선발로 반영됨.
+  - **재화 리스케일(#212)**: 기존 유저 `v7probe25` 3,500 P → **35,000 P + 6,000 gems**, `tutorialDone=true`(V17 백필). 승리 보상 **500 P**.
+  - **어드민 유닛 API(#207)**: `/api/admin/units` **200**(total **180** = 비활성 포함 전체) · `/api/admin/units/P176` 200(`active=true`, **`dataVersion=v2.3`**, holdings owners 4/copies 4) · `/api/admin/economy` 200(v3 · BAKED · override 미적용) · **비어드민 403**(가드 동작).
+  - **LEGEND 8종(#207)**: 카탈로그에 **P173~P180 8종 전부 존재**. 그중 **5종 활성**(P173 보날두·P175 열라도나·P176 춘바페·P177 덕브라이너·P179 욱링엄 = `economy.starterTop` 풀), **3종 비활성**(P174 권씨·P178 석신·P180 경니시우스). 비활성 17종 = 신규 8종 중 3 + **기존 실명 LEGEND 14종** — `players.v2.3.json` 이 `active:false` 로 **발행물에서 선언**한 값(정책이지 결함 아님). 도감/가챠 노출은 활성 163명.
+  - **게임시작 대기(#193)**: 킥오프 직후 화면 = `전반 준비 / GEN1 / **AI 감독이 전반 작전 반영 중…** / 경과 0:03…0:25 / 감독의 지시가 선수들에게 전달되고 있습니다 (보통 10초 안팎, 전술을 크게 바꾼 경우 1~2분)` — 경과 타이머 + 기대치 안내 정상.
+  - **E2 서버 시계**(v7 무회귀): `FIRST_HALF`(+240s) → **06:54:10 정시 `HALFTIME`**(감독시간 60s, 화면에 `감독시간 0:36 남음` 카운트다운 + 교체 0/3 + 팀/선수 프롬프트) → **06:55:10 만료 자동** `SECOND_HALF` → **`FINISHED 2:1 WIN`**(06:59:15).
+  - **성장(#179 무회귀)**: 경기 후 `/api/growth/report/{id}` **200**, entries **15**(선수별 stat XP — 예: Cristian Romero 413).
+  - **풀아트(#187 무회귀)**: 스타터 리빌·뽑기 리빌 모두 프레임+풀아트 렌더.
+  - `version.json` = **`0f14def`** / `engine@0.21.0` · `status.sh` 전 항목 ✓ · 실패 요청 0 · JS 에러 0.
+- **비고**:
+  - ⚠️ **배포 전 blocker 1건 발견·수정(`0f14def`)** — `server-java/Dockerfile` 의 `HMB_DATA_PLAYERSFILE` 이 **`players.v2.1.json`** 에 고정돼 있어 `application.yml`(v2.3)을 **덮어쓰고** 있었다. 그대로 올렸으면 컨테이너가 **172명/LEGEND 14**로 떠서 **#207 신규 LEGEND 8종이 프로덕션에 아예 임포트되지 않았다**(무증상 — 에러 없이 조용히 구파일). 리허설에서 잡아 v2.3 으로 고치고 재빌드 → 180명/LEGEND 22 확인. `server-java/CLAUDE.md` 가 경고하던 "yml·Dockerfile 두 곳을 같이 올려라"의 실제 사례라 Dockerfile 주석으로 박제했다. **발행물 버전이 오르는 배포에서는 이 두 곳을 항상 대조할 것.**
+  - ⚠️ **hero 로그인 실패 제보 → 원인 = 터널 호스트명 DNS 불안정(앱·CORS·#209 회귀 아님)**. 실측: `ebooks-oriented-…` 은 시스템 리졸버로 **12회 중 9회 즉시 실패**(`http=000`, `time_namelookup=0.000s`)인데 `dig` 로는 정상 해석 — 로컬 리졸버 레벨의 간헐 실패다. 브라우저는 한번 붙으면 자체 DNS 캐시로 유지돼 "새로고침하니까 되네"가 설명된다. 조치 = **터널 회전(PID only) + `publish-backend-url.sh` 로 config.json 재전파**(재빌드 0, CORS 무변경): 새 호스트 `submission-relates-…` 는 같은 조건 **10/10 성공**, 실브라우저 신규가입 login/me/starter-grant 200.
+    - 📌 이 때문에 **`version.json` 의 `tunnel.apiUrl` 은 옛 URL 로 남아 있다**(publish 는 `config.json` 만 갱신). 런타임 SoT 는 `config.json` — 앱 동작에는 영향 없지만 조회 시 혼동 주의.
+  - v7 에서 넣은 운영 완화(`HMB_MATCH_LEASESEC=300` / `HMB_MATCH_AIJOBTIMEOUTSEC=600`) 유지 — 이번 매치도 AI 잡 완주(#166 은 여전히 열려 있음, #193 이 대기시간 축을 개선).
+  - ⚠️ **admin 계정 신규 활성화**: `/api/admin/**` 이 admin 0명이라 전부 막혀 있어(스모크 항목 불가) `HMB_ADMIN_NICKNAME=hmbadmin` + 랜덤 32자 비번을 `infra/.env`(gitignore)에 넣고 java 재기동 → `admin bootstrap: admins=1`. **비번은 리포에 없다**(`infra/.env` + `~/.local/state/hmb/admin-pw-v8.txt`, 600). 로테이션 = 값 교체 후 `docker compose up -d java`.
+  - 관찰(비블로커): 감독시간 화면의 피치 선수 토큰이 캐릭터 스킨 대신 ID 칩으로 보였다 — #184(skinBtn hidden 회귀)와 관련 가능성. QA 트랙 확인 대상.
+
+---
+
 ## 2026-07-26T16:53Z — v7 대규모 배포 — engine v6(0.18~0.21) + E2 감독시간/서버시계 + 성장 시스템 + 카드 풀아트 (백엔드+web 동시 전환, **마이그레이션 V8~V12**)
 - **git**: `dc24665` (브랜치 `deploy/v7` = origin/main) — `Merge pull request #204 from dd0114/card-art/base`. 직전 배포(`79358c0`) 대비 **215 files, +29,012 / −826**.
 - **모듈 버전**: engine **`@0.21.0`(릴리스 태그 v6)** — 0.18.0 마크 진동(#178)·0.19.0 공 휨(#181)·0.20.0 코너 전원전진(#182)·0.21.0 데드볼 접근금지(#176) · server-java `0.1.0`(**P4-E2 서버 권위 시계 + 감독시간** #170, **성장/젬/다이스** #179) · web `0.0.0`(E1 S2/S3 뷰어 SoT 수렴 · 육성 화면 · **카드 풀아트 #187**) · servants `0.0.1`
