@@ -84,6 +84,12 @@
 - 튜토리얼 완료/건너뛰기 저장은 `persistTutorialDone` **한 곳**이 `POST /api/me/tutorial-complete` 를 친다.
   이 호출이 서버에서 **덱 지급**을 트리거하므로 TutorialProvider 가 `["deck"]`·`["me"]` 캐시를 무효화한다
   (안 하면 유저가 빈 덱 화면에 남는다). 완료 SoT 는 이제 서버(`user.tutorialDone`), localStorage 는 폴백.
+- **admin economy 패널**(`admin/EconomyOpsPanel` + `economy-logic`): 재배포 없이 스타터 최상위 후보를
+  교체·리로드·롤백한다. 화면 계약의 핵심은 값이 아니라 **출처 뱃지**(BAKED/OVERRIDE) — 서버가
+  override 파일로 갈아끼우는 구조라 출처 없이는 "반영됐나"에 답할 수 없다. 운영 액션은
+  **성공·실패 모두** 캐시를 무효화한다(`onSettled`) — 실패가 화면에서 사라지면 원장의 의미가 없다.
+  형태 검증은 클라(`economy-logic`), 데이터 검증(카탈로그 실재·기본팩 겹침)은 서버가 한다 —
+  클라가 흉내 내면 데이터가 바뀔 때 조용히 어긋난다.
 - ‘다시 보기’는 **로컬만** 되돌린다 — 서버 플래그를 false 로 되돌리는 경로를 만들면 지급 경로를 반복해
   두드리는 문이 된다. 계약 = `e2e/p4-starter-onboarding.spec.ts` + `src/auth/StarterReveal.test.ts`.
 

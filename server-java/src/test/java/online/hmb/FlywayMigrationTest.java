@@ -46,7 +46,11 @@ class FlywayMigrationTest {
             "economy_rescale_v16",
             // V17 스타터 개편(1) — #209: 가입 시 지급한 최상위 유닛 박제(연출이 읽는다).
             //   users.tutorial_done 은 컬럼 추가라 목록 불변
-            "starter_grants"
+            "starter_grants",
+            // V18 무배포 운영(1) — #209 B안: admin 운영 액션 감사 원장(성공·실패 모두)
+            "admin_ops_audit",
+            // V15 무배포 운영(1) — #209 B안: admin 운영 액션 감사 원장(성공·실패 모두)
+            "admin_ops_audit"
     );
 
     @Test

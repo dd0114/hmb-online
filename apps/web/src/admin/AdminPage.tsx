@@ -6,6 +6,7 @@ import type { AdminUserRow } from "../api/p3";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
+import { EconomyOpsPanel } from "./EconomyOpsPanel";
 import {
   formatRecord,
   formatSignedDelta,
@@ -18,7 +19,7 @@ import styles from "./AdminPage.module.css";
 import u from "./AdminUnits.module.css";
 
 /** 운영자 페이지의 섹션 — 유저 운영(기존) / 유닛 카탈로그(#207 웨이브2-C). */
-export type AdminTab = "users" | "units";
+export type AdminTab = "users" | "units" | "economy";
 
 /** 검색 입력 → 질의 반영 지연(ms). 타이핑마다 요청하지 않기 위한 값. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -170,9 +171,23 @@ export function AdminPage() {
           >
             유닛 카탈로그
           </button>
+          {/* #209 B안 — 재배포 없이 스타터 최상위 후보를 갈아끼우는 운영. 유저·유닛과 성격이
+              달라(설정 파일 교체 + 감사 원장) 탭을 하나 더 둔다. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "economy"}
+            className={`${u.tab} ${tab === "economy" ? u.tabActive : ""}`}
+            data-testid="admin-tab-economy"
+            onClick={() => setTab("economy")}
+          >
+            스타터 지급
+          </button>
         </div>
 
         {tab === "units" && <AdminUnitsSection />}
+
+        {tab === "economy" && <EconomyOpsPanel />}
 
         {tab === "users" && (
           <>

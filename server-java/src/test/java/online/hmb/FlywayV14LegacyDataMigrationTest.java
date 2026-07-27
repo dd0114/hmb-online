@@ -12,15 +12,15 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 /**
- * V13(#209) 을 <b>이미 사람들이 쓰고 있는 DB</b> 위에서 검증한다.
+ * V14(#209) 을 <b>이미 사람들이 쓰고 있는 DB</b> 위에서 검증한다.
  *
- * <p>이슈의 요구는 "기존 유저 무영향(가입 시점만 바뀐다)"이다. V13 은 튜토리얼 완료 플래그를
+ * <p>이슈의 요구는 "기존 유저 무영향(가입 시점만 바뀐다)"이다. V14 는 튜토리얼 완료 플래그를
  * 새로 만드는데, 기본값(0)만 두면 <b>이미 플레이 중인 계정 전원이 미완료로 되살아나</b> 튜토리얼이
  * 다시 뜨고 덱 지급 경로까지 열린다. 백필이 그걸 막는 유일한 장치라, 백필을 검증하려면
  * "마이그레이션 전에 이미 유저가 있는" DB 가 필요하다 — 빈 DB 로 부팅하는 @SpringBootTest 로는
  * 절대 재현되지 않는다(V8 때 같은 이유로 거짓 green 이 났었다).
  */
-class FlywayV13LegacyDataMigrationTest {
+class FlywayV14LegacyDataMigrationTest {
 
     private static final String LOCATIONS = "classpath:db/migration";
 
@@ -40,11 +40,11 @@ class FlywayV13LegacyDataMigrationTest {
 
     @Test
     void existingUsersAreBackfilledAsTutorialDoneAndNewOnesAreNot() throws Exception {
-        Path db = Files.createTempFile("hmb-v13-legacy-", ".db");
+        Path db = Files.createTempFile("hmb-v14-legacy-", ".db");
         Files.deleteIfExists(db);
 
-        // 1) 배포본 상태 재현: V12 까지 적용된 DB + 플레이 중인 계정 2개.
-        flyway(db, "12").migrate();
+        // 1) 배포본 상태 재현: V13 까지 적용된 DB + 플레이 중인 계정 2개.
+        flyway(db, "13").migrate();
         try (Connection c = DriverManager.getConnection(jdbcUrl(db)); Statement st = c.createStatement()) {
             st.executeUpdate("INSERT INTO users(id, nickname, created_at) "
                     + "VALUES ('U_OLD1','veteran','2026-07-01T00:00:00Z')");
@@ -52,7 +52,7 @@ class FlywayV13LegacyDataMigrationTest {
                     + "VALUES ('U_OLD2','veteran2','2026-07-02T00:00:00Z')");
         }
 
-        // 2) 배포 = V13 이 여기서 돈다.
+        // 2) 배포 = V14 가 여기서 돈다.
         flyway(db, null).migrate();
 
         try (Connection c = DriverManager.getConnection(jdbcUrl(db)); Statement st = c.createStatement()) {

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.File;
 import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -143,11 +144,105 @@ public class EconomyService {
     public record Gems(boolean topupEnabled, List<GemTopupPack> topupPacks) {
     }
 
-    private final Optional<Economy> economy;
+    /**
+     * 현재 유효한 스냅샷 + 그게 어디서 왔는지. {@code volatile} 이라 리로드가 원자적으로 갈아끼운다
+     * (읽는 쪽은 락 없이 항상 완성된 스냅샷 하나를 본다 — 반쯤 바뀐 상태가 관측되지 않는다).
+     */
+    public record Snapshot(Optional<Economy> economy, Source source, String path, String loadedAt) {
+    }
+
+    /** 스냅샷 출처. BAKED = 배포에 구워진 발행물, OVERRIDE = 운영이 얹은 파일(무배포 교체). */
+    public enum Source {
+        BAKED, OVERRIDE, NONE
+    }
+
+    private final ObjectMapper objectMapper;
+    private final String economyFile;
+    private final String overrideFile;
+    private volatile Snapshot snapshot;
 
     public EconomyService(ObjectMapper objectMapper,
-                          @Value("${hmb.data.economy-file}") String economyFile) {
-        this.economy = load(objectMapper, economyFile);
+                          @Value("${hmb.data.economy-file}") String economyFile,
+                          @Value("${hmb.data.economy-override-file:}") String overrideFile,
+                          @Value("${hmb.db.path:./.data/hmb.db}") String dbPath) {
+        this.objectMapper = objectMapper;
+        this.economyFile = economyFile;
+        // 기본 override 경로 = **DB 파일과 같은 디렉토리**. 이유: 그 디렉토리는 어느 환경에서든
+        // 쓰기 가능하고 영속이다(도커는 named volume 이 마운트돼 있고, 로컬은 ./.data). 발행물이
+        // 놓인 경로는 이미지에 구워져 있어(COPY) 쓸 수 없다 — 거기에 쓰려 했으면 무배포 운영이
+        // 도커에서만 조용히 실패했을 것이다. 명시 설정이 있으면 그게 이긴다.
+        this.overrideFile = (overrideFile == null || overrideFile.isBlank())
+                ? defaultOverridePath(dbPath)
+                : overrideFile;
+        // 부팅은 관대하게(strict=false) — 깨진 override 로 서버가 못 뜨는 상황을 만들지 않는다.
+        this.snapshot = loadSnapshot(false);
+    }
+
+    private static String defaultOverridePath(String dbPath) {
+        File parent = new File(dbPath).getAbsoluteFile().getParentFile();
+        return new File(parent, "economy.override.json").getPath();
+    }
+
+    /**
+     * 디스크에서 다시 읽어 스냅샷을 갈아끼운다 (#209 무배포 운영). <b>실패해도 기존 스냅샷은 유지</b>한다 —
+     * 손상된 파일 하나로 가입·뽑기가 통째로 죽는 것이 리로드 실패보다 훨씬 나쁘다(fail-safe).
+     *
+     * @return 갈아끼운 뒤의 스냅샷
+     * @throws IllegalStateException 새 내용이 로드 불가일 때(호출자가 400 으로 매핑)
+     */
+    public synchronized Snapshot reload() {
+        Snapshot next = loadSnapshot(true);
+        if (next.economy().isEmpty() && snapshot.economy().isPresent()) {
+            throw new IllegalStateException("새 economy 를 읽지 못했습니다(" + next.path()
+                    + ") — 기존 설정을 유지합니다");
+        }
+        this.snapshot = next;
+        log.info("economy reloaded: source={} path={} version={}", next.source(), next.path(),
+                next.economy().map(Economy::version).orElse("-"));
+        return next;
+    }
+
+    /**
+     * override 파일이 있으면 그게 이긴다 — 없으면 배포에 구워진 발행물.
+     *
+     * <p>{@code strict} 는 <b>손상된 override 를 만났을 때의 태도</b>다. 부팅(strict=false)에서는
+     * 발행물로 폴백한다 — 운영 실수 하나로 서버가 아예 못 뜨는 편이 훨씬 나쁘다. 반대로 운영자가
+     * <b>명시적으로 리로드를 누른 경우</b>(strict=true)에는 폴백이 곧 <b>거짓말</b>이다: 화면에는
+     * 200 이 뜨는데 방금 올린 내용은 반영되지 않은 상태가 되고, 운영자는 그걸 알 방법이 없다.
+     * 그래서 그때는 실패로 알리고(400) 직전 스냅샷을 유지한다.
+     */
+    private Snapshot loadSnapshot(boolean strict) {
+        File override = new File(overrideFile);
+        if (override.exists()) {
+            Optional<Economy> loaded = load(objectMapper, override.getPath());
+            if (loaded.isPresent()) {
+                return new Snapshot(loaded, Source.OVERRIDE, override.getAbsolutePath(), Instant.now().toString());
+            }
+            if (strict) {
+                throw new IllegalStateException("override 파일을 읽지 못했습니다("
+                        + override.getAbsolutePath() + ") — 기존 설정을 유지합니다");
+            }
+            log.warn("economy override at {} is unreadable — falling back to the baked file",
+                    override.getAbsolutePath());
+        }
+        File baked = new File(economyFile);
+        Optional<Economy> loaded = load(objectMapper, baked.getPath());
+        return new Snapshot(loaded, loaded.isPresent() ? Source.BAKED : Source.NONE,
+                baked.getAbsolutePath(), Instant.now().toString());
+    }
+
+    public Snapshot snapshot() {
+        return snapshot;
+    }
+
+    /** override 파일 경로(존재 여부와 무관). 운영 API 가 여기에 쓰고 지운다. */
+    public String overridePath() {
+        return overrideFile;
+    }
+
+    /** 배포에 구워진 발행물 경로 — override 를 만들 때의 기준 문서(base)다. */
+    public String bakedPath() {
+        return economyFile;
     }
 
     private static Optional<Economy> load(ObjectMapper objectMapper, String path) {
@@ -374,7 +469,8 @@ public class EconomyService {
         return out;
     }
 
+    /** 현재 유효한 경제 설정. 소비자(가입·뽑기·성장…)는 출처를 알 필요가 없다. */
     public Optional<Economy> get() {
-        return economy;
+        return snapshot.economy();
     }
 }

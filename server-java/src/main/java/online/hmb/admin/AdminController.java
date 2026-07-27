@@ -1,6 +1,9 @@
 package online.hmb.admin;
 
+import java.util.List;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
@@ -24,10 +27,13 @@ public class AdminController {
 
     private final AdminUserQueryService users;
     private final AdminPointsService points;
+    private final AdminEconomyService economy;
 
-    public AdminController(AdminUserQueryService users, AdminPointsService points) {
+    public AdminController(AdminUserQueryService users, AdminPointsService points,
+                           AdminEconomyService economy) {
         this.users = users;
         this.points = points;
+        this.economy = economy;
     }
 
     /** 유저 목록·닉네임 검색·페이징. 비번은 조회 SQL 에도 DTO 에도 없다. */
@@ -62,5 +68,54 @@ public class AdminController {
 
     /** 확정 계약 바디 — {@code memo} 가 아니라 {@code reason} 이다(web 세션 합의). */
     public record GrantPointsRequest(Long delta, String reason) {
+    }
+
+    // ── economy 무배포 운영 (#209 B안) ────────────────────────────────────
+    // 재배포 없이 스타터 최상위 후보를 갈아끼운다. 값이 **어디서 왔는지**(BAKED/OVERRIDE)를 항상 함께
+    // 돌려주는 게 중요하다 — 운영이 "바꿨는데 반영됐나"를 화면에서 확신할 수 있어야 한다.
+
+    /** 현재 유효한 economy 요약 + 출처. */
+    @GetMapping("/economy")
+    public AdminEconomyService.EconomyView economy() {
+        return economy.current();
+    }
+
+    /** 운영 이력(감사 원장) — 성공/실패 모두. */
+    @GetMapping("/economy/history")
+    public List<AdminEconomyService.AuditEntry> economyHistory(
+            @RequestParam(name = "limit", required = false, defaultValue = "20") int limit) {
+        return economy.history(limit);
+    }
+
+    /** 디스크 재읽기(내용 변경 없음). 볼륨의 override 를 바깥에서 바꾼 뒤 반영할 때. */
+    @PostMapping("/economy/reload")
+    public AdminEconomyService.EconomyView reloadEconomy(@RequestAttribute("userId") String actorUserId,
+                                                          @RequestBody(required = false) OpsRequest body) {
+        return economy.reload(actorUserId, body == null ? null : body.reason());
+    }
+
+    /** 스타터 최상위 후보 교체 — 배포 없이 카드 조정의 실제 경로. */
+    @PutMapping("/economy/starter-top")
+    public AdminEconomyService.EconomyView replaceStarterTop(@RequestAttribute("userId") String actorUserId,
+                                                              @RequestBody StarterTopRequest body) {
+        if (body == null) {
+            throw online.hmb.common.ApiException.validation("요청 바디가 비어 있습니다");
+        }
+        return economy.replaceStarterTop(actorUserId, body.pool(), body.count(), body.reason());
+    }
+
+    /** override 제거 = 배포 발행물로 롤백. */
+    @DeleteMapping("/economy/override")
+    public AdminEconomyService.EconomyView clearEconomyOverride(@RequestAttribute("userId") String actorUserId,
+                                                                 @RequestParam(name = "reason", required = false)
+                                                                 String reason) {
+        return economy.clearOverride(actorUserId, reason);
+    }
+
+    /** 운영 액션 공통 바디 — 사유는 필수다(원장에 남는다). */
+    public record OpsRequest(String reason) {
+    }
+
+    public record StarterTopRequest(List<String> pool, Integer count, String reason) {
     }
 }

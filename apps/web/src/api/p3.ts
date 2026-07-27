@@ -183,3 +183,49 @@ export type StarterGrantResponse = components["schemas"]["StarterGrantResponse"]
  * 서버는 기존 덱을 절대 덮어쓰지 않는다.
  */
 export type TutorialCompleteResponse = components["schemas"]["TutorialCompleteResponse"];
+
+/* ───────────── G. economy 무배포 운영 (#209 B안, admin 전용) ───────────── */
+
+/**
+ * 재배포 없이 스타터 최상위 후보를 갈아끼우는 운영 API. 전부 `/api/admin/` 게이트 뒤다.
+ *
+ * ⚠️ **리로드만으로는 값이 안 바뀐다**는 게 이 API 의 전제다: 발행물은 이미지에 구워져 있어
+ * 컨테이너 안에서 불변이다. 서버는 쓰기 가능한 볼륨에 **override 파일**을 만들어 그걸 우선 로드한다
+ * → 화면은 값뿐 아니라 **출처(`source`)** 를 반드시 같이 보여줘야 한다("바꿨는데 반영됐나"의 답).
+ */
+export const ADMIN_ECONOMY_PATH = "/api/admin/economy";
+export const ADMIN_ECONOMY_HISTORY_PATH = "/api/admin/economy/history";
+export const ADMIN_ECONOMY_RELOAD_PATH = "/api/admin/economy/reload";
+export const ADMIN_ECONOMY_STARTER_TOP_PATH = "/api/admin/economy/starter-top";
+export const ADMIN_ECONOMY_OVERRIDE_PATH = "/api/admin/economy/override";
+
+/** 지금 서버가 실제로 쓰는 값 + 그게 어디서 왔는지. */
+export interface AdminEconomyView {
+  version: string | null;
+  /** BAKED = 배포에 구워진 발행물 · OVERRIDE = 운영이 얹은 파일 · NONE = 설정 없음. */
+  source: "BAKED" | "OVERRIDE" | "NONE";
+  effectivePath: string;
+  overridePath: string;
+  overrideApplied: boolean;
+  loadedAt: string;
+  starterPackSize: number;
+  starterTop: { pool: string[]; count: number };
+}
+
+/** PUT /api/admin/economy/starter-top — 후보 교체(사유 필수, 원장에 남는다). */
+export interface AdminStarterTopRequest {
+  pool: string[];
+  count: number;
+  reason: string;
+}
+
+/** 운영 이력 1행 — 실패도 남는다(`result`). */
+export interface AdminOpsAuditEntry {
+  id: string;
+  actor: string;
+  action: "economy_reload" | "economy_starter_top" | "economy_override_clear" | string;
+  result: "ok" | "failed" | string;
+  reason: string | null;
+  detailJson: string | null;
+  createdAt: string;
+}

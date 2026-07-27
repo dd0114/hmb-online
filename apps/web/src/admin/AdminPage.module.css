@@ -297,3 +297,73 @@
     min-width: 120px;
   }
 }
+
+/* ── economy 무배포 운영 패널 (#209 B안) ─────────────────────────────────
+   기존 카드/폼 토큰을 그대로 쓰되, 이 패널에만 필요한 것(헤더 줄·액션 줄·에러 문구)만 더한다. */
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 16px;
+  background: var(--bg-elevated);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.panelTitle {
+  margin: 0;
+  font-size: 15px;
+}
+
+.subTitle {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* 라벨 캡션 — 기존 `.field label` 과 같은 모양을 span 에도 준다(중첩 label 회피). */
+.field > span {
+  display: block;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.field input {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.panelActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* 버튼 3개가 한 줄에 — .primary 는 기본 width:100% 라 이 안에서만 균등 분배한다. */
+.panelActions .primary,
+.panelActions .ghost {
+  width: auto;
+  flex: 1;
+}
+
+.error {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.tableWrap {
+  overflow-x: auto;
+}

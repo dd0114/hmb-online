@@ -35,6 +35,15 @@ vi.mock("../api/admin-hooks", () => ({
   },
   useAdminUserDetail: () => fx.detail,
   useGrantPoints: () => ({ mutate: fx.mutate, isPending: false, error: fx.grantError }),
+  // #209 B안 패널이 페이지에 붙었다. 이 파일의 주제는 **유저 운영**이므로 economy 훅은
+  // 비어 있는 상태로만 준다(패널 자체의 동작은 economy-logic.test + e2e 가 본다).
+  useAdminEconomy: () => ({ data: undefined, isLoading: false }),
+  useAdminEconomyHistory: () => ({ data: [] }),
+  useEconomyOps: () => ({
+    replaceStarterTop: { mutate: vi.fn(), isPending: false },
+    reload: { mutate: vi.fn(), isPending: false },
+    clearOverride: { mutate: vi.fn(), isPending: false },
+  }),
 }));
 
 // 유닛 카탈로그 섹션(#207)은 자체 훅 모듈을 쓴다 — 여기선 렌더만 확인하므로 전부 스텁.
