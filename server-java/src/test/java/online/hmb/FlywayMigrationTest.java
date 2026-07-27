@@ -48,7 +48,11 @@ class FlywayMigrationTest {
             //   users.tutorial_done 은 컬럼 추가라 목록 불변
             "starter_grants",
             // V18 무배포 운영(1) — #209 B안: admin 운영 액션 감사 원장(성공·실패 모두)
-            "admin_ops_audit"
+            "admin_ops_audit",
+            // V20 덱 저장 선실행(1) — #215 W2: 유저당 유효 prewarm A 원장(잡 id 는 내용 해시라
+            //   유저 간 공유되므로 "누가 무엇을 기다리는가"를 잡 테이블이 알 수 없다).
+            //   V19 는 #217(매치 잠금) 소유 — 번호만 앞서고 이 목록엔 그쪽이 등록한다.
+            "deck_prewarm"
     );
 
     @Test

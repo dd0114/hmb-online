@@ -179,7 +179,10 @@ public class MatchOrchestrator {
                     ? contextBuilder.botBaseJob(match, bot)
                     : contextBuilder.userBaseJob(match, snapshot);
             String baseResult = doneResultOf(base.baseId());
-            boolean hasInput = !isBot && hasPhasePrompts(matchId, "pre");
+            // 매치시점 입력 = pre 프롬프트 **또는 수동 전술**. 전술은 A 키에서 빠졌으므로(#215 W2)
+            // A 는 그 값을 모른다 — 있으면 재사용이 아니라 A 위의 패치로 얹어야 유저 슬라이더가 반영된다.
+            boolean hasInput = !isBot
+                    && (hasPhasePrompts(matchId, "pre") || contextBuilder.hasManualTactics(snapshot));
             String h1JobId;
             if (baseResult != null && hasInput) {
                 // 킥오프 B 패치: A 가 쓴 덱 사전 지시 → 매치시점(pre) 지시의 변경분만 델타로 얹는다.

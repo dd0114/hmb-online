@@ -5,7 +5,9 @@
  *
  * env: JAVA_URL · SERVANT_TOKEN · AI_CONCURRENCY(기본 1 = 배포 현행) ·
  *      MEASURE_DELAY_FULL_MS(기본 150000 = 실측 team-input p50 근사) ·
- *      MEASURE_DELAY_PATCH_MS(기본 12000 = 실측 team-input-patch 근사)
+ *      MEASURE_DELAY_PATCH_MS(기본 12000 = 실측 team-input-patch 근사) ·
+ *      MEASURE_DELAY_BASE_MS(선택, #215 W2 — A(베이스) 잡만 따로. 미설정이면 FULL 과 같다.
+ *        A 는 매치 잡보다 짧다: v8 재기동 후 라이브 실측 A 24.2s vs 매치 풀생성 40.1s)
  * 잡 픽업/완료 시각을 stderr 에 한 줄씩 찍어 큐 순서를 관찰한다.
  */
 import { JavaClient } from "../src/executor/java-client.js";
@@ -16,6 +18,8 @@ import type { ExecutorJob } from "../src/executor/kinds.js";
 
 const FULL_MS = Number(process.env["MEASURE_DELAY_FULL_MS"] ?? 150_000);
 const PATCH_MS = Number(process.env["MEASURE_DELAY_PATCH_MS"] ?? 12_000);
+/** A(베이스) 잡 = context.matchId === "BASE" (AiJobQueue.enqueueBase). 미설정이면 FULL 과 동일. */
+const BASE_MS = Number(process.env["MEASURE_DELAY_BASE_MS"] ?? FULL_MS);
 const t0 = Date.now();
 const stamp = (): string => `${String(Date.now() - t0).padStart(7)}ms`;
 
@@ -23,8 +27,9 @@ const stub = stubExecutor();
 const delayed: AiExecutor = {
   name: `delay-stub(full=${FULL_MS}ms,patch=${PATCH_MS}ms)`,
   async execute(job: ExecutorJob, attempt?: { feedback: string }): Promise<unknown> {
-    const ms = job.kind === "team-input-patch" ? PATCH_MS : FULL_MS;
     const ctx = job.context as { matchId?: string; side?: string; half?: number };
+    const ms =
+      job.kind === "team-input-patch" ? PATCH_MS : ctx.matchId === "BASE" ? BASE_MS : FULL_MS;
     console.error(
       `[${stamp()}] START  job=${job.id.slice(0, 8)} kind=${job.kind} match=${String(ctx.matchId).slice(0, 10)} side=${ctx.side ?? "-"} half=${ctx.half ?? "-"} delay=${ms}ms`,
     );

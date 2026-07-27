@@ -324,12 +324,24 @@ public class PromptContextBuilder {
                                         String formation, List<RosterEntry> roster,
                                         String teamPrompt, Map<String, String> playerPrompts,
                                         Map<String, Object> prevSummary) {
+        return context(match.id(), Hashes.jobSeed(match.seed(), half, side), side, half, formation,
+                roster, teamPrompt, playerPrompts, prevSummary);
+    }
+
+    /**
+     * matchId/seed 를 <b>값으로</b> 받는 형태 — A(베이스) 컨텍스트는 매치에 매이지 않으므로(상수 BASE +
+     * 재료 파생 seed) MatchRow 없이 조립할 수 있어야 한다(덱 저장 선실행, #215 W2).
+     */
+    private Map<String, Object> context(String matchId, String seed, String side, int half,
+                                        String formation, List<RosterEntry> roster,
+                                        String teamPrompt, Map<String, String> playerPrompts,
+                                        Map<String, Object> prevSummary) {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("kind", "team-input");
-        context.put("matchId", match.id());
+        context.put("matchId", matchId);
         context.put("side", side);
         context.put("half", half);
-        context.put("seed", Hashes.jobSeed(match.seed(), half, side)); // side별 파생 (LLD §5.2)
+        context.put("seed", seed); // side별 파생 (LLD §5.2)
         context.put("formation", formation);
         context.put("roster", roster.stream().map(r -> {
             Map<String, Object> entry = new LinkedHashMap<>();
@@ -349,9 +361,17 @@ public class PromptContextBuilder {
     }
 
     // ── A(베이스 생성) 컨텍스트 — 크로스매치 캐시(#95 A+B) ────────────────────
-    // A = 덱 스냅샷만(매치 가변요소 제외): formation + roster + 덱 teamPrompt/playerPrompts + manualTactics.
-    // 매치시점 요소(pre/halftime 프롬프트·relations/morale/conditions/opponentRoster/prevSummary)는 제외 →
-    // 같은 덱이면 매치·양팀 무관하게 같은 A. seed/matchId/side/half 는 캐시키에서 빠지고 컨텍스트엔 상수로 담는다.
+    // A = 덱 스냅샷만(매치 가변요소 제외): formation + roster + 덱 teamPrompt/playerPrompts.
+    // 매치시점 요소(pre/halftime 프롬프트·manualTactics·relations/morale/conditions/opponentRoster/
+    // prevSummary)는 제외 → 같은 덱이면 매치·양팀 무관하게 같은 A. seed/matchId/side/half 는 캐시키에서
+    // 빠지고 컨텍스트엔 상수로 담는다.
+    //
+    // ⚠️ manualTactics(수동 전술 슬라이더)는 #215 W2 에서 A 밖으로 뺐다. 그 전에는 A 키 재료에
+    // 들어 있었는데, A 프리페치는 **매치 생성 시점 스냅샷**(전술 없음)으로 키를 만들고 킥오프의
+    // recaptureSnapshotAtKickoff 는 **브리핑 최종 전술을 넣은 스냅샷**으로 같은 키를 다시 계산한다 —
+    // 전술이 한쪽에만 있으니 두 키가 절대 같아지지 않아 **A 가 done 이어도 조회가 실패**했다(라이브
+    // 브라우저 유저 100% 풀생성, #215 W1 addendum). 전술은 A 가 알 수 없는 **매치 시점 입력**이므로
+    // 프롬프트와 같은 자리(B 패치 컨텍스트)에서 얹는다. 계약 = BaseKeyTacticsSplitTest.
 
     /** A(베이스) 잡 = 캐시 키 재료 + 그 위 team-input 컨텍스트(상수 매치필드) 한 묶음. */
     public record BaseJob(String material, String baseId, Map<String, Object> context) {
@@ -359,12 +379,24 @@ public class PromptContextBuilder {
 
     private static final String BASE_MATCH_ID = "BASE"; // A 컨텍스트의 상수 matchId(캐시키에서는 제외됨).
 
-    /** 유저팀 A 잡(덱 스냅샷 기준). 덱-레벨 팀 프롬프트는 이 모델에 없으므로 teamPrompt="". */
+    /**
+     * 유저팀 A 잡(덱 스냅샷 기준). 덱-레벨 팀 프롬프트는 이 모델에 없으므로 teamPrompt="".
+     *
+     * <p>매치는 <b>쓰지 않는다</b>(A 는 매치에 안 매인다) — {@link #deckBaseJob} 과 같은 산출이며,
+     * 덱 저장 시점 선실행(#215 W2)이 매치 없이 같은 A 를 만들 수 있다는 뜻이다.
+     */
     public BaseJob userBaseJob(MatchService.MatchRow match, JsonNode snapshot) {
-        List<RosterEntry> roster = buildRoster(snapshot, List.of());
-        Map<String, String> playerPrompts = deckBasePlayerPrompts(snapshot, roster);
-        Map<String, Object> manualTactics = manualTacticsOf(snapshot);
-        return baseJob(match, snapshot.path("formation").asText(), roster, "", playerPrompts, manualTactics);
+        return deckBaseJob(snapshot);
+    }
+
+    /**
+     * 덱(스냅샷 또는 활성 덱 직렬화)만으로 만드는 A 잡 — 매치 불필요. 덱 저장 선실행의 진입점이며,
+     * {@link #userBaseJob} 과 <b>같은 baseId</b> 를 낸다(그래야 저장 때 만든 A 를 킥오프가 찾는다).
+     */
+    public BaseJob deckBaseJob(JsonNode deck) {
+        List<RosterEntry> roster = buildRoster(deck, List.of());
+        Map<String, String> playerPrompts = deckBasePlayerPrompts(deck, roster);
+        return baseJob(deck.path("formation").asText(), roster, "", playerPrompts);
     }
 
     /** 봇팀 A 잡(봇 덱 기준). teamPrompt = 봇 페르소나(고정). */
@@ -372,30 +404,23 @@ public class PromptContextBuilder {
         JsonNode deck = readJson(bot.deckJson());
         List<RosterEntry> roster = buildRoster(deck, List.of());
         Map<String, String> playerPrompts = deckBasePlayerPrompts(deck, roster);
-        Map<String, Object> manualTactics = manualTacticsOf(deck);
-        return baseJob(match, deck.path("formation").asText(), roster, bot.persona(), playerPrompts,
-                manualTactics);
+        return baseJob(deck.path("formation").asText(), roster, bot.persona(), playerPrompts);
     }
 
-    private BaseJob baseJob(MatchService.MatchRow match, String formation, List<RosterEntry> roster,
-                            String teamPrompt, Map<String, String> playerPrompts,
-                            Map<String, Object> manualTactics) {
+    private BaseJob baseJob(String formation, List<RosterEntry> roster,
+                            String teamPrompt, Map<String, String> playerPrompts) {
         List<BaseContextKey.RosterKey> keyRoster = roster.stream()
                 .map(r -> new BaseContextKey.RosterKey(r.playerId(), r.slotIndex(), r.attributes()))
                 .toList();
-        String material = BaseContextKey.material(formation, keyRoster, teamPrompt, playerPrompts,
-                manualTactics);
+        // manualTactics = null 고정: A 는 덱만 안다(위 ⚠️). 재료의 자리는 그대로 두어(=null 직렬화)
+        // 전술 없는 기존 A 들의 키가 바이트 동일하게 유지된다 — 라이브 캐시가 그대로 살아 있다.
+        String material = BaseContextKey.material(formation, keyRoster, teamPrompt, playerPrompts, null);
         String baseId = BaseContextKey.baseId(material);
 
         // A 컨텍스트: team-input(실행기가 풀 생성) — 매치필드는 상수(캐시키에서 제외되므로 결과 재현엔 무해).
         // seed 는 재료 파생 상수(엔진 통과 필드 — 재사용/머지 시 Java 가 halfSeed 로 교체). half=1(prevSummary 없음).
-        Map<String, Object> context = context(match /*미사용 side/seed는 아래서 덮음*/, "home", 1, formation,
-                roster, teamPrompt, playerPrompts, null);
-        context.put("matchId", BASE_MATCH_ID);
-        context.put("seed", Hashes.deriveUint64Seed(material));
-        if (manualTactics != null) {
-            context.put("manualTactics", manualTactics); // A-base 슬라이더(있으면).
-        }
+        Map<String, Object> context = context(BASE_MATCH_ID, Hashes.deriveUint64Seed(material),
+                "home", 1, formation, roster, teamPrompt, playerPrompts, null);
         return new BaseJob(material, baseId, context);
     }
 
@@ -406,15 +431,18 @@ public class PromptContextBuilder {
         return prompts;
     }
 
-    /** 덱/스냅샷의 teamTactics(수동 전술) → Map, 없으면 null(캐시키 규약: manualTactics=null). */
-    private Map<String, Object> manualTacticsOf(JsonNode deck) {
-        JsonNode tt = deck.get("teamTactics");
-        if (tt != null && tt.isObject()) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> map = objectMapper.convertValue(tt, Map.class);
-            return map;
+    /**
+     * 스냅샷에 <b>수동 전술이 있나</b>. A 는 전술을 모르므로(위 ⚠️) 전술이 있으면 프롬프트가 없어도
+     * 재사용(materialize)이 아니라 B 패치로 가야 한다 — {@code MatchOrchestrator.resolveSide} 의 분기 입력.
+     */
+    public boolean hasManualTactics(JsonNode snapshot) {
+        JsonNode tt = snapshot == null ? null : snapshot.get("teamTactics");
+        if (tt == null || !tt.isObject() || tt.isEmpty()) {
+            return false;
         }
-        return null;
+        // 전 축 중앙 = 슬라이더 안 건드림 = 미지정({@link TeamTactics#isNeutral}). 브리핑 UI 가 손대지
+        // 않아도 {0.5×4} 를 항상 보내므로, 이걸 지정으로 보면 무변경 경기가 영영 콜0으로 못 간다.
+        return !online.hmb.meta.TeamTactics.isNeutral(tt);
     }
 
     private String phaseTeamPrompt(String matchId, String phase) {
