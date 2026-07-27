@@ -21,7 +21,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * fixture players: 21명(P015/P016/P017은 미보유 확인용, P018~P021은 최상위 후보).
  *
  * <p>#209 로 바뀐 것은 <b>보유 장수(14→15)</b>뿐이다 — 원장·포인트·멱등 계약은 그대로다.
- * 최상위 지급 자체의 규칙(4중 1·시드 결정론·박제)은 {@link StarterReworkTest} 가 본다.
+ * 최상위 지급 자체의 규칙(후보 중 1장·시드 결정론·박제)은 {@link StarterReworkTest} 가 본다.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class StarterPackAndMeTest extends ApiTestBase {

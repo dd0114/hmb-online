@@ -161,7 +161,7 @@ export interface LeagueResponseP3 {
 /**
  * ✅ 서버 구현 대조 완료 (`server-java/.../meta/OnboardingController.java` · `OnboardingService.java`).
  *
- * 가입 지급이 "고정 14장"에서 **기본팩(SILVER/BRONZE) + 최상위 4중 1**(시드 결정론)로 바뀌었고,
+ * 가입 지급이 "고정 14장"에서 **기본팩(SILVER/BRONZE) + 최상위 후보 중 1장**(시드 결정론)로 바뀌었고,
  * 덱은 가입이 아니라 **튜토리얼 완료 시점**에 지급된다. 최상위 후보 목록은 서버 코드가 아니라
  * data 발행물(`economy.starterTop`)이라 #207 랜딩 시 데이터만 갈아끼운다 — 클라는 결과만 받는다.
  */

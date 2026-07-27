@@ -19,7 +19,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 /**
- * #209 스타터/온보딩 개편 — AC1(가입 지급 = 최상위 4중 1 + 기본팩) · AC2(튜토리얼 완료 → 덱 지급, 멱등).
+ * #209 스타터/온보딩 개편 — AC1(가입 지급 = 최상위 후보 중 1장 + 기본팩) · AC2(튜토리얼 완료 → 덱 지급, 멱등).
  *
  * <p>픽스처 economy: starterPack = P001..P014(기본), starterTop.pool = P018..P021(최상위 4종, 전원 LEGEND).
  * pool 을 기존 픽스처(P015~P017)와 겹치지 않게 새로 넣은 이유는, 다른 테스트가 "P015/P016/P017 은
