@@ -1,7 +1,6 @@
 import {
   clampSeek,
   clockOffsetMs,
-  compressionOf,
   liveClockForHalf,
   liveTick,
   type MatchClock,
@@ -76,9 +75,11 @@ export interface LiveGate {
   liveTick: number;
   /** seek 목표를 정책에 맞게 자른 정수 틱(뒤로 자유·앞으로 상한+grace). */
   clamp(target: number): number;
-  /** 라이브 재생 속도(압축비). 없으면 null = 등속. */
-  speed: number | null;
 }
+
+// #216: `speed`(압축비 = tickCount*msPerTick/halfRealMs)는 여기서 뺐다. 코어 1x 는 2 게임초/실초라
+// 압축비를 그대로 setSpeed 에 넣으면 두 배로 빨랐고, 애초에 연출 페이싱은 속도가 균일하지 않아
+// 등속 압축비로는 창에 맞출 수 없다. 창 정합은 `live-pace.paceRate`(잔여 비율 배율)가 소유한다.
 
 /**
  * 응답이 도착한 그 순간에 재는 서버-클라 시각차(ms). **폴링 때 한 번 재서 보관**하고, 이후 프레임마다
@@ -106,6 +107,5 @@ export function liveGate(
     isLive: Boolean(active),
     liveTick: live,
     clamp: (target: number) => Math.floor(clampSeek(target, live, active, MS_PER_TICK)),
-    speed: compressionOf(active, tickCount, MS_PER_TICK),
   };
 }

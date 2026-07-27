@@ -166,7 +166,7 @@ test.describe("AC-W3-1 seek-to-now — 늦게 접속하면 경과 시점부터",
     await expect.poll(() => playhead(page), { timeout: 15_000 }).toBeGreaterThan(10);
 
     // 끝까지 앞서가기 시도 → 상한(=지금)으로 회수.
-    // #216: 자유 재생의 앞섬(연출 페이싱의 크루즈 구간)은 회수하지 않는다 — 드리프트 폭(하프의 5%)을
+    // #216: 자유 재생의 앞섬(연출 페이싱의 크루즈 구간)은 회수하지 않는다 — 드리프트 폭(하프의 12%)을
     // 넘는 **의도적 점프**만 되돌린다. 로그 끝으로 뛰는 건 그 폭을 한참 넘는다.
     await page.evaluate((t) => {
       (window as unknown as { __viewer?: { seek(tick: number): void } }).__viewer?.seek(t - 1);
@@ -257,9 +257,11 @@ async function samplePlayhead(page: Page, count: number, everyMs: number): Promi
 
 test.describe("#216 AC2 — 라이브 재생 페이스", () => {
   test("f. 플레이헤드가 되감기지 않는다(고무줄 회귀 가드)", async ({ page }) => {
-    // 창을 자연 페이스보다 10% 길게 잡는다 = 실측 최속 경기(하프 392s vs 창 420s)와 같은 비율.
-    // 이때 자유 재생은 창을 앞질러 간다 — 그 앞섬을 매번 회수하는 것이 곧 고무줄이었다.
-    const looseWindow = Math.round(DEMO_NATURAL_MS * 1.1);
+    // **재생이 창을 앞지르는** 창을 잡아야 이 가드가 성립한다(앞섬이 없으면 회수 조건 자체가
+    // 발화하지 않아 구 동작으로 되돌려도 통과한다 — 독립검증 major-2). 데모 로그 실측 재생은
+    // 홀드 때문에 모델치(6.27틱/s)보다 느린 5틱/s 대라, 창을 자연 페이스의 1.35배로 늘려
+    // 창 평균속도(≈4.6틱/s)를 재생보다 낮춘다. 실측 최속 경기(하프 392s vs 창 420s)의 확대판이다.
+    const looseWindow = Math.round(DEMO_NATURAL_MS * 1.35);
     await openMatch(
       page,
       "FIRST_HALF",

@@ -368,6 +368,67 @@ describe("MatchViewer — 라이브 게이트(#216)", () => {
     expect(viewer.play).toHaveBeenCalled();
   });
 
+  /**
+   * #216 AC2 의 **기계장치** 계약. `paceRate` 를 순수 함수로만 박제하면, 그 값을 코어에 거는
+   * 한 줄(`v.setSpeed(paceRate(...))`)을 지워도 아무도 안 죽는다 — 그러면 hero 가 본 증상이
+   * 조용히 돌아온다(자연 페이스와 창의 오차가 하프 내내 누적). 그래서 **코어에 실제로 걸리는지**를
+   * 여기서 본다. 독립검증 major-1.
+   */
+  it("뒤처지면 배율 > 1 을 코어에 실제로 건다(창을 따라잡는다)", () => {
+    fx.log = h2Log;
+    // 창은 절반 지났는데 재생은 10% — 따라잡아야 한다.
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK + 10, tickPosIdx: 10 });
+    vi.useFakeTimers();
+    try {
+      renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2));
+      act(() => {
+        vi.advanceTimersByTime(300); // 게이트 폴링 1회(250ms)
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    const speeds = viewer.setSpeed.mock.calls.map((c) => c[0] as number);
+    expect(speeds.some((v) => v > 1), `setSpeed 호출: ${JSON.stringify(speeds)}`).toBe(true);
+  });
+
+  it("앞서 있으면 배율 < 1 로 늦춘다 — 되감아 회수하지 않는다(고무줄 금지)", () => {
+    fx.log = h2Log;
+    // 창 50% · 재생 58% = 드리프트 허용(12%) 안쪽 → 회수 대신 배율로 늦춘다.
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK + 58, tickPosIdx: 58 });
+    vi.useFakeTimers();
+    try {
+      renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2));
+      viewer.jumpToTick.mockClear(); // 마운트 시 seek-to-now 는 정상 — 그 뒤만 본다
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    const speeds = viewer.setSpeed.mock.calls.map((c) => c[0] as number);
+    expect(speeds.some((v) => v < 1), `setSpeed 호출: ${JSON.stringify(speeds)}`).toBe(true);
+    expect(viewer.jumpToTick, "허용 범위 안의 앞섬은 회수하지 않는다").not.toHaveBeenCalled();
+  });
+
+  it("허용 범위를 크게 넘는 앞섬(의도적 점프)은 상한으로 회수한다", () => {
+    fx.log = h2Log;
+    // 창 50% · 재생 95% = 스크럽으로 뛴 것 → 앞서보기 차단(AC-W3-1).
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK + 95, tickPosIdx: 95 });
+    vi.useFakeTimers();
+    try {
+      renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2));
+      viewer.jumpToTick.mockClear();
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    const target = viewer.jumpToTick.mock.calls.at(-1)?.[0] as number | undefined;
+    expect(target, "상한(=지금)으로 되돌려야 한다").toBeDefined();
+    expect(target!).toBeLessThan(H2_FIRST_TICK + 60);
+  });
+
   it("라이브가 아닌 하프(지나간 전반)는 점프도 배율도 걸지 않는다 — 다시보기는 자유", () => {
     fx.log = h2Log;
     viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK, tickPosIdx: 0 });

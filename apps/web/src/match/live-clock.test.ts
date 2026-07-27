@@ -160,9 +160,9 @@ describe("liveGate — 늦게 접속하면 경과 시점부터, 앞서가기는 
     expect(gate.clamp(10.7)).toBe(10);
   });
 
-  it("재생 속도는 압축비 — 상한에 자연히 붙어 되돌림이 안 생기게", () => {
-    const gate = liveGate(clock(), 1, TICKS, T0);
-    expect(gate.speed).toBeCloseTo((TICKS * MS_PER_TICK) / HALF_REAL_MS, 5);
-    expect(liveGate(null, 1, TICKS, T0).speed).toBeNull();
+  it("게이트는 재생 속도를 말하지 않는다 — 창 정합은 live-pace 가 소유한다(#216)", () => {
+    // 구 게이트는 압축비를 speed 로 내려줬다. 코어 1x = 2 게임초/실초라 그대로 넣으면 두 배로
+    // 빨랐고, 연출 페이싱은 등속이 아니라 압축비로는 애초에 맞출 수 없다.
+    expect("speed" in liveGate(clock(), 1, TICKS, T0)).toBe(false);
   });
 });

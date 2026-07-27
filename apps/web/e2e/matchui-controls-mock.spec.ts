@@ -87,6 +87,16 @@ async function measureRate(page: Page, ms: number): Promise<number> {
   return (t1 - t0) / (ms / 1000);
 }
 
+/** 지정 틱으로 옮겨 재생을 다시 시작한 뒤 그 구간의 진행 속도를 잰다(코어 seek 은 일시정지 동반). */
+async function measureFrom(page: Page, tick: number, ms: number): Promise<number> {
+  await page.evaluate((t) => {
+    const v = (window as never as { __viewer: { seek(t: number): void; play(): void } }).__viewer;
+    v.seek(t);
+    v.play();
+  }, tick);
+  return measureRate(page, ms);
+}
+
 test.beforeAll(() => mkdirSync(CAP_DIR, { recursive: true }));
 
 test("#148/#216 플레이 모드: 컨트롤이 없고 경기는 자동 진행한다", async ({ page }) => {
@@ -118,13 +128,17 @@ test("#216 하이라이트 연출이 유일 모드다 — 끌 경로가 없고 �
   await expect(page.getByTestId("viewer-highlight-toggle-half1")).toHaveCount(0);
   await expect(page.getByTestId("viewer-highlight-admin-half1")).toHaveCount(0);
 
-  // 진행 속도는 **코어 연출 페이스**여야 한다: 크루즈 4x = 8 게임틱/실초(코어 1x = 2틱/s).
-  // 구 구현은 마운트에서 setSpeed(4)를 박고 라이브에서 autoPace 를 껐다 — 그러면 배율이 곱해져
-  // 훨씬 빨라진다. 하이라이트 슬로우·데드볼 홀드가 섞이므로 상한만 느슨하게 건다.
-  const rate = await measureRate(page, 4000);
-  console.log(`[#216] 하이라이트 연출 진행 속도: ${rate.toFixed(2)} tick/s`);
-  expect(rate, "경기는 계속 진행해야 함").toBeGreaterThan(0);
-  expect(rate, "크루즈(8틱/s)를 넘게 빠르면 배율이 잘못 곱해진 것").toBeLessThanOrEqual(9);
+  // **연출이 실제로 도는가**를 속도 대비로 본다: 빌드업(크루즈 4x = 8틱/s)과 키장면(1x = 2틱/s)의
+  // 4:1 대비가 관측돼야 한다. "속도가 0보다 크다" 류의 단언은 구 깨진 경로(autoPace off + speed 4 =
+  // 정확히 8틱/s 등속)도 그대로 통과시킨다 — 대비가 있어야 연출이 산 증거다(독립검증 minor-7).
+  // 구간은 데모 로그(고정 픽스처)에서 고른다: 1106~ 는 키장면·정지가 없는 조용한 구간(93틱),
+  // 579 는 키틱 587 의 하이라이트 창(kt−8) 시작점이고 그 앞뒤로 정지가 없다.
+  const cruise = await measureFrom(page, 1106, 3000);
+  const keyScene = await measureFrom(page, 579, 3000);
+  console.log(`[#216] 크루즈 ${cruise.toFixed(2)} tick/s · 키장면 ${keyScene.toFixed(2)} tick/s`);
+  expect(cruise, "빌드업은 크루즈 속도(≈8틱/s)로 지나가야 한다").toBeGreaterThan(5);
+  expect(keyScene, "키장면은 슬로우(≈2틱/s)여야 한다").toBeLessThan(4);
+  expect(cruise / keyScene, "연출이 살아 있으면 대비가 2배 이상 벌어진다").toBeGreaterThan(2);
   await page.screenshot({ path: `${CAP_DIR}play-mode-highlight-on.png`, fullPage: false });
 });
 
