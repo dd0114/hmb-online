@@ -12,12 +12,12 @@ import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
 /**
- * V14(#212 재화 경제 정돈) 를 <b>기존 유저가 들어있는 DB</b> 위에서 검증한다.
+ * V16(#212 재화 경제 정돈) 를 <b>기존 유저가 들어있는 DB</b> 위에서 검증한다.
  *
- * <p>왜 별도 클래스인가: {@code @SpringBootTest} 는 항상 빈 임시 DB 로 부팅하므로 V14 가 거기서
+ * <p>왜 별도 클래스인가: {@code @SpringBootTest} 는 항상 빈 임시 DB 로 부팅하므로 V16 이 거기서
  * 도는 것은 <b>no-op</b> 이다(지갑 행이 0개). 즉 스프링 테스트가 전부 green 이어도 "배포된 테스터
  * 지갑이 실제로 보정되는가"에 대해서는 아무 것도 말해주지 않는다 — V8 레거시 테스트가 잡아낸 것과
- * 같은 함정. 그래서 여기서는 <b>V13 까지 적용한 DB 에 유저·지갑·원장을 넣고 나서 V14 를 돌린다</b>
+ * 같은 함정. 그래서 여기서는 <b>V13 까지 적용한 DB 에 유저·지갑·원장을 넣고 나서 V16 을 돌린다</b>
  * (배포에서 실제로 일어나는 순서 그대로).
  *
  * <p>검증 대상 = 마이그레이션의 두 약속:
@@ -27,12 +27,12 @@ import org.junit.jupiter.api.Test;
  * </ol>
  * 그리고 <b>재적용해도 이중 지급이 없다</b>는 원장 백스톱.
  */
-class FlywayV14EconomyRescaleTest {
+class FlywayV16EconomyRescaleTest {
 
     private static final String LOCATIONS = "classpath:db/migration";
 
-    /** V14 직전 버전 — 리베이스로 번호가 밀리면 여기만 고치면 된다. */
-    private static final String BEFORE_V14 = "13";
+    /** V16 직전 버전 — 리베이스로 번호가 밀리면 여기만 고치면 된다. */
+    private static final String BEFORE_V14 = "15";
 
     private static String jdbcUrl(Path db) {
         return "jdbc:sqlite:" + db.toAbsolutePath() + "?foreign_keys=on&journal_mode=WAL&busy_timeout=5000";
@@ -49,8 +49,8 @@ class FlywayV14EconomyRescaleTest {
     }
 
     @Test
-    void v14RescalesExistingWalletsAndBackfillsGemsExactlyOnce() throws Exception {
-        Path db = Files.createTempFile("hmb-v14-economy-", ".db");
+    void v16RescalesExistingWalletsAndBackfillsGemsExactlyOnce() throws Exception {
+        Path db = Files.createTempFile("hmb-v16-economy-", ".db");
         Files.deleteIfExists(db);
 
         // 1) 배포본 상태 재현: V14 직전까지만 적용한 DB.
