@@ -1,52 +1,70 @@
 /**
- * 경기장 캐릭터 스킨 페이로드 (#145) — 순수 로직만(React/DOM 의존 0, 단위검증 대상).
+ * 경기장 캐릭터 스킨 페이로드 (#145 · #218) — 순수 로직만(React/DOM 의존 0, 단위검증 대상).
  *
  * web 이 매핑을 계산해 코어에 넘긴다(#169 S3: `viewer.setSkin(payload)` — 구 iframe postMessage
- * 대체). **코어는 캐릭터를 모른다** — 받은 `{playerId: {col,row}}` 로 아틀라스 타일만 그린다
+ * 대체). **코어는 캐릭터를 모른다** — 받은 `{playerId: {atlas,col,row}}` 로 아틀라스 타일만 그린다
  * (도메인 지식 유출 0, QA 경계 유지).
  *
  * 왜 로그에서 안 뽑고 매핑 전체를 보내나: MatchLog 스냅샷을 순회해 등장 선수를 모으는 것보다
- * 172개 엔트리를 통째로 보내는 게 싸고(수 KB) 교체·하프 전환에도 안전하다.
+ * 매핑 전체를 통째로 보내는 게 싸고(수 KB) 교체·하프 전환에도 안전하다.
  *
  * 아틀라스 선택: 실캡처 A/B(#145)에서 전신 sprites 는 토큰 지름 16~22px 에서 판독 불가였고
  * **얼굴 avatars-64**(축소 렌더)가 확대·축소 양쪽에서 읽혔다. 그 결론을 여기 상수로 박제한다.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * #207 U-D8 — **경기장은 `characters` 축만 태운다**. 이유가 두 개고 성격이 다르다.
+ * #218 — **경기장이 두 축(characters·units)을 모두 태운다.** 무엇이 바뀌었나:
  *
- *  1) **의도**: GOLD/SILVER/BRONZE 는 경기장에서 개별 아이콘을 쓰지 않는다(전원 같은 디폴트
- *     유닛이라 22개 토큰이 전부 같은 얼굴이 되어 판독에 아무 정보도 더하지 않는다).
- *     스킨 셀이 없는 선수는 뷰어가 **팀색 원(홈 파랑 / 어웨이 빨강)** 으로 그린다 —
- *     즉 "빼는 것"이 곧 U-D8 이 요구하는 표현이다(뷰어 무변경).
+ *  (구) 페이로드가 `{atlasUrl, tile, byPlayer}` = **단일 아틀라스**라, 자기 아틀라스를 갖는
+ *       units 축을 담을 수 없어 통째 제외했다. 결과: **활성 LEGEND 실아트가 경기장에만 안 떴다**
+ *       (덱·도감엔 떴다 — 그 화면들은 축별로 조회하므로). hero 제보 = "레전드 아이콘 안 보임".
+ *  (신) 코어가 `atlases:[{url,tile}]` + 셀의 `atlas` 인덱스를 받는다(#218, viewer-core). 축이
+ *       늘어도 여기서 시트를 하나 더 밀면 된다.
  *
- *  2) **제약(갭)**: 페이로드가 `{atlasUrl, tile, byPlayer}` 로 **단일 아틀라스**다. units 축은
- *     자기 아틀라스(`/chars/units/avatars-64.png`)를 갖기 때문에 characters 축과 한 페이로드에
- *     담을 수 없다. 그래서 **활성 LEGEND 5종의 실아트가 경기장에는 아직 못 뜬다**(현행과 동일 —
- *     v1 매핑에도 그들은 없었다). 해소하려면 viewer-core 가 아틀라스별 셀을 받아야 하는데
- *     `packages/**` 는 QA 도메인이라 여기서 고치지 않는다 → **이슈 레이즈 대상**.
- *     이 갭은 `viewer-skins.test.ts` 가 계약으로 박제한다(침묵시키지 않는다).
+ * 그대로 유지되는 것 — **U-D8**: GOLD/SILVER/BRONZE 가 공유하는 `default-unit` 은 태우지 않는다.
+ * 22개 토큰이 전부 같은 얼굴이면 판독에 아무 정보도 더하지 않는다. 공용/고유 판정은 발행물의
+ * `forGrades` 선언으로 한다(`unitIsSharedDefault` — 유닛 id 하드코딩 금지). 셀이 없는 선수는
+ * 코어가 **팀색 원 + 등번호**로 그린다 = "빼는 것"이 곧 U-D8 의 표현이다.
+ *
+ * 등번호(`nums`)는 **아트 유무와 무관하게 전원** 싣는다. 셀이 없으면 코어가 `playerId` 에서
+ * 번호를 파생하는데, 실경기 id("P173")가 그대로 토큰을 덮어 아이콘이 사라진 것처럼 보였다
+ * (#218 실화면 캡처로 확인). 아트가 없어도 토큰은 반드시 읽혀야 한다.
  * ════════════════════════════════════════════════════════════════════════════
  */
-import { characterTile, type TileRef } from "../common/char-manifest";
+import {
+  characterTile,
+  unitIsSharedDefault,
+  unitTile,
+  unitIconBackground,
+  type TileRef,
+} from "../common/char-manifest";
 import { normalizeCharRef, type CharAssets } from "../common/char-assets-store";
 
 /** 경기장 토큰용 아틀라스 — A/B 실측 결론(얼굴, 64px 소스). */
 export const ARENA_ATLAS = "avatars-64";
 
-/** 경기장 토큰을 그리는 축. 그 밖의 축은 팀색 원으로 떨어진다(U-D8). */
-export const ARENA_AXIS = "characters" as const;
+/** 경기장 토큰을 그리는 축. 이 밖의 축·공용 디폴트는 팀색 원으로 떨어진다(U-D8). */
+export const ARENA_AXES = ["characters", "units"] as const;
 
 export interface SkinCell {
   col: number;
   row: number;
-  /** 등번호(1~11). 없으면 뷰어가 기존 방식(playerId 에서 파생)으로 표시한다. */
+  /** 이 셀이 속한 아틀라스(`atlases` 인덱스). 없으면 0. */
+  atlas?: number;
+  /** 등번호(1~11). 없으면 코어가 `nums` → playerId 순으로 떨어진다. */
   num?: string;
+  /** 얼굴의 배경 전제 — 불투명이면 코어가 원형으로 잘라 넣는다(사각 덩어리 방지). */
+  bg?: "opaque-dark";
 }
 
 export interface ViewerSkins {
+  /** 아트 시트들. 축마다 자기 시트를 갖는다(#218). */
+  atlases: Array<{ url: string; tile: number }>;
+  byPlayer: Record<string, SkinCell>;
+  /** 셀이 없는 선수까지 포함한 등번호 표(폴백 보장). */
+  nums: Record<string, string>;
+  /** 구 단일 아틀라스 계약(코어 하위호환 — 첫 시트). */
   atlasUrl: string;
   tile: number;
-  byPlayer: Record<string, SkinCell>;
 }
 
 /** 등번호를 뽑아낼 최소한의 MatchLog 형상. */
@@ -55,22 +73,27 @@ interface MatchLogLike {
 }
 
 /**
- * 등번호 표 — 첫 스냅샷의 **팀별 등장 순서**로 1~11 을 매긴다(포메이션 슬롯 순서 = 라인업 순서).
+ * 등번호 표 — **팀별 등장 순서**로 1~11 을 매긴다(첫 스냅샷 = 포메이션 슬롯 순서 = 라인업 순서).
  *
  * 왜 필요한가: 뷰어 원본은 `playerId.replace(/[HA]/,"")` 로 번호를 만든다. 엔진 픽스처
  * (`H1`…)에선 "1" 이 나오지만 **실경기 로그는 실제 선수 id(`P022`)** 라 토큰에 "P022" 가
  * 그대로 찍힌다(원본 뷰어도 마찬가지 — 실화면 캡처로 확인). 부모가 아는 정보로 여기서 고친다.
+ *
+ * 첫 스냅샷만 보지 않고 **전 스냅샷을 훑는다**: 교체 선수는 첫 스냅샷에 없어서, 첫 스냅샷만 보면
+ * 그 선수만 다시 id 원문으로 떨어진다(폴백에 조용히 뚫리는 구멍 — 독립검증 지적).
  */
 export function jerseyNumbers(log: unknown): Record<string, string> {
-  const first = (log as MatchLogLike)?.tickSnapshots?.[0]?.players;
-  if (!first) return {};
+  const snaps = (log as MatchLogLike)?.tickSnapshots;
+  if (!snaps?.length) return {};
   const seen: Record<string, number> = {};
   const out: Record<string, string> = {};
-  for (const p of first) {
-    if (!p?.playerId) continue;
-    const team = p.team ?? "?";
-    seen[team] = (seen[team] ?? 0) + 1;
-    out[p.playerId] = String(seen[team]);
+  for (const snap of snaps) {
+    for (const p of snap?.players ?? []) {
+      if (!p?.playerId || out[p.playerId]) continue;
+      const team = p.team ?? "?";
+      seen[team] = (seen[team] ?? 0) + 1;
+      out[p.playerId] = String(seen[team]);
+    }
   }
   return out;
 }
@@ -80,37 +103,61 @@ function cellOf(tile: TileRef): { col: number; row: number } {
 }
 
 /**
- * 에셋 번들 → 뷰어 스킨 페이로드. 매핑/매니페스트가 아직 없거나 쓸 수 있는 선수가 하나도
- * 없으면 **null** — 부모는 skins 를 빼고 보내고, 뷰어는 현행 단색 원으로 그린다(무회귀).
+ * 에셋 번들 → 뷰어 스킨 페이로드. 쓸 수 있는 셀도 등번호도 하나 없으면 **null** —
+ * 부모는 skins 를 빼고 보내고, 코어는 현행 단색 원으로 그린다(무회귀).
  *
- * 모든 선수가 같은 아틀라스를 쓴다는 전제로 첫 타일의 URL/타일크기를 대표로 삼는다
- * (발행물이 캐릭터 축 단일 아틀라스라 성립 — 어긋나는 항목은 버린다).
+ * 아트가 하나도 없어도 **등번호만 실린 페이로드는 돌려준다**(AC2 폴백 보장) — 에셋 미배포에서도
+ * 토큰에 선수 id 원문이 찍히면 안 된다.
  */
 export function buildViewerSkins(assets: CharAssets, log?: unknown): ViewerSkins | null {
   const mapping = assets.mapping?.players;
-  if (!mapping || !assets.characters) return null;
-
   const jerseys = log ? jerseyNumbers(log) : {};
-  let atlasUrl: string | null = null;
-  let tileSize = 0;
-  const byPlayer: Record<string, SkinCell> = {};
 
-  for (const [playerId, raw] of Object.entries(mapping)) {
-    const ref = normalizeCharRef(raw);
-    // 축이 다르면(= units) 셀을 만들지 않는다 → 뷰어가 팀색 원으로 그린다(U-D8, 위 주석).
-    if (ref?.axis !== ARENA_AXIS) continue;
-    const tile = characterTile(assets.characters, ref.id, ARENA_ATLAS);
-    if (!tile) continue;
-    if (atlasUrl === null) {
-      atlasUrl = tile.url;
-      tileSize = tile.tile;
-    } else if (tile.url !== atlasUrl || tile.tile !== tileSize) {
-      continue; // 다른 아틀라스를 쓰는 항목은 이 페이로드로 표현할 수 없다 — 조용히 제외.
+  const atlases: Array<{ url: string; tile: number }> = [];
+  const indexOfAtlas = (tile: TileRef): number => {
+    const i = atlases.findIndex((a) => a.url === tile.url && a.tile === tile.tile);
+    if (i >= 0) return i;
+    atlases.push({ url: tile.url, tile: tile.tile });
+    return atlases.length - 1;
+  };
+
+  const byPlayer: Record<string, SkinCell> = {};
+  // 축 순서대로 순회한다 — 아틀라스 인덱스(특히 구 코어가 보는 `atlasUrl` = 0번)가 **매핑 파일의
+  // 키 순서에 좌우되면 안 된다**. 발행 순서가 바뀌었다고 구 코어가 엉뚱한 시트로 그리는 일 방지.
+  const entries = Object.entries(mapping ?? {}).map(
+    ([playerId, raw]) => [playerId, normalizeCharRef(raw)] as const,
+  );
+  const ordered = ARENA_AXES.flatMap((axis) => entries.filter(([, ref]) => ref?.axis === axis));
+  for (const [playerId, ref] of ordered) {
+    if (!ref) continue;
+    let tile: TileRef | null = null;
+    let bg: "opaque-dark" | undefined;
+    if (ref.axis === "units") {
+      // U-D8: 등급 공용 디폴트는 태우지 않는다(같은 얼굴 22개 = 정보 0) → 팀색 원.
+      if (unitIsSharedDefault(assets.units, ref.id)) continue;
+      tile = unitTile(assets.units, ref.id, ARENA_ATLAS);
+      if (unitIconBackground(assets.units, ref.id) === "opaque-dark") bg = "opaque-dark";
+    } else if (ref.axis === "characters") {
+      tile = characterTile(assets.characters, ref.id, ARENA_ATLAS);
     }
-    const num = jerseys[playerId];
-    byPlayer[playerId] = num ? { ...cellOf(tile), num } : cellOf(tile);
+    if (!tile) continue;
+    const cell: SkinCell = { ...cellOf(tile) };
+    const atlas = indexOfAtlas(tile);
+    if (atlas > 0) cell.atlas = atlas;
+    if (jerseys[playerId]) cell.num = jerseys[playerId];
+    if (bg) cell.bg = bg;
+    byPlayer[playerId] = cell;
   }
 
-  if (!atlasUrl || Object.keys(byPlayer).length === 0) return null;
-  return { atlasUrl, tile: tileSize, byPlayer };
+  const hasCells = Object.keys(byPlayer).length > 0 && atlases.length > 0;
+  const hasNums = Object.keys(jerseys).length > 0;
+  if (!hasCells && !hasNums) return null;
+  return {
+    atlases,
+    byPlayer,
+    nums: jerseys,
+    // 구 계약(단일 아틀라스) 필드 — 코어 구버전이 섞여도 첫 시트는 그려진다.
+    atlasUrl: atlases[0]?.url ?? "",
+    tile: atlases[0]?.tile ?? 0,
+  };
 }

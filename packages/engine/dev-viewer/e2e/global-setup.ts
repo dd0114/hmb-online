@@ -74,6 +74,17 @@ export default function globalSetup() {
     }
   }
 
+  // 캐릭터 스킨 토글(#169 S3)은 web 이 스테이징한 에셋(apps/web/public/chars)을 임베드한다.
+  // 그 디렉토리는 **gitignore 생성물**이라 clean 체크아웃에는 없다 → 페이로드 null → 토글이
+  // 영구 hidden 이 되고 skin.spec 이 "main 에서도 실패"한다(#184 의 절반).
+  //
+  // **존재 여부로 판단하지 않는다** — 위 로그 가드(#188)와 같은 이유다. 에셋이 재발행됐는데 낡은
+  // 스테이징이 남아 있으면 옛 아트로 계약이 통과한다(거짓 green). 판정도 스테이징도 발행측 훅
+  // (`ensure-chars.mjs` = 스탬프 비교 후 필요할 때만 복사)에 맡긴다 — 신선도 규칙 재구현 금지.
+  // eslint-disable-next-line no-console
+  console.log("[e2e globalSetup] chars 스테이징 확인(apps/web ensure-chars)");
+  execSync("node apps/web/scripts/ensure-chars.mjs", { cwd: repoRoot, stdio: "inherit" });
+
   const r = buildAllTestViewers();
   // eslint-disable-next-line no-console
   console.log(

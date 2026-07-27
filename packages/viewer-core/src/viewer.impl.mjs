@@ -203,12 +203,23 @@ export function createViewer(canvas, chrome = {}) {
         if (kp) { x = lerp(pa.pos.x, kp.x, ptw); y = lerp(pa.pos.y, kp.y, ptw); }
       }
       const isHome = pa.team === "home", owner = A.ballOwner === pa.playerId;
-      playerRender.push({ id: pa.playerId, x, y });
       const px = sx(x), py = sy(y);
+      // px/py = **실제로 그린 캔버스 픽셀 좌표**(#218). 계약 테스트가 토큰 자리를 픽셀로 검사할 때
+      // 카메라 변환을 바깥에서 재구현하면(baseScale·zoom·MARGIN) 렌더와 조용히 어긋난다 —
+      // "무엇이 그려졌나"는 그린 쪽이 알려준다. 읽기 전용·추가 필드(기존 소비자 무영향).
+      playerRender.push({ id: pa.playerId, x, y, px, py });
       // 캐릭터 스킨(#145, S3): setSkin 으로 아틀라스가 주입됐고 이 선수 셀이 있으면 얼굴 아바타 +
       // 팀색 링/디스크/번호 뱃지로 그린다. 없으면(QA·미주입·로드전) 현행 단색 원(무회귀).
-      const cell = skin && skin.ready && skin.byPlayer[pa.playerId];
-      const num = (cell && cell.num) || pa.playerId.replace(/[HA]/, "");
+      const entry = skin ? skin.byPlayer[pa.playerId] : null;
+      const atlas = entry ? skin.atlases[entry.atlas || 0] : null;
+      const cell = atlas && atlas.ok ? entry : null;
+      // 등번호 폴백(#218): 얼굴이 없다고 **선수 id 원문**("P173")을 토큰에 찍으면 안 된다 —
+      // 실경기 id 는 길어서 토큰을 덮어 아이콘이 아예 안 보이는 것처럼 읽힌다(hero 제보의 실체).
+      // 아트 유무와 무관하게 부모가 준 등번호를 쓰고, 그것마저 없을 때만 id 파생으로 떨어진다.
+      const rawNum = (entry && entry.num) || (skin && skin.nums[pa.playerId]) || pa.playerId.replace(/[HA]/, "");
+      // 그 파생마저 등번호로 안 읽히면(3자 이상 = 실경기 id) **아무것도 안 찍는다**. 부모가 등번호를
+      // 안 넘긴 소비자에서도 토큰이 글자에 덮이지 않게 — 코어 자체의 방어선(독립 QA 권고).
+      const num = rawNum.length <= 2 ? rawNum : "";
       if (!cell) {
         ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
         ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
@@ -220,8 +231,13 @@ export function createViewer(canvas, chrome = {}) {
         ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
         ctx.fillStyle = isHome ? "rgba(37,99,235,0.55)" : "rgba(220,38,38,0.55)"; ctx.fill();
         const _sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(skin.img, cell.col * skin.tile, cell.row * skin.tile, skin.tile, skin.tile,
+        // 불투명 배경 위에 그려진 얼굴(#207 `iconBackground:"opaque-dark"`)은 타일이 **사각 덩어리**로
+        // 남는다 → 토큰 링 안쪽 원으로 잘라 넣는다. 투명 얼굴은 자르지 않는다(글로우·머리끝 보존).
+        const _clip = entry.bg === "opaque-dark";
+        if (_clip) { ctx.save(); ctx.beginPath(); ctx.arc(px, py, _ring - 1, 0, Math.PI * 2); ctx.clip(); }
+        ctx.drawImage(atlas.img, cell.col * atlas.tile, cell.row * atlas.tile, atlas.tile, atlas.tile,
           px - _S / 2, py - _S / 2, _S, _S);
+        if (_clip) ctx.restore();
         ctx.imageSmoothingEnabled = _sm;
         ctx.beginPath(); ctx.arc(px, py, _ring, 0, Math.PI * 2);
         ctx.strokeStyle = owner ? "#fde047" : _team; ctx.lineWidth = owner ? 3.2 : 2.2; ctx.stroke();
@@ -487,15 +503,37 @@ export function createViewer(canvas, chrome = {}) {
   function setSpeed(n) { speed = parseFloat(n); }
   function setFixZoom(z) { fixZoom = Math.max(1, Math.min(3, Number.isFinite(z) ? z : 1)); draw(); return fixZoom; }
   function setViewMode(mode) { viewMode = mode === "fix" ? "fix" : "auto"; draw(); }
-  // 캐릭터 스킨(#145, S3): {atlasUrl, tile, byPlayer:{playerId:{col,row,num?}}} → 아틀라스 로드.
-  // 로드 전/실패/미주입이면 draw 가 단색 원으로 폴백(무회귀). QA(dev-viewer)는 호출하지 않는다.
+  // 캐릭터 스킨(#145, S3 → #218 멀티 아틀라스).
+  //
+  //   { atlases:[{url,tile}],           // 아트 시트 여럿(선수 아트가 한 시트에 다 없다)
+  //     byPlayer:{ id:{col,row,atlas?,num?,bg?} },
+  //     nums:{ id:"7" },                // **셀이 없는 선수의 등번호** — 아래 폴백 참고
+  //     atlasUrl, tile }                // 구 단일 아틀라스 계약(그대로 받는다)
+  //
+  // 왜 여럿인가(#218): 아트 발행이 축별로 나뉘어(캐릭터 원화 / 입고 유닛) 각자 아틀라스를 갖는다.
+  // 단일 아틀라스 페이로드였을 땐 한 축이 통째로 빠져 그 선수들만 얼굴 없이 그려졌다.
+  // **아틀라스 단위로 열화**한다 — 하나가 404 여도 그 시트를 쓰는 선수만 팀색 토큰이 되고 나머지는 뜬다.
   function setSkin(payload) {
-    if (!payload || !payload.atlasUrl || !payload.tile || !payload.byPlayer) { skin = null; return; }
-    const img = new Image();
-    const s = { img, tile: payload.tile, byPlayer: payload.byPlayer, ready: false };
-    img.onload = () => { s.ready = true; };
-    img.onerror = () => { if (skin === s) skin = null; };
-    img.src = payload.atlasUrl;
+    if (!payload || (!payload.byPlayer && !payload.nums)) { skin = null; return; }
+    const list = Array.isArray(payload.atlases) && payload.atlases.length
+      ? payload.atlases
+      : payload.atlasUrl && payload.tile
+        ? [{ url: payload.atlasUrl, tile: payload.tile }]
+        : [];
+    // 아트가 하나도 없어도 **등번호만 실린 페이로드**는 받는다 — 에셋 미배포에서도 토큰에
+    // 선수 id 원문이 찍히는 일이 없게(폴백 보장, #218 AC2).
+    if (!list.length && !payload.nums) { skin = null; return; }
+    const s = { atlases: [], byPlayer: payload.byPlayer || {}, nums: payload.nums || {}, ready: false };
+    for (const a of list) {
+      if (!a || !a.url || !a.tile) { s.atlases.push({ img: null, tile: 0, ok: false }); continue; }
+      const img = new Image();
+      const rec = { img, tile: a.tile, ok: false };
+      s.atlases.push(rec);
+      // ready 는 "**하나라도** 그릴 수 있다" — 전부를 기다리면 느린 시트 하나가 전체를 멈춰 세운다.
+      img.onload = () => { if (skin === s) { rec.ok = true; s.ready = true; } };
+      img.onerror = () => { if (skin === s) rec.ok = false; }; // 그 시트 선수만 폴백(전체 무효화 X)
+      img.src = a.url;
+    }
     skin = s;
   }
   function scrubTo(pct) { tickPos = (parseFloat(pct) / 100) * (snaps.length - 1); lastGoalShown = -1; resetStops(); draw(); }

@@ -14,6 +14,7 @@ import {
   tileStyle,
   unitCard,
   unitIconBackground,
+  unitIsSharedDefault,
   unitTile,
   type CharactersManifest,
   type PlaceholderManifest,
@@ -345,10 +346,27 @@ describe("유닛 축 접근자 (#207 W3-B 발행 계약)", () => {
     expect(unitIconBackground(null, "bonaldo")).toBe("transparent");
   });
 
+  it("공용 디폴트 판정은 발행물의 forGrades 선언으로 한다(유닛명 하드코딩 금지 — #218)", () => {
+    // 경기장이 "고유 아트만 태운다"(U-D8)를 판단하는 기준. 발행이 바뀌면 값이 따라 바뀌어야 한다.
+    for (const id of ["bonaldo", "yeoldona", "chunbappe", "dukbrayner", "wookringham"]) {
+      expect(unitIsSharedDefault(unitsManifest, id), id).toBe(false);
+    }
+    expect(unitIsSharedDefault(unitsManifest, "default-unit")).toBe(true);
+    // 빈 배열은 "공용" 이 아니다(누구에게도 안 걸린 선언) + 미등록/부재는 false.
+    const emptied = {
+      ...unitsManifest,
+      units: { ...unitsManifest.units, x: { col: 0, row: 0, forGrades: [] } },
+    } as unknown as UnitsManifest;
+    expect(unitIsSharedDefault(emptied, "x")).toBe(false);
+    expect(unitIsSharedDefault(unitsManifest, "ghost")).toBe(false);
+    expect(unitIsSharedDefault(null, "default-unit")).toBe(false);
+  });
+
   it("프로토타입 상속 키를 유닛으로 오인하지 않는다", () => {
     for (const key of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
       expect(unitTile(unitsManifest, key, "avatars-64"), key).toBeNull();
       expect(unitCard(unitsManifest, key), key).toBeNull();
+      expect(unitIsSharedDefault(unitsManifest, key), key).toBe(false);
     }
   });
 });
