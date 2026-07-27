@@ -514,6 +514,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/economy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 현재 유효한 economy 요약 + **출처**. 발행물은 이미지에 구워져 불변이라, 운영 변경은 쓰기 가능한
+         *     볼륨의 override 파일로 이뤄진다 → 값만으로는 "반영됐나"에 답할 수 없어 source 를 함께 낸다.
+         *     overrideApplied(=적용됨)와 overrideFilePresent(=파일 존재)는 **다른 사실**이다(거절된 파일이 남을 수 있다).
+         */
+        get: operations["getAdminEconomy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/economy/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** economy 운영 이력(감사 원장) — **성공과 실패 모두**. 거절된 시도도 남는다. */
+        get: operations["getAdminEconomyHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/economy/reload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 디스크 재읽기(내용 변경 없음). **파싱만이 아니라 의미도 검증**한다 — 카탈로그에 없는 id 가
+         *     든 파일을 그대로 실으면 이후 모든 가입이 FK 로 실패한다. 실패 시 400 + 직전 설정 유지.
+         */
+        post: operations["reloadAdminEconomy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/economy/starter-top": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 스타터 최상위 후보 교체 — 배포 없이 카드 조정의 실제 경로. 검증(카탈로그 실재·중복·기본팩
+         *     겹침·count 범위)을 통과한 내용만 override 파일이 되고 즉시 반영된다. 사유 필수.
+         */
+        put: operations["replaceStarterTop"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/economy/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** override 제거 = 배포 발행물로 롤백(원클릭). 지울 게 없으면 400. */
+        delete: operations["clearEconomyOverride"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/users/{id}/points": {
         parameters: {
             query?: never;
@@ -775,6 +870,49 @@ export interface components {
             user: components["schemas"]["UserRef"];
             wallet: components["schemas"]["WalletInfo"];
             records: components["schemas"]["MatchRecordSummary"];
+        };
+        /** @description #209 B안 — 지금 유효한 economy 요약 + 출처(운영 화면이 '반영됐나'에 답하는 근거) */
+        AdminEconomyView: {
+            version?: string | null;
+            /**
+             * @description BAKED=배포 발행물 · OVERRIDE=운영이 얹은 파일 · NONE=설정 없음
+             * @enum {string}
+             */
+            source: "BAKED" | "OVERRIDE" | "NONE";
+            effectivePath: string;
+            overridePath: string;
+            /** @description 지금 적용된 값이 override 에서 왔는가(= source==OVERRIDE) */
+            overrideApplied: boolean;
+            /** @description override 파일이 디스크에 존재하는가(거절된 파일이 남아 있을 수 있어 적용 여부와 별개) */
+            overrideFilePresent: boolean;
+            loadedAt: string;
+            starterPackSize: number;
+            starterTop: {
+                pool: string[];
+                count: number;
+            };
+        };
+        AdminStarterTopRequest: {
+            /** @description 최상위 후보 playerId — 카탈로그 실재 · 중복 없음 · 기본팩과 서로소여야 한다 */
+            pool: string[];
+            /** @description 가입 시 지급 장수(1..pool 크기) */
+            count: number;
+            /** @description 운영 사유(필수 — 원장에 남는다) */
+            reason: string;
+        };
+        /** @description #209 B안 — admin 운영 액션 감사 원장 1행. 실패도 남는다 */
+        AdminOpsAuditEntry: {
+            id: string;
+            /** @description 액션을 실행한 admin 닉네임 */
+            actor: string;
+            /** @enum {string} */
+            action: "economy_reload" | "economy_starter_top" | "economy_override_clear";
+            /** @enum {string} */
+            result: "ok" | "failed";
+            reason?: string | null;
+            /** @description {before, after} 또는 {before, attempted, error} 스냅샷(JSON 문자열) */
+            detailJson?: string | null;
+            createdAt: string;
         };
         /** @description #209 — 가입 지급된 최상위 유닛(연출 재료). 지급이 없으면 granted=false, player=null */
         StarterGrantResponse: {
@@ -2215,6 +2353,129 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getAdminEconomy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminEconomyView"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    getAdminEconomyHistory: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOpsAuditEntry"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    reloadAdminEconomy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description 운영 사유(원장 기록) */
+                    reason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminEconomyView"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    replaceStarterTop: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminStarterTopRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminEconomyView"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    clearEconomyOverride: {
+        parameters: {
+            query?: {
+                reason?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminEconomyView"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
         };
     };
     adminGrantPoints: {

@@ -101,6 +101,12 @@ export function EconomyOpsPanel() {
       {current && (
         <>
           <p className={styles.muted} data-testid="admin-economy-current">
+            {/* 적용된 값의 출처는 위 뱃지가 말하고, 여기서는 "지울 파일이 남아 있는지"를 알린다. */}
+            {current.overrideFilePresent && !current.overrideApplied && (
+              <strong data-testid="admin-economy-stale-override">
+                ⚠ 적용되지 않은 override 파일이 남아 있습니다(롤백으로 정리){" "}
+              </strong>
+            )}
             현재 후보 {current.pool.length}명 · 지급 {current.count}장 ·
             기본팩 {current.starterPackSize}명 · 적용 {formatStamp(current.loadedAt)}
           </p>
@@ -175,7 +181,7 @@ export function EconomyOpsPanel() {
               type="button"
               className={styles.ghost}
               data-testid="admin-economy-rollback"
-              disabled={busy || !current.overrideApplied}
+              disabled={busy || !current.overrideFilePresent}
               onClick={() =>
                 clearOverride.mutate(reason.trim() || "발행물로 롤백", {
                   onSuccess: () => done("배포 발행물로 되돌렸습니다"),

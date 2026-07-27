@@ -14,6 +14,7 @@ import online.hmb.admin.AdminRouteGuard;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -55,6 +56,9 @@ class AdminGateTest extends ApiTestBase {
 
     @Resource
     private AdminRouteGuard routeGuard;
+
+    @Resource
+    private ConfigurableApplicationContext context;
 
     // ───────────────────────── 구조: 가드 없는 admin 엔드포인트가 불가능함 ─────────────────────────
 
@@ -112,6 +116,40 @@ class AdminGateTest extends ApiTestBase {
             HttpStatus status = call(route, victimToken);
             assertThat(status).as("비admin " + route).isEqualTo(HttpStatus.FORBIDDEN);
         }
+    }
+
+    /**
+     * <b>가드 목록 누락을 구조적으로 잡는다</b> (#209 독립검증 BL-3).
+     *
+     * <p>가드는 "admin 전용 빈에 의존하는 핸들러는 게이트 밖에 있을 수 없다"를 보장하는데, 그
+     * <b>씨앗 목록</b>({@code ADMIN_ONLY_BEANS})에 새 서비스를 넣는 건 사람이 하는 일이다. 실제로
+     * {@code AdminEconomyService} 가 빠진 채 머지될 뻔했고, 그 상태에서 검증자가 그 서비스를
+     * {@code /api/ops/economy} 에 매핑하자 <b>부팅 성공 + 전 테스트 green + 일반 토큰 200</b> 이었다.
+     *
+     * <p>그래서 목록을 손으로 열거해 비교하지 않는다 — <b>admin 패키지의 모든 서비스 빈</b>이
+     * 오염 집합에 들어 있는지 본다. 새 서비스를 만들고 목록에 넣지 않으면 여기서 바로 터진다.
+     */
+    @Test
+    void everyAdminPackageServiceIsSeededIntoTheGuard() {
+        var tainted = routeGuard.beansDependingOnAdminServices();
+        var beanFactory = context.getBeanFactory();
+
+        List<String> adminServices = new ArrayList<>();
+        for (String name : beanFactory.getBeanDefinitionNames()) {
+            Class<?> type = beanFactory.getType(name);
+            if (type == null) continue;
+            if (!type.getName().startsWith("online.hmb.admin.")) continue;
+            // 컨트롤러·인터셉터·가드가 아니라 **상태를 다루는 서비스**가 씨앗이어야 한다.
+            if (type.isAnnotationPresent(org.springframework.stereotype.Service.class)) {
+                adminServices.add(name);
+            }
+        }
+
+        assertThat(adminServices).as("admin 서비스가 하나도 없으면 이 검사가 공허해진다").isNotEmpty();
+        assertThat(tainted)
+                .as("가드 씨앗 목록(ADMIN_ONLY_BEANS)에 빠진 admin 서비스가 있다 — 그 서비스는 "
+                        + "게이트 밖에 매핑해도 부팅이 통과한다")
+                .containsAll(adminServices);
     }
 
     /**

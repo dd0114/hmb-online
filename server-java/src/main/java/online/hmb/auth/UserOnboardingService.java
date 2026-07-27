@@ -134,6 +134,15 @@ public class UserOnboardingService {
         }
 
         for (String topPlayerId : pickStarterTop(userId, economy.starterTop())) {
+            // 방어선(#209 B안 독립검증 BL-2): 설정에 카탈로그에 없는 id 가 들어와 있으면 INSERT 가
+            // FK 로 터져 **가입 트랜잭션 전체가 죽는다**(신규 유저가 아무도 못 들어온다). 운영 API 가
+            // 앞단에서 막지만, 그 앞단을 우회한 파일(수동 편집·구버전)이 있어도 여기서는 최상위 한 장을
+            // 조용히 건너뛸 뿐 가입은 성공해야 한다 — 지급 누락이 서비스 중단보다 낫다.
+            if (!playerExists(topPlayerId)) {
+                log.warn("starterTop id {} is not in the catalog — skipping the top grant for user {}",
+                        topPlayerId, userId);
+                continue;
+            }
             grantCard(userId, topPlayerId, now);
             // 지급 사실을 박제한다 — 후보 목록은 데이터라 나중에 갈아끼워지고(#207), 그러면
             // 같은 userId 를 재계산해도 과거 지급을 복원할 수 없다(연출이 읽는 값이다).
@@ -152,6 +161,12 @@ public class UserOnboardingService {
         if (economy.initialGems() > 0) {
             walletService.applyGems(userId, economy.initialGems(), LEDGER_REASON_INITIAL_GEMS, userId);
         }
+    }
+
+    private boolean playerExists(String playerId) {
+        Long count = jdbcClient.sql("SELECT COUNT(*) FROM players WHERE id = ?")
+                .param(playerId).query(Long.class).single();
+        return count != null && count > 0;
     }
 
     private void grantCard(String userId, String playerId, String now) {

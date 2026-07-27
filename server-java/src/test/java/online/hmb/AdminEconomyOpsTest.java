@@ -170,6 +170,63 @@ class AdminEconomyOpsTest extends ApiTestBase {
         assertThat(Files.exists(Path.of(economyService.overridePath()))).isFalse();
     }
 
+    /**
+     * <b>거절된 시도도 이력이다</b> (독립검증 BL-1). 이게 없으면 "왜 안 바뀌었나"를 나중에 아무도
+     * 모른다 — 운영자는 눌렀다고 기억하는데 원장에는 흔적이 없다.
+     */
+    @Test
+    void rejectedAttemptsAreRecordedInTheLedgerToo() {
+        String admin = adminToken();
+        long before = auditCount();
+
+        // 검증에서 걸리는 3종 — 카탈로그 부재 · 사유 누락 · 롤백할 override 없음.
+        assertThat(authPut("/api/admin/economy/starter-top", admin,
+                Map.of("pool", List.of("P999"), "count", 1, "reason", "없는 선수"), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(authPut("/api/admin/economy/starter-top", admin,
+                Map.of("pool", List.of("P016"), "count", 1), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(authDelete("/api/admin/economy/override?reason=없는걸지움", admin, Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        assertThat(auditCount()).as("거절 3건이 원장에 남아야 한다").isEqualTo(before + 3);
+
+        List<Map<String, Object>> history = historyOf(admin);
+        assertThat(history.stream().filter(e -> "failed".equals(e.get("result")))).hasSizeGreaterThanOrEqualTo(3);
+        Map<String, Object> latest = history.get(0);
+        assertThat(latest.get("result")).isEqualTo("failed");
+        assertThat((String) latest.get("detailJson")).contains("error");
+    }
+
+    /**
+     * <b>파싱 성공 ≠ 쓸 수 있는 내용</b> (독립검증 BL-2). 볼륨의 파일을 손으로 고쳐 카탈로그에 없는
+     * id 를 넣고 리로드하면, 예전 구현은 200 을 돌려주고 스냅샷을 갈아끼웠다 — 그 뒤 <b>모든 신규
+     * 가입이 FK 로 500</b> 이 됐고(전면 장애), 파일은 파싱되므로 재기동해도 그대로였다.
+     */
+    @Test
+    void reloadRefusesAFileThatWouldBreakSignup() throws Exception {
+        String admin = adminToken();
+        Map<?, ?> healthy = authGet("/api/admin/economy", admin, Map.class).getBody();
+
+        String poison = Files.readString(Path.of("src/test/resources/fixtures/economy.v1.json"))
+                .replace("\"P018\"", "\"P999_NOT_IN_CATALOG\"");
+        Files.writeString(Path.of(economyService.overridePath()), poison);
+
+        ResponseEntity<Map> reload = authPost("/api/admin/economy/reload", admin,
+                Map.of("reason", "손으로 고친 파일 반영"), Map.class);
+        assertThat(reload.getStatusCode()).as("쓸 수 없는 내용은 400").isEqualTo(HttpStatus.BAD_REQUEST);
+
+        // 살아 있는 설정은 그대로고(파일이 디스크에 남은 것과 **적용된 것**은 다른 사실이다),
+        Map<?, ?> after = authGet("/api/admin/economy", admin, Map.class).getBody();
+        assertThat(after.get("starterTop")).isEqualTo(healthy.get("starterTop"));
+        assertThat(after.get("source")).isEqualTo("BAKED");
+        assertThat(after.get("overrideApplied")).as("거절된 파일은 '적용'이 아니다").isEqualTo(false);
+        assertThat(after.get("overrideFilePresent")).as("파일 자체는 남아 있다").isEqualTo(true);
+        // 무엇보다 **가입이 계속 된다**(이게 이 테스트의 본론).
+        String token = login("econ_poison");
+        assertThat(authGet("/api/me", token, Map.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
     @Test
     void aCorruptOverrideNeverTakesTheServiceDown() throws Exception {
         String admin = adminToken();

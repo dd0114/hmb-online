@@ -199,33 +199,15 @@ export const ADMIN_ECONOMY_RELOAD_PATH = "/api/admin/economy/reload";
 export const ADMIN_ECONOMY_STARTER_TOP_PATH = "/api/admin/economy/starter-top";
 export const ADMIN_ECONOMY_OVERRIDE_PATH = "/api/admin/economy/override";
 
-/** 지금 서버가 실제로 쓰는 값 + 그게 어디서 왔는지. */
-export interface AdminEconomyView {
-  version: string | null;
-  /** BAKED = 배포에 구워진 발행물 · OVERRIDE = 운영이 얹은 파일 · NONE = 설정 없음. */
-  source: "BAKED" | "OVERRIDE" | "NONE";
-  effectivePath: string;
-  overridePath: string;
-  overrideApplied: boolean;
-  loadedAt: string;
-  starterPackSize: number;
-  starterTop: { pool: string[]; count: number };
-}
+/**
+ * 세 타입 모두 **손으로 적지 않는다** — openapi.yaml 에 스키마를 실었으므로 생성물에서 가져온다.
+ * (앞선 §F 와 같은 원칙: 계약이 두 곳에 있으면 조용히 어긋난다.)
+ */
+export type AdminEconomyView = components["schemas"]["AdminEconomyView"];
 
 /** PUT /api/admin/economy/starter-top — 후보 교체(사유 필수, 원장에 남는다). */
-export interface AdminStarterTopRequest {
-  pool: string[];
-  count: number;
-  reason: string;
-}
+export type AdminStarterTopRequest = components["schemas"]["AdminStarterTopRequest"];
 
 /** 운영 이력 1행 — 실패도 남는다(`result`). */
-export interface AdminOpsAuditEntry {
-  id: string;
-  actor: string;
-  action: "economy_reload" | "economy_starter_top" | "economy_override_clear" | string;
-  result: "ok" | "failed" | string;
-  reason: string | null;
-  detailJson: string | null;
-  createdAt: string;
-}
+export type AdminOpsAuditEntry = components["schemas"]["AdminOpsAuditEntry"];
+

@@ -94,6 +94,7 @@ describe("normalizeEconomyView — 패널이 admin 페이지를 죽이지 않게
     expect(v).toEqual({
       source: "OVERRIDE",
       overrideApplied: true,
+      overrideFilePresent: true,
       loadedAt: "2026-07-27T10:00:00Z",
       starterPackSize: 14,
       pool: ["P016"],
@@ -115,5 +116,6 @@ describe("normalizeEconomyView — 패널이 admin 페이지를 죽이지 않게
     expect(v.count).toBe(1);
     expect(v.source).toBe("NONE");
     expect(v.overrideApplied).toBe(false);
+    expect(v.overrideFilePresent).toBe(false);
   });
 });

@@ -97,7 +97,12 @@ public class AdminRouteGuard implements ApplicationRunner {
             // #207: 유닛 카탈로그를 **쓰는** 서비스. 이게 게이트 밖에서 호출 가능해지면 일반 유저가
             // 카탈로그를 고칠 수 있다(가챠 풀·등급·스탯이 곧 게임 경제다). 읽기 전용
             // CatalogController(/api/players)는 이 빈에 의존하지 않으므로 영향이 없다.
-            AdminCatalogService.class);
+            AdminCatalogService.class,
+            // #209 B안. 이 목록에 빠지면 가드가 그 서비스를 "admin 데이터"로 보지 않아, 게이트 밖
+            // (/api/ops/… 등)에 매핑해도 부팅이 통과한다 — 독립검증이 실제로 그 구멍을 뚫었다.
+            // ⚠️ admin 상태를 다루는 서비스를 새로 만들면 반드시 여기에 추가한다
+            //    (AdminGateTest.everyAdminPackageServiceIsSeededIntoTheGuard 가 누락을 잡는다).
+            AdminEconomyService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;

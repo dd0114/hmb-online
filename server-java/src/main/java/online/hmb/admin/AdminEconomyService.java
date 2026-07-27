@@ -102,16 +102,22 @@ public class AdminEconomyService {
      * 되돌린 뒤 반영에 쓴다. 내용을 서버가 바꾸지는 않는다.
      */
     public EconomyView reload(String actorUserId, String reason) {
-        validateReason(reason);
         EconomyView before = current();
         try {
+            validateReason(reason);
+            // BL-2: 파싱 성공 ≠ 쓸 수 있는 내용. 바깥에서 손으로 고친 파일에는 카탈로그에 없는 id 가
+            // 들어올 수 있고, 그대로 스냅샷을 갈아끼우면 **가입 트랜잭션이 FK 로 죽는다**(전면 장애).
+            // 갈아끼우기 **전에** 의미를 본다 — 실패하면 400 이고 살아 있는 설정은 그대로다.
+            validateDocument(readEffectiveJson());
             EconomyService.Snapshot after = economyService.reload();
             audit(actorUserId, ACTION_RELOAD, "ok", reason, Map.of("before", before, "after", view(after)));
             return view(after);
         } catch (RuntimeException e) {
             audit(actorUserId, ACTION_RELOAD, "failed", reason,
                     Map.of("before", before, "error", String.valueOf(e.getMessage())));
-            throw ApiException.validation("리로드에 실패했습니다: " + e.getMessage());
+            // 검증에서 걸린 것이면 그 메시지가 이미 운영자에게 필요한 전부다(이중 포장하지 않는다).
+            throw e instanceof ApiException api ? api
+                    : ApiException.validation("리로드에 실패했습니다: " + e.getMessage());
         }
     }
 
@@ -119,12 +125,25 @@ public class AdminEconomyService {
      * 스타터 최상위 후보 교체 — <b>이게 "배포 없이 카드 조정"의 실제 경로</b>다.
      * 현재 유효 내용을 base 로 {@code starterTop} 만 갈아끼운 override 를 쓰고 즉시 리로드한다.
      */
-    public EconomyView replaceStarterTop(String actorUserId, List<String> pool, Integer count, String reason) {
-        validateReason(reason);
-        List<String> cleanPool = validatePool(pool);
-        int cleanCount = validateCount(count, cleanPool.size());
-
+    public synchronized EconomyView replaceStarterTop(String actorUserId, List<String> pool, Integer count,
+                                                       String reason) {
         EconomyView before = current();
+        List<String> cleanPool;
+        int cleanCount;
+        try {
+            validateReason(reason);
+            cleanPool = validatePool(pool);
+            cleanCount = validateCount(count, cleanPool.size());
+        } catch (ApiException e) {
+            // BL-1: **거절된 시도도 이력이다.** 이게 없으면 "왜 안 바뀌었나"를 나중에 아무도 모른다.
+            audit(actorUserId, ACTION_STARTER_TOP, "failed", reason, Map.of(
+                    "before", before,
+                    "attempted", Map.of("pool", pool == null ? List.of() : pool,
+                            "count", count == null ? 0 : count),
+                    "error", String.valueOf(e.getMessage())));
+            throw e;
+        }
+
         JsonNode base = readEffectiveJson();
 
         ObjectNode next = base.deepCopy();
@@ -158,12 +177,18 @@ public class AdminEconomyService {
     }
 
     /** override 를 지우고 배포 발행물로 되돌린다(원클릭 롤백). */
-    public EconomyView clearOverride(String actorUserId, String reason) {
-        validateReason(reason);
+    public synchronized EconomyView clearOverride(String actorUserId, String reason) {
         EconomyView before = current();
         Path overridePath = Path.of(economyService.overridePath());
-        if (!Files.exists(overridePath)) {
-            throw ApiException.validation("적용된 override 가 없습니다(이미 발행물을 쓰고 있습니다)");
+        try {
+            validateReason(reason);
+            if (!Files.exists(overridePath)) {
+                throw ApiException.validation("적용된 override 가 없습니다(이미 발행물을 쓰고 있습니다)");
+            }
+        } catch (ApiException e) {
+            audit(actorUserId, ACTION_OVERRIDE_CLEAR, "failed", reason,
+                    Map.of("before", before, "error", String.valueOf(e.getMessage())));
+            throw e;
         }
         byte[] previous = readIfExists(overridePath);
         try {
@@ -209,17 +234,7 @@ public class AdminEconomyService {
         }
         List<String> clean = List.copyOf(unique);
 
-        String inClause = String.join(",", clean.stream().map(id -> "?").toList());
-        Set<String> known = Set.copyOf(jdbcClient
-                .sql("SELECT id FROM players WHERE id IN (" + inClause + ")")
-                .params(clean.toArray())
-                .query(String.class)
-                .list());
-        for (String id : clean) {
-            if (!known.contains(id)) {
-                throw ApiException.validation("카탈로그에 없는 playerId 입니다: " + id);
-            }
-        }
+        assertKnownPlayers(clean);
 
         // 기본팩과 겹치면 "기본 위에 얹히는 1장"이라는 전제가 깨진다(그 유저는 최상위를 못 받은 것과 같다).
         List<String> basics = economyService.get()
@@ -231,6 +246,55 @@ public class AdminEconomyService {
             }
         }
         return clean;
+    }
+
+    /**
+     * <b>파일 하나가 통째로 쓸 수 있는 내용인지</b> 본다 (BL-2). PUT 은 서버가 만든 내용이라 이미
+     * 안전하지만, 리로드가 읽는 파일은 <b>사람이 볼륨에서 직접 고친 것</b>일 수 있다 — 거기서
+     * 카탈로그에 없는 id 가 들어오면 가입이 FK 로 죽는다(에러 없이 200 을 받은 운영자는 원인을 모른다).
+     */
+    private void validateDocument(JsonNode document) {
+        JsonNode top = document.path("starterTop");
+        if (top.isMissingNode() || top.isNull()) {
+            return;   // starterTop 이 없는 economy 도 유효하다(기본팩만 지급 — 구파일 호환)
+        }
+        List<String> pool = new ArrayList<>();
+        top.path("pool").forEach(n -> pool.add(n.asText()));
+        if (pool.isEmpty()) {
+            throw ApiException.validation("starterTop.pool 이 비어 있습니다(" + economyService.overridePath() + ")");
+        }
+        Set<String> unique = new LinkedHashSet<>(pool);
+        if (unique.size() != pool.size()) {
+            throw ApiException.validation("starterTop.pool 에 중복된 playerId 가 있습니다");
+        }
+        assertKnownPlayers(List.copyOf(unique));
+
+        List<String> basics = new ArrayList<>();
+        document.path("starterPack").forEach(n -> basics.add(n.asText()));
+        for (String id : unique) {
+            if (basics.contains(id)) {
+                throw ApiException.validation("기본팩에 이미 포함된 playerId 입니다: " + id);
+            }
+        }
+        int count = top.path("count").asInt(1);
+        if (count < 1 || count > unique.size()) {
+            throw ApiException.validation("starterTop.count 가 범위를 벗어났습니다: " + count);
+        }
+    }
+
+    /** 카탈로그 실재 확인 — pool 검증과 문서 검증이 같은 기준을 쓰도록 한 곳에 둔다. */
+    private void assertKnownPlayers(List<String> ids) {
+        String inClause = String.join(",", ids.stream().map(id -> "?").toList());
+        Set<String> known = Set.copyOf(jdbcClient
+                .sql("SELECT id FROM players WHERE id IN (" + inClause + ")")
+                .params(ids.toArray())
+                .query(String.class)
+                .list());
+        for (String id : ids) {
+            if (!known.contains(id)) {
+                throw ApiException.validation("카탈로그에 없는 playerId 입니다: " + id);
+            }
+        }
     }
 
     private int validateCount(Integer count, int poolSize) {
@@ -330,6 +394,10 @@ public class AdminEconomyService {
                 snapshot.source().name(),
                 snapshot.path(),
                 economyService.overridePath(),
+                // "적용됐다"와 "파일이 있다"는 **다른 사실**이다. 거절된 파일이 디스크에 남아 있는
+                // 상태에서 둘을 같은 값으로 쓰면 화면이 "override 적용 중"이라 거짓말을 한다
+                // (독립검증 후속 — 내 테스트가 이걸 잡았다). 적용 여부는 스냅샷 출처가 정한다.
+                snapshot.source() == EconomyService.Source.OVERRIDE,
                 Files.exists(Path.of(economyService.overridePath())),
                 snapshot.loadedAt(),
                 economy == null ? 0 : economy.starterPack().size(),
@@ -338,8 +406,8 @@ public class AdminEconomyService {
 
     /** 운영 화면이 보는 "현재 상태" — 값 + <b>어디서 온 값인지</b>(이게 없으면 운영이 확신할 수 없다). */
     public record EconomyView(String version, String source, String effectivePath, String overridePath,
-                              boolean overrideApplied, String loadedAt, int starterPackSize,
-                              Map<String, Object> starterTop) {
+                              boolean overrideApplied, boolean overrideFilePresent, String loadedAt,
+                              int starterPackSize, Map<String, Object> starterTop) {
     }
 
     public record AuditEntry(String id, String actor, String action, String result, String reason,

@@ -104,6 +104,8 @@ export function normalizeEconomyView(raw: unknown): NormalizedEconomyView | null
   return {
     source: typeof v.source === "string" ? v.source : "NONE",
     overrideApplied: v.overrideApplied === true,
+    // 파일 존재는 별개 사실 — 구버전 응답엔 없으므로 적용 여부로 폴백한다(롤백 버튼이 사라지지 않게).
+    overrideFilePresent: v.overrideFilePresent === true || v.overrideApplied === true,
     loadedAt: typeof v.loadedAt === "string" ? v.loadedAt : "",
     starterPackSize: typeof v.starterPackSize === "number" ? v.starterPackSize : 0,
     pool,
@@ -114,6 +116,7 @@ export function normalizeEconomyView(raw: unknown): NormalizedEconomyView | null
 export interface NormalizedEconomyView {
   source: string;
   overrideApplied: boolean;
+  overrideFilePresent: boolean;
   loadedAt: string;
   starterPackSize: number;
   pool: string[];

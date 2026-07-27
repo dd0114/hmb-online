@@ -56,6 +56,7 @@ function view(st: MockState) {
     effectivePath: st.overrideApplied ? "/var/lib/hmb/economy.override.json" : "/app/data/players/economy.v3.json",
     overridePath: "/var/lib/hmb/economy.override.json",
     overrideApplied: st.overrideApplied,
+    overrideFilePresent: st.overrideApplied,
     loadedAt: `2026-07-27T10:0${st.seq}:00Z`,
     starterPackSize: 14,
     starterTop: { pool: st.pool, count: st.count },
