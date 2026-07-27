@@ -63,6 +63,21 @@ class EconomyLegacyFallbackTest {
         assertThat(loadLegacy().gems().topupEnabled()).isTrue();
     }
 
+    /**
+     * `dice` 블록은 있는데 `normalCost` 만 빠진 파일의 기본값은 **신 가격(5,000)** 이어야 한다.
+     * 구값 500 이 남아 있으면 그 좁은 경로에서 10배 싼 다이스가 조용히 팔린다(#212 검증 지적).
+     */
+    @Test
+    void diceNormalCostDefaultsToCurrentPriceNotTheOldOne() {
+        assertThat(loadLegacy().dice().normalCost()).isEqualTo(500); // 구파일은 자기 값을 그대로 쓴다
+
+        // normalCost 가 아예 없는 블록 → 기본값이 발화한다.
+        EconomyService.Dice parsed = new EconomyService(new ObjectMapper(),
+                "src/test/resources/fixtures/economy-dice-no-normalcost.json").get().orElseThrow().dice();
+        assertThat(parsed.normalCost()).isEqualTo(5000);
+        assertThat(parsed.cashGemCost()).isEqualTo(10);
+    }
+
     /** 방어적 파싱: gemReward 블록이 있어도 값이 말이 안 되면(max &lt; min) 비활성으로 떨어뜨린다. */
     @Test
     void invalidGemRewardBlockIsRejectedRatherThanTrusted() {

@@ -1748,7 +1748,7 @@
     }
   },
   "dice": {
-    "normalCost": 500,
+    "normalCost": 5000,
     "cashGemCost": 10
   },
   "gems": {

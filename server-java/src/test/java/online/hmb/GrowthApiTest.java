@@ -96,7 +96,9 @@ class GrowthApiTest extends MatchTestBase {
         setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         authPost("/api/growth/star", token, Map.of("playerId", "P001"), Map.class);
 
-        // 상점에서 노말 다이스 1개 구매(500P, 스타터 3000P 지급 충분). DiceBuyResult(shared): dice{normal,cash} 중첩.
+        // 상점에서 노말 다이스 1개 구매. #212 로 5,000P 가 됐으므로 스타터 3,000P 로는 모자라 잔액을 채운다.
+        jdbcClient.sql("UPDATE wallets SET points = 12000 WHERE user_id = ?").param(userId).update();
+        // DiceBuyResult(shared): dice{normal,cash} 중첩.
         ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "NORMAL", "count", 1), Map.class);
         assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Map<?, ?>) buy.getBody().get("dice")).get("normal")).isEqualTo(1);
@@ -159,16 +161,36 @@ class GrowthApiTest extends MatchTestBase {
     }
 
     // 노말 다이스 구매는 여전히 P 결제 — CASH 결제(젬)와 분리 확인.
+    // #212: 픽스처 다이스 가격을 출하본과 같은 5,000 으로 맞췄다(구 500 을 남겨두면 어느 서버
+    // 테스트도 출하 가격을 안 밟는 드리프트가 생긴다). 가입 3,000 P 로는 못 사므로 잔액을 채운다.
     @SuppressWarnings("unchecked")
     @Test
     void shopDiceNormalPurchaseStillDeductsPoints() {
         String token = login("api_dice_norm");
+        String uid = userIdOf("api_dice_norm");
+        jdbcClient.sql("UPDATE wallets SET points = 12000 WHERE user_id = ?").param(uid).update();
+
         ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "NORMAL", "count", 1), Map.class);
         assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> wallet = (Map<?, ?>) buy.getBody().get("wallet");
-        assertThat(wallet.get("points")).isEqualTo(2500); // 3000 - 500(normalCost)
+        assertThat(wallet.get("points")).isEqualTo(7000); // 12000 - 5000(normalCost)
         // #212: 노말 다이스는 P 만 쓴다 — 젬은 가입 지급분 그대로.
         assertThat(((Number) wallet.get("gems")).longValue()).isEqualTo(6000L);
+    }
+
+    // 잔액이 신 가격에 못 미치면 거절 — 구 가격(500)으로 되돌아가면 이 케이스가 통과해버린다.
+    @SuppressWarnings("unchecked")
+    @Test
+    void shopDiceNormalRejectedWhenPointsBelowNewPrice() {
+        String token = login("api_dice_np");
+        String uid = userIdOf("api_dice_np");
+        jdbcClient.sql("UPDATE wallets SET points = 4999 WHERE user_id = ?").param(uid).update();
+
+        ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "NORMAL", "count", 1), Map.class);
+        assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(buy.getBody().get("code")).isEqualTo("INSUFFICIENT_POINTS");
+        assertThat(jdbcClient.sql("SELECT points FROM wallets WHERE user_id = ?")
+                .param(uid).query(Long.class).single()).isEqualTo(4999L); // 롤백
     }
 
     /**
