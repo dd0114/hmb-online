@@ -367,8 +367,53 @@ describe("economy.v2 — 스타터팩·확률표", () => {
     expect(r.DIA).toBeLessThanOrEqual(r.GOLD);
   });
 
-  it("rewards — 승500/무200/패100", () => {
-    expect(economy.rewards).toEqual({ win: 500, draw: 200, loss: 100 });
+  it("rewards — flat 폴백은 연습 보상과 동일(승500/무200/패100)", () => {
+    const { win, draw, loss } = economy.rewards;
+    expect({ win, draw, loss }).toEqual({ win: 500, draw: 200, loss: 100 });
+  });
+
+  // #212 hero 목표 곡선: 연습 적게 < 리그 매판 적당 < 리그 최종성적 가파르게.
+  // 여기서는 앞의 두 구간(연습 vs 리그 매판)을 데이터 차원에서 박제한다 —
+  // 최종성적 구간은 league.v1.json rewards 쪽 계약이 담당한다.
+  describe("rewards.byMode — 모드별 보상(#212)", () => {
+    it("practice/league 두 모드가 다 정의돼 있고, flat 폴백은 연습과 같다", () => {
+      const byMode = economy.rewards.byMode;
+      expect(Object.keys(byMode).sort()).toEqual(["league", "practice"]);
+      expect(byMode.practice).toEqual({ win: 500, draw: 200, loss: 100 });
+      expect(byMode.league).toEqual({ win: 5000, draw: 2000, loss: 1000 });
+    });
+
+    it("연습 지급이 같은 결과의 리그 지급보다 엄격히 작다(승·무·패 전부)", () => {
+      const { practice, league } = economy.rewards.byMode;
+      expect(practice.win).toBeLessThan(league.win);
+      expect(practice.draw).toBeLessThan(league.draw);
+      expect(practice.loss).toBeLessThan(league.loss);
+    });
+
+    it("각 모드 안에서 승 > 무 > 패 순서가 유지된다", () => {
+      for (const t of [economy.rewards.byMode.practice, economy.rewards.byMode.league]) {
+        expect(t.win).toBeGreaterThan(t.draw);
+        expect(t.draw).toBeGreaterThan(t.loss);
+      }
+    });
+  });
+
+  // #212: 뽑기 = 젬(유료 재화). 가입 젬이 정확히 10연차 2회분이어야 hero 요구("두 판")가 성립.
+  describe("재화 이원화 — 뽑기 통화·가입 젬(#212)", () => {
+    it("gacha.currency=GEM", () => {
+      expect(economy.gacha.currency).toBe("GEM");
+    });
+
+    it("initialGems = tenCost × 2 (가입 시 10연차 두 판)", () => {
+      expect(economy.initialGems).toBe(economy.gacha.tenCost * 2);
+    });
+
+    it("league.gemReward — 우승(1위)만, min ≤ max", () => {
+      const g = economy.league.gemReward;
+      expect(g.maxRank).toBe(1);
+      expect(g.min).toBeLessThanOrEqual(g.max);
+      expect(g.min).toBeGreaterThan(0);
+    });
   });
 });
 
@@ -637,9 +682,10 @@ describe("economy.v2 — 성장/강화 config (#179 §7, additive)", () => {
   });
 
   describe("dice — 다이스 상점 config (V2-5, V2.2 재화 이원화 개정)", () => {
-    it("normalCost=500(P) · cashGemCost=10(젬), 구 cashCost(P) 필드는 부재", () => {
+    // #212: 노말은 골드 싱크라 리그 수입 ×10 에 맞춰 5000 으로 상향. 캐시는 젬 경제라 무변경.
+    it("normalCost=5000(P) · cashGemCost=10(젬), 구 cashCost(P) 필드는 부재", () => {
       const d = economy.dice as unknown as Record<string, unknown>;
-      expect(d.normalCost).toBe(500);
+      expect(d.normalCost).toBe(5000);
       expect(d.cashGemCost).toBe(10);
       expect(d.normalCost as number).toBeGreaterThan(0);
       expect(d.cashGemCost as number).toBeGreaterThan(0);
@@ -877,6 +923,25 @@ describe("league.v1 — 봇 리그 시드(클럽명·성향·보상)", () => {
         expect(r.points, `rank ${r.rank} < rank ${i}`).toBeLessThan(league.rewards[i - 1]!.points);
       }
     });
+  });
+
+  // #212 hero 목표 곡선의 마지막 구간: "리그 최종성적은 성적 따라 많이, 잘할수록 가파르게".
+  // 단조 감소만으로는 부족하다 — 이전 곡선(3000→200)도 단조였지만 매판 누적에 묻혔다.
+  // 그래서 **우승의 지배력**과 **상위 구간의 급감**을 수치로 박제한다.
+  it("우승이 압도적 — rank1 ≥ rank2 × 4 (통 크게)", () => {
+    const [first, second] = league.rewards;
+    expect(first!.points).toBeGreaterThanOrEqual(second!.points * 4);
+  });
+
+  it("상위 구간이 가파르다 — rank1 ≥ rank10 × 50 (하위는 참가 보상 수준)", () => {
+    const first = league.rewards[0]!;
+    const last = league.rewards[league.rewards.length - 1]!;
+    expect(first.points).toBeGreaterThanOrEqual(last.points * 50);
+  });
+
+  it("우승 1회 > 리그 18R 전승 매판 합계 (최종성적이 지배 레버)", () => {
+    const perWin = economy.rewards.byMode.league.win;
+    expect(league.rewards[0]!.points).toBeGreaterThan(perWin * 18);
   });
 });
 

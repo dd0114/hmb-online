@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.SplittableRandom;
+import online.hmb.catalog.EconomyService;
 import online.hmb.catalog.LeagueDataService;
 import online.hmb.common.ApiException;
 import online.hmb.common.TxRunner;
@@ -55,6 +56,8 @@ public class LeagueService {
     private static final int DRAW_POINTS = 1;
     /** 등급 서열(등급-층화 샘플 순회 기준). */
     private static final List<String> GRADE_ORDER = List.of("BRONZE", "SILVER", "GOLD", "DIA", "LEGEND");
+    /** gem_ledger 사유 — 리그 입상 젬 보상(#212). ref=seasonId 로 멱등. */
+    public static final String LEDGER_REASON_LEAGUE_GEM = "league_gem_reward";
 
     private final JdbcClient jdbcClient;
     private final TxRunner txRunner;
@@ -64,6 +67,7 @@ public class LeagueService {
     private final DeckService deckService;
     private final WalletService walletService;
     private final LeagueSeedSource seedSource;
+    private final EconomyService economyService;
 
     private final int botTeamCount;
     private final int rosterSize;
@@ -80,6 +84,7 @@ public class LeagueService {
                          DeckService deckService,
                          WalletService walletService,
                          LeagueSeedSource seedSource,
+                         EconomyService economyService,
                          @Value("${hmb.league.bot-team-count}") int botTeamCount,
                          @Value("${hmb.league.roster-size}") int rosterSize,
                          @Value("${hmb.league.sim.base-goals}") double simBaseGoals,
@@ -94,6 +99,7 @@ public class LeagueService {
         this.deckService = deckService;
         this.walletService = walletService;
         this.seedSource = seedSource;
+        this.economyService = economyService;
         this.botTeamCount = botTeamCount;
         this.rosterSize = rosterSize;
         this.simBaseGoals = simBaseGoals;
@@ -147,7 +153,8 @@ public class LeagueService {
      *       {@code points=0}, {@code awardedAt=null}.</li>
      * </ul>
      */
-    public record SeasonReward(int rank, int points, String status, String awardedAt) {
+    /** gems(#212) = 입상 젬 보상 실지급액(원장 파생). 미지급/비대상이면 0 — web 우승 연출의 입력. */
+    public record SeasonReward(int rank, int points, int gems, String status, String awardedAt) {
     }
 
     public record LeagueResponse(LeagueSeason season) {
@@ -319,6 +326,28 @@ public class LeagueService {
                 .map(LeagueDataService.RankReward::points).findFirst().orElse(0);
         if (points > 0) {
             walletService.apply(season.userId(), points, "league_reward", seasonId);
+        }
+        awardSeasonGems(season, userRank);
+    }
+
+    /**
+     * 시즌 젬 보상(#212) — hero 확정: <b>리그 우승 시에만</b> 랜덤 지급(config {@code league.gemReward}
+     * {maxRank,min,max}). 젬 수급원은 가입 지급과 이것 둘뿐이다(목업 충전 폐지).
+     *
+     * <p><b>결정론</b>: 지급액은 {@code Math.random} 이 아니라 <b>시즌 seed 파생 RNG</b>로 뽑는다 —
+     * 같은 시즌은 몇 번을 재계산해도 같은 금액이다. <b>멱등</b>: {@code gem_ledger}
+     * (reason='league_gem_reward', ref=seasonId) 유니크가 중복 지급을 막는다(P 보상과 동형).
+     */
+    private void awardSeasonGems(SeasonRow season, int userRank) {
+        EconomyService.LeagueGemReward cfg = economyService.get()
+                .map(EconomyService.Economy::leagueGemReward).orElse(null);
+        if (cfg == null || userRank > cfg.maxRank()) {
+            return;
+        }
+        int span = cfg.max() - cfg.min() + 1;
+        int gems = cfg.min() + rngFromSeed(season.seed() + ":gemReward:" + userRank).nextInt(span);
+        if (gems > 0) {
+            walletService.applyGems(season.userId(), gems, LEDGER_REASON_LEAGUE_GEM, season.id());
         }
     }
 
@@ -685,15 +714,18 @@ public class LeagueService {
                 .map(LeagueStanding::rank).findFirst().orElse(-1);
         if (!"FINISHED".equals(season.state())) {
             // 시즌 진행 중: rank 은 현재 잠정 순위, 아직 미지급. points=0(예정액을 채우지 않아 web 오인 방지).
-            return new SeasonReward(userRank, 0, "PENDING", null);
+            return new SeasonReward(userRank, 0, 0, "PENDING", null);
         }
         // 종료: 지급 진실은 원장(reason='league_reward', ref=seasonId)이다. 원장이 SoT.
+        // 젬도 동형(gem_ledger, reason='league_gem_reward') — 비대상이면 행이 없어 0.
+        int gems = leagueGemLedger(season.userId(), season.id()).map(r -> (int) r.delta()).orElse(0);
         Optional<RewardLedgerRow> ledger = leagueRewardLedger(season.userId(), season.id());
         if (ledger.isPresent()) {
-            return new SeasonReward(userRank, (int) ledger.get().delta(), "GRANTED", ledger.get().createdAt());
+            return new SeasonReward(userRank, (int) ledger.get().delta(), gems, "GRANTED",
+                    ledger.get().createdAt());
         }
         // 종료인데 원장 없음 = 방어 케이스(userRank 미확인 또는 보상액 0).
-        return new SeasonReward(userRank, 0, "NONE", null);
+        return new SeasonReward(userRank, 0, gems, gems > 0 ? "GRANTED" : "NONE", null);
     }
 
     private record RewardLedgerRow(long delta, String createdAt) {
@@ -706,6 +738,17 @@ public class LeagueService {
                         WHERE user_id = ? AND reason = 'league_reward' AND ref_id = ?
                         """)
                 .params(userId, seasonId)
+                .query((rs, n) -> new RewardLedgerRow(rs.getLong("delta"), rs.getString("created_at")))
+                .optional();
+    }
+
+    /** 리그 젬 보상 원장 행(#212) — 있으면 지급됨. P 보상과 동형(ref=seasonId). */
+    private Optional<RewardLedgerRow> leagueGemLedger(String userId, String seasonId) {
+        return jdbcClient.sql("""
+                        SELECT delta, created_at FROM gem_ledger
+                        WHERE user_id = ? AND reason = ? AND ref_id = ?
+                        """)
+                .params(userId, LEDGER_REASON_LEAGUE_GEM, seasonId)
                 .query((rs, n) -> new RewardLedgerRow(rs.getLong("delta"), rs.getString("created_at")))
                 .optional();
     }

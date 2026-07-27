@@ -165,6 +165,11 @@ export interface TradeConfig {
 export interface EconomyLeagueRef {
   rewardsFile: string;
   rewardsRef: string;
+  /**
+   * #212: 리그 상위 입상 젬 보상. `maxRank` 이내 순위에만 `[min, max]` 균등 랜덤 지급
+   * (서버가 시즌 seed 로 결정론 추출 — `Math.random` 금지). hero 확정 "우승 시에만".
+   */
+  gemReward: { maxRank: number; min: number; max: number };
 }
 
 /** 능력치 9종 성장 방향 벡터(합=1, 정규화). §4 방향 w 의 포지션 baseline. */
@@ -260,21 +265,41 @@ export interface GemTopupPack {
 
 /** V2.2 재화 이원화: 충전형 젬 상점 config(`gems` 블록). */
 export interface GemsConfig {
+  /**
+   * #212: 목업 충전 수도꼭지 스위치. 뽑기가 젬 결제로 바뀐 뒤 무제한 무료 충전이 살아있으면
+   * 경제가 붕괴하므로 기본 false. 실결제가 붙을 때 다시 연다.
+   */
+  topupEnabled: boolean;
   topupPacks: GemTopupPack[];
+}
+
+/** 승/무/패 지급액 한 벌. */
+export interface RewardTable {
+  win: number;
+  draw: number;
+  loss: number;
 }
 
 export interface EconomySeed {
   version: string;
   initialPoints: number;
+  /** #212: 가입 시 지급하는 젬. 젬 수급원은 이것 + 리그 우승 둘뿐(목업 충전 폐지). */
+  initialGems: number;
   starterPack: string[];
   gacha: {
+    /** #212: 뽑기 결제 재화. hero 확정 "뽑기 = 젬(유료 재화)". */
+    currency: "POINT" | "GEM";
     singleCost: number;
     tenCost: number;
     tenCount: number;
     rates: Record<Grade, number>;
     tenPityMinGrade: Grade;
   };
-  rewards: { win: number; draw: number; loss: number };
+  /**
+   * 매치 승/무/패 보상. flat 값은 레거시 폴백이고, 실제 지급은 `byMode[매치모드]` 가 결정한다(#212)
+   * — hero 목표 곡선 "연습 적게 &lt; 리그 매판 적당 &lt; 리그 최종성적 가파르게".
+   */
+  rewards: RewardTable & { byMode: { practice: RewardTable; league: RewardTable } };
   /** P2 추가(additive): 트레이드 수치. */
   trade: TradeConfig;
   /** P2 추가(additive): 리그 보상표 참조. */
@@ -551,18 +576,21 @@ function buildLeague(): LeagueSeed {
     },
   ];
 
-  // 순위별 포인트 보상(10팀, AC-F4) — 우승 = 10연뽑(3000p)급, 단조 감소, 전원 참가 보상(≥200).
+  // 순위별 포인트 보상(10팀, AC-F4).
+  // #212 hero 확정 곡선: **우승을 통 크게, 그 밑은 급감**(1위 = 2위의 5배). 시즌 총수입에서
+  // 최종성적이 지배 레버가 되게 한다 — 이전 곡선(3000→200, 단조 완만)은 매판 누적에 묻혔다.
+  // 전원 참가 보상(≥500)은 유지.
   const rewards: LeagueReward[] = [
-    { rank: 1, points: 3000 },
-    { rank: 2, points: 2000 },
-    { rank: 3, points: 1500 },
-    { rank: 4, points: 1000 },
-    { rank: 5, points: 800 },
-    { rank: 6, points: 600 },
-    { rank: 7, points: 500 },
-    { rank: 8, points: 400 },
-    { rank: 9, points: 300 },
-    { rank: 10, points: 200 },
+    { rank: 1, points: 100000 },
+    { rank: 2, points: 20000 },
+    { rank: 3, points: 10000 },
+    { rank: 4, points: 6000 },
+    { rank: 5, points: 4000 },
+    { rank: 6, points: 3000 },
+    { rank: 7, points: 2000 },
+    { rank: 8, points: 1500 },
+    { rank: 9, points: 1000 },
+    { rank: 10, points: 500 },
   ];
 
   return { version: LEAGUE_VERSION, clubNames, personaPresets, rewards };
@@ -679,15 +707,31 @@ export function generateAll(): GeneratedData {
   const economy: EconomySeed = {
     version: DATA_VERSION,
     initialPoints: 3000,
+    // #212: 가입 젬 = 10연차 2회분(tenCost 3000 × 2). 젬 수급원은 이것 + 리그 우승 둘뿐.
+    initialGems: 6000,
     starterPack,
     gacha: {
+      // #212: 뽑기는 젬(유료 재화) 결제. 비용 숫자는 그대로 두고 통화만 바꿨다 —
+      // 가입 6000젬이 정확히 10연차 2회가 되게 하는 값이다.
+      currency: "GEM",
       singleCost: 300,
       tenCost: 3000,
       tenCount: 11,
       rates: { BRONZE: 0.45, SILVER: 0.3, GOLD: 0.15, DIA: 0.08, LEGEND: 0.02 },
       tenPityMinGrade: "GOLD",
     },
-    rewards: { win: 500, draw: 200, loss: 100 },
+    // #212 hero 확정 곡선. flat 값은 구서버 폴백용으로 남기고, 실제 지급은 byMode 가 결정한다.
+    // 연습(500/200/100) = 리그(5000/2000/1000)의 1/10 — 연습은 육성장(match_xp 는 동일하게 쌓인다),
+    // 리그가 수입원. 골드(P)는 트레이드·무료강화 전용 재화다.
+    rewards: {
+      win: 500,
+      draw: 200,
+      loss: 100,
+      byMode: {
+        practice: { win: 500, draw: 200, loss: 100 },
+        league: { win: 5000, draw: 2000, loss: 1000 },
+      },
+    },
     // -- P2 트레이드 수치 (P2-D9 / LLD-p2-server §5) — 서버는 이 블록만 읽음(하드코딩 금지) --
     trade: {
       slots: 3,
@@ -697,19 +741,27 @@ export function generateAll(): GeneratedData {
       // 등장 대상 선수 레어도 가중(합=1): 저등급이 흔하게, 레전드는 극소수 노출.
       targetRarityWeights: { BRONZE: 0.3, SILVER: 0.3, GOLD: 0.22, DIA: 0.13, LEGEND: 0.05 },
       // 대기 단축(AC-D4): 비용 = ceil(잔여h × pointsPerHour), 최소 minPoints — 잔여시간 비례.
-      speedup: { pointsPerHour: 50, minPoints: 20 },
+      // #212: 리그 매판 수입이 ×10 됐으므로 P 싱크도 ×10 (구매력 비율 보존).
+      speedup: { pointsPerHour: 500, minPoints: 200 },
       // FA 성공 확률 곡선(AC-D2): p = clamp(base + k×(offerValue/targetValue − 1), minProb, maxProb).
       fa: { base: 0.5, k: 0.8, minProb: 0.05, maxProb: 0.95, reproposalCooldownHours: 6 },
       // TRADE 수락 성공 확률(AC-D3).
       tradeOffer: { acceptProb: 0.8 },
       // 가치함수(§8): value = byGrade[등급] + (능력치 9종 합) × attrSumCoeff.
+      // #212: byGrade 와 attrSumCoeff 를 함께 ×10 — 카드 대 카드 비율(=FA 확률)은 불변이고,
+      // "포인트로 선수를 사는 환율"만 ×10 경제에 맞춰진다.
       value: {
-        byGrade: { BRONZE: 100, SILVER: 250, GOLD: 600, DIA: 1400, LEGEND: 3000 },
-        attrSumCoeff: 2,
+        byGrade: { BRONZE: 1000, SILVER: 2500, GOLD: 6000, DIA: 14000, LEGEND: 30000 },
+        attrSumCoeff: 20,
       },
     },
     // 리그 순위 보상표는 league.v1.json#rewards 참조(단일 원천, 중복 금지) — LLD-p2-data §3.
-    league: { rewardsFile: `league.${LEAGUE_VERSION}.json`, rewardsRef: "rewards" },
+    league: {
+      rewardsFile: `league.${LEAGUE_VERSION}.json`,
+      rewardsRef: "rewards",
+      // #212: 우승(1위)에만 젬 500~3000 랜덤. 젬을 플레이로 버는 유일한 경로다.
+      gemReward: { maxRank: 1, min: 500, max: 3000 },
+    },
     // -- #179 V2 스탯 성장(경기·무과금 트랙) config (issues/2026-07-26-growth-dual-track.md V2-2/V2-5)
     // — server/servants 는 이 블록만 읽음(하드코딩 금지). 구 growth(xpPerLevel·completeMatches·
     // benchGrowthMult·execMatchDefault·speedMaxMult)는 메이플 피벗으로 폐기.
@@ -750,9 +802,14 @@ export function generateAll(): GeneratedData {
     potential: buildPotentialConfig(),
     // -- V2 신규 → V2.2 재화 이원화로 개정: 다이스 상점 비용 (`dice`, POST /api/shop/dice 목업).
     // 캐시 다이스는 P 결제(cashCost) 폐기 → 젬 결제(cashGemCost)로 전환. --
-    dice: { normalCost: 500, cashGemCost: 10 },
+    // #212: 무료(노말) 다이스는 골드 싱크라 리그 수입 ×10 에 맞춰 상향. 캐시 다이스(젬)는
+    // 젬 경제 쪽이라 무변경 — 젬 가격 튜닝은 #201 밸런스 트랙 소관.
+    dice: { normalCost: 5000, cashGemCost: 10 },
     // -- V2.2 신규: 충전형 젬 상점(목업, POST /api/shop/gems/topup) --
+    // #212: hero 확정으로 수도꼭지를 잠근다(topupEnabled=false). 팩 정의는 실결제 배선 때
+    // 되살릴 수 있게 남겨둔다.
     gems: {
+      topupEnabled: false,
       topupPacks: [
         { id: "p1", gems: 60, mockPrice: "₩1,200" },
         { id: "p2", gems: 330, mockPrice: "₩5,900" },

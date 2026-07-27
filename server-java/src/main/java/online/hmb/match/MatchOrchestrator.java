@@ -111,6 +111,11 @@ public class MatchOrchestrator {
         return leagueService.userIsHomeForFixture(match.leagueFixtureId());
     }
 
+    /** 보상 조회용 모드 키(#212) — 레거시 행(mode NULL)은 practice 로 본다(MatchService 뷰와 동일 규칙). */
+    private static String modeOf(MatchService.MatchRow match) {
+        return match.mode() == null ? "practice" : match.mode();
+    }
+
     // ── 잡 enqueue (kickoff/resume/retry 직후) ──────────────────────────
 
     public void enqueueHalf(String matchId, int half) {
@@ -661,12 +666,10 @@ public class MatchOrchestrator {
         // #179 §4: 성장 정산 — 기용 선수별 Δxp 적립(growth_applied PK 멱등). FINISHED CAS 통과 후 1회.
         settleGrowth(match);
 
+        // #212: 보상은 **모드별**(rewards.byMode) — hero 확정 곡선 "연습 적게 < 리그 매판 적당".
+        // byMode 에 해당 모드가 없으면 레거시 flat 값으로 폴백한다(구 economy 파일 호환).
         economyService.get().ifPresentOrElse(economy -> {
-            int amount = switch (result) {
-                case "WIN" -> economy.rewards().win();
-                case "LOSS" -> economy.rewards().loss();
-                default -> economy.rewards().draw();
-            };
+            int amount = economy.rewards().forMode(modeOf(match)).by(result);
             String reason = "reward_" + result.toLowerCase();
             walletService.apply(match.userId(), amount, reason, match.id());
         }, () -> log.warn("economy unavailable — match {} finished without reward", match.id()));

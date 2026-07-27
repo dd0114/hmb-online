@@ -66,6 +66,8 @@ class SeasonIncomeProbeTest extends MatchTestBase {
 
         long beforeSeason = points(uid);
         List<String> perMatch = new ArrayList<>();
+        // 매판 지급액은 원장에서 직접 읽는다(마지막 라운드는 시즌보상이 같은 창에 들어와 잔액 델타가 섞인다).
+        List<Long> leagueDeltas = new ArrayList<>();
         for (int r = 1; r <= 18; r++) {
             long before = points(uid);
             Map<String, Object> nm = (Map<String, Object>) authPost(
@@ -75,6 +77,7 @@ class SeasonIncomeProbeTest extends MatchTestBase {
             drivePastFinished(token, matchId);
             String result = jdbcClient.sql("SELECT result FROM matches WHERE id=?")
                     .param(matchId).query(String.class).single();
+            leagueDeltas.add(rewardOf(uid, matchId));
             perMatch.add("R" + r + " " + result + " +" + (points(uid) - before));
         }
         long afterFixtures = points(uid);
@@ -100,26 +103,65 @@ class SeasonIncomeProbeTest extends MatchTestBase {
 
         assertThat(seasonState).isEqualTo("FINISHED");
         assertThat(seasonRewardRows).isEqualTo(1L);
+        assertThat(seasonReward).as("시즌보상 = 해당 순위 티어").isEqualTo((long) RANK_TIERS.get(rank));
+
+        // #212 계약: 리그 매판 지급은 리그 티어(5000/2000/1000)만 나온다.
+        assertThat(leagueDeltas).as("리그 매판 = 리그 보상표").isSubsetOf(5000L, 2000L, 1000L);
+        assertThat(leagueDeltas).as("18R 전부 지급됨").hasSize(18);
+
+        // 젬(#212): 우승(1위)에서만 지급된다. 이 시나리오는 전승이 아니므로 rank 에 따라 갈린다.
+        long gemsFromSeason = jdbcClient.sql(
+                        "SELECT COALESCE(SUM(delta),0) FROM gem_ledger "
+                                + "WHERE user_id=? AND reason='league_gem_reward'")
+                .param(uid).query(Long.class).single();
+        System.out.println("[시즌 젬] rank=" + rank + " → " + gemsFromSeason + " 젬");
+        if (rank == 1) {
+            assertThat(gemsFromSeason).as("우승 젬은 config 밴드 안").isBetween(500L, 3000L);
+        } else {
+            assertThat(gemsFromSeason).as("우승이 아니면 젬 0").isZero();
+        }
 
         // 연습매치 3판 — 리그 매판과 지급액 비교.
         long beforePractice = points(uid);
         List<String> practice = new ArrayList<>();
+        List<Long> practiceDeltas = new ArrayList<>();
         for (int i = 0; i < 3; i++) {
             long before = points(uid);
             String matchId = createMatch(token, "BOT_BAL");
             drivePastFinished(token, matchId);
             String result = jdbcClient.sql("SELECT result FROM matches WHERE id=?")
                     .param(matchId).query(String.class).single();
+            practiceDeltas.add(rewardOf(uid, matchId));
             practice.add(result + " +" + (points(uid) - before));
         }
         System.out.println("[연습 3판] " + String.join(" | ", practice)
                 + "  소계 " + (points(uid) - beforePractice) + " P");
+
+        // #212 핵심 계약 — hero 목표 곡선의 "연습 적게 < 리그 매판":
+        // 같은 결과(WIN)라도 연습 지급이 리그 지급보다 **엄격히 작아야** 한다.
+        assertThat(practiceDeltas).as("연습 매판 = 연습 보상표").isSubsetOf(500L, 200L, 100L);
+        long maxPractice = practiceDeltas.stream().mapToLong(Long::longValue).max().orElseThrow();
+        long minLeague = leagueDeltas.stream().mapToLong(Long::longValue).min().orElseThrow();
+        assertThat(maxPractice).as("연습 최대 지급 < 리그 최소 지급").isLessThan(minLeague);
 
         // 사유별 원장 전수.
         System.out.println("[point_ledger 사유별] " + ledgerByReason(uid, "point_ledger"));
         System.out.println("[gem_ledger 사유별]   " + ledgerByReason(uid, "gem_ledger"));
         System.out.println("[최종 지갑] points=" + points(uid) + " gems=" + gems(uid));
         System.out.println("===== END PROBE =====\n");
+    }
+
+    /** league.v1.json rewards 미러(#212 hero 확정 곡선) — 우승이 압도적, 그 밑은 급감. */
+    private static final Map<Integer, Integer> RANK_TIERS = Map.ofEntries(
+            Map.entry(1, 100000), Map.entry(2, 20000), Map.entry(3, 10000), Map.entry(4, 6000),
+            Map.entry(5, 4000), Map.entry(6, 3000), Map.entry(7, 2000), Map.entry(8, 1500),
+            Map.entry(9, 1000), Map.entry(10, 500));
+
+    /** 매치 1건의 승/무/패 보상액(원장 ref=matchId) — 잔액 델타와 달리 다른 지급과 섞이지 않는다. */
+    private long rewardOf(String uid, String matchId) {
+        return jdbcClient.sql("SELECT COALESCE(SUM(delta),0) FROM point_ledger "
+                        + "WHERE user_id=? AND ref_id=? AND reason LIKE 'reward_%'")
+                .params(uid, matchId).query(Long.class).single();
     }
 
     private void drivePastFinished(String token, String matchId) {

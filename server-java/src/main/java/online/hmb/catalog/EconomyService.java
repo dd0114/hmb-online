@@ -31,18 +31,57 @@ public class EconomyService {
      * trade/league 는 economy.v2.json 의 신규 블록 — W1 은 로드만(소비는 W2/W3). 구파일(블록 없음)엔 null.
      * growth/star/potential/dice = 에픽 #179 메이플 피벗(V2) — 구 enhance 블록은 폐기.
      */
-    public record Economy(String version, int initialPoints, List<String> starterPack,
+    public record Economy(String version, int initialPoints, int initialGems, List<String> starterPack,
                           Gacha gacha, Rewards rewards, JsonNode trade, JsonNode league,
+                          LeagueGemReward leagueGemReward,
                           Growth growth, Star star, Potential potential, Dice dice, Gems gems) {
     }
 
-    /** economy.v1.json `gacha` 노드 — 뽑기 비용·확률표·pity (AC-S5: 여기서만 온다). */
-    public record Gacha(int singleCost, int tenCost, int tenCount,
+    /**
+     * economy.v1.json `gacha` 노드 — 뽑기 비용·확률표·pity (AC-S5: 여기서만 온다).
+     * currency(#212) = 뽑기 결제 재화 {@code POINT|GEM} — 구파일(필드 없음)은 POINT 로 폴백.
+     * singleCost/tenCost 는 그 재화 단위로 해석된다.
+     */
+    public record Gacha(String currency, int singleCost, int tenCost, int tenCount,
                         Map<String, Double> rates, String tenPityMinGrade) {
+
+        public boolean paysWithGems() {
+            return CURRENCY_GEM.equals(currency);
+        }
     }
 
-    /** economy.v1.json `rewards` 노드 — 매치 보상 승/무/패 (AC-M6, ref=matchId 멱등 지급). */
-    public record Rewards(int win, int draw, int loss) {
+    public static final String CURRENCY_GEM = "GEM";
+    public static final String CURRENCY_POINT = "POINT";
+
+    /**
+     * economy.v1.json `rewards` 노드 — 매치 보상 승/무/패 (AC-M6, ref=matchId 멱등 지급).
+     * byMode(#212) = 모드별 오버라이드 {@code {practice|league: {win,draw,loss}}} — 없으면 flat 값 폴백.
+     * hero 확정 곡선: 연습 적게 &lt; 리그 매판 적당 &lt; 리그 최종성적 가파르게.
+     */
+    public record Rewards(int win, int draw, int loss, Map<String, Rewards> byMode) {
+
+        /** 모드별 보상 조회 — byMode[mode] 가 있으면 그것, 없으면 자기 자신(레거시 flat). */
+        public Rewards forMode(String mode) {
+            if (byMode == null || mode == null) {
+                return this;
+            }
+            return byMode.getOrDefault(mode, this);
+        }
+
+        public int by(String result) {
+            return switch (String.valueOf(result)) {
+                case "WIN" -> win;
+                case "LOSS" -> loss;
+                default -> draw;
+            };
+        }
+    }
+
+    /**
+     * economy.v2.json `league.gemReward` 노드 (#212) — 리그 상위 입상 시 젬 지급.
+     * maxRank 이내 순위에만, [min, max] 균등 랜덤(시즌 seed 결정론 — {@code Math.random} 금지).
+     */
+    public record LeagueGemReward(int maxRank, int min, int max) {
     }
 
     /**
@@ -85,8 +124,12 @@ public class EconomyService {
     public record GemTopupPack(String id, int gems, String mockPrice) {
     }
 
-    /** economy.v2.json `gems` 노드 (V2.2 재화 이원화 GM8s) — 충전 팩 목록. */
-    public record Gems(List<GemTopupPack> topupPacks) {
+    /**
+     * economy.v2.json `gems` 노드 (V2.2 재화 이원화 GM8s) — 충전 팩 목록.
+     * topupEnabled(#212) = 목업 충전 수도꼭지 스위치. hero 확정: 젬 수급원은 가입 지급 + 리그 입상
+     * 둘뿐 → 기본 false. 구파일(필드 없음)은 기존 동작 유지를 위해 true 폴백.
+     */
+    public record Gems(boolean topupEnabled, List<GemTopupPack> topupPacks) {
     }
 
     private final Optional<Economy> economy;
@@ -107,6 +150,7 @@ public class EconomyService {
             JsonNode root = objectMapper.readTree(file);
             String version = root.path("version").asText("v1");
             int initialPoints = root.path("initialPoints").asInt();
+            int initialGems = root.path("initialGems").asInt(); // #212: 가입 젬 지급(구파일 없으면 0)
             List<String> starterPack = new ArrayList<>();
             root.path("starterPack").forEach(n -> starterPack.add(n.asText()));
 
@@ -114,19 +158,20 @@ public class EconomyService {
             Map<String, Double> rates = new LinkedHashMap<>();
             g.path("rates").properties().forEach(e -> rates.put(e.getKey(), e.getValue().asDouble()));
             Gacha gacha = new Gacha(
+                    g.path("currency").asText(CURRENCY_POINT), // #212: 구파일은 POINT 폴백
                     g.path("singleCost").asInt(),
                     g.path("tenCost").asInt(),
                     g.path("tenCount").asInt(),
                     Map.copyOf(rates),
                     g.path("tenPityMinGrade").asText());
 
-            JsonNode r = root.path("rewards");
-            Rewards rewards = new Rewards(
-                    r.path("win").asInt(), r.path("draw").asInt(), r.path("loss").asInt());
+            Rewards rewards = parseRewards(root.path("rewards"));
 
             // trade/league 블록(economy.v2 신규) — W1 은 로드만, 구파일엔 없을 수 있어 null 로 둔다.
             JsonNode trade = root.has("trade") ? root.get("trade") : null;
             JsonNode league = root.has("league") ? root.get("league") : null;
+            // league.gemReward(#212) — 없으면 null(리그 젬 지급 비활성).
+            LeagueGemReward leagueGemReward = parseLeagueGemReward(league);
 
             // growth/star/potential/dice 블록(#179 V2-5, GM1 발행) — 구파일엔 없을 수 있어 null(성장 기능 비활성).
             Growth growth = parseGrowth(root.path("growth"));
@@ -136,18 +181,21 @@ public class EconomyService {
             // gems 블록(V2.2 재화 이원화 GM8s) — 구파일엔 없을 수 있어 null(충전 목업 기능 비활성).
             Gems gems = parseGems(root.path("gems"));
 
-            log.info("Loaded economy {} from {} (initialPoints={}, starterPack={} players, "
-                            + "gacha single/ten={}/{} tenCount={} pity>={}, rewards {}/{}/{}, "
-                            + "trade={}, league={}, growth={}, star={}, potential={}, dice={}, gems={})",
-                    version, file.getAbsolutePath(), initialPoints, starterPack.size(),
-                    gacha.singleCost(), gacha.tenCost(), gacha.tenCount(), gacha.tenPityMinGrade(),
-                    rewards.win(), rewards.draw(), rewards.loss(),
-                    trade != null ? "present" : "absent", league != null ? "present" : "absent",
+            log.info("Loaded economy {} from {} (initialPoints={}, initialGems={}, starterPack={} players, "
+                            + "gacha[{}] single/ten={}/{} tenCount={} pity>={}, rewards {}/{}/{} byMode={}, "
+                            + "leagueGemReward={}, trade={}, league={}, growth={}, star={}, potential={}, "
+                            + "dice={}, gems={})",
+                    version, file.getAbsolutePath(), initialPoints, initialGems, starterPack.size(),
+                    gacha.currency(), gacha.singleCost(), gacha.tenCost(), gacha.tenCount(),
+                    gacha.tenPityMinGrade(),
+                    rewards.win(), rewards.draw(), rewards.loss(), rewards.byMode().keySet(),
+                    leagueGemReward, trade != null ? "present" : "absent",
+                    league != null ? "present" : "absent",
                     growth != null ? "present" : "absent", star != null ? "present" : "absent",
                     potential != null ? "present" : "absent", dice != null ? "present" : "absent",
                     gems != null ? "present" : "absent");
-            return Optional.of(new Economy(version, initialPoints, List.copyOf(starterPack), gacha, rewards,
-                    trade, league, growth, star, potential, dice, gems));
+            return Optional.of(new Economy(version, initialPoints, initialGems, List.copyOf(starterPack),
+                    gacha, rewards, trade, league, leagueGemReward, growth, star, potential, dice, gems));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());
@@ -242,7 +290,46 @@ public class EconomyService {
                 p.path("id").asText(),
                 p.path("gems").asInt(),
                 p.path("mockPrice").asText())));
-        return new Gems(List.copyOf(packs));
+        // #212: 구파일(필드 없음)은 true 폴백 — 기존 동작을 조용히 바꾸지 않는다.
+        return new Gems(g.path("topupEnabled").asBoolean(true), List.copyOf(packs));
+    }
+
+    /**
+     * `rewards` 파싱 — flat {win,draw,loss} + 선택 `byMode`(#212). byMode 항목이 일부 키만 주면
+     * 나머지는 flat 값으로 채운다(부분 오버라이드 허용).
+     */
+    private static Rewards parseRewards(JsonNode r) {
+        int win = r.path("win").asInt();
+        int draw = r.path("draw").asInt();
+        int loss = r.path("loss").asInt();
+        Map<String, Rewards> byMode = new LinkedHashMap<>();
+        JsonNode modes = r.path("byMode");
+        if (modes.isObject()) {
+            modes.properties().forEach(e -> {
+                JsonNode m = e.getValue();
+                byMode.put(e.getKey(), new Rewards(
+                        m.path("win").asInt(win), m.path("draw").asInt(draw), m.path("loss").asInt(loss),
+                        Map.of()));
+            });
+        }
+        return new Rewards(win, draw, loss, Map.copyOf(byMode));
+    }
+
+    /** `league.gemReward` 파싱(#212) — 블록이 없거나 max&lt;min 이면 null(비활성). */
+    private static LeagueGemReward parseLeagueGemReward(JsonNode league) {
+        if (league == null || !league.path("gemReward").isObject()) {
+            return null;
+        }
+        JsonNode n = league.path("gemReward");
+        int maxRank = n.path("maxRank").asInt();
+        int min = n.path("min").asInt();
+        int max = n.path("max").asInt();
+        if (maxRank < 1 || min < 0 || max < min) {
+            log.warn("league.gemReward 값이 유효하지 않아 비활성화한다: maxRank={} min={} max={}",
+                    maxRank, min, max);
+            return null;
+        }
+        return new LeagueGemReward(maxRank, min, max);
     }
 
     private static Map<String, Double> asDoubleMap(JsonNode node) {

@@ -1,6 +1,7 @@
 {
   "version": "v1",
   "initialPoints": 3000,
+  "initialGems": 6000,
   "starterPack": [
     "P001",
     "P002",
@@ -18,6 +19,7 @@
     "P014"
   ],
   "gacha": {
+    "currency": "GEM",
     "singleCost": 300,
     "tenCost": 3000,
     "tenCount": 11,
@@ -33,7 +35,19 @@
   "rewards": {
     "win": 500,
     "draw": 200,
-    "loss": 100
+    "loss": 100,
+    "byMode": {
+      "practice": {
+        "win": 500,
+        "draw": 200,
+        "loss": 100
+      },
+      "league": {
+        "win": 5000,
+        "draw": 2000,
+        "loss": 1000
+      }
+    }
   },
   "trade": {
     "slots": 3,
@@ -1738,6 +1752,7 @@
     "cashGemCost": 10
   },
   "gems": {
+    "topupEnabled": false,
     "topupPacks": [
       {
         "id": "p1",
@@ -1755,5 +1770,12 @@
         "mockPrice": "₩11,900"
       }
     ]
+  },
+  "league": {
+    "gemReward": {
+      "maxRank": 1,
+      "min": 500,
+      "max": 3000
+    }
   }
 }

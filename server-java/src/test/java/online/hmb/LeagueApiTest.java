@@ -296,7 +296,7 @@ class LeagueApiTest extends MatchTestBase {
             leagueService.settleUserFixture((String) f.get("id"), userHome ? 3 : 0, userHome ? 0 : 3);
         }
 
-        // 시즌 FINISHED + 유저 1위 + 보상(rank1=3000) 원장 1행.
+        // 시즌 FINISHED + 유저 1위 + 보상(rank1) 원장 1행.
         String state = jdbcClient.sql("SELECT state FROM league_seasons WHERE id = ?")
                 .param(seasonId).query(String.class).single();
         assertThat(state).isEqualTo("FINISHED");
@@ -312,7 +312,7 @@ class LeagueApiTest extends MatchTestBase {
         long rewardDelta = jdbcClient.sql(
                         "SELECT delta FROM point_ledger WHERE user_id=? AND reason='league_reward' AND ref_id=?")
                 .params(uid, seasonId).query(Long.class).single();
-        assertThat(rewardDelta).isEqualTo(3000L); // league.v1 rewards[rank=1]
+        assertThat(rewardDelta).isEqualTo(RANK1_REWARD); // league.v1 rewards[rank=1]
 
         // 멱등: 이미 PLAYED 픽스처 재정산 → no-op(보상 원장 여전히 1행).
         leagueService.settleUserFixture((String) userFixturesOrdered(seasonId).get(0).get("id"), 3, 0);
@@ -473,11 +473,17 @@ class LeagueApiTest extends MatchTestBase {
 
     // ── W3: 리그 보상 실지급 검증 + seasonReward 노출 (AC-E1) ──────────────
 
-    /** league.v1.json rewards 미러(테스트 측 기대값 — rank→points). */
+    /**
+     * league.v1.json rewards 미러(테스트 측 기대값 — rank→points).
+     * #212 hero 확정 곡선: 우승이 압도적이고 그 밑은 급감(1위 = 2위의 5배).
+     */
     private static final Map<Integer, Integer> REWARD_TIERS = Map.ofEntries(
-            Map.entry(1, 3000), Map.entry(2, 2000), Map.entry(3, 1500), Map.entry(4, 1000),
-            Map.entry(5, 800), Map.entry(6, 600), Map.entry(7, 500), Map.entry(8, 400),
-            Map.entry(9, 300), Map.entry(10, 200));
+            Map.entry(1, 100000), Map.entry(2, 20000), Map.entry(3, 10000), Map.entry(4, 6000),
+            Map.entry(5, 4000), Map.entry(6, 3000), Map.entry(7, 2000), Map.entry(8, 1500),
+            Map.entry(9, 1000), Map.entry(10, 500));
+
+    /** league.v1 rewards[rank=1] — 우승 보상(#212). */
+    private static final long RANK1_REWARD = REWARD_TIERS.get(1);
 
     /**
      * AC-E1 실지급: stub 서번트로 시즌 18R 완주(유저 전승 → 1위) → FINISHED → <b>지갑 잔액이 정확히
@@ -494,6 +500,7 @@ class LeagueApiTest extends MatchTestBase {
         String seasonId = seasonId(uid);
 
         long walletBefore = walletPoints(uid); // 시즌 시작 후·보상 전 잔액.
+        long gemsBefore = walletGems(uid);     // #212 우승 젬 델타 측정용(가입 지급분이 이미 들어있다).
 
         // 유저 전승(홈=3:0 / 어웨이=0:3)으로 18경기 정산 → 1위. (직접 정산 경로 = 승/무/패 보상 미개입.)
         for (Map<String, Object> f : userFixturesOrdered(seasonId)) {
@@ -501,32 +508,43 @@ class LeagueApiTest extends MatchTestBase {
             leagueService.settleUserFixture((String) f.get("id"), userHome ? 3 : 0, userHome ? 0 : 3);
         }
 
-        // 지갑 잔액 델타 = 정확히 rank1 보상(3000). 다른 원장 유입 없음(직접 정산이라 win 보상 없음).
+        // 지갑 잔액 델타 = 정확히 rank1 보상. 다른 원장 유입 없음(직접 정산이라 승/무/패 보상 없음).
         long walletAfter = walletPoints(uid);
-        assertThat(walletAfter - walletBefore).isEqualTo(3000L);
+        assertThat(walletAfter - walletBefore).isEqualTo(RANK1_REWARD);
 
-        // 원장: league_reward, ref=seasonId, delta=3000 정확히 1행.
+        // 원장: league_reward, ref=seasonId, delta=rank1 보상 정확히 1행.
         assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
-        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(3000L);
+        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(RANK1_REWARD);
 
-        // seasonReward 노출(GET /api/league) = GRANTED, points=원장 delta, rank=1, awardedAt 비null.
+        // #212 우승 젬: 1위만 받는다 + 값이 config 밴드[500,3000] 안 + 지갑 델타와 원장이 일치.
+        long gemsAfter = walletGems(uid);
+        assertThat(gemsAfter - gemsBefore).isBetween(500L, 3000L);
+        assertThat(gemLedgerCount(uid, seasonId)).isEqualTo(1L);
+        assertThat(gemLedgerDelta(uid, seasonId)).isEqualTo(gemsAfter - gemsBefore);
+
+        // seasonReward 노출(GET /api/league) = GRANTED, points/gems=원장 delta, rank=1, awardedAt 비null.
         Map<String, Object> reward = seasonRewardOf(token);
         assertThat(reward.get("status")).isEqualTo("GRANTED");
         assertThat(((Number) reward.get("rank")).intValue()).isEqualTo(1);
-        assertThat(((Number) reward.get("points")).intValue()).isEqualTo(3000);
+        assertThat(((Number) reward.get("points")).intValue()).isEqualTo((int) RANK1_REWARD);
+        assertThat(((Number) reward.get("gems")).longValue()).isEqualTo(gemsAfter - gemsBefore);
         assertThat(reward.get("awardedAt")).isNotNull();
 
         // ── 멱등 1: maybeFinishSeason 재호출 → 이미 FINISHED(CAS 가드) → no-op. 값 불변.
         invokeSeasonHook("maybeFinishSeason", seasonId);
         assertThat(walletPoints(uid)).isEqualTo(walletAfter);
+        assertThat(walletGems(uid)).isEqualTo(gemsAfter);
         assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
-        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(3000L);
+        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(RANK1_REWARD);
 
         // ── 멱등 2: awardSeasonRewards 직접 재호출(CAS 우회) → 원장 백스톱(apply=false) → no-op. 값 불변.
+        // 젬도 같은 백스톱(gem_ledger 유니크)을 타는지 함께 박제한다(#212 — 랜덤 지급이라 더 중요).
         invokeSeasonHook("awardSeasonRewards", seasonId);
         assertThat(walletPoints(uid)).isEqualTo(walletAfter);
+        assertThat(walletGems(uid)).isEqualTo(gemsAfter);
         assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
-        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(3000L);
+        assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(RANK1_REWARD);
+        assertThat(gemLedgerCount(uid, seasonId)).isEqualTo(1L);
     }
 
     /**
@@ -542,6 +560,7 @@ class LeagueApiTest extends MatchTestBase {
         String seasonId = seasonId(uid);
 
         long walletBefore = walletPoints(uid);
+        long gemsBefore = walletGems(uid);
 
         for (Map<String, Object> f : userFixturesOrdered(seasonId)) {
             boolean userHome = "USER".equals(f.get("home_team"));
@@ -559,10 +578,15 @@ class LeagueApiTest extends MatchTestBase {
         assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
         assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo((long) expectedTier);
 
+        // #212: 젬은 **우승(1위) 시에만**. 1위가 아니면 지갑도 원장도 무변화.
+        assertThat(walletGems(uid) - gemsBefore).isZero();
+        assertThat(gemLedgerCount(uid, seasonId)).isZero();
+
         Map<String, Object> reward = seasonRewardOf(token);
         assertThat(reward.get("status")).isEqualTo("GRANTED");
         assertThat(((Number) reward.get("rank")).intValue()).isEqualTo(rank);
         assertThat(((Number) reward.get("points")).intValue()).isEqualTo(expectedTier);
+        assertThat(((Number) reward.get("gems")).intValue()).isZero();
     }
 
     /**
@@ -591,6 +615,24 @@ class LeagueApiTest extends MatchTestBase {
     private long walletPoints(String userId) {
         return jdbcClient.sql("SELECT points FROM wallets WHERE user_id=?")
                 .param(userId).query(Long.class).single();
+    }
+
+    private long walletGems(String userId) {
+        return jdbcClient.sql("SELECT gems FROM wallets WHERE user_id=?")
+                .param(userId).query(Long.class).single();
+    }
+
+    /** #212 우승 젬 원장(gem_ledger, reason='league_gem_reward', ref=seasonId). */
+    private long gemLedgerCount(String userId, String seasonId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM gem_ledger "
+                        + "WHERE user_id=? AND reason='league_gem_reward' AND ref_id=?")
+                .params(userId, seasonId).query(Long.class).single();
+    }
+
+    private long gemLedgerDelta(String userId, String seasonId) {
+        return jdbcClient.sql("SELECT delta FROM gem_ledger "
+                        + "WHERE user_id=? AND reason='league_gem_reward' AND ref_id=?")
+                .params(userId, seasonId).query(Long.class).single();
     }
 
     private long rewardLedgerCount(String userId, String seasonId) {

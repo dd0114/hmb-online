@@ -1,6 +1,7 @@
 {
   "version": "v2",
   "initialPoints": 3000,
+  "initialGems": 6000,
   "starterPack": [
     "P074",
     "P077",
@@ -18,6 +19,7 @@
     "P108"
   ],
   "gacha": {
+    "currency": "GEM",
     "singleCost": 300,
     "tenCost": 3000,
     "tenCount": 11,
@@ -33,7 +35,19 @@
   "rewards": {
     "win": 500,
     "draw": 200,
-    "loss": 100
+    "loss": 100,
+    "byMode": {
+      "practice": {
+        "win": 500,
+        "draw": 200,
+        "loss": 100
+      },
+      "league": {
+        "win": 5000,
+        "draw": 2000,
+        "loss": 1000
+      }
+    }
   },
   "trade": {
     "slots": 3,
@@ -56,8 +70,8 @@
       "LEGEND": 0.05
     },
     "speedup": {
-      "pointsPerHour": 50,
-      "minPoints": 20
+      "pointsPerHour": 500,
+      "minPoints": 200
     },
     "fa": {
       "base": 0.5,
@@ -71,18 +85,23 @@
     },
     "value": {
       "byGrade": {
-        "BRONZE": 100,
-        "SILVER": 250,
-        "GOLD": 600,
-        "DIA": 1400,
-        "LEGEND": 3000
+        "BRONZE": 1000,
+        "SILVER": 2500,
+        "GOLD": 6000,
+        "DIA": 14000,
+        "LEGEND": 30000
       },
-      "attrSumCoeff": 2
+      "attrSumCoeff": 20
     }
   },
   "league": {
     "rewardsFile": "league.v1.json",
-    "rewardsRef": "rewards"
+    "rewardsRef": "rewards",
+    "gemReward": {
+      "maxRank": 1,
+      "min": 500,
+      "max": 3000
+    }
   },
   "growth": {
     "xpBase": 100,
@@ -1738,10 +1757,11 @@
     }
   },
   "dice": {
-    "normalCost": 500,
+    "normalCost": 5000,
     "cashGemCost": 10
   },
   "gems": {
+    "topupEnabled": false,
     "topupPacks": [
       {
         "id": "p1",
