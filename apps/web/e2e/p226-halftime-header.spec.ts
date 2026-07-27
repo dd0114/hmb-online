@@ -28,8 +28,17 @@ const MATCH_LOG = JSON.parse(
 );
 const SNAPS: { tick: number }[] = MATCH_LOG.tickSnapshots;
 const LAST_TICK: number = SNAPS[SNAPS.length - 1].tick;
-/** 로그가 끝난 지점의 분 표기 — 리얼 하프(2700틱)면 45'. 데모 로그는 짧아 그 값이 나온다. */
+/** 로그가 끝난 지점의 분 표기 — 리얼 하프(마지막 틱 2699)면 45'. 데모 로그는 짧아 그 값이 나온다. */
 const END_MINUTE = `${Math.round(LAST_TICK / 60)}'`;
+/** 재생 플레이헤드가 맨 앞일 때의 분 = 버그 화면의 값. 헤더가 이걸 그리면 안 된다. */
+const PLAYHEAD_MINUTE = "0'";
+/**
+ * 픽스처 신선도 가드(#188 패턴). END_MINUTE 는 구현과 **같은 반올림 식**으로 계산하므로, 로그 끝이
+ * 정확히 분 경계에 떨어지면(round === floor) 이 스펙이 반올림 여부를 더는 구분하지 못한다 —
+ * 계약이 조용히 항진명제가 된다. 데모 로그(gitignore 생성물)는 재생성될 수 있으니 전제를 검사한다.
+ * 걸리면 스펙을 고칠 게 아니라, 반올림의 진짜 앵커인 `ScoreBar.test.ts`(2699 → 45')를 보라.
+ */
+const ROUNDING_IS_OBSERVABLE = Math.round(LAST_TICK / 60) !== Math.floor(LAST_TICK / 60);
 
 const HALF_REAL_MS = 420_000;
 const HALFTIME_MS = 180_000;
@@ -134,6 +143,10 @@ test.describe("#226 감독시간 헤더 — 확정 스코어·전반 종료 시�
     await expect(page.getByTestId("h1-score")).toHaveText(`${H1_HOME} : ${H1_AWAY}`);
     // b. 시계는 전반이 끝난 지점. 재생은 이 시점 앞쪽 어딘가에 있다.
     await expect(scorebar).toContainText(END_MINUTE);
+    expect(
+      ROUNDING_IS_OBSERVABLE,
+      `데모 로그 끝(${LAST_TICK}틱)이 분 경계에 떨어져 이 스펙이 반올림을 구분하지 못한다 — 위 주석 참조`,
+    ).toBe(true);
   });
 
   test("c. 전반을 처음으로 되감아도 헤더가 0 : 0 / 0' 로 무너지지 않는다", async ({ page }) => {
@@ -151,7 +164,7 @@ test.describe("#226 감독시간 헤더 — 확정 스코어·전반 종료 시�
     await expect(page.getByTestId("h1-score")).toHaveText(`${H1_HOME} : ${H1_AWAY}`);
     await expect(scorebar).toContainText(END_MINUTE);
     await expect(scorebar).not.toContainText("0 : 0");
-    await expect(scorebar.locator("text=/(^|\\s)0'/")).toHaveCount(0);
+    await expect(page.getByTestId("stage-clock")).not.toHaveText(PLAYHEAD_MINUTE);
   });
 
   test("d. FIRST_HALF 헤더는 여전히 재생 진행을 따라간다(라이브 무회귀)", async ({ page }) => {

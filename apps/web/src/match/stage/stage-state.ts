@@ -73,6 +73,20 @@ export function halfForState(state: string | undefined): 1 | 2 {
 }
 
 /**
+ * 이 하프 로그가 끝나는 절대 틱 (#226). 감독시간 헤더 시계가 여기에 고정된다.
+ *
+ * 값은 **로그에서 파생**한다 — 웹에 "45분"을 상수로 적으면 엔진 하프 길이가 바뀐 날 문구만 거짓말이
+ * 된다(리얼 하프는 0..2699 = 45', 데모 로그는 그 길이대로). 계약(shared `MatchLog`)은 `tick` 을
+ * 필수로 두지만 openapi 생성 타입은 느슨해서, 실제로 없으면 `undefined` 를 흘려보내지 않고 접는다.
+ */
+export function halfEndTickOf(log: unknown): number | null {
+  const snaps = (log as { tickSnapshots?: { tick?: unknown }[] } | null | undefined)?.tickSnapshots;
+  if (!Array.isArray(snaps) || snaps.length === 0) return null;
+  const last = snaps[snaps.length - 1];
+  return typeof last?.tick === "number" && Number.isFinite(last.tick) ? last.tick : null;
+}
+
+/**
  * 헤더 시계가 가리킬 틱 (#226). 감독시간에는 **하프가 끝난 지점**을 고정으로 가리킨다 —
  * 그 하프는 이미 끝났고(스코어도 확정), 그 밑에서 도는 재생은 자유 리뷰라 플레이헤드를 따라가면
  * 헤더가 "전반 결과"가 아니라 "지금 어디까지 다시 보는 중"을 말하게 된다. 되감거나 새로 들어와

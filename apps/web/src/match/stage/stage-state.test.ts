@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TOGGLES,
+  halfEndTickOf,
   halfForState,
   headerTick,
   isHalftimeState,
@@ -71,6 +72,19 @@ describe("감독시간 판정 / 헤더 시계 (#226)", () => {
     expect(headerTick("FIRST_HALF", 1200, 2699)).toBe(1200);
     expect(headerTick("SECOND_HALF", 3900, 5399)).toBe(3900);
     expect(headerTick("FINISHED", 5399, 5399)).toBe(5399);
+  });
+
+  it("하프 끝은 로그 마지막 스냅샷 틱에서 파생된다 — 웹에 45분 상수를 두지 않는다", () => {
+    // 리얼 전반: 엔진 totalTicks 5400 → half 2700 → 스냅샷 틱 0..2699.
+    expect(halfEndTickOf({ tickSnapshots: [{ tick: 0 }, { tick: 2699 }] })).toBe(2699);
+    // 후반 로그는 틱이 2700 부터 이어진다(인덱스 ≠ 틱).
+    expect(halfEndTickOf({ tickSnapshots: [{ tick: 2700 }, { tick: 5399 }] })).toBe(5399);
+  });
+
+  it("로그가 없거나 모양이 깨졌으면 하프 끝은 null(숫자를 지어내지 않는다)", () => {
+    for (const bad of [null, undefined, {}, { tickSnapshots: [] }, { tickSnapshots: [{}] }, { tickSnapshots: "x" }]) {
+      expect(halfEndTickOf(bad)).toBeNull();
+    }
   });
 
   it("하프 끝을 모르면(로그 미도착) 플레이헤드로 되돌아가지 않고 시계를 접는다", () => {

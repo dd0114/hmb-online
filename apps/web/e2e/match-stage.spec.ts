@@ -252,17 +252,22 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
     await page.screenshot({ path: `${CAP_DIR}phone-result.png` });
   });
 
-  test("하프타임 감독 패널은 상태 소유 — 자동 표시되고 3토글은 여전히 off", async ({ page }) => {
-    await openMatch(page, "H1_BREAK");
+  // 감독시간 상태명이 **둘**이라(현행 `HALFTIME` / 레거시 `H1_BREAK`) 두 이름 다 태운다.
+  // 이 파일이 `H1_BREAK` 하나로만 열려 있던 탓에 #226(감독시간 헤더가 재생 플레이헤드를 따라감)이
+  // 계약 밖에서 배포까지 갔다. 상태 소유 패널 규칙을 손대면 여기도 같이 본다.
+  for (const state of ["HALFTIME", "H1_BREAK"]) {
+    test(`하프타임 감독 패널은 상태 소유 — 자동 표시되고 3토글은 여전히 off (${state})`, async ({ page }) => {
+      await openMatch(page, state);
 
-    await expect(page.getByTestId("halftime-panel")).toBeVisible();
-    await expect(page.getByTestId("h1-score")).toBeVisible();
-    await expect(page.getByTestId("resume-button")).toBeVisible();
-    for (const key of ["stats", "log", "brief"] as const) {
-      expect(await pressed(page, key)).toBe("false");
-    }
-    await page.screenshot({ path: `${CAP_DIR}phone-halftime.png` });
-  });
+      await expect(page.getByTestId("halftime-panel")).toBeVisible();
+      await expect(page.getByTestId("h1-score")).toBeVisible();
+      await expect(page.getByTestId("resume-button")).toBeVisible();
+      for (const key of ["stats", "log", "brief"] as const) {
+        expect(await pressed(page, key)).toBe("false");
+      }
+      if (state === "H1_BREAK") await page.screenshot({ path: `${CAP_DIR}phone-halftime.png` });
+    });
+  }
 });
 
 test.describe("AC-W1-1 경기장면 고정 (데스크탑 1280×800)", () => {

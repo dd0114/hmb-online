@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useSubmitMatchPrompt, type MatchDetail } from "../../api/hooks";
 import { countdownLabel, halftimeLengthLabel } from "../live-clock";
 import { useCountdown } from "../useCountdown";
+import { isHalftimeState } from "./stage-state";
 import styles from "./panels.module.css";
 
 export interface SecondHalfBriefPanelProps {
@@ -10,9 +11,13 @@ export interface SecondHalfBriefPanelProps {
   clockOffsetMs?: number;
 }
 
-/** 후반 지시를 미리 넣어둘 수 있는 상태 — 서버 허용표 미러(FIRST_HALF 부터, 감독시간까지). */
+/**
+ * 후반 지시를 미리 넣어둘 수 있는 상태 — 서버 허용표 미러(FIRST_HALF 부터, 감독시간까지).
+ * 감독시간 판정은 `isHalftimeState` 한 곳에서만 한다(#226 — 상태명이 둘이라 인라인으로 다시 쓰면
+ * 한쪽이 빠진 채 조용히 굳는다).
+ */
 function canSubmitIn(state: string): boolean {
-  return state === "FIRST_HALF" || state === "HALFTIME" || state === "H1_BREAK";
+  return state === "FIRST_HALF" || isHalftimeState(state);
 }
 
 /**

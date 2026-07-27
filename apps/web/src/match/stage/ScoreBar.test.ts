@@ -41,7 +41,7 @@ describe("감독시간 헤더 (#226)", () => {
     renderBar(
       { ...base, state: "HALFTIME", scoreH1Home: 0, scoreH1Away: 4 },
       // 되감아 플레이헤드가 맨 앞이면 재생 스코어는 0:0 이다. 그걸 따라가면 안 된다.
-      { liveScore: { home: 0, away: 0 }, tick: H1_END_TICK, tickIsHalfEnd: true },
+      { liveScore: { home: 0, away: 0 }, tick: H1_END_TICK },
     );
     expect(screen.getByTestId("h1-score").textContent).toContain("0 : 4");
     expect(screen.getByTestId("match-state").textContent).toBe("감독시간");
@@ -50,7 +50,7 @@ describe("감독시간 헤더 (#226)", () => {
   it("HALFTIME 시계는 전반이 끝난 지점(45')에 고정된다", () => {
     renderBar(
       { ...base, state: "HALFTIME", scoreH1Home: 0, scoreH1Away: 4 },
-      { liveScore: { home: 0, away: 0 }, tick: H1_END_TICK, tickIsHalfEnd: true },
+      { liveScore: { home: 0, away: 0 }, tick: H1_END_TICK },
     );
     // 2699 를 내리면 44' 가 된다 — 하프 끝은 반올림 표기다.
     expect(screen.getByTestId("stage-clock").textContent).toBe("45'");
@@ -59,19 +59,19 @@ describe("감독시간 헤더 (#226)", () => {
   it("레거시 H1_BREAK 도 같은 규칙을 받는다", () => {
     renderBar(
       { ...base, state: "H1_BREAK", scoreH1Home: 2, scoreH1Away: 1 },
-      { liveScore: { home: 0, away: 0 }, tick: H1_END_TICK, tickIsHalfEnd: true },
+      { liveScore: { home: 0, away: 0 }, tick: H1_END_TICK },
     );
     expect(screen.getByTestId("h1-score").textContent).toContain("2 : 1");
     expect(screen.getByTestId("stage-clock").textContent).toBe("45'");
   });
 
   it("확정 스코어가 아직 없으면 0 으로 단정하지 않고 '-' 로 둔다", () => {
-    renderBar({ ...base, state: "HALFTIME" }, { liveScore: { home: 3, away: 3 }, tick: H1_END_TICK, tickIsHalfEnd: true });
+    renderBar({ ...base, state: "HALFTIME" }, { liveScore: { home: 3, away: 3 }, tick: H1_END_TICK });
     expect(screen.getByTestId("h1-score").textContent).toContain("- : -");
   });
 
   it("하프 끝을 모르면 시계를 아예 그리지 않는다(틀린 분을 쓰지 않는다)", () => {
-    renderBar({ ...base, state: "HALFTIME", scoreH1Home: 0, scoreH1Away: 4 }, { tick: null, tickIsHalfEnd: true });
+    renderBar({ ...base, state: "HALFTIME", scoreH1Home: 0, scoreH1Away: 4 }, { tick: null });
     expect(screen.queryByTestId("stage-clock")).toBeNull();
   });
 });

@@ -8,10 +8,14 @@ interface ScoreBarProps {
   awayName: string;
   /** 재생 진행에 맞춘 스코어(로그+플레이헤드 기준). 확정 스코어가 없는 상태에서만 쓴다. */
   liveScore: { home: number; away: number } | null;
-  /** 헤더 시계가 가리킬 틱(초 단위). 감독시간엔 하프 끝, 그 외엔 재생 플레이헤드 — `headerTick` 참조. */
+  /**
+   * 헤더 시계가 가리킬 틱(초 단위). 감독시간엔 하프 끝, 그 외엔 재생 플레이헤드 — `headerTick` 참조.
+   *
+   * 이 값이 "하프 끝"인지 "플레이헤드"인지는 **여기서 상태로 다시 판정**한다(props 로 안 받는다).
+   * 호출자가 같은 사실을 두 번 넘기면 둘이 어긋난 상태가 만들어질 수 있고, 그 어긋남은 상태만 보는
+   * 단위 테스트에 안 잡힌다(독립검증 minor-3 — 그 변이체가 실제로 단위테스트를 전부 통과했다).
+   */
   tick: number | null;
-  /** 이 시계가 재생 플레이헤드가 아니라 **끝난 하프의 종료 지점**인가(감독시간). 표기 반올림이 달라진다. */
-  tickIsHalfEnd?: boolean;
   /** 리그 매치일 때 라운드(navigation state 로만 오는 값). */
   leagueRound?: number | null;
   onBack: () => void;
@@ -60,7 +64,6 @@ export function ScoreBar({
   awayName,
   liveScore,
   tick,
-  tickIsHalfEnd = false,
   leagueRound = null,
   onBack,
 }: ScoreBarProps) {
@@ -102,7 +105,7 @@ export function ScoreBar({
         )}
         {tick != null && (
           <span className={styles.clock} data-testid="stage-clock">
-            {tickIsHalfEnd ? halfEndMinuteLabel(tick) : minuteLabel(tick)}
+            {isBreak ? halfEndMinuteLabel(tick) : minuteLabel(tick)}
           </span>
         )}
         <span

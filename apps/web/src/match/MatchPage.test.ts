@@ -128,8 +128,11 @@ describe("MatchPage state router", () => {
     expect(screen.getByTestId("genwait-note").textContent).toContain("하프타임");
   });
 
-  it("H1_BREAK → h1 score + half-1 viewer + HalftimePanel", () => {
-    renderWithState({ ...base, state: "H1_BREAK", scoreH1Home: 2, scoreH1Away: 1 });
+  // 감독시간 상태명은 **둘**이다 — 현행 `HALFTIME`(P4-E2 #170)과 레거시 `H1_BREAK`.
+  // 여기가 `H1_BREAK` 하나로만 열려 있어서 #226(감독시간 헤더가 재생을 따라감)이 배포까지 갔다.
+  // 새 감독시간 규칙을 넣을 때는 반드시 **두 이름 다** 태워라.
+  it.each(["HALFTIME", "H1_BREAK"] as const)("%s → h1 score + half-1 viewer + HalftimePanel", (state) => {
+    renderWithState({ ...base, state, scoreH1Home: 2, scoreH1Away: 1 });
     expect(screen.getByTestId("h1-score").textContent).toContain("2 : 1");
     expect(screen.getByTestId("halftime-panel")).toBeTruthy();
     expect(screen.getByTestId("resume-button")).toBeTruthy();
