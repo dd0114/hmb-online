@@ -548,6 +548,61 @@ class LeagueApiTest extends MatchTestBase {
     }
 
     /**
+     * #212 우승 젬은 <b>시즌 seed 파생 결정론</b>이어야 한다(§2-5 불변: {@code Math.random} 금지).
+     * 밴드 검사만으로는 난수원을 바꿔도 안 걸린다 — {@code rngFromSeed} 를 {@code ThreadLocalRandom}
+     * 으로 갈아끼워도 [500,3000] 은 그대로 통과하기 때문이다. 그래서 여기서는 <b>재현성</b>을 직접 건다:
+     * ① 같은 seed 를 몇 번 계산해도 같은 값 ② 서로 다른 시즌은 값이 갈린다(상수 반환 변이체 배제).
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void seasonGemRewardIsDerivedFromSeasonSeedNotAmbientRandomness() {
+        String token = setupUserWithDeck("lg_gem_det");
+        String uid = userIdOf("lg_gem_det");
+        authPost("/api/league/start", token, null, Map.class);
+        String seasonId = seasonId(uid);
+
+        // 전승 → 1위(젬 지급 대상).
+        for (Map<String, Object> f : userFixturesOrdered(seasonId)) {
+            boolean userHome = "USER".equals(f.get("home_team"));
+            leagueService.settleUserFixture((String) f.get("id"), userHome ? 3 : 0, userHome ? 0 : 3);
+        }
+        long first = gemLedgerDelta(uid, seasonId);
+        assertThat(first).isBetween(500L, 3000L);
+
+        // ① 재현성 — 같은 시즌 seed 로 지급을 5번 다시 계산해도 같은 값이 나온다.
+        //    (원장 행을 지워 멱등 백스톱을 걷어내고 **계산 자체**를 다시 태운다 — 그래야
+        //     "멱등이라 안 변한 것"이 아니라 "결정론이라 같은 것"임이 증명된다.)
+        for (int i = 0; i < 5; i++) {
+            deleteGemLedger(uid, seasonId);
+            invokeSeasonHook("awardSeasonRewards", seasonId);
+            assertThat(gemLedgerDelta(uid, seasonId))
+                    .as("같은 시즌 seed → 항상 같은 젬 지급액").isEqualTo(first);
+        }
+
+        // ② 시즌 seed 가 바뀌면 값도 갈린다 — 상수 반환 변이체를 배제한다.
+        //    (같은 값이 우연히 반복될 수 있으므로 여러 seed 를 훑어 "적어도 하나는 다르다"를 본다.)
+        Set<Long> seen = new HashSet<>();
+        for (int i = 0; i < 12; i++) {
+            setSeasonSeed(seasonId, "det-probe-seed-" + i);
+            deleteGemLedger(uid, seasonId);
+            invokeSeasonHook("awardSeasonRewards", seasonId);
+            long gems = gemLedgerDelta(uid, seasonId);
+            assertThat(gems).as("어떤 seed 라도 config 밴드 안").isBetween(500L, 3000L);
+            seen.add(gems);
+        }
+        assertThat(seen).as("seed 가 다르면 지급액도 갈린다(상수 아님)").hasSizeGreaterThan(1);
+    }
+
+    private void deleteGemLedger(String userId, String seasonId) {
+        jdbcClient.sql("DELETE FROM gem_ledger WHERE user_id=? AND reason='league_gem_reward' AND ref_id=?")
+                .params(userId, seasonId).update();
+    }
+
+    private void setSeasonSeed(String seasonId, String seed) {
+        jdbcClient.sql("UPDATE league_seasons SET seed=? WHERE id=?").params(seed, seasonId).update();
+    }
+
+    /**
      * AC-E1 순위별 분기: 유저 전패(홈=0:3 / 어웨이=3:0)로 완주 → 1위가 아닌 순위로 종료 →
      * 해당 순위 티어 보상이 지갑에 지급되고 seasonReward.points 가 그 티어와 일치.
      */

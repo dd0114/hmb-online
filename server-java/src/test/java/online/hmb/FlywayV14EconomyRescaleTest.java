@@ -64,6 +64,11 @@ class FlywayV14EconomyRescaleTest {
                     + "('U_GEMS','gemholder','2026-07-01T00:00:00Z')");
             st.executeUpdate("INSERT INTO wallets(user_id, points, gems) VALUES "
                     + "('U_RICH', 6600, 0), ('U_BROKE', 0, 0), ('U_GEMS', 1200, 330)");
+            // 실 배포에서는 잔액이 반드시 원장에서 왔다(WalletService 가 둘을 함께 쓴다).
+            // 그 불변식(원장 합 = 잔액)을 아래에서 검증하므로 픽스처도 같은 모양으로 만든다.
+            st.executeUpdate("INSERT INTO point_ledger(user_id, delta, reason, ref_id, created_at) VALUES "
+                    + "('U_RICH', 6600, 'starter', 'U_RICH', '2026-07-01T00:00:00Z'),"
+                    + "('U_GEMS', 1200, 'starter', 'U_GEMS', '2026-07-01T00:00:00Z')");
         }
 
         // 2) V14 적용.
@@ -86,8 +91,75 @@ class FlywayV14EconomyRescaleTest {
             assertThat(ledgerRows(c, "gem_ledger", "U_RICH", "initial_gems")).isEqualTo(1L);
         }
 
-        // 3) 재적용 백스톱: Flyway 를 우회해 SQL 을 그대로 다시 돌려도 이중 지급이 없어야 한다
-        //    (원장 유니크 + INSERT OR IGNORE). 수동 복구/재실행 시나리오 방어.
+        // 3) 재적용 백스톱: Flyway 를 우회해 SQL 을 그대로 다시 돌려도 **잔액이 안 움직여야** 한다.
+        //    ⚠️ 여기서 원장 행 수만 보면 안 된다 — 원장 가드(INSERT OR IGNORE)는 원장만 막고
+        //    UPDATE 는 그대로 다시 걸릴 수 있어서, 원장은 1행인데 잔액만 또 ×10 되는 상태를
+        //    통과시킨다(실제로 초판 SQL 이 그랬다). 그래서 **잔액을 1급 검증 대상으로** 둔다.
+        long pointsBefore;
+        long gemsBefore;
+        try (Connection c = DriverManager.getConnection(jdbcUrl(db))) {
+            pointsBefore = points(c, "U_RICH");
+            gemsBefore = gems(c, "U_RICH");
+        }
+
+        applyMigrationSqlDirectly(db);
+        applyMigrationSqlDirectly(db); // 두 번 더 — "우연히 한 번은 무해" 를 배제
+
+        try (Connection c = DriverManager.getConnection(jdbcUrl(db))) {
+            assertThat(points(c, "U_RICH")).as("재적용해도 P 잔액 불변").isEqualTo(pointsBefore);
+            assertThat(gems(c, "U_RICH")).as("재적용해도 젬 잔액 불변").isEqualTo(gemsBefore);
+            assertThat(points(c, "U_GEMS")).isEqualTo(12000L);
+            assertThat(gems(c, "U_GEMS")).isEqualTo(6330L);
+            assertThat(points(c, "U_BROKE")).isZero();
+            assertThat(gems(c, "U_BROKE")).isEqualTo(6000L);
+
+            // 원장도 1건 유지 — 잔액과 원장이 함께 정지해야 "무해"다.
+            assertThat(ledgerRows(c, "point_ledger", "U_RICH", "economy_rescale_v14")).isEqualTo(1L);
+            assertThat(ledgerRows(c, "gem_ledger", "U_RICH", "initial_gems")).isEqualTo(1L);
+
+            // 원장 합 = 잔액 (P). 원장이 SoT 인 설계라 이 등식이 깨지면 회계가 깨진 것이다.
+            assertThat(ledgerSum(c, "point_ledger", "U_RICH")).isEqualTo(points(c, "U_RICH"));
+            assertThat(ledgerSum(c, "point_ledger", "U_GEMS")).isEqualTo(points(c, "U_GEMS"));
+        }
+    }
+
+    /**
+     * 마이그레이션 이후에 가입한 유저(=이미 신 스케일 지갑)가 수동 재실행에 휩쓸리지 않아야 한다.
+     * 마커가 없으면 이런 유저의 3,000 P 가 30,000 P 로 부풀고 젬도 한 번 더 꽂힌다.
+     */
+    @Test
+    void reapplyDoesNotTouchUsersCreatedAfterTheMigration() throws Exception {
+        Path db = Files.createTempFile("hmb-v14-newuser-", ".db");
+        Files.deleteIfExists(db);
+        flyway(db, BEFORE_V14).migrate();
+        try (Connection c = DriverManager.getConnection(jdbcUrl(db)); Statement st = c.createStatement()) {
+            st.executeUpdate("INSERT INTO users(id, nickname, created_at) VALUES "
+                    + "('U_OLD','old','2026-07-01T00:00:00Z')");
+            st.executeUpdate("INSERT INTO wallets(user_id, points, gems) VALUES ('U_OLD', 100, 0)");
+        }
+        flyway(db, null).migrate();
+
+        // 마이그레이션 이후 신규 가입(서버가 신 스케일로 지급 — 3,000 P + 6,000 젬).
+        try (Connection c = DriverManager.getConnection(jdbcUrl(db)); Statement st = c.createStatement()) {
+            st.executeUpdate("INSERT INTO users(id, nickname, created_at) VALUES "
+                    + "('U_NEW','newbie','2026-07-28T00:00:00Z')");
+            st.executeUpdate("INSERT INTO wallets(user_id, points, gems) VALUES ('U_NEW', 3000, 6000)");
+            st.executeUpdate("INSERT INTO gem_ledger(user_id, delta, reason, ref_id, created_at) "
+                    + "VALUES ('U_NEW', 6000, 'initial_gems', 'U_NEW', '2026-07-28T00:00:00Z')");
+        }
+
+        applyMigrationSqlDirectly(db);
+
+        try (Connection c = DriverManager.getConnection(jdbcUrl(db))) {
+            assertThat(points(c, "U_NEW")).as("신규 가입자 P 불변").isEqualTo(3000L);
+            assertThat(gems(c, "U_NEW")).as("신규 가입자 젬 불변").isEqualTo(6000L);
+            assertThat(ledgerRows(c, "gem_ledger", "U_NEW", "initial_gems")).isEqualTo(1L);
+            assertThat(points(c, "U_OLD")).as("기존 유저도 재적용 무영향").isEqualTo(1000L);
+        }
+    }
+
+    /** Flyway 를 우회해 마이그레이션 SQL 을 그대로 실행 — 수동 복구/재실행 시나리오 재현. */
+    private static void applyMigrationSqlDirectly(Path db) throws Exception {
         String sql = Files.readString(Path.of("src/main/resources/db/migration")
                 .resolve(migrationFileName()));
         try (Connection c = DriverManager.getConnection(jdbcUrl(db)); Statement st = c.createStatement()) {
@@ -96,11 +168,6 @@ class FlywayV14EconomyRescaleTest {
                     st.executeUpdate(stmt);
                 }
             }
-        }
-        try (Connection c = DriverManager.getConnection(jdbcUrl(db))) {
-            // 원장 행은 여전히 1건 — 즉 재실행분은 IGNORE 됐다.
-            assertThat(ledgerRows(c, "point_ledger", "U_RICH", "economy_rescale_v14")).isEqualTo(1L);
-            assertThat(ledgerRows(c, "gem_ledger", "U_RICH", "initial_gems")).isEqualTo(1L);
         }
     }
 
@@ -132,6 +199,12 @@ class FlywayV14EconomyRescaleTest {
             throws Exception {
         return scalar(c, "SELECT COUNT(*) FROM " + table
                 + " WHERE user_id = '" + userId + "' AND reason = '" + reason + "'");
+    }
+
+    /** 유저의 원장 전체 합 — 잔액과 일치해야 한다(원장 = SoT). */
+    private static long ledgerSum(Connection c, String table, String userId) throws Exception {
+        return scalar(c, "SELECT COALESCE(SUM(delta),0) FROM " + table
+                + " WHERE user_id = '" + userId + "'");
     }
 
     private static long scalar(Connection c, String sql) throws Exception {

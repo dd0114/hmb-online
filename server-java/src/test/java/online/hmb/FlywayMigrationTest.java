@@ -38,7 +38,9 @@ class FlywayMigrationTest {
             // V9 메이플 피벗(3) — #179 V2: 잠재능력·다이스 인벤·다이스 롤 감사로그
             "card_potentials", "user_dice", "dice_rolls",
             // V10 재화 이원화(1) — V2.2: 젬 원장(point_ledger 동형). wallets.gems 는 컬럼 추가라 목록 불변
-            "gem_ledger"
+            "gem_ledger",
+            // V14 경제 정돈(1) — #212: 지갑 리스케일/젬 백필을 1회로 가두는 마커(데이터 테이블 아님)
+            "economy_rescale_v14"
     );
 
     @Test

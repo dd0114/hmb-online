@@ -718,14 +718,20 @@ public class LeagueService {
         }
         // 종료: 지급 진실은 원장(reason='league_reward', ref=seasonId)이다. 원장이 SoT.
         // 젬도 동형(gem_ledger, reason='league_gem_reward') — 비대상이면 행이 없어 0.
-        int gems = leagueGemLedger(season.userId(), season.id()).map(r -> (int) r.delta()).orElse(0);
+        Optional<RewardLedgerRow> gemLedger = leagueGemLedger(season.userId(), season.id());
+        int gems = gemLedger.map(r -> (int) r.delta()).orElse(0);
         Optional<RewardLedgerRow> ledger = leagueRewardLedger(season.userId(), season.id());
         if (ledger.isPresent()) {
             return new SeasonReward(userRank, (int) ledger.get().delta(), gems, "GRANTED",
                     ledger.get().createdAt());
         }
+        // P 없이 젬만 지급된 경우도 GRANTED 다 — 이때 awardedAt 은 **젬 원장** 시각을 쓴다.
+        // (예전엔 null 을 내보내 "GRANTED 인데 지급시각 없음"이라는 모순 상태가 나갔다.)
+        if (gemLedger.isPresent()) {
+            return new SeasonReward(userRank, 0, gems, "GRANTED", gemLedger.get().createdAt());
+        }
         // 종료인데 원장 없음 = 방어 케이스(userRank 미확인 또는 보상액 0).
-        return new SeasonReward(userRank, 0, gems, gems > 0 ? "GRANTED" : "NONE", null);
+        return new SeasonReward(userRank, 0, 0, "NONE", null);
     }
 
     private record RewardLedgerRow(long delta, String createdAt) {

@@ -277,7 +277,9 @@ public class EconomyService {
         if (d == null || d.isMissingNode() || !d.isObject()) {
             return null;
         }
-        return new Dice(d.path("normalCost").asInt(500), d.path("cashGemCost").asInt(10));
+        // #212: normalCost 기본값을 500 → 5000 으로 맞춘다. 구값이 남아 있으면 `dice` 블록은 있는데
+        // `normalCost` 만 빠진 파일에서 **10배 싼 다이스가 조용히 팔린다**(경제 구멍).
+        return new Dice(d.path("normalCost").asInt(5000), d.path("cashGemCost").asInt(10));
     }
 
     /** `gems` 노드 파싱(V2.2 재화 이원화 GM8s) — 없으면 null(충전 목업 비활성). */

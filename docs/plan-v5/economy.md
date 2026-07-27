@@ -67,7 +67,10 @@
 
 - **1위 = 2위의 1.98배** (우승 클리프), 1위/10위 **5.25배**
 - **연습 18판 전승 = 9,000 P** = 리그 5위 완주의 14.5%
-- 실측(stub 시뮬, `SeasonIncomeProbeTest`): 9승9패·6위 → 매판 54,000 + 시즌 3,000 = **57,000 P**, 젬 0
+- 실측(stub 시뮬, `SeasonIncomeProbeTest`): 9승 9패 → **매판 54,000 P 고정**(9×5,000 + 9×1,000),
+  연습 3판 전승 1,500 P. 시즌보상은 최종순위에 따라 위 표대로 더해진다.
+  ⚠️ **최종순위는 실행마다 달라진다** — 시즌 seed 가 매 시즌 신규 ULID(`LeagueService.startSeason`)라
+  봇전 결과가 고정되지 않는다. 특정 순위를 "실측값"으로 인용하지 말 것(재현 실패).
 
 **연습을 깎아도 육성은 안 깎인다** — 경기 성장 XP(`match_xp`)는 보상 원장과 완전히 분리된 경로
 (`MatchOrchestrator.settleGrowth` → `GrowthService`)다. 연습 = 육성장, 리그 = 수입원으로 역할이 갈린다.
@@ -85,8 +88,13 @@
 | `initialGems == gacha.tenCost × 2` · `gacha.currency=GEM` | `data/players/data.test.ts` |
 | 시즌 완주 실측(매판=리그 티어, 연습 최대 < 리그 최소, 순위별 보상 일치) | `SeasonIncomeProbeTest` |
 | 우승 젬 밴드·1위 외 0·재지급 멱등 | `LeagueApiTest` |
+| **우승 젬이 시즌 seed 결정론**(같은 seed → 같은 값 / seed 다르면 갈림) | `LeagueApiTest` |
 | 충전 수도꼭지가 잠겨 있다 | `GrowthApiTest` |
-| 기존 지갑 마이그레이션(×10 + 젬 백필, 재적용 무해) | `FlywayV14EconomyRescaleTest` |
+| 기존 지갑 마이그레이션(×10 + 젬 백필, **재적용 시 잔액 불변 + 원장 합 = 잔액**) | `FlywayV14EconomyRescaleTest` |
+| 구 economy 파일 폴백(뽑기 POINT·byMode 없음·젬 0·gemReward 비활성) | `EconomyLegacyFallbackTest` |
+
+계약은 **변이체 킬로 검증했다** — 마커 가드를 빼면 마이그레이션 테스트 2건이, `rngFromSeed` 를
+`ThreadLocalRandom` 으로 바꾸면 결정론 테스트가 실제로 실패한다(통과만 하는 장식이 아니다).
 
 ---
 
@@ -98,7 +106,11 @@
    기존 테스터가 신 가격표(다이스 5,000)에서 아무것도 못 산다.
 2. **젬 6,000 백필** — 가입 지급 시점을 지나친 유저에게 `initial_gems` 로 1회.
 
-둘 다 `INSERT OR IGNORE` + 원장 유니크라 **재적용해도 이중 지급이 없다**(수동 복구 대비).
+**재적용 무해**는 **마커 테이블 `economy_rescale_v14`** 가 보장한다 — 네 문장 전부
+"마커가 없을 때만" 으로 가둬져 있다. 원장의 `INSERT OR IGNORE` 만으로는 **부족했다**: 그건 원장 행만
+막고 `UPDATE wallets` 는 매번 다시 걸려서, 수동 재실행 시 잔액이 또 ×10 되고 **지갑과 원장이 영구히
+어긋난다**(원장이 SoT 인 설계에서 최악). 계약은 원장 행 수가 아니라 **잔액 불변 + 원장 합 = 잔액**
+으로 걸려 있다(`FlywayV14EconomyRescaleTest` — 가드를 빼면 실패하는 것으로 확인).
 
 ⚠️ **진행 중(ACTIVE) 시즌**은 정산 시점의 config 를 읽으므로 새 순위 곡선으로 지급된다. 테스터 규모라
 수용하기로 했다 — 차단하려면 시즌 시작 시 곡선을 `league_seasons` 에 스냅샷해야 한다(추가 마이그레이션).
