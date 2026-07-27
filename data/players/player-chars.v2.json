@@ -1,0 +1,1790 @@
+{
+  "version": "v2",
+  "rule": "#207 U-D5/U-D8/U-D9: 활성 LEGEND 5 = units 1:1 실아트 · 비활성 LEGEND = 현행 유지(구 14 characters 1:1, 미입고 3 미매핑) · DIA = characters 포지션 풀 · GOLD/SILVER/BRONZE = units default-unit 공용",
+  "note": "매핑값은 **축 태그가 붙은 객체**다({axis,id}). v1(문자열)을 읽던 소비자는 타입 가드에서 null 로 떨어져 폴백한다 — 틀린 그림을 그리지 않는 fail-safe 형상. 소비자는 playerId 로 조인한다.",
+  "charsSource": "ref-pixel-fantasy-football",
+  "unitsSource": "hero-imageRef-2026-07-27-rev2",
+  "playersSource": "players.v2.3.json",
+  "catalogCount": 180,
+  "playerCount": 177,
+  "unmapped": [
+    "P174",
+    "P178",
+    "P180"
+  ],
+  "players": {
+    "P001": {
+      "axis": "characters",
+      "id": "aura"
+    },
+    "P002": {
+      "axis": "characters",
+      "id": "lupus"
+    },
+    "P003": {
+      "axis": "characters",
+      "id": "leo"
+    },
+    "P004": {
+      "axis": "characters",
+      "id": "bark"
+    },
+    "P005": {
+      "axis": "characters",
+      "id": "sail"
+    },
+    "P006": {
+      "axis": "characters",
+      "id": "mio"
+    },
+    "P007": {
+      "axis": "characters",
+      "id": "riya"
+    },
+    "P008": {
+      "axis": "characters",
+      "id": "bella"
+    },
+    "P009": {
+      "axis": "characters",
+      "id": "ragna"
+    },
+    "P010": {
+      "axis": "characters",
+      "id": "natzt"
+    },
+    "P011": {
+      "axis": "characters",
+      "id": "anubis"
+    },
+    "P012": {
+      "axis": "characters",
+      "id": "penguin-king"
+    },
+    "P013": {
+      "axis": "characters",
+      "id": "aura"
+    },
+    "P014": {
+      "axis": "characters",
+      "id": "penguin-king"
+    },
+    "P015": {
+      "axis": "characters",
+      "id": "lupus"
+    },
+    "P016": {
+      "axis": "characters",
+      "id": "bark"
+    },
+    "P017": {
+      "axis": "characters",
+      "id": "leo"
+    },
+    "P018": {
+      "axis": "characters",
+      "id": "lupus"
+    },
+    "P019": {
+      "axis": "characters",
+      "id": "bark"
+    },
+    "P020": {
+      "axis": "characters",
+      "id": "leo"
+    },
+    "P021": {
+      "axis": "characters",
+      "id": "lupus"
+    },
+    "P022": {
+      "axis": "characters",
+      "id": "bark"
+    },
+    "P023": {
+      "axis": "characters",
+      "id": "mio"
+    },
+    "P024": {
+      "axis": "characters",
+      "id": "riya"
+    },
+    "P025": {
+      "axis": "characters",
+      "id": "sail"
+    },
+    "P026": {
+      "axis": "characters",
+      "id": "bella"
+    },
+    "P027": {
+      "axis": "characters",
+      "id": "mio"
+    },
+    "P028": {
+      "axis": "characters",
+      "id": "riya"
+    },
+    "P029": {
+      "axis": "characters",
+      "id": "sail"
+    },
+    "P030": {
+      "axis": "characters",
+      "id": "bella"
+    },
+    "P031": {
+      "axis": "characters",
+      "id": "anubis"
+    },
+    "P032": {
+      "axis": "characters",
+      "id": "natzt"
+    },
+    "P033": {
+      "axis": "characters",
+      "id": "ragna"
+    },
+    "P034": {
+      "axis": "characters",
+      "id": "anubis"
+    },
+    "P035": {
+      "axis": "characters",
+      "id": "natzt"
+    },
+    "P036": {
+      "axis": "characters",
+      "id": "ragna"
+    },
+    "P037": {
+      "axis": "characters",
+      "id": "anubis"
+    },
+    "P038": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P039": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P040": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P041": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P042": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P043": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P044": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P045": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P046": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P047": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P048": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P049": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P050": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P051": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P052": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P053": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P054": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P055": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P056": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P057": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P058": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P059": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P060": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P061": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P062": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P063": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P064": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P065": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P066": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P067": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P068": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P069": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P070": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P071": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P072": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P073": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P074": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P075": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P076": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P077": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P078": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P079": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P080": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P081": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P082": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P083": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P084": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P085": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P086": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P087": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P088": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P089": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P090": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P091": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P092": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P093": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P094": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P095": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P096": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P097": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P098": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P099": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P100": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P101": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P102": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P103": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P104": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P105": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P106": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P107": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P108": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P109": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P110": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P111": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P112": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P113": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P114": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P115": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P116": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P117": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P118": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P119": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P120": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P121": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P122": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P123": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P124": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P125": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P126": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P127": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P128": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P129": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P130": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P131": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P132": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P133": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P134": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P135": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P136": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P137": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P138": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P139": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P140": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P141": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P142": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P143": {
+      "axis": "characters",
+      "id": "sail-h150"
+    },
+    "P144": {
+      "axis": "characters",
+      "id": "ragna-h210"
+    },
+    "P145": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P146": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P147": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P148": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P149": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P150": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P151": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P152": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P153": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P154": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P155": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P156": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P157": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P158": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P159": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P160": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P161": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P162": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P163": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P164": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P165": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P166": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P167": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P168": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P169": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P170": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P171": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P172": {
+      "axis": "units",
+      "id": "default-unit"
+    },
+    "P173": {
+      "axis": "units",
+      "id": "bonaldo"
+    },
+    "P175": {
+      "axis": "units",
+      "id": "yeoldona"
+    },
+    "P176": {
+      "axis": "units",
+      "id": "chunbappe"
+    },
+    "P177": {
+      "axis": "units",
+      "id": "dukbrayner"
+    },
+    "P179": {
+      "axis": "units",
+      "id": "wookringham"
+    }
+  },
+  "detail": [
+    {
+      "playerId": "P001",
+      "axis": "characters",
+      "id": "aura",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P002",
+      "axis": "characters",
+      "id": "lupus",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P003",
+      "axis": "characters",
+      "id": "leo",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P004",
+      "axis": "characters",
+      "id": "bark",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P005",
+      "axis": "characters",
+      "id": "sail",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P006",
+      "axis": "characters",
+      "id": "mio",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P007",
+      "axis": "characters",
+      "id": "riya",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P008",
+      "axis": "characters",
+      "id": "bella",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P009",
+      "axis": "characters",
+      "id": "ragna",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P010",
+      "axis": "characters",
+      "id": "natzt",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P011",
+      "axis": "characters",
+      "id": "anubis",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P012",
+      "axis": "characters",
+      "id": "penguin-king",
+      "rule": "legend-exclusive",
+      "crossPosition": true
+    },
+    {
+      "playerId": "P013",
+      "axis": "characters",
+      "id": "aura",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P014",
+      "axis": "characters",
+      "id": "penguin-king",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P015",
+      "axis": "characters",
+      "id": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P016",
+      "axis": "characters",
+      "id": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P017",
+      "axis": "characters",
+      "id": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P018",
+      "axis": "characters",
+      "id": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P019",
+      "axis": "characters",
+      "id": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P020",
+      "axis": "characters",
+      "id": "leo",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P021",
+      "axis": "characters",
+      "id": "lupus",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P022",
+      "axis": "characters",
+      "id": "bark",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P023",
+      "axis": "characters",
+      "id": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P024",
+      "axis": "characters",
+      "id": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P025",
+      "axis": "characters",
+      "id": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P026",
+      "axis": "characters",
+      "id": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P027",
+      "axis": "characters",
+      "id": "mio",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P028",
+      "axis": "characters",
+      "id": "riya",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P029",
+      "axis": "characters",
+      "id": "sail",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P030",
+      "axis": "characters",
+      "id": "bella",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P031",
+      "axis": "characters",
+      "id": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P032",
+      "axis": "characters",
+      "id": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P033",
+      "axis": "characters",
+      "id": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P034",
+      "axis": "characters",
+      "id": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P035",
+      "axis": "characters",
+      "id": "natzt",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P036",
+      "axis": "characters",
+      "id": "ragna",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P037",
+      "axis": "characters",
+      "id": "anubis",
+      "rule": "position-pool"
+    },
+    {
+      "playerId": "P038",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P039",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P040",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P041",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P042",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P043",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P044",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P045",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P046",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P047",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P048",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P049",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P050",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P051",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P052",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P053",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P054",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P055",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P056",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P057",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P058",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P059",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P060",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P061",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P062",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P063",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P064",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P065",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P066",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P067",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P068",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P069",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P070",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P071",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P072",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P073",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P074",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P075",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P076",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P077",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P078",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P079",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P080",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P081",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P082",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P083",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P084",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P085",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P086",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P087",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P088",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P089",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P090",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P091",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P092",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P093",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P094",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P095",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P096",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P097",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P098",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P099",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P100",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P101",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P102",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P103",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P104",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P105",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P106",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P107",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P108",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P109",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P110",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P111",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P112",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P113",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P114",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P115",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P116",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P117",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P118",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P119",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P120",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P121",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P122",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P123",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P124",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P125",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P126",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P127",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P128",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P129",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P130",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P131",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P132",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P133",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P134",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P135",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P136",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P137",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P138",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P139",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P140",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P141",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P142",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P143",
+      "axis": "characters",
+      "id": "sail-h150",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P144",
+      "axis": "characters",
+      "id": "ragna-h210",
+      "rule": "legend-exclusive"
+    },
+    {
+      "playerId": "P145",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P146",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P147",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P148",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P149",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P150",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P151",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P152",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P153",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P154",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P155",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P156",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P157",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P158",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P159",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P160",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P161",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P162",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P163",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P164",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P165",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P166",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P167",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P168",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P169",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P170",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P171",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P172",
+      "axis": "units",
+      "id": "default-unit",
+      "rule": "grade-default-unit"
+    },
+    {
+      "playerId": "P173",
+      "axis": "units",
+      "id": "bonaldo",
+      "rule": "unit-exclusive"
+    },
+    {
+      "playerId": "P175",
+      "axis": "units",
+      "id": "yeoldona",
+      "rule": "unit-exclusive"
+    },
+    {
+      "playerId": "P176",
+      "axis": "units",
+      "id": "chunbappe",
+      "rule": "unit-exclusive"
+    },
+    {
+      "playerId": "P177",
+      "axis": "units",
+      "id": "dukbrayner",
+      "rule": "unit-exclusive"
+    },
+    {
+      "playerId": "P179",
+      "axis": "units",
+      "id": "wookringham",
+      "rule": "unit-exclusive"
+    }
+  ]
+}

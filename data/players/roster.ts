@@ -31,11 +31,14 @@ export interface RosterEntry {
 }
 
 /**
- * 실선수 172명(인터내셔널 142 + 한국 30, hero 요청 #84). 등급 분포:
- *   LEGEND 14 / DIA 25 / GOLD 46 / SILVER 52 / BRONZE 35.
- * 포지션 분포: GK 13 / DF 53 / MF 59 / FW 47. (문서화된 총원 — data.test.ts 가 리터럴로 검증)
- * GK 는 컬렉션 비중을 낮춤(팀당 선발 1명) — hero 지적 반영해 19→13.
+ * 실선수 172명(인터내셔널 142 + 한국 30, hero 요청 #84) + **신규 LEGEND 패러디 유닛 8종**(#207 U-D4).
+ * 총 180명. 등급 분포: LEGEND 22 / DIA 25 / GOLD 46 / SILVER 52 / BRONZE 35.
+ * 포지션 분포: GK 14 / DF 53 / MF 62 / FW 51. (문서화된 총원 — data.test.ts 가 리터럴로 검증)
+ * GK 는 컬렉션 비중을 낮춤(팀당 선발 1명) — hero 지적 반영해 19→13(+석신 1 = 14).
  * 아래 섹션 헤더의 (n) 은 그 블록 인원(인터내셔널 블록은 국제 선수 기준, 한국 블록은 별도 30).
+ *
+ * ⚠️ **추가는 반드시 배열 맨 끝(append)** — 중간 삽입은 시드 RNG 스트림을 밀어 기존 전원의
+ * 능력치를 바꾼다(파일 맨 아래 #207 블록 주석 참조).
  */
 export const ROSTER: readonly RosterEntry[] = [
   // ── LEGEND (12) — 역대 레전드 전성기 ─────────────────────────────
@@ -226,4 +229,37 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "Yang Min-hyuk", position: "FW", grade: "BRONZE", traits: ["pace", "technical"] },
   { name: "Oh Hyeon-gyu", position: "FW", grade: "BRONZE", traits: ["physical", "pace"] },
   { name: "Yang Hyun-jun", position: "FW", grade: "BRONZE", traits: ["pace", "technical"] },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 신규 LEGEND 8종 (P173~P180) — 에픽 #207 웨이브2-B, hero 확정 U-D4
+  //
+  // ⚠️ **왜 LEGEND 블록(맨 위)이 아니라 파일 맨 끝인가 = RNG 스트림 보존**
+  //   generateAll() 은 `createRng(SEED)` 하나를 ROSTER.forEach 로 순차 소비한다. 배열 중간에
+  //   삽입하면 그 뒤 전원의 롤이 한 칸씩 밀려 **기존 172명 능력치가 통째로 바뀐다**
+  //   (= 이미 발행된 players.v2/v2.1 과 불일치 + 기보유 유저 카드 전부 변경). 맨 끝 append 여야만
+  //   앞 172명이 바이트 동일하게 보존되고 신규분만 P173~P180 을 받는다.
+  //   → 등급 정렬(LEGEND 를 앞에)보다 **결정론이 우선**이라 블록이 앞뒤로 나뉘는 것을 감수한다.
+  //   data.test.ts "동결 발행물 불변" 계약이 이 성질을 디스크 파일과 직접 대조해 가드한다.
+  //
+  // 구 LEGEND 14종(P001~P012 + P143 + P144)은 **강등하지 않는다**(U-D1 조합안) — 등급 LEGEND 를
+  // 그대로 두고 players.v2.2 의 `active:false` 로 신규 획득 경로(가챠/트레이드)에서만 제외한다.
+  // 이름 = hero 가 확정한 **한글 패러디명**(로마자화하면 말장난이 죽는다). 실명이 아니라는 점은
+  // data.test.ts 의 denylist 계약이 가드한다.
+  // 이미지: 매핑 추가 없음(U-D3) → web CharAvatar 의 이니셜 폴백. 사진 입고 시 후속 발행.
+  //
+  // ⚠️ **아래 두 이름은 v2.3 에서 정정됐지만 여기서는 고치지 마라**(#207 U-D6):
+  //     유라도나 → 열라도나 (P175) · 욱리엄 → 욱링엄 (P179)
+  //   ROSTER 를 고치면 `buildPlayersV22` 결과가 이미 발행된 players.v2.2.json 과 어긋난다
+  //   (발행 후 수정 금지 — "발행 파일 동기화" 계약이 즉시 FAIL). 정정은 generate.ts 의
+  //   `V23_NAME_CORRECTIONS` 에서만 하고, v2.3 이후 발행물이 정정된 이름을 갖는다.
+  //   (이름은 rollAttributes 의 입력이 아니라 스탯·RNG 에는 영향이 없다 — data.test.ts 가 증명.)
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "보날두", position: "FW", grade: "LEGEND", traits: ["shooting", "physical"] }, // ← 크리스티아누 호날두(U-D2)
+  { name: "권씨", position: "FW", grade: "LEGEND", traits: ["technical", "shooting"] }, // ← 메시
+  { name: "유라도나", position: "MF", grade: "LEGEND", traits: ["technical", "shooting"] }, // ← 마라도나(P005 복제)
+  { name: "춘바페", position: "FW", grade: "LEGEND", traits: ["pace", "shooting"] }, // ← 음바페 복제
+  { name: "덕브라이너", position: "MF", grade: "LEGEND", traits: ["passing", "shooting"] }, // ← 데브라위너 복제
+  { name: "석신", position: "GK", grade: "LEGEND", traits: ["positioning", "mental"] }, // ← 야신(P001 복제)
+  { name: "욱리엄", position: "MF", grade: "LEGEND", traits: ["physical", "shooting"] }, // ← 벨링엄 복제
+  { name: "경니시우스", position: "FW", grade: "LEGEND", traits: ["pace", "technical"] }, // ← 비니시우스 복제
 ];

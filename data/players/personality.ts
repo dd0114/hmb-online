@@ -22,6 +22,7 @@
  *
  * 목표 분포(PRD-v3 P2-D7 / LLD-p2-data §1): 대략 FIERY 25% / CALM 40% / GLASS 15% / AMBITIOUS 20%.
  *   실제(172명): FIERY 41(23.8%) / CALM 69(40.1%) / GLASS 25(14.5%) / AMBITIOUS 37(21.5%).
+ *   #207 신규 8종 포함(180명): FIERY 45(25.0%) / CALM 71(39.4%) / GLASS 25(13.9%) / AMBITIOUS 39(21.7%).
  *   (data.test.ts 가 밴드로 검증 — enum·분포·전원 매핑·CALM 최다.)
  */
 import type { Personality } from "./generate";
@@ -211,4 +212,17 @@ export const PERSONALITY: Record<string, Personality> = {
   "Yang Min-hyuk": "AMBITIOUS",
   "Oh Hyeon-gyu": "GLASS",
   "Yang Hyun-jun": "GLASS",
+
+  // ── 신규 LEGEND 8종 (#207 U-D4, P173~P180) ───────────────────────
+  // U-D4 표는 traits 까지만 확정했다. personality 파생 규칙 = **소스 실선수의 성격을 그대로
+  // 복제**(위 매핑에서 조회), 로스터에 소스가 없는 2종(보날두=CR7 / 권씨=메시)만 §8.1 기준으로
+  // 신규 배정한다 — U-D2 가 traits 를 벤치마크로 신규 작성한 것과 같은 방식.
+  "보날두": "AMBITIOUS", // CR7 — 기록·자기증명 지향(§8.1 야심가). 소스가 로스터에 없어 신규 배정.
+  "권씨": "CALM", // 메시 — 압박에도 흔들리지 않는 안정형(§8.1 침착). 신규 배정.
+  "유라도나": "FIERY", // ← Diego Maradona(P005) 복제
+  "춘바페": "AMBITIOUS", // ← Kylian Mbappé 복제
+  "덕브라이너": "FIERY", // ← Kevin De Bruyne 복제
+  "석신": "CALM", // ← Lev Yashin(P001) 복제
+  "욱리엄": "FIERY", // ← Jude Bellingham 복제
+  "경니시우스": "FIERY", // ← Vinícius Júnior 복제
 };

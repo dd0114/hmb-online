@@ -8,6 +8,14 @@
  * 능력치 9종만 시드 RNG로 등급 밴드 내에서 결정론 파생한다(포지션 주스탯 +5, trait +6, 밴드 클램프).
  * ⚠️ 실명 사용 — 상용화 전 라이선스 해결 필수(백로그, data/CLAUDE.md·PRD-v2 D4 참조).
  *
+ * 발행 축이 넷이다(발행 후 수정 금지 규칙 때문에 **덮어쓰지 않고 새 버전으로 쌓는다**):
+ *   players.v2.json   = 172명 동결(원본)
+ *   players.v2.1.json = 172명 동결 + personality
+ *   players.v2.2.json = 전체 카탈로그(180) + personality + active (#207 U-D1/U-D4) — 동결
+ *   players.v2.3.json = **v2.2 + 유닛명 정정 2건 + 신규 비활성 3건**(#207 U-D5/U-D6) — 현행 소비본
+ * ROSTER 는 하나이고 v2/v2.1 은 FROZEN_ROSTER_COUNT 로 잘라 낸 앞부분이다 — 신규 유닛이 배열
+ * 맨 끝에 append 되므로 그 슬라이스는 발행 당시와 바이트 동일하다(data.test.ts 가 디스크와 대조).
+ *
  * 순서: 이 파일을 import 만 해도(부수효과 없음) `generateAll()`을 호출해 세 산출물을 순수 계산할
  * 수 있다. 파일 쓰기는 CLI로 직접 실행했을 때만 일어난다(맨 아래 entrypoint 가드).
  */
@@ -26,6 +34,88 @@ export const DATA_VERSION = "v2";
 
 /** players 성격 부여 버전(additive, PRD-v3 P2-D7). players.v2 위에 personality 만 추가. */
 export const PLAYERS_V21_VERSION = "v2.1";
+
+/**
+ * players 카탈로그 개편 버전(#207 웨이브2-B). v2.1 위에 **additive**:
+ *   ① 신규 LEGEND 8종(P173~P180, hero 확정 U-D4) ② `active` 축(U-D1 조합안).
+ * v2/v2.1 은 **동결**(발행 후 수정 금지, data/CLAUDE.md) — 아래 FROZEN_ROSTER_COUNT 로 잘라 낸다.
+ */
+export const PLAYERS_V22_VERSION = "v2.2";
+
+/**
+ * players.v2 / players.v2.1 이 발행된 시점의 로스터 크기.
+ * 신규 유닛은 ROSTER 맨 끝에 append 되므로 앞 172명은 RNG 스트림·결과가 바이트 동일하게 유지된다
+ * (roster.ts 하단 #207 블록 주석 참조). 이 상수는 "동결 발행물의 경계"를 코드에 못 박는 것이다.
+ */
+export const FROZEN_ROSTER_COUNT = 172;
+
+/**
+ * #207 U-D1(조합안): 구 LEGEND 14종 = **등급 LEGEND 유지 + 신규 획득 경로에서만 제외**.
+ * 강등이 아니라 `active:false` 플래그다 — 밴드·스탯·traits·XP 배수 전부 무변경이라 기보유 유저
+ * 손실 0(성★·잠재·stat_levels 그대로). 소비자(server-java)는 가챠 풀 / 트레이드 타깃 / 도감
+ * 신규 노출 SELECT 에서만 이 축을 필터한다. 보유분·덱 편성은 계속 허용.
+ */
+export const INACTIVE_PLAYER_IDS: readonly string[] = [
+  "P001", // Lev Yashin
+  "P002", // Franz Beckenbauer
+  "P003", // Paolo Maldini
+  "P004", // Franco Baresi
+  "P005", // Diego Maradona
+  "P006", // Zinedine Zidane
+  "P007", // Michel Platini
+  "P008", // Lothar Matthäus
+  "P009", // Pelé
+  "P010", // Ronaldo Nazário
+  "P011", // Johan Cruyff
+  "P012", // Marco van Basten
+  "P143", // Park Ji-sung
+  "P144", // Cha Bum-kun
+];
+
+/**
+ * players 카탈로그 v2.3 (#207 웨이브3-A, hero 확정 U-D5/U-D6). v2.2 위에 **스키마 무변경** 증분:
+ *   ① 유닛명 정본 정정 2건(U-D6) ② 신규 8종 중 실아트 미입고 3종 비활성(U-D5).
+ * v2/v2.1/v2.2 는 **동결**(발행 후 수정 금지) — v2.2 빌더는 손대지 않고 그 결과를 입력으로 받는다.
+ */
+export const PLAYERS_V23_VERSION = "v2.3";
+
+/**
+ * #207 U-D6 — **유닛명 정본 = 카드 아트 파일명**. 이름이 카드 아트에 **구워져** 발행됐으므로
+ * 아트가 정본이고 시드가 그것을 따라간다(`열라도나.png` · `욱링엄 카드, 아이콘.png`).
+ *
+ * ⚠️ **ROSTER 의 이름은 고치지 않는다.** ROSTER 를 고치면 `buildPlayersV22` 결과가 이미 발행된
+ * `players.v2.2.json` 과 어긋난다(발행 후 수정 금지 — "발행 파일 동기화" 계약이 즉시 FAIL).
+ * 정정은 **v2.3 빌더에서만** 적용한다.
+ *
+ * ✅ **스탯 무영향이 구조적으로 보장된다**: `rollAttributes(rng, grade, position, traits)` 는
+ * 이름을 **입력으로 받지 않는다** — RNG 소비는 등급 밴드 롤 9회뿐이고 이름 축은 존재하지 않는다.
+ * 게다가 이 정정은 RNG 가 다 돌고 난 **뒤**의 순수 문자열 치환이다. data.test.ts 가 두 축으로
+ * 증명한다: ①디스크 `players.v2.2.json` 과 attributes 바이트 대조 ②로스터 이름을 전부 뒤바꿔
+ * 재파생해도 9종이 바이트 동일.
+ */
+export const V23_NAME_CORRECTIONS: readonly { id: string; from: string; to: string }[] = [
+  { id: "P175", from: "유라도나", to: "열라도나" },
+  { id: "P179", from: "욱리엄", to: "욱링엄" },
+];
+
+/**
+ * #207 U-D5 — 신규 LEGEND 8종 중 **실아트 미입고 3종**은 `active:false` 로 발행한다.
+ * 활성 5 = P173 보날두 · P175 열라도나 · P176 춘바페 · P177 덕브라이너 · P179 욱링엄(실아트 입고 완료).
+ * 비활성 3 = P174 권씨 · P178 석신 · P180 경니시우스(아트 미입고).
+ * 시드에는 8종 전부 남긴다 — 아트가 나오면 **어드민 카탈로그 API 토글 한 번**으로 배포 없이
+ * 활성화된다(#207 파트 A 가 정확히 그것을 위한 것). 등급·스탯·traits 는 전부 무변경.
+ */
+export const V23_INACTIVE_NEW_UNIT_IDS: readonly string[] = [
+  "P174", // 권씨 (← 메시)
+  "P178", // 석신 (← 야신)
+  "P180", // 경니시우스 (← 비니시우스)
+];
+
+/** v2.3 비활성 전체 = 구 LEGEND 14종(v2.2 그대로) + 신규 미입고 3종 = 17. */
+export const INACTIVE_PLAYER_IDS_V23: readonly string[] = [
+  ...INACTIVE_PLAYER_IDS,
+  ...V23_INACTIVE_NEW_UNIT_IDS,
+];
 
 /** league 시드 데이터 버전(봇 클럽명·성향 프리셋·순위 보상). */
 export const LEAGUE_VERSION = "v1";
@@ -62,6 +152,22 @@ export interface PlayerSeed {
 export interface PlayerSeedV21 extends PlayerSeed {
   personality: Personality;
 }
+
+/**
+ * players.v2.2 = players.v2.1 에 `active` 만 **뒤에 덧붙인** additive 확장 (#207 U-D1).
+ * `active:false` = 가챠/트레이드 등 **신규 획득 경로에서만 제외**(등급·스탯은 무변경).
+ * 필드 순서는 v2.1 그대로 두고 active 를 마지막에 붙인다 — 임포터가 이 필드를 모르면 기본 true.
+ */
+export interface PlayerSeedV22 extends PlayerSeedV21 {
+  active: boolean;
+}
+
+/**
+ * players.v2.3 = v2.2 와 **스키마 동일**(신설 필드 0). 바뀌는 것은 값 두 축뿐이다:
+ *   ① `name` 2건 정정(U-D6) ② `active` 3건 추가 비활성(U-D5).
+ * 별칭으로 두는 이유 = 소비자 타입이 버전 축을 이름으로 부를 수 있게(계약 변경 아님).
+ */
+export type PlayerSeedV23 = PlayerSeedV22;
 
 const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "technical",
@@ -112,8 +218,12 @@ function clamp(v: number, lo: number, hi: number): number {
  * 시드 RNG로 한 선수의 능력치 9종을 굴린다.
  * 등급 밴드 내 균등 롤 → 포지션 주스탯 +5 → 개인 trait +6 (모두 밴드 상한 클램프).
  * RNG 소비는 base 롤 9회뿐 — 바이어스는 순수 결정론 가산이라 재현 바이트 동일.
+ *
+ * ⚠️ 파라미터에 **이름이 없다**. 이것이 "유닛명을 고쳐도 스탯이 안 흔들린다"(#207 U-D6)의
+ * 구조적 근거다 — export 하는 이유도 data.test.ts 가 이름을 뒤바꾼 로스터로 재파생해 그 성질을
+ * 직접 증명하기 위해서다(주석 주장 대신 실행 가능한 증명).
  */
-function rollAttributes(
+export function rollAttributes(
   rng: ReturnType<typeof createRng>,
   grade: Grade,
   position: Position,
@@ -444,9 +554,16 @@ function buildBotDeck(
 }
 
 export interface GeneratedData {
+  /** 현행 전체 카탈로그(ROSTER 전원, 신규 LEGEND 8종 포함). 발행물은 아래 v2/v2.1/v2.2. */
   players: PlayerSeed[];
-  /** players.v2 + personality (additive, players.v2.1.json). */
+  /** players.v2.json — FROZEN_ROSTER_COUNT 명에서 **동결**된 발행물(수정 금지). */
+  playersV2: PlayerSeed[];
+  /** players.v2.1.json — 동결 v2 + personality (additive). */
   playersV21: PlayerSeedV21[];
+  /** players.v2.2.json — 전체 카탈로그 + personality + active (#207). */
+  playersV22: PlayerSeedV22[];
+  /** players.v2.3.json — v2.2 + 유닛명 정정 2건 + 신규 비활성 3건 (#207 U-D5/U-D6). 현행 소비본. */
+  playersV23: PlayerSeedV23[];
   economy: EconomySeed;
   bots: BotSeed[];
   /** league.v1.json — 봇 클럽명·성향 프리셋·순위 보상. */
@@ -463,6 +580,78 @@ function buildPlayersV21(players: PlayerSeed[]): PlayerSeedV21[] {
     // v2 필드 순서 유지 + personality 를 마지막에 추가(순수 additive).
     return { ...p, personality };
   });
+}
+
+/**
+ * players.v2.1 에 `active` 를 뒤에 덧붙여 v2.2 를 만든다 (#207 U-D1).
+ * 비활성 대상이 실제로 존재하고 LEGEND 인지 fail-closed 검증한다 — ID 가 밀리거나(중간 삽입)
+ * 등급이 재배정되면 조용히 엉뚱한 유닛을 잠그는 대신 즉시 터진다.
+ */
+function buildPlayersV22(playersV21: PlayerSeedV21[]): PlayerSeedV22[] {
+  const byId = new Map(playersV21.map((p) => [p.id, p]));
+  for (const id of INACTIVE_PLAYER_IDS) {
+    const p = byId.get(id);
+    if (!p) throw new Error(`비활성 대상이 카탈로그에 없다: ${id} (#207 INACTIVE_PLAYER_IDS)`);
+    if (p.grade !== "LEGEND") {
+      throw new Error(`${id}(${p.name}) 는 LEGEND 가 아니다(${p.grade}) — 비활성 목록 재확정 필요`);
+    }
+  }
+  const inactive = new Set(INACTIVE_PLAYER_IDS);
+  // v2.1 필드 순서 유지 + active 를 마지막에 추가(순수 additive).
+  return playersV21.map((p) => ({ ...p, active: !inactive.has(p.id) }));
+}
+
+/**
+ * players.v2.2 위에 v2.3 을 만든다 (#207 U-D5/U-D6). **v2.2 빌더는 건드리지 않는다** —
+ * 과거 발행물(`players.v2.2.json`)이 그대로 재현돼야 하기 때문.
+ *
+ * 하는 일은 두 가지뿐이고 둘 다 **RNG 가 다 돈 뒤의 순수 변환**이다(스탯·필드순서 무변경):
+ *   ① `V23_NAME_CORRECTIONS` 대로 name 치환 (아트가 정본, U-D6)
+ *   ② `INACTIVE_PLAYER_IDS_V23` 대로 active 재계산 (활성 5 / 비활성 3, U-D5)
+ *
+ * fail-closed: 정정 대상의 **현재 이름이 예상과 다르면**(= 누군가 ROSTER 를 고쳤다) 즉시 터진다.
+ * 조용히 엉뚱한 유닛을 개명하거나 이미 정정된 이름을 두 번 덮는 사고를 원천 차단한다.
+ */
+function buildPlayersV23(playersV22: PlayerSeedV22[]): PlayerSeedV23[] {
+  const byId = new Map(playersV22.map((p) => [p.id, p]));
+
+  for (const c of V23_NAME_CORRECTIONS) {
+    const p = byId.get(c.id);
+    if (!p) throw new Error(`이름 정정 대상이 카탈로그에 없다: ${c.id} (#207 U-D6)`);
+    if (p.name !== c.from) {
+      throw new Error(
+        `${c.id} 의 v2.2 이름이 "${c.from}" 이어야 하는데 "${p.name}" 이다 — ` +
+          `ROSTER 를 고쳤다면 되돌려라(v2.2 는 발행 후 수정 금지). 정정은 V23_NAME_CORRECTIONS 에서만.`,
+      );
+    }
+  }
+
+  for (const id of V23_INACTIVE_NEW_UNIT_IDS) {
+    const p = byId.get(id);
+    if (!p) throw new Error(`신규 비활성 대상이 카탈로그에 없다: ${id} (#207 U-D5)`);
+    if (p.grade !== "LEGEND") {
+      throw new Error(`${id}(${p.name}) 는 LEGEND 가 아니다(${p.grade}) — U-D5 대상 재확정 필요`);
+    }
+    // 동결 구간(P001~P172)을 실수로 끄는 것을 막는다. U-D5 는 신규 8종에만 적용된다.
+    if (Number(id.slice(1)) <= FROZEN_ROSTER_COUNT) {
+      throw new Error(`${id} 는 동결 구간 유닛이다 — U-D5 비활성은 신규 채번(P173~)에만 적용`);
+    }
+  }
+
+  const rename = new Map(V23_NAME_CORRECTIONS.map((c) => [c.id, c.to]));
+  const inactive = new Set(INACTIVE_PLAYER_IDS_V23);
+  // spread 로 기존 키 순서를 유지한 채 name/active 값만 덮는다(필드 순서·개수 무변경).
+  const out: PlayerSeedV23[] = playersV22.map((p) => ({
+    ...p,
+    name: rename.get(p.id) ?? p.name,
+    active: !inactive.has(p.id),
+  }));
+
+  // 정정 이름이 기존 유닛명과 충돌하면(도감 중복) 즉시 터진다.
+  if (new Set(out.map((p) => p.name)).size !== out.length) {
+    throw new Error("v2.3 유닛명 충돌 — V23_NAME_CORRECTIONS 가 기존 이름과 겹친다");
+  }
+  return out;
 }
 
 /**
@@ -841,10 +1030,15 @@ export function generateAll(): GeneratedData {
     },
   ];
 
-  const playersV21 = buildPlayersV21(players);
+  // 발행물 분기: v2/v2.1 은 동결 경계(FROZEN_ROSTER_COUNT)에서 자른 스냅샷, v2.2 는 전체 카탈로그.
+  // 신규분이 ROSTER 맨 끝에 append 되므로 앞부분 슬라이스는 발행 당시와 바이트 동일하다.
+  const playersV2 = players.slice(0, FROZEN_ROSTER_COUNT);
+  const playersV21 = buildPlayersV21(playersV2);
+  const playersV22 = buildPlayersV22(buildPlayersV21(players));
+  const playersV23 = buildPlayersV23(playersV22);
   const league = buildLeague();
 
-  return { players, playersV21, economy, bots, league };
+  return { players, playersV2, playersV21, playersV22, playersV23, economy, bots, league };
 }
 
 // -- CLI entrypoint (파일로 실행됐을 때만 쓰기 수행) -----------------------
@@ -857,19 +1051,30 @@ const isMain = (() => {
 })();
 
 if (isMain) {
-  const { players, playersV21, economy, bots, league } = generateAll();
+  const { players, playersV2, playersV21, playersV22, playersV23, economy, bots, league } =
+    generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
-  writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(players, null, 2) + "\n");
+  writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(playersV2, null, 2) + "\n");
   writeFileSync(
     join(here, `players.${PLAYERS_V21_VERSION}.json`),
     JSON.stringify(playersV21, null, 2) + "\n",
+  );
+  writeFileSync(
+    join(here, `players.${PLAYERS_V22_VERSION}.json`),
+    JSON.stringify(playersV22, null, 2) + "\n",
+  );
+  writeFileSync(
+    join(here, `players.${PLAYERS_V23_VERSION}.json`),
+    JSON.stringify(playersV23, null, 2) + "\n",
   );
   writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
   writeFileSync(join(here, `bots.${DATA_VERSION}.json`), JSON.stringify(bots, null, 2) + "\n");
   writeFileSync(join(here, `league.${LEAGUE_VERSION}.json`), JSON.stringify(league, null, 2) + "\n");
   // eslint-disable-next-line no-console
   console.log(
-    `generated ${players.length} players (+v2.1 personality), economy.${DATA_VERSION}.json, ` +
-      `${bots.length} bots, league.${LEAGUE_VERSION}.json -> data/players/`,
+    `generated ${players.length} players (v2/v2.1 frozen ${playersV2.length}, v2.2 ${playersV22.length} ` +
+      `with active, v2.3 ${playersV23.length} active=${playersV23.filter((p) => p.active).length}), ` +
+      `economy.${DATA_VERSION}.json, ${bots.length} bots, ` +
+      `league.${LEAGUE_VERSION}.json -> data/players/`,
   );
 }

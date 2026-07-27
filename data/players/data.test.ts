@@ -3,7 +3,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it, expect } from "vitest";
 import { PlayerCard } from "@hmb/shared";
-import { generateAll, type PlayerSeed, type Position, type Grade, type Personality } from "./generate";
+import {
+  generateAll,
+  rollAttributes,
+  SEED,
+  type PlayerSeed,
+  type Position,
+  type Grade,
+  type Personality,
+} from "./generate";
+import { createRng } from "./rng";
 import { ROSTER } from "./roster";
 import { PERSONALITY } from "./personality";
 
@@ -12,15 +21,86 @@ const GRADES: Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
 
 // 문서화된 총원(LLD-data §2 v2 / grade-mapping-v2.md)을 테스트에 직접 박제 — roster/generate 의
 // 상수를 재사용하면 자기참조 검증이 되어 데이터 드리프트를 못 잡는다. 리터럴로 독립 검증한다.
-const TOTAL = 172;
-const POSITION_TOTALS: Record<Position, number> = { GK: 13, DF: 53, MF: 59, FW: 47 };
+//
+// #207(웨이브2-B, hero 확정 U-D4): 구 172명 + 신규 LEGEND 8종 = **180명**(players.v2.2).
+// 구 172명 발행물(players.v2 / v2.1)은 **동결**(발행 후 수정 금지, data/CLAUDE.md) — 신규분은
+// ROSTER 맨 끝에 append 되어 P173~P180 을 받고, 앞 172명은 바이트 동일하게 보존된다.
+const TOTAL = 180;
+/** players.v2 / players.v2.1 이 동결된 시점의 총원. 이 경계 앞은 절대 변하지 않는다. */
+const FROZEN_TOTAL = 172;
+// 신규 8종 = GK+1 / MF+3 / FW+4 (DF +0). 구 분포 GK13/DF53/MF59/FW47 에 가산.
+const POSITION_TOTALS: Record<Position, number> = { GK: 14, DF: 53, MF: 62, FW: 51 };
 const GRADE_TOTALS: Record<Grade, number> = {
   BRONZE: 35,
   SILVER: 52,
   GOLD: 46,
   DIA: 25,
-  LEGEND: 14,
+  LEGEND: 22,
 };
+
+/**
+ * #207 U-D4 확정 신규 8종(P173~P180). 유닛명·포지션·traits 를 리터럴로 박제한다
+ * (roster.ts 를 재사용하면 자기참조 — 이슈 결정표와 코드가 어긋나도 못 잡는다).
+ */
+const NEW_UNITS: readonly {
+  id: string;
+  name: string;
+  position: Position;
+  traits: readonly (keyof PlayerSeed["attributes"])[];
+}[] = [
+  { id: "P173", name: "보날두", position: "FW", traits: ["shooting", "physical"] },
+  { id: "P174", name: "권씨", position: "FW", traits: ["technical", "shooting"] },
+  { id: "P175", name: "유라도나", position: "MF", traits: ["technical", "shooting"] },
+  { id: "P176", name: "춘바페", position: "FW", traits: ["pace", "shooting"] },
+  { id: "P177", name: "덕브라이너", position: "MF", traits: ["passing", "shooting"] },
+  { id: "P178", name: "석신", position: "GK", traits: ["positioning", "mental"] },
+  { id: "P179", name: "욱리엄", position: "MF", traits: ["physical", "shooting"] },
+  { id: "P180", name: "경니시우스", position: "FW", traits: ["pace", "technical"] },
+];
+
+/**
+ * #207 U-D1(조합안): 구 LEGEND 14종은 **등급 LEGEND 를 그대로 유지**하고 `active:false` 로만
+ * 표시한다(강등 아님 — 기보유 유저 손실 0). 가챠/트레이드 신규 획득 경로에서만 제외.
+ */
+const INACTIVE_IDS: readonly string[] = [
+  ...Array.from({ length: 12 }, (_, i) => `P${String(i + 1).padStart(3, "0")}`), // P001~P012
+  "P143", // Park Ji-sung
+  "P144", // Cha Bum-kun
+];
+
+/**
+ * #207 U-D6 — 유닛명 정본 정정(v2.3). 이름이 **카드 아트에 구워져** 발행돼 아트가 정본이다.
+ * 이슈 결정표에서 직접 박제한다(generate.ts 의 V23_NAME_CORRECTIONS 재사용은 자기참조).
+ */
+const V23_RENAMES: readonly { id: string; before: string; after: string }[] = [
+  { id: "P175", before: "유라도나", after: "열라도나" },
+  { id: "P179", before: "욱리엄", after: "욱링엄" },
+];
+
+/**
+ * #207 U-D5 — 신규 8종 중 **실아트 입고 완료 5종만 활성**. 나머지 3종은 시드에 남긴 채 비활성.
+ * (아트 입고 시 어드민 카탈로그 API 토글 한 번으로 배포 없이 활성화 — #207 파트 A.)
+ */
+const V23_ACTIVE_LEGEND_IDS: readonly string[] = ["P173", "P175", "P176", "P177", "P179"];
+const V23_NEW_INACTIVE_IDS: readonly string[] = ["P174", "P178", "P180"];
+/** v2.3 비활성 전체 = 구 LEGEND 14 + 신규 미입고 3 = 17. */
+const INACTIVE_IDS_V23: readonly string[] = [...INACTIVE_IDS, ...V23_NEW_INACTIVE_IDS];
+
+/**
+ * 패러디 유닛명에 실명이 새어 들어오지 않는지 — 소스 실선수의 한글 표기 denylist(부분문자열 금지).
+ * 실명 유입 차단이 목적이므로 가드를 지우지 않고 **한글 축으로 확장**한다.
+ */
+const REAL_NAME_KO_DENYLIST: readonly string[] = [
+  "호날두",
+  "호나우두",
+  "메시",
+  "마라도나",
+  "음바페",
+  "데브라위너",
+  "야신",
+  "벨링엄",
+  "비니시우스",
+];
 
 // hero 요청(#84): 한국 유명 선수 추가. 대표 선수의 존재·등급을 명시 검증(도감 반영 보장).
 const EXPECTED_KOREANS: readonly { name: string; grade: Grade }[] = [
@@ -122,14 +202,15 @@ const REAL_CLUB_TOKENS: readonly string[] = [
   "Celtic",
 ];
 
-const { players, playersV21, economy, bots, league } = generateAll();
+const { players, playersV2, playersV21, playersV22, playersV23, economy, bots, league } =
+  generateAll();
 
-describe("players.v2 — counts/distribution (AC-PL1)", () => {
+describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
   it(`총 ${TOTAL}명`, () => {
     expect(players.length).toBe(TOTAL);
   });
 
-  it("포지션 분포 GK13/DF53/MF59/FW47 (GK 비중 축소)", () => {
+  it("포지션 분포 GK14/DF53/MF62/FW51 (신규 8종 GK1/MF3/FW4 가산)", () => {
     const counts: Record<Position, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
     for (const p of players) counts[p.position]++;
     expect(counts).toEqual(POSITION_TOTALS);
@@ -140,7 +221,7 @@ describe("players.v2 — counts/distribution (AC-PL1)", () => {
     expect(gk / players.length).toBeLessThan(0.12);
   });
 
-  it("등급 분포 BRONZE35/SILVER52/GOLD46/DIA25/LEGEND14 (레전드 희소)", () => {
+  it("등급 분포 BRONZE35/SILVER52/GOLD46/DIA25/LEGEND22 (레전드 희소)", () => {
     const counts: Record<Grade, number> = {
       BRONZE: 0,
       SILVER: 0,
@@ -193,7 +274,7 @@ describe("players.v2 — counts/distribution (AC-PL1)", () => {
   });
 });
 
-describe("players.v2 — ID/이름 유일성 + 실선수(로스터 일치)", () => {
+describe("players 카탈로그 — ID/이름 유일성 + 실선수(로스터 일치)", () => {
   it(`ID가 P001..P${TOTAL} 순차·유일`, () => {
     const ids = players.map((p) => p.id);
     expect(new Set(ids).size).toBe(TOTAL);
@@ -217,10 +298,28 @@ describe("players.v2 — ID/이름 유일성 + 실선수(로스터 일치)", () 
     for (const p of players) expect(allow.has(p.name), `${p.id}:${p.name}`).toBe(true);
   });
 
-  it("이름이 실선수 형태(라틴 문자 포함) — 구 가상 한글 3음절 패턴 아님", () => {
-    for (const p of players) {
+  it("동결 172명 이름이 실선수 형태(라틴 문자 포함) — 구 가상 한글 3음절 패턴 아님", () => {
+    // 이 가드의 원래 목적 = v1 절차생성 가상명(한글 3음절) 재유입 차단. 실선수 블록에만 적용한다.
+    for (const p of players.slice(0, FROZEN_TOTAL)) {
       expect(p.name, `${p.id} 라틴 문자 포함`).toMatch(/[A-Za-z]/);
       expect(p.name, `${p.id} 구 가상 패턴 아님`).not.toMatch(/^[가-힣]{3}$/);
+    }
+  });
+
+  it("신규 8종은 한글 패러디명 — 실명이 아니다(실명 유입 차단 유지, #207 U-D4)", () => {
+    // 패러디명은 로마자화하면 의미가 죽으므로 한글 그대로 발행한다. 대신 "실명이 아니다"를
+    // 두 축으로 못 박는다: ① 실선수 이름 재사용 0 ② 소스 실선수 한글 표기 부분문자열 0.
+    const byId = new Map(players.map((p) => [p.id, p]));
+    const realNames = new Set(players.slice(0, FROZEN_TOTAL).map((p) => p.name));
+    for (const u of NEW_UNITS) {
+      const p = byId.get(u.id);
+      expect(p, `${u.id} 존재`).toBeDefined();
+      expect(p!.name, `${u.id} 유닛명`).toBe(u.name);
+      expect(p!.name, `${u.id} 한글 전용 패러디명`).toMatch(/^[가-힣]{2,}$/);
+      expect(realNames.has(p!.name), `${u.id} 실선수 이름 재사용 금지`).toBe(false);
+      for (const banned of REAL_NAME_KO_DENYLIST) {
+        expect(p!.name.includes(banned), `${u.id} 실명 "${banned}" 포함 금지`).toBe(false);
+      }
     }
   });
 
@@ -241,7 +340,7 @@ describe("players.v2 — ID/이름 유일성 + 실선수(로스터 일치)", () 
   });
 });
 
-describe("players.v2 — 능력치 밴드 + trait 반영 (AC-PL1)", () => {
+describe("players 카탈로그 — 능력치 밴드 + trait 반영 (AC-PL1)", () => {
   const ATTR_KEYS = [
     "technical",
     "mental",
@@ -307,7 +406,7 @@ describe("players.v2 — 능력치 밴드 + trait 반영 (AC-PL1)", () => {
   });
 });
 
-describe("players.v2 — zod PlayerCard 호환 (AC-PL1)", () => {
+describe("players 카탈로그 — zod PlayerCard 호환 (AC-PL1)", () => {
   it("모든 선수가 shared PlayerCard 스키마로 파싱된다(id→playerId 매핑)", () => {
     for (const p of players) {
       const card = PlayerCard.parse({
@@ -761,13 +860,14 @@ describe("bots.v2 — 덱 유효성(서버 규칙: 11명·GK≥1·중복 금지)
 });
 
 describe("players.v2.1 — personality 부여 (PRD-v3 P2-D7, additive)", () => {
-  it(`v2.1 도 ${TOTAL}명 — v2 와 동일 개수`, () => {
-    expect(playersV21.length).toBe(TOTAL);
+  it(`v2.1 은 동결 ${FROZEN_TOTAL}명 — v2 와 동일 개수(신규 8종은 v2.2 로만 발행)`, () => {
+    expect(playersV21.length).toBe(FROZEN_TOTAL);
+    expect(playersV2.length).toBe(FROZEN_TOTAL);
   });
 
   it("v2.1 = v2 필드 완전 동일 + personality 만 additive(id/name/position/grade/attributes 무변경)", () => {
     playersV21.forEach((p, i) => {
-      const base = players[i]!;
+      const base = playersV2[i]!;
       expect(p.id).toBe(base.id);
       expect(p.name).toBe(base.name);
       expect(p.position).toBe(base.position);
@@ -781,7 +881,7 @@ describe("players.v2.1 — personality 부여 (PRD-v3 P2-D7, additive)", () => {
   });
 
   it("모든 personality 가 4종 enum(FIERY/CALM/GLASS/AMBITIOUS) 내", () => {
-    for (const p of playersV21) {
+    for (const p of playersV22) {
       expect(PERSONALITIES, `${p.id}:${p.name} personality`).toContain(p.personality);
     }
   });
@@ -798,7 +898,7 @@ describe("players.v2.1 — personality 부여 (PRD-v3 P2-D7, additive)", () => {
 
   it("분포가 목표 밴드 내 — 대략 FIERY25/CALM40/GLASS15/AMBITIOUS20 (%)", () => {
     const counts: Record<Personality, number> = { FIERY: 0, CALM: 0, GLASS: 0, AMBITIOUS: 0 };
-    for (const p of playersV21) counts[p.personality]++;
+    for (const p of playersV22) counts[p.personality]++;
     for (const k of PERSONALITIES) {
       const ratio = counts[k] / TOTAL;
       const [lo, hi] = PERSONALITY_BANDS[k];
@@ -809,20 +909,378 @@ describe("players.v2.1 — personality 부여 (PRD-v3 P2-D7, additive)", () => {
 
   it("CALM 이 최다(기본 성격) — 나머지 3종보다 많다", () => {
     const counts: Record<Personality, number> = { FIERY: 0, CALM: 0, GLASS: 0, AMBITIOUS: 0 };
-    for (const p of playersV21) counts[p.personality]++;
+    for (const p of playersV22) counts[p.personality]++;
     expect(counts.CALM).toBeGreaterThan(counts.FIERY);
     expect(counts.CALM).toBeGreaterThan(counts.AMBITIOUS);
     expect(counts.CALM).toBeGreaterThan(counts.GLASS);
   });
 
   it("큐레이션 대표 선수 성격 고정(회귀 가드)", () => {
-    const byName = new Map(playersV21.map((p) => [p.name, p.personality]));
+    const byName = new Map(playersV22.map((p) => [p.name, p.personality]));
     expect(byName.get("Toni Kroos")).toBe("CALM");
     expect(byName.get("Antonio Rüdiger")).toBe("FIERY");
     expect(byName.get("Marcus Rashford")).toBe("GLASS");
     expect(byName.get("Erling Haaland")).toBe("AMBITIOUS");
     expect(byName.get("Park Ji-sung")).toBe("AMBITIOUS");
     expect(byName.get("Son Heung-min")).toBe("CALM");
+  });
+
+  it("신규 8종 성격 = 소스 선수 성격 복제(원본 없는 2종은 §8.1 기준 배정)", () => {
+    // U-D4 표는 traits 까지만 확정했다 → personality 는 "소스 선수 것을 그대로 복제"라는
+    // 규칙으로 파생하고 여기서 못 박는다(임의 드리프트 차단).
+    const byName = new Map(playersV22.map((p) => [p.name, p.personality]));
+    expect(byName.get("유라도나"), "마라도나(P005 FIERY) 복제").toBe("FIERY");
+    expect(byName.get("춘바페"), "음바페(AMBITIOUS) 복제").toBe("AMBITIOUS");
+    expect(byName.get("덕브라이너"), "데브라위너(FIERY) 복제").toBe("FIERY");
+    expect(byName.get("석신"), "야신(P001 CALM) 복제").toBe("CALM");
+    expect(byName.get("욱리엄"), "벨링엄(FIERY) 복제").toBe("FIERY");
+    expect(byName.get("경니시우스"), "비니시우스(FIERY) 복제").toBe("FIERY");
+    // 로스터에 소스가 없는 2종 = §8.1 기준 신규 배정(U-D2 와 같은 방식).
+    expect(byName.get("보날두"), "CR7 = 기록·승부욕 지향").toBe("AMBITIOUS");
+    expect(byName.get("권씨"), "메시 = 압박에도 흔들리지 않는 안정형").toBe("CALM");
+  });
+});
+
+describe("players.v2.2 — 신규 LEGEND 8종 + active 축 (#207 U-D1/U-D4)", () => {
+  const byId = new Map(playersV22.map((p) => [p.id, p]));
+
+  it(`v2.2 = ${TOTAL}명 (동결 ${FROZEN_TOTAL} + 신규 8)`, () => {
+    expect(playersV22.length).toBe(TOTAL);
+  });
+
+  it("신규 8종이 P173~P180 신규 채번 — 기존 P-공간 재사용 0", () => {
+    expect(NEW_UNITS.map((u) => u.id)).toEqual(
+      Array.from({ length: 8 }, (_, i) => `P${String(FROZEN_TOTAL + i + 1).padStart(3, "0")}`),
+    );
+    playersV22.slice(FROZEN_TOTAL).forEach((p, i) => {
+      expect(p.id).toBe(NEW_UNITS[i]!.id);
+      expect(p.name).toBe(NEW_UNITS[i]!.name);
+    });
+  });
+
+  it("신규 8종 = 전원 LEGEND, 포지션 GK1/MF3/FW4 (U-D4 표 그대로)", () => {
+    const counts: Record<Position, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
+    for (const u of NEW_UNITS) {
+      const p = byId.get(u.id)!;
+      expect(p.grade, `${u.id} 등급`).toBe("LEGEND");
+      expect(p.position, `${u.id} 포지션`).toBe(u.position);
+      counts[p.position]++;
+    }
+    expect(counts).toEqual({ GK: 1, DF: 0, MF: 3, FW: 4 });
+  });
+
+  it("신규 8종 traits 가 스탯에 반영된다 — trait 스탯 ≥ 밴드하한+6(밴드 상한 클램프 안)", () => {
+    const [lo, hi] = BANDS.LEGEND;
+    for (const u of NEW_UNITS) {
+      const p = byId.get(u.id)!;
+      for (const key of u.traits) {
+        const v = p.attributes[key];
+        expect(v, `${u.id} trait ${key}`).toBeGreaterThanOrEqual(lo + 6);
+        expect(v, `${u.id} trait ${key} 밴드 상한`).toBeLessThanOrEqual(hi);
+      }
+    }
+  });
+
+  it("LEGEND 총원 22 = 구 14(등급 유지) + 신규 8", () => {
+    const legend = playersV22.filter((p) => p.grade === "LEGEND");
+    expect(legend).toHaveLength(22);
+    expect(legend.filter((p) => p.active === false)).toHaveLength(14);
+    expect(legend.filter((p) => p.active === true)).toHaveLength(8);
+  });
+
+  it("active:false 가 정확히 14개이고 집합이 P001~P012 + P143 + P144 와 일치", () => {
+    const inactive = playersV22.filter((p) => p.active === false).map((p) => p.id);
+    expect(inactive).toHaveLength(14);
+    expect(new Set(inactive)).toEqual(new Set(INACTIVE_IDS));
+  });
+
+  it("LEGEND 중 active:true 는 정확히 8개(=신규분) — 가챠/트레이드 획득 가능 LEGEND", () => {
+    const activeLegend = playersV22.filter((p) => p.grade === "LEGEND" && p.active).map((p) => p.id);
+    expect(activeLegend).toEqual(NEW_UNITS.map((u) => u.id));
+  });
+
+  it("구 14종은 강등이 아니다 — 등급 LEGEND 유지 + 밴드 무변경(기보유 유저 손실 0)", () => {
+    const [lo, hi] = BANDS.LEGEND;
+    for (const id of INACTIVE_IDS) {
+      const p = byId.get(id)!;
+      expect(p.grade, `${id} 등급 유지`).toBe("LEGEND");
+      for (const v of Object.values(p.attributes)) {
+        expect(v).toBeGreaterThanOrEqual(lo);
+        expect(v).toBeLessThanOrEqual(hi);
+      }
+    }
+  });
+
+  it("비활성 14종을 뺀 전원이 active:true (기본값 = 획득 가능)", () => {
+    const inactive = new Set(INACTIVE_IDS);
+    for (const p of playersV22) {
+      expect(p.active, `${p.id} active`).toBe(!inactive.has(p.id));
+    }
+  });
+
+  it("v2.2 = v2.1 필드 + active 만 끝에 append(필드 순서·기존 값 무변경)", () => {
+    for (const p of playersV22) {
+      expect(Object.keys(p)).toEqual([
+        "id",
+        "name",
+        "position",
+        "grade",
+        "attributes",
+        "personality",
+        "active",
+      ]);
+    }
+  });
+});
+
+describe("players.v2.3 — 유닛명 정정 + 활성 5/비활성 3 (#207 U-D5/U-D6)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const byId = new Map(playersV23.map((p) => [p.id, p]));
+  /** 디스크의 **발행된** v2.2 — 대조 기준을 코드가 아니라 파일에서 가져온다(자기참조 회피). */
+  const diskV22 = JSON.parse(readFileSync(join(here, "players.v2.2.json"), "utf8")) as {
+    id: string;
+    name: string;
+    position: Position;
+    grade: Grade;
+    attributes: PlayerSeed["attributes"];
+    personality: Personality;
+    active: boolean;
+  }[];
+
+  // ── U-D6 이름 정정 ────────────────────────────────────────────────
+  it("유닛명 정정 2건 반영 — P175 열라도나 · P179 욱링엄(아트가 정본)", () => {
+    for (const r of V23_RENAMES) {
+      expect(byId.get(r.id)?.name, `${r.id} v2.3 이름`).toBe(r.after);
+      // v2.2 발행물은 정정 전 이름 그대로여야 한다(동결 — ROSTER 를 고치면 여기가 터진다).
+      expect(diskV22.find((p) => p.id === r.id)?.name, `${r.id} v2.2 발행물 이름`).toBe(r.before);
+    }
+  });
+
+  it("정정 대상 외 178명 이름은 v2.2 와 동일 — 개명이 새어 나가지 않는다", () => {
+    const renamed = new Set(V23_RENAMES.map((r) => r.id));
+    playersV23.forEach((p, i) => {
+      if (renamed.has(p.id)) return;
+      expect(p.name, `${p.id} 이름 무변경`).toBe(diskV22[i]!.name);
+    });
+  });
+
+  it("정정 후에도 이름 유일 + 한글 패러디명 + 실명 denylist 0 (실명 유입 차단 유지)", () => {
+    expect(new Set(playersV23.map((p) => p.name)).size).toBe(TOTAL);
+    for (const r of V23_RENAMES) {
+      const name = byId.get(r.id)!.name;
+      expect(name, `${r.id} 한글 전용 패러디명`).toMatch(/^[가-힣]{2,}$/);
+      for (const banned of REAL_NAME_KO_DENYLIST) {
+        expect(name.includes(banned), `${r.id} 실명 "${banned}" 포함 금지`).toBe(false);
+      }
+    }
+  });
+
+  // ── U-D6 핵심 증명: 이름은 attributes 를 흔들지 않는다 ──────────────
+  it("이름 정정이 attributes 를 안 흔든다 ① — P173~P180 9종이 디스크 v2.2 와 바이트 동일", () => {
+    // 이름 변경이 RNG 스트림을 건드렸다면 신규 8종(정정 대상 포함)의 스탯이 먼저 어긋난다.
+    const newV23 = playersV23.slice(FROZEN_TOTAL).map((p) => p.attributes);
+    const newV22 = diskV22.slice(FROZEN_TOTAL).map((p) => p.attributes);
+    expect(newV23).toHaveLength(8);
+    expect(JSON.stringify(newV23, null, 2)).toBe(JSON.stringify(newV22, null, 2));
+  });
+
+  it("이름 정정이 attributes 를 안 흔든다 ② — 180명 전원 9종이 디스크 v2.2 와 바이트 동일", () => {
+    expect(JSON.stringify(playersV23.map((p) => p.attributes), null, 2)).toBe(
+      JSON.stringify(diskV22.map((p) => p.attributes), null, 2),
+    );
+  });
+
+  it("이름 정정이 attributes 를 안 흔든다 ③ — 로스터 이름을 전부 뒤바꿔 재파생해도 9종 동일", () => {
+    // ①②는 "안 바뀌었다"는 관측이다. 여기서는 **이름 축이 애초에 입력이 아니다**를 능동 증명한다:
+    // rollAttributes(rng, grade, position, traits) 에 이름 파라미터가 없으므로, 로스터 이름을
+    // 전부 다른 문자열로 갈아엎고 같은 시드로 재파생해도 결과가 동일해야 한다.
+    const mutated = ROSTER.map((r, i) => ({ ...r, name: `MUT-${i}-${[...r.name].reverse().join("")}` }));
+    expect(mutated.every((r, i) => r.name !== ROSTER[i]!.name)).toBe(true);
+    const rng = createRng(SEED);
+    const derived = mutated.map((r) => rollAttributes(rng, r.grade, r.position, r.traits));
+    expect(JSON.stringify(derived, null, 2)).toBe(
+      JSON.stringify(playersV23.map((p) => p.attributes), null, 2),
+    );
+  });
+
+  // ── U-D5 활성 5 / 비활성 3 ─────────────────────────────────────────
+  it("active:false 가 정확히 17개이고 집합이 P001~P012 + P143 + P144 + P174·P178·P180 과 일치", () => {
+    const inactive = playersV23.filter((p) => p.active === false).map((p) => p.id);
+    expect(inactive).toHaveLength(17);
+    expect(new Set(inactive)).toEqual(new Set(INACTIVE_IDS_V23));
+  });
+
+  it("LEGEND 중 active:true 는 정확히 5개 = P173·P175·P176·P177·P179 (가챠 등장 LEGEND)", () => {
+    const activeLegend = playersV23
+      .filter((p) => p.grade === "LEGEND" && p.active)
+      .map((p) => p.id);
+    expect(activeLegend).toEqual(V23_ACTIVE_LEGEND_IDS);
+    // 이름으로도 못 박는다 — id 만 맞고 개명이 안 됐으면 여기서 걸린다.
+    expect(activeLegend.map((id) => byId.get(id)!.name)).toEqual([
+      "보날두",
+      "열라도나",
+      "춘바페",
+      "덕브라이너",
+      "욱링엄",
+    ]);
+  });
+
+  it("비활성 신규 3종(권씨·석신·경니시우스)은 시드에 **남아 있다** — 삭제가 아니라 플래그", () => {
+    const expected = [
+      { id: "P174", name: "권씨" },
+      { id: "P178", name: "석신" },
+      { id: "P180", name: "경니시우스" },
+    ];
+    for (const e of expected) {
+      const p = byId.get(e.id);
+      expect(p, `${e.id} 존재`).toBeDefined();
+      expect(p!.name).toBe(e.name);
+      expect(p!.grade, `${e.id} 등급 유지`).toBe("LEGEND");
+      expect(p!.active, `${e.id} 비활성`).toBe(false);
+    }
+  });
+
+  it("구 LEGEND 14종은 v2.2 그대로 비활성 유지(무변경)", () => {
+    for (const id of INACTIVE_IDS) {
+      expect(byId.get(id)!.active, `${id} active`).toBe(false);
+      expect(byId.get(id)!.grade, `${id} 등급`).toBe("LEGEND");
+    }
+  });
+
+  it("비활성 17종을 뺀 163명이 active:true", () => {
+    const inactive = new Set(INACTIVE_IDS_V23);
+    for (const p of playersV23) expect(p.active, `${p.id} active`).toBe(!inactive.has(p.id));
+    expect(playersV23.filter((p) => p.active)).toHaveLength(TOTAL - 17);
+  });
+
+  // ── 축 무변경(활성 여부는 등급/포지션 축과 독립) ──────────────────
+  it(`총원 ${TOTAL} · LEGEND 22 · 등급/포지션 분포 무변경`, () => {
+    expect(playersV23).toHaveLength(TOTAL);
+    const grades: Record<Grade, number> = { BRONZE: 0, SILVER: 0, GOLD: 0, DIA: 0, LEGEND: 0 };
+    const positions: Record<Position, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
+    for (const p of playersV23) {
+      grades[p.grade]++;
+      positions[p.position]++;
+    }
+    expect(grades).toEqual(GRADE_TOTALS);
+    expect(grades.LEGEND).toBe(22);
+    expect(positions).toEqual(POSITION_TOTALS);
+  });
+
+  it("v2.3 = v2.2 와 스키마 동일 — 필드 순서/개수 무변경(신설 필드 0)", () => {
+    for (const p of playersV23) {
+      expect(Object.keys(p)).toEqual([
+        "id",
+        "name",
+        "position",
+        "grade",
+        "attributes",
+        "personality",
+        "active",
+      ]);
+    }
+  });
+
+  it("id/position/grade/personality 가 디스크 v2.2 와 필드 단위로 동일(바뀐 축은 name·active 뿐)", () => {
+    playersV23.forEach((p, i) => {
+      const old = diskV22[i]!;
+      expect(p.id, `#${i} id`).toBe(old.id);
+      expect(p.position, `${old.id} position`).toBe(old.position);
+      expect(p.grade, `${old.id} grade`).toBe(old.grade);
+      expect(p.personality, `${old.id} personality`).toBe(old.personality);
+    });
+  });
+
+  it("앞 172명이 디스크 players.v2.1.json 과 바이트 동일(active 제외) — 동결 경계 불변", () => {
+    const onDisk = readFileSync(join(here, "players.v2.1.json"), "utf8");
+    const head = playersV23.slice(0, FROZEN_TOTAL).map(({ active, ...rest }) => rest);
+    expect(JSON.stringify(head, null, 2) + "\n").toBe(onDisk);
+  });
+
+  it("economy 등급 축 무변경 — v2.3 도 등급 밴드·확률표를 건드리지 않는다 (U-D1 조합안 유지)", () => {
+    expect(economy.gacha.rates).toEqual({
+      BRONZE: 0.45,
+      SILVER: 0.3,
+      GOLD: 0.15,
+      DIA: 0.08,
+      LEGEND: 0.02,
+    });
+    expect(economy.growth.gradeXpMult).toEqual({
+      BRONZE: 0.4,
+      SILVER: 0.4,
+      GOLD: 1.0,
+      DIA: 1.5,
+      LEGEND: 3.0,
+    });
+    expect(economy.trade.waitHours.LEGEND).toBe(72);
+    expect(economy.trade.value.byGrade.LEGEND).toBe(3000);
+    expect(economy.trade.targetRarityWeights.LEGEND).toBe(0.05);
+    expect(economy.potential.linesByGrade.LEGEND).toBe(3);
+    expect(economy.potential.gradeTierCap.LEGEND).toBe("UNIQUE");
+  });
+
+  it("발행물 v2.2 는 여전히 재현된다 — v2.3 추가가 과거 발행 축을 흔들지 않았다", () => {
+    const onDisk = readFileSync(join(here, "players.v2.2.json"), "utf8");
+    expect(onDisk).toBe(JSON.stringify(playersV22, null, 2) + "\n");
+  });
+});
+
+describe("동결 발행물 불변 — 기존 172명 바이트 동일 (#207 결정론 가드)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+
+  it("v2.2 앞 172명이 디스크의 players.v2.1.json 과 바이트 동일 — append 가 RNG 스트림을 밀지 않았다", () => {
+    // 이게 §1 결정론 가드의 핵심: ROSTER 중간 삽입이면 172명 attributes 가 전부 shift 되어
+    // 기보유 유저 카드가 통째로 바뀐다. 발행 파일과 직접 대조해 그걸 원천 차단한다.
+    const onDisk = readFileSync(join(here, "players.v2.1.json"), "utf8");
+    const parsed = JSON.parse(onDisk) as unknown[];
+    expect(parsed).toHaveLength(FROZEN_TOTAL);
+    const head = playersV22.slice(0, FROZEN_TOTAL).map(({ active, ...rest }) => rest);
+    expect(JSON.stringify(head, null, 2) + "\n").toBe(onDisk);
+  });
+
+  it("v2.2 앞 172명의 name/position/grade/attributes 가 v2.1 과 필드 단위로 동일", () => {
+    const onDisk = JSON.parse(
+      readFileSync(join(here, "players.v2.1.json"), "utf8"),
+    ) as { id: string; name: string; position: Position; grade: Grade; attributes: PlayerSeed["attributes"] }[];
+    onDisk.forEach((old, i) => {
+      const now = playersV22[i]!;
+      expect(now.id, `#${i} id`).toBe(old.id);
+      expect(now.name, `${old.id} name`).toBe(old.name);
+      expect(now.position, `${old.id} position`).toBe(old.position);
+      expect(now.grade, `${old.id} grade`).toBe(old.grade);
+      expect(now.attributes, `${old.id} attributes`).toEqual(old.attributes);
+    });
+  });
+
+  it("economy starterPack / 봇 덱이 신규 8종을 참조하지 않는다(등급 축·구성 무변경)", () => {
+    const newIds = new Set(NEW_UNITS.map((u) => u.id));
+    for (const id of economy.starterPack) expect(newIds.has(id), `starterPack ${id}`).toBe(false);
+    for (const b of bots) {
+      for (const s of b.deck.starters) expect(newIds.has(s.playerId), `${b.id} ${s.playerId}`).toBe(false);
+      for (const id of b.deck.bench) expect(newIds.has(id), `${b.id} bench ${id}`).toBe(false);
+    }
+  });
+
+  it("economy 등급 축 무변경 — gacha.rates·gradeXpMult·trade 등급표 (U-D1 조합안)", () => {
+    expect(economy.gacha.rates).toEqual({
+      BRONZE: 0.45,
+      SILVER: 0.3,
+      GOLD: 0.15,
+      DIA: 0.08,
+      LEGEND: 0.02,
+    });
+    expect(economy.growth.gradeXpMult).toEqual({
+      BRONZE: 0.4,
+      SILVER: 0.4,
+      GOLD: 1.0,
+      DIA: 1.5,
+      LEGEND: 3.0,
+    });
+    expect(economy.trade.waitHours.LEGEND).toBe(72);
+    expect(economy.trade.value.byGrade.LEGEND).toBe(3000);
+    expect(economy.trade.targetRarityWeights.LEGEND).toBe(0.05);
+    expect(economy.potential.linesByGrade.LEGEND).toBe(3);
+    expect(economy.potential.gradeTierCap.LEGEND).toBe("UNIQUE");
   });
 });
 
@@ -947,8 +1405,10 @@ describe("economy.v2 — 트레이드 수치(P2-D9 / LLD-p2-server §5)", () => 
 describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const cases: readonly [string, unknown][] = [
-    ["players.v2.json", players],
+    ["players.v2.json", playersV2],
     ["players.v2.1.json", playersV21],
+    ["players.v2.2.json", playersV22],
+    ["players.v2.3.json", playersV23],
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
     ["league.v1.json", league],
@@ -965,7 +1425,10 @@ describe("재생성 결정론 (AC-PL1)", () => {
     const a = generateAll();
     const b = generateAll();
     expect(JSON.stringify(a.players, null, 2)).toBe(JSON.stringify(b.players, null, 2));
+    expect(JSON.stringify(a.playersV2, null, 2)).toBe(JSON.stringify(b.playersV2, null, 2));
     expect(JSON.stringify(a.playersV21, null, 2)).toBe(JSON.stringify(b.playersV21, null, 2));
+    expect(JSON.stringify(a.playersV22, null, 2)).toBe(JSON.stringify(b.playersV22, null, 2));
+    expect(JSON.stringify(a.playersV23, null, 2)).toBe(JSON.stringify(b.playersV23, null, 2));
     expect(JSON.stringify(a.economy, null, 2)).toBe(JSON.stringify(b.economy, null, 2));
     expect(JSON.stringify(a.bots, null, 2)).toBe(JSON.stringify(b.bots, null, 2));
     expect(JSON.stringify(a.league, null, 2)).toBe(JSON.stringify(b.league, null, 2));
