@@ -97,6 +97,49 @@ async function measureFrom(page: Page, tick: number, ms: number): Promise<number
   return measureRate(page, ms);
 }
 
+
+/**
+ * 페이스 대비를 잴 두 지점을 **로그에서 계산**한다(틱 하드코딩 금지 — minor-A).
+ *  · `quietTick`     키장면·정지가 없는 구간의 시작 = 크루즈(4x)로 지나가야 하는 곳.
+ *  · `keySceneTick`  키틱의 하이라이트 창 시작(kt − HL_PRE) = 슬로우(1x)여야 하는 곳.
+ * 두 판정 모두 코어와 같은 규칙을 쓴다(keyTicks 정의 = goal·penalty·유효슛, HL_PRE=8/HL_POST=3).
+ */
+function pickPaceProbes(): { quietTick: number; keySceneTick: number } {
+  const HL_PRE = 8, HL_POST = 3;
+  const events = MATCH_LOG.events as { tick: number; type: string; detail?: string }[];
+  const snaps = MATCH_LOG.tickSnapshots as { tick: number }[];
+  const lastTick = snaps[snaps.length - 1]!.tick;
+  const keyTicks = events
+    .filter((e) => e.type === "goal" || e.type === "penalty" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target"))
+    .map((e) => e.tick);
+  // 정지(홀드)를 만드는 이벤트 — 여기 걸리면 재생이 멈춰 속도 측정이 오염된다.
+  const stopTypes = new Set(["goal", "save", "foul", "offside", "penalty", "kickoff"]);
+  const stopTicks = events.filter((e) => stopTypes.has(e.type) || (e.type === "shot" && e.detail)).map((e) => e.tick);
+
+  const busy = new Set<number>();
+  for (const t of keyTicks) for (let i = t - HL_PRE - 4; i <= t + HL_POST + 4; i++) busy.add(i);
+  for (const t of stopTicks) for (let i = t - 2; i <= t + 6; i++) busy.add(i);
+
+  // 가장 긴 조용한 구간(측정 3초 × 크루즈 8틱/s = 최소 24틱 필요).
+  let best = { start: 0, len: 0 }, run = 0, start = 0;
+  for (let t = 0; t <= lastTick; t++) {
+    if (busy.has(t)) { run = 0; continue; }
+    if (run === 0) start = t;
+    run++;
+    if (run > best.len) best = { start, len: run };
+  }
+  if (best.len < 30) throw new Error(`데모 로그에 조용한 구간이 없다(최장 ${best.len}틱) — 페이스 대비를 잴 수 없다`);
+
+  // 하이라이트 창 안에서 3초(슬로우 2틱/s = 6틱)를 정지 없이 보낼 수 있는 키틱.
+  const keyTick = keyTicks.find((kt) => {
+    for (let t = kt - HL_PRE; t <= kt - HL_PRE + 8; t++) if (stopTicks.includes(t)) return false;
+    return kt - HL_PRE > 0;
+  });
+  if (keyTick == null) throw new Error("데모 로그에 정지 없는 하이라이트 창이 없다 — 페이스 대비를 잴 수 없다");
+
+  return { quietTick: best.start, keySceneTick: keyTick - HL_PRE };
+}
+
 test.beforeAll(() => mkdirSync(CAP_DIR, { recursive: true }));
 
 test("#148/#216 플레이 모드: 컨트롤이 없고 경기는 자동 진행한다", async ({ page }) => {
@@ -131,10 +174,12 @@ test("#216 하이라이트 연출이 유일 모드다 — 끌 경로가 없고 �
   // **연출이 실제로 도는가**를 속도 대비로 본다: 빌드업(크루즈 4x = 8틱/s)과 키장면(1x = 2틱/s)의
   // 4:1 대비가 관측돼야 한다. "속도가 0보다 크다" 류의 단언은 구 깨진 경로(autoPace off + speed 4 =
   // 정확히 8틱/s 등속)도 그대로 통과시킨다 — 대비가 있어야 연출이 산 증거다(독립검증 minor-7).
-  // 구간은 데모 로그(고정 픽스처)에서 고른다: 1106~ 는 키장면·정지가 없는 조용한 구간(93틱),
-  // 579 는 키틱 587 의 하이라이트 창(kt−8) 시작점이고 그 앞뒤로 정지가 없다.
-  const cruise = await measureFrom(page, 1106, 3000);
-  const keyScene = await measureFrom(page, 579, 3000);
+  // 구간은 **로그에서 런타임에 고른다**. 데모 로그는 git 미추적 생성물이라(엔진/쇼케이스 config 가
+  // 바뀌면 재생성된다) 틱 번호를 박아두면 "조용한 구간/하이라이트 창"이라는 전제가 조용히 깨진다
+  // (독립검증 minor-A).
+  const { quietTick, keySceneTick } = pickPaceProbes();
+  const cruise = await measureFrom(page, quietTick, 3000);
+  const keyScene = await measureFrom(page, keySceneTick, 3000);
   console.log(`[#216] 크루즈 ${cruise.toFixed(2)} tick/s · 키장면 ${keyScene.toFixed(2)} tick/s`);
   expect(cruise, "빌드업은 크루즈 속도(≈8틱/s)로 지나가야 한다").toBeGreaterThan(5);
   expect(keyScene, "키장면은 슬로우(≈2틱/s)여야 한다").toBeLessThan(4);

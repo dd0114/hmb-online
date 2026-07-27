@@ -19,8 +19,14 @@ import org.junit.jupiter.api.Test;
  * min 392s · p50 422s · max 463s 다. 재현: {@code node tools/measure-playback-pace.mjs}
  * (모델 = viewer-core {@code autoPaceDurationMs}, 렌더 루프와 같은 상수를 읽는다).
  *
- * <p>하한이 실측 min 보다 더 아래(370s)인 이유: web 이 배율({@code paceRate}, 상한 1.6)로 재생을
- * 당겨 흡수할 수 있는 폭까지는 허용한다. 그보다 짧으면 배율이 상한에 물려 <b>하프 끝이 잘린다</b>.
+ * <p><b>밴드가 곧 정책이다</b>: 실측 min~max(392~463s) 밖으로 나가려면 이 상수도 같이 고쳐야 한다 =
+ * "재생과 창을 어긋나게 두겠다"는 의도적 결정이 된다. 실수로 되돌리는 경로는 여기서 막힌다.
+ * (참고: 물리적 하한은 더 아래인 ≈270s — web 배율 상한 1.6 까지는 당겨 맞출 수 있다. 하지만 그
+ * 구간은 하프 끝이 잘리기 시작하는 영역이라 기본값으로 둘 자리가 아니다. application.yml 주석 참조.)
+ *
+ * <p>이 테스트는 <b>사람이 옮겨 적은 숫자</b>를 지킨다. 밴드 자체가 낡는 것(뷰어 페이싱 상수나 엔진
+ * 하프 틱 수가 바뀌어 실제 재생 길이가 이동)은 여기서 못 잡는다 — 그건 {@code tools/pace-config.test.ts}
+ * 가 엔진으로 하프를 돌려 직접 재서 대조한다. 둘은 같은 AC 를 다른 층에서 지킨다.
  */
 class MatchClockShippedDefaultsTest {
 
@@ -35,9 +41,6 @@ class MatchClockShippedDefaultsTest {
         assertThat(yml)
                 .as("half-real-ms 는 켬 모드 실측 재생 길이(392~463s) 안이어야 한다 — 짧으면 재생이 끝나기 전에 "
                         + "하프타임이 열리고, 길면 재생이 먼저 끝나 빈 시간이 생긴다")
-                .isBetween(370_000L, MEASURED_MAX_MS + 40_000L);
-        assertThat(yml)
-                .as("실측 밴드의 중앙 근처(p50 422s)에 있어야 배율 보정이 양쪽으로 여유를 갖는다")
                 .isBetween(MEASURED_MIN_MS, MEASURED_MAX_MS);
         assertThat(javaDefault)
                 .as("Java 기본값과 yml 이 갈라지면 프로필이 하나 빠졌을 때 조용히 다른 값이 뜬다")
