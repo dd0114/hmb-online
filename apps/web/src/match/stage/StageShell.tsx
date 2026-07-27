@@ -13,6 +13,8 @@ import { ResultPanel } from "./ResultPanel";
 import {
   DEFAULT_TOGGLES,
   halfForState,
+  headerTick,
+  isHalftimeState,
   parseToggles,
   resolveActiveTab,
   serializeToggles,
@@ -83,6 +85,15 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
     return scoreAt(((log.events ?? []) as unknown as LogEvent[]) ?? [], tick);
   }, [log, tick]);
 
+  // 이 하프가 끝난 지점(절대 틱). 감독시간 헤더 시계가 여기에 고정된다(#226) — 값은 로그에서
+  // 파생한다(웹에 "45분"을 상수로 적으면 엔진 하프 길이가 바뀐 날 문구만 거짓말이 된다).
+  const halfEndTick = useMemo(() => {
+    const snaps = (log as { tickSnapshots?: { tick: number }[] } | undefined)?.tickSnapshots;
+    const last = Array.isArray(snaps) && snaps.length > 0 ? snaps[snaps.length - 1] : null;
+    return last ? last.tick : null;
+  }, [log]);
+  const halftime = isHalftimeState(match.state);
+
   // half 가 바뀌면(하프타임 → 결과) 플레이헤드는 새 하프 기준으로 다시 센다.
   useEffect(() => setTick(null), [half]);
 
@@ -107,7 +118,8 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
         homeName={homeName}
         awayName={awayName}
         liveScore={liveScore}
-        tick={tick}
+        tick={headerTick(match.state, tick, halfEndTick)}
+        tickIsHalfEnd={halftime}
         leagueRound={leagueRound}
         onBack={() => navigate("/lobby")}
       />

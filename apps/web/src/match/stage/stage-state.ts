@@ -48,10 +48,21 @@ export function serializeToggles(t: Toggles): string {
   return JSON.stringify({ stats: t.stats, log: t.log, brief: t.brief });
 }
 
+/**
+ * 감독시간인가 — **상태 이름이 둘**이다. `HALFTIME` 이 현행(P4-E2 #170)이고 `H1_BREAK` 은 그 자리의
+ * 레거시 이름(P4 이전 배포본의 진행 중 매치)이다.
+ *
+ * ⚠️ 이 판정을 인라인으로 다시 쓰지 말고 여기를 불러라. #226 이 정확히 그 사고였다 — 헤더의
+ * "확정 스코어 우선" 규칙이 `H1_BREAK` 만 보고 있어서, 실제 배포본이 쓰는 `HALFTIME` 에서는 규칙이
+ * 통째로 빠진 채 헤더가 재생 플레이헤드를 따라갔다(API 는 0:4 인데 화면은 0:0/0').
+ */
+export function isHalftimeState(state: string | undefined): boolean {
+  return state === "HALFTIME" || state === "H1_BREAK";
+}
+
 /** 매치 상태가 소유하는 패널(없으면 null). */
 export function statePanelFor(state: string | undefined): StatePanelKey | null {
-  // HALFTIME = 감독시간(P4-E2 #170). H1_BREAK 은 그 자리의 레거시 이름.
-  if (state === "HALFTIME" || state === "H1_BREAK") return "halftime";
+  if (isHalftimeState(state)) return "halftime";
   if (state === "FINISHED") return "result";
   return null;
 }
@@ -59,6 +70,23 @@ export function statePanelFor(state: string | undefined): StatePanelKey | null {
 /** 이 상태에서 무대가 재생할 하프. 후반이 열린 뒤로는 후반을 튼다. */
 export function halfForState(state: string | undefined): 1 | 2 {
   return state === "SECOND_HALF" || state === "FINISHED" ? 2 : 1;
+}
+
+/**
+ * 헤더 시계가 가리킬 틱 (#226). 감독시간에는 **하프가 끝난 지점**을 고정으로 가리킨다 —
+ * 그 하프는 이미 끝났고(스코어도 확정), 그 밑에서 도는 재생은 자유 리뷰라 플레이헤드를 따라가면
+ * 헤더가 "전반 결과"가 아니라 "지금 어디까지 다시 보는 중"을 말하게 된다. 되감거나 새로 들어와
+ * 재생이 앞쪽에서 시작하면 그대로 `0'` 가 된다(hero 제보 화면).
+ *
+ * 하프 끝을 모르면(로그 미도착) 재생 플레이헤드로 **되돌아가지 않고** null 을 준다 — 틀린 숫자보다
+ * 숫자 없음이 낫다. 라이브 하프(전·후반 진행 중)는 그대로 플레이헤드를 따라간다.
+ */
+export function headerTick(
+  state: string | undefined,
+  playheadTick: number | null,
+  halfEndTick: number | null,
+): number | null {
+  return isHalftimeState(state) ? halfEndTick : playheadTick;
 }
 
 /**
