@@ -6,7 +6,6 @@ import {
   halftimeLengthLabel,
   liveGate,
   logAvailableFor,
-  MS_PER_TICK,
   pollIntervalFor,
 } from "./live-clock";
 
