@@ -45,6 +45,7 @@ public class MatchOrchestrator {
     private final TxRunner txRunner;
     private final MatchService matchService;
     private final PromptContextBuilder contextBuilder;
+    private final DeckPrewarmService prewarmService;
     private final BotService botService;
     private final ConditionService conditionService;
     private final RelationService relationService;
@@ -75,12 +76,14 @@ public class MatchOrchestrator {
                              online.hmb.league.LeagueService leagueService,
                              online.hmb.growth.GrowthService growthService,
                              MatchClockService clockService,
+                             DeckPrewarmService prewarmService,
                              ObjectMapper objectMapper,
                              @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
                              @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
                              @Value("${hmb.match.delta.overhaul-effort}") String overhaulEffort) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
+        this.prewarmService = prewarmService;
         this.matchService = matchService;
         this.contextBuilder = contextBuilder;
         this.botService = botService;
@@ -339,6 +342,9 @@ public class MatchOrchestrator {
             PromptContextBuilder.BaseJob botBase = contextBuilder.botBaseJob(match, bot);
             jobQueue.enqueueBase(userBase.baseId(), userBase.context());
             jobQueue.enqueueBase(botBase.baseId(), botBase.context());
+            // 이 유저도 "A 를 기다리는 사람"이다 — 원장에 없으면 남의 덱 재저장이 이 A 를 회수해
+            // 폴백으로 떨어뜨린다(#215 독립검증 F2). 이미 행이 있으면 덮지 않는다.
+            prewarmService.noteWaiting(match.userId(), userBase.baseId());
         } catch (Exception e) {
             log.warn("A 프리페치(match {}) 실패 — 무시(킥오프 때 풀생성 폴백): {}", matchId, e.toString());
         }
