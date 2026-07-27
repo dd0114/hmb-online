@@ -141,16 +141,22 @@ class BaseKeyTacticsSplitTest extends MatchTestBase {
      * 같은 덱이면 <b>전술을 달리 준 두 매치가 같은 A 를 쓴다</b> — A 잡은 첫 매치에서 만든 1개뿐.
      * (분리 전에는 전술마다 A 가 따로 생겨 크로스매치 캐시가 사실상 무력화됐다.)
      */
+    /**
+     * 매치는 <b>다른 유저 둘</b>이 만든다 — #217(매치 잠금)이 유저당 진행 중 매치를 하나로 제한해
+     * 같은 유저의 두 번째 매치 생성은 409 다. 검증 대상은 "같은 덱 + 다른 전술 → 같은 A" 이므로
+     * 덱이 같기만 하면 유저가 갈려도 성립한다(A 는 내용 해시 = 크로스유저 캐시).
+     */
     @Test
     void twoMatchesWithDifferentTacticsShareOneBaseJob() {
-        String token = setupUserWithDeck("basekey_share");
-        assertThat(authPost("/api/matches", token,
+        String first = setupUserWithDeck("basekey_share1");
+        assertThat(authPost("/api/matches", first,
                 Map.of("botId", "BOT_BAL", "teamTactics", NEUTRAL_TACTICS), Map.class)
                 .getStatusCode()).isEqualTo(HttpStatus.CREATED);
         fakeServants.drain();
         long afterFirst = baseJobRows();
 
-        assertThat(authPost("/api/matches", token,
+        String second = setupUserWithDeck("basekey_share2"); // 같은 슬롯 구성 = 같은 덱
+        assertThat(authPost("/api/matches", second,
                 Map.of("botId", "BOT_BAL",
                         "teamTactics", Map.of("line", 0.9, "press", 0.1, "tempo", 0.7, "width", 0.3)),
                 Map.class).getStatusCode()).isEqualTo(HttpStatus.CREATED);
