@@ -60,8 +60,12 @@ COPY data/players /app/data/players
 # SQLite 파일 위치. compose 가 named volume 을 여기에 마운트한다.
 RUN mkdir -p /var/lib/hmb && chown -R hmb:hmb /var/lib/hmb /app
 
+# ⚠️ 이 ENV 는 application.yml 의 hmb.data.* 를 **덮어쓴다**. 발행물 버전을 올릴 땐 두 곳을 같이
+#    올려야 한다 — 한쪽만 올리면 배포에서 조용히 구파일이 로드된다(server-java/CLAUDE.md #209 경고).
+#    2026-07-27 v8 배포 전 실제로 어긋나 있었다: yml=players.v2.3 인데 여기가 v2.1 이라 #207 신규
+#    LEGEND 8종(P173~P180)이 프로덕션에 임포트되지 않는 상태였다.
 ENV HMB_DB_PATH=/var/lib/hmb/hmb.db \
-    HMB_DATA_PLAYERSFILE=/app/data/players/players.v2.1.json \
+    HMB_DATA_PLAYERSFILE=/app/data/players/players.v2.3.json \
     HMB_DATA_ECONOMYFILE=/app/data/players/economy.v3.json \
     HMB_DATA_BOTSFILE=/app/data/players/bots.v2.json \
     HMB_DATA_LEAGUEFILE=/app/data/players/league.v1.json \
