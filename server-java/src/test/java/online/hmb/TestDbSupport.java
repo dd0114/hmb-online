@@ -19,6 +19,11 @@ final class TestDbSupport {
             Path dbFile = Files.createTempFile("hmb-test-", ".db");
             Files.deleteIfExists(dbFile); // SQLite/Flyway가 새로 생성하게 함
             registry.add("hmb.db.path", () -> dbFile.toAbsolutePath().toString());
+            // economy override(#209 B안)의 기본 경로는 DB 디렉토리다 — 그대로 두면 모든 테스트
+            // 클래스가 시스템 tmp 의 **같은 파일**을 공유해, 한 클래스가 남긴 override 를 다른
+            // 클래스가 부팅에 물 수 있다(정리 실패·크래시 시). 클래스마다 격리한다.
+            Path overrideFile = Files.createTempDirectory("hmb-test-econ-").resolve("economy.override.json");
+            registry.add("hmb.data.economy-override-file", () -> overrideFile.toAbsolutePath().toString());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

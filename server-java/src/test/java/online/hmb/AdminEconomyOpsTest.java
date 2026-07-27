@@ -216,6 +216,15 @@ class AdminEconomyOpsTest extends ApiTestBase {
                 Map.of("reason", "손으로 고친 파일 반영"), Map.class);
         assertThat(reload.getStatusCode()).as("쓸 수 없는 내용은 400").isEqualTo(HttpStatus.BAD_REQUEST);
 
+        // **기본팩**도 같은 기준으로 본다 — 여기 없는 id 는 starterTop 보다 폭발 반경이 크다
+        // (모든 가입이 지나가는 경로라 한 장만 틀려도 신규 유저가 한 명도 못 들어온다).
+        String poisonBasics = Files.readString(Path.of("src/test/resources/fixtures/economy.v1.json"))
+                .replace("\"P014\"", "\"P995_NOT_IN_CATALOG\"");
+        Files.writeString(Path.of(economyService.overridePath()), poisonBasics);
+        assertThat(authPost("/api/admin/economy/reload", admin,
+                Map.of("reason", "기본팩 오염 반영"), Map.class).getStatusCode())
+                .as("기본팩 오염도 400").isEqualTo(HttpStatus.BAD_REQUEST);
+
         // 살아 있는 설정은 그대로고(파일이 디스크에 남은 것과 **적용된 것**은 다른 사실이다),
         Map<?, ?> after = authGet("/api/admin/economy", admin, Map.class).getBody();
         assertThat(after.get("starterTop")).isEqualTo(healthy.get("starterTop"));

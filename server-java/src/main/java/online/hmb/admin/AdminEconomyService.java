@@ -39,7 +39,8 @@ import org.springframework.stereotype.Service;
  * <p><b>안전 장치</b>
  * <ul>
  *   <li>검증을 통과한 내용만 파일이 된다 — 카탈로그에 없는 id·중복·기본팩과 겹침·범위 밖 count 는 400.</li>
- *   <li>쓰기는 <b>임시파일 → ATOMIC_MOVE</b>. 중간에 죽어도 반쯤 쓰인 파일이 로드되는 창이 없다.</li>
+ *   <li>쓰기는 <b>임시파일 → ATOMIC_MOVE</b>(파일시스템이 원자적 이동을 지원하지 않으면 일반 move 로
+ *       폴백한다 — 그 환경에서는 "반쯤 쓰인 파일" 창이 이론상 남는다. 도커 볼륨·APFS·ext4 는 지원).</li>
  *   <li>리로드가 실패하면 <b>직전 스냅샷을 유지</b>하고 파일을 되돌린다(서비스가 멈추지 않는다).</li>
  *   <li>모든 시도는 {@code admin_ops_audit} 에 남는다 — <b>실패도 남긴다</b>(시도 자체가 이력이다).</li>
  * </ul>
@@ -254,6 +255,15 @@ public class AdminEconomyService {
      * 카탈로그에 없는 id 가 들어오면 가입이 FK 로 죽는다(에러 없이 200 을 받은 운영자는 원인을 모른다).
      */
     private void validateDocument(JsonNode document) {
+        // starterPack 먼저 — **기본팩이야말로 모든 가입이 반드시 지나가는 경로**다. 여기 카탈로그에
+        // 없는 id 가 하나 있으면 starterTop 이 멀쩡해도 신규 가입이 전부 FK 로 죽는다(독립검증 BLK-1:
+        // 1라운드와 같은 실패 모드가 인접 필드에서 그대로 재현됐다). 검증을 pool 에만 걸었던 게 이유다.
+        List<String> basics = new ArrayList<>();
+        document.path("starterPack").forEach(n -> basics.add(n.asText()));
+        if (!basics.isEmpty()) {
+            assertKnownPlayers(List.copyOf(new LinkedHashSet<>(basics)));
+        }
+
         JsonNode top = document.path("starterTop");
         if (top.isMissingNode() || top.isNull()) {
             return;   // starterTop 이 없는 economy 도 유효하다(기본팩만 지급 — 구파일 호환)
@@ -269,8 +279,6 @@ public class AdminEconomyService {
         }
         assertKnownPlayers(List.copyOf(unique));
 
-        List<String> basics = new ArrayList<>();
-        document.path("starterPack").forEach(n -> basics.add(n.asText()));
         for (String id : unique) {
             if (basics.contains(id)) {
                 throw ApiException.validation("기본팩에 이미 포함된 playerId 입니다: " + id);

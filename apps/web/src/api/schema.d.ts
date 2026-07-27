@@ -905,8 +905,13 @@ export interface components {
             id: string;
             /** @description 액션을 실행한 admin 닉네임 */
             actor: string;
-            /** @enum {string} */
-            action: "economy_reload" | "economy_starter_top" | "economy_override_clear";
+            /**
+             * @description economy_reload | economy_starter_top | economy_override_clear (#209).
+             *     ⚠️ enum 으로 닫지 않는다 — 이 테이블은 범용 운영 원장이고(#207 파트 A 등 다른 트랙이
+             *     자기 action 을 같은 테이블에 append 한다) 조회는 action 필터가 없다. 닫아 두면
+             *     그 트랙이 랜딩하는 순간 응답이 자기 스펙을 위반한다.
+             */
+            action: string;
             /** @enum {string} */
             result: "ok" | "failed";
             reason?: string | null;
@@ -2374,6 +2379,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getAdminEconomyHistory: {
@@ -2397,6 +2403,7 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     reloadAdminEconomy: {
@@ -2406,11 +2413,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
+        requestBody: {
             content: {
                 "application/json": {
-                    /** @description 운영 사유(원장 기록) */
-                    reason?: string;
+                    /** @description 운영 사유(필수 — 원장에 남는다) */
+                    reason: string;
                 };
             };
         };
@@ -2426,6 +2433,7 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     replaceStarterTop: {
@@ -2452,12 +2460,13 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     clearEconomyOverride: {
         parameters: {
-            query?: {
-                reason?: string;
+            query: {
+                reason: string;
             };
             header?: never;
             path?: never;
@@ -2476,6 +2485,7 @@ export interface operations {
             };
             400: components["responses"]["ValidationError"];
             401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
         };
     };
     adminGrantPoints: {

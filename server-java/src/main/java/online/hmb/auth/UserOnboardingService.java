@@ -130,6 +130,12 @@ public class UserOnboardingService {
         EconomyService.Economy economy = economyOpt.get();
 
         for (String playerId : economy.starterPack()) {
+            // 최상위와 같은 이유의 방어선(BLK-1) — 기본팩은 **모든 가입이 지나가는 경로**라
+            // 여기서 FK 가 터지면 신규 유저가 한 명도 못 들어온다. 한 장을 건너뛰는 편이 낫다.
+            if (!playerExists(playerId)) {
+                log.warn("starterPack id {} is not in the catalog — skipping it for user {}", playerId, userId);
+                continue;
+            }
             grantCard(userId, playerId, now);
         }
 

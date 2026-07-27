@@ -28,6 +28,8 @@ interface MockState {
   seq: number;
   /** true 면 교체 요청이 400 — 서버 검증(카탈로그 실재 등)에 걸린 상황. */
   rejectNext: boolean;
+  /** 적용되지 않은 override 파일이 디스크에 남아 있는 상태(거절된 파일). */
+  staleFile: boolean;
 }
 
 const BAKED_POOL = ["P001", "P003", "P005", "P009", "P025"];
@@ -40,6 +42,7 @@ function freshState(): MockState {
     history: [],
     seq: 0,
     rejectNext: false,
+    staleFile: false,
   };
 }
 
@@ -56,7 +59,7 @@ function view(st: MockState) {
     effectivePath: st.overrideApplied ? "/var/lib/hmb/economy.override.json" : "/app/data/players/economy.v3.json",
     overridePath: "/var/lib/hmb/economy.override.json",
     overrideApplied: st.overrideApplied,
-    overrideFilePresent: st.overrideApplied,
+    overrideFilePresent: st.overrideApplied || st.staleFile,
     loadedAt: `2026-07-27T10:0${st.seq}:00Z`,
     starterPackSize: 14,
     starterTop: { pool: st.pool, count: st.count },
@@ -129,6 +132,18 @@ async function openAdmin(page: Page) {
 }
 
 test.describe("#209 B안 — economy 무배포 운영 패널", () => {
+  test("적용되지 않은 override 가 남아 있으면 경고 + 롤백으로 정리할 수 있다", async ({ page }) => {
+    const st = await mockApi(page);
+    st.staleFile = true;   // 서버가 거절해 적용은 안 됐지만 파일은 디스크에 남은 상태
+    await openAdmin(page);
+
+    // 값의 출처는 여전히 발행물이라고 정직하게 말하고,
+    await expect(page.getByTestId("admin-economy-source")).toHaveAttribute("data-source", "BAKED");
+    // 남아 있는 파일은 경고로 알리며, 롤백(삭제)은 가능해야 한다.
+    await expect(page.getByTestId("admin-economy-stale-override")).toBeVisible();
+    await expect(page.getByTestId("admin-economy-rollback")).toBeEnabled();
+  });
+
   test("현재 값과 **출처**를 함께 보여준다 — 처음엔 배포 발행물", async ({ page }) => {
     await mockApi(page);
     await openAdmin(page);

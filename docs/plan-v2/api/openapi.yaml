@@ -769,6 +769,8 @@ paths:
                 $ref: "#/components/schemas/AdminEconomyView"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/admin/economy/history:
     get:
@@ -791,6 +793,8 @@ paths:
                   $ref: "#/components/schemas/AdminOpsAuditEntry"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/admin/economy/reload:
     post:
@@ -800,13 +804,14 @@ paths:
         디스크 재읽기(내용 변경 없음). **파싱만이 아니라 의미도 검증**한다 — 카탈로그에 없는 id 가
         든 파일을 그대로 실으면 이후 모든 가입이 FK 로 실패한다. 실패 시 400 + 직전 설정 유지.
       requestBody:
-        required: false
+        required: true
         content:
           application/json:
             schema:
               type: object
+              required: [reason]
               properties:
-                reason: { type: string, description: 운영 사유(원장 기록) }
+                reason: { type: string, description: 운영 사유(필수 — 원장에 남는다) }
       responses:
         "200":
           description: OK
@@ -818,6 +823,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/admin/economy/starter-top:
     put:
@@ -843,6 +850,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/admin/economy/override:
     delete:
@@ -852,7 +861,7 @@ paths:
       parameters:
         - name: reason
           in: query
-          required: false
+          required: true
           schema: { type: string }
       responses:
         "200":
@@ -865,6 +874,8 @@ paths:
           $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/admin/users/{id}/points:
     parameters:
@@ -1485,7 +1496,11 @@ components:
         actor: { type: string, description: 액션을 실행한 admin 닉네임 }
         action:
           type: string
-          enum: [economy_reload, economy_starter_top, economy_override_clear]
+          description: |
+            economy_reload | economy_starter_top | economy_override_clear (#209).
+            ⚠️ enum 으로 닫지 않는다 — 이 테이블은 범용 운영 원장이고(#207 파트 A 등 다른 트랙이
+            자기 action 을 같은 테이블에 append 한다) 조회는 action 필터가 없다. 닫아 두면
+            그 트랙이 랜딩하는 순간 응답이 자기 스펙을 위반한다.
         result:
           type: string
           enum: [ok, failed]

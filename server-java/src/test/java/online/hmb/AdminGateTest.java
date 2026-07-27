@@ -139,8 +139,10 @@ class AdminGateTest extends ApiTestBase {
             Class<?> type = beanFactory.getType(name);
             if (type == null) continue;
             if (!type.getName().startsWith("online.hmb.admin.")) continue;
-            // 컨트롤러·인터셉터·가드가 아니라 **상태를 다루는 서비스**가 씨앗이어야 한다.
-            if (type.isAnnotationPresent(org.springframework.stereotype.Service.class)) {
+            // 판정 기준은 **애노테이션이 아니라 이름**이다. @Service 만 보면 같은 클래스를
+            // @Component 로 바꾸는 것만으로 검사를 빠져나갈 수 있다(검증자 M5 가 그렇게 뚫었다).
+            // 같은 패키지에 이미 @Component 서비스 선례가 있어 가정이 아니라 실재하는 구멍이었다.
+            if (type.getSimpleName().endsWith("Service")) {
                 adminServices.add(name);
             }
         }

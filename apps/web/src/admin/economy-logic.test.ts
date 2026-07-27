@@ -110,6 +110,28 @@ describe("normalizeEconomyView — 패널이 admin 페이지를 죽이지 않게
     expect(normalizeEconomyView({ starterTop: {} })).toBeNull();
   });
 
+  it("적용 여부와 파일 존재가 **갈리는** 상태를 그대로 보존한다(거절된 override 잔존)", () => {
+    // 서버가 손상/거절된 파일을 디스크에 남긴 채 발행물로 서비스하는 상태. 여기서 둘을 뭉치면
+    // 화면이 "override 적용 중"이라 거짓말을 하거나(반대로) 롤백 버튼이 사라져 파일을 못 지운다.
+    const v = normalizeEconomyView({
+      source: "BAKED",
+      overrideApplied: false,
+      overrideFilePresent: true,
+      starterTop: { pool: ["P001"], count: 1 },
+    })!;
+    expect(v.overrideApplied).toBe(false);
+    expect(v.overrideFilePresent).toBe(true);
+  });
+
+  it("구버전 응답(overrideFilePresent 없음)은 적용 여부로 폴백 — 롤백 버튼이 사라지지 않게", () => {
+    const v = normalizeEconomyView({
+      source: "OVERRIDE",
+      overrideApplied: true,
+      starterTop: { pool: ["P001"], count: 1 },
+    })!;
+    expect(v.overrideFilePresent).toBe(true);
+  });
+
   it("부분적으로 빠진 필드는 안전한 기본값으로 채운다", () => {
     const v = normalizeEconomyView({ starterTop: { pool: ["P001", 7] } })!;
     expect(v.pool).toEqual(["P001"]);   // 문자열 아닌 원소는 버린다

@@ -46,8 +46,8 @@ class StarterTopMissingPlayerTest extends ApiTestBase {
         // 가입 자체가 성립한다(FK 로 트랜잭션이 죽지 않는다).
         assertThat(authGet("/api/me", token, Map.class).getStatusCode()).isEqualTo(HttpStatus.OK);
 
-        // 기본팩 14장은 정상 지급되고, 최상위만 조용히 빠진다.
-        assertThat(ownedCount("missing_top_user")).isEqualTo(14L);
+        // 카탈로그에 있는 기본팩 13장은 정상 지급되고, 없는 id(기본팩 1 + 최상위 전부)는 조용히 빠진다.
+        assertThat(ownedCount("missing_top_user")).isEqualTo(13L);
         assertThat(grantCount("missing_top_user")).isZero();
 
         // 포인트·원장은 평소와 같다(지급 경로의 나머지가 멀쩡하다).
