@@ -340,11 +340,15 @@ public class MatchOrchestrator {
             BotService.BotRow bot = botService.get(match.botId());
             PromptContextBuilder.BaseJob userBase = contextBuilder.userBaseJob(match, snapshot);
             PromptContextBuilder.BaseJob botBase = contextBuilder.botBaseJob(match, bot);
-            jobQueue.enqueueBase(userBase.baseId(), userBase.context());
-            jobQueue.enqueueBase(botBase.baseId(), botBase.context());
-            // 이 유저도 "A 를 기다리는 사람"이다 — 원장에 없으면 남의 덱 재저장이 이 A 를 회수해
-            // 폴백으로 떨어뜨린다(#215 독립검증 F2). 이미 행이 있으면 덮지 않는다.
-            prewarmService.noteWaiting(match.userId(), userBase.baseId());
+            // enqueue 와 원장 기록은 한 트랜잭션이다 — 사이가 벌어지면 그 틈에 남의 덱 재저장이
+            // 이 A 를 회수해 폴백으로 떨어뜨린다(#215 독립검증 F2 의 잔여 창 R3).
+            // 이 유저도 "A 를 기다리는 사람"이므로 원장에 실어야 회수 보호가 성립한다(행 있으면 안 덮음).
+            txRunner.run(() -> {
+                jobQueue.enqueueBase(userBase.baseId(), userBase.context());
+                jobQueue.enqueueBase(botBase.baseId(), botBase.context());
+                prewarmService.noteWaiting(match.userId(), userBase.baseId());
+                return null;
+            });
         } catch (Exception e) {
             log.warn("A 프리페치(match {}) 실패 — 무시(킥오프 때 풀생성 폴백): {}", matchId, e.toString());
         }

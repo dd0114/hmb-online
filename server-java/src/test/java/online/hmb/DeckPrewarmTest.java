@@ -150,6 +150,8 @@ class DeckPrewarmTest extends MatchTestBase {
      * (실행 중인 AI 를 취소할 수단이 없고, 늦은 complete 를 404 로 만들지도 않는다). 그래서 "저장 N회 =
      * 콜 1회"는 <b>거짓</b>이다 — 참인 보장은 <b>유저당 동시 in-flight ≤ leased 1 + queued 1</b> 이다.
      * 라이브에서 롱폴 워커는 1초 안에 물기 때문에 이 경로가 실제 경로다. 이 테스트가 그 차이를 박제한다.
+     * (워커 1개 기준. 배포 기본 {@code AI_CONCURRENCY=2} 에서는 물린 것이 그만큼 늘 수 있고,
+     * 불변인 것은 <b>대기 잡 1개</b> 쪽이다 — 독립검증 2R R2.)
      */
     @Test
     void aLeasedBaseSurvivesTheNextSaveButPendingStaysAtOne() {
@@ -164,7 +166,7 @@ class DeckPrewarmTest extends MatchTestBase {
         assertThat(queuedBaseRows())
                 .as("대기 중인 잡은 언제나 1개 — 그 뒤 편집들은 서로를 갈아끼운다")
                 .isEqualTo(1L);
-        assertThat(baseRows()).as("leased 1 + queued 1").isEqualTo(2L);
+        assertThat(baseRows()).as("물린 것 1 + 대기 1 — 불변인 쪽은 대기 1").isEqualTo(2L);
     }
 
     /**
