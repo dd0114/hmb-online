@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createViewer, type ViewerChrome, type ViewerController } from "@hmb/viewer-core";
 import type { MatchClock } from "@hmb/shared";
 import { liveGate } from "./live-clock";
+import { driftAllowanceTicks, indexOfPlayhead, paceRate, tickOfIndex } from "./live-pace";
 import type { ControlMode } from "./playback-controls";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildTimelinePins, type TimelinePin } from "./timeline-pins";
@@ -31,8 +32,9 @@ export interface VisualPlaybackProps {
 
 /**
  * viewer-core 직접 마운트(#169 S3). 캔버스에 createViewer 로 코어를 붙이고, 골/상황/배너 자막은
- * 캔버스 위 오버레이(호스트 DOM)로 그린다. 컨트롤(플레이=하이라이트 토글 / admin=풀컨트롤)은
- * 코어 컨트롤러를 직접 조작한다. 손상 로그는 load 가 throw → 텍스트 타임라인으로 폴백.
+ * 캔버스 위 오버레이(호스트 DOM)로 그린다. 재생은 **하이라이트 연출(autoPace) 단일 모드**다(#216 —
+ * 끔 경로 제거). 컨트롤은 admin 풀컨트롤만 남고 플레이 모드엔 없다. 손상 로그는 load 가 throw →
+ * 텍스트 타임라인으로 폴백.
  */
 export function VisualPlayback({
   log,
@@ -64,8 +66,6 @@ export function VisualPlayback({
   const charAssets = useCharAssets();
   const skins = useMemo(() => buildViewerSkins(charAssets, log), [charAssets, log]);
   const [failed, setFailed] = useState(false);
-  // 하이라이트 연출(autoPace) 표시 상태 — 코어 기본 on.
-  const [highlight, setHighlight] = useState(true);
 
   // 콜백은 마운트 시 고정하되 최신 onTick 은 ref 로 본다(stale closure 방지).
   const onTickRef = useRef(onTick);
@@ -142,7 +142,8 @@ export function VisualPlayback({
       v = createViewer(canvas, chrome);
       created = v;
       if (skins) v.setSkin(skins);
-      v.setSpeed(4); // 기본 배속(hero 지시) — 하이라이트 off 시 이 속도로 진행.
+      // 배속은 건드리지 않는다(=1, 코어 자연 페이스). #216 이후 speed 는 연출 페이싱 위의
+      // **배율**이라, 여기서 4 를 박으면 하이라이트까지 4배로 지나간다.
       v.load(log); // 손상 로그면 throw
       v.start();
     } catch {
@@ -153,7 +154,6 @@ export function VisualPlayback({
     }
     viewerRef.current = v;
     setViewerReady(true);
-    setHighlight(true);
     // QA/e2e 훅 — dev-viewer 가 제공하던 window.__viewer 와 동형(읽기 표면 + 스킨/뷰모드).
     (window as unknown as { __viewer?: unknown }).__viewer = v.hooks;
 
@@ -168,16 +168,21 @@ export function VisualPlayback({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log, half]);
 
-  // ── 라이브 게이트(P4-E2 #170 / AC-W3-1) ───────────────────────────────
-  // 늦게 접속하면 **경과 시점부터** 재생하고, 그 뒤로는 "지금"을 앞질러 가지 못한다(되감기는 자유).
-  // viewer-core 는 자체 프레임 루프를 도므로 코어를 고치지 않고 호스트가 주기적으로 플레이헤드를
-  // 확인해 상한 밖이면 되돌린다(코어는 QA 뷰어와 공유하는 SoT — 여기서 건드리지 않는다).
+  // ── 라이브 게이트(P4-E2 #170 / AC-W3-1, #216 재정합) ──────────────────
+  // 늦게 접속하면 **경과 시점부터** 재생한다(seek-to-now). 그 뒤로는 연출(autoPace)을 켠 채로
+  // **배율**만 조금씩 손봐 재생이 서버 창의 끝에 맞물리게 한다(live-pace.paceRate).
+  //
+  // 구 구현은 여기서 autoPace 를 끄고 압축비를 speed 에 직접 넣은 뒤, 넘칠 때마다 플레이헤드를
+  // 되감았다 — ①유저의 실경기가 항상 "하이라이트 끔"이었고 ②코어 1x = 2게임초/실초라 압축비를
+  // 그대로 넣으면 두 배로 빨랐으며 ③연출 페이싱은 속도가 균일하지 않아 되감기가 상시 발화했다
+  // (초당 4회 = 고무줄). #216 은 셋 다 지운다. 코어는 QA 뷰어와 공유하는 SoT 라 최소로만 쓴다.
   const gateInput = useRef({ clock, clockOffsetMs, half });
   gateInput.current = { clock, clockOffsetMs, half };
-  const tickCount = useMemo(() => {
-    const snaps = (log as { tickSnapshots?: unknown[] } | null)?.tickSnapshots;
-    return Array.isArray(snaps) ? snaps.length : 0;
+  const snapTicks = useMemo(() => {
+    const snaps = (log as { tickSnapshots?: { tick: number }[] } | null)?.tickSnapshots;
+    return Array.isArray(snaps) ? snaps.map((s) => s.tick) : [];
   }, [log]);
+  const tickCount = snapTicks.length;
 
   useEffect(() => {
     const v = viewerRef.current;
@@ -188,30 +193,36 @@ export function VisualPlayback({
     };
 
     const entry = gateNow();
-    if (!entry.isLive) return; // 지나간 하프·종료·레거시 = 제한 없음(기존 동작 그대로)
+    // 지나간 하프·종료·레거시 = 제한 없음. 배율도 자연 페이스로 돌려놓는다(단계가 바뀐 뒤에도
+    // 직전 창의 배율이 남아 있으면 다시보기가 미묘하게 빠르거나 느려진다).
+    if (!entry.isLive) {
+      v.setSpeed(1);
+      return;
+    }
 
-    // 라이브에서는 하이라이트 연출(autoPace)을 끈다 — 줌·슬로우가 실시간을 따라가지 못한다.
-    setHighlight(false);
-    v.setAutoPace(false);
-    if (entry.speed) v.setSpeed(entry.speed);
-    v.jumpToTick(entry.liveTick); // seek-to-now
+    // 서버 시계는 **인덱스**로 말하고 뷰어는 절대 틱으로 움직인다 — 후반 로그(틱 2700~)에서
+    // 이 둘을 섞으면 seek-to-now 가 로그 맨 앞으로 가고 상한 비교가 늘 참이 된다(후반 정지).
+    const drift = driftAllowanceTicks(tickCount);
+    v.jumpToTick(tickOfIndex(snapTicks, entry.liveTick)); // seek-to-now
     v.play();
 
     const timer = window.setInterval(() => {
       const gate = gateNow();
       if (!gate.isLive) return;
-      const cur = Number(v.hooks.cur()?.tick ?? 0);
-      if (cur > gate.clamp(cur)) {
-        v.jumpToTick(gate.liveTick); // 앞질러 갔으면(스크럽·배속) 지금으로 되돌린다
+      const curIdx = indexOfPlayhead(snapTicks, Number(v.hooks.cur()?.tick ?? 0));
+      // 자유 재생의 앞섬은 배율로 되돌린다. 드리프트 폭을 넘는 건 의도적 점프(스크럽·핀)로 보고
+      // 상한으로 회수한다 — 앞서보기 차단(AC-W3-1)은 여기 한 곳에만 남는다.
+      if (curIdx > gate.clamp(curIdx) + drift) {
+        v.jumpToTick(tickOfIndex(snapTicks, gate.liveTick));
+        return;
       }
+      v.setSpeed(paceRate(curIdx / tickCount, gate.liveTick / tickCount));
     }, 250);
-    return () => window.clearInterval(timer);
-  }, [viewerReady, tickCount, clock?.phase, clock?.phaseStartAt]);
-
-  const onHighlight = (on: boolean) => {
-    setHighlight(on);
-    viewerRef.current?.setAutoPace(on);
-  };
+    return () => {
+      window.clearInterval(timer);
+      v.setSpeed(1);
+    };
+  }, [viewerReady, tickCount, snapTicks, clock?.phase, clock?.phaseStartAt]);
 
   if (failed) {
     return (
@@ -244,8 +255,6 @@ export function VisualPlayback({
           half={half}
           mode={controlMode}
           canSwitch={canSwitch}
-          highlight={highlight}
-          onHighlight={onHighlight}
           onMode={onControlMode}
           viewer={viewerReady ? viewerRef.current : null}
           clockRef={clockRef}

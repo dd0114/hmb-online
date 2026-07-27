@@ -141,14 +141,21 @@ T+300s  미제출 → GEN2 (전반 프롬프트 승계) → h2 저장 시 SECOND
 
 ## 5. Config 노브 (AC-W3-2 — 하드코딩 0)
 
+> ⚠️ **#216(2026-07-27)로 값이 바뀌었다** — `half-real-ms: 240000 → 420000`, `halftime-ms: 60000 → 180000`.
+> 240s 는 화면의 실제 재생 속도(하이라이트 연출)와 무관하게 정한 값이라 **재생이 끝나기 전에 하프타임이
+> 열렸다**(켬 모드 실측의 57%). 지금은 **켬 모드 실측 재생 길이**(리얼 하프 16개: min 392s · p50 422s ·
+> max 463s, 재현 = `node tools/measure-playback-pace.mjs`)에 맞춘다. 감독시간 3분은 hero 지시.
+> 남은 오차는 web 이 배율(`apps/web/src/match/live-pace.ts` `paceRate`)로 흡수하고, 아래 §4.2 의
+> "`speed = compression`" 지침은 **폐기**됐다(코어 1x = 2 게임초/실초라 압축비를 그대로 넣으면 2배로 빨랐다).
+
 `server-java/src/main/resources/application.yml`:
 ```yaml
 hmb:
   match:
     clock:
       enabled: true            # false = 롤백 스위치(현행 즉시 전개, §7.7)
-      half-real-ms: 240000     # 하프당 실시간 재생 길이(전·후반 동일). 압축비는 여기서 파생.
-      halftime-ms: 60000       # 감독시간(P4-D2 = 60초)
+      half-real-ms: 420000     # 하프당 실시간 재생 길이(#216: 켬 모드 실측 정합). 압축비는 여기서 파생.
+      halftime-ms: 180000      # 감독시간(#216 = 3분. 구 P4-D2 60초)
       auto-resume-on-expiry: true   # 만료 시 후반 자동 시작(false 면 HALFTIME 유지 = 수동 대기)
       sweep-interval-ms: 1000  # 시계 스위퍼 주기(잡 스위퍼 10s 와 별도 — 초 단위 경계라 촘촘히)
       seek:
@@ -382,10 +389,15 @@ UPDATE matches SET state='HALFTIME' WHERE state='H1_BREAK';  -- 진행 중 매�
 | `match/stage/ScoreBar.tsx` | HALFTIME 카운트다운 뱃지(초 단위) |
 | `match/GenWaitPanel.tsx` | GEN2 문구를 "후반 준비 중"으로(무대 셸 안에서도 표시되게 stage 경로 연결) |
 
-**라이브 재생 구현 노트**: `viewer-core` 는 로그를 통째로 로드해 자체 프레임 루프로 재생한다.
-상한 강제는 **호스트(web)가 주기적으로(≈250ms) `hooks.cur().tick` 을 읽어 `allowedTick` 초과 시 되돌리는** 방식으로
-구현한다 — **viewer-core 수정 0**(E1 소유 코어라 건드리지 않는다). 재생 속도는 `setSpeed` 로 압축비에 맞춘다:
-`speed = compression`(=`tickCount*msPerTick/halfRealMs`)이면 상한에 자연스럽게 붙어 되돌림이 거의 발생하지 않는다.
+**라이브 재생 구현 노트** *(⚠️ #216 에서 전면 교체 — 아래 원안은 실제로는 반대로 동작했다)*:
+~~상한 강제는 호스트가 250ms 마다 플레이헤드를 읽어 초과 시 되돌리고, `speed = compression` 으로 맞춘다.~~
+실제로는 ①코어 1x = **2 게임초/실초**라 압축비를 그대로 넣으면 두 배로 빨랐고 ②연출 페이싱(크루즈 4x /
+키장면 1x)은 속도가 균일하지 않아 창의 평균속도를 계속 앞질러 **되돌림이 초당 4회 상시 발화**했으며
+(그 점프는 코어에서 3 스냅샷 되감기 + `resetStops` + `clearCaptions` 를 동반한다 = 자막 소거·정지연출 재발화)
+③라이브 진입 시 `setAutoPace(false)` 를 불러 **유저의 실경기가 항상 하이라이트 끔 모드**였다.
+현재 구현(#216): 연출은 **항상 켬**, 창 정합은 `paceRate`(남은 재생분 ÷ 남은 창) **배율**로,
+되돌림은 드리프트 폭(하프의 12%)을 넘는 **의도적 점프에만**. 서버 시계가 주는 값은 **스냅샷 인덱스**이고
+뷰어는 **절대 틱**으로 움직이므로 변환이 필수다(후반 로그는 틱이 2700 부터 — 섞으면 후반이 통째로 멈춘다).
 
 ---
 

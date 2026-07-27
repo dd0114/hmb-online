@@ -16,9 +16,6 @@ interface PlaybackControlsProps {
   mode: ControlMode;
   /** admin/QA 자격 — 모드 전환 토글 노출 여부. */
   canSwitch: boolean;
-  /** 하이라이트 연출(주요장면 슬로우·접촉 줌)이 켜져 있는지 — 뷰어 상태(autoPace). */
-  highlight: boolean;
-  onHighlight: (on: boolean) => void;
   onMode: (m: ControlMode) => void;
   /** 직접 마운트한 코어 컨트롤러(#169 S3) — full 모드 풀컨트롤이 이걸 조작한다. */
   viewer: ViewerController | null;
@@ -34,13 +31,15 @@ interface PlaybackControlsProps {
   lastTick?: number;
 }
 
-// 0.1x = 코어 기준 0.2 게임초/실초 — "한 초 안에서 무슨 일이 일어났나"를 눈으로 따라가는 속도(#180).
+// 연출 페이스에 곱하는 **배율**(#216) — 1x = 자연 페이스(크루즈 4x / 키장면 1x).
+// 0.1x 는 "한 초 안에서 무슨 일이 일어났나"를 눈으로 따라가는 속도(#180).
 const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4] as const;
 
 /**
  * 경기 재생 컨트롤 바 (#148, #169 S3 직접 마운트).
- *  - 플레이 모드(일반 유저): **하이라이트 토글 하나뿐**. 경기는 자동 진행(재생/일시정지·배속·되감기·
- *    프레임점프·스크럽 없음). 토글은 실제로 뷰어 연출(autoPace)을 끄고 켠다.
+ *  - 플레이 모드(일반 유저): **컨트롤 없음**. 경기는 하이라이트 연출로 자동 진행된다.
+ *    (#216 에서 하이라이트 토글을 지웠다 — 끔 모드는 렌더가 깨진 채였고, 라이브 재생이 그 경로를
+ *     강제로 타고 있었다. 켬이 유일 모드가 되면서 끌 수단 자체가 사라졌다.)
  *  - full 모드(admin/QA): 코어 풀컨트롤(재생·배속·스크럽·프레임점프·뷰모드) — 디버그/검수용.
  *    (S2 이전엔 iframe 안 dev-viewer 컨트롤을 썼으나, S3 에서 iframe 이 사라져 web 이 직접 그린다.)
  */
@@ -48,8 +47,6 @@ export function PlaybackControls({
   half,
   mode,
   canSwitch,
-  highlight,
-  onHighlight,
   onMode,
   viewer,
   clockRef,
@@ -60,23 +57,10 @@ export function PlaybackControls({
 }: PlaybackControlsProps) {
   return (
     <div className={styles.bar} data-testid={`viewer-controls-half${half}`} data-mode={mode}>
-      {mode === "play" ? (
-        <button
-          type="button"
-          className={[styles.highlight, highlight ? styles.highlightOn : ""].join(" ")}
-          data-testid={`viewer-highlight-toggle-half${half}`}
-          aria-pressed={highlight}
-          title="골·파울 등 주요장면을 슬로우와 확대로 보여줍니다. 끄면 일정 속도로 쭉 진행합니다."
-          onClick={() => onHighlight(!highlight)}
-        >
-          🎬 하이라이트 {highlight ? "켜짐" : "꺼짐"}
-        </button>
-      ) : (
+      {mode === "full" && (
         <AdminControls
           half={half}
           viewer={viewer}
-          highlight={highlight}
-          onHighlight={onHighlight}
           clockRef={clockRef}
           scrubRef={scrubRef}
           pins={pins}
@@ -119,8 +103,6 @@ export function PlaybackControls({
 function AdminControls({
   half,
   viewer,
-  highlight,
-  onHighlight,
   clockRef,
   scrubRef,
   pins,
@@ -129,8 +111,6 @@ function AdminControls({
 }: {
   half: 1 | 2;
   viewer: ViewerController | null;
-  highlight: boolean;
-  onHighlight: (on: boolean) => void;
   clockRef?: RefObject<HTMLSpanElement>;
   scrubRef?: RefObject<HTMLInputElement>;
   pins?: TimelinePin[];
@@ -198,17 +178,6 @@ function AdminControls({
       <button type="button" className={styles.mode} data-testid={`viewer-restart-half${half}`} disabled={disabled} onClick={() => v?.restart()}>
         ⟲ 처음
       </button>
-      <button
-        type="button"
-        className={[styles.mode, highlight ? styles.modeOn : ""].join(" ")}
-        data-testid={`viewer-highlight-admin-half${half}`}
-        aria-pressed={highlight}
-        disabled={disabled}
-        title="하이라이트 연출(주요장면 슬로우·줌). 켜져 있으면 배속 설정이 무시된다."
-        onClick={() => onHighlight(!highlight)}
-      >
-        🎬 연출
-      </button>
       <span className={styles.speeds} role="group" aria-label="배속">
         {SPEEDS.map((s) => (
           <button
@@ -217,13 +186,8 @@ function AdminControls({
             className={styles.mode}
             data-testid={`viewer-speed-${s}-half${half}`}
             disabled={disabled}
-            title={`${s}x 로 재생 (연출 페이싱은 꺼진다 — 켜져 있으면 코어가 배속을 무시한다)`}
-            onClick={() => {
-              // 코어는 autoPace 가 켜져 있으면 speed 를 무시한다(tickLoop eff) → 배속 선택 =
-              // "내가 속도를 잡겠다" 로 해석하고 연출 페이싱을 끈다. 다시 켜는 토글은 아래에 있다.
-              if (highlight) onHighlight(false);
-              v?.setSpeed(s);
-            }}
+            title={`연출 페이스의 ${s}배로 재생 (1x = 자연 페이스, 하이라이트 슬로우 유지)`}
+            onClick={() => v?.setSpeed(s)}
           >
             {s}x
           </button>

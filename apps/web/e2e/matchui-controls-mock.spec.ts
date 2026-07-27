@@ -4,11 +4,11 @@ import { mkdirSync, readFileSync } from "node:fs";
 /**
  * #148 매치 화면 컨트롤 간소화 (#169 S3 직접 마운트) — 백엔드 없이 route-mock 으로 실화면 계약을 박제한다.
  *
- * 계약(hero 재지시 2026-07-21):
- *  - 플레이 모드(일반 유저): 경기는 **자동 진행**하고 컨트롤은 **하이라이트 토글 하나뿐**이다.
- *    재생/일시정지·배속·되감기·프레임점프·스크럽은 없다. 토글은 코어 연출(autoPace)을 직접 끄고 켠다
- *    (끄면 진행이 멈추거나 느려지지 않고 기본 배속 4x 로 쭉 간다).
- *  - admin/QA 모드: 코어 풀컨트롤(재생·배속·스크럽·프레임점프) + 모드 전환 토글.
+ * 계약(hero 재지시 2026-07-21 → #216 하이라이트 단일화 2026-07-27):
+ *  - 플레이 모드(일반 유저): 경기는 **자동 진행**하고 컨트롤은 **아예 없다**. 하이라이트 연출이
+ *    유일 모드라 끄는 버튼도 없다(#216 — 끔 모드는 렌더가 깨진 채였고 라이브 재생이 그 경로를 탔다).
+ *  - admin/QA 모드: 코어 풀컨트롤(재생·배속·스크럽·프레임점프) + 모드 전환 토글. 배속은 연출을
+ *    끄지 않고 그 위에 곱해진다.
  *
  * S3: iframe·postMessage 제거 — web 이 viewer-core 를 직접 마운트한다. 컨트롤은 코어 컨트롤러를
  * 직접 조작하고, 재생 상태는 window.__viewer(코어 훅)로 읽는다.
@@ -79,14 +79,6 @@ function tickNow(page: Page): Promise<number> {
   );
 }
 
-/** 하이라이트 연출(autoPace) 표시 상태 — 토글 aria-pressed 가 SoT(web 이 직접 제어). */
-function highlightOn(page: Page): Promise<boolean> {
-  return page
-    .getByTestId("viewer-highlight-toggle-half1")
-    .getAttribute("aria-pressed")
-    .then((v) => v === "true");
-}
-
 /** 실제 진행 속도(게임틱/실초) 측정 — "칩이 눌렸다"가 아니라 "정말 진행한다"를 본다. */
 async function measureRate(page: Page, ms: number): Promise<number> {
   const t0 = await tickNow(page);
@@ -97,26 +89,21 @@ async function measureRate(page: Page, ms: number): Promise<number> {
 
 test.beforeAll(() => mkdirSync(CAP_DIR, { recursive: true }));
 
-test("#148 플레이 모드: 컨트롤은 하이라이트 토글 하나뿐이고 경기는 자동 진행한다", async ({ page }) => {
+test("#148/#216 플레이 모드: 컨트롤이 없고 경기는 자동 진행한다", async ({ page }) => {
   await openHalftime(page, false);
 
-  // (1) web 바에 하이라이트 토글 외에는 아무 컨트롤이 없다(재생/배속/스크럽/프레임점프/모드토글 없음).
-  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toBeVisible();
+  // (1) web 바에 컨트롤이 하나도 없다(하이라이트 토글·재생·배속·스크럽·프레임점프·모드토글 전부).
+  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toHaveCount(0);
   await expect(page.getByTestId("viewer-play-toggle-half1")).toHaveCount(0);
   for (const s of [1, 2, 4]) await expect(page.getByTestId(`viewer-speed-${s}-half1`)).toHaveCount(0);
   await expect(page.getByTestId("viewer-scrub-half1")).toHaveCount(0);
   await expect(page.getByTestId("viewer-mode-toggle-half1")).toHaveCount(0);
   const buttons = await page.getByTestId("viewer-controls-half1").locator("button").count();
-  expect(buttons, "플레이 모드 컨트롤 바의 버튼은 하이라이트 토글 하나뿐").toBe(1);
+  expect(buttons, "플레이 모드 컨트롤 바에는 버튼이 없다").toBe(0);
 
   // 스코어는 무대(캔버스)가 아니라 호스트 스코어바가 소유한다(중복 없이 한 곳).
   await expect(page.getByTestId("stage-scorebar")).toBeVisible();
   await expect(page.getByTestId("stage-score")).toBeVisible();
-
-  // 컨트롤 바가 첫 화면 안에 보여야 한다(스크롤 없이).
-  const bar = await page.getByTestId("viewer-controls-half1").boundingBox();
-  const vh = page.viewportSize()!.height;
-  expect(bar!.y + bar!.height, "컨트롤 바가 첫 화면 안에 보여야 함").toBeLessThanOrEqual(vh);
   await page.screenshot({ path: `${CAP_DIR}play-mode.png`, fullPage: false });
 
   // (2) 아무 조작 없이도 경기가 진행된다(자동 진행 — 재생 버튼이 없으므로 이게 유일한 시작 경로).
@@ -124,27 +111,20 @@ test("#148 플레이 모드: 컨트롤은 하이라이트 토글 하나뿐이고
   await expect.poll(() => tickNow(page), { timeout: 10_000 }).toBeGreaterThan(t0);
 });
 
-test("#148 하이라이트 토글이 실제로 연출을 끄고 켠다(끄면 일정 속도로 계속 진행)", async ({ page }) => {
+test("#216 하이라이트 연출이 유일 모드다 — 끌 경로가 없고 연출 페이스로 진행한다", async ({ page }) => {
   await openHalftime(page, false);
-  const toggle = page.getByTestId("viewer-highlight-toggle-half1");
 
-  // 기본은 하이라이트 on — 코어 autoPace(주요장면 슬로우·접촉 줌)가 켜져 있다.
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  expect(await highlightOn(page)).toBe(true);
+  // 화면에 연출을 끄는 컨트롤이 존재하지 않는다(플레이·admin 어느 쪽에도).
+  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toHaveCount(0);
+  await expect(page.getByTestId("viewer-highlight-admin-half1")).toHaveCount(0);
 
-  // 끄면: autoPace off + 진행은 계속(멈추거나 느려지지 않아야 한다 — 기본 배속 4x).
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "false");
-  const rateOff = await measureRate(page, 4000);
-  console.log(`[#148] 하이라이트 off 진행 속도: ${rateOff.toFixed(2)} tick/s`);
-  expect(rateOff, "연출을 꺼도 경기는 계속 진행해야 함").toBeGreaterThan(0);
-  expect(rateOff, "기본 1x(=2 tick/s)에 갇히면 안 됨 — 배속 4x").toBeGreaterThan(3);
-
-  // 다시 켜면 복귀 + 진행 유지.
-  await toggle.click();
-  await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  const rateOn = await measureRate(page, 3000);
-  expect(rateOn, "하이라이트 on 에서도 진행은 계속").toBeGreaterThan(0);
+  // 진행 속도는 **코어 연출 페이스**여야 한다: 크루즈 4x = 8 게임틱/실초(코어 1x = 2틱/s).
+  // 구 구현은 마운트에서 setSpeed(4)를 박고 라이브에서 autoPace 를 껐다 — 그러면 배율이 곱해져
+  // 훨씬 빨라진다. 하이라이트 슬로우·데드볼 홀드가 섞이므로 상한만 느슨하게 건다.
+  const rate = await measureRate(page, 4000);
+  console.log(`[#216] 하이라이트 연출 진행 속도: ${rate.toFixed(2)} tick/s`);
+  expect(rate, "경기는 계속 진행해야 함").toBeGreaterThan(0);
+  expect(rate, "크루즈(8틱/s)를 넘게 빠르면 배율이 잘못 곱해진 것").toBeLessThanOrEqual(9);
   await page.screenshot({ path: `${CAP_DIR}play-mode-highlight-on.png`, fullPage: false });
 });
 
@@ -157,14 +137,15 @@ test("#148 admin 모드: 코어 풀컨트롤 노출 + 모드 토글로 플레이
   await expect(page.getByTestId("viewer-scrub-half1")).toBeVisible();
   await expect(page.getByTestId("viewer-prev-goal-half1")).toBeVisible();
   await expect(page.getByTestId("viewer-mode-toggle-half1")).toBeVisible();
-  // 풀컨트롤에선 간소 하이라이트 토글을 중복 노출하지 않는다.
+  // 하이라이트 토글은 어느 모드에도 없다(#216).
   await expect(page.getByTestId("viewer-highlight-toggle-half1")).toHaveCount(0);
+  await expect(page.getByTestId("viewer-highlight-admin-half1")).toHaveCount(0);
   await page.screenshot({ path: `${CAP_DIR}admin-full-mode.png`, fullPage: false });
 
-  // 모드 토글 → 플레이어가 보는 화면으로 즉시 전환(풀컨트롤 사라지고 하이라이트 토글만).
+  // 모드 토글 → 플레이어가 보는 화면으로 즉시 전환(풀컨트롤 사라지고 빈 바만).
   await page.getByTestId("viewer-mode-play-half1").click();
-  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toBeVisible();
   await expect(page.getByTestId("viewer-scrub-half1")).toHaveCount(0);
+  await expect(page.getByTestId("viewer-play-toggle-half1")).toHaveCount(0);
   await page.screenshot({ path: `${CAP_DIR}admin-switched-to-play.png`, fullPage: false });
 });
 
@@ -188,7 +169,7 @@ test("#148 뷰어 로드 실패는 화면 안에 보인다(설명 없는 빈 피
 test("#148 모바일 390px: 간소 컨트롤 가로 오버플로 0", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await openHalftime(page, false);
-  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toBeVisible();
+  await expect(page.getByTestId("viewer-canvas-half1")).toBeVisible();
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );

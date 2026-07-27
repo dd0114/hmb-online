@@ -3,6 +3,7 @@ import type { MatchClock } from "@hmb/shared";
 import {
   captureOffsetMs,
   countdownLabel,
+  halftimeLengthLabel,
   liveGate,
   logAvailableFor,
   MS_PER_TICK,
@@ -92,6 +93,21 @@ describe("countdownLabel", () => {
 
   it("시계가 없으면 null(카운트다운 비활성)", () => {
     expect(countdownLabel(null)).toBeNull();
+  });
+});
+
+describe("halftimeLengthLabel — 감독시간 길이는 서버 값 파생(웹에 상수 복제 금지)", () => {
+  it("분 단위로 떨어지면 분, 아니면 초", () => {
+    expect(halftimeLengthLabel(180_000)).toBe("3분"); // #216 hero 지시
+    expect(halftimeLengthLabel(60_000)).toBe("1분");
+    expect(halftimeLengthLabel(90_000)).toBe("90초");
+  });
+
+  it("시계가 없거나 값이 이상하면 null — 길이를 지어내지 않는다", () => {
+    expect(halftimeLengthLabel(null)).toBeNull();
+    expect(halftimeLengthLabel(undefined)).toBeNull();
+    expect(halftimeLengthLabel(0)).toBeNull();
+    expect(halftimeLengthLabel(Number.NaN)).toBeNull();
   });
 });
 

@@ -51,6 +51,17 @@ export function logAvailableFor(state: string | undefined, half: 1 | 2): boolean
   return half === 1 ? H1_LOG_STATES.has(state) : state === "SECOND_HALF" || state === "FINISHED";
 }
 
+/**
+ * 감독시간 길이 문구(`3분`·`90초`). 값은 **서버가 내려준 `clock.halftimeMs`** 만 쓴다 — 화면에
+ * "60초" 같은 상수를 적어두면 서버 config 를 바꾼 날(#216: 60→180초) 문구만 거짓말이 된다.
+ * 시계가 없는 매치(레거시·롤백)면 null = 길이를 말하지 않는다.
+ */
+export function halftimeLengthLabel(halftimeMs: number | null | undefined): string | null {
+  if (typeof halftimeMs !== "number" || !Number.isFinite(halftimeMs) || halftimeMs <= 0) return null;
+  const sec = Math.round(halftimeMs / 1000);
+  return sec % 60 === 0 ? `${sec / 60}분` : `${sec}초`;
+}
+
 /** 잔여 ms → `분:초`. null 이면 카운트다운 비활성(시계 없는 매치). */
 export function countdownLabel(remainingMs: number | null): string | null {
   if (remainingMs == null) return null;

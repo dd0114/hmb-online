@@ -30,6 +30,90 @@ export function inHighlight(tick, keyTicks, pre, post) {
 }
 
 /**
+ * 하이라이트 연출(autoPace) 페이싱 상수 — **여기가 SoT**(#216). 렌더 루프(`viewer.impl.mjs`)와
+ * 재생 길이 모델(`autoPaceDurationMs`)이 같은 값을 읽어야 "실측 재생 길이에 서버 시계를 맞춘다"가
+ * 성립한다. 어느 한쪽에 숫자를 다시 적으면 조용히 갈라진다.
+ */
+export const PACE = {
+  TICKS_PER_SEC: 2, // 배율 1x = 2 게임초/실초
+  CRUISE_SPEED: 4, // 빌드업 구간 배속
+  HL_SPEED: 1, // 키장면(슛·골·PK) 구간 배속 — 슬로우
+  HL_PRE: 8, // #83 하이라이트 창 비대칭(앞)
+  HL_POST: 3, //           (뒤 — 짧게 풀림)
+  FOUL_HOLD_MS: 1000, // 파울/페널티 정지(줌 완료+충돌 여유)
+  DEADBALL_PAUSE_MS: 450, // #59 데드볼 자막 짧은 정지
+  SETPIECE_WAIT_TICKS: 32, // #90 세트피스 재시작 대기 판정 창
+  SETPIECE_WAIT_RADIUS_M: 3, // 그 창에서 공이 스팟에 머물렀다고 볼 반경
+};
+
+/**
+ * 이 로그를 **하이라이트 연출로 처음부터 끝까지 재생하면 실시간 몇 ms 걸리는가**(#216 AC2).
+ * 렌더 루프와 같은 규칙(크루즈/키장면 배속 + 정지 홀드 + 골 스킵)을 프레임 단위로 적분한다.
+ *
+ * 이 값이 서버 `hmb.match.clock.half-real-ms` 를 정하는 근거다 — 창이 이보다 짧으면 재생이 끝나기
+ * 전에 하프타임이 열리고(구 240s = 실측의 57%), 길면 재생이 먼저 끝나 빈 시간이 생긴다.
+ * 순수 함수(DOM·시계 무관)라 스크립트·테스트에서 그대로 돌린다.
+ *
+ * @param {{tick:number, ball:{x:number,y:number}}[]} snaps tickSnapshots
+ * @param {{tick:number,type:string,detail?:string}[]} events
+ * @param {number} [speedMul] 배율(라이브 페이스 정합용). 1 = 자연 페이스.
+ * @returns {number} 실시간 재생 길이(ms)
+ */
+export function autoPaceDurationMs(snaps, events, speedMul = 1) {
+  if (!Array.isArray(snaps) || snaps.length < 2) return 0;
+  const P = PACE;
+  const keyTicks = events
+    .filter((e) => e.type === "goal" || e.type === "penalty" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target"))
+    .map((e) => e.tick);
+  const stoppages = buildStoppages(events).map((s) => ({ ...s, done: false }));
+  const byTick = new Map(snaps.map((s) => [s.tick, s]));
+  const idxOfTick = (t) => { const i = snaps.findIndex((s) => s.tick >= t); return i < 0 ? snaps.length - 1 : i; };
+  const inSetpieceWait = (tick) => {
+    for (const st of stoppages) {
+      if (st.isGoal || !st.setPiece || tick < st.causeTick || tick > st.causeTick + P.SETPIECE_WAIT_TICKS) continue;
+      const cs = byTick.get(st.causeTick), now = byTick.get(tick);
+      if (cs && now && Math.hypot(now.ball.x - cs.ball.x, now.ball.y - cs.ball.y) < P.SETPIECE_WAIT_RADIUS_M) return true;
+    }
+    return false;
+  };
+
+  const dt = 1 / 60; // rAF 한 프레임(모델 적분 간격)
+  let tickPos = 0, realMs = 0, guard = 0;
+  while (tickPos < snaps.length - 1 && guard++ < 10_000_000) {
+    const before = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
+    const nearKey = !inSetpieceWait(before) && inHighlight(before, keyTicks, P.HL_PRE, P.HL_POST);
+    tickPos += dt * P.TICKS_PER_SEC * effectiveSpeed(true, nearKey, speedMul, P.CRUISE_SPEED, P.HL_SPEED);
+    realMs += dt * 1000;
+    if (tickPos >= snaps.length - 1) break;
+    const after = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
+    for (const st of stoppages) {
+      if (st.done || st.causeTick < before || st.causeTick > after) continue;
+      st.done = true;
+      realMs += st.isGoal ? st.hold : st.contactAnchor ? P.FOUL_HOLD_MS : P.DEADBALL_PAUSE_MS;
+      tickPos = idxOfTick(st.isGoal ? st.restartTick : st.causeTick); // 골만 재시작으로 스킵
+      break;
+    }
+  }
+  return Math.round(realMs);
+}
+
+/**
+ * 프레임당 유효 진행 배속(#216). 연출 페이싱이 도는 동안 `speed` 는 무시되는 값이 아니라
+ * **그 위에 곱하는 배율**이다 — 1 = 코어 자연 페이스(크루즈 4x / 키장면 1x).
+ *
+ * 왜 곱셈인가: 하이라이트를 끄는 것 말고는 재생 속도를 조절할 방법이 없으면, "느리게/빠르게"가
+ * 곧 "연출 끄기"가 된다(#216 이 제거하는 그 끔 경로). 배율이면 **슬로우모션 대비를 유지한 채**
+ * 전체를 늘이고 줄일 수 있어, 라이브 재생을 서버 시계 창에 맞추는 일이 연출을 희생하지 않는다.
+ * `speed=1` 이면 곱해도 같은 값이라 기존 소비자(dev-viewer 기본 1x)는 동작이 바뀌지 않는다.
+ *
+ * @param {boolean} paced 연출 페이싱이 이 프레임에 적용되는가(= autoPace && !fixMode)
+ * @param {boolean} nearKey 키장면 창 안인가
+ */
+export function effectiveSpeed(paced, nearKey, speed, cruise, hl) {
+  return paced ? (nearKey ? hl : cruise) * speed : speed;
+}
+
+/**
  * 스냅샷 A(aTick)→B(bTick) 보간 구간에 데드볼 재배치가 있으면 true(그 구간은 컷).
  * 슛 궤적은 재배치 이벤트가 없으므로 거리와 무관하게 false → 부드럽게 보간된다.
  */

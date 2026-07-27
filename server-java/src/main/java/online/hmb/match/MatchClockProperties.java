@@ -21,11 +21,17 @@ public class MatchClockProperties {
     /** 시계 적용 여부. false = 레거시 즉시 전개(롤백). */
     private boolean enabled = true;
 
-    /** 하프당 실시간 재생 길이(ms). 전·후반 동일. */
-    private long halfRealMs = 240_000;
+    /**
+     * 하프당 실시간 재생 길이(ms). 전·후반 동일.
+     *
+     * <p>#216: 값의 기준은 <b>하이라이트 켬(연출) 모드의 실측 재생 길이</b>다 — 화면이 그 페이싱으로
+     * 돌기 때문에, 창이 그보다 짧으면 재생이 끝나기 전에 하프타임이 열린다(구 240s = 실측의 57%).
+     * 리얼 config 하프(2700틱) 16개 실측 = min 392s · p50 422s · max 463s.
+     */
+    private long halfRealMs = 420_000;
 
-    /** 감독시간 길이(ms) — P4-D2 = 60초. */
-    private long halftimeMs = 60_000;
+    /** 감독시간 길이(ms) — #216 hero 지시 = 3분(구 P4-D2 60초). */
+    private long halftimeMs = 180_000;
 
     /** 감독시간 만료 시 후반 자동 시작(=전반 프롬프트 승계). false 면 HALFTIME 에서 수동 대기. */
     private boolean autoResumeOnExpiry = true;
