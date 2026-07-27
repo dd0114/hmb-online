@@ -129,6 +129,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiError"
+        "409":
+          description: |
+            #217 매치 잠금 — 이미 킥오프한 매치가 있다. code=MATCH_IN_PROGRESS,
+            detail={matchId,state,action}. 경기가 끝나거나 회수된 뒤에 다시 시도한다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   # 매치 확장(AC-C1, 수동전술)은 V1 `POST /api/matches`·`GET /api/matches/{id}`에 additive이므로
   # 별도 path를 두지 않는다(경로 중복/`#` fragment 회피). 요청/응답 확장은 아래 컴포넌트 스키마로 계약:
@@ -313,6 +321,14 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "409":
+          description: |
+            #217 매치 잠금 — 이미 킥오프한 매치가 있다. code=MATCH_IN_PROGRESS,
+            detail={matchId,state,action}. 경기가 끝나거나 회수된 뒤에 다시 시도한다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   /api/trade/{slot}/decline:
     parameters:
@@ -402,6 +418,15 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: |
+            #217 매치 잠금 — 다른 끝나지 않은 매치가 있다(연습 포함). code=MATCH_IN_PROGRESS.
+            ⚠️ **이 픽스처에 이미 연결된 진행 중 매치는 409 가 아니라 그대로 재사용해 201 로 돌려준다**
+            (재입장이지 생성이 아니다).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   # ─────────────────────────── 로그 (AC-E1/E3) ───────────────────────────
   /api/logs/matches:

@@ -28,6 +28,21 @@ abstract class MatchTestBase extends ApiTestBase {
     @BeforeEach
     void clearAiJobsBeforeEach() {
         jdbcClient.sql("DELETE FROM ai_jobs").update();
+        releaseActiveMatches();
+    }
+
+    /**
+     * 테스트 픽스처 위생 (#217): 잠금 도입 이후 <b>유저당 끝나지 않은 매치는 하나</b>다. 클래스 단위로
+     * DB 를 공유하므로 앞 테스트가 남긴 매치가 다음 테스트의 {@code createMatch} 를 409 로 막는다.
+     * 각 테스트를 "미완 매치 0" 상태에서 시작시킨다.
+     *
+     * <p>이걸 {@code createMatch} 안으로 숨기지 않는 이유: 그러면 잠금 자체가 테스트에서 영원히
+     * 관측되지 않는다. 한 메서드 안에서 매치가 둘 이상 필요한 테스트는 <b>명시적으로</b> 이걸 부른다.
+     */
+    protected void releaseActiveMatches() {
+        jdbcClient.sql("UPDATE matches SET state = 'ABANDONED' "
+                        + "WHERE state NOT IN ('FINISHED', 'ABANDONED')")
+                .update();
     }
 
     protected String setupUserWithDeck(String nickname) {

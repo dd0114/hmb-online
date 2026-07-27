@@ -72,3 +72,15 @@
 .retry:disabled {
   opacity: 0.6;
 }
+
+/* 포기 (#217) — 재시도보다 약한 위계. 있으나 눈에 먼저 띄지는 않게. */
+.abandon {
+  display: block;
+  margin: 10px auto 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+}

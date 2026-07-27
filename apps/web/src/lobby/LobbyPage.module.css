@@ -152,3 +152,51 @@
   color: var(--text-muted);
   font-size: 12px;
 }
+
+/* 진행 중 경기 이어하기 카드 (#217) — 메뉴보다 **위**에, 메뉴보다 강한 위계로 놓는다.
+   회수 가능한 사고 매치에서는 이 카드가 유일한 탈출구라 스크롤 아래로 밀리면 안 된다. */
+.resumeCard {
+  margin: 12px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.resumeTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.resumeNote {
+  margin: 4px 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.resumeActions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.resumePrimary {
+  flex: 1 1 60%;
+  padding: 10px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+.resumeSecondary {
+  flex: 0 1 auto;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+}

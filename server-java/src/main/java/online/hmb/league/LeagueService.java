@@ -20,6 +20,7 @@ import online.hmb.catalog.LeagueDataService;
 import online.hmb.common.ApiException;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
+import online.hmb.match.MatchLockService;
 import online.hmb.match.MatchService;
 import online.hmb.meta.DeckService;
 import online.hmb.meta.WalletService;
@@ -64,6 +65,7 @@ public class LeagueService {
     private final ObjectMapper objectMapper;
     private final LeagueDataService leagueDataService;
     private final MatchService matchService;
+    private final MatchLockService lockService;
     private final DeckService deckService;
     private final WalletService walletService;
     private final LeagueSeedSource seedSource;
@@ -81,6 +83,7 @@ public class LeagueService {
                          ObjectMapper objectMapper,
                          LeagueDataService leagueDataService,
                          MatchService matchService,
+                         MatchLockService lockService,
                          DeckService deckService,
                          WalletService walletService,
                          LeagueSeedSource seedSource,
@@ -96,6 +99,7 @@ public class LeagueService {
         this.objectMapper = objectMapper;
         this.leagueDataService = leagueDataService;
         this.matchService = matchService;
+        this.lockService = lockService;
         this.deckService = deckService;
         this.walletService = walletService;
         this.seedSource = seedSource;
@@ -219,12 +223,18 @@ public class LeagueService {
                     .orElseThrow(() -> leagueInvalid("남은 유저 경기가 없습니다(시즌 종료)"));
 
             // 이미 진행 중인 매치가 연결돼 있으면 재사용.
+            // ⚠️ 판정은 "FINISHED 가 아님"이 아니라 **ACTIVE 집합**이다(#217): 포기(ABANDONED)한 매치도
+            // FINISHED 가 아니므로, 예전 조건이면 죽은 매치를 영원히 되돌려줘 픽스처가 잠긴다.
             if (fixture.matchId() != null) {
                 Optional<MatchService.MatchRow> existing = matchService.find(fixture.matchId());
-                if (existing.isPresent() && !MatchService.S_FINISHED.equals(existing.get().state())) {
+                if (existing.isPresent() && MatchService.ACTIVE_STATES.contains(existing.get().state())) {
                     return new LeagueNextMatchResponse(matchService.toDetail(existing.get()), toDto(fixture));
                 }
             }
+
+            // 여기부터는 **새 매치를 만드는** 경로다 — 다른 매치(연습 포함)가 진행 중이면 막는다(AC2).
+            // 위의 재사용 분기보다 뒤에 있어야 한다: 이 픽스처의 매치로 돌아가는 건 재입장이지 생성이 아니다.
+            lockService.assertCanCreateMatch(userId);
 
             String botTeamId = USER_TEAM_ID.equals(fixture.homeTeam()) ? fixture.awayTeam() : fixture.homeTeam();
             MatchService.MatchRow match = matchService.createLeagueMatch(userId, botTeamId, fixture.id());

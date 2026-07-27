@@ -2,6 +2,7 @@ package online.hmb.trade;
 
 import java.util.List;
 import online.hmb.common.ApiException;
+import online.hmb.match.MatchLockService;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,9 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class TradeController {
 
     private final TradeService tradeService;
+    private final MatchLockService lockService;
 
-    public TradeController(TradeService tradeService) {
+    public TradeController(TradeService tradeService, MatchLockService lockService) {
         this.tradeService = tradeService;
+        this.lockService = lockService;
     }
 
     @GetMapping("/api/trade")
@@ -54,6 +57,9 @@ public class TradeController {
     @PostMapping("/api/trade/{slot}/accept")
     public TradeService.TradeResolveResponse accept(@RequestAttribute("userId") String userId,
                                                     @PathVariable("slot") int slot) {
+        // #217 AC2: 수락만 user_players 를 감소·삭제한다 — 진행 중 매치의 로스터에 있는 선수가
+        // 컬렉션에서 사라질 수 있다. start/propose/decline/speedup 은 슬롯·재화만 건드리므로 안 막는다.
+        lockService.assertNotLocked(userId, "trade.accept");
         return tradeService.accept(userId, requireSlotNo(slot));
     }
 

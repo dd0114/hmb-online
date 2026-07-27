@@ -48,6 +48,8 @@ vi.mock("../api/hooks", () => {
     useRetry: mutation,
     useHalftime: mutation,
     useCreateMatch: mutation,
+    useAbandonMatch: mutation, // #217 — FAILED 패널의 포기 버튼
+    useActiveMatch: () => query(undefined),
   };
 });
 
@@ -145,6 +147,15 @@ describe("MatchPage state router", () => {
     expect(screen.getByTestId("failed-panel")).toBeTruthy();
     expect(screen.getByTestId("fail-reason").textContent).toContain("AI 잡 타임아웃");
     expect(screen.getByTestId("retry-button")).toBeTruthy();
+    // #217 AC3: 재시도가 계속 실패하는 매치가 곧 계정 잠금이 되지 않게, 이 화면에 탈출구가 있어야 한다.
+    expect(screen.getByTestId("abandon-button")).toBeTruthy();
+  });
+
+  it("ABANDONED → 회수 안내 + 로비 복귀 (알 수 없는 상태로 떨어지지 않는다, #217)", () => {
+    renderWithState({ ...base, state: "ABANDONED" as never });
+    expect(screen.getByTestId("abandoned-panel")).toBeTruthy();
+    expect(screen.getByTestId("abandoned-to-lobby")).toBeTruthy();
+    expect(screen.queryByTestId("unknown-state")).toBeNull();
   });
 
   it("unknown state → visible fallback (schema-growth safe)", () => {

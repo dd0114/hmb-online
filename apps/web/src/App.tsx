@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-route
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TokenProvider, useToken } from "./auth/TokenContext";
 import { NavGuardProvider } from "./common/NavGuard";
+import { MatchLockGate } from "./common/MatchLockGate";
 import { LoginPage } from "./auth/LoginPage";
 import { LobbyPage } from "./lobby/LobbyPage";
 import { DeckPage } from "./deck/DeckPage";
@@ -54,11 +55,17 @@ function AppRoutes() {
       <UnauthorizedBridge />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* 아래 메타 라우트 8개는 RequireAuth 안쪽에서 MatchLockGate 로 한 겹 더 감싼다(#217 AC1/AC2):
+            진행 중 매치가 있으면 어디로 들어와도 /match/:id 로 돌아간다. 목록은 common/match-lock.ts
+            의 LOCKED_ROUTES 와 같아야 하며(계약 = match-lock.test.ts), /match·/login·dev 하니스는
+            제외다 — 자기 자신을 막으면 리다이렉트 루프다. */}
         <Route
           path="/lobby"
           element={
             <RequireAuth>
-              <LobbyPage />
+              <MatchLockGate>
+                <LobbyPage />
+              </MatchLockGate>
             </RequireAuth>
           }
         />
@@ -66,7 +73,9 @@ function AppRoutes() {
           path="/deck"
           element={
             <RequireAuth>
-              <DeckPage />
+              <MatchLockGate>
+                <DeckPage />
+              </MatchLockGate>
             </RequireAuth>
           }
         />
@@ -74,7 +83,9 @@ function AppRoutes() {
           path="/shop"
           element={
             <RequireAuth>
-              <ShopPage />
+              <MatchLockGate>
+                <ShopPage />
+              </MatchLockGate>
             </RequireAuth>
           }
         />
@@ -82,7 +93,9 @@ function AppRoutes() {
           path="/growth"
           element={
             <RequireAuth>
-              <GrowthHubPage />
+              <MatchLockGate>
+                <GrowthHubPage />
+              </MatchLockGate>
             </RequireAuth>
           }
         />
@@ -90,7 +103,9 @@ function AppRoutes() {
           path="/codex"
           element={
             <RequireAuth>
-              <CodexPage />
+              <MatchLockGate>
+                <CodexPage />
+              </MatchLockGate>
             </RequireAuth>
           }
         />
@@ -98,7 +113,9 @@ function AppRoutes() {
           path="/trade"
           element={
             <RequireAuth>
-              <TradePage />
+              <MatchLockGate>
+                <TradePage />
+              </MatchLockGate>
             </RequireAuth>
           }
         />
@@ -106,7 +123,9 @@ function AppRoutes() {
           path="/logs"
           element={
             <RequireAuth>
-              <LogsPage />
+              <MatchLockGate>
+                <LogsPage />
+              </MatchLockGate>
             </RequireAuth>
           }
         />
@@ -114,7 +133,9 @@ function AppRoutes() {
           path="/league"
           element={
             <RequireAuth>
-              <LeaguePage />
+              <MatchLockGate>
+                <LeaguePage />
+              </MatchLockGate>
             </RequireAuth>
           }
         />

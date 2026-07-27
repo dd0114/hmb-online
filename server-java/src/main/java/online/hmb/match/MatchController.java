@@ -19,12 +19,14 @@ public class MatchController {
     private final MatchService matchService;
     private final MatchOrchestrator orchestrator;
     private final MatchClockService clockService;
+    private final MatchLockService lockService;
 
     public MatchController(MatchService matchService, MatchOrchestrator orchestrator,
-                           MatchClockService clockService) {
+                           MatchClockService clockService, MatchLockService lockService) {
         this.matchService = matchService;
         this.orchestrator = orchestrator;
         this.clockService = clockService;
+        this.lockService = lockService;
     }
 
     /**
@@ -37,6 +39,9 @@ public class MatchController {
     @PostMapping("/api/matches")
     public ResponseEntity<MatchDetail> create(@RequestAttribute("userId") String userId,
                                               @RequestBody(required = false) CreateMatchRequest request) {
+        // #217 AC2: 끝나지 않은 매치가 있으면 새로 만들지 않는다 — 409 MATCH_IN_PROGRESS(detail.matchId)
+        // 로 그 매치를 알려주면 web 이 "이어하기"로 보낸다(빈 손 409 는 유저를 막다른 길에 세운다).
+        lockService.assertCanCreateMatch(userId);
         MatchService.MatchRow row = matchService.createMatch(userId,
                 request == null ? null : request.botId(),
                 request == null ? null : request.teamTactics());
@@ -136,6 +141,17 @@ public class MatchController {
         matchService.getOwned(userId, id);
         clockService.advanceDueForRead(id); // 후반 창이 방금 끝났으면 여기서 정산하고 결과를 준다
         return matchService.result(userId, id);
+    }
+
+    /**
+     * 포기 — ACTIVE → ABANDONED (#217 AC3). 잠금의 탈출구다: 이게 없으면 고아 매치 하나가 계정을
+     * 영구히 잠근다. 정상 재생 중에는 409(리롤 방지) — 허용 조건은 {@link MatchLockService#abandonable}.
+     */
+    @PostMapping("/api/matches/{id}/abandon")
+    public MatchDetail abandon(@RequestAttribute("userId") String userId, @PathVariable("id") String id) {
+        matchService.getOwned(userId, id); // 소유권 먼저(남의 매치 시계를 밀지 않게)
+        clockService.advanceDueForRead(id); // 방금 끝난 매치를 "포기"로 닫지 않게 현재 단계부터 판정
+        return matchService.toDetail(lockService.abandon(userId, id));
     }
 
     @PostMapping("/api/matches/{id}/retry")

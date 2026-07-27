@@ -20,6 +20,7 @@ export type MatchPanel =
   | "halftime"
   | "result"
   | "failed"
+  | "abandoned"
   | "unknown";
 
 /**
@@ -43,6 +44,9 @@ export function panelForState(state: MatchState | string | undefined): MatchPane
       return "result";
     case "FAILED":
       return "failed";
+    case "ABANDONED":
+      // #217: 두 번째 터미널 상태. "알 수 없는 상태"로 떨어뜨리면 포기한 유저가 에러 화면을 본다.
+      return "abandoned";
     default:
       return "unknown";
   }

@@ -40,6 +40,43 @@
   그리고 gacha 확률·rewards·growth 등 나머지 economy 블록(파일에는 있으나 **API 가 없다** — 볼륨
   손편집 + 리로드만 가능). 유닛 카탈로그의 무배포 운영은 #207 파트 A 소관이다.
 
+## 매치 잠금·재입장 (#217)
+
+- **유저당 끝나지 않은 매치는 최대 하나.** 정의는 `MatchService.ACTIVE_STATES`(BRIEFING~FAILED) ·
+  `LOCKED_STATES`(= ACTIVE − BRIEFING). 게이트는 전부 `MatchLockService` 한 곳:
+  `assertCanCreateMatch`(ACTIVE 면 409) · `assertNotLocked`(LOCKED 면 409, code=`MATCH_IN_PROGRESS`,
+  detail={matchId,state,action}). **409 에 matchId 를 반드시 싣는다** — 빈 손 409 는 유저를 막다른 길에 세운다.
+- **BRIEFING 은 LOCKED 가 아니다.** 브리핑 중 덱/전술 수정은 `recaptureSnapshotAtKickoff`(AC-B2)가
+  지원하는 기존 기능이라 여기서 덱을 잠그면 기능 회귀다. 새 매치 생성만 막힌다.
+- **잠그는 쓰기 = 진행 중 매치의 로스터·유효스탯을 바꿀 수 있는 것만**: `PUT /api/deck` ·
+  `presets/team/{slot}/apply` · `growth/star` · `growth/dice` · `trade/{slot}/accept`.
+  growth 는 취향이 아니라 **버그 차단**이다 — `buildSelectData` 가 시뮬 시점에 `effectiveAttributes` 를
+  읽어 전·후반 사이 강화가 후반 스탯만 올린다. trade 는 `accept` 만 `user_players` 를 줄인다.
+  뽑기·trade start/propose/decline/speedup 는 **잠그지 않는다**(과잉 409 = stale 탭 복구 불능).
+  "경기 보러 가라"는 UX 잠금은 web 라우팅 소관이다.
+- **터미널이 둘이다**: `FINISHED` + **`ABANDONED`**(V19). 전이가 전부 CAS(`WHERE state=?`)라
+  ABANDONED 가 되는 순간 kickoff/resume/retry/prompts/halftime 이 자동 거부된다(새 가드 0).
+  `state != 'FINISHED'` 로 "살아있음"을 판정하던 코드는 전부 `ACTIVE_STATES` 로 바꿔야 한다 —
+  실제로 `LeagueService.nextMatch` 의 재사용 조건이 그랬고, 안 고치면 픽스처가 영구 잠긴다.
+- **회수 경로(영구 잠금 금지)**: `POST /api/matches/{id}/abandon` — BRIEFING · FAILED ·
+  **시계가 멈춘 라이브**(`phase_ends_at + stuck-grace-ms` 경과) · **멈춘 생성**(GEN*, 그 매치 잡의
+  마지막 갱신 + `gen-stuck-ms` 경과)에서만 허용. 정상 재생 중 포기를 열면 지고 있는 경기 리롤
+  (리그는 픽스처 리롤)이 된다. 백스톱 = `MatchAbandonSweeper`(`stale-after-min`).
+  - ⚠️ **"GEN* 은 `JobLeaseSweeper` 가 다 잡는다"는 거짓이다**(독립검증 MAJOR-1). 그 스위퍼는
+    `timedOutGenMatches` 의 `status != 'done'` 때문에 **미완 잡이 있을 때만** 잡는다. 잡은 전부
+    done 인데 후속 전이가 커밋되기 전에 프로세스가 죽으면(재배포·OOM) 매치는 GEN* 에
+    `phase_ends_at IS NULL` 로 남아 **어느 스위퍼에도 안 걸리고** retry 도 FAILED 전용이라 거부된다.
+    `gen-stuck-ms` 분기가 그 구멍을 막는다(계약 = `MatchAbandonTest`
+    `abandonOpensWhenGenerationIsStuckWithNoOutstandingJobs`).
+  - ⚠️ **알려진 창**: 시계가 `stuck-grace-ms` 넘게 멈춘 리그 매치는 포기 → 같은 픽스처 재플레이가
+    된다("지고 있으면 서버 지연을 기다린다"). 시계가 실제로 5분 멈춰야 하므로 실현 가능성은 낮지만
+    유예를 줄일 땐 이 트레이드오프를 같이 봐라.
+- ⚠️ **`/api/growth/*` 는 openapi 에 path 자체가 없다**(선존 갭, #217 이 만든 게 아니다).
+  그래서 growth 의 409 계약 SoT 는 이 문서뿐이다 — growth 를 openapi 에 편입할 때 같이 옮겨라.
+- 재입장 진입점 = `GET /api/me/active-match` → `{match(MatchDetail 통짜), locked, abandonable}`.
+  MatchDetail 통짜인 이유 = web 이 한 요청으로 `clock` 을 받아 seek-to-now 를 태운다.
+  `locked`/`abandonable` 판정은 **서버가 SoT** — 클라가 복제하면 규칙이 바뀔 때 조용히 어긋난다.
+
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).
 - 상태 전이는 CAS(`WHERE state=?`), 보상·원장은 멱등(유니크 인덱스). 트랜잭션 경계는 서비스 메서드.

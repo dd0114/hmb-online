@@ -161,6 +161,26 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/me/active-match:
+    get:
+      tags: [me]
+      operationId: getActiveMatch
+      summary: |
+        진행 중(끝나지 않은) 내 매치 — **재입장의 유일한 진입점**(#217 AC1).
+
+        web 은 로그인 직후·로비 진입마다 이걸 물어 locked 면 /match/{id} 로 보낸다. 새로고침·
+        재로그인·다른 기기가 같은 답을 받는 이유는 상태가 서버에만 있기 때문이다(로컬 저장 0).
+        응답이 MatchDetail 통짜라 clock 이 같이 와서 seek-to-now 를 한 번의 요청으로 태운다.
+      responses:
+        "200":
+          description: OK (없으면 match=null)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActiveMatchResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/me/matches:
     get:
       tags: [me]
@@ -252,6 +272,15 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: |
+            #217 매치 잠금 — 이미 킥오프한 매치가 있다(덱은 하프타임 교체 벤치의 원장이라 진행 중에
+            바뀌면 화면과 매치 스냅샷이 어긋난다). code=MATCH_IN_PROGRESS, detail={matchId,state,action}.
+            **BRIEFING 중에는 잠기지 않는다** — 킥오프 재캡처(AC-B2)가 지원하는 창이다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   # ───────────────────────────── presets ─────────────────────────────
   /api/presets:
@@ -392,6 +421,14 @@ paths:
                 $ref: "#/components/schemas/ApiError"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: |
+            끝나지 않은 매치가 이미 있음(#217 AC2). code=MATCH_IN_PROGRESS,
+            detail={matchId,state,action} — 그 매치로 이어가거나 포기해야 새로 만들 수 있다.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   /api/matches/{id}:
     parameters:
@@ -589,6 +626,38 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/InvalidState"
+
+  /api/matches/{id}/abandon:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    post:
+      tags: [matches]
+      operationId: abandonMatch
+      summary: |
+        매치 포기(#217 AC3) — ACTIVE → ABANDONED. 잠금(유저당 미완 매치 1개)의 탈출구다:
+        이게 없으면 고아 매치 하나가 계정을 영구히 잠근다.
+
+        허용 조건은 서버가 판정한다(리롤 방지): BRIEFING(킥오프 전) · FAILED(생성 실패) ·
+        시계가 멈춘 라이브(phase_ends_at + stuck-grace 경과). **정상 재생 중에는 409** —
+        지고 있는 경기를 버리고 다시 뽑는 리롤을 막는다. 지금 포기 가능한지는
+        GET /api/me/active-match 의 abandonable 로 알 수 있다.
+      responses:
+        "200":
+          description: 회수됨(state=ABANDONED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 포기할 수 없는 상태(정상 재생 중이거나 이미 종료). code=INVALID_STATE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
 
   /api/matches/{id}/retry:
     parameters:
@@ -1295,6 +1364,9 @@ components:
         - FORBIDDEN
         # P3 §C admin(additive) — 중복 멱등키 등 상태 충돌
         - CONFLICT
+        # #217 매치 잠금(additive) — 끝나지 않은 매치가 있어 이 요청을 받을 수 없다.
+        # detail = {matchId, state, action} — web 은 matchId 로 "이어하기" 를 띄운다.
+        - MATCH_IN_PROGRESS
 
     ApiError:
       type: object
@@ -1734,7 +1806,33 @@ components:
 
         `H1_BREAK` 은 **레거시 전용**(P4 이전 배포본의 진행 중 매치를 V8 마이그레이션이 HALFTIME 으로
         옮긴다). 신규 매치는 이 값이 되지 않는다.
-      enum: [BRIEFING, GEN1, FIRST_HALF, HALFTIME, SECOND_HALF, GEN2, FINISHED, FAILED, H1_BREAK]
+
+        `ABANDONED`(#217, V19)는 **두 번째 터미널 상태**다 — 유저의 포기 또는 방치 스윕으로만
+        들어온다. FINISHED 와 달리 결과·보상이 없다(전적에 잡히지 않는다).
+      enum: [BRIEFING, GEN1, FIRST_HALF, HALFTIME, SECOND_HALF, GEN2, FINISHED, FAILED, H1_BREAK, ABANDONED]
+
+    ActiveMatchResponse:
+      type: object
+      description: |
+        GET /api/me/active-match (#217 AC1). 끝나지 않은 내 매치와, web 이 그걸로 무엇을 해야
+        하는지(강제 재입장 / 포기 버튼 노출)를 **서버가 판정해서** 같이 준다 — 판정 규칙을 클라가
+        복제하면 규칙이 바뀔 때 조용히 어긋난다.
+      required: [match, locked, abandonable]
+      properties:
+        match:
+          oneOf:
+            - $ref: "#/components/schemas/MatchDetail"
+            - type: "null"
+          description: 끝나지 않은 매치(BRIEFING~FAILED). 없으면 null.
+        locked:
+          type: boolean
+          description: |
+            이미 킥오프했나(state ≠ BRIEFING). true 면 web 은 메타 화면(덱·상점·성장·트레이드·
+            리그·도감·전적) 진입을 막고 /match/{id} 로 보낸다. BRIEFING 은 false — 로비에
+            "이어하기" 안내만 띄운다(강제 이동 아님).
+        abandonable:
+          type: boolean
+          description: 지금 POST /api/matches/{id}/abandon 이 200 을 줄 상태인가(포기 버튼 노출 조건).
 
     MatchClock:
       type: object
