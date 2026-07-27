@@ -6,6 +6,34 @@
 
 ---
 
+## 2026-07-26T16:53Z — v7 대규모 배포 — engine v6(0.18~0.21) + E2 감독시간/서버시계 + 성장 시스템 + 카드 풀아트 (백엔드+web 동시 전환, **마이그레이션 V8~V12**)
+- **git**: `dc24665` (브랜치 `deploy/v7` = origin/main) — `Merge pull request #204 from dd0114/card-art/base`. 직전 배포(`79358c0`) 대비 **215 files, +29,012 / −826**.
+- **모듈 버전**: engine **`@0.21.0`(릴리스 태그 v6)** — 0.18.0 마크 진동(#178)·0.19.0 공 휨(#181)·0.20.0 코너 전원전진(#182)·0.21.0 데드볼 접근금지(#176) · server-java `0.1.0`(**P4-E2 서버 권위 시계 + 감독시간** #170, **성장/젬/다이스** #179) · web `0.0.0`(E1 S2/S3 뷰어 SoT 수렴 · 육성 화면 · **카드 풀아트 #187**) · servants `0.0.1`
+- **이미지**(라이브 컨테이너 digest — 태그 아님, 아래 ⚠️ 참조): `hmb-java` `sha256:e5c44e2e05ab…`(**신규**, 직전 `522996d8…`) · `hmb-runner` `sha256:57acd09620a6…`(**신규**, 직전 `abc37a61…`, runner `/health` → `engine@0.21.0` 확인)
+- **DB 마이그레이션**: Flyway **v7 → v12** (`V8 p4 match clock`[**non-transactional**] · `V9 growth` · `V10 maple growth` · `V11 gems` · `V12 growth report snapshot`) — 전부 success, 실행 29ms.
+  - **백업(선행조건 이행)**: 볼륨 무중단 온라인 `.backup` → `~/.local/state/hmb/db-backups/pre-v7-20260726T165149Z.db` (24,797,184 B · sha256 `4d3efe7611bda4c3f8efe7fcba7a03de68eee3dc71a936381925082fe25c0834` · `integrity_check=ok` · Flyway v7 · users 98 / matches 4 / user_players 1373). 동일 내용의 1차 사본 `hmb-20260726T151726Z.db` 도 보존.
+  - **리허설(라이브 무접촉)**: 백업 사본 + 새 이미지로 18081 에 별도 기동 → V8~V12 전부 success·부팅 성공·`foreign_key_check` 위반 0·자식행(match_prompts/match_halves/ai_jobs) 수 동일·기존 유저 로그인 `isNew:false`·레거시 매치 판독 200. **그 다음에** 라이브 적용.
+  - **라이브 적용 후**: `foreign_key_check` 위반 0 · `integrity_check=ok` · users 98 / matches 4 / match_prompts 1 / match_halves 6 / ai_jobs 20 / user_players 1373 — **전건 보존**.
+  - 롤백 이미지 고정: `hmb/server-java:prev-live`(`522996d8…`) · `hmb/servants:prev-live`(`abc37a61…`).
+- **tunnel/URL**: web=Cloudflare Pages **https://hmb-online.pages.dev**(고정) · backend=quick tunnel **`https://farms-medicare-brings-sees.trycloudflare.com`**(워치독이 13:17 에 HEAL_OK 로 세운 터널을 그대로 사용, 이번 배포로 교체하지 않음) · CORS `WEB_ORIGINS=https://hmb-online.pages.dev`
+- **executor**: 남의 워크트리(spider10, 07-21 시점 코드)에서 돌던 프로세스를 **PID 로만**(13004/13023/13024) 종료하고 **배포 체크아웃(spider13)에서 재기동** — `AI_EXECUTOR=claude-code AI_MODEL=sonnet AI_CONCURRENCY=1 AI_JOB_TIMEOUT_MS=240000`, 로그 `/tmp/hmb-executor.log`. 다른 세션 스택의 executor(`:28080` 2개, 데모 `:8080` 1개)는 **무접촉**.
+- **배포자**: hero(지시) + hmb:deploy(실행)
+- **결과**: ✅ GREEN — 실브라우저 왕복 스모크 전 항목 통과(실패 요청 0 · JS 에러 0).
+  - **로그인·로비**: 게스트 가입 → 로비 렌더(3,000 P + **💎 0 = V11 젬 지갑**), 사이드바 7탭(홈·덱·**육성**·상점·트레이드·로그·도감)
+  - **E2 서버 권위 시계**(API 실측, 화면 없이도 진행): `FIRST_HALF`(`kickoffAt`·`phaseEndsAt`=+240s·`serverNow`·`halfRealMs=240000`·`halftimeMs=60000`·`seekForwardBlocked`) → **17:05:58 정시에 `HALFTIME`**(deadline +60s) → **17:06:58 만료 → 자동 후반** `SECOND_HALF` → `FINISHED` **3:0 WIN**. 전 구간 서버가 시각을 소유.
+  - **게임화면**(라이브 매치 실캡처): 캔버스 1050×680 실렌더 · **iframe 0개**(S3 viewer-core 수렴) · 페이지 스크롤 0(S1 고정 셸) · 헤더 `45' 후반 진행 중` 서버시계 · 통계/로그/후반지시 토글
+  - **성장(#179)**: `/growth` 보유 14장 그리드 · 카드 상세 = **풀아트 + 성★승급 + OVR/완성도 + 레이더 + 잠재능력** · 경기 후 `GET /api/growth/report/{matchId}` **200**(선수별 stat XP·ovrBefore/After = V12 스냅샷) · 승리 보상 3,000→3,500 P · 전적 1승
+  - **카드 풀아트(#187)**: 상점 단뽑 300P → 리빌 모달에 **프레임(`/chars/frame-BRONZE.png`) + 풀아트(`/chars/characters/card-bella.png`)** 정상 로드
+  - `https://hmb-online.pages.dev/version.json` = `dc24665` / `engine@0.21.0` / apiUrl=현재 터널 · `/config.json` 동일 오리진 · `bash infra/status.sh` 전 항목 ✓
+- **비고**:
+  - ⚠️ **운영 완화 1건 적용(config-only, `infra/.env`)** — 라이브 AI 풀매치가 **#166** 으로 처음 FAILED 했다. 실측 원인: claude(sonnet) 전술생성 1건이 **90~180s** 인데 `lease-sec=120` 이 그보다 짧아 작업 중 리스가 만료되고, 실행기가 complete 할 때 **409 not leased** → 재시도 → `ai-job-timeout-sec=240` 초과 → 매치 FAILED. 브리핑 잡(≈91s)이 concurrency=1 에서 앞을 막아 예산을 더 깎았다. → **`HMB_MATCH_LEASESEC=300` · `HMB_MATCH_AIJOBTIMEOUTSEC=600`** 으로 두 창만 넓혀 재시도 → 매치가 끝까지 완주(위 3:0). **코드·이미지 변경 0**, 되돌리기 = `.env` 3줄 삭제 + `docker compose up -d java`. 근본해결은 **#166 / #193**(대기시간 단축) 소관. 이 실패는 v7 회귀가 아니다 — `JobLeaseSweeper`·`ai-job-timeout-sec`·`lease-sec` 는 `79358c0..dc24665` 에서 **무변경**.
+  - ⚠️ **이미지 태그가 크로스 세션 공유다**: `hmb/server-java:p3`·`hmb/servants:p3` 를 **`hmb-growth` 스택(`spider8/hmb-growth`, 포트 19080/19790, 별도 볼륨 `hmb-growth-db`)** 도 쓴다. 배포 직전 확인 시 그쪽 빌드가 태그를 점유하고 있었다(라이브 컨테이너는 옛 digest 라 영향 없었음). 이번 배포로 태그는 다시 이쪽 빌드가 됐다 — **그쪽이 recreate 하면 이 빌드를 집어간다.** "라이브에 뜬 것"의 SoT 는 태그가 아니라 컨테이너 digest(위에 기록).
+  - 백엔드·web 을 **같은 창에서 전환**했다(옛 web 은 `FIRST_HALF` 등 E2 신규 state 를 모른다). 백엔드 recreate → web 빌드·배포 → CORS 재결선까지 약 3분.
+  - 플레이북에 **§8 DB 백업·복원** 절 신설(백업·검증·리허설·복원·태그 공유 주의) — 다음 마이그레이션 배포부터 이 절을 따른다.
+  - 프로덕션 DB 에 검증 계정 `v7probe25`(게스트, 덱·완주 매치 1건 보유) + 뽑기 프로브 게스트 2건 생성됨.
+
+---
+
 ## 2026-07-25T18:30Z — 터널 자가복구(#183) 배포 — web only(런타임 config) + 워치독 설치
 - **git**: `099d0c2` (브랜치 `infra/tunnel-heal`, base main `79358c0`) — `[Spider] feat(infra): 터널 자가복구 — 런타임 config + launchd 워치독 (#183)`
 - **모듈 버전**: engine **`@0.17.0`(v5.01)** — **변경 0** · server-java `0.1.0` · web `0.0.0`(**런타임 config 배선**: 부팅 시 `/config.json` 에서 백엔드 오리진을 읽고 빌드타임 `VITE_API_BASE` 는 폴백으로 강등) · servants `0.0.1`

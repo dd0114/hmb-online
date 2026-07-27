@@ -1,0 +1,125 @@
+/* 풀아트 카드 (#187). 원본 도트 규격을 비율로 축소/확대 — 전 층 pixelated 유지.
+   크기·폰트비·등급 링은 `full-art.ts`(FULL_ART_SIZES · FULL_ART_DESIGN · gradeRingShadow)가
+   소유한다. 여기 있는 건 **레이아웃과 스킨뿐** — 디자인 수치를 두 곳에 두지 않는다(#187 hero
+   "갈아끼우기 쉽게"). 색만 바꾸려면 아래 변수를 고치면 된다. */
+.card {
+  --fa-badge-bg: #0d1a14;
+  --fa-badge-border: rgba(228, 153, 28, 0.9);
+  --fa-badge-fg: #7ce0a4;
+  --fa-radius: 3px;
+
+  /*
+   * 폭 결정 순서: 소비처 강제값 → 컴포넌트 인라인 변수 → 기본.
+   *
+   * `--fa-w` 는 컴포넌트가 **인라인**으로 심으므로 클래스/미디어쿼리로는 못 덮는다(인라인 우선).
+   * 그래서 소비처가 **조상 요소**에 `--fa-w-force` 를 걸면 그게 이기도록 한 단계를 더 둔다 —
+   * 모바일 하단 독처럼 세로 예산이 계약으로 묶인 자리에서 실제로 필요하다.
+   */
+  width: var(--fa-w-force, var(--fa-w, 132px));
+
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  /* 카드 자체가 사각이라 라운드는 아주 약하게만(프레임 도트가 잘리지 않을 정도). */
+  border-radius: var(--fa-radius);
+  color: var(--text);
+  text-align: center;
+  line-height: 1;
+}
+
+/* 클릭 가능한 카드만 커서·눌림 피드백을 준다(장식 카드는 버튼이 아니다). */
+button.card {
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+
+button.card:active {
+  transform: scale(0.98);
+}
+
+/* 프레임 에셋조차 없을 때 — 등급색 테두리로 최소 형태를 유지한다(빈 사각형 방지). */
+.bare {
+  border: 2px solid currentColor;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.frame,
+.art {
+  position: absolute;
+  image-rendering: pixelated;
+  pointer-events: none;
+  user-select: none;
+}
+
+.frame {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* 아트 창 — 원본의 아트 영역만 보이게 잘라내는 클리핑 박스.
+   `variant="art"` 에서는 이 창이 카드 박스 전체가 된다(inset:0 인라인) — 그때만 모서리를
+   물려받는다. `card` 변형의 내부 창까지 라운딩하면 필요 범위를 넘는다(독립 검증 minor-3). */
+.artWindow {
+  position: absolute;
+  display: block;
+  overflow: hidden;
+}
+
+.artFill {
+  inset: 0;
+  border-radius: inherit;
+}
+
+/* 매핑 없는 선수의 폴백 아이콘 — 창 안 가운데. */
+.iconWrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.badge,
+.name,
+.grade {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* 포지션 뱃지 — 프레임에 구워진 `MF` 를 완전히 덮는다(불투명 배경 필수). */
+.badge {
+  background: var(--fa-badge-bg);
+  border: 1px solid var(--fa-badge-border);
+  color: var(--fa-badge-fg);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.name {
+  left: 6%;
+  width: 88%;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 긴 이름이 밴드를 넘지 않게 — 가로 오버플로 0(AC4). */
+  display: block;
+  line-height: 1.9;
+}
+
+.grade {
+  /* 설명판 좌측 원형 아이콘(프레임에 구워짐)을 피해 오른쪽에 정렬. */
+  left: 24%;
+  width: 70%;
+  justify-content: flex-start;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}

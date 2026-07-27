@@ -21,6 +21,12 @@ export default defineConfig({
         target: process.env.VITE_API_TARGET || "http://localhost:8080",
         changeOrigin: true,
       },
+      // QA 콘솔 레지스트리 API(#191). 같은 오리진으로 보이게 프록시해서 CORS 를 없앤다 —
+      // `tools/qa-console.mjs start` 가 VITE_QA_API_TARGET 을 넣어 준다.
+      "/qa-api": {
+        target: process.env.VITE_QA_API_TARGET || "http://127.0.0.1:8301",
+        changeOrigin: true,
+      },
     },
   },
   // Playwright E2E(e2e/**)는 vitest 대상이 아니다 — bare `npx vitest run` 이

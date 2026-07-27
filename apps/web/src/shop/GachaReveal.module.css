@@ -26,10 +26,13 @@
   text-align: center;
 }
 
+/* #187: 카드가 풀아트(226:425)라 셀이 세로로 길다. 폭은 JS 토큰(FULL_ART_SIZES.grid)이
+   버튼에 인라인으로 주고, 그리드는 그 폭에 맞춰 자동 배열한다 — 모바일 390 에서 3열. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+  justify-items: center;
+  gap: 9px;
 }
 
 .card {
@@ -37,7 +40,9 @@
   background: none;
   border: none;
   padding: 0;
-  height: 96px;
+  /* 세로는 카드 비율이 정한다 — 고정 px 를 두면 풀아트가 잘린다. */
+  aspect-ratio: 226 / 425;
+  border-radius: 4px;
 }
 
 .cardInner {
@@ -76,13 +81,15 @@
 
 .cardFace {
   transform: rotateY(180deg);
-  background: var(--bg);
-  border: 2px solid var(--border);
-  padding: 4px;
+  /* 배경·테두리는 카드 프레임 에셋이 갖는다(등급색) — 여기서 또 두르면 이중 테두리가 된다. */
+  background: none;
+  border: none;
+  padding: 0;
 }
 
-.high .cardFace {
-  box-shadow: 0 0 14px 2px rgba(242, 199, 68, 0.55);
+/* 골드↑ 하이라이트(AC-W3). 등급색 링(#187 D4)은 카드 자체가 갖고, 이건 그 바깥의 임팩트 층이다. */
+.high {
+  box-shadow: 0 0 18px 3px rgba(242, 199, 68, 0.5);
 }
 
 .newBadge {
@@ -97,30 +104,32 @@
   padding: 1px 4px;
 }
 
-.cardName {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cardPos {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.cardGrade {
-  font-size: 11px;
-  font-weight: 700;
-}
-
+/*
+ * 액션 바는 **시트 바닥에 고정**한다 (#187).
+ *
+ * 카드가 96px → 196px(풀아트 226:425) 로 커지면서 리빌 시트가 한 화면에 안 들어가게 됐고,
+ * 그러자 [모두 공개]/[확인] 이 fold 아래로 내려갔다 — 버튼을 누르려면 스크롤을 내려야 하고,
+ * 그 상태로 공개가 끝나면 **결과 첫 행이 화면 위로 잘린다**(실측 데스크탑 73px · 모바일 119px 가림).
+ * 10연차 결과는 첫 행에 최고 등급이 오므로 하이라이트를 못 보게 된다.
+ * sticky 로 고정하면 버튼이 늘 손에 있고 스크롤 위치가 첫 행에 남는다.
+ */
 .actions {
+  position: sticky;
+  bottom: -18px; /* 시트 하단 패딩(18px)까지 덮어 뒤 카드가 비쳐 보이지 않게 */
   margin-top: 14px;
+  padding: 10px 0 18px;
   display: flex;
   gap: 8px;
+  background: var(--bg-elevated);
+  z-index: 1;
+}
+
+/* 폰에서는 시트 패딩이 12px 로 줄어 있다(위 @media 430) — 덮을 양도 맞춘다. */
+@media (max-width: 430px) {
+  .actions {
+    bottom: -14px;
+    padding: 8px 0 14px;
+  }
 }
 
 .primary {
@@ -143,9 +152,23 @@
   font-size: 14px;
 }
 
-/* 뽑기 카드 얼굴의 캐릭터 아트 (#145). 카드 폭에 맞춰 축소되되 비율 유지. */
+/*
+ * 모바일 390 에서 **3열**이 나오려면 가로 예산이 맞아야 한다:
+ *   3 × 104(카드) + 2 × 9(gap) = 330  ≤  390 − 오버레이패딩 − 시트패딩
+ * 기본값(16+18)×2 = 68 이면 322 만 남아 2열로 떨어진다 → 폰에서만 패딩을 줄인다.
+ * (카드 폭을 낮추는 선택지는 버렸다 — 96px 에서는 카드 안 이름이 안 읽힌다, 웨이브1 실측.)
+ */
+@media (max-width: 430px) {
+  .overlay {
+    padding: 10px;
+  }
+  .sheet {
+    padding: 14px 12px;
+  }
+}
+
+/* 풀아트 카드가 뒤집힌 면을 꽉 채운다 (#187). 이름·등급은 카드 안 밴드에 있다. */
 .cardFaceArt {
-  margin-bottom: 2px;
-  max-width: 76%;
-  max-height: 46%;
+  position: absolute;
+  inset: 0;
 }

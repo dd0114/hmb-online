@@ -600,13 +600,14 @@ function buildPotentialTable(
   recoveryMoraleSteps: readonly [number, number],
   recoveryMoraleWeights: readonly [number, number],
 ): PotentialOption[] {
+  // M3(#179 gverify): CONDITION_RECOVERY·TEAM_MORALE 는 서버 효과 배선 전까지 테이블에서 제외 —
+  // 유상재화(캐시 다이스)로 뽑는 옵션이 "표시만 되고 효과 없음"은 배포 불가. 배선 후 복원(후속 이슈).
+  // (recoveryMoraleSteps/Weights 인자는 복원 대비 시그니처 유지 — 미사용.)
+  void recoveryMoraleSteps;
+  void recoveryMoraleWeights;
   return [
     ...buildStatOptions("STAT_PCT", statSteps, statWeights),
     ...buildStatOptions("STAT_FLAT", statSteps, statWeights),
-    { type: "CONDITION_RECOVERY", value: recoveryMoraleSteps[0], weight: recoveryMoraleWeights[0], premium: false },
-    { type: "CONDITION_RECOVERY", value: recoveryMoraleSteps[1], weight: recoveryMoraleWeights[1], premium: true },
-    { type: "TEAM_MORALE", value: recoveryMoraleSteps[0], weight: recoveryMoraleWeights[0], premium: false },
-    { type: "TEAM_MORALE", value: recoveryMoraleSteps[1], weight: recoveryMoraleWeights[1], premium: true },
   ];
 }
 
@@ -728,14 +729,16 @@ export function generateAll(): GeneratedData {
         GK: { positioning: 0.24, mental: 0.2, physical: 0.14, tackling: 0.12, passing: 0.1, stamina: 0.08, pace: 0.06, technical: 0.04, shooting: 0.02 },
       },
       // 이벤트→스탯 가중(§B① "헤딩 노림→heading류" 세분화 훅) — v2 이벤트 카탈로그 7종.
+      // M2(#179 gverify): 단위를 baseline(0.02~0.24)과 같은 스케일로 — 이벤트는 "편향"이지
+      // 성장 총량의 지배자가 아니다(구 1~3은 baseline 의 10~100배라 첫 경기에 성장 트랙 60% 소진).
       eventStatMap: {
-        goal: { shooting: 3, positioning: 1 },
-        shot: { shooting: 2, positioning: 1 },
-        pass: { passing: 2, technical: 1 },
-        interception: { tackling: 2, positioning: 1 },
-        tackle: { tackling: 2, physical: 1 },
-        save: { positioning: 3, mental: 1 },
-        dribble: { pace: 2, technical: 1 },
+        goal: { shooting: 0.3, positioning: 0.1 },
+        shot: { shooting: 0.2, positioning: 0.1 },
+        pass: { passing: 0.2, technical: 0.1 },
+        interception: { tackling: 0.2, positioning: 0.1 },
+        tackle: { tackling: 0.2, physical: 0.1 },
+        save: { positioning: 0.3, mental: 0.1 },
+        dribble: { pace: 0.2, technical: 0.1 },
       },
     },
     // -- V2 신규: 성(★, 중복 승급) config (V2-5 `star`) — 구 한계돌파 개칭·확장 --

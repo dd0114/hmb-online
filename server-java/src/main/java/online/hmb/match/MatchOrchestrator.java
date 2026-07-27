@@ -694,7 +694,9 @@ public class MatchOrchestrator {
                     subsIn.add(sub.in());
                 }
             }
-            growthService.settleMatch(match.id(), match.userId(), starters, bench, subsOut, subsIn);
+            // B2(#179 gverify): 유저 사이드 전달 — 이벤트 귀속을 event.team 으로 필터(봇과 playerId 겹침).
+            growthService.settleMatch(match.id(), match.userId(), starters, bench, subsOut, subsIn,
+                    userIsHome(match));
         } catch (RuntimeException e) {
             // 정산 실패가 매치 완료(보상/전적)를 되돌리지 않게 — 로그만(멱등이라 재정산 가능).
             log.error("growth settlement failed for match {}: {}", match.id(), e.toString());

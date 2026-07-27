@@ -4,7 +4,7 @@ import { ErrorToast } from "../common/ErrorToast";
 import { CelebrationOverlay } from "../common/CelebrationOverlay";
 import { StatRadar } from "../common/StatRadar";
 import { GRADE_COLORS, GRADE_LABELS, type Grade } from "../common/grades";
-import { CharAvatar } from "../common/CharAvatar";
+import { FullArtCard } from "../common/FullArtCard";
 import { ApiError } from "../api/client";
 import { useCardEffective, useDiceBalance, useDiceRoll, useStarUp } from "../api/growth-hooks";
 import {
@@ -227,7 +227,22 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
         </button>
 
         <div className={styles.header}>
-          <CharAvatar playerId={player.id} name={player.name} grade={grade} size={44} className={styles.avatar} />
+          {/* #187: 카드 상세/강화 화면 — 44px 아바타 대신 캐릭터 풀아트를 세운다.
+              크기는 `detail`(132) — 이 화면이 카드를 **가장 크게** 보여주는 자리여야 하는데
+              처음엔 `rail`(88)을 써서 뽑기 그리드(104)·트레이드(132)보다 작았다(독립 검증 minor-1).
+              이름·등급·별은 바로 옆에 이미 있으므로 `variant="art"`(프레임 밴드 없이 아트만) —
+              안 그러면 빈 네임플레이트 띠가 남는다. 등급은 모달 프레임이 이미 색으로 말하고 있어
+              카드 링은 끈다(`ring={false}`) — 테두리가 두 겹이 되면 시끄럽다. */}
+          <FullArtCard
+            playerId={player.id}
+            name={player.name}
+            grade={grade}
+            position={player.position}
+            size="detail"
+            variant="art"
+            ring={false}
+            className={styles.avatar}
+          />
           <div className={styles.headText}>
             <span className={styles.gradeTag} style={{ color: frameColor }} data-testid="growth-grade">
               {GRADE_LABELS[grade]}
