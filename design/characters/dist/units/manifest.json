@@ -1,0 +1,159 @@
+{
+  "version": 1,
+  "kind": "units",
+  "note": "hero 입고 유닛 아트(#207 U-D5~U-D9). LEGEND 활성 5종 = 유닛별 고유 실아트, 'default-unit' = GOLD/SILVER/BRONZE 공용 기본 스킨. 기존 characters/placeholder 축과 **합치지 않는다** — 별도 manifest·별도 아틀라스(축 분리는 #121 발행 계약). 2차 입고(#207 재발행): 보날두·욱링엄이 완성 카드 → 프레임리스 아트로 바뀌어 현재 `complete` 은 **0종**이다(구워진 숫자·별이 실데이터와 어긋나던 문제와 종횡비 불일치가 같이 사라진다). `cardKinds.complete` 선언은 남는다 — 발행측이 언제든 다시 실을 수 있고, 그게 소비측의 '프레임 두 겹 방지' 계약이다.",
+  "source": "hero-imageRef-2026-07-27-rev2",
+  "count": 6,
+  "cardKinds": {
+    "complete": "프레임·이름판·포지션뱃지·별·대사가 **이미 구워진 완성 카드**. frame-<GRADE>.png 합성 경로를 타지 않는다(그대로 그린다).",
+    "frameless-art": "프레임 없는 캐릭터 아트(투명 배경). 기존 합성 경로(frame-<GRADE>.png 위에 아트를 얹기)를 그대로 쓴다."
+  },
+  "mappingHint": "forPlayer/forGrades 는 **발행측 힌트**다(기존 characters 축의 variant forPlayer 와 같은 성격). 권위 매핑은 data/players 의 player-chars 발행물이 소유한다 — 힌트와 어긋나면 매핑이 이긴다.",
+  "atlases": {
+    "avatars-64": {
+      "file": "units/avatars-64.png",
+      "tile": 64,
+      "cols": 3,
+      "rows": 2
+    },
+    "avatars-32": {
+      "file": "units/avatars-32.png",
+      "tile": 32,
+      "cols": 3,
+      "rows": 2
+    },
+    "avatars-16": {
+      "file": "units/avatars-16.png",
+      "tile": 16,
+      "cols": 3,
+      "rows": 2
+    }
+  },
+  "units": {
+    "bonaldo": {
+      "index": 0,
+      "name": "보날두",
+      "position": "FW",
+      "card": {
+        "file": "units/art-bonaldo.png",
+        "kind": "frameless-art",
+        "w": 512,
+        "h": 768
+      },
+      "face": "units/face-bonaldo.png",
+      "faceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "iconBackground": "opaque-dark",
+      "forPlayer": "P173",
+      "col": 0,
+      "row": 0
+    },
+    "yeoldona": {
+      "index": 1,
+      "name": "열라도나",
+      "position": "MF",
+      "card": {
+        "file": "units/art-yeoldona.png",
+        "kind": "frameless-art",
+        "w": 512,
+        "h": 768
+      },
+      "face": "units/face-yeoldona.png",
+      "faceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "iconBackground": "opaque-dark",
+      "forPlayer": "P175",
+      "col": 1,
+      "row": 0
+    },
+    "chunbappe": {
+      "index": 2,
+      "name": "춘바페",
+      "position": "FW",
+      "card": {
+        "file": "units/art-chunbappe.png",
+        "kind": "frameless-art",
+        "w": 512,
+        "h": 768
+      },
+      "face": "units/face-chunbappe.png",
+      "faceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "iconBackground": "opaque-dark",
+      "forPlayer": "P176",
+      "col": 2,
+      "row": 0
+    },
+    "dukbrayner": {
+      "index": 3,
+      "name": "덕브라이너",
+      "position": "MF",
+      "card": {
+        "file": "units/art-dukbrayner.png",
+        "kind": "frameless-art",
+        "w": 512,
+        "h": 768
+      },
+      "face": "units/face-dukbrayner.png",
+      "faceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "iconBackground": "opaque-dark",
+      "forPlayer": "P177",
+      "col": 0,
+      "row": 1
+    },
+    "wookringham": {
+      "index": 4,
+      "name": "욱링엄",
+      "position": "MF",
+      "card": {
+        "file": "units/art-wookringham.png",
+        "kind": "frameless-art",
+        "w": 512,
+        "h": 768
+      },
+      "face": "units/face-wookringham.png",
+      "faceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "iconBackground": "opaque-dark",
+      "forPlayer": "P179",
+      "col": 1,
+      "row": 1
+    },
+    "default-unit": {
+      "index": 5,
+      "name": "기본 유닛",
+      "position": null,
+      "card": {
+        "file": "units/art-default-unit.png",
+        "kind": "frameless-art",
+        "w": 139,
+        "h": 201,
+        "pixelArt": true
+      },
+      "face": "units/face-default-unit.png",
+      "faceSize": {
+        "w": 132,
+        "h": 132
+      },
+      "iconBackground": "transparent",
+      "forGrades": [
+        "GOLD",
+        "SILVER",
+        "BRONZE"
+      ],
+      "col": 2,
+      "row": 1
+    }
+  }
+}

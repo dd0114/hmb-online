@@ -53,9 +53,55 @@ node design/characters/pipeline/make-characters.mjs # → dist/characters/ (아�
 | `card-<id>.png` | 캐릭터별 카드 226×425 (개별 파일) |
 | `manifest.json` | `characters[id]` = `{col,row,position,card}` + 변형은 `{variant:{of,hueDeg}, forPlayer}` |
 
-- 두 축(`dist/` 172명 플레이스홀더 vs `dist/characters/` 14종 확정)은 **별도 manifest** — 충돌 없음.
+- 세 축(`dist/` 172명 플레이스홀더 · `dist/characters/` 14종 확정 · `dist/units/` 입고 유닛)은 **별도 manifest** — 충돌 없음.
 - #121 은 `characters[id]` 타일 좌표만 소비. **선수↔캐릭터 매핑은 #121(data/) 소유** — 여기서 안 한다.
 - 변형(`sail-h150`·`ragna-h210`)은 §4.5 규격. web 은 일반 캐릭터와 동일 렌더(CSS 필터 불필요).
+
+### dist/units/ — hero 입고 유닛 아트 (#207 W3-B, U-D5~U-D9 소비)
+
+hero 가 외부에서 뽑은 **실아트**를 슬라이스·규격화해 발행한 세 번째 축. LEGEND 활성 5종
+(보날두·열라도나·춘바페·덕브라이너·욱링엄) + **디폴트 유닛 1종**(GOLD/SILVER/BRONZE 공용, U-D8).
+
+```bash
+python3 design/characters/pipeline/slice-units.py            # 원본(~/Desktop/imageRef) → dist/units/
+python3 design/characters/pipeline/slice-units.py --verify    # 발행물 자기검증(manifest ↔ 실파일)
+UNITS_SRC=/다른/경로 python3 .../slice-units.py               # 원본 위치 오버라이드
+```
+
+| 파일 | 내용 |
+|---|---|
+| `card-<id>.png` (512×768) | **완성 카드** — 프레임·이름판·포지션뱃지·별·대사가 이미 구워져 있다. **현재 0종**(↓ 2차 입고) |
+| `art-<id>.png` (512×768, 디폴트 유닛만 139×201) | **프레임 없는 캐릭터 아트**(투명 배경). 현재 6종 전부 |
+| `face-<id>.png` (256², 디폴트 유닛 132²) | 얼굴 마스터(고DPI) |
+| `avatars-{64,32,16}.png` | 얼굴 아틀라스(3×2 격자) — `characters` 축과 동일 계약 |
+| `manifest.json` | `units[id]` = `{col,row,name,position,card:{file,kind,w,h},face,iconBackground,forPlayer?,forGrades?}` |
+
+**소비측 분기 계약 = `units[id].card.kind`**
+- `complete` → **그대로 그린다.** `frame-<GRADE>.png` 합성 경로를 타면 안 된다(등급 프레임이 이미 구워져 있다).
+- `frameless-art` → 기존 합성 경로 그대로(등급 프레임 위에 아트를 얹기).
+
+**2차 입고(#207 재발행) — `complete` 은 0종이 됐다.** 보날두·욱링엄이 완성 카드에서 프레임리스
+아트로 재발행되며 두 문제가 같이 사라졌다: ① 카드에 **구워진 숫자·별이 실데이터와 어긋남**
+(욱링엄 `99/MF/LEGENDARY`, 보날두 별 8개 vs 실제 OVR 89.7·성★ 1~4) ② 완성 카드(2:3)와 합성
+카드(≈1:1.88)의 **종횡비 불일치로 뽑기 그리드 줄이 안 맞음**. 이제 6종 전부 등급 프레임 합성
+경로를 타므로 이름·별·포지션은 **web 이 실제 데이터로** 그린다.
+⚠️ 그래도 `complete` 분기·`cardKinds` 선언·`card-*` 파일명 규약은 **지운 게 아니라 남겨 뒀다** —
+발행측이 언제든 다시 실을 수 있고, 그게 소비측의 "프레임 두 겹 방지" 계약이다. web 은 픽스처
+manifest 로 그 분기를 계속 검증한다(`full-art.test.ts` · `FullArtCard.test.ts`).
+욱링엄 **얼굴은 1차 시트 크롭 그대로 유지**한다 — 2차 입고의 `욱링엄-아이콘2.png` 는 112×112
+규격 미달이고 유니폼에 레알 크레스트·adidas 로고가 남아 있다(새 카드에서는 지워진 것).
+
+⚠️ `card` 는 **객체**다(`characters` 축은 문자열). 갱신 전 소비자가 문자열로 읽으면 `assetUrl` 이
+`null` 을 돌려 폴백으로 떨어진다 — **틀린 그림을 그리는 대신 조용히 폴백**하는 fail-safe 형상이다.
+
+- 크롭 좌표는 전부 `slice-units.py` 의 `CROPS` 에 박혀 있다(수작업 1회성 크롭 금지 — 원본이 갱신되면 다시 돌린다).
+  단독 입고분(1024×1536 / 1024²)은 크롭이 없다 — 시트에서 떼어내는 것만 좌표를 갖는다.
+- `--verify` 는 manifest↔실파일뿐 아니라 **픽셀 계약**도 본다: `complete` 은 불투명 · `frameless-art`
+  는 알파 생존 + 인물 바운딩박스가 `ART_BBOX_BAND` 안 + 세로 점유율 하한. 한 장만 크거나 붕 뜨는
+  발행을 그리드에 올리기 전에 잡는다.
+- 원본은 **리포 밖·읽기 전용**이다. 이 파이프라인은 원본을 수정·이동하지 않는다.
+- 이 단계만 **Pillow + numpy** 를 쓴다(다른 pipeline 스크립트는 외부 의존 0). 이유는 스크립트 헤더 주석.
+- `forPlayer`/`forGrades` 는 **발행측 힌트**다. 권위 매핑은 `data/players` 의 `player-chars` 발행물이 소유한다.
 
 ## 쓰는 법
 
