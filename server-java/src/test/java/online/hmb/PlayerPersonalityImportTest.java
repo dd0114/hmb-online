@@ -66,4 +66,18 @@ class PlayerPersonalityImportTest {
                 .query(String.class).single();
         assertThat(version).isEqualTo("v2.1");
     }
+
+    /**
+     * <b>#207 무회귀</b>: {@code active} 필드가 <b>없는</b> 구 시드(v2.1)로 부팅하면 전원 활성이다.
+     *
+     * <p>임포터가 없는 필드를 0/false 로 읽으면 <b>구 시드로 부팅하는 순간 카탈로그 전체가 비활성</b>이
+     * 되어 가챠·트레이드·도감이 통째로 빈다. 롤백 경로(v2.2 → v2.1 되돌리기)가 바로 그 상황이라
+     * 여기서 못박는다.
+     */
+    @Test
+    void legacySeedWithoutActiveFieldImportsEverythingAsActive() {
+        Integer inactive = jdbcClient.sql("SELECT COUNT(*) FROM players WHERE active <> 1")
+                .query(Integer.class).single();
+        assertThat(inactive).as("active 필드가 없는 구 시드인데 비활성 행이 생겼다").isZero();
+    }
 }

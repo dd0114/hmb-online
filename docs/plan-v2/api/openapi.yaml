@@ -771,6 +771,281 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiError"
 
+  # ─────────────────────────────────────────────────────────────────────────
+  # 어드민 유닛 카탈로그 (#207 파트 A) — additive. 기존 경로·스키마 변경 0.
+  #
+  # 목적: 유닛 추가/수정/비활성화를 **배포 없이** 하고 모든 변경을 감사 원장에 남긴다.
+  # 변경 계열은 공통으로:
+  #   · 바디에 reason 필수(≤500자, 없으면 400)
+  #   · Idempotency-Key 헤더 선택 — 같은 키 재전송은 200 + applied=false(감사 중복 0),
+  #     같은 키 다른 내용은 409
+  #   · players UPDATE + admin_catalog_audit INSERT + admin_locked=1 이 한 트랜잭션
+  # 인증은 /api/admin/ 접두사 게이트가 일괄 담당한다(엔드포인트별 권한 선언 없음).
+  # ─────────────────────────────────────────────────────────────────────────
+  /api/admin/units:
+    get:
+      tags: [admin]
+      operationId: adminListUnits
+      summary: 유닛 목록(필터 q·grade·position·active + 페이징). 행마다 adminLocked·dataVersion 포함.
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string }, description: "id 또는 이름 부분일치(LIKE 와일드카드는 리터럴 처리)" }
+        - { name: grade, in: query, required: false, schema: { $ref: "#/components/schemas/Grade" } }
+        - { name: position, in: query, required: false, schema: { $ref: "#/components/schemas/Position" } }
+        - { name: active, in: query, required: false, schema: { type: boolean } }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+        - { name: offset, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: 유닛 페이지
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUnitPage" }
+        "400":
+          description: 알 수 없는 grade/position 등 파라미터 오류. code=VALIDATION_ERROR
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: adminCreateUnit
+      summary: |
+        신규 유닛 추가. id 는 **서버가 채번**한다(기존 최대 P번호 + 1) — 기존 번호 재사용은
+        user_players 가 그 id 를 가리키므로 기보유 카드의 의미를 바꾼다.
+        생성된 행은 admin_locked=1 이라 부팅 재임포트가 덮지 않는다.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+          description: |
+            선택. 생성 멱등의 스코프는 (action, idem_key) 로 **대상 무관**이다 — id 를 서버가
+            채번하므로 대상별 스코프로는 재전송을 식별할 수 없고, 그러면 재전송마다 새 유닛이 생긴다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminUnitCreateRequest" }
+      responses:
+        "200":
+          description: 생성됨(applied=true) 또는 멱등 재전송(applied=false, 상태 변화 없음)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUnitMutationResult" }
+        "400":
+          description: reason 누락/초과, 열거값 오류, attributes 9종 누락·범위 밖. code=VALIDATION_ERROR
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: 멱등키 충돌(같은 키가 이미 다른 내용에 쓰였다). code=CONFLICT
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+
+  /api/admin/units/audit:
+    get:
+      tags: [admin]
+      operationId: adminUnitAudit
+      summary: |
+        카탈로그 변경 이력. before/after 는 **필드 diff 가 아니라 전체 스냅샷**이라
+        한 행만으로 그 시점 상태를 복원할 수 있다.
+      parameters:
+        - { name: playerId, in: query, required: false, schema: { type: string } }
+        - { name: actor, in: query, required: false, schema: { type: string }, description: "액션을 실행한 admin 의 userId" }
+        - { name: action, in: query, required: false, schema: { $ref: "#/components/schemas/AdminUnitAuditAction" } }
+        - { name: from, in: query, required: false, schema: { type: string }, description: "ISO-8601 UTC. created_at >= from" }
+        - { name: to, in: query, required: false, schema: { type: string }, description: "ISO-8601 UTC. created_at <= to" }
+        - { name: limit, in: query, required: false, schema: { type: integer } }
+        - { name: offset, in: query, required: false, schema: { type: integer } }
+      responses:
+        "200":
+          description: 감사 이력 페이지
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUnitAuditPage" }
+        "400":
+          description: 알 수 없는 action. code=VALIDATION_ERROR
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/units/export:
+    get:
+      tags: [admin]
+      operationId: adminExportUnits
+      summary: |
+        현재 카탈로그를 **시드 발행 포맷**(data/players/players.vX.json)으로 덤프.
+        운영 흐름 = 어드민 API 로 확정 → export → data 도메인이 다음 시드 버전으로 승격 → 커밋.
+        이게 없으면 개편이 그 DB 한 대에만 살고 새 배포·DB 리셋에 사라진다.
+        런타임 전용 필드(adminLocked·dataVersion)는 덤프에 포함되지 않는다.
+      responses:
+        "200":
+          description: 시드 형태 배열(id 오름차순)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminUnitSeedEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/units/{playerId}:
+    parameters:
+      - name: playerId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [admin]
+      operationId: adminUnitDetail
+      summary: 유닛 상세 + 보유 규모(영향 범위) + 최근 감사 이력
+      responses:
+        "200":
+          description: 유닛 상세
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUnitDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [admin]
+      operationId: adminUpdateUnit
+      summary: |
+        부분 수정. attributes 는 **키 단위 병합**이다(전체 교체 아님) — 스탯 하나를 고치려고
+        9종을 다시 적게 하면 나머지를 옮겨 적다가 틀린다.
+        **등급 하향**은 기보유 카드의 유효스탯을 깎으므로(cap_i = base_i + starFrac[star]×(hi−base_i),
+        성을 올린 카드일수록 크게) confirmImpact:true 없이는 409 로 거절되고, 실측 영향 규모가
+        응답 detail 에 담긴다. 상향은 손실이 없으므로 확인이 필요 없다.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminUnitPatchRequest" }
+      responses:
+        "200":
+          description: 적용됨(applied=true) 또는 멱등 재전송(applied=false)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUnitMutationResult" }
+        "400":
+          description: reason 누락, 변경 필드 0, 열거값·능력치 오류. code=VALIDATION_ERROR
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            ① 등급 하향인데 confirmImpact 가 없다(detail = AdminUnitGradeImpact) 또는
+            ② 멱등키 충돌. 둘 다 code=CONFLICT.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+
+  /api/admin/units/{playerId}/deactivate:
+    parameters:
+      - { name: playerId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      operationId: adminDeactivateUnit
+      summary: |
+        비활성화 — **신규 획득 경로에서만** 제외한다(가챠 추첨 풀 · 트레이드 타깃 · 도감의 미보유분).
+        보유분은 건드리지 않는다: user_players · 덱 편성 · 성장/유효스탯 · 매치 SelectData 전부 그대로다.
+        (hero 결정 U-D1 = 기보유 유저 손실 0.)
+      parameters:
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "200":
+          description: 적용됨 또는 멱등 재전송
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUnitMutationResult" }
+        "400": { description: "reason 누락. code=VALIDATION_ERROR", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "멱등키 충돌. code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/admin/units/{playerId}/activate:
+    parameters:
+      - { name: playerId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      operationId: adminActivateUnit
+      summary: 재활성화(감사 action 을 deactivate 와 분리해 이력 가독성을 유지한다)
+      parameters:
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "200":
+          description: 적용됨 또는 멱등 재전송
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUnitMutationResult" }
+        "400": { description: "reason 누락. code=VALIDATION_ERROR", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "멱등키 충돌. code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/admin/units/{playerId}/override:
+    parameters:
+      - { name: playerId, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [admin]
+      operationId: adminResetUnitOverride
+      summary: |
+        시드 권위로 복원(admin_locked=0). **값을 되돌리지는 않는다** — 다음 부팅의 시드 임포트가
+        이 행을 다시 덮게 허용할 뿐이다. 지금 값을 바꾸려면 PATCH 를 쓴다.
+      parameters:
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
+        - name: reason
+          in: query
+          required: false
+          schema: { type: string }
+          description: |
+            바디 대신 쓸 수 있는 사유. DELETE 바디는 HTTP 상 합법이지만 일부 클라이언트·프록시가
+            조용히 떨어뜨린다 — 목적은 사유 없는 변경을 막는 것이지 전송 형식 강제가 아니다.
+            바디와 쿼리 둘 다 없으면 400.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "200":
+          description: 적용됨 또는 멱등 재전송
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUnitMutationResult" }
+        "400": { description: "reason 누락(바디·쿼리 모두). code=VALIDATION_ERROR", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { description: "멱등키 충돌. code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
 
 components:
   securitySchemes:
@@ -1027,6 +1302,13 @@ components:
         ownedCount:
           type: integer
           minimum: 0
+        active:
+          type: boolean
+          description: >
+            #207 U-D7 additive. 카탈로그 운영 플래그(players.active). false = 신규 획득 경로(가챠 추첨 풀·
+            트레이드 타깃)에서 빠진 유닛. 비활성이어도 **보유분은 이 목록에 계속 내려오므로**(카드를 뺏지
+            않는다) 클라는 이 값으로 도감에 "off"를 표기한다. 필터링 의미는 없고 표기용 관측 필드다.
+            required 아님 — 기존 소비자 무영향(additive).
 
     # ───────────────────────────── deck ─────────────────────────────
     DeckSlot:
@@ -1617,3 +1899,219 @@ components:
         auditId:
           type: [string, "null"]
           description: 기록된 admin_audit 행 ID(재전송이면 null).
+
+    # ── 어드민 유닛 카탈로그 (#207 파트 A) — additive ───────────────────────
+    AdminUnitAuditAction:
+      type: string
+      enum: [unit_create, unit_update, unit_deactivate, unit_activate, unit_override_reset]
+
+    AdminUnit:
+      type: object
+      required: [id, name, position, grade, attributes, personality, active, adminLocked, dataVersion]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        position: { $ref: "#/components/schemas/Position" }
+        grade: { $ref: "#/components/schemas/Grade" }
+        attributes: { $ref: "#/components/schemas/PlayerAttributes" }
+        personality:
+          type: string
+          enum: [FIERY, CALM, GLASS, AMBITIOUS]
+        active:
+          type: boolean
+          description: |
+            false = **신규 획득 경로에서만** 제외(가챠 풀·트레이드 타깃·도감 미보유분).
+            보유분은 그대로 쓸 수 있다 — 덱 편성·성장·매치 전부 정상 동작한다.
+        adminLocked:
+          type: boolean
+          description: |
+            true = 어드민이 만진 행이라 **부팅 시드 재임포트가 덮지 않는다**.
+            DELETE /units/{id}/override 로 풀면 다음 부팅에 시드가 다시 이긴다.
+        dataVersion:
+          type: string
+          description: "임포트 원본 시드 버전(예 v2.2). 어드민이 만든 행은 'admin'."
+
+    AdminUnitSeedEntry:
+      type: object
+      description: export 전용 — 시드 파일(players.vX.json) 한 항목과 동일한 형태·키 순서.
+      required: [id, name, position, grade, attributes, personality, active]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        position: { $ref: "#/components/schemas/Position" }
+        grade: { $ref: "#/components/schemas/Grade" }
+        attributes: { $ref: "#/components/schemas/PlayerAttributes" }
+        personality:
+          type: string
+          enum: [FIERY, CALM, GLASS, AMBITIOUS]
+        active: { type: boolean }
+
+    AdminUnitPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdminUnit" }
+        total: { type: integer, format: int64 }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    AdminUnitHoldings:
+      type: object
+      description: 영향 규모 — 등급·활성 변경 전에 운영자가 보는 값.
+      required: [owners, copies]
+      properties:
+        owners:
+          type: integer
+          format: int64
+          description: 이 유닛을 보유한 유저 수(중복 제외).
+        copies:
+          type: integer
+          format: int64
+          description: 보유 장수 합(중복 획득 포함).
+
+    AdminUnitAuditEntry:
+      type: object
+      required: [id, actorUserId, playerId, action, changedFields, reason, createdAt]
+      properties:
+        id: { type: string }
+        actorUserId: { type: string }
+        playerId: { type: string }
+        action: { $ref: "#/components/schemas/AdminUnitAuditAction" }
+        before:
+          type: object
+          additionalProperties: true
+          description: 변경 **전 전체 스냅샷**(unit_create 는 빈 객체).
+        after:
+          type: object
+          additionalProperties: true
+          description: 변경 **후 전체 스냅샷**.
+        changedFields:
+          type: array
+          items: { type: string }
+          description: 실제로 달라진 필드(두 스냅샷에서 파생된 조회 편의값).
+        reason: { type: string }
+        idemKey: { type: [string, "null"] }
+        createdAt: { type: string }
+
+    AdminUnitAuditPage:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/AdminUnitAuditEntry" }
+        total: { type: integer, format: int64 }
+        limit: { type: integer }
+        offset: { type: integer }
+
+    AdminUnitDetail:
+      type: object
+      required: [unit, holdings, recentAudit]
+      properties:
+        unit: { $ref: "#/components/schemas/AdminUnit" }
+        holdings: { $ref: "#/components/schemas/AdminUnitHoldings" }
+        recentAudit:
+          type: array
+          items: { $ref: "#/components/schemas/AdminUnitAuditEntry" }
+
+    AdminUnitGradeImpact:
+      type: object
+      description: |
+        등급 변경이 기보유 카드에 미치는 **실측** 영향. 등급 하향 409 의 detail 로 실린다.
+        근사식이 아니라 실제 유효스탯 계산을 등급만 바꿔 두 번 돌린 차이다.
+      required: [fromGrade, toGrade, capLowered, affectedUsers, avgOvrDelta, worstOvrDelta, computed]
+      properties:
+        fromGrade: { $ref: "#/components/schemas/Grade" }
+        toGrade: { $ref: "#/components/schemas/Grade" }
+        capLowered:
+          type: boolean
+          description: 새 등급의 밴드 상한이 더 낮다(= 성장 캡이 내려간다).
+        affectedUsers: { type: integer, format: int64 }
+        avgOvrDelta:
+          type: number
+          description: 보유자 전원의 유효 OVR 변화 평균(음수 = 손실).
+        worstOvrDelta:
+          type: number
+          description: 가장 크게 깎이는 카드 한 장의 변화(음수 = 손실).
+        computed:
+          type: boolean
+          description: |
+            false = 경제 설정 부재로 델타를 계산하지 못했다.
+            이때 0 은 "영향 없음"이 아니므로 보수적으로 다뤄야 한다.
+
+    AdminUnitMutationResult:
+      type: object
+      required: [applied, idempotencyKey, changedFields]
+      properties:
+        unit: { $ref: "#/components/schemas/AdminUnit" }
+        applied:
+          type: boolean
+          description: false = 같은 멱등키의 재전송이라 아무것도 바뀌지 않았다(unit 은 현재값).
+        idempotencyKey:
+          type: string
+          description: 실제 사용된 멱등키(헤더 미제공 시 서버가 채번한 값).
+        auditId: { type: [string, "null"] }
+        changedFields:
+          type: array
+          items: { type: string }
+        impact:
+          oneOf:
+            - { $ref: "#/components/schemas/AdminUnitGradeImpact" }
+            - { type: "null" }
+          description: 등급 변경이 동반된 경우의 실측 영향(그 외 null).
+
+    AdminReasonRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          maxLength: 500
+          description: 운영 사유. 필수 — 사유 없는 카탈로그 변경은 허용하지 않는다.
+
+    AdminUnitCreateRequest:
+      type: object
+      required: [name, position, grade, attributes, reason]
+      properties:
+        name: { type: string, maxLength: 60 }
+        position: { $ref: "#/components/schemas/Position" }
+        grade: { $ref: "#/components/schemas/Grade" }
+        attributes:
+          allOf:
+            - $ref: "#/components/schemas/PlayerAttributes"
+          description: 9종 **전부** 필요(누락 시 400). 각 값 0~100 정수.
+        personality:
+          type: string
+          enum: [FIERY, CALM, GLASS, AMBITIOUS]
+          description: 생략 시 CALM.
+        active:
+          type: boolean
+          description: 생략 시 true.
+        reason: { type: string, maxLength: 500 }
+
+    AdminUnitPatchRequest:
+      type: object
+      description: 지정한 필드만 바뀐다. 최소 1개는 지정해야 한다(0개면 400).
+      required: [reason]
+      properties:
+        name: { type: string, maxLength: 60 }
+        position: { $ref: "#/components/schemas/Position" }
+        grade: { $ref: "#/components/schemas/Grade" }
+        attributes:
+          type: object
+          additionalProperties: { type: integer, minimum: 0, maximum: 100 }
+          description: |
+            **키 단위 병합**(전체 교체 아님) — 지정한 능력치만 덮어쓰고 나머지는 보존한다.
+            알 수 없는 키는 400.
+        personality:
+          type: string
+          enum: [FIERY, CALM, GLASS, AMBITIOUS]
+        active: { type: boolean }
+        confirmImpact:
+          type: boolean
+          description: |
+            등급을 **낮출 때만** 필요. 없으면 409 + detail(AdminUnitGradeImpact).
+            등급 상향·동일에는 영향이 없으므로 요구하지 않는다.
+        reason: { type: string, maxLength: 500 }

@@ -412,6 +412,81 @@ public class GrowthService {
         return toCardEffectiveMap(playerId, e);
     }
 
+    // ── 등급 변경 영향 사전 계산 (#207 §1.6-1) ─────────────────────────
+
+    /**
+     * <b>등급을 바꾸면 기보유 카드의 유효스탯이 얼마나 움직이는가</b>를 실제 계산해 돌려준다.
+     * 어드민 카탈로그 API 가 <b>등급 하향 PATCH 를 막는 판정 근거</b>로 쓴다(추정이 아니라 실측).
+     *
+     * <p>왜 필요한가: 캡 공식이 {@code cap_i = base_i + starFrac[star] × (band.hi − base_i)} 라
+     * 등급이 내려가면 {@code band.hi} 가 함께 내려가고, <b>성을 많이 올린 카드일수록 더 크게</b>
+     * 깎인다(실측 예: LEGEND→DIA 시 4★ 평균 −7.33 / 1★ −1.83). 즉 <b>투자한 유저가 더 손해</b>다.
+     * 운영자가 그걸 모르고 등급을 내리는 일이 없도록 호출부가 영향 규모를 먼저 보여주고
+     * 명시 확인을 받는다.
+     *
+     * <p>순수 읽기 — RNG·쓰기 없음. 카드 상태(성·스탯레벨·잠재)는 그대로 두고 <b>등급만</b> 바꿔
+     * 같은 {@link #compute} 를 두 번 돌린 차이다. 그래서 여기 값과 실제 반영 후 값이 어긋날 수 없다
+     * (별도 근사식을 두면 공식이 바뀔 때 조용히 갈라진다).
+     *
+     * <p>경제 설정이 없으면 계산 자체가 불가능하므로 <b>영향 미상</b>({@code computed=false})으로
+     * 돌려준다 — 그 경우 호출부는 "영향 0"으로 오해하지 말고 보수적으로 다뤄야 한다.
+     */
+    public GradeChangeImpact gradeChangeImpact(String playerId, String newGrade) {
+        PlayerBase pb = playerBase(playerId)
+                .orElseThrow(() -> ApiException.notFound("선수를 찾을 수 없습니다: " + playerId));
+        int[] fromBand = GRADE_BAND.getOrDefault(pb.grade(), new int[]{0, 100});
+        int[] toBand = GRADE_BAND.getOrDefault(newGrade, new int[]{0, 100});
+        boolean capLowered = toBand[1] < fromBand[1];
+
+        List<String> owners = jdbcClient.sql("SELECT user_id FROM user_players WHERE player_id = ? ORDER BY user_id")
+                .param(playerId).query(String.class).list();
+
+        if (pb.grade().equals(newGrade) || owners.isEmpty()) {
+            return new GradeChangeImpact(playerId, pb.grade(), newGrade, capLowered,
+                    owners.size(), 0.0, 0.0, true);
+        }
+
+        EconomyService.Growth gc;
+        EconomyService.Star sc;
+        EconomyService.Potential pc;
+        try {
+            gc = growthCfg();
+            sc = starCfg();
+            pc = potentialCfg();
+        } catch (RuntimeException e) {
+            log.warn("gradeChangeImpact: 경제 설정 부재로 영향 계산 불가 player={} → {}", playerId, e.toString());
+            return new GradeChangeImpact(playerId, pb.grade(), newGrade, capLowered,
+                    owners.size(), 0.0, 0.0, false);
+        }
+
+        PlayerBase hypothetical = new PlayerBase(pb.id(), pb.position(), newGrade, pb.attributes());
+        double sum = 0.0;
+        double worst = 0.0;
+        for (String owner : owners) {
+            CardState card = cardState(owner, playerId);
+            Map<String, StatLevelState> levels = loadStatLevels(owner, playerId);
+            PotentialRow prow = potentialRow(owner, playerId).orElse(PotentialRow.fresh());
+            double before = compute(pb, card, levels, prow, gc, sc, pc).ovr();
+            double after = compute(hypothetical, card, levels, prow, gc, sc, pc).ovr();
+            double delta = after - before;
+            sum += delta;
+            worst = Math.min(worst, delta);
+        }
+        return new GradeChangeImpact(playerId, pb.grade(), newGrade, capLowered,
+                owners.size(), round2(sum / owners.size()), round2(worst), true);
+    }
+
+    /**
+     * @param capLowered   새 등급의 밴드 상한이 더 낮다 = 성장 캡이 내려간다(보유자가 0명이어도 참일 수 있다).
+     * @param avgOvrDelta  보유자 전원의 유효 OVR 변화 평균(음수 = 손실).
+     * @param worstOvrDelta 가장 크게 깎이는 카드 한 장의 변화(음수 = 손실).
+     * @param computed     false = 경제 설정 부재로 델타를 계산하지 못했다(0 은 "영향 없음"이 아니다).
+     */
+    public record GradeChangeImpact(String playerId, String fromGrade, String toGrade, boolean capLowered,
+                                    long affectedUsers, double avgOvrDelta, double worstOvrDelta,
+                                    boolean computed) {
+    }
+
     private Map<String, Object> toCardEffectiveMap(String playerId, Effective e) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("playerId", playerId);

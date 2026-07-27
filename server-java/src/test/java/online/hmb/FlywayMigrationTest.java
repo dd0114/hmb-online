@@ -38,7 +38,10 @@ class FlywayMigrationTest {
             // V9 메이플 피벗(3) — #179 V2: 잠재능력·다이스 인벤·다이스 롤 감사로그
             "card_potentials", "user_dice", "dice_rolls",
             // V10 재화 이원화(1) — V2.2: 젬 원장(point_ledger 동형). wallets.gems 는 컬럼 추가라 목록 불변
-            "gem_ledger"
+            "gem_ledger",
+            // V14 어드민 유닛 카탈로그(1) — #207: 카탈로그 변경 이력 원장.
+            // players.active/admin_locked 는 컬럼 추가라 목록 불변.
+            "admin_catalog_audit"
     );
 
     @Test

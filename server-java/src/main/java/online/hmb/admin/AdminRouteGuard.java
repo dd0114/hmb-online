@@ -93,7 +93,11 @@ public class AdminRouteGuard implements ApplicationRunner {
      */
     private static final List<Class<?>> ADMIN_ONLY_BEANS = List.of(
             AdminUserQueryService.class,
-            AdminPointsService.class);
+            AdminPointsService.class,
+            // #207: 유닛 카탈로그를 **쓰는** 서비스. 이게 게이트 밖에서 호출 가능해지면 일반 유저가
+            // 카탈로그를 고칠 수 있다(가챠 풀·등급·스탯이 곧 게임 경제다). 읽기 전용
+            // CatalogController(/api/players)는 이 빈에 의존하지 않으므로 영향이 없다.
+            AdminCatalogService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;

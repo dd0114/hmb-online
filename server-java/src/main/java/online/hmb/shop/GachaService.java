@@ -159,7 +159,11 @@ public class GachaService {
             int pityRank = gradeRank(gacha.tenPityMinGrade());
             boolean hasPityGrade = ids.stream()
                     .anyMatch(id -> gradeRank(pools.gradeOf().get(id)) >= pityRank);
-            if (!hasPityGrade) {
+            // #207: pity 등급 **이상이 전부 비활성**이면 교체할 대상 자체가 없다. 그대로 drawOne 을
+            // 부르면 "추첨 가능한 등급이 없습니다" 로 터져 **10연차가 통째로 500** 이 된다(운영자가
+            // 상위 등급을 비활성화한 순간 상점이 죽는다). 이 경우 pity 보정을 건너뛴다 —
+            // 보정은 상한 보장이지 필수 조건이 아니고, 카탈로그에 없는 등급을 줄 방법도 없다.
+            if (!hasPityGrade && hasDrawableGrade(pools, gacha.rates(), gacha.tenPityMinGrade())) {
                 // 같은 PRNG 스트림을 이어서, pity 등급 이상으로 제한해 마지막 롤 교체 (LLD §4.1-3)
                 String pityId = drawOne(rng, pools, gacha.rates(), gacha.tenPityMinGrade());
                 ids.set(ids.size() - 1, pityId);
@@ -173,23 +177,13 @@ public class GachaService {
      * 등급 내 균등 선수 롤. 카탈로그에 선수가 없는 등급은 후보에서 제외(가중치 자동 정규화).
      */
     private String drawOne(SplittableRandom rng, Pools pools, Map<String, Double> rates, String minGrade) {
-        int minRank = minGrade == null ? 0 : gradeRank(minGrade);
-
         List<String> grades = new ArrayList<>();
         List<Double> weights = new ArrayList<>();
         double total = 0;
-        for (String grade : GRADE_ORDER) {
-            if (gradeRank(grade) < minRank) {
-                continue;
-            }
-            double w = rates.getOrDefault(grade, 0.0);
-            List<String> pool = pools.byGrade().get(grade);
-            if (w <= 0 || pool == null || pool.isEmpty()) {
-                continue;
-            }
+        for (String grade : drawableGrades(pools, rates, minGrade)) {
             grades.add(grade);
-            weights.add(w);
-            total += w;
+            weights.add(rates.getOrDefault(grade, 0.0));
+            total += rates.getOrDefault(grade, 0.0);
         }
         if (grades.isEmpty()) {
             throw new IllegalStateException("추첨 가능한 등급이 없습니다 (rates/카탈로그 확인)");
@@ -208,6 +202,31 @@ public class GachaService {
 
         List<String> pool = pools.byGrade().get(chosen);
         return pool.get(rng.nextInt(pool.size()));
+    }
+
+    /**
+     * 실제로 뽑을 수 있는 등급 = 가중치 &gt; 0 <b>이고</b> 카탈로그 풀이 비어 있지 않은 등급
+     * ({@code minGrade} 이상). 비활성화(#207)로 어떤 등급이 통째로 사라져도 그 등급만 빠지고
+     * 나머지 가중치가 자동 정규화된다 — 확률표를 손댈 필요가 없다.
+     */
+    private static List<String> drawableGrades(Pools pools, Map<String, Double> rates, String minGrade) {
+        int minRank = minGrade == null ? 0 : gradeRank(minGrade);
+        List<String> out = new ArrayList<>();
+        for (String grade : GRADE_ORDER) {
+            if (gradeRank(grade) < minRank) {
+                continue;
+            }
+            List<String> pool = pools.byGrade().get(grade);
+            if (rates.getOrDefault(grade, 0.0) <= 0 || pool == null || pool.isEmpty()) {
+                continue;
+            }
+            out.add(grade);
+        }
+        return out;
+    }
+
+    private static boolean hasDrawableGrade(Pools pools, Map<String, Double> rates, String minGrade) {
+        return !drawableGrades(pools, rates, minGrade).isEmpty();
     }
 
     /** seed 문자열 → SHA-256 → 첫 8바이트 long → SplittableRandom (결정론). */
@@ -260,7 +279,7 @@ public class GachaService {
                 continue;
             }
             CatalogPlayer p = jdbcClient.sql("""
-                            SELECT p.id, p.name, p.position, p.grade, p.attributes_json,
+                            SELECT p.id, p.name, p.position, p.grade, p.attributes_json, p.active,
                                    COALESCE(up.count, 0) AS owned_count
                             FROM players p
                             LEFT JOIN user_players up ON up.player_id = p.id AND up.user_id = ?
@@ -270,7 +289,8 @@ public class GachaService {
                     .query((rs, rowNum) -> new CatalogPlayer(
                             rs.getString("id"), rs.getString("name"), rs.getString("position"),
                             rs.getString("grade"), parseAttributes(rs.getString("attributes_json")),
-                            rs.getInt("owned_count") > 0, rs.getInt("owned_count")))
+                            rs.getInt("owned_count") > 0, rs.getInt("owned_count"),
+                            rs.getInt("active") == 1))
                     .single();
             players.put(playerId, p);
         }
@@ -292,7 +312,9 @@ public class GachaService {
     private Pools loadPools() {
         Map<String, List<String>> byGrade = new TreeMap<>();
         Map<String, String> gradeOf = new LinkedHashMap<>();
-        jdbcClient.sql("SELECT id, grade FROM players ORDER BY id")
+        // #207: active=0 유닛은 **추첨 풀에서 제외**(신규 획득 경로 차단). 이미 보유한 카드는
+        // 건드리지 않는다 — buildResponse 의 조회는 id 로 직접 읽으므로 비활성 카드도 정상 표시된다.
+        jdbcClient.sql("SELECT id, grade FROM players WHERE active = 1 ORDER BY id")
                 .query((rs, rowNum) -> Map.entry(rs.getString("id"), rs.getString("grade")))
                 .list()
                 .forEach(e -> {

@@ -724,7 +724,9 @@ public class TradeService {
 
     private Map<String, List<String>> loadPools() {
         Map<String, List<String>> byGrade = new TreeMap<>();
-        jdbcClient.sql("SELECT id, grade FROM players ORDER BY id")
+        // #207: active=0 유닛은 트레이드 **타깃 선정 풀에서 제외**(신규 획득 경로 차단).
+        // 이미 보유한 카드를 demand 로 내주는 경로는 user_players 기준이라 영향받지 않는다.
+        jdbcClient.sql("SELECT id, grade FROM players WHERE active = 1 ORDER BY id")
                 .query((rs, n) -> Map.entry(rs.getString("id"), rs.getString("grade")))
                 .list()
                 .forEach(e -> byGrade.computeIfAbsent(e.getValue(), g -> new ArrayList<>()).add(e.getKey()));

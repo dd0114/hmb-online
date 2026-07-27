@@ -31,7 +31,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  *
  * <p>진단 정보를 잃지 않기 위해 원본 예외는 <b>서버 로그</b>에 남긴다(응답에는 안 나간다).
  */
-@RestControllerAdvice(assignableTypes = AdminController.class)
+@RestControllerAdvice(assignableTypes = {AdminController.class, AdminCatalogController.class})
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class AdminErrorHandler {
 

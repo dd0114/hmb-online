@@ -29,7 +29,17 @@ hmb:
   db:
     path: ./.data/hmb.db
   data:
-    players-file: ../data/players/players.v2.1.json   # 부팅 임포트(버전 upsert, meta_kv 기록) — v2.1=실선수+성격(#94)
+    # 부팅 임포트(버전 upsert, meta_kv 기록).
+    # v2.1 = 실선수 172명 + 성격(#94) → v2.2 = LEGEND 개편(#207): 신규 8종 P173~P180 추가(180명) +
+    # 구 LEGEND 14종(P001~P012·P143·P144) `"active": false`. hero 결정 U-D1(조합안) = 등급은 그대로
+    # 두고 **획득 경로만** 막는다 → 기보유 유저 손실 0(성★·잠재·stat_levels·유효스탯 전부 무변경).
+    # → **v2.3(현행 소비본)** = U-D5/U-D6. ①유닛명 정정 2건(유라도나→열라도나 P175, 욱리엄→욱링엄 P179)
+    #   — 정본은 **카드 아트**다(이름이 아트에 구워져 발행됐다). ②신규 8종 중 **실아트 입고 5종만 활성**
+    #   (P173·P175·P176·P177·P179), 미입고 3종(P174 권씨·P178 석신·P180 경니시우스)은 `active:false`.
+    #   → v2.3 의 `active:false` 총계 = 14 + 3 = **17**. 미입고분은 **삭제가 아니라 플래그**라, 아트가
+    #   나오면 어드민 카탈로그 API 토글 한 번으로 **배포 없이** 켜진다(파트 A 가 정확히 이걸 위한 것).
+    # 계약 = PlayerCatalogV23SeedTest(현행) · PlayerCatalogV22SeedTest(구 발행물 임포트 회귀 가드).
+    players-file: ../data/players/players.v2.3.json
     economy-file: ../data/players/economy.v2.json      # 확률표·경제 수치 + trade/league 블록 로딩
     bots-file:    ../data/players/bots.v2.json
     league-file:  ../data/players/league.v1.json       # 리그 클럽명·페르소나·보상표(W3 소비, W1 로더만)
@@ -44,6 +54,25 @@ hmb:
     # ⚠️ 값을 여기 하드코딩하지 말 것 — 배포는 env 로만 주입한다(비번은 로그에 절대 찍지 않는다).
     nickname: ${HMB_ADMIN_NICKNAME:}
     password: ${HMB_ADMIN_PASSWORD:}
+    catalog:                         # #207 파트 A 어드민 유닛 카탈로그 — 수치는 전부 여기(하드코딩 금지).
+      page-size-default: 50          # GET /api/admin/units 기본 페이지 크기
+      page-size-max: 200             # 상한 — 운영 도구라도 전량 덤프는 막는다(export 가 그 용도다)
+      audit-recent-limit: 20         # 상세 응답에 실을 최근 감사 이력 건수
+      reason-max-chars: 500          # 운영 사유 상한(AdminPointsService 와 동일 규약)
+      name-max-chars: 60             # 유닛 이름 상한
+      id-prefix: P                   # 자동 채번 접두(P173, P174 …). 기존 P001~P172 공간을 이어 쓴다
+      id-digits: 3                   # 0 패딩 자릿수. 999 를 넘으면 자연스럽게 넓어진다(P1000)
+      attr-min: 0                    # 능력치 하한(shared PlayerAttributes 계약)
+      attr-max: 100                  # 능력치 상한
+      create-retry:                  # #207 blocker B1 — POST /api/admin/units 동시 생성의 **잔여** 경합 흡수.
+        # 1차 방어는 재시도가 아니다: 채번과 INSERT 가 한 문장(INSERT..SELECT MAX+1)이라 그게 트랜잭션의
+        # 첫 문장이 되고, SQLite 가 처음부터 쓰기 잠금을 잡아 번호 경합·SQLITE_BUSY_SNAPSHOT 이
+        # 애초에 생기지 않는다. 이 루프는 그 뒤에 남는 것(다른 커넥션의 쓰기 잠금 대기 초과 등)만 흡수한다.
+        # SQLITE_BUSY 는 대기가 아니라 트랜잭션 통째 재시도만이 해법이다(hmb.trade.busy-retry 와 동일 사유, #152).
+        # ⚠️ 멱등 백스톱(V15 유니크) 위반은 여기서 세지 않는다 — 그건 실패가 아니라 재전송이라
+        # 즉시 200 재생/409 로 수렴한다(재시도 대상이 아니다).
+        max-attempts: 8              # 최초 시도 포함 총 시도 횟수. 운영 도구라 동시 생성 폭은 작다
+        backoff-ms: 20               # 회차 비례 선형 백오프(20/40/60…ms)
   deck:
     bench-max: 7
     player-prompt-max-chars: 500

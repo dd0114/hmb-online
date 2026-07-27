@@ -83,10 +83,14 @@ class AdminGateTest extends ApiTestBase {
         // admin 전용 서비스 자신과, 그걸 주입받는 컨트롤러가 모두 오염 집합에 있어야 한다.
         assertThat(tainted)
                 .as("의존성 추적이 죽었다 — 다른 패키지의 컨트롤러가 admin 서비스를 써도 안 잡힌다")
-                .contains("adminUserQueryService", "adminPointsService", "adminController");
+                .contains("adminUserQueryService", "adminPointsService", "adminController",
+                        // #207 — 카탈로그 쓰기 빈과 그 컨트롤러도 같은 판정에 편입돼야 한다.
+                        "adminCatalogService", "adminCatalogController");
 
         // 무관한 컨트롤러는 오염되지 않는다(기준이 '전부 잡기'로 뭉개지지 않았는지 확인).
-        assertThat(tainted).doesNotContain("meController");
+        // catalogController(/api/players, 일반 유저용 도감)는 admin 빈에 의존하면 안 된다 —
+        // 오염되면 게이트 밖 라우트라 부팅이 죽는다. 여기서 먼저 드러나게 못박는다.
+        assertThat(tainted).doesNotContain("meController", "catalogController");
     }
 
     // ───────────────────────── 401: 미인증 ─────────────────────────
@@ -209,11 +213,16 @@ class AdminGateTest extends ApiTestBase {
         return routes;
     }
 
+    /**
+     * <b>라우트의 실제 HTTP 메서드로 찌른다</b>(#207). 이전 구현은 POST 가 아니면 전부 GET 으로
+     * 대체했는데, 그러면 PATCH/DELETE 전용 매핑은 <b>핸들러를 못 찾아 405 로 튕기고</b> 게이트
+     * 자체가 실행되지 않는다 — 401/403 단정이 그 라우트를 <b>검사하지 못한 채</b> 실패하거나,
+     * 더 나쁘게는 메서드를 바꾸면 조용히 커버가 사라진다. 메서드를 그대로 쓰면 인터셉터가
+     * 실제로 그 라우트에서 도는지 확인된다.
+     */
     private HttpStatus call(Route route, String token) {
-        if (HttpMethod.POST.equals(route.method())) {
-            return postAdmin(route.path(), token, Map.of("delta", 1, "reason", "probe"));
-        }
-        return getAdmin(route.path(), token);
+        return send(route.method().name(), route.path(), token,
+                Map.of("delta", 1, "reason", "probe"));
     }
 
     private HttpStatus getAdmin(String path, String token) {
@@ -233,11 +242,11 @@ class AdminGateTest extends ApiTestBase {
             if (token != null) {
                 builder.header("Authorization", "Bearer " + token);
             }
-            if ("POST".equals(method)) {
-                builder.POST(java.net.http.HttpRequest.BodyPublishers.ofString(
-                        MAPPER.writeValueAsString(body == null ? Map.of() : body)));
+            if ("GET".equals(method) || "HEAD".equals(method) || "OPTIONS".equals(method)) {
+                builder.method(method, java.net.http.HttpRequest.BodyPublishers.noBody());
             } else {
-                builder.GET();
+                builder.method(method, java.net.http.HttpRequest.BodyPublishers.ofString(
+                        MAPPER.writeValueAsString(body == null ? Map.of() : body)));
             }
             return HttpStatus.valueOf(
                     java.net.http.HttpClient.newHttpClient()

@@ -35,6 +35,12 @@ import org.springframework.stereotype.Component;
  *
  * economy.v1.json / bots.v1.json은 W2/W3에서 실제 소비(GachaService/BotService)한다.
  * W0에서는 존재 여부·버전만 확인해 meta_kv에 기록한다(파싱 실패해도 부팅은 계속).
+ *
+ * <p><b>#207 어드민 오버라이드 보호</b>: upsert 의 {@code DO UPDATE} 에 {@code WHERE admin_locked = 0}
+ * 이 걸려 있다. 어드민 카탈로그 API 가 만진 행({@code admin_locked=1})은 <b>재부팅해도 시드가 덮지
+ * 않는다</b> — 이게 없으면 "배포 없이 데이터 운영"이 성립하지 않는다(런타임 변경이 다음 부팅에
+ * 전부 되돌아간다). 신규 {@code INSERT} 는 영향을 받지 않으므로 시드에 새로 추가된 유닛은 그대로
+ * 들어온다. 잠금 해제는 {@code DELETE /api/admin/units/{id}/override}.
  */
 @Component
 @org.springframework.core.annotation.Order(0)   // 부팅 임포트는 다른 러너보다 먼저 — AdminBootstrap 의 온보딩이 players FK 를 필요로 한다.
@@ -117,19 +123,26 @@ public class PlayerCatalogService implements ApplicationRunner {
                 String attributesJson = attributes.toString();
                 // C4(AC-C4): data v2.1 성격 필드. 구파일(personality 없음)은 기본 CALM 으로 안전 임포트.
                 String personality = normalizePersonality(p.path("personality").asText(null));
+                // #207: active 왕복 — export 가 발행한 시드를 다시 임포트하면 비활성 상태가 그대로 살아나야
+                // 한다(어드민 API 로 확정 → export → data 시드 승격 → 재부팅에서 동일 상태). 필드가 없는
+                // 구파일(v2.1 이하)은 1(활성) = 무회귀.
+                int active = p.path("active").isMissingNode() ? 1 : (p.path("active").asBoolean(true) ? 1 : 0);
 
                 jdbcClient.sql("""
-                                INSERT INTO players(id, name, position, grade, attributes_json, data_version, personality)
-                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                INSERT INTO players(id, name, position, grade, attributes_json, data_version,
+                                                    personality, active)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                                 ON CONFLICT(id) DO UPDATE SET
                                   name = excluded.name,
                                   position = excluded.position,
                                   grade = excluded.grade,
                                   attributes_json = excluded.attributes_json,
                                   data_version = excluded.data_version,
-                                  personality = excluded.personality
+                                  personality = excluded.personality,
+                                  active = excluded.active
+                                WHERE admin_locked = 0
                                 """)
-                        .params(id, name, position, grade, attributesJson, version, personality)
+                        .params(id, name, position, grade, attributesJson, version, personality, active)
                         .update();
                 count++;
             }
