@@ -45,6 +45,7 @@ public class MatchOrchestrator {
     private final TxRunner txRunner;
     private final MatchService matchService;
     private final PromptContextBuilder contextBuilder;
+    private final DeckPrewarmService prewarmService;
     private final BotService botService;
     private final ConditionService conditionService;
     private final RelationService relationService;
@@ -75,12 +76,14 @@ public class MatchOrchestrator {
                              online.hmb.league.LeagueService leagueService,
                              online.hmb.growth.GrowthService growthService,
                              MatchClockService clockService,
+                             DeckPrewarmService prewarmService,
                              ObjectMapper objectMapper,
                              @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
                              @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
                              @Value("${hmb.match.delta.overhaul-effort}") String overhaulEffort) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
+        this.prewarmService = prewarmService;
         this.matchService = matchService;
         this.contextBuilder = contextBuilder;
         this.botService = botService;
@@ -179,7 +182,10 @@ public class MatchOrchestrator {
                     ? contextBuilder.botBaseJob(match, bot)
                     : contextBuilder.userBaseJob(match, snapshot);
             String baseResult = doneResultOf(base.baseId());
-            boolean hasInput = !isBot && hasPhasePrompts(matchId, "pre");
+            // 매치시점 입력 = pre 프롬프트 **또는 수동 전술**. 전술은 A 키에서 빠졌으므로(#215 W2)
+            // A 는 그 값을 모른다 — 있으면 재사용이 아니라 A 위의 패치로 얹어야 유저 슬라이더가 반영된다.
+            boolean hasInput = !isBot
+                    && (hasPhasePrompts(matchId, "pre") || contextBuilder.hasManualTactics(snapshot));
             String h1JobId;
             if (baseResult != null && hasInput) {
                 // 킥오프 B 패치: A 가 쓴 덱 사전 지시 → 매치시점(pre) 지시의 변경분만 델타로 얹는다.
@@ -334,8 +340,15 @@ public class MatchOrchestrator {
             BotService.BotRow bot = botService.get(match.botId());
             PromptContextBuilder.BaseJob userBase = contextBuilder.userBaseJob(match, snapshot);
             PromptContextBuilder.BaseJob botBase = contextBuilder.botBaseJob(match, bot);
-            jobQueue.enqueueBase(userBase.baseId(), userBase.context());
-            jobQueue.enqueueBase(botBase.baseId(), botBase.context());
+            // enqueue 와 원장 기록은 한 트랜잭션이다 — 사이가 벌어지면 그 틈에 남의 덱 재저장이
+            // 이 A 를 회수해 폴백으로 떨어뜨린다(#215 독립검증 F2 의 잔여 창 R3).
+            // 이 유저도 "A 를 기다리는 사람"이므로 원장에 실어야 회수 보호가 성립한다(행 있으면 안 덮음).
+            txRunner.run(() -> {
+                jobQueue.enqueueBase(userBase.baseId(), userBase.context());
+                jobQueue.enqueueBase(botBase.baseId(), botBase.context());
+                prewarmService.noteWaiting(match.userId(), userBase.baseId());
+                return null;
+            });
         } catch (Exception e) {
             log.warn("A 프리페치(match {}) 실패 — 무시(킥오프 때 풀생성 폴백): {}", matchId, e.toString());
         }

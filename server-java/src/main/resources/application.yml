@@ -85,6 +85,11 @@ hmb:
     # ⚠️ 최상위 유닛 후보 목록은 여기가 아니라 **data 발행물**(economy.starterTop)이다 — #207 이
     #    갈아끼우는 지점이 서버 config 로 새면 무배포 교체가 깨진다.
     deck-formation: 4-3-3
+  prewarm:                           # #215 W2 — 덱 저장 시 AI 인풋(A 베이스) 선실행
+    # 왜 config 인가: 선실행은 최적화지 정합성 경로가 아니다. 예산·큐가 문제되면 재배포 없이 끄고
+    # #215 이전 동작(매치 생성 시 프리페치만)으로 돌아갈 수 있어야 한다. 끄면 킥오프 폴백이 그대로 소유.
+    enabled: true
+
   match:
     prompt-timer-sec: 180          # 표시용 (D5)
     enforce-prompt-timer: false    # 강제 전환 플래그

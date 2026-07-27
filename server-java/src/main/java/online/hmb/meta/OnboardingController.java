@@ -19,9 +19,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class OnboardingController {
 
     private final OnboardingService onboardingService;
+    private final online.hmb.match.DeckPrewarmService prewarmService;
 
-    public OnboardingController(OnboardingService onboardingService) {
+    public OnboardingController(OnboardingService onboardingService,
+                                online.hmb.match.DeckPrewarmService prewarmService) {
         this.onboardingService = onboardingService;
+        this.prewarmService = prewarmService;
     }
 
     @GetMapping("/api/me/starter-grant")
@@ -33,6 +36,12 @@ public class OnboardingController {
 
     @PostMapping("/api/me/tutorial-complete")
     public OnboardingService.Result completeTutorial(@RequestAttribute("userId") String userId) {
-        return onboardingService.complete(userId);
+        OnboardingService.Result result = onboardingService.complete(userId);
+        if (result.deckGranted()) {
+            // 가입 직후 첫 경기가 곧바로 이어지는 경로다 — 덱을 받은 그 순간 A 를 돌려두지 않으면
+            // 신규 유저는 항상 풀생성 폴백을 본다(#215 W1 의 오픈베타 테스터 케이스).
+            prewarmService.onDeckSaved(userId);
+        }
+        return result;
     }
 }

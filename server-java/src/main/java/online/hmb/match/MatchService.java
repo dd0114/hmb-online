@@ -18,6 +18,7 @@ import online.hmb.common.ApiException;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
 import online.hmb.meta.DeckService;
+import online.hmb.meta.DeckSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -93,6 +94,7 @@ public class MatchService {
     private final BotService botService;
     private final ConditionService conditionService;
     private final ObjectMapper objectMapper;
+    private final DeckSnapshot deckSnapshot;
     private final java.time.Clock clock;
     private final MatchClockService clockService;
     private final int halftimeSubsMax;
@@ -105,6 +107,7 @@ public class MatchService {
                         BotService botService,
                         ConditionService conditionService,
                         ObjectMapper objectMapper,
+                        DeckSnapshot deckSnapshot,
                         java.time.Clock clock,
                         MatchClockService clockService,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
@@ -115,6 +118,7 @@ public class MatchService {
         this.botService = botService;
         this.conditionService = conditionService;
         this.objectMapper = objectMapper;
+        this.deckSnapshot = deckSnapshot;
         this.clock = clock;
         this.clockService = clockService;
         this.halftimeSubsMax = halftimeSubsMax;
@@ -263,25 +267,12 @@ public class MatchService {
         return sb.toString();
     }
 
+    /**
+     * 매치 스냅샷 직렬화 — 구현은 {@link online.hmb.meta.DeckSnapshot} 한 곳이 소유한다.
+     * 덱 저장 선실행(#215 W2)이 같은 바이트를 만들어야 A 캐시 키가 맞기 때문(그 클래스 주석 참조).
+     */
     private String snapshotDeck(DeckService.DeckResponse deck, JsonNode teamTactics) {
-        ObjectNode snapshot = objectMapper.createObjectNode();
-        snapshot.put("formation", deck.formation());
-        ArrayNode starters = snapshot.putArray("starters");
-        ArrayNode bench = snapshot.putArray("bench");
-        for (DeckService.SlotDto slot : deck.slots()) {
-            ObjectNode entry = objectMapper.createObjectNode();
-            entry.put("playerId", slot.playerId());
-            entry.put("slotIndex", slot.slotIndex());
-            if (slot.promptText() != null) {
-                entry.put("promptText", slot.promptText());
-            }
-            (DeckService.ROLE_STARTER.equals(slot.role()) ? starters : bench).add(entry);
-        }
-        // P2-D4: 수동 팀 전술을 매치 스냅샷에 포함(있을 때만) — AI 컨텍스트로 전달(§4).
-        if (teamTactics != null && teamTactics.isObject()) {
-            snapshot.set("teamTactics", teamTactics);
-        }
-        return snapshot.toString();
+        return deckSnapshot.json(deck, teamTactics);
     }
 
     // ── 컨디션 (AC-C1, LLD §3) ──────────────────────────────────────────
