@@ -93,6 +93,21 @@
 - ‘다시 보기’는 **로컬만** 되돌린다 — 서버 플래그를 false 로 되돌리는 경로를 만들면 지급 경로를 반복해
   두드리는 문이 된다. 계약 = `e2e/p4-starter-onboarding.spec.ts` + `src/auth/StarterReveal.test.ts`.
 
+## 매치 잠금·재입장 (#217)
+
+- 진행 중 매치가 있으면 메타 라우트 8개(`/lobby /deck /shop /growth /codex /trade /logs /league`)가
+  `MatchLockGate` 로 감싸여 `/match/:id` 로 되돌린다. 목록 SoT = `common/match-lock.ts` 의
+  `LOCKED_ROUTES`, 계약 = `common/match-lock.test.ts` + `e2e/p4-match-lock.spec.ts`.
+- ⚠️ **강제 이동 조건은 `locked` 가 아니라 `locked && !abandonable`**(`shouldForceResume`).
+  회수 가능한 사고 매치(생성 실패·시계 멈춤)까지 붙잡으면 **탈출구인 로비의 포기 버튼에 영영 못 간다** —
+  AC3(영구 잠금 금지)이 리다이렉트 루프로 되살아난다. 이 한 줄을 `locked` 로 "단순화"하지 말 것.
+- 상태 집합·포기 가능 여부는 **서버가 판정**한다(`GET /api/me/active-match` → `{match, locked,
+  abandonable}`). web 은 그 두 불리언을 화면 동작으로 옮기기만 한다 — 규칙을 클라에 복제하면
+  서버가 바뀔 때 조용히 어긋난다.
+- 409 `MATCH_IN_PROGRESS` 는 **에러 문구가 아니라 이어가기 안내**다. `matchInProgressIdOf(err)` 로
+  `detail.matchId` 를 뽑아 그 매치로 이동한다(로비 [연습 경기] 경로가 그 예).
+- `/match/:id` 와 `/login`·dev 하니스(`/design/*`·`/qa/*`)는 잠그지 않는다 — 자기 자신을 막으면 루프다.
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - **e2e 전체 실행 금지** — `league-season`·`match-flow`·`w3-viewer-smoke` 는 :8080 라이브 데모에 붙는다.

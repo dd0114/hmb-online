@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import online.hmb.match.MatchLockService;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,9 +21,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class TeamPresetController {
 
     private final TeamPresetService service;
+    private final MatchLockService lockService;
 
-    public TeamPresetController(TeamPresetService service) {
+    public TeamPresetController(TeamPresetService service, MatchLockService lockService) {
         this.service = service;
+        this.lockService = lockService;
     }
 
     @GetMapping("/api/presets/team")
@@ -40,6 +43,8 @@ public class TeamPresetController {
     @PostMapping("/api/presets/team/{slot}/apply")
     public DeckResponse apply(@RequestAttribute("userId") String userId,
                               @PathVariable("slot") int slot) {
+        // apply 는 활성 덱 통짜 덮어쓰기 = PUT /api/deck 과 같은 쓰기다(#217 AC2).
+        lockService.assertNotLocked(userId, "preset.apply");
         return service.apply(userId, slot);
     }
 }

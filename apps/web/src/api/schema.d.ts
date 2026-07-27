@@ -102,6 +102,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/me/active-match": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 진행 중(끝나지 않은) 내 매치 — **재입장의 유일한 진입점**(#217 AC1).
+         *
+         *     web 은 로그인 직후·로비 진입마다 이걸 물어 locked 면 /match/{id} 로 보낸다. 새로고침·
+         *     재로그인·다른 기기가 같은 답을 받는 이유는 상태가 서버에만 있기 때문이다(로컬 저장 0).
+         *     응답이 MatchDetail 통짜라 clock 이 같이 와서 seek-to-now 를 한 번의 요청으로 태운다.
+         */
+        get: operations["getActiveMatch"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/me/matches": {
         parameters: {
             query?: never;
@@ -399,6 +422,33 @@ export interface paths {
         get: operations["getMatchResult"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/matches/{id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["MatchId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 매치 포기(#217 AC3) — ACTIVE → ABANDONED. 잠금(유저당 미완 매치 1개)의 탈출구다:
+         *     이게 없으면 고아 매치 하나가 계정을 영구히 잠근다.
+         *
+         *     허용 조건은 서버가 판정한다(리롤 방지): BRIEFING(킥오프 전) · FAILED(생성 실패) ·
+         *     시계가 멈춘 라이브(phase_ends_at + stuck-grace 경과). **정상 재생 중에는 409** —
+         *     지고 있는 경기를 버리고 다시 뽑는 리롤을 막는다. 지금 포기 가능한지는
+         *     GET /api/me/active-match 의 abandonable 로 알 수 있다.
+         */
+        post: operations["abandonMatch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -794,7 +844,7 @@ export interface components {
          *     (openapi.yaml이 계약 SoT).
          * @enum {string}
          */
-        ErrorCode: "VALIDATION_ERROR" | "UNAUTHORIZED" | "NOT_FOUND" | "DECK_INVALID" | "INSUFFICIENT_POINTS" | "INVALID_STATE" | "SUBSTITUTION_INVALID" | "AI_JOB_FAILED" | "INTERNAL_ERROR" | "BAD_CREDENTIALS" | "DUPLICATE_NICKNAME" | "FORBIDDEN" | "CONFLICT";
+        ErrorCode: "VALIDATION_ERROR" | "UNAUTHORIZED" | "NOT_FOUND" | "DECK_INVALID" | "INSUFFICIENT_POINTS" | "INVALID_STATE" | "SUBSTITUTION_INVALID" | "AI_JOB_FAILED" | "INTERNAL_ERROR" | "BAD_CREDENTIALS" | "DUPLICATE_NICKNAME" | "FORBIDDEN" | "CONFLICT" | "MATCH_IN_PROGRESS";
         /**
          * @example {
          *       "code": "DECK_INVALID",
@@ -859,7 +909,22 @@ export interface components {
             isNew: boolean;
         };
         WalletInfo: {
+            /** @description 골드(게임 재화). 트레이드·무료강화(노말 다이스)에 쓴다. */
             points: number;
+            /** @description 젬(유료 재화) — 뽑기·유료 다이스. #212 additive(구서버 응답엔 없을 수 있어 required 아님). 수급은 가입 지급 + 리그 우승 둘뿐. */
+            gems?: number;
+        };
+        SeasonReward: {
+            /** @description 유저 최종 순위(시즌 진행 중이면 현재 잠정 순위). */
+            rank: number;
+            /** @description 실지급 골드(원장 delta). 미지급이면 0 — 예정액이 아니다. */
+            points: number;
+            /** @description 실지급 젬. **우승(1위)일 때만** 500~3000 랜덤이고 그 외에는 0(#212). web 우승 연출의 입력(#214). */
+            gems?: number;
+            /** @enum {string} */
+            status: "PENDING" | "GRANTED" | "NONE";
+            /** @description 지급 시각(원장 created_at). 미지급이면 null. */
+            awardedAt?: string | null;
         };
         MatchRecordSummary: {
             wins: number;
@@ -1036,9 +1101,29 @@ export interface components {
          *
          *     `H1_BREAK` 은 **레거시 전용**(P4 이전 배포본의 진행 중 매치를 V8 마이그레이션이 HALFTIME 으로
          *     옮긴다). 신규 매치는 이 값이 되지 않는다.
+         *
+         *     `ABANDONED`(#217, V19)는 **두 번째 터미널 상태**다 — 유저의 포기 또는 방치 스윕으로만
+         *     들어온다. FINISHED 와 달리 결과·보상이 없다(전적에 잡히지 않는다).
          * @enum {string}
          */
-        MatchState: "BRIEFING" | "GEN1" | "FIRST_HALF" | "HALFTIME" | "SECOND_HALF" | "GEN2" | "FINISHED" | "FAILED" | "H1_BREAK";
+        MatchState: "BRIEFING" | "GEN1" | "FIRST_HALF" | "HALFTIME" | "SECOND_HALF" | "GEN2" | "FINISHED" | "FAILED" | "H1_BREAK" | "ABANDONED";
+        /**
+         * @description GET /api/me/active-match (#217 AC1). 끝나지 않은 내 매치와, web 이 그걸로 무엇을 해야
+         *     하는지(강제 재입장 / 포기 버튼 노출)를 **서버가 판정해서** 같이 준다 — 판정 규칙을 클라가
+         *     복제하면 규칙이 바뀔 때 조용히 어긋난다.
+         */
+        ActiveMatchResponse: {
+            /** @description 끝나지 않은 매치(BRIEFING~FAILED). 없으면 null. */
+            match: components["schemas"]["MatchDetail"] | null;
+            /**
+             * @description 이미 킥오프했나(state ≠ BRIEFING). true 면 web 은 메타 화면(덱·상점·성장·트레이드·
+             *     리그·도감·전적) 진입을 막고 /match/{id} 로 보낸다. BRIEFING 은 false — 로비에
+             *     "이어하기" 안내만 띄운다(강제 이동 아님).
+             */
+            locked: boolean;
+            /** @description 지금 POST /api/matches/{id}/abandon 이 200 을 줄 상태인가(포기 버튼 노출 조건). */
+            abandonable: boolean;
+        };
         /**
          * @description **서버 권위 시계**(P4-D1, #170). 서버는 "지금 어느 단계이고 그 단계가 언제 시작해 언제
          *     끝나는가"(=창)만 소유하고, 재생 위치(틱)는 클라가 그 창 안에서 계산한다
@@ -1719,6 +1804,27 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getActiveMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK (없으면 match=null) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActiveMatchResponse"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     listMyMatches: {
         parameters: {
             query?: {
@@ -1828,6 +1934,19 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            /**
+             * @description #217 매치 잠금 — 이미 킥오프한 매치가 있다(덱은 하프타임 교체 벤치의 원장이라 진행 중에
+             *     바뀌면 화면과 매치 스냅샷이 어긋난다). code=MATCH_IN_PROGRESS, detail={matchId,state,action}.
+             *     **BRIEFING 중에는 잠기지 않는다** — 킥오프 재캡처(AC-B2)가 지원하는 창이다.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     listPresets: {
@@ -1995,6 +2114,18 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            /**
+             * @description 끝나지 않은 매치가 이미 있음(#217 AC2). code=MATCH_IN_PROGRESS,
+             *     detail={matchId,state,action} — 그 매치로 이어가거나 포기해야 새로 만들 수 있다.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     getMatch: {
@@ -2196,6 +2327,39 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["InvalidState"];
+        };
+    };
+    abandonMatch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["MatchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 회수됨(state=ABANDONED) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            /** @description 포기할 수 없는 상태(정상 재생 중이거나 이미 종료). code=INVALID_STATE */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     retryMatch: {

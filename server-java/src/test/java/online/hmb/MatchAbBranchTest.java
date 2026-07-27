@@ -206,6 +206,9 @@ class MatchAbBranchTest extends MatchTestBase {
         String m1 = createMatch(token, "BOT_BAL");
         long afterFirst = baseJobCount(); // 유저 A + 봇 A = 2
 
+        // #217 잠금: 유저당 미완 매치는 하나 — 두 번째 경기를 하려면 앞 경기가 끝나 있어야 한다.
+        // 이 테스트의 주제(봇 A 크로스매치 캐시)와 무관한 픽스처 조건이므로 여기서 풀어준다.
+        releaseActiveMatches();
         String m2 = createMatch(token, "BOT_BAL"); // 같은 덱·같은 봇 → 유저 A·봇 A 모두 캐시 히트(멱등)
         long afterSecond = baseJobCount();
 

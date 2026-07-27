@@ -20,6 +20,7 @@ const STATE_LABELS: Record<string, string> = {
   H1_BREAK: "하프타임", // 레거시(P4 이전 배포본)
   FINISHED: "경기 종료",
   FAILED: "오류",
+  ABANDONED: "포기한 경기", // #217
 };
 
 /**
@@ -90,6 +91,16 @@ export function MatchPage() {
       {match && panel === "briefing" && <BriefingPanel match={match} />}
 
       {match && (panel === "genwait" || panel === "failed") && <GenWaitPanel match={match} />}
+
+      {/* #217: 회수된 매치. 여기서 로비로 돌아갈 길을 주지 않으면 유저는 포기해 놓고 갇힌다. */}
+      {match && panel === "abandoned" && (
+        <div className={styles.abandoned} data-testid="abandoned-panel">
+          <p>포기한 경기입니다. 로비에서 새 경기를 시작할 수 있습니다.</p>
+          <button type="button" onClick={() => navigate("/lobby")} data-testid="abandoned-to-lobby">
+            로비로
+          </button>
+        </div>
+      )}
 
       {match && panel === "unknown" && (
         <p data-testid="unknown-state">알 수 없는 매치 상태: {match.state}</p>

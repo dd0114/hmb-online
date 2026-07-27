@@ -957,6 +957,18 @@ export interface operations {
                     "application/json": components["schemas"]["ApiError"];
                 };
             };
+            /**
+             * @description #217 매치 잠금 — 이미 킥오프한 매치가 있다. code=MATCH_IN_PROGRESS,
+             *     detail={matchId,state,action}. 경기가 끝나거나 회수된 뒤에 다시 시도한다.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     getRelations: {
@@ -1169,6 +1181,18 @@ export interface operations {
             };
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
+            /**
+             * @description #217 매치 잠금 — 이미 킥오프한 매치가 있다. code=MATCH_IN_PROGRESS,
+             *     detail={matchId,state,action}. 경기가 끝나거나 회수된 뒤에 다시 시도한다.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     declineTrade: {
@@ -1284,6 +1308,19 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+            /**
+             * @description #217 매치 잠금 — 다른 끝나지 않은 매치가 있다(연습 포함). code=MATCH_IN_PROGRESS.
+             *     ⚠️ **이 픽스처에 이미 연결된 진행 중 매치는 409 가 아니라 그대로 재사용해 201 로 돌려준다**
+             *     (재입장이지 생성이 아니다).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
         };
     };
     listMatchLogs: {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useRetry, type MatchDetail } from "../api/hooks";
+import { useNavigate } from "react-router-dom";
+import { useAbandonMatch, useRetry, type MatchDetail } from "../api/hooks";
 import { ErrorToast } from "../common/ErrorToast";
 import { genWaitCopy } from "./match-logic";
 import styles from "./GenWaitPanel.module.css";
@@ -11,6 +12,10 @@ interface GenWaitPanelProps {
 /** GEN1/GEN2 대기 (스피너+단계 문구+경과 시간, AC-W4) + FAILED(사유+재시도, AC-M7). */
 export function GenWaitPanel({ match }: GenWaitPanelProps) {
   const retry = useRetry(match.id);
+  // #217 AC3: 재시도해도 안 되는 매치는 포기할 수 있어야 한다 — 그렇지 않으면 이 화면이 곧
+  // 계정 잠금이다(새 매치 생성이 409 로 막힌 채 나갈 길이 없다).
+  const abandon = useAbandonMatch(match.id);
+  const navigate = useNavigate();
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const failed = match.state === "FAILED";
@@ -47,6 +52,21 @@ export function GenWaitPanel({ match }: GenWaitPanelProps) {
           }
         >
           {retry.isPending ? "재시도 중…" : "재시도"}
+        </button>
+        <button
+          type="button"
+          className={styles.abandon}
+          data-testid="abandon-button"
+          disabled={abandon.isPending}
+          onClick={() =>
+            abandon.mutate(undefined, {
+              onSuccess: () => navigate("/lobby"),
+              onError: (err) =>
+                setError(err instanceof Error ? err.message : "포기하지 못했습니다"),
+            })
+          }
+        >
+          {abandon.isPending ? "포기하는 중…" : "경기 포기"}
         </button>
       </div>
     );

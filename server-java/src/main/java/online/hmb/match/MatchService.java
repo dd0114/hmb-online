@@ -49,6 +49,13 @@ public class MatchService {
     public static final String S_FINISHED = "FINISHED";
     public static final String S_FAILED = "FAILED";
     /**
+     * 회수된 매치(#217, Flyway V19). 유저의 명시적 포기 또는 방치 스윕으로만 들어오는 <b>터미널</b>
+     * 상태다 — 잠금(진행 중 매치 1개 제한)을 켠 이상 고아 매치를 끝낼 수단이 없으면 계정이 영구히
+     * 잠기기 때문이다(AC3). 전이가 전부 CAS(`WHERE state = ?`)라 이 상태가 되는 순간 kickoff·resume·
+     * retry·prompts·halftime 이 <b>자동으로</b> 거부된다(추가 가드 0).
+     */
+    public static final String S_ABANDONED = "ABANDONED";
+    /**
      * 레거시 전용(P4 이전 배포본). V8 마이그레이션이 HALFTIME 으로 옮기지만, 감사·부분롤백 대비로
      * CHECK 에 남겨두고 읽기 경로에서만 HALFTIME 과 동등 취급한다(쓰기 경로 없음).
      */
@@ -61,6 +68,24 @@ public class MatchService {
      * h2 선행/재해소 창과 같은 집합이다(#193 W2b-B2, {@code MatchOrchestrator.resolveSecondHalfInputs}).
      */
     public static final Set<String> PRE_SECOND_HALF_STATES = Set.of(S_FIRST_HALF, S_HALFTIME, S_H1_BREAK);
+
+    /**
+     * 끝나지 않은 내 매치 = <b>"새 매치를 만들 수 없다"</b>의 정의(#217 AC2). FAILED 를 포함하는 이유:
+     * 재시도(`/retry`)로 살아날 수 있는 미완 매치이고, 여기서 안 잠그면 유저가 실패한 매치를 버리고
+     * 새로 만들어 고아가 쌓인다. 대신 FAILED 는 포기 가능하다({@link MatchLockService#abandonable}).
+     */
+    public static final Set<String> ACTIVE_STATES = Set.of(
+            S_BRIEFING, S_GEN1, S_FIRST_HALF, S_HALFTIME, S_H1_BREAK, S_GEN2, S_SECOND_HALF, S_FAILED);
+
+    /**
+     * <b>이미 킥오프한</b> 매치 = 강제 재입장(AC1) + 메타 쓰기 잠금(AC2)의 정의. ACTIVE − BRIEFING.
+     *
+     * <p>BRIEFING 을 뺀 것은 타협이 아니라 계약이다 — 브리핑 중 덱/전술 수정은
+     * {@link #recaptureSnapshotAtKickoff}(AC-B2)가 <b>명시적으로 지원하는 기존 기능</b>이라,
+     * 여기서 덱을 잠그면 기능 회귀다. 브리핑도 ACTIVE 이므로 새 매치는 여전히 못 만든다.
+     */
+    public static final Set<String> LOCKED_STATES = Set.of(
+            S_GEN1, S_FIRST_HALF, S_HALFTIME, S_H1_BREAK, S_GEN2, S_SECOND_HALF, S_FAILED);
 
     private final JdbcClient jdbcClient;
     private final TxRunner txRunner;

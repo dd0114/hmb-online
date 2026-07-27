@@ -177,11 +177,51 @@ export function useMatch(id: string | undefined) {
   });
 }
 
-/** POST /api/matches — 봇 매칭 + 덱 스냅샷, state=BRIEFING (400 DECK_INVALID if deck invalid). */
+/** GET /api/me/active-match (#217 AC1) — 끝나지 않은 내 매치 + 잠금/포기 판정(서버가 SoT). */
+export type ActiveMatchResponse = {
+  match: MatchDetail | null;
+  locked: boolean;
+  abandonable: boolean;
+};
+
+/**
+ * 재입장의 진입점. **라이브 단계에서도 폴링한다** — 강제 이동이 걸린 화면은 경기가 끝나는 순간
+ * 스스로 풀려야 한다(안 풀리면 종료된 경기가 유저를 계속 붙잡는다). 주기는 매치 폴링과 같은
+ * 규칙을 쓰되(pollIntervalFor), 매치가 없을 땐 폴링하지 않는다.
+ */
+export function useActiveMatch() {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: ["activeMatch"],
+    queryFn: () => apiFetch<ActiveMatchResponse>("/api/me/active-match"),
+    enabled: Boolean(token),
+    refetchInterval: (query) => pollIntervalFor(query.state.data?.match?.state),
+  });
+}
+
+/** POST /api/matches — 봇 매칭 + 덱 스냅샷, state=BRIEFING (400 DECK_INVALID / 409 MATCH_IN_PROGRESS). */
 export function useCreateMatch() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateMatchRequest = {}) =>
       apiFetch<MatchDetail>("/api/matches", { method: "POST", body }),
+    // 생성 성공·실패 모두 잠금 상태가 바뀌었을 수 있다(409 는 "이미 있다"는 사실의 통지다).
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["activeMatch"] }),
+  });
+}
+
+/**
+ * POST /api/matches/:id/abandon (#217 AC3) — 잠금의 탈출구. 성공하면 잠금이 즉시 풀려야 하므로
+ * activeMatch 를 무효화한다(안 하면 캐시가 유령 잠금을 유지해 포기가 "안 먹은" 것처럼 보인다).
+ */
+export function useAbandonMatch(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<MatchDetail>(`/api/matches/${id}/abandon`, { method: "POST" }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["activeMatch"] });
+      queryClient.invalidateQueries({ queryKey: ["match", id] });
+    },
   });
 }
 

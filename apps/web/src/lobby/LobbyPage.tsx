@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { useCreateMatch, useMe } from "../api/hooks";
+import { useAbandonMatch, useActiveMatch, useCreateMatch, useMe } from "../api/hooks";
 import { useRelations } from "../api/hooks-v2";
 import { useToken } from "../auth/TokenContext";
 import { providerMeta } from "../auth/login-flow";
@@ -11,6 +11,12 @@ import { TeamMoraleWidget } from "../common/RelationBits";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { useTutorial } from "../common/tutorial-context";
+import {
+  matchInProgressIdOf,
+  resumeLabelFor,
+  shouldOfferResume,
+  type ActiveMatchInfo,
+} from "../common/match-lock";
 import styles from "./LobbyPage.module.css";
 
 export function LobbyPage() {
@@ -20,6 +26,8 @@ export function LobbyPage() {
   const navigate = useNavigate();
   const [modeModalOpen, setModeModalOpen] = useState(false);
   const { restart: restartTutorial } = useTutorial();
+  // #217: 강제 이동(MatchLockGate) 대상이 아닌 미완 매치 — 브리핑/사고 상태 — 는 여기서 이어간다.
+  const { data: active } = useActiveMatch();
 
   // me 로딩 실패로 header 가 통째로 사라지면 로그아웃 버튼까지 없어져 불량 세션 탈출이 불가했다(#73 P1).
   // 로그아웃은 항상 노출한다.
@@ -55,6 +63,10 @@ export function LobbyPage() {
       {isError && <ErrorToast message="내 정보를 불러오지 못했습니다" />}
 
       <TeamMoraleWidget relations={relations} />
+
+      {shouldOfferResume(active) && active?.match && (
+        <ResumeMatchCard active={active as ActiveMatchInfo} />
+      )}
 
       <div className={styles.menu}>
         <button
@@ -124,6 +136,13 @@ function ModeModal({ onClose }: { onClose: () => void }) {
       {
         onSuccess: (match) => navigate(`/match/${match.id}`),
         onError: (err) => {
+          // #217: "이미 진행 중인 경기가 있다"(409)는 실패가 아니라 **이어가라는 안내**다.
+          // 서버가 detail.matchId 를 싣는 이유가 이것 — 문구만 띄우면 유저는 막다른 길에 선다.
+          const resumeId = matchInProgressIdOf(err);
+          if (resumeId) {
+            navigate(`/match/${resumeId}`);
+            return;
+          }
           setCreateError(
             err instanceof ApiError && err.code === "DECK_INVALID"
               ? `덱이 유효하지 않습니다 — ${err.message}`
@@ -174,5 +193,55 @@ function ModeModal({ onClose }: { onClose: () => void }) {
         닫기
       </button>
     </Modal>
+  );
+}
+
+/**
+ * 진행 중 매치 이어하기 카드 (#217 AC1/AC3).
+ *
+ * <p>강제 이동(MatchLockGate)이 걸리지 않는 두 부류가 여기로 온다: <b>브리핑</b>(아직 킥오프 전이라
+ * 고를 자유가 있다)과 <b>회수 가능한 사고 매치</b>(생성 실패·시계 멈춤). 후자에게 이 카드는 단순한
+ * 편의가 아니라 <b>유일한 탈출구</b>다 — 포기 버튼이 없으면 그 계정은 새 경기를 영영 못 만든다.
+ */
+function ResumeMatchCard({ active }: { active: ActiveMatchInfo }) {
+  const navigate = useNavigate();
+  const matchId = active.match!.id;
+  const abandon = useAbandonMatch(matchId);
+  const [abandonError, setAbandonError] = useState<string | null>(null);
+
+  return (
+    <section className={styles.resumeCard} data-testid="resume-match-card">
+      <h2 className={styles.resumeTitle}>진행 중인 경기</h2>
+      <p className={styles.resumeNote} data-testid="resume-match-note">
+        {resumeLabelFor(active.match!.state)}
+      </p>
+      <div className={styles.resumeActions}>
+        <button
+          type="button"
+          className={styles.resumePrimary}
+          data-testid="resume-match"
+          onClick={() => navigate(`/match/${matchId}`)}
+        >
+          이어하기
+        </button>
+        {active.abandonable && (
+          <button
+            type="button"
+            className={styles.resumeSecondary}
+            data-testid="abandon-match"
+            disabled={abandon.isPending}
+            onClick={() =>
+              abandon.mutate(undefined, {
+                onError: (err) =>
+                  setAbandonError(err instanceof Error ? err.message : "포기하지 못했습니다"),
+              })
+            }
+          >
+            {abandon.isPending ? "포기하는 중…" : "경기 포기"}
+          </button>
+        )}
+      </div>
+      <ErrorToast message={abandonError} onDismiss={() => setAbandonError(null)} />
+    </section>
   );
 }

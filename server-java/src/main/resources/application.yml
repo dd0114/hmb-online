@@ -133,6 +133,14 @@ hmb:
     max-attempts: 3
     sweep-interval-ms: 10000       # JobLeaseSweeper 주기 (LLD §6: 10s)
     poll-interval-ms: 1000         # /internal/ai-jobs/poll long-poll 재조회 간격 (LLD §6: 1s)
+    abandon:                       # #217 매치 잠금의 탈출구 — 영구 잠금 금지(AC3). 하드코딩 금지(루트 §2-4).
+      # 라이브 단계가 "멈췄다"고 보고 유저에게 포기 버튼을 여는 유예(ms). 시계 스위퍼(1s)와 후반
+      # 시뮬(동기 엔진 RPC) 을 넉넉히 덮어야 한다 — 짧으면 정상적인 후반 시작 대기에 포기가 열린다.
+      stuck-grace-ms: 300000
+      # 비터미널 매치 자동 회수 나이(분). 정산 없이 12시간을 넘긴 매치는 사고다 — 정상 매치는
+      # 브리핑 포함 수십 분 안에 끝나므로 정상 플레이를 건드릴 여지가 없다.
+      stale-after-min: 720
+      sweep-interval-ms: 600000    # 방치 스윕 주기(10분) — 시계(1s)·잡(10s) 과 달리 급할 게 없다
     condition:                     # AC-C1 컨디션 능력치 배율 (LLD-p2-server §3)
       min-mul: 0.85                # 6시(condition=0.0) = -15%
       max-mul: 1.10                # 12시(condition=1.0) = +10%

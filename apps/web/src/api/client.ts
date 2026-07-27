@@ -54,6 +54,8 @@ export type ErrorCode =
   // Phase2 superset (openapi-v2 §ErrorCode) — added on the trade/league waves (v2.ts W0 note).
   | "TRADE_INVALID"
   | "LEAGUE_INVALID"
+  // #217 매치 잠금 — 끝나지 않은 매치가 있어 이 요청을 받을 수 없다. detail={matchId,state,action}
+  | "MATCH_IN_PROGRESS"
   | "INTERNAL_ERROR";
 
 export interface ApiErrorBody {
