@@ -47,6 +47,25 @@
   padding: 0 6px;
 }
 
+/* 우측 표식 묶음 — 'off' 와 보유수/잠금이 같이 설 수 있다. */
+.topRight {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 비활성(신규 획득 불가) 표기 #207 U-D7. 흑백 카드(미보유) 위에서도 읽히게 무채색 강조. */
+.off {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  text-transform: lowercase;
+}
+
 .lock {
   font-size: 10px;
   color: var(--text-muted);

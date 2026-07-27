@@ -3,28 +3,40 @@
  *
  * 받는 것(전부 `scripts/build-chars.mjs` 스테이징 산출물, 토큰 불필요한 정적 파일):
  *   `/chars/characters/manifest.json` — 확정 캐릭터 14종(아틀라스 좌표 + 풀아트 카드 경로)
+ *   `/chars/units/manifest.json`      — hero 입고 실아트 6종(#207 W3-B, 완성카드/프레임리스 구분)
  *   `/chars/manifest.json`            — 플레이스홀더 172명(폴백 아틀라스 좌표)
- *   `/chars/player-chars.json`        — 선수 → 캐릭터 매핑(data/ 발행물 `player-chars.v1.json`)
+ *   `/chars/player-chars.json`        — 선수 → 아트 매핑(data/ 발행물 `player-chars.v2.json`)
  *
  * 실패해도 앱은 계속 돈다: 번들이 없으면 전 컴포넌트가 CSS 플레이스홀더로 떨어진다(깨짐 0).
  * 그래서 reject 하지 않고 **부분/빈 번들**을 돌려준다 — 에셋 미배포가 화면 전체를 죽이면 안 된다.
  */
-import type { CharactersManifest, PlaceholderManifest } from "./char-manifest";
+import type { CharRef, CharactersManifest, PlaceholderManifest, UnitsManifest } from "./char-manifest";
 import { CHARS_BASE } from "./char-manifest";
 
-/** data/ 발행 매핑 파일의 소비 측 투영(쓰는 필드만). */
+/**
+ * data/ 발행 매핑 파일의 소비 측 투영(쓰는 필드만).
+ *
+ * ⚠️ 값의 형이 **버전마다 다르다**: v1 = `charId` 문자열, v2(#207) = `{axis,id}` 객체.
+ * 두 형을 다 받아 `charRefFor` 가 정규화한다 — 구 발행물로 롤백해도 화면이 죽지 않게.
+ */
 export interface PlayerCharsMap {
   version?: string;
-  players: Record<string, string | undefined>;
+  players: Record<string, CharRef | string | undefined>;
 }
 
 export interface CharAssets {
   characters: CharactersManifest | null;
+  units: UnitsManifest | null;
   placeholders: PlaceholderManifest | null;
   mapping: PlayerCharsMap | null;
 }
 
-export const EMPTY_ASSETS: CharAssets = { characters: null, placeholders: null, mapping: null };
+export const EMPTY_ASSETS: CharAssets = {
+  characters: null,
+  units: null,
+  placeholders: null,
+  mapping: null,
+};
 
 /** 개별 실패를 null 로 흡수 — 하나가 없어도 나머지는 쓴다(부분 열화 > 전체 실패). */
 async function fetchJson<T>(url: string): Promise<T | null> {
@@ -38,12 +50,13 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 }
 
 export async function fetchCharAssets(base: string = CHARS_BASE): Promise<CharAssets> {
-  const [characters, placeholders, mapping] = await Promise.all([
+  const [characters, units, placeholders, mapping] = await Promise.all([
     fetchJson<CharactersManifest>(`${base}/characters/manifest.json`),
+    fetchJson<UnitsManifest>(`${base}/units/manifest.json`),
     fetchJson<PlaceholderManifest>(`${base}/manifest.json`),
     fetchJson<PlayerCharsMap>(`${base}/player-chars.json`),
   ]);
-  return { characters, placeholders, mapping };
+  return { characters, units, placeholders, mapping };
 }
 
 // ── 모듈 싱글턴 캐시 + 구독 ──────────────────────────────────────────────────
@@ -89,16 +102,39 @@ export function resetCharAssetsCache(): void {
 }
 
 /**
- * playerId → charId. 매핑이 없으면 null(호출부가 플레이스홀더 축으로 폴백).
+ * playerId → **축 태그가 붙은 아트 참조**. 매핑이 없으면 null(호출부가 플레이스홀더 축으로 폴백).
+ *
+ * 두 발행 형을 다 받는다:
+ *   v2(#207) `{axis:"characters"|"units", id}` → 그대로(모르는 axis 는 null — 틀린 축 조회 금지)
+ *   v1       `"aura"` 문자열                    → `{axis:"characters", id}` 로 정규화
  *
  * `hasOwnProperty` 로 자기 소유 키만 본다: `JSON.parse` 결과는 Object.prototype 을 가지므로
- * 그냥 인덱싱하면 `charIdFor(a, "constructor")` 가 **함수**를 돌려줘 선언 타입(`string|null`)이
- * 깨진다(char-manifest.ts 의 `own()` 과 같은 이유·같은 가드).
+ * 그냥 인덱싱하면 `charRefFor(a, "constructor")` 가 **함수**를 돌려줘 선언 타입이 깨진다
+ * (char-manifest.ts 의 `own()` 과 같은 이유·같은 가드).
  */
-export function charIdFor(assets: CharAssets, playerId: string | null | undefined): string | null {
+export function charRefFor(assets: CharAssets, playerId: string | null | undefined): CharRef | null {
   const players = assets.mapping?.players;
   if (!playerId || typeof playerId !== "string" || !players) return null;
   if (!Object.prototype.hasOwnProperty.call(players, playerId)) return null;
-  const charId = players[playerId];
-  return typeof charId === "string" ? charId : null;
+  return normalizeCharRef(players[playerId]);
+}
+
+/** 매핑 원시값 → 정규화된 참조(두 발행 형 수용, 모르는 형은 null). 순수 함수. */
+export function normalizeCharRef(raw: unknown): CharRef | null {
+  if (typeof raw === "string") return raw ? { axis: "characters", id: raw } : null;
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as { axis?: unknown; id?: unknown };
+  if (typeof r.id !== "string" || !r.id) return null;
+  if (r.axis !== "characters" && r.axis !== "units") return null;
+  return { axis: r.axis, id: r.id };
+}
+
+/**
+ * 구 소비처 호환 — `characters` 축일 때만 charId 를 돌려준다.
+ * units 축 항목에 대해 null 을 주는 것이 **의도**다: 캐릭터 manifest 에 없는 id 를 넘기면
+ * 조회가 undefined 로 떨어질 뿐이지만, 그걸 "매핑 있음"으로 착각하는 코드가 생기면 안 된다.
+ */
+export function charIdFor(assets: CharAssets, playerId: string | null | undefined): string | null {
+  const ref = charRefFor(assets, playerId);
+  return ref?.axis === "characters" ? ref.id : null;
 }

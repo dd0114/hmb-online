@@ -47,13 +47,24 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
       >
         <span className={styles.topRow}>
           <span className={styles.pos}>{player.position}</span>
-          {player.owned ? (
-            player.ownedCount > 1 && <span className={styles.count}>×{player.ownedCount}</span>
-          ) : (
-            <span className={styles.lock} title="미보유">
-              잠금
-            </span>
-          )}
+          <span className={styles.topRight}>
+            {/* 비활성 표기(#207 U-D7) — hero 지시 그대로 **텍스트 "off"**, 베타 단계 최소형.
+                왜 필요한가: 표기가 없으면 도감에 보이는데 아무리 뽑아도 안 나오는 카드가
+                "버그인가?"가 된다. 서버가 미보유 비활성은 아예 안 내려주므로 여기 걸리는 건
+                **보유 중인 비활성 카드**뿐이다. `active` 가 없는 구 서버 응답에는 안 붙는다. */}
+            {player.active === false && (
+              <span className={styles.off} data-testid={`codex-off-${player.id}`} title="신규 획득 불가">
+                off
+              </span>
+            )}
+            {player.owned ? (
+              player.ownedCount > 1 && <span className={styles.count}>×{player.ownedCount}</span>
+            ) : (
+              <span className={styles.lock} title="미보유">
+                잠금
+              </span>
+            )}
+          </span>
         </span>
         <CharAvatar
           playerId={player.id}

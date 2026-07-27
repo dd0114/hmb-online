@@ -5,10 +5,11 @@
 // 커밋된 원본을 gitignore 생성물로 복사하고, predev/prebuild(ensure-chars.mjs)가 최신 여부만
 // 값싸게 확인한다. 원본은 **무수정**(발행 도메인 경계 — design/·data/ 는 남의 글롭).
 //
-// 세 축을 그대로 옮긴다(합치지 않는다 — 각자 별도 계약):
+// 네 축을 그대로 옮긴다(합치지 않는다 — 각자 별도 계약). units/ 는 dist/ 하위라 통째 복사에 딸려온다:
 //   design/characters/dist/            → public/chars/                (플레이스홀더 172명 + 등급프레임)
 //   design/characters/dist/characters/ → public/chars/characters/     (확정 캐릭터 14종 + 풀아트 카드)
-//   data/players/player-chars.v1.json  → public/chars/player-chars.json (선수 → 캐릭터 매핑, #145 B안)
+//   design/characters/dist/units/      → public/chars/units/           (입고 실아트 6종, #207 W3-B)
+//   data/players/player-chars.v2.json  → public/chars/player-chars.json (선수 → 아트 매핑, #207 U-D5~D9)
 //
 // 소비: `/chars/manifest.json`, `/chars/characters/manifest.json`, `/chars/player-chars.json` 을
 // 런타임 fetch(번들 import 아님 — 172명 아틀라스를 JS 번들에 넣지 않는다).
@@ -19,7 +20,7 @@ import { dirname, join, resolve } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
 const srcDist = join(repoRoot, "design", "characters", "dist");
-const srcMapping = join(repoRoot, "data", "players", "player-chars.v1.json");
+const srcMapping = join(repoRoot, "data", "players", "player-chars.v2.json");
 const outDir = join(repoRoot, "apps", "web", "public", "chars");
 const stampPath = join(outDir, "stamp.json");
 
@@ -42,10 +43,13 @@ export function countFiles(dir) {
 export function readSourceStamp() {
   const base = JSON.parse(readFileSync(join(srcDist, "manifest.json"), "utf8"));
   const chars = JSON.parse(readFileSync(join(srcDist, "characters", "manifest.json"), "utf8"));
+  const unitsPath = join(srcDist, "units", "manifest.json");
+  const unitsM = existsSync(unitsPath) ? JSON.parse(readFileSync(unitsPath, "utf8")) : null;
   const mapping = existsSync(srcMapping) ? JSON.parse(readFileSync(srcMapping, "utf8")) : null;
   return {
     base: { version: base.version, source: base.source, playerCount: base.playerCount },
     chars: { version: chars.version, source: chars.source, count: chars.count },
+    units: unitsM ? { version: unitsM.version, source: unitsM.source, count: unitsM.count } : null,
     mapping: mapping ? { version: mapping.version, playerCount: mapping.playerCount } : null,
     /** 원본 트리 규모 — 스테이징 후 같은 수가 나와야 한다. */
     sourceFiles: countFiles(srcDist) + (existsSync(srcMapping) ? 1 : 0),
@@ -77,9 +81,10 @@ export function readStagedStamp() {
  * 순수 판정부 — IO 결과를 받아 "재스테이징 이유"(최신이면 null)를 돌려준다.
  * 테스트에서 IO 없이 태울 수 있도록 분리했다.
  */
-export function stageDecision({ hasBaseManifest, hasCharsManifest, hasMapping, staged, source, stagedFiles }) {
+export function stageDecision({ hasBaseManifest, hasCharsManifest, hasUnitsManifest, hasMapping, staged, source, stagedFiles }) {
   if (!hasBaseManifest) return "스테이징 없음";
   if (!hasCharsManifest) return "캐릭터 축 없음";
+  if (!hasUnitsManifest) return "유닛 축 없음";
   if (!hasMapping) return "매핑 없음";
   if (!staged) return "스탬프 없음";
   if (JSON.stringify(staged) !== JSON.stringify(source)) return "발행물 변경";
@@ -95,6 +100,7 @@ export function needsStage() {
   return stageDecision({
     hasBaseManifest: existsSync(join(outDir, "manifest.json")),
     hasCharsManifest: existsSync(join(outDir, "characters", "manifest.json")),
+    hasUnitsManifest: existsSync(join(outDir, "units", "manifest.json")),
     hasMapping: existsSync(join(outDir, "player-chars.json")),
     staged: readStagedStamp(),
     source: readSourceStamp(),
@@ -125,6 +131,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   const stamp = stage();
   console.log(
     `[build-chars] staged → apps/web/public/chars ` +
-      `(플레이스홀더 ${stamp.base.playerCount}명 · 캐릭터 ${stamp.chars.count}종 · 매핑 ${stamp.mapping?.playerCount ?? 0}명)`,
+      `(플레이스홀더 ${stamp.base.playerCount}명 · 캐릭터 ${stamp.chars.count}종 · ` +
+      `유닛 ${stamp.units?.count ?? 0}종 · 매핑 ${stamp.mapping?.playerCount ?? 0}명)`,
   );
 }

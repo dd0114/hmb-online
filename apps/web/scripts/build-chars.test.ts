@@ -22,6 +22,7 @@ const source = readSourceStamp();
 const fresh = {
   hasBaseManifest: true,
   hasCharsManifest: true,
+  hasUnitsManifest: true,
   hasMapping: true,
   staged: source,
   source,
@@ -38,6 +39,7 @@ describe("stageDecision — 재스테이징 판정", () => {
   it("축이 하나라도 없으면 그 이유를 돌려준다", () => {
     expect(stageDecision({ ...fresh, hasBaseManifest: false })).toBe("스테이징 없음");
     expect(stageDecision({ ...fresh, hasCharsManifest: false })).toBe("캐릭터 축 없음");
+    expect(stageDecision({ ...fresh, hasUnitsManifest: false })).toBe("유닛 축 없음");
     expect(stageDecision({ ...fresh, hasMapping: false })).toBe("매핑 없음");
   });
 
@@ -82,11 +84,18 @@ describe("countFiles", () => {
 });
 
 describe("소스 스탬프", () => {
-  it("세 축을 전부 담는다", () => {
+  it("네 축을 전부 담는다(유닛 축 = #207 W3-B 발행)", () => {
     expect(source.base.playerCount).toBe(172);
     expect(source.chars.count).toBe(14);
-    expect(source.mapping?.playerCount).toBe(172);
+    expect(source.units?.count).toBe(6);
+    // 매핑은 v2 — 카탈로그 180 중 177명(미입고 LEGEND 3명은 의도적 미매핑).
+    expect(source.mapping?.playerCount).toBe(177);
     expect(source.sourceFiles).toBeGreaterThan(30);
+  });
+
+  it("유닛 발행물이 바뀌면 재스테이징으로 잡힌다", () => {
+    const changed = { ...source, units: { ...source.units, count: 99 } };
+    expect(stageDecision({ ...fresh, staged: changed })).toBe("발행물 변경");
   });
 });
 
@@ -97,14 +106,26 @@ describe("스테이징된 트리 (있을 때만)", () => {
     expect(countFiles(outDir)).toBe(source.sourceFiles + 1);
   });
 
-  it.skipIf(!staged)("소비자가 fetch 하는 세 파일이 전부 있다", () => {
-    for (const rel of ["manifest.json", "characters/manifest.json", "player-chars.json"]) {
+  it.skipIf(!staged)("소비자가 fetch 하는 네 파일이 전부 있다", () => {
+    for (const rel of ["manifest.json", "characters/manifest.json", "units/manifest.json", "player-chars.json"]) {
       expect(existsSync(join(outDir, rel)), rel).toBe(true);
     }
   });
 
+  it.skipIf(!staged)("유닛 아트 실물이 스테이징된다(완성카드 2 + 프레임리스 4 + 얼굴 6 + 아틀라스 3)", () => {
+    const unitsDir = join(outDir, "units");
+    const manifest = JSON.parse(readFileSync(join(unitsDir, "manifest.json"), "utf8"));
+    for (const [unitId, entry] of Object.entries<{ card: { file: string }; face: string }>(manifest.units)) {
+      expect(existsSync(join(outDir, entry.card.file)), `${unitId} card`).toBe(true);
+      expect(existsSync(join(outDir, entry.face)), `${unitId} face`).toBe(true);
+    }
+    for (const atlas of Object.values<{ file: string }>(manifest.atlases)) {
+      expect(existsSync(join(outDir, atlas.file)), atlas.file).toBe(true);
+    }
+  });
+
   it.skipIf(!staged)("매핑은 버전 없는 안정 이름으로 놓이고 내용이 발행물과 같다", () => {
-    const src = readFileSync(join(repoRoot, "data", "players", "player-chars.v1.json"), "utf8");
+    const src = readFileSync(join(repoRoot, "data", "players", "player-chars.v2.json"), "utf8");
     expect(readFileSync(join(outDir, "player-chars.json"), "utf8")).toBe(src);
   });
 });

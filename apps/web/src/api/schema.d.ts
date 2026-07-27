@@ -493,6 +493,160 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/units": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 유닛 목록(필터 q·grade·position·active + 페이징). 행마다 adminLocked·dataVersion 포함. */
+        get: operations["adminListUnits"];
+        put?: never;
+        /**
+         * 신규 유닛 추가. id 는 **서버가 채번**한다(기존 최대 P번호 + 1) — 기존 번호 재사용은
+         *     user_players 가 그 id 를 가리키므로 기보유 카드의 의미를 바꾼다.
+         *     생성된 행은 admin_locked=1 이라 부팅 재임포트가 덮지 않는다.
+         */
+        post: operations["adminCreateUnit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/units/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 카탈로그 변경 이력. before/after 는 **필드 diff 가 아니라 전체 스냅샷**이라
+         *     한 행만으로 그 시점 상태를 복원할 수 있다.
+         */
+        get: operations["adminUnitAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/units/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 현재 카탈로그를 **시드 발행 포맷**(data/players/players.vX.json)으로 덤프.
+         *     운영 흐름 = 어드민 API 로 확정 → export → data 도메인이 다음 시드 버전으로 승격 → 커밋.
+         *     이게 없으면 개편이 그 DB 한 대에만 살고 새 배포·DB 리셋에 사라진다.
+         *     런타임 전용 필드(adminLocked·dataVersion)는 덤프에 포함되지 않는다.
+         */
+        get: operations["adminExportUnits"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/units/{playerId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        /** 유닛 상세 + 보유 규모(영향 범위) + 최근 감사 이력 */
+        get: operations["adminUnitDetail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 부분 수정. attributes 는 **키 단위 병합**이다(전체 교체 아님) — 스탯 하나를 고치려고
+         *     9종을 다시 적게 하면 나머지를 옮겨 적다가 틀린다.
+         *     **등급 하향**은 기보유 카드의 유효스탯을 깎으므로(cap_i = base_i + starFrac[star]×(hi−base_i),
+         *     성을 올린 카드일수록 크게) confirmImpact:true 없이는 409 로 거절되고, 실측 영향 규모가
+         *     응답 detail 에 담긴다. 상향은 손실이 없으므로 확인이 필요 없다.
+         */
+        patch: operations["adminUpdateUnit"];
+        trace?: never;
+    };
+    "/api/admin/units/{playerId}/deactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 비활성화 — **신규 획득 경로에서만** 제외한다(가챠 추첨 풀 · 트레이드 타깃 · 도감의 미보유분).
+         *     보유분은 건드리지 않는다: user_players · 덱 편성 · 성장/유효스탯 · 매치 SelectData 전부 그대로다.
+         *     (hero 결정 U-D1 = 기보유 유저 손실 0.)
+         */
+        post: operations["adminDeactivateUnit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/units/{playerId}/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 재활성화(감사 action 을 deactivate 와 분리해 이력 가독성을 유지한다) */
+        post: operations["adminActivateUnit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/units/{playerId}/override": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 시드 권위로 복원(admin_locked=0). **값을 되돌리지는 않는다** — 다음 부팅의 시드 임포트가
+         *     이 행을 다시 덮게 허용할 뿐이다. 지금 값을 바꾸려면 PATCH 를 쓴다.
+         */
+        delete: operations["adminResetUnitOverride"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -609,6 +763,8 @@ export interface components {
             attributes: components["schemas"]["PlayerAttributes"];
             owned: boolean;
             ownedCount: number;
+            /** @description #207 U-D7 additive. 카탈로그 운영 플래그(players.active). false = 신규 획득 경로(가챠 추첨 풀· 트레이드 타깃)에서 빠진 유닛. 비활성이어도 **보유분은 이 목록에 계속 내려오므로**(카드를 뺏지 않는다) 클라는 이 값으로 도감에 "off"를 표기한다. 필터링 의미는 없고 표기용 관측 필드다. required 아님 — 기존 소비자 무영향(additive). */
+            active?: boolean;
         };
         DeckSlot: {
             playerId: string;
@@ -1008,6 +1164,164 @@ export interface components {
             idempotencyKey: string;
             /** @description 기록된 admin_audit 행 ID(재전송이면 null). */
             auditId?: string | null;
+        };
+        /** @enum {string} */
+        AdminUnitAuditAction: "unit_create" | "unit_update" | "unit_deactivate" | "unit_activate" | "unit_override_reset";
+        AdminUnit: {
+            id: string;
+            name: string;
+            position: components["schemas"]["Position"];
+            grade: components["schemas"]["Grade"];
+            attributes: components["schemas"]["PlayerAttributes"];
+            /** @enum {string} */
+            personality: "FIERY" | "CALM" | "GLASS" | "AMBITIOUS";
+            /**
+             * @description false = **신규 획득 경로에서만** 제외(가챠 풀·트레이드 타깃·도감 미보유분).
+             *     보유분은 그대로 쓸 수 있다 — 덱 편성·성장·매치 전부 정상 동작한다.
+             */
+            active: boolean;
+            /**
+             * @description true = 어드민이 만진 행이라 **부팅 시드 재임포트가 덮지 않는다**.
+             *     DELETE /units/{id}/override 로 풀면 다음 부팅에 시드가 다시 이긴다.
+             */
+            adminLocked: boolean;
+            /** @description 임포트 원본 시드 버전(예 v2.2). 어드민이 만든 행은 'admin'. */
+            dataVersion: string;
+        };
+        /** @description export 전용 — 시드 파일(players.vX.json) 한 항목과 동일한 형태·키 순서. */
+        AdminUnitSeedEntry: {
+            id: string;
+            name: string;
+            position: components["schemas"]["Position"];
+            grade: components["schemas"]["Grade"];
+            attributes: components["schemas"]["PlayerAttributes"];
+            /** @enum {string} */
+            personality: "FIERY" | "CALM" | "GLASS" | "AMBITIOUS";
+            active: boolean;
+        };
+        AdminUnitPage: {
+            items: components["schemas"]["AdminUnit"][];
+            /** Format: int64 */
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /** @description 영향 규모 — 등급·활성 변경 전에 운영자가 보는 값. */
+        AdminUnitHoldings: {
+            /**
+             * Format: int64
+             * @description 이 유닛을 보유한 유저 수(중복 제외).
+             */
+            owners: number;
+            /**
+             * Format: int64
+             * @description 보유 장수 합(중복 획득 포함).
+             */
+            copies: number;
+        };
+        AdminUnitAuditEntry: {
+            id: string;
+            actorUserId: string;
+            playerId: string;
+            action: components["schemas"]["AdminUnitAuditAction"];
+            /** @description 변경 **전 전체 스냅샷**(unit_create 는 빈 객체). */
+            before?: {
+                [key: string]: unknown;
+            };
+            /** @description 변경 **후 전체 스냅샷**. */
+            after?: {
+                [key: string]: unknown;
+            };
+            /** @description 실제로 달라진 필드(두 스냅샷에서 파생된 조회 편의값). */
+            changedFields: string[];
+            reason: string;
+            idemKey?: string | null;
+            createdAt: string;
+        };
+        AdminUnitAuditPage: {
+            items: components["schemas"]["AdminUnitAuditEntry"][];
+            /** Format: int64 */
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        AdminUnitDetail: {
+            unit: components["schemas"]["AdminUnit"];
+            holdings: components["schemas"]["AdminUnitHoldings"];
+            recentAudit: components["schemas"]["AdminUnitAuditEntry"][];
+        };
+        /**
+         * @description 등급 변경이 기보유 카드에 미치는 **실측** 영향. 등급 하향 409 의 detail 로 실린다.
+         *     근사식이 아니라 실제 유효스탯 계산을 등급만 바꿔 두 번 돌린 차이다.
+         */
+        AdminUnitGradeImpact: {
+            fromGrade: components["schemas"]["Grade"];
+            toGrade: components["schemas"]["Grade"];
+            /** @description 새 등급의 밴드 상한이 더 낮다(= 성장 캡이 내려간다). */
+            capLowered: boolean;
+            /** Format: int64 */
+            affectedUsers: number;
+            /** @description 보유자 전원의 유효 OVR 변화 평균(음수 = 손실). */
+            avgOvrDelta: number;
+            /** @description 가장 크게 깎이는 카드 한 장의 변화(음수 = 손실). */
+            worstOvrDelta: number;
+            /**
+             * @description false = 경제 설정 부재로 델타를 계산하지 못했다.
+             *     이때 0 은 "영향 없음"이 아니므로 보수적으로 다뤄야 한다.
+             */
+            computed: boolean;
+        };
+        AdminUnitMutationResult: {
+            unit?: components["schemas"]["AdminUnit"];
+            /** @description false = 같은 멱등키의 재전송이라 아무것도 바뀌지 않았다(unit 은 현재값). */
+            applied: boolean;
+            /** @description 실제 사용된 멱등키(헤더 미제공 시 서버가 채번한 값). */
+            idempotencyKey: string;
+            auditId?: string | null;
+            changedFields: string[];
+            /** @description 등급 변경이 동반된 경우의 실측 영향(그 외 null). */
+            impact?: components["schemas"]["AdminUnitGradeImpact"] | null;
+        };
+        AdminReasonRequest: {
+            /** @description 운영 사유. 필수 — 사유 없는 카탈로그 변경은 허용하지 않는다. */
+            reason: string;
+        };
+        AdminUnitCreateRequest: {
+            name: string;
+            position: components["schemas"]["Position"];
+            grade: components["schemas"]["Grade"];
+            /** @description 9종 **전부** 필요(누락 시 400). 각 값 0~100 정수. */
+            attributes: components["schemas"]["PlayerAttributes"];
+            /**
+             * @description 생략 시 CALM.
+             * @enum {string}
+             */
+            personality?: "FIERY" | "CALM" | "GLASS" | "AMBITIOUS";
+            /** @description 생략 시 true. */
+            active?: boolean;
+            reason: string;
+        };
+        /** @description 지정한 필드만 바뀐다. 최소 1개는 지정해야 한다(0개면 400). */
+        AdminUnitPatchRequest: {
+            name?: string;
+            position?: components["schemas"]["Position"];
+            grade?: components["schemas"]["Grade"];
+            /**
+             * @description **키 단위 병합**(전체 교체 아님) — 지정한 능력치만 덮어쓰고 나머지는 보존한다.
+             *     알 수 없는 키는 400.
+             */
+            attributes?: {
+                [key: string]: number;
+            };
+            /** @enum {string} */
+            personality?: "FIERY" | "CALM" | "GLASS" | "AMBITIOUS";
+            active?: boolean;
+            /**
+             * @description 등급을 **낮출 때만** 필요. 없으면 409 + detail(AdminUnitGradeImpact).
+             *     등급 상향·동일에는 영향이 없으므로 요구하지 않는다.
+             */
+            confirmImpact?: boolean;
+            reason: string;
         };
     };
     responses: {
@@ -1850,6 +2164,390 @@ export interface operations {
              * @description 멱등키 충돌(같은 키가 이미 다른 지급에 쓰였다). code=CONFLICT.
              *     응답 본문에는 내부 SQL·스키마가 포함되지 않는다.
              */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    adminListUnits: {
+        parameters: {
+            query?: {
+                /** @description id 또는 이름 부분일치(LIKE 와일드카드는 리터럴 처리) */
+                q?: string;
+                grade?: components["schemas"]["Grade"];
+                position?: components["schemas"]["Position"];
+                active?: boolean;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 유닛 페이지 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitPage"];
+                };
+            };
+            /** @description 알 수 없는 grade/position 등 파라미터 오류. code=VALIDATION_ERROR */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminCreateUnit: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description 선택. 생성 멱등의 스코프는 (action, idem_key) 로 **대상 무관**이다 — id 를 서버가
+                 *     채번하므로 대상별 스코프로는 재전송을 식별할 수 없고, 그러면 재전송마다 새 유닛이 생긴다.
+                 */
+                "Idempotency-Key"?: string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUnitCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description 생성됨(applied=true) 또는 멱등 재전송(applied=false, 상태 변화 없음) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitMutationResult"];
+                };
+            };
+            /** @description reason 누락/초과, 열거값 오류, attributes 9종 누락·범위 밖. code=VALIDATION_ERROR */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 멱등키 충돌(같은 키가 이미 다른 내용에 쓰였다). code=CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    adminUnitAudit: {
+        parameters: {
+            query?: {
+                playerId?: string;
+                /** @description 액션을 실행한 admin 의 userId */
+                actor?: string;
+                action?: components["schemas"]["AdminUnitAuditAction"];
+                /** @description ISO-8601 UTC. created_at >= from */
+                from?: string;
+                /** @description ISO-8601 UTC. created_at <= to */
+                to?: string;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 감사 이력 페이지 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitAuditPage"];
+                };
+            };
+            /** @description 알 수 없는 action. code=VALIDATION_ERROR */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminExportUnits: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 시드 형태 배열(id 오름차순) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitSeedEntry"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminUnitDetail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 유닛 상세 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    adminUpdateUnit: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminUnitPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description 적용됨(applied=true) 또는 멱등 재전송(applied=false) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitMutationResult"];
+                };
+            };
+            /** @description reason 누락, 변경 필드 0, 열거값·능력치 오류. code=VALIDATION_ERROR */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /**
+             * @description ① 등급 하향인데 confirmImpact 가 없다(detail = AdminUnitGradeImpact) 또는
+             *     ② 멱등키 충돌. 둘 다 code=CONFLICT.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    adminDeactivateUnit: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description 적용됨 또는 멱등 재전송 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitMutationResult"];
+                };
+            };
+            /** @description reason 누락. code=VALIDATION_ERROR */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description 멱등키 충돌. code=CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    adminActivateUnit: {
+        parameters: {
+            query?: never;
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description 적용됨 또는 멱등 재전송 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitMutationResult"];
+                };
+            };
+            /** @description reason 누락. code=VALIDATION_ERROR */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description 멱등키 충돌. code=CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    adminResetUnitOverride: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 바디 대신 쓸 수 있는 사유. DELETE 바디는 HTTP 상 합법이지만 일부 클라이언트·프록시가
+                 *     조용히 떨어뜨린다 — 목적은 사유 없는 변경을 막는 것이지 전송 형식 강제가 아니다.
+                 *     바디와 쿼리 둘 다 없으면 400.
+                 */
+                reason?: string;
+            };
+            header?: {
+                "Idempotency-Key"?: string;
+            };
+            path: {
+                playerId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["AdminReasonRequest"];
+            };
+        };
+        responses: {
+            /** @description 적용됨 또는 멱등 재전송 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminUnitMutationResult"];
+                };
+            };
+            /** @description reason 누락(바디·쿼리 모두). code=VALIDATION_ERROR */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description 멱등키 충돌. code=CONFLICT */
             409: {
                 headers: {
                     [name: string]: unknown;

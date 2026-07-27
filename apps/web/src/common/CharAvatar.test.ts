@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CharAvatar, initialsOf } from "./CharAvatar";
 import {
   charIdFor,
+  charRefFor,
   fetchCharAssets,
   loadCharAssets,
   resetCharAssetsCache,
@@ -25,17 +26,20 @@ const repoRoot = join(here, "..", "..", "..", "..");
 const distDir = join(repoRoot, "design", "characters", "dist");
 
 const charactersManifest = JSON.parse(readFileSync(join(distDir, "characters", "manifest.json"), "utf8"));
+const unitsManifest = JSON.parse(readFileSync(join(distDir, "units", "manifest.json"), "utf8"));
 const placeholderManifest = JSON.parse(readFileSync(join(distDir, "manifest.json"), "utf8"));
-const mappingFile = JSON.parse(readFileSync(join(repoRoot, "data", "players", "player-chars.v1.json"), "utf8"));
+const mappingFile = JSON.parse(readFileSync(join(repoRoot, "data", "players", "player-chars.v2.json"), "utf8"));
 
-/** 스테이징된 3파일을 그대로 돌려주는 fetch 스텁. `missing` 에 든 경로는 404. */
+/** 스테이징된 4파일을 그대로 돌려주는 fetch 스텁. `missing` 에 든 경로는 404. */
 function stubFetch(missing: string[] = []) {
   return vi.fn(async (url: string) => {
     const body = url.endsWith("/characters/manifest.json")
       ? charactersManifest
-      : url.endsWith("/player-chars.json")
-        ? { version: mappingFile.version, players: mappingFile.players }
-        : placeholderManifest;
+      : url.endsWith("/units/manifest.json")
+        ? unitsManifest
+        : url.endsWith("/player-chars.json")
+          ? { version: mappingFile.version, players: mappingFile.players }
+          : placeholderManifest;
     if (missing.some((m) => url.endsWith(m))) return { ok: false, status: 404 } as Response;
     return { ok: true, status: 200, json: async () => body } as unknown as Response;
   });
@@ -69,11 +73,12 @@ describe("initialsOf", () => {
 });
 
 describe("에셋 번들 로더", () => {
-  it("세 파일을 모아 온다", async () => {
+  it("네 파일을 모아 온다(유닛 축 포함)", async () => {
     const assets = await fetchCharAssets();
     expect(assets.characters?.characters.aura).toBeTruthy();
+    expect(assets.units?.units["default-unit"]).toBeTruthy();
     expect(Object.keys(assets.placeholders!.players)).toHaveLength(172);
-    expect(assets.mapping?.players.P001).toBe("aura");
+    expect(assets.mapping?.players.P001).toEqual({ axis: "characters", id: "aura" });
   });
 
   it("일부가 404 여도 나머지는 쓴다(부분 열화 — 전체 실패 아님)", async () => {
@@ -92,6 +97,7 @@ describe("에셋 번들 로더", () => {
     );
     await expect(fetchCharAssets()).resolves.toEqual({
       characters: null,
+      units: null,
       placeholders: null,
       mapping: null,
     });
@@ -101,28 +107,58 @@ describe("에셋 번들 로더", () => {
     const spy = stubFetch();
     vi.stubGlobal("fetch", spy);
     await Promise.all([loadCharAssets(), loadCharAssets(), loadCharAssets()]);
-    expect(spy).toHaveBeenCalledTimes(3); // 파일 3개 × 1회 — 번들 자체는 1회만 로드
+    expect(spy).toHaveBeenCalledTimes(4); // 파일 4개 × 1회 — 번들 자체는 1회만 로드
   });
 });
 
-describe("charIdFor", () => {
-  const assets: CharAssets = {
-    characters: null,
-    placeholders: null,
-    mapping: { players: { P001: "aura" } },
+describe("charRefFor — 두 발행 형(v1 문자열 / v2 축 객체)을 다 받는다", () => {
+  const empty = { characters: null, units: null, placeholders: null };
+  const v2: CharAssets = {
+    ...empty,
+    mapping: { players: { P001: { axis: "characters", id: "aura" }, P173: { axis: "units", id: "bonaldo" } } },
   };
-  it("매핑된 선수는 charId 를 준다", () => {
-    expect(charIdFor(assets, "P001")).toBe("aura");
-  });
-  it("매핑에 없거나 id 가 없으면 null", () => {
-    expect(charIdFor(assets, "P999")).toBeNull();
-    expect(charIdFor(assets, null)).toBeNull();
-    expect(charIdFor({ characters: null, placeholders: null, mapping: null }, "P001")).toBeNull();
+  const v1: CharAssets = { ...empty, mapping: { players: { P001: "aura" } } };
+
+  it("v2 항목은 축 태그 그대로 나온다", () => {
+    expect(charRefFor(v2, "P001")).toEqual({ axis: "characters", id: "aura" });
+    expect(charRefFor(v2, "P173")).toEqual({ axis: "units", id: "bonaldo" });
   });
 
-  it("프로토타입 상속 키를 매핑으로 오인하지 않는다(선언 타입 string|null 유지)", () => {
+  it("v1 문자열은 characters 축으로 정규화된다(구 발행물 롤백 안전)", () => {
+    expect(charRefFor(v1, "P001")).toEqual({ axis: "characters", id: "aura" });
+  });
+
+  it("매핑에 없거나 id 가 없으면 null", () => {
+    expect(charRefFor(v2, "P999")).toBeNull();
+    expect(charRefFor(v2, null)).toBeNull();
+    expect(charRefFor({ ...empty, mapping: null }, "P001")).toBeNull();
+  });
+
+  it("모르는 축·손상 항목은 null — 엉뚱한 manifest 를 뒤지지 않는다", () => {
+    const broken: CharAssets = {
+      ...empty,
+      mapping: {
+        players: {
+          A: { axis: "sprites", id: "x" },
+          B: { axis: "units" },
+          C: { id: "x" },
+          D: "",
+          E: 7,
+        } as never,
+      },
+    };
+    for (const k of ["A", "B", "C", "D", "E"]) expect(charRefFor(broken, k), k).toBeNull();
+  });
+
+  it("charIdFor 는 characters 축일 때만 charId 를 준다(units 는 null)", () => {
+    expect(charIdFor(v2, "P001")).toBe("aura");
+    expect(charIdFor(v2, "P173")).toBeNull();
+  });
+
+  it("프로토타입 상속 키를 매핑으로 오인하지 않는다", () => {
     for (const key of ["constructor", "toString", "valueOf", "hasOwnProperty", "__proto__"]) {
-      expect(charIdFor(assets, key), key).toBeNull();
+      expect(charRefFor(v2, key), key).toBeNull();
+      expect(charIdFor(v2, key), key).toBeNull();
     }
   });
 });
@@ -142,10 +178,52 @@ describe("CharAvatar 폴백 3단", () => {
     expect(style.backgroundImage).toContain("/chars/characters/avatars-64.png");
   });
 
-  it("B안: 비-LEGEND 선수도 캐릭터가 붙는다(플레이스holder 로 안 떨어진다)", async () => {
-    renderAvatar(h(CharAvatar, { playerId: "P050", name: "Some Player", grade: "GOLD" }));
+  it("활성 LEGEND 는 **유닛 축** 실아트 얼굴을 쓴다(#207 U-D5)", async () => {
+    renderAvatar(h(CharAvatar, { playerId: "P173", name: "보날두", grade: "LEGEND" }));
+    await waitFor(() => expect(screen.getByTestId("char-avatar-P173").dataset.avatarKind).toBe("unit"));
+    const el = screen.getByTestId("char-avatar-P173");
+    expect(el.style.backgroundImage).toContain("/chars/units/avatars-64.png");
+    // 불투명 다크 배경 전제 → 원형 마스크를 씌우지 않는다(글로우·수염선 보호).
+    expect(el.dataset.iconBg).toBe("opaque-dark");
+    expect(el.className).toContain("opaqueBg");
+  });
+
+  it("GOLD 이하는 공용 디폴트 유닛 얼굴이다(U-D8) — 등급이 달라도 같은 타일", async () => {
+    renderAvatar(h(CharAvatar, { playerId: "P050", name: "Gold Player", grade: "GOLD" }));
+    renderAvatar(h(CharAvatar, { playerId: "P160", name: "Bronze Player", grade: "BRONZE" }));
+    await waitFor(() => expect(screen.getByTestId("char-avatar-P050").dataset.avatarKind).toBe("unit"));
+    const gold = screen.getByTestId("char-avatar-P050");
+    const bronze = screen.getByTestId("char-avatar-P160");
+    expect(bronze.dataset.avatarKind).toBe("unit");
+    expect(gold.style.backgroundPosition).toBe(bronze.style.backgroundPosition);
+    expect(gold.style.backgroundImage).toContain("/chars/units/avatars-64.png");
+    // 디폴트 유닛은 투명 배경 계약 → 기존 원형 마스크를 유지한다.
+    expect(gold.dataset.iconBg).toBe("transparent");
+    expect(gold.className).not.toContain("opaqueBg");
+  });
+
+  it("DIA 는 현행 characters 축 유지(U-D9)", async () => {
+    renderAvatar(h(CharAvatar, { playerId: "P013", name: "Dia Player", grade: "DIA" }));
+    await waitFor(() => expect(screen.getByTestId("char-avatar-P013").dataset.avatarKind).toBe("character"));
+    expect(screen.getByTestId("char-avatar-P013").style.backgroundImage)
+      .toContain("/chars/characters/avatars-64.png");
+  });
+
+  it("아트 미입고 LEGEND(P174/P178/P180)는 이니셜 폴백이다 — 깨진 이미지 0", async () => {
+    for (const [id, name] of [["P174", "권씨"], ["P178", "석신"], ["P180", "경니시우스"]] as const) {
+      renderAvatar(h(CharAvatar, { playerId: id, name, grade: "LEGEND" }));
+      await waitFor(() =>
+        expect(screen.getByTestId(`char-avatar-${id}`).dataset.avatarKind).toBe("placeholder-css"),
+      );
+      cleanup();
+    }
+  });
+
+  it("유닛 manifest 만 없으면 유닛 매핑 선수는 플레이스홀더 축으로 떨어진다(부분 열화)", async () => {
+    vi.stubGlobal("fetch", stubFetch(["/units/manifest.json"]));
+    renderAvatar(h(CharAvatar, { playerId: "P050", name: "Gold Player", grade: "GOLD" }));
     await waitFor(() =>
-      expect(screen.getByTestId("char-avatar-P050").dataset.avatarKind).toBe("character"),
+      expect(screen.getByTestId("char-avatar-P050").dataset.avatarKind).toBe("placeholder"),
     );
   });
 

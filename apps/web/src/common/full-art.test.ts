@@ -6,6 +6,7 @@ import {
   DEFAULT_CARD_GEOMETRY,
   FULL_ART_SIZES,
   cardAspect,
+  cardLayers,
   fullArtLayers,
   fullArtLayout,
   fullArtWidth,
@@ -16,7 +17,7 @@ import {
   type CardGeometry,
 } from "./full-art";
 import { GRADE_COLORS, GRADE_ORDER } from "./grades";
-import type { CharactersManifest, PlaceholderManifest } from "./char-manifest";
+import type { CharactersManifest, PlaceholderManifest, UnitsManifest } from "./char-manifest";
 
 // 발행물 원본을 그대로 읽는다 — 손으로 만든 픽스처가 계약과 드리프트하는 걸 막는다.
 const here = dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,7 @@ const charsManifest: CharactersManifest = JSON.parse(
 const placeholderManifest: PlaceholderManifest = JSON.parse(
   readFileSync(join(distDir, "manifest.json"), "utf8"),
 );
+const unitsManifest: UnitsManifest = JSON.parse(readFileSync(join(distDir, "units", "manifest.json"), "utf8"));
 
 /** PNG IHDR 에서 폭·높이만 뽑는다(디코더 없이 — 규격 대조에는 이걸로 충분). */
 function pngSize(file: string): { w: number; h: number } {
@@ -197,7 +199,7 @@ describe("fullArtLayers — 폴백 3단", () => {
   it("preloadUrls 는 실제로 받을 것만 돌려준다", () => {
     expect(preloadUrls(fullArtLayers({ ...base, charId: firstChar, grade: "DIA" }))).toHaveLength(2);
     expect(preloadUrls(fullArtLayers({ ...base, charId: null, grade: "DIA" }))).toHaveLength(1);
-    expect(preloadUrls({ art: null, frame: null, kind: "none" })).toHaveLength(0);
+    expect(preloadUrls({ art: null, frame: null })).toHaveLength(0);
   });
 });
 
@@ -228,5 +230,130 @@ describe("디자인 토큰", () => {
     // D4 의 핵심: LEGEND 링이 프레임 에셋의 금색(#e4991c)과 달라야 GOLD 와 갈린다.
     expect(GRADE_COLORS.LEGEND.toLowerCase()).not.toBe("#e4991c");
     expect(gradeRingShadow(null)).toBeUndefined();
+  });
+});
+
+describe("cardLayers — `card.kind` 분기 (#207 U-D8)", () => {
+  const base = { characters: charsManifest, units: unitsManifest, placeholders: placeholderManifest };
+  const firstChar = Object.keys(charsManifest.characters)[0]!;
+  /** 발행 manifest 가 권위 — 유닛 이름을 테스트에도 박지 않는다. */
+  const completeIds = Object.entries(unitsManifest.units)
+    .filter(([, u]) => u?.card?.kind === "complete")
+    .map(([id]) => id);
+  const framelessIds = Object.entries(unitsManifest.units)
+    .filter(([, u]) => u?.card?.kind === "frameless-art")
+    .map(([id]) => id);
+
+  /**
+   * **픽스처 manifest 로 `complete` 분기 자체를 태운다.**
+   * 발행 구성은 재발행 한 번으로 바뀐다 — 실제로 #207 재발행에서 보날두·욱링엄이 프레임리스
+   * 아트가 되어 `complete` 이 0종이 됐다. 실물 기반 단언만 두면 그 순간 이 계약이 **공허하게
+   * 통과하며 죽는다**(다음에 완성 카드를 다시 실었을 때 프레임 두 겹을 아무도 못 잡는다).
+   * 그래서 계약은 픽스처가 지키고, 실 발행물은 아래 테스트가 "있으면 규칙대로"만 확인한다.
+   */
+  const FIXTURE_ID = "fixture-complete";
+  const withFixtureComplete = {
+    ...unitsManifest,
+    units: {
+      ...unitsManifest.units,
+      [FIXTURE_ID]: {
+        col: 0, row: 0,
+        card: { file: "units/card-fixture.png", kind: "complete", w: 512, h: 768 },
+      },
+    },
+  } as unknown as typeof unitsManifest;
+
+  it("완성 카드는 **frame-<GRADE> 합성 경로를 타지 않는다**(프레임 두 겹 방지) — 픽스처", () => {
+    const r = cardLayers({
+      ...base, units: withFixtureComplete, ref: { axis: "units", id: FIXTURE_ID }, grade: "LEGEND",
+    });
+    expect(r.kind).toBe("unit-complete");
+    expect(r.frame).toBeNull(); // ← 여기가 계약의 핵심
+    expect(r.fit).toBe("whole");
+    expect(r.art).toBe("/chars/units/card-fixture.png");
+    // 종횡비는 **발행 규격 그대로**(226×425 카드 비율에 욱여넣으면 구워진 프레임이 잘린다).
+    expect(r.aspect).toBe("512 / 768");
+    // 등급을 바꿔도 프레임은 안 붙는다 — 등급 축과 무관한 통짜 에셋이다.
+    for (const g of GRADE_ORDER) {
+      expect(cardLayers({
+        ...base, units: withFixtureComplete, ref: { axis: "units", id: FIXTURE_ID }, grade: g,
+      }).frame, g).toBeNull();
+    }
+  });
+
+  it("실 발행물에 완성 카드가 **있으면** 같은 규칙을 따른다(0종이면 vacuous)", () => {
+    for (const id of completeIds) {
+      const r = cardLayers({ ...base, ref: { axis: "units", id }, grade: "LEGEND" });
+      expect(r.kind, id).toBe("unit-complete");
+      expect(r.frame, id).toBeNull();
+      expect(r.fit, id).toBe("whole");
+      expect(r.art, id).toBe(`/chars/${unitsManifest.units[id]!.card!.file}`);
+      expect(r.aspect, id).toBe(`${unitsManifest.units[id]!.card!.w} / ${unitsManifest.units[id]!.card!.h}`);
+    }
+    // 발행 구성 스냅샷 — 재발행으로 바뀌면 여기서 알린다(수치를 정답으로 쓰지는 않는다).
+    expect(completeIds.length + framelessIds.length).toBe(Object.keys(unitsManifest.units).length);
+  });
+
+  it("프레임리스 아트는 기존 합성 경로를 그대로 탄다(등급 프레임 + 아트)", () => {
+    expect(framelessIds.length).toBeGreaterThan(0);
+    for (const id of framelessIds) {
+      const r = cardLayers({ ...base, ref: { axis: "units", id }, grade: "GOLD" });
+      expect(r.kind, id).toBe("unit-art");
+      expect(r.frame, id).toBe("/chars/frame-GOLD.png"); // ← 합성 경로
+      expect(r.fit, id).toBe("fill"); // 잘라낼 프레임이 없으니 크롭 오프셋을 쓰지 않는다
+      expect(r.art, id).toBe(`/chars/${unitsManifest.units[id]!.card!.file}`);
+    }
+  });
+
+  it("디폴트 유닛만 pixelArt=true — 도트가 뭉개지면 안 된다", () => {
+    const dot = cardLayers({ ...base, ref: { axis: "units", id: "default-unit" }, grade: "BRONZE" });
+    expect(dot.pixelArt).toBe(true);
+    // 나머지 유닛은 전부 보간(사진형 아트가 계단지면 안 된다) — 완성/프레임리스 구분 없이.
+    const others = Object.keys(unitsManifest.units).filter((id) => id !== "default-unit");
+    expect(others.length).toBeGreaterThan(0);
+    for (const id of others) {
+      expect(cardLayers({ ...base, ref: { axis: "units", id }, grade: "LEGEND" }).pixelArt, id).toBe(false);
+    }
+  });
+
+  it("characters 축은 기존 크롭 합성 그대로(무회귀)", () => {
+    const r = cardLayers({ ...base, ref: { axis: "characters", id: firstChar }, grade: "DIA" });
+    expect(r.kind).toBe("full-art");
+    expect(r.fit).toBe("crop");
+    expect(r.frame).toBe("/chars/frame-DIA.png");
+    expect(r.pixelArt).toBe(false);
+    expect(r.aspect).toBeNull();
+  });
+
+  it("매핑이 없으면 frame-only, 프레임도 없으면 none (폴백 계단 유지)", () => {
+    expect(cardLayers({ ...base, ref: null, grade: "GOLD" }).kind).toBe("frame-only");
+    expect(cardLayers({ ...base, ref: null, grade: "PLATINUM" }).kind).toBe("none");
+  });
+
+  it("유닛 축인데 에셋이 없거나 모르는 kind 면 폴백 — 틀린 그림을 그리지 않는다", () => {
+    expect(cardLayers({ ...base, ref: { axis: "units", id: "ghost" }, grade: "GOLD" }).kind).toBe("frame-only");
+    expect(cardLayers({ ...base, units: null, ref: { axis: "units", id: "bonaldo" }, grade: "LEGEND" }).kind)
+      .toBe("frame-only");
+    const weird = {
+      ...unitsManifest,
+      units: { ...unitsManifest.units, x: { col: 0, row: 0, card: { file: "u.png", kind: "sticker", w: 1, h: 1 } } },
+    } as unknown as UnitsManifest;
+    expect(cardLayers({ ...base, units: weird, ref: { axis: "units", id: "x" }, grade: "GOLD" }).kind)
+      .toBe("frame-only");
+  });
+
+  it("어떤 쓰레기 입력에도 throw 하지 않는다", () => {
+    for (const grade of [null, undefined, "", "__proto__", "constructor"]) {
+      for (const ref of [null, { axis: "units" as const, id: "__proto__" }, { axis: "characters" as const, id: "" }]) {
+        expect(() => cardLayers({ ...base, ref, grade })).not.toThrow();
+      }
+    }
+  });
+
+  it("발행 유닛 카드 PNG 가 manifest 규격과 일치한다(드리프트 가드)", () => {
+    for (const [id, entry] of Object.entries(unitsManifest.units)) {
+      const card = entry!.card!;
+      expect(pngSize(join(distDir, card.file)), id).toEqual({ w: card.w, h: card.h });
+    }
   });
 });

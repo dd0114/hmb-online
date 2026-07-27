@@ -22,7 +22,8 @@ const repoRoot = join(here, "..", "..", "..", "..");
 const distDir = join(repoRoot, "design", "characters", "dist");
 const charactersManifest = JSON.parse(readFileSync(join(distDir, "characters", "manifest.json"), "utf8"));
 const placeholderManifest = JSON.parse(readFileSync(join(distDir, "manifest.json"), "utf8"));
-const mappingFile = JSON.parse(readFileSync(join(repoRoot, "data", "players", "player-chars.v1.json"), "utf8"));
+const unitsManifest = JSON.parse(readFileSync(join(distDir, "units", "manifest.json"), "utf8"));
+const mappingFile = JSON.parse(readFileSync(join(repoRoot, "data", "players", "player-chars.v2.json"), "utf8"));
 
 const ROSTER: RosterEntry[] = [
   { playerId: "P001", name: "Lev Yashin", position: "GK", role: "starter" },
@@ -49,9 +50,11 @@ beforeEach(() => {
     vi.fn(async (url: string) => {
       const body = url.endsWith("/characters/manifest.json")
         ? charactersManifest
-        : url.endsWith("/player-chars.json")
-          ? { players: mappingFile.players }
-          : placeholderManifest;
+        : url.endsWith("/units/manifest.json")
+          ? unitsManifest
+          : url.endsWith("/player-chars.json")
+            ? { players: mappingFile.players }
+            : placeholderManifest;
       return { ok: true, status: 200, json: async () => body } as unknown as Response;
     }),
   );
@@ -62,15 +65,19 @@ afterEach(() => {
 });
 
 describe("PromptFields 아바타", () => {
-  it("roster 의 playerId 로 각 행에 확정 캐릭터를 그린다", async () => {
+  it("roster 의 playerId 로 각 행에 실아트 타일을 그린다(축은 매핑이 정한다)", async () => {
+    // #207 이후 축이 둘이다 — P001(비활성 LEGEND) = characters, P050(GOLD) = units 디폴트.
+    // 여기서 지키는 건 "행마다 배선이 살아 있다"(= CSS 폴백으로 안 떨어진다)이지 특정 축이 아니다.
     renderFields();
     for (const r of ROSTER) {
       await waitFor(() =>
-        expect(screen.getByTestId(`char-avatar-${r.playerId}`).dataset.avatarKind, r.playerId).toBe(
-          "character",
+        expect(["character", "unit"], r.playerId).toContain(
+          screen.getByTestId(`char-avatar-${r.playerId}`).dataset.avatarKind,
         ),
       );
     }
+    expect(screen.getByTestId("char-avatar-P001").dataset.avatarKind).toBe("character");
+    expect(screen.getByTestId("char-avatar-P050").dataset.avatarKind).toBe("unit");
   });
 
   it("행마다 서로 다른 선수의 아바타가 붙는다(한 선수로 고정 배선 방지)", async () => {

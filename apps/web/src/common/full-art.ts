@@ -32,8 +32,8 @@
  *   · **색/링/폰트비**: `FULL_ART_DESIGN` 한 곳(+ `FullArtCard.module.css` 의 CSS 변수).
  * ════════════════════════════════════════════════════════════════════════════
  */
-import { assetUrl, characterCardUrl, frameUrl } from "./char-manifest";
-import type { CharactersManifest, PlaceholderManifest } from "./char-manifest";
+import { assetUrl, characterCardUrl, frameUrl, unitCard } from "./char-manifest";
+import type { CharRef, CharactersManifest, PlaceholderManifest, UnitsManifest } from "./char-manifest";
 import { GRADE_COLORS, type Grade } from "./grades";
 
 // ── ① 카드 규격 ────────────────────────────────────────────────────────────
@@ -289,8 +289,88 @@ export function fullArtLayers(args: {
  * 아트 14장 ~139KB + 프레임 5장 ~8KB 라 화면 단위로 받으면 부담이 없지만,
  * 목록/매치처럼 아이콘만 쓰는 화면은 이 경로를 타지 않으므로 **한 바이트도 안 받는다.**
  */
-export function preloadUrls(layers: FullArtLayers): string[] {
+export function preloadUrls(layers: { art: string | null; frame: string | null }): string[] {
   return [layers.frame, layers.art].filter((u): u is string => typeof u === "string");
+}
+
+// ── ④ 유닛 축 합류 — `card.kind` 분기 (#207 U-D8) ────────────────────────────
+
+/**
+ * 한 장을 그리는 **최종** 지시. `fullArtLayers`(characters 축) 위에 유닛 축을 얹은 것으로,
+ * 컴포넌트는 이 결과만 보고 그린다.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * 왜 `fit` 이 필요한가 — 세 종류의 아트가 **서로 다른 좌표계**를 갖는다
+ *
+ *   `crop`  characters 축 `card-<char>.png` = **카드 통짜**(226×425, 프레임 포함).
+ *           아트만 쓰려면 창을 잘라 원본을 음수 오프셋으로 밀어야 한다(`fullArtLayout`).
+ *   `fill`  units 축 `art-<id>.png` = **프레임 없는 캐릭터 아트**(투명 배경).
+ *           잘라낼 프레임이 없다 → 아트 창을 그대로 채운다(크롭 오프셋을 쓰면 아트가 잘린다).
+ *   `whole` units 축 `card-<id>.png` = **완성 카드**(프레임·이름판·별·대사가 이미 구워짐).
+ *           `frame-<GRADE>.png` 를 깔면 **프레임이 두 겹**이 된다 → 합성 경로를 타지 않는다.
+ *
+ * 분기 권위는 **발행 manifest 의 `card.kind`** 다. 유닛 이름을 코드에 박지 않는다 —
+ * 어떤 유닛이 완성 카드인지는 발행측이 정하고, 재발행되면 이 코드는 그대로여야 한다.
+ * (에픽 초기 인벤토리가 "완성 3종"으로 잘못 적혔다가 2종으로 정정된 전례가 있다.)
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+export interface CardLayers {
+  kind: "unit-complete" | "unit-art" | "full-art" | "frame-only" | "none";
+  art: string | null;
+  frame: string | null;
+  fit: "crop" | "fill" | "whole";
+  /** 도트 원본이면 true — 확대·축소 모두 `pixelated`. false 면 보간(사진형 아트가 계단지지 않게). */
+  pixelArt: boolean;
+  /** `whole` 일 때만 — 발행 규격 그대로의 종횡비(카드 박스가 이 비율을 따라야 잘리지 않는다). */
+  aspect: string | null;
+}
+
+/**
+ * 매핑 참조 + 등급 → 그릴 층. 폴백 계단은 그대로다(깨짐 0):
+ *   유닛 완성카드 → 유닛 아트+프레임 → 캐릭터 풀아트 → 프레임만+아이콘 → CSS 폴백.
+ *
+ * 어떤 입력(손상 manifest·프로토타입 오염·모르는 `kind`)에도 throw 하지 않는다.
+ */
+export function cardLayers(args: {
+  characters: CharactersManifest | null | undefined;
+  units: UnitsManifest | null | undefined;
+  placeholders: PlaceholderManifest | null | undefined;
+  ref: CharRef | null | undefined;
+  grade: string | null | undefined;
+  base?: string;
+}): CardLayers {
+  const frame = frameUrl(args.placeholders, args.grade, args.base);
+
+  if (args.ref?.axis === "units") {
+    const card = unitCard(args.units, args.ref.id, args.base);
+    if (card?.kind === "complete") {
+      // 등급 프레임을 **의도적으로 버린다** — 이미 구워져 있다(두 겹 방지).
+      return {
+        kind: "unit-complete",
+        art: card.url,
+        frame: null,
+        fit: "whole",
+        pixelArt: card.pixelArt,
+        aspect: `${card.w} / ${card.h}`,
+      };
+    }
+    if (card?.kind === "frameless-art") {
+      return { kind: "unit-art", art: card.url, frame, fit: "fill", pixelArt: card.pixelArt, aspect: null };
+    }
+    // 유닛인데 카드 에셋이 없거나 모르는 kind → 프레임만/CSS 폴백(틀린 그림 대신).
+    return frame
+      ? { kind: "frame-only", art: null, frame, fit: "crop", pixelArt: false, aspect: null }
+      : { kind: "none", art: null, frame: null, fit: "crop", pixelArt: false, aspect: null };
+  }
+
+  const legacy = fullArtLayers({
+    characters: args.characters,
+    placeholders: args.placeholders,
+    charId: args.ref?.axis === "characters" ? args.ref.id : null,
+    grade: args.grade,
+    base: args.base,
+  });
+  return { ...legacy, fit: "crop", pixelArt: false, aspect: null };
 }
 
 /** 등급 프레임만 단독으로 필요할 때(프리뷰·스켈레톤). */

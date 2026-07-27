@@ -12,8 +12,12 @@ import {
   resolveTile,
   tileFrom,
   tileStyle,
+  unitCard,
+  unitIconBackground,
+  unitTile,
   type CharactersManifest,
   type PlaceholderManifest,
+  type UnitsManifest,
 } from "./char-manifest";
 
 // 발행물 원본을 그대로 읽는다 — 손으로 만든 픽스처가 계약과 드리프트하는 걸 막는다.
@@ -25,6 +29,7 @@ const charsManifest: CharactersManifest = JSON.parse(
 const placeholderManifest: PlaceholderManifest = JSON.parse(
   readFileSync(join(distDir, "manifest.json"), "utf8"),
 );
+const unitsManifest: UnitsManifest = JSON.parse(readFileSync(join(distDir, "units", "manifest.json"), "utf8"));
 
 describe("assetUrl", () => {
   it("manifest 상대경로를 스테이징 오리진 경로로 만든다", () => {
@@ -160,39 +165,191 @@ describe("플레이스홀더 축 (발행물 실물)", () => {
   });
 });
 
-describe("resolveTile 폴백 체인", () => {
+describe("resolveTile 폴백 체인 — 축 태그가 어느 manifest 를 볼지 정한다", () => {
   const common = {
     characters: charsManifest,
+    units: unitsManifest,
     placeholders: placeholderManifest,
     atlas: "avatars-64",
   };
 
-  it("캐릭터 매핑이 있으면 캐릭터 축을 쓴다", () => {
-    const r = resolveTile({ ...common, charId: "aura", playerId: "P001" });
+  it("characters 축 참조는 캐릭터 아틀라스를 쓴다", () => {
+    const r = resolveTile({ ...common, ref: { axis: "characters", id: "aura" }, playerId: "P001" });
     expect(r?.kind).toBe("character");
     expect(r?.tile.url).toBe("/chars/characters/avatars-64.png");
   });
 
-  it("캐릭터 매핑이 없으면 플레이스홀더 축으로 떨어진다", () => {
-    const r = resolveTile({ ...common, charId: null, playerId: "P050" });
+  it("units 축 참조는 **유닛 아틀라스**를 쓴다(축을 섞지 않는다)", () => {
+    const r = resolveTile({ ...common, ref: { axis: "units", id: "bonaldo" }, playerId: "P173" });
+    expect(r?.kind).toBe("unit");
+    expect(r?.tile.url).toBe("/chars/units/avatars-64.png");
+    // 같은 id 를 캐릭터 축에서 찾으면 없다 — 축을 잘못 고르면 폴백으로 떨어진다는 뜻.
+    expect(characterTile(charsManifest, "bonaldo", "avatars-64")).toBeNull();
+  });
+
+  it("GOLD 이하 공용 디폴트 유닛도 유닛 축 타일이다", () => {
+    const r = resolveTile({ ...common, ref: { axis: "units", id: "default-unit" }, playerId: "P050" });
+    expect(r?.kind).toBe("unit");
+    expect(r?.tile.url).toBe("/chars/units/avatars-64.png");
+  });
+
+  it("매핑이 없으면 플레이스홀더 축으로 떨어진다", () => {
+    const r = resolveTile({ ...common, ref: null, playerId: "P050" });
     expect(r?.kind).toBe("placeholder");
     expect(r?.tile.url).toBe("/chars/avatars-64.png");
   });
 
-  it("charId 가 미등록이어도(오타·구버전) 플레이스홀더로 떨어진다", () => {
-    const r = resolveTile({ ...common, charId: "ghost", playerId: "P050" });
+  it("id 가 미등록이어도(오타·구버전) 플레이스홀더로 떨어진다 — 두 축 모두", () => {
+    expect(resolveTile({ ...common, ref: { axis: "characters", id: "ghost" }, playerId: "P050" })?.kind)
+      .toBe("placeholder");
+    expect(resolveTile({ ...common, ref: { axis: "units", id: "ghost" }, playerId: "P050" })?.kind)
+      .toBe("placeholder");
+  });
+
+  it("구 v1 문자열 매핑이 흘러들어와도 characters 축으로 해석한다(롤백 안전)", () => {
+    const r = resolveTile({ ...common, ref: "aura", playerId: "P001" });
+    expect(r?.kind).toBe("character");
+  });
+
+  it("유닛 manifest 가 아직 안 왔으면 units 참조도 플레이스홀더로 떨어진다(깨짐 0)", () => {
+    const r = resolveTile({ ...common, units: null, ref: { axis: "units", id: "bonaldo" }, playerId: "P050" });
     expect(r?.kind).toBe("placeholder");
   });
 
   it("둘 다 없으면 null — 호출부가 CSS 플레이스홀더로 간다", () => {
-    expect(resolveTile({ ...common, charId: null, playerId: "P999" })).toBeNull();
-    expect(resolveTile({ ...common, charId: "ghost", playerId: null })).toBeNull();
+    expect(resolveTile({ ...common, ref: null, playerId: "P999" })).toBeNull();
+    expect(resolveTile({ ...common, ref: { axis: "units", id: "ghost" }, playerId: null })).toBeNull();
   });
 
   it("manifest 가 아직 안 왔어도(로딩 중) 터지지 않고 null", () => {
     expect(
-      resolveTile({ characters: null, placeholders: null, charId: "aura", playerId: "P001", atlas: "avatars-64" }),
+      resolveTile({
+        characters: null,
+        units: null,
+        placeholders: null,
+        ref: { axis: "characters", id: "aura" },
+        playerId: "P001",
+        atlas: "avatars-64",
+      }),
     ).toBeNull();
+  });
+});
+
+describe("유닛 축 접근자 (#207 W3-B 발행 계약)", () => {
+  it("발행물의 6종이 전부 3×2 격자 안에 있고 좌표가 겹치지 않는다", () => {
+    const seen = new Set<string>();
+    for (const [unitId, entry] of Object.entries(unitsManifest.units)) {
+      const tile = unitTile(unitsManifest, unitId, "avatars-64");
+      expect(tile, unitId).toBeTruthy();
+      expect(entry!.col).toBeLessThan(3);
+      expect(entry!.row).toBeLessThan(2);
+      const key = `${entry!.col},${entry!.row}`;
+      expect(seen.has(key), `${unitId} 좌표 충돌 ${key}`).toBe(false);
+      seen.add(key);
+    }
+    expect(seen.size).toBe(6);
+  });
+
+  it("세 해상도 아틀라스가 모두 잡힌다", () => {
+    for (const [atlas, tile] of [["avatars-64", 64], ["avatars-32", 32], ["avatars-16", 16]] as const) {
+      expect(unitTile(unitsManifest, "bonaldo", atlas)?.tile, atlas).toBe(tile);
+    }
+  });
+
+  /**
+   * 발행 구성(어느 유닛이 complete 인가)은 **발행측이 정한다** — 재발행 한 번으로 바뀐다.
+   * 실제로 #207 재발행에서 보날두·욱링엄이 완성 카드 → 프레임리스 아트가 되어 `complete` 이
+   * 0종이 됐다. 그래서 여기서는 **구성이 아니라 해석 규칙**을 건다(이름·개수 하드핀 금지).
+   * `complete` 분기 자체는 바로 아래 픽스처 테스트가 발행 구성과 무관하게 지킨다.
+   */
+  it("card.kind — 발행물의 모든 유닛이 선언된 두 kind 중 하나로 해석된다(모르는 kind 0)", () => {
+    const kinds = Object.fromEntries(
+      Object.keys(unitsManifest.units).map((id) => [id, unitCard(unitsManifest, id)?.kind]),
+    );
+    expect(Object.values(kinds).every((k) => k === "complete" || k === "frameless-art")).toBe(true);
+    // manifest 가 선언한 종류만 실린다 — 선언에 없는 kind 가 발행되면 잡힌다.
+    const declared = Object.keys(
+      (unitsManifest as unknown as { cardKinds: Record<string, string> }).cardKinds,
+    );
+    expect(declared).toContain("complete"); // 0종이어도 선언은 남는다(재발행 여지 = 계약)
+    for (const k of Object.values(kinds)) expect(declared).toContain(k);
+    // 현 구성 스냅샷(정보성): complete 0 · frameless-art 6.
+    expect(Object.values(kinds).filter((k) => k === "frameless-art"))
+      .toHaveLength(Object.keys(unitsManifest.units).length
+        - Object.values(kinds).filter((k) => k === "complete").length);
+  });
+
+  /**
+   * **`complete` 해석 계약은 발행 구성과 무관하게 살아 있어야 한다.**
+   * 실 manifest 에 complete 이 0종이라 실물 기반 단언만 남기면 이 분기가 조용히 죽는다
+   * (= 나중에 완성 카드를 다시 실었을 때 프레임 두 겹을 아무도 못 잡는다).
+   */
+  it("`complete` 분기 — 픽스처로 직접 검증(발행에 0종이어도 계약은 산다)", () => {
+    const fixture = {
+      ...unitsManifest,
+      units: {
+        ...unitsManifest.units,
+        "fixture-complete": {
+          col: 0, row: 0,
+          card: { file: "units/card-fixture.png", kind: "complete", w: 512, h: 768 },
+        },
+      },
+    } as unknown as UnitsManifest;
+    expect(unitCard(fixture, "fixture-complete")).toEqual({
+      url: "/chars/units/card-fixture.png",
+      kind: "complete",
+      pixelArt: false,
+      w: 512,
+      h: 768,
+    });
+  });
+
+  it("디폴트 유닛만 pixelArt — 도트 원본이라 확대해도 보간하면 안 된다", () => {
+    expect(unitCard(unitsManifest, "default-unit")?.pixelArt).toBe(true);
+    for (const id of Object.keys(unitsManifest.units)) {
+      if (id === "default-unit") continue;
+      expect(unitCard(unitsManifest, id)?.pixelArt, id).toBe(false);
+    }
+  });
+
+  it("**모르는 kind 는 null** — 새 종류를 기존 두 경로 중 하나로 넘겨짚지 않는다", () => {
+    const mutated: UnitsManifest = {
+      ...unitsManifest,
+      units: { ...unitsManifest.units, x: { col: 0, row: 0, card: { file: "u.png", kind: "sticker", w: 1, h: 1 } } },
+    } as unknown as UnitsManifest;
+    expect(unitCard(mutated, "x")).toBeNull();
+  });
+
+  it("손상 card(경로 탈출·0 크기·비객체)는 null 로 떨어지고 throw 하지 않는다", () => {
+    const bads = [
+      { file: "../../etc/x.png", kind: "complete", w: 1, h: 1 },
+      { file: "u.png", kind: "complete", w: 0, h: 10 },
+      { file: "u.png", kind: "complete", w: 10, h: -1 },
+      "u.png",
+      null,
+    ];
+    for (const card of bads) {
+      const m = { ...unitsManifest, units: { ...unitsManifest.units, x: { col: 0, row: 0, card } } };
+      expect(() => unitCard(m as unknown as UnitsManifest, "x")).not.toThrow();
+      expect(unitCard(m as unknown as UnitsManifest, "x"), JSON.stringify(card)).toBeNull();
+    }
+  });
+
+  it("iconBackground — 레전더리 5종은 불투명 다크, 디폴트 유닛은 투명", () => {
+    for (const id of ["bonaldo", "yeoldona", "chunbappe", "dukbrayner", "wookringham"]) {
+      expect(unitIconBackground(unitsManifest, id), id).toBe("opaque-dark");
+    }
+    expect(unitIconBackground(unitsManifest, "default-unit")).toBe("transparent");
+    // 모르는 값·미등록·manifest 부재는 전부 기존 계약(투명)으로 떨어진다.
+    expect(unitIconBackground(unitsManifest, "ghost")).toBe("transparent");
+    expect(unitIconBackground(null, "bonaldo")).toBe("transparent");
+  });
+
+  it("프로토타입 상속 키를 유닛으로 오인하지 않는다", () => {
+    for (const key of ["constructor", "toString", "__proto__", "hasOwnProperty"]) {
+      expect(unitTile(unitsManifest, key, "avatars-64"), key).toBeNull();
+      expect(unitCard(unitsManifest, key), key).toBeNull();
+    }
   });
 });
 
@@ -231,8 +388,9 @@ describe("등급 프레임 (격자 아닌 축)", () => {
     expect(
       resolveTile({
         characters: charsManifest,
+        units: unitsManifest,
         placeholders: placeholderManifest,
-        charId: "aura",
+        ref: { axis: "characters", id: "aura" },
         playerId: "P001",
         atlas: "frame-DIA",
       }),

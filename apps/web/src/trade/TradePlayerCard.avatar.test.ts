@@ -20,7 +20,8 @@ const repoRoot = join(here, "..", "..", "..", "..");
 const distDir = join(repoRoot, "design", "characters", "dist");
 const charactersManifest = JSON.parse(readFileSync(join(distDir, "characters", "manifest.json"), "utf8"));
 const placeholderManifest = JSON.parse(readFileSync(join(distDir, "manifest.json"), "utf8"));
-const mappingFile = JSON.parse(readFileSync(join(repoRoot, "data", "players", "player-chars.v1.json"), "utf8"));
+const unitsManifest = JSON.parse(readFileSync(join(distDir, "units", "manifest.json"), "utf8"));
+const mappingFile = JSON.parse(readFileSync(join(repoRoot, "data", "players", "player-chars.v2.json"), "utf8"));
 
 beforeEach(() => {
   resetCharAssetsCache();
@@ -29,9 +30,11 @@ beforeEach(() => {
     vi.fn(async (url: string) => {
       const body = url.endsWith("/characters/manifest.json")
         ? charactersManifest
-        : url.endsWith("/player-chars.json")
-          ? { players: mappingFile.players }
-          : placeholderManifest;
+        : url.endsWith("/units/manifest.json")
+          ? unitsManifest
+          : url.endsWith("/player-chars.json")
+            ? { players: mappingFile.players }
+            : placeholderManifest;
       return { ok: true, status: 200, json: async () => body } as unknown as Response;
     }),
   );

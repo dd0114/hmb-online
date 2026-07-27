@@ -20,13 +20,13 @@ const json = (body: unknown) => ({ status: 200, contentType: "application/json",
 
 /** 목 로스터는 **발행물에서 조인**한다 — 손으로 적으면 등급·매핑이 실제 시드와 어긋난다. */
 const SEED: Array<{ id: string; name: string; position: string; grade: string }> = JSON.parse(
-  readFileSync(new URL("../../../data/players/players.v2.1.json", import.meta.url).pathname, "utf8"),
+  readFileSync(new URL("../../../data/players/players.v2.3.json", import.meta.url).pathname, "utf8"),
 );
 
 const pick = (grade: string, n: number) => SEED.filter((p) => p.grade === grade).slice(0, n);
 
 /**
- * **교차 매핑 선수** — 선수 포지션 ≠ 캐릭터 포지션. `data/players/player-chars.v1.json` 의
+ * **교차 매핑 선수** — 선수 포지션 ≠ 캐릭터 포지션. `data/players/player-chars.v2.json` 의
  * `detail[].crossPosition` 이 true 인 유일한 항목(P012 Marco van Basten, 선수 FW ← penguin-king GK).
  * 카드 아트에는 캐릭터 포지션(`GK`)이 **구워져** 있으므로, 이 선수를 표본에 넣지 않으면
  * "뱃지를 선수 포지션으로 덮는다"는 계약이 **아무것도 검사하지 않는다**(독립 검증 major-1:
@@ -34,11 +34,41 @@ const pick = (grade: string, n: number) => SEED.filter((p) => p.grade === grade)
  */
 const CROSS = SEED.find((p) => p.id === "P012")!;
 
+/**
+ * 아트까지 해석된 카드의 종류(#207 U-D8 이후 **세 가지**다):
+ *   `full-art`      characters 축 크롭 합성   `unit-art` units 프레임리스 + 등급 프레임
+ *   `unit-complete` units 완성 카드(프레임이 이미 구워져 있어 합성 경로를 타지 않는다)
+ * "아트가 붙었나"를 보는 자리에서는 이 셋을 같이 받는다 — 어느 축이냐는 매핑이 정한다.
+ */
+const RESOLVED_ART_KINDS = ["full-art", "unit-art", "unit-complete"];
+
+/**
+ * 발행 manifest 가 권위 — 어느 유닛이 완성 카드인지 **스펙에 박지 않는다**.
+ * #207 재발행에서 보날두·욱링엄이 완성 카드 → 프레임리스 아트가 되며 `complete` 이 0종이 됐다.
+ * 이름을 박아 뒀다면 여기서 통째로 깨졌을 자리다.
+ */
+const UNITS = JSON.parse(
+  readFileSync(new URL("../../../design/characters/dist/units/manifest.json", import.meta.url).pathname, "utf8"),
+) as { units: Record<string, { card: { kind: string }; forPlayer?: string }> };
+const COMPLETE_PLAYER_IDS = Object.values(UNITS.units)
+  .filter((u) => u.card.kind === "complete" && u.forPlayer)
+  .map((u) => u.forPlayer!);
+/** 표본에 실제로 들어간 아트 종류 — 완성 카드가 0종이면 그 축은 기대에서 빠진다(공허 단언 방지). */
+const EXPECTED_ART_KINDS = RESOLVED_ART_KINDS.filter(
+  (k) => k !== "unit-complete" || COMPLETE_PLAYER_IDS.length > 0,
+);
+
+/** #207 실아트 입고 LEGEND — units 축 실아트 3종을 표본에 넣는다(완성 카드가 있으면 같이). */
+const ART_UNITS = [...new Set(["P173", "P179", "P175", ...COMPLETE_PLAYER_IDS])]
+  .map((id) => SEED.find((p) => p.id === id))
+  .filter((p): p is (typeof SEED)[number] => !!p);
+
 /** 전 등급이 한 번씩 나오게 — ④ 등급↔프레임 정합을 5종 다 태우기 위해. */
 const CATALOG = [
   // 첫 항목을 교차 매핑 선수로 고정 — 강화/뱃지 계약이 이 선수를 태워야 의미가 있다.
   CROSS,
-  ...pick("LEGEND", 2), ...pick("DIA", 2), ...pick("GOLD", 2),
+  ...ART_UNITS,
+  ...pick("DIA", 2), ...pick("GOLD", 2),
   ...pick("SILVER", 2), ...pick("BRONZE", 3),
 ]
   .filter((p, i, arr) => arr.findIndex((q) => q.id === p.id) === i)
@@ -147,7 +177,7 @@ test.beforeAll(() => mkdirSync(SHOTS, { recursive: true }));
 
 // ── ① 큰 화면에 풀아트가 뜬다 ───────────────────────────────────────────────
 
-test("뽑기: 결과 11장이 **전부** 풀아트 카드다 (hero 확정 A안)", async ({ page }) => {
+test("뽑기: 결과 카드가 **전부** 아트까지 해석된다 (hero 확정 A안 + #207 축 분기)", async ({ page }) => {
   await login(page);
   await mockApi(page);
   await page.goto("/shop");
@@ -158,8 +188,26 @@ test("뽑기: 결과 11장이 **전부** 풀아트 카드다 (hero 확정 A안)"
   await expect(cards(page)).toHaveCount(GACHA.results.length);
   // 공개된 카드는 전부 실제 아트까지 해석돼야 한다 — 프레임만 뜨면 매핑이 끊긴 것.
   const kinds = await cards(page).evaluateAll((els) => els.map((e) => e.getAttribute("data-art-kind")));
-  expect(new Set(kinds)).toEqual(new Set(["full-art"]));
+  // 프레임만(frame-only)·빈 카드(none)가 하나라도 있으면 매핑이 끊긴 것이다.
+  expect(kinds.filter((k) => !RESOLVED_ART_KINDS.includes(k!))).toEqual([]);
+  // 표본에 축이 다 들어 있어야 이 검사가 실제로 분기를 태운다(공허참 방지).
+  expect(new Set(kinds)).toEqual(new Set(EXPECTED_ART_KINDS));
+  // 완성 카드는 **등급 프레임을 한 장도 안 받는다**(프레임 두 겹 방지, #207 U-D8).
+  // 현재 발행 구성엔 complete 이 0종이라 이 루프는 돌지 않는다 — 계약은 유닛 테스트가 픽스처로
+  // 지킨다(`full-art.test.ts` · `FullArtCard.test.ts`). 다시 실리면 여기도 자동으로 검사한다.
+  for (const id of COMPLETE_PLAYER_IDS) {
+    const c = page.getByTestId(`full-art-${id}`);
+    await expect(c).toHaveAttribute("data-art-kind", "unit-complete");
+    await expect(c.locator('img[data-art-layer="frame"]')).toHaveCount(0);
+  }
+  // 실아트 LEGEND 는 프레임리스 → 등급 프레임을 **정확히 한 겹** 받는다(#207 재발행 후 축).
+  for (const id of ["P173", "P179", "P175"]) {
+    const c = page.getByTestId(`full-art-${id}`);
+    await expect(c).toHaveAttribute("data-art-kind", "unit-art");
+    await expect(c.locator('img[data-art-layer="frame"]')).toHaveCount(1);
+  }
   expect(await brokenImages(page)).toEqual([]);
+  await page.waitForTimeout(700); // 뒤집기 전환(0.45s) 후에 찍는다 — 증빙에 카드 뒷면만 남지 않게
   await page.screenshot({ path: `${SHOTS}card-art-gacha.png`, fullPage: true });
 });
 
@@ -528,13 +576,24 @@ test("등급↔프레임 정합: 카드가 자기 등급 프레임을 쓴다 (5�
   const pairs = await cards(page).evaluateAll((els) =>
     els.map((e) => ({
       grade: e.getAttribute("data-grade"),
+      kind: e.getAttribute("data-art-kind"),
       frame: e.querySelector('img[data-art-layer="frame"]')?.getAttribute("src") ?? null,
     })),
   );
   expect(pairs.length).toBe(GACHA.results.length);
-  for (const { grade, frame } of pairs) {
+  for (const { grade, kind, frame } of pairs) {
+    if (kind === "unit-complete") {
+      // #207 U-D8 — 완성 카드는 등급 프레임이 **이미 구워져 있다**. 여기에 frame-<GRADE> 를
+      // 깔면 프레임이 두 겹이 된다 → 이 축은 "프레임을 안 받는 것"이 정합이다.
+      expect(frame, `${grade} 완성카드는 프레임 층이 없어야 한다`).toBeNull();
+      continue;
+    }
     expect(frame, `${grade} 프레임`).toBe(`/chars/frame-${grade}.png`);
   }
+  // 완성 카드 축이 **발행 구성대로** 표본에 있었는지(0종이면 0). 이름·개수를 스펙에 박지 않는다.
+  expect(pairs.filter((p) => p.kind === "unit-complete")).toHaveLength(COMPLETE_PLAYER_IDS.length);
+  // 프레임리스 실아트 축은 반드시 표본에 있어야 한다 — 없으면 위 프레임 정합 루프가 얕아진다.
+  expect(pairs.filter((p) => p.kind === "unit-art").length).toBeGreaterThan(0);
   // 목 카탈로그가 5등급을 다 태웠는지 — 안 그러면 이 계약이 일부만 검사한다.
   expect(new Set(pairs.map((p) => p.grade)).size).toBe(5);
 });

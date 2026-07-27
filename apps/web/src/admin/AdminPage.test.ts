@@ -37,6 +37,17 @@ vi.mock("../api/admin-hooks", () => ({
   useGrantPoints: () => ({ mutate: fx.mutate, isPending: false, error: fx.grantError }),
 }));
 
+// 유닛 카탈로그 섹션(#207)은 자체 훅 모듈을 쓴다 — 여기선 렌더만 확인하므로 전부 스텁.
+vi.mock("../api/admin-unit-hooks", () => ({
+  ADMIN_UNITS_PATH: "/api/admin/units",
+  newIdempotencyKey: () => "key-1",
+  useAdminUnits: () => ({ data: undefined, isLoading: false, isError: false }),
+  useAdminUnitDetail: () => ({ data: undefined, isLoading: false, isError: false }),
+  useUpdateUnit: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateUnit: () => ({ mutate: vi.fn(), isPending: false }),
+  useSetUnitActive: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 import { AdminPage } from "./AdminPage";
 import { RequireAdmin } from "./RequireAdmin";
 
@@ -224,6 +235,22 @@ describe("AdminPage 포인트 지급/차감 (AC-C1)", () => {
     fireEvent.click(screen.getByTestId("admin-grant-confirm-cancel"));
     expect(fx.mutate).not.toHaveBeenCalled();
     expect(screen.queryByTestId("admin-grant-confirm")).toBeNull();
+  });
+});
+
+describe("AdminPage 섹션 탭 (#207 유닛 카탈로그)", () => {
+  it("기본은 유저 운영 — 유닛 섹션은 아직 없다(기존 화면 무회귀)", () => {
+    renderPage();
+    expect(screen.getByTestId("admin-users")).toBeTruthy();
+    expect(screen.queryByTestId("admin-units")).toBeNull();
+  });
+
+  it("유닛 카탈로그 탭으로 전환하면 유저 섹션 대신 유닛 섹션이 뜬다", () => {
+    renderPage();
+    fireEvent.click(screen.getByTestId("admin-tab-units"));
+    expect(screen.getByTestId("admin-units")).toBeTruthy();
+    expect(screen.queryByTestId("admin-users")).toBeNull();
+    expect(screen.queryByTestId("admin-search")).toBeNull();
   });
 });
 

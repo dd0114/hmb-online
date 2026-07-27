@@ -2,17 +2,18 @@ import { useState } from "react";
 import type { CSSProperties } from "react";
 import { GRADE_COLORS, GRADE_LABELS, type Grade } from "./grades";
 import { CharAvatar } from "./CharAvatar";
-import { charIdFor } from "./char-assets-store";
+import { charRefFor } from "./char-assets-store";
 import { useCharAssets } from "./useCharAssets";
 import {
   artAspect,
   cardAspect,
+  cardLayers,
   FULL_ART_DESIGN,
-  fullArtLayers,
   fullArtLayout,
   fullArtWidth,
   gradeRingShadow,
   resolveCardGeometry,
+  type CardLayers,
   type FullArtSize,
 } from "./full-art";
 import styles from "./FullArtCard.module.css";
@@ -69,15 +70,36 @@ export function FullArtCard({
   // 로드 실패한 URL 을 기억해 같은 렌더에서 계단을 한 칸 내린다(무한 재시도 방지).
   const [failed, setFailed] = useState<Record<string, true>>({});
 
-  const resolved = fullArtLayers({
+  const resolved = cardLayers({
     characters: assets.characters,
+    units: assets.units,
     placeholders: assets.placeholders,
-    charId: charIdFor(assets, playerId),
+    ref: charRefFor(assets, playerId),
     grade,
   });
   const art = resolved.art && !failed[resolved.art] ? resolved.art : null;
   const frame = resolved.frame && !failed[resolved.frame] ? resolved.frame : null;
-  const kind: typeof resolved.kind = art && frame ? "full-art" : frame ? "frame-only" : "none";
+  /**
+   * 로드 실패를 반영한 최종 종류. 완성 카드는 **프레임이 애초에 없는 것이 정상**이라
+   * (`frame` 이 null 이어도) 실패로 강등하지 않는다 — 아트가 죽었을 때만 계단을 내린다.
+   */
+  const kind: CardLayers["kind"] =
+    resolved.kind === "unit-complete"
+      ? art
+        ? "unit-complete"
+        : frame
+          ? "frame-only"
+          : "none"
+      : resolved.kind === "unit-art" && art
+        ? "unit-art"
+        : art && frame
+          ? "full-art"
+          : frame
+            ? "frame-only"
+            : "none";
+  const whole = kind === "unit-complete";
+  // 프레임리스 유닛 아트는 창을 채운다(크롭 오프셋을 쓰면 아트가 잘린다 — full-art.ts `fit` 주석).
+  const fillArt = kind === "unit-art";
 
   // 규격은 발행물이 실어 보내면 그쪽이 이긴다 — 에셋 교체만으로 카드 모양을 바꿀 수 있게(#187 hero).
   const geom = resolveCardGeometry(assets.characters);
@@ -88,9 +110,13 @@ export function FullArtCard({
   const Tag = onClick ? "button" : "div";
 
   const font = (ratio: number, min: number) => Math.max(min, Math.round(width * ratio));
-  const artOnly = variant === "art";
-  // 아트만 쓸 때는 라벨·프레임이 없으므로 하단 밴드 텍스트도 그리지 않는다(그릴 판이 없다).
-  const labels = showLabels && !artOnly;
+  const artOnly = variant === "art" && !whole;
+  /**
+   * 완성 카드는 이름·별·포지션뱃지·대사가 **아트에 구워져 있다** → 오버레이를 얹으면 이중 표기다.
+   * (그래서 `variant="art"` 도 무시한다 — 잘라낼 프레임 밴드가 따로 없는 통짜 에셋이다.)
+   */
+  const labels = showLabels && !artOnly && !whole;
+  const showBadge = !!position && !whole;
 
   return (
     <Tag
@@ -101,7 +127,9 @@ export function FullArtCard({
           /* 폭은 **CSS 변수**로 준다 — 인라인 `width` 로 박으면 소비처가 미디어쿼리로 못 줄인다.
              (모바일 독처럼 세로 예산이 빡빡한 자리에서 실제로 필요했다: `--fa-w` 만 덮으면 된다.) */
           "--fa-w": `${width}px`,
-          aspectRatio: artOnly ? artAspect(geom) : cardAspect(geom),
+          /* 완성 카드는 **자기 발행 규격**을 따른다(512×768). 226×425 카드 비율에 욱여넣으면
+             구워진 프레임이 잘린다 — 통짜 에셋이라 크롭할 여지가 없다. */
+          aspectRatio: whole ? resolved.aspect! : artOnly ? artAspect(geom) : cardAspect(geom),
           boxShadow: ring ? gradeRingShadow(grade) : undefined,
           borderColor: kind === "none" ? color : undefined,
         } as CSSProperties
@@ -130,21 +158,39 @@ export function FullArtCard({
         />
       )}
 
-      {/* 층2 — 캐릭터 아트. 창을 잘라 원본의 아트 영역만 보이게 한다(full-art.ts 주석). */}
+      {/* 층2 — 캐릭터 아트.
+          `crop`  = 창을 잘라 카드 원본의 아트 영역만 보이게 한다(characters 축).
+          `fill`  = 프레임 없는 유닛 아트 → **아트 창** 안에서 비율을 지켜 채운다.
+          `whole` = 완성 카드 → 카드 박스 통짜(프레임 층 자체를 안 그린다).
+
+          ⚠️ `fill` 의 컨테이너가 카드 통짜(`artFill`=inset:0)면 안 된다 — 아트는 2:3 인데
+          카드는 226×425 라 `contain` 이 세로로 남겨, 아트가 **네임플레이트 아래까지 흘러내려
+          이름을 덮는다**(#207 재발행 실화면에서 발·공이 이름을 가렸다. 실측 침범 12~34px).
+          프레임을 같이 그리는 경로에서는 창이 **아트 영역**이어야 한다.
+          `artOnly`(variant="art")·`whole` 은 카드 박스 자체가 이미 아트 박스라 통짜가 맞다. */}
       {art && (
         <span
-          className={[styles.artWindow, artOnly ? styles.artFill : ""].filter(Boolean).join(" ")}
-          style={(artOnly ? undefined : L.window) as CSSProperties}
+          className={[styles.artWindow, artOnly || whole ? styles.artFill : ""]
+            .filter(Boolean)
+            .join(" ")}
+          style={(artOnly || whole ? undefined : L.window) as CSSProperties}
           aria-hidden
         >
           <img
-            className={styles.art}
-            style={L.art as CSSProperties}
+            className={[styles.art, whole || fillArt ? styles.artContain : ""].filter(Boolean).join(" ")}
+            style={
+              {
+                ...(whole || fillArt ? undefined : (L.art as CSSProperties)),
+                /* 도트 원본만 nearest-neighbor. 사진형 실아트를 pixelated 로 축소하면 계단이 진다. */
+                imageRendering: resolved.pixelArt ? "pixelated" : "auto",
+              } as CSSProperties
+            }
             src={art}
             alt=""
             loading="lazy"
             decoding="async"
             data-art-layer="art"
+            data-art-fit={whole ? "whole" : fillArt ? "fill" : "crop"}
             onError={() => setFailed((f) => ({ ...f, [art]: true }))}
           />
         </span>
@@ -171,7 +217,7 @@ export function FullArtCard({
       {/* 포지션 뱃지는 **두 변형 모두** 그린다. 아트 영역 좌상단에는 원본에 구워진 뱃지가
           걸쳐 있는데(원본 (8,8)-(42,26) 중 크롭 안쪽이 보인다) 그건 **캐릭터의** 포지션이라
           교차 매핑 선수(예: FW 선수 ← GK 캐릭터)에서 틀린 값이 노출된다 → 불투명하게 덮는다. */}
-      {position && (
+      {showBadge && (
         <span
           className={styles.badge}
           style={{

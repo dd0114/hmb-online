@@ -11,11 +11,17 @@
  *   2) 플레이스홀더 축 `/chars/manifest.json` — 선수 172명 전원.
  *      players[playerId] = { col, row, position, grade, initials } (아틀라스 14×13)
  *      → 캐릭터 매핑이 없는 선수의 **폴백**. 풀아트 카드는 없다(등급 프레임만 별도 제공).
+ *   3) 유닛 축   `/chars/units/manifest.json` — hero 입고 실아트 6종 (#207 W3-B).
+ *      units[unitId] = { col, row, name, position, card:{file,kind,w,h,pixelArt?},
+ *                        face, iconBackground, forPlayer?/forGrades? } (아틀라스 3×2)
+ *      → **`card.kind` 가 소비 분기다**: `complete` = 프레임·이름판·별이 이미 구워진 완성 카드
+ *        (frame-<GRADE>.png 합성 경로를 **타면 안 된다** — 등급 프레임이 겹친다),
+ *        `frameless-art` = 투명 배경 캐릭터 아트(기존 합성 경로 그대로).
  *
- * 폴백 체인(깨짐 0): 캐릭터 타일 → 플레이스홀더 타일 → (호출부의) CSS 플레이스홀더.
+ * 폴백 체인(깨짐 0): 유닛/캐릭터 타일 → 플레이스홀더 타일 → (호출부의) CSS 플레이스홀더.
  *
- * ⚠️ 여기엔 **선수↔캐릭터 매핑이 없다.** 매핑 규칙은 hero 확정 대기 중(#145) — 확정되면
- *    별도 모듈(`char-mapping`)이 playerId → charId 를 결정하고, 이 모듈은 그 결과의
+ * ⚠️ 여기엔 **선수↔아트 매핑이 없다.** 매핑은 data 발행물(`player-chars.v2.json`)이 소유하고
+ *    `char-assets-store.charRefFor` 가 playerId → {axis,id} 를 결정한다. 이 모듈은 그 결과의
  *    타일 좌표/URL 만 계산한다. 축 분리를 유지해 매핑이 바뀌어도 여기는 안 바뀌게 한다.
  * ════════════════════════════════════════════════════════════════════════════
  */
@@ -70,6 +76,50 @@ export interface PlaceholderManifest {
   playerCount?: number;
   atlases: Record<string, AtlasSpec | undefined>;
   players: Record<string, PlaceholderEntry | undefined>;
+}
+
+// ── 유닛 축 (#207 W3-B 발행 계약) ───────────────────────────────────────────
+
+/**
+ * 유닛 카드 1장. **`kind` 가 소비 분기**이고 유닛 이름 하드코딩은 금지다 —
+ * 어떤 유닛이 완성 카드인지는 발행측이 정하고, 발행이 바뀌면 여기 코드는 안 바뀐다.
+ */
+export interface UnitCard {
+  file: string;
+  kind: "complete" | "frameless-art";
+  w: number;
+  h: number;
+  /** 도트 원본이면 true — 확대 시 `image-rendering: pixelated` 로 그려야 뭉개지지 않는다. */
+  pixelArt?: boolean;
+}
+
+/** 얼굴 아이콘의 배경 전제. `opaque-dark` = 불투명 다크 배경 위에 그려진 아트. */
+export type IconBackground = "opaque-dark" | "transparent";
+
+export interface UnitEntry {
+  col: number;
+  row: number;
+  name?: string;
+  position?: string | null;
+  card?: UnitCard;
+  face?: string;
+  iconBackground?: string;
+  forPlayer?: string;
+  forGrades?: string[];
+}
+
+export interface UnitsManifest {
+  kind?: string;
+  count?: number;
+  source?: string;
+  atlases: Record<string, AtlasSpec | undefined>;
+  units: Record<string, UnitEntry | undefined>;
+}
+
+/** 매핑값 — 축 태그가 붙은 아트 참조(data 발행물 `player-chars.v2.json` 계약). */
+export interface CharRef {
+  axis: "characters" | "units";
+  id: string;
 }
 
 // ── 타일 좌표 계산 ──────────────────────────────────────────────────────────
@@ -208,21 +258,98 @@ export function placeholderTile(
   return tileFrom(manifest.atlases, atlasName, p, base);
 }
 
+/** 유닛 축의 아틀라스 타일. unitId 미등록/좌표 이상이면 null. */
+export function unitTile(
+  manifest: UnitsManifest | null | undefined,
+  unitId: string | null | undefined,
+  atlasName: string,
+  base: string = CHARS_BASE,
+): TileRef | null {
+  if (!manifest || !unitId) return null;
+  const u = own(manifest.units, unitId);
+  if (!u) return null;
+  return tileFrom(manifest.atlases, atlasName, u, base);
+}
+
+/** 소비 측 투영 — 렌더에 필요한 것만(URL 은 이미 해석됨). */
+export interface ResolvedUnitCard {
+  url: string;
+  kind: "complete" | "frameless-art";
+  pixelArt: boolean;
+  w: number;
+  h: number;
+}
+
 /**
- * 폴백 체인 1스텝: 캐릭터 타일이 있으면 그것, 없으면 플레이스홀더 타일, 그것도 없으면 null.
+ * 유닛 카드 1장 해석. **모르는 `kind` 는 null 로 떨군다** — 새 종류가 생겼는데 기존 두 경로 중
+ * 하나로 넘겨짚으면 프레임이 겹치거나(완성 카드를 합성) 프레임이 사라진다(아트를 통짜로).
+ * 틀린 그림 대신 폴백이 이 계층의 원칙이다.
+ */
+export function unitCard(
+  manifest: UnitsManifest | null | undefined,
+  unitId: string | null | undefined,
+  base: string = CHARS_BASE,
+): ResolvedUnitCard | null {
+  if (!manifest || !unitId) return null;
+  const u = own(manifest.units, unitId);
+  const card = u?.card;
+  if (!card || typeof card !== "object") return null;
+  if (card.kind !== "complete" && card.kind !== "frameless-art") return null;
+  const url = assetUrl(card.file, base);
+  if (!url) return null;
+  const w = Number.isFinite(card.w) && card.w > 0 ? card.w : 0;
+  const h = Number.isFinite(card.h) && card.h > 0 ? card.h : 0;
+  if (!w || !h) return null;
+  return { url, kind: card.kind, pixelArt: card.pixelArt === true, w, h };
+}
+
+/**
+ * 얼굴 아이콘의 배경 전제. 기본은 `transparent`(기존 두 축의 계약).
+ *
+ * 왜 필요한가: 레전더리 얼굴은 **불투명 다크 배경 위에** 글로우·수염선이 그려져 있다.
+ * 투명이라고 가정하고 원형 마스크를 씌우면 글로우 링과 턱선이 잘려 나간다 — 그래서 배경
+ * 전제를 발행측이 엔트리마다 선언하고, 소비 측은 그 값에 따라 마스크 모양을 바꾼다.
+ */
+export function unitIconBackground(
+  manifest: UnitsManifest | null | undefined,
+  unitId: string | null | undefined,
+): IconBackground {
+  if (!manifest || !unitId) return "transparent";
+  const u = own(manifest.units, unitId);
+  return u?.iconBackground === "opaque-dark" ? "opaque-dark" : "transparent";
+}
+
+/**
+ * 폴백 체인 1스텝: 매핑된 축(units/characters)의 타일 → 플레이스홀더 타일 → null.
  * (null 이면 호출부가 CSS 플레이스홀더로 떨어진다 — 깨진 <img> 는 어떤 경우에도 없다.)
+ *
+ * `ref` 는 **축 태그가 붙은 참조**다(#207). 문자열(구 v1 매핑)이 흘러들어오면 `characters` 축
+ * 으로 해석한다 — 구 발행물로 되돌려도 화면이 죽지 않게.
  */
 export function resolveTile(args: {
   characters: CharactersManifest | null | undefined;
   placeholders: PlaceholderManifest | null | undefined;
-  charId: string | null | undefined;
+  units?: UnitsManifest | null | undefined;
+  ref: CharRef | string | null | undefined;
   playerId: string | null | undefined;
   atlas: string;
   base?: string;
-}): { tile: TileRef; kind: "character" | "placeholder" } | null {
+}): { tile: TileRef; kind: "character" | "unit" | "placeholder" } | null {
   const base = args.base ?? CHARS_BASE;
-  const c = characterTile(args.characters, args.charId, args.atlas, base);
-  if (c) return { tile: c, kind: "character" };
+  const ref: CharRef | null =
+    typeof args.ref === "string"
+      ? { axis: "characters", id: args.ref }
+      : args.ref && typeof args.ref === "object" && typeof args.ref.id === "string"
+        ? args.ref
+        : null;
+
+  if (ref?.axis === "units") {
+    const u = unitTile(args.units, ref.id, args.atlas, base);
+    if (u) return { tile: u, kind: "unit" };
+  } else if (ref) {
+    const c = characterTile(args.characters, ref.id, args.atlas, base);
+    if (c) return { tile: c, kind: "character" };
+  }
   const p = placeholderTile(args.placeholders, args.playerId, args.atlas, base);
   if (p) return { tile: p, kind: "placeholder" };
   return null;

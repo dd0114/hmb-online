@@ -8,6 +8,16 @@
   vertical-align: middle;
 }
 
+/*
+ * 불투명 다크 배경 위에 그려진 얼굴(#207 `iconBackground: "opaque-dark"`).
+ * 원형으로 자르면 배경을 전제로 번진 글로우 링·수염선이 잘려 나간다 → 라운드 사각으로 둔다.
+ * 배경 틴트도 뺀다(이미 아트가 배경을 갖고 있어 이중으로 어두워진다).
+ */
+.opaqueBg {
+  border-radius: 18%;
+  background-color: transparent;
+}
+
 /* 에셋이 없을 때의 CSS 폴백 — 등급색 링 + 이니셜. 외부 요청 0. */
 .fallback {
   display: inline-flex;

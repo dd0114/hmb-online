@@ -86,13 +86,20 @@ test("도감: 전 등급 선수에 캐릭터 얼굴이 붙는다(B안 — 폴백
   await page.screenshot({ path: `${SHOTS}char-skin-codex.png`, fullPage: true });
 });
 
-test("에셋 스테이징이 실제로 서빙된다(/chars 3파일)", async ({ page }) => {
-  for (const path of ["/chars/manifest.json", "/chars/characters/manifest.json", "/chars/player-chars.json"]) {
+test("에셋 스테이징이 실제로 서빙된다(/chars 4파일)", async ({ page }) => {
+  for (const path of [
+    "/chars/manifest.json",
+    "/chars/characters/manifest.json",
+    "/chars/units/manifest.json",
+    "/chars/player-chars.json",
+  ]) {
     const res = await page.request.get(path);
     expect(res.status(), path).toBe(200);
   }
+  // #207 v2 매핑 — 카탈로그 180 중 177명(아트 미입고 LEGEND 3명은 의도적 미매핑).
   const mapping = await (await page.request.get("/chars/player-chars.json")).json();
-  expect(Object.keys(mapping.players)).toHaveLength(172);
+  expect(Object.keys(mapping.players)).toHaveLength(177);
+  expect(mapping.players.P173).toEqual({ axis: "units", id: "bonaldo" });
 });
 
 test("경기장: web 이 코어를 직접 마운트해 스킨 캐릭터 토큰으로 그린다(S3)", async ({ page }) => {
@@ -121,7 +128,12 @@ test("경기장: web 이 코어를 직접 마운트해 스킨 캐릭터 토큰�
   // 리매핑 id 가 실제 스킨 매핑에 있어야 스킨이 붙는다(no-op 함정 방지 — 원래 계약 유지).
   const mapping = await (await page.request.get("/chars/player-chars.json")).json();
   const logIds = [...ids.values()];
-  expect(logIds.filter((id) => mapping.players[id]).length, "로그 선수 ↔ 스킨 매핑 교집합").toBe(logIds.length);
+  // #207: 경기장은 `characters` 축만 그린다(units 축 = 팀색 원). 그냥 "매핑에 있나"만 보면
+  // units 축 선수도 truthy 라 통과해 버리고, 정작 캔버스엔 스킨이 안 붙는다 → 축까지 본다.
+  expect(
+    logIds.filter((id) => mapping.players[id]?.axis === "characters").length,
+    "로그 선수 ↔ 경기장(characters 축) 스킨 매핑 교집합",
+  ).toBe(logIds.length);
   // 등번호가 1~11 로 나와야 한다(안 그러면 토큰에 선수 id 가 찍힘 — 실화면 확인).
   const nums = logIdsPreview(jerseyNumbers(matchLog));
   expect(nums.every((x) => /^([1-9]|1[01])$/.test(x)), `등번호 1~11: ${nums.join(",")}`).toBe(true);

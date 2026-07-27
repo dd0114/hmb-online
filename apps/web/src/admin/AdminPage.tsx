@@ -13,7 +13,12 @@ import {
   needsLargeConfirm,
   validateGrant,
 } from "./admin-logic";
+import { AdminUnitsSection } from "./AdminUnitsSection";
 import styles from "./AdminPage.module.css";
+import u from "./AdminUnits.module.css";
+
+/** 운영자 페이지의 섹션 — 유저 운영(기존) / 유닛 카탈로그(#207 웨이브2-C). */
+export type AdminTab = "users" | "units";
 
 /** 검색 입력 → 질의 반영 지연(ms). 타이핑마다 요청하지 않기 위한 값. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -37,6 +42,7 @@ function errMessage(err: unknown, fallback: string): string {
 export function AdminPage() {
   const navigate = useNavigate();
 
+  const [tab, setTab] = useState<AdminTab>("users");
   const [q, setQ] = useState("");
   const [term, setTerm] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
@@ -142,6 +148,34 @@ export function AdminPage() {
       <div data-testid="admin-page">
         {error && <ErrorToast message={error} onDismiss={() => setError(null)} />}
 
+        {/* 운영 화면 섹션 전환. 라우트를 늘리지 않고 탭 하나만 추가한다(#207 웨이브2-C). */}
+        <div className={u.tabs} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "users"}
+            className={`${u.tab} ${tab === "users" ? u.tabActive : ""}`}
+            data-testid="admin-tab-users"
+            onClick={() => setTab("users")}
+          >
+            유저 운영
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "units"}
+            className={`${u.tab} ${tab === "units" ? u.tabActive : ""}`}
+            data-testid="admin-tab-units"
+            onClick={() => setTab("units")}
+          >
+            유닛 카탈로그
+          </button>
+        </div>
+
+        {tab === "units" && <AdminUnitsSection />}
+
+        {tab === "users" && (
+          <>
         <section className={styles.section}>
           <label className={styles.searchLabel} htmlFor="admin-search-input">
             유저 검색 (닉네임 / 아이디)
@@ -378,6 +412,8 @@ export function AdminPage() {
               </button>
             </div>
           </Modal>
+        )}
+          </>
         )}
       </div>
     </Layout>

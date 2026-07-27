@@ -10,12 +10,31 @@
  *
  * 아틀라스 선택: 실캡처 A/B(#145)에서 전신 sprites 는 토큰 지름 16~22px 에서 판독 불가였고
  * **얼굴 avatars-64**(축소 렌더)가 확대·축소 양쪽에서 읽혔다. 그 결론을 여기 상수로 박제한다.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ * #207 U-D8 — **경기장은 `characters` 축만 태운다**. 이유가 두 개고 성격이 다르다.
+ *
+ *  1) **의도**: GOLD/SILVER/BRONZE 는 경기장에서 개별 아이콘을 쓰지 않는다(전원 같은 디폴트
+ *     유닛이라 22개 토큰이 전부 같은 얼굴이 되어 판독에 아무 정보도 더하지 않는다).
+ *     스킨 셀이 없는 선수는 뷰어가 **팀색 원(홈 파랑 / 어웨이 빨강)** 으로 그린다 —
+ *     즉 "빼는 것"이 곧 U-D8 이 요구하는 표현이다(뷰어 무변경).
+ *
+ *  2) **제약(갭)**: 페이로드가 `{atlasUrl, tile, byPlayer}` 로 **단일 아틀라스**다. units 축은
+ *     자기 아틀라스(`/chars/units/avatars-64.png`)를 갖기 때문에 characters 축과 한 페이로드에
+ *     담을 수 없다. 그래서 **활성 LEGEND 5종의 실아트가 경기장에는 아직 못 뜬다**(현행과 동일 —
+ *     v1 매핑에도 그들은 없었다). 해소하려면 viewer-core 가 아틀라스별 셀을 받아야 하는데
+ *     `packages/**` 는 QA 도메인이라 여기서 고치지 않는다 → **이슈 레이즈 대상**.
+ *     이 갭은 `viewer-skins.test.ts` 가 계약으로 박제한다(침묵시키지 않는다).
+ * ════════════════════════════════════════════════════════════════════════════
  */
 import { characterTile, type TileRef } from "../common/char-manifest";
-import type { CharAssets } from "../common/char-assets-store";
+import { normalizeCharRef, type CharAssets } from "../common/char-assets-store";
 
 /** 경기장 토큰용 아틀라스 — A/B 실측 결론(얼굴, 64px 소스). */
 export const ARENA_ATLAS = "avatars-64";
+
+/** 경기장 토큰을 그리는 축. 그 밖의 축은 팀색 원으로 떨어진다(U-D8). */
+export const ARENA_AXIS = "characters" as const;
 
 export interface SkinCell {
   col: number;
@@ -76,9 +95,11 @@ export function buildViewerSkins(assets: CharAssets, log?: unknown): ViewerSkins
   let tileSize = 0;
   const byPlayer: Record<string, SkinCell> = {};
 
-  for (const [playerId, charId] of Object.entries(mapping)) {
-    if (!charId) continue;
-    const tile = characterTile(assets.characters, charId, ARENA_ATLAS);
+  for (const [playerId, raw] of Object.entries(mapping)) {
+    const ref = normalizeCharRef(raw);
+    // 축이 다르면(= units) 셀을 만들지 않는다 → 뷰어가 팀색 원으로 그린다(U-D8, 위 주석).
+    if (ref?.axis !== ARENA_AXIS) continue;
+    const tile = characterTile(assets.characters, ref.id, ARENA_ATLAS);
     if (!tile) continue;
     if (atlasUrl === null) {
       atlasUrl = tile.url;
