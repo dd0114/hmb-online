@@ -292,7 +292,7 @@
     "id": "P018",
     "name": "Test Top Keeper",
     "position": "GK",
-    "grade": "LEGEND",
+    "grade": "SILVER",
     "attributes": {
       "technical": 91,
       "mental": 91,
@@ -309,7 +309,7 @@
     "id": "P019",
     "name": "Test Top Defender",
     "position": "DF",
-    "grade": "LEGEND",
+    "grade": "SILVER",
     "attributes": {
       "technical": 92,
       "mental": 92,
@@ -326,7 +326,7 @@
     "id": "P020",
     "name": "Test Top Midfielder",
     "position": "MF",
-    "grade": "LEGEND",
+    "grade": "SILVER",
     "attributes": {
       "technical": 93,
       "mental": 93,
@@ -343,7 +343,7 @@
     "id": "P021",
     "name": "Test Top Forward",
     "position": "FW",
-    "grade": "LEGEND",
+    "grade": "SILVER",
     "attributes": {
       "technical": 94,
       "mental": 94,

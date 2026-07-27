@@ -1,4 +1,4 @@
--- #209 스타터/온보딩 개편. additive only — V1~V13 은 손대지 않는다(체크섬 불변).
+-- #209 스타터/온보딩 개편. additive only — V1~V16 은 손대지 않는다(체크섬 불변).
 --
 -- 1) users.tutorial_done: 온보딩 튜토리얼 완료 플래그.
 --    지금까지 완료 여부는 **클라 localStorage 전용**이었고(web tutorial-storage.ts), 서버는

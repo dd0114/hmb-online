@@ -74,7 +74,7 @@ public class OnboardingService {
      */
     public Optional<CatalogPlayer> starterGrant(String userId) {
         return jdbcClient.sql("""
-                        SELECT p.id, p.name, p.position, p.grade, p.attributes_json,
+                        SELECT p.id, p.name, p.position, p.grade, p.attributes_json, p.active,
                                COALESCE(up.count, 0) AS owned_count
                         FROM starter_grants g
                         JOIN players p ON p.id = g.player_id
@@ -89,7 +89,10 @@ public class OnboardingService {
                         rs.getString("grade"),
                         parseAttributes(rs.getString("attributes_json")),
                         rs.getInt("owned_count") > 0,
-                        rs.getInt("owned_count")))
+                        rs.getInt("owned_count"),
+                        // #207 additive — 지급된 유닛이 그 사이 비활성화됐을 수도 있다(운영이 끌 수 있다).
+                        // 연출은 지급 "사실"을 보여주는 것이므로 숨기지 않되, 상태는 정직하게 싣는다.
+                        rs.getInt("active") == 1))
                 .optional();
     }
 

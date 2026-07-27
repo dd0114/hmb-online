@@ -93,6 +93,7 @@ class AdminUnitActiveFilterTest extends ApiTestBase {
                 assertThat(gradeOf(id)).as(id + " — 비활성 등급이 뽑혔다").isIn("BRONZE", "SILVER");
             }
             grant(token, 3000);
+            grantGems(token, 3000);   // #212 이후 10연차 결제 재화는 젬이다(위 grantGems javadoc)
         }
     }
 
@@ -248,6 +249,18 @@ class AdminUnitActiveFilterTest extends ApiTestBase {
     }
 
     /** 뽑기 자금 보충 — admin 지급 경로를 그대로 쓴다(테스트 전용 뒷문을 만들지 않는다). */
+    /**
+     * 테스트 자금 보충. ⚠️ #212 가 뽑기 결제 재화를 <b>젬</b>으로 바꾸면서(economy.gacha.currency=GEM)
+     * 포인트만 넣던 이 헬퍼로는 3회차 10연차에서 잔액이 말라 400(INSUFFICIENT_GEMS)이 났다
+     * (이 테스트는 등급 재분배를 보는 자리지 자금을 보는 자리가 아니다). 젬도 같이 채운다.
+     */
+    private void grantGems(String userToken, long amount) {
+        String userId = jdbcClient.sql("SELECT user_id FROM sessions WHERE token = ?")
+                .param(userToken).query(String.class).single();
+        jdbcClient.sql("UPDATE wallets SET gems = gems + ? WHERE user_id = ?")
+                .params(amount, userId).update();
+    }
+
     private void grant(String userToken, long amount) {
         String userId = jdbcClient.sql("""
                         SELECT user_id FROM sessions WHERE token = ?

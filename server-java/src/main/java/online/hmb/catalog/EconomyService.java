@@ -158,9 +158,11 @@ public class EconomyService {
 
     private final ObjectMapper objectMapper;
     private final String economyFile;
+    /** null = override 개념 없음(순수 로더). 스프링 경로에서는 항상 경로가 들어온다. */
     private final String overrideFile;
     private volatile Snapshot snapshot;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public EconomyService(ObjectMapper objectMapper,
                           @Value("${hmb.data.economy-file}") String economyFile,
                           @Value("${hmb.data.economy-override-file:}") String overrideFile,
@@ -175,6 +177,20 @@ public class EconomyService {
                 ? defaultOverridePath(dbPath)
                 : overrideFile;
         // 부팅은 관대하게(strict=false) — 깨진 override 로 서버가 못 뜨는 상황을 만들지 않는다.
+        this.snapshot = loadSnapshot(false);
+    }
+
+    /**
+     * <b>순수 로더</b>(스프링 밖) — 파일 하나를 그대로 읽는다. override 개념이 없다.
+     *
+     * <p>구파일 폴백 계약({@code EconomyLegacyFallbackTest})처럼 "이 JSON 이 어떻게 해석되는가"만
+     * 보는 자리를 위해 남긴다. 운영 경로(무배포 교체)는 override 를 아는 위 생성자만 쓴다 —
+     * 여기로 만든 인스턴스에 {@link #reload()} 를 걸면 같은 파일을 다시 읽을 뿐이다.
+     */
+    public EconomyService(ObjectMapper objectMapper, String economyFile) {
+        this.objectMapper = objectMapper;
+        this.economyFile = economyFile;
+        this.overrideFile = null;
         this.snapshot = loadSnapshot(false);
     }
 
@@ -212,8 +228,8 @@ public class EconomyService {
      * 그래서 그때는 실패로 알리고(400) 직전 스냅샷을 유지한다.
      */
     private Snapshot loadSnapshot(boolean strict) {
-        File override = new File(overrideFile);
-        if (override.exists()) {
+        File override = overrideFile == null ? null : new File(overrideFile);
+        if (override != null && override.exists()) {
             Optional<Economy> loaded = load(objectMapper, override.getPath());
             if (loaded.isPresent()) {
                 return new Snapshot(loaded, Source.OVERRIDE, override.getAbsolutePath(), Instant.now().toString());

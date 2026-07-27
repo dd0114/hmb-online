@@ -1,4 +1,4 @@
--- #209 무배포 운영(B안) — admin 운영 액션의 감사 원장. additive only(V1~V14 무변경).
+-- #209 무배포 운영(B안) — admin 운영 액션의 감사 원장. additive only(V1~V17 무변경).
 --
 -- 왜 admin_audit(V5)을 안 쓰나: 그 테이블은 **유저를 대상으로 한** 액션 전용이다
 --   (target_user_id NOT NULL REFERENCES users). economy 리로드·설정 교체는 대상이 유저가 아니라

@@ -125,9 +125,14 @@ async function mockApi(page: Page): Promise<MockState> {
   return st;
 }
 
+/**
+ * 운영 화면 진입 — #207 이 admin 을 탭 구조로 바꿨다(유저 운영 / 유닛 카탈로그 / 스타터 지급).
+ * economy 패널은 그 세 번째 탭이므로 **탭을 눌러 들어가는 동선**이 실제 사용 경로다.
+ */
 async function openAdmin(page: Page) {
   await page.addInitScript(() => window.localStorage.setItem("hmb.auth.token", "tok_admin"));
   await page.goto("/admin");
+  await page.getByTestId("admin-tab-economy").click();
   await expect(page.getByTestId("admin-economy-panel")).toBeVisible();
 }
 

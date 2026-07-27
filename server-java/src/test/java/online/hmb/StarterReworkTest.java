@@ -21,9 +21,14 @@ import org.springframework.test.context.DynamicPropertySource;
 /**
  * #209 스타터/온보딩 개편 — AC1(가입 지급 = 최상위 후보 중 1장 + 기본팩) · AC2(튜토리얼 완료 → 덱 지급, 멱등).
  *
- * <p>픽스처 economy: starterPack = P001..P014(기본), starterTop.pool = P018..P021(최상위 4종, 전원 LEGEND).
+ * <p>픽스처 economy: starterPack = P001..P014(기본), starterTop.pool = P018..P021.
  * pool 을 기존 픽스처(P015~P017)와 겹치지 않게 새로 넣은 이유는, 다른 테스트가 "P015/P016/P017 은
  * 미보유"를 전제로 하기 때문이다 — 최상위 지급이 그 전제를 흔들면 안 된다.
+ *
+ * <p>⚠️ 픽스처의 pool 4명은 <b>일부러 SILVER</b>다. 서버 지급 로직은 등급을 보지 않고(목록이 곧
+ * 계약이다), 이 픽스처에 상위 등급을 더하면 <b>#207 의 등급 축 테스트들이 깨진다</b> — 그쪽은
+ * "이 픽스처의 상위 등급은 P016(LEGEND)·P017(DIA) 뿐"을 전제로 전량 비활성/유일성을 단정한다.
+ * "최상위여야 한다"는 계약은 실데이터를 보는 {@code data/players/data.test.ts} 가 지킨다.
  */
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class StarterReworkTest extends ApiTestBase {
@@ -67,7 +72,7 @@ class StarterReworkTest extends ApiTestBase {
         assertThat((Boolean) grant.getBody().get("granted")).isTrue();
         Map<?, ?> player = (Map<?, ?>) grant.getBody().get("player");
         assertThat(player.get("id")).isEqualTo(grantedPlayerId);
-        assertThat(player.get("grade")).isEqualTo("LEGEND");
+        assertThat(player.get("grade")).isEqualTo("SILVER");   // 픽스처 등급(위 주석) — 등급 계약은 data 테스트
         assertThat(player.get("name")).isNotNull();
         assertThat(player.get("position")).isNotNull();
     }

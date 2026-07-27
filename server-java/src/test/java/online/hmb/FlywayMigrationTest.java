@@ -48,8 +48,6 @@ class FlywayMigrationTest {
             //   users.tutorial_done 은 컬럼 추가라 목록 불변
             "starter_grants",
             // V18 무배포 운영(1) — #209 B안: admin 운영 액션 감사 원장(성공·실패 모두)
-            "admin_ops_audit",
-            // V15 무배포 운영(1) — #209 B안: admin 운영 액션 감사 원장(성공·실패 모두)
             "admin_ops_audit"
     );
 
