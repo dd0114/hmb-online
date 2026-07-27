@@ -29,6 +29,23 @@ public class MatchAbandonProperties {
     private long stuckGraceMs = 300_000;
 
     /**
+     * 생성 단계(GEN1/GEN2)가 "멈췄다"고 보는 유예(ms) — 기준은 그 매치 잡의 마지막 갱신 시각
+     * (없으면 매치 생성 시각).
+     *
+     * <p>왜 별도 값인가(독립검증 MAJOR-1): 원래는 "GEN* 은 {@code JobLeaseSweeper} 가
+     * {@code ai-job-timeout-sec} 안에 FAILED 로 떨어뜨리니 탈출구가 필요 없다"고 봤는데, 그 스위퍼는
+     * <b>미완 잡이 있을 때만</b> 잡는다({@code timedOutGenMatches} 의 {@code status != 'done'}).
+     * 잡은 전부 done 인데 후속 전이가 커밋되기 전에 프로세스가 죽으면(재배포·OOM) 매치는 GEN* 에
+     * {@code phase_ends_at IS NULL} 로 남아 <b>어느 스위퍼에도 걸리지 않고</b>, retry 는 FAILED 가
+     * 아니라 거부되고, 새 매치는 409 다 — 방치 스윕(12h)까지 계정이 잠긴다.
+     *
+     * <p>{@code ai-job-timeout-sec}(240s)보다 충분히 커야 한다: 정상적으로 잡이 늦는 경우는
+     * JobLeaseSweeper 의 FAILED→retry 경로가 먼저 처리해야 하고, 이 값은 <b>그 경로조차 못 밟는
+     * 사고</b>만 잡는 마지막 창이어야 한다(정상 GEN2 는 0.3초라 근처도 못 간다).
+     */
+    private long genStuckMs = 900_000;
+
+    /**
      * 비터미널 매치를 자동 회수하는 나이(분, created_at 기준). 정상 매치는 브리핑 포함 수십 분 안에
      * 끝나므로 넉넉히 잡는다 — 이건 "정리"가 아니라 <b>락아웃 백스톱</b>이다.
      */
@@ -43,6 +60,14 @@ public class MatchAbandonProperties {
 
     public void setStuckGraceMs(long stuckGraceMs) {
         this.stuckGraceMs = stuckGraceMs;
+    }
+
+    public long getGenStuckMs() {
+        return genStuckMs;
+    }
+
+    public void setGenStuckMs(long genStuckMs) {
+        this.genStuckMs = genStuckMs;
     }
 
     public long getStaleAfterMin() {

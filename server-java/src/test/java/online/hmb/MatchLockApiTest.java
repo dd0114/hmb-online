@@ -158,6 +158,57 @@ class MatchLockApiTest extends MatchTestBase {
     }
 
     /**
+     * 프리셋 적용은 활성 덱 통짜 덮어쓰기다 = PUT /api/deck 과 같은 쓰기.
+     * (독립검증 MAJOR-2: 이 가드가 계약 문서·openapi 에는 있는데 테스트가 없어 뮤테이션이 생존했다.)
+     */
+    @Test
+    void teamPresetApplyIsBlockedOnceTheMatchHasKickedOff() {
+        // 슬롯을 채워 둔다 — 빈 슬롯 404 가 잠금 409 를 가려서 통과하는 거짓 green 을 막는다.
+        ResponseEntity<Map> saved = authPut("/api/presets/team/1", token,
+                Map.of("name", "기본", "formation", "4-4-2",
+                        "starters", startersSnapshot(), "bench", benchSnapshot()),
+                Map.class);
+        assertThat(saved.getStatusCode()).as("프리셋 저장 선행").isEqualTo(HttpStatus.OK);
+
+        String matchId = createMatch(token, null);
+        // 브리핑에서는 열려 있다(덱 편집과 같은 대우).
+        assertThat(authPost("/api/presets/team/1/apply", token, Map.of(), Map.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+
+        forceState(matchId, "FIRST_HALF");
+        ResponseEntity<Map> res = authPost("/api/presets/team/1/apply", token, Map.of(), Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(res.getBody().get("code")).isEqualTo("MATCH_IN_PROGRESS");
+    }
+
+    /**
+     * 잠금 이전 계정에는 미완 매치가 여럿 남아 있을 수 있다(V19 가 정리하지만 레이스·부분 롤백을
+     * 가정한다). 그때 <b>어느 매치로 되돌릴지</b>가 재입장의 전부다 — 유저가 실제로 "안에 있는"
+     * 매치(=이미 킥오프한 쪽)를 골라야 한다. 생성 시각만 보면 나중에 만든 브리핑이 이긴다.
+     * (독립검증 MINOR-2: 이 우선순위를 뒤집어도 죽는 테스트가 없었다.)
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void activeMatchPrefersTheKickedOffMatchOverANewerBriefing() {
+        String live = createMatch(token, null);
+        forceState(live, "FIRST_HALF");
+        // 잠금을 우회해 직접 두 번째(더 최신) 브리핑 행을 만든다 — 레거시 계정 모양의 재현.
+        jdbcClient.sql("""
+                        INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
+                                            user_deck_json, mode, created_at)
+                        SELECT 'M_LEGACY_BRIEF', user_id, bot_id, 'BRIEFING', seed, engine_version,
+                               user_deck_json, mode, ?
+                        FROM matches WHERE id = ?
+                        """)
+                .params(java.time.Instant.now().plusSeconds(60).toString(), live)
+                .update();
+
+        Map<String, Object> match = (Map<String, Object>) activeMatch().get("match");
+        assertThat(match.get("id")).isEqualTo(live);
+        assertThat(activeMatch().get("locked")).isEqualTo(true);
+    }
+
+    /**
      * <b>과잉 잠금 회귀 가드</b>: 브리핑 중 덱 편집은 킥오프 재캡처(AC-B2)가 명시적으로 지원하는
      * 기존 기능이다. 여기까지 잠그면 "브리핑에서 라인업을 고친다"가 통째로 죽는다.
      */
@@ -221,6 +272,21 @@ class MatchLockApiTest extends MatchTestBase {
         ResponseEntity<Map> res = authPost("/api/matches", otherToken, Map.of(), Map.class);
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         return (String) res.getBody().get("id");
+    }
+
+    /** 팀 프리셋 스냅샷(선발 11) — 덱과 같은 로스터라 apply 가 검증을 통과한다. */
+    private static List<Map<String, Object>> startersSnapshot() {
+        List<Map<String, Object>> out = new ArrayList<>();
+        out.add(Map.of("playerId", "P001", "slotIndex", 0));
+        for (int i = 2; i <= 11; i++) {
+            out.add(Map.of("playerId", String.format("P%03d", i), "slotIndex", i - 1));
+        }
+        return out;
+    }
+
+    private static List<Map<String, Object>> benchSnapshot() {
+        return List.of(Map.of("playerId", "P012", "slotIndex", 0),
+                Map.of("playerId", "P013", "slotIndex", 1));
     }
 
     private static List<Map<String, Object>> defaultSlots() {

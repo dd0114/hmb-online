@@ -33,6 +33,7 @@ import org.springframework.test.context.DynamicPropertySource;
 class MatchAbandonTest extends MatchTestBase {
 
     private static final long STUCK_GRACE_MS = 300_000;
+    private static final long GEN_STUCK_MS = 900_000;
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
@@ -41,6 +42,7 @@ class MatchAbandonTest extends MatchTestBase {
         registry.add("hmb.match.abandon.sweep-interval-ms", () -> "3600000");
         registry.add("hmb.match.clock.sweep-interval-ms", () -> "3600000");
         registry.add("hmb.match.abandon.stuck-grace-ms", () -> String.valueOf(STUCK_GRACE_MS));
+        registry.add("hmb.match.abandon.gen-stuck-ms", () -> String.valueOf(GEN_STUCK_MS));
         registry.add("hmb.match.abandon.stale-after-min", () -> "720");
     }
 
@@ -100,6 +102,39 @@ class MatchAbandonTest extends MatchTestBase {
 
         assertThat(abandon(matchId).getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(matchState(matchId)).isEqualTo("ABANDONED");
+    }
+
+    /**
+     * <b>독립검증 MAJOR-1 회귀 가드</b>: 잡이 <b>전부 done</b> 인데 후속 전이가 커밋되기 전에
+     * 프로세스가 죽으면 매치는 GEN* 에 {@code phase_ends_at IS NULL} 로 남는다. 이 조합은
+     * {@code JobLeaseSweeper}(미완 잡만 본다)·시계 스위퍼(창이 없다)·{@code retry}(FAILED 가 아니다)
+     * 어디에도 걸리지 않아, 원래는 방치 스윕(12h)까지 계정이 통째로 잠겼다.
+     */
+    @Test
+    void abandonOpensWhenGenerationIsStuckWithNoOutstandingJobs() {
+        String matchId = createMatch(token, null);
+        forceState(matchId, "GEN1");
+        // 잡은 전부 done — 어떤 스위퍼도 이 매치를 집어가지 않는다.
+        insertJob(matchId, "J_GEN_DONE", "done", Instant.now().minusMillis(GEN_STUCK_MS + 60_000));
+
+        // 다른 복구 경로가 전부 닫혀 있다는 것부터 박제한다(그래서 포기가 유일한 탈출구다).
+        assertThat(authPost("/api/matches/" + matchId + "/retry", token, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(lockService.sweepStale()).as("방치 스윕은 아직 12시간이 안 됐다").isZero();
+
+        assertThat(abandon(matchId).getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(matchState(matchId)).isEqualTo("ABANDONED");
+    }
+
+    /** 정상 생성 중(잡이 방금 움직였다)에는 닫혀 있어야 한다 — 열리면 하프타임 리롤 창이 된다. */
+    @Test
+    void abandonStaysClosedWhileGenerationIsProgressing() {
+        String matchId = createMatch(token, null);
+        forceState(matchId, "GEN2");
+        insertJob(matchId, "J_GEN_FRESH", "done", Instant.now().minusSeconds(5));
+
+        assertThat(abandon(matchId).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(matchState(matchId)).isEqualTo("GEN2");
     }
 
     /** 자동 백스톱 — 유저가 아예 안 돌아와도 계정이 영원히 잠기지는 않는다. */
@@ -208,6 +243,16 @@ class MatchAbandonTest extends MatchTestBase {
                 Map.of("phase", "pre", "scope", "team", "text", "x"), Map.class);
         assertThat(prompt.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(matchState(matchId)).isEqualTo("ABANDONED");
+    }
+
+    private void insertJob(String matchId, String jobId, String status, Instant updatedAt) {
+        jdbcClient.sql("""
+                        INSERT INTO ai_jobs(id, match_id, side, half, status, context_json,
+                                            created_at, updated_at)
+                        VALUES (?, ?, 'home', 1, ?, '{}', ?, ?)
+                        """)
+                .params(jobId, matchId, status, updatedAt.toString(), updatedAt.toString())
+                .update();
     }
 
     private void setPhaseEndsAt(String matchId, Instant instant) {

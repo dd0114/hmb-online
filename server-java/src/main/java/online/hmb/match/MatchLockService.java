@@ -121,10 +121,13 @@ public class MatchLockService {
      * 리롤까지 된다). 열어주는 경우는 셋뿐이고 전부 "유저가 결과를 아직 보지 못했거나, 시스템이 멈췄다":
      * <ol>
      *   <li>{@code BRIEFING} — 킥오프 전. 재생성해도 얻는 정보가 없다.</li>
-     *   <li>{@code FAILED} — 생성 자체가 실패해 로그가 없다. GEN1/GEN2 는 {@code JobLeaseSweeper} 가
-     *       {@code ai-job-timeout-sec} 안에 여기로 떨어뜨리므로 별도 경로가 필요 없다.</li>
+     *   <li>{@code FAILED} — 생성 자체가 실패해 로그가 없다.</li>
      *   <li><b>멈춘 라이브</b> — {@code phase_ends_at} 가 {@code stuck-grace-ms} 넘게 지났는데도 상태가
      *       그대로. 시계·스위퍼가 죽었다는 뜻이라 이건 플레이가 아니라 사고다.</li>
+     *   <li><b>멈춘 생성</b> — GEN1/GEN2 가 {@code gen-stuck-ms} 넘게 아무 진전이 없다
+     *       ({@link #isGenStuck}). 원래는 {@code JobLeaseSweeper} 가 다 잡는다고 봤지만 그건
+     *       <b>미완 잡이 있을 때만</b>이라, 잡이 전부 done 인데 전이가 커밋되지 않은 사고는
+     *       어느 스위퍼에도 걸리지 않았다(독립검증 MAJOR-1).</li>
      * </ol>
      */
     public boolean abandonable(MatchService.MatchRow row) {
@@ -134,7 +137,36 @@ public class MatchLockService {
         if (MatchService.S_BRIEFING.equals(row.state()) || MatchService.S_FAILED.equals(row.state())) {
             return true;
         }
-        return isClockStuck(row);
+        return isClockStuck(row) || isGenStuck(row);
+    }
+
+    /**
+     * 생성 단계가 멈췄나. 기준 시각은 <b>그 매치 잡의 마지막 갱신</b>(없으면 매치 생성 시각)이다 —
+     * {@code matches} 에 "이 상태로 들어온 시각" 컬럼이 없고, 잡 타임스탬프가 곧 "생성이 마지막으로
+     * 움직인 때"라 마이그레이션 없이 정확한 앵커가 된다.
+     *
+     * <p>정상 GEN2 는 0.3초, 정상 GEN1 은 6~14초(대변경이어도 1~2분)라 기본 15분 창에는 닿지 않는다.
+     */
+    private boolean isGenStuck(MatchService.MatchRow row) {
+        if (!MatchService.S_GEN1.equals(row.state()) && !MatchService.S_GEN2.equals(row.state())) {
+            return false;
+        }
+        String lastJobTouch = jdbcClient.sql("SELECT MAX(updated_at) FROM ai_jobs WHERE match_id = ?")
+                .param(row.id())
+                .query(String.class)
+                .optional()
+                .orElse(null);
+        String anchor = lastJobTouch != null ? lastJobTouch : row.createdAt();
+        if (anchor == null) {
+            return false;
+        }
+        try {
+            return Instant.now(clock).isAfter(Instant.parse(anchor).plusMillis(props.getGenStuckMs()));
+        } catch (RuntimeException e) {
+            // 앵커를 못 읽으면 열지 않는다 — 방치 스윕이 백스톱이다(리롤 창을 실수로 여는 것보다 낫다).
+            log.warn("gen-stuck anchor 파싱 실패 (match={}, anchor={})", row.id(), anchor, e);
+            return false;
+        }
     }
 
     private boolean isClockStuck(MatchService.MatchRow row) {

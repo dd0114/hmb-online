@@ -25,7 +25,7 @@ const json = (body: unknown, status = 200) => ({
 
 const MATCH_ID = "M_LOCKED_1";
 
-type Scenario = "none" | "briefing" | "live" | "failed";
+type Scenario = "none" | "briefing" | "live" | "failed" | "genStuck";
 
 interface MockState {
   scenario: Scenario;
@@ -39,6 +39,13 @@ function activeMatchBody(st: MockState) {
       return { match: { id: MATCH_ID, state: "BRIEFING", createdAt: "2026-07-27T09:00:00Z" }, locked: false, abandonable: true };
     case "live":
       return { match: { id: MATCH_ID, state: "FIRST_HALF", createdAt: "2026-07-27T09:00:00Z" }, locked: true, abandonable: false };
+    case "genStuck":
+      // 생성이 멈춘 사고 — 서버가 abandonable 을 연다(잡은 done 인데 전이가 커밋 안 됨).
+      return {
+        match: { id: MATCH_ID, state: "GEN1", createdAt: "2026-07-27T09:00:00Z" },
+        locked: true,
+        abandonable: true,
+      };
     case "failed":
       return {
         match: { id: MATCH_ID, state: "FAILED", failReason: "ai-job timeout (240s)", createdAt: "2026-07-27T09:00:00Z" },
@@ -75,6 +82,21 @@ async function mockApi(page: Page, scenario: Scenario): Promise<MockState> {
     route.fulfill(json({ code: "NOT_FOUND", message: "활성 덱이 없습니다" }, 404)),
   );
   await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json([])));
+  // 잠금 전수 검사가 도는 메타 화면들의 최소 응답. catch-all 의 `{}` 를 그대로 받으면 페이지가
+  // 렌더 중 터져 트리가 죽고, **게이트가 다시 렌더될 기회 자체가 사라진다**(= 리다이렉트 실패가
+  // 잠금 구멍처럼 보인다). 화면이 정상적으로 살아 있는 상태에서 잠금을 봐야 의미가 있다.
+  await page.route((url) => url.pathname === "/api/trade", (route) =>
+    route.fulfill(json({ slots: [], waitSeconds: 0, wallet: { points: 1000, gems: 0 } })),
+  );
+  await page.route((url) => url.pathname === "/api/logs/matches", (route) => route.fulfill(json([])));
+  await page.route((url) => url.pathname === "/api/logs/trades", (route) => route.fulfill(json([])));
+  await page.route((url) => url.pathname === "/api/rankings", (route) => route.fulfill(json([])));
+  await page.route((url) => url.pathname === "/api/growth/dice", (route) =>
+    route.fulfill(json({ normal: 0, cash: 0 })),
+  );
+  await page.route((url) => url.pathname === "/api/league", (route) =>
+    route.fulfill(json({ season: null })),
+  );
 
   // 매치 상세 — 리다이렉트 도착지가 실제로 그 매치를 그린다는 걸 보기 위해.
   await page.route((url) => url.pathname === `/api/matches/${MATCH_ID}`, (route) =>
@@ -130,11 +152,12 @@ test.describe("#217 AC1 — 진행 중 경기로 되돌아온다", () => {
     await page.reload();
     await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
 
-    // 메타 화면을 직접 노려도 마찬가지.
-    await page.goto("/deck");
-    await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
-    await page.goto("/shop");
-    await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
+    // 메타 화면을 **전수로** 노려도 마찬가지. 라우트를 손으로 감싸는 구조라(App.tsx) 하나를
+    // 빠뜨려도 유닛 테스트는 green 이다 — 구멍은 여기서만 잡힌다.
+    for (const route of ["/deck", "/shop", "/growth", "/codex", "/trade", "/logs", "/league"]) {
+      await page.goto(route);
+      await expect(page, `${route} 가 잠기지 않았다`).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
+    }
   });
 
   test("재로그인 직후 루트로 들어와도 경기로 간다", async ({ page }) => {
@@ -166,6 +189,44 @@ test.describe("#217 AC2 — 경기 중 새 매치 생성 차단", () => {
 
     await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
     expect(st.createAttempts, "생성을 실제로 시도했고 409 를 받았다").toBe(1);
+  });
+
+  test("리그 [다음 경기]도 409 를 막다른 토스트가 아니라 이어가기로 처리한다", async ({ page }) => {
+    const st = await mockApi(page, "briefing");
+    await page.route((url) => url.pathname === "/api/league", (route) =>
+      route.fulfill(
+        json({
+          season: {
+            id: "S1", seasonNo: 1, state: "ACTIVE",
+            teams: [{ teamId: "USER", name: "내 팀", persona: "", power: 70, isUser: true }],
+            standings: [], fixtures: [],
+            nextUserFixture: {
+              id: "F1", round: 1, homeTeam: "USER", awayTeam: "B1",
+              isUser: true, state: "SCHEDULED", scoreHome: null, scoreAway: null, matchId: null,
+            },
+            seasonReward: null,
+          },
+        }),
+      ),
+    );
+    await page.route((url) => url.pathname === "/api/league/next-match", (route) =>
+      route.fulfill(
+        json(
+          {
+            code: "MATCH_IN_PROGRESS",
+            message: "진행 중인 경기가 있습니다",
+            detail: { matchId: MATCH_ID, state: "BRIEFING", action: "createMatch" },
+          },
+          409,
+        ),
+      ),
+    );
+
+    await page.goto("/league");
+    await expect(page).toHaveURL(/\/league$/); // 브리핑은 강제 이동 대상이 아니라 여기 도달한다
+    await page.getByTestId("next-match").click();
+    await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
+    expect(st.abandonCalls).toBe(0);
   });
 
   test("이어하기 버튼이 진행 중 경기로 보낸다", async ({ page }) => {
@@ -200,5 +261,40 @@ test.describe("#217 AC3 — 영구 잠금 금지", () => {
     await page.goto("/match/" + MATCH_ID);
     // 강제 이동 대상이라 로비 카드 자체가 없다.
     await expect(page.getByTestId("abandon-match")).toHaveCount(0);
+  });
+});
+
+test.describe("#217 MAJOR-1 — 멈춘 생성 화면에서 빠져나갈 수 있다", () => {
+  test("GEN 대기 스피너에도 포기 버튼이 열리고, 누르면 로비로 나간다", async ({ page }) => {
+    const st = await mockApi(page, "genStuck");
+
+    await page.goto(`/match/${MATCH_ID}`);
+    await expect(page.getByTestId("genwait-panel")).toBeVisible();
+
+    // 이게 없으면 유저는 스피너를 보며 아무 것도 못 한다(로비는 잠겨 있고 retry 는 FAILED 전용).
+    await page.getByTestId("genwait-abandon").click();
+    expect(st.abandonCalls).toBe(1);
+    await expect(page).toHaveURL(/\/lobby$/);
+  });
+
+  test("정상 생성 중에는 그 버튼이 없다 (서버 abandonable 을 그대로 따른다)", async ({ page }) => {
+    const st = await mockApi(page, "live");
+    st.scenario = "live";
+    await page.route((url) => url.pathname === "/api/me/active-match", (route) =>
+      route.fulfill(
+        json({
+          match: { id: MATCH_ID, state: "GEN1", createdAt: "2026-07-27T09:00:00Z" },
+          locked: true,
+          abandonable: false,
+        }),
+      ),
+    );
+    await page.route((url) => url.pathname === `/api/matches/${MATCH_ID}`, (route) =>
+      route.fulfill(json({ id: MATCH_ID, state: "GEN1", createdAt: "2026-07-27T09:00:00Z" })),
+    );
+
+    await page.goto(`/match/${MATCH_ID}`);
+    await expect(page.getByTestId("genwait-panel")).toBeVisible();
+    await expect(page.getByTestId("genwait-abandon")).toHaveCount(0);
   });
 });

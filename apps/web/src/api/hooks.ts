@@ -196,6 +196,11 @@ export function useActiveMatch() {
     queryFn: () => apiFetch<ActiveMatchResponse>("/api/me/active-match"),
     enabled: Boolean(token),
     refetchInterval: (query) => pollIntervalFor(query.state.data?.match?.state),
+    // 이 값은 **화면을 막는 판정**이라 낡으면 안 된다. pollIntervalFor 는 BRIEFING·HALFTIME·FAILED
+    // 에서 폴링을 멈추므로, 캐시가 살아 있는 동안(gcTime) 로비로 이동하면 끝난 경기의 locked:true 로
+    // 한 번 튕길 수 있다. 마운트마다 무조건 다시 묻게 해서 그 창을 없앤다.
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 

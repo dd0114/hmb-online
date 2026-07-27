@@ -6,6 +6,7 @@ import type { LeagueResponseP3, LeagueSeasonReward } from "../api/p3";
 import { ApiError } from "../api/client";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
+import { matchInProgressIdOf } from "../common/match-lock";
 import type { SeasonSummary } from "./league-logic";
 import {
   fixtureScore,
@@ -107,6 +108,15 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
       onSuccess: (res) =>
         navigate(`/match/${res.match.id}`, { state: { leagueRound: res.fixture.round } }),
       onError: (err) => {
+        // #217: "이미 진행 중인 경기가 있다"(409)는 실패가 아니라 **이어가라는 안내**다.
+        // 로비 [연습 경기] 와 같은 처리 — 문구만 띄우면 유저는 이동 링크 없는 막다른 길에 선다.
+        // (/league 는 MatchLockGate 가 locked && !abandonable 일 때만 막으므로 브리핑·사고
+        //  매치에서는 이 화면에 도달할 수 있고, 그때 이 분기가 실제로 탄다.)
+        const resumeId = matchInProgressIdOf(err);
+        if (resumeId) {
+          navigate(`/match/${resumeId}`);
+          return;
+        }
         if (err instanceof ApiError && err.code === "LEAGUE_INVALID") {
           onError(`다음 경기를 시작할 수 없습니다 — ${err.message}`);
         } else {
