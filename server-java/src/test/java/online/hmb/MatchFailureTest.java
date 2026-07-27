@@ -151,7 +151,11 @@ class MatchFailureTest extends MatchTestBase {
                         "SELECT id FROM ai_jobs WHERE match_id = ? AND side = 'home' AND half = 1")
                 .param(matchId).query(String.class).single();
 
-        // attempts(0) < max(3) → queued 복귀
+        // complete 는 **배포된 잡**의 보고다(#193 D2 게이트) — lease 된 상태로 만든 뒤 실패를 보고한다.
+        jdbcClient.sql("UPDATE ai_jobs SET status = 'leased', attempts = 1, worker_id = 'w-fail' WHERE id = ?")
+                .param(jobId).update();
+
+        // attempts(1) < max(3) → queued 복귀
         jobQueue.complete(jobId, false, null, null, "transient error");
         assertThat(jobStatus(jobId)).isEqualTo("queued");
         assertThat(matchState(matchId)).isEqualTo("GEN1");

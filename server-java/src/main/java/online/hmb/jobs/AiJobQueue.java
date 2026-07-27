@@ -49,6 +49,24 @@ public class AiJobQueue {
     }
 
     /**
+     * complete 수용 조건 (#193 D2) — <b>leased</b> 이거나, <b>한 번 이상 배포됐던 queued</b>(attempts&gt;0).
+     *
+     * <p>실제 AI 잡이 lease-sec 을 넘기면 {@link JobLeaseSweeper} 가 잡을 queued 로 되돌린다. 그 뒤
+     * 도착한 결과를 "leased 아님"으로 거부하면 <b>정상 결과가 폐기</b>되고 같은 잡이 무한 재실행되어
+     * ai-job-timeout 에 매치가 FAILED 된다(라이브락). 결과 자체는 유효하므로 수용한다 —
+     * 늦게 온 것이지 틀린 것이 아니다. (근본 예방은 lease-sec &ge; ai-job-timeout-sec, application.yml.)
+     *
+     * <p>attempts=0 인 queued(한 번도 lease 되지 않은 유령 complete)는 계속 409 로 막는다.
+     */
+    public static boolean completable(JobRow job) {
+        return "leased".equals(job.status()) || ("queued".equals(job.status()) && job.attempts() > 0);
+    }
+
+    /** {@link #completable(JobRow)} 의 SQL 술어 — 수용 UPDATE 의 CAS(정확히 1회)에 그대로 쓴다. */
+    private static final String COMPLETABLE_CAS =
+            "(status = 'leased' OR (status = 'queued' AND attempts > 0))";
+
+    /**
      * enqueue — INSERT OR IGNORE(id=promptHash 멱등). 이미 done인 행이면 재사용(AC-Q2).
      * @return 잡 id
      */
@@ -91,9 +109,10 @@ public class AiJobQueue {
      * id 는 (matchId,half,side) 결정 — INSERT OR IGNORE 멱등(재개/재시도 재-enqueue 안전).
      *
      * @param resultJson seed 가 이미 해당 halfSeed 로 교체된 완전한 TacticalInput
+     * @return 잡 id (materialize 행의 결정론 id)
      */
-    public void insertMaterialized(String matchId, String side, int half, String resultJson) {
-        String id = Hashes.sha256Hex("materialized:" + matchId + ":" + half + ":" + side).substring(0, 32);
+    public String insertMaterialized(String matchId, String side, int half, String resultJson) {
+        String id = materializedId(matchId, half, side);
         String now = Instant.now().toString();
         jdbcClient.sql("""
                         INSERT OR IGNORE INTO ai_jobs(id, match_id, side, half, status, context_json,
@@ -102,6 +121,79 @@ public class AiJobQueue {
                         """)
                 .params(id, matchId, side, half,
                         "{\"kind\":\"materialized\"}", resultJson, now, now)
+                .update();
+        return id;
+    }
+
+    /** materialize 행 id — (matchId, half, side) 결정론(멱등 재삽입·supersede 대상 식별). */
+    public static String materializedId(String matchId, int half, String side) {
+        return Hashes.sha256Hex("materialized:" + matchId + ":" + half + ":" + side).substring(0, 32);
+    }
+
+    /**
+     * (match, half, side) 의 <b>유효 잡</b>을 {@code targetId} 하나로 좁힌다 — h2 선행 생성(#193 W2b-B2)
+     * 때문에 <b>GEN 진입 전에 결과가 이미 존재</b>할 수 있고, 그 사이 지시(하프타임 프롬프트)·교체가
+     * 바뀌면 그 결과는 무효다. 무효 행이 남으면 {@code latestDoneResult} 가 그걸 집어 <b>유저의 최신
+     * 입력을 무시한 채</b> 시뮬해 버린다(교체 경로면 로스터-인풋 불일치).
+     *
+     * <p><b>왜 삭제가 아니라 플래그인가</b>(#193 검증 B-2). 예전엔 done 행을 지워서 무효화했는데, 그건
+     * 두 구멍을 남겼다. ① 워커가 물고 있는 행(leased·재큐)은 complete 404 를 피하려고 살려뒀는데,
+     * 그 <b>늦은 complete</b> 가 {@code updated_at} 을 지금으로 밀어 "가장 최근 done" 이 되어버렸다 —
+     * 즉 낡은 결과가 최신 지시를 이겼다(시간은 "유저가 언제 지시했나"가 아니라 "워커가 언제 보고했나"다).
+     * ② done 행을 지우면 promptHash 멱등 캐시도 같이 날아가, 지시를 A→B→A 로 되돌리면 이미 만들어 둔
+     * 결과를 두고 AI 를 다시 태웠다.
+     *
+     * <p>그래서 이제: <b>아무도 안 들고 있고 재사용 가치도 없는 행</b>(한 번도 배포되지 않은
+     * {@code queued}, attempts=0)만 지우고, 나머지(done 캐시 · 워커가 물고 있는 leased/재큐)는
+     * <b>남기되 {@code effective=0}</b> 으로 무효 표시한다. 대상은 {@code effective=1} 로 (재)지정 —
+     * 되돌린 지시가 예전 done 행을 그대로 복권시킨다.
+     *
+     * <p><b>세 문장은 한 트랜잭션이다</b>(#193 최종검증 m-3). "유효 잡 1행"은 세 문장이 <b>전부</b>
+     * 반영된 뒤에만 성립하는 불변식인데, 문장마다 커밋하면 그 중간 상태가 남에게 보인다. 실경로에 창이
+     * 있다: 프롬프트 제출의 <b>즉시 해소</b>와 <b>킥오프</b>가 같은 (match,half,side)를 동시에 해소할 수
+     * 있고, 두 supersede 가 ②(무효화)와 ③(대상 확정) 사이로 서로 끼어들면 각자의 대상이 모두
+     * effective=1 로 남는다 — 그러면 단일 행을 전제하는 {@code latestDoneResult} 가 유저의 최신 지시를
+     * 조용히 버릴 수 있다. 계약 = {@code AiJobSupersedeTxTest}.
+     *
+     * @return 지우거나 무효화한 행 수
+     */
+    public int supersede(String matchId, int half, String side, String targetId) {
+        return txRunner.run(() -> {
+            int removed = jdbcClient.sql("""
+                            DELETE FROM ai_jobs
+                            WHERE match_id = ? AND half = ? AND side = ? AND id <> ?
+                              AND status = 'queued' AND attempts = 0
+                            """)
+                    .params(matchId, half, side, targetId)
+                    .update();
+            int invalidated = jdbcClient.sql("""
+                            UPDATE ai_jobs SET effective = 0
+                            WHERE match_id = ? AND half = ? AND side = ? AND id <> ? AND effective = 1
+                            """)
+                    .params(matchId, half, side, targetId)
+                    .update();
+            jdbcClient.sql("UPDATE ai_jobs SET effective = 1 WHERE id = ? AND effective = 0")
+                    .param(targetId)
+                    .update();
+            return removed + invalidated;
+        });
+    }
+
+    /**
+     * 해당 half 의 미완 잡 타임아웃 시계를 지금으로 리셋한다 — {@code timedOutGenMatches} 는
+     * created_at 을 "현재 pending 사이클 시작"으로 보는데(MatchService.retryCas 주석), h2 선행 생성은
+     * GEN2 진입보다 한 하프 앞서 잡을 만든다. 리셋하지 않으면 GEN2 에 들어서자마자 이미 타임아웃
+     * 자격을 갖춘 잡이 매치를 FAILED 시킨다(유예 0). GEN 진입 시점에만 호출한다.
+     *
+     * @return 리셋한 행 수
+     */
+    public int restartPendingTimeout(String matchId, int half) {
+        String now = Instant.now().toString();
+        return jdbcClient.sql("""
+                        UPDATE ai_jobs SET created_at = ?, updated_at = ?
+                        WHERE match_id = ? AND half = ? AND status != 'done'
+                        """)
+                .params(now, now, matchId, half)
                 .update();
     }
 
@@ -117,25 +209,21 @@ public class AiJobQueue {
                 .optional();
     }
 
-    public List<JobRow> queuedJobs() {
-        return jdbcClient.sql("""
-                        SELECT id, match_id, side, half, status, context_json, result_json, attempts
-                        FROM ai_jobs WHERE status = 'queued' ORDER BY created_at
-                        """)
-                .query((rs, n) -> new JobRow(rs.getString("id"), rs.getString("match_id"),
-                        rs.getString("side"), (Integer) rs.getObject("half"), rs.getString("status"),
-                        rs.getString("context_json"), rs.getString("result_json"), rs.getInt("attempts")))
-                .list();
-    }
-
     /**
      * 잡 1개 lease(가시성 타임아웃) — status=leased, lease_until=now+lease-sec, attempts+1 (LLD §6).
      * W4 long-poll이 이 메서드를 사용. 반환 없으면 큐 비어 있음.
      */
     public Optional<JobRow> lease(String workerId) {
         return txRunner.run(() -> {
-            Optional<String> id = jdbcClient.sql(
-                            "SELECT id FROM ai_jobs WHERE status = 'queued' ORDER BY created_at LIMIT 1")
+            // 우선순위 (#193 D3): 매치 잡(유저가 화면에서 대기) > 배경 A-프리페치(match_id NULL).
+            // 단일 FIFO(ORDER BY created_at)면 매치 생성 시 들어간 프리페치가 킥오프 잡을 앞질러
+            // 워커를 점유해 head-of-line 블로킹이 된다(유저 대기시간이 프리페치 시간만큼 늘어남).
+            // effective=0 (supersede 된 잡)은 배포하지 않는다 — 결과가 쓰이지 않을 잡에 AI 콜을 태우지
+            // 않는다(#193 검증 B-2). 지우지 않고 남기는 이유는 supersede javadoc 참조.
+            Optional<String> id = jdbcClient.sql("""
+                            SELECT id FROM ai_jobs WHERE status = 'queued' AND effective = 1
+                            ORDER BY (match_id IS NULL), created_at LIMIT 1
+                            """)
                     .query(String.class)
                     .optional();
             if (id.isEmpty()) {
@@ -156,17 +244,24 @@ public class AiJobQueue {
     /**
      * 완료 보고 (LLD §6). ok=true → done + Orchestrator.onJobDone.
      * ok=false → attempts<max면 queued 복귀, 아니면 failed + 매치 FAILED 전파.
+     *
+     * <p>모든 상태 UPDATE 는 {@link #COMPLETABLE_CAS} 로 CAS — lease 만료로 재큐된 잡(queued,
+     * attempts&gt;0)의 결과도 수용하되(#193 D2) 중복 complete 는 정확히 1회만 반영한다(done 이 되면
+     * 술어가 더 이상 맞지 않는다).
      */
     public void complete(String jobId, boolean ok, String resultJson, String usageJson, String error) {
         JobRow job = find(jobId)
                 .orElseThrow(() -> new IllegalStateException("잡을 찾을 수 없습니다: " + jobId));
+        if (!"leased".equals(job.status()) && completable(job)) {
+            log.info("job {} complete accepted after lease expiry (status={}, attempts={}) — #193 D2",
+                    jobId, job.status(), job.attempts());
+        }
 
         if (ok) {
             int updated = jdbcClient.sql("""
                             UPDATE ai_jobs SET status = 'done', result_json = ?, usage_json = ?,
                                    error = NULL, updated_at = ?
-                            WHERE id = ? AND status IN ('queued', 'leased')
-                            """)
+                            WHERE id = ? AND """ + COMPLETABLE_CAS)
                     .params(resultJson, usageJson, Instant.now().toString(), jobId)
                     .update();
             if (updated == 1) {
@@ -179,16 +274,14 @@ public class AiJobQueue {
             jdbcClient.sql("""
                             UPDATE ai_jobs SET status = 'queued', error = ?, lease_until = NULL,
                                    worker_id = NULL, updated_at = ?
-                            WHERE id = ? AND status IN ('queued', 'leased')
-                            """)
+                            WHERE id = ? AND """ + COMPLETABLE_CAS)
                     .params(error, Instant.now().toString(), jobId)
                     .update();
             log.warn("job {} failed (attempts={}/{}) — requeued: {}", jobId, job.attempts(), maxAttempts, error);
         } else {
             jdbcClient.sql("""
                             UPDATE ai_jobs SET status = 'failed', error = ?, updated_at = ?
-                            WHERE id = ? AND status IN ('queued', 'leased')
-                            """)
+                            WHERE id = ? AND """ + COMPLETABLE_CAS)
                     .params(error, Instant.now().toString(), jobId)
                     .update();
             if (job.matchId() != null) {
@@ -210,7 +303,11 @@ public class AiJobQueue {
                 .update();
     }
 
-    /** 해당 half의 미완(done 아님) 잡이 있고 cutoff보다 오래된 GEN* 매치 id들. */
+    /**
+     * 해당 half의 미완(done 아님) <b>유효</b> 잡이 있고 cutoff보다 오래된 GEN* 매치 id들.
+     * supersede 된 잡(effective=0)은 매치가 기다리는 대상이 아니므로 타임아웃 근거가 될 수 없다 —
+     * 그걸로 FAILED 시키면 최신 지시 잡이 정상인데도 매치가 죽는다(#193 검증 B-2).
+     */
     public List<String> timedOutGenMatches(String cutoffIso) {
         return jdbcClient.sql("""
                         SELECT DISTINCT m.id FROM matches m
@@ -218,6 +315,7 @@ public class AiJobQueue {
                              AND j.half = CASE m.state WHEN 'GEN1' THEN 1 ELSE 2 END
                         WHERE m.state IN ('GEN1', 'GEN2')
                           AND j.status != 'done'
+                          AND j.effective = 1
                           AND j.created_at < ?
                         """)
                 .param(cutoffIso)

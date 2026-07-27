@@ -1,8 +1,25 @@
 import { describe, it, expect, vi } from "vitest";
-import { claudeCodeExecutor, type ClaudeRunner, type ClaudeRunResult } from "./claude-code.js";
+import { claudeCodeExecutor, resolveEffort, type ClaudeRunner, type ClaudeRunResult } from "./claude-code.js";
 import { makeTacticalInput } from "@hmb/engine";
 import type { ExecutorJob } from "../kinds.js";
-import { makeTeamInputContext } from "../test-fixtures.js";
+import { makeTeamInputContext, makeTeamInputPatchContext } from "../test-fixtures.js";
+
+/** env 를 임시 치환하고 복원(테스트 격리). undefined 값 = 삭제. */
+async function withEnv(vars: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
+  const prev = Object.fromEntries(Object.keys(vars).map((k) => [k, process.env[k]]));
+  try {
+    for (const [k, v] of Object.entries(vars)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    await fn();
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
 
 // claude CLI 러너를 주입해 로그인/키 0 으로 executor 를 검증(구 W2 스위트 → team-input 으로 이관).
 const job: ExecutorJob = {
@@ -31,8 +48,19 @@ describe("claude-code executor (러너 주입)", () => {
     const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: valid }) });
     const out = await claudeCodeExecutor({ model: "haiku", runner }).execute(job);
 
-    expect(last.args).toEqual(["-p", "--output-format", "json", "--model", "haiku", "--json-schema", expect.any(String)]);
-    expect(JSON.parse(last.args[6]!)).toHaveProperty("type", "object"); // TacticalInput JSON Schema
+    // #193: effort 노브 기본 low(사고 토큰 = 지연의 지배 변수) → --effort 가 args 에 포함.
+    expect(last.args).toEqual([
+      "-p",
+      "--output-format",
+      "json",
+      "--model",
+      "haiku",
+      "--effort",
+      "low",
+      "--json-schema",
+      expect.any(String),
+    ]);
+    expect(JSON.parse(last.args[8]!)).toHaveProperty("type", "object"); // TacticalInput JSON Schema
     expect(last.prompt).toContain("풀백 오버랩·와이드"); // 팀 지시
     expect(last.prompt).toContain("H0"); // 로스터 playerId
     expect((out as { players: unknown[] }).players).toHaveLength(11);
@@ -98,6 +126,43 @@ describe("claude-code executor (러너 주입)", () => {
     ]);
   });
 
+  it("AI_EFFORT env 로 교체 — 빈 문자열이면 플래그 생략(세션 기본 사용)", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "high" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(job);
+      expect(last.args).toContain("--effort");
+      expect(last.args[last.args.indexOf("--effort") + 1]).toBe("high");
+    });
+    await withEnv({ AI_EFFORT: "" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(job);
+      expect(last.args).not.toContain("--effort");
+    });
+  });
+
+  it("kind 별 오버라이드: AI_EFFORT_FULL(team-input) · AI_EFFORT_PATCH(team-input-patch)", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    const patchJob: ExecutorJob = {
+      id: "p1",
+      kind: "team-input-patch",
+      context: makeTeamInputPatchContext(),
+    };
+    await withEnv({ AI_EFFORT: "low", AI_EFFORT_FULL: "medium", AI_EFFORT_PATCH: "high" }, async () => {
+      const ex = claudeCodeExecutor({ runner });
+      await ex.execute(job); // team-input → FULL
+      expect(last.args[last.args.indexOf("--effort") + 1]).toBe("medium");
+      await ex.execute(patchJob); // team-input-patch → PATCH
+      expect(last.args[last.args.indexOf("--effort") + 1]).toBe("high");
+    });
+  });
+
+  it("effort 옵션 주입이 env 보다 우선", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "high" }, async () => {
+      await claudeCodeExecutor({ runner, effort: "low" }).execute(job);
+      expect(last.args[last.args.indexOf("--effort") + 1]).toBe("low");
+    });
+  });
+
   it("모델 스왑: AI_MODEL env 로 교체(기본 sonnet)", async () => {
     const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
     const prev = process.env["AI_MODEL"];
@@ -111,5 +176,75 @@ describe("claude-code executor (러너 주입)", () => {
       if (prev === undefined) delete process.env["AI_MODEL"];
       else process.env["AI_MODEL"] = prev;
     }
+  });
+});
+
+/**
+ * 잡별 effortHint (#193 라운드2 라우팅) — Java 가 <b>팀 지시 대변경</b>이라 판단해 그 사이드를
+ * 풀생성으로 돌릴 때, 그 잡에만 `context.effortHint` 를 실어 보낸다(측정 근거: 대변경은 풀 effort
+ * 풀생성 4.75 &gt; 델타 3.13). 나머지 잡은 지금까지대로 env 기본을 쓴다.
+ *
+ * <p>계약(shared 무변경): `effortHint` 는 zod 스키마에 없는 <b>추가 필드</b>다 — 비엄격 object 라
+ * 검증은 통과하고 parse 결과에선 사라지므로, 실행기는 <b>raw context</b>에서 직접 읽는다.
+ */
+describe("claude-code executor — 잡별 effortHint(#193 라우팅)", () => {
+  const withHint = (hint: unknown): ExecutorJob => ({
+    id: "hint-job",
+    kind: "team-input",
+    // Java 가 보내는 원본 JSON 모양(zod parse 를 거치지 않은 raw) — 실제 폴링 경로와 동일.
+    context: { ...makeTeamInputContext(), effortHint: hint },
+  });
+
+  const effortOf = (args: string[]): string | null => {
+    const i = args.indexOf("--effort");
+    return i < 0 ? null : args[i + 1]!;
+  };
+
+  it("effortHint 가 env 보다 우선한다", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low", AI_EFFORT_FULL: "medium" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(withHint("high"));
+      expect(effortOf(last.args)).toBe("high");
+    });
+  });
+
+  it("빈 문자열 effortHint = --effort 생략(세션 기본 effort — 라운드2 근거값)", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(withHint(""));
+      expect(last.args).not.toContain("--effort");
+    });
+  });
+
+  it("effortHint 없는 잡은 기존대로 env 기본", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low" }, async () => {
+      await claudeCodeExecutor({ runner }).execute(job); // effortHint 미첨부
+      expect(effortOf(last.args)).toBe("low");
+    });
+  });
+
+  it("문자열이 아닌 effortHint 는 무시(타입 가드) — env 기본으로 폴백", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low" }, async () => {
+      for (const bad of [42, null, { effort: "high" }, ["high"], true]) {
+        await claudeCodeExecutor({ runner }).execute(withHint(bad));
+        expect(effortOf(last.args)).toBe("low");
+      }
+    });
+  });
+
+  it("context 가 객체가 아니어도 터지지 않는다", async () => {
+    const { runner, last } = fakeRunner({ stdout: envelope({ structured_output: makeTacticalInput("H", "42") }) });
+    await withEnv({ AI_EFFORT: "low" }, async () => {
+      // 프롬프트 빌드는 정상 컨텍스트가 필요하므로 resolveEffort 단독으로 계약을 본다.
+      expect(resolveEffort("team-input", undefined, null)).toBe("low");
+      expect(resolveEffort("team-input", undefined, "not-an-object")).toBe("low");
+      expect(resolveEffort("team-input", undefined, { effortHint: "high" })).toBe("high");
+      // 옵션 주입(프로세스 레벨 강제)은 잡 힌트보다도 우선 — 기존 계약 유지.
+      expect(resolveEffort("team-input", "medium", { effortHint: "high" })).toBe("medium");
+      await claudeCodeExecutor({ runner }).execute(job);
+      expect(effortOf(last.args)).toBe("low");
+    });
   });
 });

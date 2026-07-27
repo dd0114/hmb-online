@@ -20,6 +20,7 @@ import online.hmb.jobs.AiJobQueue;
 import online.hmb.meta.WalletService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -55,6 +56,10 @@ public class MatchOrchestrator {
     private final online.hmb.growth.GrowthService growthService;
     private final MatchClockService clockService;
     private final ObjectMapper objectMapper;
+    /** #193 라운드2 — 지시 델타 라우팅 노브(전부 config, 하드코딩 금지). */
+    private final boolean deltaEnabled;
+    private final int overhaulAxisCount;
+    private final String overhaulEffort;
 
     public MatchOrchestrator(JdbcClient jdbcClient,
                              TxRunner txRunner,
@@ -70,7 +75,10 @@ public class MatchOrchestrator {
                              online.hmb.league.LeagueService leagueService,
                              online.hmb.growth.GrowthService growthService,
                              MatchClockService clockService,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
+                             @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
+                             @Value("${hmb.match.delta.overhaul-effort}") String overhaulEffort) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.matchService = matchService;
@@ -86,6 +94,9 @@ public class MatchOrchestrator {
         this.growthService = growthService;
         this.clockService = clockService;
         this.objectMapper = objectMapper;
+        this.deltaEnabled = deltaEnabled;
+        this.overhaulAxisCount = overhaulAxisCount;
+        this.overhaulEffort = overhaulEffort;
     }
 
     /**
@@ -105,6 +116,15 @@ public class MatchOrchestrator {
     public void enqueueHalf(String matchId, int half) {
         MatchService.MatchRow match = matchService.find(matchId)
                 .orElseThrow(() -> new IllegalStateException("매치 없음: " + matchId));
+
+        // GEN 진입 호출(킥오프/재개/재시도)이면 미완 잡의 타임아웃 시계를 여기서 시작한다 — h2 선행
+        // 생성(#193 W2b-B2)은 GEN2 보다 한 하프 앞서 잡을 만들기 때문. GEN 이전(선행 생성·재해소
+        // 호출)엔 아무 것도 건드리지 않는다.
+        String genState = half == 1 ? MatchService.S_GEN1 : MatchService.S_GEN2;
+        if (genState.equals(match.state())) {
+            jobQueue.restartPendingTimeout(matchId, half);
+        }
+
         JsonNode snapshot = matchService.readJson(match.userDeckJson());
         BotService.BotRow bot = botService.get(match.botId());
         List<MatchService.Substitution> subs = parseSubs(match.subsJson());
@@ -138,6 +158,10 @@ public class MatchOrchestrator {
      * <p><b>half 2</b> — 베이스 = h1 최종 인풋. 교체 있음 → 풀 생성(로스터 변경, 패치 부적합) / 하프타임
      * 프롬프트만 있음 → B잡(base=h1 인풋, prevSummary 포함) / 둘 다 없음 → h1 인풋 재사용(seed 교체, 콜0).
      * 봇(isBot)은 매치시점 입력이 없어 항상 재사용 또는 폴백(B 없음).
+     *
+     * <p><b>h2 는 해소가 여러 번 일어난다</b>(#193 W2b-B2 선행 생성 + 감독시간 편집 재해소) — 그래서
+     * 매번 이번 해소의 잡 id 로 {@link AiJobQueue#supersede} 를 걸어 <b>(match,half,side) 당 유효 잡 1개</b>
+     * 를 유지한다. h1 은 GEN1 안에서만 해소되므로 그대로 둔다(기존 경로 무변경).
      */
     private void resolveSide(MatchService.MatchRow match, int half, String side, boolean isBot,
                              JsonNode snapshot, BotService.BotRow bot,
@@ -151,13 +175,25 @@ public class MatchOrchestrator {
                     : contextBuilder.userBaseJob(match, snapshot);
             String baseResult = doneResultOf(base.baseId());
             boolean hasInput = !isBot && hasPhasePrompts(matchId, "pre");
+            String h1JobId;
             if (baseResult != null && hasInput) {
-                enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary, isBot);
+                // 킥오프 B 패치: A 가 쓴 덱 사전 지시 → 매치시점(pre) 지시의 변경분만 델타로 얹는다.
+                Map<String, Object> delta = promptDeltaFor(match, snapshot, List.of(),
+                        PromptContextBuilder.BASE_PHASES, PromptContextBuilder.PRE_PHASES);
+                h1JobId = isTeamOverhaul(delta, matchId, half, side)
+                        // 대변경 → 이 사이드만 풀생성으로 (#193 라운드2)
+                        ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot,
+                                overhaulEffort)
+                        : enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary,
+                                isBot, delta);
             } else if (baseResult != null) {
-                jobQueue.insertMaterialized(matchId, side, half, seedSwap(baseResult, jobSeed));
+                h1JobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(baseResult, jobSeed));
             } else {
-                enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot);
+                h1JobId = enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, null);
             }
+            // h1 은 GEN1 안에서만 해소되므로 보통 행이 하나다 — 그래도 "유효 잡 = 이번 해소 대상"
+            // 불변식은 양쪽 half 에 똑같이 건다(재시도·폴백 경로가 행을 늘려도 선택이 흔들리지 않게).
+            jobQueue.supersede(matchId, half, side, h1JobId);
             return;
         }
 
@@ -165,39 +201,116 @@ public class MatchOrchestrator {
         String h1Input = h1InputForSide(matchId, side);
         boolean subsPresent = !isBot && !subs.isEmpty();
         boolean halftimePrompts = !isBot && hasPhasePrompts(matchId, "halftime");
+        String targetJobId;
         if (h1Input != null && !subsPresent && halftimePrompts) {
-            enqueuePatch(match, half, side, h1Input, snapshot, bot, subs, prevSummary, isBot);
+            // h2 B 패치: 전반에 유효했던 지시(pre) → 하프타임 지시의 변경분.
+            Map<String, Object> delta = promptDeltaFor(match, snapshot, subs,
+                    PromptContextBuilder.PRE_PHASES, PromptContextBuilder.HALFTIME_PHASES);
+            targetJobId = isTeamOverhaul(delta, matchId, half, side)
+                    ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, overhaulEffort)
+                    : enqueuePatch(match, half, side, h1Input, snapshot, bot, subs, prevSummary, isBot, delta);
         } else if (h1Input != null && !subsPresent) {
-            jobQueue.insertMaterialized(matchId, side, half, seedSwap(h1Input, jobSeed));
+            targetJobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(h1Input, jobSeed));
         } else {
-            enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot);
+            targetJobId = enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, null);
         }
+        jobQueue.supersede(matchId, half, side, targetJobId);
     }
 
-    /** B(패치) 잡 enqueue — 풀 컨텍스트(매치시점 프롬프트·phase2·prevSummary)에 kind=team-input-patch + base. */
-    private void enqueuePatch(MatchService.MatchRow match, int half, String side, String baseResultJson,
-                              JsonNode snapshot, BotService.BotRow bot,
-                              List<MatchService.Substitution> subs, Map<String, Object> prevSummary,
-                              boolean isBot) {
+    /**
+     * 유저팀 프롬프트 델타(#193 W2b-B2). {@code oldPhases}→{@code newPhases} 두 시점의 유효 지시 세트를
+     * 같은 함수로 만들어(=컨텍스트에 실리는 값과 동일) 차이만 뽑는다. 차이가 없으면 null(필드 생략).
+     *
+     * <p>{@code hmb.match.delta.enabled=false} 면 항상 null — 델타 도입 이전의 "베이스 위 <b>풀 패치</b>"
+     * 동작으로 통째 롤백된다(라우팅도 델타를 입력으로 하므로 함께 멈춘다).
+     */
+    private Map<String, Object> promptDeltaFor(MatchService.MatchRow match, JsonNode snapshot,
+                                               List<MatchService.Substitution> subs,
+                                               List<String> oldPhases, List<String> newPhases) {
+        if (!deltaEnabled) {
+            return null;
+        }
+        Set<String> rosterIds = contextBuilder.rosterIds(snapshot, subs);
+        return contextBuilder.promptDelta(
+                contextBuilder.userPromptSet(match.id(), snapshot, rosterIds, oldPhases),
+                contextBuilder.userPromptSet(match.id(), snapshot, rosterIds, newPhases));
+    }
+
+    /**
+     * <b>팀 지시 대변경</b> 판정 (#193 라운드2). 델타에 팀 지시 변경이 있고, <b>새 팀 지시가 건드리는
+     * 전술 축</b>({@link OverhaulDetector})이 {@code hmb.match.delta.overhaul-axis-count} 개 이상이면
+     * 이 사이드는 델타 패치가 아니라 <b>풀생성</b>으로 간다.
+     *
+     * <p>근거(블라인드 맞대결 라운드2): 풀생성이 이긴 것은 <b>다축 대변경 K1</b> 하나뿐이다
+     * (델타 3.13 vs 풀 4.75 — 델타가 파급을 반쪽만 구현). 반대로 소변경 K2(델타 4.63 vs 풀 3.25)·
+     * 돌발 3종(델타 3.83~5.00 PASS)·개인지시 K3(4.00)는 델타가 동급 이상이라 그대로 둔다. 즉 잘못
+     * 라우팅하면 지연뿐 아니라 <b>품질도 잃는다</b> → 신호는 "얼마나 다른 낱말인가"(자카드)가 아니라
+     * "<b>몇 개의 축을 동시에 건드리는가</b>"다. 자카드는 실 경로에서 old 가 항상 비어(덱에 팀 지시 없음)
+     * 모든 킥오프를 풀생성으로 보냈다 — 폐기 사유는 {@link OverhaulDetector} 참조.
+     *
+     * <p>판정 대상은 <b>팀 지시</b>뿐이다 — 선수 지시만 바뀐 변경은 여기서 항상 false.
+     */
+    private boolean isTeamOverhaul(Map<String, Object> delta, String matchId, int half, String side) {
+        if (delta == null || !(delta.get("team") instanceof Map<?, ?> team)) {
+            return false;
+        }
+        String newText = team.get("new") == null ? "" : String.valueOf(team.get("new"));
+        Set<String> axes = OverhaulDetector.axes(newText);
+        if (axes.size() < overhaulAxisCount) {
+            log.debug("팀 지시 소변경(match {} h{} {}) — 전술 축 {}개{} < {} → 델타 유지",
+                    matchId, half, side, axes.size(), axes, overhaulAxisCount);
+            return false;
+        }
+        log.info("팀 지시 대변경 감지(match {} h{} {}) — 전술 축 {}개{} ≥ {} → 풀생성 라우팅(effortHint='{}')",
+                matchId, half, side, axes.size(), axes, overhaulAxisCount, overhaulEffort);
+        return true;
+    }
+
+    /**
+     * B(패치) 잡 enqueue — 풀 컨텍스트(매치시점 프롬프트·phase2·prevSummary)에 kind=team-input-patch + base.
+     * {@code promptDelta} 는 <b>추가 필드</b>다: 기존 필드는 그대로 두고(서번트 후방 호환·풀 컨텍스트
+     * 폴백), 있으면 실행기가 변경분만 제시하는 델타 모드로 프롬프트를 조립한다.
+     *
+     * @return 잡 id
+     */
+    private String enqueuePatch(MatchService.MatchRow match, int half, String side, String baseResultJson,
+                                JsonNode snapshot, BotService.BotRow bot,
+                                List<MatchService.Substitution> subs, Map<String, Object> prevSummary,
+                                boolean isBot, Map<String, Object> promptDelta) {
         Map<String, Object> ctx = isBot // 봇은 B 없음(방어적 — 실경로는 유저만)
                 ? contextBuilder.buildBotContext(match, half, bot, prevSummary, side)
                 : contextBuilder.buildUserContext(match, half, snapshot, subs, prevSummary,
                         contextBuilder.readJson(bot.deckJson()), side);
         ctx.put("kind", "team-input-patch");
         ctx.put("base", matchService.readJson(baseResultJson)); // A/h1 결과 위에 실행기가 패치 정적 머지.
-        jobQueue.enqueue(match.id(), side, half, ctx);
+        if (promptDelta != null && !promptDelta.isEmpty()) {
+            ctx.put("promptDelta", promptDelta);
+        }
+        return jobQueue.enqueue(match.id(), side, half, ctx);
     }
 
-    /** 풀 생성(team-input) 폴백 — 기존 경로(A 미완·교체 등). */
-    private void enqueueFull(MatchService.MatchRow match, int half, String side,
-                             JsonNode snapshot, BotService.BotRow bot,
-                             List<MatchService.Substitution> subs, Map<String, Object> prevSummary,
-                             boolean isBot) {
+    /**
+     * 풀 생성(team-input) — 기존 폴백 경로(A 미완·교체 등) + <b>대변경 라우팅</b>(#193 라운드2)의 목적지.
+     * 컨텍스트엔 매치시점 프롬프트 전체가 이미 들어 있다(buildUserContext).
+     *
+     * @param effortHint 대변경 라우팅으로 왔을 때만 non-null — 그 잡에만 {@code effortHint} 를 실어
+     *     실행기(claude-code)가 env 기본 대신 이 effort 로 돌게 한다(빈 문자열 = 세션 기본 effort,
+     *     맞대결 4.75 의 조건). <b>일반 폴백은 null</b> = 필드 미첨부(기존 동작 불변).
+     *     shared 계약은 무변경 — 비엄격 zod 가 통과시키고 실행기는 raw context 로 읽는다.
+     * @return 잡 id
+     */
+    private String enqueueFull(MatchService.MatchRow match, int half, String side,
+                               JsonNode snapshot, BotService.BotRow bot,
+                               List<MatchService.Substitution> subs, Map<String, Object> prevSummary,
+                               boolean isBot, String effortHint) {
         Map<String, Object> ctx = isBot
                 ? contextBuilder.buildBotContext(match, half, bot, prevSummary, side)
                 : contextBuilder.buildUserContext(match, half, snapshot, subs, prevSummary,
                         contextBuilder.readJson(bot.deckJson()), side);
-        jobQueue.enqueue(match.id(), side, half, ctx);
+        if (effortHint != null) {
+            ctx.put("effortHint", effortHint);
+        }
+        return jobQueue.enqueue(match.id(), side, half, ctx);
     }
 
     /**
@@ -331,7 +444,7 @@ public class MatchOrchestrator {
         int scoreAway = finalScore.path("away").asInt();
         String engineVersion = result.matchLog().path("configVersion").asText("unknown");
 
-        txRunner.run(() -> {
+        Boolean stored = txRunner.run(() -> {
             try {
                 jdbcClient.sql("""
                                 INSERT INTO match_halves(match_id, half, select_data_json, home_input_json,
@@ -346,7 +459,7 @@ public class MatchOrchestrator {
                         .update();
             } catch (DataAccessException e) {
                 if (SqliteErrors.isUniqueViolation(e)) {
-                    return; // 동시 처리 경합 — 다른 쪽이 이미 저장/전이함
+                    return false; // 동시 처리 경합 — 다른 쪽이 이미 저장/전이함
                 }
                 throw e;
             }
@@ -356,10 +469,76 @@ public class MatchOrchestrator {
             } else {
                 enterSecondHalf(match, scoreHome, scoreAway);
             }
+            return true;
         });
 
-        // h2 는 별도 A-잡이 없다(#95): h2 베이스 = h1 최종 인풋 → 재개 때 resolveSide 가 재사용(콜0) 또는
+        // h2 는 별도 A-잡이 없다(#95): h2 베이스 = h1 최종 인풋 → resolveSide 가 재사용(콜0) 또는
         // 하프타임 프롬프트가 있으면 B 패치로 태운다. 봇 h2 도 재사용(콜0)이라 프리페치할 콜이 없다.
+        // 그 해소를 **재개 때가 아니라 전반 진입 직후**에 미리 돌린다(#193 W2b-B2 h2 선행 생성) —
+        // 트랜잭션 밖에서(h1 로그 커밋 후) 돌려야 h1InputForSide 가 방금 저장한 인풋을 본다.
+        if (half == 1 && Boolean.TRUE.equals(stored)) {
+            resolveSecondHalfInputs(match.id());
+        }
+    }
+
+    /**
+     * 전반 인풋 <b>즉시 해소</b> (#193 라운드2). {@code POST /prompts(phase=pre)} 마다 호출된다 —
+     * 킥오프를 기다리지 않고 <b>제출한 그 순간</b> h1 잡을 해소해, AI 생성을 "제출~킥오프" 사이(유저가
+     * 계속 지시를 쓰는 시간)에 숨긴다. h2 선행 생성({@link #resolveSecondHalfInputs})의 대칭이고,
+     * 여러 번 고쳐도 {@link AiJobQueue#supersede} 가 (match,half,side) 유효 잡 1개를 보장한다.
+     *
+     * <p><b>A(베이스) 미완이면 아무 것도 하지 않는다</b>. 그 상태에서 해소하면 {@link #resolveSide} 가
+     * 풀 생성 폴백을 타는데, 편집할 때마다 컨텍스트(=promptHash)가 달라져 <b>편집 횟수만큼 풀 생성</b>이
+     * 쌓인다(가장 비싼 잡을, 쓰이지도 않을 수로). 그건 킥오프의 {@link #enqueueHalf} 가 원래대로
+     * 소유한다(폴백 불변). 봇 사이드도 같은 이유로 폴백이 필요하면 통째로 미룬다 — 유저 A 만 done 이면
+     * 봇은 풀 생성이 되고, 그건 아직 돌고 있는 봇 A 프리페치와 중복 콜이다.
+     *
+     * <p>킥오프 시 이미 done 이어도 {@code enqueueHalf} 는 그대로 다시 돈다 — 같은 컨텍스트면
+     * promptHash 멱등이라 행이 늘지 않고, {@code supersede} 가 같은 잡을 유효로 재확정한다. 브리핑 중
+     * 잡이 done 이 돼도 시뮬로 넘어가지 않는다({@link #maybeSimulate} 의 GEN1 state 체크).
+     */
+    public void resolveFirstHalfInputs(String matchId) {
+        try {
+            MatchService.MatchRow match = matchService.find(matchId).orElse(null);
+            if (match == null || !MatchService.S_BRIEFING.equals(match.state())) {
+                return; // 킥오프 이후(GEN1~)는 기존 경로가 소유한다
+            }
+            JsonNode snapshot = matchService.readJson(match.userDeckJson());
+            BotService.BotRow bot = botService.get(match.botId());
+            boolean basesReady = doneResultOf(contextBuilder.userBaseJob(match, snapshot).baseId()) != null
+                    && doneResultOf(contextBuilder.botBaseJob(match, bot).baseId()) != null;
+            if (!basesReady) {
+                log.debug("h1 즉시 해소 스킵(match {}) — A 미완, 킥오프 폴백이 소유", matchId);
+                return;
+            }
+            enqueueHalf(matchId, 1);
+        } catch (Exception e) {
+            log.warn("h1 즉시 해소 실패(match {}) — 무시(킥오프 때 재해소): {}", matchId, e.toString());
+        }
+    }
+
+    /**
+     * 후반 인풋 <b>선행/재해소</b> (#193 W2b-B2). 전반 라이브 진입 직후 한 번(선행 생성), 그리고 전반
+     * 재생·감독시간 중 하프타임 지시·교체가 바뀔 때마다 다시 호출된다. 같은 컨텍스트면 promptHash 가
+     * 같아 no-op(멱등), 바뀌었으면 새 잡 + {@link AiJobQueue#supersede} 로 옛 결과 무효화.
+     *
+     * <p>목적은 <b>감독시간 대기 제거</b>다: 재개(GEN2) 시점엔 이미 done 이라 그 자리에서 시뮬한다.
+     * 선행 생성된 잡이 done 이어도 GEN2 진입 전에는 시뮬로 넘어가지 않는다({@link #maybeSimulate} 의
+     * state 체크). 실패는 삼킨다 — 재개 때 {@link #enqueueHalf} 가 같은 해소를 다시 한다(폴백 불변).
+     */
+    public void resolveSecondHalfInputs(String matchId) {
+        try {
+            MatchService.MatchRow match = matchService.find(matchId).orElse(null);
+            if (match == null || !MatchService.PRE_SECOND_HALF_STATES.contains(match.state())) {
+                return; // 전반 재생/감독시간 밖 — 후반 인풋은 GEN2 경로가 소유한다
+            }
+            if (halfRow(matchId, 1).isEmpty()) {
+                return; // h1 로그 없음(도달 불가) — 선행 해소할 베이스가 없다
+            }
+            enqueueHalf(matchId, 2);
+        } catch (Exception e) {
+            log.warn("h2 선행/재해소 실패(match {}) — 무시(재개 때 재해소): {}", matchId, e.toString());
+        }
     }
 
     /**
@@ -600,10 +779,19 @@ public class MatchOrchestrator {
         return scaled;
     }
 
+    /**
+     * 이 (match, half, side) 의 <b>유효 잡</b>이 done 이면 그 결과 — 아니면 비어 있음(=기다린다).
+     *
+     * <p>"가장 최근 done"(updated_at DESC)이 아니다(#193 검증 B-2). 그 시각은 <b>워커가 언제 보고했나</b>
+     * 지 <b>유저가 언제 지시했나</b>가 아니어서, 지시가 바뀐 뒤 늦게 도착한 낡은 잡의 complete 가
+     * 최신 지시를 이겼다. 유효 잡은 {@link AiJobQueue#supersede} 가 해소 때마다 정하는 단 한 행이다
+     * (effective=1). 그 행이 아직 안 끝났으면 낡은 done 이 있어도 <b>기다린다</b>.
+     */
     private Optional<String> latestDoneResult(String matchId, int half, String side) {
         return jdbcClient.sql("""
                         SELECT result_json FROM ai_jobs
                         WHERE match_id = ? AND half = ? AND side = ? AND status = 'done'
+                          AND effective = 1
                         ORDER BY updated_at DESC, created_at DESC LIMIT 1
                         """)
                 .params(matchId, half, side)

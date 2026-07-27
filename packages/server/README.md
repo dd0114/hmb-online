@@ -65,6 +65,9 @@ JAVA_URL=http://localhost:8080 SERVANT_TOKEN=... AI_EXECUTOR=claude-code npm run
 | `AI_POLL_WAIT_MS` | `25000` | executor | long-poll waitMs — [1000, 25000] 로 클램프(openapi 상한) |
 | `AI_EXECUTOR` | `stub` | executor | `stub`(오프라인 결정론) \| `claude-code`(구독 CLI) |
 | `AI_MODEL` | `sonnet` | executor | 모델 스왑(별칭 `sonnet`/`haiku`/`opus` 또는 풀ID) |
+| `AI_EFFORT` | `low` | executor | CLI `--effort`(사고 노력). **빈 문자열이면 플래그 생략**(claude 세션 기본). #193 실측: 지연의 지배 변수 = 사고 토큰 |
+| `AI_EFFORT_FULL` | (`AI_EFFORT`) | executor | `team-input`(전량 생성) 잡만 오버라이드 |
+| `AI_EFFORT_PATCH` | (`AI_EFFORT`) | executor | `team-input-patch`(패치/델타) 잡만 오버라이드 |
 | `AI_FALLBACK_EXECUTOR` | (없음) | executor | primary 가 CAP/TIMEOUT 시 무중단 폴백(예: `stub`) |
 | `AI_MAX_RETRIES` | `2` | executor | CAP/TIMEOUT 지수 백오프 재시도 횟수(0=끔) |
 | `AI_RETRY_BASE_MS` | `500` | executor | 첫 백오프(이후 2배씩, 상한 30s) |

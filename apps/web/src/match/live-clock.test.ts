@@ -40,9 +40,17 @@ describe("pollIntervalFor — 라이브 단계는 자주, 생성 단계는 덜, 
     }
   });
 
-  it("생성(GEN1/GEN2)은 기존대로 3초", () => {
-    expect(pollIntervalFor("GEN1")).toBe(3000);
-    expect(pollIntervalFor("GEN2")).toBe(3000);
+  // #193 — 새 플로우 실측(킥오프→관전 6~14s, 하프타임→후반 0.3s)에서 3초 격자는 대기의 최대
+  // ~25% 를 폴링 대기로 더한다. 생성 단계도 라이브와 같은 1초로 내린다.
+  it("생성(GEN1/GEN2)은 1초 — 대기가 6~14초라 3초 격자는 과대(#193)", () => {
+    expect(pollIntervalFor("GEN1")).toBe(1000);
+    expect(pollIntervalFor("GEN2")).toBe(1000);
+  });
+
+  it("생성 폴링 격자는 실측 최단 대기(6초)의 1/4 이하 — 상태 전환이 격자에 묻히지 않는다", () => {
+    const gen = pollIntervalFor("GEN1");
+    expect(typeof gen).toBe("number");
+    expect(gen as number).toBeLessThanOrEqual(6000 / 4);
   });
 
   it("브리핑·종료·실패·미지 상태는 폴링하지 않는다", () => {

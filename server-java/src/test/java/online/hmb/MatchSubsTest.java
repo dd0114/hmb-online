@@ -100,8 +100,10 @@ class MatchSubsTest extends MatchTestBase {
         assertThat(h2LastHash).endsWith("-nosub");
 
         // h2 잡 컨텍스트 로스터에도 교체 반영
-        String h2Context = jdbcClient.sql(
-                        "SELECT context_json FROM ai_jobs WHERE match_id = ? AND half = 2 AND side = 'home'")
+        String h2Context = jdbcClient.sql("""
+                        SELECT context_json FROM ai_jobs
+                        WHERE match_id = ? AND half = 2 AND side = 'home' AND effective = 1
+                        """)
                 .param(matchId).query(String.class).single();
         JsonNode roster = objectMapper.readTree(h2Context).path("roster");
         List<String> rosterIds = new java.util.ArrayList<>();

@@ -35,11 +35,13 @@ const H1_LOG_STATES = new Set([
 
 /**
  * 폴링 주기(ms) 또는 false. 라이브 단계는 단계 전환(전반 종료·감독시간 만료)을 초 단위로 따라가야
- * 하므로 1초, 생성 단계는 기존대로 3초, 그 외는 폴링하지 않는다.
+ * 하므로 1초. **생성 단계도 1초**(#193) — 예전 3초는 생성이 팀당 70초 걸리던 시절의 값이고, 새
+ * 플로우 실측은 킥오프→관전 6~14초·하프타임→후반 0.3초다. 그 대기에 3초 격자를 씌우면 폴링 대기만
+ * 최대 3초(≈25%) 더 붙어 "다 됐는데 화면이 안 넘어가는" 구간이 생긴다. 그 외 상태는 폴링하지 않는다.
  */
 export function pollIntervalFor(state: string | undefined): number | false {
   if (state && LIVE_STATES.has(state)) return 1000;
-  if (state && GEN_STATES.has(state)) return 3000;
+  if (state && GEN_STATES.has(state)) return 1000;
   return false;
 }
 

@@ -15,6 +15,7 @@ import {
   renderRelationsBlock,
   renderTeamMoraleBlock,
 } from "./context-blocks.js";
+import { assertTacticalSanity } from "./gates.js";
 
 /**
  * coach — "자연어 지시(팀+선수별) → TacticalInput" 프롬프트 빌더 + 검증 게이트 (방식1 핵심).
@@ -34,6 +35,17 @@ export const COACH_SYSTEM = [
   "- 선수의 능력치(0..100)를 고려해 현실적인 성향을 부여한다(예: pace 낮은 수비수에게 과도한 forwardRunFreq 금지).",
   "behavior 의미: forwardRunFreq=오프더볼 전진 침투, widthTendency=측면으로 벌림(풀백/윙어 오버랩), supportDepth=공격 가담 깊이, pressAggression=개인 압박, passRisk=위험 전진패스, passDirectness=직선 패스, dribbleTendency, shootTendency, positioningFreedom=로밍.",
   "감독 지시의 의도를 파라미터로 충실히 반영하라 — 구체 해석은 아래 '지원 지시 카탈로그'를 따른다.",
+].join("\n");
+
+/**
+ * 필수확인 서픽스(#193 W2b-B3) — 출력 직전에 붙는 짧은 체크. **A/B(풀 생성·델타 패치) 공용**.
+ * 실측 근거: effort=low 로 사고 토큰을 줄이면 품질이 떨어지는데, 이 두 줄 서픽스가 4.25/5 로 회복시켰다
+ * (파급 체크리스트형 긴 프롬프트는 분산이 커서 기각). 항목을 늘리면 그 실측 근거를 벗어난다 — 신중히.
+ */
+export const MANDATORY_CHECKS = [
+  "제출 전 필수 확인:",
+  "- 마킹/전담 마크 지시가 있으면 반드시 해당 수비수에게 markTarget(패치는 markTargets)을 상대 로스터의 실제 playerId 로 설정한다 — 비워 두지 마라.",
+  "- GK(골키퍼)의 역할을 존중한다 — 골키퍼에게 전진 침투·공격 가담 성향을 부여하지 마라.",
 ].join("\n");
 
 /**
@@ -125,6 +137,8 @@ export function buildTeamInputPrompt(ctx: TeamInputJobContext, feedback?: string
   if (feedback) {
     parts.push("", `[이전 산출 거부됨] 사유: ${feedback} — 이 문제를 고쳐서 다시 제출.`);
   }
+  // 필수확인 서픽스(#193) — effort=low 의 품질 손실 회복(실측 A1 승자). 출력 지시 바로 앞.
+  parts.push("", MANDATORY_CHECKS);
   parts.push("", "제공된 JSON 스키마에 맞는 TacticalInput JSON 을 정확히 한 번 제출한다. 다른 설명·행동 금지.");
   return parts.join("\n");
 }
@@ -156,7 +170,9 @@ export function assertRosterConsistency(input: TacticalInput, roster: readonly T
 export function validateTeamInputOutput(raw: unknown, ctx: TeamInputJobContext): TacticalInput {
   const parsed = TacticalInput.parse(raw); // zod 스키마 검증(형태·타입)
   assertRosterConsistency(parsed, ctx.roster);
-  return clampTacticalInput(parsed); // 모든 수치를 유효 범위로 클램프
+  const clamped = clampTacticalInput(parsed); // 모든 수치를 유효 범위로 클램프
+  assertTacticalSanity(clamped, ctx); // #193 게이트(자기모순·지시 미이행·배치 파손)
+  return clamped;
 }
 
 // ─────────────────────── B(패치 생성) — team-input-patch 경로 (A+B 린패치, #82/W3) ───────────────────────
@@ -195,6 +211,18 @@ export const PATCH_SYSTEM = [
   "- 관계·성격·사기 톤은 mentalModifier 로 반영한다(성격 규칙은 아래). 근거 설명·사고과정 출력 금지 — 패치 JSON 하나만.",
 ].join("\n");
 
+/**
+ * 델타 모드 용어집 = 글로서리 + supportDepth 정의 명확화.
+ * 실측에서 **반복 오독된 축**이 supportDepth 였다("수비 가담 최소화" 지시에 supportDepth 를 내리는 오해) —
+ * 정의를 한 줄로 못 박는다. 비델타(기존) 프롬프트는 무변경(후방 호환).
+ */
+export const SUPPORT_DEPTH_CLARIFICATION =
+  "- ⚠️ supportDepth = **공격 시 전진 가담 깊이**(수비 가담 아님). 값↑ = 공격 때 더 높이 올라가 가담." +
+  " '수비 가담을 줄이고 앞에 남아라' 는 supportDepth 를 **올리는** 쪽, '내려와서 수비를 도와라' 가 낮추는 쪽이다.";
+
+/** 델타 모드에서 쓰는 용어집(글로서리 + supportDepth 명확화). */
+export const PATCH_FIELD_GLOSSARY_DELTA = [PATCH_FIELD_GLOSSARY, SUPPORT_DEPTH_CLARIFICATION].join("\n");
+
 /** 로스터 1명 → B 프롬프트 한 줄(id·role·그룹만 — 능력치 재나열 없이 키 해석 근거). */
 function patchRosterLine(p: TeamInputRosterEntry): string {
   return `- slot${p.slotIndex} ${p.playerId} ${p.name} (${p.position})`;
@@ -208,6 +236,9 @@ function patchRosterLine(p: TeamInputRosterEntry): string {
  * 컨텍스트 블록 렌더러(manualTactics/relations/conditions/teamMorale)는 team-input 과 **동일 재사용**.
  */
 export function buildTeamInputPatchPrompt(ctx: TeamInputPatchJobContext, feedback?: string): string {
+  // #193: 변경분이 실려 오면 **델타 모드**(풀 컨텍스트 나열 없이 변경분만) — 사고 토큰 = 지연의 지배 변수.
+  if (hasPromptDelta(ctx)) return buildDeltaPatchPrompt(ctx, feedback);
+
   const roster = [...ctx.roster].sort((a, b) => a.slotIndex - b.slotIndex);
   const t = ctx.base.team;
 
@@ -282,6 +313,118 @@ export function buildTeamInputPatchPrompt(ctx: TeamInputPatchJobContext, feedbac
   return parts.join("\n");
 }
 
+// ─────────────────────── 델타 모드 (#193 W2b-B3) — "무엇이 바뀌었나"만 제시 ───────────────────────
+
+/** 실제 변경 항목이 하나라도 있는가(빈 promptDelta 는 기존 경로로 폴백 — 후방 호환). */
+export function hasPromptDelta(ctx: TeamInputPatchJobContext): boolean {
+  const d = ctx.promptDelta;
+  if (!d) return false;
+  return d.team !== undefined || Object.keys(d.players ?? {}).length > 0;
+}
+
+/** 선수 지시 변경 1건 → 프롬프트 한 줄(신규/삭제/수정 3형태). */
+function playerDeltaLine(
+  playerId: string,
+  entry: { old?: string; new?: string },
+  label: (id: string) => string,
+): string {
+  const who = label(playerId);
+  if (entry.new === undefined) return `- ${who} [삭제됨] (이전: ${entry.old ?? ""})`;
+  if (entry.old === undefined) return `- ${who} [신규] ${entry.new}`;
+  return `- ${who} [이전] ${entry.old} → [이후] ${entry.new}`;
+}
+
+/**
+ * 델타 패치 프롬프트(#193 W2b-B3) — 실측 채택안(단순 델타, 8~16s).
+ * 구성 = PATCH_SYSTEM + 용어집(supportDepth 명확화) + 로스터 요약 + 베이스 팀 스칼라 요약 +
+ *        "다음 지시가 변경되었다: old → new"(변경된 항목만) + "이 변경이 유발하는 변화만" + 필수확인 서픽스.
+ * 카탈로그·능력치·관계/사기 블록은 **싣지 않는다**(사고 토큰 억제가 목적 — 지연의 지배 변수).
+ * 예외로 상대 로스터는 마킹 변경이 있을 때만 싣는다(markTargets 대상 해석 근거, 게이트 G2 가 요구).
+ */
+export function buildDeltaPatchPrompt(ctx: TeamInputPatchJobContext, feedback?: string): string {
+  const roster = [...ctx.roster].sort((a, b) => a.slotIndex - b.slotIndex);
+  const t = ctx.base.team;
+  const d = ctx.promptDelta ?? {};
+  const byId = new Map(roster.map((p) => [p.playerId, p]));
+  const label = (id: string): string => {
+    const p = byId.get(id);
+    return p ? `${p.playerId} (${p.position})` : id;
+  };
+
+  const parts = [
+    PATCH_SYSTEM,
+    "",
+    PATCH_FIELD_GLOSSARY_DELTA,
+    "",
+    `포메이션: ${t.formation} (${ctx.side} 팀, ${ctx.half === 1 ? "전반" : "후반"})`,
+    "현재 팀 전술 베이스(A — 변경과 무관한 축은 이 값 유지, 패치에 다시 쓰지 말 것):",
+    `- defensiveLineHeight ${t.defensiveLineHeight} · compactness ${t.compactness} · tempo ${t.tempo} · width ${t.width}` +
+      ` · pressIntensity ${t.pressingScheme.intensity} · pressTriggerLine ${t.pressingScheme.triggerLine} · offsideTrap ${t.offsideTrap}`,
+    "선수 성향 베이스는 이미 A 에 계산돼 있다(여기 재나열 안 함) — 변경이 닿는 선수/그룹만 패치하라.",
+    "",
+    "로스터(선발 11명 — byPlayer/markTargets 키 해석용, id·포지션):",
+    ...roster.map(patchRosterLine),
+  ];
+
+  // 마킹 변경이 있을 때만 상대 로스터(대상 id 해석 근거). 그 외에는 토큰을 쓰지 않는다.
+  const deltaText = [
+    d.team?.new ?? "",
+    ...Object.values(d.players ?? {}).map((e) => e.new ?? ""),
+  ].join("\n");
+  if (/막아|마크|전담|mark/i.test(deltaText) && ctx.opponentRoster && ctx.opponentRoster.length > 0) {
+    parts.push(
+      "",
+      "상대 로스터(마킹 대상 해석용 — 이름을 playerId 로 매핑):",
+      ...ctx.opponentRoster.map((p) => `- ${p.playerId} ${p.name} (${p.position})`),
+    );
+  }
+
+  parts.push("", "다음 지시가 변경되었다(변경된 항목만 나열):");
+  if (d.team) {
+    // 이전 지시가 없던 경우(신규 부여)엔 빈 "[이전 팀 지시] " 줄을 흘리지 않는다 — 모델에게
+    // "빈 지시가 있었다"로 읽히는 잡음이다(#193 검증 m-3).
+    parts.push(
+      ...(d.team.old.trim() === ""
+        ? [`[신규 팀 지시] ${d.team.new}`]
+        : [`[이전 팀 지시] ${d.team.old}`, `[이후 팀 지시] ${d.team.new}`]),
+    );
+  }
+  const playerEntries = Object.entries(d.players ?? {});
+  if (playerEntries.length > 0) {
+    parts.push(
+      "",
+      "선수 개인 지시 변경:",
+      ...playerEntries.map(([pid, entry]) => playerDeltaLine(pid, entry, label)),
+    );
+  }
+
+  parts.push(
+    "",
+    "**이 변경이 유발하는 변화만** TacticalPatch 로 출력하라. 변경과 무관한 축·선수는 절대 포함하지 마라.",
+    "단 변경이 다른 선수에 파급되면(마킹·커버·트랩 등) 그 파급분은 포함하라.",
+    // #193 라운드2: 맞대결 1차 패인이 "파급 반쪽 구현"(팀 압박 상향에 team 스칼라만, 라인·개인 압박
+    // 무변경)이었다. 체크리스트 전면 확장은 지연 고분산으로 기각 — 한 줄만 더 준다.
+    "팀 지시의 강도·방향 변화(압박·라인·템포 등)는 team 스칼라뿐 아니라 관련 선수들의 behavior 에도 파급된다 — 변경이 요구하는 만큼 포함하라(무관한 선수는 여전히 제외).",
+  );
+
+  if (ctx.half === 2 && ctx.prevSummary) {
+    const s = ctx.prevSummary;
+    parts.push(
+      "",
+      "전반 결과 요약(후반 조정에 반영):",
+      `- 스코어 home ${s.scoreHome} : ${s.scoreAway} away · 슛 ${s.shots} · 흐름: ${String(s.possessionHint)}`,
+    );
+  }
+
+  if (feedback) {
+    parts.push("", `[이전 산출 거부됨] 사유: ${feedback} — 이 문제를 고쳐서 패치를 다시 제출.`);
+  }
+
+  parts.push("", MANDATORY_CHECKS);
+  parts.push("", "제공된 JSON 스키마에 맞는 TacticalPatch JSON 을 정확히 한 번 제출한다. 패치만 — 다른 설명·사고과정 금지.");
+  return parts.join("\n");
+}
+
 /**
  * B 검증 게이트 — raw(TacticalPatch) → applyPatch(A, patch, {seed}) → 최종 TacticalInput 로스터 정합 검사.
  * **complete 는 최종 TacticalInput 을 반환**(Java 는 team-input 과 동일하게 소비 — 패치는 실행기 내부 세부).
@@ -293,16 +436,18 @@ export function validateTeamInputPatchOutput(raw: unknown, ctx: TeamInputPatchJo
 
   // 유령 마크 타깃 제거 — opponentRoster 가 있으면 그 안에 없는 markTarget 을 떨군다(team-input 과 동일 수위:
   // 없는 상대 id 를 지어내지 않는다). opponentRoster 미제공이면 검증 생략(통과).
+  let cleaned = merged;
   if (ctx.opponentRoster && ctx.opponentRoster.length > 0) {
     const validTargets = new Set(ctx.opponentRoster.map((o) => o.playerId));
-    return {
+    cleaned = {
       ...merged,
       players: merged.players.map((p) =>
-        p.markTarget !== undefined && !validTargets.has(p.markTarget)
-          ? { ...p, markTarget: undefined }
-          : p,
+        p.markTarget !== undefined && !validTargets.has(p.markTarget) ? { ...p, markTarget: undefined } : p,
       ),
     };
   }
-  return merged;
+
+  // #193 게이트 — 유령 제거 **후** 최종본 기준(유령이 지시 이행으로 오인되지 않도록).
+  assertTacticalSanity(cleaned, ctx);
+  return cleaned;
 }

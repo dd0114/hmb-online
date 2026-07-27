@@ -83,11 +83,14 @@ public class InternalJobController {
     public AiJobResponse complete(@PathVariable("id") String id, @RequestBody JsonNode body) {
         AiJobQueue.JobRow job = jobQueue.find(id)
                 .orElseThrow(() -> ApiException.notFound("잡을 찾을 수 없습니다: " + id));
-        // leased 상태에서만 완료 보고 허용(중복/유령 complete 차단). openapi ErrorCode 열거는 F4 외
-        // 프리즈 상태이므로 신규 JOB_NOT_LEASED 대신 기존 INVALID_STATE를 재사용한다(의미상 최근접).
-        if (!"leased".equals(job.status())) {
+        // 배포됐던 잡의 완료 보고만 허용(중복/유령 complete 차단) = leased 또는 lease 만료로 재큐된
+        // queued(attempts>0) — AiJobQueue.completable. lease 만료 후 도착한 정상 결과를 409로 버리면
+        // 결과 폐기 → 무한 재실행 → ai-job-timeout 라이브락이 된다(#193 D2). openapi ErrorCode 열거는
+        // F4 외 프리즈 상태이므로 신규 JOB_NOT_LEASED 대신 기존 INVALID_STATE를 재사용한다(의미상 최근접).
+        if (!AiJobQueue.completable(job)) {
             throw new ApiException(HttpStatus.CONFLICT, "INVALID_STATE",
-                    "잡이 leased 상태가 아닙니다: " + job.status(),
+                    "배포되지 않은 잡의 완료 보고입니다(status=" + job.status()
+                            + ", attempts=" + job.attempts() + ")",
                     Map.of("jobId", id, "status", job.status()));
         }
 
