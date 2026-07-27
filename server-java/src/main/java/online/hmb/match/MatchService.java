@@ -42,7 +42,7 @@ public class MatchService {
     public static final String S_GEN1 = "GEN1";
     /** 전반 라이브 재생 창 (P4-E2 #170). */
     public static final String S_FIRST_HALF = "FIRST_HALF";
-    /** 감독시간 — 구 H1_BREAK 의 자리(60초 데드라인, P4-D2). */
+    /** 감독시간 — 구 H1_BREAK 의 자리(데드라인 = hmb.match.clock.halftime-ms). */
     public static final String S_HALFTIME = "HALFTIME";
     /** 후반 라이브 재생 창. 이 창이 끝나야 FINISHED·정산이다. */
     public static final String S_SECOND_HALF = "SECOND_HALF";

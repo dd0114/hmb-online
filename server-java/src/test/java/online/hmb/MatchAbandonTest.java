@@ -98,7 +98,12 @@ class MatchAbandonTest extends MatchTestBase {
     void abandonOpensWhenTheClockIsDemonstrablyStuck() {
         String matchId = createMatch(token, null);
         forceState(matchId, "FIRST_HALF");
-        setPhaseEndsAt(matchId, Instant.now().minusMillis(STUCK_GRACE_MS + 60_000));
+        // ⚠️ 뒤로 미는 폭은 **유예 + 다음 단계 창**보다 커야 한다. 읽기 경로가 시계를 지연 평가하므로
+        // (LLD-e2-flow-clock §7.4) 지난 FIRST_HALF 는 조회 순간 HALFTIME 으로 전진하고 **새 창**을
+        // 받는다 — 그 창이 아직 안 지났으면 시계는 "멈춘" 게 아니라 "따라잡은" 것이라 409 가 맞다.
+        // 구 60초 여유는 감독시간이 60초이던 시절에만 성립했고, #216 이 180초로 올리자 조용히 깨졌다.
+        // 어떤 감독시간 값에도 견디도록 넉넉히 민다(창 길이에 의존하지 않는 픽스처).
+        setPhaseEndsAt(matchId, Instant.now().minusMillis(STUCK_GRACE_MS + 600_000));
 
         assertThat(abandon(matchId).getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(matchState(matchId)).isEqualTo("ABANDONED");

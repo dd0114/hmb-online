@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useSubmitMatchPrompt, type MatchDetail } from "../../api/hooks";
-import { countdownLabel } from "../live-clock";
+import { countdownLabel, halftimeLengthLabel } from "../live-clock";
 import { useCountdown } from "../useCountdown";
 import styles from "./panels.module.css";
 
@@ -20,7 +20,8 @@ function canSubmitIn(state: string): boolean {
  *
  * S1(#169)이 잡아둔 자리에 배선만 했다. 저장은 `POST /prompts {phase:"halftime", scope:"team"}` 이고
  * 서버가 UPSERT 하므로 **몇 번을 고쳐 써도 마지막 것 하나**가 후반에 반영된다. 감독시간이 열리면
- * 같은 값이 감독 탭에 이어지고, 아무것도 안 낸 채 60초가 지나면 전반 지시가 그대로 승계된다.
+ * 같은 값이 감독 탭에 이어지고, 아무것도 안 낸 채 감독시간(`clock.halftimeMs`)이 지나면 전반 지시가
+ * 그대로 승계된다.
  *
  * 선수별 지시·교체는 감독 탭(HalftimePanel)에서 — 이 패널은 관전 중 한 손으로 쓰는 자리라 팀 지시만 둔다.
  */
@@ -34,6 +35,8 @@ export function SecondHalfBriefPanel({ match, clockOffsetMs = 0 }: SecondHalfBri
   const remaining = useCountdown(clock, clockOffsetMs);
   // 카운트다운은 감독시간에만 의미가 있다(전반 중에는 아직 마감이 정해지지 않았다).
   const deadlineLabel = clock?.phase === "HALFTIME" ? countdownLabel(remaining) : null;
+  // 감독시간 길이는 서버 값 파생(웹에 상수 복제 금지 — AC-W3-2).
+  const halftimeLabel = halftimeLengthLabel(clock?.halftimeMs);
   const enabled = canSubmitIn(match.state) && !submitPrompt.isPending;
 
   async function save() {
@@ -94,7 +97,8 @@ export function SecondHalfBriefPanel({ match, clockOffsetMs = 0 }: SecondHalfBri
 
       <p className={styles.pending}>
         경기를 보면서 후반 팀 지시를 미리 적어두는 자리입니다. 선수별 지시와 교체는 <b>감독</b> 탭에서
-        하프타임에 확정합니다. 감독시간(60초) 안에 아무것도 내지 않으면 <b>전반 지시가 그대로</b> 이어집니다.
+        하프타임에 확정합니다. 감독시간{halftimeLabel && `(${halftimeLabel})`} 안에 아무것도 내지 않으면{" "}
+        <b>전반 지시가 그대로</b> 이어집니다.
       </p>
     </div>
   );

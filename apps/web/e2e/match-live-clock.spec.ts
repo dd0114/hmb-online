@@ -22,19 +22,29 @@ const MATCH_LOG = JSON.parse(
   readFileSync(new URL("../../../packages/engine/dev-viewer/match-log.json", import.meta.url).pathname, "utf8"),
 );
 const TICKS: number = MATCH_LOG.tickSnapshots.length;
+/** 후반 로그(틱 오프셋 2700) — 서버 시계의 **인덱스**와 뷰어의 **절대 틱**을 섞으면 여기서 깨진다. */
+const H2_TICK_OFFSET = 2700;
+const H2_LOG = {
+  ...MATCH_LOG,
+  tickSnapshots: MATCH_LOG.tickSnapshots.map((s: { tick: number }) => ({ ...s, tick: s.tick + H2_TICK_OFFSET })),
+  events: MATCH_LOG.events.map((e: { tick: number }) => ({ ...e, tick: e.tick + H2_TICK_OFFSET })),
+};
 
-const HALF_REAL_MS = 240_000;
-const HALFTIME_MS = 60_000;
+// 서버 config 현행값(#216: 하이라이트 켬 모드 실측 재생 길이 정합 + 감독시간 3분).
+const HALF_REAL_MS = 420_000;
+const HALFTIME_MS = 180_000;
 
 interface ClockOptions {
   phase: "FIRST_HALF" | "HALFTIME" | "SECOND_HALF";
   /** 이 단계가 시작된 지 몇 ms 지났는가(음수 없음). */
   elapsedMs: number;
+  /** 창 길이 오버라이드(#216 페이스 계약용 — 데모 로그는 리얼 하프보다 짧다). */
+  windowMs?: number;
 }
 
-function clockFor({ phase, elapsedMs }: ClockOptions) {
+function clockFor({ phase, elapsedMs, windowMs: windowOverride }: ClockOptions) {
   const now = Date.now();
-  const windowMs = phase === "HALFTIME" ? HALFTIME_MS : HALF_REAL_MS;
+  const windowMs = windowOverride ?? (phase === "HALFTIME" ? HALFTIME_MS : HALF_REAL_MS);
   const startAt = new Date(now - elapsedMs).toISOString();
   return {
     phase,
@@ -42,7 +52,7 @@ function clockFor({ phase, elapsedMs }: ClockOptions) {
     phaseStartAt: startAt,
     phaseEndsAt: new Date(now - elapsedMs + windowMs).toISOString(),
     serverNow: new Date(now).toISOString(),
-    halfRealMs: HALF_REAL_MS,
+    halfRealMs: phase === "HALFTIME" ? HALF_REAL_MS : windowMs,
     halftimeMs: HALFTIME_MS,
     seekForwardBlocked: true,
     seekGraceMs: 1500,
@@ -99,7 +109,8 @@ async function mockApi(page: Page, state: string, clock: ReturnType<typeof clock
       });
     }
     if (/\/api\/matches\/.+\/halves\/[12]\/log$/.test(url.pathname)) {
-      return route.fulfill({ json: MATCH_LOG });
+      // 후반 로그는 엔진이 하프를 이어 붙인 그대로 **틱이 2700 부터** 시작한다(인덱스 ≠ 틱).
+      return route.fulfill({ json: url.pathname.endsWith("/halves/2/log") ? H2_LOG : MATCH_LOG });
     }
     if (url.pathname === "/api/players") return route.fulfill({ json: PLAYERS });
     if (url.pathname === "/api/deck") return route.fulfill({ json: DECK });
@@ -154,7 +165,9 @@ test.describe("AC-W3-1 seek-to-now — 늦게 접속하면 경과 시점부터",
     await waitForViewer(page);
     await expect.poll(() => playhead(page), { timeout: 15_000 }).toBeGreaterThan(10);
 
-    // 끝까지 앞서가기 시도 → 상한(=지금)으로 회수
+    // 끝까지 앞서가기 시도 → 상한(=지금)으로 회수.
+    // #216: 자유 재생의 앞섬(연출 페이싱의 크루즈 구간)은 회수하지 않는다 — 드리프트 폭(하프의 12%)을
+    // 넘는 **의도적 점프**만 되돌린다. 로그 끝으로 뛰는 건 그 폭을 한참 넘는다.
     await page.evaluate((t) => {
       (window as unknown as { __viewer?: { seek(tick: number): void } }).__viewer?.seek(t - 1);
     }, TICKS);
@@ -181,13 +194,15 @@ test.describe("AC-W3-1 seek-to-now — 늦게 접속하면 경과 시점부터",
   });
 });
 
-test.describe("AC-W2-1 감독시간 — 60초 카운트다운", () => {
+test.describe("AC-W2-1 감독시간 — 카운트다운(#216: 3분)", () => {
   test("d. 남은 시간이 보이고, 만료되면 제출이 닫힌다", async ({ page }) => {
     await openMatch(page, "HALFTIME", clockFor({ phase: "HALFTIME", elapsedMs: HALFTIME_MS - 5_000 }));
 
     const countdown = page.getByTestId("halftime-countdown");
     await expect(countdown).toBeVisible();
     await expect(countdown).toContainText("감독시간");
+    // 3분 창의 마지막 5초 = 0:05 이하로 보인다(서버 값 파생 — 웹에 상수 복제 금지).
+    await expect(countdown).toContainText(/0:0[0-5]/);
     await expect(page.getByTestId("resume-button")).toBeEnabled();
 
     // 5초 뒤 만료 → 버튼이 닫히고 "전반 지시로 진행" 안내로 바뀐다.
@@ -208,5 +223,98 @@ test.describe("AC-W2-1 감독시간 — 60초 카운트다운", () => {
     expect(posts, "전반 중 저장도 halftime 프롬프트로 나가야 한다").toContainEqual(
       expect.objectContaining({ phase: "halftime", scope: "team", text: "후반은 라인 내리고 역습" }),
     );
+  });
+});
+
+/**
+ * #216 AC2 — **재생 페이스가 서버 창에 맞물린다**.
+ *
+ * 구 구현은 라이브에서 연출(autoPace)을 끄고 압축비를 speed 에 그대로 꽂은 뒤, 250ms 마다 넘친
+ * 플레이헤드를 `jumpToTick` 으로 끌어내렸다. 그 점프는 코어에서 **3 스냅샷 되감기 + resetStops +
+ * clearCaptions** 를 동반한다 — 초당 4회 되감기·자막 소거·정지연출 재발화 = hero 가 본 "렌더링이
+ * 버그 수준". 지금은 배율(paceRate)로 맞추고, 되감기는 드리프트 폭을 넘는 의도적 점프에만 남는다.
+ *
+ * 데모 로그(1440틱)의 연출 자연 재생 길이 = 229.6s(코어 페이싱 모델 실측) → 창을 그 값으로 잡으면
+ * 배율이 1 근처에 머문다. 리얼 config 하프(2700틱)의 실측 420s ↔ `half-real-ms: 420000` 과 같은 관계다.
+ */
+const DEMO_NATURAL_MS = 230_000;
+
+/** 브라우저 안에서 플레이헤드를 일정 간격으로 샘플링한다(왕복 지연이 섞이지 않게). */
+async function samplePlayhead(page: Page, count: number, everyMs: number): Promise<number[]> {
+  return page.evaluate(
+    async ({ count, everyMs }) => {
+      const v = (window as unknown as { __viewer?: { cur(): { tick: number } } }).__viewer!;
+      const out: number[] = [];
+      for (let i = 0; i < count; i++) {
+        out.push(Number(v.cur().tick));
+        await new Promise((r) => setTimeout(r, everyMs));
+      }
+      return out;
+    },
+    { count, everyMs },
+  );
+}
+
+test.describe("#216 AC2 — 라이브 재생 페이스", () => {
+  test("f. 플레이헤드가 되감기지 않는다(고무줄 회귀 가드)", async ({ page }) => {
+    // **재생이 창을 앞지르는** 창을 잡아야 이 가드가 성립한다(앞섬이 없으면 회수 조건 자체가
+    // 발화하지 않아 구 동작으로 되돌려도 통과한다 — 독립검증 major-2). 데모 로그 실측 재생은
+    // 홀드 때문에 모델치(6.27틱/s)보다 느린 5틱/s 대라, 창을 자연 페이스의 1.35배로 늘려
+    // 창 평균속도(≈4.6틱/s)를 재생보다 낮춘다. 실측 최속 경기(하프 392s vs 창 420s)의 확대판이다.
+    const looseWindow = Math.round(DEMO_NATURAL_MS * 1.35);
+    await openMatch(
+      page,
+      "FIRST_HALF",
+      clockFor({ phase: "FIRST_HALF", elapsedMs: looseWindow * 0.3, windowMs: looseWindow }),
+    );
+    await waitForViewer(page);
+    await expect.poll(() => playhead(page), { timeout: 15_000 }).toBeGreaterThan(TICKS * 0.2);
+
+    const samples = await samplePlayhead(page, 40, 150); // ≈6초
+    // 자연 재생의 뒤걸음은 정지 연출이 원인 틱으로 되짚는 것뿐이라 **한 프레임 미만**(<1틱)이다.
+    // 회수 점프(jumpToTick)는 코어에서 3 스냅샷 되감기를 동반하므로 2틱 문턱이면 확실히 갈린다.
+    const bigBacksteps = samples.filter((t, i) => i > 0 && t < samples[i - 1]! - 2);
+    expect(bigBacksteps, `되감기 샘플: ${JSON.stringify(samples)}`).toHaveLength(0);
+    expect(samples.at(-1)! - samples[0]!, "6초 동안 실제로 진행해야 한다").toBeGreaterThan(15);
+  });
+
+  test("g. 창에 맞춰 진행한다 — 재생 속도가 창의 평균속도를 따라간다", async ({ page }) => {
+    await openMatch(
+      page,
+      "FIRST_HALF",
+      clockFor({ phase: "FIRST_HALF", elapsedMs: DEMO_NATURAL_MS * 0.3, windowMs: DEMO_NATURAL_MS }),
+    );
+    await waitForViewer(page);
+    await expect.poll(() => playhead(page), { timeout: 15_000 }).toBeGreaterThan(TICKS * 0.2);
+
+    const samples = await samplePlayhead(page, 34, 150); // ≈5초
+    const rate = (samples.at(-1)! - samples[0]!) / ((samples.length - 1) * 0.15);
+    const windowRate = TICKS / (DEMO_NATURAL_MS / 1000); // 창이 요구하는 평균 속도(틱/실초)
+    console.log(`[#216] 재생 ${rate.toFixed(2)} tick/s · 창 ${windowRate.toFixed(2)} tick/s`);
+    // 하이라이트 슬로우·데드볼 홀드가 섞이므로 순간속도는 흔들린다 — 배(倍) 단위로 벗어나지만 않으면 된다.
+    expect(rate).toBeGreaterThan(windowRate * 0.4);
+    expect(rate).toBeLessThan(windowRate * 1.8);
+  });
+
+  test("h. 후반도 경과 지점부터 돌아간다 — 인덱스/절대틱 혼용 회귀 가드", async ({ page }) => {
+    // 후반 로그는 틱이 2700 부터다. 서버 시계가 주는 **인덱스**를 그대로 jumpToTick 에 넘기면
+    // 항상 로그 맨 앞으로 가고(=후반이 늘 0분부터), 상한 비교가 늘 참이라 매 250ms 되감긴다.
+    await openMatch(
+      page,
+      "SECOND_HALF",
+      clockFor({ phase: "SECOND_HALF", elapsedMs: DEMO_NATURAL_MS * 0.3, windowMs: DEMO_NATURAL_MS }),
+    );
+    await waitForViewer(page);
+
+    const expected = H2_TICK_OFFSET + TICKS * 0.3;
+    await expect
+      .poll(() => playhead(page), { message: "후반도 경과 시점부터 시작해야 한다", timeout: 15_000 })
+      .toBeGreaterThan(expected * 0.95);
+
+    const samples = await samplePlayhead(page, 30, 150); // ≈4.5초
+    expect(samples[0]!, "로그 맨 앞(2700 근처)에 갇히면 안 된다").toBeGreaterThan(H2_TICK_OFFSET + TICKS * 0.2);
+    const bigBacksteps = samples.filter((t, i) => i > 0 && t < samples[i - 1]! - 2);
+    expect(bigBacksteps, `후반 되감기 샘플: ${JSON.stringify(samples)}`).toHaveLength(0);
+    expect(samples.at(-1)! - samples[0]!, "후반도 실제로 진행해야 한다").toBeGreaterThan(10);
   });
 });

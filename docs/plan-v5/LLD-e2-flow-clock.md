@@ -11,8 +11,9 @@
 
 지금 경기는 **클라이언트 재생에 묶여** 있다 — 화면을 안 보면 아무 일도 안 일어나고, 전반 로그가 저장되는 순간
 `H1_BREAK`(하프타임)이 되며, 유저가 [후반 시작]을 눌러야 후반이 돈다. 이걸 **서버가 시각의 SoT를 갖는 라이브 경기**로
-바꾼다: 킥오프 시각을 서버가 기록하고, 전반은 실시간 약 4분 동안 "진행 중"이며(화면을 안 봐도 서버 시계가 흐른다),
-전반이 끝나면 **감독시간 60초**가 열리고(자동 후반 시작 금지), 만료되거나 유저가 제출하면 후반이 시뮬·재생된다.
+바꾼다: 킥오프 시각을 서버가 기록하고, 전반은 실시간 약 7분 동안 "진행 중"이며(화면을 안 봐도 서버 시계가 흐른다),
+전반이 끝나면 **감독시간 3분**이 열리고(자동 후반 시작 금지), 만료되거나 유저가 제출하면 후반이 시뮬·재생된다.
+*(원안은 4분/60초였다 — #216 에서 화면의 실제 재생 속도 실측에 맞춰 올렸다. §5 참조.)*
 **엔진은 한 줄도 바뀌지 않는다** — match-log 는 그대로고, 시계는 그 로그를 **언제까지 보여줄지 정하는 게이트**일 뿐이다.
 
 ### 불변조건 (깨면 이 에픽은 실패다)
@@ -99,8 +100,8 @@ GEN1|GEN2 → FAILED → (retry) → GEN1|GEN2
 
 ### 4.1 정의
 ```
-halfRealMs   = 한 하프의 실시간 재생 길이(config, 기본 240_000 ≈ 4분)
-halftimeMs   = 감독시간(config, 기본 60_000)
+halfRealMs   = 한 하프의 실시간 재생 길이(config, 기본 420_000 ≈ 7분 — #216 실측 정합)
+halftimeMs   = 감독시간(config, 기본 180_000 = 3분 — #216)
 phaseStartAt = 현재 단계 시작 시각(서버 Instant, ISO-8601)
 phaseEndsAt  = 현재 단계 종료 예정 시각 (= FIRST_HALF/SECOND_HALF: start+halfRealMs, HALFTIME: start+halftimeMs)
 serverNow    = 응답 생성 시각(클럭 스큐 보정용)
@@ -112,7 +113,9 @@ progress   = clamp01((now - phaseStartAt) / (phaseEndsAt - phaseStartAt))   // �
 liveTick   = floor(progress * tickCount)      // tickCount = 이 하프 로그의 tickSnapshots 길이
 ```
 - **압축비는 파생값**이다: `compression = tickCount * msPerTick / halfRealMs`. 리얼 config 기준
-  (`matchMinutes=90`, `msPerTick=1000` → 총 5400틱, 하프 2700틱) `halfRealMs=240_000` 이면 **11.25×**.
+  (`matchMinutes=90`, `msPerTick=1000` → 총 5400틱, 하프 2700틱) `halfRealMs=420_000` 이면 **6.43×**.
+  ⚠️ #216: 이 압축비를 뷰어 `setSpeed` 에 그대로 넣으면 안 된다(코어 1x = 2 게임초/실초 → 두 배). 창 정합은
+  `apps/web/src/match/live-pace.ts` `paceRate`(잔여 비율 배율)가 소유한다.
   config 노브는 **`half-real-ms`**(사람이 "전반을 몇 분에 보여줄까"로 생각하는 값)이고, 압축비는 표시용으로만 계산한다.
   이렇게 하면 엔진이 하프 길이를 바꿔도(쇼케이스 config 등) 재생은 **항상 창의 시작·끝에 정확히 맞는다**.
 - 라이브가 아닌 단계(`HALFTIME`·`FINISHED`·`clock=null`)에서는 상한이 없다 → `liveTick = tickCount`(전부 자유).
@@ -129,7 +132,7 @@ seekTo(t)   = forwardBlocked ? min(t, allowedTick) : t
 - **스포일러 한계(명시적 비범위)**: 로그 전체가 클라에 내려가므로 앞서보기 차단은 **UI 강제**다. 서버 절단
   (`?upToTick=`)은 뷰어가 로그 증분 로드를 지원해야 해서 이번 범위 밖 — PvP 진입 시 처리(§11 R3).
 
-### 4.4 시각 예시 (halfRealMs=240s, halftimeMs=60s)
+### 4.4 시각 예시 (원안 값 halfRealMs=240s, halftimeMs=60s 기준 — 현행은 420s/180s, §5)
 ```
 T+0s    GEN1 완료 → FIRST_HALF (kickoffAt=T)
 T+120s  유저 접속 → progress 0.5 → 로그 중간(≈23분)부터 재생 시작
@@ -141,14 +144,21 @@ T+300s  미제출 → GEN2 (전반 프롬프트 승계) → h2 저장 시 SECOND
 
 ## 5. Config 노브 (AC-W3-2 — 하드코딩 0)
 
+> ⚠️ **#216(2026-07-27)로 값이 바뀌었다** — `half-real-ms: 240000 → 420000`, `halftime-ms: 60000 → 180000`.
+> 240s 는 화면의 실제 재생 속도(하이라이트 연출)와 무관하게 정한 값이라 **재생이 끝나기 전에 하프타임이
+> 열렸다**(켬 모드 실측의 57%). 지금은 **켬 모드 실측 재생 길이**(리얼 하프 16개: min 392s · p50 422s ·
+> max 463s, 재현 = `node tools/measure-playback-pace.mjs`)에 맞춘다. 감독시간 3분은 hero 지시.
+> 남은 오차는 web 이 배율(`apps/web/src/match/live-pace.ts` `paceRate`)로 흡수하고, 아래 §4.2 의
+> "`speed = compression`" 지침은 **폐기**됐다(코어 1x = 2 게임초/실초라 압축비를 그대로 넣으면 2배로 빨랐다).
+
 `server-java/src/main/resources/application.yml`:
 ```yaml
 hmb:
   match:
     clock:
       enabled: true            # false = 롤백 스위치(현행 즉시 전개, §7.7)
-      half-real-ms: 240000     # 하프당 실시간 재생 길이(전·후반 동일). 압축비는 여기서 파생.
-      halftime-ms: 60000       # 감독시간(P4-D2 = 60초)
+      half-real-ms: 420000     # 하프당 실시간 재생 길이(#216: 켬 모드 실측 정합). 압축비는 여기서 파생.
+      halftime-ms: 180000      # 감독시간(#216 = 3분. 구 P4-D2 60초)
       auto-resume-on-expiry: true   # 만료 시 후반 자동 시작(false 면 HALFTIME 유지 = 수동 대기)
       sweep-interval-ms: 1000  # 시계 스위퍼 주기(잡 스위퍼 10s 와 별도 — 초 단위 경계라 촘촘히)
       seek:
@@ -382,10 +392,15 @@ UPDATE matches SET state='HALFTIME' WHERE state='H1_BREAK';  -- 진행 중 매�
 | `match/stage/ScoreBar.tsx` | HALFTIME 카운트다운 뱃지(초 단위) |
 | `match/GenWaitPanel.tsx` | GEN2 문구를 "후반 준비 중"으로(무대 셸 안에서도 표시되게 stage 경로 연결) |
 
-**라이브 재생 구현 노트**: `viewer-core` 는 로그를 통째로 로드해 자체 프레임 루프로 재생한다.
-상한 강제는 **호스트(web)가 주기적으로(≈250ms) `hooks.cur().tick` 을 읽어 `allowedTick` 초과 시 되돌리는** 방식으로
-구현한다 — **viewer-core 수정 0**(E1 소유 코어라 건드리지 않는다). 재생 속도는 `setSpeed` 로 압축비에 맞춘다:
-`speed = compression`(=`tickCount*msPerTick/halfRealMs`)이면 상한에 자연스럽게 붙어 되돌림이 거의 발생하지 않는다.
+**라이브 재생 구현 노트** *(⚠️ #216 에서 전면 교체 — 아래 원안은 실제로는 반대로 동작했다)*:
+~~상한 강제는 호스트가 250ms 마다 플레이헤드를 읽어 초과 시 되돌리고, `speed = compression` 으로 맞춘다.~~
+실제로는 ①코어 1x = **2 게임초/실초**라 압축비를 그대로 넣으면 두 배로 빨랐고 ②연출 페이싱(크루즈 4x /
+키장면 1x)은 속도가 균일하지 않아 창의 평균속도를 계속 앞질러 **되돌림이 초당 4회 상시 발화**했으며
+(그 점프는 코어에서 3 스냅샷 되감기 + `resetStops` + `clearCaptions` 를 동반한다 = 자막 소거·정지연출 재발화)
+③라이브 진입 시 `setAutoPace(false)` 를 불러 **유저의 실경기가 항상 하이라이트 끔 모드**였다.
+현재 구현(#216): 연출은 **항상 켬**, 창 정합은 `paceRate`(남은 재생분 ÷ 남은 창) **배율**로,
+되돌림은 드리프트 폭(하프의 12%)을 넘는 **의도적 점프에만**. 서버 시계가 주는 값은 **스냅샷 인덱스**이고
+뷰어는 **절대 틱**으로 움직이므로 변환이 필수다(후반 로그는 틱이 2700 부터 — 섞으면 후반이 통째로 멈춘다).
 
 ---
 
@@ -438,7 +453,7 @@ UPDATE matches SET state='HALFTIME' WHERE state='H1_BREAK';  -- 진행 중 매�
 | # | 항목 | 제안 |
 |---|---|---|
 | **R1** | **`apps/web` 글로벌 충돌** — E1(#169) 과 owned-glob 이 겹친다(PRD §3 표 기준 둘 다 apps/web) | E1 이 만든 **레이아웃/셸 구조는 불변**으로 두고 E2 는 **배선만**(§9 표 파일 한정). 머지 순서는 매니저 직렬화. 충돌 위험 파일 = `stage/stage-state.ts`, `match-logic.ts`, `MatchViewer.tsx` |
-| **R2** | 정산 시점이 h2 시뮬 직후 → **후반 재생 종료 후(+4분)** 로 이동. 보상 지급이 늦어진다 | 의도된 변경(라이브 경기 = 끝나야 결과). 유저가 창을 닫아도 스위퍼가 정산하므로 유실 없음. 반대면 "즉시 정산 + FINISHED 만 늦추기"로 변경 가능(설계상 분리 가능) |
+| **R2** | 정산 시점이 h2 시뮬 직후 → **후반 재생 종료 후(+halfRealMs, #216 이후 7분)** 로 이동. 보상 지급이 늦어진다 | 의도된 변경(라이브 경기 = 끝나야 결과). 유저가 창을 닫아도 스위퍼가 정산하므로 유실 없음. 반대면 "즉시 정산 + FINISHED 만 늦추기"로 변경 가능(설계상 분리 가능) |
 | **R3** | 앞서보기 차단이 **클라 강제**(로그 전체 전송) | Phase 4 범위 밖으로 명시. PvP 진입 시 `?upToTick=` 절단 + 증분 로드로 승격 |
 | **R4** | 라이브 폴링 1s × 동시 유저 | 지금은 단일 테스터 규모라 무시 가능. 필요 시 `clock` 전용 경량 엔드포인트로 분리(계약 추가) |
 | **R5** | 배포본(hmb-online.pages.dev)에 진행 중 매치가 있으면 V8 중 `H1_BREAK` 이관 | §8.2 로 처리. 배포는 백엔드 재기동 필요 → `docs/deploy-log.md` 기록(P4-D5) |

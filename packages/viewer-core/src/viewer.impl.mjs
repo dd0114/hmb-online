@@ -15,7 +15,7 @@
 //           setFollow, setTrail, setAutoPace, setSpeed, setViewMode, setFixZoom, hooks }
 //   hooks = window.__viewer 읽기 표면(captions 는 DOM 이라 호스트가 제공).
 
-import { buildPlayback, spansReposition, inHighlight } from "./playback.mjs";
+import { buildPlayback, spansReposition, inHighlight, effectiveSpeed, PACE } from "./playback.mjs";
 import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.impl.mjs";
 
 export function createViewer(canvas, chrome = {}) {
@@ -27,15 +27,14 @@ export function createViewer(canvas, chrome = {}) {
   const PITCH_W = 105, PITCH_H = 68, MARGIN = 30; // MARGIN=피치 둘레 여백px(경계 위 taker·공이 안 잘리게).
   const FOLLOW_ZOOM = 2.6;                 // 공 따라가기 확대율
   const CONTACT_ZOOM = 2.6, FOUL_CONTACT_TICKS = 3; // 파울 접촉 순간 줌 + 지속 틱
-  const FOUL_HOLD_MS = 1000; // 파울/페널티 정지는 길게(줌 완료+충돌 여유)
   const CAM_SMOOTH = 0.12;                 // 정지 중 카메라 팬 속도(0..1/frame)
   const CAM_MAX_PAN_PXPS = 900;            // #45: 카메라 팬 속도 상한(스크린px/s)
   const CAM_MAX_ZOOM_PS = 2.2;             // #45: 줌 변화 속도 상한(zoom/s)
-  const DEADBALL_PAUSE_MS = 450;           // #59: 데드볼 자막 짧은 정지 후 정상 재생
   const BALL_TRAIL = 6, PLAYER_TRAIL = 10; // 잔상 길이(틱)
-  const TICKS_PER_SEC = 2;                  // 1x = 2 게임초/실초
-  const CRUISE_SPEED = 4, HL_SPEED = 1;     // 하이라이트 자동페이싱: 빌드업 4x → 찬스 1x
-  const HL_PRE = 8, HL_POST = 3;            // #83 하이라이트 창 비대칭
+  // 페이싱 상수는 **playback.mjs 가 SoT**(#216) — 재생 길이 모델(autoPaceDurationMs)이 같은 값을
+  // 읽어야 "실측 재생 길이에 서버 시계를 맞춘다"가 성립한다. 여기서 다시 적으면 조용히 갈라진다.
+  const { TICKS_PER_SEC, CRUISE_SPEED, HL_SPEED, HL_PRE, HL_POST, FOUL_HOLD_MS, DEADBALL_PAUSE_MS,
+          SETPIECE_WAIT_TICKS, SETPIECE_WAIT_RADIUS_M } = PACE;
   const TOAST_TICKS = 5, BANNER_TICKS = 16, CARD_SHOW_TICKS = 12; // 자막/카드 마커 지속(틱)
 
   // ===== 상태 =====
@@ -89,9 +88,9 @@ export function createViewer(canvas, chrome = {}) {
   // #90: 세트피스 재시작 대기 구간(공이 스팟에 정지, taker 워크인) 판정 — 이 구간엔 클로즈업 억제.
   function inSetpieceWait(tick) {
     for (const st of stoppages) {
-      if (st.isGoal || !st.setPiece || tick < st.causeTick || tick > st.causeTick + 32) continue;
+      if (st.isGoal || !st.setPiece || tick < st.causeTick || tick > st.causeTick + SETPIECE_WAIT_TICKS) continue;
       const cs = snapByTick.get(st.causeTick), now = snapByTick.get(tick);
-      if (cs && now && Math.hypot(now.ball.x - cs.ball.x, now.ball.y - cs.ball.y) < 3) return true;
+      if (cs && now && Math.hypot(now.ball.x - cs.ball.x, now.ball.y - cs.ball.y) < SETPIECE_WAIT_RADIUS_M) return true;
     }
     return false;
   }
@@ -447,7 +446,8 @@ export function createViewer(canvas, chrome = {}) {
       const beforeTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
       const fixMode = viewMode === "fix";
       const nearKey = !fixMode && autoPace && !inSetpieceWait(beforeTick) && inHighlight(beforeTick, keyTicks, HL_PRE, HL_POST);
-      const eff = (!fixMode && autoPace) ? (nearKey ? HL_SPEED : CRUISE_SPEED) : speed;
+      // #216: speed 는 연출 페이싱을 **끄는** 대신 그 위에 곱한다(playback.effectiveSpeed).
+      const eff = effectiveSpeed(!fixMode && autoPace, nearKey, speed, CRUISE_SPEED, HL_SPEED);
       tickPos += dt * TICKS_PER_SEC * eff;
       if (tickPos >= snaps.length - 1) { tickPos = snaps.length - 1; setPlaying(false); }
       const afterTick = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;

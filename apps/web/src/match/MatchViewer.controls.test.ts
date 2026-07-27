@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
- * 매치 화면 재생 컨트롤 계약 (#148, #169 S3 직접 마운트). hero 재지시: "매치 재생은 그냥 자동
- * 진행, 유일한 컨트롤은 하이라이트 껐다 켜기 하나" →
- *  - 플레이 모드(일반 유저): **하이라이트 토글 하나뿐**. 토글은 코어 autoPace 를 직접 끈다/켠다.
+ * 매치 화면 재생 컨트롤 계약 (#148, #169 S3 직접 마운트, #216 하이라이트 단일화).
+ *  - 플레이 모드(일반 유저): **컨트롤 없음**. 경기는 하이라이트 연출로 자동 진행된다.
+ *    (#216 전에는 하이라이트 토글이 있었다 — 끔 모드 렌더가 깨진 채였고 라이브 재생이 그 경로를
+ *     강제로 탔다. 끔 경로를 지우면서 끌 수단도 함께 사라졌다.)
  *  - admin/QA 모드: 코어 풀컨트롤(재생·배속·스크럽·프레임점프) + 모드 전환 토글.
  *
  * S3: iframe·postMessage 제거 — web 이 viewer-core 를 직접 마운트한다. jsdom 엔 canvas 2D 가
@@ -29,6 +30,7 @@ const viewer = vi.hoisted(() => {
     restart: vi.fn(),
     jumpEvent: vi.fn(),
     jumpToTick: vi.fn(),
+    play: vi.fn(),
     seek: vi.fn(),
     scrubTo: vi.fn(),
     hooks,
@@ -60,7 +62,8 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/match/m1");
   window.localStorage.clear();
   createViewer.mockClear();
-  for (const fn of [viewer.setAutoPace, viewer.setSpeed, viewer.load, viewer.start, viewer.seek, viewer.scrubTo, viewer.jumpToTick]) fn.mockClear();
+  fx.log = { tickSnapshots: [], events: [], finalScore: { home: 0, away: 0 } } as unknown;
+  for (const fn of [viewer.setAutoPace, viewer.setSpeed, viewer.load, viewer.start, viewer.seek, viewer.scrubTo, viewer.jumpToTick, viewer.play]) fn.mockClear();
   for (const k of Object.keys(viewer.hooks)) delete viewer.hooks[k];
 });
 afterEach(() => {
@@ -80,9 +83,9 @@ describe("MatchViewer 컨트롤 — 플레이 모드(일반 유저)", () => {
     expect((window as unknown as { __viewer?: unknown }).__viewer).toBe(viewer.hooks);
   });
 
-  it("컨트롤은 하이라이트 토글 하나뿐이다", () => {
+  it("플레이 모드엔 컨트롤이 없다 — 하이라이트 토글도 사라졌다(#216)", () => {
     renderViewer(false);
-    expect(screen.getByTestId("viewer-highlight-toggle-half1")).toBeTruthy();
+    expect(screen.queryByTestId("viewer-highlight-toggle-half1")).toBeNull();
     // 경기는 자동 진행 — 재생/일시정지·배속·스크럽·프레임점프·모드토글은 아예 없다.
     expect(screen.queryByTestId("viewer-play-toggle-half1")).toBeNull();
     for (const s of [1, 2, 4]) expect(screen.queryByTestId(`viewer-speed-${s}-half1`)).toBeNull();
@@ -90,24 +93,22 @@ describe("MatchViewer 컨트롤 — 플레이 모드(일반 유저)", () => {
     expect(screen.queryByTestId("viewer-prev-goal-half1")).toBeNull();
     expect(screen.queryByTestId("viewer-mode-toggle-half1")).toBeNull();
     const buttons = screen.getByTestId("viewer-controls-half1").querySelectorAll("button");
-    expect(buttons.length, "플레이 모드 컨트롤 바의 버튼은 하이라이트 토글 하나뿐").toBe(1);
+    expect(buttons.length, "플레이 모드 컨트롤 바에는 버튼이 없다").toBe(0);
   });
 
-  it("하이라이트 토글이 코어 autoPace 를 직접 끄고 켠다 + 표시도 따라간다", () => {
+  /**
+   * #216 의 핵심 계약. 하이라이트(autoPace)는 **켬이 유일 모드**다 — 화면 어디에도 끄는 경로가
+   * 없어야 한다. 버튼만 지우고 코드에 `setAutoPace(false)` 가 남으면(예전 라이브 게이트가 그랬다)
+   * 유저는 다시 깨진 렌더를 보게 된다.
+   */
+  it("web 은 코어 연출을 절대 끄지 않는다 — setAutoPace(false) 호출 0", () => {
     renderViewer(false);
-    const toggle = screen.getByTestId("viewer-highlight-toggle-half1");
-    // 기본 on.
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(toggle.textContent).toContain("켜짐");
+    expect(viewer.setAutoPace).not.toHaveBeenCalledWith(false);
+  });
 
-    fireEvent.click(toggle); // on → off
-    expect(viewer.setAutoPace).toHaveBeenLastCalledWith(false);
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    expect(toggle.textContent).toContain("꺼짐");
-
-    fireEvent.click(toggle); // off → on
-    expect(viewer.setAutoPace).toHaveBeenLastCalledWith(true);
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  it("마운트가 배속을 건드리지 않는다 — speed 는 이제 연출 위의 배율이라 4 를 박으면 연출이 4배가 된다", () => {
+    renderViewer(false);
+    expect(viewer.setSpeed).not.toHaveBeenCalledWith(4);
   });
 });
 
@@ -120,8 +121,9 @@ describe("MatchViewer 컨트롤 — admin/QA 모드", () => {
     expect(screen.getByTestId("viewer-speed-0.25-half1")).toBeTruthy();
     expect(screen.getByTestId("viewer-scrub-half1")).toBeTruthy();
     expect(screen.getByTestId("viewer-prev-goal-half1")).toBeTruthy();
-    // 풀컨트롤에선 간소 하이라이트 토글을 중복 노출하지 않는다.
+    // 하이라이트 토글은 플레이·풀컨트롤 어느 쪽에도 없다(#216 끔 경로 제거).
     expect(screen.queryByTestId("viewer-highlight-toggle-half1")).toBeNull();
+    expect(screen.queryByTestId("viewer-highlight-admin-half1")).toBeNull();
   });
 
   it("QA 플래그(?viewerControls=full)면 비admin 도 풀컨트롤", () => {
@@ -141,11 +143,11 @@ describe("MatchViewer 컨트롤 — admin/QA 모드", () => {
     expect(viewer.jumpEvent).toHaveBeenLastCalledWith("goal", 1);
   });
 
-  it("모드 토글로 플레이어 체감(간소)으로 전환 — 하이라이트 토글이 나오고 저장한다", () => {
+  it("모드 토글로 플레이어 체감(간소)으로 전환 — QA 컨트롤이 사라지고 저장한다", () => {
     renderViewer(true);
     fireEvent.click(screen.getByTestId("viewer-mode-play-half1"));
-    expect(screen.getByTestId("viewer-highlight-toggle-half1")).toBeTruthy();
     expect(screen.queryByTestId("viewer-scrub-half1")).toBeNull();
+    expect(screen.queryByTestId("viewer-play-toggle-half1")).toBeNull();
     expect(window.localStorage.getItem(CONTROL_MODE_STORAGE_KEY)).toBe("play");
   });
 });
@@ -291,25 +293,147 @@ describe("MatchViewer — 초단위 시간 컨트롤(#180)", () => {
   });
 
   /**
-   * 코어 계약(viewer.impl.mjs tickLoop): `eff = autoPace ? (HL_SPEED|CRUISE_SPEED) : speed`.
-   * 즉 **하이라이트 연출이 켜져 있으면 배속 설정이 통째로 무시된다** — 배속 칩이 거짓말이 된다.
-   * QA 모드에서 배속을 고른다는 건 "내가 속도를 잡겠다"는 뜻이므로 연출 페이싱을 끈다.
+   * #216: 배속은 이제 연출을 **끄지 않는다**. 코어가 `eff = autoPace ? (HL|CRUISE) * speed : speed`
+   * 로 바뀌어 배속이 연출 위의 배율이 됐다 — QA 가 속도를 잡으면서도 하이라이트 슬로우를 유지한다.
+   * (구 계약은 "배속을 고르면 autoPace 를 끈다" 였고, 그게 web 에 남은 마지막 끔 경로였다.)
    */
-  it("배속을 고르면 연출 자동페이싱을 끈다(안 끄면 배속이 무시된다)", () => {
+  it("배속을 골라도 연출을 끄지 않는다 — 배율만 바뀐다", () => {
     renderViewer(true);
     fireEvent.click(screen.getByTestId("viewer-speed-0.25-half1"));
-    expect(viewer.setAutoPace).toHaveBeenLastCalledWith(false);
     expect(viewer.setSpeed).toHaveBeenLastCalledWith(0.25);
+    expect(viewer.setAutoPace).not.toHaveBeenCalledWith(false);
+  });
+});
+
+/**
+ * 라이브 게이트 (#170 W3 → #216 재정합). 두 가지가 계약이다.
+ *  ① 라이브에서도 **연출을 끄지 않는다** — 구현 당시엔 여기서 autoPace 를 껐고, 그래서 유저의
+ *     실경기는 항상 "하이라이트 끔"(렌더가 깨진 그 경로)이었다.
+ *  ② 서버 시계는 **스냅샷 인덱스**로 말하고 뷰어는 **절대 틱**으로 움직인다. 후반 로그는 틱이
+ *     2700 부터 시작하므로 둘을 섞으면 seek-to-now 가 로그 맨 앞으로 가고(=후반이 늘 0분부터),
+ *     상한 비교가 항상 참이 되어 매 250ms 되감긴다(=후반 재생 정지).
+ */
+describe("MatchViewer — 라이브 게이트(#216)", () => {
+  const HALF_REAL_MS = 420_000;
+  /** 후반 로그: 100 스냅샷, 틱은 2700..2799(엔진이 하프를 이어 붙인 그대로). */
+  const H2_FIRST_TICK = 2700;
+  const h2Log = {
+    tickSnapshots: Array.from({ length: 100 }, (_, i) => ({ tick: H2_FIRST_TICK + i })),
+    events: [],
+    finalScore: { home: 0, away: 0 },
+  } as unknown;
+
+  function liveClock(phase: "FIRST_HALF" | "SECOND_HALF", elapsedMs: number) {
+    const now = Date.now();
+    const startAt = new Date(now - elapsedMs).toISOString();
+    return {
+      phase,
+      kickoffAt: startAt,
+      phaseStartAt: startAt,
+      phaseEndsAt: new Date(now - elapsedMs + HALF_REAL_MS).toISOString(),
+      serverNow: new Date(now).toISOString(),
+      halfRealMs: HALF_REAL_MS,
+      halftimeMs: 180_000,
+      seekForwardBlocked: true,
+      seekGraceMs: 1500,
+    };
+  }
+
+  function renderLive(half: 1 | 2, clock: ReturnType<typeof liveClock>) {
+    return render(
+      h(
+        AdminFlagContext.Provider,
+        { value: false },
+        h(MatchViewer, { matchId: "m1", half, homeName: "홈", awayName: "원정", clock }),
+      ),
+    );
+  }
+
+  it("후반 seek-to-now 가 **절대 틱**으로 점프한다(인덱스를 그대로 넘기면 로그 맨 앞으로 간다)", () => {
+    fx.log = h2Log;
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK, tickPosIdx: 0 });
+    renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2)); // 절반 경과
+
+    const target = viewer.jumpToTick.mock.calls.at(-1)?.[0] as number;
+    expect(target, "인덱스 50 이 아니라 틱 2750 근처여야 한다").toBeGreaterThan(H2_FIRST_TICK + 40);
+    expect(target).toBeLessThan(H2_FIRST_TICK + 60);
   });
 
-  it("QA 바에서 연출 페이싱을 다시 켤 수 있다", () => {
-    renderViewer(true);
-    const toggle = screen.getByTestId("viewer-highlight-admin-half1");
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(toggle);
-    expect(viewer.setAutoPace).toHaveBeenLastCalledWith(false);
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(toggle);
-    expect(viewer.setAutoPace).toHaveBeenLastCalledWith(true);
+  it("라이브에서도 연출(autoPace)을 끄지 않는다", () => {
+    fx.log = h2Log;
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK, tickPosIdx: 0 });
+    renderLive(2, liveClock("SECOND_HALF", 10_000));
+    expect(viewer.setAutoPace).not.toHaveBeenCalledWith(false);
+    // 재생은 시작하되 압축비를 speed 에 직접 꽂지 않는다(코어 1x = 2게임초/실초라 두 배가 됐던 자리).
+    expect(viewer.play).toHaveBeenCalled();
+  });
+
+  /**
+   * #216 AC2 의 **기계장치** 계약. `paceRate` 를 순수 함수로만 박제하면, 그 값을 코어에 거는
+   * 한 줄(`v.setSpeed(paceRate(...))`)을 지워도 아무도 안 죽는다 — 그러면 hero 가 본 증상이
+   * 조용히 돌아온다(자연 페이스와 창의 오차가 하프 내내 누적). 그래서 **코어에 실제로 걸리는지**를
+   * 여기서 본다. 독립검증 major-1.
+   */
+  it("뒤처지면 배율 > 1 을 코어에 실제로 건다(창을 따라잡는다)", () => {
+    fx.log = h2Log;
+    // 창은 절반 지났는데 재생은 10% — 따라잡아야 한다.
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK + 10, tickPosIdx: 10 });
+    vi.useFakeTimers();
+    try {
+      renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2));
+      act(() => {
+        vi.advanceTimersByTime(300); // 게이트 폴링 1회(250ms)
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    const speeds = viewer.setSpeed.mock.calls.map((c) => c[0] as number);
+    expect(speeds.some((v) => v > 1), `setSpeed 호출: ${JSON.stringify(speeds)}`).toBe(true);
+  });
+
+  it("앞서 있으면 배율 < 1 로 늦춘다 — 되감아 회수하지 않는다(고무줄 금지)", () => {
+    fx.log = h2Log;
+    // 창 50% · 재생 58% = 드리프트 허용(12%) 안쪽 → 회수 대신 배율로 늦춘다.
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK + 58, tickPosIdx: 58 });
+    vi.useFakeTimers();
+    try {
+      renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2));
+      viewer.jumpToTick.mockClear(); // 마운트 시 seek-to-now 는 정상 — 그 뒤만 본다
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    const speeds = viewer.setSpeed.mock.calls.map((c) => c[0] as number);
+    expect(speeds.some((v) => v < 1), `setSpeed 호출: ${JSON.stringify(speeds)}`).toBe(true);
+    expect(viewer.jumpToTick, "허용 범위 안의 앞섬은 회수하지 않는다").not.toHaveBeenCalled();
+  });
+
+  it("허용 범위를 크게 넘는 앞섬(의도적 점프)은 상한으로 회수한다", () => {
+    fx.log = h2Log;
+    // 창 50% · 재생 95% = 스크럽으로 뛴 것 → 앞서보기 차단(AC-W3-1).
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK + 95, tickPosIdx: 95 });
+    vi.useFakeTimers();
+    try {
+      renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2));
+      viewer.jumpToTick.mockClear();
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+    const target = viewer.jumpToTick.mock.calls.at(-1)?.[0] as number | undefined;
+    expect(target, "상한(=지금)으로 되돌려야 한다").toBeDefined();
+    expect(target!).toBeLessThan(H2_FIRST_TICK + 60);
+  });
+
+  it("라이브가 아닌 하프(지나간 전반)는 점프도 배율도 걸지 않는다 — 다시보기는 자유", () => {
+    fx.log = h2Log;
+    viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK, tickPosIdx: 0 });
+    renderLive(1, liveClock("SECOND_HALF", 10_000)); // 후반 라이브 중의 전반 화면
+    expect(viewer.jumpToTick).not.toHaveBeenCalled();
+    expect(viewer.setSpeed).toHaveBeenLastCalledWith(1);
   });
 });

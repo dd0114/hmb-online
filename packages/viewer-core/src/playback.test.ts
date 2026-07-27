@@ -9,6 +9,8 @@ import {
   buildBallCutTicks,
   inHighlight,
   buildFlightSides,
+  effectiveSpeed,
+  autoPaceDurationMs,
 } from "./playback.mjs";
 
 describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 컷 (하이라이트 순간이동 버그 회귀방지)", () => {
@@ -75,6 +77,26 @@ describe("#83 inHighlight — 비대칭 하이라이트 창(세이브 후 늦은
     expect(inHighlight(50, [], 8, 3)).toBe(false);
     // 다중 keyTick: 어느 하나의 창에 들면 true.
     expect(inHighlight(203, [100, 200], 8, 3)).toBe(true);
+  });
+});
+
+describe("#216 effectiveSpeed — speed 는 연출 페이싱 위의 배율(끔 경로 없이 속도 조절)", () => {
+  const CRUISE = 4, HL = 1;
+  it("speed=1 이면 연출 자연 페이스 그대로다(기존 소비자 무회귀)", () => {
+    expect(effectiveSpeed(true, false, 1, CRUISE, HL)).toBe(CRUISE);
+    expect(effectiveSpeed(true, true, 1, CRUISE, HL)).toBe(HL);
+  });
+  it("배율이 크루즈·키장면에 **같은 비율**로 걸린다 = 슬로우모션 대비 유지", () => {
+    const cruise = effectiveSpeed(true, false, 1.5, CRUISE, HL);
+    const key = effectiveSpeed(true, true, 1.5, CRUISE, HL);
+    expect(cruise).toBeCloseTo(6);
+    expect(key).toBeCloseTo(1.5);
+    // 대비(크루즈/키장면)는 배율과 무관하게 4:1 로 보존된다 — 이게 "연출을 죽이지 않는다"의 뜻.
+    expect(cruise / key).toBeCloseTo(CRUISE / HL);
+  });
+  it("연출 페이싱이 꺼진 프레임(fix 뷰 등)에서는 speed 가 곧 속도다", () => {
+    expect(effectiveSpeed(false, true, 2, CRUISE, HL)).toBe(2);
+    expect(effectiveSpeed(false, false, 0.25, CRUISE, HL)).toBe(0.25);
   });
 });
 
@@ -345,5 +367,30 @@ describe("buildAnnotations", () => {
     expect(buildFlightSides([{ type: "pass", tick: 2, team: "away" }], snaps).get(2)).toBe("away");
     expect(buildFlightSides([{ type: "shot", tick: 2, detail: "saved", team: "home" }], snaps).has(2)).toBe(false);
     expect(buildFlightSides([{ type: "shot", tick: 2, detail: "off_target", team: "home" }], snaps).has(2)).toBe(false);
+  });
+});
+
+describe("#216 autoPaceDurationMs — 켬 모드 재생 길이(서버 half-real-ms 의 근거)", () => {
+  /** 정지·키장면 없는 로그 = 순수 크루즈. 1440틱 / (2×4틱/s) = 180s. */
+  const plain = Array.from({ length: 1441 }, (_, i) => ({ tick: i, ball: { x: 50, y: 34 } }));
+
+  it("정지·키장면이 없으면 크루즈 속도 그대로다", () => {
+    expect(autoPaceDurationMs(plain, [])).toBeGreaterThan(179_000);
+    expect(autoPaceDurationMs(plain, [])).toBeLessThan(181_000);
+  });
+
+  it("키장면이 있으면 그 구간이 슬로우라 **길어진다**(연출의 대가)", () => {
+    const withGoal = [{ tick: 700, type: "goal" }];
+    expect(autoPaceDurationMs(plain, withGoal)).toBeGreaterThan(autoPaceDurationMs(plain, []));
+  });
+
+  it("배율을 곱하면 길이가 그만큼 줄어든다(라이브 페이스 정합의 근거)", () => {
+    const base = autoPaceDurationMs(plain, []);
+    expect(autoPaceDurationMs(plain, [], 2)).toBeCloseTo(base / 2, -3);
+  });
+
+  it("스냅샷이 없거나 하나뿐이면 0(모델이 폭주하지 않는다)", () => {
+    expect(autoPaceDurationMs([], [])).toBe(0);
+    expect(autoPaceDurationMs([{ tick: 0, ball: { x: 0, y: 0 } }], [])).toBe(0);
   });
 });

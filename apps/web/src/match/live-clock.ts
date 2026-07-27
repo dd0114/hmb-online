@@ -1,7 +1,6 @@
 import {
   clampSeek,
   clockOffsetMs,
-  compressionOf,
   liveClockForHalf,
   liveTick,
   type MatchClock,
@@ -51,6 +50,17 @@ export function logAvailableFor(state: string | undefined, half: 1 | 2): boolean
   return half === 1 ? H1_LOG_STATES.has(state) : state === "SECOND_HALF" || state === "FINISHED";
 }
 
+/**
+ * 감독시간 길이 문구(`3분`·`90초`). 값은 **서버가 내려준 `clock.halftimeMs`** 만 쓴다 — 화면에
+ * "60초" 같은 상수를 적어두면 서버 config 를 바꾼 날(#216: 60→180초) 문구만 거짓말이 된다.
+ * 시계가 없는 매치(레거시·롤백)면 null = 길이를 말하지 않는다.
+ */
+export function halftimeLengthLabel(halftimeMs: number | null | undefined): string | null {
+  if (typeof halftimeMs !== "number" || !Number.isFinite(halftimeMs) || halftimeMs <= 0) return null;
+  const sec = Math.round(halftimeMs / 1000);
+  return sec % 60 === 0 ? `${sec / 60}분` : `${sec}초`;
+}
+
 /** 잔여 ms → `분:초`. null 이면 카운트다운 비활성(시계 없는 매치). */
 export function countdownLabel(remainingMs: number | null): string | null {
   if (remainingMs == null) return null;
@@ -65,9 +75,11 @@ export interface LiveGate {
   liveTick: number;
   /** seek 목표를 정책에 맞게 자른 정수 틱(뒤로 자유·앞으로 상한+grace). */
   clamp(target: number): number;
-  /** 라이브 재생 속도(압축비). 없으면 null = 등속. */
-  speed: number | null;
 }
+
+// #216: `speed`(압축비 = tickCount*msPerTick/halfRealMs)는 여기서 뺐다. 코어 1x 는 2 게임초/실초라
+// 압축비를 그대로 setSpeed 에 넣으면 두 배로 빨랐고, 애초에 연출 페이싱은 속도가 균일하지 않아
+// 등속 압축비로는 창에 맞출 수 없다. 창 정합은 `live-pace.paceRate`(잔여 비율 배율)가 소유한다.
 
 /**
  * 응답이 도착한 그 순간에 재는 서버-클라 시각차(ms). **폴링 때 한 번 재서 보관**하고, 이후 프레임마다
@@ -95,6 +107,5 @@ export function liveGate(
     isLive: Boolean(active),
     liveTick: live,
     clamp: (target: number) => Math.floor(clampSeek(target, live, active, MS_PER_TICK)),
-    speed: compressionOf(active, tickCount, MS_PER_TICK),
   };
 }
