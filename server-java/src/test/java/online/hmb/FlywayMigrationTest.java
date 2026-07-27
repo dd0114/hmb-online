@@ -41,7 +41,9 @@ class FlywayMigrationTest {
             "gem_ledger",
             // V14 어드민 유닛 카탈로그(1) — #207: 카탈로그 변경 이력 원장.
             // players.active/admin_locked 는 컬럼 추가라 목록 불변.
-            "admin_catalog_audit"
+            "admin_catalog_audit",
+            // V16 경제 정돈(1) — #212: 지갑 리스케일/젬 백필을 1회로 가두는 마커(데이터 테이블 아님)
+            "economy_rescale_v16"
     );
 
     @Test

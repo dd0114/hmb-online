@@ -96,7 +96,9 @@ class GrowthApiTest extends MatchTestBase {
         setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         authPost("/api/growth/star", token, Map.of("playerId", "P001"), Map.class);
 
-        // 상점에서 노말 다이스 1개 구매(500P, 스타터 3000P 지급 충분). DiceBuyResult(shared): dice{normal,cash} 중첩.
+        // 상점에서 노말 다이스 1개 구매. #212 로 5,000P 가 됐으므로 스타터 3,000P 로는 모자라 잔액을 채운다.
+        jdbcClient.sql("UPDATE wallets SET points = 12000 WHERE user_id = ?").param(userId).update();
+        // DiceBuyResult(shared): dice{normal,cash} 중첩.
         ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "NORMAL", "count", 1), Map.class);
         assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Map<?, ?>) buy.getBody().get("dice")).get("normal")).isEqualTo(1);
@@ -126,66 +128,94 @@ class GrowthApiTest extends MatchTestBase {
         assertThat(res.getBody().get("code")).isEqualTo("INSUFFICIENT_DICE");
     }
 
-    // V2.2 재화 이원화: 캐시 다이스는 젬 전용 결제. 신규 유저는 젬 0 → INSUFFICIENT_GEMS.
+    // V2.2 재화 이원화: 캐시 다이스는 젬 전용 결제. 잔액을 넘는 수량은 INSUFFICIENT_GEMS.
+    // (#212 로 가입 시 젬이 지급되므로 "신규 유저 = 젬 0" 전제는 더 이상 성립하지 않는다 —
+    //  대신 잔액을 초과하는 수량으로 가드를 밟는다.)
     @SuppressWarnings("unchecked")
     @Test
     void shopDiceCashInsufficientGemsRejected() {
         String token = login("api_dice_poor");
-        ResponseEntity<Map> res = authPost("/api/shop/dice", token, Map.of("kind", "CASH", "count", 1), Map.class);
+        long balance = gemsOf(userIdOf("api_dice_poor"));
+        int overCount = (int) (balance / 10) + 1; // cashGemCost=10 → 잔액보다 10젬 비싼 수량
+        ResponseEntity<Map> res = authPost("/api/shop/dice", token,
+                Map.of("kind", "CASH", "count", overCount), Map.class);
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(res.getBody().get("code")).isEqualTo("INSUFFICIENT_GEMS");
+        assertThat(gemsOf(userIdOf("api_dice_poor"))).isEqualTo(balance); // 롤백
     }
 
-    // 캐시 다이스 구매 = 젬 차감(gem_ledger, reason='dice'). 팩p2=330젬 충전 후 1개(10젬) 구매.
+    // 캐시 다이스 구매 = 젬 차감(gem_ledger, reason='dice'). #212: 젬 재원은 가입 지급분.
     @SuppressWarnings("unchecked")
     @Test
     void shopDiceCashPurchaseDeductsGems() {
         String token = login("api_dice_cash");
-        ResponseEntity<Map> topup = authPost("/api/shop/gems/topup", token, Map.of("packId", "p2"), Map.class);
-        assertThat(topup.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(topup.getBody().get("granted")).isEqualTo(330);
-        assertThat(((Map<?, ?>) topup.getBody().get("wallet")).get("gems")).isEqualTo(330);
+        long before = gemsOf(userIdOf("api_dice_cash"));
+        assertThat(before).isEqualTo(6000L); // economy initialGems
 
         ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "CASH", "count", 1), Map.class);
         assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(((Map<?, ?>) buy.getBody().get("dice")).get("cash")).isEqualTo(1);
         Map<?, ?> wallet = (Map<?, ?>) buy.getBody().get("wallet");
-        assertThat(wallet.get("gems")).isEqualTo(320); // 330 - 10(cashGemCost)
+        assertThat(((Number) wallet.get("gems")).longValue()).isEqualTo(before - 10); // cashGemCost
         assertThat(wallet.get("points")).isEqualTo(3000); // 노말 다이스 미구매 — P 무변경(초기값 유지)
     }
 
     // 노말 다이스 구매는 여전히 P 결제 — CASH 결제(젬)와 분리 확인.
+    // #212: 픽스처 다이스 가격을 출하본과 같은 5,000 으로 맞췄다(구 500 을 남겨두면 어느 서버
+    // 테스트도 출하 가격을 안 밟는 드리프트가 생긴다). 가입 3,000 P 로는 못 사므로 잔액을 채운다.
     @SuppressWarnings("unchecked")
     @Test
     void shopDiceNormalPurchaseStillDeductsPoints() {
         String token = login("api_dice_norm");
+        String uid = userIdOf("api_dice_norm");
+        jdbcClient.sql("UPDATE wallets SET points = 12000 WHERE user_id = ?").param(uid).update();
+
         ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "NORMAL", "count", 1), Map.class);
         assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> wallet = (Map<?, ?>) buy.getBody().get("wallet");
-        assertThat(wallet.get("points")).isEqualTo(2500); // 3000 - 500(normalCost)
-        assertThat(wallet.get("gems")).isEqualTo(0);
+        assertThat(wallet.get("points")).isEqualTo(7000); // 12000 - 5000(normalCost)
+        // #212: 노말 다이스는 P 만 쓴다 — 젬은 가입 지급분 그대로.
+        assertThat(((Number) wallet.get("gems")).longValue()).isEqualTo(6000L);
     }
 
-    // 충전(목업) — 매 호출 신규 지급(멱등 아님, 스펙 §V2.2). 존재하지 않는 팩은 4xx.
+    // 잔액이 신 가격에 못 미치면 거절 — 구 가격(500)으로 되돌아가면 이 케이스가 통과해버린다.
     @SuppressWarnings("unchecked")
     @Test
-    void gemsTopupGrantsEveryCallAndRejectsUnknownPack() {
-        String token = login("api_gems_topup");
-        ResponseEntity<Map> first = authPost("/api/shop/gems/topup", token, Map.of("packId", "p1"), Map.class);
-        assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(first.getBody().get("granted")).isEqualTo(60);
-        assertThat(((Map<?, ?>) first.getBody().get("wallet")).get("gems")).isEqualTo(60);
+    void shopDiceNormalRejectedWhenPointsBelowNewPrice() {
+        String token = login("api_dice_np");
+        String uid = userIdOf("api_dice_np");
+        jdbcClient.sql("UPDATE wallets SET points = 4999 WHERE user_id = ?").param(uid).update();
 
-        // 같은 packId 재호출 — 멱등 아님, 매번 신규 지급(스펙 확정).
-        ResponseEntity<Map> second = authPost("/api/shop/gems/topup", token, Map.of("packId", "p1"), Map.class);
-        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(((Map<?, ?>) second.getBody().get("wallet")).get("gems")).isEqualTo(120);
-
-        ResponseEntity<Map> unknown = authPost("/api/shop/gems/topup", token, Map.of("packId", "nope"), Map.class);
-        assertThat(unknown.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ResponseEntity<Map> buy = authPost("/api/shop/dice", token, Map.of("kind", "NORMAL", "count", 1), Map.class);
+        assertThat(buy.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(buy.getBody().get("code")).isEqualTo("INSUFFICIENT_POINTS");
+        assertThat(jdbcClient.sql("SELECT points FROM wallets WHERE user_id = ?")
+                .param(uid).query(Long.class).single()).isEqualTo(4999L); // 롤백
     }
 
-    // /api/me 지갑에 gems additive — 기존 points 는 무변경.
+    /**
+     * #212: 젬 수급원은 <b>가입 지급 + 리그 우승</b> 둘뿐 — 목업 충전 수도꼭지는 config
+     * ({@code gems.topupEnabled=false})로 잠겼다. 뽑기가 젬 결제로 바뀐 뒤 무제한 무료 충전이
+     * 살아있으면 경제가 붕괴하므로, "충전이 막혀 있다"를 계약으로 박제한다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void gemsTopupIsDisabledSoGemsCannotBeFarmed() {
+        String token = login("api_gems_topup");
+        long before = gemsOf(userIdOf("api_gems_topup"));
+
+        ResponseEntity<Map> res = authPost("/api/shop/gems/topup", token, Map.of("packId", "p1"), Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(res.getBody().get("code")).isEqualTo("TOPUP_DISABLED");
+        assertThat(gemsOf(userIdOf("api_gems_topup"))).isEqualTo(before); // 한 톨도 안 늘어난다
+
+        // 알 수 없는 팩도 마찬가지로 지급되지 않는다(게이트가 팩 검증보다 앞서든 뒤서든 결과는 동일).
+        ResponseEntity<Map> unknown = authPost("/api/shop/gems/topup", token, Map.of("packId", "nope"), Map.class);
+        assertThat(unknown.getStatusCode().is4xxClientError()).isTrue();
+        assertThat(gemsOf(userIdOf("api_gems_topup"))).isEqualTo(before);
+    }
+
+    // /api/me 지갑에 gems additive — 기존 points 는 무변경. #212: 가입 지급분이 그대로 보인다.
     @SuppressWarnings("unchecked")
     @Test
     void meExposesGemsAdditive() {
@@ -194,13 +224,19 @@ class GrowthApiTest extends MatchTestBase {
         assertThat(me.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<?, ?> wallet = (Map<?, ?>) me.getBody().get("wallet");
         assertThat(((Number) wallet.get("points")).longValue()).isEqualTo(3000L);
-        assertThat(((Number) wallet.get("gems")).longValue()).isZero();
+        assertThat(((Number) wallet.get("gems")).longValue()).isEqualTo(6000L); // economy initialGems
 
-        authPost("/api/shop/gems/topup", token, Map.of("packId", "p3"), Map.class);
+        // 젬을 쓰면(캐시 다이스) /api/me 에 그대로 반영된다.
+        authPost("/api/shop/dice", token, Map.of("kind", "CASH", "count", 3), Map.class);
         ResponseEntity<Map> after = authGet("/api/me", token, Map.class);
         Map<?, ?> walletAfter = (Map<?, ?>) after.getBody().get("wallet");
-        assertThat(((Number) walletAfter.get("gems")).longValue()).isEqualTo(720L);
+        assertThat(((Number) walletAfter.get("gems")).longValue()).isEqualTo(6000L - 30L);
         assertThat(((Number) walletAfter.get("points")).longValue()).isEqualTo(3000L);
+    }
+
+    private long gemsOf(String userId) {
+        return jdbcClient.sql("SELECT gems FROM wallets WHERE user_id = ?")
+                .param(userId).query(Long.class).single();
     }
 
     // 구 enhance/limitbreak 엔드포인트 제거 확인 — 이 서버의 GlobalExceptionHandler 는 미매핑 라우트를

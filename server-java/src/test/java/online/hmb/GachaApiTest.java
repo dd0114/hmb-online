@@ -75,15 +75,18 @@ class GachaApiTest extends ApiTestBase {
         assertThat((Boolean) player.get("owned")).isTrue();
         assertThat(((Number) player.get("ownedCount")).intValue()).isGreaterThanOrEqualTo(1);
 
+        // #212: 뽑기 결제 재화 = 젬(economy gacha.currency=GEM). P 는 손대지 않는다.
         Map<?, ?> wallet = (Map<?, ?>) response.getBody().get("wallet");
-        assertThat(((Number) wallet.get("points")).longValue()).isEqualTo(3000L - 300L);
+        assertThat(((Number) wallet.get("gems")).longValue()).isEqualTo(6000L - 300L);
+        assertThat(((Number) wallet.get("points")).longValue()).isEqualTo(3000L);
 
-        // DB: 원장 gacha_single(ref=pullId, delta=-300) + gacha_pulls/results 기록
+        // DB: 원장 gacha_single(ref=pullId, delta=-300) — gem_ledger 에 기록 + gacha_pulls/results
         String userId = userId("gacha_single");
+        assertThat(count("point_ledger", userId, "gacha_single")).isZero(); // P 원장은 무개입
         String pullId = jdbcClient.sql("SELECT id FROM gacha_pulls WHERE user_id = ?")
                 .param(userId).query(String.class).single();
         Map<String, Object> ledger = jdbcClient.sql(
-                        "SELECT delta, ref_id FROM point_ledger WHERE user_id = ? AND reason = 'gacha_single'")
+                        "SELECT delta, ref_id FROM gem_ledger WHERE user_id = ? AND reason = 'gacha_single'")
                 .param(userId)
                 .query((rs, n) -> Map.<String, Object>of("delta", rs.getLong("delta"), "ref", rs.getString("ref_id")))
                 .single();
@@ -99,27 +102,35 @@ class GachaApiTest extends ApiTestBase {
     @Test
     void insufficientBalanceRejectsAndRollsBack() {
         String token = login("gacha_poor");
-        // 3000 → ten(3000) → 0 포인트
-        ResponseEntity<Map> ten = authPost("/api/shop/gacha", token, Map.of("kind", "ten"), Map.class);
-        assertThat(ten.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(((Number) ((Map<?, ?>) ten.getBody().get("wallet")).get("points")).longValue()).isZero();
+        // #212: 결제 재화 = 젬. 가입 6000 → ten(3000) ×2 → 0 젬.
+        for (int i = 0; i < 2; i++) {
+            ResponseEntity<Map> ten = authPost("/api/shop/gacha", token, Map.of("kind", "ten"), Map.class);
+            assertThat(ten.getStatusCode()).isEqualTo(HttpStatus.OK);
+        }
+        assertThat(gems(userId("gacha_poor"))).isZero();
 
         String userId = userId("gacha_poor");
-        long ledgerBefore = count("point_ledger", userId);
+        long ledgerBefore = count("gem_ledger", userId);
         long pullsBefore = count("gacha_pulls", userId);
         long ownedBefore = count("user_players", userId);
 
         ResponseEntity<Map> single = authPost("/api/shop/gacha", token, Map.of("kind", "single"), Map.class);
         assertThat(single.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(single.getBody().get("code")).isEqualTo("INSUFFICIENT_POINTS");
+        assertThat(single.getBody().get("code")).isEqualTo("INSUFFICIENT_GEMS");
 
         // 지갑·원장·풀 전부 무변동 (트랜잭션 롤백, AC-S6)
-        long walletAfter = jdbcClient.sql("SELECT points FROM wallets WHERE user_id = ?")
-                .param(userId).query(Long.class).single();
-        assertThat(walletAfter).isZero();
-        assertThat(count("point_ledger", userId)).isEqualTo(ledgerBefore);
+        assertThat(gems(userId)).isZero();
+        assertThat(count("gem_ledger", userId)).isEqualTo(ledgerBefore);
         assertThat(count("gacha_pulls", userId)).isEqualTo(pullsBefore);
         assertThat(count("user_players", userId)).isEqualTo(ownedBefore);
+        // P 는 뽑기에 전혀 관여하지 않으므로 가입 지급분 그대로다.
+        assertThat(jdbcClient.sql("SELECT points FROM wallets WHERE user_id = ?")
+                .param(userId).query(Long.class).single()).isEqualTo(3000L);
+    }
+
+    private long gems(String userId) {
+        return jdbcClient.sql("SELECT gems FROM wallets WHERE user_id = ?")
+                .param(userId).query(Long.class).single();
     }
 
     // ── AC-S7: 10연 = 11개 + pity(GOLD+) ────────────────────────────────
@@ -242,6 +253,11 @@ class GachaApiTest extends ApiTestBase {
     private long count(String table, String userId) {
         return jdbcClient.sql("SELECT COUNT(*) FROM " + table + " WHERE user_id = ?")
                 .param(userId).query(Long.class).single();
+    }
+
+    private long count(String table, String userId, String reason) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM " + table + " WHERE user_id = ? AND reason = ?")
+                .params(userId, reason).query(Long.class).single();
     }
 
     private String gradeOf(String playerId) {

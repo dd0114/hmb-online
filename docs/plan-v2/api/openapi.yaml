@@ -1220,6 +1220,38 @@ components:
         points:
           type: integer
           minimum: 0
+          description: 골드(게임 재화). 트레이드·무료강화(노말 다이스)에 쓴다.
+        gems:
+          type: integer
+          minimum: 0
+          description: >-
+            젬(유료 재화) — 뽑기·유료 다이스. #212 additive(구서버 응답엔 없을 수 있어 required 아님).
+            수급은 가입 지급 + 리그 우승 둘뿐.
+
+    # #212: 시즌 종료 보상 노출(GET /api/league → season.seasonReward). 지급 진실의 SoT 는 원장
+    # (point_ledger 'league_reward' / gem_ledger 'league_gem_reward', 둘 다 ref=seasonId)이다.
+    SeasonReward:
+      type: object
+      required: [rank, points, status]
+      properties:
+        rank:
+          type: integer
+          description: 유저 최종 순위(시즌 진행 중이면 현재 잠정 순위).
+        points:
+          type: integer
+          description: 실지급 골드(원장 delta). 미지급이면 0 — 예정액이 아니다.
+        gems:
+          type: integer
+          description: >-
+            실지급 젬. **우승(1위)일 때만** 500~3000 랜덤이고 그 외에는 0(#212).
+            web 우승 연출의 입력(#214).
+        status:
+          type: string
+          enum: [PENDING, GRANTED, NONE]
+        awardedAt:
+          type: string
+          nullable: true
+          description: 지급 시각(원장 created_at). 미지급이면 null.
 
     MatchRecordSummary:
       type: object

@@ -28,6 +28,9 @@ public class UserOnboardingService {
     /** 원장 사유 — ERD point_ledger.reason 주석의 열거값. */
     public static final String LEDGER_REASON_STARTER = "starter";
 
+    /** gem_ledger 사유 — 가입 젬 지급(#212). 기존 유저 백필(Flyway V14)도 같은 사유·ref 를 쓴다. */
+    public static final String LEDGER_REASON_INITIAL_GEMS = "initial_gems";
+
     private final JdbcClient jdbcClient;
     private final TxRunner txRunner;
     private final EconomyService economyService;
@@ -130,5 +133,10 @@ public class UserOnboardingService {
         }
 
         walletService.apply(userId, economy.initialPoints(), LEDGER_REASON_STARTER, userId);
+        // #212: 젬 수급원은 가입 지급 + 리그 입상 둘뿐(목업 충전 폐지) — 가입분을 여기서 지급한다.
+        // 원장 ref=userId 라 재실행돼도 멱등. 0이면 지급 자체를 건너뛴다(구 economy 파일 호환).
+        if (economy.initialGems() > 0) {
+            walletService.applyGems(userId, economy.initialGems(), LEDGER_REASON_INITIAL_GEMS, userId);
+        }
     }
 }

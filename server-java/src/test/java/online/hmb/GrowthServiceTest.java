@@ -395,11 +395,12 @@ class GrowthServiceTest extends MatchTestBase {
     @Test
     void applyGemsCreditsWalletAndLedger() {
         String userId = onboard("g_gems_credit");
-        assertThat(walletService.gems(userId)).isZero();
+        // #212: 가입 시 젬이 지급되므로(initialGems) 시작 잔액은 0이 아니다 — 델타로 검증한다.
+        long before = walletService.gems(userId);
 
         boolean applied = walletService.applyGems(userId, 60, "gem_topup_mock", "pack-p1-1");
         assertThat(applied).isTrue();
-        assertThat(walletService.gems(userId)).isEqualTo(60L);
+        assertThat(walletService.gems(userId)).isEqualTo(before + 60L);
 
         Long rows = jdbcClient.sql("SELECT COUNT(*) FROM gem_ledger WHERE user_id=? AND reason='gem_topup_mock'")
                 .param(userId).query(Long.class).single();
@@ -409,21 +410,24 @@ class GrowthServiceTest extends MatchTestBase {
     @Test
     void applyGemsIsIdempotentPerReasonRef() {
         String userId = onboard("g_gems_idem");
+        long before = walletService.gems(userId); // #212 가입 지급분 기준
         walletService.applyGems(userId, 10, "dice", "ref-1");
-        assertThat(walletService.gems(userId)).isEqualTo(10L);
+        assertThat(walletService.gems(userId)).isEqualTo(before + 10L);
 
         // 같은 (user, reason, ref) 재적용 — 멱등: false 반환, 잔액 무변화(point_ledger 패턴과 동일).
         boolean second = walletService.applyGems(userId, 10, "dice", "ref-1");
         assertThat(second).isFalse();
-        assertThat(walletService.gems(userId)).isEqualTo(10L);
+        assertThat(walletService.gems(userId)).isEqualTo(before + 10L);
     }
 
     @Test
     void applyGemsDebitCannotGoNegative_checkBackstop() {
         String userId = onboard("g_gems_floor");
-        assertThatThrownBy(() -> walletService.applyGems(userId, -5, "dice", "over-debit"))
+        // #212: 가입 지급분이 있으므로 "잔액보다 1 큰 차감"으로 바닥을 밟아야 CHECK 가 걸린다.
+        long balance = walletService.gems(userId);
+        assertThatThrownBy(() -> walletService.applyGems(userId, -(balance + 1), "dice", "over-debit"))
                 .isInstanceOf(Exception.class); // wallets.gems CHECK(gems>=0) 백스톱 — DB 레벨 방어
-        assertThat(walletService.gems(userId)).isZero(); // 실패 시 잔액 무변화
+        assertThat(walletService.gems(userId)).isEqualTo(balance); // 실패 시 잔액 무변화
     }
 
     // ── 헬퍼 ──────────────────────────────────────────────────────────────

@@ -81,11 +81,16 @@ public class GachaService {
         int count = ten ? gacha.tenCount() : 1;
         String reason = ten ? "gacha_ten" : "gacha_single";
 
+        // #212: 결제 재화는 config(gacha.currency) — hero 확정 "뽑기 = 젬(유료 재화)".
+        boolean gems = gacha.paysWithGems();
+        String errorCode = gems ? "INSUFFICIENT_GEMS" : "INSUFFICIENT_POINTS";
+        String errorMessage = gems ? "젬이 부족합니다" : "포인트가 부족합니다";
+
         return txRunner.run(() -> {
-            long balance = walletService.points(userId);
+            long balance = gems ? walletService.gems(userId) : walletService.points(userId);
             if (balance < cost) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS",
-                        "포인트가 부족합니다", Map.of("balance", balance, "cost", cost));
+                throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, errorMessage,
+                        Map.of("balance", balance, "cost", cost));
             }
 
             String pullId = Ulid.next();
@@ -93,13 +98,17 @@ public class GachaService {
             String now = Instant.now().toString();
 
             try {
-                walletService.apply(userId, -cost, reason, pullId);
+                if (gems) {
+                    walletService.applyGems(userId, -cost, reason, pullId);
+                } else {
+                    walletService.apply(userId, -cost, reason, pullId);
+                }
             } catch (DataAccessException e) {
-                // 동시 뽑기 경합: 둘 다 사전 잔액검사를 통과해도 wallets CHECK(points>=0)가
-                // 늦은 쪽을 막는다 → 500이 아니라 400 INSUFFICIENT_POINTS (W2 검증 이월사항)
+                // 동시 뽑기 경합: 둘 다 사전 잔액검사를 통과해도 wallets CHECK(points>=0 / gems>=0)가
+                // 늦은 쪽을 막는다 → 500이 아니라 400 INSUFFICIENT_* (W2 검증 이월사항)
                 if (SqliteErrors.isCheckViolation(e)) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS",
-                            "포인트가 부족합니다", Map.of("balance", balance, "cost", cost));
+                    throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, errorMessage,
+                            Map.of("balance", balance, "cost", cost));
                 }
                 throw e;
             }
@@ -299,7 +308,9 @@ public class GachaService {
         for (int i = 0; i < playerIds.size(); i++) {
             results.add(new GachaResultItem(players.get(playerIds.get(i)), isNewFlags.get(i)));
         }
-        return new GachaResponse(results, new WalletInfo(walletService.points(userId)));
+        // #212: 뽑기가 젬 결제로 바뀌어 응답에도 젬 잔액이 필요하다(additive — points 는 불변).
+        return new GachaResponse(results,
+                new WalletInfo(walletService.points(userId), walletService.gems(userId)));
     }
 
     private EconomyService.Gacha gachaConfig() {
@@ -341,7 +352,8 @@ public class GachaService {
     public record GachaResultItem(CatalogPlayer player, boolean isNew) {
     }
 
-    public record WalletInfo(long points) {
+    /** 뽑기 응답 지갑 — points 는 기존 계약 그대로, gems 는 #212 additive 확장. */
+    public record WalletInfo(long points, long gems) {
     }
 
     public record GachaResponse(List<GachaResultItem> results, WalletInfo wallet) {

@@ -868,6 +868,12 @@ public class GrowthService {
      */
     public Map<String, Object> topupGems(String userId, String packId) {
         EconomyService.Gems cfg = gemsCfg();
+        // #212: 젬 수급원은 가입 지급 + 리그 입상 둘뿐 — 목업 충전 수도꼭지는 config 로 잠근다.
+        // (뽑기가 젬 결제로 바뀌었으므로 무제한 무료 충전이 살아있으면 경제가 붕괴한다.)
+        if (!cfg.topupEnabled()) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "TOPUP_DISABLED",
+                    "젬 충전은 현재 비활성화돼 있습니다", Map.of("packId", packId));
+        }
         EconomyService.GemTopupPack pack = cfg.topupPacks().stream()
                 .filter(p -> p.id().equals(packId))
                 .findFirst()
