@@ -304,6 +304,20 @@ export function unitCard(
 }
 
 /**
+ * 이 유닛이 **등급 공용 디폴트**인가(`forGrades` 선언). 고유 유닛(`forPlayer`)과 갈라야 하는 자리가
+ * 있다 — 경기장은 공용 얼굴을 태우지 않는다(22개 토큰이 같은 얼굴이면 판독에 정보가 0, U-D8).
+ * 판정 권위는 **발행물의 선언**이다(유닛 id 하드코딩 금지 — 발행이 바뀌면 코드가 깨진다).
+ */
+export function unitIsSharedDefault(
+  manifest: UnitsManifest | null | undefined,
+  unitId: string | null | undefined,
+): boolean {
+  if (!manifest || !unitId) return false;
+  const u = own(manifest.units, unitId);
+  return Array.isArray(u?.forGrades) && u.forGrades.length > 0;
+}
+
+/**
  * 얼굴 아이콘의 배경 전제. 기본은 `transparent`(기존 두 축의 계약).
  *
  * 왜 필요한가: 레전더리 얼굴은 **불투명 다크 배경 위에** 글로우·수염선이 그려져 있다.
