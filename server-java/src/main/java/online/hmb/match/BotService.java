@@ -61,16 +61,20 @@ public class BotService implements ApplicationRunner {
                 if (id == null) {
                     continue;
                 }
+                // strengthMul(선택, 기본 1.0) — 등급 하한(전원 BRONZE) 아래로 더 내려야 하는 봇용.
+                // 로스터 등급만으로는 못 가는 구간이 실제로 있다: 공격형 페르소나는 같은 파워에서
+                // 유저를 훨씬 강하게 압박해(#252 실측) 등급을 다 낮춰도 여전히 어렵다.
+                double strengthMul = b.path("strengthMul").asDouble(1.0);
                 jdbcClient.sql("""
-                                INSERT INTO bots(id, name, persona, analysis_text, deck_json, kind)
-                                VALUES (?, ?, ?, ?, ?, 'seed')
+                                INSERT INTO bots(id, name, persona, analysis_text, deck_json, kind, strength_mul)
+                                VALUES (?, ?, ?, ?, ?, 'seed', ?)
                                 ON CONFLICT(id) DO UPDATE SET
                                   name = excluded.name, persona = excluded.persona,
                                   analysis_text = excluded.analysis_text, deck_json = excluded.deck_json,
-                                  kind = 'seed'
+                                  kind = 'seed', strength_mul = excluded.strength_mul
                                 """)
                         .params(id, b.path("name").asText(), b.path("persona").asText(),
-                                b.path("analysisText").asText(), b.path("deck").toString())
+                                b.path("analysisText").asText(), b.path("deck").toString(), strengthMul)
                         .update();
                 count++;
             }

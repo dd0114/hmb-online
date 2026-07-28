@@ -353,6 +353,45 @@ class LeagueDivisionTest extends MatchTestBase {
     }
 
     @Test
+    void seedBotStrengthMultiplierIsImportedAndReachesTheEngine() {
+        // #252 MAJ-3: 연습 봇 하나(공격형)는 등급 하한으로도 못 내려가 배율을 쓴다. 그 배율이
+        // 발행물에만 있고 엔진 입력에 안 닿으면 아무것도 안 바뀐다.
+        double mul = jdbcClient.sql("SELECT strength_mul FROM bots WHERE id = 'BOT_ATK'")
+                .query(Double.class).single();
+        assertThat(mul).as("bots.v3.json 의 strengthMul 이 임포트됐다").isLessThan(1.0).isGreaterThan(0.0);
+        assertThat(jdbcClient.sql("SELECT strength_mul FROM bots WHERE id = 'BOT_BAL'")
+                .query(Double.class).single()).as("배율을 안 쓰는 봇은 1.0").isEqualTo(1.0);
+
+        String token = setupUserWithRealDeck("seed-mul");
+        RUNNER.requests.clear();
+        ResponseEntity<Map> res = authPost("/api/matches", token, Map.of("botId", "BOT_ATK"), Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String matchId = (String) res.getBody().get("id");
+        authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
+        fakeServants.drain();
+
+        assertThat(RUNNER.requests).isNotEmpty();
+        JsonNode select = RUNNER.requests.get(0).path("selectData");
+        String botName = botTeamNameOf(null, matchId);
+        JsonNode botSide = select.path("home").path("name").asText().equals(botName)
+                ? select.path("home") : select.path("away");
+        boolean scaledDown = false;
+        for (JsonNode card : botSide.path("players")) {
+            int sent = 0;
+            for (JsonNode v : card.path("attributes")) {
+                sent += v.asInt();
+            }
+            int raw = attrSum(card.path("playerId").asText());
+            assertThat(sent).isLessThanOrEqualTo(raw);
+            if (sent < raw) {
+                scaledDown = true;
+            }
+        }
+        assertThat(scaledDown).as("연습 봇 능력치가 실제로 하향돼 엔진에 전달됐다").isTrue();
+        releaseActiveMatches();
+    }
+
+    @Test
     void practiceCannotTargetANonSeedBotByExplicitId() {
         // 랜덤 경로는 pickRandom 이 막지만, botId 를 명시하면 리그 봇팀·원정 고스트를 지목할 수 있다.
         // 그 우회가 열려 있으면 풀 필터는 장식이다.
@@ -577,6 +616,7 @@ class LeagueDivisionTest extends MatchTestBase {
     }
 
     /** 이 매치의 상대(봇) 표시명 — SelectData 의 home/away 중 어느 쪽이 봇인지 가르는 키. */
+    /** seasonId 는 안 쓴다(매치 → 봇 조회) — 리그/연습 양쪽에서 같은 헬퍼를 쓰기 위해 남겨둔다. */
     private String botTeamNameOf(String seasonId, String matchId) {
         String botId = jdbcClient.sql("SELECT bot_id FROM matches WHERE id = ?")
                 .param(matchId).query(String.class).single();

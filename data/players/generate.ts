@@ -543,6 +543,12 @@ export interface BotSeed {
   name: string;
   persona: string;
   analysisText: string;
+  /**
+   * 봇 능력치 배율(선택, 기본 1.0 = 미적용). 서버가 SelectData 를 만들 때 곱한다.
+   * 등급 하한(전원 BRONZE)만으로는 못 내려가는 봇에만 쓴다 — #252 실측에서 **공격형 페르소나는
+   * 같은 파워로도 유저를 훨씬 강하게 압박**해서, 등급을 다 낮춰도 혼자 어려웠다.
+   */
+  strengthMul?: number;
   deck: {
     formation: string;
     starters: BotDeckStarter[];
@@ -1285,6 +1291,11 @@ export function generateAll(): GeneratedData {
       analysisText:
         "공격적인 팀. 하이라인과 강한 압박으로 빠른 템포를 유지하며 최전방이 적극적으로 침투한다. " +
         "선수 개개인의 능력은 높지 않으니, 뒷공간을 노리는 빠른 역습으로 맞받아칠 수 있다.",
+      // #252 독립검증 MAJ-3: 등급을 전원 브론즈급(XI 5005)까지 내렸는데도 유저 승률이 **37.5%**
+      // (실점 2.79 = 엔진 리얼리즘 밴드 1.4~1.65 의 1.7배)로 셋 중 혼자 어려웠다. 공격형 페르소나가
+      // 파워와 무관하게 유저를 압박하기 때문이다(같은 문서 §1.2 "파워순 ≠ 난이도순"). 등급으로는
+      // 더 못 내려가므로(전원 BRONZE 가 하한) 배율로 내린다. 0.80 실측 = 승률 52.4% · 실점 2.01.
+      strengthMul: 0.8,
       deck: botAtkDeckV3,
     },
     {

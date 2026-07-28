@@ -1629,6 +1629,35 @@ describe("bots.v3 — 연습 상대 입문 하향 (#252)", () => {
     expect(botsV3.filter(allGold).length).toBe(0);
   });
 
+  it("공격형 봇에는 배율이 걸려 있다 — 등급 하한(전원 BRONZE)으로도 못 내려간 유일한 봇", () => {
+    // #252 독립검증 MAJ-3: 등급을 전원 브론즈급까지 내려도 레드 스톰만 유저 승률 37.5%(실점 2.79)로
+    // 혼자 어려웠다. 페르소나가 파워와 무관하게 압박하기 때문(같은 문서 §1.2 "파워순 ≠ 난이도순").
+    const atk = botsV3.find((b) => b.id === "BOT_ATK")!;
+    expect(atk.strengthMul).toBeDefined();
+    expect(atk.strengthMul!).toBeGreaterThan(0);
+    expect(atk.strengthMul!).toBeLessThan(1);
+    // 나머지는 배율을 쓰지 않는다(등급만으로 충분) — 배율은 최후 수단이지 기본 노브가 아니다.
+    for (const b of botsV3.filter((x) => x.id !== "BOT_ATK")) {
+      expect(b.strengthMul ?? 1).toBe(1);
+    }
+  });
+
+  it("실효 XI 파워(배율 반영)가 셋 다 v2 보다 낮고, 최강 봇도 스타터팩 XI 근처다", () => {
+    const eff = (b: (typeof bots)[number]) => XI_POWER(startersOf(b)) * ((b as any).strengthMul ?? 1);
+    for (const b3 of botsV3) {
+      const b2 = bots.find((b) => b.id === b3.id)!;
+      expect(eff(b3), `${b3.id} 실효파워`).toBeLessThan(eff(b2));
+    }
+    const byId = new Map<string, PlayerSeed>(players.map((pp) => [pp.id, pp]));
+    const sum = (id: string) => Object.values(byId.get(id)!.attributes).reduce((x, y) => x + y, 0);
+    const pack = economy.starterPack.map((id) => byId.get(id)!);
+    const gk = pack.filter((pp) => pp.position === "GK").sort((a, b) => sum(b.id) - sum(a.id))[0];
+    const rest = pack.filter((pp) => pp !== gk).sort((a, b) => sum(b.id) - sum(a.id)).slice(0, 10);
+    const packBest = sum(gk.id) + rest.reduce((a, pp) => a + sum(pp.id), 0);
+    // 연습은 "이길 수 있어야" 하는 곳이다 — 최강 연습 봇도 스타터팩 최선 XI 를 크게 넘지 않는다.
+    expect(Math.max(...botsV3.map(eff))).toBeLessThan(packBest);
+  });
+
   it("가장 약한 연습 봇이 스타터팩 최선 XI 보다 약하다 — '첫 승리 가능' 계약", () => {
     const packBest = (() => {
       const pack = economy.starterPack.map((id) => byId.get(id)!);
