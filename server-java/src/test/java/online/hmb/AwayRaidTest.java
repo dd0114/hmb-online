@@ -515,14 +515,20 @@ class AwayRaidTest extends MatchTestBase {
         assertThat(body.get("mode")).isEqualTo("away");
         assertThat(body.get("ownerName")).isEqualTo("aw_atk5");
         // 인접 동형 필드(스코어 쌍)는 키 집합으로 못 잡는다 — 값으로 대조한다(5R MIN-1).
-        Map<String, Object> stored = jdbcClient.sql(
-                        "SELECT score_home, score_away FROM matches WHERE id = ?")
+        Map<String, Object> stored = jdbcClient.sql("""
+                        SELECT score_home, score_away, score_h1_home, score_h1_away
+                        FROM matches WHERE id = ?
+                        """)
                 .param(matchId)
                 .query((rs, n) -> Map.<String, Object>of(
-                        "home", rs.getInt("score_home"), "away", rs.getInt("score_away")))
+                        "home", rs.getInt("score_home"), "away", rs.getInt("score_away"),
+                        "h1Home", rs.getInt("score_h1_home"), "h1Away", rs.getInt("score_h1_away")))
                 .single();
         assertThat(body.get("scoreHome")).isEqualTo(stored.get("home"));
         assertThat(body.get("scoreAway")).isEqualTo(stored.get("away"));
+        // 하프타임 쌍도 같은 구멍이다 — 풀타임만 걸어두면 H1 스왑이 그대로 통과한다(6R MIN-A).
+        assertThat(body.get("scoreH1Home")).isEqualTo(stored.get("h1Home"));
+        assertThat(body.get("scoreH1Away")).isEqualTo(stored.get("h1Away"));
 
         // 소유자 본인에게는 그대로 보인다(기존 기능 #98 무회귀).
         ResponseEntity<String> asOwner = authGet("/api/matches/" + matchId, attacker, String.class);

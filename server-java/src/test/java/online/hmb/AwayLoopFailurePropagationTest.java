@@ -62,10 +62,13 @@ class AwayLoopFailurePropagationTest extends MatchTestBase {
 
         long ghostsBefore = ghostRows();
 
+        // ⚠️ **에러 코드로 못박는다.** 메시지만 보면 tautology 다 — 뒤집힌 세상의 NO_OPPONENT 도
+        // " (마지막 후보 사유: boom …)" 을 품어서 `hasMessageContaining("boom")` 을 통과한다
+        // (독립검증 6R MAJ-1: 내가 그렇게 써서 재라벨 변이가 살아남았다).
         assertThatThrownBy(() -> awayService.start(attackerId, null))
                 .as("내 쪽 실패가 '상대가 없다'로 뒤집히면 유저는 고칠 수 없는 문제를 본다")
-                .isInstanceOf(online.hmb.common.ApiException.class)
-                .hasMessageContaining("boom");
+                .isInstanceOfSatisfying(online.hmb.common.ApiException.class,
+                        e -> assertThat(e.getCode()).isNotEqualTo("NO_OPPONENT"));
 
         assertThat(ghostRows() - ghostsBefore)
                 .as("실패 1회가 후보 수만큼 고스트를 굽는다면 루프가 매치 생성까지 감싼 것이다")
