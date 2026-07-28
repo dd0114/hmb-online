@@ -170,6 +170,20 @@ describe("헤더 스코어 — 확정(서버) + 진행 중 하프 델타(재생)
     expect(headerScore("FINISHED", { scoreHome: 3, scoreAway: 2 }, rewound)).toEqual({ home: 3, away: 2 });
   });
 
+  /**
+   * 이 픽스의 **설계 근거 자체**를 박제한다(독립검증 minor-2). 검증자가 `state==="FINISHED"` 앞에
+   * "`scoreHome` 이 있으면 무조건 그린다"를 끼웠는데 전 게이트가 green 이었다 — 진행 중 상태에
+   * `scoreHome` 을 먹이는 테스트가 하나도 없었기 때문이다. 서버가 언젠가 `score_*` 를 조기에 채우면
+   * (운영·마이그레이션) 화면이 즉시 결과를 뱉는데 아무도 못 잡는다.
+   */
+  it("후반 진행 중에는 최종 스코어가 와 있어도 무시한다 — 재생 위치보다 앞선 점수 금지", () => {
+    const leaked = { scoreH1Home: 1, scoreH1Away: 4, scoreHome: 2, scoreAway: 8 };
+    expect(headerScore("SECOND_HALF", leaked, { home: 0, away: 2 })).toEqual({ home: 1, away: 6 });
+    expect(headerScore("FIRST_HALF", leaked, { home: 0, away: 1 })).toEqual({ home: 0, away: 1 });
+    // 감독시간도 마찬가지 — 그 화면이 말할 것은 전반 결과지 경기 결과가 아니다.
+    expect(headerScore("HALFTIME", leaked, { home: 0, away: 0 })).toEqual({ home: 1, away: 4 });
+  });
+
   it("확정 상태인데 서버 값이 비어 있으면 '-'", () => {
     expect(headerScore("HALFTIME", {}, { home: 3, away: 3 })).toEqual({ home: "-", away: "-" });
     expect(headerScore("FINISHED", {}, { home: 3, away: 3 })).toEqual({ home: "-", away: "-" });

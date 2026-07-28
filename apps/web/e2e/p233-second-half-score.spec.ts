@@ -73,7 +73,7 @@ const PLAYERS = Array.from({ length: 11 }, (_, i) => ({
   grade: "B",
 }));
 
-async function mockApi(page: Page, detail: Record<string, unknown>) {
+async function mockApi(page: Page, detail: Record<string, unknown>, log: unknown = H2_LOG) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -83,14 +83,18 @@ async function mockApi(page: Page, detail: Record<string, unknown>) {
       });
     }
     if (url.pathname === `/api/matches/${MATCH_ID}`) return route.fulfill({ json: detail });
-    if (/\/api\/matches\/.+\/halves\/[12]\/log$/.test(url.pathname)) return route.fulfill({ json: H2_LOG });
+    if (/\/api\/matches\/.+\/halves\/[12]\/log$/.test(url.pathname)) return route.fulfill({ json: log });
     if (url.pathname === "/api/players") return route.fulfill({ json: PLAYERS });
     if (url.pathname === "/api/deck") return route.fulfill({ json: DECK });
     return route.fulfill({ json: {} });
   });
 }
 
-async function openSecondHalf(page: Page, over: Record<string, unknown> = {}) {
+async function openSecondHalf(
+  page: Page,
+  over: Record<string, unknown> = {},
+  opts: { waitForCanvas?: boolean } = {},
+) {
   await mockApi(page, {
     id: MATCH_ID,
     state: "SECOND_HALF",
@@ -110,6 +114,7 @@ async function openSecondHalf(page: Page, over: Record<string, unknown> = {}) {
   });
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.getByTestId("stage-shell")).toBeVisible();
+  if (opts.waitForCanvas === false) return;
   await page.locator('[data-testid="viewer-canvas-half2"]').waitFor({ state: "visible", timeout: 30_000 });
   await page.evaluate(() => (window as unknown as ViewerWindow).__viewer?.pause?.());
 }
@@ -192,24 +197,54 @@ test.describe("#233 경기 분 상시 표시", () => {
     expect(px, "경기 분은 구석 캡션이 아니라 읽히는 크기여야 한다").toBeGreaterThanOrEqual(15);
   });
 
-  test("g. 화면에 들어온 직후(플레이헤드 전)에도 시계 슬롯이 있다", async ({ page }) => {
-    // 로그 도착 전 한두 프레임 동안 요소가 사라졌다 나타나면 헤더가 흔들린다.
-    await openSecondHalf(page);
-    await expect(page.getByTestId("stage-clock")).toBeVisible();
+  test("g. 로그가 아직 안 왔어도 시계 슬롯은 있다(`--'`)", async ({ page }) => {
+    // ⚠️ 캔버스가 뜬 뒤에 재면 이미 플레이헤드가 도착해 있어 아무것도 증명하지 못한다
+    //    (독립검증 minor-3: 슬롯을 접는 변이체가 이 자리를 통과했다). **로그 응답을 붙잡아** 진짜
+    //    "플레이헤드 이전" 상태를 만든다.
+    let releaseLog: () => void = () => {};
+    const held = new Promise<void>((resolve) => {
+      releaseLog = resolve;
+    });
+    await page.route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      if (/\/api\/matches\/.+\/halves\/[12]\/log$/.test(url.pathname)) {
+        await held;
+        return route.fulfill({ json: H2_LOG });
+      }
+      return route.fallback();
+    });
+    await openSecondHalf(page, {}, { waitForCanvas: false });
+
+    const clock = page.getByTestId("stage-clock");
+    await expect(clock).toBeVisible();
+    await expect(clock).toHaveText("--'");
+    // 스코어는 이미 진실을 말한다 — 전반 확정값은 로그와 무관하게 서버가 준다.
+    await expect(score(page)).toContainText(`${H1.home} : ${H1.away}`);
+
+    releaseLog();
+    await page.locator('[data-testid="viewer-canvas-half2"]').waitFor({ state: "visible", timeout: 30_000 });
+    await expect.poll(() => clock.textContent(), { timeout: 10_000 }).not.toBe("--'");
   });
 });
 
 test.describe("무회귀 — 전반은 그대로 재생을 따라간다", () => {
   test("FIRST_HALF 헤더는 플레이헤드 스코어", async ({ page }) => {
     // 전반은 앞에 끝난 하프가 없다 = 베이스라인 0. 서버도 scoreH1 을 내려주지 않는다.
-    await mockApi(page, {
-      id: MATCH_ID,
-      state: "FIRST_HALF",
-      scoreH1Home: null,
-      scoreH1Away: null,
-      createdAt: "2026-07-28T04:00:00Z",
-      opponent: { name: "봇 FC" },
-    });
+    // ⚠️ 여기엔 **전반 형상 로그(DEMO, 틱 0~)** 를 쓴다 — 후반 형상을 전반 자리에 먹이면 지금은
+    //    분기가 state 기반이라 통과하지만 규칙이 틱 파생으로 바뀌는 날 조용히 무의미해진다
+    //    (독립검증 minor-6).
+    await mockApi(
+      page,
+      {
+        id: MATCH_ID,
+        state: "FIRST_HALF",
+        scoreH1Home: null,
+        scoreH1Away: null,
+        createdAt: "2026-07-28T04:00:00Z",
+        opponent: { name: "봇 FC" },
+      },
+      DEMO,
+    );
     await page.addInitScript(() => {
       localStorage.setItem("hmb.auth.token", "mock-token");
       localStorage.setItem("hmb.auth.provider", "local");
@@ -217,8 +252,8 @@ test.describe("무회귀 — 전반은 그대로 재생을 따라간다", () => 
     await page.goto(`/match/${MATCH_ID}`);
     await page.locator('[data-testid="viewer-canvas-half1"]').waitFor({ state: "visible", timeout: 30_000 });
     await page.evaluate(() => (window as unknown as ViewerWindow).__viewer?.pause?.());
-    await seek(page, PROBE_TICK);
-    // 전반으로 쓰이면 그 로그의 델타가 곧 스코어다(H1 베이스라인이 더해지면 안 된다).
+    await seek(page, PROBE_TICK - H2_START);
+    // 전반은 그 로그의 델타가 곧 스코어다(H1 베이스라인이 더해지면 안 된다).
     await expect(score(page)).toContainText(`${DELTA.home} : ${DELTA.away}`);
   });
 });
