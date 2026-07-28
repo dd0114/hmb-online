@@ -382,9 +382,14 @@ export function useAwayCandidates(enabled: boolean) {
   return useQuery({
     queryKey: ["awayCandidates"],
     queryFn: () =>
-      apiFetch<{ candidates: AwayCandidate[]; streak: number; seasonNo: number; seasonEndsAt: string }>(
-        "/api/away/candidates",
-      ),
+      apiFetch<{
+        candidates: AwayCandidate[];
+        streak: number;
+        seasonNo: number;
+        seasonEndsAt: string;
+        /** 오늘 남은 원정 횟수. **-1 = 무제한**(서버 daily-limit 0). */
+        remainingToday: number;
+      }>("/api/away/candidates"),
     enabled: Boolean(token) && enabled,
     // 제시는 서버가 소유한다(away_offers) — 캐시로 되살리면 만료된 목록을 고르게 된다.
     staleTime: 0,

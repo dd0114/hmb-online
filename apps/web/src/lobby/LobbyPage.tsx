@@ -229,7 +229,9 @@ function ModeModal({ onClose }: { onClose: () => void }) {
           return;
         }
         setCreateError(
-          err instanceof ApiError && err.code === "NO_OPPONENT"
+          err instanceof ApiError && err.code === "AWAY_DAILY_LIMIT"
+            ? err.message
+            : err instanceof ApiError && err.code === "NO_OPPONENT"
             ? "아직 원정 갈 상대가 없습니다 — 다른 감독이 팀을 꾸리면 열립니다"
             : err instanceof ApiError && err.code === "DECK_INVALID"
               ? `덱이 유효하지 않습니다 — ${err.message}`
@@ -254,6 +256,11 @@ function ModeModal({ onClose }: { onClose: () => void }) {
           레이팅이 비슷한 두 팀입니다. 한 팀을 고르세요.
           {offer && offer.streak > 0 && (
             <strong data-testid="away-streak"> · {offer.streak}연승 중</strong>
+          )}
+          {/* 남은 횟수는 **누르기 전에** 말한다 — 눌렀는데 거부되는 건 나쁜 UX 다.
+              -1 은 무제한이라 아무것도 표시하지 않는다. */}
+          {offer && offer.remainingToday >= 0 && (
+            <span data-testid="away-remaining"> · 오늘 {offer.remainingToday}회 남음</span>
           )}
         </p>
         {offerLoading && <p>상대를 찾는 중…</p>}

@@ -75,6 +75,8 @@ public class AwayService {
     private final int candidateCount;
     private final int ratingBand;
     private final int offerTtlSec;
+    private final int dailyLimit;
+    private final java.time.Clock clock;
     private final int streakBonusPerWin;
     private final int streakMaxBonus;
     private final String rewardMode;
@@ -99,6 +101,8 @@ public class AwayService {
                        @Value("${hmb.away.match.candidate-count}") int candidateCount,
                        @Value("${hmb.away.match.rating-band}") int ratingBand,
                        @Value("${hmb.away.match.offer-ttl-sec}") int offerTtlSec,
+                       @Value("${hmb.away.match.daily-limit}") int dailyLimit,
+                       java.time.Clock clock,
                        @Value("${hmb.away.streak.bonus-per-win}") int streakBonusPerWin,
                        @Value("${hmb.away.streak.max-bonus}") int streakMaxBonus,
                        @Value("${hmb.away.reward.mode}") String rewardMode,
@@ -122,6 +126,8 @@ public class AwayService {
         this.candidateCount = candidateCount;
         this.ratingBand = ratingBand;
         this.offerTtlSec = offerTtlSec;
+        this.dailyLimit = dailyLimit;
+        this.clock = clock;
         this.streakBonusPerWin = streakBonusPerWin;
         this.streakMaxBonus = streakMaxBonus;
         this.rewardMode = rewardMode;
@@ -137,7 +143,55 @@ public class AwayService {
      * "원정 갔는데 사실 봇"이 되고, 피원정이 발생하지 않으니 요구 1·3(리포트·부재중 집계)이
      * 영원히 빈 화면이 된다. 조용한 폴백은 기능을 없애는 것과 같다.
      */
+    /**
+     * 오늘(KST) 남은 원정 횟수. {@code daily-limit: 0} 이면 제한 없음을 뜻하는 {@code -1}.
+     *
+     * <p>왜 화면에 먼저 주나: 눌렀는데 거부되는 건 나쁜 UX 다. 남은 횟수를 후보 응답에 실어 보내
+     * 화면이 미리 말하게 한다.
+     */
+    public int remainingToday(String userId) {
+        if (dailyLimit <= 0) {
+            return -1;
+        }
+        return Math.max(0, dailyLimit - usedToday(userId));
+    }
+
+    /**
+     * 오늘 만든 원정 수 — 날짜 경계는 <b>KST 자정</b>(`ConditionService.dateOf` 와 같은 기준).
+     * 컨디션 갱신과 다른 기준을 쓰면 "어제 것"의 의미가 화면마다 달라진다.
+     */
+    private int usedToday(String userId) {
+        // ⚠️ **날짜 문자열로 비교하지 마라.** matches.created_at 은 UTC 인스턴트(`...T05:00:00Z`)이고
+        // 오늘은 KST 기준이다 — 'yyyy-MM-dd' 와 문자열 비교하면 KST 자정이 아니라 **UTC 자정**이
+        // 경계가 되어 한국 시간 오전 0~9시의 원정이 어제로 세어진다. 존을 살려 **인스턴트**로 계산한다.
+        // (이 세션에서 같은 종류의 시각-문자열 버그를 두 번 잡혔다. 세 번은 안 된다.)
+        String since = java.time.LocalDate.now(clock)
+                .atStartOfDay(clock.getZone())
+                .toInstant()
+                .toString();
+        return jdbcClient.sql("""
+                        SELECT COUNT(*) FROM matches
+                        WHERE user_id = ? AND mode = 'away' AND created_at >= ?
+                        """)
+                .params(userId, since)
+                .query(Integer.class)
+                .single();
+    }
+
+    private void assertUnderDailyLimit(String attackerId) {
+        if (dailyLimit <= 0) {
+            return;   // 무제한 — 롤백 스위치
+        }
+        int used = usedToday(attackerId);
+        if (used >= dailyLimit) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "AWAY_DAILY_LIMIT",
+                    "오늘의 원정 횟수를 다 썼습니다 (" + used + "/" + dailyLimit + ") — 내일 다시 가능합니다",
+                    java.util.Map.of("used", used, "limit", dailyLimit));
+        }
+    }
+
     public MatchService.MatchRow start(String attackerId, String defenderId) {
+        assertUnderDailyLimit(attackerId);
         // ⚠️ **내 덱을 먼저, 루프 밖에서 검증한다**(독립검증 4R blocker). 이걸 루프 안에 두면
         // 공격자 자기 덱 오류(트레이드로 넘긴 선수가 deck_slots 에 남음·활성 덱 없음)가 후보마다
         // 똑같이 터지고, 루프가 그걸 전부 삼켜 **404 NO_OPPONENT** 으로 뒤집힌다 — 덱이 문제인데

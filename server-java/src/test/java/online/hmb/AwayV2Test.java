@@ -492,6 +492,52 @@ class AwayV2Test extends MatchTestBase {
                 .isEqualTo(normalizedClosed);
     }
 
+    /**
+     * 하루 원정 횟수 제한(hero 결정) — 소진되면 **429 AWAY_DAILY_LIMIT**, 남은 횟수는 후보 응답에
+     * 미리 실린다(눌렀는데 거부되는 UX 방지).
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void dailyLimitStopsFurtherRaidsAndIsVisibleBeforePressing() {
+        setupUserWithDeck("v2_limit_def");
+        String attacker = setupUserWithDeck("v2_limit_atk");
+        String attackerId = userIdOf("v2_limit_atk");
+
+        int limit = Integer.parseInt(dailyLimitProp);
+        assertThat(limit).as("이 계약은 제한이 켜져 있을 때만 의미가 있다").isPositive();
+
+        ResponseEntity<Map> before = authGet("/api/away/candidates", attacker, Map.class);
+        assertThat((Integer) before.getBody().get("remainingToday")).isEqualTo(limit);
+
+        for (int i = 0; i < limit; i++) {
+            releaseActiveMatches();
+            assertThat(authPost("/api/away/matches", attacker, Map.of(), Map.class).getStatusCode())
+                    .as("제한 안에서는 계속 갈 수 있어야 한다 (%d번째)", i + 1)
+                    .isEqualTo(HttpStatus.CREATED);
+        }
+        releaseActiveMatches();
+
+        // 소진 — 화면이 먼저 안다.
+        ResponseEntity<Map> after = authGet("/api/away/candidates", attacker, Map.class);
+        assertThat((Integer) after.getBody().get("remainingToday")).isZero();
+
+        ResponseEntity<String> denied = authPost("/api/away/matches", attacker, Map.of(), String.class);
+        assertThat(denied.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(denied.getBody()).contains("AWAY_DAILY_LIMIT");
+
+        // ⚠️ 경계는 **KST 자정**이다. 어제 만든 원정은 오늘 횟수를 먹지 않는다 —
+        // created_at(UTC 인스턴트)을 날짜 문자열과 비교하면 UTC 자정이 경계가 되어 새벽 원정이
+        // 어제로 세어진다(같은 종류의 시각-문자열 버그를 이 세션에서 두 번 잡혔다).
+        jdbcClient.sql("UPDATE matches SET created_at = ? WHERE user_id = ? AND mode = 'away'")
+                .params(java.time.Instant.now().minusSeconds(60 * 60 * 30).toString(), attackerId)
+                .update();
+        ResponseEntity<Map> nextDay = authGet("/api/away/candidates", attacker, Map.class);
+        assertThat((Integer) nextDay.getBody().get("remainingToday")).isEqualTo(limit);
+    }
+
+    @org.springframework.beans.factory.annotation.Value("${hmb.away.match.daily-limit}")
+    private String dailyLimitProp;
+
     // ── 헬퍼 ────────────────────────────────────────────────────────────
 
     /**

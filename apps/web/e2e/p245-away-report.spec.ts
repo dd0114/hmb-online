@@ -34,6 +34,8 @@ interface MockState {
   hasOpponent: boolean;
   /** 서버 report-list-limit 흉내. */
   limit: number;
+  /** 오늘 남은 원정 횟수(-1 = 무제한). */
+  remainingToday: number;
   locked: boolean;
   /** `/api/me/active-match` 응답 지연(ms) — 콜드 로드 경합 재현용. */
   activeDelayMs: number;
@@ -81,6 +83,7 @@ async function mockApi(page: Page, over: Partial<MockState> = {}): Promise<MockS
     chosenDefender: null,
     hasOpponent: true,
     limit: 20,
+    remainingToday: 7,
     locked: false,
     activeDelayMs: 0,
     rating: -10,
@@ -154,6 +157,7 @@ async function mockApi(page: Page, over: Partial<MockState> = {}): Promise<MockS
             streak: 2,
             seasonNo: 1,
             seasonEndsAt: "2026-08-04T00:00:00Z",
+            remainingToday: st.remainingToday,
           })
         : json({ code: "NO_OPPONENT", message: "원정 갈 상대가 아직 없습니다" }, 404),
     ),
@@ -376,6 +380,8 @@ test.describe("#245 원정 모드", () => {
     await page.getByTestId("mode-away").click();
 
     // hero E2: 레이팅 비슷한 2명을 보여주고 그 중 고른다.
+    // 남은 횟수는 **누르기 전에** 보인다 — 눌렀는데 거부되는 건 나쁜 UX 다.
+    await expect(page.getByTestId("away-remaining")).toContainText("7회 남음");
     const candidates = page.getByTestId("away-candidate");
     await expect(candidates).toHaveCount(2);
     await expect(page.getByTestId("away-streak")).toContainText("2연승");

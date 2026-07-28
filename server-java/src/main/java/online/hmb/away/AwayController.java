@@ -67,7 +67,8 @@ public class AwayController {
     public CandidatesResponse candidates(@RequestAttribute("userId") String userId) {
         AwaySeasonService.Season season = seasonService.current();
         return new CandidatesResponse(awayService.offerCandidates(userId),
-                awayService.streakOf(userId), season.seasonNo(), season.endsAt());
+                awayService.streakOf(userId), season.seasonNo(), season.endsAt(),
+                awayService.remainingToday(userId));
     }
 
     /** 시즌 현황 + 내 지난 성적(hero E5) — "이번 주 언제 끝나고 지난주 몇 등이었나". */
@@ -98,8 +99,9 @@ public class AwayController {
     public record StartRequest(String defenderId) {
     }
 
+    /** remainingToday: 오늘 남은 원정 횟수. <b>-1 = 무제한</b>(daily-limit 0). */
     public record CandidatesResponse(List<AwayService.Candidate> candidates, int streak,
-                                     int seasonNo, String seasonEndsAt) {
+                                     int seasonNo, String seasonEndsAt, int remainingToday) {
     }
 
     public record SeasonResponse(int seasonNo, String startedAt, String endsAt, int streak,

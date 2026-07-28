@@ -183,6 +183,12 @@ hmb:
       rating-band: 50
       # 제시가 유효한 시간(초). 지나면 다시 뽑아야 한다 — 오래된 제시로 나중에 골라 담지 못하게.
       offer-ttl-sec: 600
+      # 하루 원정 횟수(hero 결정). **0 = 무제한**(= 롤백 스위치, 코드 변경 없이 끌 수 있다).
+      # 목적은 파밍보다 **AI 비용·플레이 페이스** — 원정 한 판마다 AI 인풋 생성이 붙는다.
+      # 리셋은 **KST 자정**(hmb.match.condition.zone 과 같은 기준 — 컨디션 갱신과 체감이 어긋나면
+      # "어제 것"의 의미가 화면마다 달라진다).
+      # env 로도 덮을 수 있다: HMB_AWAY_MATCH_DAILYLIMIT=0
+      daily-limit: 10
     streak:                          # hero E4 연승 보너스
       # 연승 1회당 추가 레이팅(2연승부터 붙는다: (streak-1) × 이 값).
       bonus-per-win: 2
