@@ -180,24 +180,37 @@ public class AwaySeasonService {
             //      사라졌다 — 참가상도 스냅샷도 히스토리도 0.
             // 둘 다 "레이팅이 움직였는가"로 "원정을 했는가"를 대신 물어서 생겼다. 이제 원정 자체
             // (`away_reports`, 정산마다 정확히 1행)를 창으로 잘라서 본다.
+            // ⚠️ **순위도 창으로 자른다.** 참가만 창으로 자르고 순위를 `user_ratings`(창 없는 현재
+            // 누적)로 매기면 두 축이 어긋난다 — 실측: 밀린 주에서 1주차 순위를 2주차 경기가 정했고,
+            // 앞 시즌 마감이 레이팅을 0 으로 지운 뒤엔 전원 동점이라 tie-break(`user_id`)가 순위를
+            // 정해 **3패한 유저가 1위, 3승한 유저가 2위**가 됐다(ULID 는 시간정렬이라 가장 오래된
+            // 계정이 매주 결정론적으로 1등). 그 시즌의 점수는 **그 시즌에 일어난 변동의 합**이다.
+            //
+            // 참가는 away_reports(정산마다 1행, 무승부 포함), 점수는 rating_ledger(변동이 있을 때만)
+            // 에서 온다 — 무승부만 한 유저는 참가하되 0점이다.
             List<Standing> standings = jdbcClient.sql("""
                             SELECT p.user_id AS user_id,
-                                   COALESCE(r.rating, 0) AS rating,
+                                   COALESCE((
+                                       SELECT SUM(l.delta) FROM rating_ledger l
+                                        WHERE l.user_id = p.user_id
+                                          AND datetime(l.created_at) >= datetime(:from)
+                                          AND datetime(l.created_at) <  datetime(:to)
+                                   ), 0) AS rating,
                                    COALESCE(st.best_streak, 0) AS best_streak
                             FROM (
                                 SELECT defender_id AS user_id FROM away_reports
-                                 WHERE datetime(created_at) >= datetime(?)
-                                   AND datetime(created_at) <  datetime(?)
+                                 WHERE datetime(created_at) >= datetime(:from)
+                                   AND datetime(created_at) <  datetime(:to)
                                 UNION
                                 SELECT attacker_id AS user_id FROM away_reports
-                                 WHERE datetime(created_at) >= datetime(?)
-                                   AND datetime(created_at) <  datetime(?)
+                                 WHERE datetime(created_at) >= datetime(:from)
+                                   AND datetime(created_at) <  datetime(:to)
                             ) p
-                            LEFT JOIN user_ratings r ON r.user_id = p.user_id
                             LEFT JOIN away_streaks st ON st.user_id = p.user_id
                             ORDER BY rating DESC, p.user_id ASC
                             """)
-                    .params(season.startedAt(), season.endsAt(), season.startedAt(), season.endsAt())
+                    .param("from", season.startedAt())
+                    .param("to", season.endsAt())
                     .query((rs, n) -> new Standing(rs.getString("user_id"), rs.getInt("rating"),
                             rs.getInt("best_streak")))
                     .list();

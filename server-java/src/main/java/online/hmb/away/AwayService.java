@@ -466,6 +466,17 @@ public class AwayService {
      */
     public void settle(String matchId, String attackerId, String attackerResult,
                        int attackerGoals, int defenderGoals) {
+        settle(matchId, attackerId, attackerResult, attackerGoals, defenderGoals, true);
+    }
+
+    /**
+     * @param payDefender 수비자에게 <b>재화</b>를 지급할지. 몰수(상대가 브리핑에서 무름)는 false —
+     *     경기가 열리지도 않았는데 리그 승리 보상 전액을 찍으면, 두 계정이 서로 만들고 무르기만 해도
+     *     **시뮬 0회로 돈이 발행된다**(레이팅은 서로 상쇄돼 밴드 방어가 걸리지도 않는다).
+     *     레이팅(hero D1 몰수패)은 그대로 준다 — 무르는 쪽에 대한 벌칙은 그거다.
+     */
+    public void settle(String matchId, String attackerId, String attackerResult,
+                       int attackerGoals, int defenderGoals, boolean payDefender) {
         Challenge challenge = findChallenge(matchId).orElse(null);
         if (challenge == null) {
             // mode='away' 인데 도전장이 없다 = 데이터 사고. 조용히 넘어가면 수비자는 영영 모른다.
@@ -482,8 +493,11 @@ public class AwayService {
             // ⚠️ 연승 보너스를 **리포트 INSERT 전에** 계산한다. 예전엔 기본 ±10 만 박제하고 실제로는
             // 보너스를 더해 적용해서, 리포트가 "적용값을 박제한다"는 자기 선언을 **처음부터** 어겼다
             // (팝업의 레이팅 합계도 같이 틀렸다 — 독립검증 MAJ-3).
-            int attackerBonus = applyStreak(attackerId, attackerResult);
-            int defenderBonus = applyStreak(challenge.defenderId(), defenderResult);
+            // ⚠️ 보너스는 **미리 계산만** 하고 연승 갱신은 멱등 게이트 뒤에서 한다. 예전엔 여기서
+            // 바로 갱신해서 같은 매치를 재정산하면 연승이 1→4 로 부풀었다(리포트·원장은 멱등인데
+            // 연승만 샜다 — 독립검증 major-1). txRunner 안의 return 은 앞선 UPDATE 를 되돌리지 않는다.
+            int attackerBonus = peekStreakBonus(attackerId, attackerResult);
+            int defenderBonus = peekStreakBonus(challenge.defenderId(), defenderResult);
             int attackerApplied = attackerDelta + attackerBonus;
             int defenderApplied = defenderDelta + defenderBonus;
             int inserted = jdbcClient.sql("""
@@ -497,8 +511,10 @@ public class AwayService {
                             Instant.now().toString())
                     .update();
             if (inserted == 0) {
-                return; // 이미 정산됨
+                return; // 이미 정산됨 — 연승도 건드리지 않는다
             }
+            commitStreak(attackerId, attackerResult);
+            commitStreak(challenge.defenderId(), defenderResult);
             if (attackerApplied != 0) {
                 ratingService.apply(attackerId, attackerApplied, REASON_ATTACK, matchId);
             }
@@ -507,7 +523,9 @@ public class AwayService {
             }
             // 수비자 보상(hero E7) — "덱 세팅 잘해두면 돈이 들어오고, 지면 남 좋은 일만".
             // 공격자 보상은 매치 정산(MatchOrchestrator)이 이미 준다 — 여기서 또 주면 이중 지급이다.
-            payDefender(challenge.defenderId(), defenderResult, matchId);
+            if (payDefender) {
+                payDefenderReward(challenge.defenderId(), defenderResult, matchId);
+            }
         });
     }
 
@@ -517,7 +535,19 @@ public class AwayService {
      *
      * @return 이번 판에 얹을 추가 레이팅(2연승부터, 상한 있음). 승리가 아니면 0.
      */
-    private int applyStreak(String userId, String result) {
+    private int peekStreakBonus(String userId, String result) {
+        if (!"WIN".equals(result)) {
+            return 0;   // 승리에만 붙는다(패=끊김, 무=유지)
+        }
+        int next = streakOf(userId) + 1;
+        return Math.min(Math.max(next - 1, 0) * streakBonusPerWin, streakMaxBonus);
+    }
+
+    /**
+     * 연승 갱신 — 승 +1 · 패 0 으로 끊김 · <b>무승부는 유지</b>(비긴 걸로 끊기면 방어 성공이 손해다).
+     * 정산이 실제로 새로 기록됐을 때만 부른다(멱등).
+     */
+    private void commitStreak(String userId, String result) {
         String now = Instant.now().toString();
         if ("LOSS".equals(result)) {
             jdbcClient.sql("""
@@ -527,10 +557,10 @@ public class AwayService {
                             """)
                     .params(userId, now)
                     .update();
-            return 0;
+            return;
         }
         if (!"WIN".equals(result)) {
-            return 0;   // 무승부 — 유지
+            return;   // 무승부 — 유지
         }
         jdbcClient.sql("""
                         INSERT INTO away_streaks(user_id, streak, best_streak, updated_at)
@@ -542,9 +572,6 @@ public class AwayService {
                         """)
                 .params(userId, now)
                 .update();
-        int streak = jdbcClient.sql("SELECT streak FROM away_streaks WHERE user_id = ?")
-                .param(userId).query(Integer.class).optional().orElse(1);
-        return Math.min(Math.max(streak - 1, 0) * streakBonusPerWin, streakMaxBonus);
     }
 
     /**
@@ -555,7 +582,7 @@ public class AwayService {
      * {@code data/**} 가 이 모듈 소유가 아니고, "리그와 같게"라는 지시는 값 복제가 아니라 <b>참조</b>로
      * 표현하는 게 정확하기 때문이다(값이 바뀌면 같이 따라간다).
      */
-    private void payDefender(String defenderId, String defenderResult, String matchId) {
+    private void payDefenderReward(String defenderId, String defenderResult, String matchId) {
         if ("LOSS".equals(defenderResult) && !defenderRewardOnLoss) {
             return;
         }

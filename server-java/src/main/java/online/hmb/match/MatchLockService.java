@@ -208,7 +208,10 @@ public class MatchLockService {
         }
         // 공격자 LOSS = 수비자 WIN. 스코어 0:0 + 비무승부 = 몰수(정상 경기의 0:0 은 언제나 DRAW 라
         // 이 조합은 몰수에서만 나온다 — 별도 컬럼 없이 구분된다).
-        awayService.settle(row.id(), row.userId(), "LOSS", 0, 0);
+        // ⚠️ 재화는 주지 않는다(payDefender=false) — 경기가 열리지도 않았는데 리그 승리 보상을 찍으면
+        // 두 계정이 서로 만들고 무르기만 해도 **시뮬 0회로 돈이 발행된다**(레이팅은 서로 상쇄돼
+        // 밴드 방어도 안 걸린다). 레이팅 −10 이 무르는 쪽의 벌칙이다(hero D1).
+        awayService.settle(row.id(), row.userId(), "LOSS", 0, 0, false);
     }
 
     public MatchService.MatchRow abandon(String userId, String matchId) {

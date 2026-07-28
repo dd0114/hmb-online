@@ -299,9 +299,11 @@ class AwayV2Test extends MatchTestBase {
         int seasonNo = seasonService.current().seasonNo();
         long topBefore = points(topId);
         expireSeason();
+
         assertThat(seasonService.sweepDueSeasons()).isPositive();
 
         // 스냅샷이 남고(초기화 전 성적) 보상이 지급되고 레이팅이 0 으로 돌아간다.
+        // ⚠️ 순위·점수는 이제 **그 시즌의 변동 합**이라 절대값이 아니라 관계로 건다(공유 DB).
         Map<String, Object> snap = jdbcClient.sql("""
                         SELECT rank, rating, reward_points FROM away_season_results
                         WHERE season_no = ? AND user_id = ?
@@ -310,14 +312,13 @@ class AwayV2Test extends MatchTestBase {
                 .query((rs, n) -> Map.<String, Object>of("rank", rs.getInt("rank"),
                         "rating", rs.getInt("rating"), "reward", rs.getInt("reward_points")))
                 .single();
-        assertThat(snap.get("rank")).isEqualTo(1);
-        assertThat(snap.get("rating")).isEqualTo(500);
+        assertThat((Integer) snap.get("rating")).as("이긴 쪽의 시즌 점수는 양수다").isPositive();
         assertThat(points(topId) - topBefore).isEqualTo(((Integer) snap.get("reward")).longValue());
         assertThat(rating(topId)).isZero();
         assertThat(rating(lowId)).isZero();
 
         // 다음 시즌이 열려 있다(빈 상태로 남지 않는다).
-        assertThat(seasonService.current().seasonNo()).isEqualTo(seasonNo + 1);
+        assertThat(seasonService.current().seasonNo()).isGreaterThan(seasonNo);
 
         // ⚠️ 멱등은 **같은 시즌을 다시 닫아** 확인해야 한다. 그냥 sweep 을 또 부르면 방금 열린 시즌의
         // ends_at 이 미래라 첫 줄에서 break 해서 마감 코드에 **도달조차 하지 않는다**(독립검증 MAJ-4:
@@ -347,36 +348,66 @@ class AwayV2Test extends MatchTestBase {
         String defenderId = userIdOf("v2_backlog_def");
         setupUserWithDeck("v2_backlog_atk");
         String attackerId = userIdOf("v2_backlog_atk");
-        settleWin(attackerId, defenderId, "M_BL1");        // 딱 한 판
-        long before = points(attackerId);
+        settleWin(attackerId, defenderId, "M_BL1");   // 경기는 **지금** 있었다
 
-        // 그 한 판을 첫 시즌 창(-28d~-21d) 안으로 밀어 넣는다.
-        jdbcClient.sql("UPDATE away_reports SET created_at = datetime('now', '-25 days') WHERE match_id = 'M_BL1'")
-                .update();
-        // 시즌 1 이 3주 전에 끝난 것으로 만든다 → 스윕이 밀린 주를 순서대로 민다.
+        long rewardsBefore = seasonRewardsIssued();
+        int firstSeason = seasonService.current().seasonNo();
+
+        // ⚠️ 창을 **과거로** 밀어 놓는다 — 지금 한 경기는 그 창 **밖**이다. 상한이 없으면 이 경기가
+        // 지나간 주들에 전부 참가로 잡혀 빈 주에도 순위 보상이 나간다(독립검증에서 20만 포인트 실측).
+        // 픽스처가 경기를 과거로 밀면(초판이 그랬다) 하한이 먼저 걸러서 **상한은 한 번도 일하지 않는다**.
         jdbcClient.sql("""
                         UPDATE away_seasons
                         SET started_at = datetime('now', '-28 days'), ends_at = datetime('now', '-21 days')
                         WHERE state = 'ACTIVE'
                         """)
                 .update();
-        int firstSeason = seasonService.current().seasonNo();
         assertThat(seasonService.sweepDueSeasons()).isGreaterThan(1);   // 여러 주가 밀렸다
 
-        // 경기가 있었던 첫 시즌에만 결과가 남는다.
-        long seasonsWithResults = jdbcClient.sql(
-                        "SELECT COUNT(DISTINCT season_no) FROM away_season_results WHERE user_id = ?")
-                .param(attackerId).query(Long.class).single();
-        assertThat(seasonsWithResults)
-                .as("아무도 안 논 주에도 순위 보상이 나가면 포인트가 무한 발행된다")
-                .isEqualTo(1);
+        // ⚠️ 단언은 **첫 backlog 창(-28d~-21d)** 으로 좁힌다. 체인은 결국 "지금"을 품는 창까지
+        // 이어지므로(그 창의 참가는 정상이다) 전역 합계로는 판정할 수 없다. 이 창은 우리 경기보다
+        // 3주 앞이라 상한이 없으면 우리 경기가 여기에 잡힌다.
+        assertThat(jdbcClient.sql("""
+                        SELECT COUNT(*) FROM away_season_results
+                        WHERE season_no = ? AND user_id IN (?, ?)
+                        """)
+                        .params(firstSeason, attackerId, defenderId).query(Long.class).single())
+                .as("3주 전 창에 오늘 경기가 잡히면 아무도 안 논 주에 순위 보상이 나간다")
+                .isZero();
+        assertThat(rewardsBefore).isNotNegative();
+    }
 
-        // 지급도 한 주치뿐.
-        long paid = points(attackerId) - before;
-        int reward = jdbcClient.sql(
-                        "SELECT reward_points FROM away_season_results WHERE user_id = ? AND season_no = ?")
-                .params(attackerId, firstSeason).query(Integer.class).single();
-        assertThat(paid).isEqualTo(reward);
+    /**
+     * <b>시즌 순위는 그 시즌에 일어난 일로 정한다.</b> 참가만 창으로 자르고 순위를 현재 누적
+     * 레이팅으로 매기면, 앞 시즌 마감이 레이팅을 0 으로 지운 뒤엔 전원 동점이라 tie-break(user_id =
+     * ULID = 가입 순)가 순위를 정한다 — 실측에서 <b>3패한 유저가 1위, 3승한 유저가 2위</b>였다.
+     */
+    @Test
+    void seasonRankReflectsThatSeasonsResults() {
+        setupUserWithDeck("v2_rank_win");
+        String winnerId = userIdOf("v2_rank_win");
+        setupUserWithDeck("v2_rank_lose");
+        String loserId = userIdOf("v2_rank_lose");
+        // 승자가 이 시즌에 이겼다(공격자 WIN = 수비자 LOSS).
+        settleWin(winnerId, loserId, "M_RK1");
+        settleWin(winnerId, loserId, "M_RK2");
+        // 누적 레이팅을 **거꾸로** 심는다 — 순위가 그걸 본다면 진 쪽이 1위가 된다.
+        setRating(winnerId, 0);
+        setRating(loserId, 9999);
+
+        int seasonNo = seasonService.current().seasonNo();
+        expireSeason();
+        seasonService.sweepDueSeasons();
+
+        int winnerRank = jdbcClient.sql(
+                        "SELECT rank FROM away_season_results WHERE season_no = ? AND user_id = ?")
+                .params(seasonNo, winnerId).query(Integer.class).single();
+        int loserRank = jdbcClient.sql(
+                        "SELECT rank FROM away_season_results WHERE season_no = ? AND user_id = ?")
+                .params(seasonNo, loserId).query(Integer.class).single();
+        assertThat(winnerRank)
+                .as("그 시즌에 이긴 쪽이 위여야 한다 — 누적값이나 가입 순서가 순위를 정하면 안 된다")
+                .isLessThan(loserRank);
     }
 
     /**
@@ -538,7 +569,68 @@ class AwayV2Test extends MatchTestBase {
     @org.springframework.beans.factory.annotation.Value("${hmb.away.match.daily-limit}")
     private String dailyLimitProp;
 
+    /** 같은 매치를 다시 정산해도 <b>연승이 늘지 않는다</b> — 리포트·원장만 보면 못 잡는 구멍이었다. */
+    @Test
+    void resettlingDoesNotInflateTheStreak() {
+        setupUserWithDeck("v2_idem_def");
+        String defenderId = userIdOf("v2_idem_def");
+        setupUserWithDeck("v2_idem_atk");
+        String attackerId = userIdOf("v2_idem_atk");
+
+        settleWin(attackerId, defenderId, "M_IDEM");
+        assertThat(awayService.streakOf(attackerId)).isEqualTo(1);
+
+        awayService.settle("M_IDEM", attackerId, "WIN", 2, 0);
+        awayService.settle("M_IDEM", attackerId, "WIN", 2, 0);
+        assertThat(awayService.streakOf(attackerId))
+                .as("재정산이 연승을 부풀리면 그 다음 진짜 승리의 보너스가 오염된다")
+                .isEqualTo(1);
+    }
+
+    /**
+     * 몰수는 <b>돈을 만들지 않는다</b> — 경기가 열리지도 않았는데 리그 승리 보상을 찍으면 두 계정이
+     * 서로 만들고 무르기만 해도 시뮬 0회로 돈이 발행된다.
+     *
+     * <p>⚠️ 반드시 <b>실제 포기 경로</b>(POST /abandon)로 태운다. 오버로드를 직접 부르면 "그 배선이
+     * false 를 넘기는가"를 검증하지 못한다 — 초판이 그렇게 써서 배선 누락을 놓쳤다.
+     */
+    @Test
+    void forfeitGivesRatingButNoMoney() {
+        setupUserWithDeck("v2_ff_def");
+        String defenderId = userIdOf("v2_ff_def");
+        String attacker = setupUserWithDeck("v2_ff_atk");
+        String attackerId = userIdOf("v2_ff_atk");
+
+        String matchId = startAwayPinned(attackerId, defenderId).id();
+        long before = points(defenderId);
+        assertThat(authPost("/api/matches/" + matchId + "/abandon", attacker, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(points(defenderId) - before)
+                .as("서로 만들고 무르기만 해도 돈이 발행되면 안 된다")
+                .isZero();
+        assertThat(rating(defenderId)).as("레이팅은 준다(hero D1 몰수패)").isEqualTo(10);
+    }
+
     // ── 헬퍼 ────────────────────────────────────────────────────────────
+
+    /** 제시를 심고 상대를 고정해 원정을 시작한다(hero E2 이후 지목은 제시 안에서만 된다). */
+    private online.hmb.match.MatchService.MatchRow startAwayPinned(String attackerId, String defenderId) {
+        jdbcClient.sql("""
+                        INSERT INTO away_offers(user_id, candidates, created_at) VALUES (?, ?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET
+                          candidates = excluded.candidates, created_at = excluded.created_at
+                        """)
+                .params(attackerId, "[\"" + defenderId + "\"]", java.time.Instant.now().toString())
+                .update();
+        return awayService.start(attackerId, defenderId);
+    }
+
+    private long seasonRewardsIssued() {
+        return jdbcClient.sql(
+                        "SELECT COALESCE(SUM(delta), 0) FROM point_ledger WHERE reason = 'season_reward'")
+                .query(Long.class).single();
+    }
 
     /**
      * 진행 중 시즌을 만료시킨다. ⚠️ 마이그레이션이 심은 값을 <b>ISO 로 덮어쓰지 않는다</b> —
@@ -551,6 +643,13 @@ class AwayV2Test extends MatchTestBase {
         // "방금"이므로 창보다 뒤에 있게 된다 — 경기를 과거로 밀어 넣고 창을 그 뒤로 닫는다.
         jdbcClient.sql("""
                         UPDATE away_reports SET created_at = datetime('now', '-2 hours')
+                        WHERE datetime(created_at) > datetime('now', '-2 hours')
+                        """)
+                .update();
+        // 점수도 창으로 잘리므로(순위 = 그 시즌 변동 합) 원장도 같이 밀어야 한다 — 리포트만 밀면
+        // 참가는 잡히는데 점수가 0 이 되어 "참가했는데 0점"이라는 없는 상황이 만들어진다.
+        jdbcClient.sql("""
+                        UPDATE rating_ledger SET created_at = datetime('now', '-2 hours')
                         WHERE datetime(created_at) > datetime('now', '-2 hours')
                         """)
                 .update();
