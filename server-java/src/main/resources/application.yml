@@ -44,8 +44,8 @@ hmb:
     # 포함해 v2 와 동일하고(생성기 한 소스), 추가된 것은 그 블록 하나뿐이다.
     # ⚠️ 이 경로는 Dockerfile 의 HMB_DATA_ECONOMYFILE 과 **둘 다** 올려야 한다.
     economy-file: ../data/players/economy.v3.json
-    bots-file:    ../data/players/bots.v2.json
-    league-file:  ../data/players/league.v1.json       # 리그 클럽명·페르소나·보상표(W3 소비, W1 로더만)
+    bots-file:    ../data/players/bots.v3.json
+    league-file:  ../data/players/league.v2.json       # 리그 클럽명·페르소나·보상표 + #252 디비전 사다리
   auth:
     session-ttl-hours: 720
     local:                           # P3 §A 자체 로그인(P3-D2) — 비번 평문 목업, 해시 전환은 백로그
@@ -252,9 +252,19 @@ hmb:
     roster-size: 15               # 봇 팀 로스터(선발 11 + 벤치 4)
     sim:                           # 봇 vs 봇 간이 결과(팀 파워 + 홈보정 → 푸아송 근사, docs/plan-v3/league-rules.md)
       base-goals: 1.10             # 파워 동일·중립 시 팀당 기대 득점
-      power-divisor: 120.0         # 파워차 → 기대 득점 변환(Δ기대 = (myPower-oppPower)/divisor)
+      # #252: 120 → 400. 근거 = docs/plan-v5/opponent-balance.md §1.4 BL-5 / §3.3.
+      # 봇 파워 산포(라이브 실측 sd 126)에 비해 120 은 너무 작아 파워차 126 이 곧 기대득점차 1.05골이
+      # 됐다 → 봇 9팀 중 최고가 16경기에 승점 44점(2.75 ppg), 최저 3점(0.19 ppg). 실제 리그는
+      # 우승 2.2~2.4 / 최하위 0.7~0.9 다. 그 결과 **유저가 매치 승률 65% 를 찍어도 우승 확률 14.6%** 로,
+      # 유저 경기를 아무리 쉽게 해도 리그 우승이 구조적으로 막혀 있었다.
+      # 400 에서 봇 최고 2.19 / 최저 0.63 ppg = 실제 리그 밴드. 롤백 = 이 값을 120 으로.
+      power-divisor: 400.0         # 파워차 → 기대 득점 변환(Δ기대 = (myPower-oppPower)/divisor)
       home-advantage: 0.35         # 홈 팀 기대 득점 가산(홈 어드밴티지)
       max-goals: 8                 # 한 팀 최대 득점 클램프(푸아송 꼬리 방어)
+    division:                      # #252 승급/강등 컷. level 은 작을수록 상위(10=입문 … 1=최상위).
+      # 사다리 표 자체(등급 슬롯·배율·표시명)는 data 발행물 league.v2.json 이 SoT — 여기엔 규칙만 둔다.
+      promote-rank-max: 2          # 최종 1~2위 = 승급(level-1)
+      relegate-rank-min: 9         # 최종 9~10위 = 강등(level+1). 3~8위는 유지
   cors:                              # CORS 허용 오리진(이슈 #128, 오픈 blocker B1) — /api/** 대상
     # 콤마 구분. env HMB_CORS_ALLOWEDORIGINS 로 재빌드 없이 교체(quick tunnel/Pages URL 은 재시작마다 바뀜).
     # 기본값 = 로컬 dev 오리진 하나(와일드카드 아님) — 미설정 시 아무 데서나 열리지 않게(무회귀).

@@ -67,8 +67,8 @@ RUN mkdir -p /var/lib/hmb && chown -R hmb:hmb /var/lib/hmb /app
 ENV HMB_DB_PATH=/var/lib/hmb/hmb.db \
     HMB_DATA_PLAYERSFILE=/app/data/players/players.v2.3.json \
     HMB_DATA_ECONOMYFILE=/app/data/players/economy.v3.json \
-    HMB_DATA_BOTSFILE=/app/data/players/bots.v2.json \
-    HMB_DATA_LEAGUEFILE=/app/data/players/league.v1.json \
+    HMB_DATA_BOTSFILE=/app/data/players/bots.v3.json \
+    HMB_DATA_LEAGUEFILE=/app/data/players/league.v2.json \
     JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0"
 
 USER hmb

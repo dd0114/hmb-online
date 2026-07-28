@@ -28,11 +28,23 @@ public class LeagueDataService {
 
     /** 리그 데이터 스냅샷 — clubNames/personaPresets/rewards 는 원본 JsonNode 로 보존(W3 소비). */
     public record LeagueData(String version, List<String> clubNames,
-                             JsonNode personaPresets, List<RankReward> rewards) {
+                             JsonNode personaPresets, List<RankReward> rewards,
+                             List<Division> divisions) {
     }
 
     /** 순위 보상 행 — rank(1..N) → points (AC-F4, 원장 ref=seasonId 멱등 지급은 W3). */
     public record RankReward(int rank, int points) {
+    }
+
+    /**
+     * 디비전 사다리 한 칸(#252). {@code gradeSlots} 가 봇 <b>선발 XI 11명</b>의 등급이고
+     * <b>slot 0 은 GK</b> 다 — 이 배열이 곧 상대 강도다. {@code strengthMul} 은 등급 슬롯만으로
+     * 하한(전원 BRONZE)을 못 넘는 입문 구간용 미세 배율(1.0 = 미적용).
+     *
+     * <p>league.v2.json 이 SoT — 값을 코드에 두지 않는다(AC-S5).
+     */
+    public record Division(int level, String name, String shortName,
+                           List<String> gradeSlots, double strengthMul) {
     }
 
     private final Optional<LeagueData> data;
@@ -63,10 +75,22 @@ public class LeagueDataService {
             root.path("rewards").forEach(n ->
                     rewards.add(new RankReward(n.path("rank").asInt(), n.path("points").asInt())));
 
-            log.info("Loaded league data {} from {} (clubNames={}, personaPresets={}, rewards={})",
+            // divisions 는 v2 부터의 additive 블록 — 없으면 빈 리스트(구 발행물 폴백: 서버가
+            // 구 등급 라운드로빈으로 동작한다. league.v1.json 로 되돌리는 것이 곧 롤백이다).
+            List<Division> divisions = new ArrayList<>();
+            root.path("divisions").forEach(n -> {
+                List<String> slots = new ArrayList<>();
+                n.path("gradeSlots").forEach(g -> slots.add(g.asText()));
+                divisions.add(new Division(n.path("level").asInt(), n.path("name").asText(),
+                        n.path("shortName").asText(), List.copyOf(slots),
+                        n.path("strengthMul").asDouble(1.0)));
+            });
+
+            log.info("Loaded league data {} from {} (clubNames={}, personaPresets={}, rewards={}, divisions={})",
                     version, file.getAbsolutePath(), clubNames.size(),
-                    personaPresets != null ? personaPresets.size() : 0, rewards.size());
-            return Optional.of(new LeagueData(version, List.copyOf(clubNames), personaPresets, List.copyOf(rewards)));
+                    personaPresets != null ? personaPresets.size() : 0, rewards.size(), divisions.size());
+            return Optional.of(new LeagueData(version, List.copyOf(clubNames), personaPresets,
+                    List.copyOf(rewards), List.copyOf(divisions)));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load league data from {}: {} — continuing without league config",
                     file.getAbsolutePath(), e.toString());

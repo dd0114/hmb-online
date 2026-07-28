@@ -202,8 +202,10 @@ const REAL_CLUB_TOKENS: readonly string[] = [
   "Celtic",
 ];
 
-const { players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league } =
-  generateAll();
+const {
+  players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league,
+  leagueV2, botsV3,
+} = generateAll();
 
 describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
   it(`총 ${TOTAL}명`, () => {
@@ -1546,6 +1548,8 @@ describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
     ["league.v1.json", league],
+    ["bots.v3.json", botsV3],
+    ["league.v2.json", leagueV2],
   ];
 
   it.each(cases)("%s 가 디스크에서 바이트 동일(수정·재생성 누락 검출)", (file, data) => {
@@ -1566,5 +1570,160 @@ describe("재생성 결정론 (AC-PL1)", () => {
     expect(JSON.stringify(a.economy, null, 2)).toBe(JSON.stringify(b.economy, null, 2));
     expect(JSON.stringify(a.bots, null, 2)).toBe(JSON.stringify(b.bots, null, 2));
     expect(JSON.stringify(a.league, null, 2)).toBe(JSON.stringify(b.league, null, 2));
+    expect(JSON.stringify(a.leagueV2, null, 2)).toBe(JSON.stringify(b.leagueV2, null, 2));
+    expect(JSON.stringify(a.botsV3, null, 2)).toBe(JSON.stringify(b.botsV3, null, 2));
+  });
+});
+
+// ── #252 상대 밸런스 ───────────────────────────────────────────────────────
+// 계약의 성격: **절대 수치가 아니라 관계식**으로 건다. 파워 상수는 카탈로그가 바뀌면 따라 움직이므로
+// "밴드 안"만 단언하면 카탈로그 개편에서 거짓 실패가 난다. 대신 "구 발행물보다 약하다",
+// "사다리가 단조 증가한다" 같은 성질을 건다 — 이게 깨지면 실제로 설계가 깨진 것이다.
+
+const XI_POWER = (ids: readonly string[]): number => {
+  const byId = new Map<string, PlayerSeed>(players.map((pp) => [pp.id, pp]));
+  return ids.reduce((acc, id) => {
+    const pl = byId.get(id);
+    if (!pl) throw new Error(`unknown player ${id}`);
+    return acc + Object.values(pl.attributes).reduce((x, y) => x + y, 0);
+  }, 0);
+};
+const startersOf = (b: (typeof bots)[number]) => b.deck.starters.map((st) => st.playerId);
+
+describe("bots.v3 — 연습 상대 입문 하향 (#252)", () => {
+  const byId = new Map<string, PlayerSeed>(players.map((pp) => [pp.id, pp]));
+
+  it("id 3종은 v2 와 **같다** — matches.bot_id FK 가 과거 매치에서 이 id 를 참조한다", () => {
+    expect(botsV3.map((b) => b.id).sort()).toEqual(bots.map((b) => b.id).sort());
+  });
+
+  it.each(["BOT_ATK", "BOT_DEF", "BOT_BAL"])("%s: 선발 11 + 벤치 4, 중복 없음, GK≥1", (botId) => {
+    const bot = botsV3.find((b) => b.id === botId)!;
+    expect(bot.deck.starters.length).toBe(11);
+    expect(bot.deck.bench.length).toBe(4);
+    const allIds = [...startersOf(bot), ...bot.deck.bench];
+    expect(new Set(allIds).size).toBe(15);
+    expect(startersOf(bot).filter((id) => byId.get(id)!.position === "GK").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it.each(["BOT_ATK", "BOT_DEF", "BOT_BAL"])("%s: 포메이션 포지션 구성이 v2 와 동일(하향은 등급만)", (botId) => {
+    const posOf = (deck: (typeof bots)[number]) =>
+      startersOf(deck)
+        .map((id) => byId.get(id)!.position)
+        .sort()
+        .join(",");
+    expect(posOf(botsV3.find((b) => b.id === botId)!)).toBe(posOf(bots.find((b) => b.id === botId)!));
+  });
+
+  it("셋 다 v2 보다 약하다 — hero 요구 '연습 상대가 너무 강하다'의 계약", () => {
+    for (const b3 of botsV3) {
+      const b2 = bots.find((b) => b.id === b3.id)!;
+      expect(XI_POWER(startersOf(b3)), `${b3.id} XI`).toBeLessThan(XI_POWER(startersOf(b2)));
+    }
+  });
+
+  it("전원 GOLD 봇이 사라졌다 — v2 는 3봇 중 2개가 전원 GOLD 였다(기본값이 디비전 2 급)", () => {
+    const allGold = (b: (typeof bots)[number]) =>
+      startersOf(b).every((id) => byId.get(id)!.grade === "GOLD");
+    expect(bots.filter(allGold).length).toBe(2); // 구 발행물의 사실 박제
+    expect(botsV3.filter(allGold).length).toBe(0);
+  });
+
+  it("가장 약한 연습 봇이 스타터팩 최선 XI 보다 약하다 — '첫 승리 가능' 계약", () => {
+    const packBest = (() => {
+      const pack = economy.starterPack.map((id) => byId.get(id)!);
+      const gk = pack
+        .filter((pp) => pp.position === "GK")
+        .sort((a, b) => XI_POWER([b.id]) - XI_POWER([a.id]))[0];
+      const rest = pack
+        .filter((pp) => pp !== gk)
+        .sort((a, b) => XI_POWER([b.id]) - XI_POWER([a.id]))
+        .slice(0, 10);
+      return XI_POWER([gk.id, ...rest.map((pp) => pp.id)]);
+    })();
+    const weakest = Math.min(...botsV3.map((b) => XI_POWER(startersOf(b))));
+    expect(weakest).toBeLessThan(packBest);
+  });
+});
+
+describe("league.v2 — 디비전 난이도 사다리 (#252)", () => {
+  it("version === 'v2' 이고 v1 블록은 그대로 승계(additive)", () => {
+    expect(leagueV2.version).toBe("v2");
+    expect(leagueV2.clubNames).toEqual(league.clubNames);
+    expect(leagueV2.rewards).toEqual(league.rewards);
+    expect(leagueV2.personaPresets).toEqual(league.personaPresets);
+  });
+
+  it("리그 팀 수(10)와 같은 10단계, level 은 10..1 로 유일", () => {
+    const levels = leagueV2.divisions.map((d) => d.level);
+    expect(levels).toEqual([10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+  });
+
+  it("모든 디비전의 gradeSlots 는 선발 11칸 + 알려진 등급만", () => {
+    const known = new Set(["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"]);
+    for (const d of leagueV2.divisions) {
+      expect(d.gradeSlots.length, d.shortName).toBe(11);
+      for (const g of d.gradeSlots) expect(known.has(g), `${d.shortName} ${g}`).toBe(true);
+      expect(d.strengthMul).toBeGreaterThan(0);
+      expect(d.strengthMul).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("난이도가 level 이 낮아질수록 **단조 증가** — 사다리의 핵심 성질", () => {
+    const gradeAvg = (() => {
+      const acc: Record<string, number[]> = {};
+      for (const pp of players) {
+        (acc[pp.grade] ??= []).push(Object.values(pp.attributes).reduce((x, y) => x + y, 0));
+      }
+      return Object.fromEntries(
+        Object.entries(acc).map(([g, v]) => [g, v.reduce((x, y) => x + y, 0) / v.length]),
+      );
+    })();
+    const powerOf = (d: (typeof leagueV2.divisions)[number]) =>
+      d.gradeSlots.reduce((a, g) => a + gradeAvg[g], 0) * d.strengthMul;
+    const byLevelDesc = [...leagueV2.divisions].sort((a, b) => b.level - a.level);
+    for (let i = 1; i < byLevelDesc.length; i++) {
+      expect(
+        powerOf(byLevelDesc[i]),
+        `${byLevelDesc[i].shortName} > ${byLevelDesc[i - 1].shortName}`,
+      ).toBeGreaterThan(powerOf(byLevelDesc[i - 1]));
+    }
+  });
+
+  it("입문(최대 level)이 스타터팩+최상위 XI 보다 확실히 약하다 — '초반 5시즌 무난'의 뿌리", () => {
+    const byId = new Map<string, PlayerSeed>(players.map((pp) => [pp.id, pp]));
+    const sum = (id: string) =>
+      Object.values(byId.get(id)!.attributes).reduce((x, y) => x + y, 0);
+    const pack = economy.starterPack.map((id) => byId.get(id)!);
+    const gk = pack.filter((pp) => pp.position === "GK").sort((a, b) => sum(b.id) - sum(a.id))[0];
+    const rest9 = pack.filter((pp) => pp !== gk).sort((a, b) => sum(b.id) - sum(a.id)).slice(0, 9);
+    const topAvg =
+      economyV3.starterTop!.pool.reduce((a, id) => a + sum(id), 0) / economyV3.starterTop!.pool.length;
+    const userBest = sum(gk.id) + rest9.reduce((a, pp) => a + sum(pp.id), 0) + topAvg;
+
+    const gradeAvg: Record<string, number> = {};
+    const acc: Record<string, number[]> = {};
+    for (const pp of players) (acc[pp.grade] ??= []).push(sum(pp.id));
+    for (const [g, v] of Object.entries(acc)) gradeAvg[g] = v.reduce((x, y) => x + y, 0) / v.length;
+
+    const entry = leagueV2.divisions.reduce((a, b) => (a.level >= b.level ? a : b));
+    const entryPower = entry.gradeSlots.reduce((a, g) => a + gradeAvg[g], 0) * entry.strengthMul;
+    expect(entryPower).toBeLessThan(userBest);
+  });
+
+  it("최상위(level 1)는 **구 사다리보다 세다** — 잘하는 유저가 갈 곳이 있다", () => {
+    // 구 동작 = 등급 라운드로빈 → 선발 XI ≈ 각 등급 2명씩 + GK. 라이브 실측 평균 6861.
+    const gradeAvg: Record<string, number> = {};
+    const acc: Record<string, number[]> = {};
+    for (const pp of players) {
+      (acc[pp.grade] ??= []).push(Object.values(pp.attributes).reduce((x, y) => x + y, 0));
+    }
+    for (const [g, v] of Object.entries(acc)) gradeAvg[g] = v.reduce((x, y) => x + y, 0) / v.length;
+    const legacyXi =
+      2 * (gradeAvg.BRONZE + gradeAvg.SILVER + gradeAvg.GOLD + gradeAvg.DIA + gradeAvg.LEGEND) +
+      gradeAvg.GOLD; // GK 1(등급 무작위) 근사
+    const top = leagueV2.divisions.reduce((a, b) => (a.level <= b.level ? a : b));
+    const topPower = top.gradeSlots.reduce((a, g) => a + gradeAvg[g], 0) * top.strengthMul;
+    expect(topPower).toBeGreaterThan(legacyXi);
   });
 });

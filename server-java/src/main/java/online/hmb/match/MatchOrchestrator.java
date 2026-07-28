@@ -821,6 +821,13 @@ public class MatchOrchestrator {
         // 이 필드가 없어 그대로 원본이다(무회귀).
         Map<String, Object> botTeam = teamRoster(bot.name(), botRoster, Map.of(), null,
                 frozenAttributesOf(matchService.readJson(bot.deckJson())));
+        // #252: 봇 강도 배율(디비전 사다리의 미세 노브). **여기가 상대 강도의 유일한 결정 지점**이다 —
+        // 엔진은 card.attributes 만 읽으므로(match.ts buildPlayers) 난이도를 엔진 무접촉으로 정할 수 있다.
+        // 시드봇·원정 고스트는 1.0 이라 무회귀. 원정 고스트에 배율이 걸리면 실유저 덱을 왜곡하는 셈이라
+        // 절대 1.0 이 아니어선 안 된다(AwayService 는 strength_mul 을 쓰지 않는다 = 기본값 유지).
+        if (bot.strengthMul() != 1.0) {
+            botTeam = withStrengthMultiplier(botTeam, bot.strengthMul());
+        }
 
         // 엔진 home = 픽스처 home_team(어웨이 리그경기면 유저가 away 사이드). homeInput/awayInput 도
         // 같은 사이드 라벨로 enqueue 되므로 selectData.home 팀과 정합.
@@ -874,6 +881,34 @@ public class MatchOrchestrator {
             return card;
         }).toList());
         return team;
+    }
+
+    /**
+     * 팀 전원의 능력치에 강도 배율(#252). 컨디션과 달리 {@code [minMul,maxMul]} 매핑이 아니라
+     * <b>직접 곱</b>이다 — 디비전 표의 {@code strengthMul} 이 그대로 파워비가 되어야 사다리를
+     * 파워로 계산할 수 있다(표시 파워 = 실제 파워).
+     *
+     * <p>클램프 하한이 0 이 아니라 <b>1</b> 인 이유: 능력치 0 은 엔진에서 "값 없음"과 구분되지 않고,
+     * 배율은 팀 전체를 약하게 만들려는 것이지 특정 능력치를 소거하려는 것이 아니다.
+     */
+    private Map<String, Object> withStrengthMultiplier(Map<String, Object> team, double mul) {
+        Map<String, Object> scaled = new LinkedHashMap<>(team);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> players = (List<Map<String, Object>>) team.get("players");
+        scaled.put("players", players.stream().map(card -> {
+            Map<String, Object> copy = new LinkedHashMap<>(card);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> attrs = (Map<String, Object>) card.get("attributes");
+            Map<String, Object> out = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> e : attrs.entrySet()) {
+                out.put(e.getKey(), e.getValue() instanceof Number n
+                        ? Math.max(1, Math.min(100, (int) Math.round(n.doubleValue() * mul)))
+                        : e.getValue());
+            }
+            copy.put("attributes", out);
+            return copy;
+        }).toList());
+        return scaled;
     }
 
     /** 능력치 맵에 컨디션 배율 적용(숫자값만 스케일, 그 외 원본 유지). 반올림 후 0..100 클램프. */
