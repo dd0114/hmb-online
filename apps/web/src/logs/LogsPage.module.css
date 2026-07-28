@@ -299,3 +299,16 @@ button.row:hover {
   border-color: var(--accent);
   color: var(--text);
 }
+
+/* 레이팅(#245 D3) — 리더보드 정렬 기준이라 승수·승률보다 강하게 읽히게 둔다. */
+.lbRating {
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.cardHint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-muted);
+}

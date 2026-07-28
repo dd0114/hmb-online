@@ -408,6 +408,83 @@ class AwayRaidTest extends MatchTestBase {
         assertThat(asOwner.getBody()).contains("TOP-SECRET-ATTACKER-PROMPT");
     }
 
+    // ── D1(hero 2차): 원정 자발적 포기 = 몰수패 ─────────────────────────────
+
+    /**
+     * 브리핑에서 상대를 보고 무르면 <b>몰수패</b>다 — 안 그러면 약한 상대가 나올 때까지 만들고 버리는
+     * 무한 리롤이 되고, ±10 이 걸린 축에서 그건 레이팅 무결성을 무너뜨린다(독립검증 MAJ-4).
+     */
+    @Test
+    void voluntaryAwayAbandonIsAForfeitLoss() {
+        setupUserWithDeck("aw_def_ff");
+        String defenderId = userIdOf("aw_def_ff");
+        String attacker = setupUserWithDeck("aw_atk_ff");
+        String attackerId = userIdOf("aw_atk_ff");
+
+        String matchId = awayService.start(attackerId, defenderId).id();
+        assertThat(authPost("/api/matches/" + matchId + "/abandon", attacker, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // 수비자에게 리포트가 남고(WIN) 레이팅은 대칭으로 갈린다.
+        assertThat(jdbcClient.sql("SELECT result FROM away_reports WHERE match_id = ?")
+                .param(matchId).query(String.class).single()).isEqualTo("WIN");
+        assertThat(rating(defenderId)).isEqualTo(10);
+        assertThat(rating(attackerId)).isEqualTo(-10);
+        // 스코어 0:0 + 비무승부 = 몰수(정상 경기의 0:0 은 언제나 DRAW 라 이 조합은 몰수에서만 나온다).
+        assertThat(jdbcClient.sql("SELECT goals_for || ':' || goals_against FROM away_reports WHERE match_id = ?")
+                .param(matchId).query(String.class).single()).isEqualTo("0:0");
+    }
+
+    /**
+     * ⚠️ <b>사고는 몰수가 아니다.</b> FAILED(생성 실패)에서의 포기는 #217 이 영구 잠금을 막으려고 연
+     * 탈출구다 — 거기까지 −10 을 물리면 서버 장애가 유저 레이팅을 깎는다.
+     */
+    @Test
+    void faultAbandonIsNotAForfeit() {
+        setupUserWithDeck("aw_def_fault");
+        String defenderId = userIdOf("aw_def_fault");
+        String attacker = setupUserWithDeck("aw_atk_fault");
+        String attackerId = userIdOf("aw_atk_fault");
+
+        String matchId = awayService.start(attackerId, defenderId).id();
+        forceState(matchId, "FAILED");   // 생성이 죽은 사고 매치
+        assertThat(authPost("/api/matches/" + matchId + "/abandon", attacker, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(countReports(matchId)).isZero();
+        assertThat(rating(defenderId)).isZero();
+        assertThat(rating(attackerId)).isZero();
+    }
+
+    // ── D3(hero 2차): 랭킹 기준 = 레이팅 ────────────────────────────────────
+
+    /** 리더보드 정렬이 승수가 아니라 레이팅이다. 동점이면 승수 → 승률 → 닉네임으로 계속 가른다. */
+    @SuppressWarnings("unchecked")
+    @Test
+    void leaderboardRanksByRating() {
+        String low = setupUserWithDeck("aw_rank_low");
+        setupUserWithDeck("aw_rank_high");
+        jdbcClient.sql("""
+                        INSERT INTO user_ratings(user_id, rating, updated_at) VALUES (?, ?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET rating = excluded.rating
+                        """)
+                .params(userIdOf("aw_rank_high"), 999, java.time.Instant.now().toString()).update();
+        jdbcClient.sql("""
+                        INSERT INTO user_ratings(user_id, rating, updated_at) VALUES (?, ?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET rating = excluded.rating
+                        """)
+                .params(userIdOf("aw_rank_low"), -999, java.time.Instant.now().toString()).update();
+
+        ResponseEntity<Map> res = authGet("/api/rankings", low, Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> board = (List<Map<String, Object>>) res.getBody().get("leaderboard");
+
+        assertThat(board.get(0).get("nickname")).isEqualTo("aw_rank_high");
+        assertThat(board.get(0).get("rating")).isEqualTo(999);
+        // 최하위 레이팅은 승수가 어떻든 위로 오지 못한다.
+        assertThat(board.get(board.size() - 1).get("nickname")).isEqualTo("aw_rank_low");
+    }
+
     // ── AC8: 레이팅은 GET /api/me 로 노출되고 하한이 없다 ──────────────────────
 
     @SuppressWarnings("unchecked")
@@ -469,9 +546,11 @@ class AwayRaidTest extends MatchTestBase {
         };
     }
 
+    /** 행이 없으면 0 — 지연 생성이라 "정산이 없었다" 는 곧 "행이 없다"이고, 그건 0과 같은 뜻이다
+     *  (프로덕션 RatingService.rating 과 같은 규칙). */
     private int rating(String userId) {
         return jdbcClient.sql("SELECT rating FROM user_ratings WHERE user_id = ?")
-                .param(userId).query(Integer.class).single();
+                .param(userId).query(Integer.class).optional().orElse(0);
     }
 
     private long countReports(String matchId) {

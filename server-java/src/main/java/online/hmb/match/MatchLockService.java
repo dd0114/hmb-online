@@ -43,17 +43,21 @@ public class MatchLockService {
     private final MatchService matchService;
     private final MatchAbandonProperties props;
     private final Clock clock;
+    /** #245 D1 — 원정 자발적 포기 = 몰수패 정산. */
+    private final online.hmb.away.AwayService awayService;
 
     public MatchLockService(JdbcClient jdbcClient,
                             TxRunner txRunner,
                             MatchService matchService,
                             MatchAbandonProperties props,
-                            Clock clock) {
+                            Clock clock,
+                            online.hmb.away.AwayService awayService) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.matchService = matchService;
         this.props = props;
         this.clock = clock;
+        this.awayService = awayService;
     }
 
     // ── 조회 ────────────────────────────────────────────────────────────
@@ -183,6 +187,26 @@ public class MatchLockService {
      * (잡이 나중에 완료돼도 상태 전이 CAS 가 ABANDONED 에서 실패해 매치는 되살아나지 않는다 —
      * 잡 정리는 비용 절감이지 정합성 장치가 아니다).
      */
+    /**
+     * 원정 매치를 <b>자발적으로</b> 포기하면 몰수패다(#245 D1, hero 확정).
+     *
+     * <p>왜: 원정은 브리핑에서 상대 스쿼드가 보이고 브리핑은 포기 가능하다 → 약한 상대가 나올 때까지
+     * 만들고 무르면 <b>무한 리롤</b>이 되고, ±10 이 걸린 축에서 그건 레이팅 무결성을 무너뜨린다
+     * (독립검증 MAJ-4). 정찰도 리롤도 공짜가 아니게 만든다.
+     *
+     * <p>⚠️ <b>사고는 면제한다</b> — FAILED·GEN 멈춤·시계 멈춤에서의 포기는 #217 이 영구 잠금을 막으려고
+     * 연 <b>탈출구</b>다. 거기까지 −10 을 물리면 서버 장애가 유저 레이팅을 깎는다. 자발적 포기의 정의는
+     * <b>BRIEFING 에서 나간 것</b>뿐이다(브리핑은 사고 상태가 아니다).
+     */
+    private void forfeitIfVoluntaryAwayAbandon(MatchService.MatchRow row) {
+        if (!"away".equals(row.mode()) || !MatchService.S_BRIEFING.equals(row.state())) {
+            return;
+        }
+        // 공격자 LOSS = 수비자 WIN. 스코어 0:0 + 비무승부 = 몰수(정상 경기의 0:0 은 언제나 DRAW 라
+        // 이 조합은 몰수에서만 나온다 — 별도 컬럼 없이 구분된다).
+        awayService.settle(row.id(), row.userId(), "LOSS", 0, 0);
+    }
+
     public MatchService.MatchRow abandon(String userId, String matchId) {
         MatchService.MatchRow row = matchService.getOwned(userId, matchId);
         if (!MatchService.ACTIVE_STATES.contains(row.state())) {
@@ -214,6 +238,7 @@ public class MatchLockService {
                     "경기 상태가 바뀌었습니다 — 다시 확인해 주세요",
                     Map.of("state", matchService.getOwned(userId, matchId).state(), "action", "abandon"));
         }
+        forfeitIfVoluntaryAwayAbandon(row);
         log.info("match abandoned by user: match={} from={}", matchId, row.state());
         return matchService.getOwned(userId, matchId);
     }

@@ -3,6 +3,7 @@ import { useAckAwayReports } from "../api/hooks";
 import { Modal } from "../common/Modal";
 import {
   headline,
+  isForfeit,
   ratingDeltaText,
   resultBadge,
   type AwayReportsResponse,
@@ -105,8 +106,9 @@ export function AwayReportModal({
                 {resultBadge(r.result)}
               </span>
               <span className={styles.who}>{r.attackerName}</span>
+              {/* 상대가 브리핑에서 무른 경우 — "0:0 인데 승"으로 보이면 버그로 읽힌다. */}
               <span className={styles.score}>
-                {r.goalsFor} : {r.goalsAgainst}
+                {isForfeit(r) ? "몰수" : `${r.goalsFor} : ${r.goalsAgainst}`}
               </span>
               <span className={`${styles.delta} ${deltaClass(r.ratingDelta)}`}>
                 {ratingDeltaText(r.ratingDelta)}

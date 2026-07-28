@@ -81,6 +81,14 @@ export function ratingDeltaText(delta: number): string {
   return "±0";
 }
 
+/**
+ * 몰수인가 — <b>0:0 인데 무승부가 아니면</b> 몰수다(#245 D1: 원정 자발적 포기 = 몰수패).
+ * 실제로 뛴 0:0 은 언제나 DRAW 이므로 이 조합은 몰수에서만 나온다 — 별도 필드 없이 구분된다.
+ */
+export function isForfeit(report: Pick<AwayReport, "goalsFor" | "goalsAgainst" | "result">): boolean {
+  return report.goalsFor === 0 && report.goalsAgainst === 0 && report.result !== "DRAW";
+}
+
 /** 승/무/패 → 짧은 뱃지 글자(리스트 행 앞). */
 export function resultBadge(result: AwayReport["result"]): string {
   return result === "WIN" ? "승" : result === "LOSS" ? "패" : "무";

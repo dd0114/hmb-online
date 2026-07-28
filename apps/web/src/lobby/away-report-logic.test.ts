@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   headline,
+  isForfeit,
   ratingDeltaText,
   recordText,
   resultBadge,
@@ -94,6 +95,21 @@ describe("ratingDeltaText", () => {
     expect(ratingDeltaText(-10)).toBe("-10");
     // 무승부만 있었던 부재중에 "0" 만 뜨면 '집계 실패'처럼 읽힌다.
     expect(ratingDeltaText(0)).toBe("±0");
+  });
+});
+
+describe("isForfeit — 상대가 브리핑에서 무른 경기(#245 D1)", () => {
+  it("0:0 인데 무승부가 아니면 몰수다", () => {
+    expect(isForfeit({ goalsFor: 0, goalsAgainst: 0, result: "WIN" })).toBe(true);
+    expect(isForfeit({ goalsFor: 0, goalsAgainst: 0, result: "LOSS" })).toBe(true);
+  });
+
+  it("실제로 뛴 0:0 은 언제나 DRAW 라 몰수와 섞이지 않는다", () => {
+    expect(isForfeit({ goalsFor: 0, goalsAgainst: 0, result: "DRAW" })).toBe(false);
+  });
+
+  it("득점이 있으면 몰수가 아니다", () => {
+    expect(isForfeit({ goalsFor: 2, goalsAgainst: 0, result: "WIN" })).toBe(false);
   });
 });
 
