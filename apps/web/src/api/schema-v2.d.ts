@@ -460,6 +460,21 @@ export interface components {
             botId?: string | null;
             teamTactics?: components["schemas"]["TeamTactics"];
         };
+        /**
+         * @description V1 HalftimeRequest {substitutions} 에 **추가되는** 필드(#254). hero 결정 = **허용** —
+         *     감독시간에 팀 전술을 바꿀 수 있다(방식1 정합: 후반 "라인 내려"가 이 게임의 설계 취지).
+         *
+         *     생략/null = 손대지 않음 → 전반 전술이 그대로 이어진다. 이 엔드포인트는 감독시간에 여러 번
+         *     불릴 수 있으므로(교체만 고치는 재제출 포함) 미첨부가 앞서 낸 전술을 지우지 않는다.
+         *
+         *     반영 경로는 **기존 B(패치) 입력 그대로**다 — 새 계약이 아니다:
+         *     matches.h2_tactics_json → 후반 실효 스냅샷의 teamTactics → AI 컨텍스트 manualTactics.
+         *     매치 스냅샷(user_deck_json)은 **불변** — 그건 이미 끝난 전반의 기록이라 덮으면 소급 변조다.
+         *     결정론·재현 계약 무손상: 엔진 입력은 AI 산출 TacticalInput 이고 전술은 그 생성 컨텍스트다.
+         */
+        HalftimeRequestPhase2Fields: {
+            teamTactics?: components["schemas"]["TeamTactics"];
+        };
         /** @description V1 MatchDetail에 **추가되는** Phase2 필드(기존 필드 불변). 웹은 병합 시 MatchDetail에 아래를 합친다. */
         MatchDetailPhase2Fields: {
             conditions?: components["schemas"]["ConditionMap"];

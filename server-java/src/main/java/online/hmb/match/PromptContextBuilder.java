@@ -77,7 +77,9 @@ public class PromptContextBuilder {
      */
     public PromptSet userPromptSet(String matchId, JsonNode snapshot, Collection<String> rosterIds,
                                    List<String> phases) {
-        String teamPrompt = "";
+        // 덱 팀 지시(#253)가 기본값이고 매치 시점 지시가 덮어쓴다 — 선수 지시(덱 promptText ← phase)와
+        // 같은 규칙이다. 덱에 없으면 종전대로 "".
+        String teamPrompt = deckTeamPrompt(snapshot);
         for (String phase : phases) {
             String text = phaseTeamPrompt(matchId, phase);
             if (text != null) {
@@ -128,6 +130,15 @@ public class PromptContextBuilder {
             delta.put("players", players);
         }
         return delta.isEmpty() ? null : delta;
+    }
+
+    /**
+     * 덱 스냅샷의 팀 지시(#253). 없으면 {@code ""} — {@link #BASE_PHASES}(A 잡)와 매치 경로가
+     * <b>같은 함수</b>를 써야 A 가 실은 값과 델타의 old 가 어긋나지 않는다.
+     */
+    private String deckTeamPrompt(JsonNode deck) {
+        JsonNode node = deck == null ? null : deck.get("teamPrompt");
+        return node != null && node.isTextual() ? node.asText() : "";
     }
 
     /** deck(스냅샷/봇덱)의 선발+벤치 promptText → {playerId:text}(정렬). 로스터 한정은 호출측 몫. */
@@ -390,7 +401,7 @@ public class PromptContextBuilder {
     private static final String BASE_MATCH_ID = "BASE"; // A 컨텍스트의 상수 matchId(캐시키에서는 제외됨).
 
     /**
-     * 유저팀 A 잡(덱 스냅샷 기준). 덱-레벨 팀 프롬프트는 이 모델에 없으므로 teamPrompt="".
+     * 유저팀 A 잡(덱 스냅샷 기준).
      *
      * <p>매치는 <b>쓰지 않는다</b>(A 는 매치에 안 매인다) — {@link #deckBaseJob} 과 같은 산출이며,
      * 덱 저장 시점 선실행(#215 W2)이 매치 없이 같은 A 를 만들 수 있다는 뜻이다.
@@ -406,7 +417,9 @@ public class PromptContextBuilder {
     public BaseJob deckBaseJob(JsonNode deck) {
         List<RosterEntry> roster = buildRoster(deck, List.of());
         Map<String, String> playerPrompts = deckBasePlayerPrompts(deck, roster);
-        return baseJob(deck.path("formation").asText(), roster, "", playerPrompts);
+        // 팀 문장(#253)은 A 의 재료다 — 덱 저장 선실행과 킥오프가 같은 스냅샷을 읽으므로 baseId 가
+        // 자동으로 일치하고, 문장이 바뀌면 해시가 바뀌어 재생성된다(별도 무효화 규칙 불필요).
+        return baseJob(deck.path("formation").asText(), roster, deckTeamPrompt(deck), playerPrompts);
     }
 
     /** 봇팀 A 잡(봇 덱 기준). teamPrompt = 봇 페르소나(고정). */

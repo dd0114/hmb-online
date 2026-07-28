@@ -1,0 +1,19 @@
+-- #254 — 감독시간에 팀 전술 변경 허용(hero 결정: 허용. 방식1 정합 — 후반 "라인 내려"가 설계 취지).
+--
+-- 그때까지: 팀 전술(line/press/tempo/width)은 POST /matches/{id}/kickoff 에서만 서버로 왔고,
+-- 감독시간이 받는 것은 prompts(halftime)와 halftime(substitutions) 뿐이라 **전술을 실을 자리가 없었다**.
+-- 그래서 web 은 감독시간 화면의 팀 전술 다이얼을 감춰야 했다(만져도 아무 데도 안 가는 손잡이 금지).
+--
+-- 왜 user_deck_json 을 고치지 않고 새 컬럼인가:
+--   user_deck_json 은 **이 매치에 무엇으로 뛰었나**의 박제다(#98 userDeckSnapshot 이 그대로 노출).
+--   거기 있는 teamTactics 는 이미 시뮬이 끝난 **전반**의 값이라, 후반 전술로 덮으면 전반 기록이
+--   소급 변조된다("나는 전반에 라인을 올렸다"가 사라진다). 후반 값은 별도 자리에 둔다.
+--
+-- 소비 경로: MatchService.snapshotForHalf(row, 2) 가 스냅샷 위에 이 값을 얹어 오케스트레이터에 주고,
+-- PromptContextBuilder.addPhase2Context 가 그것을 manualTactics 로 AI 컨텍스트에 싣는다 —
+-- 즉 **기존 B(패치) 입력 경로 그대로**이며 새 계약이 아니다(#215 W2 에서 전술을 A 밖·패치 입력으로
+-- 옮겨둔 덕이다). 결정론/재현 계약도 무손상: 엔진 입력은 AI 가 낸 TacticalInput(ai_jobs.result_json)
+-- 이고 전술은 그 생성 컨텍스트일 뿐이라, 재현은 종전대로 (seed + selectData + inputLog) 로 닫힌다.
+--
+-- NULL = 감독시간에 전술을 손대지 않았다 → 후반도 전반 전술 그대로(기존 동작 불변).
+ALTER TABLE matches ADD COLUMN h2_tactics_json TEXT;

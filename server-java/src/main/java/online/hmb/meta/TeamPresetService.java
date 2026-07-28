@@ -148,7 +148,10 @@ public class TeamPresetService {
 
         // deckService.replaceDeck 이 검증(보유·11명·GK≥1 등) + 저장을 재수행 — 스냅샷 저장 이후
         // 보유 풀이 바뀌었으면(선수 이탈 등) 여기서 DECK_INVALID 로 걸린다(의도된 안전장치).
-        return deckService.replaceDeck(userId, new DeckService.DeckUpdateRequest(formation, slots));
+        // 팀 문장(#253)도 스냅샷이 가진 값을 그대로 싣는다 — 프리셋은 선수 문장을 옮기므로 팀 문장만
+        // 빠지면 "프리셋 적용이 팀 지시를 지운다"는 새 유실이 된다(TeamSnapshot.teamPrompt 는 기존 계약).
+        return deckService.replaceDeck(userId, new DeckService.DeckUpdateRequest(
+                formation, snapshot.path("teamPrompt").asText(null), slots));
     }
 
     // ── 내부 헬퍼 ────────────────────────────────────────────────────────

@@ -80,7 +80,9 @@ export function DeckPage() {
     const ed: EditorState = {
       draft: draftFromDeck(deck ?? null),
       tactics: { ...DEFAULT_TEAM_TACTICS },
-      teamPrompt: "",
+      // 저장된 팀 문장을 다시 채운다(#253) — 이걸 늘 ""로 시작하면 유저가 쓴 문장이 서버에
+      // 남아 있어도 화면엔 없고, 그 상태로 저장하면 전체 교체라 실제로 지워진다.
+      teamPrompt: deck?.teamPrompt ?? "",
     };
     setEditor(ed);
     setBaseline(makeBaseline(ed, "", null));
@@ -148,7 +150,7 @@ export function DeckPage() {
     setServerError(null);
     setSavedNote(false);
     try {
-      await updateDeck.mutateAsync(toUpdateRequest(editor!.draft));
+      await updateDeck.mutateAsync(toUpdateRequest(editor!.draft, editor!.teamPrompt));
       setBaseline(makeBaseline(editor!, "", null));
       setSavedNote(true);
       return true;

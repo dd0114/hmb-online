@@ -167,7 +167,13 @@ export type MatchDetail = components["schemas"]["MatchDetail"] & {
 export type MatchResult = components["schemas"]["MatchResult"];
 export type MatchLog = components["schemas"]["MatchLog"];
 export type MatchPromptRequest = components["schemas"]["MatchPromptRequest"];
-export type HalftimeRequest = components["schemas"]["HalftimeRequest"];
+/**
+ * V1 HalftimeRequest {substitutions} + Phase2 teamTactics (openapi-v2 HalftimeRequestPhase2Fields).
+ * #254 — 감독시간에 팀 전술을 바꿀 수 있다. 생략 = 손대지 않음 → 전반 전술 그대로.
+ */
+export type HalftimeRequest = components["schemas"]["HalftimeRequest"] & {
+  teamTactics?: TeamTactics;
+};
 /** V1 CreateMatchRequest {botId?} + Phase2 teamTactics (openapi-v2 CreateMatchRequestPhase2). */
 export type CreateMatchRequest = components["schemas"]["CreateMatchRequest"] & {
   teamTactics?: TeamTactics;

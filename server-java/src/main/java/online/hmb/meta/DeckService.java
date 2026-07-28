@@ -34,15 +34,18 @@ public class DeckService {
     private final TxRunner txRunner;
     private final int benchMax;
     private final int promptMaxChars;
+    private final int teamPromptMaxChars;
 
     public DeckService(JdbcClient jdbcClient,
                        TxRunner txRunner,
                        @Value("${hmb.deck.bench-max}") int benchMax,
-                       @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
+                       @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars,
+                       @Value("${hmb.deck.team-prompt-max-chars}") int teamPromptMaxChars) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.benchMax = benchMax;
         this.promptMaxChars = promptMaxChars;
+        this.teamPromptMaxChars = teamPromptMaxChars;
     }
 
     // ── 조회 ─────────────────────────────────────────────────────────────
@@ -64,17 +67,22 @@ public class DeckService {
                     .map(DeckRow::id)
                     .orElse(null);
 
+            // 팀 문장(#253): 빈 문자열은 "지웠다"이므로 null 로 정규화해 저장한다 — 그래야
+            // DeckSnapshot 이 필드를 생략하고, 팀 문장을 지운 덱의 A 캐시 키가 원래(문장 없음)로
+            // 정확히 되돌아간다("" 로 남기면 지우기 전과 다른 키가 되어 캐시가 한 번 더 죽는다).
+            String teamPrompt = blankToNull(request.teamPrompt());
+
             if (deckId == null) {
                 deckId = Ulid.next();
                 jdbcClient.sql("""
-                                INSERT INTO decks(id, user_id, formation, is_active, updated_at)
-                                VALUES (?, ?, ?, 1, ?)
+                                INSERT INTO decks(id, user_id, formation, team_prompt, is_active, updated_at)
+                                VALUES (?, ?, ?, ?, 1, ?)
                                 """)
-                        .params(deckId, userId, request.formation(), now)
+                        .params(deckId, userId, request.formation(), teamPrompt, now)
                         .update();
             } else {
-                jdbcClient.sql("UPDATE decks SET formation = ?, updated_at = ? WHERE id = ?")
-                        .params(request.formation(), now, deckId)
+                jdbcClient.sql("UPDATE decks SET formation = ?, team_prompt = ?, updated_at = ? WHERE id = ?")
+                        .params(request.formation(), teamPrompt, now, deckId)
                         .update();
                 jdbcClient.sql("DELETE FROM deck_slots WHERE deck_id = ?")
                         .param(deckId)
@@ -103,6 +111,12 @@ public class DeckService {
         }
         if (request.formation() == null || request.formation().isBlank()) {
             throw deckInvalid("formation이 비어 있습니다", Map.of("rule", "FORMATION_REQUIRED"));
+        }
+        // 팀 문장(#253) — 선수 문장과 같은 자리에서 같은 규칙으로 검증한다. 상한은 config.
+        if (request.teamPrompt() != null && request.teamPrompt().length() > teamPromptMaxChars) {
+            throw deckInvalid("팀 프롬프트가 최대 길이(" + teamPromptMaxChars + "자)를 초과했습니다",
+                    Map.of("rule", "TEAM_PROMPT_TOO_LONG",
+                            "length", request.teamPrompt().length(), "max", teamPromptMaxChars));
         }
 
         List<SlotDto> slots = request.slots();
@@ -228,11 +242,19 @@ public class DeckService {
     // ── 내부 조회/매핑 ───────────────────────────────────────────────────
 
     private Optional<DeckRow> findActiveDeck(String userId) {
-        return jdbcClient.sql("SELECT id, formation, updated_at FROM decks WHERE user_id = ? AND is_active = 1")
+        return jdbcClient.sql("""
+                        SELECT id, formation, team_prompt, updated_at FROM decks
+                        WHERE user_id = ? AND is_active = 1
+                        """)
                 .param(userId)
-                .query((rs, rowNum) -> new DeckRow(
-                        rs.getString("id"), rs.getString("formation"), rs.getString("updated_at")))
+                .query((rs, rowNum) -> new DeckRow(rs.getString("id"), rs.getString("formation"),
+                        rs.getString("team_prompt"), rs.getString("updated_at")))
                 .optional();
+    }
+
+    /** 공백만 있는 문장은 없는 것과 같다 — 저장·비교 양쪽에서 한 규칙으로 정규화한다. */
+    private static String blankToNull(String text) {
+        return text == null || text.isBlank() ? null : text;
     }
 
     private DeckResponse toResponse(DeckRow deck) {
@@ -248,10 +270,10 @@ public class DeckService {
                         rs.getInt("slot_index"),
                         rs.getString("prompt_text")))
                 .list();
-        return new DeckResponse(deck.id(), deck.formation(), slots, deck.updatedAt());
+        return new DeckResponse(deck.id(), deck.formation(), deck.teamPrompt(), slots, deck.updatedAt());
     }
 
-    private record DeckRow(String id, String formation, String updatedAt) {
+    private record DeckRow(String id, String formation, String teamPrompt, String updatedAt) {
     }
 
     // ── DTO (openapi.yaml Deck/DeckSlot/DeckUpdateRequest와 일치) ────────
@@ -259,9 +281,20 @@ public class DeckService {
     public record SlotDto(String playerId, String role, Integer slotIndex, String promptText) {
     }
 
-    public record DeckUpdateRequest(String formation, List<SlotDto> slots) {
+    /**
+     * @param teamPrompt 덱 사전 <b>팀</b> 지시(#253, 선택). 선수별 {@code promptText} 와 같은 성격의
+     *     덱 레벨 값으로, 매치 시점 팀 지시({@code match_prompts} phase=pre|halftime)의 <b>기본값</b>이다
+     *     (덱 ← pre ← halftime — {@code PromptContextBuilder.userPromptSet}).
+     */
+    public record DeckUpdateRequest(String formation, String teamPrompt, List<SlotDto> slots) {
+
+        /** 라인업 <b>검증만</b> 하는 호출측용(팀 문장 무관) — 매치 생성/킥오프 재캡처·프리셋 검증. */
+        public DeckUpdateRequest(String formation, List<SlotDto> slots) {
+            this(formation, null, slots);
+        }
     }
 
-    public record DeckResponse(String id, String formation, List<SlotDto> slots, String updatedAt) {
+    public record DeckResponse(String id, String formation, String teamPrompt,
+                               List<SlotDto> slots, String updatedAt) {
     }
 }

@@ -79,6 +79,9 @@ hmb:
   deck:
     bench-max: 7
     player-prompt-max-chars: 500
+    # 덱 팀 전체 프롬프트 상한(#253). 선수 문장과 같은 500자 — 매치 시점 팀 지시
+    # (hmb.match.prompt-max-chars)와 같은 칸을 채우므로 상한을 어긋나게 두지 않는다.
+    team-prompt-max-chars: 500
   starter:                           # #209 스타터/온보딩
     # 튜토리얼 완료 시 지급하는 기본 덱의 포메이션. 지급 덱은 "바로 뛸 수 있는" 기본값이고,
     # 유저는 덱 화면에서 언제든 바꾼다. 지원 목록 = StarterDeckBuilder.FORMATION_SLOTS.

@@ -92,7 +92,9 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
       const ed: EditorState = {
         draft: draftFromDeck(deck ?? null),
         tactics: { ...DEFAULT_TEAM_TACTICS },
-        teamPrompt: "",
+        // 덱에 써 둔 팀 문장이 이 경기의 시작점이다(#253) — 서버에서도 덱 문장이 pre 지시의
+        // 기본값이므로, 화면이 빈칸으로 시작하면 "왜 내가 쓴 지시가 없지"가 된다.
+        teamPrompt: deck?.teamPrompt ?? "",
       };
       setEditor(ed);
     }
@@ -149,8 +151,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
     setError(null);
     setSubmitting(true);
     try {
-      // 1) persist deck edits so the server recapture reads them (per-player prompts included)
-      await updateDeck.mutateAsync(toUpdateRequest(editor!.draft));
+      // 1) persist deck edits so the server recapture reads them (per-player + team prompts)
+      await updateDeck.mutateAsync(toUpdateRequest(editor!.draft, editor!.teamPrompt));
       // 2) team-level prompt (orthogonal to the deck snapshot) via UPSERT
       if (editor!.teamPrompt.trim()) {
         await submitPrompt.mutateAsync({ phase: "pre", scope: "team", text: editor!.teamPrompt });
