@@ -30,6 +30,8 @@ import {
   type Position,
 } from "../growth/growth-config";
 import type { CatalogPlayer } from "../api/hooks";
+import { useCurrency } from "../common/Amount";
+import { CURRENCY_GEM } from "../common/currency";
 import styles from "./CardGrowthDetail.module.css";
 
 const RING_R = 42;
@@ -71,6 +73,8 @@ interface CardGrowthDetailProps {
  * 프레임 **테두리 색**은 등급(불변, 승급 없음) 고정 — **글로우**는 잠재 티어색(승급 시 전환).
  */
 export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
+  // 유상재화 아이콘도 서버 표기 메타에서 (#232) — 이모지를 코드에 박으면 표기 변경이 배포가 된다.
+  const gemCurrency = useCurrency(CURRENCY_GEM);
   const { data: card, isLoading, isError } = useCardEffective(player.id);
   const starUp = useStarUp();
   const diceRoll = useDiceRoll();
@@ -509,7 +513,7 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                 onClick={() => handleRoll("CASH")}
                 disabled={busy || (diceBalance?.cash ?? 0) < 1}
               >
-                캐시 다이스 롤 💎
+                캐시 다이스 롤 <span aria-hidden="true">{gemCurrency.icon}</span>
                 <span className={styles.costChip} data-testid="growth-dice-cash-owned">
                   보유 {diceBalance?.cash ?? 0} · −1
                 </span>

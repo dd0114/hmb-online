@@ -173,6 +173,21 @@
   color: var(--text-muted);
 }
 
+/* 단축 비용 칩 — 지갑 배지와 같은 모양(기존 PointsBadge 자리를 그대로 물려받는다, #232). */
+.speedupAmount {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .speedup {
   padding: 8px 12px;
   border-radius: 8px;

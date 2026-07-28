@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
 import { deriveTeamStats, TEAM_STAT_LABELS, type MatchEventLike } from "../match-logic";
 import { GrowthReportSection } from "../GrowthReportSection";
+import { Amount } from "../../common/Amount";
+import { CURRENCY_POINT } from "../../common/currency";
 import styles from "../ResultPage.module.css";
 
 const RESULT_LABELS: Record<string, string> = {
@@ -58,7 +60,7 @@ export function ResultPanel({ match, homeName, awayName }: ResultPanelProps) {
         </p>
         {result?.pointsAwarded != null && (
           <p className={styles.reward} data-testid="reward-points">
-            보상 +{result.pointsAwarded.toLocaleString("ko-KR")} P
+            보상 +<Amount code={CURRENCY_POINT} value={result.pointsAwarded} />
           </p>
         )}
       </section>

@@ -540,8 +540,14 @@ export interface components {
             opensAt?: string | null;
             /** @description WAITING 남은 대기 초(0이면 곧 OPEN) */
             remainingSec?: number;
-            /** @description 지금 단축 시 포인트 비용(잔여시간 비례, config) */
+            /** @description 지금 단축 시 비용(잔여시간 비례, config). 단위는 speedupCurrency 참조. */
             speedupCost?: number | null;
+            /**
+             * @description speedupCost 의 재화 코드(POINT|GEM, #232). **speedupCost 와 항상 같이 존재하거나 같이
+             *     null 이다** — 클라이언트가 단위를 추측하면 화면이 실제 결제와 어긋난다(#213 이 그 형태였다).
+             *     표기(심볼·이름)는 GET /api/config 의 currencies 에서 조회한다.
+             */
+            speedupCurrency?: string | null;
             /** @description 대상 선수 가치(제안 확률 계산 근거, 표시용) */
             targetValue?: number | null;
             /** @description TRADE 수락 성공 확률(config, 서버 계산값) */

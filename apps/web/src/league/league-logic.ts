@@ -164,9 +164,9 @@ export function formatAwardedAt(iso: string | null | undefined): string | null {
 
 export interface SeasonRewardView {
   status: LeagueSeasonReward["status"];
-  /** 획득 포인트를 실제 지급액으로 표시할지(PENDING/FAILED 는 "예정/미지급"으로 취급). */
+  /** 획득 보상액을 실제 지급액으로 표시할지(PENDING/FAILED 는 "예정/미지급"으로 취급). */
   showPoints: boolean;
-  /** 포인트 카운트업 연출 대상인지(AWARDED 만). */
+  /** 보상액 카운트업 연출 대상인지(AWARDED 만). */
   animate: boolean;
   headline: string;
   detail: string;
@@ -175,8 +175,16 @@ export interface SeasonRewardView {
   tone: "success" | "pending" | "error";
 }
 
-/** status → 화면 표현(순수). 세 상태 전부 사용자에게 보이게 만든다(조용한 숨김 금지). */
-export function seasonRewardView(reward: LeagueSeasonReward): SeasonRewardView {
+/**
+ * status → 화면 표현(순수). 세 상태 전부 사용자에게 보이게 만든다(조용한 숨김 금지).
+ *
+ * `formatPoints` 는 **재화 표기 주입점** (#232) — 순수 함수가 심볼을 알면 서버 주도 표기가 깨진다.
+ * 기본값은 숫자만(단위 없음)이라, 주입을 잊어도 "P" 같은 틀린 단위가 새 나가지 않는다.
+ */
+export function seasonRewardView(
+  reward: LeagueSeasonReward,
+  formatPoints: (value: number) => string = (v) => v.toLocaleString(),
+): SeasonRewardView {
   switch (reward.status) {
     case "AWARDED":
       return {
@@ -184,7 +192,7 @@ export function seasonRewardView(reward: LeagueSeasonReward): SeasonRewardView {
         showPoints: true,
         animate: true,
         headline: "보상 지급 완료",
-        detail: `${reward.rank}위 보상 ${reward.points.toLocaleString()}P 가 지갑에 반영됐습니다`,
+        detail: `${reward.rank}위 보상 ${formatPoints(reward.points)} 가 지갑에 반영됐습니다`,
         canRetry: false,
         tone: "success",
       };
@@ -194,7 +202,7 @@ export function seasonRewardView(reward: LeagueSeasonReward): SeasonRewardView {
         showPoints: false,
         animate: false,
         headline: "보상 지급 처리 중",
-        detail: `${reward.rank}위 보상 ${reward.points.toLocaleString()}P 지급을 처리하고 있습니다. 잠시 후 다시 확인해 주세요.`,
+        detail: `${reward.rank}위 보상 ${formatPoints(reward.points)} 지급을 처리하고 있습니다. 잠시 후 다시 확인해 주세요.`,
         canRetry: true,
         tone: "pending",
       };

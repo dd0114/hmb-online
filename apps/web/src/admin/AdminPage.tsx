@@ -15,6 +15,8 @@ import {
   validateGrant,
 } from "./admin-logic";
 import { AdminUnitsSection } from "./AdminUnitsSection";
+import { useCurrency } from "../common/Amount";
+import { CURRENCY_POINT, formatAmount, withEulReul } from "../common/currency";
 import styles from "./AdminPage.module.css";
 import u from "./AdminUnits.module.css";
 
@@ -42,6 +44,9 @@ function errMessage(err: unknown, fallback: string): string {
  */
 export function AdminPage() {
   const navigate = useNavigate();
+  // 운영 화면의 재화 이름·심볼도 서버 표기 메타를 따른다 (#232) — admin 만 예외로 두면
+  // 운영자가 보는 값과 유저가 보는 값이 갈린다.
+  const pointCurrency = useCurrency(CURRENCY_POINT);
 
   const [tab, setTab] = useState<AdminTab>("users");
   const [q, setQ] = useState("");
@@ -87,12 +92,12 @@ export function AdminPage() {
           setTouched(false);
           setConfirmDelta(null);
           setNotice(
-            `${formatSignedDelta(res.entry.delta)} 반영 — 잔액 ${res.points.toLocaleString("en-US")}P`,
+            `${formatSignedDelta(res.entry.delta)} 반영 — 잔액 ${formatAmount(pointCurrency, res.points)}`,
           );
         },
         onError: (err) => {
           setConfirmDelta(null);
-          if (!isForbidden(err)) setError(errMessage(err, "포인트 처리에 실패했습니다"));
+          if (!isForbidden(err)) setError(errMessage(err, `${pointCurrency.name} 처리에 실패했습니다`));
         },
       },
     );
@@ -222,7 +227,7 @@ export function AdminPage() {
                   <tr>
                     <th scope="col">닉네임</th>
                     <th scope="col">provider</th>
-                    <th scope="col">포인트</th>
+                    <th scope="col">{pointCurrency.name}</th>
                     <th scope="col">전적</th>
                     <th scope="col">가입일</th>
                   </tr>
@@ -275,7 +280,7 @@ export function AdminPage() {
             {detail.data && (
               <dl className={styles.stats}>
                 <div className={styles.stat}>
-                  <dt>포인트</dt>
+                  <dt>{pointCurrency.name}</dt>
                   <dd data-testid="admin-detail-points">
                     {detail.data.user.points.toLocaleString("en-US")}
                   </dd>
@@ -306,7 +311,7 @@ export function AdminPage() {
             )}
 
             <form className={styles.grantForm} data-testid="admin-grant-form" onSubmit={onSubmit}>
-              <h3 className={styles.formTitle}>포인트 지급 / 차감</h3>
+              <h3 className={styles.formTitle}>{pointCurrency.name} 지급 / 차감</h3>
               <div className={styles.field}>
                 <label htmlFor="admin-grant-delta-input">증감값 (음수 = 차감)</label>
                 <input
@@ -405,7 +410,7 @@ export function AdminPage() {
               큰 금액입니다
             </h2>
             <p className={styles.dialogBody}>
-              <strong>{formatSignedDelta(confirmDelta)}</strong> 포인트를{" "}
+              <strong>{formatSignedDelta(confirmDelta)}</strong> {withEulReul(pointCurrency.name)}{" "}
               {selectedRow?.nickname ?? selected} 에게 적용합니다. 계속할까요?
             </p>
             <div className={styles.dialogActions}>

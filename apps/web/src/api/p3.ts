@@ -138,6 +138,11 @@ export interface AdminLedgerEntry {
 export interface LeagueSeasonReward {
   rank: number;
   points: number;
+  /**
+   * 우승 시 지급되는 유상재화(#212 서버 배선, 그 외 순위는 0/부재). 화면에 **표기**하는 것이 #232,
+   * 지급 **연출**은 #214 소관이다 — 받은 재화가 화면에 아예 없던 것이 표기 갭이었다.
+   */
+  gems?: number | null;
   status: "AWARDED" | "PENDING" | "FAILED";
   awardedAt?: string | null;
   /** status=FAILED 일 때 화면에 띄울 사유. */

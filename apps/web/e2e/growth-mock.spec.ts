@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import { appConfigPayload, mockAppConfig } from "./app-config-mock";
+
+/** 목 config 가 내려주는 유상재화 이름 — 문구 단언은 이 값을 따라간다(#232). */
+const GEM_NAME = appConfigPayload().currencies.find((c) => c.code === "GEM")!.name;
 import { mkdirSync } from "node:fs";
 
 /**
@@ -105,6 +109,8 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
 
   // catch-all 먼저(구체 라우트가 나중에 우선). pathname 매칭 — glob '**/api/**' 는 vite 소스까지 잡음.
   await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.fulfill(json({})));
+  // #232: 다이스 가격·충전 팩은 서버 config 에서 온다(클라 미러 제거). 이 스펙은 충전 섹션도 보므로 켠다.
+  await mockAppConfig(page, { topupEnabled: true });
   await page.route((url) => url.pathname === "/api/me", (route) =>
     route.fulfill(json({ ...ME_RESPONSE, wallet: { points: ME_RESPONSE.wallet.points, gems } })),
   );
@@ -544,7 +550,8 @@ test("G4 V2.2 캐시 다이스 젬 부족(클라 가드): gems<10 → API 호출
   await expect(page.getByTestId("wallet-gems")).toHaveAttribute("data-gems", "5");
 
   await page.getByTestId("dice-buy-cash").click();
-  await expect(page.getByRole("alert")).toContainText("젬이 부족합니다");
+  // #232: 재화 이름은 서버 표기 메타에서 온다 — 문구에 이름을 박으면 표기 변경이 배포가 된다.
+  await expect(page.getByRole("alert")).toContainText(`${GEM_NAME}가 부족합니다`);
   await expect(page.getByRole("alert")).toContainText("충전");
 });
 
@@ -560,7 +567,8 @@ test("G4 V2.2 캐시 다이스 젬 부족(서버 권위): POST /api/shop/dice 4x
   await expect(page.getByTestId("wallet-gems")).toHaveAttribute("data-gems", "50");
 
   await page.getByTestId("dice-buy-cash").click();
-  await expect(page.getByRole("alert")).toContainText("젬이 부족합니다");
+  // #232: 재화 이름은 서버 표기 메타에서 온다 — 문구에 이름을 박으면 표기 변경이 배포가 된다.
+  await expect(page.getByRole("alert")).toContainText(`${GEM_NAME}가 부족합니다`);
   await expect(page.getByRole("alert")).toContainText("충전");
 });
 

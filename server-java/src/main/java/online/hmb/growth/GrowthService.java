@@ -17,6 +17,7 @@ import java.util.Set;
 import java.util.SplittableRandom;
 import online.hmb.catalog.EconomyService;
 import online.hmb.common.ApiException;
+import online.hmb.common.Josa;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
 import online.hmb.meta.WalletService;
@@ -831,17 +832,20 @@ public class GrowthService {
         String col = cash ? "cash" : "normal";
         return txRunner.run(() -> {
             String refId = Ulid.next();
+            // #232: 재화 이름은 표기 메타에서 — 문구에 박으면 표기 변경이 배포가 된다.
+            String shortMsg = Josa.iga(economyService.currency(
+                    cash ? EconomyService.CURRENCY_GEM : EconomyService.CURRENCY_POINT).name()) + " 부족합니다";
             if (cash) {
                 long balance = walletService.gems(userId);
                 if (balance < cost) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_GEMS", "젬이 부족합니다",
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_GEMS", shortMsg,
                             Map.of("balance", balance, "cost", cost));
                 }
                 walletService.applyGems(userId, -cost, "dice", refId);
             } else {
                 long balance = walletService.points(userId);
                 if (balance < cost) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS", "포인트가 부족합니다",
+                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS", shortMsg,
                             Map.of("balance", balance, "cost", cost));
                 }
                 walletService.apply(userId, -cost, "dice", refId);
@@ -872,7 +876,8 @@ public class GrowthService {
         // (뽑기가 젬 결제로 바뀌었으므로 무제한 무료 충전이 살아있으면 경제가 붕괴한다.)
         if (!cfg.topupEnabled()) {
             throw new ApiException(HttpStatus.FORBIDDEN, "TOPUP_DISABLED",
-                    "젬 충전은 현재 비활성화돼 있습니다", Map.of("packId", packId));
+                    economyService.currency(EconomyService.CURRENCY_GEM).name()
+                            + " 충전은 현재 비활성화돼 있습니다", Map.of("packId", packId));
         }
         EconomyService.GemTopupPack pack = cfg.topupPacks().stream()
                 .filter(p -> p.id().equals(packId))

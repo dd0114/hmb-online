@@ -58,7 +58,9 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     id: "shop",
     targetTestId: "lobby-shop",
     title: "상점에서 선수를 모읍니다",
-    body: "포인트로 뽑기를 돌려 카드를 얻습니다. 포인트가 모자라면 충전 탭을 확인하세요.",
+    // #232: 재화 이름을 문장에 박지 않는다 — 뽑기 결제 재화가 무엇인지도 서버 config 소관이라
+    // ("무료재화 → 유상재화"로 이미 한 번 바뀌었다) 여기서 단정하면 다음에 또 틀린다.
+    body: "상점에서 뽑기를 돌려 카드를 얻습니다. 잔액이 모자라면 보유 재화를 확인하세요.",
     enabled: true,
     route: "/lobby",
   },

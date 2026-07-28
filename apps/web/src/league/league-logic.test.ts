@@ -240,11 +240,18 @@ describe("formatAwardedAt — 지급 시각 표시(순수 문자열, Date 미사
 });
 
 describe("seasonRewardView — status 3분기(조용한 숨김 금지)", () => {
-  it("AWARDED = 포인트 표시 + 카운트업 연출 + 재조회 없음", () => {
+  it("AWARDED = 보상액 표시 + 카운트업 연출 + 재조회 없음", () => {
     const v = seasonRewardView({ rank: 2, points: 1200, status: "AWARDED" });
     expect(v).toMatchObject({ showPoints: true, animate: true, canRetry: false, tone: "success" });
-    expect(v.detail).toContain("1,200P");
+    expect(v.detail).toContain("1,200");
     expect(v.detail).toContain("2위");
+  });
+
+  it("재화 단위는 주입된 포매터가 정한다 — 순수 함수가 심볼을 알지 않는다 (#232)", () => {
+    const v = seasonRewardView({ rank: 1, points: 100_000, status: "AWARDED" }, (n) => `${n} Ω`);
+    expect(v.detail).toContain("100000 Ω");
+    // 주입을 잊어도 "P" 같은 틀린 단위가 새 나가지 않는다(숫자만).
+    expect(seasonRewardView({ rank: 1, points: 100_000, status: "AWARDED" }).detail).not.toContain("P");
   });
   it("PENDING = 처리 중 안내 + 재조회 가능 + 지급액 미확정", () => {
     const v = seasonRewardView({ rank: 5, points: 300, status: "PENDING" });

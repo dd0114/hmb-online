@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { Modal } from "../common/Modal";
+import { useCurrency } from "../common/Amount";
+import { CURRENCY_POINT, formatAmount } from "../common/currency";
 import {
   TOPUP_PACKAGES,
   bestValuePackageId,
@@ -13,6 +15,10 @@ import styles from "./TopupPanel.module.css";
 
 /**
  * 충전 탭 (P3-D5 목업 / AC-D1).
+ *
+ * ⚠️ #232 기준 이 탭은 **서버 플래그(`shop.gemTopup.enabled`)가 켜졌을 때만 렌더된다**(ShopPage).
+ * #212 로 무료재화는 리그로 버는 재화가 됐고 목업 충전 수도꼭지는 잠겼다 — 그대로 노출하면
+ * 팔지 않는 재화를 파는 화면이 된다. 실결제가 붙으면 플래그만 켠다.
  *
  * ⚠️ **어떤 상태 변화도 일으키지 않는다** — API 호출 0, 지갑/포인트 변화 0, 쿼리 invalidate 0.
  * 카드 클릭은 로컬 useState 로 안내 모달만 연다. 여기에 mutation·fetch·queryClient 를
@@ -30,11 +36,14 @@ import styles from "./TopupPanel.module.css";
 export function TopupPanel() {
   const [selected, setSelected] = useState<TopupPackage | null>(null);
   const bestId = bestValuePackageId();
+  // 지급액 단위는 서버 표기 메타에서 (#232) — 목업 카탈로그라도 단위를 클라가 정하지 않는다.
+  const pointCurrency = useCurrency(CURRENCY_POINT);
+  const fmt = (value: number) => formatPoints(value, (v) => formatAmount(pointCurrency, v));
 
   return (
     <div data-testid="topup-panel">
       <p className={styles.notice} data-testid="topup-notice">
-        결제 준비 중입니다. 포인트 충전은 현재 <strong>admin 수동 지급</strong>으로만 가능합니다.
+        결제 준비 중입니다. 충전은 현재 <strong>admin 수동 지급</strong>으로만 가능합니다.
       </p>
 
       <div className={styles.grid}>
@@ -55,9 +64,9 @@ export function TopupPanel() {
                 </span>
               )}
               <span className={styles.cardLabel}>{pkg.label}</span>
-              <span className={styles.cardPoints}>{formatPoints(totalPoints(pkg))}</span>
+              <span className={styles.cardPoints}>{fmt(totalPoints(pkg))}</span>
               <span className={styles.cardBonus}>
-                {bonus > 0 ? `기본 ${formatPoints(pkg.basePoints)} + 보너스 ${bonus}%` : "보너스 없음"}
+                {bonus > 0 ? `기본 ${fmt(pkg.basePoints)} + 보너스 ${bonus}%` : "보너스 없음"}
               </span>
               <span className={styles.cardPrice}>{formatKrw(pkg.priceKrw)}</span>
             </button>
@@ -80,13 +89,13 @@ export function TopupPanel() {
             결제 준비 중
           </h2>
           <p className={styles.modalPackage} data-testid="topup-modal-package">
-            {selected.label} · {formatPoints(totalPoints(selected))} · {formatKrw(selected.priceKrw)}
+            {selected.label} · {fmt(totalPoints(selected))} · {formatKrw(selected.priceKrw)}
           </p>
           <p className={styles.modalBody}>
             결제 준비 중 — 충전은 admin에게 문의하세요.
           </p>
           <p className={styles.modalContact} data-testid="topup-modal-contact">
-            운영 admin에게 <strong>충전 희망 금액과 본인 계정 ID</strong>를 전달하시면 포인트를 수동으로
+            운영 admin에게 <strong>충전 희망 금액과 본인 계정 ID</strong>를 전달하시면 수동으로
             지급해 드립니다. 문의처는 테스터 안내 채널을 확인해 주세요.
           </p>
           <button

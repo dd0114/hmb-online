@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Modal } from "../common/Modal";
 import { RevealCard } from "../common/RevealCard";
 import { GRADE_LABELS, type Grade } from "../common/grades";
+import { useCurrency } from "../common/Amount";
+import { CURRENCY_POINT, formatAmount } from "../common/currency";
 import type { StarterGrantResponse } from "../api/p3";
 import styles from "./StarterReveal.module.css";
 
@@ -25,6 +27,8 @@ export interface StarterRevealProps {
 }
 
 export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, onClose }: StarterRevealProps) {
+  // 지급 금액 표기는 서버 재화 메타에서 (#232) — 문장 안이라 컴포넌트가 아니라 문자열로 만든다.
+  const grantedPoints = formatAmount(useCurrency(CURRENCY_POINT), initialPoints);
   const player = grant?.granted ? grant.player : null;
   // 카드가 없으면 공개할 것도 없다 — 곧바로 확인 버튼만 있는 상태로 연다.
   const [revealed, setRevealed] = useState(false);
@@ -66,7 +70,7 @@ export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, on
               <span className={styles.grantName}>{player.name}</span> ·{" "}
               {GRADE_LABELS[player.grade as Grade]} 영입!
               <br />
-              선수 {basicCount + 1}명과 {initialPoints.toLocaleString()}P가 지급되었습니다.
+              선수 {basicCount + 1}명과 {grantedPoints}가 지급되었습니다.
             </p>
           )}
         </>
@@ -74,7 +78,7 @@ export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, on
 
       {!player && (
         <p className={styles.grant}>
-          선수 {basicCount}명과 {initialPoints.toLocaleString()}P가 지급되었습니다.
+          선수 {basicCount}명과 {grantedPoints}가 지급되었습니다.
         </p>
       )}
 

@@ -1,6 +1,7 @@
 import type { CatalogPlayer } from "../api/hooks";
 import type { FaProposeRequest, TradeSlot } from "../api/v2";
-import { PointsBadge } from "../common/PointsBadge";
+import { Amount, useCurrency } from "../common/Amount";
+import { CURRENCY_POINT, shortageMessage } from "../common/currency";
 import { ProposeBuilder } from "./ProposeBuilder";
 import { TradePlayerCard } from "./TradePlayerCard";
 import {
@@ -224,6 +225,8 @@ function WaitingBody({
     cost: slot.speedupCost,
     pending: busy,
   });
+  // 단축 비용의 재화 — 서버가 준 코드를 그대로 쓴다(없으면 무료재화로 폴백).
+  const speedupCurrency = useCurrency(slot.speedupCurrency ?? CURRENCY_POINT);
   // 등급만 공개 — 이름·포지션·능력치는 서버가 아예 안 보낸다(카운트다운 만료 전 정체 비공개).
   const grade = gradeContactLabel(slot.targetGrade);
   return (
@@ -258,7 +261,14 @@ function WaitingBody({
       {slot.speedupCost != null && (
         <div className={styles.speedupRow}>
           <span className={styles.speedupCost}>
-            단축 비용 <PointsBadge points={slot.speedupCost} />
+            {/* 재화는 서버가 금액과 **함께** 준다(speedupCurrency, #232) — 클라가 단위를 추측하지 않는다. */}
+            단축 비용{" "}
+            <Amount
+              className={styles.speedupAmount}
+              code={slot.speedupCurrency ?? CURRENCY_POINT}
+              value={slot.speedupCost}
+              icon
+            />
           </span>
           <button
             type="button"
@@ -267,11 +277,11 @@ function WaitingBody({
             disabled={btn.disabled}
             onClick={() => onSpeedup(slot.slot)}
           >
-            포인트로 단축
+            {speedupCurrency.symbol}로 단축
           </button>
         </div>
       )}
-      {btn.showShort && <p className={styles.short}>포인트가 부족합니다</p>}
+      {btn.showShort && <p className={styles.short}>{shortageMessage(speedupCurrency)}</p>}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-route
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TokenProvider, useToken } from "./auth/TokenContext";
 import { NavGuardProvider } from "./common/NavGuard";
+import { AppConfigProvider } from "./common/AppConfigContext";
 import { MatchLockGate } from "./common/MatchLockGate";
 import { LoginPage } from "./auth/LoginPage";
 import { LobbyPage } from "./lobby/LobbyPage";
@@ -178,6 +179,8 @@ function AppRoutes() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      {/* 재화 표기 등 서버 부트스트랩 config — 여기 한 곳에서만 조회해 트리에 내린다(#232). */}
+      <AppConfigProvider>
       <BrowserRouter>
         <TokenProvider>
           {/* admin 플래그(/api/me additive)를 네비까지 내려준다 — AppNav 가 쿼리 컨텍스트에
@@ -192,6 +195,7 @@ function App() {
           </AdminFlagProvider>
         </TokenProvider>
       </BrowserRouter>
+      </AppConfigProvider>
     </QueryClientProvider>
   );
 }

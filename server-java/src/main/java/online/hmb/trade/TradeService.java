@@ -15,6 +15,7 @@ import java.util.SplittableRandom;
 import java.util.TreeMap;
 import online.hmb.catalog.EconomyService;
 import online.hmb.common.ApiException;
+import online.hmb.common.Josa;
 import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
@@ -407,7 +408,7 @@ public class TradeService {
             long balance = walletService.points(userId);
             if (balance < cost) {
                 throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "INSUFFICIENT_POINTS",
-                        "포인트가 부족합니다", Map.of("balance", balance, "cost", cost));
+                        shortOfPoints(), Map.of("balance", balance, "cost", cost));
             }
             // #151: 멱등키는 "이 대기 회차"까지 좁힌다 — opens_at 은 start/FA실패 재대기마다 새로
             // 찍히므로 회차가 자연 분리된다. (구 refId=slotId:seed 는 FA 실패가 같은 seed 를 유지해
@@ -419,7 +420,7 @@ public class TradeService {
             } catch (DataAccessException e) {
                 if (SqliteErrors.isCheckViolation(e)) {
                     throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "INSUFFICIENT_POINTS",
-                            "포인트가 부족합니다", Map.of("balance", balance, "cost", cost));
+                            shortOfPoints(), Map.of("balance", balance, "cost", cost));
                 }
                 throw e;
             }
@@ -440,6 +441,18 @@ public class TradeService {
         });
     }
 
+    /**
+     * 트레이드가 쓰는 재화(무료재화)의 <b>표기 이름</b> (#232). 문구에 "포인트"를 박아 두면 표기를
+     * 바꿀 때마다 서버 배포가 필요해진다 — 이름은 economy 표기 메타에서만 온다.
+     */
+    private String pointName() {
+        return economyService.currency(EconomyService.CURRENCY_POINT).name();
+    }
+
+    private String shortOfPoints() {
+        return Josa.iga(pointName()) + " 부족합니다";
+    }
+
     /** 남은시간 비례 단축 비용: {@code ceil(remainingHours × pointsPerHour)}, 최소 {@code minPoints}. */
     static int speedupCost(long remainingSec, TradeConfig cfg) {
         if (remainingSec <= 0) {
@@ -457,7 +470,7 @@ public class TradeService {
             playerIds = List.of();
         }
         if (points < 0) {
-            throw tradeInvalid("제안 포인트는 0 이상이어야 합니다");
+            throw tradeInvalid("제안 " + Josa.eunneun(pointName()) + " 0 이상이어야 합니다");
         }
         final List<String> offered = List.copyOf(playerIds);
         final int offeredPoints = points;
@@ -484,7 +497,8 @@ public class TradeService {
             long balance = walletService.points(userId);
             if (balance < offeredPoints) {
                 throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "INSUFFICIENT_POINTS",
-                        "제안 포인트가 잔액을 초과합니다", Map.of("balance", balance, "points", offeredPoints));
+                        "제안 " + Josa.iga(pointName()) + " 잔액을 초과합니다",
+                        Map.of("balance", balance, "points", offeredPoints));
             }
 
             String targetId = row.targetPlayerId();
@@ -509,7 +523,8 @@ public class TradeService {
                             row.id() + ":" + row.seed());
                     if (!charged) {
                         throw new ApiException(HttpStatus.CONFLICT, "TRADE_CONFLICT",
-                                "제안 포인트가 차감되지 않았습니다(중복 처리 감지) — 트레이드를 취소합니다");
+                                "제안 " + Josa.iga(pointName())
+                                        + " 차감되지 않았습니다(중복 처리 감지) — 트레이드를 취소합니다");
                     }
                 }
                 acquireOwned(userId, targetId);
@@ -833,7 +848,10 @@ public class TradeService {
         Long targetValue = (!masked && row.targetPlayerId() != null) ? valueOf(row.targetPlayerId(), cfg) : null;
         Double acceptProbability = (open && "TRADE".equals(row.offerKind())) ? cfg.tradeAcceptProb() : null;
         return new TradeSlot(row.slotNo(), row.state(), row.offerKind(), target, demand,
-                row.opensAt(), (int) remainingSec, speedupCost, targetValue, acceptProbability, targetGrade);
+                row.opensAt(), (int) remainingSec, speedupCost,
+                // #232: 금액과 재화는 항상 같이 간다 — 단축 비용을 클라가 "P"로 단정하던 것이 표기 사고의 형태였다.
+                speedupCost == null ? null : EconomyService.CURRENCY_POINT,
+                targetValue, acceptProbability, targetGrade);
     }
 
     // ── trade_log ────────────────────────────────────────────────────────
@@ -901,9 +919,13 @@ public class TradeService {
     public record WalletInfo(long points) {
     }
 
+    /**
+     * openapi-v2 {@code TradeSlot}. {@code speedupCurrency}(#232) = {@code speedupCost} 의 재화 코드 —
+     * 비용이 null 이면 같이 null 이다(단축 불가 상태). additive 라 기존 소비자는 무영향.
+     */
     public record TradeSlot(int slot, String state, String offerKind, PlayerRef target, PlayerRef demand,
-                            String opensAt, int remainingSec, Integer speedupCost, Long targetValue,
-                            Double acceptProbability, String targetGrade) {
+                            String opensAt, int remainingSec, Integer speedupCost, String speedupCurrency,
+                            Long targetValue, Double acceptProbability, String targetGrade) {
     }
 
     public record TradeSlotsResponse(List<TradeSlot> slots, WalletInfo wallet) {

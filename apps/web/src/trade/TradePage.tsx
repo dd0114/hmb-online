@@ -56,7 +56,9 @@ export function TradePage() {
 
   function handleError(err: unknown, fallback: string) {
     if (err instanceof ApiError) {
-      if (err.code === "INSUFFICIENT_POINTS") setError(`포인트가 부족합니다 — ${err.message}`);
+      // 재화 이름이 들어가는 문구는 **서버 message 를 그대로** 쓴다 — 클라가 이름을 지어내면
+      // 표기 변경이 web 배포가 된다(#232). 코드별 분기는 문맥 접두사만 붙인다.
+      if (err.code === "INSUFFICIENT_POINTS") setError(err.message);
       else if (err.code === "TRADE_INVALID") setError(`처리할 수 없는 요청입니다 — ${err.message}`);
       else setError(err.message);
     } else {

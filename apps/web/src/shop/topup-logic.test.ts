@@ -101,9 +101,11 @@ describe("pointsPerKrw / bestValuePackageId", () => {
 });
 
 describe("formatting / lookup", () => {
-  it("formats prices and points for display", () => {
+  it("formats prices and defers the currency unit to the caller", () => {
     expect(formatKrw(30_000)).toBe("₩30,000");
-    expect(formatPoints(12_000)).toBe("12,000 P");
+    // #232: 단위는 이 모듈이 정하지 않는다 — 서버 표기 메타를 받은 호출부가 넘긴다.
+    // 여기서 "P" 같은 심볼을 다시 박으면 서버 주도 표기가 이 파일에서부터 되돌아간다.
+    expect(formatPoints(12_000, (v) => `${v.toLocaleString("ko-KR")} Ω`)).toBe("12,000 Ω");
   });
 
   it("finds a package by id and returns null for an unknown id", () => {

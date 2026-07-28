@@ -1,9 +1,11 @@
 /**
- * economy.v2.json growth/star/potential/dice 블록의 **표시용 미러**(에픽 #179 §V2-5).
- * 서버가 SoT — 여기 값은 UI 라벨/애니메이션 임계용이며 실제 게이트는 항상 서버 응답이 최종
- * 권위(성 승급 재료 부족 = 4xx INSUFFICIENT_MATERIALS, 다이스 부족 = 4xx). 다른 화면들의
- * 표시용 상수 패턴(ShopPage.GACHA_COST_SINGLE 등)과 동일한 성격 — 서버 config 가 바뀌면 이 파일도
- * 갱신 필요. SoT = issues/2026-07-26-growth-dual-track.md §V2-5.
+ * economy growth/star/potential 블록의 **표시용 미러**(에픽 #179 §V2-5) — 라벨·애니메이션 임계·
+ * 축 윈도우처럼 "틀려도 화면만 어색한" 값들.
+ *
+ * ⚠️ **재화가 걸린 값은 여기 두지 않는다** (#232). 가격·결제재화·충전팩은 `GET /api/config` 가 SoT 다
+ * (`api/config.ts`). 미러가 서버보다 뒤처지면 화면이 실제 결제와 어긋나고, 그건 어색한 게 아니라
+ * 거짓말이다 — 실제로 다이스 가격이 10배 어긋난 채로 배포돼 있었다(#213).
+ * SoT = issues/2026-07-26-growth-dual-track.md §V2-5.
  */
 import type { CatalogPlayer } from "../api/hooks";
 import type { Grade } from "../common/grades";
@@ -57,29 +59,13 @@ export const TIER_LABELS: Record<PotentialTier, string> = {
   UNIQUE: "유니크",
 };
 
-/**
- * dice.normalCost (V2-5, 유지) — 노말 다이스 1개 구매 포인트 가격.
- * V2.2(§ hero 확정 2026-07-26 — 재화 이원화)로 캐시 다이스는 P 결제가 아니라 **젬** 결제로
- * 개정됐다(구 cashCost 5000P 는 제거) — 아래 DICE_CASH_GEM_COST 참조.
+/*
+ * ⚠️ 다이스 가격·충전 팩 미러 상수는 **제거됐다** (#232).
+ *
+ * 여기에 `DICE_BUY_COST = { NORMAL: 500 }` 이 있었고, 서버 config 가 5,000 으로 바뀐 뒤에도 그대로
+ * 남아 화면이 "500 P 로 구매"를 그렸다 — 눌러서 성공하면 지갑이 10배로 줄어드는 화면이었다.
+ * 가격·결제재화·충전팩은 이제 `GET /api/config`(`api/config.ts`)에서만 온다. 되살리지 마라.
  */
-export const DICE_BUY_COST = { NORMAL: 500 } as const;
-
-/** dice.cashGemCost (V2.2) — 캐시 다이스 1개 구매 젬 가격. */
-export const DICE_CASH_GEM_COST = 10;
-
-export interface GemTopupPack {
-  id: string;
-  gems: number;
-  /** 목업 표기 가격(원) — 실결제 없음. */
-  mockPrice: string;
-}
-
-/** gems.topupPacks (V2.2) — 젬 충전(목업) 3종. 클릭 즉시 지급, 실결제 없음(UI에 명시). */
-export const GEM_TOPUP_PACKS: readonly GemTopupPack[] = [
-  { id: "p1", gems: 60, mockPrice: "₩1,200" },
-  { id: "p2", gems: 330, mockPrice: "₩5,900" },
-  { id: "p3", gems: 720, mockPrice: "₩11,900" },
-];
 
 /**
  * 밴드 앵커 축 윈도우(#179 후속, hero 피드백 "주식 차트처럼 y축 하한 잘라서 드라마틱하게").

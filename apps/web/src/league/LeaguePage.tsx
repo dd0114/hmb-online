@@ -5,6 +5,8 @@ import type { LeagueFixture, LeagueSeason, LeagueStanding } from "../api/v2";
 import type { LeagueResponseP3, LeagueSeasonReward } from "../api/p3";
 import { ApiError } from "../api/client";
 import { Layout } from "../common/Layout";
+import { Amount, useCurrency } from "../common/Amount";
+import { CURRENCY_GEM, CURRENCY_POINT, formatAmount } from "../common/currency";
 import { ErrorToast } from "../common/ErrorToast";
 import { matchInProgressIdOf } from "../common/match-lock";
 import type { SeasonSummary } from "./league-logic";
@@ -354,7 +356,15 @@ function SeasonRewardCard({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
-  const view = useMemo(() => seasonRewardView(reward), [reward]);
+  // 재화 표기는 서버 메타에서 — 순수 뷰 함수에 포매터로 주입한다(#232).
+  const pointCurrency = useCurrency(CURRENCY_POINT);
+  const gemCurrency = useCurrency(CURRENCY_GEM);
+  const view = useMemo(
+    () => seasonRewardView(reward, (v) => formatAmount(pointCurrency, v)),
+    [reward, pointCurrency],
+  );
+  // 우승 유상재화(#212 서버 지급) — 표기가 아예 없던 자리. 연출은 #214 소관이라 값만 보여준다.
+  const gems = reward.gems ?? 0;
   const reducedMotion = usePrefersReducedMotion();
   const shown = useCountUp(reward.points, view.animate && !reducedMotion);
   return (
@@ -381,9 +391,15 @@ function SeasonRewardCard({
         data-awarded={view.showPoints ? "true" : "false"}
       >
         <span className={styles.rewardPointsValue}>{shown.toLocaleString()}</span>
-        <span className={styles.rewardPointsUnit}>P</span>
+        <span className={styles.rewardPointsUnit}>{pointCurrency.symbol}</span>
         {!view.showPoints && <span className={styles.rewardPointsNote}>미지급</span>}
       </p>
+      {gems > 0 && (
+        <p className={styles.rewardGems} data-testid="season-reward-gems" data-gems={gems}>
+          <span aria-hidden="true">{gemCurrency.icon}</span>{" "}
+          <Amount code={CURRENCY_GEM} value={gems} />
+        </p>
+      )}
       <p className={styles.rewardDetail} data-testid="season-reward-message">
         {view.detail}
       </p>
