@@ -6,6 +6,22 @@
 
 ---
 
+## 2026-07-28T03:02Z — [운영 조치] 젬 수동 지급 — `축구왕여르` +6,000 (배포 아님, 코드·이미지 변경 0)
+> 배포 기록이 아니라 **프로덕션 데이터 조작 기록**이다. admin API 에 젬 지급 엔드포인트가 없어(갭 이슈 등록됨) hero 승인 하에 이번만 수동 실행했다. 같은 일이 반복되면 API 로 승격할 것.
+
+- **대상**: `축구왕여르` (`01KYJRPRMFNJA8YYBD22WN5ZNH`, `mock:google`, 가입 2026-07-27T21:46Z)
+- **지시**: hero — 젬(다이아) **6,000** 지급
+- **사전 상태**: `wallets.points=3000` · `wallets.gems=**0**` (원장 = `initial_gems +6000`, `gacha_ten -3000` ×2 → 합 0, 지갑과 일치)
+- **스키마 확인**(조작 전): 잔액은 **원장 파생이 아니라 컬럼**이다 — `wallets.gems INTEGER NOT NULL DEFAULT 0 CHECK (gems >= 0)`. `gem_ledger(id, user_id, delta, reason, ref_id, created_at)` 는 감사 원장이고 멱등 키는 `uq_gem_ledger_reason_ref(user_id, reason, ref_id) WHERE ref_id IS NOT NULL`. 앱(`WalletService.applyGems`)도 **원장 INSERT + `wallets.gems` UPDATE 2문**을 한 트랜잭션에서 수행한다 → **같은 순서·같은 2문으로** 조작했다.
+- **실행**: 단일 트랜잭션(`PRAGMA busy_timeout=8000; BEGIN IMMEDIATE; INSERT INTO gem_ledger…; UPDATE wallets SET gems = gems + 6000 …; COMMIT;`), 컨테이너 무중단(java 재시작 없음).
+  - 원장 행 `id=141` · `delta=+6000` · `reason='admin_grant: hero 지시, 축구왕여르 6000'` · `ref_id='admin-grant-20260728T030252Z'`(멱등 키) · `created_at='2026-07-28T03:02:52.000000000Z'`
+  - ⚠️ 파일 소유권: 볼륨에 쓰기 위해 root 컨테이너를 썼으므로 **직후 `chown 10001:999` 로 `hmb.db`/`-wal`/`-shm` 소유권을 복원**했다. 이 단계를 빠뜨리면 java(uid 10001)가 쓰기를 잃고 서비스가 죽는다.
+- **검증**: 지갑 `gems 0 → **6,000**` · 대상 유저 **원장합 6,000 == 지갑 6,000** · **전 유저 정합 불일치 0건**(`wallets.gems <> SUM(gem_ledger.delta)` 인 유저 수) · `PRAGMA integrity_check=ok` · 조작 후 앱 정상(`status.sh` 전 항목 ✓, 신규 로그인 200, java 로그 SQLITE_BUSY/lock 0건).
+  - 📌 앱 응답으로의 확인은 하지 않았다 — 젬 잔액은 `/api/me`(그 유저 세션)에서만 보이고 `/api/admin/users/{id}` 는 **`points` 만 반환하고 gems 가 없다**. 남의 계정에 로그인하지 않기 위해 DB 검증(+ `WalletService.gems()` 가 `wallets.gems` 를 그대로 읽는 코드 경로 확인)으로 갈음했다. **admin 유저 상세에 gems 누락 = 별도 갭**.
+- **후속 권고**: ①admin 젬 지급 API(사유 필수 + `admin_ops_audit` 기록, V18 있음) ②`/api/admin/users/{id}` 응답에 `gems` 추가 — 둘 다 있으면 이런 수동 조작이 필요 없다.
+
+---
+
 ## 2026-07-27T15:52Z — **릴리스 태그 `v8.01`** (재생·시계정합·감독 180s #216 + 매치잠금 #217 V19 + 프리웜 #215 V20 + 아이콘 #218/#184)
 - **git**: **`bd00b07`** = **태그 `v8.01`(`fcb9a02`) + 배포 blocker 픽스 1건**(web 빌드 실패, 아래 ⚠️). 브랜치 `deploy/v7`.
 - **모듈 버전**: engine **`@0.21.0`**(변경 0) · server-java `0.1.0`(#216 서버시계 정합·감독시간 **180s**·하프 실시간 **420s** · #217 매치잠금/포기/방치 스윕 · #215 덱 저장 프리웜) · web `0.0.0`(하이라이트 단일모드 · `MatchLockGate` 8라우트 · LEGEND 아이콘) · servants `0.0.1` · 데이터 players `v2.3` / economy `v3`
