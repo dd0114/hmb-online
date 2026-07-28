@@ -223,6 +223,17 @@
   충전은 다이스와 무관하고 게이팅 플래그(`shop.gemTopup.enabled`)도 원래 같았다.
 - 계약 = `e2e/growth-mock.spec.ts`(구매 없이 차감·첫 1회 확인·클라 가드/서버 권위 2층·다이스 탭 0)
   + `e2e/currency-display.spec.ts`(리롤 비용이 서버 config 를 따른다).
+## 시즌 종료 보상 화면 (#251)
+
+- **status 이름은 서버가 정한다: `PENDING | GRANTED | NONE`**(openapi `SeasonReward.status`).
+  클라가 지어낸 `AWARDED|FAILED` 만 알던 탓에 **종료된 시즌 전부가 "보상이 지급되지 않았습니다"로
+  떴다** — e2e 목이 서버가 보내지 않는 `AWARDED` 를 쓰고 있어 계약이 green 으로 덮고 있었다.
+  판정은 `isGranted()` 한 곳(구 별칭은 호환으로만 유지). **목을 서버 형상에 맞추는 것이 계약의 절반이다.**
+- 시즌 젬은 이제 **완주 전원**(1등 9,000 / 2등 6,000 / 3등 4,000 / 4등 이하 3,000 Z, 금액 SoT = 서버
+  economy config)이라 종료 화면은 항상 **G·Z 병기**다. 표기는 `<Amount>`·주입 포매터로만
+  (`seasonRewardView(reward, formatPoints, formatGems)`) — 심볼을 코드에 적으면 #232 가 깨진다.
+- 계약 = `league-logic.test.ts`(GRANTED/NONE 수용·병기·표기 주입) + `e2e/p3-league-reward.spec.ts`
+  (서버 enum 4종 + 구 별칭) + `e2e/currency-display.spec.ts`(문장까지 서버 표기를 따르는지).
 
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).

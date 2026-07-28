@@ -109,17 +109,17 @@ class SeasonIncomeProbeTest extends MatchTestBase {
         assertThat(leagueDeltas).as("리그 매판 = 리그 보상표").isSubsetOf(5000L, 2000L, 1000L);
         assertThat(leagueDeltas).as("18R 전부 지급됨").hasSize(18);
 
-        // 젬(#212): 우승(1위)에서만 지급된다. 이 시나리오는 전승이 아니므로 rank 에 따라 갈린다.
+        // 젬(#251): **완주하면 전 순위** 지급 — 완주 기본 + 순위 보너스 가산.
+        // (#212 의 "우승만 랜덤"이 여기서 대체됐다 — 실수입 리포트의 성격이 바뀐 지점이라 남겨 둔다.)
         long gemsFromSeason = jdbcClient.sql(
                         "SELECT COALESCE(SUM(delta),0) FROM gem_ledger "
                                 + "WHERE user_id=? AND reason='league_gem_reward'")
                 .param(uid).query(Long.class).single();
-        System.out.println("[시즌 젬] rank=" + rank + " → " + gemsFromSeason + " 젬");
-        if (rank == 1) {
-            assertThat(gemsFromSeason).as("우승 젬은 config 밴드 안").isBetween(500L, 3000L);
-        } else {
-            assertThat(gemsFromSeason).as("우승이 아니면 젬 0").isZero();
-        }
+        long expectedGems = SEASON_GEM_COMPLETION + SEASON_GEM_RANK_BONUS.getOrDefault(rank, 0);
+        System.out.println("[시즌 젬] rank=" + rank + " → " + gemsFromSeason + " 젬"
+                + " (완주 " + SEASON_GEM_COMPLETION
+                + " + 순위보너스 " + SEASON_GEM_RANK_BONUS.getOrDefault(rank, 0) + ")");
+        assertThat(gemsFromSeason).as("완주 젬 = 기본 + rank=%d 보너스", rank).isEqualTo(expectedGems);
 
         // 연습매치 3판 — 리그 매판과 지급액 비교.
         long beforePractice = points(uid);
@@ -156,6 +156,11 @@ class SeasonIncomeProbeTest extends MatchTestBase {
             Map.entry(1, 100000), Map.entry(2, 20000), Map.entry(3, 10000), Map.entry(4, 6000),
             Map.entry(5, 4000), Map.entry(6, 3000), Map.entry(7, 2000), Map.entry(8, 1500),
             Map.entry(9, 1000), Map.entry(10, 500));
+
+    /** economy `league.gemReward` 미러(#251 hero 확정) — 완주 기본 + 1/2/3등 보너스 가산. */
+    private static final int SEASON_GEM_COMPLETION = 3000;
+    private static final Map<Integer, Integer> SEASON_GEM_RANK_BONUS =
+            Map.of(1, 6000, 2, 3000, 3, 1000);
 
     /** 매치 1건의 승/무/패 보상액(원장 ref=matchId) — 잔액 델타와 달리 다른 지급과 섞이지 않는다. */
     private long rewardOf(String uid, String matchId) {

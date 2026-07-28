@@ -136,11 +136,36 @@ public class EconomyService {
     }
 
     /**
-     * economy.v2.json `league.gemReward` 노드 (#212) — 리그 상위 입상 시 젬 지급.
-     * maxRank 이내 순위에만, [min, max] 균등 랜덤(시즌 seed 결정론 — {@code Math.random} 금지).
+     * economy `league.gemReward` 노드 (#251 개정) — 시즌 종료 젬 보상.
+     *
+     * <p><b>완주 기본({@code completion}) + 순위 보너스({@code rankBonus[rank]}) 가산</b> 고정액이다.
+     * hero 확정: 1등 3,000+6,000=9,000 · 2등 6,000 · 3등 4,000 · 4등 이하 3,000.
+     *
+     * <p>#212 의 "우승만 [min,max] 랜덤"을 <b>대체</b>한다(hero 컨펌) — 얹으면 1등이 9,500~12,000 이
+     * 되어 요구가 명시한 총액과 어긋난다. 랜덤이 사라졌으므로 시즌 seed 파생 RNG 도 불필요하다
+     * (고정액은 그 자체로 결정론). 원장 reason/ref 는 그대로라 멱등·소급 없음은 유지된다.
      */
-    public record LeagueGemReward(int maxRank, int min, int max) {
+    public record LeagueGemReward(int completion, Map<Integer, Integer> rankBonus) {
+
+        /** 순위별 지급액 — 완주 기본 + 그 순위 보너스(없으면 0). 순위 미확인(≤0)이면 0. */
+        public int amountFor(int rank) {
+            if (rank <= 0) {
+                return 0;
+            }
+            return completion + (rankBonus == null ? 0 : rankBonus.getOrDefault(rank, 0));
+        }
     }
+
+    /**
+     * 시즌 젬 보상 기본값 (#251 hero 확정) — {@link #DEFAULT_CURRENCIES} 와 같은 <b>last-known-good
+     * 폴백층</b>이다. 발행물이 이기고, 없거나 <b>일부만</b> 있으면 필드 단위로 여기서 메운다.
+     *
+     * <p>⚠️ 이 상수가 있어야 하는 이유 = <b>override 트랩</b>: 운영 override 파일은 무배포로 얹힌
+     * <b>구 스냅샷</b>이라 새 필드({@code completion}/{@code rankBonus})가 없다. 폴백이 없으면 override 가
+     * 깔린 환경에서만 보상이 조용히 0 이 된다(#232 에서 같은 형태를 겪었다).
+     */
+    public static final LeagueGemReward DEFAULT_LEAGUE_GEM_REWARD =
+            new LeagueGemReward(3000, Map.of(1, 6000, 2, 3000, 3, 1000));
 
     /**
      * economy.v2.json `growth` 노드 (에픽 #179 V2-5, 메이플 피벗 GM1) — 경기 스탯별 XP 트랙 수치.
@@ -308,6 +333,14 @@ public class EconomyService {
     /** 코드({@code POINT|GEM}) → 표기 메타. 서버 에러 문구도 이걸 통해 재화 이름을 얻는다. */
     public Currency currency(String code) {
         return currencyOf(currencies(), code);
+    }
+
+    /**
+     * 시즌 종료 젬 보상 수치 (#251) — {@link #currencies()} 와 같은 이유로 <b>항상</b> 값을 돌려준다.
+     * economy 파일 자체가 없는 환경(부팅 경고 후 계속)에서도 완주 보상이 사라지지 않는다.
+     */
+    public LeagueGemReward leagueGemReward() {
+        return snapshot.economy().map(Economy::leagueGemReward).orElse(DEFAULT_LEAGUE_GEM_REWARD);
     }
 
     /** override 파일 경로(존재 여부와 무관). 운영 API 가 여기에 쓰고 지운다. */
@@ -569,21 +602,47 @@ public class EconomyService {
         return new Rewards(win, draw, loss, Map.copyOf(byMode));
     }
 
-    /** `league.gemReward` 파싱(#212) — 블록이 없거나 max&lt;min 이면 null(비활성). */
+    /**
+     * `league.gemReward` 파싱(#251) — <b>필드 단위 병합</b>(currencies 와 동형).
+     *
+     * <p>블록이 없거나, 있어도 새 필드가 없으면(= 구 스냅샷 {@code {maxRank,min,max}} 나 운영 override)
+     * {@link #DEFAULT_LEAGUE_GEM_REWARD} 로 메운다. "모르면 0 원"이 아니라 "모르면 마지막으로 알려진
+     * 정상값" — 보상은 조용히 사라지면 안 된다. 값이 <b>있는데 음수</b>면 그 필드만 폴백(값 오염 차단).
+     */
     private static LeagueGemReward parseLeagueGemReward(JsonNode league) {
-        if (league == null || !league.path("gemReward").isObject()) {
-            return null;
+        JsonNode n = league == null ? null : league.path("gemReward");
+        if (n == null || !n.isObject()) {
+            return DEFAULT_LEAGUE_GEM_REWARD;
         }
-        JsonNode n = league.path("gemReward");
-        int maxRank = n.path("maxRank").asInt();
-        int min = n.path("min").asInt();
-        int max = n.path("max").asInt();
-        if (maxRank < 1 || min < 0 || max < min) {
-            log.warn("league.gemReward 값이 유효하지 않아 비활성화한다: maxRank={} min={} max={}",
-                    maxRank, min, max);
-            return null;
+        int completion = DEFAULT_LEAGUE_GEM_REWARD.completion();
+        if (n.hasNonNull("completion")) {
+            int v = n.path("completion").asInt(-1);
+            if (v >= 0) {
+                completion = v;
+            } else {
+                log.warn("league.gemReward.completion 이 유효하지 않아 기본값을 쓴다: {}", n.path("completion"));
+            }
         }
-        return new LeagueGemReward(maxRank, min, max);
+        Map<Integer, Integer> bonus = DEFAULT_LEAGUE_GEM_REWARD.rankBonus();
+        if (n.path("rankBonus").isObject()) {
+            Map<Integer, Integer> parsed = new LinkedHashMap<>();
+            n.path("rankBonus").properties().forEach(e -> {
+                try {
+                    int rank = Integer.parseInt(e.getKey());
+                    int amount = e.getValue().asInt(-1);
+                    if (rank >= 1 && amount >= 0) {
+                        parsed.put(rank, amount);
+                    } else {
+                        log.warn("league.gemReward.rankBonus 항목 무시(rank={}, amount={})", e.getKey(),
+                                e.getValue());
+                    }
+                } catch (NumberFormatException ex) {
+                    log.warn("league.gemReward.rankBonus 키가 순위(정수)가 아니라 무시: {}", e.getKey());
+                }
+            });
+            bonus = Map.copyOf(parsed);
+        }
+        return new LeagueGemReward(completion, bonus);
     }
 
     private static Map<String, Double> asDoubleMap(JsonNode node) {

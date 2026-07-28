@@ -139,13 +139,23 @@ export interface LeagueSeasonReward {
   rank: number;
   points: number;
   /**
-   * 우승 시 지급되는 유상재화(#212 서버 배선, 그 외 순위는 0/부재). 화면에 **표기**하는 것이 #232,
+   * 시즌 종료 시 지급되는 유상재화. **#251 로 "우승만"에서 "완주 전원"으로 바뀌었다** —
+   * 완주 기본 + 순위 보너스 가산이라 완주한 모든 순위가 > 0 이다(1등 9,000 / 2등 6,000 /
+   * 3등 4,000 / 4등 이하 3,000, 금액 SoT = 서버 economy config). 화면에 **표기**하는 것이 #232,
    * 지급 **연출**은 #214 소관이다 — 받은 재화가 화면에 아예 없던 것이 표기 갭이었다.
    */
   gems?: number | null;
-  status: "AWARDED" | "PENDING" | "FAILED";
+  /**
+   * ⚠️ **서버 enum 이 SoT 다: `PENDING | GRANTED | NONE`**(openapi `SeasonReward.status`).
+   *
+   * `AWARDED`/`FAILED` 는 이 파일이 서버 확인 없이 적어 뒀던 이름이라 실제로는 <b>한 번도 오지 않는다</b>.
+   * 그 결과 종료된 시즌의 보상 카드가 전부 "보상이 지급되지 않았습니다"로 떴다(#251 에서 발견 —
+   * e2e 목이 서버가 보내지 않는 `AWARDED` 를 쓰고 있어 목-실서버 드리프트로 가려져 있었다).
+   * 구 이름은 <b>호환용 별칭</b>으로만 남긴다(잘못된 이름을 지우는 것이 아니라, 서버 이름을 정본으로 승격).
+   */
+  status: "PENDING" | "GRANTED" | "NONE" | "AWARDED" | "FAILED";
   awardedAt?: string | null;
-  /** status=FAILED 일 때 화면에 띄울 사유. */
+  /** 지급되지 않았을 때(NONE/FAILED) 화면에 띄울 사유. */
   message?: string | null;
 }
 

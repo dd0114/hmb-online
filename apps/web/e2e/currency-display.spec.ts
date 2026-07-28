@@ -85,7 +85,9 @@ const LEAGUE = {
       { teamId: "me", name: "내 팀", played: 18, won: 14, drawn: 2, lost: 2, goalsFor: 45, goalsAgainst: 15, goalDiff: 30, points: 44, rank: 1, isUser: true },
     ],
     fixtures: [], nextUserFixture: null,
-    seasonReward: { rank: 1, points: 100_000, gems: 2_400, status: "AWARDED", awardedAt: "2026-07-28T09:00:00Z" },
+    // status 는 **서버가 실제로 보내는 값**(GRANTED). 목이 AWARDED 를 쓰고 있어서 클라가
+    // GRANTED 를 모르는 상태(종료 시즌 전부 미지급 표시)를 e2e 가 덮고 있었다(#251).
+    seasonReward: { rank: 1, points: 100_000, gems: 9_000, status: "GRANTED", awardedAt: "2026-07-28T09:00:00Z" },
   },
 };
 
@@ -195,13 +197,15 @@ test("트레이드 단축 비용이 서버가 준 재화로 표기된다", async
   await expectNoLegacyCurrencyText(page, "트레이드");
 });
 
-test("리그 시즌 보상이 서버 표기를 따르고, 우승 유상재화도 화면에 뜬다", async ({ page }) => {
+test("리그 시즌 보상이 서버 표기를 따르고, 시즌 유상재화도 화면에 뜬다", async ({ page }) => {
   await boot(page, "/league");
   await expect(page.getByTestId("season-reward-points")).toContainText(ODD.pointSymbol);
-  // #212 가 지급하는데 화면에 아예 없던 재화 — 표기 갭이 메워졌는지 본다(연출은 #214).
+  // 지급되는데 화면에 아예 없던 재화 — 표기 갭이 메워졌는지 본다(#212 배선 → #251 완주 전원, 연출은 #214).
   const gems = page.getByTestId("season-reward-gems");
-  await expect(gems).toHaveAttribute("data-gems", "2400");
+  await expect(gems).toHaveAttribute("data-gems", "9000");
   await expect(gems).toContainText(ODD.gemSymbol);
+  // 문장 병기도 서버 표기를 따른다 — 심볼을 하드코딩하면 여기서 죽는다(#232 변이체 킬).
+  await expect(page.getByTestId("season-reward-message")).toContainText(ODD.gemSymbol);
   await expectNoLegacyCurrencyText(page, "리그");
 });
 

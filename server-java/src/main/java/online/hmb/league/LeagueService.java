@@ -157,7 +157,11 @@ public class LeagueService {
      *       {@code points=0}, {@code awardedAt=null}.</li>
      * </ul>
      */
-    /** gems(#212) = 입상 젬 보상 실지급액(원장 파생). 미지급/비대상이면 0 — web 우승 연출의 입력. */
+    /**
+     * gems(#251) = 시즌 종료 젬 보상 실지급액(gem_ledger delta 파생 — 계산이 아니라 <b>원장</b>이 SoT).
+     * 완주 기본 + 순위 보너스 가산이라 <b>완주한 전 순위가 &gt; 0</b> 이다(#212 의 "1등만"에서 개정).
+     * 미종료/미지급이면 0. web 종료 화면이 G 와 <b>병기</b>하는 입력값.
+     */
     public record SeasonReward(int rank, int points, int gems, String status, String awardedAt) {
     }
 
@@ -341,21 +345,22 @@ public class LeagueService {
     }
 
     /**
-     * 시즌 젬 보상(#212) — hero 확정: <b>리그 우승 시에만</b> 랜덤 지급(config {@code league.gemReward}
-     * {maxRank,min,max}). 젬 수급원은 가입 지급과 이것 둘뿐이다(목업 충전 폐지).
+     * 시즌 젬 보상(#251 개정) — hero 확정: <b>완주하면 전원 기본 지급</b>(config
+     * {@code league.gemReward.completion}) + <b>순위 보너스 가산</b>({@code rankBonus[rank]}).
+     * 1등 3,000+6,000=9,000 · 2등 6,000 · 3등 4,000 · 4등 이하 3,000. 젬 수급원은 가입 지급과 이것 둘뿐이다.
      *
-     * <p><b>결정론</b>: 지급액은 {@code Math.random} 이 아니라 <b>시즌 seed 파생 RNG</b>로 뽑는다 —
-     * 같은 시즌은 몇 번을 재계산해도 같은 금액이다. <b>멱등</b>: {@code gem_ledger}
-     * (reason='league_gem_reward', ref=seasonId) 유니크가 중복 지급을 막는다(P 보상과 동형).
+     * <p><b>#212 대체</b>(hero 컨펌): 기존 "우승만 [min,max] 랜덤"을 이 고정액이 대체한다 — 얹으면
+     * 1등 총액이 요구(9,000)와 어긋난다. 랜덤이 없어졌으므로 시즌 seed 파생 RNG 도 쓰지 않는다
+     * (고정액 = 그 자체로 결정론이라 재현성 계약이 더 강해진다).
+     *
+     * <p><b>멱등</b>: {@code gem_ledger}(reason='league_gem_reward', ref=seasonId) 유니크가 중복 지급을
+     * 막는다(P 보상과 동형). reason/ref 를 그대로 두므로 <b>이미 지급된 시즌은 소급되지 않는다</b> —
+     * 재진입해도 원장 행이 이미 있어 아무 일도 일어나지 않는다(신규 종료분부터 새 금액).
      */
     private void awardSeasonGems(SeasonRow season, int userRank) {
-        EconomyService.LeagueGemReward cfg = economyService.get()
-                .map(EconomyService.Economy::leagueGemReward).orElse(null);
-        if (cfg == null || userRank > cfg.maxRank()) {
-            return;
-        }
-        int span = cfg.max() - cfg.min() + 1;
-        int gems = cfg.min() + rngFromSeed(season.seed() + ":gemReward:" + userRank).nextInt(span);
+        // 수치는 항상 값을 돌려주는 접근자로 읽는다 — economy 파일/override 에 새 필드가 없어도
+        // 폴백 상수로 메워진다(override 트랩, EconomyService#DEFAULT_LEAGUE_GEM_REWARD).
+        int gems = economyService.leagueGemReward().amountFor(userRank);
         if (gems > 0) {
             walletService.applyGems(season.userId(), gems, LEDGER_REASON_LEAGUE_GEM, season.id());
         }

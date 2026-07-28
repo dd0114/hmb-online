@@ -989,7 +989,7 @@ export interface components {
         WalletInfo: {
             /** @description 무료재화 잔액(내부 코드 POINT) — 트레이드·무료강화(노말 다이스)에 쓴다. **표기(이름·심볼)는 값이 아니라 데이터다** — GET /api/config 의 currencies 에서 조회한다(#232). */
             points: number;
-            /** @description 유상재화 잔액(내부 코드 GEM) — 뽑기·유료 다이스. #212 additive(구서버 응답엔 없을 수 있어 required 아님). 수급은 가입 지급 + 리그 우승 둘뿐. 표기는 GET /api/config 참조(#232). */
+            /** @description 유상재화 잔액(내부 코드 GEM) — 뽑기·유료 다이스. #212 additive(구서버 응답엔 없을 수 있어 required 아님). 수급은 가입 지급 + **리그 시즌 완주**(#251, 구 "리그 우승") 둘뿐. 표기는 GET /api/config 참조(#232). */
             gems?: number;
         };
         SeasonReward: {
@@ -997,9 +997,12 @@ export interface components {
             rank: number;
             /** @description 실지급 무료재화(원장 delta). 미지급이면 0 — 예정액이 아니다. */
             points: number;
-            /** @description 실지급 유상재화. **우승(1위)일 때만** 500~3000 랜덤이고 그 외에는 0(#212). web 우승 연출의 입력(#214). 표기는 GET /api/config 참조(#232). */
+            /** @description 실지급 유상재화(gem_ledger delta — 계산이 아니라 원장이 SoT). **#251: 완주하면 전 순위 지급** — 완주 기본 + 순위 보너스 가산(1등 9,000 / 2등 6,000 / 3등 4,000 / 4등 이하 3,000). 금액 SoT 는 economy config `league.gemReward` {completion, rankBonus} 라 무배포 교체 가능 — 이 문서의 숫자는 현재 발행값이다. (구 #212 "우승만 500~3000 랜덤"을 대체했다.) 미종료/미지급이면 0. web 연출 입력(#214). 표기는 GET /api/config 참조(#232). */
             gems?: number;
-            /** @enum {string} */
+            /**
+             * @description PENDING=시즌 진행 중(미지급) / GRANTED=지급됨 / NONE=종료됐으나 보상 없음(방어). ⚠️ 클라는 **이 세 값**을 안다 — 클라가 지어낸 이름(AWARDED/FAILED)을 쓰면 종료 시즌이 전부 "미지급"으로 뜬다(#251 에서 실제로 그 상태였다).
+             * @enum {string}
+             */
             status: "PENDING" | "GRANTED" | "NONE";
             /** @description 지급 시각(원장 created_at). 미지급이면 null. */
             awardedAt?: string | null;

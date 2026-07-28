@@ -98,9 +98,12 @@
     "rewardsFile": "league.v1.json",
     "rewardsRef": "rewards",
     "gemReward": {
-      "maxRank": 1,
-      "min": 500,
-      "max": 3000
+      "completion": 3000,
+      "rankBonus": {
+        "1": 6000,
+        "2": 3000,
+        "3": 1000
+      }
     }
   },
   "growth": {

@@ -14,6 +14,7 @@ import {
   fixtureScore,
   formatAwardedAt,
   groupByRound,
+  isGranted,
   isSeasonFinished,
   pickSeasonReward,
   seasonRewardView,
@@ -360,10 +361,10 @@ function SeasonRewardCard({
   const pointCurrency = useCurrency(CURRENCY_POINT);
   const gemCurrency = useCurrency(CURRENCY_GEM);
   const view = useMemo(
-    () => seasonRewardView(reward, (v) => formatAmount(pointCurrency, v)),
-    [reward, pointCurrency],
+    () => seasonRewardView(reward, (v) => formatAmount(pointCurrency, v), (v) => formatAmount(gemCurrency, v)),
+    [reward, pointCurrency, gemCurrency],
   );
-  // 우승 유상재화(#212 서버 지급) — 표기가 아예 없던 자리. 연출은 #214 소관이라 값만 보여준다.
+  // 시즌 유상재화(#251: 완주하면 전 순위 지급) — G 와 **병기**한다. 연출은 #214 소관이라 값만 보여준다.
   const gems = reward.gems ?? 0;
   const reducedMotion = usePrefersReducedMotion();
   const shown = useCountUp(reward.points, view.animate && !reducedMotion);
@@ -420,7 +421,7 @@ function SeasonRewardCard({
       <p className={styles.rewardDetail} data-testid="season-reward-message">
         {view.detail}
       </p>
-      {reward.awardedAt && view.status === "AWARDED" && (
+      {reward.awardedAt && isGranted(view.status) && (
         <p className={styles.rewardAt} data-testid="season-reward-at">
           지급 {formatAwardedAt(reward.awardedAt)}
         </p>
