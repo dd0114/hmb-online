@@ -311,20 +311,111 @@ class LeagueDivisionTest extends MatchTestBase {
     }
 
     @Test
-    void awayGhostRowsAreNotPartOfThePracticePool() {
-        // 원정 고스트(#245)는 실유저 덱 + 성장 스탯이라 난이도 설계 밖이다. kind 기본값이 'seed' 라
-        // 분류를 빼먹으면 BL-1 과 똑같은 결함이 다른 문으로 들어온다.
-        jdbcClient.sql("""
-                        INSERT INTO bots(id, name, persona, analysis_text, deck_json, kind)
-                        VALUES ('GHOST_test_probe', 'ghost', '', '', '{}', 'away')
-                        """)
-                .update();
-        List<String> pool = jdbcClient.sql("SELECT id FROM bots WHERE kind='seed'")
+    void aRealAwayGhostIsCreatedOutsideThePracticePool() {
+        // 원정 고스트(#245)는 **실유저 덱 + 성장 스탯**이라 난이도 설계 밖이다. bots.kind 기본값이
+        // 'seed' 라 AwayService 가 분류를 빼먹으면 리그 봇팀이 연습 풀을 오염시킨 것(BL-1)과
+        // 똑같은 결함이 다른 문으로 들어온다.
+        //
+        // ⚠️ 여기서 행을 직접 INSERT 하면 안 된다 — 그건 SQL 의미론을 확인하는 것이지 제품 동작이
+        // 아니다(실제로 그렇게 썼다가 독립검증에서 "변이체가 살아남는다"고 잡혔다).
+        // **실제 원정 매치 생성 API 를 태워** 생긴 행을 본다.
+        setupUserWithRealDeck("ghost-def");
+        setupUserWithRealDeck("ghost-def2");
+        String attacker = setupUserWithRealDeck("ghost-atk");
+
+        ResponseEntity<Map> cand = authGet("/api/away/candidates", attacker, Map.class);
+        assertThat(cand.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> offered = (List<Map<String, Object>>) cand.getBody().get("candidates");
+        assertThat(offered).isNotEmpty();
+        String defenderId = (String) offered.get(0).get("userId");
+        assertThat(authPost("/api/away/matches", attacker, Map.of("defenderId", defenderId), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        List<Map<String, Object>> ghosts = jdbcClient.sql("SELECT id, kind FROM bots WHERE id LIKE 'GHOST%'")
+                .query((rs, n) -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", rs.getString("id"));
+                    m.put("kind", rs.getString("kind"));
+                    return m;
+                })
+                .list();
+        assertThat(ghosts).as("원정 매치가 실제로 고스트 행을 만들었다").isNotEmpty();
+        assertThat(ghosts).allSatisfy(g ->
+                assertThat(g.get("kind")).as("%s 는 연습 풀이 아니다", g.get("id")).isEqualTo("away"));
+
+        List<String> practicePool = jdbcClient.sql("SELECT id FROM bots WHERE kind = 'seed'")
                 .query(String.class).list();
-        assertThat(pool).doesNotContain("GHOST_test_probe");
+        for (Map<String, Object> g : ghosts) {
+            assertThat(practicePool).doesNotContain((String) g.get("id"));
+        }
+        releaseActiveMatches();
     }
 
-    // ── 봇전 간이결과: 승점 산포가 실제 리그 밴드인가 (BL-5) ─────────────
+    @Test
+    void practiceCannotTargetANonSeedBotByExplicitId() {
+        // 랜덤 경로는 pickRandom 이 막지만, botId 를 명시하면 리그 봇팀·원정 고스트를 지목할 수 있다.
+        // 그 우회가 열려 있으면 풀 필터는 장식이다.
+        String token = setupUserWithRealDeck("explicit-bot");
+        String seasonId = startSeason(token);
+        String leagueBotId = (String) botRowsOf(seasonId).get(0).get("id");
+        releaseActiveMatches();
+
+        ResponseEntity<String> res = authPost("/api/matches", token,
+                Map.of("botId", leagueBotId), String.class);
+        assertThat(res.getStatusCode())
+                .as("리그 봇팀을 연습 상대로 지목하면 없는 봇과 같은 응답")
+                .isEqualTo(HttpStatus.NOT_FOUND);
+
+        // 시드봇 지목은 계속 된다(과잉 차단이면 기능 회귀).
+        releaseActiveMatches();
+        assertThat(authPost("/api/matches", token, Map.of("botId", "BOT_BAL"), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        releaseActiveMatches();
+    }
+
+    @Test
+    void lateReplayOfAnOldSeasonHookDoesNotUndoALaterPromotion() {
+        // 승급 CAS 가 실제로 막는 시나리오. 단순 재호출은 CAS 없이도 안전하다(from 이 시즌에 박제돼
+        // 있어 같은 to 를 쓴다) — 진짜 위험은 **유저가 이미 더 나아간 뒤** 옛 시즌 훅이 늦게 도는 것이다.
+        // D5 우승→D4, D4 우승→D3 까지 간 유저에게 첫 시즌 훅이 다시 돌면 division 을 4 로 덮어써
+        // 한 칸 되돌린다. (그래서 시즌을 **둘** 완주시켜야 이 변이가 잡힌다.)
+        String token = setupUserWithRealDeck("late-replay");
+        String userId = userIdOf("late-replay");
+        setDivision("late-replay", 5);
+
+        String firstSeason = startSeason(token);
+        winEverySeasonFixture(firstSeason);
+        invokeSeasonHook("maybeFinishSeason", firstSeason);
+        assertThat(divisionOfUser(userId)).as("1시즌 우승 → D4").isEqualTo(4);
+
+        String secondSeason = startSeason(token);
+        assertThat(divisionOfSeason(secondSeason)).isEqualTo(4);
+        winEverySeasonFixture(secondSeason);
+        invokeSeasonHook("maybeFinishSeason", secondSeason);
+        assertThat(divisionOfUser(userId)).as("2시즌 우승 → D3").isEqualTo(3);
+
+        // 이제 **첫 시즌** 훅이 늦게 한 번 더 돈다(재배포·재처리 등).
+        invokeSeasonHook("awardSeasonRewards", firstSeason);
+
+        assertThat(divisionOfUser(userId))
+                .as("옛 시즌 훅이 늦게 돌아도 진행도를 되돌리면 안 된다")
+                .isEqualTo(3);
+    }
+
+    /** 봇전 전부 0-0, 유저전 전부 승 — 유저가 확실한 1위가 되게. */
+    private void winEverySeasonFixture(String seasonId) {
+        jdbcClient.sql("UPDATE league_fixtures SET state='PLAYED', score_home=0, score_away=0 "
+                        + "WHERE season_id = ? AND is_user = 0").param(seasonId).update();
+        jdbcClient.sql("UPDATE league_fixtures SET state='PLAYED', score_home=1, score_away=0 "
+                        + "WHERE season_id = ? AND is_user = 1 AND home_team = ?")
+                .params(seasonId, LeagueService.USER_TEAM_ID).update();
+        jdbcClient.sql("UPDATE league_fixtures SET state='PLAYED', score_home=0, score_away=1 "
+                        + "WHERE season_id = ? AND is_user = 1 AND away_team = ?")
+                .params(seasonId, LeagueService.USER_TEAM_ID).update();
+    }
+
+    // ── 봇전 간이결과    // ── 봇전 간이결과    // ── 봇전 간이결과: 승점 산포가 실제 리그 밴드인가 (BL-5) ─────────────
 
     @Test
     void closelyMatchedTeamsStayCompetitiveUnderTheConfiguredPowerDivisor() {
@@ -511,6 +602,11 @@ class LeagueDivisionTest extends MatchTestBase {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    private int divisionOfUser(String userId) {
+        return jdbcClient.sql("SELECT division FROM users WHERE id = ?")
+                .param(userId).query(Integer.class).single();
     }
 
     private String seedOf(String seasonId) {

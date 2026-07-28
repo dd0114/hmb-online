@@ -210,7 +210,12 @@ BL-5 의 지문이다(실제 리그에서 나올 수 없는 산포). 18R 로 외
 | 40% | 24.1 | 0.1% / 1.5% / 6위 | 3.2% / 9.6% / 6위 |
 | 35% | 21.4 | 0.0% / 0.5% / 7위 | 1.1% / 4.0% / 7위 |
 
-**`power-divisor` 한 줄이 로스터 사다리 전체보다 효과가 크다.** divisor 별 봇 최고/최저 ppg:
+**`power-divisor` 한 줄이 로스터 사다리 전체보다 효과가 크다** — 단, 이는 **구 봇 파워 산포
+(sd 126)** 기준이다. ⚠️ 새 사다리는 디비전 내 산포를 **sd ≈ 25~60** 으로 눌러버려(디비전마다 단일
+등급대에서 뽑으므로) divisor 의 한계 기여가 줄어든다: 신규 시즌 기준 D10 승급 확률이 divisor 120
+에서도 79.6% 로, 400 대비 차이가 **약 6%p** 다. 즉 **구 데이터를 구하는 데는 divisor 가 결정적이고,
+새 사다리 위에서는 사다리가 주역**이다. 두 축 다 필요하다(진행 중 시즌은 구 로스터 그대로다).
+divisor 별 봇 최고/최저 ppg:
 
 | power-divisor | 봇 최고 ppg | 봇 최저 ppg | 판정 |
 |---|---|---|---|
@@ -256,7 +261,10 @@ BL-5 의 지문이다(실제 리그에서 나올 수 없는 산포). 18R 로 외
 
 ¹ **"신규 유저 덱(XI 6229) 그대로일 때"** 의 값이다(§3.2 곡선 보간). 사다리는 **절대 기준**이므로,
 D5 까지 올라간 유저는 그 사이 카드를 모아 덱이 강해져 있다 — 실제 체감은 이 표보다 높다.
-그게 이 설계의 의도다(**성장이 곧 진행**). 416경기/포인트 → 비율 SE ≈ 2.4%p, **±5%p 로 읽을 것.**
+그게 이 설계의 의도다(**성장이 곧 진행**).
+⚠️ **오차는 경기 수가 아니라 번들 수가 정한다**: 416경기지만 실제는 13번들 × 32시드라 번들간
+분산이 지배한다(번들별 승률 sd ≈ 27%p → **평균의 SE ≈ 7%p**). 독립 시행 가정 SE(2.4%p)를 쓰면
+없는 정밀도를 주장하게 된다. **±7%p 로 읽을 것.**
 ² §3.3 환산(divisor **400** 적용 후). ³ k>1.00 구간은 측정 범위 밖 **외삽**, W2 실측.
 
 **핵심 두 줄**:
@@ -394,9 +402,9 @@ D5(승급 36% · 강등 11%)부터 실제 벽이 시작되고, 최고 속도 유
 
 | 게이트 | 결과 |
 |---|---|
-| `./gradlew test --rerun-tasks` (server-java 전체) | ✅ 666 tests, 0 failed |
-| `LeagueDivisionTest` (신규, 15건) | ✅ |
-| **변이체 킬 검증** | ✅ 5/5 — 아래 표 |
+| `./gradlew test --rerun-tasks` (server-java 전체) | ✅ 668 tests, 0 failed |
+| `LeagueDivisionTest`(신규 18건) + `LeagueDivisionRollbackTest`(2건) | ✅ |
+| **변이체 킬 검증** | ✅ **9/9** — 아래 표 |
 | `npx vitest run data/players/data.test.ts` | ✅ 165 tests |
 | `npm run typecheck` · `npm test`(루트) | ✅ |
 | openapi-v2.yaml 파싱 + LeagueSeason additive | ✅ |
@@ -410,6 +418,10 @@ D5(승급 36% · 강등 11%)부터 실제 벽이 시작되고, 최고 속도 유
 | `MatchOrchestrator` 배율 적용 제거 | `divisionStrengthMultiplierActuallyReachesTheEngineSelectData` |
 | 승급/강등 호출 제거 | `winningEveryFixture…` · `losingEveryFixture…` |
 | 디비전 사다리 → 구 라운드로빈 | `botTeamPowerIncreasesMonotonically…` 외 2건 |
+| `AwayService` 의 `kind='away'` 제거 | `aRealAwayGhostIsCreatedOutsideThePracticePool` |
+| `getSeed` → `get`(명시 botId 우회 허용) | `practiceCannotTargetANonSeedBotByExplicitId` |
+| 승급 CAS 무력화 | `lateReplayOfAnOldSeasonHookDoesNotUndoALaterPromotion` |
+| 롤백 시 강등만 걸리게(비대칭 복원) | `rollbackToV1DisablesBothPromotionAndRelegation` |
 
 > ⚠️ 첫 시도에서 `power-divisor` 변이를 **아무 계약도 잡지 못했다**. 원래 쓴 것이 "한 시즌 봇 ppg 산포"
 > 라는 확률 지표였고, 새 사다리가 디비전 내 파워 산포를 이미 줄여놔(70~147, 구 라이브 465) 한 시즌

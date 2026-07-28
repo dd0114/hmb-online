@@ -576,9 +576,11 @@ public class LeagueService {
      * <p>디비전 표가 없으면(구 {@code league.v1.json}) <b>기존 등급-층화 라운드로빈</b>으로 돌아간다.
      * 발행물을 v1 으로 되돌리는 것이 곧 이 기능의 롤백이다.
      *
-     * <p>⚠️ 포지션은 GK(slot 0) 외에는 보지 않는다 — 구현 이전과 <b>같다</b>. 여기서 포지션까지
-     * 맞추면 봇이 더 강해져 {@code docs/plan-v5/opponent-balance.md} §3.2 의 감도 측정과 어긋난다
-     * (측정은 현행 로스터 위에서 했다). 포지션 정합은 별도 이슈.
+     * <p><b>포지션은 포메이션대로 채운다</b>(slot 0=GK, 이후 DF/MF/FW). W1 은 "GK 외엔 안 본다"로
+     * 계획했다가 실측에서 뒤집었다 — 등급만 보고 뽑으니 선발 XI 의 평균 GK 수가 디비전마다
+     * 1.11~<b>2.00</b> 으로 흔들려 <b>사다리가 단조롭지 않았다</b>(D2 승률 47.6% &gt; D3 33.7%).
+     * 골키퍼 둘이 필드에 선 팀은 등급과 무관하게 약하다 = 난이도가 로스터 추첨 운에 좌우된다.
+     * 근거 = {@code docs/plan-v5/opponent-balance.md} §6.1.
      */
     private List<String> sampleRoster(SplittableRandom rng, List<PlayerRow> gkPool,
                                       Map<String, List<PlayerRow>> byGrade,
@@ -809,18 +811,27 @@ public class LeagueService {
      * {@code league_seasons.division} 기준이라 재호출해도 같은 결과다.
      */
     private void applyPromotion(SeasonRow season, int userRank) {
+        List<LeagueDataService.Division> divisions = leagueDataService.get()
+                .map(LeagueDataService.LeagueData::divisions).orElse(List.of());
+        if (divisions.isEmpty()) {
+            // 구 발행물(league.v1 = 사다리 없음)로 되돌린 상태 — 승급도 강등도 하지 않는다.
+            // ⚠️ 예전엔 top 이 from 으로 폴백돼 **승급만 no-op 이 되고 강등은 계속 걸렸다**.
+            // 그 비대칭으로 롤백 상태를 오래 굴리면 전 유저가 입문 디비전으로 흘러내리고,
+            // 롤포워드했을 때 진행도가 사라진다. 롤백은 **기능이 꺼지는 것**이어야 한다.
+            return;
+        }
         int from = season.division();
-        int top = leagueDataService.get().map(LeagueDataService.LeagueData::divisions)
-                .filter(d -> !d.isEmpty())
-                .map(d -> d.stream().mapToInt(LeagueDataService.Division::level).min().orElse(from))
-                .orElse(from);
+        int top = divisions.stream().mapToInt(LeagueDataService.Division::level).min().orElse(from);
         int bottom = entryDivision();
         int to = nextDivision(from, userRank, top, bottom, promoteRankMax, relegateRankMin);
         if (to != from) {
             // **CAS**: 유저의 현재 디비전이 아직 이 시즌의 디비전일 때만 옮긴다.
-            // 보상은 원장 유니크가 재진입을 막지만 디비전에는 그런 장치가 없다 — 이 훅이 두 번 돌면
-            // 두 칸 올라간다. 여기서 막아두면 새 시즌이 이미 시작돼 users.division 이 옮겨간 뒤의
-            // 늦은 재호출도 자동으로 no-op 이 된다.
+            //
+            // 단순 재호출은 CAS 없이도 안전하다 — from 을 박제된 league_seasons.division 에서 읽으므로
+            // 몇 번을 돌려도 같은 to 를 쓴다. CAS 가 실제로 막는 것은 **유저가 이미 더 나아간 뒤 옛
+            // 시즌 훅이 늦게 도는 경우**다: D5 우승→D4, D4 우승→D3 까지 간 유저에게 첫 시즌 훅이
+            // 다시 돌면 CAS 없이는 division 을 4 로 덮어써 **한 칸 되돌린다**.
+            // 계약 = LeagueDivisionTest.lateReplayOfAnOldSeasonHookDoesNotUndoALaterPromotion
             int moved = jdbcClient.sql("UPDATE users SET division = ? WHERE id = ? AND division = ?")
                     .params(to, season.userId(), from).update();
             if (moved == 1) {
