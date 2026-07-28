@@ -3,7 +3,8 @@ import { Modal } from "../common/Modal";
 import { RevealCard } from "../common/RevealCard";
 import { GRADE_LABELS, type Grade } from "../common/grades";
 import { useCurrency } from "../common/Amount";
-import { CURRENCY_POINT, formatAmount } from "../common/currency";
+import { useAppConfigValue } from "../common/AppConfigContext";
+import { CURRENCY_GEM, CURRENCY_POINT, formatAmount } from "../common/currency";
 import type { StarterGrantResponse } from "../api/p3";
 import styles from "./StarterReveal.module.css";
 
@@ -22,13 +23,27 @@ export interface StarterRevealProps {
   grant?: StarterGrantResponse | null;
   /** 기본팩 장수 안내(문구용). */
   basicCount?: number;
+  /**
+   * 지급액 오버라이드(테스트·스토리용). **평소엔 넘기지 않는다** — 서버 config 가 SoT 다(#232).
+   * 예전엔 기본값 3,000 이 박혀 있었고 호출부가 넘기지도 않아 화면이 늘 상수를 그렸는데,
+   * 운영이 무배포 override 로 지급액을 올린 뒤에도(#209) 그대로였다.
+   */
   initialPoints?: number;
   onClose: () => void;
 }
 
-export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, onClose }: StarterRevealProps) {
-  // 지급 금액 표기는 서버 재화 메타에서 (#232) — 문장 안이라 컴포넌트가 아니라 문자열로 만든다.
-  const grantedPoints = formatAmount(useCurrency(CURRENCY_POINT), initialPoints);
+export function StarterReveal({ grant, basicCount = 14, initialPoints, onClose }: StarterRevealProps) {
+  // 지급액·표기 모두 서버에서 (#232). 문장 안이라 컴포넌트가 아니라 문자열로 만든다.
+  const grants = useAppConfigValue()?.grants ?? null;
+  const pointCurrency = useCurrency(CURRENCY_POINT);
+  const gemCurrency = useCurrency(CURRENCY_GEM);
+  const points = initialPoints ?? grants?.initialPoints ?? 0;
+  const gems = grants?.initialGems ?? 0;
+  // 지급 문구 — 받은 재화를 빠뜨리지 않는다(우승 유상재화가 화면에 없던 것과 같은 형태였다).
+  const grantedAmounts = [
+    points > 0 ? formatAmount(pointCurrency, points) : null,
+    gems > 0 ? formatAmount(gemCurrency, gems) : null,
+  ].filter(Boolean).join(" · ");
   const player = grant?.granted ? grant.player : null;
   // 카드가 없으면 공개할 것도 없다 — 곧바로 확인 버튼만 있는 상태로 연다.
   const [revealed, setRevealed] = useState(false);
@@ -70,7 +85,7 @@ export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, on
               <span className={styles.grantName}>{player.name}</span> ·{" "}
               {GRADE_LABELS[player.grade as Grade]} 영입!
               <br />
-              선수 {basicCount + 1}명과 {grantedPoints}가 지급되었습니다.
+              선수 {basicCount + 1}명{grantedAmounts && `과 ${grantedAmounts}`}이 지급되었습니다.
             </p>
           )}
         </>
@@ -78,7 +93,7 @@ export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, on
 
       {!player && (
         <p className={styles.grant}>
-          선수 {basicCount}명과 {grantedPoints}가 지급되었습니다.
+          선수 {basicCount}명{grantedAmounts && `과 ${grantedAmounts}`}이 지급되었습니다.
         </p>
       )}
 

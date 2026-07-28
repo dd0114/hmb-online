@@ -390,8 +390,25 @@ function SeasonRewardCard({
         data-points={reward.points}
         data-awarded={view.showPoints ? "true" : "false"}
       >
-        <span className={styles.rewardPointsValue}>{shown.toLocaleString()}</span>
-        <span className={styles.rewardPointsUnit}>{pointCurrency.symbol}</span>
+        {/*
+          이 화면만 심볼을 손으로 뒤에 붙이고 있었다 → 서버가 position 을 prefix 로 바꾸면 다른 화면은
+          다 뒤집히는데 여기만 접미로 남는다(독립검증 minor). 카운트업 연출 때문에 숫자와 단위를
+          다른 크기로 그려야 해서 문자열 하나로 합칠 수는 없으므로, **순서와 구분자를 메타에서 읽어**
+          두 조각으로 배치한다.
+        */}
+        {pointCurrency.position === "prefix" ? (
+          <>
+            <span className={styles.rewardPointsUnit}>{pointCurrency.symbol}</span>
+            {pointCurrency.separator}
+            <span className={styles.rewardPointsValue}>{shown.toLocaleString()}</span>
+          </>
+        ) : (
+          <>
+            <span className={styles.rewardPointsValue}>{shown.toLocaleString()}</span>
+            {pointCurrency.separator}
+            <span className={styles.rewardPointsUnit}>{pointCurrency.symbol}</span>
+          </>
+        )}
         {!view.showPoints && <span className={styles.rewardPointsNote}>미지급</span>}
       </p>
       {gems > 0 && (

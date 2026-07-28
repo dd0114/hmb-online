@@ -92,6 +92,12 @@
   조사도 이름을 따라가야 한다("다이아이 부족합니다" 방지).
 - **가격은 재화 코드와 함께 내려간다**(`ConfigController.Price` · `TradeSlot.speedupCurrency`).
   떼어 놓으면 클라가 단위를 추측하고, 그게 #213(화면 "300 P" / 실제 다이아 300 차감)의 형태였다.
+- **`/api/config` 는 `AuthInterceptor` 제외 대상**(`WebMvcConfig`) — 클라가 부팅 시 한 번 부르는 값이라
+  401 을 내면 그 세션 전체가 표기 없이 굴러간다(독립검증 BL-1). 유저 데이터 0 인 공개 카탈로그다.
+  계약 = `CurrencyConfigApiTest.configIsReachableWithoutAuth`(인증 제외를 되돌리면 실제로 깨진다).
+- **재화를 정하는 쪽이 그 재화의 잔액도 준다** — `TradeSlot.speedupCurrency` 를 서버가 정하므로
+  `TradeSlotsResponse.wallet` 에 `gems` 를 같이 싣는다(#232 additive). 안 그러면 클라가 유상재화 비용을
+  무료재화 잔액으로 잰다.
 - 계약 = `CurrencyMetaTest`(로더 성질) + `CurrencyConfigApiTest`(**변이체 킬** — 발행물 표기를 `Ω/Ξ` 로
   바꿔 두고 API 응답·에러 문구가 따라오는지). 심볼 값 자체는 단언하지 않는다(값은 언제든 바뀐다).
 

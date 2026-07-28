@@ -512,7 +512,10 @@ export interface components {
         /** @enum {string} */
         TradeOfferKind: "FA" | "TRADE";
         WalletInfo: {
+            /** @description 무료재화 잔액(내부 코드 POINT). 표기는 GET /api/config 의 currencies 에서 조회한다. */
             points: number;
+            /** @description 유상재화 잔액(내부 코드 GEM) — #232 additive. 단축 비용의 재화를 서버가 정하므로 (TradeSlot.speedupCurrency) **그 재화의 잔액도 서버가 준다**. 안 주면 클라가 다른 재화 비용을 무료재화 잔액으로 재게 된다. 구서버 응답엔 없을 수 있어 required 아님. */
+            gems?: number;
         };
         /**
          * @description 슬롯 상태. IDLE: 오퍼 없음(모든 오퍼 필드 null) — [장 시작!] 대기.

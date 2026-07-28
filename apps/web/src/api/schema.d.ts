@@ -958,6 +958,11 @@ export interface components {
             currencies: components["schemas"]["Currency"][];
             /** @description economy 파일이 로드되지 않았으면 null(표기는 그래도 내려간다). */
             shop?: components["schemas"]["ShopConfig"] | null;
+            /** @description 가입 지급액. 클라이언트가 상수(3,000)를 그리고 있었고 유상재화 지급은 **표기조차 없었다** — 운영이 무배포 override 로 지급액을 올린 뒤에도 화면은 그대로였다(#209/#232). */
+            grants?: {
+                initialPoints: number;
+                initialGems: number;
+            } | null;
         };
         ShopConfig: {
             gacha?: {
@@ -982,17 +987,17 @@ export interface components {
             } | null;
         };
         WalletInfo: {
-            /** @description 골드(게임 재화). 트레이드·무료강화(노말 다이스)에 쓴다. */
+            /** @description 무료재화 잔액(내부 코드 POINT) — 트레이드·무료강화(노말 다이스)에 쓴다. **표기(이름·심볼)는 값이 아니라 데이터다** — GET /api/config 의 currencies 에서 조회한다(#232). */
             points: number;
-            /** @description 젬(유료 재화) — 뽑기·유료 다이스. #212 additive(구서버 응답엔 없을 수 있어 required 아님). 수급은 가입 지급 + 리그 우승 둘뿐. */
+            /** @description 유상재화 잔액(내부 코드 GEM) — 뽑기·유료 다이스. #212 additive(구서버 응답엔 없을 수 있어 required 아님). 수급은 가입 지급 + 리그 우승 둘뿐. 표기는 GET /api/config 참조(#232). */
             gems?: number;
         };
         SeasonReward: {
             /** @description 유저 최종 순위(시즌 진행 중이면 현재 잠정 순위). */
             rank: number;
-            /** @description 실지급 골드(원장 delta). 미지급이면 0 — 예정액이 아니다. */
+            /** @description 실지급 무료재화(원장 delta). 미지급이면 0 — 예정액이 아니다. */
             points: number;
-            /** @description 실지급 젬. **우승(1위)일 때만** 500~3000 랜덤이고 그 외에는 0(#212). web 우승 연출의 입력(#214). */
+            /** @description 실지급 유상재화. **우승(1위)일 때만** 500~3000 랜덤이고 그 외에는 0(#212). web 우승 연출의 입력(#214). 표기는 GET /api/config 참조(#232). */
             gems?: number;
             /** @enum {string} */
             status: "PENDING" | "GRANTED" | "NONE";

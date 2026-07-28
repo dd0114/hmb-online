@@ -37,6 +37,8 @@ export interface AppConfig {
     dice: { normal: Price; cash: Price } | null;
     gemTopup: { enabled: boolean; packs: { id: string; gems: number; mockPrice: string }[] } | null;
   } | null;
+  /** 가입 지급액. 클라 상수(3,000)가 이미 틀려 있었고 유상재화 지급은 표기조차 없었다(#232). */
+  grants: { initialPoints: number; initialGems: number } | null;
 }
 
 export const CONFIG_QUERY_KEY = ["config"] as const;
@@ -44,6 +46,13 @@ export const CONFIG_QUERY_KEY = ["config"] as const;
 /**
  * 부트스트랩 config. 표기는 자주 바뀌지 않으므로 오래 캐시하되, 세션 동안 한 번은 다시 확인한다
  * (admin 이 무배포로 갈아끼운 표기가 새로고침 없이도 결국 반영되게).
+ *
+ * ⚠️ **한 번 실패하면 세션 내내 폴백**이라는 함정이 있다. 앱 부팅 시 한 번 부르는 쿼리인데
+ * 전역 기본값이 `retry:false` · `refetchOnWindowFocus:false` 라, 부팅 순간의 401·네트워크 블립
+ * 하나로 그 세션 전체가 코드 폴백("62,000 POINT")으로 굴러갔다(독립검증 BL-1 — 인증 게이트가
+ * 원인이었고 서버에서 `/api/config` 를 공개로 돌려 근본을 막았다). 원인을 없앴어도 **되살아날 수
+ * 있는 실패 모드**라 여기서 자가복구 경로를 열어 둔다: 재시도 + 포커스/재접속 시 갱신.
+ * 공개·경량 응답이라 비용은 무시할 만하다.
  */
 export function useAppConfig() {
   return useQuery({
@@ -51,7 +60,8 @@ export function useAppConfig() {
     queryFn: () => apiFetch<AppConfig>("/api/config"),
     staleTime: 5 * 60_000,
     gcTime: 60 * 60_000,
-    // 표기를 못 받아도 화면은 떠야 한다(폴백은 currency.ts 가 책임진다) — 재시도는 짧게.
-    retry: 1,
+    retry: 3,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
   });
 }

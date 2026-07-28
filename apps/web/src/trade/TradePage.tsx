@@ -51,6 +51,9 @@ export function TradePage() {
   const owned = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
 
   const walletPoints = data?.wallet.points ?? 0;
+  // #232: 단축 비용의 재화는 **서버가 정한다**(slot.speedupCurrency). 무료재화 잔액으로만 게이팅하면
+  // 서버가 유상재화로 바꾸는 순간 "표기는 Z, 잠금은 골드 기준"이 된다 — #213 의 후반부와 같은 형태다.
+  const walletGems = data?.wallet.gems ?? 0;
   const walletLoaded = Boolean(data);
   const busy = start.isPending || speedup.isPending || propose.isPending || accept.isPending;
 
@@ -97,6 +100,7 @@ export function TradePage() {
               slot={slot}
               liveRemainingSec={live}
               walletPoints={walletPoints}
+              walletGems={walletGems}
               walletLoaded={walletLoaded}
               catalog={catalog}
               owned={owned}

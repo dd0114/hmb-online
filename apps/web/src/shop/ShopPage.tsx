@@ -5,7 +5,7 @@ import { useAppConfigValue } from "../common/AppConfigContext";
 import { useGacha, useMe, type GachaResponse } from "../api/hooks";
 import { Layout } from "../common/Layout";
 import { Amount, useCurrency } from "../common/Amount";
-import { shortageMessage } from "../common/currency";
+import { CURRENCY_GEM, CURRENCY_POINT, shortageMessage } from "../common/currency";
 import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { GachaReveal } from "./GachaReveal";
@@ -36,8 +36,12 @@ export function ShopPage() {
   const gachaCfg = config?.shop?.gacha ?? null;
   const payCurrencyCode = gachaCfg?.single.currency ?? "";
   const payCurrency = useCurrency(payCurrencyCode);
-  // 잔액 판정도 **결제 재화 기준**이어야 한다. 무료재화 잔액으로 게이팅하면 다이아를 들고도 잠긴다.
-  const balance = payCurrencyCode === "GEM" ? gems : points;
+  // 잔액 판정도 **결제 재화 기준**이어야 한다. 무료재화 잔액으로 게이팅하면 유상재화를 들고도 잠긴다.
+  // ⚠️ 지갑은 두 재화만 들고 있다 — 서버가 3번째 재화(로더는 미지 코드를 지원한다)로 값을 매기면
+  // 우리는 잔액을 모른다. 그때는 **잠그지 않고 서버 판정에 맡긴다**(조용히 무료재화로 재는 것보다 낫다).
+  const balances: Record<string, number> = { [CURRENCY_POINT]: points, [CURRENCY_GEM]: gems };
+  const knownBalance = payCurrencyCode in balances;
+  const balance = balances[payCurrencyCode] ?? Number.POSITIVE_INFINITY;
 
   function pull(kind: "single" | "ten") {
     setError(null);
@@ -82,7 +86,8 @@ export function ShopPage() {
     cost: gachaCfg?.ten.cost ?? 0,
     pending: gacha.isPending,
   });
-  const short = shortageMessage(payCurrency);
+  // 잔액을 모르는 재화면 "부족" 문구도 띄우지 않는다(우리가 판정할 근거가 없다).
+  const short = knownBalance ? shortageMessage(payCurrency) : "";
   // 충전 탭은 서버 플래그를 따른다 — 비활성(#212 젬 수도꼭지 차단)인데 노출하면 누르는 족족 403 이다.
   const topupEnabled = config?.shop?.gemTopup?.enabled ?? false;
 
@@ -147,7 +152,7 @@ export function ShopPage() {
           >
             {gachaCfg && <Amount code={gachaCfg.single.currency} value={gachaCfg.single.cost} />}
           </button>
-          {single.showShort && <p className={styles.shortNote}>{short}</p>}
+          {single.showShort && short && <p className={styles.shortNote}>{short}</p>}
         </div>
 
         <div className={styles.pullCard}>
@@ -162,7 +167,7 @@ export function ShopPage() {
           >
             {gachaCfg && <Amount code={gachaCfg.ten.currency} value={gachaCfg.ten.cost} />}
           </button>
-          {ten.showShort && <p className={styles.shortNote}>{short}</p>}
+          {ten.showShort && short && <p className={styles.shortNote}>{short}</p>}
         </div>
       </div>
 

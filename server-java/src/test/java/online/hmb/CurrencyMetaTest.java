@@ -34,6 +34,30 @@ class CurrencyMetaTest {
         return p;
     }
 
+    /**
+     * <b>hero 확정 표기 핀</b> (#232: 다이아=Z, 골드=G).
+     *
+     * <p>다른 테스트들은 일부러 심볼 <b>값</b>을 단언하지 않는다 — 표기는 데이터고, 값을 박으면
+     * 표기를 바꿀 때마다 테스트가 깨져 "표기는 데이터"라는 전제와 모순되기 때문이다. 그런데
+     * 지금은 발행물(`data/players/economy.v3.json`)에 {@code currencies} 가 <b>없어서</b> 실배포
+     * 값이 전부 이 상수에서 나온다 = 값이 사실상 <b>코드</b>다. 그 상태에서 아무도 값을 안 보면
+     * {@code DEFAULT_CURRENCIES} 를 "P"/"포인트"로 되돌려도 전 게이트가 green 이다(독립검증 MJ-4).
+     *
+     * <p>그래서 <b>기본값 한 곳만</b> 핀으로 박는다. 발행물이 {@code currencies} 를 싣는 순간
+     * (계획된 (a)→(b) 승격) 이 상수는 폴백으로 물러나고, 그때 이 테스트는 발행물 쪽으로 옮긴다.
+     */
+    @Test
+    void defaultDisplayMatchesTheConfirmedNotation() {
+        Currency point = EconomyService.currencyOf(EconomyService.DEFAULT_CURRENCIES,
+                EconomyService.CURRENCY_POINT);
+        Currency gem = EconomyService.currencyOf(EconomyService.DEFAULT_CURRENCIES,
+                EconomyService.CURRENCY_GEM);
+        assertThat(point.symbol()).isEqualTo("G");
+        assertThat(point.name()).isEqualTo("골드");
+        assertThat(gem.symbol()).isEqualTo("Z");
+        assertThat(gem.name()).isEqualTo("다이아");
+    }
+
     /** economy 파일이 아예 없어도 표기는 나와야 한다 — 빈 단위가 화면에 나가는 것이 최악이다. */
     @Test
     void missingEconomyStillYieldsUsableCurrencyMeta(@TempDir Path dir) {
@@ -96,6 +120,18 @@ class CurrencyMetaTest {
                 {"version":"x","currencies":[{"code":"POINT","separator":""}]}
                 """);
         assertThat(EconomyService.currencyOf(load(f), EconomyService.CURRENCY_POINT).separator()).isEmpty();
+    }
+
+    /**
+     * {@code icon} 도 빈 문자열로 <b>끌 수 있어야</b> 한다 — 클라 계약이 "빈 문자열이면 안 그린다"인데
+     * 서버가 그 값을 못 내면 아이콘 제거가 배포 작업이 된다(독립검증 minor).
+     */
+    @Test
+    void emptyIconTurnsTheIconOff(@TempDir Path dir) throws Exception {
+        Path f = write(dir, "e.json", """
+                {"version":"x","currencies":[{"code":"GEM","icon":""}]}
+                """);
+        assertThat(EconomyService.currencyOf(load(f), EconomyService.CURRENCY_GEM).icon()).isEmpty();
     }
 
     /** 모르는 코드도 버리지 않는다 — 재화가 늘어날 때 서버 코드 수정 없이 실린다. */

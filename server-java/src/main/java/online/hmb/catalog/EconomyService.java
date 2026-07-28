@@ -426,7 +426,8 @@ public class EconomyService {
                 base.code(),
                 text(over, "symbol", base.symbol()),
                 text(over, "name", base.name()),
-                text(over, "icon", base.icon()),
+                // icon 은 separator 와 같이 **빈 문자열이 의미 있는 값**(아이콘 끄기)이다.
+                over.hasNonNull("icon") ? over.get("icon").asText() : base.icon(),
                 text(over, "position", base.position()),
                 // separator 는 " " 를 의미 있는 값으로 쓰므로 blank 검사를 하지 않는다(빈 문자열 = 붙여쓰기).
                 over.hasNonNull("separator") ? over.get("separator").asText() : base.separator());

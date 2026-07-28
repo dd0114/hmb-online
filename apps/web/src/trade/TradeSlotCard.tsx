@@ -1,7 +1,7 @@
 import type { CatalogPlayer } from "../api/hooks";
 import type { FaProposeRequest, TradeSlot } from "../api/v2";
 import { Amount, useCurrency } from "../common/Amount";
-import { CURRENCY_POINT, shortageMessage } from "../common/currency";
+import { CURRENCY_GEM, CURRENCY_POINT, shortageMessage } from "../common/currency";
 import { ProposeBuilder } from "./ProposeBuilder";
 import { TradePlayerCard } from "./TradePlayerCard";
 import {
@@ -25,6 +25,8 @@ interface TradeSlotCardProps {
   /** Live countdown for WAITING (parent ticks it once/second). */
   liveRemainingSec: number;
   walletPoints: number;
+  /** 유상재화 잔액 — 서버가 speedupCurrency 로 유상재화를 지정할 수 있으므로 같이 받는다(#232). */
+  walletGems: number;
   walletLoaded: boolean;
   /** playerId → catalog entry, for enriching PlayerRef with attributes·personality. */
   catalog: Map<string, CatalogPlayer>;
@@ -39,7 +41,7 @@ interface TradeSlotCardProps {
 }
 
 export function TradeSlotCard(props: TradeSlotCardProps) {
-  const { slot, liveRemainingSec, walletPoints, walletLoaded, catalog, owned, busy } = props;
+  const { slot, liveRemainingSec, walletPoints, walletGems, walletLoaded, catalog, owned, busy } = props;
   const view = slotView(slot);
   const reveal = waitingReveal(slot);
   const target = slot.target ? catalog.get(slot.target.playerId) : undefined;
@@ -85,6 +87,7 @@ export function TradeSlotCard(props: TradeSlotCardProps) {
           targetDetail={target}
           liveRemainingSec={liveRemainingSec}
           walletPoints={walletPoints}
+          walletGems={walletGems}
           walletLoaded={walletLoaded}
           busy={busy}
           onSpeedup={props.onSpeedup}
@@ -206,6 +209,7 @@ function WaitingBody({
   targetDetail,
   liveRemainingSec,
   walletPoints,
+  walletGems,
   walletLoaded,
   busy,
   onSpeedup,
@@ -215,18 +219,23 @@ function WaitingBody({
   targetDetail: CatalogPlayer | undefined;
   liveRemainingSec: number;
   walletPoints: number;
+  /** 유상재화 잔액 — 서버가 speedupCurrency 로 유상재화를 지정할 수 있으므로 같이 받는다(#232). */
+  walletGems: number;
   walletLoaded: boolean;
   busy: boolean;
   onSpeedup: (slot: number) => void;
 }) {
+  // 단축 비용의 재화 — 서버가 준 코드를 그대로 쓴다(없으면 무료재화로 폴백).
+  const speedupCode = slot.speedupCurrency ?? CURRENCY_POINT;
+  const speedupCurrency = useCurrency(speedupCode);
+  // ⚠️ 잔액도 **그 재화**로 고른다. 표기만 서버를 따르고 게이팅은 무료재화로 두면
+  // "500 Z 인데 골드가 모자라서 잠김"이 된다(#213 의 후반부와 같은 형태, 독립검증 MJ-5).
   const btn = speedupButtonState({
     loaded: walletLoaded,
-    points: walletPoints,
+    points: speedupCode === CURRENCY_GEM ? walletGems : walletPoints,
     cost: slot.speedupCost,
     pending: busy,
   });
-  // 단축 비용의 재화 — 서버가 준 코드를 그대로 쓴다(없으면 무료재화로 폴백).
-  const speedupCurrency = useCurrency(slot.speedupCurrency ?? CURRENCY_POINT);
   // 등급만 공개 — 이름·포지션·능력치는 서버가 아예 안 보낸다(카운트다운 만료 전 정체 비공개).
   const grade = gradeContactLabel(slot.targetGrade);
   return (

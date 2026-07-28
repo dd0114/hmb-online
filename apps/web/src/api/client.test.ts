@@ -10,6 +10,7 @@ import {
   getProvider,
   getToken,
   isAuthEndpoint,
+  isSessionNeutralEndpoint,
   setProvider,
   setToken,
   setUnauthorizedHandler,
@@ -144,6 +145,34 @@ describe("apiFetch", () => {
         status: 401,
         code: "BAD_CREDENTIALS",
       });
+    });
+
+    /**
+     * 공개(세션 중립) 경로 — #232. `/api/config` 는 재화 표기·상점 가격이라 유저 데이터가 0 이고
+     * 서버에서 인증 제외돼 있다. 그런데 "인증 경로가 아닌 401 = 세션 만료" 규칙에 걸리면,
+     * 프록시·CDN 이 이 경로에 401 을 끼우는 순간 **유저 데이터와 무관한 응답 하나가 로그인된
+     * 유저를 튕겨낸다**. 에러는 던지되 세션은 건드리지 않는다.
+     */
+    it("공개 경로(/api/config) 401 은 세션을 파기하지 않는다", async () => {
+      setToken("still-valid-token");
+      setProvider("guest");
+      const handler = vi.fn();
+      setUnauthorizedHandler(handler);
+      mock401();
+
+      await expect(apiFetch("/api/config")).rejects.toBeInstanceOf(ApiError);
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(getToken()).toBe("still-valid-token");
+      expect(getProvider()).toBe("guest");
+    });
+
+    it("공개 경로 판별도 절대 URL·base 서브패스에서 같은 답을 낸다", () => {
+      expect(isSessionNeutralEndpoint("/api/config")).toBe(true);
+      expect(isSessionNeutralEndpoint("https://api.example.com/api/config")).toBe(true);
+      // 접두만 겹치는 경로는 공개가 아니다.
+      expect(isSessionNeutralEndpoint("/api/configuration")).toBe(false);
+      expect(isSessionNeutralEndpoint("/api/me")).toBe(false);
     });
 
     it.each([

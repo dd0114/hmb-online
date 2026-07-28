@@ -38,7 +38,9 @@ public class ConfigController {
     public ConfigResponse config() {
         List<Currency> currencies = economyService.currencies();
         Economy economy = economyService.snapshot().economy().orElse(null);
-        return new ConfigResponse(currencies, economy == null ? null : shopOf(economy));
+        return new ConfigResponse(currencies,
+                economy == null ? null : shopOf(economy),
+                economy == null ? null : new Grants(economy.initialPoints(), economy.initialGems()));
     }
 
     private static ShopConfig shopOf(Economy e) {
@@ -61,7 +63,15 @@ public class ConfigController {
         return new ShopConfig(gacha, dice, topup);
     }
 
-    public record ConfigResponse(List<Currency> currencies, ShopConfig shop) {
+    public record ConfigResponse(List<Currency> currencies, ShopConfig shop, Grants grants) {
+    }
+
+    /**
+     * 가입 지급액 (#232). 가입 연출이 클라 상수(3,000)를 그리고 있었고 <b>유상재화 지급은 아예
+     * 표기가 없었다</b> — 리그 우승에서 고친 "받은 재화가 화면에 없다"와 같은 형태다.
+     * 실제로 운영이 무배포 override 로 유상재화 지급액을 올린 이력이 있어(#209) 클라 상수는 이미 틀렸다.
+     */
+    public record Grants(int initialPoints, int initialGems) {
     }
 
     public record ShopConfig(GachaConfig gacha, DiceConfig dice, GemTopupConfig gemTopup) {

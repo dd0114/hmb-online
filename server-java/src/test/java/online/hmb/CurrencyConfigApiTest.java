@@ -80,6 +80,22 @@ class CurrencyConfigApiTest extends ApiTestBase {
         return list.stream().filter(c -> code.equals(c.get("code"))).findFirst().orElseThrow();
     }
 
+    /**
+     * <b>인증 없이도 200</b> (#232 BL-1).
+     *
+     * <p>이걸 401 로 두면 클라가 부팅 때 한 번 부르는 이 요청이 <b>로그인 전에</b> 실패하고,
+     * 재조회 트리거가 없어 <b>그 세션 전체</b>가 코드 폴백("62,000 POINT")으로 굴러간다.
+     * 실제로 그 상태로 구현돼 독립검증에서 잡혔다 — 신규·세션만료 유저의 첫 진입이 전부 그 경로다.
+     * 내용은 공개 카탈로그(심볼·이름·공시 가격)라 감출 것이 없다.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void configIsReachableWithoutAuth() {
+        ResponseEntity<Map> res = rest.getForEntity(baseUrl("/api/config"), Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(currency(res.getBody(), "POINT")).containsEntry("symbol", POINT_SYMBOL);
+    }
+
     /** 표기표가 발행물 그대로 내려간다 — 클라가 심볼을 알 필요가 없어지는 지점. */
     @Test
     void configServesTheCurrencyTableFromData() {

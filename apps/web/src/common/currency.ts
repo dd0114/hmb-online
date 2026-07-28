@@ -23,8 +23,31 @@ export function fallbackCurrency(code: string): Currency {
   return { code, symbol: code, name: code, icon: "", position: "suffix", separator: " " };
 }
 
+/**
+ * 코드로 표기 조회 — **필드 단위로** 폴백을 덮는다.
+ *
+ * 코드가 있으면 그대로 쓰던 구현은, 서버가 일부 필드만 준 응답에서 `undefined` 를 그대로 화면에
+ * 보간했다(`62,000undefinedΩ`, 390px 뷰포트가 498px 로 벌어짐 — 독립검증 MJ-1). 응답 스키마는
+ * 클라가 강제할 수 없으니(구 서버·롤백·프록시 변형) 렌더 직전에 성분을 보장한다.
+ * `separator` 만은 **빈 문자열이 의미 있는 값**(붙여쓰기)이라 존재 여부로 판정한다.
+ */
 export function findCurrency(currencies: Currency[] | undefined, code: string): Currency {
-  return currencies?.find((c) => c.code === code) ?? fallbackCurrency(code);
+  const found = currencies?.find((c) => c.code === code);
+  if (!found) return fallbackCurrency(code);
+  const base = fallbackCurrency(code);
+  const position = found.position === "prefix" || found.position === "suffix" ? found.position : base.position;
+  return {
+    code,
+    symbol: nonEmpty(found.symbol) ?? base.symbol,
+    name: nonEmpty(found.name) ?? base.name,
+    icon: typeof found.icon === "string" ? found.icon : base.icon,
+    position,
+    separator: typeof found.separator === "string" ? found.separator : base.separator,
+  };
+}
+
+function nonEmpty(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
 }
 
 /** 숫자 표기(천단위 구분). 금액 포맷은 한 곳에서만 정한다. */

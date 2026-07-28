@@ -169,7 +169,8 @@ public class GrowthService {
     private EconomyService.Gems gemsCfg() {
         return economyService.get().map(EconomyService.Economy::gems)
                 .orElseThrow(() -> new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "GEMS_CONFIG_MISSING",
-                        "젬 설정(economy.gems)이 로드되지 않았습니다"));
+                        economyService.currency(EconomyService.CURRENCY_GEM).name()
+                                + " 설정(economy.gems)이 로드되지 않았습니다"));
     }
 
     // ── 유효스탯 계산 (순수, DB 무관 부분 static) ───────────────────────

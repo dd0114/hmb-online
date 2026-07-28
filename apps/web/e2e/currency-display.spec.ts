@@ -184,6 +184,29 @@ test("로그(트레이드) 금액 태그가 서버 표기를 따른다", async (
   await expectNoLegacyCurrencyText(page, "로그");
 });
 
+test("가입 연출이 지급액·재화를 서버에서 받아 그린다 — 받은 재화를 빠뜨리지 않는다", async ({ page }) => {
+  // 예전엔 클라 상수 3,000 을 "P"로 그리고 유상재화 지급은 **표기조차 없었다**(리그 우승과 같은 형태).
+  // 운영이 무배포 override 로 지급액을 올린 이력이 있어(#209) 상수는 이미 틀린 값이었다.
+  await mockApi(page, { ...ODD, initialPoints: 4_321, initialGems: 12_000 });
+  await page.route((u) => u.pathname === "/api/auth/login", (r) =>
+    r.fulfill(json({ token: "mock-token", user: { id: "U1", nickname: "테스터" }, isNew: true })),
+  );
+  await page.route((u) => u.pathname === "/api/me/starter-grant", (r) =>
+    r.fulfill(json({ granted: false, player: null })),
+  );
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/login");
+  await page.getByTestId("provider-guest").click();
+  await page.locator("#nickname").fill("테스터");
+  await page.getByRole("button", { name: "계속" }).click();
+
+  const reveal = page.getByTestId("starter-reveal");
+  await expect(reveal).toBeVisible();
+  await expect(reveal).toContainText(`4,321 ${ODD.pointSymbol}`);
+  await expect(reveal).toContainText(`12,000 ${ODD.gemSymbol}`);
+});
+
 // ── 오탐 가드: 등급 라벨은 재화가 아니다 ────────────────────────────────
 
 test("카드 등급 라벨(골드/다이아)은 그대로 산다 — 재화 이름과 겹쳐도 지우면 안 된다", async ({ page }) => {
@@ -213,6 +236,39 @@ test("충전 탭은 서버 플래그를 따른다 — 비활성이면 죽은 버
 
   await boot(page, "/shop", { ...ODD, topupEnabled: true });
   await expect(page.getByTestId("shop-tab-topup")).toBeVisible();
+});
+
+// ── 로그인 전이 (독립검증 BL-1 이 살던 자리) ─────────────────────────────
+
+/**
+ * **토큰을 미리 심지 않고** 로그인 화면부터 시작한다.
+ *
+ * 이 스펙의 다른 테스트들이 전부 `localStorage` 에 토큰을 넣고 시작했기 때문에, 앱이 부팅 시
+ * config 를 **인증 없이 한 번** 부르고 그게 401 로 죽으면 세션 내내 폴백이 된다는 사실을 아무도
+ * 못 봤다(신규·세션만료 유저의 첫 진입이 전부 그 경로다). 로그인 **전이**를 실제로 지나야 잡힌다.
+ */
+test("로그아웃 상태로 부팅해 로그인해도 표기가 살아 있다", async ({ page }) => {
+  await mockApi(page, ODD);
+  await page.route((u) => u.pathname === "/api/auth/login", (r) =>
+    r.fulfill(json({ token: "mock-token", user: { id: "U1", nickname: "테스터" }, isNew: false })),
+  );
+  const configCalls: number[] = [];
+  page.on("response", (res) => {
+    if (new URL(res.url()).pathname === "/api/config") configCalls.push(res.status());
+  });
+
+  await page.setViewportSize({ width: 390, height: 900 });
+  await page.goto("/login");
+  await page.getByTestId("provider-guest").click();
+  await page.locator("#nickname").fill("테스터");
+  await page.getByRole("button", { name: "계속" }).click();
+
+  const wallet = page.getByTestId("points-badge");
+  await expect(wallet).toBeVisible();
+  await expect(wallet).toContainText(ODD.pointSymbol);
+  // 코드가 노출되면 = config 를 못 받은 것. 이게 BL-1 의 화면이었다.
+  await expect(wallet).not.toContainText("POINT");
+  expect(configCalls, "config 응답이 하나도 200 이 아니다").toContain(200);
 });
 
 // ── 폴백 ────────────────────────────────────────────────────────────────

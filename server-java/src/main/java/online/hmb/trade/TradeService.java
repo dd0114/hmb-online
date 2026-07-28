@@ -279,7 +279,7 @@ public class TradeService {
                         0, null, null, "skip");
             }
             return new TradeStartResponse(viewOf(refresh(row.id()), cfg),
-                    new WalletInfo(walletService.points(userId)));
+                    walletOf(userId));
         });
     }
 
@@ -386,7 +386,7 @@ public class TradeService {
                 openIfDue(row);
                 slots.add(viewOf(refresh(row.id()), cfg));
             }
-            return new TradeSlotsResponse(slots, new WalletInfo(walletService.points(userId)));
+            return new TradeSlotsResponse(slots, walletOf(userId));
         });
     }
 
@@ -437,8 +437,12 @@ public class TradeService {
                     .update();
             SlotRow updated = refresh(row.id());
             return new TradeSpeedupResponse(viewOf(updated, cfg),
-                    new WalletInfo(walletService.points(userId)), spent);
+                    walletOf(userId), spent);
         });
+    }
+
+    private WalletInfo walletOf(String userId) {
+        return new WalletInfo(walletService.points(userId), walletService.gems(userId));
     }
 
     /**
@@ -542,7 +546,7 @@ public class TradeService {
             }
             SlotRow after = refresh(row.id());
             return new TradeResolveResponse(success ? "SUCCESS" : "FAIL", p, roll,
-                    acquired, null, new WalletInfo(walletService.points(userId)), viewOf(after, cfg));
+                    acquired, null, walletOf(userId), viewOf(after, cfg));
         });
     }
 
@@ -597,7 +601,7 @@ public class TradeService {
             clearSlot(row); // #149: 성공/실패 모두 장 닫힘(IDLE)
             SlotRow after = refresh(row.id());
             return new TradeResolveResponse(success ? "SUCCESS" : "FAIL", p, roll,
-                    acquired, released, new WalletInfo(walletService.points(userId)), viewOf(after, cfg));
+                    acquired, released, walletOf(userId), viewOf(after, cfg));
         });
     }
 
@@ -617,7 +621,7 @@ public class TradeService {
             clearSlot(row); // #149: 거절 = 장 종료(IDLE)
             SlotRow after = refresh(row.id());
             return new TradeResolveResponse("DECLINED", null, null, null, null,
-                    new WalletInfo(walletService.points(userId)), viewOf(after, cfg));
+                    walletOf(userId), viewOf(after, cfg));
         });
     }
 
@@ -916,7 +920,12 @@ public class TradeService {
     public record PlayerRef(String playerId, String name, String position, String grade) {
     }
 
-    public record WalletInfo(long points) {
+    /**
+     * 트레이드 응답 지갑. {@code gems} 는 #232 additive — 단축 비용의 재화를 서버가 정하는데
+     * ({@code TradeSlot.speedupCurrency}) 잔액을 무료재화만 주면 클라가 <b>다른 재화 비용을
+     * 무료재화 잔액으로 재게</b> 된다. "재화를 정하는 쪽이 그 재화의 잔액도 준다".
+     */
+    public record WalletInfo(long points, long gems) {
     }
 
     /**

@@ -22,6 +22,8 @@ export interface ConfigMockOptions {
   gachaTenCost?: number;
   diceNormalCost?: number;
   diceCashCost?: number;
+  initialPoints?: number;
+  initialGems?: number;
 }
 
 export function appConfigPayload(opts: ConfigMockOptions = {}) {
@@ -36,6 +38,8 @@ export function appConfigPayload(opts: ConfigMockOptions = {}) {
     gachaTenCost = 3000,
     diceNormalCost = 5000,
     diceCashCost = 10,
+    initialPoints = 3000,
+    initialGems = 6000,
   } = opts;
   return {
     currencies: [
@@ -77,6 +81,7 @@ export function appConfigPayload(opts: ConfigMockOptions = {}) {
         ],
       },
     },
+    grants: { initialPoints, initialGems },
   };
 }
 
