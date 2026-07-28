@@ -3,10 +3,10 @@ import type { MatchClock } from "@hmb/shared";
 import { useHalfLog } from "../api/hooks";
 import {
   eventDisplay,
+  fallbackScore,
   formatClock,
   keyEvents,
   revealInterval,
-  runningScore,
   type MatchEventLike,
 } from "./match-logic";
 import { useAdminFlag } from "../admin/admin-flag";
@@ -168,17 +168,15 @@ function TimelineView({ log, half, homeName, awayName, baseline = null }: Timeli
     if (el) el.scrollTop = el.scrollHeight;
   }, [revealed]);
 
-  // finalScore 는 **그 하프만의** 최종 스코어라 그대로 쓰면 후반에서 전반이 사라진다(#233) —
-  // 베이스라인이 있으면 얹고, 없으면(전반 재생·확정값 미상) 기존 그대로.
-  const finalWithBase = log.finalScore
-    ? {
-        home: (baseline?.home ?? 0) + ((log.finalScore as { home?: number }).home ?? 0),
-        away: (baseline?.away ?? 0) + ((log.finalScore as { away?: number }).away ?? 0),
-      }
-    : null;
-  const score = done
-    ? ((finalWithBase ?? runningScore(events, revealed, baseline)) as { home?: number; away?: number })
-    : runningScore(events, revealed, baseline);
+  // 규칙은 `fallbackScore` 가 소유한다 — 여기서 다시 계산하지 마라(#233 독립검증 minor-1: 인라인이던
+  // 시절의 변이체가 전 게이트를 통과했다).
+  const score = fallbackScore(
+    log.finalScore as { home?: number; away?: number } | null | undefined,
+    events,
+    revealed,
+    done,
+    baseline,
+  );
 
   return (
     <>

@@ -197,6 +197,30 @@ export function runningScore(
   return score;
 }
 
+/**
+ * 텍스트 폴백 스코어보드가 그릴 값 (#233). 순수함수로 빼둔 이유는 **되돌리기 어렵게** 하기 위해서다 —
+ * 독립검증 변이체 C(폴백의 베이스라인 제거)가 전 게이트를 통과했다. 인라인으로 두면 다음 사람이
+ * 조용히 지운다.
+ *
+ * 다 본 뒤에는 로그의 `finalScore` 를 쓰되, 그건 **그 하프만의** 최종 스코어라 베이스라인을 얹어야
+ * 경기 점수가 된다. `finalScore` 가 없으면 이벤트 누적으로 같은 답을 낸다.
+ */
+export function fallbackScore(
+  finalScore: { home?: number; away?: number } | null | undefined,
+  events: MatchEventLike[],
+  revealedCount: number,
+  done: boolean,
+  baseline?: ScorePair | null,
+): ScorePair {
+  if (done && finalScore) {
+    return {
+      home: (baseline?.home ?? 0) + (finalScore.home ?? 0),
+      away: (baseline?.away ?? 0) + (finalScore.away ?? 0),
+    };
+  }
+  return runningScore(events, revealedCount, baseline);
+}
+
 export interface TeamStats {
   shots: number;
   goals: number;

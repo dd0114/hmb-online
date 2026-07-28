@@ -7,6 +7,7 @@ import {
   keyEvents,
   panelForState,
   revealInterval,
+  fallbackScore,
   runningScore,
   shouldPoll,
   validateSubs,
@@ -139,6 +140,46 @@ describe("runningScore", () => {
     expect(runningScore(events, 1)).toEqual({ home: 1, away: 0 });
     expect(runningScore(events, 3)).toEqual({ home: 1, away: 1 });
     expect(runningScore(events, 4)).toEqual({ home: 2, away: 1 });
+  });
+
+  /** #233 — 후반 로그는 후반 골만 갖는다. 베이스라인 없이 세면 폴백도 `0 : 0` 부터 다시 센다. */
+  it("stacks on the finished half's settled score when a baseline is given", () => {
+    const h1 = { home: 1, away: 4 };
+    expect(runningScore(events, 0, h1)).toEqual({ home: 1, away: 4 });
+    expect(runningScore(events, 3, h1)).toEqual({ home: 2, away: 5 });
+    expect(runningScore(events, 4, h1)).toEqual({ home: 3, away: 5 });
+    // 생략/null 은 기존 동작 그대로(무회귀).
+    expect(runningScore(events, 4, null)).toEqual({ home: 2, away: 1 });
+  });
+});
+
+/**
+ * #233 독립검증 minor-1 — 이 규칙이 `MatchViewer` 안에 인라인이던 동안에는 **베이스라인을 통째로
+ * 지워도 전 게이트가 green** 이었다(검증자 변이체 C). 순수함수로 빼고 여기서 박제한다.
+ */
+describe("fallbackScore (텍스트 폴백 스코어보드)", () => {
+  const events = [
+    ev("goal", { team: "away" }),
+    ev("goal", { team: "away" }),
+  ];
+  const h1 = { home: 1, away: 4 };
+
+  it("다 보기 전에는 공개된 이벤트 누적 + 베이스라인", () => {
+    expect(fallbackScore(null, events, 1, false, h1)).toEqual({ home: 1, away: 5 });
+  });
+
+  it("다 본 뒤 finalScore 도 베이스라인 위에 얹는다 — 그건 그 하프만의 최종값이다", () => {
+    // 후반 로그의 finalScore 는 후반만의 1:4 다. 그대로 쓰면 화면이 경기 최종 2:8 대신 1:4 를 말한다.
+    expect(fallbackScore({ home: 1, away: 4 }, events, 2, true, h1)).toEqual({ home: 2, away: 8 });
+  });
+
+  it("finalScore 가 없으면 누적으로 같은 답을 낸다", () => {
+    expect(fallbackScore(null, events, 2, true, h1)).toEqual({ home: 1, away: 6 });
+  });
+
+  it("베이스라인 없으면 하프 로컬 그대로(전반 재생·확정값 미상 — 무회귀)", () => {
+    expect(fallbackScore({ home: 1, away: 4 }, events, 2, true, null)).toEqual({ home: 1, away: 4 });
+    expect(fallbackScore(null, events, 2, false)).toEqual({ home: 0, away: 2 });
   });
 });
 
