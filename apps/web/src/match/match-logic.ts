@@ -177,9 +177,18 @@ export interface ScorePair {
   away: number;
 }
 
-/** Running score over the first `revealedCount` events (text-playback scoreboard). */
-export function runningScore(events: MatchEventLike[], revealedCount: number): ScorePair {
-  const score = { home: 0, away: 0 };
+/**
+ * Running score over the first `revealedCount` events (text-playback scoreboard).
+ *
+ * `baseline` = 이 로그 앞에 이미 끝난 하프의 확정 스코어(#233). 하프 로그는 그 하프의 골만 갖기
+ * 때문에, 후반 폴백 스코어보드가 이걸 안 받으면 `0 : 0` 부터 다시 센다. 생략하면 하프 로컬(무회귀).
+ */
+export function runningScore(
+  events: MatchEventLike[],
+  revealedCount: number,
+  baseline?: ScorePair | null,
+): ScorePair {
+  const score = { home: baseline?.home ?? 0, away: baseline?.away ?? 0 };
   for (const e of events.slice(0, revealedCount)) {
     if (e.type === "goal" && (e.team === "home" || e.team === "away")) {
       score[e.team] += 1;

@@ -10,6 +10,11 @@ interface LogPanelProps {
   awayName: string;
   /** 재생 플레이헤드 — 여기까지의 라인만 보여준다(라이브 코멘터리). */
   tick: number | null;
+  /**
+   * 이 하프 앞에 이미 확정된 스코어(후반이면 전반) — 골 라인이 **경기 누적**을 말하게 한다(#233).
+   * null 이면 하프 로컬(전반 재생·전반 확정값 미상). 값은 `playedBaseline` 이 정한다.
+   */
+  baseline?: { home: number; away: number } | null;
 }
 
 /** 이벤트 타입별 색 클래스(뷰어 티커와 같은 팔레트). 없으면 기본색. */
@@ -37,15 +42,15 @@ function tierClass(tier: LogLine["tier"]): string {
  * [D] 게임 로그 — FM식 코멘터리. 투영(어떤 이벤트를 어떤 라벨/중요도로 보일지)은
  * `@hmb/viewer-core`(P4-D3 SoT)가 소유하고 여기서는 그리기만 한다.
  */
-export function LogPanel({ matchId, half, homeName, awayName, tick }: LogPanelProps) {
+export function LogPanel({ matchId, half, homeName, awayName, tick, baseline = null }: LogPanelProps) {
   const { data: log, isLoading, isError } = useHalfLog(matchId, half);
   const endRef = useRef<HTMLLIElement>(null);
 
   const lines = useMemo(() => {
     if (!log) return [];
     const events = ((log.events ?? []) as unknown as LogEvent[]) ?? [];
-    return logLines(events, tick ?? 0);
-  }, [log, tick]);
+    return logLines(events, tick ?? 0, baseline);
+  }, [log, tick, baseline?.home, baseline?.away]);
 
   // 최신 라인이 항상 보이게(스크롤은 이 패널 안에서만 — 문서는 스크롤하지 않는다).
   useEffect(() => {

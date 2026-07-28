@@ -34,6 +34,11 @@ interface MatchViewerProps {
   clockOffsetMs?: number;
   /** 이 상태에서 로그를 요청해도 되는가(서버 허용표 미러 — 409 방지). */
   logEnabled?: boolean;
+  /**
+   * 이 하프 앞에 이미 확정된 스코어(후반이면 전반) — 텍스트 폴백 스코어보드가 **경기 누적**을
+   * 말하게 한다(#233). 값은 `playedBaseline` 이 정한다. 캔버스 재생은 이 값을 쓰지 않는다.
+   */
+  baseline?: { home: number; away: number } | null;
 }
 
 type ViewMode = "visual" | "timeline";
@@ -53,6 +58,7 @@ export function MatchViewer({
   clock = null,
   clockOffsetMs = 0,
   logEnabled = true,
+  baseline = null,
 }: MatchViewerProps) {
   const { data: log, isLoading, isError } = useHalfLog(matchId, half, logEnabled);
   const [mode, setMode] = useState<ViewMode>("visual");
@@ -109,7 +115,7 @@ export function MatchViewer({
         />
       ) : (
         <div className={styles.timelineFill}>
-          <TimelineView log={log} half={half} homeName={homeName} awayName={awayName} />
+          <TimelineView log={log} half={half} homeName={homeName} awayName={awayName} baseline={baseline} />
         </div>
       )}
     </div>
@@ -130,12 +136,14 @@ interface TimelineViewProps {
   half: 1 | 2;
   homeName: string;
   awayName: string;
+  /** 앞에 끝난 하프의 확정 스코어 — 폴백 스코어보드도 경기 누적을 말한다(#233). */
+  baseline?: { home: number; away: number } | null;
 }
 
 /**
  * 텍스트 하이라이트(폴백). 키 이벤트를 ~30초로 압축 순차 공개.
  */
-function TimelineView({ log, half, homeName, awayName }: TimelineViewProps) {
+function TimelineView({ log, half, homeName, awayName, baseline = null }: TimelineViewProps) {
   const events = useMemo(
     () => keyEvents(((log?.events ?? []) as unknown as MatchEventLike[]) ?? []),
     [log],
@@ -160,9 +168,17 @@ function TimelineView({ log, half, homeName, awayName }: TimelineViewProps) {
     if (el) el.scrollTop = el.scrollHeight;
   }, [revealed]);
 
+  // finalScore 는 **그 하프만의** 최종 스코어라 그대로 쓰면 후반에서 전반이 사라진다(#233) —
+  // 베이스라인이 있으면 얹고, 없으면(전반 재생·확정값 미상) 기존 그대로.
+  const finalWithBase = log.finalScore
+    ? {
+        home: (baseline?.home ?? 0) + ((log.finalScore as { home?: number }).home ?? 0),
+        away: (baseline?.away ?? 0) + ((log.finalScore as { away?: number }).away ?? 0),
+      }
+    : null;
   const score = done
-    ? ((log.finalScore ?? runningScore(events, revealed)) as { home?: number; away?: number })
-    : runningScore(events, revealed);
+    ? ((finalWithBase ?? runningScore(events, revealed, baseline)) as { home?: number; away?: number })
+    : runningScore(events, revealed, baseline);
 
   return (
     <>

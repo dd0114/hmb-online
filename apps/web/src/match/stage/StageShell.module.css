@@ -81,11 +81,21 @@
   flex-shrink: 0;
 }
 
+/**
+ * 경기 분(#233 스코프 추가). 12px muted 로 구석에 있어 hero 가 "경기 시간이 안 보인다"고 했다 —
+ * 스코어 다음가는 **1급 정보**로 올린다(칩 배경 + 본문색 + 큰 글자). 폭은 tabular-nums 로 고정해
+ * 매 분 넘어갈 때 헤더가 흔들리지 않게 한다.
+ */
 .clock {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-muted);
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.5px;
+  line-height: 1.1;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
 }
 
 .phaseTag {
