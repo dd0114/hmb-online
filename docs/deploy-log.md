@@ -6,6 +6,19 @@
 
 ---
 
+## 2026-07-28T06:56Z — [운영 조치] **가입 젬 지급액 6,000 → 12,000** (economy 무배포 override, #209 리로드)
+> hero 지시. 04:11Z 일괄 지급이 **일회성 백필**이라 이후 가입자가 못 받는 문제를 정식 경로로 해소한 것. **재배포·재빌드·컨테이너 재시작 0.**
+
+- **경로**: `hmb.data.economy-override-file` = **`/var/lib/hmb/economy.override.json`**(DB 볼륨 — 이미지에 구워진 발행물 경로는 쓰기 불가라 볼륨이 기본값) → `POST /api/admin/economy/reload`.
+- **override 의 의미(중요)**: **부분 병합이 아니라 문서 통째 교체**다(`EconomyService.loadSnapshot`: override 가 존재하고 파싱되면 그게 스냅샷 전체). 그래서 발행물 `economy.v3.json` 을 **컨테이너에서 그대로 꺼내 `initialGems` 한 필드만 6000→12000 으로 바꿔** 올렸다 — 베이크 대비 **달라진 키는 `initialGems` 하나**임을 diff 로 확인.
+- **파일 배치**: `docker cp` → `.tmp` → `chown 10001:999` → **`mv`(원자적 교체)**. 앱과 같은 uid 소유로 맞춰 이후 운영 API 가 이 파일을 다시 쓸 수 있게 했다.
+- **적용**: `POST /api/admin/economy/reload` **200** — `source=**OVERRIDE**` · `overrideApplied=true` · `effectivePath=/var/lib/hmb/economy.override.json`. 서버 로그 `Loaded economy v3 … (initialPoints=3000, **initialGems=12000**, starterPack=14 …)`. 사유 필수 인자로 남긴 감사 기록이 `admin_ops_audit`(V18)에 적재됨 — `GET /api/admin/economy/history` 에 `action=economy_reload · result=ok · reason='hero 지시 — 가입 젬 지급 6,000 → 12,000 (무배포 override)'`.
+- **검증**: 신규 게스트 가입 → `/api/me` **`{points:3000, gems:12000}`** · 원장 `initial_gems **+12000**` 1행 · 기존 유저 잔액 무변동 · **전 유저 원장합==지갑 불일치 0** · `integrity_check=ok` · 앱 정상(`status.sh` ✓, 터널 경유 401=경로 정상).
+- **롤백(무배포)**: `DELETE /api/admin/economy/override` (또는 볼륨에서 파일 삭제 후 `reload`) → 즉시 발행물(BAKED, 6,000)로 복귀.
+- **⚠️ 트랩 — 이 override 는 앞으로의 발행물 변경을 가린다**: override 파일이 존재하는 한 **베이크 파일(`economy.v3.json`, 또는 다음 배포가 싣는 `economy.v4…`)은 읽히지 않는다**. 즉 다음 배포에서 economy 를 바꿔도 **조용히 무시된다**. economy 발행물을 바꾸는 배포를 할 때는 **①override 를 지우고 새 발행물을 쓰거나 ②새 발행물 기준으로 override 를 다시 만들어야** 한다. 배포 체크리스트에 넣을 것.
+
+---
+
 ## 2026-07-28T04:11Z — [운영 조치] 젬 **전원 일괄 지급** — 138명 × +6,000 (배포 아님, 코드·이미지 변경 0)
 > 03:02Z 단건 지급과 같은 절차의 배치판. hero 승인. admin 젬 지급 API 가 없어 수동(갭 이슈 등록됨).
 
