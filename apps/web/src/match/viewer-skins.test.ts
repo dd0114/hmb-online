@@ -52,7 +52,7 @@ const full: CharAssets = {
 };
 
 describe("buildViewerSkins", () => {
-  it("경기장이 두 축을 모두 태운다 — characters 39(DIA 25 + 비활성 LEGEND 14) + units 고유 5", () => {
+  it("경기장이 두 축을 모두 태운다 — characters 39(DIA 25 + 비활성 LEGEND 14) + units 고유 6", () => {
     const skins = buildViewerSkins(full)!;
     expect([...ARENA_AXES]).toEqual(["characters", "units"]);
     const charactersAxis = Object.entries(mappingFile.players).filter(
@@ -63,8 +63,10 @@ describe("buildViewerSkins", () => {
       ([, ref]) => (ref as { axis: string; id: string }).axis === "units" && !units.units[(ref as { id: string }).id].forGrades,
     );
     expect(charactersAxis).toHaveLength(39);
-    expect(exclusiveUnits).toHaveLength(5);
-    expect(Object.keys(skins.byPlayer)).toHaveLength(44);
+    // 3차 입고(2026-07-29)로 경니시우스(P180)가 매핑되며 5 → 6. 활성화 전이라 시드에선 비활성
+    // 이지만 **매핑은 미리 붙어 있고**, 경기장은 활성 여부가 아니라 매핑 유무로 태운다.
+    expect(exclusiveUnits).toHaveLength(6);
+    expect(Object.keys(skins.byPlayer)).toHaveLength(45);
   });
 
   it("**U-D8: GOLD/SILVER/BRONZE 는 개별 아이콘을 안 탄다 → 팀색 원**", () => {
@@ -128,7 +130,9 @@ describe("buildViewerSkins", () => {
       const ref = mappingFile.players[playerId] as { axis: string; id: string };
       const src = ref.axis === "units" ? units.units[ref.id] : characters.characters[ref.id];
       expect({ col: cell.col, row: cell.row }, playerId).toEqual({ col: src.col, row: src.row });
-      const grid = ref.axis === "units" ? { cols: 3, rows: 2 } : { cols: 4, rows: 4 };
+      // 격자는 **발행물이 선언한 값**을 쓴다 — 입고로 행이 늘 때(3차 입고 units 3×2 → 3×3)
+      // 리터럴을 따라 고치는 대신 계약("좌표가 자기 시트 안") 자체가 유지되게 한다.
+      const grid = ref.axis === "units" ? units.atlases["avatars-64"] : characters.atlases["avatars-64"];
       expect(cell.col).toBeGreaterThanOrEqual(0);
       expect(cell.col).toBeLessThan(grid.cols);
       expect(cell.row).toBeLessThan(grid.rows);

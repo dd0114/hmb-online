@@ -47,7 +47,7 @@ const POSITIONS: Position[] = ["GK", "DF", "MF", "FW"];
 // 문서화된 총원을 리터럴로 박제(자기참조 검증 회피 — data.test.ts 와 같은 규율).
 const CATALOG_TOTAL = 180;
 const LEGEND_TOTAL = 22;
-/** U-D5 활성 LEGEND = 실아트 입고 완료분. 이 5명만 units 축 1:1 을 갖는다. */
+/** U-D5 활성 LEGEND = 실아트 입고 + 시드 활성화까지 끝난 분. 이 5명만 units 축 1:1 을 갖는다. */
 const ACTIVE_LEGEND_UNITS: ReadonlyArray<readonly [string, string]> = [
   ["P173", "bonaldo"],
   ["P175", "yeoldona"],
@@ -55,8 +55,23 @@ const ACTIVE_LEGEND_UNITS: ReadonlyArray<readonly [string, string]> = [
   ["P177", "dukbrayner"],
   ["P179", "wookringham"],
 ];
-/** U-D5 비활성 LEGEND 중 **아트 미입고** 3종 — 매핑 없음이 정답(이니셜 폴백). */
-const UNMAPPED_LEGENDS = ["P174", "P178", "P180"];
+/**
+ * 3차 입고(2026-07-29) — **아트는 들어왔지만 시드는 아직 비활성**인 LEGEND.
+ *
+ * 운영 순서가 "아트 머지 → 배포 → 어드민 API 로 활성화"(grade-mapping-v2 §9.8)라서 이 중간상태는
+ * **정상**이다. 매핑은 미리 붙여 둔다 — 활성화 토글이 켜지는 순간 아트가 같이 떠야 하기 때문.
+ * 어드민 상태가 다음 시드 버전으로 승격되면 여기서 ACTIVE_LEGEND_UNITS 로 옮긴다.
+ */
+const PENDING_ACTIVATION_UNITS: ReadonlyArray<readonly [string, string]> = [
+  ["P180", "kyeongnicius"],
+];
+/** 아트 **미입고** LEGEND — 매핑 없음이 정답(이니셜 폴백). */
+const UNMAPPED_LEGENDS = ["P174", "P178"];
+/**
+ * 아트는 발행됐지만 **카탈로그에 붙일 선수가 아직 없다**(채번 대기) — 발행물이 `pendingCatalog`
+ * 로 선언한 유닛. "놀고 있는 유닛 0" 계약은 이 선언분만 면제한다(침묵 면제 아님).
+ */
+const PENDING_CATALOG_UNITS = ["seokdijk"];
 /** 구 14종 — 비활성이지만 매핑 유지(보유분 아트를 뺏지 않는다). */
 const KEPT_LEGENDS = ["P001", "P002", "P003", "P004", "P005", "P006", "P007", "P008", "P009", "P010", "P011", "P012", "P143", "P144"];
 
@@ -92,8 +107,8 @@ describe("발행물 정합", () => {
     // 규칙은 **등급·id 축**이라 과거 시드로도 성립한다(이름·active 는 매핑 입력이 아니다).
     const pastMap = buildMapping(past.players, manifest, units);
     expect(pastMap.filter((d) => d.rule === "unit-exclusive").map((d) => d.playerId))
-      .toEqual(ACTIVE_LEGEND_UNITS.map(([id]) => id));
-    // 다만 v2.2 는 P174/P178/P180 이 아직 **활성**이다 — 활성인데 실아트가 없는 상태라
+      .toEqual([...ACTIVE_LEGEND_UNITS, ...PENDING_ACTIVATION_UNITS].map(([id]) => id).sort());
+    // 다만 v2.2 는 P174/P178 이 아직 **활성**이다 — 활성인데 실아트가 없는 상태라
     // "활성 LEGEND = 실아트"가 성립하지 않는다. 그래서 발행 대상은 v2.3 뿐이다.
     expect(past.players.filter((p) => p.grade === "LEGEND" && p.active)).toHaveLength(8);
   });
@@ -184,13 +199,37 @@ describe("U-D5 — 활성 LEGEND 5종 = units 축 1:1 실아트", () => {
     expect(ids).not.toContain(DEFAULT_UNIT_ID);
   });
 
-  it("비활성 LEGEND 3종은 **미입고 → 미매핑**(이니셜 폴백)이 정답이다", () => {
+  it("아트 미입고 LEGEND 는 **미매핑**(이니셜 폴백)이 정답이다", () => {
     for (const id of UNMAPPED_LEGENDS) {
       expect(gradeOf(id)).toBe("LEGEND");
       expect(byId.get(id)!.active).toBe(false);
       expect(published.players[id], `${id} 는 미매핑이어야 한다(U-D5)`).toBeUndefined();
     }
     expect(published.unmapped).toEqual(UNMAPPED_LEGENDS);
+  });
+
+  it("활성화 대기분은 **비활성이지만 매핑은 미리 붙어 있다** — 토글과 아트가 같이 뜬다", () => {
+    for (const [playerId, unitId] of PENDING_ACTIVATION_UNITS) {
+      expect(gradeOf(playerId)).toBe("LEGEND");
+      // 시드는 아직 비활성 — 활성화는 어드민 API 몫이다(§9.8).
+      expect(byId.get(playerId)!.active, `${playerId} 는 시드에서 아직 비활성`).toBe(false);
+      // 그래도 매핑은 있다. 없으면 활성화 순간 이니셜 폴백으로 떠서 "아트 없는 LEGEND"가 된다.
+      expect(published.players[playerId], playerId).toEqual({ axis: "units", id: unitId });
+      expect(published.detail.find((d) => d.playerId === playerId)?.rule).toBe("unit-exclusive");
+      // 미매핑 목록에 섞이면 안 된다(두 상태는 다르다).
+      expect(published.unmapped).not.toContain(playerId);
+    }
+  });
+
+  // 해제 신호 — 어드민 활성화가 다음 시드로 승격되면(§9.8) 이 테스트가 **실패하며** 대기표를
+  // 정리하라고 알린다. 침묵하는 대기표는 "아직 안 켰다"와 "켰는데 안 지웠다"를 구분 못 한다.
+  it("활성화 대기표는 stale 이 아니다 — 시드가 활성으로 승격되면 실패해서 알린다", () => {
+    for (const [playerId] of PENDING_ACTIVATION_UNITS) {
+      expect(
+        byId.get(playerId)!.active,
+        `${playerId} 가 시드에서 활성이 됐다 — PENDING_ACTIVATION_UNITS 와 gen-chars 의 ACTIVATION_PENDING 에서 지우고 ACTIVE_LEGEND_UNITS 로 옮겨라`,
+      ).toBe(false);
+    }
   });
 
   it("비활성 구 14종은 characters 매핑을 유지한다 — 보유분 아트를 뺏지 않는다", () => {
@@ -201,9 +240,17 @@ describe("U-D5 — 활성 LEGEND 5종 = units 축 1:1 실아트", () => {
     expect(published.detail.filter((d) => d.rule === "legend-exclusive")).toHaveLength(KEPT_LEGENDS.length);
   });
 
-  it("LEGEND 총원 = 유지 14 + 실아트 5 + 미입고 3", () => {
+  it("LEGEND 총원 = 유지 14 + 실아트 5 + 활성화대기 1 + 미입고 2", () => {
     expect(players.filter((p) => p.grade === "LEGEND")).toHaveLength(LEGEND_TOTAL);
-    expect(KEPT_LEGENDS.length + ACTIVE_LEGEND_UNITS.length + UNMAPPED_LEGENDS.length).toBe(LEGEND_TOTAL);
+    // 네 갈래는 서로 겹치지 않고 합이 총원이다 — 어느 하나가 늘면 다른 하나가 줄어야 한다.
+    const buckets = [
+      KEPT_LEGENDS,
+      ACTIVE_LEGEND_UNITS.map(([id]) => id),
+      PENDING_ACTIVATION_UNITS.map(([id]) => id),
+      UNMAPPED_LEGENDS,
+    ];
+    expect(buckets.reduce((n, b) => n + b.length, 0)).toBe(LEGEND_TOTAL);
+    expect(new Set(buckets.flat()).size, "갈래가 겹친다").toBe(LEGEND_TOTAL);
   });
 });
 
@@ -295,7 +342,7 @@ describe("포지션 정합", () => {
 });
 
 describe("커버리지 — 카탈로그 대비 매핑", () => {
-  it("180명 중 177명 매핑 · 미매핑 3명은 전부 의도된 미입고 LEGEND", () => {
+  it("180명 중 178명 매핑 · 미매핑 2명은 전부 의도된 미입고 LEGEND", () => {
     expect(published.catalogCount).toBe(CATALOG_TOTAL);
     expect(published.playerCount).toBe(CATALOG_TOTAL - UNMAPPED_LEGENDS.length);
     expect(Object.keys(published.players)).toHaveLength(published.playerCount);
@@ -309,11 +356,29 @@ describe("커버리지 — 카탈로그 대비 매핑", () => {
     }
   });
 
-  it("발행된 유닛 6종이 전부 쓰인다(놀고 있는 유닛 0)", () => {
+  it("발행된 유닛이 전부 쓰인다(놀고 있는 유닛 0) — 채번 대기 선언분만 면제", () => {
     const used = new Set(
       Object.values(published.players).filter((r) => r.axis === "units").map((r) => r.id),
     );
-    expect([...used].sort()).toEqual(Object.keys(unitsManifest.units).sort());
+    // 면제는 **발행물의 선언**에서만 나온다(테스트가 임의로 빼지 않는다).
+    const pending = Object.entries(unitsManifest.units)
+      .filter(([, u]) => u?.pendingCatalog)
+      .map(([id]) => id);
+    // 선언과 이 파일의 리터럴이 어긋나면 둘 중 하나가 낡은 것이다 — 침묵 면제 방지.
+    expect(pending.sort(), "pendingCatalog 선언이 예상과 다르다").toEqual([...PENDING_CATALOG_UNITS].sort());
+    const expected = Object.keys(unitsManifest.units).filter((id) => !pending.includes(id));
+    expect([...used].sort()).toEqual(expected.sort());
+  });
+
+  it("채번 대기 유닛은 실제로 아무 선수에게도 붙어 있지 않다(면제가 곧 미사용)", () => {
+    const usedIds = new Set(
+      Object.values(published.players).filter((r) => r.axis === "units").map((r) => r.id),
+    );
+    for (const unitId of PENDING_CATALOG_UNITS) {
+      expect(unitsManifest.units[unitId], `${unitId} 가 발행물에 없다`).toBeTruthy();
+      expect(unitsManifest.units[unitId]?.forPlayer, `${unitId} 는 채번 전이라 힌트가 없어야 한다`).toBeUndefined();
+      expect(usedIds, `${unitId} 는 채번 전이라 매핑되면 안 된다`).not.toContain(unitId);
+    }
   });
 });
 

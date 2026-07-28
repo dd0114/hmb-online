@@ -45,10 +45,21 @@ ICON_BG = (10, 10, 10, 255)  # 레전더리 얼굴 타일 배경(글로우·수�
 
 # 프레임리스 아트 정렬 밴드(--verify). 아트 창을 그대로 채우는 축이라 인물 바운딩박스가 튀면
 # 한 장만 크거나 붕 떠 보인다 — 그리드에 나란히 놓기 전에 발행기가 스스로 잡는다.
-# 값은 1차 입고 3종(열라도나 L10.4/T6.1/R89.3/B88.2 · 춘바페 13.5/7.7/96.1/87.8 ·
-# 덕브라이너 17.4/4.3/93.9/87.2) 실측 범위에 여유를 준 것이다.
-ART_BBOX_BAND = {"left_max": 20.0, "top_max": 10.0, "right_min": 80.0, "bottom_min": 85.0}
-ART_MIN_COVER = 0.55         # 인물 세로 점유율 하한 — 축소돼 붕 뜬 아트를 잡는다
+#
+# ⚠️ **가로는 절대 가장자리로 재지 않는다**(3차 입고에서 고침). 구 밴드는 `left_max`/`right_min`
+#    으로 "팔이 좌우 끝까지 뻗었나"를 봤는데, 그건 정렬이 아니라 **포즈**다. 석다이크(차렷·양손
+#    허리)가 L21.7/R79.5 로 걸렸지만 8종을 나란히 렌더해 보면 머리끝·발끝이 남들과 같은 선에
+#    있다 — 즉 구 밴드는 "모든 아트는 팔을 벌려야 한다"를 강요하던 오탐이었다(좌표만 보고
+#    판정 금지, 루트 CLAUDE.md §2-2 — 실제로 그리드를 눈으로 보고 내린 결론).
+#    대신 그리드 정렬을 실제로 지배하는 축만 남긴다:
+#      세로  머리끝(top)·발끝(bottom)·세로점유율 → 줄이 맞는지
+#      가로  바운딩박스 **중심**(치우쳤는지) + 가로점유율 하한(조각만 남았는지)
+#    값은 8종 실측 범위(T 2.7~7.7 · B 84.0~94.8 · cx 49.8~55.7 · vcov 80.1~90.1 · hcov 57.8~83.0)
+#    에 여유를 준 것이다. 세로 점유율 하한은 0.55 → 0.72 로 **조인다** — 가로 완화의 반대급부로
+#    "축소돼 붕 뜬 아트" 검출력을 오히려 올린다(변이체 킬로 확인).
+ART_BBOX_BAND = {"top_max": 10.0, "bottom_min": 83.0, "center_x": 50.0, "center_tol": 8.0}
+ART_MIN_COVER = 0.72         # 인물 세로 점유율 하한 — 축소돼 붕 뜬 아트를 잡는다
+ART_MIN_HCOVER = 0.45        # 가로 점유율 하한 — 조각만 남은(잘린) 아트를 잡는다
 
 # ── 크롭 좌표 (원본 픽셀 기준, 좌상단 원점, (x0,y0,x1,y1) 반열린 구간) ────────
 #
@@ -108,6 +119,32 @@ UNITS = [
                  "kind": "frameless-art", "pixelArt": True, "navyKey": True},
         "face": {"src": NORMAL_DIR / "노말유닛.png", "crop": "default_face",
                  "pixelArt": True, "navyKey": True},
+    },
+    # ── 3차 입고(2026-07-29) — 신규 LEGEND 2종 ───────────────────────────────
+    # ⚠️ **배열 맨 끝에 append 한다**(중간 삽입 금지). index → col/row 라서 중간에 끼우면 기존
+    #    유닛의 아틀라스 타일 좌표가 전부 밀린다. 매니페스트가 권위라 기능은 안 깨지지만,
+    #    캐시된 구 매니페스트 + 새 아틀라스 조합에서 **얼굴이 뒤바뀐다**. data/roster.ts 의
+    #    append 규율(grade-mapping-v2 §9.5)과 같은 이유다.
+    {
+        # 단독 입고(1024×1536 카드 + 1024² 정면 초상) — 2차 입고 보날두와 동일 규격이라 크롭 없음.
+        "id": "kyeongnicius", "name": "경니시우스", "position": "FW", "forPlayer": "P180",
+        "card": {"src": LEGEND_DIR / "경니시우스.png", "kind": "frameless-art"},
+        "face": {"src": LEGEND_DIR / "경니시우스-아이콘.png"},
+    },
+    {
+        # ⚠️ `forPlayer` 없음 — **카탈로그에 대응 선수가 없다.** hero 원안(#207 AC1)의 석다이크(판
+        #    다이크·DF)는 U-D4 확정에서 석신(야신·GK)으로 대체돼 P번호를 못 받았다. 아트는 오렌지
+        #    킷 필드플레이어라 GK 인 석신에 붙일 수 없다. 채번은 data 축 결정이라 여기서 안 한다
+        #    (발행측 힌트일 뿐 권위는 player-chars — manifest mappingHint). 상세 = 세션 보고.
+        #
+        #    `pendingCatalog` = **"아직 매핑될 선수가 없다"를 발행물에 명시**하는 선언이다.
+        #    매핑측 계약 "놀고 있는 유닛 0"(chars-map.test.ts)은 이 플래그가 붙은 유닛만 면제한다 —
+        #    침묵으로 빠져나가는 게 아니라 **의도를 적고 나머지 누락은 계속 잡힌다**(data 측
+        #    UNMAPPED_LEGENDS 와 같은 형상). 채번이 끝나면 이 줄을 지우고 forPlayer 를 다는 것이
+        #    해제 신호다.
+        "id": "seokdijk", "name": "석다이크", "position": "DF", "pendingCatalog": True,
+        "card": {"src": LEGEND_DIR / "석다이크.png", "kind": "frameless-art"},
+        "face": {"src": LEGEND_DIR / "석다이크-아이콘.png"},
     },
 ]
 
@@ -251,6 +288,8 @@ def build() -> None:
             "iconBackground": icon_bg,
             **({"forPlayer": u["forPlayer"]} if u.get("forPlayer") else {}),
             **({"forGrades": u["forGrades"]} if u.get("forGrades") else {}),
+            # 아트는 발행됐지만 붙일 선수가 아직 카탈로그에 없다(위 주석). 매핑측 면제 선언.
+            **({"pendingCatalog": True} if u.get("pendingCatalog") else {}),
         }
 
     # ── 아틀라스(기존 characters 축과 동일 규약: 정사각 타일 격자) ──
@@ -281,7 +320,7 @@ def build() -> None:
             "불일치가 같이 사라진다). `cardKinds.complete` 선언은 남는다 — 발행측이 언제든 다시 "
             "실을 수 있고, 그게 소비측의 '프레임 두 겹 방지' 계약이다."
         ),
-        "source": "hero-imageRef-2026-07-27-rev2",
+        "source": "hero-imageRef-2026-07-29-rev3",
         "count": len(entries),
         # 소비측 분기 계약 — units[id].card.kind 로 갈린다.
         "cardKinds": {
@@ -292,7 +331,9 @@ def build() -> None:
         },
         "mappingHint": (
             "forPlayer/forGrades 는 **발행측 힌트**다(기존 characters 축의 variant forPlayer 와 같은 성격). "
-            "권위 매핑은 data/players 의 player-chars 발행물이 소유한다 — 힌트와 어긋나면 매핑이 이긴다."
+            "권위 매핑은 data/players 의 player-chars 발행물이 소유한다 — 힌트와 어긋나면 매핑이 이긴다. "
+            "`pendingCatalog:true` = 아트는 발행됐지만 **붙일 선수가 아직 카탈로그에 없다**(채번 대기). "
+            "매핑측의 '놀고 있는 유닛 0' 계약은 이 플래그가 붙은 유닛만 면제한다 — 침묵이 아니라 선언이다."
         ),
         "atlases": atlases,
         "units": entries,
@@ -338,11 +379,19 @@ def verify_card_pixels(root: Path, uid: str, card: dict) -> list:
         return []
     l, t, r, b = box
     band, errs = ART_BBOX_BAND, []
-    if l > band["left_max"] or r < band["right_min"] or t > band["top_max"] or b < band["bottom_min"]:
-        errs.append(f"{uid}: 인물 바운딩박스가 밴드 밖 "
-                    f"L{l:.1f} T{t:.1f} R{r:.1f} B{b:.1f} (밴드 {band})")
+    # 세로 = 그리드 줄맞춤(머리끝·발끝). 여기가 틀리면 한 장만 위/아래로 떠 보인다.
+    if t > band["top_max"] or b < band["bottom_min"]:
+        errs.append(f"{uid}: 세로 정렬이 밴드 밖 T{t:.1f} B{b:.1f} "
+                    f"(top≤{band['top_max']} · bottom≥{band['bottom_min']})")
+    # 가로 = 중심만 본다(폭은 포즈다 — 위 주석 참조).
+    cx = (l + r) / 2
+    if abs(cx - band["center_x"]) > band["center_tol"]:
+        errs.append(f"{uid}: 인물이 가로로 치우쳤다 중심 {cx:.1f}% "
+                    f"(기준 {band['center_x']}±{band['center_tol']})")
     if (b - t) / 100 < ART_MIN_COVER:
         errs.append(f"{uid}: 인물 세로 점유율 {(b - t):.1f}% < {ART_MIN_COVER * 100:.0f}%")
+    if (r - l) / 100 < ART_MIN_HCOVER:
+        errs.append(f"{uid}: 인물 가로 점유율 {(r - l):.1f}% < {ART_MIN_HCOVER * 100:.0f}%")
     return errs
 
 
@@ -396,6 +445,10 @@ def verify() -> int:
             want = (card["w"], card["h"]) if key == "card" else (u["faceSize"]["w"], u["faceSize"]["h"])
             if got != want:
                 errs.append(f"{uid}: {key} 크기 불일치 {got} != {want}")
+        # 채번 대기와 채번 완료는 **동시에 참일 수 없다** — 둘 다 붙으면 매핑측 면제와 힌트가
+        # 서로 모순되고, 면제가 이겨서 "붙었는데 안 쓰이는" 유닛이 조용히 생긴다.
+        if u.get("pendingCatalog") and u.get("forPlayer"):
+            errs.append(f"{uid}: pendingCatalog 와 forPlayer 가 동시에 있다(채번이 끝났으면 플래그를 지워라)")
         errs += verify_card_pixels(root, uid, card)
         if (u["col"], u["row"]) != (u["index"] % cols, u["index"] // cols):
             errs.append(f"{uid}: col/row 가 index 와 어긋난다")
