@@ -257,6 +257,31 @@ test.describe("#245 MAJ-1 — 안 보여준 리포트를 소진하지 않는다"
   });
 });
 
+test.describe("#245 2R blocker — 클릭이 리포트를 소멸시키지 않는다", () => {
+  test("경기를 보러 가도 확인 처리되지 않는다(지난 리포트를 볼 화면이 없으므로 영구 소실이 된다)", async ({ page }) => {
+    const st = await mockApi(page, { unseen: [THREE_RAIDS[0]!, THREE_RAIDS[1]!] });
+
+    await page.goto("/lobby");
+    await page.getByTestId("away-report-item").first().click();
+    await expect(page).toHaveURL(/\/match\/M1$/);
+
+    expect(st.ackCalls).toBe(0);
+    expect(st.unseen).toHaveLength(2);
+  });
+
+  test("몰수 경기는 열 수 없다 — 재생할 하프가 애초에 없다", async ({ page }) => {
+    await mockApi(page, {
+      unseen: [{ ...THREE_RAIDS[0]!, id: "RF", matchId: "MF", goalsFor: 0, goalsAgainst: 0, result: "WIN", ratingDelta: 10 }],
+    });
+
+    await page.goto("/lobby");
+    const item = page.getByTestId("away-report-item").first();
+    await expect(item).toContainText("몰수");
+    // 열리면 수비자에게 "포기한 경기입니다"가 뜬다 — 포기한 건 상대인데.
+    await expect(item).toBeDisabled();
+  });
+});
+
 test.describe("#245 요구 6 — 리포트에서 그 경기를 본다", () => {
   test("[경기 보기]가 그 매치로 가고, 홈 이름이 공격자로 뜬다(내 닉이 아니라)", async ({ page }) => {
     await mockApi(page, { unseen: [THREE_RAIDS[0]!] });

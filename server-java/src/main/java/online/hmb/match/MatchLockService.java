@@ -198,8 +198,12 @@ public class MatchLockService {
      * 연 <b>탈출구</b>다. 거기까지 −10 을 물리면 서버 장애가 유저 레이팅을 깎는다. 자발적 포기의 정의는
      * <b>BRIEFING 에서 나간 것</b>뿐이다(브리핑은 사고 상태가 아니다).
      */
-    private void forfeitIfVoluntaryAwayAbandon(MatchService.MatchRow row) {
-        if (!"away".equals(row.mode()) || !MatchService.S_BRIEFING.equals(row.state())) {
+    /**
+     * @param priorState 전이 <b>직전</b> 상태. 스위퍼는 이미 ABANDONED 로 바꾼 뒤에 부르므로
+     *     현재 상태로 판단하면 몰수가 영영 걸리지 않는다(자기 자신을 못 알아본다).
+     */
+    private void forfeitIfVoluntaryAwayAbandon(MatchService.MatchRow row, String priorState) {
+        if (!"away".equals(row.mode()) || !MatchService.S_BRIEFING.equals(priorState)) {
             return;
         }
         // 공격자 LOSS = 수비자 WIN. 스코어 0:0 + 비무승부 = 몰수(정상 경기의 0:0 은 언제나 DRAW 라
@@ -238,7 +242,7 @@ public class MatchLockService {
                     "경기 상태가 바뀌었습니다 — 다시 확인해 주세요",
                     Map.of("state", matchService.getOwned(userId, matchId).state(), "action", "abandon"));
         }
-        forfeitIfVoluntaryAwayAbandon(row);
+        forfeitIfVoluntaryAwayAbandon(row, row.state());
         log.info("match abandoned by user: match={} from={}", matchId, row.state());
         return matchService.getOwned(userId, matchId);
     }
@@ -262,15 +266,19 @@ public class MatchLockService {
      */
     public int sweepStale() {
         String cutoff = Instant.now(clock).minusSeconds(props.getStaleAfterMin() * 60).toString();
-        java.util.List<String> stale = jdbcClient.sql("""
-                        SELECT id FROM matches
+        // state 를 같이 읽는다 — 몰수 판정(#245 D1)이 "어느 상태에서 나갔나"에 달려 있다.
+        record Stale(String id, String state) {
+        }
+        java.util.List<Stale> stale = jdbcClient.sql("""
+                        SELECT id, state FROM matches
                         WHERE state NOT IN ('FINISHED', 'ABANDONED') AND created_at < ?
                         """)
                 .param(cutoff)
-                .query(String.class)
+                .query((rs, n) -> new Stale(rs.getString("id"), rs.getString("state")))
                 .list();
         int swept = 0;
-        for (String matchId : stale) {
+        for (Stale entry : stale) {
+            String matchId = entry.id();
             boolean moved = txRunner.run(() -> {
                 int updated = jdbcClient.sql("""
                                 UPDATE matches SET state = ?, finished_at = ?,
@@ -286,6 +294,12 @@ public class MatchLockService {
                 return updated == 1;
             });
             if (moved) {
+                // ⚠️ 포기 버튼을 누르든 그냥 방치하든 **브리핑에서 나간 것은 같다**(#245 D1,
+                // 독립검증 2R major-1). 규칙을 한 경로에만 걸면 "안 누르고 12시간 두면 공짜"라는
+                // 우회로가 남는다 — 선언한 자리에서 집행되지 않는 규칙은 규칙이 아니다.
+                // 킥오프 이후 상태의 방치는 사고로 본다(면제) — 그쪽은 유저가 나간 게 아니다.
+                matchService.find(matchId)
+                        .ifPresent(row -> forfeitIfVoluntaryAwayAbandon(row, entry.state()));
                 swept++;
             }
         }

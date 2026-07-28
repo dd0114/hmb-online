@@ -91,16 +91,21 @@ export function AwayReportModal({
       <ul className={styles.list} data-testid="away-report-list">
         {reports.map((r) => (
           <li key={r.id}>
-            {/* 경기 보기 — 수비자도 그 경기를 볼 수 있다(hero Q5). 서버가 리포트 행을 근거로
-                읽기 전용 접근을 허용하므로 평소 매치 화면을 그대로 연다. */}
+            {/*
+              경기 보기 — 수비자도 그 경기를 볼 수 있다(hero Q5). 단 둘을 지킨다:
+              ① **몰수는 열지 않는다** — 상대가 브리핑에서 무른 경기라 재생할 하프가 애초에 없다
+                 (열면 수비자에게 "포기한 경기입니다"가 뜬다. 포기한 건 상대인데).
+              ② **클릭은 확인이 아니다** — 예전엔 클릭이 그 행을 ack 해버려서, 경기를 보러 간
+                 순간 리포트가 목록에서 사라졌다. 이 앱엔 지난 리포트를 볼 화면(status=all)이
+                 없으므로 그건 **영구 소실**이다. 확인은 [확인] 버튼만 한다(독립검증 2R blocker).
+            */}
             <button
               type="button"
               className={styles.item}
               data-testid="away-report-item"
-              onClick={() => {
-                ack.mutate([r.id]);
-                navigate(`/match/${r.matchId}`);
-              }}
+              disabled={isForfeit(r)}
+              title={isForfeit(r) ? "상대가 경기 전에 포기해 재생할 경기가 없습니다" : undefined}
+              onClick={() => navigate(`/match/${r.matchId}`)}
             >
               <span className={`${styles.badge} ${styles[`badge${r.result}`] ?? ""}`}>
                 {resultBadge(r.result)}

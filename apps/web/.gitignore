@@ -36,3 +36,5 @@ public/chars/
 *.njsproj
 *.sln
 *.sw?
+# #245 hero 컨펌용 실화면 캡처 — 이 모듈의 QA 증적 관례(dot-prefix + ignore)를 따른다.
+.p245-capture/

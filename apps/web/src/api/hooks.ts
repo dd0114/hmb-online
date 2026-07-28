@@ -373,11 +373,9 @@ export function useAckAwayReports() {
 export function useStartAwayMatch() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (defenderId?: string) =>
-      apiFetch<MatchDetail>("/api/away/matches", {
-        method: "POST",
-        body: defenderId ? { defenderId } : {},
-      }),
+    // 상대는 서버가 고른다 — 지목 인자를 두면 서버가 무시한다는 걸 모르는 다음 사람이
+    // "왜 안 먹히지"를 겪는다(#245 MAJ-4: 지목은 쿨다운·중복 제한과 함께 열 기능).
+    mutationFn: () => apiFetch<MatchDetail>("/api/away/matches", { method: "POST", body: {} }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["activeMatch"] }),
   });
 }

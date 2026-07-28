@@ -65,6 +65,12 @@ class AwayRaidTest extends MatchTestBase {
     @Resource
     private online.hmb.away.AwayService awayService;
 
+    @Resource
+    private online.hmb.away.RatingService ratingService;
+
+    @Resource
+    private online.hmb.match.MatchLockService lockService;
+
     // ── AC1: 원정 상대 = 실유저 덱 고스트 ────────────────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -454,6 +460,152 @@ class AwayRaidTest extends MatchTestBase {
         assertThat(countReports(matchId)).isZero();
         assertThat(rating(defenderId)).isZero();
         assertThat(rating(attackerId)).isZero();
+    }
+
+    /**
+     * 방치도 브리핑에서 나간 것이다 — 포기 버튼을 안 누르고 스위퍼에 회수돼도 몰수다
+     * (독립검증 2R major-1: 규칙이 한 경로에만 걸려 "안 누르면 공짜"인 우회로가 있었다).
+     */
+    @Test
+    void staleSweepAlsoForfeitsVoluntaryAwayAbandon() {
+        setupUserWithDeck("aw_def_sweep");
+        String defenderId = userIdOf("aw_def_sweep");
+        setupUserWithDeck("aw_atk_sweep");
+        String attackerId = userIdOf("aw_atk_sweep");
+
+        String matchId = awayService.start(attackerId, defenderId).id();
+        // 12시간 전에 만든 것처럼 밀어 스위퍼 대상으로 만든다.
+        jdbcClient.sql("UPDATE matches SET created_at = ? WHERE id = ?")
+                .params(java.time.Instant.now().minusSeconds(60 * 60 * 24).toString(), matchId)
+                .update();
+        lockService.sweepStale();
+
+        assertThat(matchState(matchId)).isEqualTo("ABANDONED");
+        assertThat(countReports(matchId)).isEqualTo(1);
+        assertThat(rating(attackerId)).isEqualTo(-10);
+        assertThat(rating(defenderId)).isEqualTo(10);
+    }
+
+    /** 새 매치를 만드는 경로는 전부 #217 잠금 뒤다 — 원정이 우회로가 되면 동시 다중 정찰이 열린다. */
+    @Test
+    void awayCreationRespectsMatchLock() {
+        setupUserWithDeck("aw_def_lock");
+        String attacker = setupUserWithDeck("aw_atk_lock");
+        awayService.start(userIdOf("aw_atk_lock"), userIdOf("aw_def_lock"));
+
+        ResponseEntity<String> second = authPost("/api/away/matches", attacker, Map.of(), String.class);
+        assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(second.getBody()).contains("MATCH_IN_PROGRESS");
+    }
+
+    /**
+     * 얼린 스탯이 <b>실제로 시뮬에 도달</b>하는지 — 덱에 필드가 있다까지만 보면 소비측(우선 분기)을
+     * 통째로 지워도 아무도 모른다(독립검증 2R major-3). 엔진에 넘어간 selectData 로 확인한다.
+     */
+    @Test
+    void frozenGhostAttributesReachTheEngine() {
+        setupUserWithDeck("aw_def_reach");
+        String defenderId = userIdOf("aw_def_reach");
+        String attacker = setupUserWithDeck("aw_atk_reach");
+        String attackerId = userIdOf("aw_atk_reach");
+
+        String matchId = awayService.start(attackerId, defenderId).id();
+        // 고스트 덱의 능력치에 표식을 심는다(성장 결과가 이 자리에 실린다).
+        String botId = jdbcClient.sql("SELECT bot_id FROM matches WHERE id = ?")
+                .param(matchId).query(String.class).single();
+        String deck = jdbcClient.sql("SELECT deck_json FROM bots WHERE id = ?")
+                .param(botId).query(String.class).single();
+        jdbcClient.sql("UPDATE bots SET deck_json = ? WHERE id = ?")
+                .params(deck.replaceFirst("\"pace\":\\d+", "\"pace\":4242"), botId)
+                .update();
+
+        authPost("/api/matches/" + matchId + "/kickoff", attacker, Map.of(), Map.class);
+        fakeServants.drain();
+
+        String selectData = jdbcClient.sql("SELECT select_data_json FROM match_halves WHERE match_id = ? AND half = 1")
+                .param(matchId).query(String.class).single();
+        assertThat(selectData).contains("4242");
+    }
+
+    /**
+     * 멱등의 두 층(리포트 UNIQUE · 원장 UNIQUE)을 <b>각각</b> 건다 — 한 층만 보면 다른 층이 가려서
+     * 단독 제거가 검출되지 않는다(독립검증 2R major-4: 두 변이체가 모두 생존했다).
+     */
+    @Test
+    void ratingLedgerAloneBlocksDoubleCounting() {
+        String token = setupUserWithDeck("aw_ledger");
+        String userId = userIdOf("aw_ledger");
+
+        assertThat(ratingService.apply(userId, 10, "away_defense", "M_LEDGER")).isTrue();
+        // 같은 (user, reason, ref) 재적용은 원장 유니크가 막는다 — 리포트 층과 무관하게.
+        assertThat(ratingService.apply(userId, 10, "away_defense", "M_LEDGER")).isFalse();
+        assertThat(rating(userId)).isEqualTo(10);
+        assertThat(token).isNotNull();
+    }
+
+    /** ack 은 지목한 것만 처리하고, 한 창을 넘는 목록은 거부한다(MIN-4 상한). */
+    @Test
+    void ackHonoursIdsAndRejectsOversizedLists() {
+        String defenderToken = setupUserWithDeck("aw_ack");
+        String defenderId = userIdOf("aw_ack");
+        String attacker = setupUserWithDeck("aw_ack_atk");
+        String attackerId = userIdOf("aw_ack_atk");
+
+        driveAwayToFinishedAgainst(attacker, attackerId, defenderId);
+        releaseActiveMatches();
+        driveAwayToFinishedAgainst(attacker, attackerId, defenderId);
+
+        List<String> ids = jdbcClient.sql("SELECT id FROM away_reports WHERE defender_id = ? ORDER BY created_at")
+                .param(defenderId).query(String.class).list();
+        assertThat(ids).hasSizeGreaterThanOrEqualTo(2);
+
+        // 하나만 지목 → 하나만 확인된다(전부 소진 금지).
+        ResponseEntity<Map> one = authPost("/api/me/away-reports/ack", defenderToken,
+                Map.of("ids", List.of(ids.get(0))), Map.class);
+        assertThat(one.getBody().get("acked")).isEqualTo(1);
+        assertThat(unseenCount(defenderId)).isEqualTo(ids.size() - 1);
+
+        // 한 창(report-list-limit)을 넘는 목록은 거부.
+        List<String> tooMany = new java.util.ArrayList<>();
+        for (int i = 0; i < 50; i++) {
+            tooMany.add("R" + i);
+        }
+        assertThat(authPost("/api/me/away-reports/ack", defenderToken, Map.of("ids", tooMany), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * 후보 한 명이 세울 수 없는 덱이어도 '상대 없음'이 되지 않는다(MAJ-5 루프).
+     *
+     * <p>⚠️ 후보 선택은 셔플이라 <b>1회 시도로는 계약이 되지 않는다</b> — 한 명만 뽑는 구현도 운이
+     * 좋으면 통과한다(실제로 그렇게 써서 변이체가 살아남았다). 후보를 <b>정확히 둘</b>(깨진 덱 +
+     * 성한 덱)로 좁히고 <b>10회 연속</b> 성공을 요구한다: 올바른 구현은 항상 성공하고(결정론),
+     * 한 명만 뽑는 구현이 10번 연속 성한 쪽을 뽑을 확률은 0.1% 다.
+     */
+    @Test
+    void unusableCandidateDoesNotLookLikeNoOpponent() {
+        setupUserWithDeck("aw_broken");
+        setupUserWithDeck("aw_healthy");
+        String attacker = setupUserWithDeck("aw_atk_loop");
+        String attackerId = userIdOf("aw_atk_loop");
+        // 후보를 이 둘로 좁힌다.
+        jdbcClient.sql("UPDATE decks SET is_active = 0 WHERE user_id NOT IN (?, ?, ?)")
+                .params(userIdOf("aw_broken"), userIdOf("aw_healthy"), attackerId).update();
+        // 한쪽 덱을 깨뜨린다(선발 부족 → deckService.validate 실패).
+        jdbcClient.sql("DELETE FROM deck_slots WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)")
+                .param(userIdOf("aw_broken")).update();
+        try {
+            for (int i = 0; i < 10; i++) {
+                releaseActiveMatches();
+                assertThat(authPost("/api/away/matches", attacker, Map.of(), Map.class).getStatusCode())
+                        .as("시도 %d — 깨진 후보를 뽑았다고 '상대 없음'이 되면 안 된다", i + 1)
+                        .isEqualTo(HttpStatus.CREATED);
+            }
+        } finally {
+            jdbcClient.sql("UPDATE decks SET is_active = 1 WHERE user_id NOT IN (?, ?, ?)")
+                    .params(userIdOf("aw_broken"), userIdOf("aw_healthy"), attackerId).update();
+            releaseActiveMatches();
+        }
     }
 
     // ── D3(hero 2차): 랭킹 기준 = 레이팅 ────────────────────────────────────

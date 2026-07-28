@@ -28,7 +28,7 @@ test("capture: 레이팅 배지 없는 헤더(대조군 — main 상태)", async
   });
   await page.goto("/lobby");
   await page.getByTestId("play-cta").waitFor();
-  await page.screenshot({ path: "capture/0-header-control.png" });
+  await page.screenshot({ path: ".p245-capture/0-header-control.png" });
 });
 
 test("capture: 로비 팝업 + 원정 모드", async ({ page }) => {
@@ -49,13 +49,13 @@ test("capture: 로비 팝업 + 원정 모드", async ({ page }) => {
 
   await page.goto("/lobby");
   await page.getByTestId("away-report-modal").waitFor();
-  await page.screenshot({ path: "capture/1-away-popup.png" });
+  await page.screenshot({ path: ".p245-capture/1-away-popup.png" });
 
   await page.getByTestId("away-report-confirm").click();
   await page.getByTestId("play-cta").waitFor();
-  await page.screenshot({ path: "capture/2-lobby-rating.png" });
+  await page.screenshot({ path: ".p245-capture/2-lobby-rating.png" });
 
   await page.getByTestId("play-cta").click();
   await page.getByTestId("mode-away").waitFor();
-  await page.screenshot({ path: "capture/3-mode-away.png" });
+  await page.screenshot({ path: ".p245-capture/3-mode-away.png" });
 });
