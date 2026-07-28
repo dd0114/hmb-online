@@ -61,9 +61,12 @@ public class MatchController {
      */
     @GetMapping("/api/matches/{id}")
     public MatchDetail get(@RequestAttribute("userId") String userId, @PathVariable("id") String id) {
-        matchService.getOwned(userId, id); // 소유권 먼저(남의 매치 시계를 밀지 않게)
+        // 접근 판정 먼저(남의 매치 시계를 밀지 않게). #245: 소유자 + 원정 수비자(읽기 전용).
+        // 수비자가 여는 매치는 언제나 FINISHED 라 시계 전진은 무의미하지만, 판정을 먼저 두는
+        // 이유는 그대로다 — 볼 자격이 없는 요청이 상태를 건드리면 안 된다.
+        matchService.getViewable(userId, id);
         clockService.advanceDueForRead(id);
-        return matchService.toDetail(matchService.getOwned(userId, id));
+        return matchService.toDetail(matchService.getViewable(userId, id));
     }
 
     @PostMapping("/api/matches/{id}/prompts")
@@ -130,7 +133,7 @@ public class MatchController {
     public String halfLog(@RequestAttribute("userId") String userId,
                           @PathVariable("id") String id,
                           @PathVariable("half") int half) {
-        matchService.getOwned(userId, id);
+        matchService.getViewable(userId, id);   // #245 수비자 관전(읽기 전용)
         clockService.advanceDueForRead(id); // 재생 요청 시점 기준으로 단계를 맞춘 뒤 허용 여부를 판정
         return matchService.halfLogJson(userId, id, half); // match_log_json 그대로 (AC-M3)
     }
@@ -138,7 +141,7 @@ public class MatchController {
     @GetMapping("/api/matches/{id}/result")
     public MatchService.MatchResult result(@RequestAttribute("userId") String userId,
                                            @PathVariable("id") String id) {
-        matchService.getOwned(userId, id);
+        matchService.getViewable(userId, id);   // #245 수비자 관전(읽기 전용)
         clockService.advanceDueForRead(id); // 후반 창이 방금 끝났으면 여기서 정산하고 결과를 준다
         return matchService.result(userId, id);
     }

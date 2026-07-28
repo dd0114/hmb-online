@@ -52,7 +52,16 @@ class FlywayMigrationTest {
             // V20 덱 저장 선실행(1) — #215 W2: 유저당 유효 prewarm A 원장(잡 id 는 내용 해시라
             //   유저 간 공유되므로 "누가 무엇을 기다리는가"를 잡 테이블이 알 수 없다).
             //   V19 는 #217(매치 잠금) 소유 — 번호만 앞서고 이 목록엔 그쪽이 등록한다.
-            "deck_prewarm"
+            "deck_prewarm",
+            // V21 원정(4) — #245: 실유저 팀을 상대로 하는 비동기 대전과 그 기록.
+            //   away_challenges = "이 매치의 상대가 누구의 팀이었나"(matches.user_id 는 공격자다)
+            //   away_reports    = 피원정 기록(수비자 관점) + 미확인 상태(seen_at) = 로비 팝업의 SoT
+            //   user_ratings/rating_ledger = wallets.points 와 **다른 축**(소비되는 재화로는 실력을
+            //     말할 수 없다). 초기 0, 하한 없음 — CHECK(>=0) 이 없는 것이 wallets 와의 차이다.
+            "away_challenges",
+            "away_reports",
+            "user_ratings",
+            "rating_ledger"
     );
 
     @Test

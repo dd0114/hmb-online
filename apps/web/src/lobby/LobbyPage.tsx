@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { useAbandonMatch, useActiveMatch, useCreateMatch, useMe } from "../api/hooks";
+import {
+  useAbandonMatch,
+  useActiveMatch,
+  useAwayReports,
+  useCreateMatch,
+  useMe,
+  useStartAwayMatch,
+} from "../api/hooks";
 import { useRelations } from "../api/hooks-v2";
 import { useToken } from "../auth/TokenContext";
 import { providerMeta } from "../auth/login-flow";
@@ -11,6 +18,8 @@ import { TeamMoraleWidget } from "../common/RelationBits";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { useTutorial } from "../common/tutorial-context";
+import { AwayReportModal } from "./AwayReportModal";
+import { shouldShowAwayPopup } from "./away-report-logic";
 import {
   matchInProgressIdOf,
   resumeLabelFor,
@@ -28,6 +37,12 @@ export function LobbyPage() {
   const { restart: restartTutorial } = useTutorial();
   // #217: 강제 이동(MatchLockGate) 대상이 아닌 미완 매치 — 브리핑/사고 상태 — 는 여기서 이어간다.
   const { data: active } = useActiveMatch();
+  // #245: 부재중 피원정 결과. **강제 이동이 걸린 상태에서는 묻지 않는다** — 로비를 스쳐 지나가는
+  // 중에 팝업이 뜨면 읽지도 못한 채 사라지고(멱등 확인이 소진돼) 결과를 영영 못 본다.
+  const forcedToMatch = Boolean(active?.locked && !active?.abandonable);
+  const { data: awayReports } = useAwayReports("unseen", !forcedToMatch);
+  const [awayDismissed, setAwayDismissed] = useState(false);
+  const showAwayPopup = !forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports);
 
   // me 로딩 실패로 header 가 통째로 사라지면 로그아웃 버튼까지 없어져 불량 세션 탈출이 불가했다(#73 P1).
   // 로그아웃은 항상 노출한다.
@@ -45,6 +60,13 @@ export function LobbyPage() {
         {me && (
           <div className={styles.record}>
             {me.records.wins}승 {me.records.draws}무 {me.records.losses}패
+            {/* #245 원정 레이팅 — 지갑 P 와 다른 축이라 재화 배지가 아니라 전적 옆에 둔다.
+                구 서버 응답엔 없을 수 있어 optional(없으면 표시하지 않는다). */}
+            {me.rating !== undefined && (
+              <span className={styles.rating} data-testid="rating-badge" data-rating={me.rating}>
+                레이팅 {me.rating}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -115,6 +137,10 @@ export function LobbyPage() {
       </button>
 
       {modeModalOpen && <ModeModal onClose={() => setModeModalOpen(false)} />}
+
+      {showAwayPopup && awayReports && (
+        <AwayReportModal data={awayReports} onClose={() => setAwayDismissed(true)} />
+      )}
     </Layout>
   );
 }
@@ -126,6 +152,7 @@ export function LobbyPage() {
  */
 function ModeModal({ onClose }: { onClose: () => void }) {
   const createMatch = useCreateMatch();
+  const startAway = useStartAwayMatch();
   const navigate = useNavigate();
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -153,6 +180,33 @@ function ModeModal({ onClose }: { onClose: () => void }) {
         },
       },
     );
+  }
+
+  /**
+   * 원정(#245) — 상대는 **실유저 팀**이다. 상대가 없으면 서버가 404 NO_OPPONENT 를 주고 우리는
+   * 그걸 그대로 말한다(봇으로 몰래 대체하지 않는다 — 그러면 "원정"이 거짓말이 된다).
+   */
+  function startAwayMatch() {
+    setCreateError(null);
+    startAway.mutate(undefined, {
+      onSuccess: (match) => navigate(`/match/${match.id}`),
+      onError: (err) => {
+        const resumeId = matchInProgressIdOf(err);
+        if (resumeId) {
+          navigate(`/match/${resumeId}`);
+          return;
+        }
+        setCreateError(
+          err instanceof ApiError && err.code === "NO_OPPONENT"
+            ? "아직 원정 갈 상대가 없습니다 — 다른 감독이 팀을 꾸리면 열립니다"
+            : err instanceof ApiError && err.code === "DECK_INVALID"
+              ? `덱이 유효하지 않습니다 — ${err.message}`
+              : err instanceof Error
+                ? err.message
+                : "원정을 시작하지 못했습니다",
+        );
+      },
+    });
   }
 
   return (
@@ -185,6 +239,18 @@ function ModeModal({ onClose }: { onClose: () => void }) {
           >
             <span>리그</span>
             <span className={styles.modeHint}>10팀 18라운드</span>
+          </button>
+        </li>
+        <li>
+          <button
+            type="button"
+            className={styles.modeButton}
+            disabled={startAway.isPending}
+            data-testid="mode-away"
+            onClick={startAwayMatch}
+          >
+            <span>{startAway.isPending ? "원정 준비 중…" : "원정"}</span>
+            <span className={styles.modeHint}>실제 유저 팀 · 승 +10 / 패 −10</span>
           </button>
         </li>
       </ul>

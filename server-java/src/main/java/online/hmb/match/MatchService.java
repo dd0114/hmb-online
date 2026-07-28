@@ -97,6 +97,7 @@ public class MatchService {
     private final DeckSnapshot deckSnapshot;
     private final java.time.Clock clock;
     private final MatchClockService clockService;
+    private final online.hmb.away.AwayViewAccess awayViewAccess;
     private final int halftimeSubsMax;
     private final int promptMaxChars;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -110,6 +111,7 @@ public class MatchService {
                         DeckSnapshot deckSnapshot,
                         java.time.Clock clock,
                         MatchClockService clockService,
+                        online.hmb.away.AwayViewAccess awayViewAccess,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
         this.jdbcClient = jdbcClient;
@@ -121,6 +123,7 @@ public class MatchService {
         this.deckSnapshot = deckSnapshot;
         this.clock = clock;
         this.clockService = clockService;
+        this.awayViewAccess = awayViewAccess;
         this.halftimeSubsMax = halftimeSubsMax;
         this.promptMaxChars = promptMaxChars;
     }
@@ -142,6 +145,24 @@ public class MatchService {
                 .orElseThrow(() -> ApiException.notFound("매치를 찾을 수 없습니다"));
         if (!row.userId().equals(userId)) {
             throw ApiException.notFound("매치를 찾을 수 없습니다"); // 소유권 비노출
+        }
+        return row;
+    }
+
+    /**
+     * <b>읽기 전용</b> 접근 판정(#245 hero Q5) — 소유자거나, 그 매치에서 <b>원정을 당한 수비자</b>면
+     * 볼 수 있다. 그 외에는 {@link #getOwned} 와 똑같이 404(소유권 비노출).
+     *
+     * <p>⚠️ 이 메서드는 <b>GET 경로에만</b> 쓴다. 킥오프·감독시간·포기·프롬프트 같은 쓰기는 계속
+     * {@code getOwned} 다 — 관전 권한이 조작 권한으로 새면 남의 경기를 남이 끝낼 수 있다.
+     * 수비자 권한의 근거인 {@code away_reports} 행은 FINISHED 정산에서만 생기므로, 수비자가 여는
+     * 매치는 언제나 이미 끝난 경기다.
+     */
+    public MatchRow getViewable(String userId, String matchId) {
+        MatchRow row = find(matchId)
+                .orElseThrow(() -> ApiException.notFound("매치를 찾을 수 없습니다"));
+        if (!row.userId().equals(userId) && !awayViewAccess.canWatch(userId, matchId)) {
+            throw ApiException.notFound("매치를 찾을 수 없습니다");
         }
         return row;
     }
@@ -252,6 +273,48 @@ public class MatchService {
                         """)
                 .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, leagueFixtureId, now)
                 .update());
+
+        return getOwned(userId, matchId);
+    }
+
+    /**
+     * 원정 매치 생성(#245): {@code mode='away'} + 도전장({@code away_challenges}) 기록.
+     *
+     * <p>상대 봇({@code ghostBotId})은 <b>수비자의 덱 스냅샷을 구운 bots 행</b>이다 — 리그 봇팀과
+     * 같은 자리라 매치·AI·시뮬 경로는 연습 매치와 완전히 동일하다(AwayService 참조).
+     *
+     * <p>⚠️ 매치 INSERT 와 도전장 INSERT 는 <b>한 트랜잭션</b>이다. 갈라두면 도전장만 실패했을 때
+     * "원정 매치인데 수비자가 없는" 행이 남고, 정산이 조용히 건너뛰어 <b>피원정 당한 쪽은 영영
+     * 모른다</b>(리포트도 레이팅도 없이). 관측되지 않는 사고는 고쳐지지 않는다.
+     */
+    public MatchRow createAwayMatch(String userId, String ghostBotId, String defenderId) {
+        DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
+        deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
+
+        BotService.BotRow bot = botService.get(ghostBotId);
+        String matchId = Ulid.next();
+        String seed = randomSeedHex();
+        String snapshot = snapshotDeck(deck, null);
+        Instant createdAt = Instant.now(clock);
+        String now = createdAt.toString();
+        String conditionsJson =
+                computeConditionsJson(userId, conditionService.dateOf(createdAt), rosterPlayerIdsOf(readJson(snapshot)));
+
+        txRunner.run(() -> {
+            jdbcClient.sql("""
+                            INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
+                                                user_deck_json, conditions_json, mode, created_at)
+                            VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'away', ?)
+                            """)
+                    .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, now)
+                    .update();
+            jdbcClient.sql("""
+                            INSERT INTO away_challenges(match_id, defender_id, ghost_bot_id, created_at)
+                            VALUES (?, ?, ?, ?)
+                            """)
+                    .params(matchId, defenderId, bot.id(), now)
+                    .update();
+        });
 
         return getOwned(userId, matchId);
     }
@@ -375,12 +438,18 @@ public class MatchService {
     public record Opponent(String name, String analysisText, List<OpponentPlayer> deck) {
     }
 
+    /**
+     * ownerName(#245 additive) = 이 매치를 만든 유저(홈)의 닉네임. 기존 소비자는 "홈 = 나"라고
+     * 가정해도 됐지만, 원정 수비자가 남의 매치를 <b>관전</b>하면서부터는 그 가정이 깨진다
+     * (홈은 공격자다). 클라가 자기 닉네임을 홈에 박으면 관전 화면이 양 팀을 바꿔 부른다.
+     */
     public record MatchDetail(String id, String state, String failReason, Opponent opponent,
                                Integer scoreH1Home, Integer scoreH1Away,
                                Integer scoreHome, Integer scoreAway,
                                String result, String createdAt, String finishedAt,
                                Map<String, Double> conditions, String mode, String leagueFixtureId,
-                               JsonNode userDeckSnapshot, MatchClockService.MatchClock clock) {
+                               JsonNode userDeckSnapshot, MatchClockService.MatchClock clock,
+                               String ownerName) {
     }
 
     public MatchDetail toDetail(MatchRow row) {
@@ -396,7 +465,16 @@ public class MatchService {
                 row.scoreHome(), row.scoreAway(),
                 row.result(), row.createdAt(), row.finishedAt(),
                 conditionsOf(row), mode, row.leagueFixtureId(), userDeckSnapshotOf(row),
-                clockService.clockOf(row));
+                clockService.clockOf(row), ownerNameOf(row));
+    }
+
+    /** 매치 소유자(홈)의 닉네임 — 관전자가 홈을 자기 이름으로 오인하지 않게(#245). */
+    private String ownerNameOf(MatchRow row) {
+        return jdbcClient.sql("SELECT nickname FROM users WHERE id = ?")
+                .param(row.userId())
+                .query(String.class)
+                .optional()
+                .orElse(null);
     }
 
     /**
@@ -733,7 +811,7 @@ public class MatchService {
      * (서버 절단은 PvP 백로그 — LLD §11 R3).
      */
     public String halfLogJson(String userId, String matchId, int half) {
-        MatchRow row = getOwned(userId, matchId);
+        MatchRow row = getViewable(userId, matchId);   // #245: 원정 수비자도 자기 팀 경기를 본다(읽기 전용)
         boolean h1Available = half == 1 && (row.state().equals(S_FIRST_HALF)
                 || HALFTIME_STATES.contains(row.state())
                 || row.state().equals(S_GEN2)
@@ -756,7 +834,7 @@ public class MatchService {
     }
 
     public MatchResult result(String userId, String matchId) {
-        MatchRow row = getOwned(userId, matchId);
+        MatchRow row = getViewable(userId, matchId);   // #245: 수비자 관전(읽기 전용)
         if (!row.state().equals(S_FINISHED)) {
             throw invalidState(row.state(), "result");
         }

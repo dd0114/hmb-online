@@ -100,6 +100,40 @@
   무료재화 잔액으로 잰다.
 - 계약 = `CurrencyMetaTest`(로더 성질) + `CurrencyConfigApiTest`(**변이체 킬** — 발행물 표기를 `Ω/Ξ` 로
   바꿔 두고 API 응답·에러 문구가 따라오는지). 심볼 값 자체는 단언하지 않는다(값은 언제든 바뀐다).
+## 원정(피침공)·레이팅 (#245)
+
+- **원정 = 실유저 팀을 상대로 하는 비동기 대전.** 그 전까지 이 서버엔 "한 유저의 팀이 남의 상대가
+  되는" 경로가 **아예 없었다**(matches.bot_id 는 bots FK, bots 출처는 시드 3종 + 리그 생성 봇팀뿐).
+  새 대전 파이프라인을 만드는 대신 **리그 패턴을 재사용**한다 — 수비자의 덱 스냅샷을 `bots` 행으로
+  구워 `matches.bot_id` 로 물린다(`AwayService.bakeGhost`). 그래서 매치 생성·AI 잡·시뮬·정산 경로는
+  **변경 0**이고, `buildBotContext` 가 봇 덱의 `promptText` 를 이미 읽으므로 **수비자가 써둔 선수별
+  지시가 그대로 상대 AI 인풋**이 된다.
+- **고스트 bot id 는 덱 해시를 포함한다**(`GHOST_<userId>_<hash12>`). 덱이 바뀌면 같은 행을 덮는 게
+  아니라 새 행이 생긴다 — 시뮬은 매 하프마다 봇 덱을 다시 읽으므로, 덮어썼다면 진행 중인 매치의
+  상대가 전·후반 사이에 바뀌고 재현이 깨진다. upsert 가 갱신하는 건 `name`(닉 변경) 뿐이다.
+- **상대가 없으면 매치를 만들지 않는다**(404 `NO_OPPONENT`). 봇 폴백은 "원정 갔는데 사실 봇"이고,
+  그러면 피원정이 발생하지 않아 리포트·레이팅이 영원히 빈 화면이 된다.
+- **소유권**: 매치는 **공격자**의 것(`matches.user_id`). 수비자 귀속은 `away_challenges` 가 소유하고,
+  정산 시 `away_reports`(match_id UNIQUE = 멱등)로 옮겨진다. 매치 INSERT 와 도전장 INSERT 는
+  **한 트랜잭션** — 갈라지면 "수비자 없는 원정"이 되어 정산이 조용히 건너뛴다.
+- **레이팅은 `wallets.points` 와 다른 축**이다(포인트는 소비되는 재화라 실력을 말하지 못한다).
+  hero 확정 = **초기 0 · 하한 없음**(그래서 `user_ratings` 엔 `CHECK(rating >= 0)` 이 **없다** —
+  wallets 와의 의도적 차이). 값은 `hmb.away.rating.{win,draw,loss}`(현재 **±10, 공격자·수비자 대칭**),
+  멱등은 `rating_ledger` 유니크가 point_ledger 와 동형으로 보장. 적용값은 `away_reports.rating_delta`
+  에 **박제**한다 — 정책을 바꿔도 과거 리포트가 뒤늦게 다른 말을 하면 안 된다.
+- **수비자 관전은 읽기 전용**(hero Q5): `MatchService.getViewable` = 소유자 OR `away_reports.defender_id`.
+  ⚠️ **GET 3개**(`/api/matches/{id}`, `/halves/{half}/log`, `/result`)에만 쓴다. 쓰기는 전부 `getOwned`
+  그대로 — 관전 권한이 조작 권한으로 새면 남의 경기를 남이 끝낼 수 있다. 권한 근거인 리포트 행은
+  FINISHED 정산에서만 생기므로 **수비자가 여는 매치는 언제나 이미 끝난 경기**다.
+- ⚠️ **`/api/away/*` 와 `/api/me/away-reports*` 는 openapi 에 아직 없다** — `docs/**` 가 이 세션의
+  owned-glob 밖이라 매니저 조율 대기(`/api/growth/*` 와 같은 상태). 그때까지 **계약 SoT 는 이 문서**다:
+  - `POST /api/away/matches` `{defenderId?}` → 201 MatchDetail · 404 `NO_OPPONENT` · 409 `MATCH_IN_PROGRESS`
+  - `GET /api/me/away-reports?status=unseen|all` → `{reports[], summary{matches,opponents,wins,draws,
+    losses,goalsFor,goalsAgainst,ratingDelta}, rating, unseen}` (**집계는 서버가 계산** — 클라 복제 금지)
+  - `POST /api/me/away-reports/ack` `{ids?}` → `{acked}` (멱등: `seen_at IS NULL` 로 대상을 좁힌다)
+  - additive: `GET /api/me` 에 `rating`, `MatchDetail` 에 `ownerName`(홈=매치 생성자 닉 — 관전자가
+    홈을 자기 이름으로 오인하지 않게)
+- 계약 = `AwayRaidTest`(상대가 실유저인지 · 고스트 박제 · 정산/멱등 · 팝업 조회/ack · **수비자는 읽기만**).
 
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).

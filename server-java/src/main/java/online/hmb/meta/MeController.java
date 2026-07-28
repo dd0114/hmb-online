@@ -26,13 +26,16 @@ public class MeController {
     private final WalletService walletService;
     private final AdminAccess adminAccess;
     private final OnboardingService onboardingService;
+    private final online.hmb.away.RatingService ratingService;
 
     public MeController(JdbcClient jdbcClient, WalletService walletService, AdminAccess adminAccess,
-                        OnboardingService onboardingService) {
+                        OnboardingService onboardingService,
+                        online.hmb.away.RatingService ratingService) {
         this.jdbcClient = jdbcClient;
         this.walletService = walletService;
         this.adminAccess = adminAccess;
         this.onboardingService = onboardingService;
+        this.ratingService = ratingService;
     }
 
     @GetMapping("/api/me")
@@ -64,7 +67,8 @@ public class MeController {
                 new Records(
                         byResult.getOrDefault("WIN", 0L),
                         byResult.getOrDefault("DRAW", 0L),
-                        byResult.getOrDefault("LOSS", 0L)));
+                        byResult.getOrDefault("LOSS", 0L)),
+                ratingService.rating(userId));
     }
 
     @GetMapping("/api/me/matches")
@@ -109,7 +113,11 @@ public class MeController {
     public record Records(long wins, long draws, long losses) {
     }
 
-    public record MeResponse(UserRef user, WalletInfo wallet, Records records) {
+    /**
+     * rating(#245 additive) = 원정 레이팅. <b>wallet.points 와 다른 축</b>이다 — 포인트는 뽑기·강화로
+     * 소비되는 재화라 실력을 말하지 못한다. 초기 0, 하한 없음(hero 확정).
+     */
+    public record MeResponse(UserRef user, WalletInfo wallet, Records records, int rating) {
     }
 
     public record MatchListItem(String id, String opponentName, Integer scoreHome, Integer scoreAway,

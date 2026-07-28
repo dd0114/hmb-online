@@ -164,6 +164,17 @@ hmb:
       min-mul: 0.85                # 6시(condition=0.0) = -15%
       max-mul: 1.10                # 12시(condition=1.0) = +10%
       zone: Asia/Seoul             # 컨디션 '당일' 판정 존(#98 계약 A) — 날짜시드 = userId:yyyy-MM-dd
+  away:                            # #245 원정(피침공) — hero 확정 2026-07-28. 수치 하드코딩 금지.
+    rating:
+      # 공격자·수비자 **둘 다** 이 값으로 움직인다(hero Q3 — 원 요구의 ±5 에서 상향·대칭화).
+      # 대칭이라 레이팅이 "당하기만 하는" 비대칭 지표가 되지 않는다.
+      # ⚠️ 값을 바꿔도 과거 리포트는 흔들리지 않는다 — away_reports.rating_delta 에 적용값을 박제한다.
+      win: 10
+      draw: 0
+      loss: -10
+    # 로비 팝업/전적에 한 번에 싣는 리포트 수. 부재중이 길면 수십 건이 쌓이는데 전량을 모달에
+    # 그리면 스크롤 지옥이 된다 — 요약(summary)도 이 창 안에서 계산된다.
+    report-list-limit: 20
   relation:                        # AC-C4 관계/사기 변동 규칙 (LLD-p2-server §4) — 하드코딩 금지(config)
     starter-bonus: 2               # 선발 기용 +2
     win-bonus: 3                   # 승리 전원 +3

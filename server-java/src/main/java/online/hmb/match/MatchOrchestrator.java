@@ -47,6 +47,7 @@ public class MatchOrchestrator {
     private final PromptContextBuilder contextBuilder;
     private final DeckPrewarmService prewarmService;
     private final BotService botService;
+    private final online.hmb.away.AwayService awayService;
     private final ConditionService conditionService;
     private final RelationService relationService;
     private final EngineRunnerClient runnerClient;
@@ -67,6 +68,7 @@ public class MatchOrchestrator {
                              MatchService matchService,
                              PromptContextBuilder contextBuilder,
                              BotService botService,
+                             online.hmb.away.AwayService awayService,
                              ConditionService conditionService,
                              RelationService relationService,
                              EngineRunnerClient runnerClient,
@@ -87,6 +89,7 @@ public class MatchOrchestrator {
         this.matchService = matchService;
         this.contextBuilder = contextBuilder;
         this.botService = botService;
+        this.awayService = awayService;
         this.conditionService = conditionService;
         this.relationService = relationService;
         this.runnerClient = runnerClient;
@@ -671,6 +674,12 @@ public class MatchOrchestrator {
         // AC-F2: 리그 매치면 픽스처 정산 + 같은 라운드 봇전 일괄 + 시즌 완료/보상(멱등, LeagueService).
         if ("league".equals(match.mode()) && match.leagueFixtureId() != null) {
             leagueService.settleUserFixture(match.leagueFixtureId(), totalHome, totalAway);
+        }
+
+        // #245: 원정이면 피원정 리포트 + 양쪽 레이팅(±10) 정산. 리그 정산과 같은 자리·같은 규율
+        // (FINISHED CAS 통과 후 1회, 내부 멱등). 수비자는 이 경로 말고는 결과를 알 길이 없다.
+        if ("away".equals(modeOf(match))) {
+            awayService.settle(match.id(), match.userId(), result, userGoals, oppGoals);
         }
 
         // AC-C4: 관계/사기 변동 — FINISHED 전이 트랜잭션 내 멱등 적용(relations_applied 플래그 CAS).

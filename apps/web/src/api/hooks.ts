@@ -15,6 +15,11 @@ import type { PlayerImageRef } from "../common/char-assets";
  */
 export type MeResponse = Omit<components["schemas"]["MeResponse"], "wallet"> & {
   wallet: WalletBalance;
+  /**
+   * 원정 레이팅(#245 additive). **wallet.points 와 다른 축**이다 — 포인트는 뽑기·강화로 소비되는
+   * 재화라 실력을 말하지 못한다. 초기 0, 하한 없음(음수 가능). 구 서버 응답엔 없으므로 optional.
+   */
+  rating?: number;
 };
 export type ModeInfo = components["schemas"]["ModeInfo"];
 /**
@@ -149,9 +154,15 @@ import type { ConditionMap, TeamSnapshot, TeamTactics } from "./v2";
  */
 export type MatchDetail = components["schemas"]["MatchDetail"] & {
   conditions?: ConditionMap;
-  mode?: "practice" | "league";
+  mode?: "practice" | "league" | "away";
   leagueFixtureId?: string | null;
   userDeckSnapshot?: TeamSnapshot | null;
+  /**
+   * 홈(= 매치를 만든 유저)의 닉네임(#245 additive). 그동안 "홈 = 나"였지만 원정 수비자가 남의
+   * 매치를 **관전**하면서부터 그 가정이 깨진다 — 홈은 공격자다. 자기 닉네임을 홈에 박으면
+   * 관전 화면이 양 팀 이름을 바꿔 부른다.
+   */
+  ownerName?: string | null;
 };
 export type MatchResult = components["schemas"]["MatchResult"];
 export type MatchLog = components["schemas"]["MatchLog"];
@@ -309,5 +320,64 @@ export function useMatchResult(id: string | undefined, enabled: boolean = true) 
     queryFn: () => apiFetch<MatchResult>(`/api/matches/${id}/result`),
     enabled: Boolean(token) && Boolean(id) && enabled,
     staleTime: Infinity,
+  });
+}
+
+// ── 원정 (#245) ────────────────────────────────────────────────────────
+
+import type { AwayReportsResponse } from "../lobby/away-report-logic";
+
+/**
+ * GET /api/me/away-reports — 부재중 피원정 결과 + 요약(요구 1·3).
+ *
+ * 로비 진입마다 묻는다. 집계는 **서버가 계산해서 준다** — 클라가 다시 세면 규칙이 바뀔 때
+ * 화면과 서버가 조용히 어긋난다(#217 원칙).
+ */
+export function useAwayReports(status: "unseen" | "all" = "unseen", enabled: boolean = true) {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: ["awayReports", status],
+    queryFn: () => apiFetch<AwayReportsResponse>(`/api/me/away-reports?status=${status}`),
+    enabled: Boolean(token) && enabled,
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+}
+
+/**
+ * POST /api/me/away-reports/ack — 팝업 확인(멱등). ids 를 안 주면 미확인 전부.
+ *
+ * 서버가 `seen_at IS NULL` 로 대상을 좁히므로 두 탭이 동시에 확인해도 한 번만 처리되고,
+ * 두 번째 호출은 에러가 아니라 0건이다.
+ */
+export function useAckAwayReports() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids?: string[]) =>
+      apiFetch<{ acked: number }>("/api/me/away-reports/ack", {
+        method: "POST",
+        body: ids && ids.length > 0 ? { ids } : {},
+      }),
+    // 성공·실패 모두 무효화 — 실패가 화면에서 조용히 사라지면 "확인했는데 또 뜬다"가 된다.
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["awayReports"] });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+/**
+ * POST /api/away/matches — 원정 출발. 상대는 **실유저 덱 고스트**다(봇 폴백 없음:
+ * 상대가 없으면 404 NO_OPPONENT). 409 MATCH_IN_PROGRESS 는 다른 생성 경로와 동일(#217).
+ */
+export function useStartAwayMatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (defenderId?: string) =>
+      apiFetch<MatchDetail>("/api/away/matches", {
+        method: "POST",
+        body: defenderId ? { defenderId } : {},
+      }),
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["activeMatch"] }),
   });
 }
