@@ -1317,7 +1317,10 @@ export interface components {
          *     `HalftimeRequestPhase2Fields` 가 소유한다(스펙 2개는 각각 독립 생성물이라 교차 $ref 금지).
          */
         HalftimeRequest: {
-            /** @description ≤3(hmb.match.halftime-subs-max), out∈전반 선발, in∈벤치, 교체 후 GK≥1 */
+            /**
+             * @description ≤3(hmb.match.halftime-subs-max), out∈전반 선발, in∈벤치, 교체 후 GK≥1.
+             *     **생략 = 손대지 않음**(앞서 낸 교체 유지) / **빈 배열 = 교체 전부 취소**(명시적 의사).
+             */
             substitutions: components["schemas"]["SubstitutionItem"][];
         };
         MatchResult: {

@@ -791,7 +791,7 @@ public class MatchService {
      * @param teamTactics 감독시간 팀 전술(#254, 선택). hero 결정 = <b>허용</b> — 후반에 라인·압박·템포·
      *     폭을 바꿀 수 있다. {@code null}(미첨부)이면 손대지 않은 것이므로 전반 전술을 그대로 이어간다.
      *     저장 위치는 {@code matches.h2_tactics_json} 이고 <b>매치 스냅샷은 건드리지 않는다</b> —
-     *     스냅샷의 teamTactics 는 이미 끝난 전반의 기록이라 덮으면 소급 변조가 된다(V22 주석).
+     *     스냅샷의 teamTactics 는 이미 끝난 전반의 기록이라 덮으면 소급 변조가 된다(V24 주석).
      */
     public MatchRow submitHalftime(String userId, String matchId, List<Substitution> substitutions,
                                     JsonNode teamTactics) {
