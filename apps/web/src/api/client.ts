@@ -229,8 +229,12 @@ const AUTH_PATH_PREFIX = "/api/auth/";
  * 클라이언트는 "인증 경로가 아닌 401 = 세션 만료"로 해석해 **토큰을 지우고 로그인으로 보낸다** —
  * 프록시·CDN·미래 미들웨어가 이 경로에 401 을 끼우면, 유저 데이터와 아무 상관 없는 응답 하나가
  * 로그인된 유저를 튕겨내게 된다. 공개 경로는 그 판정에서 빼 둔다(에러는 그대로 던진다).
+ *
+ * `/api/notices/active`(#248)도 같은 처지다 — 유저 데이터 0 인 공개 조회이고, **점검 공지는
+ * 로그인이 안 될 때 가장 필요하다**. 그 응답의 401 이 로그인된 유저의 토큰을 지우면 부가 기능
+ * 하나가 세션을 파괴한다.
  */
-const SESSION_NEUTRAL_PATHS = ["/api/config"];
+const SESSION_NEUTRAL_PATHS = ["/api/config", "/api/notices/active"];
 
 /** 상대/절대 URL 모두에서 pathname 을 뽑는다(API base 환경변수화 — P3-D1). */
 function pathnameOf(path: string): string {

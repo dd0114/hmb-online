@@ -1,0 +1,109 @@
+/* 공지 운영 패널 (#248) — 나머지 시각은 AdminPage.module.css 를 그대로 쓴다. */
+
+.pill {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.live {
+  background: rgba(55, 194, 111, 0.16);
+  color: var(--success);
+  border: 1px solid rgba(55, 194, 111, 0.4);
+}
+
+.sched {
+  background: rgba(79, 140, 255, 0.14);
+  color: var(--accent);
+  border: 1px solid rgba(79, 140, 255, 0.4);
+}
+
+.off {
+  background: rgba(154, 161, 173, 0.12);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.gone {
+  background: rgba(255, 90, 90, 0.12);
+  color: var(--danger);
+  border: 1px solid rgba(255, 90, 90, 0.35);
+}
+
+.mini {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.mini:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.textarea {
+  /* textarea 는 cols 기본값(20)이 intrinsic width 를 잡아 flex 안에서도 안 늘어난다 —
+     다른 입력칸과 폭이 어긋나 보였다. 명시적으로 채운다. */
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 8px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.two {
+  display: flex;
+  gap: 8px;
+}
+
+.two > * {
+  flex: 1;
+  min-width: 0;
+}
+
+.checkField {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkField input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.preview {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 4px 0 10px;
+  background: var(--bg);
+}
+
+.previewLabel {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.previewTitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
