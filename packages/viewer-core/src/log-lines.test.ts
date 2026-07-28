@@ -83,4 +83,32 @@ describe("scoreAt", () => {
     expect(scoreAt(events, 90)).toEqual({ home: 0, away: 1 });
     expect(scoreAt(events, 999)).toEqual({ home: 1, away: 1 });
   });
+
+  /**
+   * #233 — 하프 로그는 **그 하프의 골만** 갖는다. 후반 로그를 그대로 세면 전반 스코어가 사라진다
+   * (배포본 후반 헤더가 `0 : 0` 이었던 이유). 이미 끝난 하프의 확정 스코어를 베이스라인으로 받는다.
+   */
+  it("베이스라인을 주면 그 위에 쌓는다(후반 = 전반 확정 + 후반 골)", () => {
+    const h1 = { home: 1, away: 4 };
+    expect(scoreAt(events, 0, h1)).toEqual({ home: 1, away: 4 });
+    expect(scoreAt(events, 90, h1)).toEqual({ home: 1, away: 5 });
+    expect(scoreAt(events, 999, h1)).toEqual({ home: 2, away: 5 });
+  });
+
+  it("베이스라인 생략·null 은 지금 동작 그대로(무회귀 — dev-viewer 는 하프 단위로 본다)", () => {
+    expect(scoreAt(events, 999, null)).toEqual({ home: 1, away: 1 });
+    expect(scoreAt(events, 999, undefined)).toEqual({ home: 1, away: 1 });
+  });
+});
+
+describe("logLines 베이스라인 (#233)", () => {
+  it("골 라인 스코어도 베이스라인 위에 쌓인다", () => {
+    const lines = logLines(events, 999, { home: 1, away: 4 });
+    expect(lines.filter((l) => l.type === "goal").map((l) => l.score)).toEqual(["1-5", "2-5"]);
+  });
+
+  it("베이스라인 없으면 하프 로컬 그대로(무회귀)", () => {
+    const lines = logLines(events, 999);
+    expect(lines.filter((l) => l.type === "goal").map((l) => l.score)).toEqual(["0-1", "1-1"]);
+  });
 });

@@ -103,6 +103,87 @@ export function headerTick(
   return isHalftimeState(state) ? halfEndTick : playheadTick;
 }
 
+/** 자리는 지키되 값은 모른다는 표기 — 로그 도착 전 한두 프레임 동안 슬롯이 사라지지 않게 한다. */
+export const CLOCK_PLACEHOLDER = "--'";
+
+/**
+ * 헤더 시계 문구 (#233 스코프 추가). **경기 분은 상시 보인다** — 배포본은 12px muted 로 구석에
+ * 있는 데다 플레이헤드가 오기 전엔 요소 자체가 사라져서 hero 가 "경기 시간이 안 보인다"고 했다.
+ *
+ * 값은 **재생 위치 기준 게임 분**이다(실경과 시간이 아니다 — 한 하프는 압축돼 흐르므로 실시간을
+ * 그리면 34' 장면에서 7' 이 뜬다). 재생 위치를 넘는 분을 보여주지 않으므로 스포일러 규칙과도 정합.
+ *
+ * 두 가지 "모름"을 구분한다:
+ *  · 감독시간인데 하프 끝을 모른다 → **null**(시계를 접는다). 그 화면의 시계는 "전반이 끝난 지점"을
+ *    뜻하므로 모르면 틀린 숫자를 쓰느니 접는 게 낫다(#226 결정).
+ *  · 라이브/다시보기인데 플레이헤드가 아직 없다 → **`--'`**(자리는 지킨다). 곧 채워질 값이고,
+ *    슬롯이 사라졌다 나타나면 헤더가 흔들린다.
+ */
+export function clockLabel(state: string | undefined, tick: number | null): string | null {
+  if (isHalftimeState(state)) {
+    // 하프 끝은 딱 떨어지지 않는다 — 전반 마지막 스냅샷 틱 2699 는 44.98분이라 내리면 44' 가 된다.
+    return tick == null ? null : `${Math.round(tick / 60)}'`;
+  }
+  return tick == null ? CLOCK_PLACEHOLDER : `${Math.floor(tick / 60)}'`;
+}
+
+export interface ScorePair {
+  home: number;
+  away: number;
+}
+
+/** 서버가 소유하는 확정 스코어들(MatchDetail 의 구조적 부분집합 — 이 파일은 API 타입에 의존하지 않는다). */
+export interface SettledScores {
+  scoreH1Home?: number | null;
+  scoreH1Away?: number | null;
+  scoreHome?: number | null;
+  scoreAway?: number | null;
+}
+
+/** 값을 모를 때의 표기 — 0 으로 단정하지 않는다(#226 선례: 틀린 숫자보다 없는 편이 낫다). */
+const UNKNOWN: { home: string; away: string } = { home: "-", away: "-" };
+
+const pairOf = (h: unknown, a: unknown): ScorePair | null =>
+  typeof h === "number" && typeof a === "number" ? { home: h, away: a } : null;
+
+/**
+ * **지금 재생 중인 하프 앞에 이미 확정된 스코어** (#233).
+ *
+ * 하프 로그는 그 하프의 골만 갖는다(후반 로그 = 후반 골만, 틱만 절대값). 그래서 후반을 재생하는
+ * 상태에서는 재생 델타에 **전반 확정 스코어**를 얹어야 경기 점수가 된다 — 이걸 아무도 안 해서
+ * 배포본 후반 헤더가 `0 : 0` 으로 시작했다(라이브 실경기 전반은 1:4 였다).
+ *
+ * 확정값을 모르면 **null** — 0 으로 때우면 화면에 그 틀린 값이 그대로 남는다.
+ */
+export function playedBaseline(state: string | undefined, scores: SettledScores): ScorePair | null {
+  if (halfForState(state) !== 2) return { home: 0, away: 0 };
+  return pairOf(scores.scoreH1Home, scores.scoreH1Away);
+}
+
+/**
+ * 헤더가 그릴 스코어 — **권위 분리** (#233, #226 을 흡수).
+ *
+ *   헤더 = [서버 확정] 이미 끝난 하프 전부 + [재생] 지금 하프의 플레이헤드 델타
+ *
+ * 진행 중 하프의 "지금 점수"는 서버가 정할 수 없다 — 유저가 되감으면 화면의 진실은 서버의 라이브
+ * 엣지가 아니라 그 유저의 재생 위치이고, 서버 기준 점수를 그리면 앞선 점수 = 스포일러가 된다.
+ * 반대로 **끝난 하프는 재생 위치와 무관하게 확정**이라 서버 값이 이긴다.
+ *
+ * ⚠️ 상태별 분기를 호출부에서 다시 쓰지 마라 — 그 패턴이 #226(감독시간)·#233(후반) 두 버그를 낳았다.
+ */
+export function headerScore(
+  state: string | undefined,
+  scores: SettledScores,
+  delta: ScorePair | null,
+): { home: number | string; away: number | string } {
+  if (state === "FINISHED") return pairOf(scores.scoreHome, scores.scoreAway) ?? { ...UNKNOWN };
+  if (isHalftimeState(state)) return pairOf(scores.scoreH1Home, scores.scoreH1Away) ?? { ...UNKNOWN };
+
+  const base = playedBaseline(state, scores);
+  if (!base) return { ...UNKNOWN };
+  return { home: base.home + (delta?.home ?? 0), away: base.away + (delta?.away ?? 0) };
+}
+
 /**
  * 시트에 뜰 탭 목록. 상태 패널이 먼저(유저가 해야 할 일), 그 뒤 켜진 토글이 고정 순서로.
  * 빈 배열이면 시트 자체가 없다(무대만).

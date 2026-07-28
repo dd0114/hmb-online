@@ -13,6 +13,7 @@ playwright-report/
 # 관전 화면 실캡처 증빙(#169 S1) — 재생성 가능한 로컬 산출물
 apps/web/.stage/
 apps/web/.stage-capture/
+apps/web/.p233/
 tools/qa_*.mjs
 tools/reqa*.mjs
 tools/*_log.json

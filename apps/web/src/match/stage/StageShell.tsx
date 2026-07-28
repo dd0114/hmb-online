@@ -16,6 +16,7 @@ import {
   halfForState,
   headerTick,
   parseToggles,
+  playedBaseline,
   resolveActiveTab,
   serializeToggles,
   sheetHeight,
@@ -80,10 +81,15 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
   useEffect(() => {
     if (clock) setOffsetMs(captureOffsetMs(clock, Date.now()));
   }, [clock?.serverNow]);
+  // **하프 로컬 델타**만 계산한다 — 앞에 끝난 하프를 얹는 건 `headerScore`/`playedBaseline` 소관(#233).
   const liveScore = useMemo(() => {
     if (!log || tick == null) return null;
     return scoreAt(((log.events ?? []) as unknown as LogEvent[]) ?? [], tick);
   }, [log, tick]);
+
+  // 이 하프 앞에 이미 확정된 스코어(후반이면 전반). 로그 라인·폴백 스코어보드가 경기 누적을
+  // 말하려면 이게 필요하다 — 헤더만 고치면 헤더 `1:6` 옆 로그가 `0-2` 로 남아 또 어긋난다.
+  const baseline = playedBaseline(match.state, match);
 
   // 이 하프가 끝난 지점(절대 틱). 감독시간 헤더 시계가 여기에 고정된다(#226).
   const halfEndTick = useMemo(() => halfEndTickOf(log), [log]);
@@ -128,6 +134,7 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
             clock={clock}
             clockOffsetMs={offsetMs}
             logEnabled={logEnabled}
+            baseline={baseline}
           />
         </section>
 
@@ -158,7 +165,14 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
             <div className={styles.panel}>
               {activeTab === "stats" && <StatsPanel matchId={match.id} half={half} tick={tick} />}
               {activeTab === "log" && (
-                <LogPanel matchId={match.id} half={half} homeName={homeName} awayName={awayName} tick={tick} />
+                <LogPanel
+                  matchId={match.id}
+                  half={half}
+                  homeName={homeName}
+                  awayName={awayName}
+                  tick={tick}
+                  baseline={baseline}
+                />
               )}
               {activeTab === "brief" && (
                 <SecondHalfBriefPanel match={match} clockOffsetMs={offsetMs} />

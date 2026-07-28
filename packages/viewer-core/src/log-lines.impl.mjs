@@ -66,12 +66,16 @@ function labelOf(e) {
 /**
  * uptoTick(포함)까지의 로그 라인. uptoTick 을 주지 않으면 전체.
  * 골 라인에는 그 시점의 스코어를 함께 계산해 붙인다(진행 중 스코어 = 재생 시점 기준).
+ *
+ * `baseline` = **이 로그 앞에 이미 끝난 하프의 스코어**(#233). 하프 로그는 그 하프의 골만 갖기
+ * 때문에, 후반 로그를 그대로 세면 골 라인이 `0-1` 부터 다시 시작한다. 생략하면 하프 로컬 그대로다
+ * (dev-viewer 는 하프 하나를 통짜로 보므로 인자를 주지 않는다 = 무회귀).
  */
-export function logLines(events, uptoTick) {
+export function logLines(events, uptoTick, baseline) {
   const upto = uptoTick ?? Number.POSITIVE_INFINITY;
   const out = [];
-  let h = 0;
-  let a = 0;
+  let h = baseline?.home ?? 0;
+  let a = baseline?.away ?? 0;
   for (const e of events) {
     // 정렬 가정을 하지 않는다(break 대신 continue) — 로그가 어떤 순서로 오든 결과가 같다.
     if (e.tick > upto) continue;
@@ -96,10 +100,13 @@ export function logLines(events, uptoTick) {
   return out;
 }
 
-/** uptoTick 까지의 스코어(골 이벤트 누적). 스코어바가 재생 진행에 맞춰 쓰는 값. */
-export function scoreAt(events, uptoTick) {
-  let home = 0;
-  let away = 0;
+/**
+ * uptoTick 까지의 스코어(골 이벤트 누적). 스코어바가 재생 진행에 맞춰 쓰는 값.
+ * `baseline` = 이 로그 앞에 이미 끝난 하프의 스코어(#233) — 생략하면 하프 로컬(무회귀).
+ */
+export function scoreAt(events, uptoTick, baseline) {
+  let home = baseline?.home ?? 0;
+  let away = baseline?.away ?? 0;
   for (const e of events) {
     if (e.type !== "goal" || e.tick > uptoTick) continue;
     if (e.team === "home") home++;

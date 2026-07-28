@@ -76,6 +76,57 @@ describe("감독시간 헤더 (#226)", () => {
   });
 });
 
+describe("후반 진행 중 헤더 (#233)", () => {
+  it("후반 킥오프에도 전반 스코어가 살아 있다 — 후반만의 점수를 경기 점수로 그리지 않는다", () => {
+    // 배포본 실측: 라이브 DB 실경기(전반 1:4)의 후반 45' 헤더가 `0 : 0` 이었다.
+    renderBar(
+      { ...base, state: "SECOND_HALF", scoreH1Home: 1, scoreH1Away: 4 },
+      { liveScore: { home: 0, away: 0 }, tick: 2700 },
+    );
+    expect(screen.getByTestId("stage-score").textContent).toContain("1 : 4");
+    expect(screen.getByTestId("stage-clock").textContent).toBe("45'");
+    expect(screen.getByTestId("match-state").textContent).toBe("후반 진행 중");
+  });
+
+  it("후반 골은 전반 위에 쌓인다", () => {
+    // 같은 경기 65' — 후반 2골(away) 뒤. 배포본은 `0 : 2` 였다.
+    renderBar(
+      { ...base, state: "SECOND_HALF", scoreH1Home: 1, scoreH1Away: 4 },
+      { liveScore: { home: 0, away: 2 }, tick: 3900 },
+    );
+    expect(screen.getByTestId("stage-score").textContent).toContain("1 : 6");
+    expect(screen.getByTestId("stage-clock").textContent).toBe("65'");
+  });
+
+  it("후반 헤더에는 h1-score testid 를 붙이지 않는다(그 값은 전반 스코어가 아니다)", () => {
+    renderBar(
+      { ...base, state: "SECOND_HALF", scoreH1Home: 1, scoreH1Away: 4 },
+      { liveScore: { home: 0, away: 2 }, tick: 3900 },
+    );
+    expect(screen.queryByTestId("h1-score")).toBeNull();
+  });
+
+  it("전반 확정값 없는 후반(구 매치)은 '-' — 후반만의 점수를 대신 보여주지 않는다", () => {
+    renderBar({ ...base, state: "SECOND_HALF" }, { liveScore: { home: 0, away: 2 }, tick: 3900 });
+    expect(screen.getByTestId("stage-score").textContent).toContain("- : -");
+  });
+});
+
+describe("경기 분 상시 표시 (#233 스코프 추가)", () => {
+  it("후반 진행 중에도 경기 분이 헤더에 있다", () => {
+    renderBar(
+      { ...base, state: "SECOND_HALF", scoreH1Home: 1, scoreH1Away: 4 },
+      { liveScore: { home: 0, away: 0 }, tick: 3900 },
+    );
+    expect(screen.getByTestId("stage-clock").textContent).toBe("65'");
+  });
+
+  it("플레이헤드가 아직 없어도 시계 슬롯은 사라지지 않는다", () => {
+    renderBar({ ...base, state: "SECOND_HALF", scoreH1Home: 1, scoreH1Away: 4 }, { tick: null });
+    expect(screen.getByTestId("stage-clock").textContent).toBe("--'");
+  });
+});
+
 describe("라이브 하프 헤더 — 무회귀", () => {
   it("FIRST_HALF 는 재생 진행을 따라간다(확정 스코어가 없다)", () => {
     renderBar({ ...base, state: "FIRST_HALF" }, { liveScore: { home: 1, away: 0 }, tick: 1290 });

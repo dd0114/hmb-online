@@ -40,11 +40,22 @@ export interface LogLine {
   xg?: string;
 }
 
+/**
+ * 이 로그 **앞에** 이미 끝난 하프의 스코어 (#233). 하프 로그는 그 하프의 골만 갖기 때문에,
+ * 후반 로그의 누적을 경기 점수로 쓰려면 전반 확정 스코어를 여기로 받아야 한다.
+ * 생략/null 이면 하프 로컬 누적(= 기존 동작, dev-viewer 경로 무회귀).
+ */
+export type ScoreBaseline = { home: number; away: number } | null | undefined;
+
 interface LogLinesImpl {
   eventTier(e: LogEvent): LogTier;
   isLogged(e: LogEvent): boolean;
-  logLines(events: readonly LogEvent[], uptoTick?: number): LogLine[];
-  scoreAt(events: readonly LogEvent[], uptoTick: number): { home: number; away: number };
+  logLines(events: readonly LogEvent[], uptoTick?: number, baseline?: ScoreBaseline): LogLine[];
+  scoreAt(
+    events: readonly LogEvent[],
+    uptoTick: number,
+    baseline?: ScoreBaseline,
+  ): { home: number; away: number };
 }
 // JSDoc 모듈이라 TS 가 tier 를 넓은 string 으로 추론 → 검증된 표면 타입으로 재해석(stats.ts 패턴).
 const typed = impl as unknown as LogLinesImpl;
