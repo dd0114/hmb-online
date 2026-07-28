@@ -154,28 +154,25 @@ public class AwayService {
             assertOffered(attackerId, defenderId);
             return startAgainst(attackerId, defenderId);
         }
-        List<String> pool = new ArrayList<>(candidates(attackerId));
+        // ⚠️ 이 경로도 **밴드를 쓴다**(독립검증 MAJ-1). 예전엔 여기만 전체 풀에서 뽑아서, 바디 없이
+        // POST 하면 레이팅 10만짜리 상대가 걸렸다 — 밴드 매칭이 담합 방어의 근거인데 그 근거에
+        // 우회로가 있었다. 후보 선정은 한 곳(offerCandidates 와 같은 밴드 확장)만 쓴다.
+        List<Candidate> pool = new ArrayList<>(bandPool(attackerId));
         if (pool.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT", "원정 갈 상대가 아직 없습니다");
         }
-        // 결정론 계약 밖(매칭 무작위) — BotService.pickRandom 과 같은 근거로 SecureRandom.
         java.util.Collections.shuffle(pool, secureRandom);
-
-        // ⚠️ 루프가 하는 일은 **상대를 고르는 것뿐**이다. 내 매치 생성은 루프가 끝난 뒤 밖에서 한다 —
-        // 안에 두면 덱이 아닌 실패(봇 조회·컨디션 계산·INSERT 경합)까지 catch 에 삼켜져 다시
-        // 404 NO_OPPONENT 으로 뒤집히고 후보마다 고스트가 구워진다(4R blocker 의 형태).
-        // 이걸 "정리"한다며 루프 안으로 되돌리지 마라 — 구조가 곧 방어다.
         String chosen = null;
         String ghostBotId = null;
         ApiException last = null;
-        for (String candidate : pool) {
+        for (Candidate candidate : pool) {
             try {
-                ghostBotId = bakeGhost(candidate, nicknameOf(candidate));
-                chosen = candidate;
+                ghostBotId = bakeGhost(candidate.userId(), candidate.nickname());
+                chosen = candidate.userId();
                 break;
             } catch (ApiException e) {
-                // 삼키는 것은 **그 후보를 세울 수 없다**는 실패뿐이다.
-                log.warn("away opponent candidate {} unusable ({}) — trying next", candidate, e.getMessage());
+                log.warn("away opponent candidate {} unusable ({}) — trying next",
+                        candidate.userId(), e.getMessage());
                 last = e;
             }
         }
@@ -185,6 +182,19 @@ public class AwayService {
                             + (last == null ? "" : " (마지막 후보 사유: " + last.getMessage() + ")"));
         }
         return matchService.createAwayMatch(attackerId, ghostBotId, chosen);
+    }
+
+    /** 밴드 안 후보 — 부족하면 단계적으로 넓히고, 그래도 없으면 전체. 선정 로직의 유일한 출처. */
+    private List<Candidate> bandPool(String attackerId) {
+        int myRating = ratingService.rating(attackerId);
+        List<Candidate> pool = List.of();
+        for (int widen = 1; widen <= 4 && pool.size() < candidateCount; widen++) {
+            pool = candidatesInBand(attackerId, myRating, (long) ratingBand * widen);
+        }
+        if (pool.isEmpty()) {
+            pool = candidatesInBand(attackerId, myRating, Long.MAX_VALUE / 4);
+        }
+        return pool;
     }
 
     private String nicknameOf(String userId) {
@@ -198,7 +208,7 @@ public class AwayService {
                 bakeGhost(defenderId, nicknameOf(defenderId)), defenderId);
     }
 
-    public record Candidate(String userId, String nickname, int rating, int power) {
+    public record Candidate(String userId, String nickname, int rating) {
     }
 
     /**
@@ -213,20 +223,26 @@ public class AwayService {
      * 되는데, 그건 매칭 실패보다 나쁘다.
      */
     public List<Candidate> offerCandidates(String attackerId) {
-        int myRating = ratingService.rating(attackerId);
-        List<Candidate> pool = List.of();
-        for (int widen = 1; widen <= 4 && pool.size() < candidateCount; widen++) {
-            pool = candidatesInBand(attackerId, myRating, (long) ratingBand * widen);
-        }
-        if (pool.isEmpty()) {
-            pool = candidatesInBand(attackerId, myRating, Long.MAX_VALUE / 4);   // 마지막엔 전체
-        }
+        List<Candidate> pool = new ArrayList<>(bandPool(attackerId));
         if (pool.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT", "원정 갈 상대가 아직 없습니다");
         }
-        List<Candidate> shuffled = new ArrayList<>(pool);
-        java.util.Collections.shuffle(shuffled, secureRandom);
-        List<Candidate> offered = shuffled.subList(0, Math.min(candidateCount, shuffled.size()));
+        java.util.Collections.shuffle(pool, secureRandom);
+        // ⚠️ **세울 수 있는 팀만 제시한다**(독립검증 MAJ-8). 덱이 깨진 상대를 제시하면 유저가 그걸
+        // 고르는 순간 "선발이 11명이 아닙니다"가 뜨는데, 화면은 그걸 **자기 덱 오류**로 그린다.
+        // 2택은 폴백이 없으므로(고른 건 그 사람이다) 거르는 건 여기서 해야 한다.
+        List<Candidate> offered = new ArrayList<>();
+        for (Candidate c : pool) {
+            if (offered.size() >= candidateCount) {
+                break;
+            }
+            if (deckIsPlayable(c.userId())) {
+                offered.add(c);
+            }
+        }
+        if (offered.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT", "원정 갈 상대가 아직 없습니다");
+        }
 
         List<String> ids = offered.stream().map(Candidate::userId).toList();
         jdbcClient.sql("""
@@ -237,6 +253,17 @@ public class AwayService {
                 .params(attackerId, toJson(ids), Instant.now().toString())
                 .update();
         return List.copyOf(offered);
+    }
+
+    /** 지금 상대로 세울 수 있는 덱인가(검증만, 굽지 않는다). */
+    private boolean deckIsPlayable(String userId) {
+        try {
+            DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
+            deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
     }
 
     private List<Candidate> candidatesInBand(String attackerId, int myRating, long band) {
@@ -251,7 +278,7 @@ public class AwayService {
                         """)
                 .params(attackerId, myRating, band)
                 .query((rs, n) -> new Candidate(rs.getString("id"), rs.getString("nickname"),
-                        rs.getInt("rating"), 0))
+                        rs.getInt("rating")))
                 .list();
     }
 
@@ -279,6 +306,10 @@ public class AwayService {
             JsonNode arr = objectMapper.readTree(offer.candidates());
             for (JsonNode id : arr) {
                 if (defenderId.equals(id.asText())) {
+                    // ⚠️ **제시는 소모된다**(독립검증 MAJ-7). 남겨두면 한 번 받은 목록으로 TTL 동안
+                    // 같은 상대를 반복 수락할 수 있고, 그 사이 승패로 레이팅이 벌어져 밴드를 벗어나도
+                    // 계속 고를 수 있다 = 밴드 방어의 두 번째 입구. 한 제시 = 한 경기다.
+                    jdbcClient.sql("DELETE FROM away_offers WHERE user_id = ?").param(attackerId).update();
                     return;
                 }
             }
@@ -287,18 +318,6 @@ public class AwayService {
         }
         // 제시하지 않은 상대다 = 지목 시도.
         throw ApiException.validation("제시된 상대 중에서만 고를 수 있습니다");
-    }
-
-    private List<String> candidates(String attackerId) {
-        return jdbcClient.sql("""
-                        SELECT u.id FROM users u
-                        JOIN decks d ON d.user_id = u.id AND d.is_active = 1
-                        WHERE u.id <> ?
-                        ORDER BY u.id
-                        """)
-                .param(attackerId)
-                .query(String.class)
-                .list();
     }
 
     /**
@@ -400,6 +419,13 @@ public class AwayService {
                 .param(attackerId).query(String.class).optional().orElse("상대");
 
         txRunner.run(() -> {
+            // ⚠️ 연승 보너스를 **리포트 INSERT 전에** 계산한다. 예전엔 기본 ±10 만 박제하고 실제로는
+            // 보너스를 더해 적용해서, 리포트가 "적용값을 박제한다"는 자기 선언을 **처음부터** 어겼다
+            // (팝업의 레이팅 합계도 같이 틀렸다 — 독립검증 MAJ-3).
+            int attackerBonus = applyStreak(attackerId, attackerResult);
+            int defenderBonus = applyStreak(challenge.defenderId(), defenderResult);
+            int attackerApplied = attackerDelta + attackerBonus;
+            int defenderApplied = defenderDelta + defenderBonus;
             int inserted = jdbcClient.sql("""
                             INSERT OR IGNORE INTO away_reports(
                                 id, match_id, defender_id, attacker_id, attacker_name,
@@ -407,21 +433,17 @@ public class AwayService {
                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """)
                     .params(Ulid.next(), matchId, challenge.defenderId(), attackerId, attackerName,
-                            defenderGoals, attackerGoals, defenderResult, defenderDelta,
+                            defenderGoals, attackerGoals, defenderResult, defenderApplied,
                             Instant.now().toString())
                     .update();
             if (inserted == 0) {
                 return; // 이미 정산됨
             }
-            // 연승 보너스(hero E4) — 이긴 쪽만. 먼저 연승을 갱신하고 그 값으로 보너스를 계산한다.
-            int attackerBonus = applyStreak(attackerId, attackerResult);
-            int defenderBonus = applyStreak(challenge.defenderId(), defenderResult);
-            if (attackerDelta != 0 || attackerBonus != 0) {
-                ratingService.apply(attackerId, attackerDelta + attackerBonus, REASON_ATTACK, matchId);
+            if (attackerApplied != 0) {
+                ratingService.apply(attackerId, attackerApplied, REASON_ATTACK, matchId);
             }
-            if (defenderDelta != 0 || defenderBonus != 0) {
-                ratingService.apply(challenge.defenderId(), defenderDelta + defenderBonus,
-                        REASON_DEFENSE, matchId);
+            if (defenderApplied != 0) {
+                ratingService.apply(challenge.defenderId(), defenderApplied, REASON_DEFENSE, matchId);
             }
             // 수비자 보상(hero E7) — "덱 세팅 잘해두면 돈이 들어오고, 지면 남 좋은 일만".
             // 공격자 보상은 매치 정산(MatchOrchestrator)이 이미 준다 — 여기서 또 주면 이중 지급이다.

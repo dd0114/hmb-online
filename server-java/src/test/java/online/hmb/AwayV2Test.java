@@ -58,10 +58,19 @@ class AwayV2Test extends MatchTestBase {
                 .getStatusCode()).isEqualTo(HttpStatus.CREATED);
         releaseActiveMatches();
 
+        // ⚠️ **제시는 소모된다** — 한 제시 = 한 경기(MAJ-7). 남겨두면 TTL 동안 같은 상대를 반복
+        // 수락할 수 있고, 승패로 레이팅이 벌어져 밴드를 벗어난 뒤에도 계속 고를 수 있다.
+        ResponseEntity<String> reuse = authPost("/api/away/matches", attacker,
+                Map.of("defenderId", chosen), String.class);
+        assertThat(reuse.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(reuse.getBody()).contains("먼저 상대 목록");
+
         // ⚠️ 제시되지 않은 상대는 거부된다 — 이게 없으면 "2택"이 곧 지목이고, 부계정 반복 지목으로
         // 레이팅을 무한 생성할 수 있다(4R MAJ-4 가 막은 경로).
+        ResponseEntity<Map> again = authGet("/api/away/candidates", attacker, Map.class);
+        List<Map<String, Object>> reoffered = (List<Map<String, Object>>) again.getBody().get("candidates");
         String notOffered = List.of(userIdOf("v2_a"), userIdOf("v2_b"), userIdOf("v2_c")).stream()
-                .filter(id -> offered.stream().noneMatch(c -> id.equals(c.get("userId"))))
+                .filter(id -> reoffered.stream().noneMatch(c -> id.equals(c.get("userId"))))
                 .findFirst().orElseThrow();
         ResponseEntity<String> denied = authPost("/api/away/matches", attacker,
                 Map.of("defenderId", notOffered), String.class);
@@ -143,6 +152,81 @@ class AwayV2Test extends MatchTestBase {
         assertThat(rating(attackerId)).isEqualTo(afterLoss + 10);
     }
 
+    /** hero E4 의 가장 특이한 절 — **무승부는 연승을 끊지 않는다**(끊으면 방어 성공이 손해가 된다). */
+    @Test
+    void drawKeepsTheStreak() {
+        setupUserWithDeck("v2_draw_def");
+        String defenderId = userIdOf("v2_draw_def");
+        setupUserWithDeck("v2_draw_atk");
+        String attackerId = userIdOf("v2_draw_atk");
+
+        settleWin(attackerId, defenderId, "M_D1");
+        settleWin(attackerId, defenderId, "M_D2");        // 2연승 (+10 +2)
+        int before = rating(attackerId);
+        seedChallenge(attackerId, defenderId, "M_D3");
+        awayService.settle("M_D3", attackerId, "DRAW", 1, 1);
+        assertThat(rating(attackerId)).as("무승부는 레이팅을 움직이지 않는다").isEqualTo(before);
+
+        // 연승이 유지됐으면 다음 승리는 3연승 보너스(+4)를 받는다.
+        settleWin(attackerId, defenderId, "M_D4");
+        assertThat(rating(attackerId) - before).isEqualTo(14);
+    }
+
+    /** 보너스 상한 — 없으면 장기 연승이 밴드를 뚫고 혼자 달아난다. */
+    @Test
+    void streakBonusIsCapped() {
+        setupUserWithDeck("v2_cap_def");
+        String defenderId = userIdOf("v2_cap_def");
+        setupUserWithDeck("v2_cap_atk");
+        String attackerId = userIdOf("v2_cap_atk");
+
+        int prev = 0;
+        int lastGain = 0;
+        for (int i = 1; i <= 12; i++) {
+            settleWin(attackerId, defenderId, "M_C" + i);
+            lastGain = rating(attackerId) - prev;
+            prev = rating(attackerId);
+        }
+        // 기본 10 + 상한 10 = 20 을 넘지 않는다.
+        assertThat(lastGain).isEqualTo(20);
+    }
+
+    /** 연승은 **수비자에게도** 쌓인다(대칭) — 방어로 쌓은 연승이 없으면 수비가 손해다. */
+    @Test
+    void defenderAlsoBuildsAStreak() {
+        setupUserWithDeck("v2_dstreak_def");
+        String defenderId = userIdOf("v2_dstreak_def");
+        setupUserWithDeck("v2_dstreak_atk");
+        String attackerId = userIdOf("v2_dstreak_atk");
+
+        settleLoss(attackerId, defenderId, "M_DS1");   // 수비자 1승
+        int after1 = rating(defenderId);
+        settleLoss(attackerId, defenderId, "M_DS2");   // 수비자 2연승 → +12
+        assertThat(rating(defenderId) - after1).isEqualTo(12);
+    }
+
+    /** 리포트가 박제하는 값 = **실제 적용값**(연승 보너스 포함). 팝업의 레이팅 합계가 이걸 더한다. */
+    @Test
+    void reportRecordsTheAppliedDeltaIncludingStreakBonus() {
+        setupUserWithDeck("v2_rep_def");
+        String defenderId = userIdOf("v2_rep_def");
+        setupUserWithDeck("v2_rep_atk");
+        String attackerId = userIdOf("v2_rep_atk");
+
+        settleLoss(attackerId, defenderId, "M_R1");
+        settleLoss(attackerId, defenderId, "M_R2");   // 수비자 2연승 = 실제 +12
+
+        int recorded = jdbcClient.sql("SELECT rating_delta FROM away_reports WHERE match_id = 'M_R2'")
+                .query(Integer.class).single();
+        int applied = jdbcClient.sql("""
+                        SELECT delta FROM rating_ledger WHERE ref_id = 'M_R2' AND reason = 'away_defense'
+                        """)
+                .query(Integer.class).single();
+        assertThat(recorded)
+                .as("리포트가 '적용값을 박제한다'고 선언해놓고 기본값만 적으면 처음부터 거짓말이다")
+                .isEqualTo(applied);
+    }
+
     // ── E6/E7: 돈은 리그 곡선, 수비자도 받되 지면 0 ───────────────────────
 
     @Test
@@ -163,6 +247,42 @@ class AwayV2Test extends MatchTestBase {
         assertThat(awayReward(defenderId, "M_PAY2")).isZero();
     }
 
+    /** 시즌 연승 초기화 — 레이팅만 0 으로 돌리면 새 시즌 첫 판에 지난 시즌 보너스가 붙는다. */
+    @Test
+    void seasonResetAlsoClearsStreaks() {
+        setupUserWithDeck("v2_sreset_def");
+        String defenderId = userIdOf("v2_sreset_def");
+        setupUserWithDeck("v2_sreset_atk");
+        String attackerId = userIdOf("v2_sreset_atk");
+        settleWin(attackerId, defenderId, "M_SR1");
+        settleWin(attackerId, defenderId, "M_SR2");
+        assertThat(awayService.streakOf(attackerId)).isEqualTo(2);
+
+        expireSeason();
+        seasonService.sweepDueSeasons();
+
+        assertThat(awayService.streakOf(attackerId)).isZero();
+    }
+
+    /** 만료된 제시는 못 쓴다(TTL). */
+    @Test
+    void expiredOfferIsRejected() {
+        setupUserWithDeck("v2_ttl_a");
+        setupUserWithDeck("v2_ttl_b");
+        String attacker = setupUserWithDeck("v2_ttl_atk");
+        String attackerId = userIdOf("v2_ttl_atk");
+        List<AwayService.Candidate> offered = awayService.offerCandidates(attackerId);
+
+        jdbcClient.sql("UPDATE away_offers SET created_at = ? WHERE user_id = ?")
+                .params(java.time.Instant.now().minusSeconds(60 * 60).toString(), attackerId)
+                .update();
+
+        ResponseEntity<String> res = authPost("/api/away/matches", attacker,
+                Map.of("defenderId", offered.get(0).userId()), String.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(res.getBody()).contains("만료");
+    }
+
     // ── E5: 주간 시즌 — 보상 후 초기화 ───────────────────────────────────
 
     @Test
@@ -178,10 +298,7 @@ class AwayV2Test extends MatchTestBase {
 
         int seasonNo = seasonService.current().seasonNo();
         long topBefore = points(topId);
-        // 시즌 종료 시각을 과거로 밀어 마감을 트리거한다.
-        jdbcClient.sql("UPDATE away_seasons SET ends_at = ? WHERE state = 'ACTIVE'")
-                .param(java.time.Instant.now().minusSeconds(60).toString()).update();
-
+        expireSeason();
         assertThat(seasonService.sweepDueSeasons()).isPositive();
 
         // 스냅샷이 남고(초기화 전 성적) 보상이 지급되고 레이팅이 0 으로 돌아간다.
@@ -202,13 +319,38 @@ class AwayV2Test extends MatchTestBase {
         // 다음 시즌이 열려 있다(빈 상태로 남지 않는다).
         assertThat(seasonService.current().seasonNo()).isEqualTo(seasonNo + 1);
 
-        // 마감 재실행은 두 번 주지 않는다.
+        // ⚠️ 멱등은 **같은 시즌을 다시 닫아** 확인해야 한다. 그냥 sweep 을 또 부르면 방금 열린 시즌의
+        // ends_at 이 미래라 첫 줄에서 break 해서 마감 코드에 **도달조차 하지 않는다**(독립검증 MAJ-4:
+        // 멱등을 제거해도 통과했다). 시즌을 ACTIVE 로 되돌려 같은 번호를 재마감시킨다.
         long afterFirst = points(topId);
+        jdbcClient.sql("DELETE FROM away_seasons WHERE season_no > ?").param(seasonNo).update();
+        jdbcClient.sql("""
+                        UPDATE away_seasons SET state = 'ACTIVE', closed_at = NULL, ends_at = ?
+                        WHERE season_no = ?
+                        """)
+                .params(java.time.Instant.now().minusSeconds(60).toString(), seasonNo)
+                .update();
         seasonService.sweepDueSeasons();
-        assertThat(points(topId)).isEqualTo(afterFirst);
+        assertThat(points(topId)).as("같은 시즌을 다시 닫아도 보상은 한 번이다").isEqualTo(afterFirst);
     }
 
     // ── 헬퍼 ────────────────────────────────────────────────────────────
+
+    /**
+     * 진행 중 시즌을 만료시킨다. ⚠️ 마이그레이션이 심은 값을 <b>ISO 로 덮어쓰지 않는다</b> —
+     * 초판 테스트가 그렇게 해서 "V22 가 심은 값을 서비스가 못 읽는다"는 blocker 를 통째로 가렸다
+     * (615개 테스트가 green 인데 실배포에선 시즌이 영원히 안 닫혔다). 여기서는 SQLite 자신의
+     * 포맷으로 과거로 민다 — 서비스가 그 값도 읽을 수 있어야 한다.
+     */
+    private void expireSeason() {
+        jdbcClient.sql("""
+                        UPDATE away_seasons SET ends_at = datetime('now', '-1 hour')
+                        WHERE state = 'ACTIVE'
+                        """)
+                .update();
+    }
+
+
 
     private void settleWin(String attackerId, String defenderId, String matchId) {
         seedChallenge(attackerId, defenderId, matchId);

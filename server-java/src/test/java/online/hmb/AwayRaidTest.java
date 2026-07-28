@@ -551,6 +551,32 @@ class AwayRaidTest extends MatchTestBase {
         assertThat(asOwner.getBody()).contains("TOP-SECRET-ATTACKER-PROMPT");
     }
 
+    /**
+     * 공격자 보상 곡선 = <b>리그 한 판과 같다</b>(hero E6). economy 에 away 키를 만들지 않고 리그
+     * 곡선을 참조하므로, 되돌리면 연습 값(10배 차이)이 나간다 — 실제 매치를 끝까지 돌려서 본다.
+     */
+    @Test
+    void awayMatchPaysTheLeagueRewardCurve() {
+        setupUserWithDeck("aw_def_rew");
+        String attacker = setupUserWithDeck("aw_atk_rew");
+        String attackerId = userIdOf("aw_atk_rew");
+
+        String matchId = driveAwayToFinishedAgainst(attacker, attackerId, userIdOf("aw_def_rew"));
+        String result = jdbcClient.sql("SELECT result FROM matches WHERE id = ?")
+                .param(matchId).query(String.class).single();
+        long paid = jdbcClient.sql("""
+                        SELECT COALESCE(SUM(delta), 0) FROM point_ledger
+                        WHERE user_id = ? AND ref_id = ? AND reason LIKE 'reward_%'
+                        """)
+                .params(attackerId, matchId).query(Long.class).single();
+
+        long league = economyService.get().orElseThrow().rewards().forMode("league").by(result);
+        assertThat(paid).as("원정 보상이 연습 곡선으로 새면 10배 차이가 난다").isEqualTo(league);
+    }
+
+    @Resource
+    private online.hmb.catalog.EconomyService economyService;
+
     // ── D1(hero 2차): 원정 자발적 포기 = 몰수패 ─────────────────────────────
 
     /**

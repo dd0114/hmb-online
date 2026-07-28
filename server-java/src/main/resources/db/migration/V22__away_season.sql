@@ -53,8 +53,17 @@ CREATE TABLE away_season_results (
 );
 CREATE INDEX idx_away_season_results_user ON away_season_results(user_id, season_no DESC);
 
--- 1주차를 지금 연다. ends_at 은 부팅 시 서비스가 config(length-days)로 재계산해 채우므로
--- 여기서는 자리만 잡는다(빈 표로 두면 첫 원정 전까지 시즌이 없는 상태가 된다).
+-- 1주차를 지금 연다(빈 표로 두면 첫 원정 전까지 시즌이 없는 상태가 된다).
+--
+-- ⚠️ **ISO-8601(T·Z)로 심는다.** 서비스는 이 값을 `Instant.parse` 로 읽는데, SQLite 의 기본
+--    `datetime('now')` 는 `'2026-08-04 16:07:20'`(T 없음·Z 없음)이라 파싱이 터진다. 그러면 스윕이
+--    매 주기 예외로 죽고 — 스위퍼가 예외를 삼키므로 **500 도 안 나고 WARN 만 남긴 채** — 시즌이
+--    영원히 마감되지 않는다(보상 0 · 초기화 0 · 다음 시즌 0). 실제로 그렇게 나갔다가 독립검증에서
+--    잡혔다. 이 표의 시각은 전부 앱이 쓰는 형식과 같아야 한다.
+--    (기간은 config `hmb.away.season.length-days` 가 소유한다. 여기 7 은 첫 시즌의 씨앗값일 뿐이고,
+--     이후 시즌은 서비스가 config 로 계산한다.)
 INSERT INTO away_seasons(season_no, state, started_at, ends_at)
-SELECT 1, 'ACTIVE', datetime('now'), datetime('now', '+7 days')
+SELECT 1, 'ACTIVE',
+       strftime('%Y-%m-%dT%H:%M:%SZ', 'now'),
+       strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '+7 days')
 WHERE NOT EXISTS (SELECT 1 FROM away_seasons);

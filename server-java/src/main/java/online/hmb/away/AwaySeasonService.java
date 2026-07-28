@@ -76,7 +76,26 @@ public class AwaySeasonService {
     /** 현재 열린 시즌(없으면 연다). 원정 정산·조회가 이걸 기준으로 삼는다. */
     public Season current() {
         Season active = findActive();
-        return active != null ? active : openNext(0);
+        return active != null ? active : openNext(lastSeasonNo(), null);
+    }
+
+    /**
+     * 시각 파싱 — ISO-8601 이 정본이되 <b>SQLite 기본 포맷도 읽는다</b>.
+     *
+     * <p>왜 관대한가: 이 값을 못 읽으면 스윕이 예외로 죽고, 스위퍼가 그걸 삼켜서 <b>시즌이 조용히
+     * 영원히 안 닫힌다</b>(보상·초기화가 통째로 사라지는데 에러도 안 뜬다 — 독립검증에서 실제로 잡힌
+     * 형태다). 형식 하나 때문에 기능이 통째로 죽는 것보다, 읽어서 진행하고 로그를 남기는 게 낫다.
+     * 쓰기는 항상 ISO 로 한다(관대함은 읽기에만).
+     */
+    static Instant parseTime(String raw) {
+        try {
+            return Instant.parse(raw);
+        } catch (RuntimeException e) {
+            // 'YYYY-MM-DD HH:MM:SS' (SQLite datetime()) — UTC 로 본다.
+            return java.time.LocalDateTime
+                    .parse(raw.trim().replace(' ', 'T'))
+                    .toInstant(java.time.ZoneOffset.UTC);
+        }
     }
 
     private Season findActive() {
@@ -90,18 +109,26 @@ public class AwaySeasonService {
                 .orElse(null);
     }
 
-    private Season openNext(int prevNo) {
-        Instant now = Instant.now(clock);
+    /**
+     * @param startFrom 새 시즌의 시작 시각. 직전 시즌을 닫고 여는 경우엔 <b>그 시즌의 종료 시각</b>을
+     *     넘긴다 — "지금"으로 열면 서버가 4주 꺼져 있어도 시즌이 1개만 닫히고 나머지 3주가 사라진다
+     *     (독립검증 MIN-4). 이어 붙여야 밀린 주가 순서대로 정산된다.
+     */
+    private Season openNext(int prevNo, Instant startFrom) {
         int next = prevNo + 1;
+        Instant start = startFrom != null ? startFrom : Instant.now(clock);
         jdbcClient.sql("""
                         INSERT OR IGNORE INTO away_seasons(season_no, state, started_at, ends_at)
                         VALUES (?, 'ACTIVE', ?, ?)
                         """)
-                .params(next, now.toString(), now.plus(Duration.ofDays(lengthDays)).toString())
+                .params(next, start.toString(), start.plus(Duration.ofDays(lengthDays)).toString())
                 .update();
         Season opened = findActive();
         if (opened == null) {
-            throw new IllegalStateException("시즌을 열지 못했습니다 (season_no=" + next + ")");
+            // season_no 가 이미 쓰였는데 ACTIVE 가 없는 상태(수동 개입·부분 롤백). 번호를 밀어 연다 —
+            // 여기서 던지면 트랜잭션이 롤백되고 스윕이 영구 재시도 루프에 빠진다(MIN-7).
+            log.warn("season {} already exists but no ACTIVE — advancing", next);
+            return openNext(next, start);
         }
         return opened;
     }
@@ -117,10 +144,10 @@ public class AwaySeasonService {
         for (int guard = 0; guard < 8; guard++) {   // 폭주 방지(밀려도 8주 이상은 한 번에 안 민다)
             Season active = findActive();
             if (active == null) {
-                openNext(lastSeasonNo());
+                openNext(lastSeasonNo(), null);
                 continue;
             }
-            if (Instant.parse(active.endsAt()).isAfter(Instant.now(clock))) {
+            if (parseTime(active.endsAt()).isAfter(Instant.now(clock))) {
                 break;   // 아직 진행 중
             }
             closeSeason(active);
@@ -144,15 +171,26 @@ public class AwaySeasonService {
         txRunner.run(() -> {
             record Standing(String userId, int rating, int bestStreak) {
             }
-            // 원정을 한 번이라도 한 유저만 대상 — 가입만 하고 안 한 계정에 참가상을 뿌리지 않는다.
+            // 대상 = **이번 시즌에 실제로 원정한 유저**. "한 번이라도 한 적 있는"으로 잡으면
+            // rating_ledger 가 시즌 마감에 지워지지 않으므로, 한 번 하고 그만둔 계정이 **매주 영원히**
+            // 참가상을 받고 아무도 안 논 주에도 1~3위 보상이 나간다(독립검증 MAJ-2).
+            //
+            // ⚠️ 시각 비교를 **문자열로 하지 마라**. ISO 는 소수초가 붙으면(`...00.123Z`) 안 붙은 값
+            // (`...00Z`)보다 **작게** 정렬된다('.' < 'Z') — 같은 초에 들어온 원정이 조용히 빠진다.
+            // datetime() 으로 정규화해서 비교한다.
             List<Standing> standings = jdbcClient.sql("""
                             SELECT r.user_id AS user_id, r.rating AS rating,
                                    COALESCE(s.best_streak, 0) AS best_streak
                             FROM user_ratings r
                             LEFT JOIN away_streaks s ON s.user_id = r.user_id
-                            WHERE EXISTS (SELECT 1 FROM rating_ledger l WHERE l.user_id = r.user_id)
+                            WHERE EXISTS (
+                                SELECT 1 FROM rating_ledger l
+                                WHERE l.user_id = r.user_id
+                                  AND datetime(l.created_at) >= datetime(?)
+                            )
                             ORDER BY r.rating DESC, r.user_id ASC
                             """)
+                    .param(season.startedAt())
                     .query((rs, n) -> new Standing(rs.getString("user_id"), rs.getInt("rating"),
                             rs.getInt("best_streak")))
                     .list();
@@ -183,7 +221,8 @@ public class AwaySeasonService {
             jdbcClient.sql("UPDATE away_seasons SET state = 'CLOSED', closed_at = ? WHERE id = ?")
                     .params(now, season.id())
                     .update();
-            openNext(season.seasonNo());
+            // 다음 시즌은 이 시즌이 **끝난 시각**부터 — 밀린 주를 건너뛰지 않게(MIN-4).
+            openNext(season.seasonNo(), parseTime(season.endsAt()));
             log.info("away season {} closed — {} standings settled", season.seasonNo(), standings.size());
         });
     }

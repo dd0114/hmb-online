@@ -262,6 +262,8 @@ test.describe("#245 멱등 — 한 번만 보여준다", () => {
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await page.getByTestId("away-report-confirm").click();
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
+    // 닫으면 원래 가려던 곳으로 이어준다 — 한 번 더 누르게 하지 않는다(E1).
+    await expect(page.getByTestId("mode-away")).toBeVisible();
 
     // 새로고침 = 서버에 다시 묻는다. 로컬 플래그가 아니라 서버 상태(seen_at)가 SoT 여야 한다.
     await page.reload();
@@ -409,6 +411,10 @@ test.describe("#245 3R blocker — 잠금 판정 전에 팝업이 스치지 않�
     });
 
     await page.goto("/lobby");
+    // ⚠️ **트리거를 실제로 당긴다**(E1 이후 팝업은 [게임 시작]에 달려 있다). 안 누르면 게이트가
+    // 있든 없든 "팝업 0"이 참이라, 이 계약이 다시 tautology 가 된다(독립검증 MAJ-5 가 그 상태였다).
+    // best-effort — 이미 매치로 튕겼으면 버튼이 없다. 기다리면 타임아웃을 다 먹는다.
+    await page.getByTestId("play-cta").click({ timeout: 2000 }).catch(() => {});
 
     // ⚠️ 창 자체를 관측해야 한다. 이전 계약은 URL 이동을 먼저 기다린 뒤 개수를 세서
     // **게이트를 통째로 지워도 통과**했다(3R: W5 변이체 생존). 지연 구간을 훑는다.
@@ -431,6 +437,9 @@ test.describe("#245 × #217 — 잠금과 충돌하지 않는다", () => {
     const st = await mockApi(page, { unseen: [...THREE_RAIDS], locked: true });
 
     await page.goto("/lobby");
+    // 트리거를 당겨본다 — 강제 이동 중이면 그래도 팝업이 떠선 안 된다(MAJ-5).
+    // best-effort — 이미 매치로 튕겼으면 버튼이 없다. 기다리면 타임아웃을 다 먹는다.
+    await page.getByTestId("play-cta").click({ timeout: 2000 }).catch(() => {});
 
     // 로비를 스쳐 매치로 간다. 그 사이 팝업이 떠 ack 이 소진되면 결과를 영영 못 본다.
     await expect(page).toHaveURL(/\/match\/M_LIVE$/);
