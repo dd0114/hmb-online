@@ -63,6 +63,7 @@ public class MatchOrchestrator {
     private final boolean deltaEnabled;
     private final int overhaulAxisCount;
     private final String overhaulEffort;
+    private final boolean reuseOnNoChange;
 
     public MatchOrchestrator(JdbcClient jdbcClient,
                              TxRunner txRunner,
@@ -84,7 +85,8 @@ public class MatchOrchestrator {
                              ObjectMapper objectMapper,
                              @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
                              @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
-                             @Value("${hmb.match.delta.overhaul-effort}") String overhaulEffort) {
+                             @Value("${hmb.match.delta.overhaul-effort}") String overhaulEffort,
+                             @Value("${hmb.match.delta.reuse-on-no-change}") boolean reuseOnNoChange) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.prewarmService = prewarmService;
@@ -106,6 +108,7 @@ public class MatchOrchestrator {
         this.deltaEnabled = deltaEnabled;
         this.overhaulAxisCount = overhaulAxisCount;
         this.overhaulEffort = overhaulEffort;
+        this.reuseOnNoChange = reuseOnNoChange;
     }
 
     /**
@@ -139,7 +142,10 @@ public class MatchOrchestrator {
             jobQueue.restartPendingTimeout(matchId, half);
         }
 
-        JsonNode snapshot = matchService.readJson(match.userDeckJson());
+        // half 2 면 감독시간 전술(#254)이 얹힌 <b>실효 스냅샷</b>이다 — 전술은 컨텍스트의 manualTactics
+        // 로 흘러가므로(addPhase2Context) 여기서 갈아끼우는 것만으로 기존 B 패치 경로가 그대로 후반에
+        // 반영한다(새 계약 0). 로스터·포메이션·프롬프트는 원본과 같아 델타/SelectData 는 불변.
+        JsonNode snapshot = matchService.snapshotForHalf(match, half);
         BotService.BotRow bot = botService.get(match.botId());
         List<MatchService.Substitution> subs = parseSubs(match.subsJson());
 
@@ -197,12 +203,20 @@ public class MatchOrchestrator {
                 // 킥오프 B 패치: A 가 쓴 덱 사전 지시 → 매치시점(pre) 지시의 변경분만 델타로 얹는다.
                 Map<String, Object> delta = promptDeltaFor(match, snapshot, List.of(),
                         PromptContextBuilder.BASE_PHASES, PromptContextBuilder.PRE_PHASES);
-                h1JobId = isTeamOverhaul(delta, matchId, half, side)
-                        // 대변경 → 이 사이드만 풀생성으로 (#193 라운드2)
-                        ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot,
-                                overhaulEffort)
-                        : enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary,
-                                isBot, delta);
+                if (isNoOpAgainstBase(delta, snapshot)) {
+                    // 매치시점 입력이 **있긴 하지만 A 가 이미 쓴 값과 같다**. 덱 팀 문장(#253)이 생긴
+                    // 뒤로 흔해진 경로다 — 브리핑은 그 문장을 그대로 pre 로 제출하므로 "지시가 있다"는
+                    // 참이지만 내용은 A 와 동일하다. 여기서 패치를 태우면 같은 답을 다시 만드는 AI 콜이라
+                    // #215 가 노린 "무변경이면 즉시 시작(콜0)"이 팀 문장을 쓴 유저에게만 사라진다.
+                    h1JobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(baseResult, jobSeed));
+                } else {
+                    h1JobId = isTeamOverhaul(delta, matchId, half, side)
+                            // 대변경 → 이 사이드만 풀생성으로 (#193 라운드2)
+                            ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot,
+                                    overhaulEffort)
+                            : enqueuePatch(match, half, side, baseResult, snapshot, bot, subs, prevSummary,
+                                    isBot, delta);
+                }
             } else if (baseResult != null) {
                 h1JobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(baseResult, jobSeed));
             } else {
@@ -218,14 +232,22 @@ public class MatchOrchestrator {
         String h1Input = h1InputForSide(matchId, side);
         boolean subsPresent = !isBot && !subs.isEmpty();
         boolean halftimePrompts = !isBot && hasPhasePrompts(matchId, "halftime");
+        // 감독시간 전술 변경(#254) — 지시와 <b>같은 자격</b>의 후반 입력이다. 이게 없으면 유저가 다이얼을
+        // 돌려도 h1 인풋 재사용(콜0) 분기로 떨어져 후반이 전반 전술 그대로 돌아간다(= 조용한 무시).
+        boolean halftimeTactics = !isBot && matchService.secondHalfTacticsChanged(match);
         String targetJobId;
-        if (h1Input != null && !subsPresent && halftimePrompts) {
+        if (h1Input != null && !subsPresent && (halftimePrompts || halftimeTactics)) {
             // h2 B 패치: 전반에 유효했던 지시(pre) → 하프타임 지시의 변경분.
             Map<String, Object> delta = promptDeltaFor(match, snapshot, subs,
                     PromptContextBuilder.PRE_PHASES, PromptContextBuilder.HALFTIME_PHASES);
-            targetJobId = isTeamOverhaul(delta, matchId, half, side)
-                    ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, overhaulEffort)
-                    : enqueuePatch(match, half, side, h1Input, snapshot, bot, subs, prevSummary, isBot, delta);
+            if (isNoOpAgainstBase(delta, halftimeTactics)) {
+                // 하프타임 지시를 냈지만 전반 지시와 내용이 같고 전술도 그대로 → 재사용(콜0).
+                targetJobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(h1Input, jobSeed));
+            } else {
+                targetJobId = isTeamOverhaul(delta, matchId, half, side)
+                        ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, overhaulEffort)
+                        : enqueuePatch(match, half, side, h1Input, snapshot, bot, subs, prevSummary, isBot, delta);
+            }
         } else if (h1Input != null && !subsPresent) {
             targetJobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(h1Input, jobSeed));
         } else {
@@ -251,6 +273,35 @@ public class MatchOrchestrator {
         return contextBuilder.promptDelta(
                 contextBuilder.userPromptSet(match.id(), snapshot, rosterIds, oldPhases),
                 contextBuilder.userPromptSet(match.id(), snapshot, rosterIds, newPhases));
+    }
+
+    /**
+     * 이 해소가 <b>베이스와 완전히 같은 입력</b>인가 = 패치를 태워도 같은 답이 나오는가.
+     *
+     * <p>참이면 B 패치 대신 베이스 재사용(콜0)으로 간다. 조건은 둘 다여야 한다:
+     * <ul>
+     *   <li>지시 델타가 <b>없다</b> — 유효 지시 세트가 베이스가 쓴 것과 글자 단위로 같다.</li>
+     *   <li>수동 전술이 <b>없다</b> — 전술은 A 키 밖(#215 W2)이라 델타가 비어도 베이스는 그 값을 모른다.
+     *       (h2 는 전술 변경 여부를 호출측이 판정해 {@code tacticsPending} 로 넘긴다.)</li>
+     * </ul>
+     *
+     * <p>{@code hmb.match.delta.enabled=false} 면 델타 자체가 항상 null 이라 "같다"를 판정할 근거가
+     * 없다 → 항상 false(델타 도입 이전의 풀 패치 동작으로 통째 롤백).
+     *
+     * <p><b>트레이드오프</b>(독립검증 major-1, hero 소급 리뷰용): 재사용이 쓰는 A 컨텍스트는 덱만 안다 —
+     * {@code opponentRoster}·{@code conditions}·{@code relations}·{@code teamMorale} 이 없다(A 는 매치보다
+     * 먼저 만들어지므로 원리상 가질 수 없다). 그래서 이 분기는 <b>"이 경기에 대해 새로 말한 게 없는
+     * 유저"를 지시가 아예 없는 유저와 같이 취급</b>한다 — 후자는 이 변경 전에도 상대 비의존 재사용이었으니
+     * 새 성질이 아니라 <b>적용 범위 확대</b>다. 상대를 보고 쓴 문장(브리핑에서 덱 문장과 다르게 쓴 경우)은
+     * 델타가 생겨 그대로 B 패치이므로 상대 컨텍스트를 받는다. 품질을 우선해 되돌리려면 코드가 아니라
+     * {@code hmb.match.delta.reuse-on-no-change=false}.
+     */
+    private boolean isNoOpAgainstBase(Map<String, Object> delta, boolean tacticsPending) {
+        return reuseOnNoChange && deltaEnabled && delta == null && !tacticsPending;
+    }
+
+    private boolean isNoOpAgainstBase(Map<String, Object> delta, JsonNode snapshot) {
+        return isNoOpAgainstBase(delta, contextBuilder.hasManualTactics(snapshot));
     }
 
     /**

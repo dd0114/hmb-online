@@ -1126,12 +1126,25 @@ export interface components {
             id: string;
             /** @description '4-4-2' 등 — 엔진 config 포메이션 키와 일치해야 함 */
             formation: string;
+            /**
+             * @description 덱 팀 전체 사전 프롬프트(#253, ≤500자 hmb.deck.team-prompt-max-chars).
+             *     선수별 promptText 의 팀 레벨 짝이며, 매치 시점 팀 지시
+             *     (POST /matches/{id}/prompts, phase=pre|halftime)의 **기본값**이다 — 유효 팀 지시는
+             *     덱 ← pre ← halftime 순으로 덮어쓴다. 없으면 null.
+             */
+            teamPrompt?: string | null;
             slots: components["schemas"]["DeckSlot"][];
             /** Format: date-time */
             updatedAt?: string;
         };
         DeckUpdateRequest: {
             formation: string;
+            /**
+             * @description 덱 팀 전체 사전 프롬프트(#253). 전체 교체 시맨틱이라 **생략/null 은 "지운다"** 이다 —
+             *     유지하려면 매번 실어 보낸다(슬롯과 동일 규칙). 공백만 있으면 없는 것으로 정규화한다.
+             *     초과 시 400 DECK_INVALID(rule=TEAM_PROMPT_TOO_LONG).
+             */
+            teamPrompt?: string | null;
             /**
              * @description starter 슬롯 정확히 11개(slotIndex 0..10, GK≥1 포함), bench ≤7(hmb.deck.bench-max),
              *     선수 중복 금지, 미보유 선수 금지 — 위반 시 400 DECK_INVALID(AC-S2).
@@ -1299,8 +1312,15 @@ export interface components {
             /** @description playerId(벤치) */
             in: string;
         };
+        /**
+         * @description ⚠️ Phase2 추가 필드 teamTactics(#254 — 감독시간 팀 전술)는 openapi-v2
+         *     `HalftimeRequestPhase2Fields` 가 소유한다(스펙 2개는 각각 독립 생성물이라 교차 $ref 금지).
+         */
         HalftimeRequest: {
-            /** @description ≤3(hmb.match.halftime-subs-max), out∈전반 선발, in∈벤치, 교체 후 GK≥1 */
+            /**
+             * @description ≤3(hmb.match.halftime-subs-max), out∈전반 선발, in∈벤치, 교체 후 GK≥1.
+             *     **생략 = 손대지 않음**(앞서 낸 교체 유지) / **빈 배열 = 교체 전부 취소**(명시적 의사).
+             */
             substitutions: components["schemas"]["SubstitutionItem"][];
         };
         MatchResult: {

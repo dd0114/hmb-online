@@ -158,15 +158,47 @@ class MatchPromptDeltaTest extends MatchTestBase {
         assertThat(players.path("P003").path("new").asText()).isEqualTo("오버랩 자제");
     }
 
+    /**
+     * 지시가 베이스와 <b>같으면 AI 를 아예 안 부른다</b>(#253 에서 바뀐 동작).
+     *
+     * <p>예전 계약은 "매치 프롬프트가 존재하면 무조건 B 경로, 단 델타가 비면 필드를 생략"이었다.
+     * 덱에 팀 문장이 생기면서(#253) 그 전제가 유해해졌다 — web 브리핑은 덱 문장을 그대로 pre 로
+     * 제출하므로, 아무것도 바꾸지 않은 유저가 <b>매 경기 패치 콜 하나</b>를 물게 된다. 유효 지시 세트가
+     * 베이스와 글자 단위로 같으면 답도 같으므로 재사용(콜0)이 옳다 — #215 가 노린 "무변경이면 즉시
+     * 시작"이 팀 문장을 쓴 유저에게만 사라지는 것을 막는다.
+     */
     @Test
-    void unchangedPromptOmitsTheDeltaFieldEntirely() {
+    void unchangedPromptSkipsTheAiCallEntirely() {
         String token = setupUserWithPromptedDeck("delta_none");
         String matchId = matchWithWarmBase(token);
-        // 덱과 **같은 값**을 다시 제출 — 매치 프롬프트는 존재하지만(=B 경로) 실질 변경은 0.
+        // 덱과 **같은 값**을 다시 제출 — 매치 프롬프트 행은 생기지만 실질 변경은 0.
         submitPrompt(token, matchId, "pre", "player", "P002", DECK_P002);
 
-        JsonNode context = kickoffPatchContext(token, matchId);
+        assertThat(authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
 
+        // 패치 잡이 아니라 베이스 재사용(materialize)이다.
+        JsonNode context = jobContext(matchId, 1, "home");
+        assertThat(context.path("kind").asText()).isEqualTo("materialized");
+    }
+
+    /**
+     * 델타가 비어도 <b>B 경로를 실제로 타는</b> 경우의 후방 호환 — 수동 전술이 있으면 베이스(A)가 그
+     * 값을 모르므로(전술은 A 키 밖, #215 W2) 재사용이 아니라 패치여야 한다. 그 패치 컨텍스트는
+     * {@code promptDelta} 없이 기존 필드만으로도 실행기가 풀 컨텍스트 경로로 돌 수 있어야 한다.
+     */
+    @Test
+    void emptyDeltaOnTheStillPatchedPathOmitsTheFieldButKeepsFullContext() {
+        String token = setupUserWithPromptedDeck("delta_none_tac");
+        String matchId = matchWithWarmBase(token);
+        submitPrompt(token, matchId, "pre", "player", "P002", DECK_P002); // 변경 0
+
+        assertThat(authPost("/api/matches/" + matchId + "/kickoff", token,
+                Map.of("teamTactics", Map.of("line", 0.9, "press", 0.8, "tempo", 0.6, "width", 0.4)),
+                Map.class).getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
+
+        JsonNode context = jobContext(matchId, 1, "home");
+        assertThat(context.path("kind").asText()).isEqualTo("team-input-patch");
         assertThat(context.has("promptDelta")).isFalse();
         // 기존 필드는 그대로 — 실행기가 풀 컨텍스트 경로로 폴백할 수 있어야 한다(후방 호환).
         assertThat(context.path("base").isObject()).isTrue();

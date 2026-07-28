@@ -1,0 +1,28 @@
+-- #254 — 감독시간에 팀 전술 변경 허용(hero 결정: 허용. 방식1 정합 — 후반 "라인 내려"가 설계 취지).
+--
+-- 그때까지: 팀 전술(line/press/tempo/width)은 POST /matches/{id}/kickoff 에서만 서버로 왔고,
+-- 감독시간이 받는 것은 prompts(halftime)와 halftime(substitutions) 뿐이라 **전술을 실을 자리가 없었다**.
+-- 그래서 web 은 감독시간 화면의 팀 전술 다이얼을 감춰야 했다(만져도 아무 데도 안 가는 손잡이 금지).
+--
+-- 왜 user_deck_json 을 고치지 않고 새 컬럼인가:
+--   user_deck_json 은 **이 매치에 무엇으로 뛰었나**의 박제다(#98 userDeckSnapshot 이 그대로 노출).
+--   거기 있는 teamTactics 는 이미 시뮬이 끝난 **전반**의 값이라, 후반 전술로 덮으면 전반 기록이
+--   소급 변조된다("나는 전반에 라인을 올렸다"가 사라진다). 후반 값은 별도 자리에 둔다.
+--
+-- 소비 경로: MatchService.snapshotForHalf(row, 2) 가 스냅샷 위에 이 값을 얹어 오케스트레이터에 주고,
+-- PromptContextBuilder.addPhase2Context 가 그것을 manualTactics 로 AI 컨텍스트에 싣는다 —
+-- 즉 **기존 B(패치) 입력 경로 그대로**이며 새 계약이 아니다(#215 W2 에서 전술을 A 밖·패치 입력으로
+-- 옮겨둔 덕이다). 결정론/재현 계약도 무손상: 엔진 입력은 AI 가 낸 TacticalInput(ai_jobs.result_json)
+-- 이고 전술은 그 생성 컨텍스트일 뿐이라, 재현은 종전대로 (seed + selectData + inputLog) 로 닫힌다.
+--
+-- NULL = 감독시간에 전술을 손대지 않았다 → 후반도 전반 전술 그대로(기존 동작 불변).
+--
+-- ⚠️ **순서 의존**: 이 컬럼 추가는 반드시 V21__away_raid(matches 12단계 재작성 — mode CHECK 확장)
+--    **뒤**여야 한다. 그 마이그레이션은 matches 를 새로 만들어 컬럼을 명시 목록으로 옮기므로, 이게
+--    앞서면 재작성이 h2_tactics_json 을 조용히 떨어뜨린다. 번호가 곧 순서다 — 재번호할 일이 있으면
+--    이 관계를 먼저 확인해라. (#253/#254 는 원래 V21/V22 였고 #245 원정이 그 번호를 선점해 밀렸다.)
+--
+-- 짝 파일(.conf)이 없는 이유: 이건 테이블 재작성이 아니라 단순 ADD COLUMN 이라 PRAGMA
+-- foreign_keys=OFF 가 필요 없고, 따라서 Flyway 기본(트랜잭션 감쌈) 그대로 돌아도 된다
+-- (V4/V6/V7 과 같은 부류 — .conf 가 필요한 건 V8/V19/V21 처럼 12단계 재작성을 하는 쪽뿐이다).
+ALTER TABLE matches ADD COLUMN h2_tactics_json TEXT;

@@ -130,3 +130,50 @@
 .deadlineOver {
   color: var(--danger, #d9534f);
 }
+
+/* 팀 전술(#254) — 감독시간에도 전술을 바꿀 수 있다. 5스텝 세그먼트는 덱 화면(DirectiveRail)과
+   같은 순수 로직(tactics-steps)을 쓰고, 여기 스타일은 감독시간 폭(모바일 390px)에 맞춘 축약형이다. */
+.tacticsSection {
+  margin: 14px 0;
+}
+
+.tacticRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.tacticLabel {
+  flex: 0 0 56px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.tacticSteps {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 2px;
+}
+
+.tacticSteps button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 2px;
+  border: 1px solid var(--border, rgba(127, 127, 127, 0.35));
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  border-radius: 6px;
+}
+
+.tacticSteps button:disabled {
+  opacity: 0.5;
+}
+
+.tacticStepOn {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  border-color: var(--accent);
+  font-weight: 700;
+}

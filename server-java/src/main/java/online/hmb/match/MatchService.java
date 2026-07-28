@@ -137,7 +137,8 @@ public class MatchService {
                            String result, String createdAt, String finishedAt,
                            String conditionsJson, String mode, String leagueFixtureId,
                            String kickoffAt, String phaseStartAt, String phaseEndsAt,
-                           Integer scoreH2Home, Integer scoreH2Away) {
+                           Integer scoreH2Home, Integer scoreH2Away,
+                           String h2TacticsJson) {
     }
 
     public MatchRow getOwned(String userId, String matchId) {
@@ -175,7 +176,7 @@ public class MatchService {
                                score_home, score_away, result, created_at, finished_at,
                                conditions_json, mode, league_fixture_id,
                                kickoff_at, phase_start_at, phase_ends_at,
-                               score_h2_home, score_h2_away
+                               score_h2_home, score_h2_away, h2_tactics_json
                         FROM matches WHERE id = ?
                         """)
                 .param(matchId)
@@ -191,7 +192,8 @@ public class MatchService {
                         rs.getString("league_fixture_id"),
                         rs.getString("kickoff_at"), rs.getString("phase_start_at"),
                         rs.getString("phase_ends_at"),
-                        (Integer) rs.getObject("score_h2_home"), (Integer) rs.getObject("score_h2_away")))
+                        (Integer) rs.getObject("score_h2_home"), (Integer) rs.getObject("score_h2_away"),
+                        rs.getString("h2_tactics_json")))
                 .optional();
     }
 
@@ -418,6 +420,49 @@ public class MatchService {
                         """)
                 .params(snapshot, conditionsJson, matchId)
                 .update());
+    }
+
+    /**
+     * 그 half 의 AI 컨텍스트가 봐야 할 <b>실효 스냅샷</b>(#254).
+     *
+     * <p>half 1 = 저장된 매치 스냅샷 그대로. half 2 = 그 위에 감독시간 전술({@code h2_tactics_json})을
+     * 얹은 <b>복사본</b>이다 — 원본(전반 기록)은 건드리지 않는다. 로스터·포메이션·프롬프트는 그대로라
+     * 이 함수를 거쳐도 프롬프트 델타·로스터 계산은 전부 종전과 같은 값을 본다.
+     *
+     * <p>감독시간에 전술을 손대지 않았으면 전반 전술이 그대로 실효값이다(기존 동작 불변).
+     */
+    public JsonNode snapshotForHalf(MatchRow row, int half) {
+        JsonNode snapshot = readJson(row.userDeckJson());
+        if (half != 2 || row.h2TacticsJson() == null || row.h2TacticsJson().isBlank()) {
+            return snapshot;
+        }
+        JsonNode tactics = readJson(row.h2TacticsJson());
+        if (!tactics.isObject() || !snapshot.isObject()) {
+            return snapshot;
+        }
+        ObjectNode merged = ((ObjectNode) snapshot).deepCopy();
+        merged.set("teamTactics", tactics.deepCopy());
+        return merged;
+    }
+
+    /** 후반 실효 전술이 전반과 <b>다른가</b>(#254). 다르면 후반 인풋을 다시 만들어야 한다. */
+    public boolean secondHalfTacticsChanged(MatchRow row) {
+        if (row.h2TacticsJson() == null || row.h2TacticsJson().isBlank()) {
+            return false;
+        }
+        JsonNode h2 = readJson(row.h2TacticsJson());
+        if (!h2.isObject()) {
+            return false;
+        }
+        JsonNode h1 = readJson(row.userDeckJson()).get("teamTactics");
+        // 스냅샷에 전술이 없던 매치(= 미지정)와 전 축 중앙(= 슬라이더 안 건드림)은 같은 뜻이다
+        // (TeamTactics.isNeutral 주석) — 그 둘 사이의 이동은 "변경"이 아니다.
+        boolean h1Unset = h1 == null || !h1.isObject() || online.hmb.meta.TeamTactics.isNeutral(h1);
+        boolean h2Unset = online.hmb.meta.TeamTactics.isNeutral(h2);
+        if (h1Unset && h2Unset) {
+            return false;
+        }
+        return h1Unset || !h1.equals(h2);
     }
 
     /** conditions_json → {playerId: condition}. 없으면 빈 맵. */
@@ -739,11 +784,23 @@ public class MatchService {
     }
 
     public MatchRow submitHalftime(String userId, String matchId, List<Substitution> substitutions) {
+        return submitHalftime(userId, matchId, substitutions, null);
+    }
+
+    /**
+     * @param teamTactics 감독시간 팀 전술(#254, 선택). hero 결정 = <b>허용</b> — 후반에 라인·압박·템포·
+     *     폭을 바꿀 수 있다. {@code null}(미첨부)이면 손대지 않은 것이므로 전반 전술을 그대로 이어간다.
+     *     저장 위치는 {@code matches.h2_tactics_json} 이고 <b>매치 스냅샷은 건드리지 않는다</b> —
+     *     스냅샷의 teamTactics 는 이미 끝난 전반의 기록이라 덮으면 소급 변조가 된다(V24 주석).
+     */
+    public MatchRow submitHalftime(String userId, String matchId, List<Substitution> substitutions,
+                                    JsonNode teamTactics) {
         MatchRow row = getOwned(userId, matchId);
         // 전반 중에도 교체를 미리 짜둘 수 있다(P4-E2 #170) — 반영은 후반 시뮬에서.
         if (!PRE_SECOND_HALF_STATES.contains(row.state())) {
             throw invalidState(row.state(), "halftime");
         }
+        online.hmb.meta.TeamTactics.validate(teamTactics); // 있으면 4축 0..1
         List<Substitution> subs = substitutions == null ? List.of() : substitutions;
 
         if (subs.size() > halftimeSubsMax) {
@@ -795,12 +852,18 @@ public class MatchService {
             throw subsInvalid("교체 후에도 GK가 최소 1명 필요합니다", Map.of("rule", "GK_REQUIRED"));
         }
 
-        String subsJson = toJson(subs);
+        // 두 필드 모두 **미첨부 = 손대지 않음**(COALESCE), 명시적 값 = 그 값이 이긴다. 이 엔드포인트는
+        // 감독시간에 여러 번 불릴 수 있으므로(전술만 고치는 재제출 · 교체만 고치는 재제출) 한쪽만
+        // 보낸 호출이 다른 쪽을 조용히 지우면 안 된다 — 그게 #253 과 같은 종류의 유실이다.
+        // ⚠️ 빈 배열 `[]` 은 미첨부가 아니다: "교체를 전부 취소한다"는 명시적 의사라 그대로 저장된다.
+        String subsJson = substitutions == null ? null : toJson(subs);
+        String h2Tactics = teamTactics == null || teamTactics.isNull() ? null : teamTactics.toString();
         txRunner.run(() -> jdbcClient.sql("""
-                        UPDATE matches SET subs_json = ?
+                        UPDATE matches SET subs_json = COALESCE(?, subs_json),
+                                           h2_tactics_json = COALESCE(?, h2_tactics_json)
                         WHERE id = ? AND state IN ('FIRST_HALF', 'HALFTIME', 'H1_BREAK')
                         """)
-                .params(subsJson, matchId)
+                .params(subsJson, h2Tactics, matchId)
                 .update());
         return getOwned(userId, matchId);
     }

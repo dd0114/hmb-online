@@ -107,16 +107,24 @@ public class MatchController {
                 .body(matchService.toDetail(matchService.getOwned(userId, id)));
     }
 
-    public record HalftimeRequest(List<MatchService.Substitution> substitutions) {
+    /**
+     * teamTactics(#254, 선택): 감독시간 팀 전술 {line,press,tempo,width}(0..1). hero 결정 = <b>허용</b>
+     * — 후반에 전술을 바꿀 수 있다. 생략하면 손대지 않은 것이라 전반 전술이 그대로 이어진다(additive).
+     */
+    public record HalftimeRequest(List<MatchService.Substitution> substitutions,
+                                  com.fasterxml.jackson.databind.JsonNode teamTactics) {
     }
 
     @PostMapping("/api/matches/{id}/halftime")
     public MatchDetail halftime(@RequestAttribute("userId") String userId,
                                 @PathVariable("id") String id,
                                 @RequestBody HalftimeRequest request) {
-        matchService.submitHalftime(userId, id, request == null ? null : request.substitutions());
+        matchService.submitHalftime(userId, id,
+                request == null ? null : request.substitutions(),
+                request == null ? null : request.teamTactics());
         // 교체는 h2 해소 분기를 바꾼다(패치/재사용 → 풀 생성) — 선행 생성된 결과를 무효화하고 다시
         // 태우기 위해 여기서도 재해소한다(#193 W2b-B2). 교체 없음(빈 배열)이면 같은 잡 → no-op.
+        // 전술 변경(#254)도 같은 이유로 여기를 지난다 — 선행 생성된 후반 인풋은 전반 전술로 만든 것이다.
         orchestrator.resolveSecondHalfInputs(id);
         return matchService.toDetail(matchService.getOwned(userId, id));
     }

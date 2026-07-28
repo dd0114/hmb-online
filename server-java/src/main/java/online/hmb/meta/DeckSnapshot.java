@@ -30,6 +30,12 @@ public class DeckSnapshot {
     public String json(DeckService.DeckResponse deck, JsonNode teamTactics) {
         ObjectNode snapshot = objectMapper.createObjectNode();
         snapshot.put("formation", deck.formation());
+        // 덱 팀 지시(#253) — 없으면 <b>필드를 생략</b>한다. 그래야 팀 문장이 없는 기존 덱의 스냅샷
+        // 바이트가 이 필드 도입 전과 동일하고, 그 위에서 파생되는 A(베이스) 캐시 키도 그대로다
+        // (라이브에 쌓인 캐시가 배포만으로 통째 죽지 않는다). "" 를 넣으면 그게 깨진다.
+        if (deck.teamPrompt() != null && !deck.teamPrompt().isBlank()) {
+            snapshot.put("teamPrompt", deck.teamPrompt());
+        }
         ArrayNode starters = snapshot.putArray("starters");
         ArrayNode bench = snapshot.putArray("bench");
         for (DeckService.SlotDto slot : deck.slots()) {

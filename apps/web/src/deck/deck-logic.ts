@@ -163,13 +163,29 @@ export function validateDraft(
   return issues;
 }
 
-/** Serialize the draft as the PUT /api/deck body (full replace). */
-export function toUpdateRequest(draft: DeckDraft): {
+/**
+ * Serialize the draft as the PUT /api/deck body (full replace).
+ *
+ * `teamPrompt` is a REQUIRED parameter on purpose (#253). The team-level sentence used to have
+ * nowhere to go in this body, so the deck screen showed "저장되었습니다" and the text was gone on
+ * reload — the per-player prompts survived (they ride on slots), which made it look like a
+ * targeted data loss. Making the caller pass it means a screen that forgets it fails to compile
+ * rather than silently wiping the user's text; PUT is a full replace, so omitting = deleting.
+ * Pass `""` to clear deliberately.
+ */
+export function toUpdateRequest(
+  draft: DeckDraft,
+  teamPrompt: string,
+): {
   formation: string;
+  teamPrompt: string | null;
   slots: DraftSlot[];
 } {
   return {
     formation: draft.formation,
+    // Blank-only text is "no sentence" — the server normalizes the same way, and keeping "" out
+    // of the snapshot is what lets a cleared prompt land back on its original AI-input cache key.
+    teamPrompt: teamPrompt.trim() ? teamPrompt : null,
     slots: draft.slots.map((s) => ({
       playerId: s.playerId,
       role: s.role,

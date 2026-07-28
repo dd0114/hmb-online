@@ -7,7 +7,10 @@ import {
   useSubmitMatchPrompt,
   type MatchDetail,
 } from "../api/hooks";
+import type { TeamTactics } from "../api/v2";
 import { ErrorToast } from "../common/ErrorToast";
+import { DEFAULT_TEAM_TACTICS, TACTICS_KEYS, TACTICS_LABELS } from "../deck/tactics-logic";
+import { STEP_LABELS, stepIndexOf, valueOfStep } from "../deck/tactics-steps";
 import { MAX_SUBS, validateSubs, type SubPair } from "./match-logic";
 import { countdownLabel } from "./live-clock";
 import { useCountdown } from "./useCountdown";
@@ -21,7 +24,8 @@ interface HalftimePanelProps {
 }
 
 /**
- * 하프타임 — 교체(≤3, 벤치↔선발 선택 스왑) + 추가 프롬프트(phase=halftime) + [후반 시작].
+ * 하프타임 — 교체(≤3, 벤치↔선발 선택 스왑) + 추가 프롬프트(phase=halftime) + 팀 전술(#254)
+ * + [후반 시작].
  * NOTE: match GET 응답에는 내 로스터가 없어(openapi MatchDetail — opponent만) 선발/벤치를
  * useDeck에서 파생한다. 전반 중 퇴장 등 엔진 내 로스터 변화는 반영 못함 — 서버(AC-M4)가 최종 검증.
  */
@@ -45,6 +49,15 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
   const [playerPrompts, setPlayerPrompts] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 팀 전술(#254) — 시작점은 **전반에 실제로 쓴 값**이다(매치 스냅샷). 중립값에서 시작하면 다이얼을
+  // 건드리지 않은 유저가 후반에 전술을 리셋해 버린다. 스냅샷이 없는 구 매치는 중립.
+  const firstHalfTactics = match.userDeckSnapshot?.teamTactics ?? DEFAULT_TEAM_TACTICS;
+  const [tactics, setTactics] = useState<TeamTactics | null>(null);
+  const effectiveTactics = tactics ?? firstHalfTactics;
+  // 안 건드렸으면 아예 보내지 않는다 — 서버는 미첨부를 "손대지 않음"으로 읽어 후반 인풋을
+  // 재생성하지 않는다(콜0 유지, 예산 가드 P2-D8). 보내도 같은 값이면 무변경으로 처리되지만,
+  // "안 만졌으면 안 보낸다"가 의도를 그대로 옮기는 표현이다.
 
   const playersById = useMemo(() => {
     const map = new Map<string, NonNullable<typeof players>[number]>();
@@ -109,7 +122,9 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
           await submitPrompt.mutateAsync({ phase: "halftime", scope: "player", playerId, text });
         }
       }
-      await halftime.mutateAsync({ substitutions: subs });
+      await halftime.mutateAsync(
+        tactics ? { substitutions: subs, teamTactics: tactics } : { substitutions: subs },
+      );
       await resume.mutateAsync();
     } catch (err) {
       setError(err instanceof Error ? err.message : "후반 시작에 실패했습니다");
@@ -209,6 +224,46 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
             {issue.message}
           </p>
         ))}
+      </section>
+
+      {/* 팀 전술(#254) — hero 결정 "허용". 그전까지 이 자리는 **비어 있었다**: 전술을 실을 계약이
+          없어 다이얼을 감췄고, 유저에겐 "왜 없지"로 남았다. 5스텝 매핑은 덱 화면과 같은 순수 로직
+          (tactics-steps)을 쓴다 — 두 화면이 다른 값을 만들면 같은 손잡이가 다른 뜻이 된다. */}
+      <section className={styles.tacticsSection} data-testid="halftime-tactics">
+        <h3 className={styles.subTitle}>팀 전술</h3>
+        {TACTICS_KEYS.map((key) => {
+          const index = stepIndexOf(effectiveTactics[key] ?? 0.5);
+          return (
+            <div key={key} className={styles.tacticRow}>
+              <span className={styles.tacticLabel}>{TACTICS_LABELS[key]}</span>
+              <div
+                className={styles.tacticSteps}
+                role="radiogroup"
+                aria-label={TACTICS_LABELS[key]}
+                data-testid={`halftime-tactics-${key}`}
+                data-value={effectiveTactics[key]}
+                data-step={index}
+              >
+                {STEP_LABELS[key].map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="radio"
+                    aria-checked={i === index}
+                    disabled={expired}
+                    data-testid={`halftime-tactics-${key}-step-${i}`}
+                    className={i === index ? styles.tacticStepOn : undefined}
+                    onClick={() =>
+                      setTactics({ ...effectiveTactics, [key]: valueOfStep(i) })
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </section>
 
       <PromptFields
