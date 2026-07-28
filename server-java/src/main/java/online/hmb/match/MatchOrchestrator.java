@@ -48,6 +48,7 @@ public class MatchOrchestrator {
     private final DeckPrewarmService prewarmService;
     private final BotService botService;
     private final online.hmb.away.AwayService awayService;
+    private final String awayRewardMode;
     private final ConditionService conditionService;
     private final RelationService relationService;
     private final EngineRunnerClient runnerClient;
@@ -69,6 +70,7 @@ public class MatchOrchestrator {
                              PromptContextBuilder contextBuilder,
                              BotService botService,
                              online.hmb.away.AwayService awayService,
+                             @Value("${hmb.away.reward.mode}") String awayRewardMode,
                              ConditionService conditionService,
                              RelationService relationService,
                              EngineRunnerClient runnerClient,
@@ -90,6 +92,7 @@ public class MatchOrchestrator {
         this.contextBuilder = contextBuilder;
         this.botService = botService;
         this.awayService = awayService;
+        this.awayRewardMode = awayRewardMode;
         this.conditionService = conditionService;
         this.relationService = relationService;
         this.runnerClient = runnerClient;
@@ -691,7 +694,11 @@ public class MatchOrchestrator {
         // #212: 보상은 **모드별**(rewards.byMode) — hero 확정 곡선 "연습 적게 < 리그 매판 적당".
         // byMode 에 해당 모드가 없으면 레거시 flat 값으로 폴백한다(구 economy 파일 호환).
         economyService.get().ifPresentOrElse(economy -> {
-            int amount = economy.rewards().forMode(modeOf(match)).by(result);
+            // #245 E6: 원정의 돈은 **리그 한 판과 같게**(hero 지시). economy 에 away 키를 새로 만들지
+            // 않고 리그 곡선을 **참조**한다 — data/** 는 이 모듈 소유가 아니고, "리그와 같게"는 값
+            // 복제가 아니라 참조로 표현해야 값이 바뀔 때 같이 따라간다.
+            String rewardMode = "away".equals(modeOf(match)) ? awayRewardMode : modeOf(match);
+            int amount = economy.rewards().forMode(rewardMode).by(result);
             String reason = "reward_" + result.toLowerCase();
             walletService.apply(match.userId(), amount, reason, match.id());
         }, () -> log.warn("economy unavailable — match {} finished without reward", match.id()));

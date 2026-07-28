@@ -28,6 +28,8 @@ interface MockState {
   /** 마지막 ack 이 실제로 무엇을 지목했는지 — "전부 지우기"로 퇴행하면 여기서 잡힌다. */
   ackedIds: string[] | null;
   awayStarts: number;
+  /** 서버가 받은 defenderId — 화면의 선택이 실제로 전달되는지. */
+  chosenDefender: string | null;
   /** 원정 상대 유무 — 없으면 서버가 404 NO_OPPONENT. */
   hasOpponent: boolean;
   /** 서버 report-list-limit 흉내. */
@@ -76,6 +78,7 @@ async function mockApi(page: Page, over: Partial<MockState> = {}): Promise<MockS
     ackCalls: 0,
     ackedIds: null,
     awayStarts: 0,
+    chosenDefender: null,
     hasOpponent: true,
     limit: 20,
     locked: false,
@@ -140,9 +143,26 @@ async function mockApi(page: Page, over: Partial<MockState> = {}): Promise<MockS
     return route.fulfill(json({ acked: before - st.unseen.length }));
   });
 
+  await page.route((url) => url.pathname === "/api/away/candidates", (route) =>
+    route.fulfill(
+      st.hasOpponent
+        ? json({
+            candidates: [
+              { userId: "u-a", nickname: "언더독 유나이티드", rating: 10 },
+              { userId: "u-b", nickname: "레드 스톰 CF", rating: -5 },
+            ],
+            streak: 2,
+            seasonNo: 1,
+            seasonEndsAt: "2026-08-04T00:00:00Z",
+          })
+        : json({ code: "NO_OPPONENT", message: "원정 갈 상대가 아직 없습니다" }, 404),
+    ),
+  );
+
   await page.route((url) => url.pathname === "/api/away/matches", (route) => {
     if (route.request().method() !== "POST") return route.fulfill(json({}));
     st.awayStarts++;
+    st.chosenDefender = (route.request().postDataJSON() as { defenderId?: string } | null)?.defenderId ?? null;
     if (!st.hasOpponent) {
       return route.fulfill(json({ code: "NO_OPPONENT", message: "원정 갈 상대가 아직 없습니다" }, 404));
     }
@@ -189,6 +209,10 @@ test.describe("#245 요구 1·3 — 부재중 피원정 팝업", () => {
 
     await page.goto("/lobby");
 
+    // hero E1: 로비에 들어온 것만으로는 뜨지 않는다 — [게임 시작]을 누를 때 뜬다.
+    await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
+    await page.getByTestId("play-cta").click();
+
     const modal = page.getByTestId("away-report-modal");
     await expect(modal).toBeVisible();
     await expect(page.getByTestId("away-report-headline")).toHaveText(
@@ -210,6 +234,7 @@ test.describe("#245 요구 1·3 — 부재중 피원정 팝업", () => {
     await mockApi(page, { unseen: [THREE_RAIDS[1]!], rating: 10 });
 
     await page.goto("/lobby");
+    await page.getByTestId("play-cta").click();
 
     await expect(page.getByTestId("away-report-headline")).toHaveText(
       "언더독 유나이티드이(가) 원정을 왔고, 막아냈습니다",
@@ -221,8 +246,10 @@ test.describe("#245 요구 1·3 — 부재중 피원정 팝업", () => {
     await mockApi(page, { unseen: [] });
 
     await page.goto("/lobby");
-    await expect(page.getByTestId("play-cta")).toBeVisible();
+    await page.getByTestId("play-cta").click();
+    // 0건이면 팝업 대신 모드 선택이 바로 열린다(빈 모달을 끼워 넣지 않는다).
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
+    await expect(page.getByTestId("mode-away")).toBeVisible();
   });
 });
 
@@ -231,13 +258,14 @@ test.describe("#245 멱등 — 한 번만 보여준다", () => {
     const st = await mockApi(page, { unseen: [...THREE_RAIDS] });
 
     await page.goto("/lobby");
+    await page.getByTestId("play-cta").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await page.getByTestId("away-report-confirm").click();
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
 
     // 새로고침 = 서버에 다시 묻는다. 로컬 플래그가 아니라 서버 상태(seen_at)가 SoT 여야 한다.
     await page.reload();
-    await expect(page.getByTestId("play-cta")).toBeVisible();
+    await page.getByTestId("play-cta").click();
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
     expect(st.ackCalls).toBeGreaterThanOrEqual(1);
   });
@@ -251,6 +279,7 @@ test.describe("#245 MAJ-1 — 안 보여준 리포트를 소진하지 않는다"
     });
 
     await page.goto("/lobby");
+    await page.getByTestId("play-cta").click();
     await expect(page.getByTestId("away-report-item")).toHaveCount(3);
     await expect(page.getByTestId("away-report-remaining")).toContainText("외 2경기");
 
@@ -268,6 +297,7 @@ test.describe("#245 2R blocker — 클릭이 리포트를 소멸시키지 않는
     const st = await mockApi(page, { unseen: [THREE_RAIDS[0]!, THREE_RAIDS[1]!] });
 
     await page.goto("/lobby");
+    await page.getByTestId("play-cta").click();
     await page.getByTestId("away-report-item").first().click();
     await expect(page).toHaveURL(/\/match\/M1$/);
 
@@ -281,6 +311,7 @@ test.describe("#245 2R blocker — 클릭이 리포트를 소멸시키지 않는
     });
 
     await page.goto("/lobby");
+    await page.getByTestId("play-cta").click();
     const item = page.getByTestId("away-report-item").first();
     await expect(item).toContainText("몰수");
     // 열리면 수비자에게 "포기한 경기입니다"가 뜬다 — 포기한 건 상대인데.
@@ -293,6 +324,7 @@ test.describe("#245 요구 6 — 리포트에서 그 경기를 본다", () => {
     await mockApi(page, { unseen: [THREE_RAIDS[0]!] });
 
     await page.goto("/lobby");
+    await page.getByTestId("play-cta").click();
     await page.getByTestId("away-report-item").first().click();
 
     await expect(page).toHaveURL(/\/match\/M1$/);
@@ -306,12 +338,15 @@ test.describe("#245 3R m2 — 오탭은 확인이 아니다", () => {
     const st = await mockApi(page, { unseen: [...THREE_RAIDS] });
 
     await page.goto("/lobby");
+    await page.getByTestId("play-cta").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
 
     expect(st.ackCalls).toBe(0);
+    // 확인하지 않았으니 다음에 또 뜬다(E1 이후 트리거는 [게임 시작]이다).
     await page.reload();
+    await page.getByTestId("play-cta").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
   });
 });
@@ -338,8 +373,15 @@ test.describe("#245 원정 모드", () => {
     await expect(page.getByTestId("mode-away")).not.toContainText("10");
     await page.getByTestId("mode-away").click();
 
+    // hero E2: 레이팅 비슷한 2명을 보여주고 그 중 고른다.
+    const candidates = page.getByTestId("away-candidate");
+    await expect(candidates).toHaveCount(2);
+    await expect(page.getByTestId("away-streak")).toContainText("2연승");
+    await candidates.first().click();
+
     await expect(page).toHaveURL(/\/match\/M_AWAY$/);
     expect(st.awayStarts).toBe(1);
+    expect(st.chosenDefender).toBe("u-a");   // 고른 상대가 실제로 서버에 전달된다
   });
 
   test("상대가 없으면 봇으로 대체하지 않고 그 사실을 말한다", async ({ page }) => {
@@ -351,7 +393,7 @@ test.describe("#245 원정 모드", () => {
 
     // 매치로 이동하지 않는다 — 조용한 봇 폴백이면 여기서 /match 로 갔을 것이다.
     await expect(page).toHaveURL(/\/lobby$/);
-    await expect(page.getByText(/원정 갈 상대가 없습니다/)).toBeVisible();
+    await expect(page.getByTestId("away-no-opponent")).toBeVisible();
   });
 });
 

@@ -175,6 +175,38 @@ hmb:
     # 로비 팝업/전적에 한 번에 싣는 리포트 수. 부재중이 길면 수십 건이 쌓이는데 전량을 모달에
     # 그리면 스크롤 지옥이 된다 — 요약(summary)도 이 창 안에서 계산된다.
     report-list-limit: 20
+    match:                           # hero E2/E3 — 무작위 2명 제시 + 레이팅 밴드 매칭
+      # 한 번에 보여줄 상대 수. 2 = hero 지시("둘 중에 고르게"). 늘리면 정찰 이득이 커진다.
+      candidate-count: 2
+      # 레이팅 밴드 반폭. 내 레이팅 ±이 값 안에서 먼저 고르고, 부족하면 단계적으로 넓힌다
+      # (오픈베타처럼 인원이 적으면 밴드만 고집하다 "상대 없음"이 되는 게 더 나쁘다).
+      rating-band: 50
+      # 제시가 유효한 시간(초). 지나면 다시 뽑아야 한다 — 오래된 제시로 나중에 골라 담지 못하게.
+      offer-ttl-sec: 600
+    streak:                          # hero E4 연승 보너스
+      # 연승 1회당 추가 레이팅(2연승부터 붙는다: (streak-1) × 이 값).
+      bonus-per-win: 2
+      # 보너스 상한 — 없으면 장기 연승이 밴드 매칭을 뚫고 혼자 달아난다.
+      max-bonus: 10
+    season:                          # hero E5 주간 시즌(보상 후 초기화)
+      length-days: 7
+      # 마감 스윕 주기(ms). 주 단위 경계라 급할 게 없다.
+      sweep-interval-ms: 300000
+      # 순위별 보상 포인트. 없는 순위는 participation 을 받는다(원정을 한 번이라도 한 유저만).
+      rewards:
+        1: 30000
+        2: 20000
+        3: 10000
+      participation-reward: 2000
+    reward:                          # hero E6/E7 — 돈은 리그 한 판과 같게, 수비자도 받는다
+      # 어느 곡선을 쓸지(economy rewards.byMode 의 키). 'league' = 승 5000 / 무 2000 / 패 1000.
+      # ⚠️ 값 자체는 data 발행물(economy)이 소유한다 — 여기선 **어떤 곡선을 쓸지만** 고른다.
+      #    away 키를 economy 에 새로 만들지 않는 이유: data/** 는 이 모듈 소유가 아니고,
+      #    "리그와 같게"라는 지시는 값 복제가 아니라 참조로 표현하는 게 정확하다.
+      mode: league
+      # 수비자가 **졌을 때** 보상을 주는가. hero: "덱 세팅 잘해두면 돈이 들어오고, 지면 남 좋은
+      # 일만 하는 구조" → 패배는 0.
+      defender-on-loss: false
   relation:                        # AC-C4 관계/사기 변동 규칙 (LLD-p2-server §4) — 하드코딩 금지(config)
     starter-bonus: 2               # 선발 기용 +2
     win-bonus: 3                   # 승리 전원 +3

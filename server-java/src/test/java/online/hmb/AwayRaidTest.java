@@ -68,6 +68,22 @@ class AwayRaidTest extends MatchTestBase {
     @Resource
     private online.hmb.away.RatingService ratingService;
 
+    /**
+     * 상대를 고정해 원정을 시작한다. hero E2 이후 지목은 **제시된 후보 안에서만** 되므로,
+     * 프로덕션과 같은 상태(= 서버가 그 상대를 제시했다)를 만들어 놓고 부른다 — 서비스에서 검증을
+     * 빼는 대신 테스트가 현실을 맞춘다.
+     */
+    private online.hmb.match.MatchService.MatchRow startAwayPinned(String attackerId, String defenderId) {
+        jdbcClient.sql("""
+                        INSERT INTO away_offers(user_id, candidates, created_at) VALUES (?, ?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET
+                          candidates = excluded.candidates, created_at = excluded.created_at
+                        """)
+                .params(attackerId, "[\"" + defenderId + "\"]", java.time.Instant.now().toString())
+                .update();
+        return awayService.start(attackerId, defenderId);
+    }
+
     @Resource
     private online.hmb.match.MatchLockService lockService;
 
@@ -80,7 +96,7 @@ class AwayRaidTest extends MatchTestBase {
         String defenderId = userIdOf("aw_def1");
         String attacker = setupUserWithDeck("aw_atk1");
 
-        String matchId = awayService.start(userIdOf("aw_atk1"), defenderId).id();
+        String matchId = startAwayPinned(userIdOf("aw_atk1"), defenderId).id();
 
         ResponseEntity<Map> res = authGet("/api/matches/" + matchId, attacker, Map.class);
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -117,7 +133,7 @@ class AwayRaidTest extends MatchTestBase {
         setupUserWithDeck("aw_atk_frozen");
         setupUserWithDeck("aw_atk_frozen2");
 
-        String matchId = awayService.start(userIdOf("aw_atk_frozen"), defenderId).id();
+        String matchId = startAwayPinned(userIdOf("aw_atk_frozen"), defenderId).id();
         String botId = jdbcClient.sql("SELECT bot_id FROM matches WHERE id = ?")
                 .param(matchId).query(String.class).single();
         String deckBefore = jdbcClient.sql("SELECT deck_json FROM bots WHERE id = ?")
@@ -135,7 +151,7 @@ class AwayRaidTest extends MatchTestBase {
         authPut("/api/deck", defenderToken, deckBody("4-4-2", slots), Map.class);
 
         // 두 번째 공격자가 같은 수비자에게 원정 → 여기서 bakeGhost 가 다시 돈다.
-        String secondMatch = awayService.start(userIdOf("aw_atk_frozen2"), defenderId).id();
+        String secondMatch = startAwayPinned(userIdOf("aw_atk_frozen2"), defenderId).id();
         String secondBotId = jdbcClient.sql("SELECT bot_id FROM matches WHERE id = ?")
                 .param(secondMatch).query(String.class).single();
 
@@ -163,7 +179,7 @@ class AwayRaidTest extends MatchTestBase {
         setupUserWithDeck("aw_atk_growth");
 
         String botId = jdbcClient.sql("SELECT bot_id FROM matches WHERE id = ?")
-                .param(awayService.start(userIdOf("aw_atk_growth"), defenderId).id())
+                .param(startAwayPinned(userIdOf("aw_atk_growth"), defenderId).id())
                 .query(String.class).single();
         String deckJson = jdbcClient.sql("SELECT deck_json FROM bots WHERE id = ?")
                 .param(botId).query(String.class).single();
@@ -548,7 +564,7 @@ class AwayRaidTest extends MatchTestBase {
         String attacker = setupUserWithDeck("aw_atk_ff");
         String attackerId = userIdOf("aw_atk_ff");
 
-        String matchId = awayService.start(attackerId, defenderId).id();
+        String matchId = startAwayPinned(attackerId, defenderId).id();
         assertThat(authPost("/api/matches/" + matchId + "/abandon", attacker, Map.of(), Map.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
 
@@ -573,7 +589,7 @@ class AwayRaidTest extends MatchTestBase {
         String attacker = setupUserWithDeck("aw_atk_fault");
         String attackerId = userIdOf("aw_atk_fault");
 
-        String matchId = awayService.start(attackerId, defenderId).id();
+        String matchId = startAwayPinned(attackerId, defenderId).id();
         forceState(matchId, "FAILED");   // 생성이 죽은 사고 매치
         assertThat(authPost("/api/matches/" + matchId + "/abandon", attacker, Map.of(), Map.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -594,7 +610,7 @@ class AwayRaidTest extends MatchTestBase {
         setupUserWithDeck("aw_atk_sweep");
         String attackerId = userIdOf("aw_atk_sweep");
 
-        String matchId = awayService.start(attackerId, defenderId).id();
+        String matchId = startAwayPinned(attackerId, defenderId).id();
         // 12시간 전에 만든 것처럼 밀어 스위퍼 대상으로 만든다.
         jdbcClient.sql("UPDATE matches SET created_at = ? WHERE id = ?")
                 .params(java.time.Instant.now().minusSeconds(60 * 60 * 24).toString(), matchId)
@@ -612,7 +628,7 @@ class AwayRaidTest extends MatchTestBase {
     void awayCreationRespectsMatchLock() {
         setupUserWithDeck("aw_def_lock");
         String attacker = setupUserWithDeck("aw_atk_lock");
-        awayService.start(userIdOf("aw_atk_lock"), userIdOf("aw_def_lock"));
+        startAwayPinned(userIdOf("aw_atk_lock"), userIdOf("aw_def_lock"));
 
         ResponseEntity<String> second = authPost("/api/away/matches", attacker, Map.of(), String.class);
         assertThat(second.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -630,7 +646,7 @@ class AwayRaidTest extends MatchTestBase {
         String attacker = setupUserWithDeck("aw_atk_reach");
         String attackerId = userIdOf("aw_atk_reach");
 
-        String matchId = awayService.start(attackerId, defenderId).id();
+        String matchId = startAwayPinned(attackerId, defenderId).id();
         // 고스트 덱의 능력치에 표식을 심는다(성장 결과가 이 자리에 실린다).
         String botId = jdbcClient.sql("SELECT bot_id FROM matches WHERE id = ?")
                 .param(matchId).query(String.class).single();
@@ -741,7 +757,7 @@ class AwayRaidTest extends MatchTestBase {
         setupUserWithDeck("aw_atk_00");
         String attackerId = userIdOf("aw_atk_00");
 
-        String matchId = awayService.start(attackerId, defenderId).id();
+        String matchId = startAwayPinned(attackerId, defenderId).id();
         awayService.settle(matchId, attackerId, "DRAW", 0, 0);   // 0:0 으로 끝난 진짜 경기
 
         assertThat(jdbcClient.sql("SELECT result FROM away_reports WHERE match_id = ?")
@@ -815,7 +831,7 @@ class AwayRaidTest extends MatchTestBase {
      * 킥오프 → 가짜 서번트 → 시계 강제만료 → 스위퍼).
      */
     private String driveAwayToFinishedAgainst(String attackerToken, String attackerId, String defenderId) {
-        String matchId = awayService.start(attackerId, defenderId).id();
+        String matchId = startAwayPinned(attackerId, defenderId).id();
 
         authPost("/api/matches/" + matchId + "/kickoff", attackerToken, Map.of(), Map.class);
         fakeServants.drain();

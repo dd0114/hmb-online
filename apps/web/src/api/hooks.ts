@@ -370,12 +370,39 @@ export function useAckAwayReports() {
  * POST /api/away/matches — 원정 출발. 상대는 **실유저 덱 고스트**다(봇 폴백 없음:
  * 상대가 없으면 404 NO_OPPONENT). 409 MATCH_IN_PROGRESS 는 다른 생성 경로와 동일(#217).
  */
+export interface AwayCandidate {
+  userId: string;
+  nickname: string;
+  rating: number;
+}
+
+/** GET /api/away/candidates — 레이팅이 비슷한 상대 2명(hero E2/E3). 화면은 이 중 하나를 고른다. */
+export function useAwayCandidates(enabled: boolean) {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: ["awayCandidates"],
+    queryFn: () =>
+      apiFetch<{ candidates: AwayCandidate[]; streak: number; seasonNo: number; seasonEndsAt: string }>(
+        "/api/away/candidates",
+      ),
+    enabled: Boolean(token) && enabled,
+    // 제시는 서버가 소유한다(away_offers) — 캐시로 되살리면 만료된 목록을 고르게 된다.
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
 export function useStartAwayMatch() {
   const queryClient = useQueryClient();
   return useMutation({
-    // 상대는 서버가 고른다 — 지목 인자를 두면 서버가 무시한다는 걸 모르는 다음 사람이
-    // "왜 안 먹히지"를 겪는다(#245 MAJ-4: 지목은 쿨다운·중복 제한과 함께 열 기능).
-    mutationFn: () => apiFetch<MatchDetail>("/api/away/matches", { method: "POST", body: {} }),
+    // defenderId = **제시받은 후보 중 하나**(hero E2). 임의 id 는 서버가 거부한다 — 그게 "2택"과
+    // "지목"의 차이고, 지목을 열면 부계정 반복 공격으로 레이팅을 무한 생성할 수 있다.
+    mutationFn: (defenderId?: string) =>
+      apiFetch<MatchDetail>("/api/away/matches", {
+        method: "POST",
+        body: defenderId ? { defenderId } : {},
+      }),
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["activeMatch"] }),
   });
 }

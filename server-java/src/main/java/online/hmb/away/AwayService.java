@@ -69,6 +69,16 @@ public class AwayService {
     private final int ratingDraw;
     private final int ratingLoss;
     private final int reportListLimit;
+    private final AwaySeasonService seasonService;
+    private final online.hmb.meta.WalletService walletService;
+    private final online.hmb.catalog.EconomyService economyService;
+    private final int candidateCount;
+    private final int ratingBand;
+    private final int offerTtlSec;
+    private final int streakBonusPerWin;
+    private final int streakMaxBonus;
+    private final String rewardMode;
+    private final boolean defenderRewardOnLoss;
 
     public AwayService(JdbcClient jdbcClient,
                        MatchService matchService,
@@ -82,7 +92,17 @@ public class AwayService {
                        @Value("${hmb.away.rating.win}") int ratingWin,
                        @Value("${hmb.away.rating.draw}") int ratingDraw,
                        @Value("${hmb.away.rating.loss}") int ratingLoss,
-                       @Value("${hmb.away.report-list-limit}") int reportListLimit) {
+                       AwaySeasonService seasonService,
+                       online.hmb.meta.WalletService walletService,
+                       online.hmb.catalog.EconomyService economyService,
+                       @Value("${hmb.away.report-list-limit}") int reportListLimit,
+                       @Value("${hmb.away.match.candidate-count}") int candidateCount,
+                       @Value("${hmb.away.match.rating-band}") int ratingBand,
+                       @Value("${hmb.away.match.offer-ttl-sec}") int offerTtlSec,
+                       @Value("${hmb.away.streak.bonus-per-win}") int streakBonusPerWin,
+                       @Value("${hmb.away.streak.max-bonus}") int streakMaxBonus,
+                       @Value("${hmb.away.reward.mode}") String rewardMode,
+                       @Value("${hmb.away.reward.defender-on-loss}") boolean defenderRewardOnLoss) {
         this.jdbcClient = jdbcClient;
         this.matchService = matchService;
         this.deckService = deckService;
@@ -96,6 +116,16 @@ public class AwayService {
         this.ratingDraw = ratingDraw;
         this.ratingLoss = ratingLoss;
         this.reportListLimit = reportListLimit;
+        this.seasonService = seasonService;
+        this.walletService = walletService;
+        this.economyService = economyService;
+        this.candidateCount = candidateCount;
+        this.ratingBand = ratingBand;
+        this.offerTtlSec = offerTtlSec;
+        this.streakBonusPerWin = streakBonusPerWin;
+        this.streakMaxBonus = streakMaxBonus;
+        this.rewardMode = rewardMode;
+        this.defenderRewardOnLoss = defenderRewardOnLoss;
     }
 
     // ── 원정 출발 ───────────────────────────────────────────────────────────
@@ -120,6 +150,8 @@ public class AwayService {
             if (defenderId.equals(attackerId)) {
                 throw ApiException.validation("자기 자신에게 원정을 갈 수 없습니다");
             }
+            // hero E2: 고르는 건 되지만 **제시된 것 중에서만**. 이 한 줄이 "2택"과 "지목"을 가른다.
+            assertOffered(attackerId, defenderId);
             return startAgainst(attackerId, defenderId);
         }
         List<String> pool = new ArrayList<>(candidates(attackerId));
@@ -164,6 +196,97 @@ public class AwayService {
     private MatchService.MatchRow startAgainst(String attackerId, String defenderId) {
         return matchService.createAwayMatch(attackerId,
                 bakeGhost(defenderId, nicknameOf(defenderId)), defenderId);
+    }
+
+    public record Candidate(String userId, String nickname, int rating, int power) {
+    }
+
+    /**
+     * 상대 후보 제시(hero E2/E3) — <b>레이팅이 비슷한 사람 중 무작위 N명</b>을 뽑아 보여주고,
+     * 그 목록을 서버가 기억한다.
+     *
+     * <p>왜 기억하나: 클라가 보낸 id 를 그대로 믿으면 그건 <b>지목 원정</b>이고, 부계정을 반복 지목해
+     * 레이팅을 무한 생성하는 경로가 열린다(4R MAJ-4 가 막은 그것). "2명 중 택1"은 제시가 서버 것일 때만
+     * 성립한다. 유저당 1행이라 새로 뽑으면 이전 제시는 무효 — 리롤로 후보를 쌓지 못한다.
+     *
+     * <p>밴드는 <b>단계적으로 넓힌다</b>: 오픈베타처럼 인원이 적을 때 밴드만 고집하면 "상대 없음"이
+     * 되는데, 그건 매칭 실패보다 나쁘다.
+     */
+    public List<Candidate> offerCandidates(String attackerId) {
+        int myRating = ratingService.rating(attackerId);
+        List<Candidate> pool = List.of();
+        for (int widen = 1; widen <= 4 && pool.size() < candidateCount; widen++) {
+            pool = candidatesInBand(attackerId, myRating, (long) ratingBand * widen);
+        }
+        if (pool.isEmpty()) {
+            pool = candidatesInBand(attackerId, myRating, Long.MAX_VALUE / 4);   // 마지막엔 전체
+        }
+        if (pool.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT", "원정 갈 상대가 아직 없습니다");
+        }
+        List<Candidate> shuffled = new ArrayList<>(pool);
+        java.util.Collections.shuffle(shuffled, secureRandom);
+        List<Candidate> offered = shuffled.subList(0, Math.min(candidateCount, shuffled.size()));
+
+        List<String> ids = offered.stream().map(Candidate::userId).toList();
+        jdbcClient.sql("""
+                        INSERT INTO away_offers(user_id, candidates, created_at) VALUES (?, ?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET
+                          candidates = excluded.candidates, created_at = excluded.created_at
+                        """)
+                .params(attackerId, toJson(ids), Instant.now().toString())
+                .update();
+        return List.copyOf(offered);
+    }
+
+    private List<Candidate> candidatesInBand(String attackerId, int myRating, long band) {
+        return jdbcClient.sql("""
+                        SELECT u.id AS id, u.nickname AS nickname,
+                               COALESCE(r.rating, 0) AS rating
+                        FROM users u
+                        JOIN decks d ON d.user_id = u.id AND d.is_active = 1
+                        LEFT JOIN user_ratings r ON r.user_id = u.id
+                        WHERE u.id <> ? AND ABS(COALESCE(r.rating, 0) - ?) <= ?
+                        ORDER BY u.id
+                        """)
+                .params(attackerId, myRating, band)
+                .query((rs, n) -> new Candidate(rs.getString("id"), rs.getString("nickname"),
+                        rs.getInt("rating"), 0))
+                .list();
+    }
+
+    private String toJson(List<String> ids) {
+        try {
+            return objectMapper.writeValueAsString(ids);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    /** 방금 제시한 후보인가 — 아니면 지목이다(거부). TTL 을 넘긴 제시도 무효. */
+    private void assertOffered(String attackerId, String defenderId) {
+        record Offer(String candidates, String createdAt) {
+        }
+        Offer offer = jdbcClient.sql("SELECT candidates, created_at FROM away_offers WHERE user_id = ?")
+                .param(attackerId)
+                .query((rs, n) -> new Offer(rs.getString("candidates"), rs.getString("created_at")))
+                .optional()
+                .orElseThrow(() -> ApiException.validation("먼저 상대 목록을 받아야 합니다"));
+        if (Instant.parse(offer.createdAt()).plusSeconds(offerTtlSec).isBefore(Instant.now())) {
+            throw ApiException.validation("상대 목록이 만료됐습니다 — 다시 불러 주세요");
+        }
+        try {
+            JsonNode arr = objectMapper.readTree(offer.candidates());
+            for (JsonNode id : arr) {
+                if (defenderId.equals(id.asText())) {
+                    return;
+                }
+            }
+        } catch (Exception e) {
+            throw ApiException.validation("상대 목록을 읽을 수 없습니다 — 다시 불러 주세요");
+        }
+        // 제시하지 않은 상대다 = 지목 시도.
+        throw ApiException.validation("제시된 상대 중에서만 고를 수 있습니다");
     }
 
     private List<String> candidates(String attackerId) {
@@ -290,13 +413,76 @@ public class AwayService {
             if (inserted == 0) {
                 return; // 이미 정산됨
             }
-            if (attackerDelta != 0) {
-                ratingService.apply(attackerId, attackerDelta, REASON_ATTACK, matchId);
+            // 연승 보너스(hero E4) — 이긴 쪽만. 먼저 연승을 갱신하고 그 값으로 보너스를 계산한다.
+            int attackerBonus = applyStreak(attackerId, attackerResult);
+            int defenderBonus = applyStreak(challenge.defenderId(), defenderResult);
+            if (attackerDelta != 0 || attackerBonus != 0) {
+                ratingService.apply(attackerId, attackerDelta + attackerBonus, REASON_ATTACK, matchId);
             }
-            if (defenderDelta != 0) {
-                ratingService.apply(challenge.defenderId(), defenderDelta, REASON_DEFENSE, matchId);
+            if (defenderDelta != 0 || defenderBonus != 0) {
+                ratingService.apply(challenge.defenderId(), defenderDelta + defenderBonus,
+                        REASON_DEFENSE, matchId);
             }
+            // 수비자 보상(hero E7) — "덱 세팅 잘해두면 돈이 들어오고, 지면 남 좋은 일만".
+            // 공격자 보상은 매치 정산(MatchOrchestrator)이 이미 준다 — 여기서 또 주면 이중 지급이다.
+            payDefender(challenge.defenderId(), defenderResult, matchId);
         });
+    }
+
+    /**
+     * 연승 갱신 + 이번 판 보너스(hero E4). 승리면 +1, 패배면 0 으로 끊고, <b>무승부는 유지</b>한다 —
+     * 비긴 걸로 연승이 깨지면 방어 성공이 손해가 된다.
+     *
+     * @return 이번 판에 얹을 추가 레이팅(2연승부터, 상한 있음). 승리가 아니면 0.
+     */
+    private int applyStreak(String userId, String result) {
+        String now = Instant.now().toString();
+        if ("LOSS".equals(result)) {
+            jdbcClient.sql("""
+                            INSERT INTO away_streaks(user_id, streak, best_streak, updated_at)
+                            VALUES (?, 0, 0, ?)
+                            ON CONFLICT(user_id) DO UPDATE SET streak = 0, updated_at = excluded.updated_at
+                            """)
+                    .params(userId, now)
+                    .update();
+            return 0;
+        }
+        if (!"WIN".equals(result)) {
+            return 0;   // 무승부 — 유지
+        }
+        jdbcClient.sql("""
+                        INSERT INTO away_streaks(user_id, streak, best_streak, updated_at)
+                        VALUES (?, 1, 1, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET
+                          streak = away_streaks.streak + 1,
+                          best_streak = MAX(away_streaks.best_streak, away_streaks.streak + 1),
+                          updated_at = excluded.updated_at
+                        """)
+                .params(userId, now)
+                .update();
+        int streak = jdbcClient.sql("SELECT streak FROM away_streaks WHERE user_id = ?")
+                .param(userId).query(Integer.class).optional().orElse(1);
+        return Math.min(Math.max(streak - 1, 0) * streakBonusPerWin, streakMaxBonus);
+    }
+
+    /**
+     * 수비자 보상(hero E6/E7): 금액 곡선은 <b>리그 한 판과 같게</b>({@code hmb.away.reward.mode}).
+     * 패배는 기본 0 — hero 의 "지면 남 좋은 일만 하는 구조" 를 그대로 옮긴 것이다.
+     *
+     * <p>값 자체는 data 발행물(economy)이 소유한다. economy 에 away 키를 새로 만들지 않는 이유는
+     * {@code data/**} 가 이 모듈 소유가 아니고, "리그와 같게"라는 지시는 값 복제가 아니라 <b>참조</b>로
+     * 표현하는 게 정확하기 때문이다(값이 바뀌면 같이 따라간다).
+     */
+    private void payDefender(String defenderId, String defenderResult, String matchId) {
+        if ("LOSS".equals(defenderResult) && !defenderRewardOnLoss) {
+            return;
+        }
+        economyService.get().ifPresentOrElse(economy -> {
+            int amount = economy.rewards().forMode(rewardMode).by(defenderResult);
+            if (amount != 0) {
+                walletService.apply(defenderId, amount, "away_defense_reward", matchId);
+            }
+        }, () -> log.warn("economy unavailable — away defender reward skipped (match={})", matchId));
     }
 
     private int deltaFor(String result) {
@@ -394,6 +580,12 @@ public class AwayService {
         }
         return new Summary(rows.size(), opponents.size(), wins, draws, losses,
                 goalsFor, goalsAgainst, ratingDelta);
+    }
+
+    /** 현재 연승(표시용). 행이 없으면 0. */
+    public int streakOf(String userId) {
+        return jdbcClient.sql("SELECT streak FROM away_streaks WHERE user_id = ?")
+                .param(userId).query(Integer.class).optional().orElse(0);
     }
 
     public long unseenCount(String userId) {

@@ -61,7 +61,16 @@ class FlywayMigrationTest {
             "away_challenges",
             "away_reports",
             "user_ratings",
-            "rating_ledger"
+            "rating_ledger",
+            // V22 원정 v2(4) — #245 hero 3차: 2택 제시·연승·주간 시즌.
+            //   away_offers = "서버가 방금 무엇을 제시했나"(이게 없으면 2택이 곧 지목이 된다)
+            //   away_streaks = 연승(승 +1 · 패 0 · 무 유지)
+            //   away_seasons/away_season_results = 주간 시즌과 마감 스냅샷. 레이팅을 0 으로 되돌리는
+            //     순간 그 시즌 결과는 어디에도 없으므로, 스냅샷이 보상 지급의 유일한 근거다.
+            "away_offers",
+            "away_streaks",
+            "away_seasons",
+            "away_season_results"
     );
 
     @Test

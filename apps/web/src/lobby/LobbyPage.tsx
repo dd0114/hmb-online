@@ -4,6 +4,7 @@ import { ApiError } from "../api/client";
 import {
   useAbandonMatch,
   useActiveMatch,
+  useAwayCandidates,
   useAwayReports,
   useCreateMatch,
   useMe,
@@ -47,7 +48,21 @@ export function LobbyPage() {
   const forcedToMatch = activeLoading || Boolean(active?.locked && !active?.abandonable);
   const { data: awayReports } = useAwayReports("unseen", !forcedToMatch);
   const [awayDismissed, setAwayDismissed] = useState(false);
-  const showAwayPopup = !forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports);
+  // hero E1: 팝업은 **[게임 시작]을 누를 때** 뜬다(로비 진입 즉시가 아니라). 경기를 하러 온 순간에
+  // "자리를 비운 사이 이런 일이 있었다"를 보여주는 게 맥락이 맞고, 로비를 스쳐 지나갈 때 소진되지도
+  // 않는다. 조회는 미리 해둔다 — 누른 뒤에 받아오면 팝업이 한 박자 늦게 뜬다.
+  const [playPressed, setPlayPressed] = useState(false);
+  const showAwayPopup =
+    playPressed && !forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports);
+
+  // 팝업을 닫으면 원래 가려던 곳(모드 선택)으로 이어준다 — 한 번 더 누르게 하지 않는다.
+  function pressPlay() {
+    if (!forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports)) {
+      setPlayPressed(true);
+      return;
+    }
+    setModeModalOpen(true);
+  }
 
   // me 로딩 실패로 header 가 통째로 사라지면 로그아웃 버튼까지 없어져 불량 세션 탈출이 불가했다(#73 P1).
   // 로그아웃은 항상 노출한다.
@@ -100,7 +115,7 @@ export function LobbyPage() {
           type="button"
           className={styles.menuButton}
           data-testid="play-cta"
-          onClick={() => setModeModalOpen(true)}
+          onClick={pressPlay}
         >
           게임 시작
         </button>
@@ -144,7 +159,14 @@ export function LobbyPage() {
       {modeModalOpen && <ModeModal onClose={() => setModeModalOpen(false)} />}
 
       {showAwayPopup && awayReports && (
-        <AwayReportModal data={awayReports} onClose={() => setAwayDismissed(true)} />
+        <AwayReportModal
+          data={awayReports}
+          onClose={() => {
+            setAwayDismissed(true);
+            setPlayPressed(false);
+            setModeModalOpen(true);   // 원래 가려던 곳으로 이어준다
+          }}
+        />
       )}
     </Layout>
   );
@@ -160,6 +182,10 @@ function ModeModal({ onClose }: { onClose: () => void }) {
   const startAway = useStartAwayMatch();
   const navigate = useNavigate();
   const [createError, setCreateError] = useState<string | null>(null);
+  const [awayPicking, setAwayPicking] = useState(false);
+  // 후보는 **누른 뒤에** 받아온다 — 미리 받아두면 모드 창을 열기만 해도 서버의 제시가 갱신돼
+  // 앞서 받은 목록이 조용히 무효가 된다(제시는 유저당 1개다).
+  const { data: offer, isLoading: offerLoading, error: offerError } = useAwayCandidates(awayPicking);
 
   function startPractice() {
     setCreateError(null);
@@ -191,9 +217,10 @@ function ModeModal({ onClose }: { onClose: () => void }) {
    * 원정(#245) — 상대는 **실유저 팀**이다. 상대가 없으면 서버가 404 NO_OPPONENT 를 주고 우리는
    * 그걸 그대로 말한다(봇으로 몰래 대체하지 않는다 — 그러면 "원정"이 거짓말이 된다).
    */
-  function startAwayMatch() {
+  /** hero E2: 서버가 제시한 2명 중 고른 상대로 원정을 떠난다. */
+  function startAwayMatch(defenderId?: string) {
     setCreateError(null);
-    startAway.mutate(undefined, {
+    startAway.mutate(defenderId, {
       onSuccess: (match) => navigate(`/match/${match.id}`),
       onError: (err) => {
         const resumeId = matchInProgressIdOf(err);
@@ -212,6 +239,51 @@ function ModeModal({ onClose }: { onClose: () => void }) {
         );
       },
     });
+  }
+
+  if (awayPicking) {
+    return (
+      <Modal
+        onClose={onClose}
+        labelledBy="away-pick-title"
+        overlayClassName={styles.modalOverlay}
+        className={styles.modal}
+      >
+        <h2 id="away-pick-title">원정 상대</h2>
+        <p className={styles.awayPickHint}>
+          레이팅이 비슷한 두 팀입니다. 한 팀을 고르세요.
+          {offer && offer.streak > 0 && (
+            <strong data-testid="away-streak"> · {offer.streak}연승 중</strong>
+          )}
+        </p>
+        {offerLoading && <p>상대를 찾는 중…</p>}
+        {offerError instanceof ApiError && offerError.code === "NO_OPPONENT" && (
+          <p data-testid="away-no-opponent">
+            아직 원정 갈 상대가 없습니다 — 다른 감독이 팀을 꾸리면 열립니다
+          </p>
+        )}
+        <ul className={styles.modeList}>
+          {offer?.candidates.map((c) => (
+            <li key={c.userId}>
+              <button
+                type="button"
+                className={styles.modeButton}
+                data-testid="away-candidate"
+                disabled={startAway.isPending}
+                onClick={() => startAwayMatch(c.userId)}
+              >
+                <span>{c.nickname}</span>
+                <span className={styles.modeHint}>레이팅 {c.rating}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <ErrorToast message={createError} onDismiss={() => setCreateError(null)} />
+        <button type="button" className={styles.close} onClick={() => setAwayPicking(false)}>
+          뒤로
+        </button>
+      </Modal>
+    );
   }
 
   return (
@@ -250,11 +322,10 @@ function ModeModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             className={styles.modeButton}
-            disabled={startAway.isPending}
             data-testid="mode-away"
-            onClick={startAwayMatch}
+            onClick={() => setAwayPicking(true)}
           >
-            <span>{startAway.isPending ? "원정 준비 중…" : "원정"}</span>
+            <span>원정</span>
             {/* ⚠️ 증감폭을 여기 적지 않는다 — 값의 SoT 는 서버 config(hmb.away.rating.*)이고
                 클라가 상수를 베끼면 운영에서 값을 바꿨을 때 화면만 거짓말한다(#213 과 같은 형태).
                 실제 증감은 결과 리포트가 서버 값으로 보여준다. */}

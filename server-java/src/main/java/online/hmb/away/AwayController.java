@@ -27,12 +27,15 @@ public class AwayController {
     private final AwayService awayService;
     private final MatchService matchService;
     private final MatchLockService lockService;
+    private final AwaySeasonService seasonService;
 
     public AwayController(AwayService awayService, MatchService matchService,
-                          MatchLockService lockService) {
+                          MatchLockService lockService,
+                          AwaySeasonService seasonService) {
         this.awayService = awayService;
         this.matchService = matchService;
         this.lockService = lockService;
+        this.seasonService = seasonService;
     }
 
     /**
@@ -51,8 +54,28 @@ public class AwayController {
     public ResponseEntity<MatchService.MatchDetail> start(@RequestAttribute("userId") String userId,
                                                           @RequestBody(required = false) StartRequest request) {
         lockService.assertCanCreateMatch(userId);
-        MatchService.MatchRow row = awayService.start(userId, null);
+        MatchService.MatchRow row = awayService.start(userId,
+                request == null ? null : request.defenderId());
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
+    }
+
+    /**
+     * 상대 후보 제시(hero E2/E3) — 레이팅이 비슷한 사람 중 무작위 N명. 화면은 이 중 하나를 골라
+     * {@code POST /api/away/matches} 에 실어 보낸다(그 밖의 id 는 서버가 거부한다).
+     */
+    @GetMapping("/api/away/candidates")
+    public CandidatesResponse candidates(@RequestAttribute("userId") String userId) {
+        AwaySeasonService.Season season = seasonService.current();
+        return new CandidatesResponse(awayService.offerCandidates(userId),
+                awayService.streakOf(userId), season.seasonNo(), season.endsAt());
+    }
+
+    /** 시즌 현황 + 내 지난 성적(hero E5) — "이번 주 언제 끝나고 지난주 몇 등이었나". */
+    @GetMapping("/api/away/season")
+    public SeasonResponse season(@RequestAttribute("userId") String userId) {
+        AwaySeasonService.Season s = seasonService.current();
+        return new SeasonResponse(s.seasonNo(), s.startedAt(), s.endsAt(),
+                awayService.streakOf(userId), seasonService.myHistory(userId, 8));
     }
 
     @GetMapping("/api/me/away-reports")
@@ -68,8 +91,19 @@ public class AwayController {
         return new AckResponse(awayService.ack(userId, request == null ? null : request.ids()));
     }
 
-    /** 현재 바디는 비어 있다(상대는 서버가 고른다). 지목 원정을 열 땐 규칙과 함께 필드를 추가한다. */
-    public record StartRequest() {
+    /**
+     * defenderId = **직전에 제시받은 후보 중 하나**(hero E2). 비우면 서버가 무작위로 고른다.
+     * ⚠️ 임의 id 는 거부된다 — 제시 목록은 서버가 소유한다(`away_offers`). 그게 "2택"과 "지목"의 차이다.
+     */
+    public record StartRequest(String defenderId) {
+    }
+
+    public record CandidatesResponse(List<AwayService.Candidate> candidates, int streak,
+                                     int seasonNo, String seasonEndsAt) {
+    }
+
+    public record SeasonResponse(int seasonNo, String startedAt, String endsAt, int streak,
+                                 List<java.util.Map<String, Object>> history) {
     }
 
     public record AckRequest(List<String> ids) {
