@@ -110,7 +110,7 @@ export function AwayReportModal({
               // 비활성 컨트롤의 title 은 다수 스크린리더가 읽지 않는다 → 사유를 보이는 텍스트로도 준다.
               aria-label={
                 isForfeit(r)
-                  ? `${r.attackerName} 몰수승 — 상대가 경기 전에 포기해 재생할 경기가 없습니다`
+                  ? `${r.attackerName} ${r.result === "WIN" ? "몰수승" : "몰수패"} — 재생할 경기가 없습니다`
                   : undefined
               }
               onClick={() => navigate(`/match/${r.matchId}`)}

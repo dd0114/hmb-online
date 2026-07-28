@@ -108,15 +108,20 @@ public class AwayService {
      * 영원히 빈 화면이 된다. 조용한 폴백은 기능을 없애는 것과 같다.
      */
     public MatchService.MatchRow start(String attackerId, String defenderId) {
+        // ⚠️ **내 덱을 먼저, 루프 밖에서 검증한다**(독립검증 4R blocker). 이걸 루프 안에 두면
+        // 공격자 자기 덱 오류(트레이드로 넘긴 선수가 deck_slots 에 남음·활성 덱 없음)가 후보마다
+        // 똑같이 터지고, 루프가 그걸 전부 삼켜 **404 NO_OPPONENT** 으로 뒤집힌다 — 덱이 문제인데
+        // "상대가 없다"고 말하는, 유저가 할 수 있는 게 0인 막다른 토스트다(#217 이 금지한 형태).
+        // 게다가 그 실패 1회가 **후보 수만큼 고스트 INSERT** 를 남긴다(실측 14행/1회, 회수 경로 없음).
+        DeckService.DeckResponse myDeck = deckService.getActiveDeck(attackerId);
+        deckService.validate(attackerId, new DeckService.DeckUpdateRequest(myDeck.formation(), myDeck.slots()));
+
         if (defenderId != null) {
             if (defenderId.equals(attackerId)) {
                 throw ApiException.validation("자기 자신에게 원정을 갈 수 없습니다");
             }
             return startAgainst(attackerId, defenderId);
         }
-        // ⚠️ 후보를 **여러 개** 시도한다. 한 명만 뽑아 그 덱이 검증에 걸리면(예: 트레이드로 넘긴
-        // 선수가 deck_slots 에 남아 DECK_INVALID) 공격자에게 **남의 덱 오류**가 자기 덱 오류로
-        // 보고된다("덱이 유효하지 않습니다"). 후보가 남아 있는 한 그건 '상대 없음'도 아니다.
         List<String> pool = new ArrayList<>(candidates(attackerId));
         if (pool.isEmpty()) {
             throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT", "원정 갈 상대가 아직 없습니다");
@@ -125,25 +130,32 @@ public class AwayService {
         java.util.Collections.shuffle(pool, secureRandom);
         ApiException last = null;
         for (String candidate : pool) {
+            String ghostBotId;
             try {
-                return startAgainst(attackerId, candidate);
+                // 삼키는 것은 **후보를 세울 수 없다**는 실패뿐이다. 그 다음 줄(내 매치 생성)의 실패는
+                // 내 문제이므로 그대로 올린다 — 남의 덱 사정으로 내 에러가 가려지면 안 된다.
+                ghostBotId = bakeGhost(candidate, nicknameOf(candidate));
             } catch (ApiException e) {
-                // 그 후보를 세울 수 없다(덱 검증 실패 등) — 다음 후보로. 사유는 남긴다.
                 log.warn("away opponent candidate {} unusable ({}) — trying next", candidate, e.getMessage());
                 last = e;
+                continue;
             }
+            return matchService.createAwayMatch(attackerId, ghostBotId, candidate);
         }
         throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT",
                 "원정 갈 상대가 아직 없습니다"
                         + (last == null ? "" : " (마지막 후보 사유: " + last.getMessage() + ")"));
     }
 
-    private MatchService.MatchRow startAgainst(String attackerId, String defenderId) {
-        String nickname = jdbcClient.sql("SELECT nickname FROM users WHERE id = ?")
-                .param(defenderId).query(String.class).optional()
+    private String nicknameOf(String userId) {
+        return jdbcClient.sql("SELECT nickname FROM users WHERE id = ?")
+                .param(userId).query(String.class).optional()
                 .orElseThrow(() -> ApiException.notFound("상대를 찾을 수 없습니다"));
-        String ghostBotId = bakeGhost(defenderId, nickname);
-        return matchService.createAwayMatch(attackerId, ghostBotId, defenderId);
+    }
+
+    private MatchService.MatchRow startAgainst(String attackerId, String defenderId) {
+        return matchService.createAwayMatch(attackerId,
+                bakeGhost(defenderId, nicknameOf(defenderId)), defenderId);
     }
 
     private List<String> candidates(String attackerId) {

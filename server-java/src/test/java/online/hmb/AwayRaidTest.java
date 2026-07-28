@@ -217,6 +217,34 @@ class AwayRaidTest extends MatchTestBase {
         }
     }
 
+    /**
+     * <b>내 덱 문제는 내 덱 문제로 보고된다</b>(독립검증 4R blocker). 후보 루프가 공격자 자기 덱
+     * 오류까지 삼켜 404 NO_OPPONENT 으로 뒤집으면, 유저는 "상대가 없다"는 말을 듣고 할 수 있는 게
+     * 0인 막다른 토스트에 선다 — 정작 고쳐야 할 건 자기 덱인데. 게다가 그 실패 1회가 후보 수만큼
+     * 고스트 행을 굽는다(회수 경로 없음).
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void ownDeckProblemIsReportedAsDeckProblemNotNoOpponent() {
+        setupUserWithDeck("aw_pool_a");
+        setupUserWithDeck("aw_pool_b");
+        String attacker = setupUserWithDeck("aw_broken_atk");
+        String attackerId = userIdOf("aw_broken_atk");
+        long ghostsBefore = ghostRowCount();
+
+        // 공격자 자기 덱을 깨뜨린다(선발 부족).
+        jdbcClient.sql("DELETE FROM deck_slots WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)")
+                .param(attackerId).update();
+
+        ResponseEntity<String> res = authPost("/api/away/matches", attacker, Map.of(), String.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(res.getBody()).contains("DECK_INVALID");
+        assertThat(res.getBody()).doesNotContain("NO_OPPONENT");
+
+        // 그리고 실패가 고스트를 굽지 않는다 — 내 덱 검증이 후보 루프보다 먼저이기 때문.
+        assertThat(ghostRowCount()).isEqualTo(ghostsBefore);
+    }
+
     // ── AC3/AC4: 정산 — 리포트 + 양쪽 레이팅 ±10, 멱등 ────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -421,6 +449,11 @@ class AwayRaidTest extends MatchTestBase {
         assertThat(populated).isSubsetOf("id", "state", "failReason", "opponent",
                 "scoreH1Home", "scoreH1Away", "scoreHome", "scoreAway", "result",
                 "createdAt", "finishedAt", "mode", "leagueFixtureId", "clock", "ownerName");
+        // 허용 목록은 **위치 기반 재조립**이라 필드가 뒤바뀌어도 키 집합은 그대로다(4R minor-7).
+        // 몇 개는 값으로도 못박아 뒤바뀜을 잡는다.
+        assertThat(body.get("id")).isEqualTo(matchId);
+        assertThat(body.get("mode")).isEqualTo("away");
+        assertThat(body.get("ownerName")).isEqualTo("aw_atk5");
 
         // 소유자 본인에게는 그대로 보인다(기존 기능 #98 무회귀).
         ResponseEntity<String> asOwner = authGet("/api/matches/" + matchId, attacker, String.class);
@@ -668,8 +701,13 @@ class AwayRaidTest extends MatchTestBase {
 
         assertThat(board.get(0).get("nickname")).isEqualTo("aw_rank_high");
         assertThat(board.get(0).get("rating")).isEqualTo(999);
-        // 최하위 레이팅은 승수가 어떻든 위로 오지 못한다.
-        assertThat(board.get(board.size() - 1).get("nickname")).isEqualTo("aw_rank_low");
+        // ⚠️ "마지막이 최하위"로 걸지 않는다 — 리더보드는 상위 20명으로 잘리므로 이 클래스에 유저가
+        // 몇 명만 더 늘면 무관한 이유로 red 가 된다(독립검증 4R minor-1). 두 유저의 **상대 순서**로 건다.
+        List<String> names = board.stream().map(e -> (String) e.get("nickname")).toList();
+        assertThat(names).contains("aw_rank_high");
+        if (names.contains("aw_rank_low")) {
+            assertThat(names.indexOf("aw_rank_low")).isGreaterThan(names.indexOf("aw_rank_high"));
+        }
     }
 
     // ── AC8: 레이팅은 GET /api/me 로 노출되고 하한이 없다 ──────────────────────
@@ -748,6 +786,11 @@ class AwayRaidTest extends MatchTestBase {
     private long countLedger(String matchId) {
         return jdbcClient.sql("SELECT COUNT(*) FROM rating_ledger WHERE ref_id = ?")
                 .param(matchId).query(Long.class).single();
+    }
+
+    private long ghostRowCount() {
+        return jdbcClient.sql("SELECT COUNT(*) FROM bots WHERE id LIKE 'GHOST\\_%' ESCAPE '\\'")
+                .query(Long.class).single();
     }
 
     private long unseenCount(String userId) {
