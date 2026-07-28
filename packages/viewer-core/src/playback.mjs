@@ -250,11 +250,16 @@ export function buildStoppages(events) {
   // 제자리 재개(restartTick=causeTick, 프레임 스킵 없음). setPiece:true → freeze 중 taker(공 소유자)로
   // 줌해 "던지는/차는 선수"를 크게 보여준다(#26 taker 잘림 수정이 전제). hold 는 관전 페이싱 튜닝값 —
   // 스로인은 빈도 높아 짧게. 배너(annotation)는 보조로 병행.
+  // #230: 골킥도 데드볼이라 같은 대접을 한다(hero 지시). 이전엔 빈도를 이유로 정지가 아예 없어
+  // 골킥만 아무 신호 없이 지나가는 세트피스였다 — 관객은 왜 공이 골문 앞에 놓였는지 모른 채
+  // 선수들이 재배치되는 것만 봤다. 빈도 부담(경기당 ~13회)은 정지를 없애는 대신 hold 를
+  // 스로인급(650ms)으로 짧게 잡아 흡수한다(코너 900ms 로 하면 경기당 +11초).
   const SETPIECE_STOP = {
     corner: { big: "⛳ CORNER!", col: "#e7edf6", hold: 900 },
     throw_in: { big: "🙌 THROW-IN!", col: "#e7edf6", hold: 650 },
+    goal_kick: { big: "🥅 GOAL KICK!", col: "#e7edf6", hold: 650 },
   };
-  // 프리킥만 자막 없는 짧은 정지 비트 유지(골킥은 빈도 높아 무정지).
+  // 프리킥만 자막 없는 짧은 정지 비트 유지.
   const PAUSE_BEAT = { free_kick: 600 };
   const out = [];
   for (let i = 0; i < events.length; i++) {

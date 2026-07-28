@@ -263,6 +263,16 @@ export interface EngineConfig {
       shapeReachX: number;
       shapeReachY: number;
       /**
+       * 골키퍼 전용 형태 당김 비율(#230). 필드 플레이어의 shapeReachX/Y 와 분리한다.
+       *
+       * 왜 분리해야 하나 — 당김은 **기본 위치에서 스팟까지의 거리에 비례**하는데, 골키퍼만
+       * 기본 위치가 자기 골라인이라 상대 진영 스팟까지가 90m 를 넘는다. 필드 플레이어에게
+       * 35% 는 몇 미터지만 골키퍼에겐 33m 다(0.35 × 95m) — 골문을 버리고 하프라인까지 걸어
+       * 나가는 그림이 된다(라이브 실측 골킥 36.7m · 스로인/프리킥 22m · 페널티 36.3m).
+       * 0 이면 골키퍼는 정지 중 자기 기본 위치를 지킨다(대기 동작 노이즈는 그대로 받는다).
+       */
+      gkShapeReach: number;
+      /**
        * 정지 중 taker 를 뺀 선수들의 이동 속도 상한(m/tick, #174). 데드볼엔 뛰지 않고 걸어서
        * 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만 풀스피드로 가로지르면 "공보다 선수가
        * 빠른" 그림이 된다. taker 는 제외한다: `walkStoppage`(#59)가 taker 의 **평소 속도**로
@@ -409,6 +419,7 @@ export interface EngineConfig {
       slotSpread: number;
       jitterX: number;
     };
+
   };
 
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
@@ -533,7 +544,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.21.0",
+  version: "engine@0.22.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -686,6 +697,7 @@ export const defaultEngineConfig: EngineConfig = {
       marginM: 0.05,
       shapeReachX: 0.35,
       shapeReachY: 0.25,
+      gkShapeReach: 0,
       walkSpeedM: 2.5,
       cornerWalkSpeedM: 4.5,
       idleAmpM: 0.8,

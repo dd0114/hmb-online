@@ -46,6 +46,11 @@ export interface DeadBallZone {
   rFx: number;
   /** 페널티박스 금지구역(fixed). null 이면 없음. */
   box: { cx: number; cy: number; hx: number; hy: number } | null;
+  /**
+   * `box` 가 **어느 팀의 자기 박스**인가. 그 팀 골키퍼만 Law 13/14 의 골라인 예외를 받는다(#230).
+   * null = 박스 없음(원 제약만) → 예외 대상 골키퍼도 없다.
+   */
+  boxOwner: TeamSide | null;
 }
 
 /**
@@ -76,8 +81,13 @@ export function deadBallShapeTarget(
     tx = player.baseFx.x;
     ty = player.baseFx.y;
   } else {
-    tx = player.baseFx.x + Math.round((sp.x - player.baseFx.x) * d.shapeReachX);
-    ty = player.baseFx.y + Math.round((sp.y - player.baseFx.y) * d.shapeReachY);
+    // #230: 골키퍼는 별도 비율(기본 0 = 자기 자리 유지). 당김이 거리 비례라 골키퍼만
+    // 기본 위치(자기 골라인)에서 스팟까지가 90m 를 넘어, 같은 비율이 33m 이탈이 된다.
+    // 라이브에서 골키퍼가 "골킥을 가로채러 나오는" 것처럼 보이던 것의 실체가 이것이다.
+    const rx = player.isGK ? d.gkShapeReach : d.shapeReachX;
+    const ry = player.isGK ? d.gkShapeReach : d.shapeReachY;
+    tx = player.baseFx.x + Math.round((sp.x - player.baseFx.x) * rx);
+    ty = player.baseFx.y + Math.round((sp.y - player.baseFx.y) * ry);
   }
   // 대기 동작: 배치에 느린(주기 idlePeriodTicks) 시드 오프셋. 주기가 길어 한 번 움직이면 여러 틱
   // 가만히 있으므로 "매 틱 방향 반전"(#185)이 되지 않으면서 전원이 굳은 동상으로도 안 보인다.
@@ -132,27 +142,31 @@ export function deadBallZone(state: SimState, config: EngineConfig, pitch: Pitch
     // Law 16: 상대는 차는 팀 페널티에어리어 밖(반경 제약 없음).
     case "goal_kick":
       return d.boxClear
-        ? { ...base, rFx: 0, box: ownBox(pitch, config, sp.side) }
-        : { ...base, rFx: r, box: null };
+        ? { ...base, rFx: 0, box: ownBox(pitch, config, sp.side), boxOwner: sp.side }
+        : { ...base, rFx: r, box: null, boxOwner: null };
     // Law 15: 스로인 지점에서 2m.
     case "throw_in":
-      return { ...base, rFx: toFixed(d.throwInDistanceM, scale), box: null };
+      return { ...base, rFx: toFixed(d.throwInDistanceM, scale), box: null, boxOwner: null };
     // Law 17(코너)·8(킥오프): 9.15m.
     case "corner":
     case "kickoff":
-      return { ...base, rFx: r, box: null };
+      return { ...base, rFx: r, box: null, boxOwner: null };
     // Law 13: 9.15m + 수비팀이 자기 박스 안에서 차면 상대는 박스 밖까지.
     case "free_kick": {
       const b = ownBox(pitch, config, sp.side);
-      return { ...base, rFx: r, box: d.boxClear && insideBox(b, sp.x, sp.y) ? b : null };
+      const on = d.boxClear && insideBox(b, sp.x, sp.y);
+      return { ...base, rFx: r, box: on ? b : null, boxOwner: on ? sp.side : null };
     }
     // Law 14: 키커·수비GK 외 전원이 박스 밖 + 스팟 9.15m 밖(수비GK 는 아래 예외로 제외).
-    case "penalty":
+    case "penalty": {
+      const def = sp.side === "home" ? "away" : "home";
       return {
         ...base,
         rFx: r,
-        box: d.boxClear ? ownBox(pitch, config, sp.side === "home" ? "away" : "home") : null,
+        box: d.boxClear ? ownBox(pitch, config, def) : null,
+        boxOwner: d.boxClear ? def : null,
       };
+    }
     // goal(세리머니) / shot_out(골문 프레임 파킹) — 재시작 스팟이 아직 없다.
     default:
       return null;
@@ -160,11 +174,19 @@ export function deadBallZone(state: SimState, config: EngineConfig, pitch: Pitch
 }
 
 /**
- * 이 선수가 금지구역에서 배제되는가.
- * GK 제외 = Law 13 의 골라인 예외(수비 GK 는 골문을 비우고 물러나지 않는다). 페널티의 수비 GK 도 같다.
+ * 이 선수가 금지구역에서 배제되는가(= 물러나 있어야 하는가).
+ *
+ * 골키퍼 예외는 Law 13/14 의 **골라인 예외** — 수비 GK 는 자기 골문을 비우고 물러나지 않는다
+ * (페널티에서 골라인에 선 수비 GK, 상대가 우리 박스 안에서 차는 프리킥의 우리 GK).
+ *
+ * ⚠️ #230: 이 예외가 원래 **모든** 골키퍼에게 무조건 걸려 있었다. 그러면 골킥처럼 구역이
+ * **남의 박스**인 경우에도 상대 골키퍼가 면제돼, 그가 그 박스로 걸어 들어가도 막을 것이 없다.
+ * 예외가 성립하는 조건은 "골키퍼다"가 아니라 **"그 구역이 자기 박스다"** 이므로 그렇게 좁힌다.
  */
 export function deadBallExcluded(player: SimPlayer, zone: DeadBallZone): boolean {
-  return player.side !== zone.side && !player.isGK;
+  if (player.side === zone.side) return false;
+  if (player.isGK && zone.boxOwner === player.side) return false;
+  return true;
 }
 
 /**
