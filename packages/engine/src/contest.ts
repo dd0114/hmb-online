@@ -1,5 +1,6 @@
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer, DeferredRestart } from "./simstate";
+import { playerKey, playerAt, ballOwnerOf, claimantSideOf } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
@@ -231,7 +232,7 @@ export function launchCornerCross(
   config: EngineConfig,
   rng: Rng,
 ): void {
-  const taker = state.ball.owner ? state.byId.get(state.ball.owner) : null;
+  const taker = ballOwnerOf(state) ?? null;
   if (!taker) return;
   const g = attackGoal(pitch, taker.side);
   const center = Math.round(pitch.hFx / 2);
@@ -339,8 +340,9 @@ export function restartPenalty(
 function sendOff(state: SimState, player: SimPlayer): void {
   const idx = state.players.indexOf(player);
   if (idx >= 0) state.players.splice(idx, 1);
-  state.byId.delete(player.id);
-  if (state.ball.owner === player.id) {
+  state.byId.delete(playerKey(player.side, player.id));
+  // #231: 소유 판정도 side 를 함께 본다 — 같은 id 의 반대 팀 선수가 퇴장했다고 소유가 풀리면 안 된다.
+  if (state.ball.owner === player.id && state.ball.ownerSide === player.side) {
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
@@ -511,7 +513,7 @@ export function tryTackle(
 ): MatchEvent[] {
   const ball = state.ball;
   if (ball.flight || !ball.owner) return [];
-  const owner = state.byId.get(ball.owner);
+  const owner = ballOwnerOf(state);
   if (!owner) return [];
   const range = config.contest.tackleRange * config.fixedScale;
 
@@ -624,7 +626,9 @@ export function resolveArrival(
   //    아직 못 왔으면 arrivalWaitMaxTicks 동안 공을 세워두고 기다린다(계획 보존).
   if (config.contest.passOutcomeAuthoritative && f.passOutcome && f.claimant) {
     const oppSide: TeamSide = fromSide === "home" ? "away" : "home";
-    const claimant = state.byId.get(f.claimant);
+    // #231: claimant 의 팀은 계획된 결과에서 파생된다(인터셉트=상대 / 성공=차는 팀).
+    // id 단독 조회면 같은 id 의 반대 팀 선수가 잡혀 엉뚱한 쪽에 공이 간다.
+    const claimant = playerAt(state, claimantSideOf(f), f.claimant);
     if (inReach(claimant)) {
       giveBallTo(state, claimant!);
       if (f.passOutcome === "success") {
@@ -667,7 +671,8 @@ export function resolveShot(
 ): MatchEvent[] {
   const f = state.ball.flight;
   if (!f || f.kind !== "shot") return [];
-  const shooter = f.target ? state.byId.get(f.target) : null;
+  // #231: 슈터는 항상 차는 팀(fromSide) 소속이다.
+  const shooter = playerAt(state, f.fromSide, f.target) ?? null;
   const scorerSide = f.fromSide;
   const xg = f.xg ?? config.contest.xgBase;
   const defSide: TeamSide = scorerSide === "home" ? "away" : "home";

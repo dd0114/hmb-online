@@ -6,6 +6,66 @@ import type { PlayerBehavior, Duty, TeamInput } from "@hmb/shared";
  * 좌표·속도는 모두 고정소수 정수(fixed). posFx 등의 값은 EngineConfig.fixedScale 스케일.
  */
 
+/**
+ * 선수 조회 키 (#231). **`playerId` 단독은 키가 될 수 없다** — 유저 덱과 봇 로스터가 같은 선수
+ * 카탈로그를 공유하므로 **같은 선수가 양 팀에 동시에 출전할 수 있다**(라이브 실측: 51하프 중 20하프).
+ * id 로만 맵을 만들면 두 인스턴스 중 하나가 덮이고, 소유자 조회가 **반대 팀 선수**를 돌려준다 →
+ * 데드볼 taker 가 영원히 공을 차지 못해 하프가 통째로 죽는다(라이브 1384틱 정지).
+ *
+ * ⚠️ 이 키는 **엔진 내부 전용**이다. `Ball.owner` · `MatchLog` 스냅샷의 `ballOwner` · 이벤트의
+ * `playerId` 는 계속 **순수 `playerId`** 를 담는다(shared 계약·뷰어 무변경). 조회할 때 side 를
+ * 같이 넘기는 것이 규율이고, side 는 항상 문맥에 있다(`ball.ownerSide` · `player.side` ·
+ * `flight.fromSide` · 입력 적용 루프의 side).
+ */
+export function playerKey(side: TeamSide, id: string): string {
+  return `${side}:${id}`;
+}
+
+/** `players` → `byId`. 맵 생성은 여기 한 곳만 — 재개(deserialize) 경로도 이걸 쓴다. */
+export function buildById(players: SimPlayer[]): Map<string, SimPlayer> {
+  const byId = new Map<string, SimPlayer>();
+  for (const p of players) byId.set(playerKey(p.side, p.id), p);
+  return byId;
+}
+
+/** (side, id) 로 선수 조회. 둘 중 하나라도 없으면 undefined. */
+export function playerAt(
+  state: SimState,
+  side: TeamSide | null | undefined,
+  id: string | null | undefined,
+): SimPlayer | undefined {
+  if (!side || !id) return undefined;
+  return state.byId.get(playerKey(side, id));
+}
+
+/** 공 소유자. `owner`(id) 와 `ownerSide` 를 **함께** 써야 중복 id 에서 안 어긋난다. */
+export function ballOwnerOf(state: SimState): SimPlayer | undefined {
+  return playerAt(state, state.ball.ownerSide, state.ball.owner);
+}
+
+/**
+ * 비행 중인 공의 `claimant` 가 속한 팀. 인터셉트 계획이면 **상대**, 그 외(성공 패스)는 **차는 팀**.
+ * 이 파생 덕분에 `BallFlight` 에 새 필드를 넣지 않아도 된다(resumeState 직렬화 계약 무변경).
+ */
+export function claimantSideOf(f: BallFlight): TeamSide {
+  const opp: TeamSide = f.fromSide === "home" ? "away" : "home";
+  return f.passOutcome === "fail_intercept" ? opp : f.fromSide;
+}
+
+/** 반대 팀. */
+export function otherSide(side: TeamSide): TeamSide {
+  return side === "home" ? "away" : "home";
+}
+
+/**
+ * 이 선수가 지금 공을 가진 선수인가. **`p.id === state.ball.owner` 로 비교하지 마라** (#231) —
+ * 같은 id 의 반대 팀 선수까지 참이 되어, 소유자가 아닌 쪽이 "소유자 취급"으로 그 틱의 판단·재배치를
+ * 건너뛴다(실측 노출: 중복 경기의 2.8% 틱). 조회와 같은 이유로 side 를 함께 본다.
+ */
+export function isBallOwner(state: SimState, p: SimPlayer): boolean {
+  return state.ball.owner === p.id && state.ball.ownerSide === p.side;
+}
+
 /** 시뮬 내부 선수 상태. */
 export interface SimPlayer {
   id: string;

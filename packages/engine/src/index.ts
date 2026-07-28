@@ -11,3 +11,4 @@ export * from "./hash";
 export * from "./match";
 export * from "./fixtures";
 export type { SimState, SimPlayer, Ball, BallFlight } from "./simstate";
+export { playerKey, buildById, playerAt, ballOwnerOf, claimantSideOf, otherSide } from "./simstate";

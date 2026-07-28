@@ -4,9 +4,11 @@ import {
   resumeSecondHalf,
   defaultEngineConfig,
   createRng,
+  buildById,
   type EngineConfig,
   type CarryState,
   type SimState,
+  type SimPlayer,
 } from "@hmb/engine";
 import {
   TeamSide,
@@ -158,7 +160,9 @@ function deserializeCarry(raw: unknown, config: EngineConfig): CarryState {
   }
   const rng = createRng(s.seed);
   rng.restore(s.rngState);
-  const byId = new Map(s.state.players.map((p) => [p.id, p]));
+  // #231: 맵 키는 (side, id) — 같은 playerId 가 양 팀에 있을 수 있어서 id 단독은 충돌한다.
+  // 키 규칙의 SoT 는 엔진(buildById) 하나뿐이다 — 여기서 손으로 만들면 조용히 갈라진다.
+  const byId = buildById(s.state.players as SimPlayer[]);
   const state: SimState = { ...s.state, byId };
   return {
     state,

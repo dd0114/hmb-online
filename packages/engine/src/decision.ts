@@ -1,5 +1,6 @@
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer } from "./simstate";
+import { playerAt, otherSide, claimantSideOf, isBallOwner } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
@@ -493,7 +494,7 @@ function cornerHolderRank(
 ): { rank: number; count: number } {
   const miss = { rank: -1, count: 0 };
   const cn = config.setPiece.corner;
-  if (!cn.enabled || player.isGK || state.ball.owner === player.id) return miss;
+  if (!cn.enabled || player.isGK || isBallOwner(state, player)) return miss;
   const commit = teamCornerCommit(state.teams[player.side], cn);
   // 공격팀: 가담도가 높을수록 적게 남긴다(Max→Min). 수비팀: 높을수록 많이 올려둔다(Min→Max).
   const count = attacking
@@ -504,7 +505,7 @@ function cornerHolderRank(
   let ahead = 0;
   for (const p of state.players) {
     if (p.side !== player.side || p.isGK || p.id === player.id) continue;
-    if (state.ball.owner === p.id) continue;
+    if (isBallOwner(state, p)) continue;
     const r = cornerGoScore(pitch, p, cn);
     // 동률(예: LCB/RCB 가 슬롯·성향 모두 같음)은 idHash → id 로 안정 정렬.
     const tie = p.idHash !== player.idHash ? p.idHash < player.idHash : p.id < player.id;
@@ -555,7 +556,9 @@ export function decideOffBall(
   const loose = ball.flight;
   if (loose && loose.kind === "loose" && ball.owner == null) {
     const mine = closestToBall(state, player.side);
-    if (loose.claimant === player.id || (!loose.claimant && mine && mine.id === player.id)) {
+    // #231: claimant 는 상대일 수도 있다 — id 만 비교하면 같은 id 의 우리 팀 선수가 남의 공을 주우러 간다.
+    const claimedByMe = loose.claimant === player.id && claimantSideOf(loose) === player.side;
+    if (claimedByMe || (!loose.claimant && mine && mine.id === player.id)) {
       player.targetFx = clampToPitch(pitch, ball.posFx.x, ball.posFx.y);
       return;
     }
@@ -639,7 +642,8 @@ export function decideOffBall(
     // 시야가 꺼져 있으면(롤백) 레거시 하드 오버라이드를 그대로 쓴다 — 안 그러면 롤백 스위치가
     // markTarget(정식 AI 마킹 지시 경로)을 **완전 무음 no-op** 으로 만들어 "롤백" 이 아니게 된다.
     if (!config.vision.enabled && player.markTarget) {
-      const mark = state.byId.get(player.markTarget);
+      // #231: 마킹 대상은 **상대**다. id 단독 조회면 같은 id 의 우리 팀 선수를 마크하게 된다.
+      const mark = playerAt(state, otherSide(player.side), player.markTarget);
       if (mark) {
         const gap = mv.markGap * scale;
         const dx = ownGoal.x - mark.posFx.x;

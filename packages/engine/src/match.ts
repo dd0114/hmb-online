@@ -11,6 +11,7 @@ import type {
 } from "@hmb/shared";
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer } from "./simstate";
+import { buildById, playerAt, ballOwnerOf, isBallOwner } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import { defaultEngineConfig } from "./config";
@@ -118,7 +119,7 @@ function applyDelta(
 ): void {
   state.teams[side] = input.team;
   for (const pi of input.players) {
-    const p = state.byId.get(pi.playerId);
+    const p = playerAt(state, side, pi.playerId);
     if (!p) continue;
     p.role = pi.role;
     p.duty = pi.duty;
@@ -209,14 +210,17 @@ function stepTick(carry: Carry): void {
   // --- 세트피스 정지(dead ball): 재배치만 하고 결정/경합/공비행 스킵 ---
   if (state.stoppage > 0) {
     state.stoppage--;
+    // #231: 소유자는 (id, side) 쌍으로 잡는다 — id 만 보면 반대 팀 동명 선수까지 "소유자 취급"돼
+    // 그 틱의 재배치를 못 받는다. 캡처 시점 값을 쓰는 의미는 그대로 보존한다.
     const heldId = state.ball.owner;
+    const heldSide = state.ball.ownerSide;
     // #176: 실제 축구 규칙(Law 8/13/14/15/16/17) — 재시작 팀의 상대는 스팟에서 물러나 있어야 한다.
     // 이게 없으면 상대가 정지 내내 스팟까지 걸어 들어와, 정지가 끝나는 순간 바로 옆에서
     // 태클/인터셉트로 강탈한다(골킥이면 박스 안 키퍼에게서 뺏어 즉시 실점).
     const zone = deadBallZone(state, config, pitch);
     const shapeSp = state.setPiece && deadBallUsesShape(state.setPiece.kind) ? state.setPiece : null;
     for (const p of state.players) {
-      if (p.id === heldId) continue;
+      if (p.id === heldId && p.side === heldSide) continue;
       // #185/#174: 정지 중엔 평소 오프더볼 로직(자기 위치·시야 피드백) 대신 **규칙기반 정적 배치**.
       // 상황이 안 변하는 구간에서 매 틱 재계산하면 목표가 자기 위치를 따라 흔들려 제자리 왕복이
       // 생기고(#185), 전원이 굳은 뒤 한 명만 기억 만료로 새 타깃을 받아 혼자 질주한다(#174).
@@ -285,7 +289,7 @@ function stepTick(carry: Carry): void {
         }
       } else if (sp && sp.kind === "penalty") {
         // 페널티 정지 종료 → 테이커(공 소유자)가 상대 골로 고xG 슛 발사.
-        const taker = state.ball.owner ? state.byId.get(state.ball.owner) : null;
+        const taker = ballOwnerOf(state) ?? null;
         if (taker) {
           const g = attackGoal(pitch, taker.side);
           state.ball.flight = {
@@ -334,6 +338,7 @@ function stepTick(carry: Carry): void {
 
   // --- decide: 오프더볼/수비 목표 ---
   const ownerId = state.ball.owner;
+  const ownerSide = state.ball.ownerSide; // #231: id 단독 비교 금지(반대 팀 동명 선수)
   // #176: 아직 안 찬 세트피스(taker 가 공을 들고 서 있음)면 접근 금지가 계속 유효하다.
   // 정지는 끝났지만 규칙상 공은 아직 인플레이가 아니다 → 압박 배정보다 규칙이 우선.
   const liveZone = deadBallZone(state, config, pitch);
@@ -342,7 +347,7 @@ function stepTick(carry: Carry): void {
   // 순간 이 구간에서만 평소 로직이 되살아나 왕복·단독질주가 그대로 남는다(실측 최대 6.3 m/tick).
   const liveSp = state.setPiece && deadBallUsesShape(state.setPiece.kind) ? state.setPiece : null;
   for (const p of state.players) {
-    if (p.id === ownerId) continue;
+    if (p.id === ownerId && p.side === ownerSide) continue;
     // 볼을 안 가진 선수는 드리블 체인 리셋(활성 캐리어만 연속 누적).
     p.dribbleStreak = 0;
     const pa = p.side === defSide ? presser : null;
@@ -368,15 +373,17 @@ function stepTick(carry: Carry): void {
     liveSp != null &&
     ownerId != null &&
     (() => {
-      const o = state.byId.get(ownerId);
+      // #231: 소유자는 **(ownerSide, owner)** 로 찾는다. id 단독이면 같은 id 의 반대 팀 선수가
+      // 잡혀 이 거리 판정이 영구 참이 되고, 아래 `decideBallOwner` 가 한 번도 안 불려 하프가 죽는다.
+      const o = ballOwnerOf(state);
       return o ? fdist(o.posFx.x, o.posFx.y, liveSp.x, liveSp.y) > config.contest.controlRange * config.fixedScale : false;
     })();
   if (takerWalkingIn && ownerId) {
-    const o = state.byId.get(ownerId);
+    const o = ballOwnerOf(state);
     if (o) o.targetFx = { x: liveSp!.x, y: liveSp!.y };
   }
   if (ownerId && !state.ball.flight && !takerWalkingIn) {
-    const owner = state.byId.get(ownerId);
+    const owner = ballOwnerOf(state);
     if (owner) {
       const action = decideBallOwner(state, owner, rng, config, pitch);
       // #176: taker 가 공을 실제로 플레이하면(패스/슛/드리블) 그 순간 공이 인플레이 → 접근 금지 해제.
@@ -488,6 +495,7 @@ function stepTick(carry: Carry): void {
 
   // --- act: 공 이동 + 경합 ---
   const curOwnerId = state.ball.owner;
+  const curOwnerSide = state.ball.ownerSide; // #231: 피로 판정도 (id, side) 쌍
   if (state.ball.flight && shotLaunchedThisTick && state.ball.flight.kind === "shot") {
     // 막 쏜 틱: 공은 슈터 위치 그대로(비행은 다음 틱부터). 스냅샷에 슈터 발밑이 찍힌다.
   } else if (state.ball.flight) {
@@ -514,7 +522,7 @@ function stepTick(carry: Carry): void {
     // 공을 taker 에게 글루하지 않고(끌려가면 스팟 이탈), 태클도 성립하지 않는다 —
     // 이 두 줄이 #176 강탈 경로의 마지막 구멍이다(스로인 금지반경 2m ≈ tackleRange 2m 경계).
   } else if (curOwnerId) {
-    const owner = state.byId.get(curOwnerId);
+    const owner = ballOwnerOf(state);
     if (owner) glueBallToOwner(state.ball, owner.posFx.x, owner.posFx.y);
     for (const e of tryTackle(state, rng, config, pitch, state.tick, minute)) {
       carry.events.push(e);
@@ -523,7 +531,10 @@ function stepTick(carry: Carry): void {
 
   // --- applyFatigue ---
   for (const p of state.players) {
-    const active = p.id === curOwnerId || (presser && p.id === presser.id);
+    // #231: 소유자는 (id, side) 쌍, 압박 담당은 **객체 동일성**(같은 id 의 반대 팀 선수 오인 방지).
+    // ⚠️ 캡처 시점(curOwner*) 값을 쓴다 — 여기서 state 를 다시 읽으면 틱 중간의 소유권 이전이
+    //    피로에 반영돼 동작이 바뀐다(실측: 골든 7건 깨짐).
+    const active = (p.id === curOwnerId && p.side === curOwnerSide) || p === presser;
     const exertion = p.isGK ? 0.3 : active ? 1.6 : 1.0;
     p.fatigue = Math.min(1, p.fatigue + config.fatiguePerTick * exertion);
   }
@@ -590,8 +601,7 @@ function initCarry(
   const homePlayers = buildPlayers(home, select.home, "home", pitch);
   const awayPlayers = buildPlayers(away, select.away, "away", pitch);
   const players = [...homePlayers, ...awayPlayers];
-  const byId = new Map<string, SimPlayer>();
-  for (const p of players) byId.set(p.id, p);
+  const byId = buildById(players);
 
   const state: SimState = {
     players,
