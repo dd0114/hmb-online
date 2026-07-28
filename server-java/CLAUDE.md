@@ -121,6 +121,13 @@
   wallets 와의 의도적 차이). 값은 `hmb.away.rating.{win,draw,loss}`(현재 **±10, 공격자·수비자 대칭**),
   멱등은 `rating_ledger` 유니크가 point_ledger 와 동형으로 보장. 적용값은 `away_reports.rating_delta`
   에 **박제**한다 — 정책을 바꿔도 과거 리포트가 뒤늦게 다른 말을 하면 안 된다.
+- **관전자 응답은 allow-list 로 깎는다**(`toDetailFor`) — 지울 것을 열거하면 필드가 늘 때마다 조용히
+  샌다. 실제로 초판이 `userDeckSnapshot` 만 지우고 `conditions`(공격자 **선발 11 + 벤치 2 playerId 전량
+  + 선수별 컨디션**)를 그대로 내보냈다(3R MAJOR-1). 계약도 "문자열 부재"가 아니라 **허용 키 집합**으로
+  건다 — 그래야 새 필드가 기본으로 막힌다.
+- **몰수 정산은 ABANDONED CAS 와 같은 트랜잭션**이다(3R MAJOR-2). 밖에 두면 매치는 터미널인데 정산만
+  실패하는 창이 생기고, ABANDONED 는 어느 스위퍼도 다시 고르지 않아 **재시도 경로가 없다** — 수비자는
+  리포트를 영영 못 받고 공격자는 −10 을 면제받는다(= D1 이 막으려던 리롤이 그대로 열린다).
 - **수비자 관전은 읽기 전용**(hero Q5): `MatchService.getViewable` = 소유자 OR `away_reports.defender_id`.
   ⚠️ **GET 3개**(`/api/matches/{id}`, `/halves/{half}/log`, `/result`)에만 쓴다. 쓰기는 전부 `getOwned`
   그대로 — 관전 권한이 조작 권한으로 새면 남의 경기를 남이 끝낼 수 있다. 권한 근거인 리포트 행은
@@ -157,7 +164,9 @@
   통과). 지금은 재-bake 경로와 `settle` 재호출을 각각 실제로 태운다.
 - ⚠️ **`/api/away/*` 와 `/api/me/away-reports*` 는 openapi 에 아직 없다** — `docs/**` 가 이 세션의
   owned-glob 밖이라 매니저 조율 대기(`/api/growth/*` 와 같은 상태). 그때까지 **계약 SoT 는 이 문서**다:
-  - `POST /api/away/matches` `{defenderId?}` → 201 MatchDetail · 404 `NO_OPPONENT` · 409 `MATCH_IN_PROGRESS`
+  - `POST /api/away/matches` **바디 없음**(상대는 서버가 고른다) → 201 MatchDetail · 404 `NO_OPPONENT` ·
+    409 `MATCH_IN_PROGRESS`. ⚠️ 클라가 `defenderId` 를 보내도 Spring 기본이 미지 필드를 무시하므로
+    **에러 없이 무작위 상대**가 나온다 — 문서에 `{defenderId?}` 라고 적으면 그게 먹히는 줄 안다(3R m6).
   - `GET /api/me/away-reports?status=unseen|all` → `{reports[], summary{matches,opponents,wins,draws,
     losses,goalsFor,goalsAgainst,ratingDelta}, rating, unseen}` (**집계는 서버가 계산** — 클라 복제 금지)
   - `POST /api/me/away-reports/ack` `{ids?}` → `{acked}` (멱등: `seen_at IS NULL` 로 대상을 좁힌다)

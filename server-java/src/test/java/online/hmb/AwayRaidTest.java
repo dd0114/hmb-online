@@ -385,7 +385,7 @@ class AwayRaidTest extends MatchTestBase {
      */
     @SuppressWarnings("unchecked")
     @Test
-    void watchingDoesNotLeakTheAttackersPrompts() {
+    void watchingDoesNotLeakTheAttackersPrompts() throws Exception {
         setupUserWithDeck("aw_def5");
         String defenderToken = login("aw_def5");
         String attacker = setupUserWithDeck("aw_atk5");
@@ -407,7 +407,20 @@ class AwayRaidTest extends MatchTestBase {
         ResponseEntity<String> asDefender = authGet("/api/matches/" + matchId, defenderToken, String.class);
         assertThat(asDefender.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(asDefender.getBody()).doesNotContain("TOP-SECRET-ATTACKER-PROMPT");
-        assertThat(asDefender.getBody()).doesNotContain("userDeckSnapshot\":{");
+
+        // ⚠️ **허용 필드 집합**으로 건다. "특정 문자열이 없다"로 걸면 새로 새는 필드를 원리적으로
+        // 못 잡는다 — 실제로 conditions(공격자 로스터 전원 id + 컨디션)가 그렇게 빠져나갔다
+        // (독립검증 3R MAJOR-1). 값이 실린 키만 모아 화이트리스트와 대조한다.
+        Map<String, Object> body = MAPPER.readValue(asDefender.getBody(), Map.class);
+        java.util.Set<String> populated = new java.util.TreeSet<>();
+        body.forEach((k, v) -> {
+            if (v != null) {
+                populated.add(k);
+            }
+        });
+        assertThat(populated).isSubsetOf("id", "state", "failReason", "opponent",
+                "scoreH1Home", "scoreH1Away", "scoreHome", "scoreAway", "result",
+                "createdAt", "finishedAt", "mode", "leagueFixtureId", "clock", "ownerName");
 
         // 소유자 본인에게는 그대로 보인다(기존 기능 #98 무회귀).
         ResponseEntity<String> asOwner = authGet("/api/matches/" + matchId, attacker, String.class);
@@ -606,6 +619,28 @@ class AwayRaidTest extends MatchTestBase {
                     .params(userIdOf("aw_broken"), userIdOf("aw_healthy"), attackerId).update();
             releaseActiveMatches();
         }
+    }
+
+    /**
+     * 몰수는 <b>0:0 + 비무승부</b>로만 표현된다 — 클라(`isForfeit`)가 그 조합으로 몰수를 역추론하므로,
+     * <b>실제로 뛴 0:0 이 WIN/LOSS 로 기록될 수 있으면 화면이 조용히 오독한다</b>(3R m8).
+     * 정산은 스코어에서 결과를 만들지 않고 받은 대로 쓰므로, 그 계약을 여기서 고정한다.
+     */
+    @Test
+    void playedGoallessDrawIsNeverRecordedAsForfeit() {
+        setupUserWithDeck("aw_def_00");
+        String defenderId = userIdOf("aw_def_00");
+        setupUserWithDeck("aw_atk_00");
+        String attackerId = userIdOf("aw_atk_00");
+
+        String matchId = awayService.start(attackerId, defenderId).id();
+        awayService.settle(matchId, attackerId, "DRAW", 0, 0);   // 0:0 으로 끝난 진짜 경기
+
+        assertThat(jdbcClient.sql("SELECT result FROM away_reports WHERE match_id = ?")
+                .param(matchId).query(String.class).single()).isEqualTo("DRAW");
+        // 무승부라 레이팅도 움직이지 않는다(±10 은 승패에만).
+        assertThat(rating(attackerId)).isZero();
+        assertThat(rating(defenderId)).isZero();
     }
 
     // ── D3(hero 2차): 랭킹 기준 = 레이팅 ────────────────────────────────────

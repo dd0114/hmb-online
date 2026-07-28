@@ -155,8 +155,9 @@ public class MatchService {
      *
      * <p>⚠️ 이 메서드는 <b>GET 경로에만</b> 쓴다. 킥오프·감독시간·포기·프롬프트 같은 쓰기는 계속
      * {@code getOwned} 다 — 관전 권한이 조작 권한으로 새면 남의 경기를 남이 끝낼 수 있다.
-     * 수비자 권한의 근거인 {@code away_reports} 행은 FINISHED 정산에서만 생기므로, 수비자가 여는
-     * 매치는 언제나 이미 끝난 경기다.
+     * 수비자 권한의 근거인 {@code away_reports} 행은 <b>터미널 상태</b>에서만 생기므로(FINISHED 정산
+     * 또는 D1 몰수의 ABANDONED), 수비자가 여는 매치는 언제나 이미 끝난 경기다. 근거를 "FINISHED"
+     * 같은 좁은 사실에 매달지 마라 — 상태가 하나 늘면 조용히 거짓이 된다(독립검증 2R blocker).
      */
     public MatchRow getViewable(String userId, String matchId) {
         MatchRow row = find(matchId)
@@ -468,10 +469,19 @@ public class MatchService {
         if (row.userId().equals(viewerId)) {
             return detail;
         }
+        // ⚠️ **허용할 것을 열거한다**(지울 것을 열거하지 않는다). 초판은 userDeckSnapshot 만 지웠는데
+        // conditions 가 그대로 나가 공격자의 **선발 11 + 벤치 2 playerId 전량과 선수별 컨디션**이
+        // 넘어갔다(독립검증 3R MAJOR-1). 지우기 목록은 필드가 늘 때마다 조용히 새는 반면, 허용
+        // 목록은 새 필드가 **기본으로 막힌다** — 다음 사람이 여기 손대지 않으면 유출이 생기지 않는다.
+        //
+        // 관전자에게 허용: 식별·진행·결과·상대(=자기 팀)·시계·홈 이름. 그 외는 전부 뗀다.
         return new MatchDetail(detail.id(), detail.state(), detail.failReason(), detail.opponent(),
                 detail.scoreH1Home(), detail.scoreH1Away(), detail.scoreHome(), detail.scoreAway(),
-                detail.result(), detail.createdAt(), detail.finishedAt(), detail.conditions(),
-                detail.mode(), detail.leagueFixtureId(), null, detail.clock(), detail.ownerName());
+                detail.result(), detail.createdAt(), detail.finishedAt(),
+                null,                    // conditions — 공격자 로스터·컨디션(3R MAJOR-1)
+                detail.mode(), detail.leagueFixtureId(),
+                null,                    // userDeckSnapshot — 공격자 선수별 지시·팀 전술(1R BL-1)
+                detail.clock(), detail.ownerName());
     }
 
     public MatchDetail toDetail(MatchRow row) {

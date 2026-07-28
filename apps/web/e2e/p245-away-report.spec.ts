@@ -33,6 +33,8 @@ interface MockState {
   /** 서버 report-list-limit 흉내. */
   limit: number;
   locked: boolean;
+  /** `/api/me/active-match` 응답 지연(ms) — 콜드 로드 경합 재현용. */
+  activeDelayMs: number;
   rating: number;
 }
 
@@ -77,6 +79,7 @@ async function mockApi(page: Page, over: Partial<MockState> = {}): Promise<MockS
     hasOpponent: true,
     limit: 20,
     locked: false,
+    activeDelayMs: 0,
     rating: -10,
     ...over,
   };
@@ -94,15 +97,18 @@ async function mockApi(page: Page, over: Partial<MockState> = {}): Promise<MockS
       }),
     ),
   );
-  await page.route((url) => url.pathname === "/api/me/active-match", (route) =>
-    route.fulfill(
+  await page.route((url) => url.pathname === "/api/me/active-match", async (route) => {
+    if (st.activeDelayMs > 0) {
+      await new Promise((r) => setTimeout(r, st.activeDelayMs));
+    }
+    return route.fulfill(
       json(
         st.locked
           ? { match: { id: "M_LIVE", state: "FIRST_HALF", createdAt: "2026-07-28T09:00:00Z" }, locked: true, abandonable: false }
           : { match: null, locked: false, abandonable: false },
       ),
-    ),
-  );
+    );
+  });
   await page.route((url) => url.pathname === "/api/relations", (route) =>
     route.fulfill(json({ morale: 60, streak: 0, players: [] })),
   );
@@ -295,6 +301,21 @@ test.describe("#245 요구 6 — 리포트에서 그 경기를 본다", () => {
   });
 });
 
+test.describe("#245 3R m2 — 오탭은 확인이 아니다", () => {
+  test("Escape 로 닫으면 확인되지 않아 다음 진입에 다시 뜬다", async ({ page }) => {
+    const st = await mockApi(page, { unseen: [...THREE_RAIDS] });
+
+    await page.goto("/lobby");
+    await expect(page.getByTestId("away-report-modal")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
+
+    expect(st.ackCalls).toBe(0);
+    await page.reload();
+    await expect(page.getByTestId("away-report-modal")).toBeVisible();
+  });
+});
+
 test.describe("#245 요구 2 — 레이팅", () => {
   test("헤더에 레이팅이 전적과 함께 보인다(지갑 P 와 다른 축)", async ({ page }) => {
     await mockApi(page, { unseen: [], rating: -20 });
@@ -331,6 +352,35 @@ test.describe("#245 원정 모드", () => {
     // 매치로 이동하지 않는다 — 조용한 봇 폴백이면 여기서 /match 로 갔을 것이다.
     await expect(page).toHaveURL(/\/lobby$/);
     await expect(page.getByText(/원정 갈 상대가 없습니다/)).toBeVisible();
+  });
+});
+
+test.describe("#245 3R blocker — 잠금 판정 전에 팝업이 스치지 않는다", () => {
+  test("active-match 가 늦게 와도 그 사이 팝업이 뜨지 않는다(스치는 창에서 오탭하면 영구 소실)", async ({
+    page,
+  }) => {
+    // away-reports 는 즉시, active-match 는 900ms 뒤 — "자리를 비웠다 돌아온" 콜드 로드의 경합.
+    const st = await mockApi(page, {
+      unseen: [...THREE_RAIDS],
+      locked: true,
+      activeDelayMs: 900,
+    });
+
+    await page.goto("/lobby");
+
+    // ⚠️ 창 자체를 관측해야 한다. 이전 계약은 URL 이동을 먼저 기다린 뒤 개수를 세서
+    // **게이트를 통째로 지워도 통과**했다(3R: W5 변이체 생존). 지연 구간을 훑는다.
+    for (let i = 0; i < 12; i++) {
+      expect(
+        await page.getByTestId("away-report-modal").count(),
+        `t=${i * 100}ms 에 팝업이 떴다 — 잠금 판정 전에는 띄우면 안 된다`,
+      ).toBe(0);
+      await page.waitForTimeout(100);
+    }
+
+    await expect(page).toHaveURL(/\/match\/M_LIVE$/);
+    expect(st.ackCalls).toBe(0);
+    expect(st.unseen).toHaveLength(3);
   });
 });
 

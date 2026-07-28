@@ -51,7 +51,10 @@ export function AwayReportModal({
 
   return (
     <Modal
-      onClose={confirm}
+      // ⚠️ Escape·백드롭은 **확인이 아니다** — 그냥 닫는다. 여기에 confirm 을 걸면 오탭 한 번에
+      // 리포트가 읽음 처리되고, 지난 리포트를 볼 화면이 없어 되돌릴 수 없다(3R m2).
+      // 확인하지 않은 리포트는 다음 진입에 다시 뜬다 = 안전한 방향.
+      onClose={onClose}
       labelledBy="away-report-title"
       overlayClassName={styles.overlay}
       className={styles.modal}
@@ -104,7 +107,12 @@ export function AwayReportModal({
               className={styles.item}
               data-testid="away-report-item"
               disabled={isForfeit(r)}
-              title={isForfeit(r) ? "상대가 경기 전에 포기해 재생할 경기가 없습니다" : undefined}
+              // 비활성 컨트롤의 title 은 다수 스크린리더가 읽지 않는다 → 사유를 보이는 텍스트로도 준다.
+              aria-label={
+                isForfeit(r)
+                  ? `${r.attackerName} 몰수승 — 상대가 경기 전에 포기해 재생할 경기가 없습니다`
+                  : undefined
+              }
               onClick={() => navigate(`/match/${r.matchId}`)}
             >
               <span className={`${styles.badge} ${styles[`badge${r.result}`] ?? ""}`}>
@@ -118,6 +126,7 @@ export function AwayReportModal({
               <span className={`${styles.delta} ${deltaClass(r.ratingDelta)}`}>
                 {ratingDeltaText(r.ratingDelta)}
               </span>
+              {isForfeit(r) && <span className={styles.noReplay}>재생 없음</span>}
             </button>
           </li>
         ))}

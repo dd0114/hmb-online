@@ -233,6 +233,11 @@ public class MatchLockService {
                     .update();
             if (updated == 1) {
                 closeOpenJobs(matchId, "match abandoned by user");
+                // ⚠️ **같은 트랜잭션 안에서** 정산한다(독립검증 3R MAJOR-2). 밖에 두면 매치는 이미
+                // 터미널인데 정산만 실패하는 창이 생기고, 그때 수비자는 리포트를 영영 못 받고
+                // 공격자는 −10 을 면제받는다 = D1 이 막으려던 무한 리롤이 그대로 열린다.
+                // ABANDONED 는 어느 스위퍼도 다시 고르지 않아 재시도 경로도 없다.
+                forfeitIfVoluntaryAwayAbandon(row, row.state());
             }
             return updated == 1;
         });
@@ -242,7 +247,6 @@ public class MatchLockService {
                     "경기 상태가 바뀌었습니다 — 다시 확인해 주세요",
                     Map.of("state", matchService.getOwned(userId, matchId).state(), "action", "abandon"));
         }
-        forfeitIfVoluntaryAwayAbandon(row, row.state());
         log.info("match abandoned by user: match={} from={}", matchId, row.state());
         return matchService.getOwned(userId, matchId);
     }
@@ -280,26 +284,29 @@ public class MatchLockService {
         for (Stale entry : stale) {
             String matchId = entry.id();
             boolean moved = txRunner.run(() -> {
+                // ⚠️ CAS 에 **읽은 그 상태**를 넣는다 — 몰수 판정이 entry.state() 에 달려 있는데
+                // 조건이 "터미널만 아니면"이면 그 사이 BRIEFING→GEN1 로 움직인 매치를 낡은 상태로
+                // 몰수한다(독립검증 3R m9 TOCTOU). 상태가 움직였으면 이번 스윕은 건너뛴다.
                 int updated = jdbcClient.sql("""
                                 UPDATE matches SET state = ?, finished_at = ?,
                                        fail_reason = COALESCE(fail_reason, ?)
-                                WHERE id = ? AND state NOT IN ('FINISHED', 'ABANDONED')
+                                WHERE id = ? AND state = ?
                                 """)
                         .params(MatchService.S_ABANDONED, MatchClockService.format(clock.instant()),
-                                "abandoned: idle > " + props.getStaleAfterMin() + "min", matchId)
+                                "abandoned: idle > " + props.getStaleAfterMin() + "min", matchId,
+                                entry.state())
                         .update();
                 if (updated == 1) {
                     closeOpenJobs(matchId, "match abandoned: stale");
+                    // MAJOR-2 와 같은 이유로 정산도 이 트랜잭션 안이다.
+                    matchService.find(matchId)
+                            .ifPresent(row -> forfeitIfVoluntaryAwayAbandon(row, entry.state()));
                 }
                 return updated == 1;
             });
             if (moved) {
-                // ⚠️ 포기 버튼을 누르든 그냥 방치하든 **브리핑에서 나간 것은 같다**(#245 D1,
-                // 독립검증 2R major-1). 규칙을 한 경로에만 걸면 "안 누르고 12시간 두면 공짜"라는
-                // 우회로가 남는다 — 선언한 자리에서 집행되지 않는 규칙은 규칙이 아니다.
-                // 킥오프 이후 상태의 방치는 사고로 본다(면제) — 그쪽은 유저가 나간 게 아니다.
-                matchService.find(matchId)
-                        .ifPresent(row -> forfeitIfVoluntaryAwayAbandon(row, entry.state()));
+                // 포기 버튼을 누르든 방치하든 **브리핑에서 나간 것은 같다**(#245 D1, 2R major-1) —
+                // 정산은 위 트랜잭션 안에서 이미 끝났다. 킥오프 이후 방치는 사고로 본다(면제).
                 swept++;
             }
         }

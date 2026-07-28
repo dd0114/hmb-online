@@ -161,3 +161,11 @@
   color: var(--text-muted);
   text-align: center;
 }
+
+/* 몰수 = 재생할 하프가 없다. 비활성 사유를 보이는 텍스트로도 준다(비활성 컨트롤의 title 은
+   다수 스크린리더가 읽지 않는다 — 3R m10). */
+.noReplay {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}

@@ -36,10 +36,15 @@ export function LobbyPage() {
   const [modeModalOpen, setModeModalOpen] = useState(false);
   const { restart: restartTutorial } = useTutorial();
   // #217: 강제 이동(MatchLockGate) 대상이 아닌 미완 매치 — 브리핑/사고 상태 — 는 여기서 이어간다.
-  const { data: active } = useActiveMatch();
+  const { data: active, isLoading: activeLoading } = useActiveMatch();
   // #245: 부재중 피원정 결과. **강제 이동이 걸린 상태에서는 묻지 않는다** — 로비를 스쳐 지나가는
   // 중에 팝업이 뜨면 읽지도 못한 채 사라지고(멱등 확인이 소진돼) 결과를 영영 못 본다.
-  const forcedToMatch = Boolean(active?.locked && !active?.abandonable);
+  // ⚠️ **로딩 중도 보류다.** `active` 가 오기 전엔 locked 를 알 수 없는데, MatchLockGate 는 의도적으로
+  // 로딩 중 아무것도 하지 않는다 — 즉 **로비가 먼저 그려지는 창**이 있고, 그 창에 팝업이 뜨면
+  // 오탭(백드롭·Escape) 한 번에 리포트가 소진된다. 이 앱엔 지난 리포트를 볼 화면이 없으므로 영구
+  // 소실이다(독립검증 3R blocker). 하필 "자리를 비웠다 돌아온" = 콜드 로드 = 캐시 0 = 두 쿼리 경합이
+  // 이 기능의 주 시나리오다. 모르는 동안은 묻지도 띄우지도 않는다.
+  const forcedToMatch = activeLoading || Boolean(active?.locked && !active?.abandonable);
   const { data: awayReports } = useAwayReports("unseen", !forcedToMatch);
   const [awayDismissed, setAwayDismissed] = useState(false);
   const showAwayPopup = !forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports);
