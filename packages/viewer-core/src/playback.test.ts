@@ -185,7 +185,11 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     expect(thr.restartTick).toBe(500);
     expect(thr.hold).toBeGreaterThan(0);
   });
-  it("프리킥은 pauseOnly 정지 비트 유지, 골킥은 정지 없음(빈도 높음)", () => {
+  // #230(hero 지시): 골킥도 데드볼이므로 코너/스로인과 같은 대접을 받는다. 이전에는 "빈도 높음"을
+  // 이유로 정지 자체를 두지 않아, 관객 입장에서 골킥은 아무 신호 없이 지나가는 유일한 세트피스였다
+  // (그래서 골킥 중 골키퍼가 걸어 나가는 #230 버그가 "무슨 상황인지 모를 장면"으로 보였다).
+  // 빈도 부담은 정지를 없애는 대신 **hold 를 스로인급으로 짧게** 잡아 흡수한다.
+  it("프리킥은 pauseOnly 정지 비트 유지, 골킥은 코너/스로인과 같은 상황자막 정지 (#230)", () => {
     const st = buildStoppages([
       { type: "free_kick", detail: "foul", tick: 300 },
       { type: "kickoff", detail: "goal_kick", tick: 400 },
@@ -194,8 +198,17 @@ describe("buildStoppages — 원인→재시작 skip 대상", () => {
     expect(fk.pauseOnly).toBe(true);
     expect(fk.big).toBe("");
     expect(fk.restartTick).toBe(300);
-    // 골킥은 잦아서 정지 제외.
-    expect(st.find((x) => x.causeTick === 400)).toBeFalsy();
+
+    const gk = st.find((x) => x.causeTick === 400)!;
+    expect(gk, "골킥 정지 있어야").toBeTruthy();
+    expect(gk.big).toContain("GOAL KICK");
+    expect(gk.pauseOnly).toBeFalsy();
+    expect(gk.setPiece).toBe(true); // freeze 중 taker(=골키퍼)로 줌
+    expect(gk.restartTick).toBe(400); // 제자리 재개(프레임 스킵 없음)
+    expect(gk.isGoal).toBeFalsy();
+    // 빈도가 높으므로 코너(900ms)보다 길지 않게 — 스로인급 이하.
+    expect(gk.hold).toBeGreaterThan(0);
+    expect(gk.hold).toBeLessThanOrEqual(650);
   });
   // #42: CAUSE 정지 skip 은 "원인→재시작 사이 = 데드타임"일 때만. 세이브 후 공이 라이브인
   // 체인(패스→2차슛→빗나감→골킥)을 스킵하면 라이브 플레이가 사라지고(2차 슛 미표시),
