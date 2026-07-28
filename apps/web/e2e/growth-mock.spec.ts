@@ -499,6 +499,33 @@ test("G4 잠재 재설정: 구매 없이 지갑 직접 차감 + 상점 [다이�
   await expect(page.getByTestId("shop-tab-dice")).toHaveCount(0);
 });
 
+/**
+ * 1★(잠재 미해금) 카드에서는 **버튼이 잠기고 확인창도 뜨지 않는다**.
+ *
+ * 구 UI 는 "보유 다이스 ≥ 1" 이 이 자리를 사실상 가려 줬지만(신규 유저 재고 0), #247 이
+ * 게이팅을 재고→잔액으로 바꾸면서 1★ 에서도 버튼이 열려 **"5,000 G 차감" 확인창이 뜨는데
+ * 서버는 POTENTIAL_LOCKED 로 거절**했다(독립검증 major-2). 재화가 나가진 않지만 실행 불가한
+ * 액션에 차감을 약속하면 안 된다 — 신규 유저 컬렉션은 대부분 1★다.
+ */
+test("G4 잠재 미해금(1★): 재설정 버튼 잠금 + 결제 확인창 안 뜸", async ({ page }) => {
+  await mockGrowth(page); // star=1, potential.unlocked=false 로 시작
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/codex");
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await expect(page.getByTestId("growth-potential-locked")).toBeVisible(); // "2★에서 해금"
+
+  await expect(page.getByTestId("growth-dice-normal")).toBeDisabled();
+  await expect(page.getByTestId("growth-dice-cash")).toBeDisabled();
+  await page.getByTestId("growth-dice-normal").click({ force: true }); // 가드를 우회해 눌러도
+  await expect(page.getByTestId("growth-roll-confirm")).toHaveCount(0); // 차감을 약속하지 않는다
+
+  // 승급하면 그 자리에서 열린다(잠금이 영구가 아님을 같이 박제 — 과잉 잠금 회귀 방지).
+  await page.getByTestId("growth-star-up").click();
+  await expect(page.getByTestId("growth-dice-normal")).toBeEnabled();
+});
+
 /** 잔액이 비용에 못 미치면 **버튼 자체가 잠긴다**(클라 가드) — 눌러서 4xx 를 보기 전에. */
 test("G4 잠재 재설정 잔액부족(클라 가드): 잔액 < 비용 → 버튼 잠금", async ({ page }) => {
   await mockGrowth(page, { points: 4999, gems: 5 });

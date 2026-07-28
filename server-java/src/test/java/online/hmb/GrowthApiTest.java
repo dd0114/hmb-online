@@ -83,14 +83,30 @@ class GrowthApiTest extends MatchTestBase {
      * 두 엔드포인트(구매·잔액조회)가 살아 있으면 "재고"라는 개념이 반쯤 남아 클라가 다시 그것을
      * 그리게 된다. 그래서 은퇴를 계약으로 박제한다. (미매핑 라우트는 이 서버에서 500 으로
      * 떨어지므로 — enhance/limitbreak 은퇴 계약과 같은 이유 — "OK 가 아니다"를 본다.)
+     *
+     * <p>⚠️ <b>"OK 가 아니다"만으로는 부족하다</b>(독립검증 major-1). 구매를 통째로 되살려도
+     * 신규 유저 잔액(3,000) &lt; 가격(5,000)이라 <b>부활한 구매도 400</b> 을 주고 계약이 통과해
+     * 버렸다. 그래서 ① <b>지갑을 넉넉히 채워</b> 잔액부족으로 가려지지 않게 하고 ② 결과가
+     * 무엇이든 <b>재고가 한 톨도 생기지 않았음</b>을 함께 본다 — 이게 실제로 되살림을 죽인다.
      */
     @SuppressWarnings("unchecked")
     @Test
     void shopDicePurchaseEndpointRemoved() {
         String token = login("api_dice_shopx");
+        String uid = userIdOf("api_dice_shopx");
+        // 잔액부족(400)이 은퇴(500)를 대신 통과시키지 못하게 — 살아 있었다면 200 이 나올 조건.
+        jdbcClient.sql("UPDATE wallets SET points = 1000000, gems = 1000000 WHERE user_id = ?")
+                .param(uid).update();
+
         ResponseEntity<Map> res = authPost("/api/shop/dice", token,
                 Map.of("kind", "NORMAL", "count", 1), Map.class);
         assertThat(res.getStatusCode()).isNotEqualTo(HttpStatus.OK);
+
+        // 재고가 생기지 않았다 = 구매 경로가 정말 없다(핸들러를 되살리면 여기서 죽는다).
+        assertThat(diceStockOf(uid)).isZero();
+        // 결제도 일어나지 않았다 — 원장에 'dice' 지출이 없다.
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM point_ledger WHERE user_id=? AND reason='dice'")
+                .param(uid).query(Integer.class).single()).isZero();
     }
 
     @SuppressWarnings("unchecked")
@@ -99,6 +115,17 @@ class GrowthApiTest extends MatchTestBase {
         String token = login("api_dice_balx");
         ResponseEntity<Map> res = authGet("/api/growth/dice", token, Map.class);
         assertThat(res.getStatusCode()).isNotEqualTo(HttpStatus.OK);
+        // 재고 잔액을 말해 주는 응답 형태가 아니다(살아 있으면 {normal,cash} 200 이 온다).
+        assertThat(res.getBody() == null || !res.getBody().containsKey("normal")).isTrue();
+    }
+
+    /**
+     * 남은 재고 합. #247 이후 이 값은 <b>항상 0</b> 이어야 한다 — V21 이 소각했고 늘릴 경로가 없다.
+     * (테이블 자체는 V10 선례대로 드롭하지 않았으므로 조회는 계속 가능하다.)
+     */
+    private int diceStockOf(String userId) {
+        return jdbcClient.sql("SELECT COALESCE(SUM(normal + cash), 0) FROM user_dice WHERE user_id = ?")
+                .param(userId).query(Integer.class).single();
     }
 
     /** 강화탭에서 바로 — 구매 없이 롤 한 번에 지갑이 깎이고 잠재가 바뀐다(#247 핵심 동선). */

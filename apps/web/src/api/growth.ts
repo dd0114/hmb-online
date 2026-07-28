@@ -122,11 +122,11 @@ export interface GemTopupResult {
 }
 
 /**
- * 잔액 부족 4xx 코드. #247 로 리롤이 지갑에서 직접 결제하므로 **리롤도 이 두 코드**를 쓴다 —
- * 구 `INSUFFICIENT_DICE`(보유 다이스 부족)는 재고와 함께 사라졌다.
+ * 성★ 승급 시 중복 부족 4xx 코드 (V2-4 명시).
+ *
+ * ⚠️ 잔액 부족(`INSUFFICIENT_POINTS`/`INSUFFICIENT_GEMS`)에는 대응 상수가 **일부러 없다**.
+ * #247 로 리롤이 지갑 결제가 되면서 그 문구는 **서버가 표기 메타로 만든 것을 그대로** 띄우므로
+ * (#232), 클라가 코드를 분기해 자기 문구를 지어낼 자리가 없어졌다. 상수를 되살리면 그 분기가
+ * 같이 돌아온다.
  */
-export const INSUFFICIENT_GEMS_CODE = "INSUFFICIENT_GEMS";
-export const INSUFFICIENT_POINTS_CODE = "INSUFFICIENT_POINTS";
-
-/** 성★ 승급 시 중복 부족 4xx 코드 (V2-4 명시). */
 export const INSUFFICIENT_MATERIALS_CODE = "INSUFFICIENT_MATERIALS";

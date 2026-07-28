@@ -91,9 +91,6 @@ async function mockApi(page: Page, scenario: Scenario): Promise<MockState> {
   await page.route((url) => url.pathname === "/api/logs/matches", (route) => route.fulfill(json([])));
   await page.route((url) => url.pathname === "/api/logs/trades", (route) => route.fulfill(json([])));
   await page.route((url) => url.pathname === "/api/rankings", (route) => route.fulfill(json([])));
-  await page.route((url) => url.pathname === "/api/growth/dice", (route) =>
-    route.fulfill(json({ normal: 0, cash: 0 })),
-  );
   await page.route((url) => url.pathname === "/api/league", (route) =>
     route.fulfill(json({ season: null })),
   );

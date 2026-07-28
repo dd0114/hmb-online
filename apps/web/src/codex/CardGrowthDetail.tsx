@@ -33,7 +33,7 @@ import {
 import type { CatalogPlayer } from "../api/hooks";
 import { Amount, useCurrency } from "../common/Amount";
 import { balanceFor, CURRENCY_GEM, CURRENCY_POINT } from "../common/currency";
-import { persistSkipRollConfirm, rollConfirmSkipped } from "../growth/roll-confirm";
+import { clearSkipRollConfirm, persistSkipRollConfirm, rollConfirmSkipped } from "../growth/roll-confirm";
 import styles from "./CardGrowthDetail.module.css";
 
 const RING_R = 42;
@@ -192,6 +192,8 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
 
   const normalShort = !!dicePrice && balanceOfKind("NORMAL") < dicePrice.normal.cost;
   const cashShort = !!dicePrice && balanceOfKind("CASH") < dicePrice.cash.cost;
+  /** 잠재 미해금(2★ 미만)이면 롤 자체가 불가 — 서버 `POTENTIAL_LOCKED` 와 같은 조건. */
+  const potentialLocked = !card?.potential.unlocked;
 
   function handleStarUp() {
     setMessage(null);
@@ -539,6 +541,12 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
               #247: 구매 단계가 사라졌다 — 이 버튼이 곧 결제다. 가격·재화는 서버 config 에서만
               온다(`shop.dice`, #232 — 미러 상수를 만들면 #213 이 재발한다). 잔액 게이팅은
               **결제 재화 기준**이고, 모르는 재화면 잠그지 않고 서버 판정에 맡긴다.
+
+              ⚠️ **잠재 해금(2★)도 같이 잠근다.** 구 UI 는 "보유 다이스 ≥ 1" 이 사실상 이 자리를
+              가려 줬지만(신규 유저 재고 0), 게이팅이 재고→잔액으로 바뀌면서 1★ 카드에서도 버튼이
+              열려 **"5,000 G 차감" 확인창이 뜨는데 서버는 POTENTIAL_LOCKED 로 거절**했다
+              (독립검증 major-2). 재화가 나가진 않지만 실행 불가한 액션에 차감을 약속하면 안 된다 —
+              신규 유저 컬렉션은 대부분 1★다.
             */}
             <div className={styles.diceRow}>
               <button
@@ -546,7 +554,7 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                 className={styles.diceBtn}
                 data-testid="growth-dice-normal"
                 onClick={() => requestRoll("NORMAL")}
-                disabled={busy || !dicePrice || normalShort}
+                disabled={busy || !dicePrice || potentialLocked || normalShort}
               >
                 잠재 재설정
                 {dicePrice && (
@@ -560,7 +568,7 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                 className={styles.diceBtn}
                 data-testid="growth-dice-cash"
                 onClick={() => requestRoll("CASH")}
-                disabled={busy || !dicePrice || cashShort}
+                disabled={busy || !dicePrice || potentialLocked || cashShort}
               >
                 고급 재설정 <span aria-hidden="true">{gemCurrency.icon}</span>
                 {dicePrice && (
@@ -574,7 +582,11 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
               보유 <Amount code={CURRENCY_POINT} value={walletPoints} icon /> ·{" "}
               <Amount code={CURRENCY_GEM} value={walletGems} icon />
             </p>
-            <p className={styles.rollHint}>고급 재설정 = 상위 옵션 확률 ↑ (승급 판정 없음)</p>
+            <p className={styles.rollHint}>
+              {potentialLocked
+                ? "잠재 재설정은 2★부터 — 먼저 성 승급이 필요합니다"
+                : "고급 재설정 = 상위 옵션 확률 ↑ (승급 판정 없음)"}
+            </p>
           </>
         )}
 
@@ -601,12 +613,20 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                   />
                 </b>
               </p>
+              {/*
+                체크하는 즉시 저장한다 — [확인]에 묶어 두면 "다시 묻지 않기를 켜고 이번엔 취소"가
+                다음 세션에 잊혀진다(독립검증 minor-8). 체크는 그 자체로 유저의 표명이다.
+              */}
               <label className={styles.confirmSkip}>
                 <input
                   type="checkbox"
                   data-testid="growth-roll-confirm-skip"
                   checked={skipConfirm}
-                  onChange={(e) => setSkipConfirm(e.target.checked)}
+                  onChange={(e) => {
+                    setSkipConfirm(e.target.checked);
+                    if (e.target.checked) persistSkipRollConfirm();
+                    else clearSkipRollConfirm();
+                  }}
                 />
                 다시 묻지 않기
               </label>
@@ -626,7 +646,6 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
                   onClick={() => {
                     const kind = pendingRoll;
                     setPendingRoll(null);
-                    if (skipConfirm) persistSkipRollConfirm();
                     setConfirmedOnce(true);
                     handleRoll(kind);
                   }}

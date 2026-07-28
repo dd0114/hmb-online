@@ -89,7 +89,6 @@ async function mockApi(page: Page) {
       ovr: 58, completion: 0.3,
     }));
   });
-  await page.route((url) => url.pathname === "/api/growth/dice", (r) => r.fulfill(json({ normal: 5, cash: 3 })));
   await page.route((url) => url.pathname === "/api/shop/gacha", (r) => r.fulfill(json({
     results: CATALOG.map((p, i) => ({
       player: { id: p.id, name: p.name, position: p.position, grade: p.grade }, isNew: i % 3 === 0,
