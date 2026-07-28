@@ -5,7 +5,7 @@ import { useAppConfigValue } from "../common/AppConfigContext";
 import { useGacha, useMe, type GachaResponse } from "../api/hooks";
 import { Layout } from "../common/Layout";
 import { Amount, useCurrency } from "../common/Amount";
-import { CURRENCY_GEM, CURRENCY_POINT, shortageMessage } from "../common/currency";
+import { balanceFor, shortageMessage } from "../common/currency";
 import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { GachaReveal } from "./GachaReveal";
@@ -36,12 +36,10 @@ export function ShopPage() {
   const gachaCfg = config?.shop?.gacha ?? null;
   const payCurrencyCode = gachaCfg?.single.currency ?? "";
   const payCurrency = useCurrency(payCurrencyCode);
-  // 잔액 판정도 **결제 재화 기준**이어야 한다. 무료재화 잔액으로 게이팅하면 유상재화를 들고도 잠긴다.
-  // ⚠️ 지갑은 두 재화만 들고 있다 — 서버가 3번째 재화(로더는 미지 코드를 지원한다)로 값을 매기면
-  // 우리는 잔액을 모른다. 그때는 **잠그지 않고 서버 판정에 맡긴다**(조용히 무료재화로 재는 것보다 낫다).
-  const balances: Record<string, number> = { [CURRENCY_POINT]: points, [CURRENCY_GEM]: gems };
-  const knownBalance = payCurrencyCode in balances;
-  const balance = balances[payCurrencyCode] ?? Number.POSITIVE_INFINITY;
+  // 잔액 판정은 **결제 재화 기준**이다. 모르는 재화면 잠그지 않고 서버 판정에 맡긴다(balanceFor 주석).
+  const known = balanceFor(payCurrencyCode, { points, gems });
+  const knownBalance = known !== null;
+  const balance = known ?? Number.POSITIVE_INFINITY;
 
   function pull(kind: "single" | "ten") {
     setError(null);

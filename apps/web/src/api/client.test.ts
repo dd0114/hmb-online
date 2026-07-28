@@ -167,12 +167,27 @@ describe("apiFetch", () => {
       expect(getProvider()).toBe("guest");
     });
 
-    it("공개 경로 판별도 절대 URL·base 서브패스에서 같은 답을 낸다", () => {
-      expect(isSessionNeutralEndpoint("/api/config")).toBe(true);
-      expect(isSessionNeutralEndpoint("https://api.example.com/api/config")).toBe(true);
-      // 접두만 겹치는 경로는 공개가 아니다.
-      expect(isSessionNeutralEndpoint("/api/configuration")).toBe(false);
-      expect(isSessionNeutralEndpoint("/api/me")).toBe(false);
+    /**
+     * 공개 경로 판별은 **정확 일치**여야 한다 — 접두 매칭이면 `/api/configuration` 같은 미래 경로가
+     * 조용히 세션 파기에서 빠진다(반대 방향 사고). base 서브패스는 실제로 스텁해서 본다 —
+     * 제목만 그럴듯하고 스텁이 없으면 계약이 아니라 주장이다.
+     */
+    it.each([
+      ["", "/api/config", true],
+      ["", "https://api.example.com/api/config", true],
+      ["", "/api/config/", false],
+      ["", "/api/config/x", false],
+      ["", "/api/configuration", false],
+      ["", "/api/configx", false],
+      ["", "/api/me", false],
+      ["https://api.example.com/backend", "/api/config", true],
+      ["https://api.example.com/backend", "https://api.example.com/backend/api/config", true],
+      ["https://api.example.com/backend", "/api/configuration", false],
+    ])("base=%s path=%s → isSessionNeutralEndpoint=%s", (base, path, expected) => {
+      vi.stubEnv("VITE_API_BASE", base);
+      expect(isSessionNeutralEndpoint(path)).toBe(expected);
+      // base 적용 전/후 어느 형태를 넘겨도 같은 답이어야 한다(isAuthEndpoint 와 같은 규율).
+      expect(isSessionNeutralEndpoint(apiUrl(path))).toBe(expected);
     });
 
     it.each([

@@ -6,6 +6,7 @@
  * 다루지 않는다. rank 는 서버가 승점 3-1-0 → 골득실 → 다득점 → 승자승으로 이미 계산한 authoritative
  * 값이다 — 클라는 rank 오름차순으로 렌더한다(방어적 비교자도 제공).
  */
+import { withIga } from "../common/currency";
 import type { LeagueFixture, LeagueSeason, LeagueStanding, LeagueTeam } from "../api/v2";
 import type { LeagueResponseP3, LeagueSeasonReward } from "../api/p3";
 
@@ -192,7 +193,7 @@ export function seasonRewardView(
         showPoints: true,
         animate: true,
         headline: "보상 지급 완료",
-        detail: `${reward.rank}위 보상 ${formatPoints(reward.points)} 가 지갑에 반영됐습니다`,
+        detail: `${reward.rank}위 보상 ${withIga(formatPoints(reward.points))} 지갑에 반영됐습니다`,
         canRetry: false,
         tone: "success",
       };

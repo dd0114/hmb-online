@@ -102,6 +102,26 @@ function hasFinalConsonant(word: string): boolean {
   return (code - 0xac00) % 28 !== 0;
 }
 
+/**
+ * 지갑에서 **그 재화의 잔액**을 고른다. 모르면 `null`.
+ *
+ * <b>모를 때 잠그지 않는 것이 규칙이다.</b> 지갑은 두 재화만 들고 있는데 서버는 미지 코드를
+ * 지원한다(로더가 명시적으로). 모르는 재화를 조용히 무료재화 잔액으로 재면 "500 Z 인데 골드가
+ * 모자라서 잠김"이 되고, 그건 이 이슈가 고친 #213 과 정확히 같은 형태다. 판정 근거가 없으면
+ * **서버 판정에 맡긴다** — 잘못 잠그는 것보다 눌러서 4xx 를 받는 편이 낫다.
+ *
+ * `gems` 가 응답에 없는 경우(구서버 — openapi 가 required 로 두지 않은 그 경우)도 "모름"이다.
+ * `?? 0` 으로 떨어뜨리면 유상재화를 들고 있는 유저가 거짓으로 잠긴다.
+ */
+export function balanceFor(
+  code: string,
+  wallet: { points?: number | null; gems?: number | null },
+): number | null {
+  if (code === CURRENCY_POINT) return typeof wallet.points === "number" ? wallet.points : null;
+  if (code === CURRENCY_GEM) return typeof wallet.gems === "number" ? wallet.gems : null;
+  return null;
+}
+
 /** "{이름}가 부족합니다" — 잔액 부족 힌트를 클라가 만들어야 하는 자리 공용. */
 export function shortageMessage(currency: Currency): string {
   return `${withIga(currency.name)} 부족합니다`;

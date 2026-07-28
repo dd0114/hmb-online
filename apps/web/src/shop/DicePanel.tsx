@@ -4,7 +4,7 @@ import { useAppConfigValue } from "../common/AppConfigContext";
 import { INSUFFICIENT_GEMS_CODE } from "../api/growth";
 import { useBuyDice, useDiceBalance, useGemTopup } from "../api/growth-hooks";
 import { Amount, useCurrency } from "../common/Amount";
-import { CURRENCY_GEM, CURRENCY_POINT, shortageMessage } from "../common/currency";
+import { balanceFor, CURRENCY_GEM, CURRENCY_POINT, shortageMessage } from "../common/currency";
 import { ErrorToast } from "../common/ErrorToast";
 import styles from "./DicePanel.module.css";
 
@@ -49,8 +49,9 @@ export function DicePanel({ points, gems }: DicePanelProps) {
     setError(null);
     const price = kind === "NORMAL" ? dice?.normal : dice?.cash;
     if (!price) return; // config 미로딩 — 버튼도 잠겨 있다.
-    const wallet = price.currency === CURRENCY_GEM ? gems : points;
-    if (wallet < price.cost) {
+    // 모르는 재화면 잠그지 않는다 — 서버 판정에 맡긴다(ShopPage 와 같은 규칙, balanceFor 주석).
+    const wallet = balanceFor(price.currency, { points, gems });
+    if (wallet !== null && wallet < price.cost) {
       setError(price.currency === CURRENCY_GEM ? gemShortage() : shortageMessage(pointCurrency));
       return;
     }

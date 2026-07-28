@@ -2178,7 +2178,6 @@ export interface operations {
                     "application/json": components["schemas"]["AppConfig"];
                 };
             };
-            401: components["responses"]["Unauthorized"];
         };
     };
     createMatch: {

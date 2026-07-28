@@ -53,7 +53,9 @@ export function TradePage() {
   const walletPoints = data?.wallet.points ?? 0;
   // #232: 단축 비용의 재화는 **서버가 정한다**(slot.speedupCurrency). 무료재화 잔액으로만 게이팅하면
   // 서버가 유상재화로 바꾸는 순간 "표기는 Z, 잠금은 골드 기준"이 된다 — #213 의 후반부와 같은 형태다.
-  const walletGems = data?.wallet.gems ?? 0;
+  // ⚠️ `?? 0` 으로 떨어뜨리지 않는다 — openapi 가 `gems` 를 required 로 두지 않아(구서버 호환)
+  // 미수신이 정상 경로인데, 0 으로 읽으면 유상재화를 들고 있는 유저가 **거짓으로 잠긴다**.
+  const walletGems = data?.wallet.gems;
   const walletLoaded = Boolean(data);
   const busy = start.isPending || speedup.isPending || propose.isPending || accept.isPending;
 

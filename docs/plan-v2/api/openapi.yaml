@@ -399,6 +399,10 @@ paths:
       tags: [meta]
       operationId: getConfig
       summary: 클라이언트 부트스트랩 config — 재화 표기 + 상점 가격 (#232)
+      # **공개 엔드포인트**(전역 bearerAuth 해제). 클라가 앱 부팅 시 **로그인 전에** 한 번 부르는
+      # 값이라 401 을 내면 재조회 트리거가 없어 그 세션 전체가 표기 없이 굴러간다(#232 BL-1 —
+      # 신규·세션만료 유저의 첫 진입이 전부 그 경로였다). 유저 스코프 데이터 0 · 확률표/pity 미노출.
+      security: []
       description: |
         **클라이언트는 재화의 심볼·이름·아이콘·가격·결제재화를 하나도 몰라야 한다.** 여기서 받은
         값만 렌더한다. 하드코딩이 남으면 서버 경제가 바뀔 때 화면이 조용히 거짓말을 한다 — #212 가
@@ -415,8 +419,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AppConfig"
-        "401":
-          $ref: "#/components/responses/Unauthorized"
 
   # ───────────────────────────── matches ─────────────────────────────
   /api/matches:
