@@ -9,6 +9,7 @@
  * 좌표 추론 금지 — 캡처를 남겨 눈으로 확인한다(루트 §2-2).
  */
 import { test, expect, type Page } from "@playwright/test";
+import { mockAppConfig } from "./app-config-mock";
 import { readFileSync } from "node:fs";
 
 const SHOTS = new URL("../.smoke/", import.meta.url).pathname;
@@ -50,7 +51,14 @@ const CATALOG = [
   ...SEED.filter((p) => p.grade === "BRONZE").slice(0, 1).map((p) => row(p, true)),
 ];
 
-const ME = { nickname: "tester", points: 10_000, wallet: { points: 10_000 }, records: { wins: 0, draws: 0, losses: 0 } };
+// #232: 뽑기는 유상재화 결제(economy `gacha.currency`)라 gems 가 있어야 버튼이 열린다 —
+// 무료재화만 채워 두면 이 스펙의 주제(카드 규격)와 무관하게 클릭이 막힌다.
+const ME = {
+  nickname: "tester",
+  points: 10_000,
+  wallet: { points: 10_000, gems: 10_000 },
+  records: { wins: 0, draws: 0, losses: 0 },
+};
 const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
 
 async function login(page: Page) {
@@ -59,6 +67,8 @@ async function login(page: Page) {
 
 async function mockApi(page: Page) {
   await page.route((url) => url.pathname.startsWith("/api/"), (r) => r.fulfill(json({})));
+  // #232: 뽑기 가격·결제 재화는 서버 config 에서 온다 — 목이 없으면 버튼이 잠긴다.
+  await mockAppConfig(page);
   await page.route((url) => url.pathname === "/api/me", (r) => r.fulfill(json(ME)));
   await page.route((url) => url.pathname === "/api/players", (r) => r.fulfill(json(CATALOG)));
   await page.route((url) => url.pathname === "/api/deck", (r) => r.fulfill({ status: 404, body: "" }));

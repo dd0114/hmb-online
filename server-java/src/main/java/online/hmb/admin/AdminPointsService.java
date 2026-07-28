@@ -1,6 +1,7 @@
 package online.hmb.admin;
 
 import java.time.Instant;
+import online.hmb.catalog.EconomyService;
 import online.hmb.common.ApiException;
 import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
@@ -48,15 +49,23 @@ public class AdminPointsService {
     private final TxRunner txRunner;
     private final WalletService walletService;
     private final AdminUserQueryService users;
+    private final EconomyService economyService;
 
     public AdminPointsService(JdbcClient jdbcClient,
                               TxRunner txRunner,
                               WalletService walletService,
-                              AdminUserQueryService users) {
+                              AdminUserQueryService users,
+                              EconomyService economyService) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.walletService = walletService;
         this.users = users;
+        this.economyService = economyService;
+    }
+
+    /** 무료재화 심볼 (#232) — 잔액 문구가 "P" 를 박고 있으면 표기 변경이 서버 배포가 된다. */
+    private String symbol() {
+        return economyService.currency(EconomyService.CURRENCY_POINT).symbol();
     }
 
     public GrantResult grant(String actorUserId, String targetUserId, Long delta, String reason, String idemKeyHeader) {
@@ -94,7 +103,7 @@ public class AdminPointsService {
         long before = walletService.points(targetUserId);
         if (before + delta < 0) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS",
-                    "잔액이 부족합니다(보유 " + before + "P, 요청 " + delta + "P)");
+                    "잔액이 부족합니다(보유 " + before + symbol() + ", 요청 " + delta + symbol() + ")");
         }
 
         boolean applied = walletService.apply(targetUserId, delta, LEDGER_REASON, idemKey);
@@ -118,7 +127,7 @@ public class AdminPointsService {
                     .single();
             if (existingDelta != delta) {
                 throw new ApiException(HttpStatus.CONFLICT, "CONFLICT",
-                        "이 Idempotency-Key 는 이미 다른 금액(" + existingDelta + "P)으로 사용됐습니다. "
+                        "이 Idempotency-Key 는 이미 다른 금액(" + existingDelta + symbol() + ")으로 사용됐습니다. "
                                 + "금액을 정정하려면 새 Idempotency-Key 로 요청하세요");
             }
             // 같은 금액의 정상 재전송 — 감사도 쓰지 않는다(중복 0).

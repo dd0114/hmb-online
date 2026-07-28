@@ -36,7 +36,12 @@ public class EconomyService {
                           Gacha gacha, Rewards rewards, JsonNode trade, JsonNode league,
                           LeagueGemReward leagueGemReward,
                           Growth growth, Star star, Potential potential, Dice dice, Gems gems,
-                          StarterTop starterTop) {
+                          StarterTop starterTop, List<Currency> currencies) {
+
+        /** 코드({@code POINT|GEM})로 표기 메타 조회 — 모르는 코드면 코드 자체를 심볼로 쓰는 최소 메타. */
+        public Currency currency(String code) {
+            return EconomyService.currencyOf(currencies, code);
+        }
     }
 
     /**
@@ -64,6 +69,47 @@ public class EconomyService {
 
     public static final String CURRENCY_GEM = "GEM";
     public static final String CURRENCY_POINT = "POINT";
+
+    /**
+     * 재화 <b>표기</b> 메타 (#232) — 내부 코드({@code POINT|GEM})를 화면 문자열로 옮기는 유일한 자리다.
+     *
+     * <p>코드·DB 컬럼(`wallets.points/gems`)·원장·에러코드는 <b>건드리지 않는다</b>. 바뀌는 건 표기뿐이고,
+     * 표기는 데이터라서 배포가 아니라 economy override + {@code POST /api/admin/economy/reload} 로 바뀐다.
+     * 클라이언트는 여기서 내려간 값을 그대로 렌더한다 — 심볼·이름·아이콘을 클라가 알면 다음에 또 바뀐다.
+     *
+     * @param code      내부 재화 코드({@code POINT|GEM}) — 값·원장·API 가 쓰는 그 코드
+     * @param symbol    금액 옆 짧은 표기(hero 확정: 골드=G, 다이아=Z)
+     * @param name      풀네임(문장형 안내문·툴팁용). ⚠️ 카드 <b>등급</b> 이름과 겹칠 수 있어 화면 기본은 symbol 이다
+     * @param icon      금액 앞 아이콘(한 글자 이모지/기호)
+     * @param position  symbol 위치 {@code prefix|suffix}
+     * @param separator 금액과 symbol 사이 구분자
+     */
+    public record Currency(String code, String symbol, String name, String icon,
+                           String position, String separator) {
+    }
+
+    /**
+     * 표기 기본값 (#232 hero 확정 — 다이아=Z, 골드=G).
+     *
+     * <p>업계 표준 3층 중 <b>last-known-good 폴백</b>에 해당한다: 발행 SoT(economy 파일)가 이기고,
+     * 그게 없거나 일부만 있으면 여기로 메운다. 발행물에 {@code currencies} 가 실리면 이 상수는
+     * 지우는 게 아니라 폴백으로 남는다.
+     */
+    public static final List<Currency> DEFAULT_CURRENCIES = List.of(
+            new Currency(CURRENCY_POINT, "G", "골드", "●", "suffix", " "),
+            new Currency(CURRENCY_GEM, "Z", "다이아", "💎", "suffix", " "));
+
+    /** 코드로 표기 메타 조회 — 모르는 코드면 코드 자체를 심볼로 쓰는 최소 메타(문자열이 비지 않게). */
+    public static Currency currencyOf(List<Currency> currencies, String code) {
+        if (currencies != null) {
+            for (Currency c : currencies) {
+                if (c.code().equals(code)) {
+                    return c;
+                }
+            }
+        }
+        return new Currency(code, code, code, "", "suffix", " ");
+    }
 
     /**
      * economy.v1.json `rewards` 노드 — 매치 보상 승/무/패 (AC-M6, ref=matchId 멱등 지급).
@@ -251,6 +297,19 @@ public class EconomyService {
         return snapshot;
     }
 
+    /**
+     * 재화 표기 메타 (#232) — economy 파일이 없어도 <b>항상</b> 무언가를 돌려준다.
+     * 화면·에러문구가 이 값을 그대로 쓰므로 여기서 비면 유저에게 빈 단위가 나간다.
+     */
+    public List<Currency> currencies() {
+        return snapshot.economy().map(Economy::currencies).orElse(DEFAULT_CURRENCIES);
+    }
+
+    /** 코드({@code POINT|GEM}) → 표기 메타. 서버 에러 문구도 이걸 통해 재화 이름을 얻는다. */
+    public Currency currency(String code) {
+        return currencyOf(currencies(), code);
+    }
+
     /** override 파일 경로(존재 여부와 무관). 운영 API 가 여기에 쓰고 지운다. */
     public String overridePath() {
         return overrideFile;
@@ -304,6 +363,8 @@ public class EconomyService {
             Gems gems = parseGems(root.path("gems"));
             // starterTop 블록(#209, economy.v3~) — 구파일엔 없어 null(그땐 기본팩만 지급).
             StarterTop starterTop = parseStarterTop(root.path("starterTop"));
+            // currencies 블록(#232) — 없으면 기본 표기. 있으면 **필드 단위로** 기본값 위에 덮는다.
+            List<Currency> currencies = parseCurrencies(root.path("currencies"));
 
             log.info("Loaded economy {} from {} (initialPoints={}, initialGems={}, starterPack={} players, "
                             + "gacha[{}] single/ten={}/{} tenCount={} pity>={}, rewards {}/{}/{} byMode={}, "
@@ -321,12 +382,60 @@ public class EconomyService {
                     starterTop != null ? starterTop.pool().size() + " pool/" + starterTop.count() : "absent");
             return Optional.of(new Economy(version, initialPoints, initialGems, List.copyOf(starterPack),
                     gacha, rewards, trade, league, leagueGemReward, growth, star, potential, dice, gems,
-                    starterTop));
+                    starterTop, currencies));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());
             return Optional.empty();
         }
+    }
+
+    /**
+     * `currencies` 노드 파싱(#232) — <b>필드 단위 병합</b>이라 부분 override 가 성립한다.
+     *
+     * <p>운영이 심볼 하나만 바꾸고 싶을 때 {@code [{"code":"GEM","symbol":"D"}]} 만 올리면 되고,
+     * 이름·아이콘·자리는 기본값이 유지된다. 통짜 교체만 지원하면 한 글자 바꾸려고 전체를 옮겨 적어야
+     * 하고, 그러다 빠뜨린 필드가 빈 문자열로 화면에 나간다.
+     *
+     * <p>모르는 코드는 <b>버리지 않고 뒤에 붙인다</b> — 재화가 늘어날 때 서버 코드 수정 없이 실린다.
+     */
+    private static List<Currency> parseCurrencies(JsonNode node) {
+        if (node == null || !node.isArray() || node.isEmpty()) {
+            return DEFAULT_CURRENCIES;
+        }
+        Map<String, JsonNode> byCode = new LinkedHashMap<>();
+        node.forEach(n -> {
+            String code = n.path("code").asText("");
+            if (!code.isBlank()) {
+                byCode.put(code, n);
+            }
+        });
+        List<Currency> merged = new ArrayList<>();
+        for (Currency base : DEFAULT_CURRENCIES) {
+            JsonNode over = byCode.remove(base.code());
+            merged.add(over == null ? base : mergeCurrency(base, over));
+        }
+        // 기본값에 없던 코드 = 신규 재화. 이때는 덮을 기본값이 없으니 코드 자체가 최후 폴백이다.
+        byCode.forEach((code, n) -> merged.add(
+                mergeCurrency(new Currency(code, code, code, "", "suffix", " "), n)));
+        return List.copyOf(merged);
+    }
+
+    private static Currency mergeCurrency(Currency base, JsonNode over) {
+        return new Currency(
+                base.code(),
+                text(over, "symbol", base.symbol()),
+                text(over, "name", base.name()),
+                // icon 은 separator 와 같이 **빈 문자열이 의미 있는 값**(아이콘 끄기)이다.
+                over.hasNonNull("icon") ? over.get("icon").asText() : base.icon(),
+                text(over, "position", base.position()),
+                // separator 는 " " 를 의미 있는 값으로 쓰므로 blank 검사를 하지 않는다(빈 문자열 = 붙여쓰기).
+                over.hasNonNull("separator") ? over.get("separator").asText() : base.separator());
+    }
+
+    private static String text(JsonNode node, String field, String fallback) {
+        String v = node.path(field).asText("");
+        return v.isBlank() ? fallback : v;
     }
 
     /** `growth` 노드 파싱(V2-5) — 없으면 null(성장 기능 비활성, 부팅은 계속). */

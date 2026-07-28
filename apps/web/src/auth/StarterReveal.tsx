@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Modal } from "../common/Modal";
 import { RevealCard } from "../common/RevealCard";
 import { GRADE_LABELS, type Grade } from "../common/grades";
+import { useCurrency } from "../common/Amount";
+import { useAppConfigValue } from "../common/AppConfigContext";
+import { CURRENCY_GEM, CURRENCY_POINT, formatAmount, withIga } from "../common/currency";
 import type { StarterGrantResponse } from "../api/p3";
 import styles from "./StarterReveal.module.css";
 
@@ -20,11 +23,33 @@ export interface StarterRevealProps {
   grant?: StarterGrantResponse | null;
   /** 기본팩 장수 안내(문구용). */
   basicCount?: number;
+  /**
+   * 지급액 오버라이드(테스트·스토리용). **평소엔 넘기지 않는다** — 서버 config 가 SoT 다(#232).
+   * 예전엔 기본값 3,000 이 박혀 있었고 호출부가 넘기지도 않아 화면이 늘 상수를 그렸는데,
+   * 운영이 무배포 override 로 지급액을 올린 뒤에도(#209) 그대로였다.
+   */
   initialPoints?: number;
   onClose: () => void;
 }
 
-export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, onClose }: StarterRevealProps) {
+export function StarterReveal({ grant, basicCount = 14, initialPoints, onClose }: StarterRevealProps) {
+  // 지급액·표기 모두 서버에서 (#232). 문장 안이라 컴포넌트가 아니라 문자열로 만든다.
+  const grants = useAppConfigValue()?.grants ?? null;
+  const pointCurrency = useCurrency(CURRENCY_POINT);
+  const gemCurrency = useCurrency(CURRENCY_GEM);
+  const points = initialPoints ?? grants?.initialPoints ?? 0;
+  const gems = grants?.initialGems ?? 0;
+  // config 를 못 받으면 금액 문구가 **빠진다**(선수 장수만 안내). 다른 자리의 폴백은 "코드를 그대로
+  // 노출"인데 여기만 침묵인 이유: 거기서 모르는 것은 **표기**(금액은 안다)고, 여기서 모르는 것은
+  // **금액 자체**다. 모르는 숫자를 지어내는 것은 폴백이 아니라 거짓말이라 문장에서 뺀다.
+  // 지급 문구 — 받은 재화를 빠뜨리지 않는다(우승 유상재화가 화면에 없던 것과 같은 형태였다).
+  const grantedAmounts = [
+    points > 0 ? formatAmount(pointCurrency, points) : null,
+    gems > 0 ? formatAmount(gemCurrency, gems) : null,
+  ].filter(Boolean).join(" · ");
+  // 조사도 표기를 따라간다 — 같은 커밋이 그러려고 헬퍼를 만들어 놓고 여기서 "이"를 박았었다
+  // (심볼이 "Z" 면 "…Z가", "G" 면 "…G가", 받침 있는 이름이면 "…이"). 문장 끝만 맞추면 된다.
+  const grantedSentence = grantedAmounts ? `과 ${withIga(grantedAmounts)} 지급되었습니다.` : "이 지급되었습니다.";
   const player = grant?.granted ? grant.player : null;
   // 카드가 없으면 공개할 것도 없다 — 곧바로 확인 버튼만 있는 상태로 연다.
   const [revealed, setRevealed] = useState(false);
@@ -66,7 +91,7 @@ export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, on
               <span className={styles.grantName}>{player.name}</span> ·{" "}
               {GRADE_LABELS[player.grade as Grade]} 영입!
               <br />
-              선수 {basicCount + 1}명과 {initialPoints.toLocaleString()}P가 지급되었습니다.
+              선수 {basicCount + 1}명{grantedSentence}
             </p>
           )}
         </>
@@ -74,7 +99,7 @@ export function StarterReveal({ grant, basicCount = 14, initialPoints = 3000, on
 
       {!player && (
         <p className={styles.grant}>
-          선수 {basicCount}명과 {initialPoints.toLocaleString()}P가 지급되었습니다.
+          선수 {basicCount}명{grantedSentence}
         </p>
       )}
 

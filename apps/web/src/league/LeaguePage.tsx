@@ -5,6 +5,8 @@ import type { LeagueFixture, LeagueSeason, LeagueStanding } from "../api/v2";
 import type { LeagueResponseP3, LeagueSeasonReward } from "../api/p3";
 import { ApiError } from "../api/client";
 import { Layout } from "../common/Layout";
+import { Amount, useCurrency } from "../common/Amount";
+import { CURRENCY_GEM, CURRENCY_POINT, formatAmount } from "../common/currency";
 import { ErrorToast } from "../common/ErrorToast";
 import { matchInProgressIdOf } from "../common/match-lock";
 import type { SeasonSummary } from "./league-logic";
@@ -354,7 +356,15 @@ function SeasonRewardCard({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
-  const view = useMemo(() => seasonRewardView(reward), [reward]);
+  // 재화 표기는 서버 메타에서 — 순수 뷰 함수에 포매터로 주입한다(#232).
+  const pointCurrency = useCurrency(CURRENCY_POINT);
+  const gemCurrency = useCurrency(CURRENCY_GEM);
+  const view = useMemo(
+    () => seasonRewardView(reward, (v) => formatAmount(pointCurrency, v)),
+    [reward, pointCurrency],
+  );
+  // 우승 유상재화(#212 서버 지급) — 표기가 아예 없던 자리. 연출은 #214 소관이라 값만 보여준다.
+  const gems = reward.gems ?? 0;
   const reducedMotion = usePrefersReducedMotion();
   const shown = useCountUp(reward.points, view.animate && !reducedMotion);
   return (
@@ -380,10 +390,33 @@ function SeasonRewardCard({
         data-points={reward.points}
         data-awarded={view.showPoints ? "true" : "false"}
       >
-        <span className={styles.rewardPointsValue}>{shown.toLocaleString()}</span>
-        <span className={styles.rewardPointsUnit}>P</span>
+        {/*
+          이 화면만 심볼을 손으로 뒤에 붙이고 있었다 → 서버가 position 을 prefix 로 바꾸면 다른 화면은
+          다 뒤집히는데 여기만 접미로 남는다(독립검증 minor). 카운트업 연출 때문에 숫자와 단위를
+          다른 크기로 그려야 해서 문자열 하나로 합칠 수는 없으므로, **순서와 구분자를 메타에서 읽어**
+          두 조각으로 배치한다.
+        */}
+        {pointCurrency.position === "prefix" ? (
+          <>
+            <span className={styles.rewardPointsUnit}>{pointCurrency.symbol}</span>
+            {pointCurrency.separator}
+            <span className={styles.rewardPointsValue}>{shown.toLocaleString()}</span>
+          </>
+        ) : (
+          <>
+            <span className={styles.rewardPointsValue}>{shown.toLocaleString()}</span>
+            {pointCurrency.separator}
+            <span className={styles.rewardPointsUnit}>{pointCurrency.symbol}</span>
+          </>
+        )}
         {!view.showPoints && <span className={styles.rewardPointsNote}>미지급</span>}
       </p>
+      {gems > 0 && (
+        <p className={styles.rewardGems} data-testid="season-reward-gems" data-gems={gems}>
+          <span aria-hidden="true">{gemCurrency.icon}</span>{" "}
+          <Amount code={CURRENCY_GEM} value={gems} />
+        </p>
+      )}
       <p className={styles.rewardDetail} data-testid="season-reward-message">
         {view.detail}
       </p>

@@ -384,3 +384,12 @@
     max-height: 70vh;
   }
 }
+
+/* 우승 유상재화 표기(#232) — 순위 보상(무료재화)과 시각적으로 구분되게 한 줄 아래. 연출은 #214. */
+.rewardGems {
+  margin: 4px 0 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #7fd7f5;
+  text-align: center;
+}

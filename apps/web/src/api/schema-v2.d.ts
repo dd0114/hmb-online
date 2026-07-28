@@ -512,7 +512,10 @@ export interface components {
         /** @enum {string} */
         TradeOfferKind: "FA" | "TRADE";
         WalletInfo: {
+            /** @description 무료재화 잔액(내부 코드 POINT). 표기는 GET /api/config 의 currencies 에서 조회한다. */
             points: number;
+            /** @description 유상재화 잔액(내부 코드 GEM) — #232 additive. 단축 비용의 재화를 서버가 정하므로 (TradeSlot.speedupCurrency) **그 재화의 잔액도 서버가 준다**. 안 주면 클라가 다른 재화 비용을 무료재화 잔액으로 재게 된다. 구서버 응답엔 없을 수 있어 required 아님. */
+            gems?: number;
         };
         /**
          * @description 슬롯 상태. IDLE: 오퍼 없음(모든 오퍼 필드 null) — [장 시작!] 대기.
@@ -540,8 +543,14 @@ export interface components {
             opensAt?: string | null;
             /** @description WAITING 남은 대기 초(0이면 곧 OPEN) */
             remainingSec?: number;
-            /** @description 지금 단축 시 포인트 비용(잔여시간 비례, config) */
+            /** @description 지금 단축 시 비용(잔여시간 비례, config). 단위는 speedupCurrency 참조. */
             speedupCost?: number | null;
+            /**
+             * @description speedupCost 의 재화 코드(POINT|GEM, #232). **speedupCost 와 항상 같이 존재하거나 같이
+             *     null 이다** — 클라이언트가 단위를 추측하면 화면이 실제 결제와 어긋난다(#213 이 그 형태였다).
+             *     표기(심볼·이름)는 GET /api/config 의 currencies 에서 조회한다.
+             */
+            speedupCurrency?: string | null;
             /** @description 대상 선수 가치(제안 확률 계산 근거, 표시용) */
             targetValue?: number | null;
             /** @description TRADE 수락 성공 확률(config, 서버 계산값) */

@@ -38,7 +38,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/api/**")
-                .excludePathPatterns("/api/auth/**")
+                // /api/config(#232) = 재화 표기·상점 가격 부트스트랩. **인증 이전에 필요하다** —
+                // 로그인 화면·가입 연출도 금액을 그리고, 무엇보다 클라가 앱 부팅 시 한 번 받아
+                // 트리에 내리는 값이라 여기서 401 을 내면 그 세션 전체가 표기 없이 굴러간다
+                // (독립검증 BL-1: 로그아웃 콜드 부팅 유저가 세션 내내 "62,000 POINT" 를 봤다).
+                // 내용은 공개 카탈로그(심볼·이름·공시 가격)라 감출 것이 없다 — 유저별 데이터 0.
+                .excludePathPatterns("/api/auth/**", "/api/config")
                 .order(0);
         registry.addInterceptor(adminInterceptor)
                 .addPathPatterns(AdminInterceptor.ADMIN_PATH_PATTERN)

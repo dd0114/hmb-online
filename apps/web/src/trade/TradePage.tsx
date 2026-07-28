@@ -51,12 +51,19 @@ export function TradePage() {
   const owned = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
 
   const walletPoints = data?.wallet.points ?? 0;
+  // #232: 단축 비용의 재화는 **서버가 정한다**(slot.speedupCurrency). 무료재화 잔액으로만 게이팅하면
+  // 서버가 유상재화로 바꾸는 순간 "표기는 Z, 잠금은 골드 기준"이 된다 — #213 의 후반부와 같은 형태다.
+  // ⚠️ `?? 0` 으로 떨어뜨리지 않는다 — openapi 가 `gems` 를 required 로 두지 않아(구서버 호환)
+  // 미수신이 정상 경로인데, 0 으로 읽으면 유상재화를 들고 있는 유저가 **거짓으로 잠긴다**.
+  const walletGems = data?.wallet.gems;
   const walletLoaded = Boolean(data);
   const busy = start.isPending || speedup.isPending || propose.isPending || accept.isPending;
 
   function handleError(err: unknown, fallback: string) {
     if (err instanceof ApiError) {
-      if (err.code === "INSUFFICIENT_POINTS") setError(`포인트가 부족합니다 — ${err.message}`);
+      // 재화 이름이 들어가는 문구는 **서버 message 를 그대로** 쓴다 — 클라가 이름을 지어내면
+      // 표기 변경이 web 배포가 된다(#232). 코드별 분기는 문맥 접두사만 붙인다.
+      if (err.code === "INSUFFICIENT_POINTS") setError(err.message);
       else if (err.code === "TRADE_INVALID") setError(`처리할 수 없는 요청입니다 — ${err.message}`);
       else setError(err.message);
     } else {
@@ -95,6 +102,7 @@ export function TradePage() {
               slot={slot}
               liveRemainingSec={live}
               walletPoints={walletPoints}
+              walletGems={walletGems}
               walletLoaded={walletLoaded}
               catalog={catalog}
               owned={owned}

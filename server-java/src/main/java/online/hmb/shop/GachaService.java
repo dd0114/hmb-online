@@ -16,6 +16,7 @@ import java.util.TreeMap;
 import online.hmb.catalog.CatalogPlayer;
 import online.hmb.catalog.EconomyService;
 import online.hmb.common.ApiException;
+import online.hmb.common.Josa;
 import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
@@ -81,10 +82,11 @@ public class GachaService {
         int count = ten ? gacha.tenCount() : 1;
         String reason = ten ? "gacha_ten" : "gacha_single";
 
-        // #212: 결제 재화는 config(gacha.currency) — hero 확정 "뽑기 = 젬(유료 재화)".
+        // #212: 결제 재화는 config(gacha.currency) — hero 확정 "뽑기 = 유상재화".
         boolean gems = gacha.paysWithGems();
         String errorCode = gems ? "INSUFFICIENT_GEMS" : "INSUFFICIENT_POINTS";
-        String errorMessage = gems ? "젬이 부족합니다" : "포인트가 부족합니다";
+        // #232: 재화 이름은 config 표기 메타에서 — 문구에 이름을 박으면 표기 변경이 배포가 된다.
+        String errorMessage = Josa.iga(economyService.currency(gacha.currency()).name()) + " 부족합니다";
 
         return txRunner.run(() -> {
             long balance = gems ? walletService.gems(userId) : walletService.points(userId);

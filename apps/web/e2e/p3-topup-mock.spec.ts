@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mockAppConfig } from "./app-config-mock";
 
 /**
  * P3 W-D 충전 탭 목업 route-mock E2E (PRD-v4 §1 D / **AC-D1**).
@@ -36,6 +37,9 @@ async function mockApi(page: Page) {
     (url) => url.pathname === "/api/players",
     (route) => route.fulfill(json([])),
   );
+  // #232: 충전 탭 노출은 서버 플래그(shop.gemTopup.enabled)가 정한다 — 이 스펙의 주제가 그 탭이므로 켠다.
+  // (운영 발행물 기본값은 false 라 실제 화면에는 탭이 없다 — 그 계약은 currency-display.spec.ts 소관.)
+  await mockAppConfig(page, { topupEnabled: true });
 }
 
 async function openShop(page: Page) {

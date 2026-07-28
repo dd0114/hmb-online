@@ -71,7 +71,7 @@ export function validateGrant(deltaRaw: string, reasonRaw: string): GrantValidat
   const reason = reasonRaw.trim();
   const errors: GrantFormErrors = {};
 
-  if (deltaRaw.trim() === "") errors.delta = "포인트 증감값을 입력하세요";
+  if (deltaRaw.trim() === "") errors.delta = "증감값을 입력하세요";
   else if (delta === null) errors.delta = "0이 아닌 정수를 입력하세요 (예: 500, -300)";
 
   if (reason === "") errors.reason = "사유는 필수입니다";

@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { mockAppConfig } from "./app-config-mock";
 import { readFileSync, mkdirSync } from "node:fs";
 
 /**
@@ -95,10 +96,19 @@ const GACHA = {
 };
 
 /** 10연차(3,000P)가 **눌리는** 잔액이어야 한다 — 부족하면 버튼이 disabled 라 테스트가 타임아웃한다. */
-const ME = { nickname: "tester", points: 10_000, wallet: { points: 10_000 }, records: { wins: 0, draws: 0, losses: 0 } };
+// #232: 뽑기는 유상재화 결제라(economy `gacha.currency`) 지갑에 gems 가 있어야 버튼이 열린다.
+// 무료재화 잔액만 채워 두면 이 스펙의 주제(카드 아트)와 무관하게 클릭이 막힌다.
+const ME = {
+  nickname: "tester",
+  points: 10_000,
+  wallet: { points: 10_000, gems: 10_000 },
+  records: { wins: 0, draws: 0, losses: 0 },
+};
 
 async function mockApi(page: Page) {
   await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.fulfill(json({})));
+  // #232: 뽑기 가격·결제 재화가 config 에서 오므로 목이 없으면 버튼이 잠겨 클릭이 안 된다.
+  await mockAppConfig(page);
   await page.route((url) => url.pathname === "/api/me", (route) => route.fulfill(json(ME)));
   await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json(CATALOG)));
   await page.route((url) => url.pathname === "/api/deck", (route) => route.fulfill({ status: 404, body: "" }));

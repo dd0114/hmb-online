@@ -77,6 +77,30 @@
   MatchDetail 통짜인 이유 = web 이 한 요청으로 `clock` 을 받아 seek-to-now 를 태운다.
   `locked`/`abandonable` 판정은 **서버가 SoT** — 클라가 복제하면 규칙이 바뀔 때 조용히 어긋난다.
 
+## 재화 표기 메타 (#232)
+
+- **표기는 데이터다.** `EconomyService.Currency`(code·symbol·name·icon·position·separator)가 economy
+  스냅샷에 실리고 `GET /api/config`(`meta/ConfigController`)로 나간다. 표기 변경 = economy override +
+  `POST /api/admin/economy/reload` — **web·server 재배포 0**.
+- **내부 코드는 바뀌지 않았다**: `wallets.points/gems` · `point_ledger`/`gem_ledger` ·
+  `INSUFFICIENT_POINTS`/`INSUFFICIENT_GEMS` · `gacha.currency="POINT|GEM"` 그대로. 바뀐 건 표기 레이어뿐이다.
+- **기본값 = 폴백층**(`DEFAULT_CURRENCIES`). 발행물(`economy.*.json#currencies`)이 이기고, 없거나 일부만
+  있으면 **필드 단위로** 메운다(부분 override 성립 — 심볼 하나만 올려도 나머지는 유지). 발행물에 실린 뒤에도
+  이 상수는 지우지 않는다(업계 표준 3층 중 last-known-good).
+- **서버가 만드는 문구에도 재화 이름을 박지 마라** — 클라는 4xx `message` 를 그대로 토스트로 띄운다.
+  `economyService.currency(code).name()` + `Josa`(이/가·을/를·은/는)로 만든다. 이름이 데이터가 됐으므로
+  조사도 이름을 따라가야 한다("다이아이 부족합니다" 방지).
+- **가격은 재화 코드와 함께 내려간다**(`ConfigController.Price` · `TradeSlot.speedupCurrency`).
+  떼어 놓으면 클라가 단위를 추측하고, 그게 #213(화면 "300 P" / 실제 다이아 300 차감)의 형태였다.
+- **`/api/config` 는 `AuthInterceptor` 제외 대상**(`WebMvcConfig`) — 클라가 부팅 시 한 번 부르는 값이라
+  401 을 내면 그 세션 전체가 표기 없이 굴러간다(독립검증 BL-1). 유저 데이터 0 인 공개 카탈로그다.
+  계약 = `CurrencyConfigApiTest.configIsReachableWithoutAuth`(인증 제외를 되돌리면 실제로 깨진다).
+- **재화를 정하는 쪽이 그 재화의 잔액도 준다** — `TradeSlot.speedupCurrency` 를 서버가 정하므로
+  `TradeSlotsResponse.wallet` 에 `gems` 를 같이 싣는다(#232 additive). 안 그러면 클라가 유상재화 비용을
+  무료재화 잔액으로 잰다.
+- 계약 = `CurrencyMetaTest`(로더 성질) + `CurrencyConfigApiTest`(**변이체 킬** — 발행물 표기를 `Ω/Ξ` 로
+  바꿔 두고 API 응답·에러 문구가 따라오는지). 심볼 값 자체는 단언하지 않는다(값은 언제든 바뀐다).
+
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).
 - 상태 전이는 CAS(`WHERE state=?`), 보상·원장은 멱등(유니크 인덱스). 트랜잭션 경계는 서비스 메서드.

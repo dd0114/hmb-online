@@ -23,9 +23,9 @@ export interface TopupPackage {
   /** 스토어 상품 id 자리(목업 — 실결제 연동 시 실제 product id 로 교체). */
   productId: string;
   label: string;
-  /** 기본 지급 포인트. */
+  /** 기본 지급 금액(무료재화 단위). */
   basePoints: number;
-  /** 보너스 포인트(0 가능). */
+  /** 보너스 금액(0 가능). */
   bonusPoints: number;
   /** 목업 표기 가격(원). 실제 청구 없음. */
   priceKrw: number;
@@ -74,9 +74,12 @@ export function formatKrw(krw: number): string {
   return `₩${krw.toLocaleString("ko-KR")}`;
 }
 
-/** 포인트 표기. */
-export function formatPoints(points: number): string {
-  return `${points.toLocaleString("ko-KR")} P`;
+/**
+ * 지급액 표기 — <b>단위는 호출부가 서버 표기 메타에서 받아 넘긴다</b> (#232).
+ * 여기서 "P" 를 붙이던 것이 표기 하드코딩의 한 갈래였다(순수 모듈이라 눈에 안 띄었다).
+ */
+export function formatPoints(points: number, unit: (value: number) => string): string {
+  return unit(points);
 }
 
 export function findPackage(id: string, packages: readonly TopupPackage[] = TOPUP_PACKAGES): TopupPackage | null {

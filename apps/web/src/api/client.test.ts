@@ -10,6 +10,7 @@ import {
   getProvider,
   getToken,
   isAuthEndpoint,
+  isSessionNeutralEndpoint,
   setProvider,
   setToken,
   setUnauthorizedHandler,
@@ -144,6 +145,49 @@ describe("apiFetch", () => {
         status: 401,
         code: "BAD_CREDENTIALS",
       });
+    });
+
+    /**
+     * 공개(세션 중립) 경로 — #232. `/api/config` 는 재화 표기·상점 가격이라 유저 데이터가 0 이고
+     * 서버에서 인증 제외돼 있다. 그런데 "인증 경로가 아닌 401 = 세션 만료" 규칙에 걸리면,
+     * 프록시·CDN 이 이 경로에 401 을 끼우는 순간 **유저 데이터와 무관한 응답 하나가 로그인된
+     * 유저를 튕겨낸다**. 에러는 던지되 세션은 건드리지 않는다.
+     */
+    it("공개 경로(/api/config) 401 은 세션을 파기하지 않는다", async () => {
+      setToken("still-valid-token");
+      setProvider("guest");
+      const handler = vi.fn();
+      setUnauthorizedHandler(handler);
+      mock401();
+
+      await expect(apiFetch("/api/config")).rejects.toBeInstanceOf(ApiError);
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(getToken()).toBe("still-valid-token");
+      expect(getProvider()).toBe("guest");
+    });
+
+    /**
+     * 공개 경로 판별은 **정확 일치**여야 한다 — 접두 매칭이면 `/api/configuration` 같은 미래 경로가
+     * 조용히 세션 파기에서 빠진다(반대 방향 사고). base 서브패스는 실제로 스텁해서 본다 —
+     * 제목만 그럴듯하고 스텁이 없으면 계약이 아니라 주장이다.
+     */
+    it.each([
+      ["", "/api/config", true],
+      ["", "https://api.example.com/api/config", true],
+      ["", "/api/config/", false],
+      ["", "/api/config/x", false],
+      ["", "/api/configuration", false],
+      ["", "/api/configx", false],
+      ["", "/api/me", false],
+      ["https://api.example.com/backend", "/api/config", true],
+      ["https://api.example.com/backend", "https://api.example.com/backend/api/config", true],
+      ["https://api.example.com/backend", "/api/configuration", false],
+    ])("base=%s path=%s → isSessionNeutralEndpoint=%s", (base, path, expected) => {
+      vi.stubEnv("VITE_API_BASE", base);
+      expect(isSessionNeutralEndpoint(path)).toBe(expected);
+      // base 적용 전/후 어느 형태를 넘겨도 같은 답이어야 한다(isAuthEndpoint 와 같은 규율).
+      expect(isSessionNeutralEndpoint(apiUrl(path))).toBe(expected);
     });
 
     it.each([

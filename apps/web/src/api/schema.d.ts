@@ -251,6 +251,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/config": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 클라이언트 부트스트랩 config — 재화 표기 + 상점 가격 (#232)
+         * @description **클라이언트는 재화의 심볼·이름·아이콘·가격·결제재화를 하나도 몰라야 한다.** 여기서 받은
+         *     값만 렌더한다. 하드코딩이 남으면 서버 경제가 바뀔 때 화면이 조용히 거짓말을 한다 — #212 가
+         *     뽑기를 유상재화 결제로 바꿨을 때 web 은 "300 P" 를 계속 그렸고, 다이스는 서버 5,000 을
+         *     "500 P" 로 그렸다(#213).
+         *
+         *     값의 출처는 economy 스냅샷이라 표기 변경은 admin override + `POST /api/admin/economy/reload`
+         *     로 끝난다(web 재배포 없음). economy 파일이 없으면 `shop` 은 null 이고 `currencies` 는 서버
+         *     기본 표기가 나간다 — 상점을 못 그리는 것과 단위를 못 그리는 것은 심각도가 다르다.
+         */
+        get: operations["getConfig"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/matches": {
         parameters: {
             query?: never;
@@ -908,18 +935,69 @@ export interface components {
             /** @description 신규 가입이면 true(스타터 팩 지급 트리거, PRD §3.2) */
             isNew: boolean;
         };
+        Currency: {
+            /** @description 내부 재화 코드(POINT|GEM). 값·원장·API 가 쓰는 그 코드 — 화면에 그대로 쓰지 않는다. */
+            code: string;
+            /** @description 금액 옆 짧은 표기(hero 확정 — 골드=G, 다이아=Z). */
+            symbol: string;
+            /** @description 풀네임(문장형 안내문·툴팁). ⚠️ 카드 **등급** 이름(골드/다이아)과 겹칠 수 있어 화면 기본 표기는 symbol 이다. */
+            name: string;
+            /** @description 금액 앞 아이콘. 빈 문자열이면 그리지 않는다. */
+            icon: string;
+            /** @enum {string} */
+            position: "prefix" | "suffix";
+            /** @description 금액과 symbol 사이 구분자. 빈 문자열은 "붙여쓰기"라는 의미 있는 값이다. */
+            separator: string;
+        };
+        Price: {
+            /** @description 재화 코드(POINT|GEM) */
+            currency: string;
+            cost: number;
+        };
+        AppConfig: {
+            currencies: components["schemas"]["Currency"][];
+            /** @description economy 파일이 로드되지 않았으면 null(표기는 그래도 내려간다). */
+            shop?: components["schemas"]["ShopConfig"] | null;
+            /** @description 가입 지급액. 클라이언트가 상수(3,000)를 그리고 있었고 유상재화 지급은 **표기조차 없었다** — 운영이 무배포 override 로 지급액을 올린 뒤에도 화면은 그대로였다(#209/#232). */
+            grants?: {
+                initialPoints: number;
+                initialGems: number;
+            } | null;
+        };
+        ShopConfig: {
+            gacha?: {
+                single: components["schemas"]["Price"];
+                ten: components["schemas"]["Price"];
+                tenCount: number;
+            } | null;
+            dice?: {
+                /** @description 노말 다이스 — 무료재화 결제 */
+                normal: components["schemas"]["Price"];
+                /** @description 캐시 다이스 — 유상재화 결제 */
+                cash: components["schemas"]["Price"];
+            } | null;
+            gemTopup?: {
+                /** @description false 면 클라이언트는 충전 UI 를 **그리지 않는다** — 누르면 403 TOPUP_DISABLED 인 죽은 버튼이 된다(#212 로 목업 수도꼭지가 잠겼다). 실결제 연동 시 이 플래그만 켠다. */
+                enabled: boolean;
+                packs: {
+                    id: string;
+                    gems: number;
+                    mockPrice: string;
+                }[];
+            } | null;
+        };
         WalletInfo: {
-            /** @description 골드(게임 재화). 트레이드·무료강화(노말 다이스)에 쓴다. */
+            /** @description 무료재화 잔액(내부 코드 POINT) — 트레이드·무료강화(노말 다이스)에 쓴다. **표기(이름·심볼)는 값이 아니라 데이터다** — GET /api/config 의 currencies 에서 조회한다(#232). */
             points: number;
-            /** @description 젬(유료 재화) — 뽑기·유료 다이스. #212 additive(구서버 응답엔 없을 수 있어 required 아님). 수급은 가입 지급 + 리그 우승 둘뿐. */
+            /** @description 유상재화 잔액(내부 코드 GEM) — 뽑기·유료 다이스. #212 additive(구서버 응답엔 없을 수 있어 required 아님). 수급은 가입 지급 + 리그 우승 둘뿐. 표기는 GET /api/config 참조(#232). */
             gems?: number;
         };
         SeasonReward: {
             /** @description 유저 최종 순위(시즌 진행 중이면 현재 잠정 순위). */
             rank: number;
-            /** @description 실지급 골드(원장 delta). 미지급이면 0 — 예정액이 아니다. */
+            /** @description 실지급 무료재화(원장 delta). 미지급이면 0 — 예정액이 아니다. */
             points: number;
-            /** @description 실지급 젬. **우승(1위)일 때만** 500~3000 랜덤이고 그 외에는 0(#212). web 우승 연출의 입력(#214). */
+            /** @description 실지급 유상재화. **우승(1위)일 때만** 500~3000 랜덤이고 그 외에는 0(#212). web 우승 연출의 입력(#214). 표기는 GET /api/config 참조(#232). */
             gems?: number;
             /** @enum {string} */
             status: "PENDING" | "GRANTED" | "NONE";
@@ -2080,6 +2158,26 @@ export interface operations {
                 };
             };
             401: components["responses"]["Unauthorized"];
+        };
+    };
+    getConfig: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppConfig"];
+                };
+            };
         };
     };
     createMatch: {

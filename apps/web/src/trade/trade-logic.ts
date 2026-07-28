@@ -118,7 +118,7 @@ export function formatProbability(p: number | null | undefined): string | null {
 export interface SpeedupState {
   /** Button disabled: not loaded yet, pending, no cost, or short on points. */
   disabled: boolean;
-  /** Show the "포인트 부족" hint (loaded + known cost + short). */
+  /** Show the "잔액 부족" hint (loaded + known cost + short). 재화 이름은 화면이 표기 메타에서 얻는다(#232). */
   showShort: boolean;
 }
 

@@ -91,3 +91,9 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* 제안 금액 강조 — 예전 <strong> 자리를 그대로 물려받는다(#232 표기 서버화). */
+.pointsValue {
+  font-weight: 700;
+  color: var(--text);
+}

@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { CatalogPlayer } from "../api/hooks";
 import type { FaProposeRequest } from "../api/v2";
 import { GRADE_LABELS } from "../common/grades";
+import { Amount, useCurrency } from "../common/Amount";
+import { CURRENCY_POINT } from "../common/currency";
 import {
   canPropose,
   initialProposal,
@@ -27,6 +29,7 @@ interface ProposeBuilderProps {
  * surfaced to the user as an explicit note rather than a fake gauge.
  */
 export function ProposeBuilder({ owned, maxPoints, pending, onSubmit }: ProposeBuilderProps) {
+  const pointCurrency = useCurrency(CURRENCY_POINT);
   const [state, setState] = useState(initialProposal);
 
   const submittable = canPropose(state) && !pending;
@@ -60,7 +63,13 @@ export function ProposeBuilder({ owned, maxPoints, pending, onSubmit }: ProposeB
 
       <div className={styles.section}>
         <label className={styles.sectionLabel} htmlFor="propose-points">
-          함께 낼 포인트: <strong data-testid="propose-points-value">{state.points.toLocaleString("ko-KR")} P</strong>
+          함께 낼 {pointCurrency.name}:{" "}
+          <Amount
+            className={styles.pointsValue}
+            data-testid="propose-points-value"
+            code={CURRENCY_POINT}
+            value={state.points}
+          />
         </label>
         <input
           id="propose-points"

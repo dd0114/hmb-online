@@ -222,6 +222,16 @@ export function apiUrl(path: string): string {
  */
 const AUTH_PATH_PREFIX = "/api/auth/";
 
+/**
+ * **세션과 무관한 공개 경로** — 401 이 와도 세션을 파기하지 않는다 (#232).
+ *
+ * `/api/config`(재화 표기·상점 가격)는 유저 데이터가 0 이고 서버에서 인증 제외돼 있다. 그런데 이
+ * 클라이언트는 "인증 경로가 아닌 401 = 세션 만료"로 해석해 **토큰을 지우고 로그인으로 보낸다** —
+ * 프록시·CDN·미래 미들웨어가 이 경로에 401 을 끼우면, 유저 데이터와 아무 상관 없는 응답 하나가
+ * 로그인된 유저를 튕겨내게 된다. 공개 경로는 그 판정에서 빼 둔다(에러는 그대로 던진다).
+ */
+const SESSION_NEUTRAL_PATHS = ["/api/config"];
+
 /** 상대/절대 URL 모두에서 pathname 을 뽑는다(API base 환경변수화 — P3-D1). */
 function pathnameOf(path: string): string {
   const origin =
@@ -251,12 +261,22 @@ function basePathname(): string {
  * 파기한다. client.test.ts 가 4조합 전부 박제.
  */
 export function isAuthEndpoint(path: string): boolean {
+  const pathname = normalizedPathname(path);
+  return pathname.startsWith(AUTH_PATH_PREFIX);
+}
+
+/** 공개(세션 중립) 경로 판별 — 401 부수효과(토큰 클리어·리다이렉트)를 건너뛴다. */
+export function isSessionNeutralEndpoint(path: string): boolean {
+  return SESSION_NEUTRAL_PATHS.includes(normalizedPathname(path));
+}
+
+function normalizedPathname(path: string): string {
   let pathname = pathnameOf(path);
   const prefix = basePathname();
   if (prefix && pathname.startsWith(prefix)) {
     pathname = pathname.slice(prefix.length) || "/";
   }
-  return pathname.startsWith(AUTH_PATH_PREFIX);
+  return pathname;
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
@@ -296,7 +316,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     const body = await parseErrorBody(res);
     // 인증 엔드포인트의 401 = 자격 오류(폼 에러) → 세션을 건드리지 않고 호출자에게 위임.
     // 판별은 base 가 붙은 최종 url 로 한다(붙기 전 path 로 해도 같은 답이어야 함 — 테스트 박제).
-    if (!isAuthEndpoint(url)) {
+    if (!isAuthEndpoint(url) && !isSessionNeutralEndpoint(url)) {
       clearToken();
       clearProvider();
       onUnauthorized();

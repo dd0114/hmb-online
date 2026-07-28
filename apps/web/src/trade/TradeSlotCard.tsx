@@ -1,6 +1,7 @@
 import type { CatalogPlayer } from "../api/hooks";
 import type { FaProposeRequest, TradeSlot } from "../api/v2";
-import { PointsBadge } from "../common/PointsBadge";
+import { Amount, useCurrency } from "../common/Amount";
+import { balanceFor, CURRENCY_POINT, shortageMessage } from "../common/currency";
 import { ProposeBuilder } from "./ProposeBuilder";
 import { TradePlayerCard } from "./TradePlayerCard";
 import {
@@ -24,6 +25,11 @@ interface TradeSlotCardProps {
   /** Live countdown for WAITING (parent ticks it once/second). */
   liveRemainingSec: number;
   walletPoints: number;
+  /**
+   * 유상재화 잔액 — 서버가 speedupCurrency 로 유상재화를 지정할 수 있으므로 같이 받는다(#232).
+   * `undefined` = **모름**(구서버 응답에 필드가 없다). 0 과 구분해야 거짓 잠금이 안 생긴다.
+   */
+  walletGems: number | undefined;
   walletLoaded: boolean;
   /** playerId → catalog entry, for enriching PlayerRef with attributes·personality. */
   catalog: Map<string, CatalogPlayer>;
@@ -38,7 +44,7 @@ interface TradeSlotCardProps {
 }
 
 export function TradeSlotCard(props: TradeSlotCardProps) {
-  const { slot, liveRemainingSec, walletPoints, walletLoaded, catalog, owned, busy } = props;
+  const { slot, liveRemainingSec, walletPoints, walletGems, walletLoaded, catalog, owned, busy } = props;
   const view = slotView(slot);
   const reveal = waitingReveal(slot);
   const target = slot.target ? catalog.get(slot.target.playerId) : undefined;
@@ -84,6 +90,7 @@ export function TradeSlotCard(props: TradeSlotCardProps) {
           targetDetail={target}
           liveRemainingSec={liveRemainingSec}
           walletPoints={walletPoints}
+          walletGems={walletGems}
           walletLoaded={walletLoaded}
           busy={busy}
           onSpeedup={props.onSpeedup}
@@ -205,6 +212,7 @@ function WaitingBody({
   targetDetail,
   liveRemainingSec,
   walletPoints,
+  walletGems,
   walletLoaded,
   busy,
   onSpeedup,
@@ -214,13 +222,25 @@ function WaitingBody({
   targetDetail: CatalogPlayer | undefined;
   liveRemainingSec: number;
   walletPoints: number;
+  /**
+   * 유상재화 잔액 — 서버가 speedupCurrency 로 유상재화를 지정할 수 있으므로 같이 받는다(#232).
+   * `undefined` = **모름**(구서버 응답에 필드가 없다). 0 과 구분해야 거짓 잠금이 안 생긴다.
+   */
+  walletGems: number | undefined;
   walletLoaded: boolean;
   busy: boolean;
   onSpeedup: (slot: number) => void;
 }) {
+  // 단축 비용의 재화 — 서버가 준 코드를 그대로 쓴다(없으면 무료재화로 폴백).
+  const speedupCode = slot.speedupCurrency ?? CURRENCY_POINT;
+  const speedupCurrency = useCurrency(speedupCode);
+  // ⚠️ 잔액도 **그 재화**로 고른다. 표기만 서버를 따르고 게이팅은 무료재화로 두면
+  // "500 Z 인데 골드가 모자라서 잠김"이 된다(#213 의 후반부와 같은 형태).
+  // 모르는 재화·잔액 미수신(구서버)이면 **잠그지 않는다** — 판정 근거가 없다(balanceFor 주석).
+  const balance = balanceFor(speedupCode, { points: walletPoints, gems: walletGems });
   const btn = speedupButtonState({
     loaded: walletLoaded,
-    points: walletPoints,
+    points: balance ?? Number.POSITIVE_INFINITY,
     cost: slot.speedupCost,
     pending: busy,
   });
@@ -258,7 +278,14 @@ function WaitingBody({
       {slot.speedupCost != null && (
         <div className={styles.speedupRow}>
           <span className={styles.speedupCost}>
-            단축 비용 <PointsBadge points={slot.speedupCost} />
+            {/* 재화는 서버가 금액과 **함께** 준다(speedupCurrency, #232) — 클라가 단위를 추측하지 않는다. */}
+            단축 비용{" "}
+            <Amount
+              className={styles.speedupAmount}
+              code={slot.speedupCurrency ?? CURRENCY_POINT}
+              value={slot.speedupCost}
+              icon
+            />
           </span>
           <button
             type="button"
@@ -267,11 +294,11 @@ function WaitingBody({
             disabled={btn.disabled}
             onClick={() => onSpeedup(slot.slot)}
           >
-            포인트로 단축
+            {speedupCurrency.symbol}로 단축
           </button>
         </div>
       )}
-      {btn.showShort && <p className={styles.short}>포인트가 부족합니다</p>}
+      {btn.showShort && <p className={styles.short}>{shortageMessage(speedupCurrency)}</p>}
     </div>
   );
 }

@@ -130,6 +130,45 @@
   [다음 경기](`LeaguePage`). 새 매치를 만드는 버튼을 추가하면 여기에도 `matchInProgressIdOf` 를 붙여라 —
   안 붙이면 이동 링크 없는 막다른 토스트가 된다(독립검증 MAJOR-3 이 그 상태였다).
 
+## 재화 표기 — 서버 주도 (#232)
+
+**화면에 재화 심볼·이름·아이콘·가격을 적지 마라.** 전부 `GET /api/config` 에서 온다.
+
+| 쓸 것 | 자리 |
+|---|---|
+| `<Amount code={...} value={n} icon? />` (`common/Amount.tsx`) | 금액을 그리는 **모든** 자리 |
+| `useCurrency(code)` → `{symbol,name,icon,...}` | 문장 안에 이름/심볼이 필요할 때 |
+| `formatAmount` · `shortageMessage` · `withIga/withEulReul/withEunNeun` (`common/currency.ts`) | 순수 문자열이 필요할 때(원장·테스트) |
+| `useAppConfigValue()` (`common/AppConfigContext.tsx`) | 가격·플래그(`shop.gacha`·`shop.dice`·`shop.gemTopup.enabled`) |
+
+- **코드 상수는 `CURRENCY_POINT`/`CURRENCY_GEM` 둘뿐이고 그건 표기가 아니라 키다.** `"P"`·`"💎"`·
+  `"포인트"`·`"젬"` 을 다시 적는 순간 서버 주도가 깨진다.
+- **가격 미러를 만들지 마라.** `growth-config.ts` 에 `DICE_BUY_COST = 500` 이 있었고 서버가 5,000 으로
+  바뀐 뒤에도 남아 화면이 "500 P 로 구매"를 그렸다 — 눌러 성공하면 지갑이 10배로 줄었다(#213).
+  뽑기도 같은 방식으로 "300 P" 라고 쓰면서 다이아 300 을 뺐다.
+- **금액과 재화는 항상 같이 온다**(`Price{currency,cost}` · `TradeSlot.speedupCurrency`). 클라가 단위를
+  추측하는 자리를 만들면 위 사고가 재발한다.
+- **잔액 게이팅은 결제 재화 기준.** 무료재화 잔액으로 유상재화 상품을 잠그면 유저가 살 수 있는데도 잠긴다.
+- **순수 모듈은 표기를 주입받는다** — `seasonRewardView(reward, formatPoints)`(기본값 = **단위 없는
+  숫자**라 주입을 잊어도 틀린 단위가 새 나가지 않는다) · `formatPoints(value, unit)`(unit **필수** —
+  타입이 강제한다).
+- **폴백**: config 를 못 받으면 `<Amount>` 는 **코드를 그대로** 노출한다(`POINT 300`). 흰 화면도, 하드코딩
+  "P" 복귀도 아니다. provider 밖(단위 테스트)도 같은 경로를 탄다 — 그래서 컴포넌트가
+  QueryClientProvider 를 요구하지 않는다.
+- ⚠️ **`골드`/`다이아` 는 카드 등급 이름이기도 하다**(hero 확정 C1: 재화는 심볼 `G`/`Z` 우선, 등급 라벨은
+  현행 유지). 재화 문자열을 지운다고 `GRADE_LABELS` 까지 건드리지 마라 — 계약이 그걸 잡는다.
+- **`/api/config` 는 공개 엔드포인트다(인증 불필요).** 앱 부팅 시 **한 번** 부르는 값이라 로그인 전에
+  401 을 맞으면 재조회 트리거가 없어 **그 세션 전체**가 코드 폴백으로 굴러갔다(독립검증 BL-1 —
+  신규·세션만료 유저의 첫 진입이 전부 그 경로). 그래서 ① 서버에서 인증 제외 ② 이 경로의 401 은
+  **세션을 파기하지 않는다**(`isSessionNeutralEndpoint` — 공개 응답 하나가 로그인 유저를 튕겨내면 안 된다)
+  ③ 쿼리에 재시도·포커스 갱신을 열어 뒀다. 셋 다 계약이 있다.
+- **가입 지급액도 서버에서 온다**(`grants.initialPoints/initialGems`). 클라 상수 3,000 이 박혀 있었고
+  유상재화 지급은 **표기조차 없었다** — 운영이 무배포 override 로 지급액을 올린 뒤에도 화면은 그대로였다.
+- 계약 = `e2e/currency-display.spec.ts`. **값이 아니라 "데이터를 따라오는가"를 본다** — config 를 `Ω/Ξ` 로
+  목킹해 전 화면이 따라오지 않으면 실패한다(하드코딩을 되돌리면 실제로 7/10 이 깨진다). 목 헬퍼 =
+  `e2e/app-config-mock.ts` — **새 목 스펙이 상점/지갑을 그린다면 이걸 실어라**(캐치올 `{}` 면 가격을
+  모르는 폴백 화면을 보게 된다).
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - **e2e 전체 실행 금지** — `league-season`·`match-flow`·`w3-viewer-smoke` 는 :8080 라이브 데모에 붙는다.

@@ -21,6 +21,8 @@ import {
 } from "./logs-logic";
 // MatchSnapshotDialog(그 경기 세팅 보기 → 프리셋 저장, #98 W5)는 이슈 #106 으로 **화면에서 내렸다**
 // — 프리셋 개념 자체를 보류했기 때문. 컴포넌트/테스트/서버 계약은 존치(재도입 대비).
+import { Amount } from "../common/Amount";
+import { CURRENCY_POINT } from "../common/currency";
 import styles from "./LogsPage.module.css";
 
 type Tab = "matches" | "trades" | "rankings";
@@ -257,7 +259,9 @@ function TradeLogRow({ item }: { item: TradeLogItem }) {
           </span>
         </div>
         <div className={styles.rowMeta}>
-          {points != null && <span className={styles.roundTag}>{points.toLocaleString("ko-KR")} P</span>}
+          {points != null && (
+            <Amount className={styles.roundTag} code={CURRENCY_POINT} value={points} />
+          )}
           <span className={styles.date}>{shortDate(item.createdAt)}</span>
         </div>
       </div>
