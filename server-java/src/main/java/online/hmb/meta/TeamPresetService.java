@@ -150,8 +150,16 @@ public class TeamPresetService {
         // 보유 풀이 바뀌었으면(선수 이탈 등) 여기서 DECK_INVALID 로 걸린다(의도된 안전장치).
         // 팀 문장(#253)도 스냅샷이 가진 값을 그대로 싣는다 — 프리셋은 선수 문장을 옮기므로 팀 문장만
         // 빠지면 "프리셋 적용이 팀 지시를 지운다"는 새 유실이 된다(TeamSnapshot.teamPrompt 는 기존 계약).
-        return deckService.replaceDeck(userId, new DeckService.DeckUpdateRequest(
-                formation, snapshot.path("teamPrompt").asText(null), slots));
+        //
+        // ⚠️ **키 없음 ≠ 빈 값**(독립검증 minor-2). 이 필드가 생기기 전에 저장된 프리셋에는 키 자체가
+        // 없다. 그걸 "빈 문장"으로 읽으면 구 프리셋을 적용하는 순간 방금 쓴 팀 지시가 지워진다 —
+        // #253 과 똑같은 종류의 조용한 유실을 프리셋 경로에 새로 만드는 셈이다. 키가 없으면 현재 덱의
+        // 값을 유지하고, 키가 명시적으로 있을 때만(빈 문자열·null 포함) 그 값이 이긴다.
+        String teamPrompt = snapshot.has("teamPrompt")
+                ? snapshot.path("teamPrompt").asText(null)
+                : deckService.activeTeamPromptOrNull(userId);
+        return deckService.replaceDeck(userId,
+                new DeckService.DeckUpdateRequest(formation, teamPrompt, slots));
     }
 
     // ── 내부 헬퍼 ────────────────────────────────────────────────────────

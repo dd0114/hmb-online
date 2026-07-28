@@ -211,6 +211,78 @@ class HalftimeTacticsTest extends MatchTestBase {
                 .param(matchId).query(String.class).optional().orElse(null)).isNull();
     }
 
+    /**
+     * <b>되돌리기도 변경이다</b>(독립검증 minor-1). 전반에 지정한 전술을 후반에 중립으로 되돌리는 것은
+     * "아무것도 안 함"이 아니라 명시적 조작이다. {@code h1Unset && h2Unset} 조기 반환을 {@code h2Unset}
+     * 만으로 넓히는 흔한 리팩터링이 이 조작을 조용히 무시하게 만든다 — 그 변이체를 여기서 잡는다.
+     */
+    @Test
+    void revertingTacticsToNeutralCountsAsAChange() {
+        String token = setupUserWithDeck("ht_revert");
+        String matchId = createMatch(token, "BOT_BAL");
+        fakeServants.drain();
+        authPost("/api/matches/" + matchId + "/kickoff", token,
+                Map.of("teamTactics", AGGRESSIVE), Map.class);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
+
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(),
+                        "teamTactics", Map.of("line", 0.5, "press", 0.5, "tempo", 0.5, "width", 0.5)),
+                Map.class);
+
+        assertThat(patchJobCount(matchId, 2)).isEqualTo(1L);
+        String context = userSecondHalfContext(matchId);
+        assertThat(context).doesNotContain("\"line\":0.9"); // 전반의 공격적 라인이 남아 있으면 안 된다
+    }
+
+    /** 전반은 전술 미지정(중립)인데 후반에 처음 지정하는 경우도 변경이다. */
+    @Test
+    void settingTacticsForTheFirstTimeAtHalftimeCountsAsAChange() {
+        String matchId = toHalftime("ht_first", null); // 킥오프 전술 미첨부
+        String token = login("ht_first");
+
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(), "teamTactics", AGGRESSIVE), Map.class);
+
+        assertThat(patchJobCount(matchId, 2)).isEqualTo(1L);
+        assertThat(userSecondHalfContext(matchId)).contains("\"line\":0.9");
+    }
+
+    /**
+     * 전술만 고쳐 재제출해도 앞서 낸 교체가 남는다(독립검증 minor-3의 반대 방향).
+     * 두 필드 모두 "미첨부 = 손대지 않음"이라야 계약 문구와 구현이 일치한다.
+     */
+    @Test
+    void subsSurviveATacticsOnlyResubmit() {
+        String matchId = toHalftime("ht_subskeep", null);
+        String token = login("ht_subskeep");
+
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(Map.of("out", "P011", "in", "P012"))), Map.class);
+        // 전술만 보낸다(substitutions 생략) — 여기서 교체가 지워지면 유저가 짠 교체가 조용히 사라진다.
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("teamTactics", AGGRESSIVE), Map.class);
+
+        assertThat(jdbcClient.sql("SELECT subs_json FROM matches WHERE id = ?")
+                .param(matchId).query(String.class).single()).contains("P012");
+    }
+
+    /** 빈 배열은 미첨부가 아니다 — "교체 전부 취소"라는 명시적 의사이므로 그대로 반영된다. */
+    @Test
+    void emptySubsArrayStillClears() {
+        String matchId = toHalftime("ht_clear", null);
+        String token = login("ht_clear");
+
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(Map.of("out", "P011", "in", "P012"))), Map.class);
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of()), Map.class);
+
+        assertThat(jdbcClient.sql("SELECT subs_json FROM matches WHERE id = ?")
+                .param(matchId).query(String.class).single()).doesNotContain("P012");
+    }
+
     @Test
     void tacticsSurviveASubsOnlyResubmit() {
         String matchId = toHalftime("ht_resubmit", null);

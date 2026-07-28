@@ -63,6 +63,7 @@ public class MatchOrchestrator {
     private final boolean deltaEnabled;
     private final int overhaulAxisCount;
     private final String overhaulEffort;
+    private final boolean reuseOnNoChange;
 
     public MatchOrchestrator(JdbcClient jdbcClient,
                              TxRunner txRunner,
@@ -84,7 +85,8 @@ public class MatchOrchestrator {
                              ObjectMapper objectMapper,
                              @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
                              @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
-                             @Value("${hmb.match.delta.overhaul-effort}") String overhaulEffort) {
+                             @Value("${hmb.match.delta.overhaul-effort}") String overhaulEffort,
+                             @Value("${hmb.match.delta.reuse-on-no-change}") boolean reuseOnNoChange) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.prewarmService = prewarmService;
@@ -106,6 +108,7 @@ public class MatchOrchestrator {
         this.deltaEnabled = deltaEnabled;
         this.overhaulAxisCount = overhaulAxisCount;
         this.overhaulEffort = overhaulEffort;
+        this.reuseOnNoChange = reuseOnNoChange;
     }
 
     /**
@@ -284,9 +287,17 @@ public class MatchOrchestrator {
      *
      * <p>{@code hmb.match.delta.enabled=false} 면 델타 자체가 항상 null 이라 "같다"를 판정할 근거가
      * 없다 → 항상 false(델타 도입 이전의 풀 패치 동작으로 통째 롤백).
+     *
+     * <p><b>트레이드오프</b>(독립검증 major-1, hero 소급 리뷰용): 재사용이 쓰는 A 컨텍스트는 덱만 안다 —
+     * {@code opponentRoster}·{@code conditions}·{@code relations}·{@code teamMorale} 이 없다(A 는 매치보다
+     * 먼저 만들어지므로 원리상 가질 수 없다). 그래서 이 분기는 <b>"이 경기에 대해 새로 말한 게 없는
+     * 유저"를 지시가 아예 없는 유저와 같이 취급</b>한다 — 후자는 이 변경 전에도 상대 비의존 재사용이었으니
+     * 새 성질이 아니라 <b>적용 범위 확대</b>다. 상대를 보고 쓴 문장(브리핑에서 덱 문장과 다르게 쓴 경우)은
+     * 델타가 생겨 그대로 B 패치이므로 상대 컨텍스트를 받는다. 품질을 우선해 되돌리려면 코드가 아니라
+     * {@code hmb.match.delta.reuse-on-no-change=false}.
      */
     private boolean isNoOpAgainstBase(Map<String, Object> delta, boolean tacticsPending) {
-        return deltaEnabled && delta == null && !tacticsPending;
+        return reuseOnNoChange && deltaEnabled && delta == null && !tacticsPending;
     }
 
     private boolean isNoOpAgainstBase(Map<String, Object> delta, JsonNode snapshot) {

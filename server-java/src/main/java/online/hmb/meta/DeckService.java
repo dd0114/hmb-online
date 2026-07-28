@@ -50,6 +50,14 @@ public class DeckService {
 
     // ── 조회 ─────────────────────────────────────────────────────────────
 
+    /**
+     * 활성 덱의 팀 문장(#253) — 덱이 없으면 {@code null}. 프리셋 적용처럼 "이 값을 유지할지"만
+     * 알면 되는 호출측이 덱 부재를 404 로 맞지 않게 하는 조회다.
+     */
+    public String activeTeamPromptOrNull(String userId) {
+        return findActiveDeck(userId).map(DeckRow::teamPrompt).orElse(null);
+    }
+
     public DeckResponse getActiveDeck(String userId) {
         DeckRow deck = findActiveDeck(userId)
                 .orElseThrow(() -> ApiException.notFound("활성 덱이 없습니다"));

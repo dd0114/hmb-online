@@ -140,8 +140,8 @@ export function MatchSnapshotDialog({ matchId, opponentName, createdAt, onClose 
             </ul>
           )}
 
-          {/* 서버 snapshotDeck 은 현재 teamPrompt 를 매치 스냅샷에 저장하지 않는다 → 로그→프리셋
-              경로에서는 사실상 항상 빈 값(저장 포맷이 확장되면 자동으로 표시되는 방어 분기). */}
+          {/* #253 이후 서버 DeckSnapshot 이 덱 팀 문장을 매치 스냅샷에 싣는다 → 여기서 실제로 보인다.
+              팀 문장이 없는 덱·이 변경 이전 매치는 필드가 생략되므로 그대로 미표시. */}
           {summary.teamPrompt && (
             <p className={styles.teamPrompt} data-testid="snapshot-team-prompt">
               “{summary.teamPrompt}”

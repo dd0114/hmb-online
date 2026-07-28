@@ -184,6 +184,39 @@ class DeckTeamPromptTest extends MatchTestBase {
         assertThat((String) getDeck(token).get("teamPrompt")).hasSize(500);
     }
 
+    /**
+     * 구 프리셋 적용이 팀 문장을 지우지 않는다(독립검증 minor-2).
+     *
+     * <p>{@code teamPrompt} 는 이번에 스냅샷에 들어간 필드라, 그전에 저장된 라이브 프리셋에는 <b>키 자체가
+     * 없다</b>. 그걸 "빈 값"으로 읽으면 구 프리셋을 적용하는 순간 방금 쓴 팀 지시가 사라진다 — #253 과
+     * 똑같은 종류의 조용한 유실을 프리셋 경로에 새로 만드는 셈이다. 키 없음 = 유지, 키 있음 = 그 값.
+     */
+    @Test
+    void applyingALegacyPresetKeepsTheTeamPrompt() {
+        String token = login("tp_preset");
+        putDeck(token, "지워지면 안 되는 팀 지시", HttpStatus.OK);
+
+        // 이 필드가 생기기 전에 저장된 프리셋을 그대로 재현한다(스냅샷에 teamPrompt 키 없음).
+        String userId = userIdOf("tp_preset");
+        StringBuilder starters = new StringBuilder();
+        starters.append("{\"playerId\":\"P001\",\"slotIndex\":0}");
+        for (int i = 2; i <= 11; i++) {
+            starters.append(String.format(",{\"playerId\":\"P%03d\",\"slotIndex\":%d}", i, i - 1));
+        }
+        String legacySnapshot = "{\"formation\":\"4-4-2\",\"starters\":[" + starters
+                + "],\"bench\":[{\"playerId\":\"P012\",\"slotIndex\":0}]}";
+        jdbcClient.sql("""
+                        INSERT INTO team_presets(id, user_id, slot_no, name, snapshot_json, updated_at)
+                        VALUES (?, ?, 1, '구프리셋', ?, '2026-01-01T00:00:00Z')
+                        """)
+                .params("preset_legacy_" + userId, userId, legacySnapshot)
+                .update();
+
+        assertThat(authPost("/api/presets/team/1/apply", token, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(getDeck(token).get("teamPrompt")).isEqualTo("지워지면 안 되는 팀 지시");
+    }
+
     // ── 4~5: A(베이스) 캐시 재료 (#215 정합) ────────────────────────────
 
     @Test

@@ -852,13 +852,15 @@ public class MatchService {
             throw subsInvalid("교체 후에도 GK가 최소 1명 필요합니다", Map.of("rule", "GK_REQUIRED"));
         }
 
-        String subsJson = toJson(subs);
-        // 전술 미첨부(null) = 손대지 않음 → COALESCE 로 기존 값 유지. 이 엔드포인트는 감독시간에
-        // 여러 번 불릴 수 있고(교체만 고치는 재제출 포함), 그때마다 전술이 null 로 덮이면 앞서 낸
-        // 후반 전술이 조용히 사라진다.
+        // 두 필드 모두 **미첨부 = 손대지 않음**(COALESCE), 명시적 값 = 그 값이 이긴다. 이 엔드포인트는
+        // 감독시간에 여러 번 불릴 수 있으므로(전술만 고치는 재제출 · 교체만 고치는 재제출) 한쪽만
+        // 보낸 호출이 다른 쪽을 조용히 지우면 안 된다 — 그게 #253 과 같은 종류의 유실이다.
+        // ⚠️ 빈 배열 `[]` 은 미첨부가 아니다: "교체를 전부 취소한다"는 명시적 의사라 그대로 저장된다.
+        String subsJson = substitutions == null ? null : toJson(subs);
         String h2Tactics = teamTactics == null || teamTactics.isNull() ? null : teamTactics.toString();
         txRunner.run(() -> jdbcClient.sql("""
-                        UPDATE matches SET subs_json = ?, h2_tactics_json = COALESCE(?, h2_tactics_json)
+                        UPDATE matches SET subs_json = COALESCE(?, subs_json),
+                                           h2_tactics_json = COALESCE(?, h2_tactics_json)
                         WHERE id = ? AND state IN ('FIRST_HALF', 'HALFTIME', 'H1_BREAK')
                         """)
                 .params(subsJson, h2Tactics, matchId)
