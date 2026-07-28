@@ -245,6 +245,44 @@ class AwayRaidTest extends MatchTestBase {
         assertThat(ghostRowCount()).isEqualTo(ghostsBefore);
     }
 
+    /**
+     * 성공한 원정 1회가 굽는 고스트는 <b>정확히 1행</b>이다(5R BL-1).
+     *
+     * <p>4R blocker 의 본질은 "루프가 너무 많이 감싸서 실패가 삼켜지고 후보마다 고스트가 구워진다"였다.
+     * 지금은 루프가 <b>상대를 고르는 일만</b> 하고 매치 생성은 루프 밖이라 구조적으로 막히는데,
+     * 그 구조를 되돌리는 변이(매치 생성을 try 안으로)를 잡으려면 <b>고스트 증가량</b>을 세야 한다 —
+     * 성공 경로에서도 "몇 명분을 구웠나"가 그 구조를 그대로 드러낸다.
+     */
+    @Test
+    void successfulRaidBakesExactlyOneGhost() {
+        List<String> fresh = new java.util.ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            setupUserWithDeck("aw_many_" + i);   // 후보를 여러 명 만든다
+            fresh.add(userIdOf("aw_many_" + i));
+        }
+        String attacker = setupUserWithDeck("aw_one_ghost");
+        String attackerId = userIdOf("aw_one_ghost");
+        // ⚠️ 후보를 **이 신규 6명으로 고정**한다. 이 클래스는 DB 를 공유해서, 이미 고스트가 구워진
+        // 옛 유저가 뽑히면 증가량이 0 이라 계약이 성립하지 않는다(내 초판이 그래서 흔들렸다).
+        String placeholders = String.join(",", java.util.Collections.nCopies(fresh.size(), "?"));
+        List<Object> keep = new java.util.ArrayList<>(fresh);
+        keep.add(attackerId);
+        jdbcClient.sql("UPDATE decks SET is_active = 0 WHERE user_id NOT IN (" + placeholders + ",?)")
+                .params(keep).update();
+        long before = ghostRowCount();
+        try {
+            assertThat(authPost("/api/away/matches", attacker, Map.of(), Map.class).getStatusCode())
+                    .isEqualTo(HttpStatus.CREATED);
+
+            assertThat(ghostRowCount() - before)
+                    .as("성공 1회에 고스트가 후보 수만큼 구워지면 루프가 너무 많이 감싼 것이다")
+                    .isEqualTo(1);
+        } finally {
+            jdbcClient.sql("UPDATE decks SET is_active = 1 WHERE user_id NOT IN (" + placeholders + ",?)")
+                    .params(keep).update();
+        }
+    }
+
     // ── AC3/AC4: 정산 — 리포트 + 양쪽 레이팅 ±10, 멱등 ────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -368,6 +406,28 @@ class AwayRaidTest extends MatchTestBase {
         assertThat((List<?>) unseen.getBody().get("reports")).isEmpty();
     }
 
+    /** "몇 팀과 붙었나"는 닉네임이 아니라 사람 기준이다 — 상대가 닉을 바꿔도 팀 수가 늘지 않는다(5R MIN-7). */
+    @SuppressWarnings("unchecked")
+    @Test
+    void opponentCountIsPerPersonNotPerNickname() {
+        String defenderToken = setupUserWithDeck("aw_def_nick");
+        String defenderId = userIdOf("aw_def_nick");
+        String attacker = setupUserWithDeck("aw_atk_nick");
+        String attackerId = userIdOf("aw_atk_nick");
+
+        driveAwayToFinishedAgainst(attacker, attackerId, defenderId);
+        // 같은 사람이 닉을 바꾼 뒤 다시 원정을 온다(리포트엔 그 시점 닉이 박제된다).
+        jdbcClient.sql("UPDATE users SET nickname = ? WHERE id = ?")
+                .params("aw_atk_nick_renamed", attackerId).update();
+        releaseActiveMatches();
+        driveAwayToFinishedAgainst(attacker, attackerId, defenderId);
+
+        ResponseEntity<Map> res = authGet("/api/me/away-reports", defenderToken, Map.class);
+        Map<String, Object> summary = (Map<String, Object>) res.getBody().get("summary");
+        assertThat(summary.get("matches")).isEqualTo(2);
+        assertThat(summary.get("opponents")).as("한 사람이 닉을 바꿨다고 두 팀이 되면 안 된다").isEqualTo(1);
+    }
+
     // ── AC6/AC7: 수비자는 관전 가능, 쓰기는 불가. 제3자는 아무것도 못 본다 ──────
 
     @SuppressWarnings("unchecked")
@@ -454,6 +514,15 @@ class AwayRaidTest extends MatchTestBase {
         assertThat(body.get("id")).isEqualTo(matchId);
         assertThat(body.get("mode")).isEqualTo("away");
         assertThat(body.get("ownerName")).isEqualTo("aw_atk5");
+        // 인접 동형 필드(스코어 쌍)는 키 집합으로 못 잡는다 — 값으로 대조한다(5R MIN-1).
+        Map<String, Object> stored = jdbcClient.sql(
+                        "SELECT score_home, score_away FROM matches WHERE id = ?")
+                .param(matchId)
+                .query((rs, n) -> Map.<String, Object>of(
+                        "home", rs.getInt("score_home"), "away", rs.getInt("score_away")))
+                .single();
+        assertThat(body.get("scoreHome")).isEqualTo(stored.get("home"));
+        assertThat(body.get("scoreAway")).isEqualTo(stored.get("away"));
 
         // 소유자 본인에게는 그대로 보인다(기존 기능 #98 무회귀).
         ResponseEntity<String> asOwner = authGet("/api/matches/" + matchId, attacker, String.class);

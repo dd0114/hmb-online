@@ -128,23 +128,31 @@ public class AwayService {
         }
         // 결정론 계약 밖(매칭 무작위) — BotService.pickRandom 과 같은 근거로 SecureRandom.
         java.util.Collections.shuffle(pool, secureRandom);
+
+        // ⚠️ 루프가 하는 일은 **상대를 고르는 것뿐**이다. 내 매치 생성은 루프가 끝난 뒤 밖에서 한다 —
+        // 안에 두면 덱이 아닌 실패(봇 조회·컨디션 계산·INSERT 경합)까지 catch 에 삼켜져 다시
+        // 404 NO_OPPONENT 으로 뒤집히고 후보마다 고스트가 구워진다(4R blocker 의 형태).
+        // 이걸 "정리"한다며 루프 안으로 되돌리지 마라 — 구조가 곧 방어다.
+        String chosen = null;
+        String ghostBotId = null;
         ApiException last = null;
         for (String candidate : pool) {
-            String ghostBotId;
             try {
-                // 삼키는 것은 **후보를 세울 수 없다**는 실패뿐이다. 그 다음 줄(내 매치 생성)의 실패는
-                // 내 문제이므로 그대로 올린다 — 남의 덱 사정으로 내 에러가 가려지면 안 된다.
                 ghostBotId = bakeGhost(candidate, nicknameOf(candidate));
+                chosen = candidate;
+                break;
             } catch (ApiException e) {
+                // 삼키는 것은 **그 후보를 세울 수 없다**는 실패뿐이다.
                 log.warn("away opponent candidate {} unusable ({}) — trying next", candidate, e.getMessage());
                 last = e;
-                continue;
             }
-            return matchService.createAwayMatch(attackerId, ghostBotId, candidate);
         }
-        throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT",
-                "원정 갈 상대가 아직 없습니다"
-                        + (last == null ? "" : " (마지막 후보 사유: " + last.getMessage() + ")"));
+        if (chosen == null) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT",
+                    "원정 갈 상대가 아직 없습니다"
+                            + (last == null ? "" : " (마지막 후보 사유: " + last.getMessage() + ")"));
+        }
+        return matchService.createAwayMatch(attackerId, ghostBotId, chosen);
     }
 
     private String nicknameOf(String userId) {
@@ -320,8 +328,10 @@ public class AwayService {
 
     // ── 리포트 조회 / 확인 ──────────────────────────────────────────────────
 
-    public record Report(String id, String matchId, String attackerName, int goalsFor, int goalsAgainst,
-                         String result, int ratingDelta, String createdAt, boolean seen) {
+    /** attackerId 는 집계 전용(닉 변경에도 "몇 팀"이 흔들리지 않게) — 화면은 attackerName 을 쓴다. */
+    public record Report(String id, String matchId, String attackerId, String attackerName,
+                         int goalsFor, int goalsAgainst, String result, int ratingDelta,
+                         String createdAt, boolean seen) {
     }
 
     /**
@@ -344,8 +354,8 @@ public class AwayService {
     public ReportsResponse reports(String userId, String status) {
         boolean unseenOnly = !"all".equalsIgnoreCase(status);
         List<Report> rows = jdbcClient.sql("""
-                        SELECT id, match_id, attacker_name, goals_for, goals_against, result,
-                               rating_delta, created_at, seen_at
+                        SELECT id, match_id, attacker_id, attacker_name, goals_for, goals_against,
+                               result, rating_delta, created_at, seen_at
                         FROM away_reports
                         WHERE defender_id = ? AND (? = 0 OR seen_at IS NULL)
                         ORDER BY created_at DESC
@@ -353,8 +363,8 @@ public class AwayService {
                         """)
                 .params(userId, unseenOnly ? 1 : 0, reportListLimit)
                 .query((rs, n) -> new Report(rs.getString("id"), rs.getString("match_id"),
-                        rs.getString("attacker_name"), rs.getInt("goals_for"),
-                        rs.getInt("goals_against"), rs.getString("result"),
+                        rs.getString("attacker_id"), rs.getString("attacker_name"),
+                        rs.getInt("goals_for"), rs.getInt("goals_against"), rs.getString("result"),
                         rs.getInt("rating_delta"), rs.getString("created_at"),
                         rs.getString("seen_at") != null))
                 .list();
@@ -371,7 +381,8 @@ public class AwayService {
         int goalsAgainst = 0;
         int ratingDelta = 0;
         for (Report r : rows) {
-            opponents.add(r.attackerName());
+            // ⚠️ 닉네임이 아니라 id 로 센다 — 상대가 닉을 바꾸면 같은 사람이 "2팀"이 된다(5R MIN-7).
+            opponents.add(r.attackerId());
             switch (r.result()) {
                 case "WIN" -> wins++;
                 case "LOSS" -> losses++;
