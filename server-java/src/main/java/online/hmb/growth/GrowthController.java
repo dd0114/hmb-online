@@ -17,8 +17,9 @@ import org.springframework.web.bind.annotation.RestController;
  * <ul>
  *   <li>GET  /api/growth/card/{playerId}   — CardEffective(스탯Lv·★·잠재 lines·caps·ovr·완성도)</li>
  *   <li>POST /api/growth/star              — 성★ 승급(중복 N → 스탯 천장 개방 + 잠재 티어 캡 상향)</li>
- *   <li>GET  /api/growth/dice              — DiceBalance {normal,cash}(페이지 로드 시 잔액 조회)</li>
- *   <li>POST /api/growth/dice              — 잠재 다이스 롤(NORMAL|CASH → 3줄 리롤 + 승급 판정)</li>
+ *   <li>POST /api/growth/dice              — 잠재 리롤(NORMAL|CASH → 3줄 리롤 + 승급 판정).
+ *       <b>#247 로 구매 단계가 사라졌다</b> — 재고를 깎지 않고 지갑에서 직접 결제한다.
+ *       그래서 잔액조회 {@code GET /api/growth/dice} 도 같이 은퇴했다(잔액이라는 게 없다).</li>
  *   <li>GET  /api/growth/report/{matchId}  — MatchGrowthReport(ResultPage 성장 리포트)</li>
  * </ul>
  */
@@ -53,11 +54,6 @@ public class GrowthController {
         // 같은 경기 안에서 후반만 스탯이 오른다.
         lockService.assertNotLocked(userId, "growth.star");
         return growthService.starUp(userId, requirePlayerId(body));
-    }
-
-    @GetMapping("/api/growth/dice")
-    public Map<String, Object> diceBalance(@RequestAttribute("userId") String userId) {
-        return growthService.diceBalance(userId);
     }
 
     @PostMapping("/api/growth/dice")

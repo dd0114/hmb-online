@@ -6,9 +6,10 @@ import { StatRadar } from "../common/StatRadar";
 import { GRADE_COLORS, GRADE_LABELS, type Grade } from "../common/grades";
 import { FullArtCard } from "../common/FullArtCard";
 import { ApiError } from "../api/client";
-import { useCardEffective, useDiceBalance, useDiceRoll, useStarUp } from "../api/growth-hooks";
+import { useCardEffective, useDiceRoll, useStarUp } from "../api/growth-hooks";
+import { useMe } from "../api/hooks";
+import { useAppConfigValue } from "../common/AppConfigContext";
 import {
-  INSUFFICIENT_DICE_CODE,
   INSUFFICIENT_MATERIALS_CODE,
   type PotentialTier,
   type Star,
@@ -30,8 +31,9 @@ import {
   type Position,
 } from "../growth/growth-config";
 import type { CatalogPlayer } from "../api/hooks";
-import { useCurrency } from "../common/Amount";
-import { CURRENCY_GEM } from "../common/currency";
+import { Amount, useCurrency } from "../common/Amount";
+import { balanceFor, CURRENCY_GEM, CURRENCY_POINT } from "../common/currency";
+import { persistSkipRollConfirm, rollConfirmSkipped } from "../growth/roll-confirm";
 import styles from "./CardGrowthDetail.module.css";
 
 const RING_R = 42;
@@ -76,12 +78,17 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   // 유상재화 아이콘도 서버 표기 메타에서 (#232) — 이모지를 코드에 박으면 표기 변경이 배포가 된다.
   const gemCurrency = useCurrency(CURRENCY_GEM);
   const { data: card, isLoading, isError } = useCardEffective(player.id);
+  const { data: me } = useMe();
+  const config = useAppConfigValue();
   const starUp = useStarUp();
   const diceRoll = useDiceRoll();
-  const { data: diceBalance } = useDiceBalance();
 
   const [message, setMessage] = useState<string | null>(null);
   const [rollingKind, setRollingKind] = useState<"NORMAL" | "CASH" | null>(null);
+  // #247 확인 단계: 이 상세를 연 뒤 **첫 롤에서만** 묻는다(+ '다시 묻지 않기'는 영구).
+  const [pendingRoll, setPendingRoll] = useState<"NORMAL" | "CASH" | null>(null);
+  const [confirmedOnce, setConfirmedOnce] = useState(false);
+  const [skipConfirm, setSkipConfirm] = useState(() => rollConfirmSkipped());
   const [tierUpOverlay, setTierUpOverlay] = useState<PotentialTier | null>(null);
   // GM7b: 성★ 승급 이펙트 — StarUpResult 자체를 들고 있어 오버레이가 승급된 star/해금 여부를 그대로 쓴다.
   const [starUpOverlay, setStarUpOverlay] = useState<StarUpResult | null>(null);
@@ -164,6 +171,28 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
   const starCost = starMaxed ? 0 : STAR_COPY_COST[nextStar as Exclude<Star, 1>];
   const starShort = !starMaxed && player.ownedCount < starCost;
 
+  /**
+   * #247 리롤 비용 — **서버 config 가 유일한 출처**(`shop.dice`). 여기에 상수를 두면 서버가
+   * 가격을 바꿀 때 화면이 조용히 거짓말을 한다(그게 #213 의 형태였다). 미러를 만들지 마라.
+   * 키 이름(`dice`)은 계약 안정성을 위해 유지했다 — 의미만 '구매가'에서 '롤 비용'으로 바뀌었다.
+   */
+  const dicePrice = config?.shop?.dice ?? null;
+  const walletPoints = me?.wallet.points ?? 0;
+  const walletGems = me?.wallet.gems ?? 0;
+
+  function priceOf(kind: "NORMAL" | "CASH") {
+    return kind === "NORMAL" ? dicePrice!.normal : dicePrice!.cash;
+  }
+
+  /** 그 결제 재화의 잔액. 모르는 재화면 잠그지 않는다(서버 판정에 맡긴다 — balanceFor 주석). */
+  function balanceOfKind(kind: "NORMAL" | "CASH"): number {
+    return balanceFor(priceOf(kind).currency, { points: walletPoints, gems: walletGems })
+      ?? Number.POSITIVE_INFINITY;
+  }
+
+  const normalShort = !!dicePrice && balanceOfKind("NORMAL") < dicePrice.normal.cost;
+  const cashShort = !!dicePrice && balanceOfKind("CASH") < dicePrice.cash.cost;
+
   function handleStarUp() {
     setMessage(null);
     starUp.mutate(player.id, {
@@ -178,6 +207,19 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
         }
       },
     });
+  }
+
+  /**
+   * 롤 요청 진입점 (#247) — 확인이 필요한 상태면 다이얼로그를 띄우고, 아니면 바로 굴린다.
+   * "필요한 상태" = 이 상세에서 아직 한 번도 확인하지 않았고 `다시 묻지 않기`도 아닐 때.
+   */
+  function requestRoll(kind: "NORMAL" | "CASH") {
+    if (skipConfirm || confirmedOnce) {
+      handleRoll(kind);
+      return;
+    }
+    setMessage(null);
+    setPendingRoll(kind);
   }
 
   function handleRoll(kind: "NORMAL" | "CASH") {
@@ -197,11 +239,9 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
         },
         onError: (err) => {
           setRollingKind(null);
-          if (err instanceof ApiError && err.code === INSUFFICIENT_DICE_CODE) {
-            setMessage("다이스가 부족합니다");
-          } else {
-            setMessage(err instanceof ApiError ? err.message : "다이스 롤에 실패했습니다");
-          }
+          // #247: 부족은 재화 부족이다. 문구는 **서버가 표기 메타로 만든 것**을 그대로 쓴다
+          // (#232) — 클라가 "골드가 부족합니다"를 지어내면 표기 변경이 다시 배포가 된다.
+          setMessage(err instanceof ApiError ? err.message : "잠재 재설정에 실패했습니다");
         },
       },
     );
@@ -495,31 +535,107 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
               </div>
             </div>
 
+            {/*
+              #247: 구매 단계가 사라졌다 — 이 버튼이 곧 결제다. 가격·재화는 서버 config 에서만
+              온다(`shop.dice`, #232 — 미러 상수를 만들면 #213 이 재발한다). 잔액 게이팅은
+              **결제 재화 기준**이고, 모르는 재화면 잠그지 않고 서버 판정에 맡긴다.
+            */}
             <div className={styles.diceRow}>
               <button
                 type="button"
                 className={styles.diceBtn}
                 data-testid="growth-dice-normal"
-                onClick={() => handleRoll("NORMAL")}
-                disabled={busy || (diceBalance?.normal ?? 0) < 1}
+                onClick={() => requestRoll("NORMAL")}
+                disabled={busy || !dicePrice || normalShort}
               >
-                노말 다이스 롤
-                <span className={styles.costChip}>보유 {diceBalance?.normal ?? 0} · −1</span>
+                잠재 재설정
+                {dicePrice && (
+                  <span className={styles.costChip} data-testid="growth-dice-normal-price">
+                    <Amount code={dicePrice.normal.currency} value={dicePrice.normal.cost} />
+                  </span>
+                )}
               </button>
               <button
                 type="button"
                 className={styles.diceBtn}
                 data-testid="growth-dice-cash"
-                onClick={() => handleRoll("CASH")}
-                disabled={busy || (diceBalance?.cash ?? 0) < 1}
+                onClick={() => requestRoll("CASH")}
+                disabled={busy || !dicePrice || cashShort}
               >
-                캐시 다이스 롤 <span aria-hidden="true">{gemCurrency.icon}</span>
-                <span className={styles.costChip} data-testid="growth-dice-cash-owned">
-                  보유 {diceBalance?.cash ?? 0} · −1
-                </span>
+                고급 재설정 <span aria-hidden="true">{gemCurrency.icon}</span>
+                {dicePrice && (
+                  <span className={styles.costChip} data-testid="growth-dice-cash-price">
+                    <Amount code={dicePrice.cash.currency} value={dicePrice.cash.cost} />
+                  </span>
+                )}
               </button>
             </div>
+            <p className={styles.walletLine} data-testid="growth-wallet">
+              보유 <Amount code={CURRENCY_POINT} value={walletPoints} icon /> ·{" "}
+              <Amount code={CURRENCY_GEM} value={walletGems} icon />
+            </p>
+            <p className={styles.rollHint}>고급 재설정 = 상위 옵션 확률 ↑ (승급 판정 없음)</p>
           </>
+        )}
+
+        {/*
+          hero 확정(#247): 탭 한 번에 재화가 나가므로 **첫 롤에서만** 확인한다. 매번 물으면
+          천장까지 25~84회를 눌러야 하는 흐름에서 방해가 되고, 아예 안 물으면 오조작으로
+          한 판 값이 날아간다. `다시 묻지 않기` 는 localStorage 에 남아 다음 세션에도 유지된다.
+        */}
+        {pendingRoll && dicePrice && (
+          <div className={styles.confirmOverlay} data-testid="growth-roll-confirm">
+            <div className={styles.confirmBox} role="dialog" aria-modal="true" aria-label="잠재 재설정 확인">
+              <p className={styles.confirmTitle}>잠재를 다시 굴릴까요?</p>
+              <p className={styles.confirmCost}>
+                <Amount
+                  code={priceOf(pendingRoll).currency}
+                  value={priceOf(pendingRoll).cost}
+                  icon
+                />{" "}
+                차감 · 남은 잔액{" "}
+                <b data-testid="growth-roll-confirm-after">
+                  <Amount
+                    code={priceOf(pendingRoll).currency}
+                    value={Math.max(0, balanceOfKind(pendingRoll) - priceOf(pendingRoll).cost)}
+                  />
+                </b>
+              </p>
+              <label className={styles.confirmSkip}>
+                <input
+                  type="checkbox"
+                  data-testid="growth-roll-confirm-skip"
+                  checked={skipConfirm}
+                  onChange={(e) => setSkipConfirm(e.target.checked)}
+                />
+                다시 묻지 않기
+              </label>
+              <div className={styles.confirmActions}>
+                <button
+                  type="button"
+                  className={styles.confirmCancel}
+                  data-testid="growth-roll-confirm-cancel"
+                  onClick={() => setPendingRoll(null)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className={styles.confirmOk}
+                  data-testid="growth-roll-confirm-ok"
+                  onClick={() => {
+                    const kind = pendingRoll;
+                    setPendingRoll(null);
+                    if (skipConfirm) persistSkipRollConfirm();
+                    setConfirmedOnce(true);
+                    handleRoll(kind);
+                  }}
+                >
+                  재설정
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {tierUpOverlay && (

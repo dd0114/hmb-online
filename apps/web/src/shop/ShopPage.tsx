@@ -10,7 +10,7 @@ import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { GachaReveal } from "./GachaReveal";
 import { TopupPanel } from "./TopupPanel";
-import { DicePanel } from "./DicePanel";
+import { GemTopupPanel } from "./GemTopupPanel";
 import { gachaButtonState } from "./shop-logic";
 import type { ShopTab } from "./topup-logic";
 import styles from "./ShopPage.module.css";
@@ -105,17 +105,7 @@ export function ShopPage() {
         >
           뽑기
         </button>
-        <button
-          type="button"
-          role="tab"
-          className={styles.tab}
-          data-testid="shop-tab-dice"
-          aria-selected={tab === "dice"}
-          data-active={tab === "dice"}
-          onClick={() => setTab("dice")}
-        >
-          다이스
-        </button>
+        {/* #247: [다이스] 탭 제거 — 잠재 리롤은 강화 상세에서 지갑으로 바로 결제한다(구매 단계 없음). */}
         {topupEnabled && (
           <button
             type="button"
@@ -132,9 +122,11 @@ export function ShopPage() {
       </div>
 
       {tab === "topup" && topupEnabled ? (
-        <TopupPanel />
-      ) : tab === "dice" ? (
-        <DicePanel points={points} gems={gems} />
+        <>
+          <TopupPanel />
+          {/* #247: DicePanel 이 사라지며 유상재화 충전(목업)이 여기로 왔다 — 게이팅 플래그는 원래 같다. */}
+          <GemTopupPanel points={points} gems={gems} />
+        </>
       ) : (
         <>
       <div className={styles.pulls}>

@@ -1563,13 +1563,18 @@ components:
         dice:
           type: [object, "null"]
           required: [normal, cash]
+          description: >-
+            **잠재 리롤 1회 비용** (#247). 예전엔 상점에서 다이스를 사서 재고로 쌓는 가격이었으나
+            hero 확정(2026-07-29)으로 구매 단계가 사라졌다 — 이제 강화탭의 리롤 버튼이 이 값으로
+            지갑에서 직접 결제한다(`POST /api/growth/dice`). **키·값은 그대로**라 economy override
+            재작성이 필요 없다. `POST /api/shop/dice`(구매)는 은퇴했다.
           properties:
             normal:
               $ref: "#/components/schemas/Price"
-              description: 노말 다이스 — 무료재화 결제
+              description: 잠재 재설정(승급 판정 있음) — 무료재화 결제
             cash:
               $ref: "#/components/schemas/Price"
-              description: 캐시 다이스 — 유상재화 결제
+              description: 고급 재설정(상위 옵션 가중, 승급 판정 없음) — 유상재화 결제
         gemTopup:
           type: [object, "null"]
           required: [enabled, packs]

@@ -70,7 +70,12 @@ class FlywayMigrationTest {
             "away_offers",
             "away_streaks",
             "away_seasons",
-            "away_season_results"
+            "away_season_results",
+            // V25 다이스 구매 제거(1) — #247: 소각한 재고를 박제(보상 요구 시 근거·롤백 여유).
+            //   user_dice 는 V10 선례대로 **드롭하지 않고** 코드 참조만 끊었다 → 위 목록에 그대로 남는다.
+            //   ⚠️ 번호는 V21 로 만들었다가 #245(원정 V21/V22)·#253/#254(V23/V24)와 충돌해 **V25 로
+            //   리넘버**했다. 아직 배포되지 않은 마이그레이션이라 리넘버가 안전하다.
+            "dice_burned"
     );
 
     @Test
