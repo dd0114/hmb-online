@@ -1,16 +1,22 @@
 package online.hmb.away;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import online.hmb.common.ApiException;
 import online.hmb.common.Hashes;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
+import online.hmb.growth.GrowthService;
 import online.hmb.match.MatchService;
+import online.hmb.match.PromptContextBuilder;
 import online.hmb.meta.DeckService;
 import online.hmb.meta.DeckSnapshot;
 import org.slf4j.Logger;
@@ -53,6 +59,9 @@ public class AwayService {
     private final DeckService deckService;
     private final DeckSnapshot deckSnapshot;
     private final RatingService ratingService;
+    private final GrowthService growthService;
+    private final PromptContextBuilder contextBuilder;
+    private final ObjectMapper objectMapper;
     private final TxRunner txRunner;
     private final SecureRandom secureRandom = new SecureRandom();
 
@@ -66,6 +75,9 @@ public class AwayService {
                        DeckService deckService,
                        DeckSnapshot deckSnapshot,
                        RatingService ratingService,
+                       GrowthService growthService,
+                       PromptContextBuilder contextBuilder,
+                       ObjectMapper objectMapper,
                        TxRunner txRunner,
                        @Value("${hmb.away.rating.win}") int ratingWin,
                        @Value("${hmb.away.rating.draw}") int ratingDraw,
@@ -76,6 +88,9 @@ public class AwayService {
         this.deckService = deckService;
         this.deckSnapshot = deckSnapshot;
         this.ratingService = ratingService;
+        this.growthService = growthService;
+        this.contextBuilder = contextBuilder;
+        this.objectMapper = objectMapper;
         this.txRunner = txRunner;
         this.ratingWin = ratingWin;
         this.ratingDraw = ratingDraw;
@@ -93,27 +108,46 @@ public class AwayService {
      * 영원히 빈 화면이 된다. 조용한 폴백은 기능을 없애는 것과 같다.
      */
     public MatchService.MatchRow start(String attackerId, String defenderId) {
-        String target = defenderId == null ? pickDefender(attackerId) : defenderId;
-        if (target.equals(attackerId)) {
-            throw ApiException.validation("자기 자신에게 원정을 갈 수 없습니다");
+        if (defenderId != null) {
+            if (defenderId.equals(attackerId)) {
+                throw ApiException.validation("자기 자신에게 원정을 갈 수 없습니다");
+            }
+            return startAgainst(attackerId, defenderId);
         }
-        String nickname = jdbcClient.sql("SELECT nickname FROM users WHERE id = ?")
-                .param(target).query(String.class).optional()
-                .orElseThrow(() -> ApiException.notFound("상대를 찾을 수 없습니다"));
-
-        String ghostBotId = bakeGhost(target, nickname);
-        return matchService.createAwayMatch(attackerId, ghostBotId, target);
+        // ⚠️ 후보를 **여러 개** 시도한다. 한 명만 뽑아 그 덱이 검증에 걸리면(예: 트레이드로 넘긴
+        // 선수가 deck_slots 에 남아 DECK_INVALID) 공격자에게 **남의 덱 오류**가 자기 덱 오류로
+        // 보고된다("덱이 유효하지 않습니다"). 후보가 남아 있는 한 그건 '상대 없음'도 아니다.
+        List<String> pool = new ArrayList<>(candidates(attackerId));
+        if (pool.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT", "원정 갈 상대가 아직 없습니다");
+        }
+        // 결정론 계약 밖(매칭 무작위) — BotService.pickRandom 과 같은 근거로 SecureRandom.
+        java.util.Collections.shuffle(pool, secureRandom);
+        ApiException last = null;
+        for (String candidate : pool) {
+            try {
+                return startAgainst(attackerId, candidate);
+            } catch (ApiException e) {
+                // 그 후보를 세울 수 없다(덱 검증 실패 등) — 다음 후보로. 사유는 남긴다.
+                log.warn("away opponent candidate {} unusable ({}) — trying next", candidate, e.getMessage());
+                last = e;
+            }
+        }
+        throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT",
+                "원정 갈 상대가 아직 없습니다"
+                        + (last == null ? "" : " (마지막 후보 사유: " + last.getMessage() + ")"));
     }
 
-    /**
-     * 상대 후보 = <b>활성 덱을 가진 다른 유저</b>. 무작위 선택은 게임 결정론 계약 밖이라
-     * SecureRandom 을 쓴다(BotService.pickRandom 과 같은 근거).
-     *
-     * <p>덱이 유효하지 않은 후보는 굽는 단계에서 걸러지므로 여기서는 후보를 <b>여러 개</b> 뽑아
-     * 순서대로 시도한다 — 한 명 뽑아 실패하면 "상대 없음"으로 오인된다.
-     */
-    private String pickDefender(String attackerId) {
-        List<String> candidates = jdbcClient.sql("""
+    private MatchService.MatchRow startAgainst(String attackerId, String defenderId) {
+        String nickname = jdbcClient.sql("SELECT nickname FROM users WHERE id = ?")
+                .param(defenderId).query(String.class).optional()
+                .orElseThrow(() -> ApiException.notFound("상대를 찾을 수 없습니다"));
+        String ghostBotId = bakeGhost(defenderId, nickname);
+        return matchService.createAwayMatch(attackerId, ghostBotId, defenderId);
+    }
+
+    private List<String> candidates(String attackerId) {
+        return jdbcClient.sql("""
                         SELECT u.id FROM users u
                         JOIN decks d ON d.user_id = u.id AND d.is_active = 1
                         WHERE u.id <> ?
@@ -122,11 +156,6 @@ public class AwayService {
                 .param(attackerId)
                 .query(String.class)
                 .list();
-        if (candidates.isEmpty()) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT",
-                    "원정 갈 상대가 아직 없습니다");
-        }
-        return candidates.get(secureRandom.nextInt(candidates.size()));
     }
 
     /**
@@ -141,7 +170,7 @@ public class AwayService {
         // 상대로 세우기 전에 규칙 검증 — 깨진 덱(선발 부족 등)으로 시뮬을 태우면 매치가 GEN 에서 죽는다.
         deckService.validate(defenderId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
         // 팀 전술은 덱이 아니라 브리핑에서 정해지는 값이라(수비자는 브리핑에 없다) null 이다.
-        String json = deckSnapshot.json(deck, null);
+        String json = withFrozenAttributes(defenderId, deckSnapshot.json(deck, null));
         String botId = GHOST_PREFIX + defenderId + "_" + Hashes.sha256Hex(json).substring(0, 12);
 
         jdbcClient.sql("""
@@ -153,8 +182,53 @@ public class AwayService {
                         nickname + " 감독의 실제 팀입니다. 선수별 지시가 그대로 적용됩니다.", json)
                 .update();
         // ⚠️ 갱신하는 것은 name(닉네임 변경 반영)뿐이다. deck_json 을 덮으면 이 행을 쓰고 있는
-        //    진행 중 매치의 상대가 하프 사이에 바뀐다 — id 가 덱 해시인 이유가 이것이다.
+        //    진행 중 매치의 상대가 하프 사이에 바뀐다 — id 가 내용 해시인 이유가 이것이다.
         return botId;
+    }
+
+    /**
+     * 고스트 덱에 <b>수비자의 성장·강화 유효스탯을 박아 넣는다</b>(#245 MAJ-3).
+     *
+     * <p>왜: 봇 로스터는 {@code players} 카탈로그 원본 능력치로 선다(MatchOrchestrator.teamRoster 의
+     * {@code growthUserId=null}). 그대로 두면 "상대는 실유저 팀"이라면서 <b>그 유저가 키운 스탯이 빠진
+     * 약화판</b>이 서고, 그 결과로 수비자가 −10 을 먹는다. 레이팅이 경쟁 축인 이상 이건 계산이 틀린 것이다.
+     *
+     * <p>왜 <b>박아서 얼리나</b>(시뮬 시점에 조회하지 않고): 수비자는 이 매치에 대해 잠기지 않는다
+     * (#217 의 growth 잠금은 <b>자기</b> 매치에만 걸린다). 시뮬 때 현재 스탯을 읽으면 수비자가 전·후반
+     * 사이에 강화해 후반 스탯만 올릴 수 있고 — #217 이 잠금으로 막는 바로 그 버그다 — 재생·재현도
+     * 깨진다. 값이 덱 JSON 에 들어가면 <b>해시가 그 값까지 덮으므로</b> 강화는 "다음 고스트"를 만들 뿐
+     * 진행 중인 매치를 건드리지 못한다(공격자 스냅샷과 같은 규율).
+     */
+    private String withFrozenAttributes(String defenderId, String snapshotJson) {
+        try {
+            ObjectNode root = (ObjectNode) objectMapper.readTree(snapshotJson);
+            for (String group : List.of("starters", "bench")) {
+                for (JsonNode slot : root.path(group)) {
+                    if (!slot.isObject() || !slot.path("playerId").isTextual()) {
+                        continue;
+                    }
+                    String playerId = slot.path("playerId").asText();
+                    Map<String, Object> base = contextBuilder.catalogAttributes(playerId);
+                    if (base == null) {
+                        continue;   // 카탈로그에 없는 선수 — 시뮬이 어차피 거른다
+                    }
+                    ((ObjectNode) slot).set("attributes", objectMapper.valueToTree(
+                            growthService.effectiveAttributes(defenderId, playerId, base)));
+                }
+            }
+            return root.toString();
+        } catch (Exception e) {
+            // 유효스탯을 못 실어도 원정 자체를 막지는 않는다(원본 능력치로 선다) — 다만 조용히 넘어가지
+            // 않는다. 이 경고가 잦으면 수비자가 계속 약체로 서고 있다는 뜻이다.
+            log.warn("ghost effective attributes unavailable for {} — falling back to catalog stats",
+                    defenderId, e);
+            return snapshotJson;
+        }
+    }
+
+    /** 이 매치에서 원정을 당한 쪽(있으면). 시뮬이 고스트 로스터를 조립할 때 쓴다. */
+    public java.util.Optional<String> defenderOf(String matchId) {
+        return findChallenge(matchId).map(Challenge::defenderId);
     }
 
     // ── 정산 (FINISHED CAS 통과 후 1회) ─────────────────────────────────────
@@ -320,6 +394,11 @@ public class AwayService {
                             """)
                     .params(Instant.now().toString(), userId)
                     .update();
+        }
+        if (ids.size() > reportListLimit) {
+            // 클라가 보낼 수 있는 목록은 화면에 그린 것뿐이다(= 최대 한 창). 그보다 길면 요청이
+            // 잘못된 것이지 수행할 일이 아니다 — 상한이 없으면 길이만큼 UPDATE 가 그대로 실행된다.
+            throw ApiException.validation("한 번에 확인할 수 있는 리포트 수를 넘었습니다");
         }
         int acked = 0;
         String now = Instant.now().toString();

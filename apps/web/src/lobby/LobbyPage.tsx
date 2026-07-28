@@ -250,7 +250,10 @@ function ModeModal({ onClose }: { onClose: () => void }) {
             onClick={startAwayMatch}
           >
             <span>{startAway.isPending ? "원정 준비 중…" : "원정"}</span>
-            <span className={styles.modeHint}>실제 유저 팀 · 승 +10 / 패 −10</span>
+            {/* ⚠️ 증감폭을 여기 적지 않는다 — 값의 SoT 는 서버 config(hmb.away.rating.*)이고
+                클라가 상수를 베끼면 운영에서 값을 바꿨을 때 화면만 거짓말한다(#213 과 같은 형태).
+                실제 증감은 결과 리포트가 서버 값으로 보여준다. */}
+            <span className={styles.modeHint}>실제 유저 팀 · 승패로 레이팅 변동</span>
           </button>
         </li>
       </ul>

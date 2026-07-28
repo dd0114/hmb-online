@@ -179,6 +179,16 @@ public class PromptContextBuilder {
         return roster;
     }
 
+    /** 카탈로그 원본 능력치(#245: 고스트에 수비자 유효스탯을 얼려 넣을 때의 기준값). 없으면 null. */
+    public Map<String, Object> catalogAttributes(String playerId) {
+        return jdbcClient.sql("SELECT attributes_json FROM players WHERE id = ?")
+                .param(playerId)
+                .query(String.class)
+                .optional()
+                .map(this::parseAttributes)
+                .orElse(null);
+    }
+
     private RosterEntry playerRow(String playerId, int slotIndex) {
         return jdbcClient.sql("SELECT id, name, position, attributes_json FROM players WHERE id = ?")
                 .param(playerId)

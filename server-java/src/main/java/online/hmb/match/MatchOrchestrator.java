@@ -755,8 +755,14 @@ public class MatchOrchestrator {
         // 봇팀은 컨디션 미적용(빈 맵) — 원본 능력치.
         Map<String, Double> conditions = matchService.conditionsOf(match);
         // 유저팀만 성장·강화 유효스탯 주입(#179 §2·§6) — 봇팀은 원본. 성장 0 카드는 원본과 동일(무회귀).
-        Map<String, Object> userTeam = teamRoster(nickname, userRoster, conditions, match.userId());
-        Map<String, Object> botTeam = teamRoster(bot.name(), botRoster, Map.of(), null);
+        Map<String, Object> userTeam = teamRoster(nickname, userRoster, conditions, match.userId(),
+                Map.of());
+        // #245: 원정 고스트는 덱 JSON 에 **얼려둔** 수비자 유효스탯을 쓴다(AwayService.withFrozenAttributes).
+        // 시뮬 시점에 조회하지 않는 이유가 핵심이다 — 수비자는 이 매치에 잠기지 않으므로 조회식이면
+        // 전·후반 사이 강화가 후반 스탯만 올린다(#217 이 잠금으로 막는 그 버그). 시드 봇·리그 봇팀엔
+        // 이 필드가 없어 그대로 원본이다(무회귀).
+        Map<String, Object> botTeam = teamRoster(bot.name(), botRoster, Map.of(), null,
+                frozenAttributesOf(matchService.readJson(bot.deckJson())));
 
         // 엔진 home = 픽스처 home_team(어웨이 리그경기면 유저가 away 사이드). homeInput/awayInput 도
         // 같은 사이드 라벨로 enqueue 되므로 selectData.home 팀과 정합.
@@ -767,11 +773,30 @@ public class MatchOrchestrator {
         return selectData;
     }
 
+    /** 덱 JSON 의 slot.attributes(있으면) → playerId 별 얼린 능력치. 없으면 빈 맵(=원본 사용). */
+    private Map<String, Map<String, Object>> frozenAttributesOf(JsonNode deckJson) {
+        Map<String, Map<String, Object>> frozen = new LinkedHashMap<>();
+        for (String group : List.of("starters", "bench")) {
+            for (JsonNode slot : deckJson.path(group)) {
+                if (slot.isObject() && slot.path("playerId").isTextual() && slot.path("attributes").isObject()) {
+                    Map<String, Object> attrs = new LinkedHashMap<>();
+                    slot.get("attributes").fields()
+                            .forEachRemaining(e -> attrs.put(e.getKey(),
+                                    e.getValue().isNumber() ? e.getValue().numberValue() : e.getValue().asText()));
+                    frozen.put(slot.path("playerId").asText(), attrs);
+                }
+            }
+        }
+        return frozen;
+    }
+
     /**
      * @param growthUserId 유저팀이면 소유자 userId(성장·강화 유효스탯 주입), 봇팀이면 null(원본 유지).
+     * @param frozenAttributes 덱에 얼려둔 능력치(원정 고스트) — 있으면 카탈로그·성장 조회보다 우선한다.
      */
     private Map<String, Object> teamRoster(String name, List<PromptContextBuilder.RosterEntry> roster,
-                                           Map<String, Double> conditions, String growthUserId) {
+                                           Map<String, Double> conditions, String growthUserId,
+                                           Map<String, Map<String, Object>> frozenAttributes) {
         Map<String, Object> team = new LinkedHashMap<>();
         team.put("name", name);
         team.put("players", roster.stream().map(r -> {
@@ -780,9 +805,12 @@ public class MatchOrchestrator {
             card.put("name", r.name());
             card.put("position", r.position());
             // 성장/강화 유효스탯 → 그 위에 컨디션 배율(주입 순서: 성장 먼저, 컨디션 나중 — §6 통합지점).
-            Map<String, Object> attrs = growthUserId == null
-                    ? r.attributes()
-                    : growthService.effectiveAttributes(growthUserId, r.playerId(), r.attributes());
+            Map<String, Object> frozen = frozenAttributes.get(r.playerId());
+            Map<String, Object> attrs = frozen != null
+                    ? frozen
+                    : growthUserId == null
+                            ? r.attributes()
+                            : growthService.effectiveAttributes(growthUserId, r.playerId(), r.attributes());
             Double condition = conditions.get(r.playerId());
             card.put("attributes", condition == null ? attrs : scaleAttributes(attrs, condition));
             return card;

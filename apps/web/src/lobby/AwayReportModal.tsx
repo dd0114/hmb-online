@@ -33,11 +33,20 @@ export function AwayReportModal({
   const ack = useAckAwayReports();
   const { summary, reports } = data;
 
+  /**
+   * ⚠️ **화면에 그린 것만 확인 처리한다**(독립검증 MAJ-1). ids 를 비우면 서버는 미확인 **전부**를
+   * seen 으로 바꾸는데, 목록은 서버 `report-list-limit`(20) 로 잘려 있다 — 21번째부터는 **한 번도
+   * 보여주지 않은 채 영구 소멸**하고 헤드라인은 "20팀"이라고 거짓말한다. 잘린 만큼은 남겨서
+   * 다음 진입에 다시 뜨게 한다.
+   */
   function confirm() {
     // ack 결과를 기다리지 않는다 — 닫기는 사용자의 것이고, 멱등이라 재시도가 안전하다.
-    ack.mutate(undefined);
+    ack.mutate(reports.map((r) => r.id));
     onClose();
   }
+
+  // 이번 창에 못 실은 나머지. 침묵하면 유저는 이게 전부인 줄 안다.
+  const remaining = Math.max(0, (data.unseen ?? reports.length) - reports.length);
 
   return (
     <Modal
@@ -106,6 +115,12 @@ export function AwayReportModal({
           </li>
         ))}
       </ul>
+
+      {remaining > 0 && (
+        <p className={styles.remaining} data-testid="away-report-remaining">
+          외 {remaining}경기는 다음에 이어서 보여드립니다
+        </p>
+      )}
 
       <button
         type="button"

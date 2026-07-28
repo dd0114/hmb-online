@@ -39,12 +39,19 @@ public class AwayController {
      * 원정 매치 생성. 진행 중 매치가 있으면 409 {@code MATCH_IN_PROGRESS}(#217) — 새 매치를 만드는
      * 경로는 전부 같은 게이트를 지난다. 게이트를 빠뜨리면 원정이 잠금의 우회로가 된다.
      */
+    /**
+     * 원정 매치 생성. 상대는 <b>서버가 고른다</b>.
+     *
+     * <p>⚠️ 상대 <b>지목</b>은 열지 않는다(#245 독립검증 MAJ-4). 레이팅이 ±10 으로 움직이는 축이 된 이상
+     * 클라가 상대를 고를 수 있으면 부계정을 반복 지목해 레이팅을 무한 생성할 수 있다. 지목 원정은
+     * 쿨다운·중복 제한·상대 동의 같은 규칙을 정한 뒤에 여는 기능이지, 파라미터 하나로 여는 게 아니다.
+     * (서비스 계층 {@code AwayService#start(String, String)} 의 지목 인자는 테스트 시임이다.)
+     */
     @PostMapping("/api/away/matches")
     public ResponseEntity<MatchService.MatchDetail> start(@RequestAttribute("userId") String userId,
                                                           @RequestBody(required = false) StartRequest request) {
         lockService.assertCanCreateMatch(userId);
-        MatchService.MatchRow row = awayService.start(userId,
-                request == null ? null : request.defenderId());
+        MatchService.MatchRow row = awayService.start(userId, null);
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 
@@ -61,8 +68,8 @@ public class AwayController {
         return new AckResponse(awayService.ack(userId, request == null ? null : request.ids()));
     }
 
-    /** defenderId 는 선택 — 없으면 무작위 상대(현행 UX). 지목 원정은 이 필드로 확장된다. */
-    public record StartRequest(String defenderId) {
+    /** 현재 바디는 비어 있다(상대는 서버가 고른다). 지목 원정을 열 땐 규칙과 함께 필드를 추가한다. */
+    public record StartRequest() {
     }
 
     public record AckRequest(List<String> ids) {

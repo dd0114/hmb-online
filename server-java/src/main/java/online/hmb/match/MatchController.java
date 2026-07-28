@@ -66,7 +66,8 @@ public class MatchController {
         // 이유는 그대로다 — 볼 자격이 없는 요청이 상태를 건드리면 안 된다.
         matchService.getViewable(userId, id);
         clockService.advanceDueForRead(id);
-        return matchService.toDetail(matchService.getViewable(userId, id));
+        // toDetailFor: 관전자(원정 수비자)에게는 상대의 덱 스냅샷(=선수별 지시·팀 전술)을 떼고 준다.
+        return matchService.toDetailFor(userId, matchService.getViewable(userId, id));
     }
 
     @PostMapping("/api/matches/{id}/prompts")

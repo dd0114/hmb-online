@@ -452,6 +452,28 @@ public class MatchService {
                                String ownerName) {
     }
 
+    /**
+     * <b>관전자용</b> MatchDetail — 소유자가 아니면 {@code userDeckSnapshot} 을 뗀다(#245 BL-1).
+     *
+     * <p>왜 필요한가: {@link #getViewable} 이 원정 수비자에게 GET 을 열었는데, 그 스냅샷에는
+     * <b>공격자의 선수별 promptText 전량 + teamTactics + teamPrompt</b> 가 들어 있다. 반대 방향은
+     * {@link #buildOpponent} 가 {@code hasPrompt} 불리언으로만 주므로, 그대로 두면 <b>수비자만</b>
+     * 상대의 전술 비밀을 읽는 일방적 스카우팅이 된다 — 이 게임의 차별점이 선수별 자연어 지시인 이상
+     * (루트 CLAUDE.md §1) 레이팅이 걸린 대전에서 이건 정보 유출이다.
+     *
+     * <p>즉 권한 확대는 <b>"읽기냐 쓰기냐"만이 아니라 "무엇을 읽느냐"</b>도 같이 좁혀야 한다.
+     */
+    public MatchDetail toDetailFor(String viewerId, MatchRow row) {
+        MatchDetail detail = toDetail(row);
+        if (row.userId().equals(viewerId)) {
+            return detail;
+        }
+        return new MatchDetail(detail.id(), detail.state(), detail.failReason(), detail.opponent(),
+                detail.scoreH1Home(), detail.scoreH1Away(), detail.scoreHome(), detail.scoreAway(),
+                detail.result(), detail.createdAt(), detail.finishedAt(), detail.conditions(),
+                detail.mode(), detail.leagueFixtureId(), null, detail.clock(), detail.ownerName());
+    }
+
     public MatchDetail toDetail(MatchRow row) {
         // Phase2 additive(MatchDetailPhase2Fields): conditions/mode/leagueFixtureId — 시계 UI·리그 뱃지용.
         // + userDeckSnapshot(#98 요구 2): 이 매치에 쓴 덱 스냅샷을 읽어서 노출만(저장 로직 변경 0).

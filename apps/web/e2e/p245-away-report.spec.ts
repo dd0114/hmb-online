@@ -25,9 +25,13 @@ interface MockState {
   /** 서버가 들고 있는 미확인 리포트(=팝업 대상). ack 이 이걸 비운다. */
   unseen: Report[];
   ackCalls: number;
+  /** 마지막 ack 이 실제로 무엇을 지목했는지 — "전부 지우기"로 퇴행하면 여기서 잡힌다. */
+  ackedIds: string[] | null;
   awayStarts: number;
   /** 원정 상대 유무 — 없으면 서버가 404 NO_OPPONENT. */
   hasOpponent: boolean;
+  /** 서버 report-list-limit 흉내. */
+  limit: number;
   locked: boolean;
   rating: number;
 }
@@ -68,8 +72,10 @@ async function mockApi(page: Page, over: Partial<MockState> = {}): Promise<MockS
   const st: MockState = {
     unseen: [],
     ackCalls: 0,
+    ackedIds: null,
     awayStarts: 0,
     hasOpponent: true,
+    limit: 20,
     locked: false,
     rating: -10,
     ...over,
@@ -105,21 +111,27 @@ async function mockApi(page: Page, over: Partial<MockState> = {}): Promise<MockS
   );
   await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json([])));
 
-  await page.route((url) => url.pathname === "/api/me/away-reports", (route) =>
-    route.fulfill(
+  await page.route((url) => url.pathname === "/api/me/away-reports", (route) => {
+    // 서버는 report-list-limit 로 자른다 — 목록·요약은 그 창, unseen 은 **전체** 건수다.
+    const shown = st.unseen.slice(0, st.limit);
+    return route.fulfill(
       json({
-        reports: st.unseen,
-        summary: summarize(st.unseen),
+        reports: shown,
+        summary: summarize(shown),
         rating: st.rating,
         unseen: st.unseen.length,
       }),
-    ),
-  );
-  await page.route((url) => url.pathname === "/api/me/away-reports/ack", (route) => {
+    );
+  });
+  await page.route((url) => url.pathname === "/api/me/away-reports/ack", async (route) => {
     st.ackCalls++;
-    const acked = st.unseen.length;
-    st.unseen = []; // 서버가 seen_at 을 박았다 — 다음 조회부터 팝업 대상이 아니다
-    return route.fulfill(json({ acked }));
+    const body = route.request().postDataJSON() as { ids?: string[] } | null;
+    st.ackedIds = body?.ids ?? null;
+    // 서버 의미 그대로: ids 가 있으면 그것만, 없으면 미확인 전부.
+    const target = body?.ids;
+    const before = st.unseen.length;
+    st.unseen = target ? st.unseen.filter((r) => !target.includes(r.id)) : [];
+    return route.fulfill(json({ acked: before - st.unseen.length }));
   });
 
   await page.route((url) => url.pathname === "/api/away/matches", (route) => {
@@ -225,6 +237,39 @@ test.describe("#245 멱등 — 한 번만 보여준다", () => {
   });
 });
 
+test.describe("#245 MAJ-1 — 안 보여준 리포트를 소진하지 않는다", () => {
+  test("창에 잘린 리포트는 남기고, 남았다는 사실을 말한다", async ({ page }) => {
+    const st = await mockApi(page, {
+      unseen: [...THREE_RAIDS, { ...THREE_RAIDS[0]!, id: "R4", matchId: "M4" }, { ...THREE_RAIDS[1]!, id: "R5", matchId: "M5" }],
+      limit: 3, // 서버가 3건만 실어 보냈다(실서버 기본은 20)
+    });
+
+    await page.goto("/lobby");
+    await expect(page.getByTestId("away-report-item")).toHaveCount(3);
+    await expect(page.getByTestId("away-report-remaining")).toContainText("외 2경기");
+
+    await page.getByTestId("away-report-confirm").click();
+
+    // 확인은 **화면에 그린 3건만** 지목해야 한다. ids 없이 보내면 서버가 5건 전부를 소진하고
+    // 나머지 2건은 한 번도 보이지 않은 채 사라진다.
+    expect(st.ackedIds).toEqual(["R1", "R2", "R3"]);
+    expect(st.unseen.map((r) => r.id)).toEqual(["R4", "R5"]);
+  });
+});
+
+test.describe("#245 요구 6 — 리포트에서 그 경기를 본다", () => {
+  test("[경기 보기]가 그 매치로 가고, 홈 이름이 공격자로 뜬다(내 닉이 아니라)", async ({ page }) => {
+    await mockApi(page, { unseen: [THREE_RAIDS[0]!] });
+
+    await page.goto("/lobby");
+    await page.getByTestId("away-report-item").first().click();
+
+    await expect(page).toHaveURL(/\/match\/M1$/);
+    // ownerName 을 무시하고 me.nickname 을 홈에 박으면 관전 화면이 양 팀을 바꿔 부른다.
+    await expect(page.getByText("FC 한밤중").first()).toBeVisible();
+  });
+});
+
 test.describe("#245 요구 2 — 레이팅", () => {
   test("헤더에 레이팅이 전적과 함께 보인다(지갑 P 와 다른 축)", async ({ page }) => {
     await mockApi(page, { unseen: [], rating: -20 });
@@ -243,6 +288,8 @@ test.describe("#245 원정 모드", () => {
     await page.goto("/lobby");
     await page.getByTestId("play-cta").click();
     await expect(page.getByTestId("mode-away")).toBeVisible();
+    // ⚠️ 증감폭(±10)은 서버 config 소유다 — 버튼이 숫자를 베끼면 값을 바꿨을 때 화면만 거짓말한다.
+    await expect(page.getByTestId("mode-away")).not.toContainText("10");
     await page.getByTestId("mode-away").click();
 
     await expect(page).toHaveURL(/\/match\/M_AWAY$/);

@@ -125,6 +125,30 @@
   ⚠️ **GET 3개**(`/api/matches/{id}`, `/halves/{half}/log`, `/result`)에만 쓴다. 쓰기는 전부 `getOwned`
   그대로 — 관전 권한이 조작 권한으로 새면 남의 경기를 남이 끝낼 수 있다. 권한 근거인 리포트 행은
   FINISHED 정산에서만 생기므로 **수비자가 여는 매치는 언제나 이미 끝난 경기**다.
+- ⚠️ **권한 확대는 "읽기냐 쓰기냐"만이 아니라 "무엇을 읽느냐"도 좁혀야 한다**(독립검증 BL-1).
+  `getViewable` 만 넣었을 때 응답의 `userDeckSnapshot` 이 **공격자의 선수별 지시·팀 전술을 통째로**
+  넘겼다 — 반대 방향은 `buildOpponent` 가 `hasPrompt` 불리언뿐이라 **수비자만** 상대 전술을 읽는
+  일방적 스카우팅이 됐다. 프롬프트가 이 게임의 차별점인 이상(루트 §1) 레이팅이 걸린 대전에서 이건
+  정보 유출이다. → `toDetailFor(viewerId, row)` 가 비소유자에게 스냅샷을 뗀다.
+  계약 = `AwayRaidTest.watchingDoesNotLeakTheAttackersPrompts`.
+- **고스트는 수비자의 성장·강화 유효스탯을 "얼려서" 싣는다**(`withFrozenAttributes` → 덱 JSON 의
+  `slot.attributes`, 시뮬은 `MatchOrchestrator.frozenAttributesOf` 로 그 값을 우선 사용).
+  - **왜 싣나**: 봇 로스터는 카탈로그 원본으로 선다(`growthUserId=null`). 그대로 두면 "상대는 실유저
+    팀"이라면서 **그 유저가 키운 게 빠진 약화판**이 서고, 그 결과로 수비자가 −10 을 먹는다.
+  - **왜 조회가 아니라 박제인가**: 수비자는 이 매치에 잠기지 않는다(#217 growth 잠금은 **자기** 매치
+    한정). 시뮬 때 현재 스탯을 읽으면 전·후반 사이 강화가 후반 스탯만 올린다 — #217 이 잠금으로 막는
+    바로 그 버그이고 재현도 깨진다. 값이 덱에 들어가면 **해시가 그 값까지 덮으므로** 강화는 "다음
+    고스트"를 만들 뿐이다. 시드 봇·리그 봇팀엔 이 필드가 없어 그대로 원본(무회귀).
+- ⚠️ **상대 지목은 공개 API 에 없다**(독립검증 MAJ-4). ±10 이 경쟁 축인 이상 클라가 상대를 고르면
+  부계정을 반복 지목해 레이팅을 무한 생성할 수 있다. 지목 원정은 쿨다운·중복 제한·상대 동의를 정한
+  뒤에 여는 기능이다. `AwayService#start(attacker, defenderId)` 의 지목 인자는 **테스트 시임**이다.
+- **후보는 여러 명 시도한다**(`start` 의 shuffle + 루프). 한 명만 뽑으면 그 사람의 덱이 검증에 걸릴 때
+  (트레이드로 넘긴 선수가 `deck_slots` 에 남는 등) 공격자에게 **남의 덱 오류**가 "덱이 유효하지
+  않습니다"로 표시된다.
+- ⚠️ **계약이라 부르려면 변이체로 확인해라**(독립검증 BL-2). 초판의 "고스트 박제" 테스트는 `PUT /api/deck`
+  만 호출해 **어차피 참인 명제**를 검증했고(박제를 통째로 제거해도 통과), "정산 멱등"은 `clockSweeper`
+  가 FINISHED(`phase_ends_at IS NULL`)를 고르지 않아 **단언이 no-op** 였다(멱등 제거해도 전 스위트
+  통과). 지금은 재-bake 경로와 `settle` 재호출을 각각 실제로 태운다.
 - ⚠️ **`/api/away/*` 와 `/api/me/away-reports*` 는 openapi 에 아직 없다** — `docs/**` 가 이 세션의
   owned-glob 밖이라 매니저 조율 대기(`/api/growth/*` 와 같은 상태). 그때까지 **계약 SoT 는 이 문서**다:
   - `POST /api/away/matches` `{defenderId?}` → 201 MatchDetail · 404 `NO_OPPONENT` · 409 `MATCH_IN_PROGRESS`
