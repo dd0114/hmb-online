@@ -20,6 +20,63 @@ quick tunnel 은 URL 이 바뀌지만 web 재배포 한 줄로 흡수(§3). 상�
 
 ---
 
+## 0.5 배포 전 체크리스트 (매 배포 · 5분)
+
+> 전부 **조용히 실패하는** 것들만 모았다 — 안 걸리면 에러 없이 "된 것처럼" 배포되고, 며칠 뒤
+> 엉뚱한 증상으로 되돌아온다. 실제로 다 한 번씩 겪은 항목이다.
+
+| # | 확인 | 명령 / 기준 | 안 하면 |
+|---|---|---|---|
+| 1 | **새 Flyway 마이그레이션 있나** | `git diff --name-only <배포중인SHA>..<새SHA> -- server-java/src/main/resources/db/migration/` | 백업 없이 스키마가 바뀐다. 있으면 **§8 전체**(백업→검증→리허설→롤백 이미지 고정) 필수 |
+| 2 | **`.sql.conf`(`executeInTransaction=false`) 딸린 마이그레이션인가** | 위 목록에 `*.sql.conf` 가 있나 | 비원자 마이그레이션이라 중간에 죽으면 테이블이 사라진 DB 로 남는다(V8·V19 가 그랬다) |
+| 3 | **발행물 버전 핀이 두 곳 다 올라갔나** | `grep -n "players-file\|economy-file" server-java/src/main/resources/application.yml` **와** `grep -n "HMB_DATA_" server-java/Dockerfile` 가 **같은 파일명**인가 | ENV 가 yml 을 덮으므로 한쪽만 올리면 **구 시드가 조용히 로드**된다(v8 에서 신규 LEGEND 8종이 통째로 안 실릴 뻔했다) |
+| 4 | **economy override 가 볼륨에 남아 있나** | `curl -s -H "Authorization: Bearer <admin>" localhost:18080/api/admin/economy` → `overrideFilePresent` | ⚠️ **아래 §0.6** — 새 economy 발행물이 조용히 무시된다 |
+| 5 | **web 이 빌드는 되나** | `npm run build --workspace=@hmb/web` (루트 `npm test`·`typecheck` 는 apps/web 타입을 안 본다) | 백엔드만 전환되고 web 이 옛 버전으로 남는다(v8.01 에서 실제로 배포가 중간에 멈췄다) |
+| 6 | **executor 도 새 코드로 재기동했나** | `ps -o lstart= -p <executor pid>` 가 배포 시각 이후인가 | executor 는 **도커가 아니라 호스트 프로세스**라 배포 스크립트가 안 건드린다 — 옛 코드로 계속 돈다(§2-3) |
+
+## 0.6 ⚠️ economy 를 바꾸는 배포 — override 를 먼저 처리하라
+
+`hmb.data.economy-override-file`(기본 **`/var/lib/hmb/economy.override.json`**, DB 볼륨)은 **부분 병합이
+아니라 문서 통째 교체**다. `EconomyService` 는 이 파일이 **존재하고 파싱되면 그것만** 읽고 이미지에
+구워진 발행물(`economy.v3.json`, 다음 배포의 `economy.v4…`)은 **쳐다보지 않는다**.
+
+→ **그래서 economy 발행물을 바꾸는 배포는 에러 없이 무효가 된다.** 로그도 `Loaded economy … from
+/var/lib/hmb/economy.override.json` 이라 정상처럼 보인다.
+
+```bash
+# 1) 배포 전: override 가 있는지 본다 (있으면 반드시 처리하고 넘어간다)
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin/economy
+#    → {"source":"OVERRIDE"|"BAKED", "overrideFilePresent":true|false, "effectivePath":"…"}
+
+# 2-A) 새 발행물을 쓰겠다 → override 제거 (무배포, 즉시 BAKED 복귀)
+curl -s -X DELETE -H "Authorization: Bearer $ADMIN_TOKEN" \
+     -H 'Content-Type: application/json' -d '{"reason":"<배포명> 새 economy 발행물 적용"}' \
+     http://localhost:18080/api/admin/economy/override
+
+# 2-B) 운영 조정을 유지해야 한다 → **새 발행물 기준으로 override 를 다시 만든다**
+#      (옛 발행물 복사본에 조정을 얹은 파일이면 새 발행물의 변경이 전부 사라진다)
+docker exec hmb-java sh -c 'cat /app/data/players/economy.v4.json' > /tmp/econ.new.json
+#      ↑ 여기에 운영 조정(예: initialGems)만 다시 얹어서 배치 → reload
+docker cp /tmp/econ.new.json hmb-java:/var/lib/hmb/.economy.override.json.tmp
+docker exec --user root hmb-java sh -c \
+  'chown 10001:999 /var/lib/hmb/.economy.override.json.tmp && \
+   mv /var/lib/hmb/.economy.override.json.tmp /var/lib/hmb/economy.override.json'
+curl -s -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H 'Content-Type: application/json' \
+     -d '{"reason":"<배포명> 새 발행물 기준 override 재작성"}' \
+     http://localhost:18080/api/admin/economy/reload
+
+# 3) 배포 후 확인 — 의도한 쪽이 실렸는지 source 로 본다(값이 아니라 출처가 답이다)
+curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin/economy
+```
+
+- 파일은 **앱과 같은 uid(10001:999)** 로, **temp→mv 원자 교체**로 놓는다. 소유권을 틀리면 이후 운영
+  API 가 그 파일을 다시 쓰지 못한다.
+- 리로드는 **사유가 필수**고 성공·실패 모두 `admin_ops_audit`(V18)에 남는다 — `GET /api/admin/economy/history`.
+- 현재 적용 중인 조정이 무엇인지는 **`docs/deploy-log.md` 의 [운영 조치] 항목**이 SoT다
+  (2026-07-28 가입 젬 6,000→12,000 이 그 예).
+
+---
+
 ## 1. 상태 확인 (제일 자주 쓰는 것)
 
 ```bash
