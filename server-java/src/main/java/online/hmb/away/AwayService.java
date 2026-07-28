@@ -152,7 +152,13 @@ public class AwayService {
             }
             // hero E2: 고르는 건 되지만 **제시된 것 중에서만**. 이 한 줄이 "2택"과 "지목"을 가른다.
             assertOffered(attackerId, defenderId);
-            return startAgainst(attackerId, defenderId);
+            MatchService.MatchRow row = startAgainst(attackerId, defenderId);
+            // ⚠️ **제시는 소모된다**(MAJ-7) — 남겨두면 한 목록으로 TTL 동안 같은 상대를 반복 수락할 수
+            // 있고, 승패로 레이팅이 벌어져 밴드를 벗어나도 계속 고를 수 있다(밴드 방어의 두 번째 입구).
+            // 단 **매치가 실제로 만들어진 뒤**에 지운다 — 먼저 지우면 그 뒤 단계가 실패했을 때
+            // (상대 덱이 방금 깨졌다든지) 유저가 다른 후보를 고를 길까지 사라진다(MIN-5).
+            consumeOffer(attackerId);
+            return row;
         }
         // ⚠️ 이 경로도 **밴드를 쓴다**(독립검증 MAJ-1). 예전엔 여기만 전체 풀에서 뽑아서, 바디 없이
         // POST 하면 레이팅 10만짜리 상대가 걸렸다 — 밴드 매칭이 담합 방어의 근거인데 그 근거에
@@ -195,6 +201,10 @@ public class AwayService {
             pool = candidatesInBand(attackerId, myRating, Long.MAX_VALUE / 4);
         }
         return pool;
+    }
+
+    private void consumeOffer(String attackerId) {
+        jdbcClient.sql("DELETE FROM away_offers WHERE user_id = ?").param(attackerId).update();
     }
 
     private String nicknameOf(String userId) {
@@ -306,11 +316,7 @@ public class AwayService {
             JsonNode arr = objectMapper.readTree(offer.candidates());
             for (JsonNode id : arr) {
                 if (defenderId.equals(id.asText())) {
-                    // ⚠️ **제시는 소모된다**(독립검증 MAJ-7). 남겨두면 한 번 받은 목록으로 TTL 동안
-                    // 같은 상대를 반복 수락할 수 있고, 그 사이 승패로 레이팅이 벌어져 밴드를 벗어나도
-                    // 계속 고를 수 있다 = 밴드 방어의 두 번째 입구. 한 제시 = 한 경기다.
-                    jdbcClient.sql("DELETE FROM away_offers WHERE user_id = ?").param(attackerId).update();
-                    return;
+                    return;   // 소모는 매치가 실제로 만들어진 뒤에 한다(아래 consumeOffer)
                 }
             }
         } catch (Exception e) {

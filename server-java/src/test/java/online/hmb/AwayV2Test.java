@@ -334,6 +334,164 @@ class AwayV2Test extends MatchTestBase {
         assertThat(points(topId)).as("같은 시즌을 다시 닫아도 보상은 한 번이다").isEqualTo(afterFirst);
     }
 
+    /**
+     * <b>아무도 안 논 주는 아무것도 지급하지 않는다.</b>
+     *
+     * <p>밀린 시즌 정산이 이 설계의 존재 이유인데(서버가 꺼져 있어도 보상이 사라지지 않게), 바로 그
+     * 경로에서 금액이 틀렸다 — 참가 판정에 <b>상한</b>이 없어 창이 과거인 시즌을 닫을 때 그 이후에
+     * 생긴 원장까지 참가로 잡혔다. 실측으로 1판이 20만 포인트를 발행했다(독립검증 BLK-1).
+     */
+    @Test
+    void backlogSeasonsPayNothingForWeeksNobodyPlayed() {
+        setupUserWithDeck("v2_backlog_def");
+        String defenderId = userIdOf("v2_backlog_def");
+        setupUserWithDeck("v2_backlog_atk");
+        String attackerId = userIdOf("v2_backlog_atk");
+        settleWin(attackerId, defenderId, "M_BL1");        // 딱 한 판
+        long before = points(attackerId);
+
+        // 그 한 판을 첫 시즌 창(-28d~-21d) 안으로 밀어 넣는다.
+        jdbcClient.sql("UPDATE away_reports SET created_at = datetime('now', '-25 days') WHERE match_id = 'M_BL1'")
+                .update();
+        // 시즌 1 이 3주 전에 끝난 것으로 만든다 → 스윕이 밀린 주를 순서대로 민다.
+        jdbcClient.sql("""
+                        UPDATE away_seasons
+                        SET started_at = datetime('now', '-28 days'), ends_at = datetime('now', '-21 days')
+                        WHERE state = 'ACTIVE'
+                        """)
+                .update();
+        int firstSeason = seasonService.current().seasonNo();
+        assertThat(seasonService.sweepDueSeasons()).isGreaterThan(1);   // 여러 주가 밀렸다
+
+        // 경기가 있었던 첫 시즌에만 결과가 남는다.
+        long seasonsWithResults = jdbcClient.sql(
+                        "SELECT COUNT(DISTINCT season_no) FROM away_season_results WHERE user_id = ?")
+                .param(attackerId).query(Long.class).single();
+        assertThat(seasonsWithResults)
+                .as("아무도 안 논 주에도 순위 보상이 나가면 포인트가 무한 발행된다")
+                .isEqualTo(1);
+
+        // 지급도 한 주치뿐.
+        long paid = points(attackerId) - before;
+        int reward = jdbcClient.sql(
+                        "SELECT reward_points FROM away_season_results WHERE user_id = ? AND season_no = ?")
+                .params(attackerId, firstSeason).query(Integer.class).single();
+        assertThat(paid).isEqualTo(reward);
+    }
+
+    /**
+     * <b>무승부만 한 유저도 시즌에 남는다.</b> 참가를 "레이팅이 움직였는가"로 물으면 무승부는
+     * 원장 행이 없어 통째로 사라진다 — 참가상도 스냅샷도 히스토리도 0(독립검증 MAJ-A 실측).
+     */
+    @Test
+    void drawOnlyParticipantStillCountsForTheSeason() {
+        setupUserWithDeck("v2_drawonly_def");
+        String defenderId = userIdOf("v2_drawonly_def");
+        setupUserWithDeck("v2_drawonly_atk");
+        String attackerId = userIdOf("v2_drawonly_atk");
+
+        seedChallenge(attackerId, defenderId, "M_DO1");
+        awayService.settle("M_DO1", attackerId, "DRAW", 1, 1);
+        // 무승부라 레이팅 원장은 비어 있다 — 그래도 경기는 있었다.
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM rating_ledger WHERE ref_id = 'M_DO1'")
+                .query(Long.class).single()).isZero();
+
+        long before = points(attackerId);
+        expireSeason();
+        seasonService.sweepDueSeasons();
+
+        assertThat(jdbcClient.sql(
+                        "SELECT COUNT(*) FROM away_season_results WHERE user_id IN (?, ?)")
+                .params(attackerId, defenderId).query(Long.class).single())
+                .as("비기기만 한 유저가 시즌에서 사라지면 안 된다(양쪽 다)")
+                .isEqualTo(2);
+        assertThat(points(attackerId) - before).as("참가상은 나가야 한다").isPositive();
+    }
+
+    /** 바디 없는 원정 생성도 **밴드**를 쓴다 — 여기만 전체 풀을 쓰면 담합 방어의 근거가 무너진다. */
+    @Test
+    void bodylessStartAlsoRespectsTheBand() {
+        String attacker = setupUserWithDeck("v2_body_atk");
+        String attackerId = userIdOf("v2_body_atk");
+        setRating(attackerId, 0);
+        setupUserWithDeck("v2_body_near");
+        setRating(userIdOf("v2_body_near"), 20);
+        setupUserWithDeck("v2_body_far");
+        setRating(userIdOf("v2_body_far"), 100000);
+        // ⚠️ 후보 풀을 **이 셋으로 좁힌다**. 안 좁히면 다른 테스트가 만든 유저가 수십 명 섞여
+        // 먼 상대가 뽑힐 확률이 낮아지고, 밴드를 없애는 변이가 그냥 통과한다(초판이 그랬다).
+        jdbcClient.sql("UPDATE decks SET is_active = 0 WHERE user_id NOT IN (?, ?, ?)")
+                .params(attackerId, userIdOf("v2_body_near"), userIdOf("v2_body_far")).update();
+        try {
+            for (int i = 0; i < 8; i++) {
+                releaseActiveMatches();
+                ResponseEntity<Map> res = authPost("/api/away/matches", attacker, Map.of(), Map.class);
+                assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+                String defender = jdbcClient.sql("SELECT defender_id FROM away_challenges WHERE match_id = ?")
+                        .param((String) res.getBody().get("id")).query(String.class).single();
+                assertThat(defender)
+                        .as("레이팅 10만짜리가 걸리면 밴드가 우회됐다는 뜻이다 (시도 %d)", i + 1)
+                        .isNotEqualTo(userIdOf("v2_body_far"));
+            }
+        } finally {
+            jdbcClient.sql("UPDATE decks SET is_active = 1 WHERE user_id NOT IN (?, ?, ?)")
+                    .params(attackerId, userIdOf("v2_body_near"), userIdOf("v2_body_far")).update();
+            releaseActiveMatches();
+        }
+    }
+
+    /** 제시는 **세울 수 있는 팀만** — 2택은 폴백이 없어 고르는 순간 남의 덱 오류가 내 오류로 뜬다. */
+    @Test
+    void brokenDeckCandidatesAreNotOffered() {
+        setupUserWithDeck("v2_broken_cand");
+        String brokenId = userIdOf("v2_broken_cand");
+        setupUserWithDeck("v2_ok_cand");
+        String attacker = setupUserWithDeck("v2_pick_atk");
+        String attackerId = userIdOf("v2_pick_atk");
+        jdbcClient.sql("UPDATE decks SET is_active = 0 WHERE user_id NOT IN (?, ?, ?)")
+                .params(brokenId, userIdOf("v2_ok_cand"), attackerId).update();
+        jdbcClient.sql("DELETE FROM deck_slots WHERE deck_id IN (SELECT id FROM decks WHERE user_id = ?)")
+                .param(brokenId).update();
+        try {
+            for (int i = 0; i < 5; i++) {
+                assertThat(awayService.offerCandidates(attackerId))
+                        .as("덱이 깨진 상대를 제시하면 유저가 고르는 순간 자기 덱 오류로 보인다")
+                        .noneMatch(c -> c.userId().equals(brokenId));
+            }
+        } finally {
+            jdbcClient.sql("UPDATE decks SET is_active = 1 WHERE user_id NOT IN (?, ?, ?)")
+                    .params(brokenId, userIdOf("v2_ok_cand"), attackerId).update();
+        }
+        assertThat(attacker).isNotNull();
+    }
+
+    /** 다음 시즌은 **직전 종료 시각**부터 — "지금"부터 열면 밀린 주가 통째로 사라진다. */
+    @Test
+    void nextSeasonStartsWhereThePreviousEnded() {
+        jdbcClient.sql("""
+                        UPDATE away_seasons
+                        SET started_at = datetime('now', '-14 days'), ends_at = datetime('now', '-7 days')
+                        WHERE state = 'ACTIVE'
+                        """)
+                .update();
+        String closedEnd = jdbcClient.sql("SELECT ends_at FROM away_seasons WHERE state = 'ACTIVE'")
+                .query(String.class).single();
+
+        int closedNo = seasonService.current().seasonNo();
+        seasonService.sweepDueSeasons();
+
+        String nextStart = jdbcClient.sql("SELECT started_at FROM away_seasons WHERE season_no = ?")
+                .param(closedNo + 1).query(String.class).single();
+        // 두 값의 포맷이 다를 수 있으므로(마이그레이션은 ISO, 테스트는 SQLite) 정규화해 비교한다.
+        String normalizedNext = jdbcClient.sql("SELECT datetime(?)").param(nextStart)
+                .query(String.class).single();
+        String normalizedClosed = jdbcClient.sql("SELECT datetime(?)").param(closedEnd)
+                .query(String.class).single();
+        assertThat(normalizedNext)
+                .as("이어 붙지 않으면 서버가 꺼져 있던 주가 사라진다")
+                .isEqualTo(normalizedClosed);
+    }
+
     // ── 헬퍼 ────────────────────────────────────────────────────────────
 
     /**
@@ -343,8 +501,16 @@ class AwayV2Test extends MatchTestBase {
      * 포맷으로 과거로 민다 — 서비스가 그 값도 읽을 수 있어야 한다.
      */
     private void expireSeason() {
+        // 정산은 시즌 **창을 잘라** 참가자를 본다 → 경기가 창 안에 있어야 한다. 테스트가 만든 원정은
+        // "방금"이므로 창보다 뒤에 있게 된다 — 경기를 과거로 밀어 넣고 창을 그 뒤로 닫는다.
         jdbcClient.sql("""
-                        UPDATE away_seasons SET ends_at = datetime('now', '-1 hour')
+                        UPDATE away_reports SET created_at = datetime('now', '-2 hours')
+                        WHERE datetime(created_at) > datetime('now', '-2 hours')
+                        """)
+                .update();
+        jdbcClient.sql("""
+                        UPDATE away_seasons
+                        SET started_at = datetime('now', '-1 day'), ends_at = datetime('now', '-1 hour')
                         WHERE state = 'ACTIVE'
                         """)
                 .update();

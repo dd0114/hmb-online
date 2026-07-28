@@ -171,26 +171,33 @@ public class AwaySeasonService {
         txRunner.run(() -> {
             record Standing(String userId, int rating, int bestStreak) {
             }
-            // 대상 = **이번 시즌에 실제로 원정한 유저**. "한 번이라도 한 적 있는"으로 잡으면
-            // rating_ledger 가 시즌 마감에 지워지지 않으므로, 한 번 하고 그만둔 계정이 **매주 영원히**
-            // 참가상을 받고 아무도 안 논 주에도 1~3위 보상이 나간다(독립검증 MAJ-2).
+            // 대상 = **이 시즌 창 안에서 끝난 원정에 참여한 사람**(공격자·수비자 양쪽).
             //
-            // ⚠️ 시각 비교를 **문자열로 하지 마라**. ISO 는 소수초가 붙으면(`...00.123Z`) 안 붙은 값
-            // (`...00Z`)보다 **작게** 정렬된다('.' < 'Z') — 같은 초에 들어온 원정이 조용히 빠진다.
-            // datetime() 으로 정규화해서 비교한다.
+            // ⚠️ 판정 출처가 핵심이다. 예전엔 `rating_ledger` 존재로 봤는데 그게 두 결함을 동시에 낳았다:
+            //   ① **상한이 없어서** 밀린 시즌(창이 과거)을 닫을 때 그 이후에 생긴 원장까지 참가로 잡혀
+            //      **아무도 안 논 주에도 1~3위 보상**이 나갔다(실측: 1판으로 20만 포인트 발행).
+            //   ② **무승부는 원장 행을 안 남기므로**(delta 0) 비기기만 한 유저가 시즌에서 통째로
+            //      사라졌다 — 참가상도 스냅샷도 히스토리도 0.
+            // 둘 다 "레이팅이 움직였는가"로 "원정을 했는가"를 대신 물어서 생겼다. 이제 원정 자체
+            // (`away_reports`, 정산마다 정확히 1행)를 창으로 잘라서 본다.
             List<Standing> standings = jdbcClient.sql("""
-                            SELECT r.user_id AS user_id, r.rating AS rating,
-                                   COALESCE(s.best_streak, 0) AS best_streak
-                            FROM user_ratings r
-                            LEFT JOIN away_streaks s ON s.user_id = r.user_id
-                            WHERE EXISTS (
-                                SELECT 1 FROM rating_ledger l
-                                WHERE l.user_id = r.user_id
-                                  AND datetime(l.created_at) >= datetime(?)
-                            )
-                            ORDER BY r.rating DESC, r.user_id ASC
+                            SELECT p.user_id AS user_id,
+                                   COALESCE(r.rating, 0) AS rating,
+                                   COALESCE(st.best_streak, 0) AS best_streak
+                            FROM (
+                                SELECT defender_id AS user_id FROM away_reports
+                                 WHERE datetime(created_at) >= datetime(?)
+                                   AND datetime(created_at) <  datetime(?)
+                                UNION
+                                SELECT attacker_id AS user_id FROM away_reports
+                                 WHERE datetime(created_at) >= datetime(?)
+                                   AND datetime(created_at) <  datetime(?)
+                            ) p
+                            LEFT JOIN user_ratings r ON r.user_id = p.user_id
+                            LEFT JOIN away_streaks st ON st.user_id = p.user_id
+                            ORDER BY rating DESC, p.user_id ASC
                             """)
-                    .param(season.startedAt())
+                    .params(season.startedAt(), season.endsAt(), season.startedAt(), season.endsAt())
                     .query((rs, n) -> new Standing(rs.getString("user_id"), rs.getInt("rating"),
                             rs.getInt("best_streak")))
                     .list();
