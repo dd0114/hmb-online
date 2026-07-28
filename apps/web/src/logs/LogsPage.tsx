@@ -296,7 +296,9 @@ function Leaderboard({ data }: { data: RankingsResponse }) {
   const myId = data.me?.userId;
   return (
     <section className={styles.card}>
-      <h3 className={styles.cardTitle}>리더보드</h3>
+      <h3 className={styles.cardTitle}>
+        리더보드 <span className={styles.cardHint}>레이팅 순</span>
+      </h3>
       <ul className={styles.leaderboard} data-testid="leaderboard">
         {data.leaderboard.map((e) => {
           const isMe = e.userId === myId;
@@ -309,6 +311,13 @@ function Leaderboard({ data }: { data: RankingsResponse }) {
             >
               <span className={styles.lbRank}>{e.rank}</span>
               <span className={styles.lbName}>{e.nickname}</span>
+              {/* 정렬 기준이 레이팅이므로 승수보다 먼저 읽히는 자리에 둔다 — 기준과 표시가
+                  어긋나면 "왜 승수 적은 사람이 위에 있지?"가 된다. */}
+              {e.rating !== undefined && (
+                <span className={styles.lbRating} data-testid="lb-rating">
+                  {e.rating}
+                </span>
+              )}
               <span className={styles.lbWins}>{e.wins}승</span>
               <span className={styles.lbRate}>{formatWinRate(e.winRate)}</span>
             </li>
@@ -319,6 +328,11 @@ function Leaderboard({ data }: { data: RankingsResponse }) {
         <div className={`${styles.lbRow} ${styles.lbMe}`} data-testid="lb-me">
           <span className={styles.lbRank}>{data.me.rank}</span>
           <span className={styles.lbName}>{data.me.nickname} (나)</span>
+          {data.me.rating !== undefined && (
+            <span className={styles.lbRating} data-testid="lb-rating">
+              {data.me.rating}
+            </span>
+          )}
           <span className={styles.lbWins}>{data.me.wins}승</span>
           <span className={styles.lbRate}>{formatWinRate(data.me.winRate)}</span>
         </div>

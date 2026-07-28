@@ -200,3 +200,24 @@
   color: var(--text-muted);
   font-size: 13px;
 }
+
+/* 원정 레이팅(#245) — 지갑 배지(P·젬)와 **다른 축**이라 재화 옆이 아니라 전적 옆에 둔다.
+   같은 줄에 두면 "쓸 수 있는 값"으로 오인된다. */
+.rating {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* 원정 상대 2택(#245 E2) */
+.awayPickHint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}

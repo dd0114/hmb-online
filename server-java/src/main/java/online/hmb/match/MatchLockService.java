@@ -43,17 +43,21 @@ public class MatchLockService {
     private final MatchService matchService;
     private final MatchAbandonProperties props;
     private final Clock clock;
+    /** #245 D1 — 원정 자발적 포기 = 몰수패 정산. */
+    private final online.hmb.away.AwayService awayService;
 
     public MatchLockService(JdbcClient jdbcClient,
                             TxRunner txRunner,
                             MatchService matchService,
                             MatchAbandonProperties props,
-                            Clock clock) {
+                            Clock clock,
+                            online.hmb.away.AwayService awayService) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.matchService = matchService;
         this.props = props;
         this.clock = clock;
+        this.awayService = awayService;
     }
 
     // ── 조회 ────────────────────────────────────────────────────────────
@@ -183,6 +187,33 @@ public class MatchLockService {
      * (잡이 나중에 완료돼도 상태 전이 CAS 가 ABANDONED 에서 실패해 매치는 되살아나지 않는다 —
      * 잡 정리는 비용 절감이지 정합성 장치가 아니다).
      */
+    /**
+     * 원정 매치를 <b>자발적으로</b> 포기하면 몰수패다(#245 D1, hero 확정).
+     *
+     * <p>왜: 원정은 브리핑에서 상대 스쿼드가 보이고 브리핑은 포기 가능하다 → 약한 상대가 나올 때까지
+     * 만들고 무르면 <b>무한 리롤</b>이 되고, ±10 이 걸린 축에서 그건 레이팅 무결성을 무너뜨린다
+     * (독립검증 MAJ-4). 정찰도 리롤도 공짜가 아니게 만든다.
+     *
+     * <p>⚠️ <b>사고는 면제한다</b> — FAILED·GEN 멈춤·시계 멈춤에서의 포기는 #217 이 영구 잠금을 막으려고
+     * 연 <b>탈출구</b>다. 거기까지 −10 을 물리면 서버 장애가 유저 레이팅을 깎는다. 자발적 포기의 정의는
+     * <b>BRIEFING 에서 나간 것</b>뿐이다(브리핑은 사고 상태가 아니다).
+     */
+    /**
+     * @param priorState 전이 <b>직전</b> 상태. 스위퍼는 이미 ABANDONED 로 바꾼 뒤에 부르므로
+     *     현재 상태로 판단하면 몰수가 영영 걸리지 않는다(자기 자신을 못 알아본다).
+     */
+    private void forfeitIfVoluntaryAwayAbandon(MatchService.MatchRow row, String priorState) {
+        if (!"away".equals(row.mode()) || !MatchService.S_BRIEFING.equals(priorState)) {
+            return;
+        }
+        // 공격자 LOSS = 수비자 WIN. 스코어 0:0 + 비무승부 = 몰수(정상 경기의 0:0 은 언제나 DRAW 라
+        // 이 조합은 몰수에서만 나온다 — 별도 컬럼 없이 구분된다).
+        // ⚠️ 재화는 주지 않는다(payDefender=false) — 경기가 열리지도 않았는데 리그 승리 보상을 찍으면
+        // 두 계정이 서로 만들고 무르기만 해도 **시뮬 0회로 돈이 발행된다**(레이팅은 서로 상쇄돼
+        // 밴드 방어도 안 걸린다). 레이팅 −10 이 무르는 쪽의 벌칙이다(hero D1).
+        awayService.settle(row.id(), row.userId(), "LOSS", 0, 0, false);
+    }
+
     public MatchService.MatchRow abandon(String userId, String matchId) {
         MatchService.MatchRow row = matchService.getOwned(userId, matchId);
         if (!MatchService.ACTIVE_STATES.contains(row.state())) {
@@ -205,6 +236,11 @@ public class MatchLockService {
                     .update();
             if (updated == 1) {
                 closeOpenJobs(matchId, "match abandoned by user");
+                // ⚠️ **같은 트랜잭션 안에서** 정산한다(독립검증 3R MAJOR-2). 밖에 두면 매치는 이미
+                // 터미널인데 정산만 실패하는 창이 생기고, 그때 수비자는 리포트를 영영 못 받고
+                // 공격자는 −10 을 면제받는다 = D1 이 막으려던 무한 리롤이 그대로 열린다.
+                // ABANDONED 는 어느 스위퍼도 다시 고르지 않아 재시도 경로도 없다.
+                forfeitIfVoluntaryAwayAbandon(row, row.state());
             }
             return updated == 1;
         });
@@ -237,30 +273,43 @@ public class MatchLockService {
      */
     public int sweepStale() {
         String cutoff = Instant.now(clock).minusSeconds(props.getStaleAfterMin() * 60).toString();
-        java.util.List<String> stale = jdbcClient.sql("""
-                        SELECT id FROM matches
+        // state 를 같이 읽는다 — 몰수 판정(#245 D1)이 "어느 상태에서 나갔나"에 달려 있다.
+        record Stale(String id, String state) {
+        }
+        java.util.List<Stale> stale = jdbcClient.sql("""
+                        SELECT id, state FROM matches
                         WHERE state NOT IN ('FINISHED', 'ABANDONED') AND created_at < ?
                         """)
                 .param(cutoff)
-                .query(String.class)
+                .query((rs, n) -> new Stale(rs.getString("id"), rs.getString("state")))
                 .list();
         int swept = 0;
-        for (String matchId : stale) {
+        for (Stale entry : stale) {
+            String matchId = entry.id();
             boolean moved = txRunner.run(() -> {
+                // ⚠️ CAS 에 **읽은 그 상태**를 넣는다 — 몰수 판정이 entry.state() 에 달려 있는데
+                // 조건이 "터미널만 아니면"이면 그 사이 BRIEFING→GEN1 로 움직인 매치를 낡은 상태로
+                // 몰수한다(독립검증 3R m9 TOCTOU). 상태가 움직였으면 이번 스윕은 건너뛴다.
                 int updated = jdbcClient.sql("""
                                 UPDATE matches SET state = ?, finished_at = ?,
                                        fail_reason = COALESCE(fail_reason, ?)
-                                WHERE id = ? AND state NOT IN ('FINISHED', 'ABANDONED')
+                                WHERE id = ? AND state = ?
                                 """)
                         .params(MatchService.S_ABANDONED, MatchClockService.format(clock.instant()),
-                                "abandoned: idle > " + props.getStaleAfterMin() + "min", matchId)
+                                "abandoned: idle > " + props.getStaleAfterMin() + "min", matchId,
+                                entry.state())
                         .update();
                 if (updated == 1) {
                     closeOpenJobs(matchId, "match abandoned: stale");
+                    // MAJOR-2 와 같은 이유로 정산도 이 트랜잭션 안이다.
+                    matchService.find(matchId)
+                            .ifPresent(row -> forfeitIfVoluntaryAwayAbandon(row, entry.state()));
                 }
                 return updated == 1;
             });
             if (moved) {
+                // 포기 버튼을 누르든 방치하든 **브리핑에서 나간 것은 같다**(#245 D1, 2R major-1) —
+                // 정산은 위 트랜잭션 안에서 이미 끝났다. 킥오프 이후 방치는 사고로 본다(면제).
                 swept++;
             }
         }

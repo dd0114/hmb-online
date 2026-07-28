@@ -25,8 +25,12 @@ const STATE_LABELS: Record<string, string> = {
 
 /**
  * /match/:id — useMatch 폴링(GEN* 3s)이 주는 state로 패널 라우팅 (LLD-web §2).
- * 홈 = 내 팀(매치 생성자), 어웨이 = 봇. 상대 이름은 BRIEFING의 opponent에서 오며
+ * 홈 = 매치 생성자, 어웨이 = 상대. 상대 이름은 BRIEFING의 opponent에서 오며
  * 이후 상태에 없을 수 있어 fallback "상대".
+ *
+ * ⚠️ 이 화면은 **관전자도 연다**(#245: 원정을 당한 수비자가 자기 팀 경기를 본다). 그래서 "홈 = 나"를
+ * 가정하지 않는다 — 홈 이름은 서버가 주는 ownerName 이 먼저다. 쓰기 액션은 서버가 소유자에게만
+ * 허용하므로(getOwned) 관전자가 버튼을 눌러도 404 다.
  */
 export function MatchPage() {
   const { id } = useParams<{ id: string }>();
@@ -39,7 +43,9 @@ export function MatchPage() {
   const { data: me } = useMe();
   const { data: match, isLoading, isError } = useMatch(id);
 
-  const homeName = me?.user.nickname ?? "내 팀";
+  // 홈 = 매치를 만든 유저다. 보통은 나지만, **원정 수비자가 관전할 땐 공격자**다(#245) —
+  // 자기 닉네임을 홈에 박으면 관전 화면이 양 팀 이름을 바꿔 부른다. 서버가 ownerName 을 준다.
+  const homeName = match?.ownerName ?? me?.user.nickname ?? "내 팀";
   const awayName = match?.opponent?.name ?? "상대";
 
   // FINISHED 최초 관측 시 전적/지갑 갱신(보상 반영) — 로비 헤더가 새 전적을 보이게

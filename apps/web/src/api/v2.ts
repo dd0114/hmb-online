@@ -42,8 +42,16 @@ export type TradeLogItem = SchemasV2["TradeLogItem"];
 
 // 로그/랭킹 (W4)
 export type MatchLogItem = SchemasV2["MatchLogItem"];
-export type RankingEntry = SchemasV2["RankingEntry"];
-export type RankingsResponse = SchemasV2["RankingsResponse"];
+/**
+ * rating(#245 D3 additive) — 리더보드 **정렬 기준**이 승수에서 레이팅으로 바뀌었다(hero 확정).
+ * 구 서버 응답엔 없으므로 optional(없으면 표시만 생략, 화면은 그대로 돈다).
+ */
+export type RankingEntry = SchemasV2["RankingEntry"] & { rating?: number };
+/** leaderboard/me 항목도 확장 RankingEntry(=rating additive)를 쓴다 — 생성 스키마의 중첩 타입을 덮는다. */
+export type RankingsResponse = Omit<SchemasV2["RankingsResponse"], "leaderboard" | "me"> & {
+  leaderboard: RankingEntry[];
+  me?: RankingEntry;
+};
 export type PersonalRecords = SchemasV2["PersonalRecords"];
 
 // 리그 (W5)

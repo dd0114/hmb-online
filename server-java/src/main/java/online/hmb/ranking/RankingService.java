@@ -36,7 +36,12 @@ public class RankingService {
 
     // ── DTO (openapi-v2) ─────────────────────────────────────────────────
 
-    public record RankingEntry(String userId, String nickname, int wins, double winRate, int rank) {
+    /**
+     * rating(#245 D3 additive) = 원정 레이팅. <b>정렬 기준이 승수 → 레이팅으로 바뀌었다</b>(hero 확정).
+     * wins·winRate 는 표시로 남는다(기존 화면 무회귀).
+     */
+    public record RankingEntry(String userId, String nickname, int wins, double winRate, int rank,
+                               int rating) {
     }
 
     public record PlayerRef(String playerId, String name, String position, String grade) {
@@ -65,33 +70,44 @@ public class RankingService {
 
     // ── 리더보드(전 유저) — 승수 desc → 승률 desc → 닉네임 asc, 순위=행번호 ──
 
+    /**
+     * 리더보드 정렬 = <b>레이팅</b>(#245 D3, hero 확정 — 구 기준은 승수였다).
+     *
+     * <p>⚠️ tie-break 가 중요하다: 원정을 아직 안 한 유저는 전원 0점이라, 레이팅만으로 정렬하면 표가
+     * 통째로 평평해져 순위가 무의미해진다. 동점이면 <b>승수 → 승률 → 닉네임</b> 순으로 계속 가른다
+     * (= 구 기준이 tie-break 로 살아 있다). 결정론적이라 같은 데이터면 같은 표다.
+     */
     private List<RankingEntry> rankedUsers() {
-        record Agg(String userId, String nickname, int wins, int total) {
+        record Agg(String userId, String nickname, int wins, int total, int rating) {
         }
         List<Agg> aggs = jdbcClient.sql("""
                         SELECT u.id AS user_id, u.nickname AS nickname,
                                SUM(CASE WHEN m.result = 'WIN' THEN 1 ELSE 0 END) AS wins,
-                               SUM(CASE WHEN m.result IS NOT NULL THEN 1 ELSE 0 END) AS total
+                               SUM(CASE WHEN m.result IS NOT NULL THEN 1 ELSE 0 END) AS total,
+                               COALESCE((SELECT r.rating FROM user_ratings r WHERE r.user_id = u.id), 0)
+                                   AS rating
                         FROM users u
                         LEFT JOIN matches m ON m.user_id = u.id
                         GROUP BY u.id, u.nickname
                         """)
                 .query((rs, n) -> new Agg(rs.getString("user_id"), rs.getString("nickname"),
-                        rs.getInt("wins"), rs.getInt("total")))
+                        rs.getInt("wins"), rs.getInt("total"), rs.getInt("rating")))
                 .list();
 
         List<RankingEntry> entries = new ArrayList<>();
         for (Agg a : aggs) {
             double winRate = a.total() == 0 ? 0.0 : (double) a.wins() / a.total();
-            entries.add(new RankingEntry(a.userId(), a.nickname(), a.wins(), winRate, 0));
+            entries.add(new RankingEntry(a.userId(), a.nickname(), a.wins(), winRate, 0, a.rating()));
         }
-        entries.sort(Comparator.comparingInt(RankingEntry::wins).reversed()
+        entries.sort(Comparator.comparingInt(RankingEntry::rating).reversed()
+                .thenComparing(Comparator.comparingInt(RankingEntry::wins).reversed())
                 .thenComparing(Comparator.comparingDouble(RankingEntry::winRate).reversed())
                 .thenComparing(RankingEntry::nickname));
         List<RankingEntry> ranked = new ArrayList<>(entries.size());
         for (int i = 0; i < entries.size(); i++) {
             RankingEntry e = entries.get(i);
-            ranked.add(new RankingEntry(e.userId(), e.nickname(), e.wins(), e.winRate(), i + 1));
+            ranked.add(new RankingEntry(e.userId(), e.nickname(), e.wins(), e.winRate(), i + 1,
+                    e.rating()));
         }
         return ranked;
     }

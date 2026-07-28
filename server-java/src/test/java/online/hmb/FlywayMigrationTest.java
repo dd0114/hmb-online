@@ -52,7 +52,25 @@ class FlywayMigrationTest {
             // V20 덱 저장 선실행(1) — #215 W2: 유저당 유효 prewarm A 원장(잡 id 는 내용 해시라
             //   유저 간 공유되므로 "누가 무엇을 기다리는가"를 잡 테이블이 알 수 없다).
             //   V19 는 #217(매치 잠금) 소유 — 번호만 앞서고 이 목록엔 그쪽이 등록한다.
-            "deck_prewarm"
+            "deck_prewarm",
+            // V21 원정(4) — #245: 실유저 팀을 상대로 하는 비동기 대전과 그 기록.
+            //   away_challenges = "이 매치의 상대가 누구의 팀이었나"(matches.user_id 는 공격자다)
+            //   away_reports    = 피원정 기록(수비자 관점) + 미확인 상태(seen_at) = 로비 팝업의 SoT
+            //   user_ratings/rating_ledger = wallets.points 와 **다른 축**(소비되는 재화로는 실력을
+            //     말할 수 없다). 초기 0, 하한 없음 — CHECK(>=0) 이 없는 것이 wallets 와의 차이다.
+            "away_challenges",
+            "away_reports",
+            "user_ratings",
+            "rating_ledger",
+            // V22 원정 v2(4) — #245 hero 3차: 2택 제시·연승·주간 시즌.
+            //   away_offers = "서버가 방금 무엇을 제시했나"(이게 없으면 2택이 곧 지목이 된다)
+            //   away_streaks = 연승(승 +1 · 패 0 · 무 유지)
+            //   away_seasons/away_season_results = 주간 시즌과 마감 스냅샷. 레이팅을 0 으로 되돌리는
+            //     순간 그 시즌 결과는 어디에도 없으므로, 스냅샷이 보상 지급의 유일한 근거다.
+            "away_offers",
+            "away_streaks",
+            "away_seasons",
+            "away_season_results"
     );
 
     @Test
