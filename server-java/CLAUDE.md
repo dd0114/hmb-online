@@ -290,12 +290,20 @@
 - **P(G) 보상 경로는 무변경** — `point_ledger 'league_reward'`(league.v1 rewards) 그대로.
 - **소급이 없는 이유가 곧 멱등의 이유다**: 원장 reason(`league_gem_reward`)·ref(`seasonId`)를 그대로 뒀다.
   이미 지급된 시즌은 행이 있어 재진입해도 아무 일도 안 일어난다 = 구 금액이 그대로 남는다(의도).
+- ⚠️ **`rankBonus` 는 순위표 통짜 교체다** — 순위별 병합이 아니다(currencies 의 코드별 병합과 다르다).
+  `{"1":7000}` 만 적으면 2·3등 보너스는 **사라진다**. 표는 한 덩어리 곡선이라 **전체를 적어라**.
+  계약 = `EconomyLegacyFallbackTest.rankBonusTableIsReplacedWholesaleNotMergedPerRank`.
 - ⚠️ **override 트랩**(#232 에서 겪은 형태): 운영 override 는 무배포로 얹힌 **구 스냅샷**이라 새 필드가
-  없다. 그래서 파싱이 **필드 단위 폴백**(`DEFAULT_LEAGUE_GEM_REWARD`, currencies 와 동형)이고,
+  없다. 그래서 파싱이 **두 필드 단위 폴백**(`DEFAULT_LEAGUE_GEM_REWARD`)이고,
   소비도 `economyService.leagueGemReward()`(economy 파일 자체가 없어도 값을 준다)로 읽는다.
   "모르면 0원"이면 override 가 깔린 환경**에서만** 보상이 조용히 사라진다 — 테스트 환경에선 안 보인다.
-  계약 = `EconomyLegacyFallbackTest`(구 모양 블록 무시 + 필드단위 폴백 + 발행값), 경계 =
+  계약 = `EconomyLegacyFallbackTest`(구 모양 블록 무시 + 폴백 + 발행값), 경계 =
   `LeagueApiTest.seasonGemRewardMatchesRankBonusAcrossRankBoundaries`(1/2/3/4/5등).
+- ⚠️ **테스트 픽스처(`fixtures/economy.v1.json`)의 금액은 발행물과 일부러 다르다.** 같게 두면 지급이
+  config 를 읽든 코드 폴백 상수를 쓰든 관측값이 같아서 **"config 를 무시하는" 변이체가 전 스위트를
+  통과한다**(독립검증 MAJOR-1 — 실제로 지급점을 상수로 바꿔도 654/654 green 이었다). 발행값 검증은
+  `publishedEconomyCarriesTheConfirmedSeasonGemAmounts` 가 따로 한다 — **"config 를 읽는가"와 "폴백이
+  도는가"를 서로 다른 파일로 분리**해라. economy 에 새 수치를 넣을 때마다 같은 함정이 재발한다.
 - ⚠️ **순위 경계 테스트는 표를 직접 세운다**(`buildFinishedTableWithUserRank`). 유저 승수를 훑어
   원하는 순위가 나오길 기다리면 봇 전력이 시즌 seed 에 달려 있어 **실행마다 결과가 달라진다**
   (실제로 rank 2 가 안 나와 깨졌다). 경계 검증을 우연에 기대지 마라.

@@ -123,6 +123,28 @@ class EconomyLegacyFallbackTest {
         java.nio.file.Files.deleteIfExists(tmp);
     }
 
+    /**
+     * <b>{@code rankBonus} 는 순위표 통짜 교체</b>(순위별 병합이 아니다) — 한 줄만 적은 표는 나머지
+     * 순위 보너스를 <b>지운다</b>. 운영이 손편집할 때 걸려 넘어지는 자리라 명시적으로 박제한다
+     * (독립검증 MINOR-1: 문서는 "필드 단위 병합"이라 적혀 있었지만 구현은 통짜였다 — 지금은 구현이
+     * 정본이고 이 테스트가 그 계약이다).
+     */
+    @Test
+    void rankBonusTableIsReplacedWholesaleNotMergedPerRank() throws Exception {
+        java.nio.file.Path tmp = java.nio.file.Files.createTempFile("economy-partial-bonus", ".json");
+        java.nio.file.Files.writeString(tmp, """
+                {"version":"partial","initialPoints":0,"starterPack":[],
+                 "league":{"gemReward":{"completion":3000,"rankBonus":{"1":7000}}}}
+                """);
+        EconomyService.LeagueGemReward cfg = new EconomyService(new ObjectMapper(), tmp.toString())
+                .get().orElseThrow().leagueGemReward();
+
+        assertThat(cfg.amountFor(1)).isEqualTo(10000);
+        assertThat(cfg.amountFor(2)).as("적지 않은 순위는 기본 표가 남는 게 아니라 보너스 0").isEqualTo(3000);
+        assertThat(cfg.amountFor(3)).isEqualTo(3000);
+        java.nio.file.Files.deleteIfExists(tmp);
+    }
+
     /** 발행물(현행 v3)이 hero 확정 금액을 싣고 있는지 — data 발행물이 SoT 라는 계약. */
     @Test
     void publishedEconomyCarriesTheConfirmedSeasonGemAmounts() {

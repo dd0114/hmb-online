@@ -633,10 +633,43 @@ class LeagueApiTest extends MatchTestBase {
         }
 
         // 경계가 실제로 갈린다: 1·2·3등은 각각 다르고, 4등부터는 같은 기본액(보너스 없음).
+        // 값은 **픽스처 config** 기준(발행값과 다르다 — 위 미러 주석 참조).
         assertThat(observed).as("순위별 실지급").containsExactly(
-                java.util.Map.entry(1, 9000L), java.util.Map.entry(2, 6000L),
-                java.util.Map.entry(3, 4000L), java.util.Map.entry(4, 3000L),
-                java.util.Map.entry(5, 3000L));
+                java.util.Map.entry(1, 7000L), java.util.Map.entry(2, 4500L),
+                java.util.Map.entry(3, 2800L), java.util.Map.entry(4, 2000L),
+                java.util.Map.entry(5, 2000L));
+    }
+
+    /**
+     * <b>멱등이 과해서 재지급을 막지는 않는다</b> — 같은 유저가 <b>시즌 2</b>를 완주하면 또 받는다
+     * (독립검증 MINOR-2). 유니크 키가 {@code (user_id, reason, ref_id)} 이고 ref=seasonId 라
+     * 시즌이 바뀌면 다른 행이다. 멱등 테스트만 있으면 "한 번 주고 영영 안 준다"는 반대 방향 사고가
+     * 게이트를 그대로 통과한다.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void secondSeasonPaysAgainBecauseLedgerKeyIsPerSeason() {
+        String token = setupUserWithDeck("lg_gem_s2");
+        String uid = userIdOf("lg_gem_s2");
+
+        authPost("/api/league/start", token, null, Map.class);
+        String season1 = seasonId(uid);
+        buildFinishedTableWithUserRank(season1, 1);
+        invokeSeasonHook("maybeFinishSeason", season1);
+        assertThat(gemLedgerDelta(uid, season1)).isEqualTo(expectedSeasonGems(1));
+
+        long afterSeason1 = walletGems(uid);
+        authPost("/api/league/start", token, null, Map.class); // 새 시즌(새 seasonId)
+        String season2 = seasonId(uid);
+        assertThat(season2).as("시즌 2 는 다른 id").isNotEqualTo(season1);
+
+        buildFinishedTableWithUserRank(season2, 3);
+        invokeSeasonHook("maybeFinishSeason", season2);
+
+        assertThat(gemLedgerDelta(uid, season2)).as("시즌2 도 자기 순위대로 받는다")
+                .isEqualTo(expectedSeasonGems(3));
+        assertThat(walletGems(uid) - afterSeason1).isEqualTo(expectedSeasonGems(3));
+        assertThat(gemLedgerCount(uid, season1)).as("시즌1 행은 그대로 1행").isEqualTo(1L);
     }
 
     /**
@@ -662,12 +695,20 @@ class LeagueApiTest extends MatchTestBase {
     }
 
     /**
-     * data 발행물(`economy.v3.json league.gemReward`) 미러 — hero 확정 금액.
-     * 완주 기본 3,000 + 순위 보너스(1등 6,000 / 2등 3,000 / 3등 1,000), 4등 이하는 기본만.
+     * <b>테스트 픽스처</b>(`src/test/resources/fixtures/economy.v1.json` `league.gemReward`) 미러.
+     *
+     * <p>⚠️ 값이 <b>발행물(3,000 / 6,000·3,000·1,000)과 일부러 다르다</b>. 같게 두면 지급 경로가
+     * config 를 읽든 코드 폴백 상수({@code DEFAULT_LEAGUE_GEM_REWARD})를 쓰든 관측값이 같아서
+     * <b>"config 를 무시하는" 변이체가 전 스위트를 통과한다</b>(독립검증 MAJOR-1 — 실제로 지급점을
+     * 상수로 바꿔도 654/654 green 이었다). 다른 값이라야 config 주도(AC3)가 검증된다.
+     *
+     * <p>발행값이 맞는지는 별도로 {@code EconomyLegacyFallbackTest
+     * .publishedEconomyCarriesTheConfirmedSeasonGemAmounts} 가, 폴백은 같은 클래스의 구파일
+     * 케이스가 본다 — <b>"config 를 읽는가"와 "폴백이 도는가"를 서로 다른 파일로 분리</b>한다.
      */
-    private static final int SEASON_GEM_COMPLETION = 3000;
+    private static final int SEASON_GEM_COMPLETION = 2000;
     private static final Map<Integer, Integer> SEASON_GEM_RANK_BONUS =
-            Map.of(1, 6000, 2, 3000, 3, 1000);
+            Map.of(1, 5000, 2, 2500, 3, 800);
 
     private static long expectedSeasonGems(int rank) {
         return SEASON_GEM_COMPLETION + SEASON_GEM_RANK_BONUS.getOrDefault(rank, 0);

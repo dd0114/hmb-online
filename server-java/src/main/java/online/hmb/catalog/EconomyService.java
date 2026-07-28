@@ -603,11 +603,17 @@ public class EconomyService {
     }
 
     /**
-     * `league.gemReward` 파싱(#251) — <b>필드 단위 병합</b>(currencies 와 동형).
+     * `league.gemReward` 파싱(#251).
      *
-     * <p>블록이 없거나, 있어도 새 필드가 없으면(= 구 스냅샷 {@code {maxRank,min,max}} 나 운영 override)
+     * <p><b>병합 단위는 두 필드({@code completion} / {@code rankBonus})</b> 다. 없는 쪽만
      * {@link #DEFAULT_LEAGUE_GEM_REWARD} 로 메운다. "모르면 0 원"이 아니라 "모르면 마지막으로 알려진
      * 정상값" — 보상은 조용히 사라지면 안 된다. 값이 <b>있는데 음수</b>면 그 필드만 폴백(값 오염 차단).
+     *
+     * <p>⚠️ <b>{@code rankBonus} 는 순위표 통짜 교체다 — 순위별 병합이 아니다</b>(currencies 의
+     * 코드별 병합과 다른 점). {@code {"1":7000}} 만 적으면 2·3등 보너스는 <b>사라진다</b>(4등과 동일).
+     * 보너스 표는 "1등이 2등보다 얼마나 나은가"라는 <b>한 덩어리 곡선</b>이라, 한 줄만 고쳐 넣었을 때
+     * 나머지가 남는 쪽이 오히려 의도치 않은 표를 만든다. 순위를 하나만 바꾸고 싶어도 <b>표 전체를
+     * 적어라</b>. (독립검증 MINOR-1 — 예전 주석이 "필드 단위 병합"이라고만 적어 이 차이가 가려져 있었다.)
      */
     private static LeagueGemReward parseLeagueGemReward(JsonNode league) {
         JsonNode n = league == null ? null : league.path("gemReward");
@@ -625,6 +631,11 @@ public class EconomyService {
         }
         Map<Integer, Integer> bonus = DEFAULT_LEAGUE_GEM_REWARD.rankBonus();
         if (n.path("rankBonus").isObject()) {
+            if (n.path("rankBonus").isEmpty()) {
+                // 빈 표 = "보너스 없음"(완주 기본만)이다. 의도일 수 있으나 손편집 사고이기도 해서
+                // 조용히 넘어가지 않는다 — 순위 보상이 사라진 건 유저 문의로만 발견된다.
+                log.warn("league.gemReward.rankBonus 가 비어 있다 — 전 순위 보너스 0(완주 기본만) 으로 간다");
+            }
             Map<Integer, Integer> parsed = new LinkedHashMap<>();
             n.path("rankBonus").properties().forEach(e -> {
                 try {

@@ -157,10 +157,14 @@ class SeasonIncomeProbeTest extends MatchTestBase {
             Map.entry(5, 4000), Map.entry(6, 3000), Map.entry(7, 2000), Map.entry(8, 1500),
             Map.entry(9, 1000), Map.entry(10, 500));
 
-    /** economy `league.gemReward` 미러(#251 hero 확정) — 완주 기본 + 1/2/3등 보너스 가산. */
-    private static final int SEASON_GEM_COMPLETION = 3000;
+    /**
+     * <b>테스트 픽스처</b>(`fixtures/economy.v1.json` `league.gemReward`) 미러 — 완주 기본 + 1/2/3등 가산.
+     * ⚠️ 발행물 값과 일부러 다르다(config 주도 검증 — `LeagueApiTest` 의 같은 상수 주석 참조).
+     * 이 프로브의 출력 수치는 그래서 <b>실서비스 지급액이 아니라 픽스처 기준</b>이다.
+     */
+    private static final int SEASON_GEM_COMPLETION = 2000;
     private static final Map<Integer, Integer> SEASON_GEM_RANK_BONUS =
-            Map.of(1, 6000, 2, 3000, 3, 1000);
+            Map.of(1, 5000, 2, 2500, 3, 800);
 
     /** 매치 1건의 승/무/패 보상액(원장 ref=matchId) — 잔액 델타와 달리 다른 지급과 섞이지 않는다. */
     private long rewardOf(String uid, String matchId) {
