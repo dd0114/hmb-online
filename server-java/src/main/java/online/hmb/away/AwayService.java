@@ -497,9 +497,12 @@ public class AwayService {
             // ⚠️ 보너스는 **미리 계산만** 하고 연승 갱신은 멱등 게이트 뒤에서 한다. 예전엔 여기서
             // 바로 갱신해서 같은 매치를 재정산하면 연승이 1→4 로 부풀었다(리포트·원장은 멱등인데
             // 연승만 샜다 — 독립검증 major-1). txRunner 안의 return 은 앞선 UPDATE 를 되돌리지 않는다.
-            // 몰수는 연승을 쌓지 않는다 — 열리지도 않은 경기가 연승이 되면 그게 곧 보너스 파밍이다.
+            // 연승은 **내가 친 경기**에만 걸린다(hero 확정). 방어는 내가 고른 플레이가 아니므로
+            // 연승을 올리지도, **깨지도** 않는다 — 자는 사이 남이 쳐서 내 연승이 끊기면 그건 내가
+            // 어쩔 수 없는 이유로 잃는 것이다. 그래서 보너스도 공격자에게만 붙는다.
+            // 몰수는 열리지도 않은 경기라 공격자 쪽도 연승에서 뺀다(보너스 파밍 방지).
             int attackerBonus = forfeit ? 0 : peekStreakBonus(attackerId, attackerResult);
-            int defenderBonus = forfeit ? 0 : peekStreakBonus(challenge.defenderId(), defenderResult);
+            int defenderBonus = 0;
             int attackerApplied = attackerDelta + attackerBonus;
             int defenderApplied = defenderDelta + defenderBonus;
             int inserted = jdbcClient.sql("""
@@ -516,8 +519,7 @@ public class AwayService {
                 return; // 이미 정산됨 — 연승도 건드리지 않는다
             }
             if (!forfeit) {
-                commitStreak(attackerId, attackerResult);
-                commitStreak(challenge.defenderId(), defenderResult);
+                commitStreak(attackerId, attackerResult);   // 수비자는 건드리지 않는다(위 참조)
             }
             if (attackerApplied != 0) {
                 ratingService.apply(attackerId, attackerApplied, REASON_ATTACK, matchId);
@@ -548,8 +550,13 @@ public class AwayService {
     }
 
     /**
-     * 연승 갱신 — 승 +1 · 패 0 으로 끊김 · <b>무승부는 유지</b>(비긴 걸로 끊기면 방어 성공이 손해다).
-     * 정산이 실제로 새로 기록됐을 때만 부른다(멱등).
+     * 연승 갱신 — 승 +1 · 패 0 으로 끊김 · <b>무승부는 유지</b>.
+     *
+     * <p><b>공격자에게만</b> 부른다(hero 확정): 연승은 "내가 친 경기"의 기록이다. 방어는 내가 고른
+     * 플레이가 아니므로 방어 성공이 연승을 올리지도, <b>방어 실패가 연승을 깨지도</b> 않는다 —
+     * 자는 사이 남이 쳐서 내 연승이 끊기면 그건 내가 어쩔 수 없는 이유로 잃는 것이다.
+     *
+     * <p>정산이 실제로 새로 기록됐을 때만 부른다(멱등).
      */
     private void commitStreak(String userId, String result) {
         String now = Instant.now().toString();
