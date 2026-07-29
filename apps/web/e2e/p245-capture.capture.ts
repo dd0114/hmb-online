@@ -48,14 +48,13 @@ test("capture: 로비 팝업 + 원정 모드", async ({ page }) => {
   });
 
   await page.goto("/lobby");
+  await page.getByTestId("play-cta").click();   // E1: 팝업은 [게임 시작]에서 뜬다
   await page.getByTestId("away-report-modal").waitFor();
   await page.screenshot({ path: ".p245-capture/1-away-popup.png" });
 
   await page.getByTestId("away-report-confirm").click();
-  await page.getByTestId("play-cta").waitFor();
+  await page.getByTestId("mode-away").waitFor();   // 닫으면 모드 선택으로 이어진다
   await page.screenshot({ path: ".p245-capture/2-lobby-rating.png" });
 
-  await page.getByTestId("play-cta").click();
-  await page.getByTestId("mode-away").waitFor();
   await page.screenshot({ path: ".p245-capture/3-mode-away.png" });
 });

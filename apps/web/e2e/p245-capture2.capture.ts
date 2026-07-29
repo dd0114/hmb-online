@@ -42,6 +42,7 @@ test("capture: 리더보드 레이팅 기준 + 몰수 표기", async ({ page }) 
   });
 
   await page.goto("/lobby");
+  await page.getByTestId("play-cta").click();   // E1: 팝업은 [게임 시작]에서 뜬다
   await page.getByTestId("away-report-modal").waitFor();
   await page.screenshot({ path: ".p245-capture/4-forfeit-report.png" });
 
@@ -50,4 +51,21 @@ test("capture: 리더보드 레이팅 기준 + 몰수 표기", async ({ page }) 
   await page.getByText("랭킹").click();
   await page.getByTestId("leaderboard").waitFor();
   await page.screenshot({ path: ".p245-capture/5-leaderboard-rating.png" });
+
+  // v2: [게임 시작] → 팝업 확인 → 모드 → 원정 2택 화면
+  await page.route((url) => url.pathname === "/api/away/candidates", (r) =>
+    r.fulfill(json({
+      candidates: [
+        { userId: "u-a", nickname: "언더독 유나이티드", rating: 15 },
+        { userId: "u-b", nickname: "레드 스톰 CF", rating: -5 },
+      ],
+      streak: 2, seasonNo: 1, seasonEndsAt: "2026-08-04T00:00:00Z", remainingToday: 7,
+    })));
+  await page.goto("/lobby");
+  await page.getByTestId("play-cta").click();
+  // 목이 계속 미확인을 반환하므로 팝업이 먼저 뜬다 — 확인하면 모드 선택으로 이어진다.
+  await page.getByTestId("away-report-confirm").click();
+  await page.getByTestId("mode-away").click();
+  await page.getByTestId("away-candidate").first().waitFor();
+  await page.screenshot({ path: ".p245-capture/6-away-picker.png" });
 });
