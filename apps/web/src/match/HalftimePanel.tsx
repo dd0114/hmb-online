@@ -14,6 +14,7 @@ import { emptyDraft, type DeckDraft } from "../deck/deck-logic";
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
 import type { TeamTactics } from "../api/v2";
 import { MAX_SUBS, validateSubs, type SubPair } from "./match-logic";
+import { boardUsable, halftimeShapePayload, snapshotToDraft, swapStarters } from "./halftime-shape";
 import { countdownLabel } from "./live-clock";
 import { useCountdown } from "./useCountdown";
 import styles from "./HalftimePanel.module.css";
@@ -30,11 +31,21 @@ interface HalftimePanelProps {
  * ── 왜 전용 화면을 만들지 않는가 ───────────────────────────────────────────────────────────
  * hero: *"덱에서 셋팅하던 것과 전후반 사이 차이점은 새로운 선수 배치가 안 된다는 것뿐이잖아.
  * 왜 형식을 다르게 가는 거야? 같이 가야 유저도 안 헷갈리지."*
- * 그래서 이 패널은 **덱 화면과 같은 `DeckEditor`** 를 그대로 쓴다. 차이는 플래그 둘뿐이다:
- *   · `placementLocked` — 빈 자리 탭·보유 선수 시트·Auto·초기화·자리 바꾸기·제거가 없다.
- *   · `subsMode` + 교체 요약/모드 탭 — 덱에 없는 **유일한 추가 요소**.
+ * 그래서 이 패널은 **덱 화면과 같은 `DeckEditor`** 를 그대로 쓴다. 차이는 플래그뿐이다:
+ *   · `placementLocked` — 빈 자리 탭·보유 선수 시트·Auto·초기화·제거가 없다
+ *     (= **스쿼드 밖에서 선수를 데려오지 않는다**. #244 는 여기에 "자리 바꾸기가 없다"까지
+ *      묶어 뒀지만 #276 hero 결정으로 그 전제가 뒤집혔다 — 아래 참조).
+ *   · `lineupEditable` — **포메이션 변경 + 선발끼리 자리 바꾸기**를 연다(#276).
+ *   · `boardMode`(교체/자리) + 교체 요약/모드 탭 — 덱에 없는 **추가 요소**.
  * (구현 초기엔 감독시간 전용 레이아웃을 따로 만들었는데, 같은 입력이 화면마다 다르게 생기고
  *  프롬프트 블록이 복제돼 드리프트 위험이 생겼다 → 폐기하고 이 구조로 통합.)
+ *
+ * ── 배치는 감독시간에도 바꾼다 (#276, hero 결정) ─────────────────────────────────────────
+ * *"덱구성이랑 비슷하게 사용할수있도록 유지해서 가져가. 중요한건 통일성이야."* → 포메이션 문자열만이
+ * 아니라 **슬롯 재배치까지** 바꾼다(덱 화면이 그렇게 동작하므로). 못 바꾸는 것은 **경기 스쿼드 밖**
+ * 선수를 데려오는 것뿐이라, 잠금을 두 축으로 쪼갰다(`placementLocked` vs `lineupEditable`).
+ * 통째로 풀면 보유 선수 시트가 열려 후반에 스쿼드 밖 선수를 세울 수 있게 된다 — 서버는 400 으로
+ * 막지만 **화면이 거짓말을 한다**.
  *
  * ── 값이 가는 곳은 덱과 다르다 (중요) ──────────────────────────────────────────────────────
  * 화면은 같아도 **감독시간 입력은 덱을 건드리지 않는다**: 여기서 쓴 문장은 `POST /prompts`
@@ -45,8 +56,12 @@ interface HalftimePanelProps {
  * 팀 전술(라인·압박·템포·폭)은 **후반에도 바꿀 수 있다**(#254 hero 결정 "허용", 서버 V24).
  * 덱 화면과 **같은 ⚙ 자리**를 쓰고, 시작점은 전반 값이며, 만진 경우에만 `POST /halftime` 에 실린다.
  *
- * NOTE: match GET 응답에는 내 로스터가 없어(openapi MatchDetail — opponent만) 선발/벤치를
- * useDeck에서 파생한다. 전반 중 퇴장 등 엔진 내 로스터 변화는 반영 못함 — 서버(AC-M4)가 최종 검증.
+ * ── 라인업의 시작점 = `match.userDeckSnapshot` (취향이 아니라 서버 계약) ────────────────────
+ * #244 는 선발/벤치를 `useDeck()`(**현재 덱**)에서 파생했다. 하지만 서버는 `starters` 를 **매치
+ * 스냅샷의 전반 선발 − out + in** 과 대조하므로(`MatchService` ROSTER_MISMATCH), 전반 시작 후
+ * 유저가 덱을 고쳤으면 둘이 달라 **400** 이 난다. 그래서 배치를 보내는 경로의 기준은 반드시
+ * 스냅샷이다. 스냅샷이 없거나 선발이 11명이 아닌 구 매치(`boardUsable` false)는 배치 필드를 **아예
+ * 보내지 않고** #244 의 현행 동작(덱 파생 + 교체만)을 그대로 유지한다 — 기능 소실 금지.
  */
 export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) {
   const { data: deck, isError: deckError } = useDeck();
@@ -68,9 +83,14 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
   const expired = remaining != null && remaining <= 0;
 
   const [subs, setSubs] = useState<SubPair[]>([]);
-  /** 하단 모드 탭 — 기본은 프롬프트("감독의 한마디"). 교체 탭은 **보드의 모드**를 바꾼다(T2). */
-  const [mode, setMode] = useState<"say" | "sub">("say");
+  /**
+   * 하단 모드 탭 — 기본은 프롬프트("감독의 한마디"). 교체·자리 탭은 **보드의 모드**를 바꾼다
+   * (T2 / #276). 두 보드 모드는 **같은 두 번 탭 제스처**다: 첫 탭이 대상, 두 번째 탭이 상대.
+   */
+  const [mode, setMode] = useState<"say" | "sub" | "move">("say");
   const [pendingOut, setPendingOut] = useState<string | null>(null);
+  /** 자리 바꾸기에서 먼저 고른 선발. */
+  const [pendingMove, setPendingMove] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   /** 덱 사본 — 여기서의 편집은 덱에 저장되지 않는다(위 주석). */
@@ -87,8 +107,17 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
   }, [players]);
   const ownedPlayers = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
 
+  /**
+   * **배치를 보낼 수 있는 매치인가**(#276). true 면 라인업의 기준이 매치 스냅샷이고 `/halftime` 에
+   * `formation`+`starters` 를 싣는다. false(구 매치)면 #244 현행 동작 그대로 — 덱 파생 + 교체만.
+   */
+  const snapshot = match.userDeckSnapshot;
+  const shapeMode = boardUsable(snapshot);
+
   /** 전반 종료 시점의 라인업 = 초기값. per-player 프롬프트는 **빈 칸에서 시작**한다(후반 지시). */
   const baseDraft: DeckDraft = useMemo(() => {
+    // 배치를 보내는 경로의 기준은 **매치 스냅샷**이다(위 주석 — 서버 ROSTER_MISMATCH 계약).
+    if (shapeMode) return snapshotToDraft(snapshot!);
     if (!deck) return emptyDraft();
     return {
       formation: deck.formation,
@@ -99,29 +128,34 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
         promptText: null,
       })),
     };
-  }, [deck]);
+  }, [deck, shapeMode, snapshot]);
 
   /**
    * 전술의 시작점은 **전반에 쓰던 값**이다(#254). 기본값에서 시작하면 유저가 안 건드린 축까지
    * 후반에 조용히 바뀐다 — 화면이 "지금 값"을 보여주고, 바꾼 것만 서버로 간다.
    */
-  const firstHalfTactics: TeamTactics = match.userDeckSnapshot?.teamTactics ?? DEFAULT_TEAM_TACTICS;
+  const firstHalfTactics: TeamTactics = snapshot?.teamTactics ?? DEFAULT_TEAM_TACTICS;
   useEffect(() => {
-    if (editor === null && deck) {
+    // 스냅샷 경로는 덱을 기다릴 이유가 없다(라인업이 이미 매치 응답 안에 있다).
+    if (editor === null && (shapeMode || deck)) {
       setEditor({ draft: baseDraft, tactics: { ...firstHalfTactics }, teamPrompt: "" });
     }
-  }, [editor, deck, baseDraft, firstHalfTactics]);
+  }, [editor, deck, shapeMode, baseDraft, firstHalfTactics]);
 
   const nameOf = (id: string) => playersById.get(id)?.name ?? id;
   const posOf = (id: string) => playersById.get(id)?.position;
 
+  /**
+   * 교체 규칙(≤3 · out∈선발 · in∈벤치 · GK≥1)이 보는 로스터는 **전반 라인업**이다 — 자리를 바꿔도
+   * 집합은 그대로이므로 `baseDraft` 기준이면 충분하고, 서버가 대조하는 기준과도 같아진다.
+   */
   const starters = useMemo(
-    () => (deck?.slots ?? []).filter((s) => s.role === "starter").map((s) => s.playerId),
-    [deck],
+    () => baseDraft.slots.filter((s) => s.role === "starter").map((s) => s.playerId),
+    [baseDraft],
   );
   const bench = useMemo(
-    () => (deck?.slots ?? []).filter((s) => s.role === "bench").map((s) => s.playerId),
-    [deck],
+    () => baseDraft.slots.filter((s) => s.role === "bench").map((s) => s.playerId),
+    [baseDraft],
   );
   const usedOuts = new Set(subs.map((s) => s.out));
   const usedIns = new Set(subs.map((s) => s.in));
@@ -143,7 +177,35 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
     //    프롬프트가 다시 하단 토글바 밑으로 밀린다(실화면 확인: hit=stage-toggle-log).
   }, [mode, subs.length]);
 
-  /** 교체 지정 — 보드 탭을 DeckEditor 가 그대로 넘겨준다(규칙·전송은 이 패널 소유). */
+  /** 보드 탭 — DeckEditor 가 그대로 넘겨준다(규칙·전송은 이 패널 소유). 모드별로 갈린다. */
+  function handleBoardTap(playerId: string, role: "starter" | "bench") {
+    if (mode === "move") return handleMoveTap(playerId, role);
+    handleSubTap(playerId, role);
+  }
+
+  /**
+   * 자리 바꾸기(#276) — 교체와 **같은 두 번 탭**: 첫 탭이 옮길 선수, 두 번째 탭이 자리를 내줄 선수.
+   * **선발끼리만**이다. 벤치는 이 모드에서 아예 접혀 있고(넣을 선수를 고를 일이 없다) 벤치 ↔ 선발은
+   * 교체라 규칙(≤3·GK≥1)을 가진 교체 모드가 소유한다 — 같은 일을 하는 손잡이를 두 개 만들지 않는다.
+   */
+  function handleMoveTap(playerId: string, role: "starter" | "bench") {
+    if (expired || !shapeMode || !editor) return;
+    if (role !== "starter") return;
+    if (!pendingMove) {
+      setPendingMove(playerId);
+      setNote(null);
+      return;
+    }
+    if (pendingMove === playerId) {
+      setPendingMove(null);
+      return;
+    }
+    setEditor({ ...editor, draft: swapStarters(editor.draft, pendingMove, playerId) });
+    setNote(`${nameOf(pendingMove)} ↔ ${nameOf(playerId)} 자리를 바꿨습니다`);
+    setPendingMove(null);
+  }
+
+  /** 교체 지정(#244) — 확정 교체는 `subs` 목록이 SoT다(보드는 OUT 뱃지만 붙는다). */
   function handleSubTap(playerId: string, role: "starter" | "bench") {
     if (expired) return;
     if (role === "starter") {
@@ -201,8 +263,21 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
           });
         }
       }
+      /*
+       * 세 필드(교체 · 배치 · 전술)를 **한 번의** `/halftime` 에 함께 싣는다.
+       *
+       * 📌 **`#215` 콜0 의 본질은 "필드를 안 보낸다"가 아니라 "AI 콜이 0이다"** 이고, 그 판정은
+       *    **서버**(`MatchService.secondHalfShapeChanged`)가 한다 — 전반과 같은 배치를 보내도
+       *    콜0이다(서버 계약 `HalftimeShapeTest.resubmittingTheSameShapeIsNotAChange`).
+       *    그러니 보드 모드에서 배치는 **조건 없이** 보낸다. "안 바뀌었으면 안 보낸다"로 아끼면
+       *    1R 독립검증이 실행으로 재현한 blocker 2건이 그대로 돌아온다(재제출 400 고착 ·
+       *    취소한 배치가 조용히 반영) — 상세는 `halftime-shape.ts` 헤더 ③.
+       *    전술만 규칙이 다르다: 만진 경우에만 싣는다(#254 — 배치와 달리 "지금 값"이 화면에
+       *    상시로 떠 있지 않아 미첨부가 곧 "전반 값 유지"로 읽힌다).
+       */
+      const shape = halftimeShapePayload(editor?.draft ?? baseDraft, subs, shapeMode);
       await halftime.mutateAsync(
-        tacticsTouched && editor ? { substitutions: subs, teamTactics: editor.tactics } : { substitutions: subs },
+        tacticsTouched && editor ? { ...shape, teamTactics: editor.tactics } : shape,
       );
       await resume.mutateAsync();
     } catch (err) {
@@ -256,7 +331,9 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
         ))}
       </div>
       <div className={styles.modeTabs} role="tablist" aria-label="감독시간 모드">
-        {(["say", "sub"] as const).map((m) => (
+        {/* 자리 탭은 **배치를 보낼 수 있는 매치에서만** 나온다 — 구 매치에서 띄우면 만져도 아무
+            데도 안 가는 손잡이가 된다(#276). */}
+        {(shapeMode ? (["say", "sub", "move"] as const) : (["say", "sub"] as const)).map((m) => (
           <button
             key={m}
             type="button"
@@ -268,10 +345,11 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
             onClick={() => {
               setMode(m);
               setPendingOut(null);
+              setPendingMove(null);
               setNote(null);
             }}
           >
-            {m === "say" ? "감독의 한마디" : `교체 ${subs.length}/${MAX_SUBS}`}
+            {m === "say" ? "감독의 한마디" : m === "sub" ? `교체 ${subs.length}/${MAX_SUBS}` : "자리"}
           </button>
         ))}
       </div>
@@ -287,6 +365,13 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
             : benchAvailable.length === 0
               ? "벤치가 비어 있어 교체할 수 없습니다"
               : "보드에서 뺄 선수를 누르세요 · 교체해도 그 선수 지시는 따라갑니다"}
+        </p>
+      )}
+      {mode === "move" && (
+        <p className={styles.swapGuide} data-testid="halftime-move-guide">
+          {pendingMove
+            ? `${nameOf(pendingMove)} 를 옮긴다 — 자리를 바꿀 선발을 누르세요`
+            : "자리를 바꿀 선발 두 명을 차례로 누르세요 · 포메이션은 위에서 바꿉니다"}
         </p>
       )}
       {note && (
@@ -320,12 +405,17 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
           players={ownedPlayers}
           playersById={playersById}
           conditions={match.conditions}
-          /* 감독시간의 두 가지 차이 — 나머지는 덱 화면과 완전히 같다. */
+          /* 감독시간의 차이 — 나머지는 덱 화면과 완전히 같다.
+             ⚠️ `placementLocked` 는 **스쿼드 밖에서 선수를 데려오는 것**만 막는다. 포메이션·자리
+             바꾸기는 `lineupEditable` 이 연다(#276) — 통째로 풀면 보유 선수 시트가 열려 경기
+             스쿼드 밖 선수를 후반에 세울 수 있게 된다. */
           placementLocked
-          subsMode={mode === "sub"}
-          onSubTap={handleSubTap}
+          lineupEditable={shapeMode}
+          lineupDisabled={expired}
+          boardMode={mode === "sub" ? "subs" : mode === "move" ? "move" : undefined}
+          onBoardTap={handleBoardTap}
           subbedOut={subs.map((s) => s.out)}
-          pendingOut={pendingOut}
+          pendingPlayerId={mode === "move" ? pendingMove : pendingOut}
           hideBench
           boardHeader={boardHeader}
           railNote={railNote}

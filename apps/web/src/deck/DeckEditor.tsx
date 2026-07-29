@@ -52,22 +52,36 @@ export interface DeckEditorProps {
   autoDisabled?: boolean;
   autoHint?: string;
   /**
-   * **배치 잠금**(#244) — 감독시간처럼 "라인업은 그대로, 지시만 손보는" 화면.
-   * 빈 슬롯을 눌러도 선수 시트가 열리지 않고 [보유 선수]·[Auto 배치]·[초기화]·[자리 바꾸기]·
-   * [덱에서 제거]가 사라진다. hero 확정: *"덱에서 셋팅하던 것과 전후반 사이 차이점은 새로운 선수
-   * 배치가 안 된다는 것뿐"* — 그래서 화면 형식은 같게 두고 **이 플래그 하나로** 차이를 만든다.
+   * **배치 잠금**(#244, 뜻은 #276 에서 좁혀졌다) — 감독시간처럼 **스쿼드 밖에서 선수를 데려오지
+   * 않는** 화면. 빈 슬롯을 눌러도 선수 시트가 열리지 않고 [보유 선수]·[Auto 배치]·[초기화]·
+   * [이 자리 선수 바꾸기]·[덱에서 제거]가 사라진다.
+   *
+   * ⚠️ **"자리 바꾸기가 없다"는 더 이상 이 플래그의 뜻이 아니다**(#276 hero 결정). 감독시간에도
+   * 포메이션과 **선발끼리의** 자리 바꾸기는 열린다 — 그건 `lineupEditable` 이 켠다. 이 플래그를
+   * 통째로 풀면 보유 선수 시트·Auto·초기화·제거까지 열려 **경기 스쿼드 밖 선수를 후반에 투입**할
+   * 수 있게 된다(서버가 400 으로 막지만 화면이 거짓말을 한다) — 그래서 두 축은 따로 간다.
    */
   placementLocked?: boolean;
   /**
-   * **교체 모드**(감독시간 T2) — 보드 탭이 "지시 대상 고르기"가 아니라 "뺄/넣을 선수 지정"이 된다.
-   * 지정 자체는 호출부가 한다(교체 규칙·전송은 감독시간 소유) → 여기서는 탭을 넘겨주기만 한다.
+   * **라인업 편집 허용**(#276) — `placementLocked` 화면이지만 포메이션 변경 + **선발끼리** 자리
+   * 바꾸기는 연다. hero 결정: 감독시간에 포메이션·선발 배치를 바꿀 수 있다.
+   * (벤치 ↔ 선발은 여전히 막힌다 — 그건 교체이고 규칙·전송은 `boardMode="subs"` 가 소유한다.)
    */
-  subsMode?: boolean;
-  onSubTap?: (playerId: string, role: "starter" | "bench") => void;
+  lineupEditable?: boolean;
+  /** 라인업 편집이 지금은 잠김(감독시간 만료) — 손잡이는 보이되 동작하지 않는다. */
+  lineupDisabled?: boolean;
+  /**
+   * **보드 탭을 호출부가 가져가는 모드**(감독시간 T2/#276).
+   *   · `"subs"` — 탭이 "뺄/넣을 선수 지정"(벤치 줄이 펴진다)
+   *   · `"move"` — 탭이 "자리 바꿀 두 선발 지정"(벤치는 접힌 채, 교체와 같은 두 번 탭 제스처)
+   * 지정 자체는 호출부가 한다(교체 규칙·배치 전송은 감독시간 소유) → 여기서는 탭을 넘겨주기만 한다.
+   */
+  boardMode?: "subs" | "move";
+  onBoardTap?: (playerId: string, role: "starter" | "bench") => void;
   /** 교체로 빠지는 선수 — 보드 토큰에 OUT 표시. */
   subbedOut?: string[];
-  /** 지금 "뺄 선수"로 지정된 선수(교체 모드 강조). */
-  pendingOut?: string | null;
+  /** 지금 지정된 선수(교체의 "뺄 선수" / 자리 바꾸기의 첫 번째 선수) — 보드에서 강조. */
+  pendingPlayerId?: string | null;
   /** 팀 세부조정(전술 다이얼) 숨김 — 감독시간은 서버가 후반 전술을 받지 않는다(#254). */
   hideTeamTune?: boolean;
   /** 벤치 줄 숨김 — 감독시간의 한마디 모드(교체 모드에선 자동으로 다시 편다). */
@@ -125,10 +139,12 @@ export function DeckEditor(props: DeckEditorProps) {
     autoDisabled,
     autoHint,
     placementLocked = false,
-    subsMode = false,
-    onSubTap,
+    lineupEditable = false,
+    lineupDisabled = false,
+    boardMode,
+    onBoardTap,
     subbedOut,
-    pendingOut,
+    pendingPlayerId,
     hideTeamTune,
     hideBench,
     boardHeader,
@@ -188,10 +204,17 @@ export function DeckEditor(props: DeckEditorProps) {
   }
 
   function handleDragEnd(e: DragEndEvent) {
-    if (placementLocked || subsMode) return; // 배치 잠금 화면에서는 드래그도 라인업을 바꾸지 않는다
+    if (boardMode) return; // 탭이 보드를 소유하는 모드에서는 드래그가 끼어들지 않는다
     if (!e.over) return;
     const playerId = playerIdFromDragId(String(e.active.id));
     const target = parseDroppableId(String(e.over.id));
+    if (placementLocked) {
+      // 배치 잠금 화면의 드래그는 **선발끼리 자리 바꾸기**까지만이다(#276) — 벤치로 끌어내리거나
+      // 벤치에서 끌어올리면 그건 교체이고, 교체는 규칙(≤3·GK≥1)을 가진 별도 손잡이가 소유한다.
+      if (!lineupEditable || lineupDisabled) return;
+      const from = findPlayerSlot(draft, playerId);
+      if (from?.role !== "starter" || target.role !== "starter") return;
+    }
     // 드래그도 탭과 **같은 결과**로 수렴한다 — 놓은 선수가 곧 지시 대상이 된다.
     mutateDraft(movePlayerToSlot(draft, playerId, target.role, target.slotIndex));
     selectPlayer(playerId);
@@ -216,9 +239,9 @@ export function DeckEditor(props: DeckEditorProps) {
    */
   function handleSlotTap(slot: SlotRef) {
     const occupant = draft.slots.find((s) => s.role === slot.role && s.slotIndex === slot.slotIndex);
-    // 교체 모드: 탭은 전부 호출부(감독시간)로 넘긴다 — 규칙·전송은 그쪽이 소유한다.
-    if (subsMode) {
-      if (occupant) onSubTap?.(occupant.playerId, slot.role);
+    // 교체·자리 바꾸기 모드: 탭은 전부 호출부(감독시간)로 넘긴다 — 규칙·전송은 그쪽이 소유한다.
+    if (boardMode) {
+      if (occupant) onBoardTap?.(occupant.playerId, slot.role);
       return;
     }
     if (occupant) {
@@ -303,6 +326,9 @@ export function DeckEditor(props: DeckEditorProps) {
           autoHint={autoHint}
           onAuto={onAuto}
           placementLocked={placementLocked}
+          /* 포메이션은 배치 잠금과 **다른 축**(#276) — 라인업 편집이 열린 화면에서는 보인다. */
+          formationLocked={placementLocked && !lineupEditable}
+          formationDisabled={lineupDisabled}
         />
 
         <div className={styles.wrap}>
@@ -314,11 +340,12 @@ export function DeckEditor(props: DeckEditorProps) {
               playersById={playersById}
               conditions={conditions}
               selectedSlot={null}
-              /* 교체 모드에서는 "뺄 선수"가 강조 대상이다(지시 대상이 아니라). */
-              selectedPlayerId={subsMode ? (pendingOut ?? null) : selection.playerId}
+              /* 보드 모드에서는 지금 지정된 선수가 강조 대상이다(지시 대상이 아니라). */
+              selectedPlayerId={boardMode ? (pendingPlayerId ?? null) : selection.playerId}
               subbedOut={subbedOut}
-              swapMode={subsMode}
-              hideBench={hideBench && !subsMode}
+              swapMode={Boolean(boardMode)}
+              /* 벤치를 펴는 건 교체 모드뿐 — 자리 바꾸기는 **선발끼리**라 넣을 선수를 고를 일이 없다. */
+              hideBench={hideBench && boardMode !== "subs"}
               onSlotTap={handleSlotTap}
               /* 빈 상태(#106 R3b A): 선발 0/11 로 처음 들어오면 피치가 "+" 11개짜리 무언의 격자라
                  무엇부터 해야 하는지가 없었다.

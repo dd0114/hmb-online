@@ -209,6 +209,23 @@
 .barStatic .fill {
   font-size: 11px;
 }
+/*
+ * #244 는 이 줄을 통째로 감췄다(감독시간엔 제목·AUTO·포메이션 셋 다 없었으니 빈 줄이었다).
+ * #276 으로 **포메이션 셀렉트가 감독시간에도 산다** → 통째로 감추면 DOM 엔 있는데 화면엔 없는
+ * 손잡이가 된다(실브라우저 e2e 가 잡았다: `element is not visible`).
+ * `display: contents` = 줄 자체는 사라지고 **살아 있는 자식만** 압축 바의 한 줄에 합류한다
+ * (제목은 아래에서 계속 숨고, AUTO 는 배치 잠금이라 아예 렌더되지 않는다).
+ */
 .barStatic .top {
-  display: none;
+  display: contents;
+}
+/* 덱에서는 셀렉트를 오른쪽 끝으로 미는 `margin-left:auto` 가 여기선 **뒤따르는 지표까지** 함께
+   밀어낸다(compressed 바에서는 형제가 된다) → 압축 줄에서는 그냥 맨 앞에 앉힌다. */
+.barStatic .formationLabel {
+  margin-left: 0;
+}
+.barStatic .formation {
+  min-height: 30px;
+  padding: 3px 8px;
+  font-size: 12px;
 }
