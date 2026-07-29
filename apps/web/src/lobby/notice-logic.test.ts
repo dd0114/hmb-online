@@ -13,6 +13,7 @@ import {
   NOTICE_DISMISS_WINDOW_MS,
   markNoticeClosed,
   markNoticeDismissed,
+  noticeCenterView,
   noticeMetaText,
   noticeSuppressionKey,
   normalizeNotices,
@@ -192,5 +193,54 @@ describe("저장소 오염 — 조용히 무시하고 표시한다", () => {
     markNoticeClosed(none, "A@1");
     markNoticeDismissed(none, "A@1", NOW);
     expect(visibleNotices({ notices: [notice("A")] }, NOW, none).map((n) => n.id)).toEqual(["A"]);
+  });
+});
+
+/**
+ * 공지 목록(다시 보기) — **억제는 팝업에만 적용된다**.
+ *
+ * 이 계약이 지키는 성질: 24시간 안 보기를 누른 뒤 그 사이 노출 기간이 끝나면 팝업으로는
+ * **영영 못 보는** 공지가 생긴다. 목록이 그 상태를 구제한다 — 여기서까지 억제하면 기능이
+ * 존재할 이유가 없다(변이체: `all` 을 `visibleNotices` 로 바꾸면 여기가 깨진다).
+ */
+describe("noticeCenterView — 목록은 억제와 무관, 점만 억제를 본다", () => {
+  const raw = { notices: [notice("A"), notice("B"), notice("C")] };
+
+  it("아무것도 안 읽었으면 전체 = 안 읽음", () => {
+    const v = noticeCenterView(raw, NOW, stores);
+    expect(v.all.map((n) => n.id)).toEqual(["A", "B", "C"]);
+    expect(v.unread.map((n) => n.id)).toEqual(["A", "B", "C"]);
+  });
+
+  it("[24시간 안 보기]·[닫기] 를 누른 공지도 **목록에는 남는다** (점만 줄어든다)", () => {
+    markNoticeDismissed(stores, "A@1", NOW);
+    markNoticeClosed(stores, "B@1");
+    const v = noticeCenterView(raw, NOW, stores);
+    expect(v.all.map((n) => n.id), "목록은 전부 보인다").toEqual(["A", "B", "C"]);
+    expect(v.unread.map((n) => n.id), "안 읽음만 줄어든다").toEqual(["C"]);
+    expect([...v.unreadKeys]).toEqual(["C@1"]);
+  });
+
+  it("전부 읽으면 점은 0 이지만 목록은 그대로다", () => {
+    for (const id of ["A", "B", "C"]) markNoticeClosed(stores, `${id}@1`);
+    const v = noticeCenterView(raw, NOW, stores);
+    expect(v.unread).toEqual([]);
+    expect(v.all).toHaveLength(3);
+  });
+
+  it("안 읽음 집합은 `visibleNotices`(팝업이 쓰는 것)와 **같은 집합**이다", () => {
+    markNoticeDismissed(stores, "B@1", NOW);
+    const v = noticeCenterView(raw, NOW, stores);
+    expect(v.unread.map((n) => n.id)).toEqual(
+      visibleNotices(raw, NOW, stores).map((n) => n.id),
+    );
+  });
+
+  it("응답이 이상하면 빈 뷰 — 진입점이 로비를 죽이지 않는다", () => {
+    for (const bad of [undefined, null, {}, { notices: "곧" }, [{ id: "A" }]]) {
+      const v = noticeCenterView(bad, NOW, stores);
+      expect(v.all).toEqual([]);
+      expect(v.unread).toEqual([]);
+    }
   });
 });

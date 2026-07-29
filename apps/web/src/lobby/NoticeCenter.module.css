@@ -1,0 +1,144 @@
+/* 공지 다시 보기 — 헤더 진입점 + 목록 패널 (#248 UX 후속). */
+
+/*
+ * ⚠️ **폭 예산이 계약이다.** 390px 로비 헤더는 지갑 배지 2개 + [로그아웃]으로 이미 빡빡하다
+ * (#232 이후 실측 docOverflow 11px 의 선존 넘침이 있었다). 진입점은 **고정 28px 정사각**이고
+ * `flex-shrink: 0` 로 줄지 않는다 — 줄어들면 눌 수 없는 크기가 되고, 커지면 헤더가 넘친다.
+ * e2e `p248b-notice-ux.spec.ts` 가 이 예산을 숫자로 지킨다(진입점이 헤더를 한 줄 늘리지 않는다).
+ *
+ * 자리는 **닉네임 옆**(헤더 왼쪽)이다 — 오른쪽 지갑 옆에 두면 평범한 계정에서도 헤더가 한 줄
+ * 더 접혔다(실측 69→113px). 왼쪽은 어느 표본에서도 +8px 다. 근거는 LobbyPage.tsx 주석.
+ */
+.trigger {
+  position: relative;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  padding: 0;
+}
+
+/* 안 읽음 = 점 하나. 숫자를 넣으면 폭이 값에 따라 흔들려 위 예산이 깨진다. */
+.dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 1px solid var(--bg-elevated);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 40;
+}
+
+.panel {
+  width: 100%;
+  max-width: 360px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/*
+ * **목록만 스크롤한다.** 본문이 아무리 길어도 [닫기]는 화면에 남아야 한다 — 패널 전체가
+ * 늘어나면 폰에서 닫기 버튼이 화면 밖으로 밀려 갇힌다.
+ */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.itemHead {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+
+.itemTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  /* 긴 제목이 패널을 넓히지 못하게 — 가로 스크롤 0. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.itemDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.itemMeta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.itemBody {
+  padding: 0 12px 12px;
+  font-size: 13px;
+}
+
+.close {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}

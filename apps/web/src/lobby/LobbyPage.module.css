@@ -1,8 +1,26 @@
+/*
+ * ⚠️ **390px 헤더 폭 예산** — 여기 있는 것들은 장식이 아니라 계약이다(e2e p248b-notice-ux).
+ *
+ * 선존 상태: 닉네임이 길거나 잔액이 7자리면 헤더가 넘쳐 **[로그아웃]이 화면 밖으로 잘렸다**
+ * (390px 실측 docOverflow 11px / 헤더 행 내부 27px, #232 이후 재화 라벨이 길어진 여파).
+ * 공지 진입점을 얹으려면 이걸 먼저 막아야 해서 아래 셋을 넣는다:
+ *
+ *  1. `flex-wrap` — 그래도 안 들어가면 **줄바꿈**한다. 잔액을 말줄임하는 대신 줄을 늘린다
+ *     (돈이 "9,876,54…" 로 잘리면 화면이 거짓말을 한다).
+ *  2. `.headerLeft { min-width: 0 }` + 닉네임 말줄임 — **먼저 줄어드는 쪽은 닉네임**이다.
+ *  3. 오른쪽 컨트롤(공지·로그아웃)은 줄지 않는다 — 줄면 누를 수 없는 크기가 된다.
+ */
 .headerRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.headerLeft {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .nickname {
@@ -11,6 +29,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+.nicknameText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .providerBadge {
@@ -36,9 +61,14 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 자기 안에서도 줄바꿈한다 — 지갑 배지 둘 + 공지 + 로그아웃이 한 줄에 다 안 들어가는
+     극단(7자리 잔액)에서 잘리는 대신 아래로 접힌다. */
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .logout {
+  flex: 0 0 auto;
   background: none;
   border: 1px solid var(--border);
   color: var(--text-muted);
