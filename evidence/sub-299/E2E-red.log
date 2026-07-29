@@ -1,0 +1,31 @@
+[e2e] HMB_E2E_STAGE=0 — functions 배치 생략(red 기준선)
+[e2e] /Users/peter.park/.nvm/versions/node/v20.19.6/bin/wrangler pages dev /tmp/hmb-og-e2e/dist --ip 127.0.0.1 --port 18877 --compatibility-date=2025-01-01 --log-level=warn --show-interactive-dev-session=false
+[e2e] pages dev up: http://127.0.0.1:18877
+FAIL  AC1 og:title = 공지 제목
+FAIL  AC1 og:description 존재(본문 요약)
+FAIL  AC1 og:image = 본문 첫 이미지의 절대 URL ()
+FAIL  AC1 og:image 가 절대 URL(스킴+호스트)
+FAIL  AC1 og:url = 정규 공유 URL
+FAIL  AC1 twitter:card
+FAIL  AC1 <title> 도 공지 제목
+FAIL  AC1 메타가 </head> 앞에 있다
+FAIL  AC1 이미지 없는 공지는 기본 이미지로 폴백
+FAIL  AC1 제목 특수문자 이스케이프(&lt; &gt; &quot;)
+PASS  AC1 AC1-og-410.html 셸 유지(#root + 앱 번들)
+FAIL  AC1 AC1-og-410.html 은 기본 메타(본문 유출 없음)
+PASS  AC1 AC1-og-404.html 셸 유지(#root + 앱 번들)
+FAIL  AC1 AC1-og-404.html 은 기본 메타(본문 유출 없음)
+PASS  AC2 히어로 이미지 200
+PASS  AC2 content-type: image/webp
+PASS  AC2 크기 > 50KB
+PASS  AC2 원본과 바이트 동일
+PASS  AC2 _headers 가 살아 있다(X-Frame-Options: SAMEORIGIN)
+PASS  AC3 Function 소스에 trycloudflare 하드코딩 0건
+PASS  AC3 Function 이 /config.json 을 읽는다
+FAIL  AC3 config.json 교체를 재시작 없이 따라간다([A]→[B])
+PASS  AC4 사람 UA 도 앱 번들을 받는다(UA 분기 없음)
+FAIL  AC4 사람 UA 응답도 크롤러와 동일(og 포함)
+
+════════ 결과: PASS=10 FAIL=14  (로그: /tmp/hmb-og-e2e/ev-red) ════════
+infra/pages/e2e/og-function.e2e.sh: line 54: 18096 Terminated: 15          node infra/pages/e2e/stub-backend.mjs "$STUB_A_PORT" A > "$OUT/stub-a.log" 2>&1
+infra/pages/e2e/og-function.e2e.sh: line 54: 18097 Terminated: 15          node infra/pages/e2e/stub-backend.mjs "$STUB_B_PORT" B > "$OUT/stub-b.log" 2>&1

@@ -1,0 +1,2 @@
+[e2e] /Users/peter.park/.nvm/versions/node/v20.19.6/bin/wrangler pages dev /tmp/hmb-og-e2e/dist --ip 127.0.0.1 --port 18877 --compatibility-date=2025-01-01 --log-level=warn --show-interactive-dev-session=false
+[e2e] /Users/peter.park/.nvm/versions/node/v20.19.6/bin/wrangler pages dev /tmp/hmb-og-e2e/dist --ip 127.0.0.1 --port 18877 --compatibility-date=2025-01-01 --log-level=warn --show-interactive-dev-session=false

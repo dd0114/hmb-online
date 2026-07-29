@@ -1,0 +1,11 @@
+PASS  W1 dist 안의 functions/ 는 라우트로 잡히지 않는다(= cwd 기준이 맞다)
+PASS  W1 그때도 셸 자체는 정상(200 SPA)
+PASS  W2 build.sh 가 stage-functions.sh 를 부른다
+PASS  W2 배치 결과가 리포 루트 functions/ 에 있다
+PASS  W2 리포 루트 functions/ 는 커밋되지 않는다(.gitignore)
+PASS  W3 워치독 cwd 에 Function 이 실린다
+PASS  W3 스냅샷이 없으면 경고를 남기고 계속한다(접속 복구 우선)
+PASS  W3 deploy-pages.sh 가 스냅샷을 남긴다
+PASS  W3 deploy-web.sh 가 스냅샷을 남긴다
+
+════════ 배선 결과: PASS=9 FAIL=0  (로그: /tmp/hmb-og-wiring/ev2) ════════

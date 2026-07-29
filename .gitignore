@@ -31,3 +31,9 @@ infra/deploy-manifest.json
 
 # 공지 팝업 실화면 캡처(#292) — Playwright 산출물, 재생성 가능
 apps/web/e2e-out/
+
+# Cloudflare Pages Function 배치본(#299). SoT 는 infra/pages/functions/ 이고 여기는 build.sh 가
+# 만드는 생성물이다 — wrangler 가 `process.cwd()/functions` 만 보기 때문에 리포 루트여야 한다.
+/functions/
+# wrangler 작업 디렉토리(cwd 아래에 만든다)
+.wrangler/

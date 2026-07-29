@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import online.hmb.common.ApiException;
+import online.hmb.eligibility.EligibilityService;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
@@ -28,10 +29,13 @@ public class RankingService {
 
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
+    private final EligibilityService eligibility;
 
-    public RankingService(JdbcClient jdbcClient, ObjectMapper objectMapper) {
+    public RankingService(JdbcClient jdbcClient, ObjectMapper objectMapper,
+                          EligibilityService eligibility) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
+        this.eligibility = eligibility;
     }
 
     // ── DTO (openapi-v2) ─────────────────────────────────────────────────
@@ -39,9 +43,13 @@ public class RankingService {
     /**
      * rating(#245 D3 additive) = 원정 레이팅. <b>정렬 기준이 승수 → 레이팅으로 바뀌었다</b>(hero 확정).
      * wins·winRate 는 표시로 남는다(기존 화면 무회귀).
+     *
+     * <p>rank 가 {@code Integer}(nullable)인 이유(#296): 자격이 없는 유저는 <b>순위가 0위가 아니라
+     * 없다</b>. 0 으로 채우면 화면에서 "0위"가 1위보다 좋은 건지 헷갈리고, 정렬·비교 코드가 0 을 실제
+     * 순위처럼 다루게 된다. 없음은 없음으로 표현한다. leaderboard 항목은 항상 non-null.
      */
-    public record RankingEntry(String userId, String nickname, int wins, double winRate, int rank,
-                               int rating) {
+    public record RankingEntry(String userId, String nickname, int wins, double winRate, Integer rank,
+                               int rating, boolean eligible) {
     }
 
     public record PlayerRef(String playerId, String name, String position, String grade) {
@@ -57,10 +65,18 @@ public class RankingService {
 
     // ── GET /api/rankings ────────────────────────────────────────────────
 
+    /**
+     * ⚠️ me 는 <b>자격 필터를 적용하기 전 전체</b>에서 찾는다(#296). 순위 목록에서만 찾으면 아직 한
+     * 판도 안 한 유저가 여기서 404 를 맞고, web 은 그걸 "랭킹을 불러오지 못했습니다" 에러 토스트로
+     * 그린다 — 즉 신규 유저가 랭킹 탭을 여는 순간 에러를 본다. 자격이 없는 것과 유저가 없는 것은
+     * 다르다: 전자는 {@code eligible=false, rank=null} 로 정상 응답하고, 404 는 유저가 정말 없을 때만.
+     */
     public RankingsResponse getRankings(String userId, int limit) {
         int effectiveLimit = clamp(limit);
-        List<RankingEntry> ranked = rankedUsers();
+        List<RankingEntry> everyone = allUsers();
+        List<RankingEntry> ranked = rankEligible(everyone);
         RankingEntry me = ranked.stream().filter(e -> e.userId().equals(userId)).findFirst()
+                .or(() -> everyone.stream().filter(e -> e.userId().equals(userId)).findFirst())
                 .orElseThrow(() -> ApiException.notFound("유저를 찾을 수 없습니다"));
         List<RankingEntry> leaderboard = ranked.size() > effectiveLimit
                 ? new ArrayList<>(ranked.subList(0, effectiveLimit))
@@ -77,7 +93,7 @@ public class RankingService {
      * 통째로 평평해져 순위가 무의미해진다. 동점이면 <b>승수 → 승률 → 닉네임</b> 순으로 계속 가른다
      * (= 구 기준이 tie-break 로 살아 있다). 결정론적이라 같은 데이터면 같은 표다.
      */
-    private List<RankingEntry> rankedUsers() {
+    private List<RankingEntry> allUsers() {
         record Agg(String userId, String nickname, int wins, int total, int rating) {
         }
         List<Agg> aggs = jdbcClient.sql("""
@@ -97,8 +113,22 @@ public class RankingService {
         List<RankingEntry> entries = new ArrayList<>();
         for (Agg a : aggs) {
             double winRate = a.total() == 0 ? 0.0 : (double) a.wins() / a.total();
-            entries.add(new RankingEntry(a.userId(), a.nickname(), a.wins(), winRate, 0, a.rating()));
+            // total = 완료 경기 수(result IS NOT NULL) — 자격 판정에 필요한 값이 이미 여기 있다.
+            // 별도 카운트 쿼리를 더하면 같은 사실을 두 곳에서 세게 되어 어긋날 자리가 생긴다.
+            entries.add(new RankingEntry(a.userId(), a.nickname(), a.wins(), winRate, null,
+                    a.rating(), eligibility.isEligible(a.total())));
         }
+        return entries;
+    }
+
+    /**
+     * 자격자만 정렬해 순위(1..n)를 매긴다 (#296).
+     *
+     * <p>순위는 <b>자격자들 사이에서만</b> 센다 — 미자격자를 세어두고 화면에서 감추면 1위와 2위 사이가
+     * 비는 표가 된다.
+     */
+    private List<RankingEntry> rankEligible(List<RankingEntry> everyone) {
+        List<RankingEntry> entries = new ArrayList<>(everyone.stream().filter(RankingEntry::eligible).toList());
         entries.sort(Comparator.comparingInt(RankingEntry::rating).reversed()
                 .thenComparing(Comparator.comparingInt(RankingEntry::wins).reversed())
                 .thenComparing(Comparator.comparingDouble(RankingEntry::winRate).reversed())
@@ -107,7 +137,7 @@ public class RankingService {
         for (int i = 0; i < entries.size(); i++) {
             RankingEntry e = entries.get(i);
             ranked.add(new RankingEntry(e.userId(), e.nickname(), e.wins(), e.winRate(), i + 1,
-                    e.rating()));
+                    e.rating(), true));
         }
         return ranked;
     }
