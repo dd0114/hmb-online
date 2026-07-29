@@ -123,7 +123,7 @@ pre{background:var(--sunk);border:1px solid var(--border);border-radius:10px;pad
   <ul>
     <li>AFTER 안의 <b style="color:#ffdc9a">노란 줄 박스</b>는 <b class="hl">설계 의도 주석</b>입니다(제품 화면에는 안 들어갑니다). 위 [설계 주석 표시]로 끌 수 있습니다.</li>
     <li>숫자·이름·전적은 전부 <b class="hl">가짜 예시 데이터</b>입니다. 보실 건 <b class="hl">배치와 흐름</b>입니다.</li>
-    <li><b class="hl">4차 피드백 반영본입니다.</b> 홈 런처화(4차)·홈 분리(3차)와 앞선 답(연습 배치·복수 규칙 4개·모드별 전적·트레이드 설명·경기 중 잠금·덱 강화 진입·도감 전신)을 전부 넣었습니다 — <a href="#decide">✅ 확정 목록</a>.</li>
+    <li><b class="hl">5차 피드백 반영본입니다.</b> 홈 통칸 타일·명칭(5차)·홈 런처화(4차)·홈 분리(3차)와 앞선 답(연습 배치·복수 규칙 4개·모드별 전적·트레이드 설명·경기 중 잠금·덱 강화 진입·도감 전신)을 전부 넣었습니다 — <a href="#decide">✅ 확정 목록</a>.</li>
     <li>맨 위 <a href="#answer">★ 홈 — 하단탭을 크게 펼친 화면</a> 이 이번 요청입니다. <b>무엇이 홈에 없고 어디로 갔는지</b> 표로 정리했습니다.</li>
   </ul>
 </div>
@@ -136,13 +136,19 @@ pre{background:var(--sunk);border:1px solid var(--border);border-radius:10px;pad
   <p style="margin:8px 0 0"><b class="hl">홈 = 내비 그 자체</b>가 됐습니다. 하단탭의 5칸(게임·덱·선수·영입·내 정보)을
   <b>큰 타일</b>로 펼치고, <b class="hl">홈에서는 하단 탭바를 감춥니다</b> — 홈이 내비인데 그 밑에 또 내비를 그릴 이유가 없습니다.
   다른 탭으로 들어가면 그때부터 하단 탭바가 나옵니다(홈으로 돌아올 길).</p>
+  <p style="margin:8px 0 0"><i>"게임처럼 다 굵게 보여주자(반칸 나누지 말라는 말). 게임시작, 덱구성, 영입, 내 정보, 선수 도감으로 가자"</i> → 반영했습니다.</p>
   <ul>
-    <li><b>게임</b>은 2칸 폭 + 색을 줍니다 — 홈의 주인공이고, 나머지는 회색 명도만(#244 색 규칙 유지).</li>
-    <li>타일마다 <b class="hl">지금 상태를 한 줄</b> 답니다(리그 10/18R · 보유 18/40 · 제안 1건 · 12승 3무 8패).
+    <li><b class="hl">전부 통칸</b>입니다 — 2열 반칸 없음.</li>
+    <li>이름·순서 지정하신 그대로: <b class="hl">게임 시작 · 덱 구성 · 영입 · 내 정보 · 선수 도감</b>.</li>
+    <li><b>게임 시작</b>만 더 크고 색을 줍니다 — 홈의 주인공이고, 나머지는 회색 명도만(#244 색 규칙 유지).</li>
+    <li>타일마다 <b class="hl">지금 상태를 한 줄</b> 답니다(리그 10/18R · 지시 8/11 · 제안 1건 · 12승 3무 8패 · 보유 18/40).
       크게 보여주는 자리를 그냥 큰 버튼으로만 쓰면 아깝습니다.</li>
     <li>맨 위 <b>팀 한 줄</b>(대표 카드 + 디비전·순위·포메이션·전력·레이팅)로 "내 팀이 어떤 팀인지"는 남깁니다.</li>
     <li>알림 줄은 <b>있을 때만</b>.</li>
   </ul>
+  <p style="margin:8px 0 0">⚠️ <b class="hl">하단 탭바 라벨은 짧게 유지</b>합니다(홈·게임·덱·선수·영입·내 정보) — 6칸에
+  "선수 도감"·"덱 구성"은 안 들어갑니다. 홈 타일은 <b>풀 네임</b>, 탭바는 <b>축약</b>이라는 짝입니다.
+  <b>탭 라벨도 통일하길 원하시면 말씀 주세요</b>(그 경우 탭 라벨을 더 줄이거나 아이콘 위주로 갑니다).</p>
 </div>
 
 <div class="pair">
@@ -222,7 +228,7 @@ pre{background:var(--sunk);border:1px solid var(--border);border-radius:10px;pad
 
 <table class="t">
   <tr><th style="width:120px">현행 탭</th><th style="width:120px">개편 후</th><th style="width:80px">처리</th><th>근거</th></tr>
-  <tr><td>홈(로비)</td><td><b>홈</b></td><td><span class="pill move">재설계</span></td><td><b class="hl">하단탭을 크게 펼친 런처</b>(hero 4R). 타일 5개 + 팀 한 줄 + 알림 한 줄. <b>홈에서는 탭바를 감춘다</b>.</td></tr>
+  <tr><td>홈(로비)</td><td><b>홈</b></td><td><span class="pill move">재설계</span></td><td><b class="hl">하단탭을 크게 펼친 런처</b>(hero 4~5R). <b>통칸</b> 타일 5개(게임 시작·덱 구성·영입·내 정보·선수 도감) + 팀 한 줄 + 알림 한 줄. <b>홈에서는 탭바를 감춘다</b>.</td></tr>
   <tr><td>[게임 시작] 모달</td><td><b>게임</b></td><td><span class="pill new">탭 승격</span></td><td>모달을 화면으로. 연습·리그·원정이 각자 상태(라운드·레이팅·피침공)를 달고 있다. 리그/원정 페이지의 부모.</td></tr>
   <tr><td>덱</td><td><b>덱</b></td><td><span class="pill keep">유지</span></td><td>배치·프롬프트는 #244 골격 그대로. <b>선수 탭 → 강화</b> 진입만 추가.</td></tr>
   <tr><td>육성 <i>+</i> 도감</td><td><b>선수</b></td><td><span class="pill move">병합</span></td><td><b class="hl">두 화면은 이미 같은 코드다</b> — 같은 <code>CodexPage.module.css</code>·<code>PlayerCard</code>·<code>CardGrowthDetail</code> 을 쓰고 차이는 <code>owned</code> 필터뿐. 탭 두 칸을 쓸 이유가 없어 <b>[보유]/[전체] 세그먼트</b>로 대체.</td></tr>
@@ -537,7 +543,7 @@ W4 는 server-java 세션에 이슈로 넘기고, 그동안 web 은 계속 갑�
   <h4>✅ 2차 피드백으로 확정 — 전부 이 보드에 반영돼 있습니다</h4>
   <table class="t" style="margin-top:8px">
     <tr><th style="width:180px">항목</th><th>확정</th><th style="width:130px">어디서 확인</th></tr>
-    <tr><td>홈</td><td><b>별도 탭 + 하단탭을 크게 펼친 런처</b>. 홈에서는 <b>탭바 숨김</b></td><td><a href="#answer">홈</a></td></tr>
+    <tr><td>홈</td><td><b>별도 탭 + 하단탭을 크게 펼친 런처</b>(전부 <b>통칸</b>). 홈에서는 <b>탭바 숨김</b>.<br>타일 = 게임 시작 · 덱 구성 · 영입 · 내 정보 · 선수 도감</td><td><a href="#answer">홈</a></td></tr>
     <tr><td>Q1 연습 경기 배치</td><td><b>최하단 · 무채색 · 축소</b></td><td><a href="#s-game">게임</a></td></tr>
     <tr><td>Q2 리그 랭킹보드 정렬</td><td>"알아서" → <b>디비전 우선 → 승점</b>으로 갑니다</td><td><a href="#s-league">리그</a></td></tr>
     <tr><td>Q3-① 복수 무승부</td><td><b>횟수 안 씀</b> — 다시 침공 가능</td><td><a href="#revenge">복수 규칙</a></td></tr>

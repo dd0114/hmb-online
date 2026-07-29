@@ -158,18 +158,21 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
 .teamrow .tinfo b{display:block;font-size:14px}
 .teamrow .tinfo span{display:block;font-size:11px;color:var(--muted)}
 
-.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.tile{position:relative;overflow:hidden;background:var(--surface);border-radius:16px;padding:14px;text-align:left;min-height:104px;display:flex;flex-direction:column;justify-content:space-between}
-.tile em{font-size:26px;font-style:normal;line-height:1}
-.tile b{display:block;font-size:16px;margin-top:8px}
-.tile span{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
-.tile .go{position:absolute;right:12px;top:12px;color:#4b5462;font-size:15px}
-.tile:not(.wide) .go{display:none}
-/* 게임 = 홈의 주인공. 2칸 폭 + 색을 준다(나머지는 회색 명도만 — #244 색 규칙). */
-.tile.wide{grid-column:1 / -1;min-height:118px;background:linear-gradient(120deg,#172a4d,#111826 66%)}
-.tile.wide em{font-size:30px}
-.tile.wide b{font-size:19px}
-.tile .badge{position:absolute;right:11px;top:11px}
+/* 전부 **통칸**이다(hero 5R: "반칸 나누지 말라"). 2열 그리드 없음. */
+.tiles{display:grid;grid-template-columns:1fr;gap:10px}
+.tile{position:relative;overflow:hidden;background:var(--surface);border-radius:16px;padding:15px 14px;
+  text-align:left;min-height:86px;display:flex;align-items:center;gap:13px}
+.tile em{font-size:27px;font-style:normal;line-height:1;width:46px;height:46px;border-radius:13px;
+  background:var(--sunk);display:grid;place-items:center;flex:0 0 auto}
+.tile .tt{flex:1;min-width:0}
+.tile b{display:block;font-size:17px}
+.tile span.sub{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+.tile .go{color:#4b5462;font-size:17px;flex:0 0 auto}
+/* 게임 = 홈의 주인공. 더 크고 색을 준다(나머지는 회색 명도만 — #244 색 규칙). */
+.tile.wide{min-height:112px;background:linear-gradient(120deg,#172a4d,#111826 66%)}
+.tile.wide em{font-size:32px;width:54px;height:54px;background:rgba(255,255,255,.06)}
+.tile.wide b{font-size:21px}
+.tile .badge{position:absolute;right:38px;top:50%;transform:translateY(-50%)}
 .tile .rib{position:absolute;top:0;right:0;background:var(--them);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-bottom-left-radius:10px}
 
 /* ── 홈 히어로 (미사용 — 3차안 잔재, 참고용) ──────────────────────────── */
@@ -300,28 +303,33 @@ body.nonotes .note{display:none}
       <div class="tiles">
         <button class="tile wide" onclick="go('game')">
           <span class="rib">복수 2</span>
-          <div><em>⚽</em><b>게임</b><span>리그 10/18R · 원정 레이팅 1180</span></div>
+          <em>⚽</em>
+          <div class="tt"><b>게임 시작</b><span class="sub">리그 10/18R · 원정 레이팅 1180</span></div>
           <span class="go">›</span>
         </button>
 
         <button class="tile" onclick="go('deck')">
-          <div><em>📋</em><b>덱</b><span>4-3-3 · 지시 8/11</span></div>
-          <span class="go">›</span>
-        </button>
-
-        <button class="tile" onclick="go('players')">
-          <div><em>👥</em><b>선수</b><span>보유 18 / 40</span></div>
+          <em>📋</em>
+          <div class="tt"><b>덱 구성</b><span class="sub">4-3-3 · 지시 8/11 작성</span></div>
           <span class="go">›</span>
         </button>
 
         <button class="tile" onclick="go('recruit')">
-          <div><em>✨</em><b>영입</b><span>트레이드 제안 1건</span></div>
-          <span class="go">›</span>
+          <em>✨</em>
+          <div class="tt"><b>영입</b><span class="sub">뽑기 · 트레이드 제안 1건 공개</span></div>
           <span class="badge them">1</span>
+          <span class="go">›</span>
         </button>
 
         <button class="tile" onclick="go('me')">
-          <div><em>🙋</em><b>내 정보</b><span>12승 3무 8패 · 랭킹 12위</span></div>
+          <em>🙋</em>
+          <div class="tt"><b>내 정보</b><span class="sub">12승 3무 8패 · 리그 4위 · 원정 12위</span></div>
+          <span class="go">›</span>
+        </button>
+
+        <button class="tile" onclick="go('players')">
+          <em>👥</em>
+          <div class="tt"><b>선수 도감</b><span class="sub">보유 18 / 40</span></div>
           <span class="go">›</span>
         </button>
       </div>
@@ -331,8 +339,9 @@ body.nonotes .note{display:none}
         <span class="sm" style="flex:1">새 소식 2건 — 원정 피침공 · 트레이드 공개</span>
         <span class="tiny muted">›</span>
       </button>
-      <div class="note tiny">타일에 <b>지금 상태</b>를 한 줄씩 달았다(리그 라운드·보유 수·제안 건수) — 크게 보여주는 값을 그냥 큰 버튼으로 쓰면 아깝다.
-        알림 줄은 <b>있을 때만</b> 나온다.</div>
+      <div class="note tiny"><b>전부 통칸</b>이다(hero 5R) — 반칸으로 나누지 않는다. 이름·순서도 지정하신 그대로:
+        <b>게임 시작 · 덱 구성 · 영입 · 내 정보 · 선수 도감</b>.
+        타일마다 <b>지금 상태</b>를 한 줄 달았다 — 크게 보여주는 자리를 큰 버튼으로만 쓰면 아깝다. 알림 줄은 <b>있을 때만</b>.</div>
     </div>
   </div>
 </section>
