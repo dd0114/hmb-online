@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#286 UI 보드 — 홈/내비 전면 개편 (W1 컨펌용)</title>
+<style>
+:root{
+  --bg:#0b0d12; --panel:#12151c; --surface:#171a21; --sunk:#0e1117;
+  --text:#eef0f4; --muted:#9aa1ad; --border:#2a2e37; --hairline:rgba(255,255,255,.07);
+  --us:#4c8dff; --them:#ff6b6b; --warn:#ffc24b; --ok:#3ddc84;
+  color-scheme:dark; font-family:system-ui,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);line-height:1.62}
+a{color:var(--us)}
+code{background:var(--sunk);border:1px solid var(--hairline);border-radius:5px;padding:1px 5px;font-size:.86em}
+b.hl{color:#fff}
+
+/* 레이아웃 */
+.wrap{display:flex;min-height:100vh}
+aside{position:sticky;top:0;height:100vh;overflow:auto;width:236px;flex:0 0 236px;background:var(--panel);border-right:1px solid var(--border);padding:16px 12px}
+aside h1{font-size:14px;margin:0 0 2px}
+aside .sub{font-size:11px;color:var(--muted);margin-bottom:14px}
+aside a.nav{display:block;padding:7px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-size:13px}
+aside a.nav:hover{background:var(--surface);color:var(--text)}
+aside .grp{font-size:10.5px;color:#5f6875;text-transform:uppercase;letter-spacing:.08em;margin:14px 0 4px;padding-left:10px}
+main{flex:1;min-width:0;padding:26px 30px 90px;max-width:1500px}
+
+h2.h{font-size:22px;margin:44px 0 6px;padding-top:14px;border-top:1px solid var(--border)}
+h2.h:first-of-type{border-top:0;margin-top:8px}
+h3.h{font-size:16px;margin:24px 0 6px}
+p.lead{color:var(--muted);margin:0 0 14px;max-width:74ch}
+
+/* 병렬 뷰 */
+.pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:18px;align-items:start;margin:14px 0 6px}
+.pane{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+.pane>header{padding:9px 13px;font-size:12px;font-weight:700;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border)}
+.pane.before>header{background:rgba(255,107,107,.1);color:#ffb4b4}
+.pane.after>header{background:rgba(76,141,255,.12);color:#a8c6ff}
+.pane>header .tag{margin-left:auto;font-weight:500;color:var(--muted);font-size:11px}
+.phone{background:#000;height:760px;overflow:auto;display:flex;justify-content:center}
+.phone img{width:390px;height:auto;display:block}
+.phone iframe{width:390px;height:100%;border:0;flex:0 0 390px}
+.phone.tall{height:900px}
+.capt{padding:8px 13px;font-size:11.5px;color:var(--muted);border-top:1px solid var(--hairline)}
+
+/* 여러 장 나열 */
+.strip{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px}
+.strip figure{margin:0;flex:0 0 300px}
+.strip figure img{width:300px;border-radius:10px;border:1px solid var(--border);display:block}
+.strip figcaption{font-size:11.5px;color:var(--muted);margin-top:6px}
+
+/* 표 */
+table.t{width:100%;border-collapse:collapse;font-size:13.5px;margin:10px 0}
+table.t th{text-align:left;color:var(--muted);font-size:11.5px;font-weight:600;padding:7px 9px;border-bottom:1px solid var(--border)}
+table.t td{padding:8px 9px;border-bottom:1px solid var(--hairline);vertical-align:top}
+table.t tr:hover td{background:rgba(255,255,255,.02)}
+.pill{display:inline-block;font-size:11px;padding:1px 8px;border-radius:99px;background:var(--sunk);border:1px solid var(--hairline);color:var(--muted)}
+.pill.new{background:rgba(255,107,107,.16);color:#ffb4b4;border-color:transparent}
+.pill.keep{background:rgba(61,220,132,.14);color:#a5edc4;border-color:transparent}
+.pill.move{background:rgba(76,141,255,.16);color:#a8c6ff;border-color:transparent}
+.pill.gone{background:rgba(154,161,173,.14);color:#c4cad4;border-color:transparent}
+
+/* 박스 */
+.box{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:12px 0}
+.box.warn{border-left:3px solid var(--warn);background:rgba(255,194,75,.06)}
+.box.q{border-left:3px solid var(--us);background:rgba(76,141,255,.06)}
+.box h4{margin:0 0 6px;font-size:14px}
+.box ul{margin:6px 0 0;padding-left:20px}
+.box li{margin:3px 0}
+pre{background:var(--sunk);border:1px solid var(--border);border-radius:10px;padding:13px 15px;overflow:auto;font-size:12.3px;line-height:1.55}
+.toolbar{position:sticky;top:0;z-index:9;background:rgba(11,13,18,.94);backdrop-filter:blur(6px);padding:10px 0 12px;margin:-26px 0 0;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.toolbar button{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 12px;font-size:12.5px;cursor:pointer}
+.toolbar button.on{background:var(--us);border-color:transparent;color:#fff}
+.toolbar span{font-size:12px;color:var(--muted)}
+@media (max-width:900px){aside{display:none}main{padding:18px 14px 70px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<aside>
+  <h1>#286 UI 보드</h1>
+  <div class="sub">홈/내비 전면 개편 · W1 컨펌용</div>
+  <a class="nav" href="#top">개요 · 보는 법</a>
+  <a class="nav" href="#ia">IA 변경 (7탭 → 5탭)</a>
+  <div class="grp">화면별 Before / After</div>
+  <a class="nav" href="#s-home">1. 게임 (홈)</a>
+  <a class="nav" href="#s-league">1-1. 리그 페이지</a>
+  <a class="nav" href="#s-away">1-2. 원정 + 복수</a>
+  <a class="nav" href="#s-deck">2. 덱 + 강화 시트</a>
+  <a class="nav" href="#s-players">3. 선수 (도감)</a>
+  <a class="nav" href="#s-recruit">4. 영입 (뽑기+트레이드)</a>
+  <a class="nav" href="#s-me">5. 내 정보</a>
+  <div class="grp">설계</div>
+  <a class="nav" href="#revenge">복수 시스템 규칙</a>
+  <a class="nav" href="#api">서버 API 계약 초안</a>
+  <a class="nav" href="#waves">웨이브 분할안</a>
+  <a class="nav" href="#decide">❓ 결정해 주실 것</a>
+  <div class="grp">원본</div>
+  <a class="nav" href="after.html" target="_blank">▶ AFTER 프로토타입 단독 열기</a>
+</aside>
+
+<main id="top">
+<div class="toolbar">
+  <button id="btn-notes" class="on" onclick="toggleNotes()">설계 주석 표시</button>
+  <button onclick="reloadFrames()">프로토타입 새로고침</button>
+  <span>오른쪽 AFTER 칸은 <b class="hl">실제로 눌러볼 수 있습니다</b> — 탭 이동·시트 열기·세그먼트 전환 전부 동작합니다.</span>
+</div>
+
+<h2 class="h" style="margin-top:18px">개요</h2>
+<p class="lead">
+에픽 <b class="hl">#286</b> W1 산출물입니다. 왼쪽 <b style="color:#ffb4b4">BEFORE</b> 는 <b class="hl">지금 코드가 실제로 그리는 화면을 찍은 스크린샷</b>이고
+(목업이 아니라 <code>apps/web/e2e/p286-before-capture.capture.ts</code> 가 백엔드 없이 390px 로 캡처한 것),
+오른쪽 <b style="color:#a8c6ff">AFTER</b> 는 <b class="hl">눌러볼 수 있는 개편안 프로토타입</b>입니다.
+구현은 아직 한 줄도 하지 않았습니다 — 이 보드를 컨펌받고 시작합니다.
+</p>
+<div class="box warn">
+  <h4>보실 때</h4>
+  <ul>
+    <li>AFTER 안의 <b style="color:#ffdc9a">노란 줄 박스</b>는 <b class="hl">설계 의도 주석</b>입니다(제품 화면에는 안 들어갑니다). 위 [설계 주석 표시]로 끌 수 있습니다.</li>
+    <li>숫자·이름·전적은 전부 <b class="hl">가짜 예시 데이터</b>입니다. 보실 건 <b class="hl">배치와 흐름</b>입니다.</li>
+    <li>맨 아래 <a href="#decide">❓ 결정해 주실 것</a> 에 제가 혼자 정하면 안 되는 게임 규칙 5개를 모아 뒀습니다. 거기 답만 주시면 됩니다.</li>
+  </ul>
+</div>
+
+<!-- ══════════════ IA ══════════════ -->
+<h2 class="h" id="ia">IA 변경 — 내비 7탭 → 5탭</h2>
+<p class="lead">hero 지적: <i>"내비(인덱스)와 홈 화면이 더 확실하게 구분되어야 한다."</i> 지금은 홈이 <b class="hl">인덱스의 중복</b>입니다 —
+로비에 [덱 구성][상점][도감] 버튼이 있는데, 하단 탭바에도 덱·상점·도감이 그대로 또 있습니다. 홈은 홈이 되고, 이동은 탭바가 맡습니다.</p>
+
+<div class="pair">
+  <div class="pane before"><header>BEFORE — 내비 7탭 <span class="tag">홈·덱·육성·상점·트레이드·로그·도감</span></header>
+    <div style="padding:14px;background:#000"><img src="before/00-nav-bottom.png" alt="현행 하단 탭바" style="width:100%;max-width:390px"></div>
+    <div class="capt">항목이 7개라 390px 에서 라벨이 좁고, 홈 화면의 버튼들과 의미가 겹칩니다.</div>
+  </div>
+  <div class="pane after"><header>AFTER — 5탭 <span class="tag">게임·덱·선수·영입·내 정보</span></header>
+    <div style="padding:14px;background:#000"><img src="after/tabbar.png" alt="개편 하단 탭바" style="width:100%;max-width:390px"></div>
+    <div class="capt">게임에 할 일이 있으면 <b style="color:#ffb4b4">뱃지</b>가 붙습니다(피침공/복수 가능 건수).</div>
+  </div>
+</div>
+
+<table class="t">
+  <tr><th style="width:120px">현행 탭</th><th style="width:120px">개편 후</th><th style="width:80px">처리</th><th>근거</th></tr>
+  <tr><td>홈(로비)</td><td><b>게임</b></td><td><span class="pill move">재설계</span></td><td>모드 선택 모달을 없애고 연습·리그·원정을 홈의 1급 카드로. 덱/상점/도감 버튼은 탭바와 중복이라 제거.</td></tr>
+  <tr><td>덱</td><td><b>덱</b></td><td><span class="pill keep">유지</span></td><td>배치·프롬프트는 #244 골격 그대로. <b>선수 탭 → 강화</b> 진입만 추가.</td></tr>
+  <tr><td>육성 <i>+</i> 도감</td><td><b>선수</b></td><td><span class="pill move">병합</span></td><td><b class="hl">두 화면은 이미 같은 코드다</b> — 같은 <code>CodexPage.module.css</code>·<code>PlayerCard</code>·<code>CardGrowthDetail</code> 을 쓰고 차이는 <code>owned</code> 필터뿐. 탭 두 칸을 쓸 이유가 없어 <b>[보유]/[전체] 세그먼트</b>로 대체.</td></tr>
+  <tr><td>상점 <i>+</i> 트레이드</td><td><b>영입</b></td><td><span class="pill move">병합</span></td><td>hero 결정 — 둘 다 "선수를 새로 들이는" 행위. 상단 세그먼트로 한 화면.</td></tr>
+  <tr><td>로그</td><td><b>내 정보</b> 안으로</td><td><span class="pill move">이동</span></td><td>hero 지시. 로그는 목적지가 아니라 근거 — 순위·전적 아래에 붙습니다.</td></tr>
+  <tr><td>—</td><td><b>리그 페이지</b></td><td><span class="pill new">신설급</span></td><td>기존 <code>/league</code> 는 있지만 <b>설명·하는 방법·라운드 진행·전체 랭킹보드</b>가 없습니다. 그 넷을 얹습니다.</td></tr>
+  <tr><td>모드 모달 안의 [원정]</td><td><b>원정 페이지</b></td><td><span class="pill new">신설</span></td><td>지금 원정은 <b class="hl">모달 안의 버튼 하나</b>라 설명·내 점수·랭킹·피침공 기록을 놓을 자리가 없습니다.</td></tr>
+  <tr><td>—</td><td><b>복수</b></td><td><span class="pill new">신규 게임 루트</span></td><td>hero 발제. 원정 페이지 안에 큐로 삽니다. <a href="#revenge">규칙 ↓</a></td></tr>
+  <tr><td>운영(admin)</td><td>그대로</td><td><span class="pill keep">유지</span></td><td>admin 계정에만 6번째로 붙습니다(현행 동일).</td></tr>
+</table>
+
+<!-- ══════════════ 1. 게임 ══════════════ -->
+<h2 class="h" id="s-home">1. 게임 (홈)</h2>
+<p class="lead">현행 홈은 <b class="hl">회색 버튼 4개</b>입니다. 무엇을 할 수 있는지, 내 리그가 몇 라운드인지, 원정에서 무슨 일이 있었는지는 눌러 봐야 압니다.
+개편 홈은 <b class="hl">3개 모드 카드가 각자의 상태를 달고</b> 있습니다 — 리그는 진행 라운드와 순위, 원정은 레이팅·랭킹·피침공 건수.</p>
+<div class="pair">
+  <div class="pane before"><header>BEFORE <span class="tag">/lobby</span></header>
+    <div class="phone"><img src="before/01-lobby.png" alt="현행 로비"></div>
+    <div class="capt">버튼 4개 + 팀 사기 위젯. [게임 시작]을 눌러야 모드를 알 수 있습니다.</div>
+  </div>
+  <div class="pane after"><header>AFTER <span class="tag">눌러보세요</span></header>
+    <div class="phone"><iframe data-src="after.html?screen=home" loading="lazy"></iframe></div>
+    <div class="capt">진행 중 경기 배너 · 팀 상태 스트립 · 모드 3카드. [리그]/[원정] 카드를 누르면 각 페이지로 갑니다.</div>
+  </div>
+</div>
+<h3 class="h">없어지는 것 — [게임 시작] 모달 2단</h3>
+<div class="strip">
+  <figure><img src="before/03-mode-modal.png"><figcaption>BEFORE ① 모드 선택 모달 — 여기서만 리그·원정의 존재를 알 수 있습니다.</figcaption></figure>
+  <figure><img src="before/04-away-candidates.png"><figcaption>BEFORE ② 원정 상대 2택 — 개편 후엔 원정 페이지의 [원정 떠나기]가 이 화면을 그대로 엽니다(로직 유지).</figcaption></figure>
+  <figure><img src="before/02-away-report-popup.png"><figcaption>BEFORE ③ 피원정 리포트 팝업(#245) — <b>유지</b>합니다. 다만 이제 놓쳐도 원정 페이지에 5건이 남습니다.</figcaption></figure>
+</div>
+
+<!-- ══════════════ 1-1. 리그 ══════════════ -->
+<h2 class="h" id="s-league">1-1. 리그 페이지</h2>
+<p class="lead">hero 요구: <i>"리그 설명 + 하는 방법 안내 후 시작. 랭킹보드 준비. 리그 몇 판째 표시."</i>
+현행 <code>/league</code> 는 순위표·일정·보상은 있지만 <b class="hl">설명이 0줄</b>이고, 라운드 진행도 일정표를 세어야 알 수 있으며, 랭킹보드는 <b class="hl">내 디비전 10팀</b>이 전부입니다.</p>
+<div class="pair">
+  <div class="pane before"><header>BEFORE <span class="tag">/league</span></header>
+    <div class="phone tall"><img src="before/12-league.png" alt="현행 리그"></div>
+    <div class="capt">바로 순위표부터 시작합니다. 처음 온 유저에게 리그가 무엇인지 알려 주는 문장이 없습니다.</div>
+  </div>
+  <div class="pane after"><header>AFTER <span class="tag">상단 전환기로 두 상태를 다 보실 수 있습니다</span></header>
+    <div class="phone tall"><iframe data-src="after.html?screen=league" loading="lazy"></iframe></div>
+    <div class="capt">[첫 진입(설명)] = 리그란? + 하는 방법 3스텝 + [시즌 시작] · [시즌 진행 중] = 라운드 진행바 + 다음 경기 + 순위표 + <b>전체 랭킹보드</b>.</div>
+  </div>
+</div>
+
+<!-- ══════════════ 1-2. 원정 ══════════════ -->
+<h2 class="h" id="s-away">1-2. 원정 페이지 + 복수</h2>
+<p class="lead">hero 요구: <i>"설명 + 내 점수 + 랭킹보드 + 최근 누가 침공했는지. 침공 기록 5개까지 → 누르면 그 상대에게 복수."</i>
+현행 원정은 <b class="hl">모달 안의 버튼 하나</b>라 이 정보들이 살 자리가 아예 없습니다. 피침공 기록도 <b class="hl">팝업 한 번 보면 사라집니다</b>(지난 리포트를 볼 화면이 없음 — 이건 #245 에서 이미 알려진 구멍입니다).</p>
+<div class="pair">
+  <div class="pane before"><header>BEFORE <span class="tag">모달 안 버튼 1개가 전부</span></header>
+    <div class="phone"><img src="before/03-mode-modal.png" alt="현행 원정 진입"></div>
+    <div class="capt">"원정 · 실제 유저 팀 · 승패로 레이팅 변동" 한 줄. 내 레이팅이 몇 위인지, 누가 나를 쳤는지는 알 수 없습니다.</div>
+  </div>
+  <div class="pane after"><header>AFTER <span class="tag">[복수] 버튼을 눌러보세요</span></header>
+    <div class="phone tall"><iframe data-src="after.html?screen=away" loading="lazy"></iframe></div>
+    <div class="capt">설명 → 내 점수 → [원정 떠나기] → <b>복수 큐 5건</b> → 원정 랭킹보드 → 지난 시즌.</div>
+  </div>
+</div>
+
+<!-- ══════════════ 2. 덱 ══════════════ -->
+<h2 class="h" id="s-deck">2. 덱 — 선수 탭에서 바로 강화</h2>
+<p class="lead">hero 요구: <i>"진영 설정은 지금처럼. 선수를 눌렀을 때 강화도 가능하게 — 강화 버튼 하나 → 시트/팝업."</i>
+전술보드는 그대로 두고, 선수 시트에 <b class="hl">[⚡ 강화]</b> 한 개를 붙입니다. 열리는 시트는 선수 탭에서 여는 것과 <b class="hl">같은 컴포넌트</b>라 싱크가 구조로 보장됩니다.</p>
+<div class="pair">
+  <div class="pane before"><header>BEFORE <span class="tag">/deck</span></header>
+    <div class="phone tall"><img src="before/05-deck.png" alt="현행 덱"></div>
+    <div class="capt">배치·프롬프트까지. 강화하려면 나가서 [육성] 탭으로 가야 합니다.</div>
+  </div>
+  <div class="pane after"><header>AFTER <span class="tag">[선수 시트 열기] → [⚡ 강화]</span></header>
+    <div class="phone tall"><iframe data-src="after.html?screen=deck" loading="lazy"></iframe></div>
+    <div class="capt">전술보드는 현행 유지. 시트 하단의 [⚡ 강화]가 hero 가 말한 그 버튼 하나입니다.</div>
+  </div>
+</div>
+
+<!-- ══════════════ 3. 선수 ══════════════ -->
+<h2 class="h" id="s-players">3. 선수 (도감)</h2>
+<p class="lead">hero 요구: <i>"보유 선수 위주. 여기서도 업그레이드 가능(덱과 싱크). 미보유는 실루엣만. 보유만 / 전체 목록 전환."</i></p>
+<div class="box warn">
+  <h4>조사에서 나온 사실 — 이건 신규 화면이 아니라 <b class="hl">병합</b>입니다</h4>
+  <ul>
+    <li><code>/growth</code>(육성)과 <code>/codex</code>(도감)는 <b class="hl">같은 CSS·같은 카드·같은 강화 시트</b>를 씁니다. 차이는 육성이 <code>owned</code> 로 거른다는 것과 도감에만 등급 필터가 있다는 것뿐입니다.</li>
+    <li>미보유는 <b class="hl">이미 회색조 + [잠금] 뱃지</b>로 그려집니다. hero 가 말한 "실루엣"은 신규 표현이라기보다 <b>더 확실한 실루엣화</b>(검은 실루엣 + ???)입니다.</li>
+  </ul>
+</div>
+<div class="pair">
+  <div class="pane before"><header>BEFORE ① 도감 <span class="tag">/codex · 40명 전체</span></header>
+    <div class="phone tall"><img src="before/07-codex.png" alt="현행 도감"></div>
+    <div class="capt">보유/미보유가 한 그리드에 섞여 있고 전환이 없습니다. 미보유는 회색조 사진.</div>
+  </div>
+  <div class="pane after"><header>AFTER <span class="tag">[보유 18] / [전체 40] 눌러보세요</span></header>
+    <div class="phone tall"><iframe data-src="after.html?screen=players" loading="lazy"></iframe></div>
+    <div class="capt">기본 = 보유. [전체]로 넘기면 미보유가 <b>실루엣</b>으로 나오고, 누르면 획득 방법을 안내합니다.</div>
+  </div>
+</div>
+<div class="strip">
+  <figure><img src="before/06-growth.png"><figcaption>BEFORE ② 육성 탭 — 도감과 거의 같은 화면입니다. 이 탭이 없어지고 [보유] 세그먼트가 그 역할을 합니다.</figcaption></figure>
+</div>
+
+<!-- ══════════════ 4. 영입 ══════════════ -->
+<h2 class="h" id="s-recruit">4. 영입 — 뽑기 + 트레이드 한 화면</h2>
+<p class="lead">hero 결정: <i>"뽑기 + 트레이드 같은 화면(나중에 둘로 쪼갬). 튜토리얼에 트레이드 설명이 빠져 있으니 추가."</i></p>
+<div class="pair">
+  <div class="pane before"><header>BEFORE ① 상점 <span class="tag">/shop</span></header>
+    <div class="phone"><img src="before/08-shop.png" alt="현행 상점"></div>
+    <div class="capt">뽑기 전용 화면.</div>
+  </div>
+  <div class="pane before"><header>BEFORE ② 트레이드 <span class="tag">/trade · 별도 탭</span></header>
+    <div class="phone tall"><img src="before/09-trade.png" alt="현행 트레이드"></div>
+    <div class="capt">별도 탭. <b>트레이드가 무엇인지 설명하는 문장이 없습니다</b> — hero 가 지적한 그 자리.</div>
+  </div>
+</div>
+<div class="pair">
+  <div class="pane after"><header>AFTER <span class="tag">[뽑기] / [트레이드] 세그먼트</span></header>
+    <div class="phone tall"><iframe data-src="after.html?screen=recruit" loading="lazy"></iframe></div>
+    <div class="capt">[트레이드]로 넘기면 맨 위에 <b>"트레이드란?"</b> 상시 안내 카드가 있습니다(+ 첫 진입 코치마크 권장).</div>
+  </div>
+</div>
+
+<!-- ══════════════ 5. 내 정보 ══════════════ -->
+<h2 class="h" id="s-me">5. 내 정보</h2>
+<p class="lead">hero 요구: <i>"로그를 이 탭으로 이동. 내 리그 순위·원정 순위·전적(롤 전적화면 느낌)."</i></p>
+<div class="pair">
+  <div class="pane before"><header>BEFORE ① 로그·경기 <span class="tag">/logs</span></header>
+    <div class="phone"><img src="before/10-logs-matches.png" alt="현행 로그"></div>
+    <div class="capt">경기/트레이드/랭킹 3탭. 내가 누구인지(프로필·전적 요약)는 없습니다.</div>
+  </div>
+  <div class="pane before"><header>BEFORE ② 로그·랭킹 <span class="tag">이미 있는 리더보드</span></header>
+    <div class="phone"><img src="before/11-logs-rankings.png" alt="현행 랭킹 탭"></div>
+    <div class="capt"><code>GET /api/rankings</code> 는 <b class="hl">이미 있습니다</b> — 승수 리더보드 + 내 순위 + 개인 기록. 재발명이 아니라 이동·확장입니다.</div>
+  </div>
+</div>
+<div class="pair">
+  <div class="pane after"><header>AFTER <span class="tag">프로필 → 전적 → 순위 → 기록</span></header>
+    <div class="phone tall"><iframe data-src="after.html?screen=me" loading="lazy"></iframe></div>
+    <div class="capt">승률 도넛 + 최근 10경기 W/L 스트립 + 모드별 전적표(롤 전적 화면 느낌), 그 아래 리그/원정 순위 2카드, 맨 아래 로그.</div>
+  </div>
+</div>
+
+<!-- ══════════════ 복수 ══════════════ -->
+<h2 class="h" id="revenge">복수 시스템 — 규칙과 상태</h2>
+<p class="lead">hero 발제: <i>"침공 기록 5개까지 노출 → 누르면 그 상대에게 복수 1회. 이기면 큐에서 빠지고, 지면 2회까지."</i></p>
+
+<div class="box warn">
+  <h4>⚠️ 먼저 알려 드릴 것 — 복수는 <b class="hl">일부러 닫아 둔 문</b>을 다시 여는 기능입니다</h4>
+  <p style="margin:6px 0 0">원정은 지금 <b class="hl">상대를 고를 수 없습니다</b>. 서버가 2명을 제시하고 그 안에서만 고릅니다.
+  이유가 코드에 적혀 있습니다 — <i>"클라가 고른 id 를 그대로 믿으면 <b class="hl">지목 원정</b>이 되고, 그건 부계정을 반복 지목해 레이팅을 무한 생성하는 경로다(독립검증 4R 이 막은 그것)"</i>.</p>
+  <p style="margin:8px 0 0">복수는 정의상 지목 원정입니다. 그래서 계약을 이렇게 잠급니다 —
+  <b class="hl">서버가 "그 사람이 실제로 나를 쳤다"는 기록(<code>away_reports</code> 행)을 가지고 있을 때만</b> 그 상대를 지목할 수 있고,
+  <b class="hl">한 기록당 최대 2회</b>이며 <b class="hl">기록은 5건까지만</b> 삽니다. 즉 부계정으로 무한 지목하려면 <b>먼저 그 부계정이 나를 쳐야</b> 하고, 그래도 2판이 끝입니다.
+  이 점을 넘기지 않고 짚는 이유는, 이게 밸런스가 아니라 <b>어뷰징 경로</b>라서입니다.</p>
+</div>
+
+<h3 class="h">한 기록의 일생</h3>
+<pre>  [남이 나를 침공]
+        │  away_reports 행 생성 (defender=나)
+        ▼
+   ┌──────────────┐   복수 승리    ┌───────────┐
+   │ 복수 가능 2회 │ ────────────▶ │  완료(소멸) │  ← 목록에서 사라진다
+   └──────┬───────┘                └───────────┘
+          │ 복수 패배(또는 무승부)
+          ▼
+   ┌──────────────┐   복수 승리    ┌───────────┐
+   │ 복수 가능 1회 │ ────────────▶ │  완료(소멸) │
+   └──────┬───────┘                └───────────┘
+          │ 복수 패배
+          ▼
+   ┌──────────────┐
+   │  소진(회색)   │  ← 목록엔 남지만 못 누른다. 새 침공이 들어오면 6번째로 밀려 사라진다.
+   └──────────────┘</pre>
+
+<table class="t">
+  <tr><th style="width:170px">규칙</th><th>안</th></tr>
+  <tr><td>큐 길이</td><td><b>최근 5건</b>. 6번째 침공이 들어오면 가장 오래된 것이 밀려납니다(승리로 소멸한 것과 무관).</td></tr>
+  <tr><td>시도 횟수</td><td>기록당 <b>최대 2회</b>. 1회차에 이기면 2회차는 없습니다.</td></tr>
+  <tr><td>승리 시</td><td>기록이 <b>완료</b>로 닫히고 목록에서 사라집니다.</td></tr>
+  <tr><td>패배 시</td><td>시도 1회 소모. 2회를 다 쓰면 <b>소진</b>(회색·비활성).</td></tr>
+  <tr><td>무승부</td><td><span class="pill new">Q3-①</span> 권장 = <b>실패로 취급, 횟수 소모</b>. "이겨야 갚는다".</td></tr>
+  <tr><td>판수 소모</td><td><span class="pill new">Q3-②</span> 권장 = <b>오늘 남은 원정 5회를 같이 쓴다</b>. 안 그러면 하루 판수 제한을 우회하는 경로가 됩니다.</td></tr>
+  <tr><td>레이팅</td><td><span class="pill new">Q3-③</span> 권장 = <b>일반 원정과 동일</b>(보너스 없음). 밸런스 축을 늘리지 않습니다.</td></tr>
+  <tr><td>방어 성공한 침공</td><td><span class="pill new">Q3-④</span> 권장 = <b>목록에 남기고 [복수]도 허용</b>. 이미 이겼어도 "쟤한테 또 가겠다"는 선택지는 열어 둡니다.</td></tr>
+  <tr><td>만료</td><td>시간 만료는 두지 <b>않습니다</b>(5건 슬라이딩 윈도우가 이미 자연 만료 역할). 필요하면 나중에 추가.</td></tr>
+</table>
+
+<!-- ══════════════ API ══════════════ -->
+<h2 class="h" id="api">서버 API 계약 초안 (server-java)</h2>
+<p class="lead">복수 큐·랭킹보드·전적은 <b class="hl">지금 서버에 없습니다</b>. 아래는 openapi 스케치이고,
+<b class="hl">구현은 컨펌 후 웨이브</b>에서 합니다(프리즈 절차 준수 — <code>docs/plan-v3/api/openapi-v2.yaml</code>). 마이그레이션 번호는 merge-ready 시 main 이 배정합니다(현재 최신 V28).</p>
+
+<h3 class="h">신규 5개</h3>
+<table class="t">
+  <tr><th style="width:270px">엔드포인트</th><th style="width:120px">쓰는 화면</th><th>내용</th></tr>
+  <tr><td><code>GET /api/away/revenge</code></td><td>원정 페이지</td><td>복수 큐 최대 5건 + 각 항목의 남은 시도 횟수.</td></tr>
+  <tr><td><code>POST /api/away/revenge/{reportId}/matches</code></td><td>원정 페이지</td><td>지목 복수 경기 생성. <b>reportId 의 defender 가 호출자 본인일 때만</b> 통과.</td></tr>
+  <tr><td><code>GET /api/away/rankings</code></td><td>원정 페이지</td><td>원정 레이팅 랭킹보드 + 내 순위. <code>user_ratings</code> 가 이미 있어 조회만 얹으면 됩니다.</td></tr>
+  <tr><td><code>GET /api/league/rankings</code></td><td>리그 페이지</td><td>디비전 통합 랭킹보드 + 내 순위. <span class="pill new">Q2 = 정렬 기준</span></td></tr>
+  <tr><td><code>GET /api/me/record</code></td><td>내 정보</td><td>모드별 전적 + 최근 N경기 폼. 현행 <code>/api/me</code> 의 <code>records</code> 는 <b>통합 1줄</b>뿐입니다.</td></tr>
+</table>
+
+<h3 class="h">스케치</h3>
+<pre>GET /api/away/revenge → 200
+{
+  "entries": [
+    {
+      "reportId": "R1",
+      "opponent": { "userId": "u9", "nickname": "FC 한밤중", "rating": 1210 },
+      "attackedAt": "2026-07-29T03:12:00Z",
+      "theirScore": 3, "myScore": 1,          # 그때 결과(수비자 관점)
+      "defenceResult": "LOSS",                 # WIN|DRAW|LOSS — 내가 막았나
+      "ratingDelta": -10,
+      "attemptsUsed": 0, "attemptsMax": 2,
+      "state": "AVAILABLE"                     # AVAILABLE | EXHAUSTED | AVENGED
+    }
+  ],
+  "remainingToday": 4                          # 원정 일일 한도와 공유(Q3-②)
+}
+
+POST /api/away/revenge/{reportId}/matches → 201 { ...Match }
+  403 REVENGE_NOT_OWNED     # 그 리포트의 defender 가 내가 아니다  ← 지목 어뷰징 차단의 핵심
+  409 MATCH_IN_PROGRESS     # 기존 규약 그대로(detail.matchId 로 이어가기)
+  410 REVENGE_AVENGED       # 이미 갚았다(승리로 닫힘)
+  429 REVENGE_EXHAUSTED     # 2회 소진
+  429 AWAY_DAILY_LIMIT      # 오늘 판수 소진(Q3-② 채택 시)
+
+GET /api/away/rankings?limit=50 → 200
+{
+  "seasonNo": 3,
+  "entries": [ { "rank": 1, "userId": "u3", "nickname": "철벽 유나이티드",
+                 "rating": 1620, "streak": 9, "isMe": false } ],
+  "me": { "rank": 12, "rating": 1180, "streak": 2, "total": 143 }
+}
+
+GET /api/league/rankings?scope=global|division&limit=50 → 200
+{
+  "entries": [ { "rank": 1, "userId": "u7", "nickname": "감독 최",
+                 "division": 1, "divisionName": "다이아 리그",
+                 "points": 52, "played": 18, "isMe": false } ],
+  "me": { "rank": 38, "division": 5, "points": 18, "total": 143 }
+}
+
+GET /api/me/record → 200
+{
+  "overall": { "played": 23, "wins": 12, "draws": 3, "losses": 8, "winRate": 0.52 },
+  "byMode": {
+    "practice": { "played": 6, "wins": 4, "draws": 0, "losses": 2 },
+    "league":   { "played": 9, "wins": 5, "draws": 2, "losses": 2 },
+    "away":     { "played": 8, "wins": 3, "draws": 1, "losses": 4 }
+  },
+  "recentForm": [ "WIN","WIN","LOSS","WIN","DRAW","LOSS","WIN","WIN","LOSS","WIN" ],
+  "streak": { "current": 1, "best": 4, "awayBest": 4 }
+}</pre>
+
+<div class="box">
+  <h4>서버 쪽 데이터는 대부분 이미 있습니다</h4>
+  <ul>
+    <li><code>away_reports</code>(피침공 원장) · <code>user_ratings</code> · <code>away_streaks</code> · <code>away_seasons</code> — <b class="hl">전부 존재</b>(V21·V22).</li>
+    <li>복수를 위해 <b>새로 필요한 것은 시도 횟수 하나</b>입니다: <code>away_reports</code> 에 <code>revenge_attempts INTEGER NOT NULL DEFAULT 0</code> + <code>revenge_state</code> 를 얹거나, 별도 <code>away_revenges</code> 표.
+      <br>→ 어느 쪽이 맞는지는 server-java 세션이 판단할 구현 문제라 여기서 못 박지 않습니다.</li>
+    <li>모드별 전적은 <code>matches.mode</code> 로 집계 가능합니다(새 표 불필요).</li>
+  </ul>
+</div>
+
+<!-- ══════════════ 웨이브 ══════════════ -->
+<h2 class="h" id="waves">웨이브 분할안 (컨펌 후)</h2>
+<table class="t">
+  <tr><th style="width:70px">웨이브</th><th style="width:110px">모듈</th><th>내용</th><th style="width:120px">선행</th></tr>
+  <tr><td><b>W2</b></td><td>web</td><td><b>내비 5탭 + 홈 재설계</b> — 탭 정의·라우트 재배치·모드 3카드·모달 제거. <b>서버 신규 API 없이 가능</b>(기존 <code>/api/league</code>·<code>/api/me</code> 만으로 라운드·디비전 표시 가능).</td><td>—</td></tr>
+  <tr><td><b>W3</b></td><td>web</td><td><b>선수 병합 + 덱 강화 진입 + 영입 통합 + 내 정보</b>. 전부 기존 API 로 됩니다(<code>/api/players</code>·<code>/api/rankings</code>·<code>/api/logs/*</code>). 트레이드 튜토리얼 문구 추가 포함.</td><td>W2</td></tr>
+  <tr><td><b>W4</b></td><td>server-java</td><td><b>복수 큐 + 랭킹보드 2종 + 전적 API</b> (위 계약). 마이그레이션 1건.</td><td>계약 컨펌</td></tr>
+  <tr><td><b>W5</b></td><td>web</td><td><b>리그/원정 페이지 완성</b> — 설명·하는 방법·랭킹보드·복수 큐 배선.</td><td>W4</td></tr>
+  <tr><td><b>W6</b></td><td>—</td><td>독립 검증 → push + merge-ready 를 main 에 보고.</td><td>W5</td></tr>
+</table>
+<p class="lead" style="margin-top:6px">W2·W3 이 서버를 안 기다리는 게 이 분할의 요점입니다 — <b class="hl">화면 개편의 8할이 서버 없이 나갑니다</b>.
+W4 는 server-java 세션에 이슈로 넘기고, 그동안 web 은 계속 갑니다.</p>
+
+<!-- ══════════════ 결정 ══════════════ -->
+<h2 class="h" id="decide">❓ 결정해 주실 것</h2>
+<p class="lead">제가 혼자 정하면 안 되는 <b class="hl">게임 규칙·UI</b>만 모았습니다. 검증 방법이나 구현 절차는 여기 없습니다(그건 제가 합니다).
+<b class="hl">"권장대로 가자"</b> 한마디면 전부 권장안으로 진행합니다.</p>
+
+<div class="box q">
+  <h4>Q1 — 홈에서 [연습 경기]를 리그·원정과 같은 크기로 둘까요?</h4>
+  <ul>
+    <li><b>A (권장)</b> 3카드 동급 — 신규 유저의 첫 경기가 연습이고, 덱을 바꾼 뒤 시험하는 자리도 필요합니다.</li>
+    <li><b>B</b> 연습을 작게 접고 리그·원정을 크게 — 본 게임이 리그·원정이라면 홈 상단을 그쪽에 줍니다.</li>
+  </ul>
+</div>
+
+<div class="box q">
+  <h4>Q2 — 리그 랭킹보드의 정렬 기준은?</h4>
+  <ul>
+    <li><b>A (권장)</b> 디비전 우선 → 승점 — 사다리 게임이니 D1 꼴찌가 D5 1등보다 위입니다.</li>
+    <li><b>B</b> 순수 승점 — 디비전 무시. 낮은 디비전에서 전승한 사람이 최상위로 올라옵니다.</li>
+    <li><b>C</b> 승률</li>
+  </ul>
+</div>
+
+<div class="box q">
+  <h4>Q3 — 복수 규칙 4개 (위 표 참조)</h4>
+  <ul>
+    <li>① 무승부 = <b>실패로 치고 횟수 소모</b>(권장) / 횟수 유지</li>
+    <li>② 복수도 <b>오늘 원정 5회를 소모</b>(권장) / 별도 횟수</li>
+    <li>③ 복수 승리 레이팅 = <b>일반 원정과 동일</b>(권장) / 보너스</li>
+    <li>④ 내가 <b>방어에 성공한</b> 침공도 <b>복수 가능</b>(권장) / 잠금</li>
+  </ul>
+</div>
+
+<div class="box q">
+  <h4>Q4 — 내 정보의 "모드별 전적"을 넣을까요?</h4>
+  <ul>
+    <li><b>A (권장)</b> 넣는다 — 롤 전적 느낌의 핵심이 "어느 큐에서 잘하나"입니다. 서버 <code>GET /api/me/record</code> 1개가 추가됩니다.</li>
+    <li><b>B</b> 통합 전적만 — 서버 작업 0. 대신 화면이 현행 <code>/api/me</code> 한 줄 수준에 머뭅니다.</li>
+  </ul>
+</div>
+
+<div class="box q">
+  <h4>Q5 — 튜토리얼의 트레이드 설명을 어디에?</h4>
+  <ul>
+    <li><b>A (권장)</b> 둘 다 — 영입 탭 상단의 <b>상시 안내 카드</b> + 첫 진입 <b>코치마크</b>.</li>
+    <li><b>B</b> 코치마크만 — 한 번 보고 넘기면 다시 못 봅니다.</li>
+    <li><b>C</b> 안내 카드만 — 튜토리얼 흐름에는 안 들어갑니다.</li>
+  </ul>
+</div>
+
+<div class="box" style="border-left:3px solid var(--ok);background:rgba(61,220,132,.06)">
+  <h4>그 외 — 제가 정하고 갑니다 (틀렸다 싶으면 말씀만 주세요)</h4>
+  <ul>
+    <li>탭 이름 = <b>게임 · 덱 · 선수 · 영입 · 내 정보</b>(발제문 그대로), 탭 아이콘은 #285 아이콘 정책을 따릅니다.</li>
+    <li>육성 탭 제거 — 도감과 같은 화면이라 [보유] 세그먼트로 대체.</li>
+    <li>기존 URL(<code>/lobby /codex /growth /shop /trade /logs</code>)은 새 경로로 <b>리다이렉트</b>해 북마크·잠금 게이트(#217)를 깨지 않습니다.</li>
+    <li>#245 피원정 팝업은 <b>유지</b>(트리거·ack 규약 그대로). 원정 페이지는 그것과 별개로 5건을 상시 보여 줍니다.</li>
+  </ul>
+</div>
+
+<p class="lead" style="margin-top:30px;font-size:13px">
+생성: <code>docs/plan-v5/mock/home-nav/</code> · BEFORE 캡처 = <code>apps/web/e2e/p286-before-capture.capture.ts</code> ·
+AFTER 프로토타입 = <code>after.html</code> (자립 실행, 외부 의존 0) · SoT = 이슈 #286
+</p>
+</main>
+</div>
+
+<script>
+/* iframe 은 lazy 로 붙인다 — 13개를 한 번에 띄우면 첫 페인트가 느리다. */
+function mount(){
+  document.querySelectorAll("iframe[data-src]").forEach(f=>{
+    const io=new IntersectionObserver(es=>{
+      es.forEach(e=>{ if(e.isIntersecting && !f.src){ f.src=f.dataset.src+notesQ(); io.disconnect(); } });
+    },{rootMargin:"400px"});
+    io.observe(f);
+  });
+}
+let notes=true;
+function notesQ(){return notes?"":"&notes=0";}
+function toggleNotes(){
+  notes=!notes;
+  document.getElementById("btn-notes").classList.toggle("on",notes);
+  document.querySelectorAll("iframe[data-src]").forEach(f=>{ if(f.src) f.src=f.dataset.src+notesQ(); });
+}
+function reloadFrames(){ document.querySelectorAll("iframe[data-src]").forEach(f=>{ if(f.src) f.src=f.src; }); }
+mount();
+</script>
+</body>
+</html>

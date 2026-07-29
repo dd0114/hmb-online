@@ -1,0 +1,793 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#286 AFTER — 홈/내비 개편 목업</title>
+<style>
+/* 앱의 실제 토큰(apps/web/src/index.css)을 그대로 쓴다 — 목업이 제품과 다른 색이면 컨펌이 헛돈다. */
+:root{
+  --bg:#0f1115; --surface:#111826; --sunk:#0c111b; --elev:#171a21;
+  --text:#eef0f4; --muted:#9aa1ad; --border:#2a2e37; --hairline:rgba(255,255,255,.07);
+  --us:#4c8dff; --them:#ff6b6b; --warn:#ffc24b; --ok:#3ddc84;
+  --grass-a:#17603a; --grass-b:#14562f;
+  color-scheme:dark;
+  font-family:system-ui,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;color:inherit;background:none;border:0}
+
+/* ── 셸 ────────────────────────────────────────────────────────────────── */
+.app{max-width:390px;margin:0 auto;min-height:100%;display:flex;flex-direction:column;position:relative;padding-bottom:64px}
+.screen{display:none;flex:1;flex-direction:column}
+.screen.on{display:flex}
+
+.topbar{position:sticky;top:0;z-index:5;background:linear-gradient(180deg,var(--bg) 70%,transparent);padding:10px 14px 8px}
+.idrow{display:flex;align-items:center;gap:8px}
+.avatar{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#2b3a5c,#16213a);display:grid;place-items:center;font-size:16px}
+.who{flex:1;min-width:0}
+.who b{display:block;font-size:14px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wallet{display:flex;gap:6px}
+.chip{background:var(--sunk);border:1px solid var(--hairline);border-radius:999px;padding:3px 8px;font-size:11px;white-space:nowrap}
+.bell{position:relative;width:28px;height:28px;border-radius:9px;background:var(--sunk);display:grid;place-items:center;font-size:13px;flex:0 0 auto}
+.bell i{position:absolute;top:-2px;right:-2px;width:15px;height:15px;border-radius:999px;background:var(--them);color:#fff;font-size:9px;font-style:normal;display:grid;place-items:center;font-weight:700}
+
+.body{padding:4px 14px 16px;display:flex;flex-direction:column;gap:12px}
+
+/* 페이지 헤더(하위 페이지) */
+.phead{position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--hairline)}
+.phead h1{margin:0;font-size:17px;flex:1;text-align:center}
+.phead .back{font-size:14px;color:var(--muted);width:56px;text-align:left}
+.phead .rightslot{width:56px;text-align:right;font-size:12px;color:var(--muted)}
+
+/* ── 공용 ──────────────────────────────────────────────────────────────── */
+.card{background:var(--surface);border-radius:14px;padding:14px}
+.card.sunk{background:var(--sunk)}
+h2.sec{margin:6px 2px -2px;font-size:13px;color:var(--muted);letter-spacing:.02em;font-weight:600}
+.muted{color:var(--muted)}
+.tiny{font-size:11px}
+.sm{font-size:12px}
+.row{display:flex;align-items:center;gap:8px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.badge{font-size:11px;padding:2px 7px;border-radius:999px;background:var(--sunk);border:1px solid var(--hairline);color:var(--muted)}
+.badge.us{background:rgba(76,141,255,.16);color:#a8c6ff;border-color:transparent}
+.badge.them{background:rgba(255,107,107,.16);color:#ffb4b4;border-color:transparent}
+.badge.warn{background:rgba(255,194,75,.16);color:#ffdc9a;border-color:transparent}
+.badge.ok{background:rgba(61,220,132,.16);color:#a5edc4;border-color:transparent}
+.cta{display:block;width:100%;background:var(--us);color:#fff;border-radius:12px;padding:13px;font-weight:700;font-size:15px;text-align:center}
+.cta.ghost{background:var(--sunk);color:var(--text);border:1px solid var(--border);font-weight:600}
+.cta.sm{padding:9px;font-size:13px}
+.bar{height:6px;border-radius:99px;background:var(--sunk);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--us)}
+hr.hair{border:0;border-top:1px solid var(--hairline);margin:10px 0}
+
+/* 세그먼트 컨트롤 */
+.seg{display:flex;background:var(--sunk);border-radius:11px;padding:3px;gap:3px}
+.seg button{flex:1;padding:8px;border-radius:9px;font-size:13px;color:var(--muted);font-weight:600}
+.seg button.on{background:var(--elev);color:var(--text);box-shadow:0 1px 0 rgba(255,255,255,.05) inset}
+
+/* 필터 칩 */
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chips button{padding:5px 11px;border-radius:999px;background:var(--sunk);border:1px solid var(--hairline);font-size:12px;color:var(--muted)}
+.chips button.on{background:var(--us);color:#fff;border-color:transparent}
+
+/* ── 게임 탭: 모드 카드 ────────────────────────────────────────────────── */
+.mode{display:block;width:100%;text-align:left;background:var(--surface);border-radius:16px;padding:14px;position:relative;overflow:hidden}
+.mode .mtop{display:flex;align-items:center;gap:9px}
+.mode .mico{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:19px;background:var(--sunk)}
+.mode h3{margin:0;font-size:16px;flex:1}
+.mode .go{color:var(--muted);font-size:16px}
+.mode p.desc{margin:8px 0 0;font-size:12px;color:var(--muted)}
+.mode .stats{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.mode.league{background:linear-gradient(135deg,#13203a,#111826 62%)}
+.mode.away{background:linear-gradient(135deg,#2a1520,#111826 62%)}
+.mode.practice{background:linear-gradient(135deg,#122318,#111826 62%)}
+.mode .ribbon{position:absolute;top:0;right:0;background:var(--them);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-bottom-left-radius:10px}
+
+/* 진행 중 경기 배너 */
+.resume{background:linear-gradient(90deg,rgba(255,194,75,.18),var(--surface));border:1px solid rgba(255,194,75,.3);border-radius:14px;padding:12px}
+
+/* 팀 스트립 */
+.strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--hairline);border-radius:12px;overflow:hidden}
+.strip>div{background:var(--surface);padding:10px 8px;text-align:center}
+.strip b{display:block;font-size:15px}
+.strip span{font-size:10px;color:var(--muted)}
+
+/* ── 표/리스트 ─────────────────────────────────────────────────────────── */
+table.tbl{width:100%;border-collapse:collapse;font-size:12px}
+table.tbl th{color:var(--muted);font-weight:600;text-align:left;padding:6px 4px;font-size:11px}
+table.tbl td{padding:7px 4px;border-top:1px solid var(--hairline)}
+table.tbl tr.me td{background:rgba(76,141,255,.12)}
+table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
+.zone{border-left:3px solid transparent}
+.zone.up{border-left-color:var(--ok)}
+.zone.down{border-left-color:var(--them)}
+
+.list{display:flex;flex-direction:column;gap:8px}
+.item{background:var(--surface);border-radius:12px;padding:11px 12px}
+
+/* ── 복수 큐 ───────────────────────────────────────────────────────────── */
+.rev{background:var(--surface);border-radius:13px;padding:11px 12px;display:flex;gap:10px;align-items:center}
+.rev.spent{opacity:.5}
+.rev .rico{width:34px;height:34px;border-radius:10px;background:var(--sunk);display:grid;place-items:center;font-size:15px}
+.rev .rmain{flex:1;min-width:0}
+.rev .rmain .l1{display:flex;align-items:baseline;gap:6px}
+.rev .rmain .l1 b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rev .rmain .l1 em{font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap;margin-left:auto}
+.rev .rmain .l2{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rev .rside{text-align:center;flex:0 0 auto}
+.rev .rbtn{background:var(--them);color:#fff;border-radius:10px;padding:8px 13px;font-size:12.5px;font-weight:700;white-space:nowrap;display:block}
+.rev .rbtn[disabled]{background:var(--sunk);color:var(--muted);font-weight:600}
+.rev .rleft{display:block;font-size:9.5px;color:var(--muted);margin-top:3px;white-space:nowrap}
+
+/* ── 선수 그리드 ───────────────────────────────────────────────────────── */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pcard{background:var(--surface);border-radius:11px;padding:8px 7px;position:relative;text-align:left}
+.pcard .face{height:56px;border-radius:9px;background:var(--sunk);display:grid;place-items:center;font-size:26px;margin-bottom:6px}
+.pcard b{display:block;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcard .gr{font-size:10px}
+.pcard .pos{position:absolute;top:6px;left:7px;font-size:9px;color:var(--muted)}
+.pcard.locked .face{color:#000;background:#191d26;text-shadow:none}
+.pcard.locked .face span{filter:brightness(0) saturate(0) opacity(.55)}
+.pcard.locked b,.pcard.locked .gr{color:#4d5563}
+.pcard .lock{position:absolute;top:6px;right:7px;font-size:9px;color:var(--muted)}
+.g-LEGEND{color:#d0a5ff}.g-DIA{color:#7fd7ff}.g-GOLD{color:#ffcf6b}.g-SILVER{color:#c7cdd8}.g-BRONZE{color:#c99a76}
+
+/* ── 전술보드(축약) ────────────────────────────────────────────────────── */
+.pitch{position:relative;border-radius:12px;height:230px;background:repeating-linear-gradient(180deg,var(--grass-a) 0 22px,var(--grass-b) 22px 44px);overflow:hidden}
+.pitch .line{position:absolute;left:0;right:0;top:50%;height:1px;background:rgba(255,255,255,.22)}
+.tok{position:absolute;transform:translate(-50%,-50%);width:30px;text-align:center}
+.tok .dot{width:26px;height:26px;border-radius:99px;background:#0d1522;border:2px solid var(--us);margin:0 auto;display:grid;place-items:center;font-size:12px}
+.tok span{display:block;font-size:8.5px;margin-top:1px;text-shadow:0 1px 2px #000}
+
+/* ── 바텀시트 ──────────────────────────────────────────────────────────── */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;z-index:20}
+.scrim.on{display:block}
+.sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;max-width:390px;background:var(--elev);border-radius:18px 18px 0 0;padding:10px 14px 20px;z-index:21;display:none;max-height:86vh;overflow:auto}
+.sheet.on{display:block}
+.sheet .grab{width:38px;height:4px;border-radius:99px;background:#39404d;margin:2px auto 12px}
+
+/* 강화 상세 */
+.ovr{display:flex;gap:12px;align-items:center}
+.ring{--hole:var(--elev);width:76px;height:76px;border-radius:99px;display:grid;place-items:center;
+  background:conic-gradient(var(--us) 0 72%,var(--sunk) 72% 100%);position:relative}
+.ring::after{content:"";position:absolute;inset:7px;border-radius:99px;background:var(--hole)}
+/* ⚠️ z-index 없이는 ::after 가 DOM 순서상 나중이라 숫자를 덮는다(실제로 승률이 안 보였다). */
+.ring b{position:relative;z-index:1;font-size:21px}
+.stars{color:var(--warn);letter-spacing:2px;font-size:13px}
+
+/* ── 하단 탭바 (5개) ───────────────────────────────────────────────────── */
+.tabbar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:390px;
+  display:grid;grid-template-columns:repeat(5,1fr);background:rgba(15,17,21,.96);
+  border-top:1px solid var(--border);backdrop-filter:blur(8px);z-index:15}
+.tabbar button{padding:7px 0 9px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--muted);font-size:10.5px;position:relative}
+.tabbar button em{font-size:19px;font-style:normal;line-height:1}
+.tabbar button.on{color:var(--us)}
+.tabbar button i{position:absolute;top:4px;right:calc(50% - 20px);min-width:15px;height:15px;padding:0 3px;border-radius:99px;background:var(--them);color:#fff;font-size:9px;font-style:normal;display:grid;place-items:center;font-weight:700}
+
+/* 주석 말풍선 — 목업 위 설계 의도 표시(보드에서 토글) */
+.note{border-left:3px solid var(--warn);background:rgba(255,194,75,.08);border-radius:0 10px 10px 0;padding:8px 10px;font-size:11.5px;color:#ffe3ac}
+body.nonotes .note{display:none}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ══════════════════════ 1. 게임 (홈) ══════════════════════ -->
+<section class="screen" id="s-home">
+  <div class="topbar">
+    <div class="idrow">
+      <div class="avatar">⚽</div>
+      <div class="who"><b>감독 박</b><span>브론즈 리그 · 레이팅 1180</span></div>
+      <div class="wallet"><span class="chip">● 24,300 G</span><span class="chip">💎 1,240 Z</span></div>
+      <div class="bell">🔔<i>2</i></div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="note"><b>홈 = 인덱스가 아니라 "오늘 뭘 할까"</b>다. 현행의 [게임 시작] 모달을 없애고 <b>연습·리그·원정 3카드</b>를 홈에 1급으로 올린다. 덱/상점/도감 버튼은 하단 탭이 이미 하는 일이라 제거.</div>
+
+    <div class="resume">
+      <div class="between">
+        <div><b style="font-size:14px">진행 중인 경기</b><div class="tiny muted">전반 종료 · 하프타임 지시 대기</div></div>
+        <button class="cta sm" style="width:auto;padding:9px 14px">이어하기</button>
+      </div>
+    </div>
+
+    <div class="strip">
+      <div><b style="color:var(--ok)">보통</b><span>팀 사기</span></div>
+      <div><b>82</b><span>평균 컨디션</span></div>
+      <div><b>4-3-3</b><span>포메이션</span></div>
+    </div>
+
+    <h2 class="sec">경기</h2>
+
+    <button class="mode practice" onclick="alert('연습 경기 생성 → /match/:id')">
+      <div class="mtop"><div class="mico">🎯</div><h3>연습 경기</h3><span class="go">›</span></div>
+      <p class="desc">봇과 단판. 기록에 남지 않으니 전술·프롬프트를 마음껏 시험한다.</p>
+      <div class="stats"><span class="badge">난이도 자동</span><span class="badge">보상 없음</span></div>
+    </button>
+
+    <button class="mode league" onclick="go('league')">
+      <div class="mtop"><div class="mico">🏆</div><h3>리그</h3><span class="go">›</span></div>
+      <p class="desc">10팀 18라운드 정규 시즌. 순위로 승급·강등한다.</p>
+      <div style="margin-top:10px">
+        <div class="between tiny muted" style="margin-bottom:4px"><span><b style="color:var(--text)">10</b> / 18 라운드</span><span>다음 상대 · 봇 T3</span></div>
+        <div class="bar"><i style="width:55%"></i></div>
+      </div>
+      <div class="stats"><span class="badge us">브론즈 리그</span><span class="badge">4위 / 10팀</span><span class="badge ok">승급권 2위까지</span></div>
+    </button>
+
+    <button class="mode away" onclick="go('away')">
+      <span class="ribbon">복수 3</span>
+      <div class="mtop"><div class="mico">⚔️</div><h3>원정</h3><span class="go">›</span></div>
+      <p class="desc">다른 감독의 팀에 쳐들어간다. 승패로 레이팅이 오르내린다.</p>
+      <div class="stats"><span class="badge us">레이팅 1180</span><span class="badge">랭킹 12위</span><span class="badge warn">2연승</span><span class="badge them">피침공 3건</span></div>
+    </button>
+
+    <div class="note tiny"><b>결정 필요 Q1</b> — 홈에 <b>연습</b>을 계속 1급으로 둘지. 리그/원정이 본 게임이면 연습은 한 단계 접어(“전술 시험” 소형 카드) 홈 상단을 리그·원정에 줘도 된다. <u>권장 = 지금처럼 3카드 유지</u>(신규 유저의 첫 경기가 연습이다).</div>
+  </div>
+</section>
+
+<!-- ══════════════════════ 1-1. 리그 페이지 ══════════════════════ -->
+<section class="screen" id="s-league">
+  <div class="phead"><button class="back" onclick="go('home')">‹ 게임</button><h1>리그</h1><span class="rightslot">시즌 1</span></div>
+  <div class="body">
+    <div class="seg" style="margin-bottom:2px">
+      <button class="on" onclick="lgState('intro',this)">첫 진입(설명)</button>
+      <button onclick="lgState('run',this)">시즌 진행 중</button>
+    </div>
+    <div class="note tiny">↑ 목업 전용 상태 전환기(제품에는 없다). 서버 <code>GET /api/league</code> 의 <code>season</code> 유무로 갈린다.</div>
+
+    <!-- 상태 A: 설명 + 시작 -->
+    <div id="lg-intro">
+      <div class="card">
+        <h3 style="margin:0 0 6px;font-size:16px">🏆 리그란?</h3>
+        <p class="sm muted" style="margin:0">나를 포함한 <b style="color:var(--text)">10팀</b>이 <b style="color:var(--text)">18라운드</b>를 겨루는 정규 시즌입니다.
+        최종 순위로 <b style="color:var(--ok)">승급</b>하거나 <b style="color:var(--them)">강등</b>하고, 완주하면 시즌 보상을 받습니다.</p>
+      </div>
+      <h2 class="sec">하는 방법</h2>
+      <div class="list">
+        <div class="item row"><span class="badge us">1</span><div class="sm">[시즌 시작]을 누르면 내 디비전에서 <b>18경기 일정</b>이 짜입니다.</div></div>
+        <div class="item row"><span class="badge us">2</span><div class="sm">한 라운드씩 <b>내 차례의 경기</b>를 직접 치릅니다. 나머지 팀 경기는 자동 진행됩니다.</div></div>
+        <div class="item row"><span class="badge us">3</span><div class="sm">18라운드가 끝나면 순위에 따라 <b>승급/유지/강등</b>과 보상이 정산됩니다.</div></div>
+      </div>
+      <div class="card sunk">
+        <div class="between"><span class="sm muted">내 디비전</span><span class="badge us">브론즈 리그 (D5)</span></div>
+        <hr class="hair">
+        <div class="between"><span class="sm muted">승급 / 강등</span><span class="sm">1~2위 승급 · 9~10위 강등</span></div>
+      </div>
+      <button class="cta">시즌 시작</button>
+      <div class="note tiny">디비전 이름·승급/강등 컷은 <b>서버가 준다</b>(<code>season.divisionName/promoteRankMax/relegateRankMin</code>). 클라가 적으면 #262 BL-1 이 재발한다.</div>
+    </div>
+
+    <!-- 상태 B: 진행 중 -->
+    <div id="lg-run" style="display:none">
+      <div class="card">
+        <div class="between"><span class="badge us">브론즈 리그</span><span class="sm muted">10 / 18 라운드</span></div>
+        <div class="bar" style="margin:9px 0 4px"><i style="width:55%"></i></div>
+        <div class="tiny muted">8경기 남음 · 현재 4위</div>
+      </div>
+
+      <div class="card" style="background:linear-gradient(135deg,#13203a,#111826 70%)">
+        <div class="between">
+          <div><div class="tiny muted">10라운드 · 다음 경기</div><b style="font-size:17px">봇 T3</b> <span class="badge">홈</span></div>
+          <button class="cta sm" style="width:auto;padding:10px 16px">경기 시작</button>
+        </div>
+      </div>
+
+      <h2 class="sec">순위표</h2>
+      <div class="card" style="padding:8px 10px">
+        <table class="tbl">
+          <tr><th style="width:26px">#</th><th>팀</th><th class="num">경기</th><th class="num">득실</th><th class="num">승점</th></tr>
+          <tr><td class="zone up">1</td><td>봇 1</td><td class="num">9</td><td class="num">+14</td><td class="num"><b>27</b></td></tr>
+          <tr><td class="zone up">2</td><td>봇 2</td><td class="num">9</td><td class="num">+12</td><td class="num"><b>24</b></td></tr>
+          <tr><td class="zone">3</td><td>봇 3</td><td class="num">9</td><td class="num">+10</td><td class="num"><b>21</b></td></tr>
+          <tr class="me"><td class="zone">4</td><td><b>내 팀</b></td><td class="num">9</td><td class="num">+8</td><td class="num"><b>18</b></td></tr>
+          <tr><td class="zone">5</td><td>봇 5</td><td class="num">9</td><td class="num">+6</td><td class="num"><b>15</b></td></tr>
+          <tr><td class="zone down">9</td><td>봇 9</td><td class="num">9</td><td class="num">−6</td><td class="num"><b>3</b></td></tr>
+          <tr><td class="zone down">10</td><td>봇 10</td><td class="num">9</td><td class="num">−9</td><td class="num"><b>0</b></td></tr>
+        </table>
+        <div class="row tiny muted" style="margin-top:8px;gap:12px">
+          <span><span style="color:var(--ok)">▲</span> 승급권</span><span><span style="color:var(--them)">▼</span> 강등권</span>
+        </div>
+      </div>
+
+      <h2 class="sec">리그 랭킹보드 <span class="badge them">신규 API</span></h2>
+      <div class="card" style="padding:8px 10px">
+        <div class="seg" style="margin-bottom:8px"><button class="on">전체</button><button>내 디비전</button></div>
+        <table class="tbl">
+          <tr><th style="width:26px">#</th><th>감독</th><th>디비전</th><th class="num">승점</th></tr>
+          <tr><td>1</td><td>감독 최</td><td><span class="badge">D1</span></td><td class="num"><b>52</b></td></tr>
+          <tr><td>2</td><td>감독 윤</td><td><span class="badge">D1</span></td><td class="num"><b>49</b></td></tr>
+          <tr><td>3</td><td>감독 서</td><td><span class="badge">D2</span></td><td class="num"><b>47</b></td></tr>
+          <tr class="me"><td>38</td><td><b>감독 박 (나)</b></td><td><span class="badge us">D5</span></td><td class="num"><b>18</b></td></tr>
+        </table>
+      </div>
+      <div class="note tiny"><b>결정 필요 Q2</b> — 리그 랭킹보드의 정렬 기준. ①<u>디비전 우선 + 승점</u>(권장: 사다리 게임이라 D1 10위가 D5 1위보다 위여야 한다) ②순수 승점 ③승률. 서버 계약이 여기서 갈린다.</div>
+
+      <h2 class="sec">일정</h2>
+      <div class="list">
+        <div class="item between"><span class="sm">8R · 봇 T7 <span class="badge ok">승 2:1</span></span><span class="tiny muted">종료</span></div>
+        <div class="item between"><span class="sm">9R · 봇 T2 <span class="badge them">패 0:2</span></span><span class="tiny muted">종료</span></div>
+        <div class="item between"><span class="sm"><b>10R · 봇 T3</b></span><span class="badge us">다음</span></div>
+        <div class="item between"><span class="sm muted">11R · 봇 T5</span><span class="tiny muted">예정</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════ 1-2. 원정 페이지 ══════════════════════ -->
+<section class="screen" id="s-away">
+  <div class="phead"><button class="back" onclick="go('home')">‹ 게임</button><h1>원정</h1><span class="rightslot">3주차</span></div>
+  <div class="body">
+
+    <div class="card">
+      <h3 style="margin:0 0 6px;font-size:16px">⚔️ 원정이란?</h3>
+      <p class="sm muted" style="margin:0">다른 감독이 저장해 둔 <b style="color:var(--text)">실제 팀</b>에 쳐들어갑니다. 상대는 접속해 있지 않아도 되고,
+      <b style="color:var(--text)">내가 없는 사이 남이 나를 침공</b>하기도 합니다. 승패로 <b style="color:var(--us)">레이팅</b>이 오르내리고 매주 정산·초기화됩니다.</p>
+      <hr class="hair">
+      <div class="list" style="gap:6px">
+        <div class="row sm"><span class="badge us">1</span><span>[원정 떠나기] → 서버가 <b>비슷한 레이팅 2팀</b>을 제시 → 택1</span></div>
+        <div class="row sm"><span class="badge us">2</span><span>이기면 레이팅 +, 지면 −. <b>연승</b>이 쌓이면 보너스</span></div>
+        <div class="row sm"><span class="badge us">3</span><span>나를 친 상대는 <b>복수 목록</b>에 남는다 → 지목해서 되갚는다</span></div>
+      </div>
+    </div>
+
+    <h2 class="sec">내 점수</h2>
+    <div class="card">
+      <div class="row" style="gap:14px">
+        <div style="text-align:center;min-width:82px">
+          <div style="font-size:28px;font-weight:800;line-height:1.1;color:var(--us)">1180</div>
+          <div class="tiny muted">레이팅</div>
+        </div>
+        <div style="flex:1">
+          <div class="between sm"><span class="muted">원정 랭킹</span><b>12위 / 143명</b></div>
+          <div class="between sm"><span class="muted">연승</span><b style="color:var(--warn)">2연승 🔥</b></div>
+          <div class="between sm"><span class="muted">이번 주 전적</span><b>5승 1무 3패</b></div>
+          <div class="between sm"><span class="muted">시즌 종료</span><b>2일 8시간 뒤</b></div>
+        </div>
+      </div>
+      <hr class="hair">
+      <div class="between tiny muted"><span>오늘 남은 원정</span><span><b style="color:var(--text)">4회</b> / 5회</span></div>
+    </div>
+
+    <button class="cta">원정 떠나기</button>
+
+    <h2 class="sec">나를 침공한 팀 <span class="badge them">복수 · 신규</span></h2>
+    <div class="note tiny">최근 <b>5건</b>까지 남는다. [복수]는 <b>지목 원정</b> — <b style="color:#fff">이기면 목록에서 사라지고, 지면 한 번 더</b>(최대 2회). 2회를 다 쓰면 회색으로 남았다가 새 침공이 들어오면 밀려난다.</div>
+    <div class="list">
+
+      <div class="rev">
+        <div class="rico">⚔️</div>
+        <div class="rmain">
+          <div class="l1"><b>FC 한밤중</b><em>3시간 전</em></div>
+          <div class="l2"><b style="color:var(--them)">1 : 3 패</b> · 레이팅 −10</div>
+        </div>
+        <div class="rside">
+          <button class="rbtn" onclick="revengeSheet('FC 한밤중',1210,2,'1 : 3')">복수</button>
+          <span class="rleft">2회 남음</span>
+        </div>
+      </div>
+
+      <div class="rev">
+        <div class="rico">⚔️</div>
+        <div class="rmain">
+          <div class="l1"><b>레드 스톰 CF</b><em>어제</em></div>
+          <div class="l2"><b style="color:var(--them)">1 : 4 패</b> · <span style="color:var(--warn)">복수 1회 실패</span></div>
+        </div>
+        <div class="rside">
+          <button class="rbtn" onclick="revengeSheet('레드 스톰 CF',1155,1,'1 : 4')">복수</button>
+          <span class="rleft" style="color:var(--warn)">마지막 1회</span>
+        </div>
+      </div>
+
+      <div class="rev">
+        <div class="rico">🛡️</div>
+        <div class="rmain">
+          <div class="l1"><b>언더독 유나이티드</b><em>어제</em></div>
+          <div class="l2"><b style="color:var(--ok)">2 : 0 방어 성공</b> · 레이팅 +10</div>
+        </div>
+        <div class="rside">
+          <button class="rbtn" onclick="revengeSheet('언더독 유나이티드',1090,2,'2 : 0')">복수</button>
+          <span class="rleft">2회 남음</span>
+        </div>
+      </div>
+
+      <div class="rev spent">
+        <div class="rico">⚔️</div>
+        <div class="rmain">
+          <div class="l1"><b>블루 하버 SC</b><em>2일 전</em></div>
+          <div class="l2"><b style="color:var(--them)">0 : 2 패</b> · 복수 2회 모두 실패</div>
+        </div>
+        <div class="rside"><button class="rbtn" disabled>소진</button></div>
+      </div>
+
+      <div class="rev spent">
+        <div class="rico">⚔️</div>
+        <div class="rmain">
+          <div class="l1"><b>그린필드 FC</b><em>3일 전</em></div>
+          <div class="l2"><b style="color:var(--them)">1 : 2 패</b> · <span style="color:var(--ok)">복수 성공 ✓</span></div>
+        </div>
+        <div class="rside"><button class="rbtn" disabled>완료</button></div>
+      </div>
+
+    </div>
+    <div class="note tiny"><b>결정 필요 Q3 (복수 규칙 4개)</b><br>
+      ① <b>무승부</b>는 성공인가 실패인가 — <u>권장 = 실패로 치되 횟수 소진</u>("이겨야 갚는다")<br>
+      ② 복수도 <b>오늘 남은 원정 5회</b>를 소모하나 — <u>권장 = 소모한다</u>(안 그러면 판수 제한을 우회하는 무한 경로)<br>
+      ③ 복수 승리에 <b>레이팅 보너스</b>가 있나 — <u>권장 = 일반 원정과 동일</u>(밸런스 축을 늘리지 않는다)<br>
+      ④ <b>내가 방어에 성공한 침공</b>(위 3번째 행)도 복수 대상인가 — <u>권장 = 목록엔 남기되 [복수] 버튼은 준다</u>(이미 이겼어도 "쟤한테 또 가겠다"는 선택지는 열어 두는 게 재미. 반대로 "갚을 게 없다"로 잠가도 된다)</div>
+
+    <h2 class="sec">원정 랭킹보드 <span class="badge them">신규 API</span></h2>
+    <div class="card" style="padding:8px 10px">
+      <table class="tbl">
+        <tr><th style="width:26px">#</th><th>감독</th><th class="num">연승</th><th class="num">레이팅</th></tr>
+        <tr><td>1</td><td>철벽 유나이티드</td><td class="num">9</td><td class="num"><b>1620</b></td></tr>
+        <tr><td>2</td><td>감독 윤</td><td class="num">6</td><td class="num"><b>1541</b></td></tr>
+        <tr><td>3</td><td>FC 한밤중</td><td class="num">4</td><td class="num"><b>1498</b></td></tr>
+        <tr><td>4</td><td>레드 스톰 CF</td><td class="num">0</td><td class="num"><b>1455</b></td></tr>
+        <tr><td>5</td><td>감독 서</td><td class="num">2</td><td class="num"><b>1402</b></td></tr>
+        <tr class="me"><td>12</td><td><b>감독 박 (나)</b></td><td class="num">2</td><td class="num"><b>1180</b></td></tr>
+      </table>
+      <button class="cta ghost sm" style="margin-top:8px">전체 보기</button>
+    </div>
+
+    <h2 class="sec">지난 시즌</h2>
+    <div class="item between"><span class="sm">2주차 · <b>18위</b> · 최고 연승 4</span><span class="badge">보상 지급됨</span></div>
+  </div>
+</section>
+
+<!-- ══════════════════════ 2. 덱 ══════════════════════ -->
+<section class="screen" id="s-deck">
+  <div class="phead"><span class="back"></span><h1>덱</h1><span class="rightslot">4-3-3</span></div>
+  <div class="body">
+    <div class="note"><b>배치·프롬프트는 현행 유지</b>(#244 프롬프트 1급 골격). 이 에픽에서 바꾸는 건 <b>선수를 눌렀을 때</b>다 — 지금은 교체/프롬프트만, 개편 후엔 같은 시트에서 <b>[강화]</b>로 바로 들어간다.</div>
+
+    <div class="seg"><button class="on">전술보드</button><button>선발/벤치</button><button>지시</button></div>
+
+    <div class="pitch">
+      <div class="line"></div>
+      <div class="tok" style="left:50%;top:92%"><div class="dot">GK</div><span>선수 1</span></div>
+      <div class="tok" style="left:18%;top:74%"><div class="dot">DF</div><span>선수 2</span></div>
+      <div class="tok" style="left:39%;top:78%"><div class="dot">DF</div><span>선수 3</span></div>
+      <div class="tok" style="left:61%;top:78%"><div class="dot">DF</div><span>선수 4</span></div>
+      <div class="tok" style="left:82%;top:74%"><div class="dot">DF</div><span>선수 5</span></div>
+      <div class="tok" style="left:28%;top:52%"><div class="dot">MF</div><span>선수 6</span></div>
+      <div class="tok" style="left:50%;top:56%"><div class="dot">MF</div><span>선수 7</span></div>
+      <div class="tok" style="left:72%;top:52%"><div class="dot">MF</div><span>선수 8</span></div>
+      <div class="tok" style="left:22%;top:26%"><div class="dot">FW</div><span>선수 9</span></div>
+      <div class="tok" style="left:50%;top:20%"><div class="dot">FW</div><span>선수 10</span></div>
+      <div class="tok" style="left:78%;top:26%"><div class="dot">FW</div><span>선수 11</span></div>
+    </div>
+
+    <button class="cta ghost" onclick="playerSheet(true)">선수 탭 예시 → 선수 시트 열기</button>
+
+    <div class="card">
+      <div class="between"><b class="sm">팀 전력</b><b>1,842</b></div>
+      <div class="bar" style="margin-top:8px"><i style="width:68%"></i></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════ 3. 선수 (도감) ══════════════════════ -->
+<section class="screen" id="s-players">
+  <div class="phead"><span class="back"></span><h1>선수</h1><span class="rightslot">18 / 40</span></div>
+  <div class="body">
+    <div class="note"><b>육성 탭 + 도감 탭을 하나로 합친다.</b> 지금 두 화면은 같은 컴포넌트에 <code>owned</code> 필터만 다르다 — 탭 두 칸을 쓸 이유가 없다. <b>[보유] / [전체]</b> 세그먼트 하나로 대체하고, 미보유는 <b>실루엣</b>(지금은 회색조 사진이라 "안 가진 것"으로 안 읽힌다).</div>
+
+    <div class="seg"><button class="on" onclick="ownedMode(true,this)">보유 18</button><button onclick="ownedMode(false,this)">전체 40</button></div>
+    <div class="chips"><button class="on">전체</button><button>GK</button><button>DF</button><button>MF</button><button>FW</button></div>
+    <div class="chips"><button class="on">등급 전체</button><button>레전드</button><button>다이아</button><button>골드</button></div>
+
+    <div class="grid" id="pgrid"></div>
+
+    <div class="note tiny">카드를 누르면 <b>덱과 같은 강화 시트</b>가 열린다(같은 컴포넌트 = 자동 싱크). 미보유 카드는 <b>획득 방법</b>만 보여준다.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════ 4. 영입 ══════════════════════ -->
+<section class="screen" id="s-recruit">
+  <div class="phead"><span class="back"></span><h1>영입</h1><span class="rightslot">💎 1,240</span></div>
+  <div class="body">
+    <div class="note"><b>상점(뽑기) + 트레이드를 한 화면으로</b>(hero 결정). 둘 다 "선수를 새로 들이는" 행위라 탭을 나눌 이유가 없었다. 나중에 규모가 커지면 다시 쪼갠다.</div>
+    <div class="seg"><button class="on" onclick="recruitMode('gacha',this)">뽑기</button><button onclick="recruitMode('trade',this)">트레이드</button></div>
+
+    <div id="rc-gacha">
+      <div class="card" style="background:linear-gradient(135deg,#241a3d,#111826 65%)">
+        <div class="between"><b>영입 뽑기</b><span class="badge">확률 보기</span></div>
+        <p class="sm muted" style="margin:8px 0 12px">브론즈 ~ 레전드 5등급. 10연에는 골드 이상 1장이 확정됩니다.</p>
+        <div class="row" style="gap:8px">
+          <button class="cta" style="flex:1">1회 · 300 💎</button>
+          <button class="cta" style="flex:1.3;background:linear-gradient(90deg,#7a55ff,#4c8dff)">10+1회 · 3,000 💎</button>
+        </div>
+      </div>
+      <h2 class="sec">최근 영입</h2>
+      <div class="list">
+        <div class="item row"><span class="badge">NEW</span><span class="sm g-DIA">다이아</span><span class="sm">선수 17</span></div>
+        <div class="item row"><span class="sm g-GOLD">골드</span><span class="sm">선수 22</span></div>
+      </div>
+    </div>
+
+    <div id="rc-trade" style="display:none">
+      <div class="card sunk">
+        <b class="sm">트레이드란? <span class="badge warn">튜토리얼 추가</span></b>
+        <p class="sm muted" style="margin:6px 0 0">일정 시간마다 <b style="color:var(--text)">이적 제안</b>이 들어옵니다. <b style="color:var(--text)">FA</b>는 골드를 내고 데려오고,
+        <b style="color:var(--text)">트레이드</b>는 내 선수를 내주고 맞바꿉니다. 제안은 시간이 지나야 공개되고, 골드로 <b style="color:var(--text)">앞당길</b> 수 있습니다.</p>
+      </div>
+      <div class="note tiny"><b>hero 지적 반영</b> — 지금 튜토리얼에 트레이드 설명이 없다. ①이 상시 안내 카드 ②첫 진입 코치마크 <u>둘 다</u> 넣는 것을 권장.</div>
+      <div class="list">
+        <div class="item">
+          <div class="between"><b class="sm">슬롯 1</b><span class="badge">비어 있음</span></div>
+          <button class="cta ghost sm" style="margin-top:8px">장 열기</button>
+        </div>
+        <div class="item">
+          <div class="between"><b class="sm">슬롯 2 · FA</b><span class="badge warn">04:00 뒤 공개</span></div>
+          <div class="sm muted" style="margin-top:4px">등급만 공개 · <span class="g-DIA">다이아</span></div>
+          <button class="cta ghost sm" style="margin-top:8px">300 G 로 앞당기기</button>
+        </div>
+        <div class="item">
+          <div class="between"><b class="sm">슬롯 3 · 트레이드</b><span class="badge ok">공개됨</span></div>
+          <div class="row sm" style="margin-top:6px"><span class="g-GOLD">대가 플레이메이커</span><span class="muted">↔</span><span class="g-SILVER">내 센터백</span></div>
+          <div class="row" style="margin-top:8px;gap:8px"><button class="cta sm" style="flex:1">수락</button><button class="cta ghost sm" style="flex:1">거절</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════════ 5. 내 정보 ══════════════════════ -->
+<section class="screen" id="s-me">
+  <div class="phead"><span class="back"></span><h1>내 정보</h1><span class="rightslot">⚙</span></div>
+  <div class="body">
+    <div class="note"><b>로그 탭이 여기로 들어온다.</b> 롤 전적 화면처럼 <b>내가 누구인지(순위·전적)</b>를 위에, <b>기록(경기·트레이드 로그)</b>를 아래에. 로그는 목적지가 아니라 근거다.</div>
+
+    <div class="card">
+      <div class="row">
+        <div class="avatar" style="width:52px;height:52px;font-size:24px">⚽</div>
+        <div style="flex:1">
+          <b style="font-size:17px">감독 박</b>
+          <div class="row tiny" style="gap:6px;margin-top:3px"><span class="badge us">브론즈 리그 D5</span><span class="badge">게스트</span></div>
+        </div>
+        <button class="cta ghost sm" style="width:auto;padding:7px 12px">로그아웃</button>
+      </div>
+    </div>
+
+    <h2 class="sec">전적</h2>
+    <div class="card">
+      <div class="row" style="gap:14px">
+        <div class="ring" style="--hole:var(--surface);background:conic-gradient(var(--us) 0 52%,var(--them) 52% 87%,var(--muted) 87% 100%)"><b>52%</b></div>
+        <div style="flex:1">
+          <div style="font-size:19px;font-weight:700">12승 <span class="muted" style="font-weight:500">3무</span> 8패</div>
+          <div class="tiny muted">통산 23경기 · 승률 52%</div>
+          <div style="margin-top:8px">
+            <div class="tiny muted" style="margin-bottom:3px">최근 10경기</div>
+            <div class="row" style="gap:3px">
+              <span class="badge ok" style="padding:2px 6px">승</span><span class="badge ok" style="padding:2px 6px">승</span>
+              <span class="badge them" style="padding:2px 6px">패</span><span class="badge ok" style="padding:2px 6px">승</span>
+              <span class="badge" style="padding:2px 6px">무</span><span class="badge them" style="padding:2px 6px">패</span>
+              <span class="badge ok" style="padding:2px 6px">승</span><span class="badge ok" style="padding:2px 6px">승</span>
+              <span class="badge them" style="padding:2px 6px">패</span><span class="badge ok" style="padding:2px 6px">승</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <hr class="hair">
+      <table class="tbl">
+        <tr><th>모드</th><th class="num">경기</th><th class="num">승</th><th class="num">무</th><th class="num">패</th><th class="num">승률</th></tr>
+        <tr><td>연습</td><td class="num">6</td><td class="num">4</td><td class="num">0</td><td class="num">2</td><td class="num">67%</td></tr>
+        <tr><td>리그</td><td class="num">9</td><td class="num">5</td><td class="num">2</td><td class="num">2</td><td class="num">56%</td></tr>
+        <tr><td>원정</td><td class="num">8</td><td class="num">3</td><td class="num">1</td><td class="num">4</td><td class="num">38%</td></tr>
+      </table>
+      <div class="note tiny" style="margin-top:8px"><b>결정 필요 Q4</b> — 모드별 분리 전적을 보여주려면 서버가 모드별로 세어 줘야 한다(<code>GET /api/me/record</code> 신규). 현행 <code>/api/me</code> 의 <code>records</code> 는 <b>통합 1줄</b>뿐이다.</div>
+    </div>
+
+    <h2 class="sec">순위</h2>
+    <div class="row" style="gap:10px">
+      <div class="card" style="flex:1;text-align:center">
+        <div class="tiny muted">리그</div>
+        <div style="font-size:22px;font-weight:800">4<span class="sm muted">위</span></div>
+        <div class="tiny muted">브론즈 · 10팀</div>
+      </div>
+      <div class="card" style="flex:1;text-align:center">
+        <div class="tiny muted">원정 랭킹</div>
+        <div style="font-size:22px;font-weight:800">12<span class="sm muted">위</span></div>
+        <div class="tiny muted">레이팅 1180</div>
+      </div>
+    </div>
+    <div class="card sunk">
+      <div class="between sm"><span class="muted">개인 기록</span><span></span></div>
+      <hr class="hair">
+      <div class="between sm"><span class="muted">최다 득점</span><b>선수 1 · 9골</b></div>
+      <div class="between sm"><span class="muted">최다 연승</span><b>4연승</b></div>
+      <div class="between sm"><span class="muted">원정 최고 연승</span><b>4연승</b></div>
+    </div>
+
+    <h2 class="sec">기록</h2>
+    <div class="seg"><button class="on">경기</button><button>트레이드</button></div>
+    <div class="list">
+      <div class="item between"><div><b class="sm">FC 한밤중</b> <span class="badge them">원정 패</span><div class="tiny muted">07.29 · 1 : 3</div></div><span class="tiny muted">다시보기 ›</span></div>
+      <div class="item between"><div><b class="sm">봇 T2</b> <span class="badge ok">리그 승</span><div class="tiny muted">07.28 · 2 : 1</div></div><span class="tiny muted">다시보기 ›</span></div>
+      <div class="item between"><div><b class="sm">봇 T7</b> <span class="badge">연습 무</span><div class="tiny muted">07.28 · 1 : 1</div></div><span class="tiny muted">다시보기 ›</span></div>
+    </div>
+    <button class="cta ghost">더 보기</button>
+    <div class="card sunk"><button class="sm" style="color:var(--muted)">튜토리얼 다시 보기</button></div>
+  </div>
+</section>
+
+<!-- ══════════════════════ 탭바 ══════════════════════ -->
+<nav class="tabbar">
+  <button data-tab="home" class="on" onclick="go('home')"><em>⚽</em>게임<i>3</i></button>
+  <button data-tab="deck" onclick="go('deck')"><em>📋</em>덱</button>
+  <button data-tab="players" onclick="go('players')"><em>👥</em>선수</button>
+  <button data-tab="recruit" onclick="go('recruit')"><em>✨</em>영입</button>
+  <button data-tab="me" onclick="go('me')"><em>🙋</em>내 정보</button>
+</nav>
+
+</div>
+
+<!-- ══════════════════════ 시트 ══════════════════════ -->
+<div class="scrim" id="scrim" onclick="closeSheets()"></div>
+
+<!-- 선수 시트(덱에서) -->
+<div class="sheet" id="sheet-player">
+  <div class="grab"></div>
+  <div class="row">
+    <div class="pcard" style="width:84px;padding:6px"><div class="face">🦁</div><b>선수 3</b><span class="gr g-GOLD">골드</span></div>
+    <div style="flex:1">
+      <div class="row" style="gap:6px"><b style="font-size:17px">선수 3</b><span class="badge">DF</span><span class="badge us">선발</span></div>
+      <div class="stars">★★★★☆☆</div>
+      <div class="tiny muted">컨디션 84 · 오늘 좋음</div>
+    </div>
+  </div>
+  <hr class="hair">
+  <div class="list" style="gap:6px">
+    <div class="between sm"><span class="muted">수비</span><b>78</b></div>
+    <div class="between sm"><span class="muted">피지컬</span><b>80</b></div>
+    <div class="between sm"><span class="muted">패스</span><b>71</b></div>
+  </div>
+  <hr class="hair">
+  <div class="tiny muted" style="margin-bottom:5px">선수 지시 프롬프트</div>
+  <div class="card sunk sm" style="border:1px solid var(--border)">"오른쪽 뒷공간을 조심하고, 기회가 나면 오버래핑해라."</div>
+  <div class="row" style="gap:8px;margin-top:12px">
+    <button class="cta ghost" style="flex:1">교체</button>
+    <button class="cta" style="flex:1;background:linear-gradient(90deg,#ff9d3d,#ffc24b);color:#241a05" onclick="closeSheets();openSheet('sheet-growth')">⚡ 강화</button>
+  </div>
+  <div class="note tiny" style="margin-top:10px"><b>hero 요구</b> — "덱에서 선수를 눌렀을 때 강화도 가능하게, 버튼 하나 → 시트". 이 [강화]가 그 버튼이고, 열리는 시트는 <b>선수 탭과 같은 것</b>이다.</div>
+</div>
+
+<!-- 강화 시트 -->
+<div class="sheet" id="sheet-growth">
+  <div class="grab"></div>
+  <div class="between"><b style="font-size:16px">선수 3 강화</b><span class="badge g-GOLD">골드</span></div>
+  <div class="ovr" style="margin-top:12px">
+    <div class="ring"><b>76</b></div>
+    <div style="flex:1">
+      <div class="stars">★★★★☆☆</div>
+      <div class="tiny muted" style="margin:4px 0">한계돌파 4 / 6</div>
+      <div class="between tiny"><span class="muted">성장 완성도</span><span>72%</span></div>
+      <div class="bar" style="margin-top:4px"><i style="width:72%"></i></div>
+    </div>
+  </div>
+  <hr class="hair">
+  <h2 class="sec" style="margin-top:0">강화</h2>
+  <div class="list">
+    <div class="item between"><div><b class="sm">성 ★ 승급</b><div class="tiny muted">같은 선수 카드 2장 + 8,000 G</div></div><button class="cta sm" style="width:auto;padding:8px 14px">승급</button></div>
+    <div class="item between"><div><b class="sm">잠재 재설정</b><div class="tiny muted">5,000 G</div></div><button class="cta ghost sm" style="width:auto;padding:8px 14px">굴리기</button></div>
+    <div class="item between"><div><b class="sm">고급 재설정</b><div class="tiny muted">10 💎 · 하한 보장</div></div><button class="cta ghost sm" style="width:auto;padding:8px 14px">굴리기</button></div>
+  </div>
+  <div class="note tiny" style="margin-top:10px">이 시트는 <b>기존 <code>CardGrowthDetail</code></b> 그대로다(신규 화면 아님). 덱 · 선수 탭 <b>양쪽에서 같은 컴포넌트</b>를 열어 hero 가 말한 "싱크"를 구조로 보장한다.</div>
+</div>
+
+<!-- 미보유 시트 -->
+<div class="sheet" id="sheet-locked">
+  <div class="grab"></div>
+  <div class="row">
+    <div class="pcard locked" style="width:84px;padding:6px"><div class="face"><span>🐺</span></div><b>???</b><span class="gr">미보유</span></div>
+    <div style="flex:1">
+      <div class="row" style="gap:6px"><b style="font-size:17px">선수 27</b><span class="badge">DF</span><span class="badge g-DIA">다이아</span></div>
+      <div class="tiny muted" style="margin-top:4px">아직 영입하지 않은 선수입니다.</div>
+    </div>
+  </div>
+  <hr class="hair">
+  <div class="tiny muted">획득 방법</div>
+  <div class="list" style="margin-top:6px">
+    <div class="item row"><span>✨</span><span class="sm">영입 뽑기 — 다이아 등급 확률 4%</span></div>
+    <div class="item row"><span>🔄</span><span class="sm">트레이드 — FA/맞교환 제안으로 등장</span></div>
+  </div>
+  <button class="cta" style="margin-top:12px" onclick="closeSheets();go('recruit')">영입하러 가기</button>
+</div>
+
+<!-- 복수 확인 시트 -->
+<div class="sheet" id="sheet-revenge">
+  <div class="grab"></div>
+  <div style="text-align:center;padding:4px 0 8px">
+    <div style="font-size:30px">⚔️</div>
+    <b style="font-size:17px">복수 원정</b>
+    <div class="sm muted" id="rv-line">—</div>
+  </div>
+  <div class="card sunk">
+    <div class="between sm"><span class="muted">상대</span><b id="rv-name">—</b></div>
+    <div class="between sm"><span class="muted">상대 레이팅</span><b id="rv-rating">—</b></div>
+    <div class="between sm"><span class="muted">남은 복수 기회</span><b id="rv-left" style="color:var(--them)">—</b></div>
+    <hr class="hair">
+    <div class="tiny muted">이기면 이 상대는 목록에서 사라집니다. 지면 기회가 하나 줄어듭니다.</div>
+  </div>
+  <div class="tiny muted" style="margin-top:10px">오늘 남은 원정 <b style="color:var(--text)">4회</b> 중 1회를 사용합니다.</div>
+  <div class="row" style="gap:8px;margin-top:12px">
+    <button class="cta ghost" style="flex:1" onclick="closeSheets()">나중에</button>
+    <button class="cta" style="flex:1.4;background:var(--them)" onclick="alert('POST /api/away/revenge/{id}/matches → /match/:id')">복수하러 간다</button>
+  </div>
+</div>
+
+<script>
+const SCREENS=["home","league","away","deck","players","recruit","me"];
+const TAB_OF={home:"home",league:"home",away:"home",deck:"deck",players:"players",recruit:"recruit",me:"me"};
+
+function go(s){
+  SCREENS.forEach(k=>document.getElementById("s-"+k).classList.toggle("on",k===s));
+  document.querySelectorAll(".tabbar button").forEach(b=>b.classList.toggle("on",b.dataset.tab===TAB_OF[s]));
+  closeSheets();
+  window.scrollTo(0,0);
+  try{history.replaceState(null,"","?screen="+s);}catch(e){}
+}
+function openSheet(id){document.getElementById("scrim").classList.add("on");document.getElementById(id).classList.add("on");}
+function closeSheets(){document.getElementById("scrim").classList.remove("on");document.querySelectorAll(".sheet").forEach(s=>s.classList.remove("on"));}
+function playerSheet(){openSheet("sheet-player");}
+function revengeSheet(name,rating,left,score){
+  document.getElementById("rv-name").textContent=name;
+  document.getElementById("rv-rating").textContent=rating;
+  document.getElementById("rv-left").textContent=left+"회";
+  document.getElementById("rv-line").textContent="지난 침공 "+score+" 를 되갚는다";
+  openSheet("sheet-revenge");
+}
+function lgState(k,btn){
+  document.querySelectorAll("#s-league .seg button").forEach(b=>b.classList.remove("on"));btn.classList.add("on");
+  document.getElementById("lg-intro").style.display=k==="intro"?"":"none";
+  document.getElementById("lg-run").style.display=k==="run"?"":"none";
+}
+function recruitMode(k,btn){
+  document.querySelectorAll("#s-recruit .seg button").forEach(b=>b.classList.remove("on"));btn.classList.add("on");
+  document.getElementById("rc-gacha").style.display=k==="gacha"?"":"none";
+  document.getElementById("rc-trade").style.display=k==="trade"?"":"none";
+}
+
+/* 선수 그리드 — 보유/전체 전환. 미보유는 실루엣. */
+const FACES=["🦁","🐺","🐲","🦊","🐯","🦅","🐻","🐢","🦈","🐍","🦌","🐗"];
+const GR=["LEGEND","DIA","GOLD","SILVER","BRONZE"];
+const GRK={LEGEND:"레전드",DIA:"다이아",GOLD:"골드",SILVER:"실버",BRONZE:"브론즈"};
+const POS=["GK","DF","DF","DF","MF","MF","MF","FW","FW"];
+const ROSTER=Array.from({length:24},(_,i)=>({
+  n:i+1,face:FACES[i%FACES.length],grade:GR[i%GR.length],pos:POS[i%POS.length],owned:i<18
+}));
+let showOwnedOnly=true;
+function ownedMode(v,btn){
+  showOwnedOnly=v;
+  document.querySelectorAll("#s-players .seg button").forEach(b=>b.classList.remove("on"));btn.classList.add("on");
+  renderGrid();
+}
+function renderGrid(){
+  const g=document.getElementById("pgrid");
+  g.innerHTML=ROSTER.filter(p=>!showOwnedOnly||p.owned).map(p=>`
+    <button class="pcard ${p.owned?"":"locked"}" onclick="${p.owned?"openSheet('sheet-growth')":"openSheet('sheet-locked')"}">
+      <span class="pos">${p.pos}</span>${p.owned?"":'<span class="lock">잠금</span>'}
+      <div class="face"><span>${p.face}</span></div>
+      <b>${p.owned?"선수 "+p.n:"？？？"}</b>
+      <span class="gr g-${p.grade}">${GRK[p.grade]}</span>
+    </button>`).join("");
+}
+renderGrid();
+
+/* 보드가 iframe 으로 특정 화면을 바로 띄울 수 있게 — ?screen=away&notes=0 */
+const q=new URLSearchParams(location.search);
+if(q.get("notes")==="0")document.body.classList.add("nonotes");
+go(SCREENS.includes(q.get("screen"))?q.get("screen"):"home");
+if(q.get("sub")==="run")lgState("run",document.querySelectorAll("#s-league .seg button")[1]);
+if(q.get("sub")==="trade")recruitMode("trade",document.querySelectorAll("#s-recruit .seg button")[1]);
+if(q.get("sub")==="all")ownedMode(false,document.querySelectorAll("#s-players .seg button")[1]);
+if(q.get("sheet"))openSheet("sheet-"+q.get("sheet"));
+</script>
+</body>
+</html>
