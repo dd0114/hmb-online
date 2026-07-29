@@ -111,7 +111,11 @@ public class AdminRouteGuard implements ApplicationRunner {
             // 공지보다 위험도가 높다(디스크 소진 + 우리 도메인에서 서빙되는 임의 바이트).
             // 공개 서빙(GET /api/notices/assets/{id})은 NoticeAssetService/Storage 에만 의존하므로
             // 영향이 없다 — 그 방향(admin → notice)을 유지하는 것이 그 구조의 전부다.
-            AdminNoticeAssetService.class);
+            AdminNoticeAssetService.class,
+            // #309 W2 아트 번들. 게이트 밖으로 나가면 아무나 **우리 도메인에서 서빙되는 파일 트리를
+            // 통째로 갈아끼울 수** 있다(zip 해제 = 임의 경로 쓰기 시도의 입구이기도 하다).
+            // 공개 서빙(GET /api/chars/**)은 CharBundleService/Storage 에만 의존하므로 영향이 없다.
+            AdminCharBundleService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;

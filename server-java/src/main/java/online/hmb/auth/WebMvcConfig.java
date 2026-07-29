@@ -55,7 +55,14 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 // /api/notices/assets/{id}(#309) = 그 본문이 가리키는 **이미지**. 같은 이유다 —
                 // 여기에만 401 을 두면 점검 공지가 글은 뜨고 그림만 깨진 채로 보인다. 유저별 데이터 0.
                 // 계약 = NoticeAssetApiTest.assetsAreReachableWithoutAuth.
-                // ⚠️ 패턴들은 서로 겹친다({id} 는 'active'·'assets' 세그먼트도 매칭한다). 목록을
+                // /api/chars/**(#309 W2) = 유닛 아트 번들. 아트는 로그인 화면·가입 연출에서도
+                // 그려지는 **공개 카탈로그**(유저별 데이터 0)라, 401 을 두면 그 화면들이 통째로
+                // 이니셜 폴백이 된다. 계약 = CharBundleApiTest.artIsReachableWithoutAuth.
+                // ⚠️ 여기만 `**` 인 이유: 그 엔드포인트 **자체가 파일 트리**다(`units/manifest.json`,
+                //    `units/avatars-64.png` … 다중 세그먼트). 즉 이건 목록을 뭉친 게 아니라 엔드포인트
+                //    하나의 실제 모양이고, `/api/notices` 와 달리 유저 스코프 경로가 섞일 접두사가 아니다.
+                //
+                // ⚠️ 공지 패턴들은 서로 겹친다({id} 는 'active'·'assets' 세그먼트도 매칭한다). 목록을
                 //    줄이지 마라 — 공개 대상을 **엔드포인트 단위로 열거**하는 것이 이 목록의 존재
                 //    이유다. /api/notices/** 로 뭉치면 나중에 유저 스코프 하위경로가 생겨도 조용히
                 //    공개된다. 같은 이유로 자산도 `assets/**` 가 아니라 `assets/{id}` 로 적는다 —
@@ -63,7 +70,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 //    더 적는 편이 낫다.
                 .excludePathPatterns(
                         "/api/auth/**", "/api/config", "/api/notices/active", "/api/notices/{id}",
-                        "/api/notices/assets/{id}")
+                        "/api/notices/assets/{id}", "/api/chars/**")
                 .order(0);
         registry.addInterceptor(adminInterceptor)
                 .addPathPatterns(AdminInterceptor.ADMIN_PATH_PATTERN)

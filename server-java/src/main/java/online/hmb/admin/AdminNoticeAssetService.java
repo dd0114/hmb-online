@@ -232,8 +232,17 @@ public class AdminNoticeAssetService {
         return trimmed.length() <= NAME_MAX_CHARS ? trimmed : trimmed.substring(0, NAME_MAX_CHARS);
     }
 
+    /**
+     * ⚠️ <b>사유는 필수다</b>(형제 서비스 {@code AdminNoticeService.validateReason} 와 같은 규율,
+     * openapi 도 {@code required} 로 선언한다). 길이만 보던 판이 있었는데, 그러면 화면 밖에서
+     * API 를 직접 호출할 때만 원장이 비게 된다 — <b>"누가 왜 했나"가 필요한 상황이 정확히 그 경우다</b>
+     * (독립검증 MAJ-2).
+     */
     private static void validateReason(String reason) {
-        if (reason != null && reason.length() > REASON_MAX_CHARS) {
+        if (reason == null || reason.isBlank()) {
+            throw ApiException.validation("reason 은 필수입니다(운영 사유 기록)");
+        }
+        if (reason.length() > REASON_MAX_CHARS) {
             throw ApiException.validation("reason 은 " + REASON_MAX_CHARS + "자 이하여야 합니다");
         }
     }

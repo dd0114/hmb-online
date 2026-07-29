@@ -11,7 +11,8 @@
  * 그래서 reject 하지 않고 **부분/빈 번들**을 돌려준다 — 에셋 미배포가 화면 전체를 죽이면 안 된다.
  */
 import type { CharRef, CharactersManifest, PlaceholderManifest, UnitsManifest } from "./char-manifest";
-import { CHARS_BASE } from "./char-manifest";
+import { CHARS_BASE, charsBase, setCharsBase } from "./char-manifest";
+import { apiUrl } from "../api/client";
 
 /**
  * data/ 발행 매핑 파일의 소비 측 투영(쓰는 필드만).
@@ -49,7 +50,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
   }
 }
 
-export async function fetchCharAssets(base: string = CHARS_BASE): Promise<CharAssets> {
+export async function fetchCharAssets(base: string = charsBase()): Promise<CharAssets> {
   const [characters, units, placeholders, mapping] = await Promise.all([
     fetchJson<CharactersManifest>(`${base}/characters/manifest.json`),
     fetchJson<UnitsManifest>(`${base}/units/manifest.json`),
@@ -57,6 +58,52 @@ export async function fetchCharAssets(base: string = CHARS_BASE): Promise<CharAs
     fetchJson<PlayerCharsMap>(`${base}/player-chars.json`),
   ]);
   return { characters, units, placeholders, mapping };
+}
+
+/* ────────────── 서버 아트 번들 해석 (#309 W2) ──────────────
+ * 운영자가 admin 에서 아트 번들을 올려 켜면, 아트가 **웹 재배포 없이** 바뀐다. 그때 base 가
+ * 백엔드 오리진으로 옮겨간다. 활성 번들이 없으면 **웹 빌드에 구운 `/chars`** 그대로다.
+ *
+ * ⚠️ **200 만으로 채택하지 않는다.** 목·프록시·구 서버가 `{}` 를 주면 "아트 0개"가 정상처럼
+ *    통과해 전 화면이 조용히 이니셜 폴백이 된다(#309 A6). 그래서 형태를 본다 —
+ *    서버가 자기 리비전과 필수 파일 목록을 말해 줄 때만 그 base 를 쓴다.
+ * ⚠️ 이 조회 하나가 아트 로딩을 붙잡지 않게 **짧은 타임아웃**을 건다. 실패는 전부 폴백이다.
+ */
+
+/** 활성 번들 신호. 서버가 `GET /api/chars/index` 로 답한다(없으면 404 = 폴백 트리거). */
+const BUNDLE_INDEX_PATH = "/api/chars/index";
+const BUNDLE_BASE_PATH = "/api/chars";
+const BUNDLE_PROBE_TIMEOUT_MS = 3000;
+
+interface BundleIndex {
+  revision?: unknown;
+  requiredEntries?: unknown;
+}
+
+/** 서버 응답이 **우리가 아는 번들 모양인가**. 아니면 폴백이 정답이다. */
+export function isUsableBundleIndex(raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const idx = raw as BundleIndex;
+  if (typeof idx.revision !== "string" || !idx.revision) return false;
+  return Array.isArray(idx.requiredEntries) && idx.requiredEntries.length > 0;
+}
+
+/**
+ * 활성 번들이 있으면 그 base 를, 없으면 `null`(→ 구운 폴백)을 돌려준다.
+ * **절대 throw 하지 않는다** — 아트 배포 채널의 장애가 화면을 죽이면 안 된다.
+ */
+export async function resolveCharsBase(): Promise<string | null> {
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), BUNDLE_PROBE_TIMEOUT_MS) : null;
+  try {
+    const res = await fetch(apiUrl(BUNDLE_INDEX_PATH), { signal: ctrl?.signal });
+    if (!res.ok) return null;
+    return isUsableBundleIndex(await res.json()) ? apiUrl(BUNDLE_BASE_PATH) : null;
+  } catch {
+    return null; // 오프라인·404·JSON 깨짐·타임아웃 — 전부 폴백으로 흡수
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // ── 모듈 싱글턴 캐시 + 구독 ──────────────────────────────────────────────────
@@ -69,13 +116,27 @@ let inflight: Promise<CharAssets> | null = null;
 let cached: CharAssets | null = null;
 const listeners = new Set<() => void>();
 
-export function loadCharAssets(base: string = CHARS_BASE): Promise<CharAssets> {
+/**
+ * 번들 해석 → 로드 → 캐시. `base` 를 **명시하면 해석을 건너뛴다**(테스트·프리뷰 하니스가 특정
+ * 트리를 겨냥할 수 있게). 안 넘기면 서버 활성 번들을 한 번 물어보고, 없으면 구운 폴백이다.
+ */
+export function loadCharAssets(base?: string): Promise<CharAssets> {
   if (!inflight) {
-    inflight = fetchCharAssets(base).then((assets) => {
-      cached = assets;
-      for (const l of [...listeners]) l();
-      return assets;
-    });
+    const resolved: Promise<string> = base !== undefined
+      ? Promise.resolve(base)
+      : resolveCharsBase().then((serverBase) => {
+          // 여기서 정한 base 가 **URL 조립 전체**의 기준이 된다(아바타·카드·프레임·경기장 스킨).
+          // 매니페스트만 서버에서 읽고 이미지를 웹 오리진에서 찾으면 전부 404 가 되므로 한 곳에서 정한다.
+          setCharsBase(serverBase);
+          return charsBase();
+        });
+    inflight = resolved
+      .then((b) => fetchCharAssets(b))
+      .then((assets) => {
+        cached = assets;
+        for (const l of [...listeners]) l();
+        return assets;
+      });
   }
   return inflight;
 }
@@ -94,11 +155,12 @@ export function subscribeCharAssets(onChange: () => void): () => void {
   };
 }
 
-/** 테스트 전용 — 캐시 리셋(프로덕션 경로에서는 호출하지 않는다). */
+/** 테스트 전용 — 캐시 리셋(프로덕션 경로에서는 호출하지 않는다). base 도 구운 폴백으로 되돌린다. */
 export function resetCharAssetsCache(): void {
   inflight = null;
   cached = null;
   listeners.clear();
+  setCharsBase(CHARS_BASE);
 }
 
 /**

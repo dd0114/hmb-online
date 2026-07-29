@@ -31,7 +31,8 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  *
  * <p>진단 정보를 잃지 않기 위해 원본 예외는 <b>서버 로그</b>에 남긴다(응답에는 안 나간다).
  */
-@RestControllerAdvice(assignableTypes = {AdminController.class, AdminCatalogController.class})
+@RestControllerAdvice(assignableTypes = {AdminController.class, AdminCatalogController.class,
+        AdminCharsController.class})
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class AdminErrorHandler {
 
@@ -80,6 +81,24 @@ public class AdminErrorHandler {
         log.warn("admin API 요청 본문 파싱 실패 (응답에는 상세를 싣지 않는다)", ex);
         return ResponseEntity.badRequest()
                 .body(new ApiError("VALIDATION_ERROR", "요청 본문을 해석할 수 없습니다"));
+    }
+
+    /**
+     * <b>업로드 크기 초과(#309 독립검증 MIN-2)</b> — 서블릿 컨테이너가 요청을 우리 코드에 넘기기
+     * <b>전에</b> 던진다.
+     *
+     * <p>왜 필요한가: 앱 상한({@code hmb.notice.asset.max-bytes} 등)은 우리 검증이 사람이 읽을 수
+     * 있는 400 으로 거절한다. 그런데 서블릿 상한을 넘으면 그 검증에 <b>닿지도 못하고</b> 전역
+     * 핸들러의 캐치올을 타 {@code 500 INTERNAL_ERROR "Maximum upload size exceeded"} 가 나갔다
+     * (검증자 실측). 운영자 입장에선 "서버가 고장났다"로 읽히는데 실제로는 <b>파일이 큰 것</b>이고
+     * 할 일은 파일을 줄이는 것이다. 원인과 조치가 분명하므로 400 이 맞다.
+     */
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleTooLarge(
+            org.springframework.web.multipart.MaxUploadSizeExceededException ex) {
+        log.warn("admin API 업로드 크기 초과", ex);
+        return ResponseEntity.badRequest()
+                .body(new ApiError("VALIDATION_ERROR", "업로드 파일이 너무 큽니다 — 더 작은 파일로 다시 시도하세요"));
     }
 
     /**

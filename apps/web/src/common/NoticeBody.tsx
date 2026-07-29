@@ -63,8 +63,11 @@ function Spans({ spans }: { spans: NoticeInline[] }) {
             return <em key={i}>{span.value}</em>;
           case "link":
             // 새 탭 + noopener — 공지에서 나간 페이지가 window.opener 로 이 앱을 조작하지 못하게.
+            // href 도 이미지와 **같은 해석**을 받는다: 운영자가 `[원본 보기](/api/notices/assets/X)`
+            // 를 쓰면 그건 백엔드 오리진의 파일이다. 이미지만 해석하면 그 링크가 프로덕션에서
+            // 웹 오리진 404 가 된다(독립검증 MIN-5).
             return (
-              <a key={i} href={span.href} target="_blank" rel="noopener noreferrer">
+              <a key={i} href={resolveNoticeUrl(span.href)} target="_blank" rel="noopener noreferrer">
                 {span.text}
               </a>
             );

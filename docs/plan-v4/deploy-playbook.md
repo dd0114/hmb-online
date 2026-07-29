@@ -269,19 +269,21 @@ docker tag "$(docker inspect hmb-runner --format '{{.Image}}')" hmb/servants:pre
 ```
 
 ⚠️ **볼륨에는 DB 말고도 있다 — 업로드 파일(#309).** `hmb-p3-db` 볼륨은 이제
-`/var/lib/hmb/notice-assets/`(운영자가 admin 에서 올린 공지 이미지)도 담는다. 위 `.backup` 은
+`/var/lib/hmb/notice-assets/`(공지 이미지)와 `/var/lib/hmb/char-bundles/`(유닛 아트 번들 리비전)도 담는다. 위 `.backup` 은
 **SQLite 파일만** 뜨므로, 그것만 복원하면 **공지 본문은 살아나는데 그림이 전부 404** 가 된다
-(자산 표 행은 돌아왔지만 바이트가 없다). 볼륨을 통째로 잃을 수 있는 작업(볼륨 삭제·머신 교체)
-앞에서는 파일도 같이 뜬다:
+(자산 표 행은 돌아왔지만 바이트가 없다). 아트 번들도 같다 — DB 는 "리비전 REV2 서빙 중"이라고
+말하는데 그 트리가 없으면 `/api/chars/**` 가 전부 404 이고, 그때 web 은 **구운 폴백**으로 떨어진다
+(화면은 성립하지만 운영자가 켠 아트가 조용히 사라진다). 볼륨을 통째로 잃을 수 있는 작업
+(볼륨 삭제·머신 교체) 앞에서는 파일도 같이 뜬다:
 
 ```bash
 # 업로드 자산 백업(있을 때만 — 없으면 빈 tar 가 나온다)
 docker run --rm -v hmb-p3-db:/data:ro -v "$HOME/.local/state/hmb/db-backups:/backup" alpine:3.20 \
-  sh -c "tar czf /backup/assets-<태그>-$TS.tgz -C /data notice-assets 2>/dev/null || echo '(자산 없음)'"
+  sh -c "tar czf /backup/assets-<태그>-$TS.tgz -C /data notice-assets char-bundles 2>/dev/null || echo '(자산 없음)'"
 
 # 복원
 docker run --rm -v hmb-p3-db:/data -v "$HOME/.local/state/hmb/db-backups:/backup:ro" alpine:3.20 \
-  sh -c "tar xzf /backup/assets-<태그>-$TS.tgz -C /data && chown -R 10001:999 /data/notice-assets"
+  sh -c "tar xzf /backup/assets-<태그>-$TS.tgz -C /data && chown -R 10001:999 /data/notice-assets /data/char-bundles"
 ```
 
 **마이그레이션만 있는 일상 배포에는 필요 없다** — 그 배포는 볼륨을 유지하므로 파일이 그대로 있다.

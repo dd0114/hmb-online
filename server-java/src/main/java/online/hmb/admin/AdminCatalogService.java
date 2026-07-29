@@ -536,6 +536,97 @@ public class AdminCatalogService {
         });
     }
 
+    /**
+     * <b>유닛 회수</b>(#210) — 잘못 만든 유닛을 카탈로그에서 지우고 P-번호를 비운다.
+     *
+     * <p><b>왜 필요한가</b>: 오타·잘못된 스탯·잘못된 등급으로 만든 유닛을 되돌릴 방법이
+     * {@code deactivate} 뿐이었다. 비활성 유닛은 획득 경로에서만 빠질 뿐 <b>카탈로그에 영원히 남고
+     * P-공간을 점유</b>한다. 만든 지 1분 된 실수를 지우는 수단이 수동 DB 개입뿐이었다.
+     *
+     * <p><b>왜 거의 항상 거부되는가(그리고 그게 옳은가)</b>: {@code players(id)} 를 FK 로 참조하는
+     * 표가 <b>여덟</b>이다({@link #REFERENCING_TABLES}). 누군가 한 번이라도 뽑았으면 {@code user_players}
+     * 가 가리키고, 그 행을 지우면 <b>유저의 카드가 사라진다</b>. 그래서 참조가 하나라도 있으면
+     * <b>409</b> 이고 응답에 어느 표가 몇 건인지 싣는다 — 운영자가 "왜 안 지워지나"에 스스로 답할 수 있게.
+     * 실질 적용 범위는 <b>방금 만들어 아무도 손대지 않은 유닛</b>이고, 그게 #210 이 말한 바로 그 경우다.
+     *
+     * <p><b>감사 이력은 남는다</b>: {@code admin_catalog_audit.player_id} 에는 FK 가 없다(V14 가
+     * "삭제·미존재 유닛의 이력도 보존해야 한다"고 명시적으로 그렇게 설계했다). 그래서 지운 뒤에도
+     * "이 번호에 무슨 일이 있었나"가 원장에 남는다.
+     *
+     * <p>⚠️ <b>회수 기록은 {@code admin_ops_audit}(V18) 에 남긴다</b>, {@code admin_catalog_audit} 이
+     * 아니라. 후자의 {@code action} 에는 CHECK 제약이 있어 값을 늘리려면 <b>감사 테이블을 통째로
+     * 재작성</b>해야 하는데, 이력 원장을 재작성하는 마이그레이션은 이 기능이 감수할 위험이 아니다.
+     * V18 은 주석에서 스스로 "다른 도메인도 자기 action 을 append 하면 된다"고 열어 둔 범용 원장이다.
+     * <b>대가</b>: 한 유닛의 이력이 두 원장에 나뉜다(생성·수정 = 카탈로그 원장, 회수 = 운영 원장).
+     */
+    public PurgeResult purge(String actorUserId, String playerId, String rawReason) {
+        String reason = requireReason(rawReason);
+        UnitRow before = requireUnit(playerId);
+
+        return txRunner.run(() -> {
+            // ⚠️ 조회와 삭제가 **한 트랜잭션**이다. 밖에서 세면 "0건 확인 → 그 사이 누군가 뽑음 →
+            //    삭제"가 가능하고, 그때 지워지는 것은 유저의 카드다.
+            Map<String, Integer> refs = new LinkedHashMap<>();
+            for (Map.Entry<String, String> t : REFERENCING_TABLES.entrySet()) {
+                int n = jdbcClient.sql("SELECT COUNT(*) FROM " + t.getKey() + " WHERE " + t.getValue())
+                        .params(playerId, playerId)
+                        .query(Integer.class).single();
+                if (n > 0) {
+                    refs.put(t.getKey(), n);
+                }
+            }
+            if (!refs.isEmpty()) {
+                opsAudit(actorUserId, ACTION_PURGE, "failed", reason,
+                        Map.of("playerId", playerId, "blockedBy", refs));
+                throw new ApiException(HttpStatus.CONFLICT, "CONFLICT",
+                        "이미 사용 중인 유닛이라 회수할 수 없습니다 — 비활성화(deactivate)를 쓰세요",
+                        Map.of("playerId", playerId, "references", refs));
+            }
+            jdbcClient.sql("DELETE FROM players WHERE id = ?").param(playerId).update();
+            opsAudit(actorUserId, ACTION_PURGE, "ok", reason,
+                    Map.of("playerId", playerId, "before", snapshot(before)));
+            return new PurgeResult(playerId, before.name(), refs);
+        });
+    }
+
+    /**
+     * {@code players(id)} 를 FK 로 참조하는 표 전부(스키마에서 실사). 값은 WHERE 절이고 파라미터를
+     * <b>두 개</b> 받는다 — 참조 컬럼이 둘인 표({@code trade_slots})가 있어 형태를 통일했다.
+     *
+     * <p>⚠️ <b>새 표가 {@code players} 를 참조하면 여기에 추가해라.</b> 빠뜨리면 회수가 그 참조를
+     * 못 보고 지워서 FK 위반으로 죽거나(운이 좋은 경우) 데이터가 끊긴다. 계약이 이 목록을
+     * 스키마와 대조한다({@code AdminUnitPurgeTest.referencingTablesListMatchesTheSchema}).
+     */
+    public static final Map<String, String> REFERENCING_TABLES = Map.of(
+            "user_players", "player_id = ? AND ? IS NOT NULL",
+            "deck_slots", "player_id = ? AND ? IS NOT NULL",
+            "gacha_results", "player_id = ? AND ? IS NOT NULL",
+            "player_relations", "player_id = ? AND ? IS NOT NULL",
+            "growth_applied", "player_id = ? AND ? IS NOT NULL",
+            "card_potentials", "player_id = ? AND ? IS NOT NULL",
+            "dice_rolls", "player_id = ? AND ? IS NOT NULL",
+            "trade_slots", "target_player_id = ? OR demand_player_id = ?");
+
+    public static final String ACTION_PURGE = "unit_purge";
+
+    /** V18 범용 원장에 남기는 회수 기록(위 주석의 근거 참조). */
+    private void opsAudit(String actorUserId, String action, String result, String reason,
+                          Map<String, Object> detail) {
+        jdbcClient.sql("""
+                        INSERT INTO admin_ops_audit(id, actor_user_id, action, result, reason, detail_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """)
+                .params(Ulid.next(), actorUserId, action, result, reason, writeJson(detail),
+                        // 이 클래스의 기존 감사(writeAudit)와 **같은 시각 소스**를 쓴다 —
+                        // 한 클래스가 두 시계를 쓰면 같은 트랜잭션의 두 원장 행이 어긋난 시각을 갖는다.
+                        Instant.now().toString())
+                .update();
+    }
+
+    /** 회수 결과 — 지운 유닛과, (거부됐다면) 무엇이 막았는지. */
+    public record PurgeResult(String playerId, String name, Map<String, Integer> references) {
+    }
+
     // ══════════════════════════ 내부 ══════════════════════════
 
     /**

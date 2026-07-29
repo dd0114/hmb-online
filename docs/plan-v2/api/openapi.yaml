@@ -1217,6 +1217,54 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiError" }
 
+  /api/admin/units/{playerId}/purge:
+    parameters:
+      - { name: playerId, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      operationId: adminPurgeUnit
+      summary: |
+        **회수** (#210) — 잘못 만든 유닛을 카탈로그에서 지우고 P-번호를 비운다.
+        audit action=unit_purge (**admin_ops_audit**, 아래 참조).
+
+        ⚠️ **거의 항상 409 다.** `players(id)` 를 FK 로 참조하는 표가 여덟이라, 누군가 한 번이라도
+        뽑았으면 지울 수 없다 — 지우면 **그 유저의 카드가 사라진다**. 실질 적용 범위는 *방금 만들어
+        아무도 손대지 않은 유닛*이고, 그게 #210 이 말한 경우다. 그 밖에는 `deactivate` 가 정답이다.
+
+        409 응답의 `detail.references` 에 **어느 표가 몇 건인지** 담긴다 — 운영자가 "왜 안 지워지나"에
+        스스로 답할 수 있게(막다른 토스트를 만들지 않는다).
+
+        ⚠️ 회수 기록이 `admin_catalog_audit` 이 아니라 **`admin_ops_audit`(V18)** 에 남는 이유:
+        전자의 `action` 에는 CHECK 제약이 있어 값을 늘리려면 **감사 테이블을 통째로 재작성**해야
+        하는데, 이력 원장을 재작성하는 마이그레이션은 이 기능이 감수할 위험이 아니다. 유닛의
+        생성·수정 이력은 `admin_catalog_audit` 에 **그대로 남는다**(그 표의 player_id 에는 FK 가
+        없다 — V14 가 "삭제된 유닛의 이력도 보존해야 한다"고 명시적으로 그렇게 설계했다).
+        **대가**: 한 유닛의 이력이 두 원장에 나뉜다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "200":
+          description: 회수됨
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [playerId]
+                properties:
+                  playerId: { type: string }
+                  name: { type: string, description: 지운 유닛의 이름(확인용) }
+        "400": { description: "reason 누락. code=VALIDATION_ERROR", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            이미 사용 중이라 회수 불가. code=CONFLICT, `detail.references = {표이름: 건수}`.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } }
+
   /api/admin/units/{playerId}/deactivate:
     parameters:
       - { name: playerId, in: path, required: true, schema: { type: string } }
@@ -1591,6 +1639,169 @@ paths:
             image/*:
               schema: { type: string, format: binary }
         "404": { description: "없거나 노출이 꺼진 자산. code=NOT_FOUND", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  # ──────────────── unit art bundles (#309 W2 — 아트 핫로드) ────────────────
+  # 유닛 **등록**은 이미 무배포였다(#207 파트 A: POST /api/admin/units 가 players 에 직접 쓰고
+  # admin_locked 로 시드 재임포트를 막는다). 남아 있던 배포 의존은 **아트**다 — 아틀라스·카드 PNG,
+  # 매니페스트 3종, player-chars 매핑이 전부 웹 빌드에 구워져 있었다.
+  #
+  # ⚠️ **통짜 zip 이지 파일 단위가 아니다.** 셋은 서로를 참조하므로(매니페스트가 아틀라스 타일
+  #    좌표를, 매핑이 유닛 id 를 가리킨다) 파일별로 올리면 "매니페스트는 새것, PNG 는 옛것"인
+  #    중간 상태가 생기고, 그때 화면은 **깨진 그림이 아니라 좌표가 어긋난 그림**을 그린다.
+  # ⚠️ **삭제 동사가 없다.** 리비전은 쌓이고 활성 포인터만 옮긴다. 전부 끄면 web 이 구운 폴백으로
+  #    돌아간다(= 이 기능이 없던 상태) — 그게 롤백이자 안전장치다.
+  /api/admin/chars/bundles:
+    get:
+      tags: [admin]
+      operationId: adminListCharBundles
+      summary: 아트 번들 리비전 목록 + 지금 서빙 중인 리비전
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [bundles]
+                properties:
+                  bundles:
+                    type: array
+                    items: { $ref: "#/components/schemas/CharBundle" }
+                  activeRevision:
+                    type: [string, "null"]
+                    description: "`null` 이면 **구운 폴백 중**(= 아트 배포 이전 상태)"
+                  storageRoot: { type: [string, "null"], description: 보관소 경로(운영 진단) }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: adminUploadCharBundle
+      summary: |
+        아트 번들(zip) 업로드 — **활성화하지 않는다**. audit action=chars_bundle_upload.
+
+        올리는 것과 켜는 것을 나눈 이유: 새 아트가 잘못됐다는 걸 알기 전에 이미 라이브에 나가
+        있으면 되돌리는 동안 유저가 틀린 그림을 본다. 요약(유닛 수·매핑 버전)을 확인한 뒤 켠다.
+
+        zip 검증: 엔트리 경로탈출(`..`) 거부 · 해제 **후** 총 바이트/엔트리 수 상한(zip bomb) ·
+        확장자 화이트리스트(png·webp·json) + 이미지 **매직바이트** · web 이 읽는 매니페스트 4종
+        (`manifest.json`, `characters/manifest.json`, `units/manifest.json`, `player-chars.json`)
+        존재 + JSON 파싱. 하나라도 걸리면 **부수효과 0**(행도 파일도 남지 않는다).
+      parameters:
+        - { name: reason, in: query, required: true, schema: { type: string }, description: 운영 사유(원장) }
+        - { name: note, in: query, required: false, schema: { type: string }, description: 메모(어느 파이프라인 산출물인가) }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary, description: "`/chars` 트리 통짜 zip" }
+      responses:
+        "201":
+          description: Created (아직 서빙되지 않는다 — active=false)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CharBundle" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/chars/bundles/active:
+    post:
+      tags: [admin]
+      operationId: adminActivateCharBundle
+      summary: |
+        서빙할 리비전 전환. `revisionId` 가 **비어 있으면 전부 끈다** = 웹 빌드에 구운 아트로 롤백.
+        audit action=chars_bundle_activate.
+
+        끄기와 켜기가 한 트랜잭션이다 — 나누면 "둘 다 꺼진" 창이나 "둘 다 켜진" 상태(어느 쪽이
+        서빙될지 조회 순서에 달림 = 새로고침마다 아트가 바뀜)가 생긴다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                revisionId:
+                  type: [string, "null"]
+                  description: 켤 리비전. **null/빈값 = 전부 끄기(구운 폴백으로 롤백)**
+                reason: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activeRevision: { type: [string, "null"] }
+                  bundles:
+                    type: array
+                    items: { $ref: "#/components/schemas/CharBundle" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "그런 리비전이 없다. code=NOT_FOUND", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/chars/index:
+    get:
+      tags: [catalog]
+      # **공개**(전역 bearerAuth 해제) — 아트는 로그인 화면·가입 연출에서도 그려지는 공개
+      # 카탈로그다(유저별 데이터 0). 401 을 두면 그 화면들이 통째로 이니셜 폴백이 된다.
+      security: []
+      operationId: getCharBundleIndex
+      summary: 활성 아트 번들이 있는가 — **web 의 폴백 판정 트리거** (#309 W2)
+      description: |
+        web 은 부팅 시 이걸 읽고, **유효한 응답일 때만** 아트 base 를 백엔드 오리진으로 옮긴다.
+        404 면 웹 빌드에 구운 `/chars` 를 그대로 쓴다.
+
+        ⚠️ 활성 번들이 없을 때 `200 {}` 이 아니라 **404** 인 것이 계약이다. 성공 껍데기를 주면
+        목·프록시·구 서버가 주는 빈 객체와 구분이 안 돼, web 이 "아트 0개"를 정상으로 받아들이고
+        전 화면이 **조용히** 이니셜 폴백이 된다(깨진 화면이 아니라 밋밋한 화면이라 신고되지 않는다).
+      responses:
+        "200":
+          description: 활성 번들 있음
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [revision, requiredEntries]
+                properties:
+                  revision: { type: string }
+                  fileCount: { type: integer }
+                  byteSize: { type: integer }
+                  createdAt: { type: string, format: date-time }
+                  requiredEntries:
+                    type: array
+                    items: { type: string }
+                    description: web 이 반드시 찾을 수 있어야 하는 파일 — 소비 측이 형태를 값으로 확인한다
+        "404": { description: "활성 번들 없음 → **구운 폴백을 쓰라는 신호**", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/chars/{path}:
+    parameters:
+      - { name: path, in: path, required: true, schema: { type: string }, description: "번들 안 상대경로(`units/manifest.json`, `units/avatars-64.png` …)" }
+    get:
+      tags: [catalog]
+      security: []
+      operationId: getCharBundleFile
+      summary: 활성 아트 번들 안의 파일 (#309 W2)
+      description: |
+        `Content-Type` 은 확장자 화이트리스트가 정한 값이고 `X-Content-Type-Options: nosniff` 가 붙는다.
+
+        ⚠️ **장기 캐시를 걸지 않는다**(5분). URL 에 리비전이 없어서(구운 폴백과 경로 모양을 맞춰야
+        `assetUrl` 이 한 벌로 돈다) 장기 캐시를 걸면 아트를 갈아끼워도 브라우저가 옛 그림을 계속
+        그린다 — 그건 이 웨이브가 없애려는 "배포해도 안 바뀐다"와 같은 증상이다.
+      responses:
+        "200":
+          description: 파일 바이트
+          content:
+            image/*: { schema: { type: string, format: binary } }
+            application/json: { schema: { type: object } }
+        "404": { description: "활성 번들이 없거나 그 파일이 없다(경로 조작도 여기로 답한다)", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
 
   # ───────────────────────────── notices (공개) ─────────────────────────────
   /api/notices/active:
@@ -2248,6 +2459,30 @@ components:
             이 이미지를 본문에서 참조하는 **살아 있는 공지 수**. 운영자가 노출을 끄기 전에
             무슨 일이 벌어지는지 알아야 하므로 목록에 싣는다(삭제된 공지는 세지 않는다).
         createdBy: { type: [string, "null"], description: 업로드한 admin 의 userId }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    CharBundle:
+      type: object
+      required: [id, fileCount, byteSize, active, createdAt]
+      description: 업로드된 아트 번들 리비전 한 건 (#309 W2).
+      properties:
+        id: { type: string, description: ULID = 리비전 식별자이자 보관 디렉토리 이름 }
+        fileCount: { type: integer }
+        byteSize: { type: integer, description: 해제 후 총 바이트 }
+        summary:
+          type: object
+          additionalProperties: true
+          description: |
+            서버가 매니페스트에서 뽑은 요약(유닛 수·아트 출처·매핑 버전·매핑 선수 수).
+            **켜기 전에 무엇인지 확인하라고** 있는 값이다.
+        note: { type: [string, "null"], description: 운영자 메모(어느 파이프라인 산출물인가) }
+        active:
+          type: boolean
+          description: |
+            지금 서빙 중인가. **최대 하나**를 DB 부분 유니크 인덱스가 강제한다 — 코드로만
+            지키면 동시 활성화 두 건이 "새로고침마다 아트가 바뀌는" 상태를 만든다.
+        createdBy: { type: [string, "null"] }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

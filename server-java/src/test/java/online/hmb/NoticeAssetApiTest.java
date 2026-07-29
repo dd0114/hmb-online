@@ -94,6 +94,11 @@ class NoticeAssetApiTest extends ApiTestBase {
         assertThat(served.getHeaders().getFirst("X-Content-Type-Options"))
                 .as("브라우저가 바이트를 다른 타입으로 스니핑하지 못하게")
                 .isEqualTo("nosniff");
+        // D10 — id 당 내용이 불변이라 장기 캐시가 성립한다. 이 헤더가 사라지면 그 결정과
+        // **그 대가**("꺼도 캐시엔 남는다", 그래서 급하면 공지를 내려라)가 조용히 함께 사라진다.
+        assertThat(served.getHeaders().getCacheControl())
+                .as("장기 immutable 캐시(D10)")
+                .contains("max-age=31536000").contains("immutable");
     }
 
     /**
@@ -209,6 +214,42 @@ class NoticeAssetApiTest extends ApiTestBase {
         assertThat(uploadedCount()).isZero();
     }
 
+    /**
+     * <b>DB 가 실패하면 방금 쓴 파일도 되돌린다</b>(고아 방지) — 독립검증 MAJ-1.
+     *
+     * <p>이 계약이 없을 때 실제로 어땠나: 롤백 두 줄을 지워도 <b>전 스위트가 green</b> 이었다.
+     * 문서·커밋·CLAUDE.md 가 셋 다 이 롤백을 보증으로 내세우는데 그걸 태우는 테스트가 0이었다
+     * ("계약이라 부르려면 변이체로 확인해라" — {@code AwayRaidTest} BL-2 가 세운 규율).
+     *
+     * <p>실패 주입은 <b>트리거</b>로 한다: 볼륨은 멀쩡한데 DB INSERT 만 실패하는 상황
+     * ({@code SQLITE_BUSY} · 디스크풀 · 제약 위반)을 그대로 재현하고, 목 없이 실제 경로를 태운다.
+     * 그 상태에서 <b>바이트가 볼륨에 영구 축적</b>되면 목록에 뜨지도 않고 회수 경로도 없다.
+     */
+    @Test
+    void aFailedDbWriteRollsBackTheFileSoNoOrphanBytesRemain() throws Exception {
+        String admin = adminToken();
+        long filesBefore = fileCount();
+        jdbcClient.sql("""
+                CREATE TRIGGER zz_fail_asset_insert BEFORE INSERT ON notice_assets
+                BEGIN SELECT RAISE(ABORT, 'injected failure'); END
+                """).update();
+        try {
+            ResponseEntity<Map> res = uploadRaw(admin, pngBytes(32), "a.png", MediaType.IMAGE_PNG);
+
+            assertThat(res.getStatusCode().is2xxSuccessful()).as("DB 가 실패했으니 성공일 수 없다").isFalse();
+            assertThat(uploadedCount()).isZero();
+            assertThat(fileCount()).as("푼 파일이 볼륨에 남지 않는다(고아 0)").isEqualTo(filesBefore);
+        } finally {
+            jdbcClient.sql("DROP TRIGGER zz_fail_asset_insert").update();
+        }
+    }
+
+    private long fileCount() throws Exception {
+        try (var entries = Files.list(assetDir)) {
+            return entries.count();
+        }
+    }
+
     // ── 노출 스위치 (hero 확정: 삭제가 아니라 비활성화) ────────────────────
 
     /**
@@ -254,6 +295,30 @@ class NoticeAssetApiTest extends ApiTestBase {
                 .as("자산은 그대로 살아 있다")
                 .isEqualTo(HttpStatus.OK);
         assertThat(uploadedCount()).isEqualTo(1);
+    }
+
+    /**
+     * <b>사유 없는 운영 변경은 없다</b>(독립검증 MAJ-2). 길이만 검사하던 판에서는 화면 밖
+     * (API 직접 호출)에서만 원장이 비었는데, <b>"누가 왜 했나"가 필요한 상황이 정확히 그 경우다</b>.
+     * 형제 서비스(공지 CRUD)·openapi 의 {@code required} 선언과도 이제 일치한다.
+     */
+    @Test
+    void aReasonIsRequiredForEveryOperation() {
+        String admin = adminToken();
+
+        assertThat(uploadRaw(admin, pngBytes(16), "a.png", MediaType.IMAGE_PNG, null).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(uploadRaw(admin, pngBytes(16), "a.png", MediaType.IMAGE_PNG, "  ").getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(uploadedCount()).isZero();
+
+        String id = (String) upload(admin, pngBytes(16), "a.png", MediaType.IMAGE_PNG).get("id");
+        assertThat(authPost("/api/admin/notices/assets/" + id + "/active", admin,
+                java.util.Collections.singletonMap("active", false), Map.class).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(rest.getForEntity(baseUrl("/api/notices/assets/" + id), byte[].class).getStatusCode())
+                .as("거절은 부수효과 0 — 노출이 바뀌지 않았다")
+                .isEqualTo(HttpStatus.OK);
     }
 
     // ── 목록·원장 ──────────────────────────────────────────────────────────
@@ -321,6 +386,12 @@ class NoticeAssetApiTest extends ApiTestBase {
 
     @SuppressWarnings("rawtypes")
     private ResponseEntity<Map> uploadRaw(String token, byte[] bytes, String name, MediaType type) {
+        return uploadRaw(token, bytes, name, type, "테스트 업로드");
+    }
+
+    @SuppressWarnings("rawtypes")
+    private ResponseEntity<Map> uploadRaw(String token, byte[] bytes, String name, MediaType type,
+                                          String reason) {
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
         HttpHeaders partHeaders = new HttpHeaders();
         partHeaders.setContentType(type);
@@ -330,8 +401,10 @@ class NoticeAssetApiTest extends ApiTestBase {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + token);
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-        return rest.exchange(baseUrl("/api/admin/notices/assets"), HttpMethod.POST,
-                new HttpEntity<>(form, headers), Map.class);
+        String url = "/api/admin/notices/assets"
+                + (reason == null ? "" : "?reason=" + java.net.URLEncoder.encode(reason,
+                        java.nio.charset.StandardCharsets.UTF_8));
+        return rest.exchange(baseUrl(url), HttpMethod.POST, new HttpEntity<>(form, headers), Map.class);
     }
 
     /** 진짜 PNG 시그니처 + 패딩. 매직바이트 판정을 통과하는 최소 바이트열. */

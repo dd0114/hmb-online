@@ -518,6 +518,31 @@ me 를 쓰면 "**브론즈 리그**에서 1위" 옆에 **실버** 뱃지가 뜬�
 - 계약 = `common/notice-asset-url.test.ts`(양방향) + `admin/notice-admin-logic.test.ts`(정규화·경고) +
   `api/client.test.ts`(FormData 통과) + `e2e/p309-notice-assets.spec.ts`(업로드 한 바퀴·삭제 버튼 0).
 
+## 아트 base — 구운 폴백 vs 서버 번들 (#309 W2)
+
+운영자가 admin 에서 아트 번들을 켜면 **웹 재배포 없이** 그림이 바뀐다. 그 전환이 여기 한 곳에 있다.
+
+- **`CHARS_BASE`("/chars") 는 구운 폴백의 이름이고, 지금 쓰는 값은 `charsBase()` 다.** URL 조립
+  함수들이 `base = charsBase()` 를 **기본값**으로 쓰는 것이 전환의 전부다 — 기본값은 호출 시점에
+  평가되므로 한 곳을 바꾸면 아바타·카드·프레임·경기장 스킨이 전부 따라온다. 호출부는 `base` 를
+  넘기지 않으므로 바꿀 곳이 없다. **`CHARS_BASE` 를 지우지 마라**(폴백이 사라지면 요구 ③이 깨진다).
+- 판정은 `char-assets-store.resolveCharsBase()` 가 부팅 시 **한 번** 한다:
+  `GET /api/chars/index` → **유효한 형태**면 base = `<api>/api/chars`, 아니면 구운 `/chars`.
+- ⚠️ **200 만으로 채택하지 않는다**(`isUsableBundleIndex`). 목·프록시·구 서버가 `{}` 를 주면
+  "아트 0개"가 정상처럼 통과해 전 화면이 **조용히** 이니셜 폴백이 된다 — 깨진 화면이 아니라
+  밋밋한 화면이라 아무도 버그로 신고하지 않는다. 서버가 자기 리비전과 필수 파일 목록을 말해 줄
+  때만 그 base 를 쓴다.
+- ⚠️ **매니페스트만 서버에서 읽고 이미지를 웹 오리진에서 찾으면 전부 404 다** — base 는 한 곳에서
+  정하고 `fetchCharAssets` 가 그 값을 받는다. 두 곳에서 정하지 마라.
+- **e2e 에는 백엔드가 없다** → index 조회가 실패하고 구운 폴백을 탄다. 그래서 기존 아트 계약
+  (`p3-card-art`·`p285-icon-policy`·`p218-legend-arena`·`p3-char-skin`, 36건)이 **손대지 않고 그대로
+  통과한다**. base 를 바꾸는 변경을 할 땐 그 4개를 같이 돌려라.
+- 운영 화면 = `admin/CharBundlePanel`(탭 `admin-tab-chars`). **삭제 버튼이 없다** — 리비전은 쌓이고
+  활성 포인터만 옮긴다. `[구운 기본 아트로 되돌리기]` = `revisionId: null`.
+  **업로드가 활성화가 아니다**(요약 확인 후 켜는 흐름) — 그 순서가 계약이다.
+- 계약 = `common/char-bundle-base.test.ts`(양방향 + 형태 판정) + `admin/char-bundle-logic` 순수함수
+  + `e2e/p309-char-bundles.spec.ts`(구운 폴백 표시·업로드≠활성화·롤백·삭제 0).
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - **e2e 전체 실행 금지** — `league-season`·`match-flow`·`w3-viewer-smoke` 는 :8080 라이브 데모에 붙는다.
