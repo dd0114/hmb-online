@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { GRADE_COLORS, GRADE_LABELS, type Grade } from "./grades";
 import { CharAvatar } from "./CharAvatar";
 import { charRefFor } from "./char-assets-store";
+import { showsCharacterArt } from "./icon-policy";
 import { useCharAssets } from "./useCharAssets";
 import {
   artAspect,
@@ -48,6 +49,12 @@ export interface FullArtCardProps {
    * 프레임 밴드를 안 그리므로 빈 띠가 남지 않고, 등급은 링이 말한다(`full-art.ts artAspect` 주석).
    */
   variant?: "card" | "art";
+  /**
+   * **아트 검수 전용 예외**(DEV `/design/cards`) — `CharAvatar.artReviewExempt` 와 같은 축(#285).
+   * 발행물이 실제로 어떻게 합성되는지 보는 도구라 정책으로 가리면 도구가 무의미해진다.
+   * 제품 화면 금지 — `icon-policy.test.ts` 가 사용처를 `src/design/**` 로 묶는다.
+   */
+  artReviewExempt?: boolean;
   className?: string;
   onClick?: () => void;
   testId?: string;
@@ -62,6 +69,7 @@ export function FullArtCard({
   showLabels = true,
   ring = true,
   variant = "card",
+  artReviewExempt = false,
   className,
   onClick,
   testId,
@@ -70,14 +78,22 @@ export function FullArtCard({
   // 로드 실패한 URL 을 기억해 같은 렌더에서 계단을 한 칸 내린다(무한 재시도 방지).
   const [failed, setFailed] = useState<Record<string, true>>({});
 
+  /*
+   * #285 노출 정책 — 다이아 미만은 **캐릭터 아트를 그리지 않는다**. 카드 자체는 남는다:
+   * 등급 프레임·링·이름·별은 그대로고 아트 창만 아이콘 폴백(등급색 + 이니셜)으로 떨어진다
+   * (= 기존 "아트 미입고" 계단과 같은 자리). 판정은 `icon-policy` 한 곳이다.
+   *
+   * ⚠️ 프레임은 아트가 아니다 — 프레임까지 지우면 뽑기·도감에서 "무슨 등급을 얻었나"가 사라진다.
+   */
+  const artAllowed = artReviewExempt || showsCharacterArt(grade);
   const resolved = cardLayers({
     characters: assets.characters,
     units: assets.units,
     placeholders: assets.placeholders,
-    ref: charRefFor(assets, playerId),
+    ref: artAllowed ? charRefFor(assets, playerId) : null,
     grade,
   });
-  const art = resolved.art && !failed[resolved.art] ? resolved.art : null;
+  const art = artAllowed && resolved.art && !failed[resolved.art] ? resolved.art : null;
   const frame = resolved.frame && !failed[resolved.frame] ? resolved.frame : null;
   /**
    * 로드 실패를 반영한 최종 종류. 완성 카드는 **프레임이 애초에 없는 것이 정상**이라
@@ -207,6 +223,7 @@ export function FullArtCard({
               playerId={playerId}
               name={name}
               grade={grade}
+              artReviewExempt={artReviewExempt}
               size={Math.round(width * D.fallbackIconRatio)}
             />
           </span>

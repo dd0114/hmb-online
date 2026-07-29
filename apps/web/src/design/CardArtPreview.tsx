@@ -151,7 +151,7 @@ function Matrix() {
       <div className={styles.row}>
         {GRADE_ORDER.map((g) => (
           <figure key={g} className={styles.fig}>
-            <FullArtCard playerId={R.maldini.id} name={R.maldini.name} grade={g} position="DF" size={150} />
+            <FullArtCard artReviewExempt playerId={R.maldini.id} name={R.maldini.name} grade={g} position="DF" size={150} />
             <figcaption className={styles.cap}>
               {GRADE_LABELS[g]} · 별 {{ BRONZE: 2, SILVER: 3, GOLD: 4, DIA: 5, LEGEND: 6 }[g]}개
             </figcaption>
@@ -163,7 +163,7 @@ function Matrix() {
       <div className={styles.rowBottom}>
         {SIZES.map((sz) => (
           <figure key={sz.w} className={styles.fig}>
-            <FullArtCard playerId={R.pele.id} name={R.pele.name} grade="LEGEND" position="FW" size={sz.w} />
+            <FullArtCard artReviewExempt playerId={R.pele.id} name={R.pele.name} grade="LEGEND" position="FW" size={sz.w} />
             <figcaption className={styles.cap}>{sz.label}</figcaption>
           </figure>
         ))}
@@ -173,7 +173,7 @@ function Matrix() {
       <div className={styles.row}>
         {ROSTER.map((p) => (
           <figure key={p.id} className={styles.fig}>
-            <FullArtCard playerId={p.id} name={p.name} grade={p.grade} position={p.position} size={120} />
+            <FullArtCard artReviewExempt playerId={p.id} name={p.name} grade={p.grade} position={p.position} size={120} />
             <figcaption className={styles.cap}>{p.id}</figcaption>
           </figure>
         ))}
@@ -182,11 +182,11 @@ function Matrix() {
       <h2 className={styles.h2}>폴백 (깨짐 0 — AC3)</h2>
       <div className={styles.rowBottom}>
         <figure className={styles.fig}>
-          <FullArtCard playerId={R.pele.id} name={R.pele.name} grade="LEGEND" position="FW" size={140} />
+          <FullArtCard artReviewExempt playerId={R.pele.id} name={R.pele.name} grade="LEGEND" position="FW" size={140} />
           <figcaption className={styles.cap}>1) 풀아트 — 매핑 O</figcaption>
         </figure>
         <figure className={styles.fig}>
-          <FullArtCard playerId="P_GHOST" name="Unmapped Player" grade="GOLD" position="MF" size={140} />
+          <FullArtCard artReviewExempt playerId="P_GHOST" name="Unmapped Player" grade="GOLD" position="MF" size={140} />
           <figcaption className={styles.cap}>2) 등급 프레임 + 아이콘 — 매핑 X (실제 렌더)</figcaption>
         </figure>
       </div>
@@ -246,7 +246,7 @@ function Gacha() {
         <h3 className={styles.h3}>뽑기 결과 (11명)</h3>
         {plan !== "A" && (
           <div className={styles.spotlight}>
-            <FullArtCard
+            <FullArtCard artReviewExempt
               playerId={cur.id}
               name={cur.name}
               grade={cur.grade}
@@ -271,11 +271,11 @@ function Gacha() {
                 style={{ borderColor: GRADE_COLORS[p.grade] }}
                 onClick={() => setSpot(i)}
               >
-                <CharAvatar playerId={p.id} name={p.name} grade={p.grade} size={54} />
+                <CharAvatar artReviewExempt playerId={p.id} name={p.name} grade={p.grade} size={54} />
                 <span className={styles.miniName}>{lastName(p.name)}</span>
               </button>
             ) : (
-              <FullArtCard
+              <FullArtCard artReviewExempt
                 key={i}
                 playerId={p.id}
                 name={lastName(p.name)}
@@ -317,7 +317,7 @@ function Codex() {
         {some(4).map((q) => (
           <div key={q.id} className={styles.codexCard}>
             <span className={styles.codexPos}>{q.position}</span>
-            <CharAvatar playerId={q.id} name={q.name} grade={q.grade} size={48} />
+            <CharAvatar artReviewExempt playerId={q.id} name={q.name} grade={q.grade} size={48} />
             <span className={styles.codexName}>{q.name}</span>
             <span style={{ color: GRADE_COLORS[q.grade], fontSize: 11, fontWeight: 700 }}>
               {GRADE_LABELS[q.grade]}
@@ -328,7 +328,7 @@ function Codex() {
 
       <h3 className={styles.h3}>제안 — 확장 시 풀아트 132px + 능력치 나란히</h3>
       <div className={styles.codexExpanded}>
-        <FullArtCard playerId={p.id} name={p.name} grade={p.grade} position={p.position} size={132} />
+        <FullArtCard artReviewExempt playerId={p.id} name={p.name} grade={p.grade} position={p.position} size={132} />
         <dl className={styles.attrs}>
           {ATTRS.map(([k, v]) => (
             <div key={k} className={styles.attrRow}>
@@ -363,7 +363,7 @@ function Deck() {
         <div className={styles.pickerList}>
           {some(6).map((q, i) => (
             <div key={q.id} className={styles.pickRow}>
-              <CharAvatar playerId={q.id} name={q.name} grade={q.grade} size={34} />
+              <CharAvatar artReviewExempt playerId={q.id} name={q.name} grade={q.grade} size={34} />
               <span className={styles.pickWho}>
                 <b>{q.name}</b>
                 <span className={styles.dim}>
@@ -377,7 +377,7 @@ function Deck() {
           ))}
         </div>
         <div className={styles.detailSheet}>
-          <FullArtCard playerId={p.id} name={p.name} grade={p.grade} position={p.position} size={200} />
+          <FullArtCard artReviewExempt playerId={p.id} name={p.name} grade={p.grade} position={p.position} size={200} />
           <div className={styles.detailMeta}>
             <b>{p.name}</b>
             <span className={styles.dim}>{p.position}</span>
@@ -403,13 +403,13 @@ function Trade() {
       <div className={styles.tradeRow}>
         <figure className={styles.fig}>
           <span className={styles.cap}>영입 대상</span>
-          <FullArtCard playerId={R.debruyne.id} name={R.debruyne.name} grade={R.debruyne.grade} position={R.debruyne.position} size={132} />
+          <FullArtCard artReviewExempt playerId={R.debruyne.id} name={R.debruyne.name} grade={R.debruyne.grade} position={R.debruyne.position} size={132} />
         </figure>
         <span className={styles.swap}>⇄</span>
         {[R.valverde, R.martinez].map((q, i) => (
           <div key={q.id} className={styles.tradeSmall} style={{ borderColor: GRADE_COLORS[q.grade] }}>
             <span className={styles.cap}>{i === 0 ? "대가" : "요구"}</span>
-            <CharAvatar playerId={q.id} name={q.name} grade={q.grade} size={44} />
+            <CharAvatar artReviewExempt playerId={q.id} name={q.name} grade={q.grade} size={44} />
             <b className={styles.miniName}>{q.name}</b>
             <span style={{ color: GRADE_COLORS[q.grade], fontSize: 11 }}>{GRADE_LABELS[q.grade]}</span>
           </div>
@@ -433,7 +433,7 @@ function Icons() {
           <b>매치 경기장 토큰</b> — 아틀라스 스프라이트(뷰어 주입, <code>viewer-skins.ts</code>)
           <div className={styles.pitch}>
             {some(6).map((q) => (
-              <CharAvatar key={q.id} playerId={q.id} name={q.name} grade={q.grade} size={22} />
+              <CharAvatar artReviewExempt key={q.id} playerId={q.id} name={q.name} grade={q.grade} size={22} />
             ))}
           </div>
         </li>
@@ -441,7 +441,7 @@ function Icons() {
           <b>매치 프롬프트 목록</b> — 26px
           <div className={styles.pitch}>
             {some(4).map((q) => (
-              <CharAvatar key={q.id} playerId={q.id} name={q.name} grade={q.grade} size={26} />
+              <CharAvatar artReviewExempt key={q.id} playerId={q.id} name={q.name} grade={q.grade} size={26} />
             ))}
           </div>
         </li>
@@ -449,7 +449,7 @@ function Icons() {
           <b>덱 리스트 행 / 전술보드 슬롯</b> — 34px
           <div className={styles.pitch}>
             {some(4).map((q) => (
-              <CharAvatar key={q.id} playerId={q.id} name={q.name} grade={q.grade} size={34} />
+              <CharAvatar artReviewExempt key={q.id} playerId={q.id} name={q.name} grade={q.grade} size={34} />
             ))}
           </div>
         </li>
@@ -457,7 +457,7 @@ function Icons() {
           <b>도감 그리드 카드</b> — 48px (확장했을 때만 풀아트)
           <div className={styles.pitch}>
             {some(4).map((q) => (
-              <CharAvatar key={q.id} playerId={q.id} name={q.name} grade={q.grade} size={48} />
+              <CharAvatar artReviewExempt key={q.id} playerId={q.id} name={q.name} grade={q.grade} size={48} />
             ))}
           </div>
         </li>

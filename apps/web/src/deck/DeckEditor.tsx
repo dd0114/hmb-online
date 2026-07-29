@@ -46,6 +46,8 @@ export interface DeckEditorProps {
   opponentPower?: number;
   opponentName?: string;
   opponentApprox?: boolean;
+  /** 상대 정보 시트 열기(#285) — 브리핑에서만 온다. 없으면 버튼 자체가 안 그려진다. */
+  onOpponentInfo?: () => void;
   errorPlayerId?: string | null;
   /** Auto 배치(결정론 auto-lineup) — 덱 화면만 넘긴다. */
   onAuto?: () => void;
@@ -134,6 +136,7 @@ export function DeckEditor(props: DeckEditorProps) {
     opponentPower,
     opponentName,
     opponentApprox,
+    onOpponentInfo,
     errorPlayerId,
     onAuto,
     autoDisabled,
@@ -340,6 +343,7 @@ export function DeckEditor(props: DeckEditorProps) {
           opponentPower={opponentPower}
           opponentName={opponentName}
           opponentApprox={opponentApprox}
+          onOpponentInfo={onOpponentInfo}
           autoDisabled={autoDisabled}
           autoHint={autoHint}
           onAuto={onAuto}

@@ -25,9 +25,15 @@ const placeholderManifest = JSON.parse(readFileSync(join(distDir, "manifest.json
 const unitsManifest = JSON.parse(readFileSync(join(distDir, "units", "manifest.json"), "utf8"));
 const mappingFile = JSON.parse(readFileSync(join(repoRoot, "data", "players", "player-chars.v2.json"), "utf8"));
 
+/**
+ * 표본은 **다이아 이상**으로 잡는다(#285). 구 표본 P050(GOLD) 은 이제 노출 정책이 먼저 잘라서
+ * 항상 CSS 폴백이 된다 — 그 상태로 두면 "배선이 살아 있나"라는 이 파일의 목적이 죽는다
+ * (배선을 상수로 바꿔놔도 통과한다 = 이 파일이 막으려던 바로 그 공백).
+ * P001 = 비활성 LEGEND(characters 축) · P173 = 활성 LEGEND(units 축) → 두 축을 다 태운다.
+ */
 const ROSTER: RosterEntry[] = [
-  { playerId: "P001", name: "Lev Yashin", position: "GK", role: "starter" },
-  { playerId: "P050", name: "Some Player", position: "MF", role: "bench" },
+  { playerId: "P001", name: "Lev Yashin", position: "GK", role: "starter", grade: "LEGEND" },
+  { playerId: "P173", name: "보날두", position: "MF", role: "bench", grade: "LEGEND" },
 ];
 
 function renderFields() {
@@ -66,7 +72,7 @@ afterEach(() => {
 
 describe("PromptFields 아바타", () => {
   it("roster 의 playerId 로 각 행에 실아트 타일을 그린다(축은 매핑이 정한다)", async () => {
-    // #207 이후 축이 둘이다 — P001(비활성 LEGEND) = characters, P050(GOLD) = units 디폴트.
+    // #207 이후 축이 둘이다 — P001(비활성 LEGEND) = characters, P173(활성 LEGEND) = units 실아트.
     // 여기서 지키는 건 "행마다 배선이 살아 있다"(= CSS 폴백으로 안 떨어진다)이지 특정 축이 아니다.
     renderFields();
     for (const r of ROSTER) {
@@ -77,13 +83,13 @@ describe("PromptFields 아바타", () => {
       );
     }
     expect(screen.getByTestId("char-avatar-P001").dataset.avatarKind).toBe("character");
-    expect(screen.getByTestId("char-avatar-P050").dataset.avatarKind).toBe("unit");
+    expect(screen.getByTestId("char-avatar-P173").dataset.avatarKind).toBe("unit");
   });
 
   it("행마다 서로 다른 선수의 아바타가 붙는다(한 선수로 고정 배선 방지)", async () => {
     renderFields();
     await waitFor(() => expect(screen.getByTestId("char-avatar-P001")).toBeTruthy());
-    expect(screen.getByTestId("char-avatar-P050")).toBeTruthy();
+    expect(screen.getByTestId("char-avatar-P173")).toBeTruthy();
   });
 
   it("기존 행 정보(포지션·이름·역할·펼침 토글)는 그대로다", () => {

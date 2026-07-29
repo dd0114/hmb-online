@@ -125,6 +125,13 @@ async function openArena(page: Page, log: unknown) {
   await page.route((url) => url.pathname === "/api/deck", (route) => route.fulfill(json({ formation: "4-4-2", slots: [] })));
 
   await page.goto(`/match/${MATCH_ID}`);
+  /*
+   * ⚠️ 감독시간 화면이 **[감독 | 경기장면] 탭 2층**이 되면서(#226) 캔버스가 탭 뒤로 들어갔다.
+   * 이 스펙은 그걸 모른 채 캔버스를 기다려서 **origin/main 에서도 3건 전부 실패**하고 있었다
+   * (#285 작업 중 발견 — 내 변경 때문이 아니라 선행 파손이며, 워크트리 대조로 확인했다).
+   * 경기장 픽셀 계약이 죽어 있으면 아이콘 정책 회귀도 못 잡으므로 여기서 되살린다.
+   */
+  await page.getByRole("tab", { name: "경기장면" }).click();
   await expect(page.getByTestId("viewer-canvas-half1")).toBeVisible({ timeout: 20_000 });
   await page.waitForFunction(() => (window as never as ViewerWin).__viewer?.ready?.() === true, null, { timeout: 20_000 });
   await page.evaluate(() => {

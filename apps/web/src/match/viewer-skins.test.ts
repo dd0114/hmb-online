@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { ARENA_ATLAS, ARENA_AXES, buildViewerSkins, jerseyNumbers } from "./viewer-skins";
 import type { CharAssets } from "../common/char-assets-store";
+import type { Grade } from "../common/grades";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..", "..", "..");
@@ -77,6 +78,64 @@ describe("buildViewerSkins", () => {
     expect(offenders).toEqual([]);
     // 그 등급 선수 수가 0 이라 통과한 게 아님을 못 박는다(공허참 방지).
     expect(seed.filter((p) => teamCircleGrades.includes(p.grade))).toHaveLength(133);
+  });
+
+  /*
+   * #285 — 판정 근거를 **아트 종류에서 등급으로** 옮긴다.
+   *
+   * 구 근거는 `unitIsSharedDefault`("이 유닛이 등급 공용 디폴트냐")였다. 지금 데이터에선 공용
+   * 디폴트 = 골드 이하 133명이라 위 U-D8 계약이 통과하지만 그건 **우연**이다 — 발행측이 골드
+   * 한 명에게 고유 아트를 주면 그 순간 경기장에 골드 얼굴이 뜬다. 실 데이터로는 그 구멍을
+   * 만들 수 없으므로(그런 선수가 없다) **픽스처로 그 상황을 만들어** 계약을 태운다.
+   */
+  describe("#285: 등급이 판정한다 — 공용/고유 여부가 아니라", () => {
+    const GOLD_ID = seed.find((p) => p.grade === "GOLD")!.id;
+    const DIA_ID = seed.find((p) => p.grade === "DIA")!.id;
+    /** 고유 아트를 가진 유닛(= forGrades 없음) 하나를 빌려 온다 — 유닛명 하드코딩 금지. */
+    const exclusiveUnitId = Object.entries<{ forGrades?: unknown }>(units.units)
+      .find(([, u]) => !u.forGrades)![0];
+
+    const withExclusiveGold: CharAssets = {
+      ...full,
+      mapping: {
+        players: {
+          ...mappingFile.players,
+          // 골드에게 **고유** 유닛 아트를 붙인다 = 구 근거가 뚫리는 정확한 조건.
+          [GOLD_ID]: { axis: "units", id: exclusiveUnitId },
+        },
+      },
+    };
+
+    it("고유 아트를 가진 GOLD 도 경기장에서 제외된다(구 근거가 뚫리던 자리)", () => {
+      const grades = Object.fromEntries(seed.map((p) => [p.id, p.grade])) as Record<string, Grade>;
+      const skins = buildViewerSkins(withExclusiveGold, undefined, grades)!;
+      expect(skins.byPlayer[GOLD_ID], `${GOLD_ID}(GOLD, 고유 아트) 는 팀색 원`).toBeUndefined();
+      // 대조군 — 같은 페이로드에서 다이아는 그대로 얼굴을 받는다(전부 지우는 게 아니다).
+      expect(skins.byPlayer[DIA_ID], `${DIA_ID}(DIA) 는 얼굴 유지`).toBeTruthy();
+    });
+
+    it("변이체 킬: 등급표를 안 주면(구 코드 경로) 이 GOLD 가 새 나간다 — 그래서 배선이 계약이다", () => {
+      const skins = buildViewerSkins(withExclusiveGold)!;
+      // 등급을 모르면 구 백스톱(공용 디폴트 제외)만 남고, 고유 아트를 받은 골드는 통과한다.
+      // 이 단언은 "등급 배선이 없으면 정책이 실제로 뚫린다"를 증명한다 = 위 계약이 공허하지 않다.
+      expect(skins.byPlayer[GOLD_ID]).toBeTruthy();
+    });
+
+    it("등급 미상 선수는 백스톱(공용 디폴트 제외)이 계속 지킨다", () => {
+      // 등급표에 아무도 없어도 실 데이터의 골드 이하 133명은 여전히 안 실린다.
+      const skins = buildViewerSkins(full, undefined, {})!;
+      const leaked = Object.keys(skins.byPlayer).filter((id) =>
+        ["GOLD", "SILVER", "BRONZE"].includes(gradeOf.get(id)!),
+      );
+      expect(leaked).toEqual([]);
+    });
+
+    it("등급표를 줘도 다이아 이상 47명은 그대로다(무회귀)", () => {
+      const grades = Object.fromEntries(seed.map((p) => [p.id, p.grade])) as Record<string, Grade>;
+      const before = buildViewerSkins(full)!;
+      const after = buildViewerSkins(full, undefined, grades)!;
+      expect(Object.keys(after.byPlayer).sort()).toEqual(Object.keys(before.byPlayer).sort());
+    });
   });
 
   it("DIA 는 현행대로 개별 얼굴을 유지한다(무회귀)", () => {

@@ -6,30 +6,6 @@
 
 /* #244: 하단 지시 독이 사라졌으므로(레일이 문서 흐름) 킥오프 버튼용 독 클리어런스도 없앤다. */
 
-.timerRow {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.timer {
-  font-size: 15px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-
-.timerExpired {
-  font-size: 15px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--danger);
-}
-
-.timerNote {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
 .opponent {
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -310,40 +286,6 @@
    구: 상대 표(실측 244px) + 선발 컨디션(209px)이 브리핑 상단 453px 을 먹어, 정작 프롬프트는
    1874px 문서의 화면 밖에 있었다. 요약 한 줄만 남기고 표·컨디션·마크 지정은 시트로 내린다. */
 /* 타이머 + 상대 요약 한 줄 (#244) */
-.metaRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  /* #244: 첫 화면 여유가 13px 뿐이었다(계약 하한 24px). 상단 메타는 한 줄 정보라 더 조인다. */
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--bg-elevated);
-}
-.oppBarName {
-  font-size: 14px;
-  font-weight: 700;
-  flex: none;
-}
-.oppBarText {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.oppBarBtn {
-  flex: none;
-  min-height: 36px;
-  padding: 6px 11px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: none;
-  color: var(--text);
-  font-size: 12.5px;
-}
 .sheetBackdrop {
   position: fixed;
   inset: 0;
@@ -395,10 +337,6 @@
 
 /* 짧은 화면: 상단 메타(타이머·상대 요약)를 더 조인다(#244 BL-2). */
 @media (max-height: 819px) {
-  .metaRow {
-    padding: 3px 9px;
-    font-size: 12px;
-  }
   .panel {
     gap: 8px;
   }

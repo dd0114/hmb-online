@@ -189,12 +189,23 @@ describe("프레임리스 아트(kind=frameless-art) — 기존 합성 경로", 
     expect(screen.getByTestId(`card-label-${playerId}`).textContent).toBe("열라도나");
   });
 
-  it("GOLD 이하 공용 디폴트 유닛은 도트라 pixelated 로 그린다", async () => {
-    render(h(FullArtCard, { playerId: "P050", name: "Gold", grade: "GOLD", position: "MF" }));
-    await waitFor(() => expect(card("P050").dataset.artKind).toBe("unit-art"));
-    const art = layers("P050", "art")[0] as HTMLElement;
-    expect(art.getAttribute("src")).toContain("art-default-unit.png");
-    expect(art.style.imageRendering).toBe("pixelated");
+  /*
+   * 🪦 은퇴 — "GOLD 이하 공용 디폴트 유닛은 도트라 pixelated 로 그린다".
+   * 그 아트를 **더 이상 그리지 않는다**(#285). 도트 렌더링 규칙 자체(`pixelArt` → `pixelated`)는
+   * 살아 있고 아래 픽스처 완성 카드·유닛 아트 계약이 계속 태운다 — 사라진 건 골드 이하 표본뿐이다.
+   */
+  it("#285: GOLD 이하는 풀아트를 그리지 않는다 — 프레임 + 이니셜만", async () => {
+    // 표본이 실제로 매핑돼 있어야 계약이 공허하지 않다.
+    expect(mappingFile.players.P050).toBeTruthy();
+    render(h(FullArtCard, { playerId: "P050", name: "Gold Player", grade: "GOLD", position: "MF" }));
+    await waitFor(() => expect(card("P050").dataset.artKind).toBe("frame-only"));
+    expect(layers("P050", "art"), "아트 층 0").toHaveLength(0);
+    // 카드는 남는다 — 프레임·이름·등급색 이니셜로 "누구인지"는 계속 읽힌다.
+    expect(layers("P050", "frame")).toHaveLength(1);
+    expect(screen.getByTestId("card-label-P050").textContent).toBe("Gold Player");
+    const icon = screen.getByTestId("char-avatar-P050");
+    expect(icon.dataset.avatarKind).toBe("placeholder-css");
+    expect(icon.dataset.artPolicy).toBe("hidden");
   });
 
   it("사진형 실아트는 pixelated 가 아니다(축소 시 계단 방지)", async () => {
