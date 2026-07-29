@@ -20,6 +20,7 @@ import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
 import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
 import { glueBallToOwner, advanceBall } from "./ball";
 import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
+import { decideBallOwnerChain } from "./chain";
 import {
   tryIntercept,
   tryTackle,
@@ -385,7 +386,12 @@ function stepTick(carry: Carry): void {
   if (ownerId && !state.ball.flight && !takerWalkingIn) {
     const owner = ballOwnerOf(state);
     if (owner) {
-      const action = decideBallOwner(state, owner, rng, config, pitch);
+      // #279 W2: 볼 소유자 결정 코어 교체 스위치. "weighted"(기본) = 기존 즉시점수 가중추첨,
+      // "chain" = 행동 사슬 EV 탐색. 반환 계약(Action)이 같아 이 아래 코드는 어느 코어인지 모른다.
+      const action =
+        config.chain.mode === "chain"
+          ? decideBallOwnerChain(state, owner, rng, config, pitch)
+          : decideBallOwner(state, owner, rng, config, pitch);
       // #176: taker 가 공을 실제로 플레이하면(패스/슛/드리블) 그 순간 공이 인플레이 → 접근 금지 해제.
       // hold 는 아직 안 찬 것이므로 유지한다. (offside 등 새 세트피스는 아래서 setPiece 를 덮어쓴다.)
       if (liveZone && action.kind !== "hold") state.setPiece = null;

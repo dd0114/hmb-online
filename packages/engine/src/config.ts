@@ -422,6 +422,53 @@ export interface EngineConfig {
 
   };
 
+  /**
+   * chain — **볼 소유자 결정을 행동 사슬 탐색으로 대체**하는 실험 코어(#279 W2 비교본).
+   *
+   * 왜 필요한가: 기존 `decideBallOwner` 는 각 행동의 **즉시 점수**를 가중 추첨한다. "이 패스를 하면
+   * 그다음에 뭐가 되는가"를 볼 자리가 구조적으로 없어서, 백패스·슛위치·다이렉트함을 각각 노브로
+   * 눌러야 하고 하나를 누르면 다른 게 튄다(0.15.0→0.17.0→0.18.0→0.19.0 매번 5~8개 재보정).
+   * 사슬 탐색은 행동 하나가 아니라 **도달하는 상태**를 평가한다:
+   *   EV(행동) = 성공확률 × V(성공 상태, 깊이−1) + (1−성공확률) × V(턴오버 상태)
+   * 설계 출처 = RoboCup 2D agent2d 의 ChainAction(논문 공개, 코드 미사용) + 축구분석의 공간 평가.
+   *
+   * `mode: "weighted"` 가 기본이며 그 경로는 **한 줄도 바뀌지 않는다**(골든 유지 = 롤백 보장).
+   */
+  chain: {
+    /** "weighted" = 기존(즉시 점수 가중 추첨). "chain" = 행동 사슬 EV 탐색. */
+    mode: "weighted" | "chain";
+    /** 탐색 깊이(1 = 이번 행동의 결과 상태만, 2 = 받은 선수의 다음 수까지). */
+    depth: number;
+    /** 상태 가치 V 의 항 가중치. 전부 0..1 정규화된 항에 곱한다. */
+    advanceWeight: number; // 공격 진행도(0:자기골 ~ 1:상대골)
+    /**
+     * 진행도 항의 **볼록도**(진행도^exp). 1 이면 선형인데, 선형이면 "우리 진영에서 안전하게 돌리기"와
+     * "상대 진영으로 밀고 가기"의 가치 차가 작아 **뒤로 빼는 게 최적**이 된다(1차 실행 실측:
+     * 파이널서드 백패스 27%→67%). 실제 축구의 기대득점가치(EPV)도 골 근처에서 급상승하는 볼록 곡선이다.
+     */
+    advanceExponent: number;
+    threatWeight: number; // 그 지점의 xG(슛 위협)
+    spaceWeight: number; // 볼 홀더 주변 여유 공간
+    /**
+     * 깊이당 시간 할인(0..1). 없으면 "한 수 더 쓰는 비용"이 0 이라 **무한 리사이클이 최적**이 된다
+     * (1차 실행 실측: 시퀀스당 패스 2.55→10.65, 슛 13.9→6.1). 축구에서 한 번 더 돌리는 것은
+     * 공짜가 아니다 — 수비가 정렬할 시간을 준다.
+     */
+    discount: number;
+    /** 공간 항의 기준 거리(m) — 최근접 상대가 이 거리 이상이면 공간 항 만점. */
+    spaceRefM: number;
+    /** 턴오버 상태의 가치를 만들 때 상대 관점 가치에 곱하는 계수(>0 = 뺏기면 손해). */
+    turnoverWeight: number;
+    /** 골의 가치(슛 EV = xg × 이 값 + (1−xg) × 턴오버). 전진·공간 항과 같은 스케일. */
+    goalValue: number;
+    /** 홀드(제자리)에 주는 시간 페널티 — 안 그러면 안전한 홀드가 최적이 된다. */
+    holdPenalty: number;
+    /** 드리블 성공확률(틱당). 태클 리스크 근사 — 실패하면 턴오버 상태. */
+    dribbleSuccess: number;
+    /** 사슬 EV 상위 K 후보에서 시드 가중 샘플할 때의 온도(0 = argmax). 변주 유지용. */
+    temperature: number;
+  };
+
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
   softCap: number;
 
@@ -758,6 +805,22 @@ export const defaultEngineConfig: EngineConfig = {
       slotSpread: 0.25,
       jitterX: 0.03,
     },
+  },
+  chain: {
+    // 기본은 기존 코어 — "chain" 은 #279 비교본에서만 켠다(골든·밸런스 무영향).
+    mode: "weighted",
+    depth: 2,
+    advanceWeight: 1.0,
+    advanceExponent: 3.0,
+    threatWeight: 18.0,
+    spaceWeight: 0.35,
+    spaceRefM: 12,
+    discount: 0.85,
+    turnoverWeight: 0.5,
+    goalValue: 12,
+    holdPenalty: 0.08,
+    dribbleSuccess: 0.86,
+    temperature: 0.35,
   },
   softCap: 0.25,
   fatiguePerTick: 0.0009,

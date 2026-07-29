@@ -52,23 +52,48 @@ export function varietyNoise(a: number, b: number, c: number): number {
   return (h >>> 0) / 4294967296;
 }
 
+/**
+ * 임의의 지점에서의 슛 xG(순수 기하 + 슈팅속성 + 피로). computeXg 가 이 함수를 호출하므로
+ * 기존 동작과 bit-identical 이며, 사슬 탐색(chain.ts)이 "이 지점까지 가면 얼마나 위협적인가"를
+ * **엔진과 같은 식으로** 평가하는 데 재사용한다(재구현 금지 — 진단이 구현과 같은 실수를 공유한다).
+ */
+export function xgAtPoint(
+  side: SimPlayer["side"],
+  xFx: number,
+  yFx: number,
+  shooting: number,
+  fatigue: number,
+  config: EngineConfig,
+  pitch: Pitch,
+): { xg: number; distM: number } {
+  const g = attackGoal(pitch, side);
+  const distFx = distToAttackGoal(pitch, side, xFx, yFx);
+  const distM = fromFixed(distFx, config.fixedScale);
+  const lateralM = fromFixed(Math.abs(yFx - g.y), config.fixedScale);
+  const halfH = config.pitch.height / 2;
+  const central = fclamp(1 - config.contest.shootAngleFactor * (lateralM / halfH), 0.15, 1);
+  let xg = config.contest.xgBase * attrFactor(shooting);
+  xg *= Math.max(0.05, 1 - config.contest.shootDistanceFactor * distM);
+  xg *= central;
+  xg *= 1 - 0.3 * fatigue;
+  return { xg: fclamp(xg, 0.01, 0.9), distM };
+}
+
 /** 슛 xG 계산(거리·각도·슈팅속성). */
 function computeXg(
   owner: SimPlayer,
   config: EngineConfig,
   pitch: Pitch,
 ): { xg: number; distM: number } {
-  const g = attackGoal(pitch, owner.side);
-  const distFx = distToAttackGoal(pitch, owner.side, owner.posFx.x, owner.posFx.y);
-  const distM = fromFixed(distFx, config.fixedScale);
-  const lateralM = fromFixed(Math.abs(owner.posFx.y - g.y), config.fixedScale);
-  const halfH = config.pitch.height / 2;
-  const central = fclamp(1 - config.contest.shootAngleFactor * (lateralM / halfH), 0.15, 1);
-  let xg = config.contest.xgBase * attrFactor(owner.attrs.shooting);
-  xg *= Math.max(0.05, 1 - config.contest.shootDistanceFactor * distM);
-  xg *= central;
-  xg *= 1 - 0.3 * owner.fatigue;
-  return { xg: fclamp(xg, 0.01, 0.9), distM };
+  return xgAtPoint(
+    owner.side,
+    owner.posFx.x,
+    owner.posFx.y,
+    owner.attrs.shooting,
+    owner.fatigue,
+    config,
+    pitch,
+  );
 }
 
 /**
@@ -308,7 +333,13 @@ function selectPassOption(
   return { opt: top.o, score: top.s };
 }
 
-/** 볼 소유자의 행동 결정(시드 확률). */
+/**
+ * 볼 소유자의 행동 결정(시드 확률) — **기존 코어**(즉시 점수 가중 추첨).
+ *
+ * `config.chain.mode === "chain"` 이면 match.ts 가 대신 `chain.ts` 의 사슬 탐색 코어를 부른다(#279 W2).
+ * 분기를 match.ts 에 둔 이유는 순환 import 회피다(chain.ts 가 여기의 computePassProb/planPass 를 쓴다).
+ * **이 함수 본문은 한 줄도 바뀌지 않았다** — 골든이 곧 롤백 보장이다.
+ */
 export function decideBallOwner(
   state: SimState,
   owner: SimPlayer,
