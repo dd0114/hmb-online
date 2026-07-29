@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MatchClock } from "@hmb/shared";
-import { useHalfLog } from "../api/hooks";
+import { useHalfLog, usePlayers } from "../api/hooks";
 import {
   eventDisplay,
   fallbackScore,
@@ -70,6 +70,23 @@ export function MatchViewer({
   reviewControls = false,
 }: MatchViewerProps) {
   const { data: log, isLoading, isError } = useHalfLog(matchId, half, logEnabled);
+  /*
+   * 아이콘 노출 정책(#285)은 **등급**으로 판정한다 → 카탈로그에서 playerId→등급 표를 만들어
+   * 캔버스 부품에 넘긴다. `/api/players` 는 보유분이 아니라 **전 카탈로그**라 상대(봇) 선수
+   * 등급도 여기서 나온다(봇 로스터가 같은 선수 카탈로그를 공유한다 — 루트 CLAUDE #231).
+   * 조회 전/실패면 null → `buildViewerSkins` 의 공용 디폴트 백스톱이 받는다.
+   */
+  const { data: catalog } = usePlayers();
+  const grades = useMemo(
+    /*
+     * ⚠️ **응답 형태를 믿지 않는다**(apps/web CLAUDE.md). 이 엔드포인트가 없는 구 서버나 목이
+     * 200 `{}` 를 주면 `.map` 이 던져 **결과 화면이 통째로 흰 화면**이 된다(실제로 growth-mock 의
+     * 성장 리포트 스펙이 이걸 잡았다). 아이콘 노출 정책은 부가 기능이다 — 화면을 죽이면 안 되고,
+     * 형태가 이상하면 null 로 떨어져 공용 디폴트 백스톱이 정책을 지킨다.
+     */
+    () => (Array.isArray(catalog) ? Object.fromEntries(catalog.map((p) => [p.id, p.grade])) : null),
+    [catalog],
+  );
   const [mode, setMode] = useState<ViewMode>("visual");
   // #148 컨트롤 모드: 계정/QA 플래그로 판정하되, admin/QA 가 토글하면 그 선택이 이긴다.
   const isAdmin = useAdminFlag();
@@ -123,6 +140,7 @@ export function MatchViewer({
           clock={clock}
           clockOffsetMs={clockOffsetMs}
           review={reviewControls}
+          grades={grades}
         />
       ) : (
         <div className={styles.timelineFill}>

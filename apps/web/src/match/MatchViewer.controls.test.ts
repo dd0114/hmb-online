@@ -44,6 +44,9 @@ const fx = {
 };
 vi.mock("../api/hooks", () => ({
   useHalfLog: () => ({ data: fx.log, isLoading: false, isError: false }),
+  // 아이콘 노출 정책(#285) 등급표의 출처. 이 스펙은 컨트롤 계약만 보므로 빈 카탈로그로 둔다 —
+  // 없으면 훅이 undefined 라 렌더가 통째로 죽는다(정책 계약은 viewer-skins/e2e 가 진다).
+  usePlayers: () => ({ data: [] as Array<{ id: string; grade: string }> }),
 }));
 
 import { MatchViewer } from "./MatchViewer";

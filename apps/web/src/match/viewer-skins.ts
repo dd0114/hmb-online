@@ -20,10 +20,14 @@
  *  (신) 코어가 `atlases:[{url,tile}]` + 셀의 `atlas` 인덱스를 받는다(#218, viewer-core). 축이
  *       늘어도 여기서 시트를 하나 더 밀면 된다.
  *
- * 그대로 유지되는 것 — **U-D8**: GOLD/SILVER/BRONZE 가 공유하는 `default-unit` 은 태우지 않는다.
- * 22개 토큰이 전부 같은 얼굴이면 판독에 아무 정보도 더하지 않는다. 공용/고유 판정은 발행물의
- * `forGrades` 선언으로 한다(`unitIsSharedDefault` — 유닛 id 하드코딩 금지). 셀이 없는 선수는
- * 코어가 **팀색 원 + 등번호**로 그린다 = "빼는 것"이 곧 U-D8 의 표현이다.
+ * **#285 — 무엇을 안 태우나의 판정 근거가 바뀌었다.**
+ *  (구 U-D8) "이 유닛이 **등급 공용 디폴트**냐"(`unitIsSharedDefault`, 발행물 `forGrades` 선언).
+ *            지금 데이터에선 공용 디폴트 = 골드 이하 133명이라 답이 맞았지만 **우연**이다 —
+ *            발행측이 골드 한 명에게 고유 아트를 주면 그 순간 경기장에 골드 얼굴이 뜬다.
+ *  (신 #285) **등급이 판정한다**(`showsCharacterArt`, 다이아 이상만). 부모가 `grades` 를 넘긴다.
+ *            공용 디폴트 제외는 **백스톱으로 남긴다** — 등급표가 없는 경로(QA 콘솔·카탈로그
+ *            미조회)에서도 정책이 뚫리지 않게. 두 층 각각 계약이 있다.
+ * 셀이 없는 선수는 코어가 **팀색 원 + 등번호**로 그린다 = "빼는 것"이 곧 정책의 표현이다.
  *
  * 등번호(`nums`)는 **아트 유무와 무관하게 전원** 싣는다. 셀이 없으면 코어가 `playerId` 에서
  * 번호를 파생하는데, 실경기 id("P173")가 그대로 토큰을 덮어 아이콘이 사라진 것처럼 보였다
@@ -38,6 +42,8 @@ import {
   type TileRef,
 } from "../common/char-manifest";
 import { normalizeCharRef, type CharAssets } from "../common/char-assets-store";
+import type { Grade } from "../common/grades";
+import { showsCharacterArt } from "../common/icon-policy";
 
 /** 경기장 토큰용 아틀라스 — A/B 실측 결론(얼굴, 64px 소스). */
 export const ARENA_ATLAS = "avatars-64";
@@ -109,7 +115,11 @@ function cellOf(tile: TileRef): { col: number; row: number } {
  * 아트가 하나도 없어도 **등번호만 실린 페이로드는 돌려준다**(AC2 폴백 보장) — 에셋 미배포에서도
  * 토큰에 선수 id 원문이 찍히면 안 된다.
  */
-export function buildViewerSkins(assets: CharAssets, log?: unknown): ViewerSkins | null {
+export function buildViewerSkins(
+  assets: CharAssets,
+  log?: unknown,
+  grades?: Record<string, Grade | undefined> | null,
+): ViewerSkins | null {
   const mapping = assets.mapping?.players;
   const jerseys = log ? jerseyNumbers(log) : {};
 
@@ -130,10 +140,19 @@ export function buildViewerSkins(assets: CharAssets, log?: unknown): ViewerSkins
   const ordered = ARENA_AXES.flatMap((axis) => entries.filter(([, ref]) => ref?.axis === axis));
   for (const [playerId, ref] of ordered) {
     if (!ref) continue;
+    /*
+     * #285 노출 정책 — **등급이 판정한다**. 다이아 미만이면 축·아트 종류와 무관하게 안 태운다.
+     *
+     * 등급을 모르는 선수(부모가 카탈로그를 못 받은 경우)는 여기서 걸러지지 않고 아래 U-D8
+     * 백스톱으로 넘어간다. 등급 미상을 곧장 제외하면 카탈로그 조회가 늦는 첫 프레임에서
+     * **다이아 이상까지 전부 맨 토큰**이 됐다가 뒤늦게 얼굴이 붙는다 — 그건 정책이 아니라 깜빡임이다.
+     */
+    if (grades && grades[playerId] && !showsCharacterArt(grades[playerId])) continue;
     let tile: TileRef | null = null;
     let bg: "opaque-dark" | undefined;
     if (ref.axis === "units") {
-      // U-D8: 등급 공용 디폴트는 태우지 않는다(같은 얼굴 22개 = 정보 0) → 팀색 원.
+      // U-D8 백스톱: 등급 공용 디폴트는 태우지 않는다(같은 얼굴 22개 = 정보 0) → 팀색 원.
+      // 등급표가 없는 경로(QA 콘솔 등)에서 정책을 지키는 마지막 선.
       if (unitIsSharedDefault(assets.units, ref.id)) continue;
       tile = unitTile(assets.units, ref.id, ARENA_ATLAS);
       if (unitIconBackground(assets.units, ref.id) === "opaque-dark") bg = "opaque-dark";

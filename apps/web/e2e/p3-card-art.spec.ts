@@ -200,12 +200,38 @@ test("뽑기: 결과 카드가 **전부** 아트까지 해석된다 (hero 확정
   await revealAllAndSettle(page);
 
   await expect(cards(page)).toHaveCount(GACHA.results.length);
-  // 공개된 카드는 전부 실제 아트까지 해석돼야 한다 — 프레임만 뜨면 매핑이 끊긴 것.
-  const kinds = await cards(page).evaluateAll((els) => els.map((e) => e.getAttribute("data-art-kind")));
-  // 프레임만(frame-only)·빈 카드(none)가 하나라도 있으면 매핑이 끊긴 것이다.
-  expect(kinds.filter((k) => !RESOLVED_ART_KINDS.includes(k!))).toEqual([]);
+  /*
+   * #285 로 이 계약의 범위가 **다이아 이상**으로 좁아졌다.
+   *
+   * (구) "공개된 카드는 **전부** 아트까지 해석된다" — 프레임만 뜨면 매핑이 끊긴 것.
+   * (신) 골드 이하는 노출 정책상 **의도적으로 frame-only** 다(hero 확정: 얼굴은 다이아 이상만).
+   *      그래서 "전부"를 그대로 두면 정책을 회귀로 오인한다. 대신 두 방향을 **각각** 박는다:
+   *        ① 다이아 이상 = 반드시 아트까지 해석(여기가 매핑 끊김을 잡는 자리 — 그대로 유효)
+   *        ② 골드 이하 = 반드시 frame-only(정책이 풀리면 여기서 걸린다)
+   *      두 표본이 모두 비지 않는지도 확인한다 — 한쪽이 0 이면 그 방향이 공허해진다.
+   */
+  const byId = await cards(page).evaluateAll((els) =>
+    els.map((e) => ({
+      id: (e.getAttribute("data-testid") ?? "").replace("full-art-", ""),
+      kind: e.getAttribute("data-art-kind"),
+    })),
+  );
+  const gradeOfId = new Map(CATALOG.map((p) => [p.id, p.grade]));
+  const highCards = byId.filter((c) => ["DIA", "LEGEND"].includes(gradeOfId.get(c.id)!));
+  const lowCards = byId.filter((c) => !["DIA", "LEGEND"].includes(gradeOfId.get(c.id)!));
+  expect(highCards.length, "다이아 이상 표본").toBeGreaterThan(2);
+  expect(lowCards.length, "골드 이하 표본").toBeGreaterThan(2);
+
+  expect(
+    highCards.filter((c) => !RESOLVED_ART_KINDS.includes(c.kind!)).map((c) => `${c.id}:${c.kind}`),
+    "다이아 이상인데 아트가 안 붙은 카드(매핑 끊김)",
+  ).toEqual([]);
+  expect(
+    lowCards.filter((c) => c.kind !== "frame-only").map((c) => `${c.id}:${c.kind}`),
+    "골드 이하인데 아트가 그려진 카드(#285 정책 위반)",
+  ).toEqual([]);
   // 표본에 축이 다 들어 있어야 이 검사가 실제로 분기를 태운다(공허참 방지).
-  expect(new Set(kinds)).toEqual(new Set(EXPECTED_ART_KINDS));
+  expect(new Set(highCards.map((c) => c.kind))).toEqual(new Set(EXPECTED_ART_KINDS));
   // 완성 카드는 **등급 프레임을 한 장도 안 받는다**(프레임 두 겹 방지, #207 U-D8).
   // 현재 발행 구성엔 complete 이 0종이라 이 루프는 돌지 않는다 — 계약은 유닛 테스트가 픽스처로
   // 지킨다(`full-art.test.ts` · `FullArtCard.test.ts`). 다시 실리면 여기도 자동으로 검사한다.

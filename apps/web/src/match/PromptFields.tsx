@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { CharAvatar } from "../common/CharAvatar";
+import type { Grade } from "../common/grades";
 import styles from "./PromptFields.module.css";
 
 const PROMPT_MAX = 500;
@@ -9,6 +10,12 @@ export interface RosterEntry {
   name: string;
   position: string;
   role: "starter" | "bench";
+  /**
+   * 아이콘 노출 정책 판정용(#285). 이 부품은 현재 화면에 배선돼 있지 않지만(#244 개편으로
+   * 프롬프트 입력이 `DirectiveRail` 로 옮겨갔다) 되살릴 때 **등급 없이 아바타를 그리는 구멍**으로
+   * 부활하지 않도록 타입에 못 박는다.
+   */
+  grade: Grade;
 }
 
 interface PromptFieldsProps {
@@ -67,7 +74,7 @@ export function PromptFields({
                 onClick={() => setOpenPlayerId(open ? null : p.playerId)}
               >
                 <span className={styles.playerPos}>{p.position}</span>
-                <CharAvatar playerId={p.playerId} name={p.name} size={26} />
+                <CharAvatar playerId={p.playerId} name={p.name} grade={p.grade} size={26} />
                 <span className={styles.playerName}>{p.name}</span>
                 <span className={styles.playerRole}>{p.role === "starter" ? "선발" : "벤치"}</span>
                 {text && <span className={styles.hasPrompt} title="프롬프트 있음" />}

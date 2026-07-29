@@ -8,6 +8,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { buildTimelinePins, type TimelinePin } from "./timeline-pins";
 import { indexFromPct } from "./qa-time-controls";
 import { buildViewerSkins } from "./viewer-skins";
+import type { Grade } from "../common/grades";
 import { useCharAssets } from "../common/useCharAssets";
 import styles from "./MatchViewer.module.css";
 
@@ -30,6 +31,12 @@ export interface VisualPlaybackProps {
   onTick?: (tick: number) => void;
   clock: MatchClock | null;
   clockOffsetMs: number;
+  /**
+   * 아이콘 노출 정책(#285) 판정용 playerId→등급 표. **부모가 주입한다** — 이 부품은 API 를
+   * 모르는 재사용 조각이라(위 주석) 여기서 카탈로그를 조회하면 QA 콘솔까지 쿼리 컨텍스트를
+   * 요구하게 된다. 안 주면 `buildViewerSkins` 의 공용 디폴트 백스톱이 정책을 지킨다.
+   */
+  grades?: Record<string, Grade | undefined> | null;
 }
 
 /**
@@ -49,6 +56,7 @@ export function VisualPlayback({
   onTick,
   clock,
   clockOffsetMs,
+  grades = null,
 }: VisualPlaybackProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
@@ -67,7 +75,7 @@ export function VisualPlayback({
   const [viewerReady, setViewerReady] = useState(false);
   // 경기장 캐릭터 스킨(#145). 에셋이 아직/영영 없으면 null → 코어는 현행 단색 원(무회귀).
   const charAssets = useCharAssets();
-  const skins = useMemo(() => buildViewerSkins(charAssets, log), [charAssets, log]);
+  const skins = useMemo(() => buildViewerSkins(charAssets, log, grades), [charAssets, log, grades]);
   const [failed, setFailed] = useState(false);
 
   // 콜백은 마운트 시 고정하되 최신 onTick 은 ref 로 본다(stale closure 방지).

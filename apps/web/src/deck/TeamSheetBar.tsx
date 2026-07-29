@@ -32,6 +32,13 @@ interface TeamSheetBarProps {
   formationLocked?: boolean;
   /** 셀렉트는 보이되 지금은 못 만진다(감독시간 만료 등) — 사라지지 않아야 "끝났다"가 읽힌다. */
   formationDisabled?: boolean;
+  /**
+   * 상대 정보 시트 열기(#285). **여기에 붙는 이유**: 브리핑 상단에 따로 있던 메타 줄을 걷어내면서
+   * 필수 진입점만 남겼는데, 이 줄이 이미 상대 이름·전력을 말하고 있다 = "상대"라는 주제가 있는
+   * 유일한 자리다. 별도 줄로 되돌리면 #244 가 회수한 세로 예산을 다시 쓴다.
+   * 없으면(덱 화면) 버튼을 그리지 않는다 — 상대가 없는 화면이다.
+   */
+  onOpponentInfo?: () => void;
 }
 
 /**
@@ -44,7 +51,7 @@ interface TeamSheetBarProps {
  * 모바일에서는 보드 하단 바가 접히므로 AUTO 만 이 바에 얹는다(목업 askin-mobile).
  */
 export function TeamSheetBar(props: TeamSheetBarProps) {
-  const { draft, onFormationChange, power, opponentPower, opponentName, opponentApprox, autoDisabled, autoHint, onAuto, placementLocked, formationLocked, formationDisabled } = props;
+  const { draft, onFormationChange, power, opponentPower, opponentName, opponentApprox, autoDisabled, autoHint, onAuto, placementLocked, formationLocked, formationDisabled, onOpponentInfo } = props;
   const m = sheetMetrics(draft);
   const share = opponentPower != null ? powerShare(power, opponentPower) : 1;
 
@@ -107,6 +114,16 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
             ? `${opponentApprox ? "≈" : ""}${opponentPower} ${opponentName ?? "상대"}`
             : "상대 미정"}
         </span>
+        {onOpponentInfo && (
+          <button
+            type="button"
+            className={styles.oppInfo}
+            data-testid="opp-sheet-open"
+            onClick={onOpponentInfo}
+          >
+            상대 정보 ↗
+          </button>
+        )}
       </div>
 
       <div className={styles.fill}>

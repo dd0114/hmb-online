@@ -103,6 +103,21 @@
   background: var(--accent);
 }
 
+/* 상대 정보 진입점(#285) — 브리핑 상단 메타 줄에서 이 줄로 옮겨왔다.
+   `.op`(상대 이름·전력) 바로 옆에 앉아 "이 상대에 대해 더 보기"로 읽힌다.
+   터치 하한 36px 은 지키되, 이 줄은 상태 표시줄이라 시각 높이는 텍스트에 맞춘다. */
+.oppInfo {
+  flex: none;
+  min-height: 36px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .fill {
   display: flex;
   gap: 12px;

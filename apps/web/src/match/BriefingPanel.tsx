@@ -27,8 +27,6 @@ import { ConditionClock } from "./ConditionClock";
 // briefing-preset-logic(프리셋 시작점 선택)은 #106 으로 화면에서 내렸다 — 모듈·테스트는 존치.
 import styles from "./BriefingPanel.module.css";
 
-const BRIEFING_TIMER_SECONDS = 180;
-
 interface BriefingPanelProps {
   match: MatchDetail;
 }
@@ -71,14 +69,13 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
 
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [aiManaged, setAiManaged] = useState(false);
-  const [remaining, setRemaining] = useState(BRIEFING_TIMER_SECONDS);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 마킹 원탭(AC-C4): 상대 선수 탭 → 대상, 내 수비수 배정(빈값=자동), 확인 시 프롬프트 합성.
   const [markTarget, setMarkTarget] = useState<string | null>(null);
   const [markDefenderId, setMarkDefenderId] = useState<string>("");
   const [markNote, setMarkNote] = useState<string | null>(null);
-  // #244: 상대 정보(표·컨디션·마크 지정)는 시트 뒤. 본문 상단은 요약 한 줄만.
+  // #244: 상대 정보(표·컨디션·마크 지정)는 시트 뒤. #285 로 진입점만 팀시트 전력 줄로 옮겼다.
   const [oppOpen, setOppOpen] = useState(false);
 
   const playersById = useMemo(() => {
@@ -102,11 +99,6 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
       setEditor(ed);
     }
   }, [editor, deck, deckLoading, deckError]);
-
-  useEffect(() => {
-    const t = window.setInterval(() => setRemaining((r) => Math.max(0, r - 1)), 1000);
-    return () => window.clearInterval(t);
-  }, []);
 
   const starters = useMemo(
     () => (editor?.draft.slots ?? []).filter((s) => s.role === "starter"),
@@ -169,38 +161,29 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
     }
   }
 
-  const mm = Math.floor(remaining / 60);
-  const ss = String(remaining % 60).padStart(2, "0");
-
   const rosterLoading = deckLoading || playersLoading || editor === null;
   const rosterMissing = !rosterLoading && (deckError || playersError || starters.length === 0);
   const rosterUnavailable = rosterLoading || rosterMissing;
 
   return (
     <div className={styles.panel} data-testid="briefing-panel">
-      {/* #244: 타이머·상대 요약을 **한 줄**로 합친다 — 브리핑 상단 chrome 이 프롬프트를 첫 화면
-          밖으로 밀어내던 문제(실측 상단 453px)의 나머지 절반이다. */}
-      <div className={styles.metaRow}>
-        <span className={remaining === 0 ? styles.timerExpired : styles.timer} data-testid="briefing-timer">
-          {mm}:{ss}
-        </span>
-        {/* 타이머만 있으면 압박만 준다 — "만료돼도 진행 가능"은 유지한다(구 .timerNote). */}
-        <span className={styles.timerNote}>만료돼도 진행 가능</span>
-        {match.opponent && (
-          <>
-            <span className={styles.oppBarName}>vs {match.opponent.name}</span>
-            <span className={styles.oppBarText}>{match.opponent.analysisText}</span>
-            <button
-              type="button"
-              className={styles.oppBarBtn}
-              data-testid="opp-sheet-open"
-              onClick={() => setOppOpen(true)}
-            >
-              상대 정보 ↗
-            </button>
-          </>
-        )}
-      </div>
+      {/*
+        #285 — **상단 메타 줄을 걷어냈다**(hero 실관전 제보 "깨진 디자인·불필요").
+        #244 W2 가 상대표(244px)+컨디션(209px)을 시트 뒤로 보내며 남은 것을 한 줄로 압축했는데,
+        그 줄에 다섯 가지가 겹쳐 앉아 있었다. 하나씩 왜 없앴나:
+
+        · **타이머**(`briefing-timer`, 180초) — PRD-v2 `D5` 로 "표시만, 강제 안 함"이었다. 그런데
+          클라 로컬 카운트다운이라 새로고침하면 리셋되고, 0 이 돼도 아무 일도 일어나지 않는다.
+          정보가치가 0인데 압박만 준다. D5 가 말한 "config 플래그로 강제 전환"은 구현된 적이 없고,
+          진짜 강제 타이머는 하프타임 감독시간(60초·서버 권위·만료 시 입력잠금 D6)이 따로 있다.
+          ⚠️ 되살리려면 **서버 권위 마감**부터다 — 로컬 카운트다운을 다시 그리지 마라.
+        · **"만료돼도 진행 가능"** — 타이머가 없으면 설명할 대상이 없다.
+        · **`vs {상대명}`** — 바로 아래 팀시트 전력 줄이 이미 `≈690 {상대명}` 을 말한다(중복).
+        · **`analysisText`** — 봇 매칭 안내문. 한 줄에 밀어 넣어 잘리고 있었고, 원문은 상대 정보
+          시트 안에 그대로 있다(`opponent-analysis`) = 지운 게 아니라 한 곳으로 모았다.
+        · **[상대 정보 ↗]** — **이것만 필수**다. 지우지 않고 상대 이름·전력이 이미 있는
+          팀시트 전력 줄로 옮겼다(`TeamSheetBar.onOpponentInfo`). 계약 = `p285-icon-policy.spec.ts`.
+      */}
 
       {/* 프리셋 시작점 선택(#98 W6a)은 **화면에서 내렸다** — 이슈 #106: 컨셉이 잡히기 전의 프리셋은
           시기상조라 세팅 하나(활성 덱)로 축소한다. 삭제가 아니라 렌더 중단이며,
@@ -359,6 +342,7 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
             relations={relations}
             opponentPower={opponentPower}
             opponentName={match.opponent?.name}
+            onOpponentInfo={match.opponent ? () => setOppOpen(true) : undefined}
             opponentApprox
           />
         </>

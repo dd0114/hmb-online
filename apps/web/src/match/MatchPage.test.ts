@@ -108,12 +108,21 @@ describe("MatchPage state router", () => {
       },
     });
     expect(screen.getByTestId("briefing-panel")).toBeTruthy();
-    // #244: 상대 정보는 시트 뒤. 요약 줄이 이름을 말하고, 표는 시트를 열어야 나온다.
+    // #244: 상대 정보는 시트 뒤. #285: 그 진입점이 **팀시트 전력 줄** 안으로 옮겨왔다.
     expect(screen.getByTestId("opp-sheet-open")).toBeTruthy();
+    expect(
+      screen.getByTestId("sheet-power").contains(screen.getByTestId("opp-sheet-open")),
+      "진입점이 상대 이름·전력이 있는 줄 안에 있다(별도 상단 줄로 되돌아가지 않는다)",
+    ).toBe(true);
     fireEvent.click(screen.getByTestId("opp-sheet-open"));
     expect(screen.getByTestId("opponent-analysis").textContent).toContain("공격 봇");
     expect(screen.getByTestId("kickoff-button")).toBeTruthy();
-    expect(screen.getByTestId("briefing-timer")).toBeTruthy();
+    /*
+     * 🪦 은퇴 — `briefing-timer`. 클라 로컬 180초 카운트다운이라 새로고침에 리셋되고 만료해도
+     * 아무 일도 없었다(#285, hero "불필요"). PRD-v2 D5 의 "표시만" 이 이 형태로 굳은 것 —
+     * 되살리려면 서버 권위 마감부터다. 지금 화면에 없다는 것 자체를 계약으로 못 박는다.
+     */
+    expect(screen.queryByTestId("briefing-timer")).toBeNull();
   });
 
   it("GEN1 → GenWaitPanel with 전반 phase copy", () => {
