@@ -229,8 +229,13 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
         }
       }
       // 세 필드(교체·전술·배치)를 **한 요청**에 싣는다 — 서로 독립이고 미첨부 = 손대지 않음이라
-      // 왕복을 나눌 이유가 없다. 배치는 실제로 바뀐 경우에만 실린다(#215 콜0 — 무변경 제출이
-      // 유저 사이드 AI 풀 생성을 부르지 않게).
+      // 왕복을 나눌 이유가 없다.
+      // ⚠️ 보드 모드에서 배치는 **항상** 실린다(무변경이어도). 조건부로 빼지 마라 —
+      // 그게 #276 1R 검증이 잡은 blocker 2건의 원인이었다: `substitutions` 는 항상 싣는데
+      // 배치만 조건부라, ①재마운트 후 제출이 저장된 배치와 어긋나 400 고착 ②원상복구를
+      // 표현할 값이 없어 COALESCE 가 취소된 배치를 살렸다. 상세 = halftime-shape.ts 헤더.
+      // #215 콜0 은 "안 보낸다"가 아니라 "**AI 콜이 0이다**"가 본질이고, 그 판정은 서버가
+      // 한다(secondHalfShapeChanged — 전반과 같은 배치면 무변경 → 콜0).
       const body: HalftimeRequest = boardMode
         ? halftimeShapePayload(baseDraft!, draft!)
         : { substitutions: selectSubs };
