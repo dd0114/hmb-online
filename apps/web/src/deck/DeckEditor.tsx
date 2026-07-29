@@ -204,21 +204,39 @@ export function DeckEditor(props: DeckEditorProps) {
   }
 
   function handleDragEnd(e: DragEndEvent) {
-    if (boardMode) return; // 탭이 보드를 소유하는 모드에서는 드래그가 끼어들지 않는다
+    /*
+     * **교체 모드(`subs`)에서만** 드래그가 빠진다 — 교체의 SoT 는 명시 `subs` 목록이고, 드래그로
+     * 선수를 옮기면 규칙(≤3 · GK≥1)을 우회하는 **두 번째 손잡이**가 생긴다.
+     *
+     * ⚠️ 예전엔 `if (boardMode) return` 이라 [자리] 모드에서도 드래그가 죽어 **어포던스가 역전**돼
+     * 있었다: [감독의 한마디] 탭에서는 드래그로 자리가 바뀌는데 **자리 전용 탭에서만** 안 바뀐다
+     * (2R 독립검증 minor-2). 덱은 "탭이 1급, 드래그는 보조"(#106)이므로 보조 제스처가 그 일을
+     * 하는 탭에서 죽으면 안 된다 → `move` 는 통과시키고 아래 잠금 규칙(선발↔선발)만 적용한다.
+     */
+    if (boardMode === "subs") return;
     if (!e.over) return;
     const playerId = playerIdFromDragId(String(e.active.id));
     const target = parseDroppableId(String(e.over.id));
     if (placementLocked) {
       // 배치 잠금 화면의 드래그는 **선발끼리 자리 바꾸기**까지만이다(#276) — 벤치로 끌어내리거나
       // 벤치에서 끌어올리면 그건 교체이고, 교체는 규칙(≤3·GK≥1)을 가진 별도 손잡이가 소유한다.
+      //
+      // 계약 = `e2e/p276-halftime-shape.spec.ts` AC8(폴백 무동작 · 만료 무동작 · 교체 탭 무동작).
+      // ⚠️ 아래 `starter↔starter` 한 줄만은 **지금 도달 불가능한 방어**다 — 감독시간에서 벤치 줄은
+      //    `hideBench` 로 교체 모드에서만 펴지는데 그 모드는 위에서 이미 return 하기 때문이다.
+      //    `hideBench` 가 바뀌는 순간 이 줄이 유일한 방벽이 되므로 지우지 마라(계약이 못 잡는다).
       if (!lineupEditable || lineupDisabled) return;
       const from = findPlayerSlot(draft, playerId);
       if (from?.role !== "starter" || target.role !== "starter") return;
     }
-    // 드래그도 탭과 **같은 결과**로 수렴한다 — 놓은 선수가 곧 지시 대상이 된다.
     mutateDraft(movePlayerToSlot(draft, playerId, target.role, target.slotIndex));
-    selectPlayer(playerId);
-    closeSheet();
+    // 보드 모드에서는 지시 대상이 탭으로만 바뀐다 — 자리를 바꿨다고 프롬프트 자리가 딸려 움직이면
+    // 같은 제스처가 화면마다 다른 일을 하게 된다. 덱(모드 없음)에서는 #244 대로 놓은 선수가
+    // 곧 지시 대상이 된다.
+    if (!boardMode) {
+      selectPlayer(playerId);
+      closeSheet();
+    }
   }
 
   function openSheet(slot: SlotRef | null) {

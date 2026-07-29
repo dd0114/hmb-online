@@ -69,9 +69,24 @@ export function snapshotToDraft(snap: TeamSnapshot): DeckDraft {
  * MatchDetailPhase2Fields · `MatchService.userDeckSnapshotOf`). 그런 구 매치에서 배치를 보내면
  * 서버가 대조할 전반 선발이 없어 400 이므로, 호출측은 **배치 없이** #244 의 현행 동작(덱 파생 +
  * 교체만)으로 간다. 선발이 11명이 아닌 스냅샷도 같은 이유로 배치를 열지 않는다(방어).
+ *
+ * ⚠️ **인원수만 세면 안 된다**(2R 독립검증 minor-5). 서버는 `starters` 의 슬롯도 검사한다 —
+ * `SLOT_INDEX_DUPLICATE` · `SLOT_INDEX_RANGE`. 11명이지만 슬롯이 중복되거나 0..10 밖인 레거시
+ * 스냅샷을 열면 보드가 그대로 그 값을 되돌려 보내 **[후반 시작]이 영구 400** 이 되고, 화면에는
+ * 되돌릴 손잡이가 없어 감독시간이 통째로 날아간다. 그래서 슬롯 집합까지 확인하고, 어긋나면
+ * 폴백(교체만)으로 보낸다 — 배치를 잃는 대신 화면은 계속 동작한다.
  */
 export function boardUsable(snap: TeamSnapshot | null | undefined): snap is TeamSnapshot {
-  return Boolean(snap) && (snap!.starters?.length ?? 0) === STARTER_COUNT;
+  const starters = snap?.starters;
+  if (!starters || starters.length !== STARTER_COUNT) return false;
+  const seen = new Set<number>();
+  for (const s of starters) {
+    const i = s.slotIndex;
+    if (!Number.isInteger(i) || i < 0 || i >= STARTER_COUNT) return false;
+    if (seen.has(i)) return false;
+    seen.add(i);
+  }
+  return true;
 }
 
 function starterSlots(draft: DeckDraft): DraftSlot[] {

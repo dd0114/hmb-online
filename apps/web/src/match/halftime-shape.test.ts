@@ -111,6 +111,26 @@ describe("snapshotToDraft / boardUsable", () => {
     expect(boardUsable({ ...snapshot(), starters: [] })).toBe(false);
     expect(boardUsable(snapshot())).toBe(true);
   });
+
+  /**
+   * **인원수만 세면 안 된다**(2R 독립검증 minor-5). 서버는 슬롯 자체도 검사한다
+   * (`SLOT_INDEX_DUPLICATE` · `SLOT_INDEX_RANGE`). 11명이지만 슬롯이 중복/범위 밖인 레거시
+   * 스냅샷으로 보드를 열면 그 값이 그대로 되돌아가 **[후반 시작]이 영구 400** 이 되고 화면엔
+   * 복구 수단이 없다 — 감독시간 통째 상실. 배치를 포기하고 폴백으로 보내는 쪽이 낫다.
+   */
+  it("슬롯이 중복이거나 0..10 밖이면 보드를 열지 않는다(서버 SLOT_INDEX_* 를 화면에서 만들지 않는다)", () => {
+    const dup = snapshot();
+    dup.starters![10]!.slotIndex = 9; // 9 가 둘
+    expect(boardUsable(dup)).toBe(false);
+
+    const oob = snapshot();
+    oob.starters![10]!.slotIndex = 11; // 0..10 밖
+    expect(boardUsable(oob)).toBe(false);
+
+    const neg = snapshot();
+    neg.starters![0]!.slotIndex = -1;
+    expect(boardUsable(neg)).toBe(false);
+  });
 });
 
 describe("swapStarters — 선발끼리 자리 바꾸기(덱과 같은 swap 의미)", () => {

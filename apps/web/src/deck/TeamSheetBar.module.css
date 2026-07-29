@@ -183,20 +183,57 @@
  * 그런데 63px 를 먹으면서 화면 위쪽 두 층을 차지해, 아래 프롬프트를 그만큼 밀어냈다.
  * 값은 그대로 두되(계약 testid 유지) 한 줄로 눕히고 글자만 남긴다.
  */
+/*
+ * ⚠️ **레이아웃이 flex-wrap 이면 안 된다** (2R blocker-1, #276).
+ *
+ * 처음엔 `display:flex; flex-wrap:wrap` 이었다. 그러면 바 높이가 **가로 폭에 따라 절벽처럼**
+ * 튄다 — #276 이 포메이션 셀렉트를 이 줄에 합류시키자 [셀렉트][전력][지표] 합이 412px 폰에서는
+ * 한 줄(41px)에 들어가고 360·390 에서는 두 줄(**67px**)이 됐고, 늘어난 31px 이 그대로 팀
+ * 프롬프트를 밀어 360×740 기본 모드에서 프롬프트 하단 7px 이 [후반 시작] 밑으로 잘렸다
+ * (2R 독립검증 blocker-1 — #244 가 이미 한 번 FAIL 받고 고쳤던 결함 클래스의 재발).
+ *
+ * 그래서 **폭과 무관하게 높이가 고정되는 2행 그리드**로 바꾼다:
+ *
+ *     ┌──────────┬──────────────────────┐
+ *     │ 포메이션  │ 우리 780 · 상대 미정  │  ← row 1
+ *     │ (2행 span)├──────────────────────┤
+ *     │          │ 선발/벤치/지시        │  ← row 2
+ *     └──────────┴──────────────────────┘
+ *
+ * 바 높이 = max(셀렉트, 텍스트 2줄) 이고 둘 다 고정값이라 **어느 폭에서도 같다**(실측 46px).
+ * 글자가 길어지면 오른쪽 칸 안에서 줄어들 뿐 바가 자라지 않는다 — 폭 임계를 넘나들며 한
+ * 화면만 깨지는 일이 구조적으로 없어진다. 값은 #244 대로 전부 남는다(계약 testid 유지).
+ * 되돌리려면: 이 그리드를 flex-wrap 으로 되돌리는 순간 `e2e/p276-halftime-shape.spec.ts`
+ * 의 뷰포트 스윕(AC7)이 360×740 say 에서 red 가 된다.
+ */
 .barStatic {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
-  flex-wrap: wrap;
-  column-gap: 10px;
   row-gap: 2px;
   padding: 5px 12px;
 }
 .barStatic .title {
   display: none;
 }
+/* `margin-top`(8px/7px)은 덱의 **세로 스택**용 간격이다 — 그리드에서는 `row-gap` 이 그 일을
+   하므로 남겨두면 15px 을 두 번 내는 셈이 된다(실측 바 57px → 42px). */
 .barStatic .power {
+  grid-column: 2;
+  grid-row: 1;
+  margin-top: 0;
   gap: 6px;
   font-size: 11px;
+}
+.barStatic .fill {
+  grid-column: 2;
+  grid-row: 2;
+  margin-top: 0;
+  font-size: 11px;
+}
+/* 만에 하나 렌더되면(덱 전용) 한 줄을 통째로 쓰게 — 자동 배치로 그리드를 흐트러뜨리지 않는다. */
+.barStatic .autoHint {
+  grid-column: 1 / -1;
 }
 .barStatic .gauge {
   display: none;
@@ -204,9 +241,6 @@
 .barStatic .me,
 .barStatic .op {
   color: var(--text-muted);
-  font-size: 11px;
-}
-.barStatic .fill {
   font-size: 11px;
 }
 /*
@@ -220,12 +254,29 @@
   display: contents;
 }
 /* 덱에서는 셀렉트를 오른쪽 끝으로 미는 `margin-left:auto` 가 여기선 **뒤따르는 지표까지** 함께
-   밀어낸다(compressed 바에서는 형제가 된다) → 압축 줄에서는 그냥 맨 앞에 앉힌다. */
+   밀어낸다(compressed 바에서는 형제가 된다) → 압축 그리드에서는 왼쪽 칸에 앉혀 2행을 걸친다.
+   간격을 `column-gap` 이 아니라 **이 요소의 margin** 으로 주는 이유: 셀렉트가 없는 화면
+   (스냅샷 없는 구 매치 = `formationLocked`)에서 빈 칸의 gap 만 남는 것을 막는다. */
 .barStatic .formationLabel {
-  margin-left: 0;
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  margin: 0 10px 0 0;
 }
+/* 세로 패딩 2px = 셀렉트 총높이(30+4+2=36)를 오른쪽 두 줄(17+2+17=36)에 맞춘다 —
+   탭 타깃(min-height 30px)은 건드리지 않으면서 바가 셀렉트 때문에 더 자라지 않게. */
 .barStatic .formation {
   min-height: 30px;
-  padding: 3px 8px;
+  padding: 2px 8px;
   font-size: 12px;
+}
+
+/*
+ * 짧은 화면(≤819px)에서는 압축 바의 세로 패딩을 한 번 더 줄인다. 위쪽 `.bar` 용 같은 규칙
+ * (#244 BL-2)은 소스 순서상 `.barStatic` 의 padding 에 **덮여 죽어 있었다** — 같은 의도를
+ * 압축 바에도 살린다. 360×740 이 정확히 이 구간이고, 여기가 세로 예산이 가장 빠듯하다.
+ */
+@media (max-width: 1023px) and (max-height: 819px) {
+  .barStatic {
+    padding: 3px 12px;
+  }
 }
