@@ -524,11 +524,17 @@ class AwayRaidTest extends MatchTestBase {
         });
         // homeName/awayName(#322) 은 **의도적으로 열었다** — 둘 다 ownerName·opponent.name 을
         // 사이드에 재배치한 값이라 이미 관전자에게 보이는 정보이고, 새로 새는 것이 없다.
-        // (이 목록이 기본으로 막았다는 것 자체가 화이트리스트가 일하고 있다는 증거다.)
+        // auto(#249) 도 **의도적으로** 넣는다: 관전자에게 가는 값은 공격자의 실제 설정이 아니라
+        // `toDetailFor` 가 박아 넣는 상수 false 라 구조적으로 정보를 담을 수 없고, 이 값은 전술이
+        // 아니라 "감독시간을 건너뛸까"라는 흐름 취향이다(로스터·지시와 성격이 다르다).
+        // (이 목록이 새 필드를 기본으로 막았다는 것 자체가 화이트리스트가 일하고 있다는 증거다.)
+        // 새 필드를 여기 추가할 땐 **위 두 가지를 다 확인**하고 이유를 적어라 — 목록이 조용히
+        // 넓어지는 순간 이 계약은 3R MAJOR-1 을 다시 놓친다.
         assertThat(populated).isSubsetOf("id", "state", "failReason", "opponent",
                 "scoreH1Home", "scoreH1Away", "scoreHome", "scoreAway", "result",
                 "createdAt", "finishedAt", "mode", "leagueFixtureId", "clock", "ownerName",
-                "homeName", "awayName");
+                "homeName", "awayName", "auto");
+        assertThat(body.get("auto")).isEqualTo(false); // 공격자가 켰든 껐든 관전자에겐 항상 false
         // 허용 목록은 **위치 기반 재조립**이라 필드가 뒤바뀌어도 키 집합은 그대로다(4R minor-7).
         // 몇 개는 값으로도 못박아 뒤바뀜을 잡는다.
         assertThat(body.get("id")).isEqualTo(matchId);

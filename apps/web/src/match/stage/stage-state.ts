@@ -22,6 +22,8 @@
  *    기본으로 열린다.
  */
 
+import { suppressHalftimePanel } from "../auto-mode";
+
 export type InfoTabKey = "stats" | "log" | "brief";
 export type StatePanelKey = "halftime" | "result";
 /**
@@ -67,9 +69,19 @@ export function isHalftimeState(state: string | undefined): boolean {
   return state === "HALFTIME" || state === "H1_BREAK";
 }
 
-/** 매치 상태가 소유하는 패널(없으면 null). */
-export function statePanelFor(state: string | undefined): StatePanelKey | null {
-  if (isHalftimeState(state)) return "halftime";
+/**
+ * 매치 상태가 소유하는 패널(없으면 null).
+ *
+ * `auto` 는 오토 모드(#249). 오토 매치는 감독 패널을 열지 않는다 — 서버가 감독시간을 0초로 열고
+ * 같은 스윕에서 후반으로 잇기 때문에 그 상태는 **이미 지나간 것**인데, 스위퍼와 1초 폴링이 어긋난
+ * 프레임이나 두 전이 사이 재시작 같은 틈에서는 화면에 올 수 있다. 그때 감독 패널이 번쩍이면
+ * "오토인데 감독시간이 열렸다"로 보인다. 판정은 `suppressHalftimePanel`(../auto-mode) 이 소유한다.
+ */
+export function statePanelFor(
+  state: string | undefined,
+  auto?: boolean,
+): StatePanelKey | null {
+  if (isHalftimeState(state)) return suppressHalftimePanel(state, auto) ? null : "halftime";
   if (state === "FINISHED") return "result";
   return null;
 }
