@@ -25,7 +25,8 @@ public class DeckService {
 
     public static final String ROLE_STARTER = "starter";
     public static final String ROLE_BENCH = "bench";
-    private static final int STARTER_COUNT = 11;
+    /** 선발 정원. 감독시간 배치 검증(#276 MatchService)도 같은 상수를 본다 — 두 화면이 같은 규칙이어야 한다. */
+    public static final int STARTER_COUNT = 11;
     /** bench slot_index 스키마 범위 0..6 (ERD deck_slots 주석·openapi DeckSlot) — 튜닝값 아님.
      *  벤치 "인원 수" 상한은 별도로 hmb.deck.bench-max(config)가 결정한다. */
     private static final int BENCH_INDEX_SPACE = 7;

@@ -752,11 +752,14 @@ components:
     HalftimeRequestPhase2Fields:
       type: object
       description: |
-        V1 HalftimeRequest {substitutions} 에 **추가되는** 필드(#254). hero 결정 = **허용** —
-        감독시간에 팀 전술을 바꿀 수 있다(방식1 정합: 후반 "라인 내려"가 이 게임의 설계 취지).
+        V1 HalftimeRequest {substitutions} 에 **추가되는** 필드 — teamTactics(#254) +
+        formation/starters(#276). hero 결정 = **허용** — 감독시간에 팀 전술을 바꿀 수 있고(방식1 정합:
+        후반 "라인 내려"가 이 게임의 설계 취지), **포메이션과 선발 배치도** 바꿀 수 있다
+        ("덱구성이랑 비슷하게 사용할수있도록 유지해서 가져가. 중요한건 통일성이야").
 
-        생략/null = 손대지 않음 → 전반 전술이 그대로 이어진다. 이 엔드포인트는 감독시간에 여러 번
-        불릴 수 있으므로(교체만 고치는 재제출 포함) 미첨부가 앞서 낸 전술을 지우지 않는다.
+        생략/null = 손대지 않음 → 전반 값이 그대로 이어진다. 이 엔드포인트는 감독시간에 여러 번
+        불릴 수 있으므로(교체만 고치는 재제출 · 배치만 고치는 재제출 포함) 미첨부가 앞서 낸 값을
+        지우지 않는다 — 세 필드(substitutions·teamTactics·formation+starters)가 서로 독립이다.
 
         반영 경로는 **기존 B(패치) 입력 그대로**다 — 새 계약이 아니다:
         matches.h2_tactics_json → 후반 실효 스냅샷의 teamTactics → AI 컨텍스트 manualTactics.
@@ -765,6 +768,56 @@ components:
       properties:
         teamTactics:
           $ref: "#/components/schemas/TeamTactics"
+        formation:
+          type: string
+          description: |
+            감독시간 포메이션(#276). hero 결정 = "덱 구성과 같은 조작으로 통일" → 포메이션 문자열만이
+            아니라 **슬롯 재배치까지** 바꾼다(덱 화면이 그렇게 동작하므로).
+
+            **starters 와 함께 보내야 한다** — 둘 다 있거나 둘 다 없어야 하고, 한쪽만 오면
+            400 SHAPE_INVALID(rule=SHAPE_PARTIAL)다. 배치는 한 덩어리라 반쪽은 뜻이 없다
+            (포메이션만 바뀌면 어느 자리에 누가 서는지가 없다).
+
+            생략/null = **손대지 않음** → 전반 배치가 그대로 이어진다. teamTactics·substitutions 와
+            같은 규칙이다(COALESCE) — 이 엔드포인트는 감독시간에 여러 번 불릴 수 있으므로
+            (배치만 고치는 재제출 · 교체만 고치는 재제출) 한쪽만 보낸 호출이 다른 쪽을 지우지 않는다.
+        starters:
+          type: array
+          minItems: 11
+          maxItems: 11
+          items:
+            $ref: "#/components/schemas/SnapshotSlot"
+          description: |
+            감독시간 선발 배치(#276) — **교체 반영 후의 실효 선발** 11명 {playerId, slotIndex}.
+            슬롯을 투입 선수 기준으로 주는 것이 계약의 핵심이다: 서버는 후반 실효 스냅샷의
+            starters[].slotIndex 를 **그 자리의 실효 선수**(교체 out 이면 in) 기준으로 되쓰므로,
+            그래야 "교체로 들어온 선수를 내가 지정한 슬롯에 세운다"가 성립하고 교체와 배치가
+            서로를 덮지 않는다.
+
+            검증(400 SHAPE_INVALID, detail.rule) — 덱과 **같은 뜻·같은 rule 키**다(두 화면이 같은
+            조작을 다른 규칙으로 걸면 통일성이 아니다):
+              STARTER_COUNT(11명 아님) · SLOT_INDEX_RANGE(0..10 밖) · SLOT_INDEX_DUPLICATE ·
+              DUPLICATE_PLAYER · PLAYER_ID_REQUIRED · SLOT_INDEX_REQUIRED ·
+              FORMATION_REQUIRED(formation 공백) · SHAPE_PARTIAL(한쪽만 옴) ·
+              ROSTER_MISMATCH(배치의 선발 집합 ≠ 전반 선발 − out + in).
+            ROSTER_MISMATCH 는 **이미 저장된 배치**에도 걸린다 — 배치를 낸 뒤 교체만 고쳐 재제출하면
+            그 배치가 새 교체와 어긋난 채 남아 조용히 무시되기 때문이다(400 이 조용한 무시보다 낫다).
+            교체 후 GK≥1 은 기존 SUBSTITUTION_INVALID(rule=GK_REQUIRED)가 이미 본다(중복 검증 없음).
+
+            반영 경로: matches.h2_shape_json → MatchService.snapshotForHalf(row,2,subs) 가 만드는
+            후반 **실효 스냅샷**(복사본) → AI 컨텍스트의 formation + roster[].slotIndex.
+            매치 스냅샷(user_deck_json)은 **불변** — 그건 이미 끝난 전반의 기록이라 덮으면 소급 변조다.
+
+            결정론·재현 계약 무손상: 엔진 입력은 AI 산출 TacticalInput 이고 배치는 그 생성 컨텍스트다.
+            SelectData(shared)엔 formation·slotIndex 가 아예 없어 리플레이 원장을 읽는 시뮬 경로는
+            원본 스냅샷 그대로다.
+
+            ⚠️ **배치가 실제로 바뀌면 유저 사이드는 풀 생성(AI 콜 1회)** 이다 — teamTactics 와 달리
+            패치로 표현할 수 없기 때문이다(shared/tactical-patch.ts: "formation 은 A(덱) 소유라 패치
+            불가", 패치 프롬프트는 **베이스의** 포메이션을 출력한다 → 패치로 보내면 AI 가 바뀐 줄
+            모르고 basePosition 11개를 그대로 물려준다 = 조용한 무시). 교체가 이미 같은 이유로 같은
+            분기를 쓴다. **전반과 같은 배치를 그대로 실어 보내면 무변경으로 판정돼 콜0 유지**(#215) —
+            web 이 보드 현재 상태를 매번 보내도 감독시간마다 콜이 늘지 않는다.
 
     MatchDetailPhase2Fields:
       type: object

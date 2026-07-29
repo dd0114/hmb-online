@@ -1,0 +1,44 @@
+-- #276 — 감독시간에 **포메이션 + 선발 배치(슬롯)** 변경 허용
+-- (hero 결정: "덱구성이랑 비슷하게 사용할수있도록 유지해서 가져가. 중요한건 통일성이야."
+--  → 포메이션 문자열만이 아니라 **슬롯 재배치까지**. 덱 화면이 그렇게 동작하므로.)
+--
+-- ⚠️ **번호 잠정** — merge-ready 시 main(매니저 세션)이 재배정한다. 이 브랜치가 열려 있는 동안
+--    다른 모듈이 V29 를 선점할 수 있다(선례: #253/#254 가 V21/V22 → V23/V24 로 밀렸다).
+--    결번·중복은 사람 주석이 아니라 FlywayVersionContinuityTest 가 기계로 막는다.
+--
+-- ⚠️ **순서 의존 — 이 ADD COLUMN 은 반드시 `V21__away_raid` 뒤여야 한다.**
+--    V21(#245 원정)은 matches 의 mode CHECK 를 넓히려고 테이블을 12단계로 **재작성**하며 컬럼을
+--    **명시 목록**으로 새 테이블에 옮긴다. 이 마이그레이션이 V21 보다 앞서면 그 재작성이
+--    h2_shape_json 을 조용히 떨어뜨린다(SQLite 는 에러도 내지 않는다 — 컬럼이 그냥 사라진다).
+--    V24__halftime_tactics 헤더에 같은 경고가 있다. 번호가 곧 순서다 — 재번호할 일이 생기면
+--    이 관계부터 확인해라.
+--
+-- 왜 user_deck_json 을 고치지 않고 새 컬럼인가 (V24 와 같은 논리):
+--   user_deck_json 은 **이 매치에 무엇으로 뛰었나**의 박제다(#98 userDeckSnapshot 이 그대로 노출).
+--   거기 있는 formation/starters[].slotIndex 는 이미 시뮬이 끝난 **전반**의 값이라, 후반 배치로
+--   덮으면 전반 기록이 소급 변조된다("나는 전반을 4-4-2 로 뛰었다"가 사라진다).
+--
+-- 형상: {"formation":"4-3-3","starters":[{"playerId":"P001","slotIndex":0}, ...11개]}
+--   starters 는 **교체 반영 후의 실효 선발**이다(전반 선발 − out + in). 그래야 "교체로 들어온
+--   선수를 내가 지정한 슬롯에 세운다"가 성립한다 — 검증에서 subs_json 과 집합 정합을 강제한다.
+--
+-- 소비 경로: MatchService.snapshotForHalf(row, 2, subs) 가 스냅샷 **복사본**에 formation 을 얹고
+--   각 선발의 slotIndex 를 **그 자리의 실효 선수**(교체 out 이면 in) 기준으로 되쓴다 →
+--   PromptContextBuilder 가 그대로 context.formation / roster[].slotIndex 로 AI 에 싣는다.
+--   추가 배선 0 — 컨텍스트는 이미 두 값을 싣고 있었고, 없던 것은 서버가 받는 자리뿐이었다.
+--
+-- ⚠️ #254(전술)와 딱 하나 다른 지점: 전술은 B(패치) 입력이라 패치로 보낼 수 있지만 **배치는 아니다**.
+--   packages/shared/src/tactical-patch.ts 가 "formation 은 A(덱) 소유라 패치 불가"라고 못 박았고
+--   패치 프롬프트(packages/server/src/prompt/coach.ts)는 **베이스의** 포메이션을 출력한다 →
+--   패치로 보내면 AI 가 바뀐 줄 모르고 basePosition 11개를 그대로 물려준다(**조용한 무시**).
+--   그래서 배치가 실제로 바뀐 경우엔 유저 사이드를 풀 생성으로 강제한다(교체가 이미 같은 분기다).
+--
+-- 결정론·재현 계약 무손상: 엔진 입력은 AI 산출 TacticalInput(ai_jobs.result_json)이고 배치는 그
+--   **생성 컨텍스트**다. SelectData(shared)엔 formation·slotIndex 가 아예 없어 리플레이 원장인
+--   원본 스냅샷을 읽는 simulateAndStore 는 손대지 않는다.
+--
+-- NULL = 감독시간에 배치를 손대지 않았다 → 후반도 전반 배치 그대로(기존 동작 불변).
+--
+-- 짝 파일(.conf)이 없는 이유: 테이블 재작성이 아니라 단순 ADD COLUMN 이라 PRAGMA foreign_keys=OFF
+--   가 필요 없고 Flyway 기본(트랜잭션 감쌈)으로 돌아도 된다(V24 와 같은 부류).
+ALTER TABLE matches ADD COLUMN h2_shape_json TEXT;
