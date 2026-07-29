@@ -126,6 +126,16 @@ function playhead(page: Page): Promise<number> {
   });
 }
 
+/**
+ * #244: 감독시간에는 무대가 **`경기장면` 탭 뒤**에 있다(hero 결정). 이 스펙은 감독시간 헤더가
+ * 재생 플레이헤드를 따라가지 않는지를 재므로 **뷰어가 실제로 돌아가야** 한다 → 탭을 먼저 연다.
+ * (탭이 없으면 = 관전 화면이면 그냥 지나간다.)
+ */
+async function openStageTab(page: Page) {
+  const tab = page.getByTestId("stage-tab-stage");
+  if (await tab.count()) await tab.click();
+}
+
 async function waitForViewer(page: Page) {
   await page.waitForFunction(() => Boolean((window as unknown as { __viewer?: unknown }).__viewer), null, {
     timeout: 20_000,
@@ -135,6 +145,7 @@ async function waitForViewer(page: Page) {
 test.describe("#226 감독시간 헤더 — 확정 스코어·전반 종료 시각 고정", () => {
   test("a+b. HALFTIME 헤더 = 전반 확정 스코어 + 전반 종료 분", async ({ page }) => {
     await openMatch(page, "HALFTIME", 5_000);
+    await openStageTab(page);
     await waitForViewer(page);
 
     const scorebar = page.getByTestId("stage-scorebar");
@@ -151,6 +162,7 @@ test.describe("#226 감독시간 헤더 — 확정 스코어·전반 종료 시�
 
   test("c. 전반을 처음으로 되감아도 헤더가 0 : 0 / 0' 로 무너지지 않는다", async ({ page }) => {
     await openMatch(page, "HALFTIME", 5_000);
+    await openStageTab(page);
     await waitForViewer(page);
 
     // hero 가 본 화면의 재현 경로 — 감독시간에는 전반 전체가 자유 리뷰라 재생이 앞쪽에 있을 수 있다.
@@ -169,6 +181,7 @@ test.describe("#226 감독시간 헤더 — 확정 스코어·전반 종료 시�
 
   test("d. FIRST_HALF 헤더는 여전히 재생 진행을 따라간다(라이브 무회귀)", async ({ page }) => {
     await openMatch(page, "FIRST_HALF", 30_000);
+    await openStageTab(page);
     await waitForViewer(page);
 
     // 라이브 전반은 확정 스코어가 없다 → 재생 기준 스코어·시계가 쓰인다.

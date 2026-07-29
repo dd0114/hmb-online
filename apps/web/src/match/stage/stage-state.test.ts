@@ -196,11 +196,18 @@ describe("탭 구성", () => {
   });
 
   it("상태 패널이 먼저, 켜진 토글이 고정 순서로 뒤따른다", () => {
+    // #244: 감독시간에는 무대가 상시가 아니라 **탭**이다 → 감독 패널 바로 뒤에 `stage` 가 온다.
+    // (관전 상태에서는 여전히 무대가 상시라 이 탭이 없다 — 아래 result 케이스가 그걸 지킨다.)
     expect(tabsFor({ stats: true, log: true, brief: true }, "halftime")).toEqual([
       "halftime",
+      "stage",
       "stats",
       "log",
       "brief",
+    ]);
+    expect(tabsFor({ stats: true, log: false, brief: false }, "result"), "관전·결과에는 경기장면 탭이 없다").toEqual([
+      "result",
+      "stats",
     ]);
     expect(tabsFor({ stats: false, log: true, brief: false }, null)).toEqual(["log"]);
   });

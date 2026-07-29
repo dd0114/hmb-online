@@ -34,6 +34,14 @@ interface PlayerPickerProps {
   autoFilter?: Position | "ALL";
   /** 리스트에서 집어든(배치 대기) 선수 — 행이 강조된다. */
   pendingPlayerId?: string | null;
+  /**
+   * #244: 시트 안에서 쓰는 모드. 두 가지가 달라진다.
+   *   ① 헤더 제목을 그리지 않는다(시트가 이미 제목을 갖는다 — 두 번 말하지 않는다).
+   *   ② **이미 배치된 선수도 고를 수 있다** — 자리에서 연 시트는 "이 자리에 넣을 선수"이고,
+   *      배치된 선수를 고르면 자리를 맞바꾸는 게 맞다(movePlayerToSlot 이 스왑을 처리한다).
+   *      본문 리스트(구 동작)에서는 중복 배치가 되므로 계속 막는다.
+   */
+  inSheet?: boolean;
 }
 
 interface PoolItemProps {
@@ -43,6 +51,8 @@ interface PoolItemProps {
   condition?: number;
   fit: "best" | "mid" | "low" | null;
   pending: boolean;
+  /** 시트 모드 — 배치된 선수도 선택 가능(자리 교체). */
+  selectable?: boolean;
 }
 
 const FIT_LABELS: Record<"best" | "mid" | "low", string> = { best: "적합", mid: "보통", low: "낮음" };
@@ -57,25 +67,26 @@ const FIT_CLASSES: Record<"best" | "mid" | "low", string> = {
  * board slot (보조 수단); the same button also tap-to-places (1급 수단, tap-place.ts).
  * A player already placed on the board is disabled (no drag, no tap) — no duplicates.
  */
-function PoolItem({ player, placed, onPick, condition, fit, pending }: PoolItemProps) {
+function PoolItem({ player, placed, onPick, condition, fit, pending, selectable }: PoolItemProps) {
   const overall = Math.round(playerOverall(player.attributes));
+  const disabled = Boolean(placed) && !selectable;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: poolDraggableId(player.id),
-    disabled: Boolean(placed),
+    disabled,
   });
 
   return (
     <button
       ref={setNodeRef}
       type="button"
-      className={[placed ? styles.itemPlaced : styles.item, pending ? styles.itemPending : ""]
+      className={[placed && !selectable ? styles.itemPlaced : styles.item, pending ? styles.itemPending : ""]
         .filter(Boolean)
         .join(" ")}
       data-testid={`pick-${player.id}`}
       data-pending={pending ? "true" : "false"}
       /* aria-pressed 는 @dnd-kit attributes 가 소유한다(드래그 상태) — 배치 대기는 data-pending + aria-label 로. */
       aria-label={pending ? `${player.name} — 배치할 슬롯을 고르세요` : undefined}
-      disabled={Boolean(placed)}
+      disabled={disabled}
       onClick={() => onPick(player.id)}
       style={isDragging ? { opacity: 0.4 } : undefined}
       {...listeners}
@@ -131,7 +142,7 @@ function fitTier(player: CatalogPlayer, filter: Position | "ALL"): "best" | "mid
  * 보유 선수 리스트 — 포지션 필터 + 추천순(player-ranking) 정렬. 탭하면 배치(탭-투-플레이스),
  * 드래그는 보조. #106 R1: 슬롯을 먼저 탭하면 `autoFilter` 로 그 포지션이 자동 선택된다.
  */
-export function PlayerPicker({ players, draft, onPick, conditions, autoFilter, pendingPlayerId }: PlayerPickerProps) {
+export function PlayerPicker({ players, draft, onPick, conditions, autoFilter, pendingPlayerId, inSheet }: PlayerPickerProps) {
   const [filter, setFilter] = useState<Position | "ALL">("ALL");
 
   // 슬롯 탭 → 그 포지션으로 필터 전환(자동). autoFilter 가 바뀔 때만 반영한다.
@@ -145,9 +156,9 @@ export function PlayerPicker({ players, draft, onPick, conditions, autoFilter, p
   }, [players, filter]);
 
   return (
-    <section className={styles.picker} data-testid="player-pool">
+    <section className={inSheet ? styles.pickerSheet : styles.picker} data-testid="player-pool">
       <div className={styles.header}>
-        <h3 className={styles.title}>보유 선수 ({players.length})</h3>
+        {!inSheet && <h3 className={styles.title}>보유 선수 ({players.length})</h3>}
         <span className={styles.sortNote} data-testid="picker-sort-note">
           {filter === "ALL" ? "추천순" : `${filter} 추천순`}
         </span>
@@ -177,6 +188,7 @@ export function PlayerPicker({ players, draft, onPick, conditions, autoFilter, p
               condition={conditions?.[p.id]}
               fit={fitTier(p, filter)}
               pending={pendingPlayerId === p.id}
+              selectable={inSheet}
             />
           </li>
         ))}

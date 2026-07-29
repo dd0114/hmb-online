@@ -1,7 +1,22 @@
+/*
+ * 감독시간 패널 = [스크롤 콘텐츠] + [바닥 CTA]. CTA 를 스크롤 **밖**에 두는 게 핵심이다 —
+ * sticky 로 띄우면 자기 아래로 콘텐츠가 지나가며 프롬프트를 덮는다(독립 검증 BL-1, AC9/AC10 red).
+ */
 .panel {
   display: flex;
   flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
+  padding: 10px 12px 12px;
 }
 
 .subsSection {
@@ -102,12 +117,26 @@
   color: var(--danger);
 }
 
+/*
+ * 주 행동은 **하나**이고 항상 손 닿는 곳에 있다(#244). 그전에는 패널 맨 아래라 스크롤해야 보였다
+ * (독립 검증 F-3). sticky 로 띄우되 **자기 배경 판**을 함께 깔아 밑에 깔린 글자를 반쯤 자르지 않는다.
+ */
+/*
+ * ⚠️ sticky CTA 는 **자기 아래로 콘텐츠가 지나간다**. 그래서 그냥 붙이면 스크롤 위치에 따라
+ * 프롬프트를 덮는다 — 실제로 독립 검증이 360/390/412 전 폰에서 교체 모드·등록 후에
+ * `editor-team-prompt` 중심이 `resume-button` 에 피격되는 것을 잡았다(BL-1, AC9/AC10 red).
+ * 이 화면의 주인공은 프롬프트다 → ① 패널 끝에 **CTA 높이만큼 스페이서**를 둬 마지막 콘텐츠가
+ * CTA 위로 올라올 수 있게 하고 ② 프롬프트에 `scroll-margin-bottom` 을 줘 자동 스크롤이
+ * CTA 를 피해서 멈추게 한다(아래 `.ctaSpacer`, DeckEditor 의 `scroll-margin-bottom`).
+ */
 .resume {
+  flex: none;
+  margin: 0 12px calc(10px + env(safe-area-inset-bottom, 0));
   padding: 14px;
-  border-radius: 10px;
+  border-radius: 12px;
   border: none;
-  background: var(--accent);
-  color: var(--accent-contrast);
+  background: var(--us);
+  color: #04122c;
   font-size: 16px;
   font-weight: 700;
 }
@@ -116,64 +145,127 @@
   opacity: 0.6;
 }
 
-/* 감독시간(P4-D2) 카운트다운 — 패널 맨 위, 지금 시간이 흐르고 있다는 걸 먼저 알린다. */
+/*
+ * 감독시간 카운트다운 (#244 재설계) — 배너 카드가 아니라 **한 줄 + 줄어드는 바**.
+ * 시간은 앰버(--warn) 한 색으로만 말한다.
+ */
 .deadline {
-  margin: 0 0 10px;
-  padding: 6px 10px;
-  border-radius: 8px;
-  background: var(--bg-soft, rgba(127, 127, 127, 0.12));
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  column-gap: 8px;
+  margin: 0 0 8px;
   font-size: 12px;
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
-
-.deadlineOver {
-  color: var(--danger, #d9534f);
+.deadlineTime {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--warn);
 }
-
-/* 팀 전술(#254) — 감독시간에도 전술을 바꿀 수 있다. 5스텝 세그먼트는 덱 화면(DirectiveRail)과
-   같은 순수 로직(tactics-steps)을 쓰고, 여기 스타일은 감독시간 폭(모바일 390px)에 맞춘 축약형이다. */
-.tacticsSection {
-  margin: 14px 0;
-}
-
-.tacticRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.tacticLabel {
-  flex: 0 0 56px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.tacticSteps {
-  display: flex;
-  flex: 1 1 auto;
-  gap: 2px;
-}
-
-.tacticSteps button {
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 6px 2px;
-  border: 1px solid var(--border, rgba(127, 127, 127, 0.35));
-  background: transparent;
+.deadlineHint {
   color: var(--text-muted);
   font-size: 11px;
-  border-radius: 6px;
+}
+.deadlineBar {
+  grid-column: 1 / -1;
+  margin-top: 5px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+.deadlineBar i {
+  display: block;
+  height: 100%;
+  background: var(--warn);
+  transition: width 0.4s linear;
 }
 
-.tacticSteps button:disabled {
-  opacity: 0.5;
+.deadlineOver .deadlineTime {
+  color: var(--danger, #d9534f);
+}
+.deadlineOver .deadlineBar i {
+  background: var(--danger, #d9534f);
 }
 
-.tacticStepOn {
-  background: var(--accent);
-  color: var(--accent-contrast);
-  border-color: var(--accent);
+/* ── #244: 감독시간은 **덱 화면과 같은 에디터**를 쓴다. 여기 남는 건 "덱에 없는 추가분" 뿐이다:
+   카운트다운 · 교체 요약 · 모드 탭 · 교체 안내. 보드/프롬프트 스타일 복제본은 전부 삭제했다
+   (복제해두면 한쪽만 고쳐져 화면이 갈라진다 — 이 파일이 그렇게 갈라질 뻔했다). */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+.subsBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.subsBar:empty {
+  display: none;
+}
+.subChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 12px;
+}
+.subChipX {
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  min-height: 24px;
+}
+.modeTabs {
+  display: grid;
+  grid-auto-flow: column;
+  border-bottom: 1px solid var(--hairline);
+}
+.modeTab,
+.modeTabActive {
+  min-height: 44px;
+  padding: 10px 8px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+.modeTabActive {
+  color: var(--text);
   font-weight: 700;
+  border-bottom-color: var(--us);
 }
+.swapGuide {
+  margin: 0;
+  font-size: 12.5px;
+  color: #e8e3d2;
+}
+.note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--accent);
+}
+.writtenNote {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/*
+ * #244: 감독시간 보드는 **덱과 완전히 같은 크기**다. 예전에는 무대가 상시로 세로를 먹어
+ * 여기서만 보드를 줄였는데, 무대를 `stage` 탭으로 내리면서 그 압박이 사라졌다 →
+ * 화면별 예외를 없앤다(같은 화면은 같게).
+ */
+

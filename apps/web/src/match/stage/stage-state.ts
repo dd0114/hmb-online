@@ -10,7 +10,16 @@
 
 export type ToggleKey = "stats" | "log" | "brief";
 export type StatePanelKey = "halftime" | "result";
-export type TabKey = ToggleKey | StatePanelKey;
+/**
+ * `stage` = **경기장면 탭**(감독시간 전용, #244).
+ * 감독시간에는 무대를 상시 띄우지 않고 탭 하나로 내린다 — hero 결정. 이유는 두 가지다:
+ *  ① 이 상태에선 경기가 멈춰 있고 유저가 하는 일은 전부 패널 안(라인업·교체·프롬프트)이다.
+ *  ② 무대가 세로를 118~490px 먹으면 **감독시간만 덱 화면과 다른 레이아웃**이 된다 —
+ *     "덱 만들 때와 형식이 같아야 한다"(hero)를 지키려면 그 자리를 비워야 한다.
+ * 관전(전·후반)에서는 여전히 무대가 상시다 — 이 탭은 감독시간에만 나타난다(#169 AC-W1-1 유지).
+ */
+export type StageTabKey = "stage";
+export type TabKey = ToggleKey | StatePanelKey | StageTabKey;
 
 export const TOGGLE_KEYS: readonly ToggleKey[] = ["stats", "log", "brief"];
 
@@ -21,12 +30,14 @@ export const DEFAULT_TOGGLES: Toggles = { stats: false, log: false, brief: false
 
 export const TOGGLE_STORAGE_KEY = "hmb.stage.toggles";
 
+/** #244: 이모지를 뺀다 — 색·아이콘이 의미 없이 알록달록해지던 축(재설계 원칙 "색은 4개만"). */
 export const TAB_LABELS: Record<TabKey, string> = {
-  stats: "📊 통계",
-  log: "📜 로그",
-  brief: "📝 후반 지시",
-  halftime: "🧑‍🏫 감독",
-  result: "🏆 결과",
+  stats: "통계",
+  log: "로그",
+  brief: "후반 지시",
+  halftime: "감독",
+  result: "결과",
+  stage: "경기장면",
 };
 
 /** 저장값 파싱 — 손상/구버전/부분 저장 전부 기본값으로 흡수(화면이 깨지지 않게). */
@@ -191,6 +202,8 @@ export function headerScore(
 export function tabsFor(toggles: Toggles, statePanel: StatePanelKey | null): TabKey[] {
   const tabs: TabKey[] = [];
   if (statePanel) tabs.push(statePanel);
+  // 감독시간에는 무대가 상시가 아니라 **탭**이다(#244) — 감독 패널 바로 다음 자리에 둔다.
+  if (statePanel === "halftime") tabs.push("stage");
   for (const k of TOGGLE_KEYS) if (toggles[k]) tabs.push(k);
   return tabs;
 }
@@ -213,5 +226,6 @@ export function resolveActiveTab(tabs: readonly TabKey[], preferred: TabKey | nu
  */
 export function sheetHeight(tab: TabKey | null): "info" | "state" | null {
   if (!tab) return null;
-  return tab === "halftime" || tab === "result" ? "state" : "info";
+  // 경기장면 탭도 "state" 높이를 쓴다 — 정보 패널(통계·로그)보다 크게 봐야 뭘 보는지 알 수 있다.
+  return tab === "halftime" || tab === "result" || tab === "stage" ? "state" : "info";
 }

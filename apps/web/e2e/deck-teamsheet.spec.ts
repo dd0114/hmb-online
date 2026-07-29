@@ -13,6 +13,14 @@ import { mkdirSync } from "node:fs";
  * 스크린샷 = apps/web/.smoke/.
  */
 
+/**
+ * ⚠️ #244(프롬프트 1급) 이후 — 이 파일에서 **은퇴한 계약**과 그 이유:
+ *   · 모바일 하단 독 관련 전부(`rail-dock-toggle` 여닫기, 런웨이 재측정, 접힌 독 클리어런스,
+ *     펼친 독 오토스크롤, 독 핸들 44px) → **독 자체가 없어졌다**. 레일은 문서 흐름 블록이다.
+ *   · 2단계 탭-투-플레이스(`place-pending-hint`/`place-cancel`, 리스트→슬롯 역방향) →
+ *     **보유 선수 시트**가 흡수했다(슬롯 탭 = 그 자리에 넣을 선수 고르기).
+ * 되살리려면 계약만 복원하지 말고 그 UI 를 먼저 되살려야 한다. 신규 계약 = p244-prompt-first.spec.ts.
+ */
 const SMOKE_DIR = new URL("../.smoke/", import.meta.url).pathname;
 
 const attrs = (v: number) => ({
@@ -155,51 +163,44 @@ test("R1 선수 탭 → 선수정보 시트가 아니라 지시 레일이 바뀐
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
 });
 
-test("R1 탭-투-플레이스: 슬롯 탭 → 자동 필터 → 선수 탭 → 배치 (역방향 포함)", async ({ page }) => {
+test("R1→#244 슬롯 탭 → **보유 선수 시트**(포지션 자동 필터) → 배치 → 그 선수 지시", async ({ page }) => {
   mkdirSync(SMOKE_DIR, { recursive: true });
   await mockApi(page, []); // 빈 덱
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
 
   await expect(page.getByTestId("starter-count")).toHaveText("선발 0/11");
+  // 본문에 리스트는 없다 — 선택은 시트로만(#244).
+  await expect(page.getByTestId("player-pool")).toBeHidden();
 
-  // 정방향: MF 슬롯(slotIndex 6) 탭 → 리스트가 MF 로 자동 필터
+  // MF 슬롯(slotIndex 6) 탭 → 시트가 MF 로 열린다
   await page.getByTestId("board-slot-starter-6").click();
+  await expect(page.getByTestId("pool-sheet")).toBeVisible();
   await expect(page.getByTestId("picker-filter-MF")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("picker-sort-note")).toContainText("MF");
-  // 그 포지션 추천순 1위(MF1=84) 탭 → 배치
+
+  // 그 포지션 추천순 1위(MF1=84) → 배치되고 시트가 닫히며 **그 선수 지시**로 이어진다
   await page.getByTestId("pick-MF1").click();
+  await expect(page.getByTestId("pool-sheet")).toBeHidden();
   await expect(page.getByTestId("board-slot-starter-6")).toHaveAttribute("data-filled", "true");
   await expect(page.getByTestId("starter-count")).toHaveText("선발 1/11");
   await expect(page.getByTestId("rail-title")).toHaveText("미드하나");
 
-  // 배치 대기는 보드 바의 명시적 [취소]로 되돌릴 수 있다(모바일 독이 접혀 있어도 취소 가능)
-  await page.getByTestId("picker-filter-FW").click();
-  await page.getByTestId("pick-FW2").click();
-  await expect(page.getByTestId("place-pending-hint")).toContainText("공격둘");
-  await page.getByTestId("place-cancel").click();
-  await expect(page.getByTestId("place-cancel")).toHaveCount(0);
-  await expect(page.getByTestId("pick-FW2")).toHaveAttribute("data-pending", "false");
-
-  // 역방향: 선수 먼저 탭 → 슬롯 탭
-  await page.getByTestId("picker-filter-GK").click();
+  // 자리 교체 = 레일의 [이 자리 선수 바꾸기] → 같은 시트에서 **이미 배치된 선수**도 고를 수 있다
+  await page.getByTestId("board-slot-starter-0").click();
   await page.getByTestId("pick-GK1").click();
-  await expect(page.getByTestId("pick-GK1")).toHaveAttribute("data-pending", "true");
-  await expect(page.getByTestId("starter-count")).toHaveText("선발 1/11"); // 아직 배치 전
-  await page.getByTestId("board-slot-starter-0").click();
   await expect(page.getByTestId("starter-count")).toHaveText("선발 2/11");
-  await expect(page.getByTestId("board-slot-starter-0")).toHaveAttribute("data-filled", "true");
-
-  // 토큰↔토큰 = 자리 교체 (직전 배치로 남아있는 선택은 레일 닫기로 비운다)
-  await page.getByTestId("rail-close").click();
-  await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
   await page.getByTestId("token-MF1").click();
-  await page.getByTestId("board-slot-starter-0").click();
-  await expect(page.getByTestId("board-slot-starter-0").getByTestId("token-MF1")).toBeVisible();
+  await page.getByTestId("rail-swap-player").click();
+  await expect(page.getByTestId("pool-sheet")).toBeVisible();
+  // 자리에서 연 시트는 그 포지션(MF)으로 필터되어 있다 → 전체로 풀고 이미 배치된 GK1 을 고른다.
+  await page.getByTestId("picker-filter-ALL").click();
+  await page.getByTestId("pick-GK1").click(); // 이미 0번에 있는 선수 → 6번과 자리 교체
   await expect(page.getByTestId("board-slot-starter-6").getByTestId("token-GK1")).toBeVisible();
+  await expect(page.getByTestId("board-slot-starter-0").getByTestId("token-MF1")).toBeVisible();
   await expect(page.getByTestId("starter-count")).toHaveText("선발 2/11");
 
-  await page.screenshot({ path: `${SMOKE_DIR}r1-tap-place-390.png`, fullPage: true });
+  await page.screenshot({ path: `${SMOKE_DIR}p244-sheet-place-390.png`, fullPage: true });
 });
 
 /**
@@ -215,6 +216,7 @@ test("R2 지시 레일 A안: 역할·칩·한마디 → 미리보기 = 실제 �
   await openDeck(page);
 
   await page.getByTestId("token-FW2").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "player");
   // 아무 지시도 없을 땐 빈 상태
   await expect(page.getByTestId("rail-compose-empty")).toBeVisible();
@@ -263,7 +265,7 @@ test("R2 팀 지시: 5스텝 세그먼트 → 계약값 0/.25/.5/.75/1 로 저�
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
 
-  await page.getByTestId("rail-dock-toggle").click(); // 모바일 독 펼치기
+  await page.getByTestId("team-tune-toggle").click(); // #244: 전술 다이얼은 ⚙ 뒤(기본 접힘)
   // 슬라이더가 아니다 — 5버튼 세그먼트
   await expect(page.getByTestId("tactics-press").locator("button")).toHaveCount(5);
   await expect(page.getByTestId("tactics-press-step-2")).toHaveAttribute("aria-checked", "true"); // 기본 0.5
@@ -300,7 +302,6 @@ test("R2 r1: 토큰을 **다시** 탭해도 해제되지 않고 그 선수 지�
 
   // 채워진 슬롯(slotIndex 6 = MF2 "미드둘")을 탭 → 배치가 아니라 **선택** 경로 → 독이 펼쳐진다.
   await page.getByTestId("board-slot-starter-6").click();
-  await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "true");
   await expect(page.getByTestId("rail-title")).toHaveText("미드둘");
   await page.getByTestId("rail-close").click();
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
@@ -309,7 +310,6 @@ test("R2 r1: 토큰을 **다시** 탭해도 해제되지 않고 그 선수 지�
   await page.getByTestId("token-MF1").click();
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "player");
   await expect(page.getByTestId("rail-title")).toHaveText("미드하나");
-  await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "true");
   await expect(page.getByTestId("rail-prompt-input")).toBeVisible();
 
   // r1 계약 본체: **같은** 토큰을 다시 탭해도 팀 지시로 튕기지 않는다(재탭 = 해제 아님).
@@ -343,35 +343,6 @@ test("R2 r1: 토큰을 **다시** 탭해도 해제되지 않고 그 선수 지�
   // 해제는 보드 바 [선택 해제] 로 (독 안의 레일 × 와 동치)
   await page.getByTestId("select-clear").click({ timeout: 8000 });
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
-});
-
-test("R2 r3: 모바일 최대 스크롤에서 죽은 공간 없음 + 접힌 독이 리스트를 가리지 않는다", async ({ page }) => {
-  await mockApi(page, seededDeck());
-  await page.setViewportSize({ width: 390, height: 844 });
-  await openDeck(page);
-
-  // 적대적으로: **선수 컨텍스트**(성격 배지·신뢰 게이지로 헤드가 더 두꺼운 상태)에서 독을 접고 잰다.
-  await page.getByTestId("token-MF1").click();
-  await page.getByTestId("rail-dock-toggle").click(); // 접기 = 클리어런스 계약 상태
-  await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "false");
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await page.waitForTimeout(150);
-  const m = await page.evaluate(() => {
-    const dock = document.querySelector('[data-testid="rail-dock"]')!.getBoundingClientRect();
-    const pool = document.querySelector('[data-testid="player-pool"]')!.getBoundingClientRect();
-    return {
-      dockTop: dock.top,
-      dockHeight: dock.height,
-      poolBottom: pool.bottom,
-      gap: dock.top - pool.bottom,
-    };
-  });
-  console.log(`[smoke] r3 dockH=${m.dockHeight.toFixed(1)} gap(pool→dock)=${m.gap.toFixed(1)}`);
-  expect(m.gap, "리스트 카드가 접힌 독에 가려지면 안 된다").toBeGreaterThanOrEqual(0);
-  // 132px(poolCol) + 140px(notes) 이중 여백이던 시절 실측 ~160px → 클리어런스 한 곳으로 정리.
-  // 상한은 "죽은 공간 없음", 하한은 "가림 여유 있음"(m4 계열 취약점 방지) 둘 다 건다.
-  expect(m.gap, "최대 스크롤에서 죽은 공간(리스트↔독)이 과하면 안 된다").toBeLessThanOrEqual(48);
-  expect(m.gap, "클리어런스가 0에 붙어 있으면 헤드가 조금만 커져도 다시 가려진다").toBeGreaterThanOrEqual(12);
 });
 
 test("R1 반응형: 390 / 1024 / 1280px 가로 오버플로 0", async ({ page }) => {
@@ -415,6 +386,7 @@ test("R3a m1: 우연히 카탈로그와 같은 한마디 → 재진입 → 칩 �
 
   const typed = "높은 위치에서 강하게 압박한다.";
   await page.getByTestId("token-FW2").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await page.getByTestId("rail-prompt-input").fill(typed);
   await expect(page.getByTestId("rail-compose-own")).toHaveText(typed);
   await page.getByTestId("save-deck").click();
@@ -425,6 +397,7 @@ test("R3a m1: 우연히 카탈로그와 같은 한마디 → 재진입 → 칩 �
   await page.reload();
   await expect(page.getByTestId("deck-editor")).toBeVisible();
   await page.getByTestId("token-FW2").click();
+  await page.getByTestId("rail-tune-toggle").click(); // 리로드로 서랍 상태가 초기화된다
   await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("rail-prompt-input")).toHaveValue("");
 
@@ -452,6 +425,7 @@ test("R3a m1: 이번 세션에 직접 켠 칩을 끄는 건 안내를 띄우지 
   await openDeck(page);
 
   await page.getByTestId("token-FW2").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await page.getByTestId("rail-chip-press").click();
   await expect(page.getByTestId("rail-compose-directive")).toContainText("압박");
   await page.getByTestId("rail-chip-press").click();
@@ -468,89 +442,10 @@ test("R3a m1: 이번 세션에 직접 켠 칩을 끄는 건 안내를 띄우지 
  *      (독 스크롤러 바닥 sticky).
  * 가림 여부는 좌표가 아니라 `elementFromPoint` 히트테스트로 본다(자동 스크롤이 가림을 숨기지 못하게).
  */
-test("R3a r2/m5: 390 펼친 독 — 대상 식별 + `AI에 전달될 지시문` 도달(스크롤 없이)", async ({ page }) => {
-  mkdirSync(SMOKE_DIR, { recursive: true });
-  await mockApi(page, seededDeck());
-  await page.setViewportSize({ width: 390, height: 844 });
-  await openDeck(page);
-
-  const hit = (testId: string) =>
-    page.evaluate((id) => {
-      const el = document.querySelector(`[data-testid="${id}"]`);
-      if (!el) return { found: false, isSelf: false, top: 0, bottom: 0 };
-      const r = el.getBoundingClientRect();
-      const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-      return { found: true, isSelf: at?.closest(`[data-testid="${id}"]`) != null, top: r.top, bottom: r.bottom };
-    }, testId);
-
-  for (const [playerId, name] of [["GK1", "골리원"], ["MF1", "미드하나"], ["FW1", "공격하나"]] as const) {
-    await page.getByTestId(`token-${playerId}`).click();
-    await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "true");
-    await expect(page.getByTestId("rail-title")).toHaveText(name);
-    await page.waitForTimeout(150);
-
-    // ① 누구에게 쓰는지: 레일 헤드(위)뿐 아니라 보드의 그 토큰이 실제로 보인다
-    const token = await hit(`token-${playerId}`);
-    console.log(`[smoke] ${playerId} token visible=${token.isSelf} top=${token.top.toFixed(0)}`);
-    expect(token.isSelf, `${playerId} 토큰이 펼친 독/시트 바에 가려 대상이 안 보인다`).toBe(true);
-
-    // ② 미리보기 도달: 두 줄이 있는 상태로 만들고 히트테스트(독 안 추가 스크롤 없이)
-    await page.getByTestId("rail-chip-press").click();
-    await page.getByTestId("rail-prompt-input").fill("오늘 너만 믿는다");
-    const cap = await hit("rail-compose");
-    const own = await hit("rail-compose-own");
-    console.log(`[smoke] ${playerId} compose visible=${cap.isSelf} own=${own.isSelf} top=${cap.top.toFixed(0)}`);
-    expect(cap.isSelf, "`AI에 전달될 지시문` 블록이 독 fold 아래에 묻혔다").toBe(true);
-    expect(own.isSelf, "내가 쓴 문장 줄에 스크롤 없이 도달하지 못한다").toBe(true);
-
-    await page.getByTestId("rail-close").click(); // 다음 선수로 (토큰↔토큰 탭은 자리 교체라 해제 먼저)
-  }
-  // 접고 → 리스트까지 스크롤 → 다시 펼치는 실사용 경로에서도 대상 토큰을 되찾아온다
-  await page.getByTestId("token-MF1").click();
-  await page.getByTestId("rail-dock-toggle").click(); // 접기
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await page.waitForTimeout(150);
-  const hidden = await hit("token-MF1");
-  console.log(`[smoke] 스크롤 후(접힘) MF1 보임=${hidden.isSelf} top=${hidden.top.toFixed(0)}`);
-  await page.getByTestId("rail-dock-toggle").click(); // 다시 펼치기 → 오토스크롤
-  await page.waitForTimeout(200);
-  const regained = await hit("token-MF1");
-  console.log(`[smoke] 재펼침 후 MF1 보임=${regained.isSelf} top=${regained.top.toFixed(0)}`);
-  expect(regained.isSelf, "독을 다시 펼쳤을 때 대상 토큰이 화면에 없다").toBe(true);
-  await page.screenshot({ path: `${SMOKE_DIR}r3a-dock-390.png` });
-});
-
 /**
  * R3a m6/m7 — 펼친 독의 문서 런웨이를 60vh 고정치에서 **실측치**로 바꾼 효과.
  * (착수 시점 실측: 최대 스크롤 죽은 띠 175px / 접힘 점프 507px.)
  */
-test("R3a m6/m7: 펼친 독 최대 스크롤 죽은 띠 축소 + 접힘 점프 축소", async ({ page }) => {
-  await mockApi(page, seededDeck());
-  await page.setViewportSize({ width: 390, height: 844 });
-  await openDeck(page);
-
-  await page.getByTestId("token-MF1").click();
-  await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "true");
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  await page.waitForTimeout(200);
-
-  const gap = await page.evaluate(() => {
-    const dock = document.querySelector('[data-testid="rail-dock"]')!.getBoundingClientRect();
-    const pool = document.querySelector('[data-testid="player-pool"]')!.getBoundingClientRect();
-    return dock.top - pool.bottom;
-  });
-  console.log(`[smoke] m6 펼친 독 최대 스크롤 죽은 띠 = ${gap.toFixed(1)}px (착수 시점 175.4)`);
-  expect(gap, "리스트가 펼친 독에 가려지면 안 된다").toBeGreaterThanOrEqual(0);
-  expect(gap, "펼친 독 최대 스크롤의 죽은 띠").toBeLessThanOrEqual(24);
-
-  const before = await page.evaluate(() => window.scrollY);
-  await page.getByTestId("rail-dock-toggle").click();
-  await page.waitForTimeout(250);
-  const after = await page.evaluate(() => window.scrollY);
-  console.log(`[smoke] m7 접힘 점프 = ${before - after}px (착수 시점 507)`);
-  expect(before - after, "접을 때 스크롤 점프").toBeLessThan(400);
-});
-
 /** m1 안내는 **폰에서도 보여야** 한다(데이터는 이미 안전하지만, 무슨 일이 있었는지 알려야 한다). */
 test("R3a m1 × 모바일: 390 에서 문장이 한마디로 옮겨지고 안내가 독 안에 보인다", async ({ page }) => {
   const seeded = seededDeck().map((s) =>
@@ -561,6 +456,7 @@ test("R3a m1 × 모바일: 390 에서 문장이 한마디로 옮겨지고 안내
   await openDeck(page);
 
   await page.getByTestId("token-MF1").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("rail-chip-press").click();
   await page.waitForTimeout(200);
@@ -635,6 +531,7 @@ test("R3a blocker-2: 연속 해제 + 안내 미소비 이탈에도 두 문장이
   await openDeck(page);
 
   await page.getByTestId("token-MF1").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await expect(page.getByTestId("rail-chip-marking")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "true");
 
@@ -721,9 +618,12 @@ for (const width of [390, 1280]) {
       expect(blocked, `빈 상태 안내가 선발 슬롯을 가린다: ${JSON.stringify(blocked)}`).toEqual([]);
 
       // hit-test 뿐 아니라 **실제 클릭**도 통한다(가장 덮이기 쉬운 중앙 슬롯들로 확인).
+      // #244: 슬롯 탭 = 보유 선수 시트가 열린다 → 다음 슬롯을 누르려면 시트를 닫아야 한다.
       for (const i of [2, 3]) {
         await page.getByTestId(`board-slot-starter-${i}`).click({ timeout: 3000 });
         await expect(page.getByTestId("player-pool")).toBeVisible();
+        await page.getByTestId("pool-sheet-close").click();
+        await expect(page.getByTestId("pool-sheet")).toBeHidden();
       }
       await page.screenshot({ path: `${SMOKE_DIR}r3b-empty-${width}-${owned}.png`, fullPage: true });
     });
@@ -760,6 +660,7 @@ test("R3b B: 컨디션 3단계가 색 **외** 축으로도 구분된다(등급 �
   await mockApi(page, seededDeck());
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
+  await page.getByTestId("pool-sheet-open").click(); // #244: 보유 선수는 시트 뒤
 
   // 목 컨디션: GK1 0.9(high) / MF1 0.5(mid) / FW1 0.2(low)
   const tiers = { GK1: "high", MF1: "mid", FW1: "low" } as const;
@@ -786,6 +687,7 @@ test("R3b C: a11y — 역할·5스텝은 radiogroup, 칩은 토글, 근사값은
   await mockApi(page, seededDeck());
   await page.setViewportSize({ width: 1280, height: 900 });
   await openDeck(page);
+  await page.getByTestId("team-tune-toggle").click(); // #244: 전술 다이얼은 ⚙ 뒤
 
   // 팀 컨텍스트: 5스텝 = 배타 선택
   await expect(page.getByTestId("tactics-press")).toHaveAttribute("role", "radiogroup");
@@ -796,6 +698,7 @@ test("R3b C: a11y — 역할·5스텝은 radiogroup, 칩은 토글, 근사값은
 
   // 선수 컨텍스트: 역할 = radiogroup / 세부 지시 칩 = 다중 토글(aria-pressed 유지)
   await page.getByTestId("token-MF1").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await expect(page.getByTestId("rail-role")).toHaveAttribute("role", "radiogroup");
   await expect(page.getByTestId("rail-role-balanced")).toHaveAttribute("aria-checked", "true");
   await page.getByTestId("rail-chip-press").click();
@@ -810,6 +713,7 @@ test("R3b C: radiogroup APG — 방향키로 이동/선택 + 탭스톱은 그룹
   await mockApi(page, seededDeck());
   await page.setViewportSize({ width: 1280, height: 900 });
   await openDeck(page);
+  await page.getByTestId("team-tune-toggle").click(); // #244: 전술 다이얼은 ⚙ 뒤
 
   // 팀 5스텝: 방향키가 실제로 값을 옮긴다(선택이 포커스를 따라간다).
   await page.getByTestId("tactics-press-step-2").focus();
@@ -832,6 +736,7 @@ test("R3b C: radiogroup APG — 방향키로 이동/선택 + 탭스톱은 그룹
 
   // 역할 세그먼트도 같은 규약.
   await page.getByTestId("token-MF1").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await page.getByTestId("rail-role-balanced").focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByTestId("rail-role-attack")).toHaveAttribute("aria-checked", "true");
@@ -849,6 +754,7 @@ test("R3b C: 문장 이동 알림이 라이브 리전으로 전달된다(리전�
   await openDeck(page);
 
   await page.getByTestId("token-MF1").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   const live = page.getByTestId("rail-moved-live");
   // 리전이 **먼저** 비어 있는 채로 존재해야 SR 이 이후 변경을 읽는다.
   await expect(live).toHaveAttribute("aria-live", "polite");
@@ -859,68 +765,24 @@ test("R3b C: 문장 이동 알림이 라이브 리전으로 전달된다(리전�
   await expect(page.getByTestId("rail-moved")).toBeVisible();
 });
 
-test("R3b C: 모바일 44px 탭 타깃 — 스텝·칩·역할·독 핸들", async ({ page }) => {
+test("R3b C: 모바일 44px 탭 타깃 — 스텝·칩·역할·세부조정 토글", async ({ page }) => {
   await mockApi(page, seededDeck());
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
-  await page.getByTestId("token-MF1").click(); // 독 펼침
+  await page.getByTestId("token-MF1").click();
+  await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
 
-  const ids = ["rail-dock-toggle", "rail-role-attack", "rail-chip-press"];
+  const ids = ["rail-tune-toggle", "rail-role-attack", "rail-chip-press"];
   for (const id of ids) {
     const h = await page.getByTestId(id).evaluate((el) => el.getBoundingClientRect().height);
     console.log(`[smoke] tap target ${id} = ${h.toFixed(1)}px`);
     expect(h, `${id} 탭 타깃이 44px 미만`).toBeGreaterThanOrEqual(44);
   }
   // 5스텝은 한 줄에 5개가 붙어 있어 특히 위험 — 팀 컨텍스트로 돌아가 잰다.
-  // (rail-close 는 선택만 풀고 독 펼침은 그대로 두므로, 토글을 누르면 오히려 **접힌다** →
-  //  접힌 독은 body 가 display:none 이라 높이 0 이 나온다. 실제로 펼쳐진 상태를 보장하고 잰다.)
   await page.getByTestId("rail-close").click();
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
-  if ((await page.getByTestId("rail-dock").getAttribute("data-open")) !== "true") {
-    await page.getByTestId("rail-dock-toggle").click();
-  }
-  await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "true");
+  await page.getByTestId("team-tune-toggle").click();
   const stepH = await page.getByTestId("tactics-press-step-2").evaluate((el) => el.getBoundingClientRect().height);
   console.log(`[smoke] tap target tactics-press-step-2 = ${stepH.toFixed(1)}px`);
   expect(stepH).toBeGreaterThanOrEqual(44);
-});
-
-/**
- * R3b D — `ResizeObserver` 데드코드 실측 회귀.
- *
- * 이 옵저버는 `document.body` 를 보고 있어 **한 번도 발화하지 않았다**(index.css 가
- * `html, body, #root { height:100% }` 로 못 박아 border-box 가 뷰포트 고정). 독이 열린 동안
- * 문서 높이가 바뀌어도 `--dock-runway` 가 낡은 값 그대로였다. 관찰 대상을 실제로 자라는
- * 스크롤 콘텐츠 컨테이너로 옮겼고, 이 테스트가 "런웨이가 갱신된다"를 실측으로 박제한다.
- */
-test("R3b D: 독이 열린 채 문서가 길어지면 런웨이가 다시 측정된다(RO 실발화)", async ({ page }) => {
-  await mockApi(page, seededDeck());
-  await page.setViewportSize({ width: 390, height: 844 });
-  await openDeck(page);
-
-  await page.getByTestId("token-MF1").click(); // 독 펼침 → 런웨이 측정
-  await expect(page.getByTestId("rail-dock")).toHaveAttribute("data-open", "true");
-  await page.waitForTimeout(200);
-  const before = await page.evaluate(
-    () => document.querySelector('[data-testid="deck-editor"]')!.style.getPropertyValue("--dock-runway"),
-  );
-
-  // 시트 **뒤**의 블록이 길어지는 실제 경로(저장 알림·검증 이슈 문구)를 흉내낸다.
-  await page.evaluate(() => {
-    const d = document.createElement("div");
-    d.id = "r3b-grow";
-    d.style.height = "700px";
-    document.querySelector('[data-testid="deck-editor"]')!.parentElement!.appendChild(d);
-  });
-  await page.waitForTimeout(300);
-  const after = await page.evaluate(
-    () => document.querySelector('[data-testid="deck-editor"]')!.style.getPropertyValue("--dock-runway"),
-  );
-
-  console.log(`[smoke] dock runway before=${before} after=${after}`);
-  expect(before, "런웨이가 애초에 설정돼 있어야 한다").not.toBe("");
-  // 뒤 블록이 700px 늘었으니 필요한 런웨이는 줄어야 한다(이미 스크롤 여유가 생겼으므로).
-  expect(parseFloat(after), "RO 가 발화하지 않으면 이 값이 그대로다(=데드코드)").toBeLessThan(
-    parseFloat(before),
-  );
 });

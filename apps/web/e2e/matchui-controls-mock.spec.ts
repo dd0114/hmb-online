@@ -22,7 +22,7 @@ const MATCH_LOG = JSON.parse(
   readFileSync(new URL("../../../packages/engine/dev-viewer/match-log.json", import.meta.url).pathname, "utf8"),
 );
 
-async function mockApi(page: Page, opts: { isAdmin: boolean; corruptLog?: boolean }) {
+async function mockApi(page: Page, opts: { isAdmin: boolean; corruptLog?: boolean; state?: string }) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -37,7 +37,7 @@ async function mockApi(page: Page, opts: { isAdmin: boolean; corruptLog?: boolea
       return route.fulfill({
         json: {
           id: MATCH_ID,
-          state: "H1_BREAK",
+          state: opts.state ?? "FIRST_HALF",
           scoreH1Home: 2,
           scoreH1Away: 1,
           createdAt: "2026-07-21T09:00:00Z",
@@ -55,14 +55,33 @@ async function mockApi(page: Page, opts: { isAdmin: boolean; corruptLog?: boolea
   });
 }
 
-/** 매치 화면을 열고 코어가 마운트(ready)될 때까지 기다린다. */
-async function openHalftime(page: Page, isAdmin: boolean): Promise<void> {
-  await mockApi(page, { isAdmin });
+/**
+ * 매치 화면을 열고 코어가 마운트(ready)될 때까지 기다린다.
+ *
+ * ⚠️ 기본 상태는 **관전(FIRST_HALF)** 이다. 이 파일의 계약(#148/#216)은 "플레이 모드에는 컨트롤이
+ * 하나도 없다"인데, #244 에서 **감독시간의 `경기장면` 탭은 일반 유저에게도 돌려보기 컨트롤을 연다**
+ * (hero 결정 — 지나간 하프를 장면으로 찾아보는 자리다). 그래서 감독시간에서 이 파일을 열면 두 계약이
+ * 정면으로 부딪힌다. 대상이 다른 두 규칙이므로 **이 파일은 관전 화면에서** 잰다.
+ */
+async function openHalftime(page: Page, isAdmin: boolean, state?: string): Promise<void> {
+  await mockApi(page, { isAdmin, state });
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "local");
   });
   await page.goto(`/match/${MATCH_ID}`);
+  /*
+   * #244: 감독시간에는 무대가 `경기장면` 탭 뒤다 — 뷰어를 보려면 한 번 연다(관전 화면이면 없다).
+   * ⚠️ **셸을 먼저 기다린다.** `goto` 직후엔 매치 응답 전이라 탭이 아직 없고(`H1_BREAK` 실측 count 0),
+   *    그러면 `count()` 분기가 클릭을 조용히 건너뛰어 뷰어가 영영 안 뜬다 — 웜 캐시에서만 green 인
+   *    레이스가 된다(독립 검증 2회차 blocker). 형제 스펙(p226·match-live-clock)은 셸 대기 뒤에 연다.
+   */
+  await expect(page.getByTestId("stage-shell")).toBeVisible({ timeout: 20_000 });
+  {
+    const tab = page.getByTestId("stage-tab-stage");
+    await tab.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
+    if (await tab.count()) await tab.click();
+  }
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
   await expect(page.getByTestId("viewer-canvas-half1")).toBeVisible();
   await page.waitForFunction(
@@ -209,13 +228,31 @@ test("#148 admin 모드: 코어 풀컨트롤 노출 + 모드 토글로 플레이
 });
 
 test("#148 뷰어 로드 실패는 화면 안에 보인다(설명 없는 빈 피치 방지)", async ({ page }) => {
-  // 손상 MatchLog → 코어 load 가 throw → 같은 자리에 실패 안내 + 타임라인 폴백 버튼.
-  await mockApi(page, { isAdmin: false, corruptLog: true });
+  /*
+   * 손상 MatchLog → 코어 load 가 throw → 같은 자리에 실패 안내 + 타임라인 폴백 버튼.
+   * 이 케이스만 **감독시간(H1_BREAK)** 을 유지한다 — 이건 상태가 아니라 **렌더 실패**를 재는
+   * 테스트이고, 감독시간은 무대가 탭 뒤라 "실패 안내가 첫 화면 안"이 더 빡빡한 조건이기 때문이다.
+   * (독립 검증 실측: 관전 FIRST_HALF 에서도 같은 손상 픽스처로 실패 UI 가 뜬다 — 즉 상태를 옮겨도
+   *  되지만 옮길 이유가 없다. 예전 주석이 "라이브는 실패 UI 로 이어지지 않는다"고 적었던 건 사실이 아니다.)
+   */
+  await mockApi(page, { isAdmin: false, corruptLog: true, state: "H1_BREAK" });
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "local");
   });
   await page.goto(`/match/${MATCH_ID}`);
+  /*
+   * #244: 감독시간에는 무대가 `경기장면` 탭 뒤다 — 뷰어를 보려면 한 번 연다(관전 화면이면 없다).
+   * ⚠️ **셸을 먼저 기다린다.** `goto` 직후엔 매치 응답 전이라 탭이 아직 없고(`H1_BREAK` 실측 count 0),
+   *    그러면 `count()` 분기가 클릭을 조용히 건너뛰어 뷰어가 영영 안 뜬다 — 웜 캐시에서만 green 인
+   *    레이스가 된다(독립 검증 2회차 blocker). 형제 스펙(p226·match-live-clock)은 셸 대기 뒤에 연다.
+   */
+  await expect(page.getByTestId("stage-shell")).toBeVisible({ timeout: 20_000 });
+  {
+    const tab = page.getByTestId("stage-tab-stage");
+    await tab.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {});
+    if (await tab.count()) await tab.click();
+  }
   const err = page.getByTestId("viewer-visual-error-half1");
   await expect(err).toBeVisible({ timeout: 20_000 });
   const box = await err.boundingBox();

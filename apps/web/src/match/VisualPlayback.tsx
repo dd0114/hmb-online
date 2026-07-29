@@ -24,6 +24,8 @@ export interface VisualPlaybackProps {
   onFallback: () => void;
   controlMode: ControlMode;
   canSwitch: boolean;
+  /** 돌려보는 화면(#244) — 컨트롤을 무대에 겹치지 않고 아래로 흘리고, 유저용 레이아웃으로 그린다. */
+  review?: boolean;
   onControlMode: (m: ControlMode) => void;
   onTick?: (tick: number) => void;
   clock: MatchClock | null;
@@ -42,6 +44,7 @@ export function VisualPlayback({
   onFallback,
   controlMode,
   canSwitch,
+  review = false,
   onControlMode,
   onTick,
   clock,
@@ -224,6 +227,18 @@ export function VisualPlayback({
     };
   }, [viewerReady, tickCount, snapTicks, clock?.phase, clock?.phaseStartAt]);
 
+  /*
+   * 돌려보는 화면(#244 review)은 **정지 상태로 연다**. 관전 무대는 자동 재생이 맞지만, 여기서
+   * 유저가 하려는 일은 "그 장면을 찾아 본다"라 들어오자마자 흘러가면 방금 본 장면을 놓친다
+   * (독립 검증 minor: 무조작 2초에 0'05" → 0'09").
+   * ⚠️ **조기 반환(`if (failed)`)보다 위**에 둔다 — 아래로 내리면 실패 경로에서 훅 수가 줄어
+   *    "Rendered fewer hooks than expected" 로 화면이 통째로 크래시한다(실제로 그렇게 넣었다가 잡혔다).
+   */
+  useEffect(() => {
+    if (!review || !viewerReady) return;
+    (viewerRef.current as unknown as { pause?: () => void } | null)?.pause?.();
+  }, [review, viewerReady]);
+
   if (failed) {
     return (
       <div className={styles.note} data-testid={`viewer-visual-error-half${half}`}>
@@ -249,8 +264,11 @@ export function VisualPlayback({
       <div ref={flashRef} className={styles.capFlash} aria-live="polite" />
       <div ref={situationRef} className={styles.capSituation} aria-hidden="true" />
       <div ref={bannerRef} className={styles.capBanner} aria-hidden="true" />
-      {/* 무대 모드에선 컨트롤을 화면 모서리에 겹친다(리서치 R6 — 뷰 컨트롤은 무대 가장자리). */}
-      <div className={styles.controlsOverlay}>
+      {/*
+       * 무대 모드에선 컨트롤을 화면 모서리에 **겹친다**(리서치 R6 — 뷰 컨트롤은 무대 가장자리).
+       * 돌려보는 화면(#244 review)에서는 겹치면 피치를 가리므로 **캔버스 아래 흐름**으로 내린다.
+       */}
+      <div className={review ? styles.controlsFlow : styles.controlsOverlay}>
         <PlaybackControls
           half={half}
           mode={controlMode}
@@ -262,6 +280,7 @@ export function VisualPlayback({
           pins={pins}
           snapCount={range.snapCount}
           lastTick={range.lastTick}
+          review={review}
         />
       </div>
     </div>

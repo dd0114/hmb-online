@@ -42,6 +42,8 @@ vi.mock("../api/hooks", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/hooks")>();
   return {
     ...actual,
+    // #244(F-1): 팀 문장 임시 보관을 유저 스코프로 만들며 추가된 의존.
+    useMe: () => fx.query({ user: { id: "u1", nickname: "테스터" } }),
     useDeck: () => fx.query(fx.deck),
     usePlayers: () => fx.query(fx.players),
     useUpdateDeck: fx.mutation,
@@ -84,6 +86,8 @@ describe("BriefingPanel 마킹 원탭 (AC-C4)", () => {
     render(h(BriefingPanel, { match: match as MatchDetail }));
 
     // 상대 분석 테이블 + 마크 트리거 노출
+    // #244: 상대 정보(표·마크 지정)는 시트 뒤 — 요약 줄의 [상대 정보 ↗] 로 연다.
+    fireEvent.click(screen.getByTestId("opp-sheet-open"));
     expect(screen.getByTestId("opponent-analysis")).toBeTruthy();
     // 첫 상대(라이벌 에이스) 마크 탭 → 마킹 패널 등장
     act(() => {
@@ -108,6 +112,8 @@ describe("BriefingPanel 마킹 원탭 (AC-C4)", () => {
     expect(screen.getByTestId("briefing-persist-note").textContent).toContain("내 덱에 저장");
     // 팀 사기 위젯(로비/덱과 동일 컴포넌트)이 브리핑 에디터 관계 배선으로 도달 가능한지 —
     // 사기 위젯은 로비/덱 전용이므로 여기선 선수 시트 관계 대신 상대 테이블/영속 문구만 확인.
+    // #244: 상대 정보(표·마크 지정)는 시트 뒤 — 요약 줄의 [상대 정보 ↗] 로 연다.
+    fireEvent.click(screen.getByTestId("opp-sheet-open"));
     expect(screen.getByTestId("opponent-analysis")).toBeTruthy();
   });
 });

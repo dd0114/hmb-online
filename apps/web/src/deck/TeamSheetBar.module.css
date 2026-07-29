@@ -147,3 +147,68 @@
     padding: 12px 16px 10px;
   }
 }
+
+/* #244: 모바일 세로 예산 — 시트 바는 정보 밀도만 남긴다(제목은 페이지 헤더가 이미 말한다).
+   프롬프트를 첫 화면에 올리기 위한 압축이며, 지표(선발/벤치/지시)와 전력 게이지는 그대로 둔다. */
+@media (max-width: 1023px) {
+  .bar {
+    padding: 6px 16px 5px;
+    margin-bottom: 4px;
+  }
+  .title {
+    display: none;
+  }
+}
+
+/*
+ * 배치 잠금 화면(감독시간)에서는 **sticky 를 끈다**. 패널이 짧아 붙어 있을 이유가 없는데,
+ * sticky 인 채로 두면 스크롤에서 바가 그 아래 **카운트다운 줄을 덮는다**(3차 검증 BL-3 —
+ * "감독시간 0:47 남음" 글자 윗부분이 가로로 잘렸다).
+ */
+.barStatic {
+  position: static;
+}
+
+/* 짧은 화면: 전력 게이지 줄과 지표 줄의 여백을 줄인다(#244 BL-2). 정보는 그대로 남긴다. */
+@media (max-width: 1023px) and (max-height: 819px) {
+  .bar {
+    padding: 4px 14px 4px;
+    margin-bottom: 4px;
+  }
+}
+
+/*
+ * ── #244 재설계: 감독시간(배치 잠금) 압축 ────────────────────────────────────
+ * 이 화면에서 "팀 시트" 제목·전력 게이지·3지표는 **지금 결정할 일이 없는 정보**다(라인업이 잠겨 있다).
+ * 그런데 63px 를 먹으면서 화면 위쪽 두 층을 차지해, 아래 프롬프트를 그만큼 밀어냈다.
+ * 값은 그대로 두되(계약 testid 유지) 한 줄로 눕히고 글자만 남긴다.
+ */
+.barStatic {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  row-gap: 2px;
+  padding: 5px 12px;
+}
+.barStatic .title {
+  display: none;
+}
+.barStatic .power {
+  gap: 6px;
+  font-size: 11px;
+}
+.barStatic .gauge {
+  display: none;
+}
+.barStatic .me,
+.barStatic .op {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.barStatic .fill {
+  font-size: 11px;
+}
+.barStatic .top {
+  display: none;
+}

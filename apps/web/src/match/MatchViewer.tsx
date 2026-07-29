@@ -39,6 +39,14 @@ interface MatchViewerProps {
    * 말하게 한다(#233). 값은 `playedBaseline` 이 정한다. 캔버스 재생은 이 값을 쓰지 않는다.
    */
   baseline?: { home: number; away: number } | null;
+  /**
+   * **리뷰 컨트롤 강제**(#244) — 감독시간의 `경기장면` 탭처럼 "지나간 하프를 돌려보는" 자리.
+   * 시간바(스크럽)·키장면 핀·초/프레임 스텝을 **일반 유저에게도** 연다. 평소 관전(라이브)에서는
+   * 이 값을 켜지 않는다 — 라이브는 "지금까지"만 볼 수 있어야 하고(서버 권위 시계), 풀컨트롤은
+   * QA/admin 전용이다(`resolveControlMode`).
+   * ⚠️ 종료 후 결과 화면·기록 다시보기에도 같은 도구가 필요하다 — 그건 **별도 이슈**로 뺐다.
+   */
+  reviewControls?: boolean;
 }
 
 type ViewMode = "visual" | "timeline";
@@ -59,6 +67,7 @@ export function MatchViewer({
   clockOffsetMs = 0,
   logEnabled = true,
   baseline = null,
+  reviewControls = false,
 }: MatchViewerProps) {
   const { data: log, isLoading, isError } = useHalfLog(matchId, half, logEnabled);
   const [mode, setMode] = useState<ViewMode>("visual");
@@ -70,8 +79,9 @@ export function MatchViewer({
     search: typeof window === "undefined" ? "" : window.location.search,
     stored: readStoredControlMode(),
   };
-  const controlMode = chosenMode ?? resolveControlMode(modeInput);
-  const canSwitch = canSwitchControlMode(modeInput);
+  const controlMode = reviewControls ? "full" : (chosenMode ?? resolveControlMode(modeInput));
+  // 리뷰 자리에서는 모드 토글을 보여주지 않는다 — 여긴 "돌려보는 화면"이 기본값이라 고를 게 없다.
+  const canSwitch = reviewControls ? false : canSwitchControlMode(modeInput);
 
   // `?viewerControls=reset` — 저장된 QA 오버라이드 고착 해제.
   useEffect(() => {
@@ -112,6 +122,7 @@ export function MatchViewer({
           onTick={onTick}
           clock={clock}
           clockOffsetMs={clockOffsetMs}
+          review={reviewControls}
         />
       ) : (
         <div className={styles.timelineFill}>
@@ -138,6 +149,14 @@ interface TimelineViewProps {
   awayName: string;
   /** 앞에 끝난 하프의 확정 스코어 — 폴백 스코어보드도 경기 누적을 말한다(#233). */
   baseline?: { home: number; away: number } | null;
+  /**
+   * **리뷰 컨트롤 강제**(#244) — 감독시간의 `경기장면` 탭처럼 "지나간 하프를 돌려보는" 자리.
+   * 시간바(스크럽)·키장면 핀·초/프레임 스텝을 **일반 유저에게도** 연다. 평소 관전(라이브)에서는
+   * 이 값을 켜지 않는다 — 라이브는 "지금까지"만 볼 수 있어야 하고(서버 권위 시계), 풀컨트롤은
+   * QA/admin 전용이다(`resolveControlMode`).
+   * ⚠️ 종료 후 결과 화면·기록 다시보기에도 같은 도구가 필요하다 — 그건 **별도 이슈**로 뺐다.
+   */
+  reviewControls?: boolean;
 }
 
 /**

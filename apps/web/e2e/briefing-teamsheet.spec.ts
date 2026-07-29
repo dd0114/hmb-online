@@ -171,29 +171,24 @@ test("브리핑 편집 → 킥오프가 PUT /api/deck 로 영속(프리셋 경�
   await page.setViewportSize({ width: 390, height: 844 });
   await openBriefing(page);
 
-  // 1) 매치용 편집: 팀 프롬프트 + 팀 전술 + 선수 프롬프트(레일)
-  //    모바일은 지시 레일이 하단 독으로 접혀 있다 → 상단 가장자리 토글로 펼친 뒤 입력(실사용 동선).
-  await page.getByTestId("rail-dock-toggle").click();
+  // 1) 매치용 편집: 팀 프롬프트 + 팀 전술 + 선수 프롬프트
+  //    #244: 레일이 문서 흐름이라 독을 펼칠 일이 없다 — 프롬프트는 진입 즉시 그 자리에 있다.
   await page.getByTestId("editor-team-prompt").fill("오늘은 수비적으로");
-  // 팀 전술 = 5스텝 세그먼트(#106 R2, 구 슬라이더 .fill("0.8") 대체). step 3 = 계약값 0.75.
+  // 팀 전술 = 5스텝 세그먼트. #244 로 ⚙ 세부조정 뒤에 있다. step 3 = 계약값 0.75.
+  await page.getByTestId("team-tune-toggle").click();
   await page.getByTestId("tactics-press-step-3").click();
   await page.getByTestId("board-slot-starter-9").click();
   await page.getByTestId("rail-prompt-input").fill("측면 파고들어라");
 
-  // 1-b) R2 r3: 브리핑의 마지막 블록([킥오프])이 접힌 지시 독에 가리지 않는다.
-  //      (독 클리어런스를 poolCol → 페이지 마지막 블록으로 옮긴 변경의 회귀 가드)
-  await page.getByTestId("rail-dock-toggle").click(); // 독 접기 = 계약 상태
+  // 1-b) #244: 마지막 블록([킥오프])이 **문서 안에서** 온전히 보인다(구: 접힌 독 클리어런스 계약).
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await page.waitForTimeout(150);
-  const clearance = await page.evaluate(() => {
-    const dock = document.querySelector('[data-testid="rail-dock"]')!.getBoundingClientRect();
-    const kickoff = document.querySelector('[data-testid="kickoff-button"]')!.getBoundingClientRect();
-    return { gap: dock.top - kickoff.bottom, dockH: dock.height };
+  const kickoffBox = await page.evaluate(() => {
+    const k = document.querySelector('[data-testid="kickoff-button"]')!.getBoundingClientRect();
+    return { top: k.top, bottom: k.bottom, fold: window.innerHeight };
   });
-  console.log(`[smoke] briefing kickoff→dock gap px = ${clearance.gap.toFixed(1)} (dockH=${clearance.dockH.toFixed(1)})`);
-  // 0 이상이 아니라 **여유**를 요구한다 — 딱 맞춘 값(실측 3.5px)은 독 헤드가 조금만 두꺼워져도
-  // 바로 다시 가려진다(R2 검증 m4).
-  expect(clearance.gap, "킥오프 버튼이 접힌 하단 독에 가리면 안 된다(여유 포함)").toBeGreaterThanOrEqual(24);
+  console.log(`[smoke] briefing kickoff bottom=${kickoffBox.bottom.toFixed(1)} fold=${kickoffBox.fold}`);
+  expect(kickoffBox.bottom, "킥오프 버튼이 화면 밖으로 잘리면 안 된다").toBeLessThanOrEqual(kickoffBox.fold);
 
   // 2) 킥오프 → PUT /api/deck 바디에 그 편집이 반영, 프리셋 저장/적용은 없음
   await page.getByTestId("kickoff-button").click();

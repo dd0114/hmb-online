@@ -100,7 +100,15 @@ async function mockApi(page: Page, state: string) {
   });
 }
 
-async function openMatch(page: Page, state = "H1_BREAK") {
+/**
+ * ⚠️ 기본 상태를 **관전(SECOND_HALF)** 으로 연다. 이 파일의 계약(#169 AC-W1-1)은 "관전 화면에서
+ * 무대가 고정된다"이고, 감독시간은 #244 에서 **무대를 `경기장면` 탭으로 내렸다**(hero 결정:
+ * 그 상태에선 할 일이 전부 패널 안이고, 무대가 세로를 먹으면 감독시간만 덱 화면과 달라진다).
+ * 예전엔 편의상 `H1_BREAK` 로 열었는데, 그 상태에서 무대가 탭 뒤로 가면서 이 파일 9건이 한꺼번에
+ * red 가 됐다 — 계약이 재려던 것(관전 고정)과 연 상태(감독시간)가 어긋나 있던 것이다.
+ * 감독시간의 무대는 아래 "감독시간: 무대는 탭 뒤" 테스트가 따로 잰다.
+ */
+async function openMatch(page: Page, state = "SECOND_HALF") {
   await mockApi(page, state);
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
@@ -108,7 +116,8 @@ async function openMatch(page: Page, state = "H1_BREAK") {
   });
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.getByTestId("stage-shell")).toBeVisible();
-  await expect(page.getByTestId("stage-canvas")).toBeVisible();
+  const managing = state === "HALFTIME" || state === "H1_BREAK";
+  if (!managing) await expect(page.getByTestId("stage-canvas")).toBeVisible();
 }
 
 /** 페이지(문서) 자체가 스크롤되는지 — 무대 고정의 핵심 지표. */
@@ -218,8 +227,9 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
     expect(canvas!.height, "캔버스가 납작해지면 안 됨").toBeGreaterThan(80);
   });
 
+  // 이 케이스는 **상태 패널이 있는 화면**을 전제한다(감독 패널이 정보 탭보다 먼저) → 감독시간으로 연다.
   test("f. 토글 선택은 리로드 후에도 유지된다", async ({ page }) => {
-    await openMatch(page);
+    await openMatch(page, "HALFTIME");
     await toggle(page, "log");
     expect(await pressed(page, "log")).toBe("true");
 
@@ -266,6 +276,22 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
         expect(await pressed(page, key)).toBe("false");
       }
       if (state === "H1_BREAK") await page.screenshot({ path: `${CAP_DIR}phone-halftime.png` });
+    });
+
+    /**
+     * #244: 감독시간에는 무대가 **상시가 아니라 탭**이다. "무대가 사라졌다"가 아니라
+     * "한 번 눌러서 간다"임을 계약으로 박아 둔다 — 안 그러면 다음 변경이 무대를 통째로
+     * 잃어버려도 아무도 모른다(이 규칙을 넣을 때 기존 9건이 조용히 red 가 된 전례가 있다).
+     */
+    test(`감독시간: 무대는 탭 뒤에 있고 한 번 눌러 도달한다 (${state})`, async ({ page }) => {
+      await openMatch(page, state);
+      await expect(page.getByTestId("stage-canvas"), "감독시간엔 무대가 상시가 아니다").toHaveCount(0);
+      await expect(page.getByTestId("stage-tab-stage")).toBeVisible();
+      await page.getByTestId("stage-tab-stage").click();
+      await expect(page.getByTestId("stage-canvas")).toBeVisible();
+      const s = await pageScroll(page);
+      expect(s.vScroll, "경기장면 탭에서도 문서 스크롤 0").toBeLessThanOrEqual(1);
+      expect(s.hScroll).toBeLessThanOrEqual(1);
     });
   }
 });

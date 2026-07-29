@@ -126,6 +126,7 @@ async function openMatch(page: Page, state: string, clock: ReturnType<typeof clo
     localStorage.setItem("hmb.auth.provider", "local");
   });
   await page.goto(`/match/${MATCH_ID}`);
+
   await expect(page.getByTestId("stage-shell")).toBeVisible();
   return posts;
 }
@@ -139,6 +140,13 @@ async function playhead(page: Page): Promise<number> {
 }
 
 async function waitForViewer(page: Page) {
+  /*
+   * #244: 감독시간에는 무대가 **`경기장면` 탭 뒤**에 있다(hero 결정 — 그 상태의 화면은 덱 편성과
+   * 같은 레이아웃이어야 한다). 이 파일의 계약(라이브 상한·되감기)은 뷰어가 떠 있어야 잴 수 있으므로
+   * 탭이 있으면 먼저 연다. 관전(전·후반)에서는 탭이 없고 무대가 상시다.
+   */
+  const tab = page.getByTestId("stage-tab-stage");
+  if (await tab.count()) await tab.click();
   await expect(page.locator('[data-testid^="viewer-canvas-half"]')).toBeVisible({ timeout: 20_000 });
   await page.waitForFunction(() => {
     const v = (window as unknown as { __viewer?: { ready(): boolean } }).__viewer;

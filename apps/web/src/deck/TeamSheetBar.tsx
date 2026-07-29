@@ -17,6 +17,8 @@ interface TeamSheetBarProps {
   autoDisabled?: boolean;
   autoHint?: string;
   onAuto?: () => void;
+  /** 배치 잠금(감독시간) — 포메이션 변경·Auto 는 라인업을 바꾸는 일이라 감춘다. */
+  placementLocked?: boolean;
 }
 
 /**
@@ -29,13 +31,13 @@ interface TeamSheetBarProps {
  * 모바일에서는 보드 하단 바가 접히므로 AUTO 만 이 바에 얹는다(목업 askin-mobile).
  */
 export function TeamSheetBar(props: TeamSheetBarProps) {
-  const { draft, onFormationChange, power, opponentPower, opponentName, opponentApprox, autoDisabled, autoHint, onAuto } = props;
+  const { draft, onFormationChange, power, opponentPower, opponentName, opponentApprox, autoDisabled, autoHint, onAuto, placementLocked } = props;
   const m = sheetMetrics(draft);
   const share = opponentPower != null ? powerShare(power, opponentPower) : 1;
 
   return (
     <header
-      className={styles.bar}
+      className={placementLocked ? `${styles.bar} ${styles.barStatic}` : styles.bar}
       data-testid="team-sheet-bar"
       /* 빈 상태(#106 R3b A) — 선발 0 이면 보드가 안내 오버레이를 띄운다(같은 조건을 여기도 노출해
          E2E 가 "바 3지표 0 ↔ 보드 안내"를 한 상태로 검증한다). */
@@ -43,7 +45,7 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
     >
       <div className={styles.top}>
         <h2 className={styles.title}>팀 시트</h2>
-        {onAuto && (
+        {onAuto && !placementLocked && (
           <button
             type="button"
             className={styles.auto}
@@ -55,6 +57,8 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
             AUTO
           </button>
         )}
+        {/* 감독시간엔 포메이션을 바꾸지 않는다 — 그건 라인업 재배치이고, 이 화면은 배치를 잠근다(#244). */}
+        {!placementLocked && (
         <label className={styles.formationLabel} htmlFor="formation">
           <span className={styles.srOnly}>포메이션</span>
           <select
@@ -71,6 +75,7 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
             ))}
           </select>
         </label>
+        )}
       </div>
 
       <div className={styles.power} data-testid="sheet-power">

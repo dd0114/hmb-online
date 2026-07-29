@@ -8,7 +8,7 @@
  * include pattern is `apps/**\/*.test.ts` (root config is outside apps/web scope).
  */
 import { createElement as h } from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -108,6 +108,9 @@ describe("MatchPage state router", () => {
       },
     });
     expect(screen.getByTestId("briefing-panel")).toBeTruthy();
+    // #244: 상대 정보는 시트 뒤. 요약 줄이 이름을 말하고, 표는 시트를 열어야 나온다.
+    expect(screen.getByTestId("opp-sheet-open")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("opp-sheet-open"));
     expect(screen.getByTestId("opponent-analysis").textContent).toContain("공격 봇");
     expect(screen.getByTestId("kickoff-button")).toBeTruthy();
     expect(screen.getByTestId("briefing-timer")).toBeTruthy();

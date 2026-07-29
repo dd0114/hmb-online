@@ -93,10 +93,21 @@ afterEach(() => {
   fx.submitPrompt.mockClear();
 });
 
+/**
+ * ⚠️ #244 로 감독시간이 **덱 화면과 같은 에디터**를 쓰게 되면서 전술 다이얼의 자리가 바뀌었다:
+ * 전용 `halftime-tactics-*` 섹션 → **지시 레일의 ⚙ 세부 조정**(덱과 같은 `tactics-*` testid).
+ * 계약 자체는 그대로다 — 시작점 = 전반 값 · 안 만지면 미전송 · 만지면 4축 전부 전송.
+ * 다이얼이 접혀 있으므로 각 테스트는 ⚙ 를 먼저 편다(덱 화면과 같은 동선).
+ */
+function openTune() {
+  fireEvent.click(screen.getByTestId("team-tune-toggle"));
+}
+
 describe("HalftimePanel — 팀 전술 (#254)", () => {
   it("다이얼 시작점은 전반에 쓴 값이다 (중립으로 리셋하지 않는다)", () => {
     renderPanel();
-    const line = screen.getByTestId("halftime-tactics-line");
+    openTune();
+    const line = screen.getByTestId("tactics-line");
     // 0.25 = 5스텝 중 1번(낮음). 중립(0.5=2번)에서 시작하면 안 건드린 유저가 후반에 라인을 올려버린다.
     expect(line.getAttribute("data-value")).toBe("0.25");
     expect(line.getAttribute("data-step")).toBe("1");
@@ -113,8 +124,9 @@ describe("HalftimePanel — 팀 전술 (#254)", () => {
   it("스텝을 누르면 그 값이 halftime 바디로 나간다", async () => {
     renderPanel();
     // 라인 "매우높음"(4번 = 1.0) — 후반에 라인을 끌어올린다.
-    fireEvent.click(screen.getByTestId("halftime-tactics-line-step-4"));
-    expect(screen.getByTestId("halftime-tactics-line").getAttribute("data-value")).toBe("1");
+    openTune();
+    fireEvent.click(screen.getByTestId("tactics-line-step-4"));
+    expect(screen.getByTestId("tactics-line").getAttribute("data-value")).toBe("1");
 
     fireEvent.click(screen.getByTestId("resume-button"));
     await waitFor(() => expect(fx.halftime).toHaveBeenCalledTimes(1));
@@ -124,6 +136,7 @@ describe("HalftimePanel — 팀 전술 (#254)", () => {
 
   it("스냅샷이 없는 구 매치는 중립에서 시작한다(500 대신 기본값)", () => {
     renderPanel(undefined);
-    expect(screen.getByTestId("halftime-tactics-press").getAttribute("data-value")).toBe("0.5");
+    openTune();
+    expect(screen.getByTestId("tactics-press").getAttribute("data-value")).toBe("0.5");
   });
 });

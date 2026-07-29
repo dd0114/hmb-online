@@ -81,6 +81,8 @@ vi.mock("../api/hooks", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/hooks")>();
   return {
     ...actual,
+    // #244(F-1): 팀 문장 임시 보관을 유저 스코프로 만들며 추가된 의존.
+    useMe: () => fx.query({ user: { id: "u1", nickname: "테스터" } }),
     useDeck: () => fx.query(fx.deck),
     usePlayers: () => fx.query(fx.players),
     useUpdateDeck: fx.mutation,
