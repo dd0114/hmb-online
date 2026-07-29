@@ -1,0 +1,16 @@
+server-java 전체 스위트 (./gradlew test --rerun-tasks, 콜드 재실행)
+tests=743 failures=0 errors=0 skipped=1
+
+[RankingEligibilityTest] tests=4 failures=0 errors=0
+   PASS  eligibleUserHasRankAndEligibleTrue()
+   PASS  unfinishedMatchDoesNotGrantEligibility()
+   PASS  ineligibleUserGetsOkWithLeaderboardAndNotEligibleMe()
+   PASS  leaderboardExcludesUsersWithNoFinishedMatch()
+[AwayEligibilityTest] tests=2 failures=0 errors=0
+   PASS  defendersWithNoFinishedMatchAreNeverOffered()
+   PASS  attackerNeedsNoMatchHistory()
+[AwayNoEligibleOpponentTest] tests=1 failures=0 errors=0
+   PASS  noOpponentWhenEveryDefenderHasNeverFinishedAMatch()
+[EligibilityDisabledTest] tests=2 failures=0 errors=0
+   PASS  disabledSwitchRestoresPreFilterBehaviour()
+   PASS  disabledSwitchReportsEveryoneEligible()

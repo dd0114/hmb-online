@@ -59,6 +59,33 @@ abstract class MatchTestBase extends ApiTestBase {
         return token;
     }
 
+    /**
+     * <b>원정 상대로 설 수 있는</b> 유저 — 덱 + 완료 경기 1판 (#296).
+     *
+     * <p>자격 필터가 들어온 뒤로 "덱만 있는 유저"는 상대 풀에 들어오지 않는다(덱은 온보딩이 자동
+     * 지급하므로 활동 증거가 아니다). 원정 픽스처가 {@code setupUserWithDeck} 만 쓰면 후보가 0이 되어
+     * 테스트가 {@code NO_OPPONENT} 으로 무너진다 — 상대를 세우는 자리엔 이걸 쓴다.
+     *
+     * <p>공격자에겐 쓰지 마라: 공격자는 자격을 요구받지 않는다(hero D3). 공격자에까지 붙이면 그
+     * 사실이 테스트에서 관측되지 않는다.
+     */
+    protected String setupOpponentWithDeck(String nickname) {
+        String token = setupUserWithDeck(nickname);
+        markPlayedOnce(userIdOf(nickname));
+        return token;
+    }
+
+    /** 완료 경기 1판을 심어 자격을 준다(#296). 과거 시각·practice 라 일일 한도·잠금과 무관하다. */
+    protected void markPlayedOnce(String userId) {
+        jdbcClient.sql("""
+                        INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
+                                            user_deck_json, mode, result, created_at)
+                        VALUES (?, ?, 'BOT_BAL', 'FINISHED', 'seed', '0.9.0', '{}', 'practice', 'WIN', ?)
+                        """)
+                .params(online.hmb.common.Ulid.next(), userId, "2026-05-01T00:00:00Z")
+                .update();
+    }
+
     protected String createMatch(String token, String botId) {
         Map<String, Object> body = botId == null ? Map.of() : Map.of("botId", botId);
         ResponseEntity<Map> response = authPost("/api/matches", token, body, Map.class);

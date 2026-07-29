@@ -1291,7 +1291,18 @@ components:
           type: number
           minimum: 0
           maximum: 1
-        rank: { type: integer }
+        rank:
+          type: integer
+          nullable: true
+          description: >
+            순위. #296 부터 **nullable** — 아직 한 판도 안 끝낸 유저(eligible=false)는 순위가
+            0위가 아니라 **없다**. leaderboard 항목은 항상 non-null이고, me 만 null 일 수 있다.
+        eligible:
+          type: boolean
+          description: >
+            additive(#296). 랭킹 노출 자격 = 완료 경기(result≠null) 1판 이상. false 면 리더보드에
+            실리지 않고 rank 가 null 이다. ⚠️ 자격이 없어도 이 엔드포인트는 **200**을 준다 —
+            404 를 주면 클라가 그걸 로드 실패로 그려서 신규 유저가 에러 화면을 본다.
 
     PersonalRecords:
       type: object

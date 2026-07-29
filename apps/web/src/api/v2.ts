@@ -46,7 +46,16 @@ export type MatchLogItem = SchemasV2["MatchLogItem"];
  * rating(#245 D3 additive) — 리더보드 **정렬 기준**이 승수에서 레이팅으로 바뀌었다(hero 확정).
  * 구 서버 응답엔 없으므로 optional(없으면 표시만 생략, 화면은 그대로 돈다).
  */
-export type RankingEntry = SchemasV2["RankingEntry"] & { rating?: number };
+/**
+ * rank 가 nullable 이고 eligible 이 붙은 이유(#296): 랭킹은 **한 판이라도 끝낸 유저**만 싣는다.
+ * 아직 안 한 유저는 순위가 **0위가 아니라 없다** — 0 으로 채우면 화면에서 0위가 1위보다 좋은
+ * 건지 헷갈린다. 서버는 자격이 없어도 200 + 리더보드를 준다(404 면 클라가 로드 실패로 그린다).
+ */
+export type RankingEntry = Omit<SchemasV2["RankingEntry"], "rank"> & {
+  rank: number | null;
+  rating?: number;
+  eligible?: boolean;
+};
 /** leaderboard/me 항목도 확장 RankingEntry(=rating additive)를 쓴다 — 생성 스키마의 중첩 타입을 덮는다. */
 export type RankingsResponse = Omit<SchemasV2["RankingsResponse"], "leaderboard" | "me"> & {
   leaderboard: RankingEntry[];

@@ -40,9 +40,9 @@ class AwayV2Test extends MatchTestBase {
     @SuppressWarnings("unchecked")
     @Test
     void candidatesAreOfferedAndOnlyThoseCanBeChosen() {
-        setupUserWithDeck("v2_a");
-        setupUserWithDeck("v2_b");
-        setupUserWithDeck("v2_c");
+        setupOpponentWithDeck("v2_a");
+        setupOpponentWithDeck("v2_b");
+        setupOpponentWithDeck("v2_c");
         String attacker = setupUserWithDeck("v2_atk");
         String attackerId = userIdOf("v2_atk");
 
@@ -83,7 +83,7 @@ class AwayV2Test extends MatchTestBase {
     @Test
     void rerollInvalidatesThePreviousOffer() {
         for (int i = 0; i < 6; i++) {
-            setupUserWithDeck("v2_pool_" + i);
+            setupOpponentWithDeck("v2_pool_" + i);
         }
         String attacker = setupUserWithDeck("v2_reroll");
         String attackerId = userIdOf("v2_reroll");
@@ -104,8 +104,8 @@ class AwayV2Test extends MatchTestBase {
 
     @Test
     void candidatesComeFromANearbyRatingBand() {
-        setupUserWithDeck("v2_near");
-        setupUserWithDeck("v2_far");
+        setupOpponentWithDeck("v2_near");
+        setupOpponentWithDeck("v2_far");
         String attacker = setupUserWithDeck("v2_band_atk");
         String attackerId = userIdOf("v2_band_atk");
         setRating(attackerId, 100);
@@ -114,7 +114,7 @@ class AwayV2Test extends MatchTestBase {
 
         // 밴드 안에 충분한 후보가 있으면 먼 사람은 뽑히지 않는다.
         for (int i = 0; i < 4; i++) {
-            setupUserWithDeck("v2_near_" + i);
+            setupOpponentWithDeck("v2_near_" + i);
             setRating(userIdOf("v2_near_" + i), 90 + i);
         }
         for (int trial = 0; trial < 5; trial++) {
@@ -326,8 +326,8 @@ class AwayV2Test extends MatchTestBase {
     /** 만료된 제시는 못 쓴다(TTL). */
     @Test
     void expiredOfferIsRejected() {
-        setupUserWithDeck("v2_ttl_a");
-        setupUserWithDeck("v2_ttl_b");
+        setupOpponentWithDeck("v2_ttl_a");
+        setupOpponentWithDeck("v2_ttl_b");
         String attacker = setupUserWithDeck("v2_ttl_atk");
         String attackerId = userIdOf("v2_ttl_atk");
         List<AwayService.Candidate> offered = awayService.offerCandidates(attackerId);
@@ -504,9 +504,9 @@ class AwayV2Test extends MatchTestBase {
         String attacker = setupUserWithDeck("v2_body_atk");
         String attackerId = userIdOf("v2_body_atk");
         setRating(attackerId, 0);
-        setupUserWithDeck("v2_body_near");
+        setupOpponentWithDeck("v2_body_near");
         setRating(userIdOf("v2_body_near"), 20);
-        setupUserWithDeck("v2_body_far");
+        setupOpponentWithDeck("v2_body_far");
         setRating(userIdOf("v2_body_far"), 100000);
         // ⚠️ 후보 풀을 **이 셋으로 좁힌다**. 안 좁히면 다른 테스트가 만든 유저가 수십 명 섞여
         // 먼 상대가 뽑힐 확률이 낮아지고, 밴드를 없애는 변이가 그냥 통과한다(초판이 그랬다).
@@ -533,9 +533,9 @@ class AwayV2Test extends MatchTestBase {
     /** 제시는 **세울 수 있는 팀만** — 2택은 폴백이 없어 고르는 순간 남의 덱 오류가 내 오류로 뜬다. */
     @Test
     void brokenDeckCandidatesAreNotOffered() {
-        setupUserWithDeck("v2_broken_cand");
+        setupOpponentWithDeck("v2_broken_cand");
         String brokenId = userIdOf("v2_broken_cand");
-        setupUserWithDeck("v2_ok_cand");
+        setupOpponentWithDeck("v2_ok_cand");
         String attacker = setupUserWithDeck("v2_pick_atk");
         String attackerId = userIdOf("v2_pick_atk");
         jdbcClient.sql("UPDATE decks SET is_active = 0 WHERE user_id NOT IN (?, ?, ?)")
@@ -589,7 +589,7 @@ class AwayV2Test extends MatchTestBase {
     @SuppressWarnings("unchecked")
     @Test
     void dailyLimitStopsFurtherRaidsAndIsVisibleBeforePressing() {
-        setupUserWithDeck("v2_limit_def");
+        setupOpponentWithDeck("v2_limit_def");
         String attacker = setupUserWithDeck("v2_limit_atk");
         String attackerId = userIdOf("v2_limit_atk");
 

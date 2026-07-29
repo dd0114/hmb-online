@@ -324,18 +324,29 @@ function Leaderboard({ data }: { data: RankingsResponse }) {
           );
         })}
       </ul>
-      {data.me && !data.leaderboard.some((e) => e.userId === myId) && (
+      {/* 아직 한 판도 안 끝낸 유저(#296): 순위 대신 **무엇을 하면 되는지**를 말한다. 빈 줄이나
+          "0위"를 그리면 유저는 자기가 왜 없는지 모른 채 화면을 떠난다. */}
+      {data.me && data.me.eligible === false ? (
         <div className={`${styles.lbRow} ${styles.lbMe}`} data-testid="lb-me">
-          <span className={styles.lbRank}>{data.me.rank}</span>
-          <span className={styles.lbName}>{data.me.nickname} (나)</span>
-          {data.me.rating !== undefined && (
-            <span className={styles.lbRating} data-testid="lb-rating">
-              {data.me.rating}
-            </span>
-          )}
-          <span className={styles.lbWins}>{data.me.wins}승</span>
-          <span className={styles.lbRate}>{formatWinRate(data.me.winRate)}</span>
+          <span className={styles.lbName} data-testid="lb-me-hint">
+            {data.me.nickname} (나) — 경기를 한 판 하면 랭킹에 등록됩니다
+          </span>
         </div>
+      ) : (
+        data.me &&
+        !data.leaderboard.some((e) => e.userId === myId) && (
+          <div className={`${styles.lbRow} ${styles.lbMe}`} data-testid="lb-me">
+            <span className={styles.lbRank}>{data.me.rank}</span>
+            <span className={styles.lbName}>{data.me.nickname} (나)</span>
+            {data.me.rating !== undefined && (
+              <span className={styles.lbRating} data-testid="lb-rating">
+                {data.me.rating}
+              </span>
+            )}
+            <span className={styles.lbWins}>{data.me.wins}승</span>
+            <span className={styles.lbRate}>{formatWinRate(data.me.winRate)}</span>
+          </div>
+        )
       )}
     </section>
   );

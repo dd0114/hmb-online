@@ -1,0 +1,6 @@
+Running 2 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/ranking-eligibility-mock.spec.ts:78:3 › #296 랭킹 자격 — 화면 › 미자격: 리더보드는 그대로 보이고 내 자리엔 안내문 (에러 토스트 없음) (1.3s)
+  ✓  2 [chromium] › e2e/ranking-eligibility-mock.spec.ts:97:3 › #296 랭킹 자격 — 화면 › 자격: 안내문 없이 평소대로 내 순위가 보인다 (486ms)
+
+  2 passed (3.7s)
