@@ -99,6 +99,7 @@ public class MatchService {
     private final java.time.Clock clock;
     private final MatchClockService clockService;
     private final online.hmb.away.AwayViewAccess awayViewAccess;
+    private final MatchAutoProperties autoProps;
     private final int halftimeSubsMax;
     private final int promptMaxChars;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -113,6 +114,7 @@ public class MatchService {
                         java.time.Clock clock,
                         MatchClockService clockService,
                         online.hmb.away.AwayViewAccess awayViewAccess,
+                        MatchAutoProperties autoProps,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
         this.jdbcClient = jdbcClient;
@@ -125,6 +127,7 @@ public class MatchService {
         this.clock = clock;
         this.clockService = clockService;
         this.awayViewAccess = awayViewAccess;
+        this.autoProps = autoProps;
         this.halftimeSubsMax = halftimeSubsMax;
         this.promptMaxChars = promptMaxChars;
     }
@@ -693,7 +696,23 @@ public class MatchService {
                 clockService.clockOf(row), owner,
                 userHome ? owner : opponent.name(),
                 userHome ? opponent.name() : owner,
-                row.auto());
+                effectiveAuto(row));
+    }
+
+    /**
+     * 응답에 싣는 오토 = <b>실제로 흐름에 적용되는 값</b>(#249, 독립검증 major-2).
+     *
+     * <p>저장된 플래그(`row.auto()`)를 그대로 내려주면 킬스위치를 내렸을 때 <b>서버와 클라가 서로 다른
+     * 흐름을 믿는다</b>: 서버는 `openHalftime` 이 플래그를 무시해 정상 180초 감독시간을 여는데,
+     * 클라는 `auto=true` 를 보고 감독 패널을 숨긴다(`suppressHalftimePanel`) → 오토를 켜뒀던 진행 중
+     * 매치가 <b>감독 패널도 [후반 시작] 버튼도 없는 3분</b>을 맞는다.
+     *
+     * <p>킬스위치는 사고 대응 수단인데 그 상태로는 롤백이 증상을 넓힌다. 여기서 한 번 접어 내리면
+     * 클라 가드와 서버 동작이 <b>구조적으로 어긋날 수 없다</b>. 저장값 자체는 남는다 — 스위치를 다시
+     * 올리면 유저가 켜 뒀던 설정이 그대로 살아난다.
+     */
+    private boolean effectiveAuto(MatchRow row) {
+        return row.auto() && autoProps.isEnabled();
     }
 
     /** 매치 소유자(홈)의 닉네임 — 관전자가 홈을 자기 이름으로 오인하지 않게(#245). */
@@ -899,11 +918,19 @@ public class MatchService {
      * 스위퍼가 경계를 넘어가면(≤1s) 요청이 HALFTIME 에 떨어진다. 여기서 409 를 내면 "제때 눌렀는데
      * 실패"가 되므로 받아주고, {@link #setAutoCas} 가 그 자리에서 후반을 연다(hero 컨펌 Q3).
      *
-     * <p>SQL 은 리터럴로 적혀 있고(바인딩 가능한 IN 목록이 아니다) 이 상수는 <b>계약 테스트가 읽는 SoT</b> 다 —
-     * 목록이 어긋나면 {@code MatchAutoModeTest} 가 깨진다.
+     * <p>⚠️ 이 상수는 <b>주석이 아니라 실제 SQL 을 만든다</b>({@link #AUTO_TOGGLE_IN_CLAUSE}). 처음엔
+     * 리터럴 IN 목록 옆에 놓고 "테스트가 읽는 SoT"라고 적어 뒀는데 참조가 0이라 <b>아무 값으로 바꿔도
+     * 아무것도 안 깨졌다</b>(독립검증 minor-1). 주석이 코드보다 오래 살면 다음 사람이 속는다 —
+     * 이 에픽의 blocker 가 정확히 그 실패였다(가드가 주석만 남고 코드가 빠졌다).
      */
     static final Set<String> AUTO_TOGGLE_STATES =
             Set.of(S_BRIEFING, S_GEN1, S_FIRST_HALF, S_HALFTIME, S_H1_BREAK);
+
+    /** 위 집합에서 만든 IN 절 — 값이 전부 코드 상수라 인젝션 표면이 없다. */
+    private static final String AUTO_TOGGLE_IN_CLAUSE = AUTO_TOGGLE_STATES.stream()
+            .sorted()
+            .map(state -> "'" + state + "'")
+            .collect(java.util.stream.Collectors.joining(","));
 
     /** 오토 토글 결과. {@code resumedNow} = 이 호출이 감독시간을 끝내고 후반을 열었다(경합 창). */
     public record AutoToggleResult(MatchRow row, boolean resumedNow) {
@@ -923,10 +950,9 @@ public class MatchService {
      */
     public AutoToggleResult setAutoCas(String userId, String matchId, boolean auto) {
         getOwned(userId, matchId);
-        boolean moved = txRunner.run(() -> jdbcClient.sql("""
-                        UPDATE matches SET auto_mode = ?
-                        WHERE id = ? AND state IN ('BRIEFING','GEN1','FIRST_HALF','HALFTIME','H1_BREAK')
-                        """)
+        boolean moved = txRunner.run(() -> jdbcClient.sql(
+                        "UPDATE matches SET auto_mode = ? WHERE id = ? AND state IN ("
+                                + AUTO_TOGGLE_IN_CLAUSE + ")")
                 .params(auto ? 1 : 0, matchId)
                 .update() == 1);
         if (!moved) {
@@ -934,6 +960,12 @@ public class MatchService {
         }
         // 감독시간에서 ON = 즉시 후반. resumeCas 와 같은 CAS 라 스위퍼·유저 [후반 시작]과 동시에
         // 들어와도 정확히 한 번만 성공한다(false 면 남이 이미 열었다는 뜻 — 그대로 성공 응답).
+        //
+        // ⚠️ `auto &&` 를 지우지 마라(독립검증 major-1 — 이 한 토큰을 지워도 게이트가 전부 통과했다).
+        // 감독시간에 도착하는 요청은 ON 만이 아니다: 유저가 전반 막바지에 오토를 **끄는데** 그 사이
+        // 경계가 넘어가면 OFF 가 여기 떨어진다(서버가 HALFTIME 을 받아주는 이유가 그 경합 창이다).
+        // 가드가 없으면 **끄려던 조작이 후반을 즉시 열어** 유저가 원했던 감독시간 3분을 통째로 잃는다.
+        // 계약 = MatchAutoModeTest.turningAutoOffDuringTheHalftimeKeepsTheHalftime.
         boolean resumedNow = false;
         if (auto && HALFTIME_STATES.contains(currentState(matchId))) {
             resumedNow = jdbcClient.sql("""

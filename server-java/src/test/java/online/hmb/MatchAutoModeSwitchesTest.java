@@ -58,7 +58,14 @@ class MatchAutoModeSwitchesTest extends MatchTestBase {
         // API 는 여전히 200 — 롤백이 클라 에러로 새지 않는다.
         var toggled = authPost("/api/matches/" + matchId + "/auto", token, Map.of("auto", true), Map.class);
         assertThat(toggled.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(toggled.getBody().get("auto")).isEqualTo(true);
+
+        // ⚠️ 응답의 auto 는 **false** 다 — 저장값이 아니라 "실제로 흐름에 적용되는 값"이기 때문이다
+        // (독립검증 major-2). true 를 내려주면 클라가 `suppressHalftimePanel` 로 감독 패널을 숨기는데
+        // 서버는 정상 180초 감독시간을 연다 → 오토를 켜뒀던 매치가 **감독 패널도 [후반 시작]도 없는
+        // 3분**을 맞는다. 킬스위치는 사고 대응 수단인데 그러면 롤백이 증상을 넓힌다.
+        assertThat(toggled.getBody().get("auto"))
+                .as("킬스위치가 내려가 있으면 클라도 오토가 아님을 봐야 한다(서버와 같은 흐름을 믿게)")
+                .isEqualTo(false);
 
         assertThat(authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class)
                 .getStatusCode()).isEqualTo(HttpStatus.ACCEPTED);
@@ -73,5 +80,13 @@ class MatchAutoModeSwitchesTest extends MatchTestBase {
         assertThat(matchState(matchId)).isEqualTo("HALFTIME");
         assertThat(jdbcClient.sql("SELECT phase_ends_at FROM matches WHERE id = ?")
                 .param(matchId).query(String.class).single()).isNotNull();
+
+        // 그리고 그 감독시간 화면에서 클라가 보는 값도 오토가 아니다 — 서버 동작과 응답이 같은 말을 한다.
+        assertThat(authGet("/api/matches/" + matchId, token, Map.class).getBody().get("auto"))
+                .isEqualTo(false);
+
+        // 저장값 자체는 살아 있다 — 스위치를 다시 올리면 유저가 켜 뒀던 설정이 그대로 돌아온다.
+        assertThat(jdbcClient.sql("SELECT auto_mode FROM matches WHERE id = ?")
+                .param(matchId).query(Integer.class).single()).isEqualTo(1);
     }
 }

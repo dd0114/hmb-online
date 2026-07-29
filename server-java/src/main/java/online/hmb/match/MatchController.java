@@ -162,9 +162,15 @@ public class MatchController {
     @PostMapping("/api/matches/{id}/auto")
     public MatchDetail auto(@RequestAttribute("userId") String userId,
                             @PathVariable("id") String id,
-                            @RequestBody AutoRequest request) {
-        boolean on = request != null && Boolean.TRUE.equals(request.auto());
-        MatchService.AutoToggleResult result = matchService.setAutoCas(userId, id, on);
+                            @RequestBody(required = false) AutoRequest request) {
+        // openapi 가 `required: [auto]` 로 선언한 필드다 — 빠졌으면 400 이지 "조용히 OFF" 가 아니다
+        // (독립검증 minor-2). 실패가 조용히 상태를 바꾸면, 클라 버그 하나가 유저의 감독시간을
+        // 말없이 없애거나 되살린다.
+        if (request == null || request.auto() == null) {
+            throw new online.hmb.common.ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "auto 값이 필요합니다", java.util.Map.of("field", "auto"));
+        }
+        MatchService.AutoToggleResult result = matchService.setAutoCas(userId, id, request.auto());
         if (result.resumedNow()) {
             orchestrator.enqueueHalf(id, 2);
         }

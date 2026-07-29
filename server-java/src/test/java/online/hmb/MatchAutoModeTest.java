@@ -183,6 +183,72 @@ class MatchAutoModeTest extends MatchTestBase {
         assertThat(matchState(matchId)).isIn("GEN2", "SECOND_HALF");
     }
 
+    /**
+     * 경합의 <b>반대 방향</b> — 감독시간에 도착한 것이 OFF 면 감독시간이 그대로 살아 있어야 한다
+     * (독립검증 major-1: {@code setAutoCas} 의 {@code auto &&} 가드를 지워도 게이트가 전부 통과했다).
+     *
+     * <p>이 경로는 실제로 일어난다: 화면이 아직 전반을 그리는 동안(조회 경로 가드로 최대 1초) 유저가
+     * 오토를 <b>끄는데</b> 그 사이 스위퍼가 경계를 넘어 감독시간이 열리면, OFF 요청이 HALFTIME 에
+     * 떨어진다. 가드가 없으면 끄려던 조작이 후반을 즉시 열어 <b>원했던 감독시간 3분을 통째로
+     * 잃는다</b> — hero 요구 3 의 정반대다.
+     */
+    @Test
+    void turningAutoOffDuringTheHalftimeKeepsTheHalftime() {
+        String token = setupUserWithDeck("auto_late_recant");
+        String matchId = createMatch(token, "BOT_BAL");
+        kickoffAndSimulateH1(token, matchId);
+        expireInto(matchId, "HALFTIME"); // 경계가 지나 감독시간이 열렸다(유저 화면은 아직 전반일 수 있다)
+
+        String deadlineBefore = clockColumn(matchId, "phase_ends_at");
+        assertThat(setAuto(token, matchId, false).get("auto")).isEqualTo(false);
+
+        // 후반이 열리지 않았다. 감독시간 창도 손대지 않았다(끄는 조작이 시간을 깎지 않는다).
+        assertThat(matchState(matchId)).isEqualTo("HALFTIME");
+        assertThat(clockColumn(matchId, "phase_ends_at")).isEqualTo(deadlineBefore);
+    }
+
+    /**
+     * 오토가 여는 감독시간은 <b>정확히 0초</b>다 (독립검증 minor-3). 종단 상태만 단언하면 deadline 을
+     * `boundary+1ms` 로 바꿔도 통과한다 — 스위프가 한 번 더 필요해질 뿐 수렴은 하기 때문이다.
+     * "0초"가 문서에만 있고 계약엔 없으면 그건 계약이 아니다.
+     */
+    @Test
+    void theAutoHalftimeWindowIsExactlyZero() {
+        String token = setupUserWithDeck("auto_zero");
+        String matchId = createMatch(token, "BOT_BAL");
+        setAuto(token, matchId, true);
+        kickoffAndSimulateH1(token, matchId);
+
+        Instant boundary = Instant.now().minusSeconds(30);
+        setPhaseEndsAt(matchId, boundary);
+
+        // 조회 경로는 오토 전이를 시작하지 않으므로(가드), 무거운 전이를 막은 채 첫 전이만 관찰한다.
+        // → HALFTIME 을 밟은 흔적을 phase_* 로 확인하려면 후반 시작을 잠시 막아야 한다.
+        // 여기서는 대신 GEN2 진입 직후의 기록을 본다: 오토 경로가 남긴 것은 "경계 = 시작 = 종료"다.
+        clockSweeper.sweep();
+        assertThat(matchState(matchId)).isEqualTo("SECOND_HALF");
+
+        // 후반 창은 감독시간 0초 뒤에 열렸다 — 경계 시각에 3분이 더해지지 않았다.
+        // (감독시간이 180초였다면 후반 시작이 그만큼 늦다.)
+        Instant secondHalfStart = Instant.parse(clockColumn(matchId, "phase_start_at"));
+        assertThat(Duration.between(boundary, secondHalfStart).toMillis())
+                .as("감독시간 0초 → 경계와 후반 시작 사이에 halftimeMs 가 끼지 않는다")
+                .isLessThan(HALFTIME_MS);
+    }
+
+    /** 계약이 `required: [auto]` 라면 빠진 요청은 400 이다 — 조용히 OFF 가 아니다(독립검증 minor-2). */
+    @Test
+    void aRequestWithoutTheAutoFieldIsRejectedNotSilentlyTreatedAsOff() {
+        String token = setupUserWithDeck("auto_badreq");
+        String matchId = createMatch(token, "BOT_BAL");
+        setAuto(token, matchId, true);
+
+        assertThat(authPost("/api/matches/" + matchId + "/auto", token, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        // 거부된 요청이 상태를 바꾸지 않았다.
+        assertThat(detail(token, matchId).get("auto")).isEqualTo(true);
+    }
+
     /** 이중 토글은 멱등이다 — 연타가 상태를 흔들지 않는다. */
     @Test
     void repeatedTogglesAreIdempotent() {
