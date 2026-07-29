@@ -33,6 +33,7 @@ quick tunnel 은 URL 이 바뀌지만 web 재배포 한 줄로 흡수(§3). 상�
 | 4 | **economy override 가 볼륨에 남아 있나** | `curl -s -H "Authorization: Bearer <admin>" localhost:18080/api/admin/economy` → `overrideFilePresent` | ⚠️ **아래 §0.6** — 새 economy 발행물이 조용히 무시된다 |
 | 5 | **web 이 빌드는 되나** | `npm run build --workspace=@hmb/web` (루트 `npm test`·`typecheck` 는 apps/web 타입을 안 본다) | 백엔드만 전환되고 web 이 옛 버전으로 남는다(v8.01 에서 실제로 배포가 중간에 멈췄다) |
 | 6 | **executor 도 새 코드로 재기동했나** | `ps -o lstart= -p <executor pid>` 가 배포 시각 이후인가 | executor 는 **도커가 아니라 호스트 프로세스**라 배포 스크립트가 안 건드린다 — 옛 코드로 계속 돈다(§2-3) |
+| 7 | **유저 데이터를 지우는(비가역) 마이그레이션인가** | 새 마이그레이션에 `grep -nE "UPDATE|DELETE|DROP TABLE"` — 걸리면 **무엇이 사라지는지**와 **복원 근거가 DB 안에 남는지**를 읽고 확인 | 스키마 변경과 달리 **백업 없이는 되돌릴 수단이 아예 없다**. 복원 근거를 남기지 않는 소각/삭제라면 배포 전에 그 사실을 hero 에게 확인받는다 |
 
 ## 0.6 ⚠️ economy 를 바꾸는 배포 — override 를 먼저 처리하라
 
@@ -74,6 +75,25 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 - 리로드는 **사유가 필수**고 성공·실패 모두 `admin_ops_audit`(V18)에 남는다 — `GET /api/admin/economy/history`.
 - 현재 적용 중인 조정이 무엇인지는 **`docs/deploy-log.md` 의 [운영 조치] 항목**이 SoT다
   (2026-07-28 가입 젬 6,000→12,000 이 그 예).
+
+---
+
+## 0.7 다음 배포에 걸린 주의 (pending — 그 배포가 끝나면 이 절에서 지운다)
+
+> 배포 지시가 오기 전에 **미리 등록해 둔** 항목이다. 여기 있는 건 §0.5 체크리스트를 돌릴 때
+> **반드시 같이 확인**한다. 처리하고 배포가 끝나면 항목을 지우고 `deploy-log` 에만 남긴다.
+> *(마지막 갱신: 2026-07-29, 라이브 = `06468e2`(v8.03) / Flyway **v20**)*
+
+**대기 중인 마이그레이션: `V21`~`V27` 7건** (라이브 v20 기준). 그중 둘이 특별 취급 대상이다.
+
+| 항목 | 무엇이 위험한가 | 배포 시 할 것 |
+|---|---|---|
+| **`V25__dice_purchase_removed.sql`** (#247) — **파괴적** | 다이스 구매를 없애면서 **기보유 재고를 실제로 소각**한다: `UPDATE user_dice SET normal = 0, cash = 0`. hero 확정(환불안 대신 소각). **백업 없이는 되돌릴 방법이 없다.** | ①**배포 직전 백업 필수**(§8) ②소각 **직전 잔량은 마이그레이션이 `dice_burned` 표에 박제**한다(`user_id·normal·cash·burned_at`) — 보상 요구가 오면 **그 표가 유일한 근거**이므로, 배포 후 `SELECT COUNT(*), SUM(normal), SUM(cash) FROM dice_burned` 를 찍어 **deploy-log 에 남긴다** ③복원 SQL 근거 = `dice_burned` + **#247 코멘트** |
+| **`V21__away_raid.sql`** (+`.conf`, #245) — **비원자** | `matches` **테이블 12단계 재작성**(mode CHECK 확장). `executeInTransaction=false` 라 중간에 죽으면 **`matches` 없는 DB + Flyway failed** 로 남는다(V8·V19 와 같은 계열). | ①**배포 직전 백업 필수** ②**백업 사본 리허설**(§8)에서 `PRAGMA foreign_key_check` 0 + 자식행(`match_prompts`·`match_halves`·`ai_jobs`·`point_ledger`·`growth_applied`) 수 보존 확인 ③롤백 이미지 고정 |
+
+- 두 건 다 **되돌리려면 DB 복원이 필요**하다 — v8.01 이후로 **이미지만 되돌리는 롤백은 성립하지 않는다**(스키마가 앞서면 Flyway validate 에서 부팅 실패). 롤백 = **백업 복원 + 동세대 이미지**.
+- 나머지 5건도 §0.5-7 로 직접 스캔해 봤다: `V22 away_season`·`V23 deck_team_prompt`·`V24 halftime_tactics`·`V26 notices` 는 파괴적 구문 **0건**. **`V27__away_forfeit_isolation` 은 `UPDATE` 1건**이지만 **삭제가 아니라 백필**이다(`away_reports.forfeit` 신설 후 `goals_for=0 AND goals_against=0 AND result<>'DRAW'` 인 과거 행을 몰수로 표시) — 되돌리기는 컬럼 드롭이면 되므로 V25 와 같은 등급은 아니다. 그래도 **오탐이 있으면 과거 리포트가 몰수로 잘못 찍히므로** 리허설에서 `SELECT COUNT(*) FROM away_reports WHERE forfeit=1` 를 찍어 규모를 먼저 본다.
+- 위 목록은 **2026-07-29 시점 스냅샷**이다 — 배포 시점에 §0.5 의 1·2·7 을 **다시** 돌려라(그 사이 더 쌓인다).
 
 ---
 
