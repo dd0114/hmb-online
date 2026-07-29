@@ -28,12 +28,14 @@ public class AdminController {
     private final AdminUserQueryService users;
     private final AdminPointsService points;
     private final AdminEconomyService economy;
+    private final AdminNoticeService notices;
 
     public AdminController(AdminUserQueryService users, AdminPointsService points,
-                           AdminEconomyService economy) {
+                           AdminEconomyService economy, AdminNoticeService notices) {
         this.users = users;
         this.points = points;
         this.economy = economy;
+        this.notices = notices;
     }
 
     /** 유저 목록·닉네임 검색·페이징. 비번은 조회 SQL 에도 DTO 에도 없다. */
@@ -117,5 +119,59 @@ public class AdminController {
     }
 
     public record StarterTopRequest(List<String> pool, Integer count, String reason) {
+    }
+
+    // ── 공지 운영 (#248) ─────────────────────────────────────────────────
+    // economy 와 달리 override 파일도 reload 도 없다 — DB 가 SoT 라 쓰면 곧 다음 조회에 반영된다.
+    // 유저 쪽 읽기는 게이트 밖 공개 엔드포인트(GET /api/notices/active, NoticeController)다.
+
+    /** 전체 목록(중지·만료·삭제 포함) + 서버가 판정한 상태(LIVE|SCHEDULED|OFF|EXPIRED|DELETED). */
+    @GetMapping("/notices")
+    public NoticeListResponse notices() {
+        return new NoticeListResponse(notices.list());
+    }
+
+    /** 공지 운영 이력(감사 원장) — 성공/실패 모두. economy 이력과 같은 모양이다. */
+    @GetMapping("/notices/history")
+    public List<AdminEconomyService.AuditEntry> noticeHistory(
+            @RequestParam(name = "limit", required = false, defaultValue = "20") int limit) {
+        return notices.history(limit);
+    }
+
+    @PostMapping("/notices")
+    public AdminNoticeService.NoticeAdminView createNotice(
+            @RequestAttribute("userId") String actorUserId,
+            @RequestBody(required = false) AdminNoticeService.UpsertRequest body) {
+        return notices.create(actorUserId, body);
+    }
+
+    /** 내용 전체 치환. 제목·본문이 실제로 바뀔 때만 revision 이 오른다(클라 억제 키). */
+    @PutMapping("/notices/{id}")
+    public AdminNoticeService.NoticeAdminView updateNotice(
+            @RequestAttribute("userId") String actorUserId,
+            @PathVariable("id") String id,
+            @RequestBody(required = false) AdminNoticeService.UpsertRequest body) {
+        return notices.update(actorUserId, id, body);
+    }
+
+    /** 노출 ON/OFF — 기간을 건드리지 않는다(원장이 거짓말하지 않게). */
+    @PostMapping("/notices/{id}/active")
+    public AdminNoticeService.NoticeAdminView setNoticeActive(
+            @RequestAttribute("userId") String actorUserId,
+            @PathVariable("id") String id,
+            @RequestBody(required = false) AdminNoticeService.ActiveRequest body) {
+        return notices.setActive(actorUserId, id, body);
+    }
+
+    /** soft delete — 행은 남는다(감사 원장이 참조한다). 사유는 economy override 와 같은 쿼리 파라미터. */
+    @DeleteMapping("/notices/{id}")
+    public AdminNoticeService.NoticeAdminView deleteNotice(
+            @RequestAttribute("userId") String actorUserId,
+            @PathVariable("id") String id,
+            @RequestParam(name = "reason", required = false) String reason) {
+        return notices.delete(actorUserId, id, reason);
+    }
+
+    public record NoticeListResponse(List<AdminNoticeService.NoticeAdminView> notices) {
     }
 }

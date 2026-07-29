@@ -46,6 +46,10 @@ tags:
     description: >-
       매치 상태머신(BRIEFING→GEN1→FIRST_HALF→HALFTIME→GEN2→SECOND_HALF→FINISHED, §5.1 +
       P4-E2 #170 서버 권위 시계. H1_BREAK 은 레거시 전용)
+  - name: notices
+    description: >-
+      공지사항(#248). 조회는 **공개**(로그인 전에도 필요한 점검 공지), 운영(CRUD·감사이력)은
+      admin 게이트 뒤 — DB 가 SoT 라 쓰면 곧 반영된다(리로드 없음).
   - name: internal
     description: 서번트 전용 AI 잡 큐 프로토콜(X-Servant-Token)
 
@@ -1304,6 +1308,207 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { description: "멱등키 충돌. code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
 
+  # ───────────────────────────── admin: 공지 운영 (#248) ─────────────────────────────
+  # economy(#209)와 같은 것: admin 게이트 뒤 · 사유 필수 · **성공·실패 모두** admin_ops_audit 기록.
+  # 다른 것: 공지는 발행물의 파생이 아니라 운영자가 만드는 데이터 그 자체라 override 파일도 reload 도
+  # 없다 — DB 가 SoT 이고 쓰면 곧 다음 조회(GET /api/notices/active)에 반영된다.
+  # 인증은 /api/admin/ 접두사 게이트가 일괄 담당한다(엔드포인트별 권한 선언 없음).
+  /api/admin/notices:
+    get:
+      tags: [admin]
+      operationId: adminListNotices
+      summary: |
+        전체 목록(**중지·만료·삭제 포함**) + 서버가 판정한 status. 화면이 기간을 다시 계산하지
+        않게 하는 것이 요점이다 — 같은 데이터에 두 개의 진실이 생기면 유저 피드와 운영 화면이
+        조용히 갈라진다. 삭제된 공지는 목록 맨 뒤로 밀린다. (페이징 없음 — 운영 규모상 전건.)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notices]
+                properties:
+                  notices:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminNotice" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: adminCreateNotice
+      summary: 공지 생성. 사유 필수. audit action=notice_create.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminNoticeUpsertRequest" }
+      responses:
+        "200":
+          description: 생성됨(201 이 아니라 200 — 리포 전반 관용구)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminNotice" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/notices/history:
+    get:
+      tags: [admin]
+      operationId: adminNoticeHistory
+      summary: |
+        공지 운영 이력(감사 원장) — **성공과 실패 모두**. 거절된 시도도 남고, 그 행만으로
+        "어느 공지에 무엇을 넣으려 했나"가 복원된다(detailJson.noticeId / attempted).
+        원장 테이블은 economy·유닛 카탈로그와 공용이라 action 접두사 `notice_` 로 스코프한다.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 20, maximum: 100 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminOpsAuditEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/notices/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    put:
+      tags: [admin]
+      operationId: adminUpdateNotice
+      summary: |
+        수정 = 내용 필드 **전체 치환**(부분 패치가 아니다). startsAt/endsAt/priority 를 안 보내면
+        **지워진다** — web 폼은 항상 전체 필드를 보내야 한다.
+        `revision` 은 **제목 또는 본문이 실제로 바뀔 때만** +1 한다(클라 억제 키가 `id@revision`
+        이라, 내용 무관 변경에 범프하면 전원 재표시되고 안 하면 오탈자 수정본이 억제된 유저에게
+        안 보인다). audit action=notice_update.
+      description: |
+        **`active` 에 값이 실려 오면 400 이다**(키가 있어도 `null` 이면 통과) — 전체 치환 규약에서
+        한 필드만 조용히 무시하면 운영자가 200 을 받고 "내렸다"고 믿는데 공지는 계속 뜬다.
+        노출은 POST /{id}/active 전용.
+
+        **대상 조회가 검증보다 먼저다** — 없는 id 는 바디가 함께 잘못됐어도 400 이 아니라 404 다.
+        (그래야 실패 원장에 대상 id·직전 스냅샷이 남는다.)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminNoticeUpsertRequest" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminNotice" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "없거나 이미 삭제된 공지. code=NOT_FOUND", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        "409": { description: "다른 운영자가 먼저 고쳤다(revision CAS 실패). code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+    delete:
+      tags: [admin]
+      operationId: adminDeleteNotice
+      summary: |
+        **soft delete 만**(hard delete 없음, hero 컨펌 Q6). 행은 남는다 — 감사 원장이 참조하는
+        대상이 사라지면 "무슨 공지를 왜 내렸나"를 복원할 수 없다. audit action=notice_delete.
+      parameters:
+        - name: reason
+          in: query
+          required: true
+          schema: { type: string }
+          description: |
+            사유는 쿼리로 받는다(DELETE 바디는 일부 클라이언트·프록시가 조용히 떨어뜨린다 —
+            /api/admin/economy/override 와 같은 관용구).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminNotice" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "없거나 이미 삭제된 공지. code=NOT_FOUND", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        # 조회 시점엔 살아 있었는데 삭제 커밋이 먼저 들어오면 조건부 UPDATE 가 0행이 된다
+        # (`WHERE … deleted_at IS NULL`). 404 로 낮추지 않는 이유 = 그건 "처음부터 없었다"는 뜻이고,
+        # 여긴 "방금 누가 먼저 지웠다"라 운영자가 할 일(목록 새로고침)이 다르다.
+        "409": { description: "다른 운영자가 먼저 지웠다(조건부 UPDATE 0행). code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/admin/notices/{id}/active:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      operationId: adminSetNoticeActive
+      summary: |
+        노출 ON/OFF. **기간을 건드리지 않는다** — 급히 내릴 때 endsAt 을 과거로 조작하게 만들면
+        원장이 거짓말을 한다. 내용이 그대로이므로 `revision` 도 오르지 않는다(다시 올려도
+        전원 재표시가 되지 않는다). audit action=notice_active.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active, reason]
+              properties:
+                active: { type: boolean }
+                reason: { type: string, description: 운영 사유(필수 — 원장에 남는다) }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminNotice" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "없거나 이미 삭제된 공지. code=NOT_FOUND", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        # 위 DELETE 와 같은 창 — requireLive 통과 후 다른 운영자의 삭제가 먼저 커밋되면 0행이 된다.
+        "409": { description: "다른 운영자가 먼저 지웠다(조건부 UPDATE 0행). code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  # ───────────────────────────── notices (공개) ─────────────────────────────
+  /api/notices/active:
+    get:
+      tags: [notices]
+      operationId: getActiveNotices
+      # **공개 엔드포인트**(전역 bearerAuth 해제) — /api/config 와 같은 처지다. 유저 스코프 데이터 0인
+      # 전체 브로드캐스트이고, 무엇보다 **점검 공지는 로그인이 안 될 때 가장 필요하다**. 여기에 401 을
+      # 두면 정확히 그 순간에 안 보인다(#232 독립검증 BL-1 의 반복).
+      # ⚠️ 이 줄을 지우면 전역 security 가 되살아나 계약이 "인증 필요"로 읽힌다.
+      security: []
+      summary: 홈(로비) 팝업이 읽는 공지 피드 — 지금 보여야 하는 것만 (#248)
+      description: |
+        **서버가 이미 걸러서 내려준다**: `active=1` · 미삭제 · `startsAt <= now <= endsAt`(양끝 포함).
+        클라는 기간을 재계산하지 않는다 — 재계산하면 기기 시계·타임존이 진실이 되고(폰 시계가 하루
+        빠른 유저에게 점검 공지가 안 뜬다), 규칙이 바뀔 때 조용히 어긋난다(#217 `locked` 와 같은 원칙).
+
+        정렬 = `priority DESC, startsAt DESC, id DESC`. 클라는 받은 순서 그대로 카드를 쌓는다
+        (중첩 스택 팝업, hero 컨펌 Q1) — "무엇이 맨 위인가"는 서버가 정하는 값이다.
+
+        활성 0건이면 200 + 빈 배열이다(에러가 아니다). 그래도 클라는 응답 형태 이상·5xx 에
+        견뎌야 한다 — 팝업만 안 뜨고 로비는 정상 렌더(#248 §3.3).
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [notices]
+                properties:
+                  notices:
+                    type: array
+                    items: { $ref: "#/components/schemas/ActiveNotice" }
+
 
 components:
   securitySchemes:
@@ -1563,13 +1768,18 @@ components:
         dice:
           type: [object, "null"]
           required: [normal, cash]
+          description: >-
+            **잠재 리롤 1회 비용** (#247). 예전엔 상점에서 다이스를 사서 재고로 쌓는 가격이었으나
+            hero 확정(2026-07-29)으로 구매 단계가 사라졌다 — 이제 강화탭의 리롤 버튼이 이 값으로
+            지갑에서 직접 결제한다(`POST /api/growth/dice`). **키·값은 그대로**라 economy override
+            재작성이 필요 없다. `POST /api/shop/dice`(구매)는 은퇴했다.
           properties:
             normal:
               $ref: "#/components/schemas/Price"
-              description: 노말 다이스 — 무료재화 결제
+              description: 잠재 재설정(승급 판정 있음) — 무료재화 결제
             cash:
               $ref: "#/components/schemas/Price"
-              description: 캐시 다이스 — 유상재화 결제
+              description: 고급 재설정(상위 옵션 가중, 승급 판정 없음) — 유상재화 결제
         gemTopup:
           type: [object, "null"]
           required: [enabled, packs]
@@ -1708,18 +1918,128 @@ components:
         action:
           type: string
           description: |
-            economy_reload | economy_starter_top | economy_override_clear (#209).
+            economy_reload | economy_starter_top | economy_override_clear (#209) ·
+            notice_create | notice_update | notice_active | notice_delete (#248).
             ⚠️ enum 으로 닫지 않는다 — 이 테이블은 범용 운영 원장이고(#207 파트 A 등 다른 트랙이
-            자기 action 을 같은 테이블에 append 한다) 조회는 action 필터가 없다. 닫아 두면
-            그 트랙이 랜딩하는 순간 응답이 자기 스펙을 위반한다.
+            자기 action 을 같은 테이블에 append 한다) economy 이력 조회는 action 필터가 없다.
+            닫아 두면 그 트랙이 랜딩하는 순간 응답이 자기 스펙을 위반한다.
+            (GET /api/admin/notices/history 만 `notice_` 접두사로 스코프한다.)
         result:
           type: string
           enum: [ok, failed]
         reason: { type: [string, "null"] }
         detailJson:
           type: [string, "null"]
-          description: "{before, after} 또는 {before, attempted, error} 스냅샷(JSON 문자열)"
+          description: |
+            `{before, after}` 또는 `{before, attempted, error}` 스냅샷(JSON 문자열).
+            공지(#248)는 여기에 **`noticeId` 를 함께 싣는다** — 검증에서 튕긴 실패 행은 before 가
+            null 이라, id 가 없으면 "어느 공지에 무엇을 넣으려 했나"가 원장에서 복원되지 않는다
+            (독립검증 B2: 실패 세 줄이 전부 똑같아 구분 불가였다).
         createdAt: { type: string }
+
+    # ───────────────────────────── 공지 (#248) ─────────────────────────────
+    ActiveNotice:
+      type: object
+      required: [id, revision, title, body, priority]
+      description: |
+        팝업이 그리는 데 필요한 것만. **운영 전용 필드(active·status·deletedAt·createdBy)는 공개
+        피드에 싣지 않는다** — 이 엔드포인트는 인증 없이 열려 있다.
+      properties:
+        id: { type: string, description: ULID }
+        revision:
+          type: integer
+          description: |
+            **클라 억제 키의 절반**(`id@revision`). 제목·본문이 실제로 바뀔 때만 서버가 +1 하므로,
+            오탈자를 고치면 24시간 억제한 유저에게도 다시 뜨고 노출 토글·우선순위 조정으로는
+            다시 뜨지 않는다.
+        title: { type: string, maxLength: 100 }
+        body:
+          type: string
+          maxLength: 2000
+          description: |
+            마크다운 부분집합(줄바꿈·**굵게**·*기울임*·목록·링크·이미지, hero 컨펌 Q7).
+            ⚠️ **살균은 렌더 시점의 클라 책임**이다 — `dangerouslySetInnerHTML` 금지, 화이트리스트
+            엘리먼트로만 파싱, URL 스킴은 http/https/자체경로만. 서버는 길이 상한만 본다
+            (문자열 필터링은 우회되므로 서버 검열을 신뢰 근거로 삼지 않는다).
+        startsAt:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            노출 시작(포함). null = 즉시 시작. **초 단위로 절삭된 ISO-8601 UTC**
+            (`2026-07-30T00:00:00Z`)로 정규화돼 내려간다.
+          examples: ["2026-07-30T00:00:00Z"]
+        endsAt:
+          type: [string, "null"]
+          format: date-time
+          description: 노출 종료(**포함** — 종료 정각까지 보인다). null = 무기한.
+          examples: ["2026-07-31T23:59:00Z"]
+        priority:
+          type: integer
+          description: 클수록 앞. 정렬 = priority DESC, startsAt DESC, id DESC.
+
+    AdminNotice:
+      type: object
+      required: [id, revision, title, body, priority, active, status, createdAt, updatedAt]
+      description: 운영 화면이 보는 한 건 — 공개 피드 + 운영 필드 + **서버가 판정한** status.
+      properties:
+        id: { type: string }
+        revision: { type: integer }
+        title: { type: string }
+        body: { type: string }
+        startsAt: { type: [string, "null"], format: date-time }
+        endsAt: { type: [string, "null"], format: date-time }
+        priority: { type: integer }
+        active:
+          type: boolean
+          description: 운영 스위치. **기간과 별개 축**이다 — "예약해 뒀지만 지금은 내려두고 싶다"를 표현한다.
+        status:
+          type: string
+          enum: [LIVE, SCHEDULED, OFF, EXPIRED, DELETED]
+          description: |
+            서버 판정(우선순위 DELETED → OFF → EXPIRED → SCHEDULED → LIVE). 화면이 다시 계산하지
+            않는다. 중지된 공지에 EXPIRED 를 보여 주면 운영자가 기간을 늘리는 잘못된 조치를 한다.
+        deletedAt: { type: [string, "null"], format: date-time }
+        createdBy: { type: [string, "null"], description: 생성한 admin 의 userId }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    AdminNoticeUpsertRequest:
+      type: object
+      required: [title, body, reason]
+      description: |
+        생성·수정 공통 바디. **수정에서는 전체 치환**이다 — 안 보낸 startsAt/endsAt/priority 는
+        지워진다(부분 패치 아님).
+      properties:
+        title: { type: string, minLength: 1, maxLength: 100 }
+        body: { type: string, minLength: 1, maxLength: 2000 }
+        startsAt:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            ISO-8601. `2026-07-30T00:00:00Z` 또는 오프셋 표기(`2026-07-30T09:00:00+09:00`) 둘 다
+            받는다. **오프셋 없는 로컬 시각(`2026-07-30T09:00:00`)은 400** — 서버가 존을 추측하면
+            공지가 9시간 틀린 시각에 뜬다. 서버가 초 단위 UTC 로 정규화해 저장한다.
+          examples: ["2026-07-30T00:00:00Z", "2026-07-30T09:00:00+09:00"]
+        endsAt:
+          type: [string, "null"]
+          format: date-time
+          description: "`startsAt < endsAt` 이어야 한다(역전은 400 — 그 공지는 절대 안 보이는데 목록에서는 예약됨처럼 보인다)."
+        priority:
+          type: integer
+          minimum: -1000
+          maximum: 1000
+          default: 0
+        active:
+          type: [boolean, "null"]
+          description: |
+            **생성에서만 유효**(기본 true). 수정에서는 **값이 실려 오면 400**(키가 있어도 `null`
+            이면 통과 — 서버는 `active != null` 만 본다) — 전체 치환 규약에서 한 필드만 조용히
+            무시하면 운영자가 200 을 받고 "내렸다"고 믿는데 공지는 계속 뜬다.
+            노출 변경은 POST /api/admin/notices/{id}/active.
+        reason:
+          type: string
+          maxLength: 500
+          description: 운영 사유(필수 — 성공·실패 모두 admin_ops_audit 에 남는다).
 
     StarterGrantResponse:
       type: object

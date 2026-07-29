@@ -59,8 +59,9 @@ node design/characters/pipeline/make-characters.mjs # → dist/characters/ (아�
 
 ### dist/units/ — hero 입고 유닛 아트 (#207 W3-B, U-D5~U-D9 소비)
 
-hero 가 외부에서 뽑은 **실아트**를 슬라이스·규격화해 발행한 세 번째 축. LEGEND 활성 5종
-(보날두·열라도나·춘바페·덕브라이너·욱링엄) + **디폴트 유닛 1종**(GOLD/SILVER/BRONZE 공용, U-D8).
+hero 가 외부에서 뽑은 **실아트**를 슬라이스·규격화해 발행한 세 번째 축. LEGEND 7종
+(보날두·열라도나·춘바페·덕브라이너·욱링엄 + **3차 입고** 경니시우스·석다이크) +
+**디폴트 유닛 1종**(GOLD/SILVER/BRONZE 공용, U-D8) = 8종.
 
 ```bash
 python3 design/characters/pipeline/slice-units.py            # 원본(~/Desktop/imageRef) → dist/units/
@@ -71,10 +72,23 @@ UNITS_SRC=/다른/경로 python3 .../slice-units.py               # 원본 위�
 | 파일 | 내용 |
 |---|---|
 | `card-<id>.png` (512×768) | **완성 카드** — 프레임·이름판·포지션뱃지·별·대사가 이미 구워져 있다. **현재 0종**(↓ 2차 입고) |
-| `art-<id>.png` (512×768, 디폴트 유닛만 139×201) | **프레임 없는 캐릭터 아트**(투명 배경). 현재 6종 전부 |
+| `art-<id>.png` (512×768, 디폴트 유닛만 139×201) | **프레임 없는 캐릭터 아트**(투명 배경). 현재 8종 전부 |
 | `face-<id>.png` (256², 디폴트 유닛 132²) | 얼굴 마스터(고DPI) |
-| `avatars-{64,32,16}.png` | 얼굴 아틀라스(3×2 격자) — `characters` 축과 동일 계약 |
-| `manifest.json` | `units[id]` = `{col,row,name,position,card:{file,kind,w,h},face,iconBackground,forPlayer?,forGrades?}` |
+| `avatars-{64,32,16}.png` | 얼굴 아틀라스(3열 격자, 현재 3×3) — `characters` 축과 동일 계약 |
+| `manifest.json` | `units[id]` = `{col,row,name,position,card:{file,kind,w,h},face,iconBackground,forPlayer?,forGrades?,pendingCatalog?}` |
+
+**3차 입고(2026-07-29) — 신규 LEGEND 2종.** `source` = `hero-imageRef-2026-07-29-rev3`.
+유닛이 6 → 8 이 되며 아틀라스 격자가 **3×2 → 3×3** 으로 자랐다(소비측은 manifest 의 `cols`/`rows`
+를 읽으므로 무변경 — 격자 크기를 리터럴로 박고 있던 계약 2건은 발행물 기준으로 고쳤다).
+- `kyeongnicius`(경니시우스·FW) → **P180 매핑 완료.** 시드는 아직 `active:false` 이고 활성화는
+  어드민 API 몫이다(#207 파트 A) — 매핑을 미리 붙여 둬야 토글과 동시에 아트가 뜬다.
+- `seokdijk`(석다이크·DF) → **`pendingCatalog: true`.** 아트는 발행됐지만 **카탈로그에 대응 선수가
+  없다.** hero 원안(#207 AC1)의 석다이크(판 다이크)는 U-D4 확정에서 석신(야신·GK)으로 대체돼
+  P번호를 못 받았고, 이 아트는 오렌지 킷 필드플레이어라 GK 인 석신에 붙일 수 없다. 채번은
+  data/server-java 축 결정이라 여기서 하지 않는다.
+
+⚠️ **유닛 추가는 `UNITS` 배열 맨 끝에 append 한다.** index → col/row 라서 중간 삽입하면 기존
+유닛의 타일 좌표가 전부 밀리고, 캐시된 구 manifest + 새 아틀라스 조합에서 **얼굴이 뒤바뀐다**.
 
 **소비측 분기 계약 = `units[id].card.kind`**
 - `complete` → **그대로 그린다.** `frame-<GRADE>.png` 합성 경로를 타면 안 된다(등급 프레임이 이미 구워져 있다).

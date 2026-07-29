@@ -42,6 +42,29 @@ const PLAYERS = [
   { id: "P042", name: "FA 스트라이커", position: "FW", grade: "DIA", owned: false, ownedCount: 0, attributes: attrs, personality: "AMBITIOUS" },
 ];
 
+/** #247: 잠재 재설정 비용 표기를 보려면 강화 상세가 열려야 한다 — 2★(잠재 해금) 카드 목. */
+const OWNED_ID = "P011";
+const CARD = {
+  playerId: OWNED_ID,
+  grade: "GOLD",
+  star: 2,
+  attributes: attrs,
+  prePotential: attrs,
+  base: attrs,
+  caps: attrs,
+  statLevels: Object.fromEntries(Object.keys(attrs).map((k) => [k, { lv: 0, xp: 0 }])),
+  potential: {
+    unlocked: true,
+    tier: "RARE",
+    maxTier: "EPIC",
+    lines: [{ slot: 1, tier: "RARE", type: "STAT_PCT", stat: "shooting", value: 3 }],
+    rollsSinceTierUp: 1,
+    ceilingAt: 9,
+  },
+  ovr: 74,
+  completion: 0.3,
+};
+
 const TRADE = {
   wallet: { points: POINTS },
   slots: [
@@ -86,7 +109,7 @@ async function mockApi(page: Page, configOpts: Opts = ODD, configStatus: "ok" | 
   await at("/api/league", LEAGUE);
   await at("/api/logs/matches", []);
   await at("/api/logs/trades", TRADE_LOGS);
-  await at("/api/growth/dice", { normal: 4, cash: 2 });
+  await at(`/api/growth/card/${OWNED_ID}`, CARD);
   await at("/api/me/active-match", { match: null, locked: false, abandonable: false });
   await at("/api/deck", { formation: "4-3-3", slots: [], bench: [] });
   if (configStatus === "fail") {
@@ -149,14 +172,19 @@ test("상점 뽑기 가격·부족 문구가 서버 표기·서버 가격을 따
   await expectNoLegacyCurrencyText(page, "상점/뽑기");
 });
 
-test("상점 다이스 가격이 서버 config 를 따른다 (구 미러 상수 500 이 아니다)", async ({ page }) => {
-  await boot(page, "/shop");
-  await page.getByTestId("shop-tab-dice").click();
-  const normal = page.getByTestId("dice-normal-price");
+/**
+ * #247: 다이스는 상점에서 사지 않는다 — 잠재 재설정 **비용**이 강화 상세 버튼에 붙는다.
+ * 가격 출처는 그대로 서버 config(`shop.dice`)이므로 이 계약도 그대로 따라 옮겼다
+ * (구 미러 상수 500 이 되살아나면 여기서 죽는다).
+ */
+test("잠재 재설정 비용이 서버 config 를 따른다 (구 미러 상수 500 이 아니다)", async ({ page }) => {
+  await boot(page, "/growth");
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  const normal = page.getByTestId("growth-dice-normal-price");
   await expect(normal).toContainText("5,000");
   await expect(normal).toContainText(ODD.pointSymbol);
-  await expect(page.getByTestId("dice-cash-price")).toContainText(ODD.gemSymbol);
-  await expectNoLegacyCurrencyText(page, "상점/다이스");
+  await expect(page.getByTestId("growth-dice-cash-price")).toContainText(ODD.gemSymbol);
+  await expectNoLegacyCurrencyText(page, "강화/잠재 재설정");
 });
 
 test("트레이드 단축 비용이 서버가 준 재화로 표기된다", async ({ page }) => {
@@ -231,7 +259,7 @@ test("뽑기 게이팅이 결제 재화 잔액을 따른다 — 유상재화로 
 test("충전 탭은 서버 플래그를 따른다 — 비활성이면 죽은 버튼을 그리지 않는다", async ({ page }) => {
   await boot(page, "/shop", { ...ODD, topupEnabled: false });
   await expect(page.getByTestId("shop-tab-topup")).toHaveCount(0);
-  await page.getByTestId("shop-tab-dice").click();
+  // 탭이 없으면 충전 섹션도 어디에도 없다 (#247 로 [다이스] 탭이 사라져 진입로가 하나뿐이다).
   await expect(page.getByTestId("gem-topup-section")).toHaveCount(0);
 
   await boot(page, "/shop", { ...ODD, topupEnabled: true });

@@ -67,7 +67,13 @@ export interface StarUpResult {
   maxTier: PotentialTier; // 승급 후 티어 캡
 }
 
-/** 다이스 롤 결과 (POST /api/growth/dice). */
+/**
+ * 잠재 리롤 결과 (POST /api/growth/dice).
+ *
+ * ⚠️ **#247: 구매 단계가 사라졌다** — 다이스는 사는 물건이 아니라 롤 비용이다. 그래서 응답에서
+ * `diceLeft`(재고 잔여)가 빠지고 `wallet`(차감 후 지갑)이 들어왔다. 재고 필드를 되살리지 마라 —
+ * 되살아나는 순간 화면에 "보유 n개"가 다시 그려진다.
+ */
 export interface DiceRollResult {
   playerId: string;
   kind: "NORMAL" | "CASH";
@@ -78,7 +84,7 @@ export interface DiceRollResult {
   lines: PotentialLine[];
   rollsSinceTierUp: number;
   ceilingAt: number;
-  diceLeft: number; // 이 kind 의 롤 후 잔여 개수
+  wallet: WalletBalance; // 롤 비용 차감 후 잔액(재화를 정하는 쪽이 잔액도 준다, #232)
 }
 
 /** 매치 후 성장 리포트 1인분 — 스탯별 XP·레벨업 (GET /api/growth/report). */
@@ -106,19 +112,6 @@ export interface WalletBalance {
 }
 
 /**
- * POST /api/shop/dice 응답 — **shared/growth.ts 에도 아직 없다**(V2-4 표에는 있지만 zod 스키마
- * 미정의). "지갑 차감·user_dice 증가"(§V2-4)만 명시돼 있어, 갱신된 다이스 잔고 + 지갑을 함께
- * 내려준다고 가정해 손으로 정의했다 — GM2 확정 시 이 타입을 교체할 것(리스크로 최종보고에 기록).
- * V2.2: NORMAL=P 결제, CASH=젬 결제(10젬/개) — wallet 이 WalletBalance(points+gems)로 개정.
- */
-export interface DiceBuyResult {
-  kind: "NORMAL" | "CASH";
-  count: number;
-  dice: { normal: number; cash: number };
-  wallet: WalletBalance;
-}
-
-/**
  * 젬 충전(목업) 결과 (POST /api/shop/gems/topup). 실결제 없음 — mock 지급, 즉시 반영.
  * SoT = packages/shared/src/growth.ts GemTopupResult.
  */
@@ -128,15 +121,12 @@ export interface GemTopupResult {
   wallet: WalletBalance;
 }
 
-/** 젬 부족 4xx 코드 (POST /api/shop/dice CASH — V2.2 §스펙). */
-export const INSUFFICIENT_GEMS_CODE = "INSUFFICIENT_GEMS";
-
-/** 성★ 승급 시 중복 부족 4xx 코드 (V2-4 명시). */
-export const INSUFFICIENT_MATERIALS_CODE = "INSUFFICIENT_MATERIALS";
-
 /**
- * 다이스 롤 시 보유 다이스 부족 4xx 코드 — V2-4 문서엔 코드명이 명시돼 있지 않아 INSUFFICIENT_*
- * 네이밍 관례(위 MATERIALS, openapi INSUFFICIENT_POINTS)를 따라 추정했다. GM2 확정 코드가 다르면
- * 이 상수만 갈아끼우면 된다(호출부는 이 상수를 통해서만 비교).
+ * 성★ 승급 시 중복 부족 4xx 코드 (V2-4 명시).
+ *
+ * ⚠️ 잔액 부족(`INSUFFICIENT_POINTS`/`INSUFFICIENT_GEMS`)에는 대응 상수가 **일부러 없다**.
+ * #247 로 리롤이 지갑 결제가 되면서 그 문구는 **서버가 표기 메타로 만든 것을 그대로** 띄우므로
+ * (#232), 클라가 코드를 분기해 자기 문구를 지어낼 자리가 없어졌다. 상수를 되살리면 그 분기가
+ * 같이 돌아온다.
  */
-export const INSUFFICIENT_DICE_CODE = "INSUFFICIENT_DICE";
+export const INSUFFICIENT_MATERIALS_CODE = "INSUFFICIENT_MATERIALS";

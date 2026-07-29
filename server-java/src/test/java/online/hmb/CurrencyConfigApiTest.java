@@ -41,6 +41,10 @@ class CurrencyConfigApiTest extends ApiTestBase {
     /** 가입 지급 젬(6,000)으로 절대 못 사는 가격 — 단뽑 한 번으로 잔액부족 문구를 끌어낸다. */
     private static final int UNAFFORDABLE = 9_999_999;
 
+    /** #247: 리롤 잔액부족 문구를 끌어내려면 먼저 잠재를 해금해야 해서 DB 준비가 필요하다. */
+    @jakarta.annotation.Resource
+    private org.springframework.jdbc.core.simple.JdbcClient jdbcClient;
+
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
@@ -155,17 +159,42 @@ class CurrencyConfigApiTest extends ApiTestBase {
                 .doesNotContain("젬").doesNotContain("포인트");
     }
 
-    /** <b>변이체 킬 2</b> — 다이스(무료재화) 문구도 같은 출처를 탄다. */
+    /**
+     * <b>변이체 킬 2</b> — 잠재 리롤(무료재화) 문구도 같은 출처를 탄다.
+     * #247 로 결제 지점이 <b>상점 구매 → 롤 자체</b>로 옮겨졌으므로 이 계약도 따라 옮긴다
+     * (구매 엔드포인트에만 걸어 두면 실제로 유저가 보는 문구를 아무도 안 지키게 된다).
+     */
     @Test
     @SuppressWarnings("unchecked")
     void diceShortageMessageFollowsTheConfiguredName() {
         String token = login("cfg-dice");
-        // 가입 지급 3,000 < 노말 다이스 5,000 → 첫 구매부터 잔액부족.
-        ResponseEntity<Map> res = authPost("/api/shop/dice", token,
-                Map.of("kind", "NORMAL", "count", 1), Map.class);
+        String userId = jdbcClient.sql("SELECT id FROM users WHERE nickname = ?")
+                .param("cfg-dice").query(String.class).single();
+        unlockPotential(userId, token);
+        // 가입 지급 3,000 < 롤 비용 5,000 → 첫 롤부터 잔액부족.
+        ResponseEntity<Map> res = authPost("/api/growth/dice", token,
+                Map.of("playerId", "P001", "kind", "NORMAL"), Map.class);
         assertThat(res.getStatusCode().is4xxClientError()).isTrue();
+        assertThat(res.getBody().get("code")).isEqualTo("INSUFFICIENT_POINTS");
         assertThat((String) res.getBody().get("message")).isEqualTo(POINT_NAME + "가 부족합니다")
                 .doesNotContain("포인트");
+    }
+
+    /** 잠재는 2★부터 해금이라(POTENTIAL_LOCKED) 리롤 문구를 보려면 먼저 성★을 올려야 한다. */
+    @SuppressWarnings("unchecked")
+    private void unlockPotential(String userId, String token) {
+        jdbcClient.sql("""
+                        INSERT INTO user_players(user_id, player_id, count, acquired_at)
+                        VALUES (?, 'P001', 3, ?)
+                        ON CONFLICT(user_id, player_id) DO UPDATE SET count = 3
+                        """)
+                .params(userId, java.time.Instant.now().toString())
+                .update();
+        ResponseEntity<Map> star = authPost("/api/growth/star", token, Map.of("playerId", "P001"), Map.class);
+        assertThat(star.getStatusCode()).isEqualTo(HttpStatus.OK);
+        // 성 승급은 재화를 쓰지 않는다(중복 소모) — 잔액은 가입 지급 그대로여야 아래 단언이 성립한다.
+        assertThat(jdbcClient.sql("SELECT points FROM wallets WHERE user_id = ?")
+                .param(userId).query(Long.class).single()).isEqualTo(3000L);
     }
 
     /** <b>변이체 킬 3</b> — 충전 비활성 문구도 이름을 따른다(코드는 TOPUP_DISABLED 유지). */

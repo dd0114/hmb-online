@@ -237,18 +237,25 @@ describe("resolveTile 폴백 체인 — 축 태그가 어느 manifest 를 볼지
 });
 
 describe("유닛 축 접근자 (#207 W3-B 발행 계약)", () => {
-  it("발행물의 6종이 전부 3×2 격자 안에 있고 좌표가 겹치지 않는다", () => {
+  // 격자 크기는 발행 유닛 수에 따라 자란다(3차 입고에서 3×2 → 3×3). 리터럴로 박으면 입고마다
+  // 깨지므로 **발행물이 선언한 격자**를 기준으로 검사한다 — 계약은 "전원이 자기 격자 안에 있고
+  // 좌표가 안 겹친다"이지 "격자가 3×2 다"가 아니다.
+  it("발행물 전종이 선언된 격자 안에 있고 좌표가 겹치지 않는다", () => {
+    const grid = unitsManifest.atlases["avatars-64"]!;
+    const ids = Object.keys(unitsManifest.units);
     const seen = new Set<string>();
     for (const [unitId, entry] of Object.entries(unitsManifest.units)) {
       const tile = unitTile(unitsManifest, unitId, "avatars-64");
       expect(tile, unitId).toBeTruthy();
-      expect(entry!.col).toBeLessThan(3);
-      expect(entry!.row).toBeLessThan(2);
+      expect(entry!.col).toBeLessThan(grid.cols);
+      expect(entry!.row).toBeLessThan(grid.rows);
       const key = `${entry!.col},${entry!.row}`;
       expect(seen.has(key), `${unitId} 좌표 충돌 ${key}`).toBe(false);
       seen.add(key);
     }
-    expect(seen.size).toBe(6);
+    expect(seen.size).toBe(ids.length);
+    // 격자가 전원을 담을 수 있어야 한다(행이 모자라면 마지막 유닛이 시트 밖으로 나간다).
+    expect(grid.cols * grid.rows).toBeGreaterThanOrEqual(ids.length);
   });
 
   it("세 해상도 아틀라스가 모두 잡힌다", () => {

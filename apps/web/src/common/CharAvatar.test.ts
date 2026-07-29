@@ -209,14 +209,23 @@ describe("CharAvatar 폴백 3단", () => {
       .toContain("/chars/characters/avatars-64.png");
   });
 
-  it("아트 미입고 LEGEND(P174/P178/P180)는 이니셜 폴백이다 — 깨진 이미지 0", async () => {
-    for (const [id, name] of [["P174", "권씨"], ["P178", "석신"], ["P180", "경니시우스"]] as const) {
+  it("아트 미입고 LEGEND(P174/P178)는 이니셜 폴백이다 — 깨진 이미지 0", async () => {
+    for (const [id, name] of [["P174", "권씨"], ["P178", "석신"]] as const) {
       renderAvatar(h(CharAvatar, { playerId: id, name, grade: "LEGEND" }));
       await waitFor(() =>
         expect(screen.getByTestId(`char-avatar-${id}`).dataset.avatarKind).toBe("placeholder-css"),
       );
       cleanup();
     }
+  });
+
+  // 3차 입고(2026-07-29) — 아트가 들어온 순간 폴백이 아니라 **실아트**로 떠야 한다. 시드에선
+  // 아직 비활성이지만 매핑은 붙어 있으므로(활성화는 어드민 API 몫), 아바타는 units 축을 탄다.
+  it("3차 입고 LEGEND(P180 경니시우스)는 units 축 실아트로 뜬다 — 폴백 아님", async () => {
+    renderAvatar(h(CharAvatar, { playerId: "P180", name: "경니시우스", grade: "LEGEND" }));
+    await waitFor(() => expect(screen.getByTestId("char-avatar-P180").dataset.avatarKind).toBe("unit"));
+    expect(screen.getByTestId("char-avatar-P180").style.backgroundImage)
+      .toContain("/chars/units/avatars-64.png");
   });
 
   it("유닛 manifest 만 없으면 유닛 매핑 선수는 플레이스홀더 축으로 떨어진다(부분 열화)", async () => {

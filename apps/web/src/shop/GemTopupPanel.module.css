@@ -1,54 +1,12 @@
-.notice {
-  margin: 0 0 14px;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.card {
-  padding: 18px 14px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-elevated);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  text-align: center;
-  min-width: 0;
-}
+/*
+ * 유상재화 충전(목업) — #247 로 DicePanel 이 사라지면서 이 섹션만 여기로 옮겨 왔다.
+ * 스타일은 옮기기 전 그대로다(시각 회귀 0). 지갑 플래시(dip)는 지급이 반영됐음을 눈으로
+ * 알리는 신호라 함께 유지한다.
+ */
 
 .title {
   margin: 0;
   font-size: 15px;
-}
-
-.desc {
-  margin: 0;
-  font-size: 11.5px;
-  color: var(--text-muted);
-}
-
-.buyButton {
-  margin-top: 8px;
-  width: 100%;
-  padding: 10px 6px;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-weight: 700;
-  font-size: 13.5px;
-}
-
-.buyButton:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 .walletLine {

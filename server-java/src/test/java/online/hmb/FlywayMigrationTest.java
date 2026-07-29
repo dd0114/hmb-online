@@ -70,7 +70,18 @@ class FlywayMigrationTest {
             "away_offers",
             "away_streaks",
             "away_seasons",
-            "away_season_results"
+            "away_season_results",
+            // V25 다이스 구매 제거(1) — #247: 소각한 재고를 박제(보상 요구 시 근거·롤백 여유).
+            //   user_dice 는 V10 선례대로 **드롭하지 않고** 코드 참조만 끊었다 → 위 목록에 그대로 남는다.
+            //   ⚠️ 번호는 V21 로 만들었다가 #245(원정 V21/V22)·#253/#254(V23/V24)와 충돌해 **V25 로
+            //   리넘버**했다. 아직 배포되지 않은 마이그레이션이라 리넘버가 안전하다.
+            "dice_burned",
+            // V26 공지사항(1) — #248: 홈 팝업 공지. 운영자가 만드는 데이터 그 자체라 economy 처럼
+            //   발행물+override 2층이 아니라 DB 가 SoT 다(쓰면 곧 다음 조회에 반영).
+            //   ⚠️ 번호 이력: V23 → V25 → **V26**. 머지 대기 중에 #245(V21/V22)·#253/#254(V23/V24)·
+            //   #247(V25)이 차례로 앞 번호를 가져갔다. 번호를 사람이 기억하지 않도록 결번·중복은
+            //   FlywayVersionContinuityTest 가 기계로 막는다(주석에 의존하지 않는다).
+            "notices"
     );
 
     @Test

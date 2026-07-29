@@ -43,7 +43,11 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 // 트리에 내리는 값이라 여기서 401 을 내면 그 세션 전체가 표기 없이 굴러간다
                 // (독립검증 BL-1: 로그아웃 콜드 부팅 유저가 세션 내내 "62,000 POINT" 를 봤다).
                 // 내용은 공개 카탈로그(심볼·이름·공시 가격)라 감출 것이 없다 — 유저별 데이터 0.
-                .excludePathPatterns("/api/auth/**", "/api/config")
+                // /api/notices/active(#248) = 홈 팝업이 읽는 공지 피드. 같은 이유로 공개다 —
+                // 유저별 데이터가 0인 전체 브로드캐스트이고, 무엇보다 **점검 공지는 로그인이
+                // 안 될 때 가장 필요하다**. 여기에 401 을 두면 정확히 그 순간에 안 보인다.
+                // 계약 = NoticeActiveApiTest.activeNoticesAreReachableWithoutAuth(되돌리면 깨진다).
+                .excludePathPatterns("/api/auth/**", "/api/config", "/api/notices/active")
                 .order(0);
         registry.addInterceptor(adminInterceptor)
                 .addPathPatterns(AdminInterceptor.ADMIN_PATH_PATTERN)

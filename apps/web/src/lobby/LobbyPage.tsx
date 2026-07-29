@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import {
@@ -10,6 +10,10 @@ import {
   useMe,
   useStartAwayMatch,
 } from "../api/hooks";
+import { useActiveNotices } from "../api/notice-hooks";
+import { pickLobbyPopup } from "./lobby-popup";
+import { NoticePopup } from "./NoticePopup";
+import { visibleNotices, type Notice } from "./notice-logic";
 import { useRelations } from "../api/hooks-v2";
 import { useToken } from "../auth/TokenContext";
 import { providerMeta } from "../auth/login-flow";
@@ -63,6 +67,32 @@ export function LobbyPage() {
     }
     setModeModalOpen(true);
   }
+
+  // ── 공지 팝업 (#248) ───────────────────────────────────────────────────────
+  // 응답은 **정규화를 통과한 뒤에만** 만진다 — `data.notices.length` 를 그대로 읽으면 구 서버의
+  // 200 `{}` 하나에 로비 전체가 흰 화면이 된다(#245 가 같은 회귀 계약을 갖고 있다).
+  const notices = useActiveNotices();
+  const [noticeDone, setNoticeDone] = useState(false);
+  const candidates = useMemo(
+    () => visibleNotices(notices.data, Date.now()),
+    [notices.data],
+  );
+  // 첫 진입에 보인 목록을 **고정**한다. 포커스 복귀 refetch 로 목록이 갈리면 스택 인덱스가
+  // 어긋나 유저가 이미 닫은 장이 다시 앞으로 나온다.
+  const latched = useRef<Notice[] | null>(null);
+  if (latched.current === null && candidates.length > 0) latched.current = candidates;
+  const noticeList = latched.current ?? [];
+
+  // 로비 팝업은 **동시에 하나만** 열린다(#248 §4). 판단은 lobby-popup.ts 한 곳.
+  //
+  // 두 팝업은 트리거가 다르다 — 공지는 **로비 진입**, 원정(#245)은 **[게임 시작] 클릭**(hero E1).
+  // 그래서 현재 구조에선 겹칠 창이 거의 없지만, 트리거는 바뀐다(#245 가 이미 한 번 옮겼다).
+  // 겹치면 **공지가 이긴다** — 점검·사고 안내라 시급하고, 원정은 공지를 닫고 CTA 를 다시 누르면
+  // 그대로 이어진다(반대로 원정을 먼저 띄우면 점검 공지가 한 텀 늦는다).
+  const popup = pickLobbyPopup({
+    notice: !noticeDone && noticeList.length > 0,
+    away: showAwayPopup,
+  });
 
   // me 로딩 실패로 header 가 통째로 사라지면 로그아웃 버튼까지 없어져 불량 세션 탈출이 불가했다(#73 P1).
   // 로그아웃은 항상 노출한다.
@@ -158,7 +188,12 @@ export function LobbyPage() {
 
       {modeModalOpen && <ModeModal onClose={() => setModeModalOpen(false)} />}
 
-      {showAwayPopup && awayReports && (
+      {/* 로비 팝업은 **동시에 하나만** 열린다 — 판정은 pickLobbyPopup 한 곳(#248 §4). */}
+      {popup === "notice" && (
+        <NoticePopup notices={noticeList} onDone={() => setNoticeDone(true)} />
+      )}
+
+      {popup === "away" && awayReports && (
         <AwayReportModal
           data={awayReports}
           onClose={() => {

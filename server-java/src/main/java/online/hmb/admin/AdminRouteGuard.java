@@ -102,7 +102,11 @@ public class AdminRouteGuard implements ApplicationRunner {
             // (/api/ops/… 등)에 매핑해도 부팅이 통과한다 — 독립검증이 실제로 그 구멍을 뚫었다.
             // ⚠️ admin 상태를 다루는 서비스를 새로 만들면 반드시 여기에 추가한다
             //    (AdminGateTest.everyAdminPackageServiceIsSeededIntoTheGuard 가 누락을 잡는다).
-            AdminEconomyService.class);
+            AdminEconomyService.class,
+            // #248 공지 운영. 게이트 밖으로 나가면 아무나 전 유저에게 뜨는 팝업을 쓸 수 있다
+            // (본문이 링크·이미지를 허용하므로 배포 표면이기도 하다). 읽기 전용 NoticeController
+            // (/api/notices/active)는 이 빈이 아니라 NoticeService 에 의존하므로 영향이 없다.
+            AdminNoticeService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;

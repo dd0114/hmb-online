@@ -139,9 +139,6 @@ async function mockApi(page: Page) {
       );
     },
   );
-  await page.route((url) => url.pathname === "/api/growth/dice", (route) =>
-    route.fulfill(json({ normal: 5, cash: 3 })),
-  );
 }
 
 async function login(page: Page) {

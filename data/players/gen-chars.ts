@@ -57,7 +57,7 @@ export const CHARS_MAP_VERSION = "v2";
 export const CHARS_SOURCE = "ref-pixel-fantasy-football";
 
 /** 이 매핑이 전제하는 유닛 발행물(design/characters/dist/units). 불일치 시 생성이 실패한다. */
-export const UNITS_SOURCE = "hero-imageRef-2026-07-27-rev2";
+export const UNITS_SOURCE = "hero-imageRef-2026-07-29-rev3";
 
 /** 기본 입력 시드(현행 소비본). 다른 시드로 태우려면 `loadInputs(파일명)`. */
 export const DEFAULT_SEED_FILE = "players.v2.3.json";
@@ -108,17 +108,37 @@ const UNIT_ASSIGNMENT: ReadonlyArray<readonly [playerId: string, unitId: string]
   ["P176", "chunbappe"], // FW
   ["P177", "dukbrayner"], // MF
   ["P179", "wookringham"], // MF
+  ["P180", "kyeongnicius"], // FW ← 3차 입고(2026-07-29). 미매핑 표에서 승격.
 ];
 
 /**
- * 아트 미입고라 **의도적으로 매핑하지 않는** LEGEND(U-D5 비활성 3종 — 권씨·석신·경니시우스).
+ * 아트 미입고라 **의도적으로 매핑하지 않는** LEGEND(3차 입고 후 2종 — 권씨·석신).
  *
  * 왜 표로 두나: LEGEND 는 "배정표에 없으면 throw" 가 규칙이다(1:1 이 조용히 깨지는 걸 막는다).
  * 미입고를 침묵으로 표현하면 **새 LEGEND 가 실수로 추가된 경우와 구분이 안 된다** → 의도만
  * 여기 명시적으로 적고, 나머지 누락은 계속 throw 한다. 아트가 들어오면 이 줄을 UNIT_ASSIGNMENT
- * 로 옮기는 것이 해제 신호다.
+ * 로 옮기는 것이 해제 신호다. (3차 입고 2026-07-29 에 P180 경니시우스가 그렇게 승격됐다.)
  */
-const UNMAPPED_LEGENDS: readonly string[] = ["P174", "P178", "P180"];
+const UNMAPPED_LEGENDS: readonly string[] = ["P174", "P178"];
+
+/**
+ * 아트는 입고됐지만 **시드에서 아직 비활성**인 LEGEND — 활성화 대기.
+ *
+ * 왜 필요한가: #207 파트 A 의 운영 모델은 "아트가 나오면 **어드민 API 토글 한 번**으로 켠다
+ * (배포 불필요)"다(grade-mapping-v2 §9.8). 즉 **아트 머지가 활성화보다 먼저**이고, 그 사이
+ * `players.v2.x` 시드는 `active:false` 인 게 **정상**이다(시드는 런타임 상태가 아니다).
+ * 그런데 아래 검사가 "비활성인데 units 실아트를 갖고 있다 → throw" 로 **양방향**이라, 이 정상
+ * 순서를 시드 발행 없이는 아예 통과할 수 없었다.
+ *
+ * 그래서 방향을 쪼갠다:
+ *   - 유지(하드) : **활성인데 아트가 없다** → 계속 throw. 등급만 올리고 아트를 잊는 사고를 잡는다.
+ *   - 허용(선언) : 비활성 + 아트 = 이 표에 **적힌 경우만**. 안 적혀 있으면 여전히 throw —
+ *                  즉 "조용히 강등된 유닛이 실아트를 물고 있는" 원래 실패모드는 그대로 잡힌다.
+ *
+ * 해제 신호: 어드민으로 활성화한 상태를 다음 시드 버전으로 승격(§9.8)하면 `active:true` 가 되고,
+ * 그때 이 표에 남아 있으면 **stale 로 throw** 한다(아래 역방향 검사) → 지우라는 신호다.
+ */
+const ACTIVATION_PENDING: readonly string[] = ["P180"]; // 경니시우스(3차 입고 2026-07-29)
 
 /** GOLD/SILVER/BRONZE 전원이 공용하는 기본 스킨(U-D8). */
 export const DEFAULT_UNIT_ID = "default-unit";
@@ -187,7 +207,16 @@ export interface CharsManifestLike {
 /** 유닛 발행 manifest 중 이 생성기가 쓰는 부분. */
 export interface UnitsManifestLike {
   source?: string;
-  units: Record<string, { position?: string | null; forPlayer?: string; forGrades?: string[] } | undefined>;
+  units: Record<
+    string,
+    {
+      position?: string | null;
+      forPlayer?: string;
+      forGrades?: string[];
+      /** 아트는 발행됐지만 **붙일 선수가 카탈로그에 없다**(채번 대기). 발행측 선언. */
+      pendingCatalog?: boolean;
+    } | undefined
+  >;
 }
 
 const isActive = (p: PlayerLike) => p.active !== false;
@@ -213,6 +242,7 @@ export function buildMapping(
   const legend = new Map(LEGEND_ASSIGNMENT);
   const unitMap = new Map(UNIT_ASSIGNMENT);
   const unmapped = new Set(UNMAPPED_LEGENDS);
+  const activationPending = new Set(ACTIVATION_PENDING);
   const byId = new Map(players.map((p) => [p.id, p]));
 
   // 디폴트 유닛이 없으면 GOLD 이하 전원이 폴백으로 떨어진다 — 조용히 넘어가지 않는다.
@@ -230,9 +260,21 @@ export function buildMapping(
     const p = byId.get(playerId);
     if (!p) throw new Error(`유닛 배정 대상이 시드에 없다: ${playerId}`);
     if (p.grade !== "LEGEND") throw new Error(`${playerId} 는 LEGEND 가 아니다(${p.grade}) — 배정표 재확정 필요`);
-    // 비활성으로 내려간 유닛이 조용히 실아트를 유지하면 U-D5(활성=실아트) 전제가 깨진 걸 못 본다.
-    if (!isActive(p)) throw new Error(`${playerId} 는 비활성인데 units 축 실아트를 갖고 있다 — U-D5 재확정 필요`);
+    // 비활성으로 내려간 유닛이 **조용히** 실아트를 유지하면 U-D5 전제가 깨진 걸 못 본다.
+    // 단 "아트 입고 → 머지 → 어드민 활성화" 순서에서는 비활성+아트가 **정상 중간상태**이므로
+    // ACTIVATION_PENDING 에 적힌 경우만 통과시킨다(선언되지 않은 비활성은 계속 throw).
+    if (!isActive(p) && !activationPending.has(playerId)) {
+      throw new Error(`${playerId} 는 비활성인데 units 축 실아트를 갖고 있다 — U-D5 재확정 필요`
+        + ` (의도한 활성화 대기면 ACTIVATION_PENDING 에 선언해라)`);
+    }
     if (!units.units[unitId]) throw new Error(`유닛 발행물에 없는 유닛: ${unitId}`);
+  }
+  // 대기표에 적힌 id 는 배정이 있어야 한다(적어만 놓고 매핑을 잊는 것 방지). **활성 여부는 여기서
+  // 보지 않는다** — buildMapping 은 임의 시드로도 태울 수 있어야 하고(회귀 검증), 과거 시드에선
+  // 같은 선수가 활성일 수 있다. "승격됐으니 표를 지워라"라는 stale 신호는 **현행 시드에 고정된**
+  // chars-map.test.ts 계약이 맡는다.
+  for (const playerId of ACTIVATION_PENDING) {
+    if (!unitMap.has(playerId)) throw new Error(`${playerId} 는 활성화 대기인데 units 배정이 없다`);
   }
   // LEGEND 는 세 갈래(characters 1:1 / units 1:1 / 의도적 미매핑) 중 정확히 하나에 속해야 한다.
   for (const p of players) {

@@ -82,6 +82,32 @@ describe("Modal a11y (#73 P1)", () => {
     trigger.remove();
   });
 
+  /**
+   * #248 — 본문에 링크가 있는 다이얼로그(공지)에서는 DOM 순서상 첫 포커서블이 **본문 링크**라
+   * Enter 한 번에 외부 사이트로 나간다. `initialFocus` 로 주 동작에 포커스를 둔다.
+   */
+  it("initialFocus 가 있으면 그 요소로, 없거나 못 찾으면 첫 포커서블로 간다", () => {
+    const body = (extra: Record<string, unknown>) =>
+      h(
+        Modal,
+        { onClose: () => {}, labelledBy: "t", overlayClassName: "ov", testId: "dlg", ...extra },
+        h("h2", { id: "t" }, "제목"),
+        h("a", { href: "https://x.test", "data-testid": "body-link" }, "링크"),
+        h("button", { type: "button", "data-testid": "primary" }, "닫기"),
+      );
+
+    const a = render(body({}));
+    expect(document.activeElement).toBe(screen.getByTestId("body-link")); // 기본 동작(무회귀)
+    a.unmount();
+
+    const b = render(body({ initialFocus: '[data-testid="primary"]' }));
+    expect(document.activeElement).toBe(screen.getByTestId("primary"));
+    b.unmount();
+
+    render(body({ initialFocus: '[data-testid="nope"]' }));
+    expect(document.activeElement).toBe(screen.getByTestId("body-link")); // 못 찾으면 폴백
+  });
+
   it("traps Tab focus within the dialog (wraps both directions)", () => {
     render(
       h(

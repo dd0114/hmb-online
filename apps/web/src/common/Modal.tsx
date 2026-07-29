@@ -16,6 +16,12 @@ interface ModalProps {
   testId?: string;
   /** Overlay(백드롭) data-testid — 기존 확인 다이얼로그의 백드롭 계약을 그대로 유지하기 위한 훅. */
   overlayTestId?: string;
+  /**
+   * 열릴 때 포커스를 줄 요소의 CSS 셀렉터(다이얼로그 내부 기준). 기본은 **DOM 순서상 첫 포커서블**인데,
+   * 본문에 링크가 있는 다이얼로그(공지 팝업 #248)에서는 그게 본문 링크가 되어 **Enter 한 번에 외부
+   * 사이트로 나간다**. 주 동작 버튼을 지정할 수 있게 열어 둔다. 못 찾으면 기본 동작으로 폴백.
+   */
+  initialFocus?: string;
 }
 
 const FOCUSABLE =
@@ -34,16 +40,20 @@ export function Modal({
   className,
   testId,
   overlayTestId,
+  initialFocus,
 }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
-  // 열릴 때 첫 포커서블로 이동하고, 닫힐 때 직전 포커스를 복원한다.
+  // 열릴 때 지정 요소(없으면 첫 포커서블)로 이동하고, 닫힐 때 직전 포커스를 복원한다.
   useEffect(() => {
     const prevFocused = document.activeElement as HTMLElement | null;
     const node = dialogRef.current;
-    const first = node?.querySelector<HTMLElement>(FOCUSABLE);
+    const preferred = initialFocus ? node?.querySelector<HTMLElement>(initialFocus) : null;
+    const first = preferred ?? node?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? node)?.focus();
     return () => prevFocused?.focus?.();
+    // 마운트 1회만 — initialFocus 가 렌더마다 바뀌어도 포커스를 다시 훔치지 않는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onKeyDown = useCallback(

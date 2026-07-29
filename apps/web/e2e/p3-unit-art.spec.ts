@@ -43,10 +43,20 @@ const row = (p: (typeof SEED)[number], owned: boolean) => ({
   owned, ownedCount: owned ? 1 : 0, active: p.active, attributes: attrs,
 });
 
-/** 활성 LEGEND 5(실아트) + 비활성 LEGEND 2(off 대상) + GOLD/BRONZE 각 1(디폴트 유닛). */
+/**
+ * 실아트를 가진 LEGEND **전원**(활성 5 + 활성화 대기분) + 실아트 없는 비활성 LEGEND 2(off 대상)
+ * + GOLD/BRONZE 각 1(디폴트 유닛).
+ *
+ * ⚠️ 표본을 `active` 로 고르지 않는다 — 3차 입고(2026-07-29)부터 **아트 입고와 활성화가 분리**돼
+ * (아트 머지 → 배포 → 어드민 토글) 신규 유닛은 한동안 `active:false` 로 남는다. `active` 로
+ * 거르면 새로 들어온 아트가 **실화면 검증에서 조용히 빠진다** — 실제로 P180 이 그럴 뻔했다.
+ * 그래서 **발행물의 `forPlayer` 힌트**를 기준으로 잡아 입고 때마다 표본이 자동으로 늘게 한다.
+ */
+const UNIT_PLAYER_IDS = Object.values(UNITS.units).map((u) => u.forPlayer).filter((id): id is string => !!id);
 const CATALOG = [
-  ...SEED.filter((p) => p.grade === "LEGEND" && p.active).map((p) => row(p, true)),
-  ...SEED.filter((p) => p.grade === "LEGEND" && !p.active).slice(0, 2).map((p) => row(p, true)),
+  ...SEED.filter((p) => UNIT_PLAYER_IDS.includes(p.id)).map((p) => row(p, true)),
+  ...SEED.filter((p) => p.grade === "LEGEND" && !p.active && !UNIT_PLAYER_IDS.includes(p.id))
+    .slice(0, 2).map((p) => row(p, true)),
   ...SEED.filter((p) => p.grade === "GOLD").slice(0, 1).map((p) => row(p, true)),
   ...SEED.filter((p) => p.grade === "BRONZE").slice(0, 1).map((p) => row(p, true)),
 ];
@@ -89,7 +99,6 @@ async function mockApi(page: Page) {
       ovr: 58, completion: 0.3,
     }));
   });
-  await page.route((url) => url.pathname === "/api/growth/dice", (r) => r.fulfill(json({ normal: 5, cash: 3 })));
   await page.route((url) => url.pathname === "/api/shop/gacha", (r) => r.fulfill(json({
     results: CATALOG.map((p, i) => ({
       player: { id: p.id, name: p.name, position: p.position, grade: p.grade }, isNew: i % 3 === 0,
@@ -105,6 +114,27 @@ async function brokenImages(page: Page) {
       .filter((i) => i.complete && i.naturalWidth === 0 && !!i.getAttribute("src"))
       .map((i) => i.getAttribute("src")!),
   );
+}
+
+/**
+ * 아트가 **실제로 디코드돼 그려졌는지** 기다린다.
+ *
+ * ⚠️ `brokenImages` 로는 이걸 못 잡는다 — 아직 로딩 중인 <img> 는 `complete === false` 라
+ * 필터를 그냥 통과한다(깨진 것도, 그려진 것도 아니다). 그래서 "요소는 붙었고 깨지지도
+ * 않았는데 화면엔 아무것도 없는" 상태가 계약을 통과했고, 실제로 3차 입고 캡처에서
+ * 경니시우스(P180)만 아트 자리가 **빈 채로** 찍혔다(다른 5종은 우연히 캐시에 있었다).
+ * 캡처를 눈으로 보지 않았으면 green 으로 넘어갔을 자리다(루트 §2-2).
+ */
+async function expectArtPainted(page: Page, card: ReturnType<Page["locator"]>) {
+  await expect
+    .poll(
+      async () =>
+        card.locator("img[data-art-fit]").evaluateAll((imgs) =>
+          imgs.every((i) => (i as HTMLImageElement).naturalWidth > 0),
+        ),
+      { message: "아트 <img> 가 디코드되지 않았다(자리는 있는데 그림이 없다)" },
+    )
+    .toBe(true);
 }
 
 /**
@@ -158,7 +188,7 @@ test("도감: 보유 비활성 카드에 'off' 가 붙고 활성에는 없다 (U
   await page.screenshot({ path: `${SHOTS}unit-art-codex-off.png`, fullPage: true });
 });
 
-test("강화 상세: 실아트 LEGEND 5종이 프레임리스 축으로 뜬다 (U-D8 재발행 후)", async ({ page }) => {
+test("강화 상세: 실아트 LEGEND 전종이 프레임리스 축으로 뜬다 (U-D8 재발행 후)", async ({ page }) => {
   await login(page);
   await mockApi(page);
   expect(FRAMELESS_PLAYER_IDS.length, "프레임리스 실아트 표본이 비었다").toBeGreaterThan(0);
@@ -180,6 +210,7 @@ test("강화 상세: 실아트 LEGEND 5종이 프레임리스 축으로 뜬다 (
     //    "프레임 정확히 한 겹"은 카드 통짜를 쓰는 뽑기 그리드에서 본다(`p3-card-art.spec.ts`).
     await expect(card.locator('img[data-art-layer="frame"]')).toHaveCount(0);
     expect(await brokenImages(page)).toEqual([]);
+    await expectArtPainted(page, card);
     await page.screenshot({ path: `${SHOTS}unit-art-frameless-${id}.png` });
   }
 });

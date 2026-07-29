@@ -1,9 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import { mkdirSync } from "node:fs";
 import { appConfigPayload, mockAppConfig } from "./app-config-mock";
 
-/** 목 config 가 내려주는 유상재화 이름 — 문구 단언은 이 값을 따라간다(#232). */
+/** 목 config 가 내려주는 재화 이름 — 문구 단언은 이 값을 따라간다(#232, 상수 박제 금지). */
 const GEM_NAME = appConfigPayload().currencies.find((c) => c.code === "GEM")!.name;
-import { mkdirSync } from "node:fs";
+const POINT_NAME = appConfigPayload().currencies.find((c) => c.code === "POINT")!.name;
 
 /**
  * G4 성장 시스템 v2(메이플 피벗 + V2.1 피드백 개정 + 레이더 후속) UI route-mock 스모크(에픽 #179
@@ -70,22 +71,27 @@ async function seedAuth(page: Page) {
 }
 
 interface GrowthMockOpts {
-  /** POST /api/growth/dice 를 항상 이 코드로 4xx 실패시킨다(다이스 부족 시나리오 전용). */
-  diceAlwaysFails?: boolean;
+  /** POST /api/growth/dice 를 항상 INSUFFICIENT_POINTS 로 실패시킨다(잔액부족 시나리오 전용). */
+  rollAlwaysFailsPoints?: boolean;
   /** 초기 젬 잔고(기본 ME_RESPONSE.wallet.gems) — 젬 부족 시나리오 전용으로 낮춰 넘긴다. */
   gems?: number;
+  /** 초기 무료재화 잔고(기본 ME_RESPONSE.wallet.points). */
+  points?: number;
   /**
-   * POST /api/shop/dice(CASH) 를 잔고와 무관하게 항상 INSUFFICIENT_GEMS 로 실패시킨다 — 서버
-   * 권위 검증(클라 가드를 우회해도 서버가 최종 게이트) 시나리오 전용, growth/dice 의
-   * diceAlwaysFails 와 동일한 패턴.
+   * 유료 롤을 잔고와 무관하게 항상 INSUFFICIENT_GEMS 로 실패시킨다 — 서버 권위 검증
+   * (클라 가드를 우회해도 서버가 최종 게이트) 시나리오 전용.
    */
-  cashDiceAlwaysFailsGems?: boolean;
+  cashRollAlwaysFailsGems?: boolean;
 }
 
+/** #247 롤 비용 — app-config 목이 내리는 값과 같아야 화면 표기와 차감이 맞물린다. */
+const DICE_NORMAL_COST = 5000;
+const DICE_CASH_COST = 10;
+
 /**
- * 성장 카드/성/다이스/상점 목 — 상태ful. star-up 마다 star++·잠재 해금, dice 마다 lines 갱신
- * (2회차에 RARE→EPIC 티어업), shop/dice 구매마다 diceBalance++. V2.2: /api/me·shop/dice 가
- * 살아있는 gems 잔고를 공유(젬 충전·캐시 다이스 구매가 서로 반영되도록).
+ * 성장 카드/성/잠재 리롤 목 — 상태ful. star-up 마다 star++·잠재 해금, 롤마다 lines 갱신
+ * (2회차에 RARE→EPIC 티어업). **#247: 구매·재고가 사라졌으므로 롤이 지갑을 직접 깎는다** —
+ * /api/me 와 롤 응답이 같은 지갑 변수를 공유해 화면 잔액이 실제로 줄어드는지 볼 수 있다.
  */
 async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
   let star = 1;
@@ -93,10 +99,9 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
   let potentialUnlocked = false;
   let tier: "RARE" | "EPIC" | "UNIQUE" = "RARE";
   let rollsSinceTierUp = 0;
-  let diceNormal = 0;
-  let diceCash = 0;
   let rollCount = 0;
   let gems = opts.gems ?? ME_RESPONSE.wallet.gems;
+  let points = opts.points ?? ME_RESPONSE.wallet.points;
 
   // V2.1-1: 전줄 동일 티어 — 모든 줄이 카드 잠재 티어를 그대로 따른다(구 "2줄=한 단계 아래" 폐기).
   function lines() {
@@ -112,7 +117,7 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
   // #232: 다이스 가격·충전 팩은 서버 config 에서 온다(클라 미러 제거). 이 스펙은 충전 섹션도 보므로 켠다.
   await mockAppConfig(page, { topupEnabled: true });
   await page.route((url) => url.pathname === "/api/me", (route) =>
-    route.fulfill(json({ ...ME_RESPONSE, wallet: { points: ME_RESPONSE.wallet.points, gems } })),
+    route.fulfill(json({ ...ME_RESPONSE, wallet: { points, gems } })),
   );
   await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json(PLAYERS_RESPONSE)));
 
@@ -182,20 +187,23 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
     },
   );
 
+  // #247: 구매 단계가 사라졌다 — 롤 자체가 지갑에서 결제한다(POST 만 존재, 잔액조회 GET 없음).
   await page.route(
     (url) => url.pathname === "/api/growth/dice",
     (route) => {
-      // GET = 잔액 조회(DiceBalance, GM2 계약) / POST = 롤.
-      if (route.request().method() === "GET") {
-        // 잔액은 항상 있음 — 부족 시나리오는 POST 4xx(서버 권위)로 검증한다(버튼 활성 유지).
-        route.fulfill(json({ normal: 5, cash: 3 }));
-        return;
-      }
-      if (opts.diceAlwaysFails) {
-        route.fulfill(err(409, "INSUFFICIENT_DICE", "다이스 부족"));
+      if (opts.rollAlwaysFailsPoints) {
+        route.fulfill(err(400, "INSUFFICIENT_POINTS", `${POINT_NAME}가 부족합니다`));
         return;
       }
       const body = route.request().postDataJSON() as { kind: "NORMAL" | "CASH" };
+      const cost = body.kind === "NORMAL" ? DICE_NORMAL_COST : DICE_CASH_COST;
+      // 서버 권위 — 클라 가드를 우회해 눌러도 잔액이 모자라면 4xx.
+      if (body.kind === "CASH" && (opts.cashRollAlwaysFailsGems || gems < cost)) {
+        route.fulfill(err(400, "INSUFFICIENT_GEMS", `${GEM_NAME}가 부족합니다`));
+        return;
+      }
+      if (body.kind === "CASH") gems -= cost;
+      else points -= cost;
       rollCount += 1;
       statBump += 1;
       const tierBefore = tier;
@@ -207,9 +215,6 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
           tierUp = true;
           rollsSinceTierUp = 0;
         }
-        diceNormal = Math.max(0, diceNormal - 1);
-      } else {
-        diceCash = Math.max(0, diceCash - 1);
       }
       route.fulfill(
         json({
@@ -222,34 +227,7 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
           lines: lines(),
           rollsSinceTierUp,
           ceilingAt: 9,
-          diceLeft: body.kind === "NORMAL" ? diceNormal : diceCash,
-        }),
-      );
-    },
-  );
-
-  await page.route(
-    (url) => url.pathname === "/api/shop/dice",
-    (route) => {
-      const body = route.request().postDataJSON() as { kind: "NORMAL" | "CASH"; count: number };
-      // V2.2: NORMAL=P 결제(기존, 미추적) / CASH=젬 결제(10젬/개, 서버 권위로 잔고 검증).
-      if (body.kind === "CASH") {
-        const cost = 10 * body.count;
-        if (opts.cashDiceAlwaysFailsGems || gems < cost) {
-          route.fulfill(err(400, "INSUFFICIENT_GEMS", "젬이 부족합니다"));
-          return;
-        }
-        gems -= cost;
-        diceCash += body.count;
-      } else {
-        diceNormal += body.count;
-      }
-      route.fulfill(
-        json({
-          kind: body.kind,
-          count: body.count,
-          dice: { normal: diceNormal, cash: diceCash },
-          wallet: { points: ME_RESPONSE.wallet.points - (body.kind === "NORMAL" ? 500 : 0), gems },
+          wallet: { points, gems },
         }),
       );
     },
@@ -421,21 +399,13 @@ test("G4 성★ 승급 오버레이(GM7b): 클릭 → growth-starup-overlay 등�
   await expect(overlay).toHaveCount(0, { timeout: 5000 });
 });
 
-test("G4 다이스 롤: 라인 갱신 + 티어업 전체 오버레이(RARE→EPIC 승급 연출)", async ({ page }) => {
+test("G4 잠재 재설정: 라인 갱신 + 티어업 전체 오버레이(RARE→EPIC 승급 연출)", async ({ page }) => {
   await mockGrowth(page);
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  // 상점에서 노말 다이스 2개 구매(롤 2회로 티어업 트리거).
-  // ⚠️ page.goto 는 풀 리로드(React Query 캐시 = 다이스 잔고 리셋) — nav 클릭으로 SPA 내 이동 유지.
-  await page.goto("/shop");
-  await page.getByTestId("shop-tab-dice").click();
-  await page.getByTestId("dice-buy-normal").click();
-  await expect(page.getByTestId("dice-wallet-flash")).toBeVisible();
-  await page.getByTestId("dice-buy-normal").click();
-
-  // 도감 카드 상세 → 2★ 아니므로 먼저 승급(잠재 해금) → 다이스 롤.
-  await page.getByTestId("nav-bottom").getByTestId("nav-codex").click();
+  // #247: 구매 단계가 없다 — 상점을 거치지 않고 강화 상세에서 바로 굴린다.
+  await page.goto("/codex");
   await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
   await page.getByTestId("growth-star-up").click();
   await expect(page.getByTestId("growth-stars")).toHaveAttribute("data-star", "2");
@@ -447,12 +417,15 @@ test("G4 다이스 롤: 라인 갱신 + 티어업 전체 오버레이(RARE→EPI
   await expect(page.getByTestId("growth-dice-normal")).toBeEnabled();
   const shootLvBefore = await page.getByTestId("growth-lv-shooting").innerText();
 
-  await page.getByTestId("growth-dice-normal").click(); // 1회차 — 아직 티어업 아님
+  await page.getByTestId("growth-dice-normal").click(); // 1회차 — 첫 롤이라 확인 다이얼로그
+  await page.getByTestId("growth-roll-confirm-ok").click();
   await expect
     .poll(async () => await page.getByTestId("growth-lv-shooting").innerText())
     .not.toBe(shootLvBefore);
 
+  // 두 번째부터는 확인 없이 바로 굴러간다(hero 확정: 첫 1회만 확인).
   await page.getByTestId("growth-dice-normal").click(); // 2회차 — 목에서 RARE→EPIC 트리거
+  await expect(page.getByTestId("growth-roll-confirm")).toHaveCount(0);
 
   // V2.1-3: 티어업 = 전체 오버레이(구 하단 배너 폐기) — 플래시+뱃지+순차 리롤 dot.
   const overlay = page.getByTestId("growth-tierup-overlay");
@@ -471,26 +444,105 @@ test("G4 다이스 롤: 라인 갱신 + 티어업 전체 오버레이(RARE→EPI
   await expect(overlay).toHaveCount(0, { timeout: 5000 });
 });
 
-test("G4 다이스 부족: POST /api/growth/dice 4xx → 에러 메시지", async ({ page }) => {
-  await mockGrowth(page, { diceAlwaysFails: true });
+/**
+ * #247: 부족은 **재화 부족**이다(구 INSUFFICIENT_DICE 는 재고와 함께 소멸). 서버 권위 —
+ * 클라 잔고가 충분해 보여도 서버가 4xx 로 끊으면 그 문구를 그대로 띄운다.
+ * 문구에 재화 이름을 클라가 지어내지 않는지도 같이 본다(#232 — 목 config 의 이름 "오메가").
+ */
+test("G4 잠재 재설정 잔액부족(서버 권위): 4xx INSUFFICIENT_POINTS → 서버 문구 그대로", async ({ page }) => {
+  await mockGrowth(page, { rollAlwaysFailsPoints: true });
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  await page.goto("/shop");
-  await page.getByTestId("shop-tab-dice").click();
-  await page.getByTestId("dice-buy-normal").click(); // 잔고 1로 만들어 버튼을 활성 상태로 둔다(SPA 이동으로 캐시 유지)
-
-  await page.getByTestId("nav-bottom").getByTestId("nav-codex").click();
+  await page.goto("/codex");
   await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await page.getByTestId("growth-star-up").click(); // 잠재 해금(2★)
   await expect(page.getByTestId("growth-dice-normal")).toBeEnabled();
   await page.getByTestId("growth-dice-normal").click();
+  await page.getByTestId("growth-roll-confirm-ok").click();
 
-  await expect(page.getByRole("alert")).toContainText("다이스가 부족합니다");
+  await expect(page.getByRole("alert")).toContainText(`${POINT_NAME}가 부족합니다`);
+});
+
+/**
+ * #247 핵심 동선 — 상점을 한 번도 거치지 않고 강화탭에서 바로 잠재가 바뀌고 **지갑이 줄어든다**.
+ * 상점에 [다이스] 탭이 남아 있으면 이 테스트가 아니라 아래 "탭 제거" 단언이 잡는다.
+ */
+test("G4 잠재 재설정: 구매 없이 지갑 직접 차감 + 상점 [다이스] 탭 소멸", async ({ page }) => {
+  await mockGrowth(page);
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/codex");
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await page.getByTestId("growth-star-up").click();
+
+  // 가격은 서버 config 에서 온다 — 화면에 상수가 박혀 있으면 목 값(5,000)과 어긋난다.
+  await expect(page.getByTestId("growth-dice-normal-price")).toContainText("5,000");
+  await expect(page.getByTestId("growth-dice-cash-price")).toContainText("10");
+  await expect(page.getByTestId("growth-wallet")).toContainText("20,000");
+
+  await page.getByTestId("growth-dice-normal").click();
+  // 확인 다이얼로그가 **차감 후 잔액**을 미리 말해 준다(20,000 − 5,000).
+  await expect(page.getByTestId("growth-roll-confirm-after")).toContainText("15,000");
+  await page.getByTestId("growth-roll-confirm-ok").click();
+
+  // 롤 뒤 헤더 지갑이 실제로 줄어든다(useDiceRoll 이 ["me"] 를 무효화하지 않으면 여기서 죽는다).
+  await expect.poll(async () => await page.getByTestId("growth-wallet").innerText())
+    .toContain("15,000");
+
+  // 상점에는 다이스 탭이 없다. (상세 시트를 먼저 닫는다 — 열린 모달이 하단 nav 를 덮는다.)
+  await page.getByTestId("growth-detail").getByRole("button", { name: "닫기" }).click();
+  await expect(page.getByTestId("growth-detail")).toHaveCount(0);
+  await page.getByTestId("nav-bottom").getByTestId("nav-shop").click();
+  await expect(page.getByTestId("shop-tab-gacha")).toBeVisible();
+  await expect(page.getByTestId("shop-tab-dice")).toHaveCount(0);
+});
+
+/**
+ * 1★(잠재 미해금) 카드에서는 **버튼이 잠기고 확인창도 뜨지 않는다**.
+ *
+ * 구 UI 는 "보유 다이스 ≥ 1" 이 이 자리를 사실상 가려 줬지만(신규 유저 재고 0), #247 이
+ * 게이팅을 재고→잔액으로 바꾸면서 1★ 에서도 버튼이 열려 **"5,000 G 차감" 확인창이 뜨는데
+ * 서버는 POTENTIAL_LOCKED 로 거절**했다(독립검증 major-2). 재화가 나가진 않지만 실행 불가한
+ * 액션에 차감을 약속하면 안 된다 — 신규 유저 컬렉션은 대부분 1★다.
+ */
+test("G4 잠재 미해금(1★): 재설정 버튼 잠금 + 결제 확인창 안 뜸", async ({ page }) => {
+  await mockGrowth(page); // star=1, potential.unlocked=false 로 시작
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/codex");
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await expect(page.getByTestId("growth-potential-locked")).toBeVisible(); // "2★에서 해금"
+
+  await expect(page.getByTestId("growth-dice-normal")).toBeDisabled();
+  await expect(page.getByTestId("growth-dice-cash")).toBeDisabled();
+  await page.getByTestId("growth-dice-normal").click({ force: true }); // 가드를 우회해 눌러도
+  await expect(page.getByTestId("growth-roll-confirm")).toHaveCount(0); // 차감을 약속하지 않는다
+
+  // 승급하면 그 자리에서 열린다(잠금이 영구가 아님을 같이 박제 — 과잉 잠금 회귀 방지).
+  await page.getByTestId("growth-star-up").click();
+  await expect(page.getByTestId("growth-dice-normal")).toBeEnabled();
+});
+
+/** 잔액이 비용에 못 미치면 **버튼 자체가 잠긴다**(클라 가드) — 눌러서 4xx 를 보기 전에. */
+test("G4 잠재 재설정 잔액부족(클라 가드): 잔액 < 비용 → 버튼 잠금", async ({ page }) => {
+  await mockGrowth(page, { points: 4999, gems: 5 });
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/codex");
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await page.getByTestId("growth-star-up").click();
+
+  await expect(page.getByTestId("growth-dice-normal")).toBeDisabled(); // 4,999 < 5,000
+  await expect(page.getByTestId("growth-dice-cash")).toBeDisabled(); // 5 < 10
 });
 
 // ── V2.2 재화 이원화(hero 확정 2026-07-26, GM9) — 지갑 P·젬 병기·젬 충전(목업)·캐시 다이스 젬가격 ──
 
-test("G4 V2.2 지갑 젬 표시(로비/상점 상단) + 캐시 다이스 젬가격 표시", async ({ page }) => {
+test("G4 V2.2 지갑 젬 표시(로비/상점 상단) + 유료 재설정 젬가격 표시(강화 상세)", async ({ page }) => {
   await mockGrowth(page);
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -503,12 +555,15 @@ test("G4 V2.2 지갑 젬 표시(로비/상점 상단) + 캐시 다이스 젬가�
   await page.goto("/shop");
   await expect(page.getByTestId("wallet-gems")).toHaveAttribute("data-gems", "50");
 
-  await page.getByTestId("shop-tab-dice").click();
-  await expect(page.getByTestId("dice-cash-price")).toContainText("10");
-  await expect(page.getByTestId("dice-wallet-flash")).toContainText("50");
+  // #247: 유료 재설정 가격은 상점이 아니라 **강화 상세**에 있다(구매 단계 소멸).
+  await page.goto("/codex");
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await page.getByTestId("growth-star-up").click();
+  await expect(page.getByTestId("growth-dice-cash-price")).toContainText("10");
+  await expect(page.getByTestId("growth-wallet")).toContainText("50");
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  console.log(`[smoke] shop-dice(V2.2) 390px overflow px = ${overflow}`);
+  console.log(`[smoke] growth-detail(#247) 390px overflow px = ${overflow}`);
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
@@ -517,8 +572,9 @@ test("G4 V2.2 젬 충전(목업): 클릭 즉시 gems 증가 + 지갑 플래시",
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
+  // #247: 충전 섹션은 [다이스] 탭이 사라지며 [충전] 탭으로 옮겨졌다(게이팅 플래그는 원래 같다).
   await page.goto("/shop");
-  await page.getByTestId("shop-tab-dice").click();
+  await page.getByTestId("shop-tab-topup").click();
 
   const section = page.getByTestId("gem-topup-section");
   await expect(section).toBeVisible();
@@ -526,7 +582,7 @@ test("G4 V2.2 젬 충전(목업): 클릭 즉시 gems 증가 + 지갑 플래시",
   await expect(section).toContainText("실결제 없음");
 
   await page.getByTestId("gem-topup-p1").click(); // 60젬 지급 → 50+60=110
-  await expect(page.getByTestId("dice-wallet-flash")).toBeVisible();
+  await expect(page.getByTestId("gem-topup-wallet-flash")).toBeVisible();
   await expect
     .poll(async () => await page.getByTestId("wallet-gems").getAttribute("data-gems"))
     .toBe("110");
@@ -540,36 +596,36 @@ test("G4 V2.2 젬 충전(목업): 클릭 즉시 gems 증가 + 지갑 플래시",
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test("G4 V2.2 캐시 다이스 젬 부족(클라 가드): gems<10 → API 호출 없이 안내 + 충전 유도", async ({ page }) => {
-  await mockGrowth(page, { gems: 5 }); // 10젬 미만 — 캐시 다이스 1개도 못 삼(클라 가드가 먼저 막는다)
+/**
+ * #247: 유료 재설정의 젬 부족은 이제 **강화 상세**에서 난다. 클라 가드가 먼저 잠그고,
+ * 그걸 우회해 눌러도 서버가 최종 게이트다 — 두 층을 한 스펙에서 본다.
+ * 문구는 **서버가 표기 메타로 만든 것**을 그대로 띄운다(#232 — 클라가 이름을 지어내면 죽는다).
+ */
+test("G4 유료 재설정 젬 부족: 클라 가드(버튼 잠금) + 서버 권위(4xx 문구)", async ({ page }) => {
+  await mockGrowth(page, { gems: 5 }); // 10젬 미만 — 클라 가드가 먼저 막는다
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  await page.goto("/shop");
-  await page.getByTestId("shop-tab-dice").click();
-  await expect(page.getByTestId("wallet-gems")).toHaveAttribute("data-gems", "5");
-
-  await page.getByTestId("dice-buy-cash").click();
-  // #232: 재화 이름은 서버 표기 메타에서 온다 — 문구에 이름을 박으면 표기 변경이 배포가 된다.
-  await expect(page.getByRole("alert")).toContainText(`${GEM_NAME}가 부족합니다`);
-  await expect(page.getByRole("alert")).toContainText("충전");
+  await page.goto("/codex");
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await page.getByTestId("growth-star-up").click();
+  await expect(page.getByTestId("growth-dice-cash")).toBeDisabled();
 });
 
-test("G4 V2.2 캐시 다이스 젬 부족(서버 권위): POST /api/shop/dice 4xx INSUFFICIENT_GEMS → 에러 메시지", async ({ page }) => {
-  // 클라 잔고는 충분해 보이지만(50젬) 서버가 최종 게이트로 거절 — diceAlwaysFails 와 동일한
-  // "서버 권위" 검증 패턴(§2.5). ApiError.code === INSUFFICIENT_GEMS 분기가 실제로 타는지 확인.
-  await mockGrowth(page, { cashDiceAlwaysFailsGems: true });
+test("G4 유료 재설정 젬 부족(서버 권위): 4xx INSUFFICIENT_GEMS → 서버 문구 그대로", async ({ page }) => {
+  // 클라 잔고는 충분해 보이지만(50젬) 서버가 최종 게이트로 거절 — 클라 가드를 믿지 않는다는 계약.
+  await mockGrowth(page, { cashRollAlwaysFailsGems: true });
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  await page.goto("/shop");
-  await page.getByTestId("shop-tab-dice").click();
-  await expect(page.getByTestId("wallet-gems")).toHaveAttribute("data-gems", "50");
+  await page.goto("/codex");
+  await page.getByTestId(`codex-card-${OWNED_ID}`).getByRole("button").first().click();
+  await page.getByTestId("growth-star-up").click();
+  await expect(page.getByTestId("growth-dice-cash")).toBeEnabled(); // 잔고는 충분해 보인다
+  await page.getByTestId("growth-dice-cash").click();
+  await page.getByTestId("growth-roll-confirm-ok").click();
 
-  await page.getByTestId("dice-buy-cash").click();
-  // #232: 재화 이름은 서버 표기 메타에서 온다 — 문구에 이름을 박으면 표기 변경이 배포가 된다.
   await expect(page.getByRole("alert")).toContainText(`${GEM_NAME}가 부족합니다`);
-  await expect(page.getByRole("alert")).toContainText("충전");
 });
 
 test("G4 미보유 카드는 성장 UI 없이 기존 인라인 확장(잠금)만", async ({ page }) => {
