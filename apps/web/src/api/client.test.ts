@@ -168,6 +168,28 @@ describe("apiFetch", () => {
     });
 
     /**
+     * `/api/notices/active` 도 같은 처지다(#248, hero Q5) — 유저 데이터 0 인 공개 조회이고,
+     * **점검 공지는 로그인이 안 될 때 가장 필요하다**. 공지 응답 하나가 로그인된 유저의 토큰을
+     * 지우면 부가 기능이 세션을 파괴한다.
+     */
+    it("공개 경로(/api/notices/active) 401 은 세션을 파기하지 않는다", async () => {
+      setToken("still-valid-token");
+      setProvider("guest");
+      const handler = vi.fn();
+      setUnauthorizedHandler(handler);
+      mock401();
+
+      await expect(apiFetch("/api/notices/active")).rejects.toBeInstanceOf(ApiError);
+
+      expect(handler).not.toHaveBeenCalled();
+      expect(getToken()).toBe("still-valid-token");
+      expect(isSessionNeutralEndpoint("/api/notices/active")).toBe(true);
+      // 인접 경로는 계속 세션 파기 대상이다(접두 매칭으로 새 나가지 않는다).
+      expect(isSessionNeutralEndpoint("/api/notices")).toBe(false);
+      expect(isSessionNeutralEndpoint("/api/notices/active/x")).toBe(false);
+    });
+
+    /**
      * 공개 경로 판별은 **정확 일치**여야 한다 — 접두 매칭이면 `/api/configuration` 같은 미래 경로가
      * 조용히 세션 파기에서 빠진다(반대 방향 사고). base 서브패스는 실제로 스텁해서 본다 —
      * 제목만 그럴듯하고 스텁이 없으면 계약이 아니라 주장이다.

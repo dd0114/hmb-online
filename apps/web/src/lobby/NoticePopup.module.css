@@ -1,0 +1,166 @@
+/* 공지 팝업 — 중첩 스택(hero Q1). 목업 B 패널 기준. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 40;
+}
+
+/* Modal 의 dialog 박스가 곧 스택 컨테이너다 — 뒤 카드는 이 안에 절대배치로 깔린다. */
+.stack {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  /* 폰 세로에서 본문이 길어도 화면을 넘지 않는다. */
+  max-height: 100%;
+}
+
+.behind {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  pointer-events: none;
+  /*
+   * ⚠️ **transform-origin 이 이 스택의 핵심이다.** 기본값(center)으로 두면 `scale` 이 카드를
+   * 가운데 기준으로 줄여 **아래 모서리가 위로 당겨지고**(높이 300px · scale .955 → 약 6.7px),
+   * `translateY` 가 그만큼 상쇄돼 실제로 비치는 건 3px 남짓이다 — 실화면에서 "겹쳐 보인다"가
+   * 사라진다(첫 구현이 그 상태였다). 게다가 상쇄량이 **카드 높이에 비례**하므로 본문 길이가
+   * 바뀔 때마다 겹침 두께가 달라진다.
+   *
+   * `bottom` 으로 고정하면 아래 모서리가 제자리에 있어 **비치는 두께 = translateY 값 그대로**가
+   * 되고 본문 길이와 무관해진다. 겹침을 조절하려면 아래 translateY 만 만지면 된다.
+   */
+  transform-origin: bottom center;
+}
+
+/*
+ * 닫기 전에 "더 있다"를 알 수 있게 — 페이저/점과 이중 표기.
+ *
+ * ⚠️ **색은 `opacity` 로 만들지 않는다.** 뒤 카드가 앞 카드와 같은 `--bg-elevated` 인 채로 투명도만
+ * 낮추면, 뒤에 깔린 것이 **어두운 백드롭**이라 결과가 앞 카드보다 **더 어두워져** 검은 배경에 묻힌다
+ * (기하는 정확히 10/20px 나와 있는데도 실화면에서 "겹쳐 보인다"가 안 읽혔다 — 실측으로 확인).
+ * 뒤로 갈수록 **밝기를 낮추되 배경보다는 밝게** 유지해 층이 눈에 남도록 명시 색으로 고정한다.
+ */
+.behind1 {
+  transform: translateY(10px) scale(0.955);
+  background: #262b38;
+  border-color: #3a4152;
+  z-index: 2;
+}
+
+.behind2 {
+  transform: translateY(20px) scale(0.91);
+  background: #1f232d;
+  border-color: #313745;
+  z-index: 1;
+}
+
+.card {
+  position: relative;
+  z-index: 3;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 100%;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.pager {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: -6px 0 0;
+}
+
+.body {
+  overflow-y: auto;
+  max-height: 46vh;
+  padding-right: 4px;
+}
+
+.dots {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.dotOn {
+  background: var(--accent);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.primary,
+.ghost {
+  width: 100%;
+  border-radius: 9px;
+  font-weight: 600;
+}
+
+.primary {
+  padding: 11px;
+  font-size: 14px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.ghost {
+  padding: 9px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+}

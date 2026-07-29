@@ -7,6 +7,7 @@ import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { EconomyOpsPanel } from "./EconomyOpsPanel";
+import { NoticesPanel } from "./NoticesPanel";
 import {
   formatRecord,
   formatSignedDelta,
@@ -20,8 +21,8 @@ import { CURRENCY_POINT, formatAmount, withEulReul } from "../common/currency";
 import styles from "./AdminPage.module.css";
 import u from "./AdminUnits.module.css";
 
-/** 운영자 페이지의 섹션 — 유저 운영(기존) / 유닛 카탈로그(#207 웨이브2-C). */
-export type AdminTab = "users" | "units" | "economy";
+/** 운영자 페이지의 섹션 — 유저 운영(기존) / 유닛 카탈로그(#207 웨이브2-C) / 공지(#248). */
+export type AdminTab = "users" | "units" | "economy" | "notices";
 
 /** 검색 입력 → 질의 반영 지연(ms). 타이핑마다 요청하지 않기 위한 값. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -188,11 +189,24 @@ export function AdminPage() {
           >
             스타터 지급
           </button>
+          {/* #248 — 공지는 DB 데이터 그 자체라 쓰면 곧 반영된다(economy 처럼 리로드 호출이 없다). */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "notices"}
+            className={`${u.tab} ${tab === "notices" ? u.tabActive : ""}`}
+            data-testid="admin-tab-notices"
+            onClick={() => setTab("notices")}
+          >
+            공지
+          </button>
         </div>
 
         {tab === "units" && <AdminUnitsSection />}
 
         {tab === "economy" && <EconomyOpsPanel />}
+
+        {tab === "notices" && <NoticesPanel />}
 
         {tab === "users" && (
           <>
