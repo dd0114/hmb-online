@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { GRADE_COLORS, type Grade } from "./grades";
+import { GRADE_GLOW_COLORS, type Grade } from "./grades";
 import {
   FX_CONFIG,
   fxAccentOf,
@@ -149,7 +149,7 @@ export function CardFxStage({
 }: CardFxProps & { children: React.ReactNode }) {
   const tier = fxTierOf(grade, cfg);
   // 색·위장 여부는 **단계에서 파생**한다(별도 상태 없음) — A 구간의 레전드 = 다이아인 척.
-  const accent = fxAccentOf(grade, phase, GRADE_COLORS, cfg);
+  const accent = fxAccentOf(grade, phase, GRADE_GLOW_COLORS, cfg);
   const disguised = isDisguised(grade, phase, cfg);
   const n = particles ?? cfg.particles.desktop;
   const active = tier !== "none" && phase !== "idle" && phase !== "done";
@@ -276,7 +276,7 @@ export function FinaleFx({ grade, variant, reduced = false, runId, durationMs, c
       className={styles.finale}
       /* 피날레는 격상 **이후**라 언제나 진짜 색이다(위장 색이 여기까지 오면 격상이 안 된 것). */
       style={{
-        ["--fx-accent" as string]: fxAccentOf(grade, "finale", GRADE_COLORS, cfg),
+        ["--fx-accent" as string]: fxAccentOf(grade, "finale", GRADE_GLOW_COLORS, cfg),
         ["--fx-dur" as string]: `${durationMs}ms`,
       }}
       data-testid="gacha-fx-finale"

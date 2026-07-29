@@ -14,7 +14,7 @@ import {
   surgeOf,
   type FxConfig,
 } from "./gacha-fx";
-import { GRADE_ORDER, type Grade } from "./grades";
+import { GRADE_COLORS, GRADE_GLOW_COLORS, GRADE_ORDER, type Grade } from "./grades";
 
 /**
  * 뽑기 이펙트의 **눈으로 판정할 수 없는 부분**만 여기서 잡는다 — 발동 등급·순서·타이밍.
@@ -83,6 +83,26 @@ describe("단계 시계", () => {
     expect(fxDuration("legend", r)).toBeLessThan(fxDuration("legend", t));
     expect(fxPhaseAt(r.charge - 1, "epic", r)).toBe("charge");
     expect(fxPhaseAt(r.charge, "epic", r)).toBe("burst");
+  });
+});
+
+describe("광원색 — 등급 라벨색이 아니라 프레임 아트를 따른다 (#250 hero 확정)", () => {
+  it("레전드 광원은 금색이다 — 프레임이 금색이라 보라 라벨색을 쓰면 카드 안팎이 싸운다", () => {
+    // 발행물 `frame-LEGEND.png` 테두리 실측 지배색 = #ffbb22 계열.
+    expect(GRADE_GLOW_COLORS.LEGEND.toLowerCase()).toBe("#ffbb22");
+    expect(GRADE_GLOW_COLORS.LEGEND).not.toBe(GRADE_COLORS.LEGEND);
+  });
+
+  it("나머지 등급은 라벨색을 그대로 쓴다 — 갈라진 건 레전드 하나뿐이다", () => {
+    for (const g of GRADE_ORDER.filter((x) => x !== "LEGEND")) {
+      expect(GRADE_GLOW_COLORS[g], `${g} 가 이유 없이 갈라졌다`).toBe(GRADE_COLORS[g]);
+    }
+  });
+
+  it("FX 광원도 같은 출처를 쓴다 — 금 후광 + 보라 광선 같은 새 불일치를 막는다", () => {
+    // 위장 중엔 아래 등급(다이아) 광원, 격상 후엔 레전드 광원.
+    expect(fxAccentOf("LEGEND", "charge", GRADE_GLOW_COLORS)).toBe(GRADE_GLOW_COLORS.DIA);
+    expect(fxAccentOf("LEGEND", "surge", GRADE_GLOW_COLORS)).toBe(GRADE_GLOW_COLORS.LEGEND);
   });
 });
 

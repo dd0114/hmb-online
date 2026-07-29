@@ -11,7 +11,7 @@ import {
   type FxTimings,
   type FxVariant,
 } from "../common/gacha-fx";
-import { GRADE_COLORS, GRADE_LABELS, GRADE_ORDER, type Grade } from "../common/grades";
+import { GRADE_COLORS, GRADE_GLOW_COLORS, GRADE_LABELS, GRADE_ORDER, type Grade } from "../common/grades";
 import styles from "./GachaFxPreview.module.css";
 
 /**
@@ -77,12 +77,13 @@ type Path = "single" | "batch";
 type BatchMode = "stagger" | "top";
 
 /**
- * LEGEND 위장 격상 후 색 — hero 가 "보라색이나 금색"이라 했으므로 둘 다 눌러 보게 한다.
- * `null` = 등급색(GRADE_COLORS.LEGEND = 보라).
+ * LEGEND 위장 격상 후 색. `null` = **광원색 기본값**(`GRADE_GLOW_COLORS.LEGEND`).
+ * hero 확정(2026-07-29): 금색 — 발행된 `frame-LEGEND.png` 테두리가 금색이라 보라 후광은
+ * 카드 안팎이 어긋난다. 비교용으로 보라·백금도 남겨 둔다.
  */
 const LEGEND_COLORS = {
-  purple: { label: "보라(등급색)", value: null as string | null },
-  gold: { label: "금색", value: "#ffcf4a" },
+  gold: { label: "금색(프레임색·기본)", value: null as string | null },
+  purple: { label: "보라(등급 라벨색)", value: "#c07cf5" },
   white: { label: "백금", value: "#eaf2ff" },
 } as const;
 type LegendColorKey = keyof typeof LEGEND_COLORS;
@@ -108,7 +109,7 @@ export function GachaFxPreview() {
   const threshold: Grade = thresholdParam === "GOLD" ? "GOLD" : "DIA";
   const forceReduced = params.get("rm") === "1";
   // LEGEND 위장(hero 요구): 격상 후 색 · 격상 시점 — 둘 다 눈으로 골라야 하는 값이라 칩으로 뺐다.
-  const legendColorKey = (params.get("lc") ?? "purple") as LegendColorKey;
+  const legendColorKey = (params.get("lc") ?? "gold") as LegendColorKey;
   const surgeKey = (params.get("sg") ?? "mid") as SurgeKey;
 
   const set = (k: string, v: string) => {
@@ -216,7 +217,7 @@ export function GachaFxPreview() {
               key={k}
               type="button"
               className={`${styles.chip} ${legendColorKey === k ? styles.chipOn : ""}`}
-              style={{ color: LEGEND_COLORS[k].value ?? GRADE_COLORS.LEGEND }}
+              style={{ color: LEGEND_COLORS[k].value ?? GRADE_GLOW_COLORS.LEGEND }}
               onClick={() => set("lc", k)}
             >
               {LEGEND_COLORS[k].label}
