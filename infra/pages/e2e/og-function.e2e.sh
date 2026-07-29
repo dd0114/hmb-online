@@ -64,6 +64,16 @@ trap cleanup EXIT
   echo "ERROR: apps/web/dist 가 없다 — 먼저 빌드해라: VITE_API_BASE=... bash infra/pages/build.sh" >&2
   exit 2
 }
+# ⚠️ **dist 가 있는 것만으로는 부족하다.** `npm run build`(vite 단독)로 만든 dist 는 `_headers` 가
+# 없어서, 여기서 그대로 돌리면 "AC2 _headers 가 살아 있다"와 "AC4 실브라우저"가 깨진다 —
+# 실제로 그렇게 23/2 가 나와 Function 결함으로 오진할 뻔했다(실측). 실패 원인이 스펙이 아니라
+# **전제**일 때는, 검사 결과가 아니라 전제 위반을 말해 줘야 한다.
+[ -f apps/web/dist/_headers ] || {
+  echo "ERROR: apps/web/dist/_headers 가 없다 — vite 단독 빌드로 보인다." >&2
+  echo "       이 e2e 는 배포 산출물을 전제한다. 다시 빌드해라:" >&2
+  echo "       VITE_API_BASE=http://127.0.0.1:18801 bash infra/pages/build.sh" >&2
+  exit 2
+}
 rm -rf "$WORK/dist"; mkdir -p "$WORK/dist"
 rsync -a apps/web/dist/ "$WORK/dist/"
 mkdir -p "$OUT"
