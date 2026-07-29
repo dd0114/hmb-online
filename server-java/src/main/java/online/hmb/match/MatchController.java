@@ -110,9 +110,15 @@ public class MatchController {
     /**
      * teamTactics(#254, 선택): 감독시간 팀 전술 {line,press,tempo,width}(0..1). hero 결정 = <b>허용</b>
      * — 후반에 전술을 바꿀 수 있다. 생략하면 손대지 않은 것이라 전반 전술이 그대로 이어진다(additive).
+     *
+     * <p>formation + starters(#276, 선택): 감독시간 <b>배치</b>. hero 결정 = "덱 구성과 같은 조작으로
+     * 통일" → 포메이션 문자열만이 아니라 <b>슬롯 재배치까지</b>. <b>둘 다 있거나 둘 다 없어야</b> 하고
+     * (반쪽 배치는 뜻이 없다) starters 는 <b>교체 반영 후의 실효 선발</b> 11명이다. 생략 = 손대지 않음.
      */
     public record HalftimeRequest(List<MatchService.Substitution> substitutions,
-                                  com.fasterxml.jackson.databind.JsonNode teamTactics) {
+                                  com.fasterxml.jackson.databind.JsonNode teamTactics,
+                                  String formation,
+                                  List<MatchService.ShapeSlot> starters) {
     }
 
     @PostMapping("/api/matches/{id}/halftime")
@@ -121,7 +127,9 @@ public class MatchController {
                                 @RequestBody HalftimeRequest request) {
         matchService.submitHalftime(userId, id,
                 request == null ? null : request.substitutions(),
-                request == null ? null : request.teamTactics());
+                request == null ? null : request.teamTactics(),
+                request == null ? null : request.formation(),
+                request == null ? null : request.starters());
         // 교체는 h2 해소 분기를 바꾼다(패치/재사용 → 풀 생성) — 선행 생성된 결과를 무효화하고 다시
         // 태우기 위해 여기서도 재해소한다(#193 W2b-B2). 교체 없음(빈 배열)이면 같은 잡 → no-op.
         // 전술 변경(#254)도 같은 이유로 여기를 지난다 — 선행 생성된 후반 인풋은 전반 전술로 만든 것이다.
