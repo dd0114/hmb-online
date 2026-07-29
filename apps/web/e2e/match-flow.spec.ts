@@ -95,18 +95,12 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
 
   // 7) 하프타임 — 교체 1건 + 추가 프롬프트 → 후반 시작
-  // OUT 은 반드시 non-GK 선발이어야 한다 — GK 를 빼면 GK_REQUIRED 로 후반 시작이 막힌다.
-  const outSelect = page.getByTestId("sub-out-select");
-  const inSelect = page.getByTestId("sub-in-select");
-  const outValue = await outSelect.evaluate((el) => {
-    const sel = el as HTMLSelectElement;
-    const opt = [...sel.options].find((o) => o.value !== "" && !/^GK\b/.test(o.textContent ?? ""));
-    return opt?.value ?? "";
-  });
-  expect(outValue, "non-GK 선발 OUT 후보가 있어야 함").not.toBe("");
-  await outSelect.selectOption(outValue);
-  await inSelect.selectOption({ index: 1 });
-  await page.getByTestId("sub-add").click();
+  // 교체 수단은 **덱과 같은 라인업 보드**다(#276) — OUT/IN 셀렉트 2개 + [추가] 는 은퇴했다.
+  // 벤치 토큰을 탭해 집고 선발 슬롯을 탭하면 그 둘이 자리를 바꾸며 교체 1장이 잡힌다(tap-place).
+  // 슬롯 10 을 고르는 이유: FORMATION_LAYOUTS 상 GK 는 항상 slot 0 이라 GK_REQUIRED 를 피한다.
+  await expect(page.getByTestId("halftime-board")).toBeVisible();
+  await page.getByTestId("board-slot-bench-0").click();
+  await page.getByTestId("board-slot-starter-10").click();
   await expect(page.getByTestId("sub-list").getByRole("listitem")).toHaveCount(1);
   await page.getByTestId("halftime-team-prompt").fill("후반은 점유율 위주로 안정적으로");
   await page.getByTestId("resume-button").click();

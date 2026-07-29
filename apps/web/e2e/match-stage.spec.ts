@@ -83,6 +83,17 @@ async function mockApi(page: Page, state: string) {
           result: "WIN",
           createdAt: "2026-07-22T09:00:00Z",
           opponent: { name: "봇 FC" },
+          // 감독시간 라인업 보드(#276)의 시작 상태 — 실서버는 이 필드를 준다. 없으면 화면이
+          // 셀렉트 폴백으로 떨어져 **보드가 있는 상태의 레이아웃 계약을 아무도 안 본다**.
+          userDeckSnapshot: {
+            formation: DECK.formation,
+            starters: DECK.slots
+              .filter((s) => s.role === "starter")
+              .map((s) => ({ playerId: s.playerId, slotIndex: s.slotIndex })),
+            bench: DECK.slots
+              .filter((s) => s.role === "bench")
+              .map((s) => ({ playerId: s.playerId, slotIndex: s.slotIndex })),
+          },
         },
       });
     }

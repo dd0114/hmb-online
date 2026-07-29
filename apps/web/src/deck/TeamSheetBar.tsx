@@ -1,4 +1,5 @@
-import { FORMATION_LAYOUTS, type DeckDraft } from "./deck-logic";
+import { type DeckDraft } from "./deck-logic";
+import { FormationSelect } from "./FormationSelect";
 import { powerShare } from "./team-power";
 import { sheetMetrics } from "./sheet-metrics";
 import styles from "./TeamSheetBar.module.css";
@@ -55,22 +56,13 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
             AUTO
           </button>
         )}
-        <label className={styles.formationLabel} htmlFor="formation">
-          <span className={styles.srOnly}>포메이션</span>
-          <select
-            id="formation"
-            data-testid="formation-select"
-            className={styles.formation}
-            value={draft.formation}
-            onChange={(e) => onFormationChange(e.target.value)}
-          >
-            {Object.keys(FORMATION_LAYOUTS).map((f) => (
-              <option key={f} value={f}>
-                {f}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* 마크업은 FormationSelect 가 소유한다(#276 — 감독시간 라인업 보드와 같은 손잡이).
+            클래스를 그대로 넘겨 이 바의 DOM·생김새는 이전과 동일하다. */}
+        <FormationSelect
+          value={draft.formation}
+          onChange={onFormationChange}
+          classNames={{ label: styles.formationLabel, srOnly: styles.srOnly, select: styles.formation }}
+        />
       </div>
 
       <div className={styles.power} data-testid="sheet-power">

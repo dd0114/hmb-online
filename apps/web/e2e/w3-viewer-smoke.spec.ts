@@ -107,17 +107,12 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   });
   await page.screenshot({ path: `${SMOKE_DIR}w3-half1-page.png`, fullPage: false });
 
-  // 하프타임 교체 1건 → 후반 시작
-  const outSelect = page.getByTestId("sub-out-select");
-  const inSelect = page.getByTestId("sub-in-select");
-  const outValue = await outSelect.evaluate((el) => {
-    const sel = el as HTMLSelectElement;
-    const opt = [...sel.options].find((o) => o.value !== "" && !/^GK\b/.test(o.textContent ?? ""));
-    return opt?.value ?? "";
-  });
-  await outSelect.selectOption(outValue);
-  await inSelect.selectOption({ index: 1 });
-  await page.getByTestId("sub-add").click();
+  // 하프타임 교체 1건 → 후반 시작. 덱과 같은 라인업 보드로 한다(#276 — OUT/IN 셀렉트는 은퇴).
+  // GK 는 항상 slot 0 이므로 slot 10 을 빼면 GK_REQUIRED 에 걸리지 않는다.
+  await expect(page.getByTestId("halftime-board")).toBeVisible();
+  await page.getByTestId("board-slot-bench-0").click();
+  await page.getByTestId("board-slot-starter-10").click();
+  await expect(page.getByTestId("sub-list").getByRole("listitem")).toHaveCount(1);
   await page.getByTestId("resume-button").click();
 
   // === FINISHED: 후반 시각 재생 ===
