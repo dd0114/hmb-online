@@ -40,7 +40,8 @@ for (const [name, q] of shots) {
   await p.close();
 }
 const t = await b.newPage({ viewport: { width: 390, height: 844 } });
-await t.goto(file + "?screen=home&notes=0");
+// ⚠️ 홈에서는 탭바가 숨는다(hero 4R) — 탭바 컷은 다른 화면에서 찍는다.
+await t.goto(file + "?screen=game&notes=0");
 await t.waitForTimeout(300);
 await t.locator(".tabbar").screenshot({ path: dir + "tabbar.png" });
 await t.close();

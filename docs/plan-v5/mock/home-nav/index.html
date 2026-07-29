@@ -83,7 +83,7 @@ pre{background:var(--sunk);border:1px solid var(--border);border-radius:10px;pad
   <h1>#286 UI 보드</h1>
   <div class="sub">홈/내비 전면 개편 · W1 컨펌용</div>
   <a class="nav" href="#top">개요 · 보는 법</a>
-  <a class="nav" href="#answer" style="color:#ffdc9a">★ 홈 — 분리 + 간결화</a>
+  <a class="nav" href="#answer" style="color:#ffdc9a">★ 홈 — 하단탭 크게</a>
   <a class="nav" href="#lock">★ 경기 중 잠금</a>
   <a class="nav" href="#ia">IA 변경 (7탭 → 6탭)</a>
   <div class="grp">화면별 Before / After</div>
@@ -123,50 +123,48 @@ pre{background:var(--sunk);border:1px solid var(--border);border-radius:10px;pad
   <ul>
     <li>AFTER 안의 <b style="color:#ffdc9a">노란 줄 박스</b>는 <b class="hl">설계 의도 주석</b>입니다(제품 화면에는 안 들어갑니다). 위 [설계 주석 표시]로 끌 수 있습니다.</li>
     <li>숫자·이름·전적은 전부 <b class="hl">가짜 예시 데이터</b>입니다. 보실 건 <b class="hl">배치와 흐름</b>입니다.</li>
-    <li><b class="hl">3차 피드백 반영본입니다.</b> 홈 분리·간결화(3차)와 앞선 답(연습 배치·복수 규칙 4개·모드별 전적·트레이드 설명·경기 중 잠금·덱 강화 진입·도감 전신)을 전부 넣었습니다 — <a href="#decide">✅ 확정 목록</a>.</li>
-    <li>맨 위 <a href="#answer">★ 홈 — 분리 + 간결화</a> 가 이번 요청의 핵심입니다. <b>무엇을 덜어내 어디로 보냈는지</b> 표로 정리했습니다.</li>
+    <li><b class="hl">4차 피드백 반영본입니다.</b> 홈 런처화(4차)·홈 분리(3차)와 앞선 답(연습 배치·복수 규칙 4개·모드별 전적·트레이드 설명·경기 중 잠금·덱 강화 진입·도감 전신)을 전부 넣었습니다 — <a href="#decide">✅ 확정 목록</a>.</li>
+    <li>맨 위 <a href="#answer">★ 홈 — 하단탭을 크게 펼친 화면</a> 이 이번 요청입니다. <b>무엇이 홈에 없고 어디로 갔는지</b> 표로 정리했습니다.</li>
   </ul>
 </div>
 
 <!-- ══════════════ 홈 ══════════════ -->
-<h2 class="h" id="answer">★ 홈 — 별도 탭으로 빼고, 최대한 간결하게</h2>
+<h2 class="h" id="answer">★ 홈 — 하단탭을 크게 펼친 화면</h2>
 <div class="box warn">
-  <h4>맞습니다. 홈을 뺐습니다.</h4>
-  <p style="margin:6px 0 0"><i>"홈 별도로 빼야지 가장 중요하잖아. 홈화면에 게임이랑 다 널부러져있는거 이상해. 최대한 간결하게."</i></p>
-  <p style="margin:8px 0 0">2차안의 홈은 <b class="hl">팀 요약 + 오늘 할 일 + 경기 3카드</b>가 한 화면에 다 있었습니다. 지적대로 중구난방이었습니다 —
-  <b>"내 팀은 어떤가"</b>와 <b>"뭘 하러 갈까"</b>가 섞여 있었습니다.</p>
-  <p style="margin:8px 0 0">3차안의 홈은 <b class="hl">세 덩어리만</b> 남습니다:</p>
+  <h4>4차 요청 반영</h4>
+  <p style="margin:6px 0 0"><i>"홈화면을 그냥 밑에 하단탭에 있는거 크게 보여주는 느낌으로 가자. 홈화면때는 하단탭 안보이고"</i></p>
+  <p style="margin:8px 0 0"><b class="hl">홈 = 내비 그 자체</b>가 됐습니다. 하단탭의 5칸(게임·덱·선수·영입·내 정보)을
+  <b>큰 타일</b>로 펼치고, <b class="hl">홈에서는 하단 탭바를 감춥니다</b> — 홈이 내비인데 그 밑에 또 내비를 그릴 이유가 없습니다.
+  다른 탭으로 들어가면 그때부터 하단 탭바가 나옵니다(홈으로 돌아올 길).</p>
   <ul>
-    <li><b>① 내 팀 한 장</b> — 대표 카드 + 팀 이름 · 디비전/순위 · 레이팅/랭킹 · 포메이션/전력</li>
-    <li><b>② [게임 시작]</b> — 큰 버튼 하나. 누르면 <b>[게임] 탭</b>으로 간다</li>
-    <li><b>③ 알림 한 줄</b> — <b class="hl">있을 때만</b>. 없으면 홈은 카드 한 장 + 버튼 하나로 끝입니다.</li>
+    <li><b>게임</b>은 2칸 폭 + 색을 줍니다 — 홈의 주인공이고, 나머지는 회색 명도만(#244 색 규칙 유지).</li>
+    <li>타일마다 <b class="hl">지금 상태를 한 줄</b> 답니다(리그 10/18R · 보유 18/40 · 제안 1건 · 12승 3무 8패).
+      크게 보여주는 자리를 그냥 큰 버튼으로만 쓰면 아깝습니다.</li>
+    <li>맨 위 <b>팀 한 줄</b>(대표 카드 + 디비전·순위·포메이션·전력·레이팅)로 "내 팀이 어떤 팀인지"는 남깁니다.</li>
+    <li>알림 줄은 <b>있을 때만</b>.</li>
   </ul>
 </div>
-
-<h3 class="h">덜어낸 것이 어디로 갔나</h3>
-<table class="t">
-  <tr><th style="width:230px">2차안 홈에 있던 것</th><th style="width:130px">3차안 위치</th><th>이유</th></tr>
-  <tr><td>연습 / 리그 / 원정 3카드</td><td><b>[게임] 탭</b></td><td>홈은 "내 팀", 게임은 "경기". 섞이면 홈이 인덱스가 된다.</td></tr>
-  <tr><td>내 팀 요약(선발·벤치·지시 작성률)</td><td><b>[덱] 탭</b></td><td>덱이 이미 그 정보를 다 갖고 있다. 홈엔 <b>결과값</b>(포메이션·전력)만 한 줄.</td></tr>
-  <tr><td>팀 사기 / 컨디션 / 연승 스트립</td><td><b>[덱] · [내 정보]</b></td><td>사기·컨디션은 라인업을 짤 때 쓰는 값이라 덱이 맞다.</td></tr>
-  <tr><td>"오늘" 할 일 목록(원정 N회 · 트레이드 공개)</td><td><b>알림 한 줄</b>로 압축</td><td>목록으로 두면 홈이 다시 대시보드가 된다. 갯수만 알리고 눌러서 간다.</td></tr>
-</table>
 
 <div class="pair">
   <div class="pane before"><header>BEFORE — 현행 홈 <span class="tag">/lobby</span></header>
     <div class="phone tall"><img src="before/01-lobby.png" alt="현행 로비"></div>
-    <div class="capt">회색 버튼 4개. 3개(덱·상점·도감)는 탭바에도 그대로 있습니다.</div>
+    <div class="capt">회색 버튼 4개 + <b>하단 탭바 7칸</b>. 덱·상점·도감이 양쪽에 중복으로 있습니다.</div>
   </div>
-  <div class="pane after"><header>AFTER — 3차 홈 <span class="tag">눌러보세요</span></header>
+  <div class="pane after"><header>AFTER — 4차 홈 <span class="tag">탭바 없음 · 눌러보세요</span></header>
     <div class="phone tall"><iframe data-src="after.html?screen=home" loading="lazy"></iframe></div>
-    <div class="capt">카드 한 장 + [게임 시작] + 알림 한 줄. 상단 [🔒 경기 진행 중]도 눌러보세요.</div>
+    <div class="capt">타일을 누르면 그 탭으로 들어가고, <b>그때부터 하단 탭바가 나타납니다</b>. 상단 [🔒 경기 진행 중]도 눌러보세요.</div>
   </div>
 </div>
 
-<h3 class="h">참고 — 2차안 홈(중구난방이라 폐기)</h3>
-<div class="strip">
-  <figure><img src="after/01-game.png"><figcaption>2차안 홈에 있던 경기 카드들은 <b>[게임] 탭</b>으로 통째로 옮겼습니다(이 화면).</figcaption></figure>
-</div>
+<h3 class="h">홈에 없는 것 — 어디로 갔나</h3>
+<table class="t">
+  <tr><th style="width:230px">한때 홈에 있던 것</th><th style="width:130px">현재 위치</th><th>이유</th></tr>
+  <tr><td>연습 / 리그 / 원정 3카드</td><td><b>[게임] 탭</b></td><td>홈은 내비, 게임은 경기. 홈에 널리면 "중구난방"이 된다(3차 지적).</td></tr>
+  <tr><td>내 팀 요약(선발·벤치·지시 작성률)</td><td><b>[덱] 탭</b></td><td>덱이 이미 갖고 있다. 홈엔 <b>한 줄</b>(포메이션·전력)만.</td></tr>
+  <tr><td>팀 사기 / 컨디션 / 연승 스트립</td><td><b>[덱] · [내 정보]</b></td><td>라인업을 짤 때 쓰는 값이라 덱이 맞다.</td></tr>
+  <tr><td>"오늘" 할 일 목록</td><td><b>타일 부제 + 알림 한 줄</b></td><td>목록으로 두면 홈이 대시보드로 되돌아간다.</td></tr>
+  <tr><td>하단 탭바</td><td><b>홈에서는 숨김</b></td><td>홈이 곧 내비다. 같은 것을 두 번 그리지 않는다(4차 지시).</td></tr>
+</table>
 
 <h2 class="h" id="s-game">1-0. 게임 (모드 선택)</h2>
 <p class="lead">홈에서 [게임 시작]을 누르면 오는 화면. <b class="hl">모드 선택 하나만</b> 합니다 —
@@ -192,13 +190,13 @@ pre{background:var(--sunk);border:1px solid var(--border);border-radius:10px;pad
   화면은 멀쩡히 다 보이고, 눌러서 이동한 다음에 경기로 튕겨냅니다. 그 사이에 <b class="hl">강화·덱 편집이 실제로 들어갈 창</b>이 있습니다.
   경기 중 강화로 능력치가 바뀌면 <b>진행 중인 시뮬레이션이 쓰는 값과 어긋납니다</b> — 말씀하신 "버그가 있을 수 있을 것 같다"가 이 자리입니다.</p>
   <p style="margin:8px 0 0">→ 개편안은 <b class="hl">애초에 못 누르게</b> 합니다: 홈은 [이어하기]/[경기 포기]만 남고
-  나머지 + <b>하단 탭 5개</b>가 회색·자물쇠·클릭 불가. 덱은 배치·프롬프트는 열어 두되(하프타임 지시를 써야 하니)
+  나머지(홈은 타일 5개, 다른 화면은 <b>하단 탭 5칸</b>)가 회색·자물쇠·클릭 불가. 덱은 배치·프롬프트는 열어 두되(하프타임 지시를 써야 하니)
   <b>[⚡ 선수 강화] 줄만</b> 잠급니다.</p>
 </div>
 <div class="pair">
   <div class="pane after"><header>AFTER — 홈, 경기 진행 중 <span class="tag">전부 잠김</span></header>
     <div class="phone tall"><img src="after/00b-home-locked.png" alt="경기 중 홈 잠금"></div>
-    <div class="capt">홈이 통째로 이 카드가 되고 <b>탭 5개 전부</b>에 자물쇠. 프로토타입 상단 [🔒 경기 진행 중]으로 전환해 보세요.</div>
+    <div class="capt">홈은 <b>타일 5개가 통째로 잠기고</b> 잠금 카드만 활성. 다른 탭에서는 <b>하단 탭 5칸</b>에 자물쇠.</div>
   </div>
   <div class="pane after"><header>AFTER — 덱, 경기 진행 중 <span class="tag">강화만 잠김</span></header>
     <div class="phone tall"><img src="after/06b-deck-locked.png" alt="경기 중 덱 강화 잠금"></div>
@@ -218,13 +216,13 @@ pre{background:var(--sunk);border:1px solid var(--border);border-radius:10px;pad
   </div>
   <div class="pane after"><header>AFTER — 6탭 <span class="tag">홈·게임·덱·선수·영입·내 정보</span></header>
     <div style="padding:14px;background:#000"><img src="after/tabbar.png" alt="개편 하단 탭바" style="width:100%;max-width:390px"></div>
-    <div class="capt">6칸. <b>홈</b>에 알림 뱃지가 붙습니다. ⚠️ admin 계정은 [운영]이 붙어 7칸이 되므로 그때는 라벨 축약이 필요합니다(구현 시 확인).</div>
+    <div class="capt">6칸 — <b>홈 외 화면에서만</b> 나옵니다(홈에서는 숨김). ⚠️ admin 계정은 [운영]이 붙어 7칸이 되므로 라벨 축약이 필요할 수 있습니다(구현 시 캡처로 확인).</div>
   </div>
 </div>
 
 <table class="t">
   <tr><th style="width:120px">현행 탭</th><th style="width:120px">개편 후</th><th style="width:80px">처리</th><th>근거</th></tr>
-  <tr><td>홈(로비)</td><td><b>홈</b></td><td><span class="pill move">재설계</span></td><td><b class="hl">최대한 간결하게</b>(hero 3R) — 내 팀 한 장 + [게임 시작] + 알림 한 줄. 덱/상점/도감 버튼은 탭바와 중복이라 제거.</td></tr>
+  <tr><td>홈(로비)</td><td><b>홈</b></td><td><span class="pill move">재설계</span></td><td><b class="hl">하단탭을 크게 펼친 런처</b>(hero 4R). 타일 5개 + 팀 한 줄 + 알림 한 줄. <b>홈에서는 탭바를 감춘다</b>.</td></tr>
   <tr><td>[게임 시작] 모달</td><td><b>게임</b></td><td><span class="pill new">탭 승격</span></td><td>모달을 화면으로. 연습·리그·원정이 각자 상태(라운드·레이팅·피침공)를 달고 있다. 리그/원정 페이지의 부모.</td></tr>
   <tr><td>덱</td><td><b>덱</b></td><td><span class="pill keep">유지</span></td><td>배치·프롬프트는 #244 골격 그대로. <b>선수 탭 → 강화</b> 진입만 추가.</td></tr>
   <tr><td>육성 <i>+</i> 도감</td><td><b>선수</b></td><td><span class="pill move">병합</span></td><td><b class="hl">두 화면은 이미 같은 코드다</b> — 같은 <code>CodexPage.module.css</code>·<code>PlayerCard</code>·<code>CardGrowthDetail</code> 을 쓰고 차이는 <code>owned</code> 필터뿐. 탭 두 칸을 쓸 이유가 없어 <b>[보유]/[전체] 세그먼트</b>로 대체.</td></tr>
@@ -539,7 +537,7 @@ W4 는 server-java 세션에 이슈로 넘기고, 그동안 web 은 계속 갑�
   <h4>✅ 2차 피드백으로 확정 — 전부 이 보드에 반영돼 있습니다</h4>
   <table class="t" style="margin-top:8px">
     <tr><th style="width:180px">항목</th><th>확정</th><th style="width:130px">어디서 확인</th></tr>
-    <tr><td>홈 분리</td><td><b>[홈]을 별도 탭으로</b> · 홈은 팀 카드 + [게임 시작] + 알림 한 줄로 <b>간결화</b></td><td><a href="#answer">홈</a></td></tr>
+    <tr><td>홈</td><td><b>별도 탭 + 하단탭을 크게 펼친 런처</b>. 홈에서는 <b>탭바 숨김</b></td><td><a href="#answer">홈</a></td></tr>
     <tr><td>Q1 연습 경기 배치</td><td><b>최하단 · 무채색 · 축소</b></td><td><a href="#s-game">게임</a></td></tr>
     <tr><td>Q2 리그 랭킹보드 정렬</td><td>"알아서" → <b>디비전 우선 → 승점</b>으로 갑니다</td><td><a href="#s-league">리그</a></td></tr>
     <tr><td>Q3-① 복수 무승부</td><td><b>횟수 안 씀</b> — 다시 침공 가능</td><td><a href="#revenge">복수 규칙</a></td></tr>
@@ -548,7 +546,7 @@ W4 는 server-java 세션에 이슈로 넘기고, 그동안 web 은 계속 갑�
     <tr><td>Q3-④ 방어 성공분</td><td><b>복수 불가</b> — [방어함] 표시</td><td><a href="#s-away">원정</a></td></tr>
     <tr><td>Q4 모드별 전적</td><td><b>분리한다</b> (<code>GET /api/me/record</code> 추가)</td><td><a href="#s-me">내 정보</a></td></tr>
     <tr><td>Q5 트레이드 설명</td><td><b>안내 카드 + 코치마크 둘 다</b></td><td><a href="#s-recruit">영입</a></td></tr>
-    <tr><td>경기 중 잠금</td><td><b>홈 전체 + 탭 5개 잠금</b>, 덱은 강화 줄만 잠금</td><td><a href="#lock">경기 중 잠금</a></td></tr>
+    <tr><td>경기 중 잠금</td><td>홈은 <b>타일 5개 잠금</b>, 다른 화면은 <b>탭 5칸 잠금</b>, 덱은 강화 줄만</td><td><a href="#lock">경기 중 잠금</a></td></tr>
     <tr><td>덱 강화 진입</td><td>실제 <code>DirectiveRail</code> 에 <b>[⚡ 선수 강화] 한 줄</b></td><td><a href="#s-deck">덱</a></td></tr>
     <tr><td>도감 아트</td><td><b>전신(축소)</b> + 미보유 전신 실루엣</td><td><a href="#s-players">선수</a></td></tr>
   </table>
