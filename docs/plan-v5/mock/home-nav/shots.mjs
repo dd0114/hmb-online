@@ -12,12 +12,13 @@ mkdirSync(dir, { recursive: true });
 const file = "file://" + process.cwd() + "/docs/plan-v5/mock/home-nav/after.html";
 const shots = [
   ["01-home", "?screen=home"],
+  ["01b-home-locked", "?screen=home&sub=lock"],
   ["02-league-intro", "?screen=league"],
   ["03-league-run", "?screen=league&sub=run"],
   ["04-away", "?screen=away"],
   ["05-revenge-sheet", "?screen=away&sheet=revenge"],
   ["06-deck", "?screen=deck"],
-  ["07-deck-player-sheet", "?screen=deck&sheet=player"],
+  ["06b-deck-locked", "?screen=deck&sub=lock"],
   ["08-growth-sheet", "?screen=players&sheet=growth"],
   ["09-players-owned", "?screen=players"],
   ["10-players-all", "?screen=players&sub=all"],

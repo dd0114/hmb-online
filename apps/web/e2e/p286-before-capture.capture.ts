@@ -263,6 +263,30 @@ test("before: 덱", async ({ page }) => {
   await shot(page, "05-deck");
 });
 
+/**
+ * hero 지적(2R) — "선수 누르면 프롬프트를 치거나 세부설정을 누를 수 있는데 여기서 강화탭도".
+ * 그 실물이 **DirectiveRail 의 선수 컨텍스트**다. 목업이 이걸 안 보고 그려서 모양이 달랐다.
+ * 개편안은 이 레일에 강화 진입을 붙이는 것이므로 BEFORE 로 정확히 찍어 둔다.
+ */
+test("before: 덱 — 선수 선택 시 지시 레일", async ({ page }) => {
+  await page.goto("/deck");
+  await page.getByTestId("tactics-board").waitFor();
+  await page.waitForTimeout(600);
+  // 보드 위 아무 선수 토큰 하나 — 목 덱의 선발 슬롯 첫 필드 플레이어.
+  const token = page.locator('[data-testid^="token-"]').nth(3);
+  await token.click();
+  await page.getByTestId("rail-title").waitFor();
+  await page.waitForTimeout(400);
+  await shot(page, "05b-deck-player-rail");
+  // 세부 조정 펼친 상태 — 역할·전술 레이어까지 보이는 게 hero 가 말한 "세부설정".
+  const tune = page.getByTestId("rail-tune-toggle");
+  if (await tune.count()) {
+    await tune.click();
+    await page.waitForTimeout(400);
+    await shot(page, "05c-deck-player-rail-tune");
+  }
+});
+
 test("before: 육성", async ({ page }) => {
   await page.goto("/growth");
   await page.getByTestId("growth-owned-total").waitFor();

@@ -123,18 +123,52 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
 .rev .rbtn[disabled]{background:var(--sunk);color:var(--muted);font-weight:600}
 .rev .rleft{display:block;font-size:9.5px;color:var(--muted);margin-top:3px;white-space:nowrap}
 
-/* ── 선수 그리드 ───────────────────────────────────────────────────────── */
+/* ── 선수 그리드 — 전신 카드(hero 2R: "아이콘 아니라 전신") ────────────── */
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-.pcard{background:var(--surface);border-radius:11px;padding:8px 7px;position:relative;text-align:left}
-.pcard .face{height:56px;border-radius:9px;background:var(--sunk);display:grid;place-items:center;font-size:26px;margin-bottom:6px}
+.pcard{background:var(--surface);border-radius:11px;padding:0 0 7px;position:relative;text-align:left;overflow:hidden}
+/* 아트 창 = 2:3. 카드 통짜 에셋이라 contain 으로 가둔다(#207 의 "아트 창" 규칙과 같은 이유). */
+.pcard .art{position:relative;width:100%;aspect-ratio:226/425;background:var(--sunk);overflow:hidden}
+.pcard .art img.body{width:100%;height:100%;object-fit:contain;display:block}
+/* 공용 default-unit 은 프레임리스 아트라 제품에서 frame-<GRADE>.png 를 덧씌운다(#207 규칙).
+   목업도 같은 합성을 해야 "실제로 어떻게 보이나"에 답이 된다. 완성 카드(characters 축)는 덧씌우지 않는다. */
+/* ⚠️ frame-<GRADE>.png 는 투명 테두리가 아니라 **내부가 불투명한 카드 배경**이다 —
+   프레임을 위에 얹으면 캐릭터가 통째로 가려진다(실제로 그랬다). 프레임을 깔고 아트를 아트창에 앉힌다. */
+.pcard .art.framed img.frame{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;z-index:0}
+.pcard .art.framed img.body{position:absolute;left:6%;top:4%;width:88%;height:70%;z-index:1}
+.pcard .meta{padding:6px 7px 0}
 .pcard b{display:block;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pcard .gr{font-size:10px}
-.pcard .pos{position:absolute;top:6px;left:7px;font-size:9px;color:var(--muted)}
-.pcard.locked .face{color:#000;background:#191d26;text-shadow:none}
-.pcard.locked .face span{filter:brightness(0) saturate(0) opacity(.55)}
+.pcard .pos{position:absolute;top:5px;left:6px;font-size:9px;color:#fff;background:rgba(0,0,0,.55);border-radius:5px;padding:0 4px;z-index:2}
+.pcard .lock{position:absolute;top:5px;right:6px;font-size:9px;color:var(--muted);background:rgba(0,0,0,.55);border-radius:5px;padding:0 4px;z-index:2}
+/* 미보유 = **전신 실루엣**. 회색조가 아니라 검은 실루엣이라 "안 가진 것"으로 즉시 읽힌다. */
+.pcard.locked .art img.body{filter:brightness(0) contrast(2) opacity(.5)}
+.pcard.locked .art img.frame{filter:grayscale(1) opacity(.35)}
 .pcard.locked b,.pcard.locked .gr{color:#4d5563}
-.pcard .lock{position:absolute;top:6px;right:7px;font-size:9px;color:var(--muted)}
+.pcard .dup{position:absolute;bottom:4px;right:5px;font-size:9px;background:rgba(0,0,0,.6);border-radius:5px;padding:0 4px;z-index:2}
 .g-LEGEND{color:#d0a5ff}.g-DIA{color:#7fd7ff}.g-GOLD{color:#ffcf6b}.g-SILVER{color:#c7cdd8}.g-BRONZE{color:#c99a76}
+
+/* ── 경기 중 잠금 (hero 2R) ────────────────────────────────────────────── */
+.lockwrap{position:relative}
+.lockwrap.locked{opacity:.32;filter:grayscale(.7);pointer-events:none;user-select:none}
+.lockbanner{background:linear-gradient(135deg,#3a2a0c,#171a21 70%);border:1px solid rgba(255,194,75,.45);border-radius:16px;padding:15px}
+.lockbanner h3{margin:0 0 2px;font-size:17px}
+.lockrow{display:flex;gap:8px;margin-top:12px}
+.tabbar button.tlock{opacity:.3}
+.tabbar button.tlock em::after{content:"🔒";position:absolute;font-size:9px;margin-left:-6px;margin-top:8px}
+
+/* 지시 레일(실물 모사) */
+.rail{background:var(--surface);border:1px solid var(--us);border-radius:14px;padding:12px}
+.railhead{display:flex;align-items:center;gap:8px}
+.railhead .disc{width:22px;height:22px;border-radius:99px;background:var(--sunk);border:1px solid var(--border);display:grid;place-items:center;font-size:11px}
+.railhead b{font-size:15px}
+.railhead .sub{font-size:11px;color:var(--muted)}
+.railhead .x{margin-left:auto;color:var(--muted);font-size:16px}
+.promptbox{border:1px solid var(--us);border-radius:11px;padding:10px;margin-top:10px;background:var(--sunk)}
+.promptbox .ph{color:#5f6875;font-size:12.5px;min-height:44px}
+.foldrow{width:100%;display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:11px;padding:11px 12px;margin-top:8px;background:var(--sunk);font-size:13px}
+.foldrow .rt{margin-left:auto;color:var(--muted);font-size:11.5px}
+.foldrow.growth{border-color:rgba(255,194,75,.55);background:linear-gradient(90deg,rgba(255,194,75,.12),var(--sunk))}
+.foldrow.growth[disabled]{border-color:var(--border);background:var(--sunk);opacity:.45}
 
 /* ── 전술보드(축약) ────────────────────────────────────────────────────── */
 .pitch{position:relative;border-radius:12px;height:230px;background:repeating-linear-gradient(180deg,var(--grass-a) 0 22px,var(--grass-b) 22px 44px);overflow:hidden}
@@ -181,53 +215,97 @@ body.nonotes .note{display:none}
   <div class="topbar">
     <div class="idrow">
       <div class="avatar">⚽</div>
-      <div class="who"><b>감독 박</b><span>브론즈 리그 · 레이팅 1180</span></div>
+      <div class="who"><b>감독 박</b><span>브론즈 D5 · 레이팅 1180</span></div>
       <div class="wallet"><span class="chip">● 24,300 G</span><span class="chip">💎 1,240 Z</span></div>
       <div class="bell">🔔<i>2</i></div>
     </div>
   </div>
   <div class="body">
-    <div class="note"><b>홈 = 인덱스가 아니라 "오늘 뭘 할까"</b>다. 현행의 [게임 시작] 모달을 없애고 <b>연습·리그·원정 3카드</b>를 홈에 1급으로 올린다. 덱/상점/도감 버튼은 하단 탭이 이미 하는 일이라 제거.</div>
+    <div class="seg" style="margin-bottom:2px">
+      <button class="on" onclick="homeState('free',this)">평상시</button>
+      <button onclick="homeState('lock',this)">🔒 경기 진행 중</button>
+    </div>
+    <div class="note tiny">↑ 목업 전용 상태 전환기(제품에는 없다). 서버 <code>GET /api/me/active-match</code> 의 <code>locked</code> 로 갈린다.</div>
 
-    <div class="resume">
-      <div class="between">
-        <div><b style="font-size:14px">진행 중인 경기</b><div class="tiny muted">전반 종료 · 하프타임 지시 대기</div></div>
-        <button class="cta sm" style="width:auto;padding:9px 14px">이어하기</button>
+    <div class="note"><b>이 화면이 홈이다</b> — [게임] 탭 = 홈. 현행의 [게임 시작] 모달을 없애고 <b>연습·리그·원정</b>을 홈에 1급으로 올렸다. 덱/상점/도감 버튼은 하단 탭이 이미 하는 일이라 제거.</div>
+
+    <!-- 경기 진행 중 = 잠금 배너 (hero 2R) -->
+    <div id="home-lock" style="display:none">
+      <div class="lockbanner">
+        <div class="row" style="gap:9px">
+          <div class="mico" style="width:38px;height:38px;border-radius:11px;background:rgba(0,0,0,.35);display:grid;place-items:center;font-size:19px">⏸</div>
+          <div style="flex:1">
+            <h3>경기 진행 중</h3>
+            <div class="tiny" style="color:#ffdc9a">전반 종료 · 하프타임 지시 대기 · 봇 T3 (1 : 1)</div>
+          </div>
+        </div>
+        <div class="lockrow">
+          <button class="cta" style="flex:1.6">이어하기</button>
+          <button class="cta ghost" style="flex:1">경기 포기</button>
+        </div>
+        <div class="tiny" style="color:#ffdc9a;margin-top:10px">⚠️ 경기를 끝내거나 포기해야 다른 메뉴를 쓸 수 있습니다.</div>
       </div>
+      <div class="note tiny" style="margin-top:10px"><b>hero 2R 반영</b> — 경기 중에는 <b>아래 전부 + 하단 탭 4개</b>가 잠긴다(회색·클릭 불가·자물쇠). 현행 <code>MatchLockGate</code>(#217)는 <b>다른 라우트로 가면 되돌리는</b> 방식이라 화면은 멀쩡히 보이고 눌린 뒤에야 튕겼다 — 강화·덱 편집이 경기 중에 들어가 <b>버그가 생길 창</b>이 그 사이에 있었다. 이제 <b>누를 수 없게</b> 막는다.</div>
     </div>
 
-    <div class="strip">
-      <div><b style="color:var(--ok)">보통</b><span>팀 사기</span></div>
-      <div><b>82</b><span>평균 컨디션</span></div>
-      <div><b>4-3-3</b><span>포메이션</span></div>
-    </div>
+    <div id="home-main" class="lockwrap">
+      <h2 class="sec">내 팀</h2>
+      <button class="card" style="width:100%;text-align:left" onclick="go('deck')">
+        <div class="between">
+          <div><b style="font-size:15px">4-3-3</b> <span class="badge">선발 11/11</span> <span class="badge">벤치 5/7</span>
+            <div class="tiny muted" style="margin-top:2px">지시 8/11 작성 · 미작성 3명</div></div>
+          <span class="go" style="color:var(--muted)">›</span>
+        </div>
+        <div class="between tiny muted" style="margin-top:9px"><span>팀 전력</span><span><b style="color:var(--text)">1,842</b> · 상대 미정</span></div>
+        <div class="bar" style="margin-top:4px"><i style="width:68%"></i></div>
+      </button>
 
-    <h2 class="sec">경기</h2>
-
-    <button class="mode practice" onclick="alert('연습 경기 생성 → /match/:id')">
-      <div class="mtop"><div class="mico">🎯</div><h3>연습 경기</h3><span class="go">›</span></div>
-      <p class="desc">봇과 단판. 기록에 남지 않으니 전술·프롬프트를 마음껏 시험한다.</p>
-      <div class="stats"><span class="badge">난이도 자동</span><span class="badge">보상 없음</span></div>
-    </button>
-
-    <button class="mode league" onclick="go('league')">
-      <div class="mtop"><div class="mico">🏆</div><h3>리그</h3><span class="go">›</span></div>
-      <p class="desc">10팀 18라운드 정규 시즌. 순위로 승급·강등한다.</p>
-      <div style="margin-top:10px">
-        <div class="between tiny muted" style="margin-bottom:4px"><span><b style="color:var(--text)">10</b> / 18 라운드</span><span>다음 상대 · 봇 T3</span></div>
-        <div class="bar"><i style="width:55%"></i></div>
+      <div class="strip">
+        <div><b style="color:var(--ok)">보통</b><span>팀 사기</span></div>
+        <div><b>82</b><span>평균 컨디션</span></div>
+        <div><b style="color:var(--warn)">2연승</b><span>원정 연승</span></div>
       </div>
-      <div class="stats"><span class="badge us">브론즈 리그</span><span class="badge">4위 / 10팀</span><span class="badge ok">승급권 2위까지</span></div>
-    </button>
 
-    <button class="mode away" onclick="go('away')">
-      <span class="ribbon">복수 3</span>
-      <div class="mtop"><div class="mico">⚔️</div><h3>원정</h3><span class="go">›</span></div>
-      <p class="desc">다른 감독의 팀에 쳐들어간다. 승패로 레이팅이 오르내린다.</p>
-      <div class="stats"><span class="badge us">레이팅 1180</span><span class="badge">랭킹 12위</span><span class="badge warn">2연승</span><span class="badge them">피침공 3건</span></div>
-    </button>
+      <h2 class="sec">오늘</h2>
+      <div class="list">
+        <button class="item between" style="width:100%;text-align:left" onclick="go('away')">
+          <span class="sm"><b>원정</b> 4회 남음 · <span style="color:var(--them)">복수 가능 2건</span></span><span class="tiny muted">›</span>
+        </button>
+        <button class="item between" style="width:100%;text-align:left" onclick="go('recruit')">
+          <span class="sm"><b>트레이드</b> 제안 1건 공개됨</span><span class="tiny muted">›</span>
+        </button>
+      </div>
 
-    <div class="note tiny"><b>결정 필요 Q1</b> — 홈에 <b>연습</b>을 계속 1급으로 둘지. 리그/원정이 본 게임이면 연습은 한 단계 접어(“전술 시험” 소형 카드) 홈 상단을 리그·원정에 줘도 된다. <u>권장 = 지금처럼 3카드 유지</u>(신규 유저의 첫 경기가 연습이다).</div>
+      <h2 class="sec">경기</h2>
+
+      <button class="mode league" onclick="go('league')">
+        <div class="mtop"><div class="mico">🏆</div><h3>리그</h3><span class="go">›</span></div>
+        <p class="desc">10팀 18라운드 정규 시즌. 순위로 승급·강등한다.</p>
+        <div style="margin-top:10px">
+          <div class="between tiny muted" style="margin-bottom:4px"><span><b style="color:var(--text)">10</b> / 18 라운드</span><span>다음 상대 · 봇 T3</span></div>
+          <div class="bar"><i style="width:55%"></i></div>
+        </div>
+        <div class="stats"><span class="badge us">브론즈 리그</span><span class="badge">4위 / 10팀</span><span class="badge ok">승급권 2위까지</span></div>
+      </button>
+
+      <button class="mode away" onclick="go('away')">
+        <span class="ribbon">복수 2</span>
+        <div class="mtop"><div class="mico">⚔️</div><h3>원정</h3><span class="go">›</span></div>
+        <p class="desc">다른 감독의 팀에 쳐들어간다. 승패로 레이팅이 오르내린다.</p>
+        <div class="stats"><span class="badge us">레이팅 1180</span><span class="badge">랭킹 12위</span><span class="badge warn">2연승</span><span class="badge them">피침공 3건</span></div>
+      </button>
+
+      <!-- Q1 확정(hero): 연습은 최하단 · 색 빼고 · 눈에 덜 띄게 -->
+      <button class="mode" style="background:var(--surface);padding:11px 14px" onclick="alert('연습 경기 생성 → /match/:id')">
+        <div class="mtop">
+          <div class="mico" style="width:28px;height:28px;font-size:14px;filter:grayscale(1);opacity:.7">🎯</div>
+          <h3 style="font-size:13.5px;color:var(--muted);font-weight:600">연습 경기</h3>
+          <span class="go" style="font-size:14px">›</span>
+        </div>
+        <p class="desc" style="margin-top:4px;font-size:11px">봇과 단판 · 기록·보상 없음 · 전술 시험용</p>
+      </button>
+      <div class="note tiny"><b>Q1 확정</b> — 연습을 <b>최하단 · 무채색 · 축소</b>로 내렸다. 리그·원정이 본 게임이고 연습은 시험대라는 뜻이 배치로 읽힌다.</div>
+    </div>
   </div>
 </section>
 
@@ -357,7 +435,9 @@ body.nonotes .note{display:none}
     <button class="cta">원정 떠나기</button>
 
     <h2 class="sec">나를 침공한 팀 <span class="badge them">복수 · 신규</span></h2>
-    <div class="note tiny">최근 <b>5건</b>까지 남는다. [복수]는 <b>지목 원정</b> — <b style="color:#fff">이기면 목록에서 사라지고, 지면 한 번 더</b>(최대 2회). 2회를 다 쓰면 회색으로 남았다가 새 침공이 들어오면 밀려난다.</div>
+    <div class="note tiny">최근 <b>5건</b>까지 남는다. [복수]는 <b>지목 원정</b> — <b style="color:#fff">이기면 목록에서 사라지고, 지면 한 번 더</b>(최대 2회).
+      <b style="color:#fff">무승부는 횟수를 쓰지 않는다</b>(hero 확정 — 승부가 안 났으니 다시 갈 수 있다). 2회를 다 지면 회색으로 남았다가 새 침공이 들어오면 밀려난다.
+      <b style="color:#fff">내가 막아낸 침공은 복수 대상이 아니다</b>(hero 확정 — 갚을 게 없다).</div>
     <div class="list">
 
       <div class="rev">
@@ -390,8 +470,17 @@ body.nonotes .note{display:none}
           <div class="l1"><b>언더독 유나이티드</b><em>어제</em></div>
           <div class="l2"><b style="color:var(--ok)">2 : 0 방어 성공</b> · 레이팅 +10</div>
         </div>
+        <div class="rside"><button class="rbtn" disabled>방어함</button></div>
+      </div>
+
+      <div class="rev">
+        <div class="rico">⚔️</div>
+        <div class="rmain">
+          <div class="l1"><b>노스포트 로버스</b><em>2일 전</em></div>
+          <div class="l2"><span class="muted">1 : 1 무</span> · <span style="color:var(--warn)">복수도 무승부 — 횟수 유지</span></div>
+        </div>
         <div class="rside">
-          <button class="rbtn" onclick="revengeSheet('언더독 유나이티드',1090,2,'2 : 0')">복수</button>
+          <button class="rbtn" onclick="revengeSheet('노스포트 로버스',1130,2,'1 : 1')">복수</button>
           <span class="rleft">2회 남음</span>
         </div>
       </div>
@@ -415,11 +504,12 @@ body.nonotes .note{display:none}
       </div>
 
     </div>
-    <div class="note tiny"><b>결정 필요 Q3 (복수 규칙 4개)</b><br>
-      ① <b>무승부</b>는 성공인가 실패인가 — <u>권장 = 실패로 치되 횟수 소진</u>("이겨야 갚는다")<br>
-      ② 복수도 <b>오늘 남은 원정 5회</b>를 소모하나 — <u>권장 = 소모한다</u>(안 그러면 판수 제한을 우회하는 무한 경로)<br>
-      ③ 복수 승리에 <b>레이팅 보너스</b>가 있나 — <u>권장 = 일반 원정과 동일</u>(밸런스 축을 늘리지 않는다)<br>
-      ④ <b>내가 방어에 성공한 침공</b>(위 3번째 행)도 복수 대상인가 — <u>권장 = 목록엔 남기되 [복수] 버튼은 준다</u>(이미 이겼어도 "쟤한테 또 가겠다"는 선택지는 열어 두는 게 재미. 반대로 "갚을 게 없다"로 잠가도 된다)</div>
+    <div class="note tiny"><b>Q3 확정 (hero 2R)</b><br>
+      ① <b>무승부는 횟수를 쓰지 않는다</b> — 승부가 안 났으니 다시 침공 가능<br>
+      ② 복수도 <b>오늘 남은 원정 횟수를 소모한다</b><br>
+      ③ 복수 승리 <b>레이팅 보너스 없음</b>(일반 원정과 동일)<br>
+      ④ <b>내가 방어에 성공한 침공은 복수 불가</b> — 목록엔 [방어함]으로 남고 버튼은 잠긴다<br>
+      ⚠️ ①의 부작용 하나: 무승부가 횟수를 안 쓰면 <b>비기는 한 무한히 재도전</b>할 수 있다. 다만 ②가 일일 원정 횟수를 먹으므로 하루 총 판수는 그대로 묶인다 — 그래서 안전하다고 봤다.</div>
 
     <h2 class="sec">원정 랭킹보드 <span class="badge them">신규 API</span></h2>
     <div class="card" style="padding:8px 10px">
@@ -444,9 +534,12 @@ body.nonotes .note{display:none}
 <section class="screen" id="s-deck">
   <div class="phead"><span class="back"></span><h1>덱</h1><span class="rightslot">4-3-3</span></div>
   <div class="body">
-    <div class="note"><b>배치·프롬프트는 현행 유지</b>(#244 프롬프트 1급 골격). 이 에픽에서 바꾸는 건 <b>선수를 눌렀을 때</b>다 — 지금은 교체/프롬프트만, 개편 후엔 같은 시트에서 <b>[강화]</b>로 바로 들어간다.</div>
+    <div class="note"><b>배치·프롬프트·지시 레일은 현행(#244) 그대로다.</b> 이 에픽이 더하는 건 아래 레일의 <b>[⚡ 선수 강화] 한 줄</b>뿐이다 — hero 지적대로 실제 화면(<code>DirectiveRail</code>)을 보고 그렸다.</div>
 
-    <div class="seg"><button class="on">전술보드</button><button>선발/벤치</button><button>지시</button></div>
+    <div class="seg" style="margin-bottom:2px">
+      <button class="on" onclick="deckState('free',this)">평상시</button>
+      <button onclick="deckState('lock',this)">🔒 경기 진행 중</button>
+    </div>
 
     <div class="pitch">
       <div class="line"></div>
@@ -463,12 +556,38 @@ body.nonotes .note{display:none}
       <div class="tok" style="left:78%;top:26%"><div class="dot">FW</div><span>선수 11</span></div>
     </div>
 
-    <button class="cta ghost" onclick="playerSheet(true)">선수 탭 예시 → 선수 시트 열기</button>
+    <div class="between tiny muted"><span>선수 6 편집 중</span><span>선발 11/11 · 벤치 5/7</span></div>
+    <div class="chips"><button>선택 해제</button><button>보유 선수 (18)</button><button>초기화</button></div>
 
-    <div class="card">
-      <div class="between"><b class="sm">팀 전력</b><b>1,842</b></div>
-      <div class="bar" style="margin-top:8px"><i style="width:68%"></i></div>
+    <!-- 실제 DirectiveRail 모사 — BEFORE 캡처(before/05c) 와 같은 구조 -->
+    <div class="rail">
+      <div class="railhead">
+        <span class="disc">6</span>
+        <div><b>선수 6</b><div class="sub">MF</div></div>
+        <span class="x">✕</span>
+      </div>
+
+      <div class="promptbox">
+        <div class="between" style="margin-bottom:6px"><b class="sm">감독의 한마디</b><span class="badge us">AI가 읽는다</span></div>
+        <div class="ph">이 선수에게 자유롭게 한마디 (예: 오늘 너만 믿는다, 과감하게 슛 노려)</div>
+        <div class="between tiny muted" style="margin-top:6px">
+          <span>0 / 500</span>
+          <span><span class="badge">⇄ 이 자리 선수 바꾸기</span> <span class="badge">덱에서 제거</span></span>
+        </div>
+      </div>
+
+      <button class="foldrow"><span>⚙</span><span>선수 세부 조정</span><span class="rt">밸런스 · 지시 없음 ▾</span></button>
+
+      <!-- ★ 이 에픽이 더하는 유일한 것 -->
+      <button class="foldrow growth" id="deck-growth-row" onclick="openSheet('sheet-growth')">
+        <span>⚡</span><span><b>선수 강화</b></span><span class="rt">★4/6 · OVR 76 ▸</span>
+      </button>
+      <div class="tiny muted" style="margin-top:6px" id="deck-growth-hint">누르면 강화 시트가 열린다 — <b style="color:var(--text)">선수 탭과 같은 컴포넌트</b>다.</div>
     </div>
+
+    <div class="note tiny"><b>hero 2R 반영 2가지</b><br>
+      ① 목업을 <b>실제 레일</b>(감독의 한마디 → 선수 세부 조정)에 맞춰 다시 그렸다. 강화는 그 <b>세 번째 줄</b>로 들어간다 — 새 화면을 만들지 않는다.<br>
+      ② <b>경기 중에는 이 줄이 비활성</b>이다. 경기 중 강화로 능력치가 바뀌면 <b>진행 중인 시뮬과 어긋나 실제로 버그가 난다</b>(위 [🔒 경기 진행 중]으로 확인).</div>
   </div>
 </section>
 
@@ -484,7 +603,11 @@ body.nonotes .note{display:none}
 
     <div class="grid" id="pgrid"></div>
 
-    <div class="note tiny">카드를 누르면 <b>덱과 같은 강화 시트</b>가 열린다(같은 컴포넌트 = 자동 싱크). 미보유 카드는 <b>획득 방법</b>만 보여준다.</div>
+    <div class="note tiny">카드를 누르면 <b>덱과 같은 강화 시트</b>가 열린다(같은 컴포넌트 = 자동 싱크). 미보유 카드는 <b>획득 방법</b>만 보여준다. <b>경기 중에는 강화 버튼이 잠긴다</b>(덱과 같은 이유).</div>
+    <div class="note tiny"><b>hero 2R — 전신 아트로 바꿨다</b>(위 카드가 실제 발행 에셋이다). 다만 알고 계셔야 할 것:<br>
+      · <b>LEGEND·DIA 39명</b>은 전신 카드 아트가 있어 확실히 좋아진다.<br>
+      · <b>GOLD·SILVER·BRONZE 133명</b>은 <b>지금도 전원 같은 그림</b>을 쓴다(공용 <code>default-unit</code>). 전신으로 바꿔도 나빠지지 않지만 <b>좋아지지도 않는다</b> — 하위 등급까지 "모으는 재미"를 주려면 <b>아트 발행</b>이 필요하고 그건 data/design 스코프다(별도 이슈로 올립니다).<br>
+      · ⚠️ 이 변경은 <b>기존 정책을 뒤집는다</b> — <code>apps/web/CLAUDE.md</code> "도감은 어느 상태에서도 풀아트가 아니다" + 계약 <code>e2e/p3-card-art.spec.ts</code>(밀집 UI 풀아트 0개). hero 결정이므로 <b>문서와 계약을 같이 갱신</b>하는 것이 구현 웨이브에 포함된다.</div>
   </div>
 </section>
 
@@ -631,38 +754,12 @@ body.nonotes .note{display:none}
 <!-- ══════════════════════ 시트 ══════════════════════ -->
 <div class="scrim" id="scrim" onclick="closeSheets()"></div>
 
-<!-- 선수 시트(덱에서) -->
-<div class="sheet" id="sheet-player">
-  <div class="grab"></div>
-  <div class="row">
-    <div class="pcard" style="width:84px;padding:6px"><div class="face">🦁</div><b>선수 3</b><span class="gr g-GOLD">골드</span></div>
-    <div style="flex:1">
-      <div class="row" style="gap:6px"><b style="font-size:17px">선수 3</b><span class="badge">DF</span><span class="badge us">선발</span></div>
-      <div class="stars">★★★★☆☆</div>
-      <div class="tiny muted">컨디션 84 · 오늘 좋음</div>
-    </div>
-  </div>
-  <hr class="hair">
-  <div class="list" style="gap:6px">
-    <div class="between sm"><span class="muted">수비</span><b>78</b></div>
-    <div class="between sm"><span class="muted">피지컬</span><b>80</b></div>
-    <div class="between sm"><span class="muted">패스</span><b>71</b></div>
-  </div>
-  <hr class="hair">
-  <div class="tiny muted" style="margin-bottom:5px">선수 지시 프롬프트</div>
-  <div class="card sunk sm" style="border:1px solid var(--border)">"오른쪽 뒷공간을 조심하고, 기회가 나면 오버래핑해라."</div>
-  <div class="row" style="gap:8px;margin-top:12px">
-    <button class="cta ghost" style="flex:1">교체</button>
-    <button class="cta" style="flex:1;background:linear-gradient(90deg,#ff9d3d,#ffc24b);color:#241a05" onclick="closeSheets();openSheet('sheet-growth')">⚡ 강화</button>
-  </div>
-  <div class="note tiny" style="margin-top:10px"><b>hero 요구</b> — "덱에서 선수를 눌렀을 때 강화도 가능하게, 버튼 하나 → 시트". 이 [강화]가 그 버튼이고, 열리는 시트는 <b>선수 탭과 같은 것</b>이다.</div>
-</div>
-
 <!-- 강화 시트 -->
 <div class="sheet" id="sheet-growth">
   <div class="grab"></div>
-  <div class="between"><b style="font-size:16px">선수 3 강화</b><span class="badge g-GOLD">골드</span></div>
+  <div class="between"><b style="font-size:16px">선수 6 강화</b><span class="badge g-GOLD">골드</span></div>
   <div class="ovr" style="margin-top:12px">
+    <div class="pcard" style="width:74px;flex:0 0 74px"><div class="art"><img class="body" src="assets/card-leo.png" alt=""></div></div>
     <div class="ring"><b>76</b></div>
     <div style="flex:1">
       <div class="stars">★★★★☆☆</div>
@@ -685,7 +782,7 @@ body.nonotes .note{display:none}
 <div class="sheet" id="sheet-locked">
   <div class="grab"></div>
   <div class="row">
-    <div class="pcard locked" style="width:84px;padding:6px"><div class="face"><span>🐺</span></div><b>???</b><span class="gr">미보유</span></div>
+    <div class="pcard locked" style="width:84px;flex:0 0 84px"><div class="art"><img class="body" src="assets/card-anubis.png" alt=""></div><div class="meta"><b>？？？</b><span class="gr">미보유</span></div></div>
     <div style="flex:1">
       <div class="row" style="gap:6px"><b style="font-size:17px">선수 27</b><span class="badge">DF</span><span class="badge g-DIA">다이아</span></div>
       <div class="tiny muted" style="margin-top:4px">아직 영입하지 않은 선수입니다.</div>
@@ -735,7 +832,26 @@ function go(s){
 }
 function openSheet(id){document.getElementById("scrim").classList.add("on");document.getElementById(id).classList.add("on");}
 function closeSheets(){document.getElementById("scrim").classList.remove("on");document.querySelectorAll(".sheet").forEach(s=>s.classList.remove("on"));}
-function playerSheet(){openSheet("sheet-player");}
+
+/* 경기 진행 중 잠금 (hero 2R) — 홈은 배너만 남기고 전부 잠그고, 탭 4개도 잠근다. */
+function homeState(k,btn){
+  const lock = k==="lock";
+  document.querySelectorAll("#s-home .seg button").forEach(b=>b.classList.remove("on"));btn.classList.add("on");
+  document.getElementById("home-lock").style.display = lock?"":"none";
+  document.getElementById("home-main").classList.toggle("locked",lock);
+  document.querySelectorAll(".tabbar button").forEach(b=>b.classList.toggle("tlock", lock && b.dataset.tab!=="home"));
+}
+/* 덱 — 경기 중이면 강화 줄만 잠근다(배치·프롬프트는 하프타임 지시라 계속 써야 한다). */
+function deckState(k,btn){
+  const lock = k==="lock";
+  document.querySelectorAll("#s-deck .seg button").forEach(b=>b.classList.remove("on"));btn.classList.add("on");
+  const row=document.getElementById("deck-growth-row");
+  row.disabled=lock;
+  row.querySelector(".rt").textContent = lock ? "경기 중 잠김 🔒" : "★4/6 · OVR 76 ▸";
+  document.getElementById("deck-growth-hint").innerHTML = lock
+    ? "<b style='color:#ffdc9a'>경기 중에는 강화할 수 없다</b> — 진행 중인 시뮬의 능력치와 어긋난다."
+    : "누르면 강화 시트가 열린다 — <b style='color:var(--text)'>선수 탭과 같은 컴포넌트</b>다.";
+}
 function revengeSheet(name,rating,left,score){
   document.getElementById("rv-name").textContent=name;
   document.getElementById("rv-rating").textContent=rating;
@@ -754,13 +870,18 @@ function recruitMode(k,btn){
   document.getElementById("rc-trade").style.display=k==="trade"?"":"none";
 }
 
-/* 선수 그리드 — 보유/전체 전환. 미보유는 실루엣. */
-const FACES=["🦁","🐺","🐲","🦊","🐯","🦅","🐻","🐢","🦈","🐍","🦌","🐗"];
+/* 선수 그리드 — 보유/전체 전환. 미보유는 **전신 실루엣**(hero 2R).
+   아트는 실제 발행 에셋(design/characters/dist)을 그대로 복사해 쓴다 — 목업이 가짜 그림을 쓰면
+   "전신이 실제로 어떻게 보이나"라는 질문에 답하지 못한다. */
+const ART=["card-aura","card-lupus","card-leo","card-sail","card-bark","card-anubis","card-ragna","card-bella","card-mio"];
 const GR=["LEGEND","DIA","GOLD","SILVER","BRONZE"];
 const GRK={LEGEND:"레전드",DIA:"다이아",GOLD:"골드",SILVER:"실버",BRONZE:"브론즈"};
 const POS=["GK","DF","DF","DF","MF","MF","MF","FW","FW"];
 const ROSTER=Array.from({length:24},(_,i)=>({
-  n:i+1,face:FACES[i%FACES.length],grade:GR[i%GR.length],pos:POS[i%POS.length],owned:i<18
+  n:i+1,
+  // 하위 등급(GOLD 이하)은 실제로 공용 default-unit 을 쓴다 — 그 현실도 그대로 보여준다.
+  art: i%5<2 ? ART[i%ART.length] : "art-default-unit",
+  grade:GR[i%GR.length],pos:POS[i%POS.length],owned:i<18,dup:i%7===0?2:1
 }));
 let showOwnedOnly=true;
 function ownedMode(v,btn){
@@ -772,10 +893,16 @@ function renderGrid(){
   const g=document.getElementById("pgrid");
   g.innerHTML=ROSTER.filter(p=>!showOwnedOnly||p.owned).map(p=>`
     <button class="pcard ${p.owned?"":"locked"}" onclick="${p.owned?"openSheet('sheet-growth')":"openSheet('sheet-locked')"}">
-      <span class="pos">${p.pos}</span>${p.owned?"":'<span class="lock">잠금</span>'}
-      <div class="face"><span>${p.face}</span></div>
-      <b>${p.owned?"선수 "+p.n:"？？？"}</b>
-      <span class="gr g-${p.grade}">${GRK[p.grade]}</span>
+      <div class="art ${p.art==="art-default-unit"?"framed":""}">
+        <span class="pos">${p.pos}</span>${p.owned?"":'<span class="lock">잠금</span>'}
+        ${p.owned&&p.dup>1?`<span class="dup">×${p.dup}</span>`:""}
+        <img class="body" src="assets/${p.art}.png" alt="">
+        ${p.art==="art-default-unit"?`<img class="frame" src="assets/frame-${p.grade}.png" alt="">`:""}
+      </div>
+      <div class="meta">
+        <b>${p.owned?"선수 "+p.n:"？？？"}</b>
+        <span class="gr g-${p.grade}">${GRK[p.grade]}</span>
+      </div>
     </button>`).join("");
 }
 renderGrid();
@@ -785,6 +912,10 @@ const q=new URLSearchParams(location.search);
 if(q.get("notes")==="0")document.body.classList.add("nonotes");
 go(SCREENS.includes(q.get("screen"))?q.get("screen"):"home");
 if(q.get("sub")==="run")lgState("run",document.querySelectorAll("#s-league .seg button")[1]);
+if(q.get("sub")==="lock"){
+  homeState("lock",document.querySelectorAll("#s-home .seg button")[1]);
+  deckState("lock",document.querySelectorAll("#s-deck .seg button")[1]);
+}
 if(q.get("sub")==="trade")recruitMode("trade",document.querySelectorAll("#s-recruit .seg button")[1]);
 if(q.get("sub")==="all")ownedMode(false,document.querySelectorAll("#s-players .seg button")[1]);
 if(q.get("sheet"))openSheet("sheet-"+q.get("sheet"));
