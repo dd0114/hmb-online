@@ -71,8 +71,12 @@ function computeXg(
   return { xg: fclamp(xg, 0.01, 0.9), distM };
 }
 
-/** 패스 옵션 점수: 안전(laneDanger)·전진(forwardGain)·거리 종합. */
-function scoreOption(
+/**
+ * 패스 옵션 점수: 안전(laneDanger)·전진(forwardGain)·거리 종합.
+ * (export 는 진단용 — realism/deepen.ts 가 **엔진과 같은 식**으로 옵션을 채점하기 위해 쓴다.
+ *  재구현하면 진단과 구현이 같은 실수를 공유한다. 동작 변경 없음.)
+ */
+export function scoreOption(
   opt: PassOption,
   owner: SimPlayer,
   config: EngineConfig,
