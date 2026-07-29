@@ -338,6 +338,11 @@ function stepTick(carry: Carry): void {
   // #279 S1: 팀 단위 파생 상태는 **여기서만** 계산한다 — decide 루프 **앞**이라 선수 순회 순서와
   // 무관하고(결정론 규율 §5-1), `decideOffBall` 안에서 계산하면 그 함수가 `player.seen` 을 변이하는
   // 탓에 배열 순서 의존이 생긴다. 현재는 아무도 소비하지 않는다(S3 수비 구조가 첫 소비자).
+  //
+  // ⚠️ **정지(stoppage) 틱에는 갱신되지 않는다** — 위 정지 분기가 먼저 return 하기 때문이다.
+  // 즉 정지 중 `plan.lineX` 는 정지 진입 직전의 공 x 로 고정된 채 해시에 들어간다(재현 가능하므로
+  // 결정론엔 무해). S3 가 **정지 중 배치**에도 라인을 쓰려면 이 성질을 먼저 바꿔야 한다 —
+  // 지금 구조에서는 코너 깃발·스팟으로 공이 옮겨간 뒤에도 라인이 옛 볼 위치를 가리킨다.
   state.plan = {
     home: computeTeamPlan(state, "home", config, pitch),
     away: computeTeamPlan(state, "away", config, pitch),
@@ -634,6 +639,9 @@ function initCarry(
     lastTurnover: null,
     // 첫 stepTick 이 덮어쓴다. 초기값도 같은 순수 함수로 만들어 "초기 상태 해시"가 계획과 정합.
     plan: { home: { lineX: 0, blockDepth: 0 }, away: { lineX: 0, blockDepth: 0 } },
+    // S4/S5 가 소비할 자리. S1 에서는 값이 절대 바뀌지 않는다(항상 "open" · 빈 배열).
+    phase: { home: "open", away: "open" },
+    intents: [],
   };
   state.plan = {
     home: computeTeamPlan(state, "home", config, pitch),

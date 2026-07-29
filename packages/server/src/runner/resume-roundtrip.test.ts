@@ -84,6 +84,13 @@ describe("resumeState 왕복 동등성 — 전 필드 합성 상태 (드리프�
       long: true,
     };
     state.players[0]!.markTarget = "A7";
+    // S4/S5 자리 — **기본값(open / 빈 배열)으로 두면 안 된다.** 스키마가 이 필드를 흘려도
+    // 기본값끼리는 우연히 같아 보일 수 있으므로, 비기본값을 넣어야 드리프트가 드러난다.
+    state.phase = { home: "final_third", away: "transition_lose" };
+    state.intents = [
+      { side: "home", fromId: "H6", kind: "pass_to", xFx: 77_000, yFx: 22_000, tick: 1230, expiresTick: 1235, forId: "H9" },
+      { side: "away", fromId: "A3", kind: "run_to", xFx: 12_000, yFx: 55_000, tick: 1231, expiresTick: 1237 },
+    ];
   }
 
   it("모든 선택 필드가 채워진 상태가 왕복 후 deep-equal (하나라도 미선언이면 여기서 깨진다)", () => {

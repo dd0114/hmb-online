@@ -206,6 +206,49 @@ export interface SimState {
   lastTurnover: { side: TeamSide; tick: number; xFx: number; yFx: number } | null;
   /** 팀 단위 파생 계획(틱당 1회, decide 루프 앞에서 갱신). 소비는 S3~. */
   plan: { home: TeamPlan; away: TeamPlan };
+  /**
+   * 팀 국면(#279 S4 소비). **S1 에서는 자리만 만들고 항상 `"open"` 으로 고정한다.**
+   *
+   * 왜 소비자도 없는데 지금 넣나 — S1 의 존재 이유가 "직렬화·해시·골든 마이그레이션을 **한 번에**
+   * 끝낸다"이기 때문이다. S4 에서 필드를 추가하면 스키마·해시·골든을 다시 움직여야 하는데, 그때는
+   * **실제 동작 변경과 뒤섞여** 들어와 "해시가 형식 때문에 움직였나 동작 때문에 움직였나"를 분리할
+   * 수 없다. 이번엔 동작 변경이 0이라 구 해시 공식 재계산으로 깔끔히 분리해 증명할 수 있었다.
+   * S4 는 이 union 을 **넓히기만** 하면 된다(필드 추가가 아니라 값 변경 → 그건 정상적인 동작 변경).
+   */
+  phase: { home: TeamPhase; away: TeamPhase };
+  /**
+   * 선수 간 **의도 게시판**(#279 S5 소비). S1 에서는 자리만 만들고 **항상 빈 배열**이다.
+   * 이유는 `phase` 와 동일 — 골든 마이그레이션을 한 번에 끝내기 위해서다.
+   * S5 가 여기에 "이 지점으로 패스한다 / 저 지점으로 뛴다"를 게시하고 `decideOffBall` 이 읽는다.
+   */
+  intents: Intent[];
+}
+
+/**
+ * 팀 국면. S1 에서는 `"open"` 하나만 쓰이고, S4 가 나머지를 실제로 설정한다.
+ * (열거를 미리 정의해 두는 것은 **직렬화 스키마를 한 번만 움직이기 위해서**다 — 값은 S4 소관.)
+ */
+export type TeamPhase =
+  | "open"
+  | "build"
+  | "progress"
+  | "final_third"
+  | "transition_win"
+  | "transition_lose";
+
+/** 의도 게시(#279 S5). S1 에서는 생성되지 않는다. */
+export interface Intent {
+  side: TeamSide;
+  fromId: string;
+  kind: "pass_to" | "run_to" | "cross_from";
+  /** 목표 지점(고정소수). */
+  xFx: number;
+  yFx: number;
+  tick: number;
+  /** 이 틱을 지나면 폐기. */
+  expiresTick: number;
+  /** 지목된 러너(없으면 공개 게시). */
+  forId?: string;
 }
 
 /**

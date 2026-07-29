@@ -118,6 +118,28 @@ const TeamPlanSchema = z.object({
   blockDepth: z.number(),
 });
 
+/** 팀 국면(engine simstate.ts `TeamPhase`). S1 에서는 항상 "open". */
+const TeamPhaseSchema = z.enum([
+  "open",
+  "build",
+  "progress",
+  "final_third",
+  "transition_win",
+  "transition_lose",
+]);
+
+/** 의도 게시(engine simstate.ts `Intent`). S1 에서는 항상 빈 배열. */
+const IntentSchema = z.object({
+  side: z.enum(["home", "away"]),
+  fromId: z.string(),
+  kind: z.enum(["pass_to", "run_to", "cross_from"]),
+  xFx: z.number(),
+  yFx: z.number(),
+  tick: z.number(),
+  expiresTick: z.number(),
+  forId: z.string().optional(),
+});
+
 const SimStateSchema = z.object({
   players: z.array(SimPlayerSchema),
   ball: BallSchema,
@@ -139,6 +161,13 @@ const SimStateSchema = z.object({
     .object({ side: TeamSide, tick: z.number(), xFx: z.number(), yFx: z.number() })
     .nullable(),
   plan: z.object({ home: TeamPlanSchema, away: TeamPlanSchema }),
+  /**
+   * S4/S5 가 소비할 자리(S1 에서는 값이 고정: phase 항상 "open", intents 항상 빈 배열).
+   * **지금 선언하는 이유** = 스키마·해시·골든을 한 번만 움직이기 위해서다. S4/S5 에서 필드를
+   * 추가하면 그때는 실제 동작 변경과 뒤섞여 들어와 해시 이동의 원인을 분리할 수 없다.
+   */
+  phase: z.object({ home: TeamPhaseSchema, away: TeamPhaseSchema }),
+  intents: z.array(IntentSchema),
 });
 
 const SerializedCarrySchema = z.object({

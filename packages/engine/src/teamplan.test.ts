@@ -130,3 +130,77 @@ describe("#279 S1 — hashState 가 새 상태를 흡수한다 (§5-6)", () => {
     expect(hashState(s)).not.toBe(h1);
   });
 });
+
+describe("#279 S1 후속 — 독립 검증 blocker 2건", () => {
+  // blocker-2: 재개로 관통하는 상태는 **전부** 해시에 들어가야 한다(§5-6).
+  // 초판은 lastTurnover 를 "possessionSince 와 같은 지점에서만 갱신된다"는 이유로 뺐는데,
+  // 계측 결과 그 문장이 거짓이었다(유효 갱신 389 vs 281 — 서로 다른 지점 집합).
+  it("lastTurnover 가 다르면 해시가 다르다 (null ↔ 값, 필드별)", () => {
+    const s = freshState();
+    const h0 = hashState(s);
+    s.lastTurnover = { side: "home", tick: 10, xFx: 1000, yFx: 2000 };
+    const h1 = hashState(s);
+    expect(h1).not.toBe(h0);
+    for (const mutate of [
+      (): void => { s.lastTurnover!.side = "away"; },
+      (): void => { s.lastTurnover!.tick += 1; },
+      (): void => { s.lastTurnover!.xFx += 1; },
+      (): void => { s.lastTurnover!.yFx += 1; },
+    ]) {
+      const prev = hashState(s);
+      mutate();
+      expect(hashState(s)).not.toBe(prev);
+    }
+  });
+
+  it("plan.blockDepth 가 다르면 해시가 다르다", () => {
+    const s = freshState();
+    const h0 = hashState(s);
+    s.plan.home.blockDepth += 0.001;
+    expect(hashState(s)).not.toBe(h0);
+  });
+
+  // blocker-1: S4/S5 자리를 **지금** 해시에 넣어 그 스테이지에서 골든을 다시 안 움직인다.
+  it("phase 가 다르면 해시가 다르다 (S4 자리)", () => {
+    const s = freshState();
+    const h0 = hashState(s);
+    s.phase.home = "final_third";
+    const h1 = hashState(s);
+    expect(h1).not.toBe(h0);
+    s.phase.home = "open";
+    s.phase.away = "transition_lose";
+    expect(hashState(s)).not.toBe(h0);
+    expect(hashState(s)).not.toBe(h1);
+  });
+
+  it("intents 가 다르면 해시가 다르다 (S5 자리)", () => {
+    const s = freshState();
+    const h0 = hashState(s);
+    s.intents = [
+      { side: "home", fromId: "H6", kind: "pass_to", xFx: 500, yFx: 600, tick: 1, expiresTick: 5 },
+    ];
+    const h1 = hashState(s);
+    expect(h1).not.toBe(h0);
+    s.intents[0]!.kind = "run_to";
+    expect(hashState(s)).not.toBe(h1);
+  });
+
+  // m1: teamplan 의 상수가 decision.ts 리터럴의 **이관**이라는 주장을 박제한다.
+  // 누가 한쪽만 튜닝하면 state.plan.lineX 가 조용히 갈라지고 S3 소비 시점에 발현한다.
+  it("computeTeamPlan.lineX 가 decision.ts 수비블록 공식과 등가다 (이중 소스 드리프트 가드)", () => {
+    const s = freshState();
+    const pitch = createPitch(defaultEngineConfig);
+    for (const side of ["home", "away"] as const) {
+      for (const dlh of [0, 0.35, 0.55, 1]) {
+        s.teams[side] = { ...s.teams[side], defensiveLineHeight: dlh };
+        s.ball.posFx.x = Math.round(pitch.wFx * 0.42);
+        // decision.ts:decideOffBall 수비 분기의 blockCenterX 를 그대로 재현.
+        const sign = side === "home" ? 1 : -1;
+        const lineShift = (dlh - 0.5) * pitch.wFx * 0.2;
+        const expected =
+          s.ball.posFx.x - sign * Math.round(pitch.wFx * 0.06) + sign * Math.round(lineShift);
+        expect(computeTeamPlan(s, side, defaultEngineConfig, pitch).lineX).toBe(expected);
+      }
+    }
+  });
+});
