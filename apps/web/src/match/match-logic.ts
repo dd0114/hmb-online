@@ -334,8 +334,15 @@ export function validateSubs(
     ins.add(s.in);
   }
   // GK guard: 교체 후 필드에 GK 0명이 되면 경고 (서버 SUBSTITUTION_INVALID 미러)
+  //
+  // ⚠️ **모른다와 위반은 다르다.** 포지션은 `/api/players` 카탈로그에서 오는데, 그게 아직 안 온
+  // 동안엔 positionOf 가 전부 undefined 라 "GK 가 없다"로 보인다 — 감독시간 화면에 `GK가 최소
+  // 1명 필요합니다` 가 잠깐 뜨고 [후반 시작]이 disabled 됐다(헛경고). 포지션을 모르는 선수가
+  // 하나라도 있으면 그가 GK 일 수 있으므로 위반이라고 말할 수 없다 → 판정을 보류한다.
+  // (서버가 이 규칙의 SoT 라 보류해도 잘못된 제출은 400 SUBSTITUTION_INVALID 로 막힌다.)
   const afterIds = starterIds.filter((id) => !outs.has(id)).concat([...ins]);
-  if (starterIds.length > 0 && !afterIds.some((id) => positionOf(id) === "GK")) {
+  const allPositionsKnown = afterIds.every((id) => positionOf(id) !== undefined);
+  if (starterIds.length > 0 && allPositionsKnown && !afterIds.some((id) => positionOf(id) === "GK")) {
     issues.push({ rule: "GK_REQUIRED", message: "교체 후에도 GK가 최소 1명 필요합니다" });
   }
   return issues;

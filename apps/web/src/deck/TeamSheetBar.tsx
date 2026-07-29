@@ -17,8 +17,21 @@ interface TeamSheetBarProps {
   autoDisabled?: boolean;
   autoHint?: string;
   onAuto?: () => void;
-  /** 배치 잠금(감독시간) — 포메이션 변경·Auto 는 라인업을 바꾸는 일이라 감춘다. */
+  /** 배치 잠금(감독시간) — Auto 배치는 **스쿼드 밖에서 선수를 데려오는** 일이라 감춘다. */
   placementLocked?: boolean;
+  /**
+   * 포메이션 셀렉트를 감춘다 — **배치 잠금과는 다른 축**(#276).
+   *
+   * #244 는 `placementLocked` 하나로 둘을 묶어 뒀지만(*"감독시간엔 포메이션을 바꾸지 않는다"*),
+   * hero 결정으로 그 전제가 뒤집혔다: 감독시간에도 **포메이션과 선발 배치는 바꾼다**. 못 바꾸는
+   * 것은 "스쿼드 밖에서 선수를 데려오는 것"뿐이다. 그래서 축을 쪼갠다 —
+   * 감독시간은 `placementLocked` 이면서 `formationLocked=false` 다.
+   * (보낼 데가 없는 화면 — 스냅샷 없는 구 매치 — 만 다시 true 가 된다: 만져도 아무 데도 안 가는
+   *  손잡이를 만들지 않는다.)
+   */
+  formationLocked?: boolean;
+  /** 셀렉트는 보이되 지금은 못 만진다(감독시간 만료 등) — 사라지지 않아야 "끝났다"가 읽힌다. */
+  formationDisabled?: boolean;
 }
 
 /**
@@ -31,7 +44,7 @@ interface TeamSheetBarProps {
  * 모바일에서는 보드 하단 바가 접히므로 AUTO 만 이 바에 얹는다(목업 askin-mobile).
  */
 export function TeamSheetBar(props: TeamSheetBarProps) {
-  const { draft, onFormationChange, power, opponentPower, opponentName, opponentApprox, autoDisabled, autoHint, onAuto, placementLocked } = props;
+  const { draft, onFormationChange, power, opponentPower, opponentName, opponentApprox, autoDisabled, autoHint, onAuto, placementLocked, formationLocked, formationDisabled } = props;
   const m = sheetMetrics(draft);
   const share = opponentPower != null ? powerShare(power, opponentPower) : 1;
 
@@ -57,8 +70,9 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
             AUTO
           </button>
         )}
-        {/* 감독시간엔 포메이션을 바꾸지 않는다 — 그건 라인업 재배치이고, 이 화면은 배치를 잠근다(#244). */}
-        {!placementLocked && (
+        {/* 포메이션은 **배치 잠금과 다른 축**이다(#276) — 감독시간에도 바꾼다. `formationLocked` 는
+            보낼 데가 없는 화면(스냅샷 없는 구 매치)에서만 true 다. */}
+        {!formationLocked && (
         <label className={styles.formationLabel} htmlFor="formation">
           <span className={styles.srOnly}>포메이션</span>
           <select
@@ -66,6 +80,7 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
             data-testid="formation-select"
             className={styles.formation}
             value={draft.formation}
+            disabled={formationDisabled}
             onChange={(e) => onFormationChange(e.target.value)}
           >
             {Object.keys(FORMATION_LAYOUTS).map((f) => (

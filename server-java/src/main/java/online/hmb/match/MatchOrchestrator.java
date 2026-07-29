@@ -142,12 +142,16 @@ public class MatchOrchestrator {
             jobQueue.restartPendingTimeout(matchId, half);
         }
 
-        // half 2 면 감독시간 전술(#254)이 얹힌 <b>실효 스냅샷</b>이다 — 전술은 컨텍스트의 manualTactics
-        // 로 흘러가므로(addPhase2Context) 여기서 갈아끼우는 것만으로 기존 B 패치 경로가 그대로 후반에
-        // 반영한다(새 계약 0). 로스터·포메이션·프롬프트는 원본과 같아 델타/SelectData 는 불변.
-        JsonNode snapshot = matchService.snapshotForHalf(match, half);
         BotService.BotRow bot = botService.get(match.botId());
         List<MatchService.Substitution> subs = parseSubs(match.subsJson());
+
+        // half 2 면 감독시간 전술(#254) + 배치(#276)가 얹힌 <b>실효 스냅샷</b>이다 — 전술은 컨텍스트의
+        // manualTactics 로(addPhase2Context), 포메이션·slotIndex 는 context.formation/roster[] 로
+        // 흘러가므로(PromptContextBuilder 는 이미 둘을 싣고 있다) 여기서 갈아끼우는 것만으로 AI
+        // 프롬프트까지 자동 관통한다(추가 배선 0). SelectData 엔 formation·slotIndex 가 없어 불변.
+        // subs 를 넘기는 이유: 배치 병합이 <b>투입 선수 기준</b>으로 슬롯을 조회해야 교체와 배치가
+        // 서로를 덮지 않는다(snapshotForHalf javadoc).
+        JsonNode snapshot = matchService.snapshotForHalf(match, half, subs);
 
         Map<String, Object> prevSummary = null;
         if (half == 2) {
@@ -175,7 +179,8 @@ public class MatchOrchestrator {
      * <p><b>half 1</b> — 베이스 = 덱 A(프리컴퓨트/캐시). ① A done + 매치시점 프롬프트 있음 → B잡
      * (team-input-patch, base=A) ② A done + 프롬프트 없음 → A 재사용(seed 교체 후 materialize, 콜0)
      * ③ A 미완 → 풀 생성(team-input) 폴백.
-     * <p><b>half 2</b> — 베이스 = h1 최종 인풋. 교체 있음 → 풀 생성(로스터 변경, 패치 부적합) / 하프타임
+     * <p><b>half 2</b> — 베이스 = h1 최종 인풋. 교체 있음 <b>또는 배치 변경</b>(#276) → 풀 생성
+     * (로스터·포메이션 변경은 패치 부적합) / 하프타임
      * 프롬프트만 있음 → B잡(base=h1 인풋, prevSummary 포함) / 둘 다 없음 → h1 인풋 재사용(seed 교체, 콜0).
      * 봇(isBot)은 매치시점 입력이 없어 항상 재사용 또는 폴백(B 없음).
      *
@@ -235,8 +240,15 @@ public class MatchOrchestrator {
         // 감독시간 전술 변경(#254) — 지시와 <b>같은 자격</b>의 후반 입력이다. 이게 없으면 유저가 다이얼을
         // 돌려도 h1 인풋 재사용(콜0) 분기로 떨어져 후반이 전반 전술 그대로 돌아간다(= 조용한 무시).
         boolean halftimeTactics = !isBot && matchService.secondHalfTacticsChanged(match);
+        // 감독시간 배치 변경(#276) — 전술과 달리 <b>패치로는 표현할 수 없다</b>.
+        // packages/shared/src/tactical-patch.ts 가 "formation 은 A(덱) 소유라 패치 불가"라고 못 박았고
+        // 패치 프롬프트(packages/server/src/prompt/coach.ts)는 **베이스의** 포메이션을 출력한다 →
+        // 패치로 보내면 AI 가 포메이션이 바뀐 줄 모르고 basePosition 11개를 그대로 물려준다
+        // (**조용한 무시**). 그래서 유저 사이드를 풀 생성으로 강제한다 — 교체(subsPresent)가 이미
+        // 같은 이유(로스터 변경 = 패치 부적합)로 같은 분기를 쓴다. 봇 사이드는 종전대로.
+        boolean halftimeShape = !isBot && matchService.secondHalfShapeChanged(match, subs);
         String targetJobId;
-        if (h1Input != null && !subsPresent && (halftimePrompts || halftimeTactics)) {
+        if (h1Input != null && !subsPresent && !halftimeShape && (halftimePrompts || halftimeTactics)) {
             // h2 B 패치: 전반에 유효했던 지시(pre) → 하프타임 지시의 변경분.
             Map<String, Object> delta = promptDeltaFor(match, snapshot, subs,
                     PromptContextBuilder.PRE_PHASES, PromptContextBuilder.HALFTIME_PHASES);
@@ -248,7 +260,7 @@ public class MatchOrchestrator {
                         ? enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, overhaulEffort)
                         : enqueuePatch(match, half, side, h1Input, snapshot, bot, subs, prevSummary, isBot, delta);
             }
-        } else if (h1Input != null && !subsPresent) {
+        } else if (h1Input != null && !subsPresent && !halftimeShape) {
             targetJobId = jobQueue.insertMaterialized(matchId, side, half, seedSwap(h1Input, jobSeed));
         } else {
             targetJobId = enqueueFull(match, half, side, snapshot, bot, subs, prevSummary, isBot, null);

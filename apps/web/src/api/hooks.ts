@@ -145,7 +145,7 @@ export function useGacha() {
 
 // ── match flow (LLD-web §2 /match/:id) ─────────────────────────────────
 
-import type { ConditionMap, TeamSnapshot, TeamTactics } from "./v2";
+import type { ConditionMap, SnapshotSlot, TeamSnapshot, TeamTactics } from "./v2";
 
 /**
  * MatchDetail (V1) + Phase2 additive fields (openapi-v2 MatchDetailPhase2Fields): conditions
@@ -168,11 +168,17 @@ export type MatchResult = components["schemas"]["MatchResult"];
 export type MatchLog = components["schemas"]["MatchLog"];
 export type MatchPromptRequest = components["schemas"]["MatchPromptRequest"];
 /**
- * V1 HalftimeRequest {substitutions} + Phase2 teamTactics (openapi-v2 HalftimeRequestPhase2Fields).
- * #254 — 감독시간에 팀 전술을 바꿀 수 있다. 생략 = 손대지 않음 → 전반 전술 그대로.
+ * V1 HalftimeRequest {substitutions} + Phase2 teamTactics(#254) + formation/starters(#276)
+ * (openapi-v2 HalftimeRequestPhase2Fields).
+ *
+ * 세 필드는 **서로 독립**이고 각각 생략 = 손대지 않음 → 전반 값 그대로. formation·starters 만
+ * 예외적으로 한 덩어리다(둘 다 또는 둘 다 아님 — 한쪽만 보내면 400 SHAPE_INVALID/SHAPE_PARTIAL).
+ * starters 는 **교체 반영 후의 실효 선발** 11명이라 나간 선수는 배열에 없어야 한다.
  */
 export type HalftimeRequest = components["schemas"]["HalftimeRequest"] & {
   teamTactics?: TeamTactics;
+  formation?: string;
+  starters?: SnapshotSlot[];
 };
 /** V1 CreateMatchRequest {botId?} + Phase2 teamTactics (openapi-v2 CreateMatchRequestPhase2). */
 export type CreateMatchRequest = components["schemas"]["CreateMatchRequest"] & {

@@ -138,7 +138,7 @@ public class MatchService {
                            String conditionsJson, String mode, String leagueFixtureId,
                            String kickoffAt, String phaseStartAt, String phaseEndsAt,
                            Integer scoreH2Home, Integer scoreH2Away,
-                           String h2TacticsJson) {
+                           String h2TacticsJson, String h2ShapeJson) {
     }
 
     public MatchRow getOwned(String userId, String matchId) {
@@ -176,7 +176,7 @@ public class MatchService {
                                score_home, score_away, result, created_at, finished_at,
                                conditions_json, mode, league_fixture_id,
                                kickoff_at, phase_start_at, phase_ends_at,
-                               score_h2_home, score_h2_away, h2_tactics_json
+                               score_h2_home, score_h2_away, h2_tactics_json, h2_shape_json
                         FROM matches WHERE id = ?
                         """)
                 .param(matchId)
@@ -193,7 +193,7 @@ public class MatchService {
                         rs.getString("kickoff_at"), rs.getString("phase_start_at"),
                         rs.getString("phase_ends_at"),
                         (Integer) rs.getObject("score_h2_home"), (Integer) rs.getObject("score_h2_away"),
-                        rs.getString("h2_tactics_json")))
+                        rs.getString("h2_tactics_json"), rs.getString("h2_shape_json")))
                 .optional();
     }
 
@@ -435,17 +435,102 @@ public class MatchService {
      * <p>감독시간에 전술을 손대지 않았으면 전반 전술이 그대로 실효값이다(기존 동작 불변).
      */
     public JsonNode snapshotForHalf(MatchRow row, int half) {
+        return snapshotForHalf(row, half, List.of());
+    }
+
+    /**
+     * @param subs 후반 교체(#66). 배치 병합이 <b>투입 선수 기준</b>으로 슬롯을 조회하는 데 쓴다 —
+     *     {@link PromptContextBuilder#buildRoster} 는 스냅샷 starters 를 돌며 out→in 만 치환하고
+     *     slotIndex 는 <b>그 자리 것</b>을 쓰므로, 배치를 실효 선수 기준으로 되써야 "교체로 들어온
+     *     선수를 지정한 슬롯에 세운다"가 성립하고 교체와 배치가 서로를 덮지 않는다.
+     */
+    public JsonNode snapshotForHalf(MatchRow row, int half, List<Substitution> subs) {
         JsonNode snapshot = readJson(row.userDeckJson());
-        if (half != 2 || row.h2TacticsJson() == null || row.h2TacticsJson().isBlank()) {
+        if (half != 2 || !snapshot.isObject()) {
             return snapshot;
         }
-        JsonNode tactics = readJson(row.h2TacticsJson());
-        if (!tactics.isObject() || !snapshot.isObject()) {
-            return snapshot;
+        ObjectNode merged = null;
+
+        // ① 감독시간 전술(#254)
+        if (row.h2TacticsJson() != null && !row.h2TacticsJson().isBlank()) {
+            JsonNode tactics = readJson(row.h2TacticsJson());
+            if (tactics.isObject()) {
+                merged = ((ObjectNode) snapshot).deepCopy();
+                merged.set("teamTactics", tactics.deepCopy());
+            }
         }
-        ObjectNode merged = ((ObjectNode) snapshot).deepCopy();
-        merged.set("teamTactics", tactics.deepCopy());
-        return merged;
+
+        // ② 감독시간 배치(#276) — 같은 복사본에 얹는다(두 병합은 서로 독립).
+        if (row.h2ShapeJson() != null && !row.h2ShapeJson().isBlank()) {
+            JsonNode shape = readJson(row.h2ShapeJson());
+            if (shape.isObject() && shape.path("starters").isArray()) {
+                if (merged == null) {
+                    merged = ((ObjectNode) snapshot).deepCopy();
+                }
+                String formation = shape.path("formation").asText("");
+                if (!formation.isBlank()) {
+                    merged.put("formation", formation);
+                }
+                Map<String, Integer> slotByPlayer = new LinkedHashMap<>();
+                for (JsonNode s : shape.path("starters")) {
+                    slotByPlayer.put(s.path("playerId").asText(), s.path("slotIndex").asInt());
+                }
+                Map<String, String> outToIn = outToIn(subs);
+                for (JsonNode s : merged.path("starters")) {
+                    if (!(s instanceof ObjectNode starter)) {
+                        continue;
+                    }
+                    String playerId = starter.path("playerId").asText();
+                    String effective = outToIn.getOrDefault(playerId, playerId);
+                    Integer slot = slotByPlayer.get(effective);
+                    if (slot != null) {
+                        starter.put("slotIndex", slot);
+                    }
+                }
+            }
+        }
+        return merged == null ? snapshot : merged;
+    }
+
+    private static Map<String, String> outToIn(List<Substitution> subs) {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (Substitution sub : subs == null ? List.<Substitution>of() : subs) {
+            map.put(sub.out(), sub.in());
+        }
+        return map;
+    }
+
+    /**
+     * 후반 실효 <b>배치</b>가 전반과 다른가(#276). 다르면 후반 인풋을 <b>풀 생성</b>으로 다시 만들어야
+     * 한다 — 배치는 패치로 표현할 수 없기 때문이다(tactical-patch.ts: "formation 은 A 소유라 패치 불가").
+     *
+     * <p>비교 대상 = 포메이션 문자열 + <b>실효 선수 → slotIndex</b> 매핑. 교체가 있으면 전반 쪽도
+     * 교체를 반영한 뒤(out 의 슬롯을 in 이 승계) 비교한다 — 그래야 "교체만 했고 배치는 그대로"가
+     * 배치 변경으로 오인돼 콜이 늘지 않는다.
+     */
+    public boolean secondHalfShapeChanged(MatchRow row, List<Substitution> subs) {
+        if (row.h2ShapeJson() == null || row.h2ShapeJson().isBlank()) {
+            return false;
+        }
+        JsonNode shape = readJson(row.h2ShapeJson());
+        if (!shape.isObject() || !shape.path("starters").isArray()) {
+            return false;
+        }
+        JsonNode snapshot = readJson(row.userDeckJson());
+        if (!snapshot.path("formation").asText("").equals(shape.path("formation").asText(""))) {
+            return true;
+        }
+        Map<String, String> outToIn = outToIn(subs);
+        Map<String, Integer> h1 = new LinkedHashMap<>();
+        for (JsonNode s : snapshot.path("starters")) {
+            String playerId = s.path("playerId").asText();
+            h1.put(outToIn.getOrDefault(playerId, playerId), s.path("slotIndex").asInt());
+        }
+        Map<String, Integer> h2 = new LinkedHashMap<>();
+        for (JsonNode s : shape.path("starters")) {
+            h2.put(s.path("playerId").asText(), s.path("slotIndex").asInt());
+        }
+        return !h1.equals(h2);
     }
 
     /** 후반 실효 전술이 전반과 <b>다른가</b>(#254). 다르면 후반 인풋을 다시 만들어야 한다. */
@@ -786,8 +871,17 @@ public class MatchService {
     public record Substitution(String out, String in) {
     }
 
+    /** 감독시간 배치 슬롯(#276) — 덱의 {@code SnapshotSlot} 과 같은 형상(playerId + slotIndex). */
+    public record ShapeSlot(String playerId, Integer slotIndex) {
+    }
+
     public MatchRow submitHalftime(String userId, String matchId, List<Substitution> substitutions) {
         return submitHalftime(userId, matchId, substitutions, null);
+    }
+
+    public MatchRow submitHalftime(String userId, String matchId, List<Substitution> substitutions,
+                                    JsonNode teamTactics) {
+        return submitHalftime(userId, matchId, substitutions, teamTactics, null, null);
     }
 
     /**
@@ -795,9 +889,14 @@ public class MatchService {
      *     폭을 바꿀 수 있다. {@code null}(미첨부)이면 손대지 않은 것이므로 전반 전술을 그대로 이어간다.
      *     저장 위치는 {@code matches.h2_tactics_json} 이고 <b>매치 스냅샷은 건드리지 않는다</b> —
      *     스냅샷의 teamTactics 는 이미 끝난 전반의 기록이라 덮으면 소급 변조가 된다(V24 주석).
+     * @param formation 감독시간 포메이션(#276, 선택). {@code starters} 와 <b>둘 다 있거나 둘 다 없어야</b>
+     *     한다 — 배치는 한 덩어리라 반쪽은 뜻이 없다(한쪽만 오면 400 SHAPE_INVALID rule=SHAPE_PARTIAL).
+     * @param starters 감독시간 선발 배치(#276, 선택) — <b>교체 반영 후의 실효 선발</b> 11명.
+     *     {@code null}(미첨부)이면 손대지 않은 것이므로 전반 배치를 그대로 이어간다. 저장 위치는
+     *     {@code matches.h2_shape_json}, <b>매치 스냅샷은 불변</b>(V29 주석).
      */
     public MatchRow submitHalftime(String userId, String matchId, List<Substitution> substitutions,
-                                    JsonNode teamTactics) {
+                                    JsonNode teamTactics, String formation, List<ShapeSlot> starters) {
         MatchRow row = getOwned(userId, matchId);
         // 전반 중에도 교체를 미리 짜둘 수 있다(P4-E2 #170) — 반영은 후반 시뮬에서.
         if (!PRE_SECOND_HALF_STATES.contains(row.state())) {
@@ -855,18 +954,24 @@ public class MatchService {
             throw subsInvalid("교체 후에도 GK가 최소 1명 필요합니다", Map.of("rule", "GK_REQUIRED"));
         }
 
-        // 두 필드 모두 **미첨부 = 손대지 않음**(COALESCE), 명시적 값 = 그 값이 이긴다. 이 엔드포인트는
-        // 감독시간에 여러 번 불릴 수 있으므로(전술만 고치는 재제출 · 교체만 고치는 재제출) 한쪽만
-        // 보낸 호출이 다른 쪽을 조용히 지우면 안 된다 — 그게 #253 과 같은 종류의 유실이다.
+        // 감독시간 배치(#276) — 형상 검증 + 교체와의 정합. GK≥1 은 위 교체 검사가 이미 한다(중복 금지).
+        String h2Shape = shapeJsonFor(row, formation, starters,
+                substitutions == null ? parseSubs(row.subsJson()) : subs,
+                starterSlots.keySet());
+
+        // 세 필드 모두 **미첨부 = 손대지 않음**(COALESCE), 명시적 값 = 그 값이 이긴다. 이 엔드포인트는
+        // 감독시간에 여러 번 불릴 수 있으므로(전술만 고치는 재제출 · 교체만 고치는 재제출 · 배치만
+        // 고치는 재제출) 한쪽만 보낸 호출이 다른 쪽을 조용히 지우면 안 된다 — #253 과 같은 종류의 유실.
         // ⚠️ 빈 배열 `[]` 은 미첨부가 아니다: "교체를 전부 취소한다"는 명시적 의사라 그대로 저장된다.
         String subsJson = substitutions == null ? null : toJson(subs);
         String h2Tactics = teamTactics == null || teamTactics.isNull() ? null : teamTactics.toString();
         txRunner.run(() -> jdbcClient.sql("""
                         UPDATE matches SET subs_json = COALESCE(?, subs_json),
-                                           h2_tactics_json = COALESCE(?, h2_tactics_json)
+                                           h2_tactics_json = COALESCE(?, h2_tactics_json),
+                                           h2_shape_json = COALESCE(?, h2_shape_json)
                         WHERE id = ? AND state IN ('FIRST_HALF', 'HALFTIME', 'H1_BREAK')
                         """)
-                .params(subsJson, h2Tactics, matchId)
+                .params(subsJson, h2Tactics, h2Shape, matchId)
                 .update());
         return getOwned(userId, matchId);
     }
@@ -877,6 +982,126 @@ public class MatchService {
 
     private static ApiException subsInvalid(String message, Map<String, Object> detail) {
         return new ApiException(HttpStatus.BAD_REQUEST, "SUBSTITUTION_INVALID", message, detail);
+    }
+
+    private static ApiException shapeInvalid(String message, Map<String, Object> detail) {
+        return new ApiException(HttpStatus.BAD_REQUEST, "SHAPE_INVALID", message, detail);
+    }
+
+    /** subs_json → 교체 목록. 없으면 빈 리스트. */
+    private List<Substitution> parseSubs(String subsJson) {
+        List<Substitution> list = new ArrayList<>();
+        if (subsJson == null || subsJson.isBlank()) {
+            return list;
+        }
+        for (JsonNode node : readJson(subsJson)) {
+            list.add(new Substitution(node.path("out").asText(null), node.path("in").asText(null)));
+        }
+        return list;
+    }
+
+    /**
+     * 감독시간 배치(#276) 검증 → 저장할 JSON(미첨부면 null = COALESCE 로 손대지 않음).
+     *
+     * <p>검증 규칙은 덱({@link DeckService#validate})과 <b>같은 뜻·같은 rule 키</b>다 — 같은 조작이
+     * 두 화면에서 다른 규칙으로 걸리면 통일성이 아니다. 다만 code 는 {@code SHAPE_INVALID} 로 분리해
+     * 웹이 "덱이 잘못됐다"와 "감독시간 배치가 잘못됐다"를 구분해 안내할 수 있게 한다.
+     *
+     * <p><b>교체와의 정합</b>: 실효 배치의 선발 집합 == (전반 선발 − out + in). 기준이 되는 교체는
+     * 이번 요청의 것(미첨부면 DB 에 저장된 subs_json)이다. 이 검사는 <b>이번에 제출한 배치</b>뿐
+     * 아니라 <b>이미 저장된 배치</b>에도 건다 — 배치를 낸 뒤 교체만 고쳐 재제출하면 그 배치가 새
+     * 교체와 어긋난 채 남아 조용히 무시되기 때문이다(투입 선수를 배치에서 못 찾아 슬롯 승계로
+     * 떨어진다). 400 은 시끄럽지만 조용한 무시보다 낫다 — web 은 보드에서 둘을 함께 낸다.
+     *
+     * @param effectiveSubs 이번 제출 후 <b>유효해질</b> 교체
+     * @param h1Starters 전반 선발 playerId
+     */
+    private String shapeJsonFor(MatchRow row, String formation, List<ShapeSlot> starters,
+                                List<Substitution> effectiveSubs, Set<String> h1Starters) {
+        boolean formationGiven = formation != null;
+        boolean startersGiven = starters != null;
+        if (formationGiven != startersGiven) {
+            // 배치는 한 덩어리다 — 포메이션만 바꾸고 슬롯을 안 주면 어느 자리에 누가 서는지가 없다.
+            throw shapeInvalid("formation 과 starters 는 함께 보내야 합니다",
+                    Map.of("rule", "SHAPE_PARTIAL",
+                            "formation", formationGiven, "starters", startersGiven));
+        }
+
+        String shapeJson = row.h2ShapeJson(); // 미첨부면 이미 저장된 배치가 실효값이다
+        if (formationGiven) {
+            shapeJson = validateAndSerializeShape(formation, starters);
+        }
+        if (shapeJson == null || shapeJson.isBlank()) {
+            return formationGiven ? shapeJson : null;
+        }
+
+        // 실효 배치 ↔ 실효 교체 정합
+        Set<String> expected = new HashSet<>(h1Starters);
+        for (Substitution sub : effectiveSubs) {
+            expected.remove(sub.out());
+            expected.add(sub.in());
+        }
+        Set<String> actual = new HashSet<>();
+        for (JsonNode slot : readJson(shapeJson).path("starters")) {
+            actual.add(slot.path("playerId").asText());
+        }
+        if (!expected.equals(actual)) {
+            Set<String> missing = new HashSet<>(expected);
+            missing.removeAll(actual);
+            Set<String> unexpected = new HashSet<>(actual);
+            unexpected.removeAll(expected);
+            throw shapeInvalid("배치의 선발이 교체 결과와 다릅니다",
+                    Map.of("rule", "ROSTER_MISMATCH",
+                            "missing", List.copyOf(missing), "unexpected", List.copyOf(unexpected)));
+        }
+        return formationGiven ? shapeJson : null; // 미첨부는 재검증만 하고 쓰지 않는다
+    }
+
+    /** 형상 검증(11명·slotIndex 0..10 유일·playerId 유일·formation 비어있지 않음) → 정규화 JSON. */
+    private String validateAndSerializeShape(String formation, List<ShapeSlot> starters) {
+        if (formation.isBlank()) {
+            throw shapeInvalid("formation이 비어 있습니다", Map.of("rule", "FORMATION_REQUIRED"));
+        }
+        if (starters.size() != DeckService.STARTER_COUNT) {
+            throw shapeInvalid("선발이 " + DeckService.STARTER_COUNT + "명이 아닙니다",
+                    Map.of("rule", "STARTER_COUNT", "starterCount", starters.size(),
+                            "required", DeckService.STARTER_COUNT));
+        }
+        Set<String> seenPlayers = new HashSet<>();
+        Set<Integer> seenSlots = new HashSet<>();
+        ArrayNode array = objectMapper.createArrayNode();
+        for (ShapeSlot slot : starters) {
+            if (slot.playerId() == null || slot.playerId().isBlank()) {
+                throw shapeInvalid("playerId가 비어 있는 슬롯이 있습니다",
+                        Map.of("rule", "PLAYER_ID_REQUIRED"));
+            }
+            if (slot.slotIndex() == null) {
+                throw shapeInvalid("slotIndex가 없습니다",
+                        Map.of("rule", "SLOT_INDEX_REQUIRED", "playerId", slot.playerId()));
+            }
+            if (slot.slotIndex() < 0 || slot.slotIndex() >= DeckService.STARTER_COUNT) {
+                throw shapeInvalid("slotIndex는 0..10이어야 합니다",
+                        Map.of("rule", "SLOT_INDEX_RANGE", "playerId", slot.playerId(),
+                                "slotIndex", slot.slotIndex()));
+            }
+            if (!seenPlayers.add(slot.playerId())) {
+                throw shapeInvalid("같은 선수를 두 번 세울 수 없습니다",
+                        Map.of("rule", "DUPLICATE_PLAYER", "playerId", slot.playerId()));
+            }
+            if (!seenSlots.add(slot.slotIndex())) {
+                throw shapeInvalid("slotIndex가 중복됩니다",
+                        Map.of("rule", "SLOT_INDEX_DUPLICATE", "playerId", slot.playerId(),
+                                "slotIndex", slot.slotIndex()));
+            }
+            ObjectNode entry = objectMapper.createObjectNode();
+            entry.put("playerId", slot.playerId());
+            entry.put("slotIndex", slot.slotIndex());
+            array.add(entry);
+        }
+        ObjectNode shape = objectMapper.createObjectNode();
+        shape.put("formation", formation);
+        shape.set("starters", array);
+        return shape.toString();
     }
 
     private Map<String, String> positionsOf(Set<String> playerIds) {
