@@ -113,7 +113,7 @@ test.describe("AC-A1 — 자체 로그인 진입점 (기존 플로우 무회귀)
     await page.getByPlaceholder("2~16자").fill("게스트1");
     await page.getByRole("button", { name: "계속" }).click();
 
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
     expect(requests).toEqual([
       { path: "/api/auth/login", body: { nickname: "게스트1", provider: "guest" } },
     ]);
@@ -139,7 +139,7 @@ test.describe("AC-A1 — 자체 로그인 진입점 (기존 플로우 무회귀)
 });
 
 test.describe("AC-A1 — 회원가입", () => {
-  test("회원가입 성공 → 스타터팩 모달 → /lobby (provider 뱃지 '아이디')", async ({ page }) => {
+  test("회원가입 성공 → 스타터팩 모달 → /home (provider 뱃지 '아이디')", async ({ page }) => {
     const requests = await mockApi(page);
     await openLocalPanel(page);
     await page.getByTestId("local-mode-toggle").click();
@@ -149,7 +149,7 @@ test.describe("AC-A1 — 회원가입", () => {
     // isNew=true → 기존 신규 동선과 동일한 스타터팩 모달.
     await expect(page.getByText("스타터 팩 지급")).toBeVisible();
     await page.getByRole("button", { name: "확인" }).click();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
     await expect(page.getByTestId("provider-badge")).toHaveText("아이디");
 
     // 서버 RegisterRequest.java 와 정확히 같은 2필드(여분 필드 0).
@@ -175,13 +175,13 @@ test.describe("AC-A1 — 회원가입", () => {
 });
 
 test.describe("AC-A1 — 로그인", () => {
-  test("로그인 성공 → /lobby", async ({ page }) => {
+  test("로그인 성공 → /home", async ({ page }) => {
     const requests = await mockApi(page);
     await openLocalPanel(page);
     await fillCredentials(page);
     await page.getByTestId("local-submit").click();
 
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
     // 서버 LoginRequest.java 3필드 — guest 경로와 같은 엔드포인트/같은 바디 형태.
     expect(requests).toEqual([
       { path: "/api/auth/login", body: { nickname: NICKNAME, provider: "local", password: PASSWORD } },
@@ -223,7 +223,7 @@ test.describe("AC-A2 — 비밀번호 비노출", () => {
     await openLocalPanel(page);
     await fillCredentials(page);
     await page.getByTestId("local-submit").click();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
 
     const dump = await storageDump(page);
     expect(dump).toContain("tok_local"); // 토큰은 저장(기존 계약)
@@ -250,7 +250,7 @@ test.describe("AC-A2 — 비밀번호 비노출", () => {
     await openLocalPanel(page);
     await fillCredentials(page);
     await page.getByTestId("local-submit").click();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
 
     expect(consoleText.join("\n")).not.toContain(PASSWORD);
   });

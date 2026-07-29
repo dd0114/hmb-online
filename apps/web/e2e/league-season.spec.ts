@@ -78,7 +78,7 @@ test("AC-F: 리그 시작 → 순위표 → 다음 경기 완주 → 정산·순
   await page.getByPlaceholder("2~16자").fill(nickname);
   await page.getByRole("button", { name: "계속" }).click();
   await page.getByRole("button", { name: "확인" }).click();
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
   expect(await seedDeck(page)).toBe(true);
 
   // 2) 리그 진입 → 시작 CTA(신규 유저 = 시즌 없음)
@@ -104,7 +104,7 @@ test("AC-F: 리그 시작 → 순위표 → 다음 경기 완주 → 정산·순
 
   // 5) 결과 → 로비 → 다시 리그: 유저 경기 +1 정산 + 유저 픽스처 스코어 확정
   await page.getByTestId("to-lobby").click();
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
 
   await page.goto("/league");
   await expect(page.getByTestId("league-dashboard").or(page.getByTestId("season-end"))).toBeVisible({

@@ -62,7 +62,7 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   await page.getByPlaceholder("2~16자").fill(nickname);
   await page.getByRole("button", { name: "계속" }).click();
   await page.getByRole("button", { name: "확인" }).click(); // 스타터 팩 확인
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
 
   // 2) 덱 시드(fetch, NOTE 참고) → 덱 화면 UI 로 구성 확인·저장
   expect(await seedDeck(page)).toBe(true);
@@ -74,7 +74,7 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   await expect(page.getByTestId("deck-saved-note")).toBeVisible();
 
   // 3) 로비 → 전적 baseline (경기 후 +1 검증용)
-  await page.goto("/lobby");
+  await page.goto("/home");
   const recordBefore = (await page.getByText(/\d+승 \d+무 \d+패/).textContent()) ?? "";
 
   // 4) 게임 시작 → 연습 경기 → /match/:id  (로비 개편: 게임시작=연습/리그 선택 모달)
@@ -134,7 +134,7 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
 
   // 9) 로비로 → 전적 반영(승/무/패 합 +1)
   await page.getByTestId("to-lobby").click();
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
   const recordAfter = (await page.getByText(/\d+승 \d+무 \d+패/).textContent()) ?? "";
   expect(recordAfter).not.toBe(recordBefore);
   const sum = (s: string) => (s.match(/\d+/g) ?? []).map(Number).reduce((a, b) => a + b, 0);

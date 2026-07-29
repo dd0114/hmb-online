@@ -494,7 +494,7 @@ test("G4 잠재 재설정: 구매 없이 지갑 직접 차감 + 상점 [다이�
   // 상점에는 다이스 탭이 없다. (상세 시트를 먼저 닫는다 — 열린 모달이 하단 nav 를 덮는다.)
   await page.getByTestId("growth-detail").getByRole("button", { name: "닫기" }).click();
   await expect(page.getByTestId("growth-detail")).toHaveCount(0);
-  await page.getByTestId("nav-bottom").getByTestId("nav-shop").click();
+  await page.getByTestId("nav-bottom").getByTestId("nav-recruit").click();
   await expect(page.getByTestId("shop-tab-gacha")).toBeVisible();
   await expect(page.getByTestId("shop-tab-dice")).toHaveCount(0);
 });
@@ -547,7 +547,7 @@ test("G4 V2.2 지갑 젬 표시(로비/상점 상단) + 유료 재설정 젬가�
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
 
-  await page.goto("/lobby");
+  await page.goto("/home");
   await expect(page.getByTestId("wallet-gems")).toBeVisible();
   await expect(page.getByTestId("wallet-gems")).toHaveAttribute("data-gems", "50");
   await expect(page.getByTestId("wallet-gems")).toContainText("50");

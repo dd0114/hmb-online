@@ -115,12 +115,12 @@ async function mockLobby(page: Page, mock: NoticeMock) {
 }
 
 async function gotoLobby(page: Page) {
-  await page.goto("/lobby");
-  await expect(page.getByTestId("play-cta")).toBeVisible();
+  await page.goto("/home");
+  await expect(page.getByTestId("home-page")).toBeVisible();   // #286: 로비 → 홈
 }
 
 test.describe("#248 공지 팝업 — 표시와 억제", () => {
-  test("활성 공지가 있으면 로비 진입 즉시 제목·본문과 함께 뜬다", async ({ page }) => {
+  test("활성 공지가 있으면 홈 진입 즉시 제목·본문과 함께 뜬다", async ({ page }) => {
     await mockLobby(page, {
       payload: {
         notices: [
@@ -274,7 +274,7 @@ test.describe("#248 공지 팝업 — 다건 중첩 스택 (hero Q1)", () => {
 
     await page.getByTestId("notice-close").click();
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
-    await expect(page.getByTestId("play-cta")).toBeVisible();
+    await expect(page.getByTestId("home-page")).toBeVisible();   // #286: 로비 → 홈
   });
 
   /**
@@ -351,8 +351,8 @@ test.describe("#248 공지 팝업 — 실패해도 로비는 산다", () => {
 
       await expect(page.getByTestId("notice-popup")).toHaveCount(0);
       // 로비가 흰 화면이 되지 않는다 — 메뉴 전체가 살아 있다.
-      await expect(page.getByTestId("lobby-deck")).toBeVisible();
-      await expect(page.getByTestId("lobby-shop")).toBeVisible();
+      await expect(page.getByTestId("home-tile-deck")).toBeVisible();
+      await expect(page.getByTestId("home-tile-recruit")).toBeVisible();
       expect(errors, "렌더 중 예외 0").toEqual([]);
     });
   }
@@ -418,7 +418,7 @@ test.describe("#248 로비 팝업 큐 — 공지 × 원정(#245) 교차", () => 
     await expect(openDialogs(page)).toHaveCount(0);
 
     // 3단계 — CTA 를 누르면 그제서야 원정. 공지가 원정을 소진시키지 않았다.
-    await page.getByTestId("play-cta").click();
+    await page.getByTestId("home-tile-game").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
     await expect(openDialogs(page)).toHaveCount(1);
@@ -448,7 +448,7 @@ test.describe("#248 로비 팝업 큐 — 공지 × 원정(#245) 교차", () => 
 
     // 공지는 아직 오는 중 — 원정이 먼저 열린다.
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
-    await page.getByTestId("play-cta").click();
+    await page.getByTestId("home-tile-game").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await expect(openDialogs(page)).toHaveCount(1);
 

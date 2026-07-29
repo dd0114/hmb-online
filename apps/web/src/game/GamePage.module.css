@@ -1,0 +1,113 @@
+/* 게임 탭 = 모드 선택 (#286 W2). 색은 --us/--them 계열만(#244 색 규칙). */
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pageTitle {
+  margin: 0;
+  font-size: 17px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.mode {
+  position: relative;
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 16px;
+  padding: 14px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+.modeTop {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.modeIcon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--sunk);
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  line-height: 1;
+}
+.modeTitle {
+  flex: 1;
+  font-size: 16px;
+}
+.chev {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 16px;
+}
+.modeDesc {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.modeStat {
+  display: inline-block;
+  margin: 10px 8px 0 0;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(76, 141, 255, 0.16);
+  color: #a8c6ff;
+}
+.modeHint {
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--sunk);
+  border: 1px solid var(--hairline);
+  color: var(--text-muted);
+}
+
+.league {
+  background: linear-gradient(135deg, #13203a, var(--surface) 62%);
+}
+.away {
+  background: linear-gradient(135deg, #2a1520, var(--surface) 62%);
+}
+
+/* hero Q1 — 연습은 최하단·무채색·축소. 색이나 크기를 올리면 "본 게임은 리그·원정"이라는
+   배치의 뜻이 사라진다. 계약이 순서를, 이 규칙이 무게를 지킨다. */
+.practice {
+  padding: 11px 14px;
+  background: var(--surface);
+}
+.practiceIcon {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+.practiceTitle {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.practiceDesc {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.practice:disabled {
+  opacity: 0.6;
+}

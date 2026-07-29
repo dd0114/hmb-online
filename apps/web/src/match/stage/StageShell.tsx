@@ -105,7 +105,7 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
         liveScore={liveScore}
         tick={headerTick(match.state, tick, halfEndTick)}
         leagueRound={leagueRound}
-        onBack={() => navigate("/lobby")}
+        onBack={() => navigate("/home")}
       />
 
       {/*

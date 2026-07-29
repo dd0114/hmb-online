@@ -32,8 +32,8 @@ export function GrowthHubPage() {
 
   const header = (
     <div className={styles.headerRow}>
-      <button type="button" className={styles.back} onClick={() => navigate("/lobby")}>
-        ← 로비
+      <button type="button" className={styles.back} onClick={() => navigate("/home")}>
+        ← 홈
       </button>
       <h1 className={styles.pageTitle}>육성</h1>
       <span className={styles.ownedTotal} data-testid="growth-owned-total">

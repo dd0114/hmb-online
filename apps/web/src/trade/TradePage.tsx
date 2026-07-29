@@ -18,7 +18,13 @@ import { TradeResultModal } from "./TradeResultModal";
 import { countdownSec, slotView } from "./trade-logic";
 import styles from "./TradePage.module.css";
 
-export function TradePage() {
+/**
+ * ⚠️ `embedded` (#286 W2): 이 화면은 이제 **상위 탭 안에 얹혀** 산다(트레이드).
+ * embedded 면 자기 `Layout`·헤더를 그리지 않는다 — 안 그러면 `app-container` 가 두 겹이 되어
+ * 하단 네비 여백·최대폭이 이중으로 걸린다. 단독 라우트는 아직 리다이렉트로만 들어오므로
+ * 비-embedded 경로도 남겨 둔다(구 URL 이 죽지 않게).
+ */
+export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const { data, isLoading, isError } = useTradeSlots();
   const { data: players } = usePlayers();
@@ -77,16 +83,16 @@ export function TradePage() {
 
   const header = (
     <div className={styles.headerRow}>
-      <button type="button" className={styles.back} onClick={() => navigate("/lobby")}>
-        ← 로비
+      <button type="button" className={styles.back} onClick={() => navigate("/home")}>
+        ← 홈
       </button>
       <h1 className={styles.pageTitle}>트레이드</h1>
       {data && <PointsBadge points={walletPoints} />}
     </div>
   );
 
-  return (
-    <Layout header={header} nav>
+  const body = (
+    <>
       {isError && <ErrorToast message="트레이드 정보를 불러오지 못했습니다" />}
       {isLoading && <p className={styles.pending}>불러오는 중…</p>}
 
@@ -135,6 +141,13 @@ export function TradePage() {
       {result && (
         <TradeResultModal result={result} catalog={catalog} onClose={() => setResult(null)} />
       )}
+    </>
+  );
+
+  if (embedded) return body;
+  return (
+    <Layout header={header} nav>
+      {body}
     </Layout>
   );
 }

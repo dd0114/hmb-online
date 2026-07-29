@@ -42,22 +42,26 @@ function shortDate(iso: string | undefined): string {
   return `${p(d.getMonth() + 1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-export function LogsPage() {
+/**
+ * ⚠️ `embedded` (#286 W2): 로그는 이제 **[내 정보] 탭 안**에 산다. embedded 면 자기 `Layout`·헤더를
+ * 그리지 않는다 — 안 그러면 `app-container` 가 두 겹이 되어 네비 여백·최대폭이 이중으로 걸린다.
+ */
+export function LogsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("matches");
 
   const header = (
     <div className={styles.headerRow}>
-      <button type="button" className={styles.back} onClick={() => navigate("/lobby")}>
-        ← 로비
+      <button type="button" className={styles.back} onClick={() => navigate("/home")}>
+        ← 홈
       </button>
       <h1 className={styles.pageTitle}>로그</h1>
       <span className={styles.spacer} />
     </div>
   );
 
-  return (
-    <Layout header={header} nav>
+  const body = (
+    <>
       <div className={styles.tabs} role="tablist" aria-label="로그 종류">
         {TABS.map(([key, label]) => (
           <button
@@ -77,6 +81,13 @@ export function LogsPage() {
       {tab === "matches" && <MatchLogsTab />}
       {tab === "trades" && <TradeLogsTab />}
       {tab === "rankings" && <RankingsTab />}
+    </>
+  );
+
+  if (embedded) return body;
+  return (
+    <Layout header={header} nav>
+      {body}
     </Layout>
   );
 }

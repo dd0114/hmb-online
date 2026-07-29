@@ -86,8 +86,8 @@ async function mockLobby(page: Page, mock: LobbyMock) {
 }
 
 async function gotoLobby(page: Page) {
-  await page.goto("/lobby");
-  await expect(page.getByTestId("play-cta")).toBeVisible();
+  await page.goto("/home");
+  await expect(page.getByTestId("home-page")).toBeVisible();   // #286: 로비 → 홈
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -152,11 +152,11 @@ test.describe("#248 후속 — 튜토리얼이 공지보다 먼저다", () => {
     // ③ 화면을 떠났다 돌아오는 것(**리로드 없는 SPA 라우트 이동**)만으로 다음 진입이 성립한다.
     //    래치가 컴포넌트 수명에 살아야 여기서 풀린다 — 모듈 변수나 서버 플래그로 만들었다면
     //    SPA 이동은 그것들을 건드리지 않으므로 공지가 계속 미뤄진다.
-    await page.getByTestId("lobby-codex").click();
+    await page.getByTestId("home-tile-players").click();
     await expect(page.getByTestId("play-cta")).toHaveCount(0);
     // 네비는 하단탭(모바일)·사이드바(데스크탑) 두 벌이 렌더된다 — 보이는 쪽을 누른다.
     await page.locator('[data-testid="nav-home"]:visible').first().click();
-    await expect(page.getByTestId("play-cta")).toBeVisible();
+    await expect(page.getByTestId("home-page")).toBeVisible();   // #286: 로비 → 홈
     await expect(page.getByTestId("notice-popup")).toBeVisible();
     await expect(page.getByTestId("notice-title")).toHaveText("새벽 정기 점검 안내");
     // 튜토리얼이 다시 뜨지도 않는다(완료가 저장됐다).
@@ -215,7 +215,7 @@ test.describe("#248 후속 — 공지 다시 보기 목록", () => {
       await mockLobby(ctx, c);
       await gotoLobby(ctx);
       await expect(ctx.getByTestId("notice-center-open")).toHaveCount(0);
-      await expect(ctx.getByTestId("lobby-deck")).toBeVisible();
+      await expect(ctx.getByTestId("home-tile-deck")).toBeVisible();
       expect(errors, "렌더 중 예외 0").toEqual([]);
       await ctx.close();
     }

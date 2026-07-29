@@ -1,0 +1,247 @@
+/* 홈 = 하단탭을 크게 펼친 런처 (#286 W2). 색은 --us 하나만 쓴다(#244 색 규칙). */
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.nickname {
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.logout {
+  background: var(--sunk);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 8px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── 팀 한 줄 ─────────────────────────────────────────────────────────── */
+.teamRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 11px 12px;
+}
+.teamArt {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+.teamInfo {
+  flex: 1;
+  min-width: 0;
+}
+.teamName {
+  display: block;
+  font-size: 14px;
+}
+.teamSub {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ratingBadge {
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(76, 141, 255, 0.16);
+  color: #a8c6ff;
+}
+
+/* ── 타일 ─────────────────────────────────────────────────────────────
+   전부 통칸이다(hero 5R "반칸 나누지 말라"). 2열 그리드를 다시 넣지 말 것 —
+   계약(p286-home-nav)이 모든 타일의 폭이 같은지 본다. */
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  min-height: 86px;
+  padding: 15px 14px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+.tile:disabled {
+  opacity: 0.35;
+  filter: grayscale(0.7);
+  cursor: not-allowed;
+}
+/* 홈의 주인공 하나만 크고 색을 갖는다. */
+.tilePrimary {
+  min-height: 112px;
+  background: linear-gradient(120deg, #172a4d, var(--surface) 66%);
+}
+.tileIcon {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 13px;
+  background: var(--sunk);
+  display: grid;
+  place-items: center;
+  font-size: 27px;
+  line-height: 1;
+}
+.tilePrimary .tileIcon {
+  width: 54px;
+  height: 54px;
+  font-size: 32px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.tileText {
+  flex: 1;
+  min-width: 0;
+}
+.tileLabel {
+  display: block;
+  font-size: 17px;
+}
+.tilePrimary .tileLabel {
+  font-size: 21px;
+}
+.tileSub {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.chev {
+  flex: 0 0 auto;
+  color: #4b5462;
+  font-size: 17px;
+}
+/* 카운트 뱃지 — **한 형식만** 쓴다(hero 6R). 리본을 다시 만들지 말 것: 무엇을 센
+   숫자인지는 부제가 말한다. 헤더 벨·탭바 뱃지와도 같은 언어다. */
+.count {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+/* ── 경기 진행 중 ─────────────────────────────────────────────────────── */
+.lockCard {
+  background: linear-gradient(135deg, rgba(255, 194, 75, 0.16), var(--bg-elevated) 70%);
+  border: 1px solid rgba(255, 194, 75, 0.45);
+  border-radius: 16px;
+  padding: 15px;
+}
+.lockHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.lockIcon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.35);
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+}
+.lockTitle {
+  font-size: 17px;
+}
+.lockNote {
+  font-size: 12px;
+  color: #ffdc9a;
+}
+.lockActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.lockPrimary {
+  flex: 1.6;
+  border: 0;
+  border-radius: 12px;
+  padding: 13px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+  font-size: 15px;
+}
+.lockSecondary {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 13px;
+  background: var(--sunk);
+  color: var(--text);
+  font-weight: 600;
+  font-size: 14px;
+}
+.lockSecondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.lockHint {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: #ffdc9a;
+}
+
+/* 덱 미구성 상태 — 주장이 없어 아바타를 못 그릴 때. */
+.teamArtEmpty {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--sunk);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+}

@@ -183,9 +183,9 @@ export function DeckPage() {
         type="button"
         className={styles.back}
         data-testid="deck-back"
-        onClick={() => runGuard(() => navigate("/lobby"))}
+        onClick={() => runGuard(() => navigate("/home"))}
       >
-        ← 로비
+        ← 홈
       </button>
       <h1 className={styles.pageTitle}>덱 · 전술보드</h1>
       {dirty && (

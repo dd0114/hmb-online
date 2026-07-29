@@ -6,7 +6,7 @@ import { expect, test, type Page } from "@playwright/test";
  * hero 제보 그대로를 브라우저에서 재현한다: "경기 도중 뒤로 나가면 끝" → 어디로 가든 경기로
  * 돌아오는가. 그리고 그 잠금이 스스로를 가두지 않는가(AC3).
  *
- *  · AC1 — 진행 중(킥오프 이후) 매치가 있으면 /lobby·/deck 진입이 /match/:id 로 돌아간다.
+ *  · AC1 — 진행 중(킥오프 이후) 매치가 있으면 /home·/deck 진입이 /match/:id 로 돌아간다.
  *          **새로고침·재로그인도 동일** — 판정 입력이 서버 응답뿐이라 로컬 상태가 없다.
  *  · AC2 — 브리핑 매치가 있으면 [게임 시작]→[연습 경기]가 409 를 받고, 에러 문구가 아니라
  *          **그 매치로 이어간다**(detail.matchId).
@@ -142,7 +142,7 @@ test.describe("#217 AC1 — 진행 중 경기로 되돌아온다", () => {
   test("로비로 들어가도 경기 화면으로 간다 (새로고침·직접 URL 모두)", async ({ page }) => {
     await mockApi(page, "live");
 
-    await page.goto("/lobby");
+    await page.goto("/home");
     await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
 
     // 새로고침 = 로컬 상태가 사라져도 같은 답. (판정 입력이 서버 응답뿐이라는 것의 증명)
@@ -151,7 +151,9 @@ test.describe("#217 AC1 — 진행 중 경기로 되돌아온다", () => {
 
     // 메타 화면을 **전수로** 노려도 마찬가지. 라우트를 손으로 감싸는 구조라(App.tsx) 하나를
     // 빠뜨려도 유닛 테스트는 green 이다 — 구멍은 여기서만 잡힌다.
-    for (const route of ["/deck", "/shop", "/growth", "/codex", "/trade", "/logs", "/league"]) {
+    // ⚠️ 목록은 common/match-lock.ts 의 LOCKED_ROUTES 와 같아야 한다(#286 6탭 + 하위 페이지).
+    //    /home 은 여기 없다 — 홈은 [이어하기]/[경기 포기]와 로그아웃의 자리라 잠그지 않는다.
+    for (const route of ["/game", "/away", "/deck", "/players", "/recruit", "/me", "/league"]) {
       await page.goto(route);
       await expect(page, `${route} 가 잠기지 않았다`).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
     }
@@ -165,10 +167,11 @@ test.describe("#217 AC1 — 진행 중 경기로 되돌아온다", () => {
 
   test("진행 중 경기가 없으면 아무 것도 막지 않는다 (과잉 잠금 회귀 가드)", async ({ page }) => {
     await mockApi(page, "none");
-    await page.goto("/lobby");
-    await expect(page).toHaveURL(/\/lobby$/);
-    await expect(page.getByTestId("play-cta")).toBeVisible();
-    await expect(page.getByTestId("resume-match-card")).toHaveCount(0);
+    await page.goto("/home");
+    await expect(page).toHaveURL(/\/home$/);
+    // 잠기지 않았으면 타일이 눌릴 수 있어야 한다(#286 — play-cta 는 소멸).
+    await expect(page.getByTestId("home-tile-game")).toBeEnabled();
+    await expect(page.getByTestId("home-lock-card")).toHaveCount(0);
   });
 });
 
@@ -176,12 +179,13 @@ test.describe("#217 AC2 — 경기 중 새 매치 생성 차단", () => {
   test("브리핑 매치가 있으면 [연습 경기]는 409 를 받고 그 경기로 이어간다", async ({ page }) => {
     const st = await mockApi(page, "briefing");
 
-    await page.goto("/lobby");
-    // 브리핑은 강제 이동 대상이 아니다 — 로비에 남아 '이어하기'가 보인다.
-    await expect(page).toHaveURL(/\/lobby$/);
-    await expect(page.getByTestId("resume-match-card")).toBeVisible();
+    await page.goto("/home");
+    // 브리핑은 강제 이동 대상이 아니다 — 홈에 남아 '이어하기'가 보인다.
+    await expect(page).toHaveURL(/\/home$/);
+    await expect(page.getByTestId("home-lock-card")).toBeVisible();
 
-    await page.getByTestId("play-cta").click();
+    // 연습 진입이 두 단계가 됐다: 홈 타일 → 게임 탭 → 연습(#286).
+    await page.getByTestId("home-tile-game").click();
     await page.getByTestId("mode-practice").click();
 
     await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
@@ -228,8 +232,8 @@ test.describe("#217 AC2 — 경기 중 새 매치 생성 차단", () => {
 
   test("이어하기 버튼이 진행 중 경기로 보낸다", async ({ page }) => {
     await mockApi(page, "briefing");
-    await page.goto("/lobby");
-    await page.getByTestId("resume-match").click();
+    await page.goto("/home");
+    await page.getByTestId("home-resume").click();
     await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
   });
 });
@@ -239,16 +243,17 @@ test.describe("#217 AC3 — 영구 잠금 금지", () => {
     const st = await mockApi(page, "failed");
 
     // 회수 가능한 매치까지 붙잡으면 탈출구(포기 버튼)에 도달할 수 없다 — 그래서 로비가 열려야 한다.
-    await page.goto("/lobby");
-    await expect(page).toHaveURL(/\/lobby$/);
-    await expect(page.getByTestId("resume-match-note")).toContainText("포기");
+    await page.goto("/home");
+    await expect(page).toHaveURL(/\/home$/);
+    await expect(page.getByTestId("home-lock-note")).toContainText("포기");
 
-    await page.getByTestId("abandon-match").click();
+    await page.getByTestId("home-abandon").click();
     expect(st.abandonCalls).toBe(1);
 
     // 포기하면 잠금이 즉시 풀린다 — 카드가 사라지고 새 경기가 만들어진다.
-    await expect(page.getByTestId("resume-match-card")).toHaveCount(0);
-    await page.getByTestId("play-cta").click();
+    await expect(page.getByTestId("home-lock-card")).toHaveCount(0);
+    // 연습 진입이 두 단계가 됐다: 홈 타일 → 게임 탭 → 연습(#286).
+    await page.getByTestId("home-tile-game").click();
     await page.getByTestId("mode-practice").click();
     await expect(page).toHaveURL(/\/match\/M_NEW$/);
   });
@@ -256,8 +261,8 @@ test.describe("#217 AC3 — 영구 잠금 금지", () => {
   test("포기 버튼은 정상 재생 중에는 없다 (리롤 방지 — 서버 abandonable 을 그대로 따른다)", async ({ page }) => {
     await mockApi(page, "live");
     await page.goto("/match/" + MATCH_ID);
-    // 강제 이동 대상이라 로비 카드 자체가 없다.
-    await expect(page.getByTestId("abandon-match")).toHaveCount(0);
+    // 강제 이동 대상이라 홈 카드 자체가 없다.
+    await expect(page.getByTestId("home-abandon")).toHaveCount(0);
   });
 });
 
@@ -271,7 +276,7 @@ test.describe("#217 MAJOR-1 — 멈춘 생성 화면에서 빠져나갈 수 있�
     // 이게 없으면 유저는 스피너를 보며 아무 것도 못 한다(로비는 잠겨 있고 retry 는 FAILED 전용).
     await page.getByTestId("genwait-abandon").click();
     expect(st.abandonCalls).toBe(1);
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
   });
 
   test("정상 생성 중에는 그 버튼이 없다 (서버 abandonable 을 그대로 따른다)", async ({ page }) => {

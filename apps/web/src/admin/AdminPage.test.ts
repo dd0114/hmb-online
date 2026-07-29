@@ -88,7 +88,7 @@ function renderGuarded(initial = "/admin") {
         Routes,
         null,
         h(Route, { path: "/login", element: h("div", { "data-testid": "at-login" }) }),
-        h(Route, { path: "/lobby", element: h("div", { "data-testid": "at-lobby" }) }),
+        h(Route, { path: "/home", element: h("div", { "data-testid": "at-lobby" }) }),
         h(Route, {
           path: "/admin",
           element: h(RequireAdmin, null, h("div", { "data-testid": "admin-child" })),
@@ -124,14 +124,14 @@ describe("RequireAdmin 가드 (AC-C2 클라 측)", () => {
     expect(screen.queryByTestId("admin-child")).toBeNull();
   });
 
-  it("로그인 + 비admin → /lobby, admin 화면 노출 0", () => {
+  it("로그인 + 비admin → /home, admin 화면 노출 0", () => {
     fx.me.user = { isAdmin: false };
     renderGuarded();
     expect(screen.getByTestId("at-lobby")).toBeTruthy();
     expect(screen.queryByTestId("admin-child")).toBeNull();
   });
 
-  it("isAdmin 필드가 아예 없는 응답(구 서버)도 비admin 취급 → /lobby", () => {
+  it("isAdmin 필드가 아예 없는 응답(구 서버)도 비admin 취급 → /home", () => {
     fx.me.user = {};
     renderGuarded();
     expect(screen.getByTestId("at-lobby")).toBeTruthy();

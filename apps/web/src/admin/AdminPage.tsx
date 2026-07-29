@@ -75,7 +75,7 @@ export function AdminPage() {
 
   useEffect(() => {
     if (!forbidden) return;
-    const id = setTimeout(() => navigate("/lobby", { replace: true }), FORBIDDEN_REDIRECT_MS);
+    const id = setTimeout(() => navigate("/home", { replace: true }), FORBIDDEN_REDIRECT_MS);
     return () => clearTimeout(id);
   }, [forbidden, navigate]);
 
@@ -118,8 +118,8 @@ export function AdminPage() {
 
   const header = (
     <div className={styles.headerRow}>
-      <button type="button" className={styles.back} onClick={() => navigate("/lobby")}>
-        ← 로비
+      <button type="button" className={styles.back} onClick={() => navigate("/home")}>
+        ← 홈
       </button>
       <h1 className={styles.pageTitle}>운영자</h1>
       <span className={styles.badge}>ADMIN</span>
@@ -138,7 +138,7 @@ export function AdminPage() {
             type="button"
             className={styles.primary}
             data-testid="admin-forbidden-lobby"
-            onClick={() => navigate("/lobby", { replace: true })}
+            onClick={() => navigate("/home", { replace: true })}
           >
             로비로 이동
           </button>

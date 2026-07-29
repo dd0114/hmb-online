@@ -45,7 +45,7 @@ export function NavGuardProvider({ children }: { children: ReactNode }) {
 
 /**
  * For navigation sources. Returns a function that runs `commit` through the active guard (or
- * immediately when no guard / no provider). Usage: `run(() => navigate("/lobby"))`.
+ * immediately when no guard / no provider). Usage: `run(() => navigate("/home"))`.
  */
 export function useNavGuardRun(): (commit: () => void) => void {
   const ctx = useContext(Ctx);

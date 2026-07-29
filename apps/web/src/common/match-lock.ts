@@ -18,16 +18,26 @@ export interface ActiveMatchInfo {
  *
  * <p>`/match/:id` 와 `/login` 은 당연히 빠지고, dev 전용 하니스(`/design/*`·`/qa/*`)도 뺀다 —
  * 제품 화면이 아니라 리뷰 도구라 잠글 대상이 아니다.
+ *
+ * <p>⚠️ **`/home` 도 포함이다**(#286 W2). 처음엔 "홈은 탈출구니까 빼자"고 했는데 그건 오독이었다 —
+ * 이 게이트는 {@code locked && !abandonable} 일 때만 되돌리므로, <b>회수 가능한 사고 매치에서는
+ * 홈이 그대로 열린다</b>(포기 버튼도 거기 있다). 홈을 빼면 되레 재생 중(#217 AC1 "어디로 가든
+ * 경기로 돌아온다")에 홈에 눌러앉을 수 있게 된다 — 계약이 그걸 잡았다.
+ * 홈에서 <b>타일을 못 누르게</b> 하는 건 또 다른 층이다(`nav-lock.ts` 주석 참조).
+ *
+ * <p>⚠️ 라우트를 추가하면 이 상수 · `App.tsx` 의 손 래핑 · `e2e/p4-match-lock.spec.ts` 의
+ * 전수 루프를 <b>셋 다</b> 갱신해라(apps/web/CLAUDE.md #217 절) — 상수만 고치면 유닛 테스트는
+ * green 인 채로 구멍이 남는다.
  */
 export const LOCKED_ROUTES = [
-  "/lobby",
+  "/home",
+  "/game",
   "/deck",
-  "/shop",
-  "/growth",
-  "/codex",
-  "/trade",
-  "/logs",
+  "/players",
+  "/recruit",
+  "/me",
   "/league",
+  "/away",
 ] as const;
 
 /**

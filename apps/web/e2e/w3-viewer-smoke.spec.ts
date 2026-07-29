@@ -82,7 +82,7 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   await page.getByPlaceholder("2~16자").fill(nickname);
   await page.getByRole("button", { name: "계속" }).click();
   await page.getByRole("button", { name: "확인" }).click();
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
 
   expect(await seedDeck(page)).toBe(true);
 

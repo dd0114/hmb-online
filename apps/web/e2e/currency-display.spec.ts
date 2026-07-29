@@ -158,7 +158,7 @@ async function expectNoLegacyCurrencyText(page: Page, where: string) {
 // ── 변이체 킬: 서버가 준 표기를 화면이 따라오는가 ─────────────────────────
 
 test("지갑 배지가 서버 표기를 따른다 (하드코딩이면 실패)", async ({ page }) => {
-  await boot(page, "/lobby");
+  await boot(page, "/home");
   const wallet = page.getByTestId("points-badge");
   await expect(wallet).toContainText(ODD.pointSymbol);
   await expect(wallet).toHaveAttribute("data-points", String(POINTS));
@@ -306,7 +306,7 @@ test("로그아웃 상태로 부팅해 로그인해도 표기가 살아 있다",
 // ── 폴백 ────────────────────────────────────────────────────────────────
 
 test("config 조회 실패 — 흰 화면 0 · 하드코딩 P 로 되돌아가지 않는다", async ({ page }) => {
-  await boot(page, "/lobby", ODD, "fail");
+  await boot(page, "/home", ODD, "fail");
   // 화면은 뜬다.
   await expect(page.getByTestId("points-badge")).toBeVisible();
   const text = await visibleText(page);

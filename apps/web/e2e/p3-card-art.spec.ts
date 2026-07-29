@@ -534,7 +534,7 @@ for (const [label, path] of [["도감", "/codex"], ["육성허브", "/growth"]] 
 test("경계: 매치·로비에 풀아트가 없다", async ({ page }) => {
   await login(page);
   await mockApi(page);
-  for (const path of ["/lobby", "/match/1"]) {
+  for (const path of ["/home", "/match/1"]) {
     await page.goto(path);
     await page.waitForTimeout(700);
     await expect(cards(page), `${path} 에 풀아트가 새어들었다`).toHaveCount(0);

@@ -70,8 +70,8 @@ export function MatchPage() {
 
   const header = (
     <div className={styles.headerRow}>
-      <button type="button" className={styles.back} onClick={() => navigate("/lobby")}>
-        ← 로비
+      <button type="button" className={styles.back} onClick={() => navigate("/home")}>
+        ← 홈
       </button>
       <h1 className={styles.pageTitle} data-testid="match-state-title">
         {match ? (STATE_LABELS[match.state] ?? match.state) : "매치"}
@@ -102,7 +102,7 @@ export function MatchPage() {
       {match && panel === "abandoned" && (
         <div className={styles.abandoned} data-testid="abandoned-panel">
           <p>포기한 경기입니다. 로비에서 새 경기를 시작할 수 있습니다.</p>
-          <button type="button" onClick={() => navigate("/lobby")} data-testid="abandoned-to-lobby">
+          <button type="button" onClick={() => navigate("/home")} data-testid="abandoned-to-lobby">
             로비로
           </button>
         </div>

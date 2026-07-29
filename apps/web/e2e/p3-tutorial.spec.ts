@@ -135,7 +135,7 @@ async function fillRegister(page: Page) {
   await page.getByTestId("local-password").fill(PASSWORD);
   await page.getByTestId("local-submit").click();
   await page.getByRole("button", { name: "확인" }).click();
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
 }
 
 async function fillLogin(page: Page) {
@@ -143,7 +143,7 @@ async function fillLogin(page: Page) {
   await page.getByTestId("local-nickname").fill(LOGIN_ID);
   await page.getByTestId("local-password").fill(PASSWORD);
   await page.getByTestId("local-submit").click();
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
 }
 
 /** 신규 가입 → 스타터팩 확인 → 로비. isNew=true 라 튜토리얼이 자동 시작된다. */
@@ -445,7 +445,7 @@ test.describe("AC-B2 — 모바일/데스크탑 배치", () => {
       }
 
       // 덱 화면으로 따라 들어간다 — 코치마크는 비-모달이라 대상 클릭이 그대로 통과한다.
-      await page.getByTestId("lobby-deck").click();
+      await page.getByTestId("home-tile-deck").click();
       await expect(page).toHaveURL(/\/deck$/);
 
       await shot("deck-board", "tactics-board");
@@ -484,7 +484,7 @@ test.describe("유저 이탈 — 온보딩을 삼키지 않는다 (blocker-1 회
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "shop");
 
     // 코치마크는 대상 클릭을 통과시킨다 — 유저가 그대로 상점으로 이동.
-    await page.getByTestId("lobby-shop").click();
+    await page.getByTestId("home-tile-recruit").click();
     await expect(page).toHaveURL(/\/shop$/);
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
 
@@ -502,13 +502,13 @@ test.describe("유저 이탈 — 온보딩을 삼키지 않는다 (blocker-1 회
     await registerNewUser(page);
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "shop");
-    await page.getByTestId("lobby-shop").click();
+    await page.getByTestId("home-tile-recruit").click();
     await expect(page).toHaveURL(/\/shop$/);
 
     // 네비는 하단탭(모바일)/사이드바(데스크탑) 두 벌이 DOM 에 있고 CSS 로 하나만 보인다
     // → 보이는 쪽을 집는다(.first() 는 뷰포트에 따라 숨은 쪽을 잡는다).
     await page.locator('[data-testid="nav-home"]:visible').click();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
 
     // 떠나기 직전 스텝에서 재개한다 — 중간 스텝을 잃지 않는다.
     await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
@@ -533,7 +533,7 @@ test.describe("유저 이탈 — 온보딩을 삼키지 않는다 (blocker-1 회
     // 로비 마지막 스텝에서는 아직 완료가 아니다(덱 스텝 2개가 남았다).
     expect(await doneFlag(page)).toBeNull();
 
-    await page.getByTestId("lobby-deck").click();
+    await page.getByTestId("home-tile-deck").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-save");
@@ -556,7 +556,7 @@ test.describe("계정 전환 — 세션 상태 격리 (BLK-1 회귀 가드)", ()
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "shop");
 
-    await page.getByTestId("lobby-shop").click(); // 이탈(저장 없음, resumeIndex 남음)
+    await page.getByTestId("home-tile-recruit").click(); // 이탈(저장 없음, resumeIndex 남음)
     await expect(page).toHaveURL(/\/shop$/);
     // ⚠️ 대상 부재 유예(기본 400ms)가 **만료돼 중단이 확정될 때까지** 기다린다.
     // 오버레이는 유예 중에도 렌더를 멈춰(count 0) 있으므로 count 만으로는 중단을 알 수 없고,
@@ -682,12 +682,12 @@ test.describe("못 본 스텝은 완료를 막는다 (BLK-2 회귀 가드)", () 
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "shop");
 
-    await page.getByTestId("lobby-shop").click();
+    await page.getByTestId("home-tile-recruit").click();
     await expect(page).toHaveURL(/\/shop$/);
     await page.waitForTimeout(2500); // 중단 확정
 
     await page.goBack();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
 
     // 인앱 네비 복귀와 동일하게 재개돼야 한다. shop 은 이미 봤으므로 **못 본 codex** 부터다.
     await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
@@ -786,7 +786,7 @@ test.describe("덱 스텝 — 라우트 넘나듦", () => {
     await registerNewUser(page);
     await toDeckCta(page);
 
-    await page.getByTestId("lobby-deck").click();
+    await page.getByTestId("home-tile-deck").click();
     await expect(page).toHaveURL(/\/deck$/);
 
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
@@ -816,15 +816,15 @@ test.describe("덱 스텝 — 라우트 넘나듦", () => {
     expect(await doneFlag(page)).toBeNull();
 
     // 로비를 떠났다 돌아와도 다시 뜨지 않는다(로비에서 보여줄 스텝이 없다).
-    await page.getByTestId("lobby-shop").click();
+    await page.getByTestId("home-tile-recruit").click();
     await expect(page).toHaveURL(/\/shop$/);
     await page.locator('[data-testid="nav-home"]:visible').click();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
     await page.waitForTimeout(1200);
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
 
     // 그러다 유저가 스스로 덱 화면에 들어가면 남은 스텝이 이어서 뜬다.
-    await page.getByTestId("lobby-deck").click();
+    await page.getByTestId("home-tile-deck").click();
     await expect(page).toHaveURL(/\/deck$/);
     await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
@@ -840,7 +840,7 @@ test.describe("덱 스텝 — 라우트 넘나듦", () => {
     await mockApi(page);
     await registerNewUser(page);
     await toDeckCta(page);
-    await page.getByTestId("lobby-deck").click();
+    await page.getByTestId("home-tile-deck").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
 
     await page.getByTestId("tutorial-skip").click();
@@ -872,7 +872,7 @@ test.describe("덱 스텝 — 느린 로딩", () => {
       },
     );
 
-    await page.getByTestId("lobby-deck").click();
+    await page.getByTestId("home-tile-deck").click();
     await expect(page).toHaveURL(/\/deck$/);
     // 대상이 없는 동안 덱 스텝들이 유예를 소진하고 오버레이가 내려간다.
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
@@ -885,8 +885,8 @@ test.describe("덱 스텝 — 느린 로딩", () => {
     // 로비에 다녀와 다시 들어오면(이번엔 빠르다) 덱 스텝이 다시 뜬다.
     slow = false;
     await page.getByTestId("deck-back").click();
-    await expect(page).toHaveURL(/\/lobby$/);
-    await page.getByTestId("lobby-deck").click();
+    await expect(page).toHaveURL(/\/home$/);
+    await page.getByTestId("home-tile-deck").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck-board");
   });
 });
