@@ -1,0 +1,58 @@
+> Task :compileJava
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:171: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:188: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+2 warnings
+
+> Task :processTestResources
+> Task :testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :test
+
+NoticeActiveApiTest > payloadCarriesExactlyWhatThePopupNeedsAndNothingMore() FAILED
+    java.lang.AssertionError at NoticeActiveApiTest.java:214
+
+NoticeByIdApiTest > operationalFieldsNeverLeak() FAILED
+    java.lang.AssertionError at NoticeByIdApiTest.java:171
+
+NoticeByIdApiTest > nullWindowStillCarriesTheKeys() FAILED
+    java.lang.AssertionError at NoticeByIdApiTest.java:188
+
+2026-07-30T00:59:06.415+09:00  INFO 98828 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-07-30T00:59:06.419+09:00  INFO 98828 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+2026-07-30T00:59:06.424+09:00  INFO 98828 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Shutdown initiated...
+2026-07-30T00:59:06.428+09:00  INFO 98828 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Shutdown completed.
+2026-07-30T00:59:06.432+09:00  INFO 98828 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-3 - Shutdown initiated...
+2026-07-30T00:59:06.435+09:00  INFO 98828 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-3 - Shutdown completed.
+
+> Task :test FAILED
+
+24 tests completed, 3 failed
+
+[Incubating] Problems report is available at: file:///Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 9s
+5 actionable tasks: 5 executed

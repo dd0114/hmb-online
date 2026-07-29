@@ -2,6 +2,7 @@ package online.hmb.notice;
 
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 
@@ -35,7 +36,7 @@ public class NoticeService {
      * <p>경계는 <b>양끝 포함</b>이다 — 시작 정각에 뜨고 종료 정각까지 보인다. 운영자가 "13:00 까지"라고
      * 적었을 때 12:59:59 에 사라지면 설명하기 어렵다.
      */
-    public List<ActiveNotice> active() {
+    public List<PublicNotice> active() {
         String now = Notices.now(clock);
         return jdbcClient.sql("""
                         SELECT id, revision, title, body, starts_at, ends_at, priority
@@ -47,22 +48,69 @@ public class NoticeService {
                         ORDER BY priority DESC, starts_at DESC, id DESC
                         """)
                 .params(now, now)
-                .query((rs, rowNum) -> new ActiveNotice(
-                        rs.getString("id"),
-                        rs.getInt("revision"),
-                        rs.getString("title"),
-                        rs.getString("body"),
-                        rs.getString("starts_at"),
-                        rs.getString("ends_at"),
-                        rs.getInt("priority")))
+                .query((rs, rowNum) -> payload(rs))
                 .list();
+    }
+
+    /**
+     * 단건 조회 — 공유 딥링크가 읽는다 (#297).
+     *
+     * <p><b>여기서는 SQL 로 거르지 않는다</b>. 피드({@link #active()})는 "보일 것만" 주면 되지만,
+     * 단건은 <b>왜 못 보는지</b>를 구분해 내려줘야 한다(끝남 410 vs 없음/예약 404). 조건을 SQL 에
+     * 심으면 "없는 공지"와 "끝난 공지"가 같은 빈 결과로 뭉개진다. 그래서 행을 그대로 읽고
+     * 판정은 <b>{@link Notices#status}</b> 한 곳에 맡긴다 — 규칙이 admin·피드·딥링크 셋으로
+     * 갈라지지 않는 유일한 방법이다.
+     *
+     * @return 행이 없으면 {@link Optional#empty()} (= 호출자에게는 "없는 id")
+     */
+    public Optional<NoticeDetail> byId(String id) {
+        String now = Notices.now(clock);
+        return jdbcClient.sql("""
+                        SELECT id, revision, title, body, starts_at, ends_at, priority, active, deleted_at
+                        FROM notices
+                        WHERE id = ?
+                        """)
+                .param(id)
+                .query((rs, rowNum) -> new NoticeDetail(
+                        Notices.status(
+                                rs.getInt("active") == 1,
+                                rs.getString("deleted_at"),
+                                rs.getString("starts_at"),
+                                rs.getString("ends_at"),
+                                now),
+                        payload(rs)))
+                .optional();
+    }
+
+    /**
+     * 공개 응답에 실을 컬럼을 <b>한 곳에서</b> 만든다 — 피드와 단건이 같은 모양을 주는 근거다.
+     * 두 곳에서 각자 만들면 한쪽에만 컬럼이 붙어 web 이 두 벌의 파서를 갖게 된다.
+     */
+    private static PublicNotice payload(java.sql.ResultSet rs) throws java.sql.SQLException {
+        return new PublicNotice(
+                rs.getString("id"),
+                rs.getInt("revision"),
+                rs.getString("title"),
+                rs.getString("body"),
+                rs.getString("starts_at"),
+                rs.getString("ends_at"),
+                rs.getInt("priority"));
     }
 
     /**
      * 팝업이 그리는 데 필요한 것만. {@code revision} 이 반드시 실린다 — 클라의 24시간 억제 키가
      * {@code id@revision} 이라, 이게 없으면 <b>오탈자를 고친 공지가 억제된 유저에게 영원히 안 보인다</b>.
+     *
+     * <p><b>이 레코드가 공개 노출의 경계선이다.</b> {@code active}·{@code deletedAt}·{@code createdBy}·
+     * {@code updatedAt} 은 운영 정보라 여기 없다 — 두 엔드포인트 모두 <b>인증 없이</b> 열려 있으므로
+     * 필드를 하나 얹는 것이 곧 전면 공개다. 계약 = {@code NoticeByIdApiTest.operationalFieldsNeverLeak}
+     * · {@code NoticeActiveApiTest.payloadCarriesExactlyWhatThePopupNeedsAndNothingMore}.
      */
-    public record ActiveNotice(String id, int revision, String title, String body,
+    public record PublicNotice(String id, int revision, String title, String body,
                                String startsAt, String endsAt, int priority) {
+    }
+
+    /** 단건 조회 결과 — 무엇을 줄지(본문/410/404)는 {@code status} 가 정한다. */
+    public record NoticeDetail(Notices.Status status, PublicNotice notice) {
     }
 }

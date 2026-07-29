@@ -160,8 +160,10 @@ class NoticeActiveApiTest extends ApiTestBase {
      * 안 보인다. #232 독립검증 BL-1(부팅 1회 호출이 401 나서 세션 전체가 망가짐)의 반복이다.
      * 내용은 전체 브로드캐스트라 유저별 데이터가 0이다.
      *
-     * <p>이 테스트는 {@code WebMvcConfig.excludePathPatterns} 에서 이 경로를 빼면 <b>실제로 깨진다</b>
-     * (변이체 킬) — 인증 제외가 조용히 되돌려지는 것을 막는 유일한 장치다.
+     * <p>이 테스트는 {@code WebMvcConfig} 가 공지 피드를 인증 뒤로 되돌리면 <b>실제로 깨진다</b>(변이체 킬).
+     * ⚠️ 단, #297 이 {@code "/api/notices/{id}"} 를 같은 목록에 넣은 뒤로 두 패턴은 <b>겹친다</b>
+     * ({@code {id}} 가 {@code active} 세그먼트도 매칭한다) — 즉 {@code "/api/notices/active"} 한 줄만
+     * 지우는 변이는 이 테스트로 잡히지 않는다. 잡히는 것은 <b>공지 경로가 목록에서 사라지는</b> 변이다.
      */
     @Test
     void activeNoticesAreReachableWithoutAuth() {
