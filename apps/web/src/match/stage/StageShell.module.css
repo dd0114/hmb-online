@@ -354,10 +354,12 @@
   flex: 1 1 auto;
   min-height: 0;
 }
-/* 무대는 **흐름 안**에서 피치 비율만 쓴다(관전에선 absolute inset:0 로 무대 박스를 채운다). */
+/*
+ * 무대 래퍼는 남는 세로를 나눠 갖는다. (오버레이 해제는 **여기가 아니라** `VisualPlayback` 의
+ * `review ? controlsFlow : controlsOverlay` 가 한다 — 예전엔 이 자리의 `position/inset` 이
+ * 롤백 스위치인 줄 알았는데 실측상 레이아웃에 영향이 없는 사문이었다. 독립 검증 2회차.)
+ */
 .stageInPanel :global([data-testid^="viewer-visual-half"]) {
-  position: relative;
-  inset: auto;
   flex: 1 1 auto;
   min-height: 0;
   width: 100%;

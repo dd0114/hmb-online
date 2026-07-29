@@ -227,6 +227,18 @@ export function VisualPlayback({
     };
   }, [viewerReady, tickCount, snapTicks, clock?.phase, clock?.phaseStartAt]);
 
+  /*
+   * 돌려보는 화면(#244 review)은 **정지 상태로 연다**. 관전 무대는 자동 재생이 맞지만, 여기서
+   * 유저가 하려는 일은 "그 장면을 찾아 본다"라 들어오자마자 흘러가면 방금 본 장면을 놓친다
+   * (독립 검증 minor: 무조작 2초에 0'05" → 0'09").
+   * ⚠️ **조기 반환(`if (failed)`)보다 위**에 둔다 — 아래로 내리면 실패 경로에서 훅 수가 줄어
+   *    "Rendered fewer hooks than expected" 로 화면이 통째로 크래시한다(실제로 그렇게 넣었다가 잡혔다).
+   */
+  useEffect(() => {
+    if (!review || !viewerReady) return;
+    (viewerRef.current as unknown as { pause?: () => void } | null)?.pause?.();
+  }, [review, viewerReady]);
+
   if (failed) {
     return (
       <div className={styles.note} data-testid={`viewer-visual-error-half${half}`}>
@@ -237,16 +249,6 @@ export function VisualPlayback({
       </div>
     );
   }
-
-  /*
-   * 돌려보는 화면(#244 review)은 **정지 상태로 연다**. 관전 무대는 자동 재생이 맞지만, 여기서
-   * 유저가 하려는 일은 "그 장면을 찾아 본다"라 들어오자마자 흘러가면 방금 본 장면을 놓친다
-   * (독립 검증 minor: 무조작 2초에 0'05" → 0'09").
-   */
-  useEffect(() => {
-    if (!review || !viewerReady) return;
-    (viewerRef.current as unknown as { pause?: () => void } | null)?.pause?.();
-  }, [review, viewerReady]);
 
   return (
     <div className={styles.stageWrapFill} data-testid={`viewer-visual-half${half}`}>

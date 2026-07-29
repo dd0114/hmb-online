@@ -178,6 +178,9 @@ function SlotCell(props: SlotCellProps) {
   const slot = getSlot(draft, role, slotIndex);
   const player = slot ? playersById.get(slot.playerId) : undefined;
   const isTapTarget = selectedSlot?.role === role && selectedSlot.slotIndex === slotIndex;
+  // 교체로 빠지는 선수는 **슬롯 자체를** 위로 올린다 — OUT 뱃지에 z-index 를 줘도 가리는 것이
+  // 자식이 아니라 아랫줄 **형제 토큰**이라 소용없다(360×740 에서 뱃지가 덮였다, 독립 검증 minor).
+  const isOut = Boolean(slot && subbedOut?.includes(slot.playerId));
   const isCandidate = Boolean(pendingPlace) && !slot;
 
   return (
@@ -188,6 +191,7 @@ function SlotCell(props: SlotCellProps) {
         className,
         isOver ? styles.cellOver : "",
         isTapTarget ? styles.cellSelected : "",
+        isOut ? styles.cellOut : "",
         isCandidate ? styles.cellCandidate : "",
         slot ? styles.cellFilled : styles.cellEmpty,
       ]
