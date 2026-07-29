@@ -4,7 +4,6 @@ import {
   useHalftime,
   usePlayers,
   useResume,
-  useSubmitMatchPrompt,
   type CatalogPlayer,
   type MatchDetail,
 } from "../api/hooks";
@@ -15,6 +14,8 @@ import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
 import type { TeamTactics } from "../api/v2";
 import { MAX_SUBS, validateSubs, type SubPair } from "./match-logic";
 import { boardUsable, halftimeShapePayload, snapshotToDraft, swapStarters } from "./halftime-shape";
+import { applyDraftPrompts, clearedAfterSave } from "./halftime-draft";
+import type { HalftimeDraftHandle } from "./useHalftimeDraft";
 import { countdownLabel } from "./live-clock";
 import { useCountdown } from "./useCountdown";
 import styles from "./HalftimePanel.module.css";
@@ -23,6 +24,8 @@ interface HalftimePanelProps {
   match: MatchDetail;
   /** 폴링 때 잡아둔 서버-클라 시각차(live-clock.captureOffsetMs). */
   clockOffsetMs?: number;
+  /** 셸이 소유하는 후반 지시 초안 — 전반의 `후반 지시` 탭과 **같은 것**을 본다(#284). */
+  draft: HalftimeDraftHandle;
 }
 
 /**
@@ -62,11 +65,17 @@ interface HalftimePanelProps {
  * 유저가 덱을 고쳤으면 둘이 달라 **400** 이 난다. 그래서 배치를 보내는 경로의 기준은 반드시
  * 스냅샷이다. 스냅샷이 없거나 선발이 11명이 아닌 구 매치(`boardUsable` false)는 배치 필드를 **아예
  * 보내지 않고** #244 의 현행 동작(덱 파생 + 교체만)을 그대로 유지한다 — 기능 소실 금지.
+ *
+ * ── 프롬프트 칸은 **비어 있지 않다** (#284) ────────────────────────────────────────────────
+ * 전반 관전 중 `후반 지시` 탭에서 미리 적어둔 팀·선수 문장이 그대로 채워진 채 열린다(hero 요구:
+ * *"미리 적어둔 내용이 감독시간 화면에 그대로 남아 이어서 확정할 수 있어야 한다(다시 타이핑 금지)"*).
+ * 원천은 셸이 소유하는 `draft`(로컬 초안 + 서버 자동 저장 2층 — `halftime-draft.ts` 헤더).
+ * ⚠️ 프리필은 **playerId** 로 붙는다(슬롯이 아니라) — #276 이 자리 바꾸기를 열었으므로 슬롯 인덱스는
+ * 움직인다. 사람에게 한 말이 자리를 따라가면 안 된다.
  */
-export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) {
+export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanelProps) {
   const { data: deck, isError: deckError } = useDeck();
   const { data: players, isError: playersError } = usePlayers();
-  const submitPrompt = useSubmitMatchPrompt(match.id);
   const halftime = useHalftime(match.id);
   const resume = useResume(match.id);
 
@@ -114,7 +123,11 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
   const snapshot = match.userDeckSnapshot;
   const shapeMode = boardUsable(snapshot);
 
-  /** 전반 종료 시점의 라인업 = 초기값. per-player 프롬프트는 **빈 칸에서 시작**한다(후반 지시). */
+  /**
+   * 전반 종료 시점의 라인업 = 초기값.
+   * per-player 프롬프트는 **덱의 사전 지시가 아니라** 후반 초안에서 온다(#284) — 덱 문장을 끌고 오면
+   * 유저가 안 쓴 후반 지시가 저절로 생긴다. 초안이 비어 있으면 예전처럼 빈 칸이다.
+   */
   const baseDraft: DeckDraft = useMemo(() => {
     // 배치를 보내는 경로의 기준은 **매치 스냅샷**이다(위 주석 — 서버 ROSTER_MISMATCH 계약).
     if (shapeMode) return snapshotToDraft(snapshot!);
@@ -138,9 +151,14 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
   useEffect(() => {
     // 스냅샷 경로는 덱을 기다릴 이유가 없다(라인업이 이미 매치 응답 안에 있다).
     if (editor === null && (shapeMode || deck)) {
-      setEditor({ draft: baseDraft, tactics: { ...firstHalfTactics }, teamPrompt: "" });
+      // #284: 전반에 미리 적어둔 문장으로 **채워서** 연다(빈 칸이 아니다). 초안이 비었으면 예전과 같다.
+      setEditor({
+        draft: applyDraftPrompts(baseDraft, draft.draft),
+        tactics: { ...firstHalfTactics },
+        teamPrompt: draft.draft.cur.team,
+      });
     }
-  }, [editor, deck, shapeMode, baseDraft, firstHalfTactics]);
+  }, [editor, deck, shapeMode, baseDraft, firstHalfTactics, draft.draft]);
 
   const nameOf = (id: string) => playersById.get(id)?.name ?? id;
   const posOf = (id: string) => playersById.get(id)?.position;
@@ -246,23 +264,33 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
     setPendingOut(null);
   }
 
+  /**
+   * 에디터의 문장을 **초안으로 흘려보낸다** (#284). 초안이 자동 저장을 소유하므로, 감독시간에
+   * 타이핑한 것도 [후반 시작] 을 안 눌러도 저장된다(만료로 화면이 닫혀도 후반에 반영).
+   * 방향은 **한쪽뿐**이다 — 에디터 → 초안. 되돌려 받으면 프리필 effect 와 맞물려 순환한다.
+   */
+  function syncPromptsToDraft(prev: EditorState | null, next: EditorState) {
+    if (prev?.teamPrompt !== next.teamPrompt) draft.setText(null, next.teamPrompt);
+    const before = new Map((prev?.draft.slots ?? []).map((s) => [s.playerId, s.promptText ?? ""]));
+    for (const slot of next.draft.slots) {
+      const text = slot.promptText ?? "";
+      if (before.get(slot.playerId) !== text) draft.setText(slot.playerId, text);
+    }
+  }
+
   async function handleResume() {
     setError(null);
     setSubmitting(true);
     try {
-      const teamPrompt = editor?.teamPrompt.trim() ?? "";
-      if (teamPrompt) {
-        await submitPrompt.mutateAsync({ phase: "halftime", scope: "team", text: teamPrompt });
-      }
-      // 후반 선수 지시 = 이 화면에서 새로 쓴 문장만(덱에는 쓰지 않는다).
-      for (const slot of editor?.draft.slots ?? []) {
-        const text = slot.promptText?.trim();
-        if (text) {
-          await submitPrompt.mutateAsync({
-            phase: "halftime", scope: "player", playerId: slot.playerId, text,
-          });
-        }
-      }
+      /*
+       * 후반 지시(팀·선수)는 **초안이 보낸다** — 전반에 이미 자동 저장된 것과 대조해 **달라진 것만**
+       * 나간다(`pendingSaves`). 예전엔 화면의 문장 전부를 순차 POST 했는데, 미리작성이 생기고 나면
+       * 팀+선수 12건이 매번 [후반 시작] 앞에 붙는다(같은 값이라 서버는 UPSERT 로 무해하지만 느리다).
+       *
+       * ⚠️ 저장 실패는 여기서 **던진다** — 잡아서 후반만 시작하면 유저가 방금 쓴 지시가 조용히
+       *    사라진 채 후반이 돈다.
+       */
+      await draft.flush();
       /*
        * 세 필드(교체 · 배치 · 전술)를 **한 번의** `/halftime` 에 함께 싣는다.
        *
@@ -288,6 +316,8 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
   }
 
   const written = (editor?.draft.slots ?? []).filter((s) => s.promptText?.trim()).length;
+  /** 저장했다가 비운 대상 — 서버에 값이 남아 있어 화면이 그 사실을 말해야 한다(아래 railNote). */
+  const cleared = clearedAfterSave(draft.draft);
 
   /** 보드 위 줄: 카운트다운 · 교체 요약 · 모드 탭 — 덱에 없는 **감독시간만의 추가분**. */
   const boardHeader = (
@@ -384,6 +414,31 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
           {issue.message}
         </p>
       ))}
+      {/*
+        ⚠️ **자동 저장 실패는 여기서도 말해야 한다** (#284 C 결정의 대가).
+        전반의 `후반 지시` 탭엔 상태 줄이 있는데 이 화면엔 없어서, 감독시간에 타이핑한 것이 저장에
+        실패하면 **아무 말 없이** 넘어갔다. [후반 시작] 을 누르면 그때는 막히지만(`flush()` 가 던진다),
+        **감독시간 3분이 그냥 지나가면 조용히 날아간다** — 만료는 서버가 처리하므로 이 화면이 마지막
+        경고 지점이다. 조용한 저장에서 조용한 실패가 제일 위험하다.
+      */}
+      {draft.status === "error" && (
+        <p className={styles.issue} data-testid="halftime-autosave-error">
+          후반 지시가 <b>저장되지 않았습니다</b> — {draft.error}. 그대로 두면 이 지시 없이 후반이
+          시작됩니다. <b>[후반 시작]</b> 을 누르면 다시 시도합니다.
+        </p>
+      )}
+
+      {/*
+        저장했던 지시를 **지운** 경우 (#284). 서버가 빈 문자열을 400 으로 막아서(`text.isBlank`)
+        삭제를 표현할 수단이 없다 → 화면이 말해주지 않으면 "지웠는데 후반에 그대로 나온다"가 된다.
+        server-java 에 "빈 값 = 삭제" 를 요청한 뒤 이 안내를 걷어낸다.
+      */}
+      {cleared.length > 0 && (
+        <p className={styles.issue} data-testid="halftime-cleared-warning">
+          지운 지시 {cleared.length}건은 <b>후반에 그대로 반영됩니다</b> — 비우는 것으로는 취소되지
+          않습니다. 필요 없으면 <b>다른 문장으로 덮어써</b> 주세요.
+        </p>
+      )}
       <p className={styles.writtenNote} data-testid="halftime-written-count">
         후반 선수 지시 {written}명
       </p>
@@ -398,6 +453,7 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
           state={editor}
           onChange={(next) => {
             if (editor && next.tactics !== editor.tactics) setTacticsTouched(true);
+            syncPromptsToDraft(editor, next); // #284 — 여기 타이핑한 것도 자동 저장된다
             setEditor(next);
           }}
           aiManaged={false}

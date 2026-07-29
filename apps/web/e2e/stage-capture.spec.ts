@@ -80,10 +80,17 @@ async function open(page: Page, state: string) {
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "local");
-    // 캡처는 항상 같은 기본 상태에서 — 이전 실행의 토글이 남지 않게.
-    localStorage.removeItem("hmb.stage.toggles");
+    // (#284 로 `hmb.stage.toggles` 는 사라졌다 — 지울 것도 없다.)
   });
   await page.goto(`/match/${MATCH_ID}`);
+  /*
+   * ⚠️ 감독시간엔 무대가 **상시가 아니라 `경기장면` 탭 뒤**다(#244). 이 헬퍼는 그걸 모른 채
+   * 무대를 무조건 기다려서, #244 머지(2026-07-29) 이후 halftime 캡처 2건이 계속 타임아웃이었다
+   * (이 파일은 2026-07-22 #169 이후 손대지 않았다). 캡처 스펙이라 아무도 안 봤다.
+   */
+  if (state === "H1_BREAK" || state === "HALFTIME") {
+    await page.getByTestId("stage-tab-stage").click();
+  }
   await page.getByTestId(`match-viewer-half${state === "FINISHED" ? 2 : 1}`).waitFor({ timeout: 20_000 });
   // 경기가 충분히 진행돼 통계에 실제 수치가 쌓인 뒤 찍는다(0 만 있는 캡처는 검수가 안 된다).
   await page.waitForTimeout(Number(process.env.HMB_CAPTURE_WAIT_MS ?? 4000));
@@ -100,14 +107,14 @@ test.describe("phone 390×844", () => {
     await page.screenshot({ path: `${CAP_DIR}${LABEL}-phone-halftime-full.png`, fullPage: true });
   });
 
-  test("halftime + 통계·로그 토글", async ({ page }) => {
+  // #284: 토글이 사라지고 정보 탭이 상시가 됐다 — 켜는 단계 없이 탭만 고른다.
+  test("halftime + 통계·로그 탭", async ({ page }) => {
     await open(page, "H1_BREAK");
-    const stats = page.getByTestId("stage-toggle-stats");
+    const stats = page.getByTestId("stage-tab-stats");
     if (await stats.count()) {
       await stats.click();
       await page.waitForTimeout(1200);
       await page.screenshot({ path: `${CAP_DIR}${LABEL}-phone-stats.png` });
-      await page.getByTestId("stage-toggle-log").click();
       await page.getByTestId("stage-tab-log").click();
       await page.waitForTimeout(600);
       await page.screenshot({ path: `${CAP_DIR}${LABEL}-phone-log.png` });
@@ -127,7 +134,7 @@ test.describe("desktop 1280×800", () => {
   test("halftime", async ({ page }) => {
     await open(page, "H1_BREAK");
     await page.screenshot({ path: `${CAP_DIR}${LABEL}-desktop-halftime.png` });
-    const stats = page.getByTestId("stage-toggle-stats");
+    const stats = page.getByTestId("stage-tab-stats");
     if (await stats.count()) {
       await stats.click();
       await page.waitForTimeout(1200);

@@ -171,6 +171,16 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  /*
+   * ⚠️ `min-width: 0` 이 없으면 **가로로 넘치는 자식이 시트를 통째로 늘린다.** 그리드/플렉스
+   * 아이템의 기본 `min-width: auto` 때문에, 안쪽에 `overflow-x: auto` 를 걸어 둬도 그 요소가
+   * 스크롤하는 대신 밖으로 자란다.
+   * 실제로 당했다(#284 실화면 캡처): 후반 지시 탭의 대상 칩 17개가 시트를 **989px** 로 밀어
+   * 탭바가 화면 밖으로 나가고 프롬프트 아래가 잘렸다. 셸이 `overflow:hidden` 이라 **문서 스크롤은
+   * 여전히 0** 이었고 — 그래서 기존 계약이 전부 green 이었다. 계약은 `p284-info-tabs.spec.ts` g·h
+   * (시트 폭 · 칩 줄의 clientWidth)가 잰다.
+   */
+  min-width: 0;
   border-top: 1px solid var(--border);
   background: var(--bg-elevated);
 }
@@ -220,6 +230,8 @@
 .panel {
   flex: 1;
   min-height: 0;
+  /* `.sheet` 와 같은 이유(위 주석) — 넘치는 자식이 이 박스를 늘리지 못하게 한다. */
+  min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 10px 12px;

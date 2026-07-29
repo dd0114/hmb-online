@@ -83,6 +83,8 @@ vi.mock("../api/hooks", () => {
 
 // eslint-disable-next-line import/first
 import { HalftimePanel } from "./HalftimePanel";
+// eslint-disable-next-line import/first
+import { stubDraftHandle } from "./halftime-draft-fixture";
 
 interface Body {
   substitutions: Array<{ out: string; in: string }>;
@@ -120,7 +122,7 @@ function renderPanel(opts: { snapshot?: unknown; remainingMs?: number } = {}) {
     clock: clock(opts.remainingMs ?? 47_000),
     userDeckSnapshot: "snapshot" in opts ? opts.snapshot : snapshot(),
   };
-  return render(h(HalftimePanel, { match: match as never }));
+  return render(h(HalftimePanel, { match: match as never, draft: stubDraftHandle() }));
 }
 
 function body(): Body {

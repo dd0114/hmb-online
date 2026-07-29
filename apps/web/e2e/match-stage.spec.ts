@@ -2,20 +2,27 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, readFileSync } from "node:fs";
 
 /**
- * P4-E1 S1 (#169) — 게임화면 "경기장면 고정 메인 + 정보 토글" 계약.
+ * P4-E1 S1 (#169) — 게임화면 "경기장면 고정 메인 + 정보 시트" 계약.
  * 설계 SoT = docs/plan-v5/layout-game-screen.md §2·§3, AC = PRD-v5 AC-W1-1.
  *
  * E2E-TDD: 이 파일이 구현보다 먼저 작성됐다(루트 CLAUDE §2-3). 백엔드 없이 route-mock 으로
  * 실화면 계약을 박제한다.
  *
+ * ⚠️ **#284 에서 c·d·f 가 뒤집혔다**(hero 결정). 원래는 정보 패널이 유저 토글이고 기본 off 였는데,
+ * 하단 토글바와 시트 탭바가 똑같이 생겨 중복으로 읽혔다 → 토글을 없애고 시트를 상시로 바꿨다.
+ * **뒤집히지 않은 것은 a·b·e·g** — 무대가 어떤 화면에서도 살아남고 문서가 스크롤하지 않는다는 것.
+ * 그게 이 파일이 원래 지키려던 것이고, 지금도 그대로다.
+ *
  * 계약:
  *  a. 모바일(390×844) 페이지 세로 스크롤 0 · 가로 오버플로 0.
  *  b. 데스크탑(1280×800) 동일 + 무대가 뷰포트 안.
- *  c. 3토글(통계·로그·후반지시) 기본 off — 유저가 켠 것만 보인다.
- *     (하프타임 감독 패널·종료 결과 패널은 **상태가 소유**하는 패널이라 토글과 별개로 자동 표시.)
- *  d. 3토글은 서로 독립 — 하나를 켜고 끄는 게 다른 것에 영향 없음.
- *  e. 어떤 조합에서도 **무대(경기장면)는 화면에 남는다**(리서치 R2).
- *  f. 토글 선택은 리로드 후에도 유지(localStorage).
+ *  c. **정보 시트는 처음부터 열려 있다**(#284 — 구: 3토글 기본 off).
+ *     하프타임 감독 패널·종료 결과 패널은 **상태가 소유**해 맨 앞에 오고 기본 선택된다.
+ *  d. 탭은 **배타** — 하나를 고르면 그 패널만(#284 — 구: 3토글 독립).
+ *  e. 어떤 탭에서도 **무대(경기장면)는 화면에 남는다**(리서치 R2).
+ *  f. 리로드해도 그 상태의 탭 구성이 그대로(#284 — 구: 토글 선택 localStorage 유지).
+ *
+ * 새 동작(상시 탭 · 후반 지시 미리작성 · 감독시간 프리필)의 계약은 `p284-info-tabs.spec.ts`.
  *
  * ⚠️ 라우트 매칭은 pathname 술어로 한다. glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지
  * 잡아 흰 화면이 된다(프로젝트 기지식 — web-visual-qa-mock-harness).
@@ -143,12 +150,17 @@ async function pitchCanvasBox(page: Page): Promise<{ width: number; height: numb
   });
 }
 
-async function toggle(page: Page, key: "stats" | "log" | "brief") {
-  await page.getByTestId(`stage-toggle-${key}`).click();
+/**
+ * #284: **토글이 사라졌다.** 정보 패널을 껐다 켜는 하단 줄이 있었고(그래서 시트 위 탭바와 함께
+ * 똑같이 생긴 줄이 두 개였다), 이제는 시트가 상시고 탭만 고른다. 이 헬퍼는 그 전환의 흔적이다 —
+ * 옛 이름(`toggle`)을 남기지 않은 이유는 "켠다"와 "고른다"가 다른 동작이기 때문.
+ */
+async function pickTab(page: Page, key: "stats" | "log" | "brief" | "stage") {
+  await page.getByTestId(`stage-tab-${key}`).click();
 }
 
-function pressed(page: Page, key: "stats" | "log" | "brief") {
-  return page.getByTestId(`stage-toggle-${key}`).getAttribute("aria-pressed");
+function selected(page: Page, key: "stats" | "log" | "brief") {
+  return page.getByTestId(`stage-tab-${key}`).getAttribute("aria-selected");
 }
 
 test.beforeAll(() => mkdirSync(CAP_DIR, { recursive: true }));
@@ -156,7 +168,7 @@ test.beforeAll(() => mkdirSync(CAP_DIR, { recursive: true }));
 test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
   test.use({ viewport: PHONE });
 
-  test("a. 페이지 세로 스크롤 0 · 가로 오버플로 0 — 어떤 토글 조합에서도", async ({ page }) => {
+  test("a. 페이지 세로 스크롤 0 · 가로 오버플로 0 — 어떤 탭에서도", async ({ page }) => {
     await openMatch(page);
 
     const base = await pageScroll(page);
@@ -164,55 +176,51 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
     expect(base.hScroll, "390px 에서 가로 오버플로 0").toBeLessThanOrEqual(1);
     await page.screenshot({ path: `${CAP_DIR}phone-default.png` });
 
-    for (const key of ["stats", "log", "brief"] as const) {
-      await toggle(page, key);
+    // 관전(SECOND_HALF)의 정보 탭은 통계·로그 둘이다 — `후반 지시` 는 전반에만(#284, p284 스펙이 잰다).
+    for (const key of ["stats", "log"] as const) {
+      await pickTab(page, key);
       const s = await pageScroll(page);
-      expect(s.vScroll, `${key} 패널을 켰을 때 문서 스크롤이 생기면 안 됨(스크롤은 패널 내부에만)`).toBeLessThanOrEqual(1);
-      expect(s.hScroll, `${key} 패널에서 가로 오버플로 0`).toBeLessThanOrEqual(1);
+      expect(s.vScroll, `${key} 탭에서 문서 스크롤이 생기면 안 됨(스크롤은 패널 내부에만)`).toBeLessThanOrEqual(1);
+      expect(s.hScroll, `${key} 탭에서 가로 오버플로 0`).toBeLessThanOrEqual(1);
     }
     await page.screenshot({ path: `${CAP_DIR}phone-all-panels.png` });
   });
 
-  test("c. 기본은 경기장면만 — 3토글 전부 off, 통계/로그/후반지시 패널 없음", async ({ page }) => {
+  /**
+   * ⚠️ #169 의 "기본은 경기장면만(3토글 off)" 은 **#284 에서 hero 가 뒤집었다** — 토글바와 시트
+   * 탭바가 똑같이 생겨 중복으로 읽혔고, "탭 구조면 그 안에서 조정하면 되지 껐다켰다 할 필요가 없다".
+   * 그래서 이 자리의 계약은 반대 방향으로 다시 선다: **시트는 처음부터 열려 있다.**
+   * 무대가 살아남는지(원래 의도)는 아래 e 가 계속 잰다 — 그건 뒤집히지 않았다.
+   */
+  test("c. 정보 시트는 처음부터 열려 있다 — 토글은 없다 (#284)", async ({ page }) => {
     await openMatch(page);
 
+    await expect(page.getByTestId("stage-sheet")).toBeVisible();
+    await expect(page.getByRole("tablist", { name: "정보 패널" })).toBeVisible();
     for (const key of ["stats", "log", "brief"] as const) {
-      expect(await pressed(page, key), `${key} 토글 기본값은 off`).toBe("false");
-      await expect(page.getByTestId(`stage-panel-${key}`)).toHaveCount(0);
+      await expect(page.getByTestId(`stage-toggle-${key}`), "토글바는 되살리지 않는다").toHaveCount(0);
     }
-    // 시트에는 상태 패널(감독) 하나뿐이라 탭 줄 자체가 없다 = 정보 패널이 0개라는 뜻.
-    // (H1_BREAK/FINISHED 는 상태 패널을 항상 열기 때문에 "시트 부재"로는 잴 수 없다.
-    //  시트가 통째로 없는 화면은 W3 라이브 관전 상태가 생길 때 도달 가능해진다 — tabsFor 단위테스트가 담보.)
-    await expect(page.getByRole("tablist", { name: "정보 패널" })).toHaveCount(0);
   });
 
-  test("d. 3토글 독립 — 하나를 켜고 꺼도 나머지는 그대로", async ({ page }) => {
+  test("d. 탭은 배타 — 하나를 고르면 그 패널만 뜬다", async ({ page }) => {
     await openMatch(page);
 
-    await toggle(page, "stats");
+    await pickTab(page, "stats");
     await expect(page.getByTestId("stage-panel-stats")).toBeVisible();
     await expect(page.getByTestId("stage-panel-log")).toHaveCount(0);
-    await expect(page.getByTestId("stage-panel-brief")).toHaveCount(0);
-    expect(await pressed(page, "log")).toBe("false");
+    expect(await selected(page, "log")).toBe("false");
 
-    await toggle(page, "log");
-    expect(await pressed(page, "stats"), "로그를 켠다고 통계가 꺼지면 안 됨").toBe("true");
-    await page.getByTestId("stage-tab-log").click();
+    await pickTab(page, "log");
     await expect(page.getByTestId("stage-panel-log")).toBeVisible();
-
-    await toggle(page, "stats");
-    expect(await pressed(page, "stats")).toBe("false");
-    expect(await pressed(page, "log"), "통계를 꺼도 로그는 켜진 채").toBe("true");
-    await expect(page.getByTestId("stage-panel-log")).toBeVisible();
-    await expect(page.getByTestId("stage-panel-stats")).toHaveCount(0);
+    await expect(page.getByTestId("stage-panel-stats"), "탭은 하나만 열린다").toHaveCount(0);
+    expect(await selected(page, "stats")).toBe("false");
   });
 
-  test("e. 어떤 조합에서도 무대(경기장면)는 화면에 남는다", async ({ page }) => {
+  test("e. 어떤 탭에서도 무대(경기장면)는 화면에 남는다", async ({ page }) => {
     await openMatch(page);
 
-    await toggle(page, "stats");
-    await toggle(page, "log");
-    await toggle(page, "brief");
+    await pickTab(page, "stats");
+    await pickTab(page, "log");
 
     const box = await page.getByTestId("stage-canvas").boundingBox();
     expect(box, "무대 박스가 존재해야 함").not.toBeNull();
@@ -227,21 +235,21 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
     expect(canvas!.height, "캔버스가 납작해지면 안 됨").toBeGreaterThan(80);
   });
 
-  // 이 케이스는 **상태 패널이 있는 화면**을 전제한다(감독 패널이 정보 탭보다 먼저) → 감독시간으로 연다.
-  test("f. 토글 선택은 리로드 후에도 유지된다", async ({ page }) => {
+  /**
+   * #284 로 **저장할 토글이 없어졌다**(탭 구성은 상태가 정한다). 그래서 이 자리의 계약은
+   * "선택이 유지되나"가 아니라 **"리로드해도 그 상태의 탭 구성이 그대로 선다"** 로 바뀐다.
+   * 감독시간을 쓰는 이유는 그대로다 — 상태 패널이 정보 탭보다 먼저 오는 규칙을 같이 재기 때문.
+   */
+  test("f. 리로드해도 상태에 맞는 탭 구성이 그대로 — 감독이 먼저", async ({ page }) => {
     await openMatch(page, "HALFTIME");
-    await toggle(page, "log");
-    expect(await pressed(page, "log")).toBe("true");
+    await expect(page.getByTestId("halftime-panel")).toBeVisible();
 
     await page.reload();
     await expect(page.getByTestId("stage-shell")).toBeVisible();
-    expect(await pressed(page, "log"), "localStorage 로 토글 상태 유지").toBe("true");
-    expect(await pressed(page, "stats"), "안 켰던 건 여전히 off").toBe("false");
 
-    // 켜둔 패널은 탭으로 남아 있고 한 번에 열린다. 단, **상태 패널(감독)이 먼저** 보인다 —
     // 하프타임엔 유저가 해야 할 일(교체·후반 시작)이 정보 패널보다 우선이다(stage-state 규칙).
     await expect(page.getByTestId("halftime-panel")).toBeVisible();
-    await page.getByTestId("stage-tab-log").click();
+    await pickTab(page, "log");
     await expect(page.getByTestId("stage-panel-log")).toBeVisible();
   });
 
@@ -266,15 +274,17 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
   // 이 파일이 `H1_BREAK` 하나로만 열려 있던 탓에 #226(감독시간 헤더가 재생 플레이헤드를 따라감)이
   // 계약 밖에서 배포까지 갔다. 상태 소유 패널 규칙을 손대면 여기도 같이 본다.
   for (const state of ["HALFTIME", "H1_BREAK"]) {
-    test(`하프타임 감독 패널은 상태 소유 — 자동 표시되고 3토글은 여전히 off (${state})`, async ({ page }) => {
+    test(`하프타임 감독 패널은 상태 소유 — 정보 탭이 있어도 감독이 먼저 열린다 (${state})`, async ({ page }) => {
       await openMatch(page, state);
 
       await expect(page.getByTestId("halftime-panel")).toBeVisible();
       await expect(page.getByTestId("h1-score")).toBeVisible();
       await expect(page.getByTestId("resume-button")).toBeVisible();
-      for (const key of ["stats", "log", "brief"] as const) {
-        expect(await pressed(page, key)).toBe("false");
-      }
+      // #284: 정보 탭은 이제 상시다. 그래도 **기본 선택은 감독**이다(지금 해야 할 일이 먼저).
+      expect(await selected(page, "stats")).toBe("false");
+      expect(await selected(page, "log")).toBe("false");
+      // 후반 지시 탭은 감독 탭과 같은 입력이라 감독시간엔 없다(#284 ④).
+      await expect(page.getByTestId("stage-tab-brief")).toHaveCount(0);
       if (state === "H1_BREAK") await page.screenshot({ path: `${CAP_DIR}phone-halftime.png` });
     });
 
@@ -307,8 +317,8 @@ test.describe("AC-W1-1 경기장면 고정 (데스크탑 1280×800)", () => {
     expect(base.hScroll).toBeLessThanOrEqual(1);
     await page.screenshot({ path: `${CAP_DIR}desktop-default.png` });
 
-    await toggle(page, "stats");
-    await toggle(page, "log");
+    await pickTab(page, "stats");
+    await pickTab(page, "log");
     const s = await pageScroll(page);
     expect(s.vScroll, "패널을 열어도 문서 스크롤 0").toBeLessThanOrEqual(1);
     expect(s.hScroll).toBeLessThanOrEqual(1);
@@ -334,7 +344,7 @@ test.describe("AC-W1-1 경기장면 고정 (데스크탑 1280×800)", () => {
 
   test("g. 로그가 쌓여도 무대 크기가 변하지 않는다(시트 높이는 콘텐츠와 무관)", async ({ page }) => {
     await openMatch(page);
-    await toggle(page, "log");
+    await pickTab(page, "log");
     await expect(page.getByTestId("stage-panel-log")).toBeVisible();
 
     const lines = page.locator('[data-testid="stage-panel-log"] li');

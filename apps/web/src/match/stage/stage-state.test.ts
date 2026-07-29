@@ -1,43 +1,31 @@
 import { describe, expect, it } from "vitest";
 import {
+  briefTabVisible,
   CLOCK_PLACEHOLDER,
   clockLabel,
-  DEFAULT_TOGGLES,
+  DEFAULT_INFO_TAB,
   halfEndTickOf,
   halfForState,
   headerScore,
   headerTick,
+  INFO_TAB_KEYS,
   isHalftimeState,
   playedBaseline,
-  parseToggles,
   resolveActiveTab,
-  serializeToggles,
   sheetHeight,
   statePanelFor,
   tabsFor,
   type TabKey,
 } from "./stage-state";
 
-describe("toggles 저장/복원", () => {
-  it("기본은 전부 off(경기장면만)", () => {
-    expect(DEFAULT_TOGGLES).toEqual({ stats: false, log: false, brief: false });
-    expect(parseToggles(null)).toEqual(DEFAULT_TOGGLES);
-    expect(parseToggles("")).toEqual(DEFAULT_TOGGLES);
+describe("정보 탭 상수 (#284)", () => {
+  it("표시 순서는 통계·로그·후반지시로 고정", () => {
+    expect(INFO_TAB_KEYS).toEqual(["stats", "log", "brief"]);
   });
 
-  it("왕복(serialize→parse)이 값을 보존한다", () => {
-    const t = { stats: true, log: false, brief: true };
-    expect(parseToggles(serializeToggles(t))).toEqual(t);
-  });
-
-  it("손상/구버전 저장값은 기본값으로 흡수한다", () => {
-    expect(parseToggles("{oops")).toEqual(DEFAULT_TOGGLES);
-    expect(parseToggles("[1,2]")).toEqual(DEFAULT_TOGGLES);
-    expect(parseToggles('"stats"')).toEqual(DEFAULT_TOGGLES);
-    // 부분 저장 = 있는 것만 반영, 나머지는 기본값
-    expect(parseToggles('{"log":true,"junk":1}')).toEqual({ stats: false, log: true, brief: false });
-    // 타입이 틀린 값은 무시
-    expect(parseToggles('{"stats":"yes"}')).toEqual(DEFAULT_TOGGLES);
+  it("기본 탭은 로그 — 표시 순서의 첫 탭과 **다르다**(둘은 다른 축)", () => {
+    expect(DEFAULT_INFO_TAB).toBe("log");
+    expect(DEFAULT_INFO_TAB).not.toBe(INFO_TAB_KEYS[0]);
   });
 });
 
@@ -190,33 +178,41 @@ describe("헤더 스코어 — 확정(서버) + 진행 중 하프 델타(재생)
   });
 });
 
-describe("탭 구성", () => {
-  it("토글이 전부 off 이고 상태 패널도 없으면 시트가 없다", () => {
-    expect(tabsFor(DEFAULT_TOGGLES, null)).toEqual([]);
+describe("탭 구성 (#284 — 토글 제거, 상태가 정한다)", () => {
+  it("정보 탭은 **항상** 있다 — 시트가 비는 상태가 없다", () => {
+    // #284 의 요구가 이것이다("애초부터 열려 있게"). 예전엔 토글이 전부 off 면 빈 배열이었다.
+    for (const state of ["FIRST_HALF", "SECOND_HALF", "HALFTIME", "FINISHED", "GEN2", undefined]) {
+      expect(tabsFor(state, statePanelFor(state)).length, `${state} 에도 탭이 있어야 한다`)
+        .toBeGreaterThan(0);
+    }
   });
 
-  it("상태 패널이 먼저, 켜진 토글이 고정 순서로 뒤따른다", () => {
+  it("상태별 탭 구성 — hero 확정(#284)", () => {
+    expect(tabsFor("FIRST_HALF", null)).toEqual(["stats", "log", "brief"]);
     // #244: 감독시간에는 무대가 상시가 아니라 **탭**이다 → 감독 패널 바로 뒤에 `stage` 가 온다.
-    // (관전 상태에서는 여전히 무대가 상시라 이 탭이 없다 — 아래 result 케이스가 그걸 지킨다.)
-    expect(tabsFor({ stats: true, log: true, brief: true }, "halftime")).toEqual([
-      "halftime",
-      "stage",
-      "stats",
-      "log",
-      "brief",
+    expect(tabsFor("HALFTIME", "halftime")).toEqual(["halftime", "stage", "stats", "log"]);
+    expect(tabsFor("H1_BREAK", "halftime"), "레거시 상태명도 같은 구성").toEqual([
+      "halftime", "stage", "stats", "log",
     ]);
-    expect(tabsFor({ stats: true, log: false, brief: false }, "result"), "관전·결과에는 경기장면 탭이 없다").toEqual([
-      "result",
-      "stats",
+    expect(tabsFor("SECOND_HALF", null)).toEqual(["stats", "log"]);
+    expect(tabsFor("FINISHED", "result"), "관전·결과에는 경기장면 탭이 없다").toEqual([
+      "result", "stats", "log",
     ]);
-    expect(tabsFor({ stats: false, log: true, brief: false }, null)).toEqual(["log"]);
   });
 
-  it("토글은 서로 독립 — 하나를 꺼도 나머지 탭은 남는다", () => {
-    const before = tabsFor({ stats: true, log: true, brief: false }, null);
-    const after = tabsFor({ stats: false, log: true, brief: false }, null);
-    expect(before).toEqual(["stats", "log"]);
-    expect(after).toEqual(["log"]);
+  it("후반 지시 탭은 **전반에만** — 낼 수 없거나 감독 탭과 겹치는 상태에서는 안 뜬다", () => {
+    expect(briefTabVisible("FIRST_HALF")).toBe(true);
+    // 감독시간엔 감독 탭이 같은 입력을 프리필된 채로 갖는다 → 칸이 두 개가 되면 안 된다.
+    expect(briefTabVisible("HALFTIME")).toBe(false);
+    expect(briefTabVisible("H1_BREAK")).toBe(false);
+    // 후반·종료는 서버가 409 로 막는다 — 만져도 아무 데도 안 가는 손잡이를 남기지 않는다.
+    expect(briefTabVisible("SECOND_HALF")).toBe(false);
+    expect(briefTabVisible("FINISHED")).toBe(false);
+    expect(briefTabVisible(undefined)).toBe(false);
+
+    for (const state of ["HALFTIME", "SECOND_HALF", "FINISHED"]) {
+      expect(tabsFor(state, statePanelFor(state))).not.toContain("brief");
+    }
   });
 
   it("시트 높이 등급은 탭 종류로만 갈린다(콘텐츠 무관 — 내용이 쌓여도 무대가 안 줄어든다)", () => {
@@ -228,12 +224,27 @@ describe("탭 구성", () => {
     expect(sheetHeight("result")).toBe("state");
   });
 
-  it("활성 탭: 고른 탭이 살아 있으면 유지, 사라지면 첫 탭(상태 패널 우선)", () => {
-    const tabs: TabKey[] = ["halftime", "stats", "log"];
+  it("활성 탭: 고른 탭이 살아 있으면 유지", () => {
+    const tabs: TabKey[] = ["halftime", "stage", "stats", "log"];
     expect(resolveActiveTab(tabs, "log")).toBe("log");
-    expect(resolveActiveTab(tabs, null)).toBe("halftime");
-    expect(resolveActiveTab(tabs, "brief")).toBe("halftime");
+    expect(resolveActiveTab(tabs, "stage")).toBe("stage");
     expect(resolveActiveTab([], "stats")).toBeNull();
   });
 
+  it("기본 탭: 상태 패널이 있으면 그것, 없으면 **로그**(첫 탭인 통계가 아니다)", () => {
+    // 표시 순서(통계 먼저)와 기본 선택(로그)은 다른 축이다 — 여기가 그 계약이다.
+    expect(resolveActiveTab(tabsFor("FIRST_HALF", null), null)).toBe("log");
+    expect(resolveActiveTab(tabsFor("SECOND_HALF", null), null)).toBe("log");
+    // 지금 해야 할 일이 정보 탭을 이긴다.
+    expect(resolveActiveTab(tabsFor("HALFTIME", "halftime"), null)).toBe("halftime");
+    expect(resolveActiveTab(tabsFor("FINISHED", "result"), null)).toBe("result");
+    // 사라진 탭을 고르고 있었으면 같은 기본 규칙으로 떨어진다.
+    expect(resolveActiveTab(tabsFor("SECOND_HALF", null), "brief")).toBe("log");
+    expect(resolveActiveTab(tabsFor("HALFTIME", "halftime"), "brief")).toBe("halftime");
+  });
+
+  it("전반 → 감독시간으로 넘어가도 **보던 탭을 뺏지 않는다**", () => {
+    // 통계를 보고 있었으면 감독시간에도 통계다(감독 탭으로 튕기지 않는다) — 탭은 여전히 있으므로.
+    expect(resolveActiveTab(tabsFor("HALFTIME", "halftime"), "stats")).toBe("stats");
+  });
 });

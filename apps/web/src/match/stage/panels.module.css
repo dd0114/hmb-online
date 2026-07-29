@@ -250,49 +250,76 @@
   font-variant-numeric: tabular-nums;
 }
 
-.briefInput {
-  width: 100%;
-  min-height: 72px;
-  resize: none;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  padding: 8px 10px;
-  font-size: 13px;
-}
-
-/* 쓸 수 없는 상태(전반 전·후반 시작 후)에서만 흐리게 — 활성일 땐 또렷해야 "되는 자리"로 읽힌다. */
-.briefInput:disabled {
-  opacity: 0.55;
-}
-
-.briefActions {
+/* ── 지시 대상 칩 (#284) ───────────────────────────────────────
+   팀 + 선발 + 벤치 = 최대 18개라 가로 스크롤이 전제다. 줄바꿈으로 쌓으면 시트 높이가
+   대상 수에 따라 출렁여 무대가 같이 흔들린다(높이는 콘텐츠와 무관해야 한다 — sheetHeight 주석). */
+.targets {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
+  gap: 5px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 7px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--hairline, var(--border));
+  scrollbar-width: none;
 }
 
-.briefSave {
+.targets::-webkit-scrollbar {
+  display: none;
+}
+
+.target {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* 탭 타깃 하한(#73 P1) — 칩이라고 32px 로 내리지 마라, 그 계약이 여길 잡는다. */
+  min-height: 44px;
+  padding: 6px 11px;
+  border-radius: 999px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--accent, #2f6fed);
-  color: #fff;
+  background: var(--sunk, var(--bg));
+  color: var(--text-muted);
   font-size: 12px;
   font-weight: 700;
-  padding: 6px 14px;
+  white-space: nowrap;
   cursor: pointer;
 }
 
-.briefSave:disabled {
+.targetOn {
+  background: #1c2841;
+  color: #dbe7ff;
+  border-color: #2f4a7a;
+}
+
+.target:disabled {
   opacity: 0.5;
   cursor: default;
 }
 
-.savedNote {
+/* 색 단일 채널로 표현하지 않는다 — 점 + aria-label(적록색약, #262 선례). */
+.targetDot {
+  color: var(--warn, #ffb020);
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* 저장 버튼이 없으므로 이 줄이 **유일한 피드백**이다(#284 C). 자리를 항상 차지해 둔다 —
+   상태가 바뀔 때마다 줄이 생겼다 없어지면 그 아래 안내문이 흔들린다. */
+.saveStatus {
+  margin: 8px 0 0;
+  min-height: 16px;
   font-size: 11px;
+  font-weight: 600;
+  color: var(--good, #3ddc97);
+}
+
+.saveStatus[data-status="idle"] {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.saveStatus[data-status="saving"] {
   color: var(--text-muted);
 }
 

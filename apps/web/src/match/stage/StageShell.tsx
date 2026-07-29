@@ -1,33 +1,27 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { scoreAt, type LogEvent } from "@hmb/viewer-core";
 import { useHalfLog, type MatchDetail } from "../../api/hooks";
 import { captureOffsetMs, logAvailableFor } from "../live-clock";
 import { MatchViewer } from "../MatchViewer";
 import { HalftimePanel } from "../HalftimePanel";
+import { useHalftimeDraft } from "../useHalftimeDraft";
 import { ScoreBar } from "./ScoreBar";
 import { StatsPanel } from "./StatsPanel";
 import { LogPanel } from "./LogPanel";
 import { SecondHalfBriefPanel } from "./SecondHalfBriefPanel";
 import { ResultPanel } from "./ResultPanel";
 import {
-  DEFAULT_TOGGLES,
   halfEndTickOf,
   halfForState,
   headerTick,
-  parseToggles,
   playedBaseline,
   resolveActiveTab,
-  serializeToggles,
   sheetHeight,
   statePanelFor,
   tabsFor,
   TAB_LABELS,
-  TOGGLE_KEYS,
-  TOGGLE_STORAGE_KEY,
   type TabKey,
-  type ToggleKey,
-  type Toggles,
 } from "./stage-state";
 import styles from "./StageShell.module.css";
 
@@ -39,35 +33,31 @@ interface StageShellProps {
   leagueRound?: number | null;
 }
 
-function readToggles(): Toggles {
-  try {
-    return parseToggles(window.localStorage?.getItem(TOGGLE_STORAGE_KEY));
-  } catch {
-    return { ...DEFAULT_TOGGLES };
-  }
-}
-
 /**
- * 관전 셸 — **경기장면 고정 메인 + 정보 토글** (P4-D4 / AC-W1-1, #169 S1).
+ * 관전 셸 — **경기장면 고정 메인 + 정보 시트** (P4-D4 / AC-W1-1, #169 S1 → #284 재편).
  * 설계 SoT = docs/plan-v5/layout-game-screen.md §2·§3, 리서치 근거 = research-spectator-ux.md R1~R6.
  *
- * 구조: [A] 스코어바 / [B] 무대(경기장면, 절대 사라지지 않음) / [D] 정보 시트 / [C] 토글바.
+ * 구조: [A] 스코어바 / [B] 무대(경기장면, 절대 사라지지 않음) / [D] 정보 시트.
  * 문서는 스크롤하지 않는다 — 스크롤은 패널 안에만 있다(R1).
  *
+ * ⚠️ **[C] 토글바는 #284 에서 없앴다.** 정보 패널을 껐다 켜는 하단 줄이 있었고, 두 개 이상 켜면
+ * 시트 위에 탭바가 또 생겨 **똑같이 생긴 줄이 두 개**였다(hero 캡처). 이제 시트는 상시이고 무엇이
+ * 탭으로 뜨는지는 `tabsFor(state, …)` 가 정한다. 되살리지 마라 — 탭 안에서 고르면 되는 것을
+ * 화면 밖에서 한 번 더 고르게 하는 구조였다.
+ *
  * 패널은 두 종류다(stage-state.ts):
- *  · 토글 패널(통계/로그/후반지시) = 유저 소유, 기본 off, localStorage 기억.
- *  · 상태 패널(하프타임 감독/종료 결과) = 매치 상태 소유, 지금 해야 할 일이라 자동 표시.
+ *  · 정보 탭(통계/로그/후반지시) = 항상 표시. `brief` 만 상태 제한(전반).
+ *  · 상태 패널(하프타임 감독/종료 결과) = 매치 상태 소유, 지금 해야 할 일이라 맨 앞·기본 선택.
  */
 export function StageShell({ match, homeName, awayName, leagueRound = null }: StageShellProps) {
   const navigate = useNavigate();
-  const [toggles, setToggles] = useState<Toggles>(readToggles);
   const [preferredTab, setPreferredTab] = useState<TabKey | null>(null);
   // 재생 플레이헤드(뷰어가 미러링). 통계·로그·시계가 "지금까지"를 계산하는 기준.
   const [tick, setTick] = useState<number | null>(null);
 
   const half = halfForState(match.state);
   const statePanel = statePanelFor(match.state);
-  const tabs = tabsFor(toggles, statePanel);
+  const tabs = tabsFor(match.state, statePanel);
   const activeTab = resolveActiveTab(tabs, preferredTab);
   const sheetKind = sheetHeight(activeTab);
   /** 감독시간 = **관리 모드**: 무대가 상시가 아니라 탭이다(#244). */
@@ -99,19 +89,12 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
   // half 가 바뀌면(하프타임 → 결과) 플레이헤드는 새 하프 기준으로 다시 센다.
   useEffect(() => setTick(null), [half]);
 
-  const flip = useCallback((key: ToggleKey) => {
-    setToggles((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      try {
-        window.localStorage?.setItem(TOGGLE_STORAGE_KEY, serializeToggles(next));
-      } catch {
-        // 저장 실패(프라이빗 모드 등)는 이번 세션 선택만 적용 — 화면은 그대로 동작한다.
-      }
-      // 방금 켠 패널을 바로 보여준다(끌 때는 활성 탭 결정에 맡긴다).
-      if (!prev[key]) setPreferredTab(key);
-      return next;
-    });
-  }, []);
+  /**
+   * 후반 지시 초안 (#284) — **전반의 `후반 지시` 탭과 감독시간의 `감독` 탭이 같은 초안을 본다.**
+   * 셸이 소유하는 이유: 두 패널은 형제라 공통 조상이 여기뿐이고, 상태 전이(FIRST_HALF → HALFTIME)
+   * 중에도 이 컴포넌트는 언마운트되지 않아 초안이 끊기지 않는다.
+   */
+  const draft = useHalftimeDraft(match.id);
 
   return (
     <div className={styles.shell} data-testid="stage-shell">
@@ -195,10 +178,10 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
                 />
               )}
               {activeTab === "brief" && (
-                <SecondHalfBriefPanel match={match} clockOffsetMs={offsetMs} />
+                <SecondHalfBriefPanel match={match} clockOffsetMs={offsetMs} draft={draft} />
               )}
               {activeTab === "halftime" && (
-                <HalftimePanel match={match} clockOffsetMs={offsetMs} />
+                <HalftimePanel match={match} clockOffsetMs={offsetMs} draft={draft} />
               )}
               {activeTab === "stage" && (
                 /*
@@ -229,21 +212,6 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
           </aside>
         )}
       </div>
-
-      <nav className={styles.togglebar} aria-label="정보 토글">
-        {TOGGLE_KEYS.map((key) => (
-          <button
-            key={key}
-            type="button"
-            aria-pressed={toggles[key]}
-            className={`${styles.toggle} ${toggles[key] ? styles.toggleOn : ""}`}
-            data-testid={`stage-toggle-${key}`}
-            onClick={() => flip(key)}
-          >
-            {TAB_LABELS[key]}
-          </button>
-        ))}
-      </nav>
     </div>
   );
 }

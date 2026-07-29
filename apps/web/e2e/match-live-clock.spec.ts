@@ -221,13 +221,13 @@ test.describe("AC-W2-1 감독시간 — 카운트다운(#216: 3분)", () => {
   test("e. 전반 중에도 후반 지시를 미리 저장한다(phase=halftime UPSERT)", async ({ page }) => {
     const posts = await openMatch(page, "FIRST_HALF", clockFor({ phase: "FIRST_HALF", elapsedMs: 10_000 }));
 
-    await page.getByTestId("stage-toggle-brief").click();
+    // #284: 토글이 사라져 탭이 상시다. 저장 버튼도 없다 — 타이핑이 멎으면 자동으로 나간다.
+    await page.getByTestId("stage-tab-brief").click();
     const input = page.getByTestId("brief-team-prompt");
     await expect(input).toBeEnabled();
     await input.fill("후반은 라인 내리고 역습");
-    await page.getByTestId("brief-save").click();
 
-    await expect(page.getByTestId("brief-saved")).toBeVisible();
+    await expect(page.getByTestId("brief-save-status")).toHaveAttribute("data-status", "saved");
     expect(posts, "전반 중 저장도 halftime 프롬프트로 나가야 한다").toContainEqual(
       expect.objectContaining({ phase: "halftime", scope: "team", text: "후반은 라인 내리고 역습" }),
     );

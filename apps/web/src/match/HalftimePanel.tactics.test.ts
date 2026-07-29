@@ -63,6 +63,8 @@ vi.mock("../api/hooks", () => {
 
 // eslint-disable-next-line import/first
 import { HalftimePanel } from "./HalftimePanel";
+// eslint-disable-next-line import/first
+import { stubDraftHandle } from "./halftime-draft-fixture";
 
 /** 전반에 쓴 전술 — 라인 낮게(0.25), 나머지 보통. */
 const FIRST_HALF_TACTICS = { line: 0.25, press: 0.5, tempo: 0.5, width: 0.5 };
@@ -76,7 +78,7 @@ function renderPanel(teamTactics: typeof FIRST_HALF_TACTICS | undefined = FIRST_
       ? { formation: "4-4-2", starters: [], bench: [], teamTactics }
       : null,
   };
-  return render(h(HalftimePanel, { match: match as never }));
+  return render(h(HalftimePanel, { match: match as never, draft: stubDraftHandle() }));
 }
 
 function halftimeBody(): { substitutions: unknown[]; teamTactics?: Record<string, number> } {

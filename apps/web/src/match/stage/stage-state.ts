@@ -1,14 +1,28 @@
 /**
- * 관전 화면 셸의 순수 상태 로직 (P4-E1 S1, #169).
+ * 관전 화면 셸의 순수 상태 로직 (P4-E1 S1, #169 → #284 재편).
  * 설계 = docs/plan-v5/layout-game-screen.md §2·§3.
  *
- * 두 종류의 패널을 구분한다 — 이 구분이 "기본은 경기장면만"(AC-W1-1)을 지키는 핵심이다.
- *  · **토글 패널**(stats/log/brief): 유저 소유. 기본 off, localStorage 로 기억.
- *  · **상태 패널**(halftime/result): 매치 상태 소유. 유저가 지금 해야 하는 일(교체·후반시작·결과확인)
- *    이라 상태가 되면 자동으로 열린다. 토글 3개는 이때도 여전히 off.
+ * ── #284: 토글이 없어졌다 (hero 결정) ──────────────────────────────────────────────────────
+ * 원래는 정보 패널 3개(통계·로그·후반지시)가 **유저 소유 토글**이었고 기본 off 였다(#169 AC-W1-1
+ * "기본은 경기장면만"). 그래서 화면 아래 토글바가 상시로 있고, 두 개 이상 켜면 시트 위에 탭바가
+ * 또 생겨 **똑같이 생긴 줄이 두 개**였다.
+ *
+ * hero: *"탭 구조면 그 안에서 조정하면 되지 껐다켰다 할 필요가 없다."* → 토글바를 없애고 탭바
+ * 하나만 남긴다. **무엇이 탭으로 뜨는지는 이제 매치 상태가 정한다**(유저 설정이 아니다):
+ *
+ *   FIRST_HALF   → 통계 · 로그 · 후반 지시
+ *   HALFTIME     → 감독 · 경기장면 · 통계 · 로그     (후반 지시는 **감독 탭이 소유**한다 — 아래)
+ *   SECOND_HALF  → 통계 · 로그
+ *   FINISHED     → 결과 · 통계 · 로그
+ *
+ * 패널은 여전히 두 종류다:
+ *  · **정보 탭**(stats/log/brief): 항상 보인다. 다만 `brief` 는 **써서 의미가 있는 상태에서만**
+ *    (= 전반). 만져도 아무 데도 안 가는 손잡이를 남기지 않는다(#254 의 `hideTeamTune` 과 같은 규칙).
+ *  · **상태 패널**(halftime/result): 매치 상태 소유. 유저가 지금 해야 하는 일이라 맨 앞에 오고
+ *    기본으로 열린다.
  */
 
-export type ToggleKey = "stats" | "log" | "brief";
+export type InfoTabKey = "stats" | "log" | "brief";
 export type StatePanelKey = "halftime" | "result";
 /**
  * `stage` = **경기장면 탭**(감독시간 전용, #244).
@@ -19,16 +33,17 @@ export type StatePanelKey = "halftime" | "result";
  * 관전(전·후반)에서는 여전히 무대가 상시다 — 이 탭은 감독시간에만 나타난다(#169 AC-W1-1 유지).
  */
 export type StageTabKey = "stage";
-export type TabKey = ToggleKey | StatePanelKey | StageTabKey;
+export type TabKey = InfoTabKey | StatePanelKey | StageTabKey;
 
-export const TOGGLE_KEYS: readonly ToggleKey[] = ["stats", "log", "brief"];
+/** 정보 탭의 **표시 순서**(내용과 무관한 고정 순서 — 화면마다 달라지면 근육기억이 깨진다). */
+export const INFO_TAB_KEYS: readonly InfoTabKey[] = ["stats", "log", "brief"];
 
-export type Toggles = Record<ToggleKey, boolean>;
-
-/** 기본 = 경기장면만(AC-W1-1). */
-export const DEFAULT_TOGGLES: Toggles = { stats: false, log: false, brief: false };
-
-export const TOGGLE_STORAGE_KEY = "hmb.stage.toggles";
+/**
+ * 상태 패널이 없을 때 기본으로 열리는 탭 (#284 hero 확정 = 로그).
+ * 관전 중 가장 자연스러운 동반 정보이고, 경기가 흐르면 내용이 채워져 빈 화면이 되지 않는다
+ * (통계는 초반에 0-0/0슛이라 한동안 빈 표처럼 보인다).
+ */
+export const DEFAULT_INFO_TAB: InfoTabKey = "log";
 
 /** #244: 이모지를 뺀다 — 색·아이콘이 의미 없이 알록달록해지던 축(재설계 원칙 "색은 4개만"). */
 export const TAB_LABELS: Record<TabKey, string> = {
@@ -39,25 +54,6 @@ export const TAB_LABELS: Record<TabKey, string> = {
   result: "결과",
   stage: "경기장면",
 };
-
-/** 저장값 파싱 — 손상/구버전/부분 저장 전부 기본값으로 흡수(화면이 깨지지 않게). */
-export function parseToggles(raw: string | null | undefined): Toggles {
-  if (!raw) return { ...DEFAULT_TOGGLES };
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return { ...DEFAULT_TOGGLES };
-    const rec = parsed as Record<string, unknown>;
-    const out = { ...DEFAULT_TOGGLES };
-    for (const k of TOGGLE_KEYS) if (typeof rec[k] === "boolean") out[k] = rec[k];
-    return out;
-  } catch {
-    return { ...DEFAULT_TOGGLES };
-  }
-}
-
-export function serializeToggles(t: Toggles): string {
-  return JSON.stringify({ stats: t.stats, log: t.log, brief: t.brief });
-}
 
 /**
  * 감독시간인가 — **상태 이름이 둘**이다. `HALFTIME` 이 현행(P4-E2 #170)이고 `H1_BREAK` 은 그 자리의
@@ -196,26 +192,51 @@ export function headerScore(
 }
 
 /**
- * 시트에 뜰 탭 목록. 상태 패널이 먼저(유저가 해야 할 일), 그 뒤 켜진 토글이 고정 순서로.
- * 빈 배열이면 시트 자체가 없다(무대만).
+ * **후반 지시(미리 작성) 탭을 띄우는 상태** — 전반뿐이다.
+ *
+ * 서버는 `POST /prompts{phase:halftime}` 을 FIRST_HALF·HALFTIME 둘 다 허용하지만(`MatchService`),
+ * 감독시간에는 **감독 탭이 같은 입력을 프리필된 채로** 갖는다(#284). 둘을 같이 띄우면 같은 문장을
+ * 편집하는 칸이 화면에 두 개가 되고, 어느 쪽이 이기는지 유저가 알 방법이 없다.
+ * 후반·종료에서는 애초에 낼 곳이 없다(409).
  */
-export function tabsFor(toggles: Toggles, statePanel: StatePanelKey | null): TabKey[] {
+export function briefTabVisible(state: string | undefined): boolean {
+  return state === "FIRST_HALF";
+}
+
+/**
+ * 시트에 뜰 탭 목록 (#284 — 유저 토글이 아니라 **상태**가 정한다).
+ * 상태 패널이 먼저(유저가 해야 할 일), 그 뒤 정보 탭이 고정 순서로.
+ *
+ * 빈 배열이 되는 경우는 없다 — 통계·로그는 항상 있다. 그래서 시트도 항상 있다(이게 #284 의 요구:
+ * "애초부터 열려 있게"). `bodyNoSheet` 경로는 남겨 두되 도달하지 않는다.
+ */
+export function tabsFor(state: string | undefined, statePanel: StatePanelKey | null): TabKey[] {
   const tabs: TabKey[] = [];
   if (statePanel) tabs.push(statePanel);
   // 감독시간에는 무대가 상시가 아니라 **탭**이다(#244) — 감독 패널 바로 다음 자리에 둔다.
   if (statePanel === "halftime") tabs.push("stage");
-  for (const k of TOGGLE_KEYS) if (toggles[k]) tabs.push(k);
+  for (const k of INFO_TAB_KEYS) {
+    if (k === "brief" && !briefTabVisible(state)) continue;
+    tabs.push(k);
+  }
   return tabs;
 }
 
 /**
- * 활성 탭 결정 — 유저가 고른 탭이 아직 살아 있으면 유지, 아니면 첫 탭(=상태 패널 우선).
- * 탭이 없으면 null.
+ * 활성 탭 결정 — 유저가 고른 탭이 아직 살아 있으면 유지.
+ *
+ * 아니면 기본값인데, **순서가 있다**:
+ *  ① 상태 패널(감독·결과)이 있으면 그것 — 지금 해야 할 일이 정보 탭보다 앞선다.
+ *  ② 없으면 `DEFAULT_INFO_TAB`(로그, #284 hero 확정). 목록의 첫 탭(통계)이 아니다 —
+ *    **표시 순서와 기본 선택은 다른 축**이다. 통계를 먼저 그리는 건 익숙한 순서라서고,
+ *    로그를 먼저 여는 건 관전 중 볼 게 있어서다.
  */
 export function resolveActiveTab(tabs: readonly TabKey[], preferred: TabKey | null): TabKey | null {
   if (tabs.length === 0) return null;
   if (preferred && tabs.includes(preferred)) return preferred;
-  return tabs[0] ?? null;
+  const first = tabs[0];
+  if (first === "halftime" || first === "result") return first;
+  return tabs.includes(DEFAULT_INFO_TAB) ? DEFAULT_INFO_TAB : (first ?? null);
 }
 
 /**

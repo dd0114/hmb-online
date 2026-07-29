@@ -165,7 +165,8 @@ test.describe("#233 후반 헤더 스코어", () => {
 
   test("d. 로그 패널 골 라인도 같은 스코어를 말한다(헤더와 어긋나지 않게)", async ({ page }) => {
     await openSecondHalf(page);
-    await page.getByTestId("stage-toggle-log").click();
+    // #284: 정보 패널은 토글이 아니라 상시 탭이다 — 켜는 단계 없이 바로 고른다.
+    await page.getByTestId("stage-tab-log").click();
     await seek(page, PROBE_TICK);
 
     const goalRows = page.locator('[data-testid="stage-panel-log"] li', { hasText: "GOAL" });
