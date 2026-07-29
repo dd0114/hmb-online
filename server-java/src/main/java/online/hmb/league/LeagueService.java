@@ -149,12 +149,19 @@ public class LeagueService {
      *                      바뀔 때 조용히 어긋난다.
      * @param promoteRankMax 이 순위 이내면 승급 / @param relegateRankMin 이 순위 이상이면 강등.
      *                      규칙을 내려주는 이유도 같다(클라가 컷을 하드코딩하지 않게).
+     *                      <p>⚠️ <b>사다리 끝에서는 null 이다</b> — 최상위 디비전에는 승급이,
+     *                      입문 디비전에는 강등이 <b>존재하지 않는다</b>({@link #nextDivision} 이
+     *                      클램프한다). config 상수를 그대로 실어 보내면 클라가 서버가 하지 않는
+     *                      전이를 화면에 단언한다: 신규 유저 전원이 있는 입문 디비전에서 18라운드
+     *                      내내 없는 강등 위협을 빨간 띠로 보고, 최상위에서 우승하면 "한 단계 위로
+     *                      갑니다"라는 거짓말을 본다(독립검증 BL-1). <b>여기서 잘라 보내야</b>
+     *                      클라가 사다리 경계를 추측하지 않는다.
      */
     public record LeagueSeason(String id, int seasonNo, String state, List<LeagueTeam> teams,
                                List<LeagueStanding> standings, List<LeagueFixture> fixtures,
                                LeagueFixture nextUserFixture, SeasonReward seasonReward,
                                int division, String divisionName,
-                               int promoteRankMax, int relegateRankMin) {
+                               Integer promoteRankMax, Integer relegateRankMin) {
     }
 
     /**
@@ -992,7 +999,34 @@ public class LeagueService {
         return new LeagueSeason(season.id(), season.seasonNo(), season.state(),
                 teams, standings, fixtures, next, reward,
                 season.division(), spec == null ? null : spec.name(),
-                promoteRankMax, relegateRankMin);
+                effectivePromoteCut(season.division()), effectiveRelegateCut(season.division()));
+    }
+
+    /**
+     * 이 디비전에서 <b>실제로 일어나는</b> 승급 컷. 최상위면 null(더 올라갈 곳이 없다).
+     * 사다리 표가 없으면(구 발행물) null — 전이 자체를 안 하므로 규칙도 없다.
+     */
+    private Integer effectivePromoteCut(int division) {
+        List<LeagueDataService.Division> divisions = ladder();
+        if (divisions.isEmpty()) {
+            return null;
+        }
+        int top = divisions.stream().mapToInt(LeagueDataService.Division::level).min().orElse(division);
+        return division <= top ? null : promoteRankMax;
+    }
+
+    /** 이 디비전에서 실제로 일어나는 강등 컷. 입문이면 null(더 내려갈 곳이 없다). */
+    private Integer effectiveRelegateCut(int division) {
+        List<LeagueDataService.Division> divisions = ladder();
+        if (divisions.isEmpty()) {
+            return null;
+        }
+        int bottom = divisions.stream().mapToInt(LeagueDataService.Division::level).max().orElse(division);
+        return division >= bottom ? null : relegateRankMin;
+    }
+
+    private List<LeagueDataService.Division> ladder() {
+        return leagueDataService.get().map(LeagueDataService.LeagueData::divisions).orElse(List.of());
     }
 
     /** {@link SeasonReward} 파생(SoT = point_ledger 지급행 + computeStandings 순위 — 새 컬럼 없음). */

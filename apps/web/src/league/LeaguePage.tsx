@@ -234,7 +234,23 @@ function StandingsTable({
                 data-user={s.isUser ? "true" : undefined}
                 data-zone={zone === "none" ? undefined : zone}
               >
-                <td className={styles.rankCol}>{s.rank}</td>
+                <td className={styles.rankCol}>
+                  {s.rank}
+                  {/*
+                    색 단일 채널이면 적록색약에게 승급권/강등권이 구분되지 않는다(독립검증 MIN-2).
+                    ▲/▼ 기호로 축을 하나 더 주고, 보조기술에는 텍스트로 읽힌다.
+                  */}
+                  {zone === "promote" && (
+                    <span className={styles.zoneMark} aria-label="승급권">
+                      ▲
+                    </span>
+                  )}
+                  {zone === "relegate" && (
+                    <span className={styles.zoneMark} aria-label="강등권">
+                      ▼
+                    </span>
+                  )}
+                </td>
                 <td className={styles.teamCol}>{s.name}</td>
                 <td>{s.played}</td>
                 <td>{s.won}</td>

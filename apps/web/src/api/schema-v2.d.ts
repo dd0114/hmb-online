@@ -677,10 +677,10 @@ export interface components {
             division?: number;
             /** @description 디비전 표시명(league.v2.json divisions[].name). **서버가 SoT** — 클라가 level→이름을 복제하면 표가 바뀔 때 조용히 어긋난다. 구 발행물(divisions 없음)이면 null. */
             divisionName?: string | null;
-            /** @description 최종 순위가 이 값 이하면 승급(level−1). 최상위에서는 클램프. */
-            promoteRankMax?: number;
-            /** @description 최종 순위가 이 값 이상이면 강등(level+1). 입문에서는 클램프. */
-            relegateRankMin?: number;
+            /** @description 최종 순위가 이 값 이하면 승급(level−1). **최상위 디비전에서는 null** — 더 올라갈 곳이 없어 승급이 일어나지 않는다. 서버가 여기서 잘라 보내므로 클라는 사다리 경계를 추측하지 않는다(추측하면 "우승 → 한 단계 위" 같은 거짓 안내가 나간다). */
+            promoteRankMax?: number | null;
+            /** @description 최종 순위가 이 값 이상이면 강등(level+1). **입문 디비전에서는 null** — 더 내려갈 곳이 없어 강등이 일어나지 않는다. 신규 유저는 전원 입문 디비전이라, 값을 실어 보내면 100% 의 유저가 존재하지 않는 강등 위협을 보게 된다. */
+            relegateRankMin?: number | null;
             /** @description 시즌 보상 요약(additive, 시즌종료 연출용 — P3-D8/AC-E1). SoT=point_ledger 지급행 + 순위 파생. */
             seasonReward?: components["schemas"]["SeasonReward"];
         };

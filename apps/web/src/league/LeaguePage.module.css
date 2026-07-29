@@ -470,3 +470,17 @@
 .outcome_neutral {
   background: var(--bg-elevated);
 }
+
+/* 승급/강등 구역의 **두 번째 축** — 색만으로 구분하면 적록색약에게 안 보인다(MIN-2). */
+.zoneMark {
+  margin-left: 3px;
+  font-size: 9px;
+  vertical-align: middle;
+  opacity: 0.85;
+}
+.promoteRow .zoneMark {
+  color: var(--success, #3fb950);
+}
+.relegateRow .zoneMark {
+  color: var(--danger, #f85149);
+}

@@ -283,8 +283,8 @@ export function pickDivision(season: LeagueSeason | null | undefined): DivisionI
   if (!raw) return null;
   const level = numberOrNull(raw.division);
   if (level === null) return null; // 디비전 개념이 없는 서버 — 이 기능 전체를 숨긴다.
-  const promoteRankMax = numberOrNull(raw.promoteRankMax);
-  const relegateRankMin = numberOrNull(raw.relegateRankMin);
+  const promoteRankMax = rankCutOrNull(raw.promoteRankMax);
+  const relegateRankMin = rankCutOrNull(raw.relegateRankMin);
   return {
     level,
     name: typeof raw.divisionName === "string" && raw.divisionName.trim() ? raw.divisionName : null,
@@ -303,6 +303,12 @@ interface DivisionFields {
 
 function numberOrNull(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/** 순위 컷은 1 이상이어야 뜻이 있다. 0·음수는 부재로 취급 — "1~0위 승급" 같은 문장을 막는다. */
+function rankCutOrNull(v: unknown): number | null {
+  const n = numberOrNull(v);
+  return n !== null && n >= 1 ? n : null;
 }
 
 /** 순위 → 구역. 컷이 없으면 `none`(색칠 안 함). */

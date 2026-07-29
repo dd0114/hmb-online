@@ -179,7 +179,7 @@ describe("seasonSummary — standings 의 isUser 행에서 시즌 요약 계산"
 });
 
 describe("pickSeasonReward — Phase3 additive 소비 + 구서버 폴백", () => {
-  const reward: LeagueSeasonReward = { rank: 3, points: 500, status: "AWARDED" };
+  const reward: LeagueSeasonReward = { rank: 3, points: 500, status: "GRANTED" };
 
   it("season 안의 seasonReward 를 읽는다", () => {
     expect(pickSeasonReward({ season: { seasonReward: reward } as never })).toEqual(reward);
@@ -222,7 +222,7 @@ describe("pickSeasonReward — Phase3 additive 소비 + 구서버 폴백", () =>
     expect(weird.message).toContain("확인할 수 없습니다");
   });
   it("rank/points 가 숫자가 아니면 FAILED 로 승격", () => {
-    const bad = pickSeasonReward({ seasonReward: { points: 500, status: "AWARDED" } as never })!;
+    const bad = pickSeasonReward({ seasonReward: { points: 500, status: "GRANTED" } as never })!;
     expect(bad.status).toBe("FAILED");
     expect(bad.rank).toBe(0);
   });
@@ -242,17 +242,17 @@ describe("formatAwardedAt — 지급 시각 표시(순수 문자열, Date 미사
 
 describe("seasonRewardView — status 3분기(조용한 숨김 금지)", () => {
   it("AWARDED = 보상액 표시 + 카운트업 연출 + 재조회 없음", () => {
-    const v = seasonRewardView({ rank: 2, points: 1200, status: "AWARDED" });
+    const v = seasonRewardView({ rank: 2, points: 1200, status: "GRANTED" });
     expect(v).toMatchObject({ showPoints: true, animate: true, canRetry: false, tone: "success" });
     expect(v.detail).toContain("1,200");
     expect(v.detail).toContain("2위");
   });
 
   it("재화 단위는 주입된 포매터가 정한다 — 순수 함수가 심볼을 알지 않는다 (#232)", () => {
-    const v = seasonRewardView({ rank: 1, points: 100_000, status: "AWARDED" }, (n) => `${n} Ω`);
+    const v = seasonRewardView({ rank: 1, points: 100_000, status: "GRANTED" }, (n) => `${n} Ω`);
     expect(v.detail).toContain("100000 Ω");
     // 주입을 잊어도 "P" 같은 틀린 단위가 새 나가지 않는다(숫자만).
-    expect(seasonRewardView({ rank: 1, points: 100_000, status: "AWARDED" }).detail).not.toContain("P");
+    expect(seasonRewardView({ rank: 1, points: 100_000, status: "GRANTED" }).detail).not.toContain("P");
   });
   it("PENDING = 처리 중 안내 + 재조회 가능 + 지급액 미확정", () => {
     const v = seasonRewardView({ rank: 5, points: 300, status: "PENDING" });
@@ -368,6 +368,14 @@ describe("pickDivision — 구 서버 폴백이 최우선", () => {
     expect(divisionLabel(pickDivision(seasonWith({ division: 5, divisionName: "디비전 5" })))).toBe("디비전 5");
   });
 
+  it("0·음수 컷은 부재로 취급 — '1~0위 승급' 같은 문장을 만들지 않는다", () => {
+    const d = pickDivision(seasonWith({ division: 5, promoteRankMax: 0, relegateRankMin: -1 }));
+    expect(d?.promoteRankMax).toBeNull();
+    expect(d?.relegateRankMin).toBeNull();
+    expect(d?.hasRules).toBe(false);
+    expect(divisionRuleText(d)).toBeNull();
+  });
+
   it("숫자가 아닌 값은 부재로 취급(서버 계약 밖 방어)", () => {
     expect(pickDivision(seasonWith({ division: "5" }))).toBeNull();
     const d = pickDivision(seasonWith({ division: 5, promoteRankMax: "2", relegateRankMin: null }));
@@ -436,5 +444,38 @@ describe("divisionOutcome — 시즌 종료 연출", () => {
     expect(divisionOutcome(null, d)).toBeNull();
     expect(divisionOutcome(1, null)).toBeNull();
     expect(divisionOutcome(1, pickDivision(seasonWith({ division: 5 })))).toBeNull();
+  });
+});
+
+
+describe("보상 status — 서버 enum 을 그대로 받는다 (독립검증 MAJ-1)", () => {
+  // 서버 openapi = PENDING | GRANTED | NONE. 예전엔 클라가 "AWARDED" 를 기대해
+  // **실제로 보상을 받은 유저가 '지급되지 않았습니다' 를 봤다**. 목이 서버 형상을 안 지키면
+  // 계약이 green 인 채로 라이브에서만 깨진다.
+  it("GRANTED = 지급 완료(성공 톤)", () => {
+    const v = seasonRewardView({ rank: 1, points: 100_000, status: "GRANTED" });
+    expect(v.tone).toBe("success");
+    expect(v.showPoints).toBe(true);
+    expect(v.canRetry).toBe(false);
+    expect(v.headline).toContain("지급 완료");
+  });
+
+  it("NONE = 보상 대상이 아님(실패 아님) — 에러 톤·재조회 버튼이 뜨면 안 된다", () => {
+    const v = seasonRewardView({ rank: 7, points: 0, status: "NONE" });
+    expect(v.tone).not.toBe("error");
+    expect(v.canRetry).toBe(false);
+    expect(v.headline).not.toContain("지급되지 않았");
+  });
+
+  it("서버가 보내는 세 값은 전부 '알 수 없는 응답' 으로 떨어지지 않는다", () => {
+    for (const status of ["PENDING", "GRANTED", "NONE"] as const) {
+      const picked = pickSeasonReward({ seasonReward: { rank: 1, points: 10, status } });
+      expect(picked?.status, `${status} 는 알려진 값이어야 한다`).toBe(status);
+    }
+  });
+
+  it("정말 모르는 값만 FAILED 로 승격한다(조용한 숨김 금지)", () => {
+    const picked = pickSeasonReward({ seasonReward: { rank: 1, points: 10, status: "AWARDED" } as never });
+    expect(picked?.status).toBe("FAILED");
   });
 });

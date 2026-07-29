@@ -214,6 +214,54 @@ class LeagueDivisionTest extends MatchTestBase {
         assertThat(seasonDto(token).path("division").asInt()).isEqualTo(8);
     }
 
+    @Test
+    void ladderEndsReportNoPromotionOrRelegationBecauseTheServerClampsThere() {
+        // 독립검증 BL-1: config 컷을 그대로 실어 보내면 클라가 **서버가 하지 않는 전이**를 화면에
+        // 단언한다. 입문 디비전에는 강등이, 최상위에는 승급이 없다(nextDivision 이 클램프).
+        // 신규 유저는 전원 입문 디비전이므로 이건 100% 의 유저가 보는 화면이다.
+        String entryToken = setupUserWithRealDeck("cut-entry");
+        setDivision("cut-entry", 10); // 입문
+        startSeason(entryToken);
+        JsonNode entry = seasonDto(entryToken);
+        assertThat(entry.path("promoteRankMax").asInt()).as("입문에서도 승급은 있다").isEqualTo(2);
+        assertThat(entry.path("relegateRankMin").isNull())
+                .as("입문 디비전에는 강등이 없다 — 컷을 보내면 없는 위협을 그린다").isTrue();
+
+        String topToken = setupUserWithRealDeck("cut-top");
+        setDivision("cut-top", 1); // 최상위
+        startSeason(topToken);
+        JsonNode top = seasonDto(topToken);
+        assertThat(top.path("promoteRankMax").isNull())
+                .as("최상위에는 승급이 없다 — 우승했는데 '한 단계 위로' 는 거짓말이다").isTrue();
+        assertThat(top.path("relegateRankMin").asInt()).as("최상위에서도 강등은 있다").isEqualTo(9);
+
+        String midToken = setupUserWithRealDeck("cut-mid");
+        setDivision("cut-mid", 5);
+        startSeason(midToken);
+        JsonNode mid = seasonDto(midToken);
+        assertThat(mid.path("promoteRankMax").asInt()).isEqualTo(2);
+        assertThat(mid.path("relegateRankMin").asInt()).isEqualTo(9);
+    }
+
+    @Test
+    void reportedCutsMatchWhatNextDivisionActuallyDoes() {
+        // 화면 규칙과 실제 전이가 갈라지지 않는다는 계약. 사다리 전 구간을 훑어
+        // "컷이 있다 ⇔ 그 순위에서 디비전이 실제로 움직인다" 를 확인한다.
+        for (int level = 10; level >= 1; level--) {
+            String nick = "cut-scan-" + level;
+            String token = setupUserWithRealDeck(nick);
+            setDivision(nick, level);
+            startSeason(token);
+            JsonNode dto = seasonDto(token);
+            boolean promoteAdvertised = !dto.path("promoteRankMax").isNull();
+            boolean relegateAdvertised = !dto.path("relegateRankMin").isNull();
+            boolean promoteHappens = LeagueService.nextDivision(level, 1, 1, 10, 2, 9) != level;
+            boolean relegateHappens = LeagueService.nextDivision(level, 10, 1, 10, 2, 9) != level;
+            assertThat(promoteAdvertised).as("D%d 승급 광고 == 실제 승급", level).isEqualTo(promoteHappens);
+            assertThat(relegateAdvertised).as("D%d 강등 광고 == 실제 강등", level).isEqualTo(relegateHappens);
+        }
+    }
+
     // ── 강도 배율이 실제 엔진 입력까지 도달하는가 ────────────────────────
 
     @Test

@@ -53,7 +53,7 @@ interface SeasonOpts {
 function seasonPayload(o: SeasonOpts = {}) {
   const {
     state = "ACTIVE", userRank = 3,
-    division = 5, divisionName = "디비전 5",
+    division = 5, divisionName = "브론즈 리그",
     promoteRankMax = 2, relegateRankMin = 9,
   } = o;
   const season: Record<string, unknown> = {
@@ -94,7 +94,7 @@ test.describe("#262 디비전 — 진행 중 시즌", () => {
   test("디비전 뱃지 · 승급권/강등권 구역 · 규칙 문구가 보인다", async ({ page }) => {
     await bootstrap(page, { state: "ACTIVE", userRank: 3 });
 
-    await expect(page.getByTestId("division-tag")).toHaveText("디비전 5");
+    await expect(page.getByTestId("division-tag")).toHaveText("브론즈 리그");
     await expect(page.getByTestId("division-rule")).toHaveText("1~2위 승급 · 9위부터 강등");
 
     // 1~2위 = 승급권, 9~10위 = 강등권, 3~8위 = 구역 없음.
@@ -131,7 +131,7 @@ test.describe("#262 디비전 — 시즌 종료 연출", () => {
     const card = page.getByTestId("division-outcome");
     await expect(card).toHaveAttribute("data-zone", "promote");
     await expect(card).toContainText("승급!");
-    await expect(card).toContainText("디비전 5에서 2위");
+    await expect(card).toContainText("브론즈 리그에서 2위");
     mkdirSync(SMOKE_DIR, { recursive: true });
     await page.screenshot({ path: `${SMOKE_DIR}league-division-promote.png`, fullPage: true });
   });
@@ -167,11 +167,11 @@ test.describe("#262 구 서버 폴백 — 필드가 없으면 조용히 사라�
 
   test("division 은 있는데 컷이 없으면: 뱃지만 뜨고 구역은 안 칠한다", async ({ page }) => {
     await bootstrap(page, {
-      state: "ACTIVE", userRank: 3, division: 7, divisionName: "디비전 7",
+      state: "ACTIVE", userRank: 3, division: 7, divisionName: "실버 리그",
       promoteRankMax: null, relegateRankMin: null,
     });
 
-    await expect(page.getByTestId("division-tag")).toHaveText("디비전 7");
+    await expect(page.getByTestId("division-tag")).toHaveText("실버 리그");
     await expect(page.getByTestId("division-rule")).toHaveCount(0);
     await expect(page.locator('[data-testid="standings"] tr[data-zone]')).toHaveCount(0);
   });
@@ -183,6 +183,62 @@ test.describe("#262 구 서버 폴백 — 필드가 없으면 조용히 사라�
     });
     await expect(page.getByTestId("season-end")).toBeVisible();
     await expect(page.getByTestId("division-outcome")).toHaveCount(0);
+  });
+});
+
+test.describe("#262 사다리 끝 — 서버가 안 하는 전이를 그리지 않는다 (독립검증 BL-1)", () => {
+  /*
+   * 서버는 최상위/입문에서 컷을 **null 로 잘라** 보낸다(LeagueService.effective*Cut) — 거기엔
+   * 승급/강등이 존재하지 않기 때문이다. 클라가 config 상수를 그대로 믿으면:
+   *  · 입문(신규 유저 **전원**)에서 18라운드 내내 없는 강등 위협을 빨간 띠로 보고
+   *  · 최상위에서 우승하면 "한 단계 위 디비전에서 시작합니다"라는 거짓말을 본다.
+   * 이 스펙이 그 실패모드를 박제한다.
+   */
+
+  test("입문 디비전: 강등 컷이 null 이면 강등 구역도 문구도 없다", async ({ page }) => {
+    await bootstrap(page, {
+      state: "ACTIVE", userRank: 3, division: 10, divisionName: "브론즈 리그",
+      promoteRankMax: 2, relegateRankMin: null, // 서버가 잘라 보낸 형상
+    });
+    await expect(page.getByTestId("division-rule")).toHaveText("1~2위 승급");
+    await expect(page.locator('[data-testid="standings"] tr[data-zone="relegate"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="standings"] tr[data-zone="promote"]')).toHaveCount(2);
+    mkdirSync(SMOKE_DIR, { recursive: true });
+    await page.screenshot({ path: `${SMOKE_DIR}league-division-entry.png`, fullPage: true });
+  });
+
+  test("입문 디비전 꼴찌로 끝나도 '강등' 이라고 하지 않는다", async ({ page }) => {
+    await bootstrap(page, {
+      state: "FINISHED", userRank: 10, division: 10, divisionName: "브론즈 리그",
+      promoteRankMax: 2, relegateRankMin: null,
+    });
+    const card = page.getByTestId("division-outcome");
+    await expect(card).toHaveAttribute("data-zone", "hold");
+    await expect(card).not.toContainText("강등");
+    await expect(card).toContainText("디비전 유지");
+  });
+
+  test("최상위 디비전 우승은 '한 단계 위' 라고 하지 않는다", async ({ page }) => {
+    await bootstrap(page, {
+      state: "FINISHED", userRank: 1, division: 1, divisionName: "챔피언 리그",
+      promoteRankMax: null, relegateRankMin: 9, // 최상위 — 승급 없음
+    });
+    const card = page.getByTestId("division-outcome");
+    await expect(card).toHaveAttribute("data-zone", "hold");
+    await expect(card).not.toContainText("승급");
+    await expect(card).not.toContainText("한 단계 위");
+    mkdirSync(SMOKE_DIR, { recursive: true });
+    await page.screenshot({ path: `${SMOKE_DIR}league-division-top.png`, fullPage: true });
+  });
+
+  test("최상위 진행 중: 승급 구역은 없고 강등 구역만 있다", async ({ page }) => {
+    await bootstrap(page, {
+      state: "ACTIVE", userRank: 3, division: 1, divisionName: "챔피언 리그",
+      promoteRankMax: null, relegateRankMin: 9,
+    });
+    await expect(page.getByTestId("division-rule")).toHaveText("9위부터 강등");
+    await expect(page.locator('[data-testid="standings"] tr[data-zone="promote"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="standings"] tr[data-zone="relegate"]')).toHaveCount(2);
   });
 });
 
