@@ -47,7 +47,13 @@ public class CharBundleService {
                         rs.getLong("byte_size"),
                         rs.getString("created_at"),
                         CharBundleStorage.REQUIRED_ENTRIES))
-                .optional();
+                .optional()
+                // ⚠️ **DB 만 믿지 않는다**(독립검증 MAJOR-2). 볼륨을 잃고 DB 만 복원하면 행은
+                //    "REV2 서빙 중"이라 말하는데 파일이 없다. 그 상태에서 200 을 주면 web 이
+                //    서버 base 를 채택하고 매니페스트 4종이 전부 404 가 되어 **구운 폴백으로
+                //    돌아갈 경로가 사라진다** — 화면이 통째로 이니셜이 된다(실측).
+                //    여기서 파일을 확인하면 "번들 없음"이 되어 web 이 정상적으로 폴백한다.
+                .filter(idx -> storage.read(idx.revision(), CharBundleStorage.REQUIRED_ENTRIES.get(0)) != null);
     }
 
     /** 활성 리비전에서 파일 하나. 활성 번들이 없거나 파일이 없으면 {@code null}(→ 404). */

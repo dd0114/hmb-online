@@ -174,6 +174,19 @@ class AdminUnitPurgeTest extends ApiTestBase {
                 .as("players 를 참조하는 표가 회수 가드 목록과 일치해야 한다 — "
                         + "새 표를 추가했다면 AdminCatalogService.REFERENCING_TABLES 에도 넣어라")
                 .isEqualTo(AdminCatalogService.REFERENCING_TABLES.keySet());
+
+        // ⚠️ **표 이름만 대조하면 부족하다**(독립검증 MIN-3): `trade_slots` 처럼 참조 컬럼이
+        //    **둘**인 표에 컬럼이 하나 더 생기면 이름 집합은 그대로라 못 잡는다. 가드의 WHERE 절이
+        //    그 컬럼을 실제로 보는지까지 확인한다.
+        for (Map.Entry<String, Set<String>> e : fromSchema.entrySet()) {
+            String where = AdminCatalogService.REFERENCING_TABLES.get(e.getKey());
+            for (String column : e.getValue()) {
+                assertThat(where)
+                        .as(e.getKey() + "." + column + " 을 회수 가드가 검사하지 않는다 — "
+                                + "참조 컬럼이 늘면 WHERE 절도 같이 늘려라")
+                        .contains(column);
+            }
+        }
     }
 
     @SuppressWarnings("rawtypes")

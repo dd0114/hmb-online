@@ -127,8 +127,17 @@ public class AdminCharBundleService {
                 throw ApiException.validation("업로드할 번들(zip)이 없습니다");
             }
             byte[] zipBytes = read(file);
-            CharBundleStorage.Extracted extracted = storage.extract(revisionId, zipBytes);
-            Map<String, Object> summary = summarize(revisionId);
+
+            // ── 1단계: 전부 메모리에서 검증한다(디스크 무접촉) ───────────────────────
+            // ⚠️ **매니페스트 파싱이 여기 있는 것이 계약이다**(독립검증 BLOCKER-1). 예전엔 파싱이
+            //    쓰기 **뒤에** 있어서, JSON 이 깨진 번들이 "다 쓴 뒤 400" 이 되며 고아 리비전
+            //    디렉토리를 볼륨에 남겼다(회수 동사가 없는 보관소라 영구 누수). 게다가 zip 을 몇 번
+            //    고쳐 올리는 것이 이 기능의 정상 사용 패턴이라, 드문 경로가 아니라 흔한 경로였다.
+            CharBundleStorage.Bundle bundle = storage.read(zipBytes);
+            Map<String, Object> summary = summarize(bundle);
+
+            // ── 2단계: 통과한 것만 쓴다 ─────────────────────────────────────────
+            storage.write(revisionId, bundle);
 
             String now = Notices.now(clock);
             try {
@@ -137,19 +146,23 @@ public class AdminCharBundleService {
                                                          note, active, created_by, created_at, updated_at)
                                 VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
                                 """)
-                        .params(revisionId, extracted.names().size(), extracted.totalBytes(),
+                        .params(revisionId, bundle.fileCount(), bundle.totalBytes(),
                                 writeJson(summary), trimNote(note), actorUserId, now, now)
                         .update());
             } catch (RuntimeException e) {
-                storage.removeQuietly(revisionId); // DB 가 실패하면 푼 파일도 되돌린다(고아 방지)
+                storage.removeQuietly(revisionId); // DB 가 실패하면 쓴 트리도 되돌린다(고아 방지)
                 throw e;
             }
 
-            BundleView view = new BundleView(revisionId, extracted.names().size(), extracted.totalBytes(),
+            BundleView view = new BundleView(revisionId, bundle.fileCount(), bundle.totalBytes(),
                     summary, trimNote(note), false, actorUserId, now, now);
             audit(actorUserId, ACTION_UPLOAD, "ok", reason, detail(revisionId, null, view, null, null));
             return view;
         } catch (RuntimeException e) {
+            // ⚠️ **백스톱**: 위 두 지점이 각자 되돌리지만, 앞으로 이 메서드에 단계가 추가될 때
+            //    되돌리기를 빠뜨리면 다시 고아가 생긴다. 여기서 한 번 더 지운다 — 성공 경로는
+            //    이 catch 에 오지 않으므로 멀쩡한 리비전을 지울 위험이 없다.
+            storage.removeQuietly(revisionId);
             audit(actorUserId, ACTION_UPLOAD, "error", reason,
                     detail(revisionId, null, null, Map.of("note", String.valueOf(note)), e));
             throw rethrow(e);
@@ -202,22 +215,22 @@ public class AdminCharBundleService {
      * JSON 이 깨진 번들을 활성화하면 web 은 그 순간 <b>부분 폴백</b>(일부 축만 살아 있는 상태)이
      * 되는데, 그건 "아트가 안 바뀐다"보다 알아채기 어렵다.
      */
-    private Map<String, Object> summarize(String revisionId) {
-        Map<String, Object> base = readJson(revisionId, "manifest.json");
-        Map<String, Object> units = readJson(revisionId, "units/manifest.json");
-        Map<String, Object> mapping = readJson(revisionId, "player-chars.json");
-        readJson(revisionId, "characters/manifest.json"); // 파싱 가능 여부만 확인
+    private Map<String, Object> summarize(CharBundleStorage.Bundle bundle) {
+        Map<String, Object> base = readJson(bundle, "manifest.json");
+        Map<String, Object> units = readJson(bundle, "units/manifest.json");
+        Map<String, Object> mapping = readJson(bundle, "player-chars.json");
+        readJson(bundle, "characters/manifest.json"); // 파싱 가능 여부만 확인
         return CharBundleStorage.summarize(base, units, mapping);
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> readJson(String revisionId, String rel) {
-        CharBundleStorage.Served served = storage.read(revisionId, rel);
-        if (served == null) {
+    private Map<String, Object> readJson(CharBundleStorage.Bundle bundle, String rel) {
+        byte[] bytes = bundle.files().get(rel);
+        if (bytes == null) {
             throw ApiException.validation("번들에 " + rel + " 가 없습니다");
         }
         try {
-            return objectMapper.readValue(served.bytes(), Map.class);
+            return objectMapper.readValue(bytes, Map.class);
         } catch (IOException e) {
             // ⚠️ 파서 내부 메시지를 응답에 그대로 싣지 않는다(AdminErrorHandler 가 막는 유출과 같은 축) —
             //    운영자에게 필요한 것은 "어느 파일이 JSON 이 아닌가"뿐이다.

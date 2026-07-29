@@ -234,13 +234,137 @@ class CharBundleApiTest extends ApiTestBase {
 
     /** 매니페스트가 JSON 으로 안 읽히면 거부 — 켜고 나서 부분 폴백이 되는 것보다 낫다. */
     @Test
-    void aBundleWithBrokenManifestJsonIsRejected() {
+    void aBundleWithBrokenManifestJsonIsRejected() throws Exception {
         String admin = adminToken();
         Map<String, byte[]> broken = new LinkedHashMap<>(validEntries("x"));
         broken.put("units/manifest.json", "{not json".getBytes(StandardCharsets.UTF_8));
 
         assertThat(uploadRaw(admin, zip(broken), null).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(bundleCount()).isZero();
+    }
+
+    /**
+     * <b>거절된 번들은 디스크에도 아무것도 남기지 않는다</b> — 독립검증 BLOCKER-1.
+     *
+     * <p>이 계약이 없을 때 실제로 어땠나: 매니페스트 파싱이 <b>쓰기 뒤에</b> 있어서 JSON 이 깨진
+     * 번들이 "다 쓴 뒤 400" 이 됐고 <b>최대 64MB 짜리 고아 디렉토리</b>가 볼륨에 남았다. 회수
+     * 동사가 없는 보관소라 영구 누수이고, 하필 <b>zip 을 몇 번 고쳐 올리는 것이 이 기능의 정상
+     * 사용 패턴</b>이다. 기존 테스트들은 DB 행만 셌기 때문에 전부 green 이었다.
+     *
+     * <p>그래서 거절 <b>전 종류</b>를 한 테스트에서 태우고 <b>디렉토리 수</b>로 단언한다 —
+     * 새 거절 사유가 생길 때 여기 한 줄만 추가하면 같은 보증을 받는다.
+     */
+    @Test
+    void everyRejectionLeavesNothingOnDisk() throws Exception {
+        String admin = adminToken();
+        long before = revisionDirCount();
+
+        Map<String, byte[]> brokenJson = new LinkedHashMap<>(validEntries("x"));
+        brokenJson.put("units/manifest.json", "{not json".getBytes(StandardCharsets.UTF_8));
+        Map<String, byte[]> missing = new LinkedHashMap<>(validEntries("x"));
+        missing.remove("player-chars.json");
+        Map<String, byte[]> slip = new LinkedHashMap<>(validEntries("x"));
+        slip.put("../../escaped2.json", "{}".getBytes(StandardCharsets.UTF_8));
+        Map<String, byte[]> badExt = new LinkedHashMap<>(validEntries("x"));
+        badExt.put("units/x.svg", "<svg/>".getBytes(StandardCharsets.UTF_8));
+        Map<String, byte[]> fakePng = new LinkedHashMap<>(validEntries("x"));
+        fakePng.put("units/evil.png", "<html>".getBytes(StandardCharsets.UTF_8));
+
+        for (Map<String, byte[]> bad : List.of(brokenJson, missing, slip, badExt, fakePng)) {
+            assertThat(uploadRaw(admin, zip(bad), null).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+        // zip 이 아예 아닌 바이트도 같은 보증을 받는다.
+        assertThat(uploadRaw(admin, "not a zip at all".getBytes(StandardCharsets.UTF_8), null)
+                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+
+        assertThat(bundleCount()).isZero();
+        assertThat(revisionDirCount()).as("거절 6종 전부 — 볼륨에 고아 디렉토리 0").isEqualTo(before);
+    }
+
+    /**
+     * <b>DB 가 실패하면 방금 쓴 트리도 되돌린다</b> — 독립검증 MAJOR-4.
+     * (W1 공지 이미지에서 같은 지적을 받고 고쳤는데, 아트 번들엔 그 계약이 복사되지 않았다.)
+     */
+    @Test
+    void aFailedDbWriteRollsBackTheWrittenTree() throws Exception {
+        String admin = adminToken();
+        long before = revisionDirCount();
+        jdbcClient.sql("""
+                CREATE TRIGGER zz_fail_bundle_insert BEFORE INSERT ON char_bundles
+                BEGIN SELECT RAISE(ABORT, 'injected failure'); END
+                """).update();
+        try {
+            assertThat(uploadRaw(admin, validBundle("x"), null).getStatusCode().is2xxSuccessful())
+                    .as("DB 가 실패했으니 성공일 수 없다").isFalse();
+
+            assertThat(bundleCount()).isZero();
+            assertThat(revisionDirCount()).as("쓴 트리가 볼륨에 남지 않는다").isEqualTo(before);
+        } finally {
+            jdbcClient.sql("DROP TRIGGER zz_fail_bundle_insert").update();
+        }
+    }
+
+    /**
+     * <b>사유 없는 운영 변경은 없다</b> — 독립검증 MAJOR-3. openapi 가 `required` 로 선언하고
+     * 형제 서비스(공지)가 강제하는 규칙인데, 아트 번들엔 계약이 없어 되돌려도 아무도 몰랐다.
+     */
+    @Test
+    @SuppressWarnings("rawtypes")
+    void aReasonIsRequiredForBundleOps() {
+        String admin = adminToken();
+
+        assertThat(uploadRaw(admin, validBundle("x"), null, null).getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(uploadRaw(admin, validBundle("x"), null, "  ").getStatusCode())
+                .isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(bundleCount()).isZero();
+
+        String revision = (String) upload(admin, validBundle("x"), null).get("id");
+        ResponseEntity<Map> noReason = authPost("/api/admin/chars/bundles/active", admin,
+                java.util.Collections.singletonMap("revisionId", revision), Map.class);
+        assertThat(noReason.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(activeCount()).as("거절은 부수효과 0").isZero();
+    }
+
+    /**
+     * 삭제 엔드포인트는 <b>서버에도</b> 없다(D9·A4 와 같은 철학). web 버튼 부재만으로는
+     * API 를 직접 부르는 경로가 열려 있는지 알 수 없다 — 독립검증 MIN-5.
+     */
+    @Test
+    @SuppressWarnings("rawtypes")
+    void thereIsNoBundleDeleteEndpoint() {
+        String admin = adminToken();
+        String revision = (String) upload(admin, validBundle("keep"), null).get("id");
+        activate(admin, revision);
+
+        ResponseEntity<Map> res = authDelete("/api/admin/chars/bundles/" + revision, admin, Map.class);
+
+        assertThat(res.getStatusCode().is2xxSuccessful()).as("삭제가 성공해서는 안 된다").isFalse();
+        assertThat(bundleCount()).isEqualTo(1);
+        assertThat(body("/api/chars/units/manifest.json")).contains("keep");
+    }
+
+    /**
+     * <b>DB 행은 있는데 파일이 없으면 "번들 없음"으로 답한다</b> — 독립검증 MAJOR-2.
+     *
+     * <p>볼륨을 잃고 DB 만 복원하면 정확히 이 상태가 된다(플레이북이 자산 백업을 권하는 바로 그
+     * 상황). 여기서 200 을 주면 web 이 서버 base 를 채택하고 매니페스트가 전부 404 가 되어
+     * <b>구운 폴백으로 돌아갈 경로가 사라진다</b> — 화면이 통째로 이니셜이 된다.
+     */
+    @Test
+    void anActiveRevisionWithNoFilesIsReportedAsNoBundle() throws Exception {
+        String admin = adminToken();
+        String revision = (String) upload(admin, validBundle("gone"), null).get("id");
+        activate(admin, revision);
+        assertThat(rest.getForEntity(baseUrl("/api/chars/index"), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+
+        // 볼륨 유실 재현 — DB 행은 그대로 두고 파일만 지운다.
+        deleteRecursively(bundleDir.resolve(revision));
+
+        assertThat(rest.getForEntity(baseUrl("/api/chars/index"), String.class).getStatusCode())
+                .as("파일이 없으면 활성 번들이 아니다 → web 이 구운 폴백으로 간다")
+                .isEqualTo(HttpStatus.NOT_FOUND);
     }
 
     /** 서빙 경로 조작은 "없다"로 답한다(무엇을 막았는지 알려주지 않는다). */
@@ -323,6 +447,27 @@ class CharBundleApiTest extends ApiTestBase {
         return res.getBody();
     }
 
+    /** 보관소의 리비전 디렉토리 수 — "디스크에 남았나"를 DB 가 아니라 디스크로 묻는다. */
+    private long revisionDirCount() throws Exception {
+        if (!Files.exists(bundleDir)) {
+            return 0;
+        }
+        try (var entries = Files.list(bundleDir)) {
+            return entries.filter(Files::isDirectory).count();
+        }
+    }
+
+    private static void deleteRecursively(Path dir) throws Exception {
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (var walk = Files.walk(dir)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(p);
+            }
+        }
+    }
+
     private int bundleCount() {
         return jdbcClient.sql("SELECT COUNT(*) FROM char_bundles").query(Integer.class).single();
     }
@@ -341,6 +486,11 @@ class CharBundleApiTest extends ApiTestBase {
 
     @SuppressWarnings("rawtypes")
     private ResponseEntity<Map> uploadRaw(String token, byte[] zipBytes, String note) {
+        return uploadRaw(token, zipBytes, note, "test");
+    }
+
+    @SuppressWarnings("rawtypes")
+    private ResponseEntity<Map> uploadRaw(String token, byte[] zipBytes, String note, String reason) {
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
         HttpHeaders partHeaders = new HttpHeaders();
         partHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
@@ -350,8 +500,10 @@ class CharBundleApiTest extends ApiTestBase {
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + token);
         headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-        String url = "/api/admin/chars/bundles?reason=test"
-                + (note == null ? "" : "&note=" + java.net.URLEncoder.encode(note, StandardCharsets.UTF_8));
+        String url = "/api/admin/chars/bundles"
+                + (reason == null ? "" : "?reason=" + java.net.URLEncoder.encode(reason, StandardCharsets.UTF_8))
+                + (note == null ? "" : (reason == null ? "?" : "&") + "note="
+                        + java.net.URLEncoder.encode(note, StandardCharsets.UTF_8));
         return rest.exchange(baseUrl(url), HttpMethod.POST, new HttpEntity<>(form, headers), Map.class);
     }
 

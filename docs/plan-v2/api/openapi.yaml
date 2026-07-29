@@ -1240,6 +1240,9 @@ paths:
         생성·수정 이력은 `admin_catalog_audit` 에 **그대로 남는다**(그 표의 player_id 에는 FK 가
         없다 — V14 가 "삭제된 유닛의 이력도 보존해야 한다"고 명시적으로 그렇게 설계했다).
         **대가**: 한 유닛의 이력이 두 원장에 나뉜다.
+        ⚠️ 그래서 **회수 이력은 유닛 감사 조회(`/api/admin/units/audit`)에도, 공지·아트 이력
+        (`notice_%`·`chars_%` 필터)에도 안 나온다** — `admin_ops_audit` 를 필터 없이 읽는
+        `GET /api/admin/economy/history` 에서만 보인다(그 엔드포인트가 범용 원장 조회를 겸한다).
       requestBody:
         required: true
         content:
@@ -1256,6 +1259,10 @@ paths:
                 properties:
                   playerId: { type: string }
                   name: { type: string, description: 지운 유닛의 이름(확인용) }
+                  references:
+                    type: object
+                    additionalProperties: { type: integer }
+                    description: 성공 시 항상 빈 객체(막은 것이 없다는 뜻). 409 때는 detail 에 담긴다
         "400": { description: "reason 누락. code=VALIDATION_ERROR", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

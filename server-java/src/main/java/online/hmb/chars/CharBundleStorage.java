@@ -90,65 +90,86 @@ public class CharBundleStorage {
     }
 
     /**
-     * zip 을 검증하며 리비전 디렉토리로 푼다. 실패하면 <b>부분 해제분을 지우고</b> 던진다 —
-     * 반쯤 풀린 트리가 남으면 나중에 그걸 활성화하는 사고가 가능해진다.
+     * <b>1단계 — 읽고 검증만 한다(디스크에 손대지 않는다).</b>
      *
-     * @return 해제 결과(엔트리 수·총 바이트)
+     * <p>왜 읽기와 쓰기를 이렇게까지 갈라 두나(독립검증 BLOCKER-1): 예전엔 이 메서드가 검증과
+     * 쓰기를 <b>둘 다</b> 했고, 호출부가 그 <b>뒤에</b> 매니페스트를 파싱했다. 그래서 JSON 이 깨진
+     * 번들은 "디스크에 다 쓴 뒤 거절"돼 <b>고아 리비전 디렉토리가 남았다</b>(실측: 400 을 받았는데
+     * 최대 64MB 짜리 트리가 볼륨에 그대로). 회수 동사가 없는 보관소라 그건 영구 누수이고, 하필
+     * <b>zip 을 몇 번 고쳐 올리는 것이 이 기능의 정상 사용 패턴</b>이다.
+     *
+     * <p>이제 <b>파싱을 포함한 모든 검증이 여기서 끝난다</b> — 호출부는 통과한 결과를 받아
+     * {@link #write} 로 넘길 뿐이다. "통과 후에만 쓴다"가 문서의 주장이 아니라 코드의 구조다.
      */
-    public Extracted extract(String revisionId, byte[] zipBytes) {
-        try {
-            // 1단계 — **읽고 검증만** 한다(디스크에 쓰지 않는다). 루트 폴더 한 겹을 벗기려면
-            // 전체 이름 목록이 먼저 필요하고, 무엇보다 검증에 걸린 번들이 **부분 해제분을
-            // 남기지 않는다**(반쯤 풀린 트리를 나중에 활성화하는 사고를 원천 차단).
-            List<String> names = new ArrayList<>();
-            List<byte[]> contents = new ArrayList<>();
-            long total = 0;
-            try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(zipBytes))) {
-                ZipEntry entry;
-                while ((entry = zip.getNextEntry()) != null) {
-                    if (entry.isDirectory()) {
-                        continue;
-                    }
-                    String name = normalizeEntryName(entry.getName());
-                    if (name == null) {
-                        continue; // 맥 zip 의 __MACOSX/·.DS_Store 등 잡음은 조용히 건너뛴다
-                    }
-                    if (names.size() >= maxEntries) {
-                        throw ApiException.validation("번들 파일 수가 너무 많습니다(상한 " + maxEntries + "개)");
-                    }
-                    byte[] content = readEntry(zip, total);
-                    total += content.length;
-                    if (total > maxTotalBytes) {
-                        throw ApiException.validation(
-                                "번들 해제 크기가 너무 큽니다(상한 " + maxTotalBytes + " 바이트)");
-                    }
-                    validateContent(name, content);
-                    names.add(name);
-                    contents.add(content);
+    public Bundle read(byte[] zipBytes) {
+        List<String> names = new ArrayList<>();
+        List<byte[]> contents = new ArrayList<>();
+        long total = 0;
+        try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(zipBytes))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
                 }
-            }
-
-            names = stripCommonRoot(names);
-            for (String required : REQUIRED_ENTRIES) {
-                if (!names.contains(required)) {
-                    throw ApiException.validation("번들에 " + required + " 가 없습니다 — "
-                            + "web 이 읽는 매니페스트 4종이 모두 있어야 합니다: " + REQUIRED_ENTRIES);
+                String name = normalizeEntryName(entry.getName());
+                if (name == null) {
+                    continue; // 맥 zip 의 __MACOSX/·.DS_Store 등 잡음은 조용히 건너뛴다
                 }
+                if (names.size() >= maxEntries) {
+                    throw ApiException.validation("번들 파일 수가 너무 많습니다(상한 " + maxEntries + "개)");
+                }
+                byte[] content = readEntry(zip, total);
+                total += content.length;
+                if (total > maxTotalBytes) {
+                    throw ApiException.validation(
+                            "번들 해제 크기가 너무 큽니다(상한 " + maxTotalBytes + " 바이트)");
+                }
+                validateContent(name, content);
+                names.add(name);
+                contents.add(content);
             }
-
-            // 2단계 — 전부 통과한 뒤에만 쓴다.
-            Path dir = revisionDir(revisionId);
-            Files.createDirectories(dir);
-            for (int i = 0; i < names.size(); i++) {
-                writeEntry(dir, names.get(i), contents.get(i));
-            }
-            return new Extracted(names, total);
         } catch (ApiException e) {
-            removeQuietly(revisionId);
             throw e;
         } catch (IOException | RuntimeException e) {
-            removeQuietly(revisionId);
             throw ApiException.validation("번들을 해제하지 못했습니다: " + e.getMessage());
+        }
+
+        // ⚠️ 엔트리가 하나도 없으면 **zip 이 아니다**(ZipInputStream 은 쓰레기 바이트에 조용히
+        //    엔트리 0 으로 끝난다). 아래 "매니페스트가 없습니다"로 답하면 운영자가 zip 내용을
+        //    뒤지러 간다 — 실제 문제는 파일 형식이다(독립검증 MIN-1).
+        if (names.isEmpty()) {
+            throw ApiException.validation("zip 파일이 아니거나 비어 있습니다 — "
+                    + "로컬 아트 파이프라인의 /chars 트리를 통째로 압축해 올리세요");
+        }
+
+        List<String> stripped = stripCommonRoot(names);
+        Map<String, byte[]> files = new LinkedHashMap<>();
+        for (int i = 0; i < stripped.size(); i++) {
+            files.put(stripped.get(i), contents.get(i));
+        }
+        for (String required : REQUIRED_ENTRIES) {
+            if (!files.containsKey(required)) {
+                throw ApiException.validation("번들에 " + required + " 가 없습니다 — "
+                        + "web 이 읽는 매니페스트 4종이 모두 있어야 합니다: " + REQUIRED_ENTRIES);
+            }
+        }
+        return new Bundle(files, total);
+    }
+
+    /**
+     * <b>2단계 — 검증을 통과한 것만 쓴다.</b> 쓰는 도중 실패하면 부분 트리를 지운다.
+     */
+    public void write(String revisionId, Bundle bundle) {
+        Path dir = revisionDir(revisionId);
+        try {
+            Files.createDirectories(dir);
+            for (Map.Entry<String, byte[]> e : bundle.files().entrySet()) {
+                writeEntry(dir, e.getKey(), e.getValue());
+            }
+        } catch (IOException | RuntimeException e) {
+            removeQuietly(revisionId);
+            throw e instanceof ApiException api ? api
+                    : ApiException.validation("번들을 저장하지 못했습니다: " + e.getMessage());
         }
     }
 
@@ -295,7 +316,11 @@ public class CharBundleStorage {
         return dot < 0 ? "" : name.substring(dot + 1).toLowerCase(Locale.ROOT);
     }
 
-    public record Extracted(List<String> names, long totalBytes) {
+    /** 검증을 통과한 번들(메모리) — 이름→바이트. 이 값이 있으면 쓸 수 있다는 뜻이다. */
+    public record Bundle(Map<String, byte[]> files, long totalBytes) {
+        public int fileCount() {
+            return files.size();
+        }
     }
 
     public record Served(byte[] bytes, String contentType) {

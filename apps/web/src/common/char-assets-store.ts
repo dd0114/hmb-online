@@ -131,7 +131,19 @@ export function loadCharAssets(base?: string): Promise<CharAssets> {
           return charsBase();
         });
     inflight = resolved
-      .then((b) => fetchCharAssets(b))
+      .then(async (b) => {
+        const assets = await fetchCharAssets(b);
+        // ⚠️ **폴백 백스톱**(독립검증 MAJOR-2): 서버 base 를 채택했는데 매니페스트가 **하나도**
+        //    안 오면 그 번들은 사실상 없는 것이다(볼륨 유실 후 DB 만 복원된 상태가 실제로 그렇다).
+        //    서버가 index 에서 걸러 주지만 그건 서버가 옳게 답할 때의 이야기다 — 여기서 한 번 더
+        //    구운 폴백으로 되돌린다. 이게 없으면 화면이 통째로 이니셜이 되고 **되돌아갈 길이 없다**.
+        const empty = !assets.characters && !assets.units && !assets.placeholders && !assets.mapping;
+        if (empty && b !== CHARS_BASE) {
+          setCharsBase(null);
+          return fetchCharAssets(CHARS_BASE);
+        }
+        return assets;
+      })
       .then((assets) => {
         cached = assets;
         for (const l of [...listeners]) l();
