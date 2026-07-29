@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * V21 소각 박제 계약 (#247).
+ * V25 소각 박제 계약 (#247).
  *
  * <p><b>왜 별도 테스트인가.</b> 기보유 다이스 소각은 hero 확정이지만 <b>되돌릴 수 없는 데이터
  * 변경</b>이다. 보상 요구가 오면 {@code dice_burned} 가 "얼마였는지"에 답할 <b>유일한 근거</b>다
@@ -22,18 +22,27 @@ import org.junit.jupiter.api.io.TempDir;
  * 같은 원칙). {@link FlywayMigrationTest} 는 <b>테이블 이름만</b> 보므로, 박제가 실제로 잔량을
  * 옮기는지는 아무도 안 봤다(독립검증 minor-4).
  *
- * <p>스프링 컨텍스트를 띄우지 않고 <b>빈 파일에 V1..V21 을 순서대로 적용</b>한 뒤, 소각 직전
- * 상태를 직접 만들어 V21 만 다시 재현한다 — 마이그레이션 파일 자체가 검사 대상이다.
+ * <p>스프링 컨텍스트를 띄우지 않고 <b>빈 파일에 V1..V24 를 순서대로 적용</b>한 뒤, 소각 직전
+ * 상태를 직접 만들어 V25 만 다시 재현한다 — 마이그레이션 파일 자체가 검사 대상이다.
+ *
+ * <p>⚠️ 번호는 {@link #BURN_VERSION} 한 곳에서만 정한다. 이 마이그레이션은 V21 로 만들었다가
+ * #245(원정 V21/V22)·#253/#254(V23/V24)와 충돌해 <b>V25 로 리넘버</b>했다 — 아직 배포되지 않은
+ * 마이그레이션이라 리넘버가 안전했다. 다음에 또 밀릴 수 있으니 상수를 흩뿌리지 마라.
  */
 class DiceBurnMigrationTest {
 
     private static final Path MIGRATIONS = Path.of("src/main/resources/db/migration");
 
+    /** 소각 마이그레이션 번호 — 리넘버되면 여기만 고친다. */
+    private static final int BURN_VERSION = 25;
+    /** 소각 직전까지 = 이 번호 미만 전부. */
+    private static final int BEFORE_BURN = BURN_VERSION - 1;
+
     @Test
-    void v21SnapshotsStockBeforeBurningIt_andKeepsLegacyTables(@TempDir Path tmp) throws Exception {
-        Path db = tmp.resolve("v21.db");
+    void burnMigrationSnapshotsStockBeforeBurningIt_andKeepsLegacyTables(@TempDir Path tmp) throws Exception {
+        Path db = tmp.resolve("burn.db");
         try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + db)) {
-            applyThrough(c, 20);
+            applyThrough(c, BEFORE_BURN);
 
             // 소각 직전 상태 — 잔량 있는 유저 2명 + 빈 유저 1명.
             exec(c, "INSERT INTO users(id, nickname, created_at) VALUES "
@@ -42,7 +51,7 @@ class DiceBurnMigrationTest {
                     + "('u3','c','2026-01-01T00:00:00Z')");
             exec(c, "INSERT INTO user_dice(user_id, normal, cash) VALUES ('u1',7,3),('u2',0,0),('u3',0,12)");
 
-            apply(c, 21);
+            apply(c, BURN_VERSION);
 
             // ① 잔량이 있던 유저만 박제된다(빈 유저까지 남기면 "누가 손해를 봤나"가 흐려진다).
             assertThat(rows(c, "SELECT user_id || ':' || normal || '/' || cash FROM dice_burned ORDER BY user_id"))
@@ -68,12 +77,12 @@ class DiceBurnMigrationTest {
         }
     }
 
-    /** 잔량이 하나도 없는 DB 에서도 V21 은 조용히 지나간다(신규 배포·클린 설치). */
+    /** 잔량이 하나도 없는 DB 에서도 소각 마이그레이션은 조용히 지나간다(신규 배포·클린 설치). */
     @Test
-    void v21IsANoOpWhenNobodyHeldDice(@TempDir Path tmp) throws Exception {
+    void burnMigrationIsANoOpWhenNobodyHeldDice(@TempDir Path tmp) throws Exception {
         Path db = tmp.resolve("empty.db");
         try (Connection c = DriverManager.getConnection("jdbc:sqlite:" + db)) {
-            applyThrough(c, 21);
+            applyThrough(c, BURN_VERSION);
             assertThat(rows(c, "SELECT COUNT(*) FROM dice_burned")).containsExactly("0");
         }
     }
