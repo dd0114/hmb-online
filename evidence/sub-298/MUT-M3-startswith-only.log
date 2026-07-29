@@ -1,0 +1,25 @@
+     83|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/10]⎯
+
+ FAIL  apps/web/src/auth/return-to.test.ts > loginPathWithReturn > 위험한 경로는 파라미터 없이 로그인만 — 그 값을 URL 에 실어 나르지 않는다
+AssertionError: expected '/login?returnTo=%2F%2Fevil.test' to be '/login' // Object.is equality
+
+Expected: "/login"
+Received: "/login?returnTo=%2F%2Fevil.test"
+
+ ❯ apps/web/src/auth/return-to.test.ts:101:48
+     99|   it("위험한 경로는 파라미터 없이 로그인만 — 그 값을 URL 에 실어 나르…
+    100|     expect(loginPathWithReturn("https://evil.test")).toBe("/login");
+    101|     expect(loginPathWithReturn("//evil.test")).toBe("/login");
+       |                                                ^
+    102|   });
+    103| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/10]⎯
+
+ Test Files  1 failed (1)
+      Tests  10 failed | 21 passed (31)
+   Start at  01:03:53
+   Duration  406ms (transform 60ms, setup 0ms, collect 56ms, tests 12ms, environment 0ms, prepare 77ms)
+

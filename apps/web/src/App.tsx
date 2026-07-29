@@ -1,12 +1,14 @@
 import { useEffect } from "react";
 import type { ReactElement } from "react";
-import { BrowserRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TokenProvider, useToken } from "./auth/TokenContext";
 import { NavGuardProvider } from "./common/NavGuard";
 import { AppConfigProvider } from "./common/AppConfigContext";
 import { MatchLockGate } from "./common/MatchLockGate";
 import { LoginPage } from "./auth/LoginPage";
+import { loginPathWithReturn } from "./auth/return-to";
+import { ShareNoticePage } from "./share/ShareNoticePage";
 import { LobbyPage } from "./lobby/LobbyPage";
 import { DeckPage } from "./deck/DeckPage";
 import { ShopPage } from "./shop/ShopPage";
@@ -27,10 +29,18 @@ import { TutorialProvider } from "./common/TutorialProvider";
 import { setUnauthorizedHandler } from "./api/client";
 import { queryClient } from "./api/query-client";
 
+/**
+ * 미로그인이면 로그인으로 — **어디로 가려 했는지를 들려 보낸다**(#298).
+ *
+ * 예전엔 `/login` 으로만 보내서 목적지가 통째로 사라졌고, 공유 링크로 들어온 사람은 로그인 뒤
+ * **로비에 착지**했다(그가 보러 온 공지는 어디에도 없다). 붙이는 규칙과 푸는 규칙은
+ * `auth/return-to.ts` 한 곳에 있다 — 여기서 문자열을 조립하지 마라(오픈 리다이렉트 자리다).
+ */
 function RequireAuth({ children }: { children: ReactElement }) {
   const { token } = useToken();
+  const location = useLocation();
   if (!token) {
-    return <Navigate to="/login" replace />;
+    return <Navigate to={loginPathWithReturn(location.pathname + location.search)} replace />;
   }
   return children;
 }
@@ -146,6 +156,19 @@ function AppRoutes() {
           element={
             <RequireAuth>
               <MatchPage />
+            </RequireAuth>
+          }
+        />
+        {/* 공지 공유 딥링크 (#298). 경로가 `/notice/` 가 아니라 **`/share/notice/`** 인 것은 취향이
+            아니다 — `/notice/hero-*.webp` 가 실제 정적 에셋이라 접두사를 공유하면 OG Function(#299)이
+            그 이미지를 삼킨다(에픽 #293 F4/R3). 여기서 갈라 두면 그 충돌이 구조적으로 사라진다.
+            ⚠️ **MatchLockGate 로 감싸지 않는다.** 진행 중 매치가 있다고 공유 링크를 매치로
+            흡수하면 링크를 눌러 온 사람은 목적지를 영영 못 본다(LOCKED_ROUTES 에 없는 이유). */}
+        <Route
+          path="/share/notice/:id"
+          element={
+            <RequireAuth>
+              <ShareNoticePage />
             </RequireAuth>
           }
         />

@@ -1,0 +1,20 @@
+    Timeout: 15000ms
+
+    Call log:
+      - Expect "toHaveURL" with timeout 15000ms
+        34 × unexpected value "http://localhost:5311/login"
+
+
+      200 |     await page.goto("/share/notice/N2?from=kakao");
+      201 |     // 목적지를 잃지 않았다 — 로그인 URL 이 복귀 경로를 들고 있다.
+    > 202 |     await expect(page).toHaveURL(/\/login\?returnTo=/);
+          |                        ^
+      203 |     const loginUrl = decodeURIComponent(page.url());
+      204 |     expect(loginUrl).toContain("/share/notice/N2?from=kakao");
+      205 |
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p293-notice-deeplink.spec.ts:202:24
+
+    Error Context: test-results/p293-notice-deeplink--298--003f8--후-로비가-아니라-딥링크로-돌아온다-쿼리-보존--chromium/error-context.md
+
+  1 failed
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:194:3 › #298 AC2 — 미로그인 딥링크 → 로그인 → 원래 링크 복귀 › 로그인 후 로비가 아니라 딥링크로 돌아온다 (쿼리 보존) 

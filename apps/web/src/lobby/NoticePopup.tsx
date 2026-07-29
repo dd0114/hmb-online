@@ -29,12 +29,24 @@ export function NoticePopup({
   onDone,
   stores = defaultNoticeStores(),
   now = () => Date.now(),
+  suppressible = true,
 }: {
   notices: Notice[];
   onDone: () => void;
   /** 테스트 주입용 — 기본은 브라우저 저장소. */
   stores?: NoticeStores;
   now?: () => number;
+  /**
+   * 닫을 때 **억제를 기록하는가**. 기본 true(로비의 저절로 뜨는 팝업).
+   *
+   * 공유 딥링크(#298)는 false 다 — 유저가 **링크를 눌러 명시적으로 요청한** 공지라 "봤다"를
+   * 기록할 대상이 아니다. 기록하면 링크 한 번 눌렀다는 이유로 그 공지가 로비에서 사라지고,
+   * 반대로 이미 24h 숨김을 누른 공지를 딥링크로 열었다가 닫으면 억제 만료가 **연장**된다 —
+   * 어느 쪽도 유저가 요청한 적 없는 부작용이다.
+   *
+   * false 면 [24시간 동안 안 보기] 버튼도 그리지 않는다. 아무것도 안 하는 버튼은 거짓말이다.
+   */
+  suppressible?: boolean;
 }) {
   const [index, setIndex] = useState(0);
   const current = notices[index];
@@ -50,7 +62,7 @@ export function NoticePopup({
   }
 
   function close() {
-    markNoticeClosed(stores, noticeSuppressionKey(current!));
+    if (suppressible) markNoticeClosed(stores, noticeSuppressionKey(current!));
     advance();
   }
 
@@ -127,14 +139,16 @@ export function NoticePopup({
           >
             닫기
           </button>
-          <button
-            type="button"
-            className={styles.ghost}
-            data-testid="notice-dismiss-24h"
-            onClick={dismiss24h}
-          >
-            24시간 동안 안 보기
-          </button>
+          {suppressible && (
+            <button
+              type="button"
+              className={styles.ghost}
+              data-testid="notice-dismiss-24h"
+              onClick={dismiss24h}
+            >
+              24시간 동안 안 보기
+            </button>
+          )}
         </div>
       </div>
     </Modal>

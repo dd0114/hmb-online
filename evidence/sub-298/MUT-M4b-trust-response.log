@@ -1,0 +1,25 @@
+
+    Locator: getByTestId('share-notice-message')
+    Expected substring: "찾을 수 없는 공지입니다"
+    Timeout: 15000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toContainText" with timeout 15000ms
+      - waiting for getByTestId('share-notice-message')
+
+
+      285 |       const msg = page.getByTestId("share-notice-message");
+      286 |       await expect(msg).toBeVisible();
+    > 287 |       await expect(msg).toContainText(c.copy);
+          |                         ^
+      288 |       await expect(msg).toHaveAttribute("data-state", c.state);
+      289 |       if (c.shot) await page.screenshot({ path: `${EVIDENCE}${c.shot}` });
+      290 |
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p293-notice-deeplink.spec.ts:287:25
+
+    Error Context: test-results/p293-notice-deeplink--298--9588e-빈-객체-→-안내-문구-하단-네비-생존-로비-이동-chromium/error-context.md
+
+  1 failed
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:278:5 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 200 인데 빈 객체 → 안내 문구 + 하단 네비 생존 + 로비 이동 
+  3 passed (20.0s)
