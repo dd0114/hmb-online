@@ -41,12 +41,13 @@ vi.mock("@hmb/viewer-core", () => ({ createViewer }));
 
 const fx = {
   log: { tickSnapshots: [], events: [], finalScore: { home: 0, away: 0 } } as unknown,
+  /** `/api/players` 응답 — **형태를 바꿔 끼울 수 있게** 둔다(아래 손상 응답 계약). */
+  players: [] as unknown,
 };
 vi.mock("../api/hooks", () => ({
   useHalfLog: () => ({ data: fx.log, isLoading: false, isError: false }),
-  // 아이콘 노출 정책(#285) 등급표의 출처. 이 스펙은 컨트롤 계약만 보므로 빈 카탈로그로 둔다 —
-  // 없으면 훅이 undefined 라 렌더가 통째로 죽는다(정책 계약은 viewer-skins/e2e 가 진다).
-  usePlayers: () => ({ data: [] as Array<{ id: string; grade: string }> }),
+  // 아이콘 노출 정책(#285) 등급표의 출처. 이 스펙은 컨트롤 계약만 보므로 기본은 빈 카탈로그다.
+  usePlayers: () => ({ data: fx.players }),
 }));
 
 import { MatchViewer } from "./MatchViewer";
@@ -438,5 +439,38 @@ describe("MatchViewer — 라이브 게이트(#216)", () => {
     renderLive(1, liveClock("SECOND_HALF", 10_000)); // 후반 라이브 중의 전반 화면
     expect(viewer.jumpToTick).not.toHaveBeenCalled();
     expect(viewer.setSpeed).toHaveBeenLastCalledWith(1);
+  });
+});
+
+/*
+ * #285 — 아이콘 노출 정책이 **화면을 죽이지 않는다**.
+ *
+ * 정책은 `/api/players`(전 카탈로그)에서 playerId→등급 표를 만들어 캔버스에 넘긴다. 그런데 이
+ * 엔드포인트가 없는 구 서버·목은 200 `{}` 를 준다 — 배열을 가정하고 `.map` 을 부르면 렌더가
+ * 던져 **결과 화면이 통째로 흰 화면**이 된다(apps/web CLAUDE.md "응답 형태를 믿지 않는다").
+ *
+ * ⚠️ 이 계약이 없던 동안 `Array.isArray` 가드를 지워도 **유닛 1264개가 전부 통과했다**
+ * (독립검증이 변이체로 잡았다). 부가 기능이 앱 화면을 죽이는 회귀는 여기서 막는다.
+ */
+describe("#285 등급표 — 손상된 카탈로그 응답에 화면이 죽지 않는다", () => {
+  const BROKEN: unknown[] = [{}, null, undefined, "nope", 42, { players: [] }];
+
+  for (const bad of BROKEN) {
+    it(`${JSON.stringify(bad) ?? "undefined"} 를 받아도 뷰어가 렌더된다`, () => {
+      fx.players = bad;
+      expect(() => renderViewer(false)).not.toThrow();
+      expect(screen.getByTestId("match-viewer-half1")).toBeTruthy();
+      fx.players = [];
+    });
+  }
+
+  it("정상 배열도 그대로 렌더된다 — 가드가 기능 경로를 막지 않는다", () => {
+    // 등급표가 실제로 정책을 거는지(= 골드에 셀이 없다)는 `viewer-skins.test.ts` 와
+    // `e2e/p285-icon-policy.spec.ts` 가 진다. 여기서 지키는 건 **가드의 양방향**뿐이다:
+    // 손상 응답에 안 죽고, 정상 응답을 막지도 않는다.
+    fx.players = [{ id: "P001", grade: "LEGEND" }, { id: "P038", grade: "GOLD" }];
+    expect(() => renderViewer(false)).not.toThrow();
+    expect(screen.getByTestId("match-viewer-half1")).toBeTruthy();
+    fx.players = [];
   });
 });
