@@ -70,6 +70,8 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
   const tabs = tabsFor(toggles, statePanel);
   const activeTab = resolveActiveTab(tabs, preferredTab);
   const sheetKind = sheetHeight(activeTab);
+  /** 감독시간 = **관리 모드**: 무대가 상시가 아니라 탭이다(#244). */
+  const managing = statePanel === "halftime";
 
   const logEnabled = logAvailableFor(match.state, half);
   const { data: log } = useHalfLog(match.id, half, logEnabled);
@@ -123,20 +125,32 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
         onBack={() => navigate("/lobby")}
       />
 
-      <div className={`${styles.body} ${tabs.length === 0 ? styles.bodyNoSheet : ""}`}>
-        <section className={styles.stage} data-testid="stage-canvas">
-          <MatchViewer
-            matchId={match.id}
-            half={half}
-            homeName={homeName}
-            awayName={awayName}
-            onTick={setTick}
-            clock={clock}
-            clockOffsetMs={offsetMs}
-            logEnabled={logEnabled}
-            baseline={baseline}
-          />
-        </section>
+      {/*
+        감독시간에는 무대를 **상시 표시하지 않는다** — `stage` 탭으로 내린다(#244, hero 결정).
+        그래야 이 화면이 덱 편성과 **같은 레이아웃**이 된다(무대가 세로를 먹으면 감독시간만 다른
+        화면이 되고, 그러면 유저가 두 화면을 다르게 배워야 한다).
+        관전(전·후반)에서는 그대로 상시다 — #169 AC-W1-1 은 그 상태의 계약이다.
+      */}
+      <div
+        className={`${styles.body} ${tabs.length === 0 ? styles.bodyNoSheet : ""} ${
+          managing ? styles.bodyManaging : ""
+        }`}
+      >
+        {!managing && (
+          <section className={styles.stage} data-testid="stage-canvas">
+            <MatchViewer
+              matchId={match.id}
+              half={half}
+              homeName={homeName}
+              awayName={awayName}
+              onTick={setTick}
+              clock={clock}
+              clockOffsetMs={offsetMs}
+              logEnabled={logEnabled}
+              baseline={baseline}
+            />
+          </section>
+        )}
 
         {activeTab && (
           <aside
@@ -179,6 +193,28 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
               )}
               {activeTab === "halftime" && (
                 <HalftimePanel match={match} clockOffsetMs={offsetMs} />
+              )}
+              {activeTab === "stage" && (
+                /*
+                 * 경기장면 탭(감독시간) = **돌려보는 화면**이다(#244, hero). 감독시간에 보는 하프는
+                 * 이미 끝난 전반이라 자유 스크럽이 허용된다(라이브 상한은 지나간 하프엔 안 걸린다 —
+                 * match-live-clock AC-W3-1 c). 그래서 시간바·키장면 핀·스텝을 **일반 유저에게도** 연다.
+                 * 캔버스 아래 빈 자리를 그 컨트롤이 채운다.
+                 */
+                <section className={styles.stageInPanel} data-testid="stage-canvas">
+                  <MatchViewer
+                    matchId={match.id}
+                    half={half}
+                    homeName={homeName}
+                    awayName={awayName}
+                    onTick={setTick}
+                    clock={clock}
+                    clockOffsetMs={offsetMs}
+                    logEnabled={logEnabled}
+                    baseline={baseline}
+                    reviewControls
+                  />
+                </section>
               )}
               {activeTab === "result" && (
                 <ResultPanel match={match} homeName={homeName} awayName={awayName} />

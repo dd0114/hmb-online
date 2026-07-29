@@ -109,6 +109,9 @@ test("W4 리스트 추천정렬 + 스탯총량 + 리스트→보드 드래그", 
   await page.goto("/deck");
 
   await expect(page.getByTestId("deck-editor")).toBeVisible();
+  // #244: 보유 선수 리스트는 **시트** 뒤로 갔다 — 정렬·스탯 계약은 시트 안에서 검증한다.
+  await page.getByTestId("pool-sheet-open").click();
+  await expect(page.getByTestId("player-pool")).toBeVisible();
 
   // 1) "추천순" 라벨 노출.
   await expect(page.getByTestId("picker-sort-note")).toBeVisible();
@@ -129,36 +132,41 @@ test("W4 리스트 추천정렬 + 스탯총량 + 리스트→보드 드래그", 
 
   await page.screenshot({ path: `${SMOKE_DIR}w4-list-recsort.png`, fullPage: true });
 
-  // 4) 리스트→보드 드래그: FW_TOP 을 빈 FW 슬롯(starter-9)으로 끌어 배치.
+  // 4) #244: **리스트→보드 드래그는 은퇴**했다 — 리스트가 시트(모달) 안이라 보드를 덮으므로
+  //    끌어다 놓을 대상이 화면에 없다. 배치는 시트에서 고르면 끝이고(1급), 남은 드래그 계약은
+  //    **보드↔보드(자리 교체)** 다. 여기서는 시트로 배치한 뒤 보드 위 드래그를 박제한다.
   await expect(page.getByTestId("board-slot-starter-9").getByTestId("token-FW_TOP")).toHaveCount(0);
-  await pointerDrag(page, "pick-FW_TOP", "board-slot-starter-9");
+  await page.getByTestId("pool-sheet-close").click();
+  await page.getByTestId("board-slot-starter-9").click(); // 자리에서 열면 그 자리에 들어간다
+  await page.getByTestId("pick-FW_TOP").click();
+  await expect(page.getByTestId("pool-sheet")).toBeHidden();
 
-  // 슬롯 채워짐 + 선발 카운트 1.
+  // 슬롯 채워짐 + 선발 카운트 1 + 그 선수 지시로 이어짐(#244).
   await expect(page.getByTestId("board-slot-starter-9").getByTestId("token-FW_TOP")).toBeVisible();
   await expect(page.getByTestId("starter-count")).toHaveText(/1\/11/);
-  // 리스트에서 FW_TOP placed(선발) + 비활성(중복 방지).
-  await expect(page.getByTestId("pick-FW_TOP")).toBeDisabled();
-  await expect(page.getByTestId("pick-FW_TOP")).toContainText("선발");
-  await page.screenshot({ path: `${SMOKE_DIR}w4-after-drag.png`, fullPage: true });
+  await expect(page.getByTestId("rail-prompt-input")).toBeVisible();
+  await page.screenshot({ path: `${SMOKE_DIR}w4-after-sheet-place.png`, fullPage: true });
 
-  // 5) 탭-투-플레이스(#106 R1 부터 **1급 배치 수단**): 두 번 탭이 계약이다.
-  //    구 계약("선수 1탭 → 첫 빈 슬롯 자동 배치")은 #106 에서 폐기됐다 — 전술보드가 SoT 이므로
-  //    "어디에 놓을지"를 유저가 정한다(양방향: 슬롯→선수 / 선수→슬롯).
-  // 드롭 직후 첫 클릭은 @dnd-kit 의 **클릭 억제 창**(MouseSensor.detach 가 setTimeout(...,50) 으로
-  // 클릭 리스너를 늦게 떼는 구간, ≈50ms)에 먹힌다 — 0/10ms 는 씹히고 60ms+ 는 정상(실측).
-  // 사람이 드래그를 놓고 50ms 안에 다른 항목을 누르는 일은 없으므로 여유(300ms)를 주고 진행한다.
-  await page.waitForTimeout(300);
-  await page.getByTestId("pick-MF_TOP").click();
-  await expect(page.getByTestId("pick-MF_TOP")).toHaveAttribute("data-pending", "true");
-  await expect(page.getByTestId("starter-count")).toHaveText(/1\/11/); // 아직 배치 전
+  // 5) **살아남은 드래그 계약 = 보드↔보드(자리 교체)**. 리스트→보드는 은퇴(위 4 주석).
   await page.getByTestId("board-slot-starter-6").click();
-  await expect(page.getByTestId("pick-MF_TOP")).toBeDisabled();
+  await expect(page.getByTestId("pool-sheet")).toBeVisible();
+  await page.getByTestId("pick-MF_TOP").click();
+  await expect(page.getByTestId("starter-count")).toHaveText(/2\/11/);
+  await page.waitForTimeout(300); // @dnd-kit 클릭 억제 창(≈50ms) 여유
+  await pointerDrag(page, "token-FW_TOP", "board-slot-starter-6");
+  await expect(page.getByTestId("board-slot-starter-6").getByTestId("token-FW_TOP")).toBeVisible();
+  await expect(page.getByTestId("board-slot-starter-9").getByTestId("token-MF_TOP")).toBeVisible();
   await expect(page.getByTestId("starter-count")).toHaveText(/2\/11/);
 
   // 6) 포지션 필터(DF): 그 포지션 내 추천순(overall desc).
+  // 드롭 직후 첫 클릭은 @dnd-kit 클릭 억제 창(≈50ms)에 먹힌다 → 여유를 주고 시트 오픈을 확인한다.
+  await page.waitForTimeout(300);
+  await page.getByTestId("pool-sheet-open").click();
+  await expect(page.getByTestId("pool-sheet")).toBeVisible();
   await page.getByTestId("picker-filter-DF").click();
   const dfOrder = await poolOrder(page);
   expect(dfOrder).toEqual(["DF_HI", "DF_MID", "DF_B", "DF_LOW"]);
+  await page.getByTestId("pool-sheet-close").click();
 
   // 7) 390px 가로 오버플로 0.
   await page.setViewportSize({ width: 390, height: 844 });

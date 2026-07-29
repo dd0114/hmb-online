@@ -315,7 +315,8 @@ test("덱: 선수를 누르면 유닛 정보(지시 레일)에 풀아트가 같�
   await page.goto("/deck");
 
   const first = CATALOG[0]!;
-  // 리스트 자체는 아이콘이다(경계) — 누르면 레일 컨텍스트가 그 선수로 바뀐다.
+  // #244: 리스트는 시트 뒤 — 시트에서 고르면 배치되고 레일이 그 선수로 바뀐다.
+  await page.getByTestId("pool-sheet-open").click();
   await page.getByTestId(`pick-${first.id}`).click();
   const head = page.getByTestId("rail-head");
   await expect(head).toBeVisible();
@@ -354,15 +355,15 @@ test("경계: 덱 리스트 행·전술보드 토큰은 아이콘이다 (풀아�
   await mockApi(page);
   await page.goto("/deck");
 
+  await page.getByTestId("pool-sheet-open").click(); // #244: 리스트는 시트 뒤
   const row = page.getByTestId(`pick-${CATALOG[0]!.id}`);
   await expect(row).toBeVisible();
   // 리스트 행 안에는 아바타만 — 풀아트가 들어오면 34px 자리에 전신 일러스트가 뭉개진다.
   await expect(row.locator('[data-testid^="full-art-"]')).toHaveCount(0);
   await expect(row.getByTestId(`char-avatar-${CATALOG[0]!.id}`)).toHaveCount(1);
 
-  // 배치 후 전술보드 토큰도 아이콘. (슬롯 testid = `board-slot-<role>-<index>` — TacticsBoard.tsx)
+  // 배치 후 전술보드 토큰도 아이콘. (#244: 시트에서 고르면 첫 빈 자리에 들어간다)
   await row.click();
-  await page.getByTestId("board-slot-starter-0").click();
   const token = page.locator('[data-testid^="token-"]').first();
   await expect(token).toBeVisible();
   await expect(token.locator('[data-testid^="full-art-"]')).toHaveCount(0);

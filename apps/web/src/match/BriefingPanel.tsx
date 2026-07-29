@@ -12,6 +12,7 @@ import {
 import { useRelations } from "../api/hooks-v2";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
 import { ErrorToast } from "../common/ErrorToast";
+import { Modal } from "../common/Modal";
 import { DeckEditor } from "../deck/DeckEditor";
 import { emptyDraft, setPrompt, toUpdateRequest, type DeckDraft } from "../deck/deck-logic";
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
@@ -77,6 +78,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
   const [markTarget, setMarkTarget] = useState<string | null>(null);
   const [markDefenderId, setMarkDefenderId] = useState<string>("");
   const [markNote, setMarkNote] = useState<string | null>(null);
+  // #244: 상대 정보(표·컨디션·마크 지정)는 시트 뒤. 본문 상단은 요약 한 줄만.
+  const [oppOpen, setOppOpen] = useState(false);
 
   const playersById = useMemo(() => {
     const map = new Map<string, CatalogPlayer>();
@@ -175,11 +178,28 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
 
   return (
     <div className={styles.panel} data-testid="briefing-panel">
-      <div className={styles.timerRow}>
+      {/* #244: 타이머·상대 요약을 **한 줄**로 합친다 — 브리핑 상단 chrome 이 프롬프트를 첫 화면
+          밖으로 밀어내던 문제(실측 상단 453px)의 나머지 절반이다. */}
+      <div className={styles.metaRow}>
         <span className={remaining === 0 ? styles.timerExpired : styles.timer} data-testid="briefing-timer">
-          입력 시간 {mm}:{ss}
+          {mm}:{ss}
         </span>
+        {/* 타이머만 있으면 압박만 준다 — "만료돼도 진행 가능"은 유지한다(구 .timerNote). */}
         <span className={styles.timerNote}>만료돼도 진행 가능</span>
+        {match.opponent && (
+          <>
+            <span className={styles.oppBarName}>vs {match.opponent.name}</span>
+            <span className={styles.oppBarText}>{match.opponent.analysisText}</span>
+            <button
+              type="button"
+              className={styles.oppBarBtn}
+              data-testid="opp-sheet-open"
+              onClick={() => setOppOpen(true)}
+            >
+              상대 정보 ↗
+            </button>
+          </>
+        )}
       </div>
 
       {/* 프리셋 시작점 선택(#98 W6a)은 **화면에서 내렸다** — 이슈 #106: 컨셉이 잡히기 전의 프리셋은
@@ -187,7 +207,31 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
           `briefing-preset-logic.ts`(순수 로직·단위테스트)·`useTeamPresets`·서버 `/api/presets/team`
           계약은 그대로 둔다 — 컨셉 확정 후 이 자리에 다시 붙이면 된다. */}
 
-      {match.opponent && (
+      {/* #244: 상대 정보는 **요약 한 줄 + 시트**. 표(244px)+컨디션(209px)이 상단 453px 을 먹으면
+          정작 프롬프트가 화면 밖으로 밀린다(개편 전 실측). 마크 원탭도 시트 안에서 한다 —
+          "상대를 보고 → 붙일 수비수를 정한다"는 한 흐름이라 갈라놓을 이유가 없다. */}
+      {match.opponent && oppOpen && (
+        <Modal
+          onClose={() => setOppOpen(false)}
+          labelledBy="opp-sheet-title"
+          overlayClassName={styles.sheetBackdrop}
+          overlayTestId="opp-sheet-backdrop"
+          className={styles.sheetBox}
+          testId="opp-sheet"
+        >
+          <div className={styles.sheetHead}>
+            <b id="opp-sheet-title" className={styles.sheetTitle}>
+              상대: {match.opponent.name}
+            </b>
+            <button
+              type="button"
+              className={styles.sheetClose}
+              data-testid="opp-sheet-close"
+              onClick={() => setOppOpen(false)}
+            >
+              닫기 ×
+            </button>
+          </div>
         <section className={styles.opponent} data-testid="opponent-analysis">
           <h3 className={styles.opponentName}>상대: {match.opponent.name}</h3>
           <p className={styles.analysisText}>{match.opponent.analysisText}</p>
@@ -267,10 +311,28 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
             </p>
           )}
         </section>
+
+          {/* 라인업 컨디션 시계 요약 (AC-C1) — 상대 시트 안에 같이 둔다(경기 전 "판을 읽는" 정보 묶음).
+              보드 토큰에도 컨디션 시계가 그대로 있으므로 본문에서 접근 경로가 끊기지 않는다. */}
+          {match.conditions && starters.length > 0 && (
+            <section className={styles.conditions} data-testid="briefing-conditions">
+              <h4 className={styles.condTitle}>선발 컨디션</h4>
+              <ul className={styles.condList}>
+                {starters.map((s) => (
+                  <li key={s.playerId} className={styles.condItem} data-testid={`cond-${s.playerId}`}>
+                    <ConditionClock value={match.conditions![s.playerId] ?? 0.5} size={26} testId={`cond-clock-${s.playerId}`} />
+                    <span className={styles.condName}>{playersById.get(s.playerId)?.name ?? s.playerId}</span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </Modal>
       )}
 
-      {/* 라인업 컨디션 시계 요약 (AC-C1) */}
-      {match.conditions && starters.length > 0 && (
+      {/* 상대 정보가 없는 매치(스키마상 opponent 는 optional)면 시트 진입점 자체가 없다 →
+          선발 컨디션 요약이 도달 불가가 되지 않게 본문에 남긴다(독립 검증 M-3). */}
+      {!match.opponent && match.conditions && starters.length > 0 && (
         <section className={styles.conditions} data-testid="briefing-conditions">
           <h4 className={styles.condTitle}>선발 컨디션</h4>
           <ul className={styles.condList}>
@@ -286,9 +348,6 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
 
       {editor && (
         <>
-          <p className={styles.persistNote} data-testid="briefing-persist-note">
-            여기서의 편집(라인업·전술·프롬프트·마킹)은 임시가 아니라 내 덱에 저장됩니다 — 킥오프 시 반영됩니다.
-          </p>
           <DeckEditor
             state={editor}
             onChange={setEditor}
@@ -309,6 +368,10 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
         <ErrorToast message="내 로스터를 불러오지 못했습니다 — 새로고침 후 다시 시도하세요" />
       )}
       <ErrorToast message={error} onDismiss={() => setError(null)} />
+
+      <p className={styles.persistNote} data-testid="briefing-persist-note">
+        여기서의 편집(라인업·전술·프롬프트·마킹)은 임시가 아니라 내 덱에 저장됩니다 — 킥오프 시 반영됩니다.
+      </p>
 
       <button
         type="button"

@@ -1,0 +1,98 @@
+/* 프롬프트 1급 스킨 (#244) — 덱 편성 · 브리핑 · 감독시간 공용. */
+.block {
+  border: 1px solid rgba(79, 140, 255, 0.55);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(79, 140, 255, 0.1), rgba(79, 140, 255, 0.02));
+  padding: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.title {
+  font-size: 15px;
+}
+.subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.tag {
+  font-size: 10.5px;
+  color: var(--accent);
+  border: 1px solid rgba(79, 140, 255, 0.45);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.textarea,
+.textareaOver {
+  width: 100%;
+  box-sizing: border-box;
+  background: #10141b;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.55;
+  resize: vertical;
+}
+.textareaOver {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.textarea:disabled,
+.textareaOver:disabled {
+  opacity: 0.5;
+}
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+}
+.meter b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/*
+ * 모바일 세로 예산(#244): 첫 화면에 **보드 + 프롬프트**가 함께 들어와야 한다는 게 계약이다
+ * (p244 AC1/AC4/AC6 — 잘림·가림까지 판정). 공용 블록이 구 레일 블록보다 24px 커서 그대로 두면
+ * 선수 프롬프트가 fold 아래로 잘렸다(실측 115px). 입력 칸만 한 단계 낮춘다 — 글자 수 제한은
+ * 그대로이고 길게 쓰면 입력 칸이 스크롤된다.
+ */
+@media (max-width: 1023px) {
+  .block {
+    padding: 9px 10px;
+    gap: 5px;
+  }
+  .textarea,
+  .textareaOver {
+    padding: 8px 9px;
+    font-size: 14.5px;
+    line-height: 1.45;
+  }
+}
+
+/* 짧은 화면: 입력 칸을 한 단계 낮춘다 — 글자 수 제한은 그대로고, 길게 쓰면 칸이 스크롤된다. */
+@media (max-height: 819px) {
+  .textarea,
+  .textareaOver {
+    min-height: 62px;
+    padding: 7px 9px;
+  }
+  .block {
+    padding: 8px 9px;
+    gap: 4px;
+  }
+}

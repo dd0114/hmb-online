@@ -24,6 +24,8 @@ export interface VisualPlaybackProps {
   onFallback: () => void;
   controlMode: ControlMode;
   canSwitch: boolean;
+  /** 돌려보는 화면(#244) — 컨트롤을 무대에 겹치지 않고 아래로 흘리고, 유저용 레이아웃으로 그린다. */
+  review?: boolean;
   onControlMode: (m: ControlMode) => void;
   onTick?: (tick: number) => void;
   clock: MatchClock | null;
@@ -42,6 +44,7 @@ export function VisualPlayback({
   onFallback,
   controlMode,
   canSwitch,
+  review = false,
   onControlMode,
   onTick,
   clock,
@@ -249,8 +252,11 @@ export function VisualPlayback({
       <div ref={flashRef} className={styles.capFlash} aria-live="polite" />
       <div ref={situationRef} className={styles.capSituation} aria-hidden="true" />
       <div ref={bannerRef} className={styles.capBanner} aria-hidden="true" />
-      {/* 무대 모드에선 컨트롤을 화면 모서리에 겹친다(리서치 R6 — 뷰 컨트롤은 무대 가장자리). */}
-      <div className={styles.controlsOverlay}>
+      {/*
+       * 무대 모드에선 컨트롤을 화면 모서리에 **겹친다**(리서치 R6 — 뷰 컨트롤은 무대 가장자리).
+       * 돌려보는 화면(#244 review)에서는 겹치면 피치를 가리므로 **캔버스 아래 흐름**으로 내린다.
+       */}
+      <div className={review ? styles.controlsFlow : styles.controlsOverlay}>
         <PlaybackControls
           half={half}
           mode={controlMode}
@@ -262,6 +268,7 @@ export function VisualPlayback({
           pins={pins}
           snapCount={range.snapCount}
           lastTick={range.lastTick}
+          review={review}
         />
       </div>
     </div>

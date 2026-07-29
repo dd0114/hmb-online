@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { CatalogPlayer } from "../api/hooks";
 import type { Personality, TeamTactics } from "../api/v2";
 import { PersonalityBadge, TrustGauge } from "../common/RelationBits";
 import { FullArtCard } from "../common/FullArtCard";
+import { PromptBlock } from "../common/PromptBlock";
 import { conditionLabel } from "../match/condition-clock";
 import { PROMPT_MAX_CHARS, type DraftSlot } from "./deck-logic";
 import {
@@ -40,6 +41,24 @@ export interface DirectiveRailProps {
   /** 선수 프롬프트 변경 (slot 이 있을 때만 호출) */
   onPlayerPromptChange: (playerId: string, text: string) => void;
   onRemovePlayer: (playerId: string) => void;
+  /**
+   * "이 자리 선수 바꾸기" (#244) — 그 자리 맥락으로 **보유 선수 시트**를 연다. 배치된 선수를 고르면
+   * 둘이 자리를 맞바꾼다(movePlayerToSlot). 자리가 없는 선수(미배치)면 넘어오지 않는다.
+   */
+  onSwapPlayer?: () => void;
+  /**
+   * 팀 세부조정(전술 다이얼) 숨김 — 감독시간은 **서버가 후반 전술을 받지 않는다**(#254).
+   * 만져도 아무 데도 안 가는 손잡이를 남기지 않는다. 서버가 받게 되면 이 플래그만 내리면 된다.
+   */
+  hideTeamTune?: boolean;
+  /** 라인업 잠금(감독시간) — [덱에서 제거] 처럼 로스터를 바꾸는 액션을 감춘다. */
+  lockRoster?: boolean;
+  /** 프롬프트 아래에 붙는 화면별 안내(감독시간 교체 안내 등). */
+  note?: ReactNode;
+  /** 입력 잠금(감독시간 만료). */
+  promptDisabled?: boolean;
+  /** 라벨 맥락 — 감독시간이면 "(후반)" 을 붙여 언제 적용되는지 화면이 말한다. */
+  promptScope?: "deck" | "halftime";
   /** 선수 컨텍스트 닫기 → 팀 지시로 복귀 */
   onClose: () => void;
 }
@@ -85,6 +104,13 @@ function radioGroupKeyDown(
 
 export function DirectiveRail(props: DirectiveRailProps) {
   const { player, slot } = props;
+  /**
+   * #244: 세부조정 펼침은 **레일이 소유**한다. PlayerContext 는 `key={player.id}` 로 재마운트되므로
+   * 안에 두면 선수를 바꿀 때마다 서랍이 닫혔다 — 여러 선수를 연달아 손보는 흐름에서 매번 다시
+   * 열어야 한다. 팀/선수는 다른 패널이라 플래그를 나눈다.
+   */
+  const [teamTuneOpen, setTeamTuneOpen] = useState(false);
+  const [playerTuneOpen, setPlayerTuneOpen] = useState(false);
   return (
     <section
       id="directive-rail"
@@ -93,16 +119,29 @@ export function DirectiveRail(props: DirectiveRailProps) {
       data-mode={player ? "player" : "team"}
     >
       {player ? (
-        <PlayerContext key={player.id} {...props} player={player} slot={slot} />
+        <PlayerContext
+          key={player.id}
+          {...props}
+          player={player}
+          slot={slot}
+          tuneOpen={playerTuneOpen}
+          onToggleTune={() => setPlayerTuneOpen((v) => !v)}
+        />
       ) : (
-        <TeamContext {...props} />
+        <TeamContext {...props} tuneOpen={teamTuneOpen} onToggleTune={() => setTeamTuneOpen((v) => !v)} />
       )}
     </section>
   );
 }
 
-function TeamContext(props: DirectiveRailProps) {
-  const { tactics, teamPrompt, aiManaged, onTacticsChange, onTeamPromptChange, onToggleAi } = props;
+interface TuneToggleProps {
+  tuneOpen: boolean;
+  onToggleTune: () => void;
+}
+
+function TeamContext(props: DirectiveRailProps & TuneToggleProps) {
+  const { tactics, teamPrompt, aiManaged, onTacticsChange, onTeamPromptChange, onToggleAi,
+    tuneOpen, onToggleTune } = props;
   return (
     <>
       <div className={styles.head} data-testid="rail-head">
@@ -114,7 +153,47 @@ function TeamContext(props: DirectiveRailProps) {
       </div>
 
       <div className={styles.body} data-rail-body>
-        <div className={styles.group} data-testid="team-tactics-panel">
+        {/* ① 프롬프트 = 1급 (#244). 일반 축구게임이 세부조정을 두던 자리를 프롬프트가 차지한다.
+            블록은 감독시간과 **같은 컴포넌트**를 쓴다(common/PromptBlock) — 모양이 갈라지지 않게. */}
+        <PromptBlock
+          title={props.promptScope === "halftime" ? "팀 전체에게 (후반)" : "팀 전체에게"}
+          value={teamPrompt}
+          onChange={onTeamPromptChange}
+          disabled={props.promptDisabled}
+          placeholder={
+            props.promptScope === "halftime"
+              ? "후반 팀 작전 (예: 라인을 내리고 역습 위주로)"
+              : "팀 전체에 내릴 작전 (예: 초반부터 강하게 압박, 역습 위주)"
+          }
+          testId="editor-team-prompt"
+        />
+
+        {props.note}
+
+        {/* ② 세부조정 = 옆(버튼 뒤). 지우지 않는다 — 접혀 있을 뿐이고 값은 그대로 전송된다.
+            단 `hideTeamTune`(감독시간)이면 아예 그리지 않는다 — 전송 경로가 없는 손잡이라서(#254). */}
+        {!props.hideTeamTune && (
+        <button
+          type="button"
+          className={styles.tuneToggle}
+          data-testid="team-tune-toggle"
+          aria-expanded={tuneOpen}
+          aria-controls="team-tactics-panel"
+          onClick={onToggleTune}
+        >
+          <span className={styles.gear} aria-hidden="true">
+            ⚙
+          </span>
+          <span className={styles.tuneLabel}>팀 세부 조정</span>
+          <span className={styles.tuneHint}>라인 · 압박 · 템포 · 폭{aiManaged ? " · AI" : ""}</span>
+          <span className={styles.tuneCaret} aria-hidden="true">
+            {tuneOpen ? "▾" : "▸"}
+          </span>
+        </button>
+        )}
+
+        {!props.hideTeamTune && tuneOpen && (
+        <div className={styles.group} id="team-tactics-panel" data-testid="team-tactics-panel">
           <span className={styles.eyebrow}>
             기본 전술
             <span className={styles.tail} />
@@ -204,31 +283,13 @@ function TeamContext(props: DirectiveRailProps) {
             </p>
           )}
         </div>
-
-        <div className={styles.mark}>
-          <label className={styles.markLabel} htmlFor="team-prompt">
-            팀 전체에게
-          </label>
-          <textarea
-            id="team-prompt"
-            data-testid="editor-team-prompt"
-            className={styles.textarea}
-            rows={2}
-            maxLength={PROMPT_MAX_CHARS}
-            placeholder="팀 전체에 내릴 작전 (예: 초반부터 강하게 압박, 역습 위주)"
-            value={teamPrompt}
-            onChange={(e) => onTeamPromptChange(e.target.value)}
-          />
-          <div className={styles.meter}>
-            <b>{teamPrompt.length}자</b> / {PROMPT_MAX_CHARS}
-          </div>
-        </div>
+        )}
       </div>
     </>
   );
 }
 
-interface PlayerContextProps extends DirectiveRailProps {
+interface PlayerContextProps extends DirectiveRailProps, TuneToggleProps {
   player: CatalogPlayer;
 }
 
@@ -239,7 +300,7 @@ interface PlayerContextProps extends DirectiveRailProps {
 function PlayerContext(props: PlayerContextProps) {
   const {
     player, slot, slotNumber, condition, trust, personality,
-    onPlayerPromptChange, onRemovePlayer, onClose,
+    onPlayerPromptChange, onRemovePlayer, onSwapPlayer, onClose, tuneOpen, onToggleTune,
   } = props;
   const promptText = slot?.promptText ?? "";
   const placed = Boolean(slot);
@@ -293,6 +354,15 @@ function PlayerContext(props: PlayerContextProps) {
   const over = combinedLen > PROMPT_MAX_CHARS;
   const personalityValue = personality ?? player.personality;
 
+  // 접힌 채로도 **무엇이 켜져 있는지**는 요약으로 말한다 — 안 그러면 저장된 역할·칩이 화면에서
+  // 사라진 것처럼 보인다(레이어가 없어진 게 아니다).
+  const activeRole = ROLE_OPTIONS[roleIndex];
+  const chipCount = directive.chipIds.length;
+  const tuneSummary =
+    chipCount > 0
+      ? `${activeRole?.label ?? "역할"} · 지시 ${chipCount}`
+      : `${activeRole?.label ?? "역할"} · 지시 없음`;
+
   return (
     <>
       {/* 한 줄 신원 = 구 선수정보 시트의 대체물 (#106 요구 2).
@@ -322,7 +392,9 @@ function PlayerContext(props: PlayerContextProps) {
           <span data-testid="rail-subtitle">
             {player.position}
             {condition != null ? ` · 컨디션 ${conditionLabel(condition)}` : ""}
-            {placed ? "" : " · 배치할 슬롯을 고르세요"}
+            {/* 배치 잠금(감독시간)·빈 자리 없음에서는 따를 수 없는 말이 된다 → 그때는 안 띄운다
+                (3차 검증 m5: pickNote 는 "빈 자리가 없습니다"라고 하는데 여기는 "슬롯을 고르세요"였다). */}
+            {placed || props.lockRoster ? "" : " · 배치할 슬롯을 고르세요"}
           </span>
         </span>
         {personalityValue && (
@@ -337,8 +409,64 @@ function PlayerContext(props: PlayerContextProps) {
       </div>
 
       <div className={styles.body} data-rail-body>
-        {/* ① 익숙한 전술 포맷 — 역할 세그먼트 */}
-        <div className={styles.group} data-testid="rail-tactical-layer">
+        {/* ① 우리 차별점 = 자유 문장. #244 로 **맨 위**로 올라왔다 (구: 역할·칩 아래). */}
+        <PromptBlock
+          title={props.promptScope === "halftime" ? "감독의 한마디 (후반)" : "감독의 한마디"}
+          value={freeText}
+          onChange={(text) => push(directive, text)}
+          placeholder="이 선수에게 자유롭게 한마디 (예: 오늘 너만 믿는다, 과감하게 슛 노려)"
+          /* 카운터는 **합성 결과** 길이다 — 선택지 문장 + 내가 쓴 문장이 함께 전송되기 때문. */
+          countLength={combinedLen}
+          over={over}
+          disabled={!placed || props.promptDisabled}
+          testId="rail-prompt-input"
+          actions={
+            <>
+              {placed && onSwapPlayer && (
+                <button type="button" className={styles.swap} data-testid="rail-swap-player" onClick={onSwapPlayer}>
+                  ⇄ 이 자리 선수 바꾸기
+                </button>
+              )}
+              {placed && !props.lockRoster && (
+                <button
+                  type="button"
+                  className={styles.remove}
+                  data-testid="rail-remove-player"
+                  onClick={() => onRemovePlayer(player.id)}
+                >
+                  덱에서 제거
+                </button>
+              )}
+            </>
+          }
+        />
+
+        {props.note}
+
+        {/* ② 세부조정 = 옆(버튼 뒤). 역할·칩은 지운 게 아니라 접혀 있다(#244). */}
+        <button
+          type="button"
+          className={styles.tuneToggle}
+          data-testid="rail-tune-toggle"
+          aria-expanded={tuneOpen}
+          aria-controls="rail-tactical-layer"
+          disabled={!placed}
+          onClick={onToggleTune}
+        >
+          <span className={styles.gear} aria-hidden="true">
+            ⚙
+          </span>
+          <span className={styles.tuneLabel}>선수 세부 조정</span>
+          <span className={styles.tuneHint} data-testid="rail-tune-summary">
+            {tuneSummary}
+          </span>
+          <span className={styles.tuneCaret} aria-hidden="true">
+            {tuneOpen ? "▾" : "▸"}
+          </span>
+        </button>
+
+        {tuneOpen && (
+        <div className={styles.group} id="rail-tactical-layer" data-testid="rail-tactical-layer">
           <span className={styles.eyebrow}>
             역할<span className={styles.tail} />
           </span>
@@ -394,35 +522,7 @@ function PlayerContext(props: PlayerContextProps) {
             })}
           </div>
         </div>
-
-        {/* ③ 우리 차별점 레이어 — 자유 문장 */}
-        <div className={styles.mark}>
-          <span className={styles.markLabel}>감독의 한마디</span>
-          <textarea
-            className={over ? styles.textareaOver : styles.textarea}
-            data-testid="rail-prompt-input"
-            aria-label="감독의 한마디"
-            rows={3}
-            maxLength={PROMPT_MAX_CHARS}
-            disabled={!placed}
-            placeholder="이 선수에게 자유롭게 한마디 (예: 오늘 너만 믿는다, 과감하게 슛 노려)"
-            value={freeText}
-            onChange={(e) => push(directive, e.target.value)}
-          />
-          <div className={styles.meter}>
-            <b data-testid="rail-counter">{combinedLen}</b> / {PROMPT_MAX_CHARS} · 이 문장은 그대로 AI에게 전달된다
-            {placed && (
-              <button
-                type="button"
-                className={styles.remove}
-                data-testid="rail-remove-player"
-                onClick={() => onRemovePlayer(player.id)}
-              >
-                덱에서 제거
-              </button>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* m1 안내 — 저장된 프롬프트에서 인식해 켰던 항목을 끄면 그 문장을 **감독의 한마디로 옮긴다**.
             (칩이 만든 문장인지 내가 쓴 문장인지 문자열로는 구별할 수 없으므로, 지우는 대신 옮긴다.)

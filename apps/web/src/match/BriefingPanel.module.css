@@ -4,20 +4,7 @@
   gap: 14px;
 }
 
-/* 브리핑의 마지막 블록은 [킥오프] 버튼이다 — 모바일에서 DeckEditor 의 하단 지시 독(fixed, 접힘 ~84px)에
-   가리지 않도록 클리어런스를 패널 끝에서 준다(R2 r3. 예전엔 poolCol 여백이 리스트 **위쪽**에 있어
-   정작 킥오프 버튼은 못 지켰다 — 실측 44.5px 가림).
-   덱 화면과 달리 MatchPage 의 Layout 은 nav 가 없어 하단탭 몫 64px 이 없다 → 독 하단 오프셋(56)
-   + 접힌 독 + main padding(16) 을 여기서 전부 준다.
-   ⚠️ 접힌 독 높이는 **고정이 아니다** — 레일 헤드가 선수 컨텍스트(성격 배지·신뢰 게이지)로 바뀌면
-   커진다(팀 84px / 선수 89px 실측). 딱 맞춘 132px 는 여유가 3.5px 뿐이라 폰트·배지가 조금만 커져도
-   다시 가려진다(R2 검증 m4) → 헤드가 2줄까지 늘어나도 견디도록 넉넉히 잡는다.
-   (`min()` 로 작은 화면에서 과도한 여백이 되지 않게 상한을 건다.) */
-@media (max-width: 1023px) {
-  .panel {
-    padding-bottom: min(200px, 26vh);
-  }
-}
+/* #244: 하단 지시 독이 사라졌으므로(레일이 문서 흐름) 킥오프 버튼용 독 클리어런스도 없앤다. */
 
 .timerRow {
   display: flex;
@@ -317,4 +304,102 @@
 .confirmCancel {
   background: transparent;
   color: var(--text);
+}
+
+/* ── 상대 정보 = 시트 (#244) ────────────────────────────────────────────────
+   구: 상대 표(실측 244px) + 선발 컨디션(209px)이 브리핑 상단 453px 을 먹어, 정작 프롬프트는
+   1874px 문서의 화면 밖에 있었다. 요약 한 줄만 남기고 표·컨디션·마크 지정은 시트로 내린다. */
+/* 타이머 + 상대 요약 한 줄 (#244) */
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* #244: 첫 화면 여유가 13px 뿐이었다(계약 하한 24px). 상단 메타는 한 줄 정보라 더 조인다. */
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+}
+.oppBarName {
+  font-size: 14px;
+  font-weight: 700;
+  flex: none;
+}
+.oppBarText {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oppBarBtn {
+  flex: none;
+  min-height: 36px;
+  padding: 6px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-size: 12.5px;
+}
+.sheetBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(6, 8, 12, 0.66);
+}
+.sheetBox {
+  width: 100%;
+  max-height: 84vh;
+  overflow-y: auto;
+  padding: 12px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  background: var(--bg-elevated);
+}
+.sheetHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sheetTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+}
+.sheetClose {
+  flex: none;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+@media (min-width: 1024px) {
+  .sheetBackdrop {
+    align-items: center;
+  }
+  .sheetBox {
+    max-width: 560px;
+    border-radius: 14px;
+  }
+}
+
+/* 짧은 화면: 상단 메타(타이머·상대 요약)를 더 조인다(#244 BL-2). */
+@media (max-height: 819px) {
+  .metaRow {
+    padding: 3px 9px;
+    font-size: 12px;
+  }
+  .panel {
+    gap: 8px;
+  }
 }

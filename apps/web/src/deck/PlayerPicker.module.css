@@ -189,3 +189,27 @@
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+/* 시트 모드(#244) — 시트가 이미 제목/여백을 가지므로 카드 테두리를 벗고 높이를 시트에 맞춘다.
+   리스트는 시트 안에서 스크롤한다(시트 자체는 스크롤하지 않는다 — 필터 줄이 항상 보여야 한다). */
+.pickerSheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: none;
+  padding: 0;
+  background: none;
+}
+.pickerSheet .list {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+/* ⚠️ 시트는 flex 컬럼이라 리스트가 길어지면 위 형제들이 **수축**한다. `.tabs` 는 overflow-x:auto 라
+   자동 최소크기(min-height:auto)가 풀려 있어 44px 탭 타깃이 23px 로 눌렸다(실측, #244 B-3).
+   목록 길이와 무관하게 필터 줄은 자기 높이를 지킨다. */
+.pickerSheet .tabs,
+.pickerSheet .header {
+  flex: none;
+}

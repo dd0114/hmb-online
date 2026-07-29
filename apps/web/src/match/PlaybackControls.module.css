@@ -160,3 +160,169 @@
 .pin:hover {
   outline: 1px solid #fff;
 }
+
+/* ── #244 돌려보기 레이아웃 (감독시간 경기장면 탭) ─────────────────────────────
+   무대용 오버레이 스킨(작은 글자·모서리 정렬)이 아니라 **화면 안 도구**다. */
+.barReview {
+  position: static;
+  display: block;
+  width: 100%;
+  padding: 0;
+  background: none;
+  opacity: 1;
+}
+.review {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.tbtn {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.play {
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--us);
+  color: #04122c;
+  font-size: 20px;
+}
+.speed {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.tbtn:disabled,
+.play:disabled,
+.speed:disabled {
+  opacity: 0.45;
+}
+
+/* 시계는 트랙 **위 줄**에 둔다 — 옆에 붙이면 폰 폭에서 트랙이 그만큼 짧아진다. */
+.trackRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.reviewClock {
+  flex: none;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+/* 마커와 재생 핸들이 **같은 트랙** 위 — 축이 갈리면 "지금 어디"를 못 읽는다. */
+.track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 30px;
+  display: flex;
+  align-items: flex-end;
+}
+.reviewScrub {
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  position: relative;
+  z-index: 2;
+  accent-color: var(--us);
+}
+/* 마커는 트랙 **바로 위**에 얹는다 — 트랙 안에 두면 스크럽 트랙이 덮어 반쯤 잘린다(실화면). */
+.marker {
+  position: absolute;
+  top: 7px;
+  z-index: 3;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 2px solid #0b111c;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.markerMajor {
+  width: 13px;
+  height: 13px;
+}
+
+.scenes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.scenes li + li .scene {
+  border-top: 1px solid var(--hairline);
+}
+.scene {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--text);
+  text-align: left;
+}
+.sceneTime {
+  width: 56px;
+  flex: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.sceneName {
+  font-size: 13px;
+  font-weight: 600;
+}
+/* 골·PK·선방은 굵게 — 스크롤되는 리스트에서 "볼 만한 장면"이 먼저 눈에 들어와야 한다. */
+.sceneMajor .sceneName {
+  font-weight: 800;
+}
+.sceneMajor .sceneTime {
+  color: var(--text);
+}
+.sceneDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-left: auto;
+}
+.scenesEmpty {
+  padding: 12px 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.advanced {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.advanced summary {
+  padding: 8px 4px;
+  cursor: pointer;
+}

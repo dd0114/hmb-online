@@ -349,7 +349,6 @@
 }
 
 .remove {
-  margin-left: auto;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: none;
@@ -451,5 +450,122 @@
   .remove {
     min-height: 44px;
     min-width: 44px;
+  }
+}
+
+/* ── #244: 세부조정 토글 (프롬프트가 1급, 조정은 그 아래 버튼 뒤) ──────────────────
+   버튼은 접힌 상태에서도 **무엇이 켜져 있는지**(역할·지시 n)를 말한다 — 레이어가 사라진 게
+   아니라 접혀 있을 뿐이라는 걸 화면이 스스로 밝혀야 한다. */
+.tuneToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: left;
+}
+.tuneToggle[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.tuneToggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.gear {
+  font-size: 14px;
+  line-height: 1;
+}
+.tuneLabel {
+  font-weight: 600;
+}
+.tuneHint {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tuneCaret {
+  flex: none;
+  font-size: 10px;
+}
+
+/* "이 자리 선수 바꾸기"(#244) — 시트를 그 자리 맥락으로 연다. `.remove` 와 같은 줄에 서므로
+   margin-left:auto 는 이쪽이 가져간다(그래야 [바꾸기][제거] 순서로 오른쪽에 붙는다). */
+.swap {
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--accent);
+  font-size: 11px;
+  padding: 4px 10px;
+  min-height: 30px;
+}
+
+/* #244 모바일 세로 예산: **팀 컨텍스트**의 레일 헤드는 감춘다.
+   헤드가 말하던 두 가지가 이미 다른 데 있다 — 이름("팀 지시")은 바로 아래 라벨("팀 전체에게")이,
+   안내("선수를 누르면 그 선수 지시로")는 보드 하단 바의 힌트가 말한다. 선수 컨텍스트의 헤드는
+   신원(번호·이름·컨디션·성격)이라 정보량이 달라 그대로 둔다. */
+@media (max-width: 1023px) {
+  .rail[data-mode="team"] .head {
+    display: none;
+  }
+}
+
+/*
+ * #244(검증 B-2 후속): **모바일에서는 레일 헤드의 풀아트를 접는다.**
+ * 구조적으로 예전과 같은 결론이다 — 하단 독 시절에도 아트는 `railCol[data-open="false"]` 에서
+ * 숨겨져 있었고(접힌 독이 리스트를 덮지 않게), 독이 사라진 지금은 그 자리가 **첫 화면 자체**다.
+ * 165px 카드를 상주시키면 선수 프롬프트가 fold 아래로 밀려 하단탭(AppNav 56px)에 삼켜진다
+ * (실측: rail-prompt-input 750~841, elementFromPoint = nav-shop). 신원은 헤드 한 줄이 말하고,
+ * 아트는 폭이 남는 데스크탑 레일에서 그대로 보인다(#187 요구는 데스크탑에서 충족).
+ */
+@media (max-width: 1023px) {
+  .rail [data-rail-art] {
+    display: none;
+  }
+}
+
+/*
+ * #244 모바일 세로 예산 — **선수 컨텍스트 헤드를 한 줄로 조인다.**
+ * 프롬프트가 첫 화면에 "가림 없이" 있어야 한다는 게 계약인데(p244 AC4는 화면 중앙 지점을 실제로
+ * 눌러 확인한다), 헤드가 63px 을 쓰면 프롬프트 아래쪽이 하단탭(AppNav 56px) 밑으로 들어간다.
+ * 신원 정보는 그대로 두고 **여백과 배지 크기만** 줄인다.
+ */
+@media (max-width: 1023px) {
+  .head {
+    gap: 7px;
+    padding: 5px 10px;
+  }
+  /* 블록 사이 간격도 조인다 — 12/14px 은 데스크탑 여백 기준이다. */
+  .body {
+    padding: 8px 10px 10px;
+    gap: 9px;
+  }
+  .who b {
+    font-size: 14px;
+  }
+  .who span {
+    font-size: 11px;
+  }
+  .mini {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+  .relation {
+    transform: scale(0.9);
+    transform-origin: right center;
   }
 }

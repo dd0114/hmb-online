@@ -8,6 +8,23 @@
   --accent-contrast: #ffffff;
   --danger: #ff5a5a;
   --success: #37c26f;
+  /*
+   * #244 UI 재설계 — 색은 **4개**만 의미를 갖는다(우리·상대·시간/경고·좋음). 그 외는 회색 명도.
+   * 그전에는 링·뱃지·테두리가 보라·청록·주황으로 흩어져 "규칙 없는 알록달록"이었다.
+   * 계층은 **테두리가 아니라 배경 명도**로 만든다: 캔버스(--bg) < 카드(--surface) < 눌린 면(--sunk).
+   * 테두리는 **프롬프트에만** 남긴다 = 화면의 주인공 표시.
+   */
+  --us: #4c8dff;
+  --them: #ff6b6b;
+  --warn: #ffc24b;
+  --ok: #3ddc84;
+  --surface: #111826;
+  --sunk: #0c111b;
+  --hairline: rgba(255, 255, 255, 0.07);
+  /* 피치 — 잔디 스트라이프 2톤 + 라인. 초록 사각형이 아니라 축구장으로 읽히게. */
+  --grass-a: #17603a;
+  --grass-b: #14562f;
+  --pitch-line: rgba(255, 255, 255, 0.22);
   color-scheme: dark;
   font-family: system-ui, "Segoe UI", Roboto, sans-serif;
 }

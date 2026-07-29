@@ -1,7 +1,7 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import type { ViewerController } from "@hmb/viewer-core";
 import type { ControlMode } from "./playback-controls";
-import type { TimelinePin } from "./timeline-pins";
+import { formatMatchClock, type TimelinePin } from "./timeline-pins";
 import {
   clampTick,
   parseClockInput,
@@ -29,6 +29,13 @@ interface PlaybackControlsProps {
   snapCount?: number;
   /** 마지막 재생 가능 틱 — 초 스텝이 경기 밖으로 나가지 않게(#180). */
   lastTick?: number;
+  /**
+   * **돌려보는 화면**(감독시간 경기장면 탭 등, #244). 같은 도구를 유저 언어로 다시 배치한다:
+   * 트랜스포트 4개(이전 장면·재생·다음 장면·배속) + 한 축 타임라인 + 장면 리스트,
+   * 그리고 QA 풀컨트롤(배속 6단·프레임 스텝·mm:ss)은 **"고급"으로 접는다**.
+   * 끄면 예전 그대로(관전/QA 무대) — 이게 롤백 스위치다.
+   */
+  review?: boolean;
 }
 
 // 연출 페이스에 곱하는 **배율**(#216) — 1x = 자연 페이스(크루즈 4x / 키장면 1x).
@@ -56,10 +63,43 @@ export function PlaybackControls({
   pins,
   snapCount,
   lastTick,
+  review,
 }: PlaybackControlsProps) {
   return (
-    <div className={styles.bar} data-testid={`viewer-controls-half${half}`} data-mode={mode}>
-      {mode === "full" && (
+    <div
+      className={review ? `${styles.bar} ${styles.barReview}` : styles.bar}
+      data-testid={`viewer-controls-half${half}`}
+      data-mode={mode}
+      data-review={review ? "true" : undefined}
+    >
+      {review && (
+        <ReviewControls
+          half={half}
+          viewer={viewer}
+          clockRef={clockRef}
+          scrubRef={scrubRef}
+          pins={pins}
+          snapCount={snapCount ?? 0}
+        />
+      )}
+
+      {mode === "full" && review && (
+        /* 고급 = QA 도구. 유저 화면에선 접혀 있고, 펴면 예전 풀컨트롤 그대로다(도구를 뺏지 않는다). */
+        <details className={styles.advanced} data-testid={`viewer-advanced-half${half}`}>
+          <summary>고급 컨트롤 — 배속·프레임 스텝·시간 점프</summary>
+          <AdminControls
+            half={half}
+            viewer={viewer}
+            pins={[]}
+            snapCount={snapCount ?? 0}
+            lastTick={lastTick ?? 0}
+            /* 시계·시간바는 위 돌려보기 줄이 소유한다 — 여기서 또 그리면 같은 testid 가 둘이 된다. */
+            nested
+          />
+        </details>
+      )}
+
+      {mode === "full" && !review && (
         <AdminControls
           half={half}
           viewer={viewer}
@@ -110,6 +150,7 @@ function AdminControls({
   pins,
   snapCount,
   lastTick,
+  nested = false,
 }: {
   half: 1 | 2;
   viewer: ViewerController | null;
@@ -118,6 +159,11 @@ function AdminControls({
   pins?: TimelinePin[];
   snapCount: number;
   lastTick: number;
+  /**
+   * 돌려보기 화면의 "고급" 안에 들어갈 때 — 재생/처음·시계·시간바는 **바깥 줄이 소유**한다.
+   * 여기서 또 그리면 같은 testid 가 화면에 둘이 되어 계약(그리고 사용자)이 어느 쪽인지 모른다.
+   */
+  nested?: boolean;
 }) {
   const v = viewer;
   const disabled = !v;
@@ -168,18 +214,22 @@ function AdminControls({
   }, [v, lastTick, snapCount]);
   return (
     <div className={styles.admin} data-testid={`viewer-admin-half${half}`}>
-      <button
-        type="button"
-        className={styles.mode}
-        data-testid={`viewer-play-toggle-half${half}`}
-        disabled={disabled}
-        onClick={() => v?.togglePlay()}
-      >
-        ⏯ 재생/정지
-      </button>
-      <button type="button" className={styles.mode} data-testid={`viewer-restart-half${half}`} disabled={disabled} onClick={() => v?.restart()}>
-        ⟲ 처음
-      </button>
+      {!nested && (
+        <>
+          <button
+            type="button"
+            className={styles.mode}
+            data-testid={`viewer-play-toggle-half${half}`}
+            disabled={disabled}
+            onClick={() => v?.togglePlay()}
+          >
+            ⏯ 재생/정지
+          </button>
+          <button type="button" className={styles.mode} data-testid={`viewer-restart-half${half}`} disabled={disabled} onClick={() => v?.restart()}>
+            ⟲ 처음
+          </button>
+        </>
+      )}
       <span className={styles.speeds} role="group" aria-label="배속">
         {SPEEDS.map((s) => (
           <button
@@ -219,7 +269,9 @@ function AdminControls({
           ◂f
         </button>
         {/* 경기 시계 — 코어 onClock 이 `12'34" / 24'00"` 로 매 프레임 갱신(호스트 ref 직접 조작). */}
-        <span className={styles.clock} data-testid={`viewer-clock-half${half}`} ref={clockRef} aria-label="경기 시계" />
+        {!nested && (
+          <span className={styles.clock} data-testid={`viewer-clock-half${half}`} ref={clockRef} aria-label="경기 시계" />
+        )}
         <button type="button" className={styles.mode} data-testid={`viewer-step-plus1f-half${half}`} disabled={disabled} title="1프레임(스냅샷) 앞으로 (.)" onClick={() => stepFrame(1)}>
           f▸
         </button>
@@ -247,6 +299,7 @@ function AdminControls({
           }}
         />
       </span>
+      {!nested && (
       <span className={styles.timeline} data-testid={`viewer-timeline-half${half}`}>
         {/* 눈금 = 스냅샷 인덱스(1칸 = 1스냅샷 = 리얼 로그에서 1초). % 눈금이면 한 칸이 5초를
             넘어가 "그 초"를 집을 수 없다(#180). 값 동기화는 호스트가 onScrub 으로 한다. */}
@@ -284,6 +337,170 @@ function AdminControls({
           />
         ))}
       </span>
+      )}
     </div>
   );
+}
+
+/** 배속은 유저 화면에선 **한 버튼 순환**이다(6단 나열은 QA 도구다 — 고급으로 내렸다). */
+const REVIEW_SPEEDS = [1, 2, 0.5] as const;
+
+/**
+ * 돌려보기 컨트롤 (#244) — "필요한 장면을 본다"를 유저 언어로.
+ *
+ *   [⏮ 이전 장면] ( ▶ ) [다음 장면 ⏭] [1x]
+ *   12'34"                     ─ 한 축 타임라인(이벤트 마커 + 재생 핸들이 같은 트랙) ─
+ *   8'12" 선방 · 12'34" 선제골 · 19'02" 유효슛 …   ← 이름으로 점프
+ *
+ * 그전에는 같은 정보가 버튼 21개 + 3층 타임라인으로 흩어져 있었다(재설계 진단).
+ * ⚠️ 마커와 핸들이 **같은 트랙 위**에 있어야 "지금 어디"를 읽을 수 있다 — 레인을 나누지 말 것.
+ */
+function ReviewControls({
+  half,
+  viewer,
+  clockRef,
+  scrubRef,
+  pins,
+  snapCount,
+}: {
+  half: 1 | 2;
+  viewer: ViewerController | null;
+  clockRef?: RefObject<HTMLSpanElement>;
+  scrubRef?: RefObject<HTMLInputElement>;
+  pins?: TimelinePin[];
+  snapCount: number;
+}) {
+  const v = viewer;
+  const disabled = !v;
+  const [speedIdx, setSpeedIdx] = useState(0);
+  const scenes = [...(pins ?? [])].sort((a, b) => a.tick - b.tick);
+
+  /** 지금 위치 기준 앞/뒤 장면. 없으면 처음/마지막으로 — 버튼이 죽은 것처럼 보이지 않게. */
+  const jumpScene = (dir: 1 | -1) => {
+    if (!v || scenes.length === 0) return;
+    const cur = Number((v.hooks as unknown as { cur?: () => { tick?: number } })?.cur?.()?.tick ?? 0);
+    const next =
+      dir === 1
+        ? (scenes.find((p) => p.tick > cur + 1) ?? scenes[scenes.length - 1])
+        : ([...scenes].reverse().find((p) => p.tick < cur - 1) ?? scenes[0]);
+    if (next) v.jumpToTick(next.tick);
+  };
+
+  return (
+    <div className={styles.review} data-testid={`viewer-review-half${half}`}>
+      <div className={styles.transport}>
+        <button
+          type="button"
+          className={styles.tbtn}
+          data-testid={`viewer-prev-scene-half${half}`}
+          disabled={disabled || scenes.length === 0}
+          onClick={() => jumpScene(-1)}
+        >
+          ⏮ 이전 장면
+        </button>
+        <button
+          type="button"
+          className={styles.play}
+          data-testid={`viewer-play-toggle-half${half}`}
+          aria-label="재생/정지"
+          disabled={disabled}
+          onClick={() => v?.togglePlay()}
+        >
+          ▶
+        </button>
+        <button
+          type="button"
+          className={styles.tbtn}
+          data-testid={`viewer-next-scene-half${half}`}
+          disabled={disabled || scenes.length === 0}
+          onClick={() => jumpScene(1)}
+        >
+          다음 장면 ⏭
+        </button>
+        <button
+          type="button"
+          className={styles.speed}
+          data-testid={`viewer-speed-cycle-half${half}`}
+          disabled={disabled}
+          title="재생 속도"
+          onClick={() => {
+            const next = (speedIdx + 1) % REVIEW_SPEEDS.length;
+            setSpeedIdx(next);
+            v?.setSpeed(REVIEW_SPEEDS[next]!);
+          }}
+        >
+          {REVIEW_SPEEDS[speedIdx]}x
+        </button>
+      </div>
+
+      <div className={styles.trackRow}>
+        <span className={styles.reviewClock} data-testid={`viewer-clock-half${half}`} ref={clockRef} aria-label="경기 시계" />
+        <span className={styles.track} data-testid={`viewer-timeline-half${half}`}>
+          <input
+            ref={scrubRef}
+            type="range"
+            min={0}
+            max={Math.max(1, snapCount - 1)}
+            step={1}
+            defaultValue={0}
+            className={styles.reviewScrub}
+            data-testid={`viewer-scrub-half${half}`}
+            disabled={disabled || snapCount <= 1}
+            onInput={(e) => v?.scrubTo(pctFromIndex(Number((e.target as HTMLInputElement).value), snapCount))}
+            aria-label="시간바 (드래그해서 장면 이동)"
+          />
+          {scenes.map((p) => (
+            <button
+              key={`${p.kind}-${p.tick}`}
+              type="button"
+              className={`${styles.marker} ${p.major ? styles.markerMajor : ""}`}
+              data-testid={`viewer-pin-${p.tick}`}
+              title={p.label}
+              aria-label={p.label}
+              disabled={disabled}
+              style={{ left: `${p.pct}%`, background: p.color }}
+              onClick={() => v?.jumpToTick(p.tick)}
+            />
+          ))}
+        </span>
+      </div>
+
+      <ul className={styles.scenes} data-testid={`viewer-scenes-half${half}`}>
+        {scenes.map((p) => (
+          <li key={`s-${p.kind}-${p.tick}`}>
+            <button
+              type="button"
+              className={p.major ? `${styles.scene} ${styles.sceneMajor}` : styles.scene}
+              data-testid={`viewer-scene-${p.tick}`}
+              disabled={disabled}
+              onClick={() => v?.jumpToTick(p.tick)}
+            >
+              <span className={styles.sceneTime}>{formatMatchClock(p.tick)}</span>
+              <span className={styles.sceneName}>{sceneLabel(p)}</span>
+              <span className={styles.sceneDot} style={{ background: p.color }} aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+        {scenes.length === 0 && <li className={styles.scenesEmpty}>기록된 장면이 없습니다</li>}
+      </ul>
+    </div>
+  );
+}
+
+/** 핀 툴팁(`12'34" · GOAL`)은 QA 표기다 — 리스트에는 사람 말로 적는다. */
+function sceneLabel(p: TimelinePin): string {
+  switch (p.kind) {
+    case "goal":
+      return "골";
+    case "penalty":
+      return "페널티킥";
+    case "save":
+      return "선방";
+    case "shot_on":
+      return "유효슛";
+    case "corner":
+      return "코너킥";
+    default:
+      return p.label;
+  }
 }

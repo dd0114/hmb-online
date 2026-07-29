@@ -54,6 +54,8 @@ const fx = vi.hoisted(() => {
 vi.mock("../api/hooks", () => {
   const query = (data: unknown) => ({ data, isLoading: false, isError: false, isSuccess: true });
   return {
+    // #244(F-1): 팀 문장 임시 보관을 유저 스코프로 만들며 추가된 의존.
+    useMe: () => query({ user: { id: "u1", nickname: "테스터" } }),
     useDeck: () => query(fx.deck),
     usePlayers: () => query(fx.players),
     usePresets: () => {

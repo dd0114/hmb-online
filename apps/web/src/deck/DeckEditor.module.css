@@ -1,35 +1,16 @@
 /*
- * 팀 시트 레이아웃 (#106 R1).
- * 모바일: 시트 바(sticky) → 보드 카드 → 보유 선수 → 지시 레일(하단 고정 독).
- * ≥1024px: 좌(보드 위, 리스트 아래) / 우(지시 레일 sticky).
- * ≥1280px: 목업 그대로 3컬럼 — 보유 선수 | 전술보드 | 지시 레일.
- *   (nav 사이드바 200px + app-container 1120px 상한 때문에 3컬럼은 1280px 부터 여유가 생긴다.)
+ * 팀 시트 레이아웃 (#106 R1 → **#244 프롬프트 1급**).
+ * 모바일: 시트 바 → 보드 카드 → **프롬프트(레일)** — 전부 문서 흐름. 하단 독 없음.
+ * ≥1024px(컨테이너 640px+): 좌 보드 / 우 프롬프트(sticky) 2컬럼.
+ * 보유 선수 리스트는 어느 폭에서도 본문에 없다 — 시트(Modal)로만 연다.
+ *
+ * ⚠️ 모바일 하단 독(`position:fixed` + `--dock-runway` 실측 보정 + 오토스크롤)은 #244 에서
+ * **없앴다**. 독이 있어야 풀리던 문제들(런웨이·죽은 띠·선택 토큰 오토스크롤·리스트 클리어런스)은
+ * 독과 함께 사라진 것이지 해결된 게 아니다 — 독을 되살리면 그 보정들도 같이 되살려야 한다.
  */
 .sheet {
   display: block;
   min-width: 0;
-}
-
-/*
- * 모바일에서 **독이 펼쳐진 동안** 시트 아래에 독 높이만큼 스크롤 여유를 준다 (R2 검증 blocker-1).
- *
- * 펼친 독은 `position:fixed; z-index:15` 로 화면 하단 ~52vh 를 덮는데, 선발이 다 찬 정상 덱은
- * 문서가 짧아(390×844 실측 docH=1000, 최대 scrollY=156) **보드 하단 바(초기화·선택 해제)가 독 아래에
- * 깔린 채 영영 안 올라왔다** — 사람은 못 누르는데 E2E 는 빈 덱(문서가 길어 스크롤 여유 312px)이라
- * 자동 스크롤로 통과했다. 특정 버튼을 옮기는 걸로는 `board-reset` 까지 못 구하므로 **원인**을 고친다:
- * 독이 열려 있는 동안만 문서를 늘려 보드 어느 부분이든 독 위로 스크롤해 올릴 수 있게 한다.
- * (접힌 상태는 손대지 않는다 — r3 의 "죽은 공간 ≤24px" 계약은 접힘 기준이라 그대로 유지된다.)
- * 무스크롤 경로도 남아 있다: 독 헤더의 × (rail-close) 가 [선택 해제]와 동치다.
- */
-@media (max-width: 1023px) {
-  .sheetDockOpen {
-    /*
-     * R3a m6/m7: 60vh 고정치는 필요보다 커서 최대 스크롤에 죽은 띠(실측 175px)를 남기고 접을 때
-     * 507px 튀었다. DeckEditor 가 **실측**해 `--dock-runway` 로 덮은 만큼만 넣는다(dock-geometry).
-     * 폴백은 그대로 60vh — JS 가 못 돌아도 R2 blocker-1(보드 하단 바가 독에 갇히지 않는다)은 지킨다.
-     */
-    padding-bottom: var(--dock-runway, 60vh);
-  }
 }
 
 .wrap {
@@ -37,13 +18,13 @@
   min-width: 0;
 }
 
-.boardCol,
-.poolCol {
+.boardCol {
   min-width: 0;
 }
 
 .boardHint {
-  flex: 1;
+  /* 버튼들과 같은 줄을 다투지 않는다(B-1) — 한 줄을 통째로 쓰고 버튼은 아래 줄로 내려간다. */
+  flex: 1 0 100%;
   min-width: 0;
   font-size: 12px;
   color: var(--text-muted);
@@ -99,118 +80,29 @@
   }
 }
 
+.pickNote {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: #ffd479;
+}
+
 .errorNote {
   margin: 8px 0 0;
   font-size: 13px;
   color: var(--danger);
 }
 
-/* ── 모바일: 지시 레일 = 하단 독 ───────────────────────────────
-   AppNav 하단탭(고정) 위에 얹는다. 접힌 상태는 헤드 한 줄만 보이고, 선수를 탭하면 펼쳐진다. */
+/* ── 모바일: 지시 레일 = **문서 흐름 안의 블록** (#244) ─────────────────────────
+   구: position:fixed 하단 독(접힘 기본) → 프롬프트가 첫 화면에 0px 이었다.
+   지금: 보드 바로 아래에 그대로 온다 — 스크롤 없이 프롬프트가 보이는 게 이 에픽의 계약이다
+   (e2e/p244-prompt-first.spec.ts AC1). */
 .railCol {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
-  z-index: 15;
-  padding: 0 10px 8px;
-  background: linear-gradient(180deg, rgba(15, 17, 21, 0), rgba(15, 17, 21, 0.94) 22%);
-}
-
-/* 독 펼침/접힘 토글 — 상단 가장자리 전체가 탭 타깃이다(핸들만 노리게 하면 안 잡힌다).
-   접힌 상태에서는 팀 지시(팀 프롬프트)가 여기서 열린다. */
-.grab {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  width: 100%;
-  /* 44px 탭 타깃(#106 R3b C) — 독 여닫기는 폰에서 가장 자주 누르는 컨트롤인데 24px 였다.
-     ⚠️ 이 높이는 **접힌 독 높이**에 그대로 더해지므로 `DeckPage.module.css .notes` 클리어런스와
-     한 쌍이다(둘 중 하나만 바꾸면 e2e "R2 r3" 의 gap 계약이 깨진다). */
-  min-height: 44px;
-  padding: 6px 0 4px;
-  border: none;
-  background: none;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-.grab::before {
-  content: "";
   display: block;
-  width: 34px;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--border);
-}
-.grab::after {
-  content: "▲";
-  font-size: 9px;
-  line-height: 1;
-}
-.railCol[data-open="true"] .grab::after {
-  content: "▼";
+  margin-top: 12px;
+  min-width: 0;
 }
 
-/* 접힘: 레일 헤드만 (보드 맥락을 가리지 않는다) */
-.railCol[data-open="false"] [data-rail-body] {
-  display: none;
-}
 
-/* 유닛 정보 풀아트(#187)는 **펼친 독에서만**. 접힌 독은 한 줄 신원만 유지한다 —
-   접힘 높이는 위 `.grab` 주석대로 리스트 클리어런스와 한 쌍이라, 여기에 카드를 상주시키면
-   리스트가 덮여 탭이 막힌다(deck-teamsheet R1/R2/R3a 계약). */
-.railCol[data-open="false"] [data-rail-art] {
-  display: none;
-}
-
-.railCol [data-rail-art] {
-  display: block;
-  line-height: 0;
-}
-.railCol[data-open="true"] [data-rail-body] {
-  max-height: 42vh;
-  overflow-y: auto;
-}
-
-/*
- * R3a m5: 폰에서 A안의 **핵심 전달물**(`AI에 전달될 지시문`)이 독 fold 아래로 밀려, 그걸 보려면
- * 독 안을 또 스크롤해야 했다 — "무엇이 AI에게 가는지"가 이 화면의 존재 이유인데 기본 상태에서
- * 안 보이면 A안이 전달되지 않는다. 독 스크롤러 **바닥에 고정**해 항상 보이게 한다
- * (역할/칩/한마디는 그 위에서 스크롤). 데스크탑은 레일이 통짜라 그대로 흐른다.
- */
-@media (max-width: 1023px) {
-  .railCol[data-open="true"] [data-testid="rail-compose"] {
-    position: sticky;
-    bottom: -12px; /* 스크롤러의 아래 패딩(12px)까지 덮어 뒤 문장이 비쳐 보이지 않게 */
-    z-index: 1;
-    /* flex 자식이라 `overflow:auto` 를 주는 순간 min-height:auto 가 풀려 납작하게 눌린다
-       (실측: 높이 32px 로 찌그러지고 두 줄이 독 밖으로 새어나갔다) → 수축 금지. */
-    flex: 0 0 auto;
-    margin-bottom: -12px;
-    padding-bottom: 21px;
-    max-height: 34vh;
-    overflow-y: auto;
-    background: var(--bg);
-    box-shadow: 0 -8px 12px -8px rgba(0, 0, 0, 0.55);
-  }
-}
-
-/*
- * ── R2 r3: 독 클리어런스는 **페이지 마지막 블록**이 책임진다(여기 아니다) ───────────────────
- * 예전엔 `.poolCol { padding-bottom:132px }` 로 잡았는데 둘 다 틀렸다:
- *   (a) PlayerPicker 리스트는 `max-height:260px` **내부 스크롤러**라 항목이 독에 가려질 일이 없고,
- *   (b) 이 여백은 리스트 **뒤에 오는 블록들(덱 화면의 notes, 브리핑의 킥오프 버튼)** 보다 위에 있어
- *       정작 마지막 블록의 가림을 못 막는다. 남는 건 최대 스크롤의 죽은 공간뿐이었다(실측 ~160px).
- * → 여기서는 0. 클리어런스는 각 페이지의 마지막 블록이 갖는다:
- *   덱 = DeckPage.module.css `.notes`, 브리핑 = BriefingPanel.module.css `.panel`.
- *   (Layout 이 이미 하단탭 56px + 8 = 64px 을 주므로 각 페이지는 **접힌 독 높이(실측 ~84px)** 만 더한다.
- *    독을 펼치면 42vh 까지 커지지만 그건 방금 연 오버레이라 가려도 정상 — 접힌 상태가 계약이다.
- *    e2e/deck-teamsheet.spec.ts "R2 r3" 가 실측으로 박제한다.)
- */
-.poolCol {
-  padding-bottom: 0;
-}
 
 /*
  * ⚠️ 다중 컬럼 전환은 **뷰포트가 아니라 컨테이너 폭** 기준이다(#106 R1 검증 B1).
@@ -227,32 +119,14 @@
     container-type: inline-size;
     container-name: teamsheet;
   }
-  .poolCol {
-    padding-bottom: 0;
-  }
   .railCol {
     grid-area: rail;
     position: sticky;
     top: 132px;
-    left: auto;
-    right: auto;
-    bottom: auto;
+    margin-top: 0;
     z-index: 1;
-    padding: 0;
-    background: none;
   }
-  .grab {
-    display: none;
-  }
-  .railCol[data-open="false"] [data-rail-body] {
-    display: flex;
-  }
-  /* 데스크탑 레일은 접힘 개념이 없다(.grab 숨김) — 풀아트도 항상 보인다. */
-  .railCol[data-open="false"] [data-rail-art] {
-    display: block;
-  }
-  .railCol[data-open="true"] [data-rail-body],
-  .railCol[data-open="false"] [data-rail-body] {
+  .railCol [data-rail-body] {
     max-height: calc(100vh - 200px);
     overflow-y: auto;
   }
@@ -262,29 +136,27 @@
 @container teamsheet (min-width: 640px) {
   .wrap {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
-    grid-template-areas:
-      "board rail"
-      "pool  rail";
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 380px);
+    grid-template-areas: "board rail";
     gap: 18px;
     align-items: start;
   }
   .boardCol {
     grid-area: board;
-  }
-  .poolCol {
-    grid-area: pool;
+    /* #244: 보유 선수 컬럼이 시트로 빠지며 보드 칸이 넓어졌다 — 피치(68/72)가 그대로 커지면
+       세로 700px 넘게 자라 오른쪽 프롬프트 칸과 균형이 깨진다. 폭을 묶어 비율을 유지한다. */
+    max-width: 620px;
   }
   .railCol {
     grid-area: rail;
   }
 }
 
-/* 3컬럼(목업 구성): 보유 선수 | 전술보드 | 지시 레일. 컨테이너 1000px 이상 = 덱 화면 넓은 뷰포트. */
+/* 넓은 컨테이너에서는 프롬프트 칸을 더 준다 — 문장을 쓰는 자리가 이 화면의 주인공이다(#244).
+   (구 3컬럼 "보유 선수 | 보드 | 레일" 은 리스트가 시트로 빠지며 사라졌다.) */
 @container teamsheet (min-width: 1000px) {
   .wrap {
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(300px, 340px);
-    grid-template-areas: "pool board rail";
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 440px);
   }
 }
 
@@ -320,4 +192,58 @@
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
+}
+
+/* ── 보유 선수 시트 (#244: 선택은 시트) ─────────────────────────────────────────
+   모바일 = 바텀시트(아래에서 올라온다) / 데스크탑 = 가운데 다이얼로그. 셸(포커스 트랩·Esc·
+   포커스 복원)은 공용 Modal 이 준다 — 여기서는 모양만 정한다. */
+.sheetBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(6, 8, 12, 0.66);
+}
+.sheetBox {
+  width: 100%;
+  max-height: 82vh;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 12px calc(16px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  background: var(--bg-elevated);
+}
+.sheetHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.sheetTitle {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+}
+.sheetClose {
+  flex: none;
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+@media (min-width: 1024px) {
+  .sheetBackdrop {
+    align-items: center;
+  }
+  .sheetBox {
+    max-width: 560px;
+    border-radius: 14px;
+  }
 }

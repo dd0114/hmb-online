@@ -1,10 +1,11 @@
 /* ② 전술보드 카드 — 피치 + 벤치 + 하단 바가 한 덩어리(#106 R1, 목업 `.board`). */
 .card {
   position: relative;
-  border: 1px solid #23502f;
-  border-radius: 12px;
+  /* #244: 계층은 테두리가 아니라 배경 명도로. 보드 카드는 초록 프레임을 벗고 잔디만 남긴다. */
+  border: 0;
+  border-radius: 14px;
   overflow: hidden;
-  background: linear-gradient(180deg, #16351f 0%, #0f2716 100%);
+  background: var(--surface);
 }
 
 .pitch {
@@ -12,6 +13,10 @@
   width: 100%;
   aspect-ratio: 68 / 56;
   touch-action: none; /* let @dnd-kit own touch gestures on the board */
+  /* 잔디 스트라이프(가로 줄 = 세로 피치) — 축구장으로 읽히게 하는 가장 싼 신호. */
+  background: repeating-linear-gradient(180deg, var(--grass-a) 0 26px, var(--grass-b) 26px 52px);
+  border-radius: 12px;
+  box-shadow: inset 0 0 0 2px var(--pitch-line);
 }
 
 /* halfway line + center circle for pitch legibility */
@@ -21,18 +26,88 @@
   left: 0;
   right: 0;
   top: 50%;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 2px solid var(--pitch-line);
+  /* ⚠️ 장식은 **절대 클릭을 먹지 않는다**. 슬롯 레이어보다 뒤에 페인트되므로 이게 없으면
+     그 위의 슬롯 버튼이 안 눌린다 — 4-3-3 중앙 MF 는 센터서클과 정중앙이 겹쳐
+     **토큰 중앙 탭이 무반응**이었다(3차 검증 BL-1, 슬롯 면적의 28%만 눌렸다).
+     같은 사고를 #106 R3b 가 빈 상태 오버레이에서 한 번 겪었다 — 피치 위에 뭘 얹을 땐 항상 확인. */
+  pointer-events: none;
 }
 .pitch::after {
   content: "";
   position: absolute;
+  pointer-events: none; /* 위 주석 — 센터서클이 중앙 슬롯의 탭을 삼켰다(BL-1) */
   left: 50%;
   top: 50%;
-  width: 22%;
+  width: 26%;
   aspect-ratio: 1;
   transform: translate(-50%, -50%);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 2px solid var(--pitch-line);
   border-radius: 50%;
+}
+
+/* ── 피치 라인 레이어 (#244) — 우리 골대가 아래(남). ⚠️ 클릭을 먹지 않는다(BL-1). ── */
+.lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.lines * {
+  pointer-events: none;
+}
+.pbox,
+.gbox {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 2px solid var(--pitch-line);
+}
+.pbox {
+  width: 58%;
+  height: 17%;
+}
+.gbox {
+  width: 28%;
+  height: 7%;
+}
+.pboxUs,
+.gboxUs {
+  bottom: 0;
+  border-bottom: 0;
+}
+.pboxThem,
+.gboxThem {
+  top: 0;
+  border-top: 0;
+}
+.goal {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.75);
+}
+.goalUs {
+  bottom: 0;
+}
+.goalThem {
+  top: 0;
+}
+.spot {
+  position: absolute;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--pitch-line);
+  transform: translateX(-50%);
+}
+.spotUs {
+  bottom: 12%;
+}
+.spotThem {
+  top: 12%;
 }
 
 .tokens {
@@ -58,14 +133,15 @@
 /* ── 벤치 = 같은 카드 안 ── */
 .benchSection {
   border-top: 1px solid #23502f;
-  padding: 8px 10px 9px;
+  /* #244: 모바일 세로 예산이 빡빡하다(보드+프롬프트가 한 화면). 벤치는 정보 밀도만 남긴다. */
+  padding: 6px 10px 7px;
   background: rgba(15, 17, 21, 0.55);
   position: relative;
   z-index: 2;
 }
 .benchLabel {
   display: block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-muted);
@@ -83,7 +159,8 @@
   width: auto;
   min-width: 44px;
   max-width: 60px;
-  min-height: 52px;
+  /* 44px 탭 타깃(#73 P1) 하한은 지킨다 — 그 아래로 내리지 말 것. */
+  min-height: 44px;
   padding: 0;
   border: none;
   background: none;
@@ -95,6 +172,10 @@
 .boardBar {
   display: flex;
   align-items: center;
+  /* #244 B-1: 버튼이 3개 이상 붙는 상태(빈 덱: 힌트+Auto CTA+보유선수+초기화)에서 힌트가
+     `flex:1; min-width:0` 로 쥐어짜여 **한 글자씩 10줄**로 접혔고, 그만큼(실측 footer 197px)
+     보드 카드가 부풀어 프롬프트를 하단탭 아래로 밀어냈다. 힌트는 **자기 줄**을 갖는다. */
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px 10px;
   border-top: 1px solid #23502f;
@@ -167,11 +248,25 @@
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--bg-elevated);
-  border: 1px solid #2f7d45;
+  background: #0e1b16;
+  border: 0;
   font-size: 14px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * 컨디션 링 — 디스크를 감싸는 도넛. **채움 비율**이 1차 축이라 색 없이도 읽힌다(#106 R3b B).
+ * 마스크로 가운데를 뚫어야 얼굴을 덮지 않는다(뚫지 않으면 conic-gradient 가 디스크를 통째로 칠한다).
+ */
+.condRing {
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: conic-gradient(var(--cond-color, var(--ok)) var(--cond, 0%), rgba(255, 255, 255, 0.16) 0);
+  -webkit-mask: radial-gradient(circle, transparent calc(50% - 3px), #000 calc(50% - 3px));
+  mask: radial-gradient(circle, transparent calc(50% - 3px), #000 calc(50% - 3px));
+  pointer-events: none;
 }
 .tokenSelected .disc {
   border-color: var(--accent);
@@ -191,18 +286,43 @@
   pointer-events: none;
 }
 /* 얼굴 위에서도 읽히도록 번호에 어두운 원형 스크림 + 외곽선. */
+/*
+ * 번호는 얼굴 **한가운데**가 아니라 모서리 알약으로 (#244). 가운데에 두면 얼굴이 안 보이고
+ * 얼굴을 살리려고 스크림을 옅게 하면 번호가 안 읽혔다. 계약(p3-char-skin)이 요구하는
+ * "얼굴 위 + 스크림 + z-index" 는 그대로 지킨다 — 알약은 디스크 안에 있어 얼굴과 겹친다.
+ */
 .discNum {
-  position: relative;
-  z-index: 1;
-  padding: 0 4px;
+  position: absolute;
+  left: -2px;
+  bottom: -3px;
+  z-index: 2;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
   border-radius: 8px;
-  background: rgba(9, 12, 18, 0.62);
+  background: rgba(9, 12, 18, 0.88);
   color: #fff;
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 
+/* 지시 있음 = 말풍선 점(우상단). 색은 우리팀 파랑 하나. */
+.sayDot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  border-radius: 50% 50% 50% 2px;
+  background: var(--us);
+  border: 2px solid #0e1b16;
+}
+
 .tokenName {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 1.15;
   text-align: center;
@@ -220,33 +340,32 @@
   align-items: center;
   gap: 3px;
 }
-.tokenClock {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  line-height: 0;
-}
-.promptDot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  display: inline-block;
-  flex: none;
-}
 
-/* 모바일: 토큰을 한 단계 줄이고 포지션 라벨을 감춰 11명이 겹치지 않게 한다(목업 규칙). */
+
+/* 모바일: 토큰을 한 단계 줄이고 포지션 라벨을 감춰 11명이 겹치지 않게 한다(목업 규칙).
+   #244: 피치 세로를 한 단계 더 줄인다 — 이 화면의 주인공은 **프롬프트**이고, 프롬프트가
+   첫 화면(844) 안에 들어와야 한다는 게 계약이다(p244 AC1). 실측 314px → 272px.
+   ⚠️ 68/48 까지 줄였더니 **이름표가 아랫줄 토큰 디스크에 닿았다**(실화면 확인). 4-4-2 는 y 줄이
+   4개라 줄 간격이 (토큰 36 + 이름 12 + 여유) 아래로 내려가면 안 된다 → 68/52 가 **하한**이고,
+   거기서 실측 여유가 2px 뿐이었다(독립 검증 M-7). ⚠️ 그렇다고 피치를 키우면(68/56 시도) 이번엔
+   **선수 프롬프트가 fold 밖으로 밀려 하단탭에 가린다**(실측 760~851, hitSelf=false) — 세로 예산이
+   그만큼 빡빡하다. 그래서 피치는 68/52 로 두고 **토큰 쪽을 줄여** 줄 간 여유를 만든다(아래 .disc). */
 @media (max-width: 1023px) {
   .pitch {
-    aspect-ratio: 68 / 60;
+    aspect-ratio: 68 / 52;
   }
   .pitchSlot {
     width: 58px;
   }
   .disc {
-    width: 36px;
-    height: 36px;
-    font-size: 13px;
+    width: 33px;
+    height: 33px;
+    font-size: 12px;
+  }
+  /* 이름표를 디스크에 바짝 붙여 줄 간 여유를 벌어준다(M-7: 실측 2px → 8px 이상). */
+  .tokenName {
+    margin-top: 1px;
+    font-size: 10px;
   }
   .tokenMeta {
     display: none;
@@ -295,4 +414,73 @@
 }
 .empty * {
   pointer-events: none;
+}
+
+/* ── #244 감독시간: 교체 모드 + OUT 뱃지 ─────────────────────────────────────── */
+.cardSwap {
+  outline: 2px solid #ffd479;
+  outline-offset: -2px;
+}
+.tokenOut .disc {
+  opacity: 0.5;
+}
+.outBadge {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  transform: translateX(-50%);
+  font-size: 9px;
+  line-height: 1.4;
+  color: #ffb4b4;
+  background: #2a1414;
+  border: 1px solid #6b2f2f;
+  border-radius: 999px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+/*
+ * ── 짧은 화면(높이 < 820px) 예산 (#244 BL-2) ───────────────────────────────────────────
+ * 390×844 하나만 맞춰 두면 360×740(갤럭시)·브라우저 확대에서 전부 무너진다(실측 −2~−154px).
+ * 화면이 짧을수록 **보드가 먼저 양보한다** — 이 화면의 주인공은 프롬프트다.
+ * 지원 하한은 **360×740**(계약이 그 조합을 직접 잰다). 그보다 짧으면 프롬프트가 밀릴 수 있고,
+ * 그건 계약이 재지 않는다(지원 범위를 넓히려면 여기 값과 계약의 뷰포트 목록을 같이 늘려라).
+ */
+@media (max-width: 1023px) and (max-height: 819px) {
+  .pitch {
+    aspect-ratio: 68 / 44;
+  }
+  .disc {
+    width: 30px;
+    height: 30px;
+    font-size: 11px;
+  }
+  .benchSection {
+    padding: 5px 8px 6px;
+  }
+  .benchLabel {
+    margin-bottom: 3px;
+    font-size: 11px;
+  }
+  .benchCell {
+    min-height: 44px; /* 탭 타깃 하한은 지킨다(#73 P1) */
+  }
+  .boardBar {
+    padding: 6px 8px;
+  }
+}
+
+/* 아주 짧은 화면(≤760px: 360×740 등)은 한 단계 더 — 브리핑은 상단 메타가 더 있어 여기서 갈린다. */
+@media (max-width: 1023px) and (max-height: 760px) {
+  .pitch {
+    aspect-ratio: 68 / 40;
+  }
+  .disc {
+    width: 28px;
+    height: 28px;
+    font-size: 10.5px;
+  }
+  .tokenName {
+    font-size: 9px;
+  }
 }

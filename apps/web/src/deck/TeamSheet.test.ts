@@ -173,69 +173,6 @@ describe("④ 탭-투-플레이스", () => {
     expect(screen.getByTestId("rail-title").textContent).toBe("미드필더");
   });
 
-  it("역방향(선수 먼저 탭 → 슬롯 탭)도 동일하게 배치된다", () => {
-    renderSheet();
-    fireEvent.click(screen.getByTestId("pick-FW1"));
-    // 첫 탭은 배치가 아니라 '집어듦'
-    expect(screen.getByTestId("starter-count").textContent).toBe("선발 0/11");
-    expect(screen.getByTestId("pick-FW1").getAttribute("data-pending")).toBe("true");
-    fireEvent.click(screen.getByTestId("board-slot-starter-9"));
-    expect(screen.getByTestId("starter-count").textContent).toBe("선발 1/11");
-    expect(screen.getByTestId("board-slot-starter-9").getAttribute("data-filled")).toBe("true");
-  });
-
-  it("토큰 → 토큰 탭 = 자리 교체", () => {
-    renderSheet(placedDraft());
-    fireEvent.click(screen.getByTestId("board-slot-starter-6")); // MF1 선택
-    fireEvent.click(screen.getByTestId("board-slot-starter-9")); // FW1 자리 탭
-    expect(screen.getByTestId("board-slot-starter-9").querySelector('[data-testid="token-MF1"]')).toBeTruthy();
-    expect(screen.getByTestId("board-slot-starter-6").querySelector('[data-testid="token-FW1"]')).toBeTruthy();
-    expect(screen.getByTestId("starter-count").textContent).toBe("선발 2/11");
-  });
-
-  it("배치 대기 중에는 보드 바가 명시적 취소를 준다(모바일 독이 접혀도 취소 가능)", () => {
-    render(
-      h(function Wrap() {
-        const [state, setState] = useState(initialState());
-        return h(DeckEditor, {
-          state,
-          onChange: setState,
-          aiManaged: false,
-          onToggleAi: () => {},
-          players: PLAYERS,
-          playersById: byId,
-          onAuto: () => {},
-        });
-      }),
-    );
-    expect(screen.queryByTestId("place-cancel")).toBeNull();
-    fireEvent.click(screen.getByTestId("pick-FW1"));
-    expect(screen.getByTestId("place-pending-hint").textContent).toContain("공격수");
-    fireEvent.click(screen.getByTestId("place-cancel"));
-    expect(screen.queryByTestId("place-cancel")).toBeNull();
-    expect(screen.getByTestId("pick-FW1").getAttribute("data-pending")).toBe("false");
-    expect(screen.getByTestId("directive-rail").getAttribute("data-mode")).toBe("team");
-  });
-
-  it("집어든 행을 다시 탭하면 해제된다(슬롯 재탭과 대칭)", () => {
-    renderSheet();
-    fireEvent.click(screen.getByTestId("pick-FW1"));
-    expect(screen.getByTestId("pick-FW1").getAttribute("data-pending")).toBe("true");
-    fireEvent.click(screen.getByTestId("pick-FW1"));
-    expect(screen.getByTestId("pick-FW1").getAttribute("data-pending")).toBe("false");
-    expect(screen.getByTestId("starter-count").textContent).toBe("선발 0/11");
-  });
-
-  it("배치(리스트→보드)는 독을 펼치지 않고, 이미 배치된 토큰 탭은 펼친다", () => {
-    renderSheet();
-    fireEvent.click(screen.getByTestId("board-slot-starter-6"));
-    fireEvent.click(screen.getByTestId("pick-MF1")); // 배치
-    expect(screen.getByTestId("rail-dock").getAttribute("data-open")).toBe("false");
-    fireEvent.click(screen.getByTestId("rail-close")); // 선택 비우고
-    fireEvent.click(screen.getByTestId("board-slot-starter-6")); // 이미 배치된 선수 선택
-    expect(screen.getByTestId("rail-dock").getAttribute("data-open")).toBe("true");
-  });
-
   it("벤치 빈칸으로도 탭 배치된다(벤치가 보드와 같은 탭 규칙)", () => {
     renderSheet();
     fireEvent.click(screen.getByTestId("board-slot-bench-0"));
@@ -278,6 +215,7 @@ describe("⑥ 지시 레일 A안 — 선수 컨텍스트", () => {
   it("역할은 라디오 세그먼트(4종) — 누르면 checked 가 옮겨간다", () => {
     renderSheet(placedDraft());
     fireEvent.click(screen.getByTestId("board-slot-starter-9")); // FW1 (프롬프트 없음)
+    fireEvent.click(screen.getByTestId("rail-tune-toggle")); // #244: 역할·칩은 ⚙ 뒤
     expect(screen.getByTestId("rail-role").getAttribute("role")).toBe("radiogroup");
     expect(screen.getByTestId("rail-role-balanced").getAttribute("role")).toBe("radio");
     expect(screen.getByTestId("rail-role-balanced").getAttribute("aria-checked")).toBe("true");
@@ -291,6 +229,7 @@ describe("⑥ 지시 레일 A안 — 선수 컨텍스트", () => {
   it("역할·칩이 미리보기 문장에 즉시 반영된다(칩은 카탈로그 순서)", () => {
     renderSheet(placedDraft());
     fireEvent.click(screen.getByTestId("board-slot-starter-9"));
+    fireEvent.click(screen.getByTestId("rail-tune-toggle")); // #244: 역할·칩은 ⚙ 뒤
     // 아직 아무것도 없으면 빈 상태 안내
     expect(screen.getByTestId("rail-compose-empty")).toBeTruthy();
 
@@ -307,6 +246,7 @@ describe("⑥ 지시 레일 A안 — 선수 컨텍스트", () => {
   it("미리보기 두 줄 = 실제 전송 promptText (A안 핵심 계약)", () => {
     const get = renderCapturing();
     fireEvent.click(screen.getByTestId("board-slot-starter-9")); // FW1
+    fireEvent.click(screen.getByTestId("rail-tune-toggle")); // #244: 역할·칩은 ⚙ 뒤
     fireEvent.click(screen.getByTestId("rail-role-attack"));
     fireEvent.click(screen.getByTestId("rail-chip-overlap"));
     fireEvent.click(screen.getByTestId("rail-chip-runbehind"));
@@ -327,6 +267,7 @@ describe("⑥ 지시 레일 A안 — 선수 컨텍스트", () => {
   it("칩을 껐다 켜도 문장이 중복 누적되지 않는다(합성 = 상태의 함수)", () => {
     const get = renderCapturing();
     fireEvent.click(screen.getByTestId("board-slot-starter-9"));
+    fireEvent.click(screen.getByTestId("rail-tune-toggle")); // #244: 역할·칩은 ⚙ 뒤
     fireEvent.click(screen.getByTestId("rail-chip-press"));
     const once = sentPrompt(get(), "FW1");
     fireEvent.click(screen.getByTestId("rail-chip-press")); // 끄고
@@ -338,6 +279,7 @@ describe("⑥ 지시 레일 A안 — 선수 컨텍스트", () => {
     // MF1 의 저장된 프롬프트는 자유 문장뿐 → 전부 "내가 쓴 문장"으로 복원
     const get = renderCapturing();
     fireEvent.click(screen.getByTestId("board-slot-starter-6"));
+    fireEvent.click(screen.getByTestId("rail-tune-toggle")); // #244: 역할·칩은 ⚙ 뒤
     expect((screen.getByTestId("rail-prompt-input") as HTMLTextAreaElement).value).toBe("안쪽으로 파고들어라");
     expect(screen.getByTestId("rail-compose-own").textContent).toBe("안쪽으로 파고들어라");
 
@@ -378,6 +320,7 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
 
   it("슬라이더가 아니라 5스텝 버튼이고, 기본 0.5 는 가운데(보통)가 눌려 있다", () => {
     renderSheet(placedDraft());
+    fireEvent.click(screen.getByTestId("team-tune-toggle")); // #244: 다이얼은 ⚙ 뒤
     for (const key of ["line", "press", "tempo", "width"]) {
       const group = screen.getByTestId(`tactics-${key}`);
       expect(group.tagName).not.toBe("INPUT");
@@ -389,6 +332,7 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
 
   it("스텝을 누르면 계약값이 0/.25/.5/.75/1 로 나간다", () => {
     const get = renderCapturing();
+    fireEvent.click(screen.getByTestId("team-tune-toggle")); // #244: 다이얼은 ⚙ 뒤
     fireEvent.click(screen.getByTestId("tactics-press-step-3"));
     expect(get().tactics.press).toBe(0.75);
     fireEvent.click(screen.getByTestId("tactics-line-step-0"));
@@ -426,6 +370,7 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
         });
       }),
     );
+    fireEvent.click(screen.getByTestId("team-tune-toggle")); // #244: 다이얼은 ⚙ 뒤
     // 표시 = 전송: 어느 스텝도 선택 상태가 아니고, 가장 가까운 스텝이 근사로만 표시된다
     for (let i = 0; i < 5; i++) {
       expect(screen.getByTestId(`tactics-line-step-${i}`).getAttribute("aria-checked")).toBe("false");
@@ -444,6 +389,7 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
 
   it("AI에 맡기기면 스텝이 비활성화된다", () => {
     renderSheet(placedDraft());
+    fireEvent.click(screen.getByTestId("team-tune-toggle")); // #244: 다이얼은 ⚙ 뒤
     fireEvent.click(screen.getByTestId("tactics-ai-toggle"));
     expect((screen.getByTestId("tactics-press-step-3") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId("tactics-ai-note")).toBeTruthy();
@@ -456,14 +402,13 @@ describe("⑥ 지시 레일 A안 — 팀 컨텍스트 5스텝 세그먼트", () 
 });
 
 describe("⑦ r1 — 배치 직후 토큰 1탭이면 그 선수 지시가 열린다", () => {
-  it("탭 배치 → 토큰 1탭 → 레일은 그 선수(팀 지시로 튕기지 않는다) + 모바일 독이 펼쳐진다", () => {
+  it("탭 배치 → 토큰 1탭 → 레일은 그 선수(팀 지시로 튕기지 않는다)", () => {
     renderSheet();
     fireEvent.click(screen.getByTestId("board-slot-starter-6"));
     fireEvent.click(screen.getByTestId("pick-MF1")); // 배치
     fireEvent.click(screen.getByTestId("board-slot-starter-6")); // 그 토큰 1탭
     expect(screen.getByTestId("directive-rail").getAttribute("data-mode")).toBe("player");
     expect(screen.getByTestId("rail-title").textContent).toBe("미드필더");
-    expect(screen.getByTestId("rail-dock").getAttribute("data-open")).toBe("true");
   });
 
   it("해제는 보드 바 [선택 해제] 또는 레일 × 로 한다", () => {
@@ -550,12 +495,14 @@ describe("⑥ 빈 상태 — 선발 0/11", () => {
 describe("⑦ 컨디션 — 색 외 축", () => {
   it("리스트 행: 등급이 글자로도 읽힌다", () => {
     renderSheet(placedDraft());
+    fireEvent.click(screen.getByTestId("pool-sheet-open")); // #244: 리스트는 시트 뒤
     expect(screen.getByTestId("pick-cond-tier-FW1").textContent).toBe("최상"); // 0.9
     expect(screen.getByTestId("pick-cond-tier-MF1").textContent).toBe("보통"); // 0.5
   });
 
   it("리스트·보드 토큰 모두 등급을 data 축으로 노출한다(색 아님)", () => {
     renderSheet(placedDraft());
+    fireEvent.click(screen.getByTestId("pool-sheet-open")); // #244: 리스트는 시트 뒤
     expect(screen.getByTestId("pick-cond-FW1").getAttribute("data-condition-tier")).toBe("high");
     expect(screen.getByTestId("token-clock-MF1").getAttribute("data-condition-tier")).toBe("mid");
   });
@@ -569,12 +516,14 @@ describe("⑦ 컨디션 — 색 외 축", () => {
 
 /** ⑧ a11y 골격 (#106 R3b C) */
 describe("⑧ a11y", () => {
-  it("독 토글이 여는 대상을 aria-controls 로 가리킨다", () => {
+  it("세부조정 토글이 여는 대상을 aria-controls 로 가리킨다(#244 — 구: 독 토글)", () => {
     renderSheet(placedDraft());
-    const toggle = screen.getByTestId("rail-dock-toggle");
-    expect(toggle.getAttribute("aria-controls")).toBe("directive-rail");
-    expect(document.getElementById("directive-rail")).toBeTruthy();
+    const toggle = screen.getByTestId("team-tune-toggle");
+    expect(toggle.getAttribute("aria-controls")).toBe("team-tactics-panel");
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById("team-tactics-panel")).toBeTruthy();
   });
 
   it("문장 이동 알림 라이브 리전은 **내용이 오기 전에** 이미 DOM 에 있다", () => {

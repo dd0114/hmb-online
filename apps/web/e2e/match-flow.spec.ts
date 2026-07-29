@@ -95,19 +95,33 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
 
   // 7) 하프타임 — 교체 1건 + 추가 프롬프트 → 후반 시작
-  // OUT 은 반드시 non-GK 선발이어야 한다 — GK 를 빼면 GK_REQUIRED 로 후반 시작이 막힌다.
-  const outSelect = page.getByTestId("sub-out-select");
-  const inSelect = page.getByTestId("sub-in-select");
-  const outValue = await outSelect.evaluate((el) => {
-    const sel = el as HTMLSelectElement;
-    const opt = [...sel.options].find((o) => o.value !== "" && !/^GK\b/.test(o.textContent ?? ""));
-    return opt?.value ?? "";
+  // #244 T2: 교체는 select 가 아니라 **하단 탭 + 보드 모드**다. 보드에서 뺄 선수(비-GK 선발)를
+  // 누르고 벤치에서 넣을 선수를 누른다. GK 를 빼면 GK_REQUIRED 로 후반 시작이 막힌다.
+  await page.getByTestId("halftime-mode-sub").click();
+  const outId = await page.evaluate(() => {
+    const slots = [...document.querySelectorAll('[data-testid^="board-slot-starter-"]')];
+    for (const s of slots) {
+      if (s.getAttribute("data-testid") === "board-slot-starter-0") continue; // GK 슬롯 회피
+      const tok = s.querySelector('[data-testid^="token-"]');
+      if (tok) return tok.getAttribute("data-testid")!.replace("token-", "");
+    }
+    return "";
   });
-  expect(outValue, "non-GK 선발 OUT 후보가 있어야 함").not.toBe("");
-  await outSelect.selectOption(outValue);
-  await inSelect.selectOption({ index: 1 });
-  await page.getByTestId("sub-add").click();
-  await expect(page.getByTestId("sub-list").getByRole("listitem")).toHaveCount(1);
+  expect(outId, "non-GK 선발 OUT 후보가 있어야 함").not.toBe("");
+  await page.getByTestId(`token-${outId}`).click();
+  const inId = await page.evaluate(() => {
+    const bench = [...document.querySelectorAll('[data-testid^="board-slot-bench-"]')];
+    for (const s of bench) {
+      const tok = s.querySelector('[data-testid^="token-"]');
+      if (tok) return tok.getAttribute("data-testid")!.replace("token-", "");
+    }
+    return "";
+  });
+  expect(inId, "벤치 IN 후보가 있어야 함").not.toBe("");
+  await page.getByTestId(`token-${inId}`).click();
+  await expect(page.getByTestId("sub-chip-0")).toBeVisible();
+  await page.getByTestId("halftime-mode-say").click();
+  await page.getByTestId("halftime-prompt-team").click().catch(() => {}); // 선수 선택 상태면 팀으로
   await page.getByTestId("halftime-team-prompt").fill("후반은 점유율 위주로 안정적으로");
   await page.getByTestId("resume-button").click();
 

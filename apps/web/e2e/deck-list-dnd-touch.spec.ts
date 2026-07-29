@@ -116,7 +116,7 @@ async function quickSwipe(page: Page, x: number, y: number, dy: number) {
   return page.evaluate(() => (document.querySelector("ul") as HTMLElement).scrollTop);
 }
 
-test("실폰(390x844, 터치): 짧은 스와이프=리스트 스크롤 / 롱프레스 드래그=보드 배치 (둘 다 산다)", async ({ page }) => {
+test("실폰(390x844, 터치): 시트 리스트 스와이프=스크롤 / 보드 토큰 롱프레스=자리 교체", async ({ page }) => {
   await mockApi(page);
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
@@ -126,62 +126,56 @@ test("실폰(390x844, 터치): 짧은 스와이프=리스트 스크롤 / 롱프�
   await expect(page.getByTestId("deck-editor")).toBeVisible();
   await expect(page.getByTestId("starter-count")).toHaveText(/0\/11/);
 
-  // 실사용 동선: 리스트가 화면 하단에 들어오고 보드 하단 슬롯이 아직 보이는 위치까지 스크롤.
-  // (폰에서 한 번의 드래그로 리스트→보드가 가능한 스크롤 구간.)
-  const source = page.getByTestId("pick-FW_TOP");
-  await page.evaluate(() => {
-    const list = document.querySelector("ul")!;
-    // 하단 지시 독(#106 R1: 접힌 상태 ≈90px, 하단탭 위)에 가리지 않는 위치까지만 올린다.
-    window.scrollBy(0, list.getBoundingClientRect().top - (window.innerHeight - 330));
-  });
-  await page.waitForTimeout(200);
-  await expect(source).toBeInViewport();
+  /*
+   * #244 로 이 스펙의 전제가 바뀌었다. 구: 리스트가 본문에 있고 **리스트→보드 드래그**가 계약이었다.
+   * 지금: 리스트는 **시트(모달)** 안이라 보드를 덮으므로 그 드래그 경로 자체가 없다.
+   * 실폰에서 지켜야 할 것은 두 가지로 재정의된다:
+   *   (A) 시트 안 리스트가 **손가락으로 스크롤**된다 — 안 되면 배치(1급 경로)가 마비된다.
+   *       (`touch-action: none` 이 행에 남아 있으면 여기서 0 이 나온다 — 구 결함의 재발 가드.)
+   *   (B) 보드 토큰 **롱프레스 드래그**로 자리 교체가 된다 — 살아남은 드래그 계약.
+   */
 
-  // 드래그 소스가 내부 스크롤 컨테이너(.list) 안에 있어야 이 회귀 계약이 유효하다
-  // (스크롤 가능해야 브라우저가 터치를 스크롤로 선점한다).
-  const listScrolls = await source.evaluate((el) => {
+  // (A) 시트를 열고 행 위에서 짧게 스와이프 → 리스트가 스크롤된다.
+  await page.getByTestId("pool-sheet-open").click();
+  await expect(page.getByTestId("player-pool")).toBeVisible();
+  const listScrolls = await page.getByTestId("pick-FW_TOP").evaluate((el) => {
     const list = el.closest("ul")!;
     return list.scrollHeight > list.clientHeight + 1;
   });
-  expect(listScrolls, "리스트가 내부 스크롤 컨테이너여야 이 회귀 계약이 유효하다").toBe(true);
+  expect(listScrolls, "시트 리스트가 내부 스크롤 컨테이너여야 이 회귀 계약이 유효하다").toBe(true);
 
-  // 뷰포트 안에 실제로 닿을 수 있는 빈 선발 슬롯을 타깃으로.
-  const target = await page.evaluate(() => {
-    const slots = Array.from(document.querySelectorAll('[data-testid^="board-slot-starter-"]'));
-    for (const el of slots) {
-      const r = el.getBoundingClientRect();
-      if (r.top >= 0 && r.bottom <= window.innerHeight && r.width > 0) {
-        return { testId: el.getAttribute("data-testid")!, x: r.x, y: r.y, width: r.width, height: r.height };
-      }
-    }
-    return null;
-  });
-  expect(target, "뷰포트 안에 도달 가능한 빈 선발 슬롯이 있어야 한다").not.toBeNull();
-
-  // (A) 짧은 스와이프는 **리스트 스크롤**로 남아야 한다 — 행이 리스트의 거의 전부(42px/행,
-  // .list padding 0 / gap 0)라 행 위 스크롤이 죽으면 리스트를 넘길 수 없고, 그러면 탭-투-플레이스
-  // (현재 1급 배치 경로)까지 사실상 마비된다. `touch-action: none` 이면 여기서 0 이 나온다.
   const rowBox = (await page.getByTestId("pick-MF_TOP").boundingBox())!;
   const scrolled = await quickSwipe(page, rowBox.x + rowBox.width / 2, rowBox.y + rowBox.height / 2, -100);
-  console.log(`[touch] quick swipe on row → list scrollTop = ${scrolled}`);
-  expect(scrolled, "행 위 짧은 스와이프로 리스트가 스크롤돼야 한다").toBeGreaterThan(0);
-  // 스크롤 제스처가 실수로 배치를 일으키면 안 된다.
-  await expect(page.getByTestId("starter-count")).toHaveText(/0\/11/);
+  console.log(`[touch] quick swipe on sheet row → list scrollTop = ${scrolled}`);
+  expect(scrolled, "행 위 짧은 스와이프로 시트 리스트가 스크롤돼야 한다").toBeGreaterThan(0);
+  await expect(page.getByTestId("starter-count")).toHaveText(/0\/11/); // 스크롤이 배치를 일으키면 안 된다
 
-  // (B) 롱프레스 드래그는 **배치**로 이어져야 한다. 리스트를 원위치로 되돌리고 다시 잡는다.
-  await page.evaluate(() => { (document.querySelector("ul") as HTMLElement).scrollTop = 0; });
-  await page.waitForTimeout(150);
-  const srcBox = (await source.boundingBox())!;
-  await longPressDrag(page, center(srcBox), center(target as Box));
-
-  // 배치 성공 = 선발 카운트 증가 + 어떤 선발 슬롯에 토큰 + 리스트 항목 placed(중복 방지).
-  // 정확히 어느 슬롯인지는 고정하지 않는다 — @dnd-kit closestCenter 는 드래그 rect(리스트 행은
-  // 가로로 넓다) 중심 기준이라 놓은 지점 근처의 다른 선발 슬롯이 선택될 수 있다. 계약은 "터치
-  // 드래그가 보드 배치로 이어진다"이다.
+  // 시트에서 두 명을 **지정한 자리**에 배치한다(탭 = 1급 경로).
+  await page.getByTestId("pool-sheet-close").click();
+  await page.getByTestId("board-slot-starter-9").click();
+  await page.getByTestId("pick-FW_TOP").click();
   await expect(page.getByTestId("starter-count")).toHaveText(/1\/11/);
-  const token = page.getByTestId("token-FW_TOP");
-  await expect(token).toBeVisible();
-  await expect(token.locator('xpath=ancestor::*[starts-with(@data-testid,"board-slot-starter-")]')).toHaveCount(1);
-  await expect(page.getByTestId("pick-FW_TOP")).toBeDisabled();
-  await expect(page.getByTestId("pick-FW_TOP")).toContainText("선발");
+  await page.getByTestId("board-slot-starter-6").click();
+  await page.getByTestId("pick-MF_TOP").click();
+  await expect(page.getByTestId("starter-count")).toHaveText(/2\/11/);
+
+  // (B) 보드 토큰 롱프레스 드래그 = 자리 교체.
+  const slotOf = async (playerId: string) =>
+    page.evaluate((id) => {
+      const tok = document.querySelector(`[data-testid="token-${id}"]`);
+      return tok?.closest("[data-testid^='board-slot-']")?.getAttribute("data-testid") ?? null;
+    }, playerId);
+  const fwSlot = (await slotOf("FW_TOP"))!;
+  const mfSlot = (await slotOf("MF_TOP"))!;
+  expect(fwSlot).toBe("board-slot-starter-9");
+  expect(mfSlot).toBe("board-slot-starter-6");
+
+  const srcBox = (await page.getByTestId("token-FW_TOP").boundingBox())!;
+  const dstBox = (await page.getByTestId(mfSlot).boundingBox())!;
+  await longPressDrag(page, center(srcBox), center(dstBox));
+  await page.waitForTimeout(200);
+
+  expect(await slotOf("FW_TOP"), "롱프레스 드래그로 FW_TOP 이 MF 자리로 가야 한다").toBe(mfSlot);
+  expect(await slotOf("MF_TOP"), "밀려난 선수는 원래 자리로 교체돼야 한다").toBe(fwSlot);
+  await expect(page.getByTestId("starter-count")).toHaveText(/2\/11/);
 });

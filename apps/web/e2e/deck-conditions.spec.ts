@@ -75,6 +75,10 @@ test("W3 리스트 + 보드에 당일 컨디션 표시", async ({ page }) => {
   await mockApi(page, CONDITIONS);
   await openDeck(page);
 
+  // #244: 보유 선수 리스트는 시트 뒤 — 먼저 연다(보드 단언은 시트를 닫고 한다).
+  await page.getByTestId("pool-sheet-open").click();
+  await expect(page.getByTestId("player-pool")).toBeVisible();
+
   // 1) 리스트 각 행에 컨디션 시계 — 값이 응답 그대로.
   for (const [id, value] of Object.entries(CONDITIONS)) {
     const clock = page.getByTestId(`pick-cond-${id}`);
@@ -88,6 +92,8 @@ test("W3 리스트 + 보드에 당일 컨디션 표시", async ({ page }) => {
     Boolean(el.querySelector('[data-testid="pick-overall-FW1"]') && el.querySelector('[data-testid="pick-cond-FW1"]')),
   );
   expect(rowHasBoth).toBe(true);
+
+  await page.getByTestId("pool-sheet-close").click();
 
   // 3) 보드 토큰(선발 배치된 GK1)에도 같은 값 — DeckPage → DeckEditor → TacticsBoard 전파.
   const boardClock = page.getByTestId("board-slot-starter-0").locator("[data-condition]").first();
@@ -105,6 +111,7 @@ test("W3 리스트 + 보드에 당일 컨디션 표시", async ({ page }) => {
 test("W3 컨디션 응답이 비거나 실패해도 리스트는 정상(graceful)", async ({ page }) => {
   await mockApi(page, "error");
   await openDeck(page);
+  await page.getByTestId("pool-sheet-open").click(); // #244: 리스트는 시트 뒤
 
   // 시계는 없지만 행/스탯총량은 그대로 — 화면이 깨지지 않는다.
   await expect(page.getByTestId("pick-FW1")).toBeVisible();

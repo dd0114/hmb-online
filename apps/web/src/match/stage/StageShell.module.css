@@ -146,6 +146,15 @@
   max-height: 58svh;
 }
 
+/*
+ * 감독시간(무대가 탭으로 빠진 상태) — 행이 하나뿐이므로 **패널이 세로를 전부 가져간다**.
+ * 안 그러면 `minmax(0,auto)` 첫 행에 패널이 담겨 콘텐츠 높이로 잡히고, 셸의 overflow:hidden 에
+ * 잘려 프롬프트 아래가 사라진다(실측: 교체 모드에서 bottom 이 stage-shell 에 먹혔다).
+ */
+.bodyManaging {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 /* 패널이 없을 때: 무대를 늘려 채우면 캔버스가 비율을 지키느라 위아래로 시커먼 띠만 커진다
    (실캡처 확인). 대신 무대를 피치 비율 그대로 두고 **세로 가운데** 정렬한다. */
 .bodyNoSheet {
@@ -166,29 +175,36 @@
   background: var(--bg-elevated);
 }
 
+/*
+ * 화면 탭(감독 · 경기장면 · 통계 …) = **알약 세그먼트**. 그 아래 패널 안의 모드 탭
+ * (감독의 한마디 · 교체)은 **밑줄**이다 — 둘이 같은 모양이면 형제로 읽혀 "탭이 2층"으로 보인다(#244).
+ */
 .tabs {
   display: flex;
   gap: 4px;
-  padding: 6px 8px 0;
-  border-bottom: 1px solid var(--border);
+  margin: 6px 10px 8px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--sunk);
   overflow-x: auto;
   flex-shrink: 0;
 }
 
 .tab {
+  flex: 1;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 999px;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
-  padding: 6px 10px;
+  padding: 9px 12px;
   white-space: nowrap;
 }
 
 .tabActive {
-  color: var(--text);
-  border-bottom-color: var(--accent);
+  color: #dbe7ff;
+  background: #1c2841;
 }
 
 /* 유일한 스크롤 영역 — 문서는 절대 스크롤하지 않는다(R1). */
@@ -208,17 +224,17 @@
   gap: 6px;
   padding: 8px 10px;
   padding-bottom: calc(8px + env(safe-area-inset-bottom, 0));
-  border-top: 1px solid var(--border);
-  background: var(--bg-elevated);
+  border-top: 1px solid var(--hairline);
+  background: #0a0f18;
 }
 
 .toggle {
   flex: 1;
   min-width: 0;
   padding: 8px 6px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--bg);
+  border-radius: 10px;
+  border: 0;
+  background: var(--surface);
   color: var(--text-muted);
   font-size: 12px;
   font-weight: 600;
@@ -228,9 +244,8 @@
 }
 
 .toggleOn {
-  background: rgba(79, 140, 255, 0.16);
-  border-color: var(--accent);
-  color: var(--text);
+  background: #1c2841;
+  color: #dbe7ff;
 }
 
 /* ── 데스크탑: **폰과 같은 형태**(hero 결정 2026-07-22) ────────────────────
@@ -300,4 +315,54 @@
   .toggle {
     flex: 0 1 200px;
   }
+}
+
+/* 경기장면 **탭**(감독시간, #244) — 패널 안에서 피치 비율을 지킨다. 상시 무대와 같은 컴포넌트를
+   쓰되 자리만 패널이다(무대를 두 벌 만들지 않는다). */
+.stageInPanel {
+  /* 캔버스(비율 고정) + 그 아래 재생 컨트롤·타임라인이 세로를 나눠 쓴다.
+     비율을 이 박스에 걸면 남는 세로가 빈 공간으로 죽는다(실화면에서 그랬다). */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #0f1420;
+}
+
+/*
+ * 경기장면 **탭** 안의 재생 컨트롤(#244) — 이 컨트롤 줄은 원래 QA/데스크탑용이라 390px 에서
+ * 좌우로 삐져나갔다(실측 admin 행 440px vs 컨테이너 354px → 양쪽 43px 잘림).
+ * 여기서는 폰 폭에 맞춰 접히게 하고, 캔버스는 피치 비율만 쓰고 남는 세로를 컨트롤에 넘긴다
+ * (예전엔 캔버스가 672px 를 먹고 그 안이 대부분 검은 여백이었다).
+ */
+/* 뷰어 루트(무대 래퍼의 부모)는 block 이라 자식이 늘어나지 못했다 — 세로를 물려주려면 여기부터 flex. */
+.stageInPanel > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* 무대는 **흐름 안**에서 피치 비율만 쓴다(관전에선 absolute inset:0 로 무대 박스를 채운다). */
+.stageInPanel :global([data-testid^="viewer-visual-half"]) {
+  position: relative;
+  inset: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  /* 피치+컨트롤을 한 덩어리로 세로 가운데 — 남는 여백을 위아래로 반씩 나눈다. */
+  justify-content: flex-start;
+}
+/* 캔버스는 **피치 비율만** 갖는다. 늘려 봐야 뷰어가 그 안에서 레터박싱해 검은 띠만 커진다
+   (실측: 430px 박스 안 실제 피치 240px). */
+.stageInPanel :global([data-testid^="viewer-canvas-half"]) {
+  flex: none;
+  height: auto;
+  aspect-ratio: 1050 / 680;
+  max-height: 40svh;
 }
