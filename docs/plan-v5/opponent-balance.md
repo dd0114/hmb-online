@@ -427,8 +427,8 @@ D5(승급 36% · 강등 11%)부터 실제 벽이 시작되고, 최고 속도 유
 
 | 게이트 | 결과 |
 |---|---|
-| `./gradlew test --rerun-tasks` (server-java 전체) | ✅ 668 tests, 0 failed |
-| `LeagueDivisionTest`(신규 18건) + `LeagueDivisionRollbackTest`(2건) | ✅ |
+| `./gradlew test --rerun-tasks` (server-java 전체) | ✅ 672 tests, 0 failed |
+| `LeagueDivisionTest`(신규 19건) + `LeagueDivisionRollbackTest`(1건) | ✅ |
 | **변이체 킬 검증** | ✅ **10/10** — 아래 표 |
 | `npx vitest run data/players/data.test.ts` | ✅ 167 tests |
 | `npm run typecheck` · `npm test`(루트) | ✅ |
