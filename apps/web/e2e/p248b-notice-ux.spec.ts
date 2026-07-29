@@ -435,3 +435,42 @@ test.describe("#248 후속 — 390px 헤더가 넘치지 않는다", () => {
     expect(pageScroll, "본문이 길다고 페이지가 늘어나지 않는다").toBeLessThanOrEqual(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ④ 캐릭터 합류 공지의 세로형 히어로 이미지 (#248 후속 — 이미지 상한 220 → 340)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe("#248 후속 — 세로형 히어로 이미지가 잘리지 않는다", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  /** 실제 리포 에셋을 쓴다 — 파일이 사라지거나 규격이 바뀌면 이 계약이 먼저 깨진다. */
+  const HERO = "/notice/hero-kyeongnicius.webp";
+
+  test("히어로 이미지가 폭을 채우고, [닫기]는 스크롤 없이 보인다", async ({ page }) => {
+    await mockLobby(page, {
+      payload: { notices: [notice({ id: "N1", body: `![경니시우스](${HERO})\n\n**LEGEND** 등급 공격수.` })] },
+    });
+    await gotoLobby(page);
+
+    const img = page.locator('[data-testid="notice-popup"] img').first();
+    await expect(img).toBeVisible();
+    // 실제로 픽셀이 도착했는지 — 깨진 이미지는 naturalWidth 0 이다.
+    expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth), "에셋이 실제로 로드된다")
+      .toBeGreaterThan(0);
+
+    const box = (await img.boundingBox())!;
+    // 상한이 220 이면 contain 이 폭을 220×0.92≈202px 로 묶어 **좌우가 빈다**.
+    expect(box.width, "좌우가 비지 않고 폭을 채운다").toBeGreaterThan(250);
+    expect(box.height, "상한(340)을 넘지 않는다").toBeLessThanOrEqual(340);
+
+    // 가로 넘침 0 + 닫기 버튼이 첫 화면에 보인다(상한을 더 키우면 여기서 깨진다).
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      ),
+      "가로 넘침 0",
+    ).toBeLessThanOrEqual(0);
+    const close = (await page.getByTestId("notice-close").boundingBox())!;
+    expect(close.y + close.height, "[닫기]가 화면 아래로 밀려나지 않는다").toBeLessThanOrEqual(844);
+  });
+});
