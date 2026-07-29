@@ -252,6 +252,24 @@
   적용값 박제·수비 보상 유무·시즌 마감 멱등[같은 시즌 재마감]·연승 초기화) + `AwayRaidTest`(리그 보상 곡선).
 - 계약 = `AwayRaidTest`(상대가 실유저인지 · 고스트 박제 · 정산/멱등 · 팝업 조회/ack · **수비자는 읽기만**).
 
+## 잠재 리롤 — 구매 단계 없음 (#247)
+
+- **다이스는 사는 물건이 아니다.** `POST /api/growth/dice` 가 롤과 **같은 트랜잭션에서** 지갑을
+  직접 깎는다(`GrowthService.chargeRoll`). 검사 순서 = **잠금(2★) → 잔액 → 결제** — 못 하는 일에
+  먼저 돈을 받지 않는다. 실패는 항상 둘 다 없던 일이 된다(돈만 나가는 상태가 없다).
+- **은퇴한 것**: `POST /api/shop/dice`(구매) · `GET /api/growth/dice`(재고 잔액) · `INSUFFICIENT_DICE`.
+  부족 코드는 이제 `INSUFFICIENT_POINTS`/`INSUFFICIENT_GEMS` 이고 문구는 `economyService.currency(...).name()`
+  + `Josa` 로 만든다(#232). 응답의 `diceLeft` 자리는 `wallet{points,gems}` 가 대신한다.
+- **가격 SoT 는 그대로** `economy.dice.{normalCost,cashGemCost}` → `/api/config#shop.dice`.
+  **키·값 무변경**이라 기존 economy override 는 재작성 없이 유효하다. 값 조정은 무배포(override+reload).
+- **원장 사유는 `'dice'` 유지** — 소비의 의미(잠재 리롤)는 안 바뀌었다. 갈아치우면 기존 원장과 집계가 갈라진다.
+- 기보유 재고는 **소각**(hero 확정). 되돌릴 수 없으므로 **V25 `dice_burned` 에 소각 시점 잔량을 박제**했다
+  — 보상 요구가 오면 그 표가 유일한 근거다(가격은 override 로 바뀔 수 있어 사후 재계산이 성립하지 않는다,
+  `starter_grants` 와 같은 원칙). `user_dice`/`dice_rolls` 는 **드롭하지 않았다**(V10 선례, 코드 참조만 제거).
+- ⚠️ `packages/shared/src/growth.ts` 의 `DiceBalance`·`DiceBuyResult`·`DiceRollResult.diceLeft` 는
+  **아직 구 계약**이다(shared 는 프리즈 조율 대상이라 이 웨이브에서 손대지 않았다). 런타임 소비자는
+  없지만(Java 서버·web 손미러) 그걸 읽고 `diceLeft` 를 되살리지 마라 — 은퇴가 정본이다.
+
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).
 - 상태 전이는 CAS(`WHERE state=?`), 보상·원장은 멱등(유니크 인덱스). 트랜잭션 경계는 서비스 메서드.

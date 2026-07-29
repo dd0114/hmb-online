@@ -11,9 +11,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * POST /api/shop/gacha {kind: single|ten} — LLD §4.1.
- * POST /api/shop/dice {kind: NORMAL|CASH, count} — 다이스 구매(에픽 #179 V2-4, NORMAL=point_ledger,
- * CASH=gem_ledger 원장·reason='dice', V2.2 재화 이원화).
  * POST /api/shop/gems/topup {packId} — 젬 충전(목업, V2.2 재화 이원화, 실결제 없음).
+ *
+ * <p><b>{@code POST /api/shop/dice} 는 은퇴했다</b>(#247, hero 확정 2026-07-29) — "다이스는 사는
+ * 게 아니다". 잠재 리롤은 강화탭에서 {@code POST /api/growth/dice} 가 지갑에서 직접 결제한다.
+ * 여기에 구매 엔드포인트를 되살리면 재고(user_dice)라는 개념이 같이 살아난다.
  */
 @RestController
 public class ShopController {
@@ -32,15 +34,6 @@ public class ShopController {
         return gachaService.pull(userId, request == null ? null : request.kind());
     }
 
-    @PostMapping("/api/shop/dice")
-    public Map<String, Object> dice(@RequestAttribute("userId") String userId,
-                                    @RequestBody(required = false) DiceRequest request) {
-        if (request == null) {
-            throw ApiException.validation("kind/count가 필요합니다");
-        }
-        return growthService.buyDice(userId, request.kind(), request.count());
-    }
-
     @PostMapping("/api/shop/gems/topup")
     public Map<String, Object> gemsTopup(@RequestAttribute("userId") String userId,
                                          @RequestBody(required = false) GemTopupRequest request) {
@@ -51,9 +44,6 @@ public class ShopController {
     }
 
     public record GachaRequest(String kind) {
-    }
-
-    public record DiceRequest(String kind, int count) {
     }
 
     public record GemTopupRequest(String packId) {

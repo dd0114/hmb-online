@@ -200,6 +200,22 @@
   (제시는 유저당 1개다). 캐시도 두지 않는다(`staleTime:0, gcTime:0`).
 - 계약 = `e2e/p245-away-report.spec.ts` + `src/lobby/away-report-logic.test.ts`.
 
+## 잠재 리롤 — 상점을 거치지 않는다 (#247)
+
+- **상점에 [다이스] 탭은 없다.** 잠재 리롤은 강화 상세(`CardGrowthDetail`)의 두 버튼
+  `잠재 재설정`(무료재화) / `고급 재설정`(유상재화)이고, 누르면 **서버가 지갑에서 바로 결제**한다.
+  `DicePanel`·`useBuyDice`·`useDiceBalance`·`INSUFFICIENT_DICE` 는 전부 은퇴 — "보유 n개"를 다시 그리지 마라.
+- **가격은 `useAppConfigValue()?.shop?.dice`** 하나뿐이다(#232). 미러 상수를 만들면 #213 이 재발한다.
+  잔액 게이팅은 `balanceFor(price.currency, …)` = **결제 재화 기준**이고, 모르는 재화면 잠그지 않는다.
+- **잔액 갱신은 `useDiceRoll` 의 `["me"]` 무효화가 한다.** 빼면 화면이 방금 쓴 돈을 계속 보여준다.
+- **확인 다이얼로그는 "이 상세를 연 뒤 첫 롤"에서만**(hero 확정). 매번 물으면 천장까지 25~84회를
+  누르는 흐름을 막고, 아예 안 물으면 오조작으로 한 판 값이 날아간다. `다시 묻지 않기` 는
+  `growth/roll-confirm.ts`(localStorage, 예외를 삼키고 **확인을 띄우는 쪽**으로 폴백).
+- **유상재화 충전(목업)은 [충전] 탭으로 옮겼다**(`GemTopupPanel`) — 원래 `DicePanel` 안에 있었지만
+  충전은 다이스와 무관하고 게이팅 플래그(`shop.gemTopup.enabled`)도 원래 같았다.
+- 계약 = `e2e/growth-mock.spec.ts`(구매 없이 차감·첫 1회 확인·클라 가드/서버 권위 2층·다이스 탭 0)
+  + `e2e/currency-display.spec.ts`(리롤 비용이 서버 config 를 따른다).
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - **e2e 전체 실행 금지** — `league-season`·`match-flow`·`w3-viewer-smoke` 는 :8080 라이브 데모에 붙는다.

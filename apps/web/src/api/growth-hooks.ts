@@ -1,19 +1,18 @@
 /**
  * 성장 시스템 v2 React Query 훅 (에픽 #179 GM3 — 메이플 피벗). apiFetch 사용, 성공 시 관련 쿼리
- * (카드·players·me/wallet·다이스 잔고) invalidate. 서버 계약 = §V2-4:
+ * (카드·players·me/wallet) invalidate. 서버 계약:
  *   GET  /api/growth/card/{playerId}   → CardEffective
  *   POST /api/growth/star {playerId}   → StarUpResult (재료 부족 4xx INSUFFICIENT_MATERIALS)
- *   POST /api/growth/dice {playerId,kind} → DiceRollResult (다이스 부족 4xx)
- *   POST /api/shop/dice {kind,count}   → DiceBuyResult
+ *   POST /api/growth/dice {playerId,kind} → DiceRollResult (잔액 부족 4xx INSUFFICIENT_POINTS/GEMS)
  *   GET  /api/growth/report/{matchId}  → MatchGrowthReport
  * 구 useEnhance/useLimitBreak(강화·한계돌파)는 폐기 — 이 훅은 존재하지 않는다.
+ * 구 useDiceBalance/useBuyDice(다이스 재고·구매)도 **#247 로 폐기** — 재고 개념 자체가 없어졌다.
  */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "./client";
 import { useToken } from "../auth/TokenContext";
 import type {
   CardEffective,
-  DiceBuyResult,
   DiceRollResult,
   GemTopupResult,
   MatchGrowthReport,
@@ -49,51 +48,19 @@ export function useStarUp() {
 }
 
 /**
- * 다이스 보유 개수 — 세션 로컬 파생치.
- * ⚠️ 계약 갭: §V2-4 API 표에 다이스 인벤토리 GET 이 없다(GET card·POST star·POST dice·
- * POST shop/dice·GET report 5개뿐). 그래서 신규 유저 기본값 0 에서 시작해 구매(useBuyDice)·
- * 롤(useDiceRoll) 응답으로만 이 쿼리 캐시를 갱신한다 — **새로고침하면 0 으로 리셋**(세션 내에서만
- * 정확). 크로스세션 정확도가 필요하면 GM2 에 MeResponse.wallet 확장 또는 전용 GET 이슈 레이즈.
+ * POST /api/growth/dice — 잠재 리롤. **구매 단계 없이 지갑에서 직접 결제**한다(#247).
+ * 잔액 부족은 4xx `INSUFFICIENT_POINTS`/`INSUFFICIENT_GEMS`(구 `INSUFFICIENT_DICE` 는 재고와 함께 소멸).
+ *
+ * 성공 시 `["me"]` 를 무효화해 헤더 지갑이 따라온다 — 롤이 재화를 쓰는 행위가 됐으므로
+ * 지갑 갱신을 빠뜨리면 화면이 방금 쓴 돈을 계속 보여준다.
  */
-export interface DiceBalance {
-  normal: number;
-  cash: number;
-}
-const DEFAULT_DICE_BALANCE: DiceBalance = { normal: 0, cash: 0 };
-export const diceBalanceKey = ["diceBalance"] as const;
-
-/** GET /api/growth/dice — 서버 보유 잔액. 새로고침에도 유지(GM2 계약 확정, DiceBalance). */
-export function useDiceBalance() {
-  return useQuery({
-    queryKey: diceBalanceKey,
-    queryFn: () => apiFetch<DiceBalance>("/api/growth/dice"),
-    placeholderData: DEFAULT_DICE_BALANCE,
-  });
-}
-
-/** POST /api/growth/dice — 잠재 리롤(줄 갱신 + 노말 다이스만 티어업 가능). 부족 시 ApiError(4xx). */
 export function useDiceRoll() {
   const queryClient = useQueryClient();
   return useMutation<DiceRollResult, ApiError, { playerId: string; kind: "NORMAL" | "CASH" }>({
     mutationFn: (body) => apiFetch<DiceRollResult>("/api/growth/dice", { method: "POST", body }),
     onSuccess: (res) => {
       invalidateCard(queryClient, res.playerId);
-      queryClient.setQueryData<DiceBalance>(diceBalanceKey, (prev) => {
-        const base = prev ?? DEFAULT_DICE_BALANCE;
-        return res.kind === "NORMAL" ? { ...base, normal: res.diceLeft } : { ...base, cash: res.diceLeft };
-      });
-    },
-  });
-}
-
-/** POST /api/shop/dice — 다이스 구매(포인트 소모). 지갑·다이스 잔고 함께 갱신. */
-export function useBuyDice() {
-  const queryClient = useQueryClient();
-  return useMutation<DiceBuyResult, ApiError, { kind: "NORMAL" | "CASH"; count: number }>({
-    mutationFn: (body) => apiFetch<DiceBuyResult>("/api/shop/dice", { method: "POST", body }),
-    onSuccess: (res) => {
-      queryClient.setQueryData<DiceBalance>(diceBalanceKey, res.dice);
-      queryClient.invalidateQueries({ queryKey: ["me"] }); // wallet.points 반영
+      queryClient.invalidateQueries({ queryKey: ["me"] });
     },
   });
 }

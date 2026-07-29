@@ -734,6 +734,18 @@ public class GrowthService {
         return out;
     }
 
+    /**
+     * 잠재 리롤 — <b>구매 단계 없이</b> 강화탭에서 바로(에픽 #247, hero 확정 2026-07-29).
+     *
+     * <p>예전엔 상점에서 다이스를 사서 {@code user_dice} 에 쌓아 두고 여기서 1개를 깎았다. 그
+     * 재고가 없어지고 <b>롤이 지갑에서 직접 결제</b>한다 — 단가는 그대로(economy {@code dice}
+     * 블록 재사용)라 롤당 재화 유출량이 같다(경제 영향 0, #212 확정 곡선 재계산 불필요).
+     *
+     * <p><b>결제와 롤은 같은 트랜잭션이다.</b> 떼어 놓으면 "돈은 나갔는데 잠재는 그대로"가
+     * 생긴다 — 실패는 항상 둘 다 없던 일이 된다.
+     *
+     * <p>검사 순서는 <b>잠금 → 잔액 → 결제</b>. 못 하는 일에 먼저 돈을 받지 않는다.
+     */
     public Map<String, Object> dice(String userId, String playerId, String kindRaw) {
         String kind = switch (String.valueOf(kindRaw)) {
             case "NORMAL" -> "NORMAL";
@@ -741,6 +753,9 @@ public class GrowthService {
             default -> throw ApiException.validation("kind는 NORMAL|CASH만 허용됩니다");
         };
         EconomyService.Potential pc = potentialCfg();
+        EconomyService.Dice dc = diceCfg();
+        boolean cash = "CASH".equals(kind);
+        long cost = cash ? dc.cashGemCost() : dc.normalCost();
         return txRunner.run(() -> {
             PlayerBase pb = playerBase(playerId)
                     .orElseThrow(() -> ApiException.notFound("선수를 찾을 수 없습니다: " + playerId));
@@ -750,17 +765,7 @@ public class GrowthService {
                         "잠재능력은 2★부터 해금됩니다", Map.of("star", st.star()));
             }
 
-            ensureUserDiceRow(userId);
-            String diceCol = "NORMAL".equals(kind) ? "normal" : "cash";
-            int consumed = jdbcClient.sql(
-                            "UPDATE user_dice SET " + diceCol + " = " + diceCol + " - 1 "
-                                    + "WHERE user_id = ? AND " + diceCol + " >= 1")
-                    .params(userId)
-                    .update();
-            if (consumed != 1) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_DICE", "다이스가 부족합니다",
-                        Map.of("kind", kind, "need", 1));
-            }
+            chargeRoll(userId, cash, cost);
 
             PotentialRow prow = potentialRow(userId, playerId).orElse(PotentialRow.fresh());
             String seed = randomSource.newSeed();
@@ -789,9 +794,6 @@ public class GrowthService {
                             linesJson, now)
                     .update();
 
-            int diceLeft = jdbcClient.sql("SELECT " + diceCol + " FROM user_dice WHERE user_id = ?")
-                    .param(userId).query(Integer.class).single();
-
             Map<String, Object> out = new LinkedHashMap<>();
             out.put("playerId", playerId);
             out.put("kind", kind);
@@ -802,69 +804,36 @@ public class GrowthService {
             out.put("lines", outcome.lines().stream().map(PotentialLine::toMap).toList());
             out.put("rollsSinceTierUp", outcome.rollsSinceTierUp());
             out.put("ceilingAt", outcome.ceilingAt() == Integer.MAX_VALUE ? 999999 : outcome.ceilingAt());
-            out.put("diceLeft", diceLeft);
-            return out;
-        });
-    }
-
-    private void ensureUserDiceRow(String userId) {
-        jdbcClient.sql("INSERT OR IGNORE INTO user_dice(user_id, normal, cash) VALUES (?, 0, 0)")
-                .param(userId).update();
-    }
-
-    // ── POST /api/shop/dice — 다이스 구매(포인트, 목업) ─────────────────
-
-    /**
-     * V2.2 재화 이원화: 노말 다이스 = P 결제(기존), 캐시 다이스 = 젬 결제(gem_ledger, reason='dice').
-     * 부족 시 kind 별로 INSUFFICIENT_POINTS / INSUFFICIENT_GEMS.
-     */
-    public Map<String, Object> buyDice(String userId, String kindRaw, int count) {
-        String kind = switch (String.valueOf(kindRaw)) {
-            case "NORMAL" -> "NORMAL";
-            case "CASH" -> "CASH";
-            default -> throw ApiException.validation("kind는 NORMAL|CASH만 허용됩니다");
-        };
-        if (count <= 0) {
-            throw ApiException.validation("count는 1 이상이어야 합니다");
-        }
-        EconomyService.Dice dc = diceCfg();
-        boolean cash = "CASH".equals(kind);
-        long cost = (long) (cash ? dc.cashGemCost() : dc.normalCost()) * count;
-        String col = cash ? "cash" : "normal";
-        return txRunner.run(() -> {
-            String refId = Ulid.next();
-            // #232: 재화 이름은 표기 메타에서 — 문구에 박으면 표기 변경이 배포가 된다.
-            String shortMsg = Josa.iga(economyService.currency(
-                    cash ? EconomyService.CURRENCY_GEM : EconomyService.CURRENCY_POINT).name()) + " 부족합니다";
-            if (cash) {
-                long balance = walletService.gems(userId);
-                if (balance < cost) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_GEMS", shortMsg,
-                            Map.of("balance", balance, "cost", cost));
-                }
-                walletService.applyGems(userId, -cost, "dice", refId);
-            } else {
-                long balance = walletService.points(userId);
-                if (balance < cost) {
-                    throw new ApiException(HttpStatus.BAD_REQUEST, "INSUFFICIENT_POINTS", shortMsg,
-                            Map.of("balance", balance, "cost", cost));
-                }
-                walletService.apply(userId, -cost, "dice", refId);
-            }
-            ensureUserDiceRow(userId);
-            jdbcClient.sql("UPDATE user_dice SET " + col + " = " + col + " + ? WHERE user_id = ?")
-                    .params(count, userId).update();
-            Map<String, Object> row = jdbcClient.sql("SELECT normal, cash FROM user_dice WHERE user_id = ?")
-                    .param(userId)
-                    .query((rs, n) -> Map.<String, Object>of("normal", rs.getInt("normal"), "cash", rs.getInt("cash")))
-                    .single();
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("kind", kind);
-            out.put("count", count);
-            out.put("dice", row); // DiceBuyResult(shared): {normal, cash} 중첩
+            // #247: 재고(diceLeft)가 사라진 자리에 지갑이 온다 — 재화를 정하는 쪽이 그 재화의
+            // 잔액도 준다(#232). 안 주면 클라가 롤마다 /api/me 를 다시 물어야 한다.
             out.put("wallet", Map.of("points", walletService.points(userId), "gems", walletService.gems(userId)));
             return out;
         });
+    }
+
+    /**
+     * 롤 1회분 결제 (#247). 잔액이 모자라면 <b>4xx 로 끊고 아무것도 바꾸지 않는다</b> —
+     * 호출자 트랜잭션 안이라 이후 롤도 함께 되돌아간다.
+     *
+     * <p>부족 문구의 재화 이름은 표기 메타에서 온다(#232) — 문구에 박으면 표기 변경이 배포가 된다.
+     * 원장 사유는 {@code 'dice'} 그대로 유지한다: 소비의 <b>의미</b>(잠재 리롤)는 안 바뀌었고,
+     * 사유를 갈아치우면 기존 원장과 집계가 갈라진다.
+     */
+    private void chargeRoll(String userId, boolean cash, long cost) {
+        String refId = Ulid.next();
+        String shortMsg = Josa.iga(economyService.currency(
+                cash ? EconomyService.CURRENCY_GEM : EconomyService.CURRENCY_POINT).name()) + " 부족합니다";
+        long balance = cash ? walletService.gems(userId) : walletService.points(userId);
+        if (balance < cost) {
+            throw new ApiException(HttpStatus.BAD_REQUEST,
+                    cash ? "INSUFFICIENT_GEMS" : "INSUFFICIENT_POINTS", shortMsg,
+                    Map.of("balance", balance, "cost", cost));
+        }
+        if (cash) {
+            walletService.applyGems(userId, -cost, "dice", refId);
+        } else {
+            walletService.apply(userId, -cost, "dice", refId);
+        }
     }
 
     /**
@@ -893,17 +862,6 @@ public class GrowthService {
             out.put("granted", pack.gems());
             out.put("wallet", Map.of("points", walletService.points(userId), "gems", walletService.gems(userId)));
             return out;
-        });
-    }
-
-    /** GET /api/growth/dice — DiceBalance(shared) {normal, cash}. 페이지 로드 시 잔액 조회(웹 새로고침 대응). */
-    public Map<String, Object> diceBalance(String userId) {
-        return txRunner.run(() -> {
-            ensureUserDiceRow(userId);
-            return jdbcClient.sql("SELECT normal, cash FROM user_dice WHERE user_id = ?")
-                    .param(userId)
-                    .query((rs, n) -> Map.<String, Object>of("normal", rs.getInt("normal"), "cash", rs.getInt("cash")))
-                    .single();
         });
     }
 

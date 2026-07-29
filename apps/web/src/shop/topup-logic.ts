@@ -86,4 +86,9 @@ export function findPackage(id: string, packages: readonly TopupPackage[] = TOPU
   return packages.find((p) => p.id === id) ?? null;
 }
 
-export type ShopTab = "gacha" | "dice" | "topup";
+/**
+ * 상점 탭. `dice` 는 **#247 로 사라졌다** — 다이스는 사는 물건이 아니라 강화탭의 리롤 비용이다.
+ * 되살리려면 재고(user_dice)와 구매 엔드포인트를 같이 되살려야 한다는 뜻이니, 여기 문자열만
+ * 다시 넣지 마라.
+ */
+export type ShopTab = "gacha" | "topup";

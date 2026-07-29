@@ -36,6 +36,18 @@ class GrowthServiceTest extends MatchTestBase {
     @Resource
     private WalletService walletService;
 
+    /** #247: 롤 비용의 SoT — 테스트도 상수를 심지 않고 서버와 같은 스냅샷을 읽는다. */
+    @Resource
+    private online.hmb.catalog.EconomyService economyService;
+
+    private long normalRollCost() {
+        return economyService.get().orElseThrow().dice().normalCost();
+    }
+
+    private long cashRollCost() {
+        return economyService.get().orElseThrow().dice().cashGemCost();
+    }
+
     // ── V2-2 유효스탯 계산 (무회귀) ──────────────────────────────────────
 
     @Test
@@ -132,7 +144,7 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(card.get("grade")).isEqualTo("GOLD");
         assertThat(potential.get("maxTier")).isEqualTo("EPIC"); // min(gradeCap=EPIC, starCap[4]=UNIQUE) = EPIC
         // 잠재 줄 수(linesByGrade) — 다이스 롤 후 lines 길이로 확인.
-        setUserDice(userId, 1, 0);
+        setWallet(userId, 20_000, 0);
         Map<String, Object> roll = growthService.dice(userId, "P010", "NORMAL");
         assertThat((List<?>) roll.get("lines")).hasSize(2);
     }
@@ -146,7 +158,7 @@ class GrowthServiceTest extends MatchTestBase {
         Map<?, ?> potential = (Map<?, ?>) card.get("potential");
         assertThat(card.get("grade")).isEqualTo("DIA");
         assertThat(potential.get("maxTier")).isEqualTo("UNIQUE"); // min(UNIQUE, UNIQUE)
-        setUserDice(userId, 1, 0);
+        setWallet(userId, 20_000, 0);
         Map<String, Object> roll = growthService.dice(userId, "P017", "NORMAL");
         assertThat((List<?>) roll.get("lines")).hasSize(3);
     }
@@ -188,26 +200,52 @@ class GrowthServiceTest extends MatchTestBase {
     @Test
     void diceRequiresPotentialUnlocked() {
         String userId = onboard("g_dice_locked");
-        setUserDice(userId, 5, 0);
+        // 잔액은 충분히 채워 둔다 — 잠금 판정이 "돈이 없어서" 통과하는 가짜 green 을 막는다.
+        setWallet(userId, 100_000, 100_000);
         assertThat(catchStatus(() -> growthService.dice(userId, "P001", "NORMAL")))
                 .isEqualTo("POTENTIAL_LOCKED");
     }
 
+    /**
+     * #247: 구매 단계가 사라졌으므로 부족 코드도 <b>다이스</b>가 아니라 <b>재화</b> 기준이다.
+     * 잔액이 롤 비용보다 1 모자라면 거절되고 <b>잠재는 손대지 않는다</b>(같은 트랜잭션).
+     */
     @Test
-    void diceInsufficientDiceRejected() {
-        String userId = onboard("g_dice_nodice");
+    void diceRejectedWhenPointsBelowRollCost_andPotentialUntouched() {
+        String userId = onboard("g_dice_poor");
         setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         growthService.starUp(userId, "P001");
+        long cost = normalRollCost();
+        setWallet(userId, cost - 1, 0);
+
         assertThat(catchStatus(() -> growthService.dice(userId, "P001", "NORMAL")))
-                .isEqualTo("INSUFFICIENT_DICE");
+                .isEqualTo("INSUFFICIENT_POINTS");
+        assertThat(walletService.points(userId)).isEqualTo(cost - 1); // 롤백
+        // 잠재 줄이 하나도 생기지 않았다 — 실패한 롤이 리롤을 반쯤 저지르면 안 된다.
+        assertThat((List<?>) ((Map<?, ?>) growthService.cardEffective(userId, "P001").get("potential"))
+                .get("lines")).isEmpty();
+    }
+
+    /** 유료 롤(CASH)은 유상재화로만 결제한다 — 무료재화가 아무리 많아도 부족은 부족이다. */
+    @Test
+    void diceCashRejectedWhenGemsBelowRollCost_evenWithPlentyOfPoints() {
+        String userId = onboard("g_dice_poor_gem");
+        setCount(userId, "P001", 3);
+        growthService.starUp(userId, "P001");
+        setWallet(userId, 1_000_000, cashRollCost() - 1);
+
+        assertThat(catchStatus(() -> growthService.dice(userId, "P001", "CASH")))
+                .isEqualTo("INSUFFICIENT_GEMS");
+        assertThat(walletService.points(userId)).isEqualTo(1_000_000L); // 무료재화는 건드리지 않는다
     }
 
     @Test
-    void diceConsumesOneDiceAndPersistsLines() {
+    void diceChargesRollCostFromWalletAndPersistsLines() {
         String userId = onboard("g_dice_ok");
         setCount(userId, "P001", 3); // B1: 여분 2장 + 원본 1장(원본은 절대 소모 안 됨)
         growthService.starUp(userId, "P001");
-        setUserDice(userId, 3, 0);
+        long cost = normalRollCost();
+        setWallet(userId, 20_000, 6_000);
 
         Map<String, Object> roll = growthService.dice(userId, "P001", "NORMAL");
         assertThat(roll.get("tierBefore")).isEqualTo("RARE");
@@ -215,10 +253,46 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(roll.get("tierAfter")).isEqualTo("RARE");
         assertThat(roll.get("tierUp")).isEqualTo(false);
         assertThat((List<?>) roll.get("lines")).hasSize(1);
-        assertThat(roll.get("diceLeft")).isEqualTo(2);
+        // 재고 개념이 사라졌다 — diceLeft 대신 지갑이 응답에 실린다(#247, #232 "재화를 정하는 쪽이 잔액도 준다").
+        assertThat(roll).doesNotContainKey("diceLeft");
+        Map<?, ?> wallet = (Map<?, ?>) roll.get("wallet");
+        assertThat(((Number) wallet.get("points")).longValue()).isEqualTo(20_000L - cost);
+        assertThat(((Number) wallet.get("gems")).longValue()).isEqualTo(6_000L); // 무료 롤은 유상재화 무접촉
+        assertThat(walletService.points(userId)).isEqualTo(20_000L - cost);
 
         Map<String, Object> card = growthService.cardEffective(userId, "P001");
         assertThat((List<?>) ((Map<?, ?>) card.get("potential")).get("lines")).hasSize(1);
+    }
+
+    @Test
+    void diceCashChargesGemsNotPoints() {
+        String userId = onboard("g_dice_cash");
+        setCount(userId, "P001", 3);
+        growthService.starUp(userId, "P001");
+        setWallet(userId, 20_000, 6_000);
+
+        Map<String, Object> roll = growthService.dice(userId, "P001", "CASH");
+        Map<?, ?> wallet = (Map<?, ?>) roll.get("wallet");
+        assertThat(((Number) wallet.get("gems")).longValue()).isEqualTo(6_000L - cashRollCost());
+        assertThat(((Number) wallet.get("points")).longValue()).isEqualTo(20_000L);
+    }
+
+    /**
+     * 롤 결제도 <b>원장에 남는다</b>(reason='dice'). 구매 단계를 지우면서 원장 기록까지 같이
+     * 사라지면 "재화가 어디로 갔나"에 답할 수 없다 — 지갑 UPDATE 만 하는 지름길을 막는 계약이다.
+     */
+    @Test
+    void diceRollWritesPointLedgerEntryForAudit() {
+        String userId = onboard("g_dice_ledger");
+        setCount(userId, "P001", 3);
+        growthService.starUp(userId, "P001");
+        setWallet(userId, 20_000, 6_000);
+
+        growthService.dice(userId, "P001", "NORMAL");
+
+        Long spent = jdbcClient.sql("SELECT COALESCE(SUM(delta),0) FROM point_ledger WHERE user_id=? AND reason='dice'")
+                .param(userId).query(Long.class).single();
+        assertThat(spent).isEqualTo(-normalRollCost());
     }
 
     @Test
@@ -577,12 +651,13 @@ class GrowthServiceTest extends MatchTestBase {
         return total;
     }
 
-    private void setUserDice(String userId, int normal, int cash) {
-        jdbcClient.sql("""
-                        INSERT INTO user_dice(user_id, normal, cash) VALUES (?, ?, ?)
-                        ON CONFLICT(user_id) DO UPDATE SET normal=excluded.normal, cash=excluded.cash
-                        """)
-                .params(userId, normal, cash).update();
+    /**
+     * #247: 다이스 재고(user_dice)가 사라지고 롤이 <b>지갑에서 직접</b> 결제하므로, 롤 테스트의
+     * 준비물은 "다이스 n개"가 아니라 "잔액"이다. 구 {@code setUserDice} 는 그래서 은퇴했다.
+     */
+    private void setWallet(String userId, long points, long gems) {
+        jdbcClient.sql("UPDATE wallets SET points = ?, gems = ? WHERE user_id = ?")
+                .params(points, gems, userId).update();
     }
 
     private void setCount(String userId, String playerId, int count) {
