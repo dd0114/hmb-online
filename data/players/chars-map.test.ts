@@ -4,7 +4,7 @@
  * 이 파일이 지키는 것: 발행물 결정론 · **축 태그 계약**(두 축이 한 맵에 섞인다) ·
  * v1 소비자가 v2 를 **오독하지 않는다**는 fail-safe · U-D5/U-D8/U-D9 배정 규칙 · fail-closed 가드.
  *
- * ⚠️ 리터럴 총원은 **현행 소비 시드(players.v2.3.json)** 기준이다. 직전 판은 동결 v2.1(172명/
+ * ⚠️ 리터럴 총원은 **현행 소비 시드(players.v2.4.json)** 기준이다. 직전 판은 동결 v2.1(172명/
  * LEGEND 14) 에 핀돼 있었고 "활성 LEGEND 8종은 매핑 없음"을 계약으로 두었는데, U-D5(실아트 5종
  * 입고) 이후 그 문장은 **사실과 반대**가 됐다 → 여기서 뒤집는다.
  */
@@ -45,8 +45,10 @@ const unitsManifest = JSON.parse(readFileSync(join(distDir, "units", "manifest.j
 const POSITIONS: Position[] = ["GK", "DF", "MF", "FW"];
 
 // 문서화된 총원을 리터럴로 박제(자기참조 검증 회피 — data.test.ts 와 같은 규율).
-const CATALOG_TOTAL = 180;
-const LEGEND_TOTAL = 22;
+const CATALOG_TOTAL = 182;
+const LEGEND_TOTAL = 24;
+/** v2.2/v2.3 발행 경계(#207 까지). 과거 시드로 태우는 회귀 검증에서 쓴다. */
+const V23_CATALOG_TOTAL = 180;
 /** U-D5 활성 LEGEND = 실아트 입고 + 시드 활성화까지 끝난 분. 이 5명만 units 축 1:1 을 갖는다. */
 const ACTIVE_LEGEND_UNITS: ReadonlyArray<readonly [string, string]> = [
   ["P173", "bonaldo"],
@@ -64,6 +66,9 @@ const ACTIVE_LEGEND_UNITS: ReadonlyArray<readonly [string, string]> = [
  */
 const PENDING_ACTIVATION_UNITS: ReadonlyArray<readonly [string, string]> = [
   ["P180", "kyeongnicius"],
+  // #256 채번분 2종 — 아트는 입고 완료(석다이크는 3차, 오시야스는 4차)이고 시드는 비활성이다.
+  ["P181", "seokdijk"],
+  ["P182", "osiyas"],
 ];
 /** 아트 **미입고** LEGEND — 매핑 없음이 정답(이니셜 폴백). */
 const UNMAPPED_LEGENDS = ["P174", "P178"];
@@ -71,7 +76,7 @@ const UNMAPPED_LEGENDS = ["P174", "P178"];
  * 아트는 발행됐지만 **카탈로그에 붙일 선수가 아직 없다**(채번 대기) — 발행물이 `pendingCatalog`
  * 로 선언한 유닛. "놀고 있는 유닛 0" 계약은 이 선언분만 면제한다(침묵 면제 아님).
  */
-const PENDING_CATALOG_UNITS = ["seokdijk"];
+const PENDING_CATALOG_UNITS: readonly string[] = [];
 /** 구 14종 — 비활성이지만 매핑 유지(보유분 아트를 뺏지 않는다). */
 const KEPT_LEGENDS = ["P001", "P002", "P003", "P004", "P005", "P006", "P007", "P008", "P009", "P010", "P011", "P012", "P143", "P144"];
 
@@ -97,20 +102,30 @@ describe("발행물 정합", () => {
     expect(published.version).toBe(CHARS_MAP_VERSION);
     expect(OUT_PATH.endsWith(`player-chars.${CHARS_MAP_VERSION}.json`)).toBe(true);
     expect(published.playersSource).toBe(DEFAULT_SEED_FILE);
-    expect(DEFAULT_SEED_FILE).toBe("players.v2.3.json");
+    expect(DEFAULT_SEED_FILE).toBe("players.v2.4.json");
   });
 
-  it("입력 시드가 파라미터다 — 과거 시드로도 태울 수 있다(회귀 검증 가능)", () => {
+  it("입력 시드가 파라미터다 — 과거 시드도 그대로 읽힌다(회귀 검증 가능)", () => {
     const past = loadInputs("players.v2.2.json");
-    expect(past.players).toHaveLength(CATALOG_TOTAL);
+    expect(past.players).toHaveLength(V23_CATALOG_TOTAL);
     expect(past.seedFile).toBe("players.v2.2.json");
-    // 규칙은 **등급·id 축**이라 과거 시드로도 성립한다(이름·active 는 매핑 입력이 아니다).
-    const pastMap = buildMapping(past.players, manifest, units);
-    expect(pastMap.filter((d) => d.rule === "unit-exclusive").map((d) => d.playerId))
-      .toEqual([...ACTIVE_LEGEND_UNITS, ...PENDING_ACTIVATION_UNITS].map(([id]) => id).sort());
-    // 다만 v2.2 는 P174/P178 이 아직 **활성**이다 — 활성인데 실아트가 없는 상태라
-    // "활성 LEGEND = 실아트"가 성립하지 않는다. 그래서 발행 대상은 v2.3 뿐이다.
+    // v2.2 는 P174/P178 이 아직 **활성**이다 — 활성인데 실아트가 없는 상태라
+    // "활성 LEGEND = 실아트"가 성립하지 않는다. 그래서 발행 대상은 v2.3 이후뿐이다.
     expect(past.players.filter((p) => p.grade === "LEGEND" && p.active)).toHaveLength(8);
+  });
+
+  it("배정표보다 낡은 시드로 태우면 **fail-closed** — 신규 채번분이 조용히 빠지지 않는다", () => {
+    // ⚠️ #256 이전에는 이 자리에서 "과거 시드로도 **매핑까지** 성립한다"를 주장했다. 배정표가
+    // 그 시드의 id 공간 안에 있었기 때문이다. #256 이 P181/P182 를 채번하면서 그 전제가 깨졌고,
+    // 주장을 유지하려면 배정 누락을 **묵인**해야 한다 — 그건 이 파일의 핵심 계약("배정표에
+    // 없으면 throw", 1:1 이 조용히 깨지는 걸 막는다)을 정면으로 뒤집는 것이다.
+    // 그래서 성질을 바꿔 박는다: 낡은 시드는 **거부되어야** 하고, 메시지가 누락 id 를 지목한다.
+    const past = loadInputs("players.v2.2.json");
+    expect(() => buildMapping(past.players, manifest, units)).toThrow(/P181/);
+    // 현행 시드에서는 배정표 전원이 실제로 매핑된다(위 거부가 배정표 자체의 오류가 아님을 증명).
+    const map = buildMapping(players, manifest, units);
+    expect(map.filter((d) => d.rule === "unit-exclusive").map((d) => d.playerId))
+      .toEqual([...ACTIVE_LEGEND_UNITS, ...PENDING_ACTIVATION_UNITS].map(([id]) => id).sort());
   });
 });
 

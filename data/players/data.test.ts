@@ -25,12 +25,25 @@ const GRADES: Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
 // #207(웨이브2-B, hero 확정 U-D4): 구 172명 + 신규 LEGEND 8종 = **180명**(players.v2.2).
 // 구 172명 발행물(players.v2 / v2.1)은 **동결**(발행 후 수정 금지, data/CLAUDE.md) — 신규분은
 // ROSTER 맨 끝에 append 되어 P173~P180 을 받고, 앞 172명은 바이트 동일하게 보존된다.
-const TOTAL = 180;
+// #256(hero 확정 2026-07-29): 180명 + 신규 LEGEND 2종(석다이크 DF · 오시야스 GK) = **182명**
+// (players.v2.4). v2.2/v2.3 발행물도 이제 **동결**이라 경계 상수가 하나 더 생겼다.
+const TOTAL = 182;
 /** players.v2 / players.v2.1 이 동결된 시점의 총원. 이 경계 앞은 절대 변하지 않는다. */
 const FROZEN_TOTAL = 172;
-// 신규 8종 = GK+1 / MF+3 / FW+4 (DF +0). 구 분포 GK13/DF53/MF59/FW47 에 가산.
-const POSITION_TOTALS: Record<Position, number> = { GK: 14, DF: 53, MF: 62, FW: 51 };
+/** players.v2.2 / players.v2.3 이 동결된 시점의 총원(#207 신규 8종까지). 이 경계도 불변. */
+const V23_TOTAL = 180;
+// 전체 카탈로그(182). 구 172명 GK13/DF53/MF59/FW47 + #207 8종(GK1/MF3/FW4) + #256 2종(GK1/DF1).
+const POSITION_TOTALS: Record<Position, number> = { GK: 15, DF: 54, MF: 62, FW: 51 };
 const GRADE_TOTALS: Record<Grade, number> = {
+  BRONZE: 35,
+  SILVER: 52,
+  GOLD: 46,
+  DIA: 25,
+  LEGEND: 24,
+};
+/** v2.2/v2.3 발행 경계(180)에서의 분포 — 그 발행물들은 동결이라 이 값도 영구 고정이다. */
+const V23_POSITION_TOTALS: Record<Position, number> = { GK: 14, DF: 53, MF: 62, FW: 51 };
+const V23_GRADE_TOTALS: Record<Grade, number> = {
   BRONZE: 35,
   SILVER: 52,
   GOLD: 46,
@@ -85,6 +98,32 @@ const V23_ACTIVE_LEGEND_IDS: readonly string[] = ["P173", "P175", "P176", "P177"
 const V23_NEW_INACTIVE_IDS: readonly string[] = ["P174", "P178", "P180"];
 /** v2.3 비활성 전체 = 구 LEGEND 14 + 신규 미입고 3 = 17. */
 const INACTIVE_IDS_V23: readonly string[] = [...INACTIVE_IDS, ...V23_NEW_INACTIVE_IDS];
+
+/**
+ * #256 hero 확정(2026-07-29) 신규 2종(P181~P182). NEW_UNITS 와 같은 이유로 **리터럴 박제** —
+ * roster.ts 를 재사용하면 자기참조라 결정과 코드가 어긋나도 못 잡는다.
+ *
+ * traits 는 "스탯을 숫자로 복사"가 아니라 **소스 실선수의 포지션·traits 만 복제**하는 기존
+ * 관례(석신←야신)를 따른 값이다. 판다이크(P015)는 DIA 라 값을 복사하면 LEGEND 에 DIA 성능이
+ * 되고, 카시야스는 애초에 로스터에 없다 — 그래서 값 복사 경로 자체가 성립하지 않는다.
+ */
+const V24_NEW_UNITS: readonly {
+  id: string;
+  name: string;
+  position: Position;
+  traits: readonly (keyof PlayerSeed["attributes"])[];
+}[] = [
+  { id: "P181", name: "석다이크", position: "DF", traits: ["tackling", "physical"] },
+  { id: "P182", name: "오시야스", position: "GK", traits: ["positioning", "physical"] },
+];
+
+/**
+ * #256 — 신규 2종은 `active:false` 로 발행한다(아트 머지 → 배포 → 어드민 토글이 활성화 순서).
+ * 따라서 **획득 가능 LEGEND 의 DF/GK 갭은 채번만으로 닫히지 않는다** — 이 상태를 그대로 박제한다.
+ */
+const V24_NEW_INACTIVE_IDS: readonly string[] = ["P181", "P182"];
+/** v2.4 비활성 전체 = v2.3 의 17 + 신규 2 = 19. */
+const INACTIVE_IDS_V24: readonly string[] = [...INACTIVE_IDS_V23, ...V24_NEW_INACTIVE_IDS];
 
 /**
  * 패러디 유닛명에 실명이 새어 들어오지 않는지 — 소스 실선수의 한글 표기 denylist(부분문자열 금지).
@@ -203,8 +242,8 @@ const REAL_CLUB_TOKENS: readonly string[] = [
 ];
 
 const {
-  players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league,
-  leagueV2, botsV3,
+  players, playersV2, playersV21, playersV22, playersV23, playersV24,
+  economy, economyV3, bots, league, leagueV2, botsV3,
 } = generateAll();
 
 describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
@@ -212,7 +251,7 @@ describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
     expect(players.length).toBe(TOTAL);
   });
 
-  it("포지션 분포 GK14/DF53/MF62/FW51 (신규 8종 GK1/MF3/FW4 가산)", () => {
+  it("포지션 분포 GK15/DF54/MF62/FW51 (#207 8종 + #256 2종 가산)", () => {
     const counts: Record<Position, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
     for (const p of players) counts[p.position]++;
     expect(counts).toEqual(POSITION_TOTALS);
@@ -223,7 +262,7 @@ describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
     expect(gk / players.length).toBeLessThan(0.12);
   });
 
-  it("등급 분포 BRONZE35/SILVER52/GOLD46/DIA25/LEGEND22 (레전드 희소)", () => {
+  it("등급 분포 BRONZE35/SILVER52/GOLD46/DIA25/LEGEND24 (레전드 희소)", () => {
     const counts: Record<Grade, number> = {
       BRONZE: 0,
       SILVER: 0,
@@ -1057,8 +1096,8 @@ describe("players.v2.1 — personality 부여 (PRD-v3 P2-D7, additive)", () => {
 describe("players.v2.2 — 신규 LEGEND 8종 + active 축 (#207 U-D1/U-D4)", () => {
   const byId = new Map(playersV22.map((p) => [p.id, p]));
 
-  it(`v2.2 = ${TOTAL}명 (동결 ${FROZEN_TOTAL} + 신규 8)`, () => {
-    expect(playersV22.length).toBe(TOTAL);
+  it(`v2.2 = ${V23_TOTAL}명 (동결 ${FROZEN_TOTAL} + 신규 8)`, () => {
+    expect(playersV22.length).toBe(V23_TOTAL);
   });
 
   it("신규 8종이 P173~P180 신규 채번 — 기존 P-공간 재사용 0", () => {
@@ -1178,7 +1217,7 @@ describe("players.v2.3 — 유닛명 정정 + 활성 5/비활성 3 (#207 U-D5/U-
   });
 
   it("정정 후에도 이름 유일 + 한글 패러디명 + 실명 denylist 0 (실명 유입 차단 유지)", () => {
-    expect(new Set(playersV23.map((p) => p.name)).size).toBe(TOTAL);
+    expect(new Set(playersV23.map((p) => p.name)).size).toBe(V23_TOTAL);
     for (const r of V23_RENAMES) {
       const name = byId.get(r.id)!.name;
       expect(name, `${r.id} 한글 전용 패러디명`).toMatch(/^[가-힣]{2,}$/);
@@ -1211,8 +1250,10 @@ describe("players.v2.3 — 유닛명 정정 + 활성 5/비활성 3 (#207 U-D5/U-
     expect(mutated.every((r, i) => r.name !== ROSTER[i]!.name)).toBe(true);
     const rng = createRng(SEED);
     const derived = mutated.map((r) => rollAttributes(rng, r.grade, r.position, r.traits));
+    // 대조는 **전체 카탈로그(v2.4)** 로 한다 — ROSTER 전원을 재파생했으므로 180 경계에서 자르면
+    // 신규 채번분이 증명 밖으로 빠진다(#256).
     expect(JSON.stringify(derived, null, 2)).toBe(
-      JSON.stringify(playersV23.map((p) => p.attributes), null, 2),
+      JSON.stringify(playersV24.map((p) => p.attributes), null, 2),
     );
   });
 
@@ -1263,21 +1304,21 @@ describe("players.v2.3 — 유닛명 정정 + 활성 5/비활성 3 (#207 U-D5/U-
   it("비활성 17종을 뺀 163명이 active:true", () => {
     const inactive = new Set(INACTIVE_IDS_V23);
     for (const p of playersV23) expect(p.active, `${p.id} active`).toBe(!inactive.has(p.id));
-    expect(playersV23.filter((p) => p.active)).toHaveLength(TOTAL - 17);
+    expect(playersV23.filter((p) => p.active)).toHaveLength(V23_TOTAL - 17);
   });
 
   // ── 축 무변경(활성 여부는 등급/포지션 축과 독립) ──────────────────
-  it(`총원 ${TOTAL} · LEGEND 22 · 등급/포지션 분포 무변경`, () => {
-    expect(playersV23).toHaveLength(TOTAL);
+  it(`총원 ${V23_TOTAL} · LEGEND 22 · 등급/포지션 분포 무변경`, () => {
+    expect(playersV23).toHaveLength(V23_TOTAL);
     const grades: Record<Grade, number> = { BRONZE: 0, SILVER: 0, GOLD: 0, DIA: 0, LEGEND: 0 };
     const positions: Record<Position, number> = { GK: 0, DF: 0, MF: 0, FW: 0 };
     for (const p of playersV23) {
       grades[p.grade]++;
       positions[p.position]++;
     }
-    expect(grades).toEqual(GRADE_TOTALS);
+    expect(grades).toEqual(V23_GRADE_TOTALS);
     expect(grades.LEGEND).toBe(22);
-    expect(positions).toEqual(POSITION_TOTALS);
+    expect(positions).toEqual(V23_POSITION_TOTALS);
   });
 
   it("v2.3 = v2.2 와 스키마 동일 — 필드 순서/개수 무변경(신설 필드 0)", () => {
@@ -1337,6 +1378,162 @@ describe("players.v2.3 — 유닛명 정정 + 활성 5/비활성 3 (#207 U-D5/U-
   it("발행물 v2.2 는 여전히 재현된다 — v2.3 추가가 과거 발행 축을 흔들지 않았다", () => {
     const onDisk = readFileSync(join(here, "players.v2.2.json"), "utf8");
     expect(onDisk).toBe(JSON.stringify(playersV22, null, 2) + "\n");
+  });
+});
+
+describe("players.v2.4 — 신규 LEGEND 2종 채번 (#256 석다이크·오시야스)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const byId = new Map(playersV24.map((p) => [p.id, p]));
+  const diskV23 = JSON.parse(readFileSync(join(here, "players.v2.3.json"), "utf8")) as {
+    id: string;
+    name: string;
+    position: Position;
+    grade: Grade;
+    attributes: PlayerSeed["attributes"];
+    personality: Personality;
+    active: boolean;
+  }[];
+
+  // ── 이게 이 작업의 진짜 게이트: 과거 발행 축이 안 흔들렸나 ──────────────
+  it(`앞 ${V23_TOTAL}행이 디스크 players.v2.3.json 과 **바이트 동일** — append 가 RNG 스트림을 밀지 않았다`, () => {
+    // ROSTER 중간 삽입이면 180명 attributes 가 전부 shift 되어 기보유 유저 카드가 통째로 바뀐다.
+    // 발행 파일과 직접 대조해 원천 차단한다(v2.2 가 v2.1 을 대하는 방식과 동일).
+    const onDisk = readFileSync(join(here, "players.v2.3.json"), "utf8");
+    expect(JSON.stringify(playersV24.slice(0, V23_TOTAL), null, 2) + "\n").toBe(onDisk);
+  });
+
+  it("발행물 v2.2 / v2.3 이 여전히 재현된다 — v2.4 추가가 과거 발행 축을 흔들지 않았다", () => {
+    expect(readFileSync(join(here, "players.v2.2.json"), "utf8")).toBe(
+      JSON.stringify(playersV22, null, 2) + "\n",
+    );
+    expect(readFileSync(join(here, "players.v2.3.json"), "utf8")).toBe(
+      JSON.stringify(playersV23, null, 2) + "\n",
+    );
+  });
+
+  it(`앞 ${FROZEN_TOTAL}행도 디스크 players.v2.1.json 과 동일(active 제외) — 이중 경계 불변`, () => {
+    const onDisk = readFileSync(join(here, "players.v2.1.json"), "utf8");
+    const head = playersV24.slice(0, FROZEN_TOTAL).map(({ active, ...rest }) => rest);
+    expect(JSON.stringify(head, null, 2) + "\n").toBe(onDisk);
+  });
+
+  // ── 신규 채번분 ────────────────────────────────────────────────────────
+  it(`v2.4 = ${TOTAL}명 (v2.3 ${V23_TOTAL} + 신규 2)`, () => {
+    expect(playersV24).toHaveLength(TOTAL);
+    expect(diskV23).toHaveLength(V23_TOTAL);
+  });
+
+  it("신규 2종이 P181~P182 신규 채번 — 기존 P-공간 재사용 0", () => {
+    expect(V24_NEW_UNITS.map((u) => u.id)).toEqual(
+      Array.from({ length: 2 }, (_, i) => `P${String(V23_TOTAL + i + 1).padStart(3, "0")}`),
+    );
+    playersV24.slice(V23_TOTAL).forEach((p, i) => {
+      expect(p.id).toBe(V24_NEW_UNITS[i]!.id);
+      expect(p.name).toBe(V24_NEW_UNITS[i]!.name);
+      expect(p.position).toBe(V24_NEW_UNITS[i]!.position);
+      expect(p.grade).toBe("LEGEND");
+    });
+    const oldIds = new Set(diskV23.map((p) => p.id));
+    for (const u of V24_NEW_UNITS) expect(oldIds.has(u.id), `${u.id} 재사용 금지`).toBe(false);
+  });
+
+  it("신규 2종 이름 = 한글 패러디명 + 실명 denylist 0 (실명 유입 차단 유지)", () => {
+    for (const u of V24_NEW_UNITS) {
+      expect(u.name, `${u.id} 한글 전용`).toMatch(/^[가-힣]{2,}$/);
+      for (const banned of REAL_NAME_KO_DENYLIST) {
+        expect(u.name.includes(banned), `${u.id} 실명 "${banned}" 포함 금지`).toBe(false);
+      }
+    }
+    expect(new Set(playersV24.map((p) => p.name)).size).toBe(TOTAL);
+  });
+
+  it("신규 2종 능력치가 LEGEND 밴드(80~95) 안 — 스탯은 밴드 롤이지 소스 값 복사가 아니다", () => {
+    for (const u of V24_NEW_UNITS) {
+      const p = byId.get(u.id)!;
+      for (const [k, v] of Object.entries(p.attributes)) {
+        expect(v, `${u.id} ${k}`).toBeGreaterThanOrEqual(80);
+        expect(v, `${u.id} ${k}`).toBeLessThanOrEqual(95);
+      }
+    }
+    // 판다이크(P015)는 DIA 라 값 복사였다면 밴드를 뚫는다 — 그게 아님을 직접 대조한다.
+    const vanDijk = playersV24.find((p) => p.id === "P015")!;
+    expect(vanDijk.grade).toBe("DIA");
+    expect(byId.get("P181")!.attributes).not.toEqual(vanDijk.attributes);
+  });
+
+  it("신규 2종 trait 스탯이 밴드 상단 — traits 복제가 실제로 반영됐다", () => {
+    for (const u of V24_NEW_UNITS) {
+      const attrs = byId.get(u.id)!.attributes;
+      const others = Object.entries(attrs)
+        .filter(([k]) => !u.traits.includes(k as keyof PlayerSeed["attributes"]))
+        .map(([, v]) => v);
+      for (const t of u.traits) {
+        expect(attrs[t], `${u.id} trait ${t}`).toBeGreaterThanOrEqual(Math.min(...others));
+      }
+    }
+  });
+
+  it("신규 2종은 active:false 로 발행 — 활성화는 어드민 토글 몫(시드는 런타임 상태가 아니다)", () => {
+    for (const id of V24_NEW_INACTIVE_IDS) expect(byId.get(id)!.active, `${id} active`).toBe(false);
+  });
+
+  it(`비활성 19종을 뺀 ${TOTAL - 19}명이 active:true`, () => {
+    const inactive = new Set(INACTIVE_IDS_V24);
+    for (const p of playersV24) expect(p.active, `${p.id} active`).toBe(!inactive.has(p.id));
+    expect(playersV24.filter((p) => p.active)).toHaveLength(TOTAL - 19);
+    expect(new Set(playersV24.filter((p) => !p.active).map((p) => p.id))).toEqual(
+      new Set(INACTIVE_IDS_V24),
+    );
+  });
+
+  it("v2.3 구간의 active 는 한 건도 안 바뀐다 — v2.4 는 순수 append 다", () => {
+    diskV23.forEach((old, i) => {
+      const now = playersV24[i]!;
+      expect(now.id, `#${i} id`).toBe(old.id);
+      expect(now.active, `${old.id} active`).toBe(old.active);
+    });
+  });
+
+  it("v2.4 = v2.3 과 스키마 동일 — 필드 순서/개수 무변경(신설 필드 0)", () => {
+    for (const p of playersV24) {
+      expect(Object.keys(p)).toEqual([
+        "id",
+        "name",
+        "position",
+        "grade",
+        "attributes",
+        "personality",
+        "active",
+      ]);
+    }
+  });
+
+  // ── 획득 가능 LEGEND 갭: 채번이 아니라 **활성화** 시점에 닫힌다 ──────────
+  it("채번만으로는 획득 가능 LEGEND 의 DF/GK 갭이 닫히지 않는다(활성화 대기 상태 박제)", () => {
+    const obtainable = playersV24.filter((p) => p.grade === "LEGEND" && p.active);
+    expect(obtainable.filter((p) => p.position === "DF")).toHaveLength(0);
+    expect(obtainable.filter((p) => p.position === "GK")).toHaveLength(0);
+    // 활성화하면 닫힌다는 것도 같이 박제한다 — 이 줄이 "갭이 메워질 준비가 됐다"의 증거다.
+    const afterToggle = playersV24.filter(
+      (p) => p.grade === "LEGEND" && (p.active || V24_NEW_INACTIVE_IDS.includes(p.id)),
+    );
+    expect(afterToggle.filter((p) => p.position === "DF")).toHaveLength(1);
+    expect(afterToggle.filter((p) => p.position === "GK")).toHaveLength(1);
+  });
+
+  it("economy starterPack / 봇 덱이 신규 2종을 참조하지 않는다(append 가 선별을 안 밀었다)", () => {
+    const newIds = new Set(V24_NEW_UNITS.map((u) => u.id));
+    for (const id of economy.starterPack) expect(newIds.has(id), `starterPack ${id}`).toBe(false);
+    for (const b of [...bots, ...botsV3]) {
+      for (const st of b.deck.starters) {
+        expect(newIds.has(st.playerId), `${b.id} ${st.playerId}`).toBe(false);
+      }
+      for (const id of b.deck.bench) expect(newIds.has(id), `${b.id} bench ${id}`).toBe(false);
+    }
+    // starterTop 은 **활성 유닛만** 담는 정책(data/CLAUDE.md) — 비활성 신규가 새어 들어가면 안 된다.
+    for (const id of economyV3.starterTop!.pool) {
+      expect(V24_NEW_INACTIVE_IDS.includes(id), `starterTop ${id} 는 비활성`).toBe(false);
+    }
   });
 });
 
@@ -1545,6 +1742,7 @@ describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과
     ["players.v2.1.json", playersV21],
     ["players.v2.2.json", playersV22],
     ["players.v2.3.json", playersV23],
+    ["players.v2.4.json", playersV24],
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
     ["league.v1.json", league],

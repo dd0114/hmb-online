@@ -23,11 +23,12 @@
  * 목표 분포(PRD-v3 P2-D7 / LLD-p2-data §1): 대략 FIERY 25% / CALM 40% / GLASS 15% / AMBITIOUS 20%.
  *   실제(172명): FIERY 41(23.8%) / CALM 69(40.1%) / GLASS 25(14.5%) / AMBITIOUS 37(21.5%).
  *   #207 신규 8종 포함(180명): FIERY 45(25.0%) / CALM 71(39.4%) / GLASS 25(13.9%) / AMBITIOUS 39(21.7%).
+ *   #256 신규 2종 포함(182명): FIERY 45(24.7%) / CALM 73(40.1%) / GLASS 25(13.7%) / AMBITIOUS 39(21.4%).
  *   (data.test.ts 가 밴드로 검증 — enum·분포·전원 매핑·CALM 최다.)
  */
 import type { Personality } from "./generate";
 
-/** 이름(roster.ts 와 정확히 일치)→성격. 172명 전원. data.test.ts 가 ROSTER 와 전단사(bijection) 검증. */
+/** 이름(roster.ts 와 정확히 일치)→성격. **182명 전원**. data.test.ts 가 ROSTER 와 전단사(bijection) 검증. */
 export const PERSONALITY: Record<string, Personality> = {
   // ── LEGEND (12) ──────────────────────────────────────────────────
   "Lev Yashin": "CALM",
@@ -225,4 +226,9 @@ export const PERSONALITY: Record<string, Personality> = {
   "석신": "CALM", // ← Lev Yashin(P001) 복제
   "욱리엄": "FIERY", // ← Jude Bellingham 복제
   "경니시우스": "FIERY", // ← Vinícius Júnior 복제
+
+  // ── 신규 LEGEND 2종 (#256, P181~P182) ────────────────────────────
+  // 위 블록과 같은 파생 규칙: 소스가 로스터에 있으면 그 성격을 복제, 없으면 §8.1 기준 신규 배정.
+  "석다이크": "CALM", // ← Virgil van Dijk(P015) 복제
+  "오시야스": "CALM", // 카시야스 — 압박 상황에서 흔들리지 않는 안정형 리더(§8.1 침착). 소스가 로스터에 없어 신규 배정.
 };

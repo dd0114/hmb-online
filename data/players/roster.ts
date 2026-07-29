@@ -31,10 +31,11 @@ export interface RosterEntry {
 }
 
 /**
- * 실선수 172명(인터내셔널 142 + 한국 30, hero 요청 #84) + **신규 LEGEND 패러디 유닛 8종**(#207 U-D4).
- * 총 180명. 등급 분포: LEGEND 22 / DIA 25 / GOLD 46 / SILVER 52 / BRONZE 35.
- * 포지션 분포: GK 14 / DF 53 / MF 62 / FW 51. (문서화된 총원 — data.test.ts 가 리터럴로 검증)
- * GK 는 컬렉션 비중을 낮춤(팀당 선발 1명) — hero 지적 반영해 19→13(+석신 1 = 14).
+ * 실선수 172명(인터내셔널 142 + 한국 30, hero 요청 #84) + **신규 LEGEND 패러디 유닛 8종**(#207 U-D4)
+ * + **신규 LEGEND 2종**(#256 석다이크·오시야스).
+ * 총 182명. 등급 분포: LEGEND 24 / DIA 25 / GOLD 46 / SILVER 52 / BRONZE 35.
+ * 포지션 분포: GK 15 / DF 54 / MF 62 / FW 51. (문서화된 총원 — data.test.ts 가 리터럴로 검증)
+ * GK 는 컬렉션 비중을 낮춤(팀당 선발 1명) — hero 지적 반영해 19→13(+석신·오시야스 2 = 15).
  * 아래 섹션 헤더의 (n) 은 그 블록 인원(인터내셔널 블록은 국제 선수 기준, 한국 블록은 별도 30).
  *
  * ⚠️ **추가는 반드시 배열 맨 끝(append)** — 중간 삽입은 시드 RNG 스트림을 밀어 기존 전원의
@@ -262,4 +263,22 @@ export const ROSTER: readonly RosterEntry[] = [
   { name: "석신", position: "GK", grade: "LEGEND", traits: ["positioning", "mental"] }, // ← 야신(P001 복제)
   { name: "욱리엄", position: "MF", grade: "LEGEND", traits: ["physical", "shooting"] }, // ← 벨링엄 복제
   { name: "경니시우스", position: "FW", grade: "LEGEND", traits: ["pace", "technical"] }, // ← 비니시우스 복제
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // 신규 LEGEND 2종 (P181~P182) — 이슈 #256, hero 확정 2026-07-29
+  //
+  // ⚠️ 위 #207 블록과 **같은 이유로 맨 끝 append** 다(RNG 스트림 보존). 중간 삽입하면 앞 180명의
+  //   롤이 밀려 발행된 v2/v2.1/v2.2/v2.3 전부와 어긋난다 — data.test.ts 동결 계약이 즉시 FAIL.
+  //
+  // **스탯 파생 = 기존 복제 관례 그대로**(hero 확정): 소스 실선수의 **포지션·traits 만** 물려받고
+  // 능력치 9종은 LEGEND 밴드(80~95)에서 새로 굴린다. 숫자를 그대로 복사하지 않는다 —
+  //   · 판다이크(P015)는 **DIA** 라 값을 복사하면 LEGEND 등급에 DIA 성능(avg 79.7)이 된다.
+  //   · 카시야스는 **애초에 카탈로그에 없다**(실선수 172명 미포함) → 복사할 원본이 존재하지 않는다.
+  //   기존 8종도 전부 이 방식이다(석신 87.3 vs 야신 88.1 — 값은 다르고 포지션·traits 만 같다).
+  //
+  // 이 2종으로 **획득 가능 LEGEND 의 DF 0 · GK 0 갭이 닫힌다**(활성화 시점 기준 —
+  // 시드는 active:false 로 발행되고 어드민 토글이 켠다, generate.ts V24_INACTIVE_NEW_UNIT_IDS).
+  // ══════════════════════════════════════════════════════════════════════════
+  { name: "석다이크", position: "DF", grade: "LEGEND", traits: ["tackling", "physical"] }, // ← Virgil van Dijk(P015) 복제
+  { name: "오시야스", position: "GK", grade: "LEGEND", traits: ["positioning", "physical"] }, // ← 이케르 카시야스(로스터 밖) — traits 는 §8.1 기준 신규 배정
 ];

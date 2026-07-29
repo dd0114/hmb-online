@@ -59,9 +59,9 @@ node design/characters/pipeline/make-characters.mjs # → dist/characters/ (아�
 
 ### dist/units/ — hero 입고 유닛 아트 (#207 W3-B, U-D5~U-D9 소비)
 
-hero 가 외부에서 뽑은 **실아트**를 슬라이스·규격화해 발행한 세 번째 축. LEGEND 7종
-(보날두·열라도나·춘바페·덕브라이너·욱링엄 + **3차 입고** 경니시우스·석다이크) +
-**디폴트 유닛 1종**(GOLD/SILVER/BRONZE 공용, U-D8) = 8종.
+hero 가 외부에서 뽑은 **실아트**를 슬라이스·규격화해 발행한 세 번째 축. LEGEND 8종
+(보날두·열라도나·춘바페·덕브라이너·욱링엄 + **3차 입고** 경니시우스·석다이크 +
+**4차 입고** 오시야스) + **디폴트 유닛 1종**(GOLD/SILVER/BRONZE 공용, U-D8) = 9종.
 
 ```bash
 python3 design/characters/pipeline/slice-units.py            # 원본(~/Desktop/imageRef) → dist/units/
@@ -82,10 +82,13 @@ UNITS_SRC=/다른/경로 python3 .../slice-units.py               # 원본 위�
 를 읽으므로 무변경 — 격자 크기를 리터럴로 박고 있던 계약 2건은 발행물 기준으로 고쳤다).
 - `kyeongnicius`(경니시우스·FW) → **P180 매핑 완료.** 시드는 아직 `active:false` 이고 활성화는
   어드민 API 몫이다(#207 파트 A) — 매핑을 미리 붙여 둬야 토글과 동시에 아트가 뜬다.
-- `seokdijk`(석다이크·DF) → **`pendingCatalog: true`.** 아트는 발행됐지만 **카탈로그에 대응 선수가
-  없다.** hero 원안(#207 AC1)의 석다이크(판 다이크)는 U-D4 확정에서 석신(야신·GK)으로 대체돼
-  P번호를 못 받았고, 이 아트는 오렌지 킷 필드플레이어라 GK 인 석신에 붙일 수 없다. 채번은
-  data/server-java 축 결정이라 여기서 하지 않는다.
+- `seokdijk`(석다이크·DF) → 입고 당시엔 **`pendingCatalog: true`**(붙일 선수가 카탈로그에 없었다)
+  였고, **#256 hero 결정으로 P181 채번되며 해제**됐다. 선언이 사라진 것이 곧 "채번 완료" 신호다.
+
+**4차 입고(2026-07-29, #256) — 신규 LEGEND 1종.** `source` = `hero-imageRef-2026-07-29-rev4`.
+유닛 8 → 9. 아틀라스 격자는 3×3 그대로다(9 = 3×3 정확히 채움).
+- `osiyas`(오시야스·GK) → **P182 매핑 완료.** 아트 입고와 카탈로그 채번이 동시라
+  `pendingCatalog` 를 거치지 않았다. 시드는 `active:false` 이고 활성화는 어드민 API 몫이다.
 
 ⚠️ **유닛 추가는 `UNITS` 배열 맨 끝에 append 한다.** index → col/row 라서 중간 삽입하면 기존
 유닛의 타일 좌표가 전부 밀리고, 캐시된 구 manifest + 새 아틀라스 조합에서 **얼굴이 뒤바뀐다**.

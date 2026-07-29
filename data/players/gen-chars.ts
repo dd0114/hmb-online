@@ -23,7 +23,7 @@
  *   이 성질은 `chars-map.test.ts` 의 "v1 소비자 오독 방지" 블록이 실제 v1 리더를 재현해 박제한다.
  *
  * ════════════════════════════════════════════════════════════════════════════
- * 배정 규칙 (#207 U-D5 · U-D8 · U-D9, 입력 = players.v2.3.json)
+ * 배정 규칙 (#207 U-D5 · U-D8 · U-D9, 입력 = players.v2.4.json — #256 채번 2종 포함)
  *
  *   활성 LEGEND 5종     → `units` 축 **1:1 고유 실아트**   (P173/P175/P176/P177/P179)
  *   비활성 LEGEND 17종  → **현행 유지** — 구 14종은 `characters` 1:1, 아트 미입고 3종은 **미매핑**
@@ -57,10 +57,10 @@ export const CHARS_MAP_VERSION = "v2";
 export const CHARS_SOURCE = "ref-pixel-fantasy-football";
 
 /** 이 매핑이 전제하는 유닛 발행물(design/characters/dist/units). 불일치 시 생성이 실패한다. */
-export const UNITS_SOURCE = "hero-imageRef-2026-07-29-rev3";
+export const UNITS_SOURCE = "hero-imageRef-2026-07-29-rev4";
 
 /** 기본 입력 시드(현행 소비본). 다른 시드로 태우려면 `loadInputs(파일명)`. */
-export const DEFAULT_SEED_FILE = "players.v2.3.json";
+export const DEFAULT_SEED_FILE = "players.v2.4.json";
 
 /** 해시 분산용 솔트 — 바꾸면 풀 배정이 통째로 바뀐다(= 새 버전 발행 대상). */
 const SALT = "hmb-player-chars-v1";
@@ -109,6 +109,8 @@ const UNIT_ASSIGNMENT: ReadonlyArray<readonly [playerId: string, unitId: string]
   ["P177", "dukbrayner"], // MF
   ["P179", "wookringham"], // MF
   ["P180", "kyeongnicius"], // FW ← 3차 입고(2026-07-29). 미매핑 표에서 승격.
+  ["P181", "seokdijk"], // DF ← 3차 입고 아트가 #256 채번으로 붙었다(pendingCatalog 해제).
+  ["P182", "osiyas"], // GK ← 4차 입고(2026-07-29). 아트·채번 동시(#256).
 ];
 
 /**
@@ -138,7 +140,11 @@ const UNMAPPED_LEGENDS: readonly string[] = ["P174", "P178"];
  * 해제 신호: 어드민으로 활성화한 상태를 다음 시드 버전으로 승격(§9.8)하면 `active:true` 가 되고,
  * 그때 이 표에 남아 있으면 **stale 로 throw** 한다(아래 역방향 검사) → 지우라는 신호다.
  */
-const ACTIVATION_PENDING: readonly string[] = ["P180"]; // 경니시우스(3차 입고 2026-07-29)
+const ACTIVATION_PENDING: readonly string[] = [
+  "P180", // 경니시우스(3차 입고 2026-07-29)
+  "P181", // 석다이크(#256 채번 — 아트는 3차 입고분)
+  "P182", // 오시야스(#256 채번 — 4차 입고)
+];
 
 /** GOLD/SILVER/BRONZE 전원이 공용하는 기본 스킨(U-D8). */
 export const DEFAULT_UNIT_ID = "default-unit";

@@ -182,3 +182,76 @@ P173~P180 신규 채번·전원 LEGEND·GK1/MF3/FW4·trait 스탯 ≥ 밴드하�
 임포터는 `active` 를 왕복 처리한다 — 필드가 없는 구 시드(v2.1 이하)는 전원 `active=1` 로 안전 임포트(무회귀).
 런타임 변경 경로는 **어드민 유닛 카탈로그 API**(#207 파트 A)이고, `players.admin_locked=1` 인 행은 부팅 재임포트가 덮지 않는다.
 어드민으로 확정한 상태는 `GET /api/admin/units/export` 로 뽑아 **다음 시드 버전으로 승격**한다(런타임 경로와 시드 경로가 갈라지지 않게).
+
+---
+
+## 10. v2.4 신규 LEGEND 2종 델타 (#256, hero 확정 2026-07-29)
+
+> §9 는 #207(v2.2) 시점의 기록이라 그대로 둔다. v2.3·v2.4 증분은 여기에 이어 적는다.
+> 현행 소비본은 **`players.v2.4.json`(182명)** 이다 — §9.8 의 "v2.2 를 가리킨다"는 그 시점 서술이다.
+
+### 10.1 결정
+
+| id | 유닛명 | 포지션 | 등급 | traits | 소스 |
+|---|---|---|---|---|---|
+| P181 | 석다이크 | DF | LEGEND | tackling, physical | Virgil van Dijk (P015, 카탈로그 내 **DIA**) |
+| P182 | 오시야스 | GK | LEGEND | positioning, physical | Iker Casillas (**카탈로그에 없음**) |
+
+### 10.2 "동일 스탯 복제"의 해석 — 값 복사가 아니라 **포지션·traits 복제**
+
+hero 지시는 "판다이크와 동일 / 카시야스와 동일"이었고, 두 가지로 읽힐 수 있었다. 확인 결과 값
+복사는 성립하지 않는다:
+
+- **판다이크는 DIA** 다(P015, 평균 79.7). LEGEND 밴드는 80~95 이므로 값을 그대로 복사하면 등급은
+  LEGEND 인데 성능은 DIA 인 카드가 되어 **획득 가능 LEGEND 23종 중 압도적 최약체**가 된다.
+- **카시야스는 로스터에 아예 없다**(실선수 172명 미포함) → 복사할 원본이 존재하지 않는다.
+
+그리고 기존 8종의 "복제"(§9, `석신←야신`·`열라도나←마라도나`)도 값 복사가 아니었다 — **포지션·
+traits 만 물려받고 스탯은 LEGEND 밴드에서 새로 굴린다**(야신 88.1 vs 석신 87.3). hero 에게 세 안을
+풀맥락으로 제시해 **기존 관례 유지**로 확정했다. 오시야스 traits 는 소스가 없어 §8.1 기준 신규 배정
+(`positioning+physical` — 석신의 `positioning+mental` 과 갈라 두 LEGEND GK 가 다른 색을 갖게).
+
+### 10.3 발행 구조 — 동결 경계가 **둘**이 됐다
+
+`buildPlayersV22` 가 전체 ROSTER 를 받고 있어서, 로스터에 2종을 append 하는 순간 이미 발행된
+`players.v2.2.json`(180행)과 어긋났다. v2/v2.1 이 `FROZEN_ROSTER_COUNT`(172) 슬라이스 덕에 #207 을
+멀쩡히 넘긴 것과 대조된다. 그래서 **같은 장치를 한 겹 더** 둔다:
+
+```ts
+export const FROZEN_ROSTER_COUNT_V22 = 180;                  // v2.2/v2.3 발행 경계
+const playersV22 = buildPlayersV22(buildPlayersV21(players.slice(0, FROZEN_ROSTER_COUNT_V22)));
+const playersV23 = buildPlayersV23(playersV22);              // 180 — 바이트 동일 유지
+const playersV24 = buildPlayersV24(playersV23, buildPlayersV21(players)); // 182
+```
+
+RNG 안전 근거는 §9.5 와 동일하다 — 한 스트림을 `ROSTER.forEach` 로 순차 소비하므로 **맨 끝
+append** 는 앞 180명의 소비 순서를 건드리지 않는다. 슬라이스는 그 뒤의 순수 변환이다.
+
+`buildPlayersV24` 는 fail-closed 다: append 분의 id **집합과 순서**가 `V24_NEW_UNIT_IDS` 와 일치 ·
+동결 경계 밖 · 전원 LEGEND · v2.3 구간 행 무변경 · 유닛명 전역 유일.
+
+### 10.4 활성화는 **채번이 아니라 어드민 토글**
+
+둘 다 `active:false` 로 발행한다(§9.8 운영 모델 그대로 — 아트 머지 → 배포 → 어드민 API). 따라서
+**획득 가능 LEGEND 의 DF 0 · GK 0 갭은 채번만으로 닫히지 않는다.** `PlayerCatalogV24SeedTest` 가
+그 상태를 박제하고(첫 단언), **켜기만 하면 닫힌다**는 것도 같이 박아(둘째 단언) 남은 일이 데이터
+작업이 아니라 토글임을 코드가 말하게 한다. 어드민이 켜면 첫 단언이 실패하며 갱신을 요구한다.
+
+### 10.5 §7 검증 목록 증분 (data.test.ts)
+
+`TOTAL 180→182` · `GRADE_TOTALS LEGEND 22→24` · `POSITION_TOTALS GK15/DF54/MF62/FW51` +
+**v2.2/v2.3 경계 리터럴 신설**(`V23_TOTAL`·`V23_POSITION_TOTALS`·`V23_GRADE_TOTALS` — 그 발행물이
+동결이라 이 값도 영구 고정) · #256 2종 리터럴 표 · P181~P182 신규 채번(기존 P-공간 재사용 0) ·
+능력치 9종이 LEGEND 밴드(80~95) 안이며 **P015 값과 불일치**(값 복사가 아님을 직접 대조) ·
+trait 스탯이 비-trait 최솟값 이상 · `active:false` 정확히 19개이며 집합 일치 ·
+v2.3 구간 active 무변경(순수 append) · **동결 불변**(앞 180행이 디스크 v2.3 과 바이트 동일 +
+앞 172행이 v2.1 과 동일) · 갭 박제(활성 LEGEND 에 DF/GK 0, 켜면 각 1) ·
+starterPack·봇덱·`starterTop` 이 신규 2종 미참조.
+
+### 10.6 소비 경로 스위치 (두 곳 **모두**)
+
+`server-java/src/main/resources/application.yml` 의 `hmb.data.players-file` **와**
+`server-java/Dockerfile` 의 `HMB_DATA_PLAYERSFILE` 을 **둘 다** `players.v2.4.json` 으로.
+한쪽만 올리면 ENV 가 yml 을 덮어 배포에서 조용히 구 시드가 로드된다(2026-07-27 v8 에서 실제로 발생).
+아트 축은 `design/characters/dist/units`(4차 입고 `hero-imageRef-2026-07-29-rev4`, 9종) →
+`gen-chars.ts` 의 `UNIT_ASSIGNMENT` + `ACTIVATION_PENDING` → `player-chars.v2.json`.

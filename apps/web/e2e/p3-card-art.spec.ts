@@ -2,6 +2,8 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mockAppConfig } from "./app-config-mock";
 import { readFileSync, mkdirSync } from "node:fs";
 import { revealAllAndSettle } from "./gacha-reveal-settle";
+import { join } from "node:path";
+import { latestSeedFile } from "./latest-seed";
 
 /**
  * 카드 풀아트 배선 계약 (#187).
@@ -21,8 +23,10 @@ const SHOTS = new URL("../.smoke/", import.meta.url).pathname;
 const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
 
 /** 목 로스터는 **발행물에서 조인**한다 — 손으로 적으면 등급·매핑이 실제 시드와 어긋난다. */
+/** 시드 파일명을 박지 않는다 — 새 버전이 나오면 표본이 자동으로 따라간다(#256). */
+const PLAYERS_DIR = new URL("../../../data/players/", import.meta.url).pathname;
 const SEED: Array<{ id: string; name: string; position: string; grade: string }> = JSON.parse(
-  readFileSync(new URL("../../../data/players/players.v2.3.json", import.meta.url).pathname, "utf8"),
+  readFileSync(join(PLAYERS_DIR, latestSeedFile(PLAYERS_DIR)), "utf8"),
 );
 
 const pick = (grade: string, n: number) => SEED.filter((p) => p.grade === grade).slice(0, n);

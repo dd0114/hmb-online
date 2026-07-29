@@ -12,11 +12,15 @@ import { test, expect, type Page } from "@playwright/test";
 import { mockAppConfig } from "./app-config-mock";
 import { readFileSync } from "node:fs";
 import { revealAllAndSettle } from "./gacha-reveal-settle";
+import { join } from "node:path";
+import { latestSeedFile } from "./latest-seed";
 
 const SHOTS = new URL("../.smoke/", import.meta.url).pathname;
 
+/** 시드 파일명을 박지 않는다 — 새 버전이 나오면 표본이 자동으로 따라간다(#256). */
+const PLAYERS_DIR = new URL("../../../data/players/", import.meta.url).pathname;
 const SEED: Array<{ id: string; name: string; position: string; grade: string; active: boolean }> = JSON.parse(
-  readFileSync(new URL("../../../data/players/players.v2.3.json", import.meta.url).pathname, "utf8"),
+  readFileSync(join(PLAYERS_DIR, latestSeedFile(PLAYERS_DIR)), "utf8"),
 );
 const UNITS = JSON.parse(
   readFileSync(new URL("../../../design/characters/dist/units/manifest.json", import.meta.url).pathname, "utf8"),
