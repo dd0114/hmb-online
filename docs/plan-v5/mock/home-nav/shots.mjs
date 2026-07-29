@@ -11,8 +11,10 @@ const dir = "docs/plan-v5/mock/home-nav/after/";
 mkdirSync(dir, { recursive: true });
 const file = "file://" + process.cwd() + "/docs/plan-v5/mock/home-nav/after.html";
 const shots = [
-  ["01-home", "?screen=home"],
-  ["01b-home-locked", "?screen=home&sub=lock"],
+  ["00-home", "?screen=home"],
+  ["00b-home-locked", "?screen=home&sub=lock"],
+  ["01-game", "?screen=game"],
+  ["01b-game-locked", "?screen=game&sub=lock"],
   ["02-league-intro", "?screen=league"],
   ["03-league-run", "?screen=league&sub=run"],
   ["04-away", "?screen=away"],
