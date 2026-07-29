@@ -80,20 +80,12 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 
 ## 0.7 다음 배포에 걸린 주의 (pending — 그 배포가 끝나면 이 절에서 지운다)
 
-> 배포 지시가 오기 전에 **미리 등록해 둔** 항목이다. 여기 있는 건 §0.5 체크리스트를 돌릴 때
-> **반드시 같이 확인**한다. 처리하고 배포가 끝나면 항목을 지우고 `deploy-log` 에만 남긴다.
-> *(마지막 갱신: 2026-07-29, 라이브 = `06468e2`(v8.03) / Flyway **v20**)*
+> 배포 지시가 오기 전에 **미리 등록해 두는** 자리다. 여기 있는 건 §0.5 를 돌릴 때 **반드시 같이** 확인하고,
+> 처리하고 나면 항목을 지우고 `deploy-log` 에만 남긴다.
 
-**대기 중인 마이그레이션: `V21`~`V27` 7건** (라이브 v20 기준). 그중 둘이 특별 취급 대상이다.
+**현재 비어 있음.** *(직전 등록분 = `V25` 다이스 소각 · `V21` matches 재작성 — **배포 v2(`deploy-2`, 2026-07-29)에서 소진**. 처리 결과는 `docs/deploy-log.md` 의 그 항목에 있다.)*
 
-| 항목 | 무엇이 위험한가 | 배포 시 할 것 |
-|---|---|---|
-| **`V25__dice_purchase_removed.sql`** (#247) — **파괴적** | 다이스 구매를 없애면서 **기보유 재고를 실제로 소각**한다: `UPDATE user_dice SET normal = 0, cash = 0`. hero 확정(환불안 대신 소각). **백업 없이는 되돌릴 방법이 없다.** | ①**배포 직전 백업 필수**(§8) ②소각 **직전 잔량은 마이그레이션이 `dice_burned` 표에 박제**한다(`user_id·normal·cash·burned_at`) — 보상 요구가 오면 **그 표가 유일한 근거**이므로, 배포 후 `SELECT COUNT(*), SUM(normal), SUM(cash) FROM dice_burned` 를 찍어 **deploy-log 에 남긴다** ③복원 SQL 근거 = `dice_burned` + **#247 코멘트** |
-| **`V21__away_raid.sql`** (+`.conf`, #245) — **비원자** | `matches` **테이블 12단계 재작성**(mode CHECK 확장). `executeInTransaction=false` 라 중간에 죽으면 **`matches` 없는 DB + Flyway failed** 로 남는다(V8·V19 와 같은 계열). | ①**배포 직전 백업 필수** ②**백업 사본 리허설**(§8)에서 `PRAGMA foreign_key_check` 0 + 자식행(`match_prompts`·`match_halves`·`ai_jobs`·`point_ledger`·`growth_applied`) 수 보존 확인 ③롤백 이미지 고정 |
-
-- 두 건 다 **되돌리려면 DB 복원이 필요**하다 — v8.01 이후로 **이미지만 되돌리는 롤백은 성립하지 않는다**(스키마가 앞서면 Flyway validate 에서 부팅 실패). 롤백 = **백업 복원 + 동세대 이미지**.
-- 나머지 5건도 §0.5-7 로 직접 스캔해 봤다: `V22 away_season`·`V23 deck_team_prompt`·`V24 halftime_tactics`·`V26 notices` 는 파괴적 구문 **0건**. **`V27__away_forfeit_isolation` 은 `UPDATE` 1건**이지만 **삭제가 아니라 백필**이다(`away_reports.forfeit` 신설 후 `goals_for=0 AND goals_against=0 AND result<>'DRAW'` 인 과거 행을 몰수로 표시) — 되돌리기는 컬럼 드롭이면 되므로 V25 와 같은 등급은 아니다. 그래도 **오탐이 있으면 과거 리포트가 몰수로 잘못 찍히므로** 리허설에서 `SELECT COUNT(*) FROM away_reports WHERE forfeit=1` 를 찍어 규모를 먼저 본다.
-- 위 목록은 **2026-07-29 시점 스냅샷**이다 — 배포 시점에 §0.5 의 1·2·7 을 **다시** 돌려라(그 사이 더 쌓인다).
+- 다음 예정: **배포 v2.01** — htform(#276 하프타임 포메이션), 리베이스 후 소배포.
 
 ---
 

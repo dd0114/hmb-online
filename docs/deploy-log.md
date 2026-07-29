@@ -6,6 +6,40 @@
 
 ---
 
+## 2026-07-29T09:46Z — **배포 v2** (태그 `deploy-2`) — 원정/시즌·디비전 · 다이스 구매 제거 · 팀프롬프트 · 신규 LEGEND 3종
+> 🆕 **버전 체계가 바뀌었다**: 이번부터 배포 버전은 **`배포 v2`(태그 `deploy-2`)** 다. 앞자리는 hero 가 명시할 때만 올린다.
+> 구 `v8.03` 의 다음이지만 `v8.04` 가 아니며, **릴리스 태그 `v1`~`v8`**(엔진/뷰어 안정 스냅샷, CLAUDE.md §6)과는 **다른 축**이다 — 태그명을 `deploy-*` 로 분리한 이유가 그것.
+
+- **git**: **`96ea877`** = 태그 `deploy-2` **그대로**(배포 중 픽스 없음). ⚠️ 배포 시점 main HEAD 는 `8253fae`(#244 프롬프트 UI·#248 공지 템플릿)로 **앞서 있었고, 이번 열차엔 포함하지 않았다**.
+- **모듈 버전 매니페스트**: engine **`@0.23.0`**(**무변경** — #241 구 resumeState 거부 이슈 무해당) · server-java `0.1.0`(V21~V28 · 원정/시즌·디비전·공지·팀프롬프트·하프타임 전술) · web `0.0.0` · servants `0.0.1` · **발행물: players `v2.4`(182명) · economy `v3`(갱신) · bots `v3` · league `v2`**
+- **이미지**: `hmb-java` `sha256:80015ea64755…`(**신규**) · `hmb-runner` `sha256:5dd6bc199603…`(**무변경** — 엔진 동일)
+- **DB 마이그레이션**: Flyway **v20 → v28**, **8건**(`V21 away_raid`[**non-transactional**] · `V22 away_season` · `V23 deck_team_prompt` · `V24 halftime_tactics` · `V25 dice_purchase_removed`[**파괴적**] · `V26 notices` · `V27 away_forfeit_isolation` · `V28 league_division`), 41ms.
+  - **백업**: `~/.local/state/hmb/db-backups/pre-deploy2-20260729T094152Z.db` (251,301,888 B · sha256 `2271e5fcf682e7032a6c9b9ef34f1a036b53e60aa55b5775f0807e7db2e4e029` · integrity ok). 롤백 이미지 `prev-live` = v8.03 세대(`c05a09c1…`/`5dd6bc19…`).
+  - **리허설(백업 사본, 라이브 무접촉)**: 8건 전부 success · 부팅 성공 · **182 players from v2.4** · `foreign_key_check` **0** · 행수 보존(matches 40 · match_prompts 18 · match_halves 62 · ai_jobs 195 · point_ledger 298 · growth_applied 448 · user_players 2415) — **V21 의 `matches` 12단계 재작성이 자식 테이블을 다치지 않음**을 여기서 확인하고 라이브에 적용.
+  - **V25 다이스 소각(비가역) — 실행 전후 대조**: 사전 실측 = 보유 유저 **2명**(normal 합 **1**, cash 합 **2**). 리허설·라이브 모두 `dice_burned` 에 **2행(normal 1 / cash 2)** 박제 + `user_dice` **0/0** 소각. **복원 근거 = `dice_burned` 표 + #247 코멘트의 SQL**(보상 요구가 오면 이 표가 유일한 근거).
+  - **V27 forfeit 백필**: `away_reports` 가 비어 있어 **0건** 표시(신규 기능이라 정상).
+  - 적용 후 라이브: `foreign_key_check` 0 · `integrity_check=ok` · Flyway **v28** · players **182** · users 157.
+- **✅ §0.5 체크리스트 + §0.7 pending 소진**:
+  ①②마이그레이션 8건·비원자 1건 확인 → 백업·리허설 수행 ③**발행물 핀 4개 모두 yml·Dockerfile 일치**(`players.v2.4`·`economy.v3`·`bots.v3`·`league.v2`) — **과거 v2.1 핀 사고의 재발 없음**, 부팅 로그로 `Imported 182 players … (version=v2.4)` 재확인 ④override **§0.6 2-B 재작성**(아래) ⑤web 빌드 통과 ⑥executor 재기동(PID only `9834`→`9823`→`9803`→`9801`, 새 워커 **80023**) ⑦**비가역 마이그레이션 = V25**(체크7 신설 후 첫 적용) — 소각 대상·규모·복원 근거를 배포 전에 확인.
+- **economy override 재작성(§0.6 2-B, 삭제 아님)**: 새 발행물을 컨테이너에서 꺼내(`economy.v3.json`) **운영 조정 `initialGems=12000` 만 다시 얹어** 재배치 → `reload` 200. 확인: 새 발행물 대비 차이 **`initialGems` 한 키뿐**, 그리고 **구 override 가 가리고 있던 키 = `initialGems` + `league`** — 즉 **그대로 뒀으면 #251 신규 리그 젬 보상이 조용히 무시될 뻔했다**(구 `gemReward{maxRank,min,max}` → 신 `{completion:3000, rankBonus:{1:6000,2:3000,3:1000}}`). 부팅 로그로 `initialGems=12000` + `leagueGemReward=LeagueGemReward[completion=3000…]` **공존** 확인.
+- **신규 LEGEND 3종 활성화(hero 승인)**: 발행물엔 `active:false` 로 실려 있어 어드민 카탈로그 API 로 활성화 — `POST /api/admin/units/{P180,P181,P182}/activate` **각 200**(사유 기입, `admin_ops_audit` 기록). DB 확인 `P180 경니시우스 / P181 석다이크 / P182 오시야스 active=1`, 활성 카탈로그 **163 → 166**.
+- **결과**: ✅ GREEN (실패 요청 0 · JS 에러 0)
+  - **신규 매치**: 생성 → 킥오프 → `GEN1`(대기 중계멘트 정상) → **`FIRST_HALF`**(`halfRealMs 420000` · `halftimeMs 180000`).
+  - **디비전 뱃지(V28)**: 리그 화면 우상단 **`디비전 10`** 뱃지 + "다음 시즌 **디비전 10** 에서 시작합니다".
+  - **시즌 보상**: 서버가 새 보상 스키마를 로드한 것까지 확인(`completion=3000` + `rankBonus`). *보상 카드 UI 는 시즌을 완주해야 떠서 이번 스모크 범위 밖 — 다음 열차나 hero 실플레이에서 확인 필요.*
+  - **다이스 구매 제거(V25)**: 상점에서 **[다이스] 탭이 사라지고 뽑기만** 남음. 롤 직접 결제는 `POST /api/growth/dice` 가 **`POTENTIAL_LOCKED`(2★부터 해금)** 로 막혀 신규 계정에선 결제까지 도달하지 못했다 — **지갑 차감 실검증은 미완**(2★ 카드가 필요). 상점 경로 제거는 확인됨.
+  - **팀 프롬프트 저장(V23)**: `GET /api/deck` 에 **`teamPrompt` 필드 신설**, `PUT` 후 재조회에서 값 유지.
+  - **뽑기 이펙트/결제**: 단뽑 실행 → 지갑 `12,000 Z → 11,700 Z`, 리빌 카드 정상.
+  - **기존 무회귀**: 가입 스타터(젬 **12,000**) · 튜토덱 · 409 잠금 · Z/G 표기.
+  - `version.json` = **`96ea877`** / `engine@0.23.0`.
+- **비고**:
+  - 배포 후 워치독이 터널을 교체했다 — 현재 백엔드 `https://ebony-aus-fat-soul.trycloudflare.com`(config.json 갱신 확인, `status.sh` 전 항목 ✓).
+  - 프로덕션에 검증 계정 3건(`d2p*`·`d2b*` 등) 생성. `d2p*` 는 GEN1 중 포기가 막혀 매치 종료까지 잠금 — 프로브 계정이라 무해.
+  - **다음 소배포 예고**: htform(#276 하프타임 포메이션)은 이번 열차에 없다 — 리베이스 후 **배포 v2.01** 예정.
+  - §0.7(pending) 은 이 배포로 **소진**했다 — 플레이북에서 해당 절을 비운다.
+
+---
+
 ## 2026-07-28T09:52Z — **릴리스 태그 `v8.03`** (#232 재화 표기 통일 — 다이아=Z · 골드=G, 서버 주도)
 - **git**: **`06468e2`** = 태그 `v8.03` **그대로**(배포 중 픽스 없음). 브랜치 `deploy/v7`.
 - **모듈 버전**: engine `@0.23.0`(**변경 0**) · server-java `0.1.0`(표기 메타를 economy 스냅샷에 싣고 `GET /api/config` 로 공개) · web `0.0.0`(클라 하드코딩 전수 제거 — `<Amount>`·`useCurrency`) · servants `0.0.1`
