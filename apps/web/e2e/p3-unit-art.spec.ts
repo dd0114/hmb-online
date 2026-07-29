@@ -11,6 +11,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { mockAppConfig } from "./app-config-mock";
 import { readFileSync } from "node:fs";
+import { revealAllAndSettle } from "./gacha-reveal-settle";
 
 const SHOTS = new URL("../.smoke/", import.meta.url).pathname;
 
@@ -151,7 +152,7 @@ for (const [label, w, h] of [["데스크탑", 1280, 900], ["모바일390", 390, 
     await mockApi(page);
     await page.goto("/shop");
     await page.getByTestId("gacha-ten").click();
-    await page.getByTestId("gacha-reveal-all").click();
+    await revealAllAndSettle(page);
     const cards = page.locator('[data-testid^="full-art-"]');
     await expect(cards).toHaveCount(CATALOG.length);
     await page.waitForTimeout(700); // 뒤집기 전환(0.45s) 완료 후 — 뒷면만 찍히지 않게
@@ -168,6 +169,8 @@ for (const [label, w, h] of [["데스크탑", 1280, 900], ["모바일390", 390, 
     await page.screenshot({ path: `${SHOTS}unit-art-grid-${w}.png`, fullPage: true });
   });
 }
+
+
 
 test("도감: 보유 비활성 카드에 'off' 가 붙고 활성에는 없다 (U-D7)", async ({ page }) => {
   await login(page);

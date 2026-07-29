@@ -26,6 +26,17 @@
   transform: rotateY(180deg);
 }
 
+/*
+ * 모션 최소화: 뒤집기는 **3D 회전 450ms** 라 이 설정을 켠 사람이 가장 피하고 싶은 종류의
+ * 움직임이다. 결과(앞면)는 그대로 나오고 회전만 사라진다 — 정보 손실 0.
+ * (#250 캡처에서 이 회전 중간 프레임이 카드가 찢어진 것처럼 보였다.)
+ */
+@media (prefers-reduced-motion: reduce) {
+  .cardInner {
+    transition: none;
+  }
+}
+
 .cardBack,
 .cardFace {
   position: absolute;
@@ -55,9 +66,15 @@
   padding: 0;
 }
 
-/* 골드↑ 하이라이트(AC-W3). 등급색 링(#187 D4)은 카드 자체가 갖고, 이건 그 바깥의 임팩트 층이다. */
+/*
+ * 골드↑ 하이라이트(AC-W3). 등급색 링(#187 D4)은 카드 자체가 갖고, 이건 그 바깥의 임팩트 층이다.
+ *
+ * ⚠️ 색은 **등급을 따라간다**(`--card-glow`, RevealCard 가 `GRADE_COLORS` 에서 주입).
+ * 예전엔 금색 상수가 박혀 있어 다이아(청)·레전드(보라) 카드에도 **금색 후광**이 걸렸고,
+ * #250 뽑기 이펙트(등급색 빛)를 얹자 카드 안팎 색이 서로 싸우는 게 캡처에서 바로 보였다.
+ */
 .high {
-  box-shadow: 0 0 18px 3px rgba(242, 199, 68, 0.5);
+  box-shadow: 0 0 18px 3px color-mix(in srgb, var(--card-glow, #f2c744) 55%, transparent);
 }
 
 .newBadge {

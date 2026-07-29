@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mockAppConfig } from "./app-config-mock";
 import { readFileSync, mkdirSync } from "node:fs";
+import { revealAllAndSettle } from "./gacha-reveal-settle";
 
 /**
  * 카드 풀아트 배선 계약 (#187).
@@ -184,13 +185,15 @@ test.beforeAll(() => mkdirSync(SHOTS, { recursive: true }));
 
 // ── ① 큰 화면에 풀아트가 뜬다 ───────────────────────────────────────────────
 
+
+
 test("뽑기: 결과 카드가 **전부** 아트까지 해석된다 (hero 확정 A안 + #207 축 분기)", async ({ page }) => {
   await login(page);
   await mockApi(page);
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
   await expect(page.getByTestId("gacha-reveal")).toBeVisible();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
 
   await expect(cards(page)).toHaveCount(GACHA.results.length);
   // 공개된 카드는 전부 실제 아트까지 해석돼야 한다 — 프레임만 뜨면 매핑이 끊긴 것.
@@ -231,7 +234,7 @@ for (const [label, w, h] of [["데스크탑", 1280, 900], ["모바일 390", 390,
     await mockApi(page);
     await page.goto("/shop");
     await page.getByTestId("gacha-ten").click();
-    await page.getByTestId("gacha-reveal-all").click();
+    await revealAllAndSettle(page);
     await expect(cards(page).first()).toBeVisible();
 
     const box = await page.evaluate(() => {
@@ -277,7 +280,7 @@ test("등급색 링(D4)이 카드에 실제로 적용된다 — 등급별로 다
   await mockApi(page);
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
   await expect(cards(page).first()).toBeVisible();
 
   const seen = await cards(page).evaluateAll((els) =>
@@ -513,7 +516,7 @@ test("폴백: 캐릭터 매핑이 없으면 등급 프레임 + 아이콘 (깨진
   );
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
 
   await expect(cards(page).first()).toHaveAttribute("data-art-kind", "frame-only");
   expect(await brokenImages(page)).toEqual([]);
@@ -534,7 +537,7 @@ test("폴백: manifest 는 멀쩡한데 **이미지만** 죽어도 계단이 내
   );
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
   await expect(cards(page).first()).toBeVisible();
 
   // 계단이 내려가야 한다: 이미지가 죽었으니 더 이상 full-art 가 아니다.
@@ -558,7 +561,7 @@ test("폴백: /chars 가 통째로 없어도 화면이 산다 (CSS 폴백, 깨�
   await page.route((url) => url.pathname.startsWith("/chars/"), (route) => route.abort());
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
 
   await expect(cards(page)).toHaveCount(GACHA.results.length);
   const kinds = await cards(page).evaluateAll((els) => els.map((e) => e.getAttribute("data-art-kind")));
@@ -577,7 +580,7 @@ test("등급↔프레임 정합: 카드가 자기 등급 프레임을 쓴다 (5�
   await mockApi(page);
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
   await expect(cards(page).first()).toBeVisible();
 
   const pairs = await cards(page).evaluateAll((els) =>
@@ -612,7 +615,7 @@ test("모바일 390: 뽑기·도감 어디서도 가로 스크롤이 생기지 �
 
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
   await expect(cards(page).first()).toBeVisible();
   const shop = await horizontalOverflow(page);
   expect(shop.sw, `뽑기 가로 오버플로 (${shop.sw} > ${shop.cw})`).toBeLessThanOrEqual(shop.cw);

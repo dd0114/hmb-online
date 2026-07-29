@@ -77,6 +77,13 @@
   font-size: 14px;
 }
 
+/* 연출이 도는 동안의 "공개 중…" (#250) — 누를 수 있어 보이면 안 된다. */
+.primary:disabled {
+  background: var(--bg-elevated);
+  color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
 .secondary {
   padding: 10px 14px;
   border-radius: 8px;
