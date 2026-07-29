@@ -558,6 +558,15 @@ public class AdminCatalogService {
      * 재작성</b>해야 하는데, 이력 원장을 재작성하는 마이그레이션은 이 기능이 감수할 위험이 아니다.
      * V18 은 주석에서 스스로 "다른 도메인도 자기 action 을 append 하면 된다"고 열어 둔 범용 원장이다.
      * <b>대가</b>: 한 유닛의 이력이 두 원장에 나뉜다(생성·수정 = 카탈로그 원장, 회수 = 운영 원장).
+     *
+     * <p>⚠️ <b>알려진 부작용 — 회수한 번호는 재사용된다.</b> {@link #insertWithNextId} 가
+     * {@code MAX(번호)+1} 로 채번하므로, <b>가장 큰 번호</b>를 회수하면 다음 생성이 그 번호를 다시
+     * 가져간다. 라이브 데이터는 안전하다(참조 0 이어야 회수되므로 남의 카드가 바뀔 일이 없다).
+     * 다만 {@code admin_catalog_audit} 은 그 번호의 <b>옛 이력을 그대로 갖고 있어서</b>, 새 유닛의
+     * 상세 화면에 <b>회수된 유닛의 생성·수정 이력이 섞여 보인다</b>(원장의 before/after 스냅샷에
+     * 이름이 남아 있어 사람은 구분할 수 있다).
+     * <b>고치려면</b> 채번을 최고수위(high-water mark)로 바꿔야 하고 그건 스키마 변경이다 —
+     * 회수의 실사용 빈도(잘못 만든 직후)를 생각하면 지금은 <b>기록해 두고 감수</b>한다.
      */
     public PurgeResult purge(String actorUserId, String playerId, String rawReason) {
         String reason = requireReason(rawReason);
