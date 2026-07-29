@@ -42,6 +42,8 @@ function standings(userRank: number) {
 }
 
 interface SeasonOpts {
+  /** #251 시즌 보상(G+Z). 승급 카드와 **같은 화면**에 쌓이므로 통합 확인용. */
+  reward?: Record<string, unknown> | null;
   state?: "ACTIVE" | "FINISHED";
   userRank?: number;
   division?: number | null;
@@ -54,7 +56,7 @@ function seasonPayload(o: SeasonOpts = {}) {
   const {
     state = "ACTIVE", userRank = 3,
     division = 5, divisionName = "브론즈 리그",
-    promoteRankMax = 2, relegateRankMin = 9,
+    promoteRankMax = 2, relegateRankMin = 9, reward = null,
   } = o;
   const season: Record<string, unknown> = {
     id: "SEASON1", seasonNo: 1, state,
@@ -70,6 +72,7 @@ function seasonPayload(o: SeasonOpts = {}) {
   if (divisionName !== null) season.divisionName = divisionName;
   if (promoteRankMax !== null) season.promoteRankMax = promoteRankMax;
   if (relegateRankMin !== null) season.relegateRankMin = relegateRankMin;
+  if (reward) season.seasonReward = reward;
   return { season };
 }
 
@@ -249,6 +252,35 @@ test.describe("#262 사다리 끝 — 서버가 안 하는 전이를 그리지 �
     await expect(page.getByTestId("division-rule")).toHaveText("9위부터 강등");
     await expect(page.locator('[data-testid="standings"] tr[data-zone="promote"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="standings"] tr[data-zone="relegate"]')).toHaveCount(2);
+  });
+});
+
+test.describe("#262 × #251 통합 — 승급 카드와 보상 카드가 한 화면에 쌓인다", () => {
+  test("승급 + G/Z 보상이 같이, 서로를 덮지 않는다", async ({ page }) => {
+    await bootstrap(page, {
+      state: "FINISHED", userRank: 1,
+      // #251 서버 형상: status=GRANTED, 우승 = 골드 100,000 + 다이아 9,000
+      reward: { rank: 1, points: 100_000, gems: 9_000, status: "GRANTED", awardedAt: "2026-07-29T09:00:00Z" },
+    });
+    const outcome = page.getByTestId("division-outcome");
+    const rewardCard = page.getByTestId("season-reward");
+    await expect(outcome).toHaveAttribute("data-zone", "promote");
+    await expect(rewardCard).toBeVisible();
+    await expect(page.getByTestId("season-reward-gems")).toBeVisible();
+
+    // 세로로 쌓이고 겹치지 않는다 — 두 기능이 독립 머지돼 한 화면에서 만나는 자리다.
+    const a = (await outcome.boundingBox())!;
+    const b = (await rewardCard.boundingBox())!;
+    expect(a.y + a.height).toBeLessThanOrEqual(b.y + 1);
+
+    // ⚠️ 보상 카드는 `rewardFade`(120ms 지연 + fill both)로 들어온다. 바로 찍으면 opacity 0 구간을
+    // 잡아 **화면엔 빈 칸인데 DOM 단언은 통과**하는 캡처가 나온다(실제로 그랬다 — 인지 갭).
+    // 캡처가 판정 근거이므로 애니메이션이 끝난 뒤에 찍는다.
+    await expect
+      .poll(async () => rewardCard.evaluate((el) => Number(getComputedStyle(el).opacity)))
+      .toBeGreaterThan(0.99);
+    mkdirSync(SMOKE_DIR, { recursive: true });
+    await page.screenshot({ path: `${SMOKE_DIR}league-division-with-reward.png`, fullPage: true });
   });
 });
 

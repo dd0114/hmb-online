@@ -465,34 +465,9 @@ describe("divisionOutcome — 시즌 종료 연출", () => {
 });
 
 
-describe("보상 status — 서버 enum 을 그대로 받는다 (독립검증 MAJ-1)", () => {
-  // 서버 openapi = PENDING | GRANTED | NONE. 예전엔 클라가 "AWARDED" 를 기대해
-  // **실제로 보상을 받은 유저가 '지급되지 않았습니다' 를 봤다**. 목이 서버 형상을 안 지키면
-  // 계약이 green 인 채로 라이브에서만 깨진다.
-  it("GRANTED = 지급 완료(성공 톤)", () => {
-    const v = seasonRewardView({ rank: 1, points: 100_000, status: "GRANTED" });
-    expect(v.tone).toBe("success");
-    expect(v.showPoints).toBe(true);
-    expect(v.canRetry).toBe(false);
-    expect(v.headline).toContain("지급 완료");
-  });
-
-  it("NONE = 보상 대상이 아님(실패 아님) — 에러 톤·재조회 버튼이 뜨면 안 된다", () => {
-    const v = seasonRewardView({ rank: 7, points: 0, status: "NONE" });
-    expect(v.tone).not.toBe("error");
-    expect(v.canRetry).toBe(false);
-    expect(v.headline).not.toContain("지급되지 않았");
-  });
-
-  it("서버가 보내는 세 값은 전부 '알 수 없는 응답' 으로 떨어지지 않는다", () => {
-    for (const status of ["PENDING", "GRANTED", "NONE"] as const) {
-      const picked = pickSeasonReward({ seasonReward: { rank: 1, points: 10, status } });
-      expect(picked?.status, `${status} 는 알려진 값이어야 한다`).toBe(status);
-    }
-  });
-
-  it("정말 모르는 값만 FAILED 로 승격한다(조용한 숨김 금지)", () => {
-    const picked = pickSeasonReward({ seasonReward: { rank: 1, points: 10, status: "AWARDED" } as never });
-    expect(picked?.status).toBe("FAILED");
-  });
-});
+/*
+ * 보상 status(GRANTED/NONE/별칭) 계약은 **#251 이 소유**한다 — 위의
+ * "seasonReward — 서버 status enum(GRANTED/NONE) 수용 (#251)" 블록.
+ * #262 도 같은 버그(AWARDED↔GRANTED)를 독립적으로 발견해 고쳤지만, 머지 조율에서 #251 을
+ * 기준으로 삼아 중복 계약을 제거했다. #251 쪽이 젬 병기·표기 주입까지 덮어 더 넓다.
+ */
