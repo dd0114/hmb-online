@@ -41,7 +41,14 @@ function standings(userRank: number) {
   });
 }
 
+/** `GET /api/me` 목의 league 블록(#268). null 이면 필드 자체를 빼서 구 서버를 재현. */
+interface MeOpts {
+  meLeague?: { division?: number; divisionName?: string } | null;
+}
+
 interface SeasonOpts {
+  /** 시즌이 아예 없는 상태(첫 진입 · 시즌 종료 후 새 시즌 전) — #268 이 겨냥한 구간. */
+  noSeason?: boolean;
   /** #251 시즌 보상(G+Z). 승급 카드와 **같은 화면**에 쌓이므로 통합 확인용. */
   reward?: Record<string, unknown> | null;
   state?: "ACTIVE" | "FINISHED";
@@ -76,7 +83,7 @@ function seasonPayload(o: SeasonOpts = {}) {
   return { season };
 }
 
-async function bootstrap(page: Page, opts: SeasonOpts = {}) {
+async function bootstrap(page: Page, opts: SeasonOpts & MeOpts = {}) {
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "guest");
@@ -85,10 +92,18 @@ async function bootstrap(page: Page, opts: SeasonOpts = {}) {
   await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.fulfill(json({})));
   await mockAppConfig(page, appConfigPayload());
   await page.route((url) => url.pathname === "/api/me", (route) =>
-    route.fulfill(json({ userId: "U1", nickname: "테스터", points: 10000, gems: 100 })),
+    route.fulfill(
+      json({
+        user: { id: "U1", nickname: "테스터", isAdmin: false, tutorialDone: true },
+        wallet: { points: 10000, gems: 100 },
+        records: { wins: 0, draws: 0, losses: 0 },
+        rating: 0,
+        ...(opts.meLeague === undefined || opts.meLeague === null ? {} : { league: opts.meLeague }),
+      }),
+    ),
   );
   await page.route((url) => url.pathname === "/api/league", (route) =>
-    route.fulfill(json(seasonPayload(opts))),
+    route.fulfill(json(opts.state === undefined && opts.noSeason ? { season: null } : seasonPayload(opts))),
   );
   await page.goto("/league");
 }
@@ -281,6 +296,52 @@ test.describe("#262 × #251 통합 — 승급 카드와 보상 카드가 한 화
       .toBeGreaterThan(0.99);
     mkdirSync(SMOKE_DIR, { recursive: true });
     await page.screenshot({ path: `${SMOKE_DIR}league-division-with-reward.png`, fullPage: true });
+  });
+});
+
+test.describe("#268 시즌 밖에서도 디비전이 보인다", () => {
+  /*
+   * 승급/강등은 시즌 **사이**에 일어난다. 시즌을 끝내고 다음 시즌을 시작하기 전이 정확히
+   * "내가 몇 부가 됐지?" 가 궁금한 순간인데, 그 구간엔 시즌 DTO 가 없어 표시할 근거가 없었다.
+   * 서버가 `GET /api/me` 에 현재 디비전을 실어 주고(#268) 화면이 그걸 쓴다.
+   */
+
+  test("시즌이 없어도 헤더 뱃지 + 시작 CTA 안내가 뜬다", async ({ page }) => {
+    await bootstrap(page, { noSeason: true, meLeague: { division: 9, divisionName: "실버 리그" } });
+    await expect(page.getByTestId("league-start-cta")).toBeVisible();
+    await expect(page.getByTestId("division-tag")).toHaveText("실버 리그");
+    await expect(page.getByTestId("cta-division")).toContainText("실버 리그");
+
+    mkdirSync(SMOKE_DIR, { recursive: true });
+    await page.screenshot({ path: `${SMOKE_DIR}league-division-no-season.png`, fullPage: true });
+  });
+
+  test("시즌 밖에서는 **승급권 색칠을 하지 않는다** — 컷을 모르는 구간이다", async ({ page }) => {
+    // #262 BL-1 재발 방지: 컷은 시즌마다 다르다(입문엔 강등 없음·최상위엔 승급 없음).
+    // /api/me 는 그 정보를 담지 않으므로 규칙 문구도 구역도 나오면 안 된다.
+    await bootstrap(page, { noSeason: true, meLeague: { division: 9, divisionName: "실버 리그" } });
+    await expect(page.getByTestId("division-rule")).toHaveCount(0);
+    await expect(page.locator('tr[data-zone]')).toHaveCount(0);
+  });
+
+  test("시즌이 있으면 뱃지는 **그 시즌에 박제된** 값을 쓴다(me 값이 아니라)", async ({ page }) => {
+    // 시즌 종료 후 승급하면 users.division 은 이미 다음 값이다. 그 시즌 화면의 뱃지는
+    // **치른 시즌**의 디비전이어야 한다 — 아니면 "브론즈에서 우승" 옆에 실버 뱃지가 뜬다.
+    await bootstrap(page, {
+      state: "FINISHED", userRank: 1,
+      division: 10, divisionName: "브론즈 리그",
+      meLeague: { division: 9, divisionName: "실버 리그" }, // 이미 승급된 현재 값
+      promoteRankMax: 2, relegateRankMin: null,
+    });
+    await expect(page.getByTestId("division-tag")).toHaveText("브론즈 리그");
+    await expect(page.getByTestId("division-outcome")).toContainText("브론즈 리그에서 1위");
+  });
+
+  test("서버가 league 를 안 주면(사다리 미발행) 시즌 밖 표시가 통째로 사라진다", async ({ page }) => {
+    await bootstrap(page, { noSeason: true, meLeague: null });
+    await expect(page.getByTestId("league-start-cta")).toBeVisible();
+    await expect(page.getByTestId("division-tag")).toHaveCount(0);
+    await expect(page.getByTestId("cta-division")).toHaveCount(0);
   });
 });
 

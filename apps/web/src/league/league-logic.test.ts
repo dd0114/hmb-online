@@ -342,6 +342,7 @@ import {
   divisionOutcome,
   divisionRuleText,
   pickDivision,
+  pickMeDivision,
   zoneOfRank,
 } from "./league-logic";
 
@@ -471,3 +472,43 @@ describe("divisionOutcome — 시즌 종료 연출", () => {
  * #262 도 같은 버그(AWARDED↔GRANTED)를 독립적으로 발견해 고쳤지만, 머지 조율에서 #251 을
  * 기준으로 삼아 중복 계약을 제거했다. #251 쪽이 젬 병기·표기 주입까지 덮어 더 넓다.
  */
+
+
+/* ───────────────── 시즌 밖 디비전 표시 (#268) ───────────────── */
+
+describe("pickMeDivision — 시즌이 없어도 몇 부인지 보인다", () => {
+  it("league 부재/ null 이면 null — 사다리 미발행이면 기능 소멸(무회귀)", () => {
+    expect(pickMeDivision(undefined)).toBeNull();
+    expect(pickMeDivision(null)).toBeNull();
+    expect(pickMeDivision({})).toBeNull();
+    expect(pickMeDivision({ league: null })).toBeNull();
+  });
+
+  it("division + 이름을 서버 값 그대로 쓴다", () => {
+    const d = pickMeDivision({ league: { division: 7, divisionName: "실버 리그" } });
+    expect(d).toMatchObject({ level: 7, name: "실버 리그" });
+    expect(divisionLabel(d)).toBe("실버 리그");
+  });
+
+  it("이름이 없으면 지어내지 않는다 — level 표기 폴백", () => {
+    expect(divisionLabel(pickMeDivision({ league: { division: 3 } }))).toBe("D3");
+    expect(divisionLabel(pickMeDivision({ league: { division: 3, divisionName: "  " } }))).toBe("D3");
+  });
+
+  it("**컷은 없다** — 시즌 밖에는 사다리 끝 클램프 정보가 없으므로 승급권 색칠을 하면 안 된다", () => {
+    // #262 BL-1 의 재발 방지: 컷은 시즌마다 다르다(입문엔 강등 없음, 최상위엔 승급 없음).
+    // 시즌 밖 값으로 구역을 칠하면 서버가 하지 않는 전이를 또 그리게 된다.
+    const d = pickMeDivision({ league: { division: 5, divisionName: "브론즈 리그" } });
+    expect(d?.hasRules).toBe(false);
+    expect(d?.promoteRankMax).toBeNull();
+    expect(d?.relegateRankMin).toBeNull();
+    expect(zoneOfRank(1, d)).toBe("none");
+    expect(zoneOfRank(10, d)).toBe("none");
+    expect(divisionRuleText(d)).toBeNull();
+    expect(divisionOutcome(1, d)).toBeNull();
+  });
+
+  it("숫자가 아닌 division 은 부재로 취급(서버 계약 밖 방어)", () => {
+    expect(pickMeDivision({ league: { division: "5" } as never })).toBeNull();
+  });
+});

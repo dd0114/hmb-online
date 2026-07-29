@@ -335,6 +335,31 @@ class LeagueDivisionTest extends MatchTestBase {
         assertThat(sawScaledDown).as("봇 능력치가 실제로 하향돼 엔진에 전달됐다").isTrue();
     }
 
+    // ── /api/me 디비전 (#268) ───────────────────────────────────────────
+
+    @Test
+    void meExposesCurrentDivisionIndependentlyOfAnySeason() {
+        // 승급/강등은 시즌 **사이**에 일어난다. 시즌을 끝내고 다음 시즌 전이 정확히 "몇 부가 됐지?"
+        // 가 궁금한 순간인데 시즌 DTO 가 없어 표시할 근거가 없었다(#268).
+        String nick = "me-div";
+        String token = setupUserWithRealDeck(nick);
+        setDivision(nick, 7);
+
+        JsonNode me = readJson(authGet("/api/me", token, String.class).getBody());
+        assertThat(me.path("league").path("division").asInt()).as("시즌이 없어도 나온다").isEqualTo(7);
+        assertThat(me.path("league").path("divisionName").asText())
+                .as("표시명은 서버가 준다 — 클라가 level 로 만들지 않는다").isNotBlank();
+
+        // 시즌을 끝내고 승급하면 **바로** 다음 값이 보인다(시즌 DTO 는 아직 옛 값을 들고 있다).
+        String seasonId = startSeason(token);
+        winEverySeasonFixture(seasonId);
+        invokeSeasonHook("maybeFinishSeason", seasonId);
+        assertThat(divisionOfSeason(seasonId)).as("시즌은 치른 디비전을 박제").isEqualTo(7);
+        JsonNode after = readJson(authGet("/api/me", token, String.class).getBody());
+        assertThat(after.path("league").path("division").asInt())
+                .as("유저는 이미 승급돼 있다").isEqualTo(6);
+    }
+
     // ── 연습 봇 풀 오염 차단 (BL-1) ──────────────────────────────────────
 
     @Test

@@ -229,7 +229,12 @@ export function LobbyPage() {
         튜토리얼 다시 보기
       </button>
 
-      {modeModalOpen && <ModeModal onClose={() => setModeModalOpen(false)} />}
+      {modeModalOpen && (
+        <ModeModal
+          onClose={() => setModeModalOpen(false)}
+          leagueDivisionName={me?.league?.divisionName ?? null}
+        />
+      )}
 
       {/* 로비 팝업은 **동시에 하나만** 열린다 — 판정은 pickLobbyPopup 한 곳(#248 §4). */}
       {popup === "notice" && (
@@ -255,7 +260,14 @@ export function LobbyPage() {
  * - 연습: POST /api/matches → BRIEFING → /match/:id (기존 싱글 풀 플로우).
  * - 리그: /league 로 이동(시즌 없으면 시작 CTA, 있으면 대시보드).
  */
-function ModeModal({ onClose }: { onClose: () => void }) {
+function ModeModal({
+  onClose,
+  leagueDivisionName,
+}: {
+  onClose: () => void;
+  /** 현재 디비전 표시명(#268). 서버가 주는 값 그대로 — 클라가 level 로 만들지 않는다. */
+  leagueDivisionName?: string | null;
+}) {
   const createMatch = useCreateMatch();
   const startAway = useStartAwayMatch();
   const navigate = useNavigate();
@@ -400,7 +412,12 @@ function ModeModal({ onClose }: { onClose: () => void }) {
             onClick={() => navigate("/league")}
           >
             <span>리그</span>
-            <span className={styles.modeHint}>10팀 18라운드</span>
+            {/* 디비전이 있으면 그걸 보여준다(#268) — 유저가 어디쯤 와 있는지가 "10팀 18라운드"
+                라는 규칙 설명보다 정보량이 크다. 서버가 이름을 주지 않으면(사다리 미발행)
+                기존 문구 그대로(무회귀). 이름을 클라가 지어내지 않는다. */}
+            <span className={styles.modeHint} data-testid="mode-league-hint">
+              {leagueDivisionName ?? "10팀 18라운드"}
+            </span>
           </button>
         </li>
         <li>

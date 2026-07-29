@@ -762,6 +762,28 @@ public class LeagueService {
 
     // ── 디비전 (#252) ────────────────────────────────────────────────────
 
+    /**
+     * 유저의 <b>현재</b> 디비전 표시 정보(#268). 시즌 DTO 와 달리 <b>시즌과 무관</b>하다 —
+     * 승급/강등은 시즌 <b>사이</b>에 일어나므로, 시즌을 끝내고 다음 시즌을 시작하기 전이 정확히
+     * "내가 몇 부가 됐지?"가 궁금한 순간인데 그 구간엔 시즌 DTO 가 없다.
+     *
+     * <p>사다리 표가 없으면(구 발행물 롤백) <b>비어 있다</b> — 디비전 개념 자체가 꺼진 상태라
+     * 숫자만 내보내면 클라가 이름을 지어내게 된다(#262 원칙: 이름은 서버가 정한다).
+     */
+    public Optional<DivisionView> currentDivision(String userId) {
+        LeagueDataService.LeagueData data = leagueDataService.get().orElse(null);
+        if (data == null || data.divisions().isEmpty()) {
+            return Optional.empty();
+        }
+        int level = divisionOf(userId);
+        LeagueDataService.Division spec = divisionSpec(data, level);
+        return Optional.of(new DivisionView(level, spec == null ? null : spec.name()));
+    }
+
+    /** @param name 표시명(league.v2.json). 서버가 SoT — 클라가 level 로 만들지 않는다. */
+    public record DivisionView(int level, String name) {
+    }
+
     /** 유저 현재 디비전. 컬럼 기본값 = 입문(가장 큰 level). */
     public int divisionOf(String userId) {
         return jdbcClient.sql("SELECT division FROM users WHERE id = ?")
