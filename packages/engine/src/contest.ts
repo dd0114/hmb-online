@@ -1,6 +1,7 @@
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer, DeferredRestart } from "./simstate";
-import { playerKey, playerAt, ballOwnerOf, claimantSideOf } from "./simstate";
+import type { PossessionReason } from "./simstate";
+import { playerKey, playerAt, ballOwnerOf, claimantSideOf, setPossession } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
@@ -17,14 +18,18 @@ function attrFactor(v: number): number {
   return 0.6 + 0.8 * (v / 100);
 }
 
-/** 공을 player 에게 넘긴다(비행 종료·글루). */
-function giveBallTo(state: SimState, player: SimPlayer): void {
+/**
+ * 공을 player 에게 넘긴다(비행 종료·글루).
+ * `reason` 은 소유 전환의 종류 — **재시작(킥오프)에서도 불리므로** 호출부가 반드시 판단해서 넘긴다.
+ * (reason 없이 전부 턴오버로 기록하면 S4 의 카운터프레스가 킥오프/재시작마다 발동한다.)
+ */
+function giveBallTo(state: SimState, player: SimPlayer, reason: PossessionReason): void {
   state.ball.owner = player.id;
   state.ball.ownerSide = player.side;
   state.ball.flight = null;
   state.ball.posFx.x = player.posFx.x;
   state.ball.posFx.y = player.posFx.y;
-  state.possession = player.side;
+  setPossession(state, player.side, state.tick, reason);
 }
 
 /**
@@ -43,7 +48,8 @@ function assignWalkingTaker(state: SimState, taker: SimPlayer, spotX: number, sp
   state.ball.flight = null;
   state.ball.posFx.x = spotX;
   state.ball.posFx.y = spotY;
-  state.possession = taker.side;
+  // 데드볼 재시작 전용 경로 — 오픈플레이 턴오버가 아니다(스로인/프리킥/코너/골킥/페널티).
+  setPossession(state, taker.side, state.tick, "restart");
   return d;
 }
 
@@ -123,10 +129,10 @@ export function resetKickoff(
   if (taker) {
     taker.posFx.x = c.x;
     taker.posFx.y = c.y;
-    giveBallTo(state, taker);
+    giveBallTo(state, taker, "kickoff");
   } else {
     state.ball.posFx = { ...c };
-    state.possession = restartSide;
+    setPossession(state, restartSide, state.tick, "kickoff");
   }
   state.setPiece = { kind: "kickoff", side: restartSide, x: c.x, y: c.y };
   state.stoppage = stoppage;
@@ -166,7 +172,7 @@ function placeRestart(
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
-    state.possession = side;
+    setPossession(state, side, state.tick, "restart");
     state.stoppage = base;
   }
   state.setPiece = { kind, side, x: spot.x, y: spot.y };
@@ -294,7 +300,7 @@ export function restartFreeKick(
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
-    state.possession = side;
+    setPossession(state, side, state.tick, "restart");
     state.stoppage = base;
   }
   state.setPiece = { kind: "free_kick", side, x: spot.x, y: spot.y };
@@ -328,7 +334,7 @@ export function restartPenalty(
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
-    state.possession = side;
+    setPossession(state, side, state.tick, "restart");
     state.stoppage = base;
   }
   state.setPiece = { kind: "penalty", side, x: spot.x, y: spot.y };
@@ -419,7 +425,7 @@ export function tryIntercept(
 
   const prob = fclamp(config.contest.interceptBase * attrFactor(cand.attrs.positioning), 0.02, 0.9);
   if (rng.next() < prob) {
-    giveBallTo(state, cand);
+    giveBallTo(state, cand, "turnover");
     return [
       { tick, minute, type: "interception", team: cand.side, playerId: cand.id, detail: "cut out" },
     ];
@@ -482,7 +488,8 @@ function commitFoul(
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
-    state.possession = victim.side;
+    // 박스 파울 → 페널티 배치(데드볼 재시작). 오픈플레이 턴오버가 아니다.
+    setPossession(state, victim.side, tick, "restart");
     state.stoppage = config.rules.penalty.foulBeatTicks;
     state.setPiece = {
       kind: "shot_out",
@@ -550,7 +557,7 @@ export function tryTackle(
   const def = attrFactor(tackler.attrs.tackling) * (0.7 + tackler.behavior.pressAggression * 0.6);
   const prob = fclamp((config.contest.tackleBase * def) / off, 0.03, 0.85);
   if (rng.next() < prob) {
-    giveBallTo(state, tackler);
+    giveBallTo(state, tackler, "turnover");
     return [{ tick, minute, type: "tackle", team: tackler.side, playerId: tackler.id }];
   }
   return [];
@@ -630,7 +637,8 @@ export function resolveArrival(
     // id 단독 조회면 같은 id 의 반대 팀 선수가 잡혀 엉뚱한 쪽에 공이 간다.
     const claimant = playerAt(state, claimantSideOf(f), f.claimant);
     if (inReach(claimant)) {
-      giveBallTo(state, claimant!);
+      // 성공 패스면 같은 팀 → setPossession 이 no-op(턴오버 아님), 계획된 인터셉트면 상대 → 턴오버.
+      giveBallTo(state, claimant!, "turnover");
       if (f.passOutcome === "success") {
         return [{ tick, minute, type: "pass", team: fromSide, playerId: claimant!.id, ...longDetail }];
       }
@@ -647,7 +655,8 @@ export function resolveArrival(
   if (!controller) return settle();
 
   const wasLoose = f.kind === "loose";
-  giveBallTo(state, controller);
+  // 기하 판정(먼저 닿은 사람이 임자) — 상대가 잡으면 오픈플레이 턴오버, 우리 편이면 no-op.
+  giveBallTo(state, controller, "turnover");
   // 정지해 있던 공(rest)을 주워간 경우에도, 계획된 패스였다면 그 결과를 이벤트로 남긴다
   // (스탯의 패스 완성/가로챔 집계가 비지 않도록).
   if (wasLoose && !f.passOutcome) return [];
@@ -702,7 +711,7 @@ export function resolveShot(
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
-    state.possession = defSide;
+    setPossession(state, defSide, tick, "goal");
     // 세리머니 정지: kind "goal" 로 표시 → 정지 종료 시 match 가 센터 킥오프(defSide) 수행.
     state.stoppage = config.setPiece.goalStoppageTicks;
     state.setPiece = { kind: "goal", side: defSide, x: netX, y: netY };
@@ -726,7 +735,8 @@ export function resolveShot(
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = null;
-    state.possession = defSide;
+    // 공이 죽고 코너/골킥으로 재시작되는 경로 — 오픈플레이 턴오버가 아니다.
+    setPossession(state, defSide, tick, "restart");
     state.stoppage = config.setPiece.shotAftermathStoppageTicks;
     state.setPiece = { kind: "shot_out", side: defSide, x: parkX, y: py, restart };
   };
@@ -793,11 +803,12 @@ export function resolveShot(
   }
   // GK 캐치: 키퍼가 공을 잡고 인플레이 지속(정지 없음).
   if (gkSaver) {
-    giveBallTo(state, gkSaver);
+    giveBallTo(state, gkSaver, "turnover");
   } else {
     state.ball.posFx = { x: keeperSpot.x, y: keeperSpot.y };
     state.ball.flight = null;
-    state.possession = defSide;
+    // GK 캐치 = 인플레이 지속(정지 없음) → 오픈플레이 턴오버.
+    setPossession(state, defSide, tick, "turnover");
   }
   return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, saveEv];
 }

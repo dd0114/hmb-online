@@ -21,6 +21,7 @@ import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
 import { glueBallToOwner, advanceBall } from "./ball";
 import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
 import { decideBallOwnerChain } from "./chain";
+import { computeTeamPlan } from "./teamplan";
 import {
   tryIntercept,
   tryTackle,
@@ -333,6 +334,15 @@ function stepTick(carry: Carry): void {
     return;
   }
 
+  // --- 팀 계획(틱당 1회) ---
+  // #279 S1: 팀 단위 파생 상태는 **여기서만** 계산한다 — decide 루프 **앞**이라 선수 순회 순서와
+  // 무관하고(결정론 규율 §5-1), `decideOffBall` 안에서 계산하면 그 함수가 `player.seen` 을 변이하는
+  // 탓에 배열 순서 의존이 생긴다. 현재는 아무도 소비하지 않는다(S3 수비 구조가 첫 소비자).
+  state.plan = {
+    home: computeTeamPlan(state, "home", config, pitch),
+    away: computeTeamPlan(state, "away", config, pitch),
+  };
+
   // --- 압박 담당 지정(수비팀만) ---
   const defSide: TeamSide = state.possession === "home" ? "away" : "home";
   const presser = assignPresser(state, defSide);
@@ -620,6 +630,14 @@ function initCarry(
     teams: { home: home.team, away: away.team },
     stoppage: 0,
     setPiece: null,
+    possessionSince: 0,
+    lastTurnover: null,
+    // 첫 stepTick 이 덮어쓴다. 초기값도 같은 순수 함수로 만들어 "초기 상태 해시"가 계획과 정합.
+    plan: { home: { lineX: 0, blockDepth: 0 }, away: { lineX: 0, blockDepth: 0 } },
+  };
+  state.plan = {
+    home: computeTeamPlan(state, "home", config, pitch),
+    away: computeTeamPlan(state, "away", config, pitch),
   };
 
   const carry: Carry = {

@@ -35,6 +35,12 @@ export function hashState(state: SimState): string {
   h = mix(h, state.ball.posFx.x | 0);
   h = mix(h, state.ball.posFx.y | 0);
   h = mix(h, state.possession === "home" ? 1 : 2);
+  // #279 S1: 해시에 **없는** 상태가 유실되면 그 틱은 통과하고 다음 틱부터 갈라진다(무음 desync).
+  // 팀 계획·소유 타이머를 흡수해 재개/전송 유실이 그 틱에 즉시 터지게 한다.
+  // (lastTurnover 는 possessionSince 와 같은 지점에서만 갱신되므로 별도로 섞지 않는다.)
+  h = mix(h, state.possessionSince | 0);
+  h = mix(h, state.plan.home.lineX | 0);
+  h = mix(h, state.plan.away.lineX | 0);
 
   // id 정렬 사본으로 순서 독립.
   const sorted = [...state.players].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));

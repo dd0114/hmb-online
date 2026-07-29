@@ -1,5 +1,6 @@
 import type { TeamSide, PlayerAttributes } from "@hmb/shared";
 import type { PlayerBehavior, Duty, TeamInput } from "@hmb/shared";
+import type { TeamPlan } from "./teamplan";
 
 /**
  * simstate — 엔진 내부 시뮬 상태 타입(직렬화 계약 아님, 엔진 전용).
@@ -191,4 +192,48 @@ export interface SimState {
   stoppage: number;
   /** 진행 중 세트피스(정지 동안). 없으면 null. */
   setPiece: SetPiece | null;
+  /**
+   * 현재 소유가 **시작된** 틱(#279 S1). `setPossession` 이 소유 팀이 실제로 바뀔 때만 갱신한다 —
+   * 같은 팀 안의 소유 이전(패스 성공/드리블 인계)에는 갱신하지 않는다. 안 그러면 "소유 경과"가
+   * 매 패스마다 0 으로 리셋돼 국면 판정(S4)의 입력으로 쓸 수 없다.
+   */
+  possessionSince: number;
+  /**
+   * 마지막 **오픈플레이 소유 전환**(#279 S1). 재시작(스로인/프리킥/코너/골킥)·킥오프·득점은
+   * 여기에 기록되지 않는다 — `setPossession` 의 `reason` 이 그 구분이다.
+   * 좌표는 전환 시점의 공 위치(고정소수). 아직 전환이 없었으면 null.
+   */
+  lastTurnover: { side: TeamSide; tick: number; xFx: number; yFx: number } | null;
+  /** 팀 단위 파생 계획(틱당 1회, decide 루프 앞에서 갱신). 소비는 S3~. */
+  plan: { home: TeamPlan; away: TeamPlan };
+}
+
+/**
+ * 소유 전환의 **단일 지점**(#279 S1). `state.possession` 직접 대입 금지 — 전환을 관측하는 곳이
+ * 여기 하나여야 S4(국면·카운터프레스·전술파울)가 전환 시각을 신뢰할 수 있다.
+ *
+ * `reason` 이 핵심이다:
+ *  - `"turnover"`  오픈플레이에서 공을 뺏김/뺏음(태클·인터셉트·GK 캐치·패스 도착 경합).
+ *  - `"restart"`   데드볼 재시작(스로인·프리킥·코너·골킥·페널티 배치).
+ *  - `"kickoff"`   킥오프(경기 시작·하프 시작·득점 후).
+ *  - `"goal"`      득점 직후 실점팀에게 소유가 넘어가는 순간.
+ *
+ * `giveBallTo` 는 **재시작에서도** 불린다 — reason 없이 전환을 기록하면 스로인마다
+ * 카운터프레스가 발동한다. 그래서 `lastTurnover` 는 `reason === "turnover"` 이고 **소유 팀이
+ * 실제로 바뀐** 경우에만 남긴다(같은 팀 리시버가 패스를 받는 것은 턴오버가 아니다).
+ */
+export type PossessionReason = "turnover" | "restart" | "kickoff" | "goal";
+
+export function setPossession(
+  state: SimState,
+  side: TeamSide,
+  tick: number,
+  reason: PossessionReason,
+): void {
+  if (state.possession === side) return; // 같은 팀 안의 소유 이전 — 전환이 아니다.
+  state.possession = side;
+  state.possessionSince = tick;
+  if (reason === "turnover") {
+    state.lastTurnover = { side, tick, xFx: state.ball.posFx.x, yFx: state.ball.posFx.y };
+  }
 }
