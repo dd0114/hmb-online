@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -516,9 +517,9 @@ class LeagueApiTest extends MatchTestBase {
         assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
         assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(RANK1_REWARD);
 
-        // #212 우승 젬: 1위만 받는다 + 값이 config 밴드[500,3000] 안 + 지갑 델타와 원장이 일치.
+        // #251 시즌 젬: 1위 = 완주 3,000 + 1위 보너스 6,000 = 9,000 정확히(고정액, 밴드 아님).
         long gemsAfter = walletGems(uid);
-        assertThat(gemsAfter - gemsBefore).isBetween(500L, 3000L);
+        assertThat(gemsAfter - gemsBefore).isEqualTo(expectedSeasonGems(1));
         assertThat(gemLedgerCount(uid, seasonId)).isEqualTo(1L);
         assertThat(gemLedgerDelta(uid, seasonId)).isEqualTo(gemsAfter - gemsBefore);
 
@@ -545,52 +546,172 @@ class LeagueApiTest extends MatchTestBase {
         assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
         assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo(RANK1_REWARD);
         assertThat(gemLedgerCount(uid, seasonId)).isEqualTo(1L);
+        assertThat(gemLedgerDelta(uid, seasonId)).isEqualTo(expectedSeasonGems(1)); // 재계산에도 금액 불변
     }
 
     /**
-     * #212 우승 젬은 <b>시즌 seed 파생 결정론</b>이어야 한다(§2-5 불변: {@code Math.random} 금지).
-     * 밴드 검사만으로는 난수원을 바꿔도 안 걸린다 — {@code rngFromSeed} 를 {@code ThreadLocalRandom}
-     * 으로 갈아끼워도 [500,3000] 은 그대로 통과하기 때문이다. 그래서 여기서는 <b>재현성</b>을 직접 건다:
-     * ① 같은 seed 를 몇 번 계산해도 같은 값 ② 서로 다른 시즌은 값이 갈린다(상수 반환 변이체 배제).
+     * #251 시즌 젬은 <b>순위만이 결정</b>한다 — 시즌 seed 는 금액에 영향이 없다.
+     *
+     * <p>#212 때는 seed 파생 랜덤이라 "재현성"을 걸었는데, 지금은 고정액이라 계약이 <b>더 강해졌다</b>:
+     * seed 를 무엇으로 바꿔도 같은 순위면 같은 금액이다. 이건 랜덤 재도입(=수급 예측 불가)에 대한
+     * 변이체 킬이다 — {@code rngFromSeed} 를 다시 끼우면 seed 를 흔드는 순간 값이 갈려 실패한다.
+     * 원장 행을 지우고 다시 태우므로 "멱등이라 안 변한 것"이 아니라 <b>계산 자체가 같은 것</b>을 본다.
      */
     @Test
     @SuppressWarnings("unchecked")
-    void seasonGemRewardIsDerivedFromSeasonSeedNotAmbientRandomness() {
+    void seasonGemRewardIsFixedByRankAndDoesNotVaryWithSeasonSeed() {
         String token = setupUserWithDeck("lg_gem_det");
         String uid = userIdOf("lg_gem_det");
         authPost("/api/league/start", token, null, Map.class);
         String seasonId = seasonId(uid);
 
-        // 전승 → 1위(젬 지급 대상).
+        // 전승 → 1위.
         for (Map<String, Object> f : userFixturesOrdered(seasonId)) {
             boolean userHome = "USER".equals(f.get("home_team"));
             leagueService.settleUserFixture((String) f.get("id"), userHome ? 3 : 0, userHome ? 0 : 3);
         }
-        long first = gemLedgerDelta(uid, seasonId);
-        assertThat(first).isBetween(500L, 3000L);
+        long expected = expectedSeasonGems(1);
+        assertThat(gemLedgerDelta(uid, seasonId)).isEqualTo(expected);
 
-        // ① 재현성 — 같은 시즌 seed 로 지급을 5번 다시 계산해도 같은 값이 나온다.
-        //    (원장 행을 지워 멱등 백스톱을 걷어내고 **계산 자체**를 다시 태운다 — 그래야
-        //     "멱등이라 안 변한 것"이 아니라 "결정론이라 같은 것"임이 증명된다.)
-        for (int i = 0; i < 5; i++) {
-            deleteGemLedger(uid, seasonId);
-            invokeSeasonHook("awardSeasonRewards", seasonId);
-            assertThat(gemLedgerDelta(uid, seasonId))
-                    .as("같은 시즌 seed → 항상 같은 젬 지급액").isEqualTo(first);
-        }
-
-        // ② 시즌 seed 가 바뀌면 값도 갈린다 — 상수 반환 변이체를 배제한다.
-        //    (같은 값이 우연히 반복될 수 있으므로 여러 seed 를 훑어 "적어도 하나는 다르다"를 본다.)
         Set<Long> seen = new HashSet<>();
         for (int i = 0; i < 12; i++) {
             setSeasonSeed(seasonId, "det-probe-seed-" + i);
             deleteGemLedger(uid, seasonId);
             invokeSeasonHook("awardSeasonRewards", seasonId);
-            long gems = gemLedgerDelta(uid, seasonId);
-            assertThat(gems).as("어떤 seed 라도 config 밴드 안").isBetween(500L, 3000L);
-            seen.add(gems);
+            seen.add(gemLedgerDelta(uid, seasonId));
         }
-        assertThat(seen).as("seed 가 다르면 지급액도 갈린다(상수 아님)").hasSizeGreaterThan(1);
+        assertThat(seen).as("seed 를 흔들어도 순위가 같으면 금액은 하나뿐(랜덤 재도입 킬)")
+                .containsExactly(expected);
+    }
+
+    /**
+     * <b>#251 순위 경계 — 1/2/3/4/5등</b>. 각 순위로 시즌을 완주시키고 지갑 델타·원장 delta·API 노출이
+     * <b>완주 기본 + 그 순위 보너스</b>와 정확히 일치하는지 본다. 보너스가 끊기는 경계(3등↔4등)와
+     * 그 아래(5등)까지 밟아 "4등 이하는 기본만"을 박제한다.
+     *
+     * <p><b>순위는 경기 결과로 만든다</b>(승점 테이블 삽입, 타이브레이커 테스트와 같은 수법) — 순위
+     * 컬럼을 직접 써넣으면 순위 파생({@code computeStandings})을 우회해 "지급 경로가 진짜 그 순위를
+     * 본다"를 증명하지 못한다. 유저 승수를 훑어 순위가 나오길 <b>기다리는</b> 방식은 봇 전력이 시즌
+     * seed 에 달려 있어 <b>실행마다 나오는 순위가 달라진다</b>(실제로 rank 2 가 안 나와 깨졌다) —
+     * 경계 테스트가 우연에 기대면 안 되므로 표를 직접 세운다.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void seasonGemRewardMatchesRankBonusAcrossRankBoundaries() {
+        Map<Integer, Long> observed = new LinkedHashMap<>();
+
+        for (int targetRank : new int[] {1, 2, 3, 4, 5}) {
+            String user = "lg_gem_rank_" + targetRank;
+            String token = setupUserWithDeck(user);
+            String uid = userIdOf(user);
+            authPost("/api/league/start", token, null, Map.class);
+            String seasonId = seasonId(uid);
+            long gemsBefore = walletGems(uid);
+
+            buildFinishedTableWithUserRank(seasonId, targetRank);
+            invokeSeasonHook("maybeFinishSeason", seasonId); // 남은 SCHEDULED 0 → FINISHED + 정산
+
+            int rank = leagueService.computeStandings(seasonId).stream()
+                    .filter(LeagueService.LeagueStanding::isUser)
+                    .map(LeagueService.LeagueStanding::rank).findFirst().orElseThrow();
+            assertThat(rank).as("의도한 순위로 표가 세워졌다").isEqualTo(targetRank);
+
+            // 세 출처가 일치: 지갑 델타 = 원장 delta = API 노출 gems.
+            long expected = expectedSeasonGems(rank);
+            assertThat(walletGems(uid) - gemsBefore).as("rank=%d 지갑 델타", rank).isEqualTo(expected);
+            assertThat(gemLedgerCount(uid, seasonId)).as("rank=%d 원장 1행", rank).isEqualTo(1L);
+            assertThat(gemLedgerDelta(uid, seasonId)).as("rank=%d 원장 delta", rank).isEqualTo(expected);
+            assertThat(((Number) seasonRewardOf(token).get("gems")).longValue())
+                    .as("rank=%d API 노출", rank).isEqualTo(expected);
+
+            // 멱등: 정산 훅을 다시 태워도 원장·지갑 불변(순위별로도 성립).
+            invokeSeasonHook("awardSeasonRewards", seasonId);
+            assertThat(gemLedgerCount(uid, seasonId)).isEqualTo(1L);
+            assertThat(walletGems(uid) - gemsBefore).isEqualTo(expected);
+
+            observed.put(rank, expected);
+        }
+
+        // 경계가 실제로 갈린다: 1·2·3등은 각각 다르고, 4등부터는 같은 기본액(보너스 없음).
+        // 값은 **픽스처 config** 기준(발행값과 다르다 — 위 미러 주석 참조).
+        assertThat(observed).as("순위별 실지급").containsExactly(
+                java.util.Map.entry(1, 7000L), java.util.Map.entry(2, 4500L),
+                java.util.Map.entry(3, 2800L), java.util.Map.entry(4, 2000L),
+                java.util.Map.entry(5, 2000L));
+    }
+
+    /**
+     * <b>멱등이 과해서 재지급을 막지는 않는다</b> — 같은 유저가 <b>시즌 2</b>를 완주하면 또 받는다
+     * (독립검증 MINOR-2). 유니크 키가 {@code (user_id, reason, ref_id)} 이고 ref=seasonId 라
+     * 시즌이 바뀌면 다른 행이다. 멱등 테스트만 있으면 "한 번 주고 영영 안 준다"는 반대 방향 사고가
+     * 게이트를 그대로 통과한다.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void secondSeasonPaysAgainBecauseLedgerKeyIsPerSeason() {
+        String token = setupUserWithDeck("lg_gem_s2");
+        String uid = userIdOf("lg_gem_s2");
+
+        authPost("/api/league/start", token, null, Map.class);
+        String season1 = seasonId(uid);
+        buildFinishedTableWithUserRank(season1, 1);
+        invokeSeasonHook("maybeFinishSeason", season1);
+        assertThat(gemLedgerDelta(uid, season1)).isEqualTo(expectedSeasonGems(1));
+
+        long afterSeason1 = walletGems(uid);
+        authPost("/api/league/start", token, null, Map.class); // 새 시즌(새 seasonId)
+        String season2 = seasonId(uid);
+        assertThat(season2).as("시즌 2 는 다른 id").isNotEqualTo(season1);
+
+        buildFinishedTableWithUserRank(season2, 3);
+        invokeSeasonHook("maybeFinishSeason", season2);
+
+        assertThat(gemLedgerDelta(uid, season2)).as("시즌2 도 자기 순위대로 받는다")
+                .isEqualTo(expectedSeasonGems(3));
+        assertThat(walletGems(uid) - afterSeason1).isEqualTo(expectedSeasonGems(3));
+        assertThat(gemLedgerCount(uid, season1)).as("시즌1 행은 그대로 1행").isEqualTo(1L);
+    }
+
+    /**
+     * 유저가 정확히 {@code targetRank} 로 끝나는 <b>완주된 표</b>를 세운다(전 픽스처 PLAYED).
+     *
+     * <p>수법: 기존 픽스처를 지우고 통제된 PLAYED 만 넣는다(타이브레이커 테스트와 동형).
+     * 유저는 1승(승점 3), 유저 위에 놓을 봇 {@code targetRank-1} 팀은 2승(승점 6), 나머지 봇은 0점 —
+     * 승점만으로 순서가 확정돼 골득실·승자승 타이브레이커에 기대지 않는다.
+     */
+    private void buildFinishedTableWithUserRank(String seasonId, int targetRank) {
+        jdbcClient.sql("DELETE FROM league_fixtures WHERE season_id = ?").param(seasonId).update();
+        List<String> bots = botTeamIds(seasonId);
+        String loserA = bots.get(bots.size() - 1); // 항상 지는 팀 2개(승점 0 — 유저 아래).
+        String loserB = bots.get(bots.size() - 2);
+
+        insertPlayed(seasonId, 1, "USER", loserA, 1, 0); // 유저 승점 3
+        int round = 2;
+        for (int i = 0; i < targetRank - 1; i++) {
+            String top = bots.get(i); // 유저보다 위(승점 6)
+            insertPlayed(seasonId, round++, top, loserA, 3, 0);
+            insertPlayed(seasonId, round++, top, loserB, 3, 0);
+        }
+    }
+
+    /**
+     * <b>테스트 픽스처</b>(`src/test/resources/fixtures/economy.v1.json` `league.gemReward`) 미러.
+     *
+     * <p>⚠️ 값이 <b>발행물(3,000 / 6,000·3,000·1,000)과 일부러 다르다</b>. 같게 두면 지급 경로가
+     * config 를 읽든 코드 폴백 상수({@code DEFAULT_LEAGUE_GEM_REWARD})를 쓰든 관측값이 같아서
+     * <b>"config 를 무시하는" 변이체가 전 스위트를 통과한다</b>(독립검증 MAJOR-1 — 실제로 지급점을
+     * 상수로 바꿔도 654/654 green 이었다). 다른 값이라야 config 주도(AC3)가 검증된다.
+     *
+     * <p>발행값이 맞는지는 별도로 {@code EconomyLegacyFallbackTest
+     * .publishedEconomyCarriesTheConfirmedSeasonGemAmounts} 가, 폴백은 같은 클래스의 구파일
+     * 케이스가 본다 — <b>"config 를 읽는가"와 "폴백이 도는가"를 서로 다른 파일로 분리</b>한다.
+     */
+    private static final int SEASON_GEM_COMPLETION = 2000;
+    private static final Map<Integer, Integer> SEASON_GEM_RANK_BONUS =
+            Map.of(1, 5000, 2, 2500, 3, 800);
+
+    private static long expectedSeasonGems(int rank) {
+        return SEASON_GEM_COMPLETION + SEASON_GEM_RANK_BONUS.getOrDefault(rank, 0);
     }
 
     private void deleteGemLedger(String userId, String seasonId) {
@@ -633,15 +754,18 @@ class LeagueApiTest extends MatchTestBase {
         assertThat(rewardLedgerCount(uid, seasonId)).isEqualTo(1L);
         assertThat(rewardLedgerDelta(uid, seasonId)).isEqualTo((long) expectedTier);
 
-        // #212: 젬은 **우승(1위) 시에만**. 1위가 아니면 지갑도 원장도 무변화.
-        assertThat(walletGems(uid) - gemsBefore).isZero();
-        assertThat(gemLedgerCount(uid, seasonId)).isZero();
+        // #251: 젬은 **완주하면 전원**. 1위가 아니어도 완주 기본(+해당 순위 보너스)이 지급된다.
+        // (#212 의 "1위만" 이 여기서 뒤집혔다 — 0 을 기대하던 자리다.)
+        long expectedGems = expectedSeasonGems(rank);
+        assertThat(walletGems(uid) - gemsBefore).isEqualTo(expectedGems);
+        assertThat(gemLedgerCount(uid, seasonId)).isEqualTo(1L);
+        assertThat(gemLedgerDelta(uid, seasonId)).isEqualTo(expectedGems);
 
         Map<String, Object> reward = seasonRewardOf(token);
         assertThat(reward.get("status")).isEqualTo("GRANTED");
         assertThat(((Number) reward.get("rank")).intValue()).isEqualTo(rank);
         assertThat(((Number) reward.get("points")).intValue()).isEqualTo(expectedTier);
-        assertThat(((Number) reward.get("gems")).intValue()).isZero();
+        assertThat(((Number) reward.get("gems")).longValue()).isEqualTo(expectedGems);
     }
 
     /**

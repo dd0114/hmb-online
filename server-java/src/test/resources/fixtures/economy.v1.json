@@ -1773,9 +1773,12 @@
   },
   "league": {
     "gemReward": {
-      "maxRank": 1,
-      "min": 500,
-      "max": 3000
+      "completion": 2000,
+      "rankBonus": {
+        "1": 5000,
+        "2": 2500,
+        "3": 800
+      }
     }
   },
   "starterTop": {

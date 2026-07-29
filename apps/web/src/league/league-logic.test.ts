@@ -5,6 +5,7 @@ import {
   fixtureScore,
   formatAwardedAt,
   groupByRound,
+  isGranted,
   isSeasonFinished,
   pickSeasonReward,
   seasonRewardView,
@@ -268,5 +269,68 @@ describe("seasonRewardView — status 3분기(조용한 숨김 금지)", () => {
       0,
     );
     expect(seasonRewardView({ rank: 7, points: 0, status: "FAILED" }).detail).toContain("실패");
+  });
+});
+
+/**
+ * #251 — 서버가 실제로 보내는 status 는 `GRANTED|PENDING|NONE`(openapi SoT)인데 클라가
+ * `AWARDED|PENDING|FAILED` 만 알아서 **종료된 시즌 전부가 "지급되지 않았습니다"로 떴다**.
+ * e2e 목이 `AWARDED` 를 쓰고 있어(서버가 보내지 않는 값) 목-실서버 드리프트로 가려져 있었다.
+ * 그래서 여기서는 **서버 이름으로** 계약을 건다 — 구 별칭이 아니라 이게 정본이다.
+ */
+describe("seasonReward — 서버 status enum(GRANTED/NONE) 수용 (#251)", () => {
+  it("GRANTED = 지급 완료(성공 표현) — FAILED 로 떨어지지 않는다", () => {
+    const picked = pickSeasonReward({
+      season: { seasonReward: { rank: 1, points: 100_000, gems: 9000, status: "GRANTED" } } as never,
+    })!;
+    expect(picked.status, "서버 enum 이 계약 밖으로 취급되면 안 된다").toBe("GRANTED");
+
+    const v = seasonRewardView(picked);
+    expect(v).toMatchObject({ showPoints: true, animate: true, canRetry: false, tone: "success" });
+    expect(v.headline).toContain("지급 완료");
+  });
+
+  it("isGranted = GRANTED(서버) + AWARDED(구 별칭) 둘 다 성공", () => {
+    expect(isGranted("GRANTED")).toBe(true);
+    expect(isGranted("AWARDED")).toBe(true);
+    expect(isGranted("NONE")).toBe(false);
+    expect(isGranted("PENDING")).toBe(false);
+    expect(isGranted("FAILED")).toBe(false);
+  });
+
+  it("NONE(종료됐으나 지급행 없음) = 미지급 표현 + 재조회 가능, 상태는 보존", () => {
+    const v = seasonRewardView({ rank: 4, points: 0, status: "NONE" });
+    expect(v.status).toBe("NONE");
+    expect(v).toMatchObject({ showPoints: false, animate: false, canRetry: true, tone: "error" });
+  });
+});
+
+/**
+ * #251 — 시즌 젬이 "우승만"에서 "완주 전원"으로 바뀌어 종료 화면엔 항상 G·Z 가 같이 온다.
+ * 문장에도 병기한다(옆줄 숫자만으로는 무엇 때문에 들어온 재화인지 알 수 없었다).
+ */
+describe("seasonRewardView — G·Z 병기 (#251)", () => {
+  const granted = { rank: 1, points: 100_000, gems: 9000, status: "GRANTED" } as const;
+
+  it("지급 완료 문장에 P 금액과 젬 금액이 함께 들어간다", () => {
+    const v = seasonRewardView(granted, (n) => `${n.toLocaleString()} G`, (n) => `${n.toLocaleString()} Z`);
+    expect(v.detail).toContain("100,000 G");
+    expect(v.detail).toContain("9,000 Z");
+  });
+
+  it("두 재화 표기 모두 주입된 포매터가 정한다 — 순수 함수가 심볼을 알지 않는다 (#232)", () => {
+    const v = seasonRewardView(granted, (n) => `${n} Ω`, (n) => `${n} Ξ`);
+    expect(v.detail).toContain("100000 Ω");
+    expect(v.detail).toContain("9000 Ξ");
+    // 주입을 잊으면 숫자만 — 틀린 단위가 새 나가지 않는다.
+    expect(seasonRewardView(granted).detail).not.toMatch(/[PGZΩΞ]/);
+  });
+
+  it("젬이 0/부재면 기존 G 단독 문장 그대로(구 시즌 회귀 0)", () => {
+    const zero = seasonRewardView({ rank: 5, points: 4000, gems: 0, status: "GRANTED" }, (n) => `${n} G`, (n) => `${n} Z`);
+    expect(zero.detail).toContain("4000 G");
+    expect(zero.detail).not.toContain("Z");
+    const absent = seasonRewardView({ rank: 5, points: 4000, status: "GRANTED" }, (n) => `${n} G`, (n) => `${n} Z`);
+    expect(absent.detail).toBe(zero.detail);
   });
 });

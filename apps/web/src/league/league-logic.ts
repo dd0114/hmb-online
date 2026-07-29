@@ -122,6 +122,26 @@ function signed(n: number): string {
 }
 
 /**
+ * 서버가 실제로 보내는 status(openapi `SeasonReward.status` = SoT) + 구 별칭.
+ *
+ * ⚠️ 여기에 `GRANTED`/`NONE` 이 없어서 **종료된 시즌의 보상 카드가 전부 FAILED 로 떴다**(#251 발견).
+ * 이 집합에 서버 enum 을 넣는 것이 그 픽스다 — 목이 `AWARDED` 를 쓰고 있어 e2e 가 통과하고 있었다.
+ * 새 status 를 추가할 땐 **서버 openapi 를 보고** 넣어라(클라가 이름을 지어내면 같은 사고가 반복된다).
+ */
+const KNOWN_STATUSES = new Set<LeagueSeasonReward["status"]>([
+  "GRANTED",
+  "PENDING",
+  "NONE",
+  "AWARDED", // 구 별칭 — 목/구클라 호환. 서버는 보내지 않는다.
+  "FAILED",
+]);
+
+/** 지급 완료 계열(서버 GRANTED = 구 별칭 AWARDED). 화면 성공 표현의 단일 판정. */
+export function isGranted(status: LeagueSeasonReward["status"]): boolean {
+  return status === "GRANTED" || status === "AWARDED";
+}
+
+/**
  * 응답에서 seasonReward 를 뽑는다(Phase3 additive).
  * **경계(흐리면 안 됨)**:
  *  - 필드 **부재/null/undefined** → `null` → 화면 기존 그대로(구 서버 폴백, 깨짐 0).
@@ -139,7 +159,7 @@ export function pickSeasonReward(res: LeagueResponseP3 | null | undefined): Leag
   // 여기부터 raw 는 "값이 있음" — 어떤 형태든 화면에서 사라지지 않는다.
   const obj: Partial<LeagueSeasonReward> =
     typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-  const known = obj.status === "AWARDED" || obj.status === "PENDING" || obj.status === "FAILED";
+  const known = obj.status !== undefined && KNOWN_STATUSES.has(obj.status);
   const numeric = Number.isFinite(obj.rank) && Number.isFinite(obj.points);
   if (!known || !numeric) {
     return {
@@ -165,59 +185,67 @@ export function formatAwardedAt(iso: string | null | undefined): string | null {
 
 export interface SeasonRewardView {
   status: LeagueSeasonReward["status"];
-  /** 획득 보상액을 실제 지급액으로 표시할지(PENDING/FAILED 는 "예정/미지급"으로 취급). */
+  /** 획득 보상액을 실제 지급액으로 표시할지(PENDING/미지급은 "예정/미지급"으로 취급). */
   showPoints: boolean;
-  /** 보상액 카운트업 연출 대상인지(AWARDED 만). */
+  /** 보상액 카운트업 연출 대상인지(지급 완료만). */
   animate: boolean;
   headline: string;
   detail: string;
-  /** FAILED 재조회(GET) 버튼 노출 — 지급 트리거가 아니다. */
+  /** 미지급 재조회(GET) 버튼 노출 — 지급 트리거가 아니다. */
   canRetry: boolean;
   tone: "success" | "pending" | "error";
 }
 
 /**
- * status → 화면 표현(순수). 세 상태 전부 사용자에게 보이게 만든다(조용한 숨김 금지).
+ * status → 화면 표현(순수). 모든 상태를 사용자에게 보이게 만든다(조용한 숨김 금지).
  *
- * `formatPoints` 는 **재화 표기 주입점** (#232) — 순수 함수가 심볼을 알면 서버 주도 표기가 깨진다.
- * 기본값은 숫자만(단위 없음)이라, 주입을 잊어도 "P" 같은 틀린 단위가 새 나가지 않는다.
+ * `formatPoints`/`formatGems` 는 **재화 표기 주입점** (#232) — 순수 함수가 심볼을 알면 서버 주도
+ * 표기가 깨진다. 기본값은 숫자만(단위 없음)이라, 주입을 잊어도 "P" 같은 틀린 단위가 새 나가지 않는다.
+ *
+ * **G·Z 병기**(#251): 시즌 젬이 "우승만"에서 "완주 전원"으로 바뀌어 종료 화면에 항상 두 재화가 같이
+ * 온다. 문장에서도 둘을 함께 읽어 준다 — 옆줄의 젬 숫자만으로는 "이게 뭐 때문에 들어온 건지"를
+ * 유저가 알 수 없었다. 젬이 0/부재면 문장은 기존 G 단독 형태 그대로(구 시즌 회귀 0).
  */
 export function seasonRewardView(
   reward: LeagueSeasonReward,
   formatPoints: (value: number) => string = (v) => v.toLocaleString(),
+  formatGems: (value: number) => string = (v) => v.toLocaleString(),
 ): SeasonRewardView {
-  switch (reward.status) {
-    case "AWARDED":
-      return {
-        status: "AWARDED",
-        showPoints: true,
-        animate: true,
-        headline: "보상 지급 완료",
-        detail: `${reward.rank}위 보상 ${withIga(formatPoints(reward.points))} 지갑에 반영됐습니다`,
-        canRetry: false,
-        tone: "success",
-      };
-    case "PENDING":
-      return {
-        status: "PENDING",
-        showPoints: false,
-        animate: false,
-        headline: "보상 지급 처리 중",
-        detail: `${reward.rank}위 보상 ${formatPoints(reward.points)} 지급을 처리하고 있습니다. 잠시 후 다시 확인해 주세요.`,
-        canRetry: true,
-        tone: "pending",
-      };
-    default:
-      return {
-        status: "FAILED",
-        showPoints: false,
-        animate: false,
-        headline: "보상이 지급되지 않았습니다",
-        detail: reward.message?.trim()
-          ? reward.message.trim()
-          : "보상 지급에 실패했습니다. 다시 조회해도 해결되지 않으면 문의해 주세요.",
-        canRetry: true,
-        tone: "error",
-      };
+  const gems = Number.isFinite(reward.gems) ? (reward.gems as number) : 0;
+  const both = (amount: string) => (gems > 0 ? `${amount} · ${formatGems(gems)}` : amount);
+
+  if (isGranted(reward.status)) {
+    return {
+      status: reward.status,
+      showPoints: true,
+      animate: true,
+      headline: "보상 지급 완료",
+      detail: `${reward.rank}위 보상 ${withIga(both(formatPoints(reward.points)))} 지갑에 반영됐습니다`,
+      canRetry: false,
+      tone: "success",
+    };
   }
+  if (reward.status === "PENDING") {
+    return {
+      status: "PENDING",
+      showPoints: false,
+      animate: false,
+      headline: "보상 지급 처리 중",
+      detail: `${reward.rank}위 보상 ${formatPoints(reward.points)} 지급을 처리하고 있습니다. 잠시 후 다시 확인해 주세요.`,
+      canRetry: true,
+      tone: "pending",
+    };
+  }
+  // NONE(서버: 종료됐으나 지급 행 없음) · FAILED(클라 방어) — 둘 다 "안 받았다"를 보여준다.
+  return {
+    status: reward.status === "NONE" ? "NONE" : "FAILED",
+    showPoints: false,
+    animate: false,
+    headline: "보상이 지급되지 않았습니다",
+    detail: reward.message?.trim()
+      ? reward.message.trim()
+      : "보상 지급에 실패했습니다. 다시 조회해도 해결되지 않으면 문의해 주세요.",
+    canRetry: true,
+    tone: "error",
+  };
 }
