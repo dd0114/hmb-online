@@ -218,15 +218,25 @@ test.describe("#262 사다리 끝 — 서버가 안 하는 전이를 그리지 �
     await expect(card).toContainText("디비전 유지");
   });
 
+  test("승급/강등 구역은 색 말고 기호로도 구분된다 (색맹 대응)", async ({ page }) => {
+    // 색 단일 채널이면 적록색약에게 안 보인다. 마크가 사라져도 색은 남아 스펙이 통과하므로
+    // **기호 자체를 단언**해야 회귀를 잡는다(독립검증 2R MIN-B — 마크를 지워도 14/14 였다).
+    await bootstrap(page, { state: "ACTIVE", userRank: 3 });
+    await expect(page.locator('[data-testid="standing-T1"] [role="img"][aria-label="승급권"]')).toBeVisible();
+    await expect(page.locator('[data-testid="standing-T9"] [role="img"][aria-label="강등권"]')).toBeVisible();
+    await expect(page.locator('[data-testid="standing-T5"] [role="img"]')).toHaveCount(0);
+  });
+
   test("최상위 디비전 우승은 '한 단계 위' 라고 하지 않는다", async ({ page }) => {
     await bootstrap(page, {
       state: "FINISHED", userRank: 1, division: 1, divisionName: "챔피언 리그",
       promoteRankMax: null, relegateRankMin: 9, // 최상위 — 승급 없음
     });
     const card = page.getByTestId("division-outcome");
-    await expect(card).toHaveAttribute("data-zone", "hold");
-    await expect(card).not.toContainText("승급");
     await expect(card).not.toContainText("한 단계 위");
+    // 거짓말은 없어야 하지만 **성취까지 지우면 안 된다** — 최상위 1위는 우승으로 그린다(MIN-D).
+    await expect(card).toContainText("최상위 우승");
+    await expect(card).toHaveAttribute("data-zone", "hold");
     mkdirSync(SMOKE_DIR, { recursive: true });
     await page.screenshot({ path: `${SMOKE_DIR}league-division-top.png`, fullPage: true });
   });

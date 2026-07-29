@@ -432,6 +432,23 @@ describe("divisionOutcome — 시즌 종료 연출", () => {
     expect(divisionOutcome(10, d)).toMatchObject({ zone: "relegate", tone: "error", headline: "강등" });
   });
 
+  it("최상위 우승은 '유지' 가 아니라 우승으로 그린다 — 게임 최상단 성취가 지워지면 안 된다", () => {
+    // 판정 근거는 **서버가 준 것뿐**: 승급 컷이 null = 최상위. level 숫자를 보지 않는다.
+    const top = pickDivision(
+      seasonWith({ division: 1, divisionName: "챔피언 리그", promoteRankMax: null, relegateRankMin: 9 }),
+    );
+    const champ = divisionOutcome(1, top);
+    expect(champ).toMatchObject({ zone: "hold", tone: "success" });
+    expect(champ?.headline).toContain("우승");
+    expect(champ?.detail).not.toContain("한 단계 위"); // 승급이 아니다 — 거짓말 금지(BL-1)
+
+    // 최상위여도 1위가 아니면 평범한 유지.
+    expect(divisionOutcome(5, top)).toMatchObject({ zone: "hold", tone: "neutral" });
+    // 중간 디비전 1위는 승급이지 최상위 우승이 아니다.
+    const mid = pickDivision(seasonWith({ division: 5, promoteRankMax: 2, relegateRankMin: 9 }));
+    expect(divisionOutcome(1, mid)).toMatchObject({ zone: "promote" });
+  });
+
   it("다음 디비전 번호를 클라가 계산하지 않는다 — 사다리 끝 클램프는 서버 규칙", () => {
     // 최상위(D1)에서 우승해도 "한 단계 위"라는 표현만 쓰고 'D0' 같은 걸 만들지 않는다.
     const top = pickDivision(seasonWith({ division: 1, divisionName: "디비전 1", promoteRankMax: 2, relegateRankMin: 9 }));

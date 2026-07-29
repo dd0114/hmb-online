@@ -801,6 +801,10 @@ public class LeagueService {
      */
     public static int nextDivision(int from, int userRank, int top, int bottom,
                                    int promoteRankMax, int relegateRankMin) {
+        // 사다리 밖 값을 먼저 범위 안으로 당긴다. 발행물이 10→8단계로 줄면 잔류 users.division=10 은
+        // 사다리 밖이고, 그대로 두면 강등이 from+1=11 이 아니라 min(bottom=8, 11)=8 로 **두 칸** 뛴다
+        // (그리고 effectiveRelegateCut 은 "강등 없음"이라 광고한다 — 광고와 실제가 갈라진다).
+        from = Math.max(top, Math.min(bottom, from));
         if (userRank >= 1 && userRank <= promoteRankMax) {
             return Math.max(top, from - 1);
         }

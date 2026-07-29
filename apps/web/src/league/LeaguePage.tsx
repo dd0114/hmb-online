@@ -241,12 +241,14 @@ function StandingsTable({
                     ▲/▼ 기호로 축을 하나 더 주고, 보조기술에는 텍스트로 읽힌다.
                   */}
                   {zone === "promote" && (
-                    <span className={styles.zoneMark} aria-label="승급권">
+                    // role="img" 가 있어야 aria-label 이 접근성 트리에 매핑된다 — generic span 에
+                    // 붙인 label 은 보조기술이 무시할 수 있다(독립검증 2R MIN-C).
+                    <span className={styles.zoneMark} role="img" aria-label="승급권">
                       ▲
                     </span>
                   )}
                   {zone === "relegate" && (
-                    <span className={styles.zoneMark} aria-label="강등권">
+                    <span className={styles.zoneMark} role="img" aria-label="강등권">
                       ▼
                     </span>
                   )}
@@ -476,7 +478,13 @@ function SeasonRewardCard({
             <span className={styles.rewardPointsUnit}>{pointCurrency.symbol}</span>
           </>
         )}
-        {!view.showPoints && <span className={styles.rewardPointsNote}>미지급</span>}
+        {/*
+          "미지급" 은 **받았어야 하는데 못 받았다** 는 뜻이다. NONE(보상 순위 밖)은 정상이라
+          붙이면 안 된다 — 중립 헤드라인 밑에 실패 뉘앙스가 붙어 읽는 사람이 사고로 오해한다.
+        */}
+        {!view.showPoints && view.status !== "NONE" && (
+          <span className={styles.rewardPointsNote}>미지급</span>
+        )}
       </p>
       {gems > 0 && (
         <p className={styles.rewardGems} data-testid="season-reward-gems" data-gems={gems}>

@@ -695,6 +695,8 @@ export interface components {
              * @enum {string}
              */
             status: "PENDING" | "GRANTED" | "NONE";
+            /** @description 입상 젬 실지급액(#212, gem_ledger 파생). 우승만 대상이라 그 외 순위는 0. ⚠️ 서버 record 와 web 이 이미 주고받고 있었는데 스키마에만 빠져 있었다(선존 갭) — 선언에 없으면 생성 타입에도 없어 클라가 손으로 타입을 적게 되고, 그 손타입이 서버와 갈라지는 것이 이 화면에서 실제로 난 사고다(status AWARDED/GRANTED 불일치). */
+            gems?: number | null;
             /** @description 지급 시각(원장 created_at). 미지급이면 null */
             awardedAt?: string | null;
         };

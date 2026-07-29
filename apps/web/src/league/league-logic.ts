@@ -375,12 +375,25 @@ export function divisionOutcome(
         detail: `${where}${rank}위 — 다음 시즌은 한 단계 아래 디비전에서 시작합니다`,
         tone: "error",
       };
-    default:
+    default: {
+      // 최상위 디비전(= 승급 컷이 없다) 1위는 **더 올라갈 곳이 없어서** hold 다. 게임의 최상단
+      // 성취인데 "유지 — 다음 시즌도 같은 디비전입니다"로 그리면 우승이 지워진다(독립검증 2R MIN-D).
+      // 판정은 서버가 준 것만으로 한다 — "승급 컷이 없다" = 최상위. level 숫자를 보지 않는다.
+      const atTop = division.promoteRankMax === null;
+      if (atTop && rank === 1) {
+        return {
+          zone: "hold",
+          headline: "최상위 우승!",
+          detail: `${where}1위 — 더 올라갈 곳이 없습니다`,
+          tone: "success",
+        };
+      }
       return {
         zone: "hold",
         headline: "디비전 유지",
         detail: `${where}${rank}위 — 다음 시즌도 같은 디비전입니다`,
         tone: "neutral",
       };
+    }
   }
 }

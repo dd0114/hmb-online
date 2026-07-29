@@ -2,6 +2,7 @@ package online.hmb;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
 import online.hmb.league.LeagueService;
 import org.junit.jupiter.api.AfterAll;
@@ -47,6 +48,32 @@ class LeagueDivisionRollbackTest extends MatchTestBase {
 
     @jakarta.annotation.Resource
     private LeagueService leagueService;
+
+    @Test
+    void rollbackAlsoStopsAdvertisingCutsToTheClient() {
+        // ⚠️ 전이만 막고 **DTO 는 컷을 계속 광고**하면 화면이 "1~2위 승급 · 9위부터 강등"을 그리고
+        // 시즌 종료에 승급/강등 카드를 띄우는데 서버는 아무것도 안 한다 — BL-1 과 같은 거짓말이
+        // 롤백 상태로 되살아난다. 독립검증 2R MIN-A: 이 단언이 없으면 컷을 흘려도 전 게이트가 green 이다.
+        String token = setupUserWithDeck("rb-dto");
+        ResponseEntity<Map> res = authPost("/api/league/start", token, Map.of(), Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        JsonNode season = readJson(authGet("/api/league", token, String.class).getBody()).path("season");
+        assertThat(season.path("promoteRankMax").isNull())
+                .as("사다리가 없으면 승급 컷을 광고하지 않는다").isTrue();
+        assertThat(season.path("relegateRankMin").isNull())
+                .as("사다리가 없으면 강등 컷을 광고하지 않는다").isTrue();
+        assertThat(season.path("divisionName").isNull())
+                .as("사다리 표가 없으니 표시명도 없다").isTrue();
+    }
+
+    private JsonNode readJson(String body) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().readTree(body);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @Test
     void rollbackToV1DisablesBothPromotionAndRelegation() {
