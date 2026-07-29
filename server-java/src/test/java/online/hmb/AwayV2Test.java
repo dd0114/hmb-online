@@ -191,18 +191,59 @@ class AwayV2Test extends MatchTestBase {
         assertThat(lastGain).isEqualTo(20);
     }
 
-    /** 연승은 **수비자에게도** 쌓인다(대칭) — 방어로 쌓은 연승이 없으면 수비가 손해다. */
+    /**
+     * <b>연승은 내가 친 경기에만 걸린다</b>(hero 확정) — 방어는 내가 고른 플레이가 아니다.
+     * 방어 성공이 연승을 올리지도 않고, <b>방어 실패가 연승을 깨지도 않는다</b>: 자는 사이 남이 쳐서
+     * 내 연승이 끊기면 그건 내가 어쩔 수 없는 이유로 잃는 것이다.
+     */
     @Test
-    void defenderAlsoBuildsAStreak() {
-        setupUserWithDeck("v2_dstreak_def");
-        String defenderId = userIdOf("v2_dstreak_def");
-        setupUserWithDeck("v2_dstreak_atk");
-        String attackerId = userIdOf("v2_dstreak_atk");
+    void defenceNeverTouchesMyStreak() {
+        setupUserWithDeck("v2_own_me");
+        String meId = userIdOf("v2_own_me");
+        setupUserWithDeck("v2_own_victim");
+        String victimId = userIdOf("v2_own_victim");
+        setupUserWithDeck("v2_own_raider");
+        String raiderId = userIdOf("v2_own_raider");
 
-        settleLoss(attackerId, defenderId, "M_DS1");   // 수비자 1승
-        int after1 = rating(defenderId);
-        settleLoss(attackerId, defenderId, "M_DS2");   // 수비자 2연승 → +12
-        assertThat(rating(defenderId) - after1).isEqualTo(12);
+        // 내가 쳐서 2연승을 만든다.
+        settleWin(meId, victimId, "M_OWN1");
+        settleWin(meId, victimId, "M_OWN2");
+        assertThat(awayService.streakOf(meId)).isEqualTo(2);
+
+        // 남이 나를 쳐서 **내가 방어에 실패**한다(공격자 WIN = 내가 LOSS).
+        settleWin(raiderId, meId, "M_OWN3");
+        assertThat(awayService.streakOf(meId))
+                .as("남이 쳐서 깨지면 내가 어쩔 수 없는 이유로 연승을 잃는다")
+                .isEqualTo(2);
+
+        // 방어에 **성공**해도 연승은 오르지 않는다(내 플레이가 아니다).
+        settleLoss(raiderId, meId, "M_OWN4");
+        assertThat(awayService.streakOf(meId)).isEqualTo(2);
+
+        // 내가 친 경기에서 지면 그때 끊긴다.
+        settleLoss(meId, victimId, "M_OWN5");
+        assertThat(awayService.streakOf(meId)).isZero();
+    }
+
+    /** 연승 보너스도 공격자에게만 붙는다 — 방어 레이팅은 ±10 그대로다. */
+    @Test
+    void streakBonusAppliesToMyRaidsOnly() {
+        setupUserWithDeck("v2_bonus_me");
+        String meId = userIdOf("v2_bonus_me");
+        setupUserWithDeck("v2_bonus_victim");
+        String victimId = userIdOf("v2_bonus_victim");
+        setupUserWithDeck("v2_bonus_raider");
+        String raiderId = userIdOf("v2_bonus_raider");
+
+        settleWin(meId, victimId, "M_BON1");
+        settleWin(meId, victimId, "M_BON2");   // 2연승 = 10 + 2
+        int afterRaids = rating(meId);
+
+        // 방어 성공 — 연승이 2라도 보너스 없이 +10.
+        settleLoss(raiderId, meId, "M_BON3");
+        assertThat(rating(meId) - afterRaids)
+                .as("방어에 연승 보너스가 붙으면 '내 플레이만' 규칙이 깨진 것이다")
+                .isEqualTo(10);
     }
 
     /** 리포트가 박제하는 값 = **실제 적용값**(연승 보너스 포함). 팝업의 레이팅 합계가 이걸 더한다. */
