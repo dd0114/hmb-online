@@ -573,6 +573,18 @@ test.describe("#244 T2 — 감독시간(하프타임)", () => {
     const tb = (await controls.boundingBox())!;
     console.log("[p244] stage-tab geom", JSON.stringify({ canvas: cb, controls: tb }));
     expect(tb.y, "컨트롤이 피치 위에 겹쳐 있다").toBeGreaterThanOrEqual(cb.y + cb.height - 1);
+    /*
+     * ⚠️ 좌표만 재면 **오버레이가 되살아나도 통과할 수 있다**(독립 검증 BL-3: 다른 규칙이 우연히
+     * 같은 좌표를 만들어 냈다). 그래서 "무대 모서리 겹침 스킨"이 실제로 꺼져 있는지를 직접 잰다 —
+     * 돌려보는 화면의 컨트롤은 **흐름(static)** 이어야 한다.
+     */
+    const overlayOff = await controls.evaluate((el) => {
+      const wrap = el.parentElement!;
+      const cs = getComputedStyle(wrap);
+      return { position: cs.position, host: getComputedStyle(el).position };
+    });
+    console.log("[p244] controls flow", JSON.stringify(overlayOff));
+    expect(overlayOff.position, "컨트롤 래퍼가 무대 위 오버레이로 되돌아갔다").toBe("static");
     expect(await hOverflow(page), "컨트롤 줄이 폰 폭 밖으로 나간다").toBe(0);
     // 시간바는 화면 안에 있어야 만질 수 있다
     const sb = (await scrub.boundingBox())!;
@@ -606,7 +618,11 @@ test.describe("#244 T2 — 감독시간(하프타임)", () => {
     const scenes = page.getByTestId("viewer-scenes-half1").locator('[data-testid^="viewer-scene-"]');
     expect(await scenes.count(), "장면 리스트가 비어 있다").toBeGreaterThan(0);
     const jumped = (await clock.textContent())?.trim();
-    await scenes.last().click();
+    /*
+     * **첫** 장면을 누른다 — 앞 단계에서 시간바를 끝으로 끌어 놨으므로 마지막 장면을 누르면
+     * 이미 그 자리라 시계가 안 바뀐다(재생이 멈춘 채 열리도록 바꾼 뒤 드러난 구멍).
+     */
+    await scenes.first().click();
     await expect.poll(async () => (await clock.textContent())?.trim(), { timeout: 5_000 }).not.toBe(jumped);
     await page.screenshot({ path: `${SMOKE_DIR}p244-halftime-stagetab.png` });
 

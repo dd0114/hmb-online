@@ -176,7 +176,13 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
               </div>
             )}
 
-            <div className={styles.panel}>
+            {/*
+              감독시간은 **패널이 자기 스크롤을 갖는다**(#244 BL-1). 시트 패널이 스크롤을 소유하면
+              주 CTA 를 sticky 로밖에 띄울 수 없고, sticky 는 자기 아래로 콘텐츠가 지나가므로
+              프롬프트를 덮는다(독립 검증: 360/390/412 전 폰에서 히트테스트 피격).
+              여기서 스크롤을 넘겨주면 CTA 가 스크롤 **밖** 바닥에 앉아 어떤 위치에서도 안 덮는다.
+            */}
+            <div className={`${styles.panel} ${activeTab === "halftime" ? styles.panelFlush : ""}`}>
               {activeTab === "stats" && <StatsPanel matchId={match.id} half={half} tick={tick} />}
               {activeTab === "log" && (
                 <LogPanel

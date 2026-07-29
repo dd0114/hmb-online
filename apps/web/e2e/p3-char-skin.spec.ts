@@ -145,7 +145,7 @@ test("경기장: web 이 코어를 직접 마운트해 스킨 캐릭터 토큰�
     route.fulfill(json({ user: { id: "u1", nickname: "tester", points: 100, wins: 0, draws: 0, losses: 0, isAdmin: false } })),
   );
   await page.route((url) => url.pathname === `/api/matches/${MATCH_ID}`, (route) =>
-    route.fulfill(json({ id: MATCH_ID, state: "H1_BREAK", scoreH1Home: 1, scoreH1Away: 0, createdAt: "2026-07-24T00:00:00Z", opponent: { name: "봇 FC" } })),
+    route.fulfill(json({ id: MATCH_ID, state: "FIRST_HALF", scoreH1Home: 1, scoreH1Away: 0, createdAt: "2026-07-24T00:00:00Z", opponent: { name: "봇 FC" } })),
   );
   await page.route((url) => /\/api\/matches\/.+\/halves\/1\/log$/.test(url.pathname), (route) =>
     route.fulfill(json(matchLog)),

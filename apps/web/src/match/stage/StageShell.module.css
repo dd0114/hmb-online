@@ -192,6 +192,7 @@
 
 .tab {
   flex: 1;
+  min-height: 44px; /* 탭 타깃 하한(#73 P1) — 38px 로 내려가 있었다(독립 검증 minor) */
   background: none;
   border: none;
   border-radius: 999px;
@@ -205,6 +206,14 @@
 .tabActive {
   color: #dbe7ff;
   background: #1c2841;
+}
+
+/* 감독시간: 스크롤을 패널 내용(HalftimePanel)에 넘긴다 — 주 CTA 를 스크롤 밖에 두기 위해. */
+.panelFlush {
+  overflow: hidden;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 유일한 스크롤 영역 — 문서는 절대 스크롤하지 않는다(R1). */

@@ -426,6 +426,7 @@
 }
 .outBadge {
   position: absolute;
+  z-index: 6; /* 360×740 에서 아랫줄 토큰이 뱃지를 덮었다(독립 검증 minor) — "누굴 뺐나"는 항상 읽혀야 한다 */
   left: 50%;
   bottom: -9px;
   transform: translateX(-50%);

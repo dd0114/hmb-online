@@ -238,6 +238,16 @@ export function VisualPlayback({
     );
   }
 
+  /*
+   * 돌려보는 화면(#244 review)은 **정지 상태로 연다**. 관전 무대는 자동 재생이 맞지만, 여기서
+   * 유저가 하려는 일은 "그 장면을 찾아 본다"라 들어오자마자 흘러가면 방금 본 장면을 놓친다
+   * (독립 검증 minor: 무조작 2초에 0'05" → 0'09").
+   */
+  useEffect(() => {
+    if (!review || !viewerReady) return;
+    (viewerRef.current as unknown as { pause?: () => void } | null)?.pause?.();
+  }, [review, viewerReady]);
+
   return (
     <div className={styles.stageWrapFill} data-testid={`viewer-visual-half${half}`}>
       <canvas

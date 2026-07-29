@@ -202,7 +202,7 @@
   font-size: 20px;
 }
 .speed {
-  min-height: 32px;
+  min-height: 44px; /* 트랜스포트 4개는 전부 44px 하한(#73 P1) */
   padding: 0 10px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
@@ -231,17 +231,18 @@
   font-variant-numeric: tabular-nums;
 }
 /* 마커와 재생 핸들이 **같은 트랙** 위 — 축이 갈리면 "지금 어디"를 못 읽는다. */
+/* 시간바는 이 화면의 **주 조작 수단**이다 — 트랙 자체를 44px 로 잡아 엄지로 잡힌다. */
 .track {
   position: relative;
   flex: 1;
   min-width: 0;
-  height: 30px;
+  height: 44px;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
 }
 .reviewScrub {
   width: 100%;
-  height: 24px;
+  height: 44px;
   margin: 0;
   position: relative;
   z-index: 2;
@@ -250,7 +251,7 @@
 /* 마커는 트랙 **바로 위**에 얹는다 — 트랙 안에 두면 스크럽 트랙이 덮어 반쯤 잘린다(실화면). */
 .marker {
   position: absolute;
-  top: 7px;
+  top: 14px;
   z-index: 3;
   width: 8px;
   height: 8px;
@@ -323,6 +324,9 @@
   font-size: 12px;
 }
 .advanced summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
   padding: 8px 4px;
   cursor: pointer;
 }

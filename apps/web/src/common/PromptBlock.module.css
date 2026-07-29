@@ -96,3 +96,12 @@
     gap: 4px;
   }
 }
+
+/*
+ * 감독시간 화면은 하단에 sticky 주 CTA(후반 시작)가 떠 있다. 자동 스크롤이 이 블록을
+ * 화면 끝에 맞추면 CTA 밑에 깔린다(독립 검증 BL-1) → 스크롤이 CTA 높이만큼 여유를 두고 멈춘다.
+ */
+.block {
+  scroll-margin-bottom: 96px;
+  scroll-margin-top: 12px;
+}

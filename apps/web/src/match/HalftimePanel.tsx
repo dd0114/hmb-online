@@ -307,6 +307,7 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
 
   return (
     <div ref={panelRef} className={styles.panel} data-testid="halftime-panel">
+      <div className={styles.scroll}>
       {editor && (
         <DeckEditor
           state={editor}
@@ -337,6 +338,7 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
         <ErrorToast message="내 로스터를 불러오지 못했습니다 — 새로고침 후 다시 시도하세요" />
       )}
       <ErrorToast message={error} onDismiss={() => setError(null)} />
+      </div>
 
       <button
         type="button"
@@ -347,6 +349,7 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
       >
         {submitting ? "전송 중…" : expired ? "후반 시작됨" : "후반 시작"}
       </button>
+
     </div>
   );
 }

@@ -63,6 +63,11 @@ async function openHalftime(page: Page, isAdmin: boolean): Promise<void> {
     localStorage.setItem("hmb.auth.provider", "local");
   });
   await page.goto(`/match/${MATCH_ID}`);
+  // #244: 감독시간에는 무대가 `경기장면` 탭 뒤다 — 뷰어를 보려면 한 번 연다(관전 화면이면 없다).
+  {
+    const tab = page.getByTestId("stage-tab-stage");
+    if (await tab.count()) await tab.click();
+  }
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
   await expect(page.getByTestId("viewer-canvas-half1")).toBeVisible();
   await page.waitForFunction(
@@ -216,6 +221,11 @@ test("#148 뷰어 로드 실패는 화면 안에 보인다(설명 없는 빈 피
     localStorage.setItem("hmb.auth.provider", "local");
   });
   await page.goto(`/match/${MATCH_ID}`);
+  // #244: 감독시간에는 무대가 `경기장면` 탭 뒤다 — 뷰어를 보려면 한 번 연다(관전 화면이면 없다).
+  {
+    const tab = page.getByTestId("stage-tab-stage");
+    if (await tab.count()) await tab.click();
+  }
   const err = page.getByTestId("viewer-visual-error-half1");
   await expect(err).toBeVisible({ timeout: 20_000 });
   const box = await err.boundingBox();
