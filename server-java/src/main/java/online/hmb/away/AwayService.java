@@ -466,17 +466,18 @@ public class AwayService {
      */
     public void settle(String matchId, String attackerId, String attackerResult,
                        int attackerGoals, int defenderGoals) {
-        settle(matchId, attackerId, attackerResult, attackerGoals, defenderGoals, true);
+        settle(matchId, attackerId, attackerResult, attackerGoals, defenderGoals, false);
     }
 
     /**
-     * @param payDefender 수비자에게 <b>재화</b>를 지급할지. 몰수(상대가 브리핑에서 무름)는 false —
-     *     경기가 열리지도 않았는데 리그 승리 보상 전액을 찍으면, 두 계정이 서로 만들고 무르기만 해도
-     *     **시뮬 0회로 돈이 발행된다**(레이팅은 서로 상쇄돼 밴드 방어가 걸리지도 않는다).
-     *     레이팅(hero D1 몰수패)은 그대로 준다 — 무르는 쪽에 대한 벌칙은 그거다.
+     * @param forfeit 몰수인가(상대가 브리핑에서 무름). <b>경기가 열리지도 않은 것</b>이므로 세 가지를
+     *     함께 가른다 — ①수비자 재화 지급 없음 ②연승에 반영 안 함 ③시즌 참가로 세지 않음.
+     *     그러지 않으면 두 계정이 서로 만들고 무르기만 해도 <b>시뮬 0회·AI 0회로</b> 주간 순위 보상
+     *     (1위 30k + 2위 20k)을 가져가고, 레이팅은 서로 상쇄돼 밴드 매칭 방어도 걸리지 않는다.
+     *     <b>레이팅 ±10 은 그대로</b> 준다 — 그게 무르는 쪽에 대한 벌칙이고 hero D1 이다.
      */
     public void settle(String matchId, String attackerId, String attackerResult,
-                       int attackerGoals, int defenderGoals, boolean payDefender) {
+                       int attackerGoals, int defenderGoals, boolean forfeit) {
         Challenge challenge = findChallenge(matchId).orElse(null);
         if (challenge == null) {
             // mode='away' 인데 도전장이 없다 = 데이터 사고. 조용히 넘어가면 수비자는 영영 모른다.
@@ -496,25 +497,28 @@ public class AwayService {
             // ⚠️ 보너스는 **미리 계산만** 하고 연승 갱신은 멱등 게이트 뒤에서 한다. 예전엔 여기서
             // 바로 갱신해서 같은 매치를 재정산하면 연승이 1→4 로 부풀었다(리포트·원장은 멱등인데
             // 연승만 샜다 — 독립검증 major-1). txRunner 안의 return 은 앞선 UPDATE 를 되돌리지 않는다.
-            int attackerBonus = peekStreakBonus(attackerId, attackerResult);
-            int defenderBonus = peekStreakBonus(challenge.defenderId(), defenderResult);
+            // 몰수는 연승을 쌓지 않는다 — 열리지도 않은 경기가 연승이 되면 그게 곧 보너스 파밍이다.
+            int attackerBonus = forfeit ? 0 : peekStreakBonus(attackerId, attackerResult);
+            int defenderBonus = forfeit ? 0 : peekStreakBonus(challenge.defenderId(), defenderResult);
             int attackerApplied = attackerDelta + attackerBonus;
             int defenderApplied = defenderDelta + defenderBonus;
             int inserted = jdbcClient.sql("""
                             INSERT OR IGNORE INTO away_reports(
                                 id, match_id, defender_id, attacker_id, attacker_name,
-                                goals_for, goals_against, result, rating_delta, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                goals_for, goals_against, result, rating_delta, created_at, forfeit)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """)
                     .params(Ulid.next(), matchId, challenge.defenderId(), attackerId, attackerName,
                             defenderGoals, attackerGoals, defenderResult, defenderApplied,
-                            Instant.now().toString())
+                            Instant.now().toString(), forfeit ? 1 : 0)
                     .update();
             if (inserted == 0) {
                 return; // 이미 정산됨 — 연승도 건드리지 않는다
             }
-            commitStreak(attackerId, attackerResult);
-            commitStreak(challenge.defenderId(), defenderResult);
+            if (!forfeit) {
+                commitStreak(attackerId, attackerResult);
+                commitStreak(challenge.defenderId(), defenderResult);
+            }
             if (attackerApplied != 0) {
                 ratingService.apply(attackerId, attackerApplied, REASON_ATTACK, matchId);
             }
@@ -523,7 +527,7 @@ public class AwayService {
             }
             // 수비자 보상(hero E7) — "덱 세팅 잘해두면 돈이 들어오고, 지면 남 좋은 일만".
             // 공격자 보상은 매치 정산(MatchOrchestrator)이 이미 준다 — 여기서 또 주면 이중 지급이다.
-            if (payDefender) {
+            if (!forfeit) {
                 payDefenderReward(challenge.defenderId(), defenderResult, matchId);
             }
         });

@@ -612,6 +612,76 @@ class AwayV2Test extends MatchTestBase {
         assertThat(rating(defenderId)).as("레이팅은 준다(hero D1 몰수패)").isEqualTo(10);
     }
 
+    /**
+     * <b>몰수는 시즌에 세지 않는다</b>(hero A-1). 경기가 열리지도 않았는데 리포트가 남는다는 이유로
+     * 시즌 참가·연승이 되면, 두 계정이 서로 만들고 무르기만 해도 <b>시뮬 0회·AI 0회로</b> 주간 순위
+     * 보상(1위 30k + 2위 20k)을 가져간다. 레이팅 ±10 은 그대로 준다(hero D1 몰수패).
+     */
+    @Test
+    void forfeitCountsForRatingButNotForSeasonOrStreak() {
+        setupUserWithDeck("v2_ffs_def");
+        String defenderId = userIdOf("v2_ffs_def");
+        String attacker = setupUserWithDeck("v2_ffs_atk");
+        String attackerId = userIdOf("v2_ffs_atk");
+
+        String matchId = startAwayPinned(attackerId, defenderId).id();
+        long pointsBefore = points(defenderId);
+        assertThat(authPost("/api/matches/" + matchId + "/abandon", attacker, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // 레이팅은 움직이고(D1) 돈·연승은 움직이지 않는다.
+        assertThat(rating(defenderId)).isEqualTo(10);
+        assertThat(points(defenderId) - pointsBefore).isZero();
+        assertThat(awayService.streakOf(defenderId))
+                .as("열리지도 않은 경기가 연승이 되면 그게 곧 보너스 파밍이다")
+                .isZero();
+        assertThat(jdbcClient.sql("SELECT forfeit FROM away_reports WHERE match_id = ?")
+                .param(matchId).query(Integer.class).single()).isEqualTo(1);
+
+        // 시즌 마감에서도 참가로 세지 않는다 — 몰수만 있는 유저는 스냅샷에 없다.
+        long seasonRewardBefore = points(defenderId);
+        expireSeason();
+        seasonService.sweepDueSeasons();
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM away_season_results WHERE user_id IN (?, ?)")
+                        .params(attackerId, defenderId).query(Long.class).single())
+                .as("몰수만으로 시즌 순위 보상을 받으면 시뮬 0회 수도꼭지가 된다")
+                .isZero();
+        assertThat(points(defenderId)).isEqualTo(seasonRewardBefore);
+    }
+
+    /**
+     * 시즌 마감이 <b>다음 시즌에 이미 쌓인 레이팅까지 지우지 않는다</b>(F1).
+     *
+     * <p>스윕은 5분 주기라 {@code ends_at} 이후~마감 사이에 끝난 원정이 있다. 그 델타는 다음 시즌
+     * 것인데 통째로 0 으로 밀면 라이브 레이팅(밴드 매칭·리더보드·화면)에서만 사라져 시즌 축과
+     * 영구히 어긋난다 — 보상 금액은 맞는데 화면만 틀리고 복구 경로가 없다.
+     */
+    @Test
+    void seasonCloseKeepsRatingEarnedAfterTheWindow() {
+        setupUserWithDeck("v2_f1_def");
+        String defenderId = userIdOf("v2_f1_def");
+        setupUserWithDeck("v2_f1_atk");
+        String attackerId = userIdOf("v2_f1_atk");
+
+        settleWin(attackerId, defenderId, "M_F1_OLD");   // 이번 시즌 몫
+        expireSeason();                                   // 창을 과거로(리포트·원장도 함께)
+        settleWin(attackerId, defenderId, "M_F1_NEW");    // ⚠️ 창이 닫힌 **뒤**에 끝난 원정
+
+        seasonService.sweepDueSeasons();
+
+        // 기대값은 하드코딩하지 않는다 — 연승 보너스가 붙으므로 "그 판의 실제 적용값"과 대조한다.
+        // ⚠️ 유저로 좁힌다 — ref_id 만으로 합하면 상대의 −10 까지 섞인다(공격자 +12, 수비자 −10 = 2).
+        int newSeasonShare = jdbcClient.sql("""
+                        SELECT COALESCE(SUM(delta), 0) FROM rating_ledger
+                        WHERE ref_id = 'M_F1_NEW' AND user_id = ?
+                        """)
+                .param(attackerId).query(Integer.class).single();
+        assertThat(newSeasonShare).as("창 밖 원정이 실제로 레이팅을 움직였어야 대조가 성립한다").isPositive();
+        assertThat(rating(attackerId))
+                .as("다음 시즌 몫까지 0 으로 밀면 그 판이 라이브 레이팅에서만 사라진다")
+                .isEqualTo(newSeasonShare);
+    }
+
     // ── 헬퍼 ────────────────────────────────────────────────────────────
 
     /** 제시를 심고 상대를 고정해 원정을 시작한다(hero E2 이후 지목은 제시 안에서만 된다). */

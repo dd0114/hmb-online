@@ -201,10 +201,12 @@ public class AwaySeasonService {
                                 SELECT defender_id AS user_id FROM away_reports
                                  WHERE datetime(created_at) >= datetime(:from)
                                    AND datetime(created_at) <  datetime(:to)
+                                   AND forfeit = 0
                                 UNION
                                 SELECT attacker_id AS user_id FROM away_reports
                                  WHERE datetime(created_at) >= datetime(:from)
                                    AND datetime(created_at) <  datetime(:to)
+                                   AND forfeit = 0
                             ) p
                             LEFT JOIN away_streaks st ON st.user_id = p.user_id
                             ORDER BY rating DESC, p.user_id ASC
@@ -234,8 +236,19 @@ public class AwaySeasonService {
                 }
             }
 
-            // 초기화 — 레이팅과 연승이 함께 0 으로. 연승만 남기면 새 시즌 첫 판에 보너스가 붙는다.
-            jdbcClient.sql("UPDATE user_ratings SET rating = 0, updated_at = ?").param(now).update();
+            // 초기화 — ⚠️ **0 이 아니라 "다음 시즌 몫"으로** 되돌린다(독립검증 MAJ-1).
+            // 스윕이 5분 주기라 `ends_at` 이후~마감 사이에 끝난 원정이 있고, 그 델타는 **다음 시즌**
+            // 것이다. 통째로 0 으로 밀면 그 판이 라이브 레이팅(밴드 매칭·리더보드·화면)에서만 사라져
+            // 시즌 축과 영구히 어긋난다(보상 금액은 맞는데 화면만 틀리는, 복구 경로 없는 상태).
+            jdbcClient.sql("""
+                            UPDATE user_ratings SET rating = COALESCE((
+                                SELECT SUM(l.delta) FROM rating_ledger l
+                                 WHERE l.user_id = user_ratings.user_id
+                                   AND datetime(l.created_at) >= datetime(?)
+                            ), 0), updated_at = ?
+                            """)
+                    .params(season.endsAt(), now)
+                    .update();
             jdbcClient.sql("UPDATE away_streaks SET streak = 0, updated_at = ?").param(now).update();
 
             jdbcClient.sql("UPDATE away_seasons SET state = 'CLOSED', closed_at = ? WHERE id = ?")
