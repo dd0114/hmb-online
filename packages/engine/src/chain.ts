@@ -44,6 +44,20 @@ interface Hypo {
   fatigue: number;
 }
 
+/**
+ * 정수 지수 거듭제곱. **`Math.pow` 를 쓰지 않는다** — ECMAScript 명세상 `Math.pow` 는
+ * *구현 근사(implementation-approximated)* 라 엔진/버전 간 최하위 비트가 다를 수 있고, 이 코어는
+ * EV 를 부동소수로 **비교·정렬**하므로 그 차이가 **행동 선택을 뒤집을 수 있다**(= 무음 desync).
+ * 곱셈은 IEEE754 로 정확히 규정돼 있으므로 반복 곱이 안전하다.
+ * → `chain.advanceExponent` 는 **음이 아닌 정수**여야 한다(소수 지수는 지원하지 않는다).
+ */
+function powInt(base: number, exp: number): number {
+  let r = 1;
+  const n = exp < 0 ? 0 : Math.round(exp);
+  for (let i = 0; i < n; i++) r *= base;
+  return r;
+}
+
 /** side 팀 관점에서 (x,y) 최근접 상대까지 거리(fixed). 상대가 없으면 Infinity. */
 function nearestOppDist(state: SimState, side: SimPlayer["side"], xFx: number, yFx: number): number {
   let best = Infinity;
@@ -69,7 +83,7 @@ export function evaluateState(state: SimState, h: Hypo, config: EngineConfig, pi
   const c = config.chain;
   // 진행도는 **볼록**하게(^exponent). 선형이면 자기 진영에서 안전하게 돌리는 것과 밀고 가는 것의
   // 가치 차가 작아 뒤로 빼는 게 최적이 된다(#279 W2 1차 실측: 파이널서드 백패스 67%).
-  const adv = Math.pow(fclamp(progress(pitch, h.side, h.xFx), 0, 1), c.advanceExponent);
+  const adv = powInt(fclamp(progress(pitch, h.side, h.xFx), 0, 1), c.advanceExponent);
   const { xg } = xgAtPoint(h.side, h.xFx, h.yFx, h.shooting, h.fatigue, config, pitch);
   const nd = nearestOppDist(state, h.side, h.xFx, h.yFx);
   const ndM = nd === Infinity ? c.spaceRefM : fromFixed(nd, config.fixedScale);
@@ -219,9 +233,17 @@ export function decideBallOwnerChain(
   cands.push({ kind: "hold", ev: evaluateState(state, here, config, pitch) - c.holdPenalty });
 
   // --- 선택: 온도 0 이면 argmax, 아니면 상위 K 가중 샘플(변주 유지) ---
-  // 동점 정렬은 kind → receiver.id 로 안정화(결정론).
-  cands.sort((a, b) => b.ev - a.ev || (a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0) ||
-    ((a.opt?.receiver.id ?? "") < (b.opt?.receiver.id ?? "") ? -1 : 1));
+  // 정렬은 **완전 전순서**여야 한다. 구버전은 마지막 단계가 `a < b ? -1 : 1` 이라 **완전 동점에서
+  // 양방향 모두 1** 을 반환했다(비일관 비교자) — shoot/dribble/hold 는 `opt` 가 없어 실제로 동점이
+  // 발생한다. 비일관 비교자에서 `Array.prototype.sort` 결과는 **구현 정의**라 엔진/버전 간 순서가
+  // 갈릴 수 있다(= 무음 desync). 좌표 타깃 후보(receiver 없음)를 넣으면 더 흔해진다.
+  const key = (c0: Cand): string => `${c0.kind}|${c0.opt?.receiver.id ?? ""}|${c0.toX ?? 0}|${c0.toY ?? 0}`;
+  cands.sort((a, b) => {
+    if (b.ev !== a.ev) return b.ev - a.ev;
+    const ka = key(a);
+    const kb = key(b);
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
   let picked = cands[0]!;
   if (c.temperature > 0 && cands.length > 1) {
     const k = Math.max(1, Math.min(cands.length, 1 + Math.round(c.temperature * (cands.length - 1))));
