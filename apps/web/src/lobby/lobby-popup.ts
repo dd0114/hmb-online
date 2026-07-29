@@ -13,14 +13,56 @@
  *
  * **공지 우선**(hero Q4): 공지는 점검·사고 안내라 시급하고, 원정은 [게임 시작] 흐름을 잇는
  * 성격이라 한 박자 뒤여도 맥락이 유지된다(공지 닫기 → CTA 다시 누름 → 원정 팝업).
- *
- * ⚠️ `"away"` 는 **미배선**이다 — main 에는 아직 원정 팝업(#245)이 없다. #245 가 머지되면
- * `LobbyPage` 에서 `pickLobbyPopup({ notice: …, away: shouldShowAwayPopup(data) })` 로 한 줄만
- * 붙이면 된다(그쪽 세션은 추가 작업 없음 — #248 §4 "머지 순서 합의" 3항).
  */
 export const LOBBY_POPUP_PRIORITY = ["notice", "away"] as const;
 
 export type LobbyPopupKind = (typeof LOBBY_POPUP_PRIORITY)[number];
+
+/**
+ * 그 팝업이 **유저가 부르지 않았는데 스스로 뜨는가**.
+ *
+ * 튜토리얼 게이트(아래)가 무엇을 미룰지 가르는 축이다 — 종류 이름으로 분기하지 않고 이 성질로
+ * 분기하는 이유는, 로비에 팝업을 추가하는 사람이 답해야 할 질문이 "공지냐 원정이냐"가 아니라
+ * **"이건 저절로 뜨는가"** 이기 때문이다. 그 답만 여기 적으면 게이트가 알아서 적용된다.
+ *
+ * - `notice` = **true** — 로비에 들어오기만 하면 화면을 덮는다.
+ * - `away`   = **false** — 유저가 [게임 시작]을 눌러서 연 것이다(hero E1). 이걸 미루면 **누른
+ *   버튼이 아무 일도 안 하는 것처럼 보인다** — 그건 고치는 게 아니라 새 버그다.
+ */
+export const LOBBY_POPUP_UNBIDDEN: Record<LobbyPopupKind, boolean> = {
+  notice: true,
+  away: false,
+};
+
+/**
+ * 팝업이 아니라 **차단 조건**. 참인 동안 "저절로 뜨는" 팝업을 **미룬다**(삼키지 않는다 —
+ * 조건이 풀리면 `pickLobbyPopup` 이 다시 그 팝업을 고른다).
+ *
+ * ### 왜 우선순위 배열이 아니라 별도 개념인가 (설계 근거)
+ *
+ * 튜토리얼을 `LOBBY_POPUP_PRIORITY` 에 한 항목으로 넣는 안을 먼저 검토했고 **버렸다**:
+ *  1. 큐가 고른 종류는 로비가 **렌더한다**. 튜토리얼 오버레이는 로비가 아니라 `TutorialProvider`
+ *     (App 트리)가 그리므로 큐가 고를 수 있는 대상이 아니다 — 골라 놓고 아무도 못 그린다.
+ *  2. 큐 항목은 "닫히면 다음 차례"인데 튜토리얼은 화면 두 개(로비·덱)를 오가며 살아 있다.
+ *     닫힘 시점이 큐 밖에 있는 것을 큐 항목으로 두면 그 시점을 다시 큐에 알려야 한다.
+ *  3. 튜토리얼은 **다른 팝업과 경쟁하는 게 아니라 전부를 미룬다**. 순위가 아니라 조건이다.
+ *
+ * ⚠️ `tutorialHold` 에는 **프로바이더의 진행 상태**(`useTutorial().active`)에서 출발한 값을 넣어라.
+ * "코치마크가 지금 **보이는가**"를 넣으면 안 된다 — 코치마크는 다른 다이얼로그가 열리면 스스로
+ * 숨는데(`TutorialOverlay.hasForeignDialog`), 그 가시성으로 게이트를 걸면
+ * **공지 열림 → 코치마크 숨음 → 게이트 해제 → 공지 열림** 의 되먹임이 된다.
+ */
+export interface LobbyPopupGuards {
+  /**
+   * 온보딩이 이 화면을 잡고 있는가.
+   *
+   * ⚠️ **"지금 코치마크가 떠 있는가"보다 넓다.** 호출부가 "이번 방문 동안"으로 넓혀 넘긴다 —
+   * 튜토리얼이 *끝나는 순간*에도 띄우면 안 되기 때문이다(완료 시점엔 덱 지급·`["me"]` 무효화로
+   * 화면이 통째로 바뀐다 — 거기에 점검 공지를 얹으면 지금 고치는 상황이 그대로 재현된다).
+   * 넓히는 방법과 근거는 `LobbyPage` 의 `tutorialHeldThisVisit` 주석.
+   */
+  tutorialHold?: boolean;
+}
 
 /**
  * 열 준비가 된 팝업 중 **하나**를 고른다. 아무것도 준비되지 않았으면 null.
@@ -28,9 +70,14 @@ export type LobbyPopupKind = (typeof LOBBY_POPUP_PRIORITY)[number];
  */
 export function pickLobbyPopup(
   ready: Partial<Record<LobbyPopupKind, boolean>>,
+  guards: LobbyPopupGuards = {},
 ): LobbyPopupKind | null {
   for (const kind of LOBBY_POPUP_PRIORITY) {
-    if (ready[kind]) return kind;
+    if (!ready[kind]) continue;
+    // 튜토리얼 중에는 **저절로 뜨는** 팝업만 건너뛴다. 건너뛴 것은 사라지는 게 아니라
+    // 다음 판정에서 다시 후보가 된다(= 튜토리얼이 끝나면 자연스럽게 뜬다).
+    if (guards.tutorialHold && LOBBY_POPUP_UNBIDDEN[kind]) continue;
+    return kind;
   }
   return null;
 }

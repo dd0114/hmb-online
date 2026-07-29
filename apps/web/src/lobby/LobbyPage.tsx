@@ -12,6 +12,7 @@ import {
 } from "../api/hooks";
 import { useActiveNotices } from "../api/notice-hooks";
 import { pickLobbyPopup } from "./lobby-popup";
+import { NoticeCenter } from "./NoticeCenter";
 import { NoticePopup } from "./NoticePopup";
 import { visibleNotices, type Notice } from "./notice-logic";
 import { useRelations } from "../api/hooks-v2";
@@ -39,7 +40,9 @@ export function LobbyPage() {
   const { logout, provider } = useToken();
   const navigate = useNavigate();
   const [modeModalOpen, setModeModalOpen] = useState(false);
-  const { restart: restartTutorial } = useTutorial();
+  // `active` 는 **프로바이더의 진행 상태**다(코치마크가 지금 보이는지가 아니다 — 코치마크는
+  // 다른 다이얼로그가 열리면 스스로 숨으므로 가시성으로 게이트를 걸면 되먹임이 된다).
+  const { active: tutorialActive, restart: restartTutorial } = useTutorial();
   // #217: 강제 이동(MatchLockGate) 대상이 아닌 미완 매치 — 브리핑/사고 상태 — 는 여기서 이어간다.
   const { data: active, isLoading: activeLoading } = useActiveMatch();
   // #245: 부재중 피원정 결과. **강제 이동이 걸린 상태에서는 묻지 않는다** — 로비를 스쳐 지나가는
@@ -77,10 +80,35 @@ export function LobbyPage() {
     () => visibleNotices(notices.data, Date.now()),
     [notices.data],
   );
+
+  /**
+   * **이번 로비 방문 동안 온보딩이 화면을 잡았는가** — 한 번 참이면 이 방문 내내 참(래치).
+   *
+   * 왜 `tutorialActive` 만으로 부족한가: 튜토리얼이 **끝나는 그 순간**에 공지를 띄우면 지금
+   * 고치려는 상황이 그대로 재현된다. 완료 저장(`persistTutorialDone`)이 `["deck"]`·`["me"]`
+   * 캐시를 무효화해 덱 지급 결과로 화면이 바뀌는 바로 그 프레임에 점검 공지가 덮는다.
+   * → 공지는 **다음에 로비에 들어올 때** 뜬다.
+   *
+   * 왜 서버 플래그(`user.tutorialDone`)의 변화로 판정하지 않는가: 그건 계정에 남는 값이라
+   * 리로드 뒤에도 "방금 끝났다"로 읽힐 여지가 있고, 그러면 공지가 **영영** 미뤄질 수 있다.
+   * 여기 래치는 **컴포넌트 마운트 수명**에만 산다 — 로비를 떠났다 오면(라우트 이동·리로드)
+   * 자연히 풀린다. 그게 정확히 "다음 진입"의 정의다.
+   *
+   * ⚠️ 미룬 공지는 **소진되지 않는다** — 팝업을 렌더하지 않으므로 억제 저장소에 아무것도
+   * 쓰이지 않는다(안 뜬 것을 "봤다"로 기록하면 그 공지는 영영 못 본다).
+   */
+  const tutorialHeldThisVisit = useRef(false);
+  if (tutorialActive) tutorialHeldThisVisit.current = true;
+  const tutorialHold = tutorialActive || tutorialHeldThisVisit.current;
+
   // 첫 진입에 보인 목록을 **고정**한다. 포커스 복귀 refetch 로 목록이 갈리면 스택 인덱스가
   // 어긋나 유저가 이미 닫은 장이 다시 앞으로 나온다.
+  // 온보딩이 잡고 있는 방문에서는 고정도 하지 않는다 — 어차피 열지 않을 목록을 붙들면,
+  // 그 사이 유저가 헤더의 [공지]로 읽은 것까지 나중에 다시 들이밀게 된다.
   const latched = useRef<Notice[] | null>(null);
-  if (latched.current === null && candidates.length > 0) latched.current = candidates;
+  if (latched.current === null && !tutorialHold && candidates.length > 0) {
+    latched.current = candidates;
+  }
   const noticeList = latched.current ?? [];
 
   // 로비 팝업은 **동시에 하나만** 열린다(#248 §4). 판단은 lobby-popup.ts 한 곳.
@@ -89,18 +117,33 @@ export function LobbyPage() {
   // 그래서 현재 구조에선 겹칠 창이 거의 없지만, 트리거는 바뀐다(#245 가 이미 한 번 옮겼다).
   // 겹치면 **공지가 이긴다** — 점검·사고 안내라 시급하고, 원정은 공지를 닫고 CTA 를 다시 누르면
   // 그대로 이어진다(반대로 원정을 먼저 띄우면 점검 공지가 한 텀 늦는다).
-  const popup = pickLobbyPopup({
-    notice: !noticeDone && noticeList.length > 0,
-    away: showAwayPopup,
-  });
+  //
+  // ⚠️ **온보딩이 잡은 방문에는 공지를 미룬다**(삼키지 않는다). 게임을 처음 켠 사람이 무엇을 하라는
+  // 안내를 받기 전에 "새벽 점검 안내"부터 읽게 되던 상태를 막는다 — 코치마크는 다른 다이얼로그가
+  // 열리면 스스로 숨으므로(TutorialOverlay), 공지가 뜨는 동안 온보딩은 **조용히 사라져 있었다**.
+  // 미룸의 범위는 "튜토리얼이 떠 있는 동안"이 아니라 **이번 방문 전체**다(위 tutorialHeldThisVisit).
+  const popup = pickLobbyPopup(
+    {
+      notice: !noticeDone && noticeList.length > 0,
+      away: showAwayPopup,
+    },
+    { tutorialHold },
+  );
 
   // me 로딩 실패로 header 가 통째로 사라지면 로그아웃 버튼까지 없어져 불량 세션 탈출이 불가했다(#73 P1).
   // 로그아웃은 항상 노출한다.
   const header = (
     <div className={styles.headerRow}>
-      <div>
+      <div className={styles.headerLeft}>
         <div className={styles.nickname}>
-          {me ? me.user.nickname : "감독님"}
+          {/* 긴 닉네임이 헤더를 밀어 [로그아웃]을 화면 밖으로 내보내던 자리 — 여기서만 줄어든다. */}
+          <span className={styles.nicknameText}>{me ? me.user.nickname : "감독님"}</span>
+          {/* 놓친 공지를 다시 볼 곳 — 활성 공지가 0건이면 스스로 사라진다(NoticeCenter 주석 §2).
+              ⚠️ 자리를 **오른쪽(지갑 옆)이 아니라 닉네임 옆**으로 잡은 것은 취향이 아니라 실측이다:
+              오른쪽은 지갑 배지 2개 + [로그아웃] 으로 이미 꽉 차 있어 아이콘 하나를 얹으면 평범한
+              계정에서도 헤더가 **한 줄 더 접혔다**(390px 실측 69→113px). 왼쪽은 어느 표본에서도
+              +8px 로 끝난다(69→77 · 112→120). 계약 = p248b "진입점이 헤더를 한 줄 늘리지 않는다". */}
+          <NoticeCenter notices={notices.data} />
           {provider && (
             <span className={styles.providerBadge} data-testid="provider-badge">
               {providerMeta(provider).badge}

@@ -131,10 +131,38 @@ export function readDismissedMap(storage: Storage | null, now: number): Record<s
   return out;
 }
 
+/**
+ * 억제 저장소는 **React 상태 밖의 공유 가변 상태**다 — 쓰는 쪽(팝업)과 읽는 쪽(헤더의 안 읽음
+ * 점)이 서로 다른 컴포넌트다. 변경 신호가 없으면 팝업에서 공지를 닫아도 헤더의 점은 그대로
+ * 남는다(실제로 e2e 가 잡았다). 그래서 쓰기 함수가 **한 곳에서** 버전을 올리고, 읽는 쪽은
+ * `useSyncExternalStore` 로 구독한다.
+ *
+ * ⚠️ 새 쓰기 함수를 추가하면 `bumpSuppression()` 도 같이 불러라 — 안 부르면 그 경로만 조용히
+ * 화면과 어긋난다.
+ */
+let suppressionVersion = 0;
+const suppressionListeners = new Set<() => void>();
+
+function bumpSuppression(): void {
+  suppressionVersion += 1;
+  for (const listener of suppressionListeners) listener();
+}
+
+/** 현재 억제 상태의 버전(값 자체에 의미는 없다 — 바뀌었다는 사실만 쓴다). */
+export function noticeSuppressionVersion(): number {
+  return suppressionVersion;
+}
+
+export function subscribeNoticeSuppression(listener: () => void): () => void {
+  suppressionListeners.add(listener);
+  return () => void suppressionListeners.delete(listener);
+}
+
 export function markNoticeClosed(stores: NoticeStores, key: string): void {
   const next = readClosedKeys(stores.session);
   next.add(key);
   writeJson(stores.session, NOTICE_CLOSED_KEY, [...next]);
+  bumpSuppression();
 }
 
 /** 만료 시각을 기록하면서 이미 만료된 항목을 함께 정리한다. */
@@ -142,6 +170,7 @@ export function markNoticeDismissed(stores: NoticeStores, key: string, now: numb
   const expiresAt = now + NOTICE_DISMISS_WINDOW_MS;
   const next = { ...readDismissedMap(stores.local, now), [key]: expiresAt };
   writeJson(stores.local, NOTICE_DISMISSED_KEY, next);
+  bumpSuppression();
   return expiresAt;
 }
 
@@ -194,4 +223,34 @@ export function visibleNotices(
     const key = noticeSuppressionKey(n);
     return !closed.has(key) && dismissed[key] === undefined;
   });
+}
+
+/**
+ * 공지 목록(다시 보기) 화면이 쓰는 뷰.
+ *
+ * ⚠️ **억제는 팝업에만 적용된다.** `all` 은 서버가 준 활성 목록 **그대로**다 — [24시간 안 보기]를
+ * 누른 공지도 여기엔 남는다. 그게 이 화면의 존재 이유다: 팝업은 한 번 닫으면 끝이고, 24시간
+ * 억제 중에 노출 기간이 끝나면 **영영 못 본다**. "점검이 몇 시부터랬지?" 에 답할 곳이 필요하다.
+ *
+ * `unread` 는 **팝업이 아직 처리하지 않은 공지** = `visibleNotices` 와 정확히 같은 집합이다.
+ * 같은 함수를 재사용하는 것이 계약이다 — 목록 쪽에서 따로 세면 "점은 켜져 있는데 팝업은 안 뜬다"
+ * (혹은 그 반대)로 조용히 갈라진다.
+ */
+export interface NoticeCenterView {
+  /** 목록에 보여줄 전체 활성 공지(억제 무시, 서버 순서 그대로). */
+  all: Notice[];
+  /** 아직 팝업으로 처리하지 않은 공지 — 안 읽음 점의 근거. */
+  unread: Notice[];
+  /** `unread` 의 억제 키 집합 — 행 단위 안 읽음 표시용. */
+  unreadKeys: Set<string>;
+}
+
+export function noticeCenterView(
+  raw: unknown,
+  now: number,
+  stores: NoticeStores = defaultNoticeStores(),
+): NoticeCenterView {
+  const all = normalizeNotices(raw);
+  const unread = visibleNotices(raw, now, stores);
+  return { all, unread, unreadKeys: new Set(unread.map(noticeSuppressionKey)) };
 }
