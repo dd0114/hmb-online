@@ -16,7 +16,7 @@ import {
   resolveCardGeometry,
   type CardGeometry,
 } from "./full-art";
-import { GRADE_COLORS, GRADE_ORDER } from "./grades";
+import { GRADE_COLORS, GRADE_GLOW_COLORS, GRADE_ORDER } from "./grades";
 import type { CharactersManifest, PlaceholderManifest, UnitsManifest } from "./char-manifest";
 
 // 발행물 원본을 그대로 읽는다 — 손으로 만든 픽스처가 계약과 드리프트하는 걸 막는다.
@@ -223,13 +223,27 @@ describe("디자인 토큰", () => {
     expect(FULL_ART_SIZES.grid).toBeGreaterThanOrEqual(104);
   });
 
-  it("등급 링이 web 등급색을 그대로 쓴다 — LEGEND 는 프레임 금색과 다른 축이어야 한다", () => {
+  it("등급 링이 **광원색**(프레임 아트)을 쓴다 — 2026-07-29 hero 가 라벨색에서 뒤집었다", () => {
     for (const g of GRADE_ORDER) {
-      expect(gradeRingShadow(g)).toContain(GRADE_COLORS[g]);
+      expect(gradeRingShadow(g)).toContain(GRADE_GLOW_COLORS[g]);
     }
-    // D4 의 핵심: LEGEND 링이 프레임 에셋의 금색(#e4991c)과 달라야 GOLD 와 갈린다.
-    expect(GRADE_COLORS.LEGEND.toLowerCase()).not.toBe("#e4991c");
+    // 뒤집힌 자리가 LEGEND 하나임을 박는다 — 나머지가 같이 흔들리면 그건 다른 사고다.
+    expect(gradeRingShadow("LEGEND")).toContain(GRADE_GLOW_COLORS.LEGEND);
+    expect(gradeRingShadow("LEGEND")).not.toContain(GRADE_COLORS.LEGEND);
     expect(gradeRingShadow(null)).toBeUndefined();
+  });
+
+  it("대가를 명시한다: LEGEND·GOLD 는 색으로 안 갈리므로 **별 개수**가 구분축이다", () => {
+    /*
+     * 2026-07-29 hero 가 링을 금색으로 통일하면서 LEGEND·GOLD 의 **색 구분이 사라졌다**.
+     * 남은 즉시 구분축은 발행 프레임의 별 개수뿐이다 — 재발행으로 이게 같아지면 등급 오독이 된다.
+     * 그래서 상수가 아니라 **실제 발행물**을 본다.
+     */
+    // `stars` 는 프레임 전용 필드라 `AtlasSpec` 타입에 없다(격자 아틀라스와 한 맵에 산다) —
+    // 발행물 실물을 보는 게 목적이므로 여기서만 좁혀 읽는다.
+    const stars = (g: string) =>
+      (placeholderManifest.atlases[`frame-${g}`] as unknown as { stars?: number } | undefined)?.stars ?? 0;
+    expect(stars("LEGEND")).toBeGreaterThan(stars("GOLD"));
   });
 });
 

@@ -40,7 +40,7 @@ export interface FullArtCardProps {
   size?: FullArtSize | number;
   /** 하단 밴드에 이름/등급 텍스트를 얹을지. 카드 밖에 별도 캡션이 있으면 끈다. */
   showLabels?: boolean;
-  /** 등급색 링 1겹(D4). 기본 on — LEGEND/GOLD 프레임이 같은 금색이라 이게 등급 구분축이다. */
+  /** 등급 링 1겹(D4). 기본 on. 색은 **광원색**(프레임 아트) — 근거·대가는 `gradeRingShadow` 주석. */
   ring?: boolean;
   /**
    * `"card"`(기본) = 프레임 통짜 카드(테두리·별·하단 밴드 포함).

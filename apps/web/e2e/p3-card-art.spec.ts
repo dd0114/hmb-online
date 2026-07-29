@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mockAppConfig } from "./app-config-mock";
 import { readFileSync, mkdirSync } from "node:fs";
+import { revealAllAndSettle } from "./gacha-reveal-settle";
 
 /**
  * 카드 풀아트 배선 계약 (#187).
@@ -184,13 +185,15 @@ test.beforeAll(() => mkdirSync(SHOTS, { recursive: true }));
 
 // ── ① 큰 화면에 풀아트가 뜬다 ───────────────────────────────────────────────
 
+
+
 test("뽑기: 결과 카드가 **전부** 아트까지 해석된다 (hero 확정 A안 + #207 축 분기)", async ({ page }) => {
   await login(page);
   await mockApi(page);
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
   await expect(page.getByTestId("gacha-reveal")).toBeVisible();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
 
   await expect(cards(page)).toHaveCount(GACHA.results.length);
   // 공개된 카드는 전부 실제 아트까지 해석돼야 한다 — 프레임만 뜨면 매핑이 끊긴 것.
@@ -231,7 +234,7 @@ for (const [label, w, h] of [["데스크탑", 1280, 900], ["모바일 390", 390,
     await mockApi(page);
     await page.goto("/shop");
     await page.getByTestId("gacha-ten").click();
-    await page.getByTestId("gacha-reveal-all").click();
+    await revealAllAndSettle(page);
     await expect(cards(page).first()).toBeVisible();
 
     const box = await page.evaluate(() => {
@@ -267,17 +270,21 @@ for (const [label, w, h] of [["데스크탑", 1280, 900], ["모바일 390", 390,
 }
 
 /**
- * D4 — 등급색 링. 이 AC 는 "프레임 에셋의 LEGEND(#e4991c)와 GOLD(#d9a01e)가 육안 구분이 안 된다"는
- * 전제 위에 서 있어서, 링이 조용히 빠지면 등급 구분이 무너진다. 순수함수(`gradeRingShadow`)만
- * 단위테스트하면 **컴포넌트가 실제로 적용하는지는 아무도 안 본다** — 실제로 뮤테이션이 살아남았다.
+ * D4 — 등급 링이 **실제로 적용되는가**. 순수함수(`gradeRingShadow`)만 단위테스트하면
+ * **컴포넌트가 그걸 쓰는지는 아무도 안 본다** — 실제로 뮤테이션이 살아남은 적이 있다.
  * 그래서 계산된 스타일을 직접 읽는다.
+ *
+ * ⚠️ 색 출처가 **바뀌었다**(2026-07-29 hero): 등급 라벨색 → **광원색**(프레임 아트).
+ * 원래 이 AC 는 "LEGEND 링이 프레임 금색과 달라야 GOLD 와 갈린다"를 지켰는데, hero 가 카드
+ * 안팎 색 통일을 택하면서 그 대가(색으로는 LEGEND·GOLD 가 안 갈린다)를 받아들였다.
+ * 자세한 근거·남은 구분축은 `full-art.ts` 의 `gradeRingShadow` 주석.
  */
-test("등급색 링(D4)이 카드에 실제로 적용된다 — 등급별로 다른 색", async ({ page }) => {
+test("등급 링(D4)이 카드에 실제로 적용된다 — 등급별 광원색", async ({ page }) => {
   await login(page);
   await mockApi(page);
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
   await expect(cards(page).first()).toBeVisible();
 
   const seen = await cards(page).evaluateAll((els) =>
@@ -286,13 +293,14 @@ test("등급색 링(D4)이 카드에 실제로 적용된다 — 등급별로 다
       shadow: getComputedStyle(e).boxShadow,
     })),
   );
-  // web 등급색(common/grades.ts GRADE_COLORS)의 rgb 표현. 프레임 에셋 금색과 **다른 축**이어야 한다.
+  // `common/grades.ts` 의 **GRADE_GLOW_COLORS**(프레임 아트에 맞춘 광원색) rgb 표현.
+  // LEGEND 만 라벨색(보라 192,124,245)과 갈린다 — 프레임이 금색이라서.
   const RGB: Record<string, string> = {
     BRONZE: "rgb(176, 121, 63)",
     SILVER: "rgb(184, 192, 204)",
     GOLD: "rgb(242, 199, 68)",
     DIA: "rgb(90, 200, 232)",
-    LEGEND: "rgb(192, 124, 245)",
+    LEGEND: "rgb(255, 187, 34)",
   };
   for (const { grade, shadow } of seen) {
     expect(shadow, `${grade} 카드에 링이 없다`).not.toBe("none");
@@ -513,7 +521,7 @@ test("폴백: 캐릭터 매핑이 없으면 등급 프레임 + 아이콘 (깨진
   );
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
 
   await expect(cards(page).first()).toHaveAttribute("data-art-kind", "frame-only");
   expect(await brokenImages(page)).toEqual([]);
@@ -534,7 +542,7 @@ test("폴백: manifest 는 멀쩡한데 **이미지만** 죽어도 계단이 내
   );
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
   await expect(cards(page).first()).toBeVisible();
 
   // 계단이 내려가야 한다: 이미지가 죽었으니 더 이상 full-art 가 아니다.
@@ -558,7 +566,7 @@ test("폴백: /chars 가 통째로 없어도 화면이 산다 (CSS 폴백, 깨�
   await page.route((url) => url.pathname.startsWith("/chars/"), (route) => route.abort());
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
 
   await expect(cards(page)).toHaveCount(GACHA.results.length);
   const kinds = await cards(page).evaluateAll((els) => els.map((e) => e.getAttribute("data-art-kind")));
@@ -577,7 +585,7 @@ test("등급↔프레임 정합: 카드가 자기 등급 프레임을 쓴다 (5�
   await mockApi(page);
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
   await expect(cards(page).first()).toBeVisible();
 
   const pairs = await cards(page).evaluateAll((els) =>
@@ -612,7 +620,7 @@ test("모바일 390: 뽑기·도감 어디서도 가로 스크롤이 생기지 �
 
   await page.goto("/shop");
   await page.getByTestId("gacha-ten").click();
-  await page.getByTestId("gacha-reveal-all").click();
+  await revealAllAndSettle(page);
   await expect(cards(page).first()).toBeVisible();
   const shop = await horizontalOverflow(page);
   expect(shop.sw, `뽑기 가로 오버플로 (${shop.sw} > ${shop.cw})`).toBeLessThanOrEqual(shop.cw);

@@ -34,7 +34,7 @@
  */
 import { assetUrl, characterCardUrl, frameUrl, unitCard } from "./char-manifest";
 import type { CharRef, CharactersManifest, PlaceholderManifest, UnitsManifest } from "./char-manifest";
-import { GRADE_COLORS, type Grade } from "./grades";
+import { GRADE_GLOW_COLORS, type Grade } from "./grades";
 
 // ── ① 카드 규격 ────────────────────────────────────────────────────────────
 
@@ -234,15 +234,24 @@ export const FULL_ART_DESIGN = {
 } as const;
 
 /**
- * D4 — **등급색 링 1겹**(hero 위임 판단, 2026-07-26).
+ * D4 — **등급 링 1겹**. 색은 **광원색**(`GRADE_GLOW_COLORS` = 프레임 아트에 맞춘 값)을 쓴다.
  *
- * 왜: 프레임 에셋의 `LEGEND #e4991c` 와 `GOLD #d9a01e` 는 육안 구분이 안 돼 **별 개수로만**
- * 갈린다. web `GRADE_COLORS` 는 DIA·SILVER·BRONZE 가 프레임과 이미 일치하고 **LEGEND(보라)
- * 한 자리만 어긋난다**. 카드 **바깥**에 등급색을 한 겹 두르면 LEGEND 가 확실히 갈리고,
- * 나머지 등급은 프레임 색을 보강할 뿐이라 충돌이 없다. **에셋은 안 건드린다.**
+ * ⚠️ **여기 한 번 뒤집혔다. 되돌리기 전에 이 문단을 읽어라.**
+ *
+ * 원래(2026-07-26, #187 D4)는 `GRADE_COLORS`(등급 **라벨**색)를 썼고, 목적이 정반대였다:
+ * 프레임 에셋의 LEGEND·GOLD 가 둘 다 금색이라 육안 구분이 안 되니, **보라 링으로 LEGEND 를
+ * 갈라 보이게** 하려는 것이었다.
+ *
+ * 2026-07-29 hero 가 뒤집었다 — 금 프레임에 보라 링·후광이 얹히는 게 **카드 안팎이 싸우는**
+ * 것으로 보였고, 통일을 택했다. 대가는 명시적이다: **LEGEND 와 GOLD 를 색으로는 더 이상
+ * 즉시 구분할 수 없다.** 남은 구분축은 ①별 개수(6 vs 4) ②하단 밴드의 등급 라벨 텍스트
+ * ③링 색조의 미세차(LEGEND `#ffbb22` 주황기 vs GOLD `#f2c744` 노랑기)다.
+ *
+ * 즉 이 함수의 출처(`GRADE_GLOW_COLORS` ↔ `GRADE_COLORS`)는 **취향이 아니라 결정**이다.
+ * 바꾸려면 위 대가를 다시 지불할지부터 정해라.
  */
 export function gradeRingShadow(grade: Grade | null | undefined): string | undefined {
-  const c = grade ? GRADE_COLORS[grade] : undefined;
+  const c = grade ? GRADE_GLOW_COLORS[grade] : undefined;
   if (!c) return undefined;
   return `0 0 0 2px ${c}, 0 0 16px ${c}8c`;
 }

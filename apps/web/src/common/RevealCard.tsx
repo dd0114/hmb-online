@@ -1,4 +1,4 @@
-import { GRADE_LABELS, isHighGrade, type Grade } from "./grades";
+import { GRADE_GLOW_COLORS, GRADE_LABELS, isHighGrade, type Grade } from "./grades";
 import { FullArtCard } from "./FullArtCard";
 import { fullArtWidth, type FullArtSize } from "./full-art";
 import styles from "./RevealCard.module.css";
@@ -45,8 +45,10 @@ export function RevealCard({
       className={[styles.card, revealed ? styles.flipped : "", revealed && high ? styles.high : ""]
         .filter(Boolean)
         .join(" ")}
-      /* 셀 폭 = 카드 폭. 토큰이 유일한 출처라 CSS 에 픽셀을 또 적지 않는다. */
-      style={{ width: fullArtWidth(size) }}
+      /* 셀 폭 = 카드 폭. 토큰이 유일한 출처라 CSS 에 픽셀을 또 적지 않는다.
+         후광색도 여기서 준다 — 출처는 `GRADE_GLOW_COLORS`(**프레임 아트에 맞춘 광원색**, 등급
+         라벨색과 다른 축이다). CSS 에 상수를 또 적으면 프레임 재발행 때 조용히 어긋난다. */
+      style={{ width: fullArtWidth(size), ["--card-glow" as string]: GRADE_GLOW_COLORS[grade] }}
       data-testid={testId}
       data-revealed={revealed ? "true" : "false"}
       aria-label={
