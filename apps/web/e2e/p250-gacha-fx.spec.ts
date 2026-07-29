@@ -47,6 +47,21 @@ const GACHA = {
   wallet: { points: 500 },
 };
 
+/**
+ * **순서 검사 전용** 응답 — 고레어가 **앞**, 비고레어가 뒤.
+ *
+ * ⚠️ 기본 `GACHA` 로는 이 검사가 **공허하다**: 거기선 고레어가 뒤쪽에 몰려 있어(스태거·대조군 검사
+ * 목적) 게이트가 없어도 개봉 순서가 우연히 맞는다 — 실제로 게이트를 지우는 변이가 통과했다.
+ * 순서가 깨지려면 **앞 카드가 오래 걸리고 뒤 카드가 즉시**여야 한다.
+ */
+const GACHA_ORDER = {
+  results: [...pick("DIA", 1), ...pick("BRONZE", 2), ...pick("LEGEND", 1), ...pick("SILVER", 1)].map((p) => ({
+    player: { id: p.id, name: p.name, position: p.position, grade: p.grade },
+    isNew: false,
+  })),
+  wallet: { points: 500 },
+};
+
 /** 고레어가 **하나도 없는** 대조군 응답 — 연출이 붙지 않아야 한다. */
 const GACHA_LOW = {
   results: [...pick("BRONZE", 3), ...pick("GOLD", 2)].map((p) => ({
@@ -151,6 +166,38 @@ test.describe("#250 고레어 이펙트 — 발동 계약", () => {
       }).length,
     );
     expect(visible, "B(surge) 구간에 그려지는 이펙트 요소가 0개다 — 애니메이션이 재시작되지 않았다").toBeGreaterThan(0);
+  });
+
+  test("③-c 순차 공개는 **인덱스 순서대로** 열린다 — 연타해도 뒤 카드가 먼저 열리지 않는다", async ({ page }) => {
+    /*
+     * hero 확정(2026-07-29): 어느 카드를 눌러도 **다음 카드**가 열리되, **이펙트는 순서에 맞아야** 한다.
+     *
+     * ⚠️ 게이트가 없으면 연타 시 순서가 **실제로 뒤집힌다** — 앞 카드가 고레어라 2.2초 빛을 모으는
+     * 동안 뒤의 비고레어는 지연 0 이라 먼저 열려 버린다(실측 개봉 순서 `1,2,4,0,3`). 결과가
+     * 뒤에서부터 튀어나오는 것처럼 보인다. 그래서 순차 경로는 **앞 카드가 열린 뒤에** 시작한다.
+     */
+    await openPull(page, GACHA_ORDER);
+    // 개봉 순서를 페이지 안에서 기록한다(밖에서 폴링하면 즉시 열리는 카드들을 놓친다).
+    await page.evaluate(() => {
+      const w = window as unknown as { __order?: string[] };
+      w.__order = [];
+      document.querySelectorAll('[data-testid^="gacha-card-"]').forEach((el) => {
+        new MutationObserver(() => {
+          const id = el.getAttribute("data-testid") ?? "?";
+          if (el.getAttribute("data-revealed") === "true" && !w.__order!.includes(id)) w.__order!.push(id);
+        }).observe(el, { attributes: true, attributeFilter: ["data-revealed"] });
+      });
+    });
+
+    // 연타 — 연출이 도는 중에도 계속 누른다(유저가 실제로 하는 짓).
+    for (let i = 0; i < GACHA_ORDER.results.length; i += 1) {
+      await page.getByTestId("gacha-reveal-next").click({ timeout: 3_000 }).catch(() => {});
+    }
+    await expect(page.getByTestId("gacha-close")).toBeVisible({ timeout: 25_000 });
+
+    const order = await page.evaluate(() => (window as unknown as { __order: string[] }).__order);
+    const expected = GACHA_ORDER.results.map((_, i) => `gacha-card-${i}`);
+    expect(order, `개봉 순서가 인덱스 순이 아니다: ${order}`).toEqual(expected);
   });
 
   test("④ 일괄 공개: 고레어가 섞여 있으면 발동하고, **클라이맥스(레전드)가 마지막**에 온다", async ({ page }) => {

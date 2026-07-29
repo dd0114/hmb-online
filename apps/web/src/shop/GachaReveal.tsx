@@ -3,7 +3,7 @@ import type { GachaResponse } from "../api/hooks";
 import { Modal } from "../common/Modal";
 import { FinaleFx, useFxTimings } from "../common/GachaFx";
 import { RevealFxCard } from "../common/RevealFxCard";
-import { FX_CONFIG, batchFxPlan, fxTierOf, type FxPhase } from "../common/gacha-fx";
+import { FX_CONFIG, batchFxPlan, fxRevealed, fxTierOf, type FxPhase } from "../common/gacha-fx";
 import type { Grade } from "../common/grades";
 import {
   initialReveal,
@@ -54,6 +54,15 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
    * `useRevealFx` 에서 고쳤지만, **집계 쪽도 중복에 무감각해야** 같은 사고가 다른 경로로 재발하지 않는다.
    */
   const [settled, setSettled] = useState<Set<number>>(() => new Set());
+  /**
+   * **앞면이 뜬** 카드의 인덱스(연출 종료가 아니라 개봉 시점). 순차 공개의 순서 게이트가 이걸 본다.
+   */
+  const [flipped, setFlipped] = useState<Set<number>>(() => new Set());
+  /**
+   * 일괄 공개를 눌렀는가. 두 경로는 **순서 규칙이 다르다** — 순차는 인덱스 순, 일괄은 등급 순
+   * (낮은 등급 → 높은 등급, 클라이맥스가 마지막). 그래서 게이트를 경로별로 갈라야 한다.
+   */
+  const [batch, setBatch] = useState(false);
 
   const triggeredAll = isAllRevealed(state);
   const done = triggeredAll && settled.size >= state.total;
@@ -65,6 +74,7 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
    * 이미 공개된 카드를 계획에 넣으면 그 자리만큼 스태거가 비어 **아무 일도 안 일어나는 공백**이 생긴다.
    */
   const handleRevealAll = useCallback(() => {
+    setBatch(true);
     // ⚠️ 계획은 **updater 밖에서** 세운다. `setState(s => …)` 안에서 다른 setState 를 부르면
     // updater 가 순수하지 않아 React 가 재실행할 때 부수효과가 중복된다(지연 표가 어긋난다).
     const pending = response.results
@@ -84,11 +94,34 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
   const onCardPhase = useCallback(
     (index: number, grade: Grade, phase: FxPhase) => {
       if (phase === "finale") setFinale({ runId: index + 1, grade });
+      if (fxRevealed(phase)) {
+        setFlipped((prev) => (prev.has(index) ? prev : new Set(prev).add(index)));
+      }
       if (phase === "done") {
         setSettled((prev) => (prev.has(index) ? prev : new Set(prev).add(index)));
       }
     },
     [],
+  );
+
+  /**
+   * **연출 시작 게이트 — 순차 공개는 앞 카드가 열린 뒤에 시작한다** (hero 확정 2026-07-29:
+   * "어느 카드를 눌러도 다음 카드가 열리되, **이펙트는 순서에 맞게**").
+   *
+   * ⚠️ 이게 없으면 연타 시 순서가 **실제로 뒤집힌다**: 0번이 다이아라 2.2초 빛을 모으는 동안
+   * 1·2번 브론즈는 지연 0 이라 먼저 열려 버린다(실측 개봉 순서 `1,2,4,0,3`). 결과가 뒤에서부터
+   * 튀어나오는 것처럼 보인다.
+   *
+   * 일괄 공개는 **일부러** 인덱스 순이 아니다(등급 순 스태거, 클라이맥스가 마지막) — 그래서 게이트를
+   * 적용하지 않는다. 두 경로에 같은 규칙을 씌우면 hero 가 고른 일괄 연출이 깨진다.
+   */
+  const startable = useCallback(
+    (index: number) => {
+      if (!isCardRevealed(state, index)) return false;
+      if (batch) return true;
+      return index === 0 || flipped.has(index - 1);
+    },
+    [state, batch, flipped],
   );
 
   /** 레전드가 하나라도 있으면 피날레 길이만큼 시트가 더 살아 있어야 한다. */
@@ -121,7 +154,7 @@ export function GachaReveal({ response, onClose }: GachaRevealProps) {
               name={item.player.name}
               grade={item.player.grade as Grade}
               position={item.player.position}
-              triggered={isCardRevealed(state, i)}
+              triggered={startable(i)}
               startDelay={delays[i] ?? 0}
               timings={timings}
               reduced={reduced}
