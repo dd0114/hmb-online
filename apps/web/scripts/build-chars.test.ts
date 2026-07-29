@@ -87,10 +87,10 @@ describe("소스 스탬프", () => {
   it("네 축을 전부 담는다(유닛 축 = #207 W3-B 발행)", () => {
     expect(source.base.playerCount).toBe(172);
     expect(source.chars.count).toBe(14);
-    // 3차 입고(2026-07-29): 유닛 6 → 8(경니시우스 + 석다이크).
-    expect(source.units?.count).toBe(8);
-    // 매핑은 v2 — 카탈로그 180 중 178명(미입고 LEGEND 2명은 의도적 미매핑).
-    expect(source.mapping?.playerCount).toBe(178);
+    // 3차 입고(2026-07-29): 유닛 6 → 8(경니시우스 + 석다이크). #256 오시야스로 8 → 9.
+    expect(source.units?.count).toBe(9);
+    // 매핑은 v2 — 카탈로그 182 중 180명(미입고 LEGEND 2명 P174·P178 은 의도적 미매핑).
+    expect(source.mapping?.playerCount).toBe(180);
     expect(source.sourceFiles).toBeGreaterThan(30);
   });
 

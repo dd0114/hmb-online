@@ -132,19 +132,19 @@ UNITS = [
         "face": {"src": LEGEND_DIR / "경니시우스-아이콘.png"},
     },
     {
-        # ⚠️ `forPlayer` 없음 — **카탈로그에 대응 선수가 없다.** hero 원안(#207 AC1)의 석다이크(판
-        #    다이크·DF)는 U-D4 확정에서 석신(야신·GK)으로 대체돼 P번호를 못 받았다. 아트는 오렌지
-        #    킷 필드플레이어라 GK 인 석신에 붙일 수 없다. 채번은 data 축 결정이라 여기서 안 한다
-        #    (발행측 힌트일 뿐 권위는 player-chars — manifest mappingHint). 상세 = 세션 보고.
-        #
-        #    `pendingCatalog` = **"아직 매핑될 선수가 없다"를 발행물에 명시**하는 선언이다.
-        #    매핑측 계약 "놀고 있는 유닛 0"(chars-map.test.ts)은 이 플래그가 붙은 유닛만 면제한다 —
-        #    침묵으로 빠져나가는 게 아니라 **의도를 적고 나머지 누락은 계속 잡힌다**(data 측
-        #    UNMAPPED_LEGENDS 와 같은 형상). 채번이 끝나면 이 줄을 지우고 forPlayer 를 다는 것이
-        #    해제 신호다.
-        "id": "seokdijk", "name": "석다이크", "position": "DF", "pendingCatalog": True,
+        # 3차 입고 시점엔 `pendingCatalog: True`(붙일 선수가 카탈로그에 없음)였다. #256 hero 결정
+        # A-1 로 **P181 채번**되며 해제 — 선언이 사라진 게 곧 "채번 완료" 신호다(README §units).
+        "id": "seokdijk", "name": "석다이크", "position": "DF", "forPlayer": "P181",
         "card": {"src": LEGEND_DIR / "석다이크.png", "kind": "frameless-art"},
         "face": {"src": LEGEND_DIR / "석다이크-아이콘.png"},
+    },
+    # ── 4차 입고(2026-07-29) — 신규 LEGEND 1종 (#256) ─────────────────────────
+    {
+        # 단독 입고(1024×1536 카드 + 1024² 정면 초상) — 경니시우스·석다이크와 동일 규격이라 크롭 없음.
+        # 카탈로그 P182 와 **동시 채번**이라 pendingCatalog 를 거치지 않는다.
+        "id": "osiyas", "name": "오시야스", "position": "GK", "forPlayer": "P182",
+        "card": {"src": LEGEND_DIR / "오시야스-카드.png", "kind": "frameless-art"},
+        "face": {"src": LEGEND_DIR / "오시야스-아이콘.png"},
     },
 ]
 
@@ -320,7 +320,7 @@ def build() -> None:
             "불일치가 같이 사라진다). `cardKinds.complete` 선언은 남는다 — 발행측이 언제든 다시 "
             "실을 수 있고, 그게 소비측의 '프레임 두 겹 방지' 계약이다."
         ),
-        "source": "hero-imageRef-2026-07-29-rev3",
+        "source": "hero-imageRef-2026-07-29-rev4",
         "count": len(entries),
         # 소비측 분기 계약 — units[id].card.kind 로 갈린다.
         "cardKinds": {

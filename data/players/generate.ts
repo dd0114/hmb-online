@@ -8,13 +8,15 @@
  * 능력치 9종만 시드 RNG로 등급 밴드 내에서 결정론 파생한다(포지션 주스탯 +5, trait +6, 밴드 클램프).
  * ⚠️ 실명 사용 — 상용화 전 라이선스 해결 필수(백로그, data/CLAUDE.md·PRD-v2 D4 참조).
  *
- * 발행 축이 넷이다(발행 후 수정 금지 규칙 때문에 **덮어쓰지 않고 새 버전으로 쌓는다**):
+ * 발행 축이 다섯이다(발행 후 수정 금지 규칙 때문에 **덮어쓰지 않고 새 버전으로 쌓는다**):
  *   players.v2.json   = 172명 동결(원본)
  *   players.v2.1.json = 172명 동결 + personality
- *   players.v2.2.json = 전체 카탈로그(180) + personality + active (#207 U-D1/U-D4) — 동결
- *   players.v2.3.json = **v2.2 + 유닛명 정정 2건 + 신규 비활성 3건**(#207 U-D5/U-D6) — 현행 소비본
- * ROSTER 는 하나이고 v2/v2.1 은 FROZEN_ROSTER_COUNT 로 잘라 낸 앞부분이다 — 신규 유닛이 배열
- * 맨 끝에 append 되므로 그 슬라이스는 발행 당시와 바이트 동일하다(data.test.ts 가 디스크와 대조).
+ *   players.v2.2.json = 180명 동결 + personality + active (#207 U-D1/U-D4)
+ *   players.v2.3.json = 180명 동결 — v2.2 + 유닛명 정정 2건 + 신규 비활성 3건 (#207 U-D5/U-D6)
+ *   players.v2.4.json = **v2.3 + 신규 LEGEND 2종 append(182)** (#256 석다이크·오시야스) — 현행 소비본
+ * ROSTER 는 하나이고 과거 발행물은 전부 **슬라이스로 재현**한다 — v2/v2.1 은 FROZEN_ROSTER_COUNT(172),
+ * v2.2/v2.3 은 FROZEN_ROSTER_COUNT_V22(180) 경계다. 신규 유닛이 배열 맨 끝에 append 되므로 그
+ * 슬라이스는 발행 당시와 바이트 동일하다(data.test.ts 가 디스크와 대조).
  *
  * 순서: 이 파일을 import 만 해도(부수효과 없음) `generateAll()`을 호출해 세 산출물을 순수 계산할
  * 수 있다. 파일 쓰기는 CLI로 직접 실행했을 때만 일어난다(맨 아래 entrypoint 가드).
@@ -117,6 +119,58 @@ export const INACTIVE_PLAYER_IDS_V23: readonly string[] = [
   ...V23_INACTIVE_NEW_UNIT_IDS,
 ];
 
+/**
+ * players 카탈로그 v2.4 (#256, hero 확정 2026-07-29). v2.3 위에 **행 append** 증분:
+ *   신규 LEGEND 2종 — P181 석다이크(DF · 판다이크) · P182 오시야스(GK · 카시야스).
+ * 스키마 무변경. v2/v2.1/v2.2/v2.3 은 **전부 동결**(발행 후 수정 금지) — 아래
+ * `FROZEN_ROSTER_COUNT_V22` 로 잘라 낸 앞부분이 그 발행물들을 바이트 동일하게 재현한다.
+ *
+ * **왜 신규 채번인가**: 석다이크 아트(#207 3차 입고)는 카탈로그에 붙일 선수가 없어
+ * `pendingCatalog` 로 놀고 있었고, 획득 가능 LEGEND 에 **DF 0 · GK 0** 갭이 있었다(석신은
+ * 비활성). 이 2종이 그 갭을 메운다 — 단, **활성화 시점에** 닫힌다(아래 비활성 발행 참조).
+ */
+export const PLAYERS_V24_VERSION = "v2.4";
+
+/**
+ * players.v2.2 / v2.3 이 발행된 시점의 로스터 크기(#207 신규 8종까지 = 180).
+ *
+ * `FROZEN_ROSTER_COUNT`(=172, v2/v2.1 경계)와 **같은 장치를 한 겹 더** 둔 것이다. v2.2 빌더가
+ * 전체 ROSTER 를 받고 있었기 때문에 #256 이 2종을 append 하는 순간 이미 발행된
+ * `players.v2.2.json`(180행)과 어긋났다 — v2/v2.1 이 슬라이스 덕에 멀쩡했던 것과 대조된다.
+ * 그래서 v2.2/v2.3 도 같은 방식으로 경계를 코드에 못 박고, 신규 행은 v2.4 레이어가 얹는다.
+ *
+ * ⚠️ **RNG 안전**: `generateAll()` 은 `createRng(SEED)` 한 스트림을 `ROSTER.forEach` 로 순차
+ * 소비하므로 **맨 끝 append** 는 앞 180명의 소비 순서를 건드리지 않는다(roster.ts §#207 블록
+ * 주석과 같은 근거). 슬라이스는 그 뒤의 순수 변환이다.
+ */
+export const FROZEN_ROSTER_COUNT_V22 = 180;
+
+/**
+ * #256 — v2.4 에서 새로 채번된 유닛(로스터 맨 끝 append 순서와 동일해야 한다).
+ * 빌더가 이 목록과 실제 append 분을 대조해 fail-closed 검증한다 — 로스터에 다른 것이 끼거나
+ * 순서가 어긋나면 조용히 통과하지 않는다.
+ */
+export const V24_NEW_UNIT_IDS: readonly string[] = [
+  "P181", // 석다이크 (DF ← Virgil van Dijk)
+  "P182", // 오시야스 (GK ← Iker Casillas)
+];
+
+/**
+ * #256 — 신규 2종은 **`active:false` 로 발행**한다. 아트 머지 → 배포 → **어드민 카탈로그 API
+ * 토글**이 활성화 순서이고(#207 U-D5·gen-chars ACTIVATION_PENDING 와 동일 운영 모델), 시드는
+ * 런타임 상태가 아니다.
+ *
+ * ⚠️ 따라서 **획득 가능 LEGEND 의 DF 0 · GK 0 갭은 채번만으로는 닫히지 않는다** —
+ * 어드민이 켜는 시점에 닫힌다. 서버 테스트가 이 상태를 그대로 박제한다.
+ */
+export const V24_INACTIVE_NEW_UNIT_IDS: readonly string[] = [...V24_NEW_UNIT_IDS];
+
+/** v2.4 비활성 전체 = v2.3 의 17종 + 신규 2종 = 19. */
+export const INACTIVE_PLAYER_IDS_V24: readonly string[] = [
+  ...INACTIVE_PLAYER_IDS_V23,
+  ...V24_INACTIVE_NEW_UNIT_IDS,
+];
+
 /** league 시드 데이터 버전(봇 클럽명·성향 프리셋·순위 보상). */
 export const LEAGUE_VERSION = "v1";
 
@@ -212,6 +266,12 @@ export interface PlayerSeedV22 extends PlayerSeedV21 {
  * 별칭으로 두는 이유 = 소비자 타입이 버전 축을 이름으로 부를 수 있게(계약 변경 아님).
  */
 export type PlayerSeedV23 = PlayerSeedV22;
+
+/**
+ * players.v2.4 = v2.3 과 **스키마 동일**(신설 필드 0). 바뀌는 것은 **행 수**뿐 —
+ * 신규 LEGEND 2종(P181·P182)이 뒤에 붙는다(#256). v2.3 별칭과 같은 이유로 이름만 둔다.
+ */
+export type PlayerSeedV24 = PlayerSeedV23;
 
 const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "technical",
@@ -673,8 +733,10 @@ export interface GeneratedData {
   playersV21: PlayerSeedV21[];
   /** players.v2.2.json — 전체 카탈로그 + personality + active (#207). */
   playersV22: PlayerSeedV22[];
-  /** players.v2.3.json — v2.2 + 유닛명 정정 2건 + 신규 비활성 3건 (#207 U-D5/U-D6). 현행 소비본. */
+  /** players.v2.3.json — v2.2 + 유닛명 정정 2건 + 신규 비활성 3건 (#207 U-D5/U-D6). 동결. */
   playersV23: PlayerSeedV23[];
+  /** players.v2.4.json — v2.3 + 신규 LEGEND 2종 append (#256 석다이크·오시야스). 현행 소비본. */
+  playersV24: PlayerSeedV24[];
   economy: EconomySeed;
   bots: BotSeed[];
   /** league.v1.json — 봇 클럽명·성향 프리셋·순위 보상. */
@@ -765,6 +827,73 @@ function buildPlayersV23(playersV22: PlayerSeedV22[]): PlayerSeedV23[] {
   // 정정 이름이 기존 유닛명과 충돌하면(도감 중복) 즉시 터진다.
   if (new Set(out.map((p) => p.name)).size !== out.length) {
     throw new Error("v2.3 유닛명 충돌 — V23_NAME_CORRECTIONS 가 기존 이름과 겹친다");
+  }
+  return out;
+}
+
+/**
+ * players.v2.3 위에 v2.4 를 만든다 (#256). **v2.2/v2.3 빌더는 건드리지 않는다** — 그 발행물들이
+ * 그대로 재현돼야 하기 때문(v2.3 이 v2.2 를 대하는 방식과 동일).
+ *
+ * 하는 일은 하나뿐이다: **v2.3 행 180개를 그대로 두고 신규 채번분을 뒤에 append**.
+ * `allV21` 은 전체 로스터(182)를 태운 v2.1 산출이고, v2.3 에 없는 id 만 골라 붙인다.
+ *
+ * fail-closed 로 보는 것(조용한 사고를 전부 터뜨린다):
+ *   ① append 분의 id 집합·**순서**가 `V24_NEW_UNIT_IDS` 와 정확히 일치 — 로스터 중간 삽입이면
+ *      여기서 터진다(맨 끝 append 규율의 실행 가능한 가드).
+ *   ② 신규분이 동결 경계(`FROZEN_ROSTER_COUNT_V22`) 밖 — 기존 행을 신규로 착각하지 않는다.
+ *   ③ 신규분 등급이 LEGEND — 등급이 바뀌면 비활성/갭 서술이 통째로 틀어진다.
+ *   ④ v2.3 구간의 행이 **바이트 동일**(id/name/grade/active 무변경) — 레이어가 과거를 덮지 않는다.
+ *   ⑤ 유닛명 전역 유일 — 도감 중복 방지(v2.3 과 같은 계약).
+ */
+function buildPlayersV24(
+  playersV23: PlayerSeedV23[],
+  allV21: PlayerSeedV21[],
+): PlayerSeedV24[] {
+  if (playersV23.length !== FROZEN_ROSTER_COUNT_V22) {
+    throw new Error(
+      `v2.3 발행 경계가 ${FROZEN_ROSTER_COUNT_V22} 이어야 하는데 ${playersV23.length} 이다 — ` +
+        `FROZEN_ROSTER_COUNT_V22 재확정 필요(#256)`,
+    );
+  }
+
+  const known = new Set(playersV23.map((p) => p.id));
+  const appended = allV21.filter((p) => !known.has(p.id));
+
+  const gotIds = appended.map((p) => p.id).join(",");
+  const wantIds = V24_NEW_UNIT_IDS.join(",");
+  if (gotIds !== wantIds) {
+    throw new Error(
+      `v2.4 신규 채번분이 [${wantIds}] 이어야 하는데 [${gotIds}] 이다 — ` +
+        `ROSTER 는 **맨 끝에만 append** 한다(중간 삽입이면 앞 ${FROZEN_ROSTER_COUNT_V22}명 스탯이 밀린다).`,
+    );
+  }
+  for (const p of appended) {
+    if (Number(p.id.slice(1)) <= FROZEN_ROSTER_COUNT_V22) {
+      throw new Error(`${p.id} 는 동결 구간(≤P${FROZEN_ROSTER_COUNT_V22}) 유닛이다 — v2.4 신규 채번 대상이 아니다`);
+    }
+    if (p.grade !== "LEGEND") {
+      throw new Error(`${p.id}(${p.name}) 는 LEGEND 가 아니다(${p.grade}) — #256 신규 2종 재확정 필요`);
+    }
+  }
+
+  const inactive = new Set(INACTIVE_PLAYER_IDS_V24);
+  const out: PlayerSeedV24[] = [
+    // v2.3 구간: active 를 v2.4 목록으로 재계산하지만 v2.3 ⊂ v2.4 라 값은 그대로다(계약을 코드로).
+    ...playersV23.map((p) => ({ ...p, active: !inactive.has(p.id) })),
+    ...appended.map((p) => ({ ...p, active: !inactive.has(p.id) })),
+  ];
+
+  for (let i = 0; i < playersV23.length; i++) {
+    const before = playersV23[i];
+    const after = out[i];
+    if (before.id !== after.id || before.name !== after.name || before.active !== after.active) {
+      throw new Error(`v2.4 레이어가 v2.3 행을 덮었다: ${before.id} — append 외의 변경은 금지(#256)`);
+    }
+  }
+
+  if (new Set(out.map((p) => p.name)).size !== out.length) {
+    throw new Error("v2.4 유닛명 충돌 — 신규 채번명이 기존 이름과 겹친다");
   }
   return out;
 }
@@ -1318,12 +1447,14 @@ export function generateAll(): GeneratedData {
     },
   ];
 
-  // 발행물 분기: v2/v2.1 은 동결 경계(FROZEN_ROSTER_COUNT)에서 자른 스냅샷, v2.2 는 전체 카탈로그.
-  // 신규분이 ROSTER 맨 끝에 append 되므로 앞부분 슬라이스는 발행 당시와 바이트 동일하다.
+  // 발행물 분기: **동결 발행물은 전부 슬라이스로 재현**한다(신규분이 ROSTER 맨 끝에 append 되므로
+  // 앞부분 슬라이스는 발행 당시와 바이트 동일). v2/v2.1 = 172 경계, v2.2/v2.3 = 180 경계(#256),
+  // 그 위에 v2.4 가 신규 행을 얹는다.
   const playersV2 = players.slice(0, FROZEN_ROSTER_COUNT);
   const playersV21 = buildPlayersV21(playersV2);
-  const playersV22 = buildPlayersV22(buildPlayersV21(players));
+  const playersV22 = buildPlayersV22(buildPlayersV21(players.slice(0, FROZEN_ROSTER_COUNT_V22)));
   const playersV23 = buildPlayersV23(playersV22);
+  const playersV24 = buildPlayersV24(playersV23, buildPlayersV21(players));
   const league = buildLeague();
 
   // economy v3(#209) = v2 그대로 + starterTop 블록. v2 객체는 건드리지 않는다(발행물 불변).
@@ -1334,7 +1465,8 @@ export function generateAll(): GeneratedData {
   };
 
   return {
-    players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league,
+    players, playersV2, playersV21, playersV22, playersV23, playersV24,
+    economy, economyV3, bots, league,
     leagueV2: buildLeagueV2(league),
     botsV3,
   };
@@ -1351,8 +1483,8 @@ const isMain = (() => {
 
 if (isMain) {
   const {
-    players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league,
-    leagueV2, botsV3,
+    players, playersV2, playersV21, playersV22, playersV23, playersV24,
+    economy, economyV3, bots, league, leagueV2, botsV3,
   } = generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
   writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(playersV2, null, 2) + "\n");
@@ -1367,6 +1499,10 @@ if (isMain) {
   writeFileSync(
     join(here, `players.${PLAYERS_V23_VERSION}.json`),
     JSON.stringify(playersV23, null, 2) + "\n",
+  );
+  writeFileSync(
+    join(here, `players.${PLAYERS_V24_VERSION}.json`),
+    JSON.stringify(playersV24, null, 2) + "\n",
   );
   writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
   writeFileSync(
@@ -1383,7 +1519,8 @@ if (isMain) {
   // eslint-disable-next-line no-console
   console.log(
     `generated ${players.length} players (v2/v2.1 frozen ${playersV2.length}, v2.2 ${playersV22.length} ` +
-      `with active, v2.3 ${playersV23.length} active=${playersV23.filter((p) => p.active).length}), ` +
+      `with active, v2.3 ${playersV23.length}, v2.4 ${playersV24.length} ` +
+      `active=${playersV24.filter((p) => p.active).length}), ` +
       `economy.${DATA_VERSION}.json + economy.${ECONOMY_V3_VERSION}.json(starterTop), ` +
       `${bots.length} bots, league.${LEAGUE_VERSION}.json -> data/players/`,
   );
