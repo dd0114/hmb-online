@@ -47,7 +47,16 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 // 유저별 데이터가 0인 전체 브로드캐스트이고, 무엇보다 **점검 공지는 로그인이
                 // 안 될 때 가장 필요하다**. 여기에 401 을 두면 정확히 그 순간에 안 보인다.
                 // 계약 = NoticeActiveApiTest.activeNoticesAreReachableWithoutAuth(되돌리면 깨진다).
-                .excludePathPatterns("/api/auth/**", "/api/config", "/api/notices/active")
+                // /api/notices/{id}(#297) = 공유 딥링크가 읽는 단건. **공유 링크는 정의상 미로그인
+                // 상태에서 열린다** — 카톡으로 받은 링크가 로그인 벽부터 보여 주면 공지는 도달하지 않는다.
+                // 내용은 피드와 같은 전체 브로드캐스트이고, 아직 공개 전(SCHEDULED)·삭제된 공지는
+                // 인증과 무관하게 404 로 숨긴다(존재 누출 차단은 컨트롤러 결정표가 한다).
+                // 계약 = NoticeByIdApiTest.reachableWithoutAuth.
+                // ⚠️ 두 패턴은 겹친다({id} 는 'active' 세그먼트도 매칭한다). 목록을 줄이지 마라 —
+                //    공개 대상을 **엔드포인트 단위로 열거**하는 것이 이 목록의 존재 이유다.
+                //    /api/notices/** 로 뭉치면 나중에 유저 스코프 하위경로가 생겨도 조용히 공개된다.
+                .excludePathPatterns(
+                        "/api/auth/**", "/api/config", "/api/notices/active", "/api/notices/{id}")
                 .order(0);
         registry.addInterceptor(adminInterceptor)
                 .addPathPatterns(AdminInterceptor.ADMIN_PATH_PATTERN)
