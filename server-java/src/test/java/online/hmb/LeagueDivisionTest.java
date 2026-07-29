@@ -392,8 +392,9 @@ class LeagueDivisionTest extends MatchTestBase {
         // ⚠️ 여기서 행을 직접 INSERT 하면 안 된다 — 그건 SQL 의미론을 확인하는 것이지 제품 동작이
         // 아니다(실제로 그렇게 썼다가 독립검증에서 "변이체가 살아남는다"고 잡혔다).
         // **실제 원정 매치 생성 API 를 태워** 생긴 행을 본다.
-        setupUserWithRealDeck("ghost-def");
-        setupUserWithRealDeck("ghost-def2");
+        // 수비자는 **한 판이라도 끝낸** 유저여야 상대 풀에 든다(#296) — 덱만으론 후보가 되지 않는다.
+        setupOpponentWithDeck("ghost-def");
+        setupOpponentWithDeck("ghost-def2");
         String attacker = setupUserWithRealDeck("ghost-atk");
 
         ResponseEntity<Map> cand = authGet("/api/away/candidates", attacker, Map.class);

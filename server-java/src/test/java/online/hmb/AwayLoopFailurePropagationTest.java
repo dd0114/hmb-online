@@ -47,9 +47,9 @@ class AwayLoopFailurePropagationTest extends MatchTestBase {
 
     @Test
     void ownMatchCreationFailureIsNotSwallowedAsNoOpponent() {
-        setupUserWithDeck("loop_def1");
-        setupUserWithDeck("loop_def2");
-        setupUserWithDeck("loop_def3");
+        setupOpponentWithDeck("loop_def1");
+        setupOpponentWithDeck("loop_def2");
+        setupOpponentWithDeck("loop_def3");
         setupUserWithDeck("loop_atk");
         String attackerId = jdbc.sql("SELECT id FROM users WHERE nickname = 'loop_atk'")
                 .query(String.class).single();

@@ -81,6 +81,8 @@ public class AwayService {
     private final int streakMaxBonus;
     private final String rewardMode;
     private final boolean defenderRewardOnLoss;
+    /** 상대 후보 자격(#296) — 한 판이라도 끝낸 유저만 고스트로 선다. */
+    private final online.hmb.eligibility.EligibilityService eligibility;
 
     public AwayService(JdbcClient jdbcClient,
                        MatchService matchService,
@@ -106,7 +108,9 @@ public class AwayService {
                        @Value("${hmb.away.streak.bonus-per-win}") int streakBonusPerWin,
                        @Value("${hmb.away.streak.max-bonus}") int streakMaxBonus,
                        @Value("${hmb.away.reward.mode}") String rewardMode,
-                       @Value("${hmb.away.reward.defender-on-loss}") boolean defenderRewardOnLoss) {
+                       @Value("${hmb.away.reward.defender-on-loss}") boolean defenderRewardOnLoss,
+                       online.hmb.eligibility.EligibilityService eligibility) {
+        this.eligibility = eligibility;
         this.jdbcClient = jdbcClient;
         this.matchService = matchService;
         this.deckService = deckService;
@@ -330,6 +334,16 @@ public class AwayService {
         }
     }
 
+    /**
+     * ⚠️ <b>자격 조건이 여기 있는 이유</b>(#296): 후보 조건이 "활성 덱 보유"뿐이었는데 덱은
+     * <b>온보딩이 자동 지급</b>한다 — 즉 사실상 "가입했음"이라 가입만 한 계정이 전부 상대로 섰다
+     * (라이브 후보 40명 중 실플레이 흔적은 9명, #288). 한 판이라도 끝낸 유저만 고스트로 세운다.
+     *
+     * <p>이 메서드가 {@code bandPool} 의 <b>모든</b> 경로(밴드 ×1~×4 확장 + 전체 폴백)가 지나는
+     * 유일한 지점이다. 그래서 필터를 여기 하나에만 걸어도 폴백이 우회로가 되지 않는다 — 반대로
+     * 호출부마다 걸었다면 폴백만 빠뜨렸을 것이다(MAJ-1 이 잡았던 것과 같은 형태의 구멍).
+     * 자격이 꺼져 있으면 임계가 0 이라 조건이 항상 참이 된다(분기 없음).
+     */
     private List<Candidate> candidatesInBand(String attackerId, int myRating, long band) {
         return jdbcClient.sql("""
                         SELECT u.id AS id, u.nickname AS nickname,
@@ -338,9 +352,11 @@ public class AwayService {
                         JOIN decks d ON d.user_id = u.id AND d.is_active = 1
                         LEFT JOIN user_ratings r ON r.user_id = u.id
                         WHERE u.id <> ? AND ABS(COALESCE(r.rating, 0) - ?) <= ?
+                          AND (SELECT COUNT(*) FROM matches m
+                                WHERE m.user_id = u.id AND m.result IS NOT NULL) >= ?
                         ORDER BY u.id
                         """)
-                .params(attackerId, myRating, band)
+                .params(attackerId, myRating, band, eligibility.threshold())
                 .query((rs, n) -> new Candidate(rs.getString("id"), rs.getString("nickname"),
                         rs.getInt("rating")))
                 .list();

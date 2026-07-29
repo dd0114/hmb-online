@@ -273,7 +273,7 @@ class AwayRaidTest extends MatchTestBase {
     void successfulRaidBakesExactlyOneGhost() {
         List<String> fresh = new java.util.ArrayList<>();
         for (int i = 0; i < 6; i++) {
-            setupUserWithDeck("aw_many_" + i);   // 후보를 여러 명 만든다
+            setupOpponentWithDeck("aw_many_" + i);   // 후보를 여러 명 만든다
             fresh.add(userIdOf("aw_many_" + i));
         }
         String attacker = setupUserWithDeck("aw_one_ghost");
@@ -747,8 +747,8 @@ class AwayRaidTest extends MatchTestBase {
      */
     @Test
     void unusableCandidateDoesNotLookLikeNoOpponent() {
-        setupUserWithDeck("aw_broken");
-        setupUserWithDeck("aw_healthy");
+        setupOpponentWithDeck("aw_broken");
+        setupOpponentWithDeck("aw_healthy");
         String attacker = setupUserWithDeck("aw_atk_loop");
         String attackerId = userIdOf("aw_atk_loop");
         // 후보를 이 둘로 좁힌다.
@@ -799,8 +799,9 @@ class AwayRaidTest extends MatchTestBase {
     @SuppressWarnings("unchecked")
     @Test
     void leaderboardRanksByRating() {
-        String low = setupUserWithDeck("aw_rank_low");
-        setupUserWithDeck("aw_rank_high");
+        // ⚠️ 리더보드는 **한 판이라도 끝낸 유저만** 싣는다(#296) — 정렬을 보려면 둘 다 자격이 있어야 한다.
+        String low = setupOpponentWithDeck("aw_rank_low");
+        setupOpponentWithDeck("aw_rank_high");
         jdbcClient.sql("""
                         INSERT INTO user_ratings(user_id, rating, updated_at) VALUES (?, ?, ?)
                         ON CONFLICT(user_id) DO UPDATE SET rating = excluded.rating
