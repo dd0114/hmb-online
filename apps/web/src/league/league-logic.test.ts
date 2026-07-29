@@ -179,7 +179,7 @@ describe("seasonSummary — standings 의 isUser 행에서 시즌 요약 계산"
 });
 
 describe("pickSeasonReward — Phase3 additive 소비 + 구서버 폴백", () => {
-  const reward: LeagueSeasonReward = { rank: 3, points: 500, status: "AWARDED" };
+  const reward: LeagueSeasonReward = { rank: 3, points: 500, status: "GRANTED" };
 
   it("season 안의 seasonReward 를 읽는다", () => {
     expect(pickSeasonReward({ season: { seasonReward: reward } as never })).toEqual(reward);
@@ -222,7 +222,7 @@ describe("pickSeasonReward — Phase3 additive 소비 + 구서버 폴백", () =>
     expect(weird.message).toContain("확인할 수 없습니다");
   });
   it("rank/points 가 숫자가 아니면 FAILED 로 승격", () => {
-    const bad = pickSeasonReward({ seasonReward: { points: 500, status: "AWARDED" } as never })!;
+    const bad = pickSeasonReward({ seasonReward: { points: 500, status: "GRANTED" } as never })!;
     expect(bad.status).toBe("FAILED");
     expect(bad.rank).toBe(0);
   });
@@ -242,17 +242,17 @@ describe("formatAwardedAt — 지급 시각 표시(순수 문자열, Date 미사
 
 describe("seasonRewardView — status 3분기(조용한 숨김 금지)", () => {
   it("AWARDED = 보상액 표시 + 카운트업 연출 + 재조회 없음", () => {
-    const v = seasonRewardView({ rank: 2, points: 1200, status: "AWARDED" });
+    const v = seasonRewardView({ rank: 2, points: 1200, status: "GRANTED" });
     expect(v).toMatchObject({ showPoints: true, animate: true, canRetry: false, tone: "success" });
     expect(v.detail).toContain("1,200");
     expect(v.detail).toContain("2위");
   });
 
   it("재화 단위는 주입된 포매터가 정한다 — 순수 함수가 심볼을 알지 않는다 (#232)", () => {
-    const v = seasonRewardView({ rank: 1, points: 100_000, status: "AWARDED" }, (n) => `${n} Ω`);
+    const v = seasonRewardView({ rank: 1, points: 100_000, status: "GRANTED" }, (n) => `${n} Ω`);
     expect(v.detail).toContain("100000 Ω");
     // 주입을 잊어도 "P" 같은 틀린 단위가 새 나가지 않는다(숫자만).
-    expect(seasonRewardView({ rank: 1, points: 100_000, status: "AWARDED" }).detail).not.toContain("P");
+    expect(seasonRewardView({ rank: 1, points: 100_000, status: "GRANTED" }).detail).not.toContain("P");
   });
   it("PENDING = 처리 중 안내 + 재조회 가능 + 지급액 미확정", () => {
     const v = seasonRewardView({ rank: 5, points: 300, status: "PENDING" });
@@ -334,3 +334,140 @@ describe("seasonRewardView — G·Z 병기 (#251)", () => {
     expect(absent.detail).toBe(zero.detail);
   });
 });
+
+/* ───────────────── 디비전 승급/강등 (#262) ───────────────── */
+
+import {
+  divisionLabel,
+  divisionOutcome,
+  divisionRuleText,
+  pickDivision,
+  zoneOfRank,
+} from "./league-logic";
+
+const seasonWith = (extra: Record<string, unknown>) =>
+  ({ id: "S", seasonNo: 1, state: "ACTIVE", teams: [], standings: [], fixtures: [], ...extra }) as never;
+
+describe("pickDivision — 구 서버 폴백이 최우선", () => {
+  it("division 필드가 없으면 null — 화면에서 기능 전체가 사라진다(깨짐 0)", () => {
+    expect(pickDivision(seasonWith({}))).toBeNull();
+    expect(pickDivision(null)).toBeNull();
+    expect(pickDivision(undefined)).toBeNull();
+  });
+
+  it("division 만 있고 컷이 없으면 hasRules=false — 라벨은 띄우되 승급권 색칠은 안 한다", () => {
+    const d = pickDivision(seasonWith({ division: 7 }));
+    expect(d).toEqual({ level: 7, name: null, promoteRankMax: null, relegateRankMin: null, hasRules: false });
+    expect(zoneOfRank(1, d)).toBe("none");
+    expect(divisionRuleText(d)).toBeNull();
+  });
+
+  it("이름이 없거나 공백이면 지어내지 않는다 — level 표기로 폴백", () => {
+    expect(divisionLabel(pickDivision(seasonWith({ division: 5 })))).toBe("D5");
+    expect(divisionLabel(pickDivision(seasonWith({ division: 5, divisionName: "   " })))).toBe("D5");
+    expect(divisionLabel(pickDivision(seasonWith({ division: 5, divisionName: "디비전 5" })))).toBe("디비전 5");
+  });
+
+  it("0·음수 컷은 부재로 취급 — '1~0위 승급' 같은 문장을 만들지 않는다", () => {
+    const d = pickDivision(seasonWith({ division: 5, promoteRankMax: 0, relegateRankMin: -1 }));
+    expect(d?.promoteRankMax).toBeNull();
+    expect(d?.relegateRankMin).toBeNull();
+    expect(d?.hasRules).toBe(false);
+    expect(divisionRuleText(d)).toBeNull();
+  });
+
+  it("숫자가 아닌 값은 부재로 취급(서버 계약 밖 방어)", () => {
+    expect(pickDivision(seasonWith({ division: "5" }))).toBeNull();
+    const d = pickDivision(seasonWith({ division: 5, promoteRankMax: "2", relegateRankMin: null }));
+    expect(d?.hasRules).toBe(false);
+  });
+});
+
+describe("zoneOfRank — 컷은 서버 값만 쓴다(하드코딩 금지)", () => {
+  const d = pickDivision(seasonWith({ division: 5, promoteRankMax: 2, relegateRankMin: 9 }));
+
+  it("경계값: 2위=승급 / 3위=유지 / 8위=유지 / 9위=강등", () => {
+    expect(zoneOfRank(1, d)).toBe("promote");
+    expect(zoneOfRank(2, d)).toBe("promote");
+    expect(zoneOfRank(3, d)).toBe("hold");
+    expect(zoneOfRank(8, d)).toBe("hold");
+    expect(zoneOfRank(9, d)).toBe("relegate");
+    expect(zoneOfRank(10, d)).toBe("relegate");
+  });
+
+  it("서버가 컷을 바꾸면 화면도 따라간다 — 클라가 2/9 를 기억하고 있으면 안 된다", () => {
+    const wide = pickDivision(seasonWith({ division: 5, promoteRankMax: 4, relegateRankMin: 7 }));
+    expect(zoneOfRank(4, wide)).toBe("promote"); // 구 규칙이면 hold 였다
+    expect(zoneOfRank(7, wide)).toBe("relegate"); // 구 규칙이면 hold 였다
+    expect(zoneOfRank(5, wide)).toBe("hold");
+  });
+
+  it("승급만 있고 강등이 없는 사다리(최하위 디비전)도 성립", () => {
+    const bottom = pickDivision(seasonWith({ division: 10, promoteRankMax: 2 }));
+    expect(zoneOfRank(1, bottom)).toBe("promote");
+    expect(zoneOfRank(10, bottom)).toBe("hold"); // 더 내려갈 곳이 없다
+  });
+});
+
+describe("divisionRuleText — 문장에 숫자를 박지 않는다", () => {
+  it("서버 컷을 그대로 읽어 만든다", () => {
+    expect(divisionRuleText(pickDivision(seasonWith({ division: 5, promoteRankMax: 2, relegateRankMin: 9 }))))
+      .toBe("1~2위 승급 · 9위부터 강등");
+    expect(divisionRuleText(pickDivision(seasonWith({ division: 5, promoteRankMax: 4, relegateRankMin: 7 }))))
+      .toBe("1~4위 승급 · 7위부터 강등");
+  });
+
+  it("승급 컷이 1이면 '1~1위'가 아니라 '1위'", () => {
+    expect(divisionRuleText(pickDivision(seasonWith({ division: 2, promoteRankMax: 1, relegateRankMin: 9 }))))
+      .toBe("1위 승급 · 9위부터 강등");
+  });
+});
+
+describe("divisionOutcome — 시즌 종료 연출", () => {
+  const d = pickDivision(seasonWith({ division: 5, divisionName: "디비전 5", promoteRankMax: 2, relegateRankMin: 9 }));
+
+  it("승급 / 유지 / 강등 세 갈래가 전부 표현된다", () => {
+    expect(divisionOutcome(1, d)).toMatchObject({ zone: "promote", tone: "success", headline: "승급!" });
+    expect(divisionOutcome(5, d)).toMatchObject({ zone: "hold", tone: "neutral" });
+    expect(divisionOutcome(10, d)).toMatchObject({ zone: "relegate", tone: "error", headline: "강등" });
+  });
+
+  it("최상위 우승은 '유지' 가 아니라 우승으로 그린다 — 게임 최상단 성취가 지워지면 안 된다", () => {
+    // 판정 근거는 **서버가 준 것뿐**: 승급 컷이 null = 최상위. level 숫자를 보지 않는다.
+    const top = pickDivision(
+      seasonWith({ division: 1, divisionName: "챔피언 리그", promoteRankMax: null, relegateRankMin: 9 }),
+    );
+    const champ = divisionOutcome(1, top);
+    expect(champ).toMatchObject({ zone: "hold", tone: "success" });
+    expect(champ?.headline).toContain("우승");
+    expect(champ?.detail).not.toContain("한 단계 위"); // 승급이 아니다 — 거짓말 금지(BL-1)
+
+    // 최상위여도 1위가 아니면 평범한 유지.
+    expect(divisionOutcome(5, top)).toMatchObject({ zone: "hold", tone: "neutral" });
+    // 중간 디비전 1위는 승급이지 최상위 우승이 아니다.
+    const mid = pickDivision(seasonWith({ division: 5, promoteRankMax: 2, relegateRankMin: 9 }));
+    expect(divisionOutcome(1, mid)).toMatchObject({ zone: "promote" });
+  });
+
+  it("다음 디비전 번호를 클라가 계산하지 않는다 — 사다리 끝 클램프는 서버 규칙", () => {
+    // 최상위(D1)에서 우승해도 "한 단계 위"라는 표현만 쓰고 'D0' 같은 걸 만들지 않는다.
+    const top = pickDivision(seasonWith({ division: 1, divisionName: "디비전 1", promoteRankMax: 2, relegateRankMin: 9 }));
+    const out = divisionOutcome(1, top);
+    expect(out?.detail).not.toMatch(/D0|디비전 0/);
+    expect(out?.detail).toContain("디비전 1에서");
+  });
+
+  it("순위나 규칙이 없으면 연출하지 않는다", () => {
+    expect(divisionOutcome(null, d)).toBeNull();
+    expect(divisionOutcome(1, null)).toBeNull();
+    expect(divisionOutcome(1, pickDivision(seasonWith({ division: 5 })))).toBeNull();
+  });
+});
+
+
+/*
+ * 보상 status(GRANTED/NONE/별칭) 계약은 **#251 이 소유**한다 — 위의
+ * "seasonReward — 서버 status enum(GRANTED/NONE) 수용 (#251)" 블록.
+ * #262 도 같은 버그(AWARDED↔GRANTED)를 독립적으로 발견해 고쳤지만, 머지 조율에서 #251 을
+ * 기준으로 삼아 중복 계약을 제거했다. #251 쪽이 젬 병기·표기 주입까지 덮어 더 넓다.
+ */

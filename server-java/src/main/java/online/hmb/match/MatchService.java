@@ -227,7 +227,10 @@ public class MatchService {
         deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
         online.hmb.meta.TeamTactics.validate(teamTactics); // 있으면 0..1 범위
 
-        BotService.BotRow bot = botId == null ? botService.pickRandom() : botService.get(botId);
+        // 연습 상대는 **시드봇만**(#252). 랜덤 경로는 BotService.pickRandom 이 이미 걸러내지만, botId 를
+        // 명시하면 리그 봇팀·원정 고스트를 지목할 수 있어 풀 필터가 우회된다. 리그/원정은 각각
+        // createLeagueMatch·createAwayMatch 라 이 가드에 걸리지 않는다.
+        BotService.BotRow bot = botId == null ? botService.pickRandom() : botService.getSeed(botId);
 
         String matchId = Ulid.next();
         String seed = randomSeedHex();

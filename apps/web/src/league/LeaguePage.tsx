@@ -11,18 +11,24 @@ import { ErrorToast } from "../common/ErrorToast";
 import { matchInProgressIdOf } from "../common/match-lock";
 import type { SeasonSummary } from "./league-logic";
 import {
+  divisionLabel,
+  divisionOutcome,
+  divisionRuleText,
   fixtureScore,
   formatAwardedAt,
   groupByRound,
   isGranted,
   isSeasonFinished,
+  pickDivision,
   pickSeasonReward,
   seasonRewardView,
   seasonSummary,
   sortByRank,
   teamNameMap,
   userRank,
+  zoneOfRank,
 } from "./league-logic";
+import type { DivisionInfo } from "./league-logic";
 import styles from "./LeaguePage.module.css";
 
 export function LeaguePage() {
@@ -43,6 +49,12 @@ export function LeaguePage() {
       {season && (
         <span className={styles.seasonTag} data-testid="season-tag">
           시즌 {season.seasonNo}
+        </span>
+      )}
+      {/* 디비전 뱃지 — 구 서버(필드 부재)면 렌더 안 함(폴백). */}
+      {divisionLabel(pickDivision(season)) && (
+        <span className={styles.divisionTag} data-testid="division-tag">
+          {divisionLabel(pickDivision(season))}
         </span>
       )}
     </div>
@@ -164,18 +176,33 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
 
       {/* ≥1024px: 순위표·일정 병렬(LLD §7). 모바일은 세로 스택. */}
       <div className={styles.dashGrid}>
-        <StandingsTable standings={season.standings} />
+        <StandingsTable standings={season.standings} division={pickDivision(season)} />
         <Schedule fixtures={season.fixtures} names={names} />
       </div>
     </div>
   );
 }
 
-function StandingsTable({ standings }: { standings: LeagueStanding[] }) {
+function StandingsTable({
+  standings,
+  division,
+}: {
+  standings: LeagueStanding[];
+  division?: DivisionInfo | null;
+}) {
   const sorted = useMemo(() => sortByRank(standings), [standings]);
+  const rule = divisionRuleText(division ?? null);
   return (
     <section className={styles.card}>
-      <h3 className={styles.cardTitle}>순위표</h3>
+      <div className={styles.cardHead}>
+        <h3 className={styles.cardTitle}>순위표</h3>
+        {/* 컷은 서버 값으로만 만든다 — 클라가 "1~2위"를 기억하면 규칙이 바뀔 때 거짓말이 된다. */}
+        {rule && (
+          <span className={styles.ruleHint} data-testid="division-rule">
+            {rule}
+          </span>
+        )}
+      </div>
       <div className={styles.tableWrap}>
         <table className={styles.table} data-testid="standings">
           <thead>
@@ -191,14 +218,41 @@ function StandingsTable({ standings }: { standings: LeagueStanding[] }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((s) => (
+            {sorted.map((s) => {
+              const zone = zoneOfRank(s.rank, division ?? null);
+              return (
               <tr
                 key={s.teamId}
-                className={s.isUser ? styles.userRow : undefined}
+                className={[
+                  s.isUser ? styles.userRow : "",
+                  zone === "promote" ? styles.promoteRow : "",
+                  zone === "relegate" ? styles.relegateRow : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ") || undefined}
                 data-testid={`standing-${s.teamId}`}
                 data-user={s.isUser ? "true" : undefined}
+                data-zone={zone === "none" ? undefined : zone}
               >
-                <td className={styles.rankCol}>{s.rank}</td>
+                <td className={styles.rankCol}>
+                  {s.rank}
+                  {/*
+                    색 단일 채널이면 적록색약에게 승급권/강등권이 구분되지 않는다(독립검증 MIN-2).
+                    ▲/▼ 기호로 축을 하나 더 주고, 보조기술에는 텍스트로 읽힌다.
+                  */}
+                  {zone === "promote" && (
+                    // role="img" 가 있어야 aria-label 이 접근성 트리에 매핑된다 — generic span 에
+                    // 붙인 label 은 보조기술이 무시할 수 있다(독립검증 2R MIN-C).
+                    <span className={styles.zoneMark} role="img" aria-label="승급권">
+                      ▲
+                    </span>
+                  )}
+                  {zone === "relegate" && (
+                    <span className={styles.zoneMark} role="img" aria-label="강등권">
+                      ▼
+                    </span>
+                  )}
+                </td>
                 <td className={styles.teamCol}>{s.name}</td>
                 <td>{s.played}</td>
                 <td>{s.won}</td>
@@ -207,7 +261,8 @@ function StandingsTable({ standings }: { standings: LeagueStanding[] }) {
                 <td>{s.goalDiff > 0 ? `+${s.goalDiff}` : s.goalDiff}</td>
                 <td className={styles.ptsCol}>{s.points}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -281,6 +336,8 @@ function SeasonEnd({
   const rank = userRank(season.standings);
   const sorted = useMemo(() => sortByRank(season.standings), [season.standings]);
   const summary = useMemo(() => seasonSummary(season.standings), [season.standings]);
+  const division = useMemo(() => pickDivision(season), [season]);
+  const outcome = useMemo(() => divisionOutcome(rank, division), [rank, division]);
   return (
     <div data-testid="season-end">
       <section className={styles.endHero}>
@@ -291,10 +348,21 @@ function SeasonEnd({
           </p>
         )}
       </section>
+      {/* 승급/강등 결과 — 디비전 규칙이 없으면(구 서버) 렌더 안 함. */}
+      {outcome && (
+        <section
+          className={`${styles.outcomeCard} ${styles[`outcome_${outcome.tone}`]}`}
+          data-testid="division-outcome"
+          data-zone={outcome.zone}
+        >
+          <p className={styles.outcomeHeadline}>{outcome.headline}</p>
+          <p className={styles.outcomeDetail}>{outcome.detail}</p>
+        </section>
+      )}
       {/* reward 부재(구 서버) = 렌더 안 함 → 기존 화면 그대로. */}
       {reward && <SeasonRewardCard reward={reward} onRefresh={onRefresh} refreshing={refreshing} />}
       {summary && <SeasonSummaryCard summary={summary} />}
-      <StandingsTable standings={sorted} />
+      <StandingsTable standings={sorted} division={division} />
       <button
         type="button"
         className={styles.primary}
@@ -410,7 +478,13 @@ function SeasonRewardCard({
             <span className={styles.rewardPointsUnit}>{pointCurrency.symbol}</span>
           </>
         )}
-        {!view.showPoints && <span className={styles.rewardPointsNote}>미지급</span>}
+        {/*
+          "미지급" 은 **받았어야 하는데 못 받았다** 는 뜻이다. NONE(보상 순위 밖)은 정상이라
+          붙이면 안 된다 — 중립 헤드라인 밑에 실패 뉘앙스가 붙어 읽는 사람이 사고로 오해한다.
+        */}
+        {!view.showPoints && view.status !== "NONE" && (
+          <span className={styles.rewardPointsNote}>미지급</span>
+        )}
       </p>
       {gems > 0 && (
         <p className={styles.rewardGems} data-testid="season-reward-gems" data-gems={gems}>

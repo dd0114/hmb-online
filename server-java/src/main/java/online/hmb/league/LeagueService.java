@@ -73,6 +73,8 @@ public class LeagueService {
 
     private final int botTeamCount;
     private final int rosterSize;
+    private final int promoteRankMax;
+    private final int relegateRankMin;
     private final double simBaseGoals;
     private final double simPowerDivisor;
     private final double simHomeAdvantage;
@@ -93,7 +95,9 @@ public class LeagueService {
                          @Value("${hmb.league.sim.base-goals}") double simBaseGoals,
                          @Value("${hmb.league.sim.power-divisor}") double simPowerDivisor,
                          @Value("${hmb.league.sim.home-advantage}") double simHomeAdvantage,
-                         @Value("${hmb.league.sim.max-goals}") int simMaxGoals) {
+                         @Value("${hmb.league.sim.max-goals}") int simMaxGoals,
+                         @Value("${hmb.league.division.promote-rank-max}") int promoteRankMax,
+                         @Value("${hmb.league.division.relegate-rank-min}") int relegateRankMin) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.objectMapper = objectMapper;
@@ -110,12 +114,14 @@ public class LeagueService {
         this.simPowerDivisor = simPowerDivisor;
         this.simHomeAdvantage = simHomeAdvantage;
         this.simMaxGoals = simMaxGoals;
+        this.promoteRankMax = promoteRankMax;
+        this.relegateRankMin = relegateRankMin;
     }
 
     // ── 행 모델 ──────────────────────────────────────────────────────────
 
     public record SeasonRow(String id, String userId, int seasonNo, String state, String seed,
-                            String teamsJson, String createdAt, String finishedAt) {
+                            String teamsJson, String createdAt, String finishedAt, int division) {
     }
 
     public record FixtureRow(String id, String seasonId, int round, String homeTeam, String awayTeam,
@@ -137,9 +143,25 @@ public class LeagueService {
                                 String state, Integer scoreHome, Integer scoreAway, String matchId) {
     }
 
+    /**
+     * @param division      이 시즌의 디비전 level(#252, 작을수록 상위). 시즌 생성 시 박제된 값이다.
+     * @param divisionName  표시명(league.v2.json). 서버가 SoT — 클라가 level→이름을 복제하면 표가
+     *                      바뀔 때 조용히 어긋난다.
+     * @param promoteRankMax 이 순위 이내면 승급 / @param relegateRankMin 이 순위 이상이면 강등.
+     *                      규칙을 내려주는 이유도 같다(클라가 컷을 하드코딩하지 않게).
+     *                      <p>⚠️ <b>사다리 끝에서는 null 이다</b> — 최상위 디비전에는 승급이,
+     *                      입문 디비전에는 강등이 <b>존재하지 않는다</b>({@link #nextDivision} 이
+     *                      클램프한다). config 상수를 그대로 실어 보내면 클라가 서버가 하지 않는
+     *                      전이를 화면에 단언한다: 신규 유저 전원이 있는 입문 디비전에서 18라운드
+     *                      내내 없는 강등 위협을 빨간 띠로 보고, 최상위에서 우승하면 "한 단계 위로
+     *                      갑니다"라는 거짓말을 본다(독립검증 BL-1). <b>여기서 잘라 보내야</b>
+     *                      클라가 사다리 경계를 추측하지 않는다.
+     */
     public record LeagueSeason(String id, int seasonNo, String state, List<LeagueTeam> teams,
                                List<LeagueStanding> standings, List<LeagueFixture> fixtures,
-                               LeagueFixture nextUserFixture, SeasonReward seasonReward) {
+                               LeagueFixture nextUserFixture, SeasonReward seasonReward,
+                               int division, String divisionName,
+                               Integer promoteRankMax, Integer relegateRankMin) {
     }
 
     /**
@@ -188,14 +210,19 @@ public class LeagueService {
             String seed = seedSource.newSeed();
             String now = Instant.now().toString();
 
-            List<TeamBuild> teams = buildTeams(userId, seasonId, seed, data);
-            insertBotRows(teams);
+            // #252: 시즌 난이도는 **시작 시점의 유저 디비전**으로 확정하고 시즌에 박제한다.
+            // 시즌 도중 승급/강등이 반영되면 이미 치른 라운드와 남은 라운드의 상대 강도가 달라져
+            // 순위표가 뜻을 잃는다.
+            int division = divisionOf(userId);
+            List<TeamBuild> teams = buildTeams(userId, seasonId, seed, data, division);
+            insertBotRows(teams, divisionSpec(data, division));
             String teamsJson = teamsJson(teams);
             jdbcClient.sql("""
-                            INSERT INTO league_seasons(id, user_id, season_no, state, seed, teams_json, created_at)
-                            VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?)
+                            INSERT INTO league_seasons(id, user_id, season_no, state, seed, teams_json,
+                                                       created_at, division)
+                            VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, ?)
                             """)
-                    .params(seasonId, userId, nextNo, seed, teamsJson, now)
+                    .params(seasonId, userId, nextNo, seed, teamsJson, now, division)
                     .update();
             insertFixtures(seasonId, teams);
 
@@ -342,6 +369,9 @@ public class LeagueService {
             walletService.apply(season.userId(), points, "league_reward", seasonId);
         }
         awardSeasonGems(season, userRank);
+        // #252 승급/강등 — 보상과 **같은 지점**(시즌 FINISHED CAS 통과 경로)에서 처리한다.
+        // 순위 확정과 떨어뜨리면 "보상은 받았는데 승급은 안 된" 중간 상태가 생긴다.
+        applyPromotion(season, userRank);
     }
 
     /**
@@ -518,7 +548,7 @@ public class LeagueService {
     }
 
     private List<TeamBuild> buildTeams(String userId, String seasonId, String seed,
-                                       LeagueDataService.LeagueData data) {
+                                       LeagueDataService.LeagueData data, int division) {
         List<TeamBuild> teams = new ArrayList<>();
         // 유저 팀(index 0) — 파워는 활성 덱 선발 능력치합(정보용).
         teams.add(new TeamBuild(USER_TEAM_ID, "내 팀", null, null, null, List.of(),
@@ -529,13 +559,16 @@ public class LeagueService {
         SplittableRandom clubRng = rngFromSeed(seed + ":clubs");
         List<String> clubNames = pickDistinct(clubRng, data.clubNames(), botTeamCount);
         List<PersonaPreset> personas = personaPresets(data);
+        LeagueDataService.Division spec = divisionSpec(data, division);
 
         for (int i = 0; i < botTeamCount; i++) {
             String teamId = seasonId + "-T" + (i + 1);
             SplittableRandom rng = rngFromSeed(seed + ":team:" + teamId);
             PersonaPreset persona = personas.get(Math.floorMod(rng.nextInt(), personas.size()));
-            List<String> roster = sampleRoster(rng, gkPool, byGrade);
-            int power = teamPower(roster);
+            List<String> roster = sampleRoster(rng, gkPool, byGrade, spec, persona.formation());
+            // 파워는 **배율 적용 후** 값이다 — 화면에 뜨는 파워와 피치 위 실제 강도가 같아야 하고,
+            // 봇전 간이결과(expectedGoals)도 이 값을 쓰므로 두 경로가 자동으로 정합한다.
+            int power = scaledPower(teamPower(roster), spec);
             teams.add(new TeamBuild(teamId, clubNames.get(i), persona.name(), persona.description(),
                     persona.formation(), roster, power, false));
         }
@@ -543,16 +576,164 @@ public class LeagueService {
     }
 
     /**
-     * 봇 로스터 15명 = GK 1(시드) + 등급-층화 라운드로빈 14명(등급 순회하며 각 등급에서 시드 샘플 —
-     * 팀 내 중복 없음, 등급 분포 밸런스). 풀이 작으면(테스트 카탈로그) 가용 범위에서 채운다.
+     * 봇 로스터 {@code rosterSize} 명. <b>선발 11명은 디비전 등급 슬롯</b>(slot 0 = GK)대로 뽑고,
+     * 벤치는 같은 등급 분포에서 채운다(#252). 슬롯 등급의 풀이 비면 인접 등급으로 폴백한다 —
+     * 테스트 카탈로그처럼 작은 풀에서도 팀이 서야 하기 때문이다.
+     *
+     * <p>디비전 표가 없으면(구 {@code league.v1.json}) <b>기존 등급-층화 라운드로빈</b>으로 돌아간다.
+     * 발행물을 v1 으로 되돌리는 것이 곧 이 기능의 롤백이다.
+     *
+     * <p><b>포지션은 포메이션대로 채운다</b>(slot 0=GK, 이후 DF/MF/FW). W1 은 "GK 외엔 안 본다"로
+     * 계획했다가 실측에서 뒤집었다 — 등급만 보고 뽑으니 선발 XI 의 평균 GK 수가 디비전마다
+     * 1.11~<b>2.00</b> 으로 흔들려 <b>사다리가 단조롭지 않았다</b>(D2 승률 47.6% &gt; D3 33.7%).
+     * 골키퍼 둘이 필드에 선 팀은 등급과 무관하게 약하다 = 난이도가 로스터 추첨 운에 좌우된다.
+     * 근거 = {@code docs/plan-v5/opponent-balance.md} §6.1.
      */
     private List<String> sampleRoster(SplittableRandom rng, List<PlayerRow> gkPool,
-                                      Map<String, List<PlayerRow>> byGrade) {
+                                      Map<String, List<PlayerRow>> byGrade,
+                                      LeagueDataService.Division spec, String formation) {
+        if (spec == null) {
+            return sampleRosterLegacy(rng, gkPool, byGrade);
+        }
+        // (등급, 포지션) 2차원 큐. 팀 내 중복 없음.
+        Map<String, Map<String, List<PlayerRow>>> pool = new LinkedHashMap<>();
+        for (String grade : GRADE_ORDER) {
+            Map<String, List<PlayerRow>> byPos = new LinkedHashMap<>();
+            for (PlayerRow p : byGrade.getOrDefault(grade, List.of())) {
+                byPos.computeIfAbsent(p.position(), k -> new ArrayList<>()).add(p);
+            }
+            for (List<PlayerRow> q : byPos.values()) {
+                shuffle(rng, q);
+            }
+            pool.put(grade, byPos);
+        }
+
+        // 선발 11칸의 포지션 = 포메이션, 등급 = 디비전 슬롯.
+        // 등급은 섞어서 배정한다 — gradeSlots 는 낮은 등급부터 정렬돼 있어 그대로 쓰면 상위 등급이
+        // 항상 공격수에만 몰린다(포지션과 등급이 상관되면 사다리 해석이 흐려진다).
+        List<String> positions = startingPositions(formation);
+        List<String> grades = new ArrayList<>(spec.gradeSlots());
+        List<String> outfieldGrades = new ArrayList<>(grades.subList(1, grades.size()));
+        shuffle(rng, outfieldGrades);
+
+        List<String> roster = new ArrayList<>();
+        // slot 0 = GK (등급은 gradeSlots[0]).
+        PlayerRow gk = takeAt(pool, grades.get(0), "GK");
+        if (gk != null) {
+            roster.add(gk.id());
+        }
+        for (int i = 0; i < outfieldGrades.size() && roster.size() < 11; i++) {
+            PlayerRow p = takeAt(pool, outfieldGrades.get(i), positions.get(i + 1));
+            if (p != null) {
+                roster.add(p.id());
+            }
+        }
+        // 벤치: GK/DF/MF/FW 한 명씩(시드 봇 덱과 같은 형태), 등급은 선발 분포를 재사용.
+        List<String> benchPositions = List.of("GK", "DF", "MF", "FW");
+        for (int i = 0; roster.size() < rosterSize && i < benchPositions.size(); i++) {
+            PlayerRow p = takeAt(pool, outfieldGrades.get(i % outfieldGrades.size()), benchPositions.get(i));
+            if (p != null) {
+                roster.add(p.id());
+            }
+        }
+        // 그래도 모자라면(작은 카탈로그) 아무나 채운다 — 팀은 서야 한다.
+        while (roster.size() < rosterSize) {
+            PlayerRow p = takeAt(pool, grades.get(0), null);
+            if (p == null) {
+                break;
+            }
+            roster.add(p.id());
+        }
+        return roster;
+    }
+
+    /**
+     * 포메이션 문자열 → 선발 11칸의 포지션. {@code "4-3-3"} → GK,DF×4,MF×3,FW×3.
+     * 첫 숫자=DF, 마지막=FW, 가운데 합=MF ({@code "4-2-3-1"} → DF4·MF5·FW1).
+     * 파싱이 11칸을 못 만들면 4-4-2 로 폴백한다(팀이 안 서는 것보다 낫다).
+     */
+    public static List<String> startingPositions(String formation) {
+        List<String> out = new ArrayList<>();
+        out.add("GK");
+        try {
+            String[] parts = (formation == null ? "4-4-2" : formation).split("-");
+            int df = Integer.parseInt(parts[0].trim());
+            int fw = Integer.parseInt(parts[parts.length - 1].trim());
+            int mf = 0;
+            for (int i = 1; i < parts.length - 1; i++) {
+                mf += Integer.parseInt(parts[i].trim());
+            }
+            if (df + mf + fw != 10) {
+                throw new IllegalArgumentException("outfield != 10");
+            }
+            for (int i = 0; i < df; i++) {
+                out.add("DF");
+            }
+            for (int i = 0; i < mf; i++) {
+                out.add("MF");
+            }
+            for (int i = 0; i < fw; i++) {
+                out.add("FW");
+            }
+        } catch (RuntimeException e) {
+            out = new ArrayList<>(List.of("GK", "DF", "DF", "DF", "DF", "MF", "MF", "MF", "MF", "FW", "FW"));
+        }
+        return out;
+    }
+
+    /**
+     * (등급, 포지션)에서 하나 꺼낸다. 정확히 맞는 후보가 없으면 <b>같은 포지션의 인접 등급</b>을 먼저
+     * 찾고(파워보다 포메이션 정합이 먼저다 — 골키퍼 둘인 팀이 나오지 않게), 그래도 없으면 같은 등급의
+     * 아무 포지션, 마지막으로 아무거나. {@code position=null} 이면 포지션을 보지 않는다.
+     */
+    private PlayerRow takeAt(Map<String, Map<String, List<PlayerRow>>> pool, String grade, String position) {
+        int idx = Math.max(0, GRADE_ORDER.indexOf(grade));
+        if (position != null) {
+            for (int d = 0; d < GRADE_ORDER.size(); d++) {
+                for (int sign : new int[] {-1, 1}) {
+                    if (d == 0 && sign == 1) {
+                        continue;
+                    }
+                    int j = idx + sign * d;
+                    if (j < 0 || j >= GRADE_ORDER.size()) {
+                        continue;
+                    }
+                    List<PlayerRow> q = pool.get(GRADE_ORDER.get(j)).get(position);
+                    if (q != null && !q.isEmpty()) {
+                        return q.remove(q.size() - 1);
+                    }
+                }
+            }
+        }
+        for (int d = 0; d < GRADE_ORDER.size(); d++) {
+            for (int sign : new int[] {-1, 1}) {
+                if (d == 0 && sign == 1) {
+                    continue;
+                }
+                int j = idx + sign * d;
+                if (j < 0 || j >= GRADE_ORDER.size()) {
+                    continue;
+                }
+                for (List<PlayerRow> q : pool.get(GRADE_ORDER.get(j)).values()) {
+                    if (!q.isEmpty()) {
+                        return q.remove(q.size() - 1);
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 구 로스터 구성(디비전 표 없는 발행물 폴백) — GK 1(시드) + 등급-층화 라운드로빈.
+     * 이 경로가 살아 있어야 `league.v1.json` 으로 되돌리는 롤백이 성립한다.
+     */
+    private List<String> sampleRosterLegacy(SplittableRandom rng, List<PlayerRow> gkPool,
+                                            Map<String, List<PlayerRow>> byGrade) {
         List<String> roster = new ArrayList<>();
         if (!gkPool.isEmpty()) {
             roster.add(gkPool.get(rng.nextInt(gkPool.size())).id());
         }
-        // 등급별 남은 후보(선택된 GK 제외) 셔플 큐.
         Map<String, List<PlayerRow>> remaining = new LinkedHashMap<>();
         for (String grade : GRADE_ORDER) {
             List<PlayerRow> pool = new ArrayList<>(byGrade.getOrDefault(grade, List.of()));
@@ -560,7 +741,6 @@ public class LeagueService {
             shuffle(rng, pool);
             remaining.put(grade, pool);
         }
-        // 라운드로빈: 등급 순회하며 하나씩 뽑아 균등 분포. 목표 크기까지.
         while (roster.size() < rosterSize) {
             boolean progressed = false;
             for (String grade : GRADE_ORDER) {
@@ -574,10 +754,102 @@ public class LeagueService {
                 }
             }
             if (!progressed) {
-                break; // 풀 소진(가용 선수 < rosterSize)
+                break;
             }
         }
         return roster;
+    }
+
+    // ── 디비전 (#252) ────────────────────────────────────────────────────
+
+    /** 유저 현재 디비전. 컬럼 기본값 = 입문(가장 큰 level). */
+    public int divisionOf(String userId) {
+        return jdbcClient.sql("SELECT division FROM users WHERE id = ?")
+                .param(userId).query(Integer.class).optional().orElse(entryDivision());
+    }
+
+    /** 입문 디비전 = 표에서 가장 큰 level(표가 없으면 컬럼 기본값과 같은 10). */
+    private int entryDivision() {
+        return leagueDataService.get().map(LeagueDataService.LeagueData::divisions)
+                .filter(d -> !d.isEmpty())
+                .map(d -> d.stream().mapToInt(LeagueDataService.Division::level).max().orElse(10))
+                .orElse(10);
+    }
+
+    /** 해당 level 의 디비전 스펙. 표가 없거나 level 이 표 밖이면 null(= 구 동작 폴백). */
+    private LeagueDataService.Division divisionSpec(LeagueDataService.LeagueData data, int level) {
+        if (data == null || data.divisions().isEmpty()) {
+            return null;
+        }
+        return data.divisions().stream().filter(d -> d.level() == level).findFirst()
+                .orElseGet(() -> data.divisions().stream()
+                        .max(Comparator.comparingInt(LeagueDataService.Division::level)).orElse(null));
+    }
+
+    private static int scaledPower(int rawPower, LeagueDataService.Division spec) {
+        double mul = spec == null ? 1.0 : spec.strengthMul();
+        return (int) Math.round(rawPower * mul);
+    }
+
+    /**
+     * 승급/강등 전이 규칙(순수 함수 — 부수효과·조회 없음, 그래서 그대로 단언할 수 있다).
+     *
+     * <p>{@code level} 은 <b>작을수록 상위</b>다: 승급 = −1, 강등 = +1. 사다리 양 끝에서는 클램프
+     * (최상위에서 우승해도 더 올라갈 곳이 없고, 입문에서 꼴찌여도 더 내려갈 곳이 없다).
+     *
+     * @param top    사다리 최상위 level(가장 작은 값) / @param bottom 입문 level(가장 큰 값)
+     */
+    public static int nextDivision(int from, int userRank, int top, int bottom,
+                                   int promoteRankMax, int relegateRankMin) {
+        // 사다리 밖 값을 먼저 범위 안으로 당긴다. 발행물이 10→8단계로 줄면 잔류 users.division=10 은
+        // 사다리 밖이고, 그대로 두면 강등이 from+1=11 이 아니라 min(bottom=8, 11)=8 로 **두 칸** 뛴다
+        // (그리고 effectiveRelegateCut 은 "강등 없음"이라 광고한다 — 광고와 실제가 갈라진다).
+        from = Math.max(top, Math.min(bottom, from));
+        if (userRank >= 1 && userRank <= promoteRankMax) {
+            return Math.max(top, from - 1);
+        }
+        if (userRank >= relegateRankMin) {
+            return Math.min(bottom, from + 1);
+        }
+        return from;
+    }
+
+    /**
+     * 시즌 종료 승급/강등(#252). 순위 컷은 config(`hmb.league.division.*`).
+     * level 은 <b>작을수록 상위</b>이므로 승급 = level−1, 강등 = level+1 이다.
+     *
+     * <p>멱등: 시즌 FINISHED CAS 를 통과한 경로에서만 호출되고(보상과 같은 지점), 계산은 저장된
+     * {@code league_seasons.division} 기준이라 재호출해도 같은 결과다.
+     */
+    private void applyPromotion(SeasonRow season, int userRank) {
+        List<LeagueDataService.Division> divisions = leagueDataService.get()
+                .map(LeagueDataService.LeagueData::divisions).orElse(List.of());
+        if (divisions.isEmpty()) {
+            // 구 발행물(league.v1 = 사다리 없음)로 되돌린 상태 — 승급도 강등도 하지 않는다.
+            // ⚠️ 예전엔 top 이 from 으로 폴백돼 **승급만 no-op 이 되고 강등은 계속 걸렸다**.
+            // 그 비대칭으로 롤백 상태를 오래 굴리면 전 유저가 입문 디비전으로 흘러내리고,
+            // 롤포워드했을 때 진행도가 사라진다. 롤백은 **기능이 꺼지는 것**이어야 한다.
+            return;
+        }
+        int from = season.division();
+        int top = divisions.stream().mapToInt(LeagueDataService.Division::level).min().orElse(from);
+        int bottom = entryDivision();
+        int to = nextDivision(from, userRank, top, bottom, promoteRankMax, relegateRankMin);
+        if (to != from) {
+            // **CAS**: 유저의 현재 디비전이 아직 이 시즌의 디비전일 때만 옮긴다.
+            //
+            // 단순 재호출은 CAS 없이도 안전하다 — from 을 박제된 league_seasons.division 에서 읽으므로
+            // 몇 번을 돌려도 같은 to 를 쓴다. CAS 가 실제로 막는 것은 **유저가 이미 더 나아간 뒤 옛
+            // 시즌 훅이 늦게 도는 경우**다: D5 우승→D4, D4 우승→D3 까지 간 유저에게 첫 시즌 훅이
+            // 다시 돌면 CAS 없이는 division 을 4 로 덮어써 **한 칸 되돌린다**.
+            // 계약 = LeagueDivisionTest.lateReplayOfAnOldSeasonHookDoesNotUndoALaterPromotion
+            int moved = jdbcClient.sql("UPDATE users SET division = ? WHERE id = ? AND division = ?")
+                    .params(to, season.userId(), from).update();
+            if (moved == 1) {
+                log.info("league division {} -> {} (user={}, season={}, rank={})",
+                        from, to, season.userId(), season.id(), userRank);
+            }
+        }
     }
 
     private static <T> void shuffle(SplittableRandom rng, List<T> list) {
@@ -618,22 +890,29 @@ public class LeagueService {
 
     // ── 봇 bots 행 삽입 (매치 상대로 소비) ───────────────────────────────
 
-    /** 봇팀을 bots 테이블에 삽입(matches.bot_id FK). deck_json = 로스터에서 조립(선발 11 + 벤치). */
-    private void insertBotRows(List<TeamBuild> teams) {
-        String now = Instant.now().toString();
+    /**
+     * 봇팀을 bots 테이블에 삽입(matches.bot_id FK). deck_json = 로스터에서 조립(선발 11 + 벤치).
+     *
+     * <p>{@code kind='league'} (#252): 이 행들은 <b>연습 매칭 풀이 아니다</b>. 예전엔 표식이 없어
+     * {@code BotService.pickRandom} 이 이 행들까지 뽑았고, 시즌이 늘수록 연습 상대가 리그 봇팀으로
+     * 대체됐다(라이브 45행 : 시드봇 3행). {@code strength_mul} 은 그 시즌 디비전의 값이다.
+     */
+    private void insertBotRows(List<TeamBuild> teams, LeagueDataService.Division spec) {
+        double mul = spec == null ? 1.0 : spec.strengthMul();
         for (TeamBuild t : teams) {
             if (t.isUser()) {
                 continue;
             }
             String deckJson = botDeckJson(t);
             jdbcClient.sql("""
-                            INSERT INTO bots(id, name, persona, analysis_text, deck_json)
-                            VALUES (?, ?, ?, ?, ?)
+                            INSERT INTO bots(id, name, persona, analysis_text, deck_json, kind, strength_mul)
+                            VALUES (?, ?, ?, ?, ?, 'league', ?)
                             ON CONFLICT(id) DO UPDATE SET name = excluded.name, persona = excluded.persona,
-                              analysis_text = excluded.analysis_text, deck_json = excluded.deck_json
+                              analysis_text = excluded.analysis_text, deck_json = excluded.deck_json,
+                              kind = 'league', strength_mul = excluded.strength_mul
                             """)
                     .params(t.teamId(), t.name(), t.persona() == null ? "" : t.persona(),
-                            t.description() == null ? "" : t.description(), deckJson)
+                            t.description() == null ? "" : t.description(), deckJson, mul)
                     .update();
         }
     }
@@ -719,8 +998,39 @@ public class LeagueService {
         List<LeagueFixture> fixtures = allFixtures(season.id()).stream().map(this::toDto).toList();
         LeagueFixture next = nextUserFixtureRow(season.id()).map(this::toDto).orElse(null);
         SeasonReward reward = buildSeasonReward(season, standings);
+        LeagueDataService.Division spec = leagueDataService.get()
+                .map(d -> divisionSpec(d, season.division())).orElse(null);
         return new LeagueSeason(season.id(), season.seasonNo(), season.state(),
-                teams, standings, fixtures, next, reward);
+                teams, standings, fixtures, next, reward,
+                season.division(), spec == null ? null : spec.name(),
+                effectivePromoteCut(season.division()), effectiveRelegateCut(season.division()));
+    }
+
+    /**
+     * 이 디비전에서 <b>실제로 일어나는</b> 승급 컷. 최상위면 null(더 올라갈 곳이 없다).
+     * 사다리 표가 없으면(구 발행물) null — 전이 자체를 안 하므로 규칙도 없다.
+     */
+    private Integer effectivePromoteCut(int division) {
+        List<LeagueDataService.Division> divisions = ladder();
+        if (divisions.isEmpty()) {
+            return null;
+        }
+        int top = divisions.stream().mapToInt(LeagueDataService.Division::level).min().orElse(division);
+        return division <= top ? null : promoteRankMax;
+    }
+
+    /** 이 디비전에서 실제로 일어나는 강등 컷. 입문이면 null(더 내려갈 곳이 없다). */
+    private Integer effectiveRelegateCut(int division) {
+        List<LeagueDataService.Division> divisions = ladder();
+        if (divisions.isEmpty()) {
+            return null;
+        }
+        int bottom = divisions.stream().mapToInt(LeagueDataService.Division::level).max().orElse(division);
+        return division >= bottom ? null : relegateRankMin;
+    }
+
+    private List<LeagueDataService.Division> ladder() {
+        return leagueDataService.get().map(LeagueDataService.LeagueData::divisions).orElse(List.of());
     }
 
     /** {@link SeasonReward} 파생(SoT = point_ledger 지급행 + computeStandings 순위 — 새 컬럼 없음). */
@@ -829,7 +1139,7 @@ public class LeagueService {
 
     // ── 선수 풀 / 파워 ───────────────────────────────────────────────────
 
-    private record PlayerRow(String id, String grade, int attrSum) {
+    private record PlayerRow(String id, String grade, String position, int attrSum) {
     }
 
     private Map<String, List<PlayerRow>> playerPoolByGrade() {
@@ -841,18 +1151,22 @@ public class LeagueService {
     }
 
     private List<PlayerRow> gkPool() {
-        return jdbcClient.sql("SELECT id, grade, attributes_json FROM players WHERE position = 'GK' ORDER BY id")
-                .query((rs, n) -> new PlayerRow(rs.getString("id"), rs.getString("grade"),
-                        attrSum(rs.getString("attributes_json"))))
+        return jdbcClient.sql(
+                        "SELECT id, grade, position, attributes_json FROM players WHERE position = 'GK' ORDER BY id")
+                .query(playerMapper)
                 .list();
     }
 
     private List<PlayerRow> allPlayers() {
-        return jdbcClient.sql("SELECT id, grade, attributes_json FROM players ORDER BY id")
-                .query((rs, n) -> new PlayerRow(rs.getString("id"), rs.getString("grade"),
-                        attrSum(rs.getString("attributes_json"))))
+        return jdbcClient.sql("SELECT id, grade, position, attributes_json FROM players ORDER BY id")
+                .query(playerMapper)
                 .list();
     }
+
+    /** 인스턴스 매퍼 — attrSum 이 objectMapper 를 쓴다(static 불가). */
+    private final org.springframework.jdbc.core.RowMapper<PlayerRow> playerMapper = (rs, n) ->
+            new PlayerRow(rs.getString("id"), rs.getString("grade"), rs.getString("position"),
+                    attrSum(rs.getString("attributes_json")));
 
     /** 팀 파워 = 선발 11명(로스터 앞 11) 능력치합 총합. */
     private int teamPower(List<String> roster) {
@@ -943,12 +1257,13 @@ public class LeagueService {
     }
 
     private static final String SEASON_SELECT =
-            "SELECT id, user_id, season_no, state, seed, teams_json, created_at, finished_at FROM league_seasons";
+            "SELECT id, user_id, season_no, state, seed, teams_json, created_at, finished_at, division "
+                    + "FROM league_seasons";
 
     private static final org.springframework.jdbc.core.RowMapper<SeasonRow> SEASON_MAPPER = (rs, n) ->
             new SeasonRow(rs.getString("id"), rs.getString("user_id"), rs.getInt("season_no"),
                     rs.getString("state"), rs.getString("seed"), rs.getString("teams_json"),
-                    rs.getString("created_at"), rs.getString("finished_at"));
+                    rs.getString("created_at"), rs.getString("finished_at"), rs.getInt("division"));
 
     private static final String FIXTURE_SELECT =
             "SELECT id, season_id, round, home_team, away_team, is_user, state, score_home, score_away, match_id "

@@ -1116,6 +1116,29 @@ components:
             - $ref: "#/components/schemas/LeagueFixture"
             - type: "null"
           description: 다음 SCHEDULED 유저 경기(없으면 시즌 종료 임박)
+        division:
+          type: integer
+          description: >-
+            이 시즌의 디비전 level (#252). **작을수록 상위** (10=입문 … 1=최상위).
+            시즌 생성 시 유저 디비전으로 확정·박제되며 시즌 도중 바뀌지 않는다 —
+            그래야 이미 치른 라운드와 남은 라운드의 상대 강도가 같다.
+        divisionName:
+          type: [string, "null"]
+          description: >-
+            디비전 표시명(league.v2.json divisions[].name). **서버가 SoT** — 클라가 level→이름을
+            복제하면 표가 바뀔 때 조용히 어긋난다. 구 발행물(divisions 없음)이면 null.
+        promoteRankMax:
+          type: [integer, "null"]
+          description: >-
+            최종 순위가 이 값 이하면 승급(level−1). **최상위 디비전에서는 null** — 더 올라갈 곳이
+            없어 승급이 일어나지 않는다. 서버가 여기서 잘라 보내므로 클라는 사다리 경계를
+            추측하지 않는다(추측하면 "우승 → 한 단계 위" 같은 거짓 안내가 나간다).
+        relegateRankMin:
+          type: [integer, "null"]
+          description: >-
+            최종 순위가 이 값 이상이면 강등(level+1). **입문 디비전에서는 null** — 더 내려갈 곳이
+            없어 강등이 일어나지 않는다. 신규 유저는 전원 입문 디비전이라, 값을 실어 보내면
+            100% 의 유저가 존재하지 않는 강등 위협을 보게 된다.
         seasonReward:
           $ref: "#/components/schemas/SeasonReward"
           description: >-
@@ -1137,6 +1160,13 @@ components:
           type: string
           enum: [PENDING, GRANTED, NONE]
           description: PENDING=시즌 진행 중(미지급) / GRANTED=지급됨 / NONE=종료됐으나 보상 없음(방어)
+        gems:
+          type: [integer, "null"]
+          description: >-
+            입상 젬 실지급액(#212, gem_ledger 파생). 우승만 대상이라 그 외 순위는 0.
+            ⚠️ 서버 record 와 web 이 이미 주고받고 있었는데 스키마에만 빠져 있었다(선존 갭) —
+            선언에 없으면 생성 타입에도 없어 클라가 손으로 타입을 적게 되고, 그 손타입이
+            서버와 갈라지는 것이 이 화면에서 실제로 난 사고다(status AWARDED/GRANTED 불일치).
         awardedAt:
           type: [string, "null"]
           description: 지급 시각(원장 created_at). 미지급이면 null

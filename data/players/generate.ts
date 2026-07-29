@@ -121,6 +121,19 @@ export const INACTIVE_PLAYER_IDS_V23: readonly string[] = [
 export const LEAGUE_VERSION = "v1";
 
 /**
+ * league 부분 버전업(additive, #252 디비전 난이도 사다리). `league.v1.json` 은 **바이트 불변**으로
+ * 남기고 `divisions` 블록만 얹은 v2 를 새로 발행한다(발행 후 수정 금지 규칙 — `ECONOMY_V3_VERSION` 선례).
+ */
+export const LEAGUE_V2_VERSION = "v2";
+
+/**
+ * bots 부분 버전업(#252 연습 상대 하향). `bots.v2.json` 은 바이트 불변으로 남기고 입문 난이도로
+ * 재구성한 v3 를 새로 발행한다. id 3종(BOT_ATK/BOT_DEF/BOT_BAL)은 **유지** — `matches.bot_id` FK 가
+ * 과거 매치에서 이 id 를 참조하고 있어 바꾸면 이력이 끊긴다.
+ */
+export const BOTS_V3_VERSION = "v3";
+
+/**
  * economy 부분 버전업(additive, #209 스타터 개편). `economy.v2.json` 은 **바이트 불변**으로 남기고
  * `starterTop` 블록만 얹은 v3 를 새로 발행한다(발행 후 수정 금지 규칙 — `PLAYERS_V21_VERSION` 선례).
  * 소비자는 서버의 `hmb.data.economy-file` 하나뿐이라 스위치는 그 한 줄이다.
@@ -494,6 +507,31 @@ export interface LeagueSeed {
   rewards: LeagueReward[];
 }
 
+/**
+ * league.v2.json = v1 + `divisions` (#252). 디비전별 **봇 선발 XI 등급 슬롯**이 난이도의 주 노브다.
+ * 서버는 이 표만 보고 봇 로스터를 구성한다(코드 하드코딩 금지).
+ */
+export interface LeagueSeedV2 extends LeagueSeed {
+  divisions: LeagueDivision[];
+}
+
+export interface LeagueDivision {
+  /** 10 = 입문(가장 쉬움) … 1 = 최상위. 신규 유저는 최대 level 에서 시작한다. */
+  level: number;
+  name: string;
+  shortName: string;
+  /**
+   * 선발 11 슬롯의 등급. **slot 0 은 GK** — 서버가 이 등급의 GK 를 뽑는다.
+   * 길이 11 고정(서버가 검증). 이 배열이 곧 팀 파워를 정한다.
+   */
+  gradeSlots: Grade[];
+  /**
+   * 등급 슬롯만으로는 하한(전원 BRONZE)을 못 넘는 입문 구간용 미세 배율. 1.00 = 미적용.
+   * 봇 능력치에 곱해지며, 화면에 뜨는 팀 파워도 이 값을 반영해 계산된다(표시=실제).
+   */
+  strengthMul: number;
+}
+
 export interface BotDeckStarter {
   playerId: string;
   slotIndex: number;
@@ -505,6 +543,12 @@ export interface BotSeed {
   name: string;
   persona: string;
   analysisText: string;
+  /**
+   * 봇 능력치 배율(선택, 기본 1.0 = 미적용). 서버가 SelectData 를 만들 때 곱한다.
+   * 등급 하한(전원 BRONZE)만으로는 못 내려가는 봇에만 쓴다 — #252 실측에서 **공격형 페르소나는
+   * 같은 파워로도 유저를 훨씬 강하게 압박**해서, 등급을 다 낮춰도 혼자 어려웠다.
+   */
+  strengthMul?: number;
   deck: {
     formation: string;
     starters: BotDeckStarter[];
@@ -635,6 +679,10 @@ export interface GeneratedData {
   bots: BotSeed[];
   /** league.v1.json — 봇 클럽명·성향 프리셋·순위 보상. */
   league: LeagueSeed;
+  /** league.v2.json — v1 + divisions(#252 난이도 사다리). 현행 소비본. */
+  leagueV2: LeagueSeedV2;
+  /** bots.v3.json — 입문 난이도로 재구성한 연습 봇 3종(#252). 현행 소비본. */
+  botsV3: BotSeed[];
 }
 
 /** players.v2 에 personality(이름 조회)를 뒤에 덧붙여 v2.1 을 만든다. 매핑 누락은 즉시 에러(결정론·완전성). */
@@ -825,6 +873,60 @@ function buildLeague(): LeagueSeed {
   ];
 
   return { version: LEAGUE_VERSION, clubNames, personaPresets, rewards };
+}
+
+/**
+ * 디비전 사다리(#252) — 등급 슬롯 counts → 11칸 배열. **낮은 등급이 앞**(slot 0 = GK)이라
+ * 서버가 자르는 "선발 11"과 표의 순서가 일치한다.
+ *
+ * <p>근거·실측 = `docs/plan-v5/opponent-balance.md` §3~§4. 요약: 신규 유저 최선 XI 는 6229 인데
+ * 구 사다리(등급 라운드로빈)는 항상 6861 ≈ "전원 GOLD" 였다. D10~D6 을 4663~5264 로 평탄하게 깔아
+ * 초반 5시즌 완충 구간을 만들고, D2 가 구 난이도, D1 이 그 위다.
+ */
+function divisionSlots(counts: Partial<Record<Grade, number>>): Grade[] {
+  const order: Grade[] = ["BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"];
+  const slots: Grade[] = [];
+  for (const g of order) {
+    for (let i = 0; i < (counts[g] ?? 0); i++) slots.push(g);
+  }
+  if (slots.length !== 11) {
+    throw new Error(`divisionSlots: 선발 슬롯은 11칸이어야 함 (현재 ${slots.length})`);
+  }
+  return slots;
+}
+
+const DIVISION_SPECS: {
+  level: number;
+  name: string;
+  shortName: string;
+  counts: Partial<Record<Grade, number>>;
+  strengthMul: number;
+}[] = [
+  { level: 10, name: "디비전 10", shortName: "D10", counts: { BRONZE: 11 }, strengthMul: 0.95 },
+  { level: 9, name: "디비전 9", shortName: "D9", counts: { BRONZE: 11 }, strengthMul: 0.98 },
+  { level: 8, name: "디비전 8", shortName: "D8", counts: { BRONZE: 11 }, strengthMul: 1.0 },
+  { level: 7, name: "디비전 7", shortName: "D7", counts: { BRONZE: 9, SILVER: 2 }, strengthMul: 1.0 },
+  { level: 6, name: "디비전 6", shortName: "D6", counts: { BRONZE: 7, SILVER: 4 }, strengthMul: 1.0 },
+  { level: 5, name: "디비전 5", shortName: "D5", counts: { BRONZE: 4, SILVER: 7 }, strengthMul: 1.0 },
+  { level: 4, name: "디비전 4", shortName: "D4", counts: { BRONZE: 1, SILVER: 10 }, strengthMul: 1.0 },
+  { level: 3, name: "디비전 3", shortName: "D3", counts: { SILVER: 6, GOLD: 5 }, strengthMul: 1.0 },
+  { level: 2, name: "디비전 2", shortName: "D2", counts: { GOLD: 11 }, strengthMul: 1.0 },
+  { level: 1, name: "디비전 1", shortName: "D1", counts: { DIA: 11 }, strengthMul: 1.0 },
+];
+
+/** league.v2.json = v1 그대로 + divisions(additive). v1 객체는 건드리지 않는다(발행물 불변). */
+function buildLeagueV2(league: LeagueSeed): LeagueSeedV2 {
+  return {
+    ...league,
+    version: LEAGUE_V2_VERSION,
+    divisions: DIVISION_SPECS.map((d) => ({
+      level: d.level,
+      name: d.name,
+      shortName: d.shortName,
+      gradeSlots: divisionSlots(d.counts),
+      strengthMul: d.strengthMul,
+    })),
+  };
 }
 
 /**
@@ -1129,6 +1231,93 @@ export function generateAll(): GeneratedData {
     },
   ];
 
+  // -- bots.v3.json (#252 연습 상대 하향) ---------------------------------
+  // 실사(docs/plan-v5/opponent-balance.md §1.2): 구 v2 는 3봇 중 2개가 **전원 GOLD**(XI 6986/6968)라
+  // 신규 유저(최선 XI 6229)에게 기본값 자체가 디비전 2 급이었다. 셋 다 **입문 대역**으로 내린다.
+  //
+  // ⚠️ 파워를 페르소나별로 다르게 준 이유 = 라이브 실측이 "파워순 = 난이도순"이 아니었기 때문이다.
+  // BOT_ATK(공격형)·BOT_BAL(밸런스)은 파워가 낮아도 유저를 압도했고(각 1승6패·0승4패 상대),
+  // BOT_DEF(로우블록)는 파워가 650 높은데도 5전 5패였다. 그래서 **과대성과 페르소나에 낮은 파워**를,
+  // 저성과 페르소나에 높은 파워를 줘 체감 난이도를 맞춘다. 난이도 라벨은 붙이지 않는다(§4.4).
+  const botAtkDeckV3 = buildBotDeck(players, {
+    starterGroups: [
+      { position: "GK", count: 1, minRank: 0, maxRank: 0 },
+      { position: "DF", count: 4, minRank: 0, maxRank: 0 },
+      { position: "MF", count: 3, minRank: 0, maxRank: 0 },
+      { position: "FW", count: 2, minRank: 0, maxRank: 0 },
+      { position: "FW", count: 1, minRank: 1, maxRank: 1 },
+    ],
+    fwPromptCount: 2,
+    fwPromptText: "적극 침투",
+    benchMinRank: 0,
+    benchMaxRank: 1,
+  });
+  botAtkDeckV3.formation = "4-3-3";
+
+  const botDefDeckV3 = buildBotDeck(players, {
+    starterGroups: [
+      { position: "GK", count: 1, minRank: 0, maxRank: 0 },
+      { position: "DF", count: 2, minRank: 0, maxRank: 0 },
+      { position: "DF", count: 3, minRank: 1, maxRank: 1 },
+      { position: "MF", count: 3, minRank: 1, maxRank: 1 },
+      { position: "FW", count: 2, minRank: 1, maxRank: 1 },
+    ],
+    fwPromptCount: 0,
+    fwPromptText: "",
+    benchMinRank: 0,
+    benchMaxRank: 1,
+  });
+  botDefDeckV3.formation = "5-3-2";
+
+  const botBalDeckV3 = buildBotDeck(players, {
+    starterGroups: [
+      { position: "GK", count: 1, minRank: 0, maxRank: 0 },
+      { position: "DF", count: 4, minRank: 0, maxRank: 0 },
+      { position: "MF", count: 4, minRank: 0, maxRank: 0 },
+      { position: "FW", count: 2, minRank: 0, maxRank: 0 },
+    ],
+    fwPromptCount: 0,
+    fwPromptText: "",
+    benchMinRank: 0,
+    benchMaxRank: 0,
+  });
+  botBalDeckV3.formation = "4-4-2";
+
+  const botsV3: BotSeed[] = [
+    {
+      id: "BOT_ATK",
+      name: "레드 스톰",
+      persona: "하이라인·강한 압박·빠른 템포로 공격적으로",
+      analysisText:
+        "공격적인 팀. 하이라인과 강한 압박으로 빠른 템포를 유지하며 최전방이 적극적으로 침투한다. " +
+        "선수 개개인의 능력은 높지 않으니, 뒷공간을 노리는 빠른 역습으로 맞받아칠 수 있다.",
+      // #252 독립검증 MAJ-3: 등급을 전원 브론즈급(XI 5005)까지 내렸는데도 유저 승률이 **37.5%**
+      // (실점 2.79 = 엔진 리얼리즘 밴드 1.4~1.65 의 1.7배)로 셋 중 혼자 어려웠다. 공격형 페르소나가
+      // 파워와 무관하게 유저를 압박하기 때문이다(같은 문서 §1.2 "파워순 ≠ 난이도순"). 등급으로는
+      // 더 못 내려가므로(전원 BRONZE 가 하한) 배율로 내린다. 0.80 실측 = 승률 52.4% · 실점 2.01.
+      strengthMul: 0.8,
+      deck: botAtkDeckV3,
+    },
+    {
+      id: "BOT_DEF",
+      name: "블루 월",
+      persona: "로우블록·역습·안전한 패스",
+      analysisText:
+        "수비적인 팀. 로우블록으로 진영을 낮게 유지하다 빠른 역습을 노린다. 수비진이 이 리그에서는 " +
+        "두꺼운 편이고 패스는 안전 위주 — 측면 크로스나 지공 상황에서 빈틈을 찾아야 한다.",
+      deck: botDefDeckV3,
+    },
+    {
+      id: "BOT_BAL",
+      name: "그린 밸런스",
+      persona: "균형 잡힌 점유율 축구",
+      analysisText:
+        "브론즈 등급 중심의 균형 잡힌 팀. 특정 강점 없이 고르게 점유율 축구를 구사한다 — " +
+        "가입 시 받는 스타터 팩 덱으로 충분히 이길 수 있는 상대다.",
+      deck: botBalDeckV3,
+    },
+  ];
+
   // 발행물 분기: v2/v2.1 은 동결 경계(FROZEN_ROSTER_COUNT)에서 자른 스냅샷, v2.2 는 전체 카탈로그.
   // 신규분이 ROSTER 맨 끝에 append 되므로 앞부분 슬라이스는 발행 당시와 바이트 동일하다.
   const playersV2 = players.slice(0, FROZEN_ROSTER_COUNT);
@@ -1144,7 +1333,11 @@ export function generateAll(): GeneratedData {
     starterTop: { pool: [...STARTER_TOP_POOL], count: STARTER_TOP_COUNT },
   };
 
-  return { players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league };
+  return {
+    players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league,
+    leagueV2: buildLeagueV2(league),
+    botsV3,
+  };
 }
 
 // -- CLI entrypoint (파일로 실행됐을 때만 쓰기 수행) -----------------------
@@ -1157,8 +1350,10 @@ const isMain = (() => {
 })();
 
 if (isMain) {
-  const { players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league } =
-    generateAll();
+  const {
+    players, playersV2, playersV21, playersV22, playersV23, economy, economyV3, bots, league,
+    leagueV2, botsV3,
+  } = generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
   writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(playersV2, null, 2) + "\n");
   writeFileSync(
@@ -1180,6 +1375,11 @@ if (isMain) {
   );
   writeFileSync(join(here, `bots.${DATA_VERSION}.json`), JSON.stringify(bots, null, 2) + "\n");
   writeFileSync(join(here, `league.${LEAGUE_VERSION}.json`), JSON.stringify(league, null, 2) + "\n");
+  writeFileSync(
+    join(here, `league.${LEAGUE_V2_VERSION}.json`),
+    JSON.stringify(leagueV2, null, 2) + "\n",
+  );
+  writeFileSync(join(here, `bots.${BOTS_V3_VERSION}.json`), JSON.stringify(botsV3, null, 2) + "\n");
   // eslint-disable-next-line no-console
   console.log(
     `generated ${players.length} players (v2/v2.1 frozen ${playersV2.length}, v2.2 ${playersV22.length} ` +

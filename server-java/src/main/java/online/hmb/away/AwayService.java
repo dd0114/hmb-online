@@ -395,10 +395,13 @@ public class AwayService {
         String json = withFrozenAttributes(defenderId, deckSnapshot.json(deck, null));
         String botId = GHOST_PREFIX + defenderId + "_" + Hashes.sha256Hex(json).substring(0, 12);
 
+        // kind='away' (#252): 이 행은 **연습 매칭 풀이 아니다**. 기본값 'seed' 로 두면 실유저 고스트가
+        // 연습 랜덤 상대로 뽑히고, 그건 리그 봇팀이 연습 풀을 오염시킨 것(BL-1)과 똑같은 결함이다 —
+        // 게다가 고스트는 성장 스탯이 박힌 실유저 덱이라 난이도 설계 밖에 있다.
         jdbcClient.sql("""
-                        INSERT INTO bots(id, name, persona, analysis_text, deck_json)
-                        VALUES (?, ?, ?, ?, ?)
-                        ON CONFLICT(id) DO UPDATE SET name = excluded.name
+                        INSERT INTO bots(id, name, persona, analysis_text, deck_json, kind)
+                        VALUES (?, ?, ?, ?, ?, 'away')
+                        ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = 'away'
                         """)
                 .params(botId, nickname, "",
                         nickname + " 감독의 실제 팀입니다. 선수별 지시가 그대로 적용됩니다.", json)
