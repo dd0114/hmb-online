@@ -32,6 +32,9 @@ docker compose ps             # java/runner/executor 3개 healthy 확인
 | `cloudflared/config.example.yml` | named tunnel 설정 **템플릿**(자격증명 JSON 은 커밋 금지) |
 | `pages/build.sh` | Cloudflare Pages 빌드 커맨드(리포 루트에서 실행) |
 | `pages/_redirects`·`_headers` | SPA 폴백 + 보안/캐시 헤더. build.sh 가 `apps/web/dist/` 로 복사 |
+| `pages/functions/**` | **Pages Function 소스**(#299 공유 URL OG 썸네일). SoT — 여기서만 고친다 |
+| `pages/stage-functions.sh` | 위를 **리포 루트 `functions/`** 로 배치(build.sh 가 부른다). 왜 거기인지는 그 파일 주석 |
+| `pages/e2e/*` | OG Function 로컬 계약(`wrangler pages dev` + curl + 실브라우저). 배포 없이 돈다 |
 | `../server-java/Dockerfile` | Boot3 멀티스테이지(JDK21 빌드 → JRE21 런타임, 비루트) |
 
 ## web (Cloudflare Pages)
@@ -45,6 +48,30 @@ Root directory   : (비움 = 리포 루트 — prebuild 가 모노레포 전체�
 
 > 🚫 **현재 미동작**: `apps/web` 이 아직 `VITE_API_BASE` 를 읽지 않고(#129), server-java 에 CORS 가
 > 없다(#128). 빌드 파이프라인은 검증됐지만 API 왕복은 두 이슈 해소 후 가능하다. deploy.md §6.
+
+## 공유 URL OG 썸네일 (Pages Function, #299)
+
+`/share/notice/{id}` 를 카톡·슬랙에 붙이면 공지 제목·요약·이미지가 미리보기로 뜬다.
+구현 = **route 기반 Pages Function** 하나(`pages/functions/share/notice/[id].js`).
+
+```bash
+# 로컬 검증(배포 없음) — wrangler pages dev + curl + 실브라우저
+VITE_API_BASE=https://example.invalid bash infra/pages/build.sh   # 산출물 1회
+bash infra/pages/e2e/og-function.e2e.sh        # AC1~AC4 계약
+bash infra/pages/e2e/deploy-wiring.e2e.sh      # 배치·워치독 배선 계약
+```
+
+운영자가 알아야 할 3가지:
+
+1. **Function 은 `apps/web/dist` 안이 아니라 리포 루트 `functions/` 에서 읽힌다**
+   (wrangler 는 `process.cwd()/functions` 만 본다 — 근거는 `pages/stage-functions.sh` 주석,
+   실측 대조군은 `pages/e2e/deploy-wiring.e2e.sh` W1). `build.sh` 가 배치하므로 **배포 전 build.sh 를
+   반드시 거쳐야 한다**. 루트 `functions/` 는 생성물(.gitignore) — 거기서 고치면 다음 빌드가 덮는다.
+2. **워치독(#183)이 Function 을 지우지 않게** `deploy-pages.sh`/`deploy-web.sh` 가
+   `~/.cache/hmb/dist-current.functions` 스냅샷을 남긴다. 그게 없으면 `publish-backend-url.sh` 가
+   경고를 남기고 OG 없이 배포한다 → **정상 배포 1회**(`bash infra/deploy-pages.sh <백엔드URL>`)로 복구.
+3. **백엔드 주소는 굽지 않는다** — Function 이 `/config.json` 을 요청 시각에 읽는다. 터널이 바뀌어도
+   따라간다. 미리보기가 빈 채로 뜨면 먼저 `curl https://hmb-online.pages.dev/config.json` 을 본다.
 
 ## AI 실행기 모드
 

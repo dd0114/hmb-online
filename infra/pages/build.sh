@@ -48,6 +48,11 @@ test -d "$DIST" || { echo "[pages] ERROR: $DIST not found" >&2; exit 1; }
 # 소스는 infra/ 가 소유하므로(apps/web 무수정 원칙) 빌드 시 복사한다.
 cp infra/pages/_redirects infra/pages/_headers "$DIST/"
 
+# Pages **Function**(#299 공유 URL OG 썸네일)은 출력 디렉토리가 아니라 **리포 루트 `functions/`**
+# 에서 읽힌다 — wrangler 는 `process.cwd()/functions` 만 본다(근거·실측은 stage-functions.sh 주석).
+# `_worker.js` 를 쓰지 않는 이유도 거기 적혀 있다(그건 `_headers` 를 무력화해 뷰어 iframe 을 죽인다).
+bash infra/pages/stage-functions.sh "$PWD"
+
 # 런타임 백엔드 config(#183). 워치독이 터널을 되살린 뒤 **이 파일만** 갈아끼워 재배포한다.
 if [ -n "${VITE_RUNTIME_CONFIG_URL:-}" ]; then
   printf '{\n  "apiBase": "%s",\n  "updatedAt": "%s",\n  "source": "build"\n}\n' \

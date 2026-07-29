@@ -48,10 +48,13 @@ npx -y wrangler pages deploy apps/web/dist --project-name="$PROJECT" --branch=ma
 # 자가복구(#183)용 dist 스냅샷 보존 — deploy-web.sh 와 동일. 없으면 워치독이 전파를 못 한다.
 CACHE="${HMB_DIST_CACHE:-$HOME/.cache/hmb/dist-current}"
 mkdir -p "$CACHE" && rsync -a --delete apps/web/dist/ "$CACHE/"
+# Pages Function(#299)은 dist 안이 아니라 **cwd 아래 functions/** 에서 읽힌다(wrangler 규칙).
+# 같이 보존하지 않으면 워치독(#183)의 재배포가 OG Function 을 **삭제**해 공유 미리보기가 조용히 죽는다.
+mkdir -p "$CACHE.functions" && rsync -a --delete functions/ "$CACHE.functions/"
 printf 'deployedAt=%s\nbackend=%s\ngit=%s\nfrom=%s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BACKEND" "$(git rev-parse --short HEAD 2>/dev/null || echo ?)" "$PWD" \
   > "$CACHE.meta"
-echo "[pages]    dist 스냅샷 보존 → $CACHE"
+echo "[pages]    dist 스냅샷 보존 → $CACHE (+ functions → $CACHE.functions)"
 
 echo "[pages] 4) 백엔드 CORS 에 $PAGES_URL 추가·재결선 (⭕ DB 유지 — down 아님)"
 CUR=$(grep -E '^WEB_ORIGINS=' infra/.env | cut -d= -f2-)
