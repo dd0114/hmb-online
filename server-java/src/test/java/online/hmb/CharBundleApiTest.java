@@ -274,8 +274,15 @@ class CharBundleApiTest extends ApiTestBase {
             assertThat(uploadRaw(admin, zip(bad), null).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         }
         // zip 이 아예 아닌 바이트도 같은 보증을 받는다.
-        assertThat(uploadRaw(admin, "not a zip at all".getBytes(StandardCharsets.UTF_8), null)
-                .getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ResponseEntity<Map> notZip =
+                uploadRaw(admin, "not a zip at all".getBytes(StandardCharsets.UTF_8), null);
+        assertThat(notZip.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        // ⚠️ **문구까지 본다**(재검증 MIN-B). ZipInputStream 은 쓰레기 바이트에 조용히 엔트리 0 으로
+        //    끝나므로, 가드가 사라지면 "매니페스트가 없습니다"로 답한다 — 그러면 운영자가 zip
+        //    내용을 뒤지러 간다. 실제 문제는 파일 형식이다. 상태코드만 보면 이 회귀를 못 잡는다.
+        assertThat(String.valueOf(notZip.getBody().get("message")))
+                .as("무엇이 잘못됐는지 정확히 말한다")
+                .contains("zip");
 
         assertThat(bundleCount()).isZero();
         assertThat(revisionDirCount()).as("거절 6종 전부 — 볼륨에 고아 디렉토리 0").isEqualTo(before);
@@ -364,6 +371,29 @@ class CharBundleApiTest extends ApiTestBase {
 
         assertThat(rest.getForEntity(baseUrl("/api/chars/index"), String.class).getStatusCode())
                 .as("파일이 없으면 활성 번들이 아니다 → web 이 구운 폴백으로 간다")
+                .isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    /**
+     * <b>부분 유실도 "번들 없음"이다</b> — 재검증 MIN-A.
+     *
+     * <p>전멸만 막으면 절반이다: {@code manifest.json} 만 남은 상태에서 200 을 주면 web 은
+     * 플레이스홀더 축이 살아 있어 <b>"빈 번들"로 보지 않고 폴백하지 않는다</b> → 캐릭터·유닛·
+     * 매핑 축이 죽은 채로 굴러간다(얼굴 없는 화면인데 아무도 버그로 신고하지 않는다).
+     */
+    @Test
+    void anActiveRevisionMissingSomeManifestsIsAlsoReportedAsNoBundle() throws Exception {
+        String admin = adminToken();
+        String revision = (String) upload(admin, validBundle("partial"), null).get("id");
+        activate(admin, revision);
+
+        // 플레이스홀더 매니페스트만 남기고 나머지 3종을 지운다.
+        Files.deleteIfExists(bundleDir.resolve(revision).resolve("units/manifest.json"));
+        Files.deleteIfExists(bundleDir.resolve(revision).resolve("characters/manifest.json"));
+        Files.deleteIfExists(bundleDir.resolve(revision).resolve("player-chars.json"));
+
+        assertThat(rest.getForEntity(baseUrl("/api/chars/index"), String.class).getStatusCode())
+                .as("4종 중 하나라도 없으면 활성 번들이 아니다")
                 .isEqualTo(HttpStatus.NOT_FOUND);
     }
 

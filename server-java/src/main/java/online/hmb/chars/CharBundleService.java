@@ -50,10 +50,16 @@ public class CharBundleService {
                 .optional()
                 // ⚠️ **DB 만 믿지 않는다**(독립검증 MAJOR-2). 볼륨을 잃고 DB 만 복원하면 행은
                 //    "REV2 서빙 중"이라 말하는데 파일이 없다. 그 상태에서 200 을 주면 web 이
-                //    서버 base 를 채택하고 매니페스트 4종이 전부 404 가 되어 **구운 폴백으로
-                //    돌아갈 경로가 사라진다** — 화면이 통째로 이니셜이 된다(실측).
-                //    여기서 파일을 확인하면 "번들 없음"이 되어 web 이 정상적으로 폴백한다.
-                .filter(idx -> storage.read(idx.revision(), CharBundleStorage.REQUIRED_ENTRIES.get(0)) != null);
+                //    서버 base 를 채택하고 매니페스트가 404 가 되어 **구운 폴백으로 돌아갈 경로가
+                //    사라진다** — 화면이 통째로 이니셜이 된다(실측).
+                //
+                // ⚠️ **4종을 전부 확인한다**(재검증 MIN-A). 하나만 보면 <b>부분 유실</b>이 새 나간다:
+                //    `manifest.json` 만 남고 나머지가 사라진 상태에서 200 을 주면, web 은
+                //    플레이스홀더 축이 살아 있어 "빈 번들"로 보지 않고 폴백하지 않는다 →
+                //    캐릭터·유닛·매핑 축이 죽은 채로 굴러간다(실측). 비용은 페이지 로드당 파일
+                //    존재 확인 4회다(≈6ms) — 이 엔드포인트는 모듈 싱글턴이라 로드당 1회만 불린다.
+                .filter(idx -> CharBundleStorage.REQUIRED_ENTRIES.stream()
+                        .allMatch(rel -> storage.read(idx.revision(), rel) != null));
     }
 
     /** 활성 리비전에서 파일 하나. 활성 번들이 없거나 파일이 없으면 {@code null}(→ 404). */
