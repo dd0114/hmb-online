@@ -45,6 +45,47 @@ function notice(seed: NoticeSeed) {
 interface NoticeMock {
   payload: unknown;
   status: number;
+  /** 응답 지연(ms) — 공지가 **늦게** 도착하는 경합(#248 §4 큐)을 재현한다. */
+  delayMs?: number;
+  /** `/api/me/away-reports`(#245). 안 주면 미확인 원정 0건. */
+  away?: unknown;
+}
+
+/** 미확인 원정 리포트 1건 — `shouldShowAwayPopup` 이 요구하는 최소 형태(reports 배열 + summary). */
+function awayReportsPayload() {
+  const reports = [
+    {
+      id: "AR1",
+      matchId: "M-away-1",
+      attackerName: "라이벌FC",
+      goalsFor: 1,
+      goalsAgainst: 2,
+      result: "LOSS",
+      ratingDelta: -12,
+      createdAt: "2026-07-29T10:00:00Z",
+      seen: false,
+    },
+  ];
+  return {
+    reports,
+    summary: {
+      matches: 1,
+      opponents: 1,
+      wins: 0,
+      draws: 0,
+      losses: 1,
+      goalsFor: 1,
+      goalsAgainst: 2,
+      ratingDelta: -12,
+    },
+    rating: 1188,
+    unseen: 1,
+  };
+}
+
+/** 지금 열려 있는 모달 수 — "동시에 하나만"의 측정점. */
+function openDialogs(page: Page) {
+  return page.locator('[role="dialog"]');
 }
 
 async function mockLobby(page: Page, mock: NoticeMock) {
@@ -63,9 +104,14 @@ async function mockLobby(page: Page, mock: NoticeMock) {
   await page.route((url) => url.pathname === "/api/me/active-match", (route) =>
     route.fulfill(json({ match: null, locked: false, abandonable: false })),
   );
-  await page.route((url) => url.pathname === "/api/notices/active", (route) =>
-    route.fulfill(json(mock.payload, mock.status)),
+  // #245 원정 리포트 — 기본은 "미확인 0건"이라 기존 스펙 동작은 그대로다.
+  await page.route((url) => url.pathname === "/api/me/away-reports", (route) =>
+    route.fulfill(json(mock.away ?? { reports: [], summary: null, rating: 1200, unseen: 0 })),
   );
+  await page.route((url) => url.pathname === "/api/notices/active", async (route) => {
+    if (mock.delayMs) await new Promise((resolve) => setTimeout(resolve, mock.delayMs));
+    return route.fulfill(json(mock.payload, mock.status));
+  });
 }
 
 async function gotoLobby(page: Page) {
@@ -324,6 +370,99 @@ test.describe("#248 공지 팝업 — 실패해도 로비는 산다", () => {
     // 오염이 공지를 영구히 못 보게 만들면 안 된다.
     await expect(page.getByTestId("notice-popup")).toBeVisible();
     expect(errors).toEqual([]);
+  });
+});
+
+/**
+ * 로비 팝업 큐의 **교차 계약** (#248 §5 web 10 · §4) — #245 원정이 main 에 들어와 실물이 생겼다.
+ *
+ * 지금까지 이 계약은 `lobby-popup.test.ts` 순수함수로만 있었다. 화면에서 성립하는지가 본론이다:
+ * **동시에 하나만 열리고, 겹치면 공지가 이기고, 진 쪽은 삼켜지지 않고 미뤄질 뿐이다.**
+ *
+ * ⚠️ 두 팝업은 트리거가 다르다 — 공지는 **로비 진입**, 원정은 **[게임 시작] 클릭**(hero E1).
+ * 그래서 진입 시점만 보면 `away` 가 애초에 false 라 우선순위를 뒤집어도 티가 안 난다.
+ * 큐가 실제로 일하는 순간은 **공지가 늦게 도착하는 경합**이다 — 그 창을 여기서 만든다.
+ */
+test.describe("#248 로비 팝업 큐 — 공지 × 원정(#245) 교차", () => {
+  test("둘 다 준비돼도 로비 진입에는 **공지만** 열린다 (원정 모달은 DOM 에 없다)", async ({ page }) => {
+    await mockLobby(page, {
+      payload: { notices: [notice({ id: "N1", title: "정기 점검" })] },
+      status: 200,
+      away: awayReportsPayload(),
+    });
+    await gotoLobby(page);
+
+    await expect(page.getByTestId("notice-popup")).toBeVisible();
+    await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
+    await expect(openDialogs(page), "열린 모달은 정확히 1개").toHaveCount(1);
+  });
+
+  test("공지를 다 닫은 뒤 [게임 시작] → 원정이 열린다 (삼키지 않고 미룰 뿐)", async ({ page }) => {
+    await mockLobby(page, {
+      payload: { notices: [notice({ id: "N1" }), notice({ id: "N2" })] },
+      status: 200,
+      away: awayReportsPayload(),
+    });
+    await gotoLobby(page);
+
+    // 1단계 — 공지 2장. 원정은 대기.
+    await expect(page.getByTestId("notice-pager")).toHaveText("1 / 2");
+    await expect(openDialogs(page)).toHaveCount(1);
+    await page.getByTestId("notice-close").click();
+    await expect(page.getByTestId("notice-pager")).toHaveText("2 / 2");
+    await expect(openDialogs(page), "장을 넘기는 중에도 1개").toHaveCount(1);
+    await page.getByTestId("notice-close").click();
+
+    // 2단계 — 공지가 끝나면 모달이 하나도 없다(원정이 자동으로 튀어나오지 않는다: 트리거가 CTA다).
+    await expect(page.getByTestId("notice-popup")).toHaveCount(0);
+    await expect(openDialogs(page)).toHaveCount(0);
+
+    // 3단계 — CTA 를 누르면 그제서야 원정. 공지가 원정을 소진시키지 않았다.
+    await page.getByTestId("play-cta").click();
+    await expect(page.getByTestId("away-report-modal")).toBeVisible();
+    await expect(page.getByTestId("notice-popup")).toHaveCount(0);
+    await expect(openDialogs(page)).toHaveCount(1);
+  });
+
+  /**
+   * **큐가 실제로 판정하는 유일한 창** — 공지가 늦게 오는 사이 유저가 CTA 를 눌러 원정이 먼저 열린
+   * 상태에서 공지가 도착한다. 이때 `pickLobbyPopup` 이 공지를 고르고 원정은 **닫혔다가 뒤에 다시**
+   * 나온다. 우선순위를 뒤집으면 공지가 영영 안 뜨고, 큐를 우회해 각자 렌더하면 둘이 동시에 뜬다.
+   */
+  test("원정이 먼저 열린 뒤 공지가 도착하면 — 공지가 이기고, 원정은 그 뒤에 다시 나온다", async ({
+    page,
+  }) => {
+    await mockLobby(page, {
+      payload: { notices: [notice({ id: "N1", title: "긴급 점검" })] },
+      status: 200,
+      delayMs: 2500,
+      away: awayReportsPayload(),
+    });
+
+    // 원정 데이터가 도착한 것을 확인한 뒤에 눌러야 CTA 가 모드 선택으로 새지 않는다.
+    const awayLoaded = page.waitForResponse(
+      (r) => r.url().includes("/api/me/away-reports") && r.request().method() === "GET",
+    );
+    await gotoLobby(page);
+    await awayLoaded;
+
+    // 공지는 아직 오는 중 — 원정이 먼저 열린다.
+    await expect(page.getByTestId("notice-popup")).toHaveCount(0);
+    await page.getByTestId("play-cta").click();
+    await expect(page.getByTestId("away-report-modal")).toBeVisible();
+    await expect(openDialogs(page)).toHaveCount(1);
+
+    // 공지가 도착 → 큐가 공지를 고른다. **동시에 두 개가 열리는 순간이 없다.**
+    await expect(page.getByTestId("notice-popup")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("notice-title")).toHaveText("긴급 점검");
+    await expect(page.getByTestId("away-report-modal"), "원정은 밀려났다").toHaveCount(0);
+    await expect(openDialogs(page), "겹치는 순간 없이 항상 1개").toHaveCount(1);
+
+    // 공지를 닫으면 밀려났던 원정이 되돌아온다 — 진 쪽이 사라지는 게 아니다.
+    await page.getByTestId("notice-close").click();
+    await expect(page.getByTestId("away-report-modal")).toBeVisible();
+    await expect(page.getByTestId("notice-popup")).toHaveCount(0);
+    await expect(openDialogs(page)).toHaveCount(1);
   });
 });
 
