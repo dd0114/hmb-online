@@ -106,7 +106,12 @@ public class AdminRouteGuard implements ApplicationRunner {
             // #248 공지 운영. 게이트 밖으로 나가면 아무나 전 유저에게 뜨는 팝업을 쓸 수 있다
             // (본문이 링크·이미지를 허용하므로 배포 표면이기도 하다). 읽기 전용 NoticeController
             // (/api/notices/active)는 이 빈이 아니라 NoticeService 에 의존하므로 영향이 없다.
-            AdminNoticeService.class);
+            AdminNoticeService.class,
+            // #309 공지 이미지 업로드. 게이트 밖으로 나가면 **아무나 우리 볼륨에 파일을 쓸 수 있다** —
+            // 공지보다 위험도가 높다(디스크 소진 + 우리 도메인에서 서빙되는 임의 바이트).
+            // 공개 서빙(GET /api/notices/assets/{id})은 NoticeAssetService/Storage 에만 의존하므로
+            // 영향이 없다 — 그 방향(admin → notice)을 유지하는 것이 그 구조의 전부다.
+            AdminNoticeAssetService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;

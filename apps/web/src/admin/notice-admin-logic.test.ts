@@ -6,7 +6,10 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "../api/client";
 import {
+  assetToggleWarning,
+  formatAssetSize,
   noticeOpErrorMessage,
+  normalizeNoticeAssetRows,
   EMPTY_NOTICE_FORM,
   formFromRow,
   formatNoticeWindow,
@@ -273,5 +276,84 @@ describe("formFromRow", () => {
     expect(form.active).toBe(true);
     expect(form.reason).toBe("");
     expect(form.startsAt).not.toBe("");
+  });
+});
+
+// ── 공지 이미지 (#309 W1) ────────────────────────────────────────────────
+
+describe("normalizeNoticeAssetRows", () => {
+  const OK = {
+    id: "01ABC",
+    url: "/api/notices/assets/01ABC",
+    originalName: "hero.png",
+    contentType: "image/png",
+    byteSize: 1234,
+    active: true,
+    usedBy: 2,
+  };
+
+  it("정상 응답을 그대로 통과시킨다", () => {
+    expect(normalizeNoticeAssetRows({ assets: [OK] })).toHaveLength(1);
+    expect(normalizeNoticeAssetRows([OK])).toHaveLength(1);
+  });
+
+  it("⚠️ 구 서버·부분 실패 응답에도 던지지 않는다 — 여기서 던지면 admin 페이지가 흰 화면이다", () => {
+    expect(normalizeNoticeAssetRows({})).toEqual([]);
+    expect(normalizeNoticeAssetRows(null)).toEqual([]);
+    expect(normalizeNoticeAssetRows({ assets: "nope" })).toEqual([]);
+    expect(normalizeNoticeAssetRows({ assets: [null, 3, "x"] })).toEqual([]);
+  });
+
+  it("⚠️ url 이 없으면 id 로 조립하지 않고 버린다 — 경로 규칙을 클라가 복제하면 조용히 어긋난다", () => {
+    expect(normalizeNoticeAssetRows({ assets: [{ ...OK, url: undefined }] })).toEqual([]);
+  });
+
+  it("빠진 필드는 안전한 기본값으로 채운다(활성은 명시적 false 일 때만 꺼진다)", () => {
+    const rows = normalizeNoticeAssetRows({ assets: [{ id: "X", url: "/api/notices/assets/X" }] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.active).toBe(true);
+    expect(rows[0]!.usedBy).toBe(0);
+    expect(rows[0]!.originalName).toBeNull();
+    const off = normalizeNoticeAssetRows({ assets: [{ ...OK, active: false }] });
+    expect(off[0]!.active).toBe(false);
+  });
+});
+
+describe("formatAssetSize", () => {
+  it("운영자가 눈으로 판단할 수 있는 단위로 바꾼다", () => {
+    expect(formatAssetSize(512)).toBe("512 B");
+    expect(formatAssetSize(81806)).toBe("80 KB");
+    expect(formatAssetSize(2 * 1024 * 1024)).toBe("2.0 MB");
+  });
+
+  it("이상한 값에도 화면을 깨지 않는다", () => {
+    expect(formatAssetSize(Number.NaN)).toBe("-");
+    expect(formatAssetSize(-1)).toBe("-");
+  });
+});
+
+describe("assetToggleWarning", () => {
+  const base = {
+    id: "A",
+    url: "/api/notices/assets/A",
+    originalName: null,
+    contentType: "image/png",
+    byteSize: 10,
+    active: true,
+    usedBy: 0,
+  };
+
+  it("사용 중이면 **몇 건이 영향받는지** 먼저 말한다 — 모르는 채로 남의 공지 그림을 지우지 않게", () => {
+    expect(assetToggleWarning({ ...base, usedBy: 2 })).toContain("2건");
+  });
+
+  it("끄는 안내에는 **되돌릴 수 있다**가 들어간다(삭제가 아니라 스위치라는 게 요점이다)", () => {
+    expect(assetToggleWarning(base)).toContain("다시 켜면");
+    expect(assetToggleWarning({ ...base, usedBy: 3 })).toContain("다시 켜면");
+  });
+
+  it("켜는 쪽은 겁주지 않는다 — 그건 되돌리기다", () => {
+    const on = assetToggleWarning({ ...base, active: false, usedBy: 5 });
+    expect(on).not.toContain("빕니다");
   });
 });

@@ -268,6 +268,24 @@ docker tag "$(docker inspect hmb-java   --format '{{.Image}}')" hmb/server-java:
 docker tag "$(docker inspect hmb-runner --format '{{.Image}}')" hmb/servants:prev-live
 ```
 
+⚠️ **볼륨에는 DB 말고도 있다 — 업로드 파일(#309).** `hmb-p3-db` 볼륨은 이제
+`/var/lib/hmb/notice-assets/`(운영자가 admin 에서 올린 공지 이미지)도 담는다. 위 `.backup` 은
+**SQLite 파일만** 뜨므로, 그것만 복원하면 **공지 본문은 살아나는데 그림이 전부 404** 가 된다
+(자산 표 행은 돌아왔지만 바이트가 없다). 볼륨을 통째로 잃을 수 있는 작업(볼륨 삭제·머신 교체)
+앞에서는 파일도 같이 뜬다:
+
+```bash
+# 업로드 자산 백업(있을 때만 — 없으면 빈 tar 가 나온다)
+docker run --rm -v hmb-p3-db:/data:ro -v "$HOME/.local/state/hmb/db-backups:/backup" alpine:3.20 \
+  sh -c "tar czf /backup/assets-<태그>-$TS.tgz -C /data notice-assets 2>/dev/null || echo '(자산 없음)'"
+
+# 복원
+docker run --rm -v hmb-p3-db:/data -v "$HOME/.local/state/hmb/db-backups:/backup:ro" alpine:3.20 \
+  sh -c "tar xzf /backup/assets-<태그>-$TS.tgz -C /data && chown -R 10001:999 /data/notice-assets"
+```
+
+**마이그레이션만 있는 일상 배포에는 필요 없다** — 그 배포는 볼륨을 유지하므로 파일이 그대로 있다.
+
 **리허설(권장)** — 라이브를 건드리지 않고 마이그레이션을 미리 돌려본다:
 ```bash
 docker volume create hmb-rehearsal-db

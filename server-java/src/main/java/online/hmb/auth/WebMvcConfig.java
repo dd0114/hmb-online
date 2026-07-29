@@ -52,11 +52,18 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 // 내용은 피드와 같은 전체 브로드캐스트이고, 아직 공개 전(SCHEDULED)·삭제된 공지는
                 // 인증과 무관하게 404 로 숨긴다(존재 누출 차단은 컨트롤러 결정표가 한다).
                 // 계약 = NoticeByIdApiTest.reachableWithoutAuth.
-                // ⚠️ 두 패턴은 겹친다({id} 는 'active' 세그먼트도 매칭한다). 목록을 줄이지 마라 —
-                //    공개 대상을 **엔드포인트 단위로 열거**하는 것이 이 목록의 존재 이유다.
-                //    /api/notices/** 로 뭉치면 나중에 유저 스코프 하위경로가 생겨도 조용히 공개된다.
+                // /api/notices/assets/{id}(#309) = 그 본문이 가리키는 **이미지**. 같은 이유다 —
+                // 여기에만 401 을 두면 점검 공지가 글은 뜨고 그림만 깨진 채로 보인다. 유저별 데이터 0.
+                // 계약 = NoticeAssetApiTest.assetsAreReachableWithoutAuth.
+                // ⚠️ 패턴들은 서로 겹친다({id} 는 'active'·'assets' 세그먼트도 매칭한다). 목록을
+                //    줄이지 마라 — 공개 대상을 **엔드포인트 단위로 열거**하는 것이 이 목록의 존재
+                //    이유다. /api/notices/** 로 뭉치면 나중에 유저 스코프 하위경로가 생겨도 조용히
+                //    공개된다. 같은 이유로 자산도 `assets/**` 가 아니라 `assets/{id}` 로 적는다 —
+                //    그 엔드포인트가 실제로 받는 모양이 그것뿐이고, 하위경로가 생기면 여기에 한 줄
+                //    더 적는 편이 낫다.
                 .excludePathPatterns(
-                        "/api/auth/**", "/api/config", "/api/notices/active", "/api/notices/{id}")
+                        "/api/auth/**", "/api/config", "/api/notices/active", "/api/notices/{id}",
+                        "/api/notices/assets/{id}")
                 .order(0);
         registry.addInterceptor(adminInterceptor)
                 .addPathPatterns(AdminInterceptor.ADMIN_PATH_PATTERN)

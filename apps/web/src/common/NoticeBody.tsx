@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { parseNoticeBody, type NoticeBlock, type NoticeInline } from "./notice-markup";
+import { resolveNoticeUrl } from "./notice-asset-url";
 import styles from "./NoticeBody.module.css";
 
 /**
@@ -79,9 +80,12 @@ function Spans({ spans }: { spans: NoticeInline[] }) {
 
 /**
  * 이미지는 **화면을 무너뜨릴 수 없다**: `max-width:100%` + 최대 높이 제한(CSS), 그리고
- * 로드 실패 시 **숨긴다** — 죽은 외부 호스트의 깨진 아이콘이 공지 자리를 차지하면
- * "공지가 깨졌다"로 보인다. 1차엔 업로드 저장소가 없어 admin 이 URL 을 붙여넣으므로
- * 외부 호스트 사망은 실제로 일어난다.
+ * 로드 실패 시 **숨긴다** — 죽은 호스트의 깨진 아이콘이 공지 자리를 차지하면 "공지가 깨졌다"로
+ * 보인다. 이 폴백은 업로드 저장소(#309)가 생긴 뒤에도 그대로 필요하다: 외부 URL 참조는 계속
+ * 가능하고, 운영자가 **자산 노출을 끄면**(#309 D9) 그 그림이 의도적으로 404 가 된다.
+ *
+ * `src` 는 **해석해서** 쓴다 — 업로드 이미지는 본문에 상대경로로 적히고 실제 바이트는 백엔드
+ * 오리진에 있다(`notice-asset-url.ts` 참조). 기존 정적 에셋은 손대지 않는다.
  */
 function NoticeImage({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false);
@@ -89,7 +93,7 @@ function NoticeImage({ src, alt }: { src: string; alt: string }) {
   return (
     <img
       className={styles.image}
-      src={src}
+      src={resolveNoticeUrl(src)}
       alt={alt}
       loading="lazy"
       data-testid="notice-image"

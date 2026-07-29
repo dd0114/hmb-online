@@ -286,7 +286,11 @@ function normalizedPathname(path: string): string {
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const token = getToken();
   const headers = new Headers(options.headers);
-  if (options.body !== undefined && !headers.has("Content-Type")) {
+  // 파일 업로드(#309 공지 이미지)는 **Content-Type 을 우리가 정하면 안 된다** — multipart 는
+  // 본문에 boundary 토큰이 필요하고 그건 브라우저가 FormData 를 직렬화하며 만든다. 손으로
+  // "multipart/form-data" 를 넣으면 boundary 가 빠져 서버가 파트를 하나도 못 읽는다.
+  const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
+  if (options.body !== undefined && !isForm && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
   if (token) {
@@ -299,7 +303,11 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   const init: RequestInit = {
     ...options,
     headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body: options.body === undefined
+      ? undefined
+      : isForm
+        ? (options.body as FormData) // 그대로 넘긴다(직렬화하면 "[object FormData]" 문자열이 간다)
+        : JSON.stringify(options.body),
   };
 
   // API base 적용 지점은 여기 **한 곳**뿐이다(#129).

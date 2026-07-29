@@ -7,8 +7,11 @@ import { useToken } from "../auth/TokenContext";
 import {
   ADMIN_NOTICES_HISTORY_PATH,
   ADMIN_NOTICES_PATH,
+  ADMIN_NOTICE_ASSETS_PATH,
   NOTICES_ACTIVE_PATH,
   noticeByIdPath,
+  type AdminNoticeAssetListResponse,
+  type AdminNoticeAssetRow,
   type AdminNoticeAuditEntry,
   type AdminNoticeListResponse,
   type NoticeActiveRequest,
@@ -125,4 +128,56 @@ export function useNoticeOps() {
   });
 
   return { create, update, setActive, remove };
+}
+
+// ── 공지 이미지 (#309 W1) ──────────────────────────────────────────────────
+
+/** GET /api/admin/notices/assets — 노출 OFF 포함 전체 + `usedBy`. */
+export function useAdminNoticeAssets(enabled: boolean = true) {
+  const { token } = useToken();
+  return useQuery<AdminNoticeAssetListResponse>({
+    queryKey: ["admin", "notices", "assets"],
+    queryFn: () => apiFetch<AdminNoticeAssetListResponse>(ADMIN_NOTICE_ASSETS_PATH),
+    enabled: Boolean(token) && enabled,
+  });
+}
+
+/**
+ * 업로드 + 노출 스위치. **삭제 뮤테이션은 없다** — 내리기는 스위치로만(#309 D9).
+ *
+ * 공지 액션과 같은 규율: 성공·실패 **모두**(`onSettled`) 캐시를 턴다. 실패가 화면에서 사라지면
+ * "왜 반영이 안 됐나"에 답할 수 없다.
+ */
+export function useNoticeAssetOps() {
+  const queryClient = useQueryClient();
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: ["admin"] });
+    // 본문이 참조하는 그림이 켜지고 꺼지므로 유저 팝업 쿼리도 같이 턴다.
+    void queryClient.invalidateQueries({ queryKey: ["notices"] });
+  };
+
+  const upload = useMutation({
+    mutationFn: ({ file, reason }: { file: File; reason: string }) => {
+      // FormData 를 쓰는 이유: 브라우저가 boundary 를 붙여야 서버가 파트를 읽는다
+      // (apiFetch 가 FormData 를 감지해 Content-Type 을 **설정하지 않는다**).
+      const form = new FormData();
+      form.append("file", file);
+      return apiFetch<AdminNoticeAssetRow>(
+        `${ADMIN_NOTICE_ASSETS_PATH}?reason=${encodeURIComponent(reason)}`,
+        { method: "POST", body: form },
+      );
+    },
+    onSettled: invalidate,
+  });
+
+  const setAssetActive = useMutation({
+    mutationFn: ({ id, active, reason }: { id: string; active: boolean; reason: string }) =>
+      apiFetch<AdminNoticeAssetRow>(
+        `${ADMIN_NOTICE_ASSETS_PATH}/${encodeURIComponent(id)}/active`,
+        { method: "POST", body: { active, reason } },
+      ),
+    onSettled: invalidate,
+  });
+
+  return { upload, setAssetActive };
 }

@@ -491,6 +491,33 @@ me 를 쓰면 "**브론즈 리그**에서 1위" 옆에 **실버** 뱃지가 뜬�
 
 계약 = `stage-state.test.ts` · `halftime-draft.test.ts` · `e2e/p284-info-tabs.spec.ts`.
 
+## 공지 이미지 — 업로드·경로 해석 (#309 W1)
+
+공지에 그림을 넣으려고 `public/notice/` 에 파일을 커밋하고 **웹을 재배포**하던 것이 끝났다.
+운영자가 admin 패널에서 올리면 서버에 저장되고, 본문은 그 경로를 참조한다.
+
+- **경로 해석은 `common/notice-asset-url.ts` 한 곳**(`resolveNoticeUrl`). 규칙은 한 줄이다 —
+  **`/api/` 로 시작하는 것만** API base 를 붙인다.
+  - 업로드 이미지(`/api/notices/assets/{id}`) → **백엔드 오리진**(web 은 CF Pages 정적이라 그
+    오리진에 `/api` 를 받아 줄 서버가 없다).
+  - ⚠️ **기존 정적 에셋(`/notice/hero-kyeongnicius.webp`)은 웹 오리진 그대로 둔다.** 전부 옮기면
+    그 그림이 백엔드에서 404 다 — "공존"(#309 요구)이 이 한 줄이다. 계약이 양방향으로 걸려 있다.
+  - dev·테스트·데모(8080)에서는 `apiBase()==""` 라 **항등**이다 → 기존 화면·계약 무영향.
+- ⚠️ **본문에 절대 URL 을 적지 마라.** 백엔드는 quick tunnel 뒤라 주소가 바뀐다 — 절대 URL 을
+  구우면 터널이 한 번 죽는 순간 과거 공지 이미지가 전부 깨지고 복구가 본문 일괄 수정뿐이다.
+  마크업 조립은 `noticeAssetMarkup(id, alt)` 로만(경로 규칙을 화면이 복제하지 않는다).
+- **업로드는 FormData** — `apiFetch` 가 감지해 `Content-Type` 을 **설정하지 않는다**(boundary 는
+  브라우저가 붙인다). 손으로 `multipart/form-data` 를 넣으면 서버가 파트를 하나도 못 읽는다.
+- ⚠️ **삭제 버튼을 만들지 마라. 내리기는 노출 ON/OFF 뿐**(hero 확정 2026-07-30). 되돌릴 수
+  있어야 한다. 끌 때 `usedBy > 0` 이면 **몇 건이 영향받는지 먼저 말하고**(`assetToggleWarning`)
+  확인을 받되 차단하지는 않는다 — 운영자가 아는 상태에서 내리는 결정이다.
+- 업로드 성공 시 **본문 끝에 마크업을 자동 삽입**한다. 경로를 손으로 옮겨 적게 하면 오타 한 글자가
+  깨진 이미지가 되고 그 오타는 게시 후에야 보인다. **실패 시에는 본문을 건드리지 않는다**(계약).
+- `NoticeImage` 의 로드 실패 시 숨김은 **업로드 저장소가 생긴 뒤에도 필요하다** — 외부 URL 참조는
+  계속 가능하고, 운영자가 노출을 끄면 그 그림이 **의도적으로** 404 가 된다.
+- 계약 = `common/notice-asset-url.test.ts`(양방향) + `admin/notice-admin-logic.test.ts`(정규화·경고) +
+  `api/client.test.ts`(FormData 통과) + `e2e/p309-notice-assets.spec.ts`(업로드 한 바퀴·삭제 버튼 0).
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - **e2e 전체 실행 금지** — `league-season`·`match-flow`·`w3-viewer-smoke` 는 :8080 라이브 데모에 붙는다.

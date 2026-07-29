@@ -395,6 +395,46 @@ DTO 에 실으면 클라가 **서버가 하지 않는 전이를 화면에 단언
 - ⚠️ **단건은 SQL 로 거르지 않는다.** 피드(`active()`)는 "보일 것만" 주면 되지만 단건은 *왜* 못 보는지를
   구분해 내려줘야 한다(끝남 410 vs 없음 404). 행을 그대로 읽고 판정만 위임한다.
 
+> ⚠️ **자산 서빙도 이 목록의 일원이다**(#309): `GET /api/notices/assets/{id}` 가 세 번째 공개
+> 엔드포인트다. `{id}` 패턴이 `assets` 세그먼트도 매칭하므로 `/api/notices/assets`(id 없이)는
+> **없는 공지와 같은 404** 를 받는다 — 존재를 흘리지 않아 그대로 둔다. 자산 패턴도 `assets/**` 가
+> 아니라 `assets/{id}` 로 적는다(위 "엔드포인트 단위로 열거" 규칙과 같은 이유).
+
+## 공지 이미지 업로드 — 무배포 운영 (#309 W1)
+
+공지 **텍스트**는 #248 로 이미 무배포였는데 **그림만 웹 배포에 묶여** 있었다(`apps/web/public/notice/`
+커밋 → CF Pages 재배포). 이제 admin 이 올리면 서버 볼륨에 저장되고 공개 경로로 서빙된다.
+설계·결정표 = `docs/plan-v5/ops-content.md`.
+
+- **바이트는 볼륨, 메타는 DB**(V30 `notice_assets`). 보관소 기본값이 **SQLite 파일 옆**
+  (`hmb.notice.asset.dir` 비우면 `dirname(hmb.db.path)/notice-assets`, 도커 = `/var/lib/hmb`).
+  볼륨을 하나로 유지해 **백업 대상이 하나**가 되게 한다 — 갈라 놓으면 DB 만 복구된 상태에서
+  공지 본문은 멀쩡히 남아 깨진 그림을 가리킨다.
+- ⚠️ **삭제가 없다. 내리기는 `active` 스위치뿐**(hero 확정 2026-07-30). 삭제는 오조작이 곧 영구
+  소실이고 참조하던 공지의 그림을 되살릴 방법이 없다. 끄면 서빙 404, 켜면 같은 바이트가 돌아온다.
+  "정리 기능"을 이유로 DELETE 를 추가하지 마라 — 계약이 그 문을 막는다
+  (`NoticeAssetApiTest.thereIsNoDeleteEndpoint` + e2e `p309`).
+- ⚠️ **타입 판정은 매직바이트다**(`NoticeAssetTypes`). 파일명 확장자도 클라 `Content-Type` 도
+  업로드하는 쪽이 정하는 값이라, 확장자만 보는 구현은 **스크립트를 `.png` 로 이름만 바꾼 파일**을
+  통과시킨다. **SVG 는 화이트리스트 밖**(`<img>` 로도 XSS 표면). 방어는 조합으로 성립한다 —
+  고정 `Content-Type` + `nosniff` + SVG 제외. 매직바이트 단독은 polyglot 을 못 막는다(정직한 한계).
+- ⚠️ **저장 파일명은 `{ULID}.{ext}`** — 업로드 이름이 경로에 도달하지 않는다. 경로 탈출을 차단
+  규칙이 아니라 **구조**로 막는 방식이고, 원본 이름은 표시용으로 DB 에만 남는다.
+- ⚠️ **응답 `url` 은 상대경로다**(`/api/notices/assets/{id}`). 절대 URL 을 주면 운영자가 본문에
+  붙여넣고, 백엔드가 quick tunnel 뒤라 **주소가 바뀌는 순간 과거 공지 이미지가 전부 깨진다**
+  (실적: deploy-log 2026-07-22·07-25). 서버가 자기 외부 URL 을 조립하려 들지 마라.
+- **읽기/쓰기 빈이 갈라져 있다**: `NoticeAssetService`(공개) vs `AdminNoticeAssetService`(운영).
+  `AdminRouteGuard` 가 admin 빈 의존 핸들러를 게이트 밖에서 **부팅 실패**로 막으므로, 공개 서빙
+  컨트롤러가 admin 쪽을 한 번이라도 참조하면 서버가 안 뜬다. 방향은 항상 **admin → notice** 한 방향.
+  새 admin 서비스는 `ADMIN_ONLY_BEANS` 에 시드해야 한다(`AdminGateTest` 가 누락을 잡는다).
+- **공개 경로 인증 제외**: `/api/notices/assets/**` 는 `/api/notices/active` 와 같은 이유로 공개다 —
+  여기에만 401 을 두면 **점검 공지가 글은 뜨고 그림만 깨진다**.
+- 상한은 `hmb.notice.asset.max-bytes`(기본 2MB, env 로 무배포 조정). ⚠️ `spring.servlet.multipart`
+  상한은 **더 넉넉하게** 둔다 — 그게 먼저 걸리면 요청이 우리 검증에 닿기도 전에 튕겨 운영자가
+  이유를 모르는 에러를 본다.
+- 계약 = `NoticeAssetApiTest`(바이트 왕복·공개 도달·이름 무관 저장·SVG/위장PNG/상한 거절·부수효과 0·
+  스위치 왕복·삭제 부재·usedBy·원장).
+
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).
 - 상태 전이는 CAS(`WHERE state=?`), 보상·원장은 멱등(유니크 인덱스). 트랜잭션 경계는 서비스 메서드.

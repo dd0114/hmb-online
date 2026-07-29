@@ -1475,6 +1475,123 @@ paths:
         # 위 DELETE 와 같은 창 — requireLive 통과 후 다른 운영자의 삭제가 먼저 커밋되면 0행이 된다.
         "409": { description: "다른 운영자가 먼저 지웠다(조건부 UPDATE 0행). code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
 
+  # ──────────────────── notice assets (#309 W1 — 공지 이미지) ────────────────────
+  # 공지 **텍스트**는 이미 무배포였는데(#248) **그림만 웹 배포에 묶여** 있었다
+  # (apps/web/public/notice/*.webp 를 커밋 → CF Pages 재배포). 여기서 끊는다.
+  #
+  # ⚠️ **삭제 엔드포인트가 없는 것이 계약이다**(hero 확정 2026-07-30). 자산을 내리는 행위는
+  #    되돌릴 수 있어야 한다 — 삭제는 오조작이 곧 영구 소실이고, 그 그림을 참조하던 공지를
+  #    되살릴 방법이 없다. 내리기는 노출 스위치(active)로만 한다.
+  /api/admin/notices/assets:
+    get:
+      tags: [admin]
+      operationId: adminListNoticeAssets
+      summary: 업로드한 공지 이미지 목록(노출 OFF 포함) + 사용 중 공지 수
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [assets]
+                properties:
+                  assets:
+                    type: array
+                    items: { $ref: "#/components/schemas/NoticeAsset" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: adminUploadNoticeAsset
+      summary: |
+        공지 이미지 업로드(multipart, 파트명 `file`). audit action=notice_asset_upload.
+
+        **타입 판정은 매직바이트다** — 파일명 확장자도 클라가 신고한 Content-Type 도 보지 않는다
+        (둘 다 업로드하는 쪽이 정하는 값이다). 허용 = PNG · JPEG · WebP · GIF.
+        **SVG 는 거절한다**: 스크립트를 담을 수 있어 `<img>` 로도 XSS 표면이 된다.
+
+        저장 파일명은 `{ULID}.{ext}` 라 **업로드 이름이 경로에 도달하지 않는다**(경로 탈출을
+        차단 규칙이 아니라 구조로 막는다).
+      parameters:
+        - { name: reason, in: query, required: false, schema: { type: string }, description: 운영 사유(원장에 남는다) }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoticeAsset" }
+        # 화이트리스트 밖 형식 · 상한 초과 · 빈 파일. 거절은 **부수효과 0**(행도 파일도 안 남는다).
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/notices/assets/{id}/active:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      operationId: adminSetNoticeAssetActive
+      summary: |
+        이미지 노출 ON/OFF — **내리기의 전부**(삭제 경로는 없다). audit action=notice_asset_active.
+
+        끄면 공개 서빙이 404 이고, 켜면 **같은 바이트가 그대로** 돌아온다. 파일도 행도 사라지지
+        않으므로 오조작이 복구 가능하다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active, reason]
+              properties:
+                active: { type: boolean }
+                reason: { type: string, description: 운영 사유(필수 — 원장에 남는다) }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NoticeAsset" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: "없는 자산. code=NOT_FOUND", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/notices/assets/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [notices]
+      # **공개**(전역 bearerAuth 해제) — /api/notices/active 와 같은 이유다. 이 바이트는 그 공개
+      # 피드의 본문이 가리키는 그림이라, 여기에만 401 을 두면 점검 공지가 글은 뜨고 그림만 깨진다.
+      security: []
+      operationId: getNoticeAsset
+      summary: 공지 본문이 참조하는 이미지 (#309)
+      description: |
+        응답 헤더 셋이 계약이다: `Content-Type`(업로드 때 **매직바이트로 확정한** 값) ·
+        `X-Content-Type-Options: nosniff`(화이트리스트와 **짝으로만** 방어가 성립한다) ·
+        `Cache-Control: public, max-age=31536000, immutable`(id 당 내용 불변 — 재업로드는 새 id).
+
+        ⚠️ 장기 캐시의 대가: **노출을 꺼도 이미 캐시된 브라우저에는 한동안 남는다**.
+        급히 내려야 하는 그림이면 자산이 아니라 **공지를 내려라**(그건 즉시 반영된다).
+      responses:
+        "200":
+          description: 이미지 바이트
+          content:
+            image/*:
+              schema: { type: string, format: binary }
+        "404": { description: "없거나 노출이 꺼진 자산. code=NOT_FOUND", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
   # ───────────────────────────── notices (공개) ─────────────────────────────
   /api/notices/active:
     get:
@@ -2093,6 +2210,44 @@ components:
             않는다. 중지된 공지에 EXPIRED 를 보여 주면 운영자가 기간을 늘리는 잘못된 조치를 한다.
         deletedAt: { type: [string, "null"], format: date-time }
         createdBy: { type: [string, "null"], description: 생성한 admin 의 userId }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    NoticeAsset:
+      type: object
+      required: [id, url, contentType, byteSize, active, usedBy, createdAt, updatedAt]
+      description: 업로드된 공지 이미지 한 건 (#309 W1).
+      properties:
+        id: { type: string, description: ULID. 서빙 경로의 유일한 식별자이자 저장 파일명의 뿌리 }
+        url:
+          type: string
+          description: |
+            본문에 붙일 **상대경로**(`/api/notices/assets/{id}`). **절대 URL 이 아니다.**
+
+            백엔드는 quick tunnel 뒤에 있어 주소가 죽을 때마다 바뀐다(실적: deploy-log
+            2026-07-22·07-25). 절대 URL 을 본문에 구우면 터널이 한 번 죽는 순간 **과거 공지
+            이미지가 전부 깨지고** 복구가 본문 일괄 수정뿐이다. web 은 렌더 시점에 현재 오리진을
+            붙인다(`common/notice-asset-url.ts`) — 자가복구(#183)를 그냥 따라간다.
+          examples: ["/api/notices/assets/01KYQ..."]
+        originalName:
+          type: [string, "null"]
+          description: 운영자가 올린 파일명. **표시 전용** — 경로에 쓰지 않는다(경로 탈출 차단).
+        contentType:
+          type: string
+          description: 서버가 **매직바이트로 확정한** 값(클라 신고값이 아니다). 서빙도 이 값으로만 나간다.
+          enum: [image/png, image/jpeg, image/webp, image/gif]
+        byteSize: { type: integer }
+        active:
+          type: boolean
+          description: |
+            노출 스위치. `false` 면 공개 서빙이 404 다. **삭제 필드가 없는 것이 설계다** —
+            내리기는 되돌릴 수 있어야 한다(hero 확정 2026-07-30).
+        usedBy:
+          type: integer
+          description: |
+            이 이미지를 본문에서 참조하는 **살아 있는 공지 수**. 운영자가 노출을 끄기 전에
+            무슨 일이 벌어지는지 알아야 하므로 목록에 싣는다(삭제된 공지는 세지 않는다).
+        createdBy: { type: [string, "null"], description: 업로드한 admin 의 userId }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
