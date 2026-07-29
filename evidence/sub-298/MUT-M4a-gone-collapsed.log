@@ -1,0 +1,18 @@
+           - unexpected value "notfound"
+
+
+      315 |     await page.goto("/share/notice/NG");
+      316 |     // 로딩 상태의 문구를 읽어 "둘 다 같다"로 오판하지 않도록 확정 상태를 기다린다.
+    > 317 |     await expect(msg).toHaveAttribute("data-state", "gone");
+          |                       ^
+      318 |     const gone = await msg.innerText();
+      319 |     await page.goto("/share/notice/NF");
+      320 |     await expect(msg).toHaveAttribute("data-state", "notfound");
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p293-notice-deeplink.spec.ts:317:23
+
+    Error Context: test-results/p293-notice-deeplink--298--cb181-화면-0-410-과-404-의-문구가-서로-다르다-chromium/error-context.md
+
+  2 failed
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:278:5 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 410 만료 → 안내 문구 + 하단 네비 생존 + 로비 이동 
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:307:3 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 410 과 404 의 문구가 서로 다르다 
+  2 passed (34.5s)

@@ -1,0 +1,106 @@
+> Task :compileJava
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:171: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:188: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+2 warnings
+
+> Task :processTestResources
+> Task :testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :test
+
+2026-07-30T01:02:35.592+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-68 - Shutdown initiated...
+2026-07-30T01:02:35.599+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-68 - Shutdown completed.
+2026-07-30T01:02:35.603+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-69 - Shutdown initiated...
+2026-07-30T01:02:35.613+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-69 - Shutdown completed.
+2026-07-30T01:02:35.617+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-70 - Shutdown initiated...
+2026-07-30T01:02:35.622+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-70 - Shutdown completed.
+2026-07-30T01:02:35.626+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-71 - Shutdown initiated...
+2026-07-30T01:02:35.631+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-71 - Shutdown completed.
+2026-07-30T01:02:35.634+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-72 - Shutdown initiated...
+2026-07-30T01:02:35.642+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-72 - Shutdown completed.
+2026-07-30T01:02:35.645+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-73 - Shutdown initiated...
+2026-07-30T01:02:35.658+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-73 - Shutdown completed.
+2026-07-30T01:02:35.661+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-74 - Shutdown initiated...
+2026-07-30T01:02:35.666+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-74 - Shutdown completed.
+2026-07-30T01:02:35.669+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-75 - Shutdown initiated...
+2026-07-30T01:02:35.679+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-75 - Shutdown completed.
+2026-07-30T01:02:35.682+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-76 - Shutdown initiated...
+2026-07-30T01:02:35.693+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-76 - Shutdown completed.
+2026-07-30T01:02:35.696+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-77 - Shutdown initiated...
+2026-07-30T01:02:35.705+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-77 - Shutdown completed.
+2026-07-30T01:02:35.709+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-78 - Shutdown initiated...
+2026-07-30T01:02:35.721+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-78 - Shutdown completed.
+2026-07-30T01:02:35.727+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-79 - Shutdown initiated...
+2026-07-30T01:02:35.748+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-79 - Shutdown completed.
+2026-07-30T01:02:35.751+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-80 - Shutdown initiated...
+2026-07-30T01:02:35.761+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-80 - Shutdown completed.
+2026-07-30T01:02:35.762+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-81 - Shutdown initiated...
+2026-07-30T01:02:35.770+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-81 - Shutdown completed.
+2026-07-30T01:02:35.771+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-82 - Shutdown initiated...
+2026-07-30T01:02:35.780+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-82 - Shutdown completed.
+2026-07-30T01:02:35.781+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-83 - Shutdown initiated...
+2026-07-30T01:02:35.793+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-83 - Shutdown completed.
+2026-07-30T01:02:35.795+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-84 - Shutdown initiated...
+2026-07-30T01:02:35.807+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-84 - Shutdown completed.
+2026-07-30T01:02:35.808+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-85 - Shutdown initiated...
+2026-07-30T01:02:35.817+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-85 - Shutdown completed.
+2026-07-30T01:02:35.819+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-86 - Shutdown initiated...
+2026-07-30T01:02:35.828+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-86 - Shutdown completed.
+2026-07-30T01:02:35.830+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-87 - Shutdown initiated...
+2026-07-30T01:02:35.838+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-87 - Shutdown completed.
+2026-07-30T01:02:35.848+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-88 - Shutdown initiated...
+2026-07-30T01:02:35.862+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-88 - Shutdown completed.
+2026-07-30T01:02:35.868+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-89 - Shutdown initiated...
+2026-07-30T01:02:35.880+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-89 - Shutdown completed.
+2026-07-30T01:02:35.886+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-90 - Shutdown initiated...
+2026-07-30T01:02:35.891+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-90 - Shutdown completed.
+2026-07-30T01:02:35.896+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-91 - Shutdown initiated...
+2026-07-30T01:02:35.906+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-91 - Shutdown completed.
+2026-07-30T01:02:35.910+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-92 - Shutdown initiated...
+2026-07-30T01:02:35.917+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-92 - Shutdown completed.
+2026-07-30T01:02:35.922+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-93 - Shutdown initiated...
+2026-07-30T01:02:35.927+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-93 - Shutdown completed.
+2026-07-30T01:02:35.931+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-94 - Shutdown initiated...
+2026-07-30T01:02:35.935+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-94 - Shutdown completed.
+2026-07-30T01:02:35.938+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-95 - Shutdown initiated...
+2026-07-30T01:02:35.942+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-95 - Shutdown completed.
+2026-07-30T01:02:35.945+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-96 - Shutdown initiated...
+2026-07-30T01:02:35.949+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-96 - Shutdown completed.
+2026-07-30T01:02:35.952+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-97 - Shutdown initiated...
+2026-07-30T01:02:35.954+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-97 - Shutdown completed.
+2026-07-30T01:02:35.957+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-98 - Shutdown initiated...
+2026-07-30T01:02:35.962+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-98 - Shutdown completed.
+2026-07-30T01:02:35.965+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-99 - Shutdown initiated...
+2026-07-30T01:02:35.968+09:00  INFO 7919 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-99 - Shutdown completed.
+
+[Incubating] Problems report is available at: file:///Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 1m 3s
+5 actionable tasks: 5 executed
+
+=== 요약(위 콜드 실행의 JUnit XML 집계) ===
+./gradlew test --rerun-tasks  →  BUILD SUCCESSFUL in 1m 3s
+750 케이스 / PASSED 749 / FAILED 0 / SKIPPED 1
+  SKIPPED = BalanceSweepTest.dump (수동 덤프용, 이 브랜치와 무관하게 원래 스킵)
+공지 3 클래스 전부 green: NoticeActiveApiTest 8/8 · NoticeByIdApiTest 6/6 · NoticeByIdStatusTest 10/10
+
+⚠️ 정직하게 기록 — 직전 콜드 실행 1회에서 AdminUnitActiveFilterTest.deactivatedUnitNeverAppearsInGachaPool
+   이 1건 실패했다(같은 명령 재실행에서 통과, 그 클래스만 단독 --rerun-tasks 로도 통과).
+   실패 지점은 line 70 `assertThat(drawn).contains("P014")` = **40회 가챠 추첨 표본에 특정 유닛이
+   섞여 있나**를 보는 확률 단언이고, 유저 id(ULID=시각 기반)에 따라 표본이 달라진다. #297 의 변경
+   (notice 패키지 · 인증 제외 목록 · ApiException.gone · openapi)과는 접점이 없다 —
+   **선행 flaky** 로 판단하고 손대지 않았다(owned-glob 안이지만 이 이슈의 범위가 아니다).

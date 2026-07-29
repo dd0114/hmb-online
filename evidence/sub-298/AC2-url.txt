@@ -1,0 +1,3 @@
+login url  : http://localhost:5294/login?returnTo=/share/notice/N2?from=kakao
+after login: http://localhost:5294/share/notice/N2?from=kakao
+popup title: 신규 유닛

@@ -1,0 +1,46 @@
+
+== server-java bootJar 빌드
+jar = /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/libs/hmb-server-0.1.0.jar
+
+== 기동 :28081 (임시 DB /tmp/hmb-notice-byid-ClTs/hmb.db)
+OK   기동 완료 (/api/config 200)
+
+== 픽스처 3건 삽입 (LIVE / EXPIRED / — )
+N-CURL-EXPIRED|1|2020-01-01T00:00:00Z|2020-01-02T00:00:00Z|
+N-CURL-LIVE|1|||
+N-CURL-SCHEDULED|1|2999-01-01T00:00:00Z||
+
+== ① LIVE — 미인증 200 + 본문
+HTTP 200
+body = {"id":"N-CURL-LIVE","revision":2,"title":"공유된 공지","body":"본문 살아있음","startsAt":null,"endsAt":null,"priority":3}
+OK   LIVE = 200 (Authorization 헤더 없음)
+
+== ①-b 응답 키 집합 == 화이트리스트 (AC3 — 운영 필드 미노출)
+keys     = body,endsAt,id,priority,revision,startsAt,title
+expected = body,endsAt,id,priority,revision,startsAt,title
+OK   키 집합 정확히 일치 (active·deletedAt·createdBy·updatedAt 0개)
+
+== ② EXPIRED — 410
+HTTP 410 / body = {"code":"GONE","message":"기간이 지난 공지입니다: N-CURL-EXPIRED","detail":null}
+OK   EXPIRED = 410
+
+== ③ 없는 id — 404
+HTTP 404 / body = {"code":"NOT_FOUND","message":"공지를 찾을 수 없습니다.","detail":null}
+OK   없는 id = 404
+
+== ④ 예약(SCHEDULED) — 404 이고 '없는 id' 와 응답이 구분 불가능
+HTTP 404 / body = {"code":"NOT_FOUND","message":"공지를 찾을 수 없습니다.","detail":null}
+OK   예약 = 404
+OK   예약 응답 본문 == 없는 id 응답 본문 (존재 누출 없음)
+OK   예약 공지 본문 미노출
+
+== ⑤ openapi 계약에 엔드포인트 선언 존재
+1512:  /api/notices/{id}:
+1513-    get:
+1514-      tags: [notices]
+1515-      operationId: getNoticeById
+OK   openapi.yaml 에 /api/notices/{id} 선언
+
+== 결과
+ALL CHECKS PASSED (LIVE=200 EXPIRED=410 ABSENT=404 SCHEDULED=404)
+로그: /tmp/hmb-notice-byid-ClTs/app.log

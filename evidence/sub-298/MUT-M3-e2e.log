@@ -1,0 +1,25 @@
+    Error: expect(page).toHaveURL(expected) failed
+
+    Expected pattern: /\/lobby$/
+    Received string:  "http://localhost:5311/login?returnTo=%2F%2Fevil.test"
+    Timeout: 15000ms
+
+    Call log:
+      - Expect "toHaveURL" with timeout 15000ms
+        34 × unexpected value "http://localhost:5311/login?returnTo=%2F%2Fevil.test"
+
+
+      214 |       await loginAsGuest(page);
+      215 |
+    > 216 |       await expect(page).toHaveURL(/\/lobby$/);
+          |                          ^
+      217 |       // 외부 오리진으로 나가지 않았다.
+      218 |       expect(new URL(page.url()).hostname).toBe("localhost");
+      219 |       appendFileSync(
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p293-notice-deeplink.spec.ts:216:26
+
+    Error Context: test-results/p293-notice-deeplink--298--95f74-리다이렉트-차단-프로토콜-상대-→-로비로-폴백한다-chromium/error-context.md
+
+  1 failed
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:211:5 › #298 AC3 — 오픈 리다이렉트 차단 › 프로토콜 상대 → 로비로 폴백한다 
+  2 passed (19.4s)

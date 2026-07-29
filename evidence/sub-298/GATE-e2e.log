@@ -1,0 +1,8 @@
+  ✓  70 [chromium] › e2e/p4-match-lock.spec.ts:277:3 › #217 MAJOR-1 — 멈춘 생성 화면에서 빠져나갈 수 있다 › 정상 생성 중에는 그 버튼이 없다 (서버 abandonable 을 그대로 따른다) (380ms)
+  ✓  71 [chromium] › e2e/p4-starter-onboarding.spec.ts:151:3 › #209 AC3 — 가입 최상위 지급 연출 › 카드는 덮인 채 열리고, 눌러야 공개된다 (525ms)
+  ✓  72 [chromium] › e2e/p4-starter-onboarding.spec.ts:170:3 › #209 AC3 — 가입 최상위 지급 연출 › 모바일 390px — 카드·시트가 화면 안에 들어오고 가로 스크롤이 없다 (529ms)
+  ✓  73 [chromium] › e2e/p4-starter-onboarding.spec.ts:193:3 › #209 AC3 — 가입 최상위 지급 연출 › 최상위 지급이 없는 계정은 카드 없이 문구만 — 동선이 막히지 않는다 (469ms)
+  ✓  74 [chromium] › e2e/p4-starter-onboarding.spec.ts:204:3 › #209 AC2 — 튜토리얼 완료가 덱 지급을 트리거한다 › 건너뛰기 = 완료와 같은 저장 경로(정확히 1회 호출) (539ms)
+  ✓  75 [chromium] › e2e/p4-starter-onboarding.spec.ts:223:3 › #209 AC2 — 튜토리얼 완료가 덱 지급을 트리거한다 › 덱 화면을 띄워 둔 채 완료하면 지급된 덱이 **리로드 없이** 채워진다 (985ms)
+
+  75 passed (47.4s)

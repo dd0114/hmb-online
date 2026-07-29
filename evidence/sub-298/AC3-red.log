@@ -1,0 +1,18 @@
+
+ RUN  v2.1.9 /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2
+
+ ❯ apps/web/src/auth/return-to.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/web/src/auth/return-to.test.ts [ apps/web/src/auth/return-to.test.ts ]
+Error: Failed to load url ./return-to (resolved id: ./return-to) in /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/src/auth/return-to.test.ts. Does the file exist?
+ ❯ loadAndTransform ../../../node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51969:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  00:49:04
+   Duration  445ms (transform 48ms, setup 0ms, collect 0ms, tests 0ms, environment 0ms, prepare 83ms)
+

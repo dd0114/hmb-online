@@ -1,0 +1,54 @@
+> Task :compileJava
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:171: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:188: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+2 warnings
+
+> Task :processTestResources
+> Task :testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :test
+
+NoticeByIdStatusTest > theSameNoticeMovesThroughTheTableAsTimeMoves() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:193
+
+NoticeByIdStatusTest > scheduledIsIndistinguishableFromAbsent() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:175
+
+NoticeByIdStatusTest > scheduledNoticeIs404() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:231
+
+2026-07-30T00:58:23.847+09:00  INFO 96584 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-07-30T00:58:23.851+09:00  INFO 96584 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+
+> Task :test FAILED
+
+10 tests completed, 3 failed
+
+[Incubating] Problems report is available at: file:///Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 8s
+5 actionable tasks: 5 executed

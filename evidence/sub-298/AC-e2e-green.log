@@ -1,0 +1,16 @@
+
+Running 11 tests using 1 worker
+
+  ✓   1 [chromium] › e2e/p293-notice-deeplink.spec.ts:121:3 › #298 AC1 — 로그인 상태 딥링크 › 억제된 공지도 딥링크로 열리고, 억제 저장소는 변하지 않는다 (868ms)
+  ✓   2 [chromium] › e2e/p293-notice-deeplink.spec.ts:173:3 › #298 AC1 — 로그인 상태 딥링크 › 이 탭에서 [닫기]로 억제한 공지도 딥링크로는 열린다 (373ms)
+  ✓   3 [chromium] › e2e/p293-notice-deeplink.spec.ts:184:3 › #298 AC1 — 로그인 상태 딥링크 › 딥링크 팝업에는 [24시간 안 보기]가 없다 — 억제 개념이 걸리지 않는다 (367ms)
+  ✓   4 [chromium] › e2e/p293-notice-deeplink.spec.ts:194:3 › #298 AC2 — 미로그인 딥링크 → 로그인 → 원래 링크 복귀 › 로그인 후 로비가 아니라 딥링크로 돌아온다 (쿼리 보존) (474ms)
+  ✓   5 [chromium] › e2e/p293-notice-deeplink.spec.ts:232:5 › #298 AC3 — 오픈 리다이렉트 차단 › 외부 절대 URL → 로비로 폴백한다 (445ms)
+  ✓   6 [chromium] › e2e/p293-notice-deeplink.spec.ts:232:5 › #298 AC3 — 오픈 리다이렉트 차단 › 프로토콜 상대 → 로비로 폴백한다 (468ms)
+  ✓   7 [chromium] › e2e/p293-notice-deeplink.spec.ts:232:5 › #298 AC3 — 오픈 리다이렉트 차단 › 비허용 내부 경로 → 로비로 폴백한다 (478ms)
+  ✓   8 [chromium] › e2e/p293-notice-deeplink.spec.ts:278:5 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 410 만료 → 안내 문구 + 하단 네비 생존 + 로비 이동 (598ms)
+  ✓   9 [chromium] › e2e/p293-notice-deeplink.spec.ts:278:5 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 404 없는 id → 안내 문구 + 하단 네비 생존 + 로비 이동 (643ms)
+  ✓  10 [chromium] › e2e/p293-notice-deeplink.spec.ts:278:5 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 200 인데 빈 객체 → 안내 문구 + 하단 네비 생존 + 로비 이동 (432ms)
+  ✓  11 [chromium] › e2e/p293-notice-deeplink.spec.ts:307:3 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 410 과 404 의 문구가 서로 다르다 (678ms)
+
+  11 passed (8.8s)

@@ -186,26 +186,39 @@ export function normalizeNotices(raw: unknown): Notice[] {
   if (!Array.isArray(list)) return [];
   const out: Notice[] = [];
   for (const item of list) {
-    if (!item || typeof item !== "object") continue;
-    const n = item as Record<string, unknown>;
-    const id = typeof n.id === "string" ? n.id.trim() : "";
-    if (!id) continue;
-    const title = typeof n.title === "string" ? n.title : "";
-    const body = typeof n.body === "string" ? n.body : "";
-    if (!title && !body) continue; // 빈 모달을 띄우지 않는다
-    out.push({
-      id,
-      // revision 이 빠진 응답(구 서버)은 1 로 본다 — 억제 키가 생기기만 하면 되고,
-      // 여기서 공지를 숨기면 "안 뜨는 이유"를 아무도 못 찾는다.
-      revision: typeof n.revision === "number" && Number.isFinite(n.revision) ? n.revision : 1,
-      title,
-      body,
-      startsAt: typeof n.startsAt === "string" ? n.startsAt : null,
-      endsAt: typeof n.endsAt === "string" ? n.endsAt : null,
-      priority: typeof n.priority === "number" ? n.priority : 0,
-    });
+    const n = normalizeNotice(item);
+    if (n) out.push(n);
   }
   return out;
+}
+
+/**
+ * **공지 한 건**의 정규화 — 목록(`normalizeNotices`)과 단건 조회(`GET /api/notices/{id}`, #297)가
+ * 같은 함수를 쓴다. 모양이 아니면 `null`.
+ *
+ * ⚠️ 단건 경로를 위해 따로 파싱하지 마라 — 두 곳에 규칙이 생기면 "목록에선 보이는데 딥링크로는
+ * 안 보인다"(혹은 그 반대)로 조용히 갈린다. 그리고 **모양을 믿지 않는 것**이 여기 존재 이유다:
+ * 200 `{}` 하나가 화면을 통째로 흰 화면으로 만드는 부류(#274)를 이 경계에서 흡수한다.
+ */
+export function normalizeNotice(item: unknown): Notice | null {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const n = item as Record<string, unknown>;
+  const id = typeof n.id === "string" ? n.id.trim() : "";
+  if (!id) return null;
+  const title = typeof n.title === "string" ? n.title : "";
+  const body = typeof n.body === "string" ? n.body : "";
+  if (!title && !body) return null; // 빈 모달을 띄우지 않는다
+  return {
+    id,
+    // revision 이 빠진 응답(구 서버)은 1 로 본다 — 억제 키가 생기기만 하면 되고,
+    // 여기서 공지를 숨기면 "안 뜨는 이유"를 아무도 못 찾는다.
+    revision: typeof n.revision === "number" && Number.isFinite(n.revision) ? n.revision : 1,
+    title,
+    body,
+    startsAt: typeof n.startsAt === "string" ? n.startsAt : null,
+    endsAt: typeof n.endsAt === "string" ? n.endsAt : null,
+    priority: typeof n.priority === "number" ? n.priority : 0,
+  };
 }
 
 /**

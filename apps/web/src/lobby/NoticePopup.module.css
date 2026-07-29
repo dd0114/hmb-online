@@ -18,6 +18,13 @@
   max-width: 340px;
   /* 폰 세로에서 본문이 길어도 화면을 넘지 않는다. */
   max-height: 100%;
+  /*
+   * ⚠️ **플렉스여야 `.card` 의 `max-height:100%` 가 실제로 산다**(#292). 높이가 auto 인 부모에
+   * 퍼센트 최대높이를 걸면 `none` 으로 풀려, 카드는 스택 밖으로 자란다 — 예전엔 본문에 박아 둔
+   * `46vh` 가 그걸 가려 주고 있었다. 본문을 "남는 만큼" 쓰게 바꾸는 순간 그 가림막이 사라진다.
+   */
+  display: flex;
+  flex-direction: column;
 }
 
 .behind {
@@ -76,6 +83,9 @@
   flex-direction: column;
   gap: 12px;
   max-height: 100%;
+  /* 자라지는 않고(짧은 공지는 내용만큼), 넘칠 때만 줄어든다 — 줄어드는 몫은 전부 본문이 받는다. */
+  flex: 0 1 auto;
+  min-height: 0;
 }
 
 .top {
@@ -111,10 +121,75 @@
   margin: -6px 0 0;
 }
 
+/*
+ * 본문 영역 (#292) — 스크롤러 + "더 있다" 페이드의 컨테이너.
+ *
+ * ⚠️ 높이를 `vh` 로 박지 않는다. 예전 `max-height:46vh` 는 화면이 남아도 본문을 388px 로 묶어,
+ * 다 들어갈 수 있는 공지까지 접었다(경니시우스 1장 = 529px → 141px 이 아무 이유 없이 잘렸다).
+ * 지금은 **카드가 쓰고 남은 만큼**을 본문이 가져가고, 그래도 넘칠 때만 스크롤한다.
+ */
+.bodyArea {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .body {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  max-height: 46vh;
-  padding-right: 4px;
+  /* 스크롤바가 자리를 차지하므로 글이 막대 밑으로 들어가지 않게 띄운다. */
+  padding-right: 8px;
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: #4a5265 rgba(255, 255, 255, 0.06);
+}
+
+.body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * ⚠️ **`::-webkit-scrollbar` 를 선언하는 것 자체가 동작을 바꾼다** — 선언이 없으면 모바일
+ * 크롬/데스크탑은 스크롤 중에만 뜨는 **오버레이** 스크롤바를 쓴다. 즉 손을 대기 전까지는
+ * "내릴 수 있다"는 신호가 화면에 없다(#292 의 실체).
+ */
+.body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.body::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+.body::-webkit-scrollbar-thumb {
+  background: #4a5265;
+  border-radius: 3px;
+}
+
+/*
+ * 하단 페이드 = **두 번째 축**. iOS 사파리는 커스텀 스크롤바를 그리지 않으므로, 막대 하나만
+ * 두면 정작 주 타깃 기기에서 아무것도 달라지지 않는다. 끝에 닿으면 꺼진다(다 읽었는데도
+ * 그라데이션이 남아 있으면 그게 또 거짓 신호다).
+ */
+.bodyArea::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(30, 34, 44, 0), var(--bg-elevated) 92%);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.bodyArea[data-more="true"]::after {
+  opacity: 1;
 }
 
 .dots {

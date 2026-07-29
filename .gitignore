@@ -28,3 +28,6 @@ infra/deploy-manifest.json
 .qa/
 # 레지스트리 폴백 경로(정상 위치는 리포 밖 ~/hmb-qa-console — §3.1). 실수로 리포에 생겨도 커밋되지 않게.
 .qa-console/
+
+# 공지 팝업 실화면 캡처(#292) — Playwright 산출물, 재생성 가능
+apps/web/e2e-out/

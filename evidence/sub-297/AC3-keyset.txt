@@ -1,0 +1,21 @@
+AC3 — 응답 키 집합 동등성(부분집합 아님). 아래는 **기동된 서버에서 실제로 받은 JSON**이다
+(evidence/sub-297/ac4-curl.sh ①/①-b 구간, 전문 = AC4-live.log).
+
+raw body (GET http://localhost:28081/api/notices/N-CURL-LIVE, Authorization 헤더 없음):
+{"id":"N-CURL-LIVE","revision":2,"title":"공유된 공지","body":"본문 살아있음","startsAt":null,"endsAt":null,"priority":3}
+
+정렬한 키 집합:
+  실측     = body,endsAt,id,priority,revision,startsAt,title
+  화이트리스트 = body,endsAt,id,priority,revision,startsAt,title
+  => 정확히 일치 (동등, 부분집합 아님)
+
+DB 행에는 있으나 응답에 0개인 운영 컬럼:
+  active     0
+  deletedAt  0
+  createdBy  0
+  updatedAt  0
+  createdAt  0
+  status     0
+
+계약(자동): NoticeByIdApiTest.operationalFieldsNeverLeak — containsOnlyKeys(...) 동등 단언.
+  변이체 M3(PublicNotice 에 deletedAt 한 칸 추가)로 죽는 것을 확인했다 → evidence/sub-297/MUT-M3-leak-field.log
