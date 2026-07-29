@@ -1,0 +1,20 @@
+
+      Array [
+        "OTHER@2",
+    +   "N1@1",
+      ]
+
+      161 |     const after = await suppressionDump(page);
+      162 |     // 변이체 킬 — `suppressible` 분기를 지우면 여기서 `N1@1` 이 붙어 죽는다.
+    > 163 |     expect(JSON.parse(after.closed!), "닫기 기록이 늘어나지 않았다").toEqual(["OTHER@2"]);
+          |                                                          ^
+      164 |     expect(after).toEqual(before);
+      165 |     writeFileSync(
+      166 |       `${EVIDENCE}AC1-suppression-store.json`,
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p293-notice-deeplink.spec.ts:163:58
+
+    Error Context: test-results/p293-notice-deeplink--298--6a7af-지도-딥링크로-열리고-억제-저장소는-변하지-않는다-chromium/error-context.md
+
+  1 failed
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:121:3 › #298 AC1 — 로그인 상태 딥링크 › 억제된 공지도 딥링크로 열리고, 억제 저장소는 변하지 않는다 
+  2 passed (4.1s)

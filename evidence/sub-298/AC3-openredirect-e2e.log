@@ -1,0 +1,3 @@
+returnTo=https://evil.test/share/notice/N1  ->  landed=http://localhost:5311/lobby
+returnTo=//evil.test  ->  landed=http://localhost:5311/lobby
+returnTo=/nope/deep  ->  landed=http://localhost:5311/lobby

@@ -1,10 +1,11 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, apiFetch } from "../api/client";
 import type { components } from "../api/schema";
 import { useToken } from "./TokenContext";
 import { isValidNickname } from "./validation";
+import { RETURN_TO_PARAM, resolveReturnTo } from "./return-to";
 import {
   OAUTH_PROVIDERS,
   buildLoginBody,
@@ -42,6 +43,17 @@ export function LoginPage() {
   const [starterGrant, setStarterGrant] = useState<StarterGrantResponse | null | undefined>(undefined);
   const { login } = useToken();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  /**
+   * 로그인 성공 후 착지점 (#298). 기본은 로비지만, 공유 딥링크로 들어왔다면 **그 링크**다 —
+   * `RequireAuth` 가 `?returnTo=` 로 들려 보낸다.
+   *
+   * ⚠️ 이 값은 링크 하나로 통제되는 외부 입력이다. 여기서 `navigate(raw)` 를 부르면 오픈
+   * 리다이렉트가 된다 — 반드시 `resolveReturnTo`(화이트리스트)를 통과시킨다. 착지 지점이
+   * **두 곳**(일반 로그인 / 스타터팩 확인)이라 상수 하나로 묶어 둔다: 한쪽만 고치면 신규
+   * 유저의 딥링크만 조용히 로비로 새 나간다.
+   */
+  const returnTo = resolveReturnTo(searchParams.get(RETURN_TO_PARAM));
 
   // 게스트: 기존 플로우 그대로(동의 모달 없이 바로 닉네임 입력).
   function chooseGuest() {
@@ -74,7 +86,7 @@ export function LoginPage() {
         .then(setStarterGrant)
         .catch(() => setStarterGrant(null));
     } else {
-      navigate("/lobby", { replace: true });
+      navigate(returnTo, { replace: true });
     }
   }
 
@@ -124,7 +136,9 @@ export function LoginPage() {
 
   function handleStarterPackConfirm() {
     setStarterPackOpen(false);
-    navigate("/lobby", { replace: true });
+    // 신규 유저도 공유 링크로 왔다면 그 공지가 방문 목적이다(hero 확정) — 닫으면 로비로 가고,
+    // 거기서 온보딩이 시작된다. #248 의 "미룸"은 **저절로 뜨는 팝업**에만 걸린다.
+    navigate(returnTo, { replace: true });
   }
 
   return (

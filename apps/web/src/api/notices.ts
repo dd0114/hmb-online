@@ -8,6 +8,17 @@
 /** 유저 조회 — **인증 불필요(공개)**. 서버가 기간·활성·삭제로 걸러 정렬까지 마쳐서 준다. */
 export const NOTICES_ACTIVE_PATH = "/api/notices/active";
 
+/**
+ * 단건 조회 — **인증 불필요(공개)**, 공유 딥링크가 쓴다(#297/#298).
+ *
+ * 상태별 코드는 서버가 판정한다: LIVE 200 / EXPIRED·OFF **410** / SCHEDULED·DELETED·없는id **404**.
+ * ⚠️ 화면이 기간을 다시 계산해 만료를 판정하면 **기기 시계가 진실이 된다**(notice-logic.ts 머리말과
+ * 같은 이유) — 410/404 는 받아서 문구로 옮기기만 한다.
+ */
+export function noticeByIdPath(id: string): string {
+  return `/api/notices/${encodeURIComponent(id)}`;
+}
+
 export const ADMIN_NOTICES_PATH = "/api/admin/notices";
 export const ADMIN_NOTICES_HISTORY_PATH = "/api/admin/notices/history";
 

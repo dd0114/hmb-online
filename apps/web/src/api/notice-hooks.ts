@@ -8,6 +8,7 @@ import {
   ADMIN_NOTICES_HISTORY_PATH,
   ADMIN_NOTICES_PATH,
   NOTICES_ACTIVE_PATH,
+  noticeByIdPath,
   type AdminNoticeAuditEntry,
   type AdminNoticeListResponse,
   type NoticeActiveRequest,
@@ -29,6 +30,25 @@ export function useActiveNotices() {
     queryKey: ["notices", "active"],
     queryFn: () => apiFetch<unknown>(NOTICES_ACTIVE_PATH),
     // 실패는 "팝업 없음"이면 충분하다 — 재시도로 로비 진입을 붙잡지 않는다.
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * `GET /api/notices/{id}` — **공개 단건**(#297). 공유 딥링크 `/share/notice/{id}` 가 쓴다.
+ *
+ * ⚠️ `retry: false` 가 중요하다 — 404/410 은 **정상 응답**(그 자체가 화면에 옮길 정보)이지
+ * 재시도할 장애가 아니다. 재시도하면 안내 문구가 뜨기까지 몇 초를 흰 화면으로 기다린다.
+ *
+ * 반환 타입이 `unknown` 인 것도 `useActiveNotices` 와 같은 이유다 — 호출부가 `normalizeNotice`
+ * 를 반드시 통과시키게 해서 구 서버의 200 `{}` 하나가 화면을 죽이지 못하게 한다(#274 부류).
+ */
+export function useNoticeById(id: string) {
+  return useQuery<unknown>({
+    queryKey: ["notices", "byId", id],
+    queryFn: () => apiFetch<unknown>(noticeByIdPath(id)),
+    enabled: id.length > 0,
     retry: false,
     staleTime: 60_000,
   });

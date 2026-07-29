@@ -1,0 +1,45 @@
+    Call log:
+      - Expect "toBeVisible" with timeout 15000ms
+      - waiting for getByTestId('share-notice-message')
+
+
+      222 |
+      223 |       const msg = page.getByTestId("share-notice-message");
+    > 224 |       await expect(msg).toBeVisible();
+          |                         ^
+      225 |       await expect(msg).toContainText(c.copy);
+      226 |       await expect(msg).toHaveAttribute("data-state", c.state);
+      227 |
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p293-notice-deeplink.spec.ts:224:25
+
+    Error Context: test-results/p293-notice-deeplink--298--9588e-빈-객체-→-안내-문구-하단-네비-생존-로비-이동-chromium/error-context.md
+
+  7) [chromium] › e2e/p293-notice-deeplink.spec.ts:244:3 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 410 과 404 의 문구가 서로 다르다 
+
+    Test timeout of 180000ms exceeded.
+
+    Error: locator.innerText: Test timeout of 180000ms exceeded.
+    Call log:
+      - waiting for getByTestId('share-notice-message')
+
+
+      250 |     });
+      251 |     await page.goto("/share/notice/NG");
+    > 252 |     const gone = await page.getByTestId("share-notice-message").innerText();
+          |                                                                 ^
+      253 |     await page.goto("/share/notice/NF");
+      254 |     const notFound = await page.getByTestId("share-notice-message").innerText();
+      255 |     expect(gone).not.toBe(notFound);
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p293-notice-deeplink.spec.ts:252:65
+
+    Error Context: test-results/p293-notice-deeplink--298--cb181-화면-0-410-과-404-의-문구가-서로-다르다-chromium/error-context.md
+
+  7 failed
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:102:3 › #298 AC1 — 로그인 상태 딥링크 › 억제된 공지도 딥링크로 열리고, 억제 저장소는 변하지 않는다 
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:139:3 › #298 AC1 — 로그인 상태 딥링크 › 딥링크 팝업에는 [24시간 안 보기]가 없다 — 억제 개념이 걸리지 않는다 
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:149:3 › #298 AC2 — 미로그인 딥링크 → 로그인 → 원래 링크 복귀 › 로그인 후 로비가 아니라 딥링크로 돌아온다 (쿼리 보존) 
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:216:5 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 410 만료 → 안내 문구 + 하단 네비 생존 + 로비 이동 
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:216:5 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 404 없는 id → 안내 문구 + 하단 네비 생존 + 로비 이동 
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:216:5 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 200 인데 빈 객체 → 안내 문구 + 하단 네비 생존 + 로비 이동 
+    [chromium] › e2e/p293-notice-deeplink.spec.ts:244:3 › #298 AC4 — 없는·만료 공지에 흰 화면 0 › 410 과 404 의 문구가 서로 다르다 
+  3 passed (4.7m)
