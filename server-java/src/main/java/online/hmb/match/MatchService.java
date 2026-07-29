@@ -507,6 +507,16 @@ public class MatchService {
      * <p>비교 대상 = 포메이션 문자열 + <b>실효 선수 → slotIndex</b> 매핑. 교체가 있으면 전반 쪽도
      * 교체를 반영한 뒤(out 의 슬롯을 in 이 승계) 비교한다 — 그래야 "교체만 했고 배치는 그대로"가
      * 배치 변경으로 오인돼 콜이 늘지 않는다.
+     *
+     * <p>⚠️ <b>두 축은 각각 계약이 있어야 한다.</b> 아래 formation 비교 3줄을 지워도 배치 테스트가
+     * 전부 통과하던 때가 있었다(독립검증 변이체 M2) — 테스트들이 formation 과 슬롯을 <b>항상 같이</b>
+     * 바꿨기 때문이다. 그 상태로 회귀하면 유저가 FormationSelect 만 눌러 4-4-2→4-3-3 한 가장 흔한
+     * 조작이 h1 인풋 재사용으로 떨어져 <b>조용히 무시</b>된다.
+     * 가드 = {@code HalftimeShapeTest.changingOnlyTheFormationCountsAsAChange}(슬롯 무변경 + 포메이션만).
+     *
+     * <p>이 판정이 <b>#215 콜0 계약의 SoT</b> 다 — web 은 보드 모드에서 배치를 항상 실어 보내고
+     * (그래야 "되돌린다"를 표현할 수 있다), "안 보냈으니 콜0"이 아니라 <b>"전반과 같으니 콜0"</b> 이
+     * 성립하게 하는 것이 여기다.
      */
     public boolean secondHalfShapeChanged(MatchRow row, List<Substitution> subs) {
         if (row.h2ShapeJson() == null || row.h2ShapeJson().isBlank()) {
@@ -1011,7 +1021,15 @@ public class MatchService {
      * 이번 요청의 것(미첨부면 DB 에 저장된 subs_json)이다. 이 검사는 <b>이번에 제출한 배치</b>뿐
      * 아니라 <b>이미 저장된 배치</b>에도 건다 — 배치를 낸 뒤 교체만 고쳐 재제출하면 그 배치가 새
      * 교체와 어긋난 채 남아 조용히 무시되기 때문이다(투입 선수를 배치에서 못 찾아 슬롯 승계로
-     * 떨어진다). 400 은 시끄럽지만 조용한 무시보다 낫다 — web 은 보드에서 둘을 함께 낸다.
+     * 떨어진다). 400 은 시끄럽지만 조용한 무시보다 낫다.
+     *
+     * <p>⚠️ <b>이 400 은 UI 경로에서 뜨면 안 되고, 그건 web 이 지킨다</b>: 보드 모드의 web 은
+     * {@code substitutions} 와 배치를 <b>항상 함께</b> 낸다({@code apps/web/src/match/halftime-shape.ts}
+     * ②). 예전엔 배치를 "바뀐 경우에만" 실었는데, 그 비대칭 때문에 재마운트 후 재제출이 살아남은
+     * 이전 배치와 어긋나 <b>400 으로 고착</b>됐다(독립검증 blocker-1 — 유저가 후반을 시작할 수
+     * 없었다). 검사는 그대로 두고 web 이 늘 함께 보내게 고쳤다 — 여기 남은 400 은 두 필드가 서로
+     * 모순인 요청을 조용히 삼키지 않는 <b>계약 자기정합</b>이다.
+     * 왕복 계약 = {@code HalftimeShapeTest.resubmittingTheWholeBoardAfterARemountIsAcceptedAndWins}.
      *
      * @param effectiveSubs 이번 제출 후 <b>유효해질</b> 교체
      * @param h1Starters 전반 선발 playerId

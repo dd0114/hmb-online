@@ -11,7 +11,10 @@
  *   ① 보드 시작 상태 = **매치 스냅샷**(현재 덱이 아니다 — 전반 시작 후 덱을 고쳐도 경기와 같은 라인업)
  *   ② 벤치→선발 탭 = 교체 1건 · 선발↔선발 탭 = 배치만(교체 0건)
  *   ③ 포메이션 셀렉트 = formation
- *   ④ **안 건드리면 배치를 아예 안 보낸다**(#215 콜0) · 교체만 했으면 배치도 안 보낸다
+ *   ④ 보드 모드면 **배치를 항상 보낸다** — #215 콜0의 본질은 "안 보낸다"가 아니라 "**AI 콜이 0**"
+ *      이고 그 판정은 서버가 한다(전반과 같은 배치 = 무변경 = 콜0,
+ *      `HalftimeShapeTest.resubmittingTheSameShapeIsNotAChange`). 웹이 조건부로 빼면 서버
+ *      `COALESCE` 가 **이전 배치를 살려** ⓐ 400 고착 ⓑ 취소한 배치가 후반에 반영된다.
  *   ⑤ ≤3·GK≥1 위반은 기존 validateSubs 이슈 + [후반 시작] 잠금
  *   ⑥ 스냅샷 null(구 매치) → 보드를 숨기고 기존 셀렉트 폴백(기능 소실 금지)
  *   ⑦ 세 필드가 **한 번의 /halftime 호출**에 함께 실린다
@@ -56,6 +59,8 @@ const fx = vi.hoisted(() => {
   const deckIds = ["GK1", "X1", "X2", "X3", "X4", "X5", "X6", "X7", "X8", "X9", "X10"];
   return {
     posOf,
+    /** `/api/players` 가 아직 안 온 상태를 만들 스위치(minor-2 — 로딩 중 헛경고 금지). */
+    playersLoaded: true,
     deck: {
       id: "d1",
       formation: "4-3-3",
@@ -84,7 +89,7 @@ vi.mock("../api/hooks", () => {
   const query = (data: unknown) => ({ data, isLoading: false, isError: false, isSuccess: true });
   return {
     useDeck: () => query(fx.deck),
-    usePlayers: () => query(fx.players),
+    usePlayers: () => (fx.playersLoaded ? query(fx.players) : { data: undefined, isLoading: true, isError: false, isSuccess: false }),
     useSubmitMatchPrompt: () => ({ mutateAsync: fx.submitPrompt, isPending: false }),
     useHalftime: () => ({ mutateAsync: fx.halftime, isPending: false }),
     useResume: () => ({ mutateAsync: fx.resume, isPending: false }),
@@ -136,6 +141,7 @@ async function submit(): Promise<Body> {
 
 afterEach(() => {
   cleanup();
+  fx.playersLoaded = true;
   fx.halftime.mockClear();
   fx.resume.mockClear();
   fx.submitPrompt.mockClear();
@@ -207,23 +213,69 @@ describe("② 제스처 하나 → 두 필드", () => {
   });
 });
 
-describe("③ 무변경이면 안 보낸다 (#215 콜0)", () => {
-  it("아무것도 안 건드리면 formation·starters 를 아예 보내지 않는다", async () => {
+describe("③ 보드 모드는 배치를 항상 보낸다 — 콜0은 서버가 판정한다 (#215)", () => {
+  it("아무것도 안 건드리면 **전반과 같은 배치**를 그대로 실어 보낸다(서버 판정 무변경 → 콜0)", async () => {
     renderPanel();
     const body = await submit();
     expect(body.substitutions).toEqual([]);
-    expect(body.formation).toBeUndefined();
-    expect(body.starters).toBeUndefined();
+    expect(body.formation).toBe("4-4-2");
+    expect(body.starters).toHaveLength(11);
+    expect(body.starters).toContainEqual({ playerId: "F2", slotIndex: 10 });
   });
 
-  it("교체만 하고 슬롯은 그대로면 배치를 보내지 않는다(나간 선수 슬롯을 물려받았을 뿐)", async () => {
+  it("교체만 하고 슬롯은 그대로여도 배치를 싣는다(승계 배치 = 서버 판정 무변경 → 콜0)", async () => {
     renderPanel();
     tap("bench", 1); // B2
     tap("starter", 9); // F1 자리
     const body = await submit();
     expect(body.substitutions).toEqual([{ out: "F1", in: "B2" }]);
-    expect(body.formation).toBeUndefined();
-    expect(body.starters).toBeUndefined();
+    expect(body.formation).toBe("4-4-2");
+    expect(body.starters).toContainEqual({ playerId: "B2", slotIndex: 9 });
+    expect(body.starters?.some((s) => s.playerId === "F1")).toBe(false);
+  });
+
+  /**
+   * blocker-1 — `POST /resume` 이 완료되지 않은 채(네트워크 끊김·탭 종료·리로드) 화면을 다시 열면
+   * 보드는 `boardDraft=null` 로 재마운트되어 스냅샷 원본에서 다시 시작한다. 그때 배치를 빼면
+   * 서버에 남은 이전 배치가 새 `substitutions:[]` 와 어긋나 **400 ROSTER_MISMATCH 로 고착**된다.
+   */
+  it("재마운트(보드 초기화) 후 제출도 배치를 포함한다 — 이전 배치가 서버에 살아남지 않게", async () => {
+    const first = renderPanel();
+    tap("bench", 0); // B1 → F2 자리 (교체 + 배치 저장)
+    tap("starter", 10);
+    const before = await submit();
+    expect(before.substitutions).toEqual([{ out: "F2", in: "B1" }]);
+    fx.halftime.mockClear();
+
+    first.unmount();
+    renderPanel(); // resume 미완 → 화면 재진입
+    expect(occupantOf("starter", 10)).toBe("F2"); // 보드는 스냅샷 원본
+
+    const body = await submit();
+    expect(body.substitutions).toEqual([]);
+    expect(body.formation).toBe("4-4-2");
+    expect(body.starters).toHaveLength(11);
+    expect(body.starters?.some((s) => s.playerId === "B1")).toBe(false);
+  });
+
+  /**
+   * blocker-2 — 배치만 바꿔 제출한 뒤 유저가 **원상복구**하고 재제출하면, 배치를 빼는 순간 서버
+   * COALESCE 가 이전 배치를 남겨 **취소한 배치로 후반이 돈다**(400 도 안 뜬다).
+   */
+  it("배치를 바꿨다가 원상복구하면 base 배치를 명시 전송한다(취소가 취소로 남는다)", async () => {
+    renderPanel();
+    tap("starter", 9);
+    tap("starter", 10); // F1 ↔ F2
+    expect((await submit()).starters).toContainEqual({ playerId: "F1", slotIndex: 10 });
+    fx.halftime.mockClear();
+
+    tap("starter", 10); // F1 토큰을 집어
+    tap("starter", 9); // 원래 자리로 되돌린다
+    expect(occupantOf("starter", 9)).toBe("F1");
+    const body = await submit();
+    expect(body.formation).toBe("4-4-2");
+    expect(body.starters).toContainEqual({ playerId: "F1", slotIndex: 9 });
+    expect(body.starters).toContainEqual({ playerId: "F2", slotIndex: 10 });
   });
 });
 
@@ -250,6 +302,37 @@ describe("④ 검증 — 기존 validateSubs 이슈 + 후반 시작 잠금", () 
     tap("starter", 0); // GK1 자리
     expect(screen.getByTestId("sub-issue-GK_REQUIRED")).toBeTruthy();
     expect((screen.getByTestId("resume-button") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  /** minor-2 — 카탈로그 로딩 중엔 posOf 가 전부 undefined 라 "GK 가 없다"로 보인다(헛경고). */
+  it("카탈로그 로딩 중에는 GK 경고를 띄우지 않고 [후반 시작]도 잠그지 않는다", () => {
+    fx.playersLoaded = false;
+    renderPanel();
+    expect(screen.queryByTestId("sub-issue-GK_REQUIRED")).toBeNull();
+    expect((screen.getByTestId("resume-button") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("④-b 교체 취소 — base 로의 복귀다(major-2)", () => {
+  it("투입 선수를 다른 자리로 옮긴 뒤 취소해도 선발 두 명이 뒤바뀌지 않는다", async () => {
+    renderPanel();
+    tap("bench", 0); // B1
+    tap("starter", 10); // F2 자리 → 교체
+    tap("starter", 10); // B1 집어서
+    tap("starter", 9); // 9번(F1)과 자리 교환
+    expect(occupantOf("starter", 9)).toBe("B1");
+    expect(occupantOf("starter", 10)).toBe("F1");
+
+    fireEvent.click(screen.getByTestId("sub-remove-0"));
+    // 취소는 스냅샷 복귀다 — F1@9 · F2@10 · B1 은 벤치 0 으로.
+    expect(occupantOf("starter", 9)).toBe("F1");
+    expect(occupantOf("starter", 10)).toBe("F2");
+    expect(occupantOf("bench", 0)).toBe("B1");
+
+    const body = await submit();
+    expect(body.substitutions).toEqual([]);
+    expect(body.starters).toContainEqual({ playerId: "F1", slotIndex: 9 });
+    expect(body.starters).toContainEqual({ playerId: "F2", slotIndex: 10 });
   });
 });
 

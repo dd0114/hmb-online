@@ -202,10 +202,14 @@ export function HalftimePanel({ match, clockOffsetMs = 0 }: HalftimePanelProps) 
   /** 덱 조회 실패가 치명적인가 — 폴백 경로에서만 그렇다(보드 모드의 로스터는 스냅샷이 준다). */
   const rosterError = deckError && !boardMode;
 
-  /** 확정된 교체 취소 — 보드도 같이 되돌린다(텍스트 목록과 보드가 갈라지면 안 된다). */
+  /**
+   * 확정된 교체 취소 — 보드도 같이 되돌린다(텍스트 목록과 보드가 갈라지면 안 된다).
+   * 되돌림의 기준은 **스냅샷(baseDraft)**이다: 투입 선수를 다른 자리로 옮긴 뒤 취소해도 선발
+   * 두 명이 뒤바뀐 채 남지 않게(halftime-shape.revertSub 주석).
+   */
   function cancelSub(pair: SubPair, index: number) {
     if (boardMode && draft) {
-      setBoardDraft(revertSub(draft, pair));
+      setBoardDraft(revertSub(baseDraft!, draft, pair));
       setSelection(NO_SELECTION);
       return;
     }

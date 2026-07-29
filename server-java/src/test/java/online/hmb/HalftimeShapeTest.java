@@ -71,6 +71,9 @@ class HalftimeShapeTest extends MatchTestBase {
     @Resource
     private FakeServants fakeServants;
 
+    @Resource
+    private online.hmb.match.MatchService matchService;
+
     // ── 헬퍼 ────────────────────────────────────────────────────────────
 
     /** MatchTestBase 덱: 선발 P001(GK,slot0)..P011(slot10), 벤치 P012/P013. */
@@ -143,6 +146,21 @@ class HalftimeShapeTest extends MatchTestBase {
     private String shapeJson(String matchId) {
         return jdbcClient.sql("SELECT h2_shape_json FROM matches WHERE id = ?")
                 .param(matchId).query(String.class).optional().orElse(null);
+    }
+
+    /** 후반이 <b>실제로 세울</b> 라인업(= {@code snapshotForHalf(row, 2, subs)}). */
+    private JsonNode secondHalfSnapshot(String nickname, String matchId) {
+        var row = matchService.getOwned(userIdOf(nickname), matchId);
+        return matchService.snapshotForHalf(row, 2, List.of());
+    }
+
+    private static int snapshotSlotOf(JsonNode snapshot, String playerId) {
+        for (JsonNode s : snapshot.path("starters")) {
+            if (playerId.equals(s.path("playerId").asText())) {
+                return s.path("slotIndex").asInt(-1);
+            }
+        }
+        return -1;
     }
 
     private static String formationOf(String contextJson) throws Exception {
@@ -225,6 +243,36 @@ class HalftimeShapeTest extends MatchTestBase {
         assertThat(fullJobCount(matchId, 2)).isZero();
         assertThat(materializedCount(matchId, 2)).isEqualTo(2L);
         assertThat(matchState(matchId)).isEqualTo("FINISHED");
+    }
+
+    /**
+     * <b>포메이션만</b> 바꾼 경우도 변경이다 — 유저가 할 수 있는 가장 흔한 조작(FormationSelect 한 번)
+     * 이 여기 걸린다. 다른 배치 테스트들은 formation 과 슬롯을 <b>항상 같이</b> 바꿔서,
+     * {@link online.hmb.match.MatchService#secondHalfShapeChanged} 의 formation 비교 3줄을 통째로
+     * 지워도 전부 통과했다(독립검증 변이체 M2). 그 상태로 회귀하면 포메이션 변경이 h1 인풋 재사용으로
+     * 떨어져 <b>조용히 무시</b>된다 — 유저는 4-3-3 을 골랐는데 후반이 4-4-2 로 돈다.
+     */
+    @Test
+    void changingOnlyTheFormationCountsAsAChange() throws Exception {
+        String matchId = toHalftime("shape_formonly");
+        String token = login("shape_formonly");
+
+        // 슬롯은 전반 그대로(baseSlots), 포메이션만 4-4-2 → 4-3-3.
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(), "formation", "4-3-3",
+                        "starters", startersOf(baseSlots())), Map.class);
+
+        // 패치·재사용이 아니라 풀 생성이어야 한다(포메이션은 패치로 표현할 수 없다).
+        assertThat(fullJobCount(matchId, 2)).isEqualTo(1L);
+        assertThat(effectiveJobCount(matchId, 2)).isEqualTo(1L);
+
+        String context = userSecondHalfContext(matchId);
+        assertThat(formationOf(context)).isEqualTo("4-3-3");
+        assertThat(rosterSlotOf(context, "P002")).isEqualTo(1);   // 슬롯은 손대지 않았다
+        assertThat(rosterSlotOf(context, "P011")).isEqualTo(10);
+
+        assertThat(secondHalfSnapshot("shape_formonly", matchId).path("formation").asText())
+                .isEqualTo("4-3-3");
     }
 
     // ── 4: 교체 + 배치 동시 (핵심) ──────────────────────────────────────
@@ -423,6 +471,94 @@ class HalftimeShapeTest extends MatchTestBase {
                 Map.of("substitutions", List.of(Map.of("out", "P011", "in", "P012"))), Map.class);
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         assertThat(errorRule(response)).isEqualTo("ROSTER_MISMATCH");
+    }
+
+    // ── 6-b: 웹이 보드를 항상 함께 보낸다는 전제의 왕복 계약 (독립검증 blocker 2건) ──
+
+    /**
+     * <b>blocker-1 — 재제출 400 고착</b>. 배치+교체를 낸 뒤 {@code POST /resume} 이 완료되지 않으면
+     * (네트워크 끊김·탭 종료·리로드) 화면 재진입 시 보드는 매치 스냅샷 원본에서 다시 시작한다.
+     *
+     * <p>그때 웹이 배치를 <b>빼고</b> {@code substitutions:[]} 만 보내면
+     * {@link #storedShapeIsRevalidatedAgainstNewlySubmittedSubstitutions} 가 박제한 대로 <b>400
+     * ROSTER_MISMATCH</b> 다 — 살아남은 이전 배치와 새 교체가 어긋나기 때문. 유저는 몇 번을 눌러도
+     * 400 이라 후반을 시작할 수 없었다. 400 을 없애는 게 아니라(그건 계약 방어다) <b>웹이 보드 현재
+     * 상태를 항상 함께 보내면</b> 그 모순 자체가 생기지 않는다.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void resubmittingTheWholeBoardAfterARemountIsAcceptedAndWins() {
+        String matchId = toHalftime("shape_remount");
+        String token = login("shape_remount");
+
+        // ① 보드로 교체 + 배치 제출
+        Map<String, Integer> slots = baseSlots();
+        slots.remove("P011");
+        slots.put("P004", 10);
+        slots.put("P012", 3);
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(Map.of("out", "P011", "in", "P012")),
+                        "formation", "4-3-3", "starters", startersOf(slots)), Map.class);
+        assertThat(shapeJson(matchId)).contains("P012");
+
+        // ② 재마운트 — 보드가 스냅샷 원본에서 다시 시작하고, 웹은 그 상태를 통째로 싣는다.
+        var response = authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(), "formation", "4-4-2",
+                        "starters", startersOf(baseSlots())), Map.class);
+        assertThat(response.getStatusCode().is2xxSuccessful()).isTrue();
+
+        // 저장된 배치가 화면과 일치한다 — 이전 배치가 살아남지 않는다.
+        assertThat(shapeJson(matchId)).contains("4-4-2").doesNotContain("P012");
+        JsonNode h2 = secondHalfSnapshot("shape_remount", matchId);
+        assertThat(h2.path("formation").asText()).isEqualTo("4-4-2");
+        assertThat(snapshotSlotOf(h2, "P011")).isEqualTo(10);
+        assertThat(snapshotSlotOf(h2, "P004")).isEqualTo(3);
+
+        // 전반과 같은 배치로 수렴했으므로 재생성도 없다(#215 콜0).
+        authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
+        assertThat(fullJobCount(matchId, 2)).isZero();
+        assertThat(materializedCount(matchId, 2)).isEqualTo(2L);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("FINISHED");
+    }
+
+    /**
+     * <b>blocker-2 — 취소한 배치가 조용히 후반에 반영</b>. 배치를 바꿔 제출한 뒤 유저가 보드를
+     * 원상복구하고 재제출하면 후반은 <b>전반 배치</b>로 돌아와야 한다. 배치를 안 보내면
+     * {@code COALESCE} 가 이전 배치를 남겨 400 도 없이 취소된 배치로 후반이 돈다(유저는 취소했다고
+     * 믿는다). 되돌린 뒤에는 전반과 같으므로 <b>풀 생성도 0</b> 이다.
+     */
+    @Test
+    void revertingTheBoardRestoresTheFirstHalfShapeAndCostsNoCall() {
+        String matchId = toHalftime("shape_revert");
+        String token = login("shape_revert");
+
+        // ① 배치만 바꿔 제출 — 변경이므로 풀 생성 1콜
+        Map<String, Integer> slots = baseSlots();
+        slots.put("P002", 5);
+        slots.put("P006", 1);
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(), "formation", "4-3-3",
+                        "starters", startersOf(slots)), Map.class);
+        assertThat(fullJobCount(matchId, 2)).isEqualTo(1L);
+
+        // ② 유저가 원상복구 → 웹이 base 배치를 명시 전송
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of(), "formation", "4-4-2",
+                        "starters", startersOf(baseSlots())), Map.class);
+
+        JsonNode h2 = secondHalfSnapshot("shape_revert", matchId);
+        assertThat(h2.path("formation").asText()).isEqualTo("4-4-2");
+        assertThat(snapshotSlotOf(h2, "P002")).isEqualTo(1);
+        assertThat(snapshotSlotOf(h2, "P006")).isEqualTo(5);
+
+        // 되돌렸으니 전반 인풋 재사용 — 유효 풀 생성 잡이 남아 있으면 안 된다(#215).
+        authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
+        assertThat(fullJobCount(matchId, 2)).isZero();
+        assertThat(effectiveJobCount(matchId, 2)).isEqualTo(1L);
+        assertThat(materializedCount(matchId, 2)).isEqualTo(2L);
+        fakeServants.drain();
+        assertThat(matchState(matchId)).isEqualTo("FINISHED");
     }
 
     // ── 7: 재제출 보존 (3필드 상호 비파괴) ──────────────────────────────

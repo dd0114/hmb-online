@@ -16,10 +16,22 @@
  *    (base 에서 그 벤치 슬롯의 주인이 in, 현재 그 슬롯의 주인이 out) 다중 교체에서도 짝이
  *    결정론적으로 난다 — 순서·집합만 보고 맞추면 2건 이상에서 교차 오배정이 난다.
  *
- * ② **배치 변경 판정의 기준선은 "교체만 적용한 스냅샷"**이다. 교체로 들어온 선수가 나간 선수의
- *    슬롯을 그대로 물려받았을 뿐이면 배치는 **안 바뀐 것**이다. 원본 스냅샷과 비교하면 교체할
- *    때마다 배치도 "바뀐 것"이 되어 서버가 유저 사이드 AI 풀 생성(콜 1회)을 하게 된다 —
- *    #215 콜0 계약이 조용히 새는 자리다. 안 건드렸으면 두 필드를 **아예 안 보낸다**.
+ * ② **보드 모드에서는 배치를 항상 싣는다. 지금 보드 상태가 진실이다.**
+ *    처음엔 "배치가 실제로 바뀐 경우에만" 실었다(#215 콜0을 웹에서 지키려던 것). 그런데
+ *    `substitutions` 는 **항상** 싣고 배치는 **조건부로** 싣는 이 **비대칭**이 두 방향으로 무너졌다 —
+ *    서버 `COALESCE` 는 미첨부를 "손대지 않음"으로 읽으므로 `h2_shape_json` 에 **"배치를 원래대로
+ *    되돌린다"를 표현할 값이 없었다**:
+ *      ⓐ 재제출 400 고착 — 배치+교체를 낸 뒤 `POST /resume` 이 완료되지 않으면(네트워크 끊김·탭
+ *         종료·리로드) 화면 재진입 시 보드가 스냅샷 원본에서 다시 시작하는데, 그때 배치를 빼면
+ *         **살아남은 이전 배치**가 새 `substitutions:[]` 와 어긋나 400 `ROSTER_MISMATCH` 가 된다.
+ *         몇 번을 눌러도 400이고 감독시간이 만료돼 전반 지시 그대로 후반이 시작된다.
+ *      ⓑ 취소한 배치가 조용히 반영 — 배치를 바꿔 낸 뒤 원상복구하고 재제출해도 이전 배치가 남아
+ *         후반이 그걸로 돈다(400 도 안 뜬다 — 유저는 취소했다고 믿는다).
+ *    **#215 의 본질은 "안 보낸다"가 아니라 "AI 콜이 0이다"** 이고, 그 판정은 서버가 이미 한다:
+ *    `MatchService.secondHalfShapeChanged` 가 전반과 같은 배치를 무변경으로 읽어 h1 인풋을
+ *    재사용한다(계약 = `HalftimeShapeTest.resubmittingTheSameShapeIsNotAChange`). 그러니 웹이
+ *    조건부로 뺄 이유가 없다 — 콜0은 유지되고 위 두 결함은 함께 사라진다.
+ *    ⚠️ 폴백 모드(`boardUsable` false, 구 매치)만 종전대로 배치를 안 보낸다 — 보낼 보드가 없다.
  */
 import type { SnapshotSlot, TeamSnapshot } from "../api/v2";
 import {
@@ -34,7 +46,7 @@ import { validateSubs, type SubIssue, type SubPair } from "./match-logic";
 
 export interface HalftimeShapePayload {
   substitutions: SubPair[];
-  /** 배치가 실제로 바뀐 경우에만 실린다(둘 다 또는 둘 다 아님). */
+  /** 보드 모드면 **항상** 실린다(둘 다 또는 둘 다 아님) — 위 ②. 폴백 모드에서만 빠진다. */
   formation?: string;
   starters?: SnapshotSlot[];
 }
@@ -113,27 +125,6 @@ export function diffSubstitutions(base: DeckDraft, current: DeckDraft): SubPair[
   return pairs;
 }
 
-/** 배치 비교의 기준선 — base 에 교체만 적용한 상태(위 ②). */
-export function applySubs(base: DeckDraft, subs: SubPair[]): DeckDraft {
-  let draft = base;
-  for (const pair of subs) {
-    const outSlot = findPlayerSlot(draft, pair.out);
-    if (!outSlot || outSlot.role !== "starter") continue;
-    draft = movePlayerToSlot(draft, pair.in, "starter", outSlot.slotIndex);
-  }
-  return draft;
-}
-
-/** 포메이션 문자열 또는 선발 슬롯 배치가 다른가. */
-export function shapeChanged(a: DeckDraft, b: DeckDraft): boolean {
-  if (a.formation !== b.formation) return true;
-  const ma = starterSlotMap(a);
-  const mb = starterSlotMap(b);
-  const keys = new Set([...Object.keys(ma), ...Object.keys(mb)]);
-  for (const k of keys) if (ma[Number(k)] !== mb[Number(k)]) return true;
-  return false;
-}
-
 /** 현재 보드의 선발 배치를 서버 형태로 직렬화(slotIndex 오름차순 = 결정론). */
 function toStarters(draft: DeckDraft): SnapshotSlot[] {
   return draft.slots
@@ -149,15 +140,17 @@ function toStarters(draft: DeckDraft): SnapshotSlot[] {
  * (나간 선수는 벤치로 내려가 있어 배열에 없다). 서버는 이 slotIndex 를 그 자리의 실효 선수
  * 기준으로 되쓴다 → "교체로 들어온 선수를 내가 지정한 슬롯에 세운다"가 성립한다.
  *
+ * **배치는 조건 없이 싣는다**(위 ②) — 안 건드렸으면 전반과 같은 값이 실리고, 서버가 그걸
+ * 무변경으로 판정해 AI 콜은 0이다. `base` 는 이제 교체 diff 의 기준일 뿐 "실을지 말지"를 정하지
+ * 않는다.
+ *
  * 선발이 11명이 아니면(빈 벤치칸으로 선수를 끌어낸 경우) 배치를 만들지 않는다 — 서버가 400
  * (STARTER_COUNT)을 낼 바디를 애초에 조립하지 않는다. 그 상태는 `lineupIssues` 가 이슈로
  * 잡아 [후반 시작]을 잠그므로 제출까지 가지도 않는다.
  */
 export function halftimeShapePayload(base: DeckDraft, current: DeckDraft): HalftimeShapePayload {
-  const substitutions = diffSubstitutions(base, current);
-  const payload: HalftimeShapePayload = { substitutions };
-  const afterSubs = applySubs(base, substitutions);
-  if (shapeChanged(afterSubs, current) && starterCount(current) === STARTER_COUNT) {
+  const payload: HalftimeShapePayload = { substitutions: diffSubstitutions(base, current) };
+  if (starterCount(current) === STARTER_COUNT) {
     payload.formation = current.formation;
     payload.starters = toStarters(current);
   }
@@ -165,14 +158,32 @@ export function halftimeShapePayload(base: DeckDraft, current: DeckDraft): Halft
 }
 
 /**
- * 확정된 교체 한 건을 취소 — 투입 선수가 **지금 서 있는** 선발 슬롯에 나간 선수를 되돌려 놓는다
- * (movePlayerToSlot swap 이 나머지를 맞춰준다). 투입 후 그 선수를 다른 자리로 옮겼더라도
- * 그 자리에 out 이 들어가므로 교체만 정확히 풀린다.
+ * 확정된 교체 한 건을 취소 — **base(스냅샷)로의 복귀**다: `in` 은 base 벤치 슬롯으로, `out` 은
+ * base 선발 슬롯으로 되돌린다.
+ *
+ * ⚠️ 예전 구현은 "`in` 이 **지금 서 있는** 선발 슬롯에 `out` 을 놓는다"였고, 주석엔 "투입 후 옮겼어도
+ * 교체만 정확히 풀린다"고 적혀 있었지만 **사실이 아니었다**. 투입 선수를 다른 자리로 옮긴 뒤
+ * 취소하면 선발 두 명의 자리가 유저 의도 없이 맞바뀐 채 남는다:
+ * ```
+ * base {9:"F1", 10:"F2"} → B1 을 10번에(교체) → B1 을 9번으로 이동 → [취소]
+ *   옛 결과 {9:"F2", 10:"F1"}   ← 뒤바뀜 → shapeChanged 가 true 가 되어
+ *   "유저가 취소했는데 배치가 바뀐 것"으로 잡힌다
+ * ```
+ * base 좌표로 되돌리면 그 자리가 사라진다. 나머지 선수는 `movePlayerToSlot` 의 swap 이 맞춰주므로
+ * 다른 교체·유저가 의도한 자리 이동은 그대로 남는다.
  */
-export function revertSub(current: DeckDraft, pair: SubPair): DeckDraft {
-  const inSlot = findPlayerSlot(current, pair.in);
-  if (!inSlot || inSlot.role !== "starter") return current;
-  return movePlayerToSlot(current, pair.out, "starter", inSlot.slotIndex);
+export function revertSub(base: DeckDraft, current: DeckDraft, pair: SubPair): DeckDraft {
+  const inNow = findPlayerSlot(current, pair.in);
+  const outBase = findPlayerSlot(base, pair.out);
+  if (!inNow || inNow.role !== "starter" || !outBase || outBase.role !== "starter") return current;
+  // ① 나간 선수를 base 선발 슬롯으로
+  let draft = movePlayerToSlot(current, pair.out, "starter", outBase.slotIndex);
+  // ② 투입 선수를 base 벤치 슬롯으로 (①의 swap 이 이미 거기에 앉혔으면 no-op)
+  const inBase = findPlayerSlot(base, pair.in);
+  if (inBase && inBase.role === "bench") {
+    draft = movePlayerToSlot(draft, pair.in, "bench", inBase.slotIndex);
+  }
+  return draft;
 }
 
 /**

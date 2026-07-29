@@ -287,4 +287,22 @@ describe("validateSubs (client pre-check — server AC-M4 is SoT)", () => {
     const gkSwap = validateSubs([{ out: "GK1", in: "BGK" }], starters, bench, pos);
     expect(gkSwap).toEqual([]);
   });
+
+  /**
+   * 카탈로그(`/api/players`)가 아직 안 온 동안엔 positionOf 가 전부 undefined 라 "GK 가 없다"로
+   * 보인다 — 헛경고가 뜨고 [후반 시작]이 잠긴다. **모른다와 위반은 다르다**: 포지션을 모르는
+   * 선수가 하나라도 있으면 그가 GK 일 수 있으므로 위반이라고 말할 수 없다.
+   */
+  it("포지션을 모르는 선수가 있으면 GK 검사를 보류한다(로딩 ≠ 위반)", () => {
+    const unknown = () => undefined;
+    expect(validateSubs([], starters, bench, unknown)).toEqual([]);
+    expect(validateSubs([{ out: "GK1", in: "B1" }], starters, bench, unknown)).toEqual([]);
+
+    // 카탈로그가 도착하면(전원 알려짐) 그때 판정한다.
+    expect(validateSubs([{ out: "GK1", in: "B1" }], starters, bench, pos).map((i) => i.rule))
+      .toContain("GK_REQUIRED");
+    // 일부만 알려진 상태도 보류 — 모르는 그 선수가 GK 일 수 있다.
+    const partial = (id: string) => (id === "S1" ? "MF" : undefined);
+    expect(validateSubs([{ out: "GK1", in: "B1" }], starters, bench, partial)).toEqual([]);
+  });
 });
