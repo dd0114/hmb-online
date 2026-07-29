@@ -246,7 +246,17 @@ class AwayV2Test extends MatchTestBase {
                 .isEqualTo(10);
     }
 
-    /** 리포트가 박제하는 값 = **실제 적용값**(연승 보너스 포함). 팝업의 레이팅 합계가 이걸 더한다. */
+    /**
+     * 리포트가 박제하는 값 = <b>실제 적용값</b>(연승 보너스 포함) — 팝업의 레이팅 합계가 이걸 더한다.
+     *
+     * <p>⚠️ 연승 보너스는 이제 <b>공격자에게만</b> 붙는다. 그래서 이 계약의 무게중심도 공격자 원장에
+     * 있다(보너스가 실제로 적용됐는가). 그 축은 변이로 확인된다 — 공격자 적용값을 기본값으로 바꾸면
+     * 이 테스트 포함 4개가 죽는다.
+     *
+     * <p>반면 <b>리포트 필드(수비자 관점)에 기본값을 넣는 변이는 등가 변이</b>다: 수비 보너스가 구조적
+     * 으로 0 이라 "적용값"과 "기본값"이 같은 값이기 때문이다. 수비자에게 보너스를 다시 주는 날
+     * 그 둘이 갈라지고, 그때 이 단언이 일하기 시작한다(지금 죽지 않는다고 지우지 마라).
+     */
     @Test
     void reportRecordsTheAppliedDeltaIncludingStreakBonus() {
         setupUserWithDeck("v2_rep_def");
@@ -254,18 +264,26 @@ class AwayV2Test extends MatchTestBase {
         setupUserWithDeck("v2_rep_atk");
         String attackerId = userIdOf("v2_rep_atk");
 
-        settleLoss(attackerId, defenderId, "M_R1");
-        settleLoss(attackerId, defenderId, "M_R2");   // 수비자 2연승 = 실제 +12
+        settleWin(attackerId, defenderId, "M_R1");
+        settleWin(attackerId, defenderId, "M_R2");   // 공격자 2연승 → 기본 10 + 보너스 2
 
-        int recorded = jdbcClient.sql("SELECT rating_delta FROM away_reports WHERE match_id = 'M_R2'")
-                .query(Integer.class).single();
         int applied = jdbcClient.sql("""
+                        SELECT delta FROM rating_ledger WHERE ref_id = 'M_R2' AND reason = 'away_attack'
+                        """)
+                .query(Integer.class).single();
+        assertThat(applied).as("보너스가 실제로 붙어야 이 계약이 의미를 갖는다").isGreaterThan(10);
+
+        // 수비자 리포트의 delta 는 수비자 관점 적용값이고, 공격자 원장은 그 반대 부호의 기본값 + 보너스다.
+        int recordedForDefender = jdbcClient.sql(
+                        "SELECT rating_delta FROM away_reports WHERE match_id = 'M_R2'")
+                .query(Integer.class).single();
+        int defenderApplied = jdbcClient.sql("""
                         SELECT delta FROM rating_ledger WHERE ref_id = 'M_R2' AND reason = 'away_defense'
                         """)
                 .query(Integer.class).single();
-        assertThat(recorded)
-                .as("리포트가 '적용값을 박제한다'고 선언해놓고 기본값만 적으면 처음부터 거짓말이다")
-                .isEqualTo(applied);
+        assertThat(recordedForDefender)
+                .as("리포트가 '적용값을 박제한다'고 선언해놓고 다른 값을 적으면 팝업 합계가 틀린다")
+                .isEqualTo(defenderApplied);
     }
 
     // ── E6/E7: 돈은 리그 곡선, 수비자도 받되 지면 0 ───────────────────────
@@ -665,6 +683,13 @@ class AwayV2Test extends MatchTestBase {
         String attacker = setupUserWithDeck("v2_ffs_atk");
         String attackerId = userIdOf("v2_ffs_atk");
 
+        // 무르기 전에 공격자에게 연승을 만들어 둔다 — 몰수가 그걸 건드리는지 봐야 하기 때문이다.
+        setupUserWithDeck("v2_ffs_prey");
+        settleWin(attackerId, userIdOf("v2_ffs_prey"), "M_FFS_PRE1");
+        settleWin(attackerId, userIdOf("v2_ffs_prey"), "M_FFS_PRE2");
+        assertThat(awayService.streakOf(attackerId)).isEqualTo(2);
+        releaseActiveMatches();
+
         String matchId = startAwayPinned(attackerId, defenderId).id();
         long pointsBefore = points(defenderId);
         assertThat(authPost("/api/matches/" + matchId + "/abandon", attacker, Map.of(), Map.class)
@@ -673,9 +698,13 @@ class AwayV2Test extends MatchTestBase {
         // 레이팅은 움직이고(D1) 돈·연승은 움직이지 않는다.
         assertThat(rating(defenderId)).isEqualTo(10);
         assertThat(points(defenderId) - pointsBefore).isZero();
-        assertThat(awayService.streakOf(defenderId))
-                .as("열리지도 않은 경기가 연승이 되면 그게 곧 보너스 파밍이다")
-                .isZero();
+        // ⚠️ 수비자 연승은 새 규칙에서 **어차피 안 움직인다** — 그걸 단언하면 몰수 처리와 무관하게
+        // 항상 참인 tautology 다(독립검증 지적). 몰수 가드의 실제 효과는 **공격자 쪽**에 있다:
+        // 무르는 유저의 연승이 끊기지도, 열리지도 않은 경기로 쌓이지도 않는다.
+        assertThat(awayService.streakOf(defenderId)).isZero();
+        assertThat(awayService.streakOf(attackerId))
+                .as("몰수는 연승 계산에서 **빠진다** — 쌓지도 않고 끊지도 않는다(열리지도 않은 경기다)")
+                .isEqualTo(2);
         assertThat(jdbcClient.sql("SELECT forfeit FROM away_reports WHERE match_id = ?")
                 .param(matchId).query(Integer.class).single()).isEqualTo(1);
 
@@ -683,8 +712,10 @@ class AwayV2Test extends MatchTestBase {
         long seasonRewardBefore = points(defenderId);
         expireSeason();
         seasonService.sweepDueSeasons();
-        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM away_season_results WHERE user_id IN (?, ?)")
-                        .params(attackerId, defenderId).query(Long.class).single())
+        // ⚠️ **수비자로 좁힌다** — 공격자는 연승을 만들려고 넣은 진짜 경기 2판으로 정상 참가한다.
+        // 여기서 보려는 건 "몰수**만** 있는 쪽이 시즌에 잡히는가" 다.
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM away_season_results WHERE user_id = ?")
+                        .param(defenderId).query(Long.class).single())
                 .as("몰수만으로 시즌 순위 보상을 받으면 시뮬 0회 수도꼭지가 된다")
                 .isZero();
         assertThat(points(defenderId)).isEqualTo(seasonRewardBefore);
