@@ -484,3 +484,14 @@
 .relegateRow .zoneMark {
   color: var(--danger, #f85149);
 }
+
+/* 시즌 시작 CTA 의 디비전 안내(#268) — 시즌 밖에서도 "내가 몇 부인지" 가 보여야 한다. */
+.ctaDivision {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.ctaDivision strong {
+  color: var(--accent, #4f8cff);
+  font-weight: 700;
+}

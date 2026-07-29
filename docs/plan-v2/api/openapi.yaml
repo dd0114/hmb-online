@@ -1871,6 +1871,30 @@ components:
           $ref: "#/components/schemas/WalletInfo"
         records:
           $ref: "#/components/schemas/MatchRecordSummary"
+        rating:
+          type: integer
+          description: 원정 레이팅(#245 additive). wallet.points 와 다른 축 — 포인트는 소비 재화라 실력을 말하지 못한다.
+        league:
+          description: >-
+            리그 디비전(#268 additive). **시즌과 무관하게 현재 값**이다 — 승급/강등은 시즌 *사이*에
+            일어나므로 시즌이 없는 구간(첫 진입 · 시즌 종료 후 새 시즌 전)에도 "내가 몇 부인지"가 필요하다.
+            사다리 표가 발행되지 않았으면(구 발행물 롤백) **null** = 디비전 개념이 꺼진 상태.
+          oneOf:
+            - $ref: "#/components/schemas/MeLeagueInfo"
+            - type: "null"
+
+    MeLeagueInfo:
+      type: object
+      required: [division]
+      properties:
+        division:
+          type: integer
+          description: 현재 디비전 level. **작을수록 상위**(10=입문 … 1=최상위).
+        divisionName:
+          type: [string, "null"]
+          description: >-
+            표시명(league.v2.json divisions[].name). **서버가 SoT** — 클라가 level→이름 규칙을
+            복제하면 발행물이 바뀔 때 조용히 어긋난다.
 
     AdminEconomyView:
       type: object

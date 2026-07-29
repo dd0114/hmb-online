@@ -862,6 +862,135 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 전체 목록(**중지·만료·삭제 포함**) + 서버가 판정한 status. 화면이 기간을 다시 계산하지
+         *     않게 하는 것이 요점이다 — 같은 데이터에 두 개의 진실이 생기면 유저 피드와 운영 화면이
+         *     조용히 갈라진다. 삭제된 공지는 목록 맨 뒤로 밀린다. (페이징 없음 — 운영 규모상 전건.)
+         */
+        get: operations["adminListNotices"];
+        put?: never;
+        /** 공지 생성. 사유 필수. audit action=notice_create. */
+        post: operations["adminCreateNotice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/notices/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 공지 운영 이력(감사 원장) — **성공과 실패 모두**. 거절된 시도도 남고, 그 행만으로
+         *     "어느 공지에 무엇을 넣으려 했나"가 복원된다(detailJson.noticeId / attempted).
+         *     원장 테이블은 economy·유닛 카탈로그와 공용이라 action 접두사 `notice_` 로 스코프한다.
+         */
+        get: operations["adminNoticeHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/notices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 수정 = 내용 필드 **전체 치환**(부분 패치가 아니다). startsAt/endsAt/priority 를 안 보내면
+         *     **지워진다** — web 폼은 항상 전체 필드를 보내야 한다.
+         *     `revision` 은 **제목 또는 본문이 실제로 바뀔 때만** +1 한다(클라 억제 키가 `id@revision`
+         *     이라, 내용 무관 변경에 범프하면 전원 재표시되고 안 하면 오탈자 수정본이 억제된 유저에게
+         *     안 보인다). audit action=notice_update.
+         * @description **`active` 에 값이 실려 오면 400 이다**(키가 있어도 `null` 이면 통과) — 전체 치환 규약에서
+         *     한 필드만 조용히 무시하면 운영자가 200 을 받고 "내렸다"고 믿는데 공지는 계속 뜬다.
+         *     노출은 POST /{id}/active 전용.
+         *
+         *     **대상 조회가 검증보다 먼저다** — 없는 id 는 바디가 함께 잘못됐어도 400 이 아니라 404 다.
+         *     (그래야 실패 원장에 대상 id·직전 스냅샷이 남는다.)
+         */
+        put: operations["adminUpdateNotice"];
+        post?: never;
+        /**
+         * **soft delete 만**(hard delete 없음, hero 컨펌 Q6). 행은 남는다 — 감사 원장이 참조하는
+         *     대상이 사라지면 "무슨 공지를 왜 내렸나"를 복원할 수 없다. audit action=notice_delete.
+         */
+        delete: operations["adminDeleteNotice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/notices/{id}/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 노출 ON/OFF. **기간을 건드리지 않는다** — 급히 내릴 때 endsAt 을 과거로 조작하게 만들면
+         *     원장이 거짓말을 한다. 내용이 그대로이므로 `revision` 도 오르지 않는다(다시 올려도
+         *     전원 재표시가 되지 않는다). audit action=notice_active.
+         */
+        post: operations["adminSetNoticeActive"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/notices/active": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 홈(로비) 팝업이 읽는 공지 피드 — 지금 보여야 하는 것만 (#248)
+         * @description **서버가 이미 걸러서 내려준다**: `active=1` · 미삭제 · `startsAt <= now <= endsAt`(양끝 포함).
+         *     클라는 기간을 재계산하지 않는다 — 재계산하면 기기 시계·타임존이 진실이 되고(폰 시계가 하루
+         *     빠른 유저에게 점검 공지가 안 뜬다), 규칙이 바뀔 때 조용히 어긋난다(#217 `locked` 와 같은 원칙).
+         *
+         *     정렬 = `priority DESC, startsAt DESC, id DESC`. 클라는 받은 순서 그대로 카드를 쌓는다
+         *     (중첩 스택 팝업, hero 컨펌 Q1) — "무엇이 맨 위인가"는 서버가 정하는 값이다.
+         *
+         *     활성 0건이면 200 + 빈 배열이다(에러가 아니다). 그래도 클라는 응답 형태 이상·5xx 에
+         *     견뎌야 한다 — 팝업만 안 뜨고 로비는 정상 렌더(#248 §3.3).
+         */
+        get: operations["getActiveNotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -970,10 +1099,11 @@ export interface components {
                 ten: components["schemas"]["Price"];
                 tenCount: number;
             } | null;
+            /** @description **잠재 리롤 1회 비용** (#247). 예전엔 상점에서 다이스를 사서 재고로 쌓는 가격이었으나 hero 확정(2026-07-29)으로 구매 단계가 사라졌다 — 이제 강화탭의 리롤 버튼이 이 값으로 지갑에서 직접 결제한다(`POST /api/growth/dice`). **키·값은 그대로**라 economy override 재작성이 필요 없다. `POST /api/shop/dice`(구매)는 은퇴했다. */
             dice?: {
-                /** @description 노말 다이스 — 무료재화 결제 */
+                /** @description 잠재 재설정(승급 판정 있음) — 무료재화 결제 */
                 normal: components["schemas"]["Price"];
-                /** @description 캐시 다이스 — 유상재화 결제 */
+                /** @description 고급 재설정(상위 옵션 가중, 승급 판정 없음) — 유상재화 결제 */
                 cash: components["schemas"]["Price"];
             } | null;
             gemTopup?: {
@@ -1016,6 +1146,16 @@ export interface components {
             user: components["schemas"]["UserRef"];
             wallet: components["schemas"]["WalletInfo"];
             records: components["schemas"]["MatchRecordSummary"];
+            /** @description 원정 레이팅(#245 additive). wallet.points 와 다른 축 — 포인트는 소비 재화라 실력을 말하지 못한다. */
+            rating?: number;
+            /** @description 리그 디비전(#268 additive). **시즌과 무관하게 현재 값**이다 — 승급/강등은 시즌 *사이*에 일어나므로 시즌이 없는 구간(첫 진입 · 시즌 종료 후 새 시즌 전)에도 "내가 몇 부인지"가 필요하다. 사다리 표가 발행되지 않았으면(구 발행물 롤백) **null** = 디비전 개념이 꺼진 상태. */
+            league?: components["schemas"]["MeLeagueInfo"] | null;
+        };
+        MeLeagueInfo: {
+            /** @description 현재 디비전 level. **작을수록 상위**(10=입문 … 1=최상위). */
+            division: number;
+            /** @description 표시명(league.v2.json divisions[].name). **서버가 SoT** — 클라가 level→이름 규칙을 복제하면 발행물이 바뀔 때 조용히 어긋난다. */
+            divisionName?: string | null;
         };
         /** @description #209 B안 — 지금 유효한 economy 요약 + 출처(운영 화면이 '반영됐나'에 답하는 근거) */
         AdminEconomyView: {
@@ -1052,18 +1192,123 @@ export interface components {
             /** @description 액션을 실행한 admin 닉네임 */
             actor: string;
             /**
-             * @description economy_reload | economy_starter_top | economy_override_clear (#209).
+             * @description economy_reload | economy_starter_top | economy_override_clear (#209) ·
+             *     notice_create | notice_update | notice_active | notice_delete (#248).
              *     ⚠️ enum 으로 닫지 않는다 — 이 테이블은 범용 운영 원장이고(#207 파트 A 등 다른 트랙이
-             *     자기 action 을 같은 테이블에 append 한다) 조회는 action 필터가 없다. 닫아 두면
-             *     그 트랙이 랜딩하는 순간 응답이 자기 스펙을 위반한다.
+             *     자기 action 을 같은 테이블에 append 한다) economy 이력 조회는 action 필터가 없다.
+             *     닫아 두면 그 트랙이 랜딩하는 순간 응답이 자기 스펙을 위반한다.
+             *     (GET /api/admin/notices/history 만 `notice_` 접두사로 스코프한다.)
              */
             action: string;
             /** @enum {string} */
             result: "ok" | "failed";
             reason?: string | null;
-            /** @description {before, after} 또는 {before, attempted, error} 스냅샷(JSON 문자열) */
+            /**
+             * @description `{before, after}` 또는 `{before, attempted, error}` 스냅샷(JSON 문자열).
+             *     공지(#248)는 여기에 **`noticeId` 를 함께 싣는다** — 검증에서 튕긴 실패 행은 before 가
+             *     null 이라, id 가 없으면 "어느 공지에 무엇을 넣으려 했나"가 원장에서 복원되지 않는다
+             *     (독립검증 B2: 실패 세 줄이 전부 똑같아 구분 불가였다).
+             */
             detailJson?: string | null;
             createdAt: string;
+        };
+        /**
+         * @description 팝업이 그리는 데 필요한 것만. **운영 전용 필드(active·status·deletedAt·createdBy)는 공개
+         *     피드에 싣지 않는다** — 이 엔드포인트는 인증 없이 열려 있다.
+         */
+        ActiveNotice: {
+            /** @description ULID */
+            id: string;
+            /**
+             * @description **클라 억제 키의 절반**(`id@revision`). 제목·본문이 실제로 바뀔 때만 서버가 +1 하므로,
+             *     오탈자를 고치면 24시간 억제한 유저에게도 다시 뜨고 노출 토글·우선순위 조정으로는
+             *     다시 뜨지 않는다.
+             */
+            revision: number;
+            title: string;
+            /**
+             * @description 마크다운 부분집합(줄바꿈·**굵게**·*기울임*·목록·링크·이미지, hero 컨펌 Q7).
+             *     ⚠️ **살균은 렌더 시점의 클라 책임**이다 — `dangerouslySetInnerHTML` 금지, 화이트리스트
+             *     엘리먼트로만 파싱, URL 스킴은 http/https/자체경로만. 서버는 길이 상한만 본다
+             *     (문자열 필터링은 우회되므로 서버 검열을 신뢰 근거로 삼지 않는다).
+             */
+            body: string;
+            /**
+             * Format: date-time
+             * @description 노출 시작(포함). null = 즉시 시작. **초 단위로 절삭된 ISO-8601 UTC**
+             *     (`2026-07-30T00:00:00Z`)로 정규화돼 내려간다.
+             * @example 2026-07-30T00:00:00Z
+             */
+            startsAt?: string | null;
+            /**
+             * Format: date-time
+             * @description 노출 종료(**포함** — 종료 정각까지 보인다). null = 무기한.
+             * @example 2026-07-31T23:59:00Z
+             */
+            endsAt?: string | null;
+            /** @description 클수록 앞. 정렬 = priority DESC, startsAt DESC, id DESC. */
+            priority: number;
+        };
+        /** @description 운영 화면이 보는 한 건 — 공개 피드 + 운영 필드 + **서버가 판정한** status. */
+        AdminNotice: {
+            id: string;
+            revision: number;
+            title: string;
+            body: string;
+            /** Format: date-time */
+            startsAt?: string | null;
+            /** Format: date-time */
+            endsAt?: string | null;
+            priority: number;
+            /** @description 운영 스위치. **기간과 별개 축**이다 — "예약해 뒀지만 지금은 내려두고 싶다"를 표현한다. */
+            active: boolean;
+            /**
+             * @description 서버 판정(우선순위 DELETED → OFF → EXPIRED → SCHEDULED → LIVE). 화면이 다시 계산하지
+             *     않는다. 중지된 공지에 EXPIRED 를 보여 주면 운영자가 기간을 늘리는 잘못된 조치를 한다.
+             * @enum {string}
+             */
+            status: "LIVE" | "SCHEDULED" | "OFF" | "EXPIRED" | "DELETED";
+            /** Format: date-time */
+            deletedAt?: string | null;
+            /** @description 생성한 admin 의 userId */
+            createdBy?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * @description 생성·수정 공통 바디. **수정에서는 전체 치환**이다 — 안 보낸 startsAt/endsAt/priority 는
+         *     지워진다(부분 패치 아님).
+         */
+        AdminNoticeUpsertRequest: {
+            title: string;
+            body: string;
+            /**
+             * Format: date-time
+             * @description ISO-8601. `2026-07-30T00:00:00Z` 또는 오프셋 표기(`2026-07-30T09:00:00+09:00`) 둘 다
+             *     받는다. **오프셋 없는 로컬 시각(`2026-07-30T09:00:00`)은 400** — 서버가 존을 추측하면
+             *     공지가 9시간 틀린 시각에 뜬다. 서버가 초 단위 UTC 로 정규화해 저장한다.
+             * @example 2026-07-30T00:00:00Z
+             * @example 2026-07-30T09:00:00+09:00
+             */
+            startsAt?: string | null;
+            /**
+             * Format: date-time
+             * @description `startsAt < endsAt` 이어야 한다(역전은 400 — 그 공지는 절대 안 보이는데 목록에서는 예약됨처럼 보인다).
+             */
+            endsAt?: string | null;
+            /** @default 0 */
+            priority: number;
+            /**
+             * @description **생성에서만 유효**(기본 true). 수정에서는 **값이 실려 오면 400**(키가 있어도 `null`
+             *     이면 통과 — 서버는 `active != null` 만 본다) — 전체 치환 규약에서 한 필드만 조용히
+             *     무시하면 운영자가 200 을 받고 "내렸다"고 믿는데 공지는 계속 뜬다.
+             *     노출 변경은 POST /api/admin/notices/{id}/active.
+             */
+            active?: boolean | null;
+            /** @description 운영 사유(필수 — 성공·실패 모두 admin_ops_audit 에 남는다). */
+            reason: string;
         };
         /** @description #209 — 가입 지급된 최상위 유닛(연출 재료). 지급이 없으면 granted=false, player=null */
         StarterGrantResponse: {
@@ -3213,6 +3458,250 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    adminListNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notices: components["schemas"]["AdminNotice"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminCreateNotice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminNoticeUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description 생성됨(201 이 아니라 200 — 리포 전반 관용구) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminNotice"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminNoticeHistory: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminOpsAuditEntry"][];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    adminUpdateNotice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminNoticeUpsertRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminNotice"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 없거나 이미 삭제된 공지. code=NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description 다른 운영자가 먼저 고쳤다(revision CAS 실패). code=CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    adminDeleteNotice: {
+        parameters: {
+            query: {
+                /**
+                 * @description 사유는 쿼리로 받는다(DELETE 바디는 일부 클라이언트·프록시가 조용히 떨어뜨린다 —
+                 *     /api/admin/economy/override 와 같은 관용구).
+                 */
+                reason: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminNotice"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 없거나 이미 삭제된 공지. code=NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description 다른 운영자가 먼저 지웠다(조건부 UPDATE 0행). code=CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    adminSetNoticeActive: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    active: boolean;
+                    /** @description 운영 사유(필수 — 원장에 남는다) */
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminNotice"];
+                };
+            };
+            400: components["responses"]["ValidationError"];
+            401: components["responses"]["Unauthorized"];
+            403: components["responses"]["Forbidden"];
+            /** @description 없거나 이미 삭제된 공지. code=NOT_FOUND */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+            /** @description 다른 운영자가 먼저 지웠다(조건부 UPDATE 0행). code=CONFLICT */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
+                };
+            };
+        };
+    };
+    getActiveNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        notices: components["schemas"]["ActiveNotice"][];
+                    };
                 };
             };
         };

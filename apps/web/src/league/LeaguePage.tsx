@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useLeague, useStartLeague, useStartNextLeagueMatch } from "../api/hooks-v2";
+import { useMe } from "../api/hooks";
 import type { LeagueFixture, LeagueSeason, LeagueStanding } from "../api/v2";
 import type { LeagueResponseP3, LeagueSeasonReward } from "../api/p3";
 import { ApiError } from "../api/client";
@@ -20,6 +21,7 @@ import {
   isGranted,
   isSeasonFinished,
   pickDivision,
+  pickMeDivision,
   pickSeasonReward,
   seasonRewardView,
   seasonSummary,
@@ -34,9 +36,13 @@ import styles from "./LeaguePage.module.css";
 export function LeaguePage() {
   const navigate = useNavigate();
   const { data, isLoading, isError, refetch, isFetching } = useLeague();
+  const { data: me } = useMe();
   const [error, setError] = useState<string | null>(null);
 
   const season = data?.season ?? null;
+  // 헤더 뱃지: 시즌이 있으면 **그 시즌에 박제된** 값(그 시즌을 무슨 디비전으로 치렀는지),
+  // 없으면 유저의 현재 값(#268). 시즌 종료 화면에서 승급했더라도 뱃지는 **치른 시즌**의 것이 맞다.
+  const headerDivision = pickDivision(season) ?? pickMeDivision(me);
   // Phase3 additive — 구 서버(필드 부재)면 null → 기존 종료 화면 그대로(폴백).
   const reward = useMemo(() => pickSeasonReward(data as LeagueResponseP3 | undefined), [data]);
 
@@ -51,10 +57,10 @@ export function LeaguePage() {
           시즌 {season.seasonNo}
         </span>
       )}
-      {/* 디비전 뱃지 — 구 서버(필드 부재)면 렌더 안 함(폴백). */}
-      {divisionLabel(pickDivision(season)) && (
+      {/* 디비전 뱃지 — 구 서버(필드 부재)면 렌더 안 함(폴백). 시즌이 없어도 뜬다(#268). */}
+      {divisionLabel(headerDivision) && (
         <span className={styles.divisionTag} data-testid="division-tag">
-          {divisionLabel(pickDivision(season))}
+          {divisionLabel(headerDivision)}
         </span>
       )}
     </div>
@@ -65,7 +71,7 @@ export function LeaguePage() {
       {isError && <ErrorToast message="리그 정보를 불러오지 못했습니다" />}
       {isLoading && <p className={styles.pending}>불러오는 중…</p>}
 
-      {!isLoading && !season && <StartSeasonCta onError={setError} />}
+      {!isLoading && !season && <StartSeasonCta onError={setError} division={headerDivision} />}
       {season && !isSeasonFinished(season) && <Dashboard season={season} onError={setError} />}
       {season && isSeasonFinished(season) && (
         <SeasonEnd
@@ -92,13 +98,26 @@ function useStartError(onError: (m: string) => void) {
   };
 }
 
-function StartSeasonCta({ onError }: { onError: (m: string) => void }) {
+function StartSeasonCta({
+  onError,
+  division,
+}: {
+  onError: (m: string) => void;
+  division?: DivisionInfo | null;
+}) {
   const start = useStartLeague();
   const handleErr = useStartError(onError);
   return (
     <div className={styles.cta} data-testid="league-start-cta">
       <p className={styles.ctaTitle}>리그에 도전하세요</p>
       <p className={styles.ctaDesc}>봇 9팀과 더블 라운드로빈 18라운드. 승점 3-1-0, 시즌 종료 시 순위 보상.</p>
+      {/* 시즌이 없는 구간에서도 "내가 몇 부인지" 를 보여준다(#268) — 승급/강등은 시즌 **사이**에
+          일어나므로, 다음 시즌을 시작하기 직전이 그게 가장 궁금한 순간이다. */}
+      {divisionLabel(division ?? null) && (
+        <p className={styles.ctaDivision} data-testid="cta-division">
+          다음 시즌 <strong>{divisionLabel(division ?? null)}</strong> 에서 시작합니다
+        </p>
+      )}
       <button
         type="button"
         className={styles.primary}

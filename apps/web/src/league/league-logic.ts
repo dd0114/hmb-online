@@ -261,6 +261,32 @@ export function seasonRewardView(
  * 같은 이유로 **디비전 이름을 level 에서 만들지 않는다**(D10 → "디비전 10" 같은 규칙 복제 금지).
  */
 
+/**
+ * `GET /api/me` 의 디비전(#268) → 표시용 정보. **시즌과 무관한 현재 값**이라 컷은 없다
+ * (컷은 시즌마다 사다리 끝 클램프가 달라 시즌 DTO 가 소유한다 — #262 BL-1).
+ * 그래서 `hasRules=false` = 뱃지만 띄우고 승급권 색칠은 하지 않는다.
+ *
+ * 사다리 표가 없으면 서버가 `league` 를 통째로 null 로 준다 → 여기서도 null(기능 소멸).
+ */
+export function pickMeDivision(me: MeLeagueSource | null | undefined): DivisionInfo | null {
+  const raw = me?.league;
+  if (!raw) return null;
+  const level = numberOrNull(raw.division);
+  if (level === null) return null;
+  return {
+    level,
+    name: typeof raw.divisionName === "string" && raw.divisionName.trim() ? raw.divisionName : null,
+    promoteRankMax: null,
+    relegateRankMin: null,
+    hasRules: false,
+  };
+}
+
+/** `useMe()` 응답 중 이 모듈이 읽는 부분만 (전체 타입에 묶이지 않게). */
+export interface MeLeagueSource {
+  league?: { division?: number | null; divisionName?: string | null } | null;
+}
+
 /** 순위가 속한 구역. 컷이 없으면(구 서버) 전부 `none` — 색칠도 라벨도 안 한다. */
 export type DivisionZone = "promote" | "hold" | "relegate" | "none";
 

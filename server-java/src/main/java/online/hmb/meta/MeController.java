@@ -27,15 +27,18 @@ public class MeController {
     private final AdminAccess adminAccess;
     private final OnboardingService onboardingService;
     private final online.hmb.away.RatingService ratingService;
+    private final online.hmb.league.LeagueService leagueService;
 
     public MeController(JdbcClient jdbcClient, WalletService walletService, AdminAccess adminAccess,
                         OnboardingService onboardingService,
-                        online.hmb.away.RatingService ratingService) {
+                        online.hmb.away.RatingService ratingService,
+                        online.hmb.league.LeagueService leagueService) {
         this.jdbcClient = jdbcClient;
         this.walletService = walletService;
         this.adminAccess = adminAccess;
         this.onboardingService = onboardingService;
         this.ratingService = ratingService;
+        this.leagueService = leagueService;
     }
 
     @GetMapping("/api/me")
@@ -68,7 +71,10 @@ public class MeController {
                         byResult.getOrDefault("WIN", 0L),
                         byResult.getOrDefault("DRAW", 0L),
                         byResult.getOrDefault("LOSS", 0L)),
-                ratingService.rating(userId));
+                ratingService.rating(userId),
+                leagueService.currentDivision(userId)
+                        .map(d -> new LeagueInfo(d.level(), d.name()))
+                        .orElse(null));
     }
 
     @GetMapping("/api/me/matches")
@@ -117,7 +123,17 @@ public class MeController {
      * rating(#245 additive) = 원정 레이팅. <b>wallet.points 와 다른 축</b>이다 — 포인트는 뽑기·강화로
      * 소비되는 재화라 실력을 말하지 못한다. 초기 0, 하한 없음(hero 확정).
      */
-    public record MeResponse(UserRef user, WalletInfo wallet, Records records, int rating) {
+    /**
+     * 리그 디비전(#268 additive). <b>시즌과 무관</b>하게 현재 값이다 — 승급/강등은 시즌 사이에
+     * 일어나므로 시즌이 없는 구간(첫 진입·시즌 종료 후 새 시즌 전)에도 "내가 몇 부인지"가 필요하다.
+     * 사다리 표가 없으면(구 발행물 롤백) <b>league 자체가 null</b> — 디비전 개념이 꺼진 상태다.
+     */
+    public record LeagueInfo(int division, String divisionName) {
+    }
+
+    /** league 는 #268 additive — 기존 필드 불변(web 무회귀). null 이면 화면에서 사라진다. */
+    public record MeResponse(UserRef user, WalletInfo wallet, Records records, int rating,
+                             LeagueInfo league) {
     }
 
     public record MatchListItem(String id, String opponentName, Integer scoreHome, Integer scoreAway,
