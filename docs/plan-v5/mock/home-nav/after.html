@@ -172,8 +172,11 @@ table.tbl td.num{text-align:right;font-variant-numeric:tabular-nums}
 .tile.wide{min-height:112px;background:linear-gradient(120deg,#172a4d,#111826 66%)}
 .tile.wide em{font-size:32px;width:54px;height:54px;background:rgba(255,255,255,.06)}
 .tile.wide b{font-size:21px}
-.tile .badge{position:absolute;right:38px;top:50%;transform:translateY(-50%)}
-.tile .rib{position:absolute;top:0;right:0;background:var(--them);color:#fff;font-size:10px;font-weight:700;padding:3px 9px;border-bottom-left-radius:10px}
+/* 카운트 뱃지는 **한 형식**만 쓴다(hero 6R) — 리본/원형이 섞이면 같은 뜻이 다르게 읽힌다.
+   자리·크기·색이 전부 같고, 무엇을 센 숫자인지는 부제가 말한다. 벨·탭바 뱃지와도 같은 언어다. */
+.tile .cnt{position:absolute;right:36px;top:50%;transform:translateY(-50%);
+  min-width:22px;height:22px;padding:0 6px;border-radius:99px;background:var(--them);color:#fff;
+  font-size:12px;font-weight:700;display:grid;place-items:center}
 
 /* ── 홈 히어로 (미사용 — 3차안 잔재, 참고용) ──────────────────────────── */
 .homehero{position:relative;border-radius:18px;overflow:hidden;background:linear-gradient(160deg,#1b2740,#0e1420 70%);min-height:322px;display:flex;flex-direction:column;justify-content:flex-end}
@@ -302,9 +305,9 @@ body.nonotes .note{display:none}
 
       <div class="tiles">
         <button class="tile wide" onclick="go('game')">
-          <span class="rib">복수 2</span>
           <em>⚽</em>
-          <div class="tt"><b>게임 시작</b><span class="sub">리그 10/18R · 원정 레이팅 1180</span></div>
+          <div class="tt"><b>게임 시작</b><span class="sub">리그 10/18R · 원정 복수 2건 가능</span></div>
+          <span class="cnt">2</span>
           <span class="go">›</span>
         </button>
 
@@ -317,7 +320,7 @@ body.nonotes .note{display:none}
         <button class="tile" onclick="go('recruit')">
           <em>✨</em>
           <div class="tt"><b>영입</b><span class="sub">뽑기 · 트레이드 제안 1건 공개</span></div>
-          <span class="badge them">1</span>
+          <span class="cnt">1</span>
           <span class="go">›</span>
         </button>
 
@@ -341,7 +344,7 @@ body.nonotes .note{display:none}
       </button>
       <div class="note tiny"><b>전부 통칸</b>이다(hero 5R) — 반칸으로 나누지 않는다. 이름·순서도 지정하신 그대로:
         <b>게임 시작 · 덱 구성 · 영입 · 내 정보 · 선수 도감</b>.
-        타일마다 <b>지금 상태</b>를 한 줄 달았다 — 크게 보여주는 자리를 큰 버튼으로만 쓰면 아깝다. 알림 줄은 <b>있을 때만</b>.</div>
+        타일마다 <b>지금 상태</b>를 한 줄 달았다. <b>카운트 뱃지는 한 형식</b>(원형·같은 자리·같은 색) — 무엇을 센 숫자인지는 부제가 말한다. 알림 줄은 <b>있을 때만</b>.</div>
     </div>
   </div>
 </section>
