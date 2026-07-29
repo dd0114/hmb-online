@@ -249,3 +249,132 @@ export function seasonRewardView(
     tone: "error",
   };
 }
+
+/* ───────────────── 디비전 승급/강등 (#252 / 이슈 #262) ─────────────────
+ *
+ * 서버가 SoT 다. `division`(level, **작을수록 상위**) · `divisionName`(표시명) ·
+ * `promoteRankMax` / `relegateRankMin`(순위 컷) 을 그대로 받아 쓴다.
+ *
+ * ⚠️ **컷을 클라에 하드코딩하지 마라.** 규칙은 config(`hmb.league.division.*`)이고 사다리 표는
+ * data 발행물(`league.v2.json`)이라 서버에서 바뀔 수 있다. 복제하면 그때 조용히 어긋난다 —
+ * 순위표에 "승급권"이라 칠해 놓고 실제로는 강등되는 화면이 나온다.
+ * 같은 이유로 **디비전 이름을 level 에서 만들지 않는다**(D10 → "디비전 10" 같은 규칙 복제 금지).
+ */
+
+/** 순위가 속한 구역. 컷이 없으면(구 서버) 전부 `none` — 색칠도 라벨도 안 한다. */
+export type DivisionZone = "promote" | "hold" | "relegate" | "none";
+
+export interface DivisionInfo {
+  level: number;
+  /** 표시명. 서버가 안 주면 null — 클라가 지어내지 않는다. */
+  name: string | null;
+  promoteRankMax: number | null;
+  relegateRankMin: number | null;
+  /** 승급/강등 규칙을 화면에 설명할 수 있는 상태인지(둘 중 하나라도 있으면 true). */
+  hasRules: boolean;
+}
+
+/**
+ * 시즌에서 디비전 정보를 뽑는다. **구 서버 폴백**: 필드가 없으면 null → 화면은 기존 그대로.
+ * (필드 부재와 "값이 0" 을 구분해야 해서 `??` 로 부재만 거른다.)
+ */
+export function pickDivision(season: LeagueSeason | null | undefined): DivisionInfo | null {
+  const raw = season as (LeagueSeason & Partial<DivisionFields>) | null | undefined;
+  if (!raw) return null;
+  const level = numberOrNull(raw.division);
+  if (level === null) return null; // 디비전 개념이 없는 서버 — 이 기능 전체를 숨긴다.
+  const promoteRankMax = numberOrNull(raw.promoteRankMax);
+  const relegateRankMin = numberOrNull(raw.relegateRankMin);
+  return {
+    level,
+    name: typeof raw.divisionName === "string" && raw.divisionName.trim() ? raw.divisionName : null,
+    promoteRankMax,
+    relegateRankMin,
+    hasRules: promoteRankMax !== null || relegateRankMin !== null,
+  };
+}
+
+interface DivisionFields {
+  division: number;
+  divisionName: string | null;
+  promoteRankMax: number;
+  relegateRankMin: number;
+}
+
+function numberOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/** 순위 → 구역. 컷이 없으면 `none`(색칠 안 함). */
+export function zoneOfRank(rank: number, division: DivisionInfo | null): DivisionZone {
+  if (!division || !division.hasRules) return "none";
+  if (division.promoteRankMax !== null && rank <= division.promoteRankMax) return "promote";
+  if (division.relegateRankMin !== null && rank >= division.relegateRankMin) return "relegate";
+  return "hold";
+}
+
+/** 디비전 표시 라벨. 이름이 없으면 level 만("D5") — 없는 이름을 지어내지 않는다. */
+export function divisionLabel(division: DivisionInfo | null): string | null {
+  if (!division) return null;
+  return division.name ?? `D${division.level}`;
+}
+
+/**
+ * 승급/강등 규칙 한 줄 설명("1~2위 승급 · 9위부터 강등"). 컷이 없으면 null.
+ * 서버 값만으로 만든다 — 문장에 숫자를 박지 않는다.
+ */
+export function divisionRuleText(division: DivisionInfo | null): string | null {
+  if (!division || !division.hasRules) return null;
+  const parts: string[] = [];
+  if (division.promoteRankMax !== null) {
+    parts.push(
+      division.promoteRankMax === 1 ? "1위 승급" : `1~${division.promoteRankMax}위 승급`,
+    );
+  }
+  if (division.relegateRankMin !== null) parts.push(`${division.relegateRankMin}위부터 강등`);
+  return parts.join(" · ");
+}
+
+/**
+ * 시즌 **종료** 시 유저에게 무슨 일이 일어났나. 승급/강등 연출의 입력.
+ * ⚠️ 다음 디비전 level 을 클라가 계산하지 않는다 — 사다리 양 끝 클램프는 서버 규칙이라
+ * 여기서 `level-1` 을 만들면 최상위에서 존재하지 않는 디비전을 표시하게 된다.
+ */
+export interface DivisionOutcome {
+  zone: Extract<DivisionZone, "promote" | "hold" | "relegate">;
+  headline: string;
+  detail: string;
+  tone: "success" | "neutral" | "error";
+}
+
+export function divisionOutcome(
+  rank: number | null,
+  division: DivisionInfo | null,
+): DivisionOutcome | null {
+  if (rank === null || !division || !division.hasRules) return null;
+  const label = divisionLabel(division);
+  const where = label ? `${label}에서 ` : "";
+  switch (zoneOfRank(rank, division)) {
+    case "promote":
+      return {
+        zone: "promote",
+        headline: "승급!",
+        detail: `${where}${rank}위 — 다음 시즌은 한 단계 위 디비전에서 시작합니다`,
+        tone: "success",
+      };
+    case "relegate":
+      return {
+        zone: "relegate",
+        headline: "강등",
+        detail: `${where}${rank}위 — 다음 시즌은 한 단계 아래 디비전에서 시작합니다`,
+        tone: "error",
+      };
+    default:
+      return {
+        zone: "hold",
+        headline: "디비전 유지",
+        detail: `${where}${rank}위 — 다음 시즌도 같은 디비전입니다`,
+        tone: "neutral",
+      };
+  }
+}

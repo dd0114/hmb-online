@@ -11,18 +11,24 @@ import { ErrorToast } from "../common/ErrorToast";
 import { matchInProgressIdOf } from "../common/match-lock";
 import type { SeasonSummary } from "./league-logic";
 import {
+  divisionLabel,
+  divisionOutcome,
+  divisionRuleText,
   fixtureScore,
   formatAwardedAt,
   groupByRound,
   isGranted,
   isSeasonFinished,
+  pickDivision,
   pickSeasonReward,
   seasonRewardView,
   seasonSummary,
   sortByRank,
   teamNameMap,
   userRank,
+  zoneOfRank,
 } from "./league-logic";
+import type { DivisionInfo } from "./league-logic";
 import styles from "./LeaguePage.module.css";
 
 export function LeaguePage() {
@@ -43,6 +49,12 @@ export function LeaguePage() {
       {season && (
         <span className={styles.seasonTag} data-testid="season-tag">
           시즌 {season.seasonNo}
+        </span>
+      )}
+      {/* 디비전 뱃지 — 구 서버(필드 부재)면 렌더 안 함(폴백). */}
+      {divisionLabel(pickDivision(season)) && (
+        <span className={styles.divisionTag} data-testid="division-tag">
+          {divisionLabel(pickDivision(season))}
         </span>
       )}
     </div>
@@ -164,18 +176,33 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
 
       {/* ≥1024px: 순위표·일정 병렬(LLD §7). 모바일은 세로 스택. */}
       <div className={styles.dashGrid}>
-        <StandingsTable standings={season.standings} />
+        <StandingsTable standings={season.standings} division={pickDivision(season)} />
         <Schedule fixtures={season.fixtures} names={names} />
       </div>
     </div>
   );
 }
 
-function StandingsTable({ standings }: { standings: LeagueStanding[] }) {
+function StandingsTable({
+  standings,
+  division,
+}: {
+  standings: LeagueStanding[];
+  division?: DivisionInfo | null;
+}) {
   const sorted = useMemo(() => sortByRank(standings), [standings]);
+  const rule = divisionRuleText(division ?? null);
   return (
     <section className={styles.card}>
-      <h3 className={styles.cardTitle}>순위표</h3>
+      <div className={styles.cardHead}>
+        <h3 className={styles.cardTitle}>순위표</h3>
+        {/* 컷은 서버 값으로만 만든다 — 클라가 "1~2위"를 기억하면 규칙이 바뀔 때 거짓말이 된다. */}
+        {rule && (
+          <span className={styles.ruleHint} data-testid="division-rule">
+            {rule}
+          </span>
+        )}
+      </div>
       <div className={styles.tableWrap}>
         <table className={styles.table} data-testid="standings">
           <thead>
@@ -191,12 +218,21 @@ function StandingsTable({ standings }: { standings: LeagueStanding[] }) {
             </tr>
           </thead>
           <tbody>
-            {sorted.map((s) => (
+            {sorted.map((s) => {
+              const zone = zoneOfRank(s.rank, division ?? null);
+              return (
               <tr
                 key={s.teamId}
-                className={s.isUser ? styles.userRow : undefined}
+                className={[
+                  s.isUser ? styles.userRow : "",
+                  zone === "promote" ? styles.promoteRow : "",
+                  zone === "relegate" ? styles.relegateRow : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ") || undefined}
                 data-testid={`standing-${s.teamId}`}
                 data-user={s.isUser ? "true" : undefined}
+                data-zone={zone === "none" ? undefined : zone}
               >
                 <td className={styles.rankCol}>{s.rank}</td>
                 <td className={styles.teamCol}>{s.name}</td>
@@ -207,7 +243,8 @@ function StandingsTable({ standings }: { standings: LeagueStanding[] }) {
                 <td>{s.goalDiff > 0 ? `+${s.goalDiff}` : s.goalDiff}</td>
                 <td className={styles.ptsCol}>{s.points}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -281,6 +318,8 @@ function SeasonEnd({
   const rank = userRank(season.standings);
   const sorted = useMemo(() => sortByRank(season.standings), [season.standings]);
   const summary = useMemo(() => seasonSummary(season.standings), [season.standings]);
+  const division = useMemo(() => pickDivision(season), [season]);
+  const outcome = useMemo(() => divisionOutcome(rank, division), [rank, division]);
   return (
     <div data-testid="season-end">
       <section className={styles.endHero}>
@@ -291,10 +330,21 @@ function SeasonEnd({
           </p>
         )}
       </section>
+      {/* 승급/강등 결과 — 디비전 규칙이 없으면(구 서버) 렌더 안 함. */}
+      {outcome && (
+        <section
+          className={`${styles.outcomeCard} ${styles[`outcome_${outcome.tone}`]}`}
+          data-testid="division-outcome"
+          data-zone={outcome.zone}
+        >
+          <p className={styles.outcomeHeadline}>{outcome.headline}</p>
+          <p className={styles.outcomeDetail}>{outcome.detail}</p>
+        </section>
+      )}
       {/* reward 부재(구 서버) = 렌더 안 함 → 기존 화면 그대로. */}
       {reward && <SeasonRewardCard reward={reward} onRefresh={onRefresh} refreshing={refreshing} />}
       {summary && <SeasonSummaryCard summary={summary} />}
-      <StandingsTable standings={sorted} />
+      <StandingsTable standings={sorted} division={division} />
       <button
         type="button"
         className={styles.primary}

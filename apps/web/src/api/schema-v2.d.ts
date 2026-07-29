@@ -673,6 +673,14 @@ export interface components {
             fixtures: components["schemas"]["LeagueFixture"][];
             /** @description 다음 SCHEDULED 유저 경기(없으면 시즌 종료 임박) */
             nextUserFixture?: components["schemas"]["LeagueFixture"] | null;
+            /** @description 이 시즌의 디비전 level (#252). **작을수록 상위** (10=입문 … 1=최상위). 시즌 생성 시 유저 디비전으로 확정·박제되며 시즌 도중 바뀌지 않는다 — 그래야 이미 치른 라운드와 남은 라운드의 상대 강도가 같다. */
+            division?: number;
+            /** @description 디비전 표시명(league.v2.json divisions[].name). **서버가 SoT** — 클라가 level→이름을 복제하면 표가 바뀔 때 조용히 어긋난다. 구 발행물(divisions 없음)이면 null. */
+            divisionName?: string | null;
+            /** @description 최종 순위가 이 값 이하면 승급(level−1). 최상위에서는 클램프. */
+            promoteRankMax?: number;
+            /** @description 최종 순위가 이 값 이상이면 강등(level+1). 입문에서는 클램프. */
+            relegateRankMin?: number;
             /** @description 시즌 보상 요약(additive, 시즌종료 연출용 — P3-D8/AC-E1). SoT=point_ledger 지급행 + 순위 파생. */
             seasonReward?: components["schemas"]["SeasonReward"];
         };
