@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runMatch } from "../../src/match";
@@ -35,6 +35,18 @@ describe("#279 W2 chain A/B viewers", () => {
     writeFileSync(cPath, JSON.stringify(c));
     const vw = buildTestViewer(wPath, "viewer-weighted.html");
     const vc = buildTestViewer(cPath, "viewer-chain.html");
+
+    // 두 탭이 화면상 구별되지 않으면 hero 가 어느 쪽을 보고 있는지 알 수 없다(실제로 헷갈렸다).
+    // 제목·헤더·탭 타이틀에 코어 이름을 박는다(뷰어 로직 무변경, 문자열 치환만).
+    const label = (path: string, tag: string, title: string): void => {
+      const src = readFileSync(path, "utf8");
+      const out = src
+        .replace("<title>HMB Engine Debug Viewer</title>", `<title>${title}</title>`)
+        .replace("<h1>HMB TIER-B ENGINE · DEBUG VIEWER</h1>", `<h1>${tag}</h1>`);
+      writeFileSync(path, out);
+    };
+    label(vw.outPath, "🅐 현행 코어 (weighted · 즉시점수 가중추첨) — #279 A/B", "A · 현행 weighted");
+    label(vc.outPath, "🅑 사슬 탐색 코어 (chain · 행동사슬 EV) — #279 A/B", "B · 신규 chain");
     // eslint-disable-next-line no-console
     console.log(
       `\n[#279 A/B viewers] seed ${SEED}\n  weighted ${vw.outPath}  score ${w.finalScore.home}-${w.finalScore.away} events ${vw.events}\n  chain    ${vc.outPath}  score ${c.finalScore.home}-${c.finalScore.away} events ${vc.events}\n`,

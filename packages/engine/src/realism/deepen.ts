@@ -418,6 +418,28 @@ export interface TeamDeepen {
   scoreFwdMinusBack: number;
   /** 교차검증(정의 아티팩트 방지). */
   xc: CrossCheck;
+  /** 전술 출현 빈도(#279 W3 — "다양한 전술이 안 나온다"를 숫자로). */
+  tac: TacticPresence;
+}
+
+/**
+ * 전술 출현 빈도 — hero 체감("크로스·롱패스 등 다양한 전략이 안 나온다")을 계량한다.
+ * 전부 **완결 패스(소유 이전)에서 기하로 판정**하므로 엔진에 아무 표식이 없어도 센다.
+ * 오픈플레이만 본다(데드볼 재시작을 낀 이전은 재구성 단계에서 이미 제외됨).
+ */
+export interface TacticPresence {
+  /** 크로스: 파이널서드 **와이드 채널**(박스 반폭 밖)에서 상대 박스 안으로 들어간 패스. 벤치 팀당 15–20. */
+  crosses: number;
+  /** 그중 **컷백**(골라인 근처에서 뒤로 빼 박스 안). 실제 축구의 대표 찬스 루트. */
+  cutbacks: number;
+  /** 사이드 전환: 한 번에 좌우로 ≥25m 이동한 패스. 벤치 팀당 ~10–20. */
+  switches: number;
+  /** 박스 안에서 잡은 완결 패스(=박스 진입 성공). */
+  boxReceptions: number;
+  /** 역습: 자기 진영 턴오버 후 ≤12초 안에 나온 슛. */
+  counterShots: number;
+  /** 와이드 채널에서 공을 잡은 횟수(측면 활용도). */
+  wideReceptions: number;
 }
 
 /** 옵션 프로브용 그림자 SimState(위치만 스냅샷에서 갈아끼운다). */
@@ -783,6 +805,42 @@ export function analyzeMatch(log: MatchLog, config: EngineConfig): Record<TeamSi
       if (prog(opp, t.relX, W) / W >= 0.4) ppdaHigh++;
     }
 
+    // --- 전술 출현 빈도(기하 판정) ---
+    const boxHalfW = config.rules.penalty.boxHalfWidthM;
+    const boxDepth = config.rules.penalty.boxDepthM;
+    const inOppBox = (t: Transfer, x: number, y: number): boolean =>
+      prog(t.fromSide, x, W) >= W - boxDepth && Math.abs(y - H / 2) <= boxHalfW;
+    let crosses = 0, cutbacks = 0, switches = 0, boxRec = 0, wideRec = 0;
+    for (const t of mine) {
+      if (!t.completed) continue;
+      const relWide = Math.abs(t.relY - H / 2) > boxHalfW;
+      const relFinal = prog(t.fromSide, t.relX, W) / W >= config.setPiece.finalThirdLine;
+      const recvBox = inOppBox(t, t.recvX, t.recvY);
+      if (relFinal && relWide && recvBox) {
+        crosses++;
+        // 컷백 = 골라인 가까이서 **뒤로** 빼 박스로.
+        if (prog(t.fromSide, t.relX, W) >= W - boxDepth * 0.6 && t.fwdM < 0) cutbacks++;
+      }
+      if (Math.abs(t.recvY - t.relY) >= 25) switches++;
+      if (recvBox) boxRec++;
+      if (Math.abs(t.recvY - H / 2) > boxHalfW) wideRec++;
+    }
+    // 역습: 자기 진영에서 공을 딴 뒤 12틱 안에 나온 슛.
+    const winsInOwnHalf: number[] = [];
+    for (const t of transfers) {
+      if (t.toSide !== side || t.completed) continue; // 상대 패스를 우리가 가로챈 순간
+      if (prog(side, t.recvX, W) / W < 0.5) winsInOwnHalf.push(t.recvTick);
+    }
+    let counterShots = 0;
+    for (const e of log.events) {
+      if (e.type !== "shot" || e.team !== side) continue;
+      if (e.detail === "saved" || e.detail === "off_target") continue;
+      if (winsInOwnHalf.some((w) => e.tick - w >= 0 && e.tick - w <= 12)) counterShots++;
+    }
+    const tac: TacticPresence = {
+      crosses, cutbacks, switches, boxReceptions: boxRec, counterShots, wideReceptions: wideRec,
+    };
+
     const xc: CrossCheck = {
       passEvents, interceptionEvents, tackleEvents, foulEvents, shotEvents,
       transferPass: tPass, transferIntercept: tInt, transferTackle: tTackle, transferLoose: tLoose,
@@ -856,6 +914,7 @@ export function analyzeMatch(log: MatchLog, config: EngineConfig): Record<TeamSi
       argmaxBackwardPct: pct(argmaxBack, probes),
       scoreFwdMinusBack: (fwdScoreN ? fwdScoreSum / fwdScoreN : 0) - (backScoreN ? backScoreSum / backScoreN : 0),
       xc,
+      tac,
     };
   }
   return out;
@@ -884,7 +943,7 @@ function aggregate(rows: TeamDeepen[]): { mean: TeamDeepen; sd: TeamDeepen } {
       const mu = mean(vals);
       m[k] = Math.round(mu * 1000) / 1000;
       s[k] = Math.round(Math.sqrt(mean(vals.map((v) => (v - mu) ** 2))) * 1000) / 1000;
-    } else if (k === "def" || k === "xc") {
+    } else if (k === "def" || k === "xc" || k === "tac") {
       const src = first[k] as unknown as Record<string, number>;
       const dm = {} as Record<string, number>;
       const ds = {} as Record<string, number>;

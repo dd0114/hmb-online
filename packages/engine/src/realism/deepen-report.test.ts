@@ -91,6 +91,17 @@ function body(a: DeepenAgg): string {
   L.push(`| 수비 액션(태클+인터셉트+파울) | ${f(d.defActions)} | ${f(ds.defActions)} | |`);
   L.push(`| 피슛 시 슈터 최근접 수비 거리 p50(m) | ${f(d.shooterNearestDefM)} | ${f(ds.shooterNearestDefM)} | 압박 밀착도 |`);
   L.push("");
+  L.push(`### G. 전술 출현 빈도 — "다양한 전술이 안 나온다"의 계량 (#279 W3)`);
+  L.push(`| 전술 | 엔진(팀·경기) | ±SD | 실제 벤치 |`);
+  L.push(`|---|---|---|---|`);
+  const t = m.tac, ts = s.tac;
+  L.push(`| **크로스**(와이드→박스) | ${f(t.crosses)} | ${f(ts.crosses)} | 팀당 15–20 |`);
+  L.push(`| 그중 컷백 | ${f(t.cutbacks)} | ${f(ts.cutbacks)} | — |`);
+  L.push(`| **사이드 전환**(≥25m 횡이동) | ${f(t.switches)} | ${f(ts.switches)} | 팀당 ~10–20 |`);
+  L.push(`| 박스 안 수신 | ${f(t.boxReceptions)} | ${f(ts.boxReceptions)} | — |`);
+  L.push(`| 와이드 채널 수신 | ${f(t.wideReceptions)} | ${f(ts.wideReceptions)} | 측면 활용도 |`);
+  L.push(`| **역습 슛**(자기진영 탈취 ≤12s) | ${f(t.counterShots)} | ${f(ts.counterShots)} | — |`);
+  L.push("");
   L.push(`### F. 교차검증 (지표 정의 아티팩트 방지)`);
   L.push(`| 지표 | 엔진 | ±SD | 의미 |`);
   L.push(`|---|---|---|---|`);
