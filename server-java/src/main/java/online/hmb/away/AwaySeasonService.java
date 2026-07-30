@@ -169,57 +169,13 @@ public class AwaySeasonService {
      */
     private void closeSeason(Season season) {
         txRunner.run(() -> {
-            record Standing(String userId, int rating, int bestStreak) {
-            }
-            // 대상 = **이 시즌 창 안에서 끝난 원정에 참여한 사람**(공격자·수비자 양쪽).
-            //
-            // ⚠️ 판정 출처가 핵심이다. 예전엔 `rating_ledger` 존재로 봤는데 그게 두 결함을 동시에 낳았다:
-            //   ① **상한이 없어서** 밀린 시즌(창이 과거)을 닫을 때 그 이후에 생긴 원장까지 참가로 잡혀
-            //      **아무도 안 논 주에도 1~3위 보상**이 나갔다(실측: 1판으로 20만 포인트 발행).
-            //   ② **무승부는 원장 행을 안 남기므로**(delta 0) 비기기만 한 유저가 시즌에서 통째로
-            //      사라졌다 — 참가상도 스냅샷도 히스토리도 0.
-            // 둘 다 "레이팅이 움직였는가"로 "원정을 했는가"를 대신 물어서 생겼다. 이제 원정 자체
-            // (`away_reports`, 정산마다 정확히 1행)를 창으로 잘라서 본다.
-            // ⚠️ **순위도 창으로 자른다.** 참가만 창으로 자르고 순위를 `user_ratings`(창 없는 현재
-            // 누적)로 매기면 두 축이 어긋난다 — 실측: 밀린 주에서 1주차 순위를 2주차 경기가 정했고,
-            // 앞 시즌 마감이 레이팅을 0 으로 지운 뒤엔 전원 동점이라 tie-break(`user_id`)가 순위를
-            // 정해 **3패한 유저가 1위, 3승한 유저가 2위**가 됐다(ULID 는 시간정렬이라 가장 오래된
-            // 계정이 매주 결정론적으로 1등). 그 시즌의 점수는 **그 시즌에 일어난 변동의 합**이다.
-            //
-            // 참가는 away_reports(정산마다 1행, 무승부 포함), 점수는 rating_ledger(변동이 있을 때만)
-            // 에서 온다 — 무승부만 한 유저는 참가하되 0점이다.
-            List<Standing> standings = jdbcClient.sql("""
-                            SELECT p.user_id AS user_id,
-                                   COALESCE((
-                                       SELECT SUM(l.delta) FROM rating_ledger l
-                                        WHERE l.user_id = p.user_id
-                                          AND datetime(l.created_at) >= datetime(:from)
-                                          AND datetime(l.created_at) <  datetime(:to)
-                                   ), 0) AS rating,
-                                   COALESCE(st.best_streak, 0) AS best_streak
-                            FROM (
-                                SELECT defender_id AS user_id FROM away_reports
-                                 WHERE datetime(created_at) >= datetime(:from)
-                                   AND datetime(created_at) <  datetime(:to)
-                                   AND forfeit = 0
-                                UNION
-                                SELECT attacker_id AS user_id FROM away_reports
-                                 WHERE datetime(created_at) >= datetime(:from)
-                                   AND datetime(created_at) <  datetime(:to)
-                                   AND forfeit = 0
-                            ) p
-                            LEFT JOIN away_streaks st ON st.user_id = p.user_id
-                            ORDER BY rating DESC, p.user_id ASC
-                            """)
-                    .param("from", season.startedAt())
-                    .param("to", season.endsAt())
-                    .query((rs, n) -> new Standing(rs.getString("user_id"), rs.getInt("rating"),
-                            rs.getInt("best_streak")))
-                    .list();
+            // 대상·점수의 정의는 standings() 가 소유한다 — 라이브 랭킹보드(#319)도 같은 함수를
+            // 지나므로 "지금 보이는 표"와 "보상이 나가는 표"가 구조적으로 갈라지지 않는다.
+            List<SeasonStanding> standings = standings(season.startedAt(), season.endsAt());
 
             String now = Instant.now(clock).toString();
             for (int i = 0; i < standings.size(); i++) {
-                Standing st = standings.get(i);
+                SeasonStanding st = standings.get(i);
                 int rank = i + 1;
                 int reward = rankRewards.getOrDefault(rank, participationReward);
                 int inserted = jdbcClient.sql("""
@@ -258,6 +214,85 @@ public class AwaySeasonService {
             openNext(season.seasonNo(), parseTime(season.endsAt()));
             log.info("away season {} closed — {} standings settled", season.seasonNo(), standings.size());
         });
+    }
+
+    /**
+     * 한 시즌 창의 순위표. <b>시즌 마감(보상)과 라이브 랭킹보드(#319)가 같이 쓴다</b> — 두 곳에서
+     * 각자 집계하면 "1등으로 보였는데 보상은 3등"이 되고, 그건 원장이 있어도 복구가 안 되는 종류의
+     * 불일치다.
+     *
+     * <p>⚠️ <b>참가와 점수의 출처가 다르다</b>(둘 다 실패해 본 자리다):
+     * <ul>
+     *   <li>참가 = 창 안의 <b>비-몰수 {@code away_reports}</b>(공격자·수비자 양쪽, 정산마다 정확히 1행).
+     *       예전엔 {@code rating_ledger} 존재로 물었는데 ① 상한이 없어 밀린 시즌을 닫을 때 그 뒤에
+     *       생긴 원장까지 참가로 잡혀 <b>아무도 안 논 주에 1~3위 보상</b>이 나갔고(실측 1판 = 20만
+     *       포인트 발행) ② 무승부는 원장 행이 없어 비기기만 한 유저가 시즌에서 통째로 사라졌다.</li>
+     *   <li>점수 = 창 안의 <b>{@code rating_ledger} 합</b>. {@code user_ratings}(창 없는 누적)로 매기면
+     *       참가 축과 어긋난다 — 실측에서 <b>3패한 유저가 1위, 3승한 유저가 2위</b>였다(앞 시즌
+     *       리셋으로 전원 동점 → tie-break 인 ULID = 가입 순이 순위를 정했다).</li>
+     * </ul>
+     *
+     * <p>시각 비교는 {@code datetime()} 으로 정규화한다 — ISO 문자열은 소수초가 붙으면
+     * ({@code …00.123Z}) 안 붙은 값보다 작게 정렬된다('.' &lt; 'Z').
+     *
+     * @param nickname·streak 는 마감 경로에선 쓰이지 않는다(스냅샷은 id·rating·bestStreak 만 박제).
+     *     라이브 보드가 필요로 해서 같은 쿼리에 실었다 — 조인을 따로 두면 두 표가 갈라질 자리가 생긴다.
+     */
+    public List<SeasonStanding> standings(String from, String to) {
+        return jdbcClient.sql("""
+                        SELECT p.user_id AS user_id,
+                               COALESCE(u.nickname, '알 수 없음') AS nickname,
+                               COALESCE((
+                                   SELECT SUM(l.delta) FROM rating_ledger l
+                                    WHERE l.user_id = p.user_id
+                                      AND datetime(l.created_at) >= datetime(:from)
+                                      AND datetime(l.created_at) <  datetime(:to)
+                               ), 0) AS rating,
+                               COALESCE(st.best_streak, 0) AS best_streak,
+                               COALESCE(st.streak, 0) AS streak
+                        FROM (
+                            SELECT defender_id AS user_id FROM away_reports
+                             WHERE datetime(created_at) >= datetime(:from)
+                               AND datetime(created_at) <  datetime(:to)
+                               AND forfeit = 0
+                            UNION
+                            SELECT attacker_id AS user_id FROM away_reports
+                             WHERE datetime(created_at) >= datetime(:from)
+                               AND datetime(created_at) <  datetime(:to)
+                               AND forfeit = 0
+                        ) p
+                        LEFT JOIN away_streaks st ON st.user_id = p.user_id
+                        LEFT JOIN users u ON u.id = p.user_id
+                        ORDER BY rating DESC, p.user_id ASC
+                        """)
+                .param("from", from)
+                .param("to", to)
+                .query((rs, n) -> new SeasonStanding(rs.getString("user_id"), rs.getString("nickname"),
+                        rs.getInt("rating"), rs.getInt("best_streak"), rs.getInt("streak")))
+                .list();
+    }
+
+    /**
+     * 이 시즌 창에서 <b>내 레이팅 변동 합</b>. 순위표에 없는 유저(=이번 주 원정 0판)의 표시값으로만 쓴다.
+     *
+     * <p>0 을 그냥 내보내지 않는 이유: 몰수만 있었던 유저는 참가로는 안 잡히지만 ±10 은 실제로
+     * 움직였다(hero D1 — 몰수의 벌칙). 그 사람에게 0 을 보여주면 화면이 원장과 다른 말을 한다.
+     */
+    public int seasonRatingOf(String userId, String from, String to) {
+        return jdbcClient.sql("""
+                        SELECT COALESCE(SUM(delta), 0) FROM rating_ledger
+                         WHERE user_id = ?
+                           AND datetime(created_at) >= datetime(?)
+                           AND datetime(created_at) <  datetime(?)
+                        """)
+                .params(userId, from, to)
+                .query(Integer.class)
+                .single();
+    }
+
+    /** @param streak 현재 연승(라이브 보드용) · @param bestStreak 시즌 최고(마감 스냅샷용). */
+    public record SeasonStanding(String userId, String nickname, int rating, int bestStreak,
+                                 int streak) {
     }
 
     /** 내 지난 시즌 성적(최근 것부터). 화면이 "지난주 몇 등이었나"를 말할 수 있게. */

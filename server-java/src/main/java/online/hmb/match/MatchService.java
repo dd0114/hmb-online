@@ -223,8 +223,9 @@ public class MatchService {
      * 덱/전술을 바꿔도 진행 중 매치는 이 스냅샷으로 격리된다.
      */
     public MatchRow createMatch(String userId, String botId, JsonNode teamTactics) {
-        // 활성 덱 재검증 (AC-S2 규칙 재사용, LLD §5.1)
-        DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
+        // 활성 덱 재검증 (AC-S2 규칙 재사용, LLD §5.1). 덱 부재는 전용 코드 DECK_REQUIRED(#319) —
+        // 매치 생성 3경로가 같은 게이트를 지나야 클라가 문구로 404 를 구분하지 않는다.
+        DeckService.DeckResponse deck = deckService.requireActiveDeck(userId);
         deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
         online.hmb.meta.TeamTactics.validate(teamTactics); // 있으면 0..1 범위
 
@@ -261,7 +262,7 @@ public class MatchService {
      * (매치 스냅샷·컨디션·플로우는 연습 매치와 동일 — 여기선 mode/fixture 만 다르다).
      */
     public MatchRow createLeagueMatch(String userId, String botTeamId, String leagueFixtureId) {
-        DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
+        DeckService.DeckResponse deck = deckService.requireActiveDeck(userId);
         deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
 
         BotService.BotRow bot = botService.get(botTeamId);
@@ -295,7 +296,19 @@ public class MatchService {
      * 모른다</b>(리포트도 레이팅도 없이). 관측되지 않는 사고는 고쳐지지 않는다.
      */
     public MatchRow createAwayMatch(String userId, String ghostBotId, String defenderId) {
-        DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
+        return createAwayMatch(userId, ghostBotId, defenderId, null);
+    }
+
+    /**
+     * @param revengeReportId 이 매치가 <b>어느 피침공 기록의 복수인가</b>(#319, 일반 원정이면 null).
+     *     도전장에 같이 박는 이유는 소모 판정이 <b>정산 시점</b>이기 때문이다(승=완료 / 패=시도+1 /
+     *     무=횟수 안 씀 — hero 확정). 매치 INSERT 와 같은 문장에 실어 <b>구조적으로</b> 원자적이게 한다 —
+     *     나중에 UPDATE 로 붙이면 그 사이에 프로세스가 죽었을 때 "복수인데 복수가 아닌" 매치가 남고,
+     *     유저는 시도만 잃는다.
+     */
+    public MatchRow createAwayMatch(String userId, String ghostBotId, String defenderId,
+                                    String revengeReportId) {
+        DeckService.DeckResponse deck = deckService.requireActiveDeck(userId);
         deckService.validate(userId, new DeckService.DeckUpdateRequest(deck.formation(), deck.slots()));
 
         BotService.BotRow bot = botService.get(ghostBotId);
@@ -316,10 +329,11 @@ public class MatchService {
                     .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, now)
                     .update();
             jdbcClient.sql("""
-                            INSERT INTO away_challenges(match_id, defender_id, ghost_bot_id, created_at)
-                            VALUES (?, ?, ?, ?)
+                            INSERT INTO away_challenges(match_id, defender_id, ghost_bot_id,
+                                                        created_at, revenge_report_id)
+                            VALUES (?, ?, ?, ?, ?)
                             """)
-                    .params(matchId, defenderId, bot.id(), now)
+                    .params(matchId, defenderId, bot.id(), now, revengeReportId)
                     .update();
         });
 

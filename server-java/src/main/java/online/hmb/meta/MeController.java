@@ -29,12 +29,15 @@ public class MeController {
     private final online.hmb.away.RatingService ratingService;
     private final online.hmb.league.LeagueService leagueService;
     private final online.hmb.mail.MailService mailService;
+    private final MeRecordService meRecordService;
 
     public MeController(JdbcClient jdbcClient, WalletService walletService, AdminAccess adminAccess,
                         OnboardingService onboardingService,
                         online.hmb.away.RatingService ratingService,
                         online.hmb.league.LeagueService leagueService,
-                        online.hmb.mail.MailService mailService) {
+                        online.hmb.mail.MailService mailService,
+                        MeRecordService meRecordService) {
+        this.meRecordService = meRecordService;
         this.jdbcClient = jdbcClient;
         this.walletService = walletService;
         this.adminAccess = adminAccess;
@@ -79,6 +82,15 @@ public class MeController {
                         .map(d -> new LeagueInfo(d.level(), d.name()))
                         .orElse(null),
                 MailInfo.of(mailService.summary(userId)));
+    }
+
+    /**
+     * 모드별 전적 + 최근 폼(#286 W4 · #319). 집계·승률은 <b>서버가 계산해서 준다</b> —
+     * 클라가 다시 나누면 무승부 취급 같은 규칙이 두 곳에 생기고 조용히 어긋난다(#262 규율).
+     */
+    @GetMapping("/api/me/record")
+    public MeRecordService.MyRecord record(@RequestAttribute("userId") String userId) {
+        return meRecordService.recordOf(userId);
     }
 
     @GetMapping("/api/me/matches")
