@@ -30,7 +30,15 @@ const prog = (side: TeamSide, x: number) => (side === "home" ? x / W : 1 - x / W
 /** 코너 딜리버리 직전(공이 아직 코너 아크에 있는 마지막) 틱들의 배치. */
 function cornerFrames(log: MatchLog) {
   const byTick = new Map(log.tickSnapshots.map((s) => [s.tick, s]));
-  const out: { side: TeamSide; stayBack: string[]; stayBackX: number[]; inBox: string[]; defHigh: string[] }[] = [];
+  const out: {
+    side: TeamSide;
+    stayBack: string[];
+    stayBackX: number[];
+    /** `stayBackX` 중 **이 틱에 실제로 서 있는**(직전 틱 대비 거의 안 움직인) 선수만. 아래 주석 참조. */
+    stayBackXStill: number[];
+    inBox: string[];
+    defHigh: string[];
+  }[] = [];
   for (const e of log.events) {
     if (!(e.type === "kickoff" && e.detail === "corner") || !e.team) continue;
     const side = e.team;
@@ -47,8 +55,12 @@ function cornerFrames(log: MatchLog) {
     }
     const s = byTick.get(last);
     if (!s) continue;
+    // 직전 틱 좌표 — "서 있는가(정지)"를 재기 위해서다. 아래 `stayBackXStill` 주석 참조.
+    const prev = byTick.get(last - 1);
+    const prevPos = new Map((prev?.players ?? []).map((p) => [`${p.team}:${p.playerId}`, p.pos]));
     const stayBack: string[] = [];
     const stayBackX: number[] = [];
+    const stayBackXStill: number[] = [];
     const inBox: string[] = [];
     const defHigh: string[] = [];
     for (const p of s.players) {
@@ -59,11 +71,13 @@ function cornerFrames(log: MatchLog) {
         if (ap <= 0.56) {
           stayBack.push(p.playerId);
           stayBackX.push(ap * W); // 자기 골대 기준 깊이(m) — 일자 정렬 검출용.
+          const q = prevPos.get(`${p.team}:${p.playerId}`);
+          if (q && Math.hypot(p.pos.x - q.x, p.pos.y - q.y) < 0.3) stayBackXStill.push(ap * W);
         }
         if (ap >= 1 - BOX_DEPTH / W && Math.abs(p.pos.y - H / 2) <= BOX_HALFW) inBox.push(p.playerId);
       } else if (ap >= 0.44) defHigh.push(p.playerId);
     }
-    out.push({ side, stayBack, stayBackX, inBox, defHigh });
+    out.push({ side, stayBack, stayBackX, stayBackXStill, inBox, defHigh });
   }
   return out;
 }
@@ -156,10 +170,19 @@ describe("#182 (4) 잔류 배치가 '세로 일자'가 아니다 — 깊이가 �
     framesFor(defaultEngineConfig, baseHome, baseAway).filter((x) => x.stayBack.length >= 2);
   const spread = (xs: number[]) => Math.max(...xs) - Math.min(...xs);
 
-  it("잔류 2명 이상인 코너에서 전원이 정확히 같은 깊이에 서지 않는다", () => {
+  it("잔류 2명 이상인 코너에서 전원이 정확히 같은 깊이에 **서** 있지 않는다", () => {
     const f = multi();
     expect(f.length).toBeGreaterThan(5);
-    const flat = f.filter((x) => spread(x.stayBackX) < 0.5); // 0.5m 미만 = 사실상 일자
+    // ── #320: 임계(0.5m)와 판정(0건)은 **그대로**, 표본을 "**서 있는** 선수"로 좁혔다 ──────
+    // 원 QA 발견은 정적 그림이다 — "잔류 선수가 전부 같은 x 에 **일렬로 서 있어** 기계적으로
+    // 보인다". 그런데 구 지표는 그 프레임에 **걸어가는 중인** 선수까지 넣어서 재고 있었고,
+    // 공 물리(#320)로 코너 타이밍이 바뀌자 그 구멍이 드러났다: 42개 중 1개(seed 9999999999
+    // t2913)에서 A2 가 79.3m→45.16m 로 12틱 내내 걸어 내려오다 A3(51.8→45.15)와 **딱 그 한 틱**
+    // 교차했다. 둘 다 정지해 있지 않았고 다음 틱엔 다시 벌어진다 — 일자 정렬이 아니라 **교차**다.
+    // (층 배분 기제 자체는 멀쩡하다: 아래 "평균 산포 ≥2m" 계약이 통과한다.)
+    // 그래서 임계를 느슨하게 하는 대신 **계약 문장대로** 직전 틱 대비 0.3m 미만 이동 = "서 있음"
+    // 인 선수만 본다. 판정 세기는 그대로다(여전히 0건 요구).
+    const flat = f.filter((x) => x.stayBackXStill.length >= 2 && spread(x.stayBackXStill) < 0.5);
     expect(flat.length, `일자 정렬 코너 ${flat.length}/${f.length}`).toBe(0);
   });
 

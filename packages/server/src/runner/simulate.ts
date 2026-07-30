@@ -62,17 +62,50 @@ const SimPlayerSchema = z.object({
    */
   seen: z.record(z.string(), z.object({ x: z.number(), y: z.number(), tick: z.number() })).optional(),
   yellowCards: z.number(),
+  /**
+   * 런 오더(engine #314 B, `SimPlayer.runOrder`). 하프 경계에 런이 살아 있으면 이 선언이 없을 때
+   * 조용히 버려져 재개 하프에서만 러너가 멈춘다(무음 desync). zod 는 미선언 키를 버린다(#154).
+   * `.nullish()` 라 구 저장 상태(필드 없음)도 그대로 통과한다.
+   */
+  runOrder: z
+    .object({ xFx: z.number(), yFx: z.number(), untilTick: z.number(), fromId: z.string() })
+    .nullish(),
 });
 
 const BallFlightSchema = z.object({
   toX: z.number(),
   toY: z.number(),
+  /**
+   * #320: 공 운동의 **권위**는 속도 벡터다(`toX/toY` 는 계획 낙하점 참고값으로 강등됐다).
+   * 이 두 줄이 없으면 zod 가 미선언 키를 **조용히 버려서**(#154 동형 함정) 하프 경계에 비행
+   * 중인 공이 재개 시 속도 0 이 된다 — 공이 허공에 서고 그때부터 통짜와 갈라진다(무음 desync).
+   * `speed` 는 `|v|` 의 파생 캐시라 이 둘을 대신할 수 없다(방향이 없다).
+   */
+  vxFx: z.number(),
+  vyFx: z.number(),
   speed: z.number(),
   kind: z.enum(["pass", "shot", "loose"]),
   target: z.string().optional(),
   fromSide: TeamSide,
   xg: z.number().optional(),
   passOutcome: z.enum(["success", "fail_intercept", "fail_out"]).optional(),
+  /**
+   * #279 S1 드리프트 수리: 아래 5개는 engine@#181(claimant 마중 + 오버힛 굴림) · E2(long) 산물인데
+   * 이 스키마가 따라가지 않아 **재개 시 조용히 버려지고 있었다**. 하프 경계에 패스가 비행 중이면
+   * claimant/waited 를 잃어 도착 판정이 계획 대신 기하로 뒤집히고(성공 계획 → 인터셉트),
+   * fromX/fromY 를 잃으면 `settle()` 이 방향을 못 구해 공이 그 자리에 정지한다.
+   */
+  claimant: z.string().optional(),
+  waited: z.number().optional(),
+  fromX: z.number().optional(),
+  fromY: z.number().optional(),
+  long: z.boolean().optional(),
+  /**
+   * #306(S6) 공중볼. 하프 경계에 크로스/롱볼이 떠 있으면 이 두 값이 유실될 때 도착 판정이
+   * 헤딩 경합 대신 지상 컨트롤로 뒤집힌다(무음 desync). zod 는 미선언 키를 조용히 버린다(#154).
+   */
+  delivery: z.enum(["ground", "lofted"]).optional(),
+  hangTicks: z.number().optional(),
 });
 
 const BallSchema = z.object({
@@ -85,6 +118,12 @@ const BallSchema = z.object({
 const DeferredRestartSchema = z.union([
   z.object({ kind: z.literal("corner"), side: TeamSide, nearY: z.number() }),
   z.object({ kind: z.literal("goal_kick"), side: TeamSide }),
+  /**
+   * #279 S1 드리프트 수리: 2단계 페널티(박스 파울 → "파울 비트" 정지 → 스팟 배치)의 변형이
+   * 엔진에는 있는데 여기 없었다. 하프 **마지막 틱**에 박스 파울이 나면 union 파싱이 실패해
+   * `deserializeCarry` 가 throw → 후반 재개가 **400** 으로 죽는다(드문 만큼 늦게 터진다).
+   */
+  z.object({ kind: z.literal("penalty"), side: TeamSide }),
 ]);
 
 const SetPieceSchema = z.object({
@@ -93,6 +132,34 @@ const SetPieceSchema = z.object({
   x: z.number(),
   y: z.number(),
   restart: DeferredRestartSchema.optional(),
+});
+
+/** 팀 단위 파생 계획(engine teamplan.ts). 틱당 1회 재계산되지만 하프 경계 상태에도 실려야 한다. */
+const TeamPlanSchema = z.object({
+  lineX: z.number(),
+  blockDepth: z.number(),
+});
+
+/** 팀 국면(engine simstate.ts `TeamPhase`). S1 에서는 항상 "open". */
+const TeamPhaseSchema = z.enum([
+  "open",
+  "build",
+  "progress",
+  "final_third",
+  "transition_win",
+  "transition_lose",
+]);
+
+/** 의도 게시(engine simstate.ts `Intent`). S1 에서는 항상 빈 배열. */
+const IntentSchema = z.object({
+  side: z.enum(["home", "away"]),
+  fromId: z.string(),
+  kind: z.enum(["pass_to", "run_to", "cross_from"]),
+  xFx: z.number(),
+  yFx: z.number(),
+  tick: z.number(),
+  expiresTick: z.number(),
+  forId: z.string().optional(),
 });
 
 const SimStateSchema = z.object({
@@ -105,6 +172,24 @@ const SimStateSchema = z.object({
   teams: z.object({ home: TeamInput, away: TeamInput }),
   stoppage: z.number(),
   setPiece: SetPieceSchema.nullable(),
+  /**
+   * #279 S1 상태 골격. **필수**로 선언한다 — `.optional()` 로 두면 이 필드가 빠진 resumeState 가
+   * 조용히 통과해 `state.plan` 이 undefined 인 채 다음 틱에 hashState 가 터지거나(운 좋은 경우)
+   * 무음으로 갈라진다(#154 의 교훈). 스키마 확장 이전에 만들어진 resumeState 는 여기서
+   * "invalid resumeState" 로 **시끄럽게** 400 이 되는 게 맞다.
+   */
+  possessionSince: z.number(),
+  lastTurnover: z
+    .object({ side: TeamSide, tick: z.number(), xFx: z.number(), yFx: z.number() })
+    .nullable(),
+  plan: z.object({ home: TeamPlanSchema, away: TeamPlanSchema }),
+  /**
+   * S4/S5 가 소비할 자리(S1 에서는 값이 고정: phase 항상 "open", intents 항상 빈 배열).
+   * **지금 선언하는 이유** = 스키마·해시·골든을 한 번만 움직이기 위해서다. S4/S5 에서 필드를
+   * 추가하면 그때는 실제 동작 변경과 뒤섞여 들어와 해시 이동의 원인을 분리할 수 없다.
+   */
+  phase: z.object({ home: TeamPhaseSchema, away: TeamPhaseSchema }),
+  intents: z.array(IntentSchema),
 });
 
 const SerializedCarrySchema = z.object({
@@ -127,7 +212,7 @@ type SerializedCarry = z.infer<typeof SerializedCarrySchema>;
 
 /** CarryState(엔진 재개 상태) → JSON-안전 포맷. Map(byId)·함수(rng)를 평탄화하고, 전반 스냅샷/이벤트는
  *  개수만 보관한다(내용은 half=1 응답의 matchLog 가 이미 전달했으므로 중복 저장하지 않는다). */
-function serializeCarry(carry: CarryState): SerializedCarry {
+export function serializeCarry(carry: CarryState): SerializedCarry {
   const { byId: _byId, ...restState } = carry.state;
   return {
     configVersion: carry.config.version,
@@ -147,7 +232,7 @@ function serializeCarry(carry: CarryState): SerializedCarry {
  * snapshots/events 는 개수만큼의 placeholder 배열로 복원(resumeSecondHalf 가 push 만 하므로 안전) —
  * 호출부가 반드시 결과에서 원래 개수만큼 slice 해 후반분만 취해야 한다.
  */
-function deserializeCarry(raw: unknown, config: EngineConfig): CarryState {
+export function deserializeCarry(raw: unknown, config: EngineConfig): CarryState {
   const parsed = SerializedCarrySchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`invalid resumeState: ${parsed.error.issues.map((i) => i.message).join("; ")}`);

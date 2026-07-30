@@ -1,5 +1,6 @@
 import type { TeamSide, PlayerAttributes } from "@hmb/shared";
 import type { PlayerBehavior, Duty, TeamInput } from "@hmb/shared";
+import type { TeamPlan } from "./teamplan";
 
 /**
  * simstate — 엔진 내부 시뮬 상태 타입(직렬화 계약 아님, 엔진 전용).
@@ -102,13 +103,74 @@ export interface SimPlayer {
    * Record 면 JSON 왕복에서 살아남으므로, 남는 일은 소비자 스키마에 필드를 선언하는 것뿐이다(#154).
    */
   seen: Record<string, { x: number; y: number; tick: number }>;
+  /**
+   * 이번 런의 목적지(#314 B). `null`/부재 = 런 없음.
+   *
+   * **누가 쓰나**: `applyRunOrders`(match.ts, decide 루프 밖·틱당 1회)가 `state.intents` 를 읽어
+   * 배정하고, 같은 함수가 그 틱의 `targetFx` 를 이 지점 쪽으로 당긴다. `decideOffBall` 안에서
+   * 배정하지 않는 이유는 그 함수가 `state.players` 순회 안에서 불리고 `player.seen` 을
+   * **변이**하기 때문이다(배열 순서 의존 = 결정론 규율 §5-1 위반).
+   *
+   * **왜 상태로 들고 다니나**: 수비가 이걸 읽어 러너를 **예측해서** 막는다(hero ⓑ 후반부).
+   * 즉 런 오더는 공격의 내부 변수가 아니라 **관측 가능한 의도**다. 그래서 해시·직렬화에 들어간다.
+   */
+  runOrder?: RunOrder | null;
 }
 
-/** 공 비행 상태(패스/슛/루즈볼). */
+/** 런 오더(#314 B) — "이 지점으로 뛰어들어가라". */
+export interface RunOrder {
+  /** 목적지(고정소수). */
+  xFx: number;
+  yFx: number;
+  /** 이 틱을 지나면 만료(포함). */
+  untilTick: number;
+  /** 이 런을 부른 의도의 게시자 playerId(진단·수비 판단용). */
+  fromId: string;
+}
+
+/**
+ * 공 비행 상태(패스/슛/루즈볼).
+ *
+ * ## #320: 권위는 **속도 벡터**다 (목표점 보간 → 물리)
+ * 구조가 통째로 뒤집혔다. 구버전의 권위는 `toX/toY`(도달점)였고 매 틱 `stepToward(현재, 목표,
+ * speed)` 로 **목표를 향해 걸어갔다** — 즉 공을 차는 순간 "어디에 멈출지"를 먼저 정하고 거기까지
+ * 보간했다. 그래서 hero 실관전 제보(#320)처럼 보였다:
+ *
+ *   "슛이나 공이 뜨면 **직선으로 꽂혀야** 되는데 지금은 **정지될 위치를 먼저 잡고 공이 점점 정지**"
+ *
+ * 그 느낌은 착시가 아니라 데이터였다(실측 궤적 `12.6 → 0.9 → 3.1 → 1.9`):
+ *  - 마지막 틱이 목표에 **스냅**되며 잘린 부분스텝(12.6 → 0.9),
+ *  - 그 직후 `settle()` 이 속도를 도착속도의 25% 로 **되올려**(0.9 → 3.1) 궤적이 비단조로 요동.
+ *
+ * 지금은 매 틱 `pos += v; v *= friction` 뿐이다. **목표에 다가간다고 느려지지 않는다.**
+ * 멈춤은 "미리 정한 자리"가 아니라 속도가 임계 아래로 떨어지는 **자연 정지**다.
+ *
+ * `toX/toY` 는 남아 있지만 **권위가 아니라 계획 낙하점(참고값)** 이다 — 쓰임은 셋뿐이다:
+ *  ① `decideOffBall` 이 claimant 를 마중 보낼 지점, ② 발사 방향의 근거,
+ *  ③ **계획 창(passOutcome) 의 종료 시점** — 공이 그 지점을 지나면 계획이 끝나고 루즈볼이 된다.
+ * 공의 **운동**은 어디에도 `toX/toY` 를 보지 않는다(`ball.ts:advanceBall`).
+ */
 export interface BallFlight {
+  /**
+   * **계획 낙하점**(fixed) — 운동의 권위가 아니다(#320). 조준이 정한 "여기쯤 떨어뜨리려 했다"이고,
+   * 실제로 어디서 멈추는지는 속도와 마찰이 정한다. 계획 창 종료 판정(`passedPlan`)의 기준점.
+   */
   toX: number;
   toY: number;
-  /** 이동 속도(fixed m/tick). */
+  /**
+   * **속도 벡터**(fixed m/tick, #320) — 운동의 권위. 찰 때 `방향 × 세기`로 정해지고,
+   * 매 틱 마찰 배수로 감쇠한다. 이 두 값이 없으면 공은 움직이지 않는다.
+   *
+   * ⚠️ 재개(resume) 로 **반드시** 관통해야 한다 — 해시(`hash.ts`)와 서버 스키마
+   * (`packages/server/src/runner/simulate.ts:BallFlightSchema`) 양쪽에 선언돼 있다(#154 함정).
+   */
+  vxFx: number;
+  vyFx: number;
+  /**
+   * 현재 **속력**(fixed m/tick) = `|v|` 의 파생값. 매 틱 `advanceBall` 이 벡터에서 다시 계산한다.
+   * 소비자(인터셉트 확률 정규화·하프경계 슛 해소)가 스칼라만 필요로 해서 캐시로 남긴다 —
+   * **여기에 대입해도 공은 움직이지 않는다**(권위는 `vxFx/vyFx`).
+   */
   speed: number;
   kind: "pass" | "shot" | "loose";
   /** 패스 의도 수신자 playerId. */
@@ -127,11 +189,39 @@ export interface BallFlight {
   claimant?: string;
   /** #181: 낙하점에서 claimant 를 기다린 틱 수(arrivalWaitMaxTicks 초과 시 기하 판정으로 폴백). */
   waited?: number;
-  /** #181: 발사 지점 — 도착했는데 아무도 못 닿았을 때 **같은 방향으로** 굴려보내기 위한 기준. */
+  /**
+   * 발사 지점(#181). #320 에서 역할이 하나 늘었다 — **계획 창 종료 판정의 원점**이다.
+   * "공이 계획 낙하점을 지났는가"는 `(현재−발사점)·(낙하점−발사점) ≥ |낙하점−발사점|²` 로,
+   * 즉 발사 방향 위에서 계획 거리만큼 갔는지로 잰다(제곱근·나눗셈 없는 정수 내적).
+   */
   fromX?: number;
   fromY?: number;
   /** 의도적 롱패스(E2) — 도착 이벤트 detail="long" 로 뷰어 구분. */
   long?: boolean;
+  /**
+   * #306(S6) 전달 종류. `"ground"`(기본) = 지상 패스, `"lofted"` = 띄운 공(크로스·롱볼).
+   *
+   * **이 필드 하나가 공중볼의 전부다.** 높이(z)를 좌표로 들고 다니지 않는 이유:
+   * 1초 틱에서 z 는 렌더 보간에만 쓰이고 판정에는 "이 공이 머리 높이로 오는가"만 필요하다.
+   * 그 판정을 z 로 하면 낙하 시점 계산(포물선)이 들어가고, 그건 `Math.pow` 없이 정수로 하기
+   * 어려워 결정론 규율(§5-4)과 싸운다. 종류 + 체공(`hangTicks`)이면 도착 시 경합에 필요한
+   * 정보가 전부 있고, 뷰어는 이 두 값으로 아크를 그릴 수 있다(렌더는 별도 트랙 — hero 결정).
+   *
+   * `undefined` = ground(구 저장 상태 호환).
+   *
+   * ⚠️ **불변이 아니다**(#327) — 착지하는 틱에 `advanceBall` 이 `"ground"` 로 내린다.
+   */
+  delivery?: "ground" | "lofted";
+  /**
+   * #306/#327: **남은 체공 틱**. 발사 시 `kick.loftHangTicks` 로 1회 산정하고,
+   * `advanceBall` 이 매 틱 1 씩 **소비**한다 — 0 이 되는 틱이 착지다(잔디 마찰로 전환 +
+   * 바운드 감쇠 + 헤딩 경합 창).
+   *
+   * #306 시점에는 이 값이 실려만 다니는 **장식값**이었다(물리도 판정도 읽지 않았다). 그래서
+   * 떠 있는 공은 착지하지 못하고 공기저항(0.92)만 받으며 필드를 가로질러 날아 나갔다.
+   * ground 면 0/undefined.
+   */
+  hangTicks?: number;
 }
 
 /**
@@ -191,4 +281,91 @@ export interface SimState {
   stoppage: number;
   /** 진행 중 세트피스(정지 동안). 없으면 null. */
   setPiece: SetPiece | null;
+  /**
+   * 현재 소유가 **시작된** 틱(#279 S1). `setPossession` 이 소유 팀이 실제로 바뀔 때만 갱신한다 —
+   * 같은 팀 안의 소유 이전(패스 성공/드리블 인계)에는 갱신하지 않는다. 안 그러면 "소유 경과"가
+   * 매 패스마다 0 으로 리셋돼 국면 판정(S4)의 입력으로 쓸 수 없다.
+   */
+  possessionSince: number;
+  /**
+   * 마지막 **오픈플레이 소유 전환**(#279 S1). 재시작(스로인/프리킥/코너/골킥)·킥오프·득점은
+   * 여기에 기록되지 않는다 — `setPossession` 의 `reason` 이 그 구분이다.
+   * 좌표는 전환 시점의 공 위치(고정소수). 아직 전환이 없었으면 null.
+   */
+  lastTurnover: { side: TeamSide; tick: number; xFx: number; yFx: number } | null;
+  /** 팀 단위 파생 계획(틱당 1회, decide 루프 앞에서 갱신). 소비는 S3~. */
+  plan: { home: TeamPlan; away: TeamPlan };
+  /**
+   * 팀 국면(#279 S4 소비). **S1 에서는 자리만 만들고 항상 `"open"` 으로 고정한다.**
+   *
+   * 왜 소비자도 없는데 지금 넣나 — S1 의 존재 이유가 "직렬화·해시·골든 마이그레이션을 **한 번에**
+   * 끝낸다"이기 때문이다. S4 에서 필드를 추가하면 스키마·해시·골든을 다시 움직여야 하는데, 그때는
+   * **실제 동작 변경과 뒤섞여** 들어와 "해시가 형식 때문에 움직였나 동작 때문에 움직였나"를 분리할
+   * 수 없다. 이번엔 동작 변경이 0이라 구 해시 공식 재계산으로 깔끔히 분리해 증명할 수 있었다.
+   * S4 는 이 union 을 **넓히기만** 하면 된다(필드 추가가 아니라 값 변경 → 그건 정상적인 동작 변경).
+   */
+  phase: { home: TeamPhase; away: TeamPhase };
+  /**
+   * 선수 간 **의도 게시판**(#279 S5 소비). S1 에서는 자리만 만들고 **항상 빈 배열**이다.
+   * 이유는 `phase` 와 동일 — 골든 마이그레이션을 한 번에 끝내기 위해서다.
+   * S5 가 여기에 "이 지점으로 패스한다 / 저 지점으로 뛴다"를 게시하고 `decideOffBall` 이 읽는다.
+   */
+  intents: Intent[];
+}
+
+/**
+ * 팀 국면. S1 에서는 `"open"` 하나만 쓰이고, S4 가 나머지를 실제로 설정한다.
+ * (열거를 미리 정의해 두는 것은 **직렬화 스키마를 한 번만 움직이기 위해서**다 — 값은 S4 소관.)
+ */
+export type TeamPhase =
+  | "open"
+  | "build"
+  | "progress"
+  | "final_third"
+  | "transition_win"
+  | "transition_lose";
+
+/** 의도 게시(#279 S5). S1 에서는 생성되지 않는다. */
+export interface Intent {
+  side: TeamSide;
+  fromId: string;
+  kind: "pass_to" | "run_to" | "cross_from";
+  /** 목표 지점(고정소수). */
+  xFx: number;
+  yFx: number;
+  tick: number;
+  /** 이 틱을 지나면 폐기. */
+  expiresTick: number;
+  /** 지목된 러너(없으면 공개 게시). */
+  forId?: string;
+}
+
+/**
+ * 소유 전환의 **단일 지점**(#279 S1). `state.possession` 직접 대입 금지 — 전환을 관측하는 곳이
+ * 여기 하나여야 S4(국면·카운터프레스·전술파울)가 전환 시각을 신뢰할 수 있다.
+ *
+ * `reason` 이 핵심이다:
+ *  - `"turnover"`  오픈플레이에서 공을 뺏김/뺏음(태클·인터셉트·GK 캐치·패스 도착 경합).
+ *  - `"restart"`   데드볼 재시작(스로인·프리킥·코너·골킥·페널티 배치).
+ *  - `"kickoff"`   킥오프(경기 시작·하프 시작·득점 후).
+ *  - `"goal"`      득점 직후 실점팀에게 소유가 넘어가는 순간.
+ *
+ * `giveBallTo` 는 **재시작에서도** 불린다 — reason 없이 전환을 기록하면 스로인마다
+ * 카운터프레스가 발동한다. 그래서 `lastTurnover` 는 `reason === "turnover"` 이고 **소유 팀이
+ * 실제로 바뀐** 경우에만 남긴다(같은 팀 리시버가 패스를 받는 것은 턴오버가 아니다).
+ */
+export type PossessionReason = "turnover" | "restart" | "kickoff" | "goal";
+
+export function setPossession(
+  state: SimState,
+  side: TeamSide,
+  tick: number,
+  reason: PossessionReason,
+): void {
+  if (state.possession === side) return; // 같은 팀 안의 소유 이전 — 전환이 아니다.
+  state.possession = side;
+  state.possessionSince = tick;
+  if (reason === "turnover") {
+    state.lastTurnover = { side, tick, xFx: state.ball.posFx.x, yFx: state.ball.posFx.y };
+  }
 }

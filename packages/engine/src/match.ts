@@ -18,8 +18,11 @@ import { defaultEngineConfig } from "./config";
 import { createRng, hashSeed } from "./rng";
 import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
 import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
-import { glueBallToOwner, advanceBall } from "./ball";
+import { glueBallToOwner, advanceBall, kickBall } from "./ball";
+import { loftHangTicks } from "./kick";
 import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
+import { decideBallOwnerChain } from "./chain";
+import { applyRunOrders, clearIntents, computeTeamPlan, gcIntents } from "./teamplan";
 import {
   tryIntercept,
   tryTackle,
@@ -42,7 +45,9 @@ import {
   deadBallRetreatPoint,
   deadBallShapeTarget,
   deadBallUsesShape,
+  deadBallPaceStep,
 } from "./deadball";
+import { computeSetPiecePlan } from "./setpiece";
 import { attackGoal } from "./pitch";
 import type { OutCross } from "./ball";
 import { hashState } from "./hash";
@@ -210,6 +215,17 @@ function stepTick(carry: Carry): void {
   // --- 세트피스 정지(dead ball): 재배치만 하고 결정/경합/공비행 스킵 ---
   if (state.stoppage > 0) {
     state.stoppage--;
+    // #307: 팀 계획은 **정지 중에도** 갱신한다. 이전엔 이 분기가 먼저 return 해서 `state.plan` 이
+    // 정지 진입 직전 값으로 굳었고(S1 이 주석으로 남긴 성질), 그래서 코너 깃발·스팟으로 공이
+    // 옮겨간 뒤에도 라인이 옛 볼 위치를 가리켰다. 지금은 소비자가 없어 **동작 변화 0**(해시만
+    // 움직인다). S3 가 정지 중 배치에 라인을 쓰려면 선행돼야 하는 성질이라 여기서 갚는다.
+    state.plan = {
+      home: computeTeamPlan(state, "home", config, pitch),
+      away: computeTeamPlan(state, "away", config, pitch),
+    };
+    // #314 B: 공이 죽으면 런도 죽는다 — 정지 중 배치는 규칙기반(deadBallShapeTarget)이 소유하고,
+    // 살아 있는 런 오더가 그 위에 남으면 #185/#174(제자리 왕복·단독 질주)를 되살린다.
+    clearIntents(state);
     // #231: 소유자는 (id, side) 쌍으로 잡는다 — id 만 보면 반대 팀 동명 선수까지 "소유자 취급"돼
     // 그 틱의 재배치를 못 받는다. 캡처 시점 값을 쓰는 의미는 그대로 보존한다.
     const heldId = state.ball.owner;
@@ -219,12 +235,20 @@ function stepTick(carry: Carry): void {
     // 태클/인터셉트로 강탈한다(골킥이면 박스 안 키퍼에게서 뺏어 즉시 실점).
     const zone = deadBallZone(state, config, pitch);
     const shapeSp = state.setPiece && deadBallUsesShape(state.setPiece.kind) ? state.setPiece : null;
+    // #307: 세트피스 역할 배정(프리킥 벽·백업)은 **팀 전체를 보는** 계산이라 선수 루프 **앞에서
+    // 틱당 1회**만 한다(결정론 규율 §5-1 — `teamplan` 과 같은 자리·같은 이유).
+    const spPlan = shapeSp ? computeSetPiecePlan(state, pitch, config, shapeSp, zone) : null;
+    // #307 H3: 도착 페이싱에서 제외할 선수(제때 도착이 계약인 선수). 아래 배치 루프에서 채운다.
+    const noPace = new Set<SimPlayer>();
     for (const p of state.players) {
-      if (p.id === heldId && p.side === heldSide) continue;
+      if (p.id === heldId && p.side === heldSide) {
+        noPace.add(p); // taker — walkStoppage(#59)가 도달 틱을 정한다. 늦추면 공에 못 닿는다.
+        continue;
+      }
       // #185/#174: 정지 중엔 평소 오프더볼 로직(자기 위치·시야 피드백) 대신 **규칙기반 정적 배치**.
       // 상황이 안 변하는 구간에서 매 틱 재계산하면 목표가 자기 위치를 따라 흔들려 제자리 왕복이
       // 생기고(#185), 전원이 굳은 뒤 한 명만 기억 만료로 새 타깃을 받아 혼자 질주한다(#174).
-      if (shapeSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, shapeSp);
+      if (shapeSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, shapeSp, spPlan);
       else decideOffBall(state, p, config, pitch, null);
       if (!zone || !deadBallExcluded(p, zone)) continue;
       // 구역 안에 있으면 전술 목표보다 **나가는 것이 우선**(안 그러면 반대편 목표로 가느라
@@ -233,6 +257,8 @@ function stepTick(carry: Carry): void {
       const targetInside = deadBallClearance(zone, p.targetFx.x, p.targetFx.y) < 0;
       if (inside || targetInside) {
         p.targetFx = deadBallRetreatPoint(pitch, zone, config, p.posFx.x, p.posFx.y);
+        // 후퇴는 재시작 틱까지 **반드시** 끝나야 한다(Law 계약 A) → 페이싱 제외.
+        noPace.add(p);
       }
     }
     // 코너는 **더 느슨한 상한**을 쓴다 — 코너 정지 중 배치(rest defence, #182)는 하프라인까지 40m 를
@@ -247,7 +273,12 @@ function stepTick(carry: Carry): void {
       // #174: 데드볼엔 뛰지 않고 **걸어서** 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만
       // 풀스피드로 가로지르면 "공보다 선수가 빠른" 그림이 된다(실측 최대 6.4 m/tick).
       // taker 도 포함한다. walkStoppage(#59)가 **같은 상한**으로 도달 틱을 산정하므로 도달은 보장된다.
-      const step = Math.min(speedStep(p, config), walkCap);
+      //
+      // #307 H3: 그 위에 **재시작 시각에 맞춘 도착 페이싱**을 한 겹 더 얹는다 — 목표는 그대로 두고
+      // 남은 거리를 남은 틱에 펴서 걷는다. 창 후반에 전원이 굳는 그림(정지 21.4%)이 사라지면서
+      // 목표가 안 움직이므로 왕복(#185)은 구조적으로 생기지 않는다. remain = 이번 틱 포함 남은 틱.
+      const paceCap = noPace.has(p) ? Infinity : deadBallPaceStep(config, p, state.stoppage + 1);
+      const step = Math.min(speedStep(p, config), walkCap, paceCap);
       const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
       const c = clampToPitch(pitch, next.x, next.y);
       if (zone && deadBallExcluded(p, zone) && deadBallBlocked(zone, p, c)) continue;
@@ -292,15 +323,21 @@ function stepTick(carry: Carry): void {
         const taker = ballOwnerOf(state) ?? null;
         if (taker) {
           const g = attackGoal(pitch, taker.side);
-          state.ball.flight = {
-            toX: g.x,
-            toY: g.y,
-            speed: toFixed(config.contest.shotBallSpeed, config.fixedScale),
-            kind: "shot",
-            target: taker.id,
-            fromSide: taker.side,
-            xg: config.rules.penalty.xg,
-          };
+          // #320: 페널티도 **골문 방향 속도**로 찬다(구: 골문을 목표로 보간).
+          state.ball.flight = kickBall(
+            state.ball.posFx.x,
+            state.ball.posFx.y,
+            g.x,
+            g.y,
+            toFixed(config.contest.shotBallSpeed, config.fixedScale),
+            {
+              kind: "shot",
+              delivery: "ground",
+              target: taker.id,
+              fromSide: taker.side,
+              xg: config.rules.penalty.xg,
+            },
+          );
           state.ball.owner = null;
           state.ball.ownerSide = null;
           carry.events.push({
@@ -332,6 +369,22 @@ function stepTick(carry: Carry): void {
     return;
   }
 
+  // --- 팀 계획(틱당 1회) ---
+  // #279 S1: 팀 단위 파생 상태는 **여기서만** 계산한다 — decide 루프 **앞**이라 선수 순회 순서와
+  // 무관하고(결정론 규율 §5-1), `decideOffBall` 안에서 계산하면 그 함수가 `player.seen` 을 변이하는
+  // 탓에 배열 순서 의존이 생긴다. 현재는 아무도 소비하지 않는다(S3 수비 구조가 첫 소비자).
+  //
+  // ⚠️ **정지(stoppage) 틱에는 갱신되지 않는다** — 위 정지 분기가 먼저 return 하기 때문이다.
+  // 즉 정지 중 `plan.lineX` 는 정지 진입 직전의 공 x 로 고정된 채 해시에 들어간다(재현 가능하므로
+  // 결정론엔 무해). S3 가 **정지 중 배치**에도 라인을 쓰려면 이 성질을 먼저 바꿔야 한다 —
+  // 지금 구조에서는 코너 깃발·스팟으로 공이 옮겨간 뒤에도 라인이 옛 볼 위치를 가리킨다.
+  state.plan = {
+    home: computeTeamPlan(state, "home", config, pitch),
+    away: computeTeamPlan(state, "away", config, pitch),
+  };
+  // #314 B: 만료된 의도·런 오더 폐기(틱당 1회, 배열 순서 보존).
+  gcIntents(state);
+
   // --- 압박 담당 지정(수비팀만) ---
   const defSide: TeamSide = state.possession === "home" ? "away" : "home";
   const presser = assignPresser(state, defSide);
@@ -346,12 +399,14 @@ function stepTick(carry: Carry): void {
   // 정지 브랜치와 **같은 규율**(규칙기반 배치 + 걷기 속도)을 적용한다 — 안 그러면 정지가 끝나는
   // 순간 이 구간에서만 평소 로직이 되살아나 왕복·단독질주가 그대로 남는다(실측 최대 6.3 m/tick).
   const liveSp = state.setPiece && deadBallUsesShape(state.setPiece.kind) ? state.setPiece : null;
+  // #307: 정지 브랜치와 같은 규율 — 세트피스 역할 배정은 decide 루프 앞, 틱당 1회.
+  const liveSpPlan = liveSp ? computeSetPiecePlan(state, pitch, config, liveSp, liveZone) : null;
   for (const p of state.players) {
     if (p.id === ownerId && p.side === ownerSide) continue;
     // 볼을 안 가진 선수는 드리블 체인 리셋(활성 캐리어만 연속 누적).
     p.dribbleStreak = 0;
     const pa = p.side === defSide ? presser : null;
-    if (liveSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, liveSp);
+    if (liveSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, liveSp, liveSpPlan);
     else decideOffBall(state, p, config, pitch, pa);
     if (!liveZone || !deadBallExcluded(p, liveZone)) continue;
     const inside = deadBallClearance(liveZone, p.posFx.x, p.posFx.y) < 0;
@@ -385,21 +440,33 @@ function stepTick(carry: Carry): void {
   if (ownerId && !state.ball.flight && !takerWalkingIn) {
     const owner = ballOwnerOf(state);
     if (owner) {
-      const action = decideBallOwner(state, owner, rng, config, pitch);
+      // #279 W2: 볼 소유자 결정 코어 교체 스위치. "weighted"(기본) = 기존 즉시점수 가중추첨,
+      // "chain" = 행동 사슬 EV 탐색. 반환 계약(Action)이 같아 이 아래 코드는 어느 코어인지 모른다.
+      const action =
+        config.chain.mode === "chain"
+          ? decideBallOwnerChain(state, owner, rng, config, pitch)
+          : decideBallOwner(state, owner, rng, config, pitch);
       // #176: taker 가 공을 실제로 플레이하면(패스/슛/드리블) 그 순간 공이 인플레이 → 접근 금지 해제.
       // hold 는 아직 안 찬 것이므로 유지한다. (offside 등 새 세트피스는 아래서 setPiece 를 덮어쓴다.)
       if (liveZone && action.kind !== "hold") state.setPiece = null;
       switch (action.kind) {
         case "shoot": {
-          state.ball.flight = {
-            toX: action.toX,
-            toY: action.toY,
-            speed: toFixed(config.contest.shotBallSpeed, config.fixedScale),
-            kind: "shot",
-            target: owner.id,
-            fromSide: owner.side,
-            xg: action.xg,
-          };
+          // #312: 세기는 **행동이 들고 온다**. #320: 그 세기를 조준 **방향**에 실어 속도로 준다 —
+          // 슛은 골문까지 거의 등속으로 꽂히고(friction.shot 0.96) 목표 근처에서 감속하지 않는다.
+          state.ball.flight = kickBall(
+            state.ball.posFx.x,
+            state.ball.posFx.y,
+            action.toX,
+            action.toY,
+            action.speedFx,
+            {
+              kind: "shot",
+              delivery: "ground",
+              target: owner.id,
+              fromSide: owner.side,
+              xg: action.xg,
+            },
+          );
           shotLaunchedThisTick = true;
           owner.dribbleStreak = 0;
           state.ball.owner = null;
@@ -442,24 +509,136 @@ function stepTick(carry: Carry): void {
             );
             break;
           }
-          state.ball.flight = {
-            toX: action.toX,
-            toY: action.toY,
-            speed: toFixed(config.ball.passSpeed, config.fixedScale),
-            kind: "pass",
-            target: action.receiver.id,
-            fromSide: owner.side,
-            passOutcome: action.outcome,
-            long: action.long,
-            // #181: 이 공을 결국 잡을 사람 — 리드패스로 조준해 공과 만난다(순간이동 제거).
-            claimant: action.claimant ? action.claimant.id : undefined,
-            fromX: state.ball.posFx.x,
-            fromY: state.ball.posFx.y,
-          };
+          // #320: 조준점(`action.toX/toY`)은 **방향과 계획 낙하점**만 준다 — 공의 운동은
+          // `방향 × 세기`의 속도 벡터다. `toX/toY` 는 계획 창(passOutcome)의 종료 시점을
+          // 재는 기준으로만 실려 간다(`ball.ts:passedPlanPoint`).
+          state.ball.flight = kickBall(
+            state.ball.posFx.x,
+            state.ball.posFx.y,
+            action.toX,
+            action.toY,
+            // #312: 상수 `ball.passSpeed` 대입 → 선수가 정한 세기.
+            action.speedFx,
+            {
+              kind: "pass",
+              // #306: 지상/공중 종류. lofted 는 마찰이 거의 없어 박스까지 직선으로 간다.
+              delivery: action.lofted ? "lofted" : "ground",
+              // #327: 체공은 **소비되는 예산**이다 — `advanceBall` 이 매 틱 1 씩 깎고 0 에서
+              // 착지한다(잔디 마찰 전환 + 바운드 감쇠). 등속 가정 ceil 이 아니라 감쇠를
+              // 누적해 계획 낙하점에 닿는 틱이라, 계획과 물리가 같은 지점을 가리킨다.
+              hangTicks: action.lofted
+                ? loftHangTicks(
+                    fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY),
+                    action.speedFx,
+                    config,
+                  )
+                : 0,
+              target: action.receiver.id,
+              fromSide: owner.side,
+              passOutcome: action.outcome,
+              long: action.long,
+              // #181: 이 공을 결국 잡을 사람 — 리드패스로 조준해 공과 만난다(순간이동 제거).
+              claimant: action.claimant ? action.claimant.id : undefined,
+            },
+          );
+          owner.dribbleStreak = 0;
+          state.ball.owner = null;
+          state.ball.ownerSide = null;
+          // #314 B: **의도 게시** — 이 패스가 어디로 가는지를 팀이 볼 수 있게 남긴다.
+          // S1 이 만들어 둔 `state.intents` 의 첫 쓰기다. 읽기는 `applyRunOrders`(아래) 와
+          // 수비의 `decideOffBall`(런 오더를 통해 간접). push 순서는 틱당 최대 1건이라 고정.
+          {
+            const g = attackGoal(pitch, owner.side);
+            const passGainFx =
+              fdist(owner.posFx.x, owner.posFx.y, g.x, g.y) - fdist(action.toX, action.toY, g.x, g.y);
+            const ro = config.movement.runOrder;
+            // **전진 패스에만** 런이 붙는다. 모든 패스에 붙이면 팀 전체가 상시 전진 배치가 되어
+            // 공격이 과열된다(실측 슛/팀 12.5 → 20.1). 서드맨 런은 전진 패스에 붙는 것이다.
+            if (ro.enabled && passGainFx >= Math.round(ro.minPassGainM * config.fixedScale)) {
+              const flightTicks = Math.max(
+                1,
+                Math.ceil(
+                  fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY) /
+                    Math.max(1, action.speedFx),
+                ),
+              );
+              state.intents.push({
+                side: owner.side,
+                fromId: owner.id,
+                kind: "pass_to",
+                xFx: action.toX,
+                yFx: action.toY,
+                tick: state.tick,
+                expiresTick: state.tick + flightTicks,
+                forId: action.receiver.id,
+              });
+            }
+          }
+          // #314 B: 패서의 **따라 들어가기**. 구버전은 여기서 무조건 제자리에 세웠고(hero ⓑ 의
+          // 코드상 실체 — 실측 "패스 후 패서 전진 0%"), 그래서 "차고 나서 뛰어들어가는" 그림이
+          // 구조적으로 불가능했다. 단 **전진 패스일 때만** 푼다 — 뒤로 뺀 패스를 따라가면
+          // 되돌아 달리기가 되어 공격을 죽인다(#181 가드).
+          {
+            const ro = config.movement.runOrder;
+            const followFx = Math.round(ro.passerFollowM * config.fixedScale);
+            const g = attackGoal(pitch, owner.side);
+            const gainFx =
+              fdist(owner.posFx.x, owner.posFx.y, g.x, g.y) - fdist(action.toX, action.toY, g.x, g.y);
+            // 런 오더와 **같은 게이트**(전진 패스에만) — 매 패스마다 따라 들어가면 공격 라인이
+            // 상시 전진해 볼륨이 과열된다(실측 슛/팀 12.2 → 15.3).
+            if (followFx > 0 && gainFx >= Math.round(ro.minPassGainM * config.fixedScale)) {
+              const dx = action.toX - owner.posFx.x;
+              const dy = action.toY - owner.posFx.y;
+              // 길이는 정수 제곱근으로(플랫폼 편차 0, §5-4 — `Math.sqrt` 직접 호출 금지 관례).
+              const len = Math.max(1, fdist(owner.posFx.x, owner.posFx.y, action.toX, action.toY));
+              const t = clampToPitch(
+                pitch,
+                owner.posFx.x + Math.round((dx * followFx) / len),
+                owner.posFx.y + Math.round((dy * followFx) / len),
+              );
+              owner.targetFx = { x: t.x, y: t.y };
+            } else {
+              owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
+            }
+          }
+          break;
+        }
+        case "clearance": {
+          // #314 A(hero ⓐ): 걷어내기 — **의도 수신자가 없다**. `passOutcome`/`claimant`/`target`
+          // 을 달지 않으므로 도착은 순수 기하(양 팀 루즈볼·헤딩 경합)로 간다. 그래서 벤치
+          // 78–85% 패스 성공률 캘리브레이션(`passOutcomeAuthoritative`)을 건드리지 않는다.
+          // #320 통합: 공이 **속도 벡터** 권위로 바뀌었으므로 flight 를 손으로 짜지 않고
+          // `kickBall`(방향×세기 → v)로 만든다. 안 그러면 vxFx/vyFx 가 비어 공이 안 움직인다.
+          state.ball.flight = kickBall(
+            state.ball.posFx.x,
+            state.ball.posFx.y,
+            action.toX,
+            action.toY,
+            action.speedFx,
+            {
+              kind: "pass",
+              delivery: action.lofted ? "lofted" : "ground",
+              hangTicks: action.lofted
+                ? loftHangTicks(
+                    fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY),
+                    action.speedFx,
+                    config,
+                  )
+                : 0,
+              fromSide: owner.side,
+            },
+          );
           owner.dribbleStreak = 0;
           state.ball.owner = null;
           state.ball.ownerSide = null;
           owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
+          carry.events.push({
+            tick: state.tick,
+            minute,
+            type: "clearance",
+            team: owner.side,
+            playerId: owner.id,
+          });
           break;
         }
         case "dribble": {
@@ -480,6 +659,13 @@ function stepTick(carry: Carry): void {
   // 건너뛴다(정지 재개는 다음 틱 stoppage 브랜치가 처리). 슛/패스 비행은 stoppage 를 안 건드림.
   if (state.stoppage > 0) return;
 
+  // --- 런 오더 배정 + 소비(#314 B) ---
+  // decide 루프 **뒤 · act 루프 앞**이다. 패스는 오프더볼 결정이 끝난 뒤에 결정되므로, 여기가
+  // "차면 **그 틱에** 뛰어들어간다"가 성립하는 유일한 자리다(앞에서 돌면 러너가 항상 1틱 늦는다).
+  // 팀 전체를 보는 계산이라 선수 루프 밖·틱당 1회 — `computeTeamPlan` 과 같은 규율(§5-1).
+  // 아직 안 찬 세트피스(liveSp) 구간은 규칙기반 배치가 소유하므로 건너뛴다(#174/#185 재발 방지).
+  if (!liveSp) applyRunOrders(state, config, pitch);
+
   // --- act: 선수 이동 ---
   for (const p of state.players) {
     // 아직 안 찬 세트피스 구간은 정지와 동일하게 걷기 속도(#174).
@@ -499,22 +685,39 @@ function stepTick(carry: Carry): void {
   if (state.ball.flight && shotLaunchedThisTick && state.ball.flight.kind === "shot") {
     // 막 쏜 틱: 공은 슈터 위치 그대로(비행은 다음 틱부터). 스냅샷에 슈터 발밑이 찍힌다.
   } else if (state.ball.flight) {
+    // #320: 공은 속도 벡터로 전진하고, 판정은 그 결과를 읽는다(구: "목표 도달 = 도착").
+    const wasShot = state.ball.flight.kind === "shot";
     const res = advanceBall(state.ball, config, pitch);
-    if (res.out) {
-      resolveOut(carry, res.out, state.tick, minute);
-    } else if (res.arrived) {
-      if (state.ball.flight.kind === "shot") {
+    if (wasShot) {
+      // 슛: 골문(계획 낙하점)에 닿는 틱에 판정. 골문은 물리적 벽이라 `out` 으로 새지 않는다.
+      if (res.passedPlan) {
         for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) {
           carry.events.push(e);
         }
-      } else {
-        for (const e of resolveArrival(state, config, pitch, state.tick, minute)) {
+      } else if (res.out) {
+        // 조준이 라인 쪽으로 크게 빗나간 슛 — 세트피스는 resolveShot 이 만들지 못했으므로
+        // 여기서 일반 아웃(스로인/골킥/코너)으로 처리한다.
+        resolveOut(carry, res.out, state.tick, minute);
+      } else if (res.stopped) {
+        // 방어: 슛이 골문 전에 마찰로 서면(현 config 에선 기하학적으로 불가 — 감속 거리 200m+)
+        // 그 자리에서 해소한다. 안 그러면 비행이 영원히 남아 하프가 죽는다.
+        for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) {
           carry.events.push(e);
         }
       }
+    } else if (res.out) {
+      resolveOut(carry, res.out, state.tick, minute);
     } else {
-      for (const e of tryIntercept(state, rng, config, state.tick, minute)) {
-        carry.events.push(e);
+      // 패스/루즈볼: **매 틱** 접촉 판정. 계획 낙하점 전이면 `resolveArrival` 이 스스로 빠지고
+      // (계획 창 보존, contest.ts 주석), 그 구간은 예전과 동일하게 확률 인터셉트만 작동한다.
+      const evs = resolveArrival(state, rng, config, pitch, state.tick, minute, res);
+      for (const e of evs) carry.events.push(e);
+      // 아직 계획 창 안에서 날아가는 패스만 인터셉트 롤 대상이다(`tryIntercept` 가 kind 로 거른다 —
+      // 낙하점을 지나면 `resolveArrival` 이 kind 를 "loose" 로 내려 롤이 자동으로 멈춘다).
+      if (evs.length === 0) {
+        for (const e of tryIntercept(state, rng, config, state.tick, minute)) {
+          carry.events.push(e);
+        }
       }
     }
   } else if (curOwnerId && state.setPiece) {
@@ -569,17 +772,26 @@ function settleInFlightShot(carry: Carry): void {
   if (state.ball.flight?.kind !== "shot") return;
   const minute = tickToMinute(state.tick, config);
   // 상한은 하드코딩이 아니라 기하로 도출: 피치를 가로지르는 데 필요한 틱 + 여유.
-  const maxSteps = Math.ceil(config.pitch.width / config.contest.shotBallSpeed) + 2;
+  // #312: 슛 세기가 선수마다 달라졌으므로 config 상수가 아니라 **이 슛의 실제 속도**로 계산한다
+  // (상수로 두면 느리게 찬 슛이 상한 안에 골문까지 못 가 무음으로 증발한다).
+  const speedM = fromFixed(state.ball.flight.speed, config.fixedScale);
+  const maxSteps = Math.ceil(config.pitch.width / Math.max(0.5, speedM)) + 2;
   for (let i = 0; i < maxSteps; i++) {
     if (state.ball.flight?.kind !== "shot") break;
     const res = advanceBall(state.ball, config, pitch);
+    if (res.passedPlan) {
+      for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) carry.events.push(e);
+      break;
+    }
     if (res.out) {
-      // 슛은 목표가 골문이라 여기 오기 어렵다(advanceBall 주석). 와도 하프가 끝났으므로
+      // 슛은 골문(계획 낙하점)에서 먼저 해소되므로 여기 오기 어렵다. 와도 하프가 끝났으므로
       // 재시작 세트피스를 만들지 않고 비행만 정리한다.
       state.ball.flight = null;
       break;
     }
-    if (res.arrived) {
+    // #320: 마찰로 슛이 골문 앞에 서면(아주 약한 슛) 더 굴러도 판정이 안 나온다 — 무음 증발을
+    // 막기 위해 정지한 순간 그 자리에서 해소한다(슛 결과 완결 계약 #178).
+    if (res.stopped) {
       for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) carry.events.push(e);
       break;
     }
@@ -614,6 +826,17 @@ function initCarry(
     teams: { home: home.team, away: away.team },
     stoppage: 0,
     setPiece: null,
+    possessionSince: 0,
+    lastTurnover: null,
+    // 첫 stepTick 이 덮어쓴다. 초기값도 같은 순수 함수로 만들어 "초기 상태 해시"가 계획과 정합.
+    plan: { home: { lineX: 0, blockDepth: 0 }, away: { lineX: 0, blockDepth: 0 } },
+    // S4/S5 가 소비할 자리. S1 에서는 값이 절대 바뀌지 않는다(항상 "open" · 빈 배열).
+    phase: { home: "open", away: "open" },
+    intents: [],
+  };
+  state.plan = {
+    home: computeTeamPlan(state, "home", config, pitch),
+    away: computeTeamPlan(state, "away", config, pitch),
   };
 
   const carry: Carry = {
