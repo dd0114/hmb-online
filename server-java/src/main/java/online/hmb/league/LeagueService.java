@@ -72,9 +72,6 @@ public class LeagueService {
     private final EconomyService economyService;
 
     private final int botTeamCount;
-    /** 선발 인원(포메이션 슬롯 0..10). */
-    private static final int STARTER_COUNT = 11;
-
     private final int rosterSize;
     private final int promoteRankMax;
     private final int relegateRankMin;
@@ -596,7 +593,7 @@ public class LeagueService {
                                       Map<String, List<PlayerRow>> byGrade,
                                       LeagueDataService.Division spec, String formation) {
         if (spec == null) {
-            return sampleRosterLegacy(rng, gkPool, byGrade, formation);
+            return sampleRosterLegacy(rng, gkPool, byGrade, formation, rosterSize);
         }
         // (등급, 포지션) 2차원 큐. 팀 내 중복 없음.
         Map<String, Map<String, List<PlayerRow>>> pool = new LinkedHashMap<>();
@@ -625,7 +622,7 @@ public class LeagueService {
         if (gk != null) {
             roster.add(gk.id());
         }
-        for (int i = 0; i < outfieldGrades.size() && roster.size() < STARTER_COUNT; i++) {
+        for (int i = 0; i < outfieldGrades.size() && roster.size() < DeckService.STARTER_COUNT; i++) {
             PlayerRow p = takeAt(pool, outfieldGrades.get(i), positions.get(i + 1));
             if (p != null) {
                 roster.add(p.id());
@@ -743,8 +740,9 @@ public class LeagueService {
      *
      * <p>벤치는 종전대로 포지션 무관 — 피치에 서지 않으므로 위 문제가 없다.
      */
-    private List<String> sampleRosterLegacy(SplittableRandom rng, List<PlayerRow> gkPool,
-                                            Map<String, List<PlayerRow>> byGrade, String formation) {
+    static List<String> sampleRosterLegacy(SplittableRandom rng, List<PlayerRow> gkPool,
+                                           Map<String, List<PlayerRow>> byGrade, String formation,
+                                           int rosterSize) {
         List<String> roster = new ArrayList<>();
         if (!gkPool.isEmpty()) {
             roster.add(gkPool.get(rng.nextInt(gkPool.size())).id());
@@ -759,13 +757,19 @@ public class LeagueService {
         // 선발 아웃필드 10칸 — 포지션은 포메이션이, 등급은 라운드로빈이 정한다.
         List<String> positions = startingPositions(formation);
         int gradeCursor = 0;
-        for (int slot = 1; slot < positions.size() && roster.size() < STARTER_COUNT; slot++) {
+        for (int slot = 1; slot < positions.size() && roster.size() < DeckService.STARTER_COUNT; slot++) {
             PlayerRow p = takeLegacyAt(remaining, positions.get(slot), gradeCursor++);
             if (p != null) {
                 roster.add(p.id());
             }
         }
         // 벤치(그리고 위에서 못 채운 자리) — 종전 그대로 등급 라운드로빈.
+        //
+        // ⚠️ **선발 슬롯이 아직 안 찬 동안엔 골키퍼를 건너뛴다**(#328 독립검증 MAJ-2). 위 루프가
+        // `takeLegacyAt` 에서 null 을 받으면 그 슬롯을 못 채우고 여기로 넘어오는데, 그때 이 루프가
+        // **남은 골키퍼를 선발 슬롯에 도로 밀어 넣는다**. 그러면 `takeLegacyAt` 의 GK 배제가 무의미해진다 —
+        // null 반환은 문제를 호출자에게 미룰 뿐이었다. 실측(포지션 고갈 풀): 필드 슬롯에 GK 7명.
+        // 벤치 칸(11번째 이후)은 종전대로 포지션 무관 — 피치에 서지 않으므로 이 규칙이 필요 없다.
         while (roster.size() < rosterSize) {
             boolean progressed = false;
             for (String grade : GRADE_ORDER) {
@@ -773,8 +777,16 @@ public class LeagueService {
                     break;
                 }
                 List<PlayerRow> pool = remaining.get(grade);
-                if (!pool.isEmpty()) {
-                    roster.add(pool.remove(pool.size() - 1).id());
+                int pick = -1;
+                for (int i = pool.size() - 1; i >= 0; i--) {
+                    if (roster.size() < DeckService.STARTER_COUNT && "GK".equals(pool.get(i).position())) {
+                        continue;
+                    }
+                    pick = i;
+                    break;
+                }
+                if (pick >= 0) {
+                    roster.add(pool.remove(pick).id());
                     progressed = true;
                 }
             }
@@ -1003,7 +1015,7 @@ public class LeagueService {
         for (int i = 0; i < roster.size(); i++) {
             ObjectNode entry = objectMapper.createObjectNode();
             entry.put("playerId", roster.get(i));
-            entry.put("slotIndex", i < 11 ? i : i - 11);
+            entry.put("slotIndex", i < DeckService.STARTER_COUNT ? i : i - DeckService.STARTER_COUNT);
             (i < 11 ? starters : bench).add(entry);
         }
         return deck.toString();

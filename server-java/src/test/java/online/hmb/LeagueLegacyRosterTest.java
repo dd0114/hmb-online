@@ -115,23 +115,56 @@ class LeagueLegacyRosterTest extends MatchTestBase {
     @Test
     void whenPositionIsExhaustedTheFallbackStillNeverPicksAGoalkeeper() {
         // DF 를 요청하는데 풀엔 GK 와 MF 밖에 없다.
-        Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
-        pool.put("BRONZE", new ArrayList<>(List.of(
-                new LeagueService.PlayerRow("gk1", "BRONZE", "GK", 100),
-                new LeagueService.PlayerRow("mf1", "BRONZE", "MF", 100))));
-        LeagueService.PlayerRow picked = LeagueService.takeLegacyAt(pool, "DF", 0);
-        assertThat(picked).as("팀은 서야 하므로 누군가는 뽑힌다").isNotNull();
-        assertThat(picked.position()).as("필드 슬롯에 골키퍼를 앉히지 않는다").isNotEqualTo("GK");
-        assertThat(picked.id()).isEqualTo("mf1");
+        // ⚠️ **양쪽 순서를 다 태운다**. `takeLegacyAt` 은 풀을 역방향으로 훑으므로, 정답(mf1)이
+        //    마지막에 놓인 배열만 쓰면 GK 배제 가드를 지워도 우연히 통과한다(독립검증 MAJ-3 실측).
+        for (List<LeagueService.PlayerRow> order : List.of(
+                List.of(new LeagueService.PlayerRow("gk1", "BRONZE", "GK", 100),
+                        new LeagueService.PlayerRow("mf1", "BRONZE", "MF", 100)),
+                List.of(new LeagueService.PlayerRow("mf1", "BRONZE", "MF", 100),
+                        new LeagueService.PlayerRow("gk1", "BRONZE", "GK", 100)))) {
+            Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
+            pool.put("BRONZE", new ArrayList<>(order));
+            LeagueService.PlayerRow picked = LeagueService.takeLegacyAt(pool, "DF", 0);
+            assertThat(picked).as("팀은 서야 하므로 누군가는 뽑힌다").isNotNull();
+            assertThat(picked.position()).as("필드 슬롯에 골키퍼를 앉히지 않는다 (순서 %s)", order)
+                    .isNotEqualTo("GK");
+            assertThat(picked.id()).isEqualTo("mf1");
+        }
     }
 
     @Test
     void exactPositionWinsOverTheFallback() {
+        // 같은 이유로 양쪽 순서를 태운다 — df1 이 마지막인 배열만 쓰면 우선순위를 뒤집어도 통과한다.
+        for (List<LeagueService.PlayerRow> order : List.of(
+                List.of(new LeagueService.PlayerRow("mf1", "BRONZE", "MF", 100),
+                        new LeagueService.PlayerRow("df1", "BRONZE", "DF", 100)),
+                List.of(new LeagueService.PlayerRow("df1", "BRONZE", "DF", 100),
+                        new LeagueService.PlayerRow("mf1", "BRONZE", "MF", 100)))) {
+            Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
+            pool.put("BRONZE", new ArrayList<>(order));
+            assertThat(LeagueService.takeLegacyAt(pool, "DF", 0).id())
+                    .as("정확 포지션이 폴백을 이긴다 (순서 %s)", order).isEqualTo("df1");
+        }
+    }
+
+    /**
+     * 등급 라운드로빈 — 이 폴백이 <b>지키겠다고 선언한</b> 성질(v1 롤백의 목적 = 등급 분배)에
+     * 계약이 없었다(독립검증 MAJ-3 M5: `gradeCursor++` 를 `0` 으로 고정해도 아무 테스트가 안 죽었다).
+     * 구현은 실제로 보존하고 있었지만, 계약이 없으면 조용히 드리프트한다.
+     */
+    @Test
+    void gradeCursorSpreadsPicksAcrossGrades() {
         Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
-        pool.put("BRONZE", new ArrayList<>(List.of(
-                new LeagueService.PlayerRow("mf1", "BRONZE", "MF", 100),
-                new LeagueService.PlayerRow("df1", "BRONZE", "DF", 100))));
-        assertThat(LeagueService.takeLegacyAt(pool, "DF", 0).id()).isEqualTo("df1");
+        for (String g : List.of("BRONZE", "SILVER", "GOLD", "DIA", "LEGEND")) {
+            pool.put(g, new ArrayList<>(List.of(new LeagueService.PlayerRow(g + "-df", g, "DF", 100))));
+        }
+        List<String> grades = new ArrayList<>();
+        for (int cursor = 0; cursor < 5; cursor++) {
+            grades.add(LeagueService.takeLegacyAt(pool, "DF", cursor).grade());
+        }
+        // 커서를 0..4 로 돌리면 **서로 다른 등급 5개**가 나와야 한다. 커서를 무시하면 같은 등급이
+        // 소진될 때까지 먼저 뽑혀 분포가 한쪽으로 쏠린다.
+        assertThat(grades).as("등급 라운드로빈 = 커서가 실제로 시작점을 옮긴다").doesNotHaveDuplicates();
     }
 
     @Test
