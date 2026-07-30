@@ -24,6 +24,13 @@ import styles from "./DirectiveRail.module.css";
 export interface DirectiveRailProps {
   /** 선택된 선수 — null 이면 팀 지시 컨텍스트. */
   player?: CatalogPlayer;
+  /**
+   * 강화 시트 열기 (#286 W3). **주지 않으면 줄 자체를 그리지 않는다** — 하프타임 레일처럼
+   * 강화가 있으면 안 되는 자리가 있기 때문이다(경기 중 능력치 변경 = 진행 중 시뮬과 어긋남).
+   */
+  onOpenGrowth?: (player: CatalogPlayer) => void;
+  /** 강화가 잠긴 이유. 있으면 줄은 보이되 눌리지 않는다(왜 안 되는지 말해 준다). */
+  growthLockedReason?: string | null;
   /** 선택된 선수가 보드에서 차지한 슬롯(프롬프트 편집 대상). 미배치(리스트 대기) 선수는 없다. */
   slot?: DraftSlot;
   /** 보드 토큰에 찍히는 번호와 같은 표기 (레일 헤드 미니 디스크). */
@@ -189,8 +196,7 @@ function TeamContext(props: DirectiveRailProps & TuneToggleProps) {
           <span className={styles.tuneCaret} aria-hidden="true">
             {tuneOpen ? "▾" : "▸"}
           </span>
-        </button>
-        )}
+        </button>        )}
 
         {!props.hideTeamTune && tuneOpen && (
         <div className={styles.group} id="team-tactics-panel" data-testid="team-tactics-panel">
@@ -464,6 +470,32 @@ function PlayerContext(props: PlayerContextProps) {
             {tuneOpen ? "▾" : "▸"}
           </span>
         </button>
+
+        {/* ③ 강화 = 세부조정과 **같은 줄 형태**로 하나 더 (#286 W3, hero 요구).
+            새 화면을 만들지 않는다 — 열리는 시트는 선수 탭이 여는 것과 **같은 컴포넌트**라
+            hero 가 말한 "싱크"가 배선이 아니라 구조로 보장된다.
+            ⚠️ 경기 중에는 잠근다: 진행 중인 시뮬이 쓰는 능력치가 도중에 바뀌면 어긋난다. */}
+        {props.onOpenGrowth && props.player && (
+          <button
+            type="button"
+            className={styles.tuneToggle}
+            data-testid="rail-growth-open"
+            disabled={!placed || Boolean(props.growthLockedReason)}
+            title={props.growthLockedReason ?? undefined}
+            onClick={() => props.onOpenGrowth?.(props.player!)}
+          >
+            <span className={styles.gear} aria-hidden="true">
+              {props.growthLockedReason ? "🔒" : "⚡"}
+            </span>
+            <span className={styles.tuneLabel}>선수 강화</span>
+            <span className={styles.tuneHint} data-testid="rail-growth-hint">
+              {props.growthLockedReason ?? "성 승급 · 잠재 재설정"}
+            </span>
+            <span className={styles.tuneCaret} aria-hidden="true">
+              ▸
+            </span>
+          </button>
+        )}
 
         {tuneOpen && (
         <div className={styles.group} id="rail-tactical-layer" data-testid="rail-tactical-layer">

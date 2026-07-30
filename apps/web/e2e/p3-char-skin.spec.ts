@@ -68,10 +68,20 @@ function logIdsPreview(jerseys: Record<string, string>): string[] {
 
 test.beforeAll(() => mkdirSync(SHOTS, { recursive: true }));
 
-test("도감: 전 등급 선수에 캐릭터 얼굴이 붙는다(B안 — 폴백 0)", async ({ page }) => {
+/**
+ * ⚠️ **venue 가 옮겨졌다 (#286 W3)** — 도감 그리드는 이제 **전신 아트**를 쓴다(hero 확정).
+ * 얼굴 타일(`CharAvatar`)이 남아 있는 밀집 UI 는 **덱**이다(리스트 행·보드 토큰).
+ *
+ * 이 계약이 지키려는 것은 "도감 화면"이 아니라 **"전 등급·전 포지션의 캐릭터 매핑이 폴백 없이
+ * 해석된다"** 이므로, 같은 질문을 얼굴 타일이 살아 있는 자리에서 묻는다. 화면만 옮겼고
+ * 질문은 그대로다 — 매핑이 깨지면 여기서 여전히 빨간불이다.
+ */
+test("덱: 전 등급 선수에 캐릭터 얼굴이 붙는다(B안 — 폴백 0)", async ({ page }) => {
   await login(page);
   await mockApi(page);
-  await page.goto("/codex");
+  await page.goto("/deck");
+  // 리스트(보유 선수 풀)를 연다 — 보드 토큰은 선발 11 만 그리므로 전 등급 표본을 못 덮는다.
+  await page.getByTestId("pool-sheet-open").click().catch(() => {});
 
   // 포지션 4종 × LEGEND/비-LEGEND 가 실제로 섞여 있어야 캡처가 B안을 대표한다.
   expect(new Set(PLAYERS.map((p) => p.position)).size, "포지션 4종").toBe(4);
@@ -83,7 +93,7 @@ test("도감: 전 등급 선수에 캐릭터 얼굴이 붙는다(B안 — 폴백
     // B안 핵심: LEGEND 도 비-LEGEND 도 확정 캐릭터로 해석된다.
     await expect(avatar, `${p.id} 는 캐릭터 축`).toHaveAttribute("data-avatar-kind", "character");
   }
-  await page.screenshot({ path: `${SHOTS}char-skin-codex.png`, fullPage: true });
+  await page.screenshot({ path: `${SHOTS}char-skin-deck.png`, fullPage: true });
 });
 
 test("에셋 스테이징이 실제로 서빙된다(/chars 4파일)", async ({ page }) => {

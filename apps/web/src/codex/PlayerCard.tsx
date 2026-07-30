@@ -1,6 +1,6 @@
 import type { CatalogPlayer } from "../api/hooks";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
-import { CharAvatar } from "../common/CharAvatar";
+import { FullArtCard } from "../common/FullArtCard";
 import { PersonalityBadge } from "../common/RelationBits";
 import styles from "./PlayerCard.module.css";
 
@@ -23,9 +23,20 @@ interface PlayerCardProps {
 }
 
 /**
- * 도감 카드 — 등급 색상, 미보유 흑백+잠금, 보유 수. 탭하면 9개 능력치 확장.
+ * 도감 카드 — 등급 색상, 미보유 **전신 실루엣**+잠금, 보유 수. 탭하면 9개 능력치 확장.
  *
- * #187: 그리드는 172장이 깔리는 밀집 UI라 **아이콘 48 유지**. 풀아트는 강화 상세가 갖는다.
+ * ── ⚠️ #187 정책을 hero 가 뒤집었다 (#286 W3) ─────────────────────────────────
+ * 원래 규칙은 "그리드는 172장이 깔리는 밀집 UI라 아이콘 48 유지, 풀아트는 강화 상세가 갖는다"
+ * 였다. hero 판정: *"아이콘 아니라 전신 보여주자. 아이콘만 하면 모으는 재미가 떨어질 것 같아."*
+ *
+ * 원 규칙의 근거는 두 가지였고 둘 다 처리했다:
+ *  1. **밀집 UI 성능/밀도** → 카드 폭은 그리드 토큰(`size="grid"`)으로 묶는다.
+ *  2. **"잠긴 카드에 원색 전신을 띄우면 잠금 표현과 어긋난다"** → 미보유는 **전신 실루엣**이라
+ *     그 어긋남이 사라진다. 오히려 "무엇을 못 가졌는지"가 실루엣으로 읽힌다.
+ *
+ * ⚠️ 아트 실태를 알고 쓴다: 선수 180명에 그림 23종이고 **133명이 공용 `default-unit`** 을
+ * 공유한다. 전신 전환의 실효는 LEGEND·DIA 39명에 있고, 나머지는 **아트 발행**이 있어야 한다
+ * (data/design 스코프 — `docs/plan-v5/home-nav.md` §3.5).
  */
 export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
   const gradeColor = GRADE_COLORS[player.grade];
@@ -66,14 +77,24 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
             )}
           </span>
         </span>
-        <CharAvatar
-          playerId={player.id}
-          name={player.name}
-          grade={player.grade}
-          size={48}
-          className={styles.avatar}
-        />
-        <span className={styles.name}>{player.name}</span>
+        {/* 전신 카드. 이름·등급은 **카드 밖**에서 이미 보여주므로 `variant="art"` 로 아트만 쓴다 —
+            프레임 통짜를 쓰면 에셋의 하단 밴드가 빈 검은 띠로 남는다(#207 실측). */}
+        <span
+          className={player.owned ? styles.art : `${styles.art} ${styles.artLocked}`}
+          data-testid="codex-card-art"
+        >
+          <FullArtCard
+            playerId={player.id}
+            name={player.name}
+            grade={player.grade}
+            position={player.position}
+            size="grid"
+            variant="art"
+            showLabels={false}
+          />
+        </span>
+        {/* 미보유는 이름을 감춘다 — 실루엣인데 이름이 보이면 "가린 것"이 아니라 "덜 그린 것"이 된다. */}
+        <span className={styles.name}>{player.owned ? player.name : "？？？"}</span>
         <span className={styles.grade} style={{ color: gradeColor }}>
           {GRADE_LABELS[player.grade]}
         </span>

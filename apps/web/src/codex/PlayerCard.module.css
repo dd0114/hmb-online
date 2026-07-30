@@ -5,9 +5,11 @@
   overflow: hidden;
 }
 
+/* 미보유 — **회색조가 아니라 실루엣**이다(#286 W3, hero 확정).
+   회색조 사진은 "흐릿한 카드"로 읽히고, 실루엣은 "아직 없는 카드"로 읽힌다.
+   전신으로 바꾼 근거의 절반이 이것이라(잠금 표현과 어긋나지 않는다) 되돌리지 말 것. */
 .unowned .summary {
-  filter: grayscale(1);
-  opacity: 0.55;
+  opacity: 0.75;
 }
 
 .expanded {
@@ -74,10 +76,38 @@
   padding: 0 4px;
 }
 
-/* 캐릭터 얼굴 (#145) — summary 가 세로 flex 라 가운데 정렬로 얹는다. */
-.avatar {
+/* 전신 아트 창 (#286 W3) — summary 가 세로 flex 라 가운데 정렬로 얹는다.
+   ⚠️ 세로가 더 긴 창이어야 전신이다. 정사각으로 되돌리면 얼굴 타일과 구분이 없어지고
+   계약(p286-w3 "아트 창이 세로로 길지 않다 = 얼굴 타일이다")이 깨진다. */
+.art {
   align-self: center;
   margin: 2px 0 4px;
+  display: block;
+}
+
+/* 미보유 = 전신 실루엣.
+   ⚠️ **에셋에 따라 결과가 갈린다 — 실화면으로 확인한 사실이다.**
+   `units` 축 아트(`art-*.png`)는 알파가 있어 진짜 인물 실루엣이 나온다. 반면 `characters` 축은
+   **프레임·배경이 구워진 완성 카드**라 어떤 필터를 걸어도 **통짜 판**이 된다(밝게 반전했더니
+   빈 회색 패널로 보였다). 그래서 필터만으로는 "잠김"을 표현할 수 없고, 아래 자물쇠 표식이
+   두 경우를 모두 받아 준다. 계약(p286-w3)은 `brightness(0)` 을 판정 지점으로 본다. */
+.artLocked img {
+  filter: brightness(0) opacity(0.8);
+}
+
+/* 자물쇠 표식 — 실루엣이 통짜로 나오는 에셋에서도 "빈 칸"이 아니라 "잠긴 칸"으로 읽히게. */
+.artLocked {
+  position: relative;
+}
+.artLocked::after {
+  content: "🔒";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .name {

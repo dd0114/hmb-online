@@ -70,6 +70,30 @@ export const LEAGUE = {
   nextMatch: { round: 10, opponentName: "봇 T3" },
 };
 
+/**
+ * `GET /api/growth/card/{id}` — 강화 시트가 요구하는 최소 형태.
+ *
+ * ⚠️ 캐치올 `{}` 로 두면 시트가 **열리지도 않는다**(내부에서 필드를 만지다 죽는다) — 그러면
+ * "강화 진입" 계약이 진입 실패를 구현 실패로 오인해 통과/실패가 뒤섞인다. 서버 형상에 맞춘다.
+ */
+const ATTR_KEYS = Object.keys(ATTRS) as Array<keyof typeof ATTRS>;
+export function growthCardPayload(playerId: string, grade = "GOLD") {
+  const caps = Object.fromEntries(ATTR_KEYS.map((k) => [k, Math.min(99, ATTRS[k] + 15)]));
+  return {
+    playerId,
+    grade,
+    star: 1,
+    attributes: { ...ATTRS },
+    prePotential: { ...ATTRS },
+    base: { ...ATTRS },
+    caps,
+    statLevels: Object.fromEntries(ATTR_KEYS.map((k) => [k, { level: 1, xp: 0, xpToNext: 100 }])),
+    potential: { unlocked: false, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
+    ovr: 58,
+    completion: 0.3,
+  };
+}
+
 const AWAY_REPORTS = {
   reports: [],
   summary: { matches: 0, opponents: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, ratingDelta: 0 },
@@ -124,6 +148,15 @@ export async function mockAll(page: Page, opts: MockOpts = {}) {
 
   // 캐치올 먼저 — 나중에 등록한 핸들러가 이긴다.
   await page.route((url) => url.pathname.startsWith("/api/"), (r) => r.fulfill(json({})));
+  // 강화 카드는 id 별 경로라 패턴으로 잡는다(#286 W3 강화 진입 계약).
+  await page.route(
+    (url) => url.pathname.startsWith("/api/growth/card/"),
+    (r) => {
+      const id = r.request().url().split("/api/growth/card/")[1]?.split("?")[0] ?? "P001";
+      const grade = PLAYERS.find((p) => p.id === id)?.grade ?? "GOLD";
+      return r.fulfill(json(growthCardPayload(id, grade)));
+    },
+  );
   await page.route((url) => url.pathname.startsWith("/api/logs/matches"), (r) => r.fulfill(json([])));
   for (const [path, body] of routes) {
     await page.route((url) => url.pathname === path, (r) => r.fulfill(json(body)));

@@ -7,3 +7,26 @@
   color: var(--text-muted); font-size: 13px; font-weight: 600;
 }
 .segOn { background: var(--bg-elevated); color: var(--text); }
+
+/* 트레이드 상시 안내 (#286 W3). 코치마크가 이 카드를 가리킨다 — 둘은 짝이다. */
+.guide {
+  background: var(--sunk);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 13px;
+  margin-bottom: 12px;
+}
+.guideTitle {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.guideBody {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-muted);
+}
+.guideBody b {
+  color: var(--text);
+}

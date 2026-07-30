@@ -5,6 +5,8 @@ import { useDeck, usePlayers, useUpdateDeck, type CatalogPlayer, type Deck } fro
 import { useRelations, useTodayConditions } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { TeamMoraleWidget } from "../common/RelationBits";
+import { CardGrowthDetail } from "../codex/CardGrowthDetail";
+import { useNavLocked } from "../common/nav-lock";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { useNavGuardRun, useRegisterNavGuard, type NavGuard } from "../common/NavGuard";
@@ -76,6 +78,19 @@ export function DeckPage() {
   const [serverError, setServerError] = useState<ServerDeckError | null>(null);
   const [savedNote, setSavedNote] = useState(false);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
+  /**
+   * 강화 시트 (#286 W3) — **페이지가 소유**한다. 에디터가 들고 있으면 보드 상태가 바뀔 때마다
+   * 시트가 같이 흔들리고, 무엇보다 선수 탭과 **같은 컴포넌트**를 연다는 사실이 흐려진다.
+   */
+  const [growthPlayer, setGrowthPlayer] = useState<CatalogPlayer | null>(null);
+  /**
+   * 경기 중에는 강화만 잠근다(hero 2R).
+   *
+   * ⚠️ **덱 전체를 잠그면 안 된다** — 하프타임 지시를 쓰러 오는 자리이기 때문이다. 능력치를
+   * 바꾸는 것만 막는다: 진행 중인 시뮬이 이미 그 값으로 돌고 있어 도중에 바뀌면 어긋난다.
+   */
+  const matchLocked = useNavLocked();
+  const growthLockedReason = matchLocked ? "경기 중에는 강화할 수 없습니다" : null;
 
   // 첫 진입: 활성 덱 하나만 로드한다(프리셋 조회/적용 없음 — #106).
   useEffect(() => {
@@ -216,6 +231,8 @@ export function DeckPage() {
           그 상태를 잡았다) — `deck-teamsheet` 계약이 이제 존재를 지킨다. */}
       <TeamMoraleWidget relations={relations} compact />
       <DeckEditor
+        onOpenGrowth={(p) => setGrowthPlayer(p)}
+        growthLockedReason={growthLockedReason}
         state={editor}
         onChange={mutateEditor}
         aiManaged={aiManaged}
@@ -300,6 +317,16 @@ export function DeckPage() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {/* 선수 탭이 여는 것과 **같은 컴포넌트**다 — hero 가 말한 "덱과 싱크"가 문서가 아니라
+          구조로 보장된다. 출처만 표시해 두 진입점을 계약이 구분할 수 있게 한다. */}
+      {growthPlayer && (
+        <CardGrowthDetail
+          player={growthPlayer}
+          source="deck"
+          onClose={() => setGrowthPlayer(null)}
+        />
       )}
     </Layout>
   );

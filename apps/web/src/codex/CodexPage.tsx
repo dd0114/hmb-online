@@ -7,6 +7,7 @@ import { GRADE_LABELS, GRADE_ORDER, type Grade } from "../common/grades";
 import type { components } from "../api/schema";
 import { PlayerCard } from "./PlayerCard";
 import { CardGrowthDetail } from "./CardGrowthDetail";
+import { useNavLocked } from "../common/nav-lock";
 import type { CatalogPlayer } from "../api/hooks";
 import styles from "./CodexPage.module.css";
 
@@ -30,6 +31,14 @@ export function CodexPage() {
   const [ownedOnly, setOwnedOnly] = useState(true);
   // 보유 카드 = 성장 상세 시트(시안3), 미보유 = 기존 인라인 능력치 확장(잠금).
   const [detailPlayer, setDetailPlayer] = useState<CatalogPlayer | null>(null);
+  /**
+   * 경기 중에는 강화 시트를 열지 않는다 (#286 W3).
+   *
+   * ⚠️ **덱만 막으면 우회로가 남는다** — 같은 시트를 여는 문이 둘이라, 한쪽만 잠그면
+   * 선수 탭으로 들어가 능력치를 바꿀 수 있다(진행 중인 시뮬이 쓰는 값과 어긋난다).
+   * 조용히 무반응으로 두지 않고 **왜 안 되는지 말한다** — 안 그러면 "눌러도 안 열린다"가 버그다.
+   */
+  const matchLocked = useNavLocked();
 
   // ⚠️ `(players ?? [])` 로는 부족하다 — 구 서버·빈 응답의 200 `{}` 는 nullish 가 아니라
   // 통과하고 `.filter` 가 던져 **화면이 통째로 흰 화면**이 된다(#245 와 같은 규칙, #286 실측).
@@ -64,6 +73,12 @@ export function CodexPage() {
     <Layout header={header} nav>
       {isLoading && <p>불러오는 중…</p>}
       {isError && <ErrorToast message="도감을 불러오지 못했습니다" />}
+
+      {matchLocked && (
+        <p className={styles.lockedNote} data-testid="codex-locked-note">
+          🔒 경기 중에는 강화할 수 없습니다 — 경기를 끝내거나 포기한 뒤에 열립니다.
+        </p>
+      )}
 
       <div className={styles.filters}>
         <div className={styles.tabRow} role="tablist" aria-label="보유 여부">
@@ -135,18 +150,22 @@ export function CodexPage() {
               key={p.id}
               player={p}
               expanded={expandedId === p.id}
-              onToggle={() =>
-                p.owned
-                  ? setDetailPlayer(p)
-                  : setExpandedId((cur) => (cur === p.id ? null : p.id))
-              }
+              onToggle={() => {
+                if (p.owned && matchLocked) return;   // 안내는 아래 배너가 상시로 한다
+                if (p.owned) setDetailPlayer(p);
+                else setExpandedId((cur) => (cur === p.id ? null : p.id));
+              }}
             />
           ))}
         </div>
       )}
 
-      {detailPlayer && (
-        <CardGrowthDetail player={detailPlayer} onClose={() => setDetailPlayer(null)} />
+      {detailPlayer && !matchLocked && (
+        <CardGrowthDetail
+          player={detailPlayer}
+          source="players"
+          onClose={() => setDetailPlayer(null)}
+        />
       )}
     </Layout>
   );
