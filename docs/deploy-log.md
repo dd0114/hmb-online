@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-07-30T14:25Z — [운영 조치] 오시야스(P182) 오픈 + 공지 2장 교체 (배포 아님 — 코드·이미지 변경 0)
+
+- **지시**: hero — *"오시야스 공지 만들자. 경니시우스 공지 내리고 오시야스로 올리고, 패치내용도 지금 것 닫고 새 패치내용 한 장. 순서는 오시야스가 더 앞쪽으로."* 세션 `hmb:osinotice`. 전말 = **#246 코멘트**.
+- **전부 admin API**(무배포·무중단): 컨테이너·이미지·git SHA 무변경, 재시작 0, Flyway 무변경(v32 유지). **배포 v3 의 V30(공지 이미지 업로드)을 실제 운영에 처음 태운 건**이다 — 이미지까지 배포 없이 나갔다.
+- **① 유닛**: `POST /api/admin/units/P182/activate` **200**(사유 기입, `auditId 01KYS6XBCX…`). 검증 — `/api/players` **164 → 165건**(P182 노출 · **P181 미노출**), 획득 가능 LEGEND = FW 3 · MF 3 · **GK 1**(오픈 전 GK **0**). 뽑기 풀은 `GachaService.loadPools()` = `WHERE active=1` 이고 **뽑기마다 재조회**(캐시 없음) → 재시작 없이 즉시 반영. **P181 석다이크는 `active=false, adminLocked=true` 유지**(hero 지시대로 미오픈).
+- **② 이미지**: #248 템플릿(`make-notice-hero.py`) + 발행물 아트 `art-osiyas.png`(manifest `forPlayer:"P182"` ↔ `player-chars.v2.json` **양방향 대조**). `POST /api/admin/notices/assets` **201** → `01KYS71M3DHHP6J1SY52M69X9E` · 89,122 B · `image/webp`. 공개 GET **200** + **sha256 업로드본과 동일**(`1ee8eaca…`) · `usedBy 1`.
+- **③ 공지 게시**(hero 문안 컨펌 후): `오시야스 합류!` **priority 10** `01KYSPMF7SEMJA7K98D5ZMGYBX` · `업데이트 안내 — 홈 화면 개편·감독시간·공지 공유` **priority 5** `01KYSPMN62PWTNYB66H5V3BCS5`. 둘 다 `endsAt 2026-08-06T14:25:05Z`(+7일) · rev 1. 정렬 `priority DESC` = **오시야스가 팝업 1장째**. 패치 내용은 **v2.02~v3 유저 체감분**(홈 5탭 #286 · 감독시간 선발 배치 #276 · 정보탭 상시 #284 · 공지 장분리/공유 #292·#293 · 아이콘 정책 #285 · 랭킹/원정 자격 필터 #296).
+- **④ 구 공지 2건 비활성**(삭제 아님): `경니시우스 합류!`(rev 3) · `업데이트 안내 — 원정·시즌 보상·강화 개선`(rev 1) → `POST …/active {"active":false}` 각 **200**, `status OFF`. **삭제하지 않았다** — #263(undelete 부재)로 삭제는 비가역. 되살리기 = 같은 API 에 `active:true`.
+- **검증**: `GET /api/notices/active` **2건**, 순서 오시야스(10) → 패치(5). **실팝업**(hmb-online.pages.dev · iPhone 390×844 실터치) 페이저 **1/2 → 2/2** 전환, 히어로 이미지 **실제 로드**(`naturalWidth 1080×1180`, alt 폴백 아님), 콘솔 에러 0. 본문은 게시 전 **실제 렌더러 파서**(`parseNoticeBody`) AST 검사 — 미파싱 잔여 토큰 0 · 288자/534자(상한 2000). 공개 단건 API 미인증 **200**.
+- **📌 상대경로 설계가 실전에서 증명됐다**: 작업 중 터널이 `headline-teddy-…` → `record-houston-…` 로 회전했으나(워치독 HEAL_OK), 본문이 `/api/notices/assets/{id}` 라 **공지를 손대지 않고 그대로 살아남았다**. 절대 URL 을 구웠으면 이 시점에 그림이 깨졌다.
+- **⚠️ 남긴 것 2건**:
+  - **#320 (infra)** — **V30 업로드 이미지는 공유 카드(OG) 썸네일이 깨진다.** OG Function 의 `absolutize()` 가 `/api/...` 에 **web 오리진**을 붙여 `hmb-online.pages.dev/api/notices/assets/…` = **SPA index.html(200 · text/html · 463 B)** 을 가리킨다(404 가 아니라 200 이라 `OG_DEFAULT_IMAGE` 폴백도 안 탄다). 정적 경로를 쓰는 경니시우스는 정상이었다. **hero 판단 = 무배포 유지, 그대로 게시하고 이슈로 남긴다**(팝업·공지센터·공유 카드의 제목/본문은 정상, 이미지만 안 뜸). 고치려면 Pages 재배포 + #299 Function 스냅샷 경로.
+  - **#321 (engine, #25 산하)** — **골키퍼 능력치가 선방에 전혀 반영되지 않는다**(골/선방은 슈터 `shooting`·xG 로만 갈리고 `goalkeeperOf` 는 기록용). LEGEND GK 첫 오픈으로 드러난 갭이라 공지 문안에서 **선방 성능 약속을 배제**했다.
+- **상태**: `P180 활성 · P181 비활성 · P182 활성` · 활성 공지 2건 · 배포 없음.
 ## 2026-07-30T12:16Z — [장애] 워치독 **반쪽 치유** — 프로세스는 살고 URL 전파가 멈춰 테스터 단절 (배포 아님)
 
 - **증상**: 12:11:15Z 워치독이 `UNHEALTHY`(구 URL `pubs-lauderdale-…` DNS 전부 실패 + curl 000) → 12:11:18Z `HEAL_START` → 12:16:19Z **`HEAL_OK`(new=`selective-blast-municipal-lanes`)** 를 기록했다. **그런데 `config.json` 은 `pubs-lauderdale-…`(10:56Z, source=manual) 그대로**였고 그 호스트는 **DNS 에서 사라진 상태**(`dig` 빈 응답) → **테스터 실접속 단절**. `status.sh` 는 터널 URL 칸이 **빈칸**으로 보였다.
