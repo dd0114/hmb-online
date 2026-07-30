@@ -206,31 +206,39 @@ public class MailService {
     private ClaimResult claimInTx(String userId, String mailId, String now) {
         Row row = require(userId, mailId);
 
-        // ⚠️ **"이미 수령했나"의 판정 지점은 아래 CAS 하나뿐이다.** 여기서 `row.claimedAt != null` 로
-        // 미리 걸러 주면 더블탭 계약이 그 선검사만 태우고 지나가, CAS 조건(`AND claimed_at IS NULL`)을
-        // 지워도 전 스위트가 green 이었다(독립검증 MAJOR-1 변이체 생존). 판정을 한 곳에 모으면
-        // 같은 테스트가 실제로 CAS 를 태운다 — 그게 동시 수령을 막는 유일한 층이기 때문이다
-        // (G·Z 는 원장 유니크가 백스톱이지만 **카드는 그것도 없다**).
-        if (row.revokedAt != null) {
-            throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
-                    "이 우편물은 회수되어 받을 수 없습니다");
-        }
-        if (row.expiresAt != null && row.expiresAt.compareTo(now) <= 0) {
-            throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
-                    "수령 기간이 지난 우편물입니다");
-        }
-
-        // ① 상태 CAS — 이 UPDATE 가 1행을 바꾼 요청만 지급으로 넘어간다.
+        // ⚠️ **판정 지점은 이 UPDATE 하나뿐이다.** 조건을 전부 여기 넣는 이유가 두 가지다:
+        //
+        //  ① 앞에서 `row.claimedAt != null` 로 미리 걸러 주면 더블탭 계약이 그 선검사만 태우고
+        //     지나가, CAS 조건(`AND claimed_at IS NULL`)을 지워도 전 스위트가 green 이었다
+        //     (독립검증 MAJOR-1). CAS 는 동시 수령을 막는 **유일한 층**이다 — G·Z 는 원장 유니크가
+        //     백스톱이지만 **카드는 그것도 없다**.
+        //  ② 만료·회수를 CAS **앞**에서 던지면 "이미 받은 우편이 나중에 만료됐다"가 410 이 된다
+        //     (독립검증 m3 실측). 이미 받은 사람에게 실패를 보이는 것은 설계 §3.3 위반이다 —
+        //     조건을 UPDATE 안에 두면 그 교집합이 자동으로 "이미 수령(200)"으로 떨어진다.
         int taken = jdbcClient.sql("""
                         UPDATE user_mails SET claimed_at = ?, read_at = COALESCE(read_at, ?)
                         WHERE id = ? AND user_id = ? AND claimed_at IS NULL
+                          AND (expires_at IS NULL OR expires_at > ?)
+                          AND NOT EXISTS (SELECT 1 FROM mail_campaigns c
+                                          WHERE c.id = campaign_id AND c.revoked_at IS NOT NULL)
                         """)
-                .params(now, now, mailId, userId)
+                .params(now, now, mailId, userId, now)
                 .update();
+
         if (taken == 0) {
-            // 이미 누군가 가져갔다 = 같은 유저의 두 번째 [받기]. 실패가 아니라 사실대로 답한다
-            // (지급 없음 · 현재 잔액). 이 분기가 순차 더블탭과 동시 요청을 **같은 코드로** 처리한다.
-            return new ClaimResult(mailId, true, false, Granted.NONE, wallet(userId));
+            // 왜 못 가져갔나를 **행을 다시 읽어** 구분한다(요청 순간의 값이 아니라 지금 값으로).
+            Row after = require(userId, mailId);
+            if (after.claimedAt != null) {
+                // 이미 수령했다 = 같은 의도의 재전송(더블탭·다중 탭). 실패가 아니라 사실대로 답한다.
+                // 그 뒤에 만료·회수가 걸렸어도 마찬가지다 — 이미 받은 사람에겐 아무 일도 아니다.
+                return new ClaimResult(mailId, true, false, Granted.NONE, wallet(userId));
+            }
+            if (after.revokedAt != null) {
+                throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
+                        "이 우편물은 회수되어 받을 수 없습니다");
+            }
+            throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
+                    "수령 기간이 지난 우편물입니다");
         }
 
         MailAttachments att = parse(row.payloadJson);

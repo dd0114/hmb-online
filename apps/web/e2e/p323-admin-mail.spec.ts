@@ -36,7 +36,7 @@ async function mockAdmin(page: Page, opts: { sendStatus?: number; sendBody?: unk
         user: { id: "a1", nickname: "운영자", isAdmin: true, tutorialDone: true },
         wallet: { points: 0, gems: 0 },
         records: { wins: 0, draws: 0, losses: 0 },
-        mail: { unread: 0 },
+        mail: { unread: 0, total: 0 },
       }),
     ),
   );

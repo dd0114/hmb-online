@@ -54,7 +54,7 @@ interface HomeMock {
 
 /** 현재 우편함 상태를 서버처럼 들고 있는 목 — 읽음·수령이 실제로 반영돼야 뱃지 계약이 성립한다. */
 async function mockHome(page: Page, mock: HomeMock) {
-  const state = { mails: mock.mails.map((m) => ({ ...m })), unread: mock.unread };
+  const state = { mails: mock.mails.map((m) => ({ ...m })), unread: mock.unread, listCalls: 0 };
 
   await page.addInitScript(() => window.localStorage.setItem("hmb.auth.token", "tok_user"));
   await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.fulfill(json({})));
@@ -78,9 +78,10 @@ async function mockHome(page: Page, mock: HomeMock) {
   );
   await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json([])));
 
-  await page.route((url) => url.pathname === "/api/mails", (route) =>
-    route.fulfill(json({ mails: state.mails, unread: state.unread })),
-  );
+  await page.route((url) => url.pathname === "/api/mails", (route) => {
+    state.listCalls += 1;
+    return route.fulfill(json({ mails: state.mails, unread: state.unread }));
+  });
 
   // 읽음 — **뱃지는 그대로**여야 한다(첨부가 남아 있으면 아직 할 일이다). 서버 규칙을 그대로 흉내낸다.
   await page.route(
@@ -126,6 +127,8 @@ async function mockHome(page: Page, mock: HomeMock) {
       );
     },
   );
+
+  return state;
 }
 
 async function gotoHome(page: Page) {
@@ -241,6 +244,29 @@ test.describe("#323 — 홈 헤더 우편함(hero 확정 A)", () => {
       // 진입점은 눌 수 있는 크기를 유지한다(줄어들면 예산은 지켜도 못 누른다).
       expect(box.width).toBeGreaterThanOrEqual(24);
     }
+  });
+
+  /**
+   * <b>홈에 들어오는 것만으로는 목록을 받지 않는다</b>(독립검증 m2 — 이 수정에 계약이 없었다).
+   *
+   * <p>헤더가 필요한 두 숫자는 `/api/me.mail` 에 이미 실려 온다. 목록은 본문까지 실린 응답이라
+   * 홈 진입마다 받으면 그 필드는 아무도 안 쓰는 죽은 값이 되고 왕복만 는다. 우편함을 <b>열 때</b>
+   * 한 번 받는다.
+   */
+  test("홈 진입에는 목록 요청 0건 — 우편함을 열 때 받는다", async ({ page }) => {
+    const state = await mockHome(page, {
+      mails: [mail({ id: "M1", state: "UNREAD", points: 5000 })],
+      unread: 1,
+    });
+    await gotoHome(page);
+
+    // 뱃지는 이미 떠 있다(= /api/me 로 그렸다).
+    await expect(page.getByTestId("mail-center-badge")).toHaveText("1");
+    expect(state.listCalls, "홈 진입만으로는 목록을 받지 않는다").toBe(0);
+
+    await page.getByTestId("mail-center-open").click();
+    await expect(page.getByTestId("mail-item")).toHaveCount(1);
+    expect(state.listCalls).toBeGreaterThan(0);
   });
 
   /**

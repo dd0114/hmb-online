@@ -41,6 +41,26 @@ public class MailProperties {
     private int listLimit = 50;
 
     /**
+     * admin 발송 이력 목록의 <b>하드 상한</b>(요청 limit 을 여기까지만 허용).
+     *
+     * <p>⚠️ 이 값이 config 인 것은 튜닝 때문이 아니라 <b>계약을 세울 수 있게</b> 하기 위해서다.
+     * 상수로 박아 두면 "단건 조회가 목록 창에 갇히지 않는다"(독립검증 MAJOR-3)를 검증하려면 캠페인을
+     * 101건 만들어야 하고, 그 비용 때문에 결국 <b>어차피 참인 명제</b>를 검증하는 테스트가 된다 —
+     * 2차 독립검증이 그 상태를 blocker 로 잡았다(`detail()` 을 목록 스캔으로 되돌려도 841건 전부 통과).
+     * 테스트는 이 값을 1 로 낮춰 실제 조건을 만든다({@code MailFanoutCapTest} 가 상한을 낮춰
+     * 팬아웃 거부를 재현하는 것과 같은 패턴).
+     */
+    private int campaignListMax = 100;
+
+    public int getCampaignListMax() {
+        return campaignListMax;
+    }
+
+    public void setCampaignListMax(int campaignListMax) {
+        this.campaignListMax = campaignListMax;
+    }
+
+    /**
      * 동시 수령(SQLITE_BUSY) 재시도 — {@code hmb.mail.busy-retry.*}. 수치 하드코딩 금지.
      * 없으면 두 탭에서 동시에 [받기]를 누른 한쪽이 <b>500</b> 을 본다(독립검증 MAJOR-2 실측).
      * 값·형태는 {@code hmb.trade.busy-retry} 와 같게 둔다 — 같은 함정에 같은 손잡이.

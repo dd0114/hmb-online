@@ -52,7 +52,7 @@ test("#323 헤더 3안 비교 캡처 (390px)", async ({ page }) => {
         records: { wins: 12, draws: 3, losses: 8 },
         rating: 1180,
         league: { division: 5, divisionName: "브론즈 D5" },
-        mail: { unread: 2 },
+        mail: { unread: 2, total: MAILS.length },
       }),
     ),
   );
@@ -74,8 +74,19 @@ test("#323 헤더 3안 비교 캡처 (390px)", async ({ page }) => {
 
   const header = () => page.locator("header");
 
-  // 현재(넘침) — 무엇이 문제인지부터 남긴다.
+  // 0. **닉네임이 있던 시절**의 겹침 — 이 캡처가 §5 의 근거다.
+  //
+  // ⚠️ 닉네임은 이미 제거됐으므로(hero 확정) 그냥 찍으면 A안과 **바이트 동일**한 그림이 나온다 —
+  //    실제로 2차 독립검증이 "인용된 증거가 현 트리에서 재현 불가"(m8)로 잡았다. 그래서 여기서
+  //    닉네임을 **다시 넣어** 문제 상태를 재현한다. 이건 목업이 아니라 제거 전 마크업 그대로다.
+  const nickBack = await page.addStyleTag({
+    content: `header [class*="headerLeft"]::before {
+      content: "감독 박"; font-size: 15px; font-weight: 700; white-space: nowrap;
+      min-width: 4em; color: var(--text);
+    }`,
+  });
   await header().screenshot({ path: `${OUT}p323-opt0-now.png` });
+  await nickBack.evaluate((el) => el.remove());
 
   // D. 전부 유지하고 **두 줄 허용** — 무엇도 지우지 않는 대신 헤더가 한 줄 더 차지한다.
   const wrapStyle = await page.addStyleTag({

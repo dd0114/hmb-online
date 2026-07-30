@@ -4,6 +4,7 @@ import { formatStamp } from "./admin-logic";
 import {
   claimRateText,
   EMPTY_MAIL_FORM,
+  needsConfirm,
   mailOpErrorMessage,
   normalizeCampaigns,
   targetSummary,
@@ -52,8 +53,9 @@ export function MailsPanel() {
   function submit() {
     setTouched(true);
     if (!validation.ok) return;
-    // 전체 발송은 확인 한 번 더 — 대상이 전원이면 오타의 대가가 회수 불가능한 발행이다.
-    if (form.audience === "ALL" && !confirming) {
+    // 되돌릴 수 없는 발행 앞에서는 한 번 더 묻는다. 전체 발송은 물론이고 **지정 발송도 다수면**
+    // 오타의 대가가 같다(독립검증 m10 — 500명 붙여넣기가 첫 클릭에 나갔다).
+    if (needsConfirm(form) && !confirming) {
       setConfirming(true);
       return;
     }
@@ -62,8 +64,15 @@ export function MailsPanel() {
     send.mutate(
       { body: toSendBody(form), idempotencyKey: key },
       {
-        onSuccess: () => {
-          setNotice("발송했습니다. 아래 이력에서 수령률을 확인하세요.");
+        onSuccess: (res) => {
+          // ⚠️ **재전송을 "발송했습니다"로 그리지 않는다**(독립검증 m5). 서버는 201/200 으로 구분해
+          // 주는데 화면이 같은 문구를 쓰면 그 구분에 소비자가 없다 — 운영자는 "또 보냈나"를 모른다.
+          const applied = (res as { applied?: boolean } | undefined)?.applied !== false;
+          setNotice(
+            applied
+              ? "발송했습니다. 아래 이력에서 수령률을 확인하세요."
+              : "같은 요청이 이미 발송돼 있어 **추가 발송은 없었습니다**(멱등 재전송).",
+          );
           setError(null);
           setForm(EMPTY_MAIL_FORM);
           setTouched(false);
@@ -159,17 +168,34 @@ export function MailsPanel() {
 
         {confirming && (
           <p className={m.warn} data-testid="mail-confirm">
-            ⚠️ <b>전체 유저</b>에게 보냅니다. 되돌릴 수 없습니다 — 회수는 <b>미수령분만</b> 막고, 이미
-            받은 사람의 지갑은 그대로입니다. 한 번 더 [보내기]를 누르면 발송합니다.
+            ⚠️ <b>{target.label}</b>에게 보냅니다. 되돌릴 수 없습니다 — 회수는 <b>미수령분만</b> 막고,
+            이미 받은 사람의 지갑은 그대로입니다. 한 번 더 [보내기]를 누르면 발송합니다.
           </p>
         )}
 
         <button type="button" className={m.submit} data-testid="mail-send"
                 disabled={busy} onClick={submit}>
-          {send.isPending ? "보내는 중…" : confirming ? "정말 전체에게 보내기" : "보내기"}
+          {send.isPending ? "보내는 중…" : confirming ? `정말 ${target.label}에게 보내기` : "보내기"}
         </button>
 
         {error && <p className={m.error} data-testid="mail-error">{error}</p>}
+        {/* 서버 409 는 "새 Idempotency-Key 로 요청하세요"라고 안내하는데, 키를 클라가 들고 있으므로
+            그 안내를 실행할 수단이 화면에 있어야 한다(독립검증 m6 — 예전엔 새로고침밖에 없었다).
+            ⚠️ 기본값이 아니라 **명시적 행동**이다: 실패 재시도는 같은 키여야 이중 발행을 막는다. */}
+        {error && idemKey && (
+          <button
+            type="button"
+            className={m.newKey}
+            data-testid="mail-new-key"
+            onClick={() => {
+              setIdemKey(null);
+              setError(null);
+              setNotice("새 키로 보냅니다 — 같은 내용이면 **두 번 발송**되니 확인 후 누르세요.");
+            }}
+          >
+            새 키로 다시 보내기(내용을 고쳤을 때)
+          </button>
+        )}
         {notice && <p className={m.ok} data-testid="mail-notice">{notice}</p>}
       </div>
 

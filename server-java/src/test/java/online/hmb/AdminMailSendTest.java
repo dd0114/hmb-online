@@ -31,6 +31,9 @@ class AdminMailSendTest extends ApiTestBase {
         TestDbSupport.registerTempDb(registry);
         registry.add("hmb.admin.nickname", () -> ADMIN_NICK);
         registry.add("hmb.admin.password", () -> ADMIN_PW);
+        // ⚠️ 발송 이력 창을 **1건**으로 좁힌다 — `detail()` 이 목록을 훑는 형태로 되돌아가면
+        // 곧바로 404 가 되게 만드는 조건이다(2차 독립검증 BL-1: 이 조건이 없어 계약이 공허했다).
+        registry.add("hmb.mail.campaign-list-max", () -> 1);
     }
 
     @Resource
@@ -176,11 +179,17 @@ class AdminMailSendTest extends ApiTestBase {
     }
 
     /**
-     * 목록 창 밖의 캠페인도 단건 조회로 찾는다.
+     * 목록 창 <b>밖</b>의 캠페인도 단건 조회로 찾는다.
      *
      * <p>독립검증 MAJOR-3: {@code detail()} 이 {@code list(100)} 을 훑어 필터해서 101번째 발송 뒤
-     * 가장 오래된 캠페인이 <b>404</b> 가 됐다(회수는 id 로 되는데 확인은 안 되는 상태).
-     * 여기선 {@code limit=1} 로 창을 좁혀 같은 조건을 만든다.
+     * 가장 오래된 캠페인이 <b>404</b> 가 됐다 — 회수는 id 로 되는데 확인은 안 되는 상태.
+     *
+     * <p>⚠️ <b>이 테스트의 초판은 tautology 였다</b>(2차 독립검증 BL-1): {@code limit=1} 은 목록
+     * 엔드포인트의 파라미터일 뿐 {@code detail()} 의 내부 창과 무관해서, 결함 형태로 되돌려도
+     * 841건 전부 통과했다. 지금은 <b>서버의 목록 창 자체</b>를 config 로 1 건으로 좁혀
+     * (`hmb.mail.campaign-list-max`) 캠페인 101건을 만들지 않고 같은 조건을 만든다 —
+     * {@code MailFanoutCapTest} 가 상한을 낮춰 팬아웃 거부를 재현하는 것과 같은 패턴이다.
+     * 변이체 킬 검증: {@code detail()} 을 {@code list(...)} 스캔으로 되돌리면 이 테스트가 죽는다.
      */
     @Test
     void detailFindsCampaignsBeyondTheListWindow() {
@@ -191,12 +200,42 @@ class AdminMailSendTest extends ApiTestBase {
         for (int i = 1; i <= 3; i++) {
             send(admin, targeted(userId, 1L + i), "idem-deep-" + i);
         }
-        HttpResult narrow = get("/api/admin/mails?limit=1", admin);
-        assertThat(narrow.body()).doesNotContain(oldest);
+
+        // 서버 목록 창이 1건이므로 오래된 건은 **어떤 limit 을 줘도** 목록에 없다.
+        HttpResult listed = get("/api/admin/mails?limit=100", admin);
+        assertThat(listed.body()).as("목록 창(1건) 밖이어야 조건이 성립한다").doesNotContain(oldest);
 
         HttpResult detail = get("/api/admin/mails/" + oldest, admin);
         assertThat(detail.status()).as(detail.body()).isEqualTo(HttpStatus.OK);
         assertThat(asMap(detail).get("id")).isEqualTo(oldest);
+    }
+
+    /**
+     * 수신자 <b>순서</b>만 다른 재전송은 같은 요청이다(독립검증 m1 — 정렬에 계약이 없었다).
+     *
+     * <p>정렬을 빼면 `[a,b]` 와 `[b,a]` 가 다른 해시가 되어 <b>같은 의도의 재전송이 409</b> 가 되고,
+     * 운영자가 안내대로 새 키를 쓰면 두 번 발행된다(BL-2 와 같은 함정의 다른 입구).
+     */
+    @Test
+    void recipientOrderDoesNotChangeTheRequest() {
+        String admin = adminToken();
+        String a = user("ml_ord_a");
+        String b = user("ml_ord_b");
+
+        Map<String, Object> first = base();
+        first.put("audience", "USERS");
+        first.put("userIds", List.of(a, b));
+        assertThat(send(admin, first, "idem-order-1").status()).isEqualTo(HttpStatus.CREATED);
+
+        Map<String, Object> reversed = base();
+        reversed.put("audience", "USERS");
+        reversed.put("userIds", List.of(b, a));
+        HttpResult again = send(admin, reversed, "idem-order-1");
+
+        assertThat(again.status()).as(again.body()).isEqualTo(HttpStatus.OK);
+        assertThat(asMap(again).get("applied")).isEqualTo(false);
+        assertThat(inboxCount(a)).isEqualTo(1);
+        assertThat(inboxCount(b)).isEqualTo(1);
     }
 
     // ── 브로드캐스트 ──────────────────────────────────────────────────────

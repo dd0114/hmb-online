@@ -128,6 +128,17 @@ export function toSendBody(form: MailFormValues): MailSendRequestBody {
   return body;
 }
 
+/**
+ * 한 번 더 물어야 하는 발송인가. 전체 발송은 물론이고 **지정 발송도 다수면** 오타의 대가가 같다
+ * (독립검증 m10). 임계는 화면이 아니라 여기 하나 — 바꿀 때 두 곳을 고치게 두지 않는다.
+ */
+export const CONFIRM_TARGET_THRESHOLD = 10;
+
+export function needsConfirm(form: MailFormValues): boolean {
+  if (form.audience === "ALL") return true;
+  return parseUserIds(form.userIds).length >= CONFIRM_TARGET_THRESHOLD;
+}
+
 /** 대상이 몇 명인지 — [보내기] 옆에 붙는 확인 문구용. ALL 은 서버만 아는 수라 null. */
 export function targetSummary(form: MailFormValues): { label: string; count: number | null } {
   if (form.audience === "ALL") {

@@ -78,7 +78,7 @@ test("#323 캡처: 홈 헤더 우편함 + 목록 + 상세 (390px)", async ({ pag
         records: { wins: 12, draws: 3, losses: 8 },
         rating: 1180,
         league: { division: 5, divisionName: "브론즈 D5" },
-        mail: { unread: 2 },
+        mail: { unread: 2, total: MAILS.length },
       }),
     ),
   );

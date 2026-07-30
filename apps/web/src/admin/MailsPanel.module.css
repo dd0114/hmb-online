@@ -168,3 +168,14 @@
   padding: 4px 0;
   border-bottom: 1px solid var(--hairline, rgba(255, 255, 255, 0.07));
 }
+
+/* 새 키로 다시 보내기 — 기본 행동이 아니라 **명시적 선택**이라 보조 버튼이다(m6). */
+.newKey {
+  align-self: flex-start;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+}

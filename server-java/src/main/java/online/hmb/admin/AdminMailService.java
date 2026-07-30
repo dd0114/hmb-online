@@ -78,8 +78,10 @@ public class AdminMailService {
         try {
             SendResult result = doSend(actorUserId, req, idemKey);
             return result;
-        } catch (ApiException e) {
+        } catch (RuntimeException e) {
             // 시도 자체가 이력이다 — 거절도 남긴다(공지·economy 운영과 같은 규율).
+            // ⚠️ `ApiException` 만 잡으면 예기치 못한 5xx(DataAccessException 등)가 원장에 흔적을
+            // 남기지 않는다 — "실패도 남긴다"의 빈 자리였다(독립검증 m9).
             audit(actorUserId, ACTION_SEND, "failed", req == null ? null : req.reason(),
                     Map.of("error", String.valueOf(e.getMessage()),
                             "idempotencyKey", idemKey));
@@ -199,9 +201,12 @@ public class AdminMailService {
                 ? "ALL"
                 : new java.util.TreeSet<>(userIds == null ? List.<String>of() : userIds).stream()
                         .collect(java.util.stream.Collectors.joining(","));
+        // ⚠️ 절대 시각은 **정규화해서** 넣는다(독립검증 m4): `…T00:00:00Z` 와 `…T00:00:00.000Z` 는
+        // 같은 의도인데 문자열이 달라 409 가 났다 — BL-2 와 같은 함정의 좁은 버전이다.
+        // 정규화(`Notices.normalizeInstant`)는 **시계를 읽지 않으므로** BL-2 를 되살리지 않는다.
         String expiry = expiresInDays != null
                 ? "D" + expiresInDays
-                : "A" + (expiresAtRaw == null ? "" : expiresAtRaw.trim());
+                : "A" + String.valueOf(Notices.normalizeInstant(expiresAtRaw, "expiresAt"));
         return Hashes.sha256Hex(audience + "\n" + targets + "\n" + payloadJson + "\n" + expiry);
     }
 
@@ -273,7 +278,7 @@ public class AdminMailService {
 
     /** 발송 이력 — "보냈나 / 몇 명이 받았나"가 운영의 첫 질문이라 수령 통계를 같이 싣는다. */
     public List<CampaignView> list(int limit) {
-        int capped = Math.max(1, Math.min(limit, 100));
+        int capped = Math.max(1, Math.min(limit, props.getCampaignListMax()));
         return jdbcClient.sql(CAMPAIGN_SELECT + " ORDER BY c.created_at DESC, c.id DESC LIMIT ?")
                 .param(capped)
                 .query(CAMPAIGN_ROW)
@@ -289,7 +294,7 @@ public class AdminMailService {
     }
 
     public List<AuditEntry> history(int limit) {
-        int capped = Math.max(1, Math.min(limit, 100));
+        int capped = Math.max(1, Math.min(limit, props.getCampaignListMax()));
         return jdbcClient.sql("""
                         SELECT a.id, a.action, a.result, a.reason, a.detail_json, a.created_at,
                                u.nickname AS actor

@@ -218,6 +218,33 @@ class MailboxApiTest extends ApiTestBase {
         assertThat(points(userId)).as("만료 거절에 부수효과 0").isEqualTo(before);
     }
 
+    /**
+     * <b>이미 받은 우편이 나중에 만료·회수돼도 재요청은 200</b>(독립검증 m3).
+     *
+     * <p>설계 §3.3 = "0행이면 이미 수령 → 200, 유저에게 실패로 보일 이유가 없다". 만료·회수 검사를
+     * CAS <b>앞</b>에 두면 이 교집합이 410 이 된다 — 이미 받은 사람에게 "수령 기간이 지났습니다"가
+     * 뜬다. 그래서 조건을 전부 CAS 안에 넣고, 못 가져간 이유를 행을 다시 읽어 구분한다.
+     */
+    @Test
+    void claimedMailStays200EvenAfterItExpires() {
+        String admin = adminToken();
+        String token = login("mail_late_exp");
+        String userId = userIdOf("mail_late_exp");
+
+        send(admin, targeted(userId, 700L, 0L, null, 0), "idem-lateexp-1");
+        String mailId = firstMailId(token);
+
+        assertThat(post("/api/mails/" + mailId + "/claim", token).status()).isEqualTo(HttpStatus.OK);
+        long afterClaim = points(userId);
+
+        expire(mailId);   // 받은 **뒤에** 기한이 지난다
+
+        HttpResult again = post("/api/mails/" + mailId + "/claim", token);
+        assertThat(again.status()).as(again.body()).isEqualTo(HttpStatus.OK);
+        assertThat(asMap(again).get("applied")).isEqualTo(false);
+        assertThat(points(userId)).isEqualTo(afterClaim);
+    }
+
     // ── 격리 ─────────────────────────────────────────────────────────────
 
     /** 남의 우편물은 <b>404</b>. 403 은 "그 id 는 실재한다"를 흘린다(공지 단건과 같은 규율). */
