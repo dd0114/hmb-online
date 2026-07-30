@@ -1,0 +1,10 @@
+
+ RUN  v2.1.9 /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2
+
+ ✓ apps/web/src/auth/return-to.test.ts (31 tests) 5ms
+
+ Test Files  1 passed (1)
+      Tests  31 passed (31)
+   Start at  01:03:33
+   Duration  386ms (transform 52ms, setup 0ms, collect 50ms, tests 5ms, environment 0ms, prepare 65ms)
+

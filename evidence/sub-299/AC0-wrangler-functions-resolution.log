@@ -1,0 +1,32 @@
+# wrangler functions/ 해석 규칙 — 소스 실증 (#299)
+
+wrangler = /Users/peter.park/.nvm/versions/node/v20.19.6/bin/wrangler (4.86.0)
+cli.js   = /Users/peter.park/.nvm/versions/node/v20.19.6/lib/node_modules/wrangler/wrangler-dist/cli.js
+
+## 1) pages deploy — functionsDirectory 결정
+243404:  const functionsDirectory = customFunctionsDirectory || path3.join(process7.cwd(), "functions");
+
+## 2) pages dev — functionsDirectory
+246508:        const functionsDirectory = "./functions";
+
+## 3) deploy 호출부 인자 — functionsDirectory 키가 **없다** ⇒ 항상 cwd 기준
+        const { deploymentResponse, formData } = await deploy2({
+          directory,
+          accountId,
+          projectName,
+          branch,
+          commitMessage,
+          commitHash,
+          commitDirty,
+          skipCaching: args.skipCaching,
+          bundle: enableBundling,
+          // Sourcemaps from deploy arguments will take precedence so people can try it for one-off deployments without updating their wrangler.toml
+          sourceMaps: config?.upload_source_maps || args.uploadSourceMaps,
+          args
+        });
+        saveToConfigCache(PAGES_CONFIG_CACHE_FILENAME, {
+   (위 인자 목록에 functionsDirectory 가 있는가: 0건)
+
+## 4) --functions-directory 플래그 존재 여부 (0 = 없다)
+0
+0

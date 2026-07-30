@@ -1,0 +1,11 @@
+HTTP/1.1 308 Permanent Redirect
+Transfer-Encoding: chunked
+Date: Wed, 29 Jul 2026 17:18:46 GMT
+Location: /
+Access-Control-Allow-Origin: *
+Cache-Control: no-cache
+permissions-policy: geolocation=(), microphone=(), camera=()
+referrer-policy: strict-origin-when-cross-origin
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+

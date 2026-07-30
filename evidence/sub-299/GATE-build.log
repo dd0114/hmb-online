@@ -1,0 +1,57 @@
+[pages] repo root = /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_611566e2-16e-1
+[pages] node=v20.19.6 npm=10.8.2
+npm warn deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
+
+added 218 packages, and audited 225 packages in 4s
+
+38 packages are looking for funding
+  run `npm fund` for details
+
+12 vulnerabilities (5 moderate, 6 high, 1 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+> @hmb/web@0.0.0 prebuild
+> node scripts/ensure-chars.mjs
+
+[ensure-chars] 최신 — 스킵
+
+> @hmb/web@0.0.0 build
+> tsc -p tsconfig.json --noEmit && vite build
+
+vite v5.4.21 building for production...
+transforming...
+✓ 320 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.46 kB │ gzip:   0.32 kB
+dist/assets/index-Ca1b7AWY.css  141.14 kB │ gzip:  27.27 kB
+dist/assets/index-BS05tPu6.js   654.24 kB │ gzip: 211.48 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 1.53s
+[stage-functions] /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_611566e2-16e-1/infra/pages/functions → /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_611566e2-16e-1/functions
+[stage-functions]   functions/share/notice/[id].js
+[pages] config.json = https://example-backend.invalid (런타임 우선, VITE_API_BASE 는 폴백)
+[pages] VITE_API_BASE=https://example-backend.invalid
+[pages] output:
+total 56
+drwxr-xr-x@ 10 peter.park  staffAlias   320 Jul 30 02:18 .
+drwxr-xr-x@ 14 peter.park  staffAlias   448 Jul 30 02:18 ..
+-rw-r--r--@  1 peter.park  staffAlias  1993 Jul 30 02:18 _headers
+-rw-r--r--@  1 peter.park  staffAlias  1998 Jul 30 02:18 _redirects
+drwxr-xr-x@  4 peter.park  staffAlias   128 Jul 30 02:18 assets
+drwxr-xr-x@ 19 peter.park  staffAlias   608 Jul 30 02:18 chars
+-rw-r--r--@  1 peter.park  staffAlias   111 Jul 30 02:18 config.json
+-rw-r--r--@  1 peter.park  staffAlias  9522 Jul 30 02:18 favicon.svg
+-rw-r--r--@  1 peter.park  staffAlias   463 Jul 30 02:18 index.html
+drwxr-xr-x@  3 peter.park  staffAlias    96 Jul 30 02:18 notice

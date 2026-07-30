@@ -1,0 +1,44 @@
+> Task :compileJava
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:171: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:188: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+2 warnings
+
+> Task :processTestResources
+> Task :testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+2026-07-30T00:54:52.778+09:00  INFO 82576 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-07-30T00:54:52.782+09:00  INFO 82576 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+> Task :test
+
+[Incubating] Problems report is available at: file:///Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/reports/problems/problems-report.html
+
+BUILD SUCCESSFUL in 9s
+5 actionable tasks: 5 executed
+
+=== 실행된 테스트 목록 (server-java/build/test-results/test — 스킵 아님을 증명) ===
+online.hmb.NoticeByIdStatusTest: tests=10 failures=0 errors=0 skipped=0
+  [PASSED] theSameNoticeMovesThroughTheTableAsTimeMoves()  (0.679s)
+  [PASSED] everyStatusHasADecision()  (0.006s)
+  [PASSED] strongestBlockWins()  (0.007s)
+  [PASSED] scheduledIsIndistinguishableFromAbsent()  (0.009s)
+  [PASSED] expiredNoticeIs410()  (0.005s)
+  [PASSED] deletedNoticeIs404()  (0.005s)
+  [PASSED] scheduledNoticeIs404()  (0.005s)
+  [PASSED] unknownIdIs404()  (0.005s)
+  [PASSED] switchedOffNoticeIs410()  (0.005s)
+  [PASSED] liveNoticeIs200WithBody()  (0.004s)
+총 10 케이스

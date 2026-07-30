@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>HMB 온라인</title>
+    <script type="module" crossorigin src="/assets/index-BS05tPu6.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-Ca1b7AWY.css">
+  
+    <meta name="description" content="선수 한 명 한 명에게 지시를 적어 넣는 축구 매니지먼트 게임." />
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="HMB 온라인" />
+    <meta property="og:title" content="HMB 온라인" />
+    <meta property="og:description" content="선수 한 명 한 명에게 지시를 적어 넣는 축구 매니지먼트 게임." />
+    <meta property="og:url" content="http://127.0.0.1:18877/share/notice/01J5GONE0000000000000000EF" />
+    <meta property="og:image" content="http://127.0.0.1:18877/favicon.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="HMB 온라인" />
+    <meta name="twitter:description" content="선수 한 명 한 명에게 지시를 적어 넣는 축구 매니지먼트 게임." />
+    <meta name="twitter:image" content="http://127.0.0.1:18877/favicon.svg" />
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

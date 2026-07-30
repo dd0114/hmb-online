@@ -1,0 +1,8 @@
+ ✓ packages/engine/src/realism/shot-frequency.test.ts (4 tests) 70639ms
+   ✓ G-A 단조성: shoot 성향↑ → 슛 수↑ (config 가 실제 레버) > shoot 사다리 0.15→0.65 엄격 단조 + 0.65→0.80 비엄격(포화 구간) 70637ms
+
+ Test Files  144 passed | 1 skipped (145)
+      Tests  2065 passed | 8 skipped (2073)
+   Start at  01:09:36
+   Duration  87.85s (transform 4.70s, setup 0ms, collect 56.61s, tests 193.64s, environment 27.57s, prepare 12.55s)
+

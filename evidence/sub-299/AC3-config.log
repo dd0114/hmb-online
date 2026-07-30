@@ -1,0 +1,14 @@
+--- Function 소스에 하드코딩된 백엔드가 있는가 (0 이어야 한다) ---
+0
+--- config.json 을 읽는 코드 ---
+26: *    사이트의 **`/config.json`**(`Cache-Control: no-store`)을 **요청 시각에** 읽는다 — #183 워치독은
+90: * 백엔드 주소 = **같은 사이트의 `/config.json`**. 굽지 않는 이유는 머리말 5번.
+94:  const cfgUrl = new URL("/config.json", url.origin).toString();
+--- 지금 사이트가 서빙하는 config.json ---
+{
+  "apiBase": "http://127.0.0.1:18991",
+  "updatedAt": "2026-07-30T00:00:00Z",
+  "source": "e2e"
+}
+--- config.json 교체 후 og:title ---
+property="og:title" content="[B] 경니시우스 합류 안내"

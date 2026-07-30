@@ -1,0 +1,90 @@
+> Task :compileJava
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:166: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:183: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+2 warnings
+
+> Task :processTestResources
+> Task :testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :test
+
+NoticeByIdApiTest > reachableWithoutAuth() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdApiTest.java:107
+
+NoticeByIdApiTest > operationalFieldsNeverLeak() FAILED
+    org.springframework.jdbc.UncategorizedSQLException at NoticeByIdApiTest.java:161
+        Caused by: org.sqlite.SQLiteException at NoticeByIdApiTest.java:161
+
+NoticeByIdApiTest > nullWindowStillCarriesTheKeys() FAILED
+    java.lang.AssertionError at NoticeByIdApiTest.java:183
+
+NoticeByIdApiTest > authenticatedUsersSeeTheSameNotice() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdApiTest.java:119
+
+NoticeByIdApiTest > payloadCarriesEverythingThePopupNeeds() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdApiTest.java:137
+
+NoticeByIdApiTest > singleAndFeedShareTheSameShape() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdApiTest.java:204
+
+NoticeByIdStatusTest > theSameNoticeMovesThroughTheTableAsTimeMoves() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:193
+
+NoticeByIdStatusTest > strongestBlockWins() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:231
+
+NoticeByIdStatusTest > expiredNoticeIs410() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:231
+
+NoticeByIdStatusTest > deletedNoticeIs404() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:231
+
+NoticeByIdStatusTest > scheduledNoticeIs404() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:231
+
+NoticeByIdStatusTest > unknownIdIs404() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:157
+
+NoticeByIdStatusTest > switchedOffNoticeIs410() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:231
+
+NoticeByIdStatusTest > liveNoticeIs200WithBody() FAILED
+    org.opentest4j.AssertionFailedError at NoticeByIdStatusTest.java:231
+
+2026-07-30T00:49:33.689+09:00  INFO 65029 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-07-30T00:49:33.701+09:00  INFO 65029 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+2026-07-30T00:49:33.708+09:00  INFO 65029 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Shutdown initiated...
+2026-07-30T00:49:33.716+09:00  INFO 65029 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-2 - Shutdown completed.
+
+> Task :test FAILED
+
+16 tests completed, 14 failed
+
+[Incubating] Problems report is available at: file:///Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-1/server-java/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 11s
+5 actionable tasks: 5 executed

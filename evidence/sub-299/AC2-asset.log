@@ -1,0 +1,15 @@
+HTTP/1.1 200 OK
+Transfer-Encoding: chunked
+Date: Wed, 29 Jul 2026 17:18:46 GMT
+Content-Type: image/webp
+Access-Control-Allow-Origin: *
+Cache-Control: public, max-age=0, must-revalidate
+ETag: "e49ade97072af19fce1a791c425a3541"
+permissions-policy: geolocation=(), microphone=(), camera=()
+referrer-policy: strict-origin-when-cross-origin
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+x-server-env: dev
+
+--- body bytes ---
+   81806

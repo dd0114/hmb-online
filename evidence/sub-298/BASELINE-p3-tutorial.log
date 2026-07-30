@@ -1,0 +1,12 @@
+    > 237 |     .toBe(true);
+          |      ^
+      238 |
+      239 |   const g = await geometryOf(page, targetTestId);
+      240 |   expect(g, `${targetTestId} 배치 실측`).not.toBeNull();
+        at expectBubblePointsAt (/Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p3-tutorial.spec.ts:237:6)
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/wf_116b9036-21b-2/apps/web/e2e/p3-tutorial.spec.ts:794:11
+
+    Error Context: test-results/p3-tutorial-덱-스텝-—-라우트-넘나듦-60ad4--덱-구성-을-누르면-덱-화면에서-그대로-이어진다-chromium/error-context.md
+
+  1 failed
+    [chromium] › e2e/p3-tutorial.spec.ts:784:3 › 덱 스텝 — 라우트 넘나듦 › (a) 하이라이트된 '덱 구성'을 누르면 덱 화면에서 그대로 이어진다 

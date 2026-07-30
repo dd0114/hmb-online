@@ -38,9 +38,13 @@ npx -y wrangler pages deploy apps/web/dist --project-name="$PROJECT" --branch=ma
 # (리포 안에 두면 워크트리마다 달라져 엉뚱한 dist 를 배포할 수 있다 — 그래서 리포 밖.)
 mkdir -p "$CACHE"
 rsync -a --delete apps/web/dist/ "$CACHE/"
+# Pages Function(#299)도 같이 보존한다 — dist 에 들어 있지 않고 **cwd 아래 functions/** 에서
+# 읽히기 때문에, 이게 없으면 워치독 재배포가 OG Function 을 **삭제**한다(미리보기가 조용히 죽는다).
+mkdir -p "$CACHE.functions"
+rsync -a --delete functions/ "$CACHE.functions/"
 printf 'deployedAt=%s\nbackend=%s\ngit=%s\nfrom=%s\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BACKEND" "$(git rev-parse --short HEAD 2>/dev/null || echo ?)" "$PWD" \
   > "$CACHE.meta"
-echo "[deploy-web] dist 스냅샷 보존 → $CACHE"
+echo "[deploy-web] dist 스냅샷 보존 → $CACHE (+ functions → $CACHE.functions)"
 
 echo "[deploy-web] 완료 — web=https://$PROJECT.pages.dev  →  backend=$BACKEND"

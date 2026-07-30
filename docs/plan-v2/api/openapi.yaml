@@ -1509,6 +1509,62 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/ActiveNotice" }
 
+  /api/notices/{id}:
+    get:
+      tags: [notices]
+      operationId: getNoticeById
+      # **공개 엔드포인트**(전역 bearerAuth 해제) — /api/notices/active 와 같은 처지에 더해,
+      # **공유 링크는 정의상 미로그인 상태에서 열린다**. 여기에 401 을 두면 카톡으로 받은 링크가
+      # 로그인 벽부터 보여 주고 공지 내용은 도달하지 않는다.
+      # ⚠️ 이 줄을 지우면 전역 security 가 되살아나 계약이 "인증 필요"로 읽힌다.
+      security: []
+      summary: 공유 딥링크가 읽는 공지 단건 (#297, 에픽 #293)
+      description: |
+        `/share/notice/{id}` 딥링크(web #298)와 OG 썸네일 Function(infra #299)이 읽는다.
+
+        **상태 판정은 서버가 한다**(피드와 같은 규칙 — `Notices.status`: DELETED → OFF → EXPIRED →
+        SCHEDULED → LIVE). 클라는 기간을 재계산하지 않고 **응답 코드로만 분기**한다:
+
+        | 공지 상태 | 코드 | 클라 동작 |
+        |---|---|---|
+        | LIVE | **200** + 본문 | 그 공지를 팝업으로 연다 |
+        | EXPIRED · OFF | **410** | "기간이 지난 공지입니다" 안내 후 로비로 |
+        | SCHEDULED · DELETED · 없는 id | **404** | 존재를 숨긴다 |
+
+        ⚠️ **예약(SCHEDULED)이 410 이 아니라 404 인 이유**: 410 은 "그 id 는 실재한다"를 흘린다.
+        아직 공개하지 않은 공지가 링크 한 줄로 존재를 들키면 준비 중인 점검 일정·이벤트가 먼저 퍼진다.
+        그래서 예약 공지의 404 응답은 **없는 id 와 본문까지 동일**하다(문구로도 새지 않는다).
+
+        응답 본문은 피드 항목과 **같은 모양**(`ActiveNotice`)이다 — 래핑 객체가 아니라 공지 그 자체라
+        클라가 한 건을 그대로 팝업 카드에 넘길 수 있다. 운영 전용 필드(active·deletedAt·createdBy·
+        updatedAt)는 여기에도 실리지 않는다(인증 없이 열려 있다).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+          description: 공지 ULID
+      responses:
+        "200":
+          description: LIVE — 지금 보여도 되는 공지
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ActiveNotice" }
+        "404":
+          description: |
+            없는 id · 예약(SCHEDULED) · 삭제(DELETED). code=NOT_FOUND.
+            세 경우의 응답은 **구분 불가능**하다(존재 누출 차단).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+        "410":
+          description: |
+            기간이 끝났거나(EXPIRED) 운영이 내린(OFF) 공지. code=GONE.
+            본문은 싣지 않는다 — 앱은 안내 문구만 띄우고 로비로 보낸다.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
+
 
 components:
   securitySchemes:
@@ -1598,6 +1654,10 @@ components:
         # #217 매치 잠금(additive) — 끝나지 않은 매치가 있어 이 요청을 받을 수 없다.
         # detail = {matchId, state, action} — web 은 matchId 로 "이어하기" 를 띄운다.
         - MATCH_IN_PROGRESS
+        # #297 공유 딥링크(additive) — **있었지만 지금은 끝난** 리소스(410). 404 와 나누는 이유는
+        # 클라가 안내 문구를 고를 수 있게 하기 위해서다(만료 공지 = "기간이 지난 공지입니다").
+        # ⚠️ 존재를 숨겨야 하는 것에는 쓰지 마라 — 410 은 "그 id 는 실재한다"를 흘린다.
+        - GONE
 
     ApiError:
       type: object

@@ -91,8 +91,34 @@ log "config.json: ${PREV:-<없음>} → $BACKEND"
 # 조용히 매달릴 수 있다 — 애초에 건드릴 게 없는 곳에서 돌린다.
 WORKDIR="${HMB_WORK_DIR:-/tmp/hmb-wrangler-work}"
 mkdir -p "$WORKDIR"
+
+# ⚠️ Pages **Function**(#299 공유 URL OG 썸네일)은 dist 안이 아니라 **wrangler 를 실행한 cwd 바로
+#    아래 `functions/`** 에서 읽힌다(wrangler 4.86.0: `functionsDirectory = cwd + "/functions"`).
+#    그래서 여기서 스냅샷을 WORKDIR 에 깔지 않으면, 이 재배포가 사이트에서 Function 을 **지운다**
+#    (터널이 한 번 죽을 때마다 공유 미리보기가 조용히 사라진다 — 배포 자체는 성공한 것처럼 보인다).
+#    스냅샷은 deploy-pages.sh / deploy-web.sh 가 배포 직후 `$CACHE.functions` 로 남긴다.
+FUNCS="${HMB_FUNCTIONS_CACHE:-$CACHE.functions}"
+rm -rf "$WORKDIR/functions"
+if [ "${HMB_SKIP_FUNCTIONS:-0}" != "1" ] && [ -d "$FUNCS" ]; then
+  mkdir -p "$WORKDIR/functions"
+  rsync -a --delete "$FUNCS/" "$WORKDIR/functions/"
+  log "functions 스냅샷 적재: $FUNCS → $WORKDIR/functions"
+else
+  # 여기서 중단하지 않는다 — 워치독의 1순위는 **접속 복구**(MTTR)이고 OG 는 부가 기능이다.
+  # 대신 조용히 넘어가지 않게 경고를 남긴다(정상 배포를 한 번 돌리면 스냅샷이 생긴다).
+  log "⚠ functions 스냅샷 없음($FUNCS) — OG Function 없이 배포된다. 정상 배포 1회로 복구:  bash infra/deploy-pages.sh <백엔드URL>"
+fi
+
 cd "$WORKDIR"
 export WRANGLER_SEND_METRICS=false   # 원격 메트릭 POST 를 임계 경로에서 제거(행 지점 직전에 찍힘)
+
+# 배선 검증용(#299) — 실제 배포/검증은 건너뛰고 여기까지의 준비 상태만 남긴다.
+# 배포는 부작용이 크고 되돌릴 수 없어서, 계약 테스트는 이 지점까지만 잰다.
+if [ "${HMB_PUBLISH_DRYRUN:-0}" = "1" ]; then
+  log "DRYRUN — 배포 생략. cwd=$PWD  functions=$(find "$WORKDIR/functions" -type f 2>/dev/null | wc -l | tr -d ' ')개  dist=$CACHE"
+  find "$WORKDIR/functions" -type f 2>/dev/null | sed "s|^$WORKDIR/|[publish]   |"
+  exit 0
+fi
 
 # `npx -y wrangler` 는 매 실행마다 레지스트리를 확인해 **수 분** 걸릴 수 있다(실측 ~4분:
 # 자가복구 MTTR 을 통째로 잡아먹는다). 설치된 바이너리가 있으면 그걸 쓴다.
