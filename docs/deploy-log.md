@@ -6,6 +6,29 @@
 
 ---
 
+## 2026-07-30T00:49Z — **배포 v2.03** (태그 `deploy-2.03`) — 공지 팝업 장 분리·본문 스크롤(#292) + 공유 딥링크·OG(#293) + 랭킹/원정 자격 필터(#296·#300)
+
+- **git**: **`9e4a71c`**(태그 `deploy-2.03`). 앞자리 유지 = **배포 v2.03**. #309 W1/W2 는 미머지로 이번 열차 제외.
+- **모듈 버전**: engine `@0.23.0`(무변경) · server-java `0.1.0`(공개 단건 공지 API·자격 필터) · web `0.0.0`(#292·#293) · servants `0.0.1`(무변경) · **infra(#299 Pages Function 배선 신규)** · 발행물 4종 무변경
+- **이미지**: `hmb-java` `sha256:1ad3131b9284…`(**신규**) · `hmb-runner` `sha256:5dd6bc199603…`(**무변경** — `packages/**` 접촉 0 → runner 재빌드·executor 재기동 생략)
+- **DB**: **신규 마이그레이션 없음**(Flyway **v29** 유지). 표준 백업만 — `pre-deploy203-20260730T004750Z.db`(316,108,800 B · sha256 `228a295372a1566fcff75ad5660cda7b3d8a9a5b73473540343dd1a2d75aefcd` · integrity ok · users 173).
+- **③ override**: 발행물 변경 0 → 유지. java recreate 후 재확인(`OVERRIDE`·`initialGems=12000`).
+- **🆕 배포 절차가 바뀌었다 — Pages Function(#299)**: 이번 열차가 `infra/**`(내 owned-glob)를 고쳤다. `wrangler pages deploy` 는 **`--functions-directory` 플래그가 없고 `cwd/functions` 만** 본다 → `infra/pages/build.sh` 가 `stage-functions.sh` 로 `infra/pages/functions/` → **리포 루트 `functions/`**(생성물·gitignore)로 스테이징하고, `deploy-pages.sh` 가 **`$CACHE.functions` 로 스냅샷을 보존**하며 `publish-backend-url.sh` 가 재배포 전 그것을 복원한다. **이 스냅샷이 없으면 워치독(#183)의 config 재배포가 OG Function 을 조용히 삭제한다.** 이번 배포 로그에서 스테이징·스냅샷 둘 다 확인(`functions/share/notice/[id].js` · `~/.cache/hmb/dist-current.functions/`). **내 절차 변경은 없다** — `deploy-pages.sh` 한 줄이 그대로 처리한다.
+- **결과**: ✅ GREEN (실패 요청 0 · JS 에러 0)
+  - **공개 단건 공지 API(#293)**: `GET /api/notices/{id}` **인증 없이 200**(title·revision·body), 없는 id **404**.
+  - **OG 썸네일 Function(#293/#299)**: `GET https://hmb-online.pages.dev/share/notice/{id}` **200 `text/html`** + 메타 실측 — `og:type=article` · `og:title=경니시우스 합류!` · `og:description`(본문 발췌) · `og:url`(정규 공유 URL) · **`og:image=/notice/hero-kyeongnicius.webp`** · `twitter:card=summary_large_image`.
+  - **미로그인 딥링크 복귀(#293)**: 미로그인으로 `/share/notice/{id}` 진입 → **`/login?returnTo=%2Fshare%2Fnotice%2F{id}`** 로 유도 → 로그인 완료 후 **`/share/notice/{id}` 로 복귀**하며 공지 본문 렌더.
+  - **공지 장 분리(#292)**: 로비 팝업 페이저 **`1 / 2`**(활성 공지 2건 — 경니시우스 priority 10, 업데이트 안내 priority 5) 실측.
+  - **랭킹·원정 자격 필터(#296/#300)**: `GET /api/away/candidates` = **후보 2명**(전체 유저 **173명** 중), `GET /api/rankings` = **0건** — "게임 한 판 한 유저만" 필터가 실제로 걸려 있음(필터 없으면 170+ 명이 후보로 나온다).
+  - **무회귀**: 가입 스타터·튜토덱·지갑 `3,000 G / 12,000 Z`·로비/육성/상점 정상.
+  - `version.json` = **`9e4a71c`**.
+- **📌 미검증으로 남긴 것(정직 표기)**:
+  - **본문 스크롤(#292)** — 현재 활성 공지 2건의 본문이 **모바일 390×844 에서도 넘치지 않아** 스크롤 영역이 발동하지 않았다(`overflowY` 스크롤 후보 0개). 긴 본문 공지가 올라가면 확인 가능하며, 계약은 web e2e 소관.
+  - **카카오톡 등 실제 SNS 미리보기** — OG 메타는 위와 같이 실측했지만 **크롤러가 실제로 그리는 카드는 hero 몫**(noticepg 가 #293 에 남긴 4스텝 중 이 항목).
+- **비고**: 스모크 중 활성 공지가 1건 → 2건으로 늘어나 있었다(다른 곳에서 추가). 경니시우스 공지는 이제 **revision 3**.
+
+---
+
 ## 2026-07-29T14:24Z — **배포 v2.02** (태그 `deploy-2.02`) — 하프타임 포메이션·배치(#276) + 아이콘 정책(#285) + 정보탭 상시·후반지시 미리작성(#284)
 
 - **git**: **`abba231`**(태그 `deploy-2.02`). 앞자리 유지 = **배포 v2.02**.
