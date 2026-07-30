@@ -150,6 +150,8 @@ test.describe("AC-A1 — 회원가입", () => {
     await expect(page.getByText("스타터 팩 지급")).toBeVisible();
     await page.getByRole("button", { name: "확인" }).click();
     await expect(page).toHaveURL(/\/home$/);
+    // #286: 로그인 수단 뱃지가 로비 헤더 → **[내 정보] 탭**으로 옮겼다(홈은 간결하게, hero 3R).
+    await page.goto("/me");
     await expect(page.getByTestId("provider-badge")).toHaveText("아이디");
 
     // 서버 RegisterRequest.java 와 정확히 같은 2필드(여분 필드 0).

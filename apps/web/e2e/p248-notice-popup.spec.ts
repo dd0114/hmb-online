@@ -397,7 +397,7 @@ test.describe("#248 로비 팝업 큐 — 공지 × 원정(#245) 교차", () => 
     await expect(openDialogs(page), "열린 모달은 정확히 1개").toHaveCount(1);
   });
 
-  test("공지를 다 닫은 뒤 [게임 시작] → 원정이 열린다 (삼키지 않고 미룰 뿐)", async ({ page }) => {
+  test("공지를 다 닫아도 원정은 살아 있다 — 다른 화면에서 그대로 뜬다 (삼키지 않는다)", async ({ page }) => {
     await mockLobby(page, {
       payload: { notices: [notice({ id: "N1" }), notice({ id: "N2" })] },
       status: 200,
@@ -405,7 +405,7 @@ test.describe("#248 로비 팝업 큐 — 공지 × 원정(#245) 교차", () => 
     });
     await gotoLobby(page);
 
-    // 1단계 — 공지 2장. 원정은 대기.
+    // 1단계 — 홈에서 공지 2장. 원정은 여기 없다(#286 에서 게임 탭으로 갔다).
     await expect(page.getByTestId("notice-pager")).toHaveText("1 / 2");
     await expect(openDialogs(page)).toHaveCount(1);
     await page.getByTestId("notice-close").click();
@@ -413,55 +413,46 @@ test.describe("#248 로비 팝업 큐 — 공지 × 원정(#245) 교차", () => 
     await expect(openDialogs(page), "장을 넘기는 중에도 1개").toHaveCount(1);
     await page.getByTestId("notice-close").click();
 
-    // 2단계 — 공지가 끝나면 모달이 하나도 없다(원정이 자동으로 튀어나오지 않는다: 트리거가 CTA다).
+    // 2단계 — 공지가 끝나면 홈에 모달이 하나도 없다.
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
     await expect(openDialogs(page)).toHaveCount(0);
 
-    // 3단계 — CTA 를 누르면 그제서야 원정. 공지가 원정을 소진시키지 않았다.
-    await page.getByTestId("home-tile-game").click();
+    // 3단계 — 게임 탭의 [원정] 카드를 누르면 그제서야 원정. **공지가 원정을 소진시키지 않았다.**
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
     await expect(openDialogs(page)).toHaveCount(1);
   });
 
   /**
-   * **큐가 실제로 판정하는 유일한 창** — 공지가 늦게 오는 사이 유저가 CTA 를 눌러 원정이 먼저 열린
-   * 상태에서 공지가 도착한다. 이때 `pickLobbyPopup` 이 공지를 고르고 원정은 **닫혔다가 뒤에 다시**
-   * 나온다. 우선순위를 뒤집으면 공지가 영영 안 뜨고, 큐를 우회해 각자 렌더하면 둘이 동시에 뜬다.
+   * **#286 이후 두 팝업은 구조적으로 겹칠 수 없다** — 공지는 홈(진입), 원정은 게임 탭([원정] 카드).
+   *
+   * 예전 계약("원정이 먼저 열린 뒤 공지가 도착하면 공지가 이긴다")은 **한 화면에 둘 다 있을 때**의
+   * 경합 규칙이었다. 그 경합 창이 사라졌으므로 같은 시나리오를 재현할 수 없다 — 대신 **경합이
+   * 불가능하다는 사실 자체**를 박아 둔다. 누군가 원정 팝업을 홈으로 되돌리면 여기서 깨지고,
+   * 그때는 `pickLobbyPopup` 에 `away` 를 다시 채우면 된다(규칙과 테스트는 그대로 살아 있다).
    */
-  test("원정이 먼저 열린 뒤 공지가 도착하면 — 공지가 이기고, 원정은 그 뒤에 다시 나온다", async ({
-    page,
-  }) => {
+  test("공지는 홈에만, 원정은 게임 탭에만 뜬다 — 한 화면에 둘이 겹칠 수 없다", async ({ page }) => {
     await mockLobby(page, {
       payload: { notices: [notice({ id: "N1", title: "긴급 점검" })] },
       status: 200,
-      delayMs: 2500,
       away: awayReportsPayload(),
     });
 
-    // 원정 데이터가 도착한 것을 확인한 뒤에 눌러야 CTA 가 모드 선택으로 새지 않는다.
-    const awayLoaded = page.waitForResponse(
-      (r) => r.url().includes("/api/me/away-reports") && r.request().method() === "GET",
-    );
+    // 홈: 공지만. 원정 리포트가 미확인 상태여도 홈에서는 뜨지 않는다.
     await gotoLobby(page);
-    await awayLoaded;
-
-    // 공지는 아직 오는 중 — 원정이 먼저 열린다.
-    await expect(page.getByTestId("notice-popup")).toHaveCount(0);
-    await page.getByTestId("home-tile-game").click();
-    await expect(page.getByTestId("away-report-modal")).toBeVisible();
-    await expect(openDialogs(page)).toHaveCount(1);
-
-    // 공지가 도착 → 큐가 공지를 고른다. **동시에 두 개가 열리는 순간이 없다.**
-    await expect(page.getByTestId("notice-popup")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("notice-popup")).toBeVisible();
     await expect(page.getByTestId("notice-title")).toHaveText("긴급 점검");
-    await expect(page.getByTestId("away-report-modal"), "원정은 밀려났다").toHaveCount(0);
+    await expect(page.getByTestId("away-report-modal"), "원정은 홈에 없다").toHaveCount(0);
     await expect(openDialogs(page), "겹치는 순간 없이 항상 1개").toHaveCount(1);
-
-    // 공지를 닫으면 밀려났던 원정이 되돌아온다 — 진 쪽이 사라지는 게 아니다.
     await page.getByTestId("notice-close").click();
-    await expect(page.getByTestId("away-report-modal")).toBeVisible();
+
+    // 게임 탭: 원정만. 공지는 홈 진입 트리거라 여기서 저절로 뜨지 않는다.
+    await page.goto("/game");
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
+    await page.getByTestId("mode-away").click();
+    await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await expect(openDialogs(page)).toHaveCount(1);
   });
 });

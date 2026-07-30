@@ -46,6 +46,16 @@ function shortDate(iso: string | undefined): string {
  * ⚠️ `embedded` (#286 W2): 로그는 이제 **[내 정보] 탭 안**에 산다. embedded 면 자기 `Layout`·헤더를
  * 그리지 않는다 — 안 그러면 `app-container` 가 두 겹이 되어 네비 여백·최대폭이 이중으로 걸린다.
  */
+/**
+ * ⚠️ 목록 렌더는 **배열인지 먼저 본다**(`asList`). `(data ?? [])` 로는 부족하다 — 구 서버·빈
+ * 응답이 200 `{}` 를 주면 `{}` 는 nullish 가 아니라 그대로 통과하고 `.map` 이 던진다.
+ * #286 이후 이 화면은 **[내 정보] 탭 안**에 살아서, 여기서 던지면 탭 하나가 통째로 흰 화면이다
+ * (실측: `TypeError: (data ?? []).map is not a function`). #245 가 로비에서 같은 방식으로 당했다.
+ */
+function asList<T>(data: T[] | undefined): T[] {
+  return Array.isArray(data) ? data : [];
+}
+
 export function LogsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>("matches");
@@ -141,14 +151,14 @@ function MatchLogsTab() {
 
       {isError && <ErrorToast message="경기 기록을 불러오지 못했습니다" />}
       {isLoading && <p className={styles.pending}>불러오는 중…</p>}
-      {!isLoading && data && data.length === 0 && (
+      {!isLoading && asList(data).length === 0 && (
         <p className={styles.empty} data-testid="matches-empty">
           기록이 없습니다.
         </p>
       )}
 
       <ul className={styles.list}>
-        {(data ?? []).map((item) => (
+        {asList(data).map((item) => (
           <MatchLogRow
             key={item.id}
             item={item}
@@ -233,13 +243,13 @@ function TradeLogsTab() {
     <div data-testid="logs-trades">
       {isError && <ErrorToast message="트레이드 이력을 불러오지 못했습니다" />}
       {isLoading && <p className={styles.pending}>불러오는 중…</p>}
-      {!isLoading && data && data.length === 0 && (
+      {!isLoading && asList(data).length === 0 && (
         <p className={styles.empty} data-testid="trades-empty">
           이력이 없습니다.
         </p>
       )}
       <ul className={styles.list}>
-        {(data ?? []).map((item) => (
+        {asList(data).map((item) => (
           <TradeLogRow key={item.id} item={item} />
         ))}
       </ul>
@@ -293,7 +303,10 @@ function RankingsTab() {
   }, [players]);
 
   if (isError) return <ErrorToast message="랭킹을 불러오지 못했습니다" />;
-  if (isLoading || !data) return <p className={styles.pending}>불러오는 중…</p>;
+  // 배열이 아니면(구 서버 200 `{}`) 던지지 말고 로딩/빈 상태로 떨어진다 — 위 asList 와 같은 이유.
+  if (isLoading || !data || !Array.isArray(data.leaderboard)) {
+    return <p className={styles.pending}>불러오는 중…</p>;
+  }
 
   return (
     <div data-testid="logs-rankings" className={styles.rankingsGrid}>

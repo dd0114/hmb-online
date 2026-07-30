@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { useMe } from "../api/hooks";
 import { Layout } from "../common/Layout";
+import { PointsBadge } from "../common/PointsBadge";
 import { ShopPage } from "../shop/ShopPage";
 import { TradePage } from "../trade/TradePage";
 import styles from "./RecruitPage.module.css";
@@ -17,13 +19,22 @@ type Tab = "gacha" | "trade";
  * 트레이드가 열린다(리다이렉트가 그 쿼리를 붙인다). 안 그러면 `/trade` 북마크가 뽑기로 떨어진다.
  */
 export function RecruitPage() {
+  const { data: me } = useMe();
   const initial: Tab =
     new URLSearchParams(window.location.search).get("tab") === "trade" ? "trade" : "gacha";
   const [tab, setTab] = useState<Tab>(initial);
 
+  /**
+   * ⚠️ **지갑은 여기서 그린다.** 얹히는 화면들(`ShopPage`·`TradePage`)은 `embedded` 라 자기
+   * 헤더를 그리지 않으므로, 상위가 안 그리면 **살 것을 고르는 화면에서 잔액이 사라진다**
+   * (실제로 그렇게 됐고 growth-mock 계약이 잡았다). 뽑기·트레이드 둘 다 돈을 쓰는 자리다.
+   */
   const header = (
     <div className={styles.headerRow}>
       <h1 className={styles.pageTitle}>영입</h1>
+      {typeof me?.wallet?.points === "number" && (
+        <PointsBadge points={me.wallet.points} gems={me.wallet.gems ?? 0} />
+      )}
     </div>
   );
 

@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useMe } from "../api/hooks";
+import { useToken } from "../auth/TokenContext";
+import { providerMeta } from "../auth/login-flow";
 import { Layout } from "../common/Layout";
 import { LogsPage } from "../logs/LogsPage";
 import { useTutorial } from "../common/tutorial-context";
@@ -18,6 +20,7 @@ import styles from "./MePage.module.css";
 export function MePage() {
   const navigate = useNavigate();
   const { data: me } = useMe();
+  const { provider } = useToken();
   const { restart: restartTutorial } = useTutorial();
   const rec = me?.records;
 
@@ -32,7 +35,7 @@ export function MePage() {
       <div className={styles.page} data-testid="me-page">
         <section className={styles.profile}>
           <div className={styles.pinfo}>
-            <b className={styles.nick}>{me?.user.nickname ?? "감독님"}</b>
+            <b className={styles.nick}>{me?.user?.nickname ?? "감독님"}</b>
             <div className={styles.badges}>
               {/* 디비전 이름은 서버 값 그대로 — 클라가 level 로 만들지 않는다(#262 BL-1). */}
               {me?.league?.divisionName && (
@@ -43,6 +46,13 @@ export function MePage() {
               {me?.rating !== undefined && (
                 <span className={styles.badge} data-testid="me-rating">
                   원정 레이팅 {me.rating}
+                </span>
+              )}
+              {/* 로그인 수단 — 로비 헤더에 있던 것을 **계정 정보 자리**로 옮겼다(#286).
+                  홈은 최대한 간결하게 가기로 했고(hero 3R), 이건 매 화면에 필요한 정보가 아니다. */}
+              {provider && (
+                <span className={styles.badge} data-testid="provider-badge">
+                  {providerMeta(provider).badge}
                 </span>
               )}
             </div>

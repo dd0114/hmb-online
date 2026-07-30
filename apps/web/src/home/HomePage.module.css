@@ -245,3 +245,43 @@
   place-items: center;
   font-size: 18px;
 }
+
+/* 짧은 뷰포트(가로모드 폰) — 타일을 낮춘다.
+   ⚠️ 취향이 아니라 계약이다: 온보딩 코치마크 말풍선이 대상 위/아래에 **화면 안에** 들어가야
+   하는데(p3-tutorial 의 `settled` 기하), 390px 높이에서 112px 짜리 주인공 타일 아래위로는
+   말풍선이 들어갈 자리가 없어 배치가 영영 안정되지 않는다(실측). 세로에서는 그대로다. */
+@media (max-height: 520px) {
+  /* 타일 위쪽(팀 한 줄·간격)도 같이 줄인다 — 말풍선이 대상 **아래**에 들어가려면 대상이
+     그만큼 위에 있어야 한다. 실측: 390px 높이에서 대상이 y=146 이면 말풍선(171px)이 못 들어가
+     위로 클램프되며 대상을 덮는다(gap 음수). */
+  .page {
+    gap: 8px;
+  }
+  .teamRow {
+    padding: 7px 10px;
+    gap: 8px;
+  }
+  .tile {
+    min-height: 62px;
+    padding: 10px 12px;
+  }
+  .tilePrimary {
+    min-height: 70px;
+  }
+  .tileIcon {
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+  }
+  .tilePrimary .tileIcon {
+    width: 40px;
+    height: 40px;
+    font-size: 22px;
+  }
+  .tileLabel {
+    font-size: 15px;
+  }
+  .tilePrimary .tileLabel {
+    font-size: 17px;
+  }
+}

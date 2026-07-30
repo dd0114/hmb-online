@@ -1,5 +1,5 @@
 /* 영입 = 뽑기 + 트레이드 한 화면 (#286 W2). */
-.headerRow { display: flex; align-items: center; justify-content: center; }
+.headerRow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .pageTitle { margin: 0; font-size: 17px; }
 .seg { display: flex; gap: 3px; padding: 3px; margin-bottom: 12px; background: var(--sunk); border-radius: 11px; }
 .segItem {

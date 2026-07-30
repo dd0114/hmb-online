@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAbandonMatch, useActiveMatch, useDeck, useMe, usePlayers } from "../api/hooks";
 import { useTradeSlots } from "../api/hooks-v2";
@@ -11,6 +11,8 @@ import { CharAvatar } from "../common/CharAvatar";
 import { NoticeCenter } from "../lobby/NoticeCenter";
 import { NoticePopup } from "../lobby/NoticePopup";
 import { visibleNotices, type Notice } from "../lobby/notice-logic";
+import { pickLobbyPopup } from "../lobby/lobby-popup";
+import { useTutorial } from "../common/tutorial-context";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
 import { HOME_TILES, homeTileState, openTradeCount, teamLine } from "./home-logic";
 import styles from "./HomePage.module.css";
@@ -56,20 +58,69 @@ export function HomePage() {
   // 결과를 쓰지 않는다. 조회를 끊고 싶으면 훅에 enabled 를 여는 게 맞고, 그건 이 에픽 밖이다.
   const { data: trade } = useTradeSlots();
 
+  // ── 공지 팝업 (#248 → #286 로 이관) ──────────────────────────────────────
+  // ⚠️ **온보딩 우선 규칙을 반드시 같이 옮겨야 한다.** 처음 이관할 때 이걸 빠뜨렸고, 그 결과
+  // 게임을 처음 켠 사람이 무엇을 하라는 안내를 받기 전에 "새벽 점검 안내"부터 읽게 됐다
+  // (코치마크는 다른 다이얼로그가 열리면 스스로 숨으므로 **조용히 사라져 있었다**).
+  // p248b 계약이 그걸 잡았다.
   const notices = useActiveNotices();
   const [noticeDone, setNoticeDone] = useState(false);
-  const noticeList: Notice[] = useMemo(
+  const { active: tutorialActive } = useTutorial();
+  const candidates: Notice[] = useMemo(
     () => visibleNotices(notices.data, Date.now()),
     [notices.data],
   );
 
-  const ownedCount = useMemo(() => (players ?? []).filter((p) => p.owned).length, [players]);
+  /**
+   * **이번 방문 동안 온보딩이 화면을 잡았는가** — 한 번 참이면 이 방문 내내 참(래치).
+   *
+   * `tutorialActive` 만으로 부족한 이유: 튜토리얼이 **끝나는 그 순간**에 공지를 띄우면 완료
+   * 저장(`persistTutorialDone`)이 `["deck"]`·`["me"]` 를 무효화해 화면이 바뀌는 바로 그 프레임에
+   * 점검 공지가 덮는다. → 공지는 **다음에 홈에 들어올 때** 뜬다.
+   * 서버 플래그로 판정하지 않는 이유: 그건 계정에 남는 값이라 리로드 뒤에도 "방금 끝났다"로
+   * 읽혀 공지가 영영 미뤄질 수 있다. 이 래치는 **컴포넌트 수명**에만 산다 = 정확히 "다음 진입".
+   */
+  const tutorialHeldThisVisit = useRef(false);
+  if (tutorialActive) tutorialHeldThisVisit.current = true;
+  const tutorialHold = tutorialActive || tutorialHeldThisVisit.current;
+
+  // 첫 진입에 보인 목록을 **고정**한다. 포커스 복귀 refetch 로 목록이 갈리면 스택 인덱스가
+  // 어긋나 유저가 이미 닫은 장이 다시 앞으로 나온다. 온보딩이 잡은 방문에서는 고정도 하지
+  // 않는다 — 어차피 열지 않을 목록을 붙들면 그 사이 헤더 [공지]로 읽은 것까지 나중에 다시 민다.
+  const latched = useRef<Notice[] | null>(null);
+  if (latched.current === null && !tutorialHold && candidates.length > 0) {
+    latched.current = candidates;
+  }
+  const noticeList = latched.current ?? [];
+
+  /**
+   * 홈 팝업 판정은 `pickLobbyPopup` 한 곳(#248 §4).
+   *
+   * ⚠️ 지금 홈에 뜨는 팝업은 공지 하나뿐이다(원정 리포트는 #286 에서 **게임 탭**으로 갔다).
+   * 그래도 이 함수를 계속 쓰는 이유는 **"온보딩 중에는 저절로 뜨는 팝업을 미룬다"** 는 규칙이
+   * 여기 살아 있고 테스트도 여기 붙어 있기 때문이다 — 조건을 화면에 풀어 쓰면 그 규칙이
+   * 사라진다. 팝업이 다시 둘 이상 모이면 `away` 를 채우기만 하면 된다.
+   */
+  const popup = pickLobbyPopup(
+    { notice: !noticeDone && noticeList.length > 0 },
+    { tutorialHold },
+  );
+
+  /**
+   * ⚠️ **응답 형태를 믿지 않는다.** `(players ?? [])` 는 부족하다 — 구 서버·빈 응답이 200 `{}` 를
+   * 주면 `{}` 는 nullish 가 아니라서 그대로 통과하고 `.filter` 가 던진다. 그러면 **홈 전체가
+   * 흰 화면**이다(실측: `TypeError: (players ?? []).filter is not a function`).
+   * #245 가 로비에서 같은 방식으로 당했고("부가 기능이 앱 진입점을 죽이면 안 된다"), 홈은 이제
+   * 그 진입점이라 더 세게 지킨다. 계약 = `e2e/p248-notice-popup`(전 엔드포인트 캐치올 `{}`).
+   */
+  const roster = Array.isArray(players) ? players : [];
+  const ownedCount = useMemo(() => roster.filter((p) => p.owned).length, [players]);
   const tiles = useMemo(
     () =>
       homeTileState({
         me,
         deck,
-        ownedTotal: players?.length ?? 0,
+        ownedTotal: roster.length,
         ownedCount,
         openTrades: openTradeCount(trade?.slots),
       }),
@@ -79,11 +130,15 @@ export function HomePage() {
   const header = (
     <div className={styles.headerRow}>
       <div className={styles.headerLeft}>
-        <span className={styles.nickname}>{me ? me.user.nickname : "감독님"}</span>
+        <span className={styles.nickname}>{me?.user?.nickname ?? "감독님"}</span>
         <NoticeCenter notices={notices.data} />
       </div>
       <div className={styles.headerRight}>
-        {me && <PointsBadge points={me.wallet.points} gems={me.wallet.gems ?? 0} />}
+        {/* ⚠️ `me &&` 로는 부족하다 — 구 서버·빈 응답의 200 `{}` 는 truthy 라서 통과하고
+            `me.wallet.points` 가 던진다(실측). 지갑은 **숫자가 실제로 있을 때만** 그린다. */}
+        {typeof me?.wallet?.points === "number" && (
+          <PointsBadge points={me.wallet.points} gems={me.wallet.gems ?? 0} />
+        )}
         {/* me 조회가 실패해도 이 버튼은 남는다 — 불량 세션 탈출구(#73 P1). */}
         <button type="button" className={styles.logout} onClick={logout}>
           로그아웃
@@ -136,7 +191,7 @@ export function HomePage() {
           })}
         </div>
 
-        {!locked && noticeList.length > 0 && !noticeDone && (
+        {popup === "notice" && (
           <NoticePopup notices={noticeList} onDone={() => setNoticeDone(true)} />
         )}
       </div>

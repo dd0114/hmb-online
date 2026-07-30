@@ -93,7 +93,7 @@ function Nav() {
     ),
     h(
       "button",
-      { type: "button", "data-testid": "go-lobby", onClick: () => navigate("/lobby") },
+      { type: "button", "data-testid": "go-home", onClick: () => navigate("/home") },
       "로비",
     ),
   );
@@ -112,7 +112,7 @@ function tree(steps: TutorialStep[], extra: ReturnType<typeof h>[], missingGrace
     { client: queryClient },
     h(
     MemoryRouter,
-    { initialEntries: ["/lobby"] },
+    { initialEntries: ["/home"] },
     h(
       TutorialProvider,
       { steps, missingGraceMs },
@@ -156,7 +156,7 @@ function returnToLobby() {
   act(() => {
     rects.t1 = { left: 40, top: 100, width: 120, height: 44 };
     rects.t2 = { left: 40, top: 200, width: 120, height: 44 };
-    fireEvent.click(screen.getByTestId("go-lobby"));
+    fireEvent.click(screen.getByTestId("go-home"));
   });
 }
 
@@ -516,12 +516,12 @@ describe("seen 집합이 완료를 결정한다 (BLK-2)", () => {
  *  2. 그 화면에 실제로 들어가면 **이어서 뜬다** — 안 그러면 못 본 스텝이 영구히 남아
  *     완료가 절대 저장되지 않는다(요구 3의 시나리오).
  */
-describe("라우트 넘나듦 (로비 → 덱)", () => {
-  /** lobby1 → deck1(덱 화면 전용) → lobby2. 실제 TUTORIAL_STEPS 와 같은 모양. */
+describe("라우트 넘나듦 (홈 → 덱)", () => {
+  /** home1 → deck1(덱 화면 전용) → home2. 실제 TUTORIAL_STEPS 와 같은 모양(#286: 로비 → 홈). */
   const CROSS_STEPS: TutorialStep[] = [
-    { id: "lobby1", targetTestId: "t1", title: "로비1", body: "b", enabled: true, route: "/lobby" },
+    { id: "home1", targetTestId: "t1", title: "홈1", body: "b", enabled: true, route: "/home" },
     { id: "deck1", targetTestId: "t2", title: "덱보드", body: "b", enabled: true, route: "/deck" },
-    { id: "lobby2", targetTestId: "t3", title: "로비2", body: "b", enabled: true, route: "/lobby" },
+    { id: "home2", targetTestId: "t3", title: "홈2", body: "b", enabled: true, route: "/home" },
   ];
 
   /** 화면 전환 = 그 화면에 없는 대상은 실제로 사라진다(rect 제거). */
@@ -540,7 +540,7 @@ describe("라우트 넘나듦 (로비 → 덱)", () => {
       delete rects.t2;
       rects.t1 = { left: 40, top: 100, width: 120, height: 44 };
       rects.t3 = { left: 40, top: 200, width: 120, height: 44 };
-      fireEvent.click(screen.getByTestId("go-lobby"));
+      fireEvent.click(screen.getByTestId("go-home"));
       window.dispatchEvent(new Event("resize"));
     });
   }
@@ -550,14 +550,14 @@ describe("라우트 넘나듦 (로비 → 덱)", () => {
     rects.t3 = { left: 40, top: 200, width: 120, height: 44 };
   });
 
-  it("로비에서는 덱 스텝을 건너뛰지 않고 로비 스텝만 진행한다", () => {
+  it("홈에서는 덱 스텝을 건너뛰지 않고 홈 스텝만 진행한다", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS);
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비1");
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("홈1");
 
     fireEvent.click(screen.getByTestId("tutorial-next"));
-    // deck1 은 이 화면 후보가 아니다 → 곧바로 lobby2.
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비2");
+    // deck1 은 이 화면 후보가 아니다 → 곧바로 home2.
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("홈2");
   });
 
   /**
@@ -572,12 +572,12 @@ describe("라우트 넘나듦 (로비 → 덱)", () => {
   it("'다음' 이 다른 화면 스텝을 거치느라 화면을 비우지 않는다", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS, [], 200); // 유예 200ms — 거쳐 갔다면 여기서 화면이 빈다
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비1");
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("홈1");
 
     fireEvent.click(screen.getByTestId("tutorial-next"));
 
     expect(screen.queryByTestId("tutorial-overlay")).not.toBeNull();
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비2");
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("홈2");
   });
 
   /** 라벨이 저장과 어긋나면 안 된다 — '시작하기'인데 완료가 안 되면 유저는 끝난 줄 안다. */
@@ -585,7 +585,7 @@ describe("라우트 넘나듦 (로비 → 덱)", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS);
     fireEvent.click(screen.getByTestId("tutorial-next")); // 로비의 마지막 스텝(로비2)
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비2");
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("홈2");
     // 이 화면엔 다음 후보가 없지만 덱 스텝이 남아 있다 → 아직 끝이 아니다.
     expect(screen.getByTestId("tutorial-next").textContent).toBe("다음");
   });
@@ -593,7 +593,7 @@ describe("라우트 넘나듦 (로비 → 덱)", () => {
   it("덱 스텝을 못 봤으면 로비를 다 봐도 완료로 저장하지 않는다", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS);
-    fireEvent.click(screen.getByTestId("tutorial-next")); // lobby2
+    fireEvent.click(screen.getByTestId("tutorial-next")); // home2
     fireEvent.click(screen.getByTestId("tutorial-next")); // 더 볼 게 없다 → 중단
 
     expect(screen.queryByTestId("tutorial-overlay")).toBeNull();
@@ -618,9 +618,9 @@ describe("라우트 넘나듦 (로비 → 덱)", () => {
   it("골든 패스: 하이라이트된 버튼으로 덱에 들어가면 진행 중인 튜토리얼이 그대로 이어진다", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS);
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비1");
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("홈1");
 
-    // lobby1 을 보고 있는 상태에서 그대로 덱으로 이동(코치마크는 클릭을 막지 않는다).
+    // home1 을 보고 있는 상태에서 그대로 덱으로 이동(코치마크는 클릭을 막지 않는다).
     goDeck();
     expect(screen.getByTestId("tutorial-title").textContent).toBe("덱보드");
   });
@@ -629,10 +629,10 @@ describe("라우트 넘나듦 (로비 → 덱)", () => {
    * 자동시작 잠금이 **경로가 바뀔 때마다** 풀리는지 — 잠금이 남으면 덱에 다녀온 뒤
    * 로비로 돌아왔을 때 남은 로비 스텝이 영영 재개되지 않는다(effect 선언 순서 회귀 가드).
    */
-  it("덱에 다녀온 뒤 로비로 돌아오면 남은 로비 스텝이 재개된다", () => {
+  it("덱에 다녀온 뒤 홈으로 돌아오면 남은 홈 스텝이 재개된다", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS);
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비1");
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("홈1");
 
     goDeck();
     expect(screen.getByTestId("tutorial-title").textContent).toBe("덱보드");
@@ -640,7 +640,7 @@ describe("라우트 넘나듦 (로비 → 덱)", () => {
     expect(screen.queryByTestId("tutorial-overlay")).toBeNull();
 
     goLobby();
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("로비2");
+    expect(screen.getByTestId("tutorial-title").textContent).toBe("홈2");
     expect(readLocalDone("u1")).toBe(false);
 
     fireEvent.click(screen.getByTestId("tutorial-next"));

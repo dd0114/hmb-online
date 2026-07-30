@@ -85,7 +85,7 @@ export function homeTileState(input: HomeTileInput): Record<HomeTile["key"], Til
 
   const rec = me?.records;
   const meBits: string[] = [];
-  if (rec) meBits.push(`${rec.wins}승 ${rec.draws}무 ${rec.losses}패`);
+  if (rec && typeof rec.wins === "number") meBits.push(`${rec.wins}승 ${rec.draws}무 ${rec.losses}패`);
   if (me?.league?.divisionName) meBits.push(me.league.divisionName);
 
   return {
@@ -127,7 +127,7 @@ export function teamLine(me: MeResponse | undefined, deck: Deck | undefined | nu
     : null;
 
   return {
-    teamName: me ? `${me.user.nickname}의 팀` : "내 팀",
+    teamName: me?.user?.nickname ? `${me.user.nickname}의 팀` : "내 팀",
     sub: bits.join(" · ") || "덱을 구성해 팀을 만드세요",
     rating: me?.rating ?? null,
     captainId: captain,
