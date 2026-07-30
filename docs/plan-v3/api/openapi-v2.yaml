@@ -565,6 +565,13 @@ paths:
                 type: object
                 description: V1 `MatchDetail` 과 동일(mode=away).
                 additionalProperties: true
+        "400":
+          description: |
+            `VALIDATION_ERROR` — 자기 자신을 지목했다(정상 경로로는 그런 원장 행이 생기지 않지만,
+            생기면 자기와 붙어 레이팅이 순증한다).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiError" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -1724,7 +1731,11 @@ components:
         entries:
           type: array
           items: { $ref: "#/components/schemas/RevengeEntry" }
-          description: 최신이 앞. 최대 `hmb.away.revenge.queue-size`(현재 5)건.
+          description: >-
+            최신이 앞. 최대 `hmb.away.revenge.queue-size`(현재 5)건.
+            ⚠️ **더 적을 수 있다 — 고정 5칸을 가정하지 마라.** 창은 "내가 수비자인 최근 N건"으로
+            먼저 자르고, 갚은 기록(`AVENGED`)은 **창 슬롯을 유지한 채 표시에서만** 빠진다(설계 §4.2).
+            갚을 때마다 슬롯이 비면 더 오래된 기록이 되살아나 "최근 N건"이 창이 아니라 필터가 된다.
         remainingToday:
           type: integer
           description: |

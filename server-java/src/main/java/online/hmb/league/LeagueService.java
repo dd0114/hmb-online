@@ -1413,6 +1413,14 @@ public class LeagueService {
                 // GET /api/league 는 자기 시즌만 파싱해 블라스트 반경이 1명이었는데, 이 보드는
                 // 전 유저를 순회하므로 남의 teams_json 이 깨져 있으면 **내** 요청이 500 이 됐다(실측).
                 // 그 사람만 표에서 빠지는 것이 옳다 — 보이지 않는 게 아무것도 안 보이는 것보다 낫다.
+                //
+                // ⚠️ **단, 내 시즌이면 삼키지 않는다**(2R MINOR-3). 삼키면 200 인데 me 가
+                // {rank:null, points:0} 으로 내려가 — 실제로는 승점이 있는데 — 화면이 서버와
+                // **반대 사실**을 말한다(#262 BL-1 이 금지한 형태). 내 데이터가 깨진 것은 조용히
+                // 넘길 사실이 아니고, GET /api/league 도 같은 상황에서 이미 실패한다(일관성).
+                if (ref.userId().equals(userId)) {
+                    throw e;
+                }
                 log.warn("league rankings: skipping season {} of user {} — {}",
                         ref.seasonId(), ref.userId(), e.toString());
                 continue;

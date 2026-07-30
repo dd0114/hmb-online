@@ -877,9 +877,13 @@ public class AwayService {
     }
 
     /**
-     * 저장된 상태가 정본이되, <b>시도 수가 상한에 닿으면 소진</b>으로 본다. 둘을 같이 보는 이유는
-     * {@code attempts-max} 가 config 라서다 — 상한을 낮추면 이미 그만큼 도전한 기록은 즉시 잠겨야 하고,
-     * 올리면 다시 열려야 한다. 저장값만 믿으면 그 조정이 과거 기록에 반영되지 않는다.
+     * 표시 상태. <b>{@code AVENGED} 만 저장값</b>이고 소진 여부는 {@code revenge_attempts} 에서
+     * 파생한다 — {@code attempts-max} 가 config 라서다. 상한을 낮추면 이미 그만큼 도전한 기록이
+     * 즉시 잠기고, 올리면 다시 열려야 한다. 저장해 두면 그 조정이 과거 기록에 반영되지 않는다.
+     *
+     * <p>⚠️ 그래서 {@code revenge_state} 컬럼은 실제로 {@code AVAILABLE|AVENGED} 두 값만 갖는다.
+     * 예약·환불이 {@code 'EXHAUSTED'} 를 쓰던 코드가 있었는데 <b>아무도 읽지 않는 죽은 값</b>이라
+     * 지웠다(2R MINOR-4) — 남겨두면 "저장 상태가 정본"이라고 오독하게 된다.
      */
     private String stateOf(String stored, int attempts) {
         if ("AVENGED".equals(stored)) {
@@ -976,12 +980,10 @@ public class AwayService {
         // 규칙을 다 지키는 유일한 순서다.
         int reserved = jdbcClient.sql("""
                         UPDATE away_reports
-                           SET revenge_attempts = revenge_attempts + 1,
-                               revenge_state = CASE WHEN revenge_attempts + 1 >= ? THEN 'EXHAUSTED'
-                                                    ELSE revenge_state END
+                           SET revenge_attempts = revenge_attempts + 1
                          WHERE id = ? AND revenge_attempts < ? AND revenge_state <> 'AVENGED'
                         """)
-                .params(revengeAttemptsMax, reportId, revengeAttemptsMax)
+                .params(reportId, revengeAttemptsMax)
                 .update();
         if (reserved == 0) {
             throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "REVENGE_EXHAUSTED",
@@ -997,16 +999,52 @@ public class AwayService {
         }
     }
 
-    /** 예약 되돌리기 — 매치 생성 실패 · 무승부 정산. 0 아래로 내려가지 않는다. */
+    /**
+     * 예약 되돌리기 — 무승부 정산 · 매치 생성 실패 · <b>사고성 회수</b>. 0 아래로 내려가지 않는다.
+     *
+     * <p>ℹ️ {@code AND revenge_state <> 'AVENGED'} 는 <b>방어적 조건이고 계약이 없다</b> — 지우고
+     * 변이체를 돌려도 아무 테스트가 죽지 않는다(등가 변이). {@code AVENGED} 는 조회·POST·표시
+     * 세 곳 모두에서 <b>시도 수보다 먼저</b> 단락되므로, 갚은 기록의 {@code revenge_attempts} 가
+     * 몇이든 관측되지 않기 때문이다. 그래도 남겨 두는 이유는 "갚음"이 되돌릴 수 있는 상태가 되는
+     * 순간(예: 시즌 리셋으로 큐를 비우는 기능) 이 한 줄이 유일한 방어선이 되기 때문이다.
+     * <b>계약이 지켜 준다고 착각하지 마라</b> — 그때는 계약도 같이 만들어야 한다.
+     */
     private void refundRevenge(String reportId) {
         jdbcClient.sql("""
                         UPDATE away_reports
-                           SET revenge_attempts = MAX(revenge_attempts - 1, 0),
-                               revenge_state = CASE WHEN revenge_state = 'EXHAUSTED' THEN 'AVAILABLE'
-                                                    ELSE revenge_state END
+                           SET revenge_attempts = MAX(revenge_attempts - 1, 0)
                          WHERE id = ? AND revenge_state <> 'AVENGED'
                         """)
                 .param(reportId)
+                .update();
+    }
+
+    /**
+     * <b>사고로 회수된 복수 매치의 시도를 되돌린다</b>(독립검증 2R BLOCKER-1).
+     *
+     * <p>호출처는 {@code MatchLockService} 의 <b>사고 분기</b> 하나뿐이다(FAILED · 멈춘 생성 ·
+     * 시계 멈춤 · 스톨 스윕). 자발적 무르기(BRIEFING)는 몰수 정산이 돌아 정당하게 소모되므로 여기
+     * 오지 않는다 — 즉 이 메서드는 리롤 문을 열지 않는다.
+     *
+     * <p><b>멱등</b>: 환불한 뒤 도전장의 복수 링크를 끊는다. 스위퍼와 수동 포기가 겹쳐도 두 번
+     * 돌려주지 않고, 이후 어떤 경로로도 이 매치가 그 기록을 다시 소모하지 못한다.
+     * 이미 정산된 매치(리포트 행 존재)는 정상 경로이므로 손대지 않는다.
+     */
+    public void refundAccidentalRevenge(String matchId) {
+        String reportId = jdbcClient.sql(
+                        "SELECT revenge_report_id FROM away_challenges WHERE match_id = ?")
+                .param(matchId).query(String.class).optional().orElse(null);
+        if (reportId == null) {
+            return;   // 복수가 아니거나 이미 환불됐다
+        }
+        boolean settled = jdbcClient.sql("SELECT COUNT(*) FROM away_reports WHERE match_id = ?")
+                .param(matchId).query(Integer.class).single() > 0;
+        if (settled) {
+            return;   // 정산이 돌았다 = 실제로 치른 판이다
+        }
+        refundRevenge(reportId);
+        jdbcClient.sql("UPDATE away_challenges SET revenge_report_id = NULL WHERE match_id = ?")
+                .param(matchId)
                 .update();
     }
 

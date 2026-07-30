@@ -34,6 +34,9 @@ class AwayRevengeTest extends MatchTestBase {
     @Resource
     private AwayService awayService;
 
+    @Resource
+    private online.hmb.match.MatchLockService lockService;
+
     // ── 큐 조회 ────────────────────────────────────────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -255,8 +258,17 @@ class AwayRevengeTest extends MatchTestBase {
         });
     }
 
+    /**
+     * 정산은 <b>예약된 시도를 다시 깎지 않는다</b>. 소모가 생성 시점으로 옮겨졌으므로(BL-1)
+     * {@code settle} 의 LOSS 분기는 no-op 이어야 한다 — 여기에 증분을 되살리면 한 판에 두 번 깎인다.
+     *
+     * <p>⚠️ 이 테스트의 원래 이름은 "재정산해도 두 번 깎이지 않는다"였는데, 그 불변식은 이제
+     * <b>이 테스트가 태우지 않는다</b>(no-op 을 두 번 불러 아무 일도 없음을 확인할 뿐 — 독립검증
+     * 2R MAJOR-1 이 false green 으로 잡았다). 재정산 축은 {@code 무승부_재정산이_시도를_되살리지_않는다}
+     * 가 <b>환불 방향</b>으로 따로 태운다(지금의 진짜 위험은 시도가 순증하는 쪽이다).
+     */
     @Test
-    void 재정산해도_시도가_두_번_깎이지_않는다() {
+    void 정산은_예약된_시도를_또_깎지_않는다() {
         // 멱등 게이트 앞에 두면 재정산이 유저가 치지도 않은 판을 뺏는다(#245 가 연승에서 당한 형태).
         String me = setupUserWithDeck("rv_idem_me");
         String meId = userIdOf("rv_idem_me");
@@ -457,6 +469,174 @@ class AwayRevengeTest extends MatchTestBase {
         // ⚠️ 제시(away_offers)를 소모하지도, 요구하지도 않는다 — 복수는 그 축과 별개의 문이다.
         assertThat(jdbcClient.sql("SELECT COUNT(*) FROM away_offers WHERE user_id = ?")
                 .param(meId).query(Integer.class).single()).isZero();
+    }
+
+
+    /**
+     * ⚠️ <b>서버 사고가 유저의 도전 기회를 먹지 않는다</b>(독립검증 2R BLOCKER-1).
+     *
+     * <p>시도는 매치를 만드는 순간 예약된다(원자적 자물쇠). 그런데 사고 회수 경로(FAILED · 멈춘
+     * 생성 · 시계 멈춤 · 스톨 스윕)는 <b>정산이 돌지 않으므로</b>, 되돌려 주지 않으면 유저는
+     * <b>한 판도 못 치른 채</b> 기록이 소진된다. 같은 코드가 바로 그 자리에서 레이팅은 면제하면서
+     * (<i>"서버 장애가 유저 레이팅을 깎으면 안 된다"</i>) 복수 시도만 청구하면 자기모순이다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void 사고로_회수된_복수는_시도를_돌려준다() {
+        String me = setupUserWithDeck("rv_acc_me");
+        String meId = userIdOf("rv_acc_me");
+        setupOpponentWithDeck("rv_acc_atk");
+        String attackerId = userIdOf("rv_acc_atk");
+        raid(attackerId, meId, "RV_ACC1", "WIN");
+        String reportId = reportIdOf("RV_ACC1");
+
+        ResponseEntity<Map> created = authPost(
+                "/api/away/revenge/" + reportId + "/matches", me, null, Map.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String matchId = (String) created.getBody().get("id");
+        assertThat(attemptsOf(reportId)).as("생성 시점에 예약된다").isEqualTo(1);
+
+        // 사고: AI 잡이 죽어 FAILED — #217 이 영구 잠금을 막으려고 연 탈출구로 회수한다.
+        forceState(matchId, "FAILED");
+        assertThat(authPost("/api/matches/" + matchId + "/abandon", me, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(attemptsOf(reportId)).as("사고는 시도를 먹지 않는다").isZero();
+        assertThat(queueOf(me)).singleElement().satisfies(e -> {
+            assertThat(e.get("attemptsUsed")).isEqualTo(0);
+            assertThat(e.get("state")).isEqualTo("AVAILABLE");
+        });
+        // 실제로 다시 도전할 수 있어야 한다(숫자만 돌려놓고 문이 닫혀 있으면 의미가 없다).
+        assertThat(authPost("/api/away/revenge/" + reportId + "/matches", me, null, Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.CREATED);
+    }
+
+    /**
+     * 사고 환불은 <b>멱등</b>하다 — 도전장의 복수 링크를 끊는 것이 그 장치다.
+     *
+     * <p>⚠️ 초판 계약은 스위퍼를 한 번 더 돌려 확인했는데, 스위퍼는 ABANDONED 를 다시 고르지 않아
+     * <b>두 번째 호출 자체가 일어나지 않았다</b> — 멱등 장치를 통째로 제거해도 통과하는 공허한
+     * 계약이었다(2R 후속 변이 R2 생존). 장치를 태우려면 <b>직접 두 번</b> 불러야 한다.
+     */
+    @Test
+    void 사고_환불은_두_번_돌지_않는다() {
+        String me = setupUserWithDeck("rv_acc2_me");
+        String meId = userIdOf("rv_acc2_me");
+        setupOpponentWithDeck("rv_acc2_atk");
+        String attackerId = userIdOf("rv_acc2_atk");
+        raid(attackerId, meId, "RV_ACC2_B", "WIN");
+        String reportId = reportIdOf("RV_ACC2_B");
+
+        String matchId = (String) authPost("/api/away/revenge/" + reportId + "/matches", me, null,
+                Map.class).getBody().get("id");
+        // 경합으로 2판이 떠 있는 상태(= 예약 2건)를 손으로 만든다.
+        jdbcClient.sql("UPDATE away_reports SET revenge_attempts = 2 WHERE id = ?")
+                .param(reportId).update();
+
+        awayService.refundAccidentalRevenge(matchId);
+        assertThat(attemptsOf(reportId)).as("사고 1건 = 환불 1회").isEqualTo(1);
+        awayService.refundAccidentalRevenge(matchId);
+        awayService.refundAccidentalRevenge(matchId);
+        assertThat(attemptsOf(reportId)).as("몇 번을 불러도 한 번만").isEqualTo(1);
+    }
+
+    /**
+     * 사고 환불은 <b>실제로 치른 판</b>은 건드리지 않는다. 정산이 돌았다는 것이 그 증거다
+     * (리포트 행) — 그걸 안 보면 자발적 몰수까지 환불돼 무르기 리롤이 열린다.
+     */
+    @Test
+    void 정산이_끝난_복수는_환불되지_않는다() {
+        String me = setupUserWithDeck("rv_acc3_me");
+        String meId = userIdOf("rv_acc3_me");
+        setupOpponentWithDeck("rv_acc3_atk");
+        String attackerId = userIdOf("rv_acc3_atk");
+        raid(attackerId, meId, "RV_ACC3", "WIN");
+        String reportId = reportIdOf("RV_ACC3");
+
+        String matchId = (String) authPost("/api/away/revenge/" + reportId + "/matches", me, null,
+                Map.class).getBody().get("id");
+        awayService.settle(matchId, meId, "LOSS", 0, 2);   // 실제로 치르고 졌다
+        assertThat(attemptsOf(reportId)).isEqualTo(1);
+
+        awayService.refundAccidentalRevenge(matchId);
+        assertThat(attemptsOf(reportId)).as("치른 판은 돌려주지 않는다").isEqualTo(1);
+    }
+
+    /**
+     * ⚠️ <b>환불이 이미 갚은 기록을 되살리지 않는다</b>(2R MINOR-4 축).
+     *
+     * <p>경합으로 두 판이 동시에 떠 있다가 하나가 이기고({@code AVENGED}) 다른 하나가 늦게
+     * 무승부로 정산되는 순서가 실재한다. 그 늦은 정산이 상태를 되돌리면 <b>닫힌 문이 다시 열린다</b>.
+     *
+     * <p>⚠️ <b>이 계약이 덮는 것은 "늦은 정산이 AVENGED 를 뒤집지 않는다"까지다.</b>
+     * {@code refundRevenge} 의 {@code <> 'AVENGED'} 조건 자체는 <b>등가 변이</b>라 여기서 죽지 않는다 —
+     * 갚은 기록의 시도 수는 어디서도 관측되지 않기 때문이다(그쪽 판단 근거는 그 메서드 javadoc).
+     */
+    @Test
+    void 환불은_이미_갚은_기록을_되살리지_않는다() {
+        String me = setupUserWithDeck("rv_av2_me");
+        String meId = userIdOf("rv_av2_me");
+        setupOpponentWithDeck("rv_av2_atk");
+        String attackerId = userIdOf("rv_av2_atk");
+        raid(attackerId, meId, "RV_AV2", "WIN");
+        String reportId = reportIdOf("RV_AV2");
+
+        String won = (String) authPost("/api/away/revenge/" + reportId + "/matches", me, null,
+                Map.class).getBody().get("id");
+        releaseActiveMatches();
+        // 두 번째 판이 같이 떠 있던 상태(#333 경합) — 손으로 도전장을 하나 더 심는다.
+        seedRevengeChallenge(meId, attackerId, "RV_AV2_LATE", reportId);
+        jdbcClient.sql("UPDATE away_reports SET revenge_attempts = 2 WHERE id = ?")
+                .param(reportId).update();
+
+        awayService.settle(won, meId, "WIN", 3, 1);                  // 갚았다
+        awayService.settle("RV_AV2_LATE", meId, "DRAW", 1, 1);       // 늦게 도착한 무승부 → 환불 시도
+
+        assertThat(stateOfReport(reportId)).as("AVENGED 는 유지된다").isEqualTo("AVENGED");
+        ResponseEntity<Map> res =
+                authPost("/api/away/revenge/" + reportId + "/matches", me, null, Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.GONE);
+        assertThat(res.getBody().get("code")).isEqualTo("REVENGE_AVENGED");
+    }
+
+    /**
+     * ⚠️ <b>무승부 환불이 재정산에서 두 번 돌지 않는다</b>(독립검증 2R MAJOR-1).
+     *
+     * <p>원래 이 자리엔 "재정산해도 시도가 두 번 깎이지 않는다"가 있었는데, 소모가 생성 시점으로
+     * 옮겨지면서 {@code settle} 의 LOSS 분기가 <b>no-op</b> 이 됐다 — 아무것도 하지 않는 코드를 두 번
+     * 불러 "두 번 깎이지 않았다"를 확인하는 <b>false green</b> 이 된 것이다. 이제 위험은 반대 방향이다:
+     * 환불이 두 번 돌면 <b>시도가 순증</b>해 상한을 넘는다. 그쪽을 태운다.
+     */
+    @Test
+    void 무승부_재정산이_시도를_되살리지_않는다() {
+        String me = setupUserWithDeck("rv_dr2_me");
+        String meId = userIdOf("rv_dr2_me");
+        setupOpponentWithDeck("rv_dr2_atk");
+        String attackerId = userIdOf("rv_dr2_atk");
+        raid(attackerId, meId, "RV_DR2", "WIN");
+        String reportId = reportIdOf("RV_DR2");
+
+        // 2판을 예약한 상태에서 하나가 무승부로 끝난다(경합으로 도달 가능한 상태).
+        String matchId = (String) authPost("/api/away/revenge/" + reportId + "/matches", me, null,
+                Map.class).getBody().get("id");
+        jdbcClient.sql("UPDATE away_reports SET revenge_attempts = 2 WHERE id = ?")
+                .param(reportId).update();
+
+        awayService.settle(matchId, meId, "DRAW", 1, 1);
+        assertThat(attemptsOf(reportId)).as("무승부 1건 = 환불 1회").isEqualTo(1);
+        awayService.settle(matchId, meId, "DRAW", 1, 1);   // 같은 매치 재정산
+        awayService.settle(matchId, meId, "DRAW", 1, 1);
+        assertThat(attemptsOf(reportId)).as("재정산은 환불을 더 하지 않는다").isEqualTo(1);
+    }
+
+    private String stateOfReport(String reportId) {
+        return jdbcClient.sql("SELECT revenge_state FROM away_reports WHERE id = ?")
+                .param(reportId).query(String.class).single();
+    }
+
+    private int attemptsOf(String reportId) {
+        return jdbcClient.sql("SELECT revenge_attempts FROM away_reports WHERE id = ?")
+                .param(reportId).query(Integer.class).single();
     }
 
     // ── 헬퍼 ───────────────────────────────────────────────────────────────

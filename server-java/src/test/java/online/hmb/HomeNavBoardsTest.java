@@ -290,6 +290,53 @@ class HomeNavBoardsTest extends MatchTestBase {
                 assertThat(e.get("userId")).isEqualTo(userIdOf("lr_broken")));
     }
 
+
+    /**
+     * ⚠️ {@code scope=division} 의 필터는 <b>목록 행과 같은 축</b>에서 온다(독립검증 MIN-4).
+     *
+     * <p>행은 그 시즌에 <b>박제된</b> {@code league_seasons.division} 인데 필터만
+     * {@code users.division}(현재값)으로 물으면, <b>승급 직후</b> 내 행이 내 디비전 보드에서 사라진다
+     * (실제로는 승점이 있는데 {@code rank=null · 0점}). 승급/강등은 시즌 <b>사이</b>에 일어나므로
+     * 두 값이 갈라지는 구간이 정상적으로 존재한다 — 그래서 표본도 그 구간을 만든다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void 승급_직후에도_내_행이_내_디비전_보드에_남는다() {
+        String token = setupUserWithDeck("lr_promo");
+        setDivision("lr_promo", 6);
+        startLeague(token);                 // 시즌에 division=6 이 박제된다
+        awardPoints("lr_promo", 2);
+        setDivision("lr_promo", 5);         // 시즌 종료 후 승급 — users.division 만 앞서 나간다
+
+        List<Map<String, Object>> entries = entriesOf(token, "?scope=division&limit=50");
+        assertThat(entries).anySatisfy(e -> {
+            assertThat(e.get("userId")).isEqualTo(userIdOf("lr_promo"));
+            assertThat(e.get("division")).isEqualTo(6);   // 시즌 박제값
+            assertThat(e.get("points")).isEqualTo(6);
+        });
+        Map<String, Object> mine = (Map<String, Object>)
+                authGet("/api/league/rankings?scope=division", token, Map.class).getBody().get("me");
+        assertThat(mine.get("rank")).isNotNull();
+        assertThat(mine.get("points")).isEqualTo(6);
+    }
+
+    /**
+     * ⚠️ <b>내 시즌이 깨진 것은 조용히 넘기지 않는다</b>(독립검증 2R MINOR-3). 남의 사고는 skip 하되
+     * (MAJ-2) 내 것까지 삼키면 200 인데 {@code me = {rank:null, points:0}} 이 되어 — 실제로는 승점이
+     * 있는데 — 화면이 서버와 <b>반대 사실</b>을 말한다(#262 BL-1 이 금지한 형태).
+     */
+    @Test
+    void 내_시즌_데이터가_깨지면_조용히_0점이_되지_않는다() {
+        String token = setupUserWithDeck("lr_selfbroken");
+        startLeague(token);
+        awardPoints("lr_selfbroken", 2);
+        jdbcClient.sql("UPDATE league_seasons SET teams_json = '{{{ not json' WHERE user_id = ?")
+                .param(userIdOf("lr_selfbroken")).update();
+
+        ResponseEntity<Map> res = authGet("/api/league/rankings", token, Map.class);
+        assertThat(res.getStatusCode()).isNotEqualTo(HttpStatus.OK);
+    }
+
     // ── GET /api/league (라운드 진행) ──────────────────────────────────────
 
     @SuppressWarnings("unchecked")
