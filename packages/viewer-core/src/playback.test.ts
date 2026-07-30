@@ -353,8 +353,12 @@ describe("buildAnnotations", () => {
   });
   it("롱 드리블(같은 소유자 6틱+ 전진)에 '돌파!' 토스트", () => {
     const s: any[] = [];
-    for (let t = 0; t < 8; t++) s.push({ tick: t, ballOwner: "H9", ball: { x: 40 + t * 3, y: 34 } });
-    s.push({ tick: 8, ballOwner: "H6", ball: { x: 64, y: 34 } }); // 소유 변경으로 run 종료
+    // #324: 전진 방향 판정이 소유팀을 **스냅샷에서** 찾으므로 players 를 싣는다(실 로그와 같은 모양).
+    const P = (id: string, x: number) => [{ playerId: id, team: "home", pos: { x, y: 34 } }];
+    for (let t = 0; t < 8; t++) {
+      s.push({ tick: t, ballOwner: "H9", ball: { x: 40 + t * 3, y: 34 }, players: P("H9", 40 + t * 3) });
+    }
+    s.push({ tick: 8, ballOwner: "H6", ball: { x: 64, y: 34 }, players: P("H6", 64) }); // 소유 변경으로 run 종료
     const a = buildAnnotations([], s);
     expect(a.find((x) => x.text === "SURGE!")).toBeTruthy();
   });

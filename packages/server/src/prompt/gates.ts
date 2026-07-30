@@ -16,10 +16,20 @@ import type { PromptDelta, TacticalInput, OpponentRosterEntry } from "@hmb/share
 export const SANITY_GATE_CONFIG = {
   /** G1: 오프사이드 트랩을 켤 수 있는 최소 수비라인 높이. 이 미만 + 트랩 ON = 자기모순. */
   trapMinLineHeight: 0.45,
-  /** G3: 동일 basePosition 좌표를 공유해도 되는 최대 인원(초과 = 배치 파손). */
-  maxPlayersSameSpot: 2,
-  /** G3: 좌표 동일성 판정 소수 자리(부동소수 잡음 흡수). */
-  spotPrecision: 3,
+  /**
+   * G3: 두 선수 basePosition 사이의 최소 간격(정규화 좌표 유클리드). 이 미만 = 사실상 같은 점.
+   *
+   * <p>#324 로 **이 하나가 G3 의 전부**가 됐다. 종전엔 "같은 좌표 문자열에 3명 이상"만 봤는데
+   * (`maxPlayersSameSpot: 2`), 라이브에서 블루 월 센터백 <b>둘</b>이 정확히 같은 좌표(0.17, 0.5)를
+   * 받아 전반의 24.9% 를 1m 안에 붙어 있었다(대조군 5경기 0.4~1.1%) — 화면에선 백5가 점 4개로 보였다.
+   * 인원수를 세는 노브를 1 로 낮춰 봐야 이 간격 검사가 그 경우를 이미 포섭하므로(거리 0 &lt; 임계)
+   * 노브만 남기면 <b>되돌려도 아무 테스트가 안 깨지는 공허한 설정</b>이 된다. 그래서 검사를 하나로 합쳤다.
+   *
+   * <p>보정 근거(라이브 인풋 202개 전수): 결함 9건은 "가장 가까운 두 선수" 거리가 <b>정확히 0</b>,
+   * 정상 인풋의 최소값은 <b>0.04</b>. 그 사이가 비어 있어 (0, 0.04) 안의 어떤 값도 오탐 0 이다 —
+   * 양쪽 여유가 같은 0.02 를 골랐다(피치로 x 2.1m · y 1.4m 수준).
+   */
+  minSpotSeparation: 0.02,
 } as const;
 
 /** 마킹 동사 — 카탈로그 marking 지시어(stub 과 동일 어휘). 이것만으로는 발동하지 않는다(아래 참조). */
@@ -132,19 +142,27 @@ export function assertTacticalSanity(input: TacticalInput, ctx: SanityGateContex
     }
   }
 
-  // ── G3 배치 파손: 같은 좌표에 3명 이상이 겹치면 포메이션이 무너진다(엔진 배치가 한 점으로 붕괴).
+  // ── G3 배치 파손: 두 선수가 사실상 같은 점에 서면 포메이션이 그만큼 붕괴한다.
   //    (0..1 범위 이탈은 shared clampTacticalInput 이 이미 처리 — 게이트는 밀집만 본다.)
-  const counts = new Map<string, string[]>();
-  for (const p of input.players) {
-    const key = `${p.basePosition.x.toFixed(cfg.spotPrecision)},${p.basePosition.y.toFixed(cfg.spotPrecision)}`;
-    counts.set(key, [...(counts.get(key) ?? []), p.playerId]);
-  }
-  for (const [key, ids] of counts) {
-    if (ids.length > cfg.maxPlayersSameSpot) {
-      throw new Error(
-        `배치 파손 — basePosition (${key}) 에 ${ids.length}명이 겹침(${ids.join(",")}). ` +
-          `한 지점에 ${cfg.maxPlayersSameSpot}명까지만, 나머지는 서로 다른 좌표로 분산하라`,
-      );
+  //    좌표 '문자열 일치'가 아니라 **간격**으로 본다: 문자열로 걸면 0.170 vs 0.171 로 새고,
+  //    인원수로 걸면 라이브 결함(정확히 2명)이 통과한다 — 둘 다 실제로 겪은 구멍이다(#324).
+  const tooClose: string[] = [];
+  for (let i = 0; i < input.players.length; i++) {
+    for (let j = i + 1; j < input.players.length; j++) {
+      const a = input.players[i]!, b = input.players[j]!;
+      const d = Math.hypot(a.basePosition.x - b.basePosition.x, a.basePosition.y - b.basePosition.y);
+      if (d < cfg.minSpotSeparation) {
+        tooClose.push(
+          `${a.playerId}(${a.basePosition.x},${a.basePosition.y})~` +
+            `${b.playerId}(${b.basePosition.x},${b.basePosition.y}) 간격 ${d.toFixed(3)}`,
+        );
+      }
     }
+  }
+  if (tooClose.length > 0) {
+    throw new Error(
+      `배치 파손 — 사실상 같은 지점에 선 선수들이 있다: ${tooClose.join(" · ")}. ` +
+        `겹친 선수들을 서로 최소 ${cfg.minSpotSeparation} 이상 떨어뜨려 배치하라`,
+    );
   }
 }

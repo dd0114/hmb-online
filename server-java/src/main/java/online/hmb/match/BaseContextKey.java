@@ -53,7 +53,11 @@ public final class BaseContextKey {
             rosterList.add(entry);
         }
         Map<String, Object> root = new LinkedHashMap<>();
-        root.put("v", 1); // 규약 버전 — A 성향 결정 로직 변경 시 올려 캐시 무효화(TS와 동일 상수).
+        // 규약 버전 — A 성향 결정 로직 변경 시 올려 캐시 무효화. **TS baseContextKeyMaterial 과 동시에**
+        // 올려야 한다(한쪽만 올리면 전 매치 캐시 미스). 두 값은 크로스언어 앵커 테스트가 묶는다.
+        // v2 (#324): 프롬프트가 슬롯 기준 좌표를 전달하고 겹침을 금지하도록 계약이 바뀌었다 —
+        //            그 이전 A 산출(라이브 78개 중 9개가 겹친 배치)을 재사용하면 고쳐도 안 바뀐다.
+        root.put("v", 2);
         root.put("formation", formation);
         root.put("roster", rosterList);
         root.put("teamPrompt", teamPrompt);

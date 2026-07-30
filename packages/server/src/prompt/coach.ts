@@ -6,6 +6,7 @@ import {
   clampTacticalInput,
   TeamInputJobContext,
   TeamInputPatchJobContext,
+  formationBasePositions,
   type TeamInputRosterEntry,
 } from "@hmb/shared";
 import { synthesizeDirectivesSection, DIRECTIVES } from "./directives/index.js";
@@ -31,7 +32,10 @@ export const COACH_SYSTEM = [
   "규칙:",
   "- players 는 주어진 로스터의 playerId 를 정확히 그대로 사용한다(11명 전원, 추가/누락 금지).",
   "- 모든 behavior 값과 team 수치는 0..1, mentalModifier 는 -1..1 범위.",
-  "- basePosition 은 포메이션 슬롯을 기본으로 하되 지시에 맞게 조정 가능(x=0 자기 골문→1 상대 골문, y=0..1 좌우 폭).",
+  "- basePosition: 로스터 각 줄의 '기준' 좌표가 감독이 전술보드에서 직접 잡아 둔 자리다. " +
+    "그 선수를 향한 지시가 없으면 기준 좌표를 그대로 쓴다. 지시가 있으면 그 지시에 맞게 조정한다 " +
+    "(x=0 자기 골문→1 상대 골문, y=0 우리 팀 왼쪽→1 오른쪽).",
+  "- 두 선수에게 같은 좌표(또는 사실상 겹치는 좌표)를 주지 마라 — 포메이션이 한 점으로 무너진다.",
   "- 선수의 능력치(0..100)를 고려해 현실적인 성향을 부여한다(예: pace 낮은 수비수에게 과도한 forwardRunFreq 금지).",
   "behavior 의미: forwardRunFreq=오프더볼 전진 침투, widthTendency=측면으로 벌림(풀백/윙어 오버랩), supportDepth=공격 가담 깊이, pressAggression=개인 압박, passRisk=위험 전진패스, passDirectness=직선 패스, dribbleTendency, shootTendency, positioningFreedom=로밍.",
   "감독 지시의 의도를 파라미터로 충실히 반영하라 — 구체 해석은 아래 '지원 지시 카탈로그'를 따른다.",
@@ -58,11 +62,19 @@ export function tacticalJsonSchema(): Record<string, unknown> {
   return raw;
 }
 
-/** 로스터 1명 → 프롬프트 한 줄(슬롯·능력치 요약). */
-function rosterLine(p: TeamInputRosterEntry): string {
+/**
+ * 로스터 1명 → 프롬프트 한 줄(슬롯·<b>기준 좌표</b>·능력치 요약).
+ *
+ * <p>기준 좌표(#324)는 감독이 전술보드에서 잡아 둔 자리다. 이게 빠져 있던 동안 모델은 슬롯 <b>번호</b>만
+ * 보고 좌표를 지어냈고, 라이브에서 (a) 어웨이 센터백 둘이 완전히 같은 점에 서고 (b) 유저가 잡은 좌우가
+ * 생성마다 뒤집혔다. `base` 가 없으면(표에 없는 슬롯) 좌표 없이 종전 형식으로 떨어진다.
+ */
+function rosterLine(p: TeamInputRosterEntry, base?: { x: number; y: number }): string {
   const a = p.attributes;
+  const spot = base ? `기준 x=${base.x} y=${base.y} · ` : "";
   return (
     `- slot${p.slotIndex} ${p.playerId} ${p.name} (${p.position}) — ` +
+    spot +
     `tech ${a.technical}/mental ${a.mental}/phys ${a.physical} · ` +
     `pass ${a.passing}·shoot ${a.shooting}·tackle ${a.tackling}·pace ${a.pace}·stam ${a.stamina}·pos ${a.positioning}`
   );
@@ -74,6 +86,9 @@ function rosterLine(p: TeamInputRosterEntry): string {
  */
 export function buildTeamInputPrompt(ctx: TeamInputJobContext, feedback?: string): string {
   const roster = [...ctx.roster].sort((a, b) => a.slotIndex - b.slotIndex);
+  // #324 슬롯 기준 좌표 — 감독이 전술보드에서 잡은 자리. 모르는 포메이션이면 기본 포메이션 표로 떨어진다
+  // (좌표를 아예 안 싣는 것이 곧 이 이슈의 결함이었다).
+  const slots = formationBasePositions(ctx.formation);
 
   const parts = [
     COACH_SYSTEM,
@@ -83,8 +98,8 @@ export function buildTeamInputPrompt(ctx: TeamInputJobContext, feedback?: string
     synthesizeDirectivesSection(DIRECTIVES),
     "",
     `포메이션: ${ctx.formation} (${ctx.side} 팀, ${ctx.half === 1 ? "전반" : "후반"})`,
-    `팀 로스터(선발 11명, 능력치 0..100):`,
-    ...roster.map(rosterLine),
+    `팀 로스터(선발 11명, 능력치 0..100 · 기준 = 전술보드에서 잡아 둔 자리):`,
+    ...roster.map((p) => rosterLine(p, slots[p.slotIndex])),
     "",
     `seed: ${ctx.seed}`,
   ];

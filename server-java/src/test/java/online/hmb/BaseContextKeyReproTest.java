@@ -26,7 +26,7 @@ class BaseContextKeyReproTest {
             + "\"roster\":[{\"attributes\":{\"pace\":90,\"shooting\":60},\"playerId\":\"p1\",\"slotIndex\":0},"
             + "{\"attributes\":{\"defending\":55,\"pace\":65},\"playerId\":\"p2\",\"slotIndex\":1},"
             + "{\"attributes\":{\"pace\":70,\"shooting\":80,\"zeta\":10},\"playerId\":\"p3\",\"slotIndex\":2}],"
-            + "\"teamPrompt\":\"공격적으로 압박\",\"v\":1}";
+            + "\"teamPrompt\":\"공격적으로 압박\",\"v\":2}";
 
     private static Map<String, Object> attrs(Object... kv) {
         Map<String, Object> m = new LinkedHashMap<>();

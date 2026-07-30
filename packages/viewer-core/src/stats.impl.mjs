@@ -2,6 +2,8 @@
 // "현재 틱까지"의 누적 스탯을 계산해 HUD 가 재생 중 실시간 갱신하게 한다. match-stats.ts(종료후 일괄,
 // TS)와 별개로, 뷰어에서 매 프레임 싸게 부를 수 있는 증분 계산을 제공한다(계약은 동일 정의).
 
+import { ownerSideOf } from "./owner-side.mjs";
+
 /**
  * @typedef {{shots:number, onTarget:number, goals:number, offTarget:number, saves:number, xg:number,
  *   passCompleted:number, passAttempts:number, passPct:number, corners:number, fouls:number,
@@ -16,8 +18,6 @@ function empty() {
     corners: 0, fouls: 0, offsides: 0, yellow: 0, red: 0,
   };
 }
-
-const sideOf = (id) => (id && id[0] === "H" ? "home" : "away");
 
 /**
  * 이벤트 시계열에서 uptoTick(포함)까지의 누적 팀 스탯. match-stats.ts 정의와 일치:
@@ -81,8 +81,10 @@ export function computeCumulativePossession(snaps) {
   const cumHome = new Array(snaps.length), cumAway = new Array(snaps.length);
   let h = 0, a = 0;
   for (let i = 0; i < snaps.length; i++) {
-    const o = snaps[i].ballOwner;
-    if (o) { if (sideOf(o) === "home") h++; else a++; }
+    // #324: 종전엔 `ballOwner[0] === "H"` 로 팀을 추측해 **실경기 id(P077)가 전부 away** 로 집계됐다
+    // (라이브 실측 home 0 : away 2219 → 화면 점유율 home 0%). 소유팀은 스냅샷에서 찾는다.
+    const side = ownerSideOf(snaps[i]);
+    if (side === "home") h++; else if (side === "away") a++;
     cumHome[i] = h; cumAway[i] = a;
   }
   return { cumHome, cumAway };

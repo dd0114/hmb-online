@@ -66,9 +66,13 @@ export function StatsPanel({
     if (!log) return null;
     const events = ((log.events ?? []) as unknown as LogEvent[]) ?? [];
     const snaps =
+      // #324: 소유팀은 스냅샷의 players 에서 찾는다(ballOwner 는 순수 id 라 팀을 모른다) →
+      // 캐스트도 실제 형상이어야 한다. `{ ballOwner }` 만 적으면 타입이 통과해도 점유가 0 이 된다.
       ((log.tickSnapshots ?? []) as unknown as {
         tick: number;
         ballOwner?: string | null;
+        ball: { x: number; y: number };
+        players: { playerId: string; team?: string; pos: { x: number; y: number } }[];
       }[]) ?? [];
     const upto = tick ?? 0;
     const stats = liveEventStats(events, upto);

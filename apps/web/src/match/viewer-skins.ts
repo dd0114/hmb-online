@@ -41,6 +41,7 @@ import {
   unitIconBackground,
   type TileRef,
 } from "../common/char-manifest";
+import { skinKeyOf } from "@hmb/viewer-core";
 import { normalizeCharRef, type CharAssets } from "../common/char-assets-store";
 import type { Grade } from "../common/grades";
 import { showsCharacterArt } from "../common/icon-policy";
@@ -87,6 +88,12 @@ interface MatchLogLike {
  *
  * 첫 스냅샷만 보지 않고 **전 스냅샷을 훑는다**: 교체 선수는 첫 스냅샷에 없어서, 첫 스냅샷만 보면
  * 그 선수만 다시 id 원문으로 떨어진다(폴백에 조용히 뚫리는 구멍 — 독립검증 지적).
+ *
+ * ⚠️ **키는 `(team, playerId)` 다**(#324). 유저 덱과 봇 로스터가 같은 선수 카탈로그를 공유해
+ * **같은 playerId 가 양 팀에 동시 출전**한다(라이브 101하프의 38% 가 중복 1명 이상). 예전엔 번호를
+ * 팀별로 세면서 저장만 `out[playerId]` 로 하고 두 번째 팀 인스턴스를 건너뛰어서 —
+ * 중복 선수가 **먼저 나온 팀(home) 번호**를 달고, away 카운터가 그만큼 안 늘어 **away 전체 번호가
+ * 밀렸다**. 라이브 실측 away = `1,2,3,4,3,2,8,7,5,9,11`(팀 안 #2·#3 중복, 6명이 홈 번호).
  */
 export function jerseyNumbers(log: unknown): Record<string, string> {
   const snaps = (log as MatchLogLike)?.tickSnapshots;
@@ -95,10 +102,16 @@ export function jerseyNumbers(log: unknown): Record<string, string> {
   const out: Record<string, string> = {};
   for (const snap of snaps) {
     for (const p of snap?.players ?? []) {
-      if (!p?.playerId || out[p.playerId]) continue;
-      const team = p.team ?? "?";
-      seen[team] = (seen[team] ?? 0) + 1;
-      out[p.playerId] = String(seen[team]);
+      if (!p?.playerId) continue;
+      // team 이 없는 로그(스키마상 필수지만 구 소비자·손상 입력)에서는 팀 키를 만들지 않는다 —
+      // `"?:P077"` 로 실어 봐야 코어 조회가 전부 miss 라 **등번호가 통째로 사라진다**(구 동작은
+      // 번호가 나왔다). 그런 로그는 중복 id 문제도 없으므로 단독 키가 옳다.
+      const team = p.team;
+      const key = team ? skinKeyOf(team, p.playerId) : p.playerId;
+      if (out[key]) continue;
+      const bucket = team ?? "?";
+      seen[bucket] = (seen[bucket] ?? 0) + 1;
+      out[key] = String(seen[bucket]);
     }
   }
   return out;
@@ -163,10 +176,16 @@ export function buildViewerSkins(
     const cell: SkinCell = { ...cellOf(tile) };
     const atlas = indexOfAtlas(tile);
     if (atlas > 0) cell.atlas = atlas;
-    if (jerseys[playerId]) cell.num = jerseys[playerId];
     if (bg) cell.bg = bg;
+    // 등번호는 여기서 굽지 않는다 — 팀마다 다르기 때문(#324). 아래 팀 확장이 붙인다.
     byPlayer[playerId] = cell;
   }
+
+  /*
+   * #324 — 등번호는 셀에 굽지 않는다. 얼굴은 선수 것이라 양 팀이 같아도 맞지만 **번호는 팀마다
+   * 다르므로**, 셀에 구우면 팀 수만큼 아트 셀을 복제해야 한다(22개 중복 적재). 코어는 셀에
+   * `num` 이 없으면 `nums` 를 팀 키로 조회하므로, 번호는 거기 한 곳에만 두면 된다.
+   */
 
   const hasCells = Object.keys(byPlayer).length > 0 && atlases.length > 0;
   const hasNums = Object.keys(jerseys).length > 0;
