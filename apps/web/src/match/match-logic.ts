@@ -221,6 +221,28 @@ export function fallbackScore(
   return runningScore(events, revealedCount, baseline);
 }
 
+/**
+ * **라이브 하프에서 텍스트 폴백이 공개해도 되는 이벤트** (#238).
+ *
+ * 폴백(`MatchViewer` 의 `TimelineView`)의 `끝까지 보기` 에는 라이브 게이트가 없어서, 후반 진행 중에
+ * 누르면 **그 하프 이벤트가 전부** 공개되고 스코어보드가 **경기 최종 스코어**를 그렸다 —
+ * "재생 위치를 넘는 점수를 보이지 않는다"(#233)와 정면으로 어긋난다. 도달 경로가 좁을 뿐
+ * (캔버스 재생이 실패해야 폴백이 뜬다) 스포일러 계약의 구멍인 건 같다.
+ *
+ * `capTick` = 서버 권위 시계가 말하는 "지금"의 절대 틱(`liveGate` → `tickOfIndex`).
+ * **null 이면 제한 없음** — 지나간 하프·종료·레거시(시계 없음)는 원래대로 전부 보여준다.
+ *
+ * ⚠️ 상한을 **여기 한 곳**에 둔다. 호출부에서 `slice`/`filter` 를 다시 쓰면 그 사본이 조용히 낡는다
+ * (#233 독립검증 minor-1 이 정확히 그 형태였다 — 인라인 계산이 변이체를 통과시켰다).
+ */
+export function visibleTimelineEvents<T extends { tick: number }>(
+  events: readonly T[],
+  capTick: number | null,
+): T[] {
+  if (capTick == null) return [...events];
+  return events.filter((e) => e.tick <= capTick);
+}
+
 export interface TeamStats {
   shots: number;
   goals: number;
