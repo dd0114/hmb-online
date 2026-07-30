@@ -219,7 +219,7 @@ test("W1 deck-preset: 첫 진입 → 새 프리셋 저장 → 로드 → dirty �
 
   // 8) 저장 후(clean) 네비 이탈은 다이얼로그 없이 통과.
   await page.getByTestId("nav-bottom").getByTestId("nav-home").click();
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
 
   // 9) 390px 가로 오버플로 0.
   await page.goto("/deck");

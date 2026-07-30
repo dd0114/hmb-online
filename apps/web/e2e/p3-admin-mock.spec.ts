@@ -154,14 +154,14 @@ async function seedToken(page: Page) {
 }
 
 test.describe("Phase3 admin (route-mock)", () => {
-  test("(a) 비admin 토큰으로 /admin 직접 진입 → /lobby 리다이렉트, admin 화면 노출 0", async ({ page }) => {
+  test("(a) 비admin 토큰으로 /admin 직접 진입 → /home 리다이렉트, admin 화면 노출 0", async ({ page }) => {
     const state = freshState();
     state.isAdmin = false; // /api/me 에 isAdmin 필드 없음
     await mockApi(page, state);
     await seedToken(page);
 
     await page.goto("/admin");
-    await page.waitForURL("**/lobby");
+    await page.waitForURL("**/home");
     await expect(page.getByTestId("admin-page")).toHaveCount(0);
     // 네비의 운영 진입점도 비admin 에겐 DOM 에 없다.
     await expect(page.getByTestId("nav-admin")).toHaveCount(0);
@@ -258,7 +258,7 @@ test.describe("Phase3 admin (route-mock)", () => {
     await expect(page.getByTestId("admin-detail-points")).toHaveText("101,501");
   });
 
-  test("(d) 서버 403(AC-C2) → 안내 노출 후 /lobby", async ({ page }) => {
+  test("(d) 서버 403(AC-C2) → 안내 노출 후 /home", async ({ page }) => {
     const state = freshState();
     state.isAdmin = true; // 클라 가드는 통과 — 서버 게이트만 거부(가드 우회 상황)
     state.forbidAdminApi = true;
@@ -271,6 +271,6 @@ test.describe("Phase3 admin (route-mock)", () => {
     await expect(page.getByTestId("admin-users")).toHaveCount(0);
     await expect(page.getByTestId("admin-grant-form")).toHaveCount(0);
     // 안내 후 자동으로 로비로.
-    await page.waitForURL("**/lobby");
+    await page.waitForURL("**/home");
   });
 });

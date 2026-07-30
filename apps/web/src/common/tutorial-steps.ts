@@ -42,53 +42,55 @@ export interface TutorialStep {
  *
  * 유저가 대신 '다음'을 눌러 로비에 머무르면 덱 스텝은 이 화면 후보가 아니므로 오버레이가
  * 조용히 닫히고 **완료 저장은 되지 않는다**(못 본 스텝이 남았으므로 — seen 이 SoT).
- * 로비를 다시 와도 보여줄 게 없으니 다시 뜨지 않고, **처음 덱 화면에 들어가는 순간**
+ * 홈을 다시 와도 보여줄 게 없으니 다시 뜨지 않고, **처음 덱 화면에 들어가는 순간**
  * 덱 스텝 2개가 이어서 뜬다. 그때 비로소 완료로 저장된다.
  */
 export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
+    // #286: 코치마크 대상이 로비 버튼에서 **홈 타일**로 옮겨왔다. 홈이 곧 내비이므로
+    // 첫 안내 4개가 전부 홈 한 화면에서 끝난다(예전엔 로비 버튼 4개를 가리켰다).
     id: "play",
-    targetTestId: "play-cta",
+    targetTestId: "home-tile-game",
     title: "여기서 경기를 시작합니다",
-    body: "‘게임 시작’을 누르면 연습 경기와 리그 중에서 고를 수 있어요. 연습 경기는 봇과의 단판입니다.",
+    body: "‘게임 시작’을 누르면 연습·리그·원정 중에서 고를 수 있어요. 연습 경기는 봇과의 단판입니다.",
     enabled: true,
-    route: "/lobby",
+    route: "/home",
   },
   {
     id: "shop",
-    targetTestId: "lobby-shop",
-    title: "상점에서 선수를 모읍니다",
+    targetTestId: "home-tile-recruit",
+    title: "영입에서 선수를 모읍니다",
     // #232: 재화 이름을 문장에 박지 않는다 — 뽑기 결제 재화가 무엇인지도 서버 config 소관이라
     // ("무료재화 → 유상재화"로 이미 한 번 바뀌었다) 여기서 단정하면 다음에 또 틀린다.
-    body: "상점에서 뽑기를 돌려 카드를 얻습니다. 잔액이 모자라면 보유 재화를 확인하세요.",
+    body: "뽑기를 돌리거나 트레이드로 카드를 얻습니다. 잔액이 모자라면 보유 재화를 확인하세요.",
     enabled: true,
-    route: "/lobby",
+    route: "/home",
   },
   {
     id: "codex",
-    targetTestId: "lobby-codex",
-    title: "도감에서 보유 선수를 확인",
+    targetTestId: "home-tile-players",
+    title: "선수 도감에서 보유 선수를 확인",
     body: "등급·포지션별로 모은 선수를 모아 봅니다. 아직 못 얻은 선수도 여기서 확인할 수 있어요.",
     enabled: true,
-    route: "/lobby",
+    route: "/home",
   },
   {
-    // 리그 진입점은 ‘게임 시작’ 모달 안(mode-league)이라 로비에서는 같은 버튼을 다시 가리킨다.
+    // 리그는 [게임] 탭 안에 있다 — 홈에서는 같은 타일을 다시 가리킨다(진입 경로가 그것뿐이라).
     id: "league",
-    targetTestId: "play-cta",
+    targetTestId: "home-tile-game",
     title: "리그로 시즌을 치릅니다",
     body: "‘게임 시작 → 리그’ 를 고르면 10팀 18라운드 시즌이 열리고, 시즌이 끝나면 순위 보상을 받습니다.",
     enabled: true,
-    route: "/lobby",
+    route: "/home",
   },
   {
-    // 로비 → 덱 진입 유도. 이 버튼을 누르면 아래 deck-board/deck-save 로 이어진다(#106 머지 반영).
+    // 홈 → 덱 진입 유도. 이 타일을 누르면 아래 deck-board/deck-save 로 이어진다(#106 머지 반영).
     id: "deck",
-    targetTestId: "lobby-deck",
+    targetTestId: "home-tile-deck",
     title: "덱을 구성하세요",
     body: "여기를 눌러 전술보드를 엽니다. 선발 11명과 벤치, 선수별 지시를 거기서 정합니다.",
     enabled: true,
-    route: "/lobby",
+    route: "/home",
   },
   {
     // 덱 화면 안. testid 는 src/deck/TacticsBoard.tsx(읽기 전용, #106 세션 소유) 것을 그대로 쓴다.

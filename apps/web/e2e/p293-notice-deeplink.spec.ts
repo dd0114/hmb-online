@@ -157,7 +157,7 @@ test.describe("#298 AC1 — 로그인 상태 딥링크", () => {
 
     // 닫아도 억제 저장소는 그대로다 — 명시 요청은 "봤다"를 기록하지 않는다.
     await page.getByTestId("notice-close").click();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);   // #286: 로비 → 홈
     const after = await suppressionDump(page);
     // 변이체 킬 — `suppressible` 분기를 지우면 여기서 `N1@1` 이 붙어 죽는다.
     expect(JSON.parse(after.closed!), "닫기 기록이 늘어나지 않았다").toEqual(["OTHER@2"]);
@@ -234,7 +234,7 @@ test.describe("#298 AC3 — 오픈 리다이렉트 차단", () => {
       await page.goto(`/login?returnTo=${encodeURIComponent(c.raw)}`);
       await loginAsGuest(page);
 
-      await expect(page).toHaveURL(/\/lobby$/);
+      await expect(page).toHaveURL(/\/home$/);   // #286: 로비 → 홈
       // 외부 오리진으로 나가지 않았다.
       expect(new URL(page.url()).hostname).toBe("localhost");
       appendFileSync(
@@ -298,7 +298,7 @@ test.describe("#298 AC4 — 없는·만료 공지에 흰 화면 0", () => {
 
       // 로비로 나갈 수 있다.
       await page.getByTestId("share-notice-to-lobby").click();
-      await expect(page).toHaveURL(/\/lobby$/);
+      await expect(page).toHaveURL(/\/home$/);   // #286: 로비 → 홈
 
       expect(errors, "JS 에러 0").toEqual([]);
     });

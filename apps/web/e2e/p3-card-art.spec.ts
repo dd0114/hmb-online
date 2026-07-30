@@ -372,7 +372,9 @@ test("도감: 그리드·미보유 확장 어디에도 풀아트가 없다 (풀�
   await page.route((url) => url.pathname === "/api/players", (route) =>
     route.fulfill(json(CATALOG.map((p, i) => (i === 0 ? { ...p, owned: false, ownedCount: 0 } : p)))),
   );
-  await page.goto("/codex");
+  await page.goto("/players");
+  // #286: 도감 기본 스코프가 **보유**라 미보유 카드를 보려면 전체로 넘긴다.
+  await page.getByTestId("codex-scope-all").click();
   const locked = CATALOG[0]!;
   await expect(page.getByTestId(`codex-card-${locked.id}`)).toBeVisible();
   await expect(cards(page)).toHaveCount(0);
@@ -484,14 +486,21 @@ for (const st of TRADE_STATES) {
 
 /**
  * **강화/카드 상세**(`CardGrowthDetail`, #179) — 이 게임에서 가장 큰 카드 자리다.
- * 강화 화면이 일러스트를 고려하지 않고 만들어져 44px 아바타만 쓰고 있었고(hero 지적),
- * 도감·육성허브 **두 진입점**이 같은 모달을 연다 — 한 쪽만 확인하면 다른 쪽 회귀를 놓친다.
+ * 강화 화면이 일러스트를 고려하지 않고 만들어져 44px 아바타만 쓰고 있었고(hero 지적).
+ *
+ * ⚠️ #286 에서 육성 탭이 도감으로 병합돼 **두 진입점이 [보유]/[전체] 두 스코프**가 됐다.
+ * 예전처럼 `/codex`·`/growth` 두 경로를 도는 건 이제 **같은 케이스를 두 번 도는 것**이라
+ * (둘 다 `/players` 로 리다이렉트) 목적을 잃는다 — 독립검증 MIN-4. 스코프로 갈라 돈다.
  */
-for (const [label, path] of [["도감", "/codex"], ["육성허브", "/growth"]] as const) {
+for (const [label, scopeTestId] of [
+  ["보유 스코프", "codex-scope-owned"],
+  ["전체 스코프", "codex-scope-all"],
+] as const) {
   test(`강화 상세(${label} 진입): 카드 풀아트가 뜬다`, async ({ page }) => {
     await login(page);
     await mockApi(page);
-    await page.goto(path);
+    await page.goto("/players");
+    await page.getByTestId(scopeTestId).click();
     const target = CATALOG[0]!;
     const gridCard = page.getByTestId(`codex-card-${target.id}`);
     await expect(gridCard).toBeVisible();
@@ -523,7 +532,7 @@ for (const [label, path] of [["도감", "/codex"], ["육성허브", "/growth"]] 
     expect(bb.x - cb.x, "뱃지가 아트 좌상단에 붙지 않았다(카드 기준 좌표를 쓰고 있다)").toBeLessThanOrEqual(0.5);
     expect(bb.y - cb.y, "뱃지가 아트 좌상단에 붙지 않았다").toBeLessThanOrEqual(0.5);
     expect(await brokenImages(page)).toEqual([]);
-    await page.screenshot({ path: `${SHOTS}card-art-growth-${path.slice(1)}.png`, fullPage: true });
+    await page.screenshot({ path: `${SHOTS}card-art-growth-${scopeTestId}.png`, fullPage: true });
   });
 }
 
@@ -534,7 +543,7 @@ for (const [label, path] of [["도감", "/codex"], ["육성허브", "/growth"]] 
 test("경계: 매치·로비에 풀아트가 없다", async ({ page }) => {
   await login(page);
   await mockApi(page);
-  for (const path of ["/lobby", "/match/1"]) {
+  for (const path of ["/home", "/match/1"]) {
     await page.goto(path);
     await page.waitForTimeout(700);
     await expect(cards(page), `${path} 에 풀아트가 새어들었다`).toHaveCount(0);

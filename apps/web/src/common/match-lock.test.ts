@@ -83,10 +83,17 @@ describe("LOCKED_ROUTES", () => {
     expect(LOCKED_ROUTES.some((r) => r.startsWith("/match"))).toBe(false);
   });
 
-  it("메타 화면은 전부 덮는다", () => {
-    for (const route of ["/lobby", "/deck", "/shop", "/growth", "/codex", "/trade", "/logs", "/league"]) {
+  it("메타 화면은 전부 덮는다 (#286 6탭 + 하위 페이지)", () => {
+    for (const route of ["/home", "/game", "/deck", "/players", "/recruit", "/me", "/league", "/away"]) {
       expect(LOCKED_ROUTES).toContain(route);
     }
+  });
+
+  it("홈도 잠금 대상이다 — 다만 게이트가 abandonable 을 보므로 탈출구는 남는다 (#286)", () => {
+    // 홈을 빼면 재생 중(#217 AC1)에 홈에 눌러앉을 수 있다. 반대로 넣어도 회수 가능한 사고
+    // 매치는 `locked && !abandonable` 이 거짓이라 홈이 열린다 — 포기 버튼이 거기 있다.
+    expect(LOCKED_ROUTES).toContain("/home");
+    expect(shouldForceResume({ match: { id: "M", state: "FAILED" }, locked: true, abandonable: true })).toBe(false);
   });
 });
 

@@ -71,7 +71,7 @@ describe("safeReturnTo — 차단 (오픈 리다이렉트)", () => {
   }
 });
 
-describe("resolveReturnTo — 폴백은 언제나 로비", () => {
+describe("resolveReturnTo — 폴백은 언제나 기본 착지", () => {
   it("안전하면 그 경로", () => {
     expect(resolveReturnTo("/share/notice/N1")).toBe("/share/notice/N1");
   });
@@ -82,8 +82,10 @@ describe("resolveReturnTo — 폴백은 언제나 로비", () => {
     }
   });
 
-  it("로비 상수는 실제 로비 경로다", () => {
-    expect(LOBBY_PATH).toBe("/lobby");
+  it("기본 착지는 홈이다 (#286: 로비가 홈으로 대체됐다)", () => {
+    // 상수 이름은 호환을 위해 남았지만 값은 홈이다. `/lobby` 로 두면 착지 때마다 리다이렉트를
+    // 한 번 더 타고(로비는 이제 리다이렉트로만 존재), 그 사이 화면이 한 번 깜빡인다.
+    expect(LOBBY_PATH).toBe("/home");
   });
 });
 
@@ -101,7 +103,7 @@ describe("loginPathWithReturn", () => {
     expect(loginPathWithReturn("//evil.test")).toBe("/login");
   });
 
-  it("로비로 가려다 튕긴 경우는 파라미터를 붙이지 않는다(기본 착지와 같다)", () => {
-    expect(loginPathWithReturn("/lobby")).toBe("/login");
+  it("기본 착지로 가려다 튕긴 경우는 파라미터를 붙이지 않는다", () => {
+    expect(loginPathWithReturn("/home")).toBe("/login");
   });
 });

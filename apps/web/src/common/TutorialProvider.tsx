@@ -27,7 +27,10 @@ import {
 const MAX_ATTEMPTS = 2;
 
 /** 스텝 대상이 실재하는 화면들(TUTORIAL_STEPS 의 route 집합과 일치시켜 둔다). */
-const DEFAULT_AUTO_START_PATHS = ["/lobby", "/deck"] as const;
+// #286: 온보딩 시작 지점이 로비 → **홈**으로 옮겨왔다(코치마크 대상도 홈 타일이다).
+// ⚠️ 이 배열과 `tutorial-steps.ts` 의 `route` 는 **짝**이다 — 스텝은 /home 을 가리키는데 여기가
+// /lobby 로 남아 있으면 신규 유저에게 코치마크가 **아예 안 뜬다**(p248b 가 그걸 잡았다).
+const DEFAULT_AUTO_START_PATHS = ["/home", "/deck"] as const;
 
 /**
  * 온보딩 튜토리얼 상태 (PRD-v4 §B, AC-B1).

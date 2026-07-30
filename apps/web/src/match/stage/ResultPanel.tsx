@@ -97,7 +97,7 @@ export function ResultPanel({ match, homeName, awayName }: ResultPanelProps) {
         type="button"
         className={styles.toLobby}
         data-testid="to-lobby"
-        onClick={() => navigate("/lobby")}
+        onClick={() => navigate("/home")}
       >
         로비로
       </button>

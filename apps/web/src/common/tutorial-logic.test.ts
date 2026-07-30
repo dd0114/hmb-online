@@ -46,9 +46,9 @@ describe("enabledSteps", () => {
     expect(ids).toContain("deck-save");
 
     const byId = (id: string) => run.find((s) => s.id === id)!;
-    // 로비 진입 유도는 로비 버튼, 배치/저장은 덱 화면 요소(src/deck/** 의 실제 testid).
-    expect(byId("deck").targetTestId).toBe("lobby-deck");
-    expect(byId("deck").route).toBe("/lobby");
+    // 홈 진입 유도는 홈 타일(#286), 배치/저장은 덱 화면 요소(src/deck/** 의 실제 testid).
+    expect(byId("deck").targetTestId).toBe("home-tile-deck");
+    expect(byId("deck").route).toBe("/home");
     expect(byId("deck-board").targetTestId).toBe("tactics-board");
     expect(byId("deck-board").route).toBe("/deck");
     expect(byId("deck-save").targetTestId).toBe("save-deck");

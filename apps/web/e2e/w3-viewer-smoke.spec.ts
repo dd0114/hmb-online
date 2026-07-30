@@ -82,12 +82,12 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   await page.getByPlaceholder("2~16자").fill(nickname);
   await page.getByRole("button", { name: "계속" }).click();
   await page.getByRole("button", { name: "확인" }).click();
-  await expect(page).toHaveURL(/\/lobby$/);
+  await expect(page).toHaveURL(/\/home$/);
 
   expect(await seedDeck(page)).toBe(true);
 
-  // 로비 개편(W5): 게임시작 → 연습/리그 모달 → 연습 경기(mode-practice).
-  await page.getByTestId("play-cta").click();
+  // #286: 홈 [게임 시작] → 게임 탭 → 연습 경기(mode-practice). 모드 모달은 소멸했다.
+  await page.getByTestId("home-tile-game").click();
   await page.getByTestId("mode-practice").click();
   await expect(page).toHaveURL(/\/match\//);
 

@@ -211,11 +211,11 @@ test.describe("#245 요구 1·3 — 부재중 피원정 팝업", () => {
   test("다건이 '몇 팀과 몇 승 몇 패 · 득실 · 레이팅' 으로 묶여 뜬다", async ({ page }) => {
     await mockApi(page, { unseen: [...THREE_RAIDS] });
 
-    await page.goto("/lobby");
+    await page.goto("/game");
 
-    // hero E1: 로비에 들어온 것만으로는 뜨지 않는다 — [게임 시작]을 누를 때 뜬다.
+    // hero E1: 화면에 들어온 것만으로는 뜨지 않는다 — **[원정] 카드를 누를 때** 뜬다(#286 이관).
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
-    await page.getByTestId("play-cta").click();
+    await page.getByTestId("mode-away").click();
 
     const modal = page.getByTestId("away-report-modal");
     await expect(modal).toBeVisible();
@@ -237,8 +237,8 @@ test.describe("#245 요구 1·3 — 부재중 피원정 팝업", () => {
   test("단건이면 상대 이름과 결과를 말한다", async ({ page }) => {
     await mockApi(page, { unseen: [THREE_RAIDS[1]!], rating: 10 });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
 
     await expect(page.getByTestId("away-report-headline")).toHaveText(
       "언더독 유나이티드이(가) 원정을 왔고, 막아냈습니다",
@@ -249,29 +249,30 @@ test.describe("#245 요구 1·3 — 부재중 피원정 팝업", () => {
   test("0건이면 팝업이 아예 뜨지 않는다", async ({ page }) => {
     await mockApi(page, { unseen: [] });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
-    // 0건이면 팝업 대신 모드 선택이 바로 열린다(빈 모달을 끼워 넣지 않는다).
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
+    // 0건이면 팝업 대신 원정 페이지가 바로 열린다(빈 모달을 끼워 넣지 않는다).
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
-    await expect(page.getByTestId("mode-away")).toBeVisible();
+    await expect(page.getByTestId("away-page")).toBeVisible();
   });
 });
 
 test.describe("#245 멱등 — 한 번만 보여준다", () => {
-  test("[확인] 뒤에는 로비를 다시 와도 뜨지 않는다", async ({ page }) => {
+  test("[확인] 뒤에는 다시 와도 뜨지 않는다", async ({ page }) => {
     const st = await mockApi(page, { unseen: [...THREE_RAIDS] });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await page.getByTestId("away-report-confirm").click();
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
     // 닫으면 원래 가려던 곳으로 이어준다 — 한 번 더 누르게 하지 않는다(E1).
-    await expect(page.getByTestId("mode-away")).toBeVisible();
+    // #286 이후 그 목적지는 모드 모달이 아니라 **원정 페이지**다.
+    await expect(page.getByTestId("away-page")).toBeVisible();
 
     // 새로고침 = 서버에 다시 묻는다. 로컬 플래그가 아니라 서버 상태(seen_at)가 SoT 여야 한다.
-    await page.reload();
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");   // 새로고침 대신 게임 탭 재진입 — 팝업 트리거가 여기 있다
+    await page.getByTestId("mode-away").click();
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
     expect(st.ackCalls).toBeGreaterThanOrEqual(1);
   });
@@ -284,8 +285,8 @@ test.describe("#245 MAJ-1 — 안 보여준 리포트를 소진하지 않는다"
       limit: 3, // 서버가 3건만 실어 보냈다(실서버 기본은 20)
     });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
     await expect(page.getByTestId("away-report-item")).toHaveCount(3);
     await expect(page.getByTestId("away-report-remaining")).toContainText("외 2경기");
 
@@ -302,8 +303,8 @@ test.describe("#245 2R blocker — 클릭이 리포트를 소멸시키지 않는
   test("경기를 보러 가도 확인 처리되지 않는다(지난 리포트를 볼 화면이 없으므로 영구 소실이 된다)", async ({ page }) => {
     const st = await mockApi(page, { unseen: [THREE_RAIDS[0]!, THREE_RAIDS[1]!] });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
     await page.getByTestId("away-report-item").first().click();
     await expect(page).toHaveURL(/\/match\/M1$/);
 
@@ -316,8 +317,8 @@ test.describe("#245 2R blocker — 클릭이 리포트를 소멸시키지 않는
       unseen: [{ ...THREE_RAIDS[0]!, id: "RF", matchId: "MF", goalsFor: 0, goalsAgainst: 0, result: "WIN", ratingDelta: 10 }],
     });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
     const item = page.getByTestId("away-report-item").first();
     await expect(item).toContainText("몰수");
     // 열리면 수비자에게 "포기한 경기입니다"가 뜬다 — 포기한 건 상대인데.
@@ -329,8 +330,8 @@ test.describe("#245 요구 6 — 리포트에서 그 경기를 본다", () => {
   test("[경기 보기]가 그 매치로 가고, 홈 이름이 공격자로 뜬다(내 닉이 아니라)", async ({ page }) => {
     await mockApi(page, { unseen: [THREE_RAIDS[0]!] });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
     await page.getByTestId("away-report-item").first().click();
 
     await expect(page).toHaveURL(/\/match\/M1$/);
@@ -343,41 +344,46 @@ test.describe("#245 3R m2 — 오탭은 확인이 아니다", () => {
   test("Escape 로 닫으면 확인되지 않아 다음 진입에 다시 뜬다", async ({ page }) => {
     const st = await mockApi(page, { unseen: [...THREE_RAIDS] });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
+    // 오탭으로 닫혀도 **가려던 곳으로는 이어준다**(hero E1) — 여기서 멈춰 세우면 한 번 더
+    // 누르게 하는 셈이다. 중요한 건 "확인"이 아니라는 것.
+    await expect(page).toHaveURL(/\/away$/);
 
     expect(st.ackCalls).toBe(0);
-    // 확인하지 않았으니 다음에 또 뜬다(E1 이후 트리거는 [게임 시작]이다).
-    await page.reload();
-    await page.getByTestId("play-cta").click();
+    // 확인하지 않았으니 다음에 또 뜬다(#286 이후 트리거는 게임 탭의 [원정] 카드다).
+    await page.goto("/game");
+    await page.getByTestId("mode-away").click();
     await expect(page.getByTestId("away-report-modal")).toBeVisible();
   });
 });
 
 test.describe("#245 요구 2 — 레이팅", () => {
-  test("헤더에 레이팅이 전적과 함께 보인다(지갑 P 와 다른 축)", async ({ page }) => {
+  test("홈에 레이팅이 팀 한 줄과 함께 보인다(지갑 P 와 다른 축)", async ({ page }) => {
+    // #286: 로비 헤더 배지가 사라지고 **홈 팀 한 줄**로 옮겨왔다. 축이 다르다는 계약은 그대로 —
+    // 레이팅이 지갑 배지로 섞여 들어가면 "실력"과 "재화"가 한 덩어리로 읽힌다.
     await mockApi(page, { unseen: [], rating: -20 });
 
-    await page.goto("/lobby");
-    await expect(page.getByTestId("rating-badge")).toHaveAttribute("data-rating", "-20");
-    // 재화 배지는 그대로 — 레이팅이 지갑으로 섞여 들어가면 안 된다.
+    await page.goto("/home");
+    await expect(page.getByTestId("home-rating")).toContainText("-20");
     await expect(page.getByTestId("points-badge")).toBeVisible();
   });
 });
 
 test.describe("#245 원정 모드", () => {
-  test("[게임 시작]에 원정이 있고, 누르면 원정 매치로 간다", async ({ page }) => {
+  test("[게임] 탭에 원정이 있고, 원정 페이지에서 떠나면 원정 매치로 간다", async ({ page }) => {
     const st = await mockApi(page, { unseen: [] });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
     await expect(page.getByTestId("mode-away")).toBeVisible();
-    // ⚠️ 증감폭(±10)은 서버 config 소유다 — 버튼이 숫자를 베끼면 값을 바꿨을 때 화면만 거짓말한다.
-    await expect(page.getByTestId("mode-away")).not.toContainText("10");
+    // ⚠️ 증감폭(±10)은 서버 config 소유다 — 카드가 숫자를 베끼면 값을 바꿨을 때 화면만 거짓말한다.
+    await expect(page.getByTestId("mode-away")).not.toContainText("승패로 ±10");
     await page.getByTestId("mode-away").click();
+    // #286: 2택은 모달이 아니라 **원정 페이지**의 [원정 떠나기] 뒤에 온다.
+    await page.getByTestId("away-start").click();
 
     // hero E2: 레이팅 비슷한 2명을 보여주고 그 중 고른다.
     // 남은 횟수는 **누르기 전에** 보인다 — 눌렀는데 거부되는 건 나쁜 UX 다.
@@ -395,12 +401,12 @@ test.describe("#245 원정 모드", () => {
   test("상대가 없으면 봇으로 대체하지 않고 그 사실을 말한다", async ({ page }) => {
     await mockApi(page, { unseen: [], hasOpponent: false });
 
-    await page.goto("/lobby");
-    await page.getByTestId("play-cta").click();
+    await page.goto("/game");
     await page.getByTestId("mode-away").click();
+    await page.getByTestId("away-start").click();
 
     // 매치로 이동하지 않는다 — 조용한 봇 폴백이면 여기서 /match 로 갔을 것이다.
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/away$/);
     await expect(page.getByTestId("away-no-opponent")).toBeVisible();
   });
 });
@@ -416,11 +422,14 @@ test.describe("#245 3R blocker — 잠금 판정 전에 팝업이 스치지 않�
       activeDelayMs: 900,
     });
 
-    await page.goto("/lobby");
-    // ⚠️ **트리거를 실제로 당긴다**(E1 이후 팝업은 [게임 시작]에 달려 있다). 안 누르면 게이트가
-    // 있든 없든 "팝업 0"이 참이라, 이 계약이 다시 tautology 가 된다(독립검증 MAJ-5 가 그 상태였다).
-    // best-effort — 이미 매치로 튕겼으면 버튼이 없다. 기다리면 타임아웃을 다 먹는다.
-    await page.getByTestId("play-cta").click({ timeout: 2000 }).catch(() => {});
+    // ⚠️ **트리거를 실제로 당긴다**(#286 이후 팝업은 게임 탭의 [원정] 카드에 달려 있다). 안 누르면
+    // 게이트가 있든 없든 "팝업 0"이 참이라, 이 계약이 다시 tautology 가 된다(독립검증 MAJ-5 가 그
+    // 상태였고, #286 1차 이관에서 구 CTA 를 그대로 둔 채 `.catch(()=>{})` 로 삼켜 **또 그렇게
+    // 됐다** — 독립검증 BL-3). 그래서 여기서는 삼키지 않는다: 강제 이동으로 카드가 없으면
+    // 그건 곧 매치로 튕겼다는 뜻이라 아래 URL 단언이 받는다.
+    await page.goto("/game");
+    const awayCard = page.getByTestId("mode-away");
+    if (await awayCard.count()) await awayCard.click();
 
     // ⚠️ 창 자체를 관측해야 한다. 이전 계약은 URL 이동을 먼저 기다린 뒤 개수를 세서
     // **게이트를 통째로 지워도 통과**했다(3R: W5 변이체 생존). 지연 구간을 훑는다.
@@ -442,13 +451,15 @@ test.describe("#245 × #217 — 잠금과 충돌하지 않는다", () => {
   test("진행 중 경기로 강제 이동될 땐 팝업을 띄우지 않는다", async ({ page }) => {
     const st = await mockApi(page, { unseen: [...THREE_RAIDS], locked: true });
 
-    await page.goto("/lobby");
-    // 트리거를 당겨본다 — 강제 이동 중이면 그래도 팝업이 떠선 안 된다(MAJ-5).
-    // best-effort — 이미 매치로 튕겼으면 버튼이 없다. 기다리면 타임아웃을 다 먹는다.
-    await page.getByTestId("play-cta").click({ timeout: 2000 }).catch(() => {});
-
-    // 로비를 스쳐 매치로 간다. 그 사이 팝업이 떠 ack 이 소진되면 결과를 영영 못 본다.
+    // #286 이후 트리거는 게임 탭의 [원정] 카드인데, 그 라우트가 **잠겨 있다**(LOCKED_ROUTES).
+    // 즉 강제 이동 중에는 트리거에 닿을 수조차 없다 — MAJ-5 가 요구한 것보다 강한 보장이다.
+    // ⚠️ 그래서 여기서는 "못 눌렀다"가 통과 근거가 아니다. **잠금이 실제로 걸렸는지**(URL)와
+    //    **팝업이 안 떴는지**를 둘 다 본다. 잠금을 지우면 카드를 눌러 팝업이 뜨고 여기서 깨진다.
+    await page.goto("/game");
     await expect(page).toHaveURL(/\/match\/M_LIVE$/);
+    await expect(page.getByTestId("mode-away"), "잠겼으니 트리거 자체가 없다").toHaveCount(0);
+
+    // 스쳐 지나가는 사이 팝업이 떠 ack 이 소진되면 결과를 영영 못 본다.
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
     expect(st.ackCalls).toBe(0);
   });

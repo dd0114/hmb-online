@@ -122,7 +122,7 @@ async function mockLobby(page: Page, payload: unknown, options: Options = {}) {
 }
 
 async function openLobby(page: Page) {
-  await page.goto("/lobby");
+  await page.goto("/home");   // #286: 로비 → 홈
   await expect(page.getByTestId("notice-popup")).toBeVisible();
 }
 

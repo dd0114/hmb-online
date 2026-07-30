@@ -4,18 +4,19 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from
 import { QueryClientProvider } from "@tanstack/react-query";
 import { TokenProvider, useToken } from "./auth/TokenContext";
 import { NavGuardProvider } from "./common/NavGuard";
+import { NavLockProvider } from "./common/NavLockProvider";
 import { AppConfigProvider } from "./common/AppConfigContext";
 import { MatchLockGate } from "./common/MatchLockGate";
 import { LoginPage } from "./auth/LoginPage";
 import { loginPathWithReturn } from "./auth/return-to";
 import { ShareNoticePage } from "./share/ShareNoticePage";
-import { LobbyPage } from "./lobby/LobbyPage";
+import { HomePage } from "./home/HomePage";
+import { GamePage } from "./game/GamePage";
+import { AwayPage } from "./away/AwayPage";
 import { DeckPage } from "./deck/DeckPage";
-import { ShopPage } from "./shop/ShopPage";
 import { CodexPage } from "./codex/CodexPage";
-import { GrowthHubPage } from "./growth/GrowthHubPage";
-import { TradePage } from "./trade/TradePage";
-import { LogsPage } from "./logs/LogsPage";
+import { RecruitPage } from "./recruit/RecruitPage";
+import { MePage } from "./me/MePage";
 import { LeaguePage } from "./league/LeaguePage";
 import { MatchPage } from "./match/MatchPage";
 import { AdminPage } from "./admin/AdminPage";
@@ -67,16 +68,41 @@ function AppRoutes() {
       <UnauthorizedBridge />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        {/* 아래 메타 라우트 8개는 RequireAuth 안쪽에서 MatchLockGate 로 한 겹 더 감싼다(#217 AC1/AC2):
-            진행 중 매치가 있으면 어디로 들어와도 /match/:id 로 돌아간다. 목록은 common/match-lock.ts
-            의 LOCKED_ROUTES 와 같아야 하며(계약 = match-lock.test.ts), /match·/login·dev 하니스는
-            제외다 — 자기 자신을 막으면 리다이렉트 루프다. */}
+
+        {/* 홈도 MatchLockGate 를 쓴다 — 게이트가 `locked && !abandonable` 일 때만 되돌리므로
+            재생 중에는 경기로 가고(#217 AC1), 회수 가능한 사고 매치에서는 홈이 열려 [경기 포기]에
+            닿는다(#217 AC3). 홈 안에서 **타일을 못 누르게** 하는 건 또 다른 층이다(common/nav-lock.ts). */}
         <Route
-          path="/lobby"
+          path="/home"
           element={
             <RequireAuth>
               <MatchLockGate>
-                <LobbyPage />
+                <HomePage />
+              </MatchLockGate>
+            </RequireAuth>
+          }
+        />
+
+        {/* 아래 메타 라우트 8개(홈 포함)는 RequireAuth 안쪽에서 MatchLockGate 로 한 겹 더 감싼다(#217 AC1/AC2):
+            진행 중 매치가 있으면 어디로 들어와도 /match/:id 로 돌아간다. 목록은 common/match-lock.ts
+            의 LOCKED_ROUTES 와 같아야 하며(계약 = match-lock.test.ts + e2e/p4-match-lock.spec.ts 의
+            전수 루프), /home·/match·/login·dev 하니스는 제외다. */}
+        <Route
+          path="/game"
+          element={
+            <RequireAuth>
+              <MatchLockGate>
+                <GamePage />
+              </MatchLockGate>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/away"
+          element={
+            <RequireAuth>
+              <MatchLockGate>
+                <AwayPage />
               </MatchLockGate>
             </RequireAuth>
           }
@@ -92,27 +118,7 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/shop"
-          element={
-            <RequireAuth>
-              <MatchLockGate>
-                <ShopPage />
-              </MatchLockGate>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/growth"
-          element={
-            <RequireAuth>
-              <MatchLockGate>
-                <GrowthHubPage />
-              </MatchLockGate>
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/codex"
+          path="/players"
           element={
             <RequireAuth>
               <MatchLockGate>
@@ -122,21 +128,21 @@ function AppRoutes() {
           }
         />
         <Route
-          path="/trade"
+          path="/recruit"
           element={
             <RequireAuth>
               <MatchLockGate>
-                <TradePage />
+                <RecruitPage />
               </MatchLockGate>
             </RequireAuth>
           }
         />
         <Route
-          path="/logs"
+          path="/me"
           element={
             <RequireAuth>
               <MatchLockGate>
-                <LogsPage />
+                <MePage />
               </MatchLockGate>
             </RequireAuth>
           }
@@ -151,6 +157,16 @@ function AppRoutes() {
             </RequireAuth>
           }
         />
+
+        {/* 구 URL — 새 IA 로 넘긴다(#286). 북마크·기존 링크·튜토리얼 딥링크가 죽지 않게 남긴다.
+            ⚠️ /trade 는 **쿼리로 탭을 지정**한다. 안 그러면 트레이드 북마크가 뽑기 화면으로 떨어진다. */}
+        <Route path="/lobby" element={<Navigate to="/home" replace />} />
+        <Route path="/codex" element={<Navigate to="/players" replace />} />
+        <Route path="/growth" element={<Navigate to="/players" replace />} />
+        <Route path="/shop" element={<Navigate to="/recruit" replace />} />
+        <Route path="/trade" element={<Navigate to="/recruit?tab=trade" replace />} />
+        <Route path="/logs" element={<Navigate to="/me" replace />} />
+
         <Route
           path="/match/:id"
           element={
@@ -196,8 +212,8 @@ function AppRoutes() {
             `node tools/qa-console.mjs start`. 제품 화면이 아니다. */}
         {import.meta.env.DEV && <Route path="/qa/console" element={<QaConsolePage />} />}
 
-        <Route path="/" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
-        <Route path="*" element={<Navigate to={token ? "/lobby" : "/login"} replace />} />
+        <Route path="/" element={<Navigate to={token ? "/home" : "/login"} replace />} />
+        <Route path="*" element={<Navigate to={token ? "/home" : "/login"} replace />} />
       </Routes>
     </NavGuardProvider>
   );
@@ -213,12 +229,16 @@ function App() {
           {/* admin 플래그(/api/me additive)를 네비까지 내려준다 — AppNav 가 쿼리 컨텍스트에
               직접 의존하지 않도록(src/admin/admin-flag.ts 주석 참조). */}
           <AdminFlagProvider>
+            {/* 경기 중 탭 잠금(#286 W2) — 네비가 쿼리 컨텍스트에 직접 의존하지 않도록
+                여기서 조회해 컨텍스트로 내린다(admin-flag 와 같은 패턴). */}
             {/* 신규 유저 온보딩 코치마크(PRD-v4 §B). 라우트 바깥 1겹 —
                 오버레이가 화면 전환과 무관하게 유지되고, 다시보기 진입점이
                 useTutorial() 로 어디서든 붙는다(src/common/tutorial-context.ts). */}
-            <TutorialProvider>
-              <AppRoutes />
-            </TutorialProvider>
+            <NavLockProvider>
+              <TutorialProvider>
+                <AppRoutes />
+              </TutorialProvider>
+            </NavLockProvider>
           </AdminFlagProvider>
         </TokenProvider>
       </BrowserRouter>

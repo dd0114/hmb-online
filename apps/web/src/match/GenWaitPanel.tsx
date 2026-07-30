@@ -65,7 +65,7 @@ export function GenWaitPanel({ match }: GenWaitPanelProps) {
           disabled={abandon.isPending}
           onClick={() =>
             abandon.mutate(undefined, {
-              onSuccess: () => navigate("/lobby"),
+              onSuccess: () => navigate("/home"),
               onError: (err) =>
                 setError(err instanceof Error ? err.message : "포기하지 못했습니다"),
             })
@@ -100,7 +100,7 @@ export function GenWaitPanel({ match }: GenWaitPanelProps) {
           disabled={abandon.isPending}
           onClick={() =>
             abandon.mutate(undefined, {
-              onSuccess: () => navigate("/lobby"),
+              onSuccess: () => navigate("/home"),
               onError: (err) =>
                 setError(err instanceof Error ? err.message : "포기하지 못했습니다"),
             })

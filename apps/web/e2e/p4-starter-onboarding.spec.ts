@@ -164,7 +164,7 @@ test.describe("#209 AC3 — 가입 최상위 지급 연출", () => {
     await expect(page.getByTestId("starter-reveal-grant")).toContainText("15명");
 
     await page.getByTestId("starter-reveal-close").click();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
   });
 
   test("모바일 390px — 카드·시트가 화면 안에 들어오고 가로 스크롤이 없다", async ({ page }) => {
@@ -196,7 +196,7 @@ test.describe("#209 AC3 — 가입 최상위 지급 연출", () => {
 
     await expect(page.getByTestId("starter-reveal-card")).toHaveCount(0);
     await page.getByTestId("starter-reveal-close").click();
-    await expect(page).toHaveURL(/\/lobby$/);
+    await expect(page).toHaveURL(/\/home$/);
   });
 });
 

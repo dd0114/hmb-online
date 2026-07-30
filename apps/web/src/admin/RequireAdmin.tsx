@@ -23,7 +23,7 @@ export function RequireAdmin({ children }: { children: ReactElement }) {
   });
 
   if (decision === "login") return <Navigate to="/login" replace />;
-  if (decision === "lobby") return <Navigate to="/lobby" replace />;
+  if (decision === "lobby") return <Navigate to="/home" replace />;
   if (decision === "loading") {
     return (
       <p style={{ padding: 16, color: "var(--text-muted)" }} data-testid="admin-guard-pending">

@@ -1,0 +1,22 @@
+/* 내 정보 (#286 W2 셸). */
+.headerRow { display: flex; align-items: center; justify-content: center; }
+.pageTitle { margin: 0; font-size: 17px; }
+.page { display: flex; flex-direction: column; gap: 12px; }
+
+.profile { background: var(--surface); border-radius: 14px; padding: 14px; }
+.pinfo { min-width: 0; }
+.nick { display: block; font-size: 17px; }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.badge {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: rgba(76, 141, 255, 0.16); color: #a8c6ff;
+}
+
+.record { background: var(--surface); border-radius: 14px; padding: 14px; }
+.recordLine { display: block; font-size: 19px; }
+.recordSub { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+.tutorialReplay {
+  align-self: center; background: none; border: 0;
+  color: var(--text-muted); font-size: 13px; padding: 8px; text-decoration: underline;
+}
