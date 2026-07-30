@@ -29,13 +29,16 @@ public class AdminController {
     private final AdminPointsService points;
     private final AdminEconomyService economy;
     private final AdminNoticeService notices;
+    private final AdminNoticeAssetService noticeAssets;
 
     public AdminController(AdminUserQueryService users, AdminPointsService points,
-                           AdminEconomyService economy, AdminNoticeService notices) {
+                           AdminEconomyService economy, AdminNoticeService notices,
+                           AdminNoticeAssetService noticeAssets) {
         this.users = users;
         this.points = points;
         this.economy = economy;
         this.notices = notices;
+        this.noticeAssets = noticeAssets;
     }
 
     /** 유저 목록·닉네임 검색·페이징. 비번은 조회 SQL 에도 DTO 에도 없다. */
@@ -173,5 +176,45 @@ public class AdminController {
     }
 
     public record NoticeListResponse(List<AdminNoticeService.NoticeAdminView> notices) {
+    }
+
+    // ── 공지 이미지 (#309 W1) ─────────────────────────────────────────────
+    // 공지 텍스트는 이미 무배포인데(#248) **그림만 웹 배포에 묶여 있었다**. 여기서 끊는다.
+    // 공개 읽기는 게이트 밖(GET /api/notices/assets/{id}, NoticeController)이다.
+    //
+    // ⚠️ **삭제 엔드포인트가 없는 것이 설계다**(hero 확정 2026-07-30). 내리기는 노출 스위치로만 —
+    //    삭제는 오조작이 곧 영구 소실이고 참조하던 공지의 그림을 되살릴 방법이 없다.
+    //    "정리 기능"을 이유로 DELETE 를 추가하지 마라.
+
+    /** 자산 목록(노출 OFF 포함) + `usedBy`(이 그림을 쓰는 살아 있는 공지 수). */
+    @GetMapping("/notices/assets")
+    public NoticeAssetListResponse noticeAssets() {
+        return new NoticeAssetListResponse(noticeAssets.list());
+    }
+
+    /**
+     * 이미지 업로드(multipart, 파트명 {@code file}). 응답 {@code url} 은 <b>상대경로</b>다 —
+     * 절대 URL 을 본문에 굽는 순간 터널 주소가 바뀔 때 과거 공지 이미지가 전부 깨진다.
+     */
+    @PostMapping("/notices/assets")
+    @org.springframework.web.bind.annotation.ResponseStatus(org.springframework.http.HttpStatus.CREATED)
+    public AdminNoticeAssetService.AssetView uploadNoticeAsset(
+            @RequestAttribute("userId") String actorUserId,
+            @org.springframework.web.bind.annotation.RequestPart(name = "file", required = false)
+            org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(name = "reason", required = false) String reason) {
+        return noticeAssets.upload(actorUserId, file, reason);
+    }
+
+    /** 노출 ON/OFF = 내리기의 전부. 끄면 서빙 404, 켜면 같은 바이트가 돌아온다. */
+    @PostMapping("/notices/assets/{id}/active")
+    public AdminNoticeAssetService.AssetView setNoticeAssetActive(
+            @RequestAttribute("userId") String actorUserId,
+            @PathVariable("id") String id,
+            @RequestBody(required = false) AdminNoticeAssetService.ActiveRequest body) {
+        return noticeAssets.setActive(actorUserId, id, body);
+    }
+
+    public record NoticeAssetListResponse(List<AdminNoticeAssetService.AssetView> assets) {
     }
 }

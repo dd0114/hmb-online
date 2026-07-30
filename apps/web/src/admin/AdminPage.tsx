@@ -8,6 +8,7 @@ import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { EconomyOpsPanel } from "./EconomyOpsPanel";
 import { NoticesPanel } from "./NoticesPanel";
+import { CharBundlePanel } from "./CharBundlePanel";
 import {
   formatRecord,
   formatSignedDelta,
@@ -22,7 +23,7 @@ import styles from "./AdminPage.module.css";
 import u from "./AdminUnits.module.css";
 
 /** 운영자 페이지의 섹션 — 유저 운영(기존) / 유닛 카탈로그(#207 웨이브2-C) / 공지(#248). */
-export type AdminTab = "users" | "units" | "economy" | "notices";
+export type AdminTab = "users" | "units" | "economy" | "notices" | "chars";
 
 /** 검색 입력 → 질의 반영 지연(ms). 타이핑마다 요청하지 않기 위한 값. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -200,6 +201,19 @@ export function AdminPage() {
           >
             공지
           </button>
+          {/* #309 W2 — 유닛 **등록**은 이미 무배포였고(#207 파트 A) 남아 있던 건 **아트**였다.
+              번들을 올려 켜면 웹 재배포 없이 그림이 바뀐다. 성격이 공지와 달라(파일 트리 교체 +
+              롤백 포인터) 탭을 하나 더 둔다. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "chars"}
+            className={`${u.tab} ${tab === "chars" ? u.tabActive : ""}`}
+            data-testid="admin-tab-chars"
+            onClick={() => setTab("chars")}
+          >
+            유닛 아트
+          </button>
         </div>
 
         {tab === "units" && <AdminUnitsSection />}
@@ -207,6 +221,8 @@ export function AdminPage() {
         {tab === "economy" && <EconomyOpsPanel />}
 
         {tab === "notices" && <NoticesPanel />}
+
+        {tab === "chars" && <CharBundlePanel />}
 
         {tab === "users" && (
           <>

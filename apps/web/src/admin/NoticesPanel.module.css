@@ -107,3 +107,24 @@
   font-weight: 700;
   margin: 0 0 6px;
 }
+
+/* ── 공지 이미지 업로드 (#309 W1) ─────────────────────────────────────── */
+
+.uploadRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 4px 0 8px;
+}
+
+/* 목록 썸네일. 원본 비율을 유지하되 행 높이를 흔들지 않는 크기로 가둔다 —
+   세로형 히어로 이미지(#248 후속)가 들어와도 표가 무너지지 않게. */
+.assetThumb {
+  display: block;
+  width: 56px;
+  height: 40px;
+  object-fit: contain;
+  background: var(--bg);
+  border-radius: 4px;
+}

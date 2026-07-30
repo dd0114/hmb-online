@@ -4,6 +4,9 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import online.hmb.common.ApiException;
+import org.springframework.http.CacheControl;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RestController;
@@ -50,9 +53,11 @@ public class NoticeController {
                     Notices.Status.DELETED, NoticeController::absent));
 
     private final NoticeService notices;
+    private final NoticeAssetService assets;
 
-    public NoticeController(NoticeService notices) {
+    public NoticeController(NoticeService notices, NoticeAssetService assets) {
         this.notices = notices;
+        this.assets = assets;
     }
 
     @GetMapping("/api/notices/active")
@@ -72,6 +77,40 @@ public class NoticeController {
         }
         // 결정표에 없는 상태 = 아직 아무도 판단하지 않은 상태다. 200 으로 흘리지 않고 숨긴다.
         throw BLOCKED.getOrDefault(found.status(), NoticeController::absent).apply(id);
+    }
+
+    /**
+     * {@code GET /api/notices/assets/{id}} — 공지 본문이 참조하는 <b>이미지</b> (#309 W1).
+     *
+     * <p><b>같은 이유로 공개다</b>: 이 바이트는 위 두 엔드포인트가 돌려주는 본문이 가리키는 그림이다.
+     * 여기에만 401 을 두면 점검 공지가 글은 뜨고 그림만 깨진 상태로 보이고, 공유 링크는 더 나쁘다
+     * (미로그인 상태에서 열리므로 그림이 항상 비어 보인다).
+     *
+     * <p>⚠️ <b>{@code byId} 와 경로가 겹치지 않는다</b>: 저건 3세그먼트({@code /api/notices/{id}}),
+     * 이건 4세그먼트다. 다만 {@code /api/notices/assets}(id 없이)는 {@code byId} 에 id="assets" 로
+     * 걸려 <b>없는 공지와 같은 404</b> 를 돌려준다 — 존재를 흘리지 않으므로 그대로 둔다.
+     *
+     * <p><b>헤더 셋이 계약이다</b>:
+     * <ul>
+     *   <li>{@code Content-Type} = 업로드 때 <b>매직바이트로 확정한</b> 값(클라 신고값이 아니다).</li>
+     *   <li>{@code nosniff} = 브라우저가 그 바이트를 다른 타입으로 해석하지 못하게. 화이트리스트
+     *       (SVG 제외)와 <b>짝으로만</b> 방어가 성립한다.</li>
+     *   <li>{@code immutable} 장기 캐시 = id 당 내용이 불변이다(재업로드는 새 id).
+     *       ⚠️ 대가: 노출을 꺼도 이미 캐시된 브라우저에는 한동안 남는다 — <b>급히 내려야 하는
+     *       그림이면 자산이 아니라 공지를 내려라</b>(그건 즉시 반영된다).</li>
+     * </ul>
+     */
+    @GetMapping("/api/notices/assets/{id}")
+    public ResponseEntity<byte[]> asset(@PathVariable("id") String id) {
+        NoticeAssetService.Served served = assets.find(id);
+        if (served == null) {
+            throw ApiException.notFound("이미지를 찾을 수 없습니다: " + id);
+        }
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType(served.contentType()))
+                .header("X-Content-Type-Options", "nosniff")
+                .cacheControl(CacheControl.maxAge(java.time.Duration.ofDays(365)).cachePublic().immutable())
+                .body(served.bytes());
     }
 
     /**

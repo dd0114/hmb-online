@@ -83,9 +83,34 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 > 배포 지시가 오기 전에 **미리 등록해 두는** 자리다. 여기 있는 건 §0.5 를 돌릴 때 **반드시 같이** 확인하고,
 > 처리하고 나면 항목을 지우고 `deploy-log` 에만 남긴다.
 
-**현재 비어 있음.** *(직전 등록분 = `V25` 다이스 소각 · `V21` matches 재작성 — **배포 v2(`deploy-2`, 2026-07-29)에서 소진**. 처리 결과는 `docs/deploy-log.md` 의 그 항목에 있다.)*
+**등록분 — #309 운영 컨텐츠 무배포화**(브랜치 `issue/285-deck-icon-policy`, 머지 대기):
 
-- 다음 예정: **배포 v2.01** — htform(#276 하프타임 포메이션), 리베이스 후 소배포.
+- **새 마이그레이션 3개** (현재 V30·V31·V32 로 작성 — ⚠️ 번호는 머지 시점 재배정 가능):
+  - `notice_assets`(공지 이미지 메타) · `char_bundles`(아트 번들 리비전) — 둘 다 **additive**
+  - ⚠️ **`admin_catalog_audit` 테이블 재작성**(CHECK 에 `unit_purge` 추가) — **`DROP TABLE` 이 있다**
+    (§0.5 체크 7 이 잡는 항목). SQLite 는 CHECK 를 ALTER 로 못 바꿔 표준 재작성이 유일한 방법이다.
+    **데이터는 변환하지 않고 전 컬럼 복사**, `.sql.conf` 없음 = 트랜잭션 원자적(리허설로 실측:
+    중간 실패 시 DROP+RENAME 이 롤백되고 flyway 이력에도 안 남아 재시도 안전), 이 표를 FK 로
+    참조하는 표 없음, **인덱스 4개 재생성**(V14 셋 + V15 하나 — ⚠️ 한때 셋으로 잘못 적혀 있었다).
+    계약 = `FlywayV32CatalogAuditRebuildTest`.
+    ⇒ **§8 백업 + 리허설 권장**(감사 원장이라 잃으면 복원 근거가 사라진다).
+- **볼륨에 파일이 추가된다**: `/var/lib/hmb/notice-assets/` · `/var/lib/hmb/char-bundles/`.
+  DB 와 **같은 볼륨**이라 일상 배포에는 영향 없지만, **볼륨을 잃을 수 있는 작업 앞에서는
+  §8 의 자산 tar 백업도 같이** 뜬다(DB 만 복원하면 공지 그림·아트가 404 가 된다).
+- **서블릿 업로드 상한이 8MB → 96MB** 로 올라간다(아트 번들 zip 이 실물 약 6MB). 앱 상한은
+  따로다(공지 이미지 2MB · 번들 해제 후 64MB) — 사람에게 보여줄 거절은 항상 앱 상한이 한다.
+- **배포 직후 확인(재작성 검증 포함)**:
+  `docker exec hmb-java sh -c "sqlite3 /var/lib/hmb/hmb.db 'SELECT COUNT(*) FROM admin_catalog_audit'"`
+  → **배포 전 값과 같아야 한다**(재작성이 행을 잃지 않았는가). 그리고
+  `… 'SELECT COUNT(*) FROM sqlite_master WHERE tbl_name=\"admin_catalog_audit\" AND type=\"index\" AND name NOT LIKE \"sqlite_%\"'`
+  → **4**(인덱스 4개 재생성: `idx_catalog_audit_player`·`idx_catalog_audit_actor`·
+  `uq_catalog_audit_idem`·`uq_catalog_audit_create_idem`). ⚠️ **3 이 나오면 회귀다** — 대상별 멱등
+  인덱스가 빠진 것이고, 그러면 `update`/`deactivate`/`activate`/`override_reset` 의 DB 백스톱이 없다.
+- **배포 직후 확인 1줄**: `curl -sI <터널>/api/notices/assets/x | head -1` → `404`(정상: 없는 자산),
+  `curl -s <터널>/api/chars/index | head -c 80` → `404` 본문(정상: 활성 아트 번들 없음 = 구운 폴백 사용).
+  둘 다 **500 이면 배포가 잘못된 것**이다.
+
+*(직전 등록분 = `V25` 다이스 소각 · `V21` matches 재작성 — **배포 v2(`deploy-2`, 2026-07-29)에서 소진**.)*
 
 ---
 
@@ -267,6 +292,29 @@ shasum -a 256 "$B"                                     # 기록용 — deploy-lo
 docker tag "$(docker inspect hmb-java   --format '{{.Image}}')" hmb/server-java:prev-live
 docker tag "$(docker inspect hmb-runner --format '{{.Image}}')" hmb/servants:prev-live
 ```
+
+⚠️ **볼륨에는 DB 말고도 있다 — 업로드 파일(#309).** `hmb-p3-db` 볼륨은 이제
+`/var/lib/hmb/notice-assets/`(공지 이미지)와 `/var/lib/hmb/char-bundles/`(유닛 아트 번들 리비전)도 담는다. 위 `.backup` 은
+**SQLite 파일만** 뜨므로, 그것만 복원하면 **공지 본문은 살아나는데 그림이 전부 404** 가 된다
+(자산 표 행은 돌아왔지만 바이트가 없다). 아트 번들도 같다 — DB 는 "리비전 REV2 서빙 중"이라고
+말하는데 그 트리가 없는 상태가 된다. 이 경우 서버가 `/api/chars/index` 를 **404 로 답해**(파일
+존재를 확인한다) web 이 **구운 폴백**으로 떨어진다 — 화면은 성립하고 운영자가 켠 아트만 사라진다.
+⚠️ 이 문장은 한때 거짓이었다(독립검증 MAJOR-2): index 가 DB 만 보고 200 을 주던 시절엔 매니페스트가
+전부 404 가 되어 **화면이 통째로 이니셜**이 됐다. 지금은 서버(파일 확인)와 web(빈 번들 재폴백)
+두 층이 막는다. 볼륨을 통째로 잃을 수 있는 작업
+(볼륨 삭제·머신 교체) 앞에서는 파일도 같이 뜬다:
+
+```bash
+# 업로드 자산 백업(있을 때만 — 없으면 빈 tar 가 나온다)
+docker run --rm -v hmb-p3-db:/data:ro -v "$HOME/.local/state/hmb/db-backups:/backup" alpine:3.20 \
+  sh -c "tar czf /backup/assets-<태그>-$TS.tgz -C /data notice-assets char-bundles 2>/dev/null || echo '(자산 없음)'"
+
+# 복원
+docker run --rm -v hmb-p3-db:/data -v "$HOME/.local/state/hmb/db-backups:/backup:ro" alpine:3.20 \
+  sh -c "tar xzf /backup/assets-<태그>-$TS.tgz -C /data && chown -R 10001:999 /data/notice-assets /data/char-bundles"
+```
+
+**마이그레이션만 있는 일상 배포에는 필요 없다** — 그 배포는 볼륨을 유지하므로 파일이 그대로 있다.
 
 **리허설(권장)** — 라이브를 건드리지 않고 마이그레이션을 미리 돌려본다:
 ```bash

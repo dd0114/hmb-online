@@ -141,6 +141,26 @@ public class AdminCatalogController {
         return catalog.resetOverride(actorUserId, playerId, reasonOf(body, reasonParam), idempotencyKey);
     }
 
+    /**
+     * <b>회수</b>(#210) — 잘못 만든 유닛을 카탈로그에서 지우고 P-번호를 비운다.
+     *
+     * <p><b>거의 항상 409 다.</b> {@code players(id)} 를 참조하는 표가 여덟이라, 누군가 한 번이라도
+     * 뽑았으면 지울 수 없다(응답 detail 에 어느 표가 몇 건인지 담긴다 — 운영자가 "왜 안 지워지나"에
+     * 스스로 답할 수 있게). 실질 적용 범위는 <b>방금 만들어 아무도 손대지 않은 유닛</b>이고,
+     * 그게 #210 이 말한 경우다. 그 밖에는 {@code deactivate} 가 정답이다.
+     *
+     * <p>{@code POST} 인 이유: 되돌릴 수 없는 동작이라 <b>본문에 사유를 강제</b>하고 싶고, DELETE 는
+     * 일부 프록시가 본문을 떨어뜨린다({@code /override} 가 같은 이유로 쿼리 폴백을 둔 것과 같은 판단).
+     */
+    @PostMapping("/{playerId}/purge")
+    public AdminCatalogService.PurgeResult purge(
+            @RequestAttribute("userId") String actorUserId,
+            @PathVariable("playerId") String playerId,
+            @RequestBody(required = false) AdminCatalogService.ReasonRequest body,
+            @RequestParam(name = "reason", required = false) String reasonParam) {
+        return catalog.purge(actorUserId, playerId, reasonOf(body, reasonParam));
+    }
+
     private static String reasonOf(AdminCatalogService.ReasonRequest body, String fallback) {
         if (body != null && body.reason() != null && !body.reason().isBlank()) {
             return body.reason();

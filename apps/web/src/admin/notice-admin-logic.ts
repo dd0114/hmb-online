@@ -11,6 +11,7 @@
  */
 import { ApiError } from "../api/client";
 import type {
+  AdminNoticeAssetRow,
   AdminNoticeRow,
   NoticeCreateRequest,
   NoticeUpdateRequest,
@@ -25,6 +26,68 @@ export const NOTICE_BODY_MAX = 2000;
 export const NOTICE_REASON_MAX = 500;
 export const NOTICE_PRIORITY_MIN = -1000;
 export const NOTICE_PRIORITY_MAX = 1000;
+
+// ── 공지 이미지 (#309 W1) ──────────────────────────────────────────────────
+
+/**
+ * 자산 목록 응답 → 행 배열. 공지 목록과 **같은 규율**: 서버 응답을 그대로 믿지 않는다.
+ * 이 패널은 admin 페이지 안에 있어서 여기서 던지면 페이지 전체가 흰 화면이 되고, 그러면
+ * 이미지 업로드라는 **부가 기능 하나가 공지 운영 전체를 막는다**.
+ *
+ * ⚠️ `url` 이 없으면 id 로 조립하지 **않는다** — 경로 규칙을 클라가 복제하면 서버가 경로를
+ * 바꿀 때 조용히 어긋난다. 없는 행은 버린다(붙일 마크업이 없으니 화면에 있어도 할 일이 없다).
+ */
+export function normalizeNoticeAssetRows(raw: unknown): AdminNoticeAssetRow[] {
+  const list = Array.isArray(raw)
+    ? raw
+    : raw && typeof raw === "object" && Array.isArray((raw as { assets?: unknown }).assets)
+      ? ((raw as { assets: unknown[] }).assets)
+      : null;
+  if (!list) return [];
+  const out: AdminNoticeAssetRow[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== "object") continue;
+    const a = item as Record<string, unknown>;
+    const id = typeof a.id === "string" ? a.id : "";
+    const url = typeof a.url === "string" ? a.url : "";
+    if (!id || !url) continue;
+    out.push({
+      id,
+      url,
+      originalName: typeof a.originalName === "string" ? a.originalName : null,
+      contentType: typeof a.contentType === "string" ? a.contentType : "",
+      byteSize: typeof a.byteSize === "number" ? a.byteSize : 0,
+      active: a.active !== false,
+      usedBy: typeof a.usedBy === "number" ? a.usedBy : 0,
+      createdAt: typeof a.createdAt === "string" ? a.createdAt : null,
+      updatedAt: typeof a.updatedAt === "string" ? a.updatedAt : null,
+    });
+  }
+  return out;
+}
+
+/** 바이트 → 사람이 읽는 크기. 운영자가 "이거 너무 큰가?"를 눈으로 판단할 수 있게. */
+export function formatAssetSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "-";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * 노출을 **끌 때** 보여줄 확인 문구. `usedBy > 0` 이면 무슨 일이 벌어지는지 먼저 말한다 —
+ * 없으면 운영자가 모르는 채로 남의 공지 그림을 지운다.
+ *
+ * 켜는 쪽은 되돌리기라 경고하지 않는다(확인만 받는다).
+ */
+export function assetToggleWarning(asset: AdminNoticeAssetRow): string {
+  if (asset.active) {
+    return asset.usedBy > 0
+      ? `공지 ${asset.usedBy}건이 이 이미지를 사용 중입니다. 노출을 끄면 그 자리가 빕니다(글·레이아웃은 유지).\n다시 켜면 그대로 돌아옵니다.`
+      : "이 이미지의 노출을 끕니다. 다시 켜면 그대로 돌아옵니다.";
+  }
+  return "이 이미지를 다시 노출합니다.";
+}
 
 /** 목록 응답 → 행 배열. `{notices:[…]}` 도 맨 배열도 받고, 아니면 빈 배열. */
 export function normalizeNoticeRows(raw: unknown): AdminNoticeRow[] {

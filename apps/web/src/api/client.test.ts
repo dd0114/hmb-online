@@ -52,6 +52,38 @@ describe("apiFetch", () => {
     expect(headers.has("Authorization")).toBe(false);
   });
 
+  /* ── multipart 업로드 (#309 W1 공지 이미지) ──────────────────────────────
+   * FormData 를 JSON 으로 직렬화하면 본문이 문자열 "[object FormData]" 가 되고, Content-Type 을
+   * 우리가 붙이면 **boundary 가 빠져** 서버가 파트를 하나도 못 읽는다. 둘 다 조용한 실패라
+   * (요청은 나가고 서버는 "파일이 없습니다"라고 답한다) 계약으로 박아 둔다.
+   */
+  it("passes FormData through untouched and lets the browser set the boundary", async () => {
+    setToken("tok-123");
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: "A" }), { status: 201 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array([1, 2, 3])]), "a.png");
+
+    await apiFetch("/api/admin/notices/assets", { method: "POST", body: form });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.body, "FormData 는 직렬화하지 않고 그대로 넘긴다").toBe(form);
+    const headers = init.headers as Headers;
+    expect(headers.has("Content-Type"), "boundary 는 브라우저가 붙인다").toBe(false);
+    expect(headers.get("Authorization"), "인증은 그대로 붙는다").toBe("Bearer tok-123");
+  });
+
+  it("still JSON-serializes plain object bodies", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await apiFetch("/api/admin/notices", { method: "POST", body: { title: "t" } });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.body).toBe(JSON.stringify({ title: "t" }));
+    expect((init.headers as Headers).get("Content-Type")).toBe("application/json");
+  });
+
   it("parses the ApiError envelope ({code, message, detail}) on a non-2xx response", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

@@ -26,8 +26,34 @@
  * ════════════════════════════════════════════════════════════════════════════
  */
 
-/** 스테이징 루트(vite public → 오리진 절대경로로 서빙). */
+/**
+ * **구운 폴백** 루트(vite public → 웹 오리진 절대경로). 웹 빌드에 들어 있는 아트다.
+ *
+ * ⚠️ 이 값은 **불변**이고 계약이 이 값을 단언한다. "지금 쓰는 base" 는 `charsBase()` 다 —
+ * #309 W2 로 운영자가 **재배포 없이** 아트 번들을 갈아끼울 수 있게 되면서, 활성 번들이 있으면
+ * 그쪽(백엔드 오리진)을 쓰고 없으면 여기로 떨어진다. 폴백이 남아 있어야 **서버가 죽어도 화면이
+ * 성립**한다(#309 요구 ③) — 이 상수를 지우지 마라.
+ */
 export const CHARS_BASE = "/chars";
+
+/**
+ * 지금 활성인 아트 base. 기본은 구운 폴백이고, 서버 번들이 **유효할 때만**
+ * `char-assets-store` 가 갈아끼운다(`setCharsBase`).
+ *
+ * URL 조립 함수들이 `base = charsBase()` 를 기본값으로 쓰는 것이 이 전환의 전부다 —
+ * 기본값은 **호출 시점에** 평가되므로, 한 곳을 바꾸면 전 소비처(아바타·카드·프레임·경기장
+ * 스킨)가 따라온다. 호출부는 `base` 를 넘기지 않으므로 바꿀 곳이 없다.
+ */
+let activeCharsBase: string = CHARS_BASE;
+
+export function charsBase(): string {
+  return activeCharsBase;
+}
+
+/** 서버 번들 채택/롤백. `null`·빈값이면 구운 폴백으로 되돌린다. */
+export function setCharsBase(base: string | null): void {
+  activeCharsBase = base && base.trim() ? base.replace(/\/+$/, "") : CHARS_BASE;
+}
 
 // ── manifest 형상 (발행 계약의 소비 측 투영 — 쓰는 필드만 좁게 선언) ────────────
 
@@ -142,7 +168,7 @@ export interface TileRef {
  * manifest 상대경로(`characters/avatars-64.png`) → 서빙 URL.
  * 경로 탈출(`..`)은 거부한다 — 입력은 신뢰 발행물이지만 손상 manifest 방어가 이 계층의 취지다.
  */
-export function assetUrl(relPath: string, base: string = CHARS_BASE): string | null {
+export function assetUrl(relPath: string, base: string = charsBase()): string | null {
   if (typeof relPath !== "string" || relPath === "") return null;
   const clean = relPath.replace(/^\.?\//, "");
   if (clean.split("/").some((seg) => seg === "..")) return null;
@@ -189,7 +215,7 @@ export function tileFrom(
   atlases: Record<string, AtlasSpec | undefined>,
   atlasName: string,
   cell: { col: number; row: number },
-  base: string = CHARS_BASE,
+  base: string = charsBase(),
 ): TileRef | null {
   const a = own(atlases, atlasName);
   if (!isGridAtlas(a)) return null;
@@ -212,7 +238,7 @@ export function characterTile(
   manifest: CharactersManifest | null | undefined,
   charId: string | null | undefined,
   atlasName: string,
-  base: string = CHARS_BASE,
+  base: string = charsBase(),
 ): TileRef | null {
   if (!manifest || !charId) return null;
   const c = own(manifest.characters, charId);
@@ -224,7 +250,7 @@ export function characterTile(
 export function characterCardUrl(
   manifest: CharactersManifest | null | undefined,
   charId: string | null | undefined,
-  base: string = CHARS_BASE,
+  base: string = charsBase(),
 ): string | null {
   if (!manifest || !charId) return null;
   const c = own(manifest.characters, charId);
@@ -238,7 +264,7 @@ export function characterCardUrl(
 export function frameUrl(
   manifest: PlaceholderManifest | null | undefined,
   grade: string | null | undefined,
-  base: string = CHARS_BASE,
+  base: string = charsBase(),
 ): string | null {
   if (!manifest || !grade) return null;
   const f = own(manifest.atlases, `frame-${grade}`) as { file?: string } | undefined;
@@ -250,7 +276,7 @@ export function placeholderTile(
   manifest: PlaceholderManifest | null | undefined,
   playerId: string | null | undefined,
   atlasName: string,
-  base: string = CHARS_BASE,
+  base: string = charsBase(),
 ): TileRef | null {
   if (!manifest || !playerId) return null;
   const p = own(manifest.players, playerId);
@@ -263,7 +289,7 @@ export function unitTile(
   manifest: UnitsManifest | null | undefined,
   unitId: string | null | undefined,
   atlasName: string,
-  base: string = CHARS_BASE,
+  base: string = charsBase(),
 ): TileRef | null {
   if (!manifest || !unitId) return null;
   const u = own(manifest.units, unitId);
@@ -288,7 +314,7 @@ export interface ResolvedUnitCard {
 export function unitCard(
   manifest: UnitsManifest | null | undefined,
   unitId: string | null | undefined,
-  base: string = CHARS_BASE,
+  base: string = charsBase(),
 ): ResolvedUnitCard | null {
   if (!manifest || !unitId) return null;
   const u = own(manifest.units, unitId);
@@ -349,7 +375,7 @@ export function resolveTile(args: {
   atlas: string;
   base?: string;
 }): { tile: TileRef; kind: "character" | "unit" | "placeholder" } | null {
-  const base = args.base ?? CHARS_BASE;
+  const base = args.base ?? charsBase();
   const ref: CharRef | null =
     typeof args.ref === "string"
       ? { axis: "characters", id: args.ref }

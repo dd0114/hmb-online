@@ -62,15 +62,17 @@ import org.springframework.stereotype.Service;
 @Service
 public class AdminCatalogService {
 
-    /** 감사 action 열거 — V14 의 CHECK 와 일치해야 한다. */
+    /** 감사 action 열거 — **V32 의 CHECK 와 일치해야 한다**(V14 가 만들고 V32 가 purge 를 더했다). */
     public static final String ACTION_CREATE = "unit_create";
     public static final String ACTION_UPDATE = "unit_update";
     public static final String ACTION_DEACTIVATE = "unit_deactivate";
     public static final String ACTION_ACTIVATE = "unit_activate";
     public static final String ACTION_OVERRIDE_RESET = "unit_override_reset";
+    /** #210 회수. **V32 가 CHECK 에 더했다** — V14 스키마만 있는 DB 에서는 INSERT 가 거부된다. */
+    public static final String ACTION_PURGE = "unit_purge";
 
     private static final Set<String> ACTIONS = Set.of(ACTION_CREATE, ACTION_UPDATE,
-            ACTION_DEACTIVATE, ACTION_ACTIVATE, ACTION_OVERRIDE_RESET);
+            ACTION_DEACTIVATE, ACTION_ACTIVATE, ACTION_OVERRIDE_RESET, ACTION_PURGE);
 
     /** DB CHECK 와 동일한 허용값(계약 열거 — 튜닝값이 아니라 스키마 미러). */
     private static final List<String> POSITIONS = List.of("GK", "DF", "MF", "FW");
@@ -536,6 +538,173 @@ public class AdminCatalogService {
         });
     }
 
+    /**
+     * <b>유닛 회수</b>(#210) — 잘못 만든 유닛을 카탈로그에서 지우고 P-번호를 비운다.
+     *
+     * <p><b>왜 필요한가</b>: 오타·잘못된 스탯·잘못된 등급으로 만든 유닛을 되돌릴 방법이
+     * {@code deactivate} 뿐이었다. 비활성 유닛은 획득 경로에서만 빠질 뿐 <b>카탈로그에 영원히 남고
+     * P-공간을 점유</b>한다. 만든 지 1분 된 실수를 지우는 수단이 수동 DB 개입뿐이었다.
+     *
+     * <p><b>왜 거의 항상 거부되는가(그리고 그게 옳은가)</b>: {@code players(id)} 를 FK 로 참조하는
+     * 표가 <b>여덟</b>이다({@link #REFERENCING_TABLES}). 누군가 한 번이라도 뽑았으면 {@code user_players}
+     * 가 가리키고, 그 행을 지우면 <b>유저의 카드가 사라진다</b>. 그래서 참조가 하나라도 있으면
+     * <b>409</b> 이고 응답에 어느 표가 몇 건인지 싣는다 — 운영자가 "왜 안 지워지나"에 스스로 답할 수 있게.
+     * 실질 적용 범위는 <b>방금 만들어 아무도 손대지 않은 유닛</b>이고, 그게 #210 이 말한 바로 그 경우다.
+     *
+     * <p><b>감사 이력은 남는다</b>: {@code admin_catalog_audit.player_id} 에는 FK 가 없다(V14 가
+     * "삭제·미존재 유닛의 이력도 보존해야 한다"고 명시적으로 그렇게 설계했다). 그래서 지운 뒤에도
+     * "이 번호에 무슨 일이 있었나"가 원장에 남는다.
+     *
+     * <p><b>이력은 다른 액션과 같은 원장에 남는다</b>({@code admin_catalog_audit}, action=
+     * {@code unit_purge}). 처음엔 그 표의 {@code action} CHECK 를 넓히는 <b>테이블 재작성</b>이
+     * 부담스러워 V18 범용 원장에 남겼는데, 그러면 <b>한 유닛의 이력이 두 곳으로 갈리고</b> 회수만
+     * 유닛 감사 조회에 안 나온다. hero 지시(2026-07-30)로 <b>V32 가 CHECK 를 넓혀</b> 합쳤다.
+     * {@code before} 스냅샷이 남으므로 "무엇을 지웠나"가 원장에 그대로 있다.
+     *
+     * <p><b>회수한 번호는 다시 발급되지 않는다</b>: {@link #raiseUnitIdHighWater} 가 비운 번호를
+     * 최고수위로 남기고 {@link #insertWithNextId} 가 그걸 함께 본다. 안 그러면 다음 생성이 그 번호를
+     * 재사용해 <b>새 유닛 상세에 회수된 유닛의 이력이 섞여 보인다</b>(같은 원장에 합친 뒤엔 더 눈에 띈다).
+     */
+    public PurgeResult purge(String actorUserId, String playerId, String rawReason) {
+        String reason = requireReason(rawReason);
+        UnitRow before = requireUnit(playerId);
+
+        try {
+            return txRunner.run(() -> {
+                // ⚠️ 조회와 삭제가 **한 트랜잭션**이다. 밖에서 세면 "0건 확인 → 그 사이 누군가 뽑음 →
+                //    삭제"가 가능하고, 그때 지워지는 것은 유저의 카드다.
+                Map<String, Integer> refs = new LinkedHashMap<>();
+                for (Map.Entry<String, String> t : REFERENCING_TABLES.entrySet()) {
+                    int n = jdbcClient.sql("SELECT COUNT(*) FROM " + t.getKey() + " WHERE " + t.getValue())
+                            .params(playerId, playerId)
+                            .query(Integer.class).single();
+                    if (n > 0) {
+                        refs.put(t.getKey(), n);
+                    }
+                }
+                if (!refs.isEmpty()) {
+                    throw new ApiException(HttpStatus.CONFLICT, "CONFLICT",
+                            "이미 사용 중인 유닛이라 회수할 수 없습니다 — 비활성화(deactivate)를 쓰세요",
+                            Map.of("playerId", playerId, "references", refs));
+                }
+                // ⚠️ 감사 INSERT 를 **DELETE 앞에** 둔다: 이 표의 player_id 에는 FK 가 없지만(V14 의도),
+                //    순서를 뒤집으면 "지웠는데 이력이 없다"가 가능한 창이 생긴다. 한 트랜잭션이라
+                //    실제로는 둘 다 되거나 둘 다 안 되지만, 읽는 사람에게 의도가 드러나는 순서로 둔다.
+                String auditId = writeAudit(actorUserId, playerId, ACTION_PURGE, before, null,
+                        List.of("purged"), reason, Ulid.next());
+                jdbcClient.sql("DELETE FROM players WHERE id = ?").param(playerId).update();
+                // ⚠️ **비운 번호를 "쓴 번호"로 기록한다**(hero 지시 2026-07-30). 이게 없으면 다음 생성이
+                //    `MAX(players)+1` 로 그 번호를 재사용하고, `admin_catalog_audit` 에 남은 옛 이력이
+                //    새 유닛 상세에 섞여 보인다. 같은 트랜잭션이라 "지웠는데 수위는 안 올라간" 상태가 없다.
+                raiseUnitIdHighWater(playerId);
+                return new PurgeResult(playerId, before.name(), auditId, refs);
+            });
+        } catch (RuntimeException e) {
+            // ⚠️⚠️ **실패 기록은 트랜잭션 밖에서 써야 한다.** 안에서 쓰면 롤백이 그 기록을 **같이
+            //    지운다** — 처음엔 안에 뒀고 계약이 "거절도 원장에 남는다"에서 0을 관측해 잡았다.
+            //    성공·실패를 갈라 두는 이유도 여기서 다시 보인다: 성공은 삭제와 같은 트랜잭션이어야
+            //    하고("지웠는데 이력이 없다"를 막으려면), 실패는 그 트랜잭션 **밖**이어야 한다.
+            //
+            //    어느 원장인가: 거절은 아무것도 바꾸지 않았으므로 before/after 스냅샷 원장
+            //    (`admin_catalog_audit`)에 넣으면 그 스냅샷이 거짓이 된다 → V18 범용 원장에 남긴다.
+            //    아무 데도 안 남기는 건 답이 아니다 — "관리자가 유저 카드를 지우려 시도했다"는
+            //    사실이고 이 모듈의 규율은 **성공·실패 모두 기록**이다(형제 서비스 셋이 그렇게 한다).
+            //    ⚠️ `RuntimeException` 을 잡는 이유(독립검증 MIN-A): `ApiException` 만 잡으면
+            //    `SQLITE_BUSY_SNAPSHOT`·제약 위반 같은 **5xx 실패가 원장 밖으로 샌다**. 형제 서비스
+            //    셋은 전부 `RuntimeException` 을 잡아 `"error"` 를 남긴다 — purge 만 예외로 두면
+            //    "성공·실패 모두 기록"이 이 모듈에서 균일하지 않게 된다.
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("playerId", playerId);
+            if (e instanceof ApiException api && api.getDetail() != null
+                    && api.getDetail().get("references") != null) {
+                detail.put("blockedBy", api.getDetail().get("references"));
+            }
+            detail.put("error", String.valueOf(e.getMessage()));
+            opsAudit(actorUserId, ACTION_PURGE, "failed", reason, detail);
+            throw e;
+        }
+    }
+
+    /**
+     * {@code players(id)} 를 FK 로 참조하는 표 전부(스키마에서 실사). 값은 WHERE 절이고 파라미터를
+     * <b>두 개</b> 받는다 — 참조 컬럼이 둘인 표({@code trade_slots})가 있어 형태를 통일했다.
+     *
+     * <p>⚠️ <b>새 표가 {@code players} 를 참조하면 여기에 추가해라.</b> 빠뜨리면 회수가 그 참조를
+     * 못 보고 지워서 FK 위반으로 죽거나(운이 좋은 경우) 데이터가 끊긴다. 계약이 이 목록을
+     * 스키마와 대조한다({@code AdminUnitPurgeTest.referencingTablesListMatchesTheSchema}).
+     */
+    public static final Map<String, String> REFERENCING_TABLES = Map.of(
+            "user_players", "player_id = ? AND ? IS NOT NULL",
+            "deck_slots", "player_id = ? AND ? IS NOT NULL",
+            "gacha_results", "player_id = ? AND ? IS NOT NULL",
+            "player_relations", "player_id = ? AND ? IS NOT NULL",
+            "growth_applied", "player_id = ? AND ? IS NOT NULL",
+            "card_potentials", "player_id = ? AND ? IS NOT NULL",
+            "dice_rolls", "player_id = ? AND ? IS NOT NULL",
+            "trade_slots", "target_player_id = ? OR demand_player_id = ?");
+
+    /**
+     * <b>지금까지 발급한 가장 큰 유닛 번호</b>(`meta_kv`). 회수가 번호를 비울 때 여기에 남겨,
+     * 그 번호가 <b>다시 발급되지 않게</b> 한다.
+     *
+     * <p>왜 새 표가 아니라 {@code meta_kv} 인가: 값이 하나뿐이고 {@code meta_kv} 는 이미 "서버가
+     * 기억해야 하는 스칼라"의 자리다(시드 버전 등). 표를 만들면 마이그레이션이 하나 더 붙는데
+     * 그만한 구조가 필요한 값이 아니다.
+     *
+     * <p>⚠️ <b>생성은 이 값을 올리지 않는다</b> — 살아 있는 번호는 {@code players} 가 이미 갖고 있어
+     * 중복 기록이다. 올리는 곳은 <b>회수 한 곳뿐</b>이고, 그래서 "이 키가 있다 = 회수된 번호가 있다"가
+     * 성립한다(운영 진단에 쓸 수 있는 성질이라 일부러 그렇게 좁혔다).
+     */
+    static final String UNIT_ID_HIGH_WATER_KEY = "unit_id_high_water";
+
+    /** 회수한 번호를 최고수위에 반영한다(더 큰 값만 갱신 — 낮은 번호 회수가 수위를 내리지 않게). */
+    private void raiseUnitIdHighWater(String playerId) {
+        int number = numberOf(playerId);
+        if (number <= 0) {
+            return; // 접두 규칙 밖의 id(다른 네임스페이스) — 채번과 무관하다
+        }
+        jdbcClient.sql("""
+                        INSERT INTO meta_kv(key, value) VALUES (?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                          WHERE CAST(meta_kv.value AS INTEGER) < CAST(excluded.value AS INTEGER)
+                        """)
+                .params(UNIT_ID_HIGH_WATER_KEY, String.valueOf(number))
+                .update();
+    }
+
+    /** {@code P182} → 182. 접두가 다르거나 숫자가 아니면 0(= 채번 네임스페이스 밖). */
+    private int numberOf(String playerId) {
+        if (playerId == null || !playerId.startsWith(idPrefix)) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(playerId.substring(idPrefix.length()));
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * <b>실패 전용</b> 원장 기록(V18 범용 표). 성공은 {@code admin_catalog_audit} 이 담당한다 —
+     * 위 주석의 "두 원장의 성격이 다르다" 참조. V18 은 스스로 주석에서 "다른 도메인도 자기 action 을
+     * append 하면 된다"고 열어 둔 표이고, {@code result} 컬럼이 실패를 1급으로 다룬다.
+     */
+    private void opsAudit(String actorUserId, String action, String result, String reason,
+                          Map<String, Object> detail) {
+        jdbcClient.sql("""
+                        INSERT INTO admin_ops_audit(id, actor_user_id, action, result, reason, detail_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """)
+                .params(Ulid.next(), actorUserId, action, result, reason, writeJson(detail),
+                        Instant.now().toString())
+                .update();
+    }
+
+    /** 회수 결과 — 지운 유닛과 그 이력 행 id. `references` 는 성공 시 항상 빈 맵이다. */
+    public record PurgeResult(String playerId, String name, String auditId,
+                              Map<String, Integer> references) {
+    }
+
     // ══════════════════════════ 내부 ══════════════════════════
 
     /**
@@ -567,15 +736,30 @@ public class AdminCatalogService {
      */
     private String insertWithNextId(String name, String position, String grade,
                                     Map<String, Integer> attributes, String personality, boolean active) {
+        // ⚠️ **최고수위(high-water)를 함께 본다**(hero 지시 2026-07-30). 카탈로그의 MAX 만 쓰면
+        //    회수(#210)로 가장 큰 번호가 비는 순간 **다음 생성이 그 번호를 재사용**한다. 라이브
+        //    데이터는 안전하지만(참조 0 이어야 회수된다) `admin_catalog_audit` 은 그 번호의 옛
+        //    이력을 갖고 있어 **새 유닛 상세에 남의 이력이 섞여 보인다**. 회수가 수위를 올려
+        //    두므로, 한 번 쓴 번호는 다시 나오지 않는다.
+        //
+        //    ⚠️ 여전히 **한 문장**이다(#207 blocker B1 의 성질 보존): INSERT 가 트랜잭션의 첫
+        //    문장이라 SQLite 가 처음부터 쓰기 잠금을 잡고 최신 상태를 읽는다. 수위 조회를 별도
+        //    SELECT 로 떼면 읽기→쓰기 승격이 되살아나 SQLITE_BUSY_SNAPSHOT 에 노출된다.
         jdbcClient.sql("""
                         INSERT INTO players(id, name, position, grade, attributes_json, data_version,
                                             personality, active, admin_locked)
-                        SELECT printf(?, COALESCE(MAX(CAST(SUBSTR(id, ?) AS INTEGER)), 0) + 1),
+                        SELECT printf(?, (SELECT MAX(n) FROM (
+                                   SELECT COALESCE(MAX(CAST(SUBSTR(id, ?) AS INTEGER)), 0) AS n
+                                     FROM players WHERE id LIKE ?
+                                   UNION ALL
+                                   SELECT COALESCE(CAST(value AS INTEGER), 0) AS n
+                                     FROM meta_kv WHERE key = ?
+                               )) + 1),
                                ?, ?, ?, ?, ?, ?, ?, 1
-                          FROM players WHERE id LIKE ?
                         """)
-                .params(idFormat(), idPrefix.length() + 1, name, position, grade, writeJson(attributes),
-                        ADMIN_DATA_VERSION, personality, active ? 1 : 0, idPrefix + "%")
+                .params(idFormat(), idPrefix.length() + 1, idPrefix + "%", UNIT_ID_HIGH_WATER_KEY,
+                        name, position, grade, writeJson(attributes),
+                        ADMIN_DATA_VERSION, personality, active ? 1 : 0)
                 .update();
         // players 는 rowid 테이블(TEXT PK)이라 방금 쓴 행을 rowid 로 되찾을 수 있다 —
         // 채번을 SQL 이 했으므로 Java 는 결과를 '읽어서' 알아야 한다(다시 계산하면 경합이 되살아난다).

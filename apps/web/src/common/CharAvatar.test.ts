@@ -110,7 +110,9 @@ describe("에셋 번들 로더", () => {
     const spy = stubFetch();
     vi.stubGlobal("fetch", spy);
     await Promise.all([loadCharAssets(), loadCharAssets(), loadCharAssets()]);
-    expect(spy).toHaveBeenCalledTimes(4); // 파일 4개 × 1회 — 번들 자체는 1회만 로드
+    // 매니페스트 4개 + **활성 아트 번들 조회 1회**(#309 W2) = 5. 호출을 세 번 해도 각각 1회씩이다
+    // — 이 테스트가 지키는 건 개수가 아니라 **중복 로드가 없다**는 성질이다.
+    expect(spy).toHaveBeenCalledTimes(5);
   });
 });
 

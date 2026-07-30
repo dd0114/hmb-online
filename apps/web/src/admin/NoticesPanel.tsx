@@ -1,10 +1,19 @@
-import { useState } from "react";
-import { useAdminNoticeHistory, useAdminNotices, useNoticeOps } from "../api/notice-hooks";
-import type { AdminNoticeRow } from "../api/notices";
+import { useRef, useState } from "react";
+import {
+  useAdminNoticeAssets,
+  useAdminNoticeHistory,
+  useAdminNotices,
+  useNoticeAssetOps,
+  useNoticeOps,
+} from "../api/notice-hooks";
+import type { AdminNoticeAssetRow, AdminNoticeRow } from "../api/notices";
 import { NoticeBody } from "../common/NoticeBody";
+import { noticeAssetMarkup, resolveNoticeUrl } from "../common/notice-asset-url";
 import { formatStamp } from "./admin-logic";
 import {
+  assetToggleWarning,
   EMPTY_NOTICE_FORM,
+  formatAssetSize,
   formFromRow,
   formatNoticeWindow,
   NOTICE_PRIORITY_MAX,
@@ -14,6 +23,7 @@ import {
   noticeOpErrorMessage,
   noticeStatusLabel,
   noticeStatusTone,
+  normalizeNoticeAssetRows,
   normalizeNoticeRows,
   validateNoticeForm,
   type NoticeFormValues,
@@ -31,20 +41,26 @@ import n from "./NoticesPanel.module.css";
 export function NoticesPanel() {
   const list = useAdminNotices();
   const history = useAdminNoticeHistory();
+  const assetList = useAdminNoticeAssets();
   const { create, update, setActive, remove } = useNoticeOps();
+  const { upload, setAssetActive } = useNoticeAssetOps();
 
   const [form, setForm] = useState<NoticeFormValues>(EMPTY_NOTICE_FORM);
   const [editing, setEditing] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement | null>(null);
 
   // 서버 응답을 그대로 믿지 않는다 — 여기서 던지면 admin 페이지 전체가 흰 화면이 된다.
   const rows = normalizeNoticeRows(list.data);
+  const assets = normalizeNoticeAssetRows(assetList.data);
   const entries = Array.isArray(history.data) ? history.data : [];
 
   const validation = validateNoticeForm(form);
-  const busy = create.isPending || update.isPending || setActive.isPending || remove.isPending;
+  const busy =
+    create.isPending || update.isPending || setActive.isPending || remove.isPending
+    || upload.isPending || setAssetActive.isPending;
 
   function set<K extends keyof NoticeFormValues>(key: K, value: NoticeFormValues[K]) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -111,6 +127,61 @@ export function NoticesPanel() {
       {
         onSuccess: () => done(row.active ? "노출을 중지했습니다" : "다시 노출합니다"),
         onError: (err) => fail(err, "노출 전환에 실패했습니다"),
+      },
+    );
+  }
+
+  // ── 공지 이미지 (#309 W1) ───────────────────────────────────────────────
+
+  /** 본문 끝에 마크업을 잇는다. 빈 본문이면 그대로, 아니면 새 줄에서 시작한다. */
+  function appendToBody(markup: string) {
+    setForm((f) => ({ ...f, body: f.body ? `${f.body.replace(/\s*$/, "")}\n\n${markup}` : markup }));
+  }
+
+  /**
+   * 업로드 → **본문에 마크업 자동 삽입**. 올려 두고 운영자가 경로를 손으로 옮겨 적게 하면
+   * 오타 한 글자가 깨진 이미지가 되고, 그 오타는 게시 후에야 보인다.
+   *
+   * 서버가 준 `url`(상대경로)을 그대로 쓴다 — 경로 규칙을 클라가 조립하지 않는다.
+   */
+  function onPickFile(file: File | null) {
+    if (!file) return;
+    const why = window.prompt("업로드 사유를 입력하세요(이력에 남습니다)", `${file.name} 업로드`);
+    if (!why || !why.trim()) {
+      if (fileInput.current) fileInput.current.value = "";
+      return;
+    }
+    upload.mutate(
+      { file, reason: why.trim() },
+      {
+        onSuccess: (asset) => {
+          appendToBody(noticeAssetMarkup(asset.id, file.name.replace(/\.[^.]+$/, "")));
+          done("이미지를 올리고 본문에 넣었습니다 — 재배포 없이 바로 반영됩니다");
+        },
+        onError: (err) => fail(err, "이미지 업로드에 실패했습니다"),
+        onSettled: () => {
+          // 같은 파일을 다시 고를 수 있게 입력을 비운다(change 이벤트가 안 뜨는 함정).
+          if (fileInput.current) fileInput.current.value = "";
+        },
+      },
+    );
+  }
+
+  /**
+   * 노출 ON/OFF = **내리기의 전부**(#309 D9, hero 확정). 삭제 버튼은 없다 — 삭제는 오조작이
+   * 곧 영구 소실이고 참조하던 공지의 그림을 되살릴 방법이 없다.
+   */
+  function toggleAsset(asset: AdminNoticeAssetRow) {
+    if (!window.confirm(assetToggleWarning(asset))) return;
+    const why = window.prompt(
+      asset.active ? "노출을 끄는 사유(이력에 남습니다)" : "다시 켜는 사유(이력에 남습니다)",
+    );
+    if (!why || !why.trim()) return;
+    setAssetActive.mutate(
+      { id: asset.id, active: !asset.active, reason: why.trim() },
+      {
+        onSuccess: () => done(asset.active ? "이미지 노출을 껐습니다(되돌릴 수 있습니다)" : "다시 노출합니다"),
+        onError: (err) => fail(err, "이미지 노출 전환에 실패했습니다"),
       },
     );
   }
@@ -240,9 +311,33 @@ export function NoticesPanel() {
         />
       </label>
 
+      {/* 이미지 업로드 (#309 W1) — 여기가 "재배포 없이 공지에 그림 넣기"의 입구다. */}
+      <div className={n.uploadRow}>
+        <button
+          type="button"
+          className={n.mini}
+          data-testid="admin-notice-asset-pick"
+          disabled={busy}
+          onClick={() => fileInput.current?.click()}
+        >
+          {upload.isPending ? "올리는 중…" : "이미지 업로드"}
+        </button>
+        <input
+          ref={fileInput}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          hidden
+          data-testid="admin-notice-asset-input"
+          onChange={(e) => onPickFile(e.target.files?.[0] ?? null)}
+        />
+        <span className={styles.muted}>
+          올리면 <b>본문 끝에 자동으로 삽입</b>됩니다. PNG · JPEG · WebP · GIF (SVG 는 보안상 불가).
+        </span>
+      </div>
+
       <p className={styles.muted}>
-        이미지는 업로드가 아니라 <b>URL 참조</b>입니다 — 앱 자체 경로(<code>/assets/…</code>)를 쓰면
-        외부 의존이 없고, 외부 호스트를 쓰면 그 호스트가 죽을 때 이미지가 사라집니다(레이아웃은 유지).
+        업로드한 이미지는 <b>서버에 저장</b>되어 재배포 없이 반영됩니다. 외부 URL 도 계속 쓸 수 있지만,
+        그 호스트가 죽으면 이미지가 사라집니다(글·레이아웃은 유지).
       </p>
 
       {/* 미리보기는 **팝업과 같은 렌더러**를 쓴다 — 따로 만들면 조용히 갈라져 미리보기가 거짓말이 된다. */}
@@ -359,6 +454,84 @@ export function NoticesPanel() {
         <p className={styles.error} data-testid="admin-notice-error">
           {error}
         </p>
+      )}
+
+      {/* 업로드한 이미지 (#309 W1). **삭제 열이 없는 것이 설계다** — 내리기는 노출 스위치로만. */}
+      <h3 className={styles.subTitle}>업로드한 이미지</h3>
+      {assets.length === 0 ? (
+        <p className={styles.muted} data-testid="admin-notice-assets-empty">
+          업로드한 이미지가 없습니다
+        </p>
+      ) : (
+        <div className={styles.tableWrap}>
+          <table className={styles.table} data-testid="admin-notice-assets">
+            <thead>
+              <tr>
+                <th>미리보기</th>
+                <th>이름</th>
+                <th>크기</th>
+                <th>사용 중</th>
+                <th>노출</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {assets.map((asset) => (
+                <tr key={asset.id} data-testid={`admin-notice-asset-row-${asset.id}`}>
+                  <td>
+                    {/* 노출을 꺼도 운영자에겐 보여야 한다(무엇을 되돌리는지 알아야 하므로) —
+                        그런데 서빙이 404 라 여기서도 안 뜬다. 그건 정직한 상태다: "지금 유저에게
+                        안 보이는 그림"이 운영자 화면에서도 안 보인다. */}
+                    <img
+                      className={n.assetThumb}
+                      src={resolveNoticeUrl(asset.url)}
+                      alt=""
+                      loading="lazy"
+                      data-testid={`admin-notice-asset-thumb-${asset.id}`}
+                    />
+                  </td>
+                  <td>{asset.originalName ?? asset.id}</td>
+                  <td className={styles.nowrap}>{formatAssetSize(asset.byteSize)}</td>
+                  <td className={styles.num} data-testid={`admin-notice-asset-used-${asset.id}`}>
+                    {asset.usedBy}
+                  </td>
+                  <td>
+                    <span
+                      className={`${n.pill} ${asset.active ? n.live : n.off}`}
+                      data-testid={`admin-notice-asset-state-${asset.id}`}
+                      data-active={asset.active ? "1" : "0"}
+                    >
+                      {asset.active ? "ON" : "OFF"}
+                    </span>
+                  </td>
+                  <td className={styles.nowrap}>
+                    <button
+                      type="button"
+                      className={n.mini}
+                      data-testid={`admin-notice-asset-insert-${asset.id}`}
+                      disabled={busy}
+                      onClick={() => {
+                        appendToBody(noticeAssetMarkup(asset.id, asset.originalName ?? ""));
+                        done("본문에 넣었습니다");
+                      }}
+                    >
+                      본문에 넣기
+                    </button>{" "}
+                    <button
+                      type="button"
+                      className={n.mini}
+                      data-testid={`admin-notice-asset-toggle-${asset.id}`}
+                      disabled={busy}
+                      onClick={() => toggleAsset(asset)}
+                    >
+                      {asset.active ? "노출 끄기" : "다시 켜기"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h3 className={styles.subTitle}>변경 이력</h3>

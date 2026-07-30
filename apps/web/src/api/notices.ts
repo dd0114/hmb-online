@@ -21,6 +21,8 @@ export function noticeByIdPath(id: string): string {
 
 export const ADMIN_NOTICES_PATH = "/api/admin/notices";
 export const ADMIN_NOTICES_HISTORY_PATH = "/api/admin/notices/history";
+/** 공지 이미지 업로드·목록·노출 스위치 (#309 W1). **삭제 경로는 없다**(아래 참조). */
+export const ADMIN_NOTICE_ASSETS_PATH = "/api/admin/notices/assets";
 
 /** 목록 한 행 — `status` 는 **서버가 판정**한다(화면이 active × 기간을 다시 합치지 않는다). */
 export type AdminNoticeStatus = "LIVE" | "SCHEDULED" | "OFF" | "EXPIRED" | "DELETED";
@@ -78,6 +80,34 @@ export interface NoticeUpdateRequest extends NoticeContentFields {
 export interface NoticeActiveRequest {
   active: boolean;
   reason: string;
+}
+
+/**
+ * 업로드된 공지 이미지 한 건 (#309 W1).
+ *
+ * ⚠️ `url` 은 **상대경로**(`/api/notices/assets/{id}`)다 — 절대 URL 이 아니다. 백엔드가 터널 뒤라
+ * 주소가 바뀌므로, 본문에 절대 URL 을 굽는 순간 과거 공지 이미지가 전부 깨진다. 화면에 그릴 때는
+ * `resolveNoticeUrl`(`common/notice-asset-url.ts`)을 통과시켜라.
+ *
+ * ⚠️ **삭제 필드도 삭제 API 도 없다**(hero 확정 2026-07-30). 내리기는 `active` 스위치로만 —
+ * 삭제는 오조작이 곧 영구 소실이고 참조하던 공지의 그림을 되살릴 방법이 없다.
+ */
+export interface AdminNoticeAssetRow {
+  id: string;
+  /** 본문에 붙일 상대경로. 서버가 만든다(클라가 조립하지 않는다). */
+  url: string;
+  originalName: string | null;
+  contentType: string;
+  byteSize: number;
+  active: boolean;
+  /** 이 그림을 본문에서 참조하는 **살아 있는 공지 수**. 노출을 끄기 전 경고의 근거. */
+  usedBy: number;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface AdminNoticeAssetListResponse {
+  assets: AdminNoticeAssetRow[];
 }
 
 /** `admin_ops_audit` 한 줄(economy 이력과 같은 모양 — V18 범용 테이블). */

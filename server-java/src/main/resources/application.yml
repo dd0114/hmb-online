@@ -24,10 +24,40 @@ spring:
     locations: classpath:db/migration
   # jackson 설정은 common/Json.java(@Primary ObjectMapper)가 단일 SoT — spring.jackson.* 키는
   # 커스텀 빈에 적용되지 않아(dead) 두지 않는다. (W1 검증 이월사항 b)
+  servlet:
+    multipart:
+      # 공지 이미지 업로드(#309). ⚠️ 이 값은 **서블릿 컨테이너의 상한**이라 넘으면 요청이 우리
+      # 검증에 닿기도 전에 튕긴다(운영자는 이유를 모르는 500 을 본다). 그래서 앱 상한
+      # (hmb.notice.asset.max-bytes, 기본 2MB)보다 **넉넉하게** 잡아 두고, 사람에게 보여줄 거절은
+      # 항상 우리 검증이 하게 한다.
+      # ⚠️ 아트 번들 zip(#309 W2)이 실물 약 6MB 라 8MB 로는 여유가 없다 — 컨테이너 상한이 먼저
+      # 걸리면 운영자는 이유를 모르는 에러를 본다. 앱 상한(hmb.chars.bundle.max-total-bytes)이
+      # 항상 먼저 말하게 둔다.
+      max-file-size: 96MB
+      max-request-size: 96MB
 
 hmb:
   db:
     path: ./.data/hmb.db
+  notice:
+    asset:
+      # 공지 이미지 보관소. 비우면 **DB 파일 옆** notice-assets/ (도커에서는 영속 볼륨
+      # /var/lib/hmb) — 볼륨을 하나로 유지해 **백업 대상이 하나**가 되게 한다. 별도 볼륨을 만들면
+      # DB 만 복구되고 이미지가 사라진 상태가 생기는데, 그때 공지 본문은 멀쩡히 남아 깨진 그림을 가리킨다.
+      dir: ""
+      # 업로드 상한(바이트). 볼륨 보호이지 기능 제약이 아니다 — 실제 히어로 이미지가 82KB 다.
+      # env HMB_NOTICE_ASSET_MAXBYTES 로 **무배포 조정** 가능.
+      max-bytes: 2097152
+  chars:
+    bundle:
+      # 유닛 아트 번들(#309 W2). 비우면 DB 파일 옆 char-bundles/ — 공지 이미지와 **같은 볼륨**이라
+      # 백업 대상이 하나로 유지된다. 리비전마다 하위 디렉토리 하나(롤백용으로 쌓인다).
+      dir: ""
+      # zip **해제 후** 총 바이트 상한. 압축 파일 크기로 재면 zip bomb 을 못 막는다 —
+      # 몇 KB 가 수 GB 로 풀린다. 현재 실물 아트 트리가 약 6MB 라 64MB 는 넉넉하다.
+      max-total-bytes: 67108864
+      # 엔트리 수 상한(파일 폭탄 방어). 실물 트리가 약 40개다.
+      max-entries: 2000
   data:
     # 부팅 임포트(버전 upsert, meta_kv 기록).
     # v2.1 = 실선수 172명 + 성격(#94) → v2.2 = LEGEND 개편(#207): 신규 8종 P173~P180 추가(180명) +
