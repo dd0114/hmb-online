@@ -112,6 +112,16 @@ function StartSeasonCta({
     <div className={styles.cta} data-testid="league-start-cta">
       <p className={styles.ctaTitle}>리그에 도전하세요</p>
       <p className={styles.ctaDesc}>봇 9팀과 더블 라운드로빈 18라운드. 승점 3-1-0, 시즌 종료 시 순위 보상.</p>
+      {/* 하는 방법 (#286 W5a, 설계 §3.2 상태 A) — **원정 페이지와 같은 형식**이다(설명 + 3스텝).
+          두 모드의 안내가 갈라지면 유저가 모드마다 다시 배워야 한다.
+          ⚠️ 여기에 승급/강등 **컷 숫자를 적지 마라** — 그건 서버 config 이고 디비전마다 다르다.
+          클라가 적는 순간 #262 BL-1(화면이 서버와 반대 사실을 말함)이 재발한다. 컷은 시즌이
+          시작되면 순위표가 서버 값으로 칠해 보여준다. */}
+      <ol className={styles.steps} data-testid="league-guide">
+        <li>[리그 시작]을 누르면 <b>봇 9팀</b>과 한 시즌이 열립니다.</li>
+        <li>매 라운드 [다음 경기]로 한 판씩 치릅니다 — <b>18라운드</b> 동안 이어집니다.</li>
+        <li>시즌이 끝나면 순위에 따라 <b>보상</b>을 받고 <b>승급 또는 강등</b>합니다.</li>
+      </ol>
       {/* 시즌이 없는 구간에서도 "내가 몇 부인지" 를 보여준다(#268) — 승급/강등은 시즌 **사이**에
           일어나므로, 다음 시즌을 시작하기 직전이 그게 가장 궁금한 순간이다. */}
       {divisionLabel(division ?? null) && (
@@ -165,9 +175,40 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
     });
   }
 
+  /**
+   * 라운드 진행 (#286 W5a, 설계 §3.2 상태 B).
+   *
+   * ⚠️ **서버가 준 값만 쓴다.** 일정표를 세어 추정하지 않는다 — 유저 경기만 세는지 전체를 세는지,
+   * 연기된 라운드를 어떻게 치는지가 전부 서버 규칙이라 클라가 다시 세면 조용히 어긋난다
+   * (#262 BL-1 과 같은 부류). 둘 중 하나라도 없으면 **줄을 그리지 않는다**.
+   */
+  // ⚠️ 생성 타입(openapi)에 아직 없는 필드다 — 스키마는 server-java 소관이라 여기서 넓히지 않고
+  // `game-logic.leagueModeHint` 와 **같은 방식**으로 읽는다(런타임 타입 가드가 진짜 방어선이다).
+  const sr = season as unknown as { currentRound?: unknown; totalRounds?: unknown };
+  const cur = typeof sr.currentRound === "number" ? sr.currentRound : null;
+  const total = typeof sr.totalRounds === "number" ? sr.totalRounds : null;
+  const roundPct = cur !== null && total !== null && total > 0 ? (cur / total) * 100 : null;
+
   return (
     <div data-testid="league-dashboard">
       {deckless.dialog}
+      {roundPct !== null && (
+        <section className={styles.roundCard} data-testid="league-round-progress">
+          <div className={styles.roundHead}>
+            <span className={styles.roundLabel}>시즌 진행</span>
+            <span className={styles.roundValue}>
+              <strong>{cur}</strong> / {total} 라운드
+            </span>
+          </div>
+          <div className={styles.roundTrack}>
+            <div
+              className={styles.roundBar}
+              data-testid="league-round-bar"
+              style={{ width: `${roundPct}%` }}
+            />
+          </div>
+        </section>
+      )}
       <section className={styles.nextCard}>
         {nextFixture ? (
           <>
