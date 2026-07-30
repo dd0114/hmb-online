@@ -19,9 +19,35 @@ interface ScoreBarProps {
    * 단위 테스트에 안 잡힌다(독립검증 minor-3 — 그 변이체가 실제로 단위테스트를 전부 통과했다).
    */
   tick: number | null;
+  /** 내 팀이 선 사이드(#322 안 C). 모르면 null — 표식을 달지 않는다. */
+  myTeamSide?: "home" | "away" | null;
   /** 리그 매치일 때 라운드(navigation state 로만 오는 값). */
   leagueRound?: number | null;
   onBack: () => void;
+}
+
+/**
+ * **내 팀 표식** (#322 안 C, hero 확정 2026-07-30).
+ *
+ * 이름·스코어·좌우는 이제 **픽스처 사이드**를 따른다(홈 먼저 — 축구 중계 관례). 그 대가로
+ * 리그 어웨이 라운드엔 내 팀이 오른쪽에 서서, 유저가 매 라운드 자기 자리를 다시 찾아야 한다.
+ * 그걸 이 한 조각이 메운다. 색은 이미 사이드가 말하고 있으므로(헤더 이름 색 = 뷰어 팀색:
+ * home 파랑 / away 빨강) 여기서 색을 또 쓰지 않는다 — 표식은 **위치**를 말한다.
+ *
+ * `aria-label` 을 따로 두는 이유: 화면에서는 두 글자면 충분하지만, 스크린리더에는 어느 팀인지가
+ * 붙어야 의미가 산다(양쪽 이름이 다 읽히는 줄이라 "내 팀"만으로는 어디에 걸렸는지 모른다).
+ */
+function MyTeamTag({ side }: { side: "home" | "away" }) {
+  return (
+    <span
+      className={styles.myTeamTag}
+      data-testid="scorebar-my-team"
+      data-side={side}
+      aria-label="내 팀"
+    >
+      내 팀
+    </span>
+  );
 }
 
 /** 상태 뱃지 문구. W2/W3(#170)가 추가할 라이브 상태도 미리 사람 말로 보여준다(모르면 원문 노출). */
@@ -54,6 +80,7 @@ export function ScoreBar({
   awayName,
   liveScore,
   tick,
+  myTeamSide = null,
   leagueRound = null,
   onBack,
 }: ScoreBarProps) {
@@ -72,12 +99,18 @@ export function ScoreBar({
       </button>
 
       <div className={styles.teams} data-testid="stage-score">
-        <span className={`${styles.teamName} ${styles.home}`}>{homeName}</span>
+        <span className={`${styles.teamName} ${styles.home}`} data-team-side="home">
+          <span className={styles.teamLabel}>{homeName}</span>
+          {myTeamSide === "home" && <MyTeamTag side="home" />}
+        </span>
         {/* 하프타임 화면에서 이 값이 곧 "전반 스코어" — 기존 e2e·단위테스트가 참조하는 계약 표기다. */}
         <span className={styles.score} data-testid={isBreak ? "h1-score" : undefined}>
           {home} : {away}
         </span>
-        <span className={`${styles.teamName} ${styles.away}`}>{awayName}</span>
+        <span className={`${styles.teamName} ${styles.away}`} data-team-side="away">
+          <span className={styles.teamLabel}>{awayName}</span>
+          {myTeamSide === "away" && <MyTeamTag side="away" />}
+        </span>
       </div>
 
       <div className={styles.meta}>

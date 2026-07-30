@@ -17,6 +17,7 @@ import java.util.Set;
 import online.hmb.common.ApiException;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
+import online.hmb.league.LeagueService;
 import online.hmb.meta.DeckService;
 import online.hmb.meta.DeckSnapshot;
 import org.slf4j.Logger;
@@ -573,9 +574,17 @@ public class MatchService {
     }
 
     /**
-     * ownerName(#245 additive) = 이 매치를 만든 유저(홈)의 닉네임. 기존 소비자는 "홈 = 나"라고
-     * 가정해도 됐지만, 원정 수비자가 남의 매치를 <b>관전</b>하면서부터는 그 가정이 깨진다
-     * (홈은 공격자다). 클라가 자기 닉네임을 홈에 박으면 관전 화면이 양 팀을 바꿔 부른다.
+     * {@code ownerName}(#245 additive) = 이 매치를 만든 유저의 닉네임.
+     *
+     * <p>⚠️ <b>"(홈)"이라고 적지 마라 — 이 문장이 실제로 버그를 만들었다</b>(#322). 원래 여기엔
+     * <i>"매치를 만든 유저(홈)의 닉네임"</i> 이라고 적혀 있었고, web 이 그 말을 계약으로 믿어
+     * {@code homeName = ownerName} 을 박았다. 그런데 <b>리그 어웨이 라운드는 소유자가 away 사이드다</b>
+     * ({@link MatchOrchestrator#userIsHome} — 픽스처 {@code home_team} 이 계약, 2026-07-19 #94).
+     * 그 결과 어웨이 라운드 화면에서 스코어·로그 팀 라벨·좌우가 통째로 뒤집혔다(라이브 리그
+     * 20경기 중 7건, 유저 3/3).
+     *
+     * <p>사이드가 필요하면 {@code homeName}/{@code awayName} 을 써라 — <b>사이드 라벨 그대로</b>다.
+     * {@code ownerName} 은 "누구 매치냐"만 말한다(#245 관전 경로가 그걸 쓴다).
      */
     public record MatchDetail(String id, String state, String failReason, Opponent opponent,
                                Integer scoreH1Home, Integer scoreH1Away,
@@ -583,7 +592,33 @@ public class MatchService {
                                String result, String createdAt, String finishedAt,
                                Map<String, Double> conditions, String mode, String leagueFixtureId,
                                JsonNode userDeckSnapshot, MatchClockService.MatchClock clock,
-                               String ownerName) {
+                               String ownerName, String homeName, String awayName) {
+    }
+
+    /**
+     * 이 매치에서 유저가 홈 사이드인가 (#322).
+     *
+     * <p>규칙은 {@link MatchOrchestrator#userIsHome} 과 같다 — <b>엔진 home = 픽스처 home_team</b>.
+     * 연습·원정은 리그 픽스처가 없어 항상 홈이고, 리그는 픽스처가 정한다. 여기서 LeagueService 를
+     * 주입받지 않고 직접 조회하는 이유는 {@code LogsService} 가 같은 판정을 이미 그렇게 하기 때문 —
+     * 한 줄짜리 조회에 모듈 의존을 하나 더 만들면 순환이 생긴다.
+     */
+    private boolean userIsHome(MatchRow row) {
+        // ⚠️ 조건을 {@code MatchOrchestrator.userIsHome} 과 **글자 그대로** 맞춘다(독립검증 minor-3).
+        //    거기는 mode 도 본다 — 지금은 리그가 아니면 픽스처도 없어서 결과가 같지만, 두 판정이
+        //    갈리면 화면과 엔진이 조용히 어긋난다(이 이슈가 정확히 그 형태였다).
+        if (!"league".equals(row.mode()) || row.leagueFixtureId() == null) {
+            return true;
+        }
+        // 팀 id 리터럴을 다시 적지 않는다 — SoT 는 LeagueService 의 상수다.
+        return jdbcClient.sql("SELECT home_team FROM league_fixtures WHERE id = ?")
+                .param(row.leagueFixtureId())
+                .query(String.class)
+                .optional()
+                .map(LeagueService.USER_TEAM_ID::equals)
+                // 픽스처가 없으면 홈으로 본다(조회용 응답이 500 이 되는 것보다 낫다). 라이브 실측
+                // orphan 0건 — 여기 걸리면 데이터 문제이지 표시 문제가 아니다.
+                .orElse(true);
     }
 
     /**
@@ -607,14 +642,16 @@ public class MatchService {
         // 넘어갔다(독립검증 3R MAJOR-1). 지우기 목록은 필드가 늘 때마다 조용히 새는 반면, 허용
         // 목록은 새 필드가 **기본으로 막힌다** — 다음 사람이 여기 손대지 않으면 유출이 생기지 않는다.
         //
-        // 관전자에게 허용: 식별·진행·결과·상대(=자기 팀)·시계·홈 이름. 그 외는 전부 뗀다.
+        // 관전자에게 허용: 식별·진행·결과·상대(=자기 팀)·시계·팀 이름(#322 homeName/awayName 포함 —
+        // 두 값 다 ownerName·opponent.name 의 재배치일 뿐이라 새로 새는 정보가 없다).
+        // 그 외는 전부 뗀다.
         return new MatchDetail(detail.id(), detail.state(), detail.failReason(), detail.opponent(),
                 detail.scoreH1Home(), detail.scoreH1Away(), detail.scoreHome(), detail.scoreAway(),
                 detail.result(), detail.createdAt(), detail.finishedAt(),
                 null,                    // conditions — 공격자 로스터·컨디션(3R MAJOR-1)
                 detail.mode(), detail.leagueFixtureId(),
                 null,                    // userDeckSnapshot — 공격자 선수별 지시·팀 전술(1R BL-1)
-                detail.clock(), detail.ownerName());
+                detail.clock(), detail.ownerName(), detail.homeName(), detail.awayName());
     }
 
     public MatchDetail toDetail(MatchRow row) {
@@ -625,12 +662,20 @@ public class MatchService {
         // 스포일러 금지: 전반이 아직 재생 중이면 전반 스코어를 내려주지 않는다(계약상 scoreH1* 은
         // "감독시간 이후"에 채워지는 필드다). 후반 스코어·결과는 FINISHED 전까지 애초에 null 이다.
         boolean h1Live = S_FIRST_HALF.equals(row.state());
-        return new MatchDetail(row.id(), row.state(), row.failReason(), buildOpponent(row),
+        // + homeName/awayName(#322): 사이드 라벨 **그대로**. 클라가 "홈 = 소유자"로 배치하다가
+        //   리그 어웨이 라운드 화면이 통째로 뒤집혔다(스코어·로그 라벨·좌우). 불리언 하나만 주면
+        //   관전자 경로(#245 — 홈이 공격자다)에서 해석이 또 갈리므로 **이름을 배치해서** 보낸다.
+        Opponent opponent = buildOpponent(row);
+        String owner = ownerNameOf(row);
+        boolean userHome = userIsHome(row);
+        return new MatchDetail(row.id(), row.state(), row.failReason(), opponent,
                 h1Live ? null : row.scoreH1Home(), h1Live ? null : row.scoreH1Away(),
                 row.scoreHome(), row.scoreAway(),
                 row.result(), row.createdAt(), row.finishedAt(),
                 conditionsOf(row), mode, row.leagueFixtureId(), userDeckSnapshotOf(row),
-                clockService.clockOf(row), ownerNameOf(row));
+                clockService.clockOf(row), owner,
+                userHome ? owner : opponent.name(),
+                userHome ? opponent.name() : owner);
     }
 
     /** 매치 소유자(홈)의 닉네임 — 관전자가 홈을 자기 이름으로 오인하지 않게(#245). */

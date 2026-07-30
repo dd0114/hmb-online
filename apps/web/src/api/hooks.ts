@@ -163,6 +163,13 @@ export type MatchDetail = components["schemas"]["MatchDetail"] & {
    * 관전 화면이 양 팀 이름을 바꿔 부른다.
    */
   ownerName?: string | null;
+  /**
+   * **사이드 기준** 팀 이름(#322 additive). `ownerName` 이 "홈 = 소유자"를 전제하는 것과 달리
+   * 이 둘은 픽스처가 정한 사이드 그대로다 — 리그 어웨이 라운드는 `homeName` 이 봇이다.
+   * 구 서버는 안 준다 → `teamNamesOf` 가 `ownerName`/`opponent.name` 으로 폴백(연습·유저홈은 항등).
+   */
+  homeName?: string | null;
+  awayName?: string | null;
 };
 export type MatchResult = components["schemas"]["MatchResult"];
 export type MatchLog = components["schemas"]["MatchLog"];

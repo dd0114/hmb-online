@@ -29,6 +29,11 @@ interface StageShellProps {
   match: MatchDetail;
   homeName: string;
   awayName: string;
+  /**
+   * 내 팀이 선 사이드(#322 안 C). 어웨이 라운드엔 내 팀이 오른쪽에 서므로 표식이 없으면 유저가
+   * 매 라운드 자기 자리를 다시 찾아야 한다. 모르면 null — 거짓 표식을 달지 않는다.
+   */
+  myTeamSide?: "home" | "away" | null;
   /** 리그 라운드(MatchDetail 에 없어 navigation state 로만 온다) — 스코어바 뱃지용. */
   leagueRound?: number | null;
 }
@@ -49,7 +54,13 @@ interface StageShellProps {
  *  · 정보 탭(통계/로그/후반지시) = 항상 표시. `brief` 만 상태 제한(전반).
  *  · 상태 패널(하프타임 감독/종료 결과) = 매치 상태 소유, 지금 해야 할 일이라 맨 앞·기본 선택.
  */
-export function StageShell({ match, homeName, awayName, leagueRound = null }: StageShellProps) {
+export function StageShell({
+  match,
+  homeName,
+  awayName,
+  myTeamSide = null,
+  leagueRound = null,
+}: StageShellProps) {
   const navigate = useNavigate();
   const [preferredTab, setPreferredTab] = useState<TabKey | null>(null);
   // 재생 플레이헤드(뷰어가 미러링). 통계·로그·시계가 "지금까지"를 계산하는 기준.
@@ -102,6 +113,7 @@ export function StageShell({ match, homeName, awayName, leagueRound = null }: St
         match={match}
         homeName={homeName}
         awayName={awayName}
+        myTeamSide={myTeamSide}
         liveScore={liveScore}
         tick={headerTick(match.state, tick, halfEndTick)}
         leagueRound={leagueRound}

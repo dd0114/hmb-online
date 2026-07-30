@@ -522,14 +522,22 @@ class AwayRaidTest extends MatchTestBase {
                 populated.add(k);
             }
         });
+        // homeName/awayName(#322) 은 **의도적으로 열었다** — 둘 다 ownerName·opponent.name 을
+        // 사이드에 재배치한 값이라 이미 관전자에게 보이는 정보이고, 새로 새는 것이 없다.
+        // (이 목록이 기본으로 막았다는 것 자체가 화이트리스트가 일하고 있다는 증거다.)
         assertThat(populated).isSubsetOf("id", "state", "failReason", "opponent",
                 "scoreH1Home", "scoreH1Away", "scoreHome", "scoreAway", "result",
-                "createdAt", "finishedAt", "mode", "leagueFixtureId", "clock", "ownerName");
+                "createdAt", "finishedAt", "mode", "leagueFixtureId", "clock", "ownerName",
+                "homeName", "awayName");
         // 허용 목록은 **위치 기반 재조립**이라 필드가 뒤바뀌어도 키 집합은 그대로다(4R minor-7).
         // 몇 개는 값으로도 못박아 뒤바뀜을 잡는다.
         assertThat(body.get("id")).isEqualTo(matchId);
         assertThat(body.get("mode")).isEqualTo("away");
         assertThat(body.get("ownerName")).isEqualTo("aw_atk5");
+        // 원정은 리그 픽스처가 없다 → 공격자(=매치 소유자)가 홈. 수비자가 관전해도 사이드는
+        // 그대로여야 한다 — 관전자 시점으로 뒤집으면 #245 가 고친 결함이 되살아난다.
+        assertThat(body.get("homeName")).isEqualTo("aw_atk5");
+        assertThat(body.get("awayName")).isEqualTo("aw_def5");
         // 인접 동형 필드(스코어 쌍)는 키 집합으로 못 잡는다 — 값으로 대조한다(5R MIN-1).
         Map<String, Object> stored = jdbcClient.sql("""
                         SELECT score_home, score_away, score_h1_home, score_h1_away

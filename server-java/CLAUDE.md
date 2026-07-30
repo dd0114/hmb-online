@@ -177,8 +177,18 @@
   - `GET /api/me/away-reports?status=unseen|all` → `{reports[], summary{matches,opponents,wins,draws,
     losses,goalsFor,goalsAgainst,ratingDelta}, rating, unseen}` (**집계는 서버가 계산** — 클라 복제 금지)
   - `POST /api/me/away-reports/ack` `{ids?}` → `{acked}` (멱등: `seen_at IS NULL` 로 대상을 좁힌다)
-  - additive: `GET /api/me` 에 `rating`, `MatchDetail` 에 `ownerName`(홈=매치 생성자 닉 — 관전자가
-    홈을 자기 이름으로 오인하지 않게)
+  - additive: `GET /api/me` 에 `rating`, `MatchDetail` 에 `ownerName`(**매치 생성자** 닉 — 관전자가
+    양 팀을 자기 기준으로 오인하지 않게)
+    - ⚠️ **`ownerName` 은 "홈"이 아니다**(#322). 한때 여기에 *"홈=매치 생성자 닉"* 이라고 적혀
+      있었고 web 이 그 말을 계약으로 믿어 `homeName = ownerName` 을 박았는데, **리그 어웨이
+      라운드는 생성자가 away 사이드**다(`MatchOrchestrator.userIsHome` — 픽스처 `home_team` 이
+      계약, 2026-07-19). 그래서 어웨이 라운드 화면이 통째로 뒤집혔다(스코어·로그 팀 라벨·좌우.
+      라이브 리그 20경기 중 7건 · **어웨이 라운드를 치른 유저 3명 전원**). 문서 한 줄이 만든 버그다.
+    - 사이드가 필요하면 **`MatchDetail.homeName`/`awayName`**(#322 additive) — 사이드 라벨 그대로다.
+      불리언 하나(`userWasHome`)만 주지 않는 이유: 클라가 이름을 다시 배치해야 하고 그 해석이
+      관전자 경로(홈이 공격자다)에서 또 갈린다. **이름을 배치해서** 보내면 추론할 것이 남지 않는다.
+      계약 = `MatchSideNamesTest`(연습 무회귀 + **어웨이 픽스처 표본** — 기존 매치 테스트는 전부
+      유저=홈이라 이 결함을 구조적으로 관측할 수 없었다).
 ### 원정 v2 (hero 3차 컨펌 2026-07-29, V22)
 
 - **상대 2택**(E2): `GET /api/away/candidates` 가 레이팅 비슷한 **2명**을 제시하고 그 목록을
