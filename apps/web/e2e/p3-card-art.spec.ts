@@ -430,8 +430,12 @@ test("경계: 도감 그리드는 전신 아트다 (덱 리스트·토큰과 달
   await mockApi(page);
   await page.goto("/players");
   await expect(page.getByTestId("codex-grid")).toBeVisible();
-  await expect(cards(page).first()).toBeVisible();
-  await expectArtCrop(cards(page).first());
+  // ⚠️ `.first()` 하나만 보면 표본이 어느 등급인지에 따라 검사 깊이가 달라진다(#285 임계 아래는
+  //    아트가 없다). 도감에 실제로 뜬 아트 **전부**를 본다 — 하나라도 프레임 통짜면 깨진다.
+  const all = cards(page);
+  const n = await all.count();
+  expect(n, "도감 그리드에 전신 아트가 하나도 없다").toBeGreaterThan(0);
+  for (let i = 0; i < n; i += 1) await expectArtCrop(all.nth(i));
 });
 
 /**

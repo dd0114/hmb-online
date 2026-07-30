@@ -67,7 +67,9 @@ export function RecruitPage() {
         {/* 트레이드 설명 (#286 W3, hero 지적: "튜토리얼에 트레이드 설명이 빠져 있음 → 추가").
             ⚠️ **상시 안내 카드**로 둔다. 코치마크만 두면 한 번 보고 넘긴 사람은 영영 못 본다 —
             트레이드는 자주 오지 않아서(슬롯이 시간을 두고 열린다) 다시 볼 자리가 필요하다.
-            튜토리얼 코치마크는 이 카드를 **가리키는** 것으로 따로 붙는다(tutorial-steps). */}
+            ⚠️ hero Q5 는 "안내 카드 + 코치마크 **둘 다**"였는데 **코치마크는 아직 없다** —
+            온보딩 동선이 이 화면까지 오지 않아 스텝을 두면 완료가 영영 막힌다(tutorial-steps
+            의 `shop` 스텝 주석). 지금은 그 스텝 **문구**가 트레이드를 대신 짚는다. */}
         {tab === "trade" && (
           <section className={styles.guide} data-testid="trade-guide">
             <b className={styles.guideTitle}>트레이드란?</b>

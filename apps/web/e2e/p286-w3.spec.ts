@@ -105,26 +105,70 @@ test("선수 카드가 전신 아트다 — 얼굴 타일이 아니다", async (
   expect(box!.height / box!.width, "아트 창이 세로로 길지 않다 = 얼굴 타일이다").toBeGreaterThan(1.2);
 });
 
-test("미보유 카드는 전신 실루엣이다 — 회색조 사진이 아니다", async ({ page }) => {
+test("미보유 카드는 아트가 있으면 실루엣이다", async ({ page }) => {
   // 잠긴 카드에 원색 전신을 띄우면 잠금 표현과 어긋난다(그게 원래 정책의 이유였다).
   // 실루엣이 그 이유를 해소하므로 정책을 뒤집는 대가가 없다.
+  //
+  // ⚠️ **아트가 있는 카드에만 해당한다.** #285 정책이 다이아 미만 아트를 막아 GOLD 이하는
+  //    `<img>` 자체가 없다 — 필터를 걸 대상이 없는 것이지 구현이 빠진 게 아니다.
+  //    `.first()` 로 하나만 보면 그 사실이 통째로 숨는다(독립검증 W3 BL-1 이 그걸 잡았다).
   await mockAll(page);
   await page.goto("/players");
   await page.getByTestId("codex-scope-all").click();
 
-  const locked = page.locator('[data-testid^="codex-card-"][data-owned="false"]').first();
-  await expect(locked).toBeVisible();
-  const art = locked.locator('[data-testid="codex-card-art"] img').first();
-  const filter = await art.evaluate((el) => getComputedStyle(el).filter);
-  expect(filter, `실루엣 처리가 없다(filter=${filter})`).toContain("brightness(0)");
+  const lockedCards = page.locator('[data-testid^="codex-card-"][data-owned="false"]');
+  const n = await lockedCards.count();
+  expect(n, "미보유 표본이 없다").toBeGreaterThan(0);
+
+  let withArt = 0;
+  for (let i = 0; i < n; i += 1) {
+    const img = lockedCards.nth(i).locator('[data-testid="codex-card-art"] img');
+    if ((await img.count()) === 0) continue;   // 아트 미노출 등급(#285) — 아래 계약이 따로 본다
+    withArt += 1;
+    const filter = await img.first().evaluate((el) => getComputedStyle(el).filter);
+    expect(filter, `실루엣 처리가 없다(filter=${filter})`).toContain("brightness(0)");
+  }
+  expect(withArt, "아트가 붙은 미보유 카드가 하나도 없다 = 표본이 계약을 대표하지 못한다")
+    .toBeGreaterThan(0);
 });
 
-test("미보유 카드는 이름을 감춘다", async ({ page }) => {
+test("미보유 잠금 표현은 **등급과 무관하게** 같다", async ({ page }) => {
+  // 독립검증 W3 BL-1: 아트가 있는 등급만 자물쇠가 붙어, **같은 상태가 등급에 따라 두 그림**으로
+  // 갈렸다(DIA=검은 판+자물쇠 / GOLD=밝은 이니셜 원). 잠금은 등급의 함수가 아니다.
   await mockAll(page);
   await page.goto("/players");
   await page.getByTestId("codex-scope-all").click();
-  const locked = page.locator('[data-testid^="codex-card-"][data-owned="false"]').first();
-  await expect(locked).not.toContainText("선수 ");
+
+  const lockedCards = page.locator('[data-testid^="codex-card-"][data-owned="false"]');
+  const n = await lockedCards.count();
+  const marks = await lockedCards.evaluateAll((els) =>
+    els.map((el) => {
+      const art = el.querySelector('[data-testid="codex-card-art"]');
+      if (!art) return "no-art-window";
+      return getComputedStyle(art, "::after").content !== "none" ? "lock" : "none";
+    }),
+  );
+  expect(marks).toHaveLength(n);
+  expect(new Set(marks).size, `잠금 표현이 갈라졌다: ${[...new Set(marks)].join(" vs ")}`).toBe(1);
+  expect(marks[0]).toBe("lock");
+});
+
+test("미보유 카드는 이름을 감춘다 — 이니셜까지", async ({ page }) => {
+  // ⚠️ 라벨만 `？？？` 로 바꾸면 **아트 폴백이 이름 파생 이니셜**을 그린다(실측 "선2").
+  //    `not.toContainText("선수 ")` 는 뒤 공백 때문에 그걸 못 잡았다(독립검증 W3 MAJ-1).
+  //    그래서 카드 안에 **원래 이름의 앞글자**가 남아 있지 않은지 본다.
+  await mockAll(page);
+  await page.goto("/players");
+  await page.getByTestId("codex-scope-all").click();
+
+  const lockedCards = page.locator('[data-testid^="codex-card-"][data-owned="false"]');
+  const n = await lockedCards.count();
+  expect(n).toBeGreaterThan(0);
+  for (let i = 0; i < n; i += 1) {
+    const text = (await lockedCards.nth(i).innerText()).replace(/\s/g, "");
+    expect(text, `미보유 카드에 이름 흔적이 남았다: ${text}`).not.toMatch(/선수\d/);
+    expect(text, `미보유 카드에 이름 이니셜이 남았다: ${text}`).not.toMatch(/선\d/);
+  }
 });
 
 // ── (5) 영입 — 트레이드 설명 ─────────────────────────────────────────────

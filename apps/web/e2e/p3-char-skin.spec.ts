@@ -81,7 +81,19 @@ test("덱: 전 등급 선수에 캐릭터 얼굴이 붙는다(B안 — 폴백 0)
   await mockApi(page);
   await page.goto("/deck");
   // 리스트(보유 선수 풀)를 연다 — 보드 토큰은 선발 11 만 그리므로 전 등급 표본을 못 덮는다.
-  await page.getByTestId("pool-sheet-open").click().catch(() => {});
+  // ⚠️ **삼키지 않는다.** `.catch(() => {})` 는 W2 에서 계약을 tautology 로 만든 바로 그 패턴이다
+  //    (누른 적 없이 통과). 데스크탑 폭에서는 시트 없이 리스트가 이미 열려 있을 수 있으므로
+  //    **존재를 먼저 확인하고** 눌러, "못 눌렀다"가 조용히 통과 근거가 되지 않게 한다.
+  //    (모바일에서만 시트 버튼이 보인다 — 데스크탑은 리스트가 이미 펼쳐져 있다. `count()` 는
+  //    숨은 요소도 세므로 **가시성**으로 갈라야 한다.)
+  //    버튼이 **늦게** 뜬다(덱·선수 조회가 끝나야 그린다) — 즉시 `isVisible()` 로 물으면 false 라
+  //    클릭을 건너뛰고 리스트가 안 열린다. 잠깐 기다리되, 끝내 없으면(레이아웃에 따라) 넘어간다.
+  const poolOpen = page.getByTestId("pool-sheet-open");
+  const poolOpenAppeared = await poolOpen
+    .waitFor({ state: "visible", timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  if (poolOpenAppeared) await poolOpen.click();
 
   // 포지션 4종 × LEGEND/비-LEGEND 가 실제로 섞여 있어야 캡처가 B안을 대표한다.
   expect(new Set(PLAYERS.map((p) => p.position)).size, "포지션 4종").toBe(4);

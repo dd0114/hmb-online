@@ -95,7 +95,10 @@
   filter: brightness(0) opacity(0.8);
 }
 
-/* 자물쇠 표식 — 실루엣이 통짜로 나오는 에셋에서도 "빈 칸"이 아니라 "잠긴 칸"으로 읽히게. */
+/* 자물쇠 표식 — **아트가 있든 없든 항상** 그린다.
+   ⚠️ 아트 유무에 따라 그리면 **같은 상태가 등급에 따라 두 그림으로 갈린다**: #285 정책이
+   다이아 미만 아트를 막아서, GOLD 이하 미보유는 실루엣도 자물쇠도 없이 **밝은 이니셜 원**만
+   남았다(독립검증 W3 BL-1 실측). 잠금은 등급의 함수가 아니다. */
 .artLocked {
   position: relative;
 }
@@ -106,7 +109,8 @@
   display: grid;
   place-items: center;
   font-size: 22px;
-  opacity: 0.5;
+  opacity: 0.62;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   pointer-events: none;
 }
 

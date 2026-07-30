@@ -196,7 +196,8 @@ function TeamContext(props: DirectiveRailProps & TuneToggleProps) {
           <span className={styles.tuneCaret} aria-hidden="true">
             {tuneOpen ? "▾" : "▸"}
           </span>
-        </button>        )}
+        </button>
+        )}
 
         {!props.hideTeamTune && tuneOpen && (
         <div className={styles.group} id="team-tactics-panel" data-testid="team-tactics-panel">

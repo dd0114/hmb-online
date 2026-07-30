@@ -85,7 +85,10 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
         >
           <FullArtCard
             playerId={player.id}
-            name={player.name}
+            /* ⚠️ 미보유면 **이름도 넘기지 않는다** — 아트가 없는 등급(#285 임계 아래)에서는
+               폴백이 **이름 파생 이니셜**을 그려서, 라벨만 `？？？` 로 가려도 카드 안에 이름이
+               그대로 남는다(실측: "선2"). 가린 척만 하는 상태였다(독립검증 W3 MAJ-1). */
+            name={player.owned ? player.name : "？"}
             grade={player.grade}
             position={player.position}
             size="grid"
