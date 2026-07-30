@@ -6,6 +6,26 @@
 
 ---
 
+## 2026-07-30T23:24Z — **배포 v3.04** (태그 `deploy-3.04`) — 원정 복수(V34) + 랭킹보드·전적 API(#319) + 404 위생(#335) + viewer-core(#324/#334) + web 다수
+
+- **git**: **`0d0b7a5`**(태그 `deploy-3.04`). 변경 = `packages` 30 · `server-java` 22 · `apps` 19 · `tools` 3 · docs 3.
+- **모듈 버전**: engine **`@0.23.0`**(버전 무변경 — `packages/engine/src` 는 손대지 않았고 dev-viewer e2e·inline-core 만 바뀌었다) · server-java `0.1.0` · web `0.0.0` · servants `0.0.1`
+- **이미지**: `hmb-java` `sha256:5e81a4bee72a…`(**신규**) · `hmb-runner` `sha256:7f73d3154d1f…`(**신규** — `packages/shared` 변경 반영차 재빌드)
+- **executor**: `packages/server`(prompt/gates·coach)·`packages/shared` 가 바뀌어 **재기동**(PID only, 새 워커 12913).
+- **DB**: Flyway **v33 → v34**, 1건 — `V34__away_revenge`. **§0.5-2/7 성격**: `.conf` 없음(트랜잭션 내) · **파괴적 구문 0** · 내용은 `away_reports` **ADD COLUMN ×3**(`revenge_attempts`·`revenge_state`·`from_revenge`) + `away_challenges` **ADD COLUMN ×1** + 인덱스 1 = **순수 additive**. 백업 `pre-deploy304-20260730T232109Z.db`(421,175,296 B · sha256 `f97766eb00b4ef6e8b290e42e62326683b4a91d20b3dbae4b9301019f5c679d4` · integrity ok · users 187 · away_reports 7). 적용 후 신규 컬럼 4개 확인 · away_reports **7행 보존** · integrity ok.
+- **✅ §0.55 첫 적용(#310)**: 경기 완주 스모크를 **고정 계정 `deploy-smoke`** 로 돌렸다(로그인 `isNew:false` 확인). 가입 확인용은 새 계정으로 하되 **경기를 시키지 않았다** → 이번 배포로 리더보드에 **새로 쌓인 스모크 계정 0**.
+- **결과**: ✅ GREEN (JS 에러 0)
+  - **#319 랭킹보드·전적(W5 4구역)** — `/me` 화면에서 **실데이터**로 확인: ①프로필/전적(디비전·원정 레이팅·승률·연승) ②**🏅 리그 순위**(미자격이면 "아직 순위에 오르지 않았습니다") ③**🏅 원정 순위 — 시즌 1** 리더보드(햄춘 20 · 전기석 10 · 별희 10 · 축구왕여르 −20·1연승 …) ④경기/트레이드/랭킹 탭 + 전체·연습·리그 필터. API 도 전부 200(`/api/rankings` leaderboard 20 + me + personalRecords · `/api/away/season` seasonNo 1 · `/api/me/away-reports` · `/api/me/matches`).
+  - **원정 복수(V34)**: **`GET /api/away/revenge` 200**(`entries: []` · `remainingToday: 10`) — `deploy-smoke` 는 피습 이력이 0이라 목록이 비는 게 정상이고, 서버가 V34 컬럼(`revenge_attempts`·`revenge_state`)을 실제로 읽는 것까지 확인(`AwayService`). *복수 매치 실행까지는 피습 이력이 필요해 이번엔 미실행 — 다음 열차나 hero 실플레이 대상.*
+  - **#324 경기 재생 — 포지션 겹침 0**: `deploy-smoke` 진행 매치를 실화면으로 확인, **양 팀 토큰 22개가 전부 분리 렌더**(겹침 없음). 덤으로 **#322b 사이드 라벨**도 확인 — 헤더가 `deploy-smoke [내 팀] 0 : 0 그린 밸런스`.
+  - **#335 404 위생**: `/api/nope` · `/api/matches/BOGUS` · `/api/notices/<없는ULID>` · `/api/mails/BOGUS` **전부 404 + JSON 에러 바디**(과거 `500 "No static resource"` 였던 자리).
+  - **메시지함 무회귀**: `GET /api/mails` 200.
+  - `version.json` = **`0d0b7a5`**.
+- **📌 발견 — `matches → bots` FK 위반 11건(이번 배포 무관, 선행 상태)**: 배포 후 `PRAGMA foreign_key_check` 가 **11건**을 보고했다. **배포 전 백업에서도 동일하게 11건** — 즉 V34 가 만든 것이 아니다. 원인은 **리그 시즌 롤오버**: 봇 팀이 시즌 ULID 접두(`01KYTNA47…-T1` …)로 새로 생성되고 지난 시즌 봇 행은 사라지는데, 그 시즌의 `matches.bot_id` 는 남아 고아가 된다. 지금은 조회에 영향이 없지만 **`matches` 를 재작성하는 마이그레이션(V8·V19·V21 계열)이 또 오면 위험**하다(그 계열은 `foreign_keys=OFF` 로 우회해 통과해 왔다). → **후속 이슈 권고**: 시즌 롤오버 시 봇 행을 지우지 말고 비활성화하거나, 매치가 참조하는 봇은 보존.
+- **비고**: 스모크 중 `/api/matches/{id}` 한 건이 `NETFAIL`(터널 간헐) — 재시도 정상. 배포 자체와 무관.
+
+---
+
 ## 2026-07-30T23:00Z — **배포 v3.03** (태그 `deploy-3.03`) — 메시지함(#323, V33) + OG 업로드 자산 오리진 픽스(#320)
 
 - **git**: **`4dae827`**(태그 `deploy-3.03`). 변경 = `apps/web` 43 + `server-java` 15 + `infra` 3(Pages Function #320) + docs 6.
