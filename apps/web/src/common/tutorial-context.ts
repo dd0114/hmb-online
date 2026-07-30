@@ -13,9 +13,18 @@ export interface TutorialControls {
   active: boolean;
   /** 처음부터 다시 보기(완료 표시도 해제). */
   restart: () => void;
+  /**
+   * **덱 화면 스텝만** 여는 targeted 시작 (#286 W3.5) — 덱 없는 유저를 여기로 데려온 뒤 부른다.
+   *
+   * `restart` 와 다른 점 두 가지가 이 함수의 존재 이유다:
+   *  · 완료 표시를 **해제하지 않는다**(이미 온보딩을 끝낸 유저를 되돌리지 않는다)
+   *  · **완료를 저장하지 않는다** — 온보딩 완료는 유저가 홈 코치마크까지 실제로 본 결과여야 한다.
+   *    그 저장이 서버에서 덱 지급을 트리거하므로, 여기서 대신 찍으면 안내가 지급을 가로챈다.
+   */
+  startDeckSetup: () => void;
 }
 
-const NOOP: TutorialControls = { active: false, restart: () => {} };
+const NOOP: TutorialControls = { active: false, restart: () => {}, startDeckSetup: () => {} };
 
 export const TutorialContext = createContext<TutorialControls>(NOOP);
 

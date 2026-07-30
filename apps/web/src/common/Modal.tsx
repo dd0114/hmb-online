@@ -14,6 +14,8 @@ interface ModalProps {
   /** Dialog-box class. */
   className?: string;
   testId?: string;
+  /** 다이얼로그 요소에 붙일 추가 data-* 속성(계약이 출처 등을 구분할 때). */
+  dataAttrs?: Record<string, string>;
   /** Overlay(백드롭) data-testid — 기존 확인 다이얼로그의 백드롭 계약을 그대로 유지하기 위한 훅. */
   overlayTestId?: string;
   /**
@@ -39,6 +41,7 @@ export function Modal({
   overlayClassName,
   className,
   testId,
+  dataAttrs,
   overlayTestId,
   initialFocus,
 }: ModalProps) {
@@ -102,6 +105,7 @@ export function Modal({
         tabIndex={-1}
         onKeyDown={onKeyDown}
         data-testid={testId}
+        {...dataAttrs}
       >
         {children}
       </div>

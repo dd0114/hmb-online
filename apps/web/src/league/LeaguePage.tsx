@@ -9,6 +9,7 @@ import { Layout } from "../common/Layout";
 import { Amount, useCurrency } from "../common/Amount";
 import { CURRENCY_GEM, CURRENCY_POINT, formatAmount } from "../common/currency";
 import { ErrorToast } from "../common/ErrorToast";
+import { useDecklessGuard } from "../common/useDecklessGuard";
 import { matchInProgressIdOf } from "../common/match-lock";
 import type { SeasonSummary } from "./league-logic";
 import {
@@ -134,10 +135,13 @@ function StartSeasonCta({
 function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: string) => void }) {
   const navigate = useNavigate();
   const next = useStartNextLeagueMatch();
+  // /league 는 북마크·뒤로가기로 직접 들어올 수 있다 — 게임 탭 가드가 전부가 아니다(MAJ-2).
+  const deckless = useDecklessGuard();
   const names = useMemo(() => teamNameMap(season.teams), [season.teams]);
   const nextFixture = season.nextUserFixture ?? null;
 
   function startNext() {
+    if (!deckless.guard()) return;
     next.mutate(undefined, {
       onSuccess: (res) =>
         navigate(`/match/${res.match.id}`, { state: { leagueRound: res.fixture.round } }),
@@ -151,6 +155,7 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
           navigate(`/match/${resumeId}`);
           return;
         }
+        if (deckless.catchReject(err)) return;
         if (err instanceof ApiError && err.code === "LEAGUE_INVALID") {
           onError(`다음 경기를 시작할 수 없습니다 — ${err.message}`);
         } else {
@@ -162,6 +167,7 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
 
   return (
     <div data-testid="league-dashboard">
+      {deckless.dialog}
       <section className={styles.nextCard}>
         {nextFixture ? (
           <>

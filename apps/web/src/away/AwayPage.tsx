@@ -4,6 +4,7 @@ import { ApiError } from "../api/client";
 import { useAwayCandidates, useMe, useStartAwayMatch } from "../api/hooks";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
+import { useDecklessGuard } from "../common/useDecklessGuard";
 import { matchInProgressIdOf } from "../common/match-lock";
 import { awayStartError } from "./away-page-logic";
 import styles from "./AwayPage.module.css";
@@ -26,12 +27,15 @@ export function AwayPage() {
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const startAway = useStartAwayMatch();
+  // 덱 없는 유저는 여기까지 올 수 있다(북마크·뒤로가기) — 게임 탭 가드가 전부가 아니다.
+  const deckless = useDecklessGuard();
 
   // 후보는 **누른 뒤에** 받아온다 — 미리 받아두면 화면을 열기만 해도 서버의 제시가 갱신돼
   // 앞서 받은 목록이 조용히 무효가 된다(제시는 유저당 1개다, #245 hero E2).
   const { data: offer, isLoading, error: offerError } = useAwayCandidates(picking);
 
   function start(defenderId?: string) {
+    if (!deckless.guard()) return;
     setError(null);
     startAway.mutate(defenderId, {
       onSuccess: (match) => navigate(`/match/${match.id}`),
@@ -41,6 +45,7 @@ export function AwayPage() {
           navigate(`/match/${resumeId}`);
           return;
         }
+        if (deckless.catchReject(err)) return;
         setError(awayStartError(err as ApiError | Error));
       },
     });
@@ -85,7 +90,13 @@ export function AwayPage() {
             type="button"
             className={styles.cta}
             data-testid="away-start"
-            onClick={() => setPicking(true)}
+            onClick={() => {
+              // ⚠️ 여기서 막는 이유: 이 버튼은 **서버의 상대 제시를 받아온다**. 제시는 유저당
+              // 1개라 덱도 없는 유저가 눌러 갱신시키면 앞서 받은 목록이 조용히 무효가 된다
+              // (#245 hero E2). 후보를 고르는 자리에서 막으면 이미 한 번 소모한 뒤다.
+              if (!deckless.guard()) return;
+              setPicking(true);
+            }}
           >
             원정 떠나기
           </button>
@@ -135,6 +146,7 @@ export function AwayPage() {
         )}
 
         <ErrorToast message={error} onDismiss={() => setError(null)} />
+        {deckless.dialog}
       </div>
     </Layout>
   );

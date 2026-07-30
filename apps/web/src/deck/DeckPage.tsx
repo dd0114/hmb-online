@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useDeck, usePlayers, useUpdateDeck, type CatalogPlayer, type Deck } from "../api/hooks";
 import { useRelations, useTodayConditions } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { TeamMoraleWidget } from "../common/RelationBits";
+import { CardGrowthDetail } from "../codex/CardGrowthDetail";
+import { useNavLocked } from "../common/nav-lock";
+import { useTutorial } from "../common/tutorial-context";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { useNavGuardRun, useRegisterNavGuard, type NavGuard } from "../common/NavGuard";
@@ -76,6 +79,36 @@ export function DeckPage() {
   const [serverError, setServerError] = useState<ServerDeckError | null>(null);
   const [savedNote, setSavedNote] = useState(false);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
+
+  /**
+   * 덱 없는 유저를 데려온 셋업 진입 (#286 W3.5) — `/deck?setup=1`.
+   *
+   * 여기서 코치마크를 켜는 이유: 가드는 **홈·게임 탭**에 있는데 코치마크 대상은 **덱 화면**에
+   * 있다. 보내는 쪽에서 켜면 아직 도착하지 않은 화면의 스텝을 찾다가 대상 부재로 스킵되고,
+   * 유저는 빈 전술보드 앞에 안내 없이 남는다.
+   */
+  const [searchParams] = useSearchParams();
+  const setupFlow = searchParams.get("setup") === "1";
+  const { startDeckSetup } = useTutorial();
+  const setupStarted = useRef(false);
+  useEffect(() => {
+    if (!setupFlow || setupStarted.current) return;
+    setupStarted.current = true;
+    startDeckSetup();
+  }, [setupFlow, startDeckSetup]);
+  /**
+   * 강화 시트 (#286 W3) — **페이지가 소유**한다. 에디터가 들고 있으면 보드 상태가 바뀔 때마다
+   * 시트가 같이 흔들리고, 무엇보다 선수 탭과 **같은 컴포넌트**를 연다는 사실이 흐려진다.
+   */
+  const [growthPlayer, setGrowthPlayer] = useState<CatalogPlayer | null>(null);
+  /**
+   * 경기 중에는 강화만 잠근다(hero 2R).
+   *
+   * ⚠️ **덱 전체를 잠그면 안 된다** — 하프타임 지시를 쓰러 오는 자리이기 때문이다. 능력치를
+   * 바꾸는 것만 막는다: 진행 중인 시뮬이 이미 그 값으로 돌고 있어 도중에 바뀌면 어긋난다.
+   */
+  const matchLocked = useNavLocked();
+  const growthLockedReason = matchLocked ? "경기 중에는 강화할 수 없습니다" : null;
 
   // 첫 진입: 활성 덱 하나만 로드한다(프리셋 조회/적용 없음 — #106).
   useEffect(() => {
@@ -210,12 +243,9 @@ export function DeckPage() {
 
   return (
     <Layout header={header} nav>
-      {/* 팀 사기 — #286 에서 로비가 없어지며 갈 곳을 잃었다. 설계(§3.1 "덜어낸 것의 행선지")가
-          [덱]으로 지정한 자리다: 사기·컨디션은 **라인업을 짤 때 쓰는 값**이라 여기가 맞다.
-          ⚠️ 소비처가 0 이 되면 위젯은 정의만 남고 화면에서 조용히 사라진다(독립검증 BL-1 이
-          그 상태를 잡았다) — `deck-teamsheet` 계약이 이제 존재를 지킨다. */}
-      <TeamMoraleWidget relations={relations} compact />
       <DeckEditor
+        onOpenGrowth={(p) => setGrowthPlayer(p)}
+        growthLockedReason={growthLockedReason}
         state={editor}
         onChange={mutateEditor}
         aiManaged={aiManaged}
@@ -233,6 +263,17 @@ export function DeckPage() {
             : `보유 선수 부족 (${ownedPlayers.length}/${STARTER_COUNT})`
         }
       />
+
+      {/* 팀 사기 — #286 에서 로비가 없어지며 갈 곳을 잃었다. 설계(§3.1 "덜어낸 것의 행선지")가
+          [덱]으로 지정한 자리다: 사기·컨디션은 **라인업을 짤 때 쓰는 값**이라 여기가 맞다.
+          ⚠️ 소비처가 0 이 되면 위젯은 정의만 남고 화면에서 조용히 사라진다(독립검증 W2 BL-1 이
+          그 상태를 잡았다) — `deck-teamsheet` 계약이 이제 존재를 지킨다.
+
+          ⚠️ **에디터 위로 올리지 마라.** 처음엔 보드 위에 뒀는데, 그 한 줄이 지시 레일을 통째로
+          아래로 밀어 **팀 프롬프트가 하단 탭바에 가렸다**(390px 실측 여백 79 → 11, 요구 ≥24).
+          #244 의 "프롬프트는 어디서나 첫 화면에"가 이 위젯보다 우선이다 — 사기는 곁눈질로 보는
+          값이고 프롬프트는 이 화면에 온 이유다. 계약 = `p244-prompt-first.spec.ts` AC1·AC13. */}
+      <TeamMoraleWidget relations={relations} compact />
 
       <div className={styles.notes}>
         {preIssues.length > 0 && (
@@ -256,6 +297,22 @@ export function DeckPage() {
           <p className={styles.savedNote} data-testid="deck-saved-note">
             저장되었습니다
           </p>
+        )}
+        {/**
+         * 셋업 흐름의 복귀 CTA (#286 W3.5, hero Q9 = A).
+         *
+         * ⚠️ **자동 이동하지 않는다.** 저장하자마자 게임 탭으로 넘기면 유저는 방금 자동 배치된
+         * 덱을 한 번도 못 보고 화면이 바뀐다. 더 손보고 싶은 사람이 그대로 머무를 수 있어야 한다.
+         */}
+        {setupFlow && savedNote && (
+          <button
+            type="button"
+            className={styles.readyCta}
+            data-testid="deck-ready-cta"
+            onClick={() => navigate("/game")}
+          >
+            이제 경기를 시작할 수 있습니다 — 게임 시작하러 가기 ›
+          </button>
         )}
       </div>
 
@@ -300,6 +357,16 @@ export function DeckPage() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {/* 선수 탭이 여는 것과 **같은 컴포넌트**다 — hero 가 말한 "덱과 싱크"가 문서가 아니라
+          구조로 보장된다. 출처만 표시해 두 진입점을 계약이 구분할 수 있게 한다. */}
+      {growthPlayer && (
+        <CardGrowthDetail
+          player={growthPlayer}
+          source="deck"
+          onClose={() => setGrowthPlayer(null)}
+        />
       )}
     </Layout>
   );

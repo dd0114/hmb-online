@@ -87,6 +87,21 @@
   color: var(--success);
 }
 
+/* 셋업 흐름 복귀 CTA (#286 W3.5). 저장 직후에만 뜨는 한 줄 — 화면을 늘리지 않는다. */
+.readyCta {
+  display: block;
+  width: 100%;
+  margin: 10px 0 0;
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--us);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
+
 .dialogBackdrop {
   position: fixed;
   inset: 0;

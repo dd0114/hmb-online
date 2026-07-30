@@ -57,6 +57,18 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     route: "/home",
   },
   {
+    /**
+     * ⚠️ **트레이드 코치마크는 없다 — hero 확정(Q7 = A, 2026-07-30).**
+     *
+     * 대상(`trade-guide`)이 **영입 탭 안**에 있는데 온보딩 동선은 홈 → 덱에서 끝난다.
+     * 그 화면을 방문하지 않으면 그 스텝은 영영 `seen` 에 안 담기고, 완료 저장은 **`seen` 이
+     * 전부 찰 때만** 일어난다(TutorialProvider 주석) → **온보딩이 영영 안 끝난다**.
+     * 실제로 한 번 넣었다가 이 이유로 되돌렸다.
+     *
+     * 그래서 트레이드 안내는 둘이다: ①이 스텝 **문구**가 트레이드를 명시 ②영입 탭의 **상시
+     * 안내 카드**(`trade-guide`). hero 는 온보딩 동선을 늘리지 않는 쪽(A)을 택했다 — 첫 진입이
+     * 길어지는 값을 치를 만큼은 아니라는 판단이다. 나중에 뒤집으려면 **동선 자체**를 늘려야 한다.
+     */
     id: "shop",
     targetTestId: "home-tile-recruit",
     title: "영입에서 선수를 모읍니다",
@@ -108,6 +120,52 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     targetTestId: "save-deck",
     title: "저장해야 반영됩니다",
     body: "선발 11명이 채워지면 ‘저장’이 활성화됩니다. 저장한 덱으로 다음 경기를 치릅니다.",
+    enabled: true,
+    route: "/deck",
+  },
+];
+
+/**
+ * **덱 셋업 워크스루** (#286 W3.5) — 덱이 없어 게임 시작이 막힌 유저에게만 보여준다.
+ *
+ * ⚠️ **온보딩(`TUTORIAL_STEPS`)과 일부러 분리했다.** 한때 여기 있는 '감독 한마디' 스텝을 그냥
+ * 온보딩 배열에 밀어 넣었는데, 그러면 온보딩 길이가 7 → 8 로 바뀌어 진행 표시("1 / 7")부터
+ * 골든 패스·모바일 배치까지 **8개 계약이 깨졌다**. 그건 계약이 까다로워서가 아니라 두 흐름이
+ * 실제로 다른 것이기 때문이다:
+ *
+ *  · 온보딩 = 게임 전체를 한 바퀴 소개한다(홈 5 + 덱 2). **완료가 저장되고 덱이 지급된다.**
+ *  · 셋업   = "덱이 없다"는 한 가지 문제를 푼다. 완료를 저장하지 않는다(`startDeckSetup` 주석).
+ *
+ * hero 지정 내용(자동완성 + 감독 한마디만 직접 타이핑)은 **이 배열이 소유한다** — 온보딩 문구를
+ * 건드리면 신규 유저 동선까지 같이 바뀐다.
+ */
+export const DECK_SETUP_STEPS: readonly TutorialStep[] = [
+  {
+    // ⚠️ **대상은 보드다, 버튼이 아니다.** 'AUTO/Auto 배치' 버튼은 폭에 따라 상단 바(모바일)와
+    // 보드 바(데스크탑) 중 **한 곳에만** 뜨므로(`auto-fill-top` / `auto-fill`), 코치마크가 그걸
+    // 직접 겨누면 반대쪽 폭에서 **대상 부재 스킵**이 된다. 보드는 어느 폭에서나 있다.
+    id: "setup-auto",
+    targetTestId: "tactics-board",
+    title: "선발은 자동으로 채웁니다",
+    // hero: "자동완성 버튼 + 감독 한마디만 직접 타이핑" — 포메이션·슬롯 배치는 자동이다.
+    // 위치 표현("위의")은 쓰지 않는다(버튼이 폭에 따라 옮겨 다녀 한쪽에서 틀린 말이 된다).
+    body: "‘AUTO’(Auto 배치)를 누르면 보유 선수로 선발 11명이 한 번에 채워집니다.",
+    enabled: true,
+    route: "/deck",
+  },
+  {
+    id: "setup-motto",
+    targetTestId: "editor-team-prompt",
+    title: "감독 한마디를 적어보세요",
+    body: "팀 전체에 내릴 작전을 자연어로 적습니다. 이 문장이 그대로 AI 에게 전달돼 경기 중 팀의 성향이 됩니다.",
+    enabled: true,
+    route: "/deck",
+  },
+  {
+    id: "setup-save",
+    targetTestId: "save-deck",
+    title: "저장하면 끝입니다",
+    body: "선발 11명이 채워지면 ‘저장’이 활성화됩니다. 저장한 덱으로 경기를 치릅니다.",
     enabled: true,
     route: "/deck",
   },

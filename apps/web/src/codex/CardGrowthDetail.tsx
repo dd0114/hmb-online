@@ -64,6 +64,11 @@ function starUpSubtitle(star: Star): string | undefined {
 interface CardGrowthDetailProps {
   player: CatalogPlayer;
   onClose: () => void;
+  /**
+   * 어느 화면에서 열렸나 (#286 W3). 동작은 같다 — **같은 컴포넌트**라는 게 요점이라
+   * 분기하지 마라. 계약이 "두 진입점이 같은 시트를 연다"를 확인하는 데만 쓴다.
+   */
+  source?: "deck" | "players";
 }
 
 /**
@@ -74,7 +79,7 @@ interface CardGrowthDetailProps {
  * 레이더의 cap 점선 폴리곤으로 표시(구 "+보너스" 분해 탭은 hero 피드백으로 제거).
  * 프레임 **테두리 색**은 등급(불변, 승급 없음) 고정 — **글로우**는 잠재 티어색(승급 시 전환).
  */
-export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
+export function CardGrowthDetail({ player, onClose, source = "players" }: CardGrowthDetailProps) {
   // 유상재화 아이콘도 서버 표기 메타에서 (#232) — 이모지를 코드에 박으면 표기 변경이 배포가 된다.
   const gemCurrency = useCurrency(CURRENCY_GEM);
   const { data: card, isLoading, isError } = useCardEffective(player.id);
@@ -259,6 +264,7 @@ export function CardGrowthDetail({ player, onClose }: CardGrowthDetailProps) {
       overlayClassName={styles.overlay}
       className={styles.sheet}
       testId="growth-detail"
+      dataAttrs={{ "data-growth-source": source }}
       overlayTestId="growth-overlay"
     >
       <div

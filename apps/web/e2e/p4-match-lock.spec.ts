@@ -78,8 +78,13 @@ async function mockApi(page: Page, scenario: Scenario): Promise<MockState> {
   await page.route((url) => url.pathname === "/api/relations", (route) =>
     route.fulfill(json({ morale: 60, streak: 0, players: [] })),
   );
+  /**
+   * ⚠️ **덱이 있어야 한다** — 예전엔 404(덱 없음)였다. 이 스펙의 관심사는 **잠금**이지 덱 상태가
+   * 아니라서 최소 목이었는데, #286 W3.5 가 덱 없는 유저의 모드 진입을 막으면서 그 우연한 404 가
+   * `[게임 시작] → [연습 경기]` 경로를 통째로 세웠다(잠금이 아니라 덱 안내가 뜬다).
+   */
   await page.route((url) => url.pathname === "/api/deck", (route) =>
-    route.fulfill(json({ code: "NOT_FOUND", message: "활성 덱이 없습니다" }, 404)),
+    route.fulfill(json({ formation: "4-3-3", slots: [] })),
   );
   await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json([])));
   // 잠금 전수 검사가 도는 메타 화면들의 최소 응답. catch-all 의 `{}` 를 그대로 받으면 페이지가

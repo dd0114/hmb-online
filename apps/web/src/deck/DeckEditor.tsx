@@ -31,6 +31,13 @@ import { PlayerPicker } from "./PlayerPicker";
 import styles from "./DeckEditor.module.css";
 
 export interface DeckEditorProps {
+  /**
+   * 강화 시트 열기 (#286 W3). 에디터는 **시트를 소유하지 않는다** — 페이지가 연다.
+   * 안 주면 레일에 강화 줄이 안 생긴다(하프타임 레일처럼 있으면 안 되는 자리가 있다).
+   */
+  onOpenGrowth?: (player: CatalogPlayer) => void;
+  /** 강화가 잠긴 이유(경기 중 등). 있으면 줄은 보이되 눌리지 않는다. */
+  growthLockedReason?: string | null;
   state: EditorState;
   onChange: (state: EditorState) => void;
   /** "AI에 맡기기" — when true, team tactics are managed by AI (sliders disabled/omitted). */
@@ -129,6 +136,8 @@ export function DeckEditor(props: DeckEditorProps) {
     onChange,
     aiManaged,
     onToggleAi,
+    onOpenGrowth,
+    growthLockedReason,
     players,
     playersById,
     conditions,
@@ -477,6 +486,8 @@ export function DeckEditor(props: DeckEditorProps) {
           <section ref={railRef} className={styles.railCol} data-testid="directive-col">
             <DirectiveRail
               player={selectedPlayer}
+              onOpenGrowth={onOpenGrowth}
+              growthLockedReason={growthLockedReason}
               slot={selectedSlotData}
               slotNumber={
                 selectedSlotData
