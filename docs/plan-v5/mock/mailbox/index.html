@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#323 메시지함 — 위치 2안 목업</title>
+<style>
+/* 앱의 실제 토큰(apps/web/src/index.css)을 그대로 쓴다 — 목업이 제품과 다른 색이면 컨펌이 헛돈다. */
+:root{
+  --bg:#0f1115; --surface:#111826; --sunk:#0c111b; --elev:#171a21;
+  --text:#eef0f4; --muted:#9aa1ad; --border:#2a2e37; --hairline:rgba(255,255,255,.07);
+  --us:#4c8dff; --them:#ff6b6b; --warn:#ffc24b; --ok:#3ddc84;
+  color-scheme:dark;
+  font-family:system-ui,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:#07090d;color:var(--text);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;text-align:left}
+
+/* ── 비교 셸 (390px 폰 2대를 나란히) ─────────────────────────────────── */
+.wrap{max-width:1180px;margin:0 auto;padding:18px 14px 40px}
+.head{margin-bottom:14px}
+.head h1{margin:0 0 4px;font-size:19px}
+.head p{margin:0;font-size:12.5px;color:var(--muted)}
+.pair{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px}
+.col{flex:0 0 390px;max-width:390px}
+.colhead{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.colhead b{font-size:14px}
+.pick{font-size:10.5px;padding:2px 8px;border-radius:999px;background:rgba(76,141,255,.16);color:#a8c6ff}
+.colnote{font-size:11.5px;color:var(--muted);margin:0 0 8px;min-height:32px}
+
+.phone{width:390px;background:var(--bg);border:1px solid #20242c;border-radius:20px;overflow:hidden;
+  min-height:720px;display:flex;flex-direction:column;position:relative;padding-bottom:60px}
+.screen{display:none;flex:1;flex-direction:column}
+.screen.on{display:flex}
+
+/* ── 홈 헤더 (apps/web HomePage 의 headerRow 를 그대로 옮김) ───────────── */
+.topbar{padding:11px 14px 8px;border-bottom:1px solid var(--hairline)}
+.idrow{display:flex;align-items:center;gap:7px}
+.nick{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:96px}
+.glyph{position:relative;width:26px;height:26px;border-radius:8px;background:var(--sunk);display:grid;place-items:center;font-size:13px;flex:0 0 auto}
+.glyph .dot{position:absolute;top:2px;right:2px;width:6px;height:6px;border-radius:99px;background:var(--them)}
+.glyph .num{position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 3px;border-radius:99px;
+  background:var(--them);color:#fff;font-size:9.5px;font-style:normal;display:grid;place-items:center;font-weight:800}
+.spacer{flex:1}
+.wallet{display:flex;gap:5px}
+.chip{background:var(--sunk);border:1px solid var(--hairline);border-radius:999px;padding:3px 7px;font-size:10.5px;white-space:nowrap}
+.logout{font-size:11px;color:var(--muted);padding:3px 6px;border-radius:8px;border:1px solid var(--hairline)}
+
+.body{padding:12px 14px 16px;display:flex;flex-direction:column;gap:11px;flex:1}
+
+/* 하위 페이지 헤더 */
+.phead{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--hairline)}
+.phead h1{margin:0;font-size:16px;flex:1;text-align:center}
+.phead .back{font-size:13px;color:var(--muted);width:60px}
+.phead .rightslot{width:60px;text-align:right;font-size:11.5px;color:var(--muted)}
+
+/* ── 공용 ─────────────────────────────────────────────────────────────── */
+.card{background:var(--surface);border-radius:14px;padding:13px}
+.muted{color:var(--muted)} .tiny{font-size:11px} .sm{font-size:12.5px}
+.row{display:flex;align-items:center;gap:8px}
+.badge{font-size:10.5px;padding:2px 7px;border-radius:999px;background:var(--sunk);border:1px solid var(--hairline);color:var(--muted)}
+.badge.us{background:rgba(76,141,255,.16);color:#a8c6ff;border-color:transparent}
+.badge.warn{background:rgba(255,194,75,.16);color:#ffdc9a;border-color:transparent}
+.badge.ok{background:rgba(61,220,132,.16);color:#a5edc4;border-color:transparent}
+.cta{display:block;width:100%;background:var(--us);color:#fff;border-radius:12px;padding:13px;font-weight:700;font-size:15px;text-align:center}
+.cta.ghost{background:var(--sunk);color:var(--text);border:1px solid var(--border);font-weight:600}
+.cta[disabled]{background:var(--sunk);color:var(--muted);cursor:default}
+.note{background:rgba(76,141,255,.08);border-left:2px solid var(--us);border-radius:0 8px 8px 0;padding:8px 10px;font-size:11px;color:#c8d6f2;line-height:1.55}
+
+/* 팀 한 줄 */
+.teamrow{display:flex;align-items:center;gap:10px;background:var(--surface);border-radius:14px;padding:11px 12px}
+.tart{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,#2b3a5c,#16213a);display:grid;place-items:center;font-size:18px}
+.tinfo{flex:1;min-width:0}
+.tinfo b{display:block;font-size:14px}
+.tinfo span{display:block;font-size:11px;color:var(--muted)}
+
+/* 홈 타일 */
+.tiles{display:grid;gap:9px}
+.tile{position:relative;background:var(--surface);border-radius:15px;padding:13px 12px;display:flex;align-items:center;gap:11px}
+.tile em{font-size:24px;font-style:normal;width:42px;height:42px;border-radius:12px;background:var(--sunk);display:grid;place-items:center;flex:0 0 auto}
+.tile .tt{flex:1;min-width:0}
+.tile b{display:block;font-size:15.5px}
+.tile span.sub{display:block;font-size:11.5px;color:var(--muted);margin-top:1px}
+.tile .go{color:#4b5462;font-size:16px}
+.tile .cnt{position:absolute;right:32px;top:50%;transform:translateY(-50%);min-width:20px;height:20px;padding:0 5px;
+  border-radius:99px;background:var(--them);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
+.tile.wide{background:linear-gradient(120deg,#172a4d,#111826 66%)}
+.tile.wide em{font-size:28px;width:48px;height:48px;background:rgba(255,255,255,.06)}
+.tile.wide b{font-size:19px}
+
+/* 알림 한 줄 */
+.notifrow{width:100%;display:flex;align-items:center;gap:9px;background:var(--sunk);border:1px solid var(--hairline);border-radius:12px;padding:10px 12px}
+.notifrow .nb{min-width:20px;height:20px;border-radius:99px;background:var(--them);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
+
+/* 내 정보 행 목록 */
+.listrow{width:100%;display:flex;align-items:center;gap:11px;background:var(--surface);border-radius:13px;padding:12px}
+.listrow em{font-size:19px;font-style:normal;width:36px;height:36px;border-radius:11px;background:var(--sunk);display:grid;place-items:center;flex:0 0 auto}
+.listrow .lt{flex:1;min-width:0}
+.listrow b{display:block;font-size:14px}
+.listrow span.sub{display:block;font-size:11px;color:var(--muted)}
+.listrow .cnt{min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:var(--them);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
+
+/* ── 메시지함 목록 ────────────────────────────────────────────────────── */
+.mail{width:100%;display:flex;gap:11px;background:var(--surface);border-radius:13px;padding:12px;position:relative}
+.mail.unread{background:linear-gradient(90deg,rgba(76,141,255,.10),var(--surface) 55%)}
+.mail em{font-size:18px;font-style:normal;width:34px;height:34px;border-radius:10px;background:var(--sunk);display:grid;place-items:center;flex:0 0 auto;align-self:flex-start}
+.mail .mt{flex:1;min-width:0}
+.mail .mtop{display:flex;align-items:center;gap:6px}
+.mail b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mail .when{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.mail p{margin:3px 0 0;font-size:11.5px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.mail .att{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}
+.mail.claimed{opacity:.62}
+.newdot{width:7px;height:7px;border-radius:99px;background:var(--them);flex:0 0 auto}
+.attchip{font-size:10.5px;padding:2px 8px;border-radius:8px;background:var(--sunk);border:1px solid var(--hairline);color:#d5dbe6}
+.attchip.g{color:#ffdc9a} .attchip.z{color:#c8b6ff} .attchip.c{color:#a8c6ff}
+.empty{text-align:center;color:var(--muted);font-size:12.5px;padding:34px 10px}
+
+/* ── 상세 시트 ────────────────────────────────────────────────────────── */
+.sheetwrap{position:absolute;inset:0;background:rgba(4,6,10,.62);display:none;align-items:flex-end;z-index:9}
+.sheetwrap.on{display:flex}
+.sheet{width:100%;background:var(--surface);border-radius:18px 18px 0 0;padding:16px 15px 18px;max-height:86%;overflow:auto}
+.sheet h2{margin:0 0 3px;font-size:16.5px}
+.sheet .meta{font-size:11px;color:var(--muted)}
+.sheet .text{margin:12px 0 0;font-size:13px;line-height:1.65;color:#dfe4ec;white-space:pre-line}
+.attbox{margin-top:14px;background:var(--sunk);border-radius:12px;padding:12px}
+.attbox h3{margin:0 0 9px;font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.02em}
+.attitems{display:flex;flex-direction:column;gap:8px}
+.attitem{display:flex;align-items:center;gap:9px;font-size:13px}
+.attitem .ai{width:30px;height:30px;border-radius:9px;background:var(--elev);display:grid;place-items:center;font-size:15px}
+.attitem .an{flex:1}
+.attitem .av{font-weight:700}
+.sheetacts{margin-top:14px;display:flex;gap:8px}
+.gotit{margin-top:12px;text-align:center;color:#a5edc4;font-size:12.5px;display:none}
+.gotit.on{display:block}
+
+/* ── 하단 탭바 ────────────────────────────────────────────────────────── */
+.tabbar{position:absolute;bottom:0;left:0;right:0;height:58px;background:rgba(12,16,24,.96);border-top:1px solid var(--hairline);
+  display:grid;grid-template-columns:repeat(6,1fr);align-items:center}
+.tabbar button{padding:6px 0 8px;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--muted);font-size:9.5px;position:relative}
+.tabbar button em{font-size:17px;font-style:normal;line-height:1}
+.tabbar button.on{color:var(--us)}
+.tabbar button i{position:absolute;top:2px;right:calc(50% - 17px);min-width:15px;height:15px;padding:0 3px;border-radius:99px;
+  background:var(--them);color:#fff;font-size:9px;font-style:normal;display:grid;place-items:center;font-weight:800}
+.phone.athome .tabbar{display:none}   /* 홈은 그 자체가 내비 — 탭바를 그리지 않는다(#286) */
+
+/* 설명 블록 */
+.legend{margin-top:22px;font-size:12.5px;color:#c3cbd8;line-height:1.7;max-width:820px}
+.legend h2{font-size:14px;margin:18px 0 6px;color:var(--text)}
+.legend code{background:var(--sunk);padding:1px 5px;border-radius:5px;font-size:11.5px}
+.legend table{border-collapse:collapse;margin-top:6px;font-size:12px}
+.legend td,.legend th{border:1px solid var(--border);padding:5px 9px;text-align:left}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="head">
+  <h1>#323 메시지함(우편함) — 위치 2안</h1>
+  <p>390px 실폭. 두 안은 <b>진입점만</b> 다르고 목록·상세는 같다. 아이콘/타일을 눌러 실제로 열어 보세요.</p>
+</div>
+
+<div class="pair">
+
+  <!-- ══════════════ 안 A ══════════════ -->
+  <div class="col">
+    <div class="colhead"><b>안 A — 홈 헤더 ✉️ 아이콘</b><span class="pick">main 권장</span></div>
+    <p class="colnote">홈에 들어오면 바로 보인다. 첨부는 <b>만료되는 자산</b>이라 발견성이 곧 손해와 직결된다.
+      자리는 공지 벨 옆(닉네임 쪽) — #248 실측에서 이 자리는 헤더가 +8px 로 끝났다.</p>
+
+    <div class="phone athome" id="pA">
+      <!-- 홈 -->
+      <section class="screen on" data-s="home">
+        <div class="topbar">
+          <div class="idrow">
+            <span class="nick">감독 박</span>
+            <span class="glyph" title="공지">📢<span class="dot"></span></span>
+            <button class="glyph" title="메시지함" onclick="openMail('A')">✉️<i class="num" id="numA">2</i></button>
+            <span class="spacer"></span>
+            <span class="wallet"><span class="chip">24,300 G</span><span class="chip">1,240 Z</span></span>
+            <span class="logout">로그아웃</span>
+          </div>
+        </div>
+        <div class="body">
+          <div class="teamrow">
+            <div class="tart">⚽</div>
+            <div class="tinfo"><b>감독 박의 팀</b><span>브론즈 D5 · 4-3-3 · 리그 4위</span></div>
+            <span class="badge us">레이팅 1180</span>
+          </div>
+          <div class="tiles">
+            <div class="tile wide"><em>⚽</em><div class="tt"><b>게임 시작</b><span class="sub">리그 10/18R · 원정 복수 2건</span></div><span class="cnt">2</span><span class="go">›</span></div>
+            <div class="tile"><em>📋</em><div class="tt"><b>덱 구성</b><span class="sub">4-3-3 · 지시 8/11 작성</span></div><span class="go">›</span></div>
+            <div class="tile"><em>✨</em><div class="tt"><b>영입</b><span class="sub">뽑기 · 트레이드 제안 1건</span></div><span class="cnt">1</span><span class="go">›</span></div>
+            <div class="tile"><em>🙋</em><div class="tt"><b>내 정보</b><span class="sub">12승 3무 8패 · 리그 4위</span></div><span class="go">›</span></div>
+            <div class="tile"><em>👥</em><div class="tt"><b>선수 도감</b><span class="sub">보유 18 / 40</span></div><span class="go">›</span></div>
+          </div>
+          <div class="notifrow"><span class="nb">2</span><span class="sm" style="flex:1">새 소식 2건 — 원정 피침공 · 트레이드 공개</span><span class="tiny muted">›</span></div>
+          <div class="note">✉️ 뱃지는 <b>숫자</b>(=받을 게 몇 통), 📢 공지는 <b>점</b>(개수 무의미). 글리프도 봉투/확성기로 다르다 —
+            "보상 왔다"와 "점검 안내"가 한눈에 갈린다.</div>
+        </div>
+      </section>
+      <div class="tabbar">
+        <button class="on"><em>🏠</em>홈</button><button><em>⚽</em>게임</button><button><em>📋</em>덱</button>
+        <button><em>👥</em>선수</button><button><em>✨</em>영입</button><button><em>🙋</em>내 정보</button>
+      </div>
+      <div class="sheetwrap" id="sheetA"></div>
+    </div>
+  </div>
+
+  <!-- ══════════════ 안 B ══════════════ -->
+  <div class="col">
+    <div class="colhead"><b>안 B — [내 정보] 탭 안</b></div>
+    <p class="colnote">헤더를 건드리지 않는다. 대신 홈에서는 <b>내 정보 타일의 숫자 뱃지</b>가 유일한 신호라
+      "무엇이 2건인지"를 눌러 봐야 안다 — 보상이 며칠 잠들 수 있다.</p>
+
+    <div class="phone athome" id="pB">
+      <!-- 홈 -->
+      <section class="screen on" data-s="home">
+        <div class="topbar">
+          <div class="idrow">
+            <span class="nick">감독 박</span>
+            <span class="glyph" title="공지">📢<span class="dot"></span></span>
+            <span class="spacer"></span>
+            <span class="wallet"><span class="chip">24,300 G</span><span class="chip">1,240 Z</span></span>
+            <span class="logout">로그아웃</span>
+          </div>
+        </div>
+        <div class="body">
+          <div class="teamrow">
+            <div class="tart">⚽</div>
+            <div class="tinfo"><b>감독 박의 팀</b><span>브론즈 D5 · 4-3-3 · 리그 4위</span></div>
+            <span class="badge us">레이팅 1180</span>
+          </div>
+          <div class="tiles">
+            <div class="tile wide"><em>⚽</em><div class="tt"><b>게임 시작</b><span class="sub">리그 10/18R · 원정 복수 2건</span></div><span class="cnt">2</span><span class="go">›</span></div>
+            <div class="tile"><em>📋</em><div class="tt"><b>덱 구성</b><span class="sub">4-3-3 · 지시 8/11 작성</span></div><span class="go">›</span></div>
+            <div class="tile"><em>✨</em><div class="tt"><b>영입</b><span class="sub">뽑기 · 트레이드 제안 1건</span></div><span class="cnt">1</span><span class="go">›</span></div>
+            <button class="tile" onclick="goScreen('B','me')"><em>🙋</em><div class="tt"><b>내 정보</b><span class="sub">메시지 2통 · 12승 3무 8패</span></div><span class="cnt" id="tileB">2</span><span class="go">›</span></button>
+            <div class="tile"><em>👥</em><div class="tt"><b>선수 도감</b><span class="sub">보유 18 / 40</span></div><span class="go">›</span></div>
+          </div>
+          <div class="notifrow"><span class="nb">2</span><span class="sm" style="flex:1">새 소식 2건 — 원정 피침공 · 트레이드 공개</span><span class="tiny muted">›</span></div>
+          <div class="note">홈의 숫자 뱃지는 <b>한 형식</b>이라(hero 6R) 이 <b>2</b> 가 메시지인지 다른 것인지 뱃지만으로는 모른다 —
+            부제가 말해야 한다. [내 정보] 를 눌러 보세요.</div>
+        </div>
+      </section>
+
+      <!-- 내 정보 -->
+      <section class="screen" data-s="me">
+        <div class="phead"><button class="back" onclick="goScreen('B','home')">‹ 홈</button><h1>내 정보</h1><span class="rightslot"></span></div>
+        <div class="body">
+          <div class="card row" style="gap:11px">
+            <div class="tart">🙋</div>
+            <div class="tinfo"><b>감독 박</b><span>브론즈 D5 · 원정 레이팅 1180 · 로컬</span></div>
+          </div>
+          <button class="listrow" onclick="openMail('B')">
+            <em>✉️</em><div class="lt"><b>메시지함</b><span class="sub">받지 않은 보상 2건</span></div>
+            <span class="cnt" id="rowB">2</span><span class="tiny muted">›</span>
+          </button>
+          <div class="listrow"><em>📋</em><div class="lt"><b>경기 로그</b><span class="sub">최근 23경기</span></div><span class="tiny muted">›</span></div>
+          <div class="listrow"><em>🏆</em><div class="lt"><b>통산 전적</b><span class="sub">12승 3무 8패</span></div><span class="tiny muted">›</span></div>
+          <div class="listrow"><em>🎓</em><div class="lt"><b>튜토리얼 다시 보기</b><span class="sub"></span></div><span class="tiny muted">›</span></div>
+        </div>
+      </section>
+      <div class="tabbar">
+        <button class="on" data-t="home"><em>🏠</em>홈</button><button><em>⚽</em>게임</button><button><em>📋</em>덱</button>
+        <button><em>👥</em>선수</button><button><em>✨</em>영입</button>
+        <button data-t="me" onclick="goScreen('B','me')"><em>🙋</em>내 정보<i id="tabB">2</i></button>
+      </div>
+      <div class="sheetwrap" id="sheetB"></div>
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <h2>두 안이 공유하는 것 — 목록 · 상세 · 수령</h2>
+  진입점을 누르면 같은 <b>메시지함 시트</b>가 열린다. 항목을 누르면 상세가 열리고 [받기] 로 수령한다.
+  상태는 서버가 준 값을 그리기만 한다(<code>UNREAD / READ / CLAIMED / EXPIRED</code>) — 클라가 만료를 계산하면
+  기기 시계가 진실이 된다.
+
+  <h2>목록에 보이는 상태</h2>
+  <table>
+    <tr><th>상태</th><th>표시</th><th>뱃지에 세나</th></tr>
+    <tr><td>안 읽음 + 첨부</td><td>파란 강조 + 빨간 점 + 첨부 칩</td><td>✅</td></tr>
+    <tr><td>읽음 + 미수령</td><td>평범한 카드 + 첨부 칩 + [받기]</td><td>✅ <b>(중요)</b> 열어만 보고 안 받은 보상이 조용히 사라지면 안 된다</td></tr>
+    <tr><td>수령 완료</td><td>흐리게 + "수령 완료"</td><td>❌</td></tr>
+    <tr><td>만료 미수령</td><td><b>목록에서 제외</b>(행은 남아 CS 대응)</td><td>❌</td></tr>
+  </table>
+
+  <h2>hero 컨펌 항목</h2>
+  ① <b>위치 A / B</b>(권장 A) &nbsp;·&nbsp; ② 이름 <b>"메시지함"</b> vs "우편함" &nbsp;·&nbsp;
+  ③ 만료 기본값 = <b>무기한</b>(권장) vs 14일 강제 &nbsp;·&nbsp; ④ 만료된 미수령을 <b>숨긴다</b>(권장) vs 회색으로 남긴다
+  <br>설계 상세(스키마·API·멱등·브로드캐스트) = <code>docs/plan-v5/mailbox.md</code>
+</div>
+</div>
+
+<script>
+/* 목업 데이터 — 서버 응답 형태(Mail)를 그대로 흉내낸다. */
+const MAILS = [
+  { id:"m1", title:"v3.02 패치 보상", when:"2시간 전", read:false, claimed:false,
+    body:"리그 승급 판정 오류로 불편을 드려 죄송합니다.\n보상을 첨부하니 받아 주세요. 앞으로도 잘 부탁드립니다.",
+    att:{ points:5000, gems:10, players:[{name:"카밀 프란체스코", grade:"DIA", count:1}] }, expires:"14일 남음" },
+  { id:"m2", title:"오픈베타 참여 감사", when:"어제", read:true, claimed:false,
+    body:"오픈베타에 참여해 주셔서 감사합니다. 작은 선물을 보냅니다.",
+    att:{ points:0, gems:30, players:[] }, expires:"6일 남음" },
+  { id:"m3", title:"[안내] 주말 점검 완료", when:"3일 전", read:true, claimed:true,
+    body:"주말 점검이 완료되었습니다. 이용에 불편을 드려 죄송합니다.",
+    att:{ points:1000, gems:0, players:[] }, expires:null },
+];
+
+function attChips(a){
+  const out=[];
+  if(a.points) out.push(`<span class="attchip g">${a.points.toLocaleString()} G</span>`);
+  if(a.gems)   out.push(`<span class="attchip z">${a.gems} Z</span>`);
+  (a.players||[]).forEach(p=>out.push(`<span class="attchip c">${p.grade} 카드 ${p.count}장</span>`));
+  return out.join("");
+}
+function hasAtt(a){ return a.points||a.gems||(a.players||[]).length }
+
+/* 뱃지 = "내가 아직 할 일" = 미읽음 or (첨부 있고 미수령) */
+function unreadCount(){
+  return MAILS.filter(m=>!m.read || (hasAtt(m.att) && !m.claimed)).length;
+}
+function syncBadges(){
+  const n=unreadCount();
+  const setNum=(el,v)=>{ if(!el) return; el.textContent=v; el.style.display = v>0 ? "" : "none"; };
+  setNum(document.getElementById("numA"), n);
+  setNum(document.getElementById("tileB"), n);
+  setNum(document.getElementById("rowB"), n);
+  setNum(document.getElementById("tabB"), n);
+  const sub=document.querySelector('#pB [data-s="me"] .listrow span.sub');
+  if(sub) sub.textContent = n>0 ? `받지 않은 보상 ${n}건` : "새 메시지 없음";
+}
+
+function goScreen(side,name){
+  const phone=document.getElementById("p"+side);
+  phone.querySelectorAll(".screen").forEach(s=>s.classList.toggle("on", s.dataset.s===name));
+  phone.classList.toggle("athome", name==="home");
+  phone.querySelectorAll(".tabbar button").forEach(b=>b.classList.toggle("on", b.dataset.t===name));
+}
+
+/* ── 메시지함 시트(목록) ─────────────────────────────────────────────── */
+function openMail(side){
+  const w=document.getElementById("sheet"+side);
+  const rows=MAILS.filter(m=>!(m.expiredUnclaimed)).map(m=>`
+    <button class="mail ${m.read?"":"unread"} ${m.claimed?"claimed":""}" onclick="openDetail('${side}','${m.id}')">
+      <em>${m.claimed?"📭":"✉️"}</em>
+      <div class="mt">
+        <div class="mtop">
+          ${m.read?"":'<span class="newdot"></span>'}
+          <b>${m.title}</b><span class="spacer"></span><span class="when">${m.when}</span>
+        </div>
+        <p>${m.body.split("\n")[0]}</p>
+        <div class="att">
+          ${hasAtt(m.att)?attChips(m.att):'<span class="attchip">첨부 없음</span>'}
+          ${m.claimed?'<span class="badge ok">수령 완료</span>'
+                     :(hasAtt(m.att)?'<span class="badge us">받기</span>':"")}
+          ${!m.claimed && m.expires?`<span class="badge warn">${m.expires}</span>`:""}
+        </div>
+      </div>
+    </button>`).join("");
+  w.innerHTML = `
+    <div class="sheet">
+      <div class="row" style="margin-bottom:12px">
+        <h2 style="flex:1">메시지함</h2>
+        <button class="badge" onclick="closeSheet('${side}')">닫기</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:9px">${rows || '<div class="empty">받은 메시지가 없습니다</div>'}</div>
+      <div class="note" style="margin-top:12px">만료된 미수령 메시지는 목록에서 빠진다 — 이제 할 수 있는 일이 없는 항목이
+        수신함에 남으면 "왜 못 받아?" 문의만 만든다. 행 자체는 서버에 남아 CS 로 확인할 수 있다.</div>
+    </div>`;
+  w.classList.add("on");
+}
+function closeSheet(side){ document.getElementById("sheet"+side).classList.remove("on"); }
+
+/* ── 상세 + 수령 ─────────────────────────────────────────────────────── */
+function openDetail(side,id){
+  const m=MAILS.find(x=>x.id===id);
+  m.read=true;                              // 상세를 펼치면 POST /api/mails/{id}/read
+  syncBadges();
+  const items=[];
+  if(m.att.points) items.push(`<div class="attitem"><span class="ai">🪙</span><span class="an">골드</span><span class="av">${m.att.points.toLocaleString()} G</span></div>`);
+  if(m.att.gems)   items.push(`<div class="attitem"><span class="ai">💎</span><span class="an">다이아</span><span class="av">${m.att.gems} Z</span></div>`);
+  (m.att.players||[]).forEach(p=>items.push(`<div class="attitem"><span class="ai">🃏</span><span class="an">${p.name} <span class="badge us">${p.grade}</span></span><span class="av">${p.count}장</span></div>`));
+
+  const w=document.getElementById("sheet"+side);
+  w.innerHTML = `
+    <div class="sheet">
+      <div class="row" style="align-items:flex-start">
+        <div style="flex:1">
+          <h2>${m.title}</h2>
+          <div class="meta">운영팀 · ${m.when}${m.expires?` · 수령 기한 ${m.expires}`:""}</div>
+        </div>
+        <button class="badge" onclick="openMail('${side}')">‹ 목록</button>
+      </div>
+      <p class="text">${m.body}</p>
+      ${items.length?`
+        <div class="attbox">
+          <h3>첨부</h3>
+          <div class="attitems">${items.join("")}</div>
+        </div>`:""}
+      <div class="gotit" id="got${side}">✅ 수령했습니다 — 지갑과 보유 선수에 들어갔습니다</div>
+      <div class="sheetacts">
+        ${items.length
+          ? `<button class="cta" id="claim${side}" ${m.claimed?"disabled":""} onclick="claim('${side}','${m.id}')">${m.claimed?"수령 완료":"받기"}</button>`
+          : `<button class="cta ghost" onclick="openMail('${side}')">확인</button>`}
+      </div>
+    </div>`;
+  w.classList.add("on");
+}
+
+/* 지갑 — 수령이 실제로 잔액을 움직이는 것까지 보이게(응답의 wallet 을 그린다). */
+let WALLET={points:24300,gems:1240};
+function syncWallet(){
+  document.querySelectorAll(".phone .wallet").forEach(w=>{
+    w.children[0].textContent=`${WALLET.points.toLocaleString()} G`;
+    w.children[1].textContent=`${WALLET.gems.toLocaleString()} Z`;
+  });
+}
+
+function claim(side,id){
+  const m=MAILS.find(x=>x.id===id);
+  m.claimed=true;                           // POST /api/mails/{id}/claim — CAS + 기존 원장 경로
+  WALLET.points+=m.att.points||0; WALLET.gems+=m.att.gems||0;
+  syncWallet();
+  syncBadges();
+  const btn=document.getElementById("claim"+side);
+  btn.disabled=true; btn.textContent="수령 완료";
+  document.getElementById("got"+side).classList.add("on");
+}
+
+syncBadges();
+</script>
+</body>
+</html>
