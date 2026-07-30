@@ -81,6 +81,8 @@ public class AwayService {
     private final int streakMaxBonus;
     private final String rewardMode;
     private final boolean defenderRewardOnLoss;
+    private final int revengeAttemptsMax;
+    private final int revengeQueueSize;
     /** 상대 후보 자격(#296) — 한 판이라도 끝낸 유저만 고스트로 선다. */
     private final online.hmb.eligibility.EligibilityService eligibility;
 
@@ -109,6 +111,8 @@ public class AwayService {
                        @Value("${hmb.away.streak.max-bonus}") int streakMaxBonus,
                        @Value("${hmb.away.reward.mode}") String rewardMode,
                        @Value("${hmb.away.reward.defender-on-loss}") boolean defenderRewardOnLoss,
+                       @Value("${hmb.away.revenge.attempts-max}") int revengeAttemptsMax,
+                       @Value("${hmb.away.revenge.queue-size}") int revengeQueueSize,
                        online.hmb.eligibility.EligibilityService eligibility) {
         this.eligibility = eligibility;
         this.jdbcClient = jdbcClient;
@@ -136,6 +140,8 @@ public class AwayService {
         this.streakMaxBonus = streakMaxBonus;
         this.rewardMode = rewardMode;
         this.defenderRewardOnLoss = defenderRewardOnLoss;
+        this.revengeAttemptsMax = revengeAttemptsMax;
+        this.revengeQueueSize = revengeQueueSize;
     }
 
     // ── 원정 출발 ───────────────────────────────────────────────────────────
@@ -201,7 +207,7 @@ public class AwayService {
         // 똑같이 터지고, 루프가 그걸 전부 삼켜 **404 NO_OPPONENT** 으로 뒤집힌다 — 덱이 문제인데
         // "상대가 없다"고 말하는, 유저가 할 수 있는 게 0인 막다른 토스트다(#217 이 금지한 형태).
         // 게다가 그 실패 1회가 **후보 수만큼 고스트 INSERT** 를 남긴다(실측 14행/1회, 회수 경로 없음).
-        DeckService.DeckResponse myDeck = deckService.getActiveDeck(attackerId);
+        DeckService.DeckResponse myDeck = deckService.requireActiveDeck(attackerId);
         deckService.validate(attackerId, new DeckService.DeckUpdateRequest(myDeck.formation(), myDeck.slots()));
 
         if (defenderId != null) {
@@ -524,18 +530,28 @@ public class AwayService {
             int defenderBonus = 0;
             int attackerApplied = attackerDelta + attackerBonus;
             int defenderApplied = defenderDelta + defenderBonus;
+            // ⚠️ **복수로 얻은 리포트는 다시 복수 대상이 되지 않는다**(hero 확정, #319). 내가 갚아서
+            // 이기면 상대 쪽에 이 행이 생기는데, 표식이 없으면 그게 그의 복수 큐에 들어가 둘이
+            // 무한히 주고받는 핑퐁이 열린다. 판정에 쓸 사실이므로 파생하지 않고 여기서 박는다.
+            int fromRevenge = challenge.revengeReportId() != null ? 1 : 0;
             int inserted = jdbcClient.sql("""
                             INSERT OR IGNORE INTO away_reports(
                                 id, match_id, defender_id, attacker_id, attacker_name,
-                                goals_for, goals_against, result, rating_delta, created_at, forfeit)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                goals_for, goals_against, result, rating_delta, created_at, forfeit,
+                                from_revenge)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """)
                     .params(Ulid.next(), matchId, challenge.defenderId(), attackerId, attackerName,
                             defenderGoals, attackerGoals, defenderResult, defenderApplied,
-                            Instant.now().toString(), forfeit ? 1 : 0)
+                            Instant.now().toString(), forfeit ? 1 : 0, fromRevenge)
                     .update();
             if (inserted == 0) {
-                return; // 이미 정산됨 — 연승도 건드리지 않는다
+                return; // 이미 정산됨 — 연승도 복수 소모도 건드리지 않는다
+            }
+            // ⚠️ 복수 소모도 **멱등 게이트 뒤**다. 앞에 두면 같은 매치 재정산이 시도 횟수를 깎아
+            // 유저가 치지도 않은 판을 잃는다(연승이 정확히 그 형태로 부풀었던 자리 — #245 major-1).
+            if (challenge.revengeReportId() != null) {
+                consumeRevenge(challenge.revengeReportId(), attackerResult);
             }
             if (!forfeit) {
                 commitStreak(attackerId, attackerResult);   // 수비자는 건드리지 않는다(위 참조)
@@ -640,14 +656,16 @@ public class AwayService {
         };
     }
 
-    record Challenge(String matchId, String defenderId, String ghostBotId) {
+    /** revengeReportId: 이 매치가 어느 피침공 기록의 복수인가(#319, 일반 원정이면 null). */
+    record Challenge(String matchId, String defenderId, String ghostBotId, String revengeReportId) {
     }
 
     private java.util.Optional<Challenge> findChallenge(String matchId) {
-        return jdbcClient.sql("SELECT match_id, defender_id, ghost_bot_id FROM away_challenges WHERE match_id = ?")
+        return jdbcClient.sql("SELECT match_id, defender_id, ghost_bot_id, revenge_report_id "
+                        + "FROM away_challenges WHERE match_id = ?")
                 .param(matchId)
                 .query((rs, n) -> new Challenge(rs.getString("match_id"), rs.getString("defender_id"),
-                        rs.getString("ghost_bot_id")))
+                        rs.getString("ghost_bot_id"), rs.getString("revenge_report_id")))
                 .optional();
     }
 
@@ -765,6 +783,258 @@ public class AwayService {
                     .update();
         }
         return acked;
+    }
+
+
+    // ── 복수 큐 (#286 W4 · #319) ────────────────────────────────────────────
+
+    /**
+     * ⚠️ <b>복수는 V22 가 일부러 닫아 둔 문을 다시 여는 기능이다</b>(설계 §4.1). {@code away_offers}
+     * 주석이 지목 원정을 어뷰징 경로로 명시하며 닫았다 — 클라가 고른 id 를 믿으면 부계정을 반복
+     * 지목해 레이팅을 무한 생성할 수 있다(독립검증 4R MAJ-4). 복수는 그 문을 세 조건으로 좁혀 연다:
+     *
+     * <ol>
+     *   <li><b>그가 실제로 나를 쳤다</b>는 원장 행이 있을 때만(=이 큐에 있는 기록만)</li>
+     *   <li>기록당 <b>{@code attempts-max}회</b></li>
+     *   <li>기록은 <b>최근 {@code queue-size}건</b>만 산다</li>
+     * </ol>
+     *
+     * <p>세 조건 모두 <b>POST 경로에서도</b> 검사한다({@link #startRevenge}). 이 목록은 안내이지
+     * 방어가 아니다 — 클라가 버튼을 숨기는 것과 서버가 거부하는 것은 다른 층이다.
+     */
+    public record RevengeOpponent(String userId, String nickname, int rating) {
+    }
+
+    /**
+     * @param theirScore 그때 <b>공격자</b>의 득점 · @param myScore 그때 <b>내(수비자)</b> 득점.
+     *     화면이 수비자 관점으로 그리므로 여기서 배치해서 보낸다 — 클라가 뒤집으면 유저는 자기가
+     *     이긴 경기를 진 것으로 읽는다.
+     * @param defenceResult 내가 막았나(WIN|DRAW|LOSS). <b>WIN 이면 복수 대상이 아니다</b>(hero 확정 ④).
+     */
+    public record RevengeEntry(String reportId, RevengeOpponent opponent, String attackedAt,
+                               int theirScore, int myScore, String defenceResult, int ratingDelta,
+                               int attemptsUsed, int attemptsMax, String state) {
+    }
+
+    /** remainingToday 는 <b>일반 원정과 같은 한도</b>다(hero Q3-② — 복수 판도 오늘 횟수를 먹는다). */
+    public record RevengeResponse(List<RevengeEntry> entries, int remainingToday) {
+    }
+
+    public RevengeResponse revengeQueue(String userId) {
+        return new RevengeResponse(revengeWindow(userId), remainingToday(userId));
+    }
+
+    /**
+     * 복수 큐 = 내가 수비자인 <b>최근 {@code queue-size}건</b>. 여기서 빠지는 것은 둘뿐이다:
+     *
+     * <ul>
+     *   <li>{@code from_revenge = 1} — 복수 경기가 만든 기록. <b>복수의 복수는 없다</b>(hero 확정).
+     *       창을 세기 <b>전에</b> 거른다: 이 행들이 슬롯을 먹으면 핑퐁 한 번에 진짜 침공 기록이
+     *       큐 밖으로 밀려난다.</li>
+     *   <li>{@code AVENGED} — 갚았으면 목록에서 <b>소멸</b>한다(설계 §4.2).</li>
+     * </ul>
+     *
+     * <p>방어 성공·소진 기록은 <b>남는다</b>(회색으로 잠긴 채) — 없어지면 유저는 자기가 막아낸
+     * 사실도, 두 번 다 진 사실도 화면에서 확인할 수 없다.
+     */
+    private List<RevengeEntry> revengeWindow(String userId) {
+        return jdbcClient.sql("""
+                        SELECT r.id AS id, r.attacker_id AS attacker_id, r.attacker_name AS attacker_name,
+                               r.created_at AS created_at, r.goals_for AS goals_for,
+                               r.goals_against AS goals_against, r.result AS result,
+                               r.rating_delta AS rating_delta, r.revenge_attempts AS attempts,
+                               r.revenge_state AS state,
+                               COALESCE(u.nickname, r.attacker_name) AS opp_nickname,
+                               COALESCE(ur.rating, 0) AS opp_rating
+                        FROM away_reports r
+                        LEFT JOIN users u ON u.id = r.attacker_id
+                        LEFT JOIN user_ratings ur ON ur.user_id = r.attacker_id
+                        WHERE r.defender_id = ? AND r.from_revenge = 0 AND r.revenge_state <> 'AVENGED'
+                        ORDER BY r.created_at DESC, r.id DESC
+                        LIMIT ?
+                        """)
+                .params(userId, revengeQueueSize)
+                .query((rs, n) -> new RevengeEntry(
+                        rs.getString("id"),
+                        new RevengeOpponent(rs.getString("attacker_id"), rs.getString("opp_nickname"),
+                                rs.getInt("opp_rating")),
+                        rs.getString("created_at"),
+                        rs.getInt("goals_against"),   // 공격자 득점
+                        rs.getInt("goals_for"),       // 내 득점
+                        rs.getString("result"),
+                        rs.getInt("rating_delta"),
+                        rs.getInt("attempts"), revengeAttemptsMax,
+                        stateOf(rs.getString("state"), rs.getInt("attempts"))))
+                .list();
+    }
+
+    /**
+     * 저장된 상태가 정본이되, <b>시도 수가 상한에 닿으면 소진</b>으로 본다. 둘을 같이 보는 이유는
+     * {@code attempts-max} 가 config 라서다 — 상한을 낮추면 이미 그만큼 도전한 기록은 즉시 잠겨야 하고,
+     * 올리면 다시 열려야 한다. 저장값만 믿으면 그 조정이 과거 기록에 반영되지 않는다.
+     */
+    private String stateOf(String stored, int attempts) {
+        if ("AVENGED".equals(stored)) {
+            return "AVENGED";
+        }
+        return attempts >= revengeAttemptsMax ? "EXHAUSTED" : "AVAILABLE";
+    }
+
+    private record ReportRow(String id, String defenderId, String attackerId, String result,
+                             int attempts, String state, int fromRevenge) {
+    }
+
+    /**
+     * 복수 매치 생성 — <b>자물쇠는 전부 여기 있다</b>. 순서가 곧 유저가 받는 문장이라, 영구적인
+     * 이유(내 기록이 아니다 · 막아냈다 · 이미 갚았다 · 소진)를 <b>일시적인 이유</b>(오늘 횟수)보다
+     * 먼저 말한다 — 거꾸로면 유저는 내일 다시 와서 같은 벽을 만난다.
+     *
+     * <p>⚠️ 없는 {@code reportId} 도 <b>403 REVENGE_NOT_OWNED</b> 다. 404 로 가르면 "그 id 는 실재한다"가
+     * 새어 나가고, 이 엔드포인트는 남의 원장 행을 가리키는 자리라 그 정보를 흘릴 이유가 없다.
+     */
+    public MatchService.MatchRow startRevenge(String userId, String reportId) {
+        ReportRow report = jdbcClient.sql("""
+                        SELECT id, defender_id, attacker_id, result, revenge_attempts, revenge_state,
+                               from_revenge
+                        FROM away_reports WHERE id = ?
+                        """)
+                .param(reportId)
+                .query((rs, n) -> new ReportRow(rs.getString("id"), rs.getString("defender_id"),
+                        rs.getString("attacker_id"), rs.getString("result"),
+                        rs.getInt("revenge_attempts"), rs.getString("revenge_state"),
+                        rs.getInt("from_revenge")))
+                .optional()
+                .orElse(null);
+        if (report == null || !userId.equals(report.defenderId())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, "REVENGE_NOT_OWNED",
+                    "나를 상대로 한 원정 기록이 아닙니다");
+        }
+        // hero 확정 ④ — 막아낸 침공은 갚을 것이 애초에 없다. 열어 두면 **이미 이긴 상대에게**
+        // 지목 원정이 2판 더 생긴다(= §4.1 이 좁혀서 연 문을 그보다 넓게 여는 것).
+        if ("WIN".equals(report.result())) {
+            throw new ApiException(HttpStatus.CONFLICT, "REVENGE_DEFENDED",
+                    "막아낸 경기입니다 — 갚을 것이 없습니다");
+        }
+        if (report.fromRevenge() == 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "REVENGE_CHAINED",
+                    "복수 경기의 결과에는 다시 복수할 수 없습니다");
+        }
+        if ("AVENGED".equals(report.state())) {
+            throw new ApiException(HttpStatus.GONE, "REVENGE_AVENGED", "이미 복수한 상대입니다");
+        }
+        if (report.attempts() >= revengeAttemptsMax) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "REVENGE_EXHAUSTED",
+                    "이 기록에는 더 도전할 수 없습니다 (" + revengeAttemptsMax + "회 소진)",
+                    java.util.Map.of("attemptsUsed", report.attempts(), "attemptsMax", revengeAttemptsMax));
+        }
+        // ⚠️ **창 검사가 세 번째 자물쇠다**(§4.1 조건 ③). 목록에서 밀려난 기록을 클라가 그대로 POST
+        // 하면 "최근 5건" 이 표시 상한으로 전락하고, 오래 전 부계정 침공까지 되살려 지목할 수 있다.
+        if (revengeWindow(userId).stream().noneMatch(e -> e.reportId().equals(reportId))) {
+            throw new ApiException(HttpStatus.GONE, "REVENGE_EXPIRED",
+                    "복수 목록에서 밀려난 기록입니다");
+        }
+        assertUnderDailyLimit(userId);
+
+        // 내 덱을 **먼저** 본다(일반 원정과 같은 이유 — 4R blocker). 여긴 후보 루프가 없어 삼킬 것도
+        // 없지만, 순서가 다르면 덱 오류가 고스트 굽기 실패로 먼저 터져 남의 문제처럼 보인다.
+        DeckService.DeckResponse myDeck = deckService.requireActiveDeck(userId);
+        deckService.validate(userId, new DeckService.DeckUpdateRequest(myDeck.formation(), myDeck.slots()));
+
+        String ghostBotId;
+        try {
+            ghostBotId = bakeGhost(report.attackerId(), nicknameOf(report.attackerId()));
+        } catch (ApiException e) {
+            // ⚠️ 복수는 **폴백이 없다**(상대는 그 사람으로 정해져 있다). 상대 덱이 지금 깨져 있으면
+            // 그 사유가 그대로 올라가 "선발이 11명이 아닙니다"가 뜨는데, 화면은 그걸 **내 덱 오류**로
+            // 그린다(일반 원정이 offerCandidates 에서 미리 거르는 것과 같은 함정 — MAJ-8).
+            log.warn("revenge target {} unusable ({})", report.attackerId(), e.getMessage());
+            throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT",
+                    "상대의 팀을 지금 세울 수 없습니다 — 잠시 후 다시 시도해 주세요");
+        }
+        return matchService.createAwayMatch(userId, ghostBotId, report.attackerId(), reportId);
+    }
+
+    /**
+     * 복수 결과 반영(hero 확정): <b>승 = 완료 · 패 = 시도 1 소모 · 무 = 횟수를 쓰지 않는다</b>.
+     *
+     * <p>무승부가 횟수를 안 쓰면 "비기는 한 무한 재도전"이 열리지만, 판수 규칙이 일일 원정 횟수를
+     * 먹으므로 하루 총량은 그대로 묶인다 — 그게 안전장치라는 것을 알고 채택한 규칙이다(설계 §4.3).
+     *
+     * <p>몰수(공격자가 브리핑에서 무름)는 {@code attackerResult=LOSS} 로 들어오므로 <b>시도를
+     * 소모한다</b>. 만들고 무르기를 반복해 판정을 피하는 경로를 열지 않는다.
+     */
+    private void consumeRevenge(String reportId, String attackerResult) {
+        if ("WIN".equals(attackerResult)) {
+            jdbcClient.sql("UPDATE away_reports SET revenge_state = 'AVENGED' WHERE id = ?")
+                    .param(reportId)
+                    .update();
+            return;
+        }
+        if (!"LOSS".equals(attackerResult)) {
+            return;   // 무승부 — 횟수 유지(hero 확정 Q3-①)
+        }
+        jdbcClient.sql("""
+                        UPDATE away_reports
+                           SET revenge_attempts = revenge_attempts + 1,
+                               revenge_state = CASE WHEN revenge_attempts + 1 >= ? THEN 'EXHAUSTED'
+                                                    ELSE revenge_state END
+                         WHERE id = ?
+                        """)
+                .params(revengeAttemptsMax, reportId)
+                .update();
+    }
+
+    // ── 원정 랭킹보드 (#286 W4 · #319) ──────────────────────────────────────
+
+    public record RankEntry(int rank, String userId, String nickname, int rating, int streak,
+                            boolean isMe) {
+    }
+
+    /** rank 가 null = <b>아직 순위에 오르지 않았다</b>(이번 시즌 원정 0판). 0위로 채우지 않는다. */
+    public record MyRank(Integer rank, String userId, String nickname, int rating, int streak,
+                         boolean isMe, int total) {
+    }
+
+    public record RankingsResponse(int seasonNo, List<RankEntry> entries, MyRank me) {
+    }
+
+    /**
+     * 원정 레이팅 랭킹보드 — <b>시즌 마감 스냅샷과 같은 함수를 지난다</b>
+     * ({@link AwaySeasonService#standings}).
+     *
+     * <p>왜 {@code user_ratings}(창 없는 누적)로 매기지 않나: 참가는 시즌 창으로 자르는데 순위만
+     * 누적으로 매기면 두 축이 어긋난다 — 실측에서 <b>3패한 유저가 1위, 3승한 유저가 2위</b>가 나왔다
+     * (독립검증 MAJ-1, 밀린 시즌 + 앞 시즌 리셋 조합). 라이브 보드가 마감과 다른 표를 그리면
+     * "1등이었는데 보상은 3등"이 되므로, 이 보드는 정의상 <b>지금 마감하면 나올 표</b>다.
+     */
+    public RankingsResponse rankings(String userId, int limit) {
+        AwaySeasonService.Season season = seasonService.current();
+        List<AwaySeasonService.SeasonStanding> all =
+                seasonService.standings(season.startedAt(), season.endsAt());
+        int effectiveLimit = limit <= 0 ? 20 : Math.min(limit, 100);
+
+        List<RankEntry> entries = new ArrayList<>();
+        MyRank me = null;
+        for (int i = 0; i < all.size(); i++) {
+            AwaySeasonService.SeasonStanding st = all.get(i);
+            boolean isMe = st.userId().equals(userId);
+            if (entries.size() < effectiveLimit) {
+                entries.add(new RankEntry(i + 1, st.userId(), st.nickname(), st.rating(),
+                        st.streak(), isMe));
+            }
+            if (isMe) {
+                me = new MyRank(i + 1, st.userId(), st.nickname(), st.rating(), st.streak(),
+                        true, all.size());
+            }
+        }
+        if (me == null) {
+            // ⚠️ 참가자가 아니어도 **404 를 내지 않는다**(#296 과 같은 규율). 신규 유저가 원정 탭을
+            // 여는 순간 에러 토스트를 보게 되고, "자격이 없는 것"과 "유저가 없는 것"은 다르다.
+            me = new MyRank(null, userId, nicknameOf(userId),
+                    seasonService.seasonRatingOf(userId, season.startedAt(), season.endsAt()),
+                    streakOf(userId), true, all.size());
+        }
+        return new RankingsResponse(season.seasonNo(), entries, me);
     }
 
 }

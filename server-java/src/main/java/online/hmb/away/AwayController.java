@@ -6,6 +6,7 @@ import online.hmb.match.MatchService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -77,6 +78,46 @@ public class AwayController {
         AwaySeasonService.Season s = seasonService.current();
         return new SeasonResponse(s.seasonNo(), s.startedAt(), s.endsAt(),
                 awayService.streakOf(userId), seasonService.myHistory(userId, 8));
+    }
+
+    /**
+     * 복수 큐(#286 W4 · #319) — 나를 친 최근 기록 ≤5 + 오늘 남은 원정 횟수.
+     *
+     * <p>남은 횟수를 <b>같이</b> 싣는 이유는 후보 응답과 같다: 눌렀는데 거부되는 건 나쁜 UX 다.
+     * 복수 판도 일반 원정과 <b>같은 한도</b>를 쓴다(hero Q3-②).
+     */
+    @GetMapping("/api/away/revenge")
+    public AwayService.RevengeResponse revenge(@RequestAttribute("userId") String userId) {
+        return awayService.revengeQueue(userId);
+    }
+
+    /**
+     * 지목 복수 경기 생성 — <b>이 서버에서 상대를 고를 수 있는 유일한 경로</b>다.
+     *
+     * <p>⚠️ 그래서 게이트가 두 층이다. ①{@code assertCanCreateMatch} — 새 매치를 만드는 모든 경로가
+     * 지나는 잠금(#217). 빠뜨리면 복수가 잠금의 우회로가 된다. ②{@code startRevenge} 안의 복수
+     * 자물쇠(소유·방어함·연쇄·완료·소진·창·일일한도) — 클라가 버튼을 숨기는 것은 <b>안내</b>이고,
+     * 거부는 여기서만 일어난다.
+     */
+    @PostMapping("/api/away/revenge/{reportId}/matches")
+    public ResponseEntity<MatchService.MatchDetail> startRevenge(
+            @RequestAttribute("userId") String userId,
+            @PathVariable("reportId") String reportId) {
+        lockService.assertCanCreateMatch(userId);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(matchService.toDetail(awayService.startRevenge(userId, reportId)));
+    }
+
+    /**
+     * 원정 레이팅 랭킹보드(#319). 순위 정의는 <b>시즌 마감과 같은 함수</b>가 소유한다
+     * ({@code AwaySeasonService.standings}) — 보드가 마감과 다른 표를 그리면 "1등이었는데 보상은
+     * 3등"이 되고, 그 불일치는 원장이 있어도 복구되지 않는다.
+     */
+    @GetMapping("/api/away/rankings")
+    public AwayService.RankingsResponse rankings(@RequestAttribute("userId") String userId,
+                                                 @RequestParam(name = "limit", defaultValue = "50")
+                                                 int limit) {
+        return awayService.rankings(userId, limit);
     }
 
     @GetMapping("/api/me/away-reports")

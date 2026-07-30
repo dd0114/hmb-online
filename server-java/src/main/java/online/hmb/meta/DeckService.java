@@ -65,6 +65,25 @@ public class DeckService {
         return toResponse(deck);
     }
 
+    /**
+     * <b>매치를 만들려는 경로 전용</b> 활성 덱 조회 — 없으면 {@code 400 DECK_REQUIRED}(#319).
+     *
+     * <p>왜 {@link #getActiveDeck} 을 고치지 않고 메서드를 새로 두나: 그 메서드는
+     * {@code GET /api/deck} 도 지나가는데 <b>거기서의 404 는 정상</b>이다(새 유저 = 빈 덱). web 의
+     * {@code useDeck} 은 404 만 {@code null} 로 정규화하므로, 공용 조회를 400 으로 바꾸면 "덱이 없다"가
+     * "아직 모른다"로 읽혀 덱 없는 유저 판정이 통째로 뒤집힌다(#286 W3.5 의 3층 가드가 그 값에 매달려 있다).
+     *
+     * <p>전용 코드를 두는 이유는 반대로, 클라가 <b>문구로 404 를 구분하던</b> 임시 의존을 없애기
+     * 위해서다. ⚠️ 그렇다고 404 를 통째로 "덱을 만드세요"로 덮으면 안 된다 — 엉뚱한 실패까지
+     * 같은 안내로 가려져 원인이 사라진다. 그래서 <b>이 경로에서만</b> 코드를 바꾼다.
+     */
+    public DeckResponse requireActiveDeck(String userId) {
+        return findActiveDeck(userId)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ApiException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "DECK_REQUIRED", "활성 덱이 없습니다 — 덱을 먼저 구성해 주세요"));
+    }
+
     // ── 전체 교체 ────────────────────────────────────────────────────────
 
     public DeckResponse replaceDeck(String userId, DeckUpdateRequest request) {

@@ -157,11 +157,20 @@ public class LeagueService {
      *                      갑니다"라는 거짓말을 본다(독립검증 BL-1). <b>여기서 잘라 보내야</b>
      *                      클라가 사다리 경계를 추측하지 않는다.
      */
+    /**
+     * @param currentRound  <b>지금 유저가 서 있는 라운드</b>(#319) = 다음 SCHEDULED 유저 픽스처의
+     *     라운드. 남은 경기가 없으면 {@code totalRounds}(= 다 왔다). 진행바·"N / M 라운드" 뱃지의 입력.
+     * @param totalRounds   이 시즌 픽스처의 <b>실제 최대 라운드</b>. ⚠️ 상수 18 을 싣지 않는다 —
+     *     디비전·시즌 구성(팀 수)이 바뀌면 그 순간 화면이 서버와 다른 말을 한다. 시즌이 만들어질 때
+     *     생긴 값을 그대로 실어 보낸다.
+     *     <p>세는 주체가 서버인 것도 계약이다: 클라가 세면 연기·미소화 라운드 규칙이 두 곳에 생긴다.
+     */
     public record LeagueSeason(String id, int seasonNo, String state, List<LeagueTeam> teams,
                                List<LeagueStanding> standings, List<LeagueFixture> fixtures,
                                LeagueFixture nextUserFixture, SeasonReward seasonReward,
                                int division, String divisionName,
-                               Integer promoteRankMax, Integer relegateRankMin) {
+                               Integer promoteRankMax, Integer relegateRankMin,
+                               int currentRound, int totalRounds) {
     }
 
     /**
@@ -1022,10 +1031,15 @@ public class LeagueService {
         SeasonReward reward = buildSeasonReward(season, standings);
         LeagueDataService.Division spec = leagueDataService.get()
                 .map(d -> divisionSpec(d, season.division())).orElse(null);
+        // 라운드 진행(#319) — 픽스처에서 직접 센다(별도 컬럼·상수 없음). 이미 뽑아 둔 목록이라
+        // 쿼리도 늘지 않는다.
+        int totalRounds = fixtures.stream().mapToInt(LeagueFixture::round).max().orElse(0);
+        int currentRound = next != null ? next.round() : totalRounds;
         return new LeagueSeason(season.id(), season.seasonNo(), season.state(),
                 teams, standings, fixtures, next, reward,
                 season.division(), spec == null ? null : spec.name(),
-                effectivePromoteCut(season.division()), effectiveRelegateCut(season.division()));
+                effectivePromoteCut(season.division()), effectiveRelegateCut(season.division()),
+                currentRound, totalRounds);
     }
 
     /**
@@ -1324,4 +1338,112 @@ public class LeagueService {
             throw new IllegalStateException(e);
         }
     }
+
+    // ── GET /api/league/rankings (#286 W4 · #319) ───────────────────────
+
+    public record LeagueRankEntry(int rank, String userId, String nickname, int division,
+                                  String divisionName, int points, int played, boolean isMe) {
+    }
+
+    /** rank 가 null = <b>아직 순위에 오르지 않았다</b>(리그를 시작하지 않았거나 한 판도 안 치렀다). */
+    public record LeagueMyRank(Integer rank, String userId, String nickname, int division,
+                               String divisionName, int points, int played, boolean isMe, int total) {
+    }
+
+    public record LeagueRankingsResponse(Integer seasonNo, List<LeagueRankEntry> entries,
+                                         LeagueMyRank me) {
+    }
+
+    /**
+     * 디비전 통합 랭킹보드 — 정렬은 <b>디비전 우선 → 승점</b>(hero Q2 확정).
+     *
+     * <p>⚠️ 승점을 SQL 로 다시 집계하지 않고 {@link #computeStandings} 를 그대로 부른다. 리그 승점
+     * 규칙(승 3 / 무 1)과 순위 tie-break 는 그 함수가 SoT 인데, 보드가 자기 집계를 가지면 규칙이
+     * 바뀔 때 <b>순위표와 랭킹보드가 다른 승점</b>을 말한다. 유저 수만큼 도는 대신 정의가 하나다.
+     *
+     * <p>⚠️ 한 판도 안 치른 유저는 목록에서 뺀다(전원 0점이면 표가 평평해져 순위가 뜻을 잃는다).
+     * 하지만 <b>{@code me} 는 언제나 자기 값을 받는다</b> — 목록에서만 찾으면 신규 유저가 리그 탭을
+     * 여는 순간 404 를 맞고, web 은 그걸 에러로 그린다(#296 이 랭킹에서 똑같이 당했다).
+     *
+     * @param scope {@code "division"} 이면 <b>내 디비전 안에서</b> 순위를 매긴다(1위부터 다시).
+     *     그 밖(기본 {@code "global"})은 전체 통합.
+     */
+    public LeagueRankingsResponse rankings(String userId, String scope, int limit) {
+        int effectiveLimit = limit <= 0 ? 20 : Math.min(limit, 100);
+        boolean divisionScope = "division".equalsIgnoreCase(scope);
+
+        record SeasonRef(String userId, String nickname, String seasonId, int division) {
+        }
+        // 유저마다 **최신 시즌 하나**(ACTIVE 우선 — getLeague 와 같은 규칙). 시즌이 없는 유저는
+        // 애초에 리그 기록이 없으므로 보드에 없다.
+        List<SeasonRef> refs = jdbcClient.sql("""
+                        SELECT s.id AS season_id, s.user_id AS user_id, s.division AS division,
+                               u.nickname AS nickname
+                        FROM league_seasons s
+                        JOIN users u ON u.id = s.user_id
+                        WHERE s.id = (
+                            SELECT s2.id FROM league_seasons s2
+                             WHERE s2.user_id = s.user_id
+                             ORDER BY (s2.state = 'ACTIVE') DESC, s2.season_no DESC
+                             LIMIT 1)
+                        """)
+                .query((rs, n) -> new SeasonRef(rs.getString("user_id"), rs.getString("nickname"),
+                        rs.getString("season_id"), rs.getInt("division")))
+                .list();
+
+        record Row(SeasonRef ref, int points, int played, int goalDiff) {
+        }
+        List<Row> rows = new ArrayList<>();
+        for (SeasonRef ref : refs) {
+            LeagueStanding mine = computeStandings(ref.seasonId()).stream()
+                    .filter(LeagueStanding::isUser).findFirst().orElse(null);
+            if (mine == null || mine.played() == 0) {
+                continue;   // 아직 한 판도 안 치렀다 — 순위에 넣지 않는다(me 는 아래에서 따로 챙긴다)
+            }
+            if (divisionScope && ref.division() != divisionOf(userId)) {
+                continue;
+            }
+            rows.add(new Row(ref, mine.points(), mine.played(), mine.goalDiff()));
+        }
+        // 디비전 asc(작을수록 상위) → 승점 desc → 골득실 desc → userId(결정론 안정 정렬).
+        rows.sort(Comparator.comparingInt((Row r) -> r.ref().division())
+                .thenComparing(Comparator.comparingInt(Row::points).reversed())
+                .thenComparing(Comparator.comparingInt(Row::goalDiff).reversed())
+                .thenComparing(r -> r.ref().userId()));
+
+        List<LeagueRankEntry> entries = new ArrayList<>();
+        LeagueMyRank me = null;
+        for (int i = 0; i < rows.size(); i++) {
+            Row r = rows.get(i);
+            boolean isMe = r.ref().userId().equals(userId);
+            String divisionName = divisionNameOf(r.ref().division());
+            if (entries.size() < effectiveLimit) {
+                entries.add(new LeagueRankEntry(i + 1, r.ref().userId(), r.ref().nickname(),
+                        r.ref().division(), divisionName, r.points(), r.played(), isMe));
+            }
+            if (isMe) {
+                me = new LeagueMyRank(i + 1, r.ref().userId(), r.ref().nickname(), r.ref().division(),
+                        divisionName, r.points(), r.played(), true, rows.size());
+            }
+        }
+        Optional<SeasonRow> mySeason = latestSeason(userId);
+        if (me == null) {
+            int division = mySeason.map(SeasonRow::division).orElseGet(() -> divisionOf(userId));
+            me = new LeagueMyRank(null, userId, nicknameOf(userId), division,
+                    divisionNameOf(division), 0, 0, true, rows.size());
+        }
+        return new LeagueRankingsResponse(mySeason.map(SeasonRow::seasonNo).orElse(null), entries, me);
+    }
+
+    /** 디비전 표시명 — <b>서버가 SoT</b>(클라가 level→이름을 복제하면 표가 바뀔 때 어긋난다). */
+    private String divisionNameOf(int division) {
+        return leagueDataService.get().map(d -> divisionSpec(d, division))
+                .map(LeagueDataService.Division::name).orElse(null);
+    }
+
+    private String nicknameOf(String userId) {
+        return jdbcClient.sql("SELECT nickname FROM users WHERE id = ?")
+                .param(userId).query(String.class).optional().orElse("나");
+    }
+
 }
