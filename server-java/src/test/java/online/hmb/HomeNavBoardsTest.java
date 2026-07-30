@@ -161,6 +161,135 @@ class HomeNavBoardsTest extends MatchTestBase {
         assertThat(mine.get("division")).isNotNull();   // 리그를 시작했으니 디비전은 있다
     }
 
+
+    /**
+     * ⚠️ <b>디비전이 승점을 이긴다</b>(hero Q2 확정) — 정렬의 1차 키.
+     *
+     * <p>독립검증 MAJ-4: 원래 이 계약의 픽스처는 두 유저가 <b>같은 디비전</b>이라 1차 키가 한 번도
+     * 관측되지 않았다 — 디비전 비교를 상수 0 으로 바꾸는 변이체가 <b>전 스위트를 통과</b>했다.
+     * hero 가 확정한 헤드라인 규칙에 회귀 감시가 0 이었다는 뜻이다. 그래서 <b>승점이 반대로 가는</b>
+     * 표본을 쓴다: 상위 디비전이 승점은 더 낮은데도 위에 선다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void 디비전이_승점보다_먼저다() {
+        String d1 = setupUserWithDeck("lr_d1");
+        String d9 = setupUserWithDeck("lr_d9");
+        setDivision("lr_d1", 1);
+        setDivision("lr_d9", 9);
+        startLeague(d1);
+        startLeague(d9);
+        awardPoints("lr_d1", 1);   // 3점 — **더 적다**
+        awardPoints("lr_d9", 3);   // 9점
+
+        List<Map<String, Object>> entries = entriesOf(d1, "?scope=global&limit=50");
+        assertThat(entries).extracting(e -> e.get("userId"))
+                .containsSubsequence(userIdOf("lr_d1"), userIdOf("lr_d9"));
+        Map<String, Object> first = entries.get(0);
+        assertThat(first.get("division")).isEqualTo(1);
+        assertThat(first.get("points")).isEqualTo(3);   // 승점은 아래 사람이 더 높다
+    }
+
+    /** {@code scope=division} 은 <b>내 디비전만</b> 세고 1위부터 다시 매긴다. */
+    @SuppressWarnings("unchecked")
+    @Test
+    void scope_division_은_내_디비전만_센다() {
+        String mine = setupUserWithDeck("lr_sc_mine");
+        String other = setupUserWithDeck("lr_sc_other");
+        setDivision("lr_sc_mine", 4);
+        setDivision("lr_sc_other", 7);
+        startLeague(mine);
+        startLeague(other);
+        awardPoints("lr_sc_mine", 1);
+        awardPoints("lr_sc_other", 3);
+
+        List<Map<String, Object>> entries = entriesOf(mine, "?scope=division&limit=50");
+        assertThat(entries).extracting(e -> e.get("division")).containsOnly(4);
+        assertThat(entries).noneSatisfy(e ->
+                assertThat(e.get("userId")).isEqualTo(userIdOf("lr_sc_other")));
+        assertThat(entries.get(0).get("rank")).isEqualTo(1);   // 디비전 안에서 1위부터
+    }
+
+    /**
+     * ⚠️ {@code me.total} 은 <b>순위에 오른 전체 인원</b>이지 이번 페이지 크기가 아니다
+     * (독립검증 MIN-3: `rows.size()` → `entries.size()` 변이체가 살아 있었다 — 픽스처가
+     * limit 보다 많은 인원을 만든 적이 없어서다). 화면이 "N위 / M명"으로 쓰므로 여기가 틀리면
+     * 순위가 항상 "1위 / 1명"처럼 보인다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void 내_순위의_전체_인원은_페이지_크기가_아니다() {
+        String a = setupUserWithDeck("lr_tot_a");
+        String b = setupUserWithDeck("lr_tot_b");
+        String c = setupUserWithDeck("lr_tot_c");
+        startLeague(a);
+        startLeague(b);
+        startLeague(c);
+        awardPoints("lr_tot_a", 3);
+        awardPoints("lr_tot_b", 2);
+        awardPoints("lr_tot_c", 1);
+
+        Map<String, Object> body = authGet("/api/league/rankings?limit=1", a, Map.class).getBody();
+        List<Map<String, Object>> entries = (List<Map<String, Object>>) body.get("entries");
+        assertThat(entries).hasSize(1);                       // 페이지는 1건
+        Map<String, Object> mine = (Map<String, Object>) body.get("me");
+        assertThat((Integer) mine.get("total")).isGreaterThanOrEqualTo(3);   // 인원은 그보다 많다
+    }
+
+    /**
+     * 시즌을 다 치르면 {@code currentRound} 가 <b>총 라운드에 머문다</b>(독립검증 MIN-2 — 이 폴백
+     * 분기에 계약이 없어 0 으로 바꾸는 변이체가 살아 있었다). 0 이면 화면이 "0 / 18 라운드"로
+     * 되돌아가 다 끝난 시즌을 시작 전처럼 그린다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void 시즌을_다_치르면_현재_라운드는_총_라운드에_머문다() {
+        String token = setupUserWithDeck("lr_done");
+        startLeague(token);
+        jdbcClient.sql("""
+                        UPDATE league_fixtures SET state = 'PLAYED', score_home = 1, score_away = 0
+                         WHERE season_id = (SELECT id FROM league_seasons WHERE user_id = ?
+                                            ORDER BY season_no DESC LIMIT 1)
+                        """)
+                .param(userIdOf("lr_done"))
+                .update();
+
+        Map<String, Object> season = (Map<String, Object>)
+                authGet("/api/league", token, Map.class).getBody().get("season");
+        assertThat(season.get("currentRound")).isEqualTo(season.get("totalRounds"));
+        assertThat((Integer) season.get("currentRound")).isGreaterThan(0);
+    }
+
+    /**
+     * ⚠️ <b>남의 데이터 사고가 전원의 랭킹보드를 죽이지 않는다</b>(독립검증 MAJ-2).
+     *
+     * <p>{@code GET /api/league} 는 자기 시즌만 파싱해 블라스트 반경이 1명이었는데, 이 보드는
+     * 전 유저를 순회하므로 <b>남의</b> {@code teams_json} 이 깨져 있으면 <b>내</b> 요청이 500 이 됐다
+     * (실측). 그 사람만 표에서 빠지는 것이 옳다 — 보이지 않는 게 아무것도 안 보이는 것보다 낫다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void 남의_시즌_데이터가_깨져도_내_랭킹보드는_뜬다() {
+        String healthy = setupUserWithDeck("lr_ok");
+        String broken = setupUserWithDeck("lr_broken");
+        startLeague(healthy);
+        startLeague(broken);
+        awardPoints("lr_ok", 2);
+        awardPoints("lr_broken", 1);
+
+        jdbcClient.sql("UPDATE league_seasons SET teams_json = '{{{ not json' WHERE user_id = ?")
+                .param(userIdOf("lr_broken"))
+                .update();
+
+        ResponseEntity<Map> res = authGet("/api/league/rankings", healthy, Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<Map<String, Object>> entries = (List<Map<String, Object>>) res.getBody().get("entries");
+        assertThat(entries).anySatisfy(e ->
+                assertThat(e.get("userId")).isEqualTo(userIdOf("lr_ok")));
+        assertThat(entries).noneSatisfy(e ->
+                assertThat(e.get("userId")).isEqualTo(userIdOf("lr_broken")));
+    }
+
     // ── GET /api/league (라운드 진행) ──────────────────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -281,6 +410,18 @@ class HomeNavBoardsTest extends MatchTestBase {
                         VALUES (?, ?, 'BOT_BAL', 'FINISHED', 'seed', 'test', '{}', ?, ?, ?)
                         """)
                 .params(online.hmb.common.Ulid.next(), userId, mode, result, createdAt).update();
+    }
+
+    private void setDivision(String nickname, int division) {
+        jdbcClient.sql("UPDATE users SET division = ? WHERE id = ?")
+                .params(division, userIdOf(nickname)).update();
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> entriesOf(String token, String query) {
+        ResponseEntity<Map> res = authGet("/api/league/rankings" + query, token, Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return (List<Map<String, Object>>) res.getBody().get("entries");
     }
 
     @SuppressWarnings("unchecked")

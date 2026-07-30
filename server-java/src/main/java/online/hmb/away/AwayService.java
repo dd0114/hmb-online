@@ -813,7 +813,7 @@ public class AwayService {
      */
     public record RevengeEntry(String reportId, RevengeOpponent opponent, String attackedAt,
                                int theirScore, int myScore, String defenceResult, int ratingDelta,
-                               int attemptsUsed, int attemptsMax, String state) {
+                               int attemptsUsed, int attemptsMax, boolean forfeit, String state) {
     }
 
     /** remainingToday 는 <b>일반 원정과 같은 한도</b>다(hero Q3-② — 복수 판도 오늘 횟수를 먹는다). */
@@ -821,35 +821,39 @@ public class AwayService {
     }
 
     public RevengeResponse revengeQueue(String userId) {
-        return new RevengeResponse(revengeWindow(userId), remainingToday(userId));
+        return new RevengeResponse(revengeWindow(userId, false), remainingToday(userId));
     }
 
     /**
-     * 복수 큐 = 내가 수비자인 <b>최근 {@code queue-size}건</b>. 여기서 빠지는 것은 둘뿐이다:
+     * 복수 창 = 내가 수비자인 <b>최근 {@code queue-size}건</b>(설계 §4.1 조건 ③ — 자물쇠의 일부).
      *
-     * <ul>
-     *   <li>{@code from_revenge = 1} — 복수 경기가 만든 기록. <b>복수의 복수는 없다</b>(hero 확정).
-     *       창을 세기 <b>전에</b> 거른다: 이 행들이 슬롯을 먹으면 핑퐁 한 번에 진짜 침공 기록이
-     *       큐 밖으로 밀려난다.</li>
-     *   <li>{@code AVENGED} — 갚았으면 목록에서 <b>소멸</b>한다(설계 §4.2).</li>
-     * </ul>
+     * <p>⚠️ <b>창을 먼저 자르고, 표시에서 뺄 것을 그 다음에 뺀다</b>(독립검증 MAJ-1). 순서를 뒤집어
+     * {@code AVENGED} 를 제외한 뒤 LIMIT 을 걸면 <b>갚을 때마다 슬롯이 하나 비어</b> 더 오래된 기록이
+     * 되살아난다 — 부계정이 20번 쳐 뒀다면 5개가 아니라 20개 전부가 순차적으로 지목 대상이 되고,
+     * 그러면 "최근 5건"은 창이 아니라 필터일 뿐이다(= 좁혀서 연 문이 다시 넓어진다).
+     * 실측으로 잡혔다: 최신 1건을 갚으니 창 밖이던 가장 오래된 기록이 410 → 201 로 되살아났다.
      *
-     * <p>방어 성공·소진 기록은 <b>남는다</b>(회색으로 잠긴 채) — 없어지면 유저는 자기가 막아낸
-     * 사실도, 두 번 다 진 사실도 화면에서 확인할 수 없다.
+     * <p>{@code from_revenge = 1}(복수가 만든 기록)만은 <b>창을 세기 전에</b> 거른다 — 그건 애초에
+     * 침공 기록이 아니라 내 복수의 결과다. 슬롯을 먹게 두면 핑퐁 한 번에 진짜 침공이 밀려난다.
+     *
+     * <p>방어 성공·소진 기록은 창 안에 <b>남는다</b>(회색으로 잠긴 채) — 없어지면 유저는 자기가
+     * 막아낸 사실도, 두 번 다 진 사실도 화면에서 확인할 수 없다.
+     *
+     * @param includeAvenged 창 자체(POST 의 조건 ③ 검사)면 true, 화면 목록이면 false(§4.2 소멸).
      */
-    private List<RevengeEntry> revengeWindow(String userId) {
+    private List<RevengeEntry> revengeWindow(String userId, boolean includeAvenged) {
         return jdbcClient.sql("""
                         SELECT r.id AS id, r.attacker_id AS attacker_id, r.attacker_name AS attacker_name,
                                r.created_at AS created_at, r.goals_for AS goals_for,
                                r.goals_against AS goals_against, r.result AS result,
                                r.rating_delta AS rating_delta, r.revenge_attempts AS attempts,
-                               r.revenge_state AS state,
+                               r.revenge_state AS state, r.forfeit AS forfeit,
                                COALESCE(u.nickname, r.attacker_name) AS opp_nickname,
                                COALESCE(ur.rating, 0) AS opp_rating
                         FROM away_reports r
                         LEFT JOIN users u ON u.id = r.attacker_id
                         LEFT JOIN user_ratings ur ON ur.user_id = r.attacker_id
-                        WHERE r.defender_id = ? AND r.from_revenge = 0 AND r.revenge_state <> 'AVENGED'
+                        WHERE r.defender_id = ? AND r.from_revenge = 0
                         ORDER BY r.created_at DESC, r.id DESC
                         LIMIT ?
                         """)
@@ -864,8 +868,12 @@ public class AwayService {
                         rs.getString("result"),
                         rs.getInt("rating_delta"),
                         rs.getInt("attempts"), revengeAttemptsMax,
+                        rs.getInt("forfeit") == 1,
                         stateOf(rs.getString("state"), rs.getInt("attempts"))))
-                .list();
+                .list()
+                .stream()
+                .filter(e -> includeAvenged || !"AVENGED".equals(e.state()))
+                .toList();
     }
 
     /**
@@ -929,9 +937,15 @@ public class AwayService {
         }
         // ⚠️ **창 검사가 세 번째 자물쇠다**(§4.1 조건 ③). 목록에서 밀려난 기록을 클라가 그대로 POST
         // 하면 "최근 5건" 이 표시 상한으로 전락하고, 오래 전 부계정 침공까지 되살려 지목할 수 있다.
-        if (revengeWindow(userId).stream().noneMatch(e -> e.reportId().equals(reportId))) {
+        if (revengeWindow(userId, true).stream().noneMatch(e -> e.reportId().equals(reportId))) {
             throw new ApiException(HttpStatus.GONE, "REVENGE_EXPIRED",
                     "복수 목록에서 밀려난 기록입니다");
+        }
+        // ⚠️ 자기 자신 지목 차단(독립검증 MIN-1). 정상 경로로는 attacker=defender 인 원장 행이
+        // 생기지 않지만, 생기는 순간 자기와 붙어 +10/−10 이 **순증**(공격자 보너스만큼)이 된다.
+        // 일반 원정(start)에는 이미 있는 가드다 — 새 문에만 없으면 그 문이 우회로가 된다.
+        if (userId.equals(report.attackerId())) {
+            throw ApiException.validation("자기 자신에게 원정을 갈 수 없습니다");
         }
         assertUnderDailyLimit(userId);
 
@@ -951,7 +965,49 @@ public class AwayService {
             throw new ApiException(HttpStatus.NOT_FOUND, "NO_OPPONENT",
                     "상대의 팀을 지금 세울 수 없습니다 — 잠시 후 다시 시도해 주세요");
         }
-        return matchService.createAwayMatch(userId, ghostBotId, report.attackerId(), reportId);
+        // ⚠️ **시도는 여기서 원자적으로 예약한다**(독립검증 BL-1). 앞의 검사들은 전부 read-then-act
+        // 라, 같은 reportId 로 동시에 6번 POST 하면 **6판이 전부 생성됐다**(실측) — "기록당 2회"가
+        // 통째로 뚫린 것이다. 이 문은 §4.1 이 좁혀서 여는 문이라(내가 상대를 고르는 유일한 경로)
+        // 경합 한 번이 곧 약한 부계정 상대로 1버스트 N판이 된다.
+        //
+        // 조건부 UPDATE 의 갱신 행 수가 곧 티켓이다: 0행 = 다른 요청이 이미 마지막 시도를 가져갔다.
+        // ⚠️ 무승부는 횟수를 쓰지 않으므로(hero 확정 Q3-①) **정산에서 환불**한다 — 예약을 미루면
+        // 원자성이 사라지고, 예약을 안 하면 자물쇠가 없다. "먼저 잠그고 무승부면 돌려준다"가 두
+        // 규칙을 다 지키는 유일한 순서다.
+        int reserved = jdbcClient.sql("""
+                        UPDATE away_reports
+                           SET revenge_attempts = revenge_attempts + 1,
+                               revenge_state = CASE WHEN revenge_attempts + 1 >= ? THEN 'EXHAUSTED'
+                                                    ELSE revenge_state END
+                         WHERE id = ? AND revenge_attempts < ? AND revenge_state <> 'AVENGED'
+                        """)
+                .params(revengeAttemptsMax, reportId, revengeAttemptsMax)
+                .update();
+        if (reserved == 0) {
+            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "REVENGE_EXHAUSTED",
+                    "이 기록에는 더 도전할 수 없습니다 (" + revengeAttemptsMax + "회 소진)",
+                    java.util.Map.of("attemptsUsed", revengeAttemptsMax, "attemptsMax", revengeAttemptsMax));
+        }
+        try {
+            return matchService.createAwayMatch(userId, ghostBotId, report.attackerId(), reportId);
+        } catch (RuntimeException e) {
+            // 매치를 못 만들었으면 시도를 먹지 않는다 — 예약은 자물쇠지 벌칙이 아니다.
+            refundRevenge(reportId);
+            throw e;
+        }
+    }
+
+    /** 예약 되돌리기 — 매치 생성 실패 · 무승부 정산. 0 아래로 내려가지 않는다. */
+    private void refundRevenge(String reportId) {
+        jdbcClient.sql("""
+                        UPDATE away_reports
+                           SET revenge_attempts = MAX(revenge_attempts - 1, 0),
+                               revenge_state = CASE WHEN revenge_state = 'EXHAUSTED' THEN 'AVAILABLE'
+                                                    ELSE revenge_state END
+                         WHERE id = ? AND revenge_state <> 'AVENGED'
+                        """)
+                .param(reportId)
+                .update();
     }
 
     /**
@@ -970,18 +1026,14 @@ public class AwayService {
                     .update();
             return;
         }
-        if (!"LOSS".equals(attackerResult)) {
-            return;   // 무승부 — 횟수 유지(hero 확정 Q3-①)
+        if ("DRAW".equals(attackerResult)) {
+            refundRevenge(reportId);   // hero 확정 Q3-① — 승부가 안 났으니 횟수를 쓰지 않는다
         }
-        jdbcClient.sql("""
-                        UPDATE away_reports
-                           SET revenge_attempts = revenge_attempts + 1,
-                               revenge_state = CASE WHEN revenge_attempts + 1 >= ? THEN 'EXHAUSTED'
-                                                    ELSE revenge_state END
-                         WHERE id = ?
-                        """)
-                .params(revengeAttemptsMax, reportId)
-                .update();
+        // 패배: 시도는 **생성 시점에 이미 예약**됐다(BL-1). 여기서 또 깎으면 두 번 먹는다.
+        //
+        // ⚠️ 그래서 정산에 도달하지 못한 매치(킥오프 이후 포기·스톨 스윕 — 독립검증 MIN-6)도
+        // 시도가 소모된 채로 남는다. 그게 옳은 방향이다: 반대로 "정산 때만 깎는다"면 무르기를
+        // 반복해 시도를 안 쓰고 상대를 계속 지목할 수 있다(= 자물쇠가 없는 것과 같다).
     }
 
     // ── 원정 랭킹보드 (#286 W4 · #319) ──────────────────────────────────────

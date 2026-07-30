@@ -1682,7 +1682,7 @@ components:
     RevengeEntry:
       type: object
       required: [reportId, opponent, attackedAt, theirScore, myScore, defenceResult,
-                 ratingDelta, attemptsUsed, attemptsMax, state]
+                 ratingDelta, attemptsUsed, attemptsMax, forfeit, state]
       properties:
         reportId: { type: string }
         opponent:
@@ -1702,8 +1702,19 @@ components:
           enum: [WIN, DRAW, LOSS]
           description: 내가 막았나. **WIN 이면 복수 대상이 아니다**(hero 확정 ④).
         ratingDelta: { type: integer, description: 그때 내 레이팅 변동(적용값 박제) }
-        attemptsUsed: { type: integer }
+        attemptsUsed:
+          type: integer
+          description: >-
+            ⚠️ **경기를 시작하는 순간 올라간다**(정산이 아니라 생성 시점에 원자적으로 예약한다 —
+            동시 요청으로 "기록당 N회"가 뚫리는 것을 막는 자물쇠다). 무승부로 끝나면 **되돌아온다**
+            (hero 확정 — 승부가 안 났으니 횟수를 쓰지 않는다).
         attemptsMax: { type: integer, description: config `hmb.away.revenge.attempts-max`(현재 2) }
+        forfeit:
+          type: boolean
+          description: >-
+            상대가 브리핑에서 무른 경기(몰수). 결과는 원장대로 내 승리(+10)로 남지만 — 그게 무르는
+            쪽의 벌칙이다(hero D1) — **화면이 "내가 막아냄"이라고 말하면 사실과 다르다**. 복수 차단
+            자체는 옳고(갚을 것이 없다) 틀린 것은 라벨이라, 서버가 사실을 실어 보낸다.
         state: { $ref: "#/components/schemas/RevengeState" }
 
     RevengeResponse:
@@ -1718,7 +1729,9 @@ components:
           type: integer
           description: |
             오늘 남은 원정 횟수. **일반 원정과 공유하는 한도**다(hero 확정 — 복수 판도 횟수를 먹는다).
-            **-1 = 무제한**(daily-limit 0).
+            ⚠️ **-1 = 무제한**(`hmb.away.match.daily-limit: 0` = 롤백 스위치). `GET /api/away/candidates`
+            와 **같은 관례**다 — 같은 개념에 두 표현을 두지 않는다. 클라는 **음수를 무제한으로** 읽어야
+            하고, `<= 0` 을 소진으로 읽으면 한도를 끄는 순간 기능이 화면에서 죽는다(#332).
 
     AwayRankEntry:
       type: object

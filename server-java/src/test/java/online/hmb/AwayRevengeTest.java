@@ -201,13 +201,13 @@ class AwayRevengeTest extends MatchTestBase {
         raid(attackerId, meId, "RV_EX1", "WIN");
         String reportId = reportIdOf("RV_EX1");
 
-        revengeSettled(me, meId, attackerId, reportId, "LOSS");
+        revengeRound(me, meId, reportId, "LOSS");
         assertThat(queueOf(me)).singleElement().satisfies(e -> {
             assertThat(e.get("attemptsUsed")).isEqualTo(1);
             assertThat(e.get("state")).isEqualTo("AVAILABLE");   // 아직 한 번 남았다
         });
 
-        revengeSettled(me, meId, attackerId, reportId, "LOSS");
+        revengeRound(me, meId, reportId, "LOSS");
         assertThat(queueOf(me)).singleElement().satisfies(e -> {
             assertThat(e.get("attemptsUsed")).isEqualTo(2);
             assertThat(e.get("state")).isEqualTo("EXHAUSTED");
@@ -228,7 +228,7 @@ class AwayRevengeTest extends MatchTestBase {
         raid(attackerId, meId, "RV_AV1", "WIN");
         String reportId = reportIdOf("RV_AV1");
 
-        revengeSettled(me, meId, attackerId, reportId, "WIN");
+        revengeRound(me, meId, reportId, "WIN");
 
         assertThat(queueOf(me)).isEmpty();   // §4.2 — 갚으면 소멸한다
         ResponseEntity<Map> res =
@@ -247,7 +247,7 @@ class AwayRevengeTest extends MatchTestBase {
         raid(attackerId, meId, "RV_DR1", "WIN");
         String reportId = reportIdOf("RV_DR1");
 
-        revengeSettled(me, meId, attackerId, reportId, "DRAW");
+        revengeRound(me, meId, reportId, "DRAW");
 
         assertThat(queueOf(me)).singleElement().satisfies(e -> {
             assertThat(e.get("attemptsUsed")).isEqualTo(0);
@@ -265,9 +265,12 @@ class AwayRevengeTest extends MatchTestBase {
         raid(attackerId, meId, "RV_IDEM1", "WIN");
         String reportId = reportIdOf("RV_IDEM1");
 
-        seedRevengeChallenge(meId, attackerId, "RV_IDEM_R1", reportId);
-        awayService.settle("RV_IDEM_R1", meId, "LOSS", 0, 2);
-        awayService.settle("RV_IDEM_R1", meId, "LOSS", 0, 2);   // 같은 매치 재정산
+        ResponseEntity<Map> created = authPost(
+                "/api/away/revenge/" + reportId + "/matches", me, null, Map.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String matchId = (String) created.getBody().get("id");
+        awayService.settle(matchId, meId, "LOSS", 0, 2);
+        awayService.settle(matchId, meId, "LOSS", 0, 2);   // 같은 매치 재정산
 
         assertThat(queueOf(me)).singleElement()
                 .satisfies(e -> assertThat(e.get("attemptsUsed")).isEqualTo(1));
@@ -284,10 +287,13 @@ class AwayRevengeTest extends MatchTestBase {
         raid(rivalId, meId, "RV_CH1", "WIN");
         String reportId = reportIdOf("RV_CH1");
 
-        seedRevengeChallenge(meId, rivalId, "RV_CH_R1", reportId);
-        awayService.settle("RV_CH_R1", meId, "WIN", 3, 1);   // 내가 갚았다 → rival 이 수비자인 리포트 생성
+        ResponseEntity<Map> created = authPost(
+                "/api/away/revenge/" + reportId + "/matches", me, null, Map.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String revengeMatchId = (String) created.getBody().get("id");
+        awayService.settle(revengeMatchId, meId, "WIN", 3, 1);   // 갚았다 → rival 이 수비자인 리포트 생성
 
-        String rivalReport = reportIdOf("RV_CH_R1");
+        String rivalReport = reportIdOf(revengeMatchId);
         assertThat(rivalReport).isNotNull();
         // ① 그의 큐에 뜨지 않는다
         assertThat(queueOf(rival)).noneSatisfy(e ->
@@ -297,6 +303,131 @@ class AwayRevengeTest extends MatchTestBase {
                 authPost("/api/away/revenge/" + rivalReport + "/matches", rival, null, Map.class);
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
         assertThat(res.getBody().get("code")).isEqualTo("REVENGE_CHAINED");
+    }
+
+
+    /**
+     * ⚠️ <b>동시 요청으로 "기록당 2회"가 뚫리지 않는다</b>(독립검증 BL-1).
+     *
+     * <p>앞의 검사들은 전부 read-then-act 라, 예약이 없던 판에서는 같은 {@code reportId} 로 동시에
+     * 6번 POST 하면 <b>6판이 전부 생성됐다</b>(실측). 복수는 §4.1 이 좁혀서 여는 문 —
+     * <b>내가 상대를 고르는 유일한 경로</b>라, 경합 한 번이 곧 약한 부계정 상대로 1버스트 N판이 된다.
+     *
+     * <p>단언을 "성공 1건"이 아니라 <b>"상한 이하"</b> 로 거는 이유: 진행 중 매치 1개 불변식(#217)의
+     * 잠금 자체도 read-then-act 라 같은 경합에서 샌다(대조군: 연습·일반 원정도 동시 요청이 뚫린다).
+     * 그건 이 웨이브가 만든 결함이 아니라 <b>선존 플랫폼 결함</b>이고 별도 이슈다. 여기서 지켜야 할
+     * 것은 <b>복수 자물쇠</b>다 — 한 기록으로 만들 수 있는 판은 어떤 경합에서도 {@code attempts-max} 를
+     * 넘지 않는다. 그 이상을 단언하면 남의 결함 때문에 이 계약이 거짓 실패한다.
+     */
+    @Test
+    void 동시_요청으로도_기록당_시도_상한을_넘지_못한다() throws Exception {
+        String me = setupUserWithDeck("rv_race_me");
+        String meId = userIdOf("rv_race_me");
+        setupOpponentWithDeck("rv_race_atk");
+        String attackerId = userIdOf("rv_race_atk");
+        raid(attackerId, meId, "RV_RACE1", "WIN");
+        String reportId = reportIdOf("RV_RACE1");
+
+        int threads = 6;
+        java.util.concurrent.ExecutorService pool =
+                java.util.concurrent.Executors.newFixedThreadPool(threads);
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<org.springframework.http.HttpStatusCode>> futures =
+                new java.util.ArrayList<>();
+        for (int i = 0; i < threads; i++) {
+            futures.add(pool.submit(() -> {
+                go.await();
+                return authPost("/api/away/revenge/" + reportId + "/matches", me, null, Map.class)
+                        .getStatusCode();
+            }));
+        }
+        go.countDown();
+        int created = 0;
+        for (java.util.concurrent.Future<org.springframework.http.HttpStatusCode> f : futures) {
+            if (f.get() == HttpStatus.CREATED) {
+                created++;
+            }
+        }
+        pool.shutdown();
+
+        int attemptsMax = 2;   // application.yml hmb.away.revenge.attempts-max
+        assertThat(created).as("한 기록으로 만들어진 복수 매치 수").isLessThanOrEqualTo(attemptsMax);
+        assertThat(jdbcClient.sql(
+                        "SELECT COUNT(*) FROM away_challenges WHERE revenge_report_id = ?")
+                .param(reportId).query(Integer.class).single())
+                .as("도전장 행 수도 같은 상한을 넘지 않는다")
+                .isLessThanOrEqualTo(attemptsMax);
+    }
+
+    /**
+     * ⚠️ <b>갚은 기록이 창 슬롯을 비워 주지 않는다</b>(독립검증 MAJ-1).
+     *
+     * <p>{@code AVENGED} 를 제외한 뒤 LIMIT 을 걸면 갚을 때마다 더 오래된 기록이 되살아난다 —
+     * 부계정이 20번 쳐 뒀으면 5개가 아니라 <b>20개 전부</b>가 순차적으로 지목 대상이 되고, 그러면
+     * "최근 5건"은 창이 아니라 필터일 뿐이다(= 좁혀서 연 문이 다시 넓어진다).
+     */
+    @Test
+    void 갚아도_창_밖_기록이_되살아나지_않는다() {
+        String me = setupUserWithDeck("rv_slot_me");
+        String meId = userIdOf("rv_slot_me");
+        setupOpponentWithDeck("rv_slot_atk");
+        String attackerId = userIdOf("rv_slot_atk");
+
+        for (int i = 1; i <= 6; i++) {
+            raid(attackerId, meId, "RV_SLOT" + i, "WIN");
+            backdate("RV_SLOT" + i, "2026-07-0" + i + "T00:00:00Z");
+        }
+        String oldest = reportIdOf("RV_SLOT1");
+        assertThat(authPost("/api/away/revenge/" + oldest + "/matches", me, null, Map.class)
+                .getStatusCode()).as("처음엔 창 밖").isEqualTo(HttpStatus.GONE);
+
+        // 창 안의 최신 기록을 갚는다 → 목록에서는 사라진다(§4.2).
+        revengeRound(me, meId, reportIdOf("RV_SLOT6"), "WIN");
+        assertThat(queueOf(me)).noneSatisfy(e ->
+                assertThat(e.get("reportId")).isEqualTo(reportIdOf("RV_SLOT6")));
+
+        // ⚠️ 그렇다고 창이 넓어지지는 않는다.
+        ResponseEntity<Map> again =
+                authPost("/api/away/revenge/" + oldest + "/matches", me, null, Map.class);
+        assertThat(again.getStatusCode()).as("갚은 뒤에도 창 밖").isEqualTo(HttpStatus.GONE);
+        assertThat(again.getBody().get("code")).isEqualTo("REVENGE_EXPIRED");
+    }
+
+    /**
+     * 자기 자신 지목 차단(독립검증 MIN-1). 정상 경로로는 {@code attacker = defender} 인 원장 행이
+     * 생기지 않지만, 생기는 순간 자기와 붙어 +10/−10 + 연승 보너스만큼 <b>순증</b>이 된다.
+     * 일반 원정에는 이미 있는 가드다 — 새 문에만 없으면 그 문이 우회로가 된다.
+     */
+    @Test
+    void 자기_자신은_지목할_수_없다() {
+        String me = setupUserWithDeck("rv_self_me");
+        String meId = userIdOf("rv_self_me");
+        raid(meId, meId, "RV_SELF1", "WIN");
+
+        ResponseEntity<Map> res = authPost(
+                "/api/away/revenge/" + reportIdOf("RV_SELF1") + "/matches", me, null, Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    /**
+     * 몰수 침공은 큐에 <b>몰수라고 표시돼서</b> 온다(독립검증 MIN-7). 상대가 브리핑에서 무른 것이라
+     * 결과는 내 승리(+10)로 기록되지만, 화면이 그걸 "내가 막아냄"이라고 말하면 사실과 다르다.
+     * 복수 차단 자체는 옳다(갚을 것이 없다) — 틀린 것은 <b>라벨</b>이라 서버가 사실을 실어 보낸다.
+     */
+    @Test
+    void 몰수_침공은_몰수로_표시된다() {
+        String me = setupUserWithDeck("rv_ff_me");
+        String meId = userIdOf("rv_ff_me");
+        setupOpponentWithDeck("rv_ff_atk");
+        String attackerId = userIdOf("rv_ff_atk");
+
+        seedRevengeChallenge(attackerId, meId, "RV_FF1", null);
+        awayService.settle("RV_FF1", attackerId, "LOSS", 0, 0, true);   // 몰수
+
+        assertThat(queueOf(me)).singleElement().satisfies(e -> {
+            assertThat(e.get("forfeit")).isEqualTo(true);
+            assertThat(e.get("defenceResult")).isEqualTo("WIN");   // 원장은 그대로(hero D1)
+        });
     }
 
     // ── 실제 생성 한 바퀴 ──────────────────────────────────────────────────
@@ -349,11 +480,17 @@ class AwayRevengeTest extends MatchTestBase {
         }
     }
 
-    /** 복수 매치 한 판을 정산까지(공격자 = 갚는 사람 = me). */
-    private void revengeSettled(String meToken, String meId, String rivalId, String reportId,
-                                String myResult) {
-        String matchId = "RVM_" + reportId + "_" + myResult + "_" + System.nanoTime();
-        seedRevengeChallenge(meId, rivalId, matchId, reportId);
+    /**
+     * 복수 한 판을 <b>실제 엔드포인트로</b> 만들고 정산까지 민다.
+     *
+     * <p>⚠️ 도전장을 직접 심지 않는 이유: 시도 예약이 <b>생성 시점</b>으로 옮겨졌으므로(BL-1),
+     * DB 를 손으로 채우면 자물쇠를 통과하지 않은 판이 되어 계약이 실물을 안 태운다.
+     */
+    private void revengeRound(String meToken, String meId, String reportId, String myResult) {
+        ResponseEntity<Map> created = authPost(
+                "/api/away/revenge/" + reportId + "/matches", meToken, null, Map.class);
+        assertThat(created.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String matchId = (String) created.getBody().get("id");
         if ("WIN".equals(myResult)) {
             awayService.settle(matchId, meId, "WIN", 3, 1);
         } else if ("LOSS".equals(myResult)) {
@@ -361,6 +498,7 @@ class AwayRevengeTest extends MatchTestBase {
         } else {
             awayService.settle(matchId, meId, "DRAW", 1, 1);
         }
+        releaseActiveMatches();   // 다음 판을 위해 #217 잠금 해제
     }
 
     private void seedRevengeChallenge(String attackerId, String defenderId, String matchId,

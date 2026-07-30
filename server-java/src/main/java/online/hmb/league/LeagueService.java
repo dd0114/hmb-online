@@ -1393,15 +1393,32 @@ public class LeagueService {
 
         record Row(SeasonRef ref, int points, int played, int goalDiff) {
         }
+        // ⚠️ 내 디비전도 **행과 같은 축**에서 뽑는다(독립검증 MIN-4). 목록 행은 그 시즌에 박제된
+        // `league_seasons.division` 인데 필터만 `users.division`(현재값)으로 물으면, 승급 직후
+        // 내 행이 내 디비전 보드에서 사라진다(실측: rank=null·0점인데 실제로는 3점·1경기).
+        // 루프 밖으로 뺀 이유이기도 하다 — 안에 두면 유저 수만큼 같은 조회가 돈다(MIN-5).
+        int myDivision = latestSeason(userId).map(SeasonRow::division).orElseGet(() -> divisionOf(userId));
+
         List<Row> rows = new ArrayList<>();
         for (SeasonRef ref : refs) {
-            LeagueStanding mine = computeStandings(ref.seasonId()).stream()
-                    .filter(LeagueStanding::isUser).findFirst().orElse(null);
+            if (divisionScope && ref.division() != myDivision) {
+                continue;
+            }
+            LeagueStanding mine;
+            try {
+                mine = computeStandings(ref.seasonId()).stream()
+                        .filter(LeagueStanding::isUser).findFirst().orElse(null);
+            } catch (RuntimeException e) {
+                // ⚠️ **한 명의 데이터 사고가 전원의 랭킹보드를 죽이지 않게 한다**(독립검증 MAJ-2).
+                // GET /api/league 는 자기 시즌만 파싱해 블라스트 반경이 1명이었는데, 이 보드는
+                // 전 유저를 순회하므로 남의 teams_json 이 깨져 있으면 **내** 요청이 500 이 됐다(실측).
+                // 그 사람만 표에서 빠지는 것이 옳다 — 보이지 않는 게 아무것도 안 보이는 것보다 낫다.
+                log.warn("league rankings: skipping season {} of user {} — {}",
+                        ref.seasonId(), ref.userId(), e.toString());
+                continue;
+            }
             if (mine == null || mine.played() == 0) {
                 continue;   // 아직 한 판도 안 치렀다 — 순위에 넣지 않는다(me 는 아래에서 따로 챙긴다)
-            }
-            if (divisionScope && ref.division() != divisionOf(userId)) {
-                continue;
             }
             rows.add(new Row(ref, mine.points(), mine.played(), mine.goalDiff()));
         }
@@ -1428,9 +1445,8 @@ public class LeagueService {
         }
         Optional<SeasonRow> mySeason = latestSeason(userId);
         if (me == null) {
-            int division = mySeason.map(SeasonRow::division).orElseGet(() -> divisionOf(userId));
-            me = new LeagueMyRank(null, userId, nicknameOf(userId), division,
-                    divisionNameOf(division), 0, 0, true, rows.size());
+            me = new LeagueMyRank(null, userId, nicknameOf(userId), myDivision,
+                    divisionNameOf(myDivision), 0, 0, true, rows.size());
         }
         return new LeagueRankingsResponse(mySeason.map(SeasonRow::seasonNo).orElse(null), entries, me);
     }
