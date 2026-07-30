@@ -70,6 +70,60 @@
   transition: width 0.25s ease;
 }
 
+/*
+ * 통계 열 이름 줄(#322 후속) — 좌우 대칭 표에 "이 열이 누구냐"를 붙인다.
+ * 순서·색은 **스코어바와 같다**(home 파랑 왼쪽 / away 빨강 오른쪽). 두 줄이 서로 다른 팀을
+ * 왼쪽이라 하면 없는 것만 못하다.
+ */
+.teamRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.teamSlot {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.teamSlot.home {
+  justify-content: flex-end;
+  color: #7ab0ff;
+}
+
+.teamSlot.away {
+  justify-content: flex-start;
+  color: #ff8f8f;
+}
+
+/* ⚠️ 줄임표는 **이름에만** — 슬롯에 걸면 칩이 통째로 잘린다(스코어바에서 실제로 났던 사고). */
+.teamName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 스코어바 칩과 같은 모양(중립색 — 사이드 색은 이름이 이미 말한다). 줄어들지 않는다. */
+.myTeamTag {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 .possRow {
   display: flex;
   align-items: center;
