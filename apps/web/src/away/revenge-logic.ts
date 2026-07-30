@@ -42,6 +42,17 @@ export function revengeAction(
   entry: RevengeEntry,
   remainingToday: number | null,
 ): { can: boolean; reason: string | null; label: string } {
+  /**
+   * ⚠️ **방어에 성공한 침공은 복수 대상이 아니다 — hero 확정 ④**(설계 §4.2·§4.3).
+   *
+   * 이 분기가 제일 먼저 오는 이유: 갚을 것이 애초에 없다. 빼먹으면 **이미 이긴 상대에게
+   * 지목 원정 2판이 더 생긴다** — §4.1 이 좁혀서 여는 문(“나를 친 기록 1건당 2판”)을
+   * hero 가 정한 것보다 넓게 여는 것이고, 그건 V22 가 닫았던 어뷰징 경로다.
+   * 실제로 1차 구현에서 이 규칙이 통째로 빠졌고 독립검증 BL-1 이 잡았다.
+   */
+  if (entry.defenceResult === "WIN") {
+    return { can: false, reason: "막아낸 경기입니다", label: "방어함" };
+  }
   if (entry.state === "AVENGED") {
     return { can: false, reason: "복수 완료", label: "복수함" };
   }

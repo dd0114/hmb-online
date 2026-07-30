@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useMyRecord } from "../api/hooks-p286";
 import { donutDash, formMark, recordView } from "./record-logic";
 import styles from "./RecordPanel.module.css";
@@ -14,9 +15,12 @@ const C = 2 * Math.PI * R;
  *
  * ⚠️ **승률은 서버 값만 쓴다.** 무승부 취급이 서버 규칙이라 클라가 나누면 조용히 어긋난다.
  */
-export function RecordPanel() {
+export function RecordPanel({ onVisible }: { onVisible?: (v: boolean) => void }) {
   const { data } = useMyRecord();
   const v = recordView(data);
+  // 상위 화면이 중복 표시를 접을 수 있게 알린다(#286 MIN-4) — "그려졌나"는 서버 응답에 달려
+  // 있어 여기서만 안다. effect 로 알리는 이유: 렌더 중 부모 setState 는 경고를 낸다.
+  useEffect(() => onVisible?.(v.usable), [v.usable, onVisible]);
   if (!v.usable) return null;
 
   return (

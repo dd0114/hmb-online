@@ -48,12 +48,12 @@ export interface RevengeResponse {
 }
 
 /** `GET /api/away/revenge` — 복수 큐 ≤5 + 남은 시도. */
-export function useAwayRevenge(enabled = true) {
+export function useAwayRevenge() {
   const { token } = useToken();
   return useQuery({
     queryKey: ["away", "revenge"],
     queryFn: () => apiFetch<RevengeResponse>("/api/away/revenge"),
-    enabled: Boolean(token) && enabled,
+    enabled: Boolean(token),
     retry: false,
   });
 }
@@ -126,23 +126,23 @@ export interface RankingBoardResponse {
 }
 
 /** `GET /api/away/rankings` — 원정 레이팅 랭킹 + 내 순위. */
-export function useAwayRankings(enabled = true) {
+export function useAwayRankings() {
   const { token } = useToken();
   return useQuery({
     queryKey: ["away", "rankings"],
     queryFn: () => apiFetch<RankingBoardResponse>("/api/away/rankings?limit=50"),
-    enabled: Boolean(token) && enabled,
+    enabled: Boolean(token),
     retry: false,
   });
 }
 
 /** `GET /api/league/rankings` — 디비전 통합 랭킹 + 내 순위. */
-export function useLeagueRankings(enabled = true) {
+export function useLeagueRankings() {
   const { token } = useToken();
   return useQuery({
     queryKey: ["league", "rankings"],
     queryFn: () => apiFetch<RankingBoardResponse>("/api/league/rankings?scope=global&limit=50"),
-    enabled: Boolean(token) && enabled,
+    enabled: Boolean(token),
     retry: false,
   });
 }
@@ -163,16 +163,16 @@ export interface MyRecordResponse {
   byMode?: Partial<Record<"practice" | "league" | "away", RecordBlock>> | null;
   /** 최근 10경기, **최신이 앞**. */
   recentForm?: Array<"WIN" | "DRAW" | "LOSS"> | null;
-  streak?: { current?: number | null; best?: number | null; awayBest?: number | null } | null;
+  streak?: { current?: number | null; best?: number | null } | null;
 }
 
 /** `GET /api/me/record` — 모드별 전적 + 최근 폼. */
-export function useMyRecord(enabled = true) {
+export function useMyRecord() {
   const { token } = useToken();
   return useQuery({
     queryKey: ["me", "record"],
     queryFn: () => apiFetch<MyRecordResponse>("/api/me/record"),
-    enabled: Boolean(token) && enabled,
+    enabled: Boolean(token),
     retry: false,
   });
 }

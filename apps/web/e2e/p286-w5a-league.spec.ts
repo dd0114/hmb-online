@@ -59,6 +59,27 @@ test("시즌 진행 중이면 라운드 진행바가 서버 값으로 뜬다", a
   expect(filled, `막대 폭이 10/18 을 반영해야 한다 (실제=${filled}%)`).toBeCloseTo((10 / 18) * 100, 2);
 });
 
+for (const [label, missing] of [
+  ["둘 다 없으면", { currentRound: undefined, totalRounds: undefined }],
+  ["현재 라운드만 없어도", { currentRound: undefined }],
+  ["총 라운드만 없어도", { totalRounds: undefined }],
+] as const) {
+  test(`${label} 진행바를 그리지 않는다 — 한쪽을 추측하지 않는다`, async ({ page }) => {
+    /**
+     * ⚠️ **필드를 각각 태워야 한다.** 처음엔 둘을 동시에 비우는 표본 하나뿐이라, 한쪽만
+     * 클라가 추측하는 변이(`totalRounds ?? 18`)가 **그대로 살아남았다**(독립검증 MAJ-1).
+     * "18라운드"는 지금 규칙일 뿐 서버 config 이고 디비전마다 바뀔 수 있다.
+     */
+    const partial = { ...LEAGUE, season: { ...LEAGUE.season, ...missing } };
+    await mockAll(page, { leagueOverride: partial });
+    await page.goto("/league");
+    await page.getByTestId("league-dashboard").waitFor();
+
+    await expect(page.getByTestId("league-round-progress")).toHaveCount(0);
+    await expect(page.getByTestId("standings")).toBeVisible();
+  });
+}
+
 test("서버가 라운드를 주지 않으면 진행바를 그리지 않는다", async ({ page }) => {
   /**
    * ⚠️ 구 서버·부분 응답 대비. 여기서 일정표를 세어 추정하면 **화면이 서버와 다른 말을 한다**

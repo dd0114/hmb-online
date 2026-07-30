@@ -29,9 +29,22 @@ const REVENGE = {
       attemptsUsed: 2, attemptsMax: 2, state: "EXHAUSTED",
     },
     {
+      /**
+       * ⚠️ **`defenceResult` 와 `state` 를 한 행에 뭉개지 마라.** 처음엔 이 행이
+       * `WIN` + `AVENGED` + `attemptsUsed:1` 이었는데, 그건 §4.2 생애주기상 **존재할 수 없는
+       * 조합**이다(막아낸 경기는 복수 대상이 아니라 시도 횟수가 붙지 않는다). 그 덕에
+       * "방어 성공이면 잠긴다"는 hero 확정 ④ 가 **통째로 빠진 것을 계약이 못 봤다**(BL-1).
+       * 두 상태를 각각의 행으로 분리한다.
+       */
       reportId: "R3", opponent: OPP(3), attackedAt: "2026-07-29T05:00:00Z",
-      theirScore: 0, myScore: 4, defenceResult: "WIN", ratingDelta: 8,
+      theirScore: 1, myScore: 2, defenceResult: "LOSS", ratingDelta: -6,
       attemptsUsed: 1, attemptsMax: 2, state: "AVENGED",
+    },
+    {
+      // 방어 성공 — hero 확정 ④: 갚을 것이 없으므로 잠긴다.
+      reportId: "R4", opponent: OPP(4), attackedAt: "2026-07-29T06:00:00Z",
+      theirScore: 0, myScore: 4, defenceResult: "WIN", ratingDelta: 8,
+      attemptsUsed: 0, attemptsMax: 2, state: "AVAILABLE",
     },
   ],
   remainingToday: 4,
@@ -129,9 +142,9 @@ test("복수 큐가 상태별로 갈리고, 막힌 이유를 말한다", async (
   await page.goto("/away");
 
   const rows = page.getByTestId("revenge-row");
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(4);
 
-  // ① 도전 가능
+  // ① 도전 가능(졌다)
   await expect(rows.nth(0).getByTestId("revenge-start")).toBeEnabled();
   // ② 2회 소진 — **왜 막혔는지**가 화면에 있어야 한다(비활성 버튼만 두면 유저가 이유를 못 찾는다)
   await expect(rows.nth(1).getByTestId("revenge-start")).toBeDisabled();
@@ -139,6 +152,10 @@ test("복수 큐가 상태별로 갈리고, 막힌 이유를 말한다", async (
   // ③ 이미 복수함 — hero 확정 "복수의 복수는 없다"
   await expect(rows.nth(2).getByTestId("revenge-start")).toBeDisabled();
   await expect(rows.nth(2).getByTestId("revenge-reason")).toContainText("복수 완료");
+  // ④ **방어 성공 — hero 확정 ④.** 시도 여력이 남아 있어도(0/2) 잠긴다: 갚을 것이 없다.
+  //    ⚠️ 이게 없으면 이미 이긴 상대에게 지목 원정 2판이 더 생긴다(V22 가 닫은 어뷰징 경로).
+  await expect(rows.nth(3).getByTestId("revenge-start")).toBeDisabled();
+  await expect(rows.nth(3).getByTestId("revenge-start")).toContainText("방어함");
 
   // 남은 횟수는 **원정과 공유**다(hero Q3-②) — 따로 세면 복수로 무한 재도전이 열린다.
   await expect(page.getByTestId("revenge-remaining")).toContainText("4");
@@ -152,8 +169,8 @@ test("그때 점수는 **내 관점**으로 그린다 — 뒤집으면 이긴 �
   const rows = page.getByTestId("revenge-row");
   // R1: myScore 1 : theirScore 3, 내가 막지 못했다.
   await expect(rows.nth(0).getByTestId("revenge-summary")).toContainText("1 : 3");
-  // R3: 내가 4:0 으로 막아냈다 — 무승부·승리도 침공으로 치는 것이 hero 확정이라 큐에 남는다.
-  await expect(rows.nth(2).getByTestId("revenge-summary")).toContainText("4 : 0");
+  // R4: 내가 4:0 으로 막아냈다 — 무승부·승리도 침공으로 치는 것이 hero 확정이라 큐에 남는다.
+  await expect(rows.nth(3).getByTestId("revenge-summary")).toContainText("4 : 0");
   await expect(rows.nth(1).getByTestId("revenge-summary")).toContainText("무승부");
 });
 

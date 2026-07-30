@@ -16,9 +16,9 @@ import styles from "./RevengeQueue.module.css";
  * ⚠️ **API 는 아직 서버에 없다**(#319 = W4). 없으면 이 구역은 **통째로 안 그린다** —
  * 스켈레톤이나 에러를 띄우면 유저는 앱이 고장 났다고 읽는다.
  */
-export function RevengeQueue({ enabled = true }: { enabled?: boolean }) {
+export function RevengeQueue() {
   const navigate = useNavigate();
-  const { data } = useAwayRevenge(enabled);
+  const { data } = useAwayRevenge();
   const start = useStartRevengeMatch();
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);

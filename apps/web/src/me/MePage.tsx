@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMe } from "../api/hooks";
 import { useToken } from "../auth/TokenContext";
@@ -32,6 +33,8 @@ export function MePage() {
   // 순위 2카드 (#286 W5, 설계 §3.7) — 서버가 없으면 각자 조용히 사라진다.
   const { data: awayRank } = useAwayRankings();
   const { data: leagueRank } = useLeagueRankings();
+  // RecordPanel 이 실제로 그려졌는지 — 그 답은 서버 응답에 달려 있어 자식만 안다.
+  const [hasRecordPanel, setHasRecordPanel] = useState(false);
 
   const header = (
     <div className={styles.headerRow}>
@@ -68,7 +71,10 @@ export function MePage() {
           </div>
         </section>
 
-        {rec && (
+        {/* ⚠️ **RecordPanel 이 뜨면 이 줄은 숨는다** — 둘 다 통산 전적을 말해서 "12승 3무 8패"가
+            화면에 두 번 나왔다(독립검증 MIN-4). 이 줄은 서버 신규 API 가 없을 때의 **폴백**이다:
+            `/api/me` 의 records 만으로도 최소한 통산은 보여준다. */}
+        {rec && !hasRecordPanel && (
           <section className={styles.record} data-testid="me-record">
             <b className={styles.recordLine}>
               {rec.wins}승 {rec.draws}무 {rec.losses}패
@@ -79,7 +85,7 @@ export function MePage() {
           </section>
         )}
 
-        <RecordPanel />
+        <RecordPanel onVisible={setHasRecordPanel} />
 
         <RankingBoard kind="league" data={leagueRank} title="🏅 리그 순위" />
         <RankingBoard kind="away" data={awayRank} title="🏅 원정 순위" />

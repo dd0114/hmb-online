@@ -186,9 +186,17 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
    * ⚠️ **서버가 준 값만 쓴다.** 일정표를 세어 추정하지 않는다 — 유저 경기만 세는지 전체를 세는지,
    * 연기된 라운드를 어떻게 치는지가 전부 서버 규칙이라 클라가 다시 세면 조용히 어긋난다
    * (#262 BL-1 과 같은 부류). 둘 중 하나라도 없으면 **줄을 그리지 않는다**.
+   *
+   * ⚠️ **그리고 지금은 실제로 안 그려진다 — 서버가 이 두 필드를 발행하지 않는다.**
+   * 실사(2026-07-31): `server-java` grep 0건 · `openapi-v2.yaml` 0건 · W4(#319) 신규 5종에도
+   * 없었다. **아무도 만들 예정이 아니었다** — 독립검증 MAJ-1 이 잡았고 #319 에 추가 요청했다.
+   * 같은 갭을 `game-logic.leagueModeHint`(W2, 이미 라이브)도 갖고 있다: 게임 탭의
+   * `N / 18 라운드` 줄도 한 번도 뜬 적이 없다.
+   *
+   * 즉 **부재가 지금의 정상 상태**이고, 서버가 발행하는 순간 켜진다. 생성 타입에 필드를 끼워
+   * 넣지 않는 이유: 스키마는 server-java 소관이라 여기서 넓히면 "있는 척"이 된다.
+   * 런타임 타입 가드가 진짜 방어선이다.
    */
-  // ⚠️ 생성 타입(openapi)에 아직 없는 필드다 — 스키마는 server-java 소관이라 여기서 넓히지 않고
-  // `game-logic.leagueModeHint` 와 **같은 방식**으로 읽는다(런타임 타입 가드가 진짜 방어선이다).
   const sr = season as unknown as { currentRound?: unknown; totalRounds?: unknown };
   const cur = typeof sr.currentRound === "number" ? sr.currentRound : null;
   const total = typeof sr.totalRounds === "number" ? sr.totalRounds : null;
@@ -245,11 +253,15 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
         )}
       </section>
 
+      {/* ⚠️ **랭킹보드는 그리드 밖이다.** `.dashGrid` 는 ≥1024px 에서 정확히 **2컬럼**이라
+          (LLD §7: 순위표·일정 병렬) 자식을 셋으로 만들면 랭킹1·순위표2·일정1 로 배치가 어긋나며
+          왼쪽 열에 큰 빈 공간이 생긴다(독립검증 MAJ-2, 1280px 실캡처). 모바일은 세로 스택이라
+          안 보이던 결함이다 — 그리드에 무언가를 더할 땐 **데스크탑 폭에서 눈으로** 확인해라. */}
+      <RankingBoard kind="league" data={rankings} title="🏅 전체 랭킹" />
+
       {/* ≥1024px: 순위표·일정 병렬(LLD §7). 모바일은 세로 스택. */}
       <div className={styles.dashGrid}>
-        <RankingBoard kind="league" data={rankings} title="🏅 전체 랭킹" />
-
-      <StandingsTable standings={season.standings} division={pickDivision(season)} />
+        <StandingsTable standings={season.standings} division={pickDivision(season)} />
         <Schedule fixtures={season.fixtures} names={names} />
       </div>
     </div>
