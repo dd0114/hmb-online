@@ -24,12 +24,19 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * 한꺼번에 바뀌므로, 이번 웨이브 스코프를 넘는 회귀 위험이 있다. 그래서 <b>admin 경로만</b> 먼저 닫는다.
  * 다른 도메인의 동작은 한 바이트도 바뀌지 않는다(이 advice 는 admin 컨트롤러에만 붙는다).
  *
- * <p><b>상태코드 정책</b>: 선재 이슈(SQLITE_BUSY→500, NoResourceFoundException→500)의 <b>상태코드는
- * 바꾸지 않는다</b>(PRD-v4 §H 오픈 체크리스트로 별도 처리). 여기서는 <b>노출만</b> 막는다 —
+ * <p><b>상태코드 정책</b>: 선재 이슈(SQLITE_BUSY→500)의 <b>상태코드는 바꾸지 않는다</b>
+ * (PRD-v4 §H 오픈 체크리스트로 별도 처리). 여기서는 <b>노출만</b> 막는다 —
  * 즉 500 은 500 그대로 두되 본문에서 내부 SQL·스키마를 지운다. 예외는 UNIQUE 위반 하나로,
  * 그건 "중복 요청"이라는 명확한 클라이언트 의미가 있어 409 로 올린다.
  *
  * <p>진단 정보를 잃지 않기 위해 원본 예외는 <b>서버 로그</b>에 남긴다(응답에는 안 나간다).
+ *
+ * <p>⚠️ <b>{@code NoResourceFoundException→500} 은 더 이상 선재 이슈가 아니다</b> — #335 가
+ * {@link online.hmb.common.GlobalExceptionHandler#handleNoRoute}에서 <b>404</b> 로 고쳤고, 그 매핑은
+ * 전역이라 admin 미매핑 경로도 404 다(실측). 이 문단이 예전 상태를 말하고 있어 갱신했다 —
+ * 여기 적힌 문장이 다음 사람의 판단 근거가 된다.
+ * (아직 남은 것: 405/415/400 이 여전히 500 이고 {@code ex.getMessage()} 가 그대로 실린다 — 비-admin
+ * 도메인은 열려 있다. 후속 이슈 소관.)
  */
 @RestControllerAdvice(assignableTypes = {AdminController.class, AdminCatalogController.class,
         AdminCharsController.class})

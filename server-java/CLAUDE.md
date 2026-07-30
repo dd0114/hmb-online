@@ -719,6 +719,13 @@ DTO 에 실으면 클라가 **서버가 하지 않는 전이를 화면에 단언
 포괄 핸들러에 걸려 **500** 이 됐다(실측 `GET /api/mails/{id}` → `500 "No static resource api/mails/…"`).
 `GlobalExceptionHandler.handleNoRoute` 가 404 `NOT_FOUND` 로 매핑한다.
 
+- **폭발 반경은 `/api` 가 아니라 전역이다**(독립검증 minor-5): `/` · `/favicon.ico` · `/index.html` ·
+  `/actuator/health` 도 500 → 404 가 됐다. 전부 바람직한 방향이고, springdoc 은
+  `api-docs.path=/internal/openapi-generated` + `swagger-ui.enabled=false` 라 실 서빙 경로가 없다.
+- ⚠️ **아직 남은 것**: 405(메서드 불일치)·415·400(깨진 JSON)은 **여전히 500** 이고 포괄 핸들러가
+  `ex.getMessage()` 를 그대로 싣는다(비-admin 도메인). admin 경로만 `AdminErrorHandler` 가 소독한다.
+  → 별도 이슈. "없는 경로는 404" 는 **절반의 배달**이라는 사실을 여기 적어 둔다.
+
 - **왜 위생이 아니라 계약인가**: 이 서버는 "없는 것"과 "못 보는 것"을 **구분 불가능**하게 만드는 데
   공을 들여 왔다(예약 공지 404 #297 · 남의 우편 404 #323). 그런데 정작 **오타는 500** 이라 다르게
   보였다 — 클라는 재시도·알림을 걸고, 5xx 대시보드엔 잡음이 섞인다.
@@ -728,7 +735,12 @@ DTO 에 실으면 클라가 **서버가 하지 않는 전이를 화면에 단언
 - 정적 리소스 디렉토리가 **아예 없는** 앱이라(자산은 전부 컨트롤러가 디스크에서 서빙) 이 매핑이
   삼킬 정상 경로가 없다. 나중에 `src/main/resources/static` 을 만들면 이 전제를 다시 봐라.
 - 계약 = `ApiRouteNotFoundTest`(미지 경로 3종 404 + 메시지 누출 0 + 인증 우선 + 도메인 404 무회귀).
-  변이체 킬 검증: 핸들러에서 `NoResourceFoundException` 을 빼면 죽는다.
+  변이체 킬 검증: 핸들러에서 `NoResourceFoundException` 제거 / 500 반환 / `ex.getMessage()` 노출 —
+  셋 다 죽는다.
+- ⚠️ **경로 반사 단언은 선행 슬래시를 뗀 형태로 걸어라.** 누출 문자열이 `"No static resource api/nope."`
+  (슬래시 없음)라 `doesNotContain("/api/nope")` 는 **아무것도 잡지 못했다** — 독립검증이 변이체로
+  실증했다(문구만 바꾸고 경로는 노출하는 구현이 통과). 프레임워크 문구는 버전마다 바뀌므로
+  **경로 반사**가 남는 축이다.
 
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).

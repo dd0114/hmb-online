@@ -2,7 +2,6 @@ package online.hmb;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,10 +47,16 @@ class ApiRouteNotFoundTest extends ApiTestBase {
             Map<String, Object> body = asMap(res);
             assertThat(body.get("code")).as(path).isEqualTo("NOT_FOUND");
             // 내부 구현·요청 경로를 되비추지 않는다.
+            //
+            // ⚠️ **경로는 선행 슬래시를 뗀 모양으로 새어 나온다** — 실제 누출 문자열이
+            // `"No static resource api/nope."` 라 `doesNotContain("/api/nope")` 는 **아무것도 잡지
+            // 못했다**(독립검증 minor-1 이 변이체로 실증: 문구만 바꾸고 경로는 그대로 노출하는
+            // 구현이 이 단언을 통과했다). 프레임워크 문구가 바뀌어도 남는 축은 **경로 반사**다.
             assertThat(String.valueOf(body.get("message")))
                     .as("예외 메시지를 그대로 흘리면 안 된다: " + res.body())
                     .doesNotContain("static resource")
-                    .doesNotContain(path);
+                    .doesNotContain(path)
+                    .doesNotContain(path.substring(1));
         }
     }
 
@@ -87,10 +92,5 @@ class ApiRouteNotFoundTest extends ApiTestBase {
         } catch (Exception e) {
             throw new IllegalStateException(e);
         }
-    }
-
-    @SuppressWarnings("unused")
-    private static Map<String, Object> unused() {
-        return new HashMap<>();
     }
 }
