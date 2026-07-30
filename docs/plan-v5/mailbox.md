@@ -274,3 +274,71 @@ W2 에서 **서버 구현과 같은 PR** 에 넣는다(계약이 코드보다 �
 - web: `npm --prefix apps/web run build`(타입 게이트) + 목킹 e2e 390px(뱃지·목록·수령·만료).
 - openapi 갱신 동반. 마이그레이션 번호는 merge-ready 시 main 배정.
 - 최종 = **독립검증**(module-verifier, 별도 컨텍스트) PASS 후 merge-ready 보고.
+
+---
+
+## 8. 운영 런북 — 무배포 발송 (W2 착지 후)
+
+> 이 절이 이 에픽의 **목적**이다: 패치 보상·이벤트 지급을 **재배포 없이** 보낸다.
+> 배포 좌표·터널 주소는 `docs/plan-v4/deploy-playbook.md`, 발송 이력은 `GET /api/admin/mails`.
+
+### 준비 — admin 토큰
+```bash
+API=https://<터널URL>            # 현재 주소는 infra/status.sh 가 알려준다
+TOKEN=$(curl -s -X POST "$API/api/auth/login" -H 'Content-Type: application/json' \
+  -d '{"provider":"local","nickname":"<admin닉>","password":"<admin비번>"}' | jq -r .token)
+```
+
+### 전체 유저에게 패치 보상
+```bash
+curl -s -X POST "$API/api/admin/mails" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -d '{
+    "audience": "ALL",
+    "title": "v3.02 패치 보상",
+    "body": "리그 승급 판정 오류로 불편을 드려 죄송합니다. 보상을 첨부하니 받아 주세요.",
+    "attachments": { "points": 5000, "gems": 10, "players": [{"playerId":"P001","count":1}] },
+    "expiresInDays": 14,
+    "reason": "v3.02 패치 보상 (#323)"
+  }' | jq
+```
+
+⚠️ **`Idempotency-Key` 를 항상 붙여라.** 없으면 서버가 채번하므로 그 요청은 재전송 보호를 받지
+못한다(응답의 `idempotencyKey` 로 그 사실이 관측된다). 응답 코드로 결과를 구분한다:
+**201 = 이번에 보냈다 · 200 = 재전송이라 아무것도 더 보내지 않았다 · 409 = 같은 키에 다른 내용**.
+
+### 특정 유저에게
+```bash
+# 유저 id 는 GET /api/admin/users?q=<닉> 로 찾는다
+-d '{"audience":"USERS","userIds":["u_…","u_…"], … }'
+```
+
+### 보낸 뒤 — 얼마나 받았나
+```bash
+curl -s "$API/api/admin/mails" -H "Authorization: Bearer $TOKEN" | jq '.campaigns[0]'
+# → targetCount / readCount / claimedCount
+curl -s "$API/api/admin/mails/history" -H "Authorization: Bearer $TOKEN" | jq   # 성공·실패 전부
+```
+
+### 잘못 보냈다 — 회수
+```bash
+curl -s -X POST "$API/api/admin/mails/<campaignId>/revoke" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"reason":"금액 오기입 — 재발송 예정"}' | jq
+```
+**미수령분만** 막힌다(그들에겐 410). 이미 받은 사람의 지갑은 건드리지 않는다 — 되감아야 하면
+`POST /api/admin/users/{id}/points` 로 개별 차감한다(그 경로에 잔액 하한·감사가 이미 있다).
+
+### 실패했을 때 읽는 법
+| 응답 | 뜻 | 할 일 |
+|---|---|---|
+| 400 `VALIDATION_ERROR` | 없는 유저·없는 카드·음수/상한 초과 첨부·사유 누락·**팬아웃 상한 초과** | 메시지대로 고친다. **아무것도 보내지지 않았다**(부분 발송 없음) |
+| 409 `CONFLICT` | 같은 멱등키에 다른 내용 | 내용을 바꿀 거면 **새 키**로. 조용히 삼키지 않는 것이 의도다 |
+| 403 | admin 아님 | 토큰 확인 |
+
+### 상한을 바꿔야 할 때 (무배포)
+`hmb.mail.*` 는 전부 env 로 뜬다 — `HMB_MAIL_FANOUTMAX` · `HMB_MAIL_MAXPOINTS` · `HMB_MAIL_MAXGEMS` ·
+`HMB_MAIL_MAXPLAYERKINDS` · `HMB_MAIL_LISTLIMIT`. 컨테이너 재기동만 필요하고 이미지는 그대로다.
+⚠️ 상한을 올리기 전에 **나눠 보내기**를 먼저 검토해라 — 상한은 오타 한 번의 폭을 막는 장치이고,
+전체 발송은 되돌릴 수 없는 인플레이션이다(회수는 미수령분만 막는다).
