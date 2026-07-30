@@ -19,6 +19,7 @@ import { createRng, hashSeed } from "./rng";
 import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
 import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
 import { glueBallToOwner, advanceBall, kickBall } from "./ball";
+import { loftHangTicks } from "./kick";
 import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
 import { decideBallOwnerChain } from "./chain";
 import { applyRunOrders, clearIntents, computeTeamPlan, gcIntents } from "./teamplan";
@@ -522,8 +523,15 @@ function stepTick(carry: Carry): void {
               kind: "pass",
               // #306: 지상/공중 종류. lofted 는 마찰이 거의 없어 박스까지 직선으로 간다.
               delivery: action.lofted ? "lofted" : "ground",
+              // #327: 체공은 **소비되는 예산**이다 — `advanceBall` 이 매 틱 1 씩 깎고 0 에서
+              // 착지한다(잔디 마찰 전환 + 바운드 감쇠). 등속 가정 ceil 이 아니라 감쇠를
+              // 누적해 계획 낙하점에 닿는 틱이라, 계획과 물리가 같은 지점을 가리킨다.
               hangTicks: action.lofted
-                ? Math.max(1, Math.ceil(fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY) / Math.max(1, action.speedFx)))
+                ? loftHangTicks(
+                    fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY),
+                    action.speedFx,
+                    config,
+                  )
                 : 0,
               target: action.receiver.id,
               fromSide: owner.side,
@@ -611,12 +619,10 @@ function stepTick(carry: Carry): void {
               kind: "pass",
               delivery: action.lofted ? "lofted" : "ground",
               hangTicks: action.lofted
-                ? Math.max(
-                    1,
-                    Math.ceil(
-                      fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY) /
-                        Math.max(1, action.speedFx),
-                    ),
+                ? loftHangTicks(
+                    fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY),
+                    action.speedFx,
+                    config,
                   )
                 : 0,
               fromSide: owner.side,

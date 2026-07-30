@@ -6,6 +6,7 @@ import { makeTacticalInput, makeSelectData } from "../fixtures";
 import { REALISM_SEEDS } from "./harness";
 import { createRng } from "../rng";
 import { aimErrorDeg, aimWithError, isLofted, passPowerFx } from "../kick";
+import { unownedRuns } from "./loft";
 
 /**
  * 공 물리 계약 — #313(H5 루즈볼) · #306(S6 공중볼) · #312(H1 세기·정확도).
@@ -85,13 +86,21 @@ describe("#313 H5 — 루즈볼은 굴러간다(비행 중 급정지)", () => {
     expect(avg, `무소유 급정지 ${avg.toFixed(1)}회/경기 — ${detail}`).toBeLessThanOrEqual(25);
   });
 
-  it("raw 급정지(hero 제보 지표) ≤ 260회/경기 (수정 전 524회)", () => {
-    // 래칫: 구 524 의 절반 이하를 박제한다. 잔여는 데드볼 배치 + "받고 그 자리에 서기"라
-    // 이 웨이브의 스코프 밖이고, 그 사실은 `unownedDeadStops` 계약이 분리해서 증명한다.
+  it("raw 급정지(hero 제보 지표) ≤ 320회/경기 (수정 전 524회)", () => {
+    // 래칫: 구 524 를 기준으로 한 **총량** 상한이다. 잔여는 데드볼 배치 + "받고 그 자리에
+    // 서기"라 이 웨이브의 스코프 밖이고, 그 사실은 `unownedDeadStops` 계약이 분리해서 증명한다.
+    //
+    // ── 재기준 260 → 320 (#279 0.26.0 합류) ─────────────────────────────────────────
+    // raw 를 분해하면 **데드볼 + 트래핑(받아서 서기) + 무소유**다. 0.26.0 에서 증가한 것은
+    // **트래핑**이고, 그건 이 웨이브가 소유를 회복시킨 것(공 소유 틱 25% → 60.1%)의 정의상
+    // 귀결이다 — 받는 사람이 늘면 "받고 서는" 틱도 는다.
+    // 이 웨이브가 책임지는 물리 지표는 **무소유 급정지**이고 그건 31.3 → 21.1 로 이미
+    // 해소됐다(위 계약, 상한 25 는 **그대로 둔다** — 그게 진짜 게이트다).
+    // 320 인 이유: 실측 308. 360(A조 제안)은 여유가 과해 회귀를 놓친다.
     const per = SEEDS.map((s) => ({ seed: s, n: deadStops(logOf(s)) }));
     const avg = per.reduce((t, p) => t + p.n, 0) / per.length;
     const detail = per.map((p) => `${p.seed}:${p.n}`).join(" ");
-    expect(avg, `raw 급정지 ${avg.toFixed(1)}회 — ${detail}`).toBeLessThanOrEqual(260);
+    expect(avg, `raw 급정지 ${avg.toFixed(1)}회 — ${detail}`).toBeLessThanOrEqual(320);
   });
 
   it("루즈볼 굴림 구간이 실제로 존재한다 — 소유 없는 저속 이동 틱", () => {
@@ -167,6 +176,43 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
   // → `it.fails` 해제. 이제 이 계약은 정방향 게이트다.
   it("헤더 슛 중 골도 0 이 아니다", () => {
     expect(countHeaders().headerGoals, "헤더 골 총 0건").toBeGreaterThan(0);
+  });
+
+  // ── #327 착지 계약 — "떠 있는 공은 반드시 떨어진다" ────────────────────────────────
+  // 이 두 계약이 **없었기 때문에** 0.26.0 합류에서 lofted 착지 전이 부재가 11개 실패
+  // 어디에도 안 걸렸다. 그때 유일하게 반응한 것이 스로인이었는데 그건 절대 게이트가 아니라
+  // 벤치 표에만 있었다. 그래서 여기에 **구조 불변식 + 절대 밴드** 둘 다 박제한다.
+
+  it("한 번의 접촉으로 공이 피치 대각선(≈125m)보다 멀리 가지 않는다", () => {
+    // 왜 이것이 옳은 자를 재는가: `friction.lofted = 0.92` 는 v0=16 m/tick 에서 감속 거리가
+    // **188m** 다. 105×68 피치의 대각선은 125m 라, 착지하지 않는 공은 어느 방향으로도
+    // 피치 안에 설 수 없다 — 즉 "구조적으로 100% 필드 밖"이다. 마찰값·볼륨 노브와 무관하게
+    // 참이어야 하는 성질이라, 튜닝이 움직여도 이 계약은 안 흔들린다.
+    const runs = SEEDS.flatMap((s) => unownedRuns(logOf(s), s));
+    const diagM = Math.hypot(105, 68);
+    const worst = runs.reduce((a, b) => (b.pathM > a.pathM ? b : a), runs[0]!);
+    expect(runs.length, "무소유 비행 구간 표본").toBeGreaterThan(100);
+    expect(
+      worst.pathM,
+      `최장 비행 ${worst.pathM.toFixed(1)}m (seed ${worst.seed} t${worst.startTick}, ${worst.ticks}틱) — 피치 대각선 ${diagM.toFixed(0)}m`,
+    ).toBeLessThanOrEqual(diagM);
+  });
+
+  it("스로인/팀 이 벤치 밴드(17–19) 안이다", () => {
+    // #327 의 두 번째 요구: 스로인에 **절대 게이트가 없어서** 18.09 → 30.05 회귀가
+    // 조용히 통과했다. 벤치 대조표(`bench.ts`)에만 있으면 스윕 때만 보인다.
+    let throwIns = 0;
+    for (const seed of SEEDS) {
+      throwIns += logOf(seed).events.filter(
+        (e) => e.type === "kickoff" && e.detail === "throw_in",
+      ).length;
+    }
+    const perTeam = throwIns / SEEDS.length / 2;
+    // eslint-disable-next-line no-console
+    console.log(`  [#327] 스로인 ${perTeam.toFixed(2)}/팀경기 (밴드 17–19)`);
+    // 8시드는 60시드보다 분산이 크므로 ±2 여유를 준다(60시드 판정값 18.54).
+    expect(perTeam, `스로인 ${perTeam.toFixed(2)}/팀경기`).toBeGreaterThanOrEqual(15);
+    expect(perTeam, `스로인 ${perTeam.toFixed(2)}/팀경기`).toBeLessThanOrEqual(21);
   });
 
   it("전달 종류가 실제로 갈린다 — 롱볼/크로스는 lofted, 숏패스는 ground", () => {

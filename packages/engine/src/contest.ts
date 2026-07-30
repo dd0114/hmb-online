@@ -8,7 +8,7 @@ import type { MatchEvent, TeamSide } from "@hmb/shared";
 import { fdist, fclamp, toFixed } from "./fixedmath";
 import { kickBall, nearestOnSweep } from "./ball";
 import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
-import { deliverySpeedFx, shotPowerFx } from "./kick";
+import { deliverySpeedFx, loftHangTicks, shotPowerFx } from "./kick";
 import { xgAtPoint } from "./decision";
 import { freeKickWallCount } from "./setpiece";
 
@@ -255,7 +255,8 @@ export function launchCornerCross(
     kind: "pass",
     // #306: 코너 크로스는 **띄운 공**이다 — 도착 순간이 공중 경합(헤딩)이 된다.
     delivery: "lofted",
-    hangTicks: Math.max(1, Math.ceil(fdist(state.ball.posFx.x, state.ball.posFx.y, t.x, t.y) / Math.max(1, crossSpeed))),
+    // #327: 체공은 이제 **소비되는 예산**이다(등속 가정 ceil 이 아니라 감쇠를 누적한 실제 틱).
+    hangTicks: loftHangTicks(fdist(state.ball.posFx.x, state.ball.posFx.y, t.x, t.y), crossSpeed, config),
     target: rec ? rec.id : undefined,
     fromSide: taker.side,
   });
@@ -745,9 +746,10 @@ function resolveAerial(
  * 즉 **판정의 내용과 순서는 그대로 두고 "언제부터 언제까지"만 기하에서 물리로 옮겼다.**
  * 그래서 `passBase`/페널티가 성공률의 실제 노브라는 성질(E1)이 유지된다.
  *
- * 띄운 공(#306 `delivery === "lofted"`)은 **착지하는 틱**(계획 낙하점 통과)에 헤딩 경합으로 간다.
- * 착지 후에는 `delivery` 를 `"ground"` 로 내려 마찰이 잔디 마찰로 바뀌고(물리) 헤딩 경합이
- * 두 번 열리지 않는다(판정).
+ * 띄운 공(#306 `delivery === "lofted"`)은 **착지하는 틱**에 헤딩 경합으로 간다. 그 틱이
+ * 언제인지는 물리가 정한다(#327 `advanceBall` 의 체공 예산 소진 = `sweep.landed`) —
+ * 구버전은 "계획 낙하점 통과"로 대신했는데, 조준이 피치 밖인 공에는 그 시점이 오지 않아
+ * 헤딩 경합도 마찰 전환도 영영 일어나지 않았다.
  */
 export function resolveArrival(
   state: SimState,
@@ -756,7 +758,7 @@ export function resolveArrival(
   pitch: Pitch,
   tick: number,
   minute: number,
-  sweep: { fromX: number; fromY: number; passedPlan: boolean; stopped: boolean },
+  sweep: { fromX: number; fromY: number; passedPlan: boolean; stopped: boolean; landed: boolean },
 ): MatchEvent[] {
   const f = state.ball.flight;
   if (!f) return [];
@@ -770,15 +772,19 @@ export function resolveArrival(
   // 피치보다 길다). 그 공은 `passedPlan` 이 영원히 false 라 접촉 판정이 한 번도 안 열리고,
   // 사람이 0.5m 옆에 서 있어도 아무도 줍지 못한 채 경기가 죽는다(실측: 무소유 2569틱 정지).
   // **멈춘 공은 계획과 무관하게 루즈볼이다** — 이게 속도 기반의 두 번째 트리거(주석 ②)다.
-  const landed = f.kind === "loose" || sweep.passedPlan || sweep.stopped;
+  //
+  // #327: `sweep.landed`(체공 예산 소진 = 잔디에 닿은 틱)도 트리거다. 그 전까지 이 판정은
+  // "계획 낙하점을 지났나"만 봤는데, 조준이 피치 밖이거나 도달 불가면 그 시점이 **오지 않아서**
+  // 떠 있는 공이 끝까지 공기저항만 받으며 필드를 가로질러 나갔다.
+  const landed = f.kind === "loose" || sweep.passedPlan || sweep.stopped || sweep.landed;
   if (!landed) return [];
 
   // 착지 틱: 띄운 공이면 헤딩 경합이 먼저다(#306). 경합이 성립하면 거기서 끝난다.
-  if (f.delivery === "lofted" && f.kind === "pass") {
+  // 트리거가 `sweep.landed` 인 이유(#327): 착지는 **물리**가 정하고(`advanceBall` 이 체공
+  // 예산을 소비하며 그 틱에 `delivery` 를 ground 로 내리고 바운드 감쇠를 건다), 여기서는
+  // 그 신호를 받아 **판정**만 한다. 이 틱에만 참이므로 헤딩 창이 두 번 열리지 않는다.
+  if (sweep.landed && f.kind === "pass") {
     const aerial = resolveAerial(state, rng, config, pitch, tick, minute);
-    // 착지했으니 이제 잔디 위다 — 마찰이 lofted 에서 ground 로 바뀌고 헤딩 창이 닫힌다
-    // (안 내리면 매 틱 헤딩 경합이 다시 열려 계획 확률을 기하가 덮는다).
-    f.delivery = "ground";
     if (aerial) return aerial;
   }
   // 계획된 패스가 낙하점을 지났다 = 이제 **루즈볼**이다. `decideOffBall` 이 이 플래그로 쟁탈을

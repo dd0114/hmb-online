@@ -69,6 +69,15 @@ export const showcaseConfig = {
       yellowProb: 0.6,
     },
   },
+  chain: {
+    ...defaultEngineConfig.chain,
+    // #327: 리얼 `goalValue` 가 11 → 9.4 로 재보정되며(lofted 착지 전이로 인플레이가 늘어
+    // 같은 값에서 슛이 16.79 로 넘쳤다) 그 값이 여기로도 흘러 **쇼케이스 골이 함께 줄었다**
+    // (perceptibility "골 1개당 관전" 40초 → 90초 = 6/6 → 5/6).
+    // 쇼케이스는 리얼 벤치가 아니라 **관전 재미**를 맞추는 config 다(§2-6) — 슛/골을 리얼보다
+    // 높게 두는 것이 이 파일의 목적이므로, 리얼 재보정을 따라 내려갈 이유가 없다.
+    goalValue: 11,
+  },
   variety: {
     ...defaultEngineConfig.variety,
     dribbleChainProb: 0.8,

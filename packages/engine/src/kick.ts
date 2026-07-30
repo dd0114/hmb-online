@@ -144,6 +144,37 @@ export function deliverySpeedFx(speedFx: number, lofted: boolean, config: Engine
 }
 
 /**
+ * **체공 틱수**(#327) — 이 세기로 띄운 공이 계획 낙하점에 닿기까지 실제로 몇 틱 나는가.
+ * `advanceBall` 이 매 틱 1씩 소비하고 0 이 되는 틱에 **착지**한다(그때 잔디 마찰로 넘어간다).
+ *
+ * ## 왜 `ceil(거리/속도)` 가 아닌가 — 이게 #327 의 절반이다
+ * 구 계산은 등속을 가정한 `ceil(dist/speed)` 였고, 그건 **아무도 읽지 않는 장식값**이었다
+ * (필드에 실려만 다녔다). 실제 공은 매 틱 `friction.lofted` 로 감쇠하므로 같은 틱수에
+ * 등속 가정보다 **덜** 간다 — 그 값을 그대로 착지 시점으로 쓰면 공이 낙하점에 못 미친 채
+ * 떨어져 패스 계획 창(`passOutcomeAuthoritative`)이 일찍 닫힌다. 그래서 여기서는 감쇠를
+ * **그대로 누적해** 계획 낙하점을 넘어서는 틱을 찾는다 = 착지 = 낙하점(계획과 물리가 일치).
+ *
+ * 도달 불가(조준이 피치 밖 / 감속 거리보다 먼 계획)면 `ball.loftMaxAirTicks` 에서 잘린다 —
+ * 그 상한이 없으면 공기저항만 받는 공(감속 거리 150m+)이 필드를 가로질러 날아 나간다.
+ *
+ * 결정론: 정수 곱/반올림만. 루프 상한은 config 상수라 틱수가 입력에 따라 발산하지 않는다.
+ */
+export function loftHangTicks(distFx: number, speedFx: number, config: EngineConfig): number {
+  const maxT = Math.max(1, Math.floor(config.ball.loftMaxAirTicks));
+  const k = config.ball.friction.lofted;
+  const stopFx = toFixed(config.ball.stopSpeedM, config.fixedScale);
+  let v = Math.max(1, Math.round(speedFx));
+  let travelled = 0;
+  for (let t = 1; t <= maxT; t++) {
+    travelled += v;
+    if (travelled >= distFx) return t;
+    v = Math.round(v * k);
+    if (v < stopFx) return t; // 낙하점 전에 속도가 다했다 — 거기가 착지점이다.
+  }
+  return maxT;
+}
+
+/**
  * **오버힛으로 라인 밖**(fail_out) 도달점 — 의도 방향 그대로 피치 밖까지 지나간 지점.
  *
  * 구버전은 "수신자에서 가장 가까운 경계 밖을 **정조준**" 했다. 그건 조준 오차가 아니라

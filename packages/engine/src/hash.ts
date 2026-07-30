@@ -63,6 +63,9 @@ export function hashState(state: SimState): string {
     // (로드맵 §5-6 · #154 와 같은 무음 desync 함정). `speed` 는 파생값이라 이걸 대신 못 한다.
     h = mix(h, fl.vxFx | 0);
     h = mix(h, fl.vyFx | 0);
+    // #327: `hangTicks` 는 이제 **소비되는 체공 예산**이다(장식값이 아니라 착지 시점의 권위).
+    // 유실되면 재개 시 떠 있던 공이 다른 틱에 떨어진다 — 마찰이 갈리고 헤딩 경합 시점도 갈린다.
+    h = mix(h, fl.hangTicks ?? 0);
   }
   // #279 S1: 해시에 **없는** 상태가 유실되면 그 틱은 통과하고 다음 틱부터 갈라진다(무음 desync).
   // 그래서 재개로 관통하는 상태는 **전부** 흡수한다. 비용은 mix 몇 줄이고, 얻는 것은

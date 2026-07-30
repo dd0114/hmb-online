@@ -47,6 +47,14 @@ export interface AdvanceResult {
   passedPlan: boolean;
   /** 속도가 정지 임계 아래로 떨어져 이 틱에 멈췄다(자연 정지). */
   stopped: boolean;
+  /**
+   * **이 틱에 착지했다**(#327) — 떠 있던 공(`delivery === "lofted"`)의 체공 예산(`hangTicks`)이
+   * 다해 잔디에 닿았다. 이 틱에만 true 다(전이 신호).
+   *
+   * 소비자는 `resolveArrival` 하나다: 공중 경합(헤딩)이 열리는 순간이자, 그 뒤로는 지상 공이
+   * 되어 경합 창이 닫히는 순간이다. 물리(마찰 전환·바운드 감쇠)는 `advanceBall` 이 이미 했다.
+   */
+  landed: boolean;
 }
 
 /** 공이 owner 에게 붙어 이동(드리블/홀드). */
@@ -94,6 +102,10 @@ export function kickBall(
  *  - `shot`   강타. 골문까지 사실상 등속으로 **꽂힌다**(hero: "직선으로 꽂혀야").
  *  - lofted   떠 있는 공은 잔디에 닿지 않는다 — 공기저항만이라 거의 안 줄어든다.
  *  - ground   잔디 구름 마찰. 루즈볼이 굴러가다 서는 것은 **여기 하나로만** 결정된다.
+ *
+ * ⚠️ `f.delivery` 는 **불변이 아니다**(#327). 착지하는 틱에 `advanceBall` 이 `"ground"` 로
+ * 내린다 — 그 전이가 없던 동안 떠 있는 공은 경기가 끝날 때까지 공기저항만 받았다.
+ * lofted 를 낮춰 그걸 덮으면 안 된다(= "공중의 공이 틱당 19% 감속"이라는 거짓 물리).
  *
  * 하드코딩 금지(§2-4) — 세 값 모두 `EngineConfig.ball.friction`.
  */
@@ -181,12 +193,22 @@ function passedPlanPoint(f: BallFlight, x: number, y: number): boolean {
  * 슛만 예외가 하나 있다: **골문은 물리적 벽**이라 계획 낙하점(골 마우스)을 지나는 틱에
  * 공을 그 지점에 세운다. 이건 "목표 근처에서 감속"이 아니라 **도달 즉시 판정**이고,
  * 그러지 않으면 공이 골라인을 뚫고 나가 `boundaryCross` 가 슛을 스로인/골킥으로 오분류한다.
+ *
+ * 4) **착지**(#327): 떠 있는 공은 3) 뒤에 체공 예산(`hangTicks`)을 1 소비하고, 0 이 되면
+ *    잔디에 닿는다 — 바운드로 수평 속도를 잃고(`ball.loftLandingKeep`) 그때부터 구름 마찰이다.
  */
 export function advanceBall(ball: Ball, config: EngineConfig, pitch: Pitch): AdvanceResult {
   const f = ball.flight;
   const fromX = ball.posFx.x;
   const fromY = ball.posFx.y;
-  const idle: AdvanceResult = { out: null, fromX, fromY, passedPlan: false, stopped: false };
+  const idle: AdvanceResult = {
+    out: null,
+    fromX,
+    fromY,
+    passedPlan: false,
+    stopped: false,
+    landed: false,
+  };
   if (!f) return idle;
 
   const nx = fromX + f.vxFx;
@@ -196,7 +218,7 @@ export function advanceBall(ball: Ball, config: EngineConfig, pitch: Pitch): Adv
   if (f.kind === "shot" && passedPlanPoint(f, nx, ny)) {
     ball.posFx.x = f.toX;
     ball.posFx.y = f.toY;
-    return { out: null, fromX, fromY, passedPlan: true, stopped: false };
+    return { out: null, fromX, fromY, passedPlan: true, stopped: false, landed: false };
   }
 
   const cross = boundaryCross(fromX, fromY, nx, ny, pitch);
@@ -206,7 +228,14 @@ export function advanceBall(ball: Ball, config: EngineConfig, pitch: Pitch): Adv
     f.vxFx = 0;
     f.vyFx = 0;
     f.speed = 0;
-    return { out: cross, fromX, fromY, passedPlan: passedPlanPoint(f, cross.x, cross.y), stopped: true };
+    return {
+      out: cross,
+      fromX,
+      fromY,
+      passedPlan: passedPlanPoint(f, cross.x, cross.y),
+      stopped: true,
+      landed: false,
+    };
   }
 
   ball.posFx.x = nx;
@@ -217,8 +246,9 @@ export function advanceBall(ball: Ball, config: EngineConfig, pitch: Pitch): Adv
   f.vxFx = Math.round(f.vxFx * k);
   f.vyFx = Math.round(f.vyFx * k);
   f.speed = isqrt(f.vxFx * f.vxFx + f.vyFx * f.vyFx);
+  const stopFx = toFixed(config.ball.stopSpeedM, config.fixedScale);
   let stopped = false;
-  if (f.speed < toFixed(config.ball.stopSpeedM, config.fixedScale)) {
+  if (f.speed < stopFx) {
     // 자연 정지. "미리 정한 자리"가 아니라 속도가 다한 자리다.
     f.vxFx = 0;
     f.vyFx = 0;
@@ -226,7 +256,39 @@ export function advanceBall(ball: Ball, config: EngineConfig, pitch: Pitch): Adv
     stopped = true;
   }
 
-  return { out: null, fromX, fromY, passedPlan: passedPlanPoint(f, nx, ny), stopped };
+  // --- 착지(#327): 체공 예산을 **실제로 소비한다**. ---
+  //
+  // 이 블록이 없던 동안 `frictionOf` 가 보는 `f.delivery` 는 차는 순간 정해진 뒤 **영원히
+  // lofted** 였다 — 떠 있는 공은 공기저항(0.92)만 받으며 계획 낙하점을 지나 그대로 굴러
+  // 라인 밖으로 나갔다(스로인 18.09 → 30.05). 구 모델(`stepToward`)에는 오버슛이 구조적으로
+  // 0 이었기 때문에(목표에서 정확히 섰다) 이 결손이 드러나지 않았다.
+  //
+  // 착지 시점은 `hangTicks`(= `kick.loftHangTicks`, 감쇠를 누적해 계획 낙하점에 닿는 틱)이다.
+  // 즉 **계획한 곳에 떨어진다** — 계획 창(passOutcome) 과 물리가 같은 지점을 가리킨다.
+  // 착지 순간 바운드로 수평 속도를 잃고(`loftLandingKeep`) 그 뒤로는 잔디 마찰이다.
+  let landed = false;
+  if (f.kind !== "shot" && f.delivery === "lofted") {
+    // 방어: 체공 예산 없이 떠 있는 공(구 저장 상태·미설정 경로)은 이 틱에 바로 착지시킨다.
+    // 안 그러면 예산 0 이 곧 "영원히 공중"이 되어 이 버그가 그대로 남는다.
+    const rest = (f.hangTicks ?? 0) - 1;
+    f.hangTicks = rest > 0 ? rest : 0;
+    if (rest <= 0) {
+      landed = true;
+      f.delivery = "ground";
+      const keep = config.ball.loftLandingKeep;
+      f.vxFx = Math.round(f.vxFx * keep);
+      f.vyFx = Math.round(f.vyFx * keep);
+      f.speed = isqrt(f.vxFx * f.vxFx + f.vyFx * f.vyFx);
+      if (f.speed < stopFx) {
+        f.vxFx = 0;
+        f.vyFx = 0;
+        f.speed = 0;
+        stopped = true;
+      }
+    }
+  }
+
+  return { out: null, fromX, fromY, passedPlan: passedPlanPoint(f, nx, ny), stopped, landed };
 }
 
 /**
