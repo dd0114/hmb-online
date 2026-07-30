@@ -67,6 +67,14 @@ const SimPlayerSchema = z.object({
 const BallFlightSchema = z.object({
   toX: z.number(),
   toY: z.number(),
+  /**
+   * #320: 공 운동의 **권위**는 속도 벡터다(`toX/toY` 는 계획 낙하점 참고값으로 강등됐다).
+   * 이 두 줄이 없으면 zod 가 미선언 키를 **조용히 버려서**(#154 동형 함정) 하프 경계에 비행
+   * 중인 공이 재개 시 속도 0 이 된다 — 공이 허공에 서고 그때부터 통짜와 갈라진다(무음 desync).
+   * `speed` 는 `|v|` 의 파생 캐시라 이 둘을 대신할 수 없다(방향이 없다).
+   */
+  vxFx: z.number(),
+  vyFx: z.number(),
   speed: z.number(),
   kind: z.enum(["pass", "shot", "loose"]),
   target: z.string().optional(),

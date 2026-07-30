@@ -18,7 +18,7 @@ import { defaultEngineConfig } from "./config";
 import { createRng, hashSeed } from "./rng";
 import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
 import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
-import { glueBallToOwner, advanceBall } from "./ball";
+import { glueBallToOwner, advanceBall, kickBall } from "./ball";
 import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
 import { decideBallOwnerChain } from "./chain";
 import { computeTeamPlan } from "./teamplan";
@@ -319,15 +319,21 @@ function stepTick(carry: Carry): void {
         const taker = ballOwnerOf(state) ?? null;
         if (taker) {
           const g = attackGoal(pitch, taker.side);
-          state.ball.flight = {
-            toX: g.x,
-            toY: g.y,
-            speed: toFixed(config.contest.shotBallSpeed, config.fixedScale),
-            kind: "shot",
-            target: taker.id,
-            fromSide: taker.side,
-            xg: config.rules.penalty.xg,
-          };
+          // #320: 페널티도 **골문 방향 속도**로 찬다(구: 골문을 목표로 보간).
+          state.ball.flight = kickBall(
+            state.ball.posFx.x,
+            state.ball.posFx.y,
+            g.x,
+            g.y,
+            toFixed(config.contest.shotBallSpeed, config.fixedScale),
+            {
+              kind: "shot",
+              delivery: "ground",
+              target: taker.id,
+              fromSide: taker.side,
+              xg: config.rules.penalty.xg,
+            },
+          );
           state.ball.owner = null;
           state.ball.ownerSide = null;
           carry.events.push({
@@ -439,17 +445,22 @@ function stepTick(carry: Carry): void {
       if (liveZone && action.kind !== "hold") state.setPiece = null;
       switch (action.kind) {
         case "shoot": {
-          state.ball.flight = {
-            // #312: 세기는 이제 **행동이 들고 온다**(구버전: config 상수 대입).
-            toX: action.toX,
-            toY: action.toY,
-            speed: action.speedFx,
-            kind: "shot",
-            delivery: "ground",
-            target: owner.id,
-            fromSide: owner.side,
-            xg: action.xg,
-          };
+          // #312: 세기는 **행동이 들고 온다**. #320: 그 세기를 조준 **방향**에 실어 속도로 준다 —
+          // 슛은 골문까지 거의 등속으로 꽂히고(friction.shot 0.96) 목표 근처에서 감속하지 않는다.
+          state.ball.flight = kickBall(
+            state.ball.posFx.x,
+            state.ball.posFx.y,
+            action.toX,
+            action.toY,
+            action.speedFx,
+            {
+              kind: "shot",
+              delivery: "ground",
+              target: owner.id,
+              fromSide: owner.side,
+              xg: action.xg,
+            },
+          );
           shotLaunchedThisTick = true;
           owner.dribbleStreak = 0;
           state.ball.owner = null;
@@ -492,25 +503,31 @@ function stepTick(carry: Carry): void {
             );
             break;
           }
-          state.ball.flight = {
-            toX: action.toX,
-            toY: action.toY,
-            // #312: 상수 `ball.passSpeed` 대입 → 선수가 정한 세기. #306: 지상/공중 종류.
-            speed: action.speedFx,
-            kind: "pass",
-            delivery: action.lofted ? "lofted" : "ground",
-            hangTicks: action.lofted
-              ? Math.max(1, Math.ceil(fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY) / Math.max(1, action.speedFx)))
-              : 0,
-            target: action.receiver.id,
-            fromSide: owner.side,
-            passOutcome: action.outcome,
-            long: action.long,
-            // #181: 이 공을 결국 잡을 사람 — 리드패스로 조준해 공과 만난다(순간이동 제거).
-            claimant: action.claimant ? action.claimant.id : undefined,
-            fromX: state.ball.posFx.x,
-            fromY: state.ball.posFx.y,
-          };
+          // #320: 조준점(`action.toX/toY`)은 **방향과 계획 낙하점**만 준다 — 공의 운동은
+          // `방향 × 세기`의 속도 벡터다. `toX/toY` 는 계획 창(passOutcome)의 종료 시점을
+          // 재는 기준으로만 실려 간다(`ball.ts:passedPlanPoint`).
+          state.ball.flight = kickBall(
+            state.ball.posFx.x,
+            state.ball.posFx.y,
+            action.toX,
+            action.toY,
+            // #312: 상수 `ball.passSpeed` 대입 → 선수가 정한 세기.
+            action.speedFx,
+            {
+              kind: "pass",
+              // #306: 지상/공중 종류. lofted 는 마찰이 거의 없어 박스까지 직선으로 간다.
+              delivery: action.lofted ? "lofted" : "ground",
+              hangTicks: action.lofted
+                ? Math.max(1, Math.ceil(fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY) / Math.max(1, action.speedFx)))
+                : 0,
+              target: action.receiver.id,
+              fromSide: owner.side,
+              passOutcome: action.outcome,
+              long: action.long,
+              // #181: 이 공을 결국 잡을 사람 — 리드패스로 조준해 공과 만난다(순간이동 제거).
+              claimant: action.claimant ? action.claimant.id : undefined,
+            },
+          );
           owner.dribbleStreak = 0;
           state.ball.owner = null;
           state.ball.ownerSide = null;
@@ -554,22 +571,39 @@ function stepTick(carry: Carry): void {
   if (state.ball.flight && shotLaunchedThisTick && state.ball.flight.kind === "shot") {
     // 막 쏜 틱: 공은 슈터 위치 그대로(비행은 다음 틱부터). 스냅샷에 슈터 발밑이 찍힌다.
   } else if (state.ball.flight) {
+    // #320: 공은 속도 벡터로 전진하고, 판정은 그 결과를 읽는다(구: "목표 도달 = 도착").
+    const wasShot = state.ball.flight.kind === "shot";
     const res = advanceBall(state.ball, config, pitch);
-    if (res.out) {
-      resolveOut(carry, res.out, state.tick, minute);
-    } else if (res.arrived) {
-      if (state.ball.flight.kind === "shot") {
+    if (wasShot) {
+      // 슛: 골문(계획 낙하점)에 닿는 틱에 판정. 골문은 물리적 벽이라 `out` 으로 새지 않는다.
+      if (res.passedPlan) {
         for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) {
           carry.events.push(e);
         }
-      } else {
-        for (const e of resolveArrival(state, rng, config, pitch, state.tick, minute)) {
+      } else if (res.out) {
+        // 조준이 라인 쪽으로 크게 빗나간 슛 — 세트피스는 resolveShot 이 만들지 못했으므로
+        // 여기서 일반 아웃(스로인/골킥/코너)으로 처리한다.
+        resolveOut(carry, res.out, state.tick, minute);
+      } else if (res.stopped) {
+        // 방어: 슛이 골문 전에 마찰로 서면(현 config 에선 기하학적으로 불가 — 감속 거리 200m+)
+        // 그 자리에서 해소한다. 안 그러면 비행이 영원히 남아 하프가 죽는다.
+        for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) {
           carry.events.push(e);
         }
       }
+    } else if (res.out) {
+      resolveOut(carry, res.out, state.tick, minute);
     } else {
-      for (const e of tryIntercept(state, rng, config, state.tick, minute)) {
-        carry.events.push(e);
+      // 패스/루즈볼: **매 틱** 접촉 판정. 계획 낙하점 전이면 `resolveArrival` 이 스스로 빠지고
+      // (계획 창 보존, contest.ts 주석), 그 구간은 예전과 동일하게 확률 인터셉트만 작동한다.
+      const evs = resolveArrival(state, rng, config, pitch, state.tick, minute, res);
+      for (const e of evs) carry.events.push(e);
+      // 아직 계획 창 안에서 날아가는 패스만 인터셉트 롤 대상이다(`tryIntercept` 가 kind 로 거른다 —
+      // 낙하점을 지나면 `resolveArrival` 이 kind 를 "loose" 로 내려 롤이 자동으로 멈춘다).
+      if (evs.length === 0) {
+        for (const e of tryIntercept(state, rng, config, state.tick, minute)) {
+          carry.events.push(e);
+        }
       }
     }
   } else if (curOwnerId && state.setPiece) {
@@ -631,13 +665,19 @@ function settleInFlightShot(carry: Carry): void {
   for (let i = 0; i < maxSteps; i++) {
     if (state.ball.flight?.kind !== "shot") break;
     const res = advanceBall(state.ball, config, pitch);
+    if (res.passedPlan) {
+      for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) carry.events.push(e);
+      break;
+    }
     if (res.out) {
-      // 슛은 목표가 골문이라 여기 오기 어렵다(advanceBall 주석). 와도 하프가 끝났으므로
+      // 슛은 골문(계획 낙하점)에서 먼저 해소되므로 여기 오기 어렵다. 와도 하프가 끝났으므로
       // 재시작 세트피스를 만들지 않고 비행만 정리한다.
       state.ball.flight = null;
       break;
     }
-    if (res.arrived) {
+    // #320: 마찰로 슛이 골문 앞에 서면(아주 약한 슛) 더 굴러도 판정이 안 나온다 — 무음 증발을
+    // 막기 위해 정지한 순간 그 자리에서 해소한다(슛 결과 완결 계약 #178).
+    if (res.stopped) {
       for (const e of resolveShot(state, rng, config, pitch, state.tick, minute)) carry.events.push(e);
       break;
     }

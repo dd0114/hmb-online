@@ -58,6 +58,11 @@ export function hashState(state: SimState): string {
     h = mix(h, fl.speed | 0);
     h = mix(h, fl.toX | 0);
     h = mix(h, fl.toY | 0);
+    // #320: **속도 벡터가 운동의 권위**다 — 재개로 관통하는 상태 중 가장 중요한 두 값이다.
+    // 해시에 없으면 유실돼도 그 틱은 통과하고 다음 틱부터 공이 다른 방향으로 날아간다
+    // (로드맵 §5-6 · #154 와 같은 무음 desync 함정). `speed` 는 파생값이라 이걸 대신 못 한다.
+    h = mix(h, fl.vxFx | 0);
+    h = mix(h, fl.vyFx | 0);
   }
   // #279 S1: 해시에 **없는** 상태가 유실되면 그 틱은 통과하고 다음 틱부터 갈라진다(무음 desync).
   // 그래서 재개로 관통하는 상태는 **전부** 흡수한다. 비용은 mix 몇 줄이고, 얻는 것은

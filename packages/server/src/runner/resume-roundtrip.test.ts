@@ -65,12 +65,16 @@ describe("resumeState 왕복 동등성 — 전 필드 합성 상태 (드리프�
       home: { lineX: 51_234, blockDepth: 0.75 },
       away: { lineX: 12_345, blockDepth: 0.25 },
     };
-    // BallFlight: #181 산물(claimant·waited·fromX·fromY) + E2(long) 까지 전부.
+    // BallFlight: #181 산물(claimant·waited·fromX·fromY) + E2(long) + #320 속도 벡터까지 전부.
     state.ball.owner = null;
     state.ball.ownerSide = null;
     state.ball.flight = {
       toX: 90_000,
       toY: 30_000,
+      // #320: 공 운동의 **권위**. `toX/toY` 는 계획 낙하점(참고값)으로 강등됐으므로 이 두 값이
+      // 유실되면 재개된 공은 방향을 잃는다 — 왕복 등가성이 지켜야 할 첫 번째 필드다.
+      vxFx: 4_600,
+      vyFx: -1_900,
       speed: 5_000,
       kind: "pass",
       target: "H9",
