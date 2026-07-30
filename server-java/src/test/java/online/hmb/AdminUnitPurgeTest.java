@@ -112,26 +112,101 @@ class AdminUnitPurgeTest extends ApiTestBase {
     }
 
     /**
-     * 지운 뒤에도 <b>그 유닛의 이력은 남는다</b> — {@code admin_catalog_audit.player_id} 에 FK 가
-     * 없는 것이 V14 의 의도였고("삭제·미존재 유닛의 이력도 보존해야 한다"), 회수 기록 자체는
-     * V18 범용 원장에 남는다.
+     * 지운 뒤에도 <b>그 유닛의 이력은 남고, 회수도 같은 원장에 있다</b>(hero 지시 2026-07-30).
+     *
+     * <p>처음엔 회수만 V18 범용 원장에 남겼다 — 이 표의 {@code action} CHECK 를 넓히는 테이블
+     * 재작성이 부담스러웠기 때문이다. 그러면 <b>한 유닛의 이력이 두 곳으로 갈리고</b> 회수는
+     * 하필 유닛 감사 조회에 안 나오는 유일한 액션이 된다. V32 가 CHECK 를 넓혀 합쳤다.
+     *
+     * <p>행이 남을 수 있는 근거는 {@code player_id} 에 FK 가 <b>없다</b>는 것이고, V14 가
+     * "삭제·미존재 유닛의 이력도 보존해야 한다"며 일부러 그렇게 만들었다.
      */
     @Test
     @SuppressWarnings("rawtypes")
-    void historySurvivesThePurge() {
+    void historySurvivesThePurgeInTheSameLedger() {
         String admin = adminToken();
         String id = createUnit(admin, "이력보존");
         authPost("/api/admin/units/" + id + "/purge", admin, Map.of("reason", "회수"), Map.class);
 
-        int catalogRows = jdbcClient.sql("SELECT COUNT(*) FROM admin_catalog_audit WHERE player_id = ?")
-                .params(id).query(Integer.class).single();
-        int opsRows = jdbcClient.sql(
-                        "SELECT COUNT(*) FROM admin_ops_audit WHERE action = ? AND detail_json LIKE ?")
-                .params(AdminCatalogService.ACTION_PURGE, "%" + id + "%")
-                .query(Integer.class).single();
+        List<String> actions = jdbcClient.sql(
+                        "SELECT action FROM admin_catalog_audit WHERE player_id = ? ORDER BY created_at")
+                .params(id).query(String.class).list();
 
-        assertThat(catalogRows).as("생성 이력은 그대로").isGreaterThan(0);
-        assertThat(opsRows).as("회수 기록도 원장에 남는다").isEqualTo(1);
+        assertThat(actions).as("생성과 회수가 **한 원장**에 나란히 있다")
+                .contains(AdminCatalogService.ACTION_CREATE, AdminCatalogService.ACTION_PURGE);
+        // 회수 행은 무엇을 지웠는지 스냅샷으로 갖고 있다 — "이름이 뭐였나"에 답할 수 있어야 한다.
+        String before = jdbcClient.sql(
+                        "SELECT before_json FROM admin_catalog_audit WHERE player_id = ? AND action = ?")
+                .params(id, AdminCatalogService.ACTION_PURGE).query(String.class).single();
+        assertThat(before).as("지운 유닛의 스냅샷").contains("이력보존");
+
+        // ⚠️ 범용 원장(V18)에는 **더 이상 남기지 않는다** — 두 곳에 쓰면 이력이 다시 갈린다.
+        int opsRows = jdbcClient.sql("SELECT COUNT(*) FROM admin_ops_audit WHERE action = ?")
+                .params(AdminCatalogService.ACTION_PURGE).query(Integer.class).single();
+        assertThat(opsRows).as("회수는 카탈로그 원장 한 곳에만").isZero();
+    }
+
+    /** 유닛 감사 조회에 회수가 <b>보인다</b> — 이력을 합친 이유가 이것이다. */
+    @Test
+    @SuppressWarnings("rawtypes")
+    void purgeShowsUpInTheUnitAuditQuery() {
+        String admin = adminToken();
+        String id = createUnit(admin, "감사조회");
+        authPost("/api/admin/units/" + id + "/purge", admin, Map.of("reason", "회수"), Map.class);
+
+        ResponseEntity<Map> res = authGet(
+                "/api/admin/units/audit?playerId=" + id, admin, Map.class);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(String.valueOf(res.getBody()))
+                .as("운영자가 '이 번호에 무슨 일이 있었나'를 한 곳에서 본다")
+                .contains(AdminCatalogService.ACTION_PURGE);
+    }
+
+    /**
+     * <b>회수한 번호는 다시 발급되지 않는다</b>(hero 지시 2026-07-30).
+     *
+     * <p>왜 중요한가: 채번이 {@code MAX(players)+1} 이라 가장 큰 번호를 회수하면 다음 생성이 그
+     * 번호를 가져갔다. 라이브 데이터는 안전하지만(참조 0 이어야 회수된다) {@code admin_catalog_audit}
+     * 은 그 번호의 <b>옛 이력을 갖고 있다</b>(V14 가 일부러 FK 를 안 걸었다) — 그래서 새 유닛 상세에
+     * 남의 이력이 섞여 보였다. 실측으로 재현됐던 자리다(P022 → 회수 → 재생성이 다시 P022).
+     */
+    @Test
+    @SuppressWarnings("rawtypes")
+    void aPurgedNumberIsNeverIssuedAgain() {
+        String admin = adminToken();
+        String first = createUnit(admin, "회수될유닛");
+
+        authPost("/api/admin/units/" + first + "/purge", admin, Map.of("reason", "잘못 만듦"), Map.class);
+        String second = createUnit(admin, "다음유닛");
+
+        assertThat(second).as("비운 번호를 재사용하지 않는다").isNotEqualTo(first);
+        assertThat(numberOf(second)).isGreaterThan(numberOf(first));
+        // 그 번호의 옛 이력이 새 유닛에 붙지 않는다 — 재사용을 막는 이유가 이것이다.
+        int strayHistory = jdbcClient.sql(
+                        "SELECT COUNT(*) FROM admin_catalog_audit WHERE player_id = ?")
+                .params(second).query(Integer.class).single();
+        assertThat(strayHistory).as("새 유닛의 이력은 자기 생성 1건뿐").isEqualTo(1);
+    }
+
+    /** 낮은 번호를 회수해도 수위가 <b>내려가지</b> 않는다(그러면 다음 생성이 충돌한다). */
+    @Test
+    @SuppressWarnings("rawtypes")
+    void purgingALowNumberDoesNotLowerTheHighWaterMark() {
+        String admin = adminToken();
+        String high = createUnit(admin, "높은번호");
+        String alsoHigh = createUnit(admin, "더높은번호");
+        // 높은 것을 먼저 회수해 수위를 올려 둔 뒤, 낮은 것을 회수한다.
+        authPost("/api/admin/units/" + alsoHigh + "/purge", admin, Map.of("reason", "a"), Map.class);
+        authPost("/api/admin/units/" + high + "/purge", admin, Map.of("reason", "b"), Map.class);
+
+        String next = createUnit(admin, "그다음");
+
+        assertThat(numberOf(next)).isGreaterThan(numberOf(alsoHigh));
+    }
+
+    private int numberOf(String playerId) {
+        return Integer.parseInt(playerId.substring(1));
     }
 
     /**

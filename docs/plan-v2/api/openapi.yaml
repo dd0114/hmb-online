@@ -1225,7 +1225,7 @@ paths:
       operationId: adminPurgeUnit
       summary: |
         **회수** (#210) — 잘못 만든 유닛을 카탈로그에서 지우고 P-번호를 비운다.
-        audit action=unit_purge (**admin_ops_audit**, 아래 참조).
+        audit action=`unit_purge`(`admin_catalog_audit` — 다른 유닛 액션과 같은 원장).
 
         ⚠️ **거의 항상 409 다.** `players(id)` 를 FK 로 참조하는 표가 여덟이라, 누군가 한 번이라도
         뽑았으면 지울 수 없다 — 지우면 **그 유저의 카드가 사라진다**. 실질 적용 범위는 *방금 만들어
@@ -1259,6 +1259,7 @@ paths:
                 properties:
                   playerId: { type: string }
                   name: { type: string, description: 지운 유닛의 이름(확인용) }
+                  auditId: { type: string, description: 이 회수를 기록한 admin_catalog_audit 행 id }
                   references:
                     type: object
                     additionalProperties: { type: integer }

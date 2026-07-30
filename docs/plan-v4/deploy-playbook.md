@@ -85,14 +85,23 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 
 **등록분 — #309 운영 컨텐츠 무배포화**(브랜치 `issue/285-deck-icon-policy`, 머지 대기):
 
-- **새 마이그레이션 2개**(둘 다 **additive** — 기존 표/데이터 무변경): `notice_assets`(공지 이미지 메타)
-  · `char_bundles`(유닛 아트 번들 리비전). ⇒ §0.5 체크 1 에 걸리므로 **§8 백업 필수**.
-  ⚠️ 번호는 머지 시점에 재배정될 수 있다(main 이 배정 — 현재 V30/V31 로 작성됨).
+- **새 마이그레이션 3개** (현재 V30·V31·V32 로 작성 — ⚠️ 번호는 머지 시점 재배정 가능):
+  - `notice_assets`(공지 이미지 메타) · `char_bundles`(아트 번들 리비전) — 둘 다 **additive**
+  - ⚠️ **`admin_catalog_audit` 테이블 재작성**(CHECK 에 `unit_purge` 추가) — **`DROP TABLE` 이 있다**
+    (§0.5 체크 7 이 잡는 항목). SQLite 는 CHECK 를 ALTER 로 못 바꿔 표준 재작성이 유일한 방법이다.
+    **데이터는 변환하지 않고 전 컬럼 복사**, `.sql.conf` 없음 = 트랜잭션 원자적, 이 표를 FK 로
+    참조하는 표 없음, 인덱스 3개 재생성. 계약 = `FlywayV32CatalogAuditRebuildTest`.
+    ⇒ **§8 백업 + 리허설 권장**(감사 원장이라 잃으면 복원 근거가 사라진다).
 - **볼륨에 파일이 추가된다**: `/var/lib/hmb/notice-assets/` · `/var/lib/hmb/char-bundles/`.
   DB 와 **같은 볼륨**이라 일상 배포에는 영향 없지만, **볼륨을 잃을 수 있는 작업 앞에서는
   §8 의 자산 tar 백업도 같이** 뜬다(DB 만 복원하면 공지 그림·아트가 404 가 된다).
 - **서블릿 업로드 상한이 8MB → 96MB** 로 올라간다(아트 번들 zip 이 실물 약 6MB). 앱 상한은
   따로다(공지 이미지 2MB · 번들 해제 후 64MB) — 사람에게 보여줄 거절은 항상 앱 상한이 한다.
+- **배포 직후 확인(재작성 검증 포함)**:
+  `docker exec hmb-java sh -c "sqlite3 /var/lib/hmb/hmb.db 'SELECT COUNT(*) FROM admin_catalog_audit'"`
+  → **배포 전 값과 같아야 한다**(재작성이 행을 잃지 않았는가). 그리고
+  `… 'SELECT COUNT(*) FROM sqlite_master WHERE tbl_name=\"admin_catalog_audit\" AND type=\"index\" AND name NOT LIKE \"sqlite_%\"'`
+  → **3**(인덱스 3개 재생성).
 - **배포 직후 확인 1줄**: `curl -sI <터널>/api/notices/assets/x | head -1` → `404`(정상: 없는 자산),
   `curl -s <터널>/api/chars/index | head -c 80` → `404` 본문(정상: 활성 아트 번들 없음 = 구운 폴백 사용).
   둘 다 **500 이면 배포가 잘못된 것**이다.
