@@ -89,8 +89,10 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
   - `notice_assets`(공지 이미지 메타) · `char_bundles`(아트 번들 리비전) — 둘 다 **additive**
   - ⚠️ **`admin_catalog_audit` 테이블 재작성**(CHECK 에 `unit_purge` 추가) — **`DROP TABLE` 이 있다**
     (§0.5 체크 7 이 잡는 항목). SQLite 는 CHECK 를 ALTER 로 못 바꿔 표준 재작성이 유일한 방법이다.
-    **데이터는 변환하지 않고 전 컬럼 복사**, `.sql.conf` 없음 = 트랜잭션 원자적, 이 표를 FK 로
-    참조하는 표 없음, 인덱스 3개 재생성. 계약 = `FlywayV32CatalogAuditRebuildTest`.
+    **데이터는 변환하지 않고 전 컬럼 복사**, `.sql.conf` 없음 = 트랜잭션 원자적(리허설로 실측:
+    중간 실패 시 DROP+RENAME 이 롤백되고 flyway 이력에도 안 남아 재시도 안전), 이 표를 FK 로
+    참조하는 표 없음, **인덱스 4개 재생성**(V14 셋 + V15 하나 — ⚠️ 한때 셋으로 잘못 적혀 있었다).
+    계약 = `FlywayV32CatalogAuditRebuildTest`.
     ⇒ **§8 백업 + 리허설 권장**(감사 원장이라 잃으면 복원 근거가 사라진다).
 - **볼륨에 파일이 추가된다**: `/var/lib/hmb/notice-assets/` · `/var/lib/hmb/char-bundles/`.
   DB 와 **같은 볼륨**이라 일상 배포에는 영향 없지만, **볼륨을 잃을 수 있는 작업 앞에서는
@@ -101,7 +103,9 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
   `docker exec hmb-java sh -c "sqlite3 /var/lib/hmb/hmb.db 'SELECT COUNT(*) FROM admin_catalog_audit'"`
   → **배포 전 값과 같아야 한다**(재작성이 행을 잃지 않았는가). 그리고
   `… 'SELECT COUNT(*) FROM sqlite_master WHERE tbl_name=\"admin_catalog_audit\" AND type=\"index\" AND name NOT LIKE \"sqlite_%\"'`
-  → **3**(인덱스 3개 재생성).
+  → **4**(인덱스 4개 재생성: `idx_catalog_audit_player`·`idx_catalog_audit_actor`·
+  `uq_catalog_audit_idem`·`uq_catalog_audit_create_idem`). ⚠️ **3 이 나오면 회귀다** — 대상별 멱등
+  인덱스가 빠진 것이고, 그러면 `update`/`deactivate`/`activate`/`override_reset` 의 DB 백스톱이 없다.
 - **배포 직후 확인 1줄**: `curl -sI <터널>/api/notices/assets/x | head -1` → `404`(정상: 없는 자산),
   `curl -s <터널>/api/chars/index | head -c 80` → `404` 본문(정상: 활성 아트 번들 없음 = 구운 폴백 사용).
   둘 다 **500 이면 배포가 잘못된 것**이다.

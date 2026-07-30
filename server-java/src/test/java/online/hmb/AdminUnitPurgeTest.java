@@ -84,6 +84,18 @@ class AdminUnitPurgeTest extends ApiTestBase {
         assertThat(unitExists(id)).as("거부는 부수효과 0").isTrue();
         // 문구가 대안을 알려 준다 — 막다른 토스트를 만들지 않는다(#217 규율).
         assertThat(String.valueOf(res.getBody().get("message"))).contains("비활성화");
+        // ⚠️ **시도 자체가 이력이다**(독립검증 MIN-1). "관리자가 유저 카드를 지우려 했다"는
+        //    사실은 남아야 한다 — 이 모듈의 규율이 성공·실패 모두 기록이고 형제 서비스가 그렇게 한다.
+        //    거절은 아무것도 안 바꿨으므로 스냅샷 원장이 아니라 V18 범용 원장에 남는다.
+        int failedRows = jdbcClient.sql(
+                        "SELECT COUNT(*) FROM admin_ops_audit WHERE action = ? AND result = 'failed'")
+                .params(AdminCatalogService.ACTION_PURGE).query(Integer.class).single();
+        assertThat(failedRows).as("거절도 원장에 남는다").isEqualTo(1);
+        // 그리고 스냅샷 원장에는 회수 행이 없다(아무것도 안 바뀌었으므로).
+        assertThat(jdbcClient.sql(
+                        "SELECT COUNT(*) FROM admin_catalog_audit WHERE player_id = ? AND action = ?")
+                .params(id, AdminCatalogService.ACTION_PURGE).query(Integer.class).single())
+                .as("바뀐 게 없으니 변경 원장에는 안 남는다").isZero();
     }
 
     /** 사유 없는 회수는 없다(카탈로그 운영 공통 규약 — reason 은 원장의 존재 이유다). */
@@ -140,10 +152,12 @@ class AdminUnitPurgeTest extends ApiTestBase {
                 .params(id, AdminCatalogService.ACTION_PURGE).query(String.class).single();
         assertThat(before).as("지운 유닛의 스냅샷").contains("이력보존");
 
-        // ⚠️ 범용 원장(V18)에는 **더 이상 남기지 않는다** — 두 곳에 쓰면 이력이 다시 갈린다.
-        int opsRows = jdbcClient.sql("SELECT COUNT(*) FROM admin_ops_audit WHERE action = ?")
+        // ⚠️ **성공**은 범용 원장(V18)에 남기지 않는다 — 두 곳에 쓰면 이력이 다시 갈린다.
+        //    (거절은 반대다 — 아무것도 안 바뀌어 스냅샷 원장에 넣을 수 없으므로 V18 에 남는다.)
+        int opsRows = jdbcClient.sql(
+                        "SELECT COUNT(*) FROM admin_ops_audit WHERE action = ? AND result = 'ok'")
                 .params(AdminCatalogService.ACTION_PURGE).query(Integer.class).single();
-        assertThat(opsRows).as("회수는 카탈로그 원장 한 곳에만").isZero();
+        assertThat(opsRows).as("성공한 회수는 카탈로그 원장 한 곳에만").isZero();
     }
 
     /** 유닛 감사 조회에 회수가 <b>보인다</b> — 이력을 합친 이유가 이것이다. */

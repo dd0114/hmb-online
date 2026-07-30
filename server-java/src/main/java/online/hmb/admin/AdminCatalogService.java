@@ -569,39 +569,55 @@ public class AdminCatalogService {
         String reason = requireReason(rawReason);
         UnitRow before = requireUnit(playerId);
 
-        return txRunner.run(() -> {
-            // ⚠️ 조회와 삭제가 **한 트랜잭션**이다. 밖에서 세면 "0건 확인 → 그 사이 누군가 뽑음 →
-            //    삭제"가 가능하고, 그때 지워지는 것은 유저의 카드다.
-            Map<String, Integer> refs = new LinkedHashMap<>();
-            for (Map.Entry<String, String> t : REFERENCING_TABLES.entrySet()) {
-                int n = jdbcClient.sql("SELECT COUNT(*) FROM " + t.getKey() + " WHERE " + t.getValue())
-                        .params(playerId, playerId)
-                        .query(Integer.class).single();
-                if (n > 0) {
-                    refs.put(t.getKey(), n);
+        try {
+            return txRunner.run(() -> {
+                // ⚠️ 조회와 삭제가 **한 트랜잭션**이다. 밖에서 세면 "0건 확인 → 그 사이 누군가 뽑음 →
+                //    삭제"가 가능하고, 그때 지워지는 것은 유저의 카드다.
+                Map<String, Integer> refs = new LinkedHashMap<>();
+                for (Map.Entry<String, String> t : REFERENCING_TABLES.entrySet()) {
+                    int n = jdbcClient.sql("SELECT COUNT(*) FROM " + t.getKey() + " WHERE " + t.getValue())
+                            .params(playerId, playerId)
+                            .query(Integer.class).single();
+                    if (n > 0) {
+                        refs.put(t.getKey(), n);
+                    }
                 }
+                if (!refs.isEmpty()) {
+                    throw new ApiException(HttpStatus.CONFLICT, "CONFLICT",
+                            "이미 사용 중인 유닛이라 회수할 수 없습니다 — 비활성화(deactivate)를 쓰세요",
+                            Map.of("playerId", playerId, "references", refs));
+                }
+                // ⚠️ 감사 INSERT 를 **DELETE 앞에** 둔다: 이 표의 player_id 에는 FK 가 없지만(V14 의도),
+                //    순서를 뒤집으면 "지웠는데 이력이 없다"가 가능한 창이 생긴다. 한 트랜잭션이라
+                //    실제로는 둘 다 되거나 둘 다 안 되지만, 읽는 사람에게 의도가 드러나는 순서로 둔다.
+                String auditId = writeAudit(actorUserId, playerId, ACTION_PURGE, before, null,
+                        List.of("purged"), reason, Ulid.next());
+                jdbcClient.sql("DELETE FROM players WHERE id = ?").param(playerId).update();
+                // ⚠️ **비운 번호를 "쓴 번호"로 기록한다**(hero 지시 2026-07-30). 이게 없으면 다음 생성이
+                //    `MAX(players)+1` 로 그 번호를 재사용하고, `admin_catalog_audit` 에 남은 옛 이력이
+                //    새 유닛 상세에 섞여 보인다. 같은 트랜잭션이라 "지웠는데 수위는 안 올라간" 상태가 없다.
+                raiseUnitIdHighWater(playerId);
+                return new PurgeResult(playerId, before.name(), auditId, refs);
+            });
+        } catch (ApiException e) {
+            // ⚠️⚠️ **실패 기록은 트랜잭션 밖에서 써야 한다.** 안에서 쓰면 롤백이 그 기록을 **같이
+            //    지운다** — 처음엔 안에 뒀고 계약이 "거절도 원장에 남는다"에서 0을 관측해 잡았다.
+            //    성공·실패를 갈라 두는 이유도 여기서 다시 보인다: 성공은 삭제와 같은 트랜잭션이어야
+            //    하고("지웠는데 이력이 없다"를 막으려면), 실패는 그 트랜잭션 **밖**이어야 한다.
+            //
+            //    어느 원장인가: 거절은 아무것도 바꾸지 않았으므로 before/after 스냅샷 원장
+            //    (`admin_catalog_audit`)에 넣으면 그 스냅샷이 거짓이 된다 → V18 범용 원장에 남긴다.
+            //    아무 데도 안 남기는 건 답이 아니다 — "관리자가 유저 카드를 지우려 시도했다"는
+            //    사실이고 이 모듈의 규율은 **성공·실패 모두 기록**이다(형제 서비스 셋이 그렇게 한다).
+            Map<String, Object> detail = new LinkedHashMap<>();
+            detail.put("playerId", playerId);
+            if (e.getDetail() != null && e.getDetail().get("references") != null) {
+                detail.put("blockedBy", e.getDetail().get("references"));
             }
-            if (!refs.isEmpty()) {
-                // ⚠️ 거절은 **원장에 남기지 않는다** — 이 표는 "무엇이 바뀌었나"의 원장이고
-                //    `reason NOT NULL`·`before/after` 스냅샷이 그 전제다. 아무것도 안 바뀐 시도를
-                //    끼워 넣으면 스냅샷이 거짓이 된다(V18 범용 원장은 실패도 남기지만 스키마가 다르다).
-                //    운영자에게 필요한 정보는 응답의 `references` 로 이미 간다.
-                throw new ApiException(HttpStatus.CONFLICT, "CONFLICT",
-                        "이미 사용 중인 유닛이라 회수할 수 없습니다 — 비활성화(deactivate)를 쓰세요",
-                        Map.of("playerId", playerId, "references", refs));
-            }
-            // ⚠️ 감사 INSERT 를 **DELETE 앞에** 둔다: 이 표의 player_id 에는 FK 가 없지만(V14 의도),
-            //    순서를 뒤집으면 "지웠는데 이력이 없다"가 가능한 창이 생긴다. 한 트랜잭션이라
-            //    실제로는 둘 다 되거나 둘 다 안 되지만, 읽는 사람에게 의도가 드러나는 순서로 둔다.
-            String auditId = writeAudit(actorUserId, playerId, ACTION_PURGE, before, null,
-                    List.of("purged"), reason, Ulid.next());
-            jdbcClient.sql("DELETE FROM players WHERE id = ?").param(playerId).update();
-            // ⚠️ **비운 번호를 "쓴 번호"로 기록한다**(hero 지시 2026-07-30). 이게 없으면 다음 생성이
-            //    `MAX(players)+1` 로 그 번호를 재사용하고, `admin_catalog_audit` 에 남은 옛 이력이
-            //    새 유닛 상세에 섞여 보인다. 같은 트랜잭션이라 "지웠는데 수위는 안 올라간" 상태가 없다.
-            raiseUnitIdHighWater(playerId);
-            return new PurgeResult(playerId, before.name(), auditId, refs);
-        });
+            detail.put("error", String.valueOf(e.getMessage()));
+            opsAudit(actorUserId, ACTION_PURGE, "failed", reason, detail);
+            throw e;
+        }
     }
 
     /**
@@ -661,6 +677,22 @@ public class AdminCatalogService {
         } catch (NumberFormatException e) {
             return 0;
         }
+    }
+
+    /**
+     * <b>실패 전용</b> 원장 기록(V18 범용 표). 성공은 {@code admin_catalog_audit} 이 담당한다 —
+     * 위 주석의 "두 원장의 성격이 다르다" 참조. V18 은 스스로 주석에서 "다른 도메인도 자기 action 을
+     * append 하면 된다"고 열어 둔 표이고, {@code result} 컬럼이 실패를 1급으로 다룬다.
+     */
+    private void opsAudit(String actorUserId, String action, String result, String reason,
+                          Map<String, Object> detail) {
+        jdbcClient.sql("""
+                        INSERT INTO admin_ops_audit(id, actor_user_id, action, result, reason, detail_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """)
+                .params(Ulid.next(), actorUserId, action, result, reason, writeJson(detail),
+                        Instant.now().toString())
+                .update();
     }
 
     /** 회수 결과 — 지운 유닛과 그 이력 행 id. `references` 는 성공 시 항상 빈 맵이다. */

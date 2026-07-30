@@ -21,11 +21,19 @@
 --    (이 파일에 `.sql.conf`(executeInTransaction=false)를 **두지 않는 것이 그 보장**이다.)
 --  * `admin_catalog_audit` 를 **FK 로 참조하는 표가 없다** → 드롭·개명이 남의 제약을 건드리지 않는다
 --    (그래서 `legacy_alter_table` 프래그마가 필요 없다. 프래그마는 트랜잭션 안에서 무효이기도 하다).
---  * 인덱스는 표와 함께 사라지므로 **셋 다 다시 만든다**(V14 둘 + V15 부분 유니크 하나).
---    ⚠️ V15 인덱스를 빠뜨리면 `unit_create` 멱등 백스톱이 조용히 사라진다 — 같은 키 동시 생성이
---    유닛을 두 개 만들던 그 결함(#207 blocker B1)이 되살아난다.
---  * 계약 = `FlywayV32CatalogAuditRebuildTest`(기존 행이 **내용까지** 살아남는지 + 인덱스 3개 재생성
---    + 새 action 수용 + 옛 오타 action 은 여전히 거부).
+--  * 인덱스는 표와 함께 사라지므로 **넷 다 다시 만든다**(V14 **셋** + V15 하나).
+--    ⚠️⚠️ **처음 쓸 때 V14 를 "둘"로 오독해 `uq_catalog_audit_idem` 을 빠뜨렸고, 그 손실을
+--    계약이 `containsExactlyInAnyOrder(3개)` 로 박제하고 배포 확인 커맨드가 "3이면 정상"으로
+--    보고했다**(독립검증 BLOCKER-1). 즉 고치려 하면 테스트가 막는 상태였다 — 계약이 구현을
+--    검증한 게 아니라 복사한 것이다. **인덱스 목록을 세는 계약은 반드시 원본 마이그레이션을
+--    직접 읽고 세라.**
+--    무엇을 잃었나: `uq_catalog_audit_idem`(대상별 멱등)은 `update`·`deactivate`·`activate`·
+--    `override_reset` **4개 액션의 유일한 DB 백스톱**이다(V15 가 스스로 "다른 4개 액션은 V14
+--    인덱스가 그대로 담당한다"고 적었다). 앱의 `findAudit` 는 check-then-act 라 경합을 못 막으므로,
+--    빠지면 같은 멱등키 동시 PATCH 가 **감사 원장에 중복 행**을 만들고 두 번째 행의 `before`
+--    스냅샷은 이미 바뀐 상태라 **"무엇이 바뀌었나"가 거짓이 된다** — 이 커밋이 강화하려던 그 원장이다.
+--  * 계약 = `FlywayV32CatalogAuditRebuildTest`(**마이그레이션 전에 심은 행**이 내용까지 살아남는지 +
+--    인덱스 **4개** 재생성(부분 조건까지) + 새 action 수용 + 오타 거부 + 두 유니크가 실제로 잠그는지).
 --
 -- 배포 시엔 §0.5 체크 1·7 에 걸린다 → **백업 필수**(deploy-playbook §8). 그게 이 재작성의 안전망이다.
 
@@ -58,9 +66,16 @@ ALTER TABLE admin_catalog_audit_new RENAME TO admin_catalog_audit;
 CREATE INDEX idx_catalog_audit_player ON admin_catalog_audit(player_id, created_at DESC);
 CREATE INDEX idx_catalog_audit_actor  ON admin_catalog_audit(actor_user_id, created_at DESC);
 
--- V15 멱등 백스톱(부분 유니크). **왜 부분인가**: 전역 (action, idem_key) 는 서로 다른 대상에 같은
--- 키가 오면 터진다(V5 가 그래서 V6 로 되돌려졌다). unit_create 는 대상이 아직 없어 "같은 키의 두
--- create = 같은 요청의 재전송"이 정의상 성립하므로 그 액션만 전역으로 잠근다.
+-- V14 멱등 백스톱 — **대상별**(action, player_id, idem_key). `update`·`deactivate`·`activate`·
+-- `override_reset` 4개 액션을 담당한다. 멱등키는 클라이언트가 정하는 값이라 **서로 다른 유닛에 같은
+-- 키가 오는 건 정상 시나리오**이고, 그래서 스코프가 대상별이다(V5 가 전역으로 잡았다가 500 이 나서
+-- V6 로 고쳤다 — 그 실패를 반복하지 않는다).
+CREATE UNIQUE INDEX uq_catalog_audit_idem
+  ON admin_catalog_audit(action, player_id, idem_key) WHERE idem_key IS NOT NULL;
+
+-- V15 멱등 백스톱(부분 유니크). **왜 전역인가**: `unit_create` 는 대상(id)이 아직 없어 대상별
+-- 스코프로는 재전송을 식별할 수 없다 — 같은 키의 두 create 는 정의상 **같은 요청의 재전송**이므로
+-- 그 액션만 전역으로 잠근다. 위 V14 인덱스와 **역할이 다르다**(둘 다 필요하다).
 CREATE UNIQUE INDEX uq_catalog_audit_create_idem
   ON admin_catalog_audit(action, idem_key)
   WHERE action = 'unit_create' AND idem_key IS NOT NULL;
