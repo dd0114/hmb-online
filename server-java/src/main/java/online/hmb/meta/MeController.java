@@ -28,17 +28,20 @@ public class MeController {
     private final OnboardingService onboardingService;
     private final online.hmb.away.RatingService ratingService;
     private final online.hmb.league.LeagueService leagueService;
+    private final online.hmb.mail.MailService mailService;
 
     public MeController(JdbcClient jdbcClient, WalletService walletService, AdminAccess adminAccess,
                         OnboardingService onboardingService,
                         online.hmb.away.RatingService ratingService,
-                        online.hmb.league.LeagueService leagueService) {
+                        online.hmb.league.LeagueService leagueService,
+                        online.hmb.mail.MailService mailService) {
         this.jdbcClient = jdbcClient;
         this.walletService = walletService;
         this.adminAccess = adminAccess;
         this.onboardingService = onboardingService;
         this.ratingService = ratingService;
         this.leagueService = leagueService;
+        this.mailService = mailService;
     }
 
     @GetMapping("/api/me")
@@ -74,7 +77,8 @@ public class MeController {
                 ratingService.rating(userId),
                 leagueService.currentDivision(userId)
                         .map(d -> new LeagueInfo(d.level(), d.name()))
-                        .orElse(null));
+                        .orElse(null),
+                MailInfo.of(mailService.summary(userId)));
     }
 
     @GetMapping("/api/me/matches")
@@ -131,9 +135,29 @@ public class MeController {
     public record LeagueInfo(int division, String divisionName) {
     }
 
-    /** league 는 #268 additive — 기존 필드 불변(web 무회귀). null 이면 화면에서 사라진다. */
+    /**
+     * 우편함 요약(#323 additive) — {@code unread} 는 뱃지 숫자, {@code total} 은 <b>진입점을 그릴지</b>.
+     *
+     * <p><b>전용 엔드포인트를 만들지 않은 이유</b>: 홈은 이미 이 호출을 하고 있어서 필드 하나면
+     * 왕복이 늘지 않는다. 값의 정의(= "아직 내가 할 일")는 서버가 정한다 — 클라가 목록을 받아 세면
+     * 목록 상한(50건) 밖의 우편물이 조용히 빠진다. 계산은 인덱스 COUNT 2회다.
+     *
+     * <p>⚠️ {@code total} 이 있어야 홈이 <b>목록을 안 받고도</b> 진입점 유무를 정한다. 없던 동안
+     * web 은 홈 진입마다 본문까지 실린 목록을 받았고, 그러면 이 필드는 아무도 안 쓰는 죽은 값이었다
+     * (독립검증 MINOR-1).
+     */
+    public record MailInfo(int unread, int total) {
+        static MailInfo of(online.hmb.mail.MailService.Summary s) {
+            return new MailInfo(s.unread(), s.total());
+        }
+    }
+
+    /**
+     * league 는 #268 additive · mail 은 #323 additive — 기존 필드 불변(web 무회귀).
+     * league 가 null 이면 화면에서 사라진다.
+     */
     public record MeResponse(UserRef user, WalletInfo wallet, Records records, int rating,
-                             LeagueInfo league) {
+                             LeagueInfo league, MailInfo mail) {
     }
 
     public record MatchListItem(String id, String opponentName, Integer scoreHome, Integer scoreAway,

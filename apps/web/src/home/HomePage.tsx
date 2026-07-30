@@ -9,6 +9,7 @@ import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { CharAvatar } from "../common/CharAvatar";
 import { NoticeCenter } from "../lobby/NoticeCenter";
+import { MailCenter } from "../mail/MailCenter";
 import { NoticePopup } from "../lobby/NoticePopup";
 import { visibleNotices, type Notice } from "../lobby/notice-logic";
 import { pickLobbyPopup } from "../lobby/lobby-popup";
@@ -155,8 +156,16 @@ export function HomePage() {
   const header = (
     <div className={styles.headerRow}>
       <div className={styles.headerLeft}>
-        <span className={styles.nickname}>{me?.user?.nickname ?? "감독님"}</span>
+        {/* ⚠️ **닉네임은 여기 없다**(#323, hero 확정). 390px 헤더는 지갑 2칩(204px) + [로그아웃](62px)이
+            줄지 않는 오른쪽이라 왼쪽 몫이 90px 뿐인데, 공지 + 우편 진입점만으로 68px 를 쓴다 —
+            닉네임을 두면 22px 로 눌리거나(“김”) 오른쪽 위로 **겹쳐 그려진다**(실측 캡처
+            .smoke/p323-opt0-now.png). 정보는 사라지지 않는다: 바로 아래 팀 카드가 “{닉네임}의 팀”
+            이고 [내 정보] 탭에도 그대로 있다. 되살리려면 오른쪽에서 무언가를 먼저 빼라. */}
         <NoticeCenter notices={notices.data} />
+        {/* 우편함(#323, hero 확정 = 홈 헤더). **공지 옆·닉네임 쪽**인 이유는 취향이 아니라 실측이다 —
+            오른쪽(지갑 옆)에 얹으면 390px 헤더가 한 줄 더 접힌다(#248 실측 69→113px). 첨부는
+            만료되는 자산이라 발견성이 곧 손해와 직결돼 홈에 두고, 뱃지는 **숫자**다(할 일 개수). */}
+        <MailCenter />
       </div>
       <div className={styles.headerRight}>
         {/* ⚠️ `me &&` 로는 부족하다 — 구 서버·빈 응답의 200 `{}` 는 truthy 라서 통과하고

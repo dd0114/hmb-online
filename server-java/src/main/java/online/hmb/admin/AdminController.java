@@ -30,15 +30,17 @@ public class AdminController {
     private final AdminEconomyService economy;
     private final AdminNoticeService notices;
     private final AdminNoticeAssetService noticeAssets;
+    private final AdminMailService mails;
 
     public AdminController(AdminUserQueryService users, AdminPointsService points,
                            AdminEconomyService economy, AdminNoticeService notices,
-                           AdminNoticeAssetService noticeAssets) {
+                           AdminNoticeAssetService noticeAssets, AdminMailService mails) {
         this.users = users;
         this.points = points;
         this.economy = economy;
         this.notices = notices;
         this.noticeAssets = noticeAssets;
+        this.mails = mails;
     }
 
     /** 유저 목록·닉네임 검색·페이징. 비번은 조회 SQL 에도 DTO 에도 없다. */
@@ -216,5 +218,58 @@ public class AdminController {
     }
 
     public record NoticeAssetListResponse(List<AdminNoticeAssetService.AssetView> assets) {
+    }
+
+    // ── 우편함 (#323) ─────────────────────────────────────────────────────
+    // 패치 보상·이벤트 지급을 **배포 없이** 보낸다. 지급은 우편함이 새로 만들지 않는다 —
+    // 유저가 [받기]를 누를 때 기존 경로(지갑·원장·보유풀)가 돈다(MailService).
+
+    /** 발송 이력 + 수령 통계 — "보냈나 / 몇 명이 받았나"가 운영의 첫 질문이다. */
+    @GetMapping("/mails")
+    public MailCampaignListResponse mails(@RequestParam(name = "limit", defaultValue = "50") int limit) {
+        return new MailCampaignListResponse(mails.list(limit));
+    }
+
+    /** 액션 이력(성공·실패 모두) — `mail_send` / `mail_revoke`. */
+    @GetMapping("/mails/history")
+    public List<AdminMailService.AuditEntry> mailHistory(
+            @RequestParam(name = "limit", defaultValue = "50") int limit) {
+        return mails.history(limit);
+    }
+
+    @GetMapping("/mails/{id}")
+    public AdminMailService.CampaignView mailDetail(@PathVariable("id") String id) {
+        return mails.detail(id);
+    }
+
+    /**
+     * 발송. {@code Idempotency-Key} 헤더를 <b>항상</b> 보내라 — 없으면 서버가 채번하므로 그 요청은
+     * 재전송 보호를 받지 못한다(응답에 채번된 키가 나와 그 사실이 관측된다). 같은 키 + 같은 내용은
+     * 200 재생, 같은 키 + <b>다른 내용은 409</b>(조용히 삼키면 운영자가 정정에 성공했다고 믿는다).
+     */
+    @PostMapping("/mails")
+    public org.springframework.http.ResponseEntity<AdminMailService.SendResult> sendMail(
+            @RequestAttribute("userId") String actorUserId,
+            @RequestBody(required = false) AdminMailService.SendRequest body,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idemKey) {
+        AdminMailService.SendResult result = mails.send(actorUserId, body, idemKey);
+        // 201 = 이번에 보냈다 / 200 = 같은 키의 재전송이라 **아무것도 더 보내지 않았다**.
+        // 코드로 구분하는 이유: 운영 화면이 "또 보냈나?"를 응답 바디를 파싱하지 않고 알 수 있어야 한다.
+        return org.springframework.http.ResponseEntity
+                .status(result.applied() ? org.springframework.http.HttpStatus.CREATED
+                        : org.springframework.http.HttpStatus.OK)
+                .body(result);
+    }
+
+    /** 회수(오발송 수습) — <b>미수령분만</b> 막는다. 이미 받은 건 건드리지 않는다. */
+    @PostMapping("/mails/{id}/revoke")
+    public AdminMailService.RevokeResult revokeMail(
+            @RequestAttribute("userId") String actorUserId,
+            @PathVariable("id") String id,
+            @RequestBody(required = false) OpsRequest body) {
+        return mails.revoke(actorUserId, id, body == null ? null : body.reason());
+    }
+
+    public record MailCampaignListResponse(List<AdminMailService.CampaignView> campaigns) {
     }
 }

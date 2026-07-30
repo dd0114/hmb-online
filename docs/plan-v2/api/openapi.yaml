@@ -50,6 +50,11 @@ tags:
     description: >-
       공지사항(#248). 조회는 **공개**(로그인 전에도 필요한 점검 공지), 운영(CRUD·감사이력)은
       admin 게이트 뒤 — DB 가 SoT 라 쓰면 곧 반영된다(리로드 없음).
+  - name: mails
+    description: >-
+      우편함(#323). 운영이 **배포 없이** 보상(카드·G·Z)+텍스트를 보내고, 유저가 [받기]로 수령한다.
+      지급은 우편함이 새로 만들지 않는다 — 기존 지갑·원장·보유풀 경로가 돈다(멱등 ref = 우편물 id).
+      공지(방송)와 다른 축이다: 공지는 전원이 같은 것을 보고, 우편은 **내 것**이라 인증이 필요하다.
   - name: internal
     description: 서번트 전용 AI 잡 큐 프로토콜(X-Servant-Token)
 
@@ -1904,6 +1909,196 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiError" }
 
+  # ───────────────────────────── mails (우편함, #323) ─────────────────────────────
+  /api/admin/mails:
+    get:
+      tags: [admin]
+      operationId: adminListMailCampaigns
+      summary: 발송 이력 + 수령 통계("몇 명이 받았나"가 운영의 첫 질문이다)
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [campaigns]
+                properties:
+                  campaigns:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminMailCampaign" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      operationId: adminSendMail
+      summary: |
+        우편 발송(무배포 운영). 대상 = 전체(ALL) 또는 특정 유저 목록(USERS).
+        **201 = 이번에 보냈다 / 200 = 같은 멱등키의 재전송이라 아무것도 더 보내지 않았다.**
+      description: |
+        `Idempotency-Key` 를 **항상** 보내라 — 없으면 서버가 채번하므로 그 요청은 재전송 보호를
+        받지 못한다. 같은 키 + 다른 내용은 **409** 다(조용히 삼키면 운영자는 정정에 성공했다고
+        믿는데 아무 일도 일어나지 않는다 — admin points 지급이 실측으로 겪은 함정).
+
+        대상 수가 `hmb.mail.fanout-max` 를 넘으면 **거부**한다(조용히 자르지 않는다 — 절반만 받은
+        이벤트는 회수도 재발송도 어렵다).
+      parameters:
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminMailSendRequest" }
+      responses:
+        "201":
+          description: 발송됨
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminMailSendResult" }
+        "200":
+          description: 같은 멱등키·같은 내용의 재전송(applied=false, 추가 발송 0)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminMailSendResult" }
+        "400":
+          description: |
+            검증 실패. code=VALIDATION_ERROR — 없는 유저·없는 카드·음수/상한 초과 첨부·사유 누락·
+            팬아웃 상한 초과. **거절은 아무것도 남기지 않는다**(캠페인 0·수신 행 0).
+          content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: "같은 멱등키에 다른 내용. code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/admin/mails/history:
+    get:
+      tags: [admin]
+      operationId: adminMailHistory
+      summary: 우편 운영 이력(감사 원장, 성공·실패 모두). action=mail_send | mail_revoke
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 50 } }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AdminOpsAuditEntry" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/mails/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [admin]
+      operationId: adminMailCampaign
+      summary: 발송 건 상세 + 수령 통계
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminMailCampaign" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/admin/mails/{id}/revoke:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [admin]
+      operationId: adminRevokeMail
+      summary: |
+        오발송 회수 — **미수령분만** 막는다. 이미 수령한 건은 건드리지 않는다(원장을 되감는 것은
+        별개의 조작이고, 필요하면 admin points 차감 경로로 개별 처리한다). audit action=mail_revoke.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdminReasonRequest" }
+      responses:
+        "200":
+          description: 회수됨(멱등 — 이미 회수됐으면 최초 회수 시각을 그대로 돌려준다)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [campaignId, revokedAt, unclaimed]
+                properties:
+                  campaignId: { type: string }
+                  revokedAt: { type: string }
+                  unclaimed:
+                    type: integer
+                    description: 이 회수로 받을 수 없게 된 미수령 우편 수
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/mails:
+    get:
+      tags: [mails]
+      operationId: listMyMails
+      summary: |
+        내 우편함(최신순) + 뱃지 수. **만료·수령 완료도 목록에 남는다**(hero 확정 ④) —
+        놓쳤다는 사실이 보여야 다음엔 안 놓친다. 대신 뱃지에는 세지 않는다.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MailListResponse" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/mails/{id}/read:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [mails]
+      operationId: readMail
+      summary: |
+        열람 기록(멱등 — 이미 읽었으면 최초 열람 시각을 유지한다). web 이 상세를 펼칠 때 부른다.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Mail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "내 우편물이 아니다 — 없는 id 와 구분 불가능(존재 누출 차단)", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/mails/{id}/claim:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [mails]
+      operationId: claimMail
+      summary: |
+        수령. 첨부를 **기존 경로**로 지급한다(G=point_ledger · Z=gem_ledger · 카드=user_players,
+        멱등 ref_id = 우편물 id).
+      description: |
+        **더블탭은 실패가 아니다** — 200 `applied:false` + 현재 잔액. admin 멱등키 충돌(다른 내용)과
+        달리 유저의 두 번째 [받기]는 같은 의도의 재전송이라, 실패로 보이게 하면 "받았는데 에러가
+        났다"가 되고 문의가 생긴다.
+      responses:
+        "200":
+          description: 수령됨(applied=true) 또는 이미 수령한 우편물의 재요청(applied=false)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MailClaimResult" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: "내 우편물이 아니다 — 없는 id 와 구분 불가능", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        "410":
+          description: |
+            수령 기간이 지났거나(EXPIRED) 운영이 회수한 우편물. code=GONE.
+            회수도 같은 410 이다 — 유저에게 "운영이 회수했다"까지 알릴 필요는 없고, 못 받는다는
+            사실은 같다. 부수효과 0.
+          content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } }
+
 
 components:
   securitySchemes:
@@ -2260,6 +2455,139 @@ components:
         draws: { type: integer }
         losses: { type: integer }
 
+    MailAttachments:
+      type: object
+      required: [points, gems, players]
+      description: |
+        첨부 = 지급될 것들의 **선언**. 첨부 0 도 유효하다(텍스트 전용 안내 우편).
+        컬럼으로 펴지 않고 JSON 으로 두는 이유 = 첨부 종류가 늘 때마다 마이그레이션이 되면
+        운영이 다시 배포에 묶인다(이 에픽이 없애려던 바로 그 의존).
+      properties:
+        points: { type: integer, format: int64, description: 무료재화(G) }
+        gems: { type: integer, format: int64, description: 유상재화(Z) }
+        players:
+          type: array
+          items:
+            type: object
+            required: [playerId, count]
+            properties:
+              playerId: { type: string }
+              count: { type: integer }
+
+    Mail:
+      type: object
+      required: [id, title, body, attachments, sentAt, state]
+      properties:
+        id: { type: string, description: ULID. 수령 시 원장 ref_id 로 그대로 쓰인다 }
+        title: { type: string }
+        body: { type: string, description: 공지와 같은 마크다운 부분집합(렌더 살균은 web 소관) }
+        attachments: { $ref: "#/components/schemas/MailAttachments" }
+        sentAt: { type: string }
+        expiresAt:
+          type: [string, "null"]
+          description: null = 무기한(hero 확정 ③ — 발송 시 미지정이면 만료가 없다)
+        readAt: { type: [string, "null"] }
+        claimedAt: { type: [string, "null"] }
+        state:
+          type: string
+          enum: [UNREAD, READ, CLAIMED, EXPIRED]
+          description: |
+            **서버가 판정한다.** 클라가 `expiresAt < now` 를 계산하면 기기 시계가 진실이 되고
+            (폰 시계가 하루 빠른 유저에게 멀쩡한 보상이 만료로 보인다), 규칙이 바뀔 때 조용히 어긋난다.
+
+    MailListResponse:
+      type: object
+      required: [mails, unread]
+      properties:
+        mails:
+          type: array
+          items: { $ref: "#/components/schemas/Mail" }
+        unread:
+          type: integer
+          description: |
+            뱃지 수 = **아직 내가 할 일** = 안 읽음 **또는** (첨부가 있는데 미수령). 만료·회수는 제외.
+            읽음만으로 끄면 열어 보고 안 받은 보상이 조용히 사라진다 — 뱃지가 지켜야 하는 것이 그 케이스다.
+
+    MailClaimResult:
+      type: object
+      required: [id, claimed, applied, granted, wallet]
+      properties:
+        id: { type: string }
+        claimed: { type: boolean }
+        applied:
+          type: boolean
+          description: false = 이미 수령한 우편물이라 아무것도 바뀌지 않았다(잔액은 현재값)
+        granted:
+          type: object
+          required: [points, gems, players]
+          properties:
+            points: { type: integer, format: int64 }
+            gems: { type: integer, format: int64 }
+            players:
+              type: array
+              items:
+                type: object
+                required: [playerId, count, isNew]
+                properties:
+                  playerId: { type: string }
+                  count: { type: integer }
+                  isNew: { type: boolean }
+        wallet:
+          type: object
+          required: [points, gems]
+          properties:
+            points: { type: integer, format: int64 }
+            gems: { type: integer, format: int64 }
+
+    AdminMailSendRequest:
+      type: object
+      required: [audience, title, body, reason]
+      properties:
+        audience:
+          type: string
+          enum: [ALL, USERS]
+          description: |
+            ALL = **발송 시점에 존재하는 유저 전원**. 이후 가입자는 대상이 아니다 —
+            패치 보상의 사유(그 패치를 겪었다)가 나중에 온 사람에게는 성립하지 않는다.
+        userIds:
+          type: array
+          items: { type: string }
+          description: audience=USERS 일 때 필수. ALL 과 함께 보내면 400.
+        title: { type: string }
+        body: { type: string }
+        attachments: { $ref: "#/components/schemas/MailAttachments" }
+        expiresAt: { type: string, description: 절대 시각(expiresInDays 와 함께 쓸 수 없다) }
+        expiresInDays: { type: integer, description: 상대 일수(expiresAt 와 함께 쓸 수 없다) }
+        reason: { type: string, description: 운영 사유(필수 — 감사 원장에 남는다) }
+
+    AdminMailSendResult:
+      type: object
+      required: [campaignId, audience, targetCount, applied]
+      properties:
+        campaignId: { type: string }
+        audience: { type: string, enum: [ALL, USERS] }
+        targetCount: { type: integer, description: 이 발송이 만든 수신 행 수(발송 시점 스냅샷) }
+        expiresAt: { type: [string, "null"] }
+        applied: { type: boolean, description: false = 같은 멱등키의 재전송(추가 발송 0) }
+
+    AdminMailCampaign:
+      type: object
+      required: [id, audience, title, body, attachments, targetCount, claimedCount, readCount, createdAt]
+      properties:
+        id: { type: string }
+        audience: { type: string, enum: [ALL, USERS] }
+        title: { type: string }
+        body: { type: string }
+        attachments: { $ref: "#/components/schemas/MailAttachments" }
+        expiresAt: { type: [string, "null"] }
+        revokedAt: { type: [string, "null"], description: 회수 시각. 미수령분이 410 이 된다 }
+        targetCount: { type: integer }
+        claimedCount: { type: integer }
+        readCount: { type: integer }
+        reason: { type: string }
+        actor: { type: string, description: 발송한 운영자 닉네임 }
+        createdAt: { type: string }
+
     MeResponse:
       type: object
       required: [user, wallet, records]
@@ -2281,6 +2609,18 @@ components:
           oneOf:
             - $ref: "#/components/schemas/MeLeagueInfo"
             - type: "null"
+        mail:
+          description: >-
+            우편함 요약(#323 additive). `unread` = 헤더 뱃지 숫자(정의는 MailListResponse.unread 와
+            같다), `total` = 이 유저의 우편 행 수 = **진입점을 그릴지**(0 이면 화면에 아무것도 안
+            그린다 — 빈 목록으로 "없습니다"라고 단언하지 않기 위해).
+            전용 엔드포인트를 만들지 않은 이유 = 홈이 이미 이 호출을 한다. 두 값이 다 있어야 홈이
+            **목록을 받지 않고도** 헤더를 그린다(본문까지 실린 목록은 우편함을 열 때 받는다).
+          type: object
+          required: [unread, total]
+          properties:
+            unread: { type: integer }
+            total: { type: integer }
 
     MeLeagueInfo:
       type: object

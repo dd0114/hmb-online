@@ -1,0 +1,210 @@
+/* 우편함 — 헤더 진입점 + 목록/상세 패널 (#323). */
+
+/*
+ * ⚠️ **폭 예산이 계약이다**(공지 진입점과 같은 규율). 390px 홈 헤더는 지갑 배지 2개 + [로그아웃]으로
+ * 이미 빡빡하다. 진입점은 **고정 28px 정사각**이고 `flex-shrink: 0` 로 줄지 않는다 — 줄어들면 누를 수
+ * 없는 크기가 되고, 커지면 헤더가 한 줄 더 접힌다(#248 실측 69→113px).
+ * 자리는 **닉네임 옆**(왼쪽), 공지 벨과 나란히. e2e `p323-mailbox.spec.ts` 가 이 예산을 숫자로 지킨다.
+ */
+.trigger {
+  position: relative;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-muted);
+  padding: 0;
+}
+
+/*
+ * 공지는 점, 우편은 **숫자**다 — 몇 통인지가 곧 할 일 개수라서. 다만 숫자는 폭이 값에 따라 흔들리므로
+ * 뱃지를 트리거 **밖으로 겹쳐** 띄우고(absolute) 트리거 자체의 28px 예산은 건드리지 않는다.
+ */
+.count {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9.5px;
+  font-weight: 800;
+  line-height: 15px;
+  text-align: center;
+  border: 1px solid var(--bg-elevated);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  z-index: 40;
+}
+
+.panel {
+  width: 100%;
+  max-width: 360px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* **목록만 스크롤한다** — 본문이 길어도 [닫기]는 화면에 남아야 한다(폰에서 갇히지 않게). */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+/* 만료·수령 완료는 흐리게 — 목록에는 남지만(hero 확정 ④) 지금 할 일이 아니라는 것이 보여야 한다. */
+.item[data-state="EXPIRED"],
+.item[data-state="CLAIMED"] {
+  opacity: 0.62;
+}
+
+.itemHead {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 10px 12px;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+}
+
+.itemTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  /* 긴 제목이 패널을 넓히지 못하게 — 가로 스크롤 0. */
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.itemDot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.itemMeta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+
+.chip,
+.tag,
+.tagMuted {
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+
+/* "받기" = 지금 할 수 있는 일이라 강조색. */
+.tag {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+}
+
+/* 만료·수령 완료 = 정보일 뿐이라 중립. */
+.tagMuted {
+  color: var(--text-muted);
+}
+
+.itemBody {
+  padding: 0 12px 12px;
+  font-size: 13px;
+}
+
+.actions {
+  margin-top: 10px;
+}
+
+.claim {
+  width: 100%;
+  padding: 11px;
+  border-radius: 9px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.claim:disabled {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.error {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--danger, #ff6b6b);
+}
+
+.close {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 10px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+}

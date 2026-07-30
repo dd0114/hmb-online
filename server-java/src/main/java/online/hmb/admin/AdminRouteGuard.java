@@ -115,7 +115,11 @@ public class AdminRouteGuard implements ApplicationRunner {
             // #309 W2 아트 번들. 게이트 밖으로 나가면 아무나 **우리 도메인에서 서빙되는 파일 트리를
             // 통째로 갈아끼울 수** 있다(zip 해제 = 임의 경로 쓰기 시도의 입구이기도 하다).
             // 공개 서빙(GET /api/chars/**)은 CharBundleService/Storage 에만 의존하므로 영향이 없다.
-            AdminCharBundleService.class);
+            AdminCharBundleService.class,
+            // #323 우편함 발송. 게이트 밖으로 나가면 **아무나 자기에게 보상을 발행할 수 있다** —
+            // 이 목록에서 가장 직접적인 경제 표면이다(G·Z·카드가 한 요청에 나간다).
+            // 유저 쪽 수령(MailService, /api/mails)은 이 빈에 의존하지 않으므로 영향이 없다.
+            AdminMailService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;
