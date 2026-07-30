@@ -12,6 +12,7 @@ import {
   shouldPoll,
   validateSubs,
   type MatchEventLike,
+  visibleTimelineEvents,
 } from "./match-logic";
 
 const ev = (type: string, over: Partial<MatchEventLike> = {}): MatchEventLike => ({
@@ -304,5 +305,33 @@ describe("validateSubs (client pre-check — server AC-M4 is SoT)", () => {
     // 일부만 알려진 상태도 보류 — 모르는 그 선수가 GK 일 수 있다.
     const partial = (id: string) => (id === "S1" ? "MF" : undefined);
     expect(validateSubs([{ out: "GK1", in: "B1" }], starters, bench, partial)).toEqual([]);
+  });
+});
+
+describe("라이브 폴백 공개 상한 (#238)", () => {
+  const ev = (tick: number) => ({ tick, type: "goal" as const });
+
+  it("capTick=null 이면 제한 없음 — 지나간 하프·종료·구서버(시계 없음) 무회귀", () => {
+    const all = [ev(10), ev(200), ev(2699)];
+    expect(visibleTimelineEvents(all, null)).toEqual(all);
+  });
+
+  it("라이브면 상한 밖 이벤트가 빠진다 — '끝까지 보기'가 앞을 못 본다", () => {
+    // 이게 이 이슈의 전부다: 후반 진행 중 끝까지 보기를 눌러도 미래 골이 나오면 안 된다.
+    expect(visibleTimelineEvents([ev(10), ev(200), ev(2699)], 200).map((e) => e.tick)).toEqual([10, 200]);
+  });
+
+  it("상한 틱 자체는 **포함**한다 — 지금 막 일어난 장면을 감추지 않는다", () => {
+    expect(visibleTimelineEvents([ev(200)], 200)).toHaveLength(1);
+  });
+
+  it("상한이 0 이면 아무것도 안 보인다(킥오프 직후) — 빈 배열이지 전체가 아니다", () => {
+    expect(visibleTimelineEvents([ev(10)], 0)).toEqual([]);
+  });
+
+  it("원본을 건드리지 않는다(제자리 정렬·절단 금지)", () => {
+    const all = [ev(10), ev(200)];
+    visibleTimelineEvents(all, 10);
+    expect(all).toHaveLength(2);
   });
 });
