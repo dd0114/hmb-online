@@ -228,7 +228,7 @@ describe("buildViewerSkins", () => {
     const skins = buildViewerSkins({ characters: null, units: null, placeholders: null, mapping: null }, log)!;
     expect(skins.byPlayer).toEqual({});
     expect(skins.atlases).toEqual([]);
-    expect(skins.nums).toEqual({ P173: "1" });
+    expect(skins.nums).toEqual({ "home:P173": "1" }); // #324 키 = (team, playerId)
   });
 
   it("매핑이 발행물에 없는 캐릭터를 가리키면 그 선수만 빠진다(전체 실패 아님)", () => {
@@ -270,8 +270,12 @@ describe("jerseyNumbers — 토큰에 선수 id 가 찍히는 문제 해결", ()
     ],
   };
 
+  // #324: 키가 `(team, playerId)` 로 바뀌었다 — 같은 playerId 가 양 팀에 뛰기 때문(상세는
+  // viewer-skins.duplicate-id.test.ts). 번호를 매기는 규칙(팀별 등장 순서) 자체는 그대로다.
   it("팀별 등장 순서로 1부터 매긴다(라인업 슬롯 순서)", () => {
-    expect(jerseyNumbers(log)).toEqual({ P010: "1", P044: "2", P077: "1", P099: "2" });
+    expect(jerseyNumbers(log)).toEqual({
+      "home:P010": "1", "home:P044": "2", "away:P077": "1", "away:P099": "2",
+    });
   });
 
   it("나중 스냅샷에만 등장하는 선수(교체)도 번호를 받는다", () => {
@@ -282,7 +286,7 @@ describe("jerseyNumbers — 토큰에 선수 id 가 찍히는 문제 해결", ()
         { players: [{ playerId: "P010", team: "home" }, { playerId: "P099", team: "away" }] },
       ],
     };
-    expect(jerseyNumbers(withSub)).toEqual({ P010: "1", P077: "1", P099: "2" });
+    expect(jerseyNumbers(withSub)).toEqual({ "home:P010": "1", "away:P077": "1", "away:P099": "2" });
   });
 
   it("실제 데모 로그에서 팀당 1~11 이 나온다", () => {
@@ -303,11 +307,15 @@ describe("jerseyNumbers — 토큰에 선수 id 가 찍히는 문제 해결", ()
     expect(jerseyNumbers({ tickSnapshots: [{}] })).toEqual({});
   });
 
-  it("로그를 주면 스킨 셀에 등번호가 실린다", () => {
+  it("로그를 주면 스킨 셀에 등번호가 실린다 — **팀 키 엔트리**에(#324)", () => {
     const withLog = buildViewerSkins(full, {
       tickSnapshots: [{ players: [{ playerId: "P001", team: "home" }] }],
     })!;
-    expect(withLog.byPlayer.P001?.num).toBe("1");
+    // 번호는 팀마다 다르므로 플레인 키 셀에는 굽지 않는다(같은 선수가 양 팀에 뛸 수 있다).
+    expect(withLog.byPlayer["home:P001"]?.num).toBe("1");
+    expect(withLog.byPlayer.P001?.num, "플레인 키는 아트만").toBeUndefined();
+    // 플레인 키 셀 자체는 남는다 — 팀을 모르는 소비자 폴백.
+    expect(withLog.byPlayer.P001, "아트 셀은 플레인 키에도 있다").toBeTruthy();
     // 로그 없이 만들면 등번호 없이(뷰어 기존 방식) 나간다.
     expect(buildViewerSkins(full)!.byPlayer.P001?.num).toBeUndefined();
   });

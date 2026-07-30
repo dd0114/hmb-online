@@ -2,7 +2,7 @@
 
 exports[`전체 프롬프트 길이 상한 (c) > 전부 on 프롬프트 길이 스냅샷(증분 가시화) 1`] = `
 {
-  "approxTokens": 1736,
-  "chars": 6941,
+  "approxTokens": 1823,
+  "chars": 7289,
 }
 `;

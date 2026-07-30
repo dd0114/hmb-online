@@ -16,6 +16,7 @@
 //   hooks = window.__viewer 읽기 표면(captions 는 DOM 이라 호스트가 제공).
 
 import { buildPlayback, spansReposition, inHighlight, effectiveSpeed, PACE } from "./playback.mjs";
+import { skinKeyOf, skinLookup } from "./skin-key.mjs";
 import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.impl.mjs";
 
 export function createViewer(canvas, chrome = {}) {
@@ -65,6 +66,17 @@ export function createViewer(canvas, chrome = {}) {
   const lerp = (a, b, t) => a + (b - a) * t;
   const ownerSideOf = (o) => (o ? (o[0] === "H" ? "home" : "away") : null);
   const idxOfTick = (tick) => { const i = snaps.findIndex((s) => s.tick >= tick); return i < 0 ? snaps.length - 1 : i; };
+  /**
+   * 카드 라벨 등번호 (#324). 스킨(팀 포함 키) 우선 — 실경기 id 는 "P077" 이라 문자 치환이 안 먹고,
+   * 게다가 같은 id 가 양 팀에 있어 팀 없이 조회하면 상대팀 번호가 나온다. 스킨이 없으면 종전 그대로
+   * id 파생, 그것도 등번호로 안 읽히면(3자 이상) "?" — 토큰에 id 원문을 찍지 않는다.
+   */
+  const cardNumOf = (cm) => {
+    const fromSkin = skin && cm.playerId ? skinLookup(skin.nums, cm.side, cm.playerId) : undefined;
+    if (fromSkin) return fromSkin;
+    const raw = cm.playerId ? cm.playerId.replace(/[HA]/, "") : "?";
+    return raw.length <= 2 ? raw : "?";
+  };
   const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
 
   function drawPitch() {
@@ -115,7 +127,9 @@ export function createViewer(canvas, chrome = {}) {
     if (!fixMode && autoPace) for (const st of stoppages) {
       if (st.isGoal || !st.contactAnchor || curTick < st.causeTick || curTick > st.causeTick + FOUL_CONTACT_TICKS) continue;
       const csnap = snapByTick.get(st.causeTick);
-      const pl = csnap && csnap.players.find((p) => p.playerId === st.contactAnchor);
+      // #324: 중복 playerId 에서 반대 팀 선수로 줌하던 것 — 팀이 있으면 팀까지 맞춘다.
+      const pl = csnap && csnap.players.find((p) =>
+        p.playerId === st.contactAnchor && (!st.contactAnchorTeam || p.team === st.contactAnchorTeam));
       if (pl) { contactPos = pl.pos; break; }
     }
     const useFollow = !fixMode && !koTweening && !contactPos && (follow || nearKey || (hold ? !!hold.zoom : false));
@@ -190,7 +204,9 @@ export function createViewer(canvas, chrome = {}) {
       ctx.fillStyle = "#fff"; ctx.fillText(num, px, py);
     };
     const koSnap = hold && hold.koIdx != null ? snaps[hold.koIdx] : null;
-    const koById = koSnap ? new Map(koSnap.players.map((q) => [q.playerId, q.pos])) : null;
+    // #324: 같은 playerId 가 양 팀에 뛰므로 팀까지 키에 넣는다 — 단독 키면 한 팀 인스턴스가
+    // 다른 팀 것에 덮여, 킥오프 잔상 클립이 엉뚱한 선수의 위치로 보간된다.
+    const koById = koSnap ? new Map(koSnap.players.map((q) => [skinKeyOf(q.team, q.playerId), q.pos])) : null;
     const ptw = koSnap ? hold.tween * hold.tween * (3 - 2 * hold.tween) : 0; // smoothstep
     const playerRender = [];
     const pt = spansReposition(A.tick, B.tick, restartTickSet) ? 0 : t;
@@ -198,7 +214,7 @@ export function createViewer(canvas, chrome = {}) {
       const pa = A.players[k], pb = B.players[k] || pa;
       let x = lerp(pa.pos.x, pb.pos.x, pt), y = lerp(pa.pos.y, pb.pos.y, pt);
       if (koById) {
-        const kp = koById.get(pa.playerId);
+        const kp = koById.get(skinKeyOf(pa.team, pa.playerId));
         if (kp) { x = lerp(pa.pos.x, kp.x, ptw); y = lerp(pa.pos.y, kp.y, ptw); }
       }
       const isHome = pa.team === "home", owner = A.ballOwner === pa.playerId;
@@ -206,16 +222,20 @@ export function createViewer(canvas, chrome = {}) {
       // px/py = **실제로 그린 캔버스 픽셀 좌표**(#218). 계약 테스트가 토큰 자리를 픽셀로 검사할 때
       // 카메라 변환을 바깥에서 재구현하면(baseScale·zoom·MARGIN) 렌더와 조용히 어긋난다 —
       // "무엇이 그려졌나"는 그린 쪽이 알려준다. 읽기 전용·추가 필드(기존 소비자 무영향).
-      playerRender.push({ id: pa.playerId, x, y, px, py });
+      playerRender.push({ id: pa.playerId, team: pa.team, x, y, px, py });
       // 캐릭터 스킨(#145, S3): setSkin 으로 아틀라스가 주입됐고 이 선수 셀이 있으면 얼굴 아바타 +
       // 팀색 링/디스크/번호 뱃지로 그린다. 없으면(QA·미주입·로드전) 현행 단색 원(무회귀).
-      const entry = skin ? skin.byPlayer[pa.playerId] : null;
+      // #324: 팀 포함 키 우선, 없으면 단독 키(구 페이로드 호환).
+      const entry = skin ? skinLookup(skin.byPlayer, pa.team, pa.playerId) : null;
       const atlas = entry ? skin.atlases[entry.atlas || 0] : null;
       const cell = atlas && atlas.ok ? entry : null;
       // 등번호 폴백(#218): 얼굴이 없다고 **선수 id 원문**("P173")을 토큰에 찍으면 안 된다 —
       // 실경기 id 는 길어서 토큰을 덮어 아이콘이 아예 안 보이는 것처럼 읽힌다(hero 제보의 실체).
       // 아트 유무와 무관하게 부모가 준 등번호를 쓰고, 그것마저 없을 때만 id 파생으로 떨어진다.
-      const rawNum = (entry && entry.num) || (skin && skin.nums[pa.playerId]) || pa.playerId.replace(/[HA]/, "");
+      const rawNum =
+        (entry && entry.num) ||
+        (skin && skinLookup(skin.nums, pa.team, pa.playerId)) ||
+        pa.playerId.replace(/[HA]/, "");
       // 그 파생마저 등번호로 안 읽히면(3자 이상 = 실경기 id) **아무것도 안 찍는다**. 부모가 등번호를
       // 안 넘긴 소비자에서도 토큰이 글자에 덮이지 않게 — 코어 자체의 방어선(독립 QA 권고).
       const num = rawNum.length <= 2 ? rawNum : "";
@@ -254,7 +274,8 @@ export function createViewer(canvas, chrome = {}) {
     lastCardMarks = [];
     for (const cm of cardMarks) {
       if (curTick < cm.tick || curTick > cm.tick + CARD_SHOW_TICKS) continue;
-      const pr = playerRender.find((p) => p.id === cm.playerId);
+      // #324: 중복 playerId 에서 카드가 상대팀 선수 위에 그려지던 것 — 팀까지 맞춘다.
+      const pr = playerRender.find((p) => p.id === cm.playerId && (!cm.side || p.team === cm.side));
       if (!pr) continue;
       const px = sx(pr.x), py = sy(pr.y);
       const cardCol = cm.red ? "#ef4444" : "#eab308";
@@ -265,13 +286,14 @@ export function createViewer(canvas, chrome = {}) {
       ctx.beginPath();
       if (ctx.roundRect) ctx.roundRect(ix, iy, iw, ih, 2); else ctx.rect(ix, iy, iw, ih);
       ctx.fill(); ctx.stroke();
-      const label = `#${cm.num}`;
+      const cardNum = cardNumOf(cm);
+      const label = `#${cardNum}`;
       ctx.font = "bold 14px sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
       const lx = ix + iw + 3, ly = iy + ih / 2;
       ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.strokeText(label, lx, ly);
       ctx.fillStyle = cardCol; ctx.fillText(label, lx, ly);
       ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      lastCardMarks.push({ playerId: cm.playerId, num: cm.num, red: cm.red, side: cm.side, px, py });
+      lastCardMarks.push({ playerId: cm.playerId, num: cardNum, red: cm.red, side: cm.side, px, py });
     }
     // 공
     const br = useFollow ? 7 : 5.5;
@@ -360,8 +382,12 @@ export function createViewer(canvas, chrome = {}) {
       const s = snapByTick.get(a.at); if (!s) continue;
       const prog = age / TOAST_TICKS;
       let ax = s.ball.x, ay = s.ball.y;
-      if (a.anchor) { const pl = s.players.find((p) => p.playerId === a.anchor); if (pl) { ax = pl.pos.x; ay = pl.pos.y; } }
-      const key = `${a.at}:${a.anchor || "ball"}`;
+      if (a.anchor) {
+        // #324: 팀이 실려 있으면 팀까지 맞춰 앵커(중복 playerId 에서 상대팀 선수에 붙던 것).
+        const pl = s.players.find((p) => p.playerId === a.anchor && (!a.anchorTeam || p.team === a.anchorTeam));
+        if (pl) { ax = pl.pos.x; ay = pl.pos.y; }
+      }
+      const key = `${a.at}:${a.anchorTeam || ""}:${a.anchor || "ball"}`;
       const row = toastRow.get(key) || 0; toastRow.set(key, row + 1);
       const px = sx(ax), py = sy(ay) - 18 - prog * 22 - row * 17;
       ctx.globalAlpha = 1 - prog;
@@ -555,7 +581,9 @@ export function createViewer(canvas, chrome = {}) {
     surgeTicks = annos.filter((a) => a.text === "SURGE!").map((a) => a.tick);
     cardMarks = data.events.filter((e) => e.type === "card").map((e) => ({
       tick: e.tick, playerId: e.playerId || null, red: e.detail === "red",
-      num: e.playerId ? e.playerId.replace(/[HA]/, "") : "?", side: e.playerId ? (e.playerId[0] === "H" ? "home" : "away") : null,
+      // #324: 팀은 이벤트가 SoT. 종전 `playerId[0] === "H"` 추측은 실경기 id(P077…)에서
+      //       **항상 away** 로 판정됐다(#242 와 같은 패턴의 잔존). 팀이 없는 구 로그만 추측으로.
+      side: e.team || (e.playerId ? (e.playerId[0] === "H" ? "home" : "away") : null),
     }));
     totalMinutes = snaps.length ? snaps[snaps.length - 1].minute : 0;
     tickPos = 0; lastGoalShown = 0;

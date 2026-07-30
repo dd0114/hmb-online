@@ -273,10 +273,11 @@ export function buildStoppages(events) {
     if (c) {
       // 파울/페널티 정지는 접촉 지점(파울러)으로 줌해 "두 선수 충돌"을 보여준다(와이드로 작은 점 되던
       // 것 해소). 파울=자기 playerId, 페널티=같은 틱 파울 이벤트의 playerId(페널티 이벤트엔 없음).
-      let contactAnchor;
-      if (k === "foul") contactAnchor = events[i].playerId;
-      else if (k === "penalty") { const f = events.find((e) => e.tick === events[i].tick && e.type === "foul"); contactAnchor = f && f.playerId; }
-      out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 45), big: c.big, bigCol: c.col, hold: c.hold, isGoal: false, wide: leadsToWideRestart(i, events[i].tick, 45), done: false, ...(contactAnchor ? { contactAnchor } : {}) });
+      // #324: playerId 는 양 팀에 중복될 수 있다(덱·봇이 선수 카탈로그 공유) → 팀을 같이 싣는다.
+      let contactAnchor, contactAnchorTeam;
+      if (k === "foul") { contactAnchor = events[i].playerId; contactAnchorTeam = events[i].team; }
+      else if (k === "penalty") { const f = events.find((e) => e.tick === events[i].tick && e.type === "foul"); contactAnchor = f && f.playerId; contactAnchorTeam = f && f.team; }
+      out.push({ causeTick: events[i].tick, restartTick: nextRestart(i, events[i].tick, 45), big: c.big, bigCol: c.col, hold: c.hold, isGoal: false, wide: leadsToWideRestart(i, events[i].tick, 45), done: false, ...(contactAnchor ? { contactAnchor, contactAnchorTeam } : {}) });
       continue;
     }
     const sp = SETPIECE_STOP[k];
@@ -323,7 +324,7 @@ export function buildAnnotations(events, snaps) {
   for (const e of events) {
     const k = eventKind(e);
     // anchor(선택): 토스트를 공이 아니라 그 playerId 선수 위치에 앵커(선수 사건용). #69.
-    const T = (text, col, anchor) => annos.push({ kind: "toast", tick: e.tick, at: e.tick, text, col, ...(anchor ? { anchor } : {}) });
+    const T = (text, col, anchor) => annos.push({ kind: "toast", tick: e.tick, at: e.tick, text, col, ...(anchor ? { anchor, anchorTeam: e.team } : {}) });
     const B = (text, col) => annos.push({ kind: "banner", tick: e.tick, text, col });
     if (k === "shot") T("SHOT!", "#fbbf24");
     else if (k === "shot_one_on_one") T("1-ON-1!", "#fbbf24");
