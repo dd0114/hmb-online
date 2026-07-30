@@ -92,7 +92,18 @@ export function logLines(events, uptoTick, baseline) {
       label: labelOf(e),
     };
     if (e.type === "goal") line.score = `${h}-${a}`;
-    if (e.playerId) line.number = e.playerId.replace(/[HA]/, "");
+    if (e.playerId) {
+      // #334: id 파생이 **등번호로 읽힐 때만** 번호로 내보낸다. 실경기 id 는 "P108" 이라 이 치환이
+      // 아무것도 못 지우고, 그대로 화면 로그 탭에 `#P108` 로 찍혔다(라이브 한 하프 152/152).
+      // 코어는 피치 위 토큰엔 이미 같은 방어선이 있었다(#218) — 자막·로그만 빠져 있었다.
+      // ⚠️ 판정은 **길이가 아니라 숫자성**이다(독립검증 minor-2). 길이로 걸면 `"XY"` 같은 값이
+      // 등번호 행세를 하고, 카드 자막에선 `"PH7"` → `#P7` 처럼 **잘린 id** 가 찍힌다.
+      // 지금 카탈로그(P###)에선 도달 불가지만, 의도("등번호로 읽힐 때만")는 이 술어가 정확하다.
+      const derived = e.playerId.replace(/[HA]/, "");
+      if (/^\d{1,2}$/.test(derived)) line.number = derived;
+      // 부모(web)는 팀별 등번호 표를 갖고 있다(#324 jerseyNumbers) → 진짜 번호를 붙이도록 재료를 준다.
+      line.playerId = e.playerId;
+    }
     if (e.team) line.team = e.team;
     if (e.type === "shot" && typeof e.xg === "number") line.xg = e.xg.toFixed(2);
     out.push(line);
