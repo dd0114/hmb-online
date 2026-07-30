@@ -101,4 +101,20 @@ describe("revengeView — 응답 형태를 믿지 않는다", () => {
     // 0 으로 읽으면 **모든 복수 버튼이 잠긴다**(= 기능이 통째로 죽는다).
     expect(revengeView({ entries: [] } as never).remainingToday).toBeNull();
   });
+
+  it("6건 이상 와도 최근 5건까지만 그린다 (설계 §4.1 조건 ③)", () => {
+    /**
+     * ⚠️ 슬라이딩 창의 주인은 서버 원장이다 — 여기 상한은 **표시 상한**이지 자물쇠가 아니다.
+     * 그래도 계약이 필요한 이유: 서버가 회귀로 전량을 보내면 원정 화면이 복수 목록 벽이 된다.
+     * §4.1 은 세 조건을 계약으로 박제한다고 썼는데 ③만 양쪽 어디에도 없었다(독립검증 2R minor-4).
+     */
+    const many = Array.from({ length: 8 }, (_, i) => e({ reportId: `R${i}` }));
+    const v = revengeView({ entries: many, remainingToday: 3 });
+    // ⚠️ 기대값은 **리터럴 5** 다. `REVENGE_QUEUE_MAX` 를 import 해 비교하면 상수를 8 로 바꾸는
+    // 변이가 그대로 통과한다(이 에픽에서 실제로 당한 tautology — 계약이 앱과 같은 값을 읽었다).
+    expect(v.entries).toHaveLength(5);
+    // **앞에서** 자른다 — 최신이 앞이므로 뒤에서 자르면 방금 맞은 침공이 사라진다.
+    expect(v.entries.at(0)!.reportId).toBe("R0");
+    expect(v.entries.at(-1)!.reportId).toBe("R4");
+  });
 });

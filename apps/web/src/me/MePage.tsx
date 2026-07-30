@@ -33,8 +33,9 @@ export function MePage() {
   // 순위 2카드 (#286 W5, 설계 §3.7) — 서버가 없으면 각자 조용히 사라진다.
   const { data: awayRank } = useAwayRankings();
   const { data: leagueRank } = useLeagueRankings();
-  // RecordPanel 이 실제로 그려졌는지 — 그 답은 서버 응답에 달려 있어 자식만 안다.
-  const [hasRecordPanel, setHasRecordPanel] = useState(false);
+  // RecordPanel 이 **통산 전적을 대신 말하는지** — 그 답은 서버 응답에 달려 있어 자식만 안다.
+  // ⚠️ "패널이 보이는지"가 아니다(minor-3): 부분 응답이면 패널은 뜨는데 통산은 없다.
+  const [panelShowsOverall, setPanelShowsOverall] = useState(false);
 
   const header = (
     <div className={styles.headerRow}>
@@ -71,10 +72,12 @@ export function MePage() {
           </div>
         </section>
 
-        {/* ⚠️ **RecordPanel 이 뜨면 이 줄은 숨는다** — 둘 다 통산 전적을 말해서 "12승 3무 8패"가
-            화면에 두 번 나왔다(독립검증 MIN-4). 이 줄은 서버 신규 API 가 없을 때의 **폴백**이다:
-            `/api/me` 의 records 만으로도 최소한 통산은 보여준다. */}
-        {rec && !hasRecordPanel && (
+        {/* ⚠️ **RecordPanel 이 통산을 말하면 이 줄은 숨는다** — 둘 다 통산 전적을 말해서
+            "12승 3무 8패"가 화면에 두 번 나왔다(독립검증 MIN-4). 이 줄은 서버 신규 API 가 없을
+            때의 **폴백**이다: `/api/me` 의 records 만으로도 최소한 통산은 보여준다.
+            ⚠️ 조건을 "패널이 보이면"으로 되돌리지 마라 — 부분 응답(overall 없이 form 만)에서
+            양쪽 다 사라진다(minor-3). 계약이 그 변이를 죽인다. */}
+        {rec && !panelShowsOverall && (
           <section className={styles.record} data-testid="me-record">
             <b className={styles.recordLine}>
               {rec.wins}승 {rec.draws}무 {rec.losses}패
@@ -85,7 +88,7 @@ export function MePage() {
           </section>
         )}
 
-        <RecordPanel onVisible={setHasRecordPanel} />
+        <RecordPanel onShowsOverall={setPanelShowsOverall} />
 
         <RankingBoard kind="league" data={leagueRank} title="🏅 리그 순위" />
         <RankingBoard kind="away" data={awayRank} title="🏅 원정 순위" />

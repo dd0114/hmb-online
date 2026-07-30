@@ -71,6 +71,13 @@ test("모드별 전적·최근 폼·승률 도넛이 서버 값으로 뜬다", a
   await expect(page.getByTestId("me-winrate")).toContainText("52%");
   await expect(page.getByTestId("me-streak")).toContainText("2연승");
 
+  /**
+   * ⚠️ **상단 폴백 한 줄은 접힌다** — 안 접으면 "12승 3무 8패"가 화면에 두 번 나온다(MIN-4).
+   * 이 단언이 없으면 접기 조건(`!panelShowsOverall`)을 지워도 **전 스위트가 통과한다**
+   * (독립검증 2R minor-2 = 변이 8 생존). 위 `toContainText` 가 앵커라 공허하지 않다.
+   */
+  await expect(page.getByTestId("me-record")).toHaveCount(0);
+
   // 모드 순서 = 리그 · 원정 · 연습 (연습이 마지막인 것은 hero Q1 과 같은 뜻이다).
   const rows = page.getByTestId("me-record-modes").locator("tbody tr");
   await expect(rows).toHaveCount(3);
@@ -109,6 +116,26 @@ test("한 판도 안 한 모드는 줄을 만들지 않는다", async ({ page })
 
   await expect(page.getByTestId("me-record-modes").locator("tbody tr")).toHaveCount(1);
   await expect(page.getByTestId("me-mode-away")).toHaveCount(0);
+});
+
+test("통산 없이 최근 폼만 오는 부분 응답에서도 통산 전적이 화면에 남는다", async ({ page }) => {
+  /**
+   * ⚠️ **접기 신호는 "패널이 보이나"가 아니라 "패널이 통산을 말하나"다.**
+   * `overall` 없이 `recentForm` 만 오면 패널은 뜨지만(`usable`) 통산은 없다 — 그때 상단 폴백까지
+   * 접히면 통산 전적이 **화면에서 통째로 사라진다**(독립검증 2R minor-3, 실측 0회).
+   * 이 앱은 스스로 "응답 형태를 믿지 않는다"(#245·#251 전례)를 전제로 만들었으므로, 부분 응답은
+   * 예외 상황이 아니라 **예상된 입력**이다.
+   */
+  await mockAll(page);
+  await mockRecord(page, { recentForm: ["WIN", "LOSS", "DRAW"] });
+  await page.goto("/me");
+
+  // 패널은 뜬다 — 폼은 보여줄 게 있다.
+  await expect(page.getByTestId("me-form")).toBeVisible();
+  await expect(page.getByTestId("me-record-overall")).toHaveCount(0);
+  // 그러니 상단 폴백이 통산을 계속 말해야 한다.
+  await expect(page.getByTestId("me-record")).toBeVisible();
+  await expect(page.getByTestId("me-record")).toContainText("12승 3무 8패");
 });
 
 test("도넛 호가 승률 비율을 실제로 반영한다", async ({ page }) => {

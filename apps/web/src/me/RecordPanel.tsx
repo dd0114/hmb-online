@@ -15,12 +15,22 @@ const C = 2 * Math.PI * R;
  *
  * ⚠️ **승률은 서버 값만 쓴다.** 무승부 취급이 서버 규칙이라 클라가 나누면 조용히 어긋난다.
  */
-export function RecordPanel({ onVisible }: { onVisible?: (v: boolean) => void }) {
+export function RecordPanel({ onShowsOverall }: { onShowsOverall?: (v: boolean) => void }) {
   const { data } = useMyRecord();
   const v = recordView(data);
-  // 상위 화면이 중복 표시를 접을 수 있게 알린다(#286 MIN-4) — "그려졌나"는 서버 응답에 달려
-  // 있어 여기서만 안다. effect 로 알리는 이유: 렌더 중 부모 setState 는 경고를 낸다.
-  useEffect(() => onVisible?.(v.usable), [v.usable, onVisible]);
+  /**
+   * 상위 화면이 중복 표시를 접을 수 있게 알린다(#286 MIN-4) — "그려졌나"는 서버 응답에 달려
+   * 있어 여기서만 안다. effect 로 알리는 이유: 렌더 중 부모 setState 는 경고를 낸다.
+   *
+   * ⚠️ **`usable` 이 아니라 `overall !== null` 이다.** 접기의 뜻은 "패널이 보인다"가 아니라
+   * **"패널이 통산 전적을 대신 말한다"** 이다. `usable` 로 알리면 `{"recentForm":[…]}` 처럼
+   * **overall 없이 오는 부분 응답**에서 상단 폴백이 접히는데 패널에도 통산이 없어 —
+   * 통산 전적이 화면에서 **통째로 사라진다**(독립검증 2R minor-3, 실측 0회 표시).
+   * 이 파일 스스로가 "응답 형태를 믿지 않는다"(#245·#251)를 전제로 `block()` 에서 overall
+   * 부재를 명시 처리하는데, 접기 신호만 그 가정을 안 따르고 있었다.
+   */
+  const showsOverall = v.usable && v.overall !== null;
+  useEffect(() => onShowsOverall?.(showsOverall), [showsOverall, onShowsOverall]);
   if (!v.usable) return null;
 
   return (

@@ -20,10 +20,23 @@ export interface RevengeView {
   remainingToday: number | null;
 }
 
+/**
+ * 큐에 사는 최대 기록 수 (설계 §4.3 — 최근 5건 슬라이딩).
+ *
+ * ⚠️ **이 상수는 규칙이 아니라 표시 상한이다.** 슬라이딩 창의 주인은 서버 원장(`away_reports`)이고,
+ * 어뷰징을 막는 것도 서버다(§4.1 조건 ①·②는 403 `REVENGE_NOT_OWNED`/`REVENGE_EXHAUSTED`).
+ * 여기서 자르는 이유는 하나 — 서버가 회귀로 30건을 보내면 원정 화면이 **복수 목록 벽**이 되기
+ * 때문이다. 자물쇠로 착각하지 마라(그 순간 서버 검사가 "중복이니 빼도 되는 것"으로 보인다).
+ */
+export const REVENGE_QUEUE_MAX = 5;
+
 /** 응답 정규화. 200 `{}` 를 주는 구 서버·프록시가 실재한다(#245·#251 전례). */
 export function revengeView(data: RevengeResponse | undefined | null): RevengeView {
   const entries = Array.isArray(data?.entries)
-    ? data!.entries.filter((e): e is RevengeEntry => Boolean(e) && typeof e.reportId === "string")
+    ? data!.entries
+        .filter((e): e is RevengeEntry => Boolean(e) && typeof e.reportId === "string")
+        // 최신이 앞이라는 전제로 **앞에서** 자른다 — 뒤에서 자르면 방금 맞은 침공이 사라진다.
+        .slice(0, REVENGE_QUEUE_MAX)
     : [];
   return {
     usable: entries.length > 0,
