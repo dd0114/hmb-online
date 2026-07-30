@@ -12,13 +12,11 @@ import { expect, test, type Page } from "@playwright/test";
  */
 
 interface AdminUserRow {
-  userId: string;
+  id: string;
   nickname: string;
-  provider: string;
+  authProvider: string;
+  isAdmin: boolean;
   points: number;
-  wins: number;
-  draws: number;
-  losses: number;
   createdAt: string;
 }
 
@@ -43,10 +41,13 @@ function freshState(): MockState {
   return {
     isAdmin: true,
     forbidAdminApi: false,
+    // ⚠️ **서버가 실제로 주는 모양**이다(#342). 예전엔 `{userId, provider, wins…}` 였는데 서버는
+    //    `{id, authProvider, isAdmin, points, createdAt}` 를 준다 — 목이 거짓이라 **화면이 라이브에서
+    //    통째로 비어 있는데도** 이 e2e 가 green 이었다. 목은 계약의 일부다.
     users: [
-      { userId: "u1", nickname: "테스터A", provider: "local", points: 1200, wins: 3, draws: 1, losses: 2, createdAt: "2026-07-01T09:00:00Z" },
-      { userId: "u2", nickname: "테스터B", provider: "guest", points: 50, wins: 0, draws: 0, losses: 1, createdAt: "2026-07-02T09:00:00Z" },
-      { userId: "u3", nickname: "관리자", provider: "local", points: 999, wins: 1, draws: 0, losses: 0, createdAt: "2026-07-03T09:00:00Z" },
+      { id: "u1", nickname: "테스터A", authProvider: "local", isAdmin: false, points: 1200, createdAt: "2026-07-01T09:00:00Z" },
+      { id: "u2", nickname: "테스터B", authProvider: "guest", isAdmin: false, points: 50, createdAt: "2026-07-02T09:00:00Z" },
+      { id: "u3", nickname: "관리자", authProvider: "local", isAdmin: true, points: 999, createdAt: "2026-07-03T09:00:00Z" },
     ],
     ledger: {
       u1: [
@@ -99,10 +100,11 @@ async function mockApi(page: Page, state: MockState) {
       const q = new URL(route.request().url()).searchParams.get("q")?.trim().toLowerCase() ?? "";
       const users = q
         ? state.users.filter(
-            (u) => u.nickname.toLowerCase().includes(q) || u.userId.toLowerCase().includes(q),
+            (u) => u.nickname.toLowerCase().includes(q) || u.id.toLowerCase().includes(q),
           )
         : state.users;
-      return route.fulfill(json({ users }));
+      // 서버는 **페이지 객체**를 준다 — `{users:[…]}` 가 아니다(#342).
+      return route.fulfill(json({ items: users, total: users.length, limit: 50, offset: 0 }));
     },
   );
 
@@ -111,15 +113,18 @@ async function mockApi(page: Page, state: MockState) {
     (route) => {
       if (state.forbidAdminApi) return route.fulfill(forbidden());
       const id = new URL(route.request().url()).pathname.split("/").pop()!;
-      const user = state.users.find((u) => u.userId === id);
+      const user = state.users.find((u) => u.id === id);
       if (!user) return route.fulfill(json({ code: "NOT_FOUND", message: "no user" }, 404));
+      // 상세도 서버 모양 그대로: players{distinct,total} · deck(null 가능) · presets · records.
+      // ⚠️ `recentLedger` 는 **서버에 없다** — 목이 그걸 주던 탓에 화면의 원장 표가 살아 있었다(#342).
       return route.fulfill(
         json({
           user,
-          ownedPlayers: 34,
-          deckFormation: "4-3-3",
-          deckStarters: 11,
-          recentLedger: state.ledger[id] ?? [],
+          players: { distinct: 34, total: 41 },
+          deck: { id: "d1", name: "기본 덱", formation: "4-3-3", starters: 11, bench: 2,
+                  updatedAt: "2026-07-19T09:00:00Z" },
+          presets: { promptPresets: 2, teamPresets: 1 },
+          records: { wins: 3, draws: 1, losses: 2 },
         }),
       );
     },
@@ -131,17 +136,21 @@ async function mockApi(page: Page, state: MockState) {
       if (state.forbidAdminApi) return route.fulfill(forbidden());
       const id = new URL(route.request().url()).pathname.split("/").slice(-2)[0]!;
       const body = route.request().postDataJSON() as { delta: number; reason: string };
-      const user = state.users.find((u) => u.userId === id)!;
+      const user = state.users.find((u) => u.id === id)!;
       user.points += body.delta;
-      const entry: LedgerEntry = {
-        id: `L${++state.seq}`,
-        delta: body.delta,
-        reason: body.reason,
-        actor: "관리자",
-        createdAt: "2026-07-20T12:00:00Z",
-      };
-      state.ledger[id] = [entry, ...(state.ledger[id] ?? [])];
-      return route.fulfill(json({ userId: id, points: user.points, entry }));
+      // ⚠️ 서버 모양 그대로(`AdminPointsService.GrantResult`) — 예전 목은 `{points, entry}` 였고
+      //    그 거짓 때문에 "지급 직후 화면이 터진다"를 아무도 못 봤다(#342).
+      state.seq += 1;
+      return route.fulfill(
+        json({
+          userId: id,
+          delta: body.delta,
+          applied: true,
+          balance: user.points,
+          idempotencyKey: `IDEM${state.seq}`,
+          auditId: `A${state.seq}`,
+        }),
+      );
     },
   );
 }
@@ -186,7 +195,9 @@ test.describe("Phase3 admin (route-mock)", () => {
     await expect(page.getByTestId("admin-user-row-u2")).toBeVisible();
     await expect(page.getByTestId("admin-user-row-u3")).toBeVisible();
     await expect(page.getByTestId("admin-user-row-u1")).toContainText("테스터A");
-    await expect(page.getByTestId("admin-user-row-u1")).toContainText("3승 1무 2패");
+    // ⚠️ 전적 열은 **없다** — 서버 행에 wins/draws/losses 가 없다(#342). 전적은 상세에서 본다.
+    await expect(page.getByTestId("admin-user-row-u1")).toContainText("local");
+    await expect(page.getByTestId("admin-user-row-u1")).not.toContainText("승");
 
     // 검색: 닉네임 부분일치.
     await page.getByTestId("admin-search").fill("테스터B");
@@ -218,7 +229,10 @@ test.describe("Phase3 admin (route-mock)", () => {
     await page.getByTestId("admin-user-select-u1").click();
     await expect(page.getByTestId("admin-user-detail")).toBeVisible();
     await expect(page.getByTestId("admin-detail-points")).toHaveText("1,200");
-    await expect(page.getByTestId("admin-ledger")).toContainText("가입 보너스");
+    // ⚠️ 원장 표는 **없다** — 서버가 안 주므로 화면에서 뺐다(#342). 있는 척 그리면 "지급 이력
+    //    없음"이라는 거짓이 된다. 지급 결과는 아래 지갑 숫자와 notice 로 확인한다.
+    await expect(page.getByTestId("admin-ledger")).toHaveCount(0);
+    await expect(page.getByTestId("admin-detail-record")).toContainText("3승");
 
     // 사유가 비면 제출 불가(감사 로그 공백 방지, AC-C1).
     await page.getByTestId("admin-grant-delta").fill("500");
@@ -229,11 +243,8 @@ test.describe("Phase3 admin (route-mock)", () => {
     await expect(page.getByTestId("admin-grant-submit")).toBeEnabled();
     await page.getByTestId("admin-grant-submit").click();
 
-    // 지갑 즉시 반영(invalidate) + 원장에 actor/사유 기록.
+    // 지갑 즉시 반영(invalidate) + 결과 문구.
     await expect(page.getByTestId("admin-detail-points")).toHaveText("1,700");
-    await expect(page.getByTestId("admin-ledger")).toContainText("충전 요청 수동 처리");
-    await expect(page.getByTestId("admin-ledger")).toContainText("관리자");
-    await expect(page.getByTestId("admin-ledger")).toContainText("+500");
     await expect(page.getByTestId("admin-grant-notice")).toContainText("+500");
 
     // 차감(음수).
@@ -241,7 +252,8 @@ test.describe("Phase3 admin (route-mock)", () => {
     await page.getByTestId("admin-grant-reason").fill("오지급 회수");
     await page.getByTestId("admin-grant-submit").click();
     await expect(page.getByTestId("admin-detail-points")).toHaveText("1,500");
-    await expect(page.getByTestId("admin-ledger")).toContainText("오지급 회수");
+    // 화면은 유니코드 마이너스(−)를 쓴다(`formatSignedDelta`) — ASCII 하이픈으로 찾으면 못 만난다.
+    await expect(page.getByTestId("admin-grant-notice")).toContainText("−200");
 
     // 큰 값(|delta| > 100000)은 확인 모달을 거친다 — 취소하면 아무 변화 없음.
     await page.getByTestId("admin-grant-delta").fill("100001");
