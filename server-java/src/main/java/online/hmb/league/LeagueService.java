@@ -1016,7 +1016,7 @@ public class LeagueService {
             ObjectNode entry = objectMapper.createObjectNode();
             entry.put("playerId", roster.get(i));
             entry.put("slotIndex", i < DeckService.STARTER_COUNT ? i : i - DeckService.STARTER_COUNT);
-            (i < 11 ? starters : bench).add(entry);
+            (i < DeckService.STARTER_COUNT ? starters : bench).add(entry);
         }
         return deck.toString();
     }

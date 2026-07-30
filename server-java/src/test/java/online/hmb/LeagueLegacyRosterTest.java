@@ -147,34 +147,13 @@ class LeagueLegacyRosterTest extends MatchTestBase {
         }
     }
 
-    /**
-     * 등급 라운드로빈 — 이 폴백이 <b>지키겠다고 선언한</b> 성질(v1 롤백의 목적 = 등급 분배)에
-     * 계약이 없었다(독립검증 MAJ-3 M5: `gradeCursor++` 를 `0` 으로 고정해도 아무 테스트가 안 죽었다).
-     * 구현은 실제로 보존하고 있었지만, 계약이 없으면 조용히 드리프트한다.
+    /*
+     * ⚠️ 여기 있던 `gradeCursorSpreadsPicksAcrossGrades` 는 **공허해서 지웠다**(독립검증 MIN-A).
+     * 풀을 등급당 DF 1명으로 짰더니 커서를 무시해도 5개가 소진 순서대로 다 나와
+     * `doesNotHaveDuplicates()` 가 **항상 참**이었다 — 어떤 변이체도 죽이지 못했다.
+     * 등급 라운드로빈의 실제 커버리지는 `league/LegacyRosterFillTest` 가
+     * **로스터 산출물의 등급 분포**로 낸다(그쪽이 호출부 변이까지 죽인다).
      */
-    @Test
-    void gradeCursorSpreadsPicksAcrossGrades() {
-        Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
-        for (String g : List.of("BRONZE", "SILVER", "GOLD", "DIA", "LEGEND")) {
-            pool.put(g, new ArrayList<>(List.of(new LeagueService.PlayerRow(g + "-df", g, "DF", 100))));
-        }
-        List<String> grades = new ArrayList<>();
-        for (int cursor = 0; cursor < 5; cursor++) {
-            grades.add(LeagueService.takeLegacyAt(pool, "DF", cursor).grade());
-        }
-        // 커서를 0..4 로 돌리면 **서로 다른 등급 5개**가 나와야 한다. 커서를 무시하면 같은 등급이
-        // 소진될 때까지 먼저 뽑혀 분포가 한쪽으로 쏠린다.
-        assertThat(grades).as("등급 라운드로빈 = 커서가 실제로 시작점을 옮긴다").doesNotHaveDuplicates();
-    }
-
-    @Test
-    void whenOnlyGoalkeepersRemainForAnOutfieldSlotItReturnsNullRatherThanAKeeper() {
-        Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
-        pool.put("BRONZE", new ArrayList<>(List.of(
-                new LeagueService.PlayerRow("gk1", "BRONZE", "GK", 100))));
-        // 빈손이 낫다 — 골키퍼를 필드에 세우면 그 팀은 10명으로 싸운다.
-        assertThat(LeagueService.takeLegacyAt(pool, "DF", 0)).isNull();
-    }
 
     // ── 헬퍼 (LeagueDivisionTest 와 동형) ─────────────────────────────────
 

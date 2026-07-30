@@ -69,9 +69,43 @@ class LegacyRosterFillTest {
                 LeagueService.sampleRosterLegacy(new SplittableRandom(7), gkPool, byGrade, "4-4-2", 15);
 
         List<String> outfieldGrades = roster.subList(1, 11).stream().map(grade::get).toList();
-        // 커서를 고정하면 첫 등급부터 소진돼 분포가 쏠린다. 커서가 돌면 5등급이 모두 나온다.
-        assertThat(outfieldGrades).as("아웃필드 등급 분포 %s", outfieldGrades)
-                .containsAll(List.of("BRONZE", "SILVER", "GOLD", "DIA", "LEGEND"));
+        /*
+         * ⚠️ `containsAll` 로는 **부분 쏠림을 못 잡는다**(독립검증 MIN-B: B4/S3/G1/D1/L1 변이가 통과).
+         * 라운드로빈의 실제 불변식은 "아웃필드 10칸 = 등급당 정확히 2" 다 — 분포로 단언한다.
+         */
+        Map<String, Long> dist = outfieldGrades.stream()
+                .collect(java.util.stream.Collectors.groupingBy(g -> g, java.util.stream.Collectors.counting()));
+        assertThat(dist).as("아웃필드 등급 분포 %s", outfieldGrades).isEqualTo(Map.of(
+                "BRONZE", 2L, "SILVER", 2L, "GOLD", 2L, "DIA", 2L, "LEGEND", 2L));
+    }
+
+    /**
+     * 가드는 <b>선발까지만</b>이다 — 벤치 골키퍼를 없애면 안 된다(독립검증 MIN-C: 과적용 변이가 생존했다).
+     * 벤치는 피치에 서지 않으므로 GK 배제 이유가 없고, 봇 교체가 생기면 벤치 GK 가 필요해진다.
+     */
+    @Test
+    void theGuardStopsAtTheStartingEleven_benchMayStillHoldGoalkeepers() {
+        Map<String, List<LeagueService.PlayerRow>> byGrade = new LinkedHashMap<>();
+        Map<String, String> position = new LinkedHashMap<>();
+        List<LeagueService.PlayerRow> rows = new ArrayList<>();
+        for (String pos : List.of("DF", "DF", "DF", "DF", "MF", "MF", "MF", "MF", "FW", "FW")) {
+            rows.add(new LeagueService.PlayerRow(pos + rows.size(), "BRONZE", pos, 100));
+        }
+        for (int i = 0; i < 5; i++) {
+            rows.add(new LeagueService.PlayerRow("gk" + i, "BRONZE", "GK", 100));
+        }
+        rows.forEach(r -> position.put(r.id(), r.position()));
+        byGrade.put("BRONZE", rows);
+        List<LeagueService.PlayerRow> gkPool = rows.stream().filter(r -> "GK".equals(r.position())).toList();
+
+        List<String> roster =
+                LeagueService.sampleRosterLegacy(new SplittableRandom(3), gkPool, byGrade, "4-4-2", 15);
+
+        assertThat(roster).hasSize(15);
+        assertThat(roster.subList(1, 11).stream().map(position::get))
+                .as("선발 필드 슬롯엔 GK 가 없다").doesNotContain("GK");
+        assertThat(roster.subList(11, 15).stream().map(position::get))
+                .as("벤치엔 GK 가 남아야 한다 — 가드가 벤치까지 번지면 안 된다").contains("GK");
     }
 
     @Test
@@ -88,7 +122,9 @@ class LegacyRosterFillTest {
 
         List<String> roster = LeagueService.sampleRosterLegacy(new SplittableRandom(42), gkPool, pool, "4-4-2", 15);
 
-        assertThat(roster).as("팀은 서야 한다").isNotEmpty();
+        // ⚠️ 마른 풀에선 로스터가 15명보다 **짧아진다**(실측 4명). 그게 이 가드의 의도다 —
+        //    "팀은 반드시 15명"이 아니라 **"GK 를 필드에 세우느니 사람을 덜 세운다"** 가 보장이다.
+        assertThat(roster).as("적어도 골키퍼는 선다").isNotEmpty();
         List<String> starters = roster.subList(0, Math.min(11, roster.size()));
         assertThat(position.get(starters.get(0))).as("slot0 = GK").isEqualTo("GK");
         List<String> outfield = starters.subList(1, starters.size()).stream().map(position::get).toList();
