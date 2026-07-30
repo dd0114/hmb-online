@@ -209,26 +209,47 @@ test("중복 playerId: 킥오프 잔상 트윈이 **자기 팀** 킥오프 위�
   await loadViewer(page, VIEWER_URL);
   await page.evaluate((log) => window.postMessage({ type: "loadMatchLog", matchLog: log }, "*"), KO_LOG);
   await page.waitForFunction(() => (window as any).__viewer?.ready(), null, { timeout: 15000 });
-  const maxHomeX = await page.evaluate(async () => {
+  const seen = await page.evaluate(async () => {
     const v = (window as any).__viewer;
     v.autoPace(true);
     v.seek(18);
     v.play();
-    let mx = -1;
+    const home: number[] = [];
+    const away: number[] = [];
     const t0 = Date.now();
     while (Date.now() - t0 < 6000) {
-      const h = v.curPlayers().find((p: any) => p.id === "P078" && p.team === "home");
-      if (h) mx = Math.max(mx, h.x);
+      const ps = v.curPlayers();
+      const h = ps.find((p: any) => p.id === "P078" && p.team === "home");
+      const a = ps.find((p: any) => p.id === "P078" && p.team === "away");
+      if (h) home.push(h.x);
+      if (a) away.push(a.x);
       await new Promise((r) => setTimeout(r, 8));
     }
     v.pause();
-    return mx;
+    return { home, away };
   });
+
   /*
-   * ⚠️ 하한이 **계약의 절반**이다. 상한만 걸면, 병렬 부하로 샘플링이 트윈을 한 번도 못 본 경우
-   * mx 가 골 이전 값(10)에 머물러 **아무것도 관측하지 않고 통과**한다(실측: 변이체가 그렇게 살아남았다).
-   * 킥오프 자리(12)에 도달한 것을 함께 단언해 "봤다"를 증명한다.
+   * ⚠️ **"봤다"를 어떻게 증명하나**가 이 계약의 핵심이다.
+   *
+   * 처음엔 최댓값 하한(≥11.9)으로 걸었는데 **그건 아무것도 증명하지 않는다** — hold 가 끝나면
+   * tickPos 가 킥오프 인덱스로 점프해 홈 P078 이 **스냅샷 값 12** 가 되므로, 트윈을 한 번도 못 봐도
+   * 최댓값이 12 다(독립검증 실측: 트윈이 사라진 변이체에서도 max=12, 통과). 즉 하한이 막으려던
+   * 시나리오가 바로 하한을 통과하는 시나리오였다.
+   *
+   * 진짜 판별기는 **끝점 사이의 값을 봤는가**다: 10 과 12 는 스냅샷 값이고, 그 **사이**는 보간
+   * 중에만 존재한다. 정상 186개 / 트윈 소멸 0개로 갈린다. 이 한 줄이 "팀을 혼동하는 회귀"와
+   * "잔상 연출이 조용히 죽는 회귀"를 **동시에** 잡는다.
    */
-  expect(maxHomeX, `홈 P078 최대 x=${maxHomeX} — 킥오프 트윈을 실제로 관측해야`).toBeGreaterThanOrEqual(11.9);
-  expect(maxHomeX, `홈 P078 최대 x=${maxHomeX} — 어웨이 킥오프 자리(88)로 끌려가면 안 된다`).toBeLessThan(40);
+  const interior = seen.home.filter((x) => x > 10.001 && x < 11.999).length;
+  expect(interior, `홈 P078 보간 중 관측 ${interior}개 — 킥오프 트윈을 실제로 봐야 한다`).toBeGreaterThan(0);
+  expect(
+    Math.max(...seen.home),
+    `홈 P078 최대 x=${Math.max(...seen.home)} — 어웨이 킥오프 자리(88)로 끌려가면 안 된다`,
+  ).toBeLessThan(40);
+  // 대칭(독립검증 minor-3): 어웨이도 같이 잰다 — 홈만 재면 "어웨이가 홈 자리로 끌려가는" 변이를 놓친다.
+  expect(
+    Math.min(...seen.away),
+    `어웨이 P078 최소 x=${Math.min(...seen.away)} — 홈 킥오프 자리(12)로 끌려가면 안 된다`,
+  ).toBeGreaterThan(60);
 });
