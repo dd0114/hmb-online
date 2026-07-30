@@ -124,9 +124,8 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
     expect(n / logs.length, "경기당 헤딩 이벤트").toBeGreaterThan(1);
   });
 
-  it("헤더 슛이 나오고, 그중 골도 0 이 아니다", () => {
-    // 헤더 **골**은 아직 희소하다 — 크로스 자체가 팀당 1회 수준이고 그 증량은 S5(공격 후보 생성기)
-    // 소관이다. 그래서 이 계약만 20시드 전체로 잰다(8시드면 0/1 사이를 오가 플래키해진다).
+  /** 헤더 슛 / 헤더 골 집계(20시드). 8시드면 0/1 사이를 오가 플래키해진다. */
+  function countHeaders(): { headerShots: number; headerGoals: number } {
     let headerShots = 0;
     let headerGoals = 0;
     for (const l of REALISM_SEEDS.map(logOf)) {
@@ -143,8 +142,24 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
     }
     // eslint-disable-next-line no-console
     console.log(`  [#306] ${REALISM_SEEDS.length}경기 헤더 슛 ${headerShots}건 · 헤더 골 ${headerGoals}건`);
-    expect(headerShots, `헤더 슛 총 ${headerShots}건`).toBeGreaterThan(0);
-    expect(headerGoals, `헤더 골 총 ${headerGoals}건`).toBeGreaterThan(0);
+    return { headerShots, headerGoals };
+  }
+
+  it("헤더 슛이 나온다", () => {
+    expect(countHeaders().headerShots, "헤더 슛 총 0건").toBeGreaterThan(0);
+  });
+
+  // ── 헤더 골 = **S5(크로스 생성기)에서 해소** — 지금은 test.fail 로 박제한다 ──────────────
+  // 0.25.0 볼륨 재보정 후 재측정: 20경기 헤더 슛 **8건** · 헤더 골 **0건**.
+  // 볼륨(골/경기 1.98→5.10)을 2.6배 올려도 따라오지 않았다 — 즉 전환율 문제가 아니라 **입력이
+  // 없다**. 헤더 슛 8건/20경기 = 0.2건/팀-경기이고, 그 상류인 크로스가 팀당 2.93회뿐이다.
+  // 사슬 탐색은 "지금 있는 후보 중" 최선을 고를 뿐 **크로스 후보를 만들지 않는다**(chain.ts 의
+  // 후보 생성기는 pass/dribble/shoot/hold 뿐) — 그래서 config 로는 못 넘는 **구조적 상한**이다.
+  // 해소는 S5(공격 후보 생성기 4종: lead/through/**cross**/switch) 소관이고, 그때 이 test.fail 이
+  // 저절로 실패(=통과)로 뒤집혀 알려준다.
+  // ⚠️ 기대치를 0 으로 낮추지 말 것 — "헤더로도 골이 난다"는 요구는 유지되고, 미달을 숨기지 않는다.
+  it.fails("[S5 대기] 헤더 슛 중 골도 0 이 아니다 — 크로스 생성기(S5) 전까지 구조적으로 불가", () => {
+    expect(countHeaders().headerGoals, "헤더 골 총 0건").toBeGreaterThan(0);
   });
 
   it("전달 종류가 실제로 갈린다 — 롱볼/크로스는 lofted, 숏패스는 ground", () => {

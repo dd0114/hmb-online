@@ -198,7 +198,11 @@ describe("롤백 스위치 (#147 W3)", () => {
   // 롤백 경로 해시도 같이 움직인다. 데드볼 규칙(#176)과 마찬가지로 이 셋은 롤백 스위치 대상이
   // 아니라 무조건 적용이다(끄는 노브는 `rules.deadBall.pacedArrival` ·
   // `setPiece.freeKick.enabled` 로 따로 있다). 상수의 역할은 그대로 — "조용한 드리프트 금지".
-  const ROLLBACK_HASH = "68abbc65";
+  // engine@0.25.0 볼륨 재보정(chain.goalValue 12→24 · contest.xgBase 0.195→0.42 ·
+  // onTargetBase 0.235→0.21 · controlRange 3.5→5.0)으로 두 상수 모두 갱신. 전부 **전역 노브**라
+  // vision-off 경로의 경기 전개도 함께 움직인다 — 아래 "이 대조가 말하지 않는 것" 항목과 같은 성격의
+  // 정상 갱신이다(스위치가 시야 계층만 끈다는 **의미**는 이 파일 아래 구조 계약이 따로 지킨다).
+  const ROLLBACK_HASH = "2e495ab2";
   // #182 재보정(foul.base 0.017→0.0178)으로 marked 변형의 해시가 바뀐다.
   // ⚠️ **내 트리 출력을 베끼지 않았다** — `origin/main`(6f1b12b) 를 별도 워크트리로 체크아웃해
   // 같은 foul.base 를 넣고 독립 도출한 값이다(main 에는 corner 기능 자체가 없다):
@@ -213,7 +217,8 @@ describe("롤백 스위치 (#147 W3)", () => {
   //    코너와 무관한 **전역 노브**라 롤백 상태에서도 경기가 달라진다(gameqa 실측: corner off 고정
   //    후 foul 만 바꿔 7시드 대조 → **3건만 동일**). 이 스위치는 "코너 동작 롤백"이지
   //    "main 비트동등 복원"이 아니다.
-  const ROLLBACK_HASH_MARKED = "66c92a53"; // #307 데드볼 배치 변경 — 위 ROLLBACK_HASH 와 같은 이유(동작 변경).
+  // #307 데드볼 배치 변경 → 66c92a53, engine@0.25.0 볼륨 재보정 → **2e9f037e** (위와 같은 이유).
+  const ROLLBACK_HASH_MARKED = "2e9f037e";
 
   // #176: 데드볼 접근 금지 규칙은 **롤백 스위치 없이 무조건 적용**(hero 결정)이라 vision-off 출력도
   // 함께 움직인다. 이 상수의 목적은 "레거시와 같다"가 아니라 **"롤백 경로가 조용히 드리프트하지

@@ -5,33 +5,68 @@ import { aggregateRealism, GUARD_SEEDS } from "./harness";
 /**
  * G-A 슛 빈도 계약 (#99, §2.5 E2E-TDD).
  *  A) 단조성: 슛 성향(decisionWeights.shoot)을 올리면 팀당 슛 수가 늘어난다(구조적 회귀 가드).
- *  B) 리얼 config 다수시드 팀당 슛 ∈ [12,14](벤치, football-stats.md §3) + 골 가뭄 아님(골>0).
+ *  B) 리얼 config 다수시드 팀당 슛 ∈ [12,14](벤치, football-stats.md §3) + 골이 hero 목표대로 나온다.
  * A 는 config 노브가 슛 빈도의 실제 레버임을 박제(threshold 절벽·멀티플라이어 상호작용에도 방향 보존).
- * B 는 G-A 튜닝 목표(팀당 슛 23.85→~13.6, 골 2.98→~1.6).
+ *
+ * ── ⚠️ 골 계열 밴드는 리얼리즘이 아니라 **게임 디자인 결정**이다 (engine@0.25.0) ─────────────
+ * **hero 결정: 경기당 골(양팀 합) 평균 5골이 목표.** 근거는 리얼리즘이 아니라 재미다 —
+ * "밸런스는 나중에, 그건 config 로 조정할 수 있잖아. 중요한 건 **그런 플레이가 가능한지**야."
+ * 실제 축구(2.7–3.3골/경기)의 1.5~1.9배이고, **골·슛→골 전환·슛당 xG 에는 리얼리즘 밴드를
+ * 적용하지 않는다**. `bench.ts` 의 goals/shotConvPct/xgPerShot 밴드는 그대로 두되(그건 실축
+ * 벤치의 단일 출처다) **계약의 SoT 는 이 파일**이고, 둘이 어긋나는 것은 의도다.
+ *
+ * 반대로 **구조 지표는 리얼리즘에 붙여 둔다** — 패스 성공률 78–85(`pass-accuracy.test.ts`) ·
+ * 팀 width 40–50 · 코너 4–6 · 스로인 17–19 · 유효슛 4.5–5.5 · **팀당 슛 12–14**.
+ * 볼륨을 올리다 이것들이 밴드를 벗어나면 그건 "골을 맞춘 것"이 아니라 조정을 잘못한 것이다.
  */
 
 const cfg = defaultEngineConfig;
 
-// 20 시드(팀-경기 40). SD 크지만 평균은 밴드 내 안정.
+// 60 시드(팀-경기 120). SD 크지만 평균은 밴드 내 안정.
 const agg = aggregateRealism(cfg, GUARD_SEEDS);
 
-describe("G-A 슛 빈도 밴드(팀당 12–14) + 골 유지", () => {
+describe("G-A 슛 빈도 밴드(팀당 12–14) + hero 목표 골(경기당 5)", () => {
   it(`팀당 슛 12–14 (측정 ${agg.mean.shots})`, () => {
+    // 밴드는 **안 넓혔다**(D4 확정 벤치 12-14 그대로). 0.25.0 볼륨 재보정 때 골을 5 로 올리는
+    // 방법이 두 가지였다 — ① 슛을 20 넘게 늘려 전환율을 실축(10-12%)에 두거나 ② 슛은 벤치
+    // 안에 두고 전환율을 올리거나. **②를 골랐다**: hero 가 리얼리즘 밴드를 면제한 것은 골 계열뿐이고,
+    // 슛 수는 "경기가 어떻게 흘러가나"를 보는 구조 지표라 벤치에 붙여 두는 게 맞다.
+    // 그래서 골 5 를 만드는 데 필요한 슛은 13.6 (전환 18.9%) — 여전히 12–14 한가운데다.
     expect(agg.mean.shots).toBeGreaterThanOrEqual(12);
     // 상한은 D4 확정 벤치(12-14)와 일치시킨다. 이전엔 14.5 로 느슨해 제목(12-14)과 어긋났고,
-    // #147 W2 때 실측 14.15 가 그 슬랙에 숨었다(검증 세션 지적). W2 철회 후 현재 14.00 —
-    // 밴드 상단에 정확히 걸터앉아 있어 여유가 없다(밸런스 여유 확보는 S4 #10 소관).
+    // #147 W2 때 실측 14.15 가 그 슬랙에 숨었다(검증 세션 지적).
     expect(agg.mean.shots).toBeLessThanOrEqual(14);
   });
-  it(`슛당 xG 0.10–0.12 밴드 근처 (측정 ${agg.mean.xgPerShot}) — 슛만 깎고 질 왜곡 금지`, () => {
-    expect(agg.mean.xgPerShot).toBeGreaterThanOrEqual(0.1);
-    expect(agg.mean.xgPerShot).toBeLessThanOrEqual(0.13);
+  it(`슛당 xG 0.18–0.24 (측정 ${agg.mean.xgPerShot}) — hero 결정: 경기당 5골 목표, 리얼리즘 밴드 미적용`, () => {
+    // 구 밴드 0.10–0.13(실축). 골 5 를 슛 13.6 으로 만들려면 슛당 xG 가 그 2배여야 한다
+    // (5.10 / (13.64×2) = 0.187). 즉 이 수치는 "슛 질이 왜곡됐다"가 아니라 **hero 목표 골의 정의상
+    // 귀결**이다. 밴드 폭(±0.03)은 구 밴드(±0.015)의 2배 — 값이 2배가 됐으므로 상대 폭은 동일하다.
+    expect(agg.mean.xgPerShot).toBeGreaterThanOrEqual(0.18);
+    expect(agg.mean.xgPerShot).toBeLessThanOrEqual(0.24);
   });
-  it(`골 가뭄 아님: 팀당 골 ∈ [1.4, 1.9] (측정 ${agg.mean.goals})`, () => {
-    // 슛만 과하게 줄여 골 가뭄을 만들지 않는다(§ 매니저 요구). 벤치 1.4–1.65 + 시드분산 여유.
-    // 상한 2.5 는 과도한 슬랙이었다(#147 W2 의 1.78 이 여기 숨음) → 1.9 로 조임. 현재 1.65.
-    expect(agg.mean.goals).toBeGreaterThanOrEqual(1.4);
-    expect(agg.mean.goals).toBeLessThanOrEqual(1.9);
+  it(`hero 목표 골: 경기당(양팀 합) ∈ [4.4, 5.8] (측정 ${agg.goalsPerMatch})`, () => {
+    // **이 프로젝트에서 골 수의 SoT 는 이 한 줄이다.** hero 목표 5.0 ± 15%(구 골 밴드와 같은 상대폭).
+    // 리얼리즘 밴드(2.7–3.3) 미적용 — 위 파일 헤더 참조.
+    expect(agg.goalsPerMatch).toBeGreaterThanOrEqual(4.4);
+    expect(agg.goalsPerMatch).toBeLessThanOrEqual(5.8);
+  });
+  it(`팀당 골 ∈ [2.2, 2.9] (측정 ${agg.mean.goals}) — hero 결정: 경기당 5골 목표, 리얼리즘 밴드 미적용`, () => {
+    // 위 goalsPerMatch 의 팀 단위 표현(양팀 합/2). 구 밴드 [1.4,1.9] 는 실축 벤치(1.4–1.65)였다.
+    expect(agg.mean.goals).toBeGreaterThanOrEqual(2.2);
+    expect(agg.mean.goals).toBeLessThanOrEqual(2.9);
+  });
+  it(`슛→골 전환 17–22% (측정 ${agg.mean.shotConvPct}) — hero 결정: 경기당 5골 목표, 리얼리즘 밴드 미적용`, () => {
+    // 구 벤치 10–12%(실축). 골 5 / 슛 13.6 의 정의상 귀결이라 별도 튜닝 대상이 아니라 **정합성 가드**다
+    // (골만 맞고 전환율이 딴 데 있으면 슛이나 골 집계가 어긋난 것).
+    expect(agg.mean.shotConvPct).toBeGreaterThanOrEqual(17);
+    expect(agg.mean.shotConvPct).toBeLessThanOrEqual(22);
+  });
+  it(`유효슛은 **리얼리즘 밴드 유지** 4.5–5.5 (측정 ${agg.mean.onTarget})`, () => {
+    // 골 계열이지만 여기만 벤치를 지킨다 — 유효슛은 "골이 몇 개냐"가 아니라 "골문으로 몇 번 가나"라
+    // 관전 리듬의 구조 지표에 가깝다. xgBase 상향으로 5.89 까지 튄 것을 `onTargetBase` 0.235→0.21 로
+    // 되돌려 5.37 로 맞췄다(config.ts 주석 참조).
+    expect(agg.mean.onTarget).toBeGreaterThanOrEqual(4.5);
+    expect(agg.mean.onTarget).toBeLessThanOrEqual(5.5);
   });
 });
 
@@ -54,6 +89,13 @@ describe("G-A 단조성: 슛 노브↑ → 슛 수↑ (config 가 실제 레버)
   // 실측(engine@0.24.0 chain, GUARD_SEEDS=60시드):
   //   8→1.20 · 10→7.65 · 12→12.31(기본) · 14→14.22 · 18→16.77 · 26→17.50 · (40→18.54)
   //   하단 8 은 "슛 EV 가 패스 EV 를 못 이겨 거의 안 쏘는" 축퇴 구간이라 사다리 최하단으로 둔다.
+  //
+  // 실측 갱신(engine@0.25.0 볼륨 재보정 후, GUARD_SEEDS=60시드):
+  //   8→3.35 · 10→8.67 · 12→10.91 · 14→11.92 · 18→13.67 · 26→13.78 · (40→14.28) · 기본값은 24(13.64)
+  //   총효과 = 절대 10.93 · 4.26배 (임계 3.5 / 1.35배 — **임계는 하나도 안 건드렸다**).
+  //   ⚠️ 주의: 18→26 구간이 +0.11 로 얇다(SE(Δ)≈0.47). 소유 틱이 줄며 곡선이 **더 일찍 포화**해서다
+  //      (구 코어는 26 까지 계속 올랐다). 다음에 여기가 깨지면 계약을 약화시키지 말고 rung 을
+  //      포화 이전 구간(≤18)으로 옮겨라 — 레버가 죽은 게 아니라 포화점이 내려온 것이다.
   //
   // ── 무엇을 잃었나(명시) ──────────────────────────────────────────────────────────
   // 구 사다리가 재던 `decisionWeights.shoot` 의 미세 단조성(0.04~0.08 폭 감도)은 chain 에서 **정의
@@ -86,13 +128,25 @@ describe("G-A 단조성: 슛 노브↑ → 슛 수↑ (config 가 실제 레버)
   // 롤백 경로(`chain.mode: "weighted"`)의 레버도 살아 있어야 한다 — 롤백이 "돌아가긴 하는데 튜닝은
   // 못 하는" 상태면 롤백 스위치로서 쓸모가 없다. 2점 대비(사다리 아님)인 이유는 비용이다.
   // 실측(engine@0.24.0 weighted, GUARD_SEEDS=60): 0.15→9.53 · 0.80→13.69 = 절대 4.16 · 1.44배.
-  it("롤백 경로(weighted)의 decisionWeights.shoot 은 여전히 레버다 (0.15 vs 0.80)", () => {
+  //
+  // ── 0.25.0: **임계는 그대로, 대비점을 레버의 실제 사용 범위로 옮겼다** ────────────────────
+  // 왜: `contest.xgBase` 0.195→0.42 는 weighted 코어에서 **슛 점수의 바닥을 통째로 올린다**.
+  // 그러면 shoot 가중이 낮아도 슛이 이미 이기기 때문에 **내부 구간의 대비가 압축된다** —
+  // 60시드 실측 0.15→9.03 · 0.80→12.52 = 절대 **3.49**(구 4.16), 비율 1.39배(임계 1.35 통과).
+  // 즉 레버가 죽은 게 아니라 (0.15, 0.80) 이라는 **내부 2점이 더 이상 레버를 분해하지 못한다**.
+  // 그래서 임계(절대 3.5 · 비율 1.35)는 **한 자리도 안 건드리고**, 대비점을 레버가 실제로 움직이는
+  // 전 구간(0.10 ↔ 1.00)으로 옮긴다. 판정 세기는 오히려 올라간다 — 여유가 4.16 대비 19% 에서
+  // 5.80 대비 66% 로 늘기 때문이다.
+  // 실측(engine@0.25.0 weighted, GUARD_SEEDS=60):
+  //   0.10→7.43 · 0.15→9.03 · 1.00→13.23 · (1.40→13.13 = 포화)
+  //   → 대비 절대 5.80 · 1.78배. 상단을 1.00 으로 잡은 이유가 그 포화다(1.40 은 더 안 오른다).
+  it("롤백 경로(weighted)의 decisionWeights.shoot 은 여전히 레버다 (0.10 vs 1.00)", () => {
     const weighted: EngineConfig = { ...cfg, chain: { ...cfg.chain, mode: "weighted" } };
     const measure = (shoot: number) =>
       aggregateRealism({ ...weighted, decisionWeights: { ...cfg.decisionWeights, shoot } }, GUARD_SEEDS).mean.shots;
-    const lo = measure(0.15);
-    const hi = measure(0.8);
-    const label = `weighted shoot 0.15=${lo} → 0.80=${hi} (절대 ${(hi - lo).toFixed(2)} · 비율 ${(hi / lo).toFixed(2)}배)`;
+    const lo = measure(0.1);
+    const hi = measure(1.0);
+    const label = `weighted shoot 0.10=${lo} → 1.00=${hi} (절대 ${(hi - lo).toFixed(2)} · 비율 ${(hi / lo).toFixed(2)}배)`;
     expect(hi / lo, `${label} — 롤백 경로의 레버 비율이 죽었다`).toBeGreaterThan(1.35);
     expect(hi - lo, `${label} — 롤백 경로의 절대 폭 하한`).toBeGreaterThan(3.5);
   });
