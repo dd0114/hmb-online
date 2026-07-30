@@ -197,10 +197,35 @@ async function geometryOf(page: Page, targetTestId: string): Promise<Geometry | 
   }, targetTestId);
 }
 
+/**
+ * **대상 중 화면에 보이는 부분** (#291).
+ *
+ * ⚠️ 링이 감싸야 하는 것은 대상 전체가 아니라 **보이는 부분**이다. 하이라이트 구멍은
+ * `TutorialOverlay.tsx:246-249` 에서 뷰포트로 **일부러 clamp** 된다 — 딤 처리의 구멍이 화면 밖으로
+ * 나가면 안 되기 때문이다. 그런데 대상이 뷰포트보다 클 수 있다: 1280×720 에서 전술보드는 625px 에
+ * 문서 좌표 188~813 이라 **하단 93px 이 화면 밖**이다.
+ *
+ * 옛 계약은 `ring.bottom >= target.bottom` 을 요구해서 이 경우 **구조적으로 만족 불가**였고,
+ * 5초를 꽉 채우고 실패했다(#244 덱 재설계 이래 main 상시 red). 그때 `test.fail()` 로 박제해 뒀는데
+ * ⚠️ **기대실패는 초록으로 집계되므로 "87 passed" 가 이 결함을 가려 준다** — 지워야 할 부류의 핀이다.
+ *
+ * 완화하되 **약화하지는 않는다**: 보이는 부분은 여전히 **전부** 감싸야 한다. 링이 대상을 안 가리키는
+ * 진짜 결함(이 계약의 존재 이유)은 그대로 잡힌다.
+ */
+function visibleTarget(g: Geometry) {
+  const { target, vp } = g;
+  const left = Math.max(target.x, 0);
+  const top = Math.max(target.y, 0);
+  const right = Math.min(target.x + target.width, vp.width);
+  const bottom = Math.min(target.y + target.height, vp.height);
+  return { left, top, right, bottom };
+}
+
 /** 아래 개별 단언과 같은 기준 — 폴링용 요약 술어. */
 function settled(g: Geometry | null): boolean {
   if (!g) return false;
   const { target, bubble, arrowCenter, ring, vp, gap } = g;
+  const v = visibleTarget(g);
   return (
     gap >= -2 &&
     gap < 40 &&
@@ -210,10 +235,10 @@ function settled(g: Geometry | null): boolean {
     bubble.y >= 0 &&
     bubble.x + bubble.width <= vp.width &&
     bubble.y + bubble.height <= vp.height &&
-    ring.x <= target.x &&
-    ring.y <= target.y &&
-    ring.x + ring.width >= target.x + target.width &&
-    ring.y + ring.height >= target.y + target.height
+    ring.x <= v.left &&
+    ring.y <= v.top &&
+    ring.x + ring.width >= v.right &&
+    ring.y + ring.height >= v.bottom
   );
 }
 
@@ -256,11 +281,12 @@ async function expectBubblePointsAt(page: Page, targetTestId: string) {
   expect(bubble.x + bubble.width).toBeLessThanOrEqual(vp.width);
   expect(bubble.y + bubble.height).toBeLessThanOrEqual(vp.height);
 
-  // 하이라이트 링은 대상을 감싼다.
-  expect(ring.x).toBeLessThanOrEqual(target.x);
-  expect(ring.y).toBeLessThanOrEqual(target.y);
-  expect(ring.x + ring.width).toBeGreaterThanOrEqual(target.x + target.width);
-  expect(ring.y + ring.height).toBeGreaterThanOrEqual(target.y + target.height);
+  // 하이라이트 링은 대상의 **보이는 부분**을 감싼다(#291 — `visibleTarget` 주석 참조).
+  const v = visibleTarget(g!);
+  expect(ring.x, "링 좌측 ≤ 대상 보이는 좌측").toBeLessThanOrEqual(v.left);
+  expect(ring.y, "링 상단 ≤ 대상 보이는 상단").toBeLessThanOrEqual(v.top);
+  expect(ring.x + ring.width, "링 우측 ≥ 대상 보이는 우측").toBeGreaterThanOrEqual(v.right);
+  expect(ring.y + ring.height, "링 하단 ≥ 대상 보이는 하단").toBeGreaterThanOrEqual(v.bottom);
 }
 
 async function horizontalOverflow(page: Page): Promise<number> {
@@ -792,18 +818,21 @@ test.describe("덱 스텝 — 라우트 넘나듦", () => {
   }
 
   /**
-   * ⚠️ **선행 결함 — #286 이 만든 게 아니다.**
+   * ⚠️ **한때 `test.fail()` 로 박제돼 있었다 — 지웠다(#291 해결).**
    *
-   * `origin/main`(ebb12a0)을 별도 워크트리에 체크아웃해 이 테스트만 돌려도 **같은 자리에서
-   * 실패**한다(2026-07-30 실측). 원인은 전술보드가 뷰포트보다 커서(1280×720 에서 board 625px,
-   * 문서 좌표 188~813) 코치마크 **하이라이트 링이 뷰포트에서 잘리고**, `settled` 의
-   * `ring.y + ring.height >= target.y + target.height` 가 영영 참이 되지 않는 것이다.
-   * 링을 스크롤 컨테이너 기준으로 그리거나 대상이 화면 밖으로 넘칠 때의 규칙을 정해야 한다 —
-   * 온보딩 소관이라 이 에픽에서 손대지 않고 **기대 실패로 박제**한다(고쳐지면 여기서 알려준다).
+   * 증상: 전술보드가 뷰포트보다 커서(1280×720 에서 board 625px, 문서 좌표 188~813) 하이라이트 링이
+   * 뷰포트에서 잘리고, `settled` 의 `ring.bottom >= target.bottom` 이 **영영 참이 될 수 없어**
+   * 5초를 꽉 채우고 실패했다(#244 덱 재설계 이래 main 상시 red).
+   *
+   * 고친 것은 **계약**이다(`visibleTarget` 주석 참조). 링의 뷰포트 clamp 는 딤 구멍이 화면 밖으로
+   * 나가지 않게 하는 **의도된 동작**이라 제품 쪽이 아니라 기대 쪽이 틀렸다 — 링은 대상 전체가
+   * 아니라 **보이는 부분**을 감싸면 된다.
+   *
+   * ⚠️ **핀 자체가 더 위험했다**: `test.fail()` 은 실패해도 "passed" 로 집계돼, 이 파일을 돌린
+   * 사람은 87/87 초록을 보고 **결함이 없다고 읽는다**(실제로 이 자리를 다시 조사하다 그렇게 오판할
+   * 뻔했다). 구조적으로 만족 불가인 계약은 핀으로 덮지 말고 **기대를 고쳐라**.
    */
   test("(a) 하이라이트된 '덱 구성'을 누르면 덱 화면에서 그대로 이어진다", async ({ page }) => {
-    // ⚠️ 이 한 건만 기대 실패다 — describe 스코프에 걸면 뒤 테스트까지 삼킨다(실제로 그랬다).
-    test.fail();
     await mockApi(page);
     await registerNewUser(page);
     await toDeckCta(page);
