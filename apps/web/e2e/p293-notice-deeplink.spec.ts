@@ -25,8 +25,24 @@ test.use({ viewport: { width: 390, height: 844 } });
 /**
  * 증빙 출력 (#298 §2 Evidence). **판정이 아니라 눈으로 볼 자료**다 — 계약은 아래 단언들이 진다.
  * 캡처를 별도 스펙으로 떼면 계약이 본 것과 다른 화면을 찍을 수 있어 같은 스펙 안에서 찍는다.
+ *
+ * ⚠️ **목적지가 플래그로 갈린다**(#314). 기본은 `test-results/`(gitignore)이고, 리포의
+ * `evidence/sub-298/**` 에는 `HMB_WRITE_EVIDENCE=1` 일 때만 쓴다.
+ *
+ * 왜 그렇게 했나: 이 스펙은 **다른 세션도 게이트로 돌린다**(공지 도메인을 건드리면 영향 e2e 에
+ * 들어온다). 그때마다 리포의 증거 8개를 다시 쓰면 **남의 owned-glob 이 매번 dirty** 가 되고,
+ * `git add -A` 가 그걸 조용히 쓸어 담는다 — 실제로 #286 이 커밋에 섞어 넣고 원복해야 했고
+ * (`7a3f20c`), #309 는 리베이스 2회 동안 매번 수동 원복했다. 그 커밋이 남긴 *"다음 사람 주의"*
+ * 경고만으로는 **재발했다** → 경로를 구조로 갈랐다.
+ *
+ * 증거는 여전히 **같은 스펙에서** 찍는다(위 문단의 근거 유지) — 바뀐 것은 목적지뿐이고,
+ * 갱신은 "부작용"이 아니라 **의도적 행위**가 된다:
+ *   `HMB_WRITE_EVIDENCE=1 CI=1 npx playwright test e2e/p293-notice-deeplink.spec.ts`
  */
-const EVIDENCE = new URL("../../../evidence/sub-298/", import.meta.url).pathname;
+const WRITE_EVIDENCE = process.env.HMB_WRITE_EVIDENCE === "1";
+const EVIDENCE = WRITE_EVIDENCE
+  ? new URL("../../../evidence/sub-298/", import.meta.url).pathname
+  : new URL("../test-results/evidence-sub-298/", import.meta.url).pathname;
 test.beforeAll(() => {
   mkdirSync(EVIDENCE, { recursive: true });
   // append 로 쌓는 로그는 실행마다 새로 쓴다 — 이전 실행 줄이 섞이면 증빙이 거짓이 된다.
