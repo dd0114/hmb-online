@@ -178,7 +178,16 @@ export function StageShell({
               여기서 스크롤을 넘겨주면 CTA 가 스크롤 **밖** 바닥에 앉아 어떤 위치에서도 안 덮는다.
             */}
             <div className={`${styles.panel} ${activeTab === "halftime" ? styles.panelFlush : ""}`}>
-              {activeTab === "stats" && <StatsPanel matchId={match.id} half={half} tick={tick} />}
+              {activeTab === "stats" && (
+                <StatsPanel
+                  matchId={match.id}
+                  half={half}
+                  tick={tick}
+                  homeName={homeName}
+                  awayName={awayName}
+                  myTeamSide={myTeamSide}
+                />
+              )}
               {activeTab === "log" && (
                 <LogPanel
                   matchId={match.id}
