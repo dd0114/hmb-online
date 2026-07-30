@@ -56,12 +56,12 @@ export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
   }, [players]);
   const owned = useMemo(() => (Array.isArray(players) ? players : []).filter((p) => p.owned), [players]);
 
-  const walletPoints = data?.wallet.points ?? 0;
+  const walletPoints = data?.wallet?.points ?? 0;
   // #232: 단축 비용의 재화는 **서버가 정한다**(slot.speedupCurrency). 무료재화 잔액으로만 게이팅하면
   // 서버가 유상재화로 바꾸는 순간 "표기는 Z, 잠금은 골드 기준"이 된다 — #213 의 후반부와 같은 형태다.
   // ⚠️ `?? 0` 으로 떨어뜨리지 않는다 — openapi 가 `gems` 를 required 로 두지 않아(구서버 호환)
   // 미수신이 정상 경로인데, 0 으로 읽으면 유상재화를 들고 있는 유저가 **거짓으로 잠긴다**.
-  const walletGems = data?.wallet.gems;
+  const walletGems = data?.wallet?.gems;
   const walletLoaded = Boolean(data);
   const busy = start.isPending || speedup.isPending || propose.isPending || accept.isPending;
 
@@ -97,7 +97,9 @@ export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
       {isLoading && <p className={styles.pending}>불러오는 중…</p>}
 
       <div className={styles.slots} data-testid="trade-slots">
-        {data?.slots.map((slot) => {
+        {/* 배열일 때만 순회한다 — 200 `{}` 면 `slots` 가 undefined 라 `.map` 이 던지고
+            [영입] 탭이 통째로 흰 화면이 된다(#286 독립검증 MAJ-3). */}
+        {(Array.isArray(data?.slots) ? data.slots : []).map((slot) => {
           const live =
             slotView(slot) === "WAITING"
               ? countdownSec(slot.remainingSec ?? 0, Date.now() - fetchedAtRef.current)

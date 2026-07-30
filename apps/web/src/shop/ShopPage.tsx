@@ -31,8 +31,11 @@ export function ShopPage({ embedded = false }: { embedded?: boolean } = {}) {
   // 탭 전환은 순수 로컬 상태 — 어떤 fetch/invalidate 도 유발하지 않는다(AC-D1).
   const [tab, setTab] = useState<ShopTab>("gacha");
 
-  const points = me?.wallet.points ?? 0;
-  const gems = me?.wallet.gems ?? 0;
+  // ⚠️ `me?.wallet.points` 는 **`me` 가 `{}` 일 때 던진다** — 옵셔널 체이닝은 `me` 만 보고
+  // `wallet` 은 안 본다. 구 서버·빈 응답의 200 `{}` 가 정확히 그 형태라 화면이 흰 화면이 됐다.
+  // `/recruit` 는 이제 **상점에 가는 유일한 길**이라 더 세게 지킨다(#286 독립검증 MAJ-3).
+  const points = me?.wallet?.points ?? 0;
+  const gems = me?.wallet?.gems ?? 0;
 
   /**
    * 가격·결제 재화는 **서버 config 가 SoT** (#232/#213). 예전엔 여기 상수(300/3,000)를 두고 "P"로

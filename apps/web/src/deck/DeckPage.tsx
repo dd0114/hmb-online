@@ -28,7 +28,9 @@ interface ServerDeckError {
 }
 
 function draftFromDeck(deck: Deck | null): DeckDraft {
-  if (!deck) return emptyDraft();
+  // ⚠️ `!deck` 만으로 부족하다 — 200 `{}` 는 truthy 라 통과하고 `slots.map` 이 던진다
+  //    (그러면 덱 화면이 흰 화면이다, #286 독립검증 MAJ-3).
+  if (!deck || !Array.isArray(deck.slots)) return emptyDraft();
   return {
     formation: deck.formation,
     slots: deck.slots.map((s) => ({

@@ -28,6 +28,10 @@ const RETIRED: Record<string, string> = {
   "nav-logs": "nav-me",
   "nav-trade": "nav-recruit",
   "nav-codex": "nav-players",
+  // 육성 화면(`GrowthHubPage`)은 #286 에서 **삭제**됐다 — 도감의 [보유] 스코프가 그 일을 한다.
+  "growth-owned-total": "codex-owned-total (도감 [보유] 스코프)",
+  "growth-grid": "codex 그리드",
+  "growth-empty": "codex 빈 상태",
 };
 
 const E2E_DIR = new URL("../../e2e/", import.meta.url).pathname;

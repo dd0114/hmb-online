@@ -111,7 +111,9 @@ export function AwayPage() {
               </p>
             )}
             <ul className={styles.candidates}>
-              {offer?.candidates.map((c) => (
+              {/* 200 `{}` 면 `candidates` 가 undefined 라 `.map` 이 던진다 — 상대를 못 받은
+                  것과 화면이 죽는 것은 다르다(#286 독립검증 MAJ-3). */}
+              {(Array.isArray(offer?.candidates) ? offer.candidates : []).map((c) => (
                 <li key={c.userId}>
                   <button
                     type="button"

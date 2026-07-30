@@ -271,3 +271,69 @@ test("홈 상단 팀 한 줄이 서버 값을 그린다", async ({ page }) => {
   await expect(row).toContainText("브론즈 리그");
   await expect(row).toContainText("4-3-3");
 });
+
+// ── 빈 응답 내성 ─────────────────────────────────────────────────────────
+/**
+ * **전 라우트가 200 `{}` 에도 살아남는다** (독립검증 MAJ-3).
+ *
+ * 왜 계약이 필요한가: 이건 세 번 반복된 결함이다 — `(x ?? [])` 도 `me?.wallet.points` 도
+ * **`{}` 를 막지 못한다**(옵셔널 체이닝은 앞 단계만 본다). 구 서버·부분 장애가 정확히 그 형태를
+ * 주고, 그때 화면은 "데이터 없음"이 아니라 **흰 화면**이 된다. #245 가 로비에서 같은 방식으로
+ * 당했고("부가 기능이 앱 진입점을 죽이면 안 된다"), #286 은 진입점을 6개로 늘렸다.
+ *
+ * ⚠️ 눈으로 "떴다"만 보면 안 된다 — `pageerror` 를 같이 센다. React 는 자식 하나가 던져도
+ * 부모까지 언마운트하므로, 단언 대상만 우연히 살아 있는 경우가 생긴다.
+ */
+const EMPTY_SAFE_ROUTES = [
+  ["/home", "home-page"],
+  ["/game", "game-page"],
+  ["/away", "away-page"],
+  ["/deck", "deck-editor"],
+  ["/players", "codex-owned-total"],
+  ["/recruit", "recruit-page"],
+  ["/me", "me-page"],
+] as const;
+
+for (const [route, marker] of EMPTY_SAFE_ROUTES) {
+  test(`빈 응답(200 {})에도 ${route} 가 죽지 않는다`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(String(e)));
+
+    // 전 엔드포인트가 `{}` — 배열도 객체 필드도 없다.
+    await page.route((url) => url.pathname.startsWith("/api/"), (r) =>
+      r.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+    );
+    await page.addInitScript(() => {
+      window.localStorage.setItem("hmb.auth.token", "tok");
+      window.localStorage.setItem("hmb.tutorial.done", "1");
+    });
+
+    await page.goto(route);
+    // ⚠️ **쿼리가 해소된 뒤에** 본다. 로딩 중에는 데이터를 안 만지므로 화면이 멀쩡하고, 크래시는
+    //    `{}` 가 도착하는 순간 일어난다 — 바로 단언하면 로딩 프레임을 보고 통과한다(실제로
+    //    이 계약이 그 상태였고 변이체가 살아남았다). 응답이 끝나고 렌더가 한 번 더 돈 뒤에 본다.
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(600);
+    expect(errors, `${route} 렌더 중 예외:\n${errors.join("\n")}`).toEqual([]);
+    await expect(page.getByTestId(marker), `${route} 가 흰 화면이다`).toBeVisible();
+  });
+}
+
+test("빈 응답에서 원정 상대 고르기를 눌러도 죽지 않는다", async ({ page }) => {
+  // 후보 목록은 **누른 뒤에** 받아오므로 위 루프가 닿지 못하는 경로다(실제로 여기가 살아남았다).
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  await page.route((url) => url.pathname.startsWith("/api/"), (r) =>
+    r.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+  await page.addInitScript(() => {
+    window.localStorage.setItem("hmb.auth.token", "tok");
+    window.localStorage.setItem("hmb.tutorial.done", "1");
+  });
+  await page.goto("/away");
+  await page.waitForLoadState("networkidle");
+  await page.getByTestId("away-start").click();
+  await page.waitForTimeout(600);
+  expect(errors, `원정 2택 렌더 중 예외:\n${errors.join("\n")}`).toEqual([]);
+  await expect(page.getByTestId("away-pick")).toBeVisible();
+});

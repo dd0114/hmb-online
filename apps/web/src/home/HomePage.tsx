@@ -41,7 +41,7 @@ export function HomePage() {
   const { data: me, isError } = useMe();
   const { data: deck } = useDeck();
   const { data: players } = usePlayers();
-  const { data: active } = useActiveMatch();
+  const { data: active, isLoading: activeLoading } = useActiveMatch();
   const { logout } = useToken();
 
   /**
@@ -63,8 +63,9 @@ export function HomePage() {
   // 게임을 처음 켠 사람이 무엇을 하라는 안내를 받기 전에 "새벽 점검 안내"부터 읽게 됐다
   // (코치마크는 다른 다이얼로그가 열리면 스스로 숨으므로 **조용히 사라져 있었다**).
   // p248b 계약이 그걸 잡았다.
-  // 미확인 피원정 건수 — 알림 줄의 절반. 강제 이동 중에는 묻지 않는다(#245 규칙, GamePage 와 동일).
-  const { data: awayReports } = useAwayReports("unseen", !locked);
+  // 미확인 피원정 건수 — 알림 줄의 절반. **모르는 동안(로딩)도 묻지 않는다** — GamePage 와 같은
+  // 표현이어야 한다(#245 규칙이 화면마다 다르면 다음 사람이 어느 쪽을 따를지 모른다).
+  const { data: awayReports } = useAwayReports("unseen", !activeLoading && !locked);
   const notice = homeNotice({
     unseenAwayReports: typeof awayReports?.unseen === "number" ? awayReports.unseen : 0,
     openTrades: openTradeCount(trade?.slots),
