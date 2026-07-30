@@ -153,7 +153,8 @@ test.describe("#248 후속 — 튜토리얼이 공지보다 먼저다", () => {
     //    래치가 컴포넌트 수명에 살아야 여기서 풀린다 — 모듈 변수나 서버 플래그로 만들었다면
     //    SPA 이동은 그것들을 건드리지 않으므로 공지가 계속 미뤄진다.
     await page.getByTestId("home-tile-players").click();
-    await expect(page.getByTestId("play-cta")).toHaveCount(0);
+    // 떠난 것을 확인한다 — 여기서 홈 요소를 단언하면 "떠나지 않았다"도 통과한다(#286 이관 실수).
+    await expect(page.getByTestId("codex-owned-total")).toBeVisible();
     // 네비는 하단탭(모바일)·사이드바(데스크탑) 두 벌이 렌더된다 — 보이는 쪽을 누른다.
     await page.locator('[data-testid="nav-home"]:visible').first().click();
     await expect(page.getByTestId("home-page")).toBeVisible();   // #286: 로비 → 홈

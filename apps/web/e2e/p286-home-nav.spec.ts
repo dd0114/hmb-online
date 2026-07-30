@@ -89,8 +89,9 @@ test("홈 밖 화면에는 탭바 6칸이 있고 [홈] 칸으로 돌아온다", 
   for (const key of TABS) {
     await expect(page.getByTestId("nav-bottom").getByTestId(`nav-${key}`)).toHaveCount(1);
   }
-  // 육성 탭은 사라졌다(도감으로 병합).
-  await expect(page.getByTestId("nav-bottom").getByTestId("nav-growth")).toHaveCount(0);
+  // 육성 탭은 사라졌다(도감으로 병합). ⚠️ "없는 testid 를 센다"로 쓰면 **영원히 참**이라 공허하다
+  // — 칸 수를 세서 6개를 넘기면 깨지게 한다(탭이 하나라도 되살아나면 여기서 잡힌다).
+  await expect(page.getByTestId("nav-bottom").locator("button")).toHaveCount(TABS.length);
   // 탭바가 홈 복귀 경로다 — 이게 없으면 홈이 막힌다(탭바 숨김과 짝).
   await page.getByTestId("nav-bottom").getByTestId("nav-home").click();
   await expect(page).toHaveURL(/\/home$/);
@@ -109,8 +110,9 @@ test("게임 탭 = 모드 선택 화면. 모달이 아니고, 연습이 마지�
   // hero Q1 확정 — 연습은 **최하단**.
   const modes = page.locator('[data-testid^="mode-"]');
   await expect(modes.last()).toHaveAttribute("data-testid", "mode-practice");
-  // 모드 선택 모달은 소멸했다.
-  await expect(page.getByTestId("play-cta")).toHaveCount(0);
+  // 모드 선택이 **모달이 아니라 화면**이다. 사라진 testid 를 세는 대신(그건 영원히 참이다)
+  // "열린 다이얼로그가 없는데도 세 모드가 보인다"를 본다 — 모달로 되돌리면 여기서 깨진다.
+  await expect(page.locator('[role="dialog"]')).toHaveCount(0);
 });
 
 test("게임 탭 리그·원정 카드가 각자 페이지로 간다", async ({ page }) => {
@@ -201,29 +203,62 @@ test("루트(/)는 홈으로 간다", async ({ page }) => {
 
 // ── (7) 카운트 뱃지 단일 형식 ────────────────────────────────────────────
 test("카운트 뱃지는 한 형식이다 — 리본/원형이 섞이지 않는다", async ({ page }) => {
-  await mockAll(page, { openTrades: 1 });
+  // ⚠️ **뱃지가 둘 이상 뜨는 상태**로 본다. 하나뿐이면 `Set(styles).size === 1` 이 구현과 무관하게
+  // 언제나 참이라 계약이 공허하다(독립검증 MIN-1). 알림 줄 뱃지까지 같은 형식이어야 한다.
+  await mockAll(page, { openTrades: 1, unseenAwayReports: 2 });
   await page.goto("/home");
   await page.getByTestId("home-page").waitFor();
+  await expect(page.getByTestId("home-notif")).toBeVisible();
 
-  const badges = page.locator('[data-testid^="home-count-"]');
+  const badges = page.locator('[data-testid^="home-count-"], [data-testid="home-notif"] > span:first-child');
   const n = await badges.count();
-  expect(n).toBeGreaterThan(0);
+  expect(n, "뱃지가 둘 이상이어야 형식 비교가 의미를 갖는다").toBeGreaterThan(1);
 
   // 같은 형식 = 같은 클래스 · 같은 크기 · 같은 배경색.
   const styles = await badges.evaluateAll((els) =>
     els.map((el) => {
       const cs = getComputedStyle(el);
-      return `${el.className}|${cs.backgroundColor}|${cs.borderRadius}|${Math.round(el.getBoundingClientRect().height)}`;
+      // 클래스 이름은 CSS Module 해시라 자리마다 다르다 — **보이는 형식**만 비교한다.
+      return `${cs.backgroundColor}|${cs.borderRadius}|${Math.round(el.getBoundingClientRect().height)}`;
     }),
   );
-  expect(new Set(styles).size).toBe(1);
+  expect(new Set(styles).size, `형식이 갈라졌다: ${[...new Set(styles)].join(" vs ")}`).toBe(1);
+});
+
+test("알림 한 줄은 셀 게 있을 때만 나온다", async ({ page }) => {
+  // hero 3R "최대한 간결하게" — 빈 줄이 남으면 "알림 없음"이 아니라 "고장"으로 읽힌다.
+  await mockAll(page, { openTrades: 0, unseenAwayReports: 0 });
+  await page.goto("/home");
+  await page.getByTestId("home-page").waitFor();
+  await expect(page.getByTestId("home-notif")).toHaveCount(0);
 });
 
 test("셀 게 없으면 뱃지를 그리지 않는다", async ({ page }) => {
-  await mockAll(page, { openTrades: 0 });
+  await mockAll(page, { openTrades: 0, unseenAwayReports: 0 });
   await page.goto("/home");
   await page.getByTestId("home-page").waitFor();
   await expect(page.getByTestId("home-count-recruit")).toHaveCount(0);
+});
+
+// ── 로비 해체로 잃을 뻔한 것들 ───────────────────────────────────────────
+test("팀 사기 위젯이 덱에 살아 있다 — 로비와 함께 사라지지 않았다", async ({ page }) => {
+  // 로비를 걷어내면 거기 있던 위젯은 **정의만 남고 화면에서 조용히 없어진다**(독립검증 BL-1 이
+  // 실제로 그 상태를 잡았다). 설계 §3.1 이 행선지를 [덱]으로 지정했고, 이 계약이 그걸 지킨다.
+  await mockAll(page);
+  await page.goto("/deck");
+  await expect(page.getByTestId("team-morale")).toBeVisible();
+});
+
+test("보유 선수만 보는 뷰가 남아 있다 — 육성 탭이 사라져도", async ({ page }) => {
+  // 육성 탭이 하던 일이 정확히 `owned` 필터 하나였다. 탭만 지우고 필터를 안 옮기면
+  // "내가 키우는 카드만 보기"가 도달 불가가 된다(독립검증 MIN-5).
+  await mockAll(page);
+  await page.goto("/players");
+  await expect(page.getByTestId("codex-scope-owned")).toHaveAttribute("aria-selected", "true");
+  const ownedCount = await page.locator('[data-testid^="codex-card-"]').count();
+  await page.getByTestId("codex-scope-all").click();
+  const allCount = await page.locator('[data-testid^="codex-card-"]').count();
+  expect(allCount, "전체가 보유보다 많아야 스코프가 실제로 걸린 것이다").toBeGreaterThan(ownedCount);
 });
 
 // ── 팀 한 줄 ─────────────────────────────────────────────────────────────

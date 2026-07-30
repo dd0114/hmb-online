@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { useAwayReports, useCreateMatch, useMe } from "../api/hooks";
+import { useActiveMatch, useAwayReports, useCreateMatch, useMe } from "../api/hooks";
 import { useLeague } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { AwayReportModal } from "../lobby/AwayReportModal";
 import { shouldShowAwayPopup } from "../lobby/away-report-logic";
-import { matchInProgressIdOf } from "../common/match-lock";
+import { matchInProgressIdOf, shouldForceResume } from "../common/match-lock";
 import { leagueModeHint, practiceError } from "./game-logic";
 import styles from "./GamePage.module.css";
 
@@ -36,14 +36,20 @@ export function GamePage() {
    * 이유는 그게 이제 **탭 이동일 뿐**이라서다 — "자리를 비운 사이 이런 일이 있었다"는 원정을
    * 하러 가는 순간에 보여주는 게 맥락이 맞다. 조회는 **미리** 해 둔다(누른 뒤 받아오면 한 박자 늦다).
    */
-  const { data: awayReports } = useAwayReports("unseen");
+  // ⚠️ **강제 이동 중에는 조회조차 하지 않는다**(apps/web/CLAUDE.md #245 절). 이 화면을 스쳐
+  // 매치로 튕기는 사이 팝업이 뜨면 읽지도 못한 채 ack 이 소진되고, 이 앱엔 지난 리포트를 볼
+  // 화면이 없으므로 **영구 소실**이다. 로딩 중(`activeLoading`)도 보류다 — 모르는 동안은 묻지
+  // 않는다(#245 3R blocker 가 그 창을 잡았다). 이관하면서 한 번 잃었다(독립검증 MAJ-1).
+  const { data: active, isLoading: activeLoading } = useActiveMatch();
+  const forcedToMatch = activeLoading || shouldForceResume(active);
+  const { data: awayReports } = useAwayReports("unseen", !forcedToMatch);
   const [awayDismissed, setAwayDismissed] = useState(false);
   const [awayPressed, setAwayPressed] = useState(false);
   const showAwayPopup =
-    awayPressed && !awayDismissed && shouldShowAwayPopup(awayReports);
+    awayPressed && !forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports);
 
   function pressAway() {
-    if (!awayDismissed && shouldShowAwayPopup(awayReports)) {
+    if (!forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports)) {
       setAwayPressed(true);
       return;
     }

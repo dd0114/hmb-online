@@ -632,7 +632,9 @@ test("G4 미보유 카드는 성장 UI 없이 기존 인라인 확장(잠금)만
   await mockGrowth(page);
   await seedAuth(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/codex");
+  await page.goto("/players");
+  // #286: 기본 스코프가 **보유**라 미보유 카드(P099)를 보려면 전체로 넘긴다.
+  await page.getByTestId("codex-scope-all").click();
 
   await page.getByTestId("codex-card-P099").getByRole("button").first().click();
   // 성장 시트가 뜨지 않는다(미보유).

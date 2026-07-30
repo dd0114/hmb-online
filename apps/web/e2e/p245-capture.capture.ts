@@ -1,6 +1,13 @@
 import { test } from "@playwright/test";
 
 /**
+ * ⚠️ **RETIRED (#286 W2)** — 이 하니스는 **개편 전 코드**에서만 돈다. 로비(`/lobby`)와
+ * `play-cta`·`lobby-*` 진입점이 사라졌기 때문이다. 산출물(PNG)은 이미 커밋돼 있고, 그 그림이
+ * 곧 "before" 다 — 다시 찍으려면 그 시점 커밋을 체크아웃해야 한다.
+ * 게이트가 아니다(`*.capture.ts` 는 `playwright.config.ts` 의 `testMatch` 밖).
+ */
+
+/**
  * #245 hero UI 컨펌용 실화면 캡처 — **목업이 아니라 실제 코드가 그리는 화면**.
  * 판정용이 아니라 hero 가 눈으로 보고 결정하기 위한 캡처다(루트 §2-2: 판정은 독립 QA).
  */

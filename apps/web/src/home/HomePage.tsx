@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAbandonMatch, useActiveMatch, useDeck, useMe, usePlayers } from "../api/hooks";
+import { useAbandonMatch, useActiveMatch, useAwayReports, useDeck, useMe, usePlayers } from "../api/hooks";
 import { useTradeSlots } from "../api/hooks-v2";
 import { useActiveNotices } from "../api/notice-hooks";
 import { useToken } from "../auth/TokenContext";
@@ -14,7 +14,7 @@ import { visibleNotices, type Notice } from "../lobby/notice-logic";
 import { pickLobbyPopup } from "../lobby/lobby-popup";
 import { useTutorial } from "../common/tutorial-context";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
-import { HOME_TILES, homeTileState, openTradeCount, teamLine } from "./home-logic";
+import { HOME_TILES, homeNotice, homeTileState, openTradeCount, teamLine } from "./home-logic";
 import styles from "./HomePage.module.css";
 
 /**
@@ -63,6 +63,13 @@ export function HomePage() {
   // 게임을 처음 켠 사람이 무엇을 하라는 안내를 받기 전에 "새벽 점검 안내"부터 읽게 됐다
   // (코치마크는 다른 다이얼로그가 열리면 스스로 숨으므로 **조용히 사라져 있었다**).
   // p248b 계약이 그걸 잡았다.
+  // 미확인 피원정 건수 — 알림 줄의 절반. 강제 이동 중에는 묻지 않는다(#245 규칙, GamePage 와 동일).
+  const { data: awayReports } = useAwayReports("unseen", !locked);
+  const notice = homeNotice({
+    unseenAwayReports: typeof awayReports?.unseen === "number" ? awayReports.unseen : 0,
+    openTrades: openTradeCount(trade?.slots),
+  });
+
   const notices = useActiveNotices();
   const [noticeDone, setNoticeDone] = useState(false);
   const { active: tutorialActive } = useTutorial();
@@ -190,6 +197,22 @@ export function HomePage() {
             );
           })}
         </div>
+
+        {/* 알림 한 줄 — **있을 때만**. 없으면 홈은 카드 한 장 + 타일로 끝난다(hero 3R). */}
+        {!locked && notice && (
+          <button
+            type="button"
+            className={styles.notifRow}
+            data-testid="home-notif"
+            onClick={() => navigate(notice.to)}
+          >
+            <span className={styles.notifCount}>{notice.count}</span>
+            <span className={styles.notifText}>{notice.text}</span>
+            <span className={styles.chev} aria-hidden="true">
+              ›
+            </span>
+          </button>
+        )}
 
         {popup === "notice" && (
           <NoticePopup notices={noticeList} onDone={() => setNoticeDone(true)} />

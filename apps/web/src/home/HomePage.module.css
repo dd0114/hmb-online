@@ -164,7 +164,8 @@
   height: 22px;
   padding: 0 6px;
   border-radius: 999px;
-  background: var(--danger);
+  /* 설계 §3.1 지정 색. --danger 는 '에러' 축이라 뜻이 다르다(독립검증 MIN-6). */
+  background: var(--them);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -284,4 +285,39 @@
   .tilePrimary .tileLabel {
     font-size: 17px;
   }
+}
+
+/* 알림 한 줄 — 카운트 뱃지와 **같은 형식**을 쓴다(hero 6R: 한 형식만). */
+.notifRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  border: 0;
+  border-radius: 13px;
+  padding: 12px 13px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+}
+.notifCount {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--them);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+.notifText {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

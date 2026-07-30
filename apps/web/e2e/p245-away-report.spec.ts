@@ -422,11 +422,14 @@ test.describe("#245 3R blocker — 잠금 판정 전에 팝업이 스치지 않�
       activeDelayMs: 900,
     });
 
-    await page.goto("/home");
-    // ⚠️ **트리거를 실제로 당긴다**(E1 이후 팝업은 [게임 시작]에 달려 있다). 안 누르면 게이트가
-    // 있든 없든 "팝업 0"이 참이라, 이 계약이 다시 tautology 가 된다(독립검증 MAJ-5 가 그 상태였다).
-    // best-effort — 이미 매치로 튕겼으면 버튼이 없다. 기다리면 타임아웃을 다 먹는다.
-    await page.getByTestId("play-cta").click({ timeout: 2000 }).catch(() => {});
+    // ⚠️ **트리거를 실제로 당긴다**(#286 이후 팝업은 게임 탭의 [원정] 카드에 달려 있다). 안 누르면
+    // 게이트가 있든 없든 "팝업 0"이 참이라, 이 계약이 다시 tautology 가 된다(독립검증 MAJ-5 가 그
+    // 상태였고, #286 1차 이관에서 구 CTA 를 그대로 둔 채 `.catch(()=>{})` 로 삼켜 **또 그렇게
+    // 됐다** — 독립검증 BL-3). 그래서 여기서는 삼키지 않는다: 강제 이동으로 카드가 없으면
+    // 그건 곧 매치로 튕겼다는 뜻이라 아래 URL 단언이 받는다.
+    await page.goto("/game");
+    const awayCard = page.getByTestId("mode-away");
+    if (await awayCard.count()) await awayCard.click();
 
     // ⚠️ 창 자체를 관측해야 한다. 이전 계약은 URL 이동을 먼저 기다린 뒤 개수를 세서
     // **게이트를 통째로 지워도 통과**했다(3R: W5 변이체 생존). 지연 구간을 훑는다.
@@ -448,13 +451,15 @@ test.describe("#245 × #217 — 잠금과 충돌하지 않는다", () => {
   test("진행 중 경기로 강제 이동될 땐 팝업을 띄우지 않는다", async ({ page }) => {
     const st = await mockApi(page, { unseen: [...THREE_RAIDS], locked: true });
 
-    await page.goto("/home");
-    // 트리거를 당겨본다 — 강제 이동 중이면 그래도 팝업이 떠선 안 된다(MAJ-5).
-    // best-effort — 이미 매치로 튕겼으면 버튼이 없다. 기다리면 타임아웃을 다 먹는다.
-    await page.getByTestId("play-cta").click({ timeout: 2000 }).catch(() => {});
-
-    // 로비를 스쳐 매치로 간다. 그 사이 팝업이 떠 ack 이 소진되면 결과를 영영 못 본다.
+    // #286 이후 트리거는 게임 탭의 [원정] 카드인데, 그 라우트가 **잠겨 있다**(LOCKED_ROUTES).
+    // 즉 강제 이동 중에는 트리거에 닿을 수조차 없다 — MAJ-5 가 요구한 것보다 강한 보장이다.
+    // ⚠️ 그래서 여기서는 "못 눌렀다"가 통과 근거가 아니다. **잠금이 실제로 걸렸는지**(URL)와
+    //    **팝업이 안 떴는지**를 둘 다 본다. 잠금을 지우면 카드를 눌러 팝업이 뜨고 여기서 깨진다.
+    await page.goto("/game");
     await expect(page).toHaveURL(/\/match\/M_LIVE$/);
+    await expect(page.getByTestId("mode-away"), "잠겼으니 트리거 자체가 없다").toHaveCount(0);
+
+    // 스쳐 지나가는 사이 팝업이 떠 ack 이 소진되면 결과를 영영 못 본다.
     await expect(page.getByTestId("away-report-modal")).toHaveCount(0);
     expect(st.ackCalls).toBe(0);
   });

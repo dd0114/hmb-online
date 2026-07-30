@@ -4,6 +4,7 @@ import { ApiError } from "../api/client";
 import { useDeck, usePlayers, useUpdateDeck, type CatalogPlayer, type Deck } from "../api/hooks";
 import { useRelations, useTodayConditions } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
+import { TeamMoraleWidget } from "../common/RelationBits";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { useNavGuardRun, useRegisterNavGuard, type NavGuard } from "../common/NavGuard";
@@ -90,11 +91,11 @@ export function DeckPage() {
 
   const playersById = useMemo(() => {
     const map = new Map<string, CatalogPlayer>();
-    for (const p of players ?? []) map.set(p.id, p);
+    for (const p of Array.isArray(players) ? players : []) map.set(p.id, p);
     return map;
   }, [players]);
 
-  const ownedPlayers = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
+  const ownedPlayers = useMemo(() => (Array.isArray(players) ? players : []).filter((p) => p.owned), [players]);
 
   const dirty = editor != null && baseline != null && isDirty(editor, "", baseline);
 
@@ -207,6 +208,11 @@ export function DeckPage() {
 
   return (
     <Layout header={header} nav>
+      {/* 팀 사기 — #286 에서 로비가 없어지며 갈 곳을 잃었다. 설계(§3.1 "덜어낸 것의 행선지")가
+          [덱]으로 지정한 자리다: 사기·컨디션은 **라인업을 짤 때 쓰는 값**이라 여기가 맞다.
+          ⚠️ 소비처가 0 이 되면 위젯은 정의만 남고 화면에서 조용히 사라진다(독립검증 BL-1 이
+          그 상태를 잡았다) — `deck-teamsheet` 계약이 이제 존재를 지킨다. */}
+      <TeamMoraleWidget relations={relations} compact />
       <DeckEditor
         state={editor}
         onChange={mutateEditor}

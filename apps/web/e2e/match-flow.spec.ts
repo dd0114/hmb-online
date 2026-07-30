@@ -77,8 +77,8 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   await page.goto("/home");
   const recordBefore = (await page.getByText(/\d+승 \d+무 \d+패/).textContent()) ?? "";
 
-  // 4) 게임 시작 → 연습 경기 → /match/:id  (로비 개편: 게임시작=연습/리그 선택 모달)
-  await page.getByTestId("play-cta").click();
+  // 4) 홈 [게임 시작] → 게임 탭 → 연습 경기 → /match/:id  (#286: 모달이 화면으로 승격됐다)
+  await page.getByTestId("home-tile-game").click();
   await page.getByTestId("mode-practice").click();
   await expect(page).toHaveURL(/\/match\//);
 

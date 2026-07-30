@@ -82,12 +82,15 @@ export interface MockOpts {
   active?: { match: { id: string; state: string } | null; locked: boolean; abandonable: boolean };
   /** 트레이드 슬롯 — 홈 [영입] 타일의 카운트 뱃지 근거. */
   openTrades?: number;
+  /** 미확인 피원정 리포트 수 — 홈 알림 한 줄의 나머지 절반. */
+  unseenAwayReports?: number;
 }
 
 export async function mockAll(page: Page, opts: MockOpts = {}) {
   const {
     active = { match: null, locked: false, abandonable: false },
     openTrades = 1,
+    unseenAwayReports = 0,
   } = opts;
 
   const slots = [
@@ -104,7 +107,7 @@ export async function mockAll(page: Page, opts: MockOpts = {}) {
   const routes: Array<[string, unknown]> = [
     ["/api/me", ME],
     ["/api/me/active-match", active],
-    ["/api/me/away-reports", AWAY_REPORTS],
+    ["/api/me/away-reports", { ...AWAY_REPORTS, unseen: unseenAwayReports }],
     ["/api/relations", { morale: 62, streak: 1, players: [] }],
     ["/api/players", PLAYERS],
     ["/api/deck", DECK],

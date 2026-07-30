@@ -152,8 +152,10 @@ test.describe("#217 AC1 — 진행 중 경기로 되돌아온다", () => {
     // 메타 화면을 **전수로** 노려도 마찬가지. 라우트를 손으로 감싸는 구조라(App.tsx) 하나를
     // 빠뜨려도 유닛 테스트는 green 이다 — 구멍은 여기서만 잡힌다.
     // ⚠️ 목록은 common/match-lock.ts 의 LOCKED_ROUTES 와 같아야 한다(#286 6탭 + 하위 페이지).
-    //    /home 은 여기 없다 — 홈은 [이어하기]/[경기 포기]와 로그아웃의 자리라 잠그지 않는다.
-    for (const route of ["/game", "/away", "/deck", "/players", "/recruit", "/me", "/league"]) {
+    //    ⚠️ /home 도 **포함**이다. 게이트가 `locked && !abandonable` 에서만 되돌리므로 회수 가능한
+    //    사고 매치에서는 홈이 열리고 [경기 포기]에 닿는다 — "홈은 탈출구니까 빼자"는 오독이었다
+    //    (빼면 재생 중에 홈에 눌러앉을 수 있어 AC1 이 깨진다. 아래 루프가 그걸 잡는다).
+    for (const route of ["/home", "/game", "/away", "/deck", "/players", "/recruit", "/me", "/league"]) {
       await page.goto(route);
       await expect(page, `${route} 가 잠기지 않았다`).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
     }

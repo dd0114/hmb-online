@@ -51,10 +51,10 @@ export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
 
   const catalog = useMemo(() => {
     const m = new Map<string, CatalogPlayer>();
-    for (const p of players ?? []) m.set(p.id, p);
+    for (const p of Array.isArray(players) ? players : []) m.set(p.id, p);
     return m;
   }, [players]);
-  const owned = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
+  const owned = useMemo(() => (Array.isArray(players) ? players : []).filter((p) => p.owned), [players]);
 
   const walletPoints = data?.wallet.points ?? 0;
   // #232: 단축 비용의 재화는 **서버가 정한다**(slot.speedupCurrency). 무료재화 잔액으로만 게이팅하면

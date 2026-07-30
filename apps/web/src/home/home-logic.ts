@@ -103,6 +103,35 @@ export function homeTileState(input: HomeTileInput): Record<HomeTile["key"], Til
   };
 }
 
+/**
+ * 홈 맨 아래 **알림 한 줄** — hero 컨펌 목업(`docs/plan-v5/mock/home-nav/after.html` `.notifrow`)의
+ * 요소. "오늘 할 일 목록"을 홈에서 걷어내는 대신(그러면 홈이 다시 대시보드가 된다) **건수만**
+ * 알리고 눌러서 가게 한 자리다.
+ *
+ * ⚠️ **셀 게 없으면 아예 그리지 않는다** — 빈 줄이 남으면 "알림이 없다"가 아니라 "고장 났다"로
+ * 읽힌다. 헤더 벨(`NoticeCenter`)과는 다른 축이다: 벨은 공지, 이 줄은 **내 차례가 온 것들**.
+ */
+export interface HomeNotice {
+  count: number;
+  /** 무엇이 몇 건인지 — 뱃지가 아니라 여기가 말한다(카운트 뱃지 단일 형식과 같은 원칙). */
+  text: string;
+  to: string;
+}
+
+export function homeNotice(input: { unseenAwayReports: number; openTrades: number }): HomeNotice | null {
+  const bits: string[] = [];
+  if (input.unseenAwayReports > 0) bits.push(`원정 피침공 ${input.unseenAwayReports}건`);
+  if (input.openTrades > 0) bits.push(`트레이드 제안 ${input.openTrades}건`);
+  const count = input.unseenAwayReports + input.openTrades;
+  if (count === 0) return null;
+  return {
+    count,
+    text: `새 소식 ${count}건 — ${bits.join(" · ")}`,
+    // 원정 쪽이 있으면 거기가 우선이다(피침공은 시간이 지나면 밀려나 사라진다).
+    to: input.unseenAwayReports > 0 ? "/game" : "/recruit",
+  };
+}
+
 export interface TeamLine {
   teamName: string;
   sub: string;
