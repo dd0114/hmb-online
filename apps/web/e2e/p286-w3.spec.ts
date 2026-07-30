@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { mockAll } from "./p286-mocks";
+import { mockAll, PLAYERS } from "./p286-mocks";
+import { CHAR_ART_MIN_GRADE, showsCharacterArt } from "../src/common/icon-policy";
 
 /**
  * #286 **W3** — 화면 내용 심화 **계약**. 구현 전에 먼저 박았다(E2E-TDD, 루트 §2-3).
@@ -103,6 +104,46 @@ test("선수 카드가 전신 아트다 — 얼굴 타일이 아니다", async (
   const box = await art.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.height / box!.width, "아트 창이 세로로 길지 않다 = 얼굴 타일이다").toBeGreaterThan(1.2);
+});
+
+/**
+ * **전신은 다이아 이상만이다 — hero 확정(Q6 = B, 2026-07-30).**
+ *
+ * #285 노출 정책(`icon-policy.CHAR_ART_MIN_GRADE`)이 도감보다 먼저 걸려 골드 이하는 아트를
+ * 안 그린다. hero 는 그 사실을 알고 **AC 를 좁히는 쪽**을 택했다(하위 133명이 공용 도트 하나를
+ * 공유해서, 전신으로 깔면 같은 그림이 133칸 반복된다).
+ *
+ * ⚠️ 이 계약은 **정책 상수를 직접 읽는다** — 등급 이름을 여기 적으면 임계를 옮길 때 조용히
+ * 어긋난다(`icon-policy` 주석이 금지하는 그것). 임계가 바뀌면 여기가 **먼저 깨져서** 그때
+ * "도감 AC 를 다시 볼 때"임을 알려 준다.
+ */
+test("전신은 다이아 이상만 — 그 아래는 아트를 그리지 않는다 (hero Q6=B)", async ({ page }) => {
+  await mockAll(page);
+  await page.goto("/players");
+  await page.getByTestId("codex-scope-all").click();
+
+  // ⚠️ **결정 자체를 박는다.** 아래 루프만 두면 앱과 계약이 **같은 상수를 읽어 같이 움직여서**
+  //    임계를 옮겨도 초록이다(실측: DIA→GOLD 로 바꿔도 통과 = tautology). 그건 "앱이 정책을
+  //    따르나"만 보는 것이고, hero 가 고른 건 **"DIA"라는 값** 이다. 값이 바뀌면 여기가 먼저
+  //    깨져서 "도감 AC(전신 범위)를 다시 볼 때"임을 알린다.
+  expect(
+    CHAR_ART_MIN_GRADE,
+    "아트 노출 임계가 바뀌었다 — 도감 전신 AC(hero Q6=B: 다이아 이상만)를 다시 보라",
+  ).toBe("DIA");
+
+  const above = PLAYERS.filter((p) => showsCharacterArt(p.grade as never));
+  const below = PLAYERS.filter((p) => !showsCharacterArt(p.grade as never));
+  expect(above.length, "임계 이상 표본이 없다").toBeGreaterThan(0);
+  expect(below.length, "임계 미만 표본이 없다").toBeGreaterThan(0);
+
+  for (const p of above) {
+    const img = page.getByTestId(`codex-card-${p.id}`).locator('[data-testid="codex-card-art"] img');
+    await expect(img, `${p.id}(${p.grade}) 는 임계 이상인데 아트가 없다`).toHaveCount(1);
+  }
+  for (const p of below) {
+    const img = page.getByTestId(`codex-card-${p.id}`).locator('[data-testid="codex-card-art"] img');
+    await expect(img, `${p.id}(${p.grade}) 는 임계 미만인데 아트가 그려졌다(#285 정책 위반)`).toHaveCount(0);
+  }
 });
 
 test("미보유 카드는 아트가 있으면 실루엣이다", async ({ page }) => {

@@ -8,8 +8,8 @@
 }
 .segOn { background: var(--bg-elevated); color: var(--text); }
 
-/* 트레이드 상시 안내 (#286 W3). ⚠️ 코치마크는 아직 없다 — 온보딩 동선 밖이라
-   스텝을 두면 완료가 막힌다(tutorial-steps 의 `shop` 주석). hero 결정 대기. */
+/* 트레이드 상시 안내 (#286 W3). ⚠️ 코치마크는 **없다**(hero 확정 Q7=A) — 온보딩 동선 밖이라
+   스텝을 두면 완료가 막힌다(tutorial-steps 의 `shop` 주석). */
 .guide {
   background: var(--sunk);
   border: 1px solid var(--border);
