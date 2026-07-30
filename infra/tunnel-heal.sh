@@ -64,7 +64,10 @@ resolve_ip(){
   return 1
 }
 
-current_url(){ grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -1; }
+# ⚠️ `grep -a` 필수 — cloudflared 로그에 제어문자가 섞이면 grep 이 **바이너리로 판정**해
+#    매치 대신 "Binary file … matches" 를 돌려준다. 그 문자열이 URL 자리에 들어가 전파가
+#    깨진 전례가 있다(2026-07-30 12:11Z 반쪽 치유 — HEAL_OK 인데 config.json 은 옛 URL).
+current_url(){ grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -1; }
 
 # 왕복 프로브. echo "<verdict> <detail>" — verdict = ok | dns | http:<code>
 probe(){

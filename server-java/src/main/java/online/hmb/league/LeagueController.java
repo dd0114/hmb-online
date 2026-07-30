@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -31,6 +32,21 @@ public class LeagueController {
     @GetMapping("/api/league")
     public LeagueService.LeagueResponse get(@RequestAttribute("userId") String userId) {
         return leagueService.getLeague(userId);
+    }
+
+    /**
+     * 디비전 통합 랭킹보드(#319) — 정렬 = <b>디비전 우선 → 승점</b>(hero Q2).
+     *
+     * <p>⚠️ 매핑 순서상 이 메서드는 {@code /api/league} 보다 <b>구체적인 경로</b>라 충돌하지 않는다
+     * (Spring 은 리터럴 경로를 정확히 매칭한다). {@code /api/league/{something}} 같은 변수 경로를
+     * 나중에 추가하면 그때 순서를 확인해라.
+     */
+    @GetMapping("/api/league/rankings")
+    public LeagueService.LeagueRankingsResponse rankings(
+            @RequestAttribute("userId") String userId,
+            @RequestParam(name = "scope", defaultValue = "global") String scope,
+            @RequestParam(name = "limit", defaultValue = "50") int limit) {
+        return leagueService.rankings(userId, scope, limit);
     }
 
     @PostMapping("/api/league/next-match")

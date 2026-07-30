@@ -134,6 +134,61 @@ export function clockLabel(state: string | undefined, tick: number | null): stri
   return tick == null ? CLOCK_PLACEHOLDER : `${Math.floor(tick / 60)}'`;
 }
 
+/**
+ * ─── 사이드 ↔ 팀 이름 (#322) ────────────────────────────────────────────────────────────────
+ *
+ * **홈은 매치 소유자가 아니다.** 리그 어웨이 라운드에서는 서버가 유저를 away 사이드에 앉힌다
+ * (`MatchOrchestrator.userIsHome()` — 픽스처 `home_team` 이 계약이고, 홈 어드밴티지가 봇에게 간다).
+ * 스코어(`scoreHome/Away`)·이벤트 `team`·뷰어 렌더가 **전부 그 축**인데, web 만 `homeName = ownerName`
+ * 으로 "홈 = 나"를 못 박고 있어서 리그 어웨이 라운드 화면이 통째로 뒤집혔다:
+ * 스코어 반전 · 로그 팀 라벨 반전 · 좌우 반전(뷰어는 엔진 home 을 **항상 왼쪽**에 그린다).
+ * 결과 카드가 `승리` 옆에 `축구왕여르 1 : 5 Thunder Bay United` 를 띄웠다.
+ *
+ * ⚠️ **여기서 사이드를 추론하지 않는다.** 서버가 `homeName`/`awayName` 을 **사이드 라벨 그대로** 준다.
+ * 불리언(`userWasHome`) 하나만 받아 클라가 이름을 배치하면 관전자 경로(#245 — 홈이 공격자다)에서
+ * 해석이 한 번 더 갈린다. 그 갈림이 정확히 이 버그를 만들었다.
+ */
+export interface TeamNameSource {
+  /** 서버가 주는 **사이드 기준** 이름(#322 additive). 없으면 구 서버 → 폴백. */
+  homeName?: string | null;
+  awayName?: string | null;
+  /** 폴백용 — 매치 소유자(#245). 연습·유저홈 리그에서는 이게 곧 홈이라 폴백이 정답이다. */
+  ownerName?: string | null;
+  opponent?: { name?: string | null } | null;
+}
+
+export interface TeamNames {
+  home: string;
+  away: string;
+}
+
+/**
+ * 화면에 그릴 **사이드별** 팀 이름. 서버 값이 먼저고, 없으면 예전 동작(홈 = 소유자)으로 떨어진다.
+ * 폴백이 안전한 이유: 구 서버가 도는 동안 web 이 먼저 나가도 연습·유저홈 리그는 결과가 같다.
+ */
+export function teamNamesOf(match: TeamNameSource | null | undefined, myName?: string | null): TeamNames {
+  return {
+    home: match?.homeName ?? match?.ownerName ?? myName ?? "내 팀",
+    away: match?.awayName ?? match?.opponent?.name ?? "상대",
+  };
+}
+
+/**
+ * **내 팀이 어느 사이드인가** (안 C, hero 확정 2026-07-30).
+ *
+ * 어웨이 라운드에는 내 팀이 오른쪽에 서므로, 이름만으로는 유저가 매 라운드 자기 자리를 다시 찾아야
+ * 한다. 그래서 표식을 단다. 판정은 **이름 일치**다 — 팀 이름이 곧 닉네임이고(원정 고스트 봇 이름도
+ * 수비자의 닉네임이다) 그래서 소유자·관전자 양쪽에서 같은 규칙이 성립한다.
+ *
+ * 못 찾으면 **null** — 둘 다 남의 팀인 화면(관전 중 봇전 등)에 "내 팀"이라고 거짓말하지 않는다.
+ */
+export function myTeamSide(names: TeamNames, myName: string | null | undefined): "home" | "away" | null {
+  if (!myName) return null;
+  if (names.home === myName) return "home";
+  if (names.away === myName) return "away";
+  return null;
+}
+
 export interface ScorePair {
   home: number;
   away: number;

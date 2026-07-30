@@ -7,6 +7,7 @@ import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { AwayReportModal } from "../lobby/AwayReportModal";
 import { shouldShowAwayPopup } from "../lobby/away-report-logic";
+import { useDecklessGuard } from "../common/useDecklessGuard";
 import { matchInProgressIdOf, shouldForceResume } from "../common/match-lock";
 import { leagueModeHint, practiceError } from "./game-logic";
 import styles from "./GamePage.module.css";
@@ -48,7 +49,17 @@ export function GamePage() {
   const showAwayPopup =
     awayPressed && !forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports);
 
+  /**
+   * 덱 없는 유저 가드 — L2·L3 (#286 W3.5).
+   *
+   * L2 = URL 직접 진입·뒤로가기로 홈 타일(L1)을 지나쳐 온 경로.
+   * L3 = 클라 가드를 통과한 뒤 **서버가 거부**하는 경합(다른 탭에서 덱 삭제 등).
+   *      클라 가드는 진실이 아니므로, 서버 응답도 **같은 안내**로 흡수한다.
+   */
+  const deckless = useDecklessGuard();
+
   function pressAway() {
+    if (!deckless.guard()) return;
     if (!forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports)) {
       setAwayPressed(true);
       return;
@@ -57,6 +68,7 @@ export function GamePage() {
   }
 
   function startPractice() {
+    if (!deckless.guard()) return;
     setCreateError(null);
     createMatch.mutate(
       {},
@@ -69,6 +81,8 @@ export function GamePage() {
             navigate(`/match/${resumeId}`);
             return;
           }
+          // L3 — 서버가 "덱이 없다"고 거부했다. 에러 토스트로 끝내면 막다른 길이다.
+          if (deckless.catchReject(err)) return;
           setCreateError(practiceError(err as ApiError | Error));
         },
       },
@@ -90,7 +104,11 @@ export function GamePage() {
           type="button"
           className={`${styles.mode} ${styles.league}`}
           data-testid="mode-league"
-          onClick={() => navigate("/league")}
+          onClick={() => {
+            // 리그도 결국 매치를 만든다 — 리그 화면까지 들여보낸 뒤 [다음 경기]에서 막으면
+            // 유저는 순위표를 한 바퀴 돈 뒤에야 자기가 못 한다는 걸 안다.
+            if (deckless.guard()) navigate("/league");
+          }}
         >
           <span className={styles.modeTop}>
             <span className={styles.modeIcon} aria-hidden="true">
@@ -161,6 +179,8 @@ export function GamePage() {
         </button>
 
         <ErrorToast message={createError} onDismiss={() => setCreateError(null)} />
+
+        {deckless.dialog}
 
         {showAwayPopup && awayReports && (
           <AwayReportModal

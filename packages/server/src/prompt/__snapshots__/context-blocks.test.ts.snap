@@ -5,7 +5,8 @@ exports[`coach — Phase2 컨텍스트 블록 통합 > 스냅샷: Phase2 컨텍�
 규칙:
 - players 는 주어진 로스터의 playerId 를 정확히 그대로 사용한다(11명 전원, 추가/누락 금지).
 - 모든 behavior 값과 team 수치는 0..1, mentalModifier 는 -1..1 범위.
-- basePosition 은 포메이션 슬롯을 기본으로 하되 지시에 맞게 조정 가능(x=0 자기 골문→1 상대 골문, y=0..1 좌우 폭).
+- basePosition: 로스터 각 줄의 '기준' 좌표가 감독이 전술보드에서 직접 잡아 둔 자리다. 그 선수를 향한 지시가 없으면 기준 좌표를 그대로 쓴다. 지시가 있으면 그 지시에 맞게 조정한다 (x=0 자기 골문→1 상대 골문, y=0 우리 팀 왼쪽→1 오른쪽).
+- 두 선수에게 같은 좌표(또는 사실상 겹치는 좌표)를 주지 마라 — 포메이션이 한 점으로 무너진다.
 - 선수의 능력치(0..100)를 고려해 현실적인 성향을 부여한다(예: pace 낮은 수비수에게 과도한 forwardRunFreq 금지).
 behavior 의미: forwardRunFreq=오프더볼 전진 침투, widthTendency=측면으로 벌림(풀백/윙어 오버랩), supportDepth=공격 가담 깊이, pressAggression=개인 압박, passRisk=위험 전진패스, passDirectness=직선 패스, dribbleTendency, shootTendency, positioningFreedom=로밍.
 감독 지시의 의도를 파라미터로 충실히 반영하라 — 구체 해석은 아래 '지원 지시 카탈로그'를 따른다.
@@ -53,18 +54,18 @@ behavior 의미: forwardRunFreq=오프더볼 전진 침투, widthTendency=측면
     · "라인 내리고 천천히 점유" → defensiveLineHeight↓·compactness↑, team.tempo↓(안정 지향).
 
 포메이션: 4-3-3 (home 팀, 전반)
-팀 로스터(선발 11명, 능력치 0..100):
-- slot0 H0 Home GK (GK) — tech 45/mental 72/phys 66 · pass 56·shoot 22·tackle 23·pace 53·stam 52·pos 87
-- slot1 H1 Home LB (DF) — tech 60/mental 62/phys 66 · pass 56·shoot 41·tackle 62·pace 78·stam 76·pos 66
-- slot2 H2 Home LCB (DF) — tech 57/mental 71/phys 81 · pass 58·shoot 37·tackle 85·pace 54·stam 73·pos 79
-- slot3 H3 Home RCB (DF) — tech 47/mental 61/phys 75 · pass 62·shoot 34·tackle 75·pace 56·stam 59·pos 83
-- slot4 H4 Home RB (DF) — tech 61/mental 55/phys 67 · pass 52·shoot 33·tackle 72·pace 77·stam 80·pos 65
-- slot5 H5 Home LCM (MF) — tech 77/mental 65/phys 59 · pass 70·shoot 61·tackle 56·pace 69·stam 72·pos 63
-- slot6 H6 Home CM (MF) — tech 69/mental 60/phys 73 · pass 69·shoot 53·tackle 57·pace 66·stam 79·pos 67
-- slot7 H7 Home RCM (MF) — tech 74/mental 66/phys 72 · pass 76·shoot 55·tackle 53·pace 63·stam 81·pos 70
-- slot8 H8 Home LW (FW) — tech 66/mental 57/phys 57 · pass 62·shoot 62·tackle 35·pace 76·stam 64·pos 67
-- slot9 H9 Home ST (FW) — tech 68/mental 62/phys 70 · pass 60·shoot 76·tackle 42·pace 75·stam 68·pos 77
-- slot10 H10 Home RW (FW) — tech 78/mental 67/phys 62 · pass 60·shoot 64·tackle 44·pace 80·stam 71·pos 66
+팀 로스터(선발 11명, 능력치 0..100 · 기준 = 전술보드에서 잡아 둔 자리):
+- slot0 H0 Home GK (GK) — 기준 x=0.05 y=0.5 · tech 45/mental 72/phys 66 · pass 56·shoot 22·tackle 23·pace 53·stam 52·pos 87
+- slot1 H1 Home LB (DF) — 기준 x=0.22 y=0.2 · tech 60/mental 62/phys 66 · pass 56·shoot 41·tackle 62·pace 78·stam 76·pos 66
+- slot2 H2 Home LCB (DF) — 기준 x=0.16 y=0.4 · tech 57/mental 71/phys 81 · pass 58·shoot 37·tackle 85·pace 54·stam 73·pos 79
+- slot3 H3 Home RCB (DF) — 기준 x=0.16 y=0.6 · tech 47/mental 61/phys 75 · pass 62·shoot 34·tackle 75·pace 56·stam 59·pos 83
+- slot4 H4 Home RB (DF) — 기준 x=0.22 y=0.8 · tech 61/mental 55/phys 67 · pass 52·shoot 33·tackle 72·pace 77·stam 80·pos 65
+- slot5 H5 Home LCM (MF) — 기준 x=0.44 y=0.32 · tech 77/mental 65/phys 59 · pass 70·shoot 61·tackle 56·pace 69·stam 72·pos 63
+- slot6 H6 Home CM (MF) — 기준 x=0.4 y=0.5 · tech 69/mental 60/phys 73 · pass 69·shoot 53·tackle 57·pace 66·stam 79·pos 67
+- slot7 H7 Home RCM (MF) — 기준 x=0.44 y=0.68 · tech 74/mental 66/phys 72 · pass 76·shoot 55·tackle 53·pace 63·stam 81·pos 70
+- slot8 H8 Home LW (FW) — 기준 x=0.7 y=0.2 · tech 66/mental 57/phys 57 · pass 62·shoot 62·tackle 35·pace 76·stam 64·pos 67
+- slot9 H9 Home ST (FW) — 기준 x=0.78 y=0.5 · tech 68/mental 62/phys 70 · pass 60·shoot 76·tackle 42·pace 75·stam 68·pos 77
+- slot10 H10 Home RW (FW) — 기준 x=0.7 y=0.8 · tech 78/mental 67/phys 62 · pass 60·shoot 64·tackle 44·pace 80·stam 71·pos 66
 
 seed: 4815162342
 

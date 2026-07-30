@@ -54,6 +54,8 @@ export interface ViewerHooks {
   fx(): unknown[];
   surgeTicks(): number[];
   cardMarks(): unknown[];
+  /** 이 프레임에 그려진 토스트(앵커 계약 검증용, #324). */
+  toasts(): unknown[];
   liveStats(): { tick: number; [k: string]: unknown };
   trailAt(tick: number): unknown[];
   cam(): { cx: number; cy: number; zoom: number };

@@ -78,3 +78,14 @@
     grid-template-columns: repeat(5, 1fr);
   }
 }
+
+/* 경기 중 강화 잠금 안내 (#286 W3). 조용한 무반응은 버그로 읽힌다 — 이유를 말한다. */
+.lockedNote {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 194, 75, 0.12);
+  border: 1px solid rgba(255, 194, 75, 0.35);
+  color: #ffdc9a;
+  font-size: 12px;
+}

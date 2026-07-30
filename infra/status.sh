@@ -48,7 +48,8 @@ esac
 # 4) 터널 (cloudflared) + 현재 URL
 PIDF=/tmp/hmb-cf-tunnel.pid; LOG=/tmp/hmb-cf-tunnel.log
 if [ -f "$PIDF" ] && ps -p "$(cat "$PIDF")" >/dev/null 2>&1; then
-  URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" 2>/dev/null | tail -1)
+  # -a: 로그에 제어문자가 섞여도 URL 을 캡처한다(없으면 URL 칸이 빈다 — 2026-07-30 실장애)
+  URL=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" 2>/dev/null | tail -1)
   ok "터널: 실행 중 (pid $(cat "$PIDF"))  URL=$URL"
   if [ -n "$URL" ]; then
     # 워치독(#183)과 **같은 방식**으로 판정한다: ① 이 머신 ISP DNS 는 trycloudflare 를 못 풀 때가
@@ -80,7 +81,7 @@ if [ -f /tmp/hmb-web-serve.pid ] && ps -p "$(cat /tmp/hmb-web-serve.pid)" >/dev/
   [ "$scode" = "200" ] && ok "web 정적서버(로컬 ${WEB_PORT:-4321}): 200" || bad "web 정적서버: $scode"
 fi
 if [ -f /tmp/hmb-web-tunnel.pid ] && ps -p "$(cat /tmp/hmb-web-tunnel.pid)" >/dev/null 2>&1; then
-  WURL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb-web-tunnel.log 2>/dev/null | tail -1)
+  WURL=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb-web-tunnel.log 2>/dev/null | tail -1)
   ok "web 터널: 실행 중 (pid $(cat /tmp/hmb-web-tunnel.pid))  ⇒ 테스터 URL=$WURL"
   warn "테스터 URL 은 외부에서 열림 — 로컬 DNS 캐시로 이 머신 curl 은 실패할 수 있음(정상)"
 else

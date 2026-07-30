@@ -8,6 +8,7 @@ import { panelForState } from "./match-logic";
 import { BriefingPanel } from "./BriefingPanel";
 import { GenWaitPanel } from "./GenWaitPanel";
 import { StageShell } from "./stage/StageShell";
+import { myTeamSide, teamNamesOf } from "./stage/stage-state";
 import styles from "./MatchPage.module.css";
 
 const STATE_LABELS: Record<string, string> = {
@@ -25,12 +26,14 @@ const STATE_LABELS: Record<string, string> = {
 
 /**
  * /match/:id — useMatch 폴링(GEN* 3s)이 주는 state로 패널 라우팅 (LLD-web §2).
- * 홈 = 매치 생성자, 어웨이 = 상대. 상대 이름은 BRIEFING의 opponent에서 오며
- * 이후 상태에 없을 수 있어 fallback "상대".
  *
- * ⚠️ 이 화면은 **관전자도 연다**(#245: 원정을 당한 수비자가 자기 팀 경기를 본다). 그래서 "홈 = 나"를
- * 가정하지 않는다 — 홈 이름은 서버가 주는 ownerName 이 먼저다. 쓰기 액션은 서버가 소유자에게만
- * 허용하므로(getOwned) 관전자가 버튼을 눌러도 404 다.
+ * ⚠️ **"홈 = 나"를 가정하지 않는다.** 두 번 깨졌다:
+ *  · #245 — 이 화면은 **관전자도 연다**(원정을 당한 수비자가 자기 팀 경기를 본다). 홈은 공격자다.
+ *  · #322 — **리그 어웨이 라운드는 유저가 away 사이드다**(픽스처 home_team 이 계약). 소유자 본인이
+ *    봐도 홈이 아니다. 그래서 이름은 `teamNamesOf` 가 **사이드 라벨 그대로** 배치하고, 대신
+ *    "어느 쪽이 나인지"를 표식(`myTeamSide`)으로 따로 말한다(안 C, hero 확정).
+ *
+ * 쓰기 액션은 서버가 소유자에게만 허용하므로(getOwned) 관전자가 버튼을 눌러도 404 다.
  */
 export function MatchPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,10 +46,12 @@ export function MatchPage() {
   const { data: me } = useMe();
   const { data: match, isLoading, isError } = useMatch(id);
 
-  // 홈 = 매치를 만든 유저다. 보통은 나지만, **원정 수비자가 관전할 땐 공격자**다(#245) —
-  // 자기 닉네임을 홈에 박으면 관전 화면이 양 팀 이름을 바꿔 부른다. 서버가 ownerName 을 준다.
-  const homeName = match?.ownerName ?? me?.user.nickname ?? "내 팀";
-  const awayName = match?.opponent?.name ?? "상대";
+  // ⚠️ **홈 = 매치 소유자가 아니다**(#322). 리그 어웨이 라운드는 서버가 유저를 away 사이드에
+  // 앉히고(픽스처 home_team 이 계약), 스코어·이벤트 team·뷰어 렌더가 전부 그 축이다. 규칙은
+  // `teamNamesOf` 가 소유한다 — 여기서 손으로 이름을 배치하던 두 줄이 화면을 통째로 뒤집었다.
+  const teamNames = teamNamesOf(match, me?.user.nickname);
+  const { home: homeName, away: awayName } = teamNames;
+  const mySide = myTeamSide(teamNames, me?.user.nickname);
 
   // FINISHED 최초 관측 시 전적/지갑 갱신(보상 반영) — 로비 헤더가 새 전적을 보이게
   const finishedHandled = useRef(false);
@@ -64,7 +69,13 @@ export function MatchPage() {
   // GEN2(후반 생성)는 보통 재사용이라 눈 깜짝할 사이지만, AI 를 태우면 대기 화면이 필요하다.
   if (match && (panel === "live" || panel === "halftime" || panel === "result")) {
     return (
-      <StageShell match={match} homeName={homeName} awayName={awayName} leagueRound={leagueRound} />
+      <StageShell
+        match={match}
+        homeName={homeName}
+        awayName={awayName}
+        myTeamSide={mySide}
+        leagueRound={leagueRound}
+      />
     );
   }
 

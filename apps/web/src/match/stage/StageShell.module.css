@@ -46,23 +46,59 @@
   min-width: 0;
 }
 
+/*
+ * ⚠️ **줄임표는 이름에만 건다**(#322). 예전엔 `.teamName` 자체가 `overflow:hidden` +
+ * `text-overflow: ellipsis` 라 그 안에 넣은 "내 팀" 칩이 긴 팀명 뒤에서 통째로 잘렸다 —
+ * DOM 엔 있으니 e2e `toBeVisible()` 은 통과하는데 **화면엔 없다**(실화면 캡처로만 보였다,
+ * 루트 §2-2). 그래서 슬롯을 플렉스로 두고 **이름만** 줄어들게 한다(`.teamLabel`).
+ */
 .teamName {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: 600;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/** 줄임표를 지는 쪽. 슬롯이 아니라 **이름**이 줄어든다 — 표식은 옆에서 살아남는다. */
+.teamLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 스코어 쪽으로 붙인다(홈은 오른쪽 끝, 어웨이는 왼쪽 끝) — 구 `text-align` 과 같은 그림. */
 .teamName.home {
-  text-align: right;
+  justify-content: flex-end;
   color: #7ab0ff;
 }
 
 .teamName.away {
-  text-align: left;
+  justify-content: flex-start;
   color: #ff8f8f;
+}
+
+/*
+ * 내 팀 표식(#322 안 C). 이름 옆에 붙는 작은 칩 — 색은 **중립**이다(사이드 색은 이름이 이미
+ * 말하고 있고, 여기에 세 번째 색을 넣으면 "색은 4개만" 원칙이 깨진다).
+ * `white-space: nowrap` 이 필요하다 — 긴 팀명 옆에서 두 글자가 쪼개지면 칩으로 안 읽힌다.
+ */
+.myTeamTag {
+  /* 줄어들지 않는다 — 이 칩이 사라지면 안 C 가 성립하지 않는다(잘림이 정확히 그 사고였다). */
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.4;
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .score {

@@ -19,6 +19,11 @@ type Season = NonNullable<LeagueResponse["season"]> | null | undefined;
 /**
  * 리그 카드의 부제.
  *
+ * ⚠️ **`currentRound`/`totalRounds` 는 서버가 아직 발행하지 않는다** — 실사(2026-07-31):
+ * `server-java` grep 0건 · `openapi-v2.yaml` 0건. 즉 이 카드의 `N / 18 라운드` 줄은 W2 이후
+ * **한 번도 라이브에 뜬 적이 없다**(독립검증 #286 MAJ-1 이 리그 진행바에서 같은 갭을 잡았다).
+ * 발행 요청은 #319 에 있다. 지금 동작(없으면 줄을 안 그린다)은 그대로 옳다.
+ *
  * ⚠️ 디비전 이름을 `level` 로 만들지 않는다. 라운드도 일정표를 세어 추정하지 않는다 —
  * 서버가 `currentRound`/`totalRounds` 를 줄 때만 그린다. 둘 다 없으면 규칙 문구로 떨어진다
  * (구 서버에서도 화면이 깨지지 않게).

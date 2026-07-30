@@ -64,6 +64,22 @@ export function RecruitPage() {
       </div>
 
       <div data-testid="recruit-page">
+        {/* 트레이드 설명 (#286 W3, hero 지적: "튜토리얼에 트레이드 설명이 빠져 있음 → 추가").
+            ⚠️ **상시 안내 카드**로 둔다. 코치마크만 두면 한 번 보고 넘긴 사람은 영영 못 본다 —
+            트레이드는 자주 오지 않아서(슬롯이 시간을 두고 열린다) 다시 볼 자리가 필요하다.
+            ⚠️ **코치마크는 없다 — hero 확정(Q7 = A)**. 온보딩 동선이 이 화면까지 오지 않아
+            스텝을 두면 완료가 영영 막히고(tutorial-steps 의 `shop` 주석), 동선을 늘리는 값을
+            치를 만큼은 아니라는 판단이다. 온보딩에서는 영입 스텝 **문구**가 트레이드를 짚는다. */}
+        {tab === "trade" && (
+          <section className={styles.guide} data-testid="trade-guide">
+            <b className={styles.guideTitle}>트레이드란?</b>
+            <p className={styles.guideBody}>
+              일정 시간마다 <b>이적 제안</b>이 들어옵니다. <b>FA</b>는 재화를 내고 데려오고,
+              <b> 맞교환</b>은 내 선수를 내주고 바꿉니다. 제안은 시간이 지나야 공개되고,
+              재화로 <b>앞당길</b> 수 있습니다.
+            </p>
+          </section>
+        )}
         {tab === "gacha" ? <ShopPage embedded /> : <TradePage embedded />}
       </div>
     </Layout>

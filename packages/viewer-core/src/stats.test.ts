@@ -46,10 +46,20 @@ describe("stats.mjs — 실시간 통계 증분 계산", () => {
     expect(s.away.yellow).toBe(1);
   });
 
+  // ⚠️ 픽스처가 `players` 를 싣는다 (#324). 예전엔 `{ ballOwner: "H1" }` 만 넣었는데, 그건
+  // "팀은 id 첫 글자로 안다"는 **틀린 가정을 계약으로 박은 것**이었다 — 실경기 id 는 `P077` 이라
+  // 그 규칙이 전부 away 로 읽혀 라이브 점유율이 home 0% 로 떴다. MatchLog 스키마상 스냅샷엔
+  // 항상 players 가 있으므로, 이쪽이 실제 입력에 가깝다.
+  const own = (id: string | null, team?: string) => ({
+    ballOwner: id,
+    ball: { x: 50, y: 34 },
+    players: id ? [{ playerId: id, team, pos: { x: 50, y: 34 } }] : [],
+  });
+
   it("점유율 누적 + %", () => {
     const snaps = [
-      { ballOwner: "H1" }, { ballOwner: "H2" }, { ballOwner: null },
-      { ballOwner: "A1" }, { ballOwner: "H3" },
+      own("H1", "home"), own("H2", "home"), own(null),
+      own("A1", "away"), own("H3", "home"),
     ];
     const { cumHome, cumAway } = computeCumulativePossession(snaps);
     expect(cumHome[cumHome.length - 1]).toBe(3);
@@ -60,7 +70,7 @@ describe("stats.mjs — 실시간 통계 증분 계산", () => {
 
   it("모멘텀 −1..1 (홈 양수), 최근 창 기반", () => {
     const snaps = [];
-    for (let i = 0; i < 40; i++) snaps.push({ ballOwner: i < 20 ? "A1" : "H1" });
+    for (let i = 0; i < 40; i++) snaps.push(i < 20 ? own("A1", "away") : own("H1", "home"));
     const { cumHome, cumAway } = computeCumulativePossession(snaps);
     // 최근 10틱 전부 home → 모멘텀 +1.
     expect(momentum(cumHome, cumAway, 39, 10)).toBeCloseTo(1, 5);

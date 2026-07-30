@@ -10,11 +10,13 @@ import {
   headerTick,
   INFO_TAB_KEYS,
   isHalftimeState,
+  myTeamSide,
   playedBaseline,
   resolveActiveTab,
   sheetHeight,
   statePanelFor,
   tabsFor,
+  teamNamesOf,
   type TabKey,
 } from "./stage-state";
 
@@ -246,5 +248,57 @@ describe("탭 구성 (#284 — 토글 제거, 상태가 정한다)", () => {
   it("전반 → 감독시간으로 넘어가도 **보던 탭을 뺏지 않는다**", () => {
     // 통계를 보고 있었으면 감독시간에도 통계다(감독 탭으로 튕기지 않는다) — 탭은 여전히 있으므로.
     expect(resolveActiveTab(tabsFor("HALFTIME", "halftime"), "stats")).toBe("stats");
+  });
+});
+
+describe("사이드 ↔ 팀 이름 (#322)", () => {
+  const AWAY_FIXTURE = {
+    homeName: "Thunder Bay United",
+    awayName: "축구왕여르",
+    ownerName: "축구왕여르",
+    opponent: { name: "Thunder Bay United" },
+  };
+
+  it("서버가 준 **사이드 이름**이 이긴다 — 어웨이 라운드는 홈이 봇이다", () => {
+    // 이게 이 이슈의 전부다. ownerName 을 홈에 박으면 스코어·로그·좌우가 통째로 뒤집힌다.
+    expect(teamNamesOf(AWAY_FIXTURE, "축구왕여르")).toEqual({
+      home: "Thunder Bay United",
+      away: "축구왕여르",
+    });
+  });
+
+  it("유저가 홈인 경기는 사이드 이름과 폴백이 **같은 답**을 낸다(무회귀)", () => {
+    const homeFixture = {
+      homeName: "축구왕여르",
+      awayName: "Thunder Bay United",
+      ownerName: "축구왕여르",
+      opponent: { name: "Thunder Bay United" },
+    };
+    const legacy = { ownerName: "축구왕여르", opponent: { name: "Thunder Bay United" } };
+    expect(teamNamesOf(homeFixture, "축구왕여르")).toEqual(teamNamesOf(legacy, "축구왕여르"));
+  });
+
+  it("구 서버(사이드 이름 없음) → ownerName/opponent 폴백", () => {
+    expect(teamNamesOf({ ownerName: "별희", opponent: { name: "봇 FC" } }, "별희")).toEqual({
+      home: "별희",
+      away: "봇 FC",
+    });
+  });
+
+  it("ownerName 도 없으면 내 닉네임, 그것도 없으면 자리 문구 — 빈 헤더를 만들지 않는다", () => {
+    expect(teamNamesOf(null, "별희")).toEqual({ home: "별희", away: "상대" });
+    expect(teamNamesOf(undefined, null)).toEqual({ home: "내 팀", away: "상대" });
+  });
+
+  it("내 팀 표식은 **이름 일치**로 찾는다 — 어웨이면 away", () => {
+    expect(myTeamSide(teamNamesOf(AWAY_FIXTURE, "축구왕여르"), "축구왕여르")).toBe("away");
+    expect(myTeamSide({ home: "축구왕여르", away: "봇 FC" }, "축구왕여르")).toBe("home");
+  });
+
+  it("내 팀이 없는 화면엔 표식을 달지 않는다 — 거짓 표식 금지", () => {
+    // 관전(#245)·봇전 등. 닉네임을 모르는 순간에도 아무 데나 붙이지 않는다.
+    expect(myTeamSide({ home: "A봇", away: "B봇" }, "축구왕여르")).toBeNull();
+    expect(myTeamSide({ home: "축구왕여르", away: "봇 FC" }, null)).toBeNull();
+    expect(myTeamSide({ home: "축구왕여르", away: "봇 FC" }, undefined)).toBeNull();
   });
 });

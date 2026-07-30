@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { TacticalInput } from "@hmb/shared";
+import { FORMATION_BASE_POSITIONS, type TacticalInput } from "@hmb/shared";
 import { assertTacticalSanity, SANITY_GATE_CONFIG } from "./gates.js";
 import { validateTeamInputOutput, validateTeamInputPatchOutput } from "./coach.js";
 import {
@@ -12,7 +12,7 @@ import {
 /**
  * 검증 게이트 확장 (#193 W2b-B3) — **물리 파손과 자기모순만** 막는다.
  * 값의 '방향'은 강제하지 않는다(감독 지시 해석의 자유도 불변).
- * G1 트랩 모순 · G2 마킹 지시인데 markTarget 0건 · G3 배치 파손(동일 좌표 3명+).
+ * G1 트랩 모순 · G2 마킹 지시인데 markTarget 0건 · G3 배치 파손(동일/근접 좌표 2명+ — #324 로 강화).
  * throw 메시지가 그대로 executeWithGate 의 1회 재시도 feedback 으로 탄다.
  */
 
@@ -223,13 +223,74 @@ describe("게이트 G3 — 배치 파손(동일 좌표 밀집)", () => {
     expect(() => assertTacticalSanity(bad, { teamPrompt: "", playerPrompts: {} })).toThrow(/배치|겹/);
   });
 
-  it("동일 좌표 2명은 통과(수비 짝 등 정상 — 방향 강제 없음)", () => {
+  /*
+   * #324 — 여기 있던 계약은 정반대였다("동일 좌표 2명은 통과 — 수비 짝 등 정상").
+   * 라이브가 그 가정을 깼다: 블루 월(BOT_DEF)의 센터백 둘이 **완전히 같은 좌표**(0.17, 0.5)를 받아
+   * 전반의 24.9%(672/2700틱)를 1m 안에 붙어 있었고(대조군 5경기 0.4~1.1%), 실화면에서 백5가
+   * 점 4개로 보였다. 그 산출은 봇 A-base 캐시에 박제돼 이후 모든 블루 월 전에서 재사용됐다.
+   * "수비 짝"은 가까이 서는 것이지 **같은 점에 서는 것**이 아니다 → 2명도 파손으로 본다.
+   */
+  it("동일 좌표 2명도 throw — 수비 짝은 '가까이'지 '같은 점'이 아니다 (#324 라이브 결함)", () => {
     const t = ok();
     const twins: TacticalInput = {
       ...t,
       players: t.players.map((p, i) => (i < 2 ? { ...p, basePosition: { x: 0.5, y: 0.5 } } : p)),
     };
-    expect(() => assertTacticalSanity(twins, { teamPrompt: "", playerPrompts: {} })).not.toThrow();
+    expect(() => assertTacticalSanity(twins, { teamPrompt: "", playerPrompts: {} })).toThrow(/배치|겹/);
+  });
+
+  it("라이브 실제 결함값(0.17,0.5 두 명)을 재현하면 잡힌다", () => {
+    const t = ok();
+    const live: TacticalInput = {
+      ...t,
+      players: t.players.map((p, i) => (i === 2 || i === 3 ? { ...p, basePosition: { x: 0.17, y: 0.5 } } : p)),
+    };
+    expect(() => assertTacticalSanity(live, { teamPrompt: "", playerPrompts: {} })).toThrow(/배치|겹/);
+  });
+
+  /*
+   * 근접 중복 — 정확히 같은 좌표만 막으면 소수점 한 자리만 어긋난 사실상 같은 점이 통과한다.
+   * 임계 보정(라이브 202개 인풋 전수): 결함 9건은 전부 거리 **정확히 0**, 정상 인풋의 최소 거리는
+   * **0.04**. 그 사이가 비어 있어 (0, 0.04) 안의 어떤 임계도 오탐 0 이다 — 가운데인 0.02 를 골랐다.
+   */
+  it("사실상 겹치는 좌표(임계 미만)도 throw", () => {
+    const t = ok();
+    const near: TacticalInput = {
+      ...t,
+      players: t.players.map((p, i) =>
+        i === 0 ? { ...p, basePosition: { x: 0.5, y: 0.5 } }
+        : i === 1 ? { ...p, basePosition: { x: 0.505, y: 0.5 } }
+        : p,
+      ),
+    };
+    expect(() => assertTacticalSanity(near, { teamPrompt: "", playerPrompts: {} })).toThrow(/배치|겹/);
+  });
+
+  it("라이브 정상 인풋의 최소 간격(0.04)은 통과 — 오탐 0", () => {
+    const t = ok();
+    const tight: TacticalInput = {
+      ...t,
+      players: t.players.map((p, i) =>
+        i === 0 ? { ...p, basePosition: { x: 0.5, y: 0.5 } }
+        : i === 1 ? { ...p, basePosition: { x: 0.5, y: 0.54 } }
+        : p,
+      ),
+    };
+    expect(() => assertTacticalSanity(tight, { teamPrompt: "", playerPrompts: {} })).not.toThrow();
+  });
+
+  it("모든 라이브 포메이션의 기준 배치는 통과(계약이 우리 표 자체를 막지 않는다)", () => {
+    const t = ok();
+    for (const [name, slots] of Object.entries(FORMATION_BASE_POSITIONS)) {
+      const canonical: TacticalInput = {
+        ...t,
+        players: t.players.map((p, i) => ({ ...p, basePosition: { ...slots[i]! } })),
+      };
+      expect(
+        () => assertTacticalSanity(canonical, { teamPrompt: "", playerPrompts: {} }),
+        `${name} 기준 배치`,
+      ).not.toThrow();
+    }
   });
 
   it("기본 포메이션 배치는 통과", () => {

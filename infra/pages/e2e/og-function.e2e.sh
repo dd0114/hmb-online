@@ -11,11 +11,14 @@
 #   AC2  `/notice/hero-kyeongnicius.webp` 가 계속 200 image/webp (Function 이 삼키지 않는다)
 #   AC3  백엔드 URL 을 굽지 않는다 — `/config.json` 을 **요청 시각에** 읽는다(런타임에 바꿔 확인)
 #   AC4  사람 UA 도 같은 SPA 셸을 받는다(브라우저 실검증은 ac4-browser.mjs)
+#   AC5  **업로드 자산(/api/…)은 백엔드 오리진으로 절대화**한다 — web 오리진이 아니다(#320).
+#        정적 에셋(/notice/…)은 계속 web 오리진이어야 한다(공존이 계약의 핵심).
 #
 # ── 변이체 스위치(계약이 실제로 죽는지 확인용) ──────────────────────────────────
 #   HMB_E2E_STAGE=0            functions 배치를 건너뛴다 → AC1 이 죽어야 한다(red 기준선)
 #   HMB_E2E_MUTANT=notice      `functions/notice/[id].js` 를 추가 → **AC2 가 죽어야 한다**
 #   HMB_E2E_MUTANT=bake        apiBase 를 구운 Function 으로 교체 → AC3 이 죽어야 한다
+#   HMB_E2E_MUTANT=assetweb    /api/ 분기를 제거(#320 이전 동작으로 되돌림) → **AC5 가 죽어야 한다**
 #   HMB_E2E_PROTOCOL=https     TLS 로 띄운다(og:image 가 https:// 로 시작하는지 실측)
 #   HMB_E2E_OUT=<dir>          로그 출력 디렉토리
 
@@ -36,6 +39,8 @@ CURL=(curl -s --max-time 20)
 
 LIVE_ID="01J5LIVE0000000000000000AB"
 NOIMG_ID="01J5NOIMG000000000000000CD"
+ASSET_NOTICE_ID="01J5ASSETNOTICE00000000IJ"
+ASSET_IMAGE_ID="01J5ASSET000000000000000GH"
 GONE_ID="01J5GONE0000000000000000EF"
 MISSING_ID="01J5MISSING00000000000000ZZ"
 HERO="/notice/hero-kyeongnicius.webp"
@@ -98,6 +103,12 @@ case "${HMB_E2E_MUTANT:-}" in
     perl -0pi -e "s#const base = typeof cfg\?\.apiBase.*?: \"\";#const base = \"http://127.0.0.1:$STUB_A_PORT\"; void cfg;#s" \
       "$ROOT/functions/share/notice/[id].js"
     echo "[e2e] MUTANT=bake — apiBase 하드코딩"
+    ;;
+  assetweb)
+    # 변이체: /api/ 분기를 지워 #320 이전 동작(전부 web 오리진)으로 되돌린다 → AC5 가 죽어야 한다.
+    perl -0pi -e 's#^\s*if \(s\.startsWith\("/api/"\)\).*?\n##ms' \
+      "$ROOT/functions/share/notice/[id].js"
+    echo "[e2e] MUTANT=assetweb — /api/ 분기 제거(#320 이전 동작)"
     ;;
 esac
 
@@ -177,6 +188,32 @@ check "AC2 원본과 바이트 동일" "cmp -s '$WORK/hero.webp' apps/web/dist$H
 check "AC2 _headers 가 살아 있다(X-Frame-Options: SAMEORIGIN)" \
   "grep -qi 'x-frame-options: SAMEORIGIN' '$OUT/AC2-headers.log'"
 
+# ── 4.5) AC5 — 업로드 자산(/api/…)은 백엔드 오리진으로 (#320) ────────────────────
+# 왜 이 계약이 필요한가: web 오리진에는 `/api/…` 가 없고 **SPA 폴백이 200 text/html** 로 응답한다.
+# 즉 잘못 절대화하면 404 로 드러나지 않고 **깨진 썸네일이 200 으로 위장**한다 — 스크래퍼는
+# "이미지를 받았다"고 믿는다. 그래서 "200 이냐"가 아니라 **"어느 오리진이고 정말 이미지냐"** 를 잰다.
+STUB_A_ORIGIN="http://127.0.0.1:$STUB_A_PORT"
+"${CURL[@]}" -A "$CRAWLER_UA" "$BASE/share/notice/$ASSET_NOTICE_ID" > "$OUT/AC5-og-asset.html"
+ASSETIMG=$(grep -o 'property="og:image" content="[^"]*"' "$OUT/AC5-og-asset.html" | head -1 | sed 's/.*content="//;s/"$//')
+{ echo "--- og:image ---"; echo "$ASSETIMG"; } > "$OUT/AC5-asset.log"
+
+check "AC5 업로드 자산 og:image = 백엔드 오리진 ($ASSETIMG)" \
+  "[ \"\$ASSETIMG\" = \"$STUB_A_ORIGIN/api/notices/assets/$ASSET_IMAGE_ID\" ]"
+# 버그의 지문을 직접 배제한다 — web 오리진으로 절대화되면 여기서 잡힌다.
+check "AC5 og:image 가 web 오리진이 아니다(#320 회귀 가드)" \
+  "! echo \"\$ASSETIMG\" | grep -qF '$BASE/api/'"
+
+# 그 URL 이 **실제로 이미지를 준다**는 것까지 확인 — 주소만 맞고 안 나오면 의미가 없다.
+"${CURL[@]}" -D "$OUT/AC5-fetch.log" -o "$WORK/asset.webp" "$ASSETIMG"
+check "AC5 og:image 가 실제로 200 을 준다" "head -1 '$OUT/AC5-fetch.log' | grep -q ' 200'"
+check "AC5 og:image 가 진짜 이미지다(image/webp, HTML 아님)" \
+  "grep -qi 'content-type: image/webp' '$OUT/AC5-fetch.log'"
+check "AC5 og:image 응답이 HTML 셸이 아니다" \
+  "! grep -qi '<div id=\"root\">' '$WORK/asset.webp'"
+
+# 공존 — 같은 배포에서 정적 에셋 공지는 계속 web 오리진이어야 한다(전부 백엔드로 보내면 이게 깨진다).
+check "AC5 정적 에셋 공지는 여전히 web 오리진(공존)" "[ \"\$OGIMG\" = \"$BASE$HERO\" ]"
+
 # ── 5) AC3 — 백엔드 URL 을 굽지 않는다 ──────────────────────────────────────────
 {
   echo "--- Function 소스에 하드코딩된 백엔드가 있는가 (0 이어야 한다) ---"
@@ -201,6 +238,13 @@ sleep 2
   grep -o 'property="og:title" content="[^"]*"' "$OUT/AC3-after-swap.html" | head -1; } >> "$OUT/AC3-config.log"
 check "AC3 config.json 교체를 재시작 없이 따라간다([A]→[B])" \
   "grep -qF 'property=\"og:title\" content=\"[B] 경니시우스 합류 안내\"' '$OUT/AC3-after-swap.html'"
+
+# 자산 URL 도 같이 따라가야 한다 — 터널이 죽어 주소가 바뀌면(#183 워치독) 과거 공지의 그림이
+# 새 주소로 나와야 한다. 이게 안 되면 상대경로 저장(#309)의 이점이 OG 에서만 사라진다.
+"${CURL[@]}" -A "$CRAWLER_UA" "$BASE/share/notice/$ASSET_NOTICE_ID" > "$OUT/AC5-after-swap.html"
+SWAPIMG=$(grep -o 'property="og:image" content="[^"]*"' "$OUT/AC5-after-swap.html" | head -1 | sed 's/.*content="//;s/"$//')
+check "AC5 자산 og:image 도 백엔드 교체를 따라간다(A→B, $SWAPIMG)" \
+  "[ \"\$SWAPIMG\" = \"http://127.0.0.1:$STUB_B_PORT/api/notices/assets/$ASSET_IMAGE_ID\" ]"
 
 # 원복(뒤 검사들이 A 를 기대한다)
 printf '{\n  "apiBase": "http://127.0.0.1:%s",\n  "updatedAt": "2026-07-30T00:00:00Z",\n  "source": "e2e"\n}\n' \

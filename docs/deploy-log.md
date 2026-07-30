@@ -6,6 +6,151 @@
 
 ---
 
+## 2026-07-30T23:00Z — **배포 v3.03** (태그 `deploy-3.03`) — 메시지함(#323, V33) + OG 업로드 자산 오리진 픽스(#320)
+
+- **git**: **`4dae827`**(태그 `deploy-3.03`). 변경 = `apps/web` 43 + `server-java` 15 + `infra` 3(Pages Function #320) + docs 6.
+- **모듈 버전**: engine `@0.23.0`(무변경) · server-java `0.1.0`(#323) · web `0.0.0` · servants `0.0.1`(무변경 — `packages/**`·`data/**` 접촉 0)
+- **이미지**: `hmb-java` `sha256:096cd7ba90b2…`(**신규**) · `hmb-runner` `sha256:5dd6bc199603…`(무변경)
+- **DB**: Flyway **v32 → v33**, 1건 — `V33__mailbox`. **§0.5-2/7 성격 확인**: `.conf` 없음(트랜잭션 내) · **파괴적 구문 0** · 내용은 **신규 표 2개(`mail_campaigns`·`user_mails`) + 인덱스 4개 = 순수 additive**. 백업 `pre-deploy303-20260730T225809Z.db`(421,138,432 B · sha256 `e60f62698dbab452d2f3f6a5f36fe2ba9e17697a0d593dbc31609914fc5fd8f8` · integrity ok · users 185). 적용 후 FK 0 · integrity ok · 신규 표 2개 확인.
+- **③ override**: 발행물 변경 0 → 유지.
+- **결과**: ✅ GREEN (실패 요청 0 · JS 에러 0)
+  - **#323 발송→수령 왕복(스모크 계정)**: `POST /api/admin/mails` **201**(`audience=USERS` · targetCount 1 · applied true) → 유저 `GET /api/mails` **200 1통**(첨부 `points 100 / gems 10`) → **`claim` 200 `applied:true`**, 지갑 `3,000/12,000 → 3,100/12,010` → **재수령 멱등 확인**(200 이지만 `applied:false`, granted 0 = 중복 지급 없음) → **젬 원장==지갑 불일치 0** · integrity ok.
+  - **홈 헤더 A안(#323)**: 헤더가 `● 3,100 G · 💎 12,010 Z · 로그아웃` 으로 **닉네임 제거**됐고, 버튼은 `공지 — 안 읽음 2건` · **`우편함`** · `로그아웃`. 우편함 열면 `[제목] · 운영팀 · 날짜 · **100 G** · **10 Z** · 수령 완료` — 첨부 표기도 **G/Z 통일**.
+  - **정리(산출물 원복)**: 스모크 캠페인 **revoke 200**(`unclaimed: 0` — 이미 수령분은 건드리지 않는 설계 그대로). 대상은 프로브 계정 1명뿐이라 실유저 영향 0.
+  - **무회귀**: 홈 5탭·지갑 표기·공지 팝업·가입 동선.
+  - `version.json` = **`4dae827`**(직후 첫 조회는 또 CDN 캐시로 옛 SHA — `?cb=` 로 확인).
+- **📌 #320 은 코드 레벨까지만 확인**: OG Function 의 `absolutize()` 가 **`/api/` 로 시작하면 `apiBase`(백엔드 오리진)를 붙이고**, 그 외 `/` 경로는 web 오리진, `apiBase` 를 모르면 빈 문자열로 기본 이미지 폴백 — 업로드 자산이 Pages 오리진으로 잘못 절대화되던 것을 고치는 로직이 맞다. 다만 **현재 활성 공지 2건이 모두 baked 이미지**(`/notice/hero-kyeongnicius.webp`)를 쓰고 업로드 자산 2건은 비활성이라, **업로드 자산으로 end-to-end 실증은 하지 않았다**(프로덕션 공지를 만들지 않기 위해). 업로드 이미지를 쓰는 공지가 올라가는 시점에 `og:image` 가 백엔드 오리진으로 나오는지 확인하면 된다.
+
+---
+
+## 2026-07-31 — [결정] **named tunnel 승격 중단** (hero 확정, 배포 아님)
+
+- **결정**: 상시 고정 URL(named tunnel + `hmb-online.com`) 승격을 **하지 않는다**. **현행 quick tunnel + 워치독 + 런타임 config 전파 구성을 유지**한다. 플레이북 §6 을 "중단" 기록으로 대체했고, **다시 제안하지 않는다**.
+- **경위**: 도메인 구매·계획 수립(단절 0 병행 전환)까지 갔으나 전제인 `cloudflared tunnel login` 이 **약 8분 폴링 타임아웃**이라 "URL 을 올려두고 나중에 승인" 방식이 **3회 연속 만료**됐다(로그 실측: `Waiting for login...` 52초 간격 9회 후 포기). 대시보드 연결 토큰 대안까지 제시한 뒤 hero 가 중단을 확정했다.
+- **정리**: login 프로세스·임시 파일(`/tmp/cf-login.*`) 전부 정리, `~/.cloudflared` 는 **빈 디렉토리**(cert 미생성). 인프라·서비스 변경 **0**.
+- **남은 전제(그대로 유효)**: 터널 URL 은 바뀐다 → web 은 `/config.json` 을 읽고 워치독이 그 파일만 갱신, 수동 복구는 `publish-backend-url.sh <새URL>` 한 줄. **2026-07-30 반쪽 치유 갭 2·3(전파 결과 미확인 · 치유 직후 생존 미검증)은 열린 채로 남는다** — 재발 시 §3 수동 절차로 복구한다(갭 1은 `grep -a` 로 닫음).
+
+---
+
+## 2026-07-30T16:44Z — **배포 v3.02** (태그 `deploy-3.02`) — 리그 어웨이 라운드 좌우/점수 반전 픽스(#322) + 워치독 하드닝
+
+- **git**: **`c3bef56`**(태그 `deploy-3.02`). 변경 = `apps/web` 8 + `server-java` 3(본체 1: `MatchService`) + `infra` 2(어제 반쪽치유 하드닝, 이미 적용분) + docs.
+- **모듈 버전**: engine `@0.23.0`(무변경) · server-java `0.1.0` · web `0.0.0` · servants `0.0.1`(무변경 — `packages/**`·`data/**` 접촉 0 → runner·executor 무관)
+- **이미지**: `hmb-java` `sha256:e8a0bf3ee3c3…`(**신규**) · `hmb-runner` `sha256:5dd6bc199603…`(무변경)
+- **DB**: **신규 마이그레이션 0**(Flyway **v32** 유지). 표준 백업 — `pre-deploy302-20260730T164106Z.db`(421,138,432 B · sha256 `c06981958e0cb5d62cd49b841f81d8b076961403e43ed3102db1299902ce9f71` · integrity ok · users 185).
+- **결과**: ✅ GREEN
+  - **#322 픽스 검증(임퍼소네이션 없이 2단 증빙)**:
+    1. **응답 계약 신설 확인** — `GET /api/matches/{id}` 가 이제 `homeName`/`awayName` 을 **사이드 라벨 그대로** 내려준다(내 프로브 연습 매치: `ownerName=d301r…` · `homeName=d301r…` · `awayName=그린 밸런스`).
+    2. **문제 매치의 사이드 근거** — 라이브 DB 에서 hero 가 지목한 케이스를 직접 확인: `01KYS2QM76…`(1:5, **result=WIN**)·`01KYR0PNQZ…`(0:4, **WIN**) 둘 다 `league_fixtures.home_team = 봇팀(…-T6/-T8)`, **`away_team = USER`** → **유저가 away 사이드**. 즉 **데이터는 처음부터 맞았고**(그래서 result=WIN) 옛 web 이 `homeName = ownerName` 으로 박아 **표시만** 뒤집혔던 것. 새 응답은 home=봇/away=유저로 내려가므로 과거 매치도 **재배포만으로 표시가 즉시 정상화**된다.
+    - 📌 **화면(좌우 배치) 최종 확인은 남겨 뒀다** — 그 매치는 테스터 `축구왕여르` 소유라 재생하려면 그 계정 세션이 필요하다. 남의 계정에 로그인하지 않고 위 2단으로 갈음했다. **소유자(hero)가 그 경기를 한 번 열어보는 것이 가장 정확한 최종 확인**이고, 지시하면 즉시 대신 확인한다.
+  - **원인 문서화가 인상적** — 서버 주석이 *"ownerName 을 '(홈)'이라고 적지 마라 — 이 문장이 실제로 버그를 만들었다"* 로 바뀌었다(계약 문구가 web 을 잘못 인도한 사례, 라이브 리그 20경기 중 7건·유저 3/3).
+  - **무회귀**: 가입·홈 5탭·매치 진입·지갑 표기.
+  - `version.json` = **`c3bef56`**.
+- **비고**: 이 배포는 **현행 quick tunnel 위에서** 진행했다(main 조율 순서 — 다음 단계가 named tunnel 승격). 백엔드 `record-houston-learners-airplane`(5/5 정상).
+
+---
+
+## 2026-07-30T15:05Z — [운영 조치] ↩️ **오시야스 오픈 철회** — P182 비활성 + 합류 공지·이미지 내림 (배포 아님)
+
+- **지시**: hero — *"오시야스 비활성화 해두고 공지도 잠시 내리자. 아직 오픈할때가 아니야."* 세션 `hmb:osinotice`. 바로 위 14:25Z 항목의 **철회**다. 전말 = **#246 코멘트**.
+- **전부 되돌릴 수 있는 형태로만 내렸다 — 삭제한 것 0**:
+  | 대상 | 액션 | 결과 |
+  |---|---|---|
+  | 공지 `오시야스 합류!` `01KYSPMF7SEMJA7K98D5ZMGYBX` | `POST …/active {"active":false}` | 200 · `status OFF` · rev 1 유지 |
+  | 유닛 `P182` | `POST /api/admin/units/P182/deactivate` | 200 · `auditId 01KYSQTYW622TRB2AEYS5S0GCD` |
+  | 히어로 이미지 `01KYS71M3DHHP6J1SY52M69X9E` | `POST …/assets/{id}/active {"active":false}` | 200 · 공개 GET **404** 전환 확인 |
+- **이미지까지 내린 건 지시에 없지만 같이 했다** — 미공개 캐릭터 히어로 이미지가 공개 URL 로 계속 받아지고 있었다. V30 설계상 자산 비활성은 **서빙만 404 이고 바이트·행은 보존**이라 되돌리는 비용이 0 이다.
+- **검증**(라이브 실측): 활성 공지 **1건**(업데이트 안내 p=5 뿐) · `P180 활성 · P181 비활성 · P182 비활성` · `/api/players` **165 → 164**(P182 미노출) · 획득 가능 LEGEND **FW 3 · MF 3**(GK **0** 으로 복귀) · 히어로 이미지 공개 GET **404**. 뽑기 풀은 `loadPools()` 가 `WHERE active=1` 을 뽑기마다 재조회하므로 재시작 없이 즉시 빠졌다.
+- **다시 열 때 = 3번 뒤집으면 끝**(재작업 0): `units/P182/activate` + `notices/assets/{id}/active true` + `notices/{id}/active true`. ⚠️ **자산과 공지는 같이 켜라** — 공지만 켜면 본문 이미지가 404 다. 문안·이미지·우선순위(10, 팝업 1장째)는 그대로 보존돼 있다.
+- **그대로 둔 것**: 패치노트 공지(p=5)는 유닛 오픈과 무관해 **유지**(현재 유일한 활성 공지). 경니시우스 공지는 내려간 채 유지. **#320**(V30 이미지 OG 썸네일 깨짐)·**#321**(GK 능력치 미반영)은 이 철회와 무관하게 유효 — 특히 **#320 은 다시 열 때 같은 문제가 그대로 재현된다**.
+
+---
+
+## 2026-07-30T14:25Z — [운영 조치] 오시야스(P182) 오픈 + 공지 2장 교체 (배포 아님 — 코드·이미지 변경 0)
+
+- **지시**: hero — *"오시야스 공지 만들자. 경니시우스 공지 내리고 오시야스로 올리고, 패치내용도 지금 것 닫고 새 패치내용 한 장. 순서는 오시야스가 더 앞쪽으로."* 세션 `hmb:osinotice`. 전말 = **#246 코멘트**.
+- **전부 admin API**(무배포·무중단): 컨테이너·이미지·git SHA 무변경, 재시작 0, Flyway 무변경(v32 유지). **배포 v3 의 V30(공지 이미지 업로드)을 실제 운영에 처음 태운 건**이다 — 이미지까지 배포 없이 나갔다.
+- **① 유닛**: `POST /api/admin/units/P182/activate` **200**(사유 기입, `auditId 01KYS6XBCX…`). 검증 — `/api/players` **164 → 165건**(P182 노출 · **P181 미노출**), 획득 가능 LEGEND = FW 3 · MF 3 · **GK 1**(오픈 전 GK **0**). 뽑기 풀은 `GachaService.loadPools()` = `WHERE active=1` 이고 **뽑기마다 재조회**(캐시 없음) → 재시작 없이 즉시 반영. **P181 석다이크는 `active=false, adminLocked=true` 유지**(hero 지시대로 미오픈).
+- **② 이미지**: #248 템플릿(`make-notice-hero.py`) + 발행물 아트 `art-osiyas.png`(manifest `forPlayer:"P182"` ↔ `player-chars.v2.json` **양방향 대조**). `POST /api/admin/notices/assets` **201** → `01KYS71M3DHHP6J1SY52M69X9E` · 89,122 B · `image/webp`. 공개 GET **200** + **sha256 업로드본과 동일**(`1ee8eaca…`) · `usedBy 1`.
+- **③ 공지 게시**(hero 문안 컨펌 후): `오시야스 합류!` **priority 10** `01KYSPMF7SEMJA7K98D5ZMGYBX` · `업데이트 안내 — 홈 화면 개편·감독시간·공지 공유` **priority 5** `01KYSPMN62PWTNYB66H5V3BCS5`. 둘 다 `endsAt 2026-08-06T14:25:05Z`(+7일) · rev 1. 정렬 `priority DESC` = **오시야스가 팝업 1장째**. 패치 내용은 **v2.02~v3 유저 체감분**(홈 5탭 #286 · 감독시간 선발 배치 #276 · 정보탭 상시 #284 · 공지 장분리/공유 #292·#293 · 아이콘 정책 #285 · 랭킹/원정 자격 필터 #296).
+- **④ 구 공지 2건 비활성**(삭제 아님): `경니시우스 합류!`(rev 3) · `업데이트 안내 — 원정·시즌 보상·강화 개선`(rev 1) → `POST …/active {"active":false}` 각 **200**, `status OFF`. **삭제하지 않았다** — #263(undelete 부재)로 삭제는 비가역. 되살리기 = 같은 API 에 `active:true`.
+- **검증**: `GET /api/notices/active` **2건**, 순서 오시야스(10) → 패치(5). **실팝업**(hmb-online.pages.dev · iPhone 390×844 실터치) 페이저 **1/2 → 2/2** 전환, 히어로 이미지 **실제 로드**(`naturalWidth 1080×1180`, alt 폴백 아님), 콘솔 에러 0. 본문은 게시 전 **실제 렌더러 파서**(`parseNoticeBody`) AST 검사 — 미파싱 잔여 토큰 0 · 288자/534자(상한 2000). 공개 단건 API 미인증 **200**.
+- **📌 상대경로 설계가 실전에서 증명됐다**: 작업 중 터널이 `headline-teddy-…` → `record-houston-…` 로 회전했으나(워치독 HEAL_OK), 본문이 `/api/notices/assets/{id}` 라 **공지를 손대지 않고 그대로 살아남았다**. 절대 URL 을 구웠으면 이 시점에 그림이 깨졌다.
+- **⚠️ 남긴 것 2건**:
+  - **#320 (infra)** — **V30 업로드 이미지는 공유 카드(OG) 썸네일이 깨진다.** OG Function 의 `absolutize()` 가 `/api/...` 에 **web 오리진**을 붙여 `hmb-online.pages.dev/api/notices/assets/…` = **SPA index.html(200 · text/html · 463 B)** 을 가리킨다(404 가 아니라 200 이라 `OG_DEFAULT_IMAGE` 폴백도 안 탄다). 정적 경로를 쓰는 경니시우스는 정상이었다. **hero 판단 = 무배포 유지, 그대로 게시하고 이슈로 남긴다**(팝업·공지센터·공유 카드의 제목/본문은 정상, 이미지만 안 뜸). 고치려면 Pages 재배포 + #299 Function 스냅샷 경로.
+  - **#321 (engine, #25 산하)** — **골키퍼 능력치가 선방에 전혀 반영되지 않는다**(골/선방은 슈터 `shooting`·xG 로만 갈리고 `goalkeeperOf` 는 기록용). LEGEND GK 첫 오픈으로 드러난 갭이라 공지 문안에서 **선방 성능 약속을 배제**했다.
+- **상태**: `P180 활성 · P181 비활성 · P182 활성` · 활성 공지 2건 · 배포 없음.
+
+---
+
+## 2026-07-30T12:16Z — [장애] 워치독 **반쪽 치유** — 프로세스는 살고 URL 전파가 멈춰 테스터 단절 (배포 아님)
+
+- **증상**: 12:11:15Z 워치독이 `UNHEALTHY`(구 URL `pubs-lauderdale-…` DNS 전부 실패 + curl 000) → 12:11:18Z `HEAL_START` → 12:16:19Z **`HEAL_OK`(new=`selective-blast-municipal-lanes`)** 를 기록했다. **그런데 `config.json` 은 `pubs-lauderdale-…`(10:56Z, source=manual) 그대로**였고 그 호스트는 **DNS 에서 사라진 상태**(`dig` 빈 응답) → **테스터 실접속 단절**. `status.sh` 는 터널 URL 칸이 **빈칸**으로 보였다.
+- **조치(순서대로)**:
+  1. 워치독이 살린 URL(`selective-blast-…`)을 직접 검증 → **0/8 실패**(그 터널도 이미 죽어 있었다).
+  2. **PID only 터널 회전**(47063 종료 → 신규 55311) → 새 URL `record-houston-learners-airplane`.
+  3. 새 URL 이 로컬 curl 로는 `http=000`(`dns=0.000s`)인데 **`dig` 로는 해석되고 `--resolve` 우회로 401** → **터널은 정상, 이 머신의 리졸버만 실패**로 판정.
+  4. `publish-backend-url.sh` 로 전파 → `config.json` = **`record-houston-…`(12:16:48Z)** 확인(`cache-control: no-store`, 첫 조회만 CDN 캐시로 옛 값이 보였다).
+  5. **실브라우저 왕복**(크로미움 `--host-resolver-rules` 우회): `/api/config 200` · `/api/auth/login 200` · `/api/me/starter-grant 200` · `/api/me/active-match 200` · `/api/me 200`, 실패 0 — 스타터 리빌까지 정상.
+  6. `status.sh` **전 항목 ✓**(터널 URL 표시·터널 경유 401·web→백엔드 결선 일치·워치독 가동).
+- **📌 워치독 갭 3건(#183 후속)** — 왜 "반쪽"이 됐는지:
+  1. **URL 캡처가 바이너리에 취약했다(→ 이번에 고쳤다)**: `current_url()` 이 `grep -oE … "$TUNNEL_LOG"` 였다. cloudflared 로그에 제어문자가 섞이면 grep 이 **바이너리로 판정**해 매치 대신 `"Binary file … matches"` 를 돌려준다. **실제 오염 전례가 로그에 남아 있다** — 07:53:36Z `HEAL_OK old=Binary file /tmp/hmb-cf-tunnel.log matches`(같은 문자열이 tunnel-heal.log 에 3회). URL 자리에 그 문자열이 들어가면 전파가 조용히 어긋난다. → **`grep -a` 로 하드닝**(`infra/tunnel-heal.sh` `current_url()` + `infra/status.sh` 2곳). `--check` 정상 동작 확인. **status.sh 의 빈 URL 칸도 이 원인으로 설명된다.**
+  2. **전파 성공 판정이 결과를 재확인하지 않는다**: `heal()` 은 publish 스크립트의 **종료코드만** 보고 `HEAL_OK` 를 남긴다. 배포된 `config.json` 을 **되읽어 새 URL 인지 확인**하지 않으므로, 이번처럼 "HEAL_OK 인데 config 는 옛 URL" 이 성립한다. → 권고: `HEAL_OK` 직전에 `config.json` 재조회 검증(불일치면 `HEAL_FAIL`).
+  3. **치유 직후 새 URL 의 생존을 재검증하지 않는다**: 12:16:19Z 에 `HEAL_OK` 로 기록된 `selective-blast-…` 는 몇 분 뒤 **0/8** 이었다. 새 터널이 등록만 하고 곧 죽는 케이스를 다음 60초 순회까지 방치한다. → 권고: 치유 후 N회 프로브(예: 3/3)로 승격, 실패 시 즉시 재회전.
+- **범위 확인(테스터 무관 증빙)**: `google.com` 은 정상 해석(`dns=0.014s`), **신규 `*.trycloudflare.com` 만** 로컬에서 `dns=0.000s` 즉시 실패. 즉 리졸버 전반 장애가 아니고 **이 머신·이 도메인 국한**이다 — 다른 네트워크의 테스터에게는 영향이 없다(그래서 배포 검증에 `--resolve`/`--host-resolver-rules` 우회를 계속 쓴다).
+- **최종 상태**: 백엔드 `https://record-houston-learners-airplane.trycloudflare.com` · web `30faddd`(v3.01) 무변경 · Flyway v32 · 이미지 무변경. **코드·DB 변경 0**(인프라 스크립트 하드닝 1건만).
+- ⏳ **고정 URL 승격은 hero 결정 대기** — 이 사이클에서 터널을 **4번** 갈았고(v3 2회 · v3.01 1회 · 이번 1회) 그중 한 번은 실제 단절로 이어졌다. 플레이북 §6(named tunnel / ngrok 유료)이 근본 해결이다.
+
+---
+
+## 2026-07-30T10:44Z — **배포 v3.01** (태그 `deploy-3.01`) — **웹 단독**: 덱 없는 [게임 시작] 차단 3층 가드 + 덱 셋업 워크스루(#286 W3.5) · 팀프롬프트 가림 회귀 복구(p244) · e2e 증거 플래그(#314)
+
+- **git**: **`30faddd`**(태그 `deploy-3.01`). hero 가 homeui 세션에서 지시한 라이브 버그 수정 건.
+- **⚠️ 웹 단독 — 직접 재확인**: 라이브(`2a4992e`)`..30faddd` 변경은 **`apps/**` 35개 + `docs/**` 1개뿐**이고 `server-java`·`packages`·`data`·`infra` **접촉 0**, **마이그레이션 0**. → **이미지 재빌드·DB 마이그레이션·executor 재기동 전부 생략**. 배포 후 이미지 digest 무변경 확인(`hmb-java sha256:8bc0f664…` · `hmb-runner sha256:5dd6bc19…`), Flyway **v32** 유지. (`deploy-pages.sh` 의 CORS 단계가 java 컨테이너만 recreate — 부팅 후 override 재확인 `OVERRIDE`.)
+- **결과**: ✅ GREEN (JS 에러 0 · API 실패 0)
+  - **#286 W3.5 3층 가드 — 실제 동선으로 확인**: 튜토리얼 미완(=덱 없음) 신규 계정으로 `/home` → 팀 카드가 `덱을 구성해 팀을 만드세요` 로 뜨고, **[게임 시작] 누르면 모달 차단** — `현재 덱이 없습니다 / 덱을 구성하러 가시겠습니까? / [아니오] [예]`. **[예] → `/deck?setup=1`** 워크스루 진입(`선발이 비어 있습니다 · 슬롯을 눌러 선수를 고르거나, 아래 [Auto 배치로 시작]` + **[Auto 배치로 시작]** 버튼). 독립검증 FAIL 이었던 "안내가 모달이 아니었다"가 해소된 상태다.
+  - **p244 팀프롬프트 가림 회귀 복구 — 결정적으로 확인**: 감독시간 화면에서 팀 프롬프트 `textarea` 가 **뷰포트 안**(top 379 · bottom 494 / viewport 900)이고, **클릭 → 타이핑까지 성공**(입력값 회수 확인). *처음엔 `elementFromPoint` 가 조상 DIV 를 돌려줘 "가림"처럼 보였는데, 그 DIV 는 textarea 의 **조상**(스크롤 컨테이너)이었다 — 판정식이 틀렸던 것이고 실제 입력은 정상이다. 가림 판정은 좌표 추론이 아니라 **실제 타이핑**으로 해야 한다.*
+  - **홈 5탭 무회귀**: `/home` 5탭(게임 시작·덱 구성·영입·내 정보·선수 도감 보유 15/**165**) + 하단 내비 정상. 감독시간 헤더 `4 : 0 · 45'` 정상.
+  - `version.json` = **`30faddd`**.
+- **📌 기록**:
+  - **#318(덱 롱프레스 드래그 간헐)**: 이번 스모크에서 드래그 조작을 하지 않았으므로 **재현도 반증도 아님**(비차단 판정 존중). 확인이 필요하면 실터치 이벤트 기반 별도 검증이 맞다(memory `e2e-touch-not-mouse`).
+  - **배포 중 터널 문제 재발 — 브라우저만 실패하는 구간**: `headline-teddy-…` 이 curl 로는 7/8 정상인데 **크로미움은 `/api/config`·`/api/auth/login` 에서 `net::ERR_FAILED`** 로 연속 실패했다(로컬 리졸버의 부정 캐시 패턴, v8.01 과 동일). **PID only 터널 회전 + `publish-backend-url.sh` 재전파**로 해소(`pubs-lauderdale-stands-brunswick`, 8/8 · 실브라우저 정상). 이 배포 사이클에서만 터널을 **3번** 갈았다(직전 v3 에서 2번). quick tunnel 의 구조적 불안정이라 상시 고정 URL 승격(플레이북 §6)을 다시 검토할 시점이다.
+  - 검증 계정: `nodeck*` 3건(가드 확인용, 덱 없음) · `d301r*` 1건(감독시간 확인용).
+
+---
+
+## 2026-07-30T07:43Z — **배포 v3** (태그 `deploy-3`) — 홈 5탭 IA(#286) + 운영 컨텐츠 무배포화(#309 V30·V31·**V32 감사표 재작성**) + #210 흡수
+
+> 🆕 **앞자리 범프 = 배포 v3**(hero 확정 — '2.04' 아님). 릴리스 태그 `v1`~`v8` 축과는 여전히 별개다.
+
+- **git**: **`2a4992e`**(태그 `deploy-3`). 배포 중 픽스 없음.
+- **모듈 버전**: engine `@0.23.0`(무변경) · server-java `0.1.0`(#309 W1/W2 + #210) · web `0.0.0`(#286 홈 5탭 IA) · servants `0.0.1`(무변경 — `packages/**` 접촉 0 → runner 재빌드·executor 재기동 생략) · 발행물 4종 무변경(players `v2.4` 등)
+- **이미지**: `hmb-java` `sha256:8bc0f6645cdd…`(**신규**) · `hmb-runner` `sha256:5dd6bc199603…`(무변경)
+- **DB 마이그레이션**: Flyway **v29 → v32**, 3건 — `V30 notice_assets` · `V31 char_bundles` · **`V32 catalog_audit_purge_action`(파괴적: `admin_catalog_audit` 12단계 재작성)**. `.conf` 없음 = **전부 트랜잭션 내**(V32 는 원자적, SQLite DDL 롤백에 의존).
+  - **백업**: `pre-deploy3-20260730T073925Z.db`(372,625,408 B · sha256 `be8341bf290c6b5ef05aa5e10eb9c2bfc4e3bb82a770383324cdfb7fb1944b4a` · integrity ok · users 177 · audit 5).
+  - **사전 상태 박제(V32 대상)**: `admin_catalog_audit` **5행**(unit_activate 3 · unit_deactivate 2), 명시 인덱스 **4개**(`idx_..actor`·`idx_..player`·`uq_..create_idem`·`uq_..idem`), `admin_ops_audit` 에 purge 3행.
+  - **리허설(백업 사본)**: V30~V32 success · 부팅 성공 · FK 0 · integrity ok.
+  - **§0.7 사후검증 2줄 — 리허설·라이브 둘 다 통과**:
+    | 검증 | 사전 | 리허설 | 라이브 |
+    |---|---|---|---|
+    | `admin_catalog_audit` 행수 | 5 | **5** | **5** |
+    | 명시 인덱스 수 | 4 | **4** | **4** |
+    인덱스 4개 이름까지 대조했다 — 과거 독립검증 BLOCKER-1(이 재작성이 `uq_catalog_audit_idem` 을 빠뜨렸고 계약이 "3개"로 그 손실을 박제했던 사건) 이 재발하지 않았음을 확인. `action` CHECK 에 `unit_purge` 포함(**YES**), V30 `notice_assets`·V31 `char_bundles` 생성 확인, 주요 표 행수 보존(users 177 · matches 56 · user_players 2854).
+- **③ override**: 발행물 변경 0 → 유지, java recreate 후 재확인(`OVERRIDE`).
+- **결과**: ✅ GREEN (JS 에러 0)
+  - **#286 홈 5탭 IA**: 로그인 후 **`/home`** 착지, **5탭** = `⚽ 게임 시작`(디비전 10 · 원정 레이팅) · `📋 덱 구성`(4-3-3 · 지시 0/11) · `✨ 영입`(뽑기 · 트레이드) · `🙋 내 정보`(전적 · 디비전) · `👥 선수 도감`(보유 15 / **164**). **`/lobby` → `/home` 리다이렉트** 확인. 상단에 팀 카드(레이팅 뱃지)와 지갑 `3,000 G / 12,000 Z`.
+  - **#309 공지 이미지 업로드(V30) 왕복**: `POST /api/admin/notices/assets`(multipart) **201** → 응답 `url` 이 **상대경로**(`/api/notices/assets/{id}`) → 그 경로로 **200 `image/png` 69B** 서빙 → 그 이미지를 본문에 넣은 공지를 만들자 자산 **`usedBy 1`** 로 갱신, `/api/notices/active` 에 노출(페이저 1/3). **정리 완료**(공지·자산 모두 비활성 → active 공지 2건으로 원복).
+  - **#309 유닛 등록(V31 계열) 왕복**: `POST /api/admin/units` **200 → 서버 채번 `P183`**, 조회 200(`dataVersion=admin`), DB 반영 확인 → **`POST /{id}/purge` 200 으로 회수**(카탈로그 행 0). **그 회수가 `admin_catalog_audit.action='unit_purge'` 로 남았다(1행, 총 5→7)** — V32 가 노린 "회수 이력을 카탈로그 원장에 통합"이 실제로 성립함을 확인.
+  - **OG Function 생존(#299)**: 워치독 경로(`publish-backend-url.sh`)로 **두 번** 재배포된 뒤에도 `/share/notice/{id}` **200** — Function 스냅샷 복원 배선이 실전에서 작동.
+  - **무회귀**: 가입 스타터·튜토덱·지갑·공지 팝업(히어로 이미지 1080×1180 로드)·Z/G.
+  - `version.json` = **`2a4992e`**.
+- **📌 기록해 둘 것**:
+  - **`GET /api/chars/index` 404 는 결함이 아니다** — "활성 아트 번들 없음"의 **설계된 신호**이고 web 은 그때 **구운 `/chars` 폴백**을 쓴다(계약 = `char-bundle-base.test.ts`). 스모크 콘솔에 404 가 2건 보이는 게 정상이다.
+  - **배포 중 터널이 두 번 죽었다**: 스모크 시작 시 `meant-basename-…` 이 **530 8/8** 로 응답 불가(워치독 BLIP 만 남고 미치유) → **PID only 회전**(`brooklyn-deeply-feel-voting`, 8/8 정상) + `publish-backend-url.sh`. 그 뒤 워치독이 다시 `headline-teddy-anatomy-telescope` 로 HEAL_OK 하면서 web 이 한 박자 뒤처져 있었고(`status.sh` 가 불일치로 경고) **즉시 재전파**해 `config.json` 을 현재 터널로 맞췄다. 최종 상태 전 항목 ✓.
+  - 프로덕션에 검증 계정 `d3p*` 1건. 스모크로 만든 유닛·공지·자산은 **전부 회수/비활성**했다.
+
+---
+
 ## 2026-07-30T00:49Z — **배포 v2.03** (태그 `deploy-2.03`) — 공지 팝업 장 분리·본문 스크롤(#292) + 공유 딥링크·OG(#293) + 랭킹/원정 자격 필터(#296·#300)
 
 - **git**: **`9e4a71c`**(태그 `deploy-2.03`). 앞자리 유지 = **배포 v2.03**. #309 W1/W2 는 미머지로 이번 열차 제외.

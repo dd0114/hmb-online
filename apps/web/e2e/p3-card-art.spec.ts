@@ -10,7 +10,8 @@ import { latestSeedFile } from "./latest-seed";
  *
  * 이 파일이 지키는 것 4가지 — 전부 **화면이 조용히 망가지는** 부류다:
  *   ① 큰 화면에 풀아트가 실제로 뜬다 (뽑기 전체 · 덱 유닛정보 · 도감 확장)
- *   ② **아이콘/풀아트 경계** — 밀집 UI(리스트·전술보드 토큰·매치)에 풀아트가 **없어야** 한다.
+ *   ② **아이콘/풀아트 경계** — 밀집 UI(덱 리스트·전술보드 토큰·매치)에 풀아트가 **없어야** 한다.
+ *      ⚠️ **도감 그리드는 #286 W3 에서 이 경계 밖으로 나갔다**(hero 확정: 전신 + 미보유 실루엣).
  *      경계가 코드 리뷰 의견이 아니라 **테스트**로 지켜져야 나중에 무심코 안 넘어간다.
  *   ③ 폴백 계단 — 매핑 없음 → 등급 프레임 + 아이콘 / 에셋 전무 → CSS. 깨진 <img> 0.
  *   ④ 등급↔프레임 정합 + 모바일 390 가로 오버플로 0.
@@ -362,27 +363,34 @@ test("덱: 선수를 누르면 유닛 정보(지시 레일)에 풀아트가 같�
 });
 
 /**
- * main(#179)에서 도감 흐름이 바뀌었다: **보유 선수 탭 → 강화 상세 모달**, 인라인 확장은
- * **미보유(잠금) 전용**. 그래서 도감 자체는 어느 상태에서도 풀아트를 갖지 않는다 —
- * 잠긴 카드에 원색 전신 일러스트를 띄우면 잠금 표현과 어긋난다. 풀아트는 강화 상세가 갖는다.
+ * ⚠️ **정책이 뒤집혔다 (#286 W3, hero 확정)** — 예전 계약은 *"도감은 어느 상태에서도 풀아트가
+ * 아니다"* 였다. hero 판정: *"아이콘 아니라 전신 보여주자. 아이콘만 하면 모으는 재미가 떨어질
+ * 것 같아."*
+ *
+ * 옛 규칙의 근거는 **"잠긴 카드에 원색 전신을 띄우면 잠금 표현과 어긋난다"** 였고,
+ * **전신 실루엣**이 그 근거를 해소한다(원색이 아니다). 그래서 뒤집는 대가가 없다.
+ * 지금 계약은 정반대다: **도감 그리드는 전신 아트를 쓰고, 미보유는 실루엣이어야 한다.**
+ *
+ * 세부(아트 창 비율·실루엣 필터·이름 감춤)는 `e2e/p286-w3.spec.ts` 가 본다. 여기서는
+ * **"풀아트가 있다"** 만 지킨다 — 이 파일의 다른 계약들이 "밀집 UI 에 풀아트 0" 을 강제하므로,
+ * 도감이 그 목록에서 빠졌다는 사실 자체를 여기 남겨야 다음 사람이 되돌리지 않는다.
  */
-test("도감: 그리드·미보유 확장 어디에도 풀아트가 없다 (풀아트는 강화 상세)", async ({ page }) => {
+test("도감: 그리드가 전신 아트를 쓴다 (#286 — 예전의 '풀아트 0' 규칙을 뒤집었다)", async ({ page }) => {
   await login(page);
   await mockApi(page);
   await page.route((url) => url.pathname === "/api/players", (route) =>
     route.fulfill(json(CATALOG.map((p, i) => (i === 0 ? { ...p, owned: false, ownedCount: 0 } : p)))),
   );
   await page.goto("/players");
-  // #286: 도감 기본 스코프가 **보유**라 미보유 카드를 보려면 전체로 넘긴다.
   await page.getByTestId("codex-scope-all").click();
   const locked = CATALOG[0]!;
   await expect(page.getByTestId(`codex-card-${locked.id}`)).toBeVisible();
-  await expect(cards(page)).toHaveCount(0);
 
-  // 미보유 카드는 인라인 확장(능력치만) — 풀아트가 붙지 않는다.
-  await page.getByTestId(`codex-card-${locked.id}`).getByRole("button").first().click();
-  await expect(page.getByTestId(`codex-attrs-${locked.id}`)).toBeVisible();
-  await expect(cards(page), "잠긴 카드에 풀아트가 붙었다").toHaveCount(0);
+  // 그리드에 풀아트가 **있다**(예전엔 0 이어야 했다).
+  await expect(cards(page).first(), "도감 그리드에 전신 아트가 없다").toBeVisible();
+  // 아트만 쓴다(`variant="art"`) — 프레임 통짜를 쓰면 하단 밴드가 빈 띠로 남는다(#207).
+  await expectArtCrop(page.getByTestId(`codex-card-${locked.id}`).locator('[data-testid^="full-art-"]'));
+  await page.screenshot({ path: `${SHOTS}card-art-codex-grid.png`, fullPage: true });
 });
 
 // ── ② 아이콘/풀아트 경계 ────────────────────────────────────────────────────
@@ -410,12 +418,24 @@ test("경계: 덱 리스트 행·전술보드 토큰은 아이콘이다 (풀아�
   await expect(page.getByTestId("tactics-board").locator('[data-testid^="full-art-"]')).toHaveCount(0);
 });
 
-test("경계: 도감 그리드(접힘)에 풀아트가 없다", async ({ page }) => {
+/**
+ * ⚠️ **뒤집힘 (#286 W3)** — 이 자리는 원래 "도감 그리드에 풀아트가 없다"였다. hero 확정으로
+ * 도감은 **전신**이 됐다. 그래도 경계는 남아 있다: 전신은 **도감 그리드에만** 허용되고,
+ * 덱 리스트 행·전술보드 토큰·매치 토큰은 여전히 아이콘이다(바로 위 두 테스트가 지킨다).
+ * 그러니 여기서는 "없다" 대신 **"있고, 아트 크롭이다"** 를 지킨다 — 프레임 통짜로 바뀌면
+ * 하단 밴드가 빈 띠로 남는다(#207).
+ */
+test("경계: 도감 그리드는 전신 아트다 (덱 리스트·토큰과 달리)", async ({ page }) => {
   await login(page);
   await mockApi(page);
-  await page.goto("/codex");
+  await page.goto("/players");
   await expect(page.getByTestId("codex-grid")).toBeVisible();
-  await expect(cards(page)).toHaveCount(0);
+  // ⚠️ `.first()` 하나만 보면 표본이 어느 등급인지에 따라 검사 깊이가 달라진다(#285 임계 아래는
+  //    아트가 없다). 도감에 실제로 뜬 아트 **전부**를 본다 — 하나라도 프레임 통짜면 깨진다.
+  const all = cards(page);
+  const n = await all.count();
+  expect(n, "도감 그리드에 전신 아트가 하나도 없다").toBeGreaterThan(0);
+  for (let i = 0; i < n; i += 1) await expectArtCrop(all.nth(i));
 });
 
 /**

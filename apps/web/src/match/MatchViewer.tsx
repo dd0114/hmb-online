@@ -7,6 +7,7 @@ import {
   formatClock,
   keyEvents,
   revealInterval,
+  visibleTimelineEvents,
   type MatchEventLike,
 } from "./match-logic";
 import { useAdminFlag } from "../admin/admin-flag";
@@ -19,6 +20,8 @@ import {
 } from "./playback-controls";
 // 관전 캔버스는 별 파일로 분리했다(#191) — QA 콘솔과 **같은 부품**을 쓴다.
 import { VisualPlayback } from "./VisualPlayback";
+import { liveGate } from "./live-clock";
+import { tickOfIndex } from "./live-pace";
 import styles from "./MatchViewer.module.css";
 
 interface MatchViewerProps {
@@ -88,6 +91,29 @@ export function MatchViewer({
     [catalog],
   );
   const [mode, setMode] = useState<ViewMode>("visual");
+  /*
+   * 폴백 타임라인의 라이브 상한(#238) — 시각 재생과 **같은 출처**(`liveGate`)를 쓴다.
+   * 초당 한 번 "지금"을 갱신해 상한이 실제로 흐르게 한다(안 하면 폴백이 마운트 시점에 얼어붙는다).
+   * 시계가 없으면(지나간 하프·종료·구서버) 타이머를 돌리지 않는다 — 제한도 없다.
+   */
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!clock) return;
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [clock]);
+  const snapTicks = useMemo(() => {
+    const snaps = (log as { tickSnapshots?: { tick: number }[] } | null | undefined)?.tickSnapshots;
+    return Array.isArray(snaps) ? snaps.map((s) => s.tick) : [];
+  }, [log]);
+  const gate = liveGate(clock, half, snapTicks.length, nowMs, clockOffsetMs);
+  /*
+   * 서버 시계는 **인덱스**로 말하고 이벤트는 **절대 틱**을 갖는다 — 섞으면 후반(틱 2700~)에서
+   * 상한 비교가 늘 참이 된다(VisualPlayback 이 같은 함정을 주석으로 남겨 뒀다).
+   * 스냅샷을 못 읽는 손상 로그면 "지금"을 틱으로 환산할 방법이 없다 → null(= 상한 미상).
+   */
+  const capTick =
+    gate.isLive && snapTicks.length > 0 ? tickOfIndex(snapTicks, gate.liveTick) : null;
   // #148 컨트롤 모드: 계정/QA 플래그로 판정하되, admin/QA 가 토글하면 그 선택이 이긴다.
   const isAdmin = useAdminFlag();
   const [chosenMode, setChosenMode] = useState<ControlMode | null>(null);
@@ -144,7 +170,15 @@ export function MatchViewer({
         />
       ) : (
         <div className={styles.timelineFill}>
-          <TimelineView log={log} half={half} homeName={homeName} awayName={awayName} baseline={baseline} />
+          <TimelineView
+            log={log}
+            half={half}
+            homeName={homeName}
+            awayName={awayName}
+            baseline={baseline}
+            capTick={capTick}
+            isLive={gate.isLive}
+          />
         </div>
       )}
     </div>
@@ -175,15 +209,40 @@ interface TimelineViewProps {
    * ⚠️ 종료 후 결과 화면·기록 다시보기에도 같은 도구가 필요하다 — 그건 **별도 이슈**로 뺐다.
    */
   reviewControls?: boolean;
+  /**
+   * 라이브 하프에서 공개해도 되는 **상한 틱**(#238). `null` = 제한 없음(지나간 하프·종료·시계 없음).
+   * 값은 시각 재생과 **같은 출처**(`liveGate` → `tickOfIndex`)에서 온다 — 폴백만의 두 번째 규칙을
+   * 만들면 둘이 조용히 갈라진다.
+   */
+  capTick?: number | null;
+  /** 이 하프가 라이브인가 — 문구("끝까지" vs "지금까지")와 최종 스코어 사용 여부를 가른다. */
+  isLive?: boolean;
 }
 
 /**
  * 텍스트 하이라이트(폴백). 키 이벤트를 ~30초로 압축 순차 공개.
+ *
+ * ⚠️ **여기에도 라이브 게이트가 걸린다**(#238). 예전엔 `끝까지 보기` 가 그 하프 이벤트를 전부 열고
+ * 스코어보드가 **경기 최종 스코어**를 그렸다 — 도달 경로가 좁을 뿐(캔버스 재생이 실패해야 이 화면이
+ * 뜬다) "재생 위치를 넘는 점수를 보이지 않는다"(#233)를 정면으로 어겼다.
  */
-function TimelineView({ log, half, homeName, awayName, baseline = null }: TimelineViewProps) {
+function TimelineView({
+  log,
+  half,
+  homeName,
+  awayName,
+  baseline = null,
+  capTick = null,
+  isLive = false,
+}: TimelineViewProps) {
+  // ⚠️ 상한 규칙은 `visibleTimelineEvents` 가 소유한다 — 여기서 slice/filter 를 다시 쓰지 마라(#238).
   const events = useMemo(
-    () => keyEvents(((log?.events ?? []) as unknown as MatchEventLike[]) ?? []),
-    [log],
+    () =>
+      visibleTimelineEvents(
+        keyEvents(((log?.events ?? []) as unknown as MatchEventLike[]) ?? []),
+        capTick,
+      ),
+    [log, capTick],
   );
   const [revealed, setRevealed] = useState(0);
   const [playing, setPlaying] = useState(true);
@@ -207,8 +266,10 @@ function TimelineView({ log, half, homeName, awayName, baseline = null }: Timeli
 
   // 규칙은 `fallbackScore` 가 소유한다 — 여기서 다시 계산하지 마라(#233 독립검증 minor-1: 인라인이던
   // 시절의 변이체가 전 게이트를 통과했다).
+  // 라이브 하프에서는 `finalScore`(= 그 하프의 **최종**)를 절대 쓰지 않는다 — 다 봤다고 그걸 그리면
+  // 상한을 걸어 놓고 마지막 줄에서 스포일러를 내는 꼴이 된다(#238). 대신 공개분 누적으로 답한다.
   const score = fallbackScore(
-    log.finalScore as { home?: number; away?: number } | null | undefined,
+    isLive ? null : (log.finalScore as { home?: number; away?: number } | null | undefined),
     events,
     revealed,
     done,
@@ -256,21 +317,31 @@ function TimelineView({ log, half, homeName, awayName, baseline = null }: Timeli
             >
               {playing ? "일시정지" : "재생"}
             </button>
-            <button
-              type="button"
-              className={styles.control}
-              data-testid={`viewer-skip-half${half}`}
-              onClick={() => {
-                setRevealed(events.length);
-                setPlaying(false);
-              }}
-            >
-              끝까지 보기
-            </button>
+            {/*
+              ⚠️ **상한을 모르는 라이브에서는 건너뛰기를 아예 주지 않는다**(#238). 손상 로그라
+              스냅샷을 못 읽으면 "지금"을 틱으로 환산할 수 없어 `events` 가 안 잘린다 — 그 상태에서
+              버튼을 남기면 고치기 전과 똑같이 하프 전체가 열린다. 시간 공개(자동)는 계속 돈다.
+            */}
+            {(!isLive || capTick != null) && (
+              <button
+                type="button"
+                className={styles.control}
+                data-testid={`viewer-skip-half${half}`}
+                onClick={() => {
+                  // 라이브면 "끝"이 아직 없다 — 공개 상한(`events` 가 이미 잘려 있다)까지만.
+                  setRevealed(events.length);
+                  setPlaying(false);
+                }}
+              >
+                {isLive ? "지금까지 보기" : "끝까지 보기"}
+              </button>
+            )}
           </>
         ) : (
           <span className={styles.doneNote} data-testid={`viewer-done-half${half}`}>
-            {half === 1 ? "전반 종료" : "경기 종료"} — 이벤트 {events.length}건
+            {isLive
+              ? `지금까지 ${events.length}건`
+              : `${half === 1 ? "전반 종료" : "경기 종료"} — 이벤트 ${events.length}건`}
           </span>
         )}
       </div>

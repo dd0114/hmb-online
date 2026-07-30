@@ -20,6 +20,12 @@ export type MeResponse = Omit<components["schemas"]["MeResponse"], "wallet"> & {
    * 재화라 실력을 말하지 못한다. 초기 0, 하한 없음(음수 가능). 구 서버 응답엔 없으므로 optional.
    */
   rating?: number;
+  /**
+   * 우편함 요약(#323 additive) — `unread` = 헤더 뱃지 숫자, `total` = **진입점을 그릴지**.
+   * 구 서버 응답엔 없으므로 optional이고, 없으면 `MailCenter` 가 목록 조회로 폴백한다
+   * (web 은 CF Pages 로 **서버와 따로** 배포되므로 버전 스큐가 실재한다).
+   */
+  mail?: { unread: number; total: number };
 };
 export type ModeInfo = components["schemas"]["ModeInfo"];
 /**
@@ -163,6 +169,13 @@ export type MatchDetail = components["schemas"]["MatchDetail"] & {
    * 관전 화면이 양 팀 이름을 바꿔 부른다.
    */
   ownerName?: string | null;
+  /**
+   * **사이드 기준** 팀 이름(#322 additive). `ownerName` 이 "홈 = 소유자"를 전제하는 것과 달리
+   * 이 둘은 픽스처가 정한 사이드 그대로다 — 리그 어웨이 라운드는 `homeName` 이 봇이다.
+   * 구 서버는 안 준다 → `teamNamesOf` 가 `ownerName`/`opponent.name` 으로 폴백(연습·유저홈은 항등).
+   */
+  homeName?: string | null;
+  awayName?: string | null;
 };
 export type MatchResult = components["schemas"]["MatchResult"];
 export type MatchLog = components["schemas"]["MatchLog"];

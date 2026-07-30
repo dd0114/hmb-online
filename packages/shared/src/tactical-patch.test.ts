@@ -181,4 +181,46 @@ describe("baseContextKeyMaterial — A 캐시 키 규약(crossmatch)", () => {
     // manualTactics 추가 → 다른 키
     expect(baseContextKeyMaterial({ ...deck, manualTactics: { line: 0.7, press: 0.6, tempo: 0.5, width: 0.5 } })).not.toBe(a);
   });
+
+  /*
+   * 크로스언어 앵커 (#324) — Java `BaseContextKeyReproTest.GOLDEN` 과 **같은 입력·같은 리터럴**.
+   *
+   * 지금까지 골든은 Java 테스트에만 하드코딩돼 있어서, Java 를 골든에 맞춰 두면 **TS 쪽이 혼자
+   * 움직여도 아무 테스트가 안 깨졌다**(= 캐시 키 무언 불일치 → 전 매치 캐시 미스). 규약 버전을
+   * 올리는 변경(#324 는 프롬프트 계약이 바뀌어 기존 A 를 버려야 한다)이 정확히 그 한쪽만 건드리기
+   * 쉬운 변경이라, 양쪽을 같은 문자열에 묶는다. 한쪽만 바꾸면 그쪽 테스트가 죽는다.
+   */
+  it("Java BaseContextKeyReproTest 와 바이트 동일(크로스언어 앵커)", () => {
+    const GOLDEN =
+      '{"formation":"4-3-3","manualTactics":{"line":0.7,"press":0.5,"tempo":0.9,"width":0.4},' +
+      '"playerPrompts":{"p1":"","p2":"왼쪽 측면 공략"},' +
+      '"roster":[{"attributes":{"pace":90,"shooting":60},"playerId":"p1","slotIndex":0},' +
+      '{"attributes":{"defending":55,"pace":65},"playerId":"p2","slotIndex":1},' +
+      '{"attributes":{"pace":70,"shooting":80,"zeta":10},"playerId":"p3","slotIndex":2}],' +
+      '"teamPrompt":"공격적으로 압박","v":2}';
+    // 일부러 slotIndex 역순 + 객체키 역순으로 넣어 정규화까지 같이 확인(Java 테스트와 동일 의도).
+    const material = baseContextKeyMaterial({
+      formation: "4-3-3",
+      roster: [
+        { playerId: "p3", slotIndex: 2, attributes: { zeta: 10, shooting: 80, pace: 70 } },
+        { playerId: "p1", slotIndex: 0, attributes: { shooting: 60, pace: 90 } },
+        { playerId: "p2", slotIndex: 1, attributes: { pace: 65, defending: 55 } },
+      ],
+      teamPrompt: "공격적으로 압박",
+      playerPrompts: { p2: "왼쪽 측면 공략", p1: "" },
+      manualTactics: { width: 0.4, line: 0.7, tempo: 0.9, press: 0.5 },
+    });
+    expect(material).toBe(GOLDEN);
+  });
+
+  /*
+   * #324 캐시 무효화 — 프롬프트 계약이 바뀌었으므로(슬롯 기준 좌표 전달 + 겹침 금지) 그 이전에
+   * 만들어진 A 산출은 더 이상 유효하지 않다. 라이브 78개 base 중 9개가 실제로 겹친 배치를 담고 있고,
+   * 봇 base 는 키가 전부 고정값이라 **버전을 올리지 않으면 영원히 그 배치가 재사용된다**
+   * (블루 월 상대 3매치가 실제로 그랬다).
+   */
+  it("규약 버전이 2 이상 — 겹침 배치를 담은 구 A 캐시를 재사용하지 않는다", () => {
+    const v = JSON.parse(baseContextKeyMaterial(deck)).v;
+    expect(v).toBeGreaterThanOrEqual(2);
+  });
 });

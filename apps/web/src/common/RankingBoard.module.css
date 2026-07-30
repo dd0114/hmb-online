@@ -1,0 +1,71 @@
+/* 랭킹보드 (#286 W5). 색은 --us/--them 계열만(#244 색 규칙). */
+
+.card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.title {
+  margin: 0;
+  font-size: 14px;
+}
+.season {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.me {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--sunk);
+  border-radius: 9px;
+  padding: 7px 10px;
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 2px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 6px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+/* 내 행은 색 하나로만 표시하지 않는다 — 배경 + 굵기 두 채널(적록색약, #262 규율). */
+.rowMe {
+  background: rgba(76, 141, 255, 0.16);
+  font-weight: 700;
+}
+.rank {
+  flex: 0 0 26px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.division {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.metric {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}

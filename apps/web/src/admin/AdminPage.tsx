@@ -9,6 +9,7 @@ import { Modal } from "../common/Modal";
 import { EconomyOpsPanel } from "./EconomyOpsPanel";
 import { NoticesPanel } from "./NoticesPanel";
 import { CharBundlePanel } from "./CharBundlePanel";
+import { MailsPanel } from "./MailsPanel";
 import {
   formatRecord,
   formatSignedDelta,
@@ -23,7 +24,7 @@ import styles from "./AdminPage.module.css";
 import u from "./AdminUnits.module.css";
 
 /** 운영자 페이지의 섹션 — 유저 운영(기존) / 유닛 카탈로그(#207 웨이브2-C) / 공지(#248). */
-export type AdminTab = "users" | "units" | "economy" | "notices" | "chars";
+export type AdminTab = "users" | "units" | "economy" | "notices" | "chars" | "mails";
 
 /** 검색 입력 → 질의 반영 지연(ms). 타이핑마다 요청하지 않기 위한 값. */
 const SEARCH_DEBOUNCE_MS = 250;
@@ -214,6 +215,18 @@ export function AdminPage() {
           >
             유닛 아트
           </button>
+          {/* #323 — 패치 보상·이벤트 지급을 배포 없이 보낸다. 공지(방송)와 성격이 달라 탭을 나눈다:
+              이건 **재화를 발행**하는 창구라 전체 발송에 확인이 한 겹 더 붙는다. */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "mails"}
+            className={`${u.tab} ${tab === "mails" ? u.tabActive : ""}`}
+            data-testid="admin-tab-mails"
+            onClick={() => setTab("mails")}
+          >
+            우편
+          </button>
         </div>
 
         {tab === "units" && <AdminUnitsSection />}
@@ -223,6 +236,8 @@ export function AdminPage() {
         {tab === "notices" && <NoticesPanel />}
 
         {tab === "chars" && <CharBundlePanel />}
+
+        {tab === "mails" && <MailsPanel />}
 
         {tab === "users" && (
           <>

@@ -9,10 +9,13 @@ import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
 import { CharAvatar } from "../common/CharAvatar";
 import { NoticeCenter } from "../lobby/NoticeCenter";
+import { MailCenter } from "../mail/MailCenter";
 import { NoticePopup } from "../lobby/NoticePopup";
 import { visibleNotices, type Notice } from "../lobby/notice-logic";
 import { pickLobbyPopup } from "../lobby/lobby-popup";
 import { useTutorial } from "../common/tutorial-context";
+import { DecklessDialog } from "../common/DecklessDialog";
+import { deckMissing } from "../common/deckless";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
 import { HOME_TILES, homeNotice, homeTileState, openTradeCount, teamLine } from "./home-logic";
 import styles from "./HomePage.module.css";
@@ -135,11 +138,34 @@ export function HomePage() {
     [me, deck, players, ownedCount, trade],
   );
 
+  /**
+   * 덱 없는 유저 가드 — L1 (#286 W3.5, hero 발제).
+   *
+   * 여기서 막으면 `/game` 에 **진입조차 하지 않으므로** #245 원정 팝업과 순서를 다투지 않는다.
+   * 다만 이건 첫 겹일 뿐이다 — URL 직접 진입은 `GamePage` 가, 경합은 서버 응답이 받는다.
+   */
+  const [decklessOpen, setDecklessOpen] = useState(false);
+  function pressTile(key: string, to: string) {
+    if (key === "game" && deckMissing(deck)) {
+      setDecklessOpen(true);
+      return;
+    }
+    navigate(to);
+  }
+
   const header = (
     <div className={styles.headerRow}>
       <div className={styles.headerLeft}>
-        <span className={styles.nickname}>{me?.user?.nickname ?? "감독님"}</span>
+        {/* ⚠️ **닉네임은 여기 없다**(#323, hero 확정). 390px 헤더는 지갑 2칩(204px) + [로그아웃](62px)이
+            줄지 않는 오른쪽이라 왼쪽 몫이 90px 뿐인데, 공지 + 우편 진입점만으로 68px 를 쓴다 —
+            닉네임을 두면 22px 로 눌리거나(“김”) 오른쪽 위로 **겹쳐 그려진다**(실측 캡처
+            .smoke/p323-opt0-now.png). 정보는 사라지지 않는다: 바로 아래 팀 카드가 “{닉네임}의 팀”
+            이고 [내 정보] 탭에도 그대로 있다. 되살리려면 오른쪽에서 무언가를 먼저 빼라. */}
         <NoticeCenter notices={notices.data} />
+        {/* 우편함(#323, hero 확정 = 홈 헤더). **공지 옆·닉네임 쪽**인 이유는 취향이 아니라 실측이다 —
+            오른쪽(지갑 옆)에 얹으면 390px 헤더가 한 줄 더 접힌다(#248 실측 69→113px). 첨부는
+            만료되는 자산이라 발견성이 곧 손해와 직결돼 홈에 두고, 뱃지는 **숫자**다(할 일 개수). */}
+        <MailCenter />
       </div>
       <div className={styles.headerRight}>
         {/* ⚠️ `me &&` 로는 부족하다 — 구 서버·빈 응답의 200 `{}` 는 truthy 라서 통과하고
@@ -176,7 +202,7 @@ export function HomePage() {
                 className={t.primary ? `${styles.tile} ${styles.tilePrimary}` : styles.tile}
                 data-testid={`home-tile-${t.key}`}
                 disabled={locked}
-                onClick={() => navigate(t.to)}
+                onClick={() => pressTile(t.key, t.to)}
               >
                 <span className={styles.tileIcon} aria-hidden="true">
                   {t.icon}
@@ -217,6 +243,15 @@ export function HomePage() {
 
         {popup === "notice" && (
           <NoticePopup notices={noticeList} onDone={() => setNoticeDone(true)} />
+        )}
+
+        {/* ⚠️ 카탈로그가 아직 없으면 **0 이 아니라 `null`** 을 넘긴다 — 0 을 넘기면 로딩 중인
+            유저에게 "현재 0/11명입니다"라는 **틀린 숫자**가 뜬다(`roster` 는 미도착도 `[]`). */}
+        {decklessOpen && (
+          <DecklessDialog
+            ownedCount={Array.isArray(players) ? ownedCount : null}
+            onClose={() => setDecklessOpen(false)}
+          />
         )}
       </div>
     </Layout>

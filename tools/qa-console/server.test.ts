@@ -1,5 +1,5 @@
 // 콘솔 API 계약 (#191 AC2/AC3/AC4). UI 가 이 응답만 보고 그리므로 여기가 화면의 계약이다.
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,28 @@ import type { Server } from "node:http";
 
 import { buildTab, ensureHome, readFeedback, writeAck, writeTab } from "./registry.mjs";
 import { createApiServer, listen } from "./server.mjs";
+
+/**
+ * ⚠️ **시간 예산이지 판정 완화가 아니다.**
+ *
+ * 피드백 POST 한 건이 핸들러 안에서 `ensureGitRepo` + `commitRegistry` 로 **git 서브프로세스를
+ * 3~4회 동기 실행**한다(기록 계층 §3.1). 한가할 땐 파일 전체가 7초면 끝나지만, 루트 `npm test` 는
+ * 이 파일을 **CPU 를 꽉 쓰는 엔진 리얼리즘 테스트와 병렬로** 돌린다. 그러면 POST 하나가 초 단위로
+ * 늘어나 **POST 3회짜리 테스트**("연속 전송이 seq 를…")가 vitest 기본 5초를 넘겨 죽었다.
+ *
+ * 실측(재현: `npx vitest run tools/ packages/engine/src/realism/shot-frequency.test.ts`):
+ *  · 단독 실행 = 16/16 green, 파일 전체 7.4s
+ *  · 엔진 부하와 병렬 = 그 한 건이 5.9~6.0s 로 **`Test timed out in 5000ms`**
+ *  · **clean origin/main 에서도 재현** — 이 파일의 선행 결함이지 특정 브랜치 문제가 아니다.
+ *
+ * 즉 단언이 틀린 적은 없다. 늘리는 것은 **한계가 아니라 여유**다 — 판정(seq 1,2,3)은 그대로다.
+ * 루트 `npm test` 가 §2.5 필수 게이트인데 여기가 랜덤하게 빨개지면 **세션들이 게이트를 믿지 않게 된다**
+ * (그게 진짜 손해다).
+ *
+ * 되돌리기 = 이 `vi.setConfig` 한 줄 삭제. 근본은 "요청 경로에서 git 을 동기로 돈다"는 설계라
+ * 그쪽을 손대려면 기록 내구성 트레이드오프를 같이 봐야 한다(#191 소관, 이슈에 관찰 기록).
+ */
+vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
 let home: string;
 let server: Server;

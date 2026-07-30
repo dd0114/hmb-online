@@ -203,7 +203,19 @@ public class MatchLockService {
      *     현재 상태로 판단하면 몰수가 영영 걸리지 않는다(자기 자신을 못 알아본다).
      */
     private void forfeitIfVoluntaryAwayAbandon(MatchService.MatchRow row, String priorState) {
-        if (!"away".equals(row.mode()) || !MatchService.S_BRIEFING.equals(priorState)) {
+        if (!"away".equals(row.mode())) {
+            return;
+        }
+        if (!MatchService.S_BRIEFING.equals(priorState)) {
+            // ⚠️ **사고 경로**(FAILED · GEN 멈춤 · 시계 멈춤 · 스톨 스윕) — 레이팅은 위 주석대로
+            // 면제하면서 **복수 시도만 청구하면 자기모순**이다(독립검증 2R BLOCKER-1). 복수 시도는
+            // 매치를 만드는 순간 예약되므로(원자적 자물쇠), 정산이 돌지 않는 이 경로에서 되돌려
+            // 주지 않으면 유저는 **한 판도 못 치른 채** 기록이 EXHAUSTED 가 된다 — 서버 장애가
+            // 유저의 도전 기회를 먹는 것이고, 그게 이 분기가 존재하는 이유와 정반대다.
+            //
+            // 리롤 우려는 여기 없다: 자발적 무르기는 **BRIEFING 뿐**이고 그건 아래에서 정산까지
+            // 밀어 정당하게 소모된다. 사고 상태는 유저가 임의로 만들 수 있는 문이 아니다.
+            awayService.refundAccidentalRevenge(row.id());
             return;
         }
         // 공격자 LOSS = 수비자 WIN. 스코어 0:0 + 비무승부 = 몰수(정상 경기의 0:0 은 언제나 DRAW 라
