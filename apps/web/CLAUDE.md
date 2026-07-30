@@ -553,6 +553,12 @@ me 를 쓰면 "**브론즈 리그**에서 1위" 옆에 **실버** 뱃지가 뜬�
 
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
+- ⚠️ **e2e 는 리포의 `evidence/**` 에 직접 쓰지 않는다**(#314). 증거 캡처는 `HMB_WRITE_EVIDENCE=1`
+  뒤에 두고, 기본 목적지는 `test-results/`(gitignore)다 — 그 스펙을 게이트로 돌리는 **다른 세션의
+  트리가 매번 dirty** 해지고 `git add -A` 가 그걸 조용히 쓸어 담는다(#286 이 커밋에 섞어 원복,
+  #309 가 리베이스마다 수동 원복). 증거 갱신은 **부작용이 아니라 의도적 행위**여야 한다:
+  `HMB_WRITE_EVIDENCE=1 CI=1 npx playwright test e2e/<spec>`. 참고 구현 = `p293-notice-deeplink`.
+  캡처를 별도 스펙으로 떼지는 마라 — 계약이 본 것과 다른 화면을 찍게 된다(목적지만 가른다).
 - **e2e 전체 실행 금지** — `league-season`·`match-flow`·`w3-viewer-smoke` 는 :8080 라이브 데모에 붙는다.
   목 기반 스펙만 지정하고 `CI=1` + 빈 포트(`WEB_E2E_PORT=…`)로 돌려라(`reuseExistingServer` 가
   다른 세션 dev 서버를 주워 쓴다).
