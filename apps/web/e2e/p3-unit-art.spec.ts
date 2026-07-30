@@ -243,15 +243,23 @@ test("강화 상세: 완성 카드는 프레임 중복 없이 자기 규격으�
 });
 
 /**
- * ⚠️ **선행 결함 — #286 이 만든 게 아니다.**
- * `origin/main`(ebb12a0)을 별도 워크트리에 체크아웃해 이 테스트만 돌려도 **같은 자리에서 같은
- * 메시지로 실패**한다(2026-07-30 실측: `data-art-kind` 가 `unit-art` 가 아니라 `frame-only`).
- * #285 아이콘 노출 정책(다이아 미만은 매핑이 있어도 아트를 그리지 않는다)과 이 스펙의 기대
- * (GOLD 카드에 `default-unit` 도트가 뜬다)가 정면으로 어긋난 것으로 보인다.
- * **#285 소관**이라 여기서 손대지 않고 기대 실패로 박제한다(고쳐지면 여기서 알려준다).
+ * ⚠️ **한때 `test.fail()` 로 박제돼 있었다 — 기대를 바로잡고 지웠다(#291 스윕).**
+ *
+ * 옛 기대: *"GOLD 카드 강화 상세에 `default-unit` 도트가 뜨고 확대해도 pixelated 로 그린다"*(U-D8).
+ * 그런데 **#285 아이콘 노출 정책**(`CHAR_ART_MIN_GRADE = "DIA"`, hero 확정 Q6=B)이 그보다 **먼저**
+ * 걸려서, 다이아 미만은 매핑이 있어도 아트를 **아예 그리지 않는다**. 즉 옛 기대는 결함이 아니라
+ * **정책에 의해 도달 불가**가 된 낡은 계약이었다.
+ *
+ * ⚠️ 그런데 `test.fail()` 은 실패해도 "passed" 로 집계된다 — 낡은 계약이 초록 뒤에 숨어 있었고,
+ * 그 초록은 "정책이 지켜진다"는 뜻으로 **읽히지도 않았다**(아무것도 검사하지 않는 상태였다).
+ * 그래서 핀을 지우고 **지금 참인 것**을 단언한다.
+ *
+ * ⚠️ **pixelated 경로는 현재 제품에서 도달 불가다**: `default-unit`(도트)은 GOLD·SILVER·BRONZE
+ * 133명에게만 배정되는데 그 등급들은 정책이 아트를 자른다. 임계(`CHAR_ART_MIN_GRADE`)를 다이아
+ * 아래로 내리면 그 순간 도달 가능해지므로, 그때 이 테스트를 **옛 형태로 되살려라**
+ * (`data-art-kind="unit-art"` + `art-default-unit.png` + `imageRendering: pixelated`).
  */
-test("강화 상세: 디폴트 유닛(도트)은 확대해도 pixelated 로 그린다 (U-D8)", async ({ page }) => {
-  test.fail();
+test("강화 상세: 다이아 미만은 정책이 아트를 자른다 — 프레임만 (U-D8 × #285)", async ({ page }) => {
   await login(page);
   await mockApi(page);
   await page.goto("/codex");
@@ -260,10 +268,11 @@ test("강화 상세: 디폴트 유닛(도트)은 확대해도 pixelated 로 그�
   await page.getByTestId(`codex-card-${gold.id}`).getByRole("button").first().click();
   await expect(page.getByTestId("growth-detail"), "강화 상세가 안 열렸다").toBeVisible();
   const card = page.getByTestId("growth-detail").locator('[data-testid^="full-art-"]');
-  await expect(card).toHaveAttribute("data-art-kind", "unit-art");
-  const art = card.locator('img[data-art-layer="art"]');
-  await expect(art).toHaveAttribute("src", /art-default-unit\.png$/);
-  expect(await art.evaluate((el) => getComputedStyle(el).imageRendering)).toBe("pixelated");
+  await expect(card).toHaveAttribute("data-art-kind", "frame-only");
+  // 아트 `<img>` 자체가 없다 — 흐리게 처리하는 게 아니라 **안 그린다**(정책의 표현).
+  await expect(card.locator('img[data-art-layer="art"]')).toHaveCount(0);
+  // ⚠️ 프레임은 아트가 아니다 — 같이 지우면 "무슨 등급인가"가 사라진다(apps/web/CLAUDE.md).
+  await expect(card).toBeVisible();
   expect(await brokenImages(page)).toEqual([]);
-  await page.screenshot({ path: `${SHOTS}unit-art-default-dot.png` });
+  await page.screenshot({ path: `${SHOTS}unit-art-below-threshold.png` });
 });
