@@ -102,6 +102,28 @@ describe("revengeView — 응답 형태를 믿지 않는다", () => {
     expect(revengeView({ entries: [] } as never).remainingToday).toBeNull();
   });
 
+  it("무제한 센티널(-1)을 '소진'으로 읽지 않는다 (#332)", () => {
+    /**
+     * ⚠️ 서버는 일일 한도를 끄면(`hmb.away.match.daily-limit: 0`, 롤백 스위치) `remainingToday: -1`
+     * 을 준다. 이걸 숫자로 그냥 비교하면 **-1 ≤ 0** 이라 복수 버튼이 전량 잠기고
+     * "오늘 원정 횟수를 모두 썼습니다"가 뜬다 — **서버는 실제로 수락하는데** 화면이 기능을 죽인다.
+     * 같은 도메인의 `AwayPage` 는 이미 `remainingToday >= 0` 으로 센티널을 걸러 왔다(#286 W5 만 몰랐다).
+     */
+    const v = revengeView({ entries: [], remainingToday: -1 });
+    expect(v.remainingToday, "센티널은 '모른다'와 같게 다룬다 — 숫자로 새 나가면 안 된다").toBeNull();
+    expect(v.unlimited).toBe(true);
+    // 그리고 그 상태에서 복수는 **열려 있어야** 한다.
+    const a = revengeAction(e({}), v.remainingToday);
+    expect(a.can).toBe(true);
+  });
+
+  it("한도 0 은 여전히 소진이다 — 센티널 처리가 진짜 소진을 덮으면 안 된다 (#332)", () => {
+    const v = revengeView({ entries: [], remainingToday: 0 });
+    expect(v.remainingToday).toBe(0);
+    expect(v.unlimited).toBe(false);
+    expect(revengeAction(e({}), v.remainingToday).can).toBe(false);
+  });
+
   it("6건 이상 와도 최근 5건까지만 그린다 (설계 §4.1 조건 ③)", () => {
     /**
      * ⚠️ 슬라이딩 창의 주인은 서버 원장이다 — 여기 상한은 **표시 상한**이지 자물쇠가 아니다.
