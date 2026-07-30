@@ -338,7 +338,13 @@ export function buildAnnotations(events, snaps) {
     else if (k === "tackle") T("TACKLE", "#cbd5e1");
     else if (k === "interception") T("INTERCEPT", "#cbd5e1");
     else if (k === "foul") { T("FOUL", "#fb923c", e.playerId); B("😠 FOUL", "#fb923c"); } // 재시작(프리킥/페널티)은 후속 배너가 표시 — 박스 파울에 "프리킥" 오표기 방지.
-    else if (k === "card") { const num = e.playerId ? e.playerId.replace(/[HA]/, "") : "?"; T(e.detail === "red" ? `🟥 RED #${num}` : `🟨 YELLOW #${num}`, e.detail === "red" ? "#ef4444" : "#fde047", e.playerId); }
+    else if (k === "card") {
+      // #334: id 파생이 등번호로 안 읽히면 **번호를 빼고** 찍는다 — 실경기 id 는 "P077" 이라
+      // 그대로 두면 자막이 `🟨 YELLOW #P077` 이 된다(코어는 토큰엔 이미 같은 방어선이 있다, #218).
+      const derived = e.playerId ? e.playerId.replace(/[HA]/, "") : "";
+      const tag = derived.length > 0 && derived.length <= 2 ? ` #${derived}` : "";
+      T(e.detail === "red" ? `🟥 RED${tag}` : `🟨 YELLOW${tag}`, e.detail === "red" ? "#ef4444" : "#fde047", e.playerId);
+    }
     else if (k === "offside") B("🚩 OFFSIDE", "#f59e0b");
     else if (k === "penalty") B("⚽ PENALTY!", "#22c55e");
     else if (k === "corner") B("CORNER", "#e7edf6");

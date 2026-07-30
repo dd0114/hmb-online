@@ -92,7 +92,15 @@ export function logLines(events, uptoTick, baseline) {
       label: labelOf(e),
     };
     if (e.type === "goal") line.score = `${h}-${a}`;
-    if (e.playerId) line.number = e.playerId.replace(/[HA]/, "");
+    if (e.playerId) {
+      // #334: id 파생이 **등번호로 읽힐 때만** 번호로 내보낸다. 실경기 id 는 "P108" 이라 이 치환이
+      // 아무것도 못 지우고, 그대로 화면 로그 탭에 `#P108` 로 찍혔다(라이브 한 하프 152/152).
+      // 코어는 피치 위 토큰엔 이미 같은 방어선이 있었다(#218) — 자막·로그만 빠져 있었다.
+      const derived = e.playerId.replace(/[HA]/, "");
+      if (derived.length <= 2) line.number = derived;
+      // 부모(web)는 팀별 등번호 표를 갖고 있다(#324 jerseyNumbers) → 진짜 번호를 붙이도록 재료를 준다.
+      line.playerId = e.playerId;
+    }
     if (e.team) line.team = e.team;
     if (e.type === "shot" && typeof e.xg === "number") line.xg = e.xg.toFixed(2);
     out.push(line);

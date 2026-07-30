@@ -33,8 +33,13 @@ export interface LogLine {
   label: string;
   /** 골에서만: 그 시점 스코어 "2-1". */
   score?: string;
-  /** 등번호(선수 표기). playerId 가 없으면 undefined. */
+  /**
+   * 등번호(선수 표기). **id 파생이 등번호로 읽힐 때만** 실린다(#334) — 실경기 id 는 `P108` 이라
+   * 파생이 그대로 남아 화면에 `#P108` 로 찍혔다. 진짜 등번호는 부모가 `playerId`+`team` 으로 붙인다.
+   */
   number?: string;
+  /** 이벤트 주체 선수 id — 부모가 팀별 등번호 표를 조회할 재료(#334). */
+  playerId?: string;
   team?: "home" | "away";
   /** 슛 계열에서만 표시하는 xG(소수 2자리). */
   xg?: string;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
-import { logLines, type LogEvent, type LogLine } from "@hmb/viewer-core";
+import { logLines, skinKeyOf, type LogEvent, type LogLine } from "@hmb/viewer-core";
+import { jerseyNumbers } from "../viewer-skins";
 import { useHalfLog } from "../../api/hooks";
 import styles from "./panels.module.css";
 
@@ -52,6 +53,15 @@ export function LogPanel({ matchId, half, homeName, awayName, tick, baseline = n
     return logLines(events, tick ?? 0, baseline);
   }, [log, tick, baseline?.home, baseline?.away]);
 
+  /**
+   * 등번호 표 (#334). 코어는 실경기 id(`P108`)를 번호로 내보내지 않는다 — 그대로 찍으면 화면에
+   * `#P108` 이 뜬다(라이브 한 하프 152/152). 진짜 등번호는 **부모만 안다**: 스냅샷의 팀별 등장
+   * 순서로 매긴다(#324 와 같은 표·같은 `(team, playerId)` 키 — 같은 선수가 양 팀에 뛸 수 있다).
+   */
+  const nums = useMemo(() => (log ? jerseyNumbers(log) : {}), [log]);
+  const numberOf = (l: LogLine): string | undefined =>
+    (l.playerId ? nums[skinKeyOf(l.team, l.playerId)] : undefined) ?? l.number;
+
   // 최신 라인이 항상 보이게(스크롤은 이 패널 안에서만 — 문서는 스크롤하지 않는다).
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: "nearest" });
@@ -73,7 +83,7 @@ export function LogPanel({ matchId, half, homeName, awayName, tick, baseline = n
           <span className={styles.minute}>{l.minute}'</span>
           <span className={styles.label}>
             {l.label}
-            {l.number ? ` #${l.number}` : ""}
+            {numberOf(l) ? ` #${numberOf(l)}` : ""}
             {l.score ? ` ${l.score}` : ""}
           </span>
           {l.team && <span className={styles.side}>{l.team === "home" ? homeName : awayName}</span>}
