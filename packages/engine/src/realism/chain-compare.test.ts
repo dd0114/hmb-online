@@ -5,6 +5,7 @@ import { defaultEngineConfig, type EngineConfig } from "../config";
 import { REALISM_SEEDS, aggregateRealism } from "./harness";
 import { aggregateDeepen } from "./deepen";
 import { BENCH, benchVerdict } from "./bench";
+import { collectChainProbe, renderChainProbe } from "./chain-probe";
 
 /**
  * #279 W2 — **볼 소유자 결정 코어 A/B 비교**(env 가드). npm test 에서는 skip.
@@ -75,6 +76,11 @@ describe("#279 W2 chain-vs-weighted", () => {
     row("볼 10m 안 수비수", dw.mean.def.pressWithin10, dc.mean.def.pressWithin10, "1+2~3");
     row("태클 이벤트", dw.mean.xc.tackleEvents, dc.mean.xc.tackleEvents, "PL 15–20");
     row("소유 이전 수", dw.mean.passes, dc.mean.passes, "—");
+    L.push("");
+    // #279 S2 — 생성기별 생성/채택 분포. S5 에서 생성기를 늘렸는데 지표가 안 움직일 때
+    // "생성이 0인가, 채택이 0인가"를 **추측하지 않고** 여기서 읽는다.
+    L.push(`## 생성기 계측 (chain 코어, 시드 ${SEEDS.length})`);
+    L.push(renderChainProbe(collectChainProbe(chain, SEEDS)));
     L.push("");
     const msW = Number(t1 - t0) / 1e6 / SEEDS.length;
     const msC = Number(t2 - t1) / 1e6 / SEEDS.length;

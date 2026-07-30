@@ -467,6 +467,28 @@ export interface EngineConfig {
     dribbleSuccess: number;
     /** 사슬 EV 상위 K 후보에서 시드 가중 샘플할 때의 온도(0 = argmax). 변주 유지용. */
     temperature: number;
+    /**
+     * 탐색 예산(#279 S2). **깊이가 아니라 평가 노드 수로 상한을 건다.**
+     *
+     * 왜 깊이로는 안 되나: `depth` 만 있으면 비용이 분기폭^depth 다. 지금 분기폭은 "동료 수"라
+     * 사실상 고정이지만, S5 가 생성기 4종(lead/through/cross/switch)을 붙이는 순간 분기폭이
+     * 2~3배가 되고 depth-2 비용은 **제곱으로** 튄다. 그러면 생성기를 하나 넣을 때마다
+     * "성능 때문에 못 넣는다"가 돼서 점진 도입 자체가 막힌다 — S5 의 최대 걸림돌이 이거다.
+     * 노드 예산은 생성기를 아무리 늘려도 **비용 상한이 안 변한다**(RoboCup agent2d 선례:
+     * 최대사슬 4 · 평가 상한 500 — 같은 이유로 노드 상한을 쓴다).
+     */
+    search: {
+      /**
+       * 한 결정(재귀 포함)에서 EV 를 평가할 수 있는 **최대 노드 수**. 여기 닿으면 그 시점의 best 로
+       * 즉시 확정한다. 결정론이 안 깨지는 이유는 생성·정렬이 전순서라 **항상 같은 노드가 같은
+       * 순서로** 소진되기 때문이다(자세한 논증은 chain.ts 의 컷오프 주석).
+       */
+      maxNodes: number;
+      /** 값싼 스칼라로 프리필터한 뒤 EV 심층평가에 넣을 상위 후보 수(0 이하 = 무제한). */
+      beamTop: number;
+      /** 그중 **재귀**(다음 수까지)를 허용할 상위 후보 수(0 이하 = 무제한). 비용의 대부분이 여기다. */
+      recurseBeam: number;
+    };
   };
 
   /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
@@ -821,6 +843,15 @@ export const defaultEngineConfig: EngineConfig = {
     holdPenalty: 0.08,
     dribbleSuccess: 0.86,
     temperature: 0.35,
+    // S2 기본값은 **의도적으로 비구속(non-binding)** 이다. 계측 실측(20시드 · 결정 56,672회)
+    // 기준 한 결정의 루트 후보 최댓값 **12** · 결정당 평가 노드 평균 **70.2** 라, 아래 값에서는
+    // 빔·예산이 한 번도 물리지 않는다(beamClipped 0 · recurseClipped 0 · budgetHit 0 으로 검증 —
+    // `chain-search.test.ts` 가 계약으로 박제한다).
+    // 왜 비구속인가: S2 의 게이트가 "행동을 안 늘렸으니 지표가 안 움직여야 한다"이기 때문이다.
+    // 여기서 예산을 조이면 그 조임 자체가 지표 변화의 원인이 되어 무회귀 판정이 불가능해진다.
+    // **조이는 건 S5** — 생성기 4종(lead/through/cross/switch)이 붙어 분기가 실제로 터질 때,
+    // 그때 이 세 값만 내리면 되고 코드는 안 바뀐다(그게 이 웨이브의 산출물이다).
+    search: { maxNodes: 512, beamTop: 32, recurseBeam: 32 },
   },
   softCap: 0.25,
   fatiguePerTick: 0.0009,
