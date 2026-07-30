@@ -3,7 +3,8 @@
  *
  * 여기 있는 문자열이 곧 hero 가 확정한 것들이라, 바꾸려면 이 파일 하나만 보면 된다.
  */
-import type { Deck, MeResponse } from "../api/hooks";
+import type { CatalogPlayer, Deck, MeResponse } from "../api/hooks";
+import type { Grade } from "../common/grades";
 import type { TradeSlot } from "../api/v2";
 
 export interface HomeTile {
@@ -137,6 +138,8 @@ export interface TeamLine {
   sub: string;
   rating: number | null;
   captainId: string | null;
+  /** 아이콘 노출 정책(#285)이 등급으로 판정한다 — 모르면 아트를 안 그리는 쪽으로 닫힌다. */
+  captainGrade: Grade | null;
 }
 
 /**
@@ -145,7 +148,11 @@ export interface TeamLine {
  * 디비전 이름은 **서버가 준 값 그대로** 쓴다 — 클라가 `level` 로 만들면 사다리 끝에서 없는
  * 디비전을 표시한다(#262 BL-1). 없으면 그 조각을 뺀다.
  */
-export function teamLine(me: MeResponse | undefined, deck: Deck | undefined | null): TeamLine {
+export function teamLine(
+  me: MeResponse | undefined,
+  deck: Deck | undefined | null,
+  roster: CatalogPlayer[] = [],
+): TeamLine {
   const bits: string[] = [];
   if (me?.league?.divisionName) bits.push(me.league.divisionName);
   if (typeof deck?.formation === "string") bits.push(deck.formation);
@@ -155,10 +162,15 @@ export function teamLine(me: MeResponse | undefined, deck: Deck | undefined | nu
     ? (deck.slots.find((s) => s.role === "starter" && s.playerId)?.playerId ?? null)
     : null;
 
+  const captainGrade = captain
+    ? ((roster.find((p) => p.id === captain)?.grade as Grade | undefined) ?? null)
+    : null;
+
   return {
     teamName: me?.user?.nickname ? `${me.user.nickname}의 팀` : "내 팀",
     sub: bits.join(" · ") || "덱을 구성해 팀을 만드세요",
     rating: me?.rating ?? null,
     captainId: captain,
+    captainGrade,
   };
 }

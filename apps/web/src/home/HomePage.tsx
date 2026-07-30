@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAbandonMatch, useActiveMatch, useAwayReports, useDeck, useMe, usePlayers } from "../api/hooks";
+import { useAbandonMatch, useActiveMatch, useAwayReports, useDeck, useMe, usePlayers, type CatalogPlayer } from "../api/hooks";
 import { useTradeSlots } from "../api/hooks-v2";
 import { useActiveNotices } from "../api/notice-hooks";
 import { useToken } from "../auth/TokenContext";
@@ -163,7 +163,7 @@ export function HomePage() {
         {unfinished && active?.match ? (
           <LockCard active={active as ActiveMatchInfo} />
         ) : (
-          <TeamRow me={me} deck={deck} />
+          <TeamRow me={me} deck={deck} roster={roster} />
         )}
 
         <div className={styles.tiles} data-testid="home-tiles">
@@ -227,19 +227,27 @@ export function HomePage() {
 function TeamRow({
   me,
   deck,
+  roster,
 }: {
   me: ReturnType<typeof useMe>["data"];
   deck: ReturnType<typeof useDeck>["data"];
+  roster: CatalogPlayer[];
 }) {
-  const line = teamLine(me, deck);
+  const line = teamLine(me, deck, roster);
   return (
     <section className={styles.teamRow} data-testid="home-team-row">
       <div className={styles.teamArt}>
         {/* 밀집 UI 라 얼굴 타일이다(apps/web/CLAUDE.md 카드 아트 표) — 풀아트는 도감·강화 상세에서. */}
         {/* 주장 슬롯이 비면(덱 미구성) 아바타를 그리지 않는다 — 빈 id 로 부르면 폴백 이니셜이
             엉뚱한 이름으로 뜬다. */}
-        {line.captainId ? (
-          <CharAvatar playerId={line.captainId} name={line.teamName} size={40} />
+        {/* 등급을 모르면(카탈로그 미도착) 아트를 그리지 않는다 — #285 정책이 등급으로 판정한다. */}
+        {line.captainId && line.captainGrade ? (
+          <CharAvatar
+            playerId={line.captainId}
+            name={line.teamName}
+            grade={line.captainGrade}
+            size={40}
+          />
         ) : (
           <span className={styles.teamArtEmpty} aria-hidden="true">⚽</span>
         )}
