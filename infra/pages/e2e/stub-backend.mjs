@@ -44,6 +44,35 @@ const NOIMG = {
   priority: 0,
 };
 
+/**
+ * **업로드 자산(V30, #309)을 본문에 쓴 공지** — #320 계약용.
+ *
+ * 정적 에셋(`/notice/…`, web 오리진)과 달리 업로드 이미지는 `/api/notices/assets/{id}` =
+ * **백엔드 오리진**이다. web 오리진에 그 경로는 없고 SPA 폴백(200 text/html)이 나오므로,
+ * og:image 를 web 오리진으로 절대화하면 **깨진 썸네일이 200 으로 위장**된다.
+ * 이 픽스처가 그 자리를 잰다 — 두 경로가 **공존**해야 한다.
+ */
+const ASSET_IMAGE_ID = "01J5ASSET000000000000000GH";
+const ASSET = {
+  id: "01J5ASSETNOTICE00000000IJ",
+  revision: 1,
+  title: `[${label}] 오시야스 합류!`,
+  body: `![오시야스](/api/notices/assets/${ASSET_IMAGE_ID})
+
+**LEGEND** 등급 골키퍼. 마지막 순간에 골문 앞에 서 있는 선수입니다.
+
+위치선정 **95**. 피지컬 **95**. 태클 **94**.`,
+  startsAt: null,
+  endsAt: null,
+  priority: 10,
+};
+
+/** 1×1 webp. 바이트가 중요한 게 아니라 **백엔드가 실제로 이미지를 준다**는 사실이 계약이다. */
+const ASSET_BYTES = Buffer.from(
+  "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoBAAEAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=",
+  "base64",
+);
+
 const GONE_ID = "01J5GONE0000000000000000EF";
 
 const server = createServer((req, res) => {
@@ -59,6 +88,21 @@ const server = createServer((req, res) => {
     });
     return res.end();
   }
+  // 업로드 자산 서빙 — 실서버의 `GET /api/notices/assets/{id}`(공개, 무인증) 자리.
+  const a = /^\/api\/notices\/assets\/([^/]+)$/.exec(url.pathname);
+  if (a) {
+    if (decodeURIComponent(a[1]) !== ASSET_IMAGE_ID) {
+      res.writeHead(404, { "content-type": "application/json; charset=utf-8" });
+      return res.end(JSON.stringify({ code: "NOT_FOUND", message: "자산을 찾을 수 없습니다." }));
+    }
+    res.writeHead(200, {
+      "content-type": "image/webp",
+      "content-length": ASSET_BYTES.length,
+      "access-control-allow-origin": "*",
+    });
+    return res.end(ASSET_BYTES);
+  }
+
   const m = /^\/api\/notices\/([^/]+)$/.exec(url.pathname);
   const send = (status, body) => {
     const json = JSON.stringify(body);
@@ -73,6 +117,7 @@ const server = createServer((req, res) => {
   const id = decodeURIComponent(m[1]);
   if (id === LIVE.id) return send(200, LIVE);
   if (id === NOIMG.id) return send(200, NOIMG);
+  if (id === ASSET.id) return send(200, ASSET);
   if (id === GONE_ID) return send(410, { code: "GONE", message: `기간이 지난 공지입니다: ${id}` });
   return send(404, { code: "NOT_FOUND", message: "공지를 찾을 수 없습니다." });
 });
