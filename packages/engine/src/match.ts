@@ -21,7 +21,7 @@ import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
 import { glueBallToOwner, advanceBall } from "./ball";
 import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
 import { decideBallOwnerChain } from "./chain";
-import { computeTeamPlan } from "./teamplan";
+import { applyRunOrders, clearIntents, computeTeamPlan, gcIntents } from "./teamplan";
 import {
   tryIntercept,
   tryTackle,
@@ -222,6 +222,9 @@ function stepTick(carry: Carry): void {
       home: computeTeamPlan(state, "home", config, pitch),
       away: computeTeamPlan(state, "away", config, pitch),
     };
+    // #314 B: 공이 죽으면 런도 죽는다 — 정지 중 배치는 규칙기반(deadBallShapeTarget)이 소유하고,
+    // 살아 있는 런 오더가 그 위에 남으면 #185/#174(제자리 왕복·단독 질주)를 되살린다.
+    clearIntents(state);
     // #231: 소유자는 (id, side) 쌍으로 잡는다 — id 만 보면 반대 팀 동명 선수까지 "소유자 취급"돼
     // 그 틱의 재배치를 못 받는다. 캡처 시점 값을 쓰는 의미는 그대로 보존한다.
     const heldId = state.ball.owner;
@@ -372,6 +375,8 @@ function stepTick(carry: Carry): void {
     home: computeTeamPlan(state, "home", config, pitch),
     away: computeTeamPlan(state, "away", config, pitch),
   };
+  // #314 B: 만료된 의도·런 오더 폐기(틱당 1회, 배열 순서 보존).
+  gcIntents(state);
 
   // --- 압박 담당 지정(수비팀만) ---
   const defSide: TeamSide = state.possession === "home" ? "away" : "home";
@@ -514,7 +519,99 @@ function stepTick(carry: Carry): void {
           owner.dribbleStreak = 0;
           state.ball.owner = null;
           state.ball.ownerSide = null;
+          // #314 B: **의도 게시** — 이 패스가 어디로 가는지를 팀이 볼 수 있게 남긴다.
+          // S1 이 만들어 둔 `state.intents` 의 첫 쓰기다. 읽기는 `applyRunOrders`(아래) 와
+          // 수비의 `decideOffBall`(런 오더를 통해 간접). push 순서는 틱당 최대 1건이라 고정.
+          {
+            const g = attackGoal(pitch, owner.side);
+            const passGainFx =
+              fdist(owner.posFx.x, owner.posFx.y, g.x, g.y) - fdist(action.toX, action.toY, g.x, g.y);
+            const ro = config.movement.runOrder;
+            // **전진 패스에만** 런이 붙는다. 모든 패스에 붙이면 팀 전체가 상시 전진 배치가 되어
+            // 공격이 과열된다(실측 슛/팀 12.5 → 20.1). 서드맨 런은 전진 패스에 붙는 것이다.
+            if (ro.enabled && passGainFx >= Math.round(ro.minPassGainM * config.fixedScale)) {
+              const flightTicks = Math.max(
+                1,
+                Math.ceil(
+                  fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY) /
+                    Math.max(1, action.speedFx),
+                ),
+              );
+              state.intents.push({
+                side: owner.side,
+                fromId: owner.id,
+                kind: "pass_to",
+                xFx: action.toX,
+                yFx: action.toY,
+                tick: state.tick,
+                expiresTick: state.tick + flightTicks,
+                forId: action.receiver.id,
+              });
+            }
+          }
+          // #314 B: 패서의 **따라 들어가기**. 구버전은 여기서 무조건 제자리에 세웠고(hero ⓑ 의
+          // 코드상 실체 — 실측 "패스 후 패서 전진 0%"), 그래서 "차고 나서 뛰어들어가는" 그림이
+          // 구조적으로 불가능했다. 단 **전진 패스일 때만** 푼다 — 뒤로 뺀 패스를 따라가면
+          // 되돌아 달리기가 되어 공격을 죽인다(#181 가드).
+          {
+            const ro = config.movement.runOrder;
+            const followFx = Math.round(ro.passerFollowM * config.fixedScale);
+            const g = attackGoal(pitch, owner.side);
+            const gainFx =
+              fdist(owner.posFx.x, owner.posFx.y, g.x, g.y) - fdist(action.toX, action.toY, g.x, g.y);
+            // 런 오더와 **같은 게이트**(전진 패스에만) — 매 패스마다 따라 들어가면 공격 라인이
+            // 상시 전진해 볼륨이 과열된다(실측 슛/팀 12.2 → 15.3).
+            if (followFx > 0 && gainFx >= Math.round(ro.minPassGainM * config.fixedScale)) {
+              const dx = action.toX - owner.posFx.x;
+              const dy = action.toY - owner.posFx.y;
+              // 길이는 정수 제곱근으로(플랫폼 편차 0, §5-4 — `Math.sqrt` 직접 호출 금지 관례).
+              const len = Math.max(1, fdist(owner.posFx.x, owner.posFx.y, action.toX, action.toY));
+              const t = clampToPitch(
+                pitch,
+                owner.posFx.x + Math.round((dx * followFx) / len),
+                owner.posFx.y + Math.round((dy * followFx) / len),
+              );
+              owner.targetFx = { x: t.x, y: t.y };
+            } else {
+              owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
+            }
+          }
+          break;
+        }
+        case "clearance": {
+          // #314 A(hero ⓐ): 걷어내기 — **의도 수신자가 없다**. `passOutcome`/`claimant`/`target`
+          // 을 달지 않으므로 도착은 순수 기하(양 팀 루즈볼·헤딩 경합)로 간다. 그래서 벤치
+          // 78–85% 패스 성공률 캘리브레이션(`passOutcomeAuthoritative`)을 건드리지 않는다.
+          state.ball.flight = {
+            toX: action.toX,
+            toY: action.toY,
+            speed: action.speedFx,
+            kind: "pass",
+            delivery: action.lofted ? "lofted" : "ground",
+            hangTicks: action.lofted
+              ? Math.max(
+                  1,
+                  Math.ceil(
+                    fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY) /
+                      Math.max(1, action.speedFx),
+                  ),
+                )
+              : 0,
+            fromSide: owner.side,
+            fromX: state.ball.posFx.x,
+            fromY: state.ball.posFx.y,
+          };
+          owner.dribbleStreak = 0;
+          state.ball.owner = null;
+          state.ball.ownerSide = null;
           owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
+          carry.events.push({
+            tick: state.tick,
+            minute,
+            type: "clearance",
+            team: owner.side,
+            playerId: owner.id,
+          });
           break;
         }
         case "dribble": {
@@ -534,6 +631,13 @@ function stepTick(carry: Carry): void {
   // 오프사이드 등으로 이번 틱 decide 단계에서 dead-ball 이 설정되면 이동·경합·피로를
   // 건너뛴다(정지 재개는 다음 틱 stoppage 브랜치가 처리). 슛/패스 비행은 stoppage 를 안 건드림.
   if (state.stoppage > 0) return;
+
+  // --- 런 오더 배정 + 소비(#314 B) ---
+  // decide 루프 **뒤 · act 루프 앞**이다. 패스는 오프더볼 결정이 끝난 뒤에 결정되므로, 여기가
+  // "차면 **그 틱에** 뛰어들어간다"가 성립하는 유일한 자리다(앞에서 돌면 러너가 항상 1틱 늦는다).
+  // 팀 전체를 보는 계산이라 선수 루프 밖·틱당 1회 — `computeTeamPlan` 과 같은 규율(§5-1).
+  // 아직 안 찬 세트피스(liveSp) 구간은 규칙기반 배치가 소유하므로 건너뛴다(#174/#185 재발 방지).
+  if (!liveSp) applyRunOrders(state, config, pitch);
 
   // --- act: 선수 이동 ---
   for (const p of state.players) {

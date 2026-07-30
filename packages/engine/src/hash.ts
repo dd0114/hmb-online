@@ -101,6 +101,15 @@ export function hashState(state: SimState): string {
     h = mix(h, p.posFx.x | 0);
     h = mix(h, p.posFx.y | 0);
     h = mix(h, Math.round(p.fatigue * 1e6) | 0);
+    // #314 B: 런 오더는 재개로 관통하는 상태다 — 해시에 없으면 유실돼도 그 틱은 통과하고
+    // **다음 틱부터** 갈라진다(로드맵 §5-6). 0 = 런 없음 센티넬.
+    const ro = p.runOrder;
+    h = mix(h, ro ? 1 : 0);
+    if (ro) {
+      h = mix(h, ro.xFx | 0);
+      h = mix(h, ro.yFx | 0);
+      h = mix(h, ro.untilTick | 0);
+    }
   }
   return (h >>> 0).toString(16).padStart(8, "0");
 }

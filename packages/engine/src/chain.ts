@@ -8,7 +8,17 @@ import { fromFixed, fclamp, fdist, fdistSq, isqrt, toFixed } from "./fixedmath";
 import { attackGoal, clampToPitch, distToAttackGoal } from "./pitch";
 import { passOptions, pressureCount } from "./perception";
 import { deliverySpeedFx, isLofted, passPowerFx, shotPowerFx } from "./kick";
-import { computePassProb, planPass, planShot, xgAtPoint, type Action } from "./decision";
+import {
+  clearanceAim,
+  clearanceEligible,
+  clearancePowerFx,
+  computePassProb,
+  planClearance,
+  planPass,
+  planShot,
+  xgAtPoint,
+  type Action,
+} from "./decision";
 import {
   EV_SCALE,
   FRAC_SCALE,
@@ -385,6 +395,33 @@ const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void>
       distFx: fdist(g.holder.posFx.x, g.holder.posFx.y, cl.x, cl.y),
     });
   },
+  // 걷어내기(#314 A) — **의도 수신자가 없는 좌표 타깃**. S2 가 "receiver 가 null 인 후보"를
+  // 표현 가능하게 만들어 둔 자리의 첫 사용처다. 생성 조건은 롤백 경로와 **같은 함수**를 쓰고,
+  // "좋은 패스가 있으면 안 한다"는 여기서 게이트가 아니라 **EV 비교**가 자동으로 한다.
+  clear: (g, out) => {
+    const c = g.ctx.config;
+    if (!clearanceEligible(g.ctx.state, g.holder, c, g.ctx.pitch)) return;
+    const aim = clearanceAim(g.holder, c, g.ctx.pitch);
+    const speed = clearancePowerFx(g.holder, c);
+    const d = fdist(g.holder.posFx.x, g.holder.posFx.y, aim.x, aim.y);
+    const flight = speed > 0 ? Math.ceil(d / speed) : 0;
+    const after = distToAttackGoal(g.ctx.pitch, g.holder.side, aim.x, aim.y);
+    out.push({
+      kind: "clear",
+      form: "clear",
+      gen: "clear",
+      toXFx: aim.x,
+      toYFx: aim.y,
+      receiver: null,
+      ballSpeedFx: speed,
+      flightTicks: flight,
+      durationTicks: flight,
+      // 걷어내기에 "레인"은 없다 — 누구를 향해 차는 것이 아니다.
+      laneDangerFx: Infinity,
+      forwardGainFx: g.distToGoalFx - after,
+      distFx: d,
+    });
+  },
   // 홀드(제자리).
   hold: (g, out) => {
     out.push({
@@ -410,7 +447,7 @@ const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void>
  * `GENERATORS` 와 **같은 상대 순서**를 유지한다.
  */
 const INNER_GENERATORS: readonly GeneratorId[] = GENERATORS.filter(
-  (g) => g !== "carry" && g !== "hold",
+  (g) => g !== "carry" && g !== "hold" && g !== "clear",
 );
 
 function generate(
@@ -531,6 +568,21 @@ function candidateEv(
       const pFrac = toFrac(p);
       let ev = mulFrac(evaluateStateEv(ctx, after), pFrac) + mulFrac(turnoverEv(ctx, here), FRAC_SCALE - pFrac);
       if (behavior) ev = mulFrac(ev, toMul(0.5 + holder.behavior.dribbleTendency));
+      return ev;
+    }
+    case "clear": {
+      // 걷어내기(#314 A): 의도 수신자가 없으니 "성공 확률"이 아니라 **회수 확률**이다
+      // (`clearance.retainProb` — 루즈볼이라 50% 근처). 여기서 사슬 코어가 축구를 정확히 표현한다:
+      // 낙하점(자기 진영 밖)에서 뺏기는 손해는 **지금 이 자리(자기 박스)에서 뺏기는 손해보다 작다** —
+      // `turnoverEv` 가 위치의 함수라 별도 노브 없이 그 대소가 나온다.
+      const after = arrivalHypo(cand, here);
+      const pFrac = toFrac(ctx.config.clearance.retainProb);
+      let ev =
+        mulFrac(evaluateStateEv(ctx, after), pFrac) + mulFrac(turnoverEv(ctx, after), FRAC_SCALE - pFrac);
+      // 리스크 감수 성향(passRisk)이 높은 선수는 덜 걷어낸다(전술 입력이 계속 살아 있어야 한다).
+      if (behavior) {
+        ev = mulFrac(ev, toMul(ctx.config.clearance.chainEvBias * (1.5 - holder.behavior.passRisk)));
+      }
       return ev;
     }
     default:
@@ -732,6 +784,11 @@ export function decideBallOwnerChain(
     }
     case "carry":
       return { kind: "dribble", toX: cand.toXFx, toY: cand.toYFx };
+    case "clear": {
+      // 실행은 롤백 경로와 **같은 함수** — 두 코어의 걷어내기 기하가 갈리지 않는다.
+      const cp = planClearance(owner, config, rng, pitch);
+      return { kind: "clearance", toX: cp.toX, toY: cp.toY, speedFx: cp.speedFx, lofted: cp.lofted };
+    }
     default:
       return { kind: "hold" };
   }

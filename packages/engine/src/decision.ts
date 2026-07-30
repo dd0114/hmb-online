@@ -39,6 +39,12 @@ export type Action =
       lofted: boolean;
     }
   | { kind: "dribble"; toX: number; toY: number }
+  /**
+   * 걷어내기(#314 A) — hero ⓐ. **의도 수신자가 없다**: `passOutcome`/`claimant` 를 달지 않고
+   * 도착은 순수 기하(양 팀 루즈볼·헤딩 경합)로 간다. 그래서 패스 성공률 캘리브레이션
+   * (`passOutcomeAuthoritative`, 벤치 78–85%)을 건드리지 않는다.
+   */
+  | { kind: "clearance"; toX: number; toY: number; speedFx: number; lofted: boolean }
   | { kind: "hold" };
 
 /** 극단 behavior(0/1 근처)에 소프트캡 페널티. 0.5 에서 페널티 0. */
@@ -125,6 +131,132 @@ export function planShot(
     toY: fclamp(hit.y, g.y - halfPost, g.y + halfPost),
     speedFx,
   };
+}
+
+/** 자기 페널티박스 안인가(걷어내기 가중용). `contest.ts:victimInAttackBox` 와 같은 기하, 반대 골. */
+export function inOwnBox(pitch: Pitch, config: EngineConfig, p: SimPlayer): boolean {
+  const g = defendGoal(pitch, p.side);
+  const scale = config.fixedScale;
+  return (
+    Math.abs(p.posFx.x - g.x) <= toFixed(config.rules.penalty.boxDepthM, scale) &&
+    Math.abs(p.posFx.y - g.y) <= toFixed(config.rules.penalty.boxHalfWidthM, scale)
+  );
+}
+
+/**
+ * 걷어내기 실행 계획(#314 A) — **어디로, 얼마나 세게**.
+ *
+ * 축구의 걷어내기는 "전방 + 측면 + 위험지역 밖"이다. 정면으로 길게 차면 상대 중앙 수비에게
+ * 그대로 돌려주고, 옆으로만 차면 라인 밖(스로인)이 된다. 그래서 **전방 `distM` · 가까운
+ * 터치라인 쪽 `touchlineBias`** 로 조준하고, 터치라인에서 `touchlineMarginM` 를 남긴다.
+ *
+ * 정확도는 낮다(`aimErrorDeg` 가 패스의 여러 배) — 걷어내기는 조준이 아니라 처리다.
+ * Rng 소비는 `aimWithError` 의 2회로 고정(패스 성공 경로와 같은 규율).
+ */
+export function clearanceAim(
+  owner: SimPlayer,
+  config: EngineConfig,
+  pitch: Pitch,
+): { x: number; y: number } {
+  const c = config.clearance;
+  const scale = config.fixedScale;
+  const g = attackGoal(pitch, owner.side);
+  const sign = g.x >= owner.posFx.x ? 1 : -1;
+  const center = Math.round(pitch.hFx / 2);
+  const marginFx = Math.round(c.touchlineMarginM * scale);
+  // 가까운 터치라인 = 위험지역(중앙)에서 가장 빨리 벗어나는 방향.
+  const touchY = owner.posFx.y < center ? 0 : pitch.hFx;
+  return {
+    x: fclamp(owner.posFx.x + sign * Math.round(c.distM * scale), marginFx, pitch.wFx - marginFx),
+    y: fclamp(
+      owner.posFx.y + Math.round((touchY - owner.posFx.y) * c.touchlineBias),
+      marginFx,
+      pitch.hFx - marginFx,
+    ),
+  };
+}
+
+/** 걷어내기 세기(fixed m/tick). physical 로 ±`powerAttrSwing`. 생성기·실행이 공유. */
+export function clearancePowerFx(owner: SimPlayer, config: EngineConfig): number {
+  const c = config.clearance;
+  const power = c.speedM * (1 + c.powerAttrSwing * ((owner.attrs.physical - 50) / 50));
+  return deliverySpeedFx(toFixed(Math.max(1, power), config.fixedScale), c.lofted, config);
+}
+
+/** 걷어내기 **실행**(조준 오차 포함). Rng 를 `aimWithError` 2회로만 소비한다. */
+export function planClearance(
+  owner: SimPlayer,
+  config: EngineConfig,
+  rng: Rng,
+  pitch: Pitch,
+): { toX: number; toY: number; speedFx: number; lofted: boolean } {
+  const c = config.clearance;
+  const scale = config.fixedScale;
+  const aim = clearanceAim(owner, config, pitch);
+  const deg = aimErrorDeg(c.aimErrorDeg, owner.attrs.physical, config.contest.passAimAttrSwing, 0, 0);
+  const hit = aimWithError(
+    owner.posFx.x,
+    owner.posFx.y,
+    aim.x,
+    aim.y,
+    { errDeg: deg, powerErrFrac: c.powerErrorFrac },
+    rng,
+  );
+  // 라인에서 margin 을 남긴 안쪽으로 클램프 — 걷어내기가 곧바로 스로인이 되지 않게(게이트 조건).
+  const marginFx = Math.round(c.touchlineMarginM * scale);
+  return {
+    toX: fclamp(hit.x, marginFx, pitch.wFx - marginFx),
+    toY: fclamp(hit.y, marginFx, pitch.hFx - marginFx),
+    speedFx: clearancePowerFx(owner, config),
+    lofted: c.lofted,
+  };
+}
+
+/**
+ * 걷어내기가 **후보로 생길 수 있는 상황인가**(#314 A). 사슬 코어와 롤백 경로가 **같은 함수**를
+ * 쓴다 — 두 코어가 서로 다른 조건으로 걷어내면 그건 두 개의 엔진이다.
+ *
+ * 조건: 자기 진영(진행도 ≤ `maxProgress`) ∧ 압박 ≥ `minPressers`.
+ * "좋은 패스가 있으면 안 한다"는 **코어마다 표현이 다르다** — 사슬은 EV 비교가 그 역할을
+ * 자동으로 하고(패스 EV 가 높으면 안 뽑힌다), 가중 추첨은 EV 가 없으니 명시 게이트가 필요하다
+ * (`clearanceWeight` 의 `passScoreCeil`).
+ */
+export function clearanceEligible(
+  state: SimState,
+  owner: SimPlayer,
+  config: EngineConfig,
+  pitch: Pitch,
+): boolean {
+  const c = config.clearance;
+  if (!c.enabled) return false;
+  if (attackProgress(pitch, owner.side, owner.posFx.x) > c.maxProgress) return false;
+  return pressureCount(state, owner, config, config.contest.passPressureRangeM) >= c.minPressers;
+}
+
+/**
+ * 롤백 경로(`decideBallOwner`)의 걷어내기 가중. 0 이면 후보가 생성되지 않는다.
+ * 여기서만 `passScoreCeil`("좋은 패스가 있으면 안 한다")을 본다 — 가중 추첨에는 EV 비교가 없어
+ * 명시 게이트가 없으면 좋은 옵션이 있어도 확률적으로 걷어내게 된다.
+ */
+export function clearanceWeight(
+  state: SimState,
+  owner: SimPlayer,
+  bestPassScore: number,
+  config: EngineConfig,
+  pitch: Pitch,
+): number {
+  const c = config.clearance;
+  const base = config.decisionWeights.clearance;
+  if (base <= 0) return 0;
+  if (bestPassScore >= c.passScoreCeil) return 0;
+  if (!clearanceEligible(state, owner, config, pitch)) return 0;
+  const progress = attackProgress(pitch, owner.side, owner.posFx.x);
+  const pressers = pressureCount(state, owner, config, config.contest.passPressureRangeM);
+  const depth = fclamp(1 - progress / Math.max(0.01, c.maxProgress), 0, 1);
+  const press = fclamp(pressers / Math.max(1, c.minPressers), 1, 3);
+  let w = base * (0.4 + 0.6 * depth) * press;
+  if (inOwnBox(pitch, config, owner)) w *= c.boxWeightMult;
+  return w;
 }
 
 /** 슛 xG 계산(거리·각도·슈팅속성). */
@@ -531,8 +663,17 @@ export function decideBallOwner(
   // --- 홀드 후보(압박 심하면 안전하게) ---
   const wHold = w.hold * (0.5 + 0.5 * owner.behavior.supportDepth);
 
+  // --- 걷어내기 후보(#314 A) — 자기 진영 + 압박 + 좋은 패스 없음 ---
+  const wClear = clearanceWeight(
+    state,
+    owner,
+    bestOpt ? picked.score : -Infinity,
+    config,
+    pitch,
+  );
+
   // --- 시드 확률 샘플링 ---
-  const total = wShoot + wPass + wDribble + wHold;
+  const total = wShoot + wPass + wDribble + wHold + wClear;
   if (total <= 0) return { kind: "hold" };
   let r = rng.next() * total;
 
@@ -561,6 +702,10 @@ export function decideBallOwner(
     const ty = owner.posFx.y + Math.round((goal.y - owner.posFx.y) * step);
     const c = clampToPitch(pitch, tx, ty);
     return { kind: "dribble", toX: c.x, toY: c.y };
+  }
+  if ((r -= wClear) < 0) {
+    const cp = planClearance(owner, config, rng, pitch);
+    return { kind: "clearance", toX: cp.toX, toY: cp.toY, speedFx: cp.speedFx, lofted: cp.lofted };
   }
   return { kind: "hold" };
 }
@@ -683,15 +828,21 @@ export function decideOffBall(
   const ball = state.ball;
   const center = Math.round(pitch.hFx / 2);
 
-  // GK: 자기 골대 앞에서 공 y 를 살짝 추종.
+  // GK: 자기 골대 앞에서 공 y 를 추종 + **공 거리에 따른 스위퍼 라인**(#314 C).
+  // 구버전은 깊이가 상수(0.04·피치길이)라 GK 목표가 사실상 고정점이었다 — 역할별 정지율 실측에서
+  // GK 38.6%(아웃필더 ~10%)로 "비소유팀이 굳어 있다"의 최대 기여자였다. 실제 GK 는 공이 멀면
+  // 나오고 가까우면 골라인에 붙는다. 상수 두 개(0.04·0.3)도 여기서 config 로 승격된다(§2-4).
   if (player.isGK) {
+    const gkc = mv.gk;
+    const ballDist = fdist(ball.posFx.x, ball.posFx.y, ownGoal.x, ownGoal.y);
+    const outFrac = fclamp(ballDist / Math.max(1, gkc.sweepRefM * scale), 0, 1);
+    const depthFx = Math.round((gkc.baseDepthM + gkc.sweepReachM * outFrac) * scale);
     const gy = fclamp(
-      ownGoal.y + Math.round((ball.posFx.y - ownGoal.y) * 0.3),
+      ownGoal.y + Math.round((ball.posFx.y - ownGoal.y) * gkc.ballYFollow),
       Math.round(pitch.hFx * 0.35),
       Math.round(pitch.hFx * 0.65),
     );
-    const gx = ownGoal.x + sign * Math.round(pitch.wFx * 0.04);
-    player.targetFx = clampToPitch(pitch, gx, gy);
+    player.targetFx = clampToPitch(pitch, ownGoal.x + sign * depthFx, gy);
     return;
   }
 
@@ -779,9 +930,12 @@ export function decideOffBall(
     }
   } else {
     // 수비 블록: 볼 x 뒤쪽(자기 골 방향)을 중심으로 팀 전체를 압축(미드블록).
-    const lineShift = (team.defensiveLineHeight - 0.5) * pitch.wFx * 0.2;
-    const blockCenterX = ball.posFx.x - sign * Math.round(pitch.wFx * 0.06) + sign * Math.round(lineShift);
-    const compact = 0.5 + team.compactness;
+    // #314: 블록 중심은 이제 **팀 계획**(teamplan.ts:computeTeamPlan)이 소유한다 — 값·공식은
+    // 그대로이고(비트 동일), 선수마다 중복 재계산하던 것을 틱당 1회 계산으로 되돌린 것뿐이다.
+    // S1 이 만들어 둔 `state.plan` 의 **첫 소비자**다(로드맵 W5-2 의 도입부).
+    const plan = state.plan[player.side];
+    const blockCenterX = plan.lineX;
+    const compact = plan.blockDepth;
     tx += Math.round((blockCenterX - player.baseFx.x) * mv.defendCompactX * compact);
     // 폭: 블록으로 좁힘(볼 y 쪽으로 수축).
     const widthDir = player.baseFx.y < center ? -1 : player.baseFx.y > center ? 1 : ((player.idHash & 1) ? 1 : -1);
@@ -838,6 +992,29 @@ export function decideOffBall(
       const target = chooseMarkTarget(known, player, config, ownGoal);
       if (target) {
         const radFx = vis.radiusM * scale;
+        // #314 B(수비측, hero ⓑ "뛰어들어가는 선수를 보고 막는"): 지금까지 마킹은 상대의
+        // **현재 위치**만 봤다 — 달려드는 선수를 예측하는 개념이 없어 러너는 항상 한 발 앞섰다.
+        // 이제 마크 대상이 런 오더를 받은 상태면 그 **도착 예정 지점 쪽으로** 미리 붙는다.
+        // 전지적 정보가 아니다: `known`(= 이 선수가 실제로 인지한 상대)에서만 읽고, 선점량은
+        // `runReadMaxM` 로 상한을 둔다(라인을 버리고 러너를 쫓아가지 않게).
+        if (vis.runReadFrac > 0) {
+          const runner = playerAt(state, otherSide(player.side), target.id);
+          const ro = runner?.runOrder;
+          if (ro && ro.untilTick >= state.tick) {
+            const dx = ro.xFx - target.x;
+            const dy = ro.yFx - target.y;
+            const len = isqrt(dx * dx + dy * dy);
+            if (len > 0) {
+              const lead = Math.min(
+                Math.round(len * vis.runReadFrac),
+                Math.round(vis.runReadMaxM * scale),
+              );
+              target.x += Math.round((dx * lead) / len);
+              target.y += Math.round((dy * lead) / len);
+              target.dist = fdist(player.posFx.x, player.posFx.y, target.x, target.y);
+            }
+          }
+        }
         // 당김은 **고정 길이 스텝**이라 그대로 두면 이미 붙어 있는 마크를 지나쳐 반대편을 목표로
         // 잡는다 → 다음 틱엔 방향이 뒤집혀 매 틱 ±markReach 왕복(제자리 진동, #178). 게다가
         // w 는 가까울수록 커져서(1 − dist/rad) 진동을 키운다. 그래서 **마크 간격(markGap)까지만**
@@ -867,6 +1044,11 @@ export function decideOffBall(
     const nx = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 1);
     const ny = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 2);
     const ampFx = Math.round(rn * scale * player.behavior.positioningFreedom);
+    // ⚠️ #314 C 에서 **로밍 오프셋의 선형 보간**(#307 의 `idleDriftSmooth` 를 오픈플레이에 이식)을
+    // 시도했다가 **기각**했다. 총 이동량이 같은데 25틱에 펴지면 틱당 0.24m 라 "거의 정지"(<0.3m)
+    // 판정을 오히려 **더 많이** 받는다(실측 비소유 정지 15.1% → 16.5%, 슛/팀 12.8 → 15.3).
+    // 이 축의 정답은 "잔진동을 늘리는 것"이 아니라 **블록이 공을 더 따라가는 것**이었다
+    // (`defendCompactX` — 같은 실측에서 정지율·백4 산포·압박밀도가 동시에 좋아진 유일한 축).
     tx += Math.round((nx * 2 - 1) * ampFx);
     ty += Math.round((ny * 2 - 1) * ampFx);
   }

@@ -62,6 +62,14 @@ const SimPlayerSchema = z.object({
    */
   seen: z.record(z.string(), z.object({ x: z.number(), y: z.number(), tick: z.number() })).optional(),
   yellowCards: z.number(),
+  /**
+   * 런 오더(engine #314 B, `SimPlayer.runOrder`). 하프 경계에 런이 살아 있으면 이 선언이 없을 때
+   * 조용히 버려져 재개 하프에서만 러너가 멈춘다(무음 desync). zod 는 미선언 키를 버린다(#154).
+   * `.nullish()` 라 구 저장 상태(필드 없음)도 그대로 통과한다.
+   */
+  runOrder: z
+    .object({ xFx: z.number(), yFx: z.number(), untilTick: z.number(), fromId: z.string() })
+    .nullish(),
 });
 
 const BallFlightSchema = z.object({

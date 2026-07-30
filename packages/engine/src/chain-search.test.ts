@@ -51,8 +51,11 @@ function stateWithOwner(): { state: SimState; owner: SimPlayer } {
 }
 
 describe("#279 S2 — 후보 표현형(action.ts)", () => {
-  it("GENERATORS 순서가 계약이다 (S5 는 뒤에 추가한다)", () => {
-    expect([...GENERATORS]).toEqual(["shoot", "direct", "long", "carry", "hold"]);
+  it("GENERATORS 순서가 계약이다 (새 생성기는 **뒤에** 추가한다)", () => {
+    // 앞에 끼우면 정렬 tiebreak(candidateKey 의 첫 키 = gen)와 노드 예산 소진 순서가 통째로 밀린다.
+    // #314 A 가 `clear`(걷어내기)를 그 규율대로 맨 뒤에 붙였다 — 앞 5개의 상대 순서는 불변.
+    expect([...GENERATORS]).toEqual(["shoot", "direct", "long", "carry", "hold", "clear"]);
+    expect([...GENERATORS].slice(0, 5)).toEqual(["shoot", "direct", "long", "carry", "hold"]);
   });
 
   it("PassOption 어댑터는 좌표를 타깃으로 채우고 원본을 보존한다", () => {

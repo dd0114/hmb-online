@@ -27,8 +27,17 @@ function restartableGoals(log: MatchLog): { tick: number; team?: string }[] {
   return log.events.filter((e) => e.type === "goal" && e.tick + GOAL_STOPPAGE <= total);
 }
 
+/**
+ * 골 후 킥오프 계약은 **골이 실제로 있는 매치**가 있어야 성립한다. 구버전은 `demoSeed` 를 썼는데,
+ * #314(행동·의도 계층)에서 매치 전개가 바뀌며 그 시드가 **0–0** 이 되어 계약이 공전했다
+ * (`goals.length > 0` 이 0). 시드 고정은 `penalty-spot.test.ts` 와 같은 유지보수 패턴이다 —
+ * 매치 전개가 바뀔 때마다 재스캔한다.
+ * 재스캔 실측(demo fixture, 시드 1~40): 골 0 인 시드는 없고 3~15골. 시드 "1" = 8골(전부 재시작 가능).
+ */
+const GOAL_SEED = "1";
+
 function runDemo(): MatchLog {
-  return runMatch(demoSeed, demoHome, demoAway, demoSelect, config);
+  return runMatch(GOAL_SEED, demoHome, demoAway, demoSelect, config);
 }
 
 function snapByTick(log: MatchLog): Map<number, TickSnapshot> {

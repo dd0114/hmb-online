@@ -26,7 +26,12 @@ const CENTER_Y = config.pitch.height / 2; // 34
 //    0.25.0 에서 공 소유 틱이 46.2%→25.2% 로 줄며 태클 시도가 함께 줄었고, `foul.base` 는
 //    태클 시도당 확률이라 자동으로 따라 내려갔다. 파울 복원은 이번 볼륨 재보정 스코프 밖이며,
 //    복원되면 이 스캔은 다시 넉넉해진다(같은 사유가 `e2e/gen-fixtures.test.ts` 에도 적혀 있다).
-const PK_SEED = "13";
+//   → **"8"**(#314 행동·의도 계층 — 걷어내기 신설 + 런 오더 + 수비 블록 추종(`defendCompactX`
+//     0.16→0.32)으로 매치 전개가 통째로 바뀌며 시드 13 에서 페널티가 소멸).
+//   재스캔 실측(1~60): penalty 보유 시드 **8/9/11/17/22/34/44/46/59/60 = 10개**로 회복했다
+//   (0.25.0 엔 13 하나뿐이었다). 블록이 공을 더 따라가며 박스 안 접촉이 늘어 파울이 팀당
+//   5.11 → 6.6 으로 돌아온 결과다 — 위 "파울 복원은 스코프 밖" 주석의 부수 효과.
+const PK_SEED = "8";
 
 function snapByTick(log: MatchLog): Map<number, TickSnapshot> {
   return new Map(log.tickSnapshots.map((s) => [s.tick, s]));

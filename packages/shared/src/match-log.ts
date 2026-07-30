@@ -33,6 +33,12 @@ export const MatchEventType = z.enum([
   "pass",
   "interception",
   "tackle",
+  /**
+   * 걷어내기(#314 A) — 수비수가 압박 아래 자기 진영에서 **의도 수신자 없이** 공을 위험지역
+   * 밖으로 차낸 것. 패스가 아니므로 `pass` 로 세면 패스 성공률 캘리브레이션이 오염된다.
+   * 발사 틱에 emit 되고(슛과 같은 규율), 도착은 기하 판정(양 팀 루즈볼 경합)이다.
+   */
+  "clearance",
   "shot",
   "goal",
   "save",
