@@ -49,8 +49,10 @@ interface DevViewerStats {
   computeCumulativePossession(
     snaps: readonly {
       ballOwner?: string | null;
-      ball?: { x: number; y: number };
-      players?: readonly { playerId: string; team?: string; pos: { x: number; y: number } }[];
+      // ⚠️ **필수다**(#324). optional 로 두면 요구가 주석으로만 남고 호출부는 `{ ballOwner }` 만
+      // 캐스팅해도 컴파일을 통과한다 — 실제로 그 상태였고, 런타임엔 점유가 0 으로 집계된다.
+      ball: { x: number; y: number };
+      players: readonly { playerId: string; team?: string; pos: { x: number; y: number } }[];
     }[],
   ): CumulativePossession;
   possessionPct(cumHome: number[], cumAway: number[], idx: number): number;

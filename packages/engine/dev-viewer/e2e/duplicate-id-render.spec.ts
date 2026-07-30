@@ -31,8 +31,12 @@ const DUP_LOG = {
     //    우연히 정답이라, 팀 필터를 지워도 마크가 제자리에 그려진다.
     { tick: 6, minute: 0, type: "card", team: "away", playerId: "P078", detail: "yellow" },
     { tick: 8, minute: 0, type: "free_kick", team: "home" },
+    // ⚠️ 앵커도 **양 팀**을 태운다 — 어웨이 파울만 있으면 "팀 필터 제거"(첫 매치=홈) 변이는 잡지만
+    //    "항상 어웨이를 고르는" 반대 방향 변이가 통과한다(카드에서 배운 것과 같은 대칭 구멍).
+    { tick: 12, minute: 0, type: "foul", team: "home", playerId: "P078" },
+    { tick: 16, minute: 0, type: "free_kick", team: "away" },
   ],
-  tickSnapshots: Array.from({ length: 12 }, (_, t) => ({
+  tickSnapshots: Array.from({ length: 20 }, (_, t) => ({
     tick: t,
     minute: 0,
     ball: { x: 20, y: 34 },
@@ -148,4 +152,83 @@ test("중복 playerId: 파울 토스트가 **파울러 팀** 선수에 붙는다
   expect(Math.abs(foul.px - away.px), "토스트가 어웨이 파울러 위에").toBeLessThan(
     Math.abs(foul.px - home.px),
   );
+});
+
+test("중복 playerId: **홈** 파울이면 줌·토스트가 홈 선수로 간다 (앵커 대칭)", async ({ page }) => {
+  await inject(page);
+  const { cam, toasts, players } = await page.evaluate(() => {
+    const v = (window as any).__viewer;
+    v.autoPace(true);
+    v.seek(12);
+    v.render();
+    return { cam: v.cam(), toasts: v.toasts(), players: v.curPlayers() };
+  });
+  const home = players.find((p: any) => p.id === "P078" && p.team === "home");
+  const away = players.find((p: any) => p.id === "P078" && p.team === "away");
+  expect(Math.abs(cam.cx - home.x), `카메라 x=${cam.cx} — 홈 파울러(${home.x}) 쪽이어야`).toBeLessThan(
+    Math.abs(cam.cx - away.x),
+  );
+  const foul = toasts.find((t: any) => t.anchor === "P078" && t.text.includes("FOUL"));
+  expect(foul, "홈 파울 토스트").toBeTruthy();
+  expect(foul.anchorTeam).toBe("home");
+  expect(Math.abs(foul.px - home.px), "토스트가 홈 파울러 위에").toBeLessThan(Math.abs(foul.px - away.px));
+});
+
+/**
+ * `koById`(킥오프 잔상 클립) — 골 후 킥오프 트윈이 **자기 팀** 위치로 가는가.
+ *
+ * ⚠️ 나는 이 자리를 "hold.tween 이 프레임 진행에 달려 결정론적 재현이 어렵다"며 공백으로 남겼다.
+ * **틀린 판단이었다** — 독립검증이 기존 훅만으로 재현해 보였다. 핵심은 트윈 값을 결정론으로
+ * 만들 필요가 없다는 것이다: 계약이 요구하는 성질은 *"보간 목표가 같은 팀인가"* 하나뿐이고,
+ * 그건 **불변식**으로 잰다 — hold 동안 홈 선수의 렌더 x 최댓값. 정상은 12m 를 안 넘고, 팀키를
+ * 지우면 어웨이 킥오프 위치 88m 로 끌려간다(마진 48m). 타이밍 흔들림이 개입할 여지가 없다.
+ */
+const KO_LOG = {
+  configVersion: "dup-ko@1",
+  seed: "ko-1",
+  finalScore: { home: 1, away: 0 },
+  events: [
+    { tick: 20, minute: 0, type: "goal", team: "home", playerId: "P078" },
+    { tick: 26, minute: 0, type: "kickoff", team: "away" },
+  ],
+  // 골 시점 홈 P078=10 · 어웨이 P078=90. 킥오프 스냅샷에선 12 / 88 — 두 자리가 76m 떨어져 있다.
+  tickSnapshots: Array.from({ length: 40 }, (_, t) => ({
+    tick: t,
+    minute: 0,
+    ball: { x: 50, y: 34 },
+    ballOwner: null,
+    players: [
+      { playerId: "P078", team: "home", pos: { x: t >= 26 ? 12 : 10, y: 34 } },
+      { playerId: "P078", team: "away", pos: { x: t >= 26 ? 88 : 90, y: 34 } },
+      { playerId: "P116", team: "away", pos: { x: 95, y: 34 } },
+    ],
+  })),
+};
+
+test("중복 playerId: 킥오프 잔상 트윈이 **자기 팀** 킥오프 위치로 간다", async ({ page }) => {
+  await loadViewer(page, VIEWER_URL);
+  await page.evaluate((log) => window.postMessage({ type: "loadMatchLog", matchLog: log }, "*"), KO_LOG);
+  await page.waitForFunction(() => (window as any).__viewer?.ready(), null, { timeout: 15000 });
+  const maxHomeX = await page.evaluate(async () => {
+    const v = (window as any).__viewer;
+    v.autoPace(true);
+    v.seek(18);
+    v.play();
+    let mx = -1;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 6000) {
+      const h = v.curPlayers().find((p: any) => p.id === "P078" && p.team === "home");
+      if (h) mx = Math.max(mx, h.x);
+      await new Promise((r) => setTimeout(r, 8));
+    }
+    v.pause();
+    return mx;
+  });
+  /*
+   * ⚠️ 하한이 **계약의 절반**이다. 상한만 걸면, 병렬 부하로 샘플링이 트윈을 한 번도 못 본 경우
+   * mx 가 골 이전 값(10)에 머물러 **아무것도 관측하지 않고 통과**한다(실측: 변이체가 그렇게 살아남았다).
+   * 킥오프 자리(12)에 도달한 것을 함께 단언해 "봤다"를 증명한다.
+   */
+  expect(maxHomeX, `홈 P078 최대 x=${maxHomeX} — 킥오프 트윈을 실제로 관측해야`).toBeGreaterThanOrEqual(11.9);
+  expect(maxHomeX, `홈 P078 최대 x=${maxHomeX} — 어웨이 킥오프 자리(88)로 끌려가면 안 된다`).toBeLessThan(40);
 });
