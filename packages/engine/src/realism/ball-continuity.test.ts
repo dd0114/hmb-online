@@ -33,10 +33,15 @@ const MOVE_MIN_M = 3;
 /** 꺾임으로 셀 최소 각도(도). */
 const TURN_MIN_DEG = 20;
 /**
- * "누가 건드렸다"고 인정할 최대 거리(m). controlRange(공을 컨트롤할 수 있는 거리) + 한 틱 이동 여유.
+ * "누가 건드렸다"고 인정할 최대 거리(m). **닿을 수 있는 거리** + 한 틱 이동 여유.
  * 이 거리 밖에서 공이 꺾이면 접촉 없이 스스로 휜 것이다.
+ *
+ * #306: 상한을 `controlRange`(3.5m, 발로 잡는 거리)에서 `max(controlRange, aerial.rangeM)`
+ * 으로 넓혔다. 공중볼은 **뛰어올라 머리로** 맞히므로 닿는 거리가 발보다 넓고(`aerial.rangeM` 5m),
+ * 헤딩으로 꺾인 공은 그 반경 안에서 접촉이 일어난 것이다. 이 상한은 임계를 느슨하게 하려고
+ * 고른 값이 아니라 **config 에서 파생된 물리 상한**이다(반경을 줄이면 상한도 같이 줄어든다).
  */
-const TOUCH_REACH_M = cfg.contest.controlRange + cfg.speed.maxPerTick;
+const TOUCH_REACH_M = Math.max(cfg.contest.controlRange, cfg.contest.aerial.rangeM) + cfg.speed.maxPerTick;
 
 interface Kink {
   seed: string;

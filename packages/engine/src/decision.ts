@@ -7,6 +7,7 @@ import type { PassOption } from "./perception";
 import { fromFixed, fclamp, fdist, toFixed, stepToward, isqrt } from "./fixedmath";
 import { attackGoal, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
 import { passOptions, nearestOpponent, pressureCount } from "./perception";
+import { aimErrorDeg, aimWithError, deliverySpeedFx, isLofted, overhitOut, passPowerFx, shotPowerFx } from "./kick";
 
 /**
  * decision — 행동 선택.
@@ -18,9 +19,25 @@ import { passOptions, nearestOpponent, pressureCount } from "./perception";
 
 export type PassOutcome = "success" | "fail_intercept" | "fail_out";
 
+/**
+ * 볼 소유자의 행동. `speedFx`/`lofted` 는 #312/#306 에서 추가됐다 —
+ * **행동이 공의 물리를 결정한다**(구버전은 match.ts 가 config 상수를 대입했다).
+ */
 export type Action =
-  | { kind: "shoot"; xg: number; toX: number; toY: number; detail?: string }
-  | { kind: "pass"; receiver: SimPlayer; toX: number; toY: number; outcome: PassOutcome; long: boolean; claimant: SimPlayer | null }
+  | { kind: "shoot"; xg: number; toX: number; toY: number; speedFx: number; detail?: string }
+  | {
+      kind: "pass";
+      receiver: SimPlayer;
+      toX: number;
+      toY: number;
+      outcome: PassOutcome;
+      long: boolean;
+      claimant: SimPlayer | null;
+      /** #312: 이 패스의 세기(fixed m/tick). */
+      speedFx: number;
+      /** #306: 띄운 공인가(도착 시 헤딩 경합). */
+      lofted: boolean;
+    }
   | { kind: "dribble"; toX: number; toY: number }
   | { kind: "hold" };
 
@@ -77,6 +94,37 @@ export function xgAtPoint(
   xg *= central;
   xg *= 1 - 0.3 * fatigue;
   return { xg: fclamp(xg, 0.01, 0.9), distM };
+}
+
+/**
+ * 슛 실행 계획(#312 S5-B) — 세기와 조준점.
+ *
+ * 구버전은 **속도 상수(`shotBallSpeed` 14) + 골 중앙 정조준**이었다. 슛도 패스와 같은 축을 탄다:
+ * shooting 능력치가 세기를 정하고, 조준은 각도 오차만큼 흔들린다.
+ *
+ * 조준점의 y 는 **골포스트 안쪽으로 클램프**한다 — 유효/빗나감 판정은 `resolveShot` 의 xG·
+ * onTarget 롤이 소유하고 있고(그게 밸런스 노브다), 여기서 조준을 골문 밖으로 내보내면 그 판정을
+ * 기하가 몰래 덮어써 캘리브레이션이 이중이 된다. 지금 바꾸는 것은 "골문 어디로 가는가"뿐이다.
+ * (슛 **출발 지점**의 분산은 S5 소관 — `contest.shotAimSpreadM`.)
+ */
+export function planShot(
+  owner: SimPlayer,
+  config: EngineConfig,
+  rng: Rng,
+  pitch: Pitch,
+): { toX: number; toY: number; speedFx: number } {
+  const c = config.contest;
+  const scale = config.fixedScale;
+  const g = attackGoal(pitch, owner.side);
+  const speedFx = shotPowerFx(owner.attrs.shooting, config);
+  const deg = aimErrorDeg(c.shotAimErrorDeg, owner.attrs.shooting, c.passAimAttrSwing, 0, 0);
+  const hit = aimWithError(owner.posFx.x, owner.posFx.y, g.x, g.y, { errDeg: deg, powerErrFrac: 0 }, rng);
+  const halfPost = toFixed(config.pitch.goalWidth / 2, scale);
+  return {
+    toX: g.x,
+    toY: fclamp(hit.y, g.y - halfPost, g.y + halfPost),
+    speedFx,
+  };
 }
 
 /** 슛 xG 계산(거리·각도·슈팅속성). */
@@ -156,10 +204,14 @@ function nearestOpponentTo(
     const dx = p.posFx.x - x;
     const dy = p.posFx.y - y;
     const d = dx * dx + dy * dy;
-    if (d < bestD) {
-      bestD = d;
-      best = p;
+    if (d > bestD) continue;
+    // 동률은 전순서(거리² → idHash → id)로. 배열 순서에 기대면 퇴장 splice 가 승자를 바꾼다(§5-3).
+    if (d === bestD && best) {
+      const tie = p.idHash !== best.idHash ? p.idHash < best.idHash : p.id < best.id;
+      if (!tie) continue;
     }
+    bestD = d;
+    best = p;
   }
   return best;
 }
@@ -242,6 +294,34 @@ function leadAim(
   return aim;
 }
 
+export interface PassPlan {
+  toX: number;
+  toY: number;
+  outcome: PassOutcome;
+  claimant: SimPlayer | null;
+  /** #312: 이 패스의 **세기**(fixed m/tick). 상수가 아니라 선수가 정한 값이다. */
+  speedFx: number;
+  /** #306: 띄워 보내는가(공중볼 → 도착 시 헤딩 경합). */
+  lofted: boolean;
+}
+
+/**
+ * 패스 실행 계획(#312 S5-B 재작성).
+ *
+ * **무엇이 바뀌었나**: 구버전은 성공/실패를 굴린 뒤 성공이면 리시버를 **정조준**, 실패면
+ * 다른 목표(최근접 상대 / 경계 밖)를 **정조준**했다. 즉 "빗나감 = 다른 목표를 정확히 맞히는 것"
+ * 이고 각도·세기 오차가 하나도 없었다(hero H1).
+ *
+ * 이제는:
+ *  1. 선수가 **세기**를 정한다(`passPowerFx`: 거리·passing·압박).
+ *  2. 그 세기로 리드조준한 지점에 **조준 오차**를 얹는다(`aimWithError`: 각도 + 세기 흔들림).
+ *  3. 도달점은 그 오차의 결과다. 실패 롤이면 오차가 크고(`passFailAimErrorMult`), 회수자는
+ *     리시버 근처가 아니라 **실제 도달점** 최근접 상대다.
+ *
+ * ⚠️ 성공/실패 롤 자체(`computePassProb`)는 **그대로 둔다** — 벤치 78–85% 캘리브레이션의 근간이고
+ * (`passOutcomeAuthoritative`), 오차만으로 성공률을 만들면 그 노브가 사라진다. 바뀐 것은
+ * **결과의 기하**이지 성공률의 정의가 아니다.
+ */
 export function planPass(
   state: SimState,
   owner: SimPlayer,
@@ -249,48 +329,69 @@ export function planPass(
   config: EngineConfig,
   rng: Rng,
   pitch: Pitch,
-): { toX: number; toY: number; outcome: PassOutcome; claimant: SimPlayer | null } {
+): PassPlan {
   const c = config.contest;
   const scale = config.fixedScale;
   const receiver = opt.receiver;
 
   const prob = computePassProb(state, owner, opt, config, pitch);
+  const pressers = pressureCount(state, owner, config, c.passPressureRangeM);
+
+  // --- 세기: 선수가 정한다(거리·능력치·압박). ---
+  const lofted = isLofted(opt.dist, opt.long, config);
+  const speedFx = deliverySpeedFx(
+    passPowerFx(opt.dist, owner.attrs.passing, pressers, config),
+    lofted,
+    config,
+  );
+
+  // --- 조준 오차: 능력치로 줄고 압박으로 커진다. ---
+  const baseDeg = aimErrorDeg(
+    c.passAimErrorDeg,
+    owner.attrs.passing,
+    c.passAimAttrSwing,
+    pressers,
+    c.passPressureAimPenalty,
+  );
+  // 리드패스(#181): 리시버가 **도착 시점에 있을 자리**로 찬다 → 공과 사람이 같은 지점에서 만난다.
+  // 예측에 쓰는 공속은 이제 상수가 아니라 **이 패스의 실제 세기**다(느린 패스는 더 앞을 본다).
+  const intended = leadAim(owner.posFx, receiver, speedFx, config, pitch);
 
   if (rng.next() < prob) {
-    // 리드패스(#181): 리시버가 **도착 시점에 있을 자리**로 찬다 → 공과 사람이 같은 지점에서 만난다.
-    const aim = leadAim(owner.posFx, receiver, toFixed(config.ball.passSpeed, scale), config, pitch);
-    return { toX: aim.x, toY: aim.y, outcome: "success", claimant: receiver };
+    const hit = aimWithError(
+      owner.posFx.x,
+      owner.posFx.y,
+      intended.x,
+      intended.y,
+      { errDeg: baseDeg, powerErrFrac: c.passPowerErrorFrac },
+      rng,
+    );
+    // 성공 롤이 난 패스는 인플레이로 유지한다(오차가 라인 밖까지 밀지 않게 클램프).
+    const aim = clampToPitch(pitch, hit.x, hit.y);
+    return { toX: aim.x, toY: aim.y, outcome: "success", claimant: receiver, speedFx, lofted };
   }
+
+  const failErr = { errDeg: baseDeg * c.passFailAimErrorMult, powerErrFrac: c.passPowerErrorFrac * c.passFailAimErrorMult };
 
   // 실패: 아웃 vs 인플레이 턴오버.
   if (rng.next() < c.passFailOutProb) {
-    // 아웃오브바운즈: 수신자에서 가장 가까운 경계 밖으로 유도.
-    const rx = receiver.posFx.x;
-    const ry = receiver.posFx.y;
-    const margin = Math.round(4 * scale);
-    const dLeft = rx;
-    const dRight = pitch.wFx - rx;
-    const dTop = ry;
-    const dBottom = pitch.hFx - ry;
-    const min = Math.min(dLeft, dRight, dTop, dBottom);
-    let toX = rx;
-    let toY = ry;
-    if (min === dTop) toY = -margin;
-    else if (min === dBottom) toY = pitch.hFx + margin;
-    else if (min === dLeft) toX = -margin;
-    else toX = pitch.wFx + margin;
+    // 오버힛 — **같은 방향으로 너무 세게** 차서 라인을 넘긴다(구버전: 최근접 경계를 정조준).
+    // rng 소비를 성공 경로와 맞추기 위해 오차를 먼저 굴리고, 그 방향으로 밖까지 밀어낸다.
+    const hit = aimWithError(owner.posFx.x, owner.posFx.y, intended.x, intended.y, failErr, rng);
+    const out = overhitOut(owner.posFx.x, owner.posFx.y, hit.x, hit.y, pitch, Math.round(4 * scale));
     // 아웃으로 나가는 공은 아무도 잡지 않는다(경계에서 resolveOut).
-    return { toX, toY, outcome: "fail_out", claimant: null };
+    return { toX: out.x, toY: out.y, outcome: "fail_out", claimant: null, speedFx, lofted };
   }
 
-  // 인플레이 턴오버: 수신자 근처 상대에게 유도(도착 시 상대 컨트롤 → interception).
-  // 실제 소유 판정은 resolveArrival 이 passOutcome 을 존중(authoritative)해 상대에게 준다.
-  const thief = nearestOpponentTo(state, owner.side, receiver.posFx.x, receiver.posFx.y);
+  // 인플레이 턴오버 — 크게 빗나간 지점에 떨어지고, **그 지점** 최근접 상대가 회수한다.
+  // (구버전은 "최근접 상대를 정조준"이라, 빗나간 패스가 상대 발밑으로 정확히 배달됐다.)
+  const hit = aimWithError(owner.posFx.x, owner.posFx.y, intended.x, intended.y, failErr, rng);
+  const drop = clampToPitch(pitch, hit.x, hit.y);
+  const thief = nearestOpponentTo(state, owner.side, drop.x, drop.y);
   if (thief) {
-    const aim = leadAim(owner.posFx, thief, toFixed(config.ball.passSpeed, scale), config, pitch);
-    return { toX: aim.x, toY: aim.y, outcome: "fail_intercept", claimant: thief };
+    return { toX: drop.x, toY: drop.y, outcome: "fail_intercept", claimant: thief, speedFx, lofted };
   }
-  return { toX: receiver.posFx.x, toY: receiver.posFx.y, outcome: "success", claimant: receiver };
+  return { toX: drop.x, toY: drop.y, outcome: "success", claimant: receiver, speedFx, lofted };
 }
 
 /**
@@ -436,7 +537,8 @@ export function decideBallOwner(
   let r = rng.next() * total;
 
   if ((r -= wShoot) < 0) {
-    return { kind: "shoot", xg, toX: goal.x, toY: goal.y, detail: shootDetail };
+    const sp = planShot(owner, config, rng, pitch);
+    return { kind: "shoot", xg, toX: sp.toX, toY: sp.toY, speedFx: sp.speedFx, detail: shootDetail };
   }
   if ((r -= wPass) < 0 && bestOpt) {
     const plan = planPass(state, owner, bestOpt, config, rng, pitch);
@@ -448,6 +550,8 @@ export function decideBallOwner(
       outcome: plan.outcome,
       long: bestOpt.long,
       claimant: plan.claimant,
+      speedFx: plan.speedFx,
+      lofted: plan.lofted,
     };
   }
   if ((r -= wDribble) < 0) {
@@ -461,7 +565,13 @@ export function decideBallOwner(
   return { kind: "hold" };
 }
 
-/** side 팀에서 공에 가장 가까운 선수(압박 담당 지정용). */
+/**
+ * side 팀에서 공에 가장 가까운 아웃필더(루즈볼 쟁탈 지정용).
+ *
+ * 동률은 **전순서**(거리² → idHash → id)로 깬다(§5-3). 구버전은 `d < bestD` 뿐이라 완전 동률에서
+ * `state.players` 배열 순서가 승자를 정했는데, 퇴장이 splice 로 그 순서를 바꾼다 → 같은 상태에서
+ * 다른 사람이 공을 주우러 가는 무음 비결정이 된다.
+ */
 function closestToBall(state: SimState, side: SimPlayer["side"]): SimPlayer | null {
   let best: SimPlayer | null = null;
   let bestD = Infinity;
@@ -470,10 +580,13 @@ function closestToBall(state: SimState, side: SimPlayer["side"]): SimPlayer | nu
     const dx = p.posFx.x - state.ball.posFx.x;
     const dy = p.posFx.y - state.ball.posFx.y;
     const d = dx * dx + dy * dy;
-    if (d < bestD) {
-      bestD = d;
-      best = p;
+    if (d > bestD) continue;
+    if (d === bestD && best) {
+      const tie = p.idHash !== best.idHash ? p.idHash < best.idHash : p.id < best.id;
+      if (!tie) continue;
     }
+    bestD = d;
+    best = p;
   }
   return best;
 }
@@ -590,10 +703,13 @@ export function decideOffBall(
   // 취소돼 공격이 죽는다(실측 슛/팀 9.6→4.9). 도착 후 굴러가는 국면(kind="loose")에만 적용.
   const loose = ball.flight;
   if (loose && loose.kind === "loose" && ball.owner == null) {
+    // #313: **주석과 코드가 어긋나 있었다.** 주석은 "양 팀 최근접이 간다"인데 코드는
+    // `!loose.claimant` 조건 탓에 claimant 가 있으면 **상대 팀은 아무도 안 쫓았다** — 계획된
+    // 리시버 혼자 주우러 가는, 경합이 아닌 그림이다(감사 지적). 실제 루즈볼은 양 팀이 다툰다.
     const mine = closestToBall(state, player.side);
     // #231: claimant 는 상대일 수도 있다 — id 만 비교하면 같은 id 의 우리 팀 선수가 남의 공을 주우러 간다.
     const claimedByMe = loose.claimant === player.id && claimantSideOf(loose) === player.side;
-    if (claimedByMe || (!loose.claimant && mine && mine.id === player.id)) {
+    if (claimedByMe || (mine != null && mine.id === player.id)) {
       player.targetFx = clampToPitch(pitch, ball.posFx.x, ball.posFx.y);
       return;
     }
