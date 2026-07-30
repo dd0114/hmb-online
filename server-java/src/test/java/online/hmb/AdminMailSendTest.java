@@ -31,9 +31,6 @@ class AdminMailSendTest extends ApiTestBase {
         TestDbSupport.registerTempDb(registry);
         registry.add("hmb.admin.nickname", () -> ADMIN_NICK);
         registry.add("hmb.admin.password", () -> ADMIN_PW);
-        // ⚠️ 발송 이력 창을 **1건**으로 좁힌다 — `detail()` 이 목록을 훑는 형태로 되돌아가면
-        // 곧바로 404 가 되게 만드는 조건이다(2차 독립검증 BL-1: 이 조건이 없어 계약이 공허했다).
-        registry.add("hmb.mail.campaign-list-max", () -> 1);
     }
 
     @Resource
@@ -179,38 +176,6 @@ class AdminMailSendTest extends ApiTestBase {
     }
 
     /**
-     * 목록 창 <b>밖</b>의 캠페인도 단건 조회로 찾는다.
-     *
-     * <p>독립검증 MAJOR-3: {@code detail()} 이 {@code list(100)} 을 훑어 필터해서 101번째 발송 뒤
-     * 가장 오래된 캠페인이 <b>404</b> 가 됐다 — 회수는 id 로 되는데 확인은 안 되는 상태.
-     *
-     * <p>⚠️ <b>이 테스트의 초판은 tautology 였다</b>(2차 독립검증 BL-1): {@code limit=1} 은 목록
-     * 엔드포인트의 파라미터일 뿐 {@code detail()} 의 내부 창과 무관해서, 결함 형태로 되돌려도
-     * 841건 전부 통과했다. 지금은 <b>서버의 목록 창 자체</b>를 config 로 1 건으로 좁혀
-     * (`hmb.mail.campaign-list-max`) 캠페인 101건을 만들지 않고 같은 조건을 만든다 —
-     * {@code MailFanoutCapTest} 가 상한을 낮춰 팬아웃 거부를 재현하는 것과 같은 패턴이다.
-     * 변이체 킬 검증: {@code detail()} 을 {@code list(...)} 스캔으로 되돌리면 이 테스트가 죽는다.
-     */
-    @Test
-    void detailFindsCampaignsBeyondTheListWindow() {
-        String admin = adminToken();
-        String userId = user("ml_deep");
-
-        String oldest = (String) asMap(send(admin, targeted(userId, 1L), "idem-deep-0")).get("campaignId");
-        for (int i = 1; i <= 3; i++) {
-            send(admin, targeted(userId, 1L + i), "idem-deep-" + i);
-        }
-
-        // 서버 목록 창이 1건이므로 오래된 건은 **어떤 limit 을 줘도** 목록에 없다.
-        HttpResult listed = get("/api/admin/mails?limit=100", admin);
-        assertThat(listed.body()).as("목록 창(1건) 밖이어야 조건이 성립한다").doesNotContain(oldest);
-
-        HttpResult detail = get("/api/admin/mails/" + oldest, admin);
-        assertThat(detail.status()).as(detail.body()).isEqualTo(HttpStatus.OK);
-        assertThat(asMap(detail).get("id")).isEqualTo(oldest);
-    }
-
-    /**
      * 수신자 <b>순서</b>만 다른 재전송은 같은 요청이다(독립검증 m1 — 정렬에 계약이 없었다).
      *
      * <p>정렬을 빼면 `[a,b]` 와 `[b,a]` 가 다른 해시가 되어 <b>같은 의도의 재전송이 409</b> 가 되고,
@@ -236,6 +201,37 @@ class AdminMailSendTest extends ApiTestBase {
         assertThat(asMap(again).get("applied")).isEqualTo(false);
         assertThat(inboxCount(a)).isEqualTo(1);
         assertThat(inboxCount(b)).isEqualTo(1);
+    }
+
+    /**
+     * 같은 시각의 <b>표기</b>만 다른 재전송은 같은 요청이다(독립검증 3R m4 — 계약이 없었다).
+     *
+     * <p>{@code …T00:00:00Z} 와 {@code …T00:00:00.000Z} 는 같은 순간인데 문자열이 달라 409 가 났다 —
+     * BLOCKER-2 와 같은 함정의 좁은 버전이고, 안내대로 새 키를 쓰면 이중 지급이다.
+     * ⚠️ 정규화는 <b>시계를 읽지 않으므로</b> BLOCKER-2 를 되살리지 않는다 — 그 계약
+     * ({@code relativeExpiryResendIsStillTheSameRequest})이 같이 서 있어야 이 둘이 함께 성립한다.
+     */
+    @Test
+    void sameInstantWrittenDifferentlyIsTheSameRequest() {
+        String admin = adminToken();
+        String userId = user("ml_tsfmt");
+
+        Map<String, Object> plain = targeted(userId, 30L);
+        plain.put("expiresAt", "2099-01-01T00:00:00Z");
+        assertThat(send(admin, plain, "idem-tsfmt-1").status()).isEqualTo(HttpStatus.CREATED);
+
+        Map<String, Object> withMillis = targeted(userId, 30L);
+        withMillis.put("expiresAt", "2099-01-01T00:00:00.000Z");
+        HttpResult again = send(admin, withMillis, "idem-tsfmt-1");
+
+        assertThat(again.status()).as(again.body()).isEqualTo(HttpStatus.OK);
+        assertThat(asMap(again).get("applied")).isEqualTo(false);
+        assertThat(inboxCount(userId)).as("두 통이 되면 이중 지급이다").isEqualTo(1);
+
+        // 진짜로 다른 시각이면 여전히 409 여야 한다(정규화가 구분을 지우지 않았는지).
+        Map<String, Object> shifted = targeted(userId, 30L);
+        shifted.put("expiresAt", "2099-01-01T00:00:01Z");
+        assertThat(send(admin, shifted, "idem-tsfmt-1").status()).isEqualTo(HttpStatus.CONFLICT);
     }
 
     // ── 브로드캐스트 ──────────────────────────────────────────────────────

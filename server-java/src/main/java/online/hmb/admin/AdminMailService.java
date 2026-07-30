@@ -479,14 +479,29 @@ public class AdminMailService {
         }
     }
 
-    /** 실패 감사는 <b>실패한 트랜잭션 밖</b>에서 써야 남는다(같이 롤백되면 이력이 사라진다). */
+    /**
+     * 실패 감사는 <b>실패한 트랜잭션 밖</b>에서 써야 남는다(같이 롤백되면 이력이 사라진다).
+     *
+     * <p>⚠️ <b>감사 자체가 실패해도 원인 예외를 덮지 않는다</b>(독립검증 3R m-3). 이 경로는 정의상
+     * "무언가 이미 실패한" 상황이고, 그 이유가 DB 장애(SQLITE_BUSY·디스크)면 감사 INSERT 도 같은
+     * 이유로 던진다 — 그대로 두면 운영자가 보는 예외가 <b>감사 실패</b>로 바뀌어 근본 원인이 사라진다.
+     * 남길 수 있으면 남기고, 못 남기면 조용히 포기하는 쪽이 낫다(원인 > 이력).
+     */
     private void audit(String actorUserId, String action, String result, String reason,
                        Map<String, Object> detail) {
-        txRunner.run(() -> {
-            auditInTx(actorUserId, action, result, reason, detail);
-            return null;
-        });
+        try {
+            txRunner.run(() -> {
+                auditInTx(actorUserId, action, result, reason, detail);
+                return null;
+            });
+        } catch (RuntimeException auditFailure) {
+            log.warn("우편 운영 감사 기록 실패 — 원인 예외를 덮지 않는다: action={} result={}",
+                    action, result, auditFailure);
+        }
     }
+
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(AdminMailService.class);
 
     private void auditInTx(String actorUserId, String action, String result, String reason,
                            Map<String, Object> detail) {

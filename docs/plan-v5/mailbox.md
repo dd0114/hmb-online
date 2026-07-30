@@ -188,8 +188,12 @@ POST /api/mails/{id}/claim       → { id, claimed:true, applied:true,
   `applyGems(userId, gems, "mail_claim", userMailId)` · 카드는 `user_players` upsert(`INSERT OR IGNORE` +
   `count+1`, `GachaService.upsertOwned` 와 같은 형태 — 공용 헬퍼로 뽑을지는 W2 구현 판단).
   ⚠️ **원장 유니크가 CAS 의 백스톱**이다. CAS 가 뚫려도(미래의 잘못된 리팩터) 돈은 두 번 나가지 않는다.
-- **만료**: `expires_at < now` 면 **410 GONE**(`MAIL_EXPIRED`). 회수됨(`revoked_at`)도 같은 410
-  (사유 문구만 다름) — 유저에게 "운영이 회수했다"까지 노출할 필요는 없고, 못 받는다는 사실이 같다.
+- **만료·회수**: **410 GONE**(code `GONE`, 사유 문구만 다르다) — 유저에게 "운영이 회수했다"까지
+  노출할 필요는 없고, 못 받는다는 사실이 같다.
+  ⚠️ **이미 수령한 뒤에 만료·회수된 것은 예외다 — 200 `applied:false`.** 이미 받은 사람에게 실패를
+  보일 이유가 없다(독립검증 m3 가 이 교집합을 410 으로 실측했다). 그래서 만료·회수 판정을 **CAS
+  UPDATE 안**에 넣고, 못 가져간 이유는 행을 다시 읽어 구분한다 — 판정 지점을 하나로 유지하면서
+  이 예외가 자동으로 성립한다.
 - **남의 메일**: 404(존재를 숨긴다 — 공지 단건의 SCHEDULED 처리와 같은 규율).
 - **첨부 0**(텍스트 전용)이면 `claim` 은 열람 확인일 뿐 지급이 없다. 그래도 같은 엔드포인트다
   (클라가 "첨부가 있나"로 분기해 다른 API 를 부르면 판정이 두 곳이 된다).
@@ -277,6 +281,9 @@ W2 에서 **서버 구현과 같은 PR** 에 넣는다(계약이 코드보다 �
 닉네임에 하한을 주면 줄어들 곳이 없어 **지갑 칩 위로 겹쳐 그려졌다**(캡처 `.smoke/p323-opt0-now.png`).
 대안 3개(로그아웃 아이콘화 34px 절약 / 지갑 축약 68px / 두 줄 허용)를 **실제 화면에 적용해 캡처**했고
 한 줄을 지키는 것은 닉네임 제거뿐이었다 → hero 가 그 안을 골랐다.
+⚠️ "두 줄 허용"은 `flex-wrap: wrap` 만으로는 **아예 두 줄이 되지 않는다** — `headerLeft` 가 `flex: 1`
+이라 줄바꿈 대신 줄어든다(캡처 `p323-optD-wrap.png` 가 opt0 과 같은 그림인 이유). 실제로 두 줄로
+만들려면 `flex-basis: 100%` 가 필요하고 그건 #248 의 "헤더를 한 줄 늘리지 않는다"를 깨는 별개 결정이다.
 
 - **정보 손실 0**: 바로 아래 팀 카드가 "{닉네임}의 팀", [내 정보] 탭에도 그대로.
 - **되살리는 조건**: 오른쪽에서 무언가를 **먼저** 빼야 한다(왼쪽에 넣는 것만으로는 자리가 없다).
@@ -371,6 +378,7 @@ curl -s -X POST "$API/api/admin/mails/<campaignId>/revoke" \
 
 ### 상한을 바꿔야 할 때 (무배포)
 `hmb.mail.*` 는 전부 env 로 뜬다 — `HMB_MAIL_FANOUTMAX` · `HMB_MAIL_MAXPOINTS` · `HMB_MAIL_MAXGEMS` ·
-`HMB_MAIL_MAXPLAYERKINDS` · `HMB_MAIL_LISTLIMIT`. 컨테이너 재기동만 필요하고 이미지는 그대로다.
+`HMB_MAIL_MAXPLAYERKINDS` · `HMB_MAIL_LISTLIMIT` · `HMB_MAIL_CAMPAIGNLISTMAX`(발송 이력 창) ·
+`HMB_MAIL_BUSYRETRY_MAXATTEMPTS`/`HMB_MAIL_BUSYRETRY_BACKOFFMS`(동시 수령 재시도). 컨테이너 재기동만 필요하고 이미지는 그대로다.
 ⚠️ 상한을 올리기 전에 **나눠 보내기**를 먼저 검토해라 — 상한은 오타 한 번의 폭을 막는 장치이고,
 전체 발송은 되돌릴 수 없는 인플레이션이다(회수는 미수령분만 막는다).

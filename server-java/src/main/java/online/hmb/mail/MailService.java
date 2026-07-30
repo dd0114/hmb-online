@@ -157,7 +157,26 @@ public class MailService {
 
     public ClaimResult claim(String userId, String mailId) {
         String now = Notices.now(clock);
-        return inTxWithBusyRetry(() -> claimInTx(userId, mailId, now));
+        ClaimResult result = inTxWithBusyRetry(() -> claimInTx(userId, mailId, now));
+        if (result != null) {
+            return result;
+        }
+        // ⚠️ **못 가져간 이유는 트랜잭션 밖에서 읽는다**(독립검증 3R m-2). 진단은 순수 읽기인데
+        // 쓰기 트랜잭션 안에 두면 그만큼 잠금을 더 오래 쥐고, 고경합(브로드캐스트 직후 동시 [받기])
+        // 에서 SQLITE_BUSY 409 가 늘어난다 — A/B 실측 평균 8.0 → 17.9 였다. 쓰기 트랜잭션에는
+        // **CAS 와 지급만** 남긴다.
+        Row after = require(userId, mailId);
+        if (after.claimedAt != null) {
+            // 이미 수령했다 = 같은 의도의 재전송(더블탭·다중 탭). 실패가 아니라 사실대로 답한다.
+            // 그 뒤에 만료·회수가 걸렸어도 마찬가지다 — 이미 받은 사람에겐 아무 일도 아니다.
+            return new ClaimResult(mailId, true, false, Granted.NONE, wallet(userId));
+        }
+        if (after.revokedAt != null) {
+            throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
+                    "이 우편물은 회수되어 받을 수 없습니다");
+        }
+        throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
+                "수령 기간이 지난 우편물입니다");
     }
 
     /**
@@ -203,9 +222,14 @@ public class MailService {
         }
     }
 
+    /** @return null = CAS 가 0행 — 지급하지 않았다(이유는 호출자가 트랜잭션 밖에서 진단한다). */
     private ClaimResult claimInTx(String userId, String mailId, String now) {
-        Row row = require(userId, mailId);
-
+        // ⚠️ **읽기로 시작하지 않는다.** 예전엔 여기서 `require()` 로 행을 먼저 읽었는데, 그러면
+        // 트랜잭션이 **읽기로 시작해 쓰기로 승격**하는 모양이 되어 WAL 에서 `SQLITE_BUSY_SNAPSHOT`
+        // 에 그대로 노출된다(`SqliteErrors#isBusy` 주석이 설명하는 바로 그 함정). 첫 문장을 UPDATE 로
+        // 두면 그 창이 사라진다. 없는 우편·남의 우편은 자연히 0행이 되고, 404 판정은 트랜잭션 밖
+        // 진단(`claim`)의 `require()` 가 한다.
+        //
         // ⚠️ **판정 지점은 이 UPDATE 하나뿐이다.** 조건을 전부 여기 넣는 이유가 두 가지다:
         //
         //  ① 앞에서 `row.claimedAt != null` 로 미리 걸러 주면 더블탭 계약이 그 선검사만 태우고
@@ -226,22 +250,13 @@ public class MailService {
                 .update();
 
         if (taken == 0) {
-            // 왜 못 가져갔나를 **행을 다시 읽어** 구분한다(요청 순간의 값이 아니라 지금 값으로).
-            Row after = require(userId, mailId);
-            if (after.claimedAt != null) {
-                // 이미 수령했다 = 같은 의도의 재전송(더블탭·다중 탭). 실패가 아니라 사실대로 답한다.
-                // 그 뒤에 만료·회수가 걸렸어도 마찬가지다 — 이미 받은 사람에겐 아무 일도 아니다.
-                return new ClaimResult(mailId, true, false, Granted.NONE, wallet(userId));
-            }
-            if (after.revokedAt != null) {
-                throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
-                        "이 우편물은 회수되어 받을 수 없습니다");
-            }
-            throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
-                    "수령 기간이 지난 우편물입니다");
+            // **왜** 못 가져갔는지는 여기서 묻지 않는다 — 그 진단은 읽기라 트랜잭션 밖(claim)에서 한다.
+            // null = "이 트랜잭션에서 지급하지 않았다" 는 신호일 뿐이다.
+            return null;
         }
 
-        MailAttachments att = parse(row.payloadJson);
+        // 여기까지 왔다 = 내가 가져갔다. 첨부는 **그때** 읽는다(경합에서 지는 요청은 읽지도 않는다).
+        MailAttachments att = parse(require(userId, mailId).payloadJson);
 
         // ② 지급 — 전부 **기존 경로**. ref_id = 이 우편물 id 라 원장 유니크가 두 번째를 막는다.
         if (att.points() != 0) {

@@ -88,9 +88,20 @@ test("#323 헤더 3안 비교 캡처 (390px)", async ({ page }) => {
   await header().screenshot({ path: `${OUT}p323-opt0-now.png` });
   await nickBack.evaluate((el) => el.remove());
 
-  // D. 전부 유지하고 **두 줄 허용** — 무엇도 지우지 않는 대신 헤더가 한 줄 더 차지한다.
+  // D. "두 줄 허용" 안 — **실제로는 두 줄이 되지 않는다**(캡처가 그걸 보여준다).
+  //
+  // `flex-wrap: wrap` 만으로는 안 된다: `headerLeft` 가 `flex: 1` 이라 **줄바꿈 대신 줄어들고**,
+  // 닉네임 하한을 주면 줄어들 곳이 없어 그대로 겹친다 — 결과 그림이 opt0(현재 상태)과 같다.
+  // 두 줄로 만들려면 `headerLeft`/`headerRight` 에 `flex-basis: 100%` 를 줘야 하고, 그건
+  // "헤더를 한 줄 늘리지 않는다"(#248)를 정면으로 깨는 별개 결정이다.
+  // ⚠️ 닉네임을 같이 넣는 이유 = 안 넣으면 A안과 **바이트 동일한** 그림이 나와 근거가 사라진다
+  //    (3차 독립검증 m-6, m8 과 같은 결함).
   const wrapStyle = await page.addStyleTag({
-    content: `header [class*="headerRow"] { flex-wrap: wrap !important; }`,
+    content: `header [class*="headerRow"] { flex-wrap: wrap !important; }
+              header [class*="headerLeft"]::before {
+                content: "감독 박"; font-size: 15px; font-weight: 700; white-space: nowrap;
+                min-width: 4em; color: var(--text);
+              }`,
   });
   await header().screenshot({ path: `${OUT}p323-optD-wrap.png` });
   await wrapStyle.evaluate((el) => el.remove());
