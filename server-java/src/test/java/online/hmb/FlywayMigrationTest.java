@@ -92,7 +92,14 @@ class FlywayMigrationTest {
             //   구워져 있었다). 리비전을 쌓고 활성 포인터만 옮긴다 — 전부 끄면 구운 폴백으로 롤백.
             //   ⚠️ 활성 최대 하나는 **부분 유니크 인덱스**가 강제한다(코드로만 지키면 동시 활성화
             //   두 건이 "새로고침마다 아트가 바뀌는" 상태를 만든다).
-            "char_bundles"
+            "char_bundles",
+            // V33 우편함(2) — #323: 발송 1건 = mail_campaigns 1행(본문·첨부·대상·만료가 여기 하나에),
+            //   유저 × 캠페인 = user_mails 1행(**상태만** 산다). ⚠️ **지급 원장을 새로 만들지 않았다** —
+            //   G 는 point_ledger, Z 는 gem_ledger, 카드는 user_players 가 계속 SoT 이고 수령이
+            //   `ref_id = user_mails.id` 로 기존 멱등 인덱스에 얹힌다. 우편함이 자기 원장을 가지면
+            //   "이 유저의 골드가 왜 늘었나"의 답이 두 곳이 된다.
+            "mail_campaigns",
+            "user_mails"
     );
 
     @Test
