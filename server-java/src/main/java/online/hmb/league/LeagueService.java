@@ -72,6 +72,9 @@ public class LeagueService {
     private final EconomyService economyService;
 
     private final int botTeamCount;
+    /** 선발 인원(포메이션 슬롯 0..10). */
+    private static final int STARTER_COUNT = 11;
+
     private final int rosterSize;
     private final int promoteRankMax;
     private final int relegateRankMin;
@@ -593,7 +596,7 @@ public class LeagueService {
                                       Map<String, List<PlayerRow>> byGrade,
                                       LeagueDataService.Division spec, String formation) {
         if (spec == null) {
-            return sampleRosterLegacy(rng, gkPool, byGrade);
+            return sampleRosterLegacy(rng, gkPool, byGrade, formation);
         }
         // (등급, 포지션) 2차원 큐. 팀 내 중복 없음.
         Map<String, Map<String, List<PlayerRow>>> pool = new LinkedHashMap<>();
@@ -622,7 +625,7 @@ public class LeagueService {
         if (gk != null) {
             roster.add(gk.id());
         }
-        for (int i = 0; i < outfieldGrades.size() && roster.size() < 11; i++) {
+        for (int i = 0; i < outfieldGrades.size() && roster.size() < STARTER_COUNT; i++) {
             PlayerRow p = takeAt(pool, outfieldGrades.get(i), positions.get(i + 1));
             if (p != null) {
                 roster.add(p.id());
@@ -727,9 +730,21 @@ public class LeagueService {
     /**
      * 구 로스터 구성(디비전 표 없는 발행물 폴백) — GK 1(시드) + 등급-층화 라운드로빈.
      * 이 경로가 살아 있어야 `league.v1.json` 으로 되돌리는 롤백이 성립한다.
+     *
+     * <p><b>#328 — 선발 11칸은 포메이션 포지션을 지킨다.</b> 종전엔 포지션을 아예 보지 않고 등급
+     * 라운드로빈으로만 채웠는데, 그러면 <b>골키퍼가 필드 슬롯에 앉는다</b>. 엔진의 GK 분기
+     * ({@code decision.ts})는 {@code basePosition} 을 <b>읽기 전에 반환</b>하고 자기 골문 앞으로 가므로,
+     * 그 팀은 경기 내내 10명 이하로 싸운다(라이브 실측: 어웨이 GK 3명이 전 경기 x 95~101 상주,
+     * 골라인 105). 리그 승패·득실이 이것에 좌우됐다.
+     *
+     * <p>이 폴백이 지키는 것은 <b>등급 분배</b>(=v1 롤백의 목적)이지 "포지션을 안 보는 것"이 아니다 —
+     * 그건 #252 가 이미 <b>선존 결함</b>이라고 판정한 동작이다(`opponent-balance.md` §6.1).
+     * 그래서 등급 라운드로빈은 그대로 두고 <b>포지션만</b> 포메이션에 맞춘다.
+     *
+     * <p>벤치는 종전대로 포지션 무관 — 피치에 서지 않으므로 위 문제가 없다.
      */
     private List<String> sampleRosterLegacy(SplittableRandom rng, List<PlayerRow> gkPool,
-                                            Map<String, List<PlayerRow>> byGrade) {
+                                            Map<String, List<PlayerRow>> byGrade, String formation) {
         List<String> roster = new ArrayList<>();
         if (!gkPool.isEmpty()) {
             roster.add(gkPool.get(rng.nextInt(gkPool.size())).id());
@@ -741,6 +756,16 @@ public class LeagueService {
             shuffle(rng, pool);
             remaining.put(grade, pool);
         }
+        // 선발 아웃필드 10칸 — 포지션은 포메이션이, 등급은 라운드로빈이 정한다.
+        List<String> positions = startingPositions(formation);
+        int gradeCursor = 0;
+        for (int slot = 1; slot < positions.size() && roster.size() < STARTER_COUNT; slot++) {
+            PlayerRow p = takeLegacyAt(remaining, positions.get(slot), gradeCursor++);
+            if (p != null) {
+                roster.add(p.id());
+            }
+        }
+        // 벤치(그리고 위에서 못 채운 자리) — 종전 그대로 등급 라운드로빈.
         while (roster.size() < rosterSize) {
             boolean progressed = false;
             for (String grade : GRADE_ORDER) {
@@ -758,6 +783,36 @@ public class LeagueService {
             }
         }
         return roster;
+    }
+
+    /**
+     * 레거시 폴백의 한 칸 뽑기 (#328). {@code gradeCursor} 에서 시작해 등급을 라운드로빈하며
+     * <b>요청 포지션</b>을 찾는다. 그 포지션이 전 등급에서 마르면 <b>골키퍼를 뺀</b> 아무나로 떨어진다 —
+     * 팀은 서야 하지만 <b>필드 슬롯에 골키퍼를 앉히는 것만은</b> 하지 않는다(그게 이 결함의 실체다).
+     *
+     * <p><b>public 인 이유</b>({@link #startingPositions} 와 같다): 이 폴백 분기는 <b>실 카탈로그로도
+     * 픽스처 카탈로그로도 밟히지 않는다</b> — 두 풀 다 포지션이 넉넉해 정확 매치가 늘 성공한다.
+     * 그래서 시즌을 돌리는 통합 테스트로는 "골키퍼를 안 집는다"를 검증할 수 없고(변이체가 살아남는다),
+     * 포지션이 마른 풀을 직접 만들어 태워야 한다. 방어 코드일수록 계약이 필요하다.
+     */
+    public static PlayerRow takeLegacyAt(Map<String, List<PlayerRow>> remaining, String position, int gradeCursor) {
+        int n = GRADE_ORDER.size();
+        for (boolean exact : new boolean[] {true, false}) {
+            for (int d = 0; d < n; d++) {
+                List<PlayerRow> pool = remaining.get(GRADE_ORDER.get(Math.floorMod(gradeCursor + d, n)));
+                if (pool == null) {
+                    continue;
+                }
+                for (int i = pool.size() - 1; i >= 0; i--) {
+                    PlayerRow p = pool.get(i);
+                    boolean ok = exact ? position.equals(p.position()) : !"GK".equals(p.position());
+                    if (ok) {
+                        return pool.remove(i);
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     // ── 디비전 (#252) ────────────────────────────────────────────────────
@@ -1161,7 +1216,8 @@ public class LeagueService {
 
     // ── 선수 풀 / 파워 ───────────────────────────────────────────────────
 
-    private record PlayerRow(String id, String grade, String position, int attrSum) {
+    /** public: {@link #takeLegacyAt} 계약 테스트가 풀을 직접 만들어야 한다(#328). */
+    public record PlayerRow(String id, String grade, String position, int attrSum) {
     }
 
     private Map<String, List<PlayerRow>> playerPoolByGrade() {

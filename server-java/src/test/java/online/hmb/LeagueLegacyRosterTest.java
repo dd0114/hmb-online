@@ -105,6 +105,44 @@ class LeagueLegacyRosterTest extends MatchTestBase {
         }
     }
 
+    /**
+     * 포지션이 <b>마른</b> 풀에서의 폴백 — 통합 테스트로는 못 밟는 분기라 직접 태운다.
+     *
+     * <p>실 카탈로그(DF 54·MF 62·FW 51)로도 픽스처 카탈로그(각 6)로도 정확 매치가 늘 성공해서,
+     * 시즌을 돌리는 테스트만으로는 "포지션이 없을 때 무엇을 집는가"가 검증되지 않는다
+     * (실제로 GK 배제 가드를 제거하는 변이체가 <b>살아남았다</b>). 그 자리를 여기서 덮는다.
+     */
+    @Test
+    void whenPositionIsExhaustedTheFallbackStillNeverPicksAGoalkeeper() {
+        // DF 를 요청하는데 풀엔 GK 와 MF 밖에 없다.
+        Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
+        pool.put("BRONZE", new ArrayList<>(List.of(
+                new LeagueService.PlayerRow("gk1", "BRONZE", "GK", 100),
+                new LeagueService.PlayerRow("mf1", "BRONZE", "MF", 100))));
+        LeagueService.PlayerRow picked = LeagueService.takeLegacyAt(pool, "DF", 0);
+        assertThat(picked).as("팀은 서야 하므로 누군가는 뽑힌다").isNotNull();
+        assertThat(picked.position()).as("필드 슬롯에 골키퍼를 앉히지 않는다").isNotEqualTo("GK");
+        assertThat(picked.id()).isEqualTo("mf1");
+    }
+
+    @Test
+    void exactPositionWinsOverTheFallback() {
+        Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
+        pool.put("BRONZE", new ArrayList<>(List.of(
+                new LeagueService.PlayerRow("mf1", "BRONZE", "MF", 100),
+                new LeagueService.PlayerRow("df1", "BRONZE", "DF", 100))));
+        assertThat(LeagueService.takeLegacyAt(pool, "DF", 0).id()).isEqualTo("df1");
+    }
+
+    @Test
+    void whenOnlyGoalkeepersRemainForAnOutfieldSlotItReturnsNullRatherThanAKeeper() {
+        Map<String, List<LeagueService.PlayerRow>> pool = new LinkedHashMap<>();
+        pool.put("BRONZE", new ArrayList<>(List.of(
+                new LeagueService.PlayerRow("gk1", "BRONZE", "GK", 100))));
+        // 빈손이 낫다 — 골키퍼를 필드에 세우면 그 팀은 10명으로 싸운다.
+        assertThat(LeagueService.takeLegacyAt(pool, "DF", 0)).isNull();
+    }
+
     // ── 헬퍼 (LeagueDivisionTest 와 동형) ─────────────────────────────────
 
     private String startSeason(String token) {
