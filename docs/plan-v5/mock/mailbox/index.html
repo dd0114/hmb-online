@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>#323 메시지함 — 위치 2안 목업</title>
+<title>#323 우편함 — 위치 2안 목업(A 확정)</title>
 <style>
 /* 앱의 실제 토큰(apps/web/src/index.css)을 그대로 쓴다 — 목업이 제품과 다른 색이면 컨펌이 헛돈다. */
 :root{
@@ -102,7 +102,7 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;text-a
 .listrow span.sub{display:block;font-size:11px;color:var(--muted)}
 .listrow .cnt{min-width:20px;height:20px;padding:0 5px;border-radius:99px;background:var(--them);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center}
 
-/* ── 메시지함 목록 ────────────────────────────────────────────────────── */
+/* ── 우편함 목록 ────────────────────────────────────────────────────── */
 .mail{width:100%;display:flex;gap:11px;background:var(--surface);border-radius:13px;padding:12px;position:relative}
 .mail.unread{background:linear-gradient(90deg,rgba(76,141,255,.10),var(--surface) 55%)}
 .mail em{font-size:18px;font-style:normal;width:34px;height:34px;border-radius:10px;background:var(--sunk);display:grid;place-items:center;flex:0 0 auto;align-self:flex-start}
@@ -158,15 +158,15 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;text-a
 <div class="wrap">
 
 <div class="head">
-  <h1>#323 메시지함(우편함) — 위치 2안</h1>
-  <p>390px 실폭. 두 안은 <b>진입점만</b> 다르고 목록·상세는 같다. 아이콘/타일을 눌러 실제로 열어 보세요.</p>
+  <h1>#323 우편함 — 위치 2안 (hero 확정: <b>안 A</b>)</h1>
+  <p>390px 실폭. 두 안은 <b>진입점만</b> 다르고 목록·상세는 같다. 아이콘/타일을 눌러 실제로 열어 보세요.<br><b>hero 확정(2026-07-30)</b>: 위치 <b>A</b> · 이름 <b>우편함</b> · 만료 기본 <b>무기한</b> · 만료 미수령은 <b>회색 "만료됨"으로 남긴다</b>.</p>
 </div>
 
 <div class="pair">
 
   <!-- ══════════════ 안 A ══════════════ -->
   <div class="col">
-    <div class="colhead"><b>안 A — 홈 헤더 ✉️ 아이콘</b><span class="pick">main 권장</span></div>
+    <div class="colhead"><b>안 A — 홈 헤더 ✉️ 아이콘</b><span class="pick">✅ hero 확정</span></div>
     <p class="colnote">홈에 들어오면 바로 보인다. 첨부는 <b>만료되는 자산</b>이라 발견성이 곧 손해와 직결된다.
       자리는 공지 벨 옆(닉네임 쪽) — #248 실측에서 이 자리는 헤더가 +8px 로 끝났다.</p>
 
@@ -177,7 +177,7 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;text-a
           <div class="idrow">
             <span class="nick">감독 박</span>
             <span class="glyph" title="공지">📢<span class="dot"></span></span>
-            <button class="glyph" title="메시지함" onclick="openMail('A')">✉️<i class="num" id="numA">2</i></button>
+            <button class="glyph" title="우편함" onclick="openMail('A')">✉️<i class="num" id="numA">2</i></button>
             <span class="spacer"></span>
             <span class="wallet"><span class="chip">24,300 G</span><span class="chip">1,240 Z</span></span>
             <span class="logout">로그아웃</span>
@@ -211,7 +211,7 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;text-a
 
   <!-- ══════════════ 안 B ══════════════ -->
   <div class="col">
-    <div class="colhead"><b>안 B — [내 정보] 탭 안</b></div>
+    <div class="colhead"><b>안 B — [내 정보] 탭 안</b><span class="badge">미채택 · 비교용</span></div>
     <p class="colnote">헤더를 건드리지 않는다. 대신 홈에서는 <b>내 정보 타일의 숫자 뱃지</b>가 유일한 신호라
       "무엇이 2건인지"를 눌러 봐야 안다 — 보상이 며칠 잠들 수 있다.</p>
 
@@ -255,7 +255,7 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;text-a
             <div class="tinfo"><b>감독 박</b><span>브론즈 D5 · 원정 레이팅 1180 · 로컬</span></div>
           </div>
           <button class="listrow" onclick="openMail('B')">
-            <em>✉️</em><div class="lt"><b>메시지함</b><span class="sub">받지 않은 보상 2건</span></div>
+            <em>✉️</em><div class="lt"><b>우편함</b><span class="sub">받지 않은 보상 2건</span></div>
             <span class="cnt" id="rowB">2</span><span class="tiny muted">›</span>
           </button>
           <div class="listrow"><em>📋</em><div class="lt"><b>경기 로그</b><span class="sub">최근 23경기</span></div><span class="tiny muted">›</span></div>
@@ -275,7 +275,7 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;text-a
 
 <div class="legend">
   <h2>두 안이 공유하는 것 — 목록 · 상세 · 수령</h2>
-  진입점을 누르면 같은 <b>메시지함 시트</b>가 열린다. 항목을 누르면 상세가 열리고 [받기] 로 수령한다.
+  진입점을 누르면 같은 <b>우편함 시트</b>가 열린다. 항목을 누르면 상세가 열리고 [받기] 로 수령한다.
   상태는 서버가 준 값을 그리기만 한다(<code>UNREAD / READ / CLAIMED / EXPIRED</code>) — 클라가 만료를 계산하면
   기기 시계가 진실이 된다.
 
@@ -285,12 +285,12 @@ button{font:inherit;cursor:pointer;color:inherit;background:none;border:0;text-a
     <tr><td>안 읽음 + 첨부</td><td>파란 강조 + 빨간 점 + 첨부 칩</td><td>✅</td></tr>
     <tr><td>읽음 + 미수령</td><td>평범한 카드 + 첨부 칩 + [받기]</td><td>✅ <b>(중요)</b> 열어만 보고 안 받은 보상이 조용히 사라지면 안 된다</td></tr>
     <tr><td>수령 완료</td><td>흐리게 + "수령 완료"</td><td>❌</td></tr>
-    <tr><td>만료 미수령</td><td><b>목록에서 제외</b>(행은 남아 CS 대응)</td><td>❌</td></tr>
+    <tr><td>만료 미수령</td><td><b>회색 "만료됨"</b>으로 목록에 남는다 · [받기] 없음 (hero 확정 ④)</td><td>❌</td></tr>
   </table>
 
-  <h2>hero 컨펌 항목</h2>
-  ① <b>위치 A / B</b>(권장 A) &nbsp;·&nbsp; ② 이름 <b>"메시지함"</b> vs "우편함" &nbsp;·&nbsp;
-  ③ 만료 기본값 = <b>무기한</b>(권장) vs 14일 강제 &nbsp;·&nbsp; ④ 만료된 미수령을 <b>숨긴다</b>(권장) vs 회색으로 남긴다
+  <h2>hero 확정 (2026-07-30)</h2>
+  ① 위치 = <b>안 A(홈 헤더 ✉️)</b> &nbsp;·&nbsp; ② 이름 = <b>우편함</b> &nbsp;·&nbsp;
+  ③ 만료 기본값 = <b>무기한</b> &nbsp;·&nbsp; ④ 만료 미수령 = <b>회색 "만료됨"으로 목록에 남긴다</b>(세션 권장이던 '숨김'의 반대)
   <br>설계 상세(스키마·API·멱등·브로드캐스트) = <code>docs/plan-v5/mailbox.md</code>
 </div>
 </div>
@@ -307,6 +307,10 @@ const MAILS = [
   { id:"m3", title:"[안내] 주말 점검 완료", when:"3일 전", read:true, claimed:true,
     body:"주말 점검이 완료되었습니다. 이용에 불편을 드려 죄송합니다.",
     att:{ points:1000, gems:0, players:[] }, expires:null },
+  /* hero 확정 ④ — 만료된 미수령도 목록에 남는다(회색 "만료됨"). 뱃지에는 세지 않는다. */
+  { id:"m4", title:"신규 감독 환영 선물", when:"3주 전", read:true, claimed:false, expired:true,
+    body:"HMB 온라인에 오신 것을 환영합니다. 첫 덱 구성에 보태 쓰세요.",
+    att:{ points:3000, gems:0, players:[] }, expires:null },
 ];
 
 function attChips(a){
@@ -320,7 +324,8 @@ function hasAtt(a){ return a.points||a.gems||(a.players||[]).length }
 
 /* 뱃지 = "내가 아직 할 일" = 미읽음 or (첨부 있고 미수령) */
 function unreadCount(){
-  return MAILS.filter(m=>!m.read || (hasAtt(m.att) && !m.claimed)).length;
+  // 만료·수령완료는 세지 않는다 — 끌 수 없는 숫자가 남으면 뱃지가 무의미해진다.
+  return MAILS.filter(m=>!m.expired && (!m.read || (hasAtt(m.att) && !m.claimed))).length;
 }
 function syncBadges(){
   const n=unreadCount();
@@ -340,12 +345,12 @@ function goScreen(side,name){
   phone.querySelectorAll(".tabbar button").forEach(b=>b.classList.toggle("on", b.dataset.t===name));
 }
 
-/* ── 메시지함 시트(목록) ─────────────────────────────────────────────── */
+/* ── 우편함 시트(목록) ─────────────────────────────────────────────── */
 function openMail(side){
   const w=document.getElementById("sheet"+side);
-  const rows=MAILS.filter(m=>!(m.expiredUnclaimed)).map(m=>`
-    <button class="mail ${m.read?"":"unread"} ${m.claimed?"claimed":""}" onclick="openDetail('${side}','${m.id}')">
-      <em>${m.claimed?"📭":"✉️"}</em>
+  const rows=MAILS.map(m=>`
+    <button class="mail ${m.read?"":"unread"} ${(m.claimed||m.expired)?"claimed":""}" onclick="openDetail('${side}','${m.id}')">
+      <em>${m.expired?"🚫":(m.claimed?"📭":"✉️")}</em>
       <div class="mt">
         <div class="mtop">
           ${m.read?"":'<span class="newdot"></span>'}
@@ -354,21 +359,22 @@ function openMail(side){
         <p>${m.body.split("\n")[0]}</p>
         <div class="att">
           ${hasAtt(m.att)?attChips(m.att):'<span class="attchip">첨부 없음</span>'}
-          ${m.claimed?'<span class="badge ok">수령 완료</span>'
-                     :(hasAtt(m.att)?'<span class="badge us">받기</span>':"")}
-          ${!m.claimed && m.expires?`<span class="badge warn">${m.expires}</span>`:""}
+          ${m.expired?'<span class="badge">만료됨 — 수령 기간이 지났습니다</span>'
+            :m.claimed?'<span class="badge ok">수령 완료</span>'
+            :(hasAtt(m.att)?'<span class="badge us">받기</span>':"")}
+          ${!m.claimed && !m.expired && m.expires?`<span class="badge warn">${m.expires}</span>`:""}
         </div>
       </div>
     </button>`).join("");
   w.innerHTML = `
     <div class="sheet">
       <div class="row" style="margin-bottom:12px">
-        <h2 style="flex:1">메시지함</h2>
+        <h2 style="flex:1">우편함</h2>
         <button class="badge" onclick="closeSheet('${side}')">닫기</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:9px">${rows || '<div class="empty">받은 메시지가 없습니다</div>'}</div>
-      <div class="note" style="margin-top:12px">만료된 미수령 메시지는 목록에서 빠진다 — 이제 할 수 있는 일이 없는 항목이
-        수신함에 남으면 "왜 못 받아?" 문의만 만든다. 행 자체는 서버에 남아 CS 로 확인할 수 있다.</div>
+      <div class="note" style="margin-top:12px"><b>hero 확정 ④</b> — 만료된 미수령도 <b>회색 "만료됨"</b>으로 남긴다(맨 아래).
+        놓쳤다는 사실이 보여야 다음엔 안 놓친다. 다만 <b>뱃지에는 세지 않는다</b> — 끌 수 없는 숫자가 남으면 뱃지가 무의미해진다.</div>
     </div>`;
   w.classList.add("on");
 }
@@ -402,9 +408,11 @@ function openDetail(side,id){
         </div>`:""}
       <div class="gotit" id="got${side}">✅ 수령했습니다 — 지갑과 보유 선수에 들어갔습니다</div>
       <div class="sheetacts">
-        ${items.length
-          ? `<button class="cta" id="claim${side}" ${m.claimed?"disabled":""} onclick="claim('${side}','${m.id}')">${m.claimed?"수령 완료":"받기"}</button>`
-          : `<button class="cta ghost" onclick="openMail('${side}')">확인</button>`}
+        ${m.expired
+          ? `<button class="cta" disabled>수령 기간이 지났습니다</button>`
+          : items.length
+            ? `<button class="cta" id="claim${side}" ${m.claimed?"disabled":""} onclick="claim('${side}','${m.id}')">${m.claimed?"수령 완료":"받기"}</button>`
+            : `<button class="cta ghost" onclick="openMail('${side}')">확인</button>`}
       </div>
     </div>`;
   w.classList.add("on");

@@ -16,7 +16,7 @@ const p = await b.newPage({ viewport: { width: 1180, height: 1000 }, deviceScale
 await p.goto(URL);
 await p.screenshot({ path: `${OUT}/mail-pair.png`, fullPage: true });
 
-await p.click('#pA .glyph[title="메시지함"]');
+await p.click('#pA .glyph[title="우편함"]');
 await p.waitForTimeout(150);
 await p.locator("#pA").screenshot({ path: `${OUT}/mail-list.png` });
 
