@@ -16,12 +16,10 @@
 // 읽기 전용 — 쓰기 쿼리를 하지 않는다. sqlite3 CLI 를 통해 JSON 을 뽑는다(의존성 추가 없음).
 
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
+/** 실행 인자(직접 실행일 때만 채워진다 — 테스트가 상수만 import 할 땐 undefined). */
 const dbPath = process.argv[2];
-if (!dbPath) {
-  console.error("사용법: node tools/live-input-audit.mjs <hmb.db 사본 경로>");
-  process.exit(2);
-}
 
 /**
  * sqlite3 로 한 컬럼을 줄 단위로 뽑는다(값에 개행이 없다는 전제 — JSON 은 컴팩트 저장).
@@ -53,16 +51,31 @@ function query(sql) {
   }
 }
 
-/** shared FORMATION_ROWS 와 같은 행 구성(도구가 shared 를 import 하지 않게 최소 복제 — 값이 바뀌면
- *  `apps/web/src/deck/formation-lock.test.ts` 가 먼저 깨진다). */
-const ROWS = {
+/**
+ * shared `FORMATION_ROWS` 의 사본. 이 파일은 빌드 없이 `node` 로 도는 도구라 TS 를 import 할 수 없어
+ * 값을 복제한다 — 그래서 **드리프트 락을 따로 건다**(`tools/live-input-audit.test.ts`).
+ * 락이 없으면 shared 를 바꿨을 때 이 도구만 조용히 낡아, 배포 후 재측정이 틀린 자로 재게 된다.
+ */
+export const ROWS = {
   "4-3-3": [[8, 9, 10], [5, 6, 7], [1, 2, 3, 4], [0]],
   "4-4-2": [[9, 10], [5, 6, 7, 8], [1, 2, 3, 4], [0]],
   "4-2-3-1": [[10], [7, 8, 9], [5, 6], [1, 2, 3, 4], [0]],
   "5-3-2": [[9, 10], [6, 7, 8], [1, 2, 3, 4, 5], [0]],
 };
 
-const MIN_SEPARATION = 0.02; // gates.ts SANITY_GATE_CONFIG 와 같은 값.
+export const MIN_SEPARATION = 0.02; // gates.ts SANITY_GATE_CONFIG 와 같은 값.
+
+// ── 여기부터는 **직접 실행할 때만** 돈다(위 상수는 락 테스트가 import 한다). ──
+const invokedDirectly =
+  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (!invokedDirectly) {
+  // 테스트가 상수만 읽고 끝낼 수 있게.
+} else {
+
+if (!dbPath) {
+  console.error("사용법: node tools/live-input-audit.mjs <hmb.db 사본 경로>");
+  process.exit(2);
+}
 
 const rows = query(
   "SELECT h.match_id || '|' || h.half || '|' || m.engine_version || '|' || " +
@@ -136,3 +149,5 @@ console.log(`       행 방향 분포 — 오름차순(규약) ${mirror.asc} / �
 console.log(`\n판정 기준: D1 은 0건이어야 한다(게이트가 막는다). D2 는 내림차순이 0 에 수렴해야 한다 —`);
 console.log(`asc 와 desc 가 비슷하면 좌우가 여전히 생성마다 뒤집히고 있다는 뜻이다(고치기 전 13:13).\n`);
 process.exit(overlapped.length > 0 ? 1 : 0);
+
+}

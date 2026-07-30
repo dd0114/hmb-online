@@ -41,7 +41,18 @@ export interface CumulativePossession {
 
 interface DevViewerStats {
   liveEventStats(events: readonly LogEvent[], uptoTick: number): LiveStats;
-  computeCumulativePossession(snaps: readonly { ballOwner?: string | null }[]): CumulativePossession;
+  /**
+   * ⚠️ `players`·`ball` 이 **필요하다**(#324). 소유팀은 `ballOwner` 문자열이 아니라 그 스냅샷의
+   * players 에서 찾기 때문이다 — 예전 타입(`{ ballOwner }` 만)은 구현과 어긋난 **거짓 계약**이었고,
+   * 그 상태로 캐스팅해 넘기면 타입은 통과하지만 런타임엔 점유가 0 으로 집계된다.
+   */
+  computeCumulativePossession(
+    snaps: readonly {
+      ballOwner?: string | null;
+      ball?: { x: number; y: number };
+      players?: readonly { playerId: string; team?: string; pos: { x: number; y: number } }[];
+    }[],
+  ): CumulativePossession;
   possessionPct(cumHome: number[], cumAway: number[], idx: number): number;
   momentum(cumHome: number[], cumAway: number[], idx: number, window?: number): number;
 }

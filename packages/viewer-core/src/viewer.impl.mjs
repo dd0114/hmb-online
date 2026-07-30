@@ -46,6 +46,7 @@ export function createViewer(canvas, chrome = {}) {
   let shotFx = [], shotFxTicks = new Set(); // 유효슛 링 이펙트
   let fx = [], passEvents = [], interceptEvents = [], surgeTicks = [];
   let cardMarks = [], lastCardMarks = [];   // R4(#100): 카드 받은 선수 표시
+  let lastToasts = [];                      // #324: 그려진 토스트(앵커 검증용 읽기 표면)
   let annos = [], snapByTick = new Map(), restartTickSet = new Set(), ballCutTickSet = new Set(), totalMinutes = 0;
   let flightSides = new Map();               // 슛/패스 비행 틱 → 발사팀 side
   let stoppages = [], hold = null;           // 데드볼: freeze→skip 시퀀스
@@ -222,7 +223,8 @@ export function createViewer(canvas, chrome = {}) {
       // px/py = **실제로 그린 캔버스 픽셀 좌표**(#218). 계약 테스트가 토큰 자리를 픽셀로 검사할 때
       // 카메라 변환을 바깥에서 재구현하면(baseScale·zoom·MARGIN) 렌더와 조용히 어긋난다 —
       // "무엇이 그려졌나"는 그린 쪽이 알려준다. 읽기 전용·추가 필드(기존 소비자 무영향).
-      playerRender.push({ id: pa.playerId, team: pa.team, x, y, px, py });
+      const render = { id: pa.playerId, team: pa.team, x, y, px, py };
+      playerRender.push(render);
       // 캐릭터 스킨(#145, S3): setSkin 으로 아틀라스가 주입됐고 이 선수 셀이 있으면 얼굴 아바타 +
       // 팀색 링/디스크/번호 뱃지로 그린다. 없으면(QA·미주입·로드전) 현행 단색 원(무회귀).
       // #324: 팀 포함 키 우선, 없으면 단독 키(구 페이로드 호환).
@@ -239,6 +241,10 @@ export function createViewer(canvas, chrome = {}) {
       // 그 파생마저 등번호로 안 읽히면(3자 이상 = 실경기 id) **아무것도 안 찍는다**. 부모가 등번호를
       // 안 넘긴 소비자에서도 토큰이 글자에 덮이지 않게 — 코어 자체의 방어선(독립 QA 권고).
       const num = rawNum.length <= 2 ? rawNum : "";
+      // #324: **실제로 그린 등번호와 얼굴 유무**를 계약이 읽을 수 있게 노출한다(#218 의 px/py 선례 —
+      // "무엇이 그려졌나"는 그린 쪽이 알려준다). 이게 없으면 렌더러가 팀 키로 조회하는지를 밖에서
+      // 확인할 길이 없어, 조회를 단독 키로 되돌려도 아무 계약이 안 깨진다(독립검증 blocker-1).
+      render.num = num;
       if (!cell) {
         ctx.beginPath(); ctx.arc(px, py, owner ? R + 2 : R, 0, Math.PI * 2);
         ctx.fillStyle = isHome ? "#3b82f6" : "#ef4444"; ctx.fill();
@@ -369,6 +375,7 @@ export function createViewer(canvas, chrome = {}) {
   }
 
   function drawAnnos(curTick) {
+    lastToasts = [];
     let banner = null;
     for (const a of annos) if (a.kind === "banner" && curTick >= a.tick && curTick <= a.tick + BANNER_TICKS) banner = a;
     if (banner) cb("onBanner", banner.text, banner.col); else cb("onBanner", null, null);
@@ -394,6 +401,9 @@ export function createViewer(canvas, chrome = {}) {
       ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.strokeText(a.text, px, py);
       ctx.fillStyle = a.col; ctx.fillText(a.text, px, py);
       ctx.globalAlpha = 1;
+      // #324: **실제로 어디에 붙었나**를 계약이 읽을 수 있게(cardMarks 와 같은 규약). 앵커가 팀을
+      // 무시하면 중복 playerId 에서 상대팀 선수 위에 뜨는데, 밖에서는 확인할 길이 없었다.
+      lastToasts.push({ text: a.text, anchor: a.anchor || null, anchorTeam: a.anchorTeam || null, px, py });
     }
   }
 
@@ -618,6 +628,7 @@ export function createViewer(canvas, chrome = {}) {
     fx: () => fx.map((f) => ({ type: f.type, rgb: f.rgb })),
     surgeTicks: () => surgeTicks.slice(),
     cardMarks: () => lastCardMarks.map((c) => ({ ...c })),
+    toasts: () => lastToasts.map((t) => ({ ...t })),
     liveStats: () => {
       const idx = Math.min(Math.floor(tickPos), snaps.length - 1);
       const tick = snaps[idx].tick;
