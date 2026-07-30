@@ -36,6 +36,24 @@
   - **#320 (infra)** — **V30 업로드 이미지는 공유 카드(OG) 썸네일이 깨진다.** OG Function 의 `absolutize()` 가 `/api/...` 에 **web 오리진**을 붙여 `hmb-online.pages.dev/api/notices/assets/…` = **SPA index.html(200 · text/html · 463 B)** 을 가리킨다(404 가 아니라 200 이라 `OG_DEFAULT_IMAGE` 폴백도 안 탄다). 정적 경로를 쓰는 경니시우스는 정상이었다. **hero 판단 = 무배포 유지, 그대로 게시하고 이슈로 남긴다**(팝업·공지센터·공유 카드의 제목/본문은 정상, 이미지만 안 뜸). 고치려면 Pages 재배포 + #299 Function 스냅샷 경로.
   - **#321 (engine, #25 산하)** — **골키퍼 능력치가 선방에 전혀 반영되지 않는다**(골/선방은 슈터 `shooting`·xG 로만 갈리고 `goalkeeperOf` 는 기록용). LEGEND GK 첫 오픈으로 드러난 갭이라 공지 문안에서 **선방 성능 약속을 배제**했다.
 - **상태**: `P180 활성 · P181 비활성 · P182 활성` · 활성 공지 2건 · 배포 없음.
+## 2026-07-30T16:44Z — **배포 v3.02** (태그 `deploy-3.02`) — 리그 어웨이 라운드 좌우/점수 반전 픽스(#322) + 워치독 하드닝
+
+- **git**: **`c3bef56`**(태그 `deploy-3.02`). 변경 = `apps/web` 8 + `server-java` 3(본체 1: `MatchService`) + `infra` 2(어제 반쪽치유 하드닝, 이미 적용분) + docs.
+- **모듈 버전**: engine `@0.23.0`(무변경) · server-java `0.1.0` · web `0.0.0` · servants `0.0.1`(무변경 — `packages/**`·`data/**` 접촉 0 → runner·executor 무관)
+- **이미지**: `hmb-java` `sha256:e8a0bf3ee3c3…`(**신규**) · `hmb-runner` `sha256:5dd6bc199603…`(무변경)
+- **DB**: **신규 마이그레이션 0**(Flyway **v32** 유지). 표준 백업 — `pre-deploy302-20260730T164106Z.db`(421,138,432 B · sha256 `c06981958e0cb5d62cd49b841f81d8b076961403e43ed3102db1299902ce9f71` · integrity ok · users 185).
+- **결과**: ✅ GREEN
+  - **#322 픽스 검증(임퍼소네이션 없이 2단 증빙)**:
+    1. **응답 계약 신설 확인** — `GET /api/matches/{id}` 가 이제 `homeName`/`awayName` 을 **사이드 라벨 그대로** 내려준다(내 프로브 연습 매치: `ownerName=d301r…` · `homeName=d301r…` · `awayName=그린 밸런스`).
+    2. **문제 매치의 사이드 근거** — 라이브 DB 에서 hero 가 지목한 케이스를 직접 확인: `01KYS2QM76…`(1:5, **result=WIN**)·`01KYR0PNQZ…`(0:4, **WIN**) 둘 다 `league_fixtures.home_team = 봇팀(…-T6/-T8)`, **`away_team = USER`** → **유저가 away 사이드**. 즉 **데이터는 처음부터 맞았고**(그래서 result=WIN) 옛 web 이 `homeName = ownerName` 으로 박아 **표시만** 뒤집혔던 것. 새 응답은 home=봇/away=유저로 내려가므로 과거 매치도 **재배포만으로 표시가 즉시 정상화**된다.
+    - 📌 **화면(좌우 배치) 최종 확인은 남겨 뒀다** — 그 매치는 테스터 `축구왕여르` 소유라 재생하려면 그 계정 세션이 필요하다. 남의 계정에 로그인하지 않고 위 2단으로 갈음했다. **소유자(hero)가 그 경기를 한 번 열어보는 것이 가장 정확한 최종 확인**이고, 지시하면 즉시 대신 확인한다.
+  - **원인 문서화가 인상적** — 서버 주석이 *"ownerName 을 '(홈)'이라고 적지 마라 — 이 문장이 실제로 버그를 만들었다"* 로 바뀌었다(계약 문구가 web 을 잘못 인도한 사례, 라이브 리그 20경기 중 7건·유저 3/3).
+  - **무회귀**: 가입·홈 5탭·매치 진입·지갑 표기.
+  - `version.json` = **`c3bef56`**.
+- **비고**: 이 배포는 **현행 quick tunnel 위에서** 진행했다(main 조율 순서 — 다음 단계가 named tunnel 승격). 백엔드 `record-houston-learners-airplane`(5/5 정상).
+
+---
+
 ## 2026-07-30T12:16Z — [장애] 워치독 **반쪽 치유** — 프로세스는 살고 URL 전파가 멈춰 테스터 단절 (배포 아님)
 
 - **증상**: 12:11:15Z 워치독이 `UNHEALTHY`(구 URL `pubs-lauderdale-…` DNS 전부 실패 + curl 000) → 12:11:18Z `HEAL_START` → 12:16:19Z **`HEAL_OK`(new=`selective-blast-municipal-lanes`)** 를 기록했다. **그런데 `config.json` 은 `pubs-lauderdale-…`(10:56Z, source=manual) 그대로**였고 그 호스트는 **DNS 에서 사라진 상태**(`dig` 빈 응답) → **테스터 실접속 단절**. `status.sh` 는 터널 URL 칸이 **빈칸**으로 보였다.
