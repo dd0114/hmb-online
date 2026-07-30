@@ -49,6 +49,7 @@ public class MatchClockService {
     private final JdbcClient jdbcClient;
     private final TxRunner txRunner;
     private final MatchClockProperties props;
+    private final MatchAutoProperties autoProps;
     private final Clock clock;
     private final org.springframework.beans.factory.ObjectProvider<MatchOrchestrator> orchestrator;
     /** 만료 스윕 실행 풀 — 매치 간 head-of-line 블로킹 방지(스케줄러 스레드와 분리). */
@@ -57,11 +58,13 @@ public class MatchClockService {
     public MatchClockService(JdbcClient jdbcClient,
                              TxRunner txRunner,
                              MatchClockProperties props,
+                             MatchAutoProperties autoProps,
                              Clock clock,
                              org.springframework.beans.factory.ObjectProvider<MatchOrchestrator> orchestrator) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.props = props;
+        this.autoProps = autoProps;
         this.clock = clock;
         this.orchestrator = orchestrator;
         this.sweepPool = java.util.concurrent.Executors.newFixedThreadPool(
@@ -194,7 +197,11 @@ public class MatchClockService {
         }
 
         return switch (row.state()) {
-            case MatchService.S_FIRST_HALF -> openHalftime(matchId, row.phaseEndsAt());
+            // 오토(#249)는 감독시간을 0초로 열고 같은 체인에서 GEN2 까지 잇는다 = 후반 시작이 딸려온다.
+            // 그래서 **조회 경로에서는 시작조차 하지 않는다** — 0초 하프타임만 열어놓고 멈추면 만료된
+            // 감독시간이 화면에 노출된다(≤1s). 스위퍼가 두 전이를 한 호출에 밟게 통째로 미룬다.
+            case MatchService.S_FIRST_HALF ->
+                    (allowHeavy || !autoOf(matchId)) && openHalftime(matchId, row.phaseEndsAt());
             // 후반 시작은 엔진 RPC 를 물고 있다 — 조회 경로에서는 하지 않는다(스위퍼가 곧 집어간다).
             case MatchService.S_HALFTIME -> allowHeavy && resumeOnExpiry(matchId, row.phaseEndsAt());
             case MatchService.S_SECOND_HALF ->
@@ -208,15 +215,44 @@ public class MatchClockService {
      * 감독시간이 길어지지 않는다.
      */
     private boolean openHalftime(String matchId, String boundary) {
+        // 오토(#249)면 감독시간 길이가 **0** 이다 — 열자마자 만료라 같은 advanceChain 루프의 다음 바퀴가
+        // 곧바로 GEN2 로 잇는다(새 전이 엣지 0, hero 컨펌 Q1). 아니면 현행 halftimeMs 그대로.
+        //
+        // ⚠️ 플래그를 SELECT 해서 분기하지 않는다 — 읽기와 전이 사이에 유저가 토글하면 **찢어진 읽기**가
+        // 난다(오토인데 3분 감독시간이 열리거나 그 반대). 두 UPDATE 를 순서대로 시도하고 auto_mode 를
+        // WHERE 절에 넣어 **플래그 판정과 전이를 원자적으로** 묶는다. 정확히 하나만 성공한다.
+        // 둘 다 0행 = 그 찰나에 토글이 뒤집힌 것 → false 반환 → 다음 스위프(≤1s)가 새 값으로 재판정한다.
+        if (autoProps.isEnabled() && casOpenHalftime(matchId, boundary, boundary, 1)) {
+            return true;
+        }
         String deadline = format(Instant.parse(boundary).plusMillis(props.getHalftimeMs()));
-        int updated = jdbcClient.sql("""
+        // 킬스위치가 내려가 있으면 플래그를 아예 보지 않는다(이미 켜 둔 매치도 정상 감독시간으로 복귀).
+        Integer autoFilter = autoProps.isEnabled() ? 0 : null;
+        return casOpenHalftime(matchId, boundary, deadline, autoFilter);
+    }
+
+    /** @param autoMode WHERE 절에 요구할 auto_mode 값. null = 플래그를 보지 않는다(킬스위치). */
+    private boolean casOpenHalftime(String matchId, String boundary, String deadline, Integer autoMode) {
+        String autoClause = autoMode == null ? "" : " AND auto_mode = " + autoMode;
+        return jdbcClient.sql("""
                         UPDATE matches SET state = ?, phase_start_at = ?, phase_ends_at = ?
                         WHERE id = ? AND state = ? AND phase_ends_at = ?
-                        """)
+                        """ + autoClause)
                 .params(MatchService.S_HALFTIME, boundary, deadline, matchId,
                         MatchService.S_FIRST_HALF, boundary)
-                .update();
-        return updated == 1;
+                .update() == 1;
+    }
+
+    /** 이 매치가 오토 모드인가 — 킬스위치가 내려가 있으면 항상 false(플래그를 보지 않는다). */
+    private boolean autoOf(String matchId) {
+        if (!autoProps.isEnabled()) {
+            return false;
+        }
+        return Boolean.TRUE.equals(jdbcClient.sql("SELECT auto_mode FROM matches WHERE id = ?")
+                .param(matchId)
+                .query((rs, n) -> rs.getInt("auto_mode") == 1)
+                .optional()
+                .orElse(false));
     }
 
     /**
@@ -224,7 +260,11 @@ public class MatchClockService {
      * <b>전반 인풋 그대로 승계</b>된다(AI 콜 0) — 그 분기는 {@link MatchOrchestrator#enqueueHalf} 소관이다.
      */
     private boolean resumeOnExpiry(String matchId, String boundary) {
-        if (!props.isAutoResumeOnExpiry()) {
+        // 오토(#249)는 이 운영 스위치의 예외다. 오토가 여는 감독시간은 길이가 0 이라 "대기"라는 개념이
+        // 없고, 여기서 막으면 매치가 **만료된 0초 감독시간에 영구히 갇힌다**(스위퍼가 후보에서 빼므로
+        // 되살릴 경로도 없다). 스위치의 의도는 "유저에게 지시할 시간을 강제로 준다"인데, 오토는 유저가
+        // 그 시간을 명시적으로 포기한 상태다.
+        if (!props.isAutoResumeOnExpiry() && !autoOf(matchId)) {
             return false; // 만료해도 대기(운영 스위치) — 유저 제출만이 후반을 연다
         }
         boolean moved = txRunner.run(() -> jdbcClient.sql("""
@@ -247,12 +287,17 @@ public class MatchClockService {
         // auto-resume 이 꺼져 있으면 감독시간은 유저 제출로만 끝난다 → 후보에서 빼서 매초 헛도는
         // 재선택(만료된 채 영원히 남는 행)을 만들지 않는다.
         String halftimeCandidate = props.isAutoResumeOnExpiry() ? MatchService.S_HALFTIME : "";
+        // ⚠️ 오토 매치(#249)는 스위치가 내려가 있어도 HALFTIME 후보에 남겨야 한다. 오토가 여는
+        // 감독시간은 0초라 그 상태를 지나가는 중일 뿐인데, 후보에서 빼면 **만료된 0초 감독시간에
+        // 영구히 갇힌다**. 두 전이 사이에 프로세스가 죽었을 때의 복구 경로도 이 항이 겸한다.
+        int autoCandidate = autoProps.isEnabled() ? 1 : -1;
         List<String> due = jdbcClient.sql("""
                         SELECT id FROM matches
-                        WHERE state IN ('FIRST_HALF','SECOND_HALF', ?)
+                        WHERE (state IN ('FIRST_HALF','SECOND_HALF', ?)
+                               OR (state = 'HALFTIME' AND auto_mode = ?))
                           AND phase_ends_at IS NOT NULL AND phase_ends_at <= ?
                         """)
-                .params(halftimeCandidate, now)
+                .params(halftimeCandidate, autoCandidate, now)
                 .query(String.class)
                 .list();
         // 무거운 전이(후반 시작 = 동기 엔진 RPC)가 하나 끼면 순차 처리로는 그 시간만큼 **다른 모든 매치의

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { MatchDetail } from "../../api/hooks";
 import { clockLabel, headerScore, isHalftimeState } from "./stage-state";
 import styles from "./StageShell.module.css";
@@ -23,6 +24,14 @@ interface ScoreBarProps {
   myTeamSide?: "home" | "away" | null;
   /** 리그 매치일 때 라운드(navigation state 로만 오는 값). */
   leagueRound?: number | null;
+  /**
+   * 메타 영역 끝에 얹을 컨트롤(현재 = 오토 모드 알약, #249).
+   *
+   * 노드로 받는다 — 이 컴포넌트는 **순수 표시**다. 여기서 직접 mutation 훅을 부르면 헤더가 데이터
+   * 레이어에 묶여, 상태만 넣고 렌더하던 계약 테스트(`ScoreBar.test.ts` 13건)가 QueryClient 없이는
+   * 돌지 않는다. 데이터는 컨테이너(StageShell)가 소유한다.
+   */
+  autoSlot?: ReactNode;
   onBack: () => void;
 }
 
@@ -82,6 +91,7 @@ export function ScoreBar({
   tick,
   myTeamSide = null,
   leagueRound = null,
+  autoSlot = null,
   onBack,
 }: ScoreBarProps) {
   const isBreak = isHalftimeState(match.state);
@@ -130,6 +140,9 @@ export function ScoreBar({
         >
           {STATE_TAGS[match.state] ?? match.state}
         </span>
+        {/* 오토 모드(#249) — 컨테이너가 주입한다. 전반 재생 중에만 렌더된다(canToggleAuto):
+            감독시간엔 [후반 시작]이 같은 일을 하므로 스스로 사라진다. */}
+        {autoSlot}
       </div>
     </header>
   );

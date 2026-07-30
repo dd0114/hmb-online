@@ -1,0 +1,14 @@
+-- #249 오토 모드 — 감독시간(3분) 없이 전반→후반 즉시 진행.
+--
+-- 서버가 소유하는 플래그 한 개다. 클라가 아니라 서버가 가져야 하는 이유: 전반 종료 전이는
+-- **화면을 아무도 안 봐도** 스위퍼(MatchClockService)가 밟는다(P4-D1 라이브 모델). 클라에만 있으면
+-- 유저가 앱을 닫은 사이 감독시간이 열려버려 "오토인데 3분 멈춤"이 된다.
+--
+-- 이 값은 **전반 종료 경계에서만** 읽힌다(MatchClockService.openHalftime 의 CAS WHERE 절).
+-- 켜져 있으면 감독시간을 0초로 열어 같은 스윕 안에서 GEN2 로 잇고, 꺼져 있으면 현행 halftimeMs 그대로다.
+-- 후반 인풋은 새 경로를 만들지 않는다 — 감독시간 만료 경로와 같은 enqueueHalf(id,2)를 타서
+-- #193 W2b-B2 프리페치(전반 진입 직후 선행 생성) 결과를 그대로 쓴다.
+--
+-- 인덱스 불필요: 스위퍼는 기존 idx_matches_clock(state, phase_ends_at)으로 후보를 뽑고,
+-- 이 플래그는 그 후보에 대한 CAS 문 안에서만 읽는다(찢어진 읽기 차단 — §2.4).
+ALTER TABLE matches ADD COLUMN auto_mode INTEGER NOT NULL DEFAULT 0;

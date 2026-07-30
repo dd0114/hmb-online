@@ -49,6 +49,7 @@ vi.mock("../api/hooks", async (importOriginal) => {
     useUpdateDeck: fx.mutation,
     useSubmitMatchPrompt: fx.mutation,
     useKickoff: fx.mutation,
+    useSetAuto: fx.mutation, // #249 오토 토글(브리핑) — 다른 뮤테이션과 같은 자리
   };
 });
 

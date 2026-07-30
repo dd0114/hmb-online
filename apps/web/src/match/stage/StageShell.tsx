@@ -6,6 +6,7 @@ import { captureOffsetMs, logAvailableFor } from "../live-clock";
 import { MatchViewer } from "../MatchViewer";
 import { HalftimePanel } from "../HalftimePanel";
 import { useHalftimeDraft } from "../useHalftimeDraft";
+import { AutoModeToggle } from "../AutoModeToggle";
 import { ScoreBar } from "./ScoreBar";
 import { StatsPanel } from "./StatsPanel";
 import { LogPanel } from "./LogPanel";
@@ -67,7 +68,7 @@ export function StageShell({
   const [tick, setTick] = useState<number | null>(null);
 
   const half = halfForState(match.state);
-  const statePanel = statePanelFor(match.state);
+  const statePanel = statePanelFor(match.state, match.auto);
   const tabs = tabsFor(match.state, statePanel);
   const activeTab = resolveActiveTab(tabs, preferredTab);
   const sheetKind = sheetHeight(activeTab);
@@ -117,6 +118,7 @@ export function StageShell({
         liveScore={liveScore}
         tick={headerTick(match.state, tick, halfEndTick)}
         leagueRound={leagueRound}
+        autoSlot={<AutoModeToggle match={match} variant="pill" />}
         onBack={() => navigate("/home")}
       />
 

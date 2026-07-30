@@ -308,6 +308,25 @@ export function useResume(id: string) {
   return useMatchAction(id, "resume");
 }
 
+/**
+ * POST /api/matches/:id/auto — 오토 모드 on/off (#249). 켜 두면 전반 종료 시 감독시간(3분) 없이
+ * 후반이 바로 시작된다.
+ *
+ * 낙관적 갱신을 하지 않는다: 실패했는데 화면만 켜져 있으면 유저는 감독시간이 없을 줄 알고 자리를
+ * 뜬다. 서버 응답이 SoT 다. 감독시간이 이미 열린 뒤 ON 이면 서버가 그 자리에서 후반을 열어주므로
+ * (경합 창) 응답의 state 가 GEN2/SECOND_HALF 로 올 수 있다 — 그대로 반영하면 화면이 따라간다.
+ */
+export function useSetAuto(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (auto: boolean) =>
+      apiFetch<MatchDetail>(`/api/matches/${id}/auto`, { method: "POST", body: { auto } }),
+    onSuccess: (match) => {
+      queryClient.setQueryData(["match", id], match);
+    },
+  });
+}
+
 /** POST /api/matches/:id/retry — FAILED → 직전 GEN* 복귀 (AC-M7). */
 export function useRetry(id: string) {
   return useMatchAction(id, "retry");
