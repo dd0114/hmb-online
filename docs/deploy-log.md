@@ -6,6 +6,38 @@
 
 ---
 
+## 2026-07-30T07:43Z — **배포 v3** (태그 `deploy-3`) — 홈 5탭 IA(#286) + 운영 컨텐츠 무배포화(#309 V30·V31·**V32 감사표 재작성**) + #210 흡수
+
+> 🆕 **앞자리 범프 = 배포 v3**(hero 확정 — '2.04' 아님). 릴리스 태그 `v1`~`v8` 축과는 여전히 별개다.
+
+- **git**: **`2a4992e`**(태그 `deploy-3`). 배포 중 픽스 없음.
+- **모듈 버전**: engine `@0.23.0`(무변경) · server-java `0.1.0`(#309 W1/W2 + #210) · web `0.0.0`(#286 홈 5탭 IA) · servants `0.0.1`(무변경 — `packages/**` 접촉 0 → runner 재빌드·executor 재기동 생략) · 발행물 4종 무변경(players `v2.4` 등)
+- **이미지**: `hmb-java` `sha256:8bc0f6645cdd…`(**신규**) · `hmb-runner` `sha256:5dd6bc199603…`(무변경)
+- **DB 마이그레이션**: Flyway **v29 → v32**, 3건 — `V30 notice_assets` · `V31 char_bundles` · **`V32 catalog_audit_purge_action`(파괴적: `admin_catalog_audit` 12단계 재작성)**. `.conf` 없음 = **전부 트랜잭션 내**(V32 는 원자적, SQLite DDL 롤백에 의존).
+  - **백업**: `pre-deploy3-20260730T073925Z.db`(372,625,408 B · sha256 `be8341bf290c6b5ef05aa5e10eb9c2bfc4e3bb82a770383324cdfb7fb1944b4a` · integrity ok · users 177 · audit 5).
+  - **사전 상태 박제(V32 대상)**: `admin_catalog_audit` **5행**(unit_activate 3 · unit_deactivate 2), 명시 인덱스 **4개**(`idx_..actor`·`idx_..player`·`uq_..create_idem`·`uq_..idem`), `admin_ops_audit` 에 purge 3행.
+  - **리허설(백업 사본)**: V30~V32 success · 부팅 성공 · FK 0 · integrity ok.
+  - **§0.7 사후검증 2줄 — 리허설·라이브 둘 다 통과**:
+    | 검증 | 사전 | 리허설 | 라이브 |
+    |---|---|---|---|
+    | `admin_catalog_audit` 행수 | 5 | **5** | **5** |
+    | 명시 인덱스 수 | 4 | **4** | **4** |
+    인덱스 4개 이름까지 대조했다 — 과거 독립검증 BLOCKER-1(이 재작성이 `uq_catalog_audit_idem` 을 빠뜨렸고 계약이 "3개"로 그 손실을 박제했던 사건) 이 재발하지 않았음을 확인. `action` CHECK 에 `unit_purge` 포함(**YES**), V30 `notice_assets`·V31 `char_bundles` 생성 확인, 주요 표 행수 보존(users 177 · matches 56 · user_players 2854).
+- **③ override**: 발행물 변경 0 → 유지, java recreate 후 재확인(`OVERRIDE`).
+- **결과**: ✅ GREEN (JS 에러 0)
+  - **#286 홈 5탭 IA**: 로그인 후 **`/home`** 착지, **5탭** = `⚽ 게임 시작`(디비전 10 · 원정 레이팅) · `📋 덱 구성`(4-3-3 · 지시 0/11) · `✨ 영입`(뽑기 · 트레이드) · `🙋 내 정보`(전적 · 디비전) · `👥 선수 도감`(보유 15 / **164**). **`/lobby` → `/home` 리다이렉트** 확인. 상단에 팀 카드(레이팅 뱃지)와 지갑 `3,000 G / 12,000 Z`.
+  - **#309 공지 이미지 업로드(V30) 왕복**: `POST /api/admin/notices/assets`(multipart) **201** → 응답 `url` 이 **상대경로**(`/api/notices/assets/{id}`) → 그 경로로 **200 `image/png` 69B** 서빙 → 그 이미지를 본문에 넣은 공지를 만들자 자산 **`usedBy 1`** 로 갱신, `/api/notices/active` 에 노출(페이저 1/3). **정리 완료**(공지·자산 모두 비활성 → active 공지 2건으로 원복).
+  - **#309 유닛 등록(V31 계열) 왕복**: `POST /api/admin/units` **200 → 서버 채번 `P183`**, 조회 200(`dataVersion=admin`), DB 반영 확인 → **`POST /{id}/purge` 200 으로 회수**(카탈로그 행 0). **그 회수가 `admin_catalog_audit.action='unit_purge'` 로 남았다(1행, 총 5→7)** — V32 가 노린 "회수 이력을 카탈로그 원장에 통합"이 실제로 성립함을 확인.
+  - **OG Function 생존(#299)**: 워치독 경로(`publish-backend-url.sh`)로 **두 번** 재배포된 뒤에도 `/share/notice/{id}` **200** — Function 스냅샷 복원 배선이 실전에서 작동.
+  - **무회귀**: 가입 스타터·튜토덱·지갑·공지 팝업(히어로 이미지 1080×1180 로드)·Z/G.
+  - `version.json` = **`2a4992e`**.
+- **📌 기록해 둘 것**:
+  - **`GET /api/chars/index` 404 는 결함이 아니다** — "활성 아트 번들 없음"의 **설계된 신호**이고 web 은 그때 **구운 `/chars` 폴백**을 쓴다(계약 = `char-bundle-base.test.ts`). 스모크 콘솔에 404 가 2건 보이는 게 정상이다.
+  - **배포 중 터널이 두 번 죽었다**: 스모크 시작 시 `meant-basename-…` 이 **530 8/8** 로 응답 불가(워치독 BLIP 만 남고 미치유) → **PID only 회전**(`brooklyn-deeply-feel-voting`, 8/8 정상) + `publish-backend-url.sh`. 그 뒤 워치독이 다시 `headline-teddy-anatomy-telescope` 로 HEAL_OK 하면서 web 이 한 박자 뒤처져 있었고(`status.sh` 가 불일치로 경고) **즉시 재전파**해 `config.json` 을 현재 터널로 맞췄다. 최종 상태 전 항목 ✓.
+  - 프로덕션에 검증 계정 `d3p*` 1건. 스모크로 만든 유닛·공지·자산은 **전부 회수/비활성**했다.
+
+---
+
 ## 2026-07-30T00:49Z — **배포 v2.03** (태그 `deploy-2.03`) — 공지 팝업 장 분리·본문 스크롤(#292) + 공유 딥링크·OG(#293) + 랭킹/원정 자격 필터(#296·#300)
 
 - **git**: **`9e4a71c`**(태그 `deploy-2.03`). 앞자리 유지 = **배포 v2.03**. #309 W1/W2 는 미머지로 이번 열차 제외.
