@@ -389,6 +389,56 @@ test.describe("③ 감독시간으로 이어진다 — 다시 타이핑 금지",
     await expect(page.getByTestId("rail-prompt-input")).toHaveValue("과감하게 슛 노려");
   });
 
+  /**
+   * ⚠️ **프리필은 사람을 따라간다 — 자리가 아니다** (#294 MINOR-1).
+   *
+   * `applyDraftPrompts` 는 `playerId` 로 붙이는데, 위 `b.` 는 선수 프롬프트가 **1건뿐**이라
+   * 슬롯 인덱스로 되돌리는 변이가 **그대로 통과했다**(독립검증 실측). 규칙을 실제로 지키는 건
+   * `halftime-draft.test.ts` 의 단위 계약 하나뿐이었다 — 방어가 한 층.
+   *
+   * #276 이 감독시간 자리 바꾸기를 열었으므로 슬롯 인덱스는 실제로 움직인다. 그러니
+   * **선수 2명 + `[자리]` 스왑**을 태워야 "사람에게 한 말이 자리를 따라가는" 결함이 e2e 층에서도 죽는다.
+   */
+  test("b2. 자리를 바꿔도 문장은 **사람**을 따라간다 (슬롯 기준 회귀 가드)", async ({ page }) => {
+    await openMatch(page, "FIRST_HALF");
+    await page.getByTestId("stage-tab-brief").click();
+    // 서로 **다른 문장**을 두 사람에게 — 같은 문장이면 뒤바뀌어도 구분이 안 된다.
+    await page.getByTestId("brief-target-p9").click();
+    await page.getByTestId("brief-team-prompt").fill("9번: 과감하게 슛 노려");
+    await page.getByTestId("brief-target-p10").click();
+    await page.getByTestId("brief-team-prompt").fill("10번: 뒤로 내려서 받아라");
+    await expect(page.getByTestId("brief-save-status")).toHaveAttribute("data-status", "saved");
+
+    await page.unrouteAll({ behavior: "ignoreErrors" });
+    await mockApi(page, "HALFTIME");
+    await page.goto(`/match/${MATCH_ID}`);
+    await expect(page.getByTestId("halftime-panel")).toBeVisible();
+
+    // [자리] 탭에서 두 선수의 슬롯을 맞바꾼다(#276) — 이제 슬롯 인덱스가 서로 반대다.
+    await page.getByTestId("halftime-mode-move").click();
+    await page.getByTestId("token-p9").click();
+    await page.getByTestId("token-p10").click();
+
+    // 자리가 실제로 바뀌었는지부터 확인한다 — 안 바뀌었으면 이 계약은 아무것도 검사하지 않는다.
+    const slotOf = (id: string) =>
+      page.evaluate(
+        (pid) =>
+          document
+            .querySelector(`[data-testid="token-${pid}"]`)
+            ?.closest("[data-testid^='board-slot-']")
+            ?.getAttribute("data-testid") ?? null,
+        id,
+      );
+    expect(await slotOf("p9"), "스왑이 안 일어났다면 아래 단언은 공허하다").not.toBeNull();
+
+    // 그리고 각자의 문장이 **자기에게** 그대로 붙어 있다.
+    await page.getByTestId("halftime-mode-say").click();
+    await page.getByTestId("token-p9").click();
+    await expect(page.getByTestId("rail-prompt-input")).toHaveValue("9번: 과감하게 슛 노려");
+    await page.getByTestId("token-p10").click();
+    await expect(page.getByTestId("rail-prompt-input")).toHaveValue("10번: 뒤로 내려서 받아라");
+  });
+
   test("c. 감독시간에는 `후반 지시` 탭이 없다 — 같은 문장을 두 칸에서 고치지 않는다", async ({ page }) => {
     await prewriteThenHalftime(page);
     expect(await tabLabels(page)).toEqual(["감독", "경기장면", "통계", "로그"]);
