@@ -37,6 +37,10 @@ class AwayRevengeTest extends MatchTestBase {
     @Resource
     private online.hmb.match.MatchLockService lockService;
 
+    /** 트랜잭션 경계 계약용 — 매치 생성을 강제로 실패시켜 예약이 롤백되는지 본다. */
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    private online.hmb.match.MatchService matchService;
+
     // ── 큐 조회 ────────────────────────────────────────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -637,6 +641,86 @@ class AwayRevengeTest extends MatchTestBase {
     private int attemptsOf(String reportId) {
         return jdbcClient.sql("SELECT revenge_attempts FROM away_reports WHERE id = ?")
                 .param(reportId).query(Integer.class).single();
+    }
+
+
+    /**
+     * ⚠️ <b>자발적 무르기는 시도를 소모한다 — 사고 환불이 그 앞으로 새면 안 된다</b>(3R major-1).
+     *
+     * <p>이 웨이브의 안전 논거("복수는 리롤 문을 열지 않는다")는 결국 <b>순서 하나</b>에 걸려 있다:
+     * {@code forfeitIfVoluntaryAwayAbandon} 안에서 사고 환불이 <b>BRIEFING 검사 뒤에</b> 있어야 한다.
+     * 한 줄을 앞으로 옮기면 브리핑 무르기가 시도를 안 먹어 <b>일일 한도까지 무한 리롤</b>이 되고,
+     * 게다가 몰수 정산이 건너뛰어져 리포트에 {@code from_revenge} 표식이 안 붙는다 →
+     * <b>복수의 복수 체인까지 같이 열린다</b>. 독립검증이 그 변이체로 121 테스트를 통과시켰다 —
+     * 논거를 떠받치는 자리에 표본이 0이었다는 뜻이다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void 복수를_브리핑에서_무르면_시도를_먹고_몰수로_기록된다() {
+        String me = setupUserWithDeck("rv_vol_me");
+        String meId = userIdOf("rv_vol_me");
+        setupOpponentWithDeck("rv_vol_atk");
+        String attackerId = userIdOf("rv_vol_atk");
+        raid(attackerId, meId, "RV_VOL1", "WIN");
+        String reportId = reportIdOf("RV_VOL1");
+
+        String matchId = (String) authPost("/api/away/revenge/" + reportId + "/matches", me, null,
+                Map.class).getBody().get("id");
+        assertThat(matchState(matchId)).isEqualTo("BRIEFING");
+
+        // 상대 스쿼드를 보고 무른다 = 자발적 포기(#245 D1 이 몰수패로 막는 그것).
+        assertThat(authPost("/api/matches/" + matchId + "/abandon", me, Map.of(), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        // ① 시도는 **돌아오지 않는다** — 돌아오면 약한 상대가 나올 때까지 무한 리롤이다.
+        assertThat(attemptsOf(reportId)).as("자발적 무르기는 시도를 먹는다").isEqualTo(1);
+        assertThat(queueOf(me)).singleElement()
+                .satisfies(e -> assertThat(e.get("attemptsUsed")).isEqualTo(1));
+
+        // ② 몰수 정산이 돌아 상대 쪽 리포트에 **복수 표식**이 붙는다 — 안 붙으면 그가 되갚을 수 있다
+        //    (복수의 복수 차단이 이 표식 하나에 걸려 있다).
+        String bounced = jdbcClient.sql("SELECT id FROM away_reports WHERE match_id = ?")
+                .param(matchId).query(String.class).optional().orElse(null);
+        assertThat(bounced).as("몰수 정산이 돌았다").isNotNull();
+        assertThat(jdbcClient.sql("SELECT from_revenge FROM away_reports WHERE id = ?")
+                .param(bounced).query(Integer.class).single())
+                .as("복수가 만든 기록이라는 표식").isEqualTo(1);
+    }
+
+    /**
+     * 예약과 매치 생성은 <b>한 트랜잭션</b>이다(3R minor-3) — 생성이 실패하면 시도도 남지 않는다.
+     *
+     * <p>갈라 두면 예약만 커밋된 채 프로세스가 죽는 창이 남고, 그 상태엔 도전장 행이 없어
+     * <b>사고 환불조차 회수하지 못한다</b>(복구 경로 없는 손실). 그 창은 실서비스에서 프로세스
+     * 사망으로만 열리므로, 계약은 <b>같은 경계 안에서 실패했을 때 롤백되는가</b>로 태운다 —
+     * 매치 생성을 강제로 던지게 만들어 예약이 되돌아가는지 본다.
+     */
+    @Test
+    void 매치_생성이_실패하면_시도도_남지_않는다() {
+        String me = setupUserWithDeck("rv_tx_me");
+        String meId = userIdOf("rv_tx_me");
+        setupOpponentWithDeck("rv_tx_atk");
+        String attackerId = userIdOf("rv_tx_atk");
+        raid(attackerId, meId, "RV_TX1", "WIN");
+        String reportId = reportIdOf("RV_TX1");
+
+        org.mockito.Mockito.doThrow(new IllegalStateException("boom"))
+                .when(matchService)
+                .createAwayMatch(org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString(),
+                        org.mockito.ArgumentMatchers.anyString());
+        try {
+            authPost("/api/away/revenge/" + reportId + "/matches", me, null, Map.class);
+        } finally {
+            org.mockito.Mockito.reset(matchService);
+        }
+
+        assertThat(attemptsOf(reportId)).as("실패한 생성은 시도를 먹지 않는다").isZero();
+        assertThat(queueOf(me)).singleElement().satisfies(e -> {
+            assertThat(e.get("attemptsUsed")).isEqualTo(0);
+            assertThat(e.get("state")).isEqualTo("AVAILABLE");
+        });
     }
 
     // ── 헬퍼 ───────────────────────────────────────────────────────────────

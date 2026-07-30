@@ -978,25 +978,27 @@ public class AwayService {
         // ⚠️ 무승부는 횟수를 쓰지 않으므로(hero 확정 Q3-①) **정산에서 환불**한다 — 예약을 미루면
         // 원자성이 사라지고, 예약을 안 하면 자물쇠가 없다. "먼저 잠그고 무승부면 돌려준다"가 두
         // 규칙을 다 지키는 유일한 순서다.
-        int reserved = jdbcClient.sql("""
-                        UPDATE away_reports
-                           SET revenge_attempts = revenge_attempts + 1
-                         WHERE id = ? AND revenge_attempts < ? AND revenge_state <> 'AVENGED'
-                        """)
-                .params(reportId, revengeAttemptsMax)
-                .update();
-        if (reserved == 0) {
-            throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "REVENGE_EXHAUSTED",
-                    "이 기록에는 더 도전할 수 없습니다 (" + revengeAttemptsMax + "회 소진)",
-                    java.util.Map.of("attemptsUsed", revengeAttemptsMax, "attemptsMax", revengeAttemptsMax));
-        }
-        try {
+        // ⚠️ 예약과 매치 생성은 **한 트랜잭션**이다(3R minor-3). 갈라 두면 예약만 커밋된 채 프로세스가
+        // 죽는 창이 남는데, 그 상태엔 도전장 행이 없어 `refundAccidentalRevenge` 조차 회수하지 못한다
+        // = **복구 경로 없는 시도 손실**. `TxRunner` 는 PROPAGATION_REQUIRED 라 안쪽
+        // `createAwayMatch` 의 트랜잭션이 이 경계에 합류한다 — 쓰기 락은 오히려 둘에서 하나로 준다.
+        // 실패는 롤백이 처리하므로 별도 환불 코드가 필요 없다(있으면 도달 불가한 방어 코드가 된다).
+        return txRunner.run(() -> {
+            int reserved = jdbcClient.sql("""
+                            UPDATE away_reports
+                               SET revenge_attempts = revenge_attempts + 1
+                             WHERE id = ? AND revenge_attempts < ? AND revenge_state <> 'AVENGED'
+                            """)
+                    .params(reportId, revengeAttemptsMax)
+                    .update();
+            if (reserved == 0) {
+                throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, "REVENGE_EXHAUSTED",
+                        "이 기록에는 더 도전할 수 없습니다 (" + revengeAttemptsMax + "회 소진)",
+                        java.util.Map.of("attemptsUsed", revengeAttemptsMax,
+                                "attemptsMax", revengeAttemptsMax));
+            }
             return matchService.createAwayMatch(userId, ghostBotId, report.attackerId(), reportId);
-        } catch (RuntimeException e) {
-            // 매치를 못 만들었으면 시도를 먹지 않는다 — 예약은 자물쇠지 벌칙이 아니다.
-            refundRevenge(reportId);
-            throw e;
-        }
+        });
     }
 
     /**
@@ -1069,9 +1071,12 @@ public class AwayService {
         }
         // 패배: 시도는 **생성 시점에 이미 예약**됐다(BL-1). 여기서 또 깎으면 두 번 먹는다.
         //
-        // ⚠️ 그래서 정산에 도달하지 못한 매치(킥오프 이후 포기·스톨 스윕 — 독립검증 MIN-6)도
-        // 시도가 소모된 채로 남는다. 그게 옳은 방향이다: 반대로 "정산 때만 깎는다"면 무르기를
-        // 반복해 시도를 안 쓰고 상대를 계속 지목할 수 있다(= 자물쇠가 없는 것과 같다).
+        // ⚠️ 정산에 도달하지 못한 매치는 **경로에 따라 갈린다**(2R BLOCKER-1 이 정정한 부분):
+        //   · 자발적 무르기(BRIEFING) → 몰수 정산이 돌아 여기 온다 = 정당하게 소모된다.
+        //   · 사고 회수(FAILED · 멈춘 생성 · 시계 멈춤 · 스톨 스윕) → 정산이 안 돌고
+        //     `MatchLockService` 가 `refundAccidentalRevenge` 로 **돌려준다**.
+        // 한때 여기 "사고도 소모된 채 남는다, 그게 옳다"고 적혀 있었는데 틀렸다 — 그 문장이
+        // 서버 장애로 유저의 도전 기회를 먹는 동작을 정당화하고 있었다.
     }
 
     // ── 원정 랭킹보드 (#286 W4 · #319) ──────────────────────────────────────
