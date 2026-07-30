@@ -5,8 +5,10 @@ import { playerKey, playerAt, ballOwnerOf, claimantSideOf, setPossession } from 
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
-import { fdist, fclamp, toFixed } from "./fixedmath";
+import { fdist, fclamp, toFixed, isqrt } from "./fixedmath";
 import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
+import { deliverySpeedFx, shotPowerFx } from "./kick";
+import { xgAtPoint } from "./decision";
 
 /**
  * contest — 경합 판정(패스/인터셉트/태클/슛).
@@ -255,13 +257,21 @@ export function launchCornerCross(
     const d = fdist(p.posFx.x, p.posFx.y, t.x, t.y);
     if (d < bestD) { bestD = d; rec = p; }
   }
+  const crossSpeed = deliverySpeedFx(toFixed(config.setPiece.crossSpeed, scale), true, config);
   state.ball.flight = {
     toX: t.x,
     toY: t.y,
-    speed: toFixed(config.setPiece.crossSpeed, scale),
+    speed: crossSpeed,
     kind: "pass",
+    // #306: 코너 크로스는 **띄운 공**이다 — 도착 순간이 공중 경합(헤딩)이 된다.
+    delivery: "lofted",
+    hangTicks: Math.max(1, Math.ceil(fdist(state.ball.posFx.x, state.ball.posFx.y, t.x, t.y) / Math.max(1, crossSpeed))),
     target: rec ? rec.id : undefined,
     fromSide: taker.side,
+    // #313: 발사점이 없으면 `settle()` 이 굴림 방향을 구하지 못해 크로스가 낙하점에 딱 선다
+    // (코너 크로스는 이 필드가 없어서 굴리기 대상에서 통째로 빠져 있었다).
+    fromX: state.ball.posFx.x,
+    fromY: state.ball.posFx.y,
   };
   state.ball.owner = null;
   state.ball.ownerSide = null;
@@ -423,7 +433,15 @@ export function tryIntercept(
   }
   if (!cand) return [];
 
-  const prob = fclamp(config.contest.interceptBase * attrFactor(cand.attrs.positioning), 0.02, 0.9);
+  // #312: 틱당 확률을 공속으로 정규화 — 느린 패스가 오래 난다고 컷 롤을 더 받으면
+  // E1 패스 성공률 캘리브레이션이 이중 적용된다(위 `interceptSpeedRefM` 주석).
+  const refFx = toFixed(config.contest.interceptSpeedRefM, config.fixedScale);
+  const speedNorm = refFx > 0 ? Math.min(1, f.speed / refFx) : 1;
+  const prob = fclamp(
+    config.contest.interceptBase * attrFactor(cand.attrs.positioning) * speedNorm,
+    0.02 * speedNorm,
+    0.9,
+  );
   if (rng.next() < prob) {
     giveBallTo(state, cand, "turnover");
     return [
@@ -564,16 +582,169 @@ export function tryTackle(
 }
 
 /**
+ * 공중 경합(#306 S6) 후보의 점수 — **높이 싸움은 physical 이 결정한다**.
+ * 거리는 선형 감점(반경 밖은 애초에 후보가 아니다). 순수 함수·Rng 0.
+ */
+function aerialScore(p: SimPlayer, distFx: number, config: EngineConfig): number {
+  const a = config.contest.aerial;
+  const attr = (a.physicalWeight * p.attrs.physical + (1 - a.physicalWeight) * p.attrs.positioning) / 100;
+  const distM = distFx / config.fixedScale;
+  const reach = Math.max(0.05, 1 - distM / a.distanceRefM);
+  return attr * reach * (1 - 0.25 * p.fatigue);
+}
+
+/**
+ * 공중볼 도착 — **헤딩 경합**(#306 S6).
+ *
+ * 지상 패스는 "손 닿는 사람이 잡는다"지만 띄운 공은 다르다. 뛰어올라 머리로 맞히는 싸움이고,
+ * 반경도 넓고(`aerial.rangeM`), **잡히기보다 떨어진다**(`aerial.controlBase`) — 그 떨어진 공이
+ * 세컨볼이다. 여기서 `settle()`(#313 굴림)과 맞물려 "헤더 → 세컨볼 쟁탈"이 나온다.
+ *
+ * 계획된 패스 결과(`passOutcome`)는 **어느 팀이 이기는지**를 계속 소유한다(벤치 78–85% 캘리브레이션의
+ * 근간을 헤딩 기하가 몰래 덮어쓰지 않게). 헤딩이 정하는 것은 **그 팀의 누가**, 그리고
+ * **잡느냐 떨궈내느냐**다. 계획이 없는 공(코너 크로스)은 점수로 승자 팀까지 정한다.
+ *
+ * 반환 `null` = 공중 경합이 성립하지 않음(반경 안에 아무도 없다) → 호출부가 기존 경로로 진행.
+ */
+function resolveAerial(
+  state: SimState,
+  rng: Rng,
+  config: EngineConfig,
+  pitch: Pitch,
+  tick: number,
+  minute: number,
+): MatchEvent[] | null {
+  const f = state.ball.flight;
+  const a = config.contest.aerial;
+  if (!f || !a.enabled) return null;
+  const bx = state.ball.posFx.x;
+  const by = state.ball.posFx.y;
+  const range = toFixed(a.rangeM, config.fixedScale);
+
+  // 계획이 있으면 **이기는 팀**은 계획이 정한다(성공=차는 팀 / 인터셉트=상대). 없으면 null.
+  let winSide: TeamSide | null = null;
+  if (config.contest.passOutcomeAuthoritative && f.passOutcome && f.claimant) {
+    if (f.passOutcome === "fail_out") return null; // 라인 밖으로 나가는 공은 경합 대상이 아니다.
+    winSide = claimantSideOf(f);
+  }
+
+  // 후보 수집 + 승자 선정. 동률은 **전순서**(점수 → idHash → id)로만 깬다(§5-3).
+  let winner: SimPlayer | null = null;
+  let winScore = -Infinity;
+  let contested = 0;
+  for (const p of state.players) {
+    const d = fdist(p.posFx.x, p.posFx.y, bx, by);
+    if (d > range) continue;
+    contested++;
+    if (winSide && p.side !== winSide) continue;
+    const sc = aerialScore(p, d, config);
+    if (sc < winScore) continue;
+    if (sc === winScore && winner) {
+      const tie = p.idHash !== winner.idHash ? p.idHash < winner.idHash : p.id < winner.id;
+      if (!tie) continue;
+    }
+    winScore = sc;
+    winner = p;
+  }
+  // **경합이 실제로 있을 때만** 헤딩 판정을 한다(반경 안 2명 이상). 혼자 있는 공중볼은
+  // 그냥 받는 것이지 다툼이 아니고, 여기서 잡으면 롱패스 완성률이 헤딩 롤에 통째로 잡아먹혀
+  // 벤치 캘리브레이션(78–85%)이 기하로 덮인다.
+  if (!winner || contested < 2) return null;
+
+  const opp: TeamSide = f.fromSide === "home" ? "away" : "home";
+  const headerDetail = { detail: "header" };
+
+  // --- 헤더 슛: 공격 방향 골 근처에서 이긴 공격수는 머리로 마무리한다. ---
+  const goal = attackGoal(pitch, winner.side);
+  const goalDist = fdist(winner.posFx.x, winner.posFx.y, goal.x, goal.y);
+  if (
+    !winner.isGK &&
+    winner.side === f.fromSide &&
+    goalDist <= toFixed(a.headerShootRangeM, config.fixedScale)
+  ) {
+    const base = xgAtPoint(winner.side, winner.posFx.x, winner.posFx.y, winner.attrs.shooting, winner.fatigue, config, pitch);
+    const xg = fclamp(base.xg * a.headerXgMult, 0.01, 0.9);
+    if (xg >= config.contest.shootXgThreshold) {
+      state.ball.posFx.x = winner.posFx.x;
+      state.ball.posFx.y = winner.posFx.y;
+      state.ball.owner = null;
+      state.ball.ownerSide = null;
+      state.ball.flight = {
+        toX: goal.x,
+        toY: goal.y,
+        speed: shotPowerFx(winner.attrs.shooting, config),
+        kind: "shot",
+        // 헤더 슛도 공중 산물이다 — 이 플래그로 뷰어·통계가 "머리로 넣은 골"을 구분한다.
+        delivery: "lofted",
+        target: winner.id,
+        fromSide: winner.side,
+        xg,
+      };
+      setPossession(state, winner.side, tick, "turnover");
+      return [{ tick, minute, type: "shot", team: winner.side, playerId: winner.id, xg, ...headerDetail }];
+    }
+  }
+
+  // --- 컨트롤 vs 떨궈내기(세컨볼). ---
+  const controlProb = fclamp(a.controlBase * attrFactor(winner.attrs.technical), 0.05, 0.95);
+  const ev: MatchEvent =
+    winner.side === f.fromSide
+      ? { tick, minute, type: "pass", team: f.fromSide, playerId: winner.id, ...headerDetail }
+      : { tick, minute, type: "interception", team: opp, playerId: winner.id, ...headerDetail };
+
+  if (rng.next() < controlProb) {
+    giveBallTo(state, winner, "turnover");
+    return [ev];
+  }
+
+  // 떨궈낸다 — 수비수는 자기 골 반대로 걷어내고, 공격수는 상대 골 쪽으로 플릭온한다.
+  // 소유는 주지 않는다(세컨볼). 방향만 주고 나머지는 `settle()`(#313)의 굴림·감속이 맡는다.
+  const away = winner.side === f.fromSide ? goal : defendGoal(pitch, winner.side);
+  const sign = winner.side === f.fromSide ? 1 : -1;
+  const dx = (away.x - winner.posFx.x) * sign;
+  const dy = (away.y - winner.posFx.y) * sign;
+  const len = isqrt(dx * dx + dy * dy);
+  const speed = toFixed(a.clearSpeed, config.fixedScale);
+  state.ball.posFx.x = winner.posFx.x;
+  state.ball.posFx.y = winner.posFx.y;
+  state.ball.owner = null;
+  state.ball.ownerSide = null;
+  const run = speed * config.ball.settleLookaheadTicks;
+  state.ball.flight = {
+    toX: len > 0 ? winner.posFx.x + Math.round((dx * run) / len) : winner.posFx.x,
+    toY: len > 0 ? winner.posFx.y + Math.round((dy * run) / len) : winner.posFx.y,
+    speed: len > 0 ? speed : 0,
+    kind: "loose",
+    delivery: "ground",
+    fromSide: winner.side,
+    // 굴림 방향의 기준점 = 헤딩 지점(여기서 출발했다). 없으면 settle 이 방향을 못 구한다.
+    fromX: winner.posFx.x,
+    fromY: winner.posFx.y,
+  };
+  setPossession(state, winner.side, tick, "turnover");
+  return [ev];
+}
+
+/**
  * 패스/루즈볼 도착 처리 — 도착점 최근접 선수가 컨트롤.
  * 같은 팀이 받으면 pass 완료, 상대가 잡으면 interception.
+ * 띄운 공(#306 `delivery === "lofted"`)은 먼저 **헤딩 경합**으로 간다.
  */
 export function resolveArrival(
   state: SimState,
+  rng: Rng,
   config: EngineConfig,
   pitch: Pitch,
   tick: number,
   minute: number,
 ): MatchEvent[] {
+  {
+    const fl = state.ball.flight;
+    if (fl && fl.delivery === "lofted" && fl.kind === "pass") {
+      const aerial = resolveAerial(state, rng, config, pitch, tick, minute);
+      if (aerial) return aerial;
+    }
+  }
   const f = state.ball.flight;
   if (!f) return [];
   const fromSide = f.fromSide;
@@ -605,16 +776,27 @@ export function resolveArrival(
   const settle = (): MatchEvent[] => {
     const dx = f.fromX != null ? bx - f.fromX : 0;
     const dy = f.fromY != null ? by - f.fromY : 0;
-    const len = Math.round(Math.sqrt(dx * dx + dy * dy));
-    const roll = toFixed(config.ball.settleSpeed, config.fixedScale);
-    f.kind = "loose";
+    // 방향 길이는 정수 제곱근으로(플랫폼 편차 0). 발사점→현재의 벡터라 공이 그 직선 위를
+    // 굴러가는 동안 **방향이 변하지 않는다** — 이것이 leapfrog 진동(#181)이 안 생기는 이유다.
+    const len = isqrt(dx * dx + dy * dy);
+    // #313: 굴림 속도는 **첫 settle 에서 한 번만** 정한다(도착 속도 × frac, 상한 settleSpeed).
+    // 이미 굴러가는 중(kind==="loose")이면 advanceBall 이 looseDecay 로 깎아 둔 속도를 **보존**한다.
+    // 매 틱 상수로 되돌리면 감속이 무효가 되어 공이 영원히 같은 속도로 굴러 나간다.
+    const wasLoose = f.kind === "loose";
+    if (!wasLoose) {
+      const cap = toFixed(config.ball.settleSpeed, config.fixedScale);
+      const carry = Math.round(f.speed * config.ball.settleSpeedFrac);
+      f.speed = Math.min(cap, Math.max(0, carry));
+      f.kind = "loose";
+    }
     f.waited = (f.waited ?? 0) + 1;
-    if (len > 0 && roll > 0) {
-      f.speed = roll;
+    // 1 fixed unit(=1m/tick) 미만이면 정지 — 여기서 멈춘 공은 직전 틱 이동도 이미 1m 미만이라
+    // "날아가다 급정지"로 보이지 않는다(감속으로 자연스럽게 선다).
+    if (len > 0 && f.speed >= config.fixedScale) {
       // 목표는 **방향만** 준다(감속으로 그 전에 멈춘다). 피치 안으로 클램프하지 않는다 —
       // 클램프하면 경계 근처에서 구르는 방향이 꺾여 "빈 공간 꺾임"이 다시 생긴다(실측 172건).
       // 경계를 넘으면 advanceBall 의 아웃 판정이 스로인/골킥으로 정상 처리한다(오버힛 패스 그대로).
-      const run = roll * 3;
+      const run = f.speed * config.ball.settleLookaheadTicks;
       f.toX = bx + Math.round((dx * run) / len);
       f.toY = by + Math.round((dy * run) / len);
     } else {

@@ -6,8 +6,9 @@ import type { PassOption } from "./perception";
 import type { ActionCandidate, GeneratorId, ChainProbe } from "./action";
 import { fromFixed, fclamp, fdist, fdistSq, isqrt, toFixed } from "./fixedmath";
 import { attackGoal, clampToPitch, distToAttackGoal } from "./pitch";
-import { passOptions } from "./perception";
-import { computePassProb, planPass, xgAtPoint, type Action } from "./decision";
+import { passOptions, pressureCount } from "./perception";
+import { deliverySpeedFx, isLofted, passPowerFx, shotPowerFx } from "./kick";
+import { computePassProb, planPass, planShot, xgAtPoint, type Action } from "./decision";
 import {
   EV_SCALE,
   FRAC_SCALE,
@@ -306,6 +307,17 @@ function passOptsOf(g: GenInput): PassOption[] {
   return g.passOpts;
 }
 
+/** 이 후보를 실제로 차면 나갈 세기(#312). `planPass` 와 **같은 함수**를 쓴다(재구현 금지). */
+function candidateSpeedFx(g: GenInput, o: PassOption): number {
+  const cfg = g.ctx.config;
+  const pressers = pressureCount(g.ctx.state, g.holder, cfg, cfg.contest.passPressureRangeM);
+  return deliverySpeedFx(
+    passPowerFx(o.dist, g.holder.attrs.passing, pressers, cfg),
+    isLofted(o.dist, o.long, cfg),
+    cfg,
+  );
+}
+
 /**
  * 생성기 테이블. **`GENERATORS` 순서대로만** 실행한다(결정론: 후보 배열의 초기 순서가 상태의 함수로
  * 고정된다). S5 는 여기에 항목을 **뒤에** 추가한다.
@@ -315,7 +327,7 @@ const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void>
   shoot: (g, out) => {
     const c = g.ctx.config;
     if (g.distToGoalM > c.contest.shootRange || g.xgHere < c.contest.shootXgThreshold) return;
-    const speed = toFixed(c.contest.shotBallSpeed, c.fixedScale);
+    const speed = shotPowerFx(g.holder.attrs.shooting, c);
     const flight = speed > 0 ? Math.ceil(g.distToGoalFx / speed) : 0;
     out.push({
       kind: "shoot",
@@ -334,14 +346,20 @@ const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void>
     });
   },
   // 다이렉트 패스 = 인식 반경 안 동료. long 과 **같은 `passOptions` 배열**을 나눠 갖는다.
+  // #312: `ballSpeedFx` 가 드디어 **후보마다 다른 값**을 갖는다(구버전은 상수 하나). 세기는
+  // `planPass` 가 실행 시 쓰는 것과 **같은 함수**로 뽑는다 — 후보의 비행틱 예측이 실제와 갈리지 않게.
   direct: (g, out) => {
-    const speed = toFixed(g.ctx.config.ball.passSpeed, g.ctx.config.fixedScale);
-    for (const o of passOptsOf(g)) if (!o.long) out.push(toActionCandidate(o, "direct", "direct", speed));
+    for (const o of passOptsOf(g)) {
+      if (o.long) continue;
+      out.push(toActionCandidate(o, "direct", "direct", candidateSpeedFx(g, o)));
+    }
   },
   // 롱패스 = 반경 밖 의도적 롱볼(perception 이 이미 게이팅해 둔 것).
   long: (g, out) => {
-    const speed = toFixed(g.ctx.config.ball.passSpeed, g.ctx.config.fixedScale);
-    for (const o of passOptsOf(g)) if (o.long) out.push(toActionCandidate(o, "long", "long", speed));
+    for (const o of passOptsOf(g)) {
+      if (!o.long) continue;
+      out.push(toActionCandidate(o, "long", "long", candidateSpeedFx(g, o)));
+    }
   },
   // 캐리(드리블) — **방향은 아직 골 중앙 한 개다**(방향 후보화는 S5). 여기서 후보를 늘리면
   // 슛 위치 분포가 움직여 S2 의 "무회귀" 게이트가 성립하지 않는다.
@@ -692,8 +710,11 @@ export function decideBallOwnerChain(
 
   const cand = picked.cand;
   switch (cand.kind) {
-    case "shoot":
-      return { kind: "shoot", xg, toX: goal.x, toY: goal.y };
+    case "shoot": {
+      // #312: 슛도 세기·조준 오차를 탄다(weighted 코어와 **같은 함수** — 두 코어가 갈리지 않게).
+      const sp = planShot(owner, config, rng, pitch);
+      return { kind: "shoot", xg, toX: sp.toX, toY: sp.toY, speedFx: sp.speedFx };
+    }
     case "pass": {
       const opt = cand.opt as PassOption;
       const plan = planPass(state, owner, opt, config, rng, pitch);
@@ -705,6 +726,8 @@ export function decideBallOwnerChain(
         outcome: plan.outcome,
         long: opt.long,
         claimant: plan.claimant,
+        speedFx: plan.speedFx,
+        lofted: plan.lofted,
       };
     }
     case "carry":

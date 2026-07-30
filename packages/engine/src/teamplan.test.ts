@@ -104,9 +104,23 @@ describe("#279 S1 — teamplan 훅", () => {
   });
 
   it("매치가 state.plan 을 채운다 (틱당 1회 갱신 훅)", () => {
-    const s = freshState();
-    expect(s.plan.home.lineX).toBe(computeTeamPlan(s, "home", config, pitch).lineX);
-    expect(s.plan.away.lineX).toBe(computeTeamPlan(s, "away", config, pitch).lineX);
+    // `lineX` 는 **그 틱 시작 시점의 공 x** 로 계산된다(계획은 decide 루프 **앞**, §5-1).
+    // 반면 여기서 다시 계산하면 **틱이 끝난 뒤의 공 x** 를 쓴다 — 마지막 틱에 공이 움직였으면
+    // 두 값은 정확히 한 틱 분량만큼 다르다. 구 계약은 `toBe` 로 완전 일치를 요구해서,
+    // "마지막 틱에 공이 안 움직였다"는 **우연**에 기대고 있었다(#312 로 공 세기가 바뀌자 깨졌다).
+    //
+    // 지켜야 하는 것은 "훅이 돌았고 같은 공식을 쓴다" 이지 "마지막 틱에 공이 멈춰 있었다" 가 아니다.
+    // 그래서 허용 오차를 **공 한 틱 이동량**으로 둔다 — 훅이 빠지거나 다른 공식을 쓰면
+    // (S1 기본값 0 이거나 피치 스케일로 어긋나므로) 이 오차 안에 절대 들어오지 않는다.
+    const tol = Math.round(config.ball.passSpeedMax * config.fixedScale);
+    for (const side of ["home", "away"] as const) {
+      const s = freshState();
+      const got = s.plan[side].lineX;
+      const now = computeTeamPlan(s, side, config, pitch).lineX;
+      expect(Number.isInteger(got)).toBe(true);
+      expect(Math.abs(got - now), `${side} plan.lineX ${got} vs 재계산 ${now} (허용 ${tol})`)
+        .toBeLessThanOrEqual(tol);
+    }
   });
 });
 

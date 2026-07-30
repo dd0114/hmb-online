@@ -52,11 +52,48 @@ export interface EngineConfig {
      */
     arriveToleranceM: number;
     /**
-     * #181: 도착했는데 잡을 사람이 controlRange 밖일 때, 공이 그 사람 쪽으로 **굴러가는** 속도(m/tick).
-     * 순간이동(구 무제한 대입) 대신 굴러서 만난다. 0 이면 공이 그 자리에 멈춰 기다린다(템포 손실 큼:
-     * 실측 슛/팀 13.5→5.3). 살짝 빗나간 패스가 굴러가고 선수가 달려와 잡는 그림.
+     * #313(S6-B): 도착했는데 잡을 사람이 controlRange 밖일 때, 공이 **원래 가던 방향 그대로**
+     * 굴러가는 속도의 **상한**(m/tick). 0 이면 공이 그 자리에 딱 선다(= 급정지 524회/경기).
+     *
+     * #181 이 굴리기를 기각한 이유는 **재조준**이었다(공이 사람 쪽으로 방향을 틀며 쫓아가
+     * leapfrog 진동). 방향을 유지한 채 감속만 하면 그 진동이 구조적으로 생길 수 없다 —
+     * `contest.ts:settle()` 이 목표를 **발사점→현재 위치의 연장선**으로만 잡고 피치 클램프도
+     * 하지 않기 때문이다(클램프가 구르는 방향을 꺾어 172건을 만들었던 것이 2차 원인).
      */
     settleSpeed: number;
+    /**
+     * #313: 굴림 **시작** 속도 = 도착 직전 비행속도 × 이 비율(상한 `settleSpeed`).
+     * 상수로 두지 않는 이유 — 세게 찬 공이 살짝 빗나가면 멀리 굴러야 하고, 살살 굴린 패스가
+     * 빗나가면 발밑에 선다. 잔여 속도는 그 공이 얼마나 세게 왔는지의 함수다(S5-B 와 같은 축).
+     */
+    settleSpeedFrac: number;
+    /**
+     * #313: 굴림 목표를 몇 틱 앞에 두는가(목표는 **방향만** 준다 — 감속으로 그 전에 멈춘다).
+     * 짧으면 매 틱 재settle 이 돌고, 길면 목표까지 남은 거리가 커져 도착 판정이 늦어질 뿐이다.
+     */
+    settleLookaheadTicks: number;
+
+    /* --- #306(S6) 공중볼 --- */
+    /** 이 거리(m) 이상 패스는 띄워서 보낸다(lofted). 롱볼(`opt.long`)은 거리와 무관하게 항상 lofted. */
+    loftMinDistM: number;
+    /** lofted 공의 수평 속도 배수(<1). 같은 거리를 아치로 가면 수평 속도가 느려 체공이 생긴다. */
+    loftSpeedMult: number;
+
+    /* --- #312(S5-B) 세기 --- */
+    /**
+     * 패스 세기 하한/상한(m/tick). **선수가 정한다** — 발밑에 붙이는 짧은 패스는 살살,
+     * 라인을 넘기는 긴 패스는 세게. 구조는 `contest.passPowerAttrSwing`(능력치)·
+     * `passPressurePowerPenalty`(압박)로 흔들린다.
+     *
+     * 구버전은 `passSpeed` 상수 하나(18)였고, 그것이 hero H1/H2 의 뿌리였다 —
+     * 공 18 m/tick vs 선수 2.7 m/tick = **6.7배**(실제 축구 2~3배)라 "공만 순간이동하고
+     * 선수는 멈춰 있는" 그림이 된다.
+     */
+    passSpeedMin: number;
+    passSpeedMax: number;
+    /** 이 거리(m)에서 세기가 상한에 도달한다(그 사이는 선형). */
+    passSpeedFullDistM: number;
+
   };
 
   /** 행동 선택 기본 성향 계수(볼 소유자). behavior 로 가중. */
@@ -110,8 +147,18 @@ export interface EngineConfig {
      * 세트피스 크로스/루즈볼(passOutcome 없음)은 항상 기하 판정.
      */
     passOutcomeAuthoritative: boolean;
-    /** 레인 수비수의 인터셉트 기준선. */
+    /** 레인 수비수의 인터셉트 기준선(**틱당**, 아래 `interceptSpeedRefM` 로 정규화). */
     interceptBase: number;
+    /**
+     * #312: 비행 중 인터셉트(`tryIntercept`)의 **속도 정규화 기준**(m/tick).
+     *
+     * 이 확률은 원래 "공속 18 상수 = 패스당 1~2틱" 위에서 패스당 컷 비율로 맞춰졌다. 세기가
+     * 선수마다 달라지면(#312) 느린 패스는 비행 틱이 2~3배로 늘어 **같은 패스가 컷 롤을 2~3배
+     * 받는다** — 실측 패스 성공률 88.0 → 81.6% 로 밀렸다. 그건 리얼리즘이 아니라 **시간
+     * 이산화가 바뀐 것**이고, 그대로 두면 E1 캘리브레이션(`computePassProb`)이 몰래 이중 적용된다.
+     * 틱당 확률에 `speed / ref` 를 곱해 **패스당** 컷 확률을 보존한다.
+     */
+    interceptSpeedRefM: number;
     /** 태클 성공 기준선. */
     tackleBase: number;
     /** 슛 기대득점(xG) 기준선. */
@@ -173,6 +220,55 @@ export interface EngineConfig {
     oneOnOneXgMult: number;
     /** 1대1(단독 찬스)로 판정되면 슛 후보 가중에 곱하는 배수(>=1). 슛을 거의 강제. */
     oneOnOneShootBias: number;
+
+    /* --- #312(S5-B) 정확도: 의도 vs 실제 --- */
+    /**
+     * 조준 오차의 기준 각도(도). 구버전엔 이 개념 자체가 없었다 — `planPass` 가 성공/실패를
+     * **먼저 굴린 뒤** 성공이면 리시버에게 **정확히**, 실패면 다른 목표를 **정확히** 맞혔다.
+     * 즉 "빗나감 = 다른 목표를 정확히 맞히는 것"이었다(hero H1).
+     *
+     * 이제는 의도 지점을 기준으로 **각도가 흔들리고**(이 값) **세기가 흔들린다**
+     * (`passPowerErrorFrac`). 도달점은 그 오차의 결과다.
+     *
+     * ⚠️ 성공/실패 롤(`passOutcomeAuthoritative`)은 **그대로 둔다**. 그것이 벤치 78–85%
+     * 캘리브레이션의 근간이고, 오차만으로 성공률을 만들면 노브가 사라진다. 바뀐 것은
+     * **실패의 기하**다 — 실패는 이제 "가장 가까운 상대를 정조준"이 아니라 **큰 조준 오차**이고,
+     * 그 오차가 떨군 지점에서 가장 가까운 상대가 회수한다.
+     */
+    passAimErrorDeg: number;
+    /** 실패 패스의 조준 오차 배수(성공 대비). 실패 = 크게 빗나감. */
+    passFailAimErrorMult: number;
+    /** passing 속성(0..100, 50 기준)이 조준 오차를 줄이는 최대 비율(0..1). */
+    passAimAttrSwing: number;
+    /** 근접 압박 1명당 조준 오차 배수 가산. */
+    passPressureAimPenalty: number;
+    /** 세기 오차(의도 세기 대비 ±비율). 실제 도달점은 의도점보다 짧거나 길어진다. */
+    passPowerErrorFrac: number;
+    /** passing 속성이 세기(m/tick)에 주는 최대 가감 비율. */
+    passPowerAttrSwing: number;
+    /** 근접 압박 1명당 세기를 깎는 비율(급하게 차면 힘이 안 실린다). */
+    passPressurePowerPenalty: number;
+    /** 슛 조준 오차의 기준 각도(도). shooting 속성으로 줄어든다. */
+    shotAimErrorDeg: number;
+
+    /* --- #306(S6) 공중 경합 --- */
+    aerial: {
+      enabled: boolean;
+      /** 공중볼 도착 시 경합에 낄 수 있는 반경(m). 점프·헤딩이라 controlRange 보다 넓다. */
+      rangeM: number;
+      /** 경합 점수의 physical 비중(나머지는 positioning). */
+      physicalWeight: number;
+      /** 거리 감점 기준(m) — 이 거리에서 점수 0 이 되도록 선형 감점. */
+      distanceRefM: number;
+      /** 경합 승자가 공을 **잡을**(발밑 컨트롤) 기본 확률. 실패하면 헤더로 떨궈 루즈볼. */
+      controlBase: number;
+      /** 헤더로 걷어낸/떨군 공의 속도(m/tick). */
+      clearSpeed: number;
+      /** 헤더 슛 xG 배수(<1: 발보다 어렵다). */
+      headerXgMult: number;
+      /** 헤더 슛을 시도하는 최대 사거리(m). 헤더는 멀리서 못 쏜다. */
+      headerShootRangeM: number;
+    };
   };
 
   /**
@@ -617,7 +713,8 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.24.0",
+  // 0.25.0: 공 물리 3건 — #313 루즈볼 굴림 · #306 공중볼/헤딩 · #312 세기·정확도(의도 vs 실제).
+  version: "engine@0.25.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -633,13 +730,26 @@ export const defaultEngineConfig: EngineConfig = {
   ball: {
     passSpeed: 18,
     shotSpeed: 26,
-    looseDecay: 0.82,
+    // #313: 0.82 → 0.6. 이 값은 그동안 **사실상 죽어 있었다**(settleSpeed 0 이라 구르는 공이
+    // 없었다). 실제로 굴려 보니 0.82 는 감속이 너무 약해 한 번 뜬 공이 27m 를 굴러 라인 밖으로
+    // 나갔다(실측 스로인 19.7 → 42.6/팀). 0.6 이면 굴림 총거리가 ~6m — "살짝 빗나간 패스"의 크기.
+    looseDecay: 0.6,
     // #181: 구버전은 `remaining <= f.speed` 라 사실상 18m 였다 — 공이 목표 18m 앞에서 도착 처리되고
     // 소유 이전이 그 간격을 순간이동으로 메워 "빈 공간에서 공이 스스로 휘는" 궤적을 만들었다.
     arriveToleranceM: 0,
-    // 0 = 공이 낙하점에 **멈춰서** 선수가 오길 기다린다(계약 green). >0 으로 굴려보내면 템포는
-    // 살아나지만 경계 클램프가 구르는 방향을 꺾어 "빈 공간 꺾임"이 다시 생긴다(실측 172건·최악 16.2m).
-    settleSpeed: 0,
+    // #313(S6-B): 0 → 6. 0 은 "공이 그 자리에 딱 선다" = 비행 중 급정지 524회/경기(hero H5).
+    // 굴리기가 예전에 깨졌던 원인 2개(재조준·경계 클램프)는 지금 `settle()` 에 둘 다 없다.
+    settleSpeed: 4,
+    settleSpeedFrac: 0.25,
+    settleLookaheadTicks: 3,
+    // #306: 25m 이상은 띄워 보낸다(그 아래는 발밑 지상 패스). 롱볼은 거리 무관 항상 lofted.
+    loftMinDistM: 25,
+    loftSpeedMult: 0.8,
+    // #312: 세기 범위. 상한 16 은 구 상수(18)보다 낮다 — 공/선수 속도비 6.7배를 3~4배로
+    // 내리는 것이 H1/H2 의 게이트이고, 그건 상한이 아니라 **평균**이 내려가야 달성된다.
+    passSpeedMin: 8,
+    passSpeedMax: 16,
+    passSpeedFullDistM: 35,
   },
   decisionWeights: {
     // 슛 하향(37→~13.5/팀), 홀드/드리블 비중↑(패스 볼륨·찬스 남발 억제).
@@ -712,6 +822,7 @@ export const defaultEngineConfig: EngineConfig = {
     centralShootHalfM: 12.0,
     tackleRange: 2.0,
     interceptRange: 1.5,
+    interceptSpeedRefM: 18,
     // #181: 2.5m → 3.5m. 공은 이제 **손 닿는 사람에게만** 가고(순간이동 금지) 못 닿으면 낙하점에
     // 멈춰 기다리므로, 이 반경이 곧 템포다. 2.5m 면 공이 그라운드에 서 있는 시간이 과해 경기가
     // 죽는다(슛/팀 5.1). 3.5m = 한 걸음 뻗어 잡는 거리.
@@ -725,6 +836,32 @@ export const defaultEngineConfig: EngineConfig = {
     // G-A(#99): 1대1 강제슛 배수 3.2→1.8. 여전히 단독찬스는 슛을 선호하되(1v1은 슛이 정답),
     // 슛 과다에 기여하던 과도한 강제를 완화.
     oneOnOneShootBias: 1.8,
+    // #312(S5-B) 정확도. 기준 6도 = 20m 패스에서 횡 오차 ±2.1m(controlRange 3.5m 안) —
+    // 성공 롤이 난 패스는 리시버가 한 걸음으로 흡수하고, 큰 오차는 굴러(#313) 쟁탈이 된다.
+    passAimErrorDeg: 6.0,
+    passFailAimErrorMult: 3.0,
+    passAimAttrSwing: 0.45,
+    passPressureAimPenalty: 0.35,
+    passPowerErrorFrac: 0.16,
+    passPowerAttrSwing: 0.15,
+    passPressurePowerPenalty: 0.07,
+    shotAimErrorDeg: 4.0,
+    // #306(S6) 공중볼.
+    aerial: {
+      enabled: true,
+      // 헤딩 경합 반경. 점프 포함이라 controlRange(3.5) 보다 넓다.
+      rangeM: 5.0,
+      physicalWeight: 0.7,
+      distanceRefM: 6.0,
+      // 공중볼은 발밑 패스보다 잡기 어렵다 — 절반 남짓만 컨트롤되고 나머지는 세컨볼이 된다.
+      controlBase: 0.45,
+      clearSpeed: 9.0,
+      // 헤더는 발보다 약하다(실축 헤더 전환율 < 슛 전체).
+      headerXgMult: 0.65,
+      // 페널티박스 깊이(16.5m)에 맞춘다. 헤더는 멀리서 못 쏘지만 박스 안이면 시도한다 —
+      // 12m 로 잡았을 때 8경기 헤더 슛이 1건뿐이었다(크로스 자체가 아직 S5 대기라 희소하다).
+      headerShootRangeM: 16.5,
+    },
   },
   rules: {
     foul: {

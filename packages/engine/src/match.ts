@@ -413,10 +413,12 @@ function stepTick(carry: Carry): void {
       switch (action.kind) {
         case "shoot": {
           state.ball.flight = {
+            // #312: 세기는 이제 **행동이 들고 온다**(구버전: config 상수 대입).
             toX: action.toX,
             toY: action.toY,
-            speed: toFixed(config.contest.shotBallSpeed, config.fixedScale),
+            speed: action.speedFx,
             kind: "shot",
+            delivery: "ground",
             target: owner.id,
             fromSide: owner.side,
             xg: action.xg,
@@ -466,8 +468,13 @@ function stepTick(carry: Carry): void {
           state.ball.flight = {
             toX: action.toX,
             toY: action.toY,
-            speed: toFixed(config.ball.passSpeed, config.fixedScale),
+            // #312: 상수 `ball.passSpeed` 대입 → 선수가 정한 세기. #306: 지상/공중 종류.
+            speed: action.speedFx,
             kind: "pass",
+            delivery: action.lofted ? "lofted" : "ground",
+            hangTicks: action.lofted
+              ? Math.max(1, Math.ceil(fdist(state.ball.posFx.x, state.ball.posFx.y, action.toX, action.toY) / Math.max(1, action.speedFx)))
+              : 0,
             target: action.receiver.id,
             fromSide: owner.side,
             passOutcome: action.outcome,
@@ -529,7 +536,7 @@ function stepTick(carry: Carry): void {
           carry.events.push(e);
         }
       } else {
-        for (const e of resolveArrival(state, config, pitch, state.tick, minute)) {
+        for (const e of resolveArrival(state, rng, config, pitch, state.tick, minute)) {
           carry.events.push(e);
         }
       }
@@ -590,7 +597,10 @@ function settleInFlightShot(carry: Carry): void {
   if (state.ball.flight?.kind !== "shot") return;
   const minute = tickToMinute(state.tick, config);
   // 상한은 하드코딩이 아니라 기하로 도출: 피치를 가로지르는 데 필요한 틱 + 여유.
-  const maxSteps = Math.ceil(config.pitch.width / config.contest.shotBallSpeed) + 2;
+  // #312: 슛 세기가 선수마다 달라졌으므로 config 상수가 아니라 **이 슛의 실제 속도**로 계산한다
+  // (상수로 두면 느리게 찬 슛이 상한 안에 골문까지 못 가 무음으로 증발한다).
+  const speedM = fromFixed(state.ball.flight.speed, config.fixedScale);
+  const maxSteps = Math.ceil(config.pitch.width / Math.max(0.5, speedM)) + 2;
   for (let i = 0; i < maxSteps; i++) {
     if (state.ball.flight?.kind !== "shot") break;
     const res = advanceBall(state.ball, config, pitch);

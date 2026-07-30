@@ -84,6 +84,12 @@ const BallFlightSchema = z.object({
   fromX: z.number().optional(),
   fromY: z.number().optional(),
   long: z.boolean().optional(),
+  /**
+   * #306(S6) 공중볼. 하프 경계에 크로스/롱볼이 떠 있으면 이 두 값이 유실될 때 도착 판정이
+   * 헤딩 경합 대신 지상 컨트롤로 뒤집힌다(무음 desync). zod 는 미선언 키를 조용히 버린다(#154).
+   */
+  delivery: z.enum(["ground", "lofted"]).optional(),
+  hangTicks: z.number().optional(),
 });
 
 const BallSchema = z.object({

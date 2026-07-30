@@ -10,6 +10,8 @@ const PHASE_CODE: Record<TeamPhase, number> = {
   transition_lose: 6,
 };
 const INTENT_CODE: Record<Intent["kind"], number> = { pass_to: 1, run_to: 2, cross_from: 3 };
+/** 공 비행 종류 코드(#306). 0 = 비행 없음. */
+const FLIGHT_KIND_CODE: Record<"pass" | "shot" | "loose", number> = { pass: 1, shot: 2, loose: 3 };
 
 /**
  * hash — 틱 상태 해시(FNV-1a, 32bit 정수).
@@ -46,6 +48,17 @@ export function hashState(state: SimState): string {
   h = mix(h, state.ball.posFx.x | 0);
   h = mix(h, state.ball.posFx.y | 0);
   h = mix(h, state.possession === "home" ? 1 : 2);
+  // #306: 비행 상태(종류·전달·속도·목표)를 흡수한다. 이 값들은 재개로 관통하는데 해시에
+  // 없으면 유실돼도 그 틱은 통과하고 **다음 틱부터** 갈라진다(로드맵 §5-6). 특히 `delivery` 는
+  // 도착 판정을 지상/공중으로 가르므로 유실이 곧 다른 경기다.
+  const fl = state.ball.flight;
+  h = mix(h, fl ? FLIGHT_KIND_CODE[fl.kind] : 0);
+  if (fl) {
+    h = mix(h, fl.delivery === "lofted" ? 2 : 1);
+    h = mix(h, fl.speed | 0);
+    h = mix(h, fl.toX | 0);
+    h = mix(h, fl.toY | 0);
+  }
   // #279 S1: 해시에 **없는** 상태가 유실되면 그 틱은 통과하고 다음 틱부터 갈라진다(무음 desync).
   // 그래서 재개로 관통하는 상태는 **전부** 흡수한다. 비용은 mix 몇 줄이고, 얻는 것은
   // "해시는 맞는데 상태가 유실된" 조용한 구간의 제거다(#154 로 한 번 밟은 함정).
