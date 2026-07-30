@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runFirstHalf, runMatch } from "./match";
+import { runFirstHalf, runMatch, resumeSecondHalf } from "./match";
 import { demoSeed, demoHome, demoAway, demoSelect } from "./fixtures";
 import { defaultEngineConfig, type EngineConfig } from "./config";
 import { createPitch } from "./pitch";
@@ -225,5 +225,71 @@ describe("#279 S2 — weighted 경로 무변경", () => {
     const a = decideBallOwnerChain(state, owner, createRng("s2-fixed"), cfg, pitch);
     const b = decideBallOwnerChain(state, owner, createRng("s2-fixed"), cfg, pitch);
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+});
+
+describe("#279 S2 후속 — 정렬 전순서 성질 (독립 검증 M5)", () => {
+  /**
+   * 왜 이 테스트가 따로 필요한가 — "같은 상태·같은 Rng 면 같은 행동"만으로는 **부족하다**.
+   * 그 테스트는 같은 배열을 같은 엔진에 넣으므로 **비일관 비교자에서도 통과**한다(V8 의 sort 는
+   * 같은 입력에 같은 출력을 낸다). 실제로 구 코어에는 완전 동점에서 양방향 모두 1 을 반환하는
+   * 비교자 버그가 있었고(#279 W2 에서 수리), 그 버그를 되돌려도 재현성 테스트는 green 이었다.
+   *
+   * 정수 EV 로 바꾼 뒤 **완전 동점이 실제로 발생한다**(독립 검증 실측: 최상위 동점 0.028%,
+   * 인접 동점 다수). 그러면 tiebreak 이 실질적 선택자가 되므로, 비교자 자체의
+   * **반사성·비대칭성·추이성**을 직접 검사해야 회귀가 잡힌다.
+   */
+  const cfg: EngineConfig = { ...defaultEngineConfig, chain: { ...defaultEngineConfig.chain, mode: "chain" } };
+
+  /** 실제 경기에서 나온 후보 집합으로 키 전순서를 검사한다(합성 후보로는 실제 충돌 패턴을 못 만든다). */
+  function realCandidateKeys(): string[] {
+    const pitch = createPitch(cfg);
+    const carry = runFirstHalf(demoSeed, demoHome, demoAway, demoSelect, cfg);
+    const state: SimState = carry.state;
+    const owner: SimPlayer | null = ballOwnerOf(state) ?? null;
+    const keys: string[] = [];
+    const target = owner ?? state.players.find((p) => !p.isGK)!;
+    for (const o of passOptions(state, target, cfg, pitch)) {
+      for (const gen of GENERATORS) {
+        keys.push(candidateKey(toActionCandidate(o, gen, "direct", 18_000)));
+      }
+    }
+    return keys;
+  }
+
+  it("candidateKey 는 후보마다 유일하다 (동점에서 순서가 정해진다)", () => {
+    const keys = realCandidateKeys();
+    expect(keys.length).toBeGreaterThan(5);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("키 비교자가 전순서다 — 반사성·비대칭성·추이성", () => {
+    const keys = realCandidateKeys().sort();
+    const cmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+    for (const a of keys) expect(cmp(a, a)).toBe(0); // 반사성: 자기 자신은 항상 0
+    for (const a of keys) {
+      for (const b of keys) {
+        // 비대칭성: cmp(a,b) + cmp(b,a) === 0. 구 버그(`a<b?-1:1`)는 동점에서 1+1=2 가 되어 깨진다.
+        // (`toBe(-cmp(b,a))` 로 쓰면 동점에서 `-0 !== +0` 으로 **테스트가** 깨진다 — 코드가 아니라.)
+        expect(cmp(a, b) + cmp(b, a)).toBe(0);
+      }
+    }
+    for (const a of keys) {
+      for (const b of keys) {
+        for (const c of keys) {
+          if (cmp(a, b) <= 0 && cmp(b, c) <= 0) expect(cmp(a, c)).toBeLessThanOrEqual(0); // 추이성
+        }
+      }
+    }
+  });
+
+  it("chain 모드도 재개(하프 분할)가 통짜와 동일하다", () => {
+    const whole = runMatch(demoSeed, demoHome, demoAway, demoSelect, cfg);
+    const carry = runFirstHalf(demoSeed, demoHome, demoAway, demoSelect, cfg);
+    const split = resumeSecondHalf(carry, demoHome, demoAway);
+    expect(split.finalScore).toEqual(whole.finalScore);
+    expect(split.events.length).toBe(whole.events.length);
+    const last = (l: typeof whole): string => l.tickSnapshots[l.tickSnapshots.length - 1]!.hash;
+    expect(last(split)).toBe(last(whole));
   });
 });

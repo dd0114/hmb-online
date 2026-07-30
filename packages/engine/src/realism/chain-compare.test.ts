@@ -84,7 +84,11 @@ describe("#279 W2 chain-vs-weighted", () => {
     L.push("");
     const msW = Number(t1 - t0) / 1e6 / SEEDS.length;
     const msC = Number(t2 - t1) / 1e6 / SEEDS.length;
-    L.push(`- 경기당 시뮬 시간: weighted **${f(msW, 0)}ms** · chain **${f(msC, 0)}ms** (×${f(msC / msW)})`);
+    // ⚠️ 시뮬 시간은 **파일 본문에 넣지 않는다** — 재실행마다 달라져(CPU 경합·머신 상태) 생성물 커밋에
+    // 매번 diff 가 나고, "이 파일이 현재 코드로 재현되는가" 검사를 방해한다(독립 검증 M7).
+    // 성능은 콘솔로만 흘리고, 판단이 필요하면 **단독 실행으로 교대 측정**해야 한다(경합 시 무의미).
+    // eslint-disable-next-line no-console
+    console.log(`[perf · 파일에 기록 안 함] weighted ${f(msW, 0)}ms · chain ${f(msC, 0)}ms (×${f(msC / msW)})`);
     L.push(`- lastHash: weighted \`${bw.lastHash}\` · chain \`${bc.lastHash}\` · config \`${defaultEngineConfig.version}\``);
 
     const text = L.join("\n");
