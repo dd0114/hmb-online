@@ -242,10 +242,16 @@ class MailboxApiTest extends ApiTestBase {
         assertThat(mails(strangerToken)).as("남의 우편물은 목록에도 없다").isEmpty();
     }
 
-    /** 뱃지는 {@code GET /api/me} 에도 실린다 — 홈 헤더가 왕복을 늘리지 않게(설계 §3.4). */
+    /**
+     * 홈 헤더가 쓰는 <b>두 숫자</b>가 {@code GET /api/me} 에 실린다 — 뱃지(`unread`)와
+     * 진입점 유무(`total`). 목록을 받지 않고도 헤더를 그릴 수 있어야 왕복이 늘지 않는다(설계 §3.4).
+     *
+     * <p>⚠️ `total` 은 <b>수령·만료와 무관하게</b> 센다 — 다 받은 뒤에도 우편함은 열려야 한다
+     * (무엇을 받았는지 되짚는 자리). `unread` 만 보고 진입점을 숨기면 그 이력이 사라진다.
+     */
     @Test
     @SuppressWarnings("unchecked")
-    void meCarriesTheBadge() {
+    void meCarriesBadgeAndEntryPointCount() {
         String admin = adminToken();
         String token = login("mail_me");
         String userId = userIdOf("mail_me");
@@ -256,6 +262,13 @@ class MailboxApiTest extends ApiTestBase {
         Map<String, Object> mail = (Map<String, Object>) me.get("mail");
         assertThat(mail).as("/api/me 에 mail 필드가 있어야 한다").isNotNull();
         assertThat(((Number) mail.get("unread")).intValue()).isEqualTo(1);
+        assertThat(((Number) mail.get("total")).intValue()).isEqualTo(1);
+
+        // 받고 나면 뱃지는 0 이지만 **진입점은 남는다**.
+        post("/api/mails/" + firstMailId(token) + "/claim", token);
+        Map<String, Object> after = (Map<String, Object>) asMap(get("/api/me", token)).get("mail");
+        assertThat(((Number) after.get("unread")).intValue()).isZero();
+        assertThat(((Number) after.get("total")).intValue()).isEqualTo(1);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────

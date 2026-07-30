@@ -27,6 +27,15 @@ CREATE TABLE mail_campaigns (
   target_count   INTEGER NOT NULL,                    -- 팬아웃한 행 수(발송 시점 스냅샷)
   reason         TEXT NOT NULL,                       -- 운영 사유(필수)
   idem_key       TEXT NOT NULL,                       -- Idempotency-Key(헤더 없으면 서버 채번)
+  -- **요청 원문의 해시**. 같은 멱등키가 다시 왔을 때 "같은 요청인가"를 이걸로 판정한다.
+  -- ⚠️ **파생값이 아니라 원문을 해싱한다**(독립검증 BLOCKER-2): 상대 만료(`expiresInDays: 14`)를
+  --    절대 시각으로 바꿔 비교하면 **초가 지나는 것만으로 같은 바디가 "다른 내용"이 되어 409** 가
+  --    나고, 운영자가 안내대로 새 키를 쓰면 전 수신자에게 **이중 지급**된다.
+  -- ⚠️ 대상도 **요청에 적힌 그대로** 넣는다(BLOCKER-1): 인원 "수"만 비교하면 같은 키로 수신자만
+  --    바꿔 보낸 요청이 200 재생으로 삼켜져 "보냈다고 믿는데 아무도 못 받는" 상태가 된다.
+  --    `audience=ALL` 은 문자열 'ALL' 로만 넣는다 — 그 사이 가입자가 한 명 생겼다고 재전송이
+  --    거부되면 안 된다(대상의 정의는 "발송 시점 전원"이지 특정 명단이 아니다).
+  request_hash   TEXT NOT NULL,
   created_by     TEXT NOT NULL REFERENCES users(id),
   created_at     TEXT NOT NULL
 );

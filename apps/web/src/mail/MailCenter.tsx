@@ -4,7 +4,7 @@ import { CURRENCY_GEM, CURRENCY_POINT } from "../common/currency";
 import { Modal } from "../common/Modal";
 import { NoticeBody } from "../common/NoticeBody";
 import { useClaimMail, useMails, useReadMail } from "../api/mail-hooks";
-import { usePlayers } from "../api/hooks";
+import { useMe, usePlayers } from "../api/hooks";
 import type { Mail } from "../api/mails";
 import {
   attachmentChips,
@@ -20,9 +20,12 @@ import styles from "./MailCenter.module.css";
  * 우편함 진입점 + 목록 + 상세 (#323, hero 확정 = **홈 헤더 ✉️**).
  *
  * ### 자리와 모양 (되돌리려는 사람을 위해)
- * 1. **홈 헤더, 공지 벨 옆(닉네임 쪽)**. 첨부는 <b>만료되는 자산</b>이라 발견성이 곧 손해와 직결된다 —
- *    공지(놓쳐도 손해 없음)와 다른 축이다. 오른쪽(지갑 옆)이 아닌 이유는 취향이 아니라 실측이다:
- *    #248 이 같은 자리에서 오른쪽은 헤더를 한 줄 접었고(69→113px) 왼쪽은 +8px 로 끝났다.
+ * 1. **홈 헤더 왼쪽, 공지 벨 옆**. 첨부는 <b>만료되는 자산</b>이라 발견성이 곧 손해와 직결된다 —
+ *    공지(놓쳐도 손해 없음)와 다른 축이다. ⚠️ #248 이 이 자리를 "+8px" 로 측정했지만 **그 전제는
+ *    틀렸다**: 실측하니 오른쪽(지갑 2칩 204px + [로그아웃] 62px)이 `flex:0 0 auto` 로 272px 를
+ *    고정 점유해 왼쪽 몫이 90px 뿐이었고, 진입점 두 개(56px+gap)를 넣자 닉네임이 22px 로 눌리거나
+ *    지갑 위로 **겹쳐 그려졌다**. 그래서 **닉네임을 홈 헤더에서 뺐다**(hero 확정) — 이름은 바로
+ *    아래 팀 카드와 [내 정보]가 말한다. 되살리려면 오른쪽에서 먼저 빼라(HomePage.module.css 주석).
  * 2. **뱃지는 숫자, 공지는 점.** 공지는 몇 건인지가 의미 없지만 우편은 <b>숫자가 곧 할 일 개수</b>다.
  *    글리프도 봉투/확성기로 다르다 — 겹치면 "보상 왔다"와 "점검 안내"가 구별되지 않는다.
  * 3. **우편이 0건이면 진입점을 숨긴다**(공지 진입점과 같은 규율). 0건은 예외가 아니라 대부분의
@@ -35,15 +38,27 @@ import styles from "./MailCenter.module.css";
  * 안 놓친다. 대신 뱃지(`unread`)에는 안 센다: 끌 수 없는 숫자가 남으면 뱃지가 무의미해진다.
  */
 export function MailCenter() {
-  const { data } = useMails();
+  const { data: me } = useMe();
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const read = useReadMail();
 
-  const view = useMemo(() => normalizeMails(data), [data]);
+  /**
+   * 헤더는 `/api/me.mail` 의 두 숫자만으로 그린다 — **목록은 열 때 받는다**(독립검증 MINOR-1:
+   * 그 필드를 만들어 놓고 아무도 안 써서 홈 진입마다 본문까지 실린 목록을 받고 있었다).
+   *
+   * ⚠️ 구 서버(필드 없음)에서는 **목록으로 폴백**한다. web 은 CF Pages 로 서버와 따로 배포되므로
+   * 버전 스큐가 실재하고, 그때 우편함이 통째로 사라지면 유저는 받을 게 있는지조차 모른다.
+   */
+  const summary = me?.mail;
+  const { data } = useMails(open || (Boolean(me) && summary === undefined));
 
-  // 진입점이 없으면 목록도 열 수 없다 — 열린 채로 0건이 되는 창(마지막 우편 수령)만 예외.
-  if (view.mails.length === 0 && !open) {
+  const view = useMemo(() => normalizeMails(data), [data]);
+  const unread = summary ? summary.unread : view.unread;
+  const total = summary ? summary.total : view.mails.length;
+
+  // 우편이 0건이면 진입점 자체가 없다 — 열린 채로 0건이 되는 창(마지막 우편 수령)만 예외.
+  if (total === 0 && !open) {
     return null;
   }
 
@@ -64,14 +79,14 @@ export function MailCenter() {
         type="button"
         className={styles.trigger}
         data-testid="mail-center-open"
-        data-unread={view.unread}
-        aria-label={view.unread > 0 ? `우편함 — 받을 것 ${view.unread}건` : "우편함"}
+        data-unread={unread}
+        aria-label={unread > 0 ? `우편함 — 받을 것 ${unread}건` : "우편함"}
         onClick={() => setOpen(true)}
       >
         <MailGlyph />
-        {view.unread > 0 && (
+        {unread > 0 && (
           <span className={styles.count} data-testid="mail-center-badge">
-            {view.unread}
+            {unread}
           </span>
         )}
       </button>

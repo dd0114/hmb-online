@@ -40,6 +40,42 @@ public class MailProperties {
     /** 유저 우편함 목록 길이. 만료·수령 완료도 남으므로(hero 확정 ④) 이 상한이 자연 정리를 한다. */
     private int listLimit = 50;
 
+    /**
+     * 동시 수령(SQLITE_BUSY) 재시도 — {@code hmb.mail.busy-retry.*}. 수치 하드코딩 금지.
+     * 없으면 두 탭에서 동시에 [받기]를 누른 한쪽이 <b>500</b> 을 본다(독립검증 MAJOR-2 실측).
+     * 값·형태는 {@code hmb.trade.busy-retry} 와 같게 둔다 — 같은 함정에 같은 손잡이.
+     */
+    private BusyRetry busyRetry = new BusyRetry();
+
+    public BusyRetry getBusyRetry() {
+        return busyRetry;
+    }
+
+    public void setBusyRetry(BusyRetry busyRetry) {
+        this.busyRetry = busyRetry == null ? new BusyRetry() : busyRetry;
+    }
+
+    public static class BusyRetry {
+        private int maxAttempts = 4;
+        private long backoffMs = 20;
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = maxAttempts;
+        }
+
+        public long getBackoffMs() {
+            return backoffMs;
+        }
+
+        public void setBackoffMs(long backoffMs) {
+            this.backoffMs = backoffMs;
+        }
+    }
+
     public int getFanoutMax() {
         return fanoutMax;
     }

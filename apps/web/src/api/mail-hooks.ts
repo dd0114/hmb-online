@@ -20,12 +20,14 @@ export const MAILS_QUERY_KEY = ["mails"] as const;
  * 통과하게 해서, 구 서버·프록시의 200 `{}` 하나가 홈 헤더를 통째로 흰 화면으로 만들지 못하게 한다
  * (#245 가 로비에서 실제로 그렇게 당했고, 홈은 이제 앱 진입점이다).
  */
-export function useMails() {
+export function useMails(enabled = true) {
   const { token } = useToken();
   return useQuery<unknown>({
     queryKey: MAILS_QUERY_KEY,
     queryFn: () => apiFetch<unknown>(MAILS_PATH),
-    enabled: Boolean(token),
+    // ⚠️ **홈에 들어올 때마다 부르지 않는다**(독립검증 MINOR-1). 헤더가 필요한 두 숫자는
+    // `/api/me.mail` 에 이미 실려 오므로, 본문까지 실린 목록은 **우편함을 열 때** 받는다.
+    enabled: Boolean(token) && enabled,
     // 실패는 "우편함 진입점 없음"이면 충분하다 — 재시도로 홈 진입을 붙잡지 않는다.
     retry: false,
     staleTime: 30_000,

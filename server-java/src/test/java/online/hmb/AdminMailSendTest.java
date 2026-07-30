@@ -79,6 +79,126 @@ class AdminMailSendTest extends ApiTestBase {
         assertThat(inboxCount(userId)).isEqualTo(1);
     }
 
+    /**
+     * <b>같은 키 · 같은 인원수 · 다른 수신자 = 다른 요청이다.</b>
+     *
+     * <p>독립검증 BLOCKER-1 이 정확히 이 구멍이었다: 멱등 비교가 대상을 <b>인원 "수"</b>로만 봐서,
+     * 같은 키로 수신자만 바꾼 요청이 200 재생으로 삼켜졌다 — 운영자는 B 에게 보냈다고 믿는데
+     * <b>B 는 아무것도 받지 못한다</b>. 금액만 바꾸는 기존 계약은 이 축을 구조적으로 못 본다.
+     */
+    @Test
+    void sameKeyWithDifferentRecipientsIsRejected() {
+        String admin = adminToken();
+        String a = user("ml_rcp_a");
+        String b = user("ml_rcp_b");
+
+        assertThat(send(admin, targeted(a, 100L), "idem-rcp-1").status()).isEqualTo(HttpStatus.CREATED);
+
+        HttpResult swapped = send(admin, targeted(b, 100L), "idem-rcp-1");
+        assertThat(swapped.status()).as(swapped.body()).isEqualTo(HttpStatus.CONFLICT);
+
+        assertThat(inboxCount(a)).isEqualTo(1);
+        assertThat(inboxCount(b)).as("삼켜지면 여기가 0 인 채로 200 이 돌아온다").isZero();
+        assertThat(campaignCount("idem-rcp-")).isEqualTo(1);
+    }
+
+    /**
+     * <b>상대 만료(expiresInDays)로 보낸 뒤 초가 지나 같은 바디를 재전송해도 200 재생</b>이어야 한다.
+     *
+     * <p>독립검증 BLOCKER-2: 멱등 비교가 <b>파생된 절대 시각</b>을 보던 탓에 1초만 지나도 같은 바디가
+     * "다른 내용"이 되어 409 가 났다 — 그것도 멱등키가 존재하는 정확히 그 상황(타임아웃 후 재전송)에서.
+     * 안내대로 새 키를 쓰면 두 번째 캠페인이 생겨 <b>전 수신자에게 이중 지급</b>된다.
+     */
+    @Test
+    void relativeExpiryResendIsStillTheSameRequest() throws InterruptedException {
+        String admin = adminToken();
+        String userId = user("ml_relexp");
+
+        Map<String, Object> body = targeted(userId, 10L);
+        body.put("expiresInDays", 14);
+
+        HttpResult first = send(admin, body, "idem-relexp-1");
+        assertThat(first.status()).as(first.body()).isEqualTo(HttpStatus.CREATED);
+
+        // 초가 바뀌도록 기다린다 — 파생 시각 비교였다면 여기서 409 가 난다.
+        Thread.sleep(1_100);
+
+        HttpResult again = send(admin, body, "idem-relexp-1");
+        assertThat(again.status()).as(again.body()).isEqualTo(HttpStatus.OK);
+        assertThat(asMap(again).get("applied")).isEqualTo(false);
+        assertThat(asMap(again).get("campaignId")).isEqualTo(asMap(first).get("campaignId"));
+        assertThat(inboxCount(userId)).as("두 번째 우편이 생기면 이중 지급이다").isEqualTo(1);
+    }
+
+    /**
+     * 회수 상태가 <b>유저 화면에도</b> 반영된다 — 목록이 EXPIRED, 뱃지는 0.
+     *
+     * <p>독립검증 MAJOR-4: {@code MailService.state()} 에서 회수 판정을 지워도 전 스위트가 green
+     * 이었다. 그 상태의 실제 화면은 <b>뱃지는 0인데 목록엔 살아 있는 [받기] 버튼</b>이고, 누르면
+     * 410 이다 — "뱃지와 목록이 어긋난다"를 금지한 계약이 정작 회수 축을 안 보고 있었다.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void revokedMailShowsAsExpiredInTheUsersList() {
+        String admin = adminToken();
+        String token = login("ml_rvstate");
+        String userId = userIdOf("ml_rvstate");
+
+        HttpResult sent = send(admin, targeted(userId, 500L), "idem-rvstate-1");
+        String campaignId = (String) asMap(sent).get("campaignId");
+
+        Map<String, Object> before = asMap(get("/api/mails", token));
+        assertThat(((List<Map<String, Object>>) before.get("mails")).get(0).get("state")).isEqualTo("UNREAD");
+        assertThat(((Number) before.get("unread")).intValue()).isEqualTo(1);
+
+        postJsonAuth("/api/admin/mails/" + campaignId + "/revoke", admin,
+                Map.of("reason", "오발송"), null);
+
+        Map<String, Object> after = asMap(get("/api/mails", token));
+        assertThat(((List<Map<String, Object>>) after.get("mails")).get(0).get("state"))
+                .as("회수는 유저에게 만료와 같은 얼굴이다")
+                .isEqualTo("EXPIRED");
+        assertThat(((Number) after.get("unread")).intValue()).isZero();
+    }
+
+    /** 검증 실패한 회수도 감사에 남는다 — 발송과 같은 규율(독립검증 MINOR-2). */
+    @Test
+    void revokeWithoutReasonIsAudited() {
+        String admin = adminToken();
+        String userId = user("ml_rvaudit");
+        String campaignId = (String) asMap(send(admin, targeted(userId, 10L), "idem-rvaudit-1"))
+                .get("campaignId");
+
+        long before = auditRows("mail_revoke", "failed");
+        HttpResult res = postJsonAuth("/api/admin/mails/" + campaignId + "/revoke", admin, Map.of(), null);
+        assertThat(res.status()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(auditRows("mail_revoke", "failed")).isEqualTo(before + 1);
+    }
+
+    /**
+     * 목록 창 밖의 캠페인도 단건 조회로 찾는다.
+     *
+     * <p>독립검증 MAJOR-3: {@code detail()} 이 {@code list(100)} 을 훑어 필터해서 101번째 발송 뒤
+     * 가장 오래된 캠페인이 <b>404</b> 가 됐다(회수는 id 로 되는데 확인은 안 되는 상태).
+     * 여기선 {@code limit=1} 로 창을 좁혀 같은 조건을 만든다.
+     */
+    @Test
+    void detailFindsCampaignsBeyondTheListWindow() {
+        String admin = adminToken();
+        String userId = user("ml_deep");
+
+        String oldest = (String) asMap(send(admin, targeted(userId, 1L), "idem-deep-0")).get("campaignId");
+        for (int i = 1; i <= 3; i++) {
+            send(admin, targeted(userId, 1L + i), "idem-deep-" + i);
+        }
+        HttpResult narrow = get("/api/admin/mails?limit=1", admin);
+        assertThat(narrow.body()).doesNotContain(oldest);
+
+        HttpResult detail = get("/api/admin/mails/" + oldest, admin);
+        assertThat(detail.status()).as(detail.body()).isEqualTo(HttpStatus.OK);
+        assertThat(asMap(detail).get("id")).isEqualTo(oldest);
+    }
+
     // ── 브로드캐스트 ──────────────────────────────────────────────────────
 
     /**
@@ -333,6 +453,12 @@ class AdminMailSendTest extends ApiTestBase {
 
     private long userCount() {
         return jdbcClient.sql("SELECT COUNT(*) FROM users").query(Long.class).single();
+    }
+
+    private long auditRows(String action, String result) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM admin_ops_audit WHERE action = ? AND result = ?")
+                .params(action, result)
+                .query(Long.class).single();
     }
 
     private long auditCount(String action, String result, String reason) {

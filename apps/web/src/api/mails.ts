@@ -50,6 +50,15 @@ export interface MailListResponse {
   unread: number;
 }
 
+/**
+ * `GET /api/me` 에 실려 오는 요약 — 홈 헤더가 목록을 받지 않고도 그릴 수 있는 최소값.
+ * `unread` = 뱃지 숫자, `total` = **진입점을 그릴지**(0 이면 헤더에 아무것도 안 그린다).
+ */
+export interface MeMailSummary {
+  unread: number;
+  total: number;
+}
+
 export interface MailClaimResult {
   id: string;
   claimed: boolean;

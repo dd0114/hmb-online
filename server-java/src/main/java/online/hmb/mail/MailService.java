@@ -105,6 +105,26 @@ public class MailService {
         return unread(userId, Notices.now(clock));
     }
 
+    /**
+     * 홈 헤더가 필요한 <b>두 숫자</b>. {@code unread} 는 뱃지, {@code total} 은 <b>진입점을 그릴지</b>.
+     *
+     * <p>왜 total 이 필요한가: 우편이 0건이면 진입점 자체를 숨긴다(빈 목록으로 "없습니다"라고
+     * 단언하면 서버가 죽었을 때 거짓말이 된다). 그 판정을 목록 조회로 하면 홈에 들어올 때마다
+     * 본문까지 실린 목록을 받아야 한다 — 그래서 <b>홈은 이 두 숫자만</b> 받고, 목록은 유저가
+     * 우편함을 열 때 부른다(독립검증 MINOR-1: 필드는 있는데 아무도 안 써서 왕복만 늘어 있었다).
+     */
+    public Summary summary(String userId) {
+        String now = Notices.now(clock);
+        Long total = jdbcClient.sql("SELECT COUNT(*) FROM user_mails WHERE user_id = ?")
+                .param(userId)
+                .query(Long.class)
+                .single();
+        return new Summary(unread(userId, now), total == null ? 0 : total.intValue());
+    }
+
+    public record Summary(int unread, int total) {
+    }
+
     private int unread(String userId, String now) {
         Long count = jdbcClient.sql("""
                         SELECT COUNT(*) FROM user_mails um JOIN mail_campaigns c ON c.id = um.campaign_id
@@ -137,16 +157,60 @@ public class MailService {
 
     public ClaimResult claim(String userId, String mailId) {
         String now = Notices.now(clock);
-        return txRunner.run(() -> claimInTx(userId, mailId, now));
+        return inTxWithBusyRetry(() -> claimInTx(userId, mailId, now));
+    }
+
+    /**
+     * <b>동시 수령이 5xx 로 새지 않게</b> 한다(독립검증 MAJOR-2 — 실측: 동시 두 탭에서 한쪽이
+     * {@code 500 SQLITE_BUSY}).
+     *
+     * <p>{@code claimInTx} 는 SELECT 로 시작해 UPDATE 로 <b>승격</b>하는 모양이라 WAL 에서
+     * {@code SQLITE_BUSY_SNAPSHOT} 에 그대로 노출된다 — 이 리포가 {@code SqliteErrors#isBusy} 에
+     * 이미 적어 둔 함정이고, 해법도 거기 적혀 있다: <b>롤백 후 트랜잭션 통째 재시도</b>
+     * (같은 트랜잭션 안에서 다시 시도하면 스냅샷이 그대로라 소용없다 → 재시도는 반드시
+     * {@code txRunner.run} <b>바깥</b>). {@code TradeService.inTxWithBusyRetry} 와 같은 형태다.
+     *
+     * <p>재시도해도 안 되면 5xx 대신 <b>계약 코드</b>로 내린다 — 유저에게 5xx 를 보이지 않는다.
+     * 재시도 후에는 대개 정상 경로(이미 수령됨 → 200 {@code applied:false})로 수렴한다.
+     */
+    private <T> T inTxWithBusyRetry(java.util.function.Supplier<T> action) {
+        int maxAttempts = Math.max(1, props.getBusyRetry().getMaxAttempts());
+        long backoffMs = Math.max(0, props.getBusyRetry().getBackoffMs());
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return txRunner.run(action);
+            } catch (org.springframework.dao.DataAccessException e) {
+                if (!online.hmb.common.SqliteErrors.isBusy(e)) {
+                    throw e;
+                }
+                if (attempt >= maxAttempts) {
+                    throw new ApiException(org.springframework.http.HttpStatus.CONFLICT, "CONFLICT",
+                            "요청이 동시에 몰려 처리하지 못했습니다 — 잠시 후 다시 시도하세요");
+                }
+                sleepQuietly(backoffMs * attempt);   // 선형 백오프
+            }
+        }
+    }
+
+    private static void sleepQuietly(long millis) {
+        if (millis <= 0) {
+            return;
+        }
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private ClaimResult claimInTx(String userId, String mailId, String now) {
         Row row = require(userId, mailId);
 
-        if (row.claimedAt != null) {
-            // 같은 의도의 재전송 — 사실대로 답한다(지급 없음, 현재 잔액).
-            return new ClaimResult(mailId, true, false, Granted.NONE, wallet(userId));
-        }
+        // ⚠️ **"이미 수령했나"의 판정 지점은 아래 CAS 하나뿐이다.** 여기서 `row.claimedAt != null` 로
+        // 미리 걸러 주면 더블탭 계약이 그 선검사만 태우고 지나가, CAS 조건(`AND claimed_at IS NULL`)을
+        // 지워도 전 스위트가 green 이었다(독립검증 MAJOR-1 변이체 생존). 판정을 한 곳에 모으면
+        // 같은 테스트가 실제로 CAS 를 태운다 — 그게 동시 수령을 막는 유일한 층이기 때문이다
+        // (G·Z 는 원장 유니크가 백스톱이지만 **카드는 그것도 없다**).
         if (row.revokedAt != null) {
             throw new ApiException(org.springframework.http.HttpStatus.GONE, "GONE",
                     "이 우편물은 회수되어 받을 수 없습니다");
@@ -164,7 +228,8 @@ public class MailService {
                 .params(now, now, mailId, userId)
                 .update();
         if (taken == 0) {
-            // 같은 트랜잭션 밖에서 먼저 가져갔다(더블탭). 지급하지 않는다.
+            // 이미 누군가 가져갔다 = 같은 유저의 두 번째 [받기]. 실패가 아니라 사실대로 답한다
+            // (지급 없음 · 현재 잔액). 이 분기가 순차 더블탭과 동시 요청을 **같은 코드로** 처리한다.
             return new ClaimResult(mailId, true, false, Granted.NONE, wallet(userId));
         }
 

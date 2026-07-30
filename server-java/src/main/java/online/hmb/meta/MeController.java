@@ -78,7 +78,7 @@ public class MeController {
                 leagueService.currentDivision(userId)
                         .map(d -> new LeagueInfo(d.level(), d.name()))
                         .orElse(null),
-                new MailInfo(mailService.unread(userId)));
+                MailInfo.of(mailService.summary(userId)));
     }
 
     @GetMapping("/api/me/matches")
@@ -136,11 +136,20 @@ public class MeController {
     }
 
     /**
-     * 우편함 뱃지(#323 additive). <b>전용 엔드포인트를 만들지 않은 이유</b>: 홈은 이미 이 호출을
-     * 하고 있어서 필드 하나면 왕복이 늘지 않는다. 값의 정의(= "아직 내가 할 일")는 서버가 정한다 —
-     * 클라가 목록을 받아 세면 목록 상한(50건) 밖의 우편물이 조용히 빠진다. 계산은 인덱스 COUNT 1회다.
+     * 우편함 요약(#323 additive) — {@code unread} 는 뱃지 숫자, {@code total} 은 <b>진입점을 그릴지</b>.
+     *
+     * <p><b>전용 엔드포인트를 만들지 않은 이유</b>: 홈은 이미 이 호출을 하고 있어서 필드 하나면
+     * 왕복이 늘지 않는다. 값의 정의(= "아직 내가 할 일")는 서버가 정한다 — 클라가 목록을 받아 세면
+     * 목록 상한(50건) 밖의 우편물이 조용히 빠진다. 계산은 인덱스 COUNT 2회다.
+     *
+     * <p>⚠️ {@code total} 이 있어야 홈이 <b>목록을 안 받고도</b> 진입점 유무를 정한다. 없던 동안
+     * web 은 홈 진입마다 본문까지 실린 목록을 받았고, 그러면 이 필드는 아무도 안 쓰는 죽은 값이었다
+     * (독립검증 MINOR-1).
      */
-    public record MailInfo(int unread) {
+    public record MailInfo(int unread, int total) {
+        static MailInfo of(online.hmb.mail.MailService.Summary s) {
+            return new MailInfo(s.unread(), s.total());
+        }
     }
 
     /**

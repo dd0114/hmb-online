@@ -66,7 +66,7 @@ async function mockHome(page: Page, mock: HomeMock) {
         wallet: mock.wallet ?? { points: 62000, gems: 120 },
         records: mock.records ?? { wins: 3, draws: 1, losses: 2 },
         ...(mock.rating === undefined ? {} : { rating: mock.rating }),
-        mail: { unread: state.unread },
+        mail: { unread: state.unread, total: state.mails.length },
       }),
     ),
   );
@@ -208,14 +208,14 @@ test.describe("#323 — 홈 헤더 우편함(hero 확정 A)", () => {
   });
 
   /**
-   * ⚠️ **폭 예산.** 공지 진입점이 이미 서 있는 자리에 하나를 더 얹었다 — #248 실측에서 오른쪽
-   * (지갑 옆)은 헤더를 한 줄 접었고(69→113px) 왼쪽은 +8px 였다. 표본은 그때와 같은 이유로
-   * **nowrap 조각들**(레이팅 배지·세 자리 전적)을 포함한다 — 한글 닉네임만으로는 변이체가 산다.
+   * ⚠️ **폭 예산.** 공지 진입점이 이미 서 있는 자리에 하나를 더 얹었고, 그 대가로 **닉네임을
+   * 헤더에서 뺐다**(hero 확정). 표본은 실제로 폭을 만드는 **nowrap 조각들**(7자리 잔액 2개 ·
+   * 레이팅 · [로그아웃])로 잡는다 — 닉네임은 이제 렌더되지 않으므로 표본에서 아무 일도 하지 않는다.
    *
    * "넘침 0"만 보지 않는다: `overflow:hidden` 하나로도 그 수치는 0이 된다. 두 진입점과
    * [로그아웃]이 **뷰포트 안에 온전히** 있는지를 같이 본다.
    */
-  test("긴 닉네임 + 7자리 잔액 + 레이팅 + 공지·우편 진입점 2개에서도 넘침 0", async ({ page }) => {
+  test("7자리 잔액 + 레이팅 + 공지·우편 진입점 2개에서도 넘침 0 · 컨트롤이 화면 안", async ({ page }) => {
     await mockHome(page, {
       mails: [mail({ id: "M1", state: "UNREAD", points: 5000 })],
       unread: 12,

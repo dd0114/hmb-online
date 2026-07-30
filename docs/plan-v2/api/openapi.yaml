@@ -2611,12 +2611,16 @@ components:
             - type: "null"
         mail:
           description: >-
-            우편함 뱃지(#323 additive). 전용 엔드포인트를 만들지 않은 이유 = 홈이 이미 이 호출을
-            하고 있어 필드 하나면 왕복이 늘지 않는다. 정의는 MailListResponse.unread 와 같다.
+            우편함 요약(#323 additive). `unread` = 헤더 뱃지 숫자(정의는 MailListResponse.unread 와
+            같다), `total` = 이 유저의 우편 행 수 = **진입점을 그릴지**(0 이면 화면에 아무것도 안
+            그린다 — 빈 목록으로 "없습니다"라고 단언하지 않기 위해).
+            전용 엔드포인트를 만들지 않은 이유 = 홈이 이미 이 호출을 한다. 두 값이 다 있어야 홈이
+            **목록을 받지 않고도** 헤더를 그린다(본문까지 실린 목록은 우편함을 열 때 받는다).
           type: object
-          required: [unread]
+          required: [unread, total]
           properties:
             unread: { type: integer }
+            total: { type: integer }
 
     MeLeagueInfo:
       type: object

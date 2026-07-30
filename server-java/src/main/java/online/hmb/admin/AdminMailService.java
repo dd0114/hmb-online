@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import online.hmb.common.ApiException;
+import online.hmb.common.Hashes;
 import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
@@ -107,6 +108,9 @@ public class AdminMailService {
         }
 
         String payloadJson = writePayload(attachments);
+        // ⚠️ **요청 원문**으로 해시한다(파생값 금지) — 근거는 V33 주석과 requestHash javadoc.
+        String requestHash = requestHash(audience, req.userIds(), payloadJson,
+                req.expiresAt(), req.expiresInDays());
         String now = Notices.now(clock);
         String campaignId = Ulid.next();
 
@@ -115,12 +119,13 @@ public class AdminMailService {
                 jdbcClient.sql("""
                                 INSERT INTO mail_campaigns(id, audience, title, body, payload_json,
                                                            has_attachments, expires_at, revoked_at,
-                                                           target_count, reason, idem_key, created_by, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
+                                                           target_count, reason, idem_key, request_hash,
+                                                           created_by, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
                                 """)
                         .params(campaignId, audience, title, body, payloadJson,
                                 attachments.isEmpty() ? 0 : 1, expiresAt,
-                                targets.size(), reason, idemKey, actorUserId, now)
+                                targets.size(), reason, idemKey, requestHash, actorUserId, now)
                         .update();
 
                 for (String userId : targets) {
@@ -145,7 +150,7 @@ public class AdminMailService {
             });
         } catch (DataAccessException e) {
             if (SqliteErrors.isUniqueViolation(e)) {
-                return replay(idemKey, audience, targets, attachments, expiresAt);
+                return replay(idemKey, requestHash);
             }
             throw e;
         }
@@ -154,27 +159,50 @@ public class AdminMailService {
     /**
      * 같은 멱등키의 재전송. <b>내용이 같을 때만</b> 200 재생이고, 다르면 409 다.
      *
-     * <p>비교 대상 = 대상(audience·인원)·첨부·만료. {@code title}/{@code body}/{@code reason} 은
-     * 비교하지 않는다 — 돈을 움직이는 필드가 아니고, 오타 수정 재전송을 막게 된다.
+     * <p>비교는 저장된 {@code request_hash} 한 값으로 한다 — 필드를 하나씩 비교하면 <b>빠뜨린 필드가
+     * 곧 구멍</b>이다(독립검증 BLOCKER-1: 대상 목록을 인원 "수"로 대체했더니 같은 키로 수신자만 바꾼
+     * 요청이 200 으로 삼켜졌다 — 운영자는 보냈다고 믿는데 그 사람은 아무것도 못 받는다).
+     * 비교 대상에 무엇이 들어가는지는 {@link #requestHash} 한 곳에 있다.
      */
-    private SendResult replay(String idemKey, String audience, List<String> targets,
-                              MailAttachments attachments, String expiresAt) {
+    private SendResult replay(String idemKey, String requestHash) {
         Campaign existing = campaignByIdem(idemKey);
         if (existing == null) {
             // 유니크 위반인데 그 키의 행이 없다 = 우리 인덱스가 아닌 다른 제약이 터졌다.
             throw new ApiException(HttpStatus.CONFLICT, "CONFLICT", "발송을 저장하지 못했습니다");
         }
-        boolean same = existing.audience().equals(audience)
-                && existing.targetCount() == targets.size()
-                && Objects.equals(existing.expiresAt(), expiresAt)
-                && parsePayload(existing.payloadJson()).equals(attachments);
-        if (!same) {
+        if (!requestHash.equals(existing.requestHash())) {
             throw new ApiException(HttpStatus.CONFLICT, "CONFLICT",
                     "이 Idempotency-Key 는 이미 다른 내용으로 사용됐습니다. "
                             + "내용을 바꾸려면 새 Idempotency-Key 로 요청하세요");
         }
         return new SendResult(existing.id(), existing.audience(), existing.targetCount(),
                 existing.expiresAt(), false);
+    }
+
+    /**
+     * "이 두 요청은 같은 의도인가"의 유일한 정의. <b>요청에 적힌 값</b>만 넣는다.
+     *
+     * <p>⚠️ <b>파생값을 넣지 마라</b>(독립검증 BLOCKER-2). {@code expiresInDays: 14} 를 절대 시각으로
+     * 바꿔 비교하면 <b>초가 하나 지나는 것만으로</b> 같은 바디가 "다른 내용"이 되어 409 가 난다 —
+     * 그것도 멱등키가 존재하는 <b>정확히 그 상황</b>(타임아웃 후 재전송)에서. 안내대로 새 키를 쓰면
+     * 두 번째 캠페인이 생겨 <b>전 수신자에게 이중 지급</b>된다.
+     *
+     * <p>⚠️ {@code audience=ALL} 은 <b>해소된 명단을 넣지 않는다</b>. 대상의 정의가 "발송 시점에
+     * 존재하는 전원"이므로, 그 사이 한 명이 가입했다고 재전송이 거부되면 같은 함정에 빠진다.
+     *
+     * <p>{@code title}/{@code body}/{@code reason} 은 넣지 않는다 — 돈을 움직이는 필드가 아니고,
+     * 오타 수정 재전송을 막게 된다.
+     */
+    static String requestHash(String audience, List<String> userIds, String payloadJson,
+                              String expiresAtRaw, Integer expiresInDays) {
+        String targets = AUDIENCE_ALL.equals(audience)
+                ? "ALL"
+                : new java.util.TreeSet<>(userIds == null ? List.<String>of() : userIds).stream()
+                        .collect(java.util.stream.Collectors.joining(","));
+        String expiry = expiresInDays != null
+                ? "D" + expiresInDays
+                : "A" + (expiresAtRaw == null ? "" : expiresAtRaw.trim());
+        return Hashes.sha256Hex(audience + "\n" + targets + "\n" + payloadJson + "\n" + expiry);
     }
 
     // ── 회수 ──────────────────────────────────────────────────────────────
@@ -185,7 +213,16 @@ public class AdminMailService {
      * 개별 처리한다. 우편함이 지갑을 되돌리는 두 번째 경로가 되면 "왜 줄었나"의 답이 두 곳이 된다.
      */
     public RevokeResult revoke(String actorUserId, String campaignId, String reason) {
-        String safeReason = validText(reason, props.getReasonMaxChars(), "reason");
+        String safeReason;
+        try {
+            // ⚠️ 검증 실패도 **시도**다 — 발송(send)과 같은 규율로 남긴다. 예전엔 이 호출이
+            // try 밖에 있어 "사유 없이 회수 시도" 가 원장에 흔적조차 없었다(독립검증 MINOR-2).
+            safeReason = validText(reason, props.getReasonMaxChars(), "reason");
+        } catch (ApiException e) {
+            audit(actorUserId, ACTION_REVOKE, "failed", null,
+                    Map.of("campaignId", String.valueOf(campaignId), "error", String.valueOf(e.getMessage())));
+            throw e;
+        }
         Campaign c = campaignById(campaignId);
         if (c == null) {
             ApiException e = ApiException.notFound("발송 건을 찾을 수 없습니다");
@@ -212,35 +249,42 @@ public class AdminMailService {
 
     // ── 조회 ──────────────────────────────────────────────────────────────
 
+    /**
+     * 목록·단건이 **같은 SQL** 을 쓴다. 따로 적으면 한쪽에만 컬럼이 붙어 화면마다 다른 값을 보게 된다.
+     */
+    private static final String CAMPAIGN_SELECT = """
+            SELECT c.id, c.audience, c.title, c.body, c.payload_json, c.expires_at,
+                   c.revoked_at, c.target_count, c.reason, c.idem_key, c.created_at,
+                   u.nickname AS actor,
+                   (SELECT COUNT(*) FROM user_mails m WHERE m.campaign_id = c.id
+                      AND m.claimed_at IS NOT NULL) AS claimed_count,
+                   (SELECT COUNT(*) FROM user_mails m WHERE m.campaign_id = c.id
+                      AND m.read_at IS NOT NULL) AS read_count
+            FROM mail_campaigns c JOIN users u ON u.id = c.created_by
+            """;
+
+    private static final org.springframework.jdbc.core.RowMapper<CampaignView> CAMPAIGN_ROW =
+            (rs, rowNum) -> new CampaignView(
+                    rs.getString("id"), rs.getString("audience"), rs.getString("title"),
+                    rs.getString("body"), parsePayloadStatic(rs.getString("payload_json")),
+                    rs.getString("expires_at"), rs.getString("revoked_at"),
+                    rs.getInt("target_count"), rs.getInt("claimed_count"), rs.getInt("read_count"),
+                    rs.getString("reason"), rs.getString("actor"), rs.getString("created_at"));
+
     /** 발송 이력 — "보냈나 / 몇 명이 받았나"가 운영의 첫 질문이라 수령 통계를 같이 싣는다. */
     public List<CampaignView> list(int limit) {
         int capped = Math.max(1, Math.min(limit, 100));
-        return jdbcClient.sql("""
-                        SELECT c.id, c.audience, c.title, c.body, c.payload_json, c.expires_at,
-                               c.revoked_at, c.target_count, c.reason, c.idem_key, c.created_at,
-                               u.nickname AS actor,
-                               (SELECT COUNT(*) FROM user_mails m WHERE m.campaign_id = c.id
-                                  AND m.claimed_at IS NOT NULL) AS claimed_count,
-                               (SELECT COUNT(*) FROM user_mails m WHERE m.campaign_id = c.id
-                                  AND m.read_at IS NOT NULL) AS read_count
-                        FROM mail_campaigns c JOIN users u ON u.id = c.created_by
-                        ORDER BY c.created_at DESC, c.id DESC
-                        LIMIT ?
-                        """)
+        return jdbcClient.sql(CAMPAIGN_SELECT + " ORDER BY c.created_at DESC, c.id DESC LIMIT ?")
                 .param(capped)
-                .query((rs, rowNum) -> new CampaignView(
-                        rs.getString("id"), rs.getString("audience"), rs.getString("title"),
-                        rs.getString("body"), parsePayload(rs.getString("payload_json")),
-                        rs.getString("expires_at"), rs.getString("revoked_at"),
-                        rs.getInt("target_count"), rs.getInt("claimed_count"), rs.getInt("read_count"),
-                        rs.getString("reason"), rs.getString("actor"), rs.getString("created_at")))
+                .query(CAMPAIGN_ROW)
                 .list();
     }
 
     public CampaignView detail(String campaignId) {
-        return list(100).stream()
-                .filter(c -> c.id().equals(campaignId))
-                .findFirst()
+        return jdbcClient.sql(CAMPAIGN_SELECT + " WHERE c.id = ?")
+                .param(campaignId)
+                .query(CAMPAIGN_ROW)
+                .optional()
                 .orElseThrow(() -> ApiException.notFound("발송 건을 찾을 수 없습니다"));
     }
 
@@ -387,28 +431,26 @@ public class AdminMailService {
         return n == null ? 0 : n;
     }
 
+    private static final String CAMPAIGN_ROW_SELECT = """
+            SELECT id, audience, payload_json, expires_at, revoked_at, target_count, request_hash
+            FROM mail_campaigns
+            """;
+
     private Campaign campaignByIdem(String idemKey) {
-        return jdbcClient.sql("""
-                        SELECT id, audience, payload_json, expires_at, revoked_at, target_count
-                        FROM mail_campaigns WHERE idem_key = ?
-                        """)
-                .param(idemKey)
-                .query((rs, rowNum) -> new Campaign(rs.getString("id"), rs.getString("audience"),
-                        rs.getString("payload_json"), rs.getString("expires_at"),
-                        rs.getString("revoked_at"), rs.getInt("target_count")))
-                .optional()
-                .orElse(null);
+        return campaignBy("idem_key", idemKey);
     }
 
     private Campaign campaignById(String id) {
-        return jdbcClient.sql("""
-                        SELECT id, audience, payload_json, expires_at, revoked_at, target_count
-                        FROM mail_campaigns WHERE id = ?
-                        """)
-                .param(id)
+        return campaignBy("id", id);
+    }
+
+    private Campaign campaignBy(String column, String value) {
+        return jdbcClient.sql(CAMPAIGN_ROW_SELECT + " WHERE " + column + " = ?")
+                .param(value)
                 .query((rs, rowNum) -> new Campaign(rs.getString("id"), rs.getString("audience"),
                         rs.getString("payload_json"), rs.getString("expires_at"),
-                        rs.getString("revoked_at"), rs.getInt("target_count")))
+                        rs.getString("revoked_at"), rs.getInt("target_count"),
+                        rs.getString("request_hash")))
                 .optional()
                 .orElse(null);
     }
@@ -421,9 +463,12 @@ public class AdminMailService {
         }
     }
 
-    private MailAttachments parsePayload(String json) {
+    /** RowMapper 가 static 이라 파서도 static 이다 — ObjectMapper 설정은 표기와 무관한 순수 매핑이다. */
+    private static final ObjectMapper PAYLOAD_MAPPER = new ObjectMapper();
+
+    private static MailAttachments parsePayloadStatic(String json) {
         try {
-            return MailAttachments.normalize(objectMapper.readValue(json, MailAttachments.class));
+            return MailAttachments.normalize(PAYLOAD_MAPPER.readValue(json, MailAttachments.class));
         } catch (Exception e) {
             throw new IllegalStateException("첨부 역직렬화 실패: " + json, e);
         }
@@ -457,7 +502,7 @@ public class AdminMailService {
     }
 
     private record Campaign(String id, String audience, String payloadJson, String expiresAt,
-                            String revokedAt, int targetCount) {
+                            String revokedAt, int targetCount, String requestHash) {
     }
 
     // ── DTO ───────────────────────────────────────────────────────────────
