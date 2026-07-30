@@ -13,6 +13,8 @@ import { NoticePopup } from "../lobby/NoticePopup";
 import { visibleNotices, type Notice } from "../lobby/notice-logic";
 import { pickLobbyPopup } from "../lobby/lobby-popup";
 import { useTutorial } from "../common/tutorial-context";
+import { DecklessDialog } from "../common/DecklessDialog";
+import { deckMissing } from "../common/deckless";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
 import { HOME_TILES, homeNotice, homeTileState, openTradeCount, teamLine } from "./home-logic";
 import styles from "./HomePage.module.css";
@@ -135,6 +137,21 @@ export function HomePage() {
     [me, deck, players, ownedCount, trade],
   );
 
+  /**
+   * 덱 없는 유저 가드 — L1 (#286 W3.5, hero 발제).
+   *
+   * 여기서 막으면 `/game` 에 **진입조차 하지 않으므로** #245 원정 팝업과 순서를 다투지 않는다.
+   * 다만 이건 첫 겹일 뿐이다 — URL 직접 진입은 `GamePage` 가, 경합은 서버 응답이 받는다.
+   */
+  const [decklessOpen, setDecklessOpen] = useState(false);
+  function pressTile(key: string, to: string) {
+    if (key === "game" && deckMissing(deck)) {
+      setDecklessOpen(true);
+      return;
+    }
+    navigate(to);
+  }
+
   const header = (
     <div className={styles.headerRow}>
       <div className={styles.headerLeft}>
@@ -176,7 +193,7 @@ export function HomePage() {
                 className={t.primary ? `${styles.tile} ${styles.tilePrimary}` : styles.tile}
                 data-testid={`home-tile-${t.key}`}
                 disabled={locked}
-                onClick={() => navigate(t.to)}
+                onClick={() => pressTile(t.key, t.to)}
               >
                 <span className={styles.tileIcon} aria-hidden="true">
                   {t.icon}
@@ -217,6 +234,15 @@ export function HomePage() {
 
         {popup === "notice" && (
           <NoticePopup notices={noticeList} onDone={() => setNoticeDone(true)} />
+        )}
+
+        {/* ⚠️ 카탈로그가 아직 없으면 **0 이 아니라 `null`** 을 넘긴다 — 0 을 넘기면 로딩 중인
+            유저에게 "현재 0/11명입니다"라는 **틀린 숫자**가 뜬다(`roster` 는 미도착도 `[]`). */}
+        {decklessOpen && (
+          <DecklessDialog
+            ownedCount={Array.isArray(players) ? ownedCount : null}
+            onClose={() => setDecklessOpen(false)}
+          />
         )}
       </div>
     </Layout>

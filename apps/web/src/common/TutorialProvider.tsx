@@ -9,7 +9,7 @@ import { TutorialContext } from "./tutorial-context";
 import type { TutorialControls } from "./tutorial-context";
 import { TutorialOverlay } from "./TutorialOverlay";
 import { enabledSteps, shouldStartTutorial, stepOnRoute } from "./tutorial-logic";
-import { TUTORIAL_STEPS } from "./tutorial-steps";
+import { DECK_SETUP_STEPS, TUTORIAL_STEPS } from "./tutorial-steps";
 import type { TutorialStep } from "./tutorial-steps";
 import {
   clearTutorialPending,
@@ -74,7 +74,18 @@ export function TutorialProvider({
   const userId = meData?.user?.id ?? null;
   const serverDone = meData?.user?.tutorialDone;
 
-  const runSteps = useMemo(() => enabledSteps(steps), [steps]);
+  /**
+   * 지금 돌고 있는 시퀀스가 온보딩이 아니라 **덱 셋업 워크스루**인가 (#286 W3.5).
+   *
+   * 둘은 길이도 목적도 다르다 — 한 배열에 합쳤더니 온보딩 진행 표시("1 / 7")부터 깨졌다.
+   * 그래서 시퀀스를 통째로 갈아끼운다. 온보딩 쪽 코드는 이 값을 몰라도 되게 `runSteps` 한
+   * 곳에서만 갈린다.
+   */
+  const [setupMode, setSetupMode] = useState(false);
+  const runSteps = useMemo(
+    () => enabledSteps(setupMode ? DECK_SETUP_STEPS : steps),
+    [steps, setupMode],
+  );
   const [active, setActive] = useState(false);
   const [index, setIndex] = useState(0);
   /** 자동 시작은 계정당 (그 화면 방문당) 1회 — me 가 리페치돼도 다시 켜지지 않는다. */
@@ -111,6 +122,8 @@ export function TutorialProvider({
   const resetSession = useCallback(() => {
     setActive(false);
     setIndex(0);
+    // 셋업 워크스루도 여기서 걷힌다 — 남겨 두면 다음 자동시작이 온보딩 대신 셋업 3스텝을 연다.
+    setSetupMode(false);
     autoStartedFor.current = null;
     ownerUserId.current = null;
     attempts.current = new Map();
@@ -277,6 +290,7 @@ export function TutorialProvider({
       return;
     }
     setActive(false);
+    setSetupMode(false);
   }, [nextCandidate, currentId, goTo, allSeen, persistIfOwner]);
 
   const restart = useCallback(() => {
@@ -292,7 +306,27 @@ export function TutorialProvider({
     setActive(true);
   }, [userId, runSteps, location.pathname]);
 
-  const value = useMemo<TutorialControls>(() => ({ active, restart }), [active, restart]);
+  /**
+   * 덱 화면 스텝만 여는 targeted 시작 (#286 W3.5).
+   *
+   * ⚠️ **`ownerUserId` 를 비우는 것이 이 함수의 핵심이다.** `persistIfOwner` 는 소유자가
+   * 현재 계정과 같을 때만 저장하므로, 비워 두면 이 흐름에서는 완료 저장 경로가 **구조적으로**
+   * 닫힌다. `allSeen` 이 어차피 거짓일 것이라는 추론에 기대지 않는다 — 스텝 구성이 바뀌면
+   * 그 추론은 조용히 무너지고, 그때 잃는 것은 서버의 **덱 지급**이다.
+   */
+  const startDeckSetup = useCallback(() => {
+    ownerUserId.current = null;
+    attempts.current = new Map();
+    setSeen(new Set());
+    setSetupMode(true);
+    setIndex(0); // 셋업 시퀀스는 전부 /deck 이라 첫 스텝이 곧 시작점이다.
+    setActive(true);
+  }, []);
+
+  const value = useMemo<TutorialControls>(
+    () => ({ active, restart, startDeckSetup }),
+    [active, restart, startDeckSetup],
+  );
   const step = active ? runSteps[index] : undefined;
 
   return (

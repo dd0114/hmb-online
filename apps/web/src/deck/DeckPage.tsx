@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useDeck, usePlayers, useUpdateDeck, type CatalogPlayer, type Deck } from "../api/hooks";
 import { useRelations, useTodayConditions } from "../api/hooks-v2";
@@ -7,6 +7,7 @@ import { Layout } from "../common/Layout";
 import { TeamMoraleWidget } from "../common/RelationBits";
 import { CardGrowthDetail } from "../codex/CardGrowthDetail";
 import { useNavLocked } from "../common/nav-lock";
+import { useTutorial } from "../common/tutorial-context";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { useNavGuardRun, useRegisterNavGuard, type NavGuard } from "../common/NavGuard";
@@ -78,6 +79,23 @@ export function DeckPage() {
   const [serverError, setServerError] = useState<ServerDeckError | null>(null);
   const [savedNote, setSavedNote] = useState(false);
   const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
+
+  /**
+   * 덱 없는 유저를 데려온 셋업 진입 (#286 W3.5) — `/deck?setup=1`.
+   *
+   * 여기서 코치마크를 켜는 이유: 가드는 **홈·게임 탭**에 있는데 코치마크 대상은 **덱 화면**에
+   * 있다. 보내는 쪽에서 켜면 아직 도착하지 않은 화면의 스텝을 찾다가 대상 부재로 스킵되고,
+   * 유저는 빈 전술보드 앞에 안내 없이 남는다.
+   */
+  const [searchParams] = useSearchParams();
+  const setupFlow = searchParams.get("setup") === "1";
+  const { startDeckSetup } = useTutorial();
+  const setupStarted = useRef(false);
+  useEffect(() => {
+    if (!setupFlow || setupStarted.current) return;
+    setupStarted.current = true;
+    startDeckSetup();
+  }, [setupFlow, startDeckSetup]);
   /**
    * 강화 시트 (#286 W3) — **페이지가 소유**한다. 에디터가 들고 있으면 보드 상태가 바뀔 때마다
    * 시트가 같이 흔들리고, 무엇보다 선수 탭과 **같은 컴포넌트**를 연다는 사실이 흐려진다.
@@ -273,6 +291,22 @@ export function DeckPage() {
           <p className={styles.savedNote} data-testid="deck-saved-note">
             저장되었습니다
           </p>
+        )}
+        {/**
+         * 셋업 흐름의 복귀 CTA (#286 W3.5, hero Q9 = A).
+         *
+         * ⚠️ **자동 이동하지 않는다.** 저장하자마자 게임 탭으로 넘기면 유저는 방금 자동 배치된
+         * 덱을 한 번도 못 보고 화면이 바뀐다. 더 손보고 싶은 사람이 그대로 머무를 수 있어야 한다.
+         */}
+        {setupFlow && savedNote && (
+          <button
+            type="button"
+            className={styles.readyCta}
+            data-testid="deck-ready-cta"
+            onClick={() => navigate("/game")}
+          >
+            이제 경기를 시작할 수 있습니다 — 게임 시작하러 가기 ›
+          </button>
         )}
       </div>
 

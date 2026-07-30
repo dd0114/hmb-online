@@ -108,6 +108,18 @@ export interface MockOpts {
   openTrades?: number;
   /** 미확인 피원정 리포트 수 — 홈 알림 한 줄의 나머지 절반. */
   unseenAwayReports?: number;
+  /**
+   * 덱 유무 (#286 W3.5). `"missing"` = `GET /api/deck` **404** — 서버가 새 유저·미지급 계정에
+   * 실제로 주는 응답이고, `useDeck` 이 그걸 `null` 로 정규화한다.
+   */
+  deck?: "present" | "missing";
+  /** 보유 카드 수 (#286 W3.5). 11 미만이면 자동완성으로도 덱을 못 채운다 = 영입 분기. */
+  ownedCount?: number;
+  /**
+   * `POST /api/matches` 실패 주입 (#286 W3.5 L3) — 클라 가드를 통과한 뒤 서버가 거부하는 경합.
+   * `"deck-required"` = W4 가 붙일 전용 코드 / `"legacy-404"` = 지금 서버의 뭉뚱그린 404.
+   */
+  createMatchError?: "deck-required" | "legacy-404";
 }
 
 export async function mockAll(page: Page, opts: MockOpts = {}) {
@@ -115,7 +127,16 @@ export async function mockAll(page: Page, opts: MockOpts = {}) {
     active = { match: null, locked: false, abandonable: false },
     openTrades = 1,
     unseenAwayReports = 0,
+    deck = "present",
+    ownedCount = 16,
+    createMatchError,
   } = opts;
+
+  const roster = PLAYERS.map((p, i) => ({
+    ...p,
+    owned: i < ownedCount,
+    ownedCount: i < ownedCount ? 1 : 0,
+  }));
 
   const slots = [
     { slot: 1, state: "IDLE", offerKind: null, target: null, demand: null, targetGrade: null, speedupCost: null },
@@ -133,8 +154,7 @@ export async function mockAll(page: Page, opts: MockOpts = {}) {
     ["/api/me/active-match", active],
     ["/api/me/away-reports", { ...AWAY_REPORTS, unseen: unseenAwayReports }],
     ["/api/relations", { morale: 62, streak: 1, players: [] }],
-    ["/api/players", PLAYERS],
-    ["/api/deck", DECK],
+    ["/api/players", roster],
     ["/api/presets", []],
     ["/api/presets/team", [1, 2, 3].map((slot) => ({ slot, name: null, snapshot: null }))],
     ["/api/league", LEAGUE],
@@ -161,6 +181,44 @@ export async function mockAll(page: Page, opts: MockOpts = {}) {
   for (const [path, body] of routes) {
     await page.route((url) => url.pathname === path, (r) => r.fulfill(json(body)));
   }
+
+  /**
+   * 덱 — 404 를 **캐치올보다 뒤에** 등록해야 이긴다. `{}` 로 대신하면 안 된다:
+   * `useDeck` 은 404 만 `null`(=덱 없음)로 정규화하고 `{}` 는 "덱이 있다"로 읽는다.
+   *
+   * ⚠️ **저장이 상태를 바꾼다** — `PUT` 을 받으면 그 뒤의 `GET` 은 덱을 돌려줘야 한다.
+   * 고정 404 로 두면 "덱을 만들었는데 여전히 없다"는, 서버엔 존재하지 않는 상태를 만들고
+   * 계약이 그 허구를 검사하게 된다(실제로 이 목의 첫 판이 그랬다).
+   */
+  let deckExists = deck !== "missing";
+  await page.route(
+    (url) => url.pathname === "/api/deck",
+    (r) => {
+      if (r.request().method() === "PUT") {
+        deckExists = true;
+        return r.fulfill(json(DECK));
+      }
+      return deckExists
+        ? r.fulfill(json(DECK))
+        : r.fulfill(json({ code: "NOT_FOUND", message: "활성 덱이 없습니다" }, 404));
+    },
+  );
+
+  // 매치 생성 — 실패 주입이 없으면 평소대로 만들어 준다(GET 은 캐치올이 받는다).
+  await page.route(
+    (url) => url.pathname === "/api/matches",
+    (r) => {
+      if (r.request().method() !== "POST") return r.fulfill(json({}));
+      if (createMatchError === "deck-required") {
+        return r.fulfill(json({ code: "DECK_REQUIRED", message: "활성 덱이 없습니다" }, 400));
+      }
+      if (createMatchError === "legacy-404") {
+        return r.fulfill(json({ code: "NOT_FOUND", message: "활성 덱이 없습니다" }, 404));
+      }
+      return r.fulfill(json({ id: "M1", state: "BRIEFING" }));
+    },
+  );
+
   await mockAppConfig(page);
 
   await page.addInitScript(() => {

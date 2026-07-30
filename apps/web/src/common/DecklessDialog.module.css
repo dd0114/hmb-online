@@ -1,0 +1,50 @@
+/* 덱 없는 유저 안내 (#286 W3.5). 색은 --us/--them 계열만(#244 색 규칙). */
+
+.dialog {
+  width: min(320px, calc(100vw - 40px));
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+}
+
+.body {
+  padding: 18px 16px 14px;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.actions button {
+  flex: 1;
+  border: 0;
+  border-radius: 11px;
+  padding: 11px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.secondary {
+  background: var(--sunk);
+  color: var(--text-muted);
+}
+
+.primary {
+  background: var(--us);
+  color: #fff;
+}
