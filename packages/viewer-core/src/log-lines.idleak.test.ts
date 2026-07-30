@@ -34,10 +34,15 @@ describe("#334 로그 라인 — 실경기 id 가 번호로 새지 않는다", (
     expect(logLines(ev("A3", "away"))[0]!.number).toBe("3");
   });
 
-  it("어떤 id 든 number 는 등번호로 읽히는 길이여야 한다", () => {
-    for (const id of ["P108", "P077", "LONGID", "H10", "A7"]) {
+  /*
+   * ⚠️ 이 단언은 원래 `length <= 2` 였는데 **구현 술어의 재진술**이라 정보가 없었다(독립검증 minor-3).
+   * 진짜 계약은 "등번호로 **읽히는가**" 이므로 숫자성으로 본다 — `"XY"` 처럼 길이만 맞는 값이
+   * 등번호 행세를 하면 화면에 `#XY` 가 찍힌다.
+   */
+  it("number 로 나가는 값은 언제나 등번호로 읽힌다(1~2자리 숫자)", () => {
+    for (const id of ["P108", "P077", "LONGID", "H10", "A7", "XY", "PH7", "AB"]) {
       const n = logLines(ev(id))[0]!.number;
-      if (n !== undefined) expect(String(n).length, `${id} → ${n}`).toBeLessThanOrEqual(2);
+      if (n !== undefined) expect(String(n), `${id} → ${n}`).toMatch(/^\d{1,2}$/);
     }
   });
 });
@@ -51,8 +56,8 @@ describe("#334 카드 자막 — 실경기 id 가 자막에 새지 않는다", (
       [snap],
     );
     const toast = a.find((x: { kind: string }) => x.kind === "toast");
-    expect(toast.text).toBe("🟨 YELLOW");
-    expect(toast.text).not.toContain("P077");
+    expect(toast!.text).toBe("🟨 YELLOW");
+    expect(toast!.text).not.toContain("P077");
   });
 
   it("엔진 픽스처 id 는 번호가 그대로 붙는다(무회귀)", async () => {
@@ -62,6 +67,25 @@ describe("#334 카드 자막 — 실경기 id 가 자막에 새지 않는다", (
       [{ type: "card", tick: 1, minute: 0, team: "home", playerId: "H2", detail: "red" }],
       [snap],
     );
-    expect(a.find((x: { kind: string }) => x.kind === "toast").text).toBe("🟥 RED #2");
+    expect(a.find((x: { kind: string }) => x.kind === "toast")!.text).toBe("🟥 RED #2");
+  });
+});
+
+describe("#334 minor-2 — 길이가 아니라 숫자성 (도달 불가지만 의도를 못박는다)", () => {
+  it("길이만 맞는 값은 번호로 나가지 않는다", async () => {
+    expect(logLines([{ tick: 1, minute: 0, type: "shot", team: "home", playerId: "XY" }])[0]!.number)
+      .toBeUndefined();
+  });
+
+  it("카드 자막도 잘린 id 를 찍지 않는다", async () => {
+    const { buildAnnotations } = await import("./playback.mjs");
+    const snap = { tick: 1, ball: { x: 20, y: 34 }, ballOwner: null, players: [] };
+    const a = buildAnnotations(
+      [{ type: "card", tick: 1, minute: 0, team: "home", playerId: "PH7", detail: "yellow" }],
+      [snap],
+    );
+    const toast = a.find((x: { kind: string }) => x.kind === "toast");
+    // 길이 가드면 "PH7" → "P7" 이 되어 `🟨 YELLOW #P7` 로 찍힌다.
+    expect(toast!.text).toBe("🟨 YELLOW");
   });
 });

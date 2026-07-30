@@ -342,7 +342,8 @@ export function buildAnnotations(events, snaps) {
       // #334: id 파생이 등번호로 안 읽히면 **번호를 빼고** 찍는다 — 실경기 id 는 "P077" 이라
       // 그대로 두면 자막이 `🟨 YELLOW #P077` 이 된다(코어는 토큰엔 이미 같은 방어선이 있다, #218).
       const derived = e.playerId ? e.playerId.replace(/[HA]/, "") : "";
-      const tag = derived.length > 0 && derived.length <= 2 ? ` #${derived}` : "";
+      // 길이가 아니라 숫자성(독립검증 minor-2) — 길이로 걸면 "PH7" 이 `#P7` 로 잘려 찍힌다.
+      const tag = /^\d{1,2}$/.test(derived) ? ` #${derived}` : "";
       T(e.detail === "red" ? `🟥 RED${tag}` : `🟨 YELLOW${tag}`, e.detail === "red" ? "#ef4444" : "#fde047", e.playerId);
     }
     else if (k === "offside") B("🚩 OFFSIDE", "#f59e0b");
