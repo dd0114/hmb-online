@@ -150,6 +150,13 @@ export function eventDisplay(event: MatchEventLike): EventDisplay {
       return { icon: "⊘", label: "인터셉트", key: false };
     case "tackle":
       return { icon: "⊗", label: "태클", key: false };
+    // 걷어내기(engine@0.26.0, #325) — pass/tackle 과 같은 급의 **흐름 노이즈**다.
+    // 경기당 약 32.7건(엔진 20시드 실측)이라 key 로 두면 골·슛·파울이 그 사이에 묻힌다.
+    // ⚠️ `packages/shared` 의 `MatchEventType` 에는 아직 없다(계약 프리즈 — #326 소관).
+    // `MatchEventLike.type` 이 `string` 이라 여기서 다루는 데 계약 변경이 필요 없고,
+    // 그쪽이 정리되기 전에도 유저 화면이 먼저 정상이어야 한다.
+    case "clearance":
+      return { icon: "⤴", label: "걷어내기", key: false };
     default:
       // unknown-type fallback: show the raw type, keep it visible
       return { icon: "•", label: event.type, key: true };

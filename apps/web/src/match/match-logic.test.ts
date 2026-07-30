@@ -113,6 +113,30 @@ describe("eventDisplay (MatchEventType → label/icon)", () => {
     const filtered = keyEvents([ev("pass"), ev("goal"), ev("tackle"), ev("interception"), ev("card")]);
     expect(filtered.map((e) => e.type)).toEqual(["goal", "card"]);
   });
+
+  /**
+   * #325 — `engine@0.26.0` 의 걷어내기(`clearance`)가 텍스트 타임라인을 덮었다.
+   *
+   * `eventDisplay` 에 case 가 없어 **default 폴백**(raw type + `key:true`)으로 떨어졌고,
+   * 걷어내기는 **16.35회/팀-경기 = 경기당 약 32.7건**(엔진 20시드 실측)이라 골·슛·파울이
+   * 그 사이에 묻혔다. 라벨도 한글이 아닌 `"clearance"` 원문이 그대로 노출됐다.
+   *
+   * ⚠️ **default 폴백 자체는 옳다**(모르는 타입을 조용히 삼키면 새 이벤트가 영영 안 보인다).
+   * 문제는 새 타입이 생겼는데 web 이 몰랐던 것이므로, 폴백을 바꾸지 말고 **case 를 추가**한다.
+   * 아래 "unknown event types" 계약이 폴백을 계속 지킨다.
+   */
+  it("걷어내기는 흐름 노이즈다 — 한글 라벨 + 타임라인에서 제외 (#325)", () => {
+    const d = eventDisplay(ev("clearance"));
+    expect(d.label, "raw type 이 그대로 노출되면 안 된다").toBe("걷어내기");
+    expect(d.key, "pass/tackle 과 같은 급 — 타임라인에 남지 않는다").toBe(false);
+  });
+
+  it("경기당 32건 걷어내기가 섞여도 타임라인은 키 이벤트만 남긴다 (#325 실측 규모)", () => {
+    // 실측 규모를 그대로 태운다 — 한 건만 확인하면 필터가 실제로 무엇을 걸러내는지 안 드러난다.
+    const noise = Array.from({ length: 33 }, () => ev("clearance"));
+    const filtered = keyEvents([ev("goal"), ...noise, ev("card"), ...noise]);
+    expect(filtered.map((e) => e.type)).toEqual(["goal", "card"]);
+  });
 });
 
 describe("formatClock", () => {
