@@ -28,6 +28,7 @@ export function DecklessDialog({
       onClose={onClose}
       labelledBy="deckless-title"
       testId="deckless-dialog"
+      overlayClassName={styles.overlay}
       className={styles.dialog}
     >
       <div className={styles.body}>

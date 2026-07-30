@@ -81,7 +81,10 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
             프레임 통짜를 쓰면 에셋의 하단 밴드가 빈 검은 띠로 남는다(#207 실측). */}
         <span
           className={player.owned ? styles.art : `${styles.art} ${styles.artLocked}`}
-          data-testid="codex-card-art"
+          /* ⚠️ 접두어를 `codex-card-` 로 되돌리지 마라 — 카드 루트가 `codex-card-{id}` 라
+             `[data-testid^="codex-card-"]` 셀렉터가 카드마다 **2개**를 잡는다(실측 24장 → 48노드).
+             `FullArtCard` 가 `full-art-` 로 이미 당한 함정이다(독립검증 MIN-1). */
+          data-testid="codex-art"
         >
           <FullArtCard
             playerId={player.id}

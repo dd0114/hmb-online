@@ -97,7 +97,7 @@ test("선수 카드가 전신 아트다 — 얼굴 타일이 아니다", async (
 
   const card = page.locator('[data-testid^="codex-card-"]').first();
   await expect(card).toBeVisible();
-  const art = card.locator('[data-testid="codex-card-art"]');
+  const art = card.locator('[data-testid="codex-art"]');
   await expect(art, "전신 아트 창이 없다").toBeVisible();
 
   // 세로가 더 긴 창이어야 전신이다(얼굴 타일은 정사각이었다).
@@ -137,11 +137,11 @@ test("전신은 다이아 이상만 — 그 아래는 아트를 그리지 않는
   expect(below.length, "임계 미만 표본이 없다").toBeGreaterThan(0);
 
   for (const p of above) {
-    const img = page.getByTestId(`codex-card-${p.id}`).locator('[data-testid="codex-card-art"] img');
+    const img = page.getByTestId(`codex-card-${p.id}`).locator('[data-testid="codex-art"] img');
     await expect(img, `${p.id}(${p.grade}) 는 임계 이상인데 아트가 없다`).toHaveCount(1);
   }
   for (const p of below) {
-    const img = page.getByTestId(`codex-card-${p.id}`).locator('[data-testid="codex-card-art"] img');
+    const img = page.getByTestId(`codex-card-${p.id}`).locator('[data-testid="codex-art"] img');
     await expect(img, `${p.id}(${p.grade}) 는 임계 미만인데 아트가 그려졌다(#285 정책 위반)`).toHaveCount(0);
   }
 });
@@ -163,7 +163,7 @@ test("미보유 카드는 아트가 있으면 실루엣이다", async ({ page })
 
   let withArt = 0;
   for (let i = 0; i < n; i += 1) {
-    const img = lockedCards.nth(i).locator('[data-testid="codex-card-art"] img');
+    const img = lockedCards.nth(i).locator('[data-testid="codex-art"] img');
     if ((await img.count()) === 0) continue;   // 아트 미노출 등급(#285) — 아래 계약이 따로 본다
     withArt += 1;
     const filter = await img.first().evaluate((el) => getComputedStyle(el).filter);
@@ -184,7 +184,7 @@ test("미보유 잠금 표현은 **등급과 무관하게** 같다", async ({ pa
   const n = await lockedCards.count();
   const marks = await lockedCards.evaluateAll((els) =>
     els.map((el) => {
-      const art = el.querySelector('[data-testid="codex-card-art"]');
+      const art = el.querySelector('[data-testid="codex-art"]');
       if (!art) return "no-art-window";
       return getComputedStyle(art, "::after").content !== "none" ? "lock" : "none";
     }),

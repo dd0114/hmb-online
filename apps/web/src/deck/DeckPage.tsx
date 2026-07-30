@@ -243,11 +243,6 @@ export function DeckPage() {
 
   return (
     <Layout header={header} nav>
-      {/* 팀 사기 — #286 에서 로비가 없어지며 갈 곳을 잃었다. 설계(§3.1 "덜어낸 것의 행선지")가
-          [덱]으로 지정한 자리다: 사기·컨디션은 **라인업을 짤 때 쓰는 값**이라 여기가 맞다.
-          ⚠️ 소비처가 0 이 되면 위젯은 정의만 남고 화면에서 조용히 사라진다(독립검증 BL-1 이
-          그 상태를 잡았다) — `deck-teamsheet` 계약이 이제 존재를 지킨다. */}
-      <TeamMoraleWidget relations={relations} compact />
       <DeckEditor
         onOpenGrowth={(p) => setGrowthPlayer(p)}
         growthLockedReason={growthLockedReason}
@@ -268,6 +263,17 @@ export function DeckPage() {
             : `보유 선수 부족 (${ownedPlayers.length}/${STARTER_COUNT})`
         }
       />
+
+      {/* 팀 사기 — #286 에서 로비가 없어지며 갈 곳을 잃었다. 설계(§3.1 "덜어낸 것의 행선지")가
+          [덱]으로 지정한 자리다: 사기·컨디션은 **라인업을 짤 때 쓰는 값**이라 여기가 맞다.
+          ⚠️ 소비처가 0 이 되면 위젯은 정의만 남고 화면에서 조용히 사라진다(독립검증 W2 BL-1 이
+          그 상태를 잡았다) — `deck-teamsheet` 계약이 이제 존재를 지킨다.
+
+          ⚠️ **에디터 위로 올리지 마라.** 처음엔 보드 위에 뒀는데, 그 한 줄이 지시 레일을 통째로
+          아래로 밀어 **팀 프롬프트가 하단 탭바에 가렸다**(390px 실측 여백 79 → 11, 요구 ≥24).
+          #244 의 "프롬프트는 어디서나 첫 화면에"가 이 위젯보다 우선이다 — 사기는 곁눈질로 보는
+          값이고 프롬프트는 이 화면에 온 이유다. 계약 = `p244-prompt-first.spec.ts` AC1·AC13. */}
+      <TeamMoraleWidget relations={relations} compact />
 
       <div className={styles.notes}>
         {preIssues.length > 0 && (

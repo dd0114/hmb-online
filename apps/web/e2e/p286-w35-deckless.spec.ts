@@ -56,6 +56,52 @@ test("덱이 없으면 홈 [게임 시작]이 차단되고 안내가 뜬다", as
   await expect(page.getByTestId("game-page")).toHaveCount(0);
 });
 
+test("안내는 진짜 모달이다 — 화면 안에 온전히 들어오고 백드롭이 뒤를 막는다", async ({ page }) => {
+  /**
+   * ⚠️ **`toBeVisible()` 로는 이걸 못 잡는다.** 처음 구현은 `Modal` 에 `overlayClassName` 을
+   * 넘기지 않아 오버레이가 **스타일 0인 래퍼**가 됐고, 다이얼로그가 문서 흐름에 인라인으로
+   * 들어가 홈에서 버튼 하단이 잘렸다(390×844 실측 `dialogBottom` 859 > 844). 그런데 계약
+   * 9건이 전부 green 이었다 — 보이기는 했으니까. 독립검증 BL-1.
+   *
+   * 그래서 여기서는 **위치**를 본다: 뷰포트 안에 온전히 들어오는가, 백드롭이 실제로 깔리는가,
+   * 홈의 "페이지 스크롤 0" 성질이 유지되는가.
+   */
+  // 알림 줄까지 있는 상태 = 홈이 가장 길어지는 평범한 복귀 유저.
+  await mockAll(page, { deck: "missing", unseenAwayReports: 3, openTrades: 1 });
+  await page.goto("/home");
+  await page.getByTestId("home-tile-game").click();
+
+  const dialog = page.getByTestId("deckless-dialog");
+  await expect(dialog).toBeVisible();
+
+  const box = await dialog.boundingBox();
+  expect(box, "다이얼로그 박스를 못 읽었다").not.toBeNull();
+  const vh = page.viewportSize()!.height;
+  expect(box!.y, "다이얼로그 상단이 화면 위로 잘렸다").toBeGreaterThanOrEqual(0);
+  expect(
+    box!.y + box!.height,
+    `다이얼로그 하단이 화면 밖이다 — 버튼을 누르려면 스크롤해야 한다 (bottom=${box!.y + box!.height}, viewport=${vh})`,
+  ).toBeLessThanOrEqual(vh);
+
+  // 백드롭 = 뒤 화면을 막는 층. 없으면 잠긴 척하면서 뒤 타일이 그대로 눌린다.
+  const overlayFixed = await dialog.evaluate((el) => {
+    const overlay = el.parentElement!;
+    const cs = getComputedStyle(overlay);
+    return { position: cs.position, bg: cs.backgroundColor };
+  });
+  expect(overlayFixed.position).toBe("fixed");
+  expect(overlayFixed.bg, "백드롭이 투명하다").not.toBe("rgba(0, 0, 0, 0)");
+
+  // 홈 셸은 페이지 스크롤 0 이 성질이다(#169 S1) — 다이얼로그가 그걸 깨면 안 된다.
+  const scrolls = await page.evaluate(() => ({
+    doc: document.documentElement.scrollHeight,
+    win: window.innerHeight,
+  }));
+  expect(scrolls.doc, "다이얼로그가 문서를 늘렸다 = 흐름에 인라인으로 들어갔다").toBeLessThanOrEqual(
+    scrolls.win,
+  );
+});
+
 test("[예] 를 누르면 덱 화면으로 가고 덱 튜토리얼이 뜬다", async ({ page }) => {
   await mockAll(page, { deck: "missing" });
   await page.goto("/home");
@@ -106,6 +152,20 @@ for (const [label, kind] of [
     await expect(page.getByTestId("deckless-dialog")).toBeVisible();
   });
 }
+
+test("리그·원정 페이지로 직접 들어와도 매치를 시작할 수 없다", async ({ page }) => {
+  /**
+   * ⚠️ **처음엔 게임 탭에만 가드를 걸었다가 독립검증에 잡혔다(MAJ-2).** `/league`·`/away` 는
+   * 북마크·뒤로가기로 직접 들어올 수 있고, 거기 [다음 경기]·[원정 떠나기]도 매치를 만든다.
+   * 가드가 한 화면에만 있으면 나머지는 **조용히 예전 상태**(막다른 토스트)로 남는다.
+   */
+  await mockAll(page, { deck: "missing" });
+
+  await page.goto("/away");
+  await page.getByTestId("away-start").click();
+  await expect(page.getByTestId("deckless-dialog")).toBeVisible();
+  await expect(page).toHaveURL(/\/away$/);
+});
 
 // ── (나) 보유 11명 미만 — hero Q8 = C ────────────────────────────────────
 test("보유가 11명 미만이면 덱 구성이 아니라 영입으로 안내한다", async ({ page }) => {

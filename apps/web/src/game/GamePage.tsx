@@ -1,14 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { useActiveMatch, useAwayReports, useCreateMatch, useDeck, useMe, usePlayers } from "../api/hooks";
+import { useActiveMatch, useAwayReports, useCreateMatch, useMe } from "../api/hooks";
 import { useLeague } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { AwayReportModal } from "../lobby/AwayReportModal";
 import { shouldShowAwayPopup } from "../lobby/away-report-logic";
-import { DecklessDialog } from "../common/DecklessDialog";
-import { deckMissing, isDeckRequiredError } from "../common/deckless";
+import { useDecklessGuard } from "../common/useDecklessGuard";
 import { matchInProgressIdOf, shouldForceResume } from "../common/match-lock";
 import { leagueModeHint, practiceError } from "./game-logic";
 import styles from "./GamePage.module.css";
@@ -57,23 +56,10 @@ export function GamePage() {
    * L3 = 클라 가드를 통과한 뒤 **서버가 거부**하는 경합(다른 탭에서 덱 삭제 등).
    *      클라 가드는 진실이 아니므로, 서버 응답도 **같은 안내**로 흡수한다.
    */
-  const { data: deck } = useDeck();
-  const { data: players } = usePlayers();
-  const [decklessOpen, setDecklessOpen] = useState(false);
-  // ⚠️ 미도착 카탈로그를 0 으로 읽지 않는다 — "현재 0/11명입니다"라는 틀린 숫자가 뜬다.
-  const ownedCount = Array.isArray(players) ? players.filter((p) => p.owned).length : null;
-
-  /** 모드 진입 공통 관문. 덱이 없으면 **아무 모드도 시작하지 않는다**. */
-  function guardDeck(): boolean {
-    if (deckMissing(deck)) {
-      setDecklessOpen(true);
-      return false;
-    }
-    return true;
-  }
+  const deckless = useDecklessGuard();
 
   function pressAway() {
-    if (!guardDeck()) return;
+    if (!deckless.guard()) return;
     if (!forcedToMatch && !awayDismissed && shouldShowAwayPopup(awayReports)) {
       setAwayPressed(true);
       return;
@@ -82,7 +68,7 @@ export function GamePage() {
   }
 
   function startPractice() {
-    if (!guardDeck()) return;
+    if (!deckless.guard()) return;
     setCreateError(null);
     createMatch.mutate(
       {},
@@ -96,10 +82,7 @@ export function GamePage() {
             return;
           }
           // L3 — 서버가 "덱이 없다"고 거부했다. 에러 토스트로 끝내면 막다른 길이다.
-          if (isDeckRequiredError(err)) {
-            setDecklessOpen(true);
-            return;
-          }
+          if (deckless.catchReject(err)) return;
           setCreateError(practiceError(err as ApiError | Error));
         },
       },
@@ -124,7 +107,7 @@ export function GamePage() {
           onClick={() => {
             // 리그도 결국 매치를 만든다 — 리그 화면까지 들여보낸 뒤 [다음 경기]에서 막으면
             // 유저는 순위표를 한 바퀴 돈 뒤에야 자기가 못 한다는 걸 안다.
-            if (guardDeck()) navigate("/league");
+            if (deckless.guard()) navigate("/league");
           }}
         >
           <span className={styles.modeTop}>
@@ -197,9 +180,7 @@ export function GamePage() {
 
         <ErrorToast message={createError} onDismiss={() => setCreateError(null)} />
 
-        {decklessOpen && (
-          <DecklessDialog ownedCount={ownedCount} onClose={() => setDecklessOpen(false)} />
-        )}
+        {deckless.dialog}
 
         {showAwayPopup && awayReports && (
           <AwayReportModal

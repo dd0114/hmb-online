@@ -1,5 +1,24 @@
 /* 덱 없는 유저 안내 (#286 W3.5). 색은 --us/--them 계열만(#244 색 규칙). */
 
+/**
+ * ⚠️ **오버레이 클래스를 반드시 넘겨야 한다.** `Modal` 은 이 값을 오버레이 `<div>` 의
+ * **유일한 class** 로 쓴다(Modal.tsx) — 빠뜨리면 스타일이 0인 래퍼가 되어 다이얼로그가
+ * **문서 흐름에 인라인으로** 들어간다. 그러면 ①홈에서 버튼이 화면 밖으로 잘리고
+ * ②백드롭이 없어 뒤 타일이 계속 눌리고 ③바깥 클릭 닫기가 죽고 ④`aria-modal="true"` 인데
+ * 실제 모달이 아니면서 포커스 트랩만 살아 **화면 밖 요소에 갇힌다**.
+ * 독립검증 BL-1 이 정확히 이 상태였다 — `toBeVisible()` 계약 9건이 전부 통과하면서.
+ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 60;
+}
+
 .dialog {
   width: min(320px, calc(100vw - 40px));
   border-radius: 16px;
