@@ -24,8 +24,10 @@ import type { Vec2 } from "./vec.js";
  * 정당하게 import 하는 유일한 자리)가 건다.
  *
  * <p>나머지 3종은 봇 덱이 쓰는 포메이션이다(4-4-2 · 4-2-3-1 · 5-3-2). web 이 유저에게 제시하는
- * 것은 4-4-2 · 4-3-3 둘뿐이고, 그 보드 행 구성은 {@link FORMATION_ROWS} 와 일치해야 한다
- * (`apps/web/src/deck/deck-logic.test.ts` 가 계약으로 건다).
+ * 것은 4-4-2 · 4-3-3 둘뿐이고, 그 보드 행 구성은 {@link FORMATION_ROWS} 와 일치해야 한다 —
+ * 락은 `apps/web/src/deck/formation-lock.test.ts` 가 건다. 그 테스트는 배열 비교에서 멈추지 않고
+ * **보드가 토큰을 실제로 그리는 좌표**(`starterCoords`)와 피치 y·x 를 직접 대조한다: 보드에서
+ * 오른쪽인 선수는 피치에서도 오른쪽, 보드에서 위(공격)인 행은 피치에서 상대 골문 쪽.
  */
 export const FORMATION_BASE_POSITIONS: Record<string, readonly Vec2[]> = {
   // 엔진 formation433 과 바이트 동일. GK · LB LCB RCB RB · LCM CM RCM · LW ST RW

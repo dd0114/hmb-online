@@ -2,6 +2,8 @@
 // 핵심 원칙: "데드볼 재배치"에서만 공 보간을 끊는다. 빠른 슛 궤적은 이벤트로 구분되므로 끊지 않는다.
 
 /** 이벤트 종류 키. kickoff+detail(corner/throw_in/goal_kick), shot+detail(saved/off_target/one_on_one) 를 펼친다. */
+import { ownerSideOf } from "./owner-side.mjs";
+
 export function eventKind(e) {
   return e.type === "kickoff" ? (e.detail || "kickoff")
     : e.type === "shot" && e.detail ? "shot_" + e.detail
@@ -192,6 +194,8 @@ export function buildFlightSides(events, snaps) {
  * @property {boolean} [pauseOnly]   자막 없는 짧은 비트(프리킥 등).
  * @property {string}  [kind]        setPiece 종류(corner/throw_in).
  * @property {string}  [contactAnchor] 파울/페널티: 접촉 지점 줌 앵커(파울러 playerId).
+ * @property {string}  [contactAnchorTeam] 그 파울러의 팀 (#324) — playerId 는 양 팀에 중복될 수
+ *   있어서(덱·봇이 선수 카탈로그 공유) id 만으로 찾으면 반대편 선수로 줌한다.
  * @property {boolean} [continuous]  연속 아웃 스로인.
  * @property {number}  [formFrom]    골 정지: 포메이션 트윈 시작 idx.
  * @property {number}  [koIdx]       골 정지: 킥오프 idx.
@@ -314,6 +318,7 @@ export function buildStoppages(events) {
  * @property {string} text
  * @property {string} [col]
  * @property {string} [anchor] 토스트: 공 대신 이 playerId 선수 위치에 앵커(파울/카드 등 선수 사건).
+ * @property {string} [anchorTeam] 그 선수의 팀 (#324) — 중복 playerId 에서 앵커가 반대편에 붙는 것 방지.
  */
 /**
  * 액션 토스트(선수 근처) + 상황 배너(상단) + 돌파 추론 주석.
@@ -351,7 +356,10 @@ export function buildAnnotations(events, snaps) {
       const run = i - start;
       if (prevO && run >= 6) {
         const a = snaps[start].ball, b = snaps[i - 1].ball;
-        const fwd = prevO[0] === "H" ? b.x - a.x : a.x - b.x;
+        // #324: 전진 방향은 소유팀이 정한다. `prevO[0] === "H"` 추측은 실경기 id(P077…)에서
+        // 항상 away 로 읽혀 **홈팀의 돌파가 후진으로 계산**됐다(SURGE 가 홈에 안 뜬다).
+        const side = ownerSideOf(snaps[i - 1]);
+        const fwd = side === "home" ? b.x - a.x : a.x - b.x;
         const mid = snaps[start + Math.floor(run / 2)];
         if (fwd >= 9 && mid) annos.push({ kind: "toast", tick: mid.tick, at: mid.tick, text: "SURGE!", col: "#a78bfa" });
       }

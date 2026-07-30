@@ -22,7 +22,7 @@ function toGlobal(src) {
 export function inlineCore() {
   // skin-key 는 viewer.impl 이 참조하므로 그보다 먼저 — 빠뜨리면 인라인 뷰어에서
   // `skinLookup is not defined` 로 draw 가 통째로 죽는다(#324 에서 실제로 밟았다).
-  const mods = ["playback.mjs", "stats.impl.mjs", "log-lines.impl.mjs", "skin-key.mjs", "viewer.impl.mjs"];
+  const mods = ["owner-side.mjs", "playback.mjs", "stats.impl.mjs", "log-lines.impl.mjs", "skin-key.mjs", "viewer.impl.mjs"];
   const coreSrc = mods.map((m) => toGlobal(readFileSync(join(coreDir, m), "utf8"))).join("\n");
   return { coreSrc };
 }

@@ -17,6 +17,7 @@
 
 import { buildPlayback, spansReposition, inHighlight, effectiveSpeed, PACE } from "./playback.mjs";
 import { skinKeyOf, skinLookup } from "./skin-key.mjs";
+import { ownerSideOf } from "./owner-side.mjs";
 import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.impl.mjs";
 
 export function createViewer(canvas, chrome = {}) {
@@ -64,7 +65,6 @@ export function createViewer(canvas, chrome = {}) {
   function sx(x) { return canvas.width / 2 + (x - cam.cx) * baseScale * cam.zoom; }
   function sy(y) { return canvas.height / 2 + (y - cam.cy) * baseScale * cam.zoom; }
   const lerp = (a, b, t) => a + (b - a) * t;
-  const ownerSideOf = (o) => (o ? (o[0] === "H" ? "home" : "away") : null);
   const idxOfTick = (tick) => { const i = snaps.findIndex((s) => s.tick >= tick); return i < 0 ? snaps.length - 1 : i; };
   /**
    * 카드 라벨 등번호 (#324). 스킨(팀 포함 키) 우선 — 실경기 id 는 "P077" 이라 문자 치환이 안 먹고,
@@ -173,7 +173,7 @@ export function createViewer(canvas, chrome = {}) {
     lastPlayerTrail = ptrail;
     // 공 궤적: 짧은 comet 꼬리. 소유팀 색(carry-forward). 데드볼 재배치 구간은 세그먼트 건너뜀.
     ctx.lineWidth = 2.8;
-    const segSideAt = (s) => ownerSideOf(snaps[s].ballOwner) || flightSides.get(snaps[s].tick) || null;
+    const segSideAt = (s) => ownerSideOf(snaps[s]) || flightSides.get(snaps[s].tick) || null;
     let trailSide = null;
     for (let b = Math.max(0, i - BALL_TRAIL); b >= Math.max(0, i - BALL_TRAIL - 8); b--) {
       const sd = segSideAt(b); if (sd) { trailSide = sd; break; }
@@ -425,7 +425,7 @@ export function createViewer(canvas, chrome = {}) {
   }
   function spawnSurgeFx(tick) {
     const ss = snapByTick.get(tick); if (!ss) return;
-    const side = ownerSideOf(ss.ballOwner);
+    const side = ownerSideOf(ss);
     fx.push({ type: "surge", x: ss.ball.x, y: ss.ball.y, rgb: teamRgb(side), back: side === "away" ? 1 : -1, life: 1 });
   }
   // 상황 카드(#situation=호스트 DOM).

@@ -103,11 +103,15 @@ export function jerseyNumbers(log: unknown): Record<string, string> {
   for (const snap of snaps) {
     for (const p of snap?.players ?? []) {
       if (!p?.playerId) continue;
-      const team = p.team ?? "?";
-      const key = skinKeyOf(team, p.playerId);
+      // team 이 없는 로그(스키마상 필수지만 구 소비자·손상 입력)에서는 팀 키를 만들지 않는다 —
+      // `"?:P077"` 로 실어 봐야 코어 조회가 전부 miss 라 **등번호가 통째로 사라진다**(구 동작은
+      // 번호가 나왔다). 그런 로그는 중복 id 문제도 없으므로 단독 키가 옳다.
+      const team = p.team;
+      const key = team ? skinKeyOf(team, p.playerId) : p.playerId;
       if (out[key]) continue;
-      seen[team] = (seen[team] ?? 0) + 1;
-      out[key] = String(seen[team]);
+      const bucket = team ?? "?";
+      seen[bucket] = (seen[bucket] ?? 0) + 1;
+      out[key] = String(seen[bucket]);
     }
   }
   return out;
@@ -178,17 +182,10 @@ export function buildViewerSkins(
   }
 
   /*
-   * #324 팀 확장 — 같은 선수가 양 팀에 뛰면 **얼굴은 같아도 등번호는 팀마다 다르다**.
-   * 그래서 `(team, playerId)` 키 엔트리를 따로 실어 코어가 팀 우선 조회로 자기 팀 번호를 집게 한다.
-   * 플레인 키(아트만, 번호 없음)도 남긴다 — 팀을 모르는 소비자의 폴백이고, 번호는 코어가
-   * `nums`(팀 키)에서 다시 찾는다.
+   * #324 — 등번호는 셀에 굽지 않는다. 얼굴은 선수 것이라 양 팀이 같아도 맞지만 **번호는 팀마다
+   * 다르므로**, 셀에 구우면 팀 수만큼 아트 셀을 복제해야 한다(22개 중복 적재). 코어는 셀에
+   * `num` 이 없으면 `nums` 를 팀 키로 조회하므로, 번호는 거기 한 곳에만 두면 된다.
    */
-  for (const [key, num] of Object.entries(jerseys)) {
-    const sep = key.indexOf(":");
-    if (sep < 0) continue;
-    const base = byPlayer[key.slice(sep + 1)];
-    if (base) byPlayer[key] = { ...base, num };
-  }
 
   const hasCells = Object.keys(byPlayer).length > 0 && atlases.length > 0;
   const hasNums = Object.keys(jerseys).length > 0;

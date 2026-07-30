@@ -307,16 +307,16 @@ describe("jerseyNumbers — 토큰에 선수 id 가 찍히는 문제 해결", ()
     expect(jerseyNumbers({ tickSnapshots: [{}] })).toEqual({});
   });
 
-  it("로그를 주면 스킨 셀에 등번호가 실린다 — **팀 키 엔트리**에(#324)", () => {
+  it("등번호는 셀이 아니라 nums(팀 키)에 실린다 — 번호는 팀마다 다르다(#324)", () => {
     const withLog = buildViewerSkins(full, {
       tickSnapshots: [{ players: [{ playerId: "P001", team: "home" }] }],
     })!;
-    // 번호는 팀마다 다르므로 플레인 키 셀에는 굽지 않는다(같은 선수가 양 팀에 뛸 수 있다).
-    expect(withLog.byPlayer["home:P001"]?.num).toBe("1");
-    expect(withLog.byPlayer.P001?.num, "플레인 키는 아트만").toBeUndefined();
-    // 플레인 키 셀 자체는 남는다 — 팀을 모르는 소비자 폴백.
-    expect(withLog.byPlayer.P001, "아트 셀은 플레인 키에도 있다").toBeTruthy();
-    // 로그 없이 만들면 등번호 없이(뷰어 기존 방식) 나간다.
-    expect(buildViewerSkins(full)!.byPlayer.P001?.num).toBeUndefined();
+    // 셀은 **얼굴만** — 같은 선수가 양 팀에 뛰면 얼굴은 같아도 번호는 다르므로, 셀에 구우면
+    // 팀 수만큼 아트 셀을 복제해야 한다. 코어는 셀에 num 이 없으면 nums 를 팀 키로 본다.
+    expect(withLog.byPlayer.P001, "아트 셀은 있다").toBeTruthy();
+    expect(withLog.byPlayer.P001?.num, "셀에는 번호를 굽지 않는다").toBeUndefined();
+    expect(withLog.nums["home:P001"], "번호는 nums 에 팀 키로").toBe("1");
+    // 로그 없이 만들면 등번호 표 자체가 비어 있다(뷰어 기존 방식으로 폴백).
+    expect(buildViewerSkins(full)!.nums).toEqual({});
   });
 });
