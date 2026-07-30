@@ -101,6 +101,8 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
   /** 자리 바꾸기에서 먼저 고른 선발. */
   const [pendingMove, setPendingMove] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  /** 벤치 지시 열람 패널이 펴져 있는가 (#294 MINOR-2) — 기본 접힘(#276 AC7 세로 예산). */
+  const [benchOpen, setBenchOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   /** 덱 사본 — 여기서의 편집은 덱에 저장되지 않는다(위 주석). */
   const [editor, setEditor] = useState<EditorState | null>(null);
@@ -383,6 +385,26 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
           </button>
         ))}
       </div>
+      {/*
+        벤치 지시 열기 (#294 MINOR-2) — **접힌 채로 시작한다.**
+
+        ⚠️ `say` 모드에서 벤치를 **상시** 펴면 #276 AC7 이 깨진다. 그 계약은 기본 모드에서 팀
+        프롬프트가 **스크롤 0 에서 여유까지** 보일 것을 요구하는데(2R blocker-1 이 정확히 그 상태였다),
+        벤치 줄이 약 87px 를 더해 360×740 에서 프롬프트가 CTA 를 **9px 침범**했다(실측).
+        그래서 "필요할 때 편다"로 간다 — 기본 높이는 그대로이고, 열람·수정 경로는 생긴다.
+      */}
+      {mode === "say" && bench.length > 0 && (
+        <button
+          type="button"
+          className={styles.benchToggle}
+          data-testid="halftime-bench-toggle"
+          aria-expanded={benchOpen}
+          disabled={expired}
+          onClick={() => setBenchOpen((v) => !v)}
+        >
+          {benchOpen ? "벤치 접기" : `벤치 ${bench.length}명에게도 지시`}
+        </button>
+      )}
     </div>
   );
 
@@ -472,7 +494,26 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
           onBoardTap={handleBoardTap}
           subbedOut={subs.map((s) => s.out)}
           pendingPlayerId={mode === "move" ? pendingMove : pendingOut}
-          hideBench
+          /**
+           * ⚠️ **[감독의 한마디] 모드에서는 벤치도 편다** (#294 MINOR-2, main 확정 ⓑ).
+           *
+           * 전반 `후반 지시` 탭은 **벤치 선수에게도** 지시를 쓸 수 있고 서버에 저장된다
+           * (로스터 = 선발+벤치, 서버가 그렇게 검증한다). 그런데 감독시간 보드에 벤치 토큰이
+           * 없어서 **어느 선수에게 쓴 건지 화면에서 볼 수 없었다** — 동작은 정상인데
+           * 열람·수정 경로만 없는 상태였다.
+           *
+           * 교체가 일어나는 시점이 정확히 감독시간이라, 들어올 선수에게 한 말을 그 자리에서
+           * 보고 고치는 것이 자연스럽다(ⓐ "문서에 한계로 명시"는 유저 혼란을 문서로만 덮는다).
+           *
+           * 모드별로 뜻이 다르다:
+           *  · `say`  = 지시 대상 고르기 → 벤치 **편다**(이번 변경)
+           *  · `sub`  = 넣을 선수 고르기 → 원래 편다(`DeckEditor` 가 `boardMode==="subs"` 로 처리)
+           *  · `move` = 선발끼리 자리 바꾸기 → **접는다**(넣을 선수를 고를 일이 없다)
+           *
+           * ⚠️ 이 변경으로 `DeckEditor.tsx` 의 "지금 도달 불가능한 방어"(벤치↔선발 드래그 차단)가
+           * **살아난다** — 거기 주석이 예고한 그대로다. 계약 = `p294-halftime-failure.spec.ts`.
+           */
+          hideBench={mode !== "say" || !benchOpen}
           boardHeader={boardHeader}
           railNote={railNote}
           promptDisabled={expired}
@@ -483,8 +524,26 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
       {(deckError || playersError) && (
         <ErrorToast message="내 로스터를 불러오지 못했습니다 — 새로고침 후 다시 시도하세요" />
       )}
-      <ErrorToast message={error} onDismiss={() => setError(null)} />
       </div>
+
+      {/*
+        ⚠️ **후반 시작 실패 안내는 스크롤 영역 밖이다** (#294 MAJOR).
+
+        전에는 위 `.scroll` 맨 끝에 있었는데, CTA 는 그 아래 고정이라 토스트가 CTA **뒤로**
+        들어갔다(실측 alert `y=800.5 h=43` vs CTA `y=772 h=52`, 뷰포트 844에서 bottom 875.8).
+        유저 눈에는 [후반 시작]을 눌렀는데 **화면이 클릭 전과 완전히 동일**했다 → "버튼 먹통".
+        `scrollIntoViewIfNeeded()` 를 호출해야만 보였으니 유저는 볼 방법이 없었다.
+
+        ⚠️ CTA 를 스크롤 밖 바닥에 앉힌 #244 결정은 **되돌리지 않는다** — 그건 프롬프트를 안 덮으려는
+        것이고 이 화면의 주인공은 프롬프트다(BL-1). 그래서 토스트를 CTA **바로 위 같은 층**으로 올린다.
+        ⚠️ 로스터 조회 실패 토스트는 스크롤 안에 그대로 둔다 — 그 경우 CTA 자체가 비활성이고,
+        레이아웃을 더 건드리면 #284 시트 지오메트리 계약과 다툰다(구멍은 뮤테이션 실패 경로뿐이었다).
+      */}
+      {error && (
+        <div className={styles.ctaAlert}>
+          <ErrorToast message={error} onDismiss={() => setError(null)} />
+        </div>
+      )}
 
       <button
         type="button"
