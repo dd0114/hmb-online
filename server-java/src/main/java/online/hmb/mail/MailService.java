@@ -183,11 +183,17 @@ public class MailService {
      * <b>동시 수령이 5xx 로 새지 않게</b> 한다(독립검증 MAJOR-2 — 실측: 동시 두 탭에서 한쪽이
      * {@code 500 SQLITE_BUSY}).
      *
-     * <p>{@code claimInTx} 는 SELECT 로 시작해 UPDATE 로 <b>승격</b>하는 모양이라 WAL 에서
-     * {@code SQLITE_BUSY_SNAPSHOT} 에 그대로 노출된다 — 이 리포가 {@code SqliteErrors#isBusy} 에
-     * 이미 적어 둔 함정이고, 해법도 거기 적혀 있다: <b>롤백 후 트랜잭션 통째 재시도</b>
-     * (같은 트랜잭션 안에서 다시 시도하면 스냅샷이 그대로라 소용없다 → 재시도는 반드시
-     * {@code txRunner.run} <b>바깥</b>). {@code TradeService.inTxWithBusyRetry} 와 같은 형태다.
+     * <p>재시도는 반드시 {@code txRunner.run} <b>바깥</b>이다 — 같은 트랜잭션 안에서 다시 시도하면
+     * 스냅샷이 그대로라 소용없다({@code SqliteErrors#isBusy} 주석). {@code TradeService.inTxWithBusyRetry}
+     * 와 같은 형태다.
+     *
+     * <p>⚠️ <b>이 래퍼가 있다고 트랜잭션을 길게 써도 되는 것은 아니다.</b> 원래 {@code claimInTx} 는
+     * SELECT 로 시작해 UPDATE 로 <b>승격</b>하는 모양이었고(= WAL 의 {@code SQLITE_BUSY_SNAPSHOT}
+     * 함정 그 자체), 재시도가 5xx 는 막아 줬지만 <b>409 는 그대로 유저에게 갔다</b> — 30유저×2동시
+     * 실측에서 라운드당 평균 14~18건, 그 중 일부는 두 번 다 실패해 <b>아무것도 못 받았고</b> 그 사이
+     * 회수가 들어오면 우편을 영구히 잃었다(410 실측). 지금은 {@code claimInTx} 가 <b>UPDATE 로
+     * 시작</b>하고 진단 읽기가 트랜잭션 밖에 있어 같은 부하에서 409 가 <b>0건</b>이다.
+     * 이 래퍼는 그 위의 마지막 그물이지 첫 번째 방어가 아니다 — 순서를 되돌리지 마라.
      *
      * <p>재시도해도 안 되면 5xx 대신 <b>계약 코드</b>로 내린다 — 유저에게 5xx 를 보이지 않는다.
      * 재시도 후에는 대개 정상 경로(이미 수령됨 → 200 {@code applied:false})로 수렴한다.
