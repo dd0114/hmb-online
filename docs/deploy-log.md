@@ -6,6 +6,26 @@
 
 ---
 
+## 2026-07-30T12:16Z — [장애] 워치독 **반쪽 치유** — 프로세스는 살고 URL 전파가 멈춰 테스터 단절 (배포 아님)
+
+- **증상**: 12:11:15Z 워치독이 `UNHEALTHY`(구 URL `pubs-lauderdale-…` DNS 전부 실패 + curl 000) → 12:11:18Z `HEAL_START` → 12:16:19Z **`HEAL_OK`(new=`selective-blast-municipal-lanes`)** 를 기록했다. **그런데 `config.json` 은 `pubs-lauderdale-…`(10:56Z, source=manual) 그대로**였고 그 호스트는 **DNS 에서 사라진 상태**(`dig` 빈 응답) → **테스터 실접속 단절**. `status.sh` 는 터널 URL 칸이 **빈칸**으로 보였다.
+- **조치(순서대로)**:
+  1. 워치독이 살린 URL(`selective-blast-…`)을 직접 검증 → **0/8 실패**(그 터널도 이미 죽어 있었다).
+  2. **PID only 터널 회전**(47063 종료 → 신규 55311) → 새 URL `record-houston-learners-airplane`.
+  3. 새 URL 이 로컬 curl 로는 `http=000`(`dns=0.000s`)인데 **`dig` 로는 해석되고 `--resolve` 우회로 401** → **터널은 정상, 이 머신의 리졸버만 실패**로 판정.
+  4. `publish-backend-url.sh` 로 전파 → `config.json` = **`record-houston-…`(12:16:48Z)** 확인(`cache-control: no-store`, 첫 조회만 CDN 캐시로 옛 값이 보였다).
+  5. **실브라우저 왕복**(크로미움 `--host-resolver-rules` 우회): `/api/config 200` · `/api/auth/login 200` · `/api/me/starter-grant 200` · `/api/me/active-match 200` · `/api/me 200`, 실패 0 — 스타터 리빌까지 정상.
+  6. `status.sh` **전 항목 ✓**(터널 URL 표시·터널 경유 401·web→백엔드 결선 일치·워치독 가동).
+- **📌 워치독 갭 3건(#183 후속)** — 왜 "반쪽"이 됐는지:
+  1. **URL 캡처가 바이너리에 취약했다(→ 이번에 고쳤다)**: `current_url()` 이 `grep -oE … "$TUNNEL_LOG"` 였다. cloudflared 로그에 제어문자가 섞이면 grep 이 **바이너리로 판정**해 매치 대신 `"Binary file … matches"` 를 돌려준다. **실제 오염 전례가 로그에 남아 있다** — 07:53:36Z `HEAL_OK old=Binary file /tmp/hmb-cf-tunnel.log matches`(같은 문자열이 tunnel-heal.log 에 3회). URL 자리에 그 문자열이 들어가면 전파가 조용히 어긋난다. → **`grep -a` 로 하드닝**(`infra/tunnel-heal.sh` `current_url()` + `infra/status.sh` 2곳). `--check` 정상 동작 확인. **status.sh 의 빈 URL 칸도 이 원인으로 설명된다.**
+  2. **전파 성공 판정이 결과를 재확인하지 않는다**: `heal()` 은 publish 스크립트의 **종료코드만** 보고 `HEAL_OK` 를 남긴다. 배포된 `config.json` 을 **되읽어 새 URL 인지 확인**하지 않으므로, 이번처럼 "HEAL_OK 인데 config 는 옛 URL" 이 성립한다. → 권고: `HEAL_OK` 직전에 `config.json` 재조회 검증(불일치면 `HEAL_FAIL`).
+  3. **치유 직후 새 URL 의 생존을 재검증하지 않는다**: 12:16:19Z 에 `HEAL_OK` 로 기록된 `selective-blast-…` 는 몇 분 뒤 **0/8** 이었다. 새 터널이 등록만 하고 곧 죽는 케이스를 다음 60초 순회까지 방치한다. → 권고: 치유 후 N회 프로브(예: 3/3)로 승격, 실패 시 즉시 재회전.
+- **범위 확인(테스터 무관 증빙)**: `google.com` 은 정상 해석(`dns=0.014s`), **신규 `*.trycloudflare.com` 만** 로컬에서 `dns=0.000s` 즉시 실패. 즉 리졸버 전반 장애가 아니고 **이 머신·이 도메인 국한**이다 — 다른 네트워크의 테스터에게는 영향이 없다(그래서 배포 검증에 `--resolve`/`--host-resolver-rules` 우회를 계속 쓴다).
+- **최종 상태**: 백엔드 `https://record-houston-learners-airplane.trycloudflare.com` · web `30faddd`(v3.01) 무변경 · Flyway v32 · 이미지 무변경. **코드·DB 변경 0**(인프라 스크립트 하드닝 1건만).
+- ⏳ **고정 URL 승격은 hero 결정 대기** — 이 사이클에서 터널을 **4번** 갈았고(v3 2회 · v3.01 1회 · 이번 1회) 그중 한 번은 실제 단절로 이어졌다. 플레이북 §6(named tunnel / ngrok 유료)이 근본 해결이다.
+
+---
+
 ## 2026-07-30T10:44Z — **배포 v3.01** (태그 `deploy-3.01`) — **웹 단독**: 덱 없는 [게임 시작] 차단 3층 가드 + 덱 셋업 워크스루(#286 W3.5) · 팀프롬프트 가림 회귀 복구(p244) · e2e 증거 플래그(#314)
 
 - **git**: **`30faddd`**(태그 `deploy-3.01`). hero 가 homeui 세션에서 지시한 라이브 버그 수정 건.
