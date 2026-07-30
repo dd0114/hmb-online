@@ -5,6 +5,9 @@ import { useAwayCandidates, useMe, useStartAwayMatch } from "../api/hooks";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { useDecklessGuard } from "../common/useDecklessGuard";
+import { useAwayRankings } from "../api/hooks-p286";
+import { RankingBoard } from "../common/RankingBoard";
+import { RevengeQueue } from "./RevengeQueue";
 import { matchInProgressIdOf } from "../common/match-lock";
 import { awayStartError } from "./away-page-logic";
 import styles from "./AwayPage.module.css";
@@ -29,6 +32,8 @@ export function AwayPage() {
   const startAway = useStartAwayMatch();
   // 덱 없는 유저는 여기까지 올 수 있다(북마크·뒤로가기) — 게임 탭 가드가 전부가 아니다.
   const deckless = useDecklessGuard();
+  // #286 W5 — 서버 신규 API(#319). 아직 없으면 두 구역 다 **조용히 안 그린다**.
+  const { data: rankings } = useAwayRankings();
 
   // 후보는 **누른 뒤에** 받아온다 — 미리 받아두면 화면을 열기만 해도 서버의 제시가 갱신돼
   // 앞서 받은 목록이 조용히 무효가 된다(제시는 유저당 1개다, #245 hero E2).
@@ -146,6 +151,9 @@ export function AwayPage() {
         )}
 
         <ErrorToast message={error} onDismiss={() => setError(null)} />
+        <RevengeQueue />
+        <RankingBoard kind="away" data={rankings} title="🏅 원정 랭킹" />
+
         {deckless.dialog}
       </div>
     </Layout>

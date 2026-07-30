@@ -120,6 +120,10 @@ export interface MockOpts {
    * `"deck-required"` = W4 가 붙일 전용 코드 / `"legacy-404"` = 지금 서버의 뭉뚱그린 404.
    */
   createMatchError?: "deck-required" | "legacy-404";
+  /** 리그 상태 (#286 W5a). `"none"` = 시즌 없음(= [리그 시작] 화면). */
+  league?: "active" | "none";
+  /** `/api/league` 응답을 통째로 갈아끼운다 — 부분 응답(구 서버) 계약용. */
+  leagueOverride?: unknown;
 }
 
 export async function mockAll(page: Page, opts: MockOpts = {}) {
@@ -130,6 +134,8 @@ export async function mockAll(page: Page, opts: MockOpts = {}) {
     deck = "present",
     ownedCount = 16,
     createMatchError,
+    league = "active",
+    leagueOverride,
   } = opts;
 
   const roster = PLAYERS.map((p, i) => ({
@@ -157,7 +163,7 @@ export async function mockAll(page: Page, opts: MockOpts = {}) {
     ["/api/players", roster],
     ["/api/presets", []],
     ["/api/presets/team", [1, 2, 3].map((slot) => ({ slot, name: null, snapshot: null }))],
-    ["/api/league", LEAGUE],
+    ["/api/league", leagueOverride ?? (league === "none" ? { season: null } : LEAGUE)],
     ["/api/trade", { wallet: { points: 24300 }, slots }],
     ["/api/rankings", { leaderboard: [], me: null, personalRecords: null }],
     ["/api/logs/trades", []],

@@ -10,6 +10,8 @@ import { Amount, useCurrency } from "../common/Amount";
 import { CURRENCY_GEM, CURRENCY_POINT, formatAmount } from "../common/currency";
 import { ErrorToast } from "../common/ErrorToast";
 import { useDecklessGuard } from "../common/useDecklessGuard";
+import { useLeagueRankings } from "../api/hooks-p286";
+import { RankingBoard } from "../common/RankingBoard";
 import { matchInProgressIdOf } from "../common/match-lock";
 import type { SeasonSummary } from "./league-logic";
 import {
@@ -112,6 +114,16 @@ function StartSeasonCta({
     <div className={styles.cta} data-testid="league-start-cta">
       <p className={styles.ctaTitle}>리그에 도전하세요</p>
       <p className={styles.ctaDesc}>봇 9팀과 더블 라운드로빈 18라운드. 승점 3-1-0, 시즌 종료 시 순위 보상.</p>
+      {/* 하는 방법 (#286 W5a, 설계 §3.2 상태 A) — **원정 페이지와 같은 형식**이다(설명 + 3스텝).
+          두 모드의 안내가 갈라지면 유저가 모드마다 다시 배워야 한다.
+          ⚠️ 여기에 승급/강등 **컷 숫자를 적지 마라** — 그건 서버 config 이고 디비전마다 다르다.
+          클라가 적는 순간 #262 BL-1(화면이 서버와 반대 사실을 말함)이 재발한다. 컷은 시즌이
+          시작되면 순위표가 서버 값으로 칠해 보여준다. */}
+      <ol className={styles.steps} data-testid="league-guide">
+        <li>[리그 시작]을 누르면 <b>봇 9팀</b>과 한 시즌이 열립니다.</li>
+        <li>매 라운드 [다음 경기]로 한 판씩 치릅니다 — <b>18라운드</b> 동안 이어집니다.</li>
+        <li>시즌이 끝나면 순위에 따라 <b>보상</b>을 받고 <b>승급 또는 강등</b>합니다.</li>
+      </ol>
       {/* 시즌이 없는 구간에서도 "내가 몇 부인지" 를 보여준다(#268) — 승급/강등은 시즌 **사이**에
           일어나므로, 다음 시즌을 시작하기 직전이 그게 가장 궁금한 순간이다. */}
       {divisionLabel(division ?? null) && (
@@ -137,6 +149,9 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
   const next = useStartNextLeagueMatch();
   // /league 는 북마크·뒤로가기로 직접 들어올 수 있다 — 게임 탭 가드가 전부가 아니다(MAJ-2).
   const deckless = useDecklessGuard();
+  // #286 W5 — 디비전 통합 랭킹(#319). 순위표는 **내 디비전 안**이라 "전체에서 몇 등인가"는
+  // 여기서만 답할 수 있다. 서버가 없으면 조용히 안 그린다.
+  const { data: rankings } = useLeagueRankings();
   const names = useMemo(() => teamNameMap(season.teams), [season.teams]);
   const nextFixture = season.nextUserFixture ?? null;
 
@@ -165,9 +180,48 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
     });
   }
 
+  /**
+   * 라운드 진행 (#286 W5a, 설계 §3.2 상태 B).
+   *
+   * ⚠️ **서버가 준 값만 쓴다.** 일정표를 세어 추정하지 않는다 — 유저 경기만 세는지 전체를 세는지,
+   * 연기된 라운드를 어떻게 치는지가 전부 서버 규칙이라 클라가 다시 세면 조용히 어긋난다
+   * (#262 BL-1 과 같은 부류). 둘 중 하나라도 없으면 **줄을 그리지 않는다**.
+   *
+   * ⚠️ **그리고 지금은 실제로 안 그려진다 — 서버가 이 두 필드를 발행하지 않는다.**
+   * 실사(2026-07-31): `server-java` grep 0건 · `openapi-v2.yaml` 0건 · W4(#319) 신규 5종에도
+   * 없었다. **아무도 만들 예정이 아니었다** — 독립검증 MAJ-1 이 잡았고 #319 에 추가 요청했다.
+   * 같은 갭을 `game-logic.leagueModeHint`(W2, 이미 라이브)도 갖고 있다: 게임 탭의
+   * `N / 18 라운드` 줄도 한 번도 뜬 적이 없다.
+   *
+   * 즉 **부재가 지금의 정상 상태**이고, 서버가 발행하는 순간 켜진다. 생성 타입에 필드를 끼워
+   * 넣지 않는 이유: 스키마는 server-java 소관이라 여기서 넓히면 "있는 척"이 된다.
+   * 런타임 타입 가드가 진짜 방어선이다.
+   */
+  const sr = season as unknown as { currentRound?: unknown; totalRounds?: unknown };
+  const cur = typeof sr.currentRound === "number" ? sr.currentRound : null;
+  const total = typeof sr.totalRounds === "number" ? sr.totalRounds : null;
+  const roundPct = cur !== null && total !== null && total > 0 ? (cur / total) * 100 : null;
+
   return (
     <div data-testid="league-dashboard">
       {deckless.dialog}
+      {roundPct !== null && (
+        <section className={styles.roundCard} data-testid="league-round-progress">
+          <div className={styles.roundHead}>
+            <span className={styles.roundLabel}>시즌 진행</span>
+            <span className={styles.roundValue}>
+              <strong>{cur}</strong> / {total} 라운드
+            </span>
+          </div>
+          <div className={styles.roundTrack}>
+            <div
+              className={styles.roundBar}
+              data-testid="league-round-bar"
+              style={{ width: `${roundPct}%` }}
+            />
+          </div>
+        </section>
+      )}
       <section className={styles.nextCard}>
         {nextFixture ? (
           <>
@@ -198,6 +252,12 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
           <p className={styles.pending}>남은 유저 경기가 없습니다 — 시즌 정산 대기.</p>
         )}
       </section>
+
+      {/* ⚠️ **랭킹보드는 그리드 밖이다.** `.dashGrid` 는 ≥1024px 에서 정확히 **2컬럼**이라
+          (LLD §7: 순위표·일정 병렬) 자식을 셋으로 만들면 랭킹1·순위표2·일정1 로 배치가 어긋나며
+          왼쪽 열에 큰 빈 공간이 생긴다(독립검증 MAJ-2, 1280px 실캡처). 모바일은 세로 스택이라
+          안 보이던 결함이다 — 그리드에 무언가를 더할 땐 **데스크탑 폭에서 눈으로** 확인해라. */}
+      <RankingBoard kind="league" data={rankings} title="🏅 전체 랭킹" />
 
       {/* ≥1024px: 순위표·일정 병렬(LLD §7). 모바일은 세로 스택. */}
       <div className={styles.dashGrid}>

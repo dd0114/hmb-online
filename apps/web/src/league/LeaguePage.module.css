@@ -495,3 +495,47 @@
   color: var(--accent, #4f8cff);
   font-weight: 700;
 }
+
+/* ── 하는 방법 3스텝 (#286 W5a) — 원정 페이지와 같은 형식 ───────────────── */
+.steps {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+/* ── 라운드 진행바 (#286 W5a) ──────────────────────────────────────────── */
+.roundCard {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+.roundHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.roundLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.roundValue {
+  font-size: 13px;
+  color: var(--text);
+}
+.roundTrack {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--sunk);
+  overflow: hidden;
+}
+.roundBar {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--us);
+}
