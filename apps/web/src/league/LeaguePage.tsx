@@ -10,6 +10,8 @@ import { Amount, useCurrency } from "../common/Amount";
 import { CURRENCY_GEM, CURRENCY_POINT, formatAmount } from "../common/currency";
 import { ErrorToast } from "../common/ErrorToast";
 import { useDecklessGuard } from "../common/useDecklessGuard";
+import { useLeagueRankings } from "../api/hooks-p286";
+import { RankingBoard } from "../common/RankingBoard";
 import { matchInProgressIdOf } from "../common/match-lock";
 import type { SeasonSummary } from "./league-logic";
 import {
@@ -147,6 +149,9 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
   const next = useStartNextLeagueMatch();
   // /league 는 북마크·뒤로가기로 직접 들어올 수 있다 — 게임 탭 가드가 전부가 아니다(MAJ-2).
   const deckless = useDecklessGuard();
+  // #286 W5 — 디비전 통합 랭킹(#319). 순위표는 **내 디비전 안**이라 "전체에서 몇 등인가"는
+  // 여기서만 답할 수 있다. 서버가 없으면 조용히 안 그린다.
+  const { data: rankings } = useLeagueRankings();
   const names = useMemo(() => teamNameMap(season.teams), [season.teams]);
   const nextFixture = season.nextUserFixture ?? null;
 
@@ -242,7 +247,9 @@ function Dashboard({ season, onError }: { season: LeagueSeason; onError: (m: str
 
       {/* ≥1024px: 순위표·일정 병렬(LLD §7). 모바일은 세로 스택. */}
       <div className={styles.dashGrid}>
-        <StandingsTable standings={season.standings} division={pickDivision(season)} />
+        <RankingBoard kind="league" data={rankings} title="🏅 전체 랭킹" />
+
+      <StandingsTable standings={season.standings} division={pickDivision(season)} />
         <Schedule fixtures={season.fixtures} names={names} />
       </div>
     </div>
