@@ -43,7 +43,7 @@ export const EV_SCALE = 10000;
 export const FRAC_SCALE = 10000;
 
 /** 무엇을 하는가. `Action`(decision.ts)의 실행 계약과 1:1 은 아니다 — carry → Action.dribble. */
-export type ActionKind = "shoot" | "pass" | "carry" | "hold";
+export type ActionKind = "shoot" | "pass" | "carry" | "hold" | "clear";
 
 /**
  * 어떤 **형태**의 행동인가. kind 보다 잘게 나눈 축으로, 계측 라벨과 (S5 이후) 실행 분기의 근거가 된다.
@@ -59,7 +59,9 @@ export type ActionForm =
   | "cross"
   | "carry"
   | "shoot"
-  | "hold";
+  | "hold"
+  /** 걷어내기(#314 A) — 의도 수신자 없는 처리 킥. */
+  | "clear";
 
 /**
  * 생성기 출처. **한 필드가 세 가지 일을 한다**:
@@ -70,8 +72,9 @@ export type ActionForm =
  * **순서가 계약이다.** 생성은 반드시 이 배열 순서로 돈다 → 후보 배열의 초기 순서가 상태의 함수로
  * 고정되고, 노드 예산 컷오프가 항상 같은 지점에서 걸린다.
  * S5 에서 `"lead" | "through" | "cross" | "switch"` 가 **뒤에** 추가된다(앞에 끼우면 기존 순서가 밀린다).
+ * #314 A 가 `"clear"`(걷어내기)를 그 규율대로 **뒤에** 붙였다.
  */
-export const GENERATORS = ["shoot", "direct", "long", "carry", "hold"] as const;
+export const GENERATORS = ["shoot", "direct", "long", "carry", "hold", "clear"] as const;
 export type GeneratorId = (typeof GENERATORS)[number];
 
 /**

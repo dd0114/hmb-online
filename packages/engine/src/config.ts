@@ -111,6 +111,62 @@ export interface EngineConfig {
      * "중앙·사거리에서 후진 패스 말고 슛" 을 강화(스트라이커 후진 리사이클 버그 대응).
      */
     shootCentralBonus: number;
+    /**
+     * 걷어내기(#314 A) 후보의 기본 가중. 0 이면 걷어내기가 **생성되지 않는다**(롤백 스위치).
+     * 실제 가중은 여기에 압박 인원·자기 진영 깊이가 곱해진다(`clearance` 블록 참조).
+     */
+    clearance: number;
+  };
+
+  /**
+   * 걷어내기(#314 A) — hero 제보 ⓐ "수비수가 경합 상황에서 걷어내야 할 때 가만히 있다".
+   *
+   * 구조적 원인은 **행동 집합에 걷어내기가 없었다**는 것이다({shoot, pass, dribble, hold} 뿐).
+   * 좋은 패스가 없고 압박이 붙은 자기 진영에서는 "안전한 옵션이 없으니 홀드" 가 최선이 되어,
+   * 수비수가 공을 발밑에 두고 공격수를 기다린다.
+   *
+   * 걷어내기는 **패스가 아니다** — 의도 수신자가 없고(양 팀 루즈볼 경합), 정확도가 낮다.
+   * 그래서 `passOutcome` 을 달지 않는다(벤치 78–85% 패스 성공률 캘리브레이션을 오염시키지 않는다).
+   */
+  clearance: {
+    enabled: boolean;
+    /**
+     * 발동 상한 진행도(0..1, 자기 골라인=0). 이보다 앞(공격 진영)에서는 걷어내지 않는다 —
+     * 상대 진영에서 걷어내는 건 축구가 아니라 포기다.
+     */
+    maxProgress: number;
+    /** 발동 최소 압박 인원(`contest.passPressureRangeM` 안 상대 수). */
+    minPressers: number;
+    /**
+     * "좋은 패스 옵션"의 임계. 최선 패스 점수가 이 값 이상이면 걷어내지 않는다 —
+     * 걷어내기는 **패스가 없을 때의 수단**이지 기본 선택지가 아니다.
+     */
+    passScoreCeil: number;
+    /** 걷어내는 거리(m, 전방). */
+    distM: number;
+    /** 가까운 터치라인 쪽으로 미는 비율(0=정면, 1=완전 측면). */
+    touchlineBias: number;
+    /** 터치라인에서 남기는 여유(m) — 스로인 폭주 방지(조준 오차 전 기준). */
+    touchlineMarginM: number;
+    /** 조준 오차(도). 걷어내기는 정밀 패스가 아니다 → 크다. */
+    aimErrorDeg: number;
+    /** 세기 오차 비율. */
+    powerErrorFrac: number;
+    /** 세기(m/tick). 걷어내기는 세게 찬다. physical 능력치로 ±`powerAttrSwing`. */
+    speedM: number;
+    powerAttrSwing: number;
+    /** 띄워 보내는가(true = 도착 시 헤딩 경합 = 세컨볼). */
+    lofted: boolean;
+    /** 자기 페널티박스 안에서의 가중 배수(위험지역일수록 더 자주 걷어낸다). */
+    boxWeightMult: number;
+    /** 사슬 코어가 쓰는 "걷어내기가 우리 팀 공으로 남을 확률"(0..1). 루즈볼이라 0.5 근처. */
+    retainProb: number;
+    /**
+     * 사슬 코어에서 걷어내기 EV 에 곱하는 성향 배수. 사슬은 "공을 계속 가지고 있는 것"의 턴오버
+     * 리스크를 모델하지 않으므로(홀드는 그냥 시간 페널티뿐), 이 배수가 그 미모델링분을 보정한다.
+     * 1.0 = 보정 없음. **이것이 사슬 코어에서 걷어내기 빈도의 유일한 노브다.**
+     */
+    chainEvBias: number;
   };
 
   /** 경합 확률 기본치. (ESMS/xG 참고) */
@@ -696,10 +752,63 @@ export interface EngineConfig {
      * 아무도 없는 곳에 떨어지고 도착 처리가 순간이동으로 메움).
      */
     passLeadWeight: number;
+    /**
+     * 골키퍼 포지셔닝(#314 C). 구버전은 **깊이가 상수**(골라인에서 피치 길이의 4%)였고 y 추종
+     * 계수도 코드에 박혀 있었다(§2-4 위반). 그 결과 GK 목표가 사실상 고정점이라 **비소유팀
+     * "거의 정지"의 최대 기여자**였다(역할별 실측: GK 38.6% vs 아웃필더 ~10%).
+     * 실제 GK 는 공이 멀면 나오고 가까우면 골라인에 붙는다(스위퍼 라인).
+     */
+    gk: {
+      /** 골라인에서의 최소 깊이(m) — 공이 코앞일 때. */
+      baseDepthM: number;
+      /** 공이 멀 때 추가로 나오는 거리(m). 실제 깊이 = base + reach·(공거리/refM). */
+      sweepReachM: number;
+      /** 위 비율의 기준 거리(m) — 이 거리 이상이면 최대로 나온다. */
+      sweepRefM: number;
+      /** 공 y 를 따라가는 비율(0..1). */
+      ballYFollow: number;
+    };
     /** positioningFreedom 기반 roam 계수(공 쪽 추가 당김). */
     roamFactor: number;
     /** 드리블 1틱당 골 방향 전진 비율(0..1). 박스 침투 속도. */
     dribbleReach: number;
+
+    /**
+     * 런 오더(#314 B) — hero 제보 ⓑ "차면 찰 때부터 뛰어들어가거나, 뛰어들어가는 선수를 보고 막는".
+     *
+     * `SimState.intents`(의도 게시판)와 `SimPlayer.runOrder` 는 S1 이 자리만 만들어 두고 아무도
+     * 쓰지 않았다. 여기서 처음 소비된다: **패스를 쏘는 순간 그 도착 지점을 게시**하고,
+     * 가까운 동료가 그 **앞으로 뛰어든다**.
+     */
+    runOrder: {
+      enabled: boolean;
+      /** 패스 도착 지점에서 이 반경(m) 안의 동료가 런 후보. */
+      radiusM: number;
+      /** 한 패스가 부르는 최대 러너 수. */
+      maxRunners: number;
+      /** 런 목표 = 도착 지점에서 상대 골 쪽으로 이만큼 더 앞(m). */
+      aheadM: number;
+      /** 런 유지 틱 = 패스 비행틱 + 이 값. */
+      extraTicks: number;
+      /**
+       * **이 패스가 얼마나 전진해야 런을 부르는가**(m). 모든 패스가 런을 부르면 팀 전체가 상시
+       * 전진 배치가 되어 공격이 구조적으로 과열된다(실측 슛/팀 12.5 → 20.1). 실제 축구의
+       * 서드맨 런은 **전진 패스에 붙는 것**이지 백패스·횡패스에 붙는 게 아니다.
+       */
+      minPassGainM: number;
+      /** 오프더볼 목표를 런 지점으로 당기는 비율(0..1). */
+      pull: number;
+      /**
+       * 이 값(m)보다 전진 이득이 작으면 런을 걸지 않는다 — **되돌아 달리기 금지**.
+       * (#181 이 "낙하점으로 되돌아 달리면 전진 런이 취소돼 공격이 죽는다"로 실측한 함정.)
+       */
+      minForwardGainM: number;
+      /**
+       * 패서 본인이 차자마자 따라 들어가는 거리(m). 0 이면 기존처럼 그 자리에 정지.
+       * **전진 패스일 때만** 적용한다(#181 가드 — 뒤로 빼는 패스에 따라가면 형태가 무너진다).
+       */
+      passerFollowM: number;
+    };
   };
 
   /**
@@ -758,6 +867,14 @@ export interface EngineConfig {
      * 하드코딩 금지 대상이라 config 로 뺀다.
      */
     markValueBaseM: number;
+    /**
+     * **뛰어드는 선수를 보고 막는다**(#314 B 수비측). 마크 대상이 런 오더를 받은 상태면,
+     * 그의 **현재 위치**가 아니라 도착 예정 지점 쪽으로 이 비율만큼 앞서 붙는다(0 = 현재 위치만).
+     * 시야 계층 안에서만 작동한다 — 즉 **인지한 상대**의 런만 읽는다(전지적 정보가 아니다).
+     */
+    runReadFrac: number;
+    /** 그 예측 선점의 상한(m). 라인을 통째로 버리고 러너를 따라가지 않게 한다. */
+    runReadMaxM: number;
   };
 
   /** 포메이션 정규화 슬롯(0..1, 공격 방향 +x 프레임). 최소 4-3-3 정의. */
@@ -787,6 +904,12 @@ export const defaultEngineConfig: EngineConfig = {
   // 0.25.0 = hero 실관전 제보 5건 통합:
   //   공 물리 — #313 루즈볼 굴림 · #306 공중볼/헤딩 · #312 세기·정확도(의도 vs 실제)
   //   데드볼 — #307 프리킥 벽·백업 + 데드볼 "전원 정지" 해소
+  // 0.26.0 = hero 실관전 제보 3건(#314 행동·의도 계층):
+  //   ⓐ 걷어내기(clearance) 신설 — 행동 집합이 {shoot,pass,dribble,hold} 뿐이라 수비수가
+  //      압박받는 자기 진영에서 "안전한 옵션 없음 → 홀드"로 굳던 것을 해소
+  //   ⓑ 의도 게시판(intents)·런 오더(runOrder) 첫 소비 — 차면 그 틱에 따라 들어가고(패서·러너),
+  //      수비는 그 런을 **읽어** 도착 예정 지점을 선점한다(vision.runReadFrac)
+  //   ⓒ 수비 블록의 공 추종 비대칭 해소(defendCompactX 0.16→0.32) + GK 스위퍼 라인
   version: "engine@0.26.0",
   msPerTick: 1000,
   matchMinutes: 90,
@@ -845,6 +968,32 @@ export const defaultEngineConfig: EngineConfig = {
     shootInBox: 0.9,
     backwardPassPenalty: 2.4,
     shootCentralBonus: 1.35,
+    // #314 A: 걷어내기 가중. 실측 스윕으로 팀당 10–25회/경기(실축 클리어 17–32 참고) 밴드에 맞춤.
+    clearance: 0.9,
+  },
+  clearance: {
+    enabled: true,
+    // 자기 진영 절반까지만. 그보다 앞에서 걷어내면 그건 축구가 아니라 포기다.
+    maxProgress: 0.42,
+    minPressers: 1,
+    // 최선 패스 점수가 이 값 이상이면 패스한다. scoreOption 의 실측 분포상 자기 진영 압박 국면의
+    // 최선 점수는 대체로 10 미만이고, 안전한 옆 동료가 열려 있으면 그 위로 올라간다.
+    passScoreCeil: 12,
+    distM: 32,
+    touchlineBias: 0.55,
+    touchlineMarginM: 4,
+    // 정밀 패스(passAimErrorDeg)의 몇 배 — 걷어내기는 조준이 아니라 처리다.
+    aimErrorDeg: 14,
+    powerErrorFrac: 0.2,
+    speedM: 17,
+    powerAttrSwing: 0.2,
+    lofted: true,
+    boxWeightMult: 2.2,
+    retainProb: 0.45,
+    // 20시드 스윕(최종 B/C 위): 1.0 → 0.3 · 1.5 → 7.9 · **1.8 → ~14** · 2.0 → 21.0 · 3.2 → 37.1 (팀·경기).
+    // 게이트(팀당 10–25, 실축 클리어 17–32 참고) 한가운데를 잡는다. 스로인 20.3 → 17.3 으로
+    // **줄고**(걷어내기가 라인 안쪽을 조준하므로) 파울도 안 늘어난다.
+    chainEvBias: 1.8,
   },
   contest: {
     // E1(0.11.0): 패스 도착이 계획 outcome 존중(passOutcomeAuthoritative) → passBase/페널티가
@@ -1146,15 +1295,43 @@ export const defaultEngineConfig: EngineConfig = {
     attackWidthReach: 0.10,
     defendWidthReach: 0.09,
     attackLinePush: 0.56,
-    defendCompactX: 0.16,
+    // #314 C(hero ⓒ "레드만 움직이고 블루는 가만히"): 0.16 → 0.32.
+    // 구조적 원인은 **비대칭**이었다 — 소유팀은 `attackLinePush` 0.56 으로 공을 따라 크게 움직이는데
+    // 비소유팀은 0.16 이라 공이 10m 움직여도 목표가 1.6m 만 움직인다(실측 비소유 2.00 vs 소유 2.36 m/tick,
+    // "거의 정지" 15.1% vs 13.3%).
+    // ⚠️ 로드맵 R5 주석은 "0.16 을 키우면 블록이 공을 그대로 따라가 형태가 무너진다"였는데,
+    // **실측은 반대였다**(20시드 스윕): 0.16 → 0.32 에서 백4 산포 10.32 → 9.81m(더 한 줄),
+    // 볼 10m 내 수비 1.34 → 1.47명(더 촘촘), 정지 15.11 → 12.56%. 형태 지표가 **동시에 좋아진다**.
+    // (대안으로 "블록 전체 평행이동" 항을 넣어 봤으나, 그건 자기 골 쪽으로 과잉 후퇴해
+    //  박스 앞을 비웠다 — 슛 12.8 → 19.3 · 골 4.3 → 8.3. 기각.)
+    defendCompactX: 0.32,
     defendCompactY: 0.16,
     lineDiscipline: 0.5,
     pressRange: 22,
     markGap: 2.5,
     supportPull: 0.08,
     passLeadWeight: 1,
+    // 구버전 상수(깊이 0.04·피치길이 = 4.2m · y추종 0.3)를 중심에 두고 스위퍼 폭만 얹었다.
+    // 20시드 스윕: reach 4/ref 60 은 공이 60m 밖이면 **포화**해 다시 고정점이 된다(GK 정지 23.6%).
+    // reach 9 / ref 100 이면 깊이가 2.5~11.5m 로 연속 변하고(박스 깊이 16.5m 안), GK 정지 21.1% ·
+    // 비소유 정지 12.09 → 11.40%. 더 키워도(12/100) 수익이 사라진다.
+    gk: { baseDepthM: 2.5, sweepReachM: 9.0, sweepRefM: 100, ballYFollow: 0.35 },
     roamFactor: 0.08,
     dribbleReach: 0.12,
+    // #314 B. 값은 20시드 스윕으로 골랐다 — **볼륨 과열이 이 축의 제약**이다.
+    // 게이트 없이(모든 패스에 런) 돌리면 슛/팀 12.2 → 18.5 · 골 5.5 → 9.2 로 경기가 무너진다.
+    // `minPassGainM`(전진 패스만) + `maxRunners` 1 + `radiusM` 18 이 "보이는데 안 무너지는" 지점.
+    runOrder: {
+      enabled: true,
+      radiusM: 18,
+      maxRunners: 1,
+      aheadM: 5,
+      extraTicks: 2,
+      minPassGainM: 10,
+      pull: 0.5,
+      minForwardGainM: 3,
+      passerFollowM: 5,
+    },
   },
   vision: {
     enabled: true,
@@ -1167,6 +1344,9 @@ export const defaultEngineConfig: EngineConfig = {
     markCostWeight: 2,
     markTargetBias: 40,
     markValueBaseM: 125,
+    // #314 B(수비측): 러너의 도착 예정 지점 쪽으로 선점. 상한을 두어 라인을 버리지 않게 한다.
+    runReadFrac: 0.5,
+    runReadMaxM: 8,
   },
   formations: {
     "4-3-3": formation433,

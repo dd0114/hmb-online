@@ -88,6 +88,9 @@ describe("resumeState 왕복 동등성 — 전 필드 합성 상태 (드리프�
       long: true,
     };
     state.players[0]!.markTarget = "A7";
+    // #314 B: 런 오더가 살아 있는 상태로 하프가 끝날 수 있다 — 스키마가 이 필드를 흘리면
+    // 재개 하프에서만 러너가 멈춘다(무음 desync). 비기본값이어야 드리프트가 드러난다.
+    state.players[9]!.runOrder = { xFx: 88_000, yFx: 31_500, untilTick: 1236, fromId: "H6" };
     // S4/S5 자리 — **기본값(open / 빈 배열)으로 두면 안 된다.** 스키마가 이 필드를 흘려도
     // 기본값끼리는 우연히 같아 보일 수 있으므로, 비기본값을 넣어야 드리프트가 드러난다.
     state.phase = { home: "final_third", away: "transition_lose" };

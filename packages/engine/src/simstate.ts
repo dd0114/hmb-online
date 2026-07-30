@@ -103,6 +103,29 @@ export interface SimPlayer {
    * Record 면 JSON 왕복에서 살아남으므로, 남는 일은 소비자 스키마에 필드를 선언하는 것뿐이다(#154).
    */
   seen: Record<string, { x: number; y: number; tick: number }>;
+  /**
+   * 이번 런의 목적지(#314 B). `null`/부재 = 런 없음.
+   *
+   * **누가 쓰나**: `applyRunOrders`(match.ts, decide 루프 밖·틱당 1회)가 `state.intents` 를 읽어
+   * 배정하고, 같은 함수가 그 틱의 `targetFx` 를 이 지점 쪽으로 당긴다. `decideOffBall` 안에서
+   * 배정하지 않는 이유는 그 함수가 `state.players` 순회 안에서 불리고 `player.seen` 을
+   * **변이**하기 때문이다(배열 순서 의존 = 결정론 규율 §5-1 위반).
+   *
+   * **왜 상태로 들고 다니나**: 수비가 이걸 읽어 러너를 **예측해서** 막는다(hero ⓑ 후반부).
+   * 즉 런 오더는 공격의 내부 변수가 아니라 **관측 가능한 의도**다. 그래서 해시·직렬화에 들어간다.
+   */
+  runOrder?: RunOrder | null;
+}
+
+/** 런 오더(#314 B) — "이 지점으로 뛰어들어가라". */
+export interface RunOrder {
+  /** 목적지(고정소수). */
+  xFx: number;
+  yFx: number;
+  /** 이 틱을 지나면 만료(포함). */
+  untilTick: number;
+  /** 이 런을 부른 의도의 게시자 playerId(진단·수비 판단용). */
+  fromId: string;
 }
 
 /**
