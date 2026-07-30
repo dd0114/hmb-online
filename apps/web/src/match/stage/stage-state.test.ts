@@ -39,6 +39,13 @@ describe("상태 패널 / 하프", () => {
     expect(statePanelFor("FINISHED")).toBe("result");
     expect(statePanelFor("BRIEFING")).toBeNull();
     expect(statePanelFor(undefined)).toBeNull();
+
+    // 오토(#249): 감독 패널을 열지 않는다. 서버가 감독시간을 0초로 열고 곧바로 후반으로 잇기
+    // 때문에 이 상태는 이미 지나간 것이고, 한 프레임 보인다고 감독 패널이 번쩍이면 안 된다.
+    expect(statePanelFor("HALFTIME", true)).toBeNull();
+    expect(statePanelFor("H1_BREAK", true)).toBeNull();
+    expect(statePanelFor("HALFTIME", false)).toBe("halftime"); // 회귀: 정상 흐름은 그대로
+    expect(statePanelFor("FINISHED", true)).toBe("result"); // 결과는 오토와 무관
   });
 
   it("FINISHED 는 후반, 그 외는 전반을 재생한다", () => {

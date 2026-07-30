@@ -99,6 +99,7 @@ public class MatchService {
     private final java.time.Clock clock;
     private final MatchClockService clockService;
     private final online.hmb.away.AwayViewAccess awayViewAccess;
+    private final MatchAutoProperties autoProps;
     private final int halftimeSubsMax;
     private final int promptMaxChars;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -113,6 +114,7 @@ public class MatchService {
                         java.time.Clock clock,
                         MatchClockService clockService,
                         online.hmb.away.AwayViewAccess awayViewAccess,
+                        MatchAutoProperties autoProps,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
         this.jdbcClient = jdbcClient;
@@ -125,6 +127,7 @@ public class MatchService {
         this.clock = clock;
         this.clockService = clockService;
         this.awayViewAccess = awayViewAccess;
+        this.autoProps = autoProps;
         this.halftimeSubsMax = halftimeSubsMax;
         this.promptMaxChars = promptMaxChars;
     }
@@ -139,7 +142,7 @@ public class MatchService {
                            String conditionsJson, String mode, String leagueFixtureId,
                            String kickoffAt, String phaseStartAt, String phaseEndsAt,
                            Integer scoreH2Home, Integer scoreH2Away,
-                           String h2TacticsJson, String h2ShapeJson) {
+                           String h2TacticsJson, String h2ShapeJson, boolean auto) {
     }
 
     public MatchRow getOwned(String userId, String matchId) {
@@ -177,7 +180,7 @@ public class MatchService {
                                score_home, score_away, result, created_at, finished_at,
                                conditions_json, mode, league_fixture_id,
                                kickoff_at, phase_start_at, phase_ends_at,
-                               score_h2_home, score_h2_away, h2_tactics_json, h2_shape_json
+                               score_h2_home, score_h2_away, h2_tactics_json, h2_shape_json, auto_mode
                         FROM matches WHERE id = ?
                         """)
                 .param(matchId)
@@ -194,7 +197,8 @@ public class MatchService {
                         rs.getString("kickoff_at"), rs.getString("phase_start_at"),
                         rs.getString("phase_ends_at"),
                         (Integer) rs.getObject("score_h2_home"), (Integer) rs.getObject("score_h2_away"),
-                        rs.getString("h2_tactics_json"), rs.getString("h2_shape_json")))
+                        rs.getString("h2_tactics_json"), rs.getString("h2_shape_json"),
+                        rs.getInt("auto_mode") == 1))
                 .optional();
     }
 
@@ -606,7 +610,7 @@ public class MatchService {
                                String result, String createdAt, String finishedAt,
                                Map<String, Double> conditions, String mode, String leagueFixtureId,
                                JsonNode userDeckSnapshot, MatchClockService.MatchClock clock,
-                               String ownerName, String homeName, String awayName) {
+                               String ownerName, String homeName, String awayName, boolean auto) {
     }
 
     /**
@@ -665,7 +669,9 @@ public class MatchService {
                 null,                    // conditions — 공격자 로스터·컨디션(3R MAJOR-1)
                 detail.mode(), detail.leagueFixtureId(),
                 null,                    // userDeckSnapshot — 공격자 선수별 지시·팀 전술(1R BL-1)
-                detail.clock(), detail.ownerName(), detail.homeName(), detail.awayName());
+                detail.clock(), detail.ownerName(), detail.homeName(), detail.awayName(),
+                false);                  // auto(#249) — 공격자의 흐름 설정. 허용 목록 규칙대로 새 필드는
+                                         // 기본 차단이다: 관전자가 알 이유가 없고, 쓰기는 어차피 소유자만.
     }
 
     public MatchDetail toDetail(MatchRow row) {
@@ -689,7 +695,24 @@ public class MatchService {
                 conditionsOf(row), mode, row.leagueFixtureId(), userDeckSnapshotOf(row),
                 clockService.clockOf(row), owner,
                 userHome ? owner : opponent.name(),
-                userHome ? opponent.name() : owner);
+                userHome ? opponent.name() : owner,
+                effectiveAuto(row));
+    }
+
+    /**
+     * 응답에 싣는 오토 = <b>실제로 흐름에 적용되는 값</b>(#249, 독립검증 major-2).
+     *
+     * <p>저장된 플래그(`row.auto()`)를 그대로 내려주면 킬스위치를 내렸을 때 <b>서버와 클라가 서로 다른
+     * 흐름을 믿는다</b>: 서버는 `openHalftime` 이 플래그를 무시해 정상 180초 감독시간을 여는데,
+     * 클라는 `auto=true` 를 보고 감독 패널을 숨긴다(`suppressHalftimePanel`) → 오토를 켜뒀던 진행 중
+     * 매치가 <b>감독 패널도 [후반 시작] 버튼도 없는 3분</b>을 맞는다.
+     *
+     * <p>킬스위치는 사고 대응 수단인데 그 상태로는 롤백이 증상을 넓힌다. 여기서 한 번 접어 내리면
+     * 클라 가드와 서버 동작이 <b>구조적으로 어긋날 수 없다</b>. 저장값 자체는 남는다 — 스위치를 다시
+     * 올리면 유저가 켜 뒀던 설정이 그대로 살아난다.
+     */
+    private boolean effectiveAuto(MatchRow row) {
+        return row.auto() && autoProps.isEnabled();
     }
 
     /** 매치 소유자(홈)의 닉네임 — 관전자가 홈을 자기 이름으로 오인하지 않게(#245). */
@@ -886,6 +909,73 @@ public class MatchService {
             throw invalidState(currentState(matchId), "resume");
         }
         return getOwned(userId, matchId);
+    }
+
+    /**
+     * 오토 모드 토글 허용 state (#249). 후반이 열리기 전(=전반 종료 경계를 아직 안 지난) 구간뿐이다.
+     *
+     * <p>{@code HALFTIME} 이 들어 있는 건 <b>경합 창</b> 때문이다: 유저가 전반 막바지에 켰는데 그 사이
+     * 스위퍼가 경계를 넘어가면(≤1s) 요청이 HALFTIME 에 떨어진다. 여기서 409 를 내면 "제때 눌렀는데
+     * 실패"가 되므로 받아주고, {@link #setAutoCas} 가 그 자리에서 후반을 연다(hero 컨펌 Q3).
+     *
+     * <p>⚠️ 이 상수는 <b>주석이 아니라 실제 SQL 을 만든다</b>({@link #AUTO_TOGGLE_IN_CLAUSE}). 처음엔
+     * 리터럴 IN 목록 옆에 놓고 "테스트가 읽는 SoT"라고 적어 뒀는데 참조가 0이라 <b>아무 값으로 바꿔도
+     * 아무것도 안 깨졌다</b>(독립검증 minor-1). 주석이 코드보다 오래 살면 다음 사람이 속는다 —
+     * 이 에픽의 blocker 가 정확히 그 실패였다(가드가 주석만 남고 코드가 빠졌다).
+     */
+    static final Set<String> AUTO_TOGGLE_STATES =
+            Set.of(S_BRIEFING, S_GEN1, S_FIRST_HALF, S_HALFTIME, S_H1_BREAK);
+
+    /** 위 집합에서 만든 IN 절 — 값이 전부 코드 상수라 인젝션 표면이 없다. */
+    private static final String AUTO_TOGGLE_IN_CLAUSE = AUTO_TOGGLE_STATES.stream()
+            .sorted()
+            .map(state -> "'" + state + "'")
+            .collect(java.util.stream.Collectors.joining(","));
+
+    /** 오토 토글 결과. {@code resumedNow} = 이 호출이 감독시간을 끝내고 후반을 열었다(경합 창). */
+    public record AutoToggleResult(MatchRow row, boolean resumedNow) {
+    }
+
+    /**
+     * 오토 모드 on/off (#249). 플래그는 <b>전반 종료 경계에서만</b> 읽힌다
+     * ({@link MatchClockService} 의 CAS WHERE 절) — 여기서는 저장만 한다.
+     *
+     * <p>예외가 하나 있다: <b>감독시간이 이미 열린 뒤 ON</b>. 경계는 지나갔으므로 플래그를 저장해봐야
+     * 이 매치에서는 영원히 읽히지 않는다 = 죽은 버튼이다. 그래서 {@link #resumeCas} 와 <b>같은 전이</b>를
+     * 그 자리에서 밟는다(신규 경로 0). 덕분에 토글이 경계 직전에 떨어지든 직후에 떨어지든 결과가
+     * 같아진다 — 경합이 무해해진다(hero 컨펌 Q3).
+     *
+     * <p>후반이 이미 시작된 뒤(GEN2~)는 409 다. 감독시간은 지나갔고 되돌릴 수 없으므로 "OFF 했는데
+     * 아무 일도 없음"보다 거부가 정직하다.
+     */
+    public AutoToggleResult setAutoCas(String userId, String matchId, boolean auto) {
+        getOwned(userId, matchId);
+        boolean moved = txRunner.run(() -> jdbcClient.sql(
+                        "UPDATE matches SET auto_mode = ? WHERE id = ? AND state IN ("
+                                + AUTO_TOGGLE_IN_CLAUSE + ")")
+                .params(auto ? 1 : 0, matchId)
+                .update() == 1);
+        if (!moved) {
+            throw invalidState(currentState(matchId), "auto");
+        }
+        // 감독시간에서 ON = 즉시 후반. resumeCas 와 같은 CAS 라 스위퍼·유저 [후반 시작]과 동시에
+        // 들어와도 정확히 한 번만 성공한다(false 면 남이 이미 열었다는 뜻 — 그대로 성공 응답).
+        //
+        // ⚠️ `auto &&` 를 지우지 마라(독립검증 major-1 — 이 한 토큰을 지워도 게이트가 전부 통과했다).
+        // 감독시간에 도착하는 요청은 ON 만이 아니다: 유저가 전반 막바지에 오토를 **끄는데** 그 사이
+        // 경계가 넘어가면 OFF 가 여기 떨어진다(서버가 HALFTIME 을 받아주는 이유가 그 경합 창이다).
+        // 가드가 없으면 **끄려던 조작이 후반을 즉시 열어** 유저가 원했던 감독시간 3분을 통째로 잃는다.
+        // 계약 = MatchAutoModeTest.turningAutoOffDuringTheHalftimeKeepsTheHalftime.
+        boolean resumedNow = false;
+        if (auto && HALFTIME_STATES.contains(currentState(matchId))) {
+            resumedNow = jdbcClient.sql("""
+                            UPDATE matches SET state = ?, phase_start_at = NULL, phase_ends_at = NULL
+                            WHERE id = ? AND state IN ('HALFTIME', 'H1_BREAK')
+                            """)
+                    .params(S_GEN2, matchId)
+                    .update() == 1;
+        }
+        return new AutoToggleResult(getOwned(userId, matchId), resumedNow);
     }
 
     /** FAILED → 실패 지점 재큐잉 (AC-M7). 반환 = 다시 돌릴 half. */

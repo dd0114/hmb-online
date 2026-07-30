@@ -162,17 +162,30 @@ test.describe("어웨이 라운드 — 사이드는 픽스처가 정한다", () 
     await page.screenshot({ path: `${CAP_DIR}after-A-first-half.png` });
   });
 
-  test("c. 로그 팀 라벨이 사이드를 따른다 — 득점자가 자기 팀으로 불린다", async ({ page }) => {
+  /**
+   * ⚠️ **선수 id 로 행을 찾지 마라**(#334). 예전엔 `GOAL #P034` / `#P116` 처럼 로그가 playerId 원문을
+   * 그대로 그렸고 이 계약도 그걸로 행을 집었는데, #334 가 **등번호 표기**로 바꾸면서(`#4`) 계약이
+   * 조용히 낡아 main 에서 red 가 됐다. 재는 것은 번호가 아니라 **팀 라벨이 사이드를 따르는가**다 →
+   * 표기와 무관한 앵커(킥오프 · 첫 골)로 집는다.
+   */
+  test("c. 로그 팀 라벨이 사이드를 따른다 — 킥오프는 홈, 첫 골은 어웨이(=나)", async ({ page }) => {
     await open(page, "FIRST_HALF");
     await page.getByTestId("stage-tab-log").click();
-    const goalRow = page.getByTestId("stage-panel-log").locator("li", { hasText: "GOAL #P034" }).first();
-    await expect(goalRow).toBeVisible({ timeout: 30_000 });
-    // P034 = away = 축구왕여르 소속. 뒤집혀 있을 땐 "Thunder Bay United" 로 불렸다.
-    await expect(goalRow).toContainText(ME);
-    await expect(goalRow).not.toContainText(BOT);
-    // 반대 축도 같이 — P116 은 Thunder 골키퍼다(뒤집혀 있을 땐 "축구왕여르" 로 불렸다).
-    const saveRow = page.getByTestId("stage-panel-log").locator("li", { hasText: "#P116" }).first();
-    await expect(saveRow).toContainText(BOT);
+    const rows = page.getByTestId("stage-panel-log").locator("li");
+
+    // ① 킥오프는 **home** 이벤트다 → 어웨이 라운드에선 봇 이름이어야 한다.
+    //    뒤집혀 있을 땐 여기가 "축구왕여르" 였다.
+    const kickoff = rows.filter({ hasText: "Kick-off" }).first();
+    await expect(kickoff).toBeVisible({ timeout: 30_000 });
+    await expect(kickoff).toContainText(BOT);
+    await expect(kickoff).not.toContainText(ME);
+
+    // ② 이 하프의 **첫 골**은 away(=축구왕여르)다(라이브 로그 tick 384, 득점자 P034).
+    //    뒤집혀 있을 땐 "Thunder Bay United" 로 불렸다 — hero 제보 화면의 실체.
+    const firstGoal = rows.filter({ hasText: "GOAL" }).first();
+    await expect(firstGoal).toBeVisible({ timeout: 30_000 });
+    await expect(firstGoal).toContainText(ME);
+    await expect(firstGoal).not.toContainText(BOT);
   });
 
   test("d. 결과 카드가 자기모순이 아니다 — 승리 ⟺ 내 득점이 더 많다", async ({ page }) => {

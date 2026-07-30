@@ -146,6 +146,37 @@ public class MatchController {
                 .body(matchService.toDetail(matchService.getOwned(userId, id)));
     }
 
+    public record AutoRequest(Boolean auto) {
+    }
+
+    /**
+     * 오토 모드 on/off (#249). 켜 두면 전반이 끝날 때 감독시간(3분) 없이 후반이 바로 시작된다.
+     *
+     * <p>후반 인풋은 <b>새 경로를 만들지 않는다</b> — 감독시간 만료와 같은 전이를 타서
+     * #193 W2b-B2 프리페치({@link MatchOrchestrator#resolveSecondHalfInputs}, 전반 진입 직후 선행 생성)
+     * 결과를 그대로 쓴다. 그래서 여기서 AI 를 부르는 코드가 없다.
+     *
+     * <p>감독시간이 이미 열린 뒤 ON 이면 그 자리에서 후반이 열린다(경합 창 무해화) — 그 경우에만
+     * {@code enqueueHalf} 를 부른다. 부르는 자리·인자는 {@code POST /resume} 과 동일하다.
+     */
+    @PostMapping("/api/matches/{id}/auto")
+    public MatchDetail auto(@RequestAttribute("userId") String userId,
+                            @PathVariable("id") String id,
+                            @RequestBody(required = false) AutoRequest request) {
+        // openapi 가 `required: [auto]` 로 선언한 필드다 — 빠졌으면 400 이지 "조용히 OFF" 가 아니다
+        // (독립검증 minor-2). 실패가 조용히 상태를 바꾸면, 클라 버그 하나가 유저의 감독시간을
+        // 말없이 없애거나 되살린다.
+        if (request == null || request.auto() == null) {
+            throw new online.hmb.common.ApiException(HttpStatus.BAD_REQUEST, "INVALID_REQUEST",
+                    "auto 값이 필요합니다", java.util.Map.of("field", "auto"));
+        }
+        MatchService.AutoToggleResult result = matchService.setAutoCas(userId, id, request.auto());
+        if (result.resumedNow()) {
+            orchestrator.enqueueHalf(id, 2);
+        }
+        return matchService.toDetail(matchService.getOwned(userId, id));
+    }
+
     @GetMapping(value = "/api/matches/{id}/halves/{half}/log", produces = MediaType.APPLICATION_JSON_VALUE)
     public String halfLog(@RequestAttribute("userId") String userId,
                           @PathVariable("id") String id,

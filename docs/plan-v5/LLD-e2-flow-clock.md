@@ -64,6 +64,31 @@ GEN1|GEN2 → FAILED → (retry) → GEN1|GEN2
 | `FINISHED` | 종료·결과·보상 | `finished_at` | — |
 | `FAILED` | 잡/시뮬 실패 | `fail_reason` | retry |
 
+#### 2.2.1 오토 모드 (#249, 2026-07-29)
+
+`matches.auto_mode`(V21) 가 켜져 있으면 **감독시간을 0초로 연다** — 전이 엣지는 하나도 늘지 않고,
+`advanceChain` 이 같은 호출 안에서 `FIRST_HALF → HALFTIME(0ms) → GEN2` 를 연속으로 밟는다.
+
+```
+auto=0:  FIRST_HALF ──▶ HALFTIME (halftimeMs=180s) ──▶ GEN2 ──▶ SECOND_HALF
+auto=1:  FIRST_HALF ──▶ HALFTIME (0ms, 같은 스윕에서 통과) ──▶ GEN2 ──▶ SECOND_HALF
+```
+
+- **플래그 읽기는 CAS 의 `WHERE` 절 안**이다(`casOpenHalftime`). 먼저 SELECT 하고 분기하면 그 사이
+  토글이 뒤집혀 **찢어진 읽기**가 난다(오토인데 3분이 열리거나 그 반대). 두 UPDATE 를 순서대로 시도해
+  정확히 하나만 성공시키고, 둘 다 0행이면 `false` 를 돌려 다음 스위프(≤1s)가 새 값으로 재판정한다.
+- **0초 하프타임에 머무르면 안 된다** — 머무를 수 있는 경로 셋을 각각 막는다:
+  ①조회 경로(`advanceDueForRead`)는 오토 매치의 전반 종료 전이를 **아예 시작하지 않는다**(무거운
+  두 번째 전이를 못 밟아 만료된 감독시간이 노출되므로 통째로 스위퍼에 위임)
+  ②`auto-resume-on-expiry=false` 여도 **오토는 예외**로 재개된다(막으면 영구히 갇힌다)
+  ③스위퍼 후보 쿼리가 `state='HALFTIME' AND auto_mode=1` 을 항상 포함한다(②의 복구 경로 겸)
+- **후반 인풋에 새 경로가 없다**: 감독시간 만료와 같은 `enqueueHalf(id,2)` 를 타므로 #193 W2b-B2
+  프리페치(전반 진입 직후 선행 생성)를 그대로 쓴다. 미완이면 `GEN2` 대기 = 기존 경로가 폴백이다.
+- **롤백** `hmb.match.auto.enabled=false`: 경계가 플래그를 보지 않는다(이미 켠 매치도 정상 감독시간).
+  토글 API 는 계속 200 — 롤백이 클라 에러로 새지 않게.
+- web 은 오토 매치에서 **감독 패널을 열지 않는다**(`statePanelFor(state, auto)`) — 폴링이 0초
+  하프타임을 한 프레임 잡아도 화면엔 안 뜬다. 계약 = `auto-mode.test.ts` · `p249-auto-mode.spec.ts`.
+
 - **`H1_BREAK` 은 `HALFTIME` 으로 대체**된다(같은 자리, 이름·의미 확장). 이미 배포된 DB 의 `H1_BREAK` 행은
   마이그레이션에서 `HALFTIME` + `phase_ends_at=NULL`(= 무기한, 수동 제출만)로 이관한다(§8.2) — 진행 중 매치가 죽지 않는다.
 - **왜 `FIRST_HALF` 진입이 킥오프 요청 시점이 아니라 h1 로그 저장 시점인가**: AI 생성 + 시뮬이 수 초~수 분 걸린다.
@@ -79,6 +104,7 @@ GEN1|GEN2 → FAILED → (retry) → GEN1|GEN2
 | `POST /kickoff` | `BRIEFING` |
 | `POST /halftime`(교체) | **`FIRST_HALF`, `HALFTIME`** ← 미리 짜두고 감독시간에 확정 가능 |
 | `POST /resume` | **`HALFTIME`** (FIRST_HALF 에서 누르면 409 — **후반 앞당기기 금지**) |
+| `POST /auto`(#249) | `BRIEFING`, `GEN1`, `FIRST_HALF`, `HALFTIME`(+레거시 `H1_BREAK`). GEN2 이후 409. **HALFTIME 에서 `auto=true` 는 그 자리에서 `/resume` 과 같은 전이**를 밟는다 — 토글이 경계 직전에 떨어지든 직후에 떨어지든 결과가 같아진다(경합 무해화) |
 | `GET /halves/1/log` | `FIRST_HALF`, `HALFTIME`, `GEN2`, `SECOND_HALF`, `FINISHED` |
 | `GET /halves/2/log` | **`SECOND_HALF`**, `FINISHED` |
 | `GET /result` | `FINISHED` |
@@ -164,6 +190,8 @@ hmb:
       seek:
         forward-blocked: true  # 라이브 앞서가기 금지
         grace-ms: 1500         # 지연·스큐 허용 오차
+    auto:                      # #249 오토 모드
+      enabled: true            # false = 롤백(경계가 matches.auto_mode 를 보지 않는다, §2.2.1)
 ```
 - web 은 **자체 상수를 두지 않는다** — `MatchDetail.clock` 이 내려주는 `halfRealMs`·`halftimeMs`·`seek` 를 그대로 쓴다.
   (서버에서 값을 바꾸면 재배포 없이 웹 동작이 따라온다 = 튜닝 원칙.)

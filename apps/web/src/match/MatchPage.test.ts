@@ -44,6 +44,7 @@ vi.mock("../api/hooks", () => {
     useSubmitMatchPrompt: mutation,
     useUpdateDeck: mutation,
     useKickoff: mutation,
+    useSetAuto: mutation, // #249 오토 토글
     useResume: mutation,
     useRetry: mutation,
     useHalftime: mutation,

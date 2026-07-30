@@ -1,0 +1,81 @@
+/* 오토 모드 토글 (#249). 두 변형: 브리핑의 설명 있는 행 / 관전 스코어바의 알약. */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line, #2a3142);
+  border-radius: 10px;
+  background: var(--panel, #171c28);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0; /* 힌트가 길어도 스위치를 밀어내지 않게 */
+  flex: 1;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted, #8b93a7);
+}
+
+.switch {
+  flex: none;
+  min-width: 84px;
+  padding: 9px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line, #2a3142);
+  background: transparent;
+  color: var(--muted, #8b93a7);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.switch.on {
+  border-color: #f5b301;
+  background: rgba(245, 179, 1, 0.16);
+  color: #f5b301;
+}
+
+.switch:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* 스코어바 알약 — 리그뱃지·시계·상태태그 옆이라 폭을 최소로 잡는다(390px 기준). */
+.pill {
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line, #2a3142);
+  background: transparent;
+  color: var(--muted, #8b93a7);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pill.on {
+  border-color: #f5b301;
+  background: rgba(245, 179, 1, 0.16);
+  color: #f5b301;
+}
+
+.pill:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

@@ -436,6 +436,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/matches/{id}/auto": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["MatchId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 오토 모드 on/off — 켜면 전반 종료 시 감독시간 없이 후반 바로 진행 (#249)
+         * @description **허용 상태** = `BRIEFING`, `GEN1`, `FIRST_HALF`, `HALFTIME`(+레거시 `H1_BREAK`).
+         *     후반이 이미 열린 뒤(`GEN2` 이후)는 **409** — 감독시간은 지나갔고 되돌릴 수 없다.
+         *
+         *     플래그는 **전반 종료 경계에서만** 읽힌다. 켜져 있으면 서버가 감독시간을 **0초**로 열어
+         *     같은 스윕 안에서 `GEN2` 로 잇는다(전이 엣지 신설 없음). 꺼져 있으면 현행
+         *     `clock.halftimeMs` 그대로다.
+         *
+         *     **후반 인풋에 새 AI 흐름은 없다** — 감독시간 만료와 같은 전이를 타므로 전반 진입 직후
+         *     선행 생성된 후반 인풋(#193 W2b-B2 프리페치)을 그대로 쓴다. 아직 준비되지 않았으면
+         *     `GEN2` 에서 대기한다(= 유저가 [후반 시작]을 즉시 눌렀을 때와 동일). 전반을 보며 미리 써 둔
+         *     **후반 지시는 그대로 반영된다** — 오토는 지시 포기가 아니다.
+         *
+         *     **경합**: 감독시간이 이미 열린 뒤 `auto=true` 가 도착하면 그 자리에서 후반을 연다
+         *     (`POST /resume` 과 같은 전이). 덕분에 토글이 경계 직전/직후 어디에 떨어져도 결과가 같다.
+         *
+         *     운영 스위치 `hmb.match.auto.enabled=false` 면 경계가 이 플래그를 보지 않는다(전부 정상
+         *     감독시간). 그래도 이 API 는 200 을 준다 — 롤백이 클라 에러로 새지 않게.
+         */
+        post: operations["setMatchAuto"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/matches/{id}/result": {
         parameters: {
             query?: never;
@@ -1540,6 +1578,14 @@ export interface components {
             finishedAt?: string | null;
             /** @description 서버 권위 시계(P4-E2 #170, additive). 라이브 단계가 아니거나 시계 비활성이면 null. */
             clock?: components["schemas"]["MatchClock"] | null;
+            /**
+             * @description 오토 모드(#249, additive). true 면 전반 종료 시 감독시간 없이 후반이 바로 시작된다.
+             *     변경은 `POST /api/matches/{id}/auto`. 구 매치·기본값은 false.
+             *
+             *     ⚠️ 이 값이 true 여도 운영 스위치(`hmb.match.auto.enabled=false`)가 내려가 있으면 흐름은
+             *     정상 감독시간이다 — 그건 롤백 상태이고 클라가 알 필요는 없다.
+             */
+            auto?: boolean;
         };
         CreateMatchRequest: {
             /** @description 생략 시 랜덤 봇(BOT_ATK/BOT_DEF/BOT_BAL 중, PRD §3.4) */
@@ -2658,6 +2704,37 @@ export interface operations {
         responses: {
             /** @description 잡 큐잉됨(state=GEN2) */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatchDetail"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["InvalidState"];
+        };
+    };
+    setMatchAuto: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["MatchId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    auto: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description OK — 반영된 매치 상태 */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

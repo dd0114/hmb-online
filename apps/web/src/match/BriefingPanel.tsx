@@ -13,6 +13,7 @@ import { useRelations } from "../api/hooks-v2";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
+import { AutoModeToggle } from "./AutoModeToggle";
 import { DeckEditor } from "../deck/DeckEditor";
 import { emptyDraft, setPrompt, toUpdateRequest, type DeckDraft } from "../deck/deck-logic";
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
@@ -356,6 +357,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
       <p className={styles.persistNote} data-testid="briefing-persist-note">
         여기서의 편집(라인업·전술·프롬프트·마킹)은 임시가 아니라 내 덱에 저장됩니다 — 킥오프 시 반영됩니다.
       </p>
+      {/* 오토 모드(#249) — 킥오프 바로 위. 자립 컴포넌트라 #244 레이아웃 개편과 한 줄로 조율된다. */}
+      <AutoModeToggle match={match} />
 
       <button
         type="button"
