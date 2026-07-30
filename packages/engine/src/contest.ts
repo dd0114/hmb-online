@@ -5,7 +5,8 @@ import { playerKey, playerAt, ballOwnerOf, claimantSideOf, setPossession } from 
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
-import { fdist, fclamp, toFixed, isqrt } from "./fixedmath";
+import { fdist, fclamp, toFixed } from "./fixedmath";
+import { kickBall, nearestOnSweep } from "./ball";
 import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
 import { deliverySpeedFx, shotPowerFx } from "./kick";
 import { xgAtPoint } from "./decision";
@@ -91,19 +92,9 @@ function nearestOfSide(state: SimState, side: TeamSide, x: number, y: number): S
   return best;
 }
 
-/** (x,y) 최근접 선수(양팀). */
-function nearestAny(state: SimState, x: number, y: number): { p: SimPlayer; dist: number } | null {
-  let best: SimPlayer | null = null;
-  let bestD = Infinity;
-  for (const p of state.players) {
-    const d = fdist(p.posFx.x, p.posFx.y, x, y);
-    if (d < bestD) {
-      bestD = d;
-      best = p;
-    }
-  }
-  return best ? { p: best, dist: bestD } : null;
-}
+// (#320) `nearestAny` 제거 — 도착점 **한 점**에서 최근접을 찾던 함수였다. 속도 기반에서는
+// 공이 한 틱에 8~16m 를 나므로 판정 기준이 점이 아니라 **이동 선분**이고, 그 역할은
+// `ball.ts:nearestOnSweep` 이 맡는다(`resolveArrival` 주석 ①).
 
 /**
  * 킥오프 리셋(경기 시작·골 후 재시작·후반 시작). 실점/재개 팀이 센터에서 시작.
@@ -259,21 +250,15 @@ export function launchCornerCross(
     if (d < bestD) { bestD = d; rec = p; }
   }
   const crossSpeed = deliverySpeedFx(toFixed(config.setPiece.crossSpeed, scale), true, config);
-  state.ball.flight = {
-    toX: t.x,
-    toY: t.y,
-    speed: crossSpeed,
+  // #320: 크로스도 **방향 × 세기**로 찬다 — 낙하점은 조준이지 도달 보장이 아니다.
+  state.ball.flight = kickBall(state.ball.posFx.x, state.ball.posFx.y, t.x, t.y, crossSpeed, {
     kind: "pass",
     // #306: 코너 크로스는 **띄운 공**이다 — 도착 순간이 공중 경합(헤딩)이 된다.
     delivery: "lofted",
     hangTicks: Math.max(1, Math.ceil(fdist(state.ball.posFx.x, state.ball.posFx.y, t.x, t.y) / Math.max(1, crossSpeed))),
     target: rec ? rec.id : undefined,
     fromSide: taker.side,
-    // #313: 발사점이 없으면 `settle()` 이 굴림 방향을 구하지 못해 크로스가 낙하점에 딱 선다
-    // (코너 크로스는 이 필드가 없어서 굴리기 대상에서 통째로 빠져 있었다).
-    fromX: state.ball.posFx.x,
-    fromY: state.ball.posFx.y,
-  };
+  });
   state.ball.owner = null;
   state.ball.ownerSide = null;
   taker.dribbleStreak = 0;
@@ -674,17 +659,21 @@ function resolveAerial(
       state.ball.posFx.y = winner.posFx.y;
       state.ball.owner = null;
       state.ball.ownerSide = null;
-      state.ball.flight = {
-        toX: goal.x,
-        toY: goal.y,
-        speed: shotPowerFx(winner.attrs.shooting, config),
-        kind: "shot",
-        // 헤더 슛도 공중 산물이다 — 이 플래그로 뷰어·통계가 "머리로 넣은 골"을 구분한다.
-        delivery: "lofted",
-        target: winner.id,
-        fromSide: winner.side,
-        xg,
-      };
+      state.ball.flight = kickBall(
+        winner.posFx.x,
+        winner.posFx.y,
+        goal.x,
+        goal.y,
+        shotPowerFx(winner.attrs.shooting, config),
+        {
+          kind: "shot",
+          // 헤더 슛도 공중 산물이다 — 이 플래그로 뷰어·통계가 "머리로 넣은 골"을 구분한다.
+          delivery: "lofted",
+          target: winner.id,
+          fromSide: winner.side,
+          xg,
+        },
+      );
       setPossession(state, winner.side, tick, "turnover");
       return [{ tick, minute, type: "shot", team: winner.side, playerId: winner.id, xg, ...headerDetail }];
     }
@@ -703,37 +692,62 @@ function resolveAerial(
   }
 
   // 떨궈낸다 — 수비수는 자기 골 반대로 걷어내고, 공격수는 상대 골 쪽으로 플릭온한다.
-  // 소유는 주지 않는다(세컨볼). 방향만 주고 나머지는 `settle()`(#313)의 굴림·감속이 맡는다.
+  // 소유는 주지 않는다(세컨볼). #320: 방향 × 세기로 차면 그 뒤는 마찰이 알아서 세운다
+  // (구버전은 "몇 틱 앞 목표점"을 만들어 거기까지 보간했다).
   const away = winner.side === f.fromSide ? goal : defendGoal(pitch, winner.side);
   const sign = winner.side === f.fromSide ? 1 : -1;
-  const dx = (away.x - winner.posFx.x) * sign;
-  const dy = (away.y - winner.posFx.y) * sign;
-  const len = isqrt(dx * dx + dy * dy);
-  const speed = toFixed(a.clearSpeed, config.fixedScale);
+  const aimX = winner.posFx.x + (away.x - winner.posFx.x) * sign;
+  const aimY = winner.posFx.y + (away.y - winner.posFx.y) * sign;
   state.ball.posFx.x = winner.posFx.x;
   state.ball.posFx.y = winner.posFx.y;
   state.ball.owner = null;
   state.ball.ownerSide = null;
-  const run = speed * config.ball.settleLookaheadTicks;
-  state.ball.flight = {
-    toX: len > 0 ? winner.posFx.x + Math.round((dx * run) / len) : winner.posFx.x,
-    toY: len > 0 ? winner.posFx.y + Math.round((dy * run) / len) : winner.posFx.y,
-    speed: len > 0 ? speed : 0,
-    kind: "loose",
-    delivery: "ground",
-    fromSide: winner.side,
-    // 굴림 방향의 기준점 = 헤딩 지점(여기서 출발했다). 없으면 settle 이 방향을 못 구한다.
-    fromX: winner.posFx.x,
-    fromY: winner.posFx.y,
-  };
+  state.ball.flight = kickBall(
+    winner.posFx.x,
+    winner.posFx.y,
+    aimX,
+    aimY,
+    toFixed(a.clearSpeed, config.fixedScale),
+    { kind: "loose", delivery: "ground", fromSide: winner.side },
+  );
   setPossession(state, winner.side, tick, "turnover");
   return [ev];
 }
 
 /**
- * 패스/루즈볼 도착 처리 — 도착점 최근접 선수가 컨트롤.
- * 같은 팀이 받으면 pass 완료, 상대가 잡으면 interception.
- * 띄운 공(#306 `delivery === "lofted"`)은 먼저 **헤딩 경합**으로 간다.
+ * 패스/루즈볼 **접촉 판정** — #320 에서 "도착 처리"를 대체했다.
+ *
+ * ## 무엇이 달라졌나
+ * 구버전의 트리거는 **목표점 도달**이었다(`arrived`). 속도 기반에는 목표점이 없으므로 트리거를
+ * 물리 사건 둘로 다시 정의한다:
+ *   ① **누가 공에 닿을 수 있는가** — 이번 틱 이동 **선분**(스윕) 기준 `controlRange` 안.
+ *      점(틱 끝 위치)이 아니라 선분인 이유: 공이 한 틱에 8~16m 를 나므로 점만 보면
+ *      스쳐 지나간 선수가 "닿을 수 있었는데 없던 일"이 된다. 구버전은 공이 목표점에
+ *      **서 있었기 때문에** 점 판정으로 충분했다 — 공이 계속 굴러가는 지금은 아니다.
+ *   ② **공이 멈췄는가** — 마찰로 자연 정지하면 그 자리에서 주워질 때까지 기다린다
+ *      (`decideOffBall` 의 루즈볼 쟁탈이 사람을 보낸다).
+ * 그리고 이 함수는 이제 **매 비행 틱** 불린다(구버전은 도착 틱 1회).
+ *
+ * ## `passOutcome`(계획된 성공/실패)을 어떻게 보존하는가 — 이 설계의 핵심
+ * `contest.passOutcomeAuthoritative` 는 패스 성공률 캘리브레이션(벤치 78–85%)의 **근간**이다.
+ * 계획을 지키려면 "계획이 유효한 구간"이 있어야 하는데, 구버전은 그 구간을 **도달**로 정의했고
+ * (공이 목표에 서면 계획 판정), 속도 기반에는 그런 순간이 없다. 그래서 구간을 이렇게 옮겼다:
+ *
+ *  - **계획 창 이전**(공이 계획 낙하점을 아직 안 지남): 접촉 판정을 **하지 않는다**.
+ *    이 구간의 소유 이전은 예전과 똑같이 `tryIntercept` 의 확률 롤만이 만든다 →
+ *    비행 중 기하 접촉이 새로 끼어들어 계획 확률을 덮어쓰는 일이 없다(캘리브레이션 무변).
+ *  - **계획 창**(낙하점을 지난 뒤 `arrivalWaitMaxTicks` 틱): claimant 가 닿으면 **계획대로**
+ *    준다(성공→pass / fail_intercept→interception). 구버전과 **같은 판정, 같은 우선순위**다.
+ *    다른 점은 기다리는 방식뿐 — 구버전은 공을 낙하점에 **세워 두고** 기다렸고(그게 hero 가
+ *    본 "정지될 위치를 먼저 잡고 점점 정지"의 정체), 지금은 공이 **굴러가면서** 기다린다.
+ *  - **계획 창 이후**: 계획은 소멸하고 먼저 닿은 사람이 임자(기하). 구버전과 동일.
+ *
+ * 즉 **판정의 내용과 순서는 그대로 두고 "언제부터 언제까지"만 기하에서 물리로 옮겼다.**
+ * 그래서 `passBase`/페널티가 성공률의 실제 노브라는 성질(E1)이 유지된다.
+ *
+ * 띄운 공(#306 `delivery === "lofted"`)은 **착지하는 틱**(계획 낙하점 통과)에 헤딩 경합으로 간다.
+ * 착지 후에는 `delivery` 를 `"ground"` 로 내려 마찰이 잔디 마찰로 바뀌고(물리) 헤딩 경합이
+ * 두 번 열리지 않는다(판정).
  */
 export function resolveArrival(
   state: SimState,
@@ -742,111 +756,107 @@ export function resolveArrival(
   pitch: Pitch,
   tick: number,
   minute: number,
+  sweep: { fromX: number; fromY: number; passedPlan: boolean; stopped: boolean },
 ): MatchEvent[] {
-  {
-    const fl = state.ball.flight;
-    if (fl && fl.delivery === "lofted" && fl.kind === "pass") {
-      const aerial = resolveAerial(state, rng, config, pitch, tick, minute);
-      if (aerial) return aerial;
-    }
-  }
   const f = state.ball.flight;
   if (!f) return [];
+
+  // 계획 낙하점을 아직 안 지난 패스는 **그냥 난다** — 접촉 판정 없음(위 주석 ①).
+  // 루즈볼(헤딩 클리어·세컨볼)은 계획이 애초에 없으므로 첫 틱부터 접촉 대상이다.
+  //
+  // ⚠️ `stopped` 가 **반드시** 있어야 한다(#320 구현 중 실측으로 밟은 함정): 구 모델은
+  // `stepToward` 라 공이 **언제나** 계획 낙하점에 도달했지만, 마찰이 있는 지금은 **못 미치고
+  // 서는 공**이 생긴다(대표적으로 `fail_out` 패스 — 조준점이 라인 **밖**이라 계획 거리가
+  // 피치보다 길다). 그 공은 `passedPlan` 이 영원히 false 라 접촉 판정이 한 번도 안 열리고,
+  // 사람이 0.5m 옆에 서 있어도 아무도 줍지 못한 채 경기가 죽는다(실측: 무소유 2569틱 정지).
+  // **멈춘 공은 계획과 무관하게 루즈볼이다** — 이게 속도 기반의 두 번째 트리거(주석 ②)다.
+  const landed = f.kind === "loose" || sweep.passedPlan || sweep.stopped;
+  if (!landed) return [];
+
+  // 착지 틱: 띄운 공이면 헤딩 경합이 먼저다(#306). 경합이 성립하면 거기서 끝난다.
+  if (f.delivery === "lofted" && f.kind === "pass") {
+    const aerial = resolveAerial(state, rng, config, pitch, tick, minute);
+    // 착지했으니 이제 잔디 위다 — 마찰이 lofted 에서 ground 로 바뀌고 헤딩 창이 닫힌다
+    // (안 내리면 매 틱 헤딩 경합이 다시 열려 계획 확률을 기하가 덮는다).
+    f.delivery = "ground";
+    if (aerial) return aerial;
+  }
+  // 계획된 패스가 낙하점을 지났다 = 이제 **루즈볼**이다. `decideOffBall` 이 이 플래그로 쟁탈을
+  // 시작하고(kind==="loose"), `tryIntercept`(패스 전용)는 여기서 멈춘다 — 계획 창 안에서 이미
+  // 굴린 확률을 굴러가는 동안 또 굴리면 이중 적용이 된다.
+  if (f.kind === "pass") f.kind = "loose";
+
   const fromSide = f.fromSide;
   const bx = state.ball.posFx.x;
   const by = state.ball.posFx.y;
-
-  // 계획된 패스 결과(passOutcome)를 존중: 성공 롤 → 동료(의도 리시버), 실패(fail_intercept) 롤 →
-  // 도착점 최근접 상대가 컨트롤(진짜 인터셉트). → 실측 완성률 == 계획 확률(computePassProb) 이라
-  // passBase/페널티 config 가 성공률의 실제 노브가 된다(E1). 기존 순수 기하는 실패 롤도 의도 리시버가
-  // 우연히 되찾아 "완성"으로 집계되어 성공률이 계획보다 과하게 높던(패스 정확도 과다) 문제가 있었다.
-  // 세트피스 크로스/루즈볼(passOutcome 없음)은 항상 기하 판정.
   const longDetail = f.long ? { detail: "long" } : {};
-
-  // #181: **공은 손 닿는 곳에 있는 사람에게만 간다.** 구버전은 도착 처리에서 공을 컨트롤러 위치로
-  // 거리 무제한 대입해(p50 5.9m·max 33.7m) "아무도 없는데 공이 스스로 휘는" 궤적을 만들었다.
-  // 아무도 못 닿았으면 공은 **떨어진 자리에 그대로 정지**하고(무소유), 비행 객체만 speed 0 으로
-  // 살려둬 다음 틱에 다시 판정한다 → 달려온 사람이 controlRange 안에 들어오는 순간 잡는다.
-  // (1차 수정은 여기에 "최대 N틱 대기 후 폴백" 을 뒀는데, 그 폴백이 여전히 무제한 순간이동이라
-  //  정지→16~20m 워프가 90분 128~169회 남았다 — 독립 QA blocker. 폴백 자체를 없앤다.)
   const reach = toFixed(config.contest.controlRange, config.fixedScale);
-  /**
-   * 아무도 못 닿음 → **원래 가던 방향 그대로 굴려보낸다**(살짝 오버힛된 패스). 감속(looseDecay)으로
-   * 곧 멈추고, 달려온 선수가 주워간다(decideOffBall 루즈볼 쟁탈).
-   *  - 순간이동 금지: 공을 사람 위치로 대입하지 않는다(구버전 max 33.7m 워프).
-   *  - **재조준 금지**: 사람 쪽으로 방향을 틀며 쫓아가게 하면 공(5m/tick)과 선수(≤7m/tick)가
-   *    서로를 지나치며 leapfrog 진동해 경기가 멈춘다(실측: 슛 0.05 로 붕괴).
-   *  - 방향을 안 바꾸므로 "빈 공간에서 공이 꺾이는" 현상도 생기지 않는다.
-   */
-  const settle = (): MatchEvent[] => {
-    const dx = f.fromX != null ? bx - f.fromX : 0;
-    const dy = f.fromY != null ? by - f.fromY : 0;
-    // 방향 길이는 정수 제곱근으로(플랫폼 편차 0). 발사점→현재의 벡터라 공이 그 직선 위를
-    // 굴러가는 동안 **방향이 변하지 않는다** — 이것이 leapfrog 진동(#181)이 안 생기는 이유다.
-    const len = isqrt(dx * dx + dy * dy);
-    // #313: 굴림 속도는 **첫 settle 에서 한 번만** 정한다(도착 속도 × frac, 상한 settleSpeed).
-    // 이미 굴러가는 중(kind==="loose")이면 advanceBall 이 looseDecay 로 깎아 둔 속도를 **보존**한다.
-    // 매 틱 상수로 되돌리면 감속이 무효가 되어 공이 영원히 같은 속도로 굴러 나간다.
-    const wasLoose = f.kind === "loose";
-    if (!wasLoose) {
-      const cap = toFixed(config.ball.settleSpeed, config.fixedScale);
-      const carry = Math.round(f.speed * config.ball.settleSpeedFrac);
-      f.speed = Math.min(cap, Math.max(0, carry));
-      f.kind = "loose";
-    }
-    f.waited = (f.waited ?? 0) + 1;
-    // 1 fixed unit(=1m/tick) 미만이면 정지 — 여기서 멈춘 공은 직전 틱 이동도 이미 1m 미만이라
-    // "날아가다 급정지"로 보이지 않는다(감속으로 자연스럽게 선다).
-    if (len > 0 && f.speed >= config.fixedScale) {
-      // 목표는 **방향만** 준다(감속으로 그 전에 멈춘다). 피치 안으로 클램프하지 않는다 —
-      // 클램프하면 경계 근처에서 구르는 방향이 꺾여 "빈 공간 꺾임"이 다시 생긴다(실측 172건).
-      // 경계를 넘으면 advanceBall 의 아웃 판정이 스로인/골킥으로 정상 처리한다(오버힛 패스 그대로).
-      const run = f.speed * config.ball.settleLookaheadTicks;
-      f.toX = bx + Math.round((dx * run) / len);
-      f.toY = by + Math.round((dy * run) / len);
-    } else {
-      f.speed = 0;
-      f.toX = bx;
-      f.toY = by;
-    }
-    state.ball.owner = null;
-    state.ball.ownerSide = null;
-    return [];
-  };
-  const inReach = (p: SimPlayer | null | undefined): boolean =>
-    !!p && fdist(p.posFx.x, p.posFx.y, bx, by) <= reach;
 
-  // 1) 계획된 결과(passOutcome)를 존중하는 창 — claimant 가 닿으면 계획대로 준다.
-  //    아직 못 왔으면 arrivalWaitMaxTicks 동안 공을 세워두고 기다린다(계획 보존).
+  /** 이번 틱 **이동 선분**까지의 거리가 `controlRange` 안이면 닿았다 — 그 접촉점을 돌려준다. */
+  const touch = (p: SimPlayer | null | undefined): { x: number; y: number } | null => {
+    if (!p) return null;
+    const n = nearestOnSweep(p.posFx.x, p.posFx.y, sweep.fromX, sweep.fromY, bx, by);
+    return n.dist <= reach ? { x: n.x, y: n.y } : null;
+  };
+  /**
+   * 소유를 넘기고 공을 **접촉점**(이번 틱 이동 선분 위)에 둔다.
+   *
+   * ⚠️ `giveBallTo` 가 공을 선수 발밑으로 대입하는 것을 **되돌리는 두 줄이 핵심**이다(#320).
+   * 스윕 판정은 "공이 선수 옆을 스쳐 지나갔다"까지 잡으므로, 선수 위치로 대입하면 공이
+   * **틱 끝 위치에서 뒤로** 최대 (한 틱 이동 + controlRange) 만큼 되감긴다 — 12m 비행이면
+   * 17m 역방향 순간이동이고, 그건 정확히 #181 이 없앤 그림이다.
+   * 접촉점은 **직선 위**라 방향이 꺾이지 않고, 거기서 선수까지 남은 거리는 `controlRange`
+   * 이내라 다음 틱의 `glueBallToOwner` 가 #181 이 허용한 상한 안에서 마무리한다
+   * (= 구버전 도착 시 점프와 같은 상한).
+   */
+  const takeAt = (p: SimPlayer, at: { x: number; y: number }): void => {
+    giveBallTo(state, p, "turnover");
+    state.ball.posFx.x = at.x;
+    state.ball.posFx.y = at.y;
+  };
+
+  // 1) 계획 창 — claimant 가 닿으면 계획대로 준다(구버전과 동일한 판정·우선순위).
   if (config.contest.passOutcomeAuthoritative && f.passOutcome && f.claimant) {
     const oppSide: TeamSide = fromSide === "home" ? "away" : "home";
     // #231: claimant 의 팀은 계획된 결과에서 파생된다(인터셉트=상대 / 성공=차는 팀).
     // id 단독 조회면 같은 id 의 반대 팀 선수가 잡혀 엉뚱한 쪽에 공이 간다.
     const claimant = playerAt(state, claimantSideOf(f), f.claimant);
-    if (inReach(claimant)) {
+    const at = touch(claimant);
+    if (at) {
       // 성공 패스면 같은 팀 → setPossession 이 no-op(턴오버 아님), 계획된 인터셉트면 상대 → 턴오버.
-      giveBallTo(state, claimant!, "turnover");
+      takeAt(claimant!, at);
       if (f.passOutcome === "success") {
         return [{ tick, minute, type: "pass", team: fromSide, playerId: claimant!.id, ...longDetail }];
       }
       return [{ tick, minute, type: "interception", team: oppSide, playerId: claimant!.id, ...longDetail }];
     }
-    if ((f.waited ?? 0) < config.contest.arrivalWaitMaxTicks) return settle();
+    f.waited = (f.waited ?? 0) + 1;
+    // 아직 창 안이면 기다린다 — 단, 공은 **세워 두지 않는다**. 굴러가면서 기다린다(#320).
+    if (f.waited <= config.contest.arrivalWaitMaxTicks) return [];
     // 계획 창이 지났다 → 아래 기하 판정(먼저 닿은 사람이 임자)으로 넘어간다.
   }
 
-  // 2) 기하 판정 — 도착점 controlRange 안 최근접 선수. 없으면 공은 정지한 채 기다린다.
-  const near = nearestAny(state, bx, by);
+  // 2) 기하 판정 — 이동 선분에 **가장 가까운** 선수(양팀). 아무도 못 닿으면 공은 계속 굴러간다
+  //    (그리고 마찰로 선다). 순간이동은 없다 — 공이 사람에게 가는 게 아니라 사람이 공에 닿는다.
+  //    동률은 전순서(거리 → 배열 순)로만 깬다(§5-3: `<` 비교라 먼저 나온 선수가 이긴다).
   let controller: SimPlayer | null = null;
-  if (near && near.dist <= reach) controller = near.p;
-  if (!controller) return settle();
+  let bestD = Infinity;
+  let bestAt = { x: bx, y: by };
+  for (const p of state.players) {
+    const n = nearestOnSweep(p.posFx.x, p.posFx.y, sweep.fromX, sweep.fromY, bx, by);
+    if (n.dist > reach || n.dist >= bestD) continue;
+    bestD = n.dist;
+    controller = p;
+    bestAt = { x: n.x, y: n.y };
+  }
+  if (!controller) return [];
 
-  const wasLoose = f.kind === "loose";
+  const hadPlan = f.passOutcome != null;
   // 기하 판정(먼저 닿은 사람이 임자) — 상대가 잡으면 오픈플레이 턴오버, 우리 편이면 no-op.
-  giveBallTo(state, controller, "turnover");
-  // 정지해 있던 공(rest)을 주워간 경우에도, 계획된 패스였다면 그 결과를 이벤트로 남긴다
-  // (스탯의 패스 완성/가로챔 집계가 비지 않도록).
-  if (wasLoose && !f.passOutcome) return [];
+  takeAt(controller, bestAt);
+  // 계획이 없던 공(세트피스 크로스·헤딩 세컨볼)을 주워간 것은 이벤트 없는 소유 이전이다.
+  // 계획이 있었다면 그 결과를 이벤트로 남긴다(스탯의 패스 완성/가로챔 집계가 비지 않도록).
+  if (!hadPlan) return [];
   if (controller.side === fromSide) {
     return [{ tick, minute, type: "pass", team: fromSide, playerId: controller.id, ...longDetail }];
   }

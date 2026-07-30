@@ -4,7 +4,7 @@ import { defaultEngineConfig } from "../config";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
 import { REALISM_SEEDS } from "./harness";
-import { advanceBall } from "../ball";
+import { advanceBall, kickBall } from "../ball";
 import { createPitch } from "../pitch";
 import { toFixed } from "../fixedmath";
 import type { Ball } from "../simstate";
@@ -159,26 +159,67 @@ describe("공 연속성 — 접촉 없이 휘지 않는다 (#181)", () => {
     expect(violations.length, `정지한 공이 접촉 없이 튐:\n  ${violations.slice(0, 8).join("\n  ")}`).toBe(0);
   });
 
-  it("advanceBall: 목표에 실제로 닿기 전에는 도착이 아니다 (조기 도착 금지)", () => {
+  it("advanceBall: 계획 낙하점 전에는 계획 창이 열리지 않는다 (조기 판정 금지)", () => {
+    // #181 원 계약("목표에 닿기 전엔 도착 아님")의 #320 판. 속도 벡터에는 "도착"이 없으므로
+    // 같은 요구를 **계획 창 개시**(`passedPlan`)로 잰다 — 공이 계획 거리만큼 실제로 가기 전에는
+    // 소유 판정이 열리면 안 된다(열리면 남은 거리를 소유 이전이 순간이동으로 메운다 = #181 버그).
     const pitch = createPitch(cfg);
     const scale = cfg.fixedScale;
     const speed = toFixed(cfg.ball.passSpeed, scale);
-    // 목표까지 25m(= passSpeed 18m/tick 보다 크고 2틱보다 작다).
+    // 낙하점까지 25m(= 18m/tick 보다 크고 2틱보다 작다).
     const ball: Ball = {
       posFx: { x: toFixed(30, scale), y: toFixed(34, scale) },
       owner: null,
       ownerSide: null,
-      flight: { toX: toFixed(55, scale), toY: toFixed(34, scale), speed, kind: "pass", fromSide: "home" },
+      flight: kickBall(toFixed(30, scale), toFixed(34, scale), toFixed(55, scale), toFixed(34, scale), speed, {
+        kind: "pass",
+        delivery: "ground",
+        fromSide: "home",
+      }),
     };
     const r1 = advanceBall(ball, cfg, pitch);
-    // 1틱 후: 18m 전진, 7m 남음 → 아직 도착 아님(기존 코드는 remaining<=speed 라 여기서 도착).
-    expect(r1.arrived, "7m 남았는데 도착 판정하면 안 된다").toBe(false);
+    expect(r1.passedPlan, "7m 남았는데 계획 창을 열면 안 된다").toBe(false);
     expect(ball.posFx.x).toBe(toFixed(48, scale));
 
     const r2 = advanceBall(ball, cfg, pitch);
-    // 2틱 후: 목표에 정확히 안착하고서야 도착.
-    expect(r2.arrived).toBe(true);
-    expect(ball.posFx.x).toBe(toFixed(55, scale));
+    // 2틱째: 계획 거리를 넘어선다 → 창이 열린다. 그리고 **낙하점에 스냅되지 않는다**(#320) —
+    // 공은 속도만큼 계속 가고, 감속은 마찰이 한다(구버전은 여기서 정확히 55m 에 딱 섰다).
+    expect(r2.passedPlan).toBe(true);
+    expect(ball.posFx.x, "낙하점에 스냅되면 안 된다(목표점 보간 회귀)").toBeGreaterThan(toFixed(55, scale));
     expect(ball.posFx.y).toBe(toFixed(34, scale));
+  });
+
+  it("advanceBall: 스텝은 단조 감소하고 방향은 안 바뀐다 — 되올림(요동) 금지", () => {
+    // hero #320 이 본 것: `12.6 → 0.9 → 3.1 → 1.9`. 마지막 스텝이 목표 스냅으로 잘리고
+    // `settle()` 이 속도를 되올려 **비단조**가 됐다. 속도 벡터는 마찰 곱만 있으므로 구조적으로 불가.
+    const pitch = createPitch(cfg);
+    const scale = cfg.fixedScale;
+    const ball: Ball = {
+      posFx: { x: toFixed(20, scale), y: toFixed(34, scale) },
+      owner: null,
+      ownerSide: null,
+      flight: kickBall(toFixed(20, scale), toFixed(34, scale), toFixed(40, scale), toFixed(34, scale), toFixed(12, scale), {
+        kind: "pass",
+        delivery: "ground",
+        fromSide: "home",
+      }),
+    };
+    const steps: number[] = [];
+    for (let i = 0; i < 12; i++) {
+      const before = { x: ball.posFx.x, y: ball.posFx.y };
+      const r = advanceBall(ball, cfg, pitch);
+      if (r.out) break;
+      steps.push(Math.hypot(ball.posFx.x - before.x, ball.posFx.y - before.y) / scale);
+      // 방향 불변: y 가 한 번도 흔들리지 않는다(마찰은 크기만 줄인다).
+      expect(ball.posFx.y).toBe(toFixed(34, scale));
+      if (r.stopped) break;
+    }
+    expect(steps.length, "여러 틱에 걸쳐 굴러야 한다").toBeGreaterThan(2);
+    for (let i = 1; i < steps.length; i++) {
+      expect(steps[i]!, `스텝이 되올랐다: ${steps.map((v) => v.toFixed(1)).join(" → ")}`)
+        .toBeLessThanOrEqual(steps[i - 1]!);
+    }
+    // 첫 스텝은 **찬 세기 그대로**다(목표까지의 거리에 눌리지 않는다).
+    expect(steps[0]).toBeCloseTo(12, 1);
   });
 });
