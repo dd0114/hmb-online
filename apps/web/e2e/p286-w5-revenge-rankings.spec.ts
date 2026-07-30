@@ -184,6 +184,25 @@ test("일일 횟수를 다 쓰면 도전 가능한 건도 잠기고 이유를 �
   await expect(first.getByTestId("revenge-reason")).toContainText("오늘");
 });
 
+test("한도를 끄면(-1) 복수가 열려 있고 '오늘 -1회 남음' 도 안 뜬다 (#332)", async ({ page }) => {
+  /**
+   * ⚠️ 서버는 일일 한도를 끄면(`hmb.away.match.daily-limit: 0` — 명시된 **롤백 스위치**)
+   * `remainingToday: -1` 을 준다. 이걸 숫자로 그냥 비교하면 **-1 ≤ 0** 이라 복수 버튼이 전량
+   * 잠기고 "오늘 원정 횟수를 모두 썼습니다"가 뜬다 — **서버는 실제로 수락하는데** 화면이
+   * 기능을 통째로 죽인다(#319 독립검증 MAJ-3). 표시도 "오늘 -1회 남음"이 된다.
+   *
+   * ⚠️ 위 "일일 횟수를 다 쓰면" 케이스(0)와 **둘 다** 있어야 한다. 하나만 두면 센티널 처리가
+   * 진짜 소진까지 덮어도 green 이다(이 리포가 반복해 당한 "표본이 규칙을 못 가르는" 부류).
+   */
+  await mockAll(page);
+  await mockW5(page, { revenge: { ...REVENGE, remainingToday: -1 } });
+  await page.goto("/away");
+
+  const first = page.getByTestId("revenge-row").nth(0);
+  await expect(first.getByTestId("revenge-start")).toBeEnabled();
+  await expect(page.getByTestId("revenge-remaining"), "무제한을 숫자로 그리면 안 된다").toHaveCount(0);
+});
+
 test("복수 실패는 서버 코드마다 다른 말을 한다", async ({ page }) => {
   // ⚠️ 전부 같은 문구로 뭉개면 유저가 다음 행동을 고를 수 없다(2회 소진 vs 일일 한도는 다른 일이다).
   await mockAll(page);
