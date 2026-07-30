@@ -599,7 +599,7 @@ public class AdminCatalogService {
                 raiseUnitIdHighWater(playerId);
                 return new PurgeResult(playerId, before.name(), auditId, refs);
             });
-        } catch (ApiException e) {
+        } catch (RuntimeException e) {
             // ⚠️⚠️ **실패 기록은 트랜잭션 밖에서 써야 한다.** 안에서 쓰면 롤백이 그 기록을 **같이
             //    지운다** — 처음엔 안에 뒀고 계약이 "거절도 원장에 남는다"에서 0을 관측해 잡았다.
             //    성공·실패를 갈라 두는 이유도 여기서 다시 보인다: 성공은 삭제와 같은 트랜잭션이어야
@@ -609,10 +609,15 @@ public class AdminCatalogService {
             //    (`admin_catalog_audit`)에 넣으면 그 스냅샷이 거짓이 된다 → V18 범용 원장에 남긴다.
             //    아무 데도 안 남기는 건 답이 아니다 — "관리자가 유저 카드를 지우려 시도했다"는
             //    사실이고 이 모듈의 규율은 **성공·실패 모두 기록**이다(형제 서비스 셋이 그렇게 한다).
+            //    ⚠️ `RuntimeException` 을 잡는 이유(독립검증 MIN-A): `ApiException` 만 잡으면
+            //    `SQLITE_BUSY_SNAPSHOT`·제약 위반 같은 **5xx 실패가 원장 밖으로 샌다**. 형제 서비스
+            //    셋은 전부 `RuntimeException` 을 잡아 `"error"` 를 남긴다 — purge 만 예외로 두면
+            //    "성공·실패 모두 기록"이 이 모듈에서 균일하지 않게 된다.
             Map<String, Object> detail = new LinkedHashMap<>();
             detail.put("playerId", playerId);
-            if (e.getDetail() != null && e.getDetail().get("references") != null) {
-                detail.put("blockedBy", e.getDetail().get("references"));
+            if (e instanceof ApiException api && api.getDetail() != null
+                    && api.getDetail().get("references") != null) {
+                detail.put("blockedBy", api.getDetail().get("references"));
             }
             detail.put("error", String.valueOf(e.getMessage()));
             opsAudit(actorUserId, ACTION_PURGE, "failed", reason, detail);

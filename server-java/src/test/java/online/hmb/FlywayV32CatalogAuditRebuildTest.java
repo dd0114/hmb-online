@@ -80,6 +80,32 @@ class FlywayV32CatalogAuditRebuildTest {
     }
 
     /**
+     * <b>컬럼 순서까지 원본과 같다.</b> V32 주석이 "열 순서·타입 동일"을 선언하므로 계약을 둔다
+     * (독립검증 MIN-B — 그 선언만 무계약이었고 순서를 바꾸는 변이체가 살아남았다).
+     *
+     * <p>⚠️ 런타임 영향은 <b>0</b> 이다({@code SELECT *} 사용처가 없다 — 참조 12곳 전부 명시 컬럼).
+     * 그래도 계약을 두는 이유: 다음 재작성이나 {@code .dump} 기반 위치 복원에서 순서가 곧 의미가 되고,
+     * 그때는 이미 늦다.
+     */
+    @Test
+    void columnOrderMatchesTheOriginal(@TempDir Path dir) throws Exception {
+        Path db = dir.resolve("v32-cols.db");
+        migrateTo(db, 32);
+
+        try (Connection c = open(db);
+             Statement st = c.createStatement();
+             ResultSet rs = st.executeQuery("PRAGMA table_info(admin_catalog_audit)")) {
+            List<String> order = new ArrayList<>();
+            while (rs.next()) {
+                order.add(rs.getString("name"));
+            }
+            assertThat(order).containsExactly(
+                    "id", "actor_user_id", "player_id", "action", "before_json",
+                    "after_json", "changed_fields", "reason", "idem_key", "created_at");
+        }
+    }
+
+    /**
      * ⚠️ <b>인덱스 넷이 전부 다시 생겼는가.</b> 표와 함께 사라지므로 재작성이 다시 만들어야 한다.
      * 이름만 보지 않고 <b>부분 유니크의 조건까지</b> 본다 — 조건이 한 글자 다르면 사정거리가 달라진다.
      */

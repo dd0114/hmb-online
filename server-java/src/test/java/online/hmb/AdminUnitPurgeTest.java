@@ -87,10 +87,7 @@ class AdminUnitPurgeTest extends ApiTestBase {
         // ⚠️ **시도 자체가 이력이다**(독립검증 MIN-1). "관리자가 유저 카드를 지우려 했다"는
         //    사실은 남아야 한다 — 이 모듈의 규율이 성공·실패 모두 기록이고 형제 서비스가 그렇게 한다.
         //    거절은 아무것도 안 바꿨으므로 스냅샷 원장이 아니라 V18 범용 원장에 남는다.
-        int failedRows = jdbcClient.sql(
-                        "SELECT COUNT(*) FROM admin_ops_audit WHERE action = ? AND result = 'failed'")
-                .params(AdminCatalogService.ACTION_PURGE).query(Integer.class).single();
-        assertThat(failedRows).as("거절도 원장에 남는다").isEqualTo(1);
+        assertThat(failedPurgeRows()).as("거절도 원장에 남는다").isPositive();
         // 그리고 스냅샷 원장에는 회수 행이 없다(아무것도 안 바뀌었으므로).
         assertThat(jdbcClient.sql(
                         "SELECT COUNT(*) FROM admin_catalog_audit WHERE player_id = ? AND action = ?")
@@ -219,8 +216,44 @@ class AdminUnitPurgeTest extends ApiTestBase {
         assertThat(numberOf(next)).isGreaterThan(numberOf(alsoHigh));
     }
 
+    private long failedPurgeRows() {
+        return jdbcClient.sql(
+                        "SELECT COUNT(*) FROM admin_ops_audit WHERE action = ? AND result = 'failed'")
+                .params(AdminCatalogService.ACTION_PURGE).query(Long.class).single();
+    }
+
     private int numberOf(String playerId) {
         return Integer.parseInt(playerId.substring(1));
+    }
+
+    /**
+     * <b>5xx 실패도 원장에 남는다</b>(독립검증 MIN-A). `ApiException` 만 잡으면
+     * `SQLITE_BUSY_SNAPSHOT`·제약 위반 같은 실패가 원장 밖으로 새고, 그러면 이 모듈의
+     * "성공·실패 모두 기록" 규율이 purge 에서만 안 지켜진다(형제 서비스 셋은 전부 남긴다).
+     */
+    @Test
+    @SuppressWarnings("rawtypes")
+    void unexpectedFailuresAreAlsoRecorded() {
+        String admin = adminToken();
+        String id = createUnit(admin, "예상밖실패");
+        // ⚠️ **증가분으로 잰다.** 이 클래스는 원장을 리셋하지 않고 다른 테스트도 실패 행을 남기므로
+        //    절대값을 단언하면 실행 순서에 기대게 된다(실제로 2를 관측했다).
+        long before = failedPurgeRows();
+        // players DELETE 만 실패시킨다 — ApiException 이 아닌 경로를 만드는 가장 작은 방법.
+        jdbcClient.sql("""
+                CREATE TRIGGER zz_block_player_delete BEFORE DELETE ON players
+                BEGIN SELECT RAISE(ABORT, 'injected'); END
+                """).update();
+        try {
+            ResponseEntity<Map> res = authPost("/api/admin/units/" + id + "/purge", admin,
+                    Map.of("reason", "예상밖"), Map.class);
+
+            assertThat(res.getStatusCode().is2xxSuccessful()).isFalse();
+            assertThat(unitExists(id)).as("트랜잭션이 통째로 롤백돼 유닛은 살아 있다").isTrue();
+            assertThat(failedPurgeRows() - before).as("5xx 실패도 원장에 남는다").isEqualTo(1);
+        } finally {
+            jdbcClient.sql("DROP TRIGGER zz_block_player_delete").update();
+        }
     }
 
     /**
