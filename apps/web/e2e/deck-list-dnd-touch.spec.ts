@@ -116,6 +116,42 @@ async function quickSwipe(page: Page, x: number, y: number, dy: number) {
   return page.evaluate(() => (document.querySelector("ul") as HTMLElement).scrollTop);
 }
 
+/**
+ * **부드러운 스크롤이 멎을 때까지 기다린다** (#318).
+ *
+ * ⚠️ 선수를 고르면 `DeckEditor` 가 프롬프트 레일로 화면을 옮긴다(`scrollIntoView`
+ * `behavior:"smooth"` — #244 A′ 의 **의도된 동작**). 390×844 에서는 그 레일을 중앙에 놓느라
+ * 문서 끝까지 간다(실측 `scrollY` 0 → 415, 약 500ms).
+ *
+ * 그래서 배치 **직후** `boundingBox()` 로 좌표를 잡으면 애니메이션이 아직 달리는 중이라 좌표가
+ * 낡는다 → 터치 시퀀스가 엉뚱한 곳에 떨어진다. 실측(20회 ×2): 이 대기가 없으면 **실패율 30%**,
+ * 실패 양상은 "엉뚱한 슬롯 착지"와 "드래그 미시작"이 섞여 나온다.
+ *
+ * ⚠️ **제품 결함이 아니라 하네스 경합이다.** #318 은 처음에 브랜치 회귀로 발제됐으나, W3 이전
+ * 커밋을 워크트리로 떼어 대조한 결과 **양쪽 실패율이 6/20 로 같았다**(스크롤은 #244 부터 있었다).
+ * 사람은 화면이 움직이는 것을 보고 기다리지만 테스트는 안 기다린다 — 그 차이였다.
+ */
+async function waitForScrollSettled(page: Page) {
+  // ⚠️ 카운터를 매번 리셋한다 — 남겨 두면 앞 호출이 세어 둔 값 때문에 **즉시 만족**해 버린다
+  // (검사하는 척하며 아무것도 안 기다리는 상태 = 이 리포에서 반복해 당한 공허한 계약 부류).
+  await page.evaluate(() => {
+    const w = window as unknown as { __lastY?: number; __stable?: number };
+    w.__lastY = undefined;
+    w.__stable = 0;
+  });
+  await page.waitForFunction(
+    () => {
+      const w = window as unknown as { __lastY?: number; __stable?: number };
+      const y = window.scrollY;
+      w.__stable = w.__lastY === y ? (w.__stable ?? 0) + 1 : 0;
+      w.__lastY = y;
+      return (w.__stable ?? 0) >= 3; // 같은 값이 연속 3회 = 멎었다
+    },
+    undefined,
+    { polling: 50, timeout: 5000 },
+  );
+}
+
 test("실폰(390x844, 터치): 시트 리스트 스와이프=스크롤 / 보드 토큰 롱프레스=자리 교체", async ({ page }) => {
   await mockApi(page);
   await page.addInitScript(() => {
@@ -169,6 +205,18 @@ test("실폰(390x844, 터치): 시트 리스트 스와이프=스크롤 / 보드 
   const mfSlot = (await slotOf("MF_TOP"))!;
   expect(fwSlot).toBe("board-slot-starter-9");
   expect(mfSlot).toBe("board-slot-starter-6");
+
+  /**
+   * ⚠️ 좌표를 재기 **전에** 두 가지를 해야 한다(#318 — 위 헬퍼 주석).
+   *
+   * ① 배치가 일으킨 부드러운 스크롤이 멎기를 기다린다.
+   * ② **보드로 되돌아온다.** ①만 하면 멎는 지점이 문서 바닥이라 보드가 화면 **위로** 사라져
+   *    (실측 목표 슬롯 `y = -169`) 드래그 자체가 불가능하다 — 대기만 넣은 1차 시도는 20/20 실패였다.
+   *    실제 유저도 프롬프트를 적고 나면 보드로 스크롤해 올라와서 자리를 바꾼다. 그 동작을 재현한다.
+   */
+  await waitForScrollSettled(page);
+  await page.getByTestId("token-FW_TOP").scrollIntoViewIfNeeded();
+  await waitForScrollSettled(page);
 
   const srcBox = (await page.getByTestId("token-FW_TOP").boundingBox())!;
   const dstBox = (await page.getByTestId(mfSlot).boundingBox())!;
