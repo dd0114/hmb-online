@@ -242,40 +242,21 @@ cd infra && sed -i '' 's|^WEB_ORIGINS=.*|WEB_ORIGINS=https://hmb-online.pages.de
 
 ---
 
-## 6. 상시 고정 URL 로 승격 — **결정됨(A안): named tunnel + `hmb-online.com`**
+## 6. 상시 고정 URL 승격 — **중단(2026-07-31, hero 확정)**
 
-> 🚦 **상태: 착수 대기**(2026-07-31). hero 가 도메인 `hmb-online.com` 구매 완료, A안 확정.
-> **순서 = ①배포 v3.02 를 현행 quick tunnel 로 먼저 내보낸 뒤 ②승격 실행**(main 조율).
-> 아래 §6.1 이 실행 계획이다. 승격이 끝나면 §6.2 의 "왜 했나"만 남기고 이 절을 정리한다.
+> 🛑 **하지 않는다.** hero 가 named tunnel 승격을 **전면 중단**하기로 확정했다(2026-07-31).
+> **현행 quick tunnel + 워치독 + 런타임 config 전파 구성을 그대로 유지**한다.
+> 이 절은 "왜 안 하기로 했나"만 남긴다 — **다시 제안하지 않는다.**
 
-### 6.1 실행 계획 (단절 최소화)
-
-**전제 점검 결과**: `cloudflared 2025.11.1` 설치됨 · `hmb-online.com` 이 **이미 Cloudflare 네임서버**(`monroe/darwin.ns.cloudflare.com`)라 DNS 라우팅이 바로 된다 · **`~/.cloudflared/cert.pem` 없음 → `cloudflared tunnel login` 1회 필요(브라우저 클릭 = hero 몫)**.
-
-| # | 단계 | 누가 | 단절 |
-|---|---|---|---|
-| 1 | `cloudflared tunnel login` → 브라우저에서 `hmb-online.com` 승인 → `~/.cloudflared/cert.pem` 생성 | **hero**(클릭) | 없음 |
-| 2 | `cloudflared tunnel create hmb-api` → 자격증명 JSON 생성 | 배포 세션 | 없음 |
-| 3 | `cloudflared tunnel route dns hmb-api api.hmb-online.com` → CNAME 자동 등록 | 배포 세션 | 없음 |
-| 4 | **새 터널을 quick tunnel 과 병행 기동**(설정파일 = `ingress: localhost:18080`) 후 `https://api.hmb-online.com` 을 **직접 검증**(401 · 다중 프로브) | 배포 세션 | **없음**(구 터널 살아 있음) |
-| 5 | `publish-backend-url.sh https://api.hmb-online.com` 로 web 전파 → 실브라우저 왕복 스모크 | 배포 세션 | **없음**(전파 즉시 새 주소) |
-| 6 | 스모크 GREEN 확인 후 **quick tunnel 종료(PID only)** + `start-tunnel.sh`·`status.sh`·`tunnel-heal.sh` 를 named 기준으로 전환 | 배포 세션 | 없음 |
-| 7 | 워치독 재정의: URL 은 **고정**이므로 "URL 캡처·재전파" 로직이 아니라 **프로세스 생존·health 프로브만** 본다(= 2026-07-30 반쪽 치유 갭 2·3 이 구조적으로 사라진다) | 배포 세션 | 없음 |
-| 8 | launchd 자동 기동 등록(재부팅 후에도 터널 유지) · deploy-log 기록 | 배포 세션 | 없음 |
-
-- **핵심**: 4~5 단계에서 **두 터널이 동시에 살아 있게** 해서 전환 순간에도 구 경로가 유효하다. 되돌리기는 `publish-backend-url.sh <quick URL>` 한 줄.
-- **CORS 무변경**: 백엔드가 허용하는 오리진은 Pages URL(`https://hmb-online.pages.dev`)이고 그건 안 바뀐다. (테스터 접속 주소를 `hmb-online.com` 자체로 옮기는 것은 **별건** — 그때는 `WEB_ORIGINS` 와 Pages 커스텀 도메인을 함께 손봐야 한다.)
-- **전환 대상 스크립트**(현재 quick tunnel 을 가정하는 곳): `start-tunnel.sh` · `status.sh` · `tunnel-heal.sh` · `publish-backend-url.sh` · `deploy-pages.sh` · `deploy-web.sh` · `version-manifest.sh` · `deploy-quicktunnel.sh`(폴백으로 보존).
-
-### 6.2 왜 하나 (근거)
-
-
-quick tunnel 은 hero 머신·터널이 살아있는 동안만 URL 유지. 진짜 상시 오픈이 필요해지면:
-- **named tunnel**(무료+도메인 ~$10/yr): `cloudflared tunnel login` → deploy.md §5.2. 이후 URL 고정.
-- **ngrok 유료**(~$8/mo): 고정 URL + 동시요청 제한 제거.
-- 둘 다 하면 `deploy-web.sh <고정URL>` 한 번만 하고 끝(재배포 반복 불필요).
-
----
+- 승격 시도 경위: 도메인 `hmb-online.com` 구매까지 진행했고 계획도 세웠으나(단절 0 병행 전환),
+  전제인 `cloudflared tunnel login` 이 **약 8분 폴링 타임아웃**이라 "URL 을 올려두고 나중에 승인"
+  방식이 3회 연속 만료됐다. 대안(대시보드 연결 토큰)까지 갔다가 **hero 가 중단을 확정**했다.
+- 그래서 남는 운영 전제(그대로 유효):
+  - 터널 URL 은 **바뀐다**. web 은 부팅 시 `/config.json` 을 읽고, 워치독이 그 파일만 갱신한다(§3·§3.5).
+  - URL 이 바뀌어도 **재빌드는 필요 없다** — `publish-backend-url.sh <새URL>` 한 줄(≈10초).
+  - 2026-07-30 "반쪽 치유"(프로세스 생존·URL 미전파) 장애의 갭 2·3은 **여전히 열려 있다**
+    (전파 결과 재확인 없음 · 치유 직후 새 URL 생존 미검증). 재발하면 §3 수동 절차로 복구한다.
+    갭 1(로그가 바이너리로 판정돼 URL 캡처가 깨지는 것)은 `grep -a` 로 **닫았다**.
 
 ## 7. 정지 / 재배포 / 리셋
 
