@@ -12,13 +12,14 @@
   min-width: 0;
   flex: 1;
 }
-.nickname {
-  font-size: 15px;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/*
+ * ⚠️ **홈 헤더에 닉네임이 없다**(#323, hero 확정 A). 폭 예산이 이유다 — 390px 내부 폭 362px 중
+ * 오른쪽(지갑 2칩 204 + [로그아웃] 62 + gap)이 272px 를 `flex: 0 0 auto` 로 가져가고, 왼쪽에 남는
+ * 90px 는 공지(28) + 우편(28) + gap(12) 으로 거의 찬다. 닉네임을 두면 22px 로 눌리거나 오른쪽 위로
+ * 겹쳐 그려졌다(실측). 이름은 바로 아래 팀 카드("{닉네임}의 팀")와 [내 정보] 가 말한다.
+ * 되살리려면 **오른쪽에서 무언가를 먼저 빼라** — 왼쪽에 넣는 것만으로는 자리가 없다.
+ * 계약 = e2e/p323-mailbox.spec.ts(390px 넘침 0 + 진입점 2개가 뷰포트 안).
+ */
 .headerRight {
   display: flex;
   align-items: center;
