@@ -48,7 +48,9 @@ export function RevengeQueue() {
     <section className={styles.card} data-testid="revenge-queue">
       <div className={styles.head}>
         <h2 className={styles.title}>⚔️ 복수 목록</h2>
-        {/* 남은 횟수는 **원정과 공유**다 — 여기 따로 세면 "복수로 무한 재도전"이 열린다. */}
+        {/* 남은 횟수는 **원정과 공유**다 — 여기 따로 세면 "복수로 무한 재도전"이 열린다.
+            ⚠️ 무제한(-1)은 `revengeView` 가 이미 null 로 걸러 준다(#332) — 여기서 다시 걸지 않는다.
+            소비처마다 센티널을 처리하면 한 곳이 빠지고, 실제로 그렇게 빠져 있었다. */}
         {view.remainingToday !== null && (
           <span className={styles.remaining} data-testid="revenge-remaining">
             오늘 {view.remainingToday}회 남음

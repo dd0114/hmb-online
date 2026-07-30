@@ -16,8 +16,18 @@ export interface RevengeView {
   /** 그릴 게 있는가. false 면 화면은 이 구역을 통째로 생략한다. */
   usable: boolean;
   entries: RevengeEntry[];
-  /** 원정 일일 한도와 **공유**한다(hero Q3-②). 모르면 null — 지어내지 않는다. */
+  /**
+   * 원정 일일 한도와 **공유**한다(hero Q3-②). 모르면 null — 지어내지 않는다.
+   *
+   * ⚠️ **무제한(-1)도 null 이다**(#332). 서버는 한도를 끄면(`hmb.away.match.daily-limit: 0`,
+   * 명시된 롤백 스위치) `remainingToday: -1` 을 준다. 그 값을 숫자로 흘리면 소비처가
+   * **-1 ≤ 0** 으로 읽어 복수 버튼을 전량 잠그고("오늘 원정 횟수를 모두 썼습니다") 표시도
+   * "오늘 -1회 남음"이 된다 — **서버는 실제로 수락하는데** 화면이 기능을 죽인다.
+   * 센티널은 여기서 **한 번만** 걸러 아래로 안 보낸다(소비처마다 다시 걸면 한 곳이 빠진다).
+   */
   remainingToday: number | null;
+  /** 한도가 꺼져 있는가 — "오늘 N회 남음"을 **아예 그리지 않기** 위한 신호(-1 을 렌더하지 않는다). */
+  unlimited: boolean;
 }
 
 /**
@@ -38,10 +48,18 @@ export function revengeView(data: RevengeResponse | undefined | null): RevengeVi
         // 최신이 앞이라는 전제로 **앞에서** 자른다 — 뒤에서 자르면 방금 맞은 침공이 사라진다.
         .slice(0, REVENGE_QUEUE_MAX)
     : [];
+  /**
+   * ⚠️ 음수는 전부 센티널로 본다(`< 0`). `=== -1` 로 좁히면 서버가 다른 음수를 쓰는 순간
+   * 같은 결함이 되돌아온다 — 남은 횟수가 음수인 상태는 어차피 의미가 없다.
+   * 같은 도메인의 `AwayPage` 가 이미 `remainingToday >= 0` 으로 걸러 왔다(#286 W5 만 몰랐다).
+   */
+  const raw = typeof data?.remainingToday === "number" ? data.remainingToday : null;
+  const unlimited = raw !== null && raw < 0;
   return {
     usable: entries.length > 0,
     entries,
-    remainingToday: typeof data?.remainingToday === "number" ? data.remainingToday : null,
+    remainingToday: unlimited ? null : raw,
+    unlimited,
   };
 }
 
