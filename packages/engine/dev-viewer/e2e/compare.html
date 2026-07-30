@@ -39,8 +39,8 @@
 </head>
 <body>
 <header>
-  <h1>#279 볼 소유자 결정 코어 A/B — 같은 시드 <code>1000000031</code>, 나머지 설정 전부 동일</h1>
-  <div class="sub">차이는 <b>볼 소유자가 행동을 고르는 방식</b>뿐이다. 오프더볼·경합·공 물리는 양쪽이 같은 코드다.</div>
+  <h1>엔진 비교 — <b>적용된 코어</b>(engine@0.24.0, 사슬) vs <b>이전 코어</b> · 같은 시드 <code>1000000031</code></h1>
+  <div class="sub">🅑 가 <b>지금 적용된 엔진</b>이다. 차이는 볼 소유자가 행동을 고르는 방식뿐 — 오프더볼·경합·공 물리는 양쪽이 같은 코드다. (공 급정지·프리킥 벽·데드볼 정지는 <b>아직 수정 전</b>이라 양쪽에 다 있다.)</div>
 </header>
 
 <div class="bar">
@@ -61,11 +61,11 @@
 
 <div class="wrap">
   <section class="pane a">
-    <h2>🅐 현행 코어 <span class="tag" id="scoreA">— 즉시 점수 가중 추첨</span></h2>
+    <h2>🅐 이전 코어 (롤백 경로) <span class="tag" id="scoreA">— 즉시 점수 가중 추첨</span></h2>
     <iframe id="fa" src="viewer-weighted.html" title="A 현행"></iframe>
   </section>
   <section class="pane b">
-    <h2>🅑 사슬 탐색 코어 <span class="tag" id="scoreB">— 행동 사슬 EV 탐색</span></h2>
+    <h2>🅑 <b>적용된 코어</b> (engine@0.24.0) <span class="tag" id="scoreB">— 행동 사슬 EV 탐색</span></h2>
     <iframe id="fb" src="viewer-chain.html" title="B 사슬"></iframe>
   </section>
 </div>
@@ -142,8 +142,8 @@
     scrub.value = ta;
     const sc = (f) => { try { const c = V(f).captions ? V(f).captions() : null; return c ? c.score : ""; } catch (e) { return ""; } };
     const a = sc(fa), b = sc(fb);
-    if (a) document.getElementById("scoreA").textContent = a + "  — 즉시 점수 가중 추첨";
-    if (b) document.getElementById("scoreB").textContent = b + "  — 행동 사슬 EV 탐색";
+    if (a) document.getElementById("scoreA").textContent = a + "  — 이전 코어";
+    if (b) document.getElementById("scoreB").textContent = b + "  — 적용된 코어";
     // 재생 중 드리프트가 2틱을 넘으면 10초(= 500ms × 20)에 한 번만 조용히 보정
     if (playing && Math.abs(ta - tb) > 2 && ticks - lastResync > 20) {
       lastResync = ticks;

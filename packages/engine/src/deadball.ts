@@ -1,9 +1,11 @@
 import type { EngineConfig } from "./config";
 import type { SimPlayer, SimState } from "./simstate";
+import type { SetPiecePlan } from "./setpiece";
 import type { Pitch } from "./pitch";
 import type { TeamSide } from "@hmb/shared";
 import { isqrt, toFixed } from "./fixedmath";
 import { varietyNoise } from "./decision";
+import { playerKey } from "./simstate";
 import { defendGoal, clampToPitch, centerSpot } from "./pitch";
 
 /**
@@ -73,11 +75,19 @@ export function deadBallShapeTarget(
   config: EngineConfig,
   player: SimPlayer,
   sp: NonNullable<SimState["setPiece"]>,
+  plan: SetPiecePlan | null = null,
 ): { x: number; y: number } {
   const d = config.rules.deadBall;
   let tx: number;
   let ty: number;
-  if (sp.kind === "kickoff" || sp.kind === "goal") {
+  // 세트피스 역할(프리킥 벽·백업, #307)이 배정된 선수는 **목적이 있는 자리**로 곧장 간다.
+  // 램프(아래)를 걸지 않는 이유: 벽은 재시작 전에 서 있어야 의미가 있다(Law 13 은 "공이
+  // 인플레이 될 때" 9.15m 밖을 요구한다 — 그때 벽이 없으면 벽이 아니다).
+  const slot = plan ? plan.slots.get(playerKey(player.side, player.id)) : undefined;
+  if (slot) {
+    tx = slot.x;
+    ty = slot.y;
+  } else if (sp.kind === "kickoff" || sp.kind === "goal") {
     tx = player.baseFx.x;
     ty = player.baseFx.y;
   } else {
@@ -89,20 +99,56 @@ export function deadBallShapeTarget(
     tx = player.baseFx.x + Math.round((sp.x - player.baseFx.x) * rx);
     ty = player.baseFx.y + Math.round((sp.y - player.baseFx.y) * ry);
   }
-  // 대기 동작: 배치에 느린(주기 idlePeriodTicks) 시드 오프셋. 주기가 길어 한 번 움직이면 여러 틱
-  // 가만히 있으므로 "매 틱 방향 반전"(#185)이 되지 않으면서 전원이 굳은 동상으로도 안 보인다.
+  // 대기 동작: 배치에 느린(주기 idlePeriodTicks) 시드 오프셋.
   const amp = Math.round(d.idleAmpM * config.fixedScale);
   if (amp > 0) {
     // 버킷 경계에 **선수별 위상**을 준다. 전원이 같은 틱에 목표를 바꾸면 "다 같이 걷고 다 같이
     // 멈추는" 그림이 되어 정지 틱이 몰린다(실측 동상틱 21.9%). 위상을 어긋내면 매 틱 일부만 움직인다.
     const period = Math.max(1, d.idlePeriodTicks);
-    const bucket = Math.floor((state.tick + (player.idHash % period)) / period);
+    const phase = state.tick + (player.idHash % period);
+    const bucket = Math.floor(phase / period);
     const nx = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 1);
     const ny = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 2);
-    tx += Math.round((nx * 2 - 1) * amp);
-    ty += Math.round((ny * 2 - 1) * amp);
+    let ox = (nx * 2 - 1) * amp;
+    let oy = (ny * 2 - 1) * amp;
+    if (d.idleDriftSmooth) {
+      // #307 H3: 버킷 경계에서 튀지 않고 다음 버킷 오프셋으로 **선형 이동**한다. 총 이동량은
+      // 같지만 주기 전체에 퍼져 "1틱 움직이고 5틱 동상"이 사라진다. 버킷 안에서 방향이 일정하므로
+      // 매 틱 반전(#185)은 여전히 불가능하다.
+      const mx = varietyNoise(state.seedHash, player.idHash, (bucket + 1) * 2 + 1);
+      const my = varietyNoise(state.seedHash, player.idHash, (bucket + 1) * 2 + 2);
+      const f = (phase - bucket * period) / period; // 0..1 (버킷 내 진행도)
+      ox += ((mx * 2 - 1) * amp - ox) * f;
+      oy += ((my * 2 - 1) * amp - oy) * f;
+    }
+    tx += Math.round(ox);
+    ty += Math.round(oy);
   }
   return clampToPitch(pitch, tx, ty);
+}
+
+/**
+ * 재시작 시각에 맞춘 도착 페이싱(#307 H3) — 이번 틱 이동 상한(fixed).
+ *
+ * 목표는 **고정**(최종 배치)이고 속도만 남은 틱에 맞춰 늘린다: 같은 거리를 정지 창 전체에 펴서
+ * 걷는다. 그래서 ①창 후반에 굳는 프레임이 사라지고 ②목표가 안 움직이므로 왕복(#185)이
+ * 구조적으로 불가능하며 ③상한이 오히려 내려가 단독 질주(#174)에도 유리하다.
+ *
+ * `remainTicks` = **이번 틱 포함** 남은 정지 틱. 올림(ceil)이라 마지막 틱엔 남은 거리 전부가
+ * 허용돼 도착이 늦어지지 않는다.
+ */
+export function deadBallPaceStep(
+  config: EngineConfig,
+  player: SimPlayer,
+  remainTicks: number,
+): number {
+  if (!config.rules.deadBall.pacedArrival || remainTicks <= 1) return Infinity;
+  const need = isqrt(
+    (player.targetFx.x - player.posFx.x) * (player.targetFx.x - player.posFx.x) +
+      (player.targetFx.y - player.posFx.y) * (player.targetFx.y - player.posFx.y),
+  );
+  if (need <= 0) return Infinity;
+  return Math.ceil(need / remainTicks);
 }
 
 /** 정지 중 규칙기반 배치를 쓰는 세트피스인가. 코너는 기존 박스 크라우딩 규칙(순수)을 유지. */

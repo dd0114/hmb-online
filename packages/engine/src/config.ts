@@ -388,6 +388,35 @@ export interface EngineConfig {
        */
       idleAmpM: number;
       idlePeriodTicks: number;
+      /**
+       * 대기 오프셋을 버킷 경계에서 **계단으로 튀게** 할지(false), 버킷 사이를 **선형 보간**해
+       * 천천히 흐르게 할지(true). (#307 H3)
+       *
+       * 계단이면 한 선수는 주기당 1틱만 움직이고 나머지 5틱은 완전히 굳는다 — 총 이동량은 같은데
+       * "동상 프레임"만 만든다. 보간하면 같은 이동량이 주기 전체에 퍼져 굳는 프레임이 사라진다.
+       * 방향은 **버킷 안에서 일정**하므로 매 틱 반전(#185)이 구조적으로 불가능하다.
+       */
+      idleDriftSmooth: boolean;
+      /**
+       * **재시작 시각에 맞춘 도착**(#307 H3). true 면 정지 중 이동 속도를
+       * `남은 거리 / 남은 정지 틱` 으로 한 번 더 조인다 — 같은 최종 배치를 유지하면서 이동을
+       * 창 전체에 고르게 편다.
+       *
+       * 왜 이 방식인가 (기각한 대안의 실측 근거):
+       * 처음엔 **목표를 단계적으로 미는 램프**(기본 배치 → 최종 배치)로 만들었다. 정지 비율은
+       * 22.4%→7.8% 로 잘 내려갔지만 **#185 왕복이 0.00 → 1.17/100 으로 되살아났다**(6시드 아블레이션).
+       * 원인은 구조적이다 — 정지 진입 시 선수는 대개 공 근처(= 기본 배치보다 스팟에 가까운 곳)에
+       * 있는데, 램프는 목표를 **기본 배치에서** 출발시키므로 선수가 먼저 뒤로 걸었다가 다시 앞으로
+       * 온다. 그게 곧 방향 반전이다.
+       * 도착 페이싱은 **목표를 건드리지 않는다**(최종 배치 고정) → 반전이 구조적으로 불가능하고,
+       * 이동 상한이 오히려 낮아져 #174(단독 질주)에도 유리하다.
+       *
+       * 제외 대상 2종(둘 다 "제때 도착"이 계약인 선수라 늦추면 안 된다):
+       *  - taker: `walkStoppage`(#59)가 taker 의 도달 틱으로 정지 길이를 정한다 — 페이싱으로 늦추면
+       *    정지가 끝나도 공에 못 닿는다.
+       *  - 접근 금지(#176) 후퇴 중인 상대: 재시작 틱에 구역이 비어 있어야 한다(Law 계약 A).
+       */
+      pacedArrival: boolean;
     };
   };
 
@@ -516,6 +545,49 @@ export interface EngineConfig {
       jitterX: number;
     };
 
+    /**
+     * 프리킥 루틴(#307 S7 / hero 제보 H4 — "프리킥 벽도 없고 주변 선수 백업도 없어").
+     *
+     * 픽스 전 엔진에는 **벽 로직이 아예 없었다** — `restartFreeKick` 은 taker 를 세우고 정지를 걸 뿐,
+     * 수비팀은 평소 규칙기반 배치(`deadBallShapeTarget`)만 받았다. 계량 확인: 20시드 · 차는 틱 기준
+     * 벽 1.70명 · 백업 1.12명(사거리 안 203건).
+     *
+     * 설계 규율:
+     *  - **인원은 상수 하드코딩이 아니다.** 스팟의 위협거리(골까지 거리 + 각도 대용 횡오프셋)로
+     *    `wallCountNear`~`wallCountFar` 사이를 선형 매핑한다. 멀거나 각이 없는 프리킥엔 벽이 안 선다.
+     *  - **벽은 9.15m 바깥에 선다.** 접근 금지(#176 `deadBallZone`)와 정합해야 하며, 안쪽으로 잡히면
+     *    `deadBallRetreatPoint` 가 도로 밀어내 벽이 서지 않는다 → `wallStandoffM` 로 여유를 준다.
+     *  - 삼각함수 금지(§5-4). 방향은 스팟→골 벡터를 정수 고정소수로 정규화해 쓴다.
+     */
+    freeKick: {
+      /** false = 벽·백업 없음(롤백 스위치 — 켜기 전과 bit-identical). */
+      enabled: boolean;
+      /**
+       * 벽을 세우는 최대 **위협거리**(m). 위협거리 = 스팟→수비 골 거리 + `wallWideWeight` × 횡오프셋.
+       * 횡오프셋을 더하는 것이 "각도" 대용이다 — 골라인 근처의 넓은 각 프리킥은 직접 슛 위협이 낮다.
+       * (실제 축구에서도 벽은 대략 상대 진영 30~35m 안, 각이 있는 위치에서만 세운다.)
+       */
+      wallRangeM: number;
+      /** 위협거리가 이 값 이하면 벽 인원 = `wallCountNear`. 여기서 `wallRangeM` 까지 선형 감소. */
+      wallNearM: number;
+      wallCountNear: number;
+      wallCountFar: number;
+      /** 횡오프셋을 위협거리에 더할 때의 가중(각도 대용). 0 이면 거리만 본다. */
+      wallWideWeight: number;
+      /** 벽이 서는 거리 = `rules.deadBall.opponentDistanceM` + 이 여유(m). 규칙 경계에 걸치지 않게. */
+      wallStandoffM: number;
+      /** 벽 선수 간 좌우 간격(m). */
+      wallSpacingM: number;
+      /**
+       * 벽을 세우는 프리킥의 정지 틱 가산(실제 축구의 "벽 세우기" 시간). 벽·백업이 **걸어서**
+       * 자리를 잡아야 하므로(#59/#174 순간이동 금지) 시간을 주지 않으면 자리 잡기 전에 재시작된다.
+       */
+      wallSetupTicks: number;
+      /** 공격팀이 스팟 주변에 두는 지원 인원(숏 프리킥 옵션·리바운드 대비). */
+      backupCount: number;
+      /** 지원 인원이 서는 스팟 기준 반경(m). */
+      backupRadiusM: number;
+    };
   };
 
   /**
@@ -713,7 +785,9 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  // 0.25.0: 공 물리 3건 — #313 루즈볼 굴림 · #306 공중볼/헤딩 · #312 세기·정확도(의도 vs 실제).
+  // 0.25.0 = hero 실관전 제보 5건 통합:
+  //   공 물리 — #313 루즈볼 굴림 · #306 공중볼/헤딩 · #312 세기·정확도(의도 vs 실제)
+  //   데드볼 — #307 프리킥 벽·백업 + 데드볼 "전원 정지" 해소
   version: "engine@0.25.0",
   msPerTick: 1000,
   matchMinutes: 90,
@@ -912,6 +986,9 @@ export const defaultEngineConfig: EngineConfig = {
       cornerWalkSpeedM: 4.5,
       idleAmpM: 0.8,
       idlePeriodTicks: 6,
+      // #307 H3. 총 이동량은 그대로 두고 "굳는 프레임"만 없앤다(계단 → 흐름).
+      idleDriftSmooth: true,
+      pacedArrival: true,
     },
   },
   variety: {
@@ -967,6 +1044,27 @@ export const defaultEngineConfig: EngineConfig = {
       // 지터 0.03(±3.15m)은 슬롯이 동일한 LCB/RCB 를 갈라준다.
       slotSpread: 0.25,
       jitterX: 0.03,
+    },
+    // #307 H4. 중립 스팟(골 20m·정면)은 벽 4명, 사거리 경계(34m)는 2명 = PL 표준 범위.
+    freeKick: {
+      enabled: true,
+      wallRangeM: 34,
+      wallNearM: 18,
+      wallCountNear: 4,
+      wallCountFar: 2,
+      wallWideWeight: 0.35,
+      // 0.35m: 고정소수 반올림 + 스냅샷 2자리 반올림(0.05) 여유를 합쳐도 9.15m 경계를 안 넘는다.
+      wallStandoffM: 0.35,
+      wallSpacingM: 0.8,
+      // ⚠️ **벽 형성 자체에는 0 으로도 충분하다** — 도착 페이싱(rules.deadBall.pacedArrival)이
+      // 정지 창 안의 도착을 보장하므로 벽은 어차피 선다(8시드 아블레이션: 0→2.77명 · 3→2.70 ·
+      // 6→2.63 · 9→2.50, 벽 0명 전부 0건).
+      // 그럼에도 6 을 쓰는 이유는 **밸런스 밴드**다: 0 이면 60시드 팀당 슛이 11.98 로 밴드
+      // (12–14, `realism/shot-frequency.test.ts`)를 0.02 아래로 벗어난다. 밴드를 넓히지 않는다는
+      // 규율(#279)에 따라 통과 지점을 쓴다. 페이싱을 끄면 이 노브가 다시 **필수**가 된다.
+      wallSetupTicks: 6,
+      backupCount: 3,
+      backupRadiusM: 8,
     },
   },
   chain: {

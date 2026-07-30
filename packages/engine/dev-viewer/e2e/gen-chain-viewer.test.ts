@@ -23,7 +23,12 @@ describe("#279 W2 chain A/B viewers", () => {
     const home = makeTacticalInput("H", SEED);
     const away = makeTacticalInput("A", SEED);
 
-    const w = runMatch(SEED, home, away, demoSelect, defaultEngineConfig);
+    // ⚠️ engine@0.24.0 부터 **기본값이 chain** 이다(#279 채택). `defaultEngineConfig` 를 그대로 쓰면
+    // 양쪽이 같은 코어가 되어 A/B 가 조용히 무의미해진다 — 대조군은 **명시적으로 weighted**.
+    const w = runMatch(SEED, home, away, demoSelect, {
+      ...defaultEngineConfig,
+      chain: { ...defaultEngineConfig.chain, mode: "weighted" },
+    });
     const c = runMatch(SEED, home, away, demoSelect, {
       ...defaultEngineConfig,
       chain: { ...defaultEngineConfig.chain, mode: "chain" },
@@ -45,8 +50,8 @@ describe("#279 W2 chain A/B viewers", () => {
         .replace("<h1>HMB TIER-B ENGINE · DEBUG VIEWER</h1>", `<h1>${tag}</h1>`);
       writeFileSync(path, out);
     };
-    label(vw.outPath, "🅐 현행 코어 (weighted · 즉시점수 가중추첨) — #279 A/B", "A · 현행 weighted");
-    label(vc.outPath, "🅑 사슬 탐색 코어 (chain · 행동사슬 EV) — #279 A/B", "B · 신규 chain");
+    label(vw.outPath, "🅐 이전 코어 (weighted · 즉시점수 가중추첨) — 롤백 경로", "A · 이전 weighted");
+    label(vc.outPath, "🅑 적용된 코어 (chain · 행동사슬 EV) — engine@0.24.0 기본", "B · 적용 chain");
     // eslint-disable-next-line no-console
     console.log(
       `\n[#279 A/B viewers] seed ${SEED}\n  weighted ${vw.outPath}  score ${w.finalScore.home}-${w.finalScore.away} events ${vw.events}\n  chain    ${vc.outPath}  score ${c.finalScore.home}-${c.finalScore.away} events ${vc.events}\n`,
