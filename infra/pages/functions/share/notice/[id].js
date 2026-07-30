@@ -64,8 +64,10 @@ export async function onRequestGet(context) {
 
   let meta = defaultMeta(url, id, env);
   try {
-    const notice = await fetchNotice(context, url, id);
-    if (notice) meta = noticeMeta(url, notice, id, env);
+    // 한 요청에 한 번만 읽어 공지 조회와 이미지 절대화가 **같은 백엔드**를 보게 한다(#320).
+    const apiBase = await readApiBase(context, url);
+    const notice = await fetchNotice(context, url, id, apiBase);
+    if (notice) meta = noticeMeta(url, notice, id, env, apiBase);
   } catch {
     // 타임아웃·네트워크·JSON 파싱 실패 — 기본 메타로 간다(6번 규칙).
   }
@@ -102,10 +104,15 @@ async function readApiBase(context, url) {
   return /^https?:\/\/[^\s]+$/i.test(base) ? base : null;
 }
 
-/** `GET {apiBase}/api/notices/{id}` — LIVE 200 / EXPIRED·OFF 410 / 그 외 404 (#297). 200 만 쓴다. */
-async function fetchNotice(context, url, id) {
+/**
+ * `GET {apiBase}/api/notices/{id}` — LIVE 200 / EXPIRED·OFF 410 / 그 외 404 (#297). 200 만 쓴다.
+ *
+ * `base` 는 호출부가 이미 읽어 넘긴다 — 같은 요청에서 og:image 절대화에도 **같은 값**이 필요한데
+ * 여기서 따로 읽으면 두 번 읽게 되고, 그 사이 워치독이 갈아끼우면 공지와 그림이 **다른 백엔드**를
+ * 가리킬 수 있다(#320).
+ */
+async function fetchNotice(context, url, id, base) {
   if (!ID_RE.test(id)) return null;
-  const base = await readApiBase(context, url);
   if (!base) return null;
   const res = await fetch(`${base}/api/notices/${encodeURIComponent(id)}`, {
     headers: { accept: "application/json" },
@@ -125,15 +132,22 @@ function defaultMeta(url, id, env) {
   return {
     title: DEFAULT_TITLE,
     description: DEFAULT_DESC,
+    // apiBase 를 넘기지 않는 것은 의도다 — 기본 이미지는 **정적 web 에셋**(favicon 또는
+    // OG_DEFAULT_IMAGE)이고, 이 경로는 백엔드 조회 이전에도 만들어져야 한다.
+    // 누가 OG_DEFAULT_IMAGE 를 `/api/…` 로 잡으면 이미지 없이 나간다 — 깨진 URL 보다 낫다.
     image: absolutize(defaultImagePath(env), url) || "",
     canonical: id ? canonical(url, id) : new URL("/", url.origin).toString(),
   };
 }
 
-function noticeMeta(url, notice, id, env) {
+function noticeMeta(url, notice, id, env, apiBase) {
   const desc = truncate(plainText(notice.body), DESC_MAX) || DEFAULT_DESC;
+  // 본문 이미지를 못 쓰면(자산 경로인데 apiBase 를 모를 때 등) 기본 이미지로 폴백한다 —
+  // 기본 이미지는 항상 web 오리진이므로 apiBase 없이 절대화된다.
   const image =
-    absolutize(firstImagePath(notice.body), url) || absolutize(defaultImagePath(env), url) || "";
+    absolutize(firstImagePath(notice.body), url, apiBase) ||
+    absolutize(defaultImagePath(env), url, apiBase) ||
+    "";
   return { title: notice.title.trim(), description: desc, image, canonical: canonical(url, id) };
 }
 
@@ -150,12 +164,25 @@ function firstImagePath(body) {
 
 /**
  * og:image 는 **절대 URL** 이어야 한다(상대경로를 읽는 스크래퍼가 없다).
- * 이미 절대면 그대로, `/`로 시작하면 이 사이트 오리진을 붙인다. 그 외(`javascript:`·상대경로)는 버린다.
+ * 이미 절대면 그대로, `/`로 시작하면 오리진을 붙인다. 그 외(`javascript:`·상대경로)는 버린다.
+ *
+ * ⚠️ **오리진이 둘이다**(#320) — 붙일 오리진을 경로로 가른다:
+ *   - `/api/notices/assets/{id}` = **업로드 자산**(#309 V30) → **백엔드**. web 오리진에는 이 경로가
+ *     없고 **SPA 폴백이 200 text/html** 로 응답하므로, 잘못 붙이면 404 로 드러나지 않고
+ *     **깨진 썸네일이 200 으로 위장**한다(실측: 463 B 짜리 index.html 이 og:image 로 나갔다).
+ *   - `/notice/hero-*.webp` 등 **정적 에셋** → 그대로 **web 오리진**. 전부 백엔드로 보내면
+ *     기존 공지(경니시우스)의 그림이 404 가 된다. 이 공존이 규칙의 핵심이다.
+ * web 런타임의 `resolveNoticeUrl`(apps/web/src/common/notice-asset-url.ts)과 **같은 규칙**이다 —
+ * 한쪽만 고치면 팝업과 공유 카드가 갈린다.
+ *
+ * apiBase 를 모르면 **빈 문자열**을 돌려준다 — 호출부가 기본 이미지로 폴백한다. 추측해서 붙이면
+ * 또 "200 인데 이미지가 아닌" 주소를 만든다.
  */
-function absolutize(src, url) {
+function absolutize(src, url, apiBase) {
   const s = String(src || "").trim();
   if (!s) return "";
   if (/^https?:\/\//i.test(s)) return s;
+  if (s.startsWith("/api/")) return apiBase ? `${apiBase}${s}` : "";
   if (s.startsWith("/")) return new URL(s, url.origin).toString();
   return "";
 }
