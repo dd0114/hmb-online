@@ -37,12 +37,22 @@ export const showcaseConfig = {
   matchMinutes: 24,
   decisionWeights: {
     ...defaultEngineConfig.decisionWeights,
-    shoot: 1.6, // 슛 더 자주(관전 재미).
+    // ⚠️ engine@0.24.0(사슬 코어 채택, #279)부터 이 값은 **chain 모드에서 아무 효과가 없다** —
+    // chain 은 행동별 즉시 점수가 아니라 도달 상태의 EV 를 비교하므로 `decisionWeights` 를 읽지
+    // 않는다. 남겨두는 이유는 롤백(`chain.mode: "weighted"`) 경로의 쇼케이스 노브이기 때문.
+    // chain 에서의 대체 노브 = 아래 `contest.shootRange`.
+    shoot: 1.6, // 슛 더 자주(관전 재미) — weighted 경로 전용.
   },
   contest: {
     ...defaultEngineConfig.contest,
     xgBase: 0.62, // 0.225 → 0.62 (슛당 득점 확률↑ = 골 더 많이, 관전 재미용 · perceptibility 6/6)
     onTargetBase: 0.55, // 유효슛↑ → 세이브 상황↑
+    // 사슬 코어의 "슛 자주" 노브(위 shoot: 1.6 의 대체, #279). 슛 후보는 골까지 이 거리 안에서만
+    // 생성되므로, 리얼값 19 는 chain 에서 슛 자체가 드물어진다(실측: 24분 데모 골 8 → **0**).
+    // 단일 시드 스윕(demoSeed, 24분): 19→골0/슛5 · 24→**골6/슛23/선방12/코너8/카드2/PK1** ·
+    // 28→골3 · 32→골5(카드1). 24 가 골·선방·코너·카드·PK 를 모두 내는 지점이라 채택
+    // (뷰어 E2E 계약이 이벤트 타입 커버리지를 요구한다). **쇼케이스 전용 — 리얼은 19 그대로.**
+    shootRange: 24,
     shootXgThreshold: 0.05,
     saveCornerProb: 0.7, // 세이브→코너 굴절↑
     offTargetBlockCornerProb: 0.45, // 빗맞음→코너↑

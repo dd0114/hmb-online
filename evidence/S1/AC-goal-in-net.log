@@ -1,22 +1,20 @@
-=== AC-goal-in-net: showcase(viewer) (engine@0.23.0-showcase, seed 4815162342) ===
+=== AC-goal-in-net: showcase(viewer) (engine@0.24.0-showcase, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
-총 골: 8
-  #1 tick=9 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #2 tick=49 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #3 tick=258 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #4 tick=355 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #5 tick=503 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #6 tick=648 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #7 tick=800 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #8 tick=1284 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+총 골: 6
+  #1 tick=37 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #2 tick=368 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #3 tick=727 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #4 tick=761 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #5 tick=966 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #6 tick=1162 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
 
-=== AC-goal-in-net: real(default) (engine@0.23.0, seed 4815162342) ===
+=== AC-goal-in-net: real(default) (engine@0.24.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
 총 골: 5
-  #1 tick=1296 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #2 tick=1648 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
-  #3 tick=2012 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #4 tick=2563 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
-  #5 tick=4831 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #1 tick=2431 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #2 tick=3206 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #3 tick=4407 team=home ball=(104.50,34.00) 골라인=O 포스트내=O => PASS
+  #4 tick=4950 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #5 tick=5262 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)

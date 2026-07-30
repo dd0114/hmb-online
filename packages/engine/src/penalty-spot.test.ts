@@ -23,6 +23,22 @@ function snapByTick(log: MatchLog): Map<number, TickSnapshot> {
   return new Map(log.tickSnapshots.map((s) => [s.tick, s]));
 }
 
+/**
+ * 정지 창을 **같은 하프 안으로 잘라내는** 상한 틱(포함).
+ *
+ * 왜 필요한가 (engine@0.24.0 사슬 채택에서 처음 걸림): 세트피스가 하프 종료 직전에 선언되면
+ * `from + stoppageTicks` 창이 하프 경계를 넘는다. 경계 다음 틱의 공은 **킥오프 리셋으로 중앙
+ * (52.5, 34)** 에 있으므로, 스팟 대비 거리가 30m+ 로 찍혀 "드리프트"로 오판된다.
+ * 실제로 `free_kick@2693`(STOP=8 → 창 2693..2701)이 t2700 의 하프 휘슬+킥오프를 삼켜
+ * 35.8m 를 기록했다 — 공은 2693~2699 내내 (88.3, 33.4) 에 **정확히 정지**해 있었다.
+ * 이건 드리프트 회귀가 아니라 **측정 창 버그**다. 창을 하프 안으로 자른다(가드는 그대로 유지).
+ */
+function halfBoundedEnd(log: MatchLog, from: number, stop: number): number {
+  const whistle = log.events.find((e) => e.type === "half_whistle" && e.tick > from);
+  const cap = whistle ? whistle.tick - 1 : Number.POSITIVE_INFINITY;
+  return Math.min(from + stop, cap);
+}
+
 describe("penalty spot no-drift (#48)", () => {
   it("PK 정지 동안 공이 페널티 스팟에서 드리프트하지 않는다(스팟에서 슛)", () => {
     const log = runMatch(PK_SEED, demoHome, demoAway, demoSelect, config);
@@ -42,7 +58,8 @@ describe("penalty spot no-drift (#48)", () => {
       // 선언~슛(정지 종료)까지 공이 스팟에 머무는가.
       let maxDrift = 0;
       let worst = -1;
-      for (let t = p.tick; t <= p.tick + STOP; t++) {
+      const end = halfBoundedEnd(log, p.tick, STOP);
+      for (let t = p.tick; t <= end; t++) {
         const s = byTick.get(t);
         if (!s) continue;
         const d = Math.hypot(s.ball.x - spot.x, s.ball.y - spot.y);
@@ -71,7 +88,8 @@ describe("penalty spot no-drift (#48)", () => {
       const spot = byTick.get(fk.tick)!.ball;
       let maxDrift = 0;
       let worst = -1;
-      for (let t = fk.tick; t <= fk.tick + STOP; t++) {
+      const end = halfBoundedEnd(log, fk.tick, STOP);
+      for (let t = fk.tick; t <= end; t++) {
         const s = byTick.get(t);
         if (!s) continue;
         const d = Math.hypot(s.ball.x - spot.x, s.ball.y - spot.y);

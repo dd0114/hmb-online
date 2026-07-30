@@ -210,11 +210,16 @@ describe("#279 S2 — 계측(probe)", () => {
 });
 
 describe("#279 S2 — weighted 경로 무변경", () => {
+  // engine@0.24.0 에서 기본 코어가 chain 이 됐으므로 **weighted 를 명시적으로 켜서** 잰다.
+  // (기본값에 기대면 이 계약이 "chain 이 search 노브에 면역"이라는 거짓을 주장하게 된다 —
+  //  chain 은 당연히 예산에 반응해야 하고, 실제로 반응한다 = 위 4) 계약.)
+  const weightedConfig: EngineConfig = { ...config, chain: { ...config.chain, mode: "weighted" } };
+
   it("chain.search 노브는 weighted 결과에 영향이 0 이다 (롤백 보장)", () => {
-    const a = runMatch(demoSeed, demoHome, demoAway, demoSelect, config);
+    const a = runMatch(demoSeed, demoHome, demoAway, demoSelect, weightedConfig);
     const b = runMatch(demoSeed, demoHome, demoAway, demoSelect, {
-      ...config,
-      chain: { ...config.chain, search: { maxNodes: 1, beamTop: 1, recurseBeam: 0 } },
+      ...weightedConfig,
+      chain: { ...weightedConfig.chain, search: { maxNodes: 1, beamTop: 1, recurseBeam: 0 } },
     });
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });

@@ -432,10 +432,14 @@ export interface EngineConfig {
    *   EV(행동) = 성공확률 × V(성공 상태, 깊이−1) + (1−성공확률) × V(턴오버 상태)
    * 설계 출처 = RoboCup 2D agent2d 의 ChainAction(논문 공개, 코드 미사용) + 축구분석의 공간 평가.
    *
-   * `mode: "weighted"` 가 기본이며 그 경로는 **한 줄도 바뀌지 않는다**(골든 유지 = 롤백 보장).
+   * **`mode: "chain"` 이 기본이다(engine@0.24.0, #279 — A/B 실관전 후 hero 채택 결정).**
+   * `"weighted"` 는 **롤백 스위치**로 남긴다 — 구 코어 코드는 지우지 않았고 한 줄도 바뀌지 않았으므로
+   * 이 값만 되돌리면 0.23.0 의 행동으로 즉시 복귀한다(골든만 재갱신). 지우지 말 것.
    */
   chain: {
-    /** "weighted" = 기존(즉시 점수 가중 추첨). "chain" = 행동 사슬 EV 탐색. */
+    /**
+     * "chain" = 행동 사슬 EV 탐색(**기본**). "weighted" = 구 코어(즉시 점수 가중 추첨) = **롤백 스위치**.
+     */
     mode: "weighted" | "chain";
     /** 탐색 깊이(1 = 이번 행동의 결과 상태만, 2 = 받은 선수의 다음 수까지). */
     depth: number;
@@ -613,7 +617,7 @@ const formation433: Vec2[] = [
 
 /** 기본 EngineConfig. 밸런싱은 이 값만 조정한다. */
 export const defaultEngineConfig: EngineConfig = {
-  version: "engine@0.23.0",
+  version: "engine@0.24.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -829,8 +833,8 @@ export const defaultEngineConfig: EngineConfig = {
     },
   },
   chain: {
-    // 기본은 기존 코어 — "chain" 은 #279 비교본에서만 켠다(골든·밸런스 무영향).
-    mode: "weighted",
+    // #279 채택(0.24.0): 사슬 탐색이 기본. "weighted" 로 되돌리면 0.23.0 행동으로 롤백된다.
+    mode: "chain",
     depth: 2,
     advanceWeight: 1.0,
     advanceExponent: 3.0,

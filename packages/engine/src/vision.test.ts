@@ -189,7 +189,12 @@ describe("롤백 스위치 (#147 W3)", () => {
   // 새 트리의 최종 상태에 **구 hashState 공식**(possessionSince·plan 미포함)을 적용하면
   // 구 상수 a7be3a33 / 9d21c53c 가 그대로 나온다(= 좌표·피로·스코어·소유가 비트동일).
   // 같은 방식으로 데모 골든도 d58237c3 재현 확인. (S1 은 동작 변경 0 이 목표다.)
-  const ROLLBACK_HASH = "196700ce"; // #279 S1 후속(blocker-2) — hashState 가 lastTurnover·blockDepth·phase·intents 를 추가 흡수. 좌표·이벤트는 bit-identical(프로브 md5 대조).
+  // #279 사슬 채택(engine@0.24.0): **이번엔 해시 공식이 아니라 동작이 바뀌었다** — 볼 소유자
+  // 결정 코어가 `chain.mode: "weighted" → "chain"` 으로 교체됐다(hero A/B 실관전 채택). 롤백
+  // 스위치는 시야(#147)·코너(#182) 두 개뿐이라 코어 교체는 여기서 되돌려지지 않는다. 코어까지
+  // 되돌리려면 `chain.mode: "weighted"`(= 0.23.0 동작). 이 상수의 역할은 그대로다 —
+  // "롤백 경로가 **조용히** 드리프트하지 않는다".
+  const ROLLBACK_HASH = "b0db295a";
   // #182 재보정(foul.base 0.017→0.0178)으로 marked 변형의 해시가 바뀐다.
   // ⚠️ **내 트리 출력을 베끼지 않았다** — `origin/main`(6f1b12b) 를 별도 워크트리로 체크아웃해
   // 같은 foul.base 를 넣고 독립 도출한 값이다(main 에는 corner 기능 자체가 없다):
@@ -204,7 +209,7 @@ describe("롤백 스위치 (#147 W3)", () => {
   //    코너와 무관한 **전역 노브**라 롤백 상태에서도 경기가 달라진다(gameqa 실측: corner off 고정
   //    후 foul 만 바꿔 7시드 대조 → **3건만 동일**). 이 스위치는 "코너 동작 롤백"이지
   //    "main 비트동등 복원"이 아니다.
-  const ROLLBACK_HASH_MARKED = "6150fa7a"; // #279 S1 후속(blocker-2) — 위 ROLLBACK_HASH 와 같은 이유(해시 공식만 이동, 동작 무변경).
+  const ROLLBACK_HASH_MARKED = "92882f3d"; // #279 사슬 채택 — 위 ROLLBACK_HASH 와 같은 이유(코어 교체 = 동작 변경).
 
   // #176: 데드볼 접근 금지 규칙은 **롤백 스위치 없이 무조건 적용**(hero 결정)이라 vision-off 출력도
   // 함께 움직인다. 이 상수의 목적은 "레거시와 같다"가 아니라 **"롤백 경로가 조용히 드리프트하지

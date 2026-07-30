@@ -23,14 +23,26 @@ function withChain(base: EngineConfig): EngineConfig {
   return { ...base, chain: { ...base.chain, mode: "chain" } };
 }
 
+/**
+ * engine@0.24.0 부터 **기본값이 chain** 이다(#279 채택). 그래서 대조군은 `defaultEngineConfig`
+ * 를 그대로 쓰면 안 된다 — 그러면 양쪽이 같은 코어가 되어 전 지표가 동일해지고(실측: lastHash
+ * 까지 같아짐) A/B 표가 조용히 무의미해진다. 대조군은 **명시적으로 weighted** 로 되돌린다.
+ */
+function withWeighted(base: EngineConfig): EngineConfig {
+  return { ...base, chain: { ...base.chain, mode: "weighted" } };
+}
+
 function f(v: number, d = 2): string {
   return (Math.round(v * 10 ** d) / 10 ** d).toString();
 }
 
 describe("#279 W2 chain-vs-weighted", () => {
   it.skipIf(!GEN)("compares both ball-owner decision cores on identical seeds", () => {
-    const weighted = defaultEngineConfig;
+    const weighted = withWeighted(defaultEngineConfig);
     const chain = withChain(defaultEngineConfig);
+    // 대조가 실제로 두 코어를 비교하고 있는지 자체 검사(기본값이 또 바뀌어도 조용히 안 깨지게).
+    expect(weighted.chain.mode).toBe("weighted");
+    expect(chain.chain.mode).toBe("chain");
 
     // 성능 비교용 타이머(테스트 파일이라 하이진 스캔 대상 아님, 결정론에도 영향 없음).
     const hr = (process as unknown as { hrtime: { bigint: () => bigint } }).hrtime;
