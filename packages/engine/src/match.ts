@@ -44,7 +44,9 @@ import {
   deadBallRetreatPoint,
   deadBallShapeTarget,
   deadBallUsesShape,
+  deadBallPaceStep,
 } from "./deadball";
+import { computeSetPiecePlan } from "./setpiece";
 import { attackGoal } from "./pitch";
 import type { OutCross } from "./ball";
 import { hashState } from "./hash";
@@ -212,6 +214,14 @@ function stepTick(carry: Carry): void {
   // --- 세트피스 정지(dead ball): 재배치만 하고 결정/경합/공비행 스킵 ---
   if (state.stoppage > 0) {
     state.stoppage--;
+    // #307: 팀 계획은 **정지 중에도** 갱신한다. 이전엔 이 분기가 먼저 return 해서 `state.plan` 이
+    // 정지 진입 직전 값으로 굳었고(S1 이 주석으로 남긴 성질), 그래서 코너 깃발·스팟으로 공이
+    // 옮겨간 뒤에도 라인이 옛 볼 위치를 가리켰다. 지금은 소비자가 없어 **동작 변화 0**(해시만
+    // 움직인다). S3 가 정지 중 배치에 라인을 쓰려면 선행돼야 하는 성질이라 여기서 갚는다.
+    state.plan = {
+      home: computeTeamPlan(state, "home", config, pitch),
+      away: computeTeamPlan(state, "away", config, pitch),
+    };
     // #231: 소유자는 (id, side) 쌍으로 잡는다 — id 만 보면 반대 팀 동명 선수까지 "소유자 취급"돼
     // 그 틱의 재배치를 못 받는다. 캡처 시점 값을 쓰는 의미는 그대로 보존한다.
     const heldId = state.ball.owner;
@@ -221,12 +231,20 @@ function stepTick(carry: Carry): void {
     // 태클/인터셉트로 강탈한다(골킥이면 박스 안 키퍼에게서 뺏어 즉시 실점).
     const zone = deadBallZone(state, config, pitch);
     const shapeSp = state.setPiece && deadBallUsesShape(state.setPiece.kind) ? state.setPiece : null;
+    // #307: 세트피스 역할 배정(프리킥 벽·백업)은 **팀 전체를 보는** 계산이라 선수 루프 **앞에서
+    // 틱당 1회**만 한다(결정론 규율 §5-1 — `teamplan` 과 같은 자리·같은 이유).
+    const spPlan = shapeSp ? computeSetPiecePlan(state, pitch, config, shapeSp, zone) : null;
+    // #307 H3: 도착 페이싱에서 제외할 선수(제때 도착이 계약인 선수). 아래 배치 루프에서 채운다.
+    const noPace = new Set<SimPlayer>();
     for (const p of state.players) {
-      if (p.id === heldId && p.side === heldSide) continue;
+      if (p.id === heldId && p.side === heldSide) {
+        noPace.add(p); // taker — walkStoppage(#59)가 도달 틱을 정한다. 늦추면 공에 못 닿는다.
+        continue;
+      }
       // #185/#174: 정지 중엔 평소 오프더볼 로직(자기 위치·시야 피드백) 대신 **규칙기반 정적 배치**.
       // 상황이 안 변하는 구간에서 매 틱 재계산하면 목표가 자기 위치를 따라 흔들려 제자리 왕복이
       // 생기고(#185), 전원이 굳은 뒤 한 명만 기억 만료로 새 타깃을 받아 혼자 질주한다(#174).
-      if (shapeSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, shapeSp);
+      if (shapeSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, shapeSp, spPlan);
       else decideOffBall(state, p, config, pitch, null);
       if (!zone || !deadBallExcluded(p, zone)) continue;
       // 구역 안에 있으면 전술 목표보다 **나가는 것이 우선**(안 그러면 반대편 목표로 가느라
@@ -235,6 +253,8 @@ function stepTick(carry: Carry): void {
       const targetInside = deadBallClearance(zone, p.targetFx.x, p.targetFx.y) < 0;
       if (inside || targetInside) {
         p.targetFx = deadBallRetreatPoint(pitch, zone, config, p.posFx.x, p.posFx.y);
+        // 후퇴는 재시작 틱까지 **반드시** 끝나야 한다(Law 계약 A) → 페이싱 제외.
+        noPace.add(p);
       }
     }
     // 코너는 **더 느슨한 상한**을 쓴다 — 코너 정지 중 배치(rest defence, #182)는 하프라인까지 40m 를
@@ -249,7 +269,12 @@ function stepTick(carry: Carry): void {
       // #174: 데드볼엔 뛰지 않고 **걸어서** 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만
       // 풀스피드로 가로지르면 "공보다 선수가 빠른" 그림이 된다(실측 최대 6.4 m/tick).
       // taker 도 포함한다. walkStoppage(#59)가 **같은 상한**으로 도달 틱을 산정하므로 도달은 보장된다.
-      const step = Math.min(speedStep(p, config), walkCap);
+      //
+      // #307 H3: 그 위에 **재시작 시각에 맞춘 도착 페이싱**을 한 겹 더 얹는다 — 목표는 그대로 두고
+      // 남은 거리를 남은 틱에 펴서 걷는다. 창 후반에 전원이 굳는 그림(정지 21.4%)이 사라지면서
+      // 목표가 안 움직이므로 왕복(#185)은 구조적으로 생기지 않는다. remain = 이번 틱 포함 남은 틱.
+      const paceCap = noPace.has(p) ? Infinity : deadBallPaceStep(config, p, state.stoppage + 1);
+      const step = Math.min(speedStep(p, config), walkCap, paceCap);
       const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
       const c = clampToPitch(pitch, next.x, next.y);
       if (zone && deadBallExcluded(p, zone) && deadBallBlocked(zone, p, c)) continue;
@@ -362,12 +387,14 @@ function stepTick(carry: Carry): void {
   // 정지 브랜치와 **같은 규율**(규칙기반 배치 + 걷기 속도)을 적용한다 — 안 그러면 정지가 끝나는
   // 순간 이 구간에서만 평소 로직이 되살아나 왕복·단독질주가 그대로 남는다(실측 최대 6.3 m/tick).
   const liveSp = state.setPiece && deadBallUsesShape(state.setPiece.kind) ? state.setPiece : null;
+  // #307: 정지 브랜치와 같은 규율 — 세트피스 역할 배정은 decide 루프 앞, 틱당 1회.
+  const liveSpPlan = liveSp ? computeSetPiecePlan(state, pitch, config, liveSp, liveZone) : null;
   for (const p of state.players) {
     if (p.id === ownerId && p.side === ownerSide) continue;
     // 볼을 안 가진 선수는 드리블 체인 리셋(활성 캐리어만 연속 누적).
     p.dribbleStreak = 0;
     const pa = p.side === defSide ? presser : null;
-    if (liveSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, liveSp);
+    if (liveSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, liveSp, liveSpPlan);
     else decideOffBall(state, p, config, pitch, pa);
     if (!liveZone || !deadBallExcluded(p, liveZone)) continue;
     const inside = deadBallClearance(liveZone, p.posFx.x, p.posFx.y) < 0;

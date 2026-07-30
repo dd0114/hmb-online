@@ -1,33 +1,30 @@
-=== AC-kickoff: showcase(viewer, 골 많음) (engine@0.24.0-showcase, seed 4815162342) ===
+=== AC-kickoff: showcase(viewer, 골 많음) (engine@0.25.0-showcase, seed 4815162342) ===
 판정: 각 골 → 25틱 뒤 kickoff 이벤트 존재 + 킥오프틱 공=센터(52.5,34)·실점팀 소유 + 포메이션 t0 슬롯 복귀(테이커 제외, 허용오차 0.1m)
 
-총 골: 6
+총 골: 3
 #  goalTick  team  koTick  koEvt  ball(x,y)       소유    전dev(dwell)   후dev(kickoff)   판정
-1  37        away  62      O      (52.5,34.0)     home  22.64m        0.00m(21/21)    PASS
-2  368       away  393     O      (52.5,34.0)     home  0.80m         0.00m(21/21)    PASS
-3  727       away  752     O      (52.5,34.0)     home  0.76m         0.00m(21/21)    PASS
-4  761       home  786     O      (52.5,34.0)     away  0.79m         0.00m(20/20)    PASS
-5  966       away  991     O      (52.5,34.0)     home  0.80m         0.00m(21/21)    PASS
-6  1162      away  1187    O      (52.5,34.0)     home  0.79m         0.00m(21/21)    PASS
+1  107       home  132     O      (52.5,34.0)     away  22.52m        0.00m(20/20)    PASS
+2  966       away  991     O      (52.5,34.0)     home  2.41m         0.00m(21/21)    PASS
+3  1177      home  1202    O      (52.5,34.0)     away  1.91m         0.00m(20/20)    PASS
 
-후반 시작(tick 720): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=31.50m 후dev=0.00m(20/20) => PASS
+후반 시작(tick 720): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=37.59m 후dev=0.00m(20/20) => PASS
 
 개시(t0) 킥오프: team=home taker=H6 ball=(52.5,34.0) (t0 가 기준 슬롯)
 
 결과: ALL PASS  (전dev=세리머니 dwell 흩어짐 → 후dev≈0 = 포메이션 리셋 확인)
 
-=== AC-kickoff: real(default) (engine@0.24.0, seed 4815162342) ===
+=== AC-kickoff: real(default) (engine@0.25.0, seed 4815162342) ===
 판정: 각 골 → 25틱 뒤 kickoff 이벤트 존재 + 킥오프틱 공=센터(52.5,34)·실점팀 소유 + 포메이션 t0 슬롯 복귀(테이커 제외, 허용오차 0.1m)
 
 총 골: 5
 #  goalTick  team  koTick  koEvt  ball(x,y)       소유    전dev(dwell)   후dev(kickoff)   판정
-1  2431      away  2456    O      (52.5,34.0)     home  13.91m        0.00m(21/21)    PASS
-2  3206      away  3231    O      (52.5,34.0)     home  0.79m         0.00m(21/21)    PASS
-3  4407      home  4432    O      (52.5,34.0)     away  0.79m         0.00m(20/20)    PASS
-4  4950      away  4975    O      (52.5,34.0)     home  0.80m         0.00m(21/21)    PASS
-5  5262      away  5287    O      (52.5,34.0)     home  0.79m         0.00m(21/21)    PASS
+1  1152      home  1177    O      (52.5,34.0)     away  2.39m         0.00m(19/19)    PASS
+2  2234      away  2259    O      (52.5,34.0)     home  2.74m         0.00m(20/20)    PASS
+3  3341      home  3366    O      (52.5,34.0)     away  1.48m         0.00m(19/19)    PASS
+4  3910      home  3935    O      (52.5,34.0)     away  7.06m         0.00m(19/19)    PASS
+5  4484      home  4509    O      (52.5,34.0)     away  1.44m         0.00m(19/19)    PASS
 
-후반 시작(tick 2700): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=34.62m 후dev=0.00m(20/20) => PASS
+후반 시작(tick 2700): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=37.50m 후dev=0.00m(19/19) => PASS
 
 개시(t0) 킥오프: team=home taker=H6 ball=(52.5,34.0) (t0 가 기준 슬롯)
 

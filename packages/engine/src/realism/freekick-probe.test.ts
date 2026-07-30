@@ -85,6 +85,52 @@ describe("#279 hero 제보 진단", () => {
     const W = cfg.pitch.width;
     const wallCounts: number[] = [];
     const backupCounts: number[] = [];
+    // #307: **차는 틱**(정지 창 마지막)에서도 같이 잰다. 선언 틱은 아직 아무도 걷지 않은 시점이라
+    // 그 틱에 벽이 서 있으려면 순간이동뿐이다(#59/#174 금지). 규칙(Law 13)이 요구하는 시점도
+    // "공이 인플레이 될 때"다. 두 값을 같이 찍어 전후 비교가 끊기지 않게 한다.
+    const wallAtKick: number[] = [];
+    const backupAtKick: number[] = [];
+    const restartTickSet = new Set(
+      log.events.filter((e) => e.type === "free_kick" || e.type === "penalty" || e.type === "kickoff").map((e) => e.tick),
+    );
+    const kickTickOf = (t0: number, spot: { x: number; y: number }): number => {
+      let last = t0;
+      for (let t = t0 + 1; t <= t0 + 60; t++) {
+        const s = byTick.get(t);
+        if (!s) break;
+        if (s.ballOwner == null || dist(s.ball.x, s.ball.y, spot.x, spot.y) > 0.3) break;
+        if (restartTickSet.has(t)) break;
+        last = t;
+      }
+      return last;
+    };
+    for (const t of fkTicks) {
+      const sn0 = byTick.get(t);
+      if (!sn0) continue;
+      const kt = kickTickOf(t, sn0.ball);
+      const sk = byTick.get(kt);
+      if (!sk) continue;
+      const takerSide0 = sn0.ballOwner?.startsWith("H") ? "home" : "away";
+      const goalX = takerSide0 === "home" ? W : 0;
+      const bx0 = sn0.ball.x;
+      const by0 = sn0.ball.y;
+      wallAtKick.push(
+        sk.players.filter((p) => {
+          if ((p.playerId.startsWith("H") ? "home" : "away") === takerSide0) return false;
+          const d = dist(p.pos.x, p.pos.y, bx0, by0);
+          if (d > 13 || d < 7) return false;
+          return (goalX - bx0) * (p.pos.x - bx0) > 0;
+        }).length,
+      );
+      backupAtKick.push(
+        sk.players.filter(
+          (p) =>
+            (p.playerId.startsWith("H") ? "home" : "away") === takerSide0 &&
+            p.playerId !== sk.ballOwner &&
+            dist(p.pos.x, p.pos.y, bx0, by0) <= 15,
+        ).length,
+      );
+    }
     for (const t of fkTicks.slice(0, 6)) {
       const sn = byTick.get(t);
       if (!sn) continue;
@@ -134,7 +180,10 @@ describe("#279 hero 제보 진단", () => {
         `  t=${String(t).padStart(4)} 스팟(${bx.toFixed(0)},${by.toFixed(0)}) taker=${takerId ?? "-"} | 벽 ${wall}명 · 백업(15m) ${backup}명 · 상대근접(10m) ${oppNear}명 | 이후 12틱 평균변위 ${mean(win).toFixed(2)} m/tick`,
       );
     }
-    lines.push(`  → 벽 평균 ${mean(wallCounts).toFixed(2)}명 · 백업 평균 ${mean(backupCounts).toFixed(2)}명`);
+    lines.push(`  → [선언 틱] 벽 평균 ${mean(wallCounts).toFixed(2)}명 · 백업 평균 ${mean(backupCounts).toFixed(2)}명 (앞 6건)`);
+    lines.push(
+      `  → [차는 틱] 벽 평균 ${mean(wallAtKick).toFixed(2)}명 · 백업 평균 ${mean(backupAtKick).toFixed(2)}명 (${wallAtKick.length}건 전수)`,
+    );
 
     // --- ① 공 궤적의 부자연스러움: 틱간 방향 급변 ---
     lines.push("");

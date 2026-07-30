@@ -103,10 +103,37 @@ describe("#279 S1 — teamplan 훅", () => {
     }
   });
 
-  it("매치가 state.plan 을 채운다 (틱당 1회 갱신 훅)", () => {
-    const s = freshState();
-    expect(s.plan.home.lineX).toBe(computeTeamPlan(s, "home", config, pitch).lineX);
-    expect(s.plan.away.lineX).toBe(computeTeamPlan(s, "away", config, pitch).lineX);
+  /**
+   * ⚠️ 비교 대상은 **마지막 틱이 끝난 상태**가 아니라 **그 틱이 시작할 때의 공 위치**다.
+   *
+   * 훅은 `stepTick` **앞**에서 돌고(결정론 규율 §5-1) 공은 그 틱 뒤쪽에서 움직인다. 그래서
+   * "끝난 상태로 다시 계산한 값"과는 **한 틱치 공 이동만큼 어긋나는 것이 정상**이다.
+   * 원래 이 계약은 그 차이를 무시하고 등식으로 박혀 있었고, 마지막 틱에 공이 안 움직이는
+   * 시드 운으로 통과하고 있었다(#307 에서 데드볼 배치가 바뀌자 982fx = 0.98m 차이로 깨졌다).
+   * 틱 시작 공 위치는 **직전 틱 스냅샷**에 남아 있으므로 그걸로 정확히 재현한다
+   * (스냅샷은 실좌표 2자리 반올림이라 ±0.005m = 5fx 의 반올림 여유만 준다).
+   */
+  it("매치가 state.plan 을 채운다 (틱당 1회 갱신 훅 — 틱 시작 시점 공 기준)", () => {
+    const carry = runFirstHalf(demoSeed, demoHome, demoAway, demoSelect, config);
+    const s = carry.state;
+    const lastTick = s.tick;
+    const prev = carry.snapshots.find((sn) => sn.tick === lastTick - 1);
+    expect(prev, "직전 틱 스냅샷이 있어야 한다").toBeTruthy();
+    const probe: SimState = {
+      ...s,
+      ball: { ...s.ball, posFx: { x: Math.round(prev!.ball.x * config.fixedScale), y: Math.round(prev!.ball.y * config.fixedScale) } },
+    };
+    const TOL = 10; // 스냅샷 2자리 반올림(±5fx) 여유.
+    for (const side of ["home", "away"] as const) {
+      expect(Math.abs(s.plan[side].lineX - computeTeamPlan(probe, side, config, pitch).lineX), side).toBeLessThanOrEqual(TOL);
+    }
+    // 훅이 안 돌고 초기값에 굳어 있으면 위 비교가 우연히 통과할 수 있다 → 킥오프 시점(센터)의
+    // 계획과 **다르다**는 것도 함께 본다(하프 종료 시 공이 센터에 정확히 있을 확률은 사실상 0).
+    const kickoff: SimState = {
+      ...s,
+      ball: { ...s.ball, posFx: { x: Math.round(pitch.wFx / 2), y: Math.round(pitch.hFx / 2) } },
+    };
+    expect(s.plan.home.lineX).not.toBe(computeTeamPlan(kickoff, "home", config, pitch).lineX);
   });
 });
 

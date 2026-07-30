@@ -7,6 +7,7 @@ import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
 import { fdist, fclamp, toFixed } from "./fixedmath";
 import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
+import { freeKickWallCount } from "./setpiece";
 
 /**
  * contest — 경합 판정(패스/인터셉트/태클/슛).
@@ -290,7 +291,11 @@ export function restartFreeKick(
 ): MatchEvent {
   const spot = clampToPitch(pitch, x, y);
   const taker = nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side);
-  const base = config.rules.freeKickStoppageTicks;
+  // #307 H4: 벽을 세우는 프리킥은 정지를 늘린다. 벽·백업은 **걸어서** 자리를 잡아야 하므로
+  // (#59/#174 순간이동 금지) 시간을 안 주면 자리를 잡기 전에 재시작돼 "벽이 없는" 그림이 그대로다.
+  // 실제 축구에서도 벽을 세우는 프리킥은 준비가 더 길다.
+  const wall = freeKickWallCount(pitch, config, side, spot.x, spot.y);
+  const base = config.rules.freeKickStoppageTicks + (wall > 0 ? config.setPiece.freeKick.wallSetupTicks : 0);
   if (taker) {
     // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 = 도달까지(멀면 연장).
     const dist = assignWalkingTaker(state, taker, spot.x, spot.y);
