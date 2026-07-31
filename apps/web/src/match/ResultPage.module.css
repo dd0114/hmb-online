@@ -1,8 +1,6 @@
-.page {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
+/* ⚠️ 구 `.page`(무대 아래로 세로로 쌓이던 `ResultPage` 의 루트)는 **삭제했다** — #169 가 그 페이지를
+   시트 탭으로 흡수하며 소비자가 0 이 됐는데 클래스만 남아 있었다(독립검증 MINOR-3). 아래 `.panel`
+   과 이름이 비슷해 "둘 중 뭐가 쓰이나"를 매번 다시 확인해야 했다. */
 
 /*
  * 결과 패널 = [스크롤 콘텐츠] + [바닥 CTA] (#355). 감독시간(`HalftimePanel.module.css`)과

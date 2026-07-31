@@ -440,6 +440,77 @@ test.describe("⑤ 감독시간 — 넓고 낮은 창(분기 아래)에서 입�
 });
 
 /**
+ * ⑦ **2컬럼 임계 아래의 잔여 밴드** · #354 독립검증 MAJOR-1
+ *
+ * ⑤ 의 2컬럼은 컨테이너 640px = **뷰포트 688px** 부터 걸린다. 그 아래 폭(480~687)에서는 같은
+ * 증상이 남아 있었다 — 640×800 b807/800 OUT · 673×900 b910/900 OUT · 687×768 b838/768 OUT ·
+ * 600×800 은 뷰포트 안이지만 중심이 **[후반 시작] 에 피격**. 실사용에 있는 창들이다
+ * (1280 모니터 반쪽 스냅 640 · Galaxy Z Fold 내부 673).
+ *
+ * 여긴 2컬럼으로 못 간다(레일을 빼면 보드가 234px 라 토큰 4열이 겹친다) → `TacticsBoard` 가 이미
+ * 쓰는 "짧을수록 피치가 양보한다" 스텝을 감독시간 안에서 한 단계 더 쓴다.
+ *
+ * ⚠️ **아직 안 닫힌 창이 있다**: 폭 ~640~687 × 세로 ≤~720(640×700 · 680×700)은 이 비율로도
+ * 프롬프트가 CTA 에 피격된다. **여기에 `test.fail` 핀을 박지 않았다** — 기대실패는 "passed" 로
+ * 집계돼 다음 사람을 속인다(CLAUDE.md 함정 1). 후속 이슈에 실측과 함께 남겼다.
+ */
+test.describe("⑦ 2컬럼 임계 아래 — 보드가 양보해 입력칸이 살아난다", () => {
+  for (const vp of [
+    { name: "480x800", width: 480, height: 800 },
+    { name: "540x720", width: 540, height: 720 },
+    { name: "600x800", width: 600, height: 800 },
+    { name: "640x800", width: 640, height: 800 }, // 1280 모니터 반쪽 스냅
+    { name: "673x900", width: 673, height: 900 }, // Galaxy Z Fold 내부 화면
+    { name: "687x768", width: 687, height: 768 }, // 2컬럼 임계 바로 아래
+  ]) {
+    test(`${vp.name} — 입력칸이 화면 안 + CTA 에 안 덮인다`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "HALFTIME");
+      await expect(page.getByTestId("halftime-panel")).toHaveCount(1);
+
+      const prompt = await box(page, "editor-team-prompt");
+      expect(prompt.inViewport, `${vp.name}: 입력칸 bottom ${prompt.bottom} > 뷰포트 ${prompt.vh}`).toBe(true);
+      /*
+       * ⚠️ 이 밴드의 실제 실패 양상은 "뷰포트 밖"이 아니라 **[후반 시작] 에 덮임**이었다
+       * (600×800 b781 은 뷰포트 안인데 중심 히트가 `resume-button`). 좌표만 재면 통과한다.
+       */
+      expect(prompt.hitSelf, `${vp.name}: 입력칸 중심을 다른 것이 받는다([후반 시작]에 덮였을 가능성)`).toBe(true);
+
+      // 자리를 만든다고 보드를 없애지 않았다 — 배치·교체가 여기서만 가능하다.
+      const board = await box(page, "tactics-board");
+      expect(board.h, `${vp.name}: 전술보드가 실질적으로 사라지면 안 된다`).toBeGreaterThan(120);
+      expect(board.hitSelf, `${vp.name}: 전술보드 중심을 다른 것이 받는다`).toBe(true);
+    });
+  }
+
+  /** 폰과 그 바로 위(479)는 규칙이 안 걸린다 — 보드 비율이 그대로여야 한다. */
+  test("폰·479 이하는 이 스텝이 안 걸린다 (무회귀)", async ({ page }) => {
+    for (const vp of [
+      { name: "390x844", width: 390, height: 844 },
+      { name: "360x740", width: 360, height: 740 },
+      { name: "412x915", width: 412, height: 915 },
+    ]) {
+      await page.setViewportSize(vp);
+      await openMatch(page, "HALFTIME");
+      await expect(page.getByTestId("halftime-panel")).toHaveCount(1);
+      const board = await box(page, "tactics-board");
+      const prompt = await box(page, "editor-team-prompt");
+      expect(prompt.inViewport, `${vp.name}: 폰 입력칸이 화면 밖`).toBe(true);
+      expect(prompt.hitSelf, `${vp.name}: 폰 입력칸이 덮였다`).toBe(true);
+      /*
+       * 폰 피치는 `TacticsBoard` 의 기존 스텝(68/52 · 68/44 · 68/40)만 받는다 — 480 이상에만 거는
+       * 새 스텝(68/30)이 새 나가면 이 하한이 죽는다. 68/40 → w/h = 1.70, 68/30 → 2.27.
+       */
+      expect(
+        board.w / board.h,
+        `${vp.name}: 폰 보드가 새 스텝(68/30 = 2.27)까지 눌렸다 — 실측 ${(board.w / board.h).toFixed(2)}`,
+      ).toBeLessThan(2.0);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
+  });
+});
+
+/**
  * ⑥ **결과 화면 [로비로] CTA** · #355
  *
  * 뿌리는 #348 과 같다(`.sheetState` 고정 높이)지만 **모든** 데스크탑 비율에서 깨져 있었다 —
@@ -555,6 +626,31 @@ test.describe("⑥ 결과 화면 — [로비로] 가 어느 데스크탑 비율�
     expect(Math.abs(after.y - before.y), `스크롤 후 CTA 가 ${after.y - before.y}px 움직였다`).toBeLessThanOrEqual(1);
     expect(after.inViewport, "스크롤 끝에서 CTA 가 화면 밖").toBe(true);
     expect(after.hitSelf, "스크롤 끝에서 CTA 중심을 다른 것이 받는다").toBe(true);
+  });
+
+  /**
+   * CTA 는 **자기 높이만** 쓴다 — 스크롤 영역의 몫을 먹지 않는다(독립검증 MINOR-2).
+   * `.toLobby { flex: none }` 을 `flex: 1 1 auto` 로 되돌리면 버튼이 52 → **175px** 로 부풀어
+   * 읽을 자리를 삼키는데, 위 단언들은 전부 통과한다(CTA 는 여전히 화면 안이라서). 그 변이를
+   * 죽이는 건 이 계약뿐이다 — **CTA 는 문이지 콘텐츠가 아니다.**
+   */
+  test("CTA 가 스크롤 영역의 몫을 먹지 않는다 (flex:none)", async ({ page }) => {
+    for (const vp of [
+      { name: "1280x800", width: 1280, height: 800 },
+      { name: "1920x1080", width: 1920, height: 1080 },
+    ]) {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FINISHED");
+      await expect(page.getByTestId("result-page")).toHaveCount(1);
+      const cta = await box(page, "to-lobby");
+      const sheet = await box(page, "stage-sheet");
+      expect(cta.h, `${vp.name}: CTA 높이 ${cta.h}px — 버튼 한 줄보다 커졌다(스크롤 몫을 먹는다)`).toBeLessThanOrEqual(90);
+      expect(
+        cta.h / sheet.h,
+        `${vp.name}: CTA 가 시트의 ${Math.round((cta.h / sheet.h) * 100)}% 를 차지한다`,
+      ).toBeLessThan(0.25);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
   });
 
   test("문서 스크롤 0 — 결과 탭(데스크톱 전 비율)", async ({ page }) => {
