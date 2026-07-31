@@ -26,17 +26,44 @@ const cfg = defaultEngineConfig;
 // 60 시드(팀-경기 120). SD 크지만 평균은 밴드 내 안정.
 const agg = aggregateRealism(cfg, GUARD_SEEDS);
 
-describe("G-A 슛 빈도 밴드(팀당 12–14) + hero 목표 골(경기당 5)", () => {
-  it(`팀당 슛 12–14 (측정 ${agg.mean.shots})`, () => {
+/**
+ * 사다리 판정식의 **절대 폭 하한**(3.5슛)은 90분 경기에서 뜬 값이다 — 슛/팀·경기 단위라 경기
+ * 길이에 비례한다. #365 로 길이가 노브가 됐으므로 상수로 두면 길이를 반으로 줄인 날 "레버가
+ * 침식됐다"고 거짓 신호를 낸다. **비율 판정식(1.35배)은 길이에 무관하므로 한 자리도 안 건드린다.**
+ */
+const SPAN_FLOOR = 3.5 * (cfg.matchMinutes / 90);
+
+/**
+ * ⚠️ **#365(경기 45분화)로 볼륨 밴드를 재도출했다 — 노브는 하나도 안 돌렸다.**
+ *
+ * 아래 밴드들은 전부 **90분 경기**에서 뜬 값이었다(실축 벤치 12–14 슛, hero 목표 5골).
+ * 경기가 45분이 되면 같은 확률로도 볼륨이 내려간다 — 그건 회귀가 아니라 **길이의 귀결**이다.
+ * hero 판정(2026-07-31): *"경기 내용은 다른 곳에서 튜닝할 거야, 지금은 시간만 건드려."*
+ * 그래서 이 웨이브는 확률 노브를 건드리지 않고 **밴드만 45분 실측 위에 다시 세운다.**
+ *
+ * ⚠️ **"×2 환산"으로 옛 밴드를 재사용하면 안 된다** — 볼륨이 선형으로 반이 되지 않는다.
+ * 경기를 4등분한 팀당 슛 밀도가 90분에서 **5.30 / 2.23 / 2.55 / 2.27** 로 **초반이 후반의 2.3배**라,
+ * 짧은 경기일수록 그 초반 구간의 비중이 커진다.
+ * 45분/90분 비(같은 노브, **GUARD_SEEDS 60시드**): 슛 **×0.616** · 골 **×0.590** ·
+ * 스로인 ×0.496(= 사실상 정확히 선형). 즉 **비선형은 슛·골 계열의 성질**이고 순수 카운트 지표는
+ * 선형이다. (20시드 REALISM_SEEDS 로는 골 ×0.504 가 나왔는데 그건 표본 차이다 — 밴드 판정은
+ * 60시드가 기준이므로 그 값을 적는다. 독립검증 m3.)
+ *
+ * **폭은 그대로다** — 각 밴드의 상대 폭(±7.7% · ±13.7% · ±10%)을 유지한 채 중심만 45분 실측으로
+ * 옮겼다. 즉 판정 세기는 안 낮췄다.
+ * **"경기당 5골" 목표를 45분 경기에서도 유지할지는 밸런스 트랙(#10)이 정한다** — 이 파일이
+ * 그 결정을 대신하지 않는다.
+ */
+describe("G-A 슛 빈도 밴드(45분 경기 재도출) — hero 목표 골은 밸런스 트랙 소관", () => {
+  it(`팀당 슛 7.2–8.4 (측정 ${agg.mean.shots})`, () => {
     // 밴드는 **안 넓혔다**(D4 확정 벤치 12-14 그대로). 0.25.0 볼륨 재보정 때 골을 5 로 올리는
     // 방법이 두 가지였다 — ① 슛을 20 넘게 늘려 전환율을 실축(10-12%)에 두거나 ② 슛은 벤치
     // 안에 두고 전환율을 올리거나. **②를 골랐다**: hero 가 리얼리즘 밴드를 면제한 것은 골 계열뿐이고,
     // 슛 수는 "경기가 어떻게 흘러가나"를 보는 구조 지표라 벤치에 붙여 두는 게 맞다.
     // 그래서 골 5 를 만드는 데 필요한 슛은 13.6 (전환 18.9%) — 여전히 12–14 한가운데다.
-    expect(agg.mean.shots).toBeGreaterThanOrEqual(12);
-    // 상한은 D4 확정 벤치(12-14)와 일치시킨다. 이전엔 14.5 로 느슨해 제목(12-14)과 어긋났고,
-    // #147 W2 때 실측 14.15 가 그 슬랙에 숨었다(검증 세션 지적).
-    expect(agg.mean.shots).toBeLessThanOrEqual(14);
+    // 구 밴드 12–14(90분·D4 확정 벤치, 중심 13 ±7.7%) → 45분 실측 7.81 중심에 **같은 상대 폭**.
+    expect(agg.mean.shots).toBeGreaterThanOrEqual(7.2);
+    expect(agg.mean.shots).toBeLessThanOrEqual(8.4);
   });
   it(`슛당 xG 0.18–0.24 (측정 ${agg.mean.xgPerShot}) — hero 결정: 경기당 5골 목표, 리얼리즘 밴드 미적용`, () => {
     // 구 밴드 0.10–0.13(실축). 골 5 를 슛 13.6 으로 만들려면 슛당 xG 가 그 2배여야 한다
@@ -45,16 +72,20 @@ describe("G-A 슛 빈도 밴드(팀당 12–14) + hero 목표 골(경기당 5)",
     expect(agg.mean.xgPerShot).toBeGreaterThanOrEqual(0.18);
     expect(agg.mean.xgPerShot).toBeLessThanOrEqual(0.24);
   });
-  it(`hero 목표 골: 경기당(양팀 합) ∈ [4.4, 5.8] (측정 ${agg.goalsPerMatch})`, () => {
-    // **이 프로젝트에서 골 수의 SoT 는 이 한 줄이다.** hero 목표 5.0 ± 15%(구 골 밴드와 같은 상대폭).
-    // 리얼리즘 밴드(2.7–3.3) 미적용 — 위 파일 헤더 참조.
-    expect(agg.goalsPerMatch).toBeGreaterThanOrEqual(4.4);
-    expect(agg.goalsPerMatch).toBeLessThanOrEqual(5.8);
+  it(`골: 경기당(양팀 합) ∈ [2.8, 3.7] (측정 ${agg.goalsPerMatch})`, () => {
+    // 구 밴드 [4.4, 5.8] = **90분 경기**에서의 hero 목표 5.0 ±13.7%. 45분 실측 3.28 중심에 같은 폭.
+    // ⚠️ 이 줄은 이제 "hero 목표를 지킨다"가 아니라 **"길이만 바뀌고 확률은 안 바뀌었다"** 를 지킨다.
+    // 45분 경기에서 목표를 몇 골로 둘지는 밸런스 트랙의 결정이다(#365 hero 판정).
+    expect(agg.goalsPerMatch).toBeGreaterThanOrEqual(2.8);
+    expect(agg.goalsPerMatch).toBeLessThanOrEqual(3.7);
   });
-  it(`팀당 골 ∈ [2.2, 2.9] (측정 ${agg.mean.goals}) — hero 결정: 경기당 5골 목표, 리얼리즘 밴드 미적용`, () => {
-    // 위 goalsPerMatch 의 팀 단위 표현(양팀 합/2). 구 밴드 [1.4,1.9] 는 실축 벤치(1.4–1.65)였다.
-    expect(agg.mean.goals).toBeGreaterThanOrEqual(2.2);
-    expect(agg.mean.goals).toBeLessThanOrEqual(2.9);
+  it(`팀당 골 ∈ [1.4, 1.85] (측정 ${agg.mean.goals})`, () => {
+    // 위 goalsPerMatch 의 팀 단위 표현(양팀 합/2). 구 밴드 [2.2,2.9] = 90분 기준.
+    // ⚠️ 상한은 **[2.8, 3.7] / 2 = [1.4, 1.85]** 여야 한다 — 1.9 로 두면 이 파일이 스스로
+    //   "팀 단위 표현"이라 부르는 관계가 상한에서만 깨진다(독립검증 m2). 그러면 팀당 골이
+    //   1.86~1.90 인 상태가 여기선 통과하고 위 줄에서만 걸려, 둘 중 뭐가 기준인지 모호해진다.
+    expect(agg.mean.goals).toBeGreaterThanOrEqual(1.4);
+    expect(agg.mean.goals).toBeLessThanOrEqual(1.85);
   });
   it(`슛→골 전환 17–22% (측정 ${agg.mean.shotConvPct}) — hero 결정: 경기당 5골 목표, 리얼리즘 밴드 미적용`, () => {
     // 구 벤치 10–12%(실축). 골 5 / 슛 13.6 의 정의상 귀결이라 별도 튜닝 대상이 아니라 **정합성 가드**다
@@ -62,12 +93,13 @@ describe("G-A 슛 빈도 밴드(팀당 12–14) + hero 목표 골(경기당 5)",
     expect(agg.mean.shotConvPct).toBeGreaterThanOrEqual(17);
     expect(agg.mean.shotConvPct).toBeLessThanOrEqual(22);
   });
-  it(`유효슛은 **리얼리즘 밴드 유지** 4.5–5.5 (측정 ${agg.mean.onTarget})`, () => {
+  it(`유효슛 2.9–3.5 (측정 ${agg.mean.onTarget})`, () => {
     // 골 계열이지만 여기만 벤치를 지킨다 — 유효슛은 "골이 몇 개냐"가 아니라 "골문으로 몇 번 가나"라
     // 관전 리듬의 구조 지표에 가깝다. xgBase 상향으로 5.89 까지 튄 것을 `onTargetBase` 0.235→0.21 로
     // 되돌려 5.37 로 맞췄다(config.ts 주석 참조).
-    expect(agg.mean.onTarget).toBeGreaterThanOrEqual(4.5);
-    expect(agg.mean.onTarget).toBeLessThanOrEqual(5.5);
+    // 구 밴드 4.5–5.5(90분 실축 벤치, 중심 5.0 ±10%) → 45분 실측 3.18 중심에 같은 상대 폭.
+    expect(agg.mean.onTarget).toBeGreaterThanOrEqual(2.9);
+    expect(agg.mean.onTarget).toBeLessThanOrEqual(3.5);
   });
 });
 
@@ -142,7 +174,7 @@ describe.skipIf(!LADDER)(`G-A 단조성: 슛 노브↑ → 슛 수↑ (config �
     const ratio = sat / shots[0]!;
     const label = `전 구간 총효과 (8=${shots[0]} → ${SAT}=${sat}) 절대 ${span.toFixed(2)} · 비율 ${ratio.toFixed(2)}배`;
     expect(ratio, `${label} — 레버 비율이 죽었다`).toBeGreaterThan(1.35);
-    expect(span, `${label} — 절대 폭 하한(무한 침식 방지)`).toBeGreaterThan(3.5);
+    expect(span, `${label} — 절대 폭 하한(무한 침식 방지, 경기 길이 비례)`).toBeGreaterThan(SPAN_FLOOR);
   });
 
   /**
@@ -157,8 +189,14 @@ describe.skipIf(!LADDER)(`G-A 단조성: 슛 노브↑ → 슛 수↑ (config �
    * 잡아 rung 당 참효과(≈2.4슛)가 SE(Δ)≈0.47 의 다섯 배 위에 오게 했다 — 그리고 그래야
    * 총효과가 gv 사다리와 **같은 판정식**(1.35배·3.5슛)을 통과한다(0.198↔0.190 은 1.27배로 미달).
    */
-  it("contest.shootXgThreshold 사다리 0.198→0.186 엄격 단조(임계↓ = 슛↑)", () => {
-    const rungs = [0.198, 0.192, 0.186];
+  // ── #365(경기 45분화): **임계는 그대로, rung 을 넓혔다** (이 파일의 기존 규율 그대로) ──────
+  // 경기가 반이 되면 총효과 비율이 압축된다 — 경기 초반의 슛 밀도가 후반의 2.3배라 그 구간이
+  // **길이에 비례하지 않는 바닥**으로 남기 때문이다(90분 12.20→17.06 = 1.40배 / 45분 같은 rung
+  // 7.81→10.11 = **1.29배**, 양쪽에 +1.7 정도의 고정분을 더하면 그대로 설명된다).
+  // 레버가 죽은 게 아니므로 임계(1.35배)를 내리지 않고 rung 을 0.186 → **0.180** 으로 넓힌다.
+  // 45분 60시드 실측: 0.198→7.81 · 0.189→9.26 · 0.180→10.73 (엄격 단조 · 절대 2.92 · **1.374배**).
+  it("contest.shootXgThreshold 사다리 0.198→0.180 엄격 단조(임계↓ = 슛↑)", () => {
+    const rungs = [0.198, 0.189, 0.180];
     const measure = (shootXgThreshold: number) =>
       aggregateRealism({ ...cfg, contest: { ...cfg.contest, shootXgThreshold } }, GUARD_SEEDS).mean.shots;
     const shots = rungs.map(measure);
@@ -168,9 +206,9 @@ describe.skipIf(!LADDER)(`G-A 단조성: 슛 노브↑ → 슛 수↑ (config �
     }
     const span = shots[shots.length - 1]! - shots[0]!;
     const ratio = shots[shots.length - 1]! / shots[0]!;
-    const label = `총효과 (0.198=${shots[0]} → 0.186=${shots[shots.length - 1]}) 절대 ${span.toFixed(2)} · 비율 ${ratio.toFixed(2)}배`;
+    const label = `총효과 (0.198=${shots[0]} → 0.180=${shots[shots.length - 1]}) 절대 ${span.toFixed(2)} · 비율 ${ratio.toFixed(2)}배`;
     expect(ratio, `${label} — 레버 비율이 죽었다`).toBeGreaterThan(1.35);
-    expect(span, `${label} — 절대 폭 하한(무한 침식 방지)`).toBeGreaterThan(3.5);
+    expect(span, `${label} — 절대 폭 하한(무한 침식 방지, 경기 길이 비례)`).toBeGreaterThan(SPAN_FLOOR);
   });
 
   // 롤백 경로(`chain.mode: "weighted"`)의 레버도 살아 있어야 한다 — 롤백이 "돌아가긴 하는데 튜닝은
@@ -196,6 +234,6 @@ describe.skipIf(!LADDER)(`G-A 단조성: 슛 노브↑ → 슛 수↑ (config �
     const hi = measure(1.0);
     const label = `weighted shoot 0.10=${lo} → 1.00=${hi} (절대 ${(hi - lo).toFixed(2)} · 비율 ${(hi / lo).toFixed(2)}배)`;
     expect(hi / lo, `${label} — 롤백 경로의 레버 비율이 죽었다`).toBeGreaterThan(1.35);
-    expect(hi - lo, `${label} — 롤백 경로의 절대 폭 하한`).toBeGreaterThan(3.5);
+    expect(hi - lo, `${label} — 롤백 경로의 절대 폭 하한(경기 길이 비례)`).toBeGreaterThan(SPAN_FLOOR);
   });
 });

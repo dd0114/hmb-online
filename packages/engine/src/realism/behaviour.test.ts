@@ -21,7 +21,11 @@ import { aggregateBehaviour, measureBehaviour, type BehaviourMetrics } from "./b
  * 절대 임계만 걸면 "얼마가 정상인가"를 이 파일이 임의로 정하게 된다.
  */
 
-const SEEDS = REALISM_SEEDS.slice(0, 8);
+// #365(경기 90 → 45분): 시드당 관측이 **절반**이 되면서 이 파일의 두 관계 계약(전방 러너 수·
+// 러너 마크 거리)이 노이즈에 묻혀 부호가 뒤집혔다(실측 4.06 vs 4.04 · 7.67 vs 7.70 — 폭이 0.5%다).
+// **임계·관계식은 한 자리도 안 건드리고 시드를 2배로** 올려 검정력을 되돌린다. 경기가 반이라
+// 시뮬 비용(총 경기-분)은 8시드×90분과 같다.
+const SEEDS = REALISM_SEEDS.slice(0, 16);
 const select = makeSelectData();
 
 function run(cfg: EngineConfig): BehaviourMetrics {
@@ -51,9 +55,12 @@ const noRun = run({
 });
 
 describe("#314 ⓐ 걷어내기", () => {
-  it(`걷어내기가 팀당 10–25회/경기 나온다 (현재 ${cur.clearances.toFixed(2)})`, () => {
-    expect(cur.clearances).toBeGreaterThanOrEqual(10);
-    expect(cur.clearances).toBeLessThanOrEqual(25);
+  it(`걷어내기가 팀당 5–12.5회/경기 나온다 (현재 ${cur.clearances.toFixed(2)})`, () => {
+    // #365(경기 90 → 45분): 구 밴드 10–25 는 90분 경기에서 뜬 값이다. 경기 길이에 비례하는
+    // 카운트 지표라 **같은 밴드를 길이로 환산**한다(밴드를 새로 만들지 않는다 = 기준 출처 유지).
+    const scale = cfg.matchMinutes / 90;
+    expect(cur.clearances).toBeGreaterThanOrEqual(10 * scale);
+    expect(cur.clearances).toBeLessThanOrEqual(25 * scale);
   });
 
   it("롤백 스위치(clearance.enabled=false)면 0 이다 — 이 행동이 실제로 새 축임을 증명", () => {

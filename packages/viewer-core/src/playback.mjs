@@ -23,6 +23,33 @@ export function buildRestartTicks(events) {
 }
 
 /**
+ * **표기 스케일**(#365) — 엔진의 경기 분(= 틱)과 화면에 쓰는 축구 시계는 다른 축이다.
+ * 엔진이 45분(하프 1350틱)을 돌면서 표기는 0~90' 을 채울 수 있다(`EngineConfig.displayMinutes`).
+ *
+ * `MatchLog` 스키마엔 그 값이 없다(configVersion 만 싣는다). 대신 **`minute` 이 스냅샷·이벤트에
+ * 구워져** 오므로 거기서 되유도한다 — 휘슬이 관계를 정확히 말해 준다(half_whistle: minute =
+ * 표기 하프, tick = 하프 마크). 없으면 마지막 스냅샷으로 근사하고, 그래도 못 구하면 **1**
+ * (= 구 로그·경기 분 = 표기 분. 동작 무변경).
+ *
+ * ⚠️ 이게 없으면 뷰어 시계만 **엔진 틱을 그대로** 분으로 읽어, 45분 경기가 화면에서 0~44' 로
+ * 흐른다 — 로그줄·타임라인은 구워진 `minute`(0~90')을 쓰므로 **한 화면이 두 시각을 말하게 된다**.
+ *
+ * @param {{type:string,tick:number,minute?:number}[]} events
+ * @param {{tick:number,minute?:number}[]} snaps
+ * @returns {number} 틱→표기분 스케일(>0)
+ */
+export function clockScaleOf(events, snaps) {
+  const evs = Array.isArray(events) ? events : [];
+  const half = evs.find((e) => e.type === "half_whistle");
+  if (half && half.tick > 0 && half.minute > 0) return half.minute / (half.tick / 60);
+  const full = evs.find((e) => e.type === "full_whistle");
+  if (full && full.tick > 0 && full.minute > 0) return full.minute / ((full.tick + 1) / 60);
+  const last = Array.isArray(snaps) && snaps.length ? snaps[snaps.length - 1] : null;
+  if (last && last.tick > 0 && typeof last.minute === "number") return (last.minute + 1) / ((last.tick + 1) / 60);
+  return 1;
+}
+
+/**
  * 하이라이트(슬로우+줌) 창 판정 — **비대칭**. keyTick(유효슛/골/PK) 앞은 pre 틱(빌드업 기대감),
  * 뒤는 post 틱(클라이맥스 후 빨리 풀림). 대칭(±)이면 슛 이후로도 pre 만큼 슬로우가 이어져
  * 세이브(키퍼 처리) 후 열린 플레이까지 늦게 풀렸다(#83). post<pre 로 뒤를 짧게.
@@ -37,7 +64,13 @@ export function inHighlight(tick, keyTicks, pre, post) {
  * 성립한다. 어느 한쪽에 숫자를 다시 적으면 조용히 갈라진다.
  */
 export const PACE = {
-  TICKS_PER_SEC: 2, // 배율 1x = 2 게임초/실초
+  // #365: 2 → 2.4 (**재생 1.2배속**, hero 스펙). 여기에 넣는 이유는 이 상수가 렌더 루프와 재생
+  // 길이 모델의 공통 SoT 라서다 — web 배율(`live-pace.paceRate`)에 넣으면 창 정합 가드
+  // (`tools/pace-config.test.ts`)가 계속 1.0x 길이를 재서 어긋난 채 green 이 되고, 다시보기·QA 뷰어·
+  // standalone 에는 배속이 아예 안 걸린다(라이브만 빨라진다).
+  // ⚠️ 홀드(FOUL_HOLD_MS·DEADBALL_PAUSE_MS·골 정지)는 **읽는 시간**이라 배속 대상이 아니다 →
+  // 실효 단축은 1.2배보다 작다(45분 하프 실측 p50 208.8s → 176.6s = ×0.846).
+  TICKS_PER_SEC: 2.4, // 배율 1x = 2.4 게임초/실초
   CRUISE_SPEED: 4, // 빌드업 구간 배속
   HL_SPEED: 1, // 키장면(슛·골·PK) 구간 배속 — 슬로우
   HL_PRE: 8, // #83 하이라이트 창 비대칭(앞)

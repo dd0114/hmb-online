@@ -3,7 +3,7 @@ import type { MatchLog, TeamSide, TickSnapshot } from "@hmb/shared";
 import { runMatch } from "./match";
 import { defaultEngineConfig } from "./config";
 import { makeTacticalInput, makeSelectData } from "./fixtures";
-import { REALISM_SEEDS } from "./realism/harness";
+import { GUARD_SEEDS } from "./realism/harness";
 import { measureDeadBallMotion } from "./realism/deadball-motion";
 
 /**
@@ -22,7 +22,10 @@ import { measureDeadBallMotion } from "./realism/deadball-motion";
  * 진단 하네스가 계속 같이 찍으므로 전후 비교가 끊기지 않는다.
  *
  * ## 판정은 시드 하나에 걸지 않는다
- * 데드볼 전개는 카오스적이라 단일 시드는 표본 구성만 바뀌어도 뒤집힌다 → REALISM_SEEDS 전수 평균.
+ * 데드볼 전개는 카오스적이라 단일 시드는 표본 구성만 바뀌어도 뒤집힌다 → 다시드 전수 평균.
+ * ⚠️ 시드를 REALISM_SEEDS(20) → GUARD_SEEDS(60) 로 올렸다(#365). 경기가 45분이 되며 20시드
+ * 표본이 100 아래(실측 65)로 떨어졌는데, **임계를 내리는 것은 계약을 약하게 만드는 것**이라
+ * 표본 쪽을 키워 원래 검정력을 되찾는다(밴드·임계는 하나도 안 바꿨다).
  *
  * ## 규칙 정합(가장 미묘한 지점)
  * 벽은 **9.15m 안**에 서면 안 된다 — 접근 금지(#176)와 충돌하면 `deadBallRetreatPoint` 가
@@ -128,7 +131,7 @@ function scanFreeKicks(log: MatchLog, seed: string, pitchW: number, pitchH: numb
 }
 
 const select = makeSelectData();
-const logs = REALISM_SEEDS.map((seed) => ({
+const logs = GUARD_SEEDS.map((seed) => ({
   seed,
   log: runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, defaultEngineConfig),
 }));

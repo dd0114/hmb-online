@@ -15,7 +15,7 @@
 //           setFollow, setTrail, setAutoPace, setSpeed, setViewMode, setFixZoom, hooks }
 //   hooks = window.__viewer 읽기 표면(captions 는 DOM 이라 호스트가 제공).
 
-import { buildPlayback, spansReposition, inHighlight, effectiveSpeed, PACE } from "./playback.mjs";
+import { buildPlayback, spansReposition, inHighlight, effectiveSpeed, clockScaleOf, PACE } from "./playback.mjs";
 import { skinKeyOf, skinLookup } from "./skin-key.mjs";
 import { ownerSideOf } from "./owner-side.mjs";
 import { liveEventStats, computeCumulativePossession, possessionPct, momentum } from "./stats.impl.mjs";
@@ -78,7 +78,12 @@ export function createViewer(canvas, chrome = {}) {
     const raw = cm.playerId ? cm.playerId.replace(/[HA]/, "") : "?";
     return raw.length <= 2 ? raw : "?";
   };
-  const mmss = (t) => `${Math.floor(t / 60)}'${String(Math.floor(t % 60)).padStart(2, "0")}"`;
+  /** 틱→표기분 스케일(#365). 유도 규칙은 `playback.mjs.clockScaleOf` 가 SoT. */
+  let clockScale = 1;
+  const mmss = (t) => {
+    const d = t * clockScale;
+    return `${Math.floor(d / 60)}'${String(Math.floor(d % 60)).padStart(2, "0")}"`;
+  };
 
   function drawPitch() {
     ctx.fillStyle = "#14532d"; ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -595,6 +600,7 @@ export function createViewer(canvas, chrome = {}) {
       //       **항상 away** 로 판정됐다(#242 와 같은 패턴의 잔존). 팀이 없는 구 로그만 추측으로.
       side: e.team || (e.playerId ? (e.playerId[0] === "H" ? "home" : "away") : null),
     }));
+    clockScale = clockScaleOf(data.events, snaps);
     totalMinutes = snaps.length ? snaps[snaps.length - 1].minute : 0;
     tickPos = 0; lastGoalShown = 0;
     const statusText = `Loaded · config ${data.configVersion} · seed ${data.seed} · ${snaps.length} ticks · final ${data.finalScore.home}:${data.finalScore.away} · tip: turn on "Follow ball" and jump with "Next shot"`;

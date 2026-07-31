@@ -17,7 +17,11 @@ import { autoPaceDurationMs } from "../packages/viewer-core/src/playback.mjs";
  * `application.yml` 의 `half-real-ms` 를 그 값에 맞춘다(그리고 server-java 쪽 밴드도 함께).
  */
 
-/** 시드 편차(실측 392~463s = p50 대비 ±8%)에 모델·측정 오차 여유를 더한 폭. */
+/**
+ * 시드 편차에 모델·측정 오차 여유를 더한 폭. (#365 실측 155~212s = p50 176.6 대비 −12%/+20% —
+ * 하프가 짧아 골·정지 하나가 전체에서 차지하는 비중이 커져 90분 때(±8%)보다 산포가 크다.
+ * 그래도 ±20% 안이라 이 폭은 그대로 둔다.)
+ */
 const TOLERANCE = 0.2;
 
 function ymlLong(key: string): number {
@@ -45,8 +49,11 @@ describe("#216 AC2 — 서버 창(half-real-ms) ↔ 켬 모드 실측 재생 길
           `(비율 ${ratio.toFixed(3)}) — node tools/measure-playback-pace.mjs 로 다시 재고 맞춰라`,
       ).toBeLessThan(TOLERANCE);
 
-      // 하프가 실제로 리얼 config(2700틱)인지도 같이 본다 — 픽스처가 짧아지면 위 비교가 무의미해진다.
-      expect(carry.snapshots.length).toBeGreaterThan(2000);
+      // 하프가 실제로 리얼 config 인지도 같이 본다 — 픽스처가 짧아지면 위 비교가 무의미해진다.
+      // #365 로 경기 길이가 노브가 됐으므로(90 → 45분) 상수 대신 config 에서 유도한다. 그래도
+      // "짧은 픽스처로 잰 것"은 여전히 걸린다(리얼 config 의 하프 틱과 정확히 같아야 한다).
+      const realHalfTicks = Math.round((defaultEngineConfig.matchMinutes * 60_000) / defaultEngineConfig.msPerTick / 2);
+      expect(carry.snapshots.length).toBe(realHalfTicks);
     },
     120_000,
   );

@@ -76,11 +76,25 @@ describe("마크 진동 상한 (#178)", () => {
   // 주 계약(관계식 ≤1.3배)은 셋 다 통과하고 있고, 이 백스톱은 "둘이 함께 표류"를 잡는 보조다.
   // 20 · 3.0 = 실측 18.97 · 2.85 위 5% 여유. 원 버그값 43.1 에 대한 이빨은 그대로다.
   // (표본 구성 변화 이력: nearOwner 표본 6939 → 4608 → 사슬+홀드압박으로 다시 이동.)
-  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 20/100, 평균 이동 ≤ 3.0 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off 기준선 ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM})`, () => {
-    expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(20);
-    expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(3);
+  //
+  // ── 재기준 20 → 22 · 3.0 → 3.3 (#365 경기 길이 90 → 45분) ─────────────────────────
+  // 경기가 반이 되면서 **양 팔이 함께 올라갔다**: 시야off 기준선 20.71 → **21.35**(+3.07%) ·
+  // 2.78 → **2.93**, 현재값 18.97 → **20.52**(+8.17%) · 2.85 → **3.08**.
+  // ⚠️ **같은 비율은 아니다**(독립검증 m1이 정정): 처리군이 대조군보다 더 올랐고 그만큼
+  // 시야 귀속분이 나빠졌다 — 관계식 0.916 → **0.961**. 즉 "엔진 전체 이동량이 올라갔을 뿐"이라는
+  // 설명은 **절반만 맞다**(대조군 상승분 +3.07%p 는 그 설명이 맞고, 나머지 +5.1%p 는 시야 계층
+  // 쪽이다). 짧은 경기는 피로 누적 구간이 짧아 선수가 더 오래 빠르게 뛰는데, 그 상태에서
+  // 마크 당김의 스텝도 같이 커지기 때문으로 보인다(가설 — 확정하려면 별도 측정이 필요하다).
+  // **그래도 완화하는 근거**: 주 계약(관계식 ≤1.3배)은 0.961 로 여유 있게 통과하고 방향도
+  // 여전히 "시야 계층이 진동을 줄인다"이다. 이 백스톱은 "둘이 함께 표류"를 잡는 보조이지
+  // 시야 귀속분을 재는 자가 아니다(그건 관계식이 한다). 다만 **0.916 → 0.961 은 지켜볼 값**이라
+  // 여기 적어 둔다 — 1.0 을 넘으면 관계식이 먼저 말해 준다.
+  // 22 · 3.3 = 실측 20.52 · 3.08 위 약 7% 여유(같은 규율). 원 버그값 43.1 에 대한 이빨은 그대로다.
+  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 22/100, 평균 이동 ≤ 3.3 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off 기준선 ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM})`, () => {
+    expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(22);
+    expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(3.3);
     // 백스톱이 **대조군 아래로 다시 내려가지 않게** 구조로 묶는다 — 그러면 또 다른 것을 재게 된다.
-    expect(20).toBeGreaterThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 0.9);
+    expect(22).toBeGreaterThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 0.9);
   });
 
   it("시야 계층은 켜진 채여야 한다 — 진동 해소가 시야 롤백으로 달성되면 안 된다", () => {
