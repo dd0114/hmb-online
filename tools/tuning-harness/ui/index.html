@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>무리빌드 튜닝 하네스 — HMB 엔진</title>
+<style>
+  :root {
+    --bg: #0b1220; --panel: #111a2e; --line: #223052; --ink: #e6edf7; --dim: #8ea3c7;
+    --accent: #38bdf8; --home: #3b82f6; --away: #ef4444; --ok: #22c55e; --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 13px/1.5 -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+  #app { display: grid; grid-template-columns: 330px 1fr; height: 100vh; }
+
+  /* ── 좌: 조작 패널 ── */
+  #panel { background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; padding: 14px; }
+  #panel h1 { font-size: 15px; margin: 0 0 2px; }
+  #panel .ver { color: var(--dim); font-size: 11px; margin-bottom: 14px; }
+  fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin: 0 0 12px; }
+  legend { color: var(--accent); font-size: 11px; padding: 0 5px; letter-spacing: .04em; }
+  label { display: block; color: var(--dim); font-size: 11px; margin: 8px 0 3px; }
+  select, input[type=text], input[type=number], textarea {
+    width: 100%; background: #0a1526; color: var(--ink); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 8px; font: inherit; }
+  textarea { font-family: ui-monospace, Menlo, monospace; font-size: 11px; min-height: 90px; resize: vertical; }
+  .knob { display: grid; grid-template-columns: 1fr 88px; gap: 6px; align-items: center; margin-bottom: 5px; }
+  .knob .kl { font-size: 11px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .knob .kl small { color: var(--dim); display: block; font-size: 10px; }
+  .knob input { padding: 4px 6px; text-align: right; }
+  .knob.changed input { border-color: var(--warn); color: var(--warn); }
+  button { background: #1b2b4d; color: var(--ink); border: 1px solid var(--line);
+           border-radius: 6px; padding: 7px 10px; font: inherit; cursor: pointer; }
+  button:hover { background: #24406e; }
+  button.primary { background: var(--accent); color: #04121f; border-color: var(--accent); font-weight: 700; width: 100%; padding: 10px; }
+  button.primary:disabled { opacity: .5; cursor: wait; }
+  .row { display: flex; gap: 6px; }
+  .row > * { flex: 1; }
+  #err { color: #fca5a5; font-size: 11px; white-space: pre-wrap; margin-top: 8px; }
+  #timing { color: var(--dim); font-size: 11px; margin-top: 8px; }
+
+  /* ── 우: 결과 ── */
+  #stage { overflow-y: auto; padding: 14px 16px 40px; }
+  .stagehead { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+  .stagehead h2 { font-size: 14px; margin: 0; }
+  .stagehead .sub { color: var(--dim); font-size: 11px; }
+  table.sum { border-collapse: collapse; width: 100%; font-size: 11.5px; margin-bottom: 16px; }
+  table.sum th, table.sum td { border-bottom: 1px solid var(--line); padding: 5px 7px; text-align: right; }
+  table.sum th:first-child, table.sum td:first-child { text-align: left; }
+  table.sum thead th { color: var(--dim); font-weight: 500; position: sticky; top: 0; background: var(--bg); }
+  table.sum tr.agg td { font-weight: 700; border-top: 2px solid var(--line); }
+  table.sum tr.worst td { color: var(--warn); }
+  .d { font-size: 10px; margin-left: 3px; }
+  .d.up { color: var(--ok); } .d.dn { color: var(--away); }
+
+  #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 12px; }
+  .tile { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #0a1526; }
+  .tile canvas { display: block; width: 100%; background: #14532d; cursor: pointer; }
+  .tile .bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; font-size: 11px; }
+  .tile .sc { font-weight: 700; font-size: 13px; }
+  .tile .seed { color: var(--dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .pins { position: relative; height: 16px; background: #0d1a2f; border-top: 1px solid var(--line); cursor: pointer; }
+  .pin { position: absolute; bottom: 0; width: 3px; border-radius: 1px; }
+  .cap { position: absolute; left: 0; right: 0; top: 38%; text-align: center; font-size: 26px;
+         font-weight: 800; text-shadow: 0 2px 12px #000; pointer-events: none; }
+  .wrap { position: relative; }
+
+  /* ── 확대 ── */
+  #focus { position: fixed; inset: 0; background: #060d18; z-index: 50; display: none;
+           grid-template-columns: 1fr 300px; gap: 14px; padding: 14px; }
+  #focus.on { display: grid; }
+  #focusMain { display: flex; flex-direction: column; min-width: 0; }
+  #focusMain canvas { width: 100%; background: #14532d; border-radius: 8px; }
+  #focusSide { overflow-y: auto; border-left: 1px solid var(--line); padding-left: 12px; }
+  #focusSide h3 { font-size: 12px; margin: 0 0 6px; color: var(--accent); }
+  .evrow { display: flex; gap: 6px; padding: 3px 5px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+  .evrow:hover { background: #1b2b4d; }
+  .evrow .t { color: var(--dim); width: 46px; flex: none; }
+  .jump { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+  .jump button { padding: 4px 7px; font-size: 11px; }
+  #focusCtl { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  #focusCtl input[type=range] { flex: 1; }
+  .badge { display: inline-block; padding: 1px 6px; border-radius: 999px; font-size: 10px; border: 1px solid var(--line); color: var(--dim); }
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <h1>무리빌드 튜닝 하네스</h1>
+    <div class="ver" id="ver">엔진 로드 중…</div>
+
+    <fieldset>
+      <legend>입력</legend>
+      <label>입력 소스</label>
+      <select id="source"></select>
+      <div id="srcNote" class="ver" style="margin:5px 0 0"></div>
+      <div class="row">
+        <div><label>경기 수</label><input id="count" type="number" min="1" max="32" value="4" /></div>
+        <div><label>재생 배속</label>
+          <select id="speed"><option>0.5</option><option selected>1</option><option>2</option><option>4</option></select>
+        </div>
+      </div>
+      <label>시드 (쉼표 구분 — 비우면 기본 시드)</label>
+      <input id="seeds" type="text" placeholder="비워두면 기본 시드 풀에서 N개" />
+    </fieldset>
+
+    <fieldset>
+      <legend>계수 (config 런타임 주입)</legend>
+      <div id="knobs"></div>
+      <label>자유 오버라이드 (JSON · 점 경로 가능)</label>
+      <textarea id="raw" placeholder='{ "contest.shootXgThreshold": 0.07 }'></textarea>
+    </fieldset>
+
+    <button class="primary" id="run">재시뮬 · 재생</button>
+    <div class="row" style="margin-top:6px">
+      <button id="reset">계수 초기화</button>
+      <button id="playAll">전체 재생</button>
+    </div>
+    <div id="timing"></div>
+    <div id="err"></div>
+  </aside>
+
+  <main id="stage">
+    <div class="stagehead">
+      <h2 id="runTitle">아직 실행 전</h2>
+      <span class="sub" id="runSub">좌측에서 계수를 바꾸고 [재시뮬 · 재생]</span>
+    </div>
+    <div id="summary"></div>
+    <div id="grid"></div>
+  </main>
+</div>
+
+<div id="focus">
+  <div id="focusMain">
+    <div class="wrap"><canvas id="focusCanvas" width="1180" height="720"></canvas><div class="cap" id="focusCap"></div></div>
+    <div id="focusCtl">
+      <button id="fPlay">▶</button>
+      <span id="fScore" class="sc">0 : 0</span>
+      <span id="fClock" class="badge">0'00"</span>
+      <input id="fScrub" type="range" min="0" max="100" value="0" step="0.01" />
+      <button id="fClose">닫기 ✕</button>
+    </div>
+    <div class="pins" id="fPins" style="height:22px;margin-top:6px;border-radius:6px"></div>
+  </div>
+  <div id="focusSide">
+    <h3>상황 점프</h3>
+    <div class="jump" id="fJump"></div>
+    <h3>이벤트</h3>
+    <div id="fEvents"></div>
+  </div>
+</div>
+
+<script type="module" src="/ui/app.mjs"></script>
+</body>
+</html>

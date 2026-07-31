@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { TIER, t0ExcludedFiles } from "./packages/engine/src/realism/tier";
 
 export default defineConfig({
   resolve: {
@@ -15,5 +16,16 @@ export default defineConfig({
   test: {
     // tools/** = QA 콘솔 레지스트리·CLI 코어(#191). 여기에 없으면 그 계약이 게이트에서 빠진다.
     include: ["packages/**/*.test.ts", "apps/**/*.test.ts", "data/**/*.test.ts", "tools/**/*.test.ts"],
+    /**
+     * T0(`HMB_TIER=0`, `npm run test:t0`)에서만 다시드 집계 스위트를 뺀다 — #376/#377 M0-3.
+     * ⚠️ `describe.skipIf` 로는 못 막는 부류다: 그 파일들은 **모듈 최상위**에서 집계를 돌려
+     * 스킵해도 collect 단계에서 이미 계산이 끝난다. 그래서 파일째 제외가 유일한 수단이다.
+     * 기본(T1)과 T2 에서는 **아무것도 제외되지 않는다** — 목록·근거·정합성은 `tier.test.ts` 가 지킨다.
+     */
+    exclude: [
+      "**/node_modules/**",
+      "**/dist/**",
+      ...(TIER === 0 ? t0ExcludedFiles() : []),
+    ],
   },
 });

@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "producer": "extract-real-decks@1",
+  "note": "라이브 DB 사본에서 추출한 고정 픽스처(#374). 서버가 만든 입력을 그대로 옮긴 것 — TS 재구현 아님.",
+  "cases": [
+    {
+      "id": "collapse-370",
+      "label": "붕괴 케이스 #370 — 4-3-3 고압박 vs 5-3-2",
+      "note": "라이브 0-0. shootXgThreshold 0.197 에서 슛이 90% 게이트아웃된 그 입력(#370). 최악 케이스 판정의 기준점.",
+      "seed": "2340817509202538562",
+      "live": {
+        "matchId": "01KYVBW70WZHVAKXGRYE037ZX5",
+        "half": 1,
+        "mode": "practice",
+        "engineVersion": "engine@0.28.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 0,
+          "away": 0
+        }
+      }
+    },
+    {
+      "id": "deck-01",
+      "label": "4-4-2 중압박·중간라인 vs 4-3-3 (away, 2H)",
+      "note": "라이브 engine@0.23.0 · away · 2H",
+      "seed": "233645001257063876",
+      "live": {
+        "matchId": "01KYPNXAEA0KJDKSD2EESD78A1",
+        "half": 2,
+        "mode": "away",
+        "engineVersion": "engine@0.23.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 0,
+          "away": 2
+        }
+      }
+    },
+    {
+      "id": "deck-02",
+      "label": "5-3-2 저압박·로우블록 vs 4-3-3 (league, 1H)",
+      "note": "라이브 engine@0.23.0 · league · 1H",
+      "seed": "17926712623865224333",
+      "live": {
+        "matchId": "01KYV2SCJQ79M7BXBG812Q3BD9",
+        "half": 1,
+        "mode": "league",
+        "engineVersion": "engine@0.23.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 0,
+          "away": 7
+        }
+      }
+    },
+    {
+      "id": "deck-03",
+      "label": "4-3-3 중압박·중간라인 vs 4-3-3 (practice, 1H)",
+      "note": "라이브 engine@0.21.0 · practice · 1H",
+      "seed": "4657716175948741777",
+      "live": {
+        "matchId": "01KYKDXNT0KVT8GVCP3JSSA27N",
+        "half": 1,
+        "mode": "practice",
+        "engineVersion": "engine@0.21.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 2,
+          "away": 2
+        }
+      }
+    },
+    {
+      "id": "deck-04",
+      "label": "4-3-3 중압박·중간라인 vs 4-2-3-1 (league, 1H)",
+      "note": "라이브 engine@0.23.0 · league · 1H",
+      "seed": "244310834310471731",
+      "live": {
+        "matchId": "01KYV8TQZ7NWTP1BNRPCSYDBYB",
+        "half": 1,
+        "mode": "league",
+        "engineVersion": "engine@0.23.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 2,
+          "away": 0
+        }
+      }
+    },
+    {
+      "id": "deck-05",
+      "label": "4-4-2 중압박·중간라인 vs 4-4-2 (practice, 1H)",
+      "note": "라이브 engine@0.16.0 · practice · 1H",
+      "seed": "14880434931432607380",
+      "live": {
+        "matchId": "01KY2Q2YCXQFB6PW8DCH294VGV",
+        "half": 1,
+        "mode": "practice",
+        "engineVersion": "engine@0.16.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 0,
+          "away": 4
+        }
+      }
+    },
+    {
+      "id": "deck-06",
+      "label": "4-3-3 고압박·중간라인 vs 5-3-2 (practice, 1H)",
+      "note": "라이브 engine@0.21.0 · practice · 1H",
+      "seed": "1942733185872351627",
+      "live": {
+        "matchId": "01KYFNMVKZPPZPZS7FF6G4R7YA",
+        "half": 1,
+        "mode": "practice",
+        "engineVersion": "engine@0.21.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 3,
+          "away": 0
+        }
+      }
+    },
+    {
+      "id": "deck-07",
+      "label": "4-3-3 중압박·중간라인 vs 5-3-2 (practice, 1H)",
+      "note": "라이브 engine@0.21.0 · practice · 1H",
+      "seed": "10432100203621919077",
+      "live": {
+        "matchId": "01KYH5QNY6Z9HNM40B37AQHS86",
+        "half": 1,
+        "mode": "practice",
+        "engineVersion": "engine@0.21.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 1,
+          "away": 0
+        }
+      }
+    },
+    {
+      "id": "deck-08",
+      "label": "4-2-3-1 중압박·중간라인 vs 4-3-3 (league, 1H)",
+      "note": "라이브 engine@0.23.0 · league · 1H",
+      "seed": "19411412708903490",
+      "live": {
+        "matchId": "01KYVAG6HS044A0S4N727XWRGA",
+        "half": 1,
+        "mode": "league",
+        "engineVersion": "engine@0.23.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 0,
+          "away": 4
+        }
+      }
+    },
+    {
+      "id": "deck-09",
+      "label": "4-4-2 중압박·중간라인 vs 4-3-3 (practice, 1H)",
+      "note": "라이브 engine@0.16.0 · practice · 1H",
+      "seed": "14520961121248398515",
+      "live": {
+        "matchId": "01KY2KY0EHFJSVMM2WXTAR5AKG",
+        "half": 1,
+        "mode": "practice",
+        "engineVersion": "engine@0.16.0",
+        "state": "FINISHED",
+        "score": {
+          "home": 2,
+          "away": 4
+        }
+      }
+    }
+  ]
+}
