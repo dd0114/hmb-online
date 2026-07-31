@@ -58,9 +58,21 @@ describe("#279 W2 chain A/B viewers", () => {
       `🅑 적용된 코어 (chain · 행동사슬 EV) — ${defaultEngineConfig.version}`,
       `B · 적용 chain (${defaultEngineConfig.version})`,
     );
+    // 부모 프레임(compare.html)의 버전·시드 표기도 **여기서 주입**한다.
+    // ⚠️ 정적 문자열로 두었더니 0.24.0 표기가 0.29.5 까지 남아 hero 가 실관전 중 오인했다.
+    // 생성 시점에 덮어써야 뷰어와 부모가 영원히 같은 값을 말한다.
+    const cmpPath = join(here, "compare.html");
+    const cmp = readFileSync(cmpPath, "utf-8")
+      .replace(
+        /<span data-engine-version>[^<]*<\/span>/g,
+        `<span data-engine-version>${defaultEngineConfig.version}</span>`,
+      )
+      .replace(/<code>\d+<\/code>/g, `<code>${SEED}</code>`);
+    writeFileSync(cmpPath, cmp);
+
     // eslint-disable-next-line no-console
     console.log(
-      `\n[#279 A/B viewers] seed ${SEED}\n  weighted ${vw.outPath}  score ${w.finalScore.home}-${w.finalScore.away} events ${vw.events}\n  chain    ${vc.outPath}  score ${c.finalScore.home}-${c.finalScore.away} events ${vc.events}\n`,
+      `\n[#279 A/B viewers] ${defaultEngineConfig.version} · seed ${SEED}\n  weighted ${vw.outPath}  score ${w.finalScore.home}-${w.finalScore.away} events ${vw.events}\n  chain    ${vc.outPath}  score ${c.finalScore.home}-${c.finalScore.away} events ${vc.events}\n`,
     );
     expect(vw.snapshots).toBe(vc.snapshots);
   }, 600_000);
