@@ -6,7 +6,7 @@ import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
 import { fromFixed, fclamp, fdist, toFixed, stepToward, isqrt } from "./fixedmath";
 import { attackGoal, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
-import { passOptions, nearestOpponent, pressureCount } from "./perception";
+import { passOptions, nearestOpponent, pressureCount, pressureCountAt } from "./perception";
 import { aimErrorDeg, aimWithError, deliverySpeedFx, isLofted, overhitOut, passPowerFx, shotPowerFx } from "./kick";
 
 /**
@@ -135,6 +135,30 @@ export function oneOnOneShot(
 }
 
 /**
+ * 압박 아래 슛의 **질 저하**(#353) — 실행되는 슛의 xG 에 근접 압박 1명당 `shotPressureXgMult`.
+ *
+ * `oneOnOneShot` 과 **같은 축의 반대편**이다(완전 자유 → 부스트 / 붙음 → 감산). 그래서 같은 규율을
+ * 따른다: **실제 상태의 슈터 자리에서, 루트에서 한 번만** 부르고 **EV(선택)에는 넣지 않는다**.
+ * 가상 도착 지점에서 압박을 재면 "상대가 그때까지 안 움직인다"를 EV 에 심는 것이라 #316 이
+ * 이미 기각한 함정이다. 두 코어(weighted/chain)가 같은 함수를 쓴다 — 재구현하면 기하가 갈린다.
+ */
+export function shotPressureXg(
+  state: SimState,
+  owner: SimPlayer,
+  xg: number,
+  config: EngineConfig,
+): number {
+  const c = config.contest;
+  if (!(c.shotPressureXgMult < 1)) return xg;
+  const pressers = pressureCount(state, owner, config, c.passPressureRangeM);
+  if (pressers <= 0) return xg;
+  let v = xg;
+  // 정수 지수 반복곱 — `Math.pow` 는 명세상 구현 근사라 결정론 계약에서 금지(§2-5).
+  for (let i = 0; i < pressers; i++) v *= c.shotPressureXgMult;
+  return fclamp(v, 0.01, 0.95);
+}
+
+/**
  * 슛 실행 계획(#312 S5-B) — 세기와 조준점.
  *
  * 구버전은 **속도 상수(`shotBallSpeed` 14) + 골 중앙 정조준**이었다. 슛도 패스와 같은 축을 탄다:
@@ -146,6 +170,7 @@ export function oneOnOneShot(
  * (슛 **출발 지점**의 분산은 S5 소관 — `contest.shotAimSpreadM`.)
  */
 export function planShot(
+  state: SimState,
   owner: SimPlayer,
   config: EngineConfig,
   rng: Rng,
@@ -155,7 +180,17 @@ export function planShot(
   const scale = config.fixedScale;
   const g = attackGoal(pitch, owner.side);
   const speedFx = shotPowerFx(owner.attrs.shooting, config);
-  const deg = aimErrorDeg(c.shotAimErrorDeg, owner.attrs.shooting, c.passAimAttrSwing, 0, 0);
+  // #353: 슛도 패스와 같은 축으로 압박에 흔들린다(`passPressureAimPenalty` 관용구).
+  // ⚠️ 이건 **연출**이다 — 아래 클램프가 조준점을 골포스트 안으로 되돌리고, 유효슛/골은
+  // `resolveShot` 의 롤이 정한다. 압박의 **결과** 반영은 `shotPressureXg` 가 한다.
+  const pressers = pressureCount(state, owner, config, c.passPressureRangeM);
+  const deg = aimErrorDeg(
+    c.shotAimErrorDeg,
+    owner.attrs.shooting,
+    c.passAimAttrSwing,
+    pressers,
+    c.shotPressureAimPenalty,
+  );
   const hit = aimWithError(owner.posFx.x, owner.posFx.y, g.x, g.y, { errDeg: deg, powerErrFrac: 0 }, rng);
   const halfPost = toFixed(config.pitch.goalWidth / 2, scale);
   return {
@@ -395,9 +430,60 @@ function nearestOpponentTo(
 }
 
 /**
+ * 이 패스가 **실제로 나갈 세기·궤도**(#312) — 세기는 거리·passing·압박이 정한다.
+ *
+ * `planPass`(실행) · `computePassProb`(확률) · `chain.candidateSpeedFx`(후보 생성)가 **같은 함수**를
+ * 부른다. 세 곳이 각자 계산하면 "후보가 예측한 비행"과 "실제 비행"이 갈리고, 그러면
+ * 리시버 도착 예측(아래 `receiverArrival`)도 실행과 다른 지점을 본다.
+ */
+export function passDelivery(
+  state: SimState,
+  owner: SimPlayer,
+  opt: PassOption,
+  config: EngineConfig,
+): { pressers: number; speedFx: number; lofted: boolean } {
+  const c = config.contest;
+  const pressers = pressureCount(state, owner, config, c.passPressureRangeM);
+  const lofted = isLofted(opt.dist, opt.long, config);
+  const speedFx = deliverySpeedFx(
+    passPowerFx(opt.dist, owner.attrs.passing, pressers, config),
+    lofted,
+    config,
+  );
+  return { pressers, speedFx, lofted };
+}
+
+/**
+ * 리시버가 **공이 도착할 때 있을 자리**(#353) — `planPass` 가 실제로 조준하는 지점과 같은 함수
+ * (`leadAim`, #181)다. "지금 붙어 있는가"가 아니라 "도착할 때 떨어져 있는가"를 묻기 위한 좌표다.
+ *
+ * ⚠️ **수비수의 미래는 추정하지 않는다.** 리시버 예측 위치 vs 수비수 **현재** 위치로만 잰다 —
+ * 상대의 미래 좌표를 EV 에 심는 것은 `chain.ts` 의 #316 설계 판단이 이미 기각한 함정이고,
+ * 이 조합이 **보수적**이다(수비가 따라붙는 만큼은 계산에 안 들어간다).
+ */
+export function receiverArrival(
+  state: SimState,
+  owner: SimPlayer,
+  opt: PassOption,
+  config: EngineConfig,
+  pitch: Pitch,
+): { x: number; y: number } {
+  const { speedFx } = passDelivery(state, owner, opt, config);
+  return leadAim(owner.posFx, opt.receiver, speedFx, config, pitch);
+}
+
+/**
  * 패스 성공확률(결정론, 순수). = passBase − 전진/파이널서드/압박/거리 페널티 + passing 가감, clamp.
  * planPass 가 이 값으로 성공/실패를 롤한다. 전진·롱·압박 패스가 숏보다 낮게 나오도록 config 로 제어.
  * (E1: 벤치 78–85% 평균 + 전진/롱 < 숏. 단조성은 pass-prob 단위테스트로 계약 박제.)
+ *
+ * ## #353 — 받는 쪽도 본다
+ * 구 식은 압박을 **주는 쪽만** 봤다(`pressureCount(state, owner, ...)`). 즉 리시버가 마크에
+ * 물려 있든 완전히 비어 있든 성공 확률이 같았다. `PassOption.laneDanger` 는 **길목**까지의
+ * 최소거리이지 "받는 사람이 붙잡혀 있는가"가 아니다 — 다른 축이다.
+ * 이제 리시버 항이 붙고, 그 판정은 **도착 예측 지점**(`receiverArrival`)에서 한다. 그래서
+ * "지금은 붙어 있지만 뛰어 나가는 중이라 도착할 땐 자유로운" 리시버가 제값을 받는다
+ * = 스루패스·뒷공간 패스가 EV(사슬은 이 확률을 그대로 쓴다)에서 살아난다.
  */
 export function computePassProb(
   state: SimState,
@@ -416,6 +502,15 @@ export function computePassProb(
     attackProgress(pitch, owner.side, receiver.posFx.x) >= config.setPiece.finalThirdLine;
   // 패스 압박은 근접(passPressureRangeM) 상대만 — pressRange(22m, 압박배정용)는 패스엔 과도.
   const pressers = pressureCount(state, owner, config, c.passPressureRangeM);
+  // #353: 받는 쪽 압박 — **도착 예측 지점** 기준. 노브가 주는 쪽과 별개인 이유는
+  // 두 축의 크기가 같을 이유가 없어서다(주는 쪽은 조준·세기가 흔들리고, 받는 쪽은 경합이다).
+  const recvPressers =
+    c.passReceiverPressurePenalty > 0
+      ? (() => {
+          const at = receiverArrival(state, owner, opt, config, pitch);
+          return pressureCountAt(state, owner.side, at.x, at.y, config, c.passReceiverPressureRangeM);
+        })()
+      : 0;
   const distM = fromFixed(opt.dist, scale);
   const attrBonus = ((owner.attrs.passing - 50) / 50) * c.passAttrSwing;
 
@@ -423,6 +518,7 @@ export function computePassProb(
   prob -= c.passForwardPenalty * forwardFrac;
   prob -= inFinalThird ? c.passFinalThirdPenalty : 0;
   prob -= c.passPressurePenalty * pressers;
+  prob -= c.passReceiverPressurePenalty * recvPressers;
   prob -= c.passDistancePenalty * Math.max(0, distM - c.passBaseDistM);
   prob += attrBonus;
   return fclamp(prob, 0.05, 0.98);
@@ -513,15 +609,9 @@ export function planPass(
   const receiver = opt.receiver;
 
   const prob = computePassProb(state, owner, opt, config, pitch);
-  const pressers = pressureCount(state, owner, config, c.passPressureRangeM);
 
-  // --- 세기: 선수가 정한다(거리·능력치·압박). ---
-  const lofted = isLofted(opt.dist, opt.long, config);
-  const speedFx = deliverySpeedFx(
-    passPowerFx(opt.dist, owner.attrs.passing, pressers, config),
-    lofted,
-    config,
-  );
+  // --- 세기: 선수가 정한다(거리·능력치·압박). 확률·후보 생성과 **같은 함수**(#353). ---
+  const { pressers, speedFx, lofted } = passDelivery(state, owner, opt, config);
 
   // --- 조준 오차: 능력치로 줄고 압박으로 커진다. ---
   const baseDeg = aimErrorDeg(
@@ -711,8 +801,17 @@ export function decideBallOwner(
   let r = rng.next() * total;
 
   if ((r -= wShoot) < 0) {
-    const sp = planShot(owner, config, rng, pitch);
-    return { kind: "shoot", xg, toX: sp.toX, toY: sp.toY, speedFx: sp.speedFx, detail: shootDetail };
+    const sp = planShot(state, owner, config, rng, pitch);
+    // #353: 압박 감산은 **실행되는 슛의 xg 에만**(선택 가중 `wShoot` 은 손대지 않는다 —
+    // 이 코어는 롤백 경로이고, 선택까지 바꾸면 "롤백"이 다른 엔진이 된다).
+    return {
+      kind: "shoot",
+      xg: shotPressureXg(state, owner, xg, config),
+      toX: sp.toX,
+      toY: sp.toY,
+      speedFx: sp.speedFx,
+      detail: shootDetail,
+    };
   }
   if ((r -= wPass) < 0 && bestOpt) {
     const plan = planPass(state, owner, bestOpt, config, rng, pitch);

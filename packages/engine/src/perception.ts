@@ -43,6 +43,31 @@ export function nearestOpponent(
   return best ? { opp: best, dist: bestD } : null;
 }
 
+/**
+ * **임의 지점**을 압박하는 `side` 팀의 상대 수(반경 안). `pressureCount` 의 일반형이다.
+ *
+ * 왜 지점 버전이 필요한가(#353): 패스를 받는 쪽의 압박은 "리시버가 **지금** 서 있는 자리"가 아니라
+ * **공이 도착할 때 그가 있을 자리**에서 재야 한다(리드패스 예측 지점 — `decision.ts:leadAim`).
+ * 선수 버전으로는 그 질문을 표현할 수 없다. 산술은 하나뿐이고 `pressureCount` 가 이 함수를
+ * 위임 호출하므로 두 경로가 갈릴 수 없다(= 선수 버전은 bit-identical).
+ */
+export function pressureCountAt(
+  state: SimState,
+  side: SimPlayer["side"],
+  xFx: number,
+  yFx: number,
+  config: EngineConfig,
+  rangeM?: number,
+): number {
+  const range = (rangeM ?? config.movement.pressRange) * config.fixedScale;
+  let c = 0;
+  for (const p of state.players) {
+    if (p.side === side) continue;
+    if (fdist(p.posFx.x, p.posFx.y, xFx, yFx) <= range) c++;
+  }
+  return c;
+}
+
 /** player 를 압박하는 상대 수(pressRange 안). */
 export function pressureCount(
   state: SimState,
@@ -50,13 +75,7 @@ export function pressureCount(
   config: EngineConfig,
   rangeM?: number,
 ): number {
-  const range = (rangeM ?? config.movement.pressRange) * config.fixedScale;
-  let c = 0;
-  for (const p of state.players) {
-    if (p.side === player.side) continue;
-    if (playerDist(player, p) <= range) c++;
-  }
-  return c;
+  return pressureCountAt(state, player.side, player.posFx.x, player.posFx.y, config, rangeM);
 }
 
 /** 점(px,py)-선분(ax,ay)-(bx,by) 사이 최단거리 fixed(정수 산술). */
