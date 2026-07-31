@@ -1115,11 +1115,17 @@ export const defaultEngineConfig: EngineConfig = {
   //   ⓑ 의도 게시판(intents)·런 오더(runOrder) 첫 소비 — 차면 그 틱에 따라 들어가고(패서·러너),
   //      수비는 그 런을 **읽어** 도착 예정 지점을 선점한다(vision.runReadFrac)
   //   ⓒ 수비 블록의 공 추종 비대칭 해소(defendCompactX 0.16→0.32) + GK 스위퍼 라인
-  version: "engine@0.29.0",
+  // 0.30.0 = **경기 시간 단축**(#365, hero 스펙): 경기 45분(하프 1350틱) + 표기 0~90'
+  //   (`displayMinutes`) + 코어 재생 배속 1.2. 확률 노브는 **하나도 안 건드렸다**
+  //   (hero: "경기 내용은 다른 곳에서 튜닝할 거야, 지금은 시간만 건드려").
+  //   ⚠️ 이 범프는 **필수**다 — 안 올리면 구 `resumeState` 가 버전 비교를 통과하고
+  //   `deserializeCarry` 가 러너 config 로 재조립해 `nextTick 2700` vs `totalTicks 2700` 이 되어
+  //   **후반이 0틱을 돌고 빈 채 종료 휘슬이 붙는다**(예외도 400 도 안 난다).
+  version: "engine@0.30.0",
   msPerTick: 1000,
   // #365: 90 → 45. **경기 자체를 짧게** 만드는 것이 하프 3분의 유일한 수단이다(같은 틱을 더 빨리
   // 재생하는 안 = 2.3배속은 hero 가 실관전으로 이미 기각, #221). 45 를 고른 근거는 둘 —
-  // ① 배속 1.2 에서 하프 실측 p50 176.6s(≈3분) ② 표기 스케일이 정확히 2 라 표기 1분 = 30틱.
+  // ① 배속 1.2 에서 하프 실측 p50 183.1s(≈3분) ② 표기 스케일이 정확히 2 라 표기 1분 = 30틱.
   matchMinutes: 45,
   displayMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },

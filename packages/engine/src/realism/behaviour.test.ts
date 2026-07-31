@@ -21,7 +21,11 @@ import { aggregateBehaviour, measureBehaviour, type BehaviourMetrics } from "./b
  * 절대 임계만 걸면 "얼마가 정상인가"를 이 파일이 임의로 정하게 된다.
  */
 
-const SEEDS = REALISM_SEEDS.slice(0, 8);
+// #365(경기 90 → 45분): 시드당 관측이 **절반**이 되면서 이 파일의 두 관계 계약(전방 러너 수·
+// 러너 마크 거리)이 노이즈에 묻혀 부호가 뒤집혔다(실측 4.06 vs 4.04 · 7.67 vs 7.70 — 폭이 0.5%다).
+// **임계·관계식은 한 자리도 안 건드리고 시드를 2배로** 올려 검정력을 되돌린다. 경기가 반이라
+// 시뮬 비용(총 경기-분)은 8시드×90분과 같다.
+const SEEDS = REALISM_SEEDS.slice(0, 16);
 const select = makeSelectData();
 
 function run(cfg: EngineConfig): BehaviourMetrics {

@@ -20,9 +20,10 @@ import org.junit.jupiter.api.Test;
  * (모델 = viewer-core {@code autoPaceDurationMs}, 렌더 루프와 같은 상수를 읽는다).
  *
  * <p><b>#365 로 두 축이 동시에 바뀌어 밴드를 다시 떴다</b>: 경기 길이 90 → 45분(하프 2700 → 1350틱)
- * + 코어 재생 배속 1.2({@code PACE.TICKS_PER_SEC 2 → 2.4}). 20시드 × 2하프 = 40하프 실측 =
- * <b>min 154.9s · p50 176.6s · max 211.7s</b> (구 값 392/422/463 은 90분·배속 1.0 시절이다).
- * 창 180s 대비 필요 배율은 0.86~1.18 로 web 배율 컨트롤러 범위 [0.6, 1.6] 안이다.
+ * + 코어 재생 배속 1.2({@code PACE.TICKS_PER_SEC 2 → 2.4}). engine@0.30.0 트리 실측
+ * ({@code node tools/measure-playback-pace.mjs}, 8시드 × 2하프) =
+ * <b>min 156.1s · p50 183.1s · max 206.8s</b> (구 값 392/422/463 은 90분·배속 1.0 시절이다).
+ * 창 180s 대비 필요 배율은 0.87~1.15 로 web 배율 컨트롤러 범위 [0.6, 1.6] 안이다.
  *
  * <p><b>밴드가 곧 정책이다</b>: 실측 min~max 밖으로 나가려면 이 상수도 같이 고쳐야 한다 =
  * "재생과 창을 어긋나게 두겠다"는 의도적 결정이 된다. 실수로 되돌리는 경로는 여기서 막힌다.
@@ -35,8 +36,8 @@ import org.junit.jupiter.api.Test;
  */
 class MatchClockShippedDefaultsTest {
 
-    private static final long MEASURED_MIN_MS = 154_000; // 실측 최속 하프(#365, 40하프 min 154.9s)
-    private static final long MEASURED_MAX_MS = 212_000; // 실측 최장 하프(#365, 40하프 max 211.7s)
+    private static final long MEASURED_MIN_MS = 156_000; // 실측 최속 하프(#365, min 156.1s)
+    private static final long MEASURED_MAX_MS = 207_000; // 실측 최장 하프(#365, max 206.8s)
 
     @Test
     void shippedHalfRealMsMatchesMeasuredPlaybackLength() throws Exception {
@@ -44,7 +45,7 @@ class MatchClockShippedDefaultsTest {
         long javaDefault = new online.hmb.match.MatchClockProperties().getHalfRealMs();
 
         assertThat(yml)
-                .as("half-real-ms 는 켬 모드 실측 재생 길이(155~212s) 안이어야 한다 — 짧으면 재생이 끝나기 전에 "
+                .as("half-real-ms 는 켬 모드 실측 재생 길이(156~207s) 안이어야 한다 — 짧으면 재생이 끝나기 전에 "
                         + "하프타임이 열리고, 길면 재생이 먼저 끝나 빈 시간이 생긴다")
                 .isBetween(MEASURED_MIN_MS, MEASURED_MAX_MS);
         assertThat(javaDefault)

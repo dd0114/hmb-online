@@ -4,17 +4,17 @@ exports[`마크 진동 골든 (#178) > 현 진동 지표를 스냅샷으로 박�
 {
   "all": {
     "avgMoveM": 1.9,
-    "bigReversalPer100": 4.36,
-    "maxMoveM": 10.12,
-    "reversalPer100": 11.65,
-    "samples": 120362,
+    "bigReversalPer100": 4.24,
+    "maxMoveM": 11.9,
+    "reversalPer100": 11.3,
+    "samples": 59066,
   },
   "nearOwner": {
-    "avgMoveM": 2.81,
-    "bigReversalPer100": 18.25,
+    "avgMoveM": 3,
+    "bigReversalPer100": 18.96,
     "maxMoveM": 6.11,
-    "reversalPer100": 25.81,
-    "samples": 3014,
+    "reversalPer100": 26.81,
+    "samples": 1503,
   },
   "seeds": 4,
 }
