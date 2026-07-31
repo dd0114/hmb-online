@@ -250,3 +250,36 @@ export function setChainProbe(p: ChainProbe | null): void {
 export function chainProbe(): ChainProbe | null {
   return activeProbe;
 }
+
+/**
+ * 볼 소유자 **결정 관측자**(진단 전용, 옵트인) — `ChainProbe` 와 같은 규율의 두 번째 계측 포인트.
+ *
+ * 왜 별도인가: `ChainProbe` 는 사슬 코어(`chain.ts`) **안**에서 생성기 라벨을 세므로
+ *  (a) `chain.mode="weighted"` 대조군을 못 재고,
+ *  (b) 결정 **당시의 상태**(누가 어디 서 있었나)를 볼 수 없다.
+ * "기하 조건이 성립한 틱에서 엔진이 실제로 무엇을 골랐나"를 재려면 두 정보가 같은 지점에서
+ * 필요하다. 그래서 관측 지점은 `match.ts` 의 `decide` 직후 — **두 코어가 합류하고 실행 직전**이라
+ * 상태가 결정 시점 그대로다(이동·경합 전).
+ *
+ * ⚠️ **결정론 영향 0.**
+ *  - 기본값 `null`(옵트인). 프로덕션 경로는 `if (obs)` 한 줄이다.
+ *  - 시뮬 로직은 이 훅의 반환값을 **읽지 않는다**(void). 관측이 상태가 되지 않는다.
+ *  - 관측자는 상태를 **읽기만** 해야 한다(쓰면 그 순간 결정론이 깨진다 — 진단자의 책임).
+ */
+export type DecisionObserver = (
+  state: unknown,
+  owner: SimPlayer,
+  kind: ActionKind | "dribble" | "clearance",
+) => void;
+
+let activeDecisionObserver: DecisionObserver | null = null;
+
+/** 결정 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setDecisionObserver(o: DecisionObserver | null): void {
+  activeDecisionObserver = o;
+}
+
+/** 현재 활성 결정 관측자(없으면 null). */
+export function decisionObserver(): DecisionObserver | null {
+  return activeDecisionObserver;
+}

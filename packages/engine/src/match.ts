@@ -48,6 +48,7 @@ import {
   deadBallPaceStep,
 } from "./deadball";
 import { computeSetPiecePlan } from "./setpiece";
+import { decisionObserver } from "./action";
 import { attackGoal } from "./pitch";
 import type { OutCross } from "./ball";
 import { hashState } from "./hash";
@@ -446,6 +447,13 @@ function stepTick(carry: Carry): void {
         config.chain.mode === "chain"
           ? decideBallOwnerChain(state, owner, rng, config, pitch)
           : decideBallOwner(state, owner, rng, config, pitch);
+      // 진단 관측(옵트인·쓰기 전용, `action.ts:setDecisionObserver`). 두 코어가 합류한 직후이자
+      // **실행 전**이라 상태가 결정 시점 그대로다 — "기하 조건이 성립한 틱에서 엔진이 실제로 무엇을
+      // 골랐나"를 재계산 없이 읽는 유일한 지점. 기본 null 이라 프로덕션 경로는 이 `if` 한 줄이다.
+      {
+        const obs = decisionObserver();
+        if (obs) obs(state, owner, action.kind);
+      }
       // #176: taker 가 공을 실제로 플레이하면(패스/슛/드리블) 그 순간 공이 인플레이 → 접근 금지 해제.
       // hold 는 아직 안 찬 것이므로 유지한다. (offside 등 새 세트피스는 아래서 setPiece 를 덮어쓴다.)
       if (liveZone && action.kind !== "hold") state.setPiece = null;
