@@ -1779,6 +1779,16 @@
         "2": 2500,
         "3": 800
       }
+    },
+    "dailyReward": {
+      "slotsPerDay": 6,
+      "bigSlots": [
+        3,
+        6
+      ],
+      "currency": "GEM",
+      "small": 7,
+      "big": 70
     }
   },
   "starterTop": {

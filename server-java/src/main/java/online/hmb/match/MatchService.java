@@ -104,6 +104,8 @@ public class MatchService {
     private final int promptMaxChars;
     private final SecureRandom secureRandom = new SecureRandom();
 
+    private final online.hmb.league.LeagueDailyRewardService dailyRewardService;
+
     public MatchService(JdbcClient jdbcClient,
                         TxRunner txRunner,
                         DeckService deckService,
@@ -114,6 +116,7 @@ public class MatchService {
                         java.time.Clock clock,
                         MatchClockService clockService,
                         online.hmb.away.AwayViewAccess awayViewAccess,
+                        online.hmb.league.LeagueDailyRewardService dailyRewardService,
                         MatchAutoProperties autoProps,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
@@ -127,6 +130,7 @@ public class MatchService {
         this.clock = clock;
         this.clockService = clockService;
         this.awayViewAccess = awayViewAccess;
+        this.dailyRewardService = dailyRewardService;
         this.autoProps = autoProps;
         this.halftimeSubsMax = halftimeSubsMax;
         this.promptMaxChars = promptMaxChars;
@@ -1300,9 +1304,19 @@ public class MatchService {
                 .orElseThrow(() -> ApiException.notFound("해당 half 로그가 없습니다"));
     }
 
+    /**
+     * 매치 결과.
+     *
+     * <p>{@code dailyReward}(#368)는 그 판이 소비한 <b>오늘의 보상 칸</b>이다(리그 매치만, 아니면 null).
+     * ⚠️ {@code pointsAwarded} 로 대신할 수 없다 — 그건 {@code reason LIKE 'reward_%'} 합계라
+     * ① 다이아 칸에서는 항상 0이고 ② <b>어느 재화인지 말하지 못한다</b>(#232: 금액과 재화는 같이 온다).
+     * 소멸한 칸도 {@code awarded=false} 로 실어 보낸다 — 화면이 "얼마를 날렸는지" 말해야 유저가
+     * 칸이 소비됐다는 걸 안다.
+     */
     public record MatchResult(String matchId, int scoreHome, int scoreAway, String result,
                                long pointsAwarded, Map<String, Object> teamStats,
-                               List<Map<String, Object>> playerStats) {
+                               List<Map<String, Object>> playerStats,
+                               online.hmb.league.LeagueDailyRewardService.SlotRow dailyReward) {
     }
 
     public MatchResult result(String userId, String matchId) {
@@ -1351,7 +1365,8 @@ public class MatchService {
         }
 
         return new MatchResult(matchId, row.scoreHome(), row.scoreAway(), row.result(),
-                pointsAwarded, Map.copyOf(teamCounters), List.copyOf(perPlayer.values()));
+                pointsAwarded, Map.copyOf(teamCounters), List.copyOf(perPlayer.values()),
+                dailyRewardService.slotOfMatch(matchId).orElse(null));
     }
 
     // ── 스냅샷/JSON 헬퍼 ────────────────────────────────────────────────

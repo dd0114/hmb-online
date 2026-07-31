@@ -13,6 +13,8 @@ import { useDecklessGuard } from "../common/useDecklessGuard";
 import { useLeagueRankings } from "../api/hooks-p286";
 import { RankingBoard } from "../common/RankingBoard";
 import { matchInProgressIdOf } from "../common/match-lock";
+import { DailyRewardTrack } from "./DailyRewardTrack";
+import { pickDailyReward } from "./daily-reward-logic";
 import type { SeasonSummary } from "./league-logic";
 import {
   divisionLabel,
@@ -48,6 +50,9 @@ export function LeaguePage() {
   const headerDivision = pickDivision(season) ?? pickMeDivision(me);
   // Phase3 additive — 구 서버(필드 부재)면 null → 기존 종료 화면 그대로(폴백).
   const reward = useMemo(() => pickSeasonReward(data as LeagueResponseP3 | undefined), [data]);
+  // #368 additive — 구 서버(필드 부재)면 null → 트랙 구역을 **통째로 안 그린다**(#286 W5 규율:
+  // 스켈레톤·에러를 띄우면 "아직 없는 기능"이 "고장 난 화면"으로 읽힌다).
+  const dailyReward = useMemo(() => pickDailyReward(data as LeagueResponseP3 | undefined), [data]);
 
   const header = (
     <div className={styles.headerRow}>
@@ -73,6 +78,10 @@ export function LeaguePage() {
     <Layout header={header} nav>
       {isError && <ErrorToast message="리그 정보를 불러오지 못했습니다" />}
       {isLoading && <p className={styles.pending}>불러오는 중…</p>}
+
+      {/* 트랙은 시즌과 독립이다 — 칸은 시즌이 아니라 **하루**에 매이므로 시즌이 없어도 그린다
+          (오늘 몇 판 쳤는지는 시즌을 새로 시작해도 이어진다). */}
+      {!isLoading && dailyReward && <DailyRewardTrack track={dailyReward} />}
 
       {!isLoading && !season && <StartSeasonCta onError={setError} division={headerDivision} />}
       {season && !isSeasonFinished(season) && <Dashboard season={season} onError={setError} />}

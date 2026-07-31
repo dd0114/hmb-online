@@ -15,11 +15,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.SplittableRandom;
+import java.util.stream.Collectors;
 import online.hmb.catalog.EconomyService;
 import online.hmb.catalog.LeagueDataService;
 import online.hmb.common.ApiException;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
+import online.hmb.match.ConditionService;
 import online.hmb.match.MatchLockService;
 import online.hmb.match.MatchService;
 import online.hmb.meta.DeckService;
@@ -70,6 +72,8 @@ public class LeagueService {
     private final WalletService walletService;
     private final LeagueSeedSource seedSource;
     private final EconomyService economyService;
+    private final LeagueDailyRewardService dailyRewardService;
+    private final ConditionService conditionService;
 
     private final int botTeamCount;
     private final int rosterSize;
@@ -90,6 +94,8 @@ public class LeagueService {
                          WalletService walletService,
                          LeagueSeedSource seedSource,
                          EconomyService economyService,
+                         LeagueDailyRewardService dailyRewardService,
+                         ConditionService conditionService,
                          @Value("${hmb.league.bot-team-count}") int botTeamCount,
                          @Value("${hmb.league.roster-size}") int rosterSize,
                          @Value("${hmb.league.sim.base-goals}") double simBaseGoals,
@@ -108,6 +114,8 @@ public class LeagueService {
         this.walletService = walletService;
         this.seedSource = seedSource;
         this.economyService = economyService;
+        this.dailyRewardService = dailyRewardService;
+        this.conditionService = conditionService;
         this.botTeamCount = botTeamCount;
         this.rosterSize = rosterSize;
         this.simBaseGoals = simBaseGoals;
@@ -196,7 +204,14 @@ public class LeagueService {
     public record SeasonReward(int rank, int points, int gems, String status, String awardedAt) {
     }
 
-    public record LeagueResponse(LeagueSeason season) {
+    /**
+     * {@code GET /api/league} 응답.
+     *
+     * <p>{@code dailyReward}(#368)는 <b>시즌 밖</b>이다 — 보상 칸은 시즌이 아니라 <b>하루</b>에 매인다.
+     * 시즌이 없어도 존재하고 시즌 경계를 넘어 이어지므로, 시즌 DTO 안에 넣으면 "시즌 없는 유저의
+     * 오늘"을 표현할 자리가 없다. additive 라 구 클라는 그냥 무시한다.
+     */
+    public record LeagueResponse(LeagueSeason season, LeagueDailyRewardService.Track dailyReward) {
     }
 
     public record LeagueNextMatchResponse(MatchService.MatchDetail match, LeagueFixture fixture) {
@@ -209,7 +224,7 @@ public class LeagueService {
         return txRunner.run(() -> {
             Optional<SeasonRow> active = activeSeason(userId);
             if (active.isPresent()) {
-                return new LeagueResponse(buildSeasonDto(active.get()));
+                return new LeagueResponse(buildSeasonDto(active.get()), todayTrack(userId));
             }
             LeagueDataService.LeagueData data = leagueDataService.get().orElseThrow(() ->
                     leagueInvalid("리그 데이터(league.v1.json)가 로딩되지 않아 시즌을 시작할 수 없습니다"));
@@ -236,7 +251,7 @@ public class LeagueService {
             insertFixtures(seasonId, teams);
 
             SeasonRow row = seasonById(seasonId).orElseThrow();
-            return new LeagueResponse(buildSeasonDto(row));
+            return new LeagueResponse(buildSeasonDto(row), todayTrack(userId));
         });
     }
 
@@ -244,9 +259,11 @@ public class LeagueService {
 
     /** 최신 시즌(ACTIVE 우선, 없으면 최근 FINISHED) 상태·순위·일정·다음 유저 경기. 없으면 season=null. */
     public LeagueResponse getLeague(String userId) {
+        // 트랙은 시즌과 독립이다 — 시즌이 없어도(아직 시작 전·직전 시즌 종료) 오늘의 칸은 있다.
+        LeagueDailyRewardService.Track track = todayTrack(userId);
         return latestSeason(userId)
-                .map(s -> new LeagueResponse(buildSeasonDto(s)))
-                .orElse(new LeagueResponse(null));
+                .map(s -> new LeagueResponse(buildSeasonDto(s), track))
+                .orElse(new LeagueResponse(null, track));
     }
 
     // ── POST /api/league/next-match (AC-F2) ─────────────────────────────
@@ -1335,6 +1352,40 @@ public class LeagueService {
     private Optional<SeasonRow> seasonById(String seasonId) {
         return jdbcClient.sql(SEASON_SELECT + " WHERE id = ?")
                 .param(seasonId).query(SEASON_MAPPER).optional();
+    }
+
+    /**
+     * 오늘의 보상 트랙 (#368) — 지난 칸은 박제된 행에서, 남은 칸은 <b>시즌 잔여 일정</b>에서 상대를 붙인다.
+     *
+     * <p>칸에 상대가 붙으면 트랙이 곧 "오늘의 일정"이 된다(hero 채택 시안 A). 잔여 일정이 트랙보다
+     * 짧거나 ACTIVE 시즌이 없으면 그 칸들의 상대는 {@code null} 이다 — <b>정상 상태</b>이고 화면은
+     * 상대 없이 보상만 그린다. 여기서 봇전을 미리 만들거나 시즌을 자동 시작하지 않는다.
+     */
+    private LeagueDailyRewardService.Track todayTrack(String userId) {
+        return dailyRewardService.trackOf(userId, conditionService.todayDate(), upcomingOpponents(userId));
+    }
+
+    /** ACTIVE 시즌의 남은 유저 경기 상대 이름(가까운 라운드 순). 시즌이 없으면 빈 목록. */
+    private List<String> upcomingOpponents(String userId) {
+        Optional<SeasonRow> active = activeSeason(userId);
+        if (active.isEmpty()) {
+            return List.of();
+        }
+        SeasonRow season = active.get();
+        Map<String, String> names = teamsOf(season).stream()
+                .collect(Collectors.toMap(TeamMeta::teamId, TeamMeta::name, (a, b) -> a, LinkedHashMap::new));
+        return jdbcClient.sql("""
+                        SELECT home_team, away_team FROM league_fixtures
+                        WHERE season_id = ? AND is_user = 1 AND state = 'SCHEDULED'
+                        ORDER BY round ASC
+                        """)
+                .param(season.id())
+                .query((rs, n) -> {
+                    String home = rs.getString("home_team");
+                    String opponent = USER_TEAM_ID.equals(home) ? rs.getString("away_team") : home;
+                    return names.getOrDefault(opponent, opponent);
+                })
+                .list();
     }
 
     private Optional<FixtureRow> nextUserFixtureRow(String seasonId) {

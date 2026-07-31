@@ -1,0 +1,232 @@
+/* 오늘의 보상 트랙 — 배틀패스 레일 (#368 시안 A). 구조 근거는 DailyRewardTrack.tsx 머리말. */
+
+.card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 12px;
+  /* 레일이 가로로 넘치므로 카드가 문서를 밀지 않게 자른다. 없으면 390px 에서 리그 화면 전체가
+     가로 스크롤한다(#284 가 `min-width: 0` 으로 겪은 것과 같은 부류). */
+  overflow: hidden;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.title {
+  font-size: 13.5px;
+  font-weight: 700;
+  margin: 0;
+}
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: rgba(79, 140, 255, 0.12);
+  border: 1px solid rgba(79, 140, 255, 0.35);
+}
+.badgeOff {
+  color: var(--text-muted);
+  background: transparent;
+  border-color: var(--border);
+}
+.count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.count b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 레일 ── */
+.rail {
+  display: flex;
+  overflow-x: auto;
+  padding: 2px 0 6px;
+  scrollbar-width: none;
+  /* ⚠️ 스크롤바를 신호로 삼지 마라 — 모바일에선 폭이 0이고 iOS 는 아예 안 그린다(#292 실측).
+     여기서 "더 있다"를 말하는 것은 **칸이 잘려 보이는 것** 자체다. */
+}
+.rail::-webkit-scrollbar {
+  display: none;
+}
+
+.node {
+  flex: none;
+  width: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  padding-top: 13px;
+}
+.node.big {
+  width: 72px;
+}
+
+/* 보상 칸 자리 — **높이를 고정해야** 큰 칸(58px)과 보통 칸(44px)이 섞여도 아래 마크 줄이 어긋나지
+   않는다. 목업에서 실제로 어긋났고 캡처로만 보였다. */
+.rewardSlot {
+  height: 60px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.line {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: #232833;
+  z-index: 0;
+}
+.past .line {
+  background: var(--gemDeep, #2b7fa8);
+}
+.node:first-child .line {
+  left: 50%;
+}
+.node:last-child .line {
+  right: 50%;
+}
+
+.reward {
+  position: relative;
+  z-index: 1;
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  border: 1px solid var(--border);
+  background: #0d1016;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.big .reward {
+  width: 58px;
+  height: 58px;
+  border-radius: 13px;
+  border-color: rgba(255, 194, 75, 0.6);
+  background: linear-gradient(160deg, #221c10, #141821);
+  box-shadow: 0 0 14px rgba(255, 194, 75, 0.22);
+}
+.amount {
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: #7fd8ff;
+  line-height: 1;
+  text-align: center;
+}
+.big .amount {
+  font-size: 11.5px;
+  color: #ffc24b;
+}
+
+/* ⚠️ 틴트를 **불투명 베이스 위에 합성**한다. `background: rgba(...)` 로 통째 교체하면 뒤의 진행선
+   (`.line`)이 비쳐 금액 글자 한가운데를 가로지르고, 그건 이 화면이 "소멸"을 말할 때 쓰는 언어
+   (`.missed .amount` 의 취소선)와 같아서 **받은 보상이 취소된 것처럼 보인다**(독립검증 minor-1 실측). */
+.won .reward {
+  border-color: rgba(55, 194, 111, 0.6);
+  background:
+    linear-gradient(rgba(55, 194, 111, 0.13), rgba(55, 194, 111, 0.13)),
+    #0d1016;
+}
+.won .amount {
+  color: var(--success);
+}
+/* `opacity` 를 쓰지 않는다 — 요소 전체가 반투명해지면 위와 같은 이유로 진행선이 비친다.
+   "지나갔다"는 신호는 테두리·글자색·취소선이 이미 낸다. */
+.missed .reward {
+  border-color: rgba(255, 90, 90, 0.4);
+  background:
+    linear-gradient(rgba(255, 90, 90, 0.07), rgba(255, 90, 90, 0.07)),
+    #0d1016;
+}
+.missed .amount {
+  color: #7a6570;
+  text-decoration: line-through;
+}
+.next .reward {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 2px rgba(79, 140, 255, 0.35),
+    0 0 18px rgba(79, 140, 255, 0.3);
+}
+
+.stamp {
+  position: absolute;
+  top: -3px;
+  right: 2px;
+  font-size: 11px;
+  font-weight: 800;
+  z-index: 2;
+}
+.won .stamp {
+  color: var(--success);
+}
+.missed .stamp {
+  color: var(--danger);
+}
+
+.nowTag {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 8.5px;
+  font-weight: 800;
+  color: #0b0e13;
+  background: var(--accent);
+  border-radius: 4px;
+  padding: 1px 5px;
+  z-index: 3;
+  white-space: nowrap;
+}
+
+.nodeFoot {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  /* 마크가 없는 칸(잔여 일정 밖)도 같은 높이를 차지해야 줄이 흔들리지 않는다. */
+  min-height: 34px;
+}
+.slotNo {
+  font-size: 9px;
+  color: #5f6773;
+  font-variant-numeric: tabular-nums;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.nextPill {
+  margin-left: auto;
+  color: var(--text);
+  background: rgba(79, 140, 255, 0.12);
+  border: 1px solid rgba(79, 140, 255, 0.35);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.doneNote {
+  margin-left: auto;
+}
