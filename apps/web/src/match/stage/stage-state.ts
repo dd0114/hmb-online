@@ -310,7 +310,9 @@ export function resolveActiveTab(tabs: readonly TabKey[], preferred: TabKey | nu
  * 시트 높이 등급 — **콘텐츠와 무관**하다(내용이 쌓여도 높이가 안 변한다). 탭 종류로만 갈린다:
  *  · info(통계·로그) = 낮게 → 무대를 크게 본다(관전이 주목적).
  *  · **input(후반 지시)** = 중간 → 관전 중이지만 **적는** 자리라 입력칸까지는 들어와야 한다.
- *  · state(감독·결과·경기장면) = 높게 → 실제로 조작해야 하는 폼/표라 볼 게 많다.
+ *  · state(감독·경기장면) = 높게 → 실제로 조작해야 하는 폼/표라 볼 게 많다.
+ *  · **result(결과)** = 가장 높게 → 경기가 끝나 무대는 다시보기라 비중이 낮고, 읽을 것(스코어·
+ *    보상·팀 스탯·성장 리포트)이 이 화면에서 가장 많다.
  * 실제 픽셀은 CSS 가 정한다(데스크탑만 구분, 모바일은 무대가 폭으로 정해져 남는 높이를 시트가 가짐).
  *
  * ⚠️ **`brief` 는 `info` 가 아니다** (#348, hero 실사용 제보). 예전엔 통계·로그와 한 등급이라
@@ -319,10 +321,20 @@ export function resolveActiveTab(tabs: readonly TabKey[], preferred: TabKey | nu
  * "적을 칸이 없는 화면"이었다(패널 안을 스크롤하면 닿지만, 800px 화면에서 150px 창을 스크롤해야
  * 한다는 걸 알 방법이 없다). "보는 패널"과 "쓰는 패널"은 필요한 세로가 다르다 — 그 축을 여기서 가른다.
  * 계약 = `e2e/p348-desktop-viewport.spec.ts` ①(데스크탑 전 비율에서 입력칸이 화면 안).
+ *
+ * ⚠️ **`result` 도 `state` 가 아니다** (#355). 40svh(상한 420px)를 받는 동안 결과 패널 내용
+ * (449~481px, 성장 리포트가 붙으면 그 이상)이 들어가지 못해 **[로비로] CTA 가 모든 데스크탑
+ * 비율에서 화면 밖**이었다 — 3440×1440 에서도 bottom 1576 > 1440 이라 "화면이 크면 괜찮다"가
+ * 성립하지 않았다.
+ * ⚠️ 다만 **높이를 키우는 것이 그 결함의 해법은 아니다.** 결과 패널 내용에는 상한이 없다
+ * (`GrowthReportSection` 이 기용 선수 수만큼 행을 붙인다) — 어떤 고정값도 언젠가 모자란다.
+ * CTA 를 지키는 것은 `ResultPanel` 의 **스크롤 밖 고정층**이고(감독시간과 같은 구조), 이 등급은
+ * "얼마나 읽히나"를 좋게 할 뿐이다. 둘을 바꿔 생각하면 높이만 만지다 같은 버그로 돌아온다.
  */
-export function sheetHeight(tab: TabKey | null): "info" | "input" | "state" | null {
+export function sheetHeight(tab: TabKey | null): "info" | "input" | "state" | "result" | null {
   if (!tab) return null;
+  if (tab === "result") return "result";
   // 경기장면 탭도 "state" 높이를 쓴다 — 정보 패널(통계·로그)보다 크게 봐야 뭘 보는지 알 수 있다.
-  if (tab === "halftime" || tab === "result" || tab === "stage") return "state";
+  if (tab === "halftime" || tab === "stage") return "state";
   return tab === "brief" ? "input" : "info";
 }

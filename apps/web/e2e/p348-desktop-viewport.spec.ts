@@ -45,6 +45,21 @@ const DESKTOP = [
   { name: "3440x1440", width: 3440, height: 1440 }, // 울트라와이드
 ];
 
+/**
+ * 데스크탑 분기 **바로 아래**의 "넓고 낮은 창" (#354). 창을 조금 좁혔거나 브라우저를 확대한 상태 —
+ * 실사용에서 흔하다(853×533 = 1280×800 을 150% 확대한 CSS 뷰포트).
+ * ⚠️ 이 밴드를 "모바일"로 부르지 마라 — 폰(390)은 멀쩡했고, 깨지는 조건은 **가로가 넓은 것**이다.
+ */
+const WIDE_LOW = [
+  { name: "1023x768", width: 1023, height: 768 }, // 분기 바로 아래
+  { name: "1023x900", width: 1023, height: 900 },
+  { name: "960x1040", width: 960, height: 1040 },
+  { name: "900x800", width: 900, height: 800 },
+  { name: "853x533", width: 853, height: 533 }, // 1280×800 @150%
+  { name: "820x640", width: 820, height: 640 },
+  { name: "768x900", width: 768, height: 900 },
+];
+
 const STARTERS = Array.from({ length: 11 }, (_, i) => ({ slotIndex: i, playerId: `p${i + 1}` }));
 const BENCH = Array.from({ length: 5 }, (_, i) => ({ slotIndex: i, playerId: `b${i + 1}` }));
 const SNAPSHOT = {
@@ -80,7 +95,7 @@ const PLAYERS = [
 ];
 
 /** ⚠️ 라우트는 pathname 술어로 — glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지 잡아 흰 화면이 된다. */
-async function mockApi(page: Page, state: string) {
+async function mockApi(page: Page, state: string, growth = false) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -96,12 +111,55 @@ async function mockApi(page: Page, state: string) {
           state,
           scoreH1Home: 1,
           scoreH1Away: 1,
+          // FINISHED 에서만 의미 있는 값들 — 다른 상태에서는 서버도 주지 않는다.
+          scoreHome: state === "FINISHED" ? 2 : null,
+          scoreAway: state === "FINISHED" ? 3 : null,
+          result: state === "FINISHED" ? "LOSS" : null,
           createdAt: "2026-07-29T09:00:00Z",
           opponent: { name: "봇 FC" },
           userDeckSnapshot: SNAPSHOT,
           clock: null,
         },
       });
+    }
+    /*
+     * 결과 패널의 실제 내용(#355). `pointsAwarded` + `dailyReward`(#368 리그 보상 칸)까지 실어야
+     * 라이브와 같은 높이가 나온다 — 이슈가 잰 449px 은 보상 줄이 없던 표본이고, 리그 매치에서는
+     * 더 크다. **표본이 계약의 절반이다**(CLAUDE.md 함정 4).
+     */
+    if (url.pathname === `/api/matches/${MATCH_ID}/result`) {
+      return route.fulfill({
+        json: {
+          matchId: MATCH_ID,
+          result: "LOSS",
+          scoreHome: 2,
+          scoreAway: 3,
+          pointsAwarded: 40,
+          dailyReward: { slotNo: 3, currency: "DIA", amount: 5, awarded: true },
+        },
+      });
+    }
+    /*
+     * 성장 리포트(#286 S1) — 기용 선수 수만큼 행이 붙는다. **결과 패널 높이에 상한이 없다**는
+     * 증거이고, 그래서 이 화면의 CTA 는 높이 튜닝이 아니라 **스크롤 밖 고정층**으로만 지킬 수 있다.
+     * 기본은 없음(404 = 서버 계약상 정상).
+     */
+    if (url.pathname.startsWith("/api/growth/report/")) {
+      return growth
+        ? route.fulfill({
+            json: {
+              matchId: MATCH_ID,
+              entries: PLAYERS.slice(0, 11).map((p) => ({
+                playerId: p.id,
+                name: p.name,
+                statXp: { shooting: 40, passing: 25, stamina: 12 },
+                levelUps: ["shooting"],
+                ovrBefore: 60,
+                ovrAfter: 61,
+              })),
+            },
+          })
+        : route.fulfill({ status: 404, json: {} });
     }
     if (/\/api\/matches\/.+\/halves\/[12]\/log$/.test(url.pathname)) return route.fulfill({ json: MATCH_LOG });
     if (url.pathname === "/api/players") return route.fulfill({ json: PLAYERS });
@@ -110,8 +168,8 @@ async function mockApi(page: Page, state: string) {
   });
 }
 
-async function openMatch(page: Page, state: string) {
-  await mockApi(page, state);
+async function openMatch(page: Page, state: string, growth = false) {
+  await mockApi(page, state, growth);
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "local");
@@ -338,6 +396,282 @@ test.describe("③ 데스크탑 분기 바로 아래 — 같은 결함이 남지
   }
 });
 
+/**
+ * ⑤ **감독시간 — 넓고 낮은 창(데스크탑 분기 아래)** · #354
+ *
+ * ② 는 ≥1024 만 잰다. 그 분기 **아래**에서는 `HalftimePanel` 이 단일 컬럼이라 보드가 가로폭에
+ * 비례해 세로로 자라고, 그 아래에 붙는 지시 레일(= `감독의 한마디` 입력칸)이 통째로 밀려났다.
+ * 실측(수정 전): 1023×768 y955 · 1023×900 y1076 · 960×1040 y1028 · 853×533 y798(=1280×800@150%)
+ * · 820×640 y778 · 768×900 y881 — **전부 화면 밖**이고 중심점 히트테스트 0.
+ *
+ * ⚠️ `후반 지시`(③)와 달리 **되찾을 빈 공간이 없다** — 감독시간 시트는 이미 세로를 100% 쓴다.
+ * 그래서 값 조정이 아니라 **레이아웃**이 답이다: 보드 옆에 레일을 세워 입력칸이 보드 높이와
+ * 무관해지게 한다(데스크탑이 이미 그렇게 동작한다 — 그 밴드를 넓힌 것).
+ * 계약은 그 구현이 아니라 **성질**을 잰다: 입력칸이 보드 아래로 밀리지 않는다.
+ */
+test.describe("⑤ 감독시간 — 넓고 낮은 창(분기 아래)에서 입력칸이 화면 안", () => {
+  for (const vp of WIDE_LOW) {
+    test(`${vp.name} — 감독의 한마디 입력칸 · [후반 시작] 이 화면 안`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "HALFTIME");
+      await expect(page.getByTestId("halftime-panel")).toHaveCount(1);
+
+      const prompt = await box(page, "editor-team-prompt");
+      expect(
+        prompt.inViewport,
+        `${vp.name}: 감독 한마디 입력칸이 화면 밖 — bottom ${prompt.bottom} > 뷰포트 ${prompt.vh}`,
+      ).toBe(true);
+      expect(prompt.hitSelf, `${vp.name}: 입력칸 중심을 다른 것이 받는다(덮였거나 잘렸다)`).toBe(true);
+      expect(prompt.h, `${vp.name}: 입력칸이 한 줄로 찌그러지면 "보이긴 한다"가 성립해도 못 쓴다`).toBeGreaterThanOrEqual(60);
+
+      const cta = await box(page, "resume-button");
+      expect(cta.inViewport, `${vp.name}: [후반 시작] 이 화면 밖`).toBe(true);
+      expect(cta.hitSelf, `${vp.name}: [후반 시작] 중심을 다른 것이 받는다`).toBe(true);
+
+      /*
+       * ⚠️ **자리를 만든다고 보드를 없애면 안 된다.** 감독시간의 다른 절반이 배치·교체이고
+       * 그건 보드에서만 한다. 입력칸만 보는 계약이면 "보드 display:none" 이 통과한다.
+       */
+      const board = await box(page, "tactics-board");
+      expect(board.h, `${vp.name}: 전술보드가 실질적으로 사라지면 안 된다`).toBeGreaterThan(120);
+      expect(board.hitSelf, `${vp.name}: 전술보드 중심을 다른 것이 받는다`).toBe(true);
+    });
+  }
+});
+
+/**
+ * ⑦ **2컬럼 임계 아래의 잔여 밴드** · #354 독립검증 MAJOR-1
+ *
+ * ⑤ 의 2컬럼은 컨테이너 640px = **뷰포트 688px** 부터 걸린다. 그 아래 폭(480~687)에서는 같은
+ * 증상이 남아 있었다 — 640×800 b807/800 OUT · 673×900 b910/900 OUT · 687×768 b838/768 OUT ·
+ * 600×800 은 뷰포트 안이지만 중심이 **[후반 시작] 에 피격**. 실사용에 있는 창들이다
+ * (1280 모니터 반쪽 스냅 640 · Galaxy Z Fold 내부 673).
+ *
+ * 여긴 2컬럼으로 못 간다(레일을 빼면 보드가 234px 라 토큰 4열이 겹친다) → `TacticsBoard` 가 이미
+ * 쓰는 "짧을수록 피치가 양보한다" 스텝을 감독시간 안에서 한 단계 더 쓰고, **세로 ≤720 인 창은
+ * 비율이 아니라 높이 상한(190px)** 으로 자른다(비율을 더 내리면 넓은 쪽에 맞춘 값이 좁은 쪽을
+ * 필요 이상으로 누른다).
+ *
+ * ⚠️ **480×800 은 결함 케이스가 아니라 하한 가드다** — 수정 전에도 in+hit 이었다(독립검증 확인).
+ * 임계를 480 위로 올리면 여기서 죽는다. 결함이던 창은 나머지 5개 + 640×700 · 680×700 이다.
+ * ⚠️ **미해소 = 폭 478~479 × 세로 ≤~709 (2px 짜리 띠)**. 그 폭의 실기기·스냅 폭이 없어 영향이
+ * 사실상 0 이라 #380 에 기록만 했다. **`test.fail` 핀은 박지 않았다** — 기대실패는 "passed" 로
+ * 집계돼 다음 사람을 속인다(CLAUDE.md 함정 1).
+ */
+test.describe("⑦ 2컬럼 임계 아래 — 보드가 양보해 입력칸이 살아난다", () => {
+  for (const vp of [
+    { name: "480x800", width: 480, height: 800 }, // 하한 가드(원래 정상)
+    { name: "540x720", width: 540, height: 720 },
+    { name: "600x800", width: 600, height: 800 },
+    { name: "640x700", width: 640, height: 700 }, // 세로 짧은 창 — 높이 상한이 여기서 일한다
+    { name: "640x800", width: 640, height: 800 }, // 1280 모니터 반쪽 스냅
+    { name: "673x900", width: 673, height: 900 }, // Galaxy Z Fold 내부 화면
+    { name: "680x700", width: 680, height: 700 },
+    { name: "687x720", width: 687, height: 720 },
+    { name: "687x768", width: 687, height: 768 }, // 2컬럼 임계 바로 아래
+  ]) {
+    test(`${vp.name} — 입력칸이 화면 안 + CTA 에 안 덮인다`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "HALFTIME");
+      await expect(page.getByTestId("halftime-panel")).toHaveCount(1);
+
+      const prompt = await box(page, "editor-team-prompt");
+      expect(prompt.inViewport, `${vp.name}: 입력칸 bottom ${prompt.bottom} > 뷰포트 ${prompt.vh}`).toBe(true);
+      /*
+       * ⚠️ 이 밴드의 실제 실패 양상은 "뷰포트 밖"이 아니라 **[후반 시작] 에 덮임**이었다
+       * (600×800 b781 은 뷰포트 안인데 중심 히트가 `resume-button`). 좌표만 재면 통과한다.
+       */
+      expect(prompt.hitSelf, `${vp.name}: 입력칸 중심을 다른 것이 받는다([후반 시작]에 덮였을 가능성)`).toBe(true);
+
+      // 자리를 만든다고 보드를 없애지 않았다 — 배치·교체가 여기서만 가능하다.
+      const board = await box(page, "tactics-board");
+      expect(board.h, `${vp.name}: 전술보드가 실질적으로 사라지면 안 된다`).toBeGreaterThan(120);
+      expect(board.hitSelf, `${vp.name}: 전술보드 중심을 다른 것이 받는다`).toBe(true);
+    });
+  }
+
+  /** 폰과 그 바로 위(479)는 규칙이 안 걸린다 — 보드 비율이 그대로여야 한다. */
+  test("폰·479 이하는 이 스텝이 안 걸린다 (무회귀)", async ({ page }) => {
+    for (const vp of [
+      { name: "390x844", width: 390, height: 844 },
+      { name: "360x740", width: 360, height: 740 },
+      { name: "412x915", width: 412, height: 915 },
+    ]) {
+      await page.setViewportSize(vp);
+      await openMatch(page, "HALFTIME");
+      await expect(page.getByTestId("halftime-panel")).toHaveCount(1);
+      const board = await box(page, "tactics-board");
+      const prompt = await box(page, "editor-team-prompt");
+      expect(prompt.inViewport, `${vp.name}: 폰 입력칸이 화면 밖`).toBe(true);
+      expect(prompt.hitSelf, `${vp.name}: 폰 입력칸이 덮였다`).toBe(true);
+      /*
+       * 폰 피치는 `TacticsBoard` 의 기존 스텝(68/52 · 68/44 · 68/40)만 받는다 — 480 이상에만 거는
+       * 새 스텝(68/30)이 새 나가면 이 하한이 죽는다. 68/40 → w/h = 1.70, 68/30 → 2.27.
+       */
+      expect(
+        board.w / board.h,
+        `${vp.name}: 폰 보드가 새 스텝(68/30 = 2.27)까지 눌렸다 — 실측 ${(board.w / board.h).toFixed(2)}`,
+      ).toBeLessThan(2.0);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
+  });
+});
+
+/**
+ * ⑥ **결과 화면 [로비로] CTA** · #355
+ *
+ * 뿌리는 #348 과 같다(`.sheetState` 고정 높이)지만 **모든** 데스크탑 비율에서 깨져 있었다 —
+ * 3440×1440 에서도 CTA bottom 1576 > 1440. "화면이 크면 괜찮다"는 예외가 여기엔 없다.
+ *
+ * ⚠️ **높이를 키우는 것만으로는 못 고친다.** 결과 패널 내용에는 상한이 없다 —
+ * `GrowthReportSection` 이 기용 선수 수만큼 행을 붙인다(11명이면 수백 px). 그래서 계약을
+ * **두 축**으로 건다: ⓐ 성장 리포트가 있든 없든 CTA 가 화면 안 ⓑ 패널을 끝까지 스크롤해도
+ * CTA 가 **움직이지 않는다**(= 스크롤 밖 고정층에 산다). ⓑ 가 없으면 "시트를 조금 키웠다"가
+ * 통과하고, 다음에 결과 카드에 줄 하나가 붙는 순간 같은 결함이 이름만 바꿔 돌아온다.
+ */
+test.describe("⑥ 결과 화면 — [로비로] 가 어느 데스크탑 비율에서도 화면 안", () => {
+  for (const vp of DESKTOP) {
+    test(`${vp.name} — [로비로] · 결과 카드가 화면 안`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FINISHED");
+      await expect(page.getByTestId("result-page")).toHaveCount(1);
+
+      const cta = await box(page, "to-lobby");
+      expect(
+        cta.inViewport,
+        `${vp.name}: [로비로] 가 화면 밖 — bottom ${cta.bottom} > 뷰포트 ${cta.vh}`,
+      ).toBe(true);
+      expect(cta.hitSelf, `${vp.name}: [로비로] 중심을 다른 것이 받는다`).toBe(true);
+
+      // 스코어(이 화면에 온 이유)는 스크롤 없이 보인다.
+      const score = await box(page, "final-score");
+      expect(score.inViewport, `${vp.name}: 최종 스코어가 화면 밖 — bottom ${score.bottom}`).toBe(true);
+      expect(score.hitSelf, `${vp.name}: 최종 스코어 중심을 다른 것이 받는다`).toBe(true);
+
+      /*
+       * 결과 카드는 **통째로** 보인다 — 승패·스코어·보상이 한 덩어리라 잘리면 "얼마 받았지"가 남는다.
+       * (`reward-daily` 는 #368 리그 보상 칸 — 카드의 마지막 줄이다.)
+       */
+      const reward = await box(page, "reward-daily");
+      expect(
+        reward.inViewport,
+        `${vp.name}: 결과 카드 마지막 줄(오늘의 보상)이 잘렸다 — bottom ${reward.bottom} > ${reward.vh}`,
+      ).toBe(true);
+
+      /*
+       * **다음 섹션의 시작까지 보인다** — 스코어 카드 하나만 뜨면 "이게 전부"로 읽혀 아무도
+       * 스크롤하지 않는다(#348 이 배운 것: "스크롤하면 닿는다"는 변론이 못 된다).
+       * `sheetHeight("result")` 등급이 사는 이유가 정확히 이것이다 — 등급을 `state`(40svh)로
+       * 되돌리면 1024×768 · 1280×720 · 1280×800 에서 이 단언이 죽는다(변이 주입으로 확인).
+       *
+       * ⚠️ 세로 ≤ 700 창(1024×640 · 1280×600 · 1440×560)은 **제외**한다 — 시트를 아무리 키워도
+       * 무대가 남지 않아 구조적으로 불가능하다. 못 지키는 것을 계약에 적으면 다음 사람이 무대를
+       * 죽이는 방향으로 고치게 된다. 그 창에서도 위 CTA·결과 카드 단언은 그대로 걸린다.
+       */
+      if (vp.height >= 700) {
+        const statsTopVisible = await page.evaluate(() => {
+          const el = document.querySelector('[data-testid="team-stats"]') as HTMLElement | null;
+          if (!el) return false;
+          const r = el.getBoundingClientRect();
+          if (r.top + 6 >= window.innerHeight) return false;
+          const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 6);
+          return !!hit && (hit === el || el.contains(hit));
+        });
+        expect(
+          statsTopVisible,
+          `${vp.name}: 결과 카드 아래 팀 스탯의 시작조차 안 보인다 — 이 화면이 "스코어 카드 하나"로 읽힌다`,
+        ).toBe(true);
+      }
+    });
+  }
+
+  test("성장 리포트가 붙어도(내용 상한 없음) CTA 는 화면 안 — 1280×800", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openMatch(page, "FINISHED", true);
+    await expect(page.getByTestId("growth-report")).toHaveCount(1);
+
+    const cta = await box(page, "to-lobby");
+    expect(cta.inViewport, `성장 리포트 11행에서 CTA bottom ${cta.bottom} > ${cta.vh}`).toBe(true);
+    expect(cta.hitSelf, "성장 리포트가 CTA 를 덮는다").toBe(true);
+  });
+
+  /**
+   * CTA 는 **스크롤 밖**에 산다 — 패널을 끝까지 굴려도 자리가 그대로다.
+   * (높이 튜닝으로만 고친 구현을 죽이는 축. 실제로 그 구현은 스크롤하면 CTA 가 따라 올라간다.)
+   */
+  test("패널을 끝까지 스크롤해도 CTA 자리가 그대로다 (스크롤 밖 고정층)", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openMatch(page, "FINISHED", true);
+    const before = await box(page, "to-lobby");
+
+    /*
+     * 스크롤러가 **어디에 있든** 끝까지 굴린다 — 자손(고쳐진 모양)이든 조상(고치기 전 모양,
+     * 시트 패널이 스크롤을 소유하고 CTA 가 그 안에 있었다)이든. 그래서 이 단언은 구현이 아니라
+     * 성질을 잰다: 조상이 스크롤러면 CTA 가 같이 올라가 **죽는다**.
+     */
+    const scrolled = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="result-page"]') as HTMLElement | null;
+      if (!root) return -1;
+      const candidates: HTMLElement[] = [
+        ...Array.from(root.querySelectorAll<HTMLElement>("*")),
+        ...(function up(node: HTMLElement | null, acc: HTMLElement[] = []): HTMLElement[] {
+          return node ? up(node.parentElement, [...acc, node]) : acc;
+        })(root),
+      ];
+      for (const node of candidates) {
+        if (node.scrollHeight - node.clientHeight > 8) {
+          node.scrollTop = node.scrollHeight;
+          if (node.scrollTop > 8) return node.scrollTop;
+        }
+      }
+      return -1;
+    });
+    expect(scrolled, "결과 패널에 스크롤 영역이 없다 — 이 계약이 공허해진다").toBeGreaterThan(8);
+    await page.waitForTimeout(120);
+
+    const after = await box(page, "to-lobby");
+    expect(Math.abs(after.y - before.y), `스크롤 후 CTA 가 ${after.y - before.y}px 움직였다`).toBeLessThanOrEqual(1);
+    expect(after.inViewport, "스크롤 끝에서 CTA 가 화면 밖").toBe(true);
+    expect(after.hitSelf, "스크롤 끝에서 CTA 중심을 다른 것이 받는다").toBe(true);
+  });
+
+  /**
+   * CTA 는 **자기 높이만** 쓴다 — 스크롤 영역의 몫을 먹지 않는다(독립검증 MINOR-2).
+   * `.toLobby { flex: none }` 을 `flex: 1 1 auto` 로 되돌리면 버튼이 52 → **175px** 로 부풀어
+   * 읽을 자리를 삼키는데, 위 단언들은 전부 통과한다(CTA 는 여전히 화면 안이라서). 그 변이를
+   * 죽이는 건 이 계약뿐이다 — **CTA 는 문이지 콘텐츠가 아니다.**
+   */
+  test("CTA 가 스크롤 영역의 몫을 먹지 않는다 (flex:none)", async ({ page }) => {
+    for (const vp of [
+      { name: "1280x800", width: 1280, height: 800 },
+      { name: "1920x1080", width: 1920, height: 1080 },
+    ]) {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FINISHED");
+      await expect(page.getByTestId("result-page")).toHaveCount(1);
+      const cta = await box(page, "to-lobby");
+      const sheet = await box(page, "stage-sheet");
+      expect(cta.h, `${vp.name}: CTA 높이 ${cta.h}px — 버튼 한 줄보다 커졌다(스크롤 몫을 먹는다)`).toBeLessThanOrEqual(90);
+      expect(
+        cta.h / sheet.h,
+        `${vp.name}: CTA 가 시트의 ${Math.round((cta.h / sheet.h) * 100)}% 를 차지한다`,
+      ).toBeLessThan(0.25);
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
+  });
+
+  test("문서 스크롤 0 — 결과 탭(데스크톱 전 비율)", async ({ page }) => {
+    for (const vp of DESKTOP) {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FINISHED");
+      await expect(page.getByTestId("result-page")).toHaveCount(1);
+      const s = await pageScroll(page);
+      expect(s.v, `${vp.name}: 문서 세로 스크롤 0`).toBeLessThanOrEqual(1);
+      expect(s.h, `${vp.name}: 가로 오버플로 0`).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
 /** ④ 폰(390)은 회귀하지 않는다 — 폰에선 무대 높이를 **가로**가 정해서 상한 규칙이 안 걸린다. */
 test.describe("④ 폰 대조군 — 무회귀", () => {
   test("390×844 에서 입력칸·칩·CTA 가 그대로 화면 안", async ({ page }) => {
@@ -352,5 +686,32 @@ test.describe("④ 폰 대조군 — 무회귀", () => {
     await page.goto(`/match/${MATCH_ID}`);
     await expect(page.getByTestId("halftime-panel")).toHaveCount(1);
     expect((await box(page, "resume-button")).inViewport).toBe(true);
+  });
+
+  /**
+   * #354 는 폰을 **단일 컬럼으로 남긴다** — 390px 에서 보드 옆에 레일을 세우면 둘 다 못 쓴다.
+   * 그래서 폰의 성질은 "입력칸이 보드 옆"이 아니라 **보드가 짧아 입력칸이 스크롤 0 에서 보인다**
+   * (#244 AC1). 그 성질을 여기서 붙잡아 둔다 — 2컬럼 전환 임계를 잘못 내리면 여기서 죽는다.
+   */
+  test("390×844 감독시간 — 보드는 단일 컬럼이고 입력칸이 그 아래에서 보인다", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openMatch(page, "HALFTIME");
+    await expect(page.getByTestId("halftime-panel")).toHaveCount(1);
+
+    const board = await box(page, "tactics-board");
+    const prompt = await box(page, "editor-team-prompt");
+    expect(prompt.inViewport, `폰 입력칸 bottom ${prompt.bottom} > ${prompt.vh}`).toBe(true);
+    expect(prompt.hitSelf).toBe(true);
+    // 단일 컬럼 = 입력칸이 보드 **아래**에 온다(옆이 아니다).
+    expect(prompt.y, "폰에서는 보드 아래에 입력칸이 온다").toBeGreaterThanOrEqual(board.bottom - 1);
+  });
+
+  /** #355 무회귀 — 폰 결과 화면에서도 [로비로] 가 화면 안에 있고 스크롤 밖에 고정이다. */
+  test("390×844 결과 — [로비로] 가 화면 안", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openMatch(page, "FINISHED", true);
+    const cta = await box(page, "to-lobby");
+    expect(cta.inViewport, `폰 [로비로] bottom ${cta.bottom} > ${cta.vh}`).toBe(true);
+    expect(cta.hitSelf).toBe(true);
   });
 });
