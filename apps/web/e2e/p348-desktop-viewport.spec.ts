@@ -26,15 +26,23 @@ const MATCH_LOG = JSON.parse(
   readFileSync(new URL("../../../packages/engine/dev-viewer/match-log.json", import.meta.url).pathname, "utf8"),
 );
 
-/** 데스크탑 분기(≥1024px) 안에서 실제로 쓰이는 비율대 + 분기 하한/직하. */
+/**
+ * 데스크탑 분기(≥1024px) 안에서 실제로 쓰이는 비율대 + 분기 하한 + **세로가 짧은 창**.
+ * 세로 짧은 축이 중요하다 — 브라우저 확대(125%)·툴바 많은 창이 여기로 떨어지고, 실제로
+ * 이 대역에서만 상태 줄이 18px 모자라 밖으로 나갔다(독립검증 MAJOR-1).
+ */
 const DESKTOP = [
-  { name: "1024x768", width: 1024, height: 768 }, // 분기 하한 — 세로가 가장 빡빡하다
+  { name: "1024x768", width: 1024, height: 768 }, // 분기 하한
+  { name: "1024x640", width: 1024, height: 640 }, // 1280×800 을 125% 확대한 CSS 뷰포트
+  { name: "1280x600", width: 1280, height: 600 }, // 세로가 가장 빡빡하다
   { name: "1280x720", width: 1280, height: 720 },
   { name: "1280x800", width: 1280, height: 800 }, // hero 제보 비율대
+  { name: "1440x560", width: 1440, height: 560 },
   { name: "1440x900", width: 1440, height: 900 },
   { name: "1512x945", width: 1512, height: 945 }, // MacBook Pro 14"
   { name: "1680x1050", width: 1680, height: 1050 },
   { name: "1920x1080", width: 1920, height: 1080 },
+  { name: "3440x1440", width: 3440, height: 1440 }, // 울트라와이드
 ];
 
 const STARTERS = Array.from({ length: 11 }, (_, i) => ({ slotIndex: i, playerId: `p${i + 1}` }));
@@ -191,19 +199,71 @@ test.describe("① 후반 지시 입력칸 — 데스크톱 전 비율", () => {
       // 대상 칩 줄도 같이 살아야 한다(누구에게 쓸지 못 고르면 입력칸만 있어도 소용없다).
       const targets = await box(page, "brief-targets");
       expect(targets.inViewport, `${vp.name}: 대상 칩 줄이 화면 밖`).toBe(true);
+
+      /*
+       * **상태 줄까지가 이 패널의 세로 예산이다** (독립검증 MAJOR-1).
+       * #284 결정 C 로 저장 버튼이 없어서 이 줄이 **유일한 피드백**이다 — 자동 저장이 실패했는데
+       * 이게 화면 밖이면 유저는 적어둔 게 서버에 있다고 믿은 채 감독시간을 놓친다. 처음 잡은
+       * 320/44svh 는 입력칸은 넣고 이 줄을 18px 차이로 밀어냈다(1280×720 실측 b735 > 720).
+       */
+      const status = await box(page, "brief-save-status");
+      expect(
+        status.inViewport,
+        `${vp.name}: 저장 상태 줄이 화면 밖 — bottom ${status.bottom} > ${status.vh}. 저장 버튼이 없는 화면에서 유일한 피드백이다`,
+      ).toBe(true);
     });
   }
 
-  test("무대는 후반 지시 탭에서도 남는다 (#169 AC-W1-1 유지)", async ({ page }) => {
-    // 입력칸 자리를 만든다고 무대를 없애면 다른 계약을 깨는 것이다.
-    await page.setViewportSize({ width: 1280, height: 800 });
+  /**
+   * 자동 저장이 **실패했을 때** 그 사실이 실제로 보이나 — 상태 줄 자리만 잡혀 있고 실패 문구가
+   * 밀려나면 화면은 타이핑 전과 완전히 같다("버튼 먹통"으로 읽힌 #294 와 같은 사고).
+   * 세로가 가장 빡빡한 창에서 잰다.
+   */
+  test("저장 실패 안내가 화면 안에 뜬다 — 세로 짧은 데스크탑 창", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
     await openMatch(page, "FIRST_HALF");
+    await page.route("**/*", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/prompts") && route.request().method() === "POST") {
+        return route.fulfill({ status: 500, json: { code: "INTERNAL", message: "서버 오류" } });
+      }
+      return route.fallback();
+    });
     await page.getByTestId("stage-tab-brief").click();
+    await page.getByTestId("brief-team-prompt").fill("후반은 라인 내리고 역습");
+    await expect(page.getByTestId("brief-save-status")).toHaveAttribute("data-status", "error");
 
-    const canvas = await box(page, "stage-canvas");
-    expect(canvas.h, "무대가 사라지거나 실질적으로 0 이 되면 안 된다").toBeGreaterThan(160);
-    expect(canvas.y, "무대는 화면 안에서 시작한다").toBeGreaterThanOrEqual(-1);
+    const err = await box(page, "brief-error");
+    expect(err.inViewport, `실패 안내가 화면 밖 — bottom ${err.bottom} > ${err.vh}`).toBe(true);
+    expect(err.hitSelf, "실패 안내 중심을 다른 것이 받는다").toBe(true);
   });
+
+  /**
+   * 무대는 남는다(#169 AC-W1-1) — 그리고 **자기 행을 남김없이 쓴다**.
+   *
+   * ⚠️ `h > 160` 같은 절대 하한만으로는 부족하다(독립검증 MINOR-1): 데스크탑에서 무대 상한이
+   * 잘못 걸리면(예: `.bodyInput .stage{max-height:38svh}` 의 `@media (max-width:1023px)` 래퍼를
+   * 벗기면) 무대가 363 → 304px 로 눌리고 그 행에 위아래 30px 빈 띠가 생기는데, 하한 단언은
+   * 그대로 통과한다. 그래서 **시트와의 관계**(무대 아래 빈 띠)로 잰다 — 자기 임계가 아니라
+   * 레이아웃이 만족해야 하는 성질이다.
+   */
+  for (const vp of DESKTOP) {
+    test(`${vp.name} — 무대가 남고, 자기 행에 빈 띠를 남기지 않는다 (#169 AC-W1-1)`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FIRST_HALF");
+      await page.getByTestId("stage-tab-brief").click();
+      await expect(page.getByTestId("stage-panel-brief")).toHaveCount(1);
+
+      const canvas = await box(page, "stage-canvas");
+      const sheet = await box(page, "stage-sheet");
+      expect(canvas.h, `${vp.name}: 무대가 사라지거나 실질적으로 0 이 되면 안 된다`).toBeGreaterThan(120);
+      expect(canvas.y, `${vp.name}: 무대는 화면 안에서 시작한다`).toBeGreaterThanOrEqual(-1);
+      expect(
+        sheet.y - canvas.bottom,
+        `${vp.name}: 무대와 시트 사이 빈 띠 ${sheet.y - canvas.bottom}px — 무대가 자기 행보다 작게 눌렸다`,
+      ).toBeLessThanOrEqual(8);
+    });
+  }
 
   test("문서 스크롤 0 · 시트 폭 ≤ 뷰포트 (데스크톱 전 비율, 전 탭)", async ({ page }) => {
     for (const vp of DESKTOP) {
