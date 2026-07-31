@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { FORMATION_ROWS } from "@hmb/shared";
+import { FORMATION_ROWS, FORMATION_BASE_POSITIONS } from "@hmb/shared";
 import { SANITY_GATE_CONFIG } from "../packages/server/src/prompt/gates.js";
 // @ts-expect-error — 빌드 없이 node 로 도는 plain ESM 도구.
-import { ROWS, MIN_SEPARATION } from "./live-input-audit.mjs";
+import { ROWS, MIN_SEPARATION, BASE_POSITIONS, FIT_MARGIN } from "./live-input-audit.mjs";
 
 /**
  * #324 — 배포 후 재측정 도구가 **shared 와 같은 자**를 쓰는지.
@@ -22,5 +22,20 @@ describe("#324 재측정 도구 드리프트 락", () => {
 
   it("도구의 겹침 임계 == 게이트 임계 (같은 결함을 같은 자로 잰다)", () => {
     expect(MIN_SEPARATION).toBe(SANITY_GATE_CONFIG.minSpotSeparation);
+  });
+
+  // ── D3(#367) 포메이션 이행 — 도구가 게이트 G4 와 같은 표·같은 여유로 재는가.
+  it("도구의 슬롯 좌표표 == shared FORMATION_BASE_POSITIONS", () => {
+    expect(Object.keys(BASE_POSITIONS).sort()).toEqual(Object.keys(FORMATION_BASE_POSITIONS).sort());
+    for (const [f, slots] of Object.entries(BASE_POSITIONS as Record<string, number[][]>)) {
+      expect(
+        slots.map(([x, y]) => ({ x, y })),
+        `${f} 슬롯 좌표`,
+      ).toEqual(FORMATION_BASE_POSITIONS[f]!.map((v) => ({ x: v.x, y: v.y })));
+    }
+  });
+
+  it("도구의 포메이션 여유 == 게이트 formationFitMargin", () => {
+    expect(FIT_MARGIN).toBe(SANITY_GATE_CONFIG.formationFitMargin);
   });
 });

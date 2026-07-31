@@ -2,6 +2,7 @@ import { makeTacticalInput } from "@hmb/engine";
 import {
   TeamInputJobContext,
   TeamInputPatchJobContext,
+  formationBasePositions,
   type TacticalInput,
   type TacticalPatch,
   type PlayerBehaviorPatch,
@@ -73,8 +74,14 @@ const spreadY = (y: number, index: number): number => Number(clamp01(y + (index 
 function stubTeamInput(ctx: TeamInputJobContext, feedback = ""): TacticalInput {
   const t = makeTacticalInput("S", ctx.seed);
   const roster = [...ctx.roster].sort((a, b) => a.slotIndex - b.slotIndex);
+  // 엔진 픽스처(makeTacticalInput)는 **항상 4-3-3 좌표**다. 이름만 ctx.formation 으로 갈아 끼우면
+  // "4-4-2 를 골랐는데 실제 배치는 4-3-3"(#295)을 스텁이 그대로 재현한다 — 게이트 G4 가 막는 바로 그것.
+  // 슬롯 좌표는 shared 계약표(#324)에서 가져온다(엔진 픽스처를 고치지 않는다 — owned-glob 밖).
+  const slots = formationBasePositions(ctx.formation);
   t.players.forEach((p, i) => {
     p.playerId = roster[i]!.playerId;
+    const slot = slots[i];
+    if (slot) p.basePosition = { x: slot.x, y: slot.y };
   });
   t.team.formation = ctx.formation;
 
