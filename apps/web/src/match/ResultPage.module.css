@@ -238,3 +238,13 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* #368 오늘의 보상 줄 — 소멸분은 취소선으로 "날렸다"를 말한다(색 단일 채널이 아니다). */
+.rewardSlotHint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.rewardVanished {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}

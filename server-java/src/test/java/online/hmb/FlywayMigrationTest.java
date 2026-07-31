@@ -99,7 +99,13 @@ class FlywayMigrationTest {
             //   `ref_id = user_mails.id` 로 기존 멱등 인덱스에 얹힌다. 우편함이 자기 원장을 가지면
             //   "이 유저의 골드가 왜 늘었나"의 답이 두 곳이 된다.
             "mail_campaigns",
-            "user_mails"
+            "user_mails",
+            // V36 리그 매판 일일 보상 트랙 — #368: 칸(그날 KST n번째 리그 경기) 하나 = 1행.
+            //   **지급 원장을 새로 만들지 않았다** — 돈은 gem_ledger/point_ledger 로 나가고
+            //   (reason='league_daily_gem|point', ref_id=match_id) 기존 멱등 인덱스에 얹힌다.
+            //   이 표가 사는 이유는 지급이 아니라 **박제**다: 금액·칸수·대량위치가 전부 economy
+            //   노브라, 읽을 때 재계산하면 노브를 돌리는 순간 오늘 받은 이력이 소급 변조된다.
+            "league_daily_rewards"
     );
 
     @Test
