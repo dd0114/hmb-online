@@ -308,12 +308,21 @@ export function resolveActiveTab(tabs: readonly TabKey[], preferred: TabKey | nu
 
 /**
  * 시트 높이 등급 — **콘텐츠와 무관**하다(내용이 쌓여도 높이가 안 변한다). 탭 종류로만 갈린다:
- *  · info(통계·로그·후반지시) = 낮게 → 무대를 크게 본다(관전이 주목적).
- *  · state(감독·결과) = 높게 → 실제로 조작해야 하는 폼/표라 볼 게 많다.
+ *  · info(통계·로그) = 낮게 → 무대를 크게 본다(관전이 주목적).
+ *  · **input(후반 지시)** = 중간 → 관전 중이지만 **적는** 자리라 입력칸까지는 들어와야 한다.
+ *  · state(감독·결과·경기장면) = 높게 → 실제로 조작해야 하는 폼/표라 볼 게 많다.
  * 실제 픽셀은 CSS 가 정한다(데스크탑만 구분, 모바일은 무대가 폭으로 정해져 남는 높이를 시트가 가짐).
+ *
+ * ⚠️ **`brief` 는 `info` 가 아니다** (#348, hero 실사용 제보). 예전엔 통계·로그와 한 등급이라
+ * 데스크탑에서 26svh(1280×800 → 시트 208px)를 받았는데, 이 패널은 대상 칩 줄 + 프롬프트 칸 +
+ * 저장 상태 + 안내로 **287px** 다 — 실측상 **입력 상자가 통째로 뷰포트 아래**로 밀려나 유저에게는
+ * "적을 칸이 없는 화면"이었다(패널 안을 스크롤하면 닿지만, 800px 화면에서 150px 창을 스크롤해야
+ * 한다는 걸 알 방법이 없다). "보는 패널"과 "쓰는 패널"은 필요한 세로가 다르다 — 그 축을 여기서 가른다.
+ * 계약 = `e2e/p348-desktop-viewport.spec.ts` ①(데스크탑 전 비율에서 입력칸이 화면 안).
  */
-export function sheetHeight(tab: TabKey | null): "info" | "state" | null {
+export function sheetHeight(tab: TabKey | null): "info" | "input" | "state" | null {
   if (!tab) return null;
   // 경기장면 탭도 "state" 높이를 쓴다 — 정보 패널(통계·로그)보다 크게 봐야 뭘 보는지 알 수 있다.
-  return tab === "halftime" || tab === "result" || tab === "stage" ? "state" : "info";
+  if (tab === "halftime" || tab === "result" || tab === "stage") return "state";
+  return tab === "brief" ? "input" : "info";
 }

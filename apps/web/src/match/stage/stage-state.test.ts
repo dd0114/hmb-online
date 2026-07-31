@@ -228,9 +228,20 @@ describe("탭 구성 (#284 — 토글 제거, 상태가 정한다)", () => {
     expect(sheetHeight(null)).toBeNull();
     expect(sheetHeight("stats")).toBe("info");
     expect(sheetHeight("log")).toBe("info");
-    expect(sheetHeight("brief")).toBe("info");
     expect(sheetHeight("halftime")).toBe("state");
     expect(sheetHeight("result")).toBe("state");
+    expect(sheetHeight("stage")).toBe("state");
+  });
+
+  /**
+   * #348 — **`brief` 는 `info` 가 아니다.** 같은 등급이던 동안 데스크탑에서 26svh 를 받아
+   * 프롬프트 입력 상자가 통째로 뷰포트 밖으로 밀렸다(1280×800 실측 bottom 876 > 800):
+   * hero 에게는 "적을 칸이 없는 화면"이었다. **보는 패널과 쓰는 패널은 필요한 세로가 다르다.**
+   * 여기서 되돌리면 픽셀 계약(`e2e/p348-desktop-viewport.spec.ts` ①)이 같이 깨진다 — 두 층이다.
+   */
+  it("후반 지시는 **입력** 등급 — 통계·로그와 같은 높이를 쓰면 입력칸이 화면 밖으로 나간다(#348)", () => {
+    expect(sheetHeight("brief")).toBe("input");
+    expect(sheetHeight("brief")).not.toBe(sheetHeight("log"));
   });
 
   it("활성 탭: 고른 탭이 살아 있으면 유지", () => {
