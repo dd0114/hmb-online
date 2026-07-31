@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
-import { aggregateRealism, GUARD_SEEDS, REALISM_SEEDS } from "./harness";
+import { aggregateRealism, GUARD_SEEDS, REALISM_SEEDS, pointConfig } from "./harness";
 import { BENCH, inBench, benchVerdict } from "./bench";
 import { collectOneOnOne } from "./one-on-one";
 import { countHeaders } from "./header";
@@ -31,15 +31,8 @@ const STRUCT_KEYS = ["passSuccessPct", "avgWidthM", "corners", "throwIns", "foul
 type Point = Record<string, number>;
 
 function cfg(p: Point): EngineConfig {
-  const out = JSON.parse(JSON.stringify(defaultEngineConfig)) as EngineConfig;
-  for (const [path, v] of Object.entries(p)) {
-    if (path === "label") continue;
-    const seg = path.split(".");
-    let node = out as unknown as Record<string, unknown>;
-    for (let i = 0; i < seg.length - 1; i++) node = node[seg[i]!] as Record<string, unknown>;
-    node[seg[seg.length - 1]!] = v;
-  }
-  return out;
+  // #358: 조립은 `harness.pointConfig` 단일 출처(foul-sweep 과 같은 함수를 쓴다).
+  return pointConfig(defaultEngineConfig, p);
 }
 
 /**

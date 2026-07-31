@@ -3,18 +3,18 @@
 exports[`마크 진동 골든 (#178) > 현 진동 지표를 스냅샷으로 박제한다(회귀·개선 모두 diff 로 드러남) 1`] = `
 {
   "all": {
-    "avgMoveM": 2.09,
-    "bigReversalPer100": 4.91,
-    "maxMoveM": 11.11,
-    "reversalPer100": 13.59,
-    "samples": 113241,
+    "avgMoveM": 1.9,
+    "bigReversalPer100": 4.36,
+    "maxMoveM": 10.12,
+    "reversalPer100": 11.65,
+    "samples": 120362,
   },
   "nearOwner": {
-    "avgMoveM": 2.85,
-    "bigReversalPer100": 18.97,
-    "maxMoveM": 6.42,
-    "reversalPer100": 26.96,
-    "samples": 3194,
+    "avgMoveM": 2.81,
+    "bigReversalPer100": 18.25,
+    "maxMoveM": 6.11,
+    "reversalPer100": 25.81,
+    "samples": 3014,
   },
   "seeds": 4,
 }

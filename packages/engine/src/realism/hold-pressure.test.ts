@@ -10,6 +10,7 @@ import { createRng } from "../rng";
 import type { SimPlayer, SimState } from "../simstate";
 import { collectOneOnOne } from "./one-on-one";
 import { REALISM_SEEDS } from "./harness";
+import { legacy0270 } from "./rollback";
 
 /**
  * #353 — **압박에 반응하는 홀드·슛** 계약.
@@ -36,35 +37,11 @@ const pitch = createPitch(cfg);
 const select = makeSelectData();
 
 /**
- * 이 웨이브(#353)가 추가한 노브를 전부 **레거시(무효)** 로 되돌린 config.
- * 홀드: `keepBase=1` + 페널티 0 → `EV = 1×(V−holdPenalty) + 0×턴오버` = 구 식과 **정확히** 같다
- * (`mulFrac(v, FRAC_SCALE) === v`, `mulFrac(v, 0) === 0` 이라 반올림 손실도 없다).
+ * 롤백 config(#353/#357 이전 = 0.27.0 상당)는 `realism/rollback.ts` 가 단일 출처다 —
+ * `foul-probe.test.ts`(#358 층별 분해)가 같은 config 를 대조군으로 쓰기 때문이다.
+ * 여기서 재export 해 이 파일의 기존 참조를 유지한다.
  */
-export function legacy0270(): EngineConfig {
-  return {
-    ...cfg,
-    chain: {
-      ...cfg.chain,
-      hold: { ...cfg.chain.hold, keepBase: 1, pressPenalty: 0, tightPenalty: 0 },
-      // #357 볼륨 재보정을 되돌린다. 이 노브들은 #353 메커니즘과 무관하지만 **0.27.0 해시를
-      // 재현하려면 0.27.0 의 값이어야 한다** — 안 되돌리면 이 계약이 "메커니즘이 꺼지는가"가
-      // 아니라 "그 뒤로 튜닝이 있었는가"를 재게 된다(그건 골든의 일이다).
-      // 되돌린 상태에서 해시가 **여전히 비트 동일**하다는 것이 #357 이 **config-only** 였다는
-      // 증거다(코드 경로가 바뀌었다면 여기서 깨진다).
-      goalValue: 9.4,
-    },
-    contest: {
-      ...cfg.contest,
-      shotPressureAimPenalty: 0,
-      shotPressureXgMult: 1,
-      passReceiverPressurePenalty: 0,
-      shootXgThreshold: 0.07,
-      onTargetBase: 0.21,
-      // #357 헤더 임계 분리 이전 = 필드 임계와 같은 값(그때는 한 노브였다).
-      aerial: { ...cfg.contest.aerial, headerXgThreshold: 0.07 },
-    },
-  };
-}
+export { legacy0270 };
 
 /** 최소 상태 — `holdKeepProb`/`shotPressureXg` 는 `state.players` 와 좌표만 본다. */
 function fakeState(players: SimPlayer[]): SimState {
