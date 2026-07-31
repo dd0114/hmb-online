@@ -13,6 +13,7 @@ import {
   clearanceEligible,
   clearancePowerFx,
   computePassProb,
+  oneOnOneShot,
   planClearance,
   planPass,
   planShot,
@@ -704,7 +705,27 @@ export function decideBallOwnerChain(
     fatigue: owner.fatigue,
   };
   // 반환 계약(Action.shoot.xg)에 필요한 값 — 생성기와 같은 함수·같은 인자라 값이 갈릴 수 없다.
-  const { xg } = xgAtPoint(here.side, here.xFx, here.yFx, here.shooting, here.fatigue, config, pitch);
+  const { xg: rawXg, distM } = xgAtPoint(
+    here.side, here.xFx, here.yFx, here.shooting, here.fatigue, config, pitch,
+  );
+  /**
+   * 1대1(단독) 찬스 (#316) — **루트(= 실제 상태의 슈터 자리)에서만** 잰다.
+   *
+   * `GEN_FN.shoot` 안에서 재면 안 된다: 생성기는 `bestEvAt`/`arrivalHypo` 를 통해 **가상 도착
+   * 지점**에서도 돌기 때문에, 거기서 1v1 기하를 재면 "상대가 그때까지 안 움직인다"는 가정이
+   * EV 에 심긴다(가상 미래의 수비 배치를 현재 좌표로 읽는다).
+   *
+   * ## 설계 판단: 부스트는 **결과 xg 에만** 걸고 EV(선택)에는 반영하지 않는다
+   *  - 루트에서만 재는 위 원칙과 정합한다. EV 공간은 도착 지점들을 비교하는 곳이고, 1v1 판정은
+   *    "지금 이 자리"의 성질이라 그 비교에 넣을 자리가 없다.
+   *  - 사슬 코어는 슛을 이미 `chain.goalValue × xG` 로 평가한다 — 선택 압력은 거기 있다.
+   *  - 그래서 `contest.oneOnOneShootBias`(weighted 의 슛 가중 배수)는 **적용하지 않는다**:
+   *    EV 공간에 자명한 대응물이 없고(가중치가 아니라 기대값이다), 넣으면 밸런스 레버가
+   *    `goalValue` 와 이중이 된다. `decisionWeights.shoot` 이 chain 에서 무효인 것과 같은 이유다.
+   *  - 대가: "선택은 원 xG 로, 결과는 부스트로" 갈린다. 부스트가 EV 를 통해 슛 **빈도**까지
+   *    밀지 않으므로 볼륨(팀당 슛) 재보정이 필요 없다 — 움직이는 것은 골 계열뿐이다.
+   */
+  const oo = oneOnOneShot(state, owner, rawXg, distM, config);
 
   const cands = generate(ctx, owner, here, GENERATORS, true);
   const beamed = beam(ctx, cands, here, c.depth);
@@ -765,7 +786,9 @@ export function decideBallOwnerChain(
     case "shoot": {
       // #312: 슛도 세기·조준 오차를 탄다(weighted 코어와 **같은 함수** — 두 코어가 갈리지 않게).
       const sp = planShot(owner, config, rng, pitch);
-      return { kind: "shoot", xg, toX: sp.toX, toY: sp.toY, speedFx: sp.speedFx };
+      // #316: 부스트된 xg 와 `detail` 을 **둘 다** 실어야 한다 — detail 이 빠지면 이벤트가 소실되고
+      // (하이라이트 사망), xg 가 빠지면 부스트 안 된 값이 flight 를 타고 골 롤까지 간다.
+      return { kind: "shoot", xg: oo.xg, toX: sp.toX, toY: sp.toY, speedFx: sp.speedFx, detail: oo.detail };
     }
     case "pass": {
       const opt = cand.opt as PassOption;

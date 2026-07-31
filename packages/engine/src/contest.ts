@@ -151,9 +151,12 @@ function placeRestart(
   kind: "corner" | "throw_in" | "goal_kick",
 ): SimPlayer | null {
   const spot = clampToPitch(pitch, x, y);
+  // #239: 골킥 taker 를 **GK 로만** 찾으면 GK 퇴장 팀에서 taker=null → 공이 스팟에 무소유로
+  // 놓이고 setPiece 는 살아 있는다(#176 keepSetPiece) = 찰 사람 없는 영구 정지. 실축에서도
+  // GK 가 없으면 필드 플레이어가 찬다 → 최근접 아웃필더로 폴백한다.
   const taker =
     kind === "goal_kick"
-      ? goalkeeperOf(state, side)
+      ? (goalkeeperOf(state, side) ?? nearestOfSide(state, side, spot.x, spot.y))
       : (nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side));
   const base = config.setPiece.stoppageTicks;
   if (taker) {
@@ -1008,10 +1011,12 @@ export function resolveShot(
   if (gkSaver) {
     giveBallTo(state, gkSaver, "turnover");
   } else {
-    state.ball.posFx = { x: keeperSpot.x, y: keeperSpot.y };
-    state.ball.flight = null;
-    // GK 캐치 = 인플레이 지속(정지 없음) → 오픈플레이 턴오버.
-    setPossession(state, defSide, tick, "turnover");
+    // #239: GK 부재(퇴장)면 **잡을 사람이 없다.** 구버전은 공을 골에어리어에 놓고
+    // owner/setPiece/stoppage 를 아무것도 세우지 않아 `stepTick` 의 어느 분기에도 안 걸리고
+    // `decideOffBall` 의 루즈볼 분기(flight.kind==="loose")도 false 였다 → **영구 불활성**
+    // (실측: 후반이 통째로 죽어 무소유 1890~2671틱). 다른 실패 경로(빗맞음·굴절)와 **같은
+    // 규율**로 데드볼 처리한다 — 골에어리어에서 잡히지 않은 공은 골킥으로 재시작.
+    parkForRestart(keeperSpot.x, keeperSpot.y, { kind: "goal_kick", side: defSide });
   }
   return [{ tick, minute, type: "shot", team: scorerSide, xg, detail: "saved" }, saveEv];
 }

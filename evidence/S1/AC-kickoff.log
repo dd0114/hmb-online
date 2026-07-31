@@ -1,7 +1,7 @@
 === AC-kickoff: showcase(viewer, 골 많음) (engine@0.26.0-showcase, seed 4815162342) ===
 판정: 각 골 → 25틱 뒤 kickoff 이벤트 존재 + 킥오프틱 공=센터(52.5,34)·실점팀 소유 + 포메이션 t0 슬롯 복귀(테이커 제외, 허용오차 0.1m)
 
-총 골: 7
+총 골: 9
 #  goalTick  team  koTick  koEvt  ball(x,y)       소유    전dev(dwell)   후dev(kickoff)   판정
 1  308       away  333     O      (52.5,34.0)     home  2.22m         0.00m(21/21)    PASS
 2  452       away  477     O      (52.5,34.0)     home  2.18m         0.00m(21/21)    PASS
@@ -10,6 +10,8 @@
 5  637       home  662     O      (52.5,34.0)     away  2.01m         0.00m(20/20)    PASS
 6  718       home  743     X      (0.5,33.9)      -!    47.47m        45.33m(0/21)    FAIL
 7  739       away  764     O      (52.5,34.0)     home  2.24m         0.00m(21/21)    PASS
+8  800       away  825     O      (52.5,34.0)     home  18.07m        0.00m(21/21)    PASS
+9  1285      away  1310    O      (52.5,34.0)     home  28.53m        0.00m(21/21)    PASS
 
 후반 시작(tick 720): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=50.87m 후dev=0.00m(20/20) => PASS
 

@@ -42,6 +42,13 @@ export interface EngineConfig {
   /** 공 이동 속도(m/tick). */
   ball: {
     passSpeed: number;
+    /**
+     * ⚠️ **참조 0 — 죽은 노브**(#338). 소스 전체에서 `config.ball.shotSpeed` 를 읽는 곳이 없다
+     * (`grep -rn "shotSpeed"` = 이 타입 선언과 값 두 줄뿐). 슛 세기는 `kick.ts:shotPowerFx`
+     * (= `contest.shotPower*` + shooting 능력치)가 소유하고, 페널티만 `contest.shotBallSpeed`
+     * 라는 **다른** 노브를 쓴다. 여기 값을 바꿔도 아무 일도 일어나지 않는다.
+     * 삭제하지 않는 이유 = 계약(서버 config 직렬화·골든) 영향 확인 전이라서다.
+     */
     shotSpeed: number;
     /**
      * **틱당 마찰 배수**(#320) — 공의 감속을 정하는 유일한 노브. `v *= friction` 매 틱.
@@ -114,7 +121,15 @@ export interface EngineConfig {
 
   };
 
-  /** 행동 선택 기본 성향 계수(볼 소유자). behavior 로 가중. */
+  /**
+   * 행동 선택 기본 성향 계수(볼 소유자). behavior 로 가중.
+   *
+   * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 이 블록 전체가 실행 경로에 없다**(#338).
+   * 여기 있는 값은 `decision.ts:decideBallOwner`(= `chain.mode: "weighted"` 롤백 경로)의
+   * 가중 추첨에만 들어간다. 사슬 코어는 행동을 **EV** 로 고르므로 가중치라는 개념 자체가 없고,
+   * 대응 레버는 `chain.goalValue`(슛 볼륨) · `chain.discount`/`holdPenalty`(패스·홀드) 다.
+   * → 여기를 튜닝해도 현행 밸런스는 1도 안 움직인다. 값을 지우지 않는 이유 = 롤백 스위치 자산.
+   */
   decisionWeights: {
     pass: number;
     dribble: number;
@@ -122,7 +137,17 @@ export interface EngineConfig {
     hold: number;
     /** 파이널서드(공격 진영)에서 슛 후보 가중을 곱해 슛을 지배적 선택으로 만드는 배수(>=1). */
     shootInBox: number;
-    /** 파이널서드에서 후진(음수 forwardGain) 패스 옵션에 주는 감점 계수(후진 m·(0.5+directness) 당). */
+    /**
+     * 파이널서드에서 후진(음수 forwardGain) 패스 옵션에 주는 감점 계수(후진 m·(0.5+directness) 당).
+     *
+     * ⚠️ **weighted 전용 — chain 기본에서는 실행 경로가 없다**(#338). 소비자는 `scoreOption`
+     * 하나뿐이고 그건 `selectPassOption` → `decideBallOwner` 에서만 불린다. 사슬 코어는
+     * `passOptions` 만 쓰고 `scoreOption` 을 부르지 않는다.
+     * ⚠️ 구 주석("후진 리사이클은 이걸로 억제한다")은 **현행이 아니다** — chain 에서 후진
+     * 리사이클을 억제하는 것은 상태 가치의 진행도 항(`chain.advance` × `advanceExponent` 볼록성)
+     * 과 `turnoverEv` 의 위치 리스크지 이 감점이 아니다. 0.24.0 이 백패스%를 11.0→24.2 로
+     * 올린 것도 그 때문이다(사슬이 리사이클을 EV 로 인정한다 — 수리 대상은 S4 국면별 가중치).
+     */
     backwardPassPenalty: number;
     /**
      * 파이널서드 + 사거리 안에서 슈터가 중앙(골 정면)에 가까울수록 슛 후보 가중에 주는 최대 추가 배수(>=1).
@@ -152,13 +177,23 @@ export interface EngineConfig {
     /**
      * 발동 상한 진행도(0..1, 자기 골라인=0). 이보다 앞(공격 진영)에서는 걷어내지 않는다 —
      * 상대 진영에서 걷어내는 건 축구가 아니라 포기다.
+     *
+     * ✅ chain 기본에서도 **살아 있다** — `clearanceEligible` 을 두 코어가 공유한다(#338 재확인).
+     * (다만 chain 에서는 `clearanceWeight` 의 깊이 스케일 항으로는 쓰이지 않는다 = 게이트 전용.)
      */
     maxProgress: number;
-    /** 발동 최소 압박 인원(`contest.passPressureRangeM` 안 상대 수). */
+    /**
+     * 발동 최소 압박 인원(`contest.passPressureRangeM` 안 상대 수).
+     * ✅ chain 기본에서도 **살아 있다**(`clearanceEligible` 공유, 게이트 전용).
+     */
     minPressers: number;
     /**
      * "좋은 패스 옵션"의 임계. 최선 패스 점수가 이 값 이상이면 걷어내지 않는다 —
      * 걷어내기는 **패스가 없을 때의 수단**이지 기본 선택지가 아니다.
+     *
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     * 소비자는 `clearanceWeight` 뿐이다. 사슬 코어는 명시 게이트 대신 걷어내기와 패스의 **EV 를
+     * 직접 비교**하므로("좋은 패스가 있으면 그 EV 가 더 높다") 이 임계가 필요 없다.
      */
     passScoreCeil: number;
     /** 걷어내는 거리(m, 전방). */
@@ -176,7 +211,12 @@ export interface EngineConfig {
     powerAttrSwing: number;
     /** 띄워 보내는가(true = 도착 시 헤딩 경합 = 세컨볼). */
     lofted: boolean;
-    /** 자기 페널티박스 안에서의 가중 배수(위험지역일수록 더 자주 걷어낸다). */
+    /**
+     * 자기 페널티박스 안에서의 가중 배수(위험지역일수록 더 자주 걷어낸다).
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     * 소비자는 `clearanceWeight` 뿐이다. chain 에서 "박스 안이라 더 걷어낸다"는 `turnoverEv`
+     * (자기 골 앞에서 뺏기는 손해가 크다)가 위치의 함수로 자동으로 만들어낸다 — 별도 배수가 없다.
+     */
     boxWeightMult: number;
     /** 사슬 코어가 쓰는 "걷어내기가 우리 팀 공으로 남을 확률"(0..1). 루즈볼이라 0.5 근처. */
     retainProb: number;
@@ -274,7 +314,11 @@ export interface EngineConfig {
      * 시드 롤이 이 확률을 넘으면 반대쪽으로 빗나가 항상 같은 쪽 반복을 막는다. 0.5 면 완전 무편향.
      */
     offTargetSideBias: number;
-    /** 중앙 슛 부스트(shootCentralBonus) 판정용 중앙 존 반폭(m). lateral<=이 값이면 완전 중앙(centralFrac=1). */
+    /**
+     * 중앙 슛 부스트(shootCentralBonus) 판정용 중앙 존 반폭(m). lateral<=이 값이면 완전 중앙(centralFrac=1).
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     * 짝인 `decisionWeights.shootCentralBonus` 와 함께 `decideBallOwner` 안에서만 쓰인다.
+     */
     centralShootHalfM: number;
     /** 볼 주인을 태클할 수 있는 접근 거리(m). */
     tackleRange: number;
@@ -501,11 +545,23 @@ export interface EngineConfig {
    * 볼 소유자 변주(드리블 체인·패스 후보 샘플)는 관통 Rng 로 결정한다.
    */
   variety: {
-    /** 드리블 체인 강도(0..1). 직전 틱 드리블했다면 이 값·능력치·공간으로 wDribble 모멘텀 가중. 0 이면 체인 없음. */
+    /**
+     * 드리블 체인 강도(0..1). 직전 틱 드리블했다면 이 값·능력치·공간으로 wDribble 모멘텀 가중. 0 이면 체인 없음.
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     */
     dribbleChainProb: number;
-    /** 드리블 모멘텀 최대 추가 배수 계수. */
+    /**
+     * 드리블 모멘텀 최대 추가 배수 계수.
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     */
     dribbleChainBonus: number;
-    /** 드리블 체인 최대 길이(틱). 이 이상 연속 드리블이면 모멘텀 소멸(볼 독점 방지). */
+    /**
+     * 드리블 체인 최대 길이(틱). 이 이상 연속 드리블이면 모멘텀 소멸(볼 독점 방지).
+     * ⚠️ **chain 기본에서 행동에 영향이 없다**(#338). `match.ts` 가 `dribbleStreak` 을 이 값으로
+     * 클램프하며 계속 **쓰기**는 하지만(그래서 완전한 죽은 값은 아니다 — 상태·해시에 남는다),
+     * 그 카운터를 **읽는** 곳은 weighted 의 모멘텀 가중 하나뿐이다. `dribbleStreak` 자체의
+     * 정리는 별건(#338 잔여)이라 여기서 건드리지 않는다.
+     */
     dribbleChainMaxTicks: number;
     /** 수비/풀백 오버랩 발동 확률(시드 노이즈 임계). widthTendency·팀 전진성으로 가중. */
     defenderOverlapProb: number;
@@ -515,7 +571,12 @@ export interface EngineConfig {
     overlapReach: number;
     /** 오버랩 결정 시드 노이즈의 시간 버킷 길이(틱) — 여러 틱 지속(플리커 방지). */
     overlapPeriodTicks: number;
-    /** 패스 후보 샘플 온도(0..1). 0 이면 argmax(최적 1개). 클수록 상위 후보 중 시드 가중 샘플 분산↑. */
+    /**
+     * 패스 후보 샘플 온도(0..1). 0 이면 argmax(최적 1개). 클수록 상위 후보 중 시드 가중 샘플 분산↑.
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     * 소비자가 `selectPassOption` 하나뿐이고 chain 은 그 함수를 부르지 않는다(후보를 EV 로 고른다).
+     * 사슬 코어의 대응 노브는 **`chain.temperature`** 다(`decideBallOwnerChain` 의 상위-k 샘플).
+     */
     decisionTemperature: number;
     /** 오프더볼 목표 위치 시드 노이즈 진폭(m). positioningFreedom 로 가중. 0 이면 로밍 없음. */
     roamNoiseAmp: number;
@@ -737,7 +798,13 @@ export interface EngineConfig {
     };
   };
 
-  /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
+  /**
+   * 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수.
+   * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+   * 유일한 소비자가 `decision.ts:softCapped` 이고 그건 `decideBallOwner` 의 가중치 계산에서만
+   * 불린다. chain 은 behavior 를 EV 배수(`candidateEv` 의 `shootTendency`/`passRisk`/
+   * `dribbleTendency`)로 직접 곱하며 소프트캡을 거치지 않는다.
+   */
   softCap: number;
 
   /** 틱당 기본 피로 증가(0..1 스케일). 질주/압박 시 가중. */
@@ -992,6 +1059,7 @@ export const defaultEngineConfig: EngineConfig = {
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
     // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
     // 슛 지배를 완화(후진 리사이클은 backwardPassPenalty 2.4 + shootCentralBonus 1.35 로 계속 억제).
+    // ⚠️ 위 문단은 **weighted 시절 서술이다**(#338) — chain 기본에서는 이 블록이 실행되지 않는다.
     // #178: 마크 당김 오버슛(진동) 제거로 수비 블록이 형태를 유지하게 되자 슛이 13.95→11.65 로
     // 밴드 아래로 떨어졌다(진동하던 수비수가 마크를 지나쳐 자리를 비우던 것이 슛 기회였다).
     // 0.6→0.9 로 파이널서드 슛 의지를 복원해 13.28(밴드 12-14)로 되돌린다. `shoot` 사다리 단조성
@@ -1114,10 +1182,16 @@ export const defaultEngineConfig: EngineConfig = {
     // 스윕(10시드): 대기 0 → 빈공간꺾임 2건·최악 10.8m / **2 → 0건·최악 6.1m** / 3 → 0건이지만
     // 공이 멈춰 있는 시간(무소유틱)이 28.7% 로 과해 템포를 해친다.
     arrivalWaitMaxTicks: 2,
+    // #316: 아래 둘은 chain 기본에서도 **살아 있다** — `decision.oneOnOneShot` 을 두 코어가 공유하고,
+    // chain 은 루트(실제 슈터 자리)에서 한 번만 불러 **결과 xg + detail** 에 반영한다.
     oneOnOneClearM: 10.0,
     oneOnOneXgMult: 1.3,
     // G-A(#99): 1대1 강제슛 배수 3.2→1.8. 여전히 단독찬스는 슛을 선호하되(1v1은 슛이 정답),
     // 슛 과다에 기여하던 과도한 강제를 완화.
+    // ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#316/#338).
+    // 이건 "슛 **가중치**"를 곱하는 노브인데 사슬 코어에는 가중치 공간이 없다(EV 만 있다).
+    // EV 공간의 자명한 대응물이 없어 **의도적으로 이식하지 않았다** — 넣으면 슛 볼륨 레버가
+    // `chain.goalValue` 와 이중이 된다(`decisionWeights.shoot` 이 chain 에서 무효인 것과 같은 이유).
     oneOnOneShootBias: 1.8,
     // #312(S5-B) 정확도. 기준 6도 = 20m 패스에서 횡 오차 ±2.1m(controlRange 3.5m 안) —
     // 성공 롤이 난 패스는 리시버가 한 걸음으로 흡수하고, 큰 오차는 굴러(#313) 쟁탈이 된다.

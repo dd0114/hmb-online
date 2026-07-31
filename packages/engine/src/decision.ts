@@ -103,6 +103,38 @@ export function xgAtPoint(
 }
 
 /**
+ * 1대1(단독) 찬스 판정 — 슈터 반경(`contest.oneOnOneClearM`) 안에 비-GK 상대가 없고 사거리
+ * (`contest.shootRange`) 안이면 xG 부스트(`oneOnOneXgMult`) + 하이라이트 표기(`detail="one_on_one"`).
+ *
+ * **두 코어(weighted / chain)가 같은 함수를 쓴다** — 재구현하면 기하가 갈린다. 산술은 구
+ * `decideBallOwner` 인라인 판정과 **bit-identical**(추출만 했다).
+ *
+ * ⚠️ **실제 상태의 슈터 자리에서만** 부를 것(#316). `chain.ts` 의 생성기는 `bestEvAt`/`arrivalHypo`
+ * 를 통해 **가상 도착 지점**에서도 돌기 때문에, 거기서 1v1 기하를 재면 "상대가 그때까지 안
+ * 움직인다"는 가정이 EV 에 심긴다. 그래서 chain 은 루트에서 한 번만 부른다.
+ */
+export function oneOnOneShot(
+  state: SimState,
+  owner: SimPlayer,
+  rawXg: number,
+  distM: number,
+  config: EngineConfig,
+): { xg: number; detail?: string } {
+  if (!(config.contest.oneOnOneXgMult > 1) || distM > config.contest.shootRange) return { xg: rawXg };
+  const clearR = config.contest.oneOnOneClearM * config.fixedScale;
+  let nonGkNearD = Infinity;
+  for (const p of state.players) {
+    if (p.side === owner.side || p.isGK) continue;
+    const d = fdist(owner.posFx.x, owner.posFx.y, p.posFx.x, p.posFx.y);
+    if (d < nonGkNearD) nonGkNearD = d;
+  }
+  if (nonGkNearD > clearR) {
+    return { xg: fclamp(rawXg * config.contest.oneOnOneXgMult, 0.01, 0.95), detail: "one_on_one" };
+  }
+  return { xg: rawXg };
+}
+
+/**
  * 슛 실행 계획(#312 S5-B) — 세기와 조준점.
  *
  * 구버전은 **속도 상수(`shotBallSpeed` 14) + 골 중앙 정조준**이었다. 슛도 패스와 같은 축을 탄다:
@@ -133,14 +165,28 @@ export function planShot(
   };
 }
 
-/** 자기 페널티박스 안인가(걷어내기 가중용). `contest.ts:victimInAttackBox` 와 같은 기하, 반대 골. */
-export function inOwnBox(pitch: Pitch, config: EngineConfig, p: SimPlayer): boolean {
-  const g = defendGoal(pitch, p.side);
+/**
+ * 임의 지점이 side 팀의 **자기 페널티박스** 안인가. 기하는 IFAB 박스(config `rules.penalty`)에서
+ * 파생하고 `inOwnBox` 가 이 함수를 호출하므로 기존 동작과 bit-identical 이다.
+ */
+export function pointInOwnBox(
+  pitch: Pitch,
+  config: EngineConfig,
+  side: SimPlayer["side"],
+  xFx: number,
+  yFx: number,
+): boolean {
+  const g = defendGoal(pitch, side);
   const scale = config.fixedScale;
   return (
-    Math.abs(p.posFx.x - g.x) <= toFixed(config.rules.penalty.boxDepthM, scale) &&
-    Math.abs(p.posFx.y - g.y) <= toFixed(config.rules.penalty.boxHalfWidthM, scale)
+    Math.abs(xFx - g.x) <= toFixed(config.rules.penalty.boxDepthM, scale) &&
+    Math.abs(yFx - g.y) <= toFixed(config.rules.penalty.boxHalfWidthM, scale)
   );
+}
+
+/** 자기 페널티박스 안인가(걷어내기 가중용). `contest.ts:victimInAttackBox` 와 같은 기하, 반대 골. */
+export function inOwnBox(pitch: Pitch, config: EngineConfig, p: SimPlayer): boolean {
+  return pointInOwnBox(pitch, config, p.side, p.posFx.x, p.posFx.y);
 }
 
 /**
@@ -589,21 +635,8 @@ export function decideBallOwner(
   // --- 슛 후보(좋은 위치/각도/찬스일 때만; xG 임계 미만 speculative 억제) ---
   const { xg: rawXg, distM } = computeXg(owner, config, pitch);
   // 1대1(단독) 찬스: 슈터 반경 안에 비-GK 상대가 없고 사거리 안이면 xG 부스트 + 하이라이트 표기.
-  let xg = rawXg;
-  let shootDetail: string | undefined;
-  if (config.contest.oneOnOneXgMult > 1 && distM <= config.contest.shootRange) {
-    const clearR = config.contest.oneOnOneClearM * config.fixedScale;
-    let nonGkNearD = Infinity;
-    for (const p of state.players) {
-      if (p.side === owner.side || p.isGK) continue;
-      const d = fdist(owner.posFx.x, owner.posFx.y, p.posFx.x, p.posFx.y);
-      if (d < nonGkNearD) nonGkNearD = d;
-    }
-    if (nonGkNearD > clearR) {
-      xg = fclamp(rawXg * config.contest.oneOnOneXgMult, 0.01, 0.95);
-      shootDetail = "one_on_one";
-    }
-  }
+  // (#316: 판정 본체는 `oneOnOneShot` 으로 추출 — chain 코어와 **같은 함수**를 쓴다. 산술 무변경.)
+  const { xg, detail: shootDetail } = oneOnOneShot(state, owner, rawXg, distM, config);
   let wShoot = 0;
   if (distM <= config.contest.shootRange && xg >= config.contest.shootXgThreshold) {
     // 거리 페널티는 xG 에 이미 반영되므로 여기서는 xG 품질만 가중(이중 페널티 방지).
@@ -717,11 +750,25 @@ export function decideBallOwner(
  * `state.players` 배열 순서가 승자를 정했는데, 퇴장이 splice 로 그 순서를 바꾼다 → 같은 상태에서
  * 다른 사람이 공을 주우러 가는 무음 비결정이 된다.
  */
-function closestToBall(state: SimState, side: SimPlayer["side"]): SimPlayer | null {
+function closestToBall(
+  state: SimState,
+  side: SimPlayer["side"],
+  pitch: Pitch | null = null,
+  config: EngineConfig | null = null,
+): SimPlayer | null {
+  // #239: GK 는 원래 후보가 아니다(골문을 비우면 안 되니까). 하지만 **자기 박스 안 루즈볼**은
+  // GK 가 잡는 게 실축이고, 그 구멍이 곧 데드엔드다 — GK 클램프 밴드(gk.baseDepth+sweepReach)와
+  // `contest.controlRange` 사이에 아무도 못 닿는 띠가 남아 골에어리어 앞 공이 회수되지 않는다.
+  // pitch/config 가 없으면(호출부가 기하를 모르면) 구동작 그대로 GK 를 제외한다.
+  const gkEligible =
+    pitch != null &&
+    config != null &&
+    pointInOwnBox(pitch, config, side, state.ball.posFx.x, state.ball.posFx.y);
   let best: SimPlayer | null = null;
   let bestD = Infinity;
   for (const p of state.players) {
-    if (p.side !== side || p.isGK) continue;
+    if (p.side !== side) continue;
+    if (p.isGK && !gkEligible) continue;
     const dx = p.posFx.x - state.ball.posFx.x;
     const dy = p.posFx.y - state.ball.posFx.y;
     const d = dx * dx + dy * dy;
@@ -833,6 +880,30 @@ export function decideOffBall(
   // GK 38.6%(아웃필더 ~10%)로 "비소유팀이 굳어 있다"의 최대 기여자였다. 실제 GK 는 공이 멀면
   // 나오고 가까우면 골라인에 붙는다. 상수 두 개(0.04·0.3)도 여기서 config 로 승격된다(§2-4).
   if (player.isGK) {
+    // #239 백스톱: **자기 박스 안에 죽어 있는 공**은 GK 가 주우러 간다(실축 GK 행동).
+    //
+    // 조건은 **데드엔드 지문 그대로**다 — 소유자 없음 + **비행조차 없음**(`flight == null`) +
+    // 세트피스·정지 없음. 그 상태는 `stepTick` 의 어느 분기에도 안 걸리고 아래 루즈볼 분기도
+    // `flight.kind === "loose"` 를 요구하므로 아무도 안 온다(= 하프가 죽는다). GK 목표는 평소
+    // 스위퍼 밴드(`gk.baseDepth + sweepReach`)로 클램프되므로 그 밖에 멈춘 공은 GK 도 못 닿는다.
+    //
+    // ⚠️ **굴러가는 루즈볼(`kind === "loose"`)까지 넓히면 안 된다.** 그건 이미 아웃필더가 쫓고
+    // 있고, 거기에 GK 까지 나가면 수비 배치가 통째로 흔들려 캘리브레이션이 깨진다(실측 60시드:
+    // 유효슛 5.32 → 5.58 로 밴드 4.5–5.5 이탈 · 마크 진동 백스톱 10.13 → 11.23 로 임계 초과).
+    // 지문으로 좁힌 형태는 정상 경기에서 사실상 발동하지 않는다(전 골든·지표 무이동).
+    // 데드볼(정지/세트피스) 중에도 걸지 않는다 — 골 세리머니의 네트 안 공으로 달려가면 안 된다.
+    const deadInBox =
+      state.stoppage <= 0 &&
+      state.setPiece == null &&
+      ball.owner == null &&
+      ball.flight == null &&
+      pointInOwnBox(pitch, config, player.side, ball.posFx.x, ball.posFx.y);
+    // **GK 가 우리 팀 최근접일 때만** 나간다(아웃필더가 더 가까우면 그쪽이 온다).
+    // 아웃필더 경로(아래 루즈볼 분기)는 **한 줄도 안 바뀐다** — GK 완화를 그쪽에 넘기지 않는다.
+    if (deadInBox && closestToBall(state, player.side, pitch, config) === player) {
+      player.targetFx = clampToPitch(pitch, ball.posFx.x, ball.posFx.y);
+      return;
+    }
     const gkc = mv.gk;
     const ballDist = fdist(ball.posFx.x, ball.posFx.y, ownGoal.x, ownGoal.y);
     const outFrac = fclamp(ballDist / Math.max(1, gkc.sweepRefM * scale), 0, 1);
@@ -857,6 +928,9 @@ export function decideOffBall(
     // #313: **주석과 코드가 어긋나 있었다.** 주석은 "양 팀 최근접이 간다"인데 코드는
     // `!loose.claimant` 조건 탓에 claimant 가 있으면 **상대 팀은 아무도 안 쫓았다** — 계획된
     // 리시버 혼자 주우러 가는, 경합이 아닌 그림이다(감사 지적). 실제 루즈볼은 양 팀이 다툰다.
+    // #239: 여기는 **아웃필더 경로**라 GK 완화를 켜지 않는다(pitch/config 미전달 = 구동작 그대로).
+    // GK 는 위 분기에서 따로 판단한다 — 아웃필더가 오던 공을 GK 가 "가로채" 대신 오게 만들면
+    // 수비 블록 배치가 통째로 흔들린다(밴드 이탈 실측). 둘 다 오는 편이 데드엔드에 더 안전하다.
     const mine = closestToBall(state, player.side);
     // #231: claimant 는 상대일 수도 있다 — id 만 비교하면 같은 id 의 우리 팀 선수가 남의 공을 주우러 간다.
     const claimedByMe = loose.claimant === player.id && claimantSideOf(loose) === player.side;

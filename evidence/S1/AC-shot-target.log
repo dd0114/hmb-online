@@ -1,10 +1,10 @@
 === AC-shot-target: showcase(viewer, seed 4815162342) (engine@0.26.0-showcase, seed 4815162342) ===
 판정: goal/saved 는 골문 근처(y 26..42) | off_target 은 골라인 너머(x<0 또는 x>105) + 포스트 바깥(y<30.34 또는 y>37.66) | 코너(y<5 또는 y>63)로 간 슛 0건이면 PASS
-총 슛 결과(goal+saved+off_target): 19  |  코너로 간 슛: 0건
+총 슛 결과(goal+saved+off_target): 20  |  코너로 간 슛: 0건
 
-goal: 7건  y[min 33.39 / mean 33.79 / max 34.76]  코너 0건
-saved: 8건  y[min 28.84 / mean 31.42 / max 34.00]  코너 0건
-off_target: 4건  y[min 27.34 / mean 34.00 / max 40.66]  코너 0건
+goal: 9건  y[min 33.39 / mean 33.89 / max 34.76]  코너 0건
+saved: 8건  y[min 28.84 / mean 33.36 / max 39.16]  코너 0건
+off_target: 3건  y[min 27.34 / mean 31.78 / max 40.66]  코너 0건
 
 결과          tick    team  ball(x,y)           판정
 off_target  87      away  (-3.50,27.34)       PASS
@@ -17,15 +17,16 @@ goal        578     away  (0.50,33.39)        PASS
 goal        637     home  (104.50,33.52)      PASS
 goal        718     home  (104.50,33.44)      PASS
 goal        739     away  (0.50,33.92)        PASS
-off_target  800     away  (-3.50,40.66)       PASS
-off_target  864     away  (-3.50,27.34)       PASS
-saved       915     away  (2.50,34.00)        PASS
-saved       939     away  (2.50,34.00)        PASS
-saved       1017    home  (108.50,28.84)      PASS
-saved       1053    home  (102.50,34.00)      PASS
-saved       1169    home  (102.50,34.00)      PASS
-saved       1205    home  (108.50,28.84)      PASS
-off_target  1301    away  (-3.50,40.66)       PASS
+goal        800     away  (0.50,34.50)        PASS
+off_target  985     home  (108.50,27.34)      PASS
+saved       1088    away  (-3.50,39.16)       PASS
+saved       1119    away  (-3.50,39.16)       PASS
+off_target  1163    home  (108.50,40.66)      PASS
+saved       1225    home  (108.50,28.84)      PASS
+goal        1285    away  (0.50,34.02)        PASS
+saved       1347    away  (2.50,34.00)        PASS
+saved       1383    home  (108.50,28.84)      PASS
+saved       1425    away  (-3.50,39.16)       PASS
 
 결과: ALL PASS (코너로 간 슛 0건)
 
