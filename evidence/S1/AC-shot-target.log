@@ -1,4 +1,4 @@
-=== AC-shot-target: showcase(viewer, seed 4815162342) (engine@0.26.0-showcase, seed 4815162342) ===
+=== AC-shot-target: showcase(viewer, seed 4815162342) (engine@0.27.0-showcase, seed 4815162342) ===
 판정: goal/saved 는 골문 근처(y 26..42) | off_target 은 골라인 너머(x<0 또는 x>105) + 포스트 바깥(y<30.34 또는 y>37.66) | 코너(y<5 또는 y>63)로 간 슛 0건이면 PASS
 총 슛 결과(goal+saved+off_target): 20  |  코너로 간 슛: 0건
 
@@ -30,7 +30,7 @@ saved       1425    away  (-3.50,39.16)       PASS
 
 결과: ALL PASS (코너로 간 슛 0건)
 
-=== AC-shot-target: real(default) (engine@0.26.0, seed 4815162342) ===
+=== AC-shot-target: real(default) (engine@0.27.0, seed 4815162342) ===
 판정: goal/saved 는 골문 근처(y 26..42) | off_target 은 골라인 너머(x<0 또는 x>105) + 포스트 바깥(y<30.34 또는 y>37.66) | 코너(y<5 또는 y>63)로 간 슛 0건이면 PASS
 총 슛 결과(goal+saved+off_target): 25  |  코너로 간 슛: 0건
 

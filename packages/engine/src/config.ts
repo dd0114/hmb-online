@@ -996,7 +996,7 @@ export const defaultEngineConfig: EngineConfig = {
   //   ⓑ 의도 게시판(intents)·런 오더(runOrder) 첫 소비 — 차면 그 틱에 따라 들어가고(패서·러너),
   //      수비는 그 런을 **읽어** 도착 예정 지점을 선점한다(vision.runReadFrac)
   //   ⓒ 수비 블록의 공 추종 비대칭 해소(defendCompactX 0.16→0.32) + GK 스위퍼 라인
-  version: "engine@0.26.0",
+  version: "engine@0.27.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
