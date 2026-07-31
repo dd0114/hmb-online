@@ -251,6 +251,32 @@ bash infra/tunnel-heal.sh --selftest           # 도구·해석기·자격증명
 tail -f ~/.local/state/hmb/tunnel-heal.log     # 이벤트(HEAL_OK / PUBLISH_ONLY / DEGRADED …)
 ```
 
+**⚠️ 리포를 고쳤다고 워치독이 고쳐진 게 아니다.** 워치독이 실제로 도는 건 리포가 아니라 **설치 사본**
+(`~/.local/bin/hmb-tunnel-heal.sh`)이다. 실제로 `grep -a` 픽스가 플레이북엔 "닫았다"고 적혀 있는데
+**프로덕션 사본엔 없던 적이 있다**(2026-07-31 발견). 고쳤으면 **반드시 재설치하고 설치본을 확인**하라:
+```bash
+bash infra/install-tunnel-heal.sh
+diff <(tail -n +4 ~/.local/bin/hmb-tunnel-heal.sh) <(tail -n +2 infra/tunnel-heal.sh) && echo 동기화됨
+```
+
+### 치유 상한 — 회선이 불안정한 날 잠깐 올리기 (`heal.conf`)
+1시간에 `HMB_HEAL_MAX_PER_HOUR`(**기본 3**)번을 넘겨 치유하면 `DEGRADED` 로 백오프한다 — 무한 재기동
+방지 장치다. 그런데 회선이 계속 끊기는 날엔 상한이 금방 소진되고, 그때부터는 **터널이 죽어도 아무도
+안 고친다**. launchd plist 는 `PATH`·`HOME` 만 넘겨서 **env 로는 런타임 조정이 안 되므로**, 워치독이
+매 틱 읽는 노브 파일을 둔다:
+```bash
+printf 'HMB_HEAL_MAX_PER_HOUR=6\n' > ~/.local/state/hmb/heal.conf   # 일시 상향(재설치·재기동 불필요)
+rm ~/.local/state/hmb/heal.conf                                     # 회선 안정되면 원복
+```
+- 구 이름 `HMB_MAX_HEALS_PER_HOUR` 도 계속 받는다(새 이름 우선). **올려두고 잊지 마라** — 상한은
+  "터널이 반복해서 죽는다"를 사람에게 알리는 신호이기도 하다.
+
+### DEGRADED 는 `status.sh` 첫 줄에 뜬다
+백오프 진입 시 마커(`~/.local/state/hmb/DEGRADED`)가 생기고 **`bash infra/status.sh` 맨 위에 굵게** 뜬다
+(치유가 성공하거나 터널이 정상으로 돌아오면 자동으로 지워진다). 예전엔 이 상태가 로그 안에만 있어서
+**복구가 멈춰 있는 동안에도 화면은 ✓ 만 보여줬다** — 그래서 첫 줄로 올렸다. 별도 알림 시스템은 두지
+않는다(패트롤 크론이 커버).
+
 | 이벤트 | 뜻 | 사람이 할 일 |
 |---|---|---|
 | `HEAL_OK` | 터널 죽음 → 재기동 → **web 이 새 주소를 서빙하는 것까지 확인** | 없음 |

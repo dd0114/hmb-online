@@ -32,13 +32,29 @@ BACKEND_PORT="${HMB_BACKEND_PORT:-18080}"          # 데모 8080/8790 은 절대
 TUNNEL_LOG="${HMB_TUNNEL_LOG:-/tmp/hmb-cf-tunnel.log}"
 TUNNEL_PID="${HMB_TUNNEL_PID:-/tmp/hmb-cf-tunnel.pid}"
 STATE_DIR="${HMB_STATE_DIR:-$HOME/.local/state/hmb}"
+
+# ── 런타임 노브 파일 ───────────────────────────────────────────────────────────────
+# launchd plist 는 PATH·HOME 만 넘긴다 → **env 로는 런타임 조정이 안 된다**(plist 를 고치고
+# 다시 로드해야 한다). 회선이 불안정한 날 상한만 잠깐 올리려고 재설치하는 건 과하다.
+# 그래서 틱마다 이 파일을 읽는다. 없으면 기본값 그대로다.
+#
+#   printf 'HMB_HEAL_MAX_PER_HOUR=6\n' > ~/.local/state/hmb/heal.conf   # 일시 상향
+#   rm ~/.local/state/hmb/heal.conf                                     # 원복
+HEAL_CONF="${HMB_HEAL_CONF:-$STATE_DIR/heal.conf}"
+# shellcheck disable=SC1090
+[ -f "$HEAL_CONF" ] && . "$HEAL_CONF"
+
 HEAL_LOG="$STATE_DIR/tunnel-heal.log"
 HEALS_FILE="$STATE_DIR/heals.tsv"
 LOCK="$STATE_DIR/deploy.lock"
 PUBLISH="${HMB_PUBLISH_CMD:-$HOME/.local/bin/hmb-publish-backend-url.sh}"
 RESOLVERS="${HMB_RESOLVERS:-system 8.8.8.8 9.9.9.9 1.1.1.1}"
 CONFIRM_SLEEP="${HMB_CONFIRM_SLEEP:-10}"           # 1차 실패 후 재확인까지 (일시적 blip 흡수)
-MAX_HEALS_PER_HOUR="${HMB_MAX_HEALS_PER_HOUR:-3}"  # 초과 시 DEGRADED — 무한 재기동 방지
+# 초과 시 DEGRADED — 무한 재기동 방지. 회선이 불안정한 날엔 `heal.conf` 로 잠깐 올린다(위 참조).
+# ⚠️ 구 이름 `HMB_MAX_HEALS_PER_HOUR` 도 계속 받는다 — 이미 그 이름을 쓰는 곳이 있으면 조용히
+#    무시되는 게 최악이다. 새 이름이 우선, 없으면 구 이름, 그것도 없으면 3.
+MAX_HEALS_PER_HOUR="${HMB_HEAL_MAX_PER_HOUR:-${HMB_MAX_HEALS_PER_HOUR:-3}}"
+DEGRADED_MARK="$STATE_DIR/DEGRADED"                # status.sh 가 첫 줄에 띄우는 마커
 DNS_WAIT="${HMB_DNS_WAIT:-120}"                    # 새 호스트가 글로벌 DNS 에 뜰 때까지 대기 상한
 PROBE_TIMEOUT="${HMB_PROBE_TIMEOUT:-12}"
 
@@ -49,6 +65,13 @@ now(){ date +%s; }
 iso(){ date -u +%Y-%m-%dT%H:%M:%SZ; }
 say(){ printf '%s\n' "$*"; }
 record(){ printf '%s\t%s\t%s\t%s\n' "$(now)" "$(iso)" "$1" "${2:-}" >> "$HEAL_LOG"; }
+
+# ── DEGRADED 가시화 ────────────────────────────────────────────────────────────────
+# 백오프에 들어간 걸 **로그를 열어야만** 알 수 있으면 아무도 모른다(실측: 2026-07-31 에 상한을
+# 소진하고 자동 복구가 멈춰 있었는데 status.sh 는 계속 ✓ 만 보여줬다).
+# 마커 파일 하나로 끝낸다 — status.sh 가 첫 줄에 띄운다. 별도 알림 시스템은 만들지 않는다.
+degraded_mark(){ printf '%s\t%s\n' "$(iso)" "$1" > "$DEGRADED_MARK"; }
+degraded_clear(){ [ -f "$DEGRADED_MARK" ] && { rm -f "$DEGRADED_MARK"; record DEGRADED_CLEARED ""; }; return 0; }
 
 # ── 해석기 폴백: 하나라도 IP 를 주면 그 IP 를 쓴다 ──────────────────────────────────
 resolve_ip(){
@@ -202,6 +225,7 @@ heal(){
   local n; n=$(heals_last_hour)
   if [ "$n" -ge "$MAX_HEALS_PER_HOUR" ]; then
     record DEGRADED "1시간 내 치유 $n 회 ≥ 상한 $MAX_HEALS_PER_HOUR — 백오프"
+    degraded_mark "1시간 내 치유 $n 회 ≥ 상한 $MAX_HEALS_PER_HOUR (완화: printf 'HMB_HEAL_MAX_PER_HOUR=6\\n' > $HEAL_CONF)"
     say "✗ DEGRADED — 1시간에 $n 번 치유했다(상한 $MAX_HEALS_PER_HOUR). 반복 사망은 사람이 봐야 한다."
     return 5
   fi
@@ -270,6 +294,7 @@ heal(){
   #    이 한 줄이 계약이다: HEAL_OK = "테스터가 접속된다". publish 종료코드로 대신하지 않는다.
   if publish_verified "$new_url" heal; then
     record HEAL_OK "old=${old_url:-<없음>} new=$new_url"
+    degraded_clear
     say "✓ 치유 완료·검증됨 — web 이 $new_url 을 가리킨다"
     return 0
   fi
@@ -322,6 +347,7 @@ case "$MODE" in
         [ "$MODE" = "--check" ] && { say "  (--check 모드: 아무것도 하지 않음)"; exit 1; }
         publish_only "$url"; exit $?
       fi
+      degraded_clear
       exit 0
     fi
     say "! 1차 실패 — $url ($out)"
