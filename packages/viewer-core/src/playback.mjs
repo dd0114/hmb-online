@@ -23,6 +23,33 @@ export function buildRestartTicks(events) {
 }
 
 /**
+ * **표기 스케일**(#365) — 엔진의 경기 분(= 틱)과 화면에 쓰는 축구 시계는 다른 축이다.
+ * 엔진이 45분(하프 1350틱)을 돌면서 표기는 0~90' 을 채울 수 있다(`EngineConfig.displayMinutes`).
+ *
+ * `MatchLog` 스키마엔 그 값이 없다(configVersion 만 싣는다). 대신 **`minute` 이 스냅샷·이벤트에
+ * 구워져** 오므로 거기서 되유도한다 — 휘슬이 관계를 정확히 말해 준다(half_whistle: minute =
+ * 표기 하프, tick = 하프 마크). 없으면 마지막 스냅샷으로 근사하고, 그래도 못 구하면 **1**
+ * (= 구 로그·경기 분 = 표기 분. 동작 무변경).
+ *
+ * ⚠️ 이게 없으면 뷰어 시계만 **엔진 틱을 그대로** 분으로 읽어, 45분 경기가 화면에서 0~44' 로
+ * 흐른다 — 로그줄·타임라인은 구워진 `minute`(0~90')을 쓰므로 **한 화면이 두 시각을 말하게 된다**.
+ *
+ * @param {{type:string,tick:number,minute?:number}[]} events
+ * @param {{tick:number,minute?:number}[]} snaps
+ * @returns {number} 틱→표기분 스케일(>0)
+ */
+export function clockScaleOf(events, snaps) {
+  const evs = Array.isArray(events) ? events : [];
+  const half = evs.find((e) => e.type === "half_whistle");
+  if (half && half.tick > 0 && half.minute > 0) return half.minute / (half.tick / 60);
+  const full = evs.find((e) => e.type === "full_whistle");
+  if (full && full.tick > 0 && full.minute > 0) return full.minute / ((full.tick + 1) / 60);
+  const last = Array.isArray(snaps) && snaps.length ? snaps[snaps.length - 1] : null;
+  if (last && last.tick > 0 && typeof last.minute === "number") return (last.minute + 1) / ((last.tick + 1) / 60);
+  return 1;
+}
+
+/**
  * 하이라이트(슬로우+줌) 창 판정 — **비대칭**. keyTick(유효슛/골/PK) 앞은 pre 틱(빌드업 기대감),
  * 뒤는 post 틱(클라이맥스 후 빨리 풀림). 대칭(±)이면 슛 이후로도 pre 만큼 슬로우가 이어져
  * 세이브(키퍼 처리) 후 열린 플레이까지 늦게 풀렸다(#83). post<pre 로 뒤를 짧게.

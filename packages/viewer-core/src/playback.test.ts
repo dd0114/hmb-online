@@ -11,6 +11,7 @@ import {
   buildFlightSides,
   effectiveSpeed,
   autoPaceDurationMs,
+  clockScaleOf,
   PACE,
 } from "./playback.mjs";
 
@@ -413,5 +414,39 @@ describe("#216 autoPaceDurationMs — 켬 모드 재생 길이(서버 half-real-
   it("스냅샷이 없거나 하나뿐이면 0(모델이 폭주하지 않는다)", () => {
     expect(autoPaceDurationMs([], [])).toBe(0);
     expect(autoPaceDurationMs([{ tick: 0, ball: { x: 0, y: 0 } }], [])).toBe(0);
+  });
+});
+
+describe("#365 clockScaleOf — 화면 시계가 표기 분(0~90')을 따른다", () => {
+  /**
+   * ⚠️ 이 계약이 없어서 실제로 뚫렸다: 엔진은 45분(하프 1350틱)을 돌면서 `minute` 에 0~90 을
+   * 구워 보내는데, **뷰어 시계만 엔진 틱을 그대로 분으로 읽어** 화면이 0~44' 로 흘렀다.
+   * 로그줄·타임라인은 구워진 `minute` 을 쓰므로 **한 화면이 두 시각을 말하는** 상태였다.
+   */
+  const snapsTo = (last: number, minute: number) => [{ tick: 0, minute: 0 }, { tick: last, minute }];
+
+  it("half_whistle 이 있으면 그것으로 정확히 유도한다 (45분 경기 → ×2)", () => {
+    const events = [{ type: "half_whistle", tick: 1350, minute: 45 }];
+    expect(clockScaleOf(events, snapsTo(2699, 89))).toBe(2);
+  });
+
+  it("후반만 있는 로그(half_whistle 없음)는 full_whistle 로 유도한다", () => {
+    const events = [{ type: "full_whistle", tick: 2699, minute: 90 }];
+    expect(clockScaleOf(events, snapsTo(2699, 89))).toBeCloseTo(2, 6);
+  });
+
+  it("휘슬이 없으면 마지막 스냅샷으로 근사한다", () => {
+    expect(clockScaleOf([], snapsTo(2699, 89))).toBeCloseTo(2, 6);
+  });
+
+  it("구 로그(경기 분 = 표기 분)는 1 — 동작이 안 바뀐다", () => {
+    const events = [{ type: "half_whistle", tick: 2700, minute: 45 }];
+    expect(clockScaleOf(events, snapsTo(5399, 89))).toBe(1);
+  });
+
+  it("근거가 하나도 없으면 1 로 폴백한다(시계가 죽지 않는다)", () => {
+    expect(clockScaleOf([], [])).toBe(1);
+    expect(clockScaleOf(undefined as never, undefined as never)).toBe(1);
+    expect(clockScaleOf([], [{ tick: 0, minute: 0 }])).toBe(1);
   });
 });
