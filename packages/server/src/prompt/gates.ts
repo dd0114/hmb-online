@@ -1,3 +1,4 @@
+import { FORMATION_BASE_POSITIONS } from "@hmb/shared";
 import type { PromptDelta, TacticalInput, OpponentRosterEntry } from "@hmb/shared";
 
 /**
@@ -30,6 +31,22 @@ export const SANITY_GATE_CONFIG = {
    * 양쪽 여유가 같은 0.02 를 골랐다(피치로 x 2.1m · y 1.4m 수준).
    */
   minSpotSeparation: 0.02,
+  /**
+   * G4: 선언한 포메이션이 <b>다른 포메이션에 이만큼 더 잘 맞아도</b> 봐주는 여유(정규화 평균 거리).
+   *
+   * <p>왜 절대 임계가 아니라 <b>상대 비교</b>인가: 이 파일 머리말대로 게이트는 값의 '방향'을 강제하지
+   * 않는다. "기준 좌표에서 N 이상 벗어나면 거부"는 곧 좌표 충실도 강제라 감독 지시(라인 올려·측면
+   * 벌려)를 통째로 막는다 — #324 가 좌우 뒤집힘(D2)을 게이트로 만들지 <b>않은</b> 이유가 그것이다.
+   * 반면 "4-4-2 로 지시했는데 4-3-3 배치가 나왔다"는 좌표 나름의 해석이 아니라 <b>구조 선택의 무시</b>다.
+   * 그래서 임계를 걸지 않고 <b>선언한 포메이션이 후보 중 최적인가</b>만 본다 — 전술적 조정(전원 전진·
+   * 폭 확대)은 모든 후보의 거리를 같이 밀어 순위를 바꾸지 않는다.
+   *
+   * <p>보정 근거(라이브 유저 인풋 98건 전수, `tools/live-input-audit.mjs` D3):
+   * 선언이 최적인 정상 인풋의 <b>2위와의 여유는 현행 엔진 기준 p10 0.114</b> 로 이 값의 5배 이상이다
+   * (구 엔진 포함 전체로도 p10 0.007 이지만, 그 구간은 좌표를 아예 안 싣던 #324 이전 산출이다).
+   * 반대로 어긋난 인풋의 열세는 p50 0.040 — 즉 0.02 는 "사실상 동률"만 봐주고 실제 어긋남은 잡는다.
+   */
+  formationFitMargin: 0.02,
 } as const;
 
 /** 마킹 동사 — 카탈로그 marking 지시어(stub 과 동일 어휘). 이것만으로는 발동하지 않는다(아래 참조). */
@@ -83,6 +100,10 @@ export interface SanityGateContext {
   playerPrompts: Record<string, string>;
   opponentRoster?: readonly OpponentRosterEntry[];
   promptDelta?: PromptDelta;
+  /** 감독이 덱(전술보드)에서 고른 포메이션 — G4 의 기준. 없으면 G4 는 건너뛴다. */
+  formation?: string;
+  /** 선발 11명의 슬롯 매핑(playerId → slotIndex). 없으면 G4 는 건너뛴다. */
+  roster?: readonly { playerId: string; slotIndex: number }[];
 }
 
 /**
@@ -108,6 +129,31 @@ export function gateContextText(ctx: SanityGateContext): string {
     return parts.join("\n");
   }
   return [ctx.teamPrompt, ...Object.values(ctx.playerPrompts)].join("\n");
+}
+
+/**
+ * 포메이션 적합도 = 산출 basePosition 과 그 포메이션 슬롯 기준좌표의 <b>평균 거리</b>(정규화).
+ * 슬롯은 <b>배열 순서가 아니라 playerId→slotIndex</b> 로 잡는다 — 라이브 산출의 19.4% 가 로스터
+ * 순서와 다른 순서로 선수를 내므로(실측), 배열 인덱스로 재면 순서만 바뀐 정상 산출을 어긋남으로 읽는다.
+ * 슬롯을 모르는 선수(표 범위 밖·로스터 밖)는 계산에서 빠진다. 잴 선수가 없으면 undefined.
+ */
+export function formationFit(
+  input: TacticalInput,
+  slotOf: ReadonlyMap<string, number>,
+  formation: string,
+): number | undefined {
+  const table = FORMATION_BASE_POSITIONS[formation];
+  if (!table) return undefined;
+  let sum = 0;
+  let n = 0;
+  for (const p of input.players) {
+    const slot = slotOf.get(p.playerId);
+    const base = slot === undefined ? undefined : table[slot];
+    if (!base) continue;
+    sum += Math.hypot(p.basePosition.x - base.x, p.basePosition.y - base.y);
+    n++;
+  }
+  return n === 0 ? undefined : sum / n;
 }
 
 /**
@@ -164,5 +210,31 @@ export function assertTacticalSanity(input: TacticalInput, ctx: SanityGateContex
       `배치 파손 — 사실상 같은 지점에 선 선수들이 있다: ${tooClose.join(" · ")}. ` +
         `겹친 선수들을 서로 최소 ${cfg.minSpotSeparation} 이상 떨어뜨려 배치하라`,
     );
+  }
+
+  // ── G4 포메이션 미이행: 감독이 고른 포메이션을 선언만 하고 **다른 포메이션으로 배치**했다.
+  //    엔진은 `team.formation` 문자열을 읽지 않는다 — 실효는 오직 basePosition 11개에 있다(#359 진단).
+  //    그래서 "선언은 4-4-2, 배치는 4-3-3"이면 유저에게는 포메이션 선택이 통째로 무효다(#295).
+  //    ⚠️ 좌표 충실도가 아니라 **후보 중 최적인가**만 본다(임계 근거 = formationFitMargin 주석).
+  //    표에 없는 포메이션·로스터 미제공이면 판정 근거가 없으므로 건너뛴다.
+  if (ctx.formation !== undefined && ctx.roster !== undefined && FORMATION_BASE_POSITIONS[ctx.formation]) {
+    const slotOf = new Map(ctx.roster.map((r) => [r.playerId, r.slotIndex]));
+    const declared = formationFit(input, slotOf, ctx.formation);
+    if (declared !== undefined) {
+      let best: { name: string; fit: number } | undefined;
+      for (const name of Object.keys(FORMATION_BASE_POSITIONS)) {
+        if (name === ctx.formation) continue;
+        const fit = formationFit(input, slotOf, name);
+        if (fit !== undefined && (best === undefined || fit < best.fit)) best = { name, fit };
+      }
+      if (best && best.fit + cfg.formationFitMargin < declared) {
+        throw new Error(
+          `포메이션 미이행 — 감독이 고른 포메이션은 ${ctx.formation} 인데 배치는 ${best.name} 에 더 가깝다` +
+            `(슬롯 기준좌표와의 평균 거리 ${ctx.formation} ${declared.toFixed(3)} vs ${best.name} ${best.fit.toFixed(3)}). ` +
+            `각 선수를 로스터 줄의 '기준' 좌표(= ${ctx.formation} 슬롯) 근처에 배치하고, 지시로 조정하더라도 ` +
+            `${ctx.formation} 의 형태를 유지하라`,
+        );
+      }
+    }
   }
 }
