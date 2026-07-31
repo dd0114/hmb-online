@@ -153,9 +153,22 @@ function totalTicks(config: EngineConfig): number {
   return Math.round((config.matchMinutes * 60 * 1000) / config.msPerTick);
 }
 
-/** 틱 → 경기 분. */
+/**
+ * 틱 → **화면 표기 분**(#365).
+ *
+ * 경기 길이(`matchMinutes` = 틱 수)와 표기(`displayMinutes`)는 다른 축이다 — 45분 경기를 0~90' 로
+ * 보여줄 수 있다. 스케일이 여기 한 곳에 있는 이유는 `minute` 이 스냅샷·이벤트에 구워져 로그로 나가고
+ * 소비자(뷰어 시계·log-lines·web LogPanel·타임라인)가 전부 그 값을 읽기 때문이다.
+ * `displayMinutes` 미지정 = 스케일 1 = 이 필드 이전 동작.
+ */
 function tickToMinute(tick: number, config: EngineConfig): number {
-  return Math.floor((tick * config.msPerTick) / 60000);
+  const scale = (config.displayMinutes ?? config.matchMinutes) / config.matchMinutes;
+  return Math.floor(((tick * config.msPerTick) / 60000) * scale);
+}
+
+/** 경기 종료 표기 분(= 표기 전체 길이). `full_whistle` 이 쓴다. */
+function displayEndMinute(config: EngineConfig): number {
+  return config.displayMinutes ?? config.matchMinutes;
 }
 
 /** 현재 상태로 TickSnapshot 생성(실좌표 + 해시). */
@@ -921,7 +934,7 @@ export function runMatch(
   settleInFlightShot(carry); // 경기 종료 틱도 동일.
   carry.events.push({
     tick: total - 1,
-    minute: config.matchMinutes,
+    minute: displayEndMinute(config),
     type: "full_whistle",
   });
   return toMatchLog(carry);
@@ -971,7 +984,7 @@ export function resumeSecondHalf(
   settleInFlightShot(carry); // runMatch(통짜)와 **동일 지점**.
   carry.events.push({
     tick: total - 1,
-    minute: config.matchMinutes,
+    minute: displayEndMinute(config),
     type: "full_whistle",
   });
   return toMatchLog(carry);

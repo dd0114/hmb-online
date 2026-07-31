@@ -13,8 +13,17 @@ export interface EngineConfig {
 
   /** 틱 해상도(ms). 1000 = 1초 틱(Tier B). */
   msPerTick: number;
-  /** 한 경기 길이(분). 전/후반 각 절반. */
+  /** 한 경기 길이(분). 전/후반 각 절반. 틱 수는 이 값이 정한다. */
   matchMinutes: number;
+  /**
+   * **화면에 표시할** 경기 분(#365). 시뮬레이션에는 관여하지 않고 `minute` 표기만 스케일한다
+   * (`표기 = 경기분 × displayMinutes / matchMinutes`). hero 스펙 = *"절대 시간은 3분으로 끝나되
+   * 표기는 축구처럼 0~90"*.
+   *
+   * 미지정이면 `matchMinutes`(스케일 1) = 이 필드 이전 동작 그대로 = 롤백 경로.
+   * 계약 = `display-clock.test.ts`.
+   */
+  displayMinutes?: number;
 
   /** 피치 실좌표 크기(m). goalWidth = 골포스트 간 폭(m), 골 판정 y 범위에 사용. */
   pitch: { width: number; height: number; goalWidth: number };
