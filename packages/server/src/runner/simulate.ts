@@ -22,6 +22,9 @@ import {
   type SimulateRequest,
   type SimulateResponse,
 } from "@hmb/shared";
+// @ts-expect-error — viewer-core 는 순수 .mjs(타입 선언 없음). 재생 길이 모델의 SoT 라 여기서
+// 다시 구현하지 않고 그대로 읽는다(#365).
+import { autoPaceDurationMs } from "@hmb/viewer-core/playback";
 
 /**
  * simulate — 엔진러너 순수 로직(HTTP 무관, 단위테스트 가능).
@@ -273,6 +276,24 @@ function carryToMatchLog(carry: CarryState): MatchLog {
   };
 }
 
+/**
+ * **이 하프를 연출 페이싱으로 다 보는 데 걸리는 실시간(ms)** (#365).
+ *
+ * 서버가 하프 마감 시각을 이 값으로 잡으면 창 == 재생 길이가 되어 **클라가 배속을 창에 맞춰
+ * 보정할 일이 사라진다**(hero 확정: 고정 배속만). 계산 규칙은 viewer-core 가 SoT 이고 렌더 루프와
+ * 같은 상수(`PACE`)를 읽는다 — 여기서 숫자를 다시 적지 않는다.
+ *
+ * 실패해도 시뮬을 죽이지 않는다: 값이 없으면 서버가 config 폴백(`half-real-ms`)을 쓴다.
+ */
+function playbackMsOf(matchLog: MatchLog): number | undefined {
+  try {
+    const ms = autoPaceDurationMs(matchLog.tickSnapshots, matchLog.events);
+    return Number.isFinite(ms) && ms > 0 ? Math.round(ms) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function lastHashOf(matchLog: MatchLog): string {
   const last = matchLog.tickSnapshots[matchLog.tickSnapshots.length - 1];
   if (!last) throw new Error("simulate: empty tickSnapshots — cannot compute lastHash");
@@ -300,6 +321,7 @@ export function simulate(
       matchLog,
       resumeState: serializeCarry(carry),
       lastHash: lastHashOf(matchLog),
+      playbackMs: playbackMsOf(matchLog),
     };
   }
 
@@ -320,7 +342,7 @@ export function simulate(
         away: full.finalScore.away - half1Score.away,
       },
     };
-    return { matchLog, lastHash: lastHashOf(matchLog) };
+    return { matchLog, lastHash: lastHashOf(matchLog), playbackMs: playbackMsOf(matchLog) };
   }
 
   // half === 2, resumeState 없음: 로스터 교체 폴백 — 독립 후반 시뮬(연속성 손실 PoC 허용,
@@ -329,5 +351,5 @@ export function simulate(
   // R2(#66) 지원 시 이 분기 제거.
   const carry = runFirstHalf(req.seed, req.homeInput, req.awayInput, req.selectData, config);
   const matchLog = carryToMatchLog(carry);
-  return { matchLog, lastHash: lastHashOf(matchLog) };
+  return { matchLog, lastHash: lastHashOf(matchLog), playbackMs: playbackMsOf(matchLog) };
 }

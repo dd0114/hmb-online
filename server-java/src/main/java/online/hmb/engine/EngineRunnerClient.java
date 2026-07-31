@@ -44,7 +44,13 @@ public class EngineRunnerClient {
                 .build();
     }
 
-    public record SimulateResult(JsonNode matchLog, JsonNode resumeState, String lastHash) {
+    /**
+     * @param playbackMs 이 하프를 연출 페이싱으로 다 보는 데 걸리는 실시간(ms) — <b>0 이면 러너가
+     *                   안 준 것</b>(구 러너)이고, 그때는 {@code hmb.match.clock.half-real-ms} 폴백을 쓴다.
+     *                   서버가 이 값을 하프 창으로 쓰면 창 == 재생 길이가 되어 클라의 배속 보정이
+     *                   불필요해진다(#365, hero 확정: 고정 배속만).
+     */
+    public record SimulateResult(JsonNode matchLog, JsonNode resumeState, String lastHash, long playbackMs) {
     }
 
     /**
@@ -94,7 +100,9 @@ public class EngineRunnerClient {
                 throw new IllegalStateException("runner 응답에 matchLog가 없습니다");
             }
             JsonNode resume = root.has("resumeState") ? root.get("resumeState") : null;
-            return new SimulateResult(matchLog, resume, root.path("lastHash").asText());
+            // additive optional — 없으면 0(= 서버가 config 폴백을 쓴다는 신호).
+            long playbackMs = root.path("playbackMs").asLong(0L);
+            return new SimulateResult(matchLog, resume, root.path("lastHash").asText(), playbackMs);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {
