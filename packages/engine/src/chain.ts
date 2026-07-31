@@ -567,7 +567,15 @@ function candidateEv(
       let tov = turnoverEv(ctx, succ);
       // passRisk 성향: 리스크 감수형은 턴오버 항을 덜 무겁게 본다(전술 입력 유지).
       if (behavior) tov = mulFrac(tov, toMul(1.4 - holder.behavior.passRisk));
-      const inner = mulFrac(vSucc, pFrac) + mulFrac(tov, FRAC_SCALE - pFrac);
+      let inner = mulFrac(vSucc, pFrac) + mulFrac(tov, FRAC_SCALE - pFrac);
+      // #361 T1: **`passDirectness`(다이렉트함) 성향**. 유일한 소비자였던 `decision.ts:scoreOption`
+      // 은 weighted 전용이라, 사슬 기본(0.24.0~)에서 이 지시는 **절반만** 도달했다(`passRisk` 만
+      // 먹혔다). 여기서 **롱 옵션의 EV** 를 가감한다 — `shootTendency`(위)와 동형.
+      // 롱에만 거는 이유: "다이렉트하게" 는 "길게 앞으로" 라는 뜻이고, 숏까지 같이 올리면
+      // 그건 패스 자체의 가중이라 축이 아니다.
+      if (behavior && opt.long) {
+        inner = mulFrac(inner, toMul(0.5 + holder.behavior.passDirectness));
+      }
       // 할인: 패스도 한 수를 쓰는 행동이다(슛/드리블과 같은 자에 놓으려면 여기서 깎아야 한다).
       return mulFrac(inner, w.discountFrac);
     }

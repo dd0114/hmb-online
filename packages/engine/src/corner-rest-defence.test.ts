@@ -217,11 +217,13 @@ describe("#182 (5) 롤백 스위치", () => {
     const f = framesFor(legacy, baseHome, baseAway);
     const legacyStay = avg(f.map((x) => x.stayBack.length));
     const nowStay = avg(framesFor(defaultEngineConfig, baseHome, baseAway).map((x) => x.stayBack.length));
-    // ⚠️ 절대 0 이 아니라 **대조군 관계식**이다(#178 mark-jitter 와 같은 규율). 구 계약은
-    // `toBe(0)` 였는데, 그건 5시드에서 우연히 성립한 값이다: 잔류 로직을 꺼도 코너 정지가 짧아
-    // **너무 깊은 곳에 있던 선수가 제때 못 올라오는** 프레임이 드물게 남는다(10시드 0.088명).
-    // 그건 잔류 배치가 아니라 이동 시간의 산물이라, 계약이 잡아야 할 것은 "정확히 0"이 아니라
-    // **"잔류 배치가 실제로 꺼졌는가"** 다.
+    // ⚠️ 절대 0 이 아니라 **대조군 관계식**이다(#178 mark-jitter 와 같은 규율).
+    // ⚠️⚠️ **완화 사유 정정**(#377 M1-pre 독립검증 m1): 구 주석은 `toBe(0)` 이 "5시드에서 우연히
+    // 성립한 값"이라고 적었는데 **사실이 아니다**. 검증자 실측 — HEAD + 원래 5시드 = **0**(통과) ·
+    // base + 새 10시드 = **0**(통과) · **HEAD + 10시드 = 0.0877**(57프레임 중 1프레임).
+    // 즉 잔여물은 시드 확장의 산물이 아니라 **#377 웨이브가 만든 것**이다(재시작이 킥으로 바뀌며
+    // 코너 정지 부근 전개가 달라졌다). 관계식이 ~7배 여유를 남겨 실질 위험은 낮지만, 계약이
+    // 잡아야 할 것은 "정확히 0"이 아니라 **"잔류 배치가 실제로 꺼졌는가"** 라는 판단은 그대로다.
     expect(legacyStay, `레거시 잔류 ${legacyStay.toFixed(2)}명`).toBeLessThan(0.5);
     expect(legacyStay).toBeLessThan(nowStay / 3);
   });

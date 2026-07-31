@@ -2,14 +2,14 @@
 
 exports[`determinism (AC3) > golden summary snapshot (score + event count + final hash) 1`] = `
 {
-  "events": 690,
-  "firstHash": "6c2aa6dd",
-  "goals": 2,
+  "events": 612,
+  "firstHash": "95f89785",
+  "goals": 10,
   "hashChain": 21600,
-  "lastHash": "a1e682aa",
+  "lastHash": "a50b8f5b",
   "score": {
-    "away": 1,
-    "home": 1,
+    "away": 3,
+    "home": 7,
   },
   "ticks": 2700,
 }

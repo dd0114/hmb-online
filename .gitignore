@@ -40,3 +40,7 @@ apps/web/e2e-out/
 /functions/
 # wrangler 작업 디렉토리(cwd 아래에 만든다)
 .wrangler/
+
+# #377 M2 관전 증거 로그 — 생성물(결정론적으로 재생성 가능, 22MB)
+# 재생성: npx tsx evidence/377/gen-m2.ts
+evidence/377/m2-*.json

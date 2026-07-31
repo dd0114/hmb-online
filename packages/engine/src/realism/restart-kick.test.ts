@@ -85,6 +85,25 @@ describe("#349 프리킥 벽 — 위협거리 매핑대로 실제 발화한다",
     expect(r.wallEncroach).toBe(0);
   });
 
+  it("변이체 킬 — routeAroundZone 을 끄면 벽 도착률이 무너진다(롤백 스위치가 실재한다)", () => {
+    // ⚠️ 독립검증 B1: 이 계약이 없어서 `routeAroundZone` 이 **선언만 되고 아무도 안 읽는**
+    // 상태로 통과했다(값을 false 로 바꿔도 7/7 green). 노브가 있다고 쓰면 노브가 있어야 한다.
+    const off = collectRestart(
+      {
+        ...defaultEngineConfig,
+        setPiece: {
+          ...defaultEngineConfig.setPiece,
+          freeKick: { ...defaultEngineConfig.setPiece.freeKick, routeAroundZone: false },
+        },
+      },
+      seeds20,
+    );
+    expect(off.wall.placedSum).toBeGreaterThan(0);
+    const offRate = off.wall.standingSum / off.wall.placedSum;
+    const onRate = r.wall.standingSum / r.wall.placedSum;
+    expect(offRate, `off ${offRate.toFixed(3)} vs on ${onRate.toFixed(3)}`).toBeLessThan(onRate / 2);
+  }, 600_000);
+
   it("역할의 팀 축이 맞다 — 벽=수비팀 · 백업=공격팀, 오배정 0", () => {
     expect(r.axis.wallDef).toBeGreaterThan(0);
     expect(r.axis.backupAtt).toBeGreaterThan(0);
