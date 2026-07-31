@@ -144,6 +144,31 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 
 ---
 
+## 0.8 배포 실행 실무 — 함정과 판정법 (여러 번 데인 것만)
+
+### 실행 위치·확인
+- **`deploy-pages.sh` 는 반드시 리포 루트에서 실행한다.** cwd 가 `infra/` 면 `bash infra/deploy-pages.sh …` 가 **exit 127**(파일 없음)로 죽는다. 이 세션에서 3회 겪었다 — 백엔드 빌드를 `cd infra` 로 하고 이어서 웹 배포를 부르면 바로 걸린다. `cd "$(git rev-parse --show-toplevel)"` 를 앞에 붙여라.
+- **`version.json` 은 배포 직후 옛 SHA 로 보인다(CDN 캐시).** 거의 매번 그렇다. **`?cb=$RANDOM` + `Cache-Control: no-cache`** 로 다시 읽어라. `apps/web/dist/version.json`(로컬 산출물)과 대조하면 확실하다. `config.json` 은 `no-store` 라 보통 즉시 반영되지만 첫 조회만 어긋나는 경우가 있다.
+- **"라이브에 뜬 것"의 SoT 는 태그가 아니라 컨테이너 digest** — `docker inspect <컨테이너> --format '{{.Image}}'`. 이미지 태그(`hmb/server-java:p3`)는 **다른 워크트리 스택과 공유**돼 언제든 덮인다.
+
+### 브랜치·기록 계보 (⚠️ 실제로 기록을 날릴 뻔했다)
+- 배포 대상은 **`release/*` 계보의 태그**일 수 있다(엔진 변경을 떼어내려고 main 대신 체리픽 브랜치를 쓴다). 그건 **배포물** 얘기고,
+- **`docs/deploy-log.md` 커밋은 항상 `origin/main` 계보에서 한다.** `release/3.05` 처럼 이전 태그에서 갈라진 브랜치에는 **직전 배포 기록 커밋이 없어서**, 그 위에서 append 하면 앵커를 못 찾아 **조용히 no-op** 이 되거나 직전 항목을 덮는다(실제로 no-op 이 나서 알아챘다).
+- 절차: 배포는 태그 체크아웃으로 하고, **기록은 `git checkout -B <작업브랜치> origin/main` 후 append → commit → push**. 앵커(직전 항목 제목)가 파일에 있는지 먼저 `grep -c` 로 확인하라.
+
+### 스모크 판정법 (틀린 판정을 부르는 것들)
+- **"보인다/가려졌다" 는 좌표로 판정하지 마라 — 실제로 클릭해서 타이핑해 보고 값을 회수하라.** `elementFromPoint` 가 **조상 컨테이너**를 돌려주는 걸 "가림"으로 오독한 적이 있다(v3.01). 뷰포트 판정도 `getBoundingClientRect` + **입력 성공**을 같이 본다(v3.08 에서 4개 뷰포트 그렇게 검증).
+- **프로덕션 설정을 바꾸지 않고 배포 번들만 검증하는 법**: 라이브에서 재현되지 않는 분기(예: 서버가 `-1` 무제한 센티널을 줄 때만 나오는 화면)는 **배포된 번들 그대로 두고 Playwright `route` 로 그 API 응답만 목킹**한다. 게임 규칙 config 를 잠깐 바꾸는 것보다 안전하고 빠르다(v3.05).
+- **남의 계정에 로그인하지 마라.** 특정 유저의 화면을 봐야 하는 검증은 ①서버 응답 계약을 **내 프로브 계정**으로 확인 + ②그 유저의 데이터 근거를 **DB 읽기**로 확인, 2단으로 갈음하고 "화면 최종 확인은 소유자 몫"이라고 보고한다(v3.02 #322).
+- **못 한 검증은 못 했다고 적는다.** 실패 상황을 인위적으로 못 만드는 것(감독시간 실패 안내), 시즌 완주가 필요한 것(시즌 보상 카드), 게임 규칙을 바꿔야 하는 것(오토 킬스위치)은 **미검증으로 남기고 이유를 쓴다**.
+
+### 운영자 계정 · 오탐
+- **admin 계정 = `hmbadmin`**(provider `local`). 비번은 `infra/.env`(`HMB_ADMIN_NICKNAME`/`HMB_ADMIN_PASSWORD`)와 `~/.local/state/hmb/admin-pw-v8.txt`(600)에만 있다 — **리포·로그·이슈에 절대 쓰지 않는다.** 없으면 admin 0명이라 `/api/admin/**` 이 전부 막힌다.
+- **`status.sh` 의 CORS 칸은 오탐이 난다** — 터널 응답 한 번에 의존해서, quick tunnel 이 순간 502/000 이면 `CORS: ''` 로 보인다. 놀라지 말고 **로컬 직결**로 확인하라: `curl -sD - -o /dev/null http://localhost:18080/api/config -H 'Origin: https://hmb-online.pages.dev' | grep -i access-control`.
+- **터널이 "curl 은 되는데 브라우저만 안 되는" 구간이 있다** — 실측: `curl` 7/8 성공인데 크로미움은 `/api/config`·`/api/auth/login` 에서 `net::ERR_FAILED` 연속. `dns=0.000000s` 로 즉시 실패하면 **로컬 리졸버**가 그 호스트를 못 푸는 것이다(`dig` 로는 풀린다). **해결 = 터널 회전(PID only) + `publish-backend-url.sh`.** 검증만 급하면 `--resolve` / 크로미움 `--host-resolver-rules=MAP <host> <ip>` 로 우회한다.
+
+---
+
 ## 1. 상태 확인 (제일 자주 쓰는 것)
 
 ```bash
@@ -377,6 +402,8 @@ docker tag hmb/servants:prev-live   hmb/servants:p3
 docker compose up -d java runner
 bash infra/deploy-pages.sh <터널URL>                       # 옛 코드로 web 재배포(백엔드와 짝을 맞춘다)
 ```
+
+⚠️ **`PRAGMA foreign_key_check` 은 이미 11건이 나온다(2026-07-30 기준, 선행 상태)** — `matches → bots` 고아다. 리그 시즌이 롤오버되면 봇 팀이 시즌 ULID 접두로 새로 생기고 지난 시즌 봇 행이 사라지는데, 그 시즌 매치의 `bot_id` 가 남아서 생긴다. **배포가 만든 게 아니다** — 판별법은 "배포 전 백업에서도 같은 건수가 나오는가"이고, 실제로 그랬다. 다만 `matches` 를 재작성하는 마이그레이션(V8·V19·V21 계열)이 또 오면 위험하다.
 
 ⚠️ **이미지 태그는 머신 전역 공유다**: `hmb/server-java:p3`·`hmb/servants:p3` 를 다른 워크트리의
 스택(예: `hmb-growth`)도 쓴다. 내가 빌드하면 그쪽이 다음 recreate 때 내 빌드를 집어가고, 반대도
