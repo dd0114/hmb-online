@@ -179,14 +179,30 @@ export function assertRosterConsistency(input: TacticalInput, roster: readonly T
 }
 
 /**
+ * 포메이션 이름은 <b>덱(감독) 소유</b>다 — 모델이 고쳐 낸 이름을 그대로 두지 않고 요청값으로 되돌린다.
+ *
+ * <p>왜 거부가 아니라 정정인가: 엔진은 `team.formation` <b>문자열을 읽지 않는다</b>(#359 진단) —
+ * 실효는 basePosition 에 있고 그건 G4 가 본다. 이름만 다른 것으로 재시도를 태우면 LLM 호출 1회를
+ * 이름값에 쓰는 셈이다(#367 AC "무효 필드에 토큰을 쓰지 않는다"와 같은 취지). 그러나 방치하면 이 값을
+ * 읽는 <b>사람·도구</b>가 틀린 것을 본다 — 라이브 유저 인풋 98건 중 <b>10건</b>이 4-3-3 요청에
+ * 5-3-2/4-4-2/4-2-3-1 을 선언했고, `tools/live-input-audit.mjs` 는 이 값으로 행 구성을 골라 좌우
+ * 어긋남(D2)을 판정한다(= 틀린 자로 재게 된다). 계약상으로도 패치 경로는 이미 "formation 은 A(덱)
+ * 소유라 패치 불가"(`packages/shared/src/tactical-patch.ts`)로 못 박혀 있다 — 같은 규칙을 A 에도 적용한다.
+ */
+function withRequestedFormation(input: TacticalInput, formation: string): TacticalInput {
+  if (input.team.formation === formation) return input;
+  return { ...input, team: { ...input.team, formation } };
+}
+
+/**
  * 검증 게이트(가드레일) — AI 산출 raw → zod 스키마 검증 + sanity(11명·로스터 playerId 정합) + clamp.
  * 어떤 executor(AI)가 만들었든 이 게이트를 통과해야 complete(ok:true) 가 된다. 순수 함수.
  */
 export function validateTeamInputOutput(raw: unknown, ctx: TeamInputJobContext): TacticalInput {
   const parsed = TacticalInput.parse(raw); // zod 스키마 검증(형태·타입)
   assertRosterConsistency(parsed, ctx.roster);
-  const clamped = clampTacticalInput(parsed); // 모든 수치를 유효 범위로 클램프
-  assertTacticalSanity(clamped, ctx); // #193 게이트(자기모순·지시 미이행·배치 파손)
+  const clamped = withRequestedFormation(clampTacticalInput(parsed), ctx.formation); // 범위 클램프 + 포메이션 이름 정정
+  assertTacticalSanity(clamped, ctx); // #193 게이트(자기모순·지시 미이행·배치 파손) + G4(포메이션 미이행)
   return clamped;
 }
 
@@ -451,7 +467,7 @@ export function validateTeamInputPatchOutput(raw: unknown, ctx: TeamInputPatchJo
 
   // 유령 마크 타깃 제거 — opponentRoster 가 있으면 그 안에 없는 markTarget 을 떨군다(team-input 과 동일 수위:
   // 없는 상대 id 를 지어내지 않는다). opponentRoster 미제공이면 검증 생략(통과).
-  let cleaned = merged;
+  let cleaned = withRequestedFormation(merged, ctx.formation); // 베이스가 옛 포메이션을 물고 있어도 요청값 기준
   if (ctx.opponentRoster && ctx.opponentRoster.length > 0) {
     const validTargets = new Set(ctx.opponentRoster.map((o) => o.playerId));
     cleaned = {

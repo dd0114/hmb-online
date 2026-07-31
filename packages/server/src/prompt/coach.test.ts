@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { FORMATION_BASE_POSITIONS } from "@hmb/shared";
 import { buildTeamInputPrompt, validateTeamInputOutput, tacticalJsonSchema } from "./coach.js";
 import { stubExecutor } from "../executor/executors/stub.js";
 import { makeTeamInputContext, makeOpponentRoster } from "../executor/test-fixtures.js";
@@ -120,6 +121,45 @@ describe("coach — 마킹(AC-C2): stub 이 카탈로그 marking 지시를 markT
     const marker = out.players.find((p) => p.playerId === "H2")!;
     expect(marker.markTarget).toBe("A10");
     expect(out.players.some((p) => p.markTarget === "A1")).toBe(false);
+  });
+});
+
+/**
+ * #295 의 packages/server 축 — 스텁 실행기가 <b>선언만</b> 요청 포메이션으로 갈아 끼우고 좌표는
+ * 엔진 픽스처(항상 4-3-3)를 그대로 물려주던 것. 오프라인 E2E·폴백이 이 경로를 타므로, 유저가
+ * 4-4-2 를 골라도 실제 배치는 4-3-3 이었다. 게이트 G4 가 막는 바로 그 형태다(gates.test.ts).
+ */
+describe("coach — 스텁 산출이 요청 포메이션대로 배치된다 (#295 / #367)", () => {
+  it("표의 4종 전부 — 스텁 산출이 게이트(G4 포함)를 통과한다", async () => {
+    for (const formation of Object.keys(FORMATION_BASE_POSITIONS)) {
+      const ctx = makeTeamInputContext({ formation });
+      const raw = await stubExecutor().execute({ id: "j", kind: "team-input", context: ctx });
+      expect(() => validateTeamInputOutput(raw, ctx), `${formation} 스텁 산출`).not.toThrow();
+    }
+  });
+
+  it("재시도 산출(겹침 피드백 → spread 보정)도 게이트를 통과한다 — 보정이 형태를 무너뜨리지 않는다", async () => {
+    for (const formation of Object.keys(FORMATION_BASE_POSITIONS)) {
+      const ctx = makeTeamInputContext({ formation });
+      const raw = await stubExecutor().execute(
+        { id: "j", kind: "team-input", context: ctx },
+        { feedback: "배치 파손 — 겹친 선수들을 떨어뜨려라" },
+      );
+      expect(() => validateTeamInputOutput(raw, ctx), `${formation} 재시도 산출`).not.toThrow();
+    }
+  });
+
+  it("4-4-2 요청 → 슬롯 좌표가 4-4-2 표와 일치(4-3-3 을 물려주지 않는다)", async () => {
+    const ctx = makeTeamInputContext({ formation: "4-4-2" });
+    const out = validateTeamInputOutput(
+      await stubExecutor().execute({ id: "j", kind: "team-input", context: ctx }),
+      ctx,
+    );
+    const slots = FORMATION_BASE_POSITIONS["4-4-2"]!;
+    for (const r of ctx.roster) {
+      const p = out.players.find((x) => x.playerId === r.playerId)!;
+      expect(p.basePosition, `slot${r.slotIndex} ${r.playerId}`).toEqual({ ...slots[r.slotIndex]! });
+    }
   });
 });
 

@@ -65,6 +65,52 @@ export const ROWS = {
 
 export const MIN_SEPARATION = 0.02; // gates.ts SANITY_GATE_CONFIG 와 같은 값.
 
+/**
+ * shared `FORMATION_BASE_POSITIONS` 의 사본(D3 용) — ROWS 와 같은 이유로 복제, 같은 락으로 묶는다.
+ * 슬롯 순서·좌표가 shared 와 1 비트라도 다르면 "포메이션이 지켜졌나"를 틀린 자로 재게 된다.
+ */
+export const BASE_POSITIONS = {
+  "4-3-3": [[0.05,0.5],[0.22,0.2],[0.16,0.4],[0.16,0.6],[0.22,0.8],[0.44,0.32],[0.4,0.5],[0.44,0.68],[0.7,0.2],[0.78,0.5],[0.7,0.8]],
+  "4-4-2": [[0.05,0.5],[0.22,0.2],[0.16,0.4],[0.16,0.6],[0.22,0.8],[0.46,0.15],[0.4,0.4],[0.4,0.6],[0.46,0.85],[0.72,0.4],[0.72,0.6]],
+  "4-2-3-1": [[0.05,0.5],[0.22,0.2],[0.16,0.4],[0.16,0.6],[0.22,0.8],[0.36,0.4],[0.36,0.6],[0.58,0.2],[0.55,0.5],[0.58,0.8],[0.78,0.5]],
+  "5-3-2": [[0.05,0.5],[0.24,0.12],[0.16,0.32],[0.14,0.5],[0.16,0.68],[0.24,0.88],[0.42,0.3],[0.38,0.5],[0.42,0.7],[0.7,0.4],[0.7,0.6]],
+};
+
+export const FIT_MARGIN = 0.02; // gates.ts SANITY_GATE_CONFIG.formationFitMargin 와 같은 값.
+
+/**
+ * D3 판정 본체(순수) — 게이트 G4 와 <b>같은 규칙</b>: 슬롯은 playerId 로 잡고, 절대 거리가 아니라
+ * "선언한 포메이션이 후보 중 최적인가"를 본다. 게이트가 배포되기 전 인풋도 같은 자로 재기 위해
+ * 판정 로직을 도구에도 둔다(게이트를 import 할 수 없다 — TS).
+ * @returns {{declared:number, best:string, bestFit:number, violates:boolean}|undefined}
+ */
+export function formationVerdict(players, slotOf, formation) {
+  const fit = (name) => {
+    const table = BASE_POSITIONS[name];
+    if (!table) return undefined;
+    let sum = 0, n = 0;
+    for (const p of players) {
+      const slot = slotOf.get(p.playerId);
+      const base = slot === undefined ? undefined : table[slot];
+      if (!base) continue;
+      sum += Math.hypot(p.basePosition.x - base[0], p.basePosition.y - base[1]);
+      n++;
+    }
+    return n === 0 ? undefined : sum / n;
+  };
+  const declared = fit(formation);
+  if (declared === undefined) return undefined;
+  let best;
+  for (const name of Object.keys(BASE_POSITIONS)) {
+    if (name === formation) continue;
+    const f = fit(name);
+    if (f !== undefined && (best === undefined || f < best.fit)) best = { name, fit: f };
+  }
+  return best === undefined
+    ? { declared, best: formation, bestFit: declared, violates: false }
+    : { declared, best: best.name, bestFit: best.fit, violates: best.fit + FIT_MARGIN < declared };
+}
+
 // ── 여기부터는 **직접 실행할 때만** 돈다(위 상수는 락 테스트가 import 한다). ──
 const invokedDirectly =
   process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
@@ -79,17 +125,26 @@ if (!dbPath) {
 
 const rows = query(
   "SELECT h.match_id || '|' || h.half || '|' || m.engine_version || '|' || " +
-    "replace(h.home_input_json, char(10), '') || '|' || replace(h.away_input_json, char(10), '') " +
-    "FROM match_halves h JOIN matches m ON m.id = h.match_id",
+    "replace(h.home_input_json, char(10), '') || '|' || replace(h.away_input_json, char(10), '') || '|' || " +
+    // D3(#367): 슬롯 매핑·요청 포메이션의 원천. 유저는 덱, 상대는 봇 덱. 하프2 배치 변경(#276)은 h2_shape.
+    "replace(m.user_deck_json, char(10), '') || '|' || replace(coalesce(b.deck_json,''), char(10), '') || '|' || " +
+    "replace(coalesce(m.h2_shape_json,''), char(10), '') " +
+    "FROM match_halves h JOIN matches m ON m.id = h.match_id LEFT JOIN bots b ON b.id = m.bot_id",
 );
 
 let n = 0;
 const overlapped = [];
 const rowOrder = { ok: 0, scrambled: 0, unknown: 0 };
 const mirror = { asc: 0, desc: 0 };
+/** D3 — 요청 포메이션 vs 실제 배치. unknown = 덱/표가 없어 판정 불가. */
+const shape = { ok: 0, violated: 0, unknown: 0, cases: [], declaredMismatch: 0 };
+
+const parse = (s) => { try { return JSON.parse(s); } catch { return undefined; } };
 
 for (const line of rows) {
-  const [matchId, half, engine, homeJson, awayJson] = line.split("|");
+  const [matchId, half, engine, homeJson, awayJson, userDeckJson, botDeckJson, h2ShapeJson] = line.split("|");
+  const decks = { home: parse(userDeckJson), away: parse(botDeckJson) };
+  const h2Shape = parse(h2ShapeJson);
   for (const [side, json] of [["home", homeJson], ["away", awayJson]]) {
     let ti;
     try {
@@ -114,6 +169,24 @@ for (const line of rows) {
       }
     }
     if (worst < MIN_SEPARATION) overlapped.push(`${tag}  ${pair} 간격 ${worst.toFixed(3)}`);
+
+    // ③ 포메이션 이행(D3, #367) — 감독이 고른 포메이션대로 배치했나. 게이트 G4 와 같은 규칙.
+    //    요청 포메이션 = 덱(하프2 배치 변경이 있으면 h2_shape). 슬롯은 **덱의 slotIndex** 로 잡는다 —
+    //    산출 배열 순서로 잡으면 순서만 다른 정상 산출을 어긋남으로 읽는다(실측 19.4%가 다른 순서).
+    const deck = decks[side];
+    const requested = side === "home" && half === "2" && h2Shape?.formation ? h2Shape.formation : deck?.formation;
+    const slotOf = new Map((deck?.starters ?? []).map((s) => [s.playerId, s.slotIndex]));
+    const verdict =
+      requested && slotOf.size > 0 ? formationVerdict(ti.players, slotOf, requested) : undefined;
+    if (!verdict) shape.unknown++;
+    else if (verdict.violates) {
+      shape.violated++;
+      shape.cases.push(
+        `${tag}  요청 ${requested}(${verdict.declared.toFixed(3)}) < 실제 ${verdict.best}(${verdict.bestFit.toFixed(3)})`,
+      );
+    } else shape.ok++;
+    // 산출이 선언한 이름이 요청과 다른가(게이트가 요청값으로 정정한다 — 정정 후엔 0 이어야).
+    if (requested && ti.team?.formation !== requested) shape.declaredMismatch++;
 
     // ② 좌우 순서 — 게이트가 없는 축. 행 안에서 slotIndex↑ 면 y↑ 여야 한다.
     const layout = ROWS[ti.team?.formation];
@@ -146,8 +219,16 @@ for (const o of overlapped.slice(0, 20)) console.log(`       ${o}`);
 if (overlapped.length > 20) console.log(`       … 외 ${overlapped.length - 20}건`);
 console.log(`\n[D2] 보드 좌우 반영: 정상 ${rowOrder.ok} · 어긋남 ${rowOrder.scrambled} · 판정불가 ${rowOrder.unknown}`);
 console.log(`       행 방향 분포 — 오름차순(규약) ${mirror.asc} / 내림차순(좌우 반전) ${mirror.desc}`);
+console.log(
+  `\n[D3] 포메이션 이행: 정상 ${shape.ok} · 어긋남 ${shape.violated} · 판정불가 ${shape.unknown}` +
+    `  (산출 선언명 ≠ 요청 ${shape.declaredMismatch}건)`,
+);
+for (const c of shape.cases.slice(0, 20)) console.log(`       ${c}`);
+if (shape.cases.length > 20) console.log(`       … 외 ${shape.cases.length - 20}건`);
 console.log(`\n판정 기준: D1 은 0건이어야 한다(게이트가 막는다). D2 는 내림차순이 0 에 수렴해야 한다 —`);
-console.log(`asc 와 desc 가 비슷하면 좌우가 여전히 생성마다 뒤집히고 있다는 뜻이다(고치기 전 13:13).\n`);
+console.log(`asc 와 desc 가 비슷하면 좌우가 여전히 생성마다 뒤집히고 있다는 뜻이다(고치기 전 13:13).`);
+console.log(`D3 도 0건이어야 한다(게이트 G4 가 막는다, #367) — 게이트 배포 전 인풋은 어긋남이 섞여 있는 게 정상이다.`);
+console.log(`선언명 불일치도 0 이어야 한다(게이트가 요청 포메이션으로 정정한다).\n`);
 process.exit(overlapped.length > 0 ? 1 : 0);
 
 }
