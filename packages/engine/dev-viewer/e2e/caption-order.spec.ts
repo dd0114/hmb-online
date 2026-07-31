@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loadViewer, eventsOfType, PITCH_H } from "./fixture";
+import { loadViewer, eventsOfType, PITCH_H, VIEWER_REAL_URL } from "./fixture";
 
 // #49: 세트피스 자막 순서 — "스로인!/코너킥!" 판정 자막은 공이 라인 밖으로 나간(합성 아웃비행 완료,
 // 공이 스팟 도달) **뒤에** 떠야 한다. #47 synth 는 freeze 도입부(SYNTH_MS) 동안 그려지는데 자막이
@@ -36,7 +36,15 @@ test("#49 throw_in → '스로인!' 자막이 뜨는 순간 공이 사이드라�
 // #51 데드볼 재설계: 연속 스로인은 freeze 중 합성이 아니라 **라이브 보간**으로 공이 사이드라인까지
 // 이동해야 한다(그 구간을 컷하지 않음). causeTick-1→causeTick 을 분수 tickPos 로 렌더해 공이 중간값
 // 으로 보간되면 라이브(컷이면 중간 프레임이 직전 위치에 고정). 결정론적(wall-clock 무관).
+//
+// ⚠️ 표본을 **real 픽스처**에서 잡는다(#316 후속). 이 성질은 playback(뷰어) 소관이라 어느 로그로
+// 재든 같지만, 쇼케이스 로그에는 스로인이 **2~3건뿐**이고 그중 "마지막 한 틱에 1m 넘게 남은"
+// 사례는 0~1건이라 계약이 **단일 표본에 매달려** 있었다 — 엔진 전개가 조금만 달라져도(여기서는
+// 쇼케이스 config 의 `oneOnOneXgMult` 2.0 이 chain 에서 되살아나 골 7→9) 그 한 건이 사라져
+// 무관한 변경에서 FAIL 이 난다. real 픽스처는 같은 성질을 **스로인 36건**에서 재므로 표본이
+// 20배다(약화가 아니라 강화 — 기준은 한 글자도 안 바꿨다).
 test("#51 throw_in(연속) → 공이 라인 밖 나가는 구간을 라이브 보간(컷 아님)", async ({ page }) => {
+  await loadViewer(page, VIEWER_REAL_URL);
   const throwins = await eventsOfType(page, "kickoff", "throw_in");
   expect(throwins.length).toBeGreaterThan(0);
   let liveCount = 0;

@@ -42,6 +42,13 @@ export interface EngineConfig {
   /** 공 이동 속도(m/tick). */
   ball: {
     passSpeed: number;
+    /**
+     * ⚠️ **참조 0 — 죽은 노브**(#338). 소스 전체에서 `config.ball.shotSpeed` 를 읽는 곳이 없다
+     * (`grep -rn "shotSpeed"` = 이 타입 선언과 값 두 줄뿐). 슛 세기는 `kick.ts:shotPowerFx`
+     * (= `contest.shotPower*` + shooting 능력치)가 소유하고, 페널티만 `contest.shotBallSpeed`
+     * 라는 **다른** 노브를 쓴다. 여기 값을 바꿔도 아무 일도 일어나지 않는다.
+     * 삭제하지 않는 이유 = 계약(서버 config 직렬화·골든) 영향 확인 전이라서다.
+     */
     shotSpeed: number;
     /**
      * **틱당 마찰 배수**(#320) — 공의 감속을 정하는 유일한 노브. `v *= friction` 매 틱.
@@ -114,7 +121,15 @@ export interface EngineConfig {
 
   };
 
-  /** 행동 선택 기본 성향 계수(볼 소유자). behavior 로 가중. */
+  /**
+   * 행동 선택 기본 성향 계수(볼 소유자). behavior 로 가중.
+   *
+   * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 이 블록 전체가 실행 경로에 없다**(#338).
+   * 여기 있는 값은 `decision.ts:decideBallOwner`(= `chain.mode: "weighted"` 롤백 경로)의
+   * 가중 추첨에만 들어간다. 사슬 코어는 행동을 **EV** 로 고르므로 가중치라는 개념 자체가 없고,
+   * 대응 레버는 `chain.goalValue`(슛 볼륨) · `chain.discount`/`holdPenalty`(패스·홀드) 다.
+   * → 여기를 튜닝해도 현행 밸런스는 1도 안 움직인다. 값을 지우지 않는 이유 = 롤백 스위치 자산.
+   */
   decisionWeights: {
     pass: number;
     dribble: number;
@@ -122,7 +137,17 @@ export interface EngineConfig {
     hold: number;
     /** 파이널서드(공격 진영)에서 슛 후보 가중을 곱해 슛을 지배적 선택으로 만드는 배수(>=1). */
     shootInBox: number;
-    /** 파이널서드에서 후진(음수 forwardGain) 패스 옵션에 주는 감점 계수(후진 m·(0.5+directness) 당). */
+    /**
+     * 파이널서드에서 후진(음수 forwardGain) 패스 옵션에 주는 감점 계수(후진 m·(0.5+directness) 당).
+     *
+     * ⚠️ **weighted 전용 — chain 기본에서는 실행 경로가 없다**(#338). 소비자는 `scoreOption`
+     * 하나뿐이고 그건 `selectPassOption` → `decideBallOwner` 에서만 불린다. 사슬 코어는
+     * `passOptions` 만 쓰고 `scoreOption` 을 부르지 않는다.
+     * ⚠️ 구 주석("후진 리사이클은 이걸로 억제한다")은 **현행이 아니다** — chain 에서 후진
+     * 리사이클을 억제하는 것은 상태 가치의 진행도 항(`chain.advance` × `advanceExponent` 볼록성)
+     * 과 `turnoverEv` 의 위치 리스크지 이 감점이 아니다. 0.24.0 이 백패스%를 11.0→24.2 로
+     * 올린 것도 그 때문이다(사슬이 리사이클을 EV 로 인정한다 — 수리 대상은 S4 국면별 가중치).
+     */
     backwardPassPenalty: number;
     /**
      * 파이널서드 + 사거리 안에서 슈터가 중앙(골 정면)에 가까울수록 슛 후보 가중에 주는 최대 추가 배수(>=1).
@@ -152,13 +177,23 @@ export interface EngineConfig {
     /**
      * 발동 상한 진행도(0..1, 자기 골라인=0). 이보다 앞(공격 진영)에서는 걷어내지 않는다 —
      * 상대 진영에서 걷어내는 건 축구가 아니라 포기다.
+     *
+     * ✅ chain 기본에서도 **살아 있다** — `clearanceEligible` 을 두 코어가 공유한다(#338 재확인).
+     * (다만 chain 에서는 `clearanceWeight` 의 깊이 스케일 항으로는 쓰이지 않는다 = 게이트 전용.)
      */
     maxProgress: number;
-    /** 발동 최소 압박 인원(`contest.passPressureRangeM` 안 상대 수). */
+    /**
+     * 발동 최소 압박 인원(`contest.passPressureRangeM` 안 상대 수).
+     * ✅ chain 기본에서도 **살아 있다**(`clearanceEligible` 공유, 게이트 전용).
+     */
     minPressers: number;
     /**
      * "좋은 패스 옵션"의 임계. 최선 패스 점수가 이 값 이상이면 걷어내지 않는다 —
      * 걷어내기는 **패스가 없을 때의 수단**이지 기본 선택지가 아니다.
+     *
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     * 소비자는 `clearanceWeight` 뿐이다. 사슬 코어는 명시 게이트 대신 걷어내기와 패스의 **EV 를
+     * 직접 비교**하므로("좋은 패스가 있으면 그 EV 가 더 높다") 이 임계가 필요 없다.
      */
     passScoreCeil: number;
     /** 걷어내는 거리(m, 전방). */
@@ -176,7 +211,12 @@ export interface EngineConfig {
     powerAttrSwing: number;
     /** 띄워 보내는가(true = 도착 시 헤딩 경합 = 세컨볼). */
     lofted: boolean;
-    /** 자기 페널티박스 안에서의 가중 배수(위험지역일수록 더 자주 걷어낸다). */
+    /**
+     * 자기 페널티박스 안에서의 가중 배수(위험지역일수록 더 자주 걷어낸다).
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     * 소비자는 `clearanceWeight` 뿐이다. chain 에서 "박스 안이라 더 걷어낸다"는 `turnoverEv`
+     * (자기 골 앞에서 뺏기는 손해가 크다)가 위치의 함수로 자동으로 만들어낸다 — 별도 배수가 없다.
+     */
     boxWeightMult: number;
     /** 사슬 코어가 쓰는 "걷어내기가 우리 팀 공으로 남을 확률"(0..1). 루즈볼이라 0.5 근처. */
     retainProb: number;
@@ -204,6 +244,22 @@ export interface EngineConfig {
      * 근접(~6m) 압박만 세어 패스 성공률을 벤치에 정합시키고 압박 효과를 국소화한다.
      */
     passPressureRangeM: number;
+    /**
+     * **받는 쪽** 압박 1명당 성공확률 페널티(#353). 0 = 레거시(리시버 상황을 안 봄).
+     *
+     * 구 `computePassProb` 은 압박을 **주는 쪽만** 봤다 — 리시버가 마크에 물려 있든 완전히
+     * 비어 있든 확률이 같았다. `PassOption.laneDanger`(길목까지의 최소거리)는 **다른 축**이라
+     * 이 결손을 메우지 못한다. 주는 쪽과 노브를 나눈 이유: 주는 쪽 압박은 조준·세기를 흔들고
+     * (`passPressureAimPenalty`/`passPressurePowerPenalty` 가 따로 있다), 받는 쪽 압박은
+     * 도착 지점의 **경합**이다 — 두 축의 크기가 같을 이유가 없다.
+     *
+     * ⚠️ 판정 지점은 리시버의 **현재 위치가 아니라 도착 예측 위치**(`decision.receiverArrival`,
+     * `movement.passLeadWeight` 의 리드조준과 같은 함수)다. 그래서 "지금 붙어 있지만 뛰어 나가는
+     * 중"인 리시버가 제값을 받고 스루패스·뒷공간 패스가 살아난다.
+     */
+    passReceiverPressurePenalty: number;
+    /** 받는 쪽 압박 카운트 반경(m). 마킹은 압박보다 밀착이라 기본값이 더 작다. */
+    passReceiverPressureRangeM: number;
     /** 패스 거리(m)가 baseDist 를 넘는 매 m 당 성공확률 페널티. */
     passDistancePenalty: number;
     /** passDistancePenalty 가 적용되기 시작하는 기준 거리(m). */
@@ -274,7 +330,11 @@ export interface EngineConfig {
      * 시드 롤이 이 확률을 넘으면 반대쪽으로 빗나가 항상 같은 쪽 반복을 막는다. 0.5 면 완전 무편향.
      */
     offTargetSideBias: number;
-    /** 중앙 슛 부스트(shootCentralBonus) 판정용 중앙 존 반폭(m). lateral<=이 값이면 완전 중앙(centralFrac=1). */
+    /**
+     * 중앙 슛 부스트(shootCentralBonus) 판정용 중앙 존 반폭(m). lateral<=이 값이면 완전 중앙(centralFrac=1).
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     * 짝인 `decisionWeights.shootCentralBonus` 와 함께 `decideBallOwner` 안에서만 쓰인다.
+     */
     centralShootHalfM: number;
     /** 볼 주인을 태클할 수 있는 접근 거리(m). */
     tackleRange: number;
@@ -324,6 +384,28 @@ export interface EngineConfig {
     passPressurePowerPenalty: number;
     /** 슛 조준 오차의 기준 각도(도). shooting 속성으로 줄어든다. */
     shotAimErrorDeg: number;
+    /**
+     * 근접 압박 1명당 **슛 조준** 오차 배수 가산(#353, 패스의 `passPressureAimPenalty` 와 같은 축).
+     * ⚠️ **연출 전용이다.** 유효슛/골 판정은 `resolveShot` 의 xG·onTarget **롤**이 소유하고 있고
+     * (`planShot` 의 조준점 y 는 골포스트 안으로 클램프된다), 따라서 이 값을 키워도 결과 분포는
+     * 안 움직인다. 압박이 **결과**에 미치는 영향은 아래 `shotPressureXgMult` 가 담당한다.
+     * 둘을 나눈 이유 = 캘리브레이션(밴드)과 눈에 보이는 흔들림을 한 노브에 묶지 않기 위해서다.
+     */
+    shotPressureAimPenalty: number;
+    /**
+     * 근접 압박(`passPressureRangeM` 안) 1명당 **실행되는 슛의 xG 에 곱하는 배수**(#353).
+     * 1 = 압박 무시(레거시). 0.85 면 1명 붙었을 때 xG 가 15% 깎인다.
+     *
+     * ## 왜 xG 이고, 왜 EV 가 아니라 실행 xG 인가
+     *  - hero 지시는 "슛할 때 **실패할 확률**을 높여라"다. 이 모델에서 슛의 실패는 `resolveShot` 의
+     *    골 롤(xg)과 유효슛 롤이고, 그중 압박이 실제로 바꾸는 것은 **슛의 질**이다.
+     *  - `oneOnOneXgMult`(#316)와 **같은 축의 반대편**이다 — 완전히 자유로우면 부스트, 붙어 있으면
+     *    감산. 그래서 같은 자리(`decision.oneOnOneShot` 직후, **루트에서 한 번만**)에 건다.
+     *  - **EV(선택)에는 넣지 않는다.** 넣으려면 가상 도착 지점에서도 압박을 재야 하는데, 그건
+     *    "상대가 그때까지 안 움직인다"는 가정을 EV 에 심는 것이라 `chain.ts` 의 #316 설계 판단이
+     *    이미 기각한 함정이다. 대가는 슛 **빈도**가 안 움직인다는 것(= 볼륨 재보정 불필요).
+     */
+    shotPressureXgMult: number;
 
     /* --- #306(S6) 공중 경합 --- */
     aerial: {
@@ -342,6 +424,19 @@ export interface EngineConfig {
       headerXgMult: number;
       /** 헤더 슛을 시도하는 최대 사거리(m). 헤더는 멀리서 못 쏜다. */
       headerShootRangeM: number;
+      /**
+       * 헤더 슛 xG 하한 — **필드 슛(`contest.shootXgThreshold`)과 분리된 임계**(#357).
+       *
+       * 선행 결함: 헤더 경로가 필드 슛과 **같은 임계**를 읽었다. 그런데 헤더 xg 는 `headerXgMult`
+       * (0.65)로 이미 깎인 값이라 **같은 숫자가 헤더를 먼저 죽인다** — 필드 임계를 볼륨 레버로
+       * 올리면(#353 이 실측: 0.07→0.185) 헤더 슛/골이 **0** 이 되어 #306 이 통째로 사망했다.
+       * 즉 "저xG 슛만 거르는 선택적 필터"가 아니라 **공중 경로까지 끄는 공용 게이트**였다.
+       * 두 경로는 xG 스케일이 다르므로 임계도 각자 가져야 한다.
+       *
+       * 기본값 0.07 = **분리 시점의 필드 임계와 같은 값**(= 현행 동작 보존, bit-identical).
+       * 계약 = `realism/header-threshold.test.ts`.
+       */
+      headerXgThreshold: number;
     };
   };
 
@@ -501,11 +596,23 @@ export interface EngineConfig {
    * 볼 소유자 변주(드리블 체인·패스 후보 샘플)는 관통 Rng 로 결정한다.
    */
   variety: {
-    /** 드리블 체인 강도(0..1). 직전 틱 드리블했다면 이 값·능력치·공간으로 wDribble 모멘텀 가중. 0 이면 체인 없음. */
+    /**
+     * 드리블 체인 강도(0..1). 직전 틱 드리블했다면 이 값·능력치·공간으로 wDribble 모멘텀 가중. 0 이면 체인 없음.
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     */
     dribbleChainProb: number;
-    /** 드리블 모멘텀 최대 추가 배수 계수. */
+    /**
+     * 드리블 모멘텀 최대 추가 배수 계수.
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     */
     dribbleChainBonus: number;
-    /** 드리블 체인 최대 길이(틱). 이 이상 연속 드리블이면 모멘텀 소멸(볼 독점 방지). */
+    /**
+     * 드리블 체인 최대 길이(틱). 이 이상 연속 드리블이면 모멘텀 소멸(볼 독점 방지).
+     * ⚠️ **chain 기본에서 행동에 영향이 없다**(#338). `match.ts` 가 `dribbleStreak` 을 이 값으로
+     * 클램프하며 계속 **쓰기**는 하지만(그래서 완전한 죽은 값은 아니다 — 상태·해시에 남는다),
+     * 그 카운터를 **읽는** 곳은 weighted 의 모멘텀 가중 하나뿐이다. `dribbleStreak` 자체의
+     * 정리는 별건(#338 잔여)이라 여기서 건드리지 않는다.
+     */
     dribbleChainMaxTicks: number;
     /** 수비/풀백 오버랩 발동 확률(시드 노이즈 임계). widthTendency·팀 전진성으로 가중. */
     defenderOverlapProb: number;
@@ -515,7 +622,12 @@ export interface EngineConfig {
     overlapReach: number;
     /** 오버랩 결정 시드 노이즈의 시간 버킷 길이(틱) — 여러 틱 지속(플리커 방지). */
     overlapPeriodTicks: number;
-    /** 패스 후보 샘플 온도(0..1). 0 이면 argmax(최적 1개). 클수록 상위 후보 중 시드 가중 샘플 분산↑. */
+    /**
+     * 패스 후보 샘플 온도(0..1). 0 이면 argmax(최적 1개). 클수록 상위 후보 중 시드 가중 샘플 분산↑.
+     * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+     * 소비자가 `selectPassOption` 하나뿐이고 chain 은 그 함수를 부르지 않는다(후보를 EV 로 고른다).
+     * 사슬 코어의 대응 노브는 **`chain.temperature`** 다(`decideBallOwnerChain` 의 상위-k 샘플).
+     */
     decisionTemperature: number;
     /** 오프더볼 목표 위치 시드 노이즈 진폭(m). positioningFreedom 로 가중. 0 이면 로밍 없음. */
     roamNoiseAmp: number;
@@ -707,8 +819,42 @@ export interface EngineConfig {
     turnoverWeight: number;
     /** 골의 가치(슛 EV = xg × 이 값 + (1−xg) × 턴오버). 전진·공간 항과 같은 스케일. */
     goalValue: number;
-    /** 홀드(제자리)에 주는 시간 페널티 — 안 그러면 안전한 홀드가 최적이 된다. */
+    /**
+     * 홀드(제자리)에 주는 **평평한** 시간 페널티. `hold` 블록이 생기기 전에는 이것 하나가
+     * 유일한 억제였다 — 지우지 않는다(**롤백 자산**: `hold.keepBase=1` + 페널티 0 이면 EV 가
+     * 정확히 `V(here) − holdPenalty` 로 되돌아간다 = 0.27.0 과 bit-identical).
+     */
     holdPenalty: number;
+    /**
+     * **홀드의 턴오버 항**(#353). 사슬 EV 의 다른 행동은 전부
+     *   `EV = p×V(성공) + (1−p)×V(턴오버)`
+     * 인데 홀드만 실패 항이 없었다 = **뺏길 수 없는 선택지**. 그래서 슛 사거리 안 결정의 **72%**
+     * 가 hold 였다(구 코어 39.1%). 평평한 `holdPenalty` 로는 못 막는다 — 그건 상수라 "혼자일 때"와
+     * "둘이 붙었을 때"를 구분하지 못하고, 크게 키우면 정상적인 볼 간수까지 죽는다.
+     *
+     * 여기서는 홀드도 같은 형태로 평가한다:
+     *   `EV_hold = p_keep × (V(here) − holdPenalty) + (1 − p_keep) × V(턴오버)`
+     *   `p_keep  = clamp(keepBase − pressPenalty×근접압박 − tightPenalty×밀착압박, minKeep, 1)`
+     *
+     * 압박은 **거리와 인원 둘 다**에 반응해야 한다(hero 지시). 인원은 카운트가, 거리는 **두 겹의
+     * 반경**(근접 `pressRangeM` · 밀착 `tightRangeM`)이 담당한다 — 밀착은 근접에도 같이 세이므로
+     * 6m 밖 0명 / 5m 1명 / 1m 1명이 각각 다른 값을 받는다. 측정은 `perception.pressureCount`
+     * **재사용**이다(압박의 정의가 패스·걷어내기와 하나여야 한다).
+     */
+    hold: {
+      /** 압박 0명일 때 공을 지킬 확률. 1 = 레거시(뺏길 수 없음). */
+      keepBase: number;
+      /** 근접 압박 카운트 반경(m). 패스 압박과 같은 축이라 기본값도 같다. */
+      pressRangeM: number;
+      /** 근접 압박 1명당 유지 확률 감소. */
+      pressPenalty: number;
+      /** 밀착 압박 카운트 반경(m) — 이 안은 근접 페널티에 **더해서** 한 번 더 깎인다. */
+      tightRangeM: number;
+      /** 밀착 압박 1명당 추가 유지 확률 감소. */
+      tightPenalty: number;
+      /** 유지 확률 하한(0 이면 압박 다수에서 홀드 EV 가 턴오버 가치로 붕괴한다). */
+      minKeep: number;
+    };
     /** 드리블 성공확률(틱당). 태클 리스크 근사 — 실패하면 턴오버 상태. */
     dribbleSuccess: number;
     /** 사슬 EV 상위 K 후보에서 시드 가중 샘플할 때의 온도(0 = argmax). 변주 유지용. */
@@ -737,7 +883,13 @@ export interface EngineConfig {
     };
   };
 
-  /** 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수. */
+  /**
+   * 극단 behavior(0 또는 1 근처)에 주는 소프트캡 페널티 계수.
+   * ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#338).
+   * 유일한 소비자가 `decision.ts:softCapped` 이고 그건 `decideBallOwner` 의 가중치 계산에서만
+   * 불린다. chain 은 behavior 를 EV 배수(`candidateEv` 의 `shootTendency`/`passRisk`/
+   * `dribbleTendency`)로 직접 곱하며 소프트캡을 거치지 않는다.
+   */
   softCap: number;
 
   /** 틱당 기본 피로 증가(0..1 스케일). 질주/압박 시 가중. */
@@ -929,7 +1081,7 @@ export const defaultEngineConfig: EngineConfig = {
   //   ⓑ 의도 게시판(intents)·런 오더(runOrder) 첫 소비 — 차면 그 틱에 따라 들어가고(패서·러너),
   //      수비는 그 런을 **읽어** 도착 예정 지점을 선점한다(vision.runReadFrac)
   //   ⓒ 수비 블록의 공 추종 비대칭 해소(defendCompactX 0.16→0.32) + GK 스위퍼 라인
-  version: "engine@0.26.0",
+  version: "engine@0.28.0",
   msPerTick: 1000,
   matchMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
@@ -992,6 +1144,7 @@ export const defaultEngineConfig: EngineConfig = {
     // shootInBox: 파이널서드 슛 후보에 곱하는 배수. 예전엔 슛을 "지배적"으로 만들려 >1(1.38) 였으나
     // 이는 슛 과다(G-A)의 주 원인 — 파이널서드에서 슛이 패스/드리블을 과하게 눌렀다. 0.6(<1)로 낮춰
     // 슛 지배를 완화(후진 리사이클은 backwardPassPenalty 2.4 + shootCentralBonus 1.35 로 계속 억제).
+    // ⚠️ 위 문단은 **weighted 시절 서술이다**(#338) — chain 기본에서는 이 블록이 실행되지 않는다.
     // #178: 마크 당김 오버슛(진동) 제거로 수비 블록이 형태를 유지하게 되자 슛이 13.95→11.65 로
     // 밴드 아래로 떨어졌다(진동하던 수비수가 마크를 지나쳐 자리를 비우던 것이 슛 기회였다).
     // 0.6→0.9 로 파이널서드 슛 의지를 복원해 13.28(밴드 12-14)로 되돌린다. `shoot` 사다리 단조성
@@ -1039,6 +1192,11 @@ export const defaultEngineConfig: EngineConfig = {
     passFinalThirdPenalty: 0.12,
     passPressurePenalty: 0.06,
     passPressureRangeM: 6.0,
+    // #353 받는 쪽. **이 웨이브의 1차 커밋에서는 꺼져 있다**(0) — 홀드/슛 압박(1차)과 리시버
+    // 압박(2차)의 밸런스 이동을 갈라서 귀속하기 위해서다. 배선·계약은 이미 들어 있고 2차에서
+    // 값만 올린다. 롤백도 같은 노브 = 0.
+    passReceiverPressurePenalty: 0,
+    passReceiverPressureRangeM: 4.0,
     passDistancePenalty: 0.004, // #181 재보정(위와 동일 사유)
     passBaseDistM: 12,
     passAttrSwing: 0.14,
@@ -1070,7 +1228,38 @@ export const defaultEngineConfig: EngineConfig = {
     //   팀당 골 2.48 · 전환 19.23% · 슛당 xG 0.19 — `shot-frequency.test.ts` 여섯 밴드 전부 한가운데.
     xgBase: 0.35,
     shotBallSpeed: 14,
-    shootXgThreshold: 0.07,
+    // ── #353: 볼륨 재보정 레버로 **쓰지 않았다**(0.07 유지). 탐색 기록 ──────────────
+    // 홀드 턴오버(72%→39%)로 그 자리를 슛/패스/캐리가 채워 팀당 슛이 **23.14** 로 넘쳤다.
+    // 두 레버를 60시드로 재 봤고 **둘 다 다른 것을 부순다** — 그래서 이 웨이브는 볼륨 노브를
+    // 건드리지 않고 메커니즘만 남긴다(밸런스는 후속 웨이브 + hero 판단).
+    //
+    // ① `chain.goalValue` 9.4 → 8.0: 슛 13.28 · 전 밴드 통과. **그러나 one_on_one 라벨이
+    //    0.117 → 0.000** 이 되어 `one-on-one.test.ts`(#316) 가 깨진다. gv 는 `goalValue × xg` 라
+    //    모든 슛 EV 를 똑같이 내리는데, 홀드 EV 의 지배항은 `p_keep × threatWeight × xg` 로
+    //    **같은 xg 에 비례**한다 → 우열이 `p_keep × 18` vs `goalValue` 하나로 갈리고,
+    //    압박 0(=1대1)에서 `p_keep`≈0.98 → 홀드 계수 17.6 이라 **자유로운 선수의 슛부터 죽는다**.
+    //    `chain.hold.minKeep` 로 분리도 시도했으나 라벨이 총 슛 볼륨에 **단조로** 붙어 실패
+    //    (0.25/gv8.0→라벨 0.000·슛 13.28 · 0.45/9.0→0.033·21.31 · 0.45/10.0→0.167·25.41).
+    // ② 이 노브 0.07 → 0.185: 슛 13.18 · 라벨 0.033 로 살고 전 밴드 통과처럼 보였다.
+    //    **그러나 이 임계는 `contest.ts:661` 헤더 슛과 공유된다** — 헤더 xg 는
+    //    `aerial.headerXgMult` 로 깎인 값이라 0.185 를 못 넘어 **헤더 슛/골이 0 이 된다**(#306 사망).
+    //    즉 "낮은 xG speculative 슛만 거르는 선택적 필터"가 아니라 **공중 경로까지 끄는 공용 게이트**다.
+    // ── #357 (0.07 → 0.197): 위 ②의 **선행 결함을 먼저 고치고** 이 노브를 쓴다 ──────────
+    // 헤더 임계를 `aerial.headerXgThreshold` 로 **분리**했다(기본값 0.07 = 분리 시점 동작 보존).
+    // 그래서 이제 이 값은 **필드 슛에만** 걸리고, 올려도 공중 경로가 안 꺼진다
+    // (60시드 실측: 이 값 0.197 에서 헤더 슛 26 · 헤더 골 7 — 살아 있다).
+    //
+    // 역할 분담: `chain.goalValue`(22) 가 **질**(자유로운 선수가 쏘는가 = r<1)을 정하고,
+    // 이 임계가 **양**을 정한다. r<1 이 풀어놓은 팀당 슛 30 을 여기서 되돌린다.
+    // 60시드 사다리(tw=18 · gv=22 · onTargetBase=0.19 고정, 팀당 슛):
+    //   0.193→14.67 · 0.194→14.17 · 0.195→13.78 · 0.196→13.03 · **0.197→12.68** · 0.198→12.20
+    //   (더 위: 0.20→11.8 부근 · 0.21→8.5 · 0.22→5.9 로 절벽 — 0.21 이상은 슛이 붕괴한다)
+    // ⚠️ **감도가 매우 높다**(0.001 당 팀당 슛 ~0.5). xg 분포가 이 근처에 몰려 있어서다.
+    // 이 노브를 볼륨 레버로 계속 쓸 거라면 다음 웨이브에서 xg 스케일(`xgBase`)과 함께 봐야 한다.
+    // 0.197 을 쓰는 이유: 여섯 밴드(슛 12.68 · 유효슛 5.36 · 골/경기 5.55 · 팀골 2.78 ·
+    // 전환 21.62% · 슛당 xG 0.21)가 **전부** 통과하는 유일한 지점이다. 0.196 은 전환 22.50 으로,
+    // 0.198 은 슛 12.20 으로 각각 경계를 스친다.
+    shootXgThreshold: 0.197,
     // G-A(#99): 슛 사거리 20→19m. 원거리 speculative 슛 감축(슛 수 하향, 슛당 xG 는 유지 — 임계와
     // 달리 저xG 근거리 슛은 남겨 평균 xG 를 밴드에 유지).
     shootRange: 19,
@@ -1082,7 +1271,11 @@ export const defaultEngineConfig: EngineConfig = {
     // 0.25.0 볼륨 재보정: xgBase 상향으로 슛 질이 올라가자 유효슛이 5.89 로 벤치(4.5–5.5)를 넘겼다.
     // 0.235→0.21 로 되돌려 **유효슛은 벤치 안(5.37)에 유지**한다 — 골만 hero 목표로 올리고
     // 나머지 총량 지표는 리얼리즘에 붙여 두는 것이 이번 재보정의 규율이다.
-    onTargetBase: 0.21,
+    // ── #357 (0.21 → 0.19): 같은 규율의 반복 ──────────────────────────────────────
+    // `shootXgThreshold` 가 낮은 xG 슛을 걷어내면 남은 슛의 **질이 올라가** 유효슛 비율이 함께
+    // 오른다(슛/유효슛 비 0.366 → 0.42). 그대로 두면 팀당 슛 12.7 에서 유효슛이 5.6 으로 벤치
+    // (4.5–5.5)를 넘는다 → 0.19 로 5.36. **슛 볼륨에는 영향이 없다**(유효슛 롤은 슛 실행 뒤다).
+    onTargetBase: 0.19,
     saveCornerProb: 0.6,
     saveCatchDepthM: 2.5, // 골라인 2.5m 앞에서 캐치 → 골문 밖(골 오인 방지). 0 이면 골라인 위.
     saveCornerWideMarginM: 1.5, // 세이브 굴절 코너: 공이 포스트 1.5m 밖(키퍼 근처=터치 보임 + 골 오인 방지).
@@ -1114,10 +1307,16 @@ export const defaultEngineConfig: EngineConfig = {
     // 스윕(10시드): 대기 0 → 빈공간꺾임 2건·최악 10.8m / **2 → 0건·최악 6.1m** / 3 → 0건이지만
     // 공이 멈춰 있는 시간(무소유틱)이 28.7% 로 과해 템포를 해친다.
     arrivalWaitMaxTicks: 2,
+    // #316: 아래 둘은 chain 기본에서도 **살아 있다** — `decision.oneOnOneShot` 을 두 코어가 공유하고,
+    // chain 은 루트(실제 슈터 자리)에서 한 번만 불러 **결과 xg + detail** 에 반영한다.
     oneOnOneClearM: 10.0,
     oneOnOneXgMult: 1.3,
     // G-A(#99): 1대1 강제슛 배수 3.2→1.8. 여전히 단독찬스는 슛을 선호하되(1v1은 슛이 정답),
     // 슛 과다에 기여하던 과도한 강제를 완화.
+    // ⚠️ **weighted 전용 — chain 기본(0.24.0+)에서는 실행 경로가 없어 튜닝해도 무효**(#316/#338).
+    // 이건 "슛 **가중치**"를 곱하는 노브인데 사슬 코어에는 가중치 공간이 없다(EV 만 있다).
+    // EV 공간의 자명한 대응물이 없어 **의도적으로 이식하지 않았다** — 넣으면 슛 볼륨 레버가
+    // `chain.goalValue` 와 이중이 된다(`decisionWeights.shoot` 이 chain 에서 무효인 것과 같은 이유).
     oneOnOneShootBias: 1.8,
     // #312(S5-B) 정확도. 기준 6도 = 20m 패스에서 횡 오차 ±2.1m(controlRange 3.5m 안) —
     // 성공 롤이 난 패스는 리시버가 한 걸음으로 흡수하고, 큰 오차는 굴러(#313) 쟁탈이 된다.
@@ -1129,6 +1328,13 @@ export const defaultEngineConfig: EngineConfig = {
     passPowerAttrSwing: 0.15,
     passPressurePowerPenalty: 0.07,
     shotAimErrorDeg: 4.0,
+    // #353 압박 → 슛. 조준(연출)과 결과(xG)를 분리한 이유는 위 선언 주석 참조.
+    shotPressureAimPenalty: 0.35,
+    // 60시드 스윕(gv=8.0 고정) — 이 노브는 **EV 에 안 들어가므로 슛 볼륨을 안 움직인다**.
+    // 그래서 xG 계열만 순수하게 이동한다(슛 13.1~13.3 로 거의 불변):
+    //   0.85→xG/슛 0.170(밴드 0.18–0.24 미달) · 0.88→0.180 · 0.90→0.180(유효슛 5.31) ·
+    //   0.92→0.190(유효슛 5.48 = 상한 5.5 에 0.02) → **0.91** 로 양쪽 여유를 둔다.
+    shotPressureXgMult: 0.91,
     // #306(S6) 공중볼.
     aerial: {
       enabled: true,
@@ -1144,6 +1350,8 @@ export const defaultEngineConfig: EngineConfig = {
       // 페널티박스 깊이(16.5m)에 맞춘다. 헤더는 멀리서 못 쏘지만 박스 안이면 시도한다 —
       // 12m 로 잡았을 때 8경기 헤더 슛이 1건뿐이었다(크로스 자체가 아직 S5 대기라 희소하다).
       headerShootRangeM: 16.5,
+      // #357 분리. 분리 시점의 `contest.shootXgThreshold` 와 같은 값 = 동작 무변경.
+      headerXgThreshold: 0.07,
     },
   },
   rules: {
@@ -1282,6 +1490,10 @@ export const defaultEngineConfig: EngineConfig = {
     depth: 2,
     advanceWeight: 1.0,
     advanceExponent: 3.0,
+    // #357: **안 움직였다**(18 유지). `threatWeight < goalValue` 부등식은 gv 를 올려서 세웠다 —
+    // tw 를 내리면 가치 지형이 전진(adv^exp) 지배가 되어 스로인이 폭주한다(r=0.83 고정 20시드:
+    // tw2→45.4 · tw8→23.1 · tw12→19.9 · **tw18→17.2** 스로인/팀, 밴드 17–19). 근거 전문은
+    // 아래 `goalValue` 주석.
     threatWeight: 18.0,
     spaceWeight: 0.35,
     spaceRefM: 12,
@@ -1311,8 +1523,49 @@ export const defaultEngineConfig: EngineConfig = {
     // 9.4 를 쓰는 이유: 팀당 슛 12.93(밴드 12–14 중앙) · 유효슛 5.34(4.5–5.5) ·
     // 경기당 골 5.32(hero 목표 5.0). 9.2 는 골 4.80 으로 목표에서 더 멀고, 9.6 은
     // 슛 14.23 으로 밴드를 넘는다.
-    goalValue: 9.4,
+    // ── #353: **`goalValue` 는 안 움직였다**(그 웨이브에서는) ─────────────────────
+    // 홀드 턴오버로 팀당 슛이 23.14 로 넘쳤지만 `goalValue` 를 내리는 것은 기각했다 —
+    // **모든 슛의 EV 를 똑같이** 내려서 자유로운 선수의 슛부터 죽는다(60시드 실측 gv 9.4 → 8.0
+    // 에서 one_on_one 라벨 0.117 → **0**, `one-on-one.test.ts` #316 계약 파괴).
+    //
+    // ── #357 가치 역전 해소 (9.4 → 22) ───────────────────────────────────────────
+    // **부등식이 뒤집혀 있었다.** 사슬 EV 에서 슛의 가치 = `goalValue × xg` 인데 그 자리에
+    // 서 있는 가치 = `threatWeight × xg` 다. `xg` 는 정의상 "여기서 쏘면 넣을 확률"이므로
+    // 그 자리의 위협은 슛의 **옵션 가치**이고 옵션은 행사 가치를 **초과할 수 없다**.
+    // `threatWeight`(18) > `goalValue`(9.4) 는 그 부등식을 뒤집는다 → 압박이 없을수록
+    // (`p_keep`≈0.98) 홀드 계수 17.6 이 슛 9.4 를 압도해 **자유로운 선수가 가장 강하게 hold** 한다.
+    //
+    // 2D 스윕(`realism/volume-sweep.test.ts`, `HMB_VOLSWEEP_SPEC` 격자)이 이 부등식을 **계량으로**
+    // 확인했다 — 단독(10m) 오픈플레이 에피소드 중 슛으로 끝난 비율(20시드):
+    //   r=tw/gv 1.33→ **0.0%** · 1.14→0.0 · 0.83(tw8/gv9.6)→32.3 · 0.83(tw10/gv12)→67.5 ·
+    //   0.83(tw18/gv21.6)→**88.5%**  (1v1 라벨/경기도 0.00 → 3.85 로 같이 움직인다)
+    // 즉 **r < 1 이 1대1 슛의 스위치**다. 임계는 대략 r≈1 에 있고 그 양쪽에서 급격히 갈린다.
+    //
+    // ⚠️ **`threatWeight` 를 내려서 r<1 을 만드는 것은 기각했다** — 스로인이 무너진다.
+    //   r=0.83 고정, 크기만 바꾼 20시드 라인(스로인/팀, 밴드 17–19):
+    //   tw2→45.35 · tw4→32.60 · tw6→26.28 · tw8→23.08 · tw10→20.68 · tw12→19.85 ·
+    //   **tw14→17.65 · tw16→18.20 · tw18→17.18** · tw24→15.90
+    //   위협 가중이 낮아지면 가치 지형이 전진(adv^3) 지배가 되어 공이 계속 앞·옆으로 나간다.
+    //   그래서 **tw 는 18 그대로 두고 gv 를 그 위로 올리는** 방향으로 부등식을 세운다.
+    //
+    // 볼륨은 여기서 잡지 않는다(위 라인 전부 팀당 슛 29~31). r<1 이 풀어놓은 슛은
+    // **`contest.shootXgThreshold`(질 필터)** 가 되돌린다 — 그 주석에 사다리가 있다.
+    // gv 자체는 이 영역에서 볼륨을 거의 안 움직인다(20시드 thr=0.20 고정: gv 21.6→12.25 ·
+    // 26→11.60 · 32→11.80). **비율=질 · 게이트=양** 으로 축이 갈린 것이 이 재보정의 요지다.
+    // 22 를 쓰는 이유: r=0.818 로 임계에서 충분히 떨어져 있고, 21.6/26/32 중 1v1 라벨이 가장
+    // 높으면서(60시드 0.633/경기) 코너가 밴드 안(4.25)에 남는 지점이다.
+    goalValue: 22,
     holdPenalty: 0.08,
+    // #353 홀드 턴오버. 값은 스윕으로 골랐다 — 사거리 안 hold 비율(60시드, 1v1 프로브)이 판정 지표다.
+    // 롤백 = { keepBase: 1, pressPenalty: 0, tightPenalty: 0 } (0.27.0 과 bit-identical).
+    hold: {
+      keepBase: 0.98,
+      pressRangeM: 6.0,
+      pressPenalty: 0.22,
+      tightRangeM: 2.5,
+      tightPenalty: 0.3,
+      minKeep: 0.25,
+    },
     dribbleSuccess: 0.86,
     temperature: 0.35,
     // S2 기본값은 **의도적으로 비구속(non-binding)** 이다. 계측 실측(20시드 · 결정 56,672회)

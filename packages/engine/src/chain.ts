@@ -7,15 +7,18 @@ import type { ActionCandidate, GeneratorId, ChainProbe } from "./action";
 import { fromFixed, fclamp, fdist, fdistSq, isqrt, toFixed } from "./fixedmath";
 import { attackGoal, clampToPitch, distToAttackGoal } from "./pitch";
 import { passOptions, pressureCount } from "./perception";
-import { deliverySpeedFx, isLofted, passPowerFx, shotPowerFx } from "./kick";
+import { shotPowerFx } from "./kick";
 import {
   clearanceAim,
   clearanceEligible,
   clearancePowerFx,
   computePassProb,
+  oneOnOneShot,
   planClearance,
   planPass,
+  passDelivery,
   planShot,
+  shotPressureXg,
   xgAtPoint,
   type Action,
 } from "./decision";
@@ -319,13 +322,7 @@ function passOptsOf(g: GenInput): PassOption[] {
 
 /** 이 후보를 실제로 차면 나갈 세기(#312). `planPass` 와 **같은 함수**를 쓴다(재구현 금지). */
 function candidateSpeedFx(g: GenInput, o: PassOption): number {
-  const cfg = g.ctx.config;
-  const pressers = pressureCount(g.ctx.state, g.holder, cfg, cfg.contest.passPressureRangeM);
-  return deliverySpeedFx(
-    passPowerFx(o.dist, g.holder.attrs.passing, pressers, cfg),
-    isLofted(o.dist, o.long, cfg),
-    cfg,
-  );
+  return passDelivery(g.ctx.state, g.holder, o, g.ctx.config).speedFx;
 }
 
 /**
@@ -585,10 +582,41 @@ function candidateEv(
       }
       return ev;
     }
-    default:
-      // 홀드: 제자리 가치에서 시간 페널티. 없으면 안전한 홀드가 최적이 된다.
-      return evaluateStateEv(ctx, here) - w.holdPenaltyEv;
+    default: {
+      /**
+       * 홀드(#353) — 다른 행동과 **같은 형태**로 평가한다:
+       *   `EV = p_keep × (V(here) − holdPenalty) + (1 − p_keep) × V(턴오버)`
+       *
+       * 구 형태는 `V(here) − holdPenalty` 뿐이라 **실패 항이 없었다** = 뺏길 수 없는 선택지.
+       * 그래서 슛 사거리 안 결정의 72% 가 hold 였다. 평평한 상수를 키우는 것으로는 못 고친다 —
+       * 그러면 "혼자일 때 볼을 지키는" 정상 플레이까지 같이 죽는다. `p_keep` 이 압박에
+       * 반응하므로 자유로우면 지키는 것이 여전히 최적이고, 붙으면 무언가 해야 한다.
+       *
+       * `holder`/`here` 는 여기서 언제나 **실제 볼 소유자와 그의 실제 좌표**다 — hold 생성기는
+       * 루트에서만 돈다(`INNER_GENERATORS` 가 제외). 즉 가상 지점에서 압박을 재는 일이 없다.
+       */
+      const keepFrac = toFrac(holdKeepProb(ctx.state, holder, ctx.config));
+      const stay = evaluateStateEv(ctx, here) - w.holdPenaltyEv;
+      return mulFrac(stay, keepFrac) + mulFrac(turnoverEv(ctx, here), FRAC_SCALE - keepFrac);
+    }
   }
+}
+
+/**
+ * 홀드 유지 확률 `p_keep`(0..1) — 압박의 **인원과 거리** 둘 다에 반응한다(#353).
+ *
+ * 밀착(`tightRangeM`)은 근접(`pressRangeM`)에도 같이 세이므로 두 페널티가 **누적**된다 =
+ * 같은 1명이라도 5m 와 1m 가 다른 값을 받는다. 측정은 `pressureCount` 재사용(압박의 정의는
+ * 패스·걷어내기와 하나여야 한다).
+ *
+ * 계약·진단이 이 함수를 직접 부른다 — EV 를 통해서만 관측하면 "홀드가 줄었다"의 원인이
+ * 이 항인지 다른 항인지 귀속할 수 없다.
+ */
+export function holdKeepProb(state: SimState, holder: SimPlayer, config: EngineConfig): number {
+  const h = config.chain.hold;
+  const near = pressureCount(state, holder, config, h.pressRangeM);
+  const tight = pressureCount(state, holder, config, h.tightRangeM);
+  return fclamp(h.keepBase - h.pressPenalty * near - h.tightPenalty * tight, h.minKeep, 1);
 }
 
 /**
@@ -704,7 +732,27 @@ export function decideBallOwnerChain(
     fatigue: owner.fatigue,
   };
   // 반환 계약(Action.shoot.xg)에 필요한 값 — 생성기와 같은 함수·같은 인자라 값이 갈릴 수 없다.
-  const { xg } = xgAtPoint(here.side, here.xFx, here.yFx, here.shooting, here.fatigue, config, pitch);
+  const { xg: rawXg, distM } = xgAtPoint(
+    here.side, here.xFx, here.yFx, here.shooting, here.fatigue, config, pitch,
+  );
+  /**
+   * 1대1(단독) 찬스 (#316) — **루트(= 실제 상태의 슈터 자리)에서만** 잰다.
+   *
+   * `GEN_FN.shoot` 안에서 재면 안 된다: 생성기는 `bestEvAt`/`arrivalHypo` 를 통해 **가상 도착
+   * 지점**에서도 돌기 때문에, 거기서 1v1 기하를 재면 "상대가 그때까지 안 움직인다"는 가정이
+   * EV 에 심긴다(가상 미래의 수비 배치를 현재 좌표로 읽는다).
+   *
+   * ## 설계 판단: 부스트는 **결과 xg 에만** 걸고 EV(선택)에는 반영하지 않는다
+   *  - 루트에서만 재는 위 원칙과 정합한다. EV 공간은 도착 지점들을 비교하는 곳이고, 1v1 판정은
+   *    "지금 이 자리"의 성질이라 그 비교에 넣을 자리가 없다.
+   *  - 사슬 코어는 슛을 이미 `chain.goalValue × xG` 로 평가한다 — 선택 압력은 거기 있다.
+   *  - 그래서 `contest.oneOnOneShootBias`(weighted 의 슛 가중 배수)는 **적용하지 않는다**:
+   *    EV 공간에 자명한 대응물이 없고(가중치가 아니라 기대값이다), 넣으면 밸런스 레버가
+   *    `goalValue` 와 이중이 된다. `decisionWeights.shoot` 이 chain 에서 무효인 것과 같은 이유다.
+   *  - 대가: "선택은 원 xG 로, 결과는 부스트로" 갈린다. 부스트가 EV 를 통해 슛 **빈도**까지
+   *    밀지 않으므로 볼륨(팀당 슛) 재보정이 필요 없다 — 움직이는 것은 골 계열뿐이다.
+   */
+  const oo = oneOnOneShot(state, owner, rawXg, distM, config);
 
   const cands = generate(ctx, owner, here, GENERATORS, true);
   const beamed = beam(ctx, cands, here, c.depth);
@@ -764,8 +812,19 @@ export function decideBallOwnerChain(
   switch (cand.kind) {
     case "shoot": {
       // #312: 슛도 세기·조준 오차를 탄다(weighted 코어와 **같은 함수** — 두 코어가 갈리지 않게).
-      const sp = planShot(owner, config, rng, pitch);
-      return { kind: "shoot", xg, toX: sp.toX, toY: sp.toY, speedFx: sp.speedFx };
+      const sp = planShot(state, owner, config, rng, pitch);
+      // #316: 부스트된 xg 와 `detail` 을 **둘 다** 실어야 한다 — detail 이 빠지면 이벤트가 소실되고
+      // (하이라이트 사망), xg 가 빠지면 부스트 안 된 값이 flight 를 타고 골 롤까지 간다.
+      // #353: 그 위에 압박 감산(같은 축의 반대편 — 1v1 부스트와 상호 배타적이라 이중 계상이 없다:
+      // `oneOnOneShot` 이 부스트하는 조건은 반경 안 상대 0명이고, 그때 `shotPressureXg` 는 no-op 다).
+      return {
+        kind: "shoot",
+        xg: shotPressureXg(state, owner, oo.xg, config),
+        toX: sp.toX,
+        toY: sp.toY,
+        speedFx: sp.speedFx,
+        detail: oo.detail,
+      };
     }
     case "pass": {
       const opt = cand.opt as PassOption;

@@ -58,22 +58,17 @@ test("#91 save→corner → 공이 골라인 밖 와이드로 나간다(키퍼�
   expect(checked, "판정 가능한 save→corner 없음").toBeGreaterThan(0);
 });
 
-// ⚠️ engine@0.24.0(#279 사슬 코어 채택)에서 **기능이 사라졌다** — 계약은 박제로 남긴다.
-//
-// 무엇이: `shot:one_on_one` 이벤트가 **0건**이 됐다(쇼케이스·real 픽스처 모두. 스캔한 real 시드
-// 8개 전부 0건). 뷰어의 1대1 하이라이트 연출은 그대로 있는데 입력이 안 온다.
-//
-// 왜: one_on_one 판정은 `decision.ts:decideBallOwner`(= weighted 코어) **안에만** 있다
-//     (슈터 반경 `contest.oneOnOneClearM` 안에 비-GK 상대가 없으면 detail 부여 + xG×
-//      `oneOnOneXgMult` + 가중치×`oneOnOneShootBias`). `chain.ts` 의 shoot 생성기/`toAction` 은
-//     detail 을 아예 안 만든다. 즉 코어를 바꾸면서 **노브 3개가 같이 죽었다**.
-//     → 튜닝으로는 못 살린다(값 문제가 아니라 코드가 없다).
-//
-// 왜 지금 안 고치나: chain 은 "행동 점수 가중"이 아니라 "도달 상태 EV" 라 `oneOnOneShootBias`
-//     (=선택 가중치 배수)의 EV 공간 대응이 자명하지 않다. 임의로 만들면 hero 가 A/B 로 채택한
-//     기준선이 조용히 이동한다. 슛 후보 설계는 로드맵 S5(공격 후보 + 캐리·슛 방향) 소관이다.
-// → **별도 이슈로 올려 S5 에서 처리**. 그때 이 `test.fail` 을 지우면 계약이 자동으로 되살아난다.
-test.fail("one_on_one → 슛 이벤트로 발행되고 팀이 명시된다", async ({ page }) => {
+// #316(engine@0.26.0+): **되살렸다.** 0.24.0 에서 기본 코어가 chain 으로 바뀌며 이 이벤트가
+// 0건이 됐던 이유는 판정이 `decision.ts:decideBallOwner`(weighted) 안에만 있었고 `chain.ts` 의
+// shoot 반환에 `detail` 이 없었기 때문이다(= 값 문제가 아니라 코드가 없었다).
+// 이제 판정 본체는 `decision.oneOnOneShot` 으로 추출돼 **두 코어가 같은 함수**를 쓰고, chain 은
+// 그것을 **루트(실제 슈터 자리)에서만** 불러 결과 xg + detail 에 싣는다(가상 도착 지점에서 재면
+// "상대가 그때까지 안 움직인다"는 가정이 EV 에 심긴다).
+// ⚠️ `contest.oneOnOneShootBias`(슛 **가중치** 배수)는 의도적으로 이식하지 않았다 — EV 공간에
+// 대응물이 없고 넣으면 슛 볼륨 레버가 `chain.goalValue` 와 이중이 된다. 그래서 발생 빈도는
+// weighted 시절보다 낮다(60시드 4건). 이 계약은 **경로 생존**을 본다(정밀 판정은
+// `packages/engine/src/realism/one-on-one.test.ts`).
+test("one_on_one → 슛 이벤트로 발행되고 팀이 명시된다", async ({ page }) => {
   const one = await eventsOfType(page, "shot", "one_on_one");
   expect(one.length).toBeGreaterThan(0);
   for (const e of one) expect(e.team === "home" || e.team === "away").toBe(true);
