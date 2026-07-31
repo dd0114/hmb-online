@@ -11,12 +11,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "../api/client";
-import type { AdminUserDetail, AdminUserListResponse } from "../api/p3";
+import type { AdminUserDetail, AdminUserPage } from "../api/p3";
 
 const fx = {
   token: "t" as string | null,
   me: { isLoading: false, isError: false, user: undefined as { isAdmin?: boolean } | undefined },
-  list: { data: undefined as AdminUserListResponse | undefined, isLoading: false, isError: false, error: null as unknown },
+  list: { data: undefined as AdminUserPage | undefined, isLoading: false, isError: false, error: null as unknown },
   detail: { data: undefined as AdminUserDetail | undefined, isLoading: false, isError: false, error: null as unknown },
   grantError: null as unknown,
   mutate: vi.fn(),
@@ -60,22 +60,28 @@ vi.mock("../api/admin-unit-hooks", () => ({
 import { AdminPage } from "./AdminPage";
 import { RequireAdmin } from "./RequireAdmin";
 
-const USERS: AdminUserListResponse = {
-  users: [
-    { userId: "u1", nickname: "테스터A", provider: "local", points: 1200, wins: 3, draws: 1, losses: 2, createdAt: "2026-07-01T00:00:00Z" },
-    { userId: "u2", nickname: "테스터B", provider: "guest", points: 0, wins: 0, draws: 0, losses: 0, createdAt: "2026-07-02T00:00:00Z" },
+/**
+ * ⚠️ **서버가 실제로 주는 모양**이다(#342). 예전 픽스처는 `{users:[{userId,provider,wins…}]}` 였는데
+ * 서버는 `{items:[{id,authProvider,…}]}` 를 준다 — 픽스처가 거짓이라 **화면이 라이브에서 통째로
+ * 비어 있는데도** 이 테스트가 green 이었다. 픽스처는 계약의 일부다: 서버와 다른 모양을 적으면
+ * 그 테스트는 자기가 만든 세계를 검증한다.
+ */
+const USERS: AdminUserPage = {
+  items: [
+    { id: "u1", nickname: "테스터A", authProvider: "local", isAdmin: false, points: 1200, createdAt: "2026-07-01T00:00:00Z" },
+    { id: "u2", nickname: "테스터B", authProvider: "guest", isAdmin: false, points: 0, createdAt: "2026-07-02T00:00:00Z" },
   ],
+  total: 2,
+  limit: 50,
+  offset: 0,
 };
 
 const DETAIL: AdminUserDetail = {
-  user: USERS.users[0]!,
-  ownedPlayers: 34,
-  deckFormation: "4-3-3",
-  deckStarters: 11,
-  recentLedger: [
-    { id: "L1", delta: 500, reason: "충전 요청 수동 처리", actor: "admin", createdAt: "2026-07-19T09:00:00Z" },
-    { id: "L2", delta: -200, reason: "오지급 회수", actor: "admin", createdAt: "2026-07-19T10:00:00Z" },
-  ],
+  user: USERS.items[0]!,
+  players: { distinct: 34, total: 41 },
+  deck: { id: "d1", name: "기본 덱", formation: "4-3-3", starters: 11, bench: 2, updatedAt: "2026-07-19T09:00:00Z" },
+  presets: { promptPresets: 2, teamPresets: 1 },
+  records: { wins: 3, draws: 1, losses: 2 },
 };
 
 /** RequireAdmin 을 실제 라우트에 물려 리다이렉트 목적지까지 관측한다. */
@@ -159,7 +165,9 @@ describe("AdminPage 목록·검색", () => {
     expect(screen.getByTestId("admin-user-row-u1")).toBeTruthy();
     expect(screen.getByTestId("admin-user-row-u2")).toBeTruthy();
     expect(screen.getByTestId("admin-user-row-u1").textContent).toContain("테스터A");
-    expect(screen.getByTestId("admin-user-row-u1").textContent).toContain("3승 1무 2패");
+    // ⚠️ 전적 열은 **없다** — 서버 행에 wins/draws/losses 가 없다(#342). 전적은 상세에서 본다.
+    expect(screen.getByTestId("admin-user-row-u1").textContent).not.toContain("승");
+    expect(screen.getByTestId("admin-user-row-u1").textContent).toContain("local");
   });
 
   it("검색어 입력이 (디바운스 후) 질의로 전달된다", async () => {
@@ -175,7 +183,7 @@ describe("AdminPage 목록·검색", () => {
   });
 
   it("빈 결과는 안내 문구", () => {
-    fx.list = { data: { users: [] }, isLoading: false, isError: false, error: null };
+    fx.list = { data: { items: [], total: 0, limit: 50, offset: 0 }, isLoading: false, isError: false, error: null };
     renderPage();
     expect(screen.getByTestId("admin-users-empty")).toBeTruthy();
   });
@@ -186,16 +194,32 @@ describe("AdminPage 포인트 지급/차감 (AC-C1)", () => {
     fireEvent.click(screen.getByTestId("admin-user-select-u1"));
   }
 
-  it("유저를 고르면 상세·원장이 뜬다", () => {
+  it("유저를 고르면 상세가 뜬다 — 서버가 주는 필드만", () => {
     renderPage();
     selectUser();
     expect(screen.getByTestId("admin-user-detail")).toBeTruthy();
-    expect(screen.getByTestId("admin-detail-owned").textContent).toBe("34");
+    // 보유는 `{distinct,total}` 이다 — 하나만 그리면 중복 보유가 안 보인다.
+    expect(screen.getByTestId("admin-detail-owned").textContent).toContain("34");
+    expect(screen.getByTestId("admin-detail-owned").textContent).toContain("41");
     expect(screen.getByTestId("admin-detail-formation").textContent).toBe("4-3-3");
-    const ledger = screen.getByTestId("admin-ledger");
-    expect(ledger.textContent).toContain("충전 요청 수동 처리");
-    expect(ledger.textContent).toContain("admin");
-    expect(screen.getByTestId("admin-ledger-row-L2").textContent).toContain("−200");
+    // 전적은 `user` 가 아니라 `records` 에서 온다.
+    expect(screen.getByTestId("admin-detail-record").textContent).toContain("3");
+    // ⚠️ 원장 표는 **없다** — 서버가 안 준다(#342). 있는 척 그리면 "지급 이력 없음"이라는 거짓이 된다.
+    expect(screen.queryByTestId("admin-ledger")).toBeNull();
+  });
+
+  /** 덱 없는 유저는 `deck: null` — 0 을 그리면 "선발 0명"이라는 거짓이다. */
+  it("덱이 없으면 포메이션·선발을 지어내지 않는다", () => {
+    fx.detail = {
+      data: { ...DETAIL, deck: null },
+      isLoading: false,
+      isError: false,
+      error: null,
+    };
+    renderPage();
+    selectUser();
+    expect(screen.getByTestId("admin-detail-formation").textContent).toBe("—");
+    expect(screen.getByTestId("admin-detail-starters").textContent).toBe("—");
   });
 
   it("사유가 비면 제출 불가", () => {

@@ -843,6 +843,29 @@ me 를 쓰면 "**브론즈 리그**에서 1위" 옆에 **실버** 뱃지가 뜬�
 - ⚠️ **n=3 대조로 회귀를 단정하지 마라.** #318 은 `main 3/3 vs 브랜치 1/3` 로 발제됐으나 20회씩
   재보니 **양쪽 6/20 로 동일**했다. 그 표본 때문에 엉뚱한 축(W3 높이·dnd-kit 오토스크롤)을 두 번 팠다.
 
+## 운영 화면(admin) — 서버 계약 그대로 (#342)
+
+`/admin` 유저 목록이 **라이브에서 항상 비어 있었다**. 유저를 못 고르니 상세도 **포인트 지급도**
+막혀 있었다 — 무배포 운영의 핵심 창구가 죽어 있었다.
+
+| 지점 | 서버(실측·openapi) | 웹이 읽던 것 |
+|---|---|---|
+| `GET /api/admin/users` | `{items,total,limit,offset}` | `{users:[…]}` → 항상 `[]` |
+| 행 | `{id,nickname,authProvider,isAdmin,points,createdAt}` | `{userId,provider,wins,draws,losses}` |
+| `GET …/{id}` | `{user,players{distinct,total},deck(null 가능),presets,records}` | `{ownedPlayers,deckFormation,deckStarters,recentLedger}` |
+| `POST …/points` | `{userId,delta,applied,balance,idempotencyKey,auditId}` | `{points,entry{delta}}` → 지급 직후 **터짐** |
+
+- ⚠️ **왜 아무도 못 봤나 — 목이 거짓말했다.** `e2e/p3-admin-mock.spec.ts` 와 단위 픽스처가 서버와
+  **다른 모양**을 흉내내 e2e·단위가 전부 green 이었다. **목은 계약의 일부다** — 서버와 다른 모양을
+  적으면 그 테스트는 자기가 만든 세계를 검증한다(#323 독립검증도 같은 부류를 지적했다).
+- ⚠️ **손으로 쓴 API 타입은 계약이 아니다.** `p3.ts` 의 admin 타입들은 openapi 생성물이 아니라 손
+  타입이었고, 넷 다 서버와 달랐다. 새 표면을 손으로 적을 땐 **실서버 응답을 한 번 찍어 보고** 적어라.
+- **원장(감사 로그) 표는 없다** — 서버가 `recentLedger` 를 안 준다. 항상 "기록된 원장이 없습니다"만
+  그렸고 그게 "지급 이력 없음"이라는 거짓으로 읽혔다. 서버 필드를 만들어 되살리는 건 별도 이슈.
+- **덱 없는 유저는 `deck:null`** — 0 을 그리면 "선발 0명"이라는 거짓이다. `—` 로 둔다.
+- 계약 = `AdminPage.test.ts`(서버 모양 픽스처 · deck null) + `e2e/p3-admin-mock.spec.ts`(정직해진 목)
+  + **`e2e/p342-admin-live.capture.ts`(목 0, 실서버 왕복)** — 이 계열은 목으로 못 막으니 실서버 증빙을 남긴다.
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - ⚠️ **e2e 는 리포의 `evidence/**` 에 직접 쓰지 않는다**(#314). 증거 캡처는 `HMB_WRITE_EVIDENCE=1`
