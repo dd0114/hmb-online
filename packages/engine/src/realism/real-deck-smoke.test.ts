@@ -157,12 +157,18 @@ describe("실덱 픽스처 정합성 (#374)", () => {
 
 // ── T0: 붕괴 케이스 1경기 (#376 교훈 3) ───────────────────────────────────
 /**
- * #376 이 남긴 교훈을 그대로 코드로 옮긴 것:
- * > "이번 사고(#370)의 유일한 필수 AC 는 **붕괴 케이스 1경기 입력 1회**였다. 그건 480ms 다.
- * >  4.8분짜리 사다리보다 **먼저** 돌았어야 했다."
- * 그래서 이 블록만 T0(매 커밋)에 있고, 나머지 실덱 스캔은 T1 이다.
+ * #376 교훈 3("가장 싼 핵심 검증을 맨 앞에")을 따라 실덱 1경기를 T0 에 둔다.
+ *
+ * ⚠️ **이 블록이 잡는 것은 "하프가 죽었나"이지 #370 의 슛 붕괴가 아니다.** 실제로 지금
+ * `contest.shootXgThreshold: 0.197`(붕괴 상태)에서 아래 세 어서션은 **전부 통과한다** —
+ * 이벤트 681개, 양 팀 소유, 양 팀 패스 300+ 인데 슛은 1:0 이다. 슛 판정은 T1(전량 스캔)에 있고,
+ * 지금은 `it.fails` 로 박제돼 있어 T0 로 끌어올릴 수 없다(끌어올리면 매 커밋이 red 다).
+ *
+ * 트랙 T 가 계수를 확정해 박제가 뒤집히면, **그때 슛 하한 래칫을 이 블록에 추가**해서
+ * "#370 부류가 매 커밋에 걸린다"를 실제로 성립시킨다. 그전까지 이 블록의 사정거리는
+ * **데드락·사망 하프**(#231/#239 부류)까지다.
  */
-describe("T0 · 붕괴 케이스 1경기 — 경기가 성립하는가", () => {
+describe("T0 · 붕괴 케이스 1경기 — 하프가 죽지 않았는가", () => {
   const c = loadRealDeckCase(COLLAPSE_CASE_ID);
   const m = measure(c.seed, c.homeInput, c.awayInput, c.selectData, defaultEngineConfig);
 
@@ -213,8 +219,10 @@ describe.skipIf(!atLeastTier(1))(`T1 · 실덱 전량 스모크 (${SEEDS_PER_DEC
   it.fails(
     `[박제 #370] 붕괴 덱 ≤1 (현재 ${collapsed.length}/${decks.length}, 판정선 ${collapseLine.toFixed(2)}슛 · 덱별 약팀평균: ${table})`,
     () => {
-      expect(collapsed.map((d) => d.id)).toHaveLength(Math.min(1, collapsed.length));
-      expect(collapsed.length).toBeLessThanOrEqual(1);
+      // 허용 1건은 `deck-02`(5-3-2 저압박·로우블록 vs 강덱, 라이브 0-7) 같은 병적 매치업 몫이다 —
+      // 그건 계수가 아니라 구조 문제로 보여 M4 후보로 분리했다. 게이트가 그 한 건에 인질 잡히면
+      // 어떤 계수에서도 red 라 신호가 죽는다.
+      expect(collapsed.length, `붕괴한 덱: ${collapsed.map((d) => d.id).join(", ")}`).toBeLessThanOrEqual(1);
     },
   );
 
@@ -225,10 +233,15 @@ describe.skipIf(!atLeastTier(1))(`T1 · 실덱 전량 스모크 (${SEEDS_PER_DEC
   /**
    * 위 두 개가 박제라 **아무 회귀도 못 잡는 상태**가 되지 않게, 지금 값보다 **더 나빠지는 것**은
    * 지금 막는다(래칫). 트랙 T 가 고치면 박제가 뒤집히고 이 래칫은 불필요해진다.
+   *
+   * ⚠️ 두 래칫의 감지력은 같지 않다. **덱 수 래칫(≤9)은 사실상 헤드룸이 0**이다 — 10덱 중 9덱이
+   * 이미 붕괴라, 남은 `deck-03`(약팀평균 4.3~4.8 vs 판정선 1.2)이 3.8배를 잃어야 발화한다.
+   * **실효 가드는 0슛 비율 쪽**이다. 그래서 그쪽을 실측(시드 3/5/8/12 에서 25.6~28.3%)에
+   * 바짝 붙여 **30%** 로 잡는다. 32 는 여유가 과해 회귀를 놓친다.
    */
-  it(`래칫 — 붕괴가 지금(${collapsed.length}덱)보다 늘지 않는다`, () => {
+  it(`래칫 — 붕괴가 지금(${collapsed.length}덱 · 0슛 ${zeroPct.toFixed(1)}%)보다 늘지 않는다`, () => {
     expect(collapsed.length, `붕괴 덱: ${collapsed.map((d) => d.id).join(", ")}`).toBeLessThanOrEqual(9);
-    expect(zeroPct).toBeLessThanOrEqual(32);
+    expect(zeroPct, "0슛 팀-하프 비율 — 이쪽이 실효 회귀 가드다").toBeLessThanOrEqual(30);
   });
 
   it("벤치마크 대조군이 실제로 측정됐다(0 이면 대조 자체가 무의미)", () => {

@@ -148,7 +148,9 @@ export const PARTIAL_GATED: (TierEntry & { minTier: number })[] = [
   {
     file: "packages/engine/src/realism/real-deck-smoke.test.ts",
     minTier: 1,
-    what: "실덱 10덱 × 다시드 전량 스캔. T0 에는 **붕괴 케이스 1경기**만 남는다(#376 교훈 3).",
+    what:
+      "실덱 10덱 × 다시드 전량 스캔(슛 붕괴 판정). T0 에는 붕괴 케이스 1경기가 남지만 " +
+      "그 사정거리는 **하프 사망 검출**까지다 — 슛 붕괴는 T1 에만 있다(파일 상단 주석 참조).",
     issue: "#374 / #376",
     seconds: 25,
   },

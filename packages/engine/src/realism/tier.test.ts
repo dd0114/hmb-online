@@ -54,22 +54,40 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
     }
   });
 
-  /** 고아 검출 — 티어 토큰을 쓰는데 등록되지 않은 파일이 있으면 목록이 진실이 아니다. */
-  it("atLeastTier 를 쓰는 테스트 파일이 전부 등록돼 있다", () => {
+  /**
+   * 고아 검출 — 티어 토큰을 쓰는데 등록되지 않은 파일이 있으면 목록이 진실이 아니다.
+   *
+   * ⚠️ **vitest 가 수집하는 범위 전체를 재귀로** 훑는다. 처음엔 `packages/engine/src` 두 디렉토리의
+   * 직속 파일만 봤는데, 독립검증이 `dev-viewer/` 에 미등록 게이트를 심자 가드가 **green 인 채로**
+   * 통과했다. 스캔 범위가 테스트 이름의 주장보다 좁으면 그게 곧 거짓 green 이다.
+   */
+  it("atLeastTier 를 쓰는 테스트 파일이 전부 등록돼 있다 (수집 범위 전체 재귀)", () => {
     const registered = new Set(PARTIAL_GATED.map((e) => e.file));
-    const roots = [join(REPO, "packages/engine/src"), join(REPO, "packages/engine/src/realism")];
+    // vitest.config include 와 같은 뿌리들.
+    const roots = ["packages", "apps", "data", "tools"].map((d) => join(REPO, d));
     const found: string[] = [];
-    for (const root of roots) {
-      for (const f of readdirSync(root)) {
-        if (!f.endsWith(".test.ts")) continue;
-        if (f === "tier.test.ts") continue; // 가드 자신 — 티어를 검사하려면 당연히 참조한다.
-        const abs = join(root, f);
-        const text = readFileSync(abs, "utf8");
-        if (!/atLeastTier\s*\(/.test(text)) continue;
+    const walk = (dir: string): void => {
+      let entries;
+      try {
+        entries = readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const e of entries) {
+        if (e.isDirectory()) {
+          if (e.name === "node_modules" || e.name === "dist" || e.name === "__snapshots__") continue;
+          walk(join(dir, e.name));
+          continue;
+        }
+        if (!e.name.endsWith(".test.ts")) continue;
+        if (e.name === "tier.test.ts") continue; // 가드 자신 — 티어를 검사하려면 당연히 참조한다.
+        const abs = join(dir, e.name);
+        if (!/atLeastTier\s*\(/.test(readFileSync(abs, "utf8"))) continue;
         const rel = relative(REPO, abs);
         if (!registered.has(rel)) found.push(rel);
       }
-    }
+    };
+    for (const r of roots) walk(r);
     expect(found, `PARTIAL_GATED 에 없는 게이트 사용: ${found.join(", ")}`).toEqual([]);
   });
 
@@ -108,6 +126,14 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
     expect(pkg.scripts["test:t2"]).toContain("HMB_LADDER=1");
     // `npm test` 는 T1 이어야 한다 — 기본이 조용히 줄어들면 그게 새 거짓 green 구멍이다.
     expect(pkg.scripts["test"]).toContain("test:t1");
+    /**
+     * ⚠️ 사다리도 **티어를 고정해야 한다.** 안 하면 주위 환경의 `HMB_TIER=0` 이 그대로 먹혀
+     * `shot-frequency.test.ts`(=사다리 본체, #338 의 죽은 노브를 잡은 그 스위트)가 exclude 된다.
+     * 실측: `HMB_TIER=0 npm run test:ladder` = 25파일/95테스트 vs 고정 시 32파일/147테스트.
+     * "사다리를 돌렸다"고 믿는 채로 사다리가 빠지는 것이 정확히 이 게이트가 막아야 할 사고다.
+     */
+    expect(pkg.scripts["test:ladder"], "사다리가 티어를 고정하지 않는다").toMatch(/HMB_TIER=[12]/);
+    expect(pkg.scripts["test:ladder"]).toContain("HMB_LADDER=1");
   });
 
   /** 무거운 실행이 게이트를 통과하도록 배선돼 있는가(#376 동시성 상한). */

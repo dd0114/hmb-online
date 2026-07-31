@@ -10,7 +10,7 @@
   "scripts": {
     "test": "npm run test:t1",
     "test:watch": "vitest",
-    "test:ladder": "HMB_LADDER=1 node tools/run-gate.mjs --label ladder -- vitest run packages/engine/src/realism",
+    "test:ladder": "HMB_TIER=1 HMB_LADDER=1 node tools/run-gate.mjs --label ladder -- vitest run packages/engine/src/realism",
     "test:full": "npm run test:t2",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
     "harness": "tsx tools/tuning-harness/server.mjs",

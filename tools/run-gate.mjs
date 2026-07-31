@@ -23,13 +23,16 @@
  *   node tools/run-gate.mjs --status
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync, rmSync, existsSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { homedir } from "node:os";
 
 const DIR = process.env.HMB_GATE_LOCK_DIR || join(homedir(), ".hmb-gate-locks");
 const SLOTS = Math.max(1, Number(process.env.HMB_GATE_SLOTS || 1));
 const TIMEOUT_MS = Math.max(0, Number(process.env.HMB_GATE_TIMEOUT_MS || 30 * 60 * 1000));
+/** 게이트 **밖** 실행에 양보하는 상한 — 통제 못 하는 대상이라 홀더 대기보다 훨씬 짧다. */
+const FOREIGN_WAIT_MS = Math.max(0, Number(process.env.HMB_GATE_FOREIGN_WAIT_MS || 5 * 60 * 1000));
 const POLL_MS = 1500;
 
 const argv = process.argv.slice(2);
@@ -68,13 +71,68 @@ function holders() {
       rmSync(p, { force: true });
       continue;
     }
-    if (!rec.pid || !alive(rec.pid)) {
+    // wrapper 가 `kill -9` 로 죽으면 exit 핸들러가 안 돌아 슬롯이 남는다. 그런데 자식(vitest)은
+    // 살아 있을 수 있으므로 **둘 중 하나라도 살아 있으면** 점유로 본다 — wrapper 만 보고 회수하면
+    // 두 번째 무거운 실행이 살아 있는 vitest 와 함께 뜬다.
+    const held = (rec.pid && alive(rec.pid)) || (rec.childPid && alive(rec.childPid));
+    if (!held) {
       rmSync(p, { force: true }); // 죽은 홀더 자동 회수
       continue;
     }
     out.push({ ...rec, file: p });
   }
   return out;
+}
+
+/**
+ * 게이트를 **거치지 않은** 무거운 실행 감지 — 협조적 락의 구멍을 좁힌다.
+ *
+ * 실물로 겪었다(2026-08-01): `--status` 는 슬롯 0/1 인데 load 가 **330** 이었다. 다른 세션이
+ * `npm exec vitest run …` 을 직접 돌리고 있었고, 홀더 파일만 세는 게이트에는 그게 보이지 않았다.
+ * 협조적 락은 협조하지 않는 실행을 못 막지만, **보고 알릴 수는 있다.**
+ *
+ * 차단이 아니라 **짧은 양보**다(기본 5분). 우리가 통제하지 못하는 프로세스에 무한정 묶이는 것이
+ * 부하보다 나쁘고, 오탐(다른 리포·워치 모드)도 있다. 홀더 대기(30분)보다 짧은 이유 = 홀더는
+ * 곧 놓는다는 약속이 있고 외부는 없다.
+ */
+export function parseForeignHeavy(psLines, ownPids) {
+  const out = [];
+  for (const line of psLines) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+    if (!m) continue;
+    const [, pidStr, ppidStr, cmd] = m;
+    const pid = Number(pidStr);
+    const ppid = Number(ppidStr);
+    if (ownPids.has(pid) || ownPids.has(ppid)) continue; // 우리 실행과 그 워커
+    // ⚠️ **"vitest 라는 글자가 있다"로는 못 센다.** 실측에서 세션 래퍼 셸
+    // (`/bin/bash -c source …shell-snapshots/…`)이 명령줄에 그 단어를 품고 있어 통째로 오탐됐다.
+    // 오탐 하나가 곧 "남의 유휴 셸 때문에 내 게이트가 5분 선다"이므로 **실제 호출 형태**만 센다.
+    if (/shell-snapshots|^\/?(usr\/)?bin\/(ba|z|d)?sh\b/.test(cmd)) continue;
+    const invocation =
+      /(^|\/)node\b[^|]*\bvitest\b/.test(cmd) ||
+      /\bnpm\s+exec\s+vitest\b/.test(cmd) ||
+      /\.bin\/vitest\b/.test(cmd) ||
+      /\.bin\/playwright\b/.test(cmd) ||
+      /\bplaywright\s+test\b/.test(cmd);
+    if (!invocation) continue;
+    if (/--watch|\bvitest\s+watch\b|--ui\b/.test(cmd)) continue; // 워치/UI 모드는 상시 떠 있다
+    if (/run-gate\.mjs/.test(cmd)) continue; // 게이트를 거친 실행은 홀더 쪽에서 센다
+    // 워커·메인 프로세스(`node (vitest)` · `node (vitest 3)`)는 루트와 같은 트리라 **루트만** 센다.
+    // ⚠️ 공백이 선택적이다 — `\(vitest \d*\)` 로 쓰면 `node (vitest)` 를 놓쳐 한 실행이 2건으로 잡혔다(실측).
+    if (/\(vitest ?\d*\)/.test(cmd)) continue;
+    out.push({ pid, cmd: cmd.slice(0, 110) });
+  }
+  return out;
+}
+
+function foreignHeavy(ownPids) {
+  let psOut;
+  try {
+    psOut = execFileSync("ps", ["-Ao", "pid,ppid,command"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+  } catch {
+    return []; // ps 를 못 읽으면 감지를 포기한다 — 막지 않는다
+  }
+  return parseForeignHeavy(psOut.split("\n").slice(1), ownPids);
 }
 
 /** 레지스트리 조작 임계구역 — `mkdir` 은 원자적이라 그 자체가 스핀락이다. */
@@ -122,16 +180,27 @@ function tryAcquire() {
   });
 }
 
-if (flag("--status")) {
+/**
+ * CLI 진입은 **직접 실행일 때만**. 계약 테스트가 `parseForeignHeavy` 를 import 하는 순간
+ * `process.exit(2)` 가 돌아버리면 그 함수는 영원히 테스트할 수 없다.
+ */
+const isMain = process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
+
+if (isMain && flag("--status")) {
   const cur = holders();
   process.stdout.write(`게이트 슬롯 ${cur.length}/${SLOTS}${cur.some((h) => h.exclusive) ? " (배타 점유)" : ""}\n`);
   for (const h of cur) {
     process.stdout.write(`  pid ${h.pid} · ${h.label}${h.exclusive ? " [배타]" : ""} · ${h.startedIso} · ${h.cmd}\n`);
   }
+  const foreign = foreignHeavy(new Set([process.pid, ...cur.flatMap((h) => [h.pid, h.childPid].filter(Boolean))]));
+  if (foreign.length) {
+    process.stdout.write(`⚠️ 게이트를 안 거친 무거운 실행 ${foreign.length}건 — 슬롯 계산에 안 잡힌다:\n`);
+    for (const f of foreign) process.stdout.write(`  pid ${f.pid} · ${f.cmd}\n`);
+  }
   process.exit(0);
 }
 
-if (cmd.length === 0) {
+if (isMain && cmd.length === 0) {
   process.stderr.write("사용: node tools/run-gate.mjs [--label X] [--exclusive] -- <명령>\n");
   process.exit(2);
 }
@@ -160,6 +229,31 @@ async function main() {
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
     }
+
+    // 슬롯은 얻었지만 게이트 **밖**에서 도는 무거운 실행이 있으면 짧게 양보한다.
+    const foreignDeadline = Date.now() + FOREIGN_WAIT_MS;
+    let foreignAnnounced = false;
+    for (;;) {
+      const own = new Set([process.pid, ...holders().flatMap((h) => [h.pid, h.childPid].filter(Boolean))]);
+      const foreign = foreignHeavy(own);
+      if (foreign.length === 0) break;
+      if (Date.now() > foreignDeadline) {
+        process.stderr.write(
+          `⚠️ 게이트 밖 실행 ${foreign.length}건이 계속 돈다 — 더 기다리지 않고 진행한다.\n` +
+            `   부하가 겹치면 게이트 수치가 흔들릴 수 있다(#344).\n`,
+        );
+        break;
+      }
+      if (!foreignAnnounced) {
+        foreignAnnounced = true;
+        process.stderr.write(
+          `⏳ 게이트를 안 거친 무거운 실행 대기(최대 ${Math.round(FOREIGN_WAIT_MS / 60000)}분):\n` +
+            foreign.map((f) => `   pid ${f.pid} · ${f.cmd}`).join("\n") +
+            `\n   (표준 경로는 npm test · test:t* · e2e — npx vitest 직접 실행은 이 게이트를 우회한다)\n`,
+        );
+      }
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
   }
 
   const release = () => {
@@ -170,6 +264,16 @@ async function main() {
   process.on("exit", release);
 
   const child = spawn(cmd[0], cmd.slice(1), { stdio: "inherit", shell: false });
+  // 자식 PID 를 홀더 파일에 기록 — wrapper 가 `kill -9` 로 죽어도 살아 있는 자식이 있으면
+  // 슬롯을 회수하지 않는다(그러지 않으면 두 번째 무거운 실행이 함께 뜬다).
+  if (held && existsSync(held)) {
+    try {
+      const rec = JSON.parse(readFileSync(held, "utf8"));
+      writeFileSync(held, JSON.stringify({ ...rec, childPid: child.pid }));
+    } catch {
+      /* 기록 실패는 치명적이지 않다 — wrapper liveness 로 폴백 */
+    }
+  }
   child.on("error", (e) => {
     release();
     process.stderr.write(`실행 실패: ${e.message}\n`);
@@ -181,4 +285,4 @@ async function main() {
   });
 }
 
-main();
+if (isMain) main();
