@@ -51,7 +51,13 @@ describe("#279 W2 chain A/B viewers", () => {
       writeFileSync(path, out);
     };
     label(vw.outPath, "🅐 이전 코어 (weighted · 즉시점수 가중추첨) — 롤백 경로", "A · 이전 weighted");
-    label(vc.outPath, "🅑 적용된 코어 (chain · 행동사슬 EV) — engine@0.24.0 기본", "B · 적용 chain");
+    // ⚠️ 버전은 **하드코딩하지 않는다** — 0.24.0 이라고 박아 두었더니 0.29.5 까지 그 표기가 남아
+    // hero 가 "버전 24 로 표기되는데 맞냐"고 물었다(라벨은 그때 그대로, 엔진은 다섯 번 범프됐다).
+    label(
+      vc.outPath,
+      `🅑 적용된 코어 (chain · 행동사슬 EV) — ${defaultEngineConfig.version}`,
+      `B · 적용 chain (${defaultEngineConfig.version})`,
+    );
     // eslint-disable-next-line no-console
     console.log(
       `\n[#279 A/B viewers] seed ${SEED}\n  weighted ${vw.outPath}  score ${w.finalScore.home}-${w.finalScore.away} events ${vw.events}\n  chain    ${vc.outPath}  score ${c.finalScore.home}-${c.finalScore.away} events ${vc.events}\n`,
