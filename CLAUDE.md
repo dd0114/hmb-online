@@ -43,7 +43,25 @@
 2. **E2E 계약**: `npx playwright test`(이벤트↔연출 계약, `packages/engine/dev-viewer/e2e/`). 새 연출/버그는 **계약 먼저 박제**(`test.fail`, E2E-TDD) → 고치며 해제.
 3. **실화면 검증**: `/visual-capture-qa` 스킬 — Playwright 캔버스 캡처 → **Read 로 눈으로 확인** → before/after 재캡처. **좌표 추론 금지**(좌표만 보고 오판한 실적 있음).
 4. **결정론 가드**: 동작 바뀌면 `npm test`(골든 갱신 + desync 0 + resume 동일 + hygiene grep 0). §2-5 불변.
+   **config 노브를 만졌으면 `npm run test:ladder` 도**(사다리는 기본 스킵 — 바로 아래 §참조, #371).
 5. **최종 판정 = 독립 QA**: `.claude/agents/independent-qa.md`(별도 컨텍스트). **자기검수 금지**(§2-2). blocker 0 이어야 통과.
+
+### ⚠️ config 노브를 만졌으면 `npm run test:ladder` 도 돌린다 (#371)
+`npm test` 는 **항상 필요한 것**만 돈다 — 결정론(desync·resume·hygiene) · 골든 · 관계식 계약 ·
+밴드 **1점 확인**(60시드 집계 1회). **사다리(단조성) 계약은 기본 스킵**이다: 60시드 집계를 10회
+돌려 혼자 4.8분을 썼고(=`npm test` 4.3분의 대부분), 그건 "이 노브가 정말 레버인가"를 보는 것이라
+**노브를 만지는 웨이브에서** 필요하지 매 커밋마다 필요한 것이 아니다.
+
+```bash
+npm test              # 항상 도는 계약 (사다리 제외)
+npm run test:ladder   # 사다리·단조성 — engine config 노브를 만졌으면 필수
+npm run test:full     # 전량 (항상 + 사다리)
+```
+
+**⚠️ 사다리를 없앤 것이 아니다.** `decisionWeights.shoot` 이 사슬 코어에서 완전 무효가 된 것을 잡은
+게 정확히 그 사다리다(#338) — 없애면 죽은 노브를 놓친다. 삭제가 아니라 **게이트**이고, 게이트된
+스위트가 조용히 사라지지 않게 `realism/gate.test.ts`(커버리지 손실 가드)가 **항상** 검증한다.
+근거·레지스트리 = `packages/engine/src/realism/gate.ts`.
 
 ### 정기 스윕 (코드 변경 없어도 주기적으로)
 - **§8 백로그 소진**(코너 크로스 루틴 등), **E2E 계약 커버 확대**(계약 없는 연출 경로), **회귀 감시**(기계지표·골든).
@@ -93,7 +111,9 @@ docs/ research/    PRD·PLAN·조사문서
 
 ```bash
 cd ~/spider/hmb-online
-npm test                    # 전체 vitest (engine 결정론/규칙 + shared + playback)
+npm test                    # 전체 vitest (engine 결정론/규칙 + shared + playback). ⚠️ 사다리는 기본 스킵(#371)
+npm run test:ladder         # 사다리·단조성 (engine config 노브를 만졌으면 필수 — §2.5)
+npm run test:full           # 전량 = npm test + 사다리
 npm run typecheck           # tsc --noEmit
 npx vitest run packages/engine                         # 엔진만
 # 데모(match-log.json) 재생성 = generate-demo.test.ts 실행:
