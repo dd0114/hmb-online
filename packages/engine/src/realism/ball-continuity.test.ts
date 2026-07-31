@@ -94,10 +94,20 @@ function lonelyKinks(seed: string, log: MatchLog, reachM: number = TOUCH_REACH_M
 }
 
 describe("공 연속성 — 접촉 없이 휘지 않는다 (#181)", () => {
+  /**
+   * #371: 아래 세 it 이 **같은 20시드를 같은 기본 config 로** 각자 다시 돌려 60경기(≈29초)를 썼다.
+   * `runMatch` 는 §2-5 결정론 계약상 같은 입력에 같은 로그를 주므로 한 번 돌려 나눠 쓴다 —
+   * 시드·임계·판정 어느 것도 안 바꾼 순수 중복 제거다. 상주 로그 수는 20 으로, 기존 it 하나가
+   * 루프 안에서 가졌던 최고점(1)보다는 높지만 다른 파일(`ball-physics` 8·60)과 같은 자릿수다.
+   */
+  const LOGS: { seed: string; log: MatchLog }[] = REALISM_SEEDS.map((seed) => ({
+    seed,
+    log: runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, cfg),
+  }));
+
   it("리얼 config 20시드: 빈 공간에서의 공 방향 전환이 0건", () => {
     const all: Kink[] = [];
-    for (const seed of REALISM_SEEDS) {
-      const log = runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, cfg);
+    for (const { seed, log } of LOGS) {
       all.push(...lonelyKinks(seed, log));
     }
     const worst = [...all].sort((x, y) => y.deg - x.deg).slice(0, 8);
@@ -120,8 +130,7 @@ describe("공 연속성 — 접촉 없이 휘지 않는다 (#181)", () => {
     // (무제한 워프 → 최대 2.5m). 즉 엔진에 남은 결함이 아니라 지표가 비행 중간 틱을 보는 것이다.
     // 물리 가드(위 "0건" 계약)는 그대로 통과하므로, 래칫만 0.5m 완화한다.
     let worst = 0;
-    for (const seed of REALISM_SEEDS) {
-      const log = runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, cfg);
+    for (const { seed, log } of LOGS) {
       for (const k of lonelyKinks(seed, log, 0)) worst = Math.max(worst, k.nearestM);
     }
     expect(worst, `꺾임 지점 최근접 선수 최악 거리 ${worst.toFixed(1)}m`).toBeLessThan(TOUCH_REACH_M - 0.5);
@@ -133,8 +142,7 @@ describe("공 연속성 — 접촉 없이 휘지 않는다 (#181)", () => {
     // 공을 claimant 위치로 거리 무제한 대입해, 아무도 없는 곳에 멈춰 있던 공이 다음 틱에 16~20m
     // 순간이동했다(90분 128~169회). 그 사각지대를 별도 계약으로 막는다.
     const violations: string[] = [];
-    for (const seed of REALISM_SEEDS) {
-      const log = runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, cfg);
+    for (const { seed, log } of LOGS) {
       const S = log.tickSnapshots;
       const cut = repositionTicks(log);
       for (let i = 1; i + 1 < S.length; i++) {

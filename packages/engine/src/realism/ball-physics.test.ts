@@ -26,8 +26,23 @@ const select = makeSelectData();
 /** 계약 측정용 시드(진단 하네스와 같은 20시드). */
 const SEEDS = REALISM_SEEDS.slice(0, 8);
 
+/**
+ * #371: **같은 (seed, 기본 config) 을 여러 it 이 다시 시뮬하던 것을 캐시한다.**
+ * `runMatch` 는 §2-5 결정론 계약상 같은 입력에 같은 로그를 돌려주므로 이것은 순수한 중복 제거다
+ * (계약·임계·표본 어느 것도 안 바꿨다). 이 파일만 8시드를 7번 다시 돌려 56경기(≈27초)를 썼다.
+ *
+ * ⚠️ 캐시는 **SEEDS(8) 범위로만** 건다. `GUARD_SEEDS`(60) 까지 붙들면 상주 메모리가 60로그가 되고,
+ * 그건 이 파일이 지금까지 가져 본 적 없는 최고점이다(60로그는 `countHeaders` 안에서 한 번 만들어졌다
+ * 사라졌다). 60시드 쪽 중복은 캐시가 아니라 **호출 자체를 1회로 줄여서** 없앤다(아래 `HEADERS`).
+ */
+const logCache = new Map<string, MatchLog>();
+
 function logOf(seed: string): MatchLog {
-  return runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, cfg);
+  const hit = logCache.get(seed);
+  if (hit) return hit;
+  const log = runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, cfg);
+  if (SEEDS.includes(seed)) logCache.set(seed, log);
+  return log;
 }
 
 function dist(ax: number, ay: number, bx: number, by: number): number {
@@ -167,8 +182,16 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
     return c;
   }
 
+  /**
+   * #371: **한 번만 센다.** 아래 세 it 이 각각 `countHeaders()` 를 불러 60경기를 **세 번**
+   * 다시 시뮬했다(180경기 ≈ 86초). 세 it 이 보는 것은 같은 표본의 서로 다른 필드이므로
+   * 한 번 세서 나눠 쓰면 값·임계·표본이 하나도 안 바뀐다(순수 중복 제거).
+   * 60로그는 여기서 만들어져 집계 후 바로 버려진다 — 상주하지 않는다(위 `logCache` 주석).
+   */
+  const HEADERS = countHeaders();
+
   it("헤더 슛이 나온다", () => {
-    expect(countHeaders().headerShots, "헤더 슛 총 0건").toBeGreaterThan(0);
+    expect(HEADERS.headerShots, "헤더 슛 총 0건").toBeGreaterThan(0);
   });
 
   /**
@@ -177,7 +200,7 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
    * 기준선: 0.28.0 = 24건 / 60경기, 이 웨이브 = 28건(**올랐다**). 하한 20 = 기준선의 0.83배.
    */
   it("헤더 슛 총량이 기준선 아래로 침식되지 않는다 (60경기 ≥ 20건)", () => {
-    expect(countHeaders().headerShots, "헤더 슛 총량 래칫").toBeGreaterThanOrEqual(20);
+    expect(HEADERS.headerShots, "헤더 슛 총량 래칫").toBeGreaterThanOrEqual(20);
   });
 
   // ── 헤더 골 = **S5(크로스 생성기)에서 해소** — 지금은 test.fail 로 박제한다 ──────────────
@@ -196,7 +219,7 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
   // 공격수가 골 근처면 헤더 슛이 된다. 크로스 없이도 **공중볼 경합의 총량**이 올라간 것이 원인이다.
   // → `it.fails` 해제. 이제 이 계약은 정방향 게이트다.
   it("헤더 슛 중 골도 0 이 아니다", () => {
-    expect(countHeaders().headerGoals, "헤더 골 총 0건").toBeGreaterThan(0);
+    expect(HEADERS.headerGoals, "헤더 골 총 0건").toBeGreaterThan(0);
   });
 
   // ── #327 착지 계약 — "떠 있는 공은 반드시 떨어진다" ────────────────────────────────

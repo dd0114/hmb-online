@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { aggregateRealism, GUARD_SEEDS } from "./harness";
+import { LADDER, LADDER_TAG } from "./gate";
 
 /**
  * G-A 슛 빈도 계약 (#99, §2.5 E2E-TDD).
@@ -70,7 +71,13 @@ describe("G-A 슛 빈도 밴드(팀당 12–14) + hero 목표 골(경기당 5)",
   });
 });
 
-describe("G-A 단조성: 슛 노브↑ → 슛 수↑ (config 가 실제 레버)", () => {
+// ── #371: 이 describe 는 **온디맨드**다 (기본 스킵, `HMB_LADDER=1` 로 켠다) ─────────────────
+// 아래 3개 it 은 60시드 집계를 **총 10회** 돌린다(사다리 4+1 · 볼륨 3 · weighted 2점) = 4.8분,
+// `npm test` 4.3분의 대부분이 이것이었다. 사다리는 "노브가 정말 레버인가"를 보는 계약이라
+// **노브를 만지는 웨이브에서** 필요하고 매 커밋마다 필요하지 않다. 위 밴드 describe(집계 1회,
+// 28.8초)는 **계속 항상 돈다** — 밴드 이탈은 어떤 변경에서도 즉시 잡혀야 하기 때문이다.
+// ⚠️ 삭제가 아니라 게이트다. 근거·규칙·실행법 = `gate.ts`, 커버리지 손실 가드 = `gate.test.ts`.
+describe.skipIf(!LADDER)(`G-A 단조성: 슛 노브↑ → 슛 수↑ (config 가 실제 레버) ${LADDER_TAG}`, () => {
   // ── engine@0.24.0 사슬 코어 채택으로 **레버가 바뀌었다** (#279) ────────────────────────
   // 이 계약의 목적은 예나 지금이나 하나다: **슛 빈도를 config 로 움직일 수 있는가**(구조적 회귀
   // 가드 + S8 밸런스의 전제). 바뀐 것은 "그 노브가 무엇인가" 뿐이다.
