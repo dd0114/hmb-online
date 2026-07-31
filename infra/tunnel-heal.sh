@@ -115,6 +115,43 @@ pages_backend(){
     | sed -n 's/.*"apiBase" *: *"\([^"]*\)".*/\1/p' | head -1
 }
 
+# ── 전파(publish) + **독립 검증** + 재시도 ─────────────────────────────────────────
+#
+# ⚠️ 왜 publish 의 종료코드를 믿지 않는가 (2026-07-31 실장애, 로그인 불가 530 ×2회):
+#    그날 `HEAL_OK` 가 찍혔는데 `config.json` 은 **죽은 URL 그대로**였다. 원인은 두 겹이었다 —
+#    ① `wrangler pages deploy` 가 느린 회선에서 상한(150s)에 걸려 **SIGKILL(rc 137)** 로 죽었는데
+#       publish 는 124 만 안내하고 137 은 조용히 넘겨 "왜 안 됐는지"가 로그에 안 남았다.
+#    ② 그 결과가 어떻든, 치유 경로는 **"Pages 가 실제로 그 주소를 서빙하는가"를 스스로 확인하지
+#       않았다**. 게다가 아래 쿨다운이 `HEAL_OK` 시각을 기준으로 잡혀 있어서, 거짓 HEAL_OK 는
+#       **교정용 재전파까지 180초 동안 막아 버린다**(장애가 스스로 연장된다).
+#
+# 그래서 여기서는 **publish 를 돌린 뒤 워치독이 직접 다시 조회**하고, 일치할 때만 성공으로 본다.
+# 실패하면 백오프로 재시도하고, 끝내 못 하면 성공으로 기록하지 않는다(= 쿨다운도 시작되지 않아
+# 다음 틱이 곧바로 다시 시도한다).
+publish_verified(){
+  local url="$1" src="$2" tries="${3:-${HMB_PUBLISH_TRIES:-3}}"
+  local i=1 backoff="${HMB_PUBLISH_BACKOFF:-15}" served=""
+  while [ "$i" -le "$tries" ]; do
+    HMB_LOCK_HELD=1 HMB_PUBLISH_SOURCE="$src" "$PUBLISH" "$url" >> "$HEAL_LOG.publish" 2>&1 || true
+    # 독립 검증 — publish 의 자기 신고가 아니라 **엣지가 주는 값**으로 판정한다.
+    # 방금 올린 직후엔 엣지마다 반영이 몇 초 어긋나므로 잠깐 폴링한다.
+    local j
+    for j in 1 2 3 4 5 6; do
+      served=$(pages_backend)
+      if [ "$served" = "$url" ]; then
+        [ "$i" -gt 1 ] && record PUBLISH_RETRY_OK "url=$url try=$i/$tries"
+        return 0
+      fi
+      sleep 5
+    done
+    record PUBLISH_UNVERIFIED "try=$i/$tries url=$url served=${served:-<응답없음>}"
+    say "· 전파 미확인 ($i/$tries) — web 이 아직 '${served:-<응답없음>}' 을 본다"
+    i=$((i + 1))
+    [ "$i" -le "$tries" ] && { sleep "$backoff"; backoff=$((backoff * 2)); }
+  done
+  return 1
+}
+
 # 터널은 멀쩡한데 web 만 옛 주소를 보고 있는 경우 = **터널을 건드릴 이유가 없다**.
 # config 만 다시 올린다(수동 재기동·전파 실패 후 복구가 여기로 흡수된다).
 publish_only(){
@@ -122,8 +159,8 @@ publish_only(){
   [ -x "$PUBLISH" ] || { record PUBLISH_FAIL "스크립트 없음: $PUBLISH"; return 1; }
   if ! try_lock; then say "· 다른 배포/치유 진행 중 — 전파 보류"; return 0; fi
   say "▶ 터널은 정상인데 web 이 다른 주소를 본다 → config 만 재전파"
-  if HMB_LOCK_HELD=1 HMB_PUBLISH_SOURCE=heal-publish-only "$PUBLISH" "$url" >> "$HEAL_LOG.publish" 2>&1; then
-    record PUBLISH_ONLY "url=$url"; say "✓ 전파 완료 — web → $url"; return 0
+  if publish_verified "$url" heal-publish-only; then
+    record PUBLISH_ONLY "url=$url"; say "✓ 전파 완료·검증됨 — web → $url"; return 0
   fi
   record PUBLISH_FAIL "url=$url (로그: $HEAL_LOG.publish)"; say "✗ 전파 실패 — $HEAL_LOG.publish"; return 1
 }
@@ -229,13 +266,17 @@ heal(){
     record HEAL_FAIL "publish 스크립트 없음: $PUBLISH"
     say "✗ 전파 스크립트가 없다: $PUBLISH (install-tunnel-heal.sh 재실행 필요)"; return 1
   fi
-  if HMB_LOCK_HELD=1 HMB_PUBLISH_SOURCE=heal "$PUBLISH" "$new_url" >> "$HEAL_LOG.publish" 2>&1; then
+  # ⚠️ `HEAL_OK` 는 **web 이 실제로 새 주소를 서빙하는 것까지 확인한 뒤에만** 찍는다.
+  #    이 한 줄이 계약이다: HEAL_OK = "테스터가 접속된다". publish 종료코드로 대신하지 않는다.
+  if publish_verified "$new_url" heal; then
     record HEAL_OK "old=${old_url:-<없음>} new=$new_url"
-    say "✓ 치유 완료 — web 이 $new_url 을 가리킨다"
+    say "✓ 치유 완료·검증됨 — web 이 $new_url 을 가리킨다"
     return 0
   fi
-  record HEAL_FAIL "전파 실패 url=$new_url (로그: $HEAL_LOG.publish)"
-  say "✗ 전파 실패 — $HEAL_LOG.publish 확인 (터널 자체는 살아있다: $new_url)"
+  # 터널은 살아있는데 전파만 못 한 상태 = 부분 실패. **성공으로 기록하지 않는다** —
+  # 그래야 쿨다운이 시작되지 않고 다음 틱의 publish-only 경로가 즉시 이어서 재시도한다.
+  record HEAL_UNPROPAGATED "url=$new_url — 터널은 살아있다. 다음 틱이 재전파한다 (로그: $HEAL_LOG.publish)"
+  say "✗ 전파 미완 — 터널은 정상($new_url)인데 web 이 아직 못 따라왔다. 다음 틱에서 재시도."
   return 1
 }
 

@@ -132,7 +132,7 @@ TIMEOUT_BIN=$(command -v timeout || command -v gtimeout || true)
 run_deploy(){
   if [ -n "$WRANGLER" ]; then set -- "$WRANGLER"; else set -- npx -y wrangler; fi
   if [ -n "$TIMEOUT_BIN" ]; then
-    "$TIMEOUT_BIN" -k 10 "${HMB_DEPLOY_TIMEOUT:-150}" "$@" pages deploy "$CACHE" \
+    "$TIMEOUT_BIN" -k 10 "${HMB_DEPLOY_TIMEOUT:-240}" "$@" pages deploy "$CACHE" \
       --project-name="$PROJECT" --branch=main --commit-dirty=true >/dev/null
   else
     "$@" pages deploy "$CACHE" --project-name="$PROJECT" --branch=main --commit-dirty=true >/dev/null
@@ -140,7 +140,13 @@ run_deploy(){
 }
 if ! run_deploy; then
   rc=$?
-  [ "$rc" = 124 ] && echo "[publish] ✗ wrangler 시간초과(${HMB_DEPLOY_TIMEOUT:-150}s) — 다음 틱에서 재시도된다" >&2
+  # ⚠️ 124 만 보면 안 된다 — `timeout -k 10` 은 유예 후 **SIGKILL** 을 보내고 그때 rc 는 **137** 이다.
+  #    2026-07-31 실장애에서 로그에 남은 건 `Killed: 9` 한 줄뿐이었고(rc 137) 위 안내가 안 찍혀서,
+  #    "전파가 왜 안 됐는지"가 보이지 않았다. 두 코드를 같이 잡아 사람이 읽을 수 있게 남긴다.
+  case "$rc" in
+    124|137) echo "[publish] ✗ wrangler 시간초과/강제종료(rc=$rc, 상한 ${HMB_DEPLOY_TIMEOUT:-240}s) — 전파 안 됐다. 다음 틱에서 재시도된다" >&2 ;;
+    *)       echo "[publish] ✗ wrangler 배포 실패(rc=$rc) — 전파 안 됐다" >&2 ;;
+  esac
   exit "$rc"
 fi
 
