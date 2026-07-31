@@ -26,6 +26,16 @@ import {
 } from "./stage-state";
 import styles from "./StageShell.module.css";
 
+/**
+ * 시트 높이 등급 → 클래스. 등급 축은 `stage-state.sheetHeight` 가 소유하고 여기선 이름만 붙인다 —
+ * 삼항으로 쓰면 등급이 셋이 된 순간(#348 `input`) 새 등급이 조용히 `info` 로 떨어진다(실제로 그 모양이었다).
+ */
+const SHEET_HEIGHT_CLASS: Record<"info" | "input" | "state", string> = {
+  info: styles.sheetInfo!,
+  input: styles.sheetInput!,
+  state: styles.sheetState!,
+};
+
 interface StageShellProps {
   match: MatchDetail;
   homeName: string;
@@ -131,7 +141,7 @@ export function StageShell({
       <div
         className={`${styles.body} ${tabs.length === 0 ? styles.bodyNoSheet : ""} ${
           managing ? styles.bodyManaging : ""
-        }`}
+        } ${sheetKind === "input" ? styles.bodyInput : ""}`}
       >
         {!managing && (
           <section className={styles.stage} data-testid="stage-canvas">
@@ -151,7 +161,7 @@ export function StageShell({
 
         {activeTab && (
           <aside
-            className={`${styles.sheet} ${sheetKind === "state" ? styles.sheetState : styles.sheetInfo}`}
+            className={`${styles.sheet} ${SHEET_HEIGHT_CLASS[sheetKind ?? "info"]}`}
             data-testid="stage-sheet"
             data-sheet={sheetKind}
           >
