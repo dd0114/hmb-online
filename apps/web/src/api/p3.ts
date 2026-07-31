@@ -84,28 +84,49 @@ export interface MeResponseP3 {
 }
 
 /** GET /api/admin/users?q= — 유저 목록·검색(AC-C1). */
+/**
+ * ⚠️ **서버 응답 그대로다**(openapi `AdminUserRow`). 예전 손 타입은 `userId`·`provider` 였고
+ * 전적(wins/draws/losses)까지 행에 있다고 적혀 있었는데 **셋 다 서버에 없다** — 그래서
+ * 운영 유저 목록이 라이브에서 **항상 비어 있었다**(#342). 목이 `{users:[…]}` 로 거짓을 흉내내서
+ * e2e 가 그걸 못 봤다. 전적은 행이 아니라 **상세**(`AdminUserDetail.records`)에 있다.
+ */
 export interface AdminUserRow {
-  userId: string;
+  id: string;
   nickname: string;
-  provider: string;
+  authProvider: string;
+  isAdmin: boolean;
   points: number;
-  wins: number;
-  draws: number;
-  losses: number;
   createdAt: string;
 }
 
+/** `GET /api/admin/users` = **페이지 객체**다(`{items,total,limit,offset}`). `{users:[…]}` 가 아니다. */
+export interface AdminUserPage {
+  items: AdminUserRow[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/** @deprecated 서버에 이런 모양은 없다 — `AdminUserPage` 를 쓴다(#342). */
 export interface AdminUserListResponse {
   users: AdminUserRow[];
 }
 
 /** GET /api/admin/users/{userId} — 보유·덱·전적 상세. */
+/**
+ * `GET /api/admin/users/{id}` — **서버 응답 그대로**(openapi `AdminUserDetail`).
+ *
+ * ⚠️ 예전 손 타입은 `ownedPlayers`·`deckFormation`·`deckStarters`·`recentLedger` 였는데 **넷 다
+ * 서버에 없다** — 상세 패널이 라이브에서 통째로 빈 값이었다(#342). 목록 결함과 같은 뿌리이고,
+ * 목이 그 모양을 흉내내 e2e 가 못 봤다. 전적도 `user` 가 아니라 **`records`** 에 있다.
+ * `deck` 은 **null 일 수 있다**(덱 없는 유저).
+ */
 export interface AdminUserDetail {
   user: AdminUserRow;
-  ownedPlayers: number;
-  deckFormation: string | null;
-  deckStarters: number;
-  recentLedger: AdminLedgerEntry[];
+  players: { distinct: number; total: number };
+  deck: { id: string; name: string; formation: string; starters: number; bench: number; updatedAt: string } | null;
+  presets: { promptPresets: number; teamPresets: number };
+  records: { wins: number; draws: number; losses: number };
 }
 
 /** POST /api/admin/users/{userId}/points — 포인트 지급/차감. delta 음수=차감. */
@@ -114,10 +135,21 @@ export interface AdminGrantRequest {
   reason: string;
 }
 
+/**
+ * `POST /api/admin/users/{id}/points` — **서버 응답 그대로**(`AdminPointsService.GrantResult`).
+ *
+ * ⚠️ 예전 손 타입은 `{points, entry:{delta,…}}` 였는데 서버엔 그런 필드가 **없다** — 지급이 성공한
+ * 직후 화면이 `res.entry.delta` 에서 터졌다(#342). 잔액은 `balance`, 증감은 `delta` 다.
+ * `applied:false` = 같은 `Idempotency-Key` 의 재전송이라 아무것도 바뀌지 않았다는 뜻(웹은 아직
+ * 키를 보내지 않으므로 항상 true).
+ */
 export interface AdminGrantResponse {
   userId: string;
-  points: number;
-  entry: AdminLedgerEntry;
+  delta: number;
+  applied: boolean;
+  balance: number;
+  idempotencyKey: string;
+  auditId: string | null;
 }
 
 /** admin 액션 원장(감사 로그, AC-C1). */

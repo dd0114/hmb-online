@@ -22,7 +22,7 @@ import type {
   AdminStarterTopRequest,
   AdminGrantResponse,
   AdminUserDetail,
-  AdminUserListResponse,
+  AdminUserPage,
   MeResponseP3,
 } from "./p3";
 import { useToken } from "../auth/TokenContext";
@@ -45,7 +45,7 @@ export function useAdminUsers(q: string, enabled: boolean = true) {
     queryKey: ["admin", "users", term],
     queryFn: () => {
       const path = term ? `${ADMIN_USERS_PATH}?q=${encodeURIComponent(term)}` : ADMIN_USERS_PATH;
-      return apiFetch<AdminUserListResponse>(path);
+      return apiFetch<AdminUserPage>(path);
     },
     enabled: Boolean(token) && enabled,
   });

@@ -94,8 +94,10 @@ export function AdminPage() {
           setReason("");
           setTouched(false);
           setConfirmDelta(null);
+          // ⚠️ `res.entry.delta`·`res.points` 는 **서버에 없다**(#342) — 지급 성공 직후 여기서
+          //    터졌다. 서버가 주는 것은 `delta` 와 `balance` 다.
           setNotice(
-            `${formatSignedDelta(res.entry.delta)} 반영 — 잔액 ${formatAmount(pointCurrency, res.points)}`,
+            `${formatSignedDelta(res.delta)} 반영 — 잔액 ${formatAmount(pointCurrency, res.balance)}`,
           );
         },
         onError: (err) => {
@@ -149,8 +151,14 @@ export function AdminPage() {
     );
   }
 
-  const users: AdminUserRow[] = list.data?.users ?? [];
-  const selectedRow = detail.data?.user ?? users.find((u) => u.userId === selected) ?? null;
+  /**
+   * ⚠️ **`items` 다.** 예전엔 `list.data?.users` 를 읽었는데 서버는 `{items,total,limit,offset}` 를
+   * 준다 — 그래서 이 목록이 **라이브에서 항상 비어 있었고**(운영자가 유저를 못 찾으니 포인트 지급도
+   * 막혔다) 목이 `{users:[…]}` 로 거짓을 흉내내 e2e 가 그걸 못 봤다(#342).
+   * 응답 형태를 믿지 않는다 — 배열이 아니면 빈 목록으로 접는다(구 서버·프록시의 200 `{}`).
+   */
+  const users: AdminUserRow[] = Array.isArray(list.data?.items) ? list.data.items : [];
+  const selectedRow = detail.data?.user ?? users.find((u) => u.id === selected) ?? null;
 
   return (
     <Layout header={header} nav>
@@ -273,34 +281,34 @@ export function AdminPage() {
                     <th scope="col">닉네임</th>
                     <th scope="col">provider</th>
                     <th scope="col">{pointCurrency.name}</th>
-                    <th scope="col">전적</th>
+                    {/* ⚠️ 전적 열은 없다 — 서버 행에 wins/draws/losses 가 없고(상세에만 있다),
+                        예전 표는 없는 필드를 그리려다 목에서만 살아 있었다(#342). */}
                     <th scope="col">가입일</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map((u) => (
                     <tr
-                      key={u.userId}
-                      className={u.userId === selected ? styles.rowActive : undefined}
-                      data-testid={`admin-user-row-${u.userId}`}
-                      data-selected={u.userId === selected ? "true" : undefined}
+                      key={u.id}
+                      className={u.id === selected ? styles.rowActive : undefined}
+                      data-testid={`admin-user-row-${u.id}`}
+                      data-selected={u.id === selected ? "true" : undefined}
                     >
                       <td>
                         <button
                           type="button"
                           className={styles.linkBtn}
-                          data-testid={`admin-user-select-${u.userId}`}
+                          data-testid={`admin-user-select-${u.id}`}
                           onClick={() => {
-                            setSelected(u.userId);
+                            setSelected(u.id);
                             setNotice(null);
                           }}
                         >
                           {u.nickname}
                         </button>
                       </td>
-                      <td>{u.provider}</td>
+                      <td>{u.authProvider}</td>
                       <td className={styles.num}>{u.points.toLocaleString("en-US")}</td>
-                      <td className={styles.nowrap}>{formatRecord(u.wins, u.draws, u.losses)}</td>
                       <td className={styles.nowrap}>{formatStamp(u.createdAt)}</td>
                     </tr>
                   ))}
@@ -332,23 +340,27 @@ export function AdminPage() {
                 </div>
                 <div className={styles.stat}>
                   <dt>보유 선수</dt>
-                  <dd data-testid="admin-detail-owned">{detail.data.ownedPlayers}</dd>
+                  {/* 서버는 `{distinct,total}` 을 준다 — 종류/장수. 하나만 그리면 중복 보유가 안 보인다. */}
+                  <dd data-testid="admin-detail-owned">
+                    {detail.data.players.distinct} 종 / {detail.data.players.total} 장
+                  </dd>
                 </div>
                 <div className={styles.stat}>
                   <dt>덱 포메이션</dt>
-                  <dd data-testid="admin-detail-formation">{detail.data.deckFormation ?? "—"}</dd>
+                  <dd data-testid="admin-detail-formation">{detail.data.deck?.formation ?? "—"}</dd>
                 </div>
                 <div className={styles.stat}>
                   <dt>선발</dt>
-                  <dd data-testid="admin-detail-starters">{detail.data.deckStarters}</dd>
+                  {/* 덱이 없는 유저는 `deck: null` 이다 — 0 을 그리면 "선발 0명"이라는 거짓이 된다. */}
+                  <dd data-testid="admin-detail-starters">{detail.data.deck?.starters ?? "—"}</dd>
                 </div>
                 <div className={styles.stat}>
                   <dt>전적</dt>
                   <dd data-testid="admin-detail-record">
                     {formatRecord(
-                      detail.data.user.wins,
-                      detail.data.user.draws,
-                      detail.data.user.losses,
+                      detail.data.records.wins,
+                      detail.data.records.draws,
+                      detail.data.records.losses,
                     )}
                   </dd>
                 </div>
@@ -410,36 +422,13 @@ export function AdminPage() {
               )}
             </form>
 
-            <h3 className={styles.formTitle}>원장 (감사 로그)</h3>
-            <div className={styles.tableScroll}>
-              <table className={styles.table} data-testid="admin-ledger">
-                <thead>
-                  <tr>
-                    <th scope="col">증감</th>
-                    <th scope="col">사유</th>
-                    <th scope="col">actor</th>
-                    <th scope="col">시각</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(detail.data?.recentLedger ?? []).map((e) => (
-                    <tr key={e.id} data-testid={`admin-ledger-row-${e.id}`}>
-                      <td className={e.delta >= 0 ? styles.plus : styles.minus}>
-                        {formatSignedDelta(e.delta)}
-                      </td>
-                      <td>{e.reason}</td>
-                      <td className={styles.nowrap}>{e.actor}</td>
-                      <td className={styles.nowrap}>{formatStamp(e.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {detail.data && detail.data.recentLedger.length === 0 && (
-              <p className={styles.muted} data-testid="admin-ledger-empty">
-                기록된 원장이 없습니다
-              </p>
-            )}
+            {/*
+              ⚠️ **원장(감사 로그) 표를 지웠다**(#342). 서버 `GET /api/admin/users/{id}` 응답에
+              `recentLedger` 같은 필드가 **없다** — 화면은 항상 "기록된 원장이 없습니다"만 그렸고,
+              그게 "이 유저는 지급 이력이 없다"는 **거짓말**로 읽혔다(실제로는 조회조차 안 했다).
+              운영엔 유용한 정보라 서버 필드 신설로 되살리는 것은 **별도 이슈**로 남겼다 — 없는 것을
+              있는 척 그리는 상태로 두지는 않는다.
+            */}
           </section>
         )}
 
