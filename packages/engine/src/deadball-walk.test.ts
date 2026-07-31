@@ -104,7 +104,17 @@ function scanRestarts(seed: string = demoSeed): Scan {
     // restart@1349, 하프 마크 1350.)
     // ⚠️ `ballLeft` 로 걸러지지 않는다 — 후반 킥오프가 `anyRestartTicks` 에 들어 있어 루프가
     // "새 재시작 선언"으로 창을 닫기 때문이다(그건 재시작 실행이 아니라 하프 종료다).
-    if (!reached && ci < halfTick && ci + MAX_WIN >= halfTick) { out.checked--; continue; }
+    // ⚠️ **점프(maxStep) 판정까지 같이 건너뛰지 않는다**(독립검증 m4): 도달할 시간이 없었다는
+    // 사실은 "도달 못 함" 단언만 무의미하게 만들 뿐, **순간배치/클램프는 그 창에서도 일어나면
+    // 안 된다**. 그래서 여기서는 도달 판정만 면제하고 점프는 계속 본다.
+    const halfCut = !reached && ci < halfTick && ci + MAX_WIN >= halfTick;
+    if (halfCut) {
+      out.checked--;
+      if (maxStep > MAX_STEP) {
+        out.jumps.push(`restart@${ci} taker(${takerId}) 단일틱 점프 ${maxStep.toFixed(1)}m — 순간배치/클램프(걷기 아님)`);
+      }
+      continue;
+    }
     out.drifts.push(...drifts);
     if (maxStep > MAX_STEP) {
       out.jumps.push(`restart@${ci} taker(${takerId}) 단일틱 점프 ${maxStep.toFixed(1)}m — 순간배치/클램프(걷기 아님)`);

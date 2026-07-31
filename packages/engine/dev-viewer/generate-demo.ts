@@ -35,6 +35,11 @@ export const showcaseConfig = {
   // 실제와 다른 버전을 보고한다(0.9.0 로 굳어 있었음).
   version: `${defaultEngineConfig.version}-showcase`,
   matchMinutes: 24,
+  // ⚠️ `displayMinutes` 는 **일부러 안 적는다** = 리얼(90)을 상속한다(#365). 그래서 24분 데모의
+  // 화면 시계도 제품과 같은 **0~90'** 로 흐른다(스케일 3.75, 실측 half_whistle 720틱=45' ·
+  // full_whistle 1439틱=90'). 쇼케이스는 "제품 화면이 어떻게 보이나"를 보여주는 물건이라 표기
+  // 축은 리얼을 따라가는 것이 맞다 — 여기에 24 를 적으면 데모만 0~24' 로 흘러 제품과 달라진다.
+  // (루트 §2-6 리얼/쇼케이스 분리는 **밸런스 노브**의 규율이지 표기 축의 규율이 아니다.)
   decisionWeights: {
     ...defaultEngineConfig.decisionWeights,
     // ⚠️ engine@0.24.0(사슬 코어 채택, #279)부터 이 값은 **chain 모드에서 아무 효과가 없다** —

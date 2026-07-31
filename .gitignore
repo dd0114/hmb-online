@@ -15,6 +15,9 @@ apps/web/.stage/
 apps/web/.stage-capture/
 apps/web/.p233/
 tools/qa_*.mjs
+# QA 임시 캡처 디렉토리. ⚠️ 구 규칙(`tools/qa_*.mjs`)은 **스크립트만** 걸러서, 독립 QA 가 남긴
+# 스크린샷 11개가 다른 세션 커밋에 `git add -A` 로 딸려 들어갔다(#365). 디렉토리째 막는다.
+tools/qa_shots_tmp/
 tools/reqa*.mjs
 tools/*_log.json
 research/engine-realism-gap.data.md

@@ -129,10 +129,16 @@ tickToMinute(tick) = floor(tick * msPerTick / 60000 * scale)     // = floor(tick
 
 ### 2.6 리플레이·재개 호환
 
-- `config.version` **범프 필수**(경기 길이 = 재현 계약). 그 순간 진행 중 매치의 `resumeState` 가
-  버전 불일치로 거부된다 → **배포 시점에 하프타임/GEN2 에 있던 매치는 후반을 못 돌린다**
+- `config.version` **범프 필수**(경기 길이 = 재현 계약). 올리면 진행 중 매치의 `resumeState` 가
+  버전 불일치로 **거부**된다 → 배포 시점에 하프타임/GEN2 에 있던 매치는 후반을 못 돌린다
   (#221 이 이미 적어둔 주의. 회수 경로 = `POST /api/matches/{id}/abandon`, #217).
   배포 전 진행 중 매치를 비우거나 테스터에게 고지한다.
+- ⚠️ **안 올리면 "거부"가 아니라 "무음 손상"이다**(독립검증 m6 이 코드로 확인). 버전 비교
+  (`packages/server/src/runner/simulate.ts`)가 유일한 관문인데 양쪽이 같은 문자열이면 통과하고,
+  `deserializeCarry` 는 **러너 쪽 config** 로 carry 를 재조립한다 → 구 빌드의 `nextTick = 2700` 에
+  새 `totalTicks = 2700` 이 만나 `simulateRange` 가 **0틱**을 돈다. **후반이 통째로 빈 채
+  `full_whistle` 이 붙는다** — 400 도 예외도 안 난다. 그래서 이건 "재개 실패 주의"가 아니라
+  **머지 차단 사유**다.
 - **끝난 경기 다시보기는 안 깨진다**(§2.3).
 
 ---
