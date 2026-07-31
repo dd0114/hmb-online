@@ -1117,7 +1117,11 @@ export const defaultEngineConfig: EngineConfig = {
   //   ⓒ 수비 블록의 공 추종 비대칭 해소(defendCompactX 0.16→0.32) + GK 스위퍼 라인
   version: "engine@0.29.0",
   msPerTick: 1000,
-  matchMinutes: 90,
+  // #365: 90 → 45. **경기 자체를 짧게** 만드는 것이 하프 3분의 유일한 수단이다(같은 틱을 더 빨리
+  // 재생하는 안 = 2.3배속은 hero 가 실관전으로 이미 기각, #221). 45 를 고른 근거는 둘 —
+  // ① 배속 1.2 에서 하프 실측 p50 176.6s(≈3분) ② 표기 스케일이 정확히 2 라 표기 1분 = 30틱.
+  matchMinutes: 45,
+  displayMinutes: 90,
   pitch: { width: 105, height: 68, goalWidth: 7.32 },
   coordMode: "continuous",
   gridSize: 5,

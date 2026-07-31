@@ -51,9 +51,12 @@ const noRun = run({
 });
 
 describe("#314 ⓐ 걷어내기", () => {
-  it(`걷어내기가 팀당 10–25회/경기 나온다 (현재 ${cur.clearances.toFixed(2)})`, () => {
-    expect(cur.clearances).toBeGreaterThanOrEqual(10);
-    expect(cur.clearances).toBeLessThanOrEqual(25);
+  it(`걷어내기가 팀당 5–12.5회/경기 나온다 (현재 ${cur.clearances.toFixed(2)})`, () => {
+    // #365(경기 90 → 45분): 구 밴드 10–25 는 90분 경기에서 뜬 값이다. 경기 길이에 비례하는
+    // 카운트 지표라 **같은 밴드를 길이로 환산**한다(밴드를 새로 만들지 않는다 = 기준 출처 유지).
+    const scale = cfg.matchMinutes / 90;
+    expect(cur.clearances).toBeGreaterThanOrEqual(10 * scale);
+    expect(cur.clearances).toBeLessThanOrEqual(25 * scale);
   });
 
   it("롤백 스위치(clearance.enabled=false)면 0 이다 — 이 행동이 실제로 새 축임을 증명", () => {

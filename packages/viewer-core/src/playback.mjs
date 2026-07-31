@@ -37,7 +37,13 @@ export function inHighlight(tick, keyTicks, pre, post) {
  * 성립한다. 어느 한쪽에 숫자를 다시 적으면 조용히 갈라진다.
  */
 export const PACE = {
-  TICKS_PER_SEC: 2, // 배율 1x = 2 게임초/실초
+  // #365: 2 → 2.4 (**재생 1.2배속**, hero 스펙). 여기에 넣는 이유는 이 상수가 렌더 루프와 재생
+  // 길이 모델의 공통 SoT 라서다 — web 배율(`live-pace.paceRate`)에 넣으면 창 정합 가드
+  // (`tools/pace-config.test.ts`)가 계속 1.0x 길이를 재서 어긋난 채 green 이 되고, 다시보기·QA 뷰어·
+  // standalone 에는 배속이 아예 안 걸린다(라이브만 빨라진다).
+  // ⚠️ 홀드(FOUL_HOLD_MS·DEADBALL_PAUSE_MS·골 정지)는 **읽는 시간**이라 배속 대상이 아니다 →
+  // 실효 단축은 1.2배보다 작다(45분 하프 실측 p50 208.8s → 176.6s = ×0.846).
+  TICKS_PER_SEC: 2.4, // 배율 1x = 2.4 게임초/실초
   CRUISE_SPEED: 4, // 빌드업 구간 배속
   HL_SPEED: 1, // 키장면(슛·골·PK) 구간 배속 — 슬로우
   HL_PRE: 8, // #83 하이라이트 창 비대칭(앞)

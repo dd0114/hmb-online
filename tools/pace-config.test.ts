@@ -45,8 +45,11 @@ describe("#216 AC2 — 서버 창(half-real-ms) ↔ 켬 모드 실측 재생 길
           `(비율 ${ratio.toFixed(3)}) — node tools/measure-playback-pace.mjs 로 다시 재고 맞춰라`,
       ).toBeLessThan(TOLERANCE);
 
-      // 하프가 실제로 리얼 config(2700틱)인지도 같이 본다 — 픽스처가 짧아지면 위 비교가 무의미해진다.
-      expect(carry.snapshots.length).toBeGreaterThan(2000);
+      // 하프가 실제로 리얼 config 인지도 같이 본다 — 픽스처가 짧아지면 위 비교가 무의미해진다.
+      // #365 로 경기 길이가 노브가 됐으므로(90 → 45분) 상수 대신 config 에서 유도한다. 그래도
+      // "짧은 픽스처로 잰 것"은 여전히 걸린다(리얼 config 의 하프 틱과 정확히 같아야 한다).
+      const realHalfTicks = Math.round((defaultEngineConfig.matchMinutes * 60_000) / defaultEngineConfig.msPerTick / 2);
+      expect(carry.snapshots.length).toBe(realHalfTicks);
     },
     120_000,
   );

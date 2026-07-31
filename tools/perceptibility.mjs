@@ -2,6 +2,7 @@
 // 브라우저 없이 화면상 공/선수 이동속도·간격·골 빈도·관전시간을 계산해 가독성 판정.
 // 사용: node tools/perceptibility.mjs [경로]  (기본: packages/engine/dev-viewer/match-log.json)
 import { readFileSync } from "node:fs";
+import { PACE } from "../packages/viewer-core/src/playback.mjs";
 
 const path = process.argv[2] || "packages/engine/dev-viewer/match-log.json";
 const log = JSON.parse(readFileSync(path, "utf8"));
@@ -13,7 +14,9 @@ const PITCH_W = 105, PITCH_H = 68;
 const CANVAS_W = 1050, MARGIN = 20;
 const PX_PER_M = (CANVAS_W - 2 * MARGIN) / PITCH_W; // 전체뷰 배율(약 9.6 px/m)
 const FOLLOW_ZOOM = 2.6;
-const TICKS_PER_SEC = 2; // 1x (뷰어와 일치)
+// 뷰어 코어 페이싱 SoT 를 그대로 읽는다(#365) — 여기 숫자를 다시 적으면 배속을 바꾼 날
+// 이 도구만 옛 속도로 "읽을 만하다"고 판정한다.
+const TICKS_PER_SEC = PACE.TICKS_PER_SEC;
 const CRUISE = 4, HL = 1, HL_WINDOW = 8;
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);

@@ -242,7 +242,7 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
     ).toBeLessThanOrEqual(diagM);
   });
 
-  it("스로인/팀 이 벤치 밴드(17–19) 안이다", () => {
+  it("스로인/팀 이 벤치 밴드의 경기 길이 환산(8.5–9.5) 안이다", () => {
     // #327 의 두 번째 요구: 스로인에 **절대 게이트가 없어서** 18.09 → 30.05 회귀가
     // 조용히 통과했다. 벤치 대조표(`bench.ts`)에만 있으면 스윕 때만 보인다.
     let throwIns = 0;
@@ -253,10 +253,16 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
     }
     const perTeam = throwIns / SEEDS.length / 2;
     // eslint-disable-next-line no-console
-    console.log(`  [#327] 스로인 ${perTeam.toFixed(2)}/팀경기 (밴드 17–19)`);
-    // 8시드는 60시드보다 분산이 크므로 ±2 여유를 준다(60시드 판정값 18.54).
-    expect(perTeam, `스로인 ${perTeam.toFixed(2)}/팀경기`).toBeGreaterThanOrEqual(15);
-    expect(perTeam, `스로인 ${perTeam.toFixed(2)}/팀경기`).toBeLessThanOrEqual(21);
+    console.log(`  [#327] 스로인 ${perTeam.toFixed(2)}/팀경기 (밴드 8.5–9.5 · 경기 ${defaultEngineConfig.matchMinutes}분 환산)`);
+    // #365(경기 90 → 45분): 벤치(`bench.ts` 17–19)는 **90분 축구** 값이라 그대로 쓸 수 없다.
+    // 스로인은 실측이 거의 선형으로 따라온다(90분 17.45 → 45분 9.35 = ×0.54)라 **환산이 성립하는
+    // 몇 안 되는 지표**다(슛·골은 초반 밀도 때문에 선형이 아니다 — shot-frequency 헤더 참조).
+    // 그래서 밴드를 새로 만들지 않고 벤치를 경기 길이로 나눈다 = 기준의 출처가 그대로 유지된다.
+    const scale = defaultEngineConfig.matchMinutes / 90;
+    const lo = 17 * scale, hi = 19 * scale; // 8.5 – 9.5
+    // 8시드는 60시드보다 분산이 크므로 여유를 준다(구 ±2 도 같은 길이 환산으로 ±1).
+    expect(perTeam, `스로인 ${perTeam.toFixed(2)}/팀경기`).toBeGreaterThanOrEqual(lo - 2 * scale);
+    expect(perTeam, `스로인 ${perTeam.toFixed(2)}/팀경기`).toBeLessThanOrEqual(hi + 2 * scale);
   });
 
   it("전달 종류가 실제로 갈린다 — 롱볼/크로스는 lofted, 숏패스는 ground", () => {

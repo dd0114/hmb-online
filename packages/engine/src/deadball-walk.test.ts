@@ -52,6 +52,8 @@ function scanRestarts(seed: string = demoSeed): Scan {
     log.events.filter((e) => e.type === "kickoff" || e.type === "free_kick" || e.type === "penalty").map((e) => e.tick),
   );
   const out: Scan = { checked: 0, jumps: [], unreached: [], drifts: [] };
+  /** 하프 마크(킥오프 리셋 지점) — 여기를 넘는 재시작 창은 판정 불가다. */
+  const halfTick = Math.round((config.matchMinutes * 60_000) / config.msPerTick / 2);
 
   for (const r of restarts) {
     const ci = r.tick;
@@ -96,6 +98,13 @@ function scanRestarts(seed: string = demoSeed): Scan {
     }
     // 경기 끝에 걸려 재시작 미완(공 안 떠남 + 스냅샷 소진 + 미도달) → 판정 불가, 제외.
     if (ranOut && !ballLeft && !reached) { out.checked--; continue; }
+    // **하프 경계도 같은 이유로 판정 불가**(#365). 하프 마크에서 킥오프 리셋이 걸리므로, 창이 그
+    // 경계를 넘는 재시작은 taker 가 도달할 기회 자체가 없다 — 경기 끝과 구조가 같은데 배열은
+    // 아직 남아 있어 `ranOut` 으로는 안 걸린다. (경기가 45분이 되며 demoSeed 에 실제로 나타났다:
+    // restart@1349, 하프 마크 1350.)
+    // ⚠️ `ballLeft` 로 걸러지지 않는다 — 후반 킥오프가 `anyRestartTicks` 에 들어 있어 루프가
+    // "새 재시작 선언"으로 창을 닫기 때문이다(그건 재시작 실행이 아니라 하프 종료다).
+    if (!reached && ci < halfTick && ci + MAX_WIN >= halfTick) { out.checked--; continue; }
     out.drifts.push(...drifts);
     if (maxStep > MAX_STEP) {
       out.jumps.push(`restart@${ci} taker(${takerId}) 단일틱 점프 ${maxStep.toFixed(1)}m — 순간배치/클램프(걷기 아님)`);

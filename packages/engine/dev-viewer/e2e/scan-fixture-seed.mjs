@@ -14,7 +14,7 @@
  * ## 조건 5개
  *  ① offside 이벤트 존재
  *  ② card 이벤트 존재
- *  ③ penalty 이벤트 존재
+ *  ③ penalty 판정 **+ 그 PK 슛**(shot detail="penalty") 존재 — 판정만 있고 안 차는 로그가 있다
  *  ④ #42 체인 존재: save → (라이브 이벤트 ≥1, 그 사이 재시작 없음) → shot(off_target), 45틱 이내
  *     ↳ 판정식은 `restarts.spec.ts` 와 **동일**하게 유지한다. 느슨하게 잡으면 스캔은 통과인데
  *       스펙이 깨진다(실제로 겪음).
@@ -78,7 +78,11 @@ for (let i = 0; i < COUNT; i++) {
     seed,
     offside: has("offside"),
     card: has("card"),
-    penalty: has("penalty"),
+    // ⚠️ **PK 판정(`penalty`)만으로는 부족하다** — `shot-outcomes.spec.ts` 가 요구하는 것은
+    // *찬* PK(`shot` detail="penalty") 다. 판정만 있고 슛이 없는 로그가 실재하고(#365 에서
+    // 실제로 그 시드를 골라 스펙이 빨갛게 됐다), 그러면 이 스캐너는 "조건 통과"라고 말하면서
+    // e2e 를 깨뜨린다. 스캐너의 조건은 **스펙이 요구하는 것과 같아야 한다**(조건 ④와 같은 규율).
+    penalty: has("penalty") && log.events.some((e) => e.type === "shot" && e.detail === "penalty"),
     chain: chain != null,
     span: chain ? chain.span : null,
     saveTick: chain ? chain.save : null,

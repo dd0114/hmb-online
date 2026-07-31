@@ -16,7 +16,10 @@ import {
 
 const T0 = Date.parse("2026-07-25T12:00:00.000Z");
 const HALF_REAL_MS = 240_000;
-const TICKS = 2700; // 리얼 config: 45분 하프 = 2700틱(msPerTick=1000)
+// 임의의 하프 틱 수(순수 산술 검증용 — 이 파일은 시각↔틱 매핑만 본다).
+// ⚠️ 리얼 config 의 하프 틱은 #365 로 2700 → 1350 이 됐다(경기 45분). 여기 값을 "리얼 config"라고
+// 읽지 마라 — 이 테스트는 어떤 틱 수에도 성립해야 하는 관계식을 본다.
+const TICKS = 2700;
 
 function clock(overrides: Partial<MatchClock> = {}): MatchClock {
   return MatchClock.parse({
@@ -177,7 +180,7 @@ describe("phaseRemainingMs — 감독시간 카운트다운", () => {
 });
 
 describe("compressionOf — 압축비는 파생값(config 노브는 half-real-ms)", () => {
-  it("리얼 config 2700틱 / 240초 = 11.25배", () => {
+  it("2700틱 / 240초 = 11.25배", () => {
     expect(compressionOf(clock(), TICKS, 1000)).toBeCloseTo(11.25, 5);
   });
 

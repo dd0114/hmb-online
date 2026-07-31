@@ -11,6 +11,7 @@ import {
   buildFlightSides,
   effectiveSpeed,
   autoPaceDurationMs,
+  PACE,
 } from "./playback.mjs";
 
 describe("spansReposition — 슛 궤적은 컷 금지, 데드볼 재배치만 컷 (하이라이트 순간이동 버그 회귀방지)", () => {
@@ -388,12 +389,15 @@ describe("buildAnnotations", () => {
 });
 
 describe("#216 autoPaceDurationMs — 켬 모드 재생 길이(서버 half-real-ms 의 근거)", () => {
-  /** 정지·키장면 없는 로그 = 순수 크루즈. 1440틱 / (2×4틱/s) = 180s. */
+  /** 정지·키장면 없는 로그 = 순수 크루즈. 1440틱 / (TICKS_PER_SEC × CRUISE_SPEED). */
   const plain = Array.from({ length: 1441 }, (_, i) => ({ tick: i, ball: { x: 50, y: 34 } }));
 
   it("정지·키장면이 없으면 크루즈 속도 그대로다", () => {
-    expect(autoPaceDurationMs(plain, [])).toBeGreaterThan(179_000);
-    expect(autoPaceDurationMs(plain, [])).toBeLessThan(181_000);
+    // 기대값을 상수로 박지 않는다 — #365 가 배속을 바꾸자(2 → 2.4) 이 단언만 옛 속도를 주장하며
+    // 깨졌다. 계약의 내용은 "크루즈 구간은 PACE 가 말하는 속도로 정확히 흐른다"이지 180초가 아니다.
+    const expectedMs = ((1440 / (PACE.TICKS_PER_SEC * PACE.CRUISE_SPEED)) * 1000);
+    expect(autoPaceDurationMs(plain, [])).toBeGreaterThan(expectedMs - 1_000);
+    expect(autoPaceDurationMs(plain, [])).toBeLessThan(expectedMs + 1_000);
   });
 
   it("키장면이 있으면 그 구간이 슬로우라 **길어진다**(연출의 대가)", () => {

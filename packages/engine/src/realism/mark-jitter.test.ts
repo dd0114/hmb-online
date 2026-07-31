@@ -76,11 +76,19 @@ describe("마크 진동 상한 (#178)", () => {
   // 주 계약(관계식 ≤1.3배)은 셋 다 통과하고 있고, 이 백스톱은 "둘이 함께 표류"를 잡는 보조다.
   // 20 · 3.0 = 실측 18.97 · 2.85 위 5% 여유. 원 버그값 43.1 에 대한 이빨은 그대로다.
   // (표본 구성 변화 이력: nearOwner 표본 6939 → 4608 → 사슬+홀드압박으로 다시 이동.)
-  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 20/100, 평균 이동 ≤ 3.0 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off 기준선 ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM})`, () => {
-    expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(20);
-    expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(3);
+  //
+  // ── 재기준 20 → 22 · 3.0 → 3.3 (#365 경기 길이 90 → 45분) ─────────────────────────
+  // 경기가 반이 되면서 **대조군과 처리군이 같은 비율로 함께 올라갔다**: 시야off 기준선
+  // 20.71 → **21.35**(+3.1%) · 2.78 → **2.93**(+5.4%), 현재값 18.97 → **20.52** · 2.85 → **3.08**.
+  // 즉 시야 계층이 만드는 진동분이 늘어난 게 아니라 **엔진 전체의 이동량 수준**이 올라간 것이다
+  // (피로 누적 구간이 짧아져 선수들이 더 오래 빠르게 뛴다). 주 계약인 관계식은 오히려
+  // **0.92 → 0.96 배**로 여전히 대조군 아래다.
+  // 22 · 3.3 = 실측 20.52 · 3.08 위 약 7% 여유(같은 규율). 원 버그값 43.1 에 대한 이빨은 그대로다.
+  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 22/100, 평균 이동 ≤ 3.3 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off 기준선 ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM})`, () => {
+    expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(22);
+    expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(3.3);
     // 백스톱이 **대조군 아래로 다시 내려가지 않게** 구조로 묶는다 — 그러면 또 다른 것을 재게 된다.
-    expect(20).toBeGreaterThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 0.9);
+    expect(22).toBeGreaterThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 0.9);
   });
 
   it("시야 계층은 켜진 채여야 한다 — 진동 해소가 시야 롤백으로 달성되면 안 된다", () => {
