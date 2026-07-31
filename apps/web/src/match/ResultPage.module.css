@@ -4,6 +4,33 @@
   gap: 14px;
 }
 
+/*
+ * 결과 패널 = [스크롤 콘텐츠] + [바닥 CTA] (#355). 감독시간(`HalftimePanel.module.css`)과
+ * **같은 모양**이다 — 두 화면이 갈라지면 한쪽만 고쳐진다.
+ * CTA 를 스크롤 밖에 두는 게 핵심: 이 패널 내용에는 상한이 없어서(성장 리포트가 기용 선수 수만큼
+ * 늘어난다) 시트 높이로는 [로비로] 를 영영 보장할 수 없다. 이유 전문 = `ResultPanel.tsx` 헤더.
+ */
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* 셸이 `panelFlush` 로 패딩을 0 으로 만들었으므로(스크롤을 여기로 넘긴 대가) 여백은 이 층이 진다. */
+  padding: 10px 12px 12px;
+}
+
 .resultCard {
   display: flex;
   flex-direction: column;
@@ -102,7 +129,11 @@
   font-size: 12px;
 }
 
+/* 주 CTA — **스크롤 밖**의 고정 층(#355). `flex: none` 이라 스크롤 영역이 남은 높이를 다 가져가고
+   이 버튼은 자기 높이만 쓴다. 여백은 감독시간 [후반 시작](`HalftimePanel .resume`)과 같은 값. */
 .toLobby {
+  flex: none;
+  margin: 0 12px calc(10px + env(safe-area-inset-bottom, 0));
   padding: 14px;
   border-radius: 10px;
   border: none;

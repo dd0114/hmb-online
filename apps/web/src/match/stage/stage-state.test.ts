@@ -229,8 +229,23 @@ describe("탭 구성 (#284 — 토글 제거, 상태가 정한다)", () => {
     expect(sheetHeight("stats")).toBe("info");
     expect(sheetHeight("log")).toBe("info");
     expect(sheetHeight("halftime")).toBe("state");
-    expect(sheetHeight("result")).toBe("state");
     expect(sheetHeight("stage")).toBe("state");
+  });
+
+  /**
+   * #355 — **`result` 는 `state` 가 아니다.** 같은 등급이던 동안 상한 40svh(420px)가 결과 패널
+   * 내용(449~481px)보다 작아 **[로비로] CTA 가 모든 데스크탑 비율에서 화면 밖**이었다
+   * (3440×1440 에서도 bottom 1576 > 1440 — "화면이 크면 괜찮다"의 예외).
+   *
+   * ⚠️ 다만 **이 등급이 CTA 를 지키는 게 아니다.** 결과 패널 내용에는 상한이 없다
+   * (`GrowthReportSection` 이 기용 선수 수만큼 행을 붙인다) → CTA 는 `ResultPanel` 의 **스크롤 밖
+   * 고정층**이 지킨다. 두 층이 각각 계약을 갖는다(픽셀 = `p348-desktop-viewport.spec.ts` ⑥ —
+   * 성장 리포트 유 + **스크롤 불변** 단언이 "높이만 키운 구현"을 죽인다).
+   */
+  it("결과는 **result** 등급 — 감독·경기장면과 같은 높이를 쓰면 [로비로] 가 화면 밖으로 나간다(#355)", () => {
+    expect(sheetHeight("result")).toBe("result");
+    expect(sheetHeight("result")).not.toBe(sheetHeight("halftime"));
+    expect(sheetHeight("result")).not.toBe(sheetHeight("stage"));
   });
 
   /**

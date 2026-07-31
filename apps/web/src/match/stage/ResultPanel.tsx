@@ -26,6 +26,20 @@ interface ResultPanelProps {
  * 기존 `ResultPage`(무대 아래로 세로로 쌓이던 페이지)를 흡수한 것이다(#169, layout §2.6):
  * 무대는 계속 살아있는 채로 결과를 본다(리서치 R2). 스코어·승패·보상·팀스탯·[로비로]의
  * **testid 는 전부 보존**한다 — 기존 e2e(match-flow·league-season·w3-viewer-smoke)가 참조한다.
+ *
+ * ── 두 층: [스크롤 콘텐츠] + [바닥 CTA] (#355) ────────────────────────────────────────────
+ * `[로비로]` 가 **모든** 데스크탑 비율에서 화면 밖이었다(1024×768 b1017 … 3440×1440 b1576).
+ * 시트가 콘텐츠와 무관한 고정 높이인데 이 패널 내용이 그보다 컸기 때문인데, **높이를 키우는 것은
+ * 해법이 아니다** — 이 패널의 내용에는 상한이 없다: `GrowthReportSection` 이 기용 선수 수만큼
+ * 행을 붙이고(11명이면 수백 px), 결과 카드에도 보상 줄이 계속 늘어 왔다(#232 경기 보상 → #368
+ * 오늘의 보상 칸). 어떤 고정값을 골라도 다음 줄에서 같은 결함이 이름만 바꿔 돌아온다.
+ *
+ * 그래서 감독시간(`HalftimePanel`)과 **같은 구조**로 간다: 스크롤은 안쪽 `.scroll` 이 갖고
+ * CTA 는 그 **밖** 바닥에 앉는다. 어디까지 스크롤하든 나가는 문이 화면에 있다.
+ * ⚠️ sticky 로 띄우지 마라 — 자기 아래로 콘텐츠가 지나가 팀 스탯 마지막 줄을 덮는다(#244 BL-1
+ * 이 감독시간에서 실제로 당한 형태). 셸이 `panelFlush` 로 스크롤을 넘겨주는 것이 전제다
+ * (`StageShell.OWN_SCROLL_TABS`).
+ * 계약 = `e2e/p348-desktop-viewport.spec.ts` ⑥(전 비율 CTA 가시 · 성장 리포트 유 · **스크롤 불변**).
  */
 export function ResultPanel({ match, homeName, awayName }: ResultPanelProps) {
   const navigate = useNavigate();
@@ -46,55 +60,58 @@ export function ResultPanel({ match, homeName, awayName }: ResultPanelProps) {
   const scoreAway = result?.scoreAway ?? match.scoreAway;
 
   return (
-    <div data-testid="result-page">
-      <section className={styles.resultCard}>
-        {resultKey && (
-          <span
-            className={[styles.badge, styles[`badge${resultKey}` as keyof typeof styles] ?? ""].join(" ")}
-            data-testid="result-badge"
-          >
-            {RESULT_LABELS[resultKey] ?? resultKey}
-          </span>
-        )}
-        <p className={styles.finalScore} data-testid="final-score">
-          {homeName} {scoreHome ?? "-"} : {scoreAway ?? "-"} {awayName}
-        </p>
-        {result?.pointsAwarded != null && (
-          <p className={styles.reward} data-testid="reward-points">
-            경기 보상 +<Amount code={CURRENCY_POINT} value={result.pointsAwarded} />
+    <div className={styles.panel} data-testid="result-page">
+      <div className={styles.scroll} data-testid="result-scroll">
+        <section className={styles.resultCard}>
+          {resultKey && (
+            <span
+              className={[styles.badge, styles[`badge${resultKey}` as keyof typeof styles] ?? ""].join(" ")}
+              data-testid="result-badge"
+            >
+              {RESULT_LABELS[resultKey] ?? resultKey}
+            </span>
+          )}
+          <p className={styles.finalScore} data-testid="final-score">
+            {homeName} {scoreHome ?? "-"} : {scoreAway ?? "-"} {awayName}
           </p>
-        )}
-        <DailyRewardLine reward={(result as { dailyReward?: MatchDailyReward | null })?.dailyReward} />
-      </section>
+          {result?.pointsAwarded != null && (
+            <p className={styles.reward} data-testid="reward-points">
+              경기 보상 +<Amount code={CURRENCY_POINT} value={result.pointsAwarded} />
+            </p>
+          )}
+          <DailyRewardLine reward={(result as { dailyReward?: MatchDailyReward | null })?.dailyReward} />
+        </section>
 
-      <section className={styles.statsCard} data-testid="team-stats">
-        <h3 className={styles.statsTitle}>팀 스탯</h3>
-        <table className={styles.statsTable}>
-          <thead>
-            <tr>
-              <th className={styles.homeCol}>{homeName}</th>
-              <th />
-              <th className={styles.awayCol}>{awayName}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {TEAM_STAT_LABELS.map(([key, label]) => (
-              <tr key={key}>
-                <td className={styles.homeCol} data-testid={`stat-home-${key}`}>
-                  {stats.home[key]}
-                </td>
-                <td className={styles.statLabel}>{label}</td>
-                <td className={styles.awayCol} data-testid={`stat-away-${key}`}>
-                  {stats.away[key]}
-                </td>
+        <section className={styles.statsCard} data-testid="team-stats">
+          <h3 className={styles.statsTitle}>팀 스탯</h3>
+          <table className={styles.statsTable}>
+            <thead>
+              <tr>
+                <th className={styles.homeCol}>{homeName}</th>
+                <th />
+                <th className={styles.awayCol}>{awayName}</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody>
+              {TEAM_STAT_LABELS.map(([key, label]) => (
+                <tr key={key}>
+                  <td className={styles.homeCol} data-testid={`stat-home-${key}`}>
+                    {stats.home[key]}
+                  </td>
+                  <td className={styles.statLabel}>{label}</td>
+                  <td className={styles.awayCol} data-testid={`stat-away-${key}`}>
+                    {stats.away[key]}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
 
-      <GrowthReportSection matchId={match.id} />
+        <GrowthReportSection matchId={match.id} />
+      </div>
 
+      {/* ⚠️ 스크롤 **밖**이다(위 헤더) — `.scroll` 안으로 되돌리면 #355 가 그대로 재발한다. */}
       <button
         type="button"
         className={styles.toLobby}
