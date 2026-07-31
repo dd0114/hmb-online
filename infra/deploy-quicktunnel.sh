@@ -17,7 +17,7 @@ WEB_PORT="${WEB_PORT:-4321}"
 start_tunnel() { # $1=port $2=logfile $3=pidfile → echoes URL
   local port="$1" log="$2" pidf="$3"
   [ -f "$pidf" ] && ps -p "$(cat "$pidf")" >/dev/null 2>&1 && { kill "$(cat "$pidf")" 2>/dev/null || true; sleep 1; }
-  nohup cloudflared tunnel --url "http://localhost:$port" --no-autoupdate > "$log" 2>&1 &
+  nohup cloudflared tunnel --url "http://localhost:$port" --no-autoupdate --protocol "${HMB_TUNNEL_PROTOCOL:-http2}" > "$log" 2>&1 &
   echo $! > "$pidf"
   local u=""
   for _ in $(seq 1 30); do u=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" | head -1 || true); [ -n "$u" ] && break; sleep 2; done

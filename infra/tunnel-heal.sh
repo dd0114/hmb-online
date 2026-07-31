@@ -192,7 +192,15 @@ heal(){
 
   # 2) 새 터널
   [ -f "$TUNNEL_LOG" ] && mv -f "$TUNNEL_LOG" "$TUNNEL_LOG.prev" 2>/dev/null
-  nohup cloudflared tunnel --url "http://localhost:$BACKEND_PORT" --no-autoupdate > "$TUNNEL_LOG" 2>&1 &
+  # ⚠️ `--protocol` 기본 http2 — quick tunnel 의 기본 QUIC(UDP)은 **모바일 핫스팟/제한적 NAT
+  #    에서 조용히 죽는다**. 2026-07-31 09:40~09:53Z 실장애: QUIC 로 뜬 터널이 "timeout: no
+  #    recent network activity"·"datagram manager ... failure" 를 반복하다 호스트가 DNS 에서
+  #    사라져(dig 무응답) 라이브가 HTTP 000. 워치독이 치유해도 **같은 QUIC 로 다시 떠서** 새 URL
+  #    마저 530 이었고, http2 로 바꾸자 **첫 시도에 200**. 그래서 치유 경로의 기본을 http2 로 둔다.
+  #    (QUIC 가 더 빠르지만, 무인 복구 경로에서는 "빠름"보다 "붙는다"가 우선이다.)
+  #    되돌리기·실험 = HMB_TUNNEL_PROTOCOL=quic (또는 auto) 로 환경변수 지정.
+  nohup cloudflared tunnel --url "http://localhost:$BACKEND_PORT" --no-autoupdate \
+    --protocol "${HMB_TUNNEL_PROTOCOL:-http2}" > "$TUNNEL_LOG" 2>&1 &
   echo $! > "$TUNNEL_PID"
   say "· 새 터널 기동 (pid $(cat "$TUNNEL_PID"))"
 

@@ -22,7 +22,10 @@ if [ -f "$PIDF" ] && ps -p "$(cat "$PIDF")" >/dev/null 2>&1; then
 fi
 
 echo "[tunnel] cloudflared quick tunnel 기동 → localhost:18080"
-nohup cloudflared tunnel --url http://localhost:18080 --no-autoupdate > "$LOG" 2>&1 &
+# `--protocol` 기본 http2 — 근거·실장애 기록은 tunnel-heal.sh 의 같은 자리 주석 참조
+# (QUIC 는 핫스팟/제한 NAT 에서 죽는다. 되돌리기 = HMB_TUNNEL_PROTOCOL=quic).
+nohup cloudflared tunnel --url http://localhost:18080 --no-autoupdate \
+  --protocol "${HMB_TUNNEL_PROTOCOL:-http2}" > "$LOG" 2>&1 &
 echo $! > "$PIDF"
 
 URL=""

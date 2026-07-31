@@ -6,6 +6,34 @@
 
 ---
 
+## 2026-07-31T09:20Z — **배포 v3.10** (태그 `deploy-3.10`) — **runner 단독**: 포메이션 게이트 G4 + 스텁 실행기 좌표 픽스(#367 / #295 server 축)
+
+- **git**: **`763b8a2`**(태그 `deploy-3.10`) = **`deploy-3.08`(4782f54) 계보 + #367 체리픽**. ⚠️ **[롤백] 항목이 세운 규칙을 처음 적용한 열차다** — `main` 을 쓰지 않았다.
+  - **계보 검산 2줄**(추측 금지): `git merge-base --is-ancestor deploy-3.08 deploy-3.10` → **YES** · `git merge-base --is-ancestor 8ac6245 deploy-3.10` → **NO**(main 의 엔진 0.28/0.29 머지 **미포함**).
+  - **엔진 무접촉 확인**: `git diff --stat 4782f54..deploy-3.10 -- packages/engine` → **빈 diff** · 트리의 `config.version` = **`engine@0.23.0`**.
+- **변경 범위**: `packages/server` 7(`executor/executors/stub.ts` · `prompt/{coach,gates}.ts`+테스트 · CLAUDE.md) · `tools` 2 · docs 1. **`server-java`·`apps/web`·`data`·`infra`·`packages/shared`·`packages/viewer-core` 전부 0** → **java 재빌드·웹 재배포·마이그레이션 생략**(지시대로). 마이그레이션 **0건**, Flyway **v35 유지**.
+- **이미지**: `hmb-runner` **`sha256:f724f3fd5e1a…`**(신규) · `hmb-java` `sha256:af3e0bcb247d…`(**무변경** — 배포 후 digest 로 재확인).
+- **⚠️ 이 열차의 핵심 가드 — 엔진이 다시 올라오지 않았는가**: 배포 직후 `GET :18790/health` → **`{"engineVersion":"engine@0.23.0"}`**. release 계보 빌드라 롤백 상태가 유지됐다. (main 에서 빌드했다면 여기서 0.29.0 이 떴을 것이다.)
+- **executor 재기동**: `packages/server` 변경이라 필수. **release 계보 워크트리 `~/spider2/hmb-release`(= `deploy-3.10`)에서** 기동 — worker `ts-executor-5330` · claude-code/sonnet · concurrency=1 · 구독(정액제).
+  - ⚠️ **함정 기록**: 처음엔 워크트리 `node_modules` 를 **메인 체크아웃으로 심링크**했는데, 그러면 `node_modules/@hmb/*` 워크스페이스 링크가 **main(엔진 0.28/0.29)을 가리킨다** — executor 가 되돌린 엔진을 다시 로드할 뻔했다. 워크트리에서 **`npm install` 을 제대로 돌려** 링크가 `../../packages/*`(release 트리 안)로 잡히는 것을 확인하고 기동했다. **release 계보로 프로세스를 띄울 땐 node_modules 를 공유하지 마라.**
+- **📌 web `version.json` 은 `4782f54` 로 남는다**: v3.10 은 `apps/web` 변경이 0이라 웹을 재배포하지 않았다(지시). 그래서 화면이 보고하는 SHA(`4782f54`)와 실제 runner 계보(`763b8a2`)가 다르다 — **의도된 상태**다. 다음 웹 열차에서 자연 정렬된다.
+
+### 스모크 — ✅ 포메이션이 실효 반영된다
+- **설계**: 판정을 절대 임계로 하지 않고 **G4 와 같은 상대비교**로 했다(절대 임계는 감독 지시로 인한 정상 조정까지 잡는다). 슬롯은 배열 순서가 아니라 **`playerId`→`slotIndex`** 로 잡았다(G4 주석: 라이브 산출 19.4%가 순서가 다르다).
+- **절차**: 고정 계정 `deploy-smoke` 덱을 **4-3-3 → 4-4-2** 로 바꾸고(PUT `/api/deck` 200) 신규 매치 생성 → 라이브 AI 전술 생성(claude-code, 홈/원정 2잡) → 킥오프.
+- **결과(tick 0 실측)**: 포메이션 적합도(정규화 평균거리, 작을수록 적합) — **`4-4-2` 0.0129** · `4-3-3` 0.1246 · `5-3-2` 0.1522 · `4-2-3-1` 0.1620.
+  **선언한 포메이션이 최적이고 2위와의 여유가 0.1118** = G4 의 `formationFitMargin`(0.02)의 **5배 이상**. x밴드 분포도 **수비 5(GK+4) · 중원 4 · 전방 2** = 4-4-2 그대로.
+- **실화면 확인**: 라이브 사이트에서 `deploy-smoke` 로그인 → 매치 재생 → `window.__viewer.pause()/seek(0)` 로 **킥오프 프레임**을 세워 캡처. 화면에서도 **GK+4DF / 4MF / 2FW** 가 눈으로 확인된다(좌표만 보고 판정하지 않았다 — §0.8). **pageerror 0**.
+- **무회귀**: 매치 완주 **0:1** · 슛 17 · 골 1 · 파울 10 · 프리킥 10 · 카드 3 · **PK 1** · 패스 990 — 롤백 직후 0.23.0 스모크(슛 31·골 1·파울 10)와 같은 밴드. 오토모드(HALFTIME 스킵) 정상.
+
+### 배포 중 발견·수정한 것 (이 열차와 별개지만 라이브 가용성에 직결)
+- **⚠️ 워치독 설치본이 낡아 있었다(잠복)**: 워치독은 리포가 아니라 **설치 사본 `~/.local/bin/hmb-tunnel-heal.sh`** 를 돈다. 그 사본에 **`grep -a` 픽스가 빠져 있었다** — 플레이북 §6 이 "갭 1은 `grep -a` 로 닫았다"고 적어둔 그 픽스가 **프로덕션에는 반영돼 있지 않았다**(로그가 바이너리로 판정되면 URL 자리에 `Binary file … matches` 가 들어가 전파가 깨진다). **`install-tunnel-heal.sh` 재실행으로 동기화**했다. → 교훈: **리포를 고쳤다고 워치독이 고쳐진 게 아니다. 반드시 재설치하고 설치본을 grep 으로 확인한다.**
+- **터널 QUIC 문제 → `--protocol http2` 기본화**: 09:40~09:53Z **실장애**(라이브 HTTP 000). quick tunnel 기본 QUIC(UDP)이 모바일 핫스팟(당시 `172.20.10.x`)에서 `timeout: no recent network activity`·`datagram manager failure` 를 반복하다 **호스트가 DNS 에서 사라졌고**(dig 무응답), 워치독이 치유해도 **같은 QUIC 로 다시 떠서 새 URL 도 530** 이었다. **http2 로 바꾸자 첫 시도 200.** `tunnel-heal.sh`·`start-tunnel.sh`·`deploy-quicktunnel.sh` 셋 다 `--protocol "${HMB_TUNNEL_PROTOCOL:-http2}"` 로 바꾸고 재설치했다(되돌리기 = 환경변수 `quic`). 무인 복구 경로에서는 "빠름"보다 "붙는다"가 우선이다.
+- **📌 헷갈리기 쉬운 오탐 — "curl 000"이 곧 장애는 아니다**: 이후 11:38Z heal 뒤에도 이 머신에서 `curl` 이 000(exit 6)이었지만, **`dig` 는 풀리고 `--resolve` 우회로는 `/api/config`·`/api/auth/login` 둘 다 200** 이었다. 즉 **서비스는 정상이고 배포 머신의 로컬 리졸버(KT 168.126.63.1)만 그 호스트를 못 푸는 상태**였다(§0.8 이 적어둔 그 케이스). **판별법: `dig` 가 풀리는데 `curl` 만 실패하면 로컬 리졸버 문제 → 테스터는 멀쩡하다.** 09:40Z 건은 `dig` 도 빈 응답이었으므로 그건 진짜 장애였다 — 둘을 구분해야 한다.
+- **자책 기록**: 위 심링크(`ln -sfn`) 여파로 **메인 체크아웃(`spider2/hmb-online`)의 `node_modules` 가 비었다**. 라이브(컨테이너·release 워크트리)에는 영향 0이고 `npm install` 로 복구했다. 다른 워크트리의 의존성을 심링크로 빌려 쓰지 말 것.
+
+---
+
 ## 2026-07-31T07:38Z — [운영 조치] 롤백 피해 유저 **별희**에게 보상 우편 **300 Z** 발송 (미수령)
 
 - **지시**: main 전결(수령 전 revoke 가능 = 복구 가능 축). 대상 = 위 [롤백] 항목의 피해 유저.
