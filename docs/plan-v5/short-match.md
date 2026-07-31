@@ -145,7 +145,8 @@ tickToMinute(tick) = floor(tick * msPerTick / 60000 * scale)     // = floor(tick
 | 골든 | determinism · vision 롤백 해시 · mark-jitter · movement-synchrony · generate-demo · gen-fixtures |
 | 밴드 | `realism/shot-frequency.test.ts`(슛 12–14 · 골 4.4–5.8 · 유효 4.5–5.5) 외 볼륨 단언 전부 |
 | 가드 | `tools/pace-config.test.ts`(창 ±20% + 하프틱 하한 2000) |
-| 서버 | `application.yml` · `MatchClockProperties` 기본값 |
+| 서버 | `application.yml` · `MatchClockProperties` 기본값 · **`MatchClockShippedDefaultsTest` 밴드**(배포 기본값을 직접 읽는 유일한 java 테스트) |
+| 뷰어 | **`viewer.impl.mjs` 시계**(엔진 틱에서 직접 분을 만들던 유일한 소비자) · `playback.test.ts` 크루즈 길이 단언 |
 | 쇼케이스 | `generate-demo.ts`(쇼케이스 전용 config — 리얼 재보정이 흘러들지 않게 §2-6 규율 유지) · `tools/perceptibility.mjs` 6/6 |
 
 ---
@@ -202,6 +203,15 @@ tickToMinute(tick) = floor(tick * msPerTick / 60000 * scale)     // = floor(tick
    깨뜨렸다. 스캐너 조건을 스펙과 같게 고쳤다.
 5. **`tools/perceptibility.mjs` 가 `TICKS_PER_SEC` 를 자기 상수로 복제**하고 있었다 → 코어 `PACE`
    를 읽게 했다(안 그러면 배속을 바꾼 날 이 도구만 옛 속도로 "읽을 만하다"고 판정한다).
+6. **뷰어 시계만 표기 스케일 밖에 있었다**(자기검수에서 발견, `12c843c`). §2.3 의 "소비자가 구워진
+   `minute` 을 읽는다"는 로그줄·타임라인·web LogPanel 에는 맞았지만 **뷰어 자기 시계**는
+   `mmss(snap.tick)` 으로 엔진 틱에서 직접 분을 만들고 있었다 = 화면 위는 0~44', 아래 로그는 0~90'.
+   → `playback.mjs.clockScaleOf` 로 유도(로그에 구워진 `minute` 에서 되유도 — `MatchLog` 계약을
+   넓히지 않는다). 계약을 **순수 함수 + 실제 DOM 텍스트 e2e 두 층**으로 건 이유는, 순수 함수만
+   검사하면 **배선이 빠져도 통과**하고 이 결함이 정확히 그 모양이었기 때문이다.
+7. **`MatchClockShippedDefaultsTest` 가 배포 기본값 밴드를 사람 손으로 들고 있었다**(`63a855b`).
+   #221 이 예고한 가드이고 `./gradlew test` 916건 중 1건이 실제로 이걸로 깨졌다. ⚠️ 한때 이 문서와
+   이슈에 *"server-java 테스트는 값을 주입하므로 영향 없다"* 고 적었는데 **이 테스트는 예외**다.
 
 ## 5. 웨이브 계획
 
