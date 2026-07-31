@@ -17,7 +17,11 @@ import { autoPaceDurationMs } from "../packages/viewer-core/src/playback.mjs";
  * `application.yml` 의 `half-real-ms` 를 그 값에 맞춘다(그리고 server-java 쪽 밴드도 함께).
  */
 
-/** 시드 편차(실측 392~463s = p50 대비 ±8%)에 모델·측정 오차 여유를 더한 폭. */
+/**
+ * 시드 편차에 모델·측정 오차 여유를 더한 폭. (#365 실측 155~212s = p50 176.6 대비 −12%/+20% —
+ * 하프가 짧아 골·정지 하나가 전체에서 차지하는 비중이 커져 90분 때(±8%)보다 산포가 크다.
+ * 그래도 ±20% 안이라 이 폭은 그대로 둔다.)
+ */
 const TOLERANCE = 0.2;
 
 function ymlLong(key: string): number {
