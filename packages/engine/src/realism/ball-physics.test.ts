@@ -3,7 +3,7 @@ import type { MatchLog } from "@hmb/shared";
 import { defaultEngineConfig } from "../config";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
-import { REALISM_SEEDS } from "./harness";
+import { REALISM_SEEDS, GUARD_SEEDS } from "./harness";
 import { createRng } from "../rng";
 import { aimErrorDeg, aimWithError, isLofted, passPowerFx } from "../kick";
 import { unownedRuns } from "./loft";
@@ -150,19 +150,34 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
   });
 
   /**
-   * 헤더 슛 / 헤더 골 집계(20시드). 8시드면 0/1 사이를 오가 플래키해진다.
-   * 세는 함수는 `realism/header.ts` 와 **공유**한다(#357) — 진단 스윕이 격자 매 점에서 같은 수를
-   * 봐야 하고, 두 곳에서 각자 세면 계약과 진단이 조용히 갈린다.
+   * 헤더 슛 / 헤더 골 집계. 세는 함수는 `realism/header.ts` 와 **공유**한다(#357) — 진단 스윕이
+   * 격자 매 점에서 같은 수를 봐야 하고, 두 곳에서 각자 세면 계약과 진단이 조용히 갈린다.
+   *
+   * ⚠️ **표본 20 → 60**(#358). 임계는 한 자리도 안 건드렸다(`> 0` 그대로) — 바뀐 것은 표본뿐이다.
+   * 이 파일은 이미 같은 이유로 한 번 8 → 20 으로 올렸다("8시드면 0/1 사이를 오가 플래키해진다").
+   * 지금 헤더 골은 **60경기에 2~5건**이라 20경기 기대값이 0.7~1.7 이고, 포아송이면 20경기에서
+   * 0 이 나올 확률이 **18~50%** 다 = 게이트가 동전 던지기였다(0.28.0 이 통과한 것도 20경기 3건이라는
+   * 운 좋은 표본 덕이다 — 같은 config 의 60경기 환산은 3배가 아니라 5건이다). 60경기면 기대값이
+   * 2~5 로 올라 오탐이 14% 이하로 내려간다. `harness.ts` 의 GUARD_SEEDS 도입 근거와 같은 논리다.
    */
   function countHeaders(): { headerShots: number; headerGoals: number } {
-    const c = countHeaderStats(REALISM_SEEDS.map(logOf));
+    const c = countHeaderStats(GUARD_SEEDS.map(logOf));
     // eslint-disable-next-line no-console
-    console.log(`  [#306] ${REALISM_SEEDS.length}경기 헤더 슛 ${c.headerShots}건 · 헤더 골 ${c.headerGoals}건`);
+    console.log(`  [#306] ${GUARD_SEEDS.length}경기 헤더 슛 ${c.headerShots}건 · 헤더 골 ${c.headerGoals}건`);
     return c;
   }
 
   it("헤더 슛이 나온다", () => {
     expect(countHeaders().headerShots, "헤더 슛 총 0건").toBeGreaterThan(0);
+  });
+
+  /**
+   * **헤더 슛 총량 래칫**(#358 신설). 헤더 골은 60경기에도 한 자릿수라 그것만으로는
+   * "헤딩이 조용히 죽는" 회귀를 못 잡는다. 상류(공중볼 경합 → 헤더 슛)는 고빈도라 잡을 수 있다.
+   * 기준선: 0.28.0 = 24건 / 60경기, 이 웨이브 = 28건(**올랐다**). 하한 20 = 기준선의 0.83배.
+   */
+  it("헤더 슛 총량이 기준선 아래로 침식되지 않는다 (60경기 ≥ 20건)", () => {
+    expect(countHeaders().headerShots, "헤더 슛 총량 래칫").toBeGreaterThanOrEqual(20);
   });
 
   // ── 헤더 골 = **S5(크로스 생성기)에서 해소** — 지금은 test.fail 로 박제한다 ──────────────

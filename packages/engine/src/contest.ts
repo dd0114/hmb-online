@@ -519,6 +519,46 @@ function commitFoul(
 }
 
 /**
+ * 태클 **관측**(진단 전용, 옵트인) — `action.ts:setDecisionObserver` 와 같은 규율.
+ *
+ * 왜 필요한가: `rules.foul.base` 는 **태클 시도당** 확률이라 파울 수는 `시도 수 × 시도당 파울률`
+ * 의 곱이다. 이벤트 로그에는 **분자(파울)만** 있고 분모(시도·기회)가 없다 — 그래서 파울이 줄었을 때
+ * "기회가 사라진 것"과 "판정이 약해진 것"을 이벤트만으로는 절대 가를 수 없다(#358).
+ * 여기서 분모를 그대로 흘려보낸다.
+ *
+ * ⚠️ **결정론 영향 0.** 기본값 `null`(옵트인) · 반환값을 시뮬이 읽지 않는다(void) ·
+ * 관측자는 상태를 읽기만 해야 한다. `nearestOppFx` 계산도 관측자가 켜졌을 때만 돈다.
+ */
+export interface TackleObservation {
+  tick: number;
+  /** 이 틱의 볼 소유자. */
+  ownerId: string;
+  ownerSide: TeamSide;
+  /** 최근접 상대 거리(m). 상대가 하나도 없으면 Infinity. */
+  nearestOppM: number;
+  /** `tackleRange` 안에 상대가 있었나 = **태클 시도**(분모). */
+  attempt: boolean;
+  /** 시도였을 때의 태클러 id(아니면 null) — 교전(engagement) 단위 재집계용. */
+  tacklerId: string | null;
+  /** 시도였을 때의 파울 확률(아니면 0). */
+  foulProb: number;
+  /** 파울로 판정됐나(분자). */
+  fouled: boolean;
+  /** 파울이 아니고 태클 경합을 이겼나. */
+  tackled: boolean;
+  /** 소유자가 상대 박스 안이었나(= `boxFoulMult` 적용 대상). */
+  inBox: boolean;
+}
+export type TackleObserver = (o: TackleObservation) => void;
+
+let activeTackleObserver: TackleObserver | null = null;
+
+/** 태클 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setTackleObserver(o: TackleObserver | null): void {
+  activeTackleObserver = o;
+}
+
+/**
  * 볼 주인이 상대 태클에 뺏기는지(매 틱). 파울 확률 선판정 → 파울이면 프리킥/페널티/카드,
  * 아니면 시드 베르누이 태클 경합. 성공 시 소유 이전.
  */
@@ -535,40 +575,74 @@ export function tryTackle(
   const owner = ballOwnerOf(state);
   if (!owner) return [];
   const range = config.contest.tackleRange * config.fixedScale;
+  const obs = activeTackleObserver;
 
   let tackler: SimPlayer | null = null;
   let tackD = Infinity;
+  let nearestFx = Infinity;
   for (const p of state.players) {
     if (p.side === owner.side) continue;
     const d = fdist(p.posFx.x, p.posFx.y, owner.posFx.x, owner.posFx.y);
+    if (obs && d < nearestFx) nearestFx = d;
     if (d <= range && d < tackD) {
       tackD = d;
       tackler = p;
     }
   }
-  if (!tackler) return [];
+  const nearestOppM = nearestFx === Infinity ? Infinity : nearestFx / config.fixedScale;
+  if (!tackler) {
+    if (obs) {
+      obs({
+        tick, ownerId: owner.id, ownerSide: owner.side, nearestOppM,
+        attempt: false, tacklerId: null, foulProb: 0, fouled: false, tackled: false, inBox: false,
+      });
+    }
+    return [];
+  }
 
   // --- 파울 판정(태클 시도당) ---
   const fr = config.rules.foul;
-  const boxMult = victimInAttackBox(pitch, config, owner) ? fr.boxFoulMult : 1;
+  const inBox = victimInAttackBox(pitch, config, owner);
+  const boxMult = inBox ? fr.boxFoulMult : 1;
   const bookedMult = tackler.yellowCards > 0 ? fr.bookedRelief : 1;
+  // #358: **달리는 캐리어를 끊는 태클**과 서 있는 선수 옆에 붙어 있는 것을 가른다.
+  // `dribbleStreak > 0` 은 이 틱의 소유자 행동이 드리블일 때만 참이다(`match.ts` 가 dribble
+  // 에서만 증가시키고 나머지 행동에서 0 으로 리셋). 새 상태를 만들지 않는다 = 직렬화·재개 무변경.
+  // `runningMult === 1` 이면 곱이 항등이라 레거시 경로와 **비트 동일**이다(롤백 스위치).
+  const runningMult = owner.dribbleStreak > 0 ? fr.runningMult : 1;
   const foulProb = fclamp(
     fr.base *
       (0.5 + tackler.behavior.pressAggression * fr.aggressionWeight) *
       (1 + fr.tacklingRelief * (1 - tackler.attrs.tackling / 100)) *
       boxMult *
-      bookedMult,
+      bookedMult *
+      runningMult,
     0,
     0.9,
   );
   if (rng.next() < foulProb) {
-    return commitFoul(state, rng, config, pitch, tackler, owner, tick, minute);
+    const evs = commitFoul(state, rng, config, pitch, tackler, owner, tick, minute);
+    if (obs) {
+      obs({
+        tick, ownerId: owner.id, ownerSide: owner.side, nearestOppM,
+        attempt: true, tacklerId: tackler.id, foulProb, fouled: true, tackled: false, inBox,
+      });
+    }
+    return evs;
   }
 
   const off = attrFactor(owner.attrs.technical) * (1 + owner.behavior.dribbleTendency * 0.3);
   const def = attrFactor(tackler.attrs.tackling) * (0.7 + tackler.behavior.pressAggression * 0.6);
   const prob = fclamp((config.contest.tackleBase * def) / off, 0.03, 0.85);
-  if (rng.next() < prob) {
+  // rng 소비는 분기와 무관하게 정확히 1회(구 코드와 동일) — 관측을 위해 결과만 먼저 받는다.
+  const won = rng.next() < prob;
+  if (obs) {
+    obs({
+      tick, ownerId: owner.id, ownerSide: owner.side, nearestOppM,
+      attempt: true, tacklerId: tackler.id, foulProb, fouled: false, tackled: won, inBox,
+    });
+  }
+  if (won) {
     giveBallTo(state, tackler, "turnover");
     return [{ tick, minute, type: "tackle", team: tackler.side, playerId: tackler.id }];
   }

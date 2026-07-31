@@ -282,3 +282,22 @@ export function aggregateRealism(config: EngineConfig, seeds: string[] = REALISM
     lastHash,
   };
 }
+
+/**
+ * 점표기 경로(`"rules.foul.base"`) → 값 으로 config 를 만든다. 격자 스윕을 문자열 스펙(env JSON)
+ * 으로 넘기기 위한 유틸 — `volume-sweep` 과 `foul-sweep` 이 **같은 함수**를 쓴다(두 스윕이
+ * 서로 다른 방식으로 config 를 조립하면 같은 점을 재도 값이 갈린다).
+ */
+export type ConfigPoint = Record<string, number>;
+
+export function pointConfig(base: EngineConfig, p: ConfigPoint): EngineConfig {
+  const out = JSON.parse(JSON.stringify(base)) as EngineConfig;
+  for (const [path, v] of Object.entries(p)) {
+    if (path === "label") continue;
+    const seg = path.split(".");
+    let node = out as unknown as Record<string, unknown>;
+    for (let i = 0; i < seg.length - 1; i++) node = node[seg[i]!] as Record<string, unknown>;
+    node[seg[seg.length - 1]!] = v;
+  }
+  return out;
+}
