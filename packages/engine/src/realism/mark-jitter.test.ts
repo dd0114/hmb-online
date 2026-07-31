@@ -65,9 +65,22 @@ describe("마크 진동 상한 (#178)", () => {
   //     (10.26 vs 기준선 13.17). 즉 시야 계층이 만드는 진동분은 줄었고, 기준선 자체가 올라갔다.
   // 임계 11 은 여전히 이빨이 있다 — 수정 전 버그값 43.1 은 물론, 여기서 +7% 만 더 표류해도 잡힌다.
   // 이 값의 최종 재보정은 S8(밸런스 1회) 및 H5 루즈볼 물리(#313) 이후에 다시 본다.
-  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 11/100, 평균 이동 ≤ 2.0 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM})`, () => {
-    expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(11);
-    expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(2);
+  //
+  // ── 재기준 11 → 20 · 2.0 → 3.0 (#353 홀드 압박 + #357 볼륨 재보정) ────────────────
+  // ⚠️ **이건 "값이 넘쳐서 넓힌 것"이 아니다 — 임계가 대조군 아래로 내려가 측정 대상을 잃었다.**
+  //   지금 시야off(= 당김 없음) 기준선이 **20.71** 이다. 즉 마크 당김을 **완전히 끈 세계**가
+  //   구 임계 11 을 이미 두 배 가까이 넘는다. 그 상태의 "≤11" 은 당김 오버슛(#178 이 고친 것)을
+  //   재는 것이 아니라 **엔진 전체의 이동량 수준**을 재는 숫자다 — 이 파일의 목적이 아니다.
+  //   같은 이유로 평균 이동도 기준선이 2.78 이라 구 임계 2.0 이 대조군 아래였다.
+  // 방향은 오히려 좋다: 현재 **18.97 < 기준선 20.71**(0.92배) — 시야 계층은 진동을 **줄인다**.
+  // 주 계약(관계식 ≤1.3배)은 셋 다 통과하고 있고, 이 백스톱은 "둘이 함께 표류"를 잡는 보조다.
+  // 20 · 3.0 = 실측 18.97 · 2.85 위 5% 여유. 원 버그값 43.1 에 대한 이빨은 그대로다.
+  // (표본 구성 변화 이력: nearOwner 표본 6939 → 4608 → 사슬+홀드압박으로 다시 이동.)
+  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 20/100, 평균 이동 ≤ 3.0 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off 기준선 ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM})`, () => {
+    expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(20);
+    expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(3);
+    // 백스톱이 **대조군 아래로 다시 내려가지 않게** 구조로 묶는다 — 그러면 또 다른 것을 재게 된다.
+    expect(20).toBeGreaterThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 0.9);
   });
 
   it("시야 계층은 켜진 채여야 한다 — 진동 해소가 시야 롤백으로 달성되면 안 된다", () => {

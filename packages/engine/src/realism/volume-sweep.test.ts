@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { aggregateRealism, GUARD_SEEDS, REALISM_SEEDS } from "./harness";
 import { BENCH, inBench, benchVerdict } from "./bench";
+import { collectOneOnOne } from "./one-on-one";
+import { countHeaders } from "./header";
+import { runMatch } from "../match";
+import { makeTacticalInput, makeSelectData } from "../fixtures";
 
 /**
  * #279 볼륨 재보정 — **경계 있는 스윕**(env 가드). npm test 에서는 skip.
@@ -38,6 +42,37 @@ function cfg(p: Point): EngineConfig {
   return out;
 }
 
+/**
+ * **품질 지표**(#357) — 볼륨만 맞추고 이걸 죽이면 재보정 실패다. `HMB_VOLSWEEP_Q=1` 로 켠다
+ * (경기를 두 번 더 돌리므로 격자 스크리닝에서는 꺼 둘 수 있다. 연산 비용은 제약이 아니다 — #279).
+ *
+ * 세 지표 모두 **다른 파일의 측정 함수를 그대로 재사용**한다(계약과 진단이 갈리면 안 된다):
+ *  · 사거리 안 hold 비율 · one_on_one 라벨 ← `one-on-one.ts`(#353/#316 이 쓰는 관측자)
+ *  · 헤더 슛/골 ← `header.ts`(`ball-physics.test.ts` 계약이 쓰는 그 함수)
+ */
+function quality(c: EngineConfig, seeds: string[]) {
+  const r = collectOneOnOne(c, seeds);
+  const holdPct = r.inRange > 0 ? (r.inRangeByKind.hold / r.inRange) * 100 : 0;
+  const shootPct = r.inRange > 0 ? (r.inRangeByKind.shoot / r.inRange) * 100 : 0;
+  // `one_on_one` **라벨**은 60시드에 5건 수준이라 격자 판정에 못 쓴다(20시드면 0 이 정상).
+  // 같은 것을 세는 **고빈도 대리 지표** = 단독(10m) 오픈플레이 에피소드 중 슛으로 끝난 비율.
+  const free = r.buckets.find((b) => b.clearM === 10)!;
+  const freeShotEpiPct = free.openEpisodes > 0 ? (free.openEpisodesWithShot / free.openEpisodes) * 100 : 0;
+  const freeHoldPct = free.openTicks > 0 ? (free.byKindOpen.hold / free.openTicks) * 100 : 0;
+  const select = makeSelectData();
+  const logs = seeds.map((s) => runMatch(s, makeTacticalInput("H", s), makeTacticalInput("A", s), select, c));
+  const h = countHeaders(logs);
+  return {
+    holdPct,
+    shootPct,
+    oneOnOnePerMatch: r.oneOnOneEvents / r.matches,
+    freeShotEpiPct,
+    freeHoldPct,
+    headerShots: h.headerShots,
+    headerGoals: h.headerGoals,
+  };
+}
+
 function row(label: string, p: Point) {
   const c = cfg(p);
   const b = aggregateRealism(c, SEEDS);
@@ -45,9 +80,17 @@ function row(label: string, p: Point) {
     const bm = BENCH.find((x) => x.key === k)!;
     return `${bm.label}=${b.mean[k].toFixed(2)}${inBench(b.mean[k], bm) ? "" : "!" + benchVerdict(b.mean[k], bm)}`;
   }).join(" ");
+  let q = "";
+  if (ENV?.HMB_VOLSWEEP_Q) {
+    const s = quality(c, SEEDS);
+    q =
+      ` || hold%=${s.holdPct.toFixed(1)} shoot%=${s.shootPct.toFixed(1)} 단독슛에피%=${s.freeShotEpiPct.toFixed(1)}` +
+      ` 단독hold%=${s.freeHoldPct.toFixed(1)} 1v1/경기=${s.oneOnOnePerMatch.toFixed(3)}` +
+      ` header슛=${s.headerShots} header골=${s.headerGoals} long%=${b.mean.longShareOfAttempts.toFixed(2)}`;
+  }
   // eslint-disable-next-line no-console
   console.log(
-    `${label} → goals/match=${b.goalsPerMatch.toFixed(2)} teamGoals=${b.mean.goals.toFixed(2)} shots=${b.mean.shots.toFixed(2)} onTarget=${b.mean.onTarget.toFixed(2)} conv=${b.mean.shotConvPct.toFixed(2)}% xg/shot=${b.mean.xgPerShot.toFixed(3)} | ${struct}`,
+    `${label} → goals/match=${b.goalsPerMatch.toFixed(2)} teamGoals=${b.mean.goals.toFixed(2)} shots=${b.mean.shots.toFixed(2)} onTarget=${b.mean.onTarget.toFixed(2)} conv=${b.mean.shotConvPct.toFixed(2)}% xg/shot=${b.mean.xgPerShot.toFixed(3)} | ${struct}${q}`,
   );
   return b;
 }

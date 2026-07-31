@@ -54,6 +54,10 @@ export const showcaseConfig = {
     // (뷰어 E2E 계약이 이벤트 타입 커버리지를 요구한다). **쇼케이스 전용 — 리얼은 19 그대로.**
     shootRange: 24,
     shootXgThreshold: 0.05,
+    // #357: 헤더 임계가 필드 임계에서 **분리**됐다(`aerial.headerXgThreshold`). 분리 전에는 위
+    // 0.05 가 헤더에도 걸렸으므로, 같은 값을 여기 다시 적어 **쇼케이스 동작을 보존**한다
+    // (안 적으면 리얼 기본 0.07 을 물려받아 데모 전개가 미세하게 달라진다 = 골든 재굽기).
+    aerial: { ...defaultEngineConfig.contest.aerial, headerXgThreshold: 0.05 },
     saveCornerProb: 0.7, // 세이브→코너 굴절↑
     offTargetBlockCornerProb: 0.45, // 빗맞음→코너↑
     oneOnOneClearM: 7.0,

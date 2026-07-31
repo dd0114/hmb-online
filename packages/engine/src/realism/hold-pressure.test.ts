@@ -46,12 +46,22 @@ export function legacy0270(): EngineConfig {
     chain: {
       ...cfg.chain,
       hold: { ...cfg.chain.hold, keepBase: 1, pressPenalty: 0, tightPenalty: 0 },
+      // #357 볼륨 재보정을 되돌린다. 이 노브들은 #353 메커니즘과 무관하지만 **0.27.0 해시를
+      // 재현하려면 0.27.0 의 값이어야 한다** — 안 되돌리면 이 계약이 "메커니즘이 꺼지는가"가
+      // 아니라 "그 뒤로 튜닝이 있었는가"를 재게 된다(그건 골든의 일이다).
+      // 되돌린 상태에서 해시가 **여전히 비트 동일**하다는 것이 #357 이 **config-only** 였다는
+      // 증거다(코드 경로가 바뀌었다면 여기서 깨진다).
+      goalValue: 9.4,
     },
     contest: {
       ...cfg.contest,
       shotPressureAimPenalty: 0,
       shotPressureXgMult: 1,
       passReceiverPressurePenalty: 0,
+      shootXgThreshold: 0.07,
+      onTargetBase: 0.21,
+      // #357 헤더 임계 분리 이전 = 필드 임계와 같은 값(그때는 한 노브였다).
+      aerial: { ...cfg.contest.aerial, headerXgThreshold: 0.07 },
     },
   };
 }

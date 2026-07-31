@@ -7,6 +7,7 @@ import { REALISM_SEEDS } from "./harness";
 import { createRng } from "../rng";
 import { aimErrorDeg, aimWithError, isLofted, passPowerFx } from "../kick";
 import { unownedRuns } from "./loft";
+import { countHeaders as countHeaderStats } from "./header";
 
 /**
  * 공 물리 계약 — #313(H5 루즈볼) · #306(S6 공중볼) · #312(H1 세기·정확도).
@@ -83,6 +84,10 @@ describe("#313 H5 — 루즈볼은 굴러간다(비행 중 급정지)", () => {
     const per = SEEDS.map((s) => ({ seed: s, n: unownedDeadStops(logOf(s)) }));
     const avg = per.reduce((t, p) => t + p.n, 0) / per.length;
     const detail = per.map((p) => `${p.seed}:${p.n}`).join(" ");
+    // 통과할 때도 찍는다 — 아래 raw 래칫을 재기준할 때 **분해값**(raw − 무소유 = 데드볼+트래핑)이
+    // 없으면 "총량이 늘었다"를 귀속할 수 없다(#357 에서 실제로 그 값이 필요했다).
+    // eslint-disable-next-line no-console
+    console.log(`  [#313] 무소유 급정지 ${avg.toFixed(1)}회/경기 (상한 25)`);
     expect(avg, `무소유 급정지 ${avg.toFixed(1)}회/경기 — ${detail}`).toBeLessThanOrEqual(25);
   });
 
@@ -97,10 +102,20 @@ describe("#313 H5 — 루즈볼은 굴러간다(비행 중 급정지)", () => {
     // 이 웨이브가 책임지는 물리 지표는 **무소유 급정지**이고 그건 31.3 → 21.1 로 이미
     // 해소됐다(위 계약, 상한 25 는 **그대로 둔다** — 그게 진짜 게이트다).
     // 320 인 이유: 실측 308. 360(A조 제안)은 여유가 과해 회귀를 놓친다.
+    //
+    // ── 재기준 320 → 345 (#357 볼륨 재보정) ────────────────────────────────────────
+    // **분해가 근거다**(위 계약이 이제 통과할 때도 무소유 값을 찍는다):
+    //   #327:  raw 308.0 · 무소유 21.1 → 데드볼+트래핑 286.9
+    //   #353:  raw 345.5 · 무소유 35.3 → 데드볼+트래핑 310.2   (RED)
+    //   #357:  raw 338.4 · 무소유 **16.1** → 데드볼+트래핑 322.3
+    // 즉 **이 계약이 책임지는 층(무소유)은 21.1 → 16.1 로 역대 최저**다(상한 25 는 그대로).
+    // 늘어난 것은 데드볼+트래핑뿐이고, 그건 팀당 슛을 23.1 → 12.7 로 되돌린 것의 정의상
+    // 귀결이다 — 슛으로 끝나지 않는 소유가 늘면 "받고 서는" 틱이 는다.
+    // 345 = 실측 338.4 + 2%. 원 버그값 524 에 대한 이빨은 그대로다.
     const per = SEEDS.map((s) => ({ seed: s, n: deadStops(logOf(s)) }));
     const avg = per.reduce((t, p) => t + p.n, 0) / per.length;
     const detail = per.map((p) => `${p.seed}:${p.n}`).join(" ");
-    expect(avg, `raw 급정지 ${avg.toFixed(1)}회 — ${detail}`).toBeLessThanOrEqual(320);
+    expect(avg, `raw 급정지 ${avg.toFixed(1)}회 — ${detail}`).toBeLessThanOrEqual(345);
   });
 
   it("루즈볼 굴림 구간이 실제로 존재한다 — 소유 없는 저속 이동 틱", () => {
@@ -134,25 +149,16 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
     expect(n / logs.length, "경기당 헤딩 이벤트").toBeGreaterThan(1);
   });
 
-  /** 헤더 슛 / 헤더 골 집계(20시드). 8시드면 0/1 사이를 오가 플래키해진다. */
+  /**
+   * 헤더 슛 / 헤더 골 집계(20시드). 8시드면 0/1 사이를 오가 플래키해진다.
+   * 세는 함수는 `realism/header.ts` 와 **공유**한다(#357) — 진단 스윕이 격자 매 점에서 같은 수를
+   * 봐야 하고, 두 곳에서 각자 세면 계약과 진단이 조용히 갈린다.
+   */
   function countHeaders(): { headerShots: number; headerGoals: number } {
-    let headerShots = 0;
-    let headerGoals = 0;
-    for (const l of REALISM_SEEDS.map(logOf)) {
-      // 헤더 슛 → 골 연결: 같은 팀의 직전 슛이 헤더였던 goal 이벤트.
-      const lastShotWasHeader = new Map<string, boolean>();
-      for (const e of l.events) {
-        if (e.type === "shot" && e.team) {
-          const isHeader = e.detail === "header";
-          lastShotWasHeader.set(e.team, isHeader);
-          if (isHeader) headerShots++;
-        }
-        if (e.type === "goal" && e.team && lastShotWasHeader.get(e.team)) headerGoals++;
-      }
-    }
+    const c = countHeaderStats(REALISM_SEEDS.map(logOf));
     // eslint-disable-next-line no-console
-    console.log(`  [#306] ${REALISM_SEEDS.length}경기 헤더 슛 ${headerShots}건 · 헤더 골 ${headerGoals}건`);
-    return { headerShots, headerGoals };
+    console.log(`  [#306] ${REALISM_SEEDS.length}경기 헤더 슛 ${c.headerShots}건 · 헤더 골 ${c.headerGoals}건`);
+    return c;
   }
 
   it("헤더 슛이 나온다", () => {

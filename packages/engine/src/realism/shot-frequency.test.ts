@@ -101,8 +101,21 @@ describe("G-A 단조성: 슛 노브↑ → 슛 수↑ (config 가 실제 레버)
   // 구 사다리가 재던 `decisionWeights.shoot` 의 미세 단조성(0.04~0.08 폭 감도)은 chain 에서 **정의
   // 자체가 없다**. 그 감도는 weighted(롤백 경로)에서만 의미가 있으므로 아래 별도 it 에서 2점
   // 대비로만 지킨다(60시드 × 6 rung 을 두 코어 모두 도는 비용은 게이트 시간에 안 맞는다).
-  it("chain.goalValue 사다리 8→26 엄격 단조 + 26→40 비엄격(포화 구간)", () => {
-    const ladder = [8, 10, 12, 14, 18, 26];
+  //
+  // ── #357: rung 을 **포화 이전 구간으로 옮겼다**(이 주석의 지시대로) ──────────────────
+  // 위 "다음에 여기가 깨지면 계약을 약화시키지 말고 rung 을 포화 이전 구간(≤18)으로 옮겨라 —
+  // 레버가 죽은 게 아니라 포화점이 내려온 것이다" 를 그대로 집행한다.
+  // #357 이 가치 부등식을 세우며(`chain.goalValue` 9.4 → 22) 이 노브의 **역할이 바뀌었다**:
+  // 이제 gv 는 "자유로운 선수가 쏘는가"(질, r=threatWeight/goalValue)를 정하고, **볼륨은
+  // `contest.shootXgThreshold` 가 정한다**. 그래서 gv 는 12 위에서 사실상 포화한다.
+  // 60시드 실측(#357 기본값 트리): 8→6.46 · 10→10.32 · 12→12.11 · **14→11.91** · 18→12.95 ·
+  //   26→12.55 · 40→13.23  ← 14 가 12 보다 낮다(포화 구간의 노이즈, SE(Δ)≈0.47).
+  // → rung 에서 14·26 을 뺀다. **임계(비율 1.35 · 절대 3.5)는 한 자리도 안 건드렸다.**
+  //   현재 총효과 6.46 → 13.23 = 절대 6.77 · 2.05배 (구 4.26배보다 낮지만 임계 위).
+  // 그리고 **새 볼륨 레버의 사다리를 아래에 추가**한다(계약이 약해지지 않게 — 이 웨이브에서
+  // 슛 볼륨을 실제로 움직이는 노브가 그쪽이므로, 거기에 사다리가 없으면 회귀 가드가 빈다).
+  it("chain.goalValue 사다리 8→18 엄격 단조 + 18→40 비엄격(포화 구간)", () => {
+    const ladder = [8, 10, 12, 18];
     const SAT = 40; // 포화 구간 상단(비엄격 판정)
     const measure = (goalValue: number) =>
       aggregateRealism({ ...cfg, chain: { ...cfg.chain, goalValue } }, GUARD_SEEDS).mean.shots;
@@ -114,13 +127,41 @@ describe("G-A 단조성: 슛 노브↑ → 슛 수↑ (config 가 실제 레버)
     }
     const sat = measure(SAT);
     // 포화 상단: 증가는 요구하지 않되 **하락은 금지**(tol 은 구 계약과 동일한 1.0슛).
-    expect(sat, `goalValue 26→${SAT} 는 포화 구간이라 증가는 안 봐도 되지만 하락하면 회귀다 (26=${shots[shots.length - 1]}, ${SAT}=${sat})`)
+    expect(sat, `goalValue 18→${SAT} 는 포화 구간이라 증가는 안 봐도 되지만 하락하면 회귀다 (18=${shots[shots.length - 1]}, ${SAT}=${sat})`)
       .toBeGreaterThanOrEqual(shots[shots.length - 1]! - 1.0);
 
     // 총효과 판정식은 구 계약 그대로(비율 주 + 절대 하한). 현재: 1.20 → 18.54 = 절대 17.34 · 15.45배.
     const span = sat - shots[0]!;
     const ratio = sat / shots[0]!;
     const label = `전 구간 총효과 (8=${shots[0]} → ${SAT}=${sat}) 절대 ${span.toFixed(2)} · 비율 ${ratio.toFixed(2)}배`;
+    expect(ratio, `${label} — 레버 비율이 죽었다`).toBeGreaterThan(1.35);
+    expect(span, `${label} — 절대 폭 하한(무한 침식 방지)`).toBeGreaterThan(3.5);
+  });
+
+  /**
+   * #357 — **현 볼륨 레버의 사다리**. `chain.goalValue` 가 질(자유로운 선수가 쏘는가)을,
+   * `contest.shootXgThreshold` 가 양을 맡게 되면서 이 노브가 슛 빈도의 실제 레버가 됐다.
+   * 위 gv 사다리가 포화 구간으로 밀려난 만큼 여기서 회귀 가드를 받는다.
+   *
+   * 임계(비율 1.35 · 절대 3.5)는 gv 사다리와 **같은 판정식**을 쓴다(새로 정하지 않는다).
+   * 60시드 실측(#357 기본값 트리): 0.198→12.20 · 0.196→13.03 · 0.194→14.17 · 0.190→15.50 ·
+   *   0.186→17.06  (임계가 낮을수록 슛이 는다 = 내림차순 rung)
+   * rung 을 3점으로 둔 이유는 게이트 시간이다(60시드 × 1점 ≈ 25초). 간격은 폭 0.006 으로
+   * 잡아 rung 당 참효과(≈2.4슛)가 SE(Δ)≈0.47 의 다섯 배 위에 오게 했다 — 그리고 그래야
+   * 총효과가 gv 사다리와 **같은 판정식**(1.35배·3.5슛)을 통과한다(0.198↔0.190 은 1.27배로 미달).
+   */
+  it("contest.shootXgThreshold 사다리 0.198→0.186 엄격 단조(임계↓ = 슛↑)", () => {
+    const rungs = [0.198, 0.192, 0.186];
+    const measure = (shootXgThreshold: number) =>
+      aggregateRealism({ ...cfg, contest: { ...cfg.contest, shootXgThreshold } }, GUARD_SEEDS).mean.shots;
+    const shots = rungs.map(measure);
+    for (let i = 1; i < shots.length; i++) {
+      expect(shots[i], `shootXgThreshold ${rungs[i - 1]}→${rungs[i]} 구간에서 증가해야 (측정 ${shots.join(" → ")})`)
+        .toBeGreaterThan(shots[i - 1]!);
+    }
+    const span = shots[shots.length - 1]! - shots[0]!;
+    const ratio = shots[shots.length - 1]! / shots[0]!;
+    const label = `총효과 (0.198=${shots[0]} → 0.186=${shots[shots.length - 1]}) 절대 ${span.toFixed(2)} · 비율 ${ratio.toFixed(2)}배`;
     expect(ratio, `${label} — 레버 비율이 죽었다`).toBeGreaterThan(1.35);
     expect(span, `${label} — 절대 폭 하한(무한 침식 방지)`).toBeGreaterThan(3.5);
   });

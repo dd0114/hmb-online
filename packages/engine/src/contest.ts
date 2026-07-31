@@ -658,7 +658,9 @@ function resolveAerial(
   ) {
     const base = xgAtPoint(winner.side, winner.posFx.x, winner.posFx.y, winner.attrs.shooting, winner.fatigue, config, pitch);
     const xg = fclamp(base.xg * a.headerXgMult, 0.01, 0.9);
-    if (xg >= config.contest.shootXgThreshold) {
+    // #357: **헤더 전용 임계**. 필드 슛 임계(`contest.shootXgThreshold`)를 공유하면 `headerXgMult`
+    // 로 깎인 헤더 xg 가 먼저 걸려, 필드 볼륨을 임계로 조정하는 순간 공중 경로가 통째로 꺼진다.
+    if (xg >= a.headerXgThreshold) {
       state.ball.posFx.x = winner.posFx.x;
       state.ball.posFx.y = winner.posFx.y;
       state.ball.owner = null;
