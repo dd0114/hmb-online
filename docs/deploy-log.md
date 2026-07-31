@@ -6,6 +6,20 @@
 
 ---
 
+## 2026-07-31T07:38Z — [운영 조치] 롤백 피해 유저 **별희**에게 보상 우편 **300 Z** 발송 (미수령)
+
+- **지시**: main 전결(수령 전 revoke 가능 = 복구 가능 축). 대상 = 위 [롤백] 항목의 피해 유저.
+- **✅ 발송 완료 — `별희`**(`01KYK05K3JBW3VEQZJPX0B504B`, guest, 전적 6승 0무 **1패** ← 이 1패가 그 FAILED 건)
+  - **캠페인 `01KYVHR1EQJQBR35FSC52465ZP`** · `Idempotency-Key: rollback-comp-byeolhui-20260731` · `applied: true` · **201**(targetCount 1)
+  - 제목 **`경기 중단 보상`** · 본문 **"점검으로 인해 진행 중이던 경기(5:0 리드)가 중단되어 죄송합니다. 보상으로 300 다이아를 보내드립니다."**
+  - 첨부 **`gems: 300`**(points 0 · players []) — **Z = 유상재화**가 맞다(`MailAttachments` 스키마: points=G 무료재화 / gems=Z 유상재화). 만료 **2026-08-30T07:38:14Z**(30일).
+  - `reason`(감사 원장) = "v3.09 엔진 롤백(#279 shootXgThreshold 덱 비전이성)으로 진행 중 매치 `01KYVFJ8F390D16QFPDXRTBNB1` 이 resumeState version mismatch 로 FAILED — 피해 보상" · actor `hmbadmin`
+  - **검증**: `GET /api/admin/mails/{id}` 로 제목·본문·첨부·만료 대조 → **`claimedCount: 0` · `readCount: 0` · `revokedAt: null`**, DB `user_mails` 행의 `claimed_at`·`read_at` **둘 다 NULL**. **수령은 유저 몫이라 대신 누르지 않았다.**
+- **📌 hero 가 금액·문안을 바꾸고 싶으면 지금 가능하다 — 수령 전까지만이다**: `POST /api/admin/mails/01KYVHR1EQJQBR35FSC52465ZP/revoke`(미수령분 회수) 후 새 내용으로 재발송한다. ⚠️ **재발송 때는 `Idempotency-Key` 를 반드시 새 값으로** 바꿔라 — 같은 키에 다른 내용은 **409** 고, 그걸 모르고 넘어가면 "정정에 성공했다고 믿는데 아무 일도 안 일어난" 상태가 된다(openapi 가 admin points 지급에서 실측으로 겪었다고 박아둔 함정). **이미 수령한 뒤에는 본문을 바꾸지 않는다**(원장 성격).
+- 코드·이미지·DB 스키마 변경 **0**(어드민 API 호출만). 라이브는 `4782f54`/engine@0.23.0 그대로.
+
+---
+
 ## 2026-07-31T07:15Z — **[롤백] v3.09 → v3.08** — engine@0.28.0 **되돌림**(라이브 골 소실, hero 긴급 확정)
 
 - **결정**: hero 긴급 확정. v3.09(engine@0.28.0)가 라이브에서 **골을 죽였다** — 2경기 연속 0:0 · 팀당 슛 3개(구 엔진 대비 슛 27→6). 승인 시 고지된 퇴보는 **파울 축 1건**이었는데 실제 범위가 골·슛까지였다.
