@@ -95,7 +95,23 @@ export const PACE = {
  * @returns {number} 실시간 재생 길이(ms)
  */
 export function autoPaceDurationMs(snaps, events, speedMul = 1) {
-  if (!Array.isArray(snaps) || snaps.length < 2) return 0;
+  return integratePace(snaps, events, speedMul).totalMs;
+}
+
+/**
+ * 재생 **곡선**(#365) — `[실시간ms, 재생 인덱스]` 표본열. 길이만이 아니라 "언제 어디를 보고
+ * 있는가"가 필요할 때 쓴다(서버 게이트는 경과시간에 **선형**인데 연출 페이싱은 균일하지 않아,
+ * 그 편차가 `live-pace.PACE_DRIFT_FRAC` 안인지가 "가변 보정 없이도 되감기가 안 걸린다"의 근거다).
+ *
+ * ⚠️ 길이와 **같은 루프**를 쓴다 — 곡선을 따로 구현하면 그 둘이 조용히 갈라진다.
+ */
+export function autoPaceCurve(snaps, events, speedMul = 1) {
+  return integratePace(snaps, events, speedMul, true);
+}
+
+function integratePace(snaps, events, speedMul = 1, withCurve = false) {
+  const empty = { totalMs: 0, curve: [], steps: 0 };
+  if (!Array.isArray(snaps) || snaps.length < 2) return empty;
   const P = PACE;
   const keyTicks = events
     .filter((e) => e.type === "goal" || e.type === "penalty" || (e.type === "shot" && e.detail !== "saved" && e.detail !== "off_target"))
@@ -114,6 +130,7 @@ export function autoPaceDurationMs(snaps, events, speedMul = 1) {
 
   const dt = 1 / 60; // rAF 한 프레임(모델 적분 간격)
   let tickPos = 0, realMs = 0, guard = 0;
+  const curve = withCurve ? [[0, 0]] : null;
   while (tickPos < snaps.length - 1 && guard++ < 10_000_000) {
     const before = snaps[Math.min(Math.floor(tickPos), snaps.length - 1)].tick;
     const nearKey = !inSetpieceWait(before) && inHighlight(before, keyTicks, P.HL_PRE, P.HL_POST);
@@ -128,8 +145,9 @@ export function autoPaceDurationMs(snaps, events, speedMul = 1) {
       tickPos = idxOfTick(st.isGoal ? st.restartTick : st.causeTick); // 골만 재시작으로 스킵
       break;
     }
+    if (curve) curve.push([realMs, tickPos]);
   }
-  return Math.round(realMs);
+  return { totalMs: Math.round(realMs), curve: curve ?? [], steps: snaps.length - 1 };
 }
 
 /**

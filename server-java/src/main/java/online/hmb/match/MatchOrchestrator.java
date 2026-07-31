@@ -555,9 +555,9 @@ public class MatchOrchestrator {
             }
 
             if (half == 1) {
-                enterFirstHalf(match.id(), scoreHome, scoreAway, engineVersion);
+                enterFirstHalf(match.id(), scoreHome, scoreAway, engineVersion, result.playbackMs());
             } else {
-                enterSecondHalf(match, scoreHome, scoreAway);
+                enterSecondHalf(match, scoreHome, scoreAway, result.playbackMs());
             }
             return true;
         });
@@ -638,7 +638,7 @@ public class MatchOrchestrator {
      *
      * <p>시계가 꺼져 있으면(롤백) 곧바로 감독시간 대기 = 시계 이전 동작(§7.7).
      */
-    private void enterFirstHalf(String matchId, int scoreHome, int scoreAway, String engineVersion) {
+    private void enterFirstHalf(String matchId, int scoreHome, int scoreAway, String engineVersion, long playbackMs) {
         if (!clockService.enabled()) {
             jdbcClient.sql("""
                             UPDATE matches SET state = 'HALFTIME', score_h1_home = ?, score_h1_away = ?,
@@ -656,7 +656,7 @@ public class MatchOrchestrator {
                         WHERE id = ? AND state = 'GEN1'
                         """)
                 .params(scoreHome, scoreAway, engineVersion, MatchClockService.format(kickoff),
-                        MatchClockService.format(kickoff), clockService.liveWindowEnd(kickoff), matchId)
+                        MatchClockService.format(kickoff), clockService.liveWindowEnd(kickoff, playbackMs), matchId)
                 .update();
     }
 
@@ -665,7 +665,7 @@ public class MatchOrchestrator {
      * 끝날 때 한다({@link #settleFinishedIfDue}) — 라이브 모델 정합 + 재생 중 스포일러 방지(매니저 R2 결정).
      * 그 사이 후반 스코어는 score_h2_* 에만 보관하고 응답에는 싣지 않는다.
      */
-    private void enterSecondHalf(MatchService.MatchRow match, int scoreHome, int scoreAway) {
+    private void enterSecondHalf(MatchService.MatchRow match, int scoreHome, int scoreAway, long playbackMs) {
         if (!clockService.enabled()) {
             finishMatch(match, scoreHome, scoreAway, MatchService.S_GEN2);
             return;
@@ -677,7 +677,7 @@ public class MatchOrchestrator {
                         WHERE id = ? AND state = 'GEN2'
                         """)
                 .params(scoreHome, scoreAway, MatchClockService.format(start),
-                        clockService.liveWindowEnd(start), match.id())
+                        clockService.liveWindowEnd(start, playbackMs), match.id())
                 .update();
     }
 

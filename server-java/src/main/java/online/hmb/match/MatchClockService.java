@@ -104,9 +104,25 @@ public class MatchClockService {
         return format(now());
     }
 
-    /** 진입 시각 + 하프 재생 길이 = 그 단계 종료 예정 시각. */
+    /**
+     * 진입 시각 + 하프 재생 길이 = 그 단계 종료 예정 시각.
+     *
+     * <p>#365: 길이는 <b>그 하프의 실제 재생 길이</b>({@code playbackMs}, 러너가 viewer-core
+     * 페이싱 모델로 계산해 준 값)를 쓴다. 창 == 재생 길이가 되어야 클라가 <b>배속을 창에 맞춰
+     * 보정할 필요가 없다</b>(hero 확정: 고정 배속만 쓴다). 재생 길이는 틱 수가 아니라 그 경기의
+     * 슛·골·정지 개수가 정하므로 매치마다 다르다(실측 2:36~3:31).
+     *
+     * <p>{@code playbackMs <= 0}(구 러너·계산 실패)이면 config 폴백
+     * {@code hmb.match.clock.half-real-ms} — 그 경우엔 예전처럼 클라 배율 보정이 창을 맞춘다.
+     */
+    public String liveWindowEnd(Instant start, long playbackMs) {
+        long window = playbackMs > 0 ? playbackMs : props.getHalfRealMs();
+        return format(start.plusMillis(window));
+    }
+
+    /** config 폴백 창만 쓰는 경로(테스트·레거시). */
     public String liveWindowEnd(Instant start) {
-        return format(start.plusMillis(props.getHalfRealMs()));
+        return liveWindowEnd(start, 0L);
     }
 
     public boolean enabled() {
@@ -132,8 +148,31 @@ public class MatchClockService {
             return null; // 생성/종료 단계이거나 시계 미적용 매치
         }
         return new MatchClock(row.state(), row.kickoffAt(), row.phaseStartAt(), row.phaseEndsAt(),
-                nowText(), props.getHalfRealMs(), props.getHalftimeMs(),
+                nowText(), reportedHalfRealMs(row), props.getHalftimeMs(),
                 props.getSeek().isForwardBlocked(), props.getSeek().getGraceMs());
+    }
+
+    /**
+     * 응답의 {@code halfRealMs} — <b>그 매치의 실제 창</b>(#365). 창이 매치마다 다르므로
+     * (러너가 준 재생 길이) config 값을 그대로 실으면 응답이 거짓말을 한다.
+     *
+     * <p>하프 단계일 때만 {@code phase_ends_at − phase_start_at} 을 쓴다 — HALFTIME 의 그 차이는
+     * 감독시간이라 하프 길이가 아니다. 시각이 없거나 깨졌으면 config 폴백.
+     */
+    private long reportedHalfRealMs(ClockRow row) {
+        boolean isHalf = "FIRST_HALF".equals(row.state()) || "SECOND_HALF".equals(row.state());
+        if (isHalf && row.phaseStartAt() != null && row.phaseEndsAt() != null) {
+            try {
+                long ms = Instant.parse(row.phaseEndsAt()).toEpochMilli()
+                        - Instant.parse(row.phaseStartAt()).toEpochMilli();
+                if (ms > 0) {
+                    return ms;
+                }
+            } catch (RuntimeException ignored) {
+                // 형식이 깨진 시각 — 폴백으로 떨어진다(화면이 죽는 것보다 낫다).
+            }
+        }
+        return props.getHalfRealMs();
     }
 
     private Optional<ClockRow> clockRow(String matchId) {

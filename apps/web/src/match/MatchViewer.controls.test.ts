@@ -378,13 +378,20 @@ describe("MatchViewer — 라이브 게이트(#216)", () => {
    * 조용히 돌아온다(자연 페이스와 창의 오차가 하프 내내 누적). 그래서 **코어에 실제로 걸리는지**를
    * 여기서 본다. 독립검증 major-1.
    */
-  it("뒤처지면 배율 > 1 을 코어에 실제로 건다(창을 따라잡는다)", () => {
+  // ⚠️ #365(hero 확정 "고정 배속만, 가변 보정 안 쓴다"): 아래 두 계약은 **뒤집혔다**.
+  // 예전엔 `paceRate` 가 창과 재생의 차이를 배율로 흡수했는데, 이제 서버 창이 **그 하프의 실제
+  // 재생 길이**라(러너가 viewer-core 페이싱 모델로 재서 준다) 흡수할 오차가 없다.
+  // 그래서 계약도 "배율을 건다" → **"배율을 건드리지 않는다"** 로 뒤집는다.
+  // 되감기가 되살아나지 않는 근거(자연 재생의 선형 게이트 대비 최대 앞섬 4.2% < 허용 12%)는
+  // `tools/pace-config.test.ts` 가 엔진으로 직접 재서 지킨다 — 여기서는 **배선**만 본다.
+  it("뒤처져 있어도 배율을 건드리지 않는다 (#365 고정 배속만)", () => {
     fx.log = h2Log;
-    // 창은 절반 지났는데 재생은 10% — 따라잡아야 한다.
+    // 창은 절반 지났는데 재생은 10% — 예전이면 배율 > 1 로 따라잡던 자리다.
     viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK + 10, tickPosIdx: 10 });
     vi.useFakeTimers();
     try {
       renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2));
+      viewer.setSpeed.mockClear(); // 마운트 시 1 로 초기화하는 건 정상 — 그 뒤 폴링만 본다
       act(() => {
         vi.advanceTimersByTime(300); // 게이트 폴링 1회(250ms)
       });
@@ -392,25 +399,25 @@ describe("MatchViewer — 라이브 게이트(#216)", () => {
       vi.useRealTimers();
     }
     const speeds = viewer.setSpeed.mock.calls.map((c) => c[0] as number);
-    expect(speeds.some((v) => v > 1), `setSpeed 호출: ${JSON.stringify(speeds)}`).toBe(true);
+    expect(speeds, `폴링이 배율을 건 흔적: ${JSON.stringify(speeds)}`).toEqual([]);
   });
 
-  it("앞서 있으면 배율 < 1 로 늦춘다 — 되감아 회수하지 않는다(고무줄 금지)", () => {
+  it("앞서 있어도 배율을 건드리지 않고, 되감아 회수하지도 않는다(고무줄 금지)", () => {
     fx.log = h2Log;
-    // 창 50% · 재생 58% = 드리프트 허용(12%) 안쪽 → 회수 대신 배율로 늦춘다.
+    // 창 50% · 재생 58% = 드리프트 허용(12%) 안쪽 → 아무것도 하지 않는다.
     viewer.hooks.cur = () => ({ tick: H2_FIRST_TICK + 58, tickPosIdx: 58 });
     vi.useFakeTimers();
     try {
       renderLive(2, liveClock("SECOND_HALF", HALF_REAL_MS / 2));
       viewer.jumpToTick.mockClear(); // 마운트 시 seek-to-now 는 정상 — 그 뒤만 본다
+      viewer.setSpeed.mockClear();
       act(() => {
         vi.advanceTimersByTime(300);
       });
     } finally {
       vi.useRealTimers();
     }
-    const speeds = viewer.setSpeed.mock.calls.map((c) => c[0] as number);
-    expect(speeds.some((v) => v < 1), `setSpeed 호출: ${JSON.stringify(speeds)}`).toBe(true);
+    expect(viewer.setSpeed.mock.calls.map((c) => c[0] as number)).toEqual([]);
     expect(viewer.jumpToTick, "허용 범위 안의 앞섬은 회수하지 않는다").not.toHaveBeenCalled();
   });
 

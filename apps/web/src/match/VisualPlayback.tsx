@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createViewer, type ViewerChrome, type ViewerController } from "@hmb/viewer-core";
 import type { MatchClock } from "@hmb/shared";
 import { liveGate } from "./live-clock";
-import { driftAllowanceTicks, indexOfPlayhead, paceRate, tickOfIndex } from "./live-pace";
+import { driftAllowanceTicks, indexOfPlayhead, tickOfIndex } from "./live-pace";
 import type { ControlMode } from "./playback-controls";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildTimelinePins, type TimelinePin } from "./timeline-pins";
@@ -179,9 +179,17 @@ export function VisualPlayback({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log, half]);
 
-  // ── 라이브 게이트(P4-E2 #170 / AC-W3-1, #216 재정합) ──────────────────
-  // 늦게 접속하면 **경과 시점부터** 재생한다(seek-to-now). 그 뒤로는 연출(autoPace)을 켠 채로
-  // **배율**만 조금씩 손봐 재생이 서버 창의 끝에 맞물리게 한다(live-pace.paceRate).
+  // ── 라이브 게이트(P4-E2 #170 / AC-W3-1, #216 재정합 · #365 보정 제거) ──────────────────
+  // 늦게 접속하면 **경과 시점부터** 재생한다(seek-to-now). 그 뒤로는 **손대지 않는다** —
+  // 재생 속도는 코어의 고정 배속(연출 페이싱 × PACE.TICKS_PER_SEC)뿐이다.
+  //
+  // #365(hero 확정 "고정 배속만, 가변 보정 안 쓴다"): 서버 창이 이제 **그 하프의 실제 재생 길이**다
+  // (러너가 viewer-core 페이싱 모델로 재서 준다) → 창과 재생이 애초에 같은 길이라 맞출 것이 없다.
+  // 구 `paceRate`(잔여 비율 배율 0.6~1.6)는 창이 **고정값**이던 시절 그 차이를 흡수하던 장치다.
+  // ⚠️ 되감기가 되살아나지 않는가: 자연 재생은 구간마다 속도가 달라(크루즈 4x / 키장면 1x) 선형인
+  // 서버 게이트를 앞서거나 뒤처진다. 8시드×2하프 실측 = **최대 앞섬 4.2% · 뒤처짐 8.6%** 로
+  // 허용폭 `PACE_DRIFT_FRAC`(12%) 안이다 → 회수 점프는 발화하지 않는다(스크럽·핀 같은 의도적
+  // 점프만 남는다). 이 관계가 계약(`live-pace.test.ts`)으로 박혀 있다.
   //
   // 구 구현은 여기서 autoPace 를 끄고 압축비를 speed 에 직접 넣은 뒤, 넘칠 때마다 플레이헤드를
   // 되감았다 — ①유저의 실경기가 항상 "하이라이트 끔"이었고 ②코어 1x = 2게임초/실초라 압축비를
@@ -227,7 +235,7 @@ export function VisualPlayback({
         v.jumpToTick(tickOfIndex(snapTicks, gate.liveTick));
         return;
       }
-      v.setSpeed(paceRate(curIdx / tickCount, gate.liveTick / tickCount));
+      // #365: 배율은 **건드리지 않는다**(고정 배속만). 위 회수 점프만 남는다.
     }, 250);
     return () => {
       window.clearInterval(timer);

@@ -33,5 +33,18 @@ export const SimulateResponse = z.object({
   resumeState: z.unknown().optional(),
   /** matchLog.tickSnapshots 마지막 틱의 해시(경량 정합성 확인용). */
   lastHash: z.string(),
+  /**
+   * **이 하프를 연출 페이싱으로 처음부터 끝까지 보는 데 걸리는 실시간(ms)** (#365).
+   *
+   * 왜 러너가 주나: 서버는 하프 마감 시각(`phase_ends_at`)을 정해야 하는데, 재생 길이는
+   * 틱 수가 아니라 **그 경기에 슛·골·정지가 몇 개냐**가 정한다(슬로우모션·홀드). 계산 규칙은
+   * viewer-core `autoPaceDurationMs` 한 곳에 있고 그건 렌더 루프와 같은 상수를 읽는 TS 라,
+   * 로그를 이미 손에 든 러너가 재는 것이 유일하게 갈라지지 않는 자리다.
+   *
+   * 이 값이 창이 되면 **재생 속도를 창에 맞춰 보정할 필요가 사라진다**(hero 확정: 고정 배속만).
+   * 없으면(구 러너) 서버가 `hmb.match.clock.half-real-ms` 폴백을 쓴다 — 그때는 예전처럼
+   * 클라 배율 보정이 필요하다. 그래서 **optional 이고 additive** 다.
+   */
+  playbackMs: z.number().int().positive().optional(),
 });
 export type SimulateResponse = z.infer<typeof SimulateResponse>;
