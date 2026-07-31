@@ -3,7 +3,7 @@ import type { SimState, SimPlayer } from "../simstate";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
 import { createPitch, attackGoal, type Pitch } from "../pitch";
-import { xgAtPoint } from "../decision";
+import { shotGateXg, xgAtPoint } from "../decision";
 import { fromFixed, fdist, toFixed } from "../fixedmath";
 import { setDecisionObserver, type DecisionObserver } from "../action";
 
@@ -67,7 +67,7 @@ export interface ThresholdBucket {
   openEpisodesWithShot: number;
   /**
    * 조건충족 틱 중 **슛 후보가 생성되기라도 한** 틱 수 — `chain.ts:GEN_FN.shoot` 의 게이트
-   * (`xgHere >= contest.shootXgThreshold`)를 통과한 수. ②를 다시 둘로 가른다:
+   * (`xgHere >= shotGateXg(...)`)를 통과한 수. ②를 다시 둘로 가른다:
    * ②a **생성 자체가 없다**(게이트) vs ②b **생성됐는데 EV 에서 졌다**.
    */
   shootGenerated: number;
@@ -173,8 +173,9 @@ export function collectOneOnOne(
       owner.side, owner.posFx.x, owner.posFx.y, owner.attrs.shooting, owner.fatigue, config, pitch,
     );
     if (distM > config.contest.shootRange) return;
-    // `chain.ts:GEN_FN.shoot` 의 생성 게이트와 **같은 식**.
-    const shootGen = xgHere >= config.contest.shootXgThreshold;
+    // `chain.ts:GEN_FN.shoot` 의 생성 게이트와 **같은 함수**(#370: 임계가 절대값이 아니라
+    // 슈터 스케일 환산값이 됐다 — 여기서 상수를 다시 쓰면 진단이 구현과 갈린다).
+    const shootGen = xgHere >= shotGateXg(owner.attrs.shooting, owner.fatigue, config);
     inRange += 1;
     const k = kind as DecisionKind;
     if (KINDS.includes(k)) inRangeByKind[k] += 1;
@@ -343,7 +344,7 @@ export function renderOneOnOne(r: OneOnOneReport): string {
     );
   }
   L.push("");
-  L.push(`[D] ②a/②b 가르기 — 슛 후보가 **생성되기라도 했나**(gate: xgHere >= contest.shootXgThreshold)`);
+  L.push(`[D] ②a/②b 가르기 — 슛 후보가 **생성되기라도 했나**(gate: xgHere >= shotGateXg(shooting, fatigue))`);
   L.push(`| clearM | 충족틱 | 슛후보 생성 | 생성률 | 생성틱 중 shoot | 생성틱 중 carry | 생성틱 중 hold | 평균 xG | 평균 골거리 |`);
   L.push(`|---|---|---|---|---|---|---|---|---|`);
   for (const b of r.buckets) {

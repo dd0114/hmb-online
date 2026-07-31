@@ -37,6 +37,10 @@ export function legacy0270(): EngineConfig {
       shotPressureXgMult: 1,
       passReceiverPressurePenalty: 0,
       shootXgThreshold: 0.07,
+      // #370 슛 게이트 재설계의 롤백 스위치. 0 = 순수 절대 임계(0.27.0 의 게이트) — 새 코드 경로가
+      // **꺼진다**(`shotGateXg` 가 `shootXgThreshold` 를 그대로 돌려준다). 이 줄이 있어야
+      // 아래 0.27.0 해시가 **여전히 비트 동일**하고, 그것이 #370 도 config-only 였다는 증거가 된다.
+      shootPosQualityMin: 0,
       onTargetBase: 0.21,
       // #357 헤더 임계 분리 이전 = 필드 임계와 같은 값(그때는 한 노브였다).
       aerial: { ...cfg.contest.aerial, headerXgThreshold: 0.07 },

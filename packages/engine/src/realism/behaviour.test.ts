@@ -21,7 +21,16 @@ import { aggregateBehaviour, measureBehaviour, type BehaviourMetrics } from "./b
  * 절대 임계만 걸면 "얼마가 정상인가"를 이 파일이 임의로 정하게 된다.
  */
 
-const SEEDS = REALISM_SEEDS.slice(0, 8);
+/**
+ * #370: 8 → 20 시드. **판정식·임계는 한 자리도 안 바꿨다** — 표본만 늘려 SE 를 줄인다(검정력↑,
+ * `harness.ts` GUARD_SEEDS 주석과 같은 규율). 이유: `runnerMarkDistM` 대조는 8시드에서
+ * 롤백 7.85 vs 현재 7.88 처럼 **0.03m** 차이로 부호가 뒤집힌다(#327 에서 한 번, #370 에서 또 한 번).
+ * 그 폭은 이 지표의 표본오차와 같은 자릿수라 8시드로는 방향을 판정할 수 없다.
+ * ⚠️ 20시드로 재도 **여전히 역방향**(롤백 7.833 → 현재 7.875)이다 = 노이즈가 아니라 실제 회귀다.
+ * 즉 이 실패는 표본 문제가 아니라 #314 ⓑ 의 효과 크기가 원래 0.05m 급이라는 뜻이고, 원인 분리는
+ * #314 소관이다(#370 은 슛 게이트만 건드렸다). 계약을 약화시키지 않고 **RED 로 남긴다.**
+ */
+const SEEDS = REALISM_SEEDS;
 const select = makeSelectData();
 
 function run(cfg: EngineConfig): BehaviourMetrics {

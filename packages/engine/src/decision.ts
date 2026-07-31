@@ -103,6 +103,32 @@ export function xgAtPoint(
 }
 
 /**
+ * 슛 후보 게이트의 **실효 xG 임계**(#370). 두 코어(chain / weighted)가 **같은 함수**를 쓴다 —
+ * 재구현하면 게이트가 갈린다.
+ *
+ * ## 왜 절대값이 아닌가
+ * `xgAtPoint` = `xgBase × attrFactor(shooting) × 위치품질 × (1−0.3·fatigue)` 이다.
+ * 이 중 `attrFactor(shooting)` 은 **덱의 함수**다 — 라이브 14표본 실측으로 슈터 평균
+ * `shooting` 이 49.8~95.9(= attrFactor 0.998~1.367) 였다. 따라서 **절대 임계 하나는 덱마다
+ * 다른 위치품질에서 자른다**: 임계 0.197 은 attrFactor 0.998 인 덱에는 "위치품질 ≥ 0.564"를,
+ * 1.367 인 덱에는 "≥ 0.412"를 요구한다. 0.28.0 라이브 붕괴(슛 56→12)의 기전이 이것이다.
+ *
+ * ## 하는 일
+ * 선수 고유 스케일(`attrFactor` · 피로)을 **곱해 되돌려** 임계를 그 선수 기준으로 환산한다.
+ * 그러면 비교는 사실상 `위치품질 ≥ shootPosQualityMin` 이 되어 **덱 불변**이다.
+ * `shootXgThreshold` 는 그 아래에 남는 **절대 안전 하한**(명백한 쓰레기 슛)이다.
+ *
+ * `shootPosQualityMin = 0` → 순수 절대 임계(구 동작). **롤백 스위치.**
+ */
+export function shotGateXg(shooting: number, fatigue: number, config: EngineConfig): number {
+  const rel = config.contest.shootPosQualityMin;
+  if (!(rel > 0)) return config.contest.shootXgThreshold;
+  const scale = config.contest.xgBase * attrFactor(shooting) * (1 - 0.3 * fatigue);
+  const relThr = scale * rel;
+  return relThr > config.contest.shootXgThreshold ? relThr : config.contest.shootXgThreshold;
+}
+
+/**
  * 1대1(단독) 찬스 판정 — 슈터 반경(`contest.oneOnOneClearM`) 안에 비-GK 상대가 없고 사거리
  * (`contest.shootRange`) 안이면 xG 부스트(`oneOnOneXgMult`) + 하이라이트 표기(`detail="one_on_one"`).
  *
@@ -728,7 +754,8 @@ export function decideBallOwner(
   // (#316: 판정 본체는 `oneOnOneShot` 으로 추출 — chain 코어와 **같은 함수**를 쓴다. 산술 무변경.)
   const { xg, detail: shootDetail } = oneOnOneShot(state, owner, rawXg, distM, config);
   let wShoot = 0;
-  if (distM <= config.contest.shootRange && xg >= config.contest.shootXgThreshold) {
+  // #370: 임계는 절대값이 아니라 **슈터 스케일로 환산된 위치품질 하한**이다(shotGateXg 주석).
+  if (distM <= config.contest.shootRange && xg >= shotGateXg(owner.attrs.shooting, owner.fatigue, config)) {
     // 거리 페널티는 xG 에 이미 반영되므로 여기서는 xG 품질만 가중(이중 페널티 방지).
     const quality = fclamp(xg / config.contest.xgBase, 0.25, 1.8);
     wShoot =

@@ -212,7 +212,10 @@ describe("롤백 스위치 (#147 W3)", () => {
   // #358(파울 재보정: `rules.foul.base` 0.0188→0.135 · `boxFoulMult` 1.0→0.06 · `runningMult` 1→10)
   // 도 같은 성격이다 — 파울 확률은 **전역 규칙 노브**라 시야 롤백 경로에서도 똑같이 걸린다
   // (`runningMult` 는 vision 과 무관한 `contest.tryTackle` 안에 있다). b2f4a92b → 아래 상수.
-  const ROLLBACK_HASH = "201948a0";
+  // #370(슛 게이트 재설계: contest.shootXgThreshold 0.197→0.07 안전하한 은퇴 +
+  // contest.shootPosQualityMin 0.62 신설)도 같은 성격이다 — 슛 게이트는 **전역**이라
+  // vision-off 경로의 전개도 함께 움직인다(201948a0 → 아래 상수).
+  const ROLLBACK_HASH = "ded12a09";
   // #182 재보정(foul.base 0.017→0.0178)으로 marked 변형의 해시가 바뀐다.
   // ⚠️ **내 트리 출력을 베끼지 않았다** — `origin/main`(6f1b12b) 를 별도 워크트리로 체크아웃해
   // 같은 foul.base 를 넣고 독립 도출한 값이다(main 에는 corner 기능 자체가 없다):
@@ -238,7 +241,8 @@ describe("롤백 스위치 (#147 W3)", () => {
   // 무소유·무비행 공(데드엔드 지문)도 한 번도 안 걸렸다는 뜻이다. 변경의 사거리가 좁다는 증거로
   // 남겨 둔다(#239 의 GK 회수는 데드엔드 지문에만 걸리게 좁혔다 — `decision.ts` 주석).
   // #358 파울 재보정 → 아래 상수(위 ROLLBACK_HASH 와 같은 이유).
-  const ROLLBACK_HASH_MARKED = "89995755";
+  // #370 슛 게이트 재설계 → 아래 상수(위 ROLLBACK_HASH 와 같은 이유).
+  const ROLLBACK_HASH_MARKED = "0dadde6b";
 
   // #176: 데드볼 접근 금지 규칙은 **롤백 스위치 없이 무조건 적용**(hero 결정)이라 vision-off 출력도
   // 함께 움직인다. 이 상수의 목적은 "레거시와 같다"가 아니라 **"롤백 경로가 조용히 드리프트하지

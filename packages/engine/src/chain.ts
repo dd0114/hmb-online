@@ -18,6 +18,7 @@ import {
   planPass,
   passDelivery,
   planShot,
+  shotGateXg,
   shotPressureXg,
   xgAtPoint,
   type Action,
@@ -333,7 +334,10 @@ const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void>
   // 슛: 사거리·xG 임계 안일 때만. 타깃은 아직 골 중앙 고정(조준점 분산은 S5).
   shoot: (g, out) => {
     const c = g.ctx.config;
-    if (g.distToGoalM > c.contest.shootRange || g.xgHere < c.contest.shootXgThreshold) return;
+    // #370: 절대 xG 컷이 아니라 **슈터 스케일로 환산된 위치품질 하한**(`shotGateXg` 주석).
+    // 가상 도착지점에서도 도는 생성기라, 스케일은 그 자리에 설 **그 선수**(`here`)의 것을 쓴다.
+    if (g.distToGoalM > c.contest.shootRange) return;
+    if (g.xgHere < shotGateXg(g.here.shooting, g.here.fatigue, c)) return;
     const speed = shotPowerFx(g.holder.attrs.shooting, c);
     const flight = speed > 0 ? Math.ceil(g.distToGoalFx / speed) : 0;
     out.push({

@@ -68,7 +68,15 @@ test("#91 save→corner → 공이 골라인 밖 와이드로 나간다(키퍼�
 // 대응물이 없고 넣으면 슛 볼륨 레버가 `chain.goalValue` 와 이중이 된다. 그래서 발생 빈도는
 // weighted 시절보다 낮다(60시드 4건). 이 계약은 **경로 생존**을 본다(정밀 판정은
 // `packages/engine/src/realism/one-on-one.test.ts`).
+// ── #370: 쇼케이스 → **real 픽스처**로 옮겼다 (계약 문장·판정식 무변경) ─────────────────
+// 슛 게이트를 절대 xG 컷에서 위치품질 하한으로 바꾸자 쇼케이스 시드(24분·`xgBase` 0.62)의
+// one_on_one 이 0 건이 됐다. 바로 위 주석이 이미 말하듯 이 계약이 보는 것은 **경로 생존**이지
+// "쇼케이스 시드에 그 사례가 있느냐"가 아니다 — off_target·save→corner·penalty 세 테스트가
+// **같은 이유로 이미 real 픽스처로 옮겨져 있다**(#182 gameqa 승인). 같은 규율을 적용한다.
+// real 픽스처(시드 1000000013)는 one_on_one 5 건 — 재선정 기준에 이 조건을 넣었다
+// (`gen-fixtures.test.ts` 주석 참조).
 test("one_on_one → 슛 이벤트로 발행되고 팀이 명시된다", async ({ page }) => {
+  await loadViewer(page, VIEWER_REAL_URL);
   const one = await eventsOfType(page, "shot", "one_on_one");
   expect(one.length).toBeGreaterThan(0);
   for (const e of one) expect(e.team === "home" || e.team === "away").toBe(true);
