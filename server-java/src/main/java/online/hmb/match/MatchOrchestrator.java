@@ -56,6 +56,7 @@ public class MatchOrchestrator {
     private final WalletService walletService;
     private final EconomyService economyService;
     private final online.hmb.league.LeagueService leagueService;
+    private final online.hmb.league.LeagueDailyRewardService leagueDailyRewardService;
     private final online.hmb.growth.GrowthService growthService;
     private final MatchClockService clockService;
     private final ObjectMapper objectMapper;
@@ -79,6 +80,7 @@ public class MatchOrchestrator {
                              WalletService walletService,
                              EconomyService economyService,
                              online.hmb.league.LeagueService leagueService,
+                             online.hmb.league.LeagueDailyRewardService leagueDailyRewardService,
                              online.hmb.growth.GrowthService growthService,
                              MatchClockService clockService,
                              DeckPrewarmService prewarmService,
@@ -102,6 +104,7 @@ public class MatchOrchestrator {
         this.walletService = walletService;
         this.economyService = economyService;
         this.leagueService = leagueService;
+        this.leagueDailyRewardService = leagueDailyRewardService;
         this.growthService = growthService;
         this.clockService = clockService;
         this.objectMapper = objectMapper;
@@ -740,6 +743,10 @@ public class MatchOrchestrator {
         // AC-F2: 리그 매치면 픽스처 정산 + 같은 라운드 봇전 일괄 + 시즌 완료/보상(멱등, LeagueService).
         if ("league".equals(match.mode()) && match.leagueFixtureId() != null) {
             leagueService.settleUserFixture(match.leagueFixtureId(), totalHome, totalAway);
+            // #368: 매판 일일 보상 트랙 — 칸은 승패 무관 소비, 지급은 승리에만(내부 멱등).
+            // 날짜 앵커는 **종료 시각**이다(생성 시각이 아니다 — 자정을 넘겨 끝난 판이 어제 칸을
+            // 먹으면 유저의 오늘 트랙에서 그 판이 사라진다).
+            leagueDailyRewardService.settle(match.id(), match.userId(), result, clockService.now());
         }
 
         // #245: 원정이면 피원정 리포트 + 양쪽 레이팅(±10) 정산. 리그 정산과 같은 자리·같은 규율

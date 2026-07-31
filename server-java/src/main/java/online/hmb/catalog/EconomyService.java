@@ -10,6 +10,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,7 +36,7 @@ public class EconomyService {
      */
     public record Economy(String version, int initialPoints, int initialGems, List<String> starterPack,
                           Gacha gacha, Rewards rewards, JsonNode trade, JsonNode league,
-                          LeagueGemReward leagueGemReward,
+                          LeagueGemReward leagueGemReward, LeagueDailyReward leagueDailyReward,
                           Growth growth, Star star, Potential potential, Dice dice, Gems gems,
                           StarterTop starterTop, List<Currency> currencies) {
 
@@ -166,6 +168,51 @@ public class EconomyService {
      */
     public static final LeagueGemReward DEFAULT_LEAGUE_GEM_REWARD =
             new LeagueGemReward(3000, Map.of(1, 6000, 2, 3000, 3, 1000));
+
+    /**
+     * economy `league.dailyReward` 노드 (#368 hero 확정) — <b>리그 매판 일일 보상 트랙</b>.
+     *
+     * <p>하루(KST)에 치른 리그 경기의 순번 = 칸. {@code slotsPerDay} 칸까지만 트랙이 있고,
+     * {@code bigSlots} 에 해당하는 칸은 {@code big}, 나머지는 {@code small} 이다. <b>지급은 승리에만</b> —
+     * 무승부·패배는 칸만 소비되고 그 칸 보상은 소멸한다. 자정에 처음부터 다시 시작한다.
+     *
+     * <p>hero 확정값: 18칸 · 9·18번째 대량 · 소량 30 Z / 대량 300 Z (전승 시 하루 1,080 Z).
+     * <b>골드 사이클은 없다</b> — 18칸을 다 쓰면 자정까지 트랙 보상이 없다(2026-07-31 확정,
+     * 초기안의 "소진 후 골드 300/3,000 무한반복"을 hero 가 철회했다). 다시 열려면 {@code currency}
+     * 를 바꾸는 게 아니라 별도 축을 설계해야 한다 — 이 레코드는 <b>하루 한 트랙</b>만 표현한다.
+     */
+    public record LeagueDailyReward(int slotsPerDay, Set<Integer> bigSlots, String currency,
+                                    int small, int big) {
+
+        /** 그 칸이 대량인가(1-based 칸 번호). 트랙 밖(≤0 또는 slotsPerDay 초과)이면 false. */
+        public boolean isBig(int slotNo) {
+            return within(slotNo) && bigSlots != null && bigSlots.contains(slotNo);
+        }
+
+        /** 그 칸의 값. <b>트랙 밖이면 0</b> — 18칸을 다 쓴 뒤의 경기는 트랙 보상이 없다. */
+        public int amountFor(int slotNo) {
+            if (!within(slotNo)) {
+                return 0;
+            }
+            return isBig(slotNo) ? big : small;
+        }
+
+        /** 오늘 트랙에 아직 칸이 남아 있는가(= 이 순번이 트랙 안인가). */
+        public boolean within(int slotNo) {
+            return slotNo >= 1 && slotNo <= slotsPerDay;
+        }
+    }
+
+    /**
+     * 리그 일일 보상 기본값 (#368 hero 확정) — {@link #DEFAULT_LEAGUE_GEM_REWARD} 와 같은
+     * <b>last-known-good 폴백층</b>이다.
+     *
+     * <p>⚠️ 이 상수가 있어야 하는 이유 = <b>override 트랩</b>(#251 이 겪은 그 형태): 운영 override 는
+     * 무배포로 얹힌 <b>구 스냅샷</b>이라 새 필드가 없다. "모르면 0원"이면 <b>override 가 깔린 라이브
+     * 에서만</b> 보상이 조용히 사라지고, 테스트 환경에선 끝까지 안 보인다.
+     */
+    public static final LeagueDailyReward DEFAULT_LEAGUE_DAILY_REWARD =
+            new LeagueDailyReward(18, Set.of(9, 18), CURRENCY_GEM, 30, 300);
 
     /**
      * economy.v2.json `growth` 노드 (에픽 #179 V2-5, 메이플 피벗 GM1) — 경기 스탯별 XP 트랙 수치.
@@ -343,6 +390,14 @@ public class EconomyService {
         return snapshot.economy().map(Economy::leagueGemReward).orElse(DEFAULT_LEAGUE_GEM_REWARD);
     }
 
+    /**
+     * 리그 일일 보상 트랙 수치 (#368) — <b>economy 파일이 아예 없어도 값을 준다</b>.
+     * 소비 쪽은 항상 이 접근자를 쓴다(override 트랩, {@link #DEFAULT_LEAGUE_DAILY_REWARD} 주석 참조).
+     */
+    public LeagueDailyReward leagueDailyReward() {
+        return snapshot.economy().map(Economy::leagueDailyReward).orElse(DEFAULT_LEAGUE_DAILY_REWARD);
+    }
+
     /** override 파일 경로(존재 여부와 무관). 운영 API 가 여기에 쓰고 지운다. */
     public String overridePath() {
         return overrideFile;
@@ -386,6 +441,7 @@ public class EconomyService {
             JsonNode league = root.has("league") ? root.get("league") : null;
             // league.gemReward(#212) — 없으면 null(리그 젬 지급 비활성).
             LeagueGemReward leagueGemReward = parseLeagueGemReward(league);
+            LeagueDailyReward leagueDailyReward = parseLeagueDailyReward(league);
 
             // growth/star/potential/dice 블록(#179 V2-5, GM1 발행) — 구파일엔 없을 수 있어 null(성장 기능 비활성).
             Growth growth = parseGrowth(root.path("growth"));
@@ -407,15 +463,15 @@ public class EconomyService {
                     gacha.currency(), gacha.singleCost(), gacha.tenCost(), gacha.tenCount(),
                     gacha.tenPityMinGrade(),
                     rewards.win(), rewards.draw(), rewards.loss(), rewards.byMode().keySet(),
-                    leagueGemReward, trade != null ? "present" : "absent",
+                    leagueGemReward + "/daily=" + leagueDailyReward, trade != null ? "present" : "absent",
                     league != null ? "present" : "absent",
                     growth != null ? "present" : "absent", star != null ? "present" : "absent",
                     potential != null ? "present" : "absent", dice != null ? "present" : "absent",
                     gems != null ? "present" : "absent",
                     starterTop != null ? starterTop.pool().size() + " pool/" + starterTop.count() : "absent");
             return Optional.of(new Economy(version, initialPoints, initialGems, List.copyOf(starterPack),
-                    gacha, rewards, trade, league, leagueGemReward, growth, star, potential, dice, gems,
-                    starterTop, currencies));
+                    gacha, rewards, trade, league, leagueGemReward, leagueDailyReward,
+                    growth, star, potential, dice, gems, starterTop, currencies));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());
@@ -654,6 +710,67 @@ public class EconomyService {
             bonus = Map.copyOf(parsed);
         }
         return new LeagueGemReward(completion, bonus);
+    }
+
+    /**
+     * {@code league.dailyReward} 파싱 (#368) — {@link #parseLeagueGemReward} 와 <b>같은 규율</b>:
+     * 블록이 없거나 필드가 빠져 있으면 {@link #DEFAULT_LEAGUE_DAILY_REWARD} 에서 <b>필드 단위로</b>
+     * 메운다(구 override 스냅샷 호환).
+     *
+     * <p>⚠️ {@code bigSlots} 는 {@code rankBonus} 와 같이 <b>통짜 교체</b>다 — 항목 병합이 아니다.
+     * {@code [9]} 만 적으면 18번 대량은 <b>사라진다</b>. 곡선은 한 덩어리라 전체를 적어야 한다.
+     */
+    private static LeagueDailyReward parseLeagueDailyReward(JsonNode league) {
+        JsonNode n = league == null ? null : league.path("dailyReward");
+        if (n == null || !n.isObject()) {
+            return DEFAULT_LEAGUE_DAILY_REWARD;
+        }
+        int slots = positiveOr(n, "slotsPerDay", DEFAULT_LEAGUE_DAILY_REWARD.slotsPerDay());
+        int small = nonNegativeOr(n, "small", DEFAULT_LEAGUE_DAILY_REWARD.small());
+        int big = nonNegativeOr(n, "big", DEFAULT_LEAGUE_DAILY_REWARD.big());
+        String currency = n.path("currency").asText(DEFAULT_LEAGUE_DAILY_REWARD.currency());
+
+        Set<Integer> bigSlots = DEFAULT_LEAGUE_DAILY_REWARD.bigSlots();
+        if (n.path("bigSlots").isArray()) {
+            Set<Integer> parsed = new TreeSet<>();
+            for (JsonNode e : n.path("bigSlots")) {
+                int slot = e.asInt(-1);
+                if (slot >= 1 && slot <= slots) {
+                    parsed.add(slot);
+                } else {
+                    log.warn("league.dailyReward.bigSlots 항목 무시(칸 범위 1~{} 밖): {}", slots, e);
+                }
+            }
+            if (parsed.isEmpty()) {
+                // 빈 표 = "대량 칸 없음"(전 칸 소량)이다. 의도일 수 있으나 손편집 사고이기도 해서
+                // 조용히 넘어가지 않는다 — 대박이 사라진 건 유저 문의로만 발견된다(#251 선례).
+                log.warn("league.dailyReward.bigSlots 가 비어 있다 — 전 칸 소량({})으로 간다", small);
+            }
+            bigSlots = Set.copyOf(parsed);
+        }
+        return new LeagueDailyReward(slots, bigSlots, currency, small, big);
+    }
+
+    private static int positiveOr(JsonNode n, String field, int fallback) {
+        int v = n.path(field).asInt(-1);
+        if (v >= 1) {
+            return v;
+        }
+        if (n.hasNonNull(field)) {
+            log.warn("league.dailyReward.{} 이 유효하지 않아 기본값({})을 쓴다: {}", field, fallback, n.path(field));
+        }
+        return fallback;
+    }
+
+    private static int nonNegativeOr(JsonNode n, String field, int fallback) {
+        int v = n.path(field).asInt(-1);
+        if (v >= 0) {
+            return v;
+        }
+        if (n.hasNonNull(field)) {
+            log.warn("league.dailyReward.{} 이 유효하지 않아 기본값({})을 쓴다: {}", field, fallback, n.path(field));
+        }
+        return fallback;
     }
 
     private static Map<String, Double> asDoubleMap(JsonNode node) {

@@ -198,9 +198,57 @@ export interface LeagueSeasonReward {
  * 확정되지 않았다. 클라는 둘 다 수용한다(`pickSeasonReward`, season 우선). 발행되면 한쪽으로
  * 좁히고 이 관용 로직을 제거한다.
  */
+/**
+ * 오늘의 보상 트랙 한 칸 (#368).
+ *
+ * ⚠️ **규칙을 클라가 다시 만들지 마라** — 칸 수·대량 위치·금액·재화는 전부 서버 economy 노브라
+ * 언제든 바뀐다(#262 컷 규율과 같은 이유). `big` 도 계산이 아니라 **서버가 준 사실**이다.
+ * `opponentName` 은 그 칸에 붙은 상대 — 지난 칸은 실제로 붙었던 팀, 남은 칸은 잔여 일정의 팀이고,
+ * 없을 수 있다(시즌이 없거나 일정이 트랙보다 짧으면 **정상**).
+ */
+export interface DailyRewardSlot {
+  slotNo: number;
+  currency: string;
+  amount: number;
+  big: boolean;
+  /** `WON`(수령) · `MISSED`(소멸) · `PENDING`(아직 안 침). 서버 enum 이 SoT. */
+  state: string;
+  opponentName?: string | null;
+}
+
+/**
+ * 오늘의 보상 트랙 (#368) — 리그 매판 보상. **시즌 밖**이다: 칸은 시즌이 아니라 하루에 매이고
+ * KST 자정에 리셋된다. 시즌이 없어도 존재한다.
+ */
+export interface DailyRewardTrack {
+  day: string;
+  slotsPerDay: number;
+  /** 오늘 소비한 칸 수(= 오늘 친 리그 경기 수). 트랙 상한을 넘을 수 있다. */
+  consumed: number;
+  /** 그중 실제로 받은 횟수 — 헤더의 "오늘 n회 받음". */
+  awardedCount: number;
+  earned: number;
+  currency: string;
+  slots?: DailyRewardSlot[] | null;
+  /** 다음에 열릴 칸. 오늘 트랙을 다 썼으면 **null**(자정까지 트랙 보상 없음). */
+  next?: DailyRewardSlot | null;
+}
+
 export interface LeagueResponseP3 {
   season?: (LeagueSeason & { seasonReward?: LeagueSeasonReward | null }) | null;
   seasonReward?: LeagueSeasonReward | null;
+  /** #368 additive — 구 서버엔 없다(그럼 트랙 구역을 통째로 안 그린다). */
+  dailyReward?: DailyRewardTrack | null;
+}
+
+/** 매치 결과에 실리는 그 판의 칸 (#368). 소멸한 칸도 실려 온다(`awarded:false`). */
+export interface MatchDailyReward {
+  slotNo: number;
+  currency: string;
+  amount: number;
+  result: string;
+  awarded: boolean;
+  opponentName?: string | null;
 }
 
 /* ───────────────── F. 스타터/온보딩 개편 (이슈 #209) ───────────────── */
