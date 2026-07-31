@@ -219,6 +219,12 @@ export interface ChainProbe {
   recurseClipped: number;
   /** 노드 예산(maxNodes) 소진으로 조기 확정한 결정 수. */
   budgetHit: number;
+  /**
+   * **재시작 틱**으로 판정돼 킥 후보만 생성한 결정 수(#349). 이 틱에는 `carry`/`hold` 생성기가
+   * 아예 안 돌므로, "매 결정마다 carry·hold 각 1개"라는 자릿수 계약이 여기만큼 어긋난다
+   * (`chain-search.test.ts` 가 그 관계식을 그대로 검증한다).
+   */
+  restarts: number;
 }
 
 export function newChainProbe(): ChainProbe {
@@ -228,6 +234,7 @@ export function newChainProbe(): ChainProbe {
     return r;
   };
   return {
+    restarts: 0,
     decisions: 0,
     generated: zero(),
     picked: zero(),

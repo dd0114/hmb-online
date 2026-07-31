@@ -1,6 +1,6 @@
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer } from "./simstate";
-import { playerAt, otherSide, claimantSideOf, isBallOwner } from "./simstate";
+import { playerAt, otherSide, claimantSideOf, isBallOwner, restartRequiresKick } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
@@ -721,6 +721,10 @@ export function decideBallOwner(
   const goal = attackGoal(pitch, owner.side);
   const ownerInFinalThird =
     attackProgress(pitch, owner.side, owner.posFx.x) >= config.setPiece.finalThirdLine;
+  // #349: 재시작 틱은 **킥만**(Law 8/13/15/16). 롤백 코어에도 같은 제약을 건다 — 규칙이 코어마다
+  // 다르면 그건 두 개의 엔진이다. 실측상 이 코어의 재시작 드리블은 18~20% 로 사슬(78.5%)보다
+  // 낮았을 뿐 0 이 아니었다.
+  const mustKick = restartRequiresKick(state, config);
 
   // --- 슛 후보(좋은 위치/각도/찬스일 때만; xG 임계 미만 speculative 억제) ---
   const { xg: rawXg, distM } = computeXg(owner, config, pitch);
@@ -764,7 +768,7 @@ export function decideBallOwner(
   const spaceM = near ? fromFixed(near.dist, config.fixedScale) : config.perceptionRadius;
   const spaceFactor = fclamp(spaceM / config.perceptionRadius, 0.1, 1);
   let wDribble =
-    w.dribble *
+    (mustKick ? 0 : w.dribble) *
     (0.25 + softCapped(owner.behavior.dribbleTendency, sc)) *
     spaceFactor *
     attrFactor(owner.attrs.technical) *
@@ -784,16 +788,22 @@ export function decideBallOwner(
   }
 
   // --- 홀드 후보(압박 심하면 안전하게) ---
-  const wHold = w.hold * (0.5 + 0.5 * owner.behavior.supportDepth);
+  // #349: 재시작에서 hold 를 남기면 드리블만 막아도 "안 차고 서 있는" 데드락이 된다.
+  const wHold = mustKick ? 0 : w.hold * (0.5 + 0.5 * owner.behavior.supportDepth);
 
   // --- 걷어내기 후보(#314 A) — 자기 진영 + 압박 + 좋은 패스 없음 ---
-  const wClear = clearanceWeight(
+  let wClear = clearanceWeight(
     state,
     owner,
     bestOpt ? picked.score : -Infinity,
     config,
     pitch,
   );
+  // #349 폴백: 재시작인데 킥 후보가 하나도 없으면(슛 사거리 밖 + 패스 옵션 0 + 걷어내기 부적격)
+  // 적격 판정을 건너뛰고 걷어내기를 연다. 사슬 코어의 `pushClear(force)` 와 **같은 자리**의 장치다.
+  if (mustKick && config.rules.restart.fallbackKick && wShoot + wPass + wClear <= 0) {
+    wClear = Math.max(config.decisionWeights.clearance, 1);
+  }
 
   // --- 시드 확률 샘플링 ---
   const total = wShoot + wPass + wDribble + wHold + wClear;

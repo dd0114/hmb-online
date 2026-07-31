@@ -207,8 +207,12 @@ describe("#279 S2 — 계측(probe)", () => {
     const picked = GENERATORS.reduce((s, g) => s + probe.picked[g], 0);
     expect(picked).toBe(probe.decisions);
     // hold 와 carry 는 매 결정마다 정확히 1개씩 생성된다(행동을 안 늘렸다는 증거).
-    expect(probe.generated.hold).toBe(probe.decisions);
-    expect(probe.generated.carry).toBe(probe.decisions);
+    // ⚠️ 단 **재시작 틱은 예외**다(#349) — 거기선 킥 후보만 만든다(Law 8/13/15/16). 그래서
+    // 자릿수 계약을 `decisions − restarts` 로 정확히 좁힌다(느슨하게 ≤ 로 바꾸지 않는다:
+    // 그러면 생성기가 조용히 죽어도 통과한다).
+    expect(probe.restarts).toBeGreaterThan(0); // 게이트가 실제로 발화한다
+    expect(probe.generated.hold).toBe(probe.decisions - probe.restarts);
+    expect(probe.generated.carry).toBe(probe.decisions - probe.restarts);
   });
 });
 

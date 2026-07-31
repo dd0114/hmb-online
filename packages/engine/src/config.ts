@@ -621,6 +621,37 @@ export interface EngineConfig {
        */
       pacedArrival: boolean;
     };
+
+    /**
+     * 재시작 재개 규칙(#349) — **재시작의 첫 행동은 킥이다.**
+     *
+     * IFAB Law 8(킥오프)·13(프리킥)·15(스로인)·16(골킥)은 전부 "공은 **차여야**(thrown for a
+     * throw-in) 인플레이가 된다"고 말한다. taker 가 공을 발밑에 두고 드리블로 이어가는 것은
+     * 재개가 아니라 반칙이다. 그런데 사슬 코어(0.24.0~)의 후보 생성기는 `state.setPiece` 를
+     * 보지 않아 재시작 틱에도 `carry`/`hold` 를 그대로 만들었다 — 실측 재시작 첫 행동의 47.6%,
+     * 파울 복구(0.29.0) 후 경기당 **19.6회** 노출(hero 라이브·쇼케이스 실관전 제보).
+     *
+     * ⚠️ 코너(Law 17)·페널티(Law 14)는 여기 해당하지 않는다 — `match.ts` 가 정지 종료 틱에
+     * 직접 발사하므로 애초에 소유자 결정을 거치지 않는다.
+     */
+    restart: {
+      /**
+       * true = 재시작(프리킥·스로인·골킥·킥오프) 틱에는 **킥 후보만** 생성한다(드리블·홀드 금지).
+       * false = 0.30.0 이전 동작(롤백 스위치이자 변이체 킬 대조군).
+       *
+       * ⚠️ 드리블만 막으면 안 된다 — `hold` 가 EV 로 이기면 재시작이 영원히 안 나가는
+       * 데드락(#231 계열)이 된다. 그래서 두 후보를 **함께** 막고, 킥 후보가 하나도 없는
+       * 극단(주변에 패스 옵션 0 + 사거리 밖)을 위해 `fallbackKick` 을 둔다.
+       */
+      mustKick: boolean;
+      /**
+       * 킥 후보(슛·패스·롱패스·걷어내기)가 하나도 생성되지 않았을 때 **걷어내기를 무조건**
+       * 후보로 넣을지. false 면 그 상황에서 후보가 0 개가 되어 결정 코어가 설 자리가 없다.
+       * 걷어내기를 쓰는 이유는 새 행동을 만들지 않기 위해서다 — 실행·이벤트·기하가 전부
+       * 기존 경로와 **같은 함수**를 타므로 두 코어가 갈릴 여지가 없다.
+       */
+      fallbackKick: boolean;
+    };
   };
 
   /**
@@ -709,6 +740,39 @@ export interface EngineConfig {
      * false 면 리셋 없이(테이커만 센터) 흩어진 상태 유지(레거시).
      */
     resetFormationOnKickoff: boolean;
+    /**
+     * 킥오프 배치 — **전원 자기 진영**(IFAB Law 8). (#347 hero 실관전 제보)
+     *
+     * hero: *"처음 경기 시작 때나 골 먹혔을 때 서로 상대 진영에 배치된 게 아니라 **중앙부터**
+     * 배치 시작해야 돼."*
+     *
+     * 원인: `resetKickoff` 이 전원을 `baseFx`(오픈플레이 홈 포지션)로 되돌린다. 4-3-3 슬롯을
+     * 실제 미터로 환산하면 LW/RW **73.5m** · ST **81.9m** — 즉 킥오프 휘슬 순간 공격 3인방이
+     * 상대 진영 21.0m / **29.4m** 안쪽에 서 있다. `baseFx` 자체는 오픈플레이 앵커라 못 바꾼다
+     * (바꾸면 팀 형태 전체가 바뀐다) → **킥오프 전용 사상(map)** 을 여기 둔다.
+     *
+     * 왜 "일괄 비례 압축"이 아닌가: 그러면 수비 라인까지 자기 골문 쪽으로 딸려와 팀이 통째로
+     * 얇아진다. 실제 킥오프는 백라인이 평소 자리에 있고 **앞선만** 하프라인 뒤로 내려온다.
+     * 그래서 `holdProgress` 아래(수비·중원 뒤쪽)는 **손대지 않고**, 그 위 구간만
+     * `[holdProgress, 1]` → `[holdProgress, 상한]` 으로 선형 재사상한다(순서·간격 보존).
+     */
+    kickoff: {
+      /** false = #347 이전 동작(baseFx 그대로 = 상대 진영 침범). 롤백 스위치·변이체 킬 대조군. */
+      compress: boolean;
+      /**
+       * 이 진행도(자기 골라인 0 → 상대 골라인 1) **이하**는 압축하지 않는다. 백4·홀딩은
+       * 평소 자리 그대로 서고 그 위만 접힌다.
+       */
+      holdProgress: number;
+      /** 하프라인에서 남길 여유(m). 압축 상한 진행도 = 0.5 − 이 값/피치 길이. */
+      marginM: number;
+      /**
+       * 재개팀 **상대**가 센터 스팟에서 떨어져야 할 거리(m, Law 8 = 9.15). 압축 후에도 원 안에
+       * 남는 선수는 **방사 방향으로** 링 밖으로 옮긴다(하프라인 x 캡이 아니라 실제 원 거리라,
+       * 터치라인 쪽 윙어는 하프라인에 그대로 설 수 있다).
+       */
+      circleClearM: number;
+    };
     /** 코너 시 공격팀 선수들이 박스로 몰리는 강도(정규화 당김). */
     cornerBoxReach: number;
     /** 파이널서드 경계(공격 방향 정규화 x, 0..1). 패스/코너 판정용. */
@@ -807,6 +871,16 @@ export interface EngineConfig {
       backupCount: number;
       /** 지원 인원이 서는 스팟 기준 반경(m). */
       backupRadiusM: number;
+      /**
+       * 역할(벽·백업)을 배정받은 선수가 접근 금지 구역(#176)에 막혔을 때 **경계를 따라 돌아갈지**.
+       * false = 0.30.0 이전 동작(이동 취소 = 그 자리에 굳음) — 롤백 스위치이자 변이체 킬 대조군.
+       *
+       * ⚠️ 이 노브가 false 면 **벽은 사실상 서지 않는다**(#349 실측 도착률 12.3%). 이유는 기하다:
+       * 파울 부근 수비수는 스팟 9.15m 안에 있어 #176 이 먼저 자기 방위로 밀어내고, 거기서 벽
+       * 슬롯까지 가는 직선은 원을 가로지르므로 일방통행 벽이 매 틱 그 이동을 취소한다.
+       * "링 위 엉뚱한 방위에 굳은" 상태가 hero 가 본 "벽이 없다"의 실체였다.
+       */
+      routeAroundZone: boolean;
     };
   };
 
@@ -1121,7 +1195,13 @@ export const defaultEngineConfig: EngineConfig = {
   //   ⚠️ 이 범프는 **필수**다 — 안 올리면 구 `resumeState` 가 버전 비교를 통과하고
   //   `deserializeCarry` 가 러너 config 로 재조립해 `nextTick 2700` vs `totalTicks 2700` 이 되어
   //   **후반이 0틱을 돌고 빈 채 종료 휘슬이 붙는다**(예외도 400 도 안 난다).
-  version: "engine@0.30.0",
+  // 0.31.0 = **데드볼 룰 정합**(#377 M1-pre). ①#349 재시작의 첫 행동은 **킥**(Law 8/13/15/16) —
+  //   두 코어의 후보 생성기가 `state.setPiece` 를 안 봐서 프리킥 재개의 78.5% 가 드리블이었다.
+  //   ②#349 프리킥 **벽이 실제로 선다** — 배정은 되고 있었으나 #176 접근 금지 기하가 이동을
+  //   매 틱 취소해 도착률 12.3% 였다(경계를 따라 돌아가는 `deadBallSlide` 신설 → 98.6%).
+  //   ③#347 킥오프 배치 = **전원 자기 진영**(구: ST 29.4m 침범) + 뷰어 "▶ KICK-OFF!" 한 호흡.
+  //   ⚠️ 범프 필수 — 좌표·해시가 이동한다(구 `resumeState` 는 거부돼야 한다).
+  version: "engine@0.31.0",
   msPerTick: 1000,
   // #365: 90 → 45. **경기 자체를 짧게** 만드는 것이 하프 3분의 유일한 수단이다(같은 틱을 더 빨리
   // 재생하는 안 = 2.3배속은 hero 가 실관전으로 이미 기각, #221). 45 를 고른 근거는 둘 —
@@ -1475,6 +1555,11 @@ export const defaultEngineConfig: EngineConfig = {
       idleDriftSmooth: true,
       pacedArrival: true,
     },
+    restart: {
+      // #349: 규칙이지 밸런스 노브가 아니다. false 는 롤백·변이체 킬 대조군 전용.
+      mustKick: true,
+      fallbackKick: true,
+    },
   },
   variety: {
     // 리얼 default: 벤치마크(슛 12-16/팀, 코너 ~5/팀 등)를 유지하는 모던한 변주.
@@ -1504,6 +1589,14 @@ export const defaultEngineConfig: EngineConfig = {
     shotAftermathStoppageTicks: 3,
     goalNetDepthM: 0.5,
     resetFormationOnKickoff: true,
+    kickoff: {
+      // #347: Law 8. 계수는 러프 기본값 — 0.35 는 4-3-3 에서 백4(0.16~0.22)·홀딩(0.40) 을
+      // 건드리지 않고 인사이드 미드(0.44)·윙(0.70)·ST(0.78)만 접는 지점이다.
+      compress: true,
+      holdProgress: 0.35,
+      marginM: 1.5,
+      circleClearM: 9.15,
+    },
     cornerBoxReach: 0.85,
     finalThirdLine: 0.66,
     crossSpeed: 16,
@@ -1550,6 +1643,8 @@ export const defaultEngineConfig: EngineConfig = {
       wallSetupTicks: 6,
       backupCount: 3,
       backupRadiusM: 8,
+      // #349: 벽이 실제로 서려면 필수다(false 면 도착률 12.3%).
+      routeAroundZone: true,
     },
   },
   chain: {

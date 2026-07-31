@@ -11,6 +11,7 @@ import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
 import { deliverySpeedFx, loftHangTicks, shotPowerFx } from "./kick";
 import { xgAtPoint } from "./decision";
 import { freeKickWallCount } from "./setpiece";
+import { kickoffSpot } from "./deadball";
 
 /**
  * contest — 경합 판정(패스/인터셉트/태클/슛).
@@ -111,11 +112,15 @@ export function resetKickoff(
 ): void {
   // 포메이션 리셋: 모든 선수를 킥오프 기본 배치(baseFx = 역할 슬롯)로. 경기 시작 t0 와 동일 슬롯.
   if (config.setPiece.resetFormationOnKickoff) {
+    const c0 = centerSpot(pitch);
     for (const p of state.players) {
-      p.posFx.x = p.baseFx.x;
-      p.posFx.y = p.baseFx.y;
-      p.targetFx.x = p.baseFx.x;
-      p.targetFx.y = p.baseFx.y;
+      // #347: `baseFx` 는 오픈플레이 홈 포지션이라 킥오프 배치로 쓰면 앞선 3명이 상대 진영에
+      // 들어가 선다(Law 8 위반, 실측 ST 29.4m). 킥오프 전용 사상으로 자기 진영에 세운다.
+      const k = kickoffSpot(pitch, config, p, restartSide, c0);
+      p.posFx.x = k.x;
+      p.posFx.y = k.y;
+      p.targetFx.x = k.x;
+      p.targetFx.y = k.y;
     }
   }
   const c = centerSpot(pitch);

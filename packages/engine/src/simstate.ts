@@ -1,6 +1,7 @@
 import type { TeamSide, PlayerAttributes } from "@hmb/shared";
 import type { PlayerBehavior, Duty, TeamInput } from "@hmb/shared";
 import type { TeamPlan } from "./teamplan";
+import type { EngineConfig } from "./config";
 
 /**
  * simstate — 엔진 내부 시뮬 상태 타입(직렬화 계약 아님, 엔진 전용).
@@ -20,6 +21,24 @@ import type { TeamPlan } from "./teamplan";
  */
 export function playerKey(side: TeamSide, id: string): string {
   return `${side}:${id}`;
+}
+
+/**
+ * 지금이 **킥으로만 재개되는 재시작 틱**인가. (#349)
+ *
+ * IFAB Law 8(킥오프)·13(프리킥)·15(스로인)·16(골킥)에서 공은 **차여야**(스로인은 던져져야)
+ * 인플레이가 된다. taker 가 공을 발밑에 두고 드리블로 이어가는 것은 재개가 아니라 반칙이다.
+ * 그런데 두 결정 코어 모두 `state.setPiece` 를 보지 않아 재시작 틱에도 `carry`/`hold` 후보를
+ * 그대로 만들었다(실측 프리킥 재개의 **78.5%** 가 드리블 · 스로인 25.3%).
+ *
+ * 코너(Law 17)·페널티(Law 14)는 여기 해당하지 않는다 — `match.ts` 가 정지 종료 틱에 직접
+ * 발사하므로 애초에 소유자 결정을 거치지 않는다.
+ */
+export function restartRequiresKick(state: SimState, config: EngineConfig): boolean {
+  if (!config.rules.restart.mustKick) return false;
+  const sp = state.setPiece;
+  if (!sp) return false;
+  return sp.kind === "free_kick" || sp.kind === "throw_in" || sp.kind === "goal_kick" || sp.kind === "kickoff";
 }
 
 /** `players` → `byId`. 맵 생성은 여기 한 곳만 — 재개(deserialize) 경로도 이걸 쓴다. */

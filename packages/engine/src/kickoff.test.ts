@@ -34,7 +34,10 @@ function restartableGoals(log: MatchLog): { tick: number; team?: string }[] {
  * 매치 전개가 바뀔 때마다 재스캔한다.
  * 재스캔 실측(demo fixture, 시드 1~40): 골 0 인 시드는 없고 3~15골. 시드 "1" = 8골(전부 재시작 가능).
  */
-const GOAL_SEED = "1";
+//   → **"34"**(#377 M1-pre · engine@0.31.0 — #349/#347 로 전개가 바뀌며 시드 "1" 이 0골이 됐다).
+//   재스캔 실측(demo fixture, 시드 1~40): 0골 시드는 "1" 하나뿐이고 나머지는 1~8골.
+//   시드 "34" = 7골(전부 재시작 가능) + PK 3건.
+const GOAL_SEED = "34";
 
 function runDemo(): MatchLog {
   return runMatch(GOAL_SEED, demoHome, demoAway, demoSelect, config);

@@ -1,5 +1,6 @@
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer } from "./simstate";
+import { restartRequiresKick } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
@@ -8,6 +9,7 @@ import { fromFixed, fclamp, fdist, fdistSq, isqrt, toFixed } from "./fixedmath";
 import { attackGoal, clampToPitch, distToAttackGoal } from "./pitch";
 import { passOptions, pressureCount } from "./perception";
 import { shotPowerFx } from "./kick";
+
 import {
   clearanceAim,
   clearanceEligible,
@@ -395,30 +397,7 @@ const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void>
   // 걷어내기(#314 A) — **의도 수신자가 없는 좌표 타깃**. S2 가 "receiver 가 null 인 후보"를
   // 표현 가능하게 만들어 둔 자리의 첫 사용처다. 생성 조건은 롤백 경로와 **같은 함수**를 쓰고,
   // "좋은 패스가 있으면 안 한다"는 여기서 게이트가 아니라 **EV 비교**가 자동으로 한다.
-  clear: (g, out) => {
-    const c = g.ctx.config;
-    if (!clearanceEligible(g.ctx.state, g.holder, c, g.ctx.pitch)) return;
-    const aim = clearanceAim(g.holder, c, g.ctx.pitch);
-    const speed = clearancePowerFx(g.holder, c);
-    const d = fdist(g.holder.posFx.x, g.holder.posFx.y, aim.x, aim.y);
-    const flight = speed > 0 ? Math.ceil(d / speed) : 0;
-    const after = distToAttackGoal(g.ctx.pitch, g.holder.side, aim.x, aim.y);
-    out.push({
-      kind: "clear",
-      form: "clear",
-      gen: "clear",
-      toXFx: aim.x,
-      toYFx: aim.y,
-      receiver: null,
-      ballSpeedFx: speed,
-      flightTicks: flight,
-      durationTicks: flight,
-      // 걷어내기에 "레인"은 없다 — 누구를 향해 차는 것이 아니다.
-      laneDangerFx: Infinity,
-      forwardGainFx: g.distToGoalFx - after,
-      distFx: d,
-    });
-  },
+  clear: (g, out) => pushClear(g, out, false),
   // 홀드(제자리).
   hold: (g, out) => {
     out.push({
@@ -437,6 +416,44 @@ const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void>
     });
   },
 };
+
+/**
+ * 걷어내기 후보 push. `force` 는 #349 폴백 전용 — 재시작 틱에 킥 후보가 **하나도** 없을 때
+ * (주변 패스 옵션 0 + 사거리 밖 + 걷어내기 부적격) 후보 배열이 비어 결정 코어가 설 자리가 없다.
+ * 그때만 적격 판정을 건너뛴다. 새 행동을 만들지 않는 이유는 실행·이벤트·기하가 전부 기존
+ * 경로와 **같은 함수**를 타게 하기 위해서다(두 코어가 갈릴 여지 0).
+ */
+function pushClear(g: GenInput, out: ActionCandidate[], force: boolean): void {
+  const c = g.ctx.config;
+  if (!force && !clearanceEligible(g.ctx.state, g.holder, c, g.ctx.pitch)) return;
+  const aim = clearanceAim(g.holder, c, g.ctx.pitch);
+  const speed = clearancePowerFx(g.holder, c);
+  const d = fdist(g.holder.posFx.x, g.holder.posFx.y, aim.x, aim.y);
+  const flight = speed > 0 ? Math.ceil(d / speed) : 0;
+  const after = distToAttackGoal(g.ctx.pitch, g.holder.side, aim.x, aim.y);
+  out.push({
+    kind: "clear",
+    form: "clear",
+    gen: "clear",
+    toXFx: aim.x,
+    toYFx: aim.y,
+    receiver: null,
+    ballSpeedFx: speed,
+    flightTicks: flight,
+    durationTicks: flight,
+    // 걷어내기에 "레인"은 없다 — 누구를 향해 차는 것이 아니다.
+    laneDangerFx: Infinity,
+    forwardGainFx: g.distToGoalFx - after,
+    distFx: d,
+  });
+}
+
+/**
+ * **재시작(데드볼) 틱의 생성기 부분집합**(#349) — 킥만 남긴다. `carry`/`hold` 를 **함께** 뺀다:
+ * 드리블만 막으면 `hold` 가 EV 로 이겨 재시작이 영원히 안 나가는 데드락(#231 계열)이 된다.
+ * `GENERATORS` 와 **같은 상대 순서**를 유지한다(결정론: 후보 배열의 초기 순서가 상태의 함수).
+ */
+const RESTART_GENERATORS: readonly GeneratorId[] = GENERATORS.filter((g) => g !== "carry" && g !== "hold");
 
 /**
  * 재귀 안쪽에서 도는 생성기 부분집합. 원본과 동일하게 **패스와 슛만** 본다 — 안쪽의 "제자리"는
@@ -754,7 +771,28 @@ export function decideBallOwnerChain(
    */
   const oo = oneOnOneShot(state, owner, rawXg, distM, config);
 
-  const cands = generate(ctx, owner, here, GENERATORS, true);
+  // #349: 재시작 틱이면 **킥 후보만** 만든다(Law 8/13/15/16). 사슬 코어는 `state.setPiece` 를
+  // 보지 않아 재시작에도 carry 를 그대로 만들었고, EV 가 그걸 이겨 프리킥 재개의 78.5% 가
+  // 드리블이었다. 규칙은 EV 로 협상할 대상이 아니라 **후보 공간의 제약**이라 여기서 건다.
+  const mustKick = restartRequiresKick(state, config);
+  const cands = generate(ctx, owner, here, mustKick ? RESTART_GENERATORS : GENERATORS, true);
+  if (mustKick && cands.length === 0 && config.rules.restart.fallbackKick) {
+    // 킥 후보가 하나도 없다(패스 옵션 0 + 사거리 밖 + 걷어내기 부적격). 후보 배열이 비면
+    // 결정 코어가 설 자리가 없으므로 걷어내기를 무조건 하나 넣는다 — 재시작은 나가야 한다.
+    const goalHere = attackGoal(pitch, owner.side);
+    pushClear(
+      {
+        ctx, holder: owner, here,
+        xgHere: rawXg,
+        distToGoalM: distM,
+        distToGoalFx: distToAttackGoal(pitch, owner.side, here.xFx, here.yFx),
+        goal: goalHere,
+        passOpts: null,
+      },
+      cands,
+      true,
+    );
+  }
   const beamed = beam(ctx, cands, here, c.depth);
 
   // EV 평가 — 예산에 닿으면 그 시점 best 로 확정. **최소 1개는 평가한다**(첫 후보는 무조건).
@@ -800,6 +838,7 @@ export function decideBallOwnerChain(
   if (ctx.probe) {
     const p = ctx.probe;
     p.decisions += 1;
+    if (mustKick) p.restarts += 1;
     p.picked[picked.cand.gen] += 1;
     p.evalNodes += ctx.nodes;
     if (cands.length > p.maxCandidates) p.maxCandidates = cands.length;

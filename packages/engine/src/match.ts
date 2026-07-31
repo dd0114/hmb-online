@@ -11,7 +11,7 @@ import type {
 } from "@hmb/shared";
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer } from "./simstate";
-import { buildById, playerAt, ballOwnerOf, isBallOwner } from "./simstate";
+import { buildById, playerAt, ballOwnerOf, isBallOwner, playerKey } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import { defaultEngineConfig } from "./config";
@@ -46,8 +46,10 @@ import {
   deadBallShapeTarget,
   deadBallUsesShape,
   deadBallPaceStep,
+  deadBallSlide,
+  type DeadBallZone,
 } from "./deadball";
-import { computeSetPiecePlan } from "./setpiece";
+import { computeSetPiecePlan, type SetPiecePlan } from "./setpiece";
 import { decisionObserver } from "./action";
 import { attackGoal } from "./pitch";
 import type { OutCross } from "./ball";
@@ -221,6 +223,20 @@ function resolveOut(carry: Carry, out: OutCross, tick: number, minute: number): 
   }
 }
 
+/**
+ * 이 선수가 **세트피스 역할 슬롯**(벽·백업, #307)을 받았고 그 자리가 규칙상 적법한가. (#349)
+ *
+ * 적법할 때만 참이라, 구역 안으로 잡힌 슬롯(피치 클램프 등)은 종전대로 후퇴 규칙이 이긴다 —
+ * 규칙(#176)이 역할보다 위라는 순서는 바뀌지 않는다. 바뀌는 것은 **적법한 역할 자리**를
+ * 후퇴로 덮어쓰지 않는다는 것 하나다.
+ */
+function roleSlotLegal(plan: SetPiecePlan | null, zone: DeadBallZone | null, p: SimPlayer): boolean {
+  if (!plan || !zone) return false;
+  const slot = plan.slots.get(playerKey(p.side, p.id));
+  if (!slot) return false;
+  return deadBallClearance(zone, slot.x, slot.y) >= 0;
+}
+
 /** 한 틱 진행(perceive→decide→act→resolve→fatigue). 이벤트는 carry.events 로 push. */
 function stepTick(carry: Carry): void {
   const { state, rng, config, pitch } = carry;
@@ -265,6 +281,11 @@ function stepTick(carry: Carry): void {
       if (shapeSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, shapeSp, spPlan);
       else decideOffBall(state, p, config, pitch, null);
       if (!zone || !deadBallExcluded(p, zone)) continue;
+      // #349: 역할(벽)을 배정받은 선수는 **도착이 계약**이라 페이싱에서 뺀다 — 링을 돌아가는
+      // 경로는 직선보다 길어 `deadBallPaceStep`(직선 거리 기준)이 속도를 과소 산정한다.
+      // ⚠️ 규칙(#176)은 그대로 이긴다: 구역 **안**이면 아래 후퇴가 슬롯을 덮어쓰고 먼저 나간다.
+      // 벽이 못 서던 이유는 후퇴 자체가 아니라, 나간 **뒤에** 링을 따라 슬롯으로 못 가던 것이다.
+      if (roleSlotLegal(spPlan, zone, p)) noPace.add(p);
       // 구역 안에 있으면 전술 목표보다 **나가는 것이 우선**(안 그러면 반대편 목표로 가느라
       // 스팟을 더 가깝게 지나친다). 목표만 안이면 경계까지 = 벽 세우고 서기.
       const inside = deadBallClearance(zone, p.posFx.x, p.posFx.y) < 0;
@@ -294,8 +315,13 @@ function stepTick(carry: Carry): void {
       const paceCap = noPace.has(p) ? Infinity : deadBallPaceStep(config, p, state.stoppage + 1);
       const step = Math.min(speedStep(p, config), walkCap, paceCap);
       const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
-      const c = clampToPitch(pitch, next.x, next.y);
-      if (zone && deadBallExcluded(p, zone) && deadBallBlocked(zone, p, c)) continue;
+      let c = clampToPitch(pitch, next.x, next.y);
+      if (zone && deadBallExcluded(p, zone) && deadBallBlocked(zone, p, c)) {
+        // #349: 역할 배정자는 굳는 대신 **경계를 따라 돈다**(그 밖은 종전대로 이동 취소).
+        const slid = roleSlotLegal(spPlan, zone, p) ? deadBallSlide(pitch, zone, config, c) : null;
+        if (!slid) continue;
+        c = slid;
+      }
       p.posFx.x = c.x;
       p.posFx.y = c.y;
     }
@@ -693,9 +719,13 @@ function stepTick(carry: Carry): void {
     const raw = speedStep(p, config);
     const step = liveSp ? Math.min(raw, toFixed(config.rules.deadBall.walkSpeedM, config.fixedScale)) : raw;
     const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
-    const c = clampToPitch(pitch, next.x, next.y);
+    let c = clampToPitch(pitch, next.x, next.y);
     // #176: 아직 안 찬 세트피스면 정지 때와 같은 일방통행 벽을 유지(직선 경로 가로지르기 차단).
-    if (liveZone && deadBallExcluded(p, liveZone) && deadBallBlocked(liveZone, p, c)) continue;
+    if (liveZone && deadBallExcluded(p, liveZone) && deadBallBlocked(liveZone, p, c)) {
+      const slid = roleSlotLegal(liveSpPlan, liveZone, p) ? deadBallSlide(pitch, liveZone, config, c) : null;
+      if (!slid) continue;
+      c = slid;
+    }
     p.posFx.x = c.x;
     p.posFx.y = c.y;
   }

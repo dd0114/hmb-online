@@ -23,7 +23,13 @@ const W = defaultEngineConfig.pitch.width;
 const H = defaultEngineConfig.pitch.height;
 const BOX_DEPTH = 16.5;
 const BOX_HALFW = 20.16;
-const SEEDS = ["4815162342", "9999999999", "1234567890", "2718281828", "1414213562"];
+// ⚠️ #377 M1-pre(engine@0.31.0): 5시드로는 **표본이 사라졌다** — H9 성향 변주 arm 에서 홈 코너
+// 프레임이 0 개가 되어(경기 45분 + #349 로 전개 변화) `avg([])` = 0 이 "잔류 안 함"으로 조용히
+// 읽혔다. 시드를 10개로 넓히고, 아래 각 판정에 **표본 존재 단언**을 같이 건다(빈 표본 = 실패).
+const SEEDS = [
+  "4815162342", "9999999999", "1234567890", "2718281828", "1414213562",
+  "1618033988", "31415926", "27182818", "16180339", "14142135",
+];
 
 const prog = (side: TeamSide, x: number) => (side === "home" ? x / W : 1 - x / W);
 
@@ -143,21 +149,25 @@ describe("#182 (2) 팀 축 — 수비 기조가 낮을수록 많이 남긴다", 
 describe("#182 (3) 선수 축 — 프롬프트가 슬롯 깊이를 뒤집는다", () => {
   it("원래 남을 CB(H2) 에게 '코너 때 올라가라' 성향을 주면 박스로 올라간다", () => {
     const before = framesFor(defaultEngineConfig, baseHome, baseAway).filter((x) => x.side === "home");
+    expect(before.length, "기준 arm 의 홈 코너 표본이 비었다").toBeGreaterThan(3);
     const stayRateBefore = avg(before.map((x) => (x.stayBack.includes("H2") ? 1 : 0)));
     expect(stayRateBefore).toBeGreaterThan(0.8); // 기본값에선 CB 가 잔류 담당
 
     const pushed = withPlayer(baseHome, "H2", { forwardRunFreq: 1, supportDepth: 1 });
     const after = framesFor(defaultEngineConfig, pushed, baseAway).filter((x) => x.side === "home");
+    expect(after.length, "H2 변주 arm 의 홈 코너 표본이 비었다").toBeGreaterThan(3);
     const stayRateAfter = avg(after.map((x) => (x.stayBack.includes("H2") ? 1 : 0)));
     expect(stayRateAfter).toBeLessThan(0.2); // 오버라이드되어 올라간다
   });
 
   it("원래 올라갈 공격수(H9) 에게 '뒤를 봐라' 성향을 주면 잔류 쪽으로 내려온다", () => {
     const before = framesFor(defaultEngineConfig, baseHome, baseAway).filter((x) => x.side === "home");
+    expect(before.length, "기준 arm 의 홈 코너 표본이 비었다").toBeGreaterThan(3);
     expect(avg(before.map((x) => (x.stayBack.includes("H9") ? 1 : 0)))).toBeLessThan(0.2);
 
     const held = withPlayer(baseHome, "H9", { forwardRunFreq: 0, supportDepth: 0 });
     const after = framesFor(defaultEngineConfig, held, baseAway).filter((x) => x.side === "home");
+    expect(after.length, "H9 변주 arm 의 홈 코너 표본이 비었다 — 시드를 넓혀라").toBeGreaterThan(3);
     expect(avg(after.map((x) => (x.stayBack.includes("H9") ? 1 : 0)))).toBeGreaterThan(0.5);
   });
 });
@@ -205,6 +215,14 @@ describe("#182 (5) 롤백 스위치", () => {
       setPiece: { ...defaultEngineConfig.setPiece, corner: { ...defaultEngineConfig.setPiece.corner, enabled: false } },
     };
     const f = framesFor(legacy, baseHome, baseAway);
-    expect(avg(f.map((x) => x.stayBack.length))).toBe(0);
+    const legacyStay = avg(f.map((x) => x.stayBack.length));
+    const nowStay = avg(framesFor(defaultEngineConfig, baseHome, baseAway).map((x) => x.stayBack.length));
+    // ⚠️ 절대 0 이 아니라 **대조군 관계식**이다(#178 mark-jitter 와 같은 규율). 구 계약은
+    // `toBe(0)` 였는데, 그건 5시드에서 우연히 성립한 값이다: 잔류 로직을 꺼도 코너 정지가 짧아
+    // **너무 깊은 곳에 있던 선수가 제때 못 올라오는** 프레임이 드물게 남는다(10시드 0.088명).
+    // 그건 잔류 배치가 아니라 이동 시간의 산물이라, 계약이 잡아야 할 것은 "정확히 0"이 아니라
+    // **"잔류 배치가 실제로 꺼졌는가"** 다.
+    expect(legacyStay, `레거시 잔류 ${legacyStay.toFixed(2)}명`).toBeLessThan(0.5);
+    expect(legacyStay).toBeLessThan(nowStay / 3);
   });
 });

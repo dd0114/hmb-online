@@ -28,10 +28,17 @@ import { deadBallClearance, type DeadBallZone } from "./deadball";
  *  - 삼각함수 금지(§5-4) — 방향은 스팟→골 벡터의 정수 정규화로만 만든다.
  */
 
+/**
+ * 배정된 역할. **좌표로 되추론하지 말 것** — 백업 슬롯 반경(`backupRadiusM` 8m)과 벽 거리
+ * (9.15m + standoff)는 1m 차이라 기하로 가르면 섞인다(실측: 백업 2/3 이 벽으로 오분류).
+ * 그래서 배정한 쪽이 라벨을 단다(진단·계약이 이 라벨을 읽는다 — #349 팀 축 검증).
+ */
+export type SetPieceRole = "wall" | "backup";
+
 /** 이번 틱 세트피스 역할 배정표. key = `playerKey(side, id)`. */
 export interface SetPiecePlan {
-  /** 배정된 배치 목표(fixed). 이 표에 있으면 규칙기반 배치 대신 이 자리로 간다. */
-  slots: Map<string, { x: number; y: number }>;
+  /** 배정된 배치 목표(fixed) + 역할. 이 표에 있으면 규칙기반 배치 대신 이 자리로 간다. */
+  slots: Map<string, { x: number; y: number; role: SetPieceRole }>;
   /** 벽 인원(진단·계약용). */
   wallCount: number;
   /** 백업 인원(진단·계약용). */
@@ -118,7 +125,7 @@ export function computeSetPiecePlan(
   if (!fk.enabled || sp.kind !== "free_kick") return null;
 
   const scale = pitch.scale;
-  const slots = new Map<string, { x: number; y: number }>();
+  const slots = new Map<string, { x: number; y: number; role: SetPieceRole }>();
   const defSide = sp.side === "home" ? "away" : "home";
   const g = attackGoal(pitch, sp.side); // 수비팀이 지키는 골 = 벽이 가리는 골.
   const dx = g.x - sp.x;
@@ -150,7 +157,7 @@ export function computeSetPiecePlan(
       const py = cy + Math.round((dx * offFx) / d);
       const c = clampToPitch(pitch, px, py);
       if (zone && deadBallClearance(zone, c.x, c.y) < 0) continue; // 규칙과 충돌하면 벽 슬롯을 버린다.
-      slots.set(playerKey(picked[i]!.p.side, picked[i]!.p.id), c);
+      slots.set(playerKey(picked[i]!.p.side, picked[i]!.p.id), { x: c.x, y: c.y, role: "wall" });
       wallPlaced++;
     }
   }
@@ -177,7 +184,7 @@ export function computeSetPiecePlan(
       const px = sp.x + Math.round((dx * along) / d) + Math.round((-dy * across) / d);
       const py = sp.y + Math.round((dy * along) / d) + Math.round((dx * across) / d);
       const c = clampToPitch(pitch, px, py);
-      slots.set(playerKey(picked[i]!.p.side, picked[i]!.p.id), c);
+      slots.set(playerKey(picked[i]!.p.side, picked[i]!.p.id), { x: c.x, y: c.y, role: "backup" });
       backupPlaced++;
     }
   }
