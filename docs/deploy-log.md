@@ -6,6 +6,43 @@
 
 ---
 
+## 2026-07-31T12:16Z — **배포 v3.11** (태그 `deploy-3.11`) — 리그 매판 일일 다이아 보상(#368, **V36**) + 승급2/강등2 컷
+
+- **git**: **`f2ef9b4`**(태그 `deploy-3.11`) = **`deploy-3.10` 계보 + #368**. 계보 검산: `deploy-3.10` 조상 **YES** · main 엔진(`8ac6245`) 포함 **NO** · `packages/engine` diff **빈 diff** · 트리 `config.version` **`engine@0.23.0`**.
+- **변경 범위**: `apps/web` 11 · `server-java/src` 10 · `data/players` 1 · docs 1. **`packages/**` 접촉 0** → **runner 재빌드·executor 재기동 생략**(runner digest `f724f3fd…` 무변경 유지).
+- **이미지**: `hmb-java` **`sha256:4c1deafe4b55…`**(신규) · `hmb-runner` `sha256:f724f3fd5e1a…`(무변경). 롤백 고정 = `prev-live`(java `af3e0bcb…` · runner `f724f3fd…`).
+- **⚠️ 엔진 가드**: 배포 후 `:18790/health` → **`{"engineVersion":"engine@0.23.0"}`**. release 계보 유지.
+- **DB — V36 적용**: 백업 `pre-deploy311-20260731T121546Z.db`(449,073,152 B · sha256 `ae3fcdf1f7b9225749feee10efabd4a4d3676543611245e0bbade588ab0a7638` · integrity **ok** · flyway 35 · users 189).
+  **§0.5-2/7 성격**: `.sql.conf` **없음**(트랜잭션 원자적) · **파괴적 구문 0** · 내용은 **`league_daily_rewards` 신규 표 + 인덱스 2개 = 순수 additive**. 적용 후 **Flyway 35 → 36**(`Successfully applied 1 migration`) · 표 생성 확인 · **users 189 보존**.
+
+### ⚠️ 이 배포의 진짜 함정 — §0.6 economy override (안 잡았으면 기능이 죽은 채 배포됐다)
+- `#368` 은 보상 노브를 **`economy.v3.json` 을 새 파일로 발행하지 않고 제자리 수정**(+10줄 `league.dailyReward`)했다. 발행물 핀(yml·Dockerfile)은 둘 다 `economy.v3.json` 이라 **§0.5-3 불일치는 없다**.
+- 그런데 라이브는 **`source: OVERRIDE` · `overrideFilePresent: true`** 였다. §0.6 대로 override 가 있으면 서버는 **구운 발행물을 쳐다보지 않는다** → 그냥 배포했으면 **`dailyReward` 가 조용히 무시**되고, 로그는 정상처럼 보이며 보상 트랙만 죽은 채 떴을 것이다.
+- **처리(§0.6 2-B)**: 먼저 override 가 무엇을 바꾸고 있었는지부터 실측 — 구 발행물 대비 **`initialGems` 6000→12000 단 한 줄**(= deploy-log 2026-07-28 운영 조정, SoT 일치). 그래서 **새 발행물을 컨테이너에서 꺼내 그 한 줄만 다시 얹어** override 를 재작성했다. 검산: **구 override 대비 diff = `dailyReward` 블록뿐**(운영값 전부 보존). 소유권 `10001:999` · temp→mv 원자 교체 · `POST /api/admin/economy/reload`(사유 필수) **200**.
+- 결과 확인은 값이 아니라 **출처와 실효값**으로: `GET /api/league` 가 `slotsPerDay 18` · `slot 9/18 = 300 GEM(big)` · 나머지 `30 GEM` 을 돌려준다. 지갑도 `gems 12000`(override 유지분).
+
+### 스모크 — ✅ 리그 1판 승리 → 보상·원장·표기 전부 정합
+고정 계정 `deploy-smoke`(§0.55) · 리그 시즌 생성(seasonNo 1, ACTIVE) → 리그 매치 **2:0 WIN**(mode=league, 오토모드).
+
+| 확인 | 결과 |
+|---|---|
+| 지갑 | gems **12000 → 12030**(+30 = 1번 칸 소량) · points **6200 → 11200**(+5000) |
+| **기존 보상 위에 얹기**(hero 확정) | 포인트 보상이 **그대로 유지**된 채 다이아가 **추가**됐다 — 골드 사이클 제거·중복지급 없음 |
+| 원장 `league_daily_rewards` | `slot_no 1 · GEM · 30 · WIN · awarded 1 · big 0 · opponent "Granite Guardians" · day 2026-07-31`(**KST**) |
+| 지갑 원장 `gem_ledger` | `reason=league_daily_gem · delta=+30 · ref_id=01KYW21VXJTDJ4AWYSPC8SP8WQ`(매치 id = 멱등 키) |
+| 화면 표기 API | `consumed 1 · awardedCount 1 · earned 30 GEM` · **slot1 `WON`**(상대명 표기) · **slot2 `PENDING`**(다음 상대 `Onyx Harbor` 미리 표기) |
+| 승급/강등 컷 | `promote-rank-max: 2` · `relegate-rank-min: 9`(=9~10위 강등 → **승급2/강등2**). API 가 `relegateRankMin: null` 인 것은 **정상** — `division >= bottom ? null` 이라 최하위 D10 은 강등이 없다(deploy-smoke 가 D10). |
+| 무회귀 | `/api/mails` 200 · `/api/rankings` 200 · `/api/away/revenge` 200 · 오토모드 `HALFTIME` 스킵 정상 |
+
+- **📌 미검증(정직 표기) — 패배 시 소멸**: `deploy-smoke` 파워 6218 vs 리그 봇 4646~4671 이라 **라이브에서 패배를 만들 수 없었다**. 코드·스키마상 경로는 있다(`awarded` 컬럼 + `result` 박제, 표 주석이 "소멸분도 얼마였는지 남긴다"고 명시). 승리 경로만 실측했다.
+
+### 📌 웹 배포가 5회 연속 실패했다 — 우리 문제가 아니었다
+- `wrangler` 가 **CF API 에서 522/525**(`Received a malformed response from the API`)를 5회 연속 반환. 확인해 보니 **`api.cloudflare.com` 직결도 522**인데 **github.com 은 200** — 즉 토큰·번들·스크립트가 아니라 **Cloudflare API 도달 문제**였다. 60초 간격 재시도로 **6번째에 성공**.
+- 그동안 **백엔드만 v3.11, web 은 v3.08 번들**인 부분 배포 상태였다(보상은 서버가 주므로 지급은 정상, 새 UI 만 없음). 최종 정렬 확인: `version.json` = **`f2ef9b4` / engine@0.23.0 / java `4c1deafe…`**.
+- 교훈: **웹 배포 실패를 코드 탓으로 돌리기 전에 `curl https://api.cloudflare.com/client/v4` 를 한 번 때려라.** 522/525 면 기다렸다 재시도하는 게 유일한 조치다.
+
+---
+
 ## 2026-07-31T09:20Z — **배포 v3.10** (태그 `deploy-3.10`) — **runner 단독**: 포메이션 게이트 G4 + 스텁 실행기 좌표 픽스(#367 / #295 server 축)
 
 - **git**: **`763b8a2`**(태그 `deploy-3.10`) = **`deploy-3.08`(4782f54) 계보 + #367 체리픽**. ⚠️ **[롤백] 항목이 세운 규칙을 처음 적용한 열차다** — `main` 을 쓰지 않았다.
