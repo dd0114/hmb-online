@@ -82,6 +82,7 @@ const avg = (a: number[]) => (a.length ? a.reduce((s, v) => s + v, 0) / a.length
 const byKind = (w: typeof nw, k: string) => w.filter((x) => x.kind === k);
 
 console.log(`# M1-본 관전 증거 — seed ${SEED} · ${defaultEngineConfig.version}`);
+console.log("⚠️ 1시드 출력이다 — 뷰어에서 볼 지점을 찾는 용도이고, 통계 판정은 20시드 계약(realism/restart-gate.test.ts)과 evidence/377/M1-main.md §2 표를 봐라.");
 console.log(`\n## 정지 창(틱) — 같은 시드, 게이트 on/off`);
 console.log(`  ${"종류".padEnd(10)} ${"구 동작".padStart(7)} ${"현재".padStart(7)}   재개 틱 이동중(구→현)`);
 for (const k of ["throw_in", "goal_kick", "free_kick"]) {

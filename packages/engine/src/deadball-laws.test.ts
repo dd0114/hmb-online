@@ -5,7 +5,6 @@ import { defaultEngineConfig, type EngineConfig } from "./config";
 import { makeTacticalInput, makeSelectData, demoSeed, demoHome, demoAway, demoSelect } from "./fixtures";
 import { showcaseConfig } from "../dev-viewer/generate-demo";
 import { REALISM_SEEDS } from "./realism/harness";
-import { freeKickWallCount } from "./setpiece";
 import { createPitch } from "./pitch";
 
 /**
