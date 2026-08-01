@@ -3,6 +3,7 @@ import { defaultEngineConfig, type EngineConfig } from "../config";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
 import { REALISM_SEEDS } from "./harness";
+import { knobPaths } from "./knob-paths";
 
 /**
  * #338 — **죽은 노브 레지스트리**(사슬 기본 하에서 실행 경로가 없는 튜닝값).
@@ -157,4 +158,33 @@ describe("#338 롤백 경로에서는 죽은 노브가 살아난다 (지우면 �
     };
     expect(w(0.05)).not.toEqual(w(1.5));
   }, 120_000);
+});
+
+/**
+ * **노브 신설 게이트** (#377 트랙 D 회고 — main 승인 규칙).
+ *
+ * 트랙 D 의 blocker 5건 중 **3건**이 "노브를 선언했는데 실제로 아무것도 안 한다" 부류였고,
+ * 셋 다 사람이 기억으로 막는 방식이 실패했다. 그래서 기계로 건다.
+ *
+ * ## 이 스냅샷이 깨졌다면
+ * diff 가 **새로 생긴 노브 경로를 그대로 보여준다.** 그때 할 일은 `-u` 로 넘기는 것이 **아니다**:
+ *  1. 그 노브를 위 레지스트리에 **분류 등록**한다 — `LIVE`(값을 바꾸면 경기가 달라진다) ·
+ *     `INERT`(롤백 자산이라 지금은 무효임을 계약으로 박제) · **조건부 LIVE**(코드는 살아 있는데
+ *     상황이 나야 발화 — 그 이유를 주석으로 남긴다).
+ *  2. 등록한 판정이 **실제로 참인지** 그 자리에서 확인된다(위 it 들이 해시로 검증한다).
+ *  3. 그 다음에 `-u` 로 이 스냅샷을 갱신한다.
+ *
+ * 노브를 **지운** 경우도 같은 절차다(레지스트리에서 빼고 갱신).
+ */
+describe("#377 노브 신설 게이트 — 새 EngineConfig 노브는 레지스트리에 등록한다", () => {
+  it("EngineConfig 리프 경로 전수를 스냅샷으로 박제한다 (깨지면 위 주석의 3단계를 따라라)", () => {
+    expect(knobPaths(defaultEngineConfig)).toMatchSnapshot();
+  });
+
+  it("레지스트리에 적힌 경로가 실제 config 에 존재한다 (스테일 등록 방지)", () => {
+    const paths = new Set(knobPaths(defaultEngineConfig));
+    const registered = [...INERT, ...LIVE].map((k) => k.path);
+    const missing = registered.filter((p) => !paths.has(p));
+    expect(missing, `config 에 없는 경로가 레지스트리에 남아 있다: ${missing.join(", ")}`).toEqual([]);
+  });
 });
