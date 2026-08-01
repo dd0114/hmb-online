@@ -2,8 +2,8 @@
   "version": 1,
   "kind": "units",
   "note": "hero 입고 유닛 아트(#207 U-D5~U-D9). LEGEND 활성 5종 = 유닛별 고유 실아트, 'default-unit' = GOLD/SILVER/BRONZE 공용 기본 스킨. 기존 characters/placeholder 축과 **합치지 않는다** — 별도 manifest·별도 아틀라스(축 분리는 #121 발행 계약). 2차 입고(#207 재발행): 보날두·욱링엄이 완성 카드 → 프레임리스 아트로 바뀌어 현재 `complete` 은 **0종**이다(구워진 숫자·별이 실데이터와 어긋나던 문제와 종횡비 불일치가 같이 사라진다). `cardKinds.complete` 선언은 남는다 — 발행측이 언제든 다시 실을 수 있고, 그게 소비측의 '프레임 두 겹 방지' 계약이다.",
-  "source": "hero-imageRef-2026-07-29-rev4",
-  "count": 9,
+  "source": "hero-imageRef-2026-08-01-rev5",
+  "count": 10,
   "cardKinds": {
     "complete": "프레임·이름판·포지션뱃지·별·대사가 **이미 구워진 완성 카드**. frame-<GRADE>.png 합성 경로를 타지 않는다(그대로 그린다).",
     "frameless-art": "프레임 없는 캐릭터 아트(투명 배경). 기존 합성 경로(frame-<GRADE>.png 위에 아트를 얹기)를 그대로 쓴다."
@@ -14,19 +14,19 @@
       "file": "units/avatars-64.png",
       "tile": 64,
       "cols": 3,
-      "rows": 3
+      "rows": 4
     },
     "avatars-32": {
       "file": "units/avatars-32.png",
       "tile": 32,
       "cols": 3,
-      "rows": 3
+      "rows": 4
     },
     "avatars-16": {
       "file": "units/avatars-16.png",
       "tile": 16,
       "cols": 3,
-      "rows": 3
+      "rows": 4
     }
   },
   "units": {
@@ -214,6 +214,26 @@
       "forPlayer": "P182",
       "col": 2,
       "row": 2
+    },
+    "kwonssi": {
+      "index": 9,
+      "name": "권씨",
+      "position": "FW",
+      "card": {
+        "file": "units/art-kwonssi.png",
+        "kind": "frameless-art",
+        "w": 512,
+        "h": 768
+      },
+      "face": "units/face-kwonssi.png",
+      "faceSize": {
+        "w": 256,
+        "h": 256
+      },
+      "iconBackground": "opaque-dark",
+      "forPlayer": "P174",
+      "col": 0,
+      "row": 3
     }
   }
 }

@@ -57,7 +57,7 @@ export const CHARS_MAP_VERSION = "v2";
 export const CHARS_SOURCE = "ref-pixel-fantasy-football";
 
 /** 이 매핑이 전제하는 유닛 발행물(design/characters/dist/units). 불일치 시 생성이 실패한다. */
-export const UNITS_SOURCE = "hero-imageRef-2026-07-29-rev4";
+export const UNITS_SOURCE = "hero-imageRef-2026-08-01-rev5";
 
 /** 기본 입력 시드(현행 소비본). 다른 시드로 태우려면 `loadInputs(파일명)`. */
 export const DEFAULT_SEED_FILE = "players.v2.4.json";
@@ -111,17 +111,19 @@ const UNIT_ASSIGNMENT: ReadonlyArray<readonly [playerId: string, unitId: string]
   ["P180", "kyeongnicius"], // FW ← 3차 입고(2026-07-29). 미매핑 표에서 승격.
   ["P181", "seokdijk"], // DF ← 3차 입고 아트가 #256 채번으로 붙었다(pendingCatalog 해제).
   ["P182", "osiyas"], // GK ← 4차 입고(2026-07-29). 아트·채번 동시(#256).
+  ["P174", "kwonssi"], // FW ← 5차 입고(2026-08-01, #389). 미매핑 표에서 승격 — 채번은 #207 때 이미 됐다.
 ];
 
 /**
- * 아트 미입고라 **의도적으로 매핑하지 않는** LEGEND(3차 입고 후 2종 — 권씨·석신).
+ * 아트 미입고라 **의도적으로 매핑하지 않는** LEGEND(5차 입고 후 1종 — 석신).
  *
  * 왜 표로 두나: LEGEND 는 "배정표에 없으면 throw" 가 규칙이다(1:1 이 조용히 깨지는 걸 막는다).
  * 미입고를 침묵으로 표현하면 **새 LEGEND 가 실수로 추가된 경우와 구분이 안 된다** → 의도만
  * 여기 명시적으로 적고, 나머지 누락은 계속 throw 한다. 아트가 들어오면 이 줄을 UNIT_ASSIGNMENT
- * 로 옮기는 것이 해제 신호다. (3차 입고 2026-07-29 에 P180 경니시우스가 그렇게 승격됐다.)
+ * 로 옮기는 것이 해제 신호다. (3차 입고 2026-07-29 에 P180 경니시우스가, 5차 입고 2026-08-01 에
+ * P174 권씨가 그렇게 승격됐다 — #389. 남은 미입고는 P178 석신 하나다.)
  */
-const UNMAPPED_LEGENDS: readonly string[] = ["P174", "P178"];
+const UNMAPPED_LEGENDS: readonly string[] = ["P178"];
 
 /**
  * 아트는 입고됐지만 **시드에서 아직 비활성**인 LEGEND — 활성화 대기.
@@ -144,6 +146,7 @@ const ACTIVATION_PENDING: readonly string[] = [
   "P180", // 경니시우스(3차 입고 2026-07-29)
   "P181", // 석다이크(#256 채번 — 아트는 3차 입고분)
   "P182", // 오시야스(#256 채번 — 4차 입고)
+  "P174", // 권씨(5차 입고 2026-08-01, #389) — 오픈은 hero 공지와 함께. 활성화는 어드민 토글 1회.
 ];
 
 /** GOLD/SILVER/BRONZE 전원이 공용하는 기본 스킨(U-D8). */

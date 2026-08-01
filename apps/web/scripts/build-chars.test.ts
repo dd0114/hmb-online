@@ -88,9 +88,10 @@ describe("소스 스탬프", () => {
     expect(source.base.playerCount).toBe(172);
     expect(source.chars.count).toBe(14);
     // 3차 입고(2026-07-29): 유닛 6 → 8(경니시우스 + 석다이크). #256 오시야스로 8 → 9.
-    expect(source.units?.count).toBe(9);
-    // 매핑은 v2 — 카탈로그 182 중 180명(미입고 LEGEND 2명 P174·P178 은 의도적 미매핑).
-    expect(source.mapping?.playerCount).toBe(180);
+    // 5차 입고(2026-08-01, #389): 권씨로 9 → 10. 채번이 아니라 **아트 대기 해제**다.
+    expect(source.units?.count).toBe(10);
+    // 매핑은 v2 — 카탈로그 182 중 181명(미입고 LEGEND 은 이제 P178 석신 하나뿐).
+    expect(source.mapping?.playerCount).toBe(181);
     expect(source.sourceFiles).toBeGreaterThan(30);
   });
 

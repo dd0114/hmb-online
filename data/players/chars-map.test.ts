@@ -69,9 +69,13 @@ const PENDING_ACTIVATION_UNITS: ReadonlyArray<readonly [string, string]> = [
   // #256 채번분 2종 — 아트는 입고 완료(석다이크는 3차, 오시야스는 4차)이고 시드는 비활성이다.
   ["P181", "seokdijk"],
   ["P182", "osiyas"],
+  // 5차 입고(2026-08-01, #389) — 권씨는 **채번 대기가 아니라 아트 대기**였다. P174 는 #207 때
+  // 이미 채번·발행돼 있었고(LEGEND·FW), 아트가 들어오며 미매핑 표에서 여기로 승격됐다.
+  // 오픈은 hero 공지와 함께 — 그때 어드민 토글 1회로 켠다.
+  ["P174", "kwonssi"],
 ];
 /** 아트 **미입고** LEGEND — 매핑 없음이 정답(이니셜 폴백). */
-const UNMAPPED_LEGENDS = ["P174", "P178"];
+const UNMAPPED_LEGENDS = ["P178"];
 /**
  * 아트는 발행됐지만 **카탈로그에 붙일 선수가 아직 없다**(채번 대기) — 발행물이 `pendingCatalog`
  * 로 선언한 유닛. "놀고 있는 유닛 0" 계약은 이 선언분만 면제한다(침묵 면제 아님).
@@ -357,7 +361,7 @@ describe("포지션 정합", () => {
 });
 
 describe("커버리지 — 카탈로그 대비 매핑", () => {
-  it("180명 중 178명 매핑 · 미매핑 2명은 전부 의도된 미입고 LEGEND", () => {
+  it("182명 중 181명 매핑 · 미매핑 1명은 전부 의도된 미입고 LEGEND", () => {
     expect(published.catalogCount).toBe(CATALOG_TOTAL);
     expect(published.playerCount).toBe(CATALOG_TOTAL - UNMAPPED_LEGENDS.length);
     expect(Object.keys(published.players)).toHaveLength(published.playerCount);

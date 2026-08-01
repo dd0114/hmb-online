@@ -118,15 +118,17 @@ test("에셋 스테이징이 실제로 서빙된다(/chars 4파일)", async ({ p
     const res = await page.request.get(path);
     expect(res.status(), path).toBe(200);
   }
-  // #207 v2 매핑 — 카탈로그 180 중 178명(아트 미입고 LEGEND 2명 P174·P178 은 의도적 미매핑).
+  // #207 v2 매핑 — 카탈로그 182 중 181명(아트 미입고 LEGEND 은 P178 석신 하나뿐).
   // 3차 입고(2026-07-29)로 P180 경니시우스가 매핑되며 177 → 178.
   // #256 채번으로 P181 석다이크·P182 오시야스가 붙어 178 → 180.
+  // 5차 입고(2026-08-01, #389)로 P174 권씨가 붙어 180 → 181(채번이 아니라 아트 대기 해제).
   const mapping = await (await page.request.get("/chars/player-chars.json")).json();
-  expect(Object.keys(mapping.players)).toHaveLength(180);
+  expect(Object.keys(mapping.players)).toHaveLength(181);
   expect(mapping.players.P173).toEqual({ axis: "units", id: "bonaldo" });
   expect(mapping.players.P180).toEqual({ axis: "units", id: "kyeongnicius" });
   expect(mapping.players.P181).toEqual({ axis: "units", id: "seokdijk" });
   expect(mapping.players.P182).toEqual({ axis: "units", id: "osiyas" });
+  expect(mapping.players.P174).toEqual({ axis: "units", id: "kwonssi" });
 });
 
 test("경기장: web 이 코어를 직접 마운트해 스킨 캐릭터 토큰으로 그린다(S3)", async ({ page }) => {

@@ -65,10 +65,11 @@ describe("buildViewerSkins", () => {
     );
     expect(charactersAxis).toHaveLength(39);
     // 3차 입고(2026-07-29)로 경니시우스(P180)가 매핑되며 5 → 6, #256 채번으로 석다이크(P181)·
-    // 오시야스(P182)가 붙어 6 → 8. 셋 다 활성화 전이라 시드에선 비활성이지만 **매핑은 미리
-    // 붙어 있고**, 경기장은 활성 여부가 아니라 매핑 유무로 태운다.
-    expect(exclusiveUnits).toHaveLength(8);
-    expect(Object.keys(skins.byPlayer)).toHaveLength(47);
+    // 오시야스(P182)가 붙어 6 → 8. 5차 입고(2026-08-01, #389)로 권씨(P174)가 붙어 8 → 9.
+    // 넷 다 활성화 전이라 시드에선 비활성이지만 **매핑은 미리 붙어 있고**, 경기장은 활성
+    // 여부가 아니라 매핑 유무로 태운다.
+    expect(exclusiveUnits).toHaveLength(9);
+    expect(Object.keys(skins.byPlayer)).toHaveLength(48);
   });
 
   it("**U-D8: GOLD/SILVER/BRONZE 는 개별 아이콘을 안 탄다 → 팀색 원**", () => {

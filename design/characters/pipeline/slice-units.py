@@ -146,6 +146,19 @@ UNITS = [
         "card": {"src": LEGEND_DIR / "오시야스-카드.png", "kind": "frameless-art"},
         "face": {"src": LEGEND_DIR / "오시야스-아이콘.png"},
     },
+    # ── 5차 입고(2026-08-01) — 채번 대기가 아니라 **아트 대기**였던 1종 (#389) ──────
+    {
+        # ⚠️ 이 유닛은 **신규 채번이 아니다.** 권씨는 #207 신규 8종에 포함돼 이미 P174 로
+        #    채번·발행돼 있었고(LEGEND·FW·메시 아날로그), 없던 것은 아트뿐이라
+        #    `gen-chars.ts` 의 `UNMAPPED_LEGENDS` 에 "의도적 미매핑"으로 선언돼 있었다.
+        #    그 표의 주석이 정의한 해제 신호("아트가 들어오면 UNIT_ASSIGNMENT 로 옮겨라")를
+        #    이번 입고가 발동시킨 것 = 3차 입고 때 P180 경니시우스가 탄 것과 같은 경로다.
+        #    스탯·등급·포지션은 hero 컨펌(#389 A안)으로 **현행 유지** — roster 무접촉.
+        # 단독 입고(1024×1536 카드 + 1024² 정면 초상) — 오시야스와 동일 규격이라 크롭 없음.
+        "id": "kwonssi", "name": "권씨", "position": "FW", "forPlayer": "P174",
+        "card": {"src": LEGEND_DIR / "권씨.png", "kind": "frameless-art"},
+        "face": {"src": LEGEND_DIR / "권씨-아이콘.png"},
+    },
 ]
 
 
@@ -320,7 +333,7 @@ def build() -> None:
             "불일치가 같이 사라진다). `cardKinds.complete` 선언은 남는다 — 발행측이 언제든 다시 "
             "실을 수 있고, 그게 소비측의 '프레임 두 겹 방지' 계약이다."
         ),
-        "source": "hero-imageRef-2026-07-29-rev4",
+        "source": "hero-imageRef-2026-08-01-rev5",
         "count": len(entries),
         # 소비측 분기 계약 — units[id].card.kind 로 갈린다.
         "cardKinds": {
