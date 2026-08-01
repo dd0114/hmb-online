@@ -377,6 +377,40 @@ $("fWhy").onclick = async () => {
   }
 };
 
+/**
+ * 📋 이 순간 — **화면의 한 순간을 남에게 가리키는 손잡이**를 만든다.
+ *
+ * hero 실사용에서 나온 결함: "9.09초에 백패스했다"를 전해도 **어느 런의 어느 경기인지**가 없어
+ * 특정에 실패했다(13개 뷰를 훑고도 못 찾았다). 시각만으로는 손잡이가 안 된다 —
+ * 런마다 시드·계수가 다르고, 같은 시각이 경기마다 다른 장면이다.
+ * 그래서 `runId + 경기번호 + 틱 + 시각 + 시드 + 오버라이드` 를 한 줄로 만들어 복사한다.
+ * 이 한 줄이면 받는 쪽이 **그 로그 파일의 그 틱**을 그대로 열 수 있다(런은 전부 파일로 남는다).
+ */
+$("fPin").onclick = async () => {
+  const box = $("fWhyBox");
+  const t = focusViewer?.hooks.cur()?.tick;
+  if (t == null || !lastRun || focusIdx == null) return;
+  const m = lastRun.matches[focusIdx];
+  const ov = Object.entries(lastRun.overrides ?? {});
+  const line =
+    `${lastRun.runId} #${focusIdx + 1} ${fmt(t)} (tick ${t})` +
+    ` · ${lastRun.engineVersion} · ${lastRun.source} · seed ${m.seed}` +
+    (ov.length ? ` · 오버라이드 ${ov.map(([k, v]) => `${k}=${v}`).join(", ")}` : " · 기본 계수");
+  box.style.display = "block";
+  box.innerHTML =
+    `<div style="font-weight:700;margin-bottom:5px">📋 이 순간 — 아래 한 줄을 그대로 붙여넣어 공유</div>` +
+    `<textarea readonly style="width:100%;min-height:54px;font-size:11px">${line}</textarea>` +
+    `<div style="color:var(--dim);font-size:10px;margin-top:4px">받는 쪽은 이 한 줄로 그 로그의 그 틱을 그대로 연다.</div>`;
+  const ta = box.querySelector("textarea");
+  ta.select();
+  try {
+    await navigator.clipboard.writeText(line);
+    box.querySelector("div").textContent = "📋 이 순간 — 클립보드에 복사됐다 (아래 줄도 그대로 붙여넣기 가능)";
+  } catch {
+    /* 클립보드 권한이 없으면 선택 상태로 두면 된다 */
+  }
+};
+
 $("fPlay").onclick = () => focusViewer?.togglePlay();
 $("fScrub").oninput = (e) => focusViewer?.scrubTo(e.target.value);
 $("speed").onchange = () => {
