@@ -60,13 +60,31 @@ public class FakeEngineRunner {
 
     private JsonNode respond(JsonNode request) {
         int half = request.path("half").asInt();
+        JsonNode base;
         if (half == 1) {
-            return h1Response;
+            base = h1Response;
+        } else if (request.has("resumeState")) {
+            base = h2Response;
+        } else {
+            base = tickShifted(h2Response);
         }
-        if (request.has("resumeState")) {
-            return h2Response;
-        }
-        return tickShifted(h2Response);
+        return withConfigHash(base, request);
+    }
+
+    /**
+     * #383: 실제 러너는 응답에 <b>유효 config 지문</b>을 싣는다. 이 가짜가 그걸 안 주면
+     * {@code EngineRunnerClient} 의 파싱과 {@code match_halves.effective_config_hash} 저장 경로가
+     * <b>한 번도 실행되지 않고</b>, 그 컬럼을 null 로 만드는 변이체가 전 테스트를 통과한다
+     * (독립검증 M1 — #385 와 같은 형태: 로컬 게이트 전부 green, 실환경에서만 빈다).
+     *
+     * <p>지문은 오버레이에서 파생시킨다 — 실제 러너처럼 <b>같은 config 면 같은 값</b>이어야
+     * "두 하프가 같은 config 로 돌았다"를 테스트가 확인할 수 있다.
+     */
+    private JsonNode withConfigHash(JsonNode base, JsonNode request) {
+        ObjectNode copy = base.deepCopy();
+        String overrides = request.has("configOverrides") ? request.get("configOverrides").toString() : "{}";
+        copy.put("effectiveConfigHash", String.format("%08x", overrides.hashCode()));
+        return copy;
     }
 
     /** 교체 경로(h2, resumeState 없음) 구분용 변형: tick +100000, lastHash 접미사. */

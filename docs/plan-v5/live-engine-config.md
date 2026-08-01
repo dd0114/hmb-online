@@ -59,8 +59,25 @@ export const SimulateRequest = z.object({
    프로토타입 오염까지 다뤄야 한다.
 4. **감사 원장이 읽힌다** — `{"decisionWeights.shoot": 0.34}` 는 사람이 보는 그대로 diff 다.
 
-**허용 리프 = number | boolean 뿐.** `EngineConfig` 의 비수치 리프는 셋뿐이고 셋 다 구조다:
-`version`(string) · `coordMode`(union) · `formations`(`Record<string, Vec2[]>`).
+**허용 리프 = number | boolean 뿐.** `EngineConfig` 의 비수치 리프는 **넷**이다:
+`version`(string) · `coordMode`(union) · `formations`(`Record<string, Vec2[]>`) — 여기까지는 구조 —
+그리고 **`chain.mode`(string)**. 마지막 것은 구조가 아니라 **결정 코어 롤백 스위치**이고, 이 엔진에서
+파급이 가장 큰 레버다. 문자열이라 오버레이가 불가능하며 배포로만 바뀐다. ⚠️ 그래서 에러 메시지가
+"경로가 없습니다"라고 하면 **거짓말**이다(운영자가 오타를 찾아 소스를 뒤진다) — 실재하지만 못 만지는
+경로는 별도 문구로 답한다.
+
+**무효 노브(#338)는 거부한다.** 엔진은 `realism/dead-knobs.test.ts` 의 `INERT` 레지스트리에
+"사슬 기본에서 실행 경로가 없어 값을 바꿔도 bit-identical" 인 노브 **17개**를 계약으로 박제해 두고
+있다(`decisionWeights.*` 8개 전부 · `softCap` · `variety.decisionTemperature` · `ball.shotSpeed` …).
+이걸 통과시키면 운영자는 **①200 ②`changed` diff ③새 지문 ④원장 리비전 ⑤하프 번들 지문 변경**까지
+"적용됐다"는 신호를 다섯 개 받는데 경기는 한 비트도 안 바뀐다 — 그게 정확히 이 문서가 위험 근거로
+인용한 #338 그 자체다. 러너는 이 목록을 복사본으로 들고(엔진은 QA #25 도메인이라 수정하지 않는다),
+**드리프트는 계약이 엔진 레지스트리 파일을 직접 읽어 집합 대조로** 막는다.
+
+**런타임 비용 상한.** `matchMinutes` 는 수치 리프라 검증을 전부 통과하는데 러너는 **단일 프로세스**다 —
+`{"matchMinutes":100000}` 한 줄이 스모크와 이후 모든 `/simulate` 를 분 단위로 붙잡아 **진행 중인 전
+매치의 하프를 같이 세운다**. 한 하프가 `MAX_HALF_TICKS`(27,000틱 = 기본의 20배)를 넘기는 config 는
+거부한다.
 
 **거부 경로(구조 가드 — 델리게이션 ③)**: `version` · `msPerTick` · `fixedScale` · `coordMode` ·
 `gridSize` · `pitch.*` · `formations.*`. 이들은 좌표계·직렬화·골든·IFAB 계약의 전제이지 계수가
@@ -241,12 +258,18 @@ PUT /api/admin/engine-config
   기존 resume 계약을 오버레이 축에서 재확인.
 - `T-R5` 해시 가드: h1 을 오버레이 X 로, h2 를 오버레이 Y 로 보내면 **throw**(무음 desync 금지).
 - `T-R6` `configHash` 없는 구 resumeState 는 **통과**(#241 재발 방지).
-- `T-R7` `/config/validate` 가 정상값에 200+`changed` diff, 파괴적 값에 400.
+- `T-R7` `/config/validate` 가 정상값에 200+`changed` diff, **파괴적 값(`matchMinutes:1` — 경로도
+  타입도 멀쩡하지만 돌려 보면 경기가 안 된다)에 400**. 이 스모크는 배포 게이트를 없앤 대가로 존재하는
+  **유일한 대체 게이트**라 발화 경로에 계약이 없으면 조용히 죽는다.
+- `T-R8` **무효 노브(#338) 전량 거부** + 엔진 레지스트리와의 집합 대조(드리프트 시 이름을 짚어 깨진다).
+- `T-R9` 런타임 비용 상한(`MAX_HALF_TICKS`) — 러너를 재우는 값은 거부, 상식적 실험 범위는 통과.
 
 **server-java** — `./gradlew test --rerun-tasks`(절대경로, memory `server-java-rerun-tasks-gate`)
 - `T-J1` 오버레이 설정 → **그 전에 생성된** BRIEFING 매치의 h1·h2 요청에 **옛 값**이 실린다(#241 핵심).
 - `T-J2` 오버레이 설정 후 생성된 매치는 **새 값**이 실린다.
 - `T-J3` 매치 생성 후 오버레이를 두 번 더 바꿔도 그 매치의 h2 요청 오버레이는 **h1 과 동일**.
+- `T-J3b` **하프 번들의 실적 지문이 실제로 저장된다** — 가짜 러너가 `effectiveConfigHash` 를 안 주면
+  그 파싱·저장 경로가 한 번도 안 돌아 null 기록 변이체가 전 테스트를 통과한다(#385 와 같은 형태).
 - `T-J4` **INSERT 지점 전수**: 세 생성 경로(practice·league·away) 모두 스냅샷이 채워진다 —
   판정은 코드 목록이 아니라 **`INSERT INTO matches` 를 소스에서 세어** 대조한다(구현과 검증이
   같은 목록을 공유하면 둘 다 틀려도 통과한다 — `AdminUnitPurgeTest` 선례).
@@ -261,8 +284,11 @@ PUT /api/admin/engine-config
 
 ## 8. 파급 · 경계 · 남는 갭 (과장 금지)
 
-- **되는 것**: `EngineConfig` 의 number/boolean 리프 전부(§2① 거부 목록 제외) — 즉 hero 가
-  하네스에서 만지는 계수 축은 사실상 전부(`contest.*`·`decisionWeights.*`·`foul.*`·`vision.*`…).
+- **되는 것**: `EngineConfig` 의 number/boolean 리프 중 **구조도 무효도 아닌 것**(272개 중 17개 제외)
+  — `contest.*`·`foul.*`·`vision.*`·`chain.*`(수치)·`clearance.maxProgress|minPressers` 등.
+- ⚠️ **`decisionWeights.*` 는 되지 않는다** — 8개 전부 #338 INERT 다(사슬 기본에서 실행 경로 없음).
+  이 문서 초판이 "사실상 전부"라고 쓴 것은 **틀렸다**(독립검증 B1). 지금 무엇이 무효인지는
+  `GET /api/admin/engine-config/knobs` 의 `inertKnobs` 가 사유와 함께 답한다.
 - **여전히 배포가 필요**: 엔진 **코드** 변경 · 새 노브 신설 · 포메이션/피치 기하 · `config.version`.
   그리고 **봇전 간이결과 모델(`power-divisor`)은 엔진 config 가 아니라 server-java 소유**라 이
   기능의 사정거리 밖이다(#252 참조) — "계수는 다 무배포"라고 말하면 거짓말이 된다.
@@ -271,8 +297,12 @@ PUT /api/admin/engine-config
 - **web 무변경**. 운영은 curl.
 - **AI 실행기 무영향** — 오버레이는 `TacticalInput` 이 아니라 엔진 config 다. 프롬프트 광고
   필드(`advertised-fields.test.ts`)와 무관.
-- 러너 `/config/validate` 는 시뮬을 돌리므로 **admin 게이트 뒤에서만** 호출된다(러너는 내부망 +
-  `SERVANT_TOKEN` 경계 안).
+- ⚠️ **러너에는 인증이 없다**(`runner-main.ts` 에 인증 코드 0줄, `SERVANT_TOKEN` 참조 0건 — 초판이
+  "SERVANT_TOKEN 경계 안"이라고 쓴 것은 **틀렸다**, 독립검증 M3). 러너는 `infra/docker-compose.yml`
+  이 호스트 `18790` 으로 퍼블리시하고 CF 터널은 `18080`(java)만 노출하므로 **LAN 스코프**다.
+  신설 `GET /config/knobs` 는 그 범위에서 **무인증으로 튜닝값 전량을 노출**한다 — 노출 등급 자체는
+  기존 `/simulate` 와 같지만, 다음 사람이 틀린 전제 위에 얹지 않도록 사실대로 적어 둔다.
+  러너에 인증을 넣는 것은 이 웨이브 범위 밖(별건).
 
 ## 9. 운영 절차 (배포 후 hero 루프)
 

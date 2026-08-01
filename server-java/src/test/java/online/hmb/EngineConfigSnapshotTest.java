@@ -182,6 +182,35 @@ class EngineConfigSnapshotTest extends MatchTestBase {
         assertThat(stored).contains("contest.shootRange").contains("25");
     }
 
+    /**
+     * 독립검증 M1 — <b>"실제로 무슨 config 로 돌았나"가 진짜로 저장되는가.</b>
+     *
+     * <p>이 계약이 없을 때 {@code effective_config_hash} 에 null 을 기록하는 변이체가 전체 953
+     * 테스트를 통과했다(가짜 러너가 그 필드를 안 줘서 파싱·저장 경로가 한 번도 안 돌았다).
+     * #385 와 같은 형태다 — 로컬 게이트가 전부 green 인데 실환경에서만 빈다.
+     */
+    @Test
+    void theHalfBundleRecordsTheEffectiveConfigFingerprint() {
+        String token = setupUserWithDeck("cfg_hash");
+        setLive(Map.of("contest.shootRange", 29), "지문");
+
+        String matchId = createMatch(token, "BOT_BAL");
+        driveToHalfTime(token, matchId);
+        String h1Hash = effectiveHashOf(matchId, 1);
+        assertThat(h1Hash).as("러너가 준 유효 config 지문이 저장돼야 한다").isNotBlank();
+
+        driveToFinish(token, matchId);
+        assertThat(effectiveHashOf(matchId, 2))
+                .as("한 매치는 config 하나로만 돈다 — 두 하프의 지문이 다르면 그건 다른 경기다")
+                .isEqualTo(h1Hash);
+    }
+
+    private String effectiveHashOf(String matchId, int half) {
+        return jdbcClient
+                .sql("SELECT effective_config_hash FROM match_halves WHERE match_id = ? AND half = ?")
+                .params(matchId, half).query(String.class).single();
+    }
+
     // ── T-J4 : INSERT 지점 전수 (소스를 직접 센다) ────────────────────────
 
     @Test

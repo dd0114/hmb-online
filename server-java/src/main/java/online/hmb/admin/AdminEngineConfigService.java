@@ -139,6 +139,14 @@ public class AdminEngineConfigService {
         }
 
         String effectiveHash = validated.path("effectiveConfigHash").asText(null);
+        if (effectiveHash == null || effectiveHash.isBlank()) {
+            // 지문 없이 원장을 쓰면 "무슨 config 였나"의 근거가 비고, NOT NULL 제약에 걸려 500 이
+            // 된다(독립검증 m5). 지문을 못 주는 러너는 이 기능을 지원하지 않는 구 이미지라는 뜻이라
+            // **fail-closed** 가 맞다 — 반쯤 적용된 상태를 만들지 않는다.
+            String message = "러너가 유효 config 지문을 주지 않았습니다(이 기능을 지원하지 않는 구 러너입니다)";
+            audit(actorUserId, ACTION_SET, "failed", reason, Map.of("attempted", clean, "error", message));
+            throw ApiException.validation(message);
+        }
         try {
             live.recordRevision(actorUserId, clean, effectiveHash, reason, idemKey, requestHash);
         } catch (RuntimeException e) {

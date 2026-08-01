@@ -1,6 +1,6 @@
 import { defaultEngineConfig, demoSeed, demoHome, demoAway, demoSelect } from "@hmb/engine";
 import type { EngineConfigOverrides } from "@hmb/shared";
-import { applyOverrides, knobPaths, type ChangedKnob } from "./config-overlay.js";
+import { applyOverrides, knobPaths, INERT_KNOBS, type ChangedKnob } from "./config-overlay.js";
 import { simulate } from "./simulate.js";
 
 /**
@@ -108,10 +108,30 @@ export function validateOverrides(overrides: EngineConfigOverrides | undefined):
   return { effectiveConfigHash: hash, engineVersion: config.version, changed, smoke };
 }
 
-/** 오버레이 가능한 리프 전수 + 현재 기본값 — 운영자가 경로 이름을 **추측하지 않게** 한다. */
-export function knobCatalog(): { engineVersion: string; knobs: { path: string; type: string; value: number | boolean }[] } {
-  const knobs = [...knobPaths(defaultEngineConfig).entries()]
-    .map(([path, k]) => ({ path, type: k.type, value: k.value }))
-    .sort((a, b) => (a.path < b.path ? -1 : 1));
-  return { engineVersion: defaultEngineConfig.version, knobs };
+/**
+ * 오버레이 가능한 리프 전수 + 현재 기본값 — 운영자가 경로 이름을 **추측하지 않게** 한다.
+ *
+ * <b>무효 노브(#338)는 `knobs` 에 넣지 않는다</b>(독립검증 B1). 목록에 있으면 운영자는 그것을 고르고,
+ * 고르면 200 + diff + 새 지문 + 리비전을 받는데 경기는 한 비트도 안 바뀐다 — 이 기능이 막겠다고
+ * 선언한 바로 그 실패 모드다. 대신 `inertKnobs` 로 **왜 못 만지는지와 함께** 따로 보여준다:
+ * 목록에서 통째로 지우면 "내가 아는 그 노브가 왜 없지?"가 되어 결국 소스를 뒤지게 된다.
+ */
+export function knobCatalog(): {
+  engineVersion: string;
+  knobs: { path: string; type: string; value: number | boolean }[];
+  inertKnobs: { path: string; value: number | boolean; reason: string }[];
+} {
+  const all = [...knobPaths(defaultEngineConfig).entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  const knobs = all
+    .filter(([path]) => !INERT_KNOBS.includes(path))
+    .map(([path, k]) => ({ path, type: k.type, value: k.value }));
+  const inertKnobs = all
+    .filter(([path]) => INERT_KNOBS.includes(path))
+    .map(([path, k]) => ({
+      path,
+      value: k.value,
+      reason: "사슬 기본(engine 0.24.0+)에서 실행 경로가 없다 — 바꿔도 경기가 비트 동일하다(#338). "
+        + "롤백 스위치 chain.mode=\"weighted\" 의 자산이라 남아 있다.",
+    }));
+  return { engineVersion: defaultEngineConfig.version, knobs, inertKnobs };
 }

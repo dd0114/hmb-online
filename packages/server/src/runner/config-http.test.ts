@@ -88,6 +88,32 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
     expect(res.status).toBe(400);
   });
 
+  it("POST /config/validate — **경기가 성립하지 않는 값**은 400 (스모크 게이트 발화, T-R7 후반)", async () => {
+    // 이 스모크는 배포 게이트를 없앤 대가로 존재하는 **유일한 대체 게이트**다(AC5). 경로/타입
+    // 오류만 테스트하면 이 게이트가 조용히 죽어도 아무 데서도 빨간불이 안 켜진다(독립검증 M4).
+    // matchMinutes=1 은 경로도 타입도 멀쩡하다 — 돌려 봐야만 "경기가 안 된다"를 알 수 있다.
+    const res = await post("/config/validate", { overrides: { matchMinutes: 1 } });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { issues: string[] };
+    expect(body.issues.join(" ")).toMatch(/패스가 0건|이벤트가 하나도|소유자가 한 번도|예외로 죽었/);
+  });
+
+  it("POST /config/validate — 무효 노브(#338)는 400 (죽은 노브를 '적용됨'으로 보이게 하지 않는다)", async () => {
+    const res = await post("/config/validate", { overrides: { "decisionWeights.shoot": 0.2 } });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { issues: string[] }).issues.join(" ")).toContain("실행 경로가 없는 노브");
+  });
+
+  it("GET /config/knobs — 무효 노브는 settable 목록이 아니라 `inertKnobs` 에 사유와 함께 있다", async () => {
+    const body = (await (await fetch(`${base}/config/knobs`)).json()) as {
+      knobs: { path: string }[];
+      inertKnobs: { path: string; reason: string }[];
+    };
+    expect(body.knobs.some((k) => k.path === "decisionWeights.shoot")).toBe(false);
+    const inert = body.inertKnobs.find((k) => k.path === "decisionWeights.shoot");
+    expect(inert?.reason).toContain("실행 경로가 없다");
+  });
+
   it("POST /simulate — 잘못된 오버레이는 400 + issues (500 이 아니다)", async () => {
     const res = await post("/simulate", {
       seed: demoSeed,

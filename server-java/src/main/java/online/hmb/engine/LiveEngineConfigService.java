@@ -114,14 +114,21 @@ public class LiveEngineConfigService {
         return current();
     }
 
-    /** 최근 리비전 이력(누가·언제·왜·무엇을). */
+    /**
+     * 최근 리비전 이력(누가·언제·왜·무엇을).
+     *
+     * <p>정렬이 <b>ULID 단독</b>인 이유(독립검증 m2): {@code Instant.now().toString()} 은 나노초가
+     * 0 이면 소수부를 생략하므로 {@code …T12:00:00Z} 가 {@code …T12:00:00.400Z} 보다 사전순으로
+     * <b>크다</b> — 같은 초 안에서 앞선 리비전이 "최신"으로 뽑힐 수 있다. ULID 는 시간 정렬이라
+     * 그 함정이 없다. "현재 값"을 정하는 쿼리라 이 순서가 곧 동작이다.
+     */
     public List<Row> history(int limit) {
         int capped = Math.max(1, Math.min(limit, 100));
         return jdbcClient.sql("""
                         SELECT r.id, r.overrides_json, r.effective_hash, r.reason, r.request_hash,
                                r.created_at, u.nickname AS actor
                         FROM engine_config_revisions r JOIN users u ON u.id = r.actor_user_id
-                        ORDER BY r.created_at DESC, r.id DESC
+                        ORDER BY r.id DESC
                         LIMIT ?
                         """)
                 .param(capped)
@@ -138,7 +145,7 @@ public class LiveEngineConfigService {
                         SELECT r.id, r.overrides_json, r.effective_hash, r.reason, r.request_hash,
                                r.created_at, u.nickname AS actor
                         FROM engine_config_revisions r JOIN users u ON u.id = r.actor_user_id
-                        ORDER BY r.created_at DESC, r.id DESC
+                        ORDER BY r.id DESC
                         LIMIT 1
                         """)
                 .query((rs, n) -> new Row(rs.getString("id"), rs.getString("overrides_json"),
