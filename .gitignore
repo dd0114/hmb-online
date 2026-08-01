@@ -45,3 +45,4 @@ apps/web/e2e-out/
 # 재생성: npx tsx evidence/377/gen-m2.ts
 evidence/377/m2-*.json
 evidence/377/m1-main-*.json
+evidence/377/m3a-*.json

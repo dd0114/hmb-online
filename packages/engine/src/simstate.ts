@@ -348,7 +348,12 @@ export type TeamPhase =
 export interface Intent {
   side: TeamSide;
   fromId: string;
-  kind: "pass_to" | "run_to" | "cross_from";
+  /**
+   * `pass_plan`(#369) = **아직 안 찬 예고**다. 캐리어가 hold/carry 를 골랐지만 사슬이 계산해 둔
+   * 최상위 패스 후보를 팀에 미리 알리는 것 — hero 의 *"찰 것 같다 → 미리 움직인다"*.
+   * `pass_to` 는 **찬 뒤**(#314)라 성격이 다르다: 그건 실행 기록이고 이건 예고다.
+   */
+  kind: "pass_to" | "run_to" | "cross_from" | "pass_plan";
   /** 목표 지점(고정소수). */
   xFx: number;
   yFx: number;

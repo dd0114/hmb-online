@@ -108,11 +108,17 @@ export const showcaseConfig = {
  * 빨개진다(#377 M1-pre 에서 실제로 겪었다). `demoSeed` 를 바꾸면 리얼 증거 로그까지 흔들리므로
  * 쇼케이스만 따로 고른다 — `showcaseConfig` 를 따로 두는 것과 같은 이유다.
  *
- * 선정 기준 = 1대1 **여유**(≥2) + 골·선방·코너·카드가 고루 있을 것.
- * 이력: `demoSeed`(4815162342) → **27182818**(#377 M2 · engine@0.32.0 — 1대1 4건 · 골 9 ·
- * 선방 15 · 코너 12 · 카드 5). 재선정 스캔은 `scan` 유틸 없이 쇼케이스 config 로 직접 돌린다.
+ * 선정 기준 = **e2e 가 의존하는 이벤트 타입 전부 + 여유**(1대1 ≥2 · tackle ≥1 · card ≥1)
+ * + 골이 고루 날 것(perceptibility 의 골 빈도).
+ * ⚠️ 처음엔 1대1 만 봤는데 **같은 부류가 두 번째로 물렸다** — #377 M3-A 에서 이번엔 `tackle`
+ * 이 0 이 되며 `log.spec.ts`(티어 렌더)가 빨개졌다. 그래서 기준도 가드도
+ * **의존 타입 전체**로 넓혔다(`generate-demo.test.ts`).
+ * 이력: `demoSeed`(4815162342) → 27182818(#377 M2 · 1대1 4 · 골 9 · 선방 15 · 코너 12 · 카드 5)
+ * → **27706463**(#377 M3-A · engine@0.34.0 — 27182818 에서 tackle 이 0 이 됐다.
+ * 재스캔 결과: 골 8 · tackle 6 · 1대1 3 · 카드 6 으로 네 축 모두 여유가 가장 크다).
+ * 재선정 스캔은 `scan` 유틸 없이 쇼케이스 config 로 직접 돌린다.
  */
-export const SHOWCASE_SEED = "27182818";
+export const SHOWCASE_SEED = "27706463";
 
 /** 쇼케이스 MatchLog(뷰어용). */
 export function buildShowcaseLog(): MatchLog {

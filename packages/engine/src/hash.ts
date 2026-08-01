@@ -9,7 +9,9 @@ const PHASE_CODE: Record<TeamPhase, number> = {
   transition_win: 5,
   transition_lose: 6,
 };
-const INTENT_CODE: Record<Intent["kind"], number> = { pass_to: 1, run_to: 2, cross_from: 3 };
+// ⚠️ 이 Record 는 **전수(exhaustive)** 다 — 의도 종류를 늘리면 여기서 컴파일이 깨진다.
+// 그게 의도다: 해시에 안 들어간 상태는 desync 를 조용히 만든다.
+const INTENT_CODE: Record<Intent["kind"], number> = { pass_to: 1, run_to: 2, cross_from: 3, pass_plan: 4 };
 /** 공 비행 종류 코드(#306). 0 = 비행 없음. */
 const FLIGHT_KIND_CODE: Record<"pass" | "shot" | "loose", number> = { pass: 1, shot: 2, loose: 3 };
 

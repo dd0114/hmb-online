@@ -85,6 +85,12 @@ const LIVE: Knob[] = [
   { path: "contest.shootXgThreshold", mutate: (c) => { c.contest.shootXgThreshold = 0.2; } },
   { path: "clearance.maxProgress", mutate: (c) => { c.clearance.maxProgress = 0.99; } },
   { path: "clearance.minPressers", mutate: (c) => { c.clearance.minPressers = 9; } },
+  // #369 예고 패스(M3-A). 등록 절차는 CLAUDE.md §2.5 — 스냅샷이 깨지면 여기 먼저 등록한다.
+  { path: "movement.passPlan.enabled", mutate: (c) => { c.movement.passPlan.enabled = false; } },
+  { path: "movement.passPlan.readBase", mutate: (c) => { c.movement.passPlan.readBase = 0; } },
+  { path: "movement.passPlan.readAttrSwing", mutate: (c) => { c.movement.passPlan.readAttrSwing = 1.5; } },
+  { path: "movement.passPlan.pull", mutate: (c) => { c.movement.passPlan.pull = 0.95; } },
+  { path: "movement.passPlan.expireTicks", mutate: (c) => { c.movement.passPlan.expireTicks = 1; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {

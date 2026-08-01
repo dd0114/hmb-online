@@ -175,11 +175,30 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
    * 운 좋은 표본 덕이다 — 같은 config 의 60경기 환산은 3배가 아니라 5건이다). 60경기면 기대값이
    * 2~5 로 올라 오탐이 14% 이하로 내려간다. `harness.ts` 의 GUARD_SEEDS 도입 근거와 같은 논리다.
    */
-  function countHeaders(): { headerShots: number; headerGoals: number } {
+  // ⚠️ **표본 60 → 120**(#377 M3-A). 같은 이유·같은 방식이다 — 임계(`> 0`)는 한 자리도 안
+  // 건드리고 표본만 늘린다. 이번엔 60경기 표본이 실제로 0 을 뽑았다: 같은 웨이브에서
+  // `movement.passPlan.pull` 0.45 → 0.75 로 가며 GUARD_SEEDS 60경기 헤더 골이 3 → **0** 이 됐는데,
+  // **120경기로 넓혀 재면 39슛/6골 → 48슛/4골** 이다(헤더 슛은 오히려 **늘었다**).
+  // 즉 헤딩이 죽은 것이 아니라 60경기 기대값이 2~3 이라 포아송 P(0) ≈ 5~14% 인 게이트가
+  // 그 눈금을 뽑은 것이다. 120경기면 기대값 4~6 → P(0) ≈ 0.2~1.8%.
+  // (헤더 슛 래칫은 GUARD_SEEDS 60 그대로 둔다 — 고빈도라 검정력이 충분하고, 기준선 이력이
+  //  그 표본에 붙어 있다. 표본을 바꾸면 그 이력이 끊긴다.)
+  const HEADER_SEEDS = [
+    ...GUARD_SEEDS,
+    ...REALISM_SEEDS.map((s) => `29${s}`),
+    ...REALISM_SEEDS.map((s) => `31${s}`),
+    ...REALISM_SEEDS.map((s) => `37${s}`),
+  ];
+
+  function countHeaders(): { headerShots: number; headerGoals: number; goalSample: number } {
     const c = countHeaderStats(GUARD_SEEDS.map(logOf));
+    const wide = countHeaderStats(HEADER_SEEDS.map(logOf));
     // eslint-disable-next-line no-console
-    console.log(`  [#306] ${GUARD_SEEDS.length}경기 헤더 슛 ${c.headerShots}건 · 헤더 골 ${c.headerGoals}건`);
-    return c;
+    console.log(
+      `  [#306] ${GUARD_SEEDS.length}경기 헤더 슛 ${c.headerShots}건 · ` +
+        `헤더 골 ${wide.headerGoals}건(${HEADER_SEEDS.length}경기 표본)`,
+    );
+    return { ...c, goalSample: wide.headerGoals };
   }
 
   /**
@@ -223,7 +242,7 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
   // 공격수가 골 근처면 헤더 슛이 된다. 크로스 없이도 **공중볼 경합의 총량**이 올라간 것이 원인이다.
   // → `it.fails` 해제. 이제 이 계약은 정방향 게이트다.
   it("헤더 슛 중 골도 0 이 아니다", () => {
-    expect(HEADERS.headerGoals, "헤더 골 총 0건").toBeGreaterThan(0);
+    expect(HEADERS.goalSample, `헤더 골 총 0건 (${HEADER_SEEDS.length}경기)`).toBeGreaterThan(0);
   });
 
   // ── #327 착지 계약 — "떠 있는 공은 반드시 떨어진다" ────────────────────────────────

@@ -237,6 +237,34 @@ function roleSlotLegal(plan: SetPiecePlan | null, zone: DeadBallZone | null, p: 
   return deadBallClearance(zone, slot.x, slot.y) >= 0;
 }
 
+/**
+ * **예고 패스 게시**(#369) — 캐리어가 아직 안 찼을 때(hold/dribble) 사슬이 계산해 둔 최상위
+ * 패스 후보를 팀 게시판에 올린다. 읽기는 `decideOffBall` 이 **다음 틱**에 한다(틱 순서상
+ * 오프더볼 결정이 볼 소유자 결정보다 앞이라, 같은 틱에 읽으면 순서 의존이 생긴다).
+ *
+ * 그래서 이 게시가 곧 **"찰 것 같다"의 1틱 선행**이다 — 캐리어가 두 틱 이상 들고 있으면
+ * 리시버는 공이 떠나기 전에 이미 움직이고 있다.
+ */
+function publishPassPlan(
+  state: SimState,
+  config: EngineConfig,
+  owner: SimPlayer,
+  forecast: { receiverId: string; toX: number; toY: number; speedFx: number } | undefined,
+): void {
+  const pp = config.movement.passPlan;
+  if (!pp.enabled || !forecast) return;
+  state.intents.push({
+    side: owner.side,
+    fromId: owner.id,
+    kind: "pass_plan",
+    xFx: forecast.toX,
+    yFx: forecast.toY,
+    tick: state.tick,
+    expiresTick: state.tick + pp.expireTicks,
+    forId: forecast.receiverId,
+  });
+}
+
 /** 한 틱 진행(perceive→decide→act→resolve→fatigue). 이벤트는 carry.events 로 push. */
 function stepTick(carry: Carry): void {
   const { state, rng, config, pitch } = carry;
@@ -707,11 +735,13 @@ function stepTick(carry: Carry): void {
         case "dribble": {
           owner.dribbleStreak = Math.min(config.variety.dribbleChainMaxTicks, owner.dribbleStreak + 1);
           owner.targetFx = { x: action.toX, y: action.toY };
+          publishPassPlan(state, config, owner, action.forecast);
           break;
         }
         case "hold": {
           owner.dribbleStreak = 0;
           owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
+          publishPassPlan(state, config, owner, action.forecast);
           break;
         }
       }

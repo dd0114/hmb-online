@@ -42,7 +42,10 @@ const CENTER_Y = config.pitch.height / 2; // 34
 //     에서 페널티가 소멸). 재스캔(1~40): penalty 보유 시드 14개. 21 = PK 2건 + 8골(표본 넉넉).
 //   → **28**(#370 되돌림 `shootXgThreshold` 0.197 → 0.07, 배포 발차 — 볼륨이 크게 움직여
 //     시드 21 에서 페널티가 소멸). 재스캔(1~40): PK 보유 시드 5·12·28·35. 28 = 9골 + PK 1건.
-const PK_SEED = "28";
+//   → **10**(#377 M3-A · #369 예고 패스 — 리시버가 도착 예정 지점으로 먼저 움직이며 전개가
+//     바뀌어 시드 28 에서 페널티가 소멸). 재스캔(1~40): PK 보유 시드가 **10·21 둘뿐**이다.
+//     10 = PK 1건 + 6골. ⚠️ 백업이 하나뿐이니 다음 재스캔자는 범위를 1~80 이상으로 잡아라.
+const PK_SEED = "10";
 
 function snapByTick(log: MatchLog): Map<number, TickSnapshot> {
   return new Map(log.tickSnapshots.map((s) => [s.tick, s]));

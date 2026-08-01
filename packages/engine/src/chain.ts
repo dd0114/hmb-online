@@ -23,6 +23,7 @@ import {
   shotPressureXg,
   xgAtPoint,
   type Action,
+  type PassForecast,
 } from "./decision";
 import {
   EV_SCALE,
@@ -889,13 +890,49 @@ export function decideBallOwnerChain(
       };
     }
     case "carry":
-      return { kind: "dribble", toX: cand.toXFx, toY: cand.toYFx };
+      return { kind: "dribble", toX: cand.toXFx, toY: cand.toYFx, forecast: forecastOf(ctx, owner, scored, config) };
     case "clear": {
       // 실행은 롤백 경로와 **같은 함수** — 두 코어의 걷어내기 기하가 갈리지 않는다.
       const cp = planClearance(owner, config, rng, pitch);
       return { kind: "clearance", toX: cp.toX, toY: cp.toY, speedFx: cp.speedFx, lofted: cp.lofted };
     }
     default:
-      return { kind: "hold" };
+      return { kind: "hold", forecast: forecastOf(ctx, owner, scored, config) };
   }
+}
+
+/**
+ * **예고 패스**(#369) — 캐리어가 아직 안 찼을 때, 사슬이 **이미 계산한** 후보 중 최상위 패스를
+ * 그대로 돌려준다.
+ *
+ * ## 왜 새 예측기를 안 만드나
+ * hero 요구는 *"받는 쪽이 패스하는 사람의 생각을 예측"* 인데, 캐리어의 사슬은 이 틱에 이미
+ * 그 생각을 **정수 EV 로 다 계산해 뒀다**. 리시버가 같은 탐색을 다시 돌리면 비용이 22배가 되고
+ * 결과도 같다. **계산을 다시 하지 말고 게시한다** — 그게 이 설계의 전부다.
+ *
+ * ## 결정론
+ * `scored` 는 이미 전순서로 정렬돼 있다(EV → `candidateKey`). 여기서 **읽기만** 하므로
+ * RNG 도, 상태 변경도 없다. 예고를 만드는 것 자체는 동작을 바꾸지 않고,
+ * 바꾸는 것은 `match.ts` 가 그걸 게시하고 동료가 읽는 단계다.
+ */
+function forecastOf(
+  ctx: SearchCtx,
+  owner: SimPlayer,
+  scored: { cand: ActionCandidate; ev: number }[],
+  config: EngineConfig,
+): PassForecast | undefined {
+  if (!config.movement.passPlan.enabled) return undefined;
+  for (const s of scored) {
+    if (s.cand.kind !== "pass" || !s.cand.receiver) continue;
+    const opt = s.cand.opt as PassOption;
+    // 실행 시 조준(`planPass`)은 Rng 를 소비하므로 여기서 부르면 안 된다 — 예고는 **후보의
+    // 계획 좌표**(오차 이전)를 쓴다. 어차피 리시버가 "어디로 올 것 같다"만 알면 되는 값이다.
+    return {
+      receiverId: opt.receiver.id,
+      toX: s.cand.toXFx,
+      toY: s.cand.toYFx,
+      speedFx: s.cand.ballSpeedFx,
+    };
+  }
+  return undefined;
 }

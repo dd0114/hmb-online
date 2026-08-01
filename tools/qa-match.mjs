@@ -64,7 +64,16 @@ for (const s of ev.filter((e) => e.type === "save")) {
 
 // 3) 빗나감: 공이 골라인 넘어(x<0 또는 x>105) 옆으로 + 포스트 바깥.
 for (const o of ev.filter((e) => e.type === "shot" && e.detail === "off_target")) {
-  const rb = ballAt(o.tick + 1) || ballAt(o.tick);
+  // ⚠️ 다음 틱을 보는 이유는 아웃이 한 틱 늦게 확정되기 때문인데, **그 다음 틱이 하프 경계면
+  // 공은 이미 킥오프로 중앙(52.5,34)에 리셋돼 있다** — 그러면 "골문 안쪽에 머묾"으로 오판된다.
+  // 위 선방 검사가 `whistleCuts` 로 이미 갖고 있는 가드와 같은 부류이고, `penalty-spot.test.ts`
+  // 의 `kickBoundedEnd`(창을 하프 안으로 자르기)와도 같은 부류다 — 회귀가 아니라 **측정 창 버그**.
+  // 실제 오탐: #377 M3-A 데모의 `off_target@719` → t720 이 half_whistle+kickoff 였다
+  // (t719 실측 공 x=-3.5 = 골라인 밖, 즉 벗어남은 정상적으로 보였다).
+  const cutByWhistle = ev.some(
+    (e) => (e.type === "half_whistle" || e.type === "full_whistle" || e.type === "kickoff") && e.tick === o.tick + 1,
+  );
+  const rb = (cutByWhistle ? ballAt(o.tick) : ballAt(o.tick + 1)) || ballAt(o.tick);
   if (rb && rb.x > 0 && rb.x < 105 && inPosts(rb.y)) P(`빗나감 t${o.tick}: 공이 골문 안쪽에 머묾 (${rb.x.toFixed(1)},${rb.y.toFixed(1)}) — 벗어남 안 보임`);
 }
 

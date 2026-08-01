@@ -23,6 +23,18 @@ export type PassOutcome = "success" | "fail_intercept" | "fail_out";
  * 볼 소유자의 행동. `speedFx`/`lofted` 는 #312/#306 에서 추가됐다 —
  * **행동이 공의 물리를 결정한다**(구버전은 match.ts 가 config 상수를 대입했다).
  */
+/**
+ * 캐리어가 **아직 안 찼을 때** 사슬이 계산해 둔 최상위 패스 후보(#369).
+ * `hold`/`dribble` 에만 붙는다 — 찬 행동은 그 자체가 의도다.
+ * 이걸 `match.ts` 가 `intents` 에 예고로 올리고, 동료가 능력만큼 읽는다.
+ */
+export interface PassForecast {
+  receiverId: string;
+  toX: number;
+  toY: number;
+  speedFx: number;
+}
+
 export type Action =
   | { kind: "shoot"; xg: number; toX: number; toY: number; speedFx: number; detail?: string }
   | {
@@ -38,14 +50,14 @@ export type Action =
       /** #306: 띄운 공인가(도착 시 헤딩 경합). */
       lofted: boolean;
     }
-  | { kind: "dribble"; toX: number; toY: number }
+  | { kind: "dribble"; toX: number; toY: number; forecast?: PassForecast }
   /**
    * 걷어내기(#314 A) — hero ⓐ. **의도 수신자가 없다**: `passOutcome`/`claimant` 를 달지 않고
    * 도착은 순수 기하(양 팀 루즈볼·헤딩 경합)로 간다. 그래서 패스 성공률 캘리브레이션
    * (`passOutcomeAuthoritative`, 벤치 78–85%)을 건드리지 않는다.
    */
   | { kind: "clearance"; toX: number; toY: number; speedFx: number; lofted: boolean }
-  | { kind: "hold" };
+  | { kind: "hold"; forecast?: PassForecast };
 
 /** 극단 behavior(0/1 근처)에 소프트캡 페널티. 0.5 에서 페널티 0. */
 function softCapped(b: number, softCap: number): number {
@@ -964,6 +976,56 @@ function cornerHolderRank(
   return { rank: ahead, count };
 }
 
+
+/**
+ * **예고 패스 읽기**(#369) — 팀 게시판에 올라온 `pass_plan` 중 나를 지목한 것을 **능력만큼**
+ * 읽고, 읽었으면 도착 예정 지점 쪽으로 목표를 당긴다.
+ *
+ * ## 왜 확률인가
+ * 전원이 항상 읽으면 **텔레파시**다. hero 의 *"훈련을 했기 때문에"* 를 능력치로 계량한다 —
+ * `mental`(판단) + `positioning`(상황 인지)의 평균이 높을수록 자주 읽는다.
+ * **팀 케미스트리를 새 축으로 만들지 않았다**: 데이터·UI·프롬프트·계약까지 파급되고
+ * (#363 이 그 비용의 실례다), 능력치로 먼저 해 보고 부족하면 그때 만드는 것이 싸다.
+ *
+ * ## 왜 RNG 가 아니라 시드 노이즈인가
+ * `Rng` 를 쓰면 소비량이 **게시 수에 비례**해 스트림이 요동치고, 재개(resume) 계약이 취약해진다
+ * (#369 가 명시적으로 경고한 함정). `varietyNoise(seedHash, idHash, bucket)` 는 상태의 순수
+ * 함수라 **스트림을 한 번도 건드리지 않으면서** 선수마다·틱마다 다른 값을 준다.
+ *
+ * ## 왜 **값을 돌려주나**(직접 `targetFx` 를 안 쓰나)
+ * 오프더볼 공격 분기는 목표를 `tx`/`ty` **로컬**로 쌓아 맨 끝에서 한 번 대입한다.
+ * 그래서 중간에 `player.targetFx` 를 써 봐야 **덮어써진다**(첫 구현이 정확히 그 no-op 이었다).
+ * 순수 조회로 두고 **대입 직전에** 섞는다.
+ *
+ * ## 아군만
+ * `intent.side !== player.side` 는 아예 보지 않는다. 상대의 예측은 #379 의 몫이고 그건
+ * 게시판이 아니라 **기하**로 한다 — 정보 출처가 다른 것이 텔레파시를 막는 유일한 방법이다.
+ */
+function readPassPlan(state: SimState, player: SimPlayer, config: EngineConfig): { x: number; y: number } | null {
+  const pp = config.movement.passPlan;
+  if (!pp.enabled || pp.pull <= 0) return null;
+  // ⚠️ **가장 오래된 살아 있는 예고**를 읽는다(= 배열 순서 첫 건). 직관은 반대였다 — "캐리어의
+  // 지금 생각이 최신 예고"라고 보고 `it.tick` 최대를 읽게 바꿔 봤는데, **두 축이 다 나빠졌다**
+  // (아블레이션, seed 1618033988 · 전원 읽기 팔): 발사 전 좁힌 거리 pull 0.8 에서
+  // +0.42m/44.2% → **−0.77m/33.1%**, 마크 진동 nearOwner 26.18 → **27.9**.
+  // 이유는 최신 예고가 **매 틱 새로 계산돼 목표가 계속 움직이기** 때문이다 — 리시버가 어느
+  // 지점에도 수렴하지 못한다. 오래된 예고는 여러 틱 같은 지점을 가리켜 리시버가 실제로 도달한다.
+  // (수명 `expireTicks` 가 그 안정성의 상한이다.) 그래서 되돌렸다.
+  for (const it of state.intents) {
+    if (it.kind !== "pass_plan") continue;
+    if (it.side !== player.side) continue; // 아군만 — 텔레파시 방지
+    if (it.forId !== player.id) continue;
+    if (it.expiresTick < state.tick) continue;
+    // 읽기 판정: 능력 비례 + 시드 노이즈(스트림 소비 0). 버킷을 게시 틱으로 잡아
+    // **한 예고에 대해 판정이 매 틱 뒤집히지 않게** 한다(뒤집히면 그게 곧 #185 진동이다).
+    const attr = (player.attrs.mental + player.attrs.positioning) / 2;
+    const prob = pp.readBase + pp.readAttrSwing * ((attr - 50) / 50);
+    if (varietyNoise(state.seedHash, player.idHash, it.tick) >= prob) return null;
+    return { x: it.xFx, y: it.yFx };
+  }
+  return null;
+}
+
 /**
  * `duty` 배수(#366 T5). 미배선이거나 꺼져 있으면 1(= 0.31.0 이전 동작, 변이체 킬 대조군).
  *
@@ -1092,9 +1154,15 @@ export function decideOffBall(
 
   let tx = player.baseFx.x;
   let ty = player.baseFx.y;
+  /** #369: 읽은 예고 패스의 도착 예정 지점(없으면 null). 대입 **직전**에 섞는다. */
+  let planPt: { x: number; y: number } | null = null;
   const attacking = state.possession === player.side;
 
   if (attacking) {
+    // #369: **예고 패스를 읽었으면** 도착 예정 지점 쪽으로 미리 움직인다. 전진 런 계산보다
+    // 앞에 두는 이유는, 읽은 선수의 목표가 "자기 역할 자리"가 아니라 "공이 올 자리"여야 하기
+    // 때문이다(런 보정은 그 위에 얹힌다).
+    planPt = readPassPlan(state, player, config);
     // 전진 런: 역할 위치에서 골 방향으로.
     // #366 T5: **`duty`(밸런스/공격가담/수비안정/연결고리)가 여기서 처음 소비된다.** UI·계약·
     // `SimPlayer` 까지 전부 배선돼 있는데 읽는 코드가 0건이라 유저가 고른 셀렉트가 무효였다.
@@ -1264,6 +1332,15 @@ export function decideOffBall(
     ty += Math.round((ny * 2 - 1) * ampFx);
   }
 
+  // #369: 예고를 읽었으면 **마지막에** 도착 예정 지점 쪽으로 당긴다. 여기가 대입 직전이라
+  // 위의 모든 항(런·폭·지원·roam·오버랩·노이즈)이 계산된 뒤에 얹힌다 — 역할 자리를 지우지 않고
+  // "공이 올 자리"로 기울이는 것이다.
+  // ⚠️ 첫 구현은 이걸 중간에서 `player.targetFx` 로 썼다가 이 대입에 **덮어써지는 no-op** 이었다.
+  if (planPt) {
+    const pull = config.movement.passPlan.pull;
+    tx += Math.round((planPt.x - tx) * pull);
+    ty += Math.round((planPt.y - ty) * pull);
+  }
   player.targetFx = clampToPitch(pitch, tx, ty);
 }
 
