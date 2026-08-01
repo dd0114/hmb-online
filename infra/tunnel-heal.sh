@@ -90,7 +90,16 @@ resolve_ip(){
 # ⚠️ `grep -a` 필수 — cloudflared 로그에 제어문자가 섞이면 grep 이 **바이너리로 판정**해
 #    매치 대신 "Binary file … matches" 를 돌려준다. 그 문자열이 URL 자리에 들어가 전파가
 #    깨진 전례가 있다(2026-07-30 12:11Z 반쪽 치유 — HEAL_OK 인데 config.json 은 옛 URL).
-current_url(){ grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -1; }
+#
+# ⚠️ **`api.trycloudflare.com` 을 배제해야 한다** — cloudflared 는 자기 **등록 엔드포인트**
+#    `https://api.trycloudflare.com` 을 로그에 찍는다. 그건 우리 터널 주소가 아니다. 이 정규식이
+#    그것까지 먹어서 2026-08-01 에 **같은 방식으로 두 번**(09:28Z·14:08Z) 치유가 통째로 실패했다:
+#    `HEAL_FAIL … url=https://api.trycloudflare.com`. 살아있는 주소를 놔두고 남의 주소를 프로브하니
+#    영원히 안 산다. 배정된 호스트는 항상 서브도메인이 3어절 이상이라 `api.` 만 빼면 충분하다.
+current_url(){
+  grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null \
+    | grep -v '^https://api\.trycloudflare\.com$' | tail -1
+}
 
 # 왕복 프로브. echo "<verdict> <detail>" — verdict = ok | dns | http:<code>
 probe(){
@@ -273,15 +282,24 @@ heal(){
   say "· 새 URL = $new_url"
 
   # 3) 글로벌 DNS 등록 + 왕복이 될 때까지 대기 (배포보다 먼저 확인 — 죽은 주소를 퍼뜨리지 않는다)
-  local waited=0
-  while [ "$waited" -lt "$DNS_WAIT" ]; do
+  #
+  # ⚠️ **벽시계 마감으로 건다 — `sleep` 합계가 아니라.** 구 코드는 `waited` 에 sleep 5 만 더해서
+  #    "120s 상한"이라고 했는데, 한 바퀴의 실제 비용은 `probe` 자체(dig 4개 + curl)가 지배한다.
+  #    해석기가 전멸한 장애에서는 그 한 바퀴가 100초를 넘고, 24바퀴를 다 돌면 상한의 수십 배가 된다.
+  #    2026-08-01 실측: HEAL_START **14:08:06Z** → HEAL_FAIL **15:05:55Z** = **3469초**(공칭 120초).
+  #    그동안 워치독은 락을 쥔 채였고 — 후속 틱이 아무것도 못 했다. **백엔드는 내내 살아 있었는데
+  #    터널만 58분 죽어 있었다.** 상한이 상한 노릇을 해야 다음 틱이 다시 시도할 수 있다.
+  local started deadline alive=0
+  started=$(date +%s); deadline=$((started + DNS_WAIT))
+  while :; do
     if probe_out=$(probe "$new_url"); then
-      say "· 왕복 확인 ($probe_out, ${waited}s)"; break
+      alive=1; say "· 왕복 확인 ($probe_out, $(( $(date +%s) - started ))s)"; break
     fi
-    sleep 5; waited=$((waited + 5))
+    [ "$(date +%s)" -ge "$deadline" ] && break
+    sleep 5
   done
-  if [ "$waited" -ge "$DNS_WAIT" ]; then
-    record HEAL_FAIL "새 터널이 ${DNS_WAIT}s 안에 살아나지 않음 url=$new_url"
+  if [ "$alive" != "1" ]; then
+    record HEAL_FAIL "새 터널이 ${DNS_WAIT}s 안에 살아나지 않음 url=$new_url 실경과=$(( $(date +%s) - started ))s"
     say "✗ 새 터널이 ${DNS_WAIT}s 안에 응답하지 않는다"; return 1
   fi
 
@@ -304,6 +322,29 @@ heal(){
   say "✗ 전파 미완 — 터널은 정상($new_url)인데 web 이 아직 못 따라왔다. 다음 틱에서 재시도."
   return 1
 }
+
+# ── 자기 마감(백스톱) ──────────────────────────────────────────────────────────────
+#
+# 위의 벽시계 마감이 **알려진** 늘어지는 지점을 잡는다면, 이건 **아직 모르는** 지점을 잡는다.
+# 이 스크립트는 60초마다 불리면서 `deploy.lock` 을 쥔다. 락 회수 로직은 소유자 PID 가 **죽었을 때만**
+# 훔쳐온다(`try_lock`) — 그래서 **살아서 매달린** 실행은 후속 틱을 전부 굶긴다. 2026-08-01 장애가
+# 정확히 그 모양이었다(한 번의 `--once` 가 58분 매달려 있었고, 그동안 워치독은 존재하지 않는 것과 같았다).
+# 어디서 매달리든 상한 안에 죽고, 다음 틱이 깨끗한 상태로 다시 시작하게 한다.
+# (macOS 엔 `timeout(1)` 이 없다 — 백그라운드 감시자로 직접 건다.)
+RUN_DEADLINE="${HMB_RUN_DEADLINE:-420}"
+if [ "$RUN_DEADLINE" -gt 0 ] 2>/dev/null; then
+  # ⚠️ 감시자의 stdout/stderr 는 **반드시 /dev/null 로 갈아끼운다.** 안 하면 부모의 fd 를 물려받는데,
+  #    이 스크립트가 파이프로 불릴 때(`… | tail`) 파이프는 **쓰는 쪽이 전부 닫혀야** EOF 가 난다 →
+  #    본체가 끝나도 감시자가 살아 있는 동안 호출자가 그대로 매달린다. (이 픽스를 넣자마자 자기
+  #    selftest 가 4분+ 매달려서 바로 걸렸다 — 워치독을 고치다 워치독을 매달 뻔했다.)
+  ( sleep "$RUN_DEADLINE"
+    if kill -0 $$ 2>/dev/null; then
+      printf '%s\t%s\t%s\t%s\n' "$(now)" "$(iso)" RUN_TIMEOUT "실행이 ${RUN_DEADLINE}s 를 넘겨 스스로 종료 — 락 해제, 다음 틱이 재시도" >> "$HEAL_LOG"
+      kill -TERM $$ 2>/dev/null; sleep 5; kill -KILL $$ 2>/dev/null
+    fi ) >/dev/null 2>&1 &
+  SELF_TIMER=$!
+  trap 'kill "$SELF_TIMER" 2>/dev/null; cleanup' EXIT INT TERM
+fi
 
 # ── 모드 ───────────────────────────────────────────────────────────────────────────
 case "$MODE" in
