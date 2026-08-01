@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAbandonMatch, useActiveMatch, useRetry, type MatchDetail } from "../api/hooks";
 import { ErrorToast } from "../common/ErrorToast";
 import { genWaitCopy } from "./match-logic";
+import { waitingSceneAt } from "./waiting-scenes";
 import styles from "./GenWaitPanel.module.css";
 
 interface GenWaitPanelProps {
@@ -77,8 +78,10 @@ export function GenWaitPanel({ match }: GenWaitPanelProps) {
     );
   }
 
-  // 문구는 순수 로직(match-logic.genWaitCopy)이 SoT — 실측 대기시간 정합은 거기서 테스트한다(#193).
+  // 문구는 순수 로직이 SoT — 제목은 match-logic.genWaitCopy, 서술은 waiting-scenes 정경 풀(#382).
   const copy = genWaitCopy(match.state);
+  // 경과 초에서 파생한다 — 별도 타이머를 두면 화면의 시계와 문구가 어긋난다.
+  const scene = waitingSceneAt(elapsed);
   const mm = Math.floor(elapsed / 60);
   const ss = String(elapsed % 60).padStart(2, "0");
 
@@ -89,8 +92,14 @@ export function GenWaitPanel({ match }: GenWaitPanelProps) {
       <p className={styles.elapsed} data-testid="genwait-elapsed">
         경과 {mm}:{ss}
       </p>
-      <p className={styles.note} data-testid="genwait-note">
-        {copy.note}
+      {/*
+        key={scene} 로 문장이 갈릴 때마다 페이드가 다시 돈다 — 글자만 순간 교체되면 "바뀐 줄"
+        모르고 지나간다. 읽는 중 갈리는 감각을 줄이려는 것이지 장식이 아니다.
+        ⚠️ aria-live 는 걸지 않는다 — 4초마다 스크린리더가 정경을 낭독하면 소음이다(경과 시계와
+        [경기 포기]가 이 화면의 기능 정보다).
+      */}
+      <p key={scene} className={styles.scene} data-testid="genwait-scene">
+        {scene}
       </p>
       {canAbandon && (
         <button

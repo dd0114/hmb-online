@@ -1,62 +1,84 @@
-=== AC-shot-target: showcase(viewer, seed 4815162342) (engine@0.30.0-showcase, seed 4815162342) ===
+=== AC-shot-target: showcase(viewer, seed 4815162342) (engine@0.34.0-showcase, seed 27182818) ===
 판정: goal/saved 는 골문 근처(y 26..42) | off_target 은 골라인 너머(x<0 또는 x>105) + 포스트 바깥(y<30.34 또는 y>37.66) | 코너(y<5 또는 y>63)로 간 슛 0건이면 PASS
 총 슛 결과(goal+saved+off_target): 28  |  코너로 간 슛: 0건
 
-goal: 8건  y[min 32.96 / mean 34.11 / max 35.44]  코너 0건
-saved: 15건  y[min 28.84 / mean 34.69 / max 39.16]  코너 0건
-off_target: 5건  y[min 27.34 / mean 30.00 / max 40.66]  코너 0건
+goal: 11건  y[min 33.12 / mean 34.23 / max 35.29]  코너 0건
+saved: 11건  y[min 28.84 / mean 34.00 / max 39.16]  코너 0건
+off_target: 6건  y[min 27.34 / mean 29.56 / max 40.66]  코너 0건
 
 결과          tick    team  ball(x,y)           판정
-goal        8       home  (104.50,33.84)      PASS
-saved       39      away  (2.50,34.00)        PASS
-goal        170     home  (104.50,35.44)      PASS
-goal        249     home  (104.50,33.83)      PASS
-saved       280     away  (-3.50,39.16)       PASS
-saved       325     home  (108.50,28.84)      PASS
-saved       359     home  (102.50,34.00)      PASS
-saved       424     away  (2.50,34.00)        PASS
-goal        454     home  (104.50,33.28)      PASS
-saved       486     away  (-3.50,39.16)       PASS
-saved       530     home  (108.50,28.84)      PASS
-goal        561     home  (104.50,34.57)      PASS
-saved       593     away  (-3.50,39.16)       PASS
-goal        634     away  (0.50,34.11)        PASS
-goal        665     home  (104.50,32.96)      PASS
-off_target  704     away  (-3.50,40.66)       PASS
-off_target  791     home  (108.50,27.34)      PASS
-saved       826     away  (-3.50,39.16)       PASS
-saved       918     home  (102.50,34.00)      PASS
-saved       947     home  (102.50,34.00)      PASS
-off_target  960     home  (108.50,27.34)      PASS
-off_target  1088    home  (108.50,27.34)      PASS
-saved       1139    home  (108.50,39.16)      PASS
-saved       1180    away  (-3.50,28.84)       PASS
-saved       1248    home  (102.50,34.00)      PASS
-off_target  1302    home  (108.50,27.34)      PASS
-goal        1391    away  (0.50,34.81)        PASS
-saved       1424    home  (102.50,34.00)      PASS
+goal        32      home  (104.50,34.80)      PASS
+off_target  82      home  (108.50,27.34)      PASS
+off_target  148     away  (-3.50,40.66)       PASS
+goal        210     home  (104.50,34.53)      PASS
+goal        268     away  (0.50,33.12)        PASS
+off_target  320     home  (108.50,27.34)      PASS
+goal        364     away  (0.50,33.23)        PASS
+saved       439     away  (-3.50,39.16)       PASS
+goal        492     away  (0.50,35.29)        PASS
+off_target  561     home  (108.50,27.34)      PASS
+goal        608     home  (104.50,34.47)      PASS
+goal        663     home  (104.50,34.66)      PASS
+goal        704     away  (0.50,34.19)        PASS
+saved       750     home  (102.50,34.00)      PASS
+saved       775     away  (-3.50,39.16)       PASS
+saved       834     away  (-3.50,39.16)       PASS
+saved       865     away  (-3.50,39.16)       PASS
+goal        911     home  (104.50,34.05)      PASS
+saved       983     away  (2.50,34.00)        PASS
+saved       1029    away  (-3.50,28.84)       PASS
+saved       1092    home  (108.50,28.84)      PASS
+off_target  1131    home  (108.50,27.34)      PASS
+off_target  1162    away  (-3.50,27.34)       PASS
+saved       1219    home  (108.50,28.84)      PASS
+goal        1278    home  (104.50,34.72)      PASS
+saved       1323    away  (-3.50,28.84)       PASS
+saved       1373    home  (102.50,34.00)      PASS
+goal        1425    away  (0.50,33.46)        PASS
 
 결과: ALL PASS (코너로 간 슛 0건)
 
-=== AC-shot-target: real(default) (engine@0.30.0, seed 4815162342) ===
+=== AC-shot-target: real(default) (engine@0.34.0, seed 4815162342) ===
 판정: goal/saved 는 골문 근처(y 26..42) | off_target 은 골라인 너머(x<0 또는 x>105) + 포스트 바깥(y<30.34 또는 y>37.66) | 코너(y<5 또는 y>63)로 간 슛 0건이면 PASS
-총 슛 결과(goal+saved+off_target): 11  |  코너로 간 슛: 0건
+총 슛 결과(goal+saved+off_target): 33  |  코너로 간 슛: 0건
 
-goal: 2건  y[min 34.28 / mean 34.77 / max 35.25]  코너 0건
-saved: 2건  y[min 34.00 / mean 34.00 / max 34.00]  코너 0건
-off_target: 7건  y[min 27.34 / mean 33.05 / max 40.66]  코너 0건
+goal: 7건  y[min 33.36 / mean 33.88 / max 34.88]  코너 0건
+saved: 6건  y[min 28.84 / mean 35.72 / max 39.16]  코너 0건
+off_target: 20건  y[min 27.34 / mean 34.00 / max 40.66]  코너 0건
 
 결과          tick    team  ball(x,y)           판정
-off_target  26      home  (108.50,40.66)      PASS
-saved       104     away  (2.50,34.00)        PASS
-saved       279     home  (102.50,34.00)      PASS
-goal        476     home  (104.50,34.28)      PASS
-off_target  556     away  (-3.50,27.34)       PASS
-off_target  780     away  (-3.50,40.66)       PASS
-off_target  893     away  (-3.50,40.66)       PASS
-off_target  946     home  (108.50,27.34)      PASS
-goal        1002    home  (104.50,35.25)      PASS
-off_target  2311    away  (-3.50,27.34)       PASS
-off_target  2592    home  (108.50,27.34)      PASS
+off_target  266     home  (108.50,40.66)      PASS
+saved       308     home  (108.50,28.84)      PASS
+off_target  361     home  (108.50,27.34)      PASS
+saved       395     away  (-3.50,39.16)       PASS
+off_target  426     away  (-3.50,40.66)       PASS
+goal        667     home  (104.50,34.53)      PASS
+off_target  850     home  (108.50,27.34)      PASS
+off_target  1074    away  (-3.50,40.66)       PASS
+goal        1104    away  (0.50,33.36)        PASS
+goal        1206    away  (0.50,33.56)        PASS
+saved       1251    home  (108.50,28.84)      PASS
+off_target  1324    home  (108.50,27.34)      PASS
+off_target  1383    away  (-3.50,40.66)       PASS
+off_target  1444    away  (-3.50,27.34)       PASS
+saved       1570    away  (-3.50,39.16)       PASS
+off_target  1620    home  (108.50,27.34)      PASS
+off_target  1652    away  (-3.50,40.66)       PASS
+saved       1738    home  (108.50,39.16)      PASS
+off_target  1787    away  (-3.50,40.66)       PASS
+off_target  1858    home  (108.50,40.66)      PASS
+goal        1915    home  (104.50,34.88)      PASS
+goal        1970    home  (104.50,33.66)      PASS
+off_target  2017    home  (108.50,27.34)      PASS
+saved       2044    away  (-3.50,39.16)       PASS
+off_target  2132    home  (108.50,40.66)      PASS
+off_target  2208    away  (-3.50,40.66)       PASS
+goal        2251    away  (0.50,33.69)        PASS
+off_target  2309    home  (108.50,27.34)      PASS
+off_target  2376    away  (-3.50,27.34)       PASS
+off_target  2427    home  (108.50,27.34)      PASS
+off_target  2486    away  (-3.50,40.66)       PASS
+off_target  2573    home  (108.50,27.34)      PASS
+goal        2655    away  (0.50,33.46)        PASS
 
 결과: ALL PASS (코너로 간 슛 0건)

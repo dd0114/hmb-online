@@ -29,15 +29,17 @@ type Verdict = "effective" | "dead";
  * 여기 있는 동안 프롬프트의 해당 문구는 <b>사실이 아니다</b>. 비우는 것이 목표다.
  */
 const KNOWN_DEAD: Record<string, string> = {
-  // #360 T1(#361) — 한 줄 배선 3종. 살리면 overlap.ts·tempo-control.ts·press-trigger.ts 의 광고가 사실이 된다.
-  "team.width": "#361 (T1)",
-  "team.pressingScheme.triggerLine": "#361 (T1)",
-  "players[].behavior.passDirectness": "#361 (T1) — decision.ts:375 에 참조는 있으나 chain 모드에선 그 경로가 안 돈다",
   // #360 T3(#363) — 격려·질책의 종점. 살리지 않기로 하면 프롬프트·계약에서 빼야 한다(방치가 최악).
-  "players[].mentalModifier": "#363 (T3, ⚠️ 게임 설계 판단)",
-  // #360 T5(#366) — 배선하거나 계약에서 빼거나.
-  "players[].duty": "#366 (T5)",
+  // ⚠️ **hero 게임 설계 게이트 대기 중**이라 이번 웨이브(#377 M2)에서 의도적으로 제외됐다 —
+  // 어디에 태울지(듀얼/패스 성공률/결정 품질/활동량)가 게임성 결정이다.
+  "players[].mentalModifier": "#363 (T3, ⚠️ hero 게임 설계 게이트 — #377 M2 에서 의도적 제외)",
 };
+// ── 이 목록에서 빠져나간 것들 (engine@0.31.0, #377 M2) ──────────────────────────────
+//  · `team.width`                          → #361 배선(공격/수비 폭 항에 (0.5 + width) 배수)
+//  · `team.pressingScheme.triggerLine`     → #361 배선(`assignPresser` 게이트 — 로우블록/하이프레스)
+//  · `players[].behavior.passDirectness`   → #361 배선(`chain.ts:candidateEv` 롱 옵션 EV 배수)
+//  · `players[].duty`                      → #366 배선(오프더볼 전진 런·지원 당김 배수)
+// 회귀 방지 계약 = `packages/engine/src/realism/input-wiring.test.ts`(변이체 킬 + 방향 관계식).
 
 const sel = makeSelectData();
 /** 1차 판정 = 6분 경기 1시드(빠름). '무효'로 보이면 2차(다른 시드 + 긴 경기)로 재확인 — 오탐 방지. */

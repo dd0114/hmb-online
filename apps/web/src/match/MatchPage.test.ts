@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { MatchDetail } from "../api/hooks";
 import { TokenProvider } from "../auth/TokenContext";
+import { WAITING_SCENE_LINES } from "./waiting-scenes";
 
 const mockMatch = vi.fn();
 
@@ -126,19 +127,24 @@ describe("MatchPage state router", () => {
     expect(screen.queryByTestId("briefing-timer")).toBeNull();
   });
 
-  it("GEN1 → GenWaitPanel with 전반 phase copy", () => {
+  // #382 — 서술은 축구장 정경 로테이션이다. 라우팅 테스트는 "그 자리에 정경 문장이 있다"까지만
+  // 보고, 로테이션 동작 자체는 GenWaitPanel.test.ts(가짜 타이머)가 태운다.
+  it("GEN1 → GenWaitPanel with 전반 phase copy + 정경 문구", () => {
     renderWithState({ ...base, state: "GEN1" });
-    expect(screen.getByTestId("genwait-panel").textContent).toContain("전반 작전 반영 중");
-    // #193 — 낡은 실측("팀당 약 70초 × 양팀") 대신 실측 정합 문구.
-    const note = screen.getByTestId("genwait-note").textContent ?? "";
-    expect(note).toContain("10초");
-    expect(note).not.toContain("70초");
+    expect(screen.getByTestId("genwait-panel").textContent).toContain("전반");
+    const scene = screen.getByTestId("genwait-scene").textContent ?? "";
+    expect(WAITING_SCENE_LINES).toContain(scene);
+    // 🪦 은퇴한 서술형(#193 "10초 안팎"·구 "70초 × 양팀") — hero 가 걷어냈다(#382).
+    const panel = screen.getByTestId("genwait-panel").textContent ?? "";
+    expect(panel).not.toContain("10초");
+    expect(panel).not.toContain("70초");
+    expect(panel).not.toContain("작전 반영");
   });
 
-  it("GEN2 → GenWaitPanel with 후반 phase copy", () => {
+  it("GEN2 → GenWaitPanel with 후반 phase copy + 정경 문구", () => {
     renderWithState({ ...base, state: "GEN2" });
-    expect(screen.getByTestId("genwait-panel").textContent).toContain("후반 작전 반영 중");
-    expect(screen.getByTestId("genwait-note").textContent).toContain("하프타임");
+    expect(screen.getByTestId("genwait-panel").textContent).toContain("후반");
+    expect(WAITING_SCENE_LINES).toContain(screen.getByTestId("genwait-scene").textContent ?? "");
   });
 
   // 감독시간 상태명은 **둘**이다 — 현행 `HALFTIME`(P4-E2 #170)과 레거시 `H1_BREAK`.

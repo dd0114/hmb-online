@@ -46,8 +46,24 @@ describe("마크 진동 상한 (#178)", () => {
     expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 1.3);
   });
 
-  it(`수비수 전원의 큰 왕복이 시야off 기준선의 1.3배 이하 (현재 ${report.all.bigReversalPer100} vs 기준선 ${visionOff.all.bigReversalPer100})`, () => {
-    expect(report.all.bigReversalPer100).toBeLessThanOrEqual(visionOff.all.bigReversalPer100 * 1.3);
+  // ── #377 M2(#346 피로 회복) 후 정정 ────────────────────────────────────────────────
+  // 이 관계식이 1.311 로 넘쳤다(4.51 vs 3.44). **처리군은 한 톨도 안 움직였다** — 회복 on/off
+  // 아블레이션 실측: 처리군 4.51 → **4.51**(비트 동일), 대조군 4.13 → **3.44**(−17%).
+  // 즉 분자가 오른 게 아니라 **분모(시야off 대조군)가 조용해졌다.** 시야 롤백 경로는
+  // `markTarget` 하드 오버라이드라 피로 모델이 바뀌면 다르게 반응한다 — 대조군이 안정된
+  // 자[尺]가 아니라는 뜻이다(메트릭 아티팩트).
+  // 그래서 관계식을 조금 넓히되(1.30 → 1.35), **처리군 자체의 비회귀**를 같은 it 안에 같이 건다.
+  // 그게 이 계약이 실제로 지키려는 것이고, 분모가 또 움직여도 살아남는다.
+  it(`수비수 전원의 큰 왕복 — 관계식 ≤1.35배 + 처리군 자체 비회귀 (현재 ${report.all.bigReversalPer100} vs 기준선 ${visionOff.all.bigReversalPer100})`, () => {
+    expect(report.all.bigReversalPer100).toBeLessThanOrEqual(visionOff.all.bigReversalPer100 * 1.35);
+    // 처리군 절대 비회귀. ⚠️ #378(재개 게이트)로 **재기준 4.6 → 5.5**.
+    // 같은 커밋 아블레이션(gate on/off, 4시드): 처리군 4.44 → **5.35**(+20.5%) · 대조군 3.50 →
+    // **4.25**(+21.4%) — **양 팔이 함께 올랐고 대조군이 더 올라 관계식은 1.269 → 1.259 로
+    // 오히려 좋아졌다.** `nearOwner` 도 25.40 → **24.34** 로 내려가고 평균 이동은 3.24 → 3.15 다.
+    // 기제: 정지 창이 짧아져 표본에서 **라이브 플레이 비중이 커졌다**(데드볼 틱은 조용하다).
+    // `bigReversal` 은 선수-틱 100 당 카운터라 표본 구성이 바뀌면 같은 행동에도 값이 움직인다.
+    // 즉 진동이 늘어난 게 아니라 **재는 구간이 바뀐 것**이다(#178 이 이미 겪은 부류).
+    expect(report.all.bigReversalPer100).toBeLessThanOrEqual(5.5);
   });
 
   it(`볼 옆 수비수 평균 이동이 시야off 기준선의 1.2배 이하 (현재 ${report.nearOwner.avgMoveM} vs 기준선 ${visionOff.nearOwner.avgMoveM}) — 진동은 주행거리도 부풀린다`, () => {
@@ -90,11 +106,21 @@ describe("마크 진동 상한 (#178)", () => {
   // 시야 귀속분을 재는 자가 아니다(그건 관계식이 한다). 다만 **0.916 → 0.961 은 지켜볼 값**이라
   // 여기 적어 둔다 — 1.0 을 넘으면 관계식이 먼저 말해 준다.
   // 22 · 3.3 = 실측 20.52 · 3.08 위 약 7% 여유(같은 규율). 원 버그값 43.1 에 대한 이빨은 그대로다.
-  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 22/100, 평균 이동 ≤ 3.3 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off 기준선 ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM})`, () => {
-    expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(22);
-    expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(3.3);
+  //
+  // ── 재기준 22 → 26 · 3.3 → 3.4 (#377 M2 · #346 피로 회복) ─────────────────────────
+  // **양 팔이 함께 올랐고 이번엔 대조군이 더 올랐다**: 시야off 기준선 21.35 → **25.15**(+17.8%) ·
+  // 현재값 20.52 → **24.74**(+20.6%). 관계식은 0.961 → **0.984** 로 여전히 1.0 아래 =
+  // 방향("시야 계층이 진동을 줄인다")이 유지된다. 원인은 명확하다 — 회복 항이 생기며 선수가
+  // 경기 내내 더 빠르게 움직이고, `bigReversal` 은 **양쪽 변위 ≥2m/tick** 이 조건이라 같은
+  // 행동이라도 더 자주 조건을 만족한다(크기 의존 카운터). 구 임계 22 는 이제 **대조군(25.15)
+  // 아래**라, 그대로 두면 이 백스톱은 당김 오버슛이 아니라 "엔진 이동량 수준"을 재게 된다 —
+  // 아래 구조 가드(≥ 대조군×0.9)가 정확히 그 상태를 금지한다.
+  // 26 · 3.4 = 실측 24.74 · 3.30 위 약 5% 여유(같은 규율). 원 버그값 43.1 에 대한 이빨은 그대로다.
+  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 26/100, 평균 이동 ≤ 3.4 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off 기준선 ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM})`, () => {
+    expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(26);
+    expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(3.4);
     // 백스톱이 **대조군 아래로 다시 내려가지 않게** 구조로 묶는다 — 그러면 또 다른 것을 재게 된다.
-    expect(22).toBeGreaterThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 0.9);
+    expect(26).toBeGreaterThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 0.9);
   });
 
   it("시야 계층은 켜진 채여야 한다 — 진동 해소가 시야 롤백으로 달성되면 안 된다", () => {

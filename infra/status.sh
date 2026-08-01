@@ -15,6 +15,19 @@ warn(){ printf "  ${Y}!${N} %s\n" "$1"; }
 
 echo "════════ HMB 배포 상태 ════════"
 
+# 0) ⚠️ 워치독 DEGRADED — **맨 위에, 눈에 띄게.**
+# 백오프에 들어가면 자가복구가 멈춘다(=터널이 죽어도 아무도 안 고친다). 그런데 그 사실이
+# 로그 안에만 있어서, 실측(2026-07-31)에서 상한을 소진하고 복구가 멈춰 있는 동안에도 이 화면은
+# 계속 ✓ 만 보여줬다. 그래서 마커 파일을 첫 줄에서 읽는다.
+DEG="${HMB_STATE_DIR:-$HOME/.local/state/hmb}/DEGRADED"
+if [ -f "$DEG" ]; then
+  printf "  \033[1;31m▲ 워치독 DEGRADED — 자가복구 백오프 중(터널이 죽어도 자동으로 안 고쳐진다)\033[0m\n"
+  printf "     %s\n" "$(cat "$DEG" 2>/dev/null | tr '\t' ' ')"
+  printf "     완화: printf 'HMB_HEAL_MAX_PER_HOUR=6\\\\n' > %s   (원복: rm 그 파일)\n" \
+         "${HMB_STATE_DIR:-$HOME/.local/state/hmb}/heal.conf"
+  printf "     지금 복구: bash infra/start-tunnel.sh  또는  bash infra/publish-backend-url.sh <새URL>\n"
+fi
+
 # 1) 도커 백엔드
 for c in hmb-java hmb-runner; do
   st=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo "없음")

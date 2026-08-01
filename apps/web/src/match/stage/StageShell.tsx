@@ -30,11 +30,20 @@ import styles from "./StageShell.module.css";
  * 시트 높이 등급 → 클래스. 등급 축은 `stage-state.sheetHeight` 가 소유하고 여기선 이름만 붙인다 —
  * 삼항으로 쓰면 등급이 셋이 된 순간(#348 `input`) 새 등급이 조용히 `info` 로 떨어진다(실제로 그 모양이었다).
  */
-const SHEET_HEIGHT_CLASS: Record<"info" | "input" | "state", string> = {
+const SHEET_HEIGHT_CLASS: Record<"info" | "input" | "state" | "result", string> = {
   info: styles.sheetInfo!,
   input: styles.sheetInput!,
   state: styles.sheetState!,
+  result: styles.sheetResult!,
 };
+
+/**
+ * **패널이 자기 스크롤을 갖는 탭** — 주 CTA 를 스크롤 **밖**에 두는 두 화면(#244 BL-1, #355).
+ * 시트 패널이 스크롤을 소유하면 CTA 를 sticky 로밖에 못 띄우고, sticky 는 자기 아래로 콘텐츠가
+ * 지나가므로 본문을 덮는다. 여기 든 탭은 `.panelFlush`(패딩 0 · overflow hidden · flex column)를
+ * 받고, 패널 컴포넌트가 [스크롤 영역] + [고정 CTA] 두 층을 직접 만든다.
+ */
+const OWN_SCROLL_TABS: ReadonlySet<TabKey> = new Set<TabKey>(["halftime", "result"]);
 
 interface StageShellProps {
   match: MatchDetail;
@@ -184,12 +193,13 @@ export function StageShell({
             )}
 
             {/*
-              감독시간은 **패널이 자기 스크롤을 갖는다**(#244 BL-1). 시트 패널이 스크롤을 소유하면
-              주 CTA 를 sticky 로밖에 띄울 수 없고, sticky 는 자기 아래로 콘텐츠가 지나가므로
-              프롬프트를 덮는다(독립 검증: 360/390/412 전 폰에서 히트테스트 피격).
+              감독시간·결과는 **패널이 자기 스크롤을 갖는다**(#244 BL-1 · #355). 시트 패널이
+              스크롤을 소유하면 주 CTA 를 sticky 로밖에 띄울 수 없고, sticky 는 자기 아래로 콘텐츠가
+              지나가므로 본문을 덮는다(독립 검증: 360/390/412 전 폰에서 히트테스트 피격).
               여기서 스크롤을 넘겨주면 CTA 가 스크롤 **밖** 바닥에 앉아 어떤 위치에서도 안 덮는다.
+              목록 = `OWN_SCROLL_TABS`(위) — 삼항으로 쓰면 두 번째 탭이 조용히 빠진다.
             */}
-            <div className={`${styles.panel} ${activeTab === "halftime" ? styles.panelFlush : ""}`}>
+            <div className={`${styles.panel} ${OWN_SCROLL_TABS.has(activeTab) ? styles.panelFlush : ""}`}>
               {activeTab === "stats" && (
                 <StatsPanel
                   matchId={match.id}

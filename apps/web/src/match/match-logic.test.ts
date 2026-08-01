@@ -50,33 +50,32 @@ describe("shouldPoll (poll gating)", () => {
   });
 });
 
-describe("genWaitCopy — 생성 대기 문구는 실측 대기시간과 맞아야 한다 (#193)", () => {
-  it("GEN1: 전반 제목 + 킥오프 대기 감각(10초 안팎, 대변경 시 1~2분)", () => {
-    const copy = genWaitCopy("GEN1");
-    expect(copy.title).toContain("전반");
-    expect(copy.note).toContain("10초");
-    expect(copy.note).toContain("1~2분");
+/**
+ * #382 — 대기 화면 제목도 **정경**이다.
+ *
+ * 🪦 은퇴한 계약: *"GEN1 은 10초 안팎·대변경 1~2분을 말한다"*(#193). 실측 정합 자체는 맞았지만
+ * hero 가 그 서술형을 직접 걷어냈다 — *"경기 준비할 때 문구 이렇게 하지 않기로 했잖아"*.
+ * 소요시간을 말하지 않는 대신 **경과 시계**(`genwait-elapsed`)가 그 자리를 지킨다.
+ */
+describe("genWaitCopy — 대기 화면 제목 (#382)", () => {
+  it("전반/후반을 구분한다 (어느 단계를 기다리는지는 여전히 알아야 한다)", () => {
+    expect(genWaitCopy("GEN1").title).toContain("전반");
+    expect(genWaitCopy("GEN2").title).toContain("후반");
   });
 
-  it("GEN2: 후반 제목 + 하프타임 문구 — 실측 0.3초라 시간을 말하지 않는다", () => {
-    const copy = genWaitCopy("GEN2");
-    expect(copy.title).toContain("후반");
-    expect(copy.note).toContain("하프타임");
-    expect(copy.note).not.toMatch(/초|분/);
-  });
-
-  it("낡은 실측(팀당 70초 × 양팀)은 어느 단계에서도 남아 있지 않다", () => {
+  it("시스템 설명·소요시간 안내를 하지 않는다", () => {
     for (const s of ["GEN1", "GEN2"] as const) {
-      const { title, note } = genWaitCopy(s);
-      expect(`${title} ${note}`).not.toContain("70초");
-      expect(`${title} ${note}`).not.toContain("양팀");
+      const { title } = genWaitCopy(s);
+      for (const word of ["AI", "작전", "반영", "지시", "전달", "생성", "70초", "10초", "양팀"]) {
+        expect(title, `시스템 설명이 되살아났다: "${title}" ← "${word}"`).not.toContain(word);
+      }
+      expect(title, `제목이 시간을 말한다: "${title}"`).not.toMatch(/\d/);
     }
   });
 
   it("이모지를 쓰지 않는다(패널 톤 유지)", () => {
     for (const s of ["GEN1", "GEN2"] as const) {
-      const { title, note } = genWaitCopy(s);
-      expect(`${title} ${note}`).not.toMatch(/\p{Extended_Pictographic}/u);
+      expect(genWaitCopy(s).title).not.toMatch(/\p{Extended_Pictographic}/u);
     }
   });
 });

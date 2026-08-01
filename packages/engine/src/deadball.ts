@@ -88,8 +88,12 @@ export function deadBallShapeTarget(
     tx = slot.x;
     ty = slot.y;
   } else if (sp.kind === "kickoff" || sp.kind === "goal") {
-    tx = player.baseFx.x;
-    ty = player.baseFx.y;
+    // #347: 정지 중 목표도 **킥오프 배치**여야 한다. baseFx 로 두면 골 세리머니 25틱 동안
+    // 앞선이 상대 진영으로 걸어 들어갔다가 재시작 틱에 도로 튕겨 나오는 그림이 된다
+    // (`resetKickoff` 이 그때 순간이동시키므로 눈에는 "왔다 갔다"로 보인다).
+    const k = kickoffSpot(pitch, config, player, sp.side, centerSpot(pitch));
+    tx = k.x;
+    ty = k.y;
   } else {
     // #230: 골키퍼는 별도 비율(기본 0 = 자기 자리 유지). 당김이 거리 비례라 골키퍼만
     // 기본 위치(자기 골라인)에서 스팟까지가 90m 를 넘어, 같은 비율이 33m 이탈이 된다.
@@ -125,6 +129,64 @@ export function deadBallShapeTarget(
     ty += Math.round(oy);
   }
   return clampToPitch(pitch, tx, ty);
+}
+
+/**
+ * 킥오프 배치 좌표(fixed) — **자기 진영 안**. (#347, IFAB Law 8)
+ *
+ * 사상(map)은 두 단계다:
+ *  ① 진행도(자기 골라인 0 → 상대 골라인 1) 가 `holdProgress` 이하면 **그대로**. 백4·홀딩은
+ *     평소 자리를 지킨다(일괄 비례 압축을 안 쓰는 이유 — 그러면 팀이 통째로 얇아진다).
+ *     그 위는 `[hold, 1]` → `[hold, 0.5 − margin/길이]` 선형 재사상 = 앞선만 하프라인 뒤로.
+ *  ② 재개팀 **상대**가 센터 스팟 `circleClearM` 안에 남으면 **방사 방향으로** 링 밖으로 민다.
+ *     x 캡이 아니라 실제 원 거리라, 터치라인 쪽 윙어는 하프라인에 그대로 설 수 있다.
+ *
+ * 순수 함수 · 정수 고정소수 · 난수 0. taker 는 호출부가 이 뒤에 센터로 옮긴다(Law 8 예외).
+ */
+export function kickoffSpot(
+  pitch: Pitch,
+  config: EngineConfig,
+  p: SimPlayer,
+  restartSide: TeamSide,
+  center: { x: number; y: number },
+): { x: number; y: number } {
+  const k = config.setPiece.kickoff;
+  if (!k.compress) return { x: p.baseFx.x, y: p.baseFx.y };
+
+  // 진행도: 홈은 +x 로 공격, 어웨이는 −x. attackProgress 와 같은 정의.
+  const raw = p.baseFx.x / pitch.wFx;
+  const prog = p.side === "home" ? raw : 1 - raw;
+  const cap = 0.5 - k.marginM / config.pitch.width;
+  const hold = Math.min(k.holdProgress, cap);
+  let np = prog;
+  if (prog > hold) {
+    const span = 1 - hold;
+    np = span > 0 ? hold + ((prog - hold) * (cap - hold)) / span : hold;
+  }
+  const nx = Math.round((p.side === "home" ? np : 1 - np) * pitch.wFx);
+  let out = clampToPitch(pitch, nx, p.baseFx.y);
+
+  // ② 센터 서클 비우기(재개팀 상대만).
+  if (p.side !== restartSide) {
+    const need = toFixed(k.circleClearM, config.fixedScale);
+    let dx = out.x - center.x;
+    let dy = out.y - center.y;
+    let d = isqrt(dx * dx + dy * dy);
+    if (d < need) {
+      if (d === 0) {
+        // 정확히 센터에 겹치면 자기 골 방향으로 민다(결정론: 삼각함수·난수 없음).
+        dx = defendGoal(pitch, p.side).x - center.x;
+        dy = 0;
+        d = Math.abs(dx) || 1;
+      }
+      out = clampToPitch(
+        pitch,
+        center.x + Math.round((dx * need) / d),
+        center.y + Math.round((dy * need) / d),
+      );
+    }
+  }
+  return out;
 }
 
 /**
@@ -373,6 +435,46 @@ export function deadBallRetreatPoint(
   const b = centerBearing(pitch, zone);
   const needC = exitRadius(zone, b.dx, b.dy, b.d, margin);
   return clampToPitch(pitch, zone.x + Math.round((b.dx * needC) / b.d), zone.y + Math.round((b.dy * needC) / b.d));
+}
+
+/**
+ * 금지구역 **경계를 따라 돌아가는** 한 걸음(#349). 없으면 벽이 구조적으로 못 선다.
+ *
+ * ## 왜 필요한가 (실측으로 확인한 인과)
+ * #307 의 벽 슬롯은 스팟→수비골 선상 9.5m 지점이다. 파울 부근 수비수는 대개 스팟 9.15m **안**에
+ * 있으므로 #176 이 먼저 그를 **자기 방위**로 밀어낸다 — 링 위에 서긴 하는데 **엉뚱한 방위**다.
+ * 거기서 벽 슬롯으로 가려면 링의 현(chord)을 따라야 하는데, 그 직선은 반드시 원 **안**을
+ * 지나므로 `deadBallBlocked` 가 매 틱 이동을 취소한다. 결과: 그 자리에 굳는다.
+ * 실측(6시드, 차는 틱 233표본): 스팟거리 p50 **9.2m**(= 링 위에 있다) · 슬롯거리 p50 **11.4m**
+ * (= 링 위 엉뚱한 곳) → 벽 도착률 **12.3%**. hero 가 "벽을 안 세운다"고 본 것의 실체다.
+ *
+ * ## 무엇을 하나
+ * 다음 위치가 구역 안이면 **취소하는 대신 경계 위로 방사 투영**한다 = 링을 따라 미끄러진다.
+ * 실제 축구에서 선수가 공을 **돌아서** 걸어가는 것과 같은 동작이고, 규칙 위반이 없다
+ * (투영점의 여유 ≥ 0). 투영이 피치 밖이면 null → 호출부가 기존대로 이동을 취소한다.
+ *
+ * 결정론: 순수 함수 · 정수 고정소수 · 난수 0. 목표가 고정이라 방향이 매 틱 뒤집히지 않는다(#185).
+ */
+export function deadBallSlide(
+  pitch: Pitch,
+  zone: DeadBallZone,
+  config: EngineConfig,
+  next: { x: number; y: number },
+): { x: number; y: number } | null {
+  if (deadBallClearance(zone, next.x, next.y) >= 0) return next;
+  const margin = toFixed(config.rules.deadBall.marginM, config.fixedScale);
+  let dx = next.x - zone.x;
+  let dy = next.y - zone.y;
+  let d = isqrt(dx * dx + dy * dy);
+  if (d === 0) ({ dx, dy, d } = centerBearing(pitch, zone));
+  const need = exitRadius(zone, dx, dy, d, margin);
+  const px = zone.x + Math.round((dx * need) / d);
+  const py = zone.y + Math.round((dy * need) / d);
+  const c = clampToPitch(pitch, px, py);
+  // 클램프가 점을 옮겼다 = 그 방위의 경계가 피치 밖이다 → 미끄러질 자리가 없다.
+  if (c.x !== px || c.y !== py) return null;
+  if (deadBallClearance(zone, c.x, c.y) < 0) return null;
+  return c;
 }
 
 /**

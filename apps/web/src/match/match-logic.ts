@@ -64,27 +64,24 @@ export function shouldPoll(state: MatchState | string | undefined): boolean {
 
 export interface GenWaitCopy {
   title: string;
-  note: string;
 }
 
 /**
- * 생성 대기(GEN1/GEN2) 화면 문구. **실측 정합**(#193): 킥오프→관전은 6~14초, 전술을 크게 바꿔
- * 대변경 라우팅을 타면 1~2분(단, 제출 시점부터 백그라운드로 돌아간다), 하프타임→후반은 0.3초다.
- * 그래서 GEN1 만 시간 감각을 주고, GEN2 는 숫자를 말하지 않는다 — 문구를 읽을 새도 없이 넘어간다.
+ * 생성 대기(GEN1/GEN2) 화면 **제목**.
  *
- * 서버가 예상 소요를 내려주지 않으므로 수치는 **문구 안 서술**로만 둔다(튜닝 설정값이 아니다).
+ * ⚠️ 이 자리는 시스템을 설명하지 않는다(#382, hero 라이브 제보). 구 제목/부제는
+ * *"AI 감독이 전반 작전 반영 중…"* + *"감독의 지시가 …(보통 10초 안팎, 전술을 크게 바꾼 경우
+ * 1~2분)"* 였는데(실측 정합 #193), hero 가 *"축구장 상황을 묘사하는 문구로 바꿔"* 로 걷어냈다.
+ * 서술은 `waiting-scenes` 의 정경 로테이션이 맡고, 소요 시간은 **경과 시계**가 대신한다.
+ *
+ * 남는 것은 **어느 단계를 기다리는가**(전반/후반) 하나다 — 그건 시스템 설명이 아니라 유저가
+ * 지금 경기 어디에 서 있는지의 정보라 유지한다.
  */
 export function genWaitCopy(state: MatchState | string | undefined): GenWaitCopy {
   if (state === "GEN2") {
-    return {
-      title: "AI 감독이 후반 작전 반영 중…",
-      note: "하프타임 — 선수들이 후반 준비 중입니다",
-    };
+    return { title: "후반 킥오프를 앞둔 경기장" };
   }
-  return {
-    title: "AI 감독이 전반 작전 반영 중…",
-    note: "감독의 지시가 선수들에게 전달되고 있습니다 (보통 10초 안팎, 전술을 크게 바꾼 경우 1~2분)",
-  };
+  return { title: "전반 킥오프를 앞둔 경기장" };
 }
 
 // ── MatchLog event display (shared MatchEventType mirror) ──────────────

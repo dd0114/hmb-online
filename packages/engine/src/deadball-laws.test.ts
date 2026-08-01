@@ -5,6 +5,7 @@ import { defaultEngineConfig, type EngineConfig } from "./config";
 import { makeTacticalInput, makeSelectData, demoSeed, demoHome, demoAway, demoSelect } from "./fixtures";
 import { showcaseConfig } from "../dev-viewer/generate-demo";
 import { REALISM_SEEDS } from "./realism/harness";
+import { createPitch } from "./pitch";
 
 /**
  * #176 — 데드볼 정지 중 "상대는 물러나 있어야 한다"(실제 축구 규칙) 계약.
@@ -142,6 +143,7 @@ function scanLaws(log: MatchLog, config: EngineConfig, tag: string): {
   teleport: Violation[];
   windows: number;
 } {
+  const pitch = createPitch(config);
   const byTick = new Map(log.tickSnapshots.map((s) => [s.tick, s]));
   const atRestart: Violation[] = [];
   const entered: Violation[] = [];
@@ -305,6 +307,10 @@ describe("데드볼 접근 금지 — 실제 축구 규칙 (#176)", () => {
   });
 
   it("A) 재시작 실행 틱에 금지구역 안 상대가 없다", () => {
+    // ⚠️ #378(재개 게이트)에서 이 계약을 **의식/빠른 재개로 쪼갤 뻔했다**(Law 13 은 빠르게 찬
+    // 킥을 9.15m 안 상대가 가로채도 속행시킨다). 그러지 않았다 — `quickBaseTicks` 를 2 → 5 로
+    // 잡으니 침범이 **전수 0** 이 됐기 때문이다(실측: quick 2 → 벽FK 1/90·빠른FK 1/7 ·
+    // quick 5 → 0/94 · 0/15). 계수 하나로 규칙이 성립하면 계약을 약하게 만들 이유가 없다.
     const v = collect((c) => scans.find((x) => x.c === c)!.s.atRestart);
     expect(v.slice(0, 20), `${v.length}건\n${v.slice(0, 20).join("\n")}`).toEqual([]);
   });

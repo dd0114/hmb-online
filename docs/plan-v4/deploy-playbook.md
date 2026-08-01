@@ -113,34 +113,76 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 > 배포 지시가 오기 전에 **미리 등록해 두는** 자리다. 여기 있는 건 §0.5 를 돌릴 때 **반드시 같이** 확인하고,
 > 처리하고 나면 항목을 지우고 `deploy-log` 에만 남긴다.
 
-**등록분 — #309 운영 컨텐츠 무배포화**(브랜치 `issue/285-deck-icon-policy`, 머지 대기):
+**등록분 — 없음.** (직전 = 엔진 열차 `engine@0.34.0` → **소진**: 2026-08-01 `v3.14` 로 발차. 라이브 engine@0.34.0 ·
+Flyway v36 · 잔여 결함 **#388**(헤더 시계 0~44', apps/web 소유 — 표시 전용이라 롤백 안 함). 아래 접힌 원문은 이력.)
 
-- **새 마이그레이션 3개** (현재 V30·V31·V32 로 작성 — ⚠️ 번호는 머지 시점 재배정 가능):
-  - `notice_assets`(공지 이미지 메타) · `char_bundles`(아트 번들 리비전) — 둘 다 **additive**
-  - ⚠️ **`admin_catalog_audit` 테이블 재작성**(CHECK 에 `unit_purge` 추가) — **`DROP TABLE` 이 있다**
-    (§0.5 체크 7 이 잡는 항목). SQLite 는 CHECK 를 ALTER 로 못 바꿔 표준 재작성이 유일한 방법이다.
-    **데이터는 변환하지 않고 전 컬럼 복사**, `.sql.conf` 없음 = 트랜잭션 원자적(리허설로 실측:
-    중간 실패 시 DROP+RENAME 이 롤백되고 flyway 이력에도 안 남아 재시도 안전), 이 표를 FK 로
-    참조하는 표 없음, **인덱스 4개 재생성**(V14 셋 + V15 하나 — ⚠️ 한때 셋으로 잘못 적혀 있었다).
-    계약 = `FlywayV32CatalogAuditRebuildTest`.
-    ⇒ **§8 백업 + 리허설 권장**(감사 원장이라 잃으면 복원 근거가 사라진다).
-- **볼륨에 파일이 추가된다**: `/var/lib/hmb/notice-assets/` · `/var/lib/hmb/char-bundles/`.
-  DB 와 **같은 볼륨**이라 일상 배포에는 영향 없지만, **볼륨을 잃을 수 있는 작업 앞에서는
-  §8 의 자산 tar 백업도 같이** 뜬다(DB 만 복원하면 공지 그림·아트가 404 가 된다).
-- **서블릿 업로드 상한이 8MB → 96MB** 로 올라간다(아트 번들 zip 이 실물 약 6MB). 앱 상한은
-  따로다(공지 이미지 2MB · 번들 해제 후 64MB) — 사람에게 보여줄 거절은 항상 앱 상한이 한다.
-- **배포 직후 확인(재작성 검증 포함)**:
-  `docker exec hmb-java sh -c "sqlite3 /var/lib/hmb/hmb.db 'SELECT COUNT(*) FROM admin_catalog_audit'"`
-  → **배포 전 값과 같아야 한다**(재작성이 행을 잃지 않았는가). 그리고
-  `… 'SELECT COUNT(*) FROM sqlite_master WHERE tbl_name=\"admin_catalog_audit\" AND type=\"index\" AND name NOT LIKE \"sqlite_%\"'`
-  → **4**(인덱스 4개 재생성: `idx_catalog_audit_player`·`idx_catalog_audit_actor`·
-  `uq_catalog_audit_idem`·`uq_catalog_audit_create_idem`). ⚠️ **3 이 나오면 회귀다** — 대상별 멱등
-  인덱스가 빠진 것이고, 그러면 `update`/`deactivate`/`activate`/`override_reset` 의 DB 백스톱이 없다.
-- **배포 직후 확인 1줄**: `curl -sI <터널>/api/notices/assets/x | head -1` → `404`(정상: 없는 자산),
-  `curl -s <터널>/api/chars/index | head -c 80` → `404` 본문(정상: 활성 아트 번들 없음 = 구운 폴백 사용).
-  둘 다 **500 이면 배포가 잘못된 것**이다.
+<details><summary>소진된 등록분 — 엔진 열차 engine@0.33.0→0.34.0 (v3.14 로 배포됨)</summary>
 
-*(직전 등록분 = `V25` 다이스 소각 · `V21` matches 재작성 — **배포 v2(`deploy-2`, 2026-07-29)에서 소진**.)*
+**등록분 — 엔진 열차 `engine@0.33.0` (hero 확정, 중간 발차 / 조립 GO 는 main 이 머지 SHA 와 함께 준다)**
+
+> ⚠️ 이 열차는 **v3.02 이후 처음으로 `release/*` 계보가 아니라 `main` 직행**이다(엔진 배포 승인 =
+> runner 재빌드 허용). 그래서 **main 에 쌓인 웹·서버 변경이 전부 동승한다** — "엔진만 올린다"가 아니다.
+
+**동승분 — 라이브에 처음 올라가는 것(2026-08-01 기준 실측)**
+- **엔진 `0.23.0 → 0.33.0`**: 0.26(공 물리 속도벡터·행동 계층) · 0.28(사슬 코어 — **v3.09 로 나갔다 롤백된 그 버전**) ·
+  0.29(**파울 복구** 2.15→11.55) · 0.30(#365) · 0.33(engwave 안전값+골든+T1).
+- **#365 경기 단축**(`19094b9`) — **하프 3분 · 1.2x · 0-90 표기**. 유저가 체감하는 변화가 엔진 수치보다 크다.
+- **#365 후속 재생 방식**(`7e3a134`) — 하프 창 = 매치별 실제 재생 길이(`playbackMs` additive) · **고정 배속**.
+  *v3.12 로 단독 발차하려다 **HOLD** 한 그 변경이다*(그때 이유 = `half-real-ms` 가 **engine@0.30.0 실측**으로
+  캘리브레이션돼 0.23.0 과 안 맞았다). 엔진이 같이 올라가는 지금은 그 전제가 해소된다 — **이 열차에서만 옳다.**
+- 이미 라이브인 것(체리픽으로 먼저 나감, SHA 만 다르다): #354/#355(v3.13) · #368(v3.11) · #367(v3.10) · #348(v3.08) · #342(v3.07).
+
+**마이그레이션 — 현재 0건. 단 GO 시 재스캔이 계약이다.**
+```bash
+git diff --name-only <라이브SHA>..<머지SHA> -- server-java/src/main/resources/db/migration/
+```
+2026-08-01 스캔 = **0건**(리포 최신 `V36__league_daily_reward`, 라이브 DB 도 **v36**). engwave 머지가
+새 마이그레이션을 들고 올 수 있으므로 **발차 직전 한 번 더** 돌리고, 나오면 §0.5-2/7 성격 판정 + §8 리허설.
+
+**⚠️ #241 — 발차 직전 "진행 중 매치 0" 확인 (이 열차의 필수 관문)**
+버전 범프라 진행 중 매치의 `resumeState` 가 거부된다(v3.09 실측: `resumeState config version mismatch`).
+`hmb-java` 컨테이너엔 `sqlite3` 가 없으므로 **볼륨을 read-only 로 붙여** 조회한다:
+```bash
+docker run --rm -v hmb-p3-db:/data:ro alpine:3.20 sh -c \
+  "apk add --no-cache sqlite >/dev/null 2>&1 && sqlite3 -header 'file:/data/hmb.db?mode=ro' \
+   \"SELECT id,user_id,state,engine_version,phase_ends_at FROM matches \
+     WHERE state NOT IN ('FINISHED','FAILED','ABANDONED')\""
+```
+- **0건이면 즉시 발차.**
+- **있으면**: `phase_ends_at` 으로 잔여를 계산한다. **`FIRST_HALF` 면 완주까지 감독시간+후반이 남아 ≈10분 이상**이다
+  (v3.13 때 5분 관찰로는 못 끝났다). 짧으면 기다리고, 길거나 급하면 **hero 확인 후** 진행한다.
+- 강행하면 그 매치는 `FAILED` 가 된다(#217 이 회수 안전망 — 종결 상태라 새 매치 생성은 안 막힌다).
+  **유저 id·매치 id·그 시점 스코어를 반드시 기록**한다(보상 판단 근거).
+- 📌 **완료된 매치의 리플레이는 무영향**이다 — 재생은 `resumeState` 가 아니라 **저장된 하프 로그**를 서빙한다(v3.09 확인).
+
+**보상 프로토콜 (상비 — 별희 선례 2026-07-31)**
+피해가 나면 지급은 **hero/main 판단**이다. 임의 집행하지 않고, 지시가 오면 이 형태로 보낸다:
+```bash
+curl -s -X POST "$BACKEND/api/admin/mails" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: <유일키>' \
+  -d '{"audience":"USERS","userIds":["<userId>"],"title":"경기 중단 보상",
+       "body":"...","attachments":{"points":0,"gems":300,"players":[]},
+       "expiresInDays":30,"reason":"<사유 — 감사 원장에 남는다>"}'
+```
+- `gems`=Z(유상) · `points`=G(무료). **201=발송 / 200=같은 멱등키 재전송(추가 발송 0) / 409=같은 키+다른 내용.**
+- 발송 후 `GET /api/admin/mails/{id}` 로 첨부·문안 대조 + **`claimedCount: 0` 확인**. **수령은 유저 몫 — 대신 누르지 않는다.**
+- 문안·금액 정정은 **수령 전에만** 가능(`/revoke` 후 재발송). ⚠️ 재발송 땐 **멱등키를 새 값으로** — 안 그러면 409 로 조용히 무효가 된다.
+
+**빌드 범위** — runner **재빌드 필수**(엔진), java 재빌드, **web 도 main 에서 재빌드**(viewer-core·shared 동승).
+executor 도 `packages/server` 변경이라 **재기동**하고, **release 워크트리가 아니라 main 체크아웃**에서 띄운다
+(⚠️ `node_modules` 를 다른 체크아웃에서 심링크하지 마라 — `@hmb/*` 가 남의 트리를 가리킨다, v3.10 실책).
+
+**스모크(이 열차 전용으로 봐야 할 것)** — 엔진 수치만 보지 말 것:
+- **하프가 실제로 3분인가** · 재생이 **끊기거나 침묵 없이** 하프 창과 맞는가 · **되감기 없는가**(7e3a134 의 목적).
+- 시계 **0-90 표기** · 파울/PK/카드가 **돌아왔는가**(0.29 복구분) · 골·슛이 밴드 안인가.
+- 무회귀: 리그 일일보상(V36) · 오토모드 · 메시지함.
+
+**롤백 주의** — 되돌리기도 **방향만 반대인 #241** 이다(0.33.0 → 0.23.0 도 진행 중 매치를 끊는다).
+`prev-live` 이미지 2개를 발차 전에 고정하고, 되돌릴 때도 **진행 중 매치 0 을 먼저 확인**한다.
+
+*(직전 등록분 = #309 운영 컨텐츠 무배포화(V30~V32) — **소진**: 라이브 Flyway **v36**, `notice_assets`·`char_bundles` 존재 확인. 그 앞 = `V25`·`V21` = `deploy-2` 에서 소진.)*
+
+</details>
 
 ---
 
@@ -157,6 +199,34 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 - 절차: 배포는 태그 체크아웃으로 하고, **기록은 `git checkout -B <작업브랜치> origin/main` 후 append → commit → push**. 앵커(직전 항목 제목)가 파일에 있는지 먼저 `grep -c` 로 확인하라.
 - ⚠️ **덮어쓰기는 브랜치 계보 말고 `Edit` 자체로도 난다**(v3.09 에서 실제로 냈다). 새 항목을 넣으려고 `old_string` 에 **직전 항목의 `## 제목` 줄까지 물리고** `new_string` 에 그 줄을 **되돌려 놓지 않으면**, 본문은 남고 제목만 증발해 직전 배포가 내 항목에 흡수된다(파일은 멀쩡해 보인다). 앵커는 `---` 위쪽에서 끊고, **커밋 전에 반드시 두 줄로 검산**하라:
   `grep -c "배포 v<직전>" docs/deploy-log.md` → **1** · `git diff --numstat docs/deploy-log.md` → **삭제 0**(순수 추가여야 한다).
+
+### ⚠️ **이미지를 새로 빌드했으면 태그 전환 전에 컨테이너 스모크를 한다** (#385, v3.14 실패에서 승격)
+
+로컬 게이트는 **워크스페이스 심볼릭링크** 위에서 돈다. 이미지는 `Dockerfile` 이 **명시적으로 COPY 한 것만** 들고 간다.
+그래서 **러너가 새 워크스페이스를 import 하기 시작한 날**, vitest·typecheck·러너 로컬 기동이 전부 green 인데
+컨테이너만 죽는다 — v3.14 1차 발차가 정확히 그렇게 죽었다(`ERR_MODULE_NOT_FOUND: @hmb/viewer-core`, 재기동 8회).
+**라이브 스택을 건드리기 전에** 버려도 되는 컨테이너로 확인하면 이 부류가 전부 걸린다:
+
+```bash
+docker build -f packages/server/Dockerfile -t hmb/servants:trial .          # 리포 루트
+docker run -d --name runner-smoke --user node -e RUNNER_PORT=8790 \
+  -p 18795:8790 hmb/servants:trial npm run runner --workspace=@hmb/server
+docker logs runner-smoke | tail -5          # ① 모듈 로드 — 여기서 ERR_MODULE_NOT_FOUND 가 잡힌다
+curl -s localhost:18795/health              # ② {"engineVersion":"engine@x.y.z"}
+# ③ 실제 왕복 — import 만 통과하고 호출부에서 죽는 경우가 있다. 엔진 픽스처로 한 판 태운다.
+docker exec runner-smoke node -e '
+import("tsx/esm/api").then(async (api)=>{ api.register();
+  const e = await import("/app/packages/engine/src/index.ts");
+  const r = await fetch("http://localhost:8790/simulate",{method:"POST",
+    headers:{"content-type":"application/json"},
+    body: JSON.stringify({seed:e.demoSeed, selectData:e.demoSelect, homeInput:e.demoHome, awayInput:e.demoAway, half:1})});
+  const j = await r.json();
+  console.log(r.status, j.matchLog?.tickSnapshots?.length, j.playbackMs, j.lastHash); });'
+docker rm -f runner-smoke
+```
+
+③ 이 핵심이다 — v3.14 의 결손 심볼(`autoPaceDurationMs`)은 `playbackMs` 를 만드는 함수라, **`playbackMs` 가
+숫자로 나왔다는 것 자체가 그 호출부까지 실행됐다는 증거**다. `/health` 만 보면 못 잡는 결손이 있다.
 
 ### 스모크 판정법 (틀린 판정을 부르는 것들)
 - **"보인다/가려졌다" 는 좌표로 판정하지 마라 — 실제로 클릭해서 타이핑해 보고 값을 회수하라.** `elementFromPoint` 가 **조상 컨테이너**를 돌려주는 걸 "가림"으로 오독한 적이 있다(v3.01). 뷰포트 판정도 `getBoundingClientRect` + **입력 성공**을 같이 본다(v3.08 에서 4개 뷰포트 그렇게 검증).
@@ -251,13 +321,47 @@ bash infra/tunnel-heal.sh --selftest           # 도구·해석기·자격증명
 tail -f ~/.local/state/hmb/tunnel-heal.log     # 이벤트(HEAL_OK / PUBLISH_ONLY / DEGRADED …)
 ```
 
+**⚠️ 리포를 고쳤다고 워치독이 고쳐진 게 아니다.** 워치독이 실제로 도는 건 리포가 아니라 **설치 사본**
+(`~/.local/bin/hmb-tunnel-heal.sh`)이다. 실제로 `grep -a` 픽스가 플레이북엔 "닫았다"고 적혀 있는데
+**프로덕션 사본엔 없던 적이 있다**(2026-07-31 발견). 고쳤으면 **반드시 재설치하고 설치본을 확인**하라:
+```bash
+bash infra/install-tunnel-heal.sh
+diff <(tail -n +4 ~/.local/bin/hmb-tunnel-heal.sh) <(tail -n +2 infra/tunnel-heal.sh) && echo 동기화됨
+```
+
+### 치유 상한 — 회선이 불안정한 날 잠깐 올리기 (`heal.conf`)
+1시간에 `HMB_HEAL_MAX_PER_HOUR`(**기본 3**)번을 넘겨 치유하면 `DEGRADED` 로 백오프한다 — 무한 재기동
+방지 장치다. 그런데 회선이 계속 끊기는 날엔 상한이 금방 소진되고, 그때부터는 **터널이 죽어도 아무도
+안 고친다**. launchd plist 는 `PATH`·`HOME` 만 넘겨서 **env 로는 런타임 조정이 안 되므로**, 워치독이
+매 틱 읽는 노브 파일을 둔다:
+```bash
+printf 'HMB_HEAL_MAX_PER_HOUR=6\n' > ~/.local/state/hmb/heal.conf   # 일시 상향(재설치·재기동 불필요)
+rm ~/.local/state/hmb/heal.conf                                     # 회선 안정되면 원복
+```
+- 구 이름 `HMB_MAX_HEALS_PER_HOUR` 도 계속 받는다(새 이름 우선). **올려두고 잊지 마라** — 상한은
+  "터널이 반복해서 죽는다"를 사람에게 알리는 신호이기도 하다.
+
+### DEGRADED 는 `status.sh` 첫 줄에 뜬다
+백오프 진입 시 마커(`~/.local/state/hmb/DEGRADED`)가 생기고 **`bash infra/status.sh` 맨 위에 굵게** 뜬다
+(치유가 성공하거나 터널이 정상으로 돌아오면 자동으로 지워진다). 예전엔 이 상태가 로그 안에만 있어서
+**복구가 멈춰 있는 동안에도 화면은 ✓ 만 보여줬다** — 그래서 첫 줄로 올렸다. 별도 알림 시스템은 두지
+않는다(패트롤 크론이 커버).
+
 | 이벤트 | 뜻 | 사람이 할 일 |
 |---|---|---|
-| `HEAL_OK` | 터널 죽음 → 재기동 → web 전파까지 완료 | 없음 |
-| `PUBLISH_ONLY` | 터널은 멀쩡한데 web 만 옛 주소 → config 만 재전파 | 없음 |
+| `HEAL_OK` | 터널 죽음 → 재기동 → **web 이 새 주소를 서빙하는 것까지 확인** | 없음 |
+| `PUBLISH_ONLY` | 터널은 멀쩡한데 web 만 옛 주소 → config 만 재전파(검증됨) | 없음 |
+| `PUBLISH_RETRY_OK` | 1차 전파는 실패했지만 **재시도로 성공** | 없음(회선이 느렸다는 신호) |
+| `PUBLISH_UNVERIFIED` | 전파를 돌렸는데 **web 이 아직 새 주소를 안 준다**(시도별) | 자동 재시도 중 — 반복되면 `.publish` 로그 |
+| `HEAL_UNPROPAGATED` | 터널은 살아났는데 **전파를 끝내 못 했다** | `bash infra/publish-backend-url.sh <새URL>` 수동 폴백 |
 | `BACKEND_DOWN` | 로컬 java 가 죽어 터널 재기동을 **보류** | `cd infra && docker compose up -d java runner` |
 | `DEGRADED` | 1시간에 3번 넘게 치유 시도 → 백오프 | 반복 사망 원인 확인(로그·네트워크) |
-| `HEAL_FAIL` | 재기동은 됐는데 전파 실패 | `~/.local/state/hmb/tunnel-heal.log.publish` 확인 |
+| `HEAL_FAIL` | 재기동 자체가 실패(새 URL 획득·DNS 확인 실패) | `~/.local/state/hmb/tunnel-heal.log.publish` 확인 |
+
+> ⚠️ **`HEAL_OK` 의 뜻이 2026-08-01 에 바뀌었다(강해졌다)**: 예전엔 "publish 명령이 0 을 돌려줬다"였고,
+> 지금은 **"워치독이 `config.json` 을 직접 다시 읽어 새 주소를 확인했다"** 이다. 즉 **HEAL_OK = 테스터가
+> 접속된다**. 전파를 못 하면 성공으로 안 찍고 `HEAL_UNPROPAGATED` 로 남긴다 — 그래야 쿨다운이 시작되지
+> 않아 다음 틱이 곧바로 재전파한다(거짓 HEAL_OK 는 **교정까지 180초 막아** 장애를 스스로 연장했다).
 
 **실측(2026-07-26)**: 터널 강제 kill → **98초**만에 사람 개입 0 으로 복구. 프로세스는 살아있고
 터널만 죽은 경우(2026-07-22 실장애 패턴)도 **53초**. 자세한 근거·설계 = `tunnel-resilience.md`.
@@ -311,9 +415,27 @@ cd infra && sed -i '' 's|^WEB_ORIGINS=.*|WEB_ORIGINS=https://hmb-online.pages.de
 - 그래서 남는 운영 전제(그대로 유효):
   - 터널 URL 은 **바뀐다**. web 은 부팅 시 `/config.json` 을 읽고, 워치독이 그 파일만 갱신한다(§3·§3.5).
   - URL 이 바뀌어도 **재빌드는 필요 없다** — `publish-backend-url.sh <새URL>` 한 줄(≈10초).
-  - 2026-07-30 "반쪽 치유"(프로세스 생존·URL 미전파) 장애의 갭 2·3은 **여전히 열려 있다**
-    (전파 결과 재확인 없음 · 치유 직후 새 URL 생존 미검증). 재발하면 §3 수동 절차로 복구한다.
-    갭 1(로그가 바이너리로 판정돼 URL 캡처가 깨지는 것)은 `grep -a` 로 **닫았다**.
+  - "반쪽 치유"(프로세스는 살아났는데 URL 미전파) 갭 — **갭 1·2 는 닫혔다**:
+    - 갭 1(로그가 바이너리로 판정돼 URL 캡처가 깨짐) = `grep -a` 로 닫음.
+    - **갭 2(전파 결과 재확인 없음) = 2026-08-01 닫음.** 워치독이 publish 의 종료코드를 믿지 않고
+      **`config.json` 을 직접 다시 읽어** 새 주소를 확인할 때만 `HEAL_OK` 를 찍는다. 못 하면
+      백오프 재시도(`HMB_PUBLISH_TRIES` 기본 3, 15s→30s→…) 후 `HEAL_UNPROPAGATED`.
+    - 갭 3(치유 직후 새 URL **생존** 재검증)은 **아직 열려 있다** — 새 URL 이 뜬 직후 다시 죽는 경우는
+      다음 틱의 `UNHEALTHY`→치유로 흡수된다(즉시 감지는 아니다).
+
+### 2026-07-31 실장애에서 배운 것 (이 갭이 실유저 영향으로 나타난 날)
+- **증상**: 배포 중 터널이 두 번 죽었고, 워치독이 `HEAL_OK` 를 찍었는데 `config.json` 은 **죽은 URL 그대로**여서
+  **테스터가 로그인 자체를 못 했다**(530). 두 번 다 사람이 `publish-backend-url.sh` 를 쳐서 복구했다.
+- **원인 ①**: `wrangler pages deploy` 가 느린 회선에서 상한에 걸려 **SIGKILL** 됐는데, 스크립트가 `rc=124`(timeout)
+  만 안내하고 **`rc=137`(kill) 은 조용히 넘겨** 로그에 `Killed: 9` 한 줄만 남았다 → "왜 전파가 안 됐는지"가 안 보였다.
+  ⇒ 137 도 같이 안내하고, 상한을 **150s → 240s** 로 올렸다(`HMB_DEPLOY_TIMEOUT`).
+- **원인 ②**: 치유 경로가 **"Pages 가 그 주소를 실제로 서빙하는가"를 스스로 확인하지 않았다.** 게다가 재전파
+  쿨다운이 `HEAL_OK` 시각 기준이라 **거짓 HEAL_OK 가 교정을 180초 동안 막았다**(장애 자가 연장).
+- **판별 요령(장애냐 내 머신이냐)** — 이걸 먼저 하라:
+  - `curl` **530** → 터널이 실제로 죽었다. **전파/재기동 필요**.
+  - `curl` **000 인데 `dig` 는 IP 를 준다** → **배포 머신의 로컬 리졸버** 문제다. **테스터는 멀쩡하다** —
+    놀라서 재배포하지 마라. 확인은 `curl --resolve <host>:443:<ip>` 로 우회.
+  - `dig` 도 **timeout** → 그 머신에 DNS 자체가 없다(회선 문제). 이 상태에선 라이브 판정을 할 수 없다.
 
 ## 7. 정지 / 재배포 / 리셋
 
