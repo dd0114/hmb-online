@@ -23,18 +23,42 @@ export interface TimelinePin {
    * 90분 경기면 핀이 60개를 넘어 한 줄에 겹치고, 겹치면 뒤 핀은 **클릭조차 막힌다**(실측).
    */
   major: boolean;
-  /** 툴팁 문구(`12'34" · GOAL`). */
+  /** 툴팁 문구(`48' · GOAL`). */
   label: string;
+  /** 화면에 쓸 **표기 분** 문구(`48'`). 로그가 구운 값이다 — 아래 `pinClock` 참조(#388). */
+  clock: string;
 }
 
-/** 틱(=게임초) → `12'34"`. 엔진 1틱 = 1 게임초. */
+/**
+ * 틱(=엔진 1틱 = 1 게임초) → `12'34"`. **폴백 전용**(#388).
+ *
+ * ⚠️ 이 값은 **표기 분이 아니다.** 엔진은 45분(하프 1350틱)을 돌리고 표기만 0~90' 로 스케일해
+ * (`displayMinutes`, #365) 이벤트에 `minute` 을 구워 내린다 — 그래서 틱을 직독하면 정확히 절반이
+ * 나온다(로그줄 48' 옆에서 이 함수는 24'00" 라고 말했다). 지금은 `minute` 이 없는 로그(구 서버·
+ * 손상 응답)에서만 쓰인다. **새 소비자를 여기에 붙이지 마라 — `pinClock` 을 써라.**
+ */
 export function formatMatchClock(tick: number): string {
   const t = Math.max(0, Math.floor(tick));
   return `${Math.floor(t / 60)}'${String(t % 60).padStart(2, "0")}"`;
 }
 
+/**
+ * 핀/장면 목록이 쓸 시각 = **로그가 구운 표기 분** (#388).
+ *
+ * 로그줄(`LogPanel` 의 `l.minute`)과 **같은 출처**라 갈라질 수 없다. 초를 버리는 것은 의도다 —
+ * 초까지 쓰려면 표기 스케일을 화면에서 다시 유도해야 하고, 그 재유도가 정확히 이 결함의 모양이다.
+ * 축구 화면의 관례도 분이다. `minute` 이 없는 로그에서만 틱 기반 폴백으로 내려간다.
+ */
+export function pinClock(e: PinEventLike): string {
+  return typeof e.minute === "number" && Number.isFinite(e.minute)
+    ? `${Math.max(0, Math.floor(e.minute))}'`
+    : formatMatchClock(typeof e.tick === "number" ? e.tick : 0);
+}
+
 export interface PinEventLike {
   tick: number;
+  /** 엔진이 구워 내린 표기 분(0~90'). 로그줄이 그리는 그 값이다. */
+  minute?: number;
   type?: string;
   detail?: string;
   team?: string;
@@ -102,7 +126,8 @@ export function buildTimelinePins(
       width: s.width,
       z: s.z,
       major: kind === "goal" || kind === "penalty" || kind === "save",
-      label: `${formatMatchClock(e.tick)} · ${kind === "goal" && e.team ? `${e.team.toUpperCase()} GOAL` : LABEL[kind]}`,
+      clock: pinClock(e),
+      label: `${pinClock(e)} · ${kind === "goal" && e.team ? `${e.team.toUpperCase()} GOAL` : LABEL[kind]}`,
     });
   }
   return dedupeClusters(pins, minGapPct);

@@ -4,7 +4,7 @@
  * 여기서 색·높이·필터 규칙을 박제해 재유실을 막는다.
  */
 import { describe, expect, it } from "vitest";
-import { buildTimelinePins, formatMatchClock } from "./timeline-pins";
+import { buildTimelinePins, formatMatchClock, pinClock } from "./timeline-pins";
 
 // 스냅샷 = 틱 그대로(서브샘플 없음) 가정한 단순 매핑.
 const idOfTick = (t: number) => t;
@@ -104,5 +104,35 @@ describe("buildTimelinePins", () => {
   it("로그가 없거나 스냅샷이 1개 이하면 빈 배열(0으로 나누지 않는다)", () => {
     expect(buildTimelinePins(null, idOfTick, 900)).toEqual([]);
     expect(buildTimelinePins(events, idOfTick, 1)).toEqual([]);
+  });
+});
+
+/**
+ * #388 — **핀·장면 목록도 로그줄과 같은 축을 쓴다.**
+ *
+ * 엔진은 45분(하프 1350틱)을 돌리고 표기만 0~90' 로 스케일해 이벤트에 `minute` 을 구워 내린다.
+ * 틱을 직독하면 정확히 절반이라, 로그줄이 `48'` 이라고 말하는 장면을 이 목록은 `24'00"` 라고 말했다
+ * (한 화면이 두 시각을 말한다 — 헤더와 같은 뿌리).
+ */
+describe("#388 pinClock — 구워진 표기 분을 쓴다", () => {
+  it("이벤트의 minute 을 그대로 쓴다 (틱/60 아님)", () => {
+    // 하프 1350틱 레짐: tick 1440 은 구운 분 48. 예전 규칙이면 24'00".
+    expect(pinClock({ tick: 1440, minute: 48 })).toBe("48'");
+    expect(pinClock({ tick: 0, minute: 0 })).toBe("0'");
+  });
+
+  it("minute 이 없는 로그(구 서버·손상)에서만 틱 폴백 — 숫자가 사라지지는 않는다", () => {
+    expect(pinClock({ tick: 754 })).toBe(`12'34"`);
+  });
+
+  it("핀 label·clock 이 같은 값을 말한다 (툴팁과 목록이 갈라지지 않는다)", () => {
+    const pins = buildTimelinePins(
+      [{ tick: 1440, minute: 48, type: "goal", team: "home" }],
+      (t) => t,
+      2000,
+    );
+    expect(pins).toHaveLength(1);
+    expect(pins[0]!.clock).toBe("48'");
+    expect(pins[0]!.label).toBe("48' · HOME GOAL");
   });
 });

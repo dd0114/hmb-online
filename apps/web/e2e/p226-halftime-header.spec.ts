@@ -26,19 +26,30 @@ const MATCH_ID = "m-226";
 const MATCH_LOG = JSON.parse(
   readFileSync(new URL("../../../packages/engine/dev-viewer/match-log.json", import.meta.url).pathname, "utf8"),
 );
-const SNAPS: { tick: number }[] = MATCH_LOG.tickSnapshots;
+const SNAPS: { tick: number; minute?: number }[] = MATCH_LOG.tickSnapshots;
 const LAST_TICK: number = SNAPS[SNAPS.length - 1].tick;
-/** 로그가 끝난 지점의 분 표기 — 리얼 하프(마지막 틱 2699)면 45'. 데모 로그는 짧아 그 값이 나온다. */
-const END_MINUTE = `${Math.round(LAST_TICK / 60)}'`;
+const WHISTLE: { minute?: number } | undefined = (MATCH_LOG.events as { type: string; minute?: number }[]).find(
+  (e) => e.type === "half_whistle" || e.type === "full_whistle",
+);
+/**
+ * 로그가 끝난 지점의 **표기 분** — #388 이후 **로그가 구운 값**을 그대로 읽는다(휘슬 우선).
+ *
+ * ⚠️ 예전엔 `round(LAST_TICK / 60)` 으로 계산했다. 그건 "1틱 = 1분/60" 가정인데, 엔진은 45분
+ * 경기를 0~90' 로 표기하므로(`displayMinutes`, #365) **정확히 절반**을 말한다 — 그 식이 곧 #388 의
+ * 결함이었고, 그걸 기대값으로 쓰는 한 이 스펙은 버그를 계약으로 굳힌다.
+ */
+const END_MINUTE = `${WHISTLE?.minute ?? SNAPS[SNAPS.length - 1].minute}'`;
 /** 재생 플레이헤드가 맨 앞일 때의 분 = 버그 화면의 값. 헤더가 이걸 그리면 안 된다. */
 const PLAYHEAD_MINUTE = "0'";
 /**
- * 픽스처 신선도 가드(#188 패턴). END_MINUTE 는 구현과 **같은 반올림 식**으로 계산하므로, 로그 끝이
- * 정확히 분 경계에 떨어지면(round === floor) 이 스펙이 반올림 여부를 더는 구분하지 못한다 —
- * 계약이 조용히 항진명제가 된다. 데모 로그(gitignore 생성물)는 재생성될 수 있으니 전제를 검사한다.
- * 걸리면 스펙을 고칠 게 아니라, 반올림의 진짜 앵커인 `ScoreBar.test.ts`(2699 → 45')를 보라.
+ * 픽스처 신선도 가드(#188 패턴) — **축이 실제로 둘로 갈리는 로그인가**.
+ *
+ * 데모 로그(gitignore 생성물)가 `displayMinutes` 없이 재생성되면 구운 분이 `tick/60` 과 같아져
+ * 이 스펙이 #388 회귀(틱 직독)를 더는 구분하지 못한다 = 조용한 항진명제. 그때 고칠 것은 스펙이
+ * 아니라 로그 생성 쪽이다(진짜 앵커는 `stage-state.test.ts` 의 1350틱 레짐 계약).
  */
-const ROUNDING_IS_OBSERVABLE = Math.round(LAST_TICK / 60) !== Math.floor(LAST_TICK / 60);
+const SCALE_IS_OBSERVABLE =
+  (WHISTLE?.minute ?? SNAPS[SNAPS.length - 1].minute ?? 0) !== Math.round(LAST_TICK / 60);
 
 const HALF_REAL_MS = 420_000;
 const HALFTIME_MS = 180_000;
@@ -155,8 +166,8 @@ test.describe("#226 감독시간 헤더 — 확정 스코어·전반 종료 시�
     // b. 시계는 전반이 끝난 지점. 재생은 이 시점 앞쪽 어딘가에 있다.
     await expect(scorebar).toContainText(END_MINUTE);
     expect(
-      ROUNDING_IS_OBSERVABLE,
-      `데모 로그 끝(${LAST_TICK}틱)이 분 경계에 떨어져 이 스펙이 반올림을 구분하지 못한다 — 위 주석 참조`,
+      SCALE_IS_OBSERVABLE,
+      `데모 로그(끝 ${LAST_TICK}틱)의 구운 분이 tick/60 과 같아 이 스펙이 #388 회귀를 구분하지 못한다 — 위 주석 참조`,
     ).toBe(true);
   });
 

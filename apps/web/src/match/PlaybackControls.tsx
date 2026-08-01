@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { ViewerController } from "@hmb/viewer-core";
 import type { ControlMode } from "./playback-controls";
-import { formatMatchClock, type TimelinePin } from "./timeline-pins";
+import { type TimelinePin } from "./timeline-pins";
 import {
   clampTick,
   parseClockInput,
@@ -475,7 +475,7 @@ function ReviewControls({
               disabled={disabled}
               onClick={() => v?.jumpToTick(p.tick)}
             >
-              <span className={styles.sceneTime}>{formatMatchClock(p.tick)}</span>
+              <span className={styles.sceneTime}>{p.clock}</span>
               <span className={styles.sceneName}>{sceneLabel(p)}</span>
               <span className={styles.sceneDot} style={{ background: p.color }} aria-hidden="true" />
             </button>

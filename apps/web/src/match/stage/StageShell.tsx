@@ -13,9 +13,8 @@ import { LogPanel } from "./LogPanel";
 import { SecondHalfBriefPanel } from "./SecondHalfBriefPanel";
 import { ResultPanel } from "./ResultPanel";
 import {
-  halfEndTickOf,
   halfForState,
-  headerTick,
+  headerMinute,
   playedBaseline,
   resolveActiveTab,
   sheetHeight,
@@ -114,8 +113,11 @@ export function StageShell({
   // 말하려면 이게 필요하다 — 헤더만 고치면 헤더 `1:6` 옆 로그가 `0-2` 로 남아 또 어긋난다.
   const baseline = playedBaseline(match.state, match);
 
-  // 이 하프가 끝난 지점(절대 틱). 감독시간 헤더 시계가 여기에 고정된다(#226).
-  const halfEndTick = useMemo(() => halfEndTickOf(log), [log]);
+  /**
+   * 헤더 시계가 말할 **표기 분** (#388). 규칙은 `headerMinute` 한 곳이 소유한다 — 여기서 틱을
+   * 분으로 바꾸지 마라(그 직독이 헤더만 0~44' 로 흐르게 한 결함이다). 감독시간이면 하프 끝 분.
+   */
+  const clockMinute = useMemo(() => headerMinute(match.state, log, tick), [match.state, log, tick]);
 
   // half 가 바뀌면(하프타임 → 결과) 플레이헤드는 새 하프 기준으로 다시 센다.
   useEffect(() => setTick(null), [half]);
@@ -135,7 +137,7 @@ export function StageShell({
         awayName={awayName}
         myTeamSide={myTeamSide}
         liveScore={liveScore}
-        tick={headerTick(match.state, tick, halfEndTick)}
+        minute={clockMinute}
         leagueRound={leagueRound}
         autoSlot={<AutoModeToggle match={match} variant="pill" />}
         onBack={() => navigate("/home")}

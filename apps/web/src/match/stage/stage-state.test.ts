@@ -4,10 +4,11 @@ import {
   CLOCK_PLACEHOLDER,
   clockLabel,
   DEFAULT_INFO_TAB,
-  halfEndTickOf,
+  displayMinuteAt,
+  halfEndMinuteOf,
   halfForState,
   headerScore,
-  headerTick,
+  headerMinute,
   INFO_TAB_KEYS,
   isHalftimeState,
   myTeamSide,
@@ -65,43 +66,87 @@ describe("감독시간 판정 / 헤더 시계 (#226)", () => {
 
   it("감독시간 헤더 시계는 재생 플레이헤드가 아니라 하프 끝을 가리킨다", () => {
     // 되감아 플레이헤드가 0 이어도 헤더는 하프 끝 — hero 제보(0')의 재현 조건이 바로 이것.
-    expect(headerTick("HALFTIME", 0, 2699)).toBe(2699);
-    expect(headerTick("H1_BREAK", 1200, 2699)).toBe(2699);
+    expect(headerMinute("HALFTIME", H1_LOG, 0)).toBe(45);
+    expect(headerMinute("H1_BREAK", H1_LOG, 600)).toBe(45);
   });
 
   it("라이브 하프는 그대로 플레이헤드를 따라간다", () => {
-    expect(headerTick("FIRST_HALF", 1200, 2699)).toBe(1200);
-    expect(headerTick("SECOND_HALF", 3900, 5399)).toBe(3900);
-    expect(headerTick("FINISHED", 5399, 5399)).toBe(5399);
-  });
-
-  it("하프 끝은 로그 마지막 스냅샷 틱에서 파생된다 — 웹에 45분 상수를 두지 않는다", () => {
-    // 리얼 전반: 엔진 totalTicks 5400 → half 2700 → 스냅샷 틱 0..2699.
-    expect(halfEndTickOf({ tickSnapshots: [{ tick: 0 }, { tick: 2699 }] })).toBe(2699);
-    // 후반 로그는 틱이 2700 부터 이어진다(인덱스 ≠ 틱).
-    expect(halfEndTickOf({ tickSnapshots: [{ tick: 2700 }, { tick: 5399 }] })).toBe(5399);
-  });
-
-  it("로그가 없거나 모양이 깨졌으면 하프 끝은 null(숫자를 지어내지 않는다)", () => {
-    for (const bad of [null, undefined, {}, { tickSnapshots: [] }, { tickSnapshots: [{}] }, { tickSnapshots: "x" }]) {
-      expect(halfEndTickOf(bad)).toBeNull();
-    }
+    expect(headerMinute("FIRST_HALF", H1_LOG, 600)).toBe(20);
+    expect(headerMinute("SECOND_HALF", H2_LOG, 2100)).toBe(70);
+    expect(headerMinute("FINISHED", H2_LOG, 2699)).toBe(89);
   });
 
   it("하프 끝을 모르면(로그 미도착) 플레이헤드로 되돌아가지 않고 시계를 접는다", () => {
     // null 을 주면 ScoreBar 가 시계를 아예 안 그린다 = 틀린 분보다 없는 편이 낫다.
-    expect(headerTick("HALFTIME", 0, null)).toBeNull();
-    expect(headerTick("HALFTIME", 1200, null)).toBeNull();
+    expect(headerMinute("HALFTIME", null, 0)).toBeNull();
+    expect(headerMinute("HALFTIME", {}, 600)).toBeNull();
+  });
+});
+
+/**
+ * #388 — **헤더 시계가 로그줄과 같은 축을 쓴다.**
+ *
+ * 회귀의 정체: 엔진은 45분(하프 1350틱)을 돌리고 표기만 0~90' 로 스케일해
+ * (`displayMinutes`, #365) 스냅샷·이벤트에 `minute` 을 **구워서** 내린다. 로그줄·타임라인은 그
+ * 구운 값을 읽는데 헤더만 `floor(tick / 60)` 으로 **틱을 분으로 직독**해서 정확히 절반을 말했다
+ * (라이브 실측: 헤더 25' / 로그줄 48-51').
+ *
+ * ⚠️ **이 테스트가 예전엔 초록이었다.** 값이 90분 레짐(하프 2700틱)으로 고정돼 있어서
+ * `tick/60` 이 우연히 맞았기 때문이다 — #365 가 그 우연을 깼는데 계약은 그대로였다.
+ * 그래서 여기 픽스처는 **지금 레짐(하프 1350틱 · minute = floor(tick/30))** 이다.
+ */
+const snap = (tick: number) => ({ tick, minute: Math.floor(tick / 30) });
+/** 전반 로그: 틱 0..1349, 끝에 `half_whistle minute 45`(로그줄이 말하는 그 값). */
+const H1_LOG = {
+  tickSnapshots: Array.from({ length: 46 }, (_, i) => snap(i * 30)).concat([snap(1349)]),
+  events: [{ tick: 1350, minute: 45, type: "half_whistle" }],
+};
+/** 후반 로그: 틱은 1350 부터 이어진다(인덱스 ≠ 틱). */
+const H2_LOG = {
+  tickSnapshots: Array.from({ length: 46 }, (_, i) => snap(1350 + i * 30)).concat([snap(2699)]),
+  events: [{ tick: 2699, minute: 90, type: "full_whistle" }],
+};
+
+describe("#388 헤더 시계 — 구워진 표기 분을 쓴다", () => {
+  it("플레이헤드의 스냅샷에 구워진 minute 을 그대로 쓴다 (틱/60 아님)", () => {
+    // 같은 틱을 예전 규칙으로 읽으면 절반이 나온다: 1290/60 = 21' vs 구운 값 43'.
+    expect(displayMinuteAt(H1_LOG, 1290)).toBe(43);
+    expect(displayMinuteAt(H1_LOG, 0)).toBe(0);
+    expect(displayMinuteAt(H2_LOG, 2100)).toBe(70);
+  });
+
+  it("스냅샷이 성기어도(트림된 로그) tick 이하의 마지막 스냅샷을 쓴다", () => {
+    // 실서버 로그는 틱당 1개지만 리포 픽스처는 트림본이라 성기다 — 둘 다 견뎌야 한다.
+    expect(displayMinuteAt(H1_LOG, 1295)).toBe(43); // 1290 스냅샷 구간
+    expect(displayMinuteAt(H1_LOG, 29)).toBe(0);
+  });
+
+  it("모양이 아니면 숫자를 지어내지 않는다 (null)", () => {
+    for (const bad of [null, undefined, {}, { tickSnapshots: [] }, { tickSnapshots: "x" }]) {
+      expect(displayMinuteAt(bad, 100)).toBeNull();
+    }
+    // minute 이 빠진 스냅샷(구 서버·손상 응답)도 지어내지 않는다.
+    expect(displayMinuteAt({ tickSnapshots: [{ tick: 0 }] }, 100)).toBeNull();
+    expect(displayMinuteAt(H1_LOG, null)).toBeNull();
+  });
+
+  it("감독시간은 **하프 종료 휘슬의 minute** — 마지막 스냅샷(44')이 아니라 45'", () => {
+    // 로그줄이 `45' 전반 종료` 라고 말하는데 헤더가 44' 면 그 화면이 또 두 시각을 말한다.
+    expect(halfEndMinuteOf(H1_LOG)).toBe(45);
+    expect(halfEndMinuteOf(H2_LOG)).toBe(90);
+    // 휘슬 이벤트가 없으면 마지막 스냅샷으로 폴백(그래도 지어내지는 않는다).
+    expect(halfEndMinuteOf({ tickSnapshots: [snap(1349)], events: [] })).toBe(44);
+    expect(halfEndMinuteOf({})).toBeNull();
   });
 });
 
 describe("경기 분 표기 — 상시 표시 (#233 스코프 추가)", () => {
-  it("라이브/다시보기는 재생 위치의 게임 분(내림)", () => {
+  it("라이브/다시보기는 재생 위치의 **표기 분**을 그대로 그린다", () => {
+    // ⚠️ 인자가 틱이 아니라 **분**이다(#388) — 스케일 계산은 화면이 아니라 로그가 한다.
     expect(clockLabel("FIRST_HALF", 0)).toBe("0'");
-    expect(clockLabel("FIRST_HALF", 1290)).toBe("21'"); // 21분 30초는 아직 21'
-    expect(clockLabel("SECOND_HALF", 2700)).toBe("45'");
-    expect(clockLabel("SECOND_HALF", 3900)).toBe("65'");
-    expect(clockLabel("FINISHED", 5399)).toBe("89'");
+    expect(clockLabel("FIRST_HALF", 43)).toBe("43'");
+    expect(clockLabel("SECOND_HALF", 45)).toBe("45'");
+    expect(clockLabel("FINISHED", 89)).toBe("89'");
   });
 
   it("플레이헤드가 아직 없으면 슬롯을 지운다 — 값만 비운다", () => {
@@ -110,9 +155,9 @@ describe("경기 분 표기 — 상시 표시 (#233 스코프 추가)", () => {
     expect(clockLabel("FIRST_HALF", null)).toBe(CLOCK_PLACEHOLDER);
   });
 
-  it("감독시간은 하프 끝을 반올림, 모르면 접는다(#226 유지)", () => {
-    expect(clockLabel("HALFTIME", 2699)).toBe("45'"); // 44.98분 — 내리면 44'
-    expect(clockLabel("H1_BREAK", 2699)).toBe("45'");
+  it("감독시간은 하프 끝 분을 그리고, 모르면 접는다(#226 유지)", () => {
+    expect(clockLabel("HALFTIME", 45)).toBe("45'");
+    expect(clockLabel("H1_BREAK", 45)).toBe("45'");
     expect(clockLabel("HALFTIME", null)).toBeNull();
   });
 });

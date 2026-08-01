@@ -99,30 +99,110 @@ export function halfForState(state: string | undefined): 1 | 2 {
  * 필수로 두지만 openapi 생성 타입은 느슨해서, 실제로 없으면 `undefined` 를 흘려보내지 않고 접는다.
  */
 export function halfEndTickOf(log: unknown): number | null {
-  const snaps = (log as { tickSnapshots?: { tick?: unknown }[] } | null | undefined)?.tickSnapshots;
-  if (!Array.isArray(snaps) || snaps.length === 0) return null;
+  const snaps = snapshotsOf(log);
+  if (!snaps) return null;
   const last = snaps[snaps.length - 1];
   return typeof last?.tick === "number" && Number.isFinite(last.tick) ? last.tick : null;
 }
 
 /**
- * 헤더 시계가 가리킬 틱 (#226). 감독시간에는 **하프가 끝난 지점**을 고정으로 가리킨다 —
- * 그 하프는 이미 끝났고(스코어도 확정), 그 밑에서 도는 재생은 자유 리뷰라 플레이헤드를 따라가면
- * 헤더가 "전반 결과"가 아니라 "지금 어디까지 다시 보는 중"을 말하게 된다. 되감거나 새로 들어와
- * 재생이 앞쪽에서 시작하면 그대로 `0'` 가 된다(hero 제보 화면).
+ * ─── 헤더 시계의 축 (#388) ──────────────────────────────────────────────────────────────
  *
- * 하프 끝을 모르면(로그 미도착) 재생 플레이헤드로 **되돌아가지 않고** null 을 준다 — 틀린 숫자보다
- * 숫자 없음이 낫다. 라이브 하프(전·후반 진행 중)는 그대로 플레이헤드를 따라간다.
+ * **분은 로그가 이미 굽고 있다 — 화면이 다시 계산하지 않는다.**
+ *
+ * 엔진은 45분(하프 1350틱)을 돌리고 표기만 0~90' 로 스케일해(`displayMinutes`, #365) 스냅샷과
+ * 이벤트에 `minute` 을 구워서 내린다. 로그줄·타임라인은 그 값을 읽는데 헤더만 `floor(tick / 60)` 로
+ * **틱을 분으로 직독**했다 → 라이브에서 헤더 25' 옆에 로그줄 48' 이 뜬다(한 화면이 두 시각을 말한다).
+ *
+ * ⚠️ 여기서 스케일을 다시 유도하지 마라(`minute = tick × displayMinutes / matchMinutes / 60`).
+ * 그건 규칙을 두 곳에 두는 것이고, 엔진이 표기 규칙을 바꾸는 날 **화면만 조용히 어긋난다** —
+ * 정확히 이 결함이 그렇게 생겼다(engine@0.23.0 까지는 하프 2700틱이라 `tick/60` 이 우연히 맞았다).
+ * 축은 하나다: **로그가 구운 `minute`**.
  */
-export function headerTick(
-  state: string | undefined,
-  playheadTick: number | null,
-  halfEndTick: number | null,
-): number | null {
-  return isHalftimeState(state) ? halfEndTick : playheadTick;
+interface SnapshotLike {
+  tick?: unknown;
+  minute?: unknown;
 }
 
-/** 자리는 지키되 값은 모른다는 표기 — 로그 도착 전 한두 프레임 동안 슬롯이 사라지지 않게 한다. */
+/**
+ * 로그의 스냅샷 배열 — 모양이 아니면 null.
+ *
+ * ⚠️ 타입이 지켜 주지 않는다: 생성된 openapi 타입에서 `tickSnapshots` 는 `{[key:string]: unknown}[]`
+ * 이고, 구 서버·프록시가 200 `{}` 를 줄 수도 있다. 여기서 흡수하지 않으면 헤더 하나가 관전 화면
+ * 전체를 흰 화면으로 만든다(#274 부류).
+ */
+function snapshotsOf(log: unknown): SnapshotLike[] | null {
+  const snaps = (log as { tickSnapshots?: unknown } | null | undefined)?.tickSnapshots;
+  return Array.isArray(snaps) && snaps.length > 0 ? (snaps as SnapshotLike[]) : null;
+}
+
+function eventsOf(log: unknown): { tick?: unknown; minute?: unknown; type?: unknown }[] {
+  const evs = (log as { events?: unknown } | null | undefined)?.events;
+  return Array.isArray(evs) ? evs : [];
+}
+
+const finiteOrNull = (v: unknown): number | null =>
+  typeof v === "number" && Number.isFinite(v) ? v : null;
+
+/**
+ * 플레이헤드 틱의 **표기 분** = `tick` 이하인 마지막 스냅샷의 구운 `minute`.
+ *
+ * 실서버 로그는 **틱당 스냅샷 1개**라(`simulateRange`) 사실상 정확히 그 틱의 값이다. 그런데 리포
+ * 테스트 픽스처는 트림본이라 성기다 — 그래서 "그 틱의 스냅샷"이 아니라 **"tick 이하의 마지막"**
+ * 으로 찾는다. 둘 다 견디는 규칙이고, 성긴 로그에서 미래 분을 앞당겨 말하지도 않는다(스포일러 규율).
+ */
+export function displayMinuteAt(log: unknown, tick: number | null): number | null {
+  if (tick == null) return null;
+  const snaps = snapshotsOf(log);
+  if (!snaps) return null;
+  let found: number | null = null;
+  for (const s of snaps) {
+    const t = finiteOrNull(s?.tick);
+    if (t == null || t > tick) continue;
+    const m = finiteOrNull(s?.minute);
+    if (m != null) found = m;
+  }
+  return found;
+}
+
+/**
+ * 이 하프가 끝난 **표기 분**. 감독시간 헤더(#226)가 쓴다.
+ *
+ * ⚠️ **마지막 스냅샷이 아니라 종료 휘슬 이벤트가 먼저다.** 전반 마지막 스냅샷은 틱 1349 → 구운
+ * 분 44 인데 로그줄은 `45' 전반 종료`(`half_whistle minute 45`)라고 말한다. 스냅샷을 쓰면 그
+ * 화면이 또 두 시각을 말한다. 휘슬이 없는(트림·손상) 로그에서만 마지막 스냅샷으로 폴백한다.
+ */
+export function halfEndMinuteOf(log: unknown): number | null {
+  for (const e of eventsOf(log)) {
+    if (e?.type !== "half_whistle" && e?.type !== "full_whistle") continue;
+    const m = finiteOrNull(e?.minute);
+    if (m != null) return m;
+  }
+  const snaps = snapshotsOf(log);
+  if (!snaps) return null;
+  for (let i = snaps.length - 1; i >= 0; i -= 1) {
+    const m = finiteOrNull(snaps[i]?.minute);
+    if (m != null) return m;
+  }
+  return null;
+}
+
+/**
+ * 헤더 시계가 말할 **표기 분** (#226 규칙 유지 + #388 축 교정).
+ *
+ * 감독시간에는 **그 하프가 끝난 지점**을 고정으로 가리킨다 — 그 하프는 이미 끝났고(스코어도 확정)
+ * 그 밑에서 도는 재생은 자유 리뷰라, 플레이헤드를 따라가면 헤더가 "전반 결과"가 아니라 "지금 어디까지
+ * 다시 보는 중"을 말하게 된다(되감으면 그대로 `0'` — hero 제보 화면).
+ * 하프 끝을 모르면(로그 미도착) 플레이헤드로 **되돌아가지 않고** null 이다 — 틀린 숫자보다 없는 게 낫다.
+ */
+export function headerMinute(
+  state: string | undefined,
+  log: unknown,
+  playheadTick: number | null,
+): number | null {
+  return isHalftimeState(state) ? halfEndMinuteOf(log) : displayMinuteAt(log, playheadTick);
+}
+
 export const CLOCK_PLACEHOLDER = "--'";
 
 /**
@@ -138,12 +218,10 @@ export const CLOCK_PLACEHOLDER = "--'";
  *  · 라이브/다시보기인데 플레이헤드가 아직 없다 → **`--'`**(자리는 지킨다). 곧 채워질 값이고,
  *    슬롯이 사라졌다 나타나면 헤더가 흔들린다.
  */
-export function clockLabel(state: string | undefined, tick: number | null): string | null {
-  if (isHalftimeState(state)) {
-    // 하프 끝은 딱 떨어지지 않는다 — 전반 마지막 스냅샷 틱 2699 는 44.98분이라 내리면 44' 가 된다.
-    return tick == null ? null : `${Math.round(tick / 60)}'`;
-  }
-  return tick == null ? CLOCK_PLACEHOLDER : `${Math.floor(tick / 60)}'`;
+export function clockLabel(state: string | undefined, minute: number | null): string | null {
+  // ⚠️ 인자는 **표기 분**이다(#388). 틱을 넘기면 정확히 절반이 그려진다 — 그게 이 결함이었다.
+  if (isHalftimeState(state)) return minute == null ? null : `${minute}'`;
+  return minute == null ? CLOCK_PLACEHOLDER : `${minute}'`;
 }
 
 /**
