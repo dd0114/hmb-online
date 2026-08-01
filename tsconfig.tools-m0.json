@@ -1,0 +1,42 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "@hmb/shared": ["./packages/shared/src/index.ts"],
+      "@hmb/engine": ["./packages/engine/src/index.ts"]
+    }
+  },
+  /**
+   * M0(#377) 이 소유한 **TS** 도구만 타입체크한다.
+   *
+   * ## 왜 `tools/**` 전체가 아닌가
+   * 다른 세션 소유 파일에 기존 타입오류가 **44건 / 6파일** 있다(실측: `league-difficulty-sweep.ts` ·
+   * `live-input-audit.test.ts` · `pace-config.test.ts` · `qa-console/{registry,server,wait}.test.ts`).
+   * 전체를 넣으면 남의 게이트를 red 로 만든다 — 내 스코프가 아니다. 새 M0 도구 TS 를 추가하면
+   * 여기 include 에 넣는다.
+   *
+   * ## ⚠️ 알려진 공백 — 하네스 런타임(`tools/tuning-harness/*.mjs`)은 여기 없다
+   * JSDoc `.mjs` 라 `checkJs` 를 켜야 검사되는데, 켜면 **241건**이 뜬다. ⚠️ 앞선 판에서 이 241을
+   * "다른 트랙 소유가 끌려온 것"이라 적었는데 **틀렸다** — 실측 분해는 이렇다:
+   * ```
+   * 107  tools/tuning-harness/ui/app.mjs        ← M0 소유
+   *  59  packages/viewer-core/src/playback.mjs  ← 타 트랙
+   *  47  tools/tuning-harness/server.mjs        ← M0 소유
+   *  26  tools/run-gate.mjs                     ← M0 소유
+   *   2  packages/viewer-core/src/owner-side.mjs← 타 트랙
+   *  ── 180(74.7%) 이 **내 코드**, 61(25.3%) 이 타 트랙
+   * ```
+   * 즉 "남의 코드가 red 된다"는 61건만 설명한다. **180건은 M0 자신의 JSDoc 타입 공백**이고
+   * 그건 후속으로 갚아야 할 빚이지 켜지 않을 이유가 아니다. 지금 켜지 않는 이유는 61건 쪽 하나뿐이며,
+   * 그 61건은 viewer-core 가 `viewer.ts` 처럼 타입 표면을 갖추면 사라진다.
+   * 대신 하네스는 **런타임 계약**으로 지킨다 — `config-override.test.ts`(주입·오타·결정론) ·
+   * `real-deck-smoke.test.ts`(픽스처 소비) · 기동/API 스모크.
+   *
+   * ⚠️ include 에 `tools/tuning-harness/**\/*.ts` 를 적어 두었었는데 **0파일 매칭**이었다
+   * (하네스는 전부 `.mjs`). "넣어 뒀으니 본다"는 착각을 남기므로 지운다 — 실제로 보는 것만 적는다.
+   * `tier.test.ts` 가 **include 글롭이 0파일이 되면 red** 로 이 착각을 막는다.
+   */
+  "include": ["tools/run-gate.test.ts"],
+  "exclude": ["**/node_modules", "**/dist"]
+}

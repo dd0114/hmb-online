@@ -1,4 +1,4 @@
-import type { MatchLog, MatchEvent, TeamSide } from "@hmb/shared";
+import type { MatchLog, MatchEvent, TeamSide, TickSnapshot, PlayerSnapshot } from "@hmb/shared";
 
 /**
  * match-stats — MatchLog 를 후처리해 검증용 매치 스탯을 산출한다(결정론, 순수함수).
@@ -74,8 +74,55 @@ function range(vals: number[]): number {
   return hi - lo;
 }
 
-function sideOf(id: string): TeamSide {
-  return id.startsWith("H") ? "home" : "away";
+/**
+ * 그 스냅샷에서 공을 가진 팀. `"home" | "away" | null`.
+ *
+ * ⚠️ 종전 구현은 `id.startsWith("H") ? "home" : "away"` 였다. 엔진 픽스처 id(`H9`/`A3`)에선 맞지만
+ * **실경기 id 는 양 팀 다 `P0xx`** 라 항상 "away" 로 떨어진다 — 실덱 픽스처(#374)를 넣자마자
+ * 주행거리가 home 0 / away 63km 로 나왔다. `ballOwner` 는 순수 playerId 라 문자열만으로는 팀을
+ * 알 수 없고(shared 계약), 같은 id 가 양 팀에 동시에 있을 수도 있다(카탈로그 공유 — #231).
+ * 유일하게 옳은 방법은 **그 스냅샷의 `players[].team` 을 보는 것**이다.
+ *
+ * 브라우저 쪽 쌍둥이 = `packages/viewer-core/src/owner-side.mjs`(#324). 두 구현이 조용히 갈라지지
+ * 않게 `match-stats.test.ts` 가 같은 로그에서 같은 답을 내는지 계약으로 박제한다.
+ */
+export function ownerSideOfSnapshot(snap: TickSnapshot): TeamSide | null {
+  const id = snap.ballOwner;
+  if (!id) return null;
+  let found: PlayerSnapshot | null = null;
+  let best = Infinity;
+  let count = 0;
+  for (const p of snap.players) {
+    if (p.playerId !== id) continue;
+    count += 1;
+    if (count === 1) {
+      found = p;
+      continue;
+    }
+    // 중복 id — 공에 더 가까운 쪽이 실제 소유자다.
+    if (best === Infinity && found) best = Math.hypot(found.pos.x - snap.ball.x, found.pos.y - snap.ball.y);
+    const d = Math.hypot(p.pos.x - snap.ball.x, p.pos.y - snap.ball.y);
+    if (d < best) {
+      best = d;
+      found = p;
+    }
+  }
+  return found ? found.team : null;
+}
+
+/**
+ * 선수별 누적의 키. **`(team, playerId)`** 여야 한다 — playerId 단독으로 잡으면 같은 선수가
+ * 양 팀에 출전한 하프에서 두 인스턴스가 한 버킷에 합쳐져 좌표가 두 사람 사이를 오간다
+ * (실측: 주행거리 63km/경기). 엔진이 `simstate.playerKey` 로 같은 결론에 도달한 것과 같은 이유다.
+ */
+function pkey(p: PlayerSnapshot): string {
+  return `${p.team}:${p.playerId}`;
+}
+function sideOfKey(key: string): TeamSide {
+  return key.startsWith("home:") ? "home" : "away";
+}
+function idOfKey(key: string): string {
+  return key.slice(key.indexOf(":") + 1);
 }
 
 const EMPTY: TeamStats = {
@@ -177,28 +224,29 @@ export function computeMatchStats(log: MatchLog, gkIds: Set<string>, opts: Stats
     const xs: Record<TeamSide, number[]> = { home: [], away: [] };
     const ys: Record<TeamSide, number[]> = { home: [], away: [] };
     for (const p of snap.players) {
-      const prev = lastPos.get(p.playerId);
+      const key = pkey(p);
+      const prev = lastPos.get(key);
       if (prev) {
         const dx = p.pos.x - prev.x;
         const dy = p.pos.y - prev.y;
-        distByPlayer.set(p.playerId, (distByPlayer.get(p.playerId) ?? 0) + Math.sqrt(dx * dx + dy * dy));
+        distByPlayer.set(key, (distByPlayer.get(key) ?? 0) + Math.sqrt(dx * dx + dy * dy));
       }
-      lastPos.set(p.playerId, { x: p.pos.x, y: p.pos.y });
+      lastPos.set(key, { x: p.pos.x, y: p.pos.y });
       if (gkIds.has(p.playerId)) continue;
       xs[p.team].push(p.pos.x);
       ys[p.team].push(p.pos.y);
       // 위치 분산 누적.
-      const pa = posAcc.get(p.playerId) ?? { sx: 0, sy: 0, sq: 0, n: 0 };
+      const pa = posAcc.get(key) ?? { sx: 0, sy: 0, sq: 0, n: 0 };
       pa.sx += p.pos.x; pa.sy += p.pos.y; pa.sq += p.pos.x * p.pos.x + p.pos.y * p.pos.y; pa.n += 1;
-      posAcc.set(p.playerId, pa);
+      posAcc.set(key, pa);
       // 수비 오버랩(수비수가 자기 공격 파이널서드 진입).
       if (defenderIds.has(p.playerId)) {
         const inFinal = p.team === "home" ? p.pos.x >= homeLineX : p.pos.x <= awayLineX;
-        const was = overlapIn.get(p.playerId) ?? false;
+        const was = overlapIn.get(key) ?? false;
         const t = p.team === "home" ? home : away;
         if (inFinal) t.defenderOverlapTicks += 1;
         if (inFinal && !was) t.defenderOverlaps += 1;
-        overlapIn.set(p.playerId, inFinal);
+        overlapIn.set(key, inFinal);
       }
     }
     for (const s of sides) {
@@ -218,12 +266,12 @@ export function computeMatchStats(log: MatchLog, gkIds: Set<string>, opts: Stats
   // 아웃필드 평균 주행거리 + 위치 분산(RMS 편차).
   const finalizeSide = (side: TeamSide, t: TeamStats): void => {
     let distSum = 0, distN = 0, spreadSum = 0, spreadN = 0;
-    for (const [id, d] of distByPlayer) {
-      if (gkIds.has(id) || sideOf(id) !== side) continue;
+    for (const [key, d] of distByPlayer) {
+      if (gkIds.has(idOfKey(key)) || sideOfKey(key) !== side) continue;
       distSum += d; distN += 1;
     }
-    for (const [id, pa] of posAcc) {
-      if (sideOf(id) !== side || pa.n === 0) continue;
+    for (const [key, pa] of posAcc) {
+      if (sideOfKey(key) !== side || pa.n === 0) continue;
       const mx = pa.sx / pa.n, my = pa.sy / pa.n;
       const variance = pa.sq / pa.n - (mx * mx + my * my); // E[r²]-|E[r]|²
       spreadSum += Math.sqrt(Math.max(0, variance));
@@ -258,7 +306,7 @@ export function computeMatchStats(log: MatchLog, gkIds: Set<string>, opts: Stats
     if (owner != null && prevOwner === owner && prevBall) {
       const dx = ball.x - prevBall.x, dy = ball.y - prevBall.y;
       if (Math.sqrt(dx * dx + dy * dy) > EPS) {
-        if (runSide === null) { runSide = sideOf(owner); runLen = 1; }
+        if (runSide === null) { runSide = ownerSideOfSnapshot(snap); runLen = 1; }
         else runLen += 1;
       } else flush();
     } else flush();

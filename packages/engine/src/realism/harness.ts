@@ -2,7 +2,7 @@ import type { MatchLog, TeamSide } from "@hmb/shared";
 import type { EngineConfig } from "../config";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
-import { computeMatchStats, type MatchStats, type TeamStats } from "../../dev-viewer/match-stats";
+import { computeMatchStats, ownerSideOfSnapshot, type MatchStats, type TeamStats } from "../../dev-viewer/match-stats";
 
 /**
  * realism/harness — 리얼 config(또는 임의 config) 다수 시드 시뮬을 돌려 매치 스탯을
@@ -109,13 +109,20 @@ export function reconstructPassLengths(log: MatchLog): PassLenBuckets {
   return { samples, short, medium, long };
 }
 
-/** 점유율%(home 관점): ballOwner 가 있는 틱 중 home 소유 비율. */
+/**
+ * 점유율%(home 관점): ballOwner 가 있는 틱 중 home 소유 비율.
+ *
+ * ⚠️ 팀 판정은 **스냅샷의 `players[].team`** 으로 한다(`ownerSideOfSnapshot`). 종전엔
+ * `ballOwner[0] === "H"` 였는데 그건 엔진 픽스처 id 전용 가정이라 실경기 id(`P0xx`)에선
+ * 전부 away 로 떨어진다 — 실덱 픽스처(#374)를 넣는 순간 무의미해진다. 같은 뿌리 = #324.
+ * 벤치마크 입력에서는 두 방식의 답이 같아 **기존 측정치는 이동하지 않는다**.
+ */
 export function possessionPct(log: MatchLog): { home: number; away: number } {
   let h = 0, a = 0;
   for (const sn of log.tickSnapshots) {
-    if (sn.ballOwner == null) continue;
-    if (sn.ballOwner[0] === "H") h++;
-    else a++;
+    const side = ownerSideOfSnapshot(sn);
+    if (side === "home") h++;
+    else if (side === "away") a++;
   }
   const tot = h + a;
   if (tot === 0) return { home: 0, away: 0 };

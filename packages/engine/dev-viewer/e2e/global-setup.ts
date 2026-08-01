@@ -53,13 +53,24 @@ export default function globalSetup() {
   if (showcaseStale) {
     // eslint-disable-next-line no-console
     console.log(`[e2e globalSetup] ${showcaseStale} → generate-demo 재생성`);
-    execSync("npx vitest run packages/engine/dev-viewer/generate-demo.test.ts", { cwd: repoRoot, stdio: "inherit" });
+    // ⚠️ `HMB_TIER=1` 을 **명시**한다. `generate-demo.test.ts` 는 T0 제외 목록에 있어서(#376),
+    // 앰비언트 `HMB_TIER=0` 이면 여기서 "No test files found" → execSync throw → globalSetup 이 죽는다.
+    // 픽스처 재생성은 티어와 무관한 **선행 준비**지 티어로 줄일 대상이 아니다.
+    execSync("npx vitest run packages/engine/dev-viewer/generate-demo.test.ts", {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: { ...process.env, HMB_TIER: "1" },
+    });
   }
   const realStale = staleReason(realLog, "fixture-real.json");
   if (realStale) {
     // eslint-disable-next-line no-console
     console.log(`[e2e globalSetup] ${realStale} → gen-fixtures 재생성`);
-    execSync("npx vitest run packages/engine/dev-viewer/e2e/gen-fixtures.test.ts", { cwd: repoRoot, stdio: "inherit" });
+    execSync("npx vitest run packages/engine/dev-viewer/e2e/gen-fixtures.test.ts", {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: { ...process.env, HMB_TIER: "1" },
+    });
   }
 
   // 재생성 **후에도** 낡았으면 여기서 죽는다. 목적은 거짓 실패 제거가 아니라 **거짓 green 차단**

@@ -1,0 +1,883 @@
+{
+  "schemaVersion": 1,
+  "producer": "extract-real-decks@1",
+  "id": "deck-02",
+  "label": "5-3-2 저압박·로우블록 vs 4-3-3 (league, 1H)",
+  "note": "라이브 engine@0.23.0 · league · 1H",
+  "seed": "17926712623865224333",
+  "live": {
+    "matchId": "01KYV2SCJQ79M7BXBG812Q3BD9",
+    "half": 1,
+    "mode": "league",
+    "engineVersion": "engine@0.23.0",
+    "state": "FINISHED",
+    "score": {
+      "home": 0,
+      "away": 7
+    }
+  },
+  "selectData": {
+    "home": {
+      "name": "Stormbreak United",
+      "players": [
+        {
+          "playerId": "P117",
+          "name": "Guglielmo Vicario",
+          "position": "GK",
+          "attributes": {
+            "technical": 51,
+            "mental": 48,
+            "physical": 48,
+            "passing": 50,
+            "shooting": 43,
+            "tackling": 40,
+            "pace": 51,
+            "stamina": 52,
+            "positioning": 52
+          }
+        },
+        {
+          "playerId": "P168",
+          "name": "Seol Young-woo",
+          "position": "DF",
+          "attributes": {
+            "technical": 45,
+            "mental": 39,
+            "physical": 48,
+            "passing": 49,
+            "shooting": 50,
+            "tackling": 52,
+            "pace": 49,
+            "stamina": 50,
+            "positioning": 51
+          }
+        },
+        {
+          "playerId": "P122",
+          "name": "Castello Lukeba",
+          "position": "DF",
+          "attributes": {
+            "technical": 47,
+            "mental": 52,
+            "physical": 52,
+            "passing": 49,
+            "shooting": 46,
+            "tackling": 52,
+            "pace": 52,
+            "stamina": 44,
+            "positioning": 51
+          }
+        },
+        {
+          "playerId": "P121",
+          "name": "Nico Schlotterbeck",
+          "position": "DF",
+          "attributes": {
+            "technical": 46,
+            "mental": 48,
+            "physical": 47,
+            "passing": 46,
+            "shooting": 47,
+            "tackling": 51,
+            "pace": 49,
+            "stamina": 49,
+            "positioning": 43
+          }
+        },
+        {
+          "playerId": "P125",
+          "name": "Jarrad Branthwaite",
+          "position": "DF",
+          "attributes": {
+            "technical": 43,
+            "mental": 45,
+            "physical": 44,
+            "passing": 46,
+            "shooting": 48,
+            "tackling": 52,
+            "pace": 39,
+            "stamina": 40,
+            "positioning": 45
+          }
+        },
+        {
+          "playerId": "P120",
+          "name": "Leny Yoro",
+          "position": "DF",
+          "attributes": {
+            "technical": 46,
+            "mental": 40,
+            "physical": 52,
+            "passing": 52,
+            "shooting": 49,
+            "tackling": 50,
+            "pace": 41,
+            "stamina": 52,
+            "positioning": 46
+          }
+        },
+        {
+          "playerId": "P130",
+          "name": "Arda Güler",
+          "position": "MF",
+          "attributes": {
+            "technical": 50,
+            "mental": 48,
+            "physical": 41,
+            "passing": 49,
+            "shooting": 52,
+            "tackling": 48,
+            "pace": 48,
+            "stamina": 46,
+            "positioning": 38
+          }
+        },
+        {
+          "playerId": "P166",
+          "name": "Hong Hyun-seok",
+          "position": "MF",
+          "attributes": {
+            "technical": 46,
+            "mental": 48,
+            "physical": 39,
+            "passing": 52,
+            "shooting": 50,
+            "tackling": 40,
+            "pace": 46,
+            "stamina": 52,
+            "positioning": 52
+          }
+        },
+        {
+          "playerId": "P127",
+          "name": "Warren Zaïre-Emery",
+          "position": "MF",
+          "attributes": {
+            "technical": 49,
+            "mental": 52,
+            "physical": 42,
+            "passing": 52,
+            "shooting": 50,
+            "tackling": 52,
+            "pace": 45,
+            "stamina": 50,
+            "positioning": 48
+          }
+        },
+        {
+          "playerId": "P172",
+          "name": "Yang Hyun-jun",
+          "position": "FW",
+          "attributes": {
+            "technical": 48,
+            "mental": 43,
+            "physical": 47,
+            "passing": 38,
+            "shooting": 52,
+            "tackling": 49,
+            "pace": 52,
+            "stamina": 44,
+            "positioning": 42
+          }
+        },
+        {
+          "playerId": "P171",
+          "name": "Oh Hyeon-gyu",
+          "position": "FW",
+          "attributes": {
+            "technical": 52,
+            "mental": 47,
+            "physical": 51,
+            "passing": 48,
+            "shooting": 52,
+            "tackling": 44,
+            "pace": 52,
+            "stamina": 48,
+            "positioning": 49
+          }
+        }
+      ]
+    },
+    "away": {
+      "name": "USER-DECK-C",
+      "players": [
+        {
+          "playerId": "P040",
+          "name": "Jan Oblak",
+          "position": "GK",
+          "attributes": {
+            "technical": 65,
+            "mental": 78,
+            "physical": 66,
+            "passing": 65,
+            "shooting": 62,
+            "tackling": 69,
+            "pace": 65,
+            "stamina": 66,
+            "positioning": 78
+          }
+        },
+        {
+          "playerId": "P150",
+          "name": "Kim Joo-sung",
+          "position": "DF",
+          "attributes": {
+            "technical": 74,
+            "mental": 64,
+            "physical": 68,
+            "passing": 65,
+            "shooting": 63,
+            "tackling": 74,
+            "pace": 59,
+            "stamina": 59,
+            "positioning": 68
+          }
+        },
+        {
+          "playerId": "P017",
+          "name": "Achraf Hakimi",
+          "position": "DF",
+          "attributes": {
+            "technical": 84,
+            "mental": 86,
+            "physical": 83,
+            "passing": 74,
+            "shooting": 77,
+            "tackling": 83,
+            "pace": 86,
+            "stamina": 84,
+            "positioning": 81
+          }
+        },
+        {
+          "playerId": "P020",
+          "name": "William Saliba",
+          "position": "DF",
+          "attributes": {
+            "technical": 88,
+            "mental": 86,
+            "physical": 84,
+            "passing": 79,
+            "shooting": 79,
+            "tackling": 89,
+            "pace": 87,
+            "stamina": 84,
+            "positioning": 89
+          }
+        },
+        {
+          "playerId": "P052",
+          "name": "Andrew Robertson",
+          "position": "DF",
+          "attributes": {
+            "technical": 67,
+            "mental": 65,
+            "physical": 76,
+            "passing": 78,
+            "shooting": 63,
+            "tackling": 76,
+            "pace": 70,
+            "stamina": 79,
+            "positioning": 79
+          }
+        },
+        {
+          "playerId": "P065",
+          "name": "Bruno Guimarães",
+          "position": "MF",
+          "attributes": {
+            "technical": 66,
+            "mental": 75,
+            "physical": 72,
+            "passing": 75,
+            "shooting": 70,
+            "tackling": 70,
+            "pace": 72,
+            "stamina": 75,
+            "positioning": 67
+          }
+        },
+        {
+          "playerId": "P062",
+          "name": "Casemiro",
+          "position": "MF",
+          "attributes": {
+            "technical": 58,
+            "mental": 57,
+            "physical": 64,
+            "passing": 66,
+            "shooting": 63,
+            "tackling": 66,
+            "pace": 53,
+            "stamina": 67,
+            "positioning": 59
+          }
+        },
+        {
+          "playerId": "P094",
+          "name": "James Maddison",
+          "position": "MF",
+          "attributes": {
+            "technical": 57,
+            "mental": 48,
+            "physical": 48,
+            "passing": 59,
+            "shooting": 57,
+            "tackling": 59,
+            "pace": 50,
+            "stamina": 58,
+            "positioning": 50
+          }
+        },
+        {
+          "playerId": "P036",
+          "name": "Lautaro Martínez",
+          "position": "FW",
+          "attributes": {
+            "technical": 73,
+            "mental": 74,
+            "physical": 77,
+            "passing": 71,
+            "shooting": 78,
+            "tackling": 72,
+            "pace": 78,
+            "stamina": 74,
+            "positioning": 70
+          }
+        },
+        {
+          "playerId": "P173",
+          "name": "보날두",
+          "position": "FW",
+          "attributes": {
+            "technical": 86,
+            "mental": 83,
+            "physical": 93,
+            "passing": 91,
+            "shooting": 93,
+            "tackling": 92,
+            "pace": 90,
+            "stamina": 80,
+            "positioning": 84
+          }
+        },
+        {
+          "playerId": "P073",
+          "name": "Robert Lewandowski",
+          "position": "FW",
+          "attributes": {
+            "technical": 69,
+            "mental": 71,
+            "physical": 79,
+            "passing": 72,
+            "shooting": 75,
+            "tackling": 69,
+            "pace": 79,
+            "stamina": 67,
+            "positioning": 79
+          }
+        }
+      ]
+    }
+  },
+  "homeInput": {
+    "seed": "10184996708476090298",
+    "team": {
+      "formation": "5-3-2",
+      "defensiveLineHeight": 0.28,
+      "compactness": 0.75,
+      "tempo": 0.35,
+      "width": 0.45,
+      "pressingScheme": {
+        "intensity": 0.3,
+        "triggerLine": 0.3
+      },
+      "offsideTrap": false
+    },
+    "players": [
+      {
+        "playerId": "P117",
+        "role": "GK",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.05,
+          "y": 0.5
+        },
+        "behavior": {
+          "positioningFreedom": 0.1,
+          "forwardRunFreq": 0,
+          "widthTendency": 0.1,
+          "supportDepth": 0.1,
+          "pressAggression": 0.1,
+          "passRisk": 0.15,
+          "passDirectness": 0.4,
+          "dribbleTendency": 0.05,
+          "shootTendency": 0
+        },
+        "mentalModifier": -0.1
+      },
+      {
+        "playerId": "P168",
+        "role": "RWB",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.22,
+          "y": 0.12
+        },
+        "behavior": {
+          "positioningFreedom": 0.15,
+          "forwardRunFreq": 0.2,
+          "widthTendency": 0.35,
+          "supportDepth": 0.2,
+          "pressAggression": 0.35,
+          "passRisk": 0.2,
+          "passDirectness": 0.45,
+          "dribbleTendency": 0.2,
+          "shootTendency": 0.05
+        },
+        "mentalModifier": -0.15
+      },
+      {
+        "playerId": "P122",
+        "role": "CB",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.15,
+          "y": 0.32
+        },
+        "behavior": {
+          "positioningFreedom": 0.1,
+          "forwardRunFreq": 0.05,
+          "widthTendency": 0.15,
+          "supportDepth": 0.1,
+          "pressAggression": 0.4,
+          "passRisk": 0.15,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.1,
+          "shootTendency": 0
+        },
+        "mentalModifier": -0.1
+      },
+      {
+        "playerId": "P121",
+        "role": "CB",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.12,
+          "y": 0.5
+        },
+        "behavior": {
+          "positioningFreedom": 0.08,
+          "forwardRunFreq": 0.05,
+          "widthTendency": 0.1,
+          "supportDepth": 0.08,
+          "pressAggression": 0.35,
+          "passRisk": 0.12,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.08,
+          "shootTendency": 0
+        },
+        "mentalModifier": -0.1
+      },
+      {
+        "playerId": "P125",
+        "role": "CB",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.14,
+          "y": 0.68
+        },
+        "behavior": {
+          "positioningFreedom": 0.08,
+          "forwardRunFreq": 0.03,
+          "widthTendency": 0.15,
+          "supportDepth": 0.08,
+          "pressAggression": 0.4,
+          "passRisk": 0.12,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.08,
+          "shootTendency": 0
+        },
+        "mentalModifier": -0.15
+      },
+      {
+        "playerId": "P120",
+        "role": "LWB",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.22,
+          "y": 0.88
+        },
+        "behavior": {
+          "positioningFreedom": 0.15,
+          "forwardRunFreq": 0.18,
+          "widthTendency": 0.35,
+          "supportDepth": 0.18,
+          "pressAggression": 0.35,
+          "passRisk": 0.18,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.18,
+          "shootTendency": 0.05
+        },
+        "mentalModifier": -0.1
+      },
+      {
+        "playerId": "P130",
+        "role": "CM",
+        "duty": "support",
+        "basePosition": {
+          "x": 0.36,
+          "y": 0.3
+        },
+        "behavior": {
+          "positioningFreedom": 0.3,
+          "forwardRunFreq": 0.25,
+          "widthTendency": 0.25,
+          "supportDepth": 0.3,
+          "pressAggression": 0.4,
+          "passRisk": 0.3,
+          "passDirectness": 0.45,
+          "dribbleTendency": 0.3,
+          "shootTendency": 0.25
+        },
+        "mentalModifier": -0.05
+      },
+      {
+        "playerId": "P166",
+        "role": "DM",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.32,
+          "y": 0.5
+        },
+        "behavior": {
+          "positioningFreedom": 0.2,
+          "forwardRunFreq": 0.15,
+          "widthTendency": 0.2,
+          "supportDepth": 0.2,
+          "pressAggression": 0.45,
+          "passRisk": 0.25,
+          "passDirectness": 0.45,
+          "dribbleTendency": 0.2,
+          "shootTendency": 0.1
+        },
+        "mentalModifier": -0.05
+      },
+      {
+        "playerId": "P127",
+        "role": "CM",
+        "duty": "support",
+        "basePosition": {
+          "x": 0.38,
+          "y": 0.7
+        },
+        "behavior": {
+          "positioningFreedom": 0.3,
+          "forwardRunFreq": 0.25,
+          "widthTendency": 0.25,
+          "supportDepth": 0.3,
+          "pressAggression": 0.45,
+          "passRisk": 0.3,
+          "passDirectness": 0.45,
+          "dribbleTendency": 0.28,
+          "shootTendency": 0.25
+        },
+        "mentalModifier": 0
+      },
+      {
+        "playerId": "P172",
+        "role": "FW",
+        "duty": "support",
+        "basePosition": {
+          "x": 0.62,
+          "y": 0.4
+        },
+        "behavior": {
+          "positioningFreedom": 0.35,
+          "forwardRunFreq": 0.4,
+          "widthTendency": 0.4,
+          "supportDepth": 0.35,
+          "pressAggression": 0.35,
+          "passRisk": 0.3,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.45,
+          "shootTendency": 0.55
+        },
+        "mentalModifier": -0.1
+      },
+      {
+        "playerId": "P171",
+        "role": "FW",
+        "duty": "support",
+        "basePosition": {
+          "x": 0.62,
+          "y": 0.6
+        },
+        "behavior": {
+          "positioningFreedom": 0.35,
+          "forwardRunFreq": 0.4,
+          "widthTendency": 0.3,
+          "supportDepth": 0.35,
+          "pressAggression": 0.35,
+          "passRisk": 0.3,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.4,
+          "shootTendency": 0.55
+        },
+        "mentalModifier": -0.05
+      }
+    ],
+    "meta": {
+      "generatedAt": "2026-07-31T00:00:00Z",
+      "promptHash": "defensive-533"
+    }
+  },
+  "awayInput": {
+    "seed": "15775669930554571798",
+    "team": {
+      "formation": "4-3-3",
+      "defensiveLineHeight": 0.5,
+      "compactness": 0.5,
+      "tempo": 0.5,
+      "width": 0.5,
+      "pressingScheme": {
+        "intensity": 0.5,
+        "triggerLine": 0.5
+      },
+      "offsideTrap": false
+    },
+    "players": [
+      {
+        "playerId": "P040",
+        "role": "GK",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.05,
+          "y": 0.5
+        },
+        "behavior": {
+          "positioningFreedom": 0.1,
+          "forwardRunFreq": 0.05,
+          "widthTendency": 0.2,
+          "supportDepth": 0.1,
+          "pressAggression": 0.15,
+          "passRisk": 0.25,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.1,
+          "shootTendency": 0
+        },
+        "mentalModifier": 0
+      },
+      {
+        "playerId": "P150",
+        "role": "CB",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.22,
+          "y": 0.2
+        },
+        "behavior": {
+          "positioningFreedom": 0.2,
+          "forwardRunFreq": 0.2,
+          "widthTendency": 0.3,
+          "supportDepth": 0.3,
+          "pressAggression": 0.45,
+          "passRisk": 0.3,
+          "passDirectness": 0.45,
+          "dribbleTendency": 0.2,
+          "shootTendency": 0.05
+        },
+        "mentalModifier": 0
+      },
+      {
+        "playerId": "P017",
+        "role": "RB",
+        "duty": "support",
+        "basePosition": {
+          "x": 0.2,
+          "y": 0.4
+        },
+        "behavior": {
+          "positioningFreedom": 0.35,
+          "forwardRunFreq": 0.62,
+          "widthTendency": 0.72,
+          "supportDepth": 0.5,
+          "pressAggression": 0.55,
+          "passRisk": 0.45,
+          "passDirectness": 0.4,
+          "dribbleTendency": 0.5,
+          "shootTendency": 0.2
+        },
+        "mentalModifier": 0.35
+      },
+      {
+        "playerId": "P020",
+        "role": "CB",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.16,
+          "y": 0.6
+        },
+        "behavior": {
+          "positioningFreedom": 0.25,
+          "forwardRunFreq": 0.25,
+          "widthTendency": 0.3,
+          "supportDepth": 0.3,
+          "pressAggression": 0.5,
+          "passRisk": 0.35,
+          "passDirectness": 0.45,
+          "dribbleTendency": 0.25,
+          "shootTendency": 0.05
+        },
+        "mentalModifier": 0
+      },
+      {
+        "playerId": "P052",
+        "role": "LB",
+        "duty": "support",
+        "basePosition": {
+          "x": 0.24,
+          "y": 0.8
+        },
+        "behavior": {
+          "positioningFreedom": 0.35,
+          "forwardRunFreq": 0.68,
+          "widthTendency": 0.75,
+          "supportDepth": 0.55,
+          "pressAggression": 0.5,
+          "passRisk": 0.45,
+          "passDirectness": 0.4,
+          "dribbleTendency": 0.45,
+          "shootTendency": 0.15
+        },
+        "mentalModifier": 0.4
+      },
+      {
+        "playerId": "P065",
+        "role": "CM",
+        "duty": "support",
+        "basePosition": {
+          "x": 0.44,
+          "y": 0.32
+        },
+        "behavior": {
+          "positioningFreedom": 0.4,
+          "forwardRunFreq": 0.45,
+          "widthTendency": 0.35,
+          "supportDepth": 0.5,
+          "pressAggression": 0.5,
+          "passRisk": 0.5,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.4,
+          "shootTendency": 0.35
+        },
+        "mentalModifier": 0.2
+      },
+      {
+        "playerId": "P062",
+        "role": "DM",
+        "duty": "defend",
+        "basePosition": {
+          "x": 0.4,
+          "y": 0.5
+        },
+        "behavior": {
+          "positioningFreedom": 0.25,
+          "forwardRunFreq": 0.2,
+          "widthTendency": 0.3,
+          "supportDepth": 0.3,
+          "pressAggression": 0.4,
+          "passRisk": 0.3,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.25,
+          "shootTendency": 0.15
+        },
+        "mentalModifier": -0.1
+      },
+      {
+        "playerId": "P094",
+        "role": "CM",
+        "duty": "support",
+        "basePosition": {
+          "x": 0.5,
+          "y": 0.85
+        },
+        "behavior": {
+          "positioningFreedom": 0.3,
+          "forwardRunFreq": 0.3,
+          "widthTendency": 0.85,
+          "supportDepth": 0.45,
+          "pressAggression": 0.3,
+          "passRisk": 0.35,
+          "passDirectness": 0.45,
+          "dribbleTendency": 0.4,
+          "shootTendency": 0.15
+        },
+        "mentalModifier": -0.05
+      },
+      {
+        "playerId": "P036",
+        "role": "FW",
+        "duty": "attack",
+        "basePosition": {
+          "x": 0.7,
+          "y": 0.2
+        },
+        "behavior": {
+          "positioningFreedom": 0.5,
+          "forwardRunFreq": 0.6,
+          "widthTendency": 0.45,
+          "supportDepth": 0.65,
+          "pressAggression": 0.4,
+          "passRisk": 0.5,
+          "passDirectness": 0.55,
+          "dribbleTendency": 0.55,
+          "shootTendency": 0.65
+        },
+        "mentalModifier": 0.15
+      },
+      {
+        "playerId": "P173",
+        "role": "ST",
+        "duty": "attack",
+        "basePosition": {
+          "x": 0.78,
+          "y": 0.5
+        },
+        "behavior": {
+          "positioningFreedom": 0.55,
+          "forwardRunFreq": 0.65,
+          "widthTendency": 0.4,
+          "supportDepth": 0.7,
+          "pressAggression": 0.4,
+          "passRisk": 0.5,
+          "passDirectness": 0.55,
+          "dribbleTendency": 0.6,
+          "shootTendency": 0.85
+        },
+        "mentalModifier": 0.5
+      },
+      {
+        "playerId": "P073",
+        "role": "FW",
+        "duty": "attack",
+        "basePosition": {
+          "x": 0.7,
+          "y": 0.8
+        },
+        "behavior": {
+          "positioningFreedom": 0.5,
+          "forwardRunFreq": 0.55,
+          "widthTendency": 0.45,
+          "supportDepth": 0.65,
+          "pressAggression": 0.4,
+          "passRisk": 0.45,
+          "passDirectness": 0.5,
+          "dribbleTendency": 0.5,
+          "shootTendency": 0.75
+        },
+        "mentalModifier": 0.45
+      }
+    ]
+  }
+}

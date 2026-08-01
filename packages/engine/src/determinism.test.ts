@@ -1,13 +1,19 @@
 import { describe, it, expect } from "vitest";
 import { runMatch } from "./match";
 import { demoSeed, demoHome, demoAway, demoSelect } from "./fixtures";
+import { atLeastTier } from "./realism/tier";
 
 /**
  * AC3(재현성): 동일 (seed, home, away, select, config) 로 runMatch 를 N회 돌리면
  * 모든 finalScore + 마지막 tick hash + 이벤트 수가 완전히 동일해야 한다(desync 0).
+ *
+ * ⚠️ **결정론은 어느 티어에서도 면제가 없다**(#377 P v1). 티어가 정하는 것은 "성질을 보는가"가
+ * 아니라 **반복 횟수**뿐이다 — T0(매 커밋)은 축약 반복으로 같은 성질을 확인하고, T1 이상에서
+ * 80회 전량을 돈다(그 80회가 T0 예산 1분의 1/3 을 혼자 먹는다). 틱별 해시 동일성·시드 민감도는
+ * **항상** 돈다.
  */
 
-const N = 80;
+const N = atLeastTier(1) ? 80 : 8;
 
 function summarize(seed = demoSeed) {
   const log = runMatch(seed, demoHome, demoAway, demoSelect);
