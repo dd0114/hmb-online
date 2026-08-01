@@ -32,6 +32,8 @@ const RETIRED: Record<string, string> = {
   "growth-owned-total": "codex-owned-total (도감 [보유] 스코프)",
   "growth-grid": "codex 그리드",
   "growth-empty": "codex 빈 상태",
+  // #382 — 대기 화면의 시스템 설명 한 줄이 **정경 로테이션**으로 교체됐다.
+  "genwait-note": "genwait-scene (축구장 정경 로테이션, match/waiting-scenes.ts)",
 };
 
 const E2E_DIR = new URL("../../e2e/", import.meta.url).pathname;
