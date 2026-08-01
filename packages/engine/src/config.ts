@@ -650,7 +650,12 @@ export interface EngineConfig {
        * `research/deadball-restart.md`.
        */
       gate: {
-        /** false = 0.32.0 이전 동작(전 재시작이 ceremonial = 항상 기다린다). 롤백·변이체 킬. */
+        /**
+         * false = **0.32.0 이전 동작**(전 재시작이 ceremonial = 항상 기다린다). 롤백·변이체 킬.
+         * ⚠️ 초판은 이 약속을 **못 지켰다** — `gateBaseTicks` 가 `withWall=true` 를 상수로 넘겨
+         * 사거리 밖 프리킥이 8 → 14틱이 됐다(독립검증 B2). 지금은 `restart-gate.test.ts` 의
+         * "롤백 등가" 계약이 구 공식을 직접 재현해 그 부류를 잡는다.
+         */
         enabled: boolean;
         /**
          * `quick` 재시작의 정지 하한(틱). taker 가 더 멀면 도보 시간이 이긴다.
@@ -893,12 +898,6 @@ export interface EngineConfig {
       backupCount: number;
       /** 지원 인원이 서는 스팟 기준 반경(m). */
       backupRadiusM: number;
-      /**
-       * Law 13 — 수비 **3명 이상**이 벽을 이루면 공격팀은 그 벽에서 이 거리(m) 밖에 있어야 한다
-       * (어기면 수비팀 간접 프리킥). 백업 반경(8m)과 벽 거리(9.15+standoff)가 1m 남짓이라
-       * 슬롯이 겹칠 수 있어(실측 237표본 중 1건 · min 0.97m) 슬롯 단계에서 밀어낸다.
-       */
-      wallClearM: number;
       /**
        * 역할(벽·백업)을 배정받은 선수가 접근 금지 구역(#176)에 막혔을 때 **경계를 따라 돌아갈지**.
        * false = 0.30.0 이전 동작(이동 취소 = 그 자리에 굳음) — 롤백 스위치이자 변이체 킬 대조군.
@@ -1807,8 +1806,6 @@ export const defaultEngineConfig: EngineConfig = {
       wallSetupTicks: 6,
       backupCount: 3,
       backupRadiusM: 8,
-      // Law 13 상수(1m). 규칙값이라 튜닝 대상이 아니다.
-      wallClearM: 1,
       // #349: 벽이 실제로 서려면 필수다(false 면 도착률 12.3%).
       routeAroundZone: true,
     },

@@ -98,6 +98,19 @@ function byScore(a: { score: number; p: SimPlayer }, b: { score: number; p: SimP
  * 정수 테이블로 두는 이유는 `deadball.ts:RAY_DIRS` 와 같다: 런타임 삼각함수 금지(§5-4).
  * 앞 두 개는 좌우 **숏 프리킥 옵션**(스팟 뒤/옆), 뒤는 리바운드·세컨볼 대비로 조금 앞.
  */
+/**
+ * ⚠️ **Law 13 "벽에서 1m" 는 여기서 해결되지 않는다**(#378 독립검증 B1 — 내가 틀렸던 부분).
+ *
+ * 처음엔 백업 슬롯을 벽 슬롯에서 1m 밖으로 밀어내는 코드를 넣고 "규칙 결손 해소"라고 적었다.
+ * 실측이 그걸 부정한다: **출하값에서 그 밀어내기는 한 번도 발화하지 않는다** — 백업 슬롯과 벽
+ * 슬롯의 최소 간격이 이미 **6m 초과**라(임계를 9m 로 올려야 비로소 17건이 걸린다), 임계 0/1/3/6
+ * 어느 값이든 60시드 해시가 **bit-identical** 이었다. 즉 죽은 노브였고, 그걸 지킨다던 계약도
+ * "픽스를 지워도 통과하는" tautology 였다.
+ *
+ * **진짜 위반은 슬롯이 아니라 선수 실위치에 있다** — 벽 3명 이상인 창 98건 중 공격수↔벽 1m 미만이
+ * **2건(min 0.96m)**. 백업 슬롯 보유자가 아닌 선수가 걸어가다 스치는 것이라 슬롯 기하로는 못 잡고,
+ * 오프더볼 회피(벽을 장애물로 인식)가 필요하다 → **후속 과제**(#378 잔여로 이슈에 기록).
+ */
 const BACKUP_SLOTS: readonly (readonly [number, number])[] = [
   [-450, 1000],
   [-450, -1000],
@@ -181,31 +194,8 @@ export function computeSetPiecePlan(
       const [alongK, acrossK] = BACKUP_SLOTS[i]!;
       const along = Math.round((radFx * alongK) / BACKUP_SCALE);
       const across = Math.round((radFx * acrossK) / BACKUP_SCALE);
-      let px = sp.x + Math.round((dx * along) / d) + Math.round((-dy * across) / d);
-      let py = sp.y + Math.round((dy * along) / d) + Math.round((dx * across) / d);
-      // Law 13: 수비 3명 이상이 벽을 이루면 **공격팀은 그 벽에서 1m 밖**에 있어야 한다
-      // (어기면 수비팀 간접 프리킥). 백업 반경(8m)과 벽 거리(9.5m)가 1m 남짓이라 슬롯이
-      // 겹칠 수 있다 — 실측 237표본 중 1건(min 0.97m). 슬롯 단계에서 **스팟 쪽으로 당겨**
-      // 구조적으로 막는다(벽이 3명 미만이면 Law 13 이 요구하지 않으므로 그대로 둔다).
-      if (wallPlaced >= 3) {
-        const needFx = toFixed(fk.wallClearM, scale);
-        for (const w of slots.values()) {
-          if (w.role !== "wall") continue;
-          const gap = isqrt((px - w.x) * (px - w.x) + (py - w.y) * (py - w.y));
-          if (gap >= needFx) continue;
-          // 벽에서 멀어지는 방향 = 스팟 쪽(백업은 원래 스팟 주변 역할이라 자연스럽다).
-          const bx = px - w.x;
-          const by = py - w.y;
-          const bd = isqrt(bx * bx + by * by);
-          if (bd <= 0) {
-            px = sp.x;
-            py = sp.y;
-          } else {
-            px = w.x + Math.round((bx * needFx) / bd);
-            py = w.y + Math.round((by * needFx) / bd);
-          }
-        }
-      }
+      const px = sp.x + Math.round((dx * along) / d) + Math.round((-dy * across) / d);
+      const py = sp.y + Math.round((dy * along) / d) + Math.round((dx * across) / d);
       const c = clampToPitch(pitch, px, py);
       slots.set(playerKey(picked[i]!.p.side, picked[i]!.p.id), { x: c.x, y: c.y, role: "backup" });
       backupPlaced++;

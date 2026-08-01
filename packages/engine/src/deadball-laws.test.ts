@@ -134,8 +134,6 @@ export interface Violation {
   tick: number;
   playerId: string;
   detail: string;
-  /** #378: 이 재시작이 **무엇을 기다렸는가**. 계약 A 가 이 축으로 갈린다(아래 주석). */
-  ceremonial?: boolean;
 }
 
 /** 한 경기의 데드볼 규칙 위반 전수 스캔. */
@@ -216,20 +214,7 @@ function scanLaws(log: MatchLog, config: EngineConfig, tag: string): {
         if (!p.playerId.startsWith(oppPrefix) || p.playerId === oppGk) continue;
         const c = clearance(zone, p.pos.x, p.pos.y);
         if (c < -EPS) {
-          atRestart.push({
-            kind,
-            tick: lastTick,
-            playerId: p.playerId,
-            detail: `여유 ${c.toFixed(2)}m`,
-            // #378: 의식(ceremonial) 재시작인가 = "심판이 거리를 재준" 재개인가.
-            // 코너는 박스 크라우딩이 성립해야 하므로 항상 의식이고, 프리킥은 **벽을 부를 때만**이다.
-            // 스로인·골킥은 빠른 재개(quick)라 "이미 물러나 있을 것"을 요구하지 않는다(Law 13/16).
-            ceremonial:
-              kind === "corner" ||
-              kind === "penalty" ||
-              kind === "kickoff" ||
-              (kind === "free_kick" && freeKickWallCount(pitch, config, e.team!, spot.x, spot.y) > 0),
-          });
+          atRestart.push({ kind, tick: lastTick, playerId: p.playerId, detail: `여유 ${c.toFixed(2)}m` });
         }
       }
     }

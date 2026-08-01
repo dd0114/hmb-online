@@ -79,12 +79,6 @@ export interface RestartBreakdown {
   /** 벽 슬롯이 규칙 거리(9.15m)를 침범한 건수 — 0 이어야 한다(Law 13). */
   wallEncroach: number;
 
-  /**
-   * Law 13 — 벽이 **3명 이상**일 때 공격팀 백업 **슬롯**이 벽 슬롯 1m 안에 잡힌 건수.
-   * 0 이어야 한다. ⚠️ 이건 **슬롯**(배정 좌표) 기준이다 — 선수의 실제 위치는 도착 오차로
-   * 3cm 정도 더 가까울 수 있고(실측 min 0.97m) 그건 배치 설계가 아니라 걸어오는 중의 잔차다.
-   */
-  wallBackupTooClose: number;
 }
 
 function zero(): RestartBreakdown {
@@ -101,7 +95,6 @@ function zero(): RestartBreakdown {
     wall: { n: 0, wantSum: 0, placedSum: 0, standingSum: 0, wantedButNone: 0, wantZero: 0, withWall: 0 },
     axis: { wallDef: 0, wallWrong: 0, backupAtt: 0, backupWrong: 0 },
     wallEncroach: 0,
-    wallBackupTooClose: 0,
   };
 }
 
@@ -142,23 +135,6 @@ function readFreeKickRoles(
   // 슬롯 주인의 팀 축 + 실제 도착 여부. 벽 슬롯은 "스팟에서 골 쪽" 슬롯이고 백업은 그 나머지 —
   // 플랜이 인원만 돌려주므로, 스팟 거리로 두 역할을 가르지 않고 **팀**으로 가른다
   // (벽 = 수비팀 배정, 백업 = 공격팀 배정 — 이것이 곧 검증 대상인 팀 축이다).
-  // Law 13 (벽 3명 이상) — 백업 슬롯이 벽 슬롯 1m 안인가. 슬롯 좌표만 본다(위 필드 주석 참조).
-  {
-    const walls: { x: number; y: number }[] = [];
-    const backs: { x: number; y: number }[] = [];
-    for (const v of plan.slots.values()) (v.role === "wall" ? walls : backs).push(v);
-    if (walls.length >= 3) {
-      const needFx = Math.round(config.setPiece.freeKick.wallClearM * config.fixedScale);
-      for (const b of backs) {
-        for (const w of walls) {
-          if (isqrt((b.x - w.x) * (b.x - w.x) + (b.y - w.y) * (b.y - w.y)) < needFx) {
-            acc.wallBackupTooClose += 1;
-            break;
-          }
-        }
-      }
-    }
-  }
   const tolFx = Math.round(ARRIVE_TOL_M * config.fixedScale);
   const ruleFx = Math.round(config.rules.deadBall.opponentDistanceM * config.fixedScale);
   // 역할은 **배정한 쪽이 단 라벨**을 읽는다. 좌표로 되추론하면 안 된다 — 백업 반경 8m 의 앞
@@ -245,7 +221,6 @@ export function formatRestart(label: string, r: RestartBreakdown): string {
     `  벽: 표본 ${w.n} · 매핑요구 ${(w.wantSum / Math.max(1, w.n)).toFixed(2)}명 · 배정 ${(w.placedSum / Math.max(1, w.n)).toFixed(2)}명 · ` +
       `도착 ${(w.standingSum / Math.max(1, w.n)).toFixed(2)}명 | want>0인데 배정0: ${w.wantedButNone} · 사거리밖(want=0): ${w.wantZero}`,
   );
-  lines.push(`  Law 13 벽1m: 백업 슬롯 위반 ${r.wallBackupTooClose}건`);
   lines.push(
     `  축: 벽=수비팀 ${r.axis.wallDef} (오배정 ${r.axis.wallWrong}) · 백업=공격팀 ${r.axis.backupAtt} (오배정 ${r.axis.backupWrong}) · 9.15m 침범 ${r.wallEncroach}`,
   );

@@ -4,6 +4,8 @@ import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
 import { REALISM_SEEDS } from "./harness";
 import { measureDeadBallMotion } from "./deadball-motion";
+import { createPitch } from "../pitch";
+import { freeKickWallCount } from "../setpiece";
 import type { MatchLog, TacticalInput } from "@hmb/shared";
 
 /**
@@ -45,7 +47,10 @@ function withDirectness(t: TacticalInput, v: number): TacticalInput {
 interface Scan {
   /** 재시작 종류별 [정지 창 길이 합, 건수]. 창 = 재시작 이벤트 → 공이 스팟을 떠난 틱. */
   span: Record<string, { sum: number; n: number }>;
-  /** 재개 틱에 **아직 자기 목표에 도착하지 못한** 선수 비율(%) — hero 요구의 직접 지표. */
+  /**
+   * 재개 틱에 **아직 움직이고 있던** 선수 비율(%) — 직전 틱 대비 0.3m 초과 이동.
+   * (초판 주석은 "목표에 도착하지 못한"이라고 적었는데 그건 다른 양이다 — 독립검증 m6 정정.)
+   */
   movingAtResumePct: number;
   /** 재개 자체가 일어난 건수(데드락 감시). */
   resumes: number;
@@ -122,6 +127,43 @@ function scan(config: EngineConfig, patch?: (t: TacticalInput) => TacticalInput)
   return acc;
 }
 
+/** 벽을 부르는 프리킥만의 평균 정지 창. `wallFk`/`noWallFk` 는 스팟에서 매핑으로 가른다. */
+function fkSpanBy(config: EngineConfig, wantWall: boolean): number {
+  const pitch = createPitch(config);
+  let sum = 0;
+  let n = 0;
+  for (const seed of seeds) {
+    const log = runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, config);
+    const byTick = new Map(log.tickSnapshots.map((s) => [s.tick, s]));
+    for (const e of log.events) {
+      if (e.type !== "free_kick" || !e.team) continue;
+      const s0 = byTick.get(e.tick);
+      if (!s0) continue;
+      const wall =
+        freeKickWallCount(
+          pitch,
+          config,
+          e.team,
+          Math.round(s0.ball.x * config.fixedScale),
+          Math.round(s0.ball.y * config.fixedScale),
+        ) > 0;
+      if (wall !== wantWall) continue;
+      for (let t = e.tick + 1; t <= e.tick + 60; t++) {
+        const s = byTick.get(t);
+        if (!s) break;
+        if (Math.hypot(s.ball.x - s0.ball.x, s.ball.y - s0.ball.y) > 1) {
+          sum += t - e.tick;
+          n += 1;
+          break;
+        }
+      }
+    }
+  }
+  return n > 0 ? sum / n : 0;
+}
+const wallFkSpan = (c: EngineConfig) => fkSpanBy(c, true);
+const noWallFkSpan = (c: EngineConfig) => fkSpanBy(c, false);
+
 const mean = (s: Scan, k: string): number => {
   const b = s.span[k];
   return b && b.n > 0 ? b.sum / b.n : 0;
@@ -148,11 +190,35 @@ describe("#378 재개 게이트 — 정지 길이가 '무엇을 기다리는가'
   });
 
   it("벽 프리킥은 여전히 기다린다 (ceremonial — hero 명시 요구)", () => {
-    // 벽을 부르는 프리킥의 정지는 구 동작과 같아야 한다. 전체 평균이 내려가더라도
-    // **벽이 서는 건**은 짧아지면 안 된다 — 그건 M1-pre 가 방금 세운 벽을 도로 무너뜨린다.
-    // (벽 도착률 계약은 `restart-kick.test.ts` 가 별도로 지킨다 — 여기선 그게 여전히 green 인지가 증거.)
-    expect(mean(now, "free_kick")).toBeGreaterThan(0);
+    // ⚠️ 초판 단언은 `> 0` 뿐이라 **벽 프리킥을 전부 quick 으로 바꿔도 통과**했다(독립검증 m1).
+    // 헤드라인 AC 에 실질 가드가 없었던 것이라, 구 동작과의 **동등성**으로 바꾼다.
+    const wallNow = wallFkSpan(defaultEngineConfig);
+    const wallLegacy = wallFkSpan(legacyCfg());
+    // 절대 동일을 요구하지 않는다 — 게이트가 다른 재시작을 바꾸면 **전개가 달라져** 표본에 담기는
+    // 벽 프리킥 자체가 달라지기 때문이다. 요구는 "벽 프리킥의 정지가 짧아지지 않았다"이므로
+    // 상대 오차로 건다(실측 15.05 vs 14.99 = 0.4%).
+    const rel = Math.abs(wallNow - wallLegacy) / Math.max(1, wallLegacy);
+    expect(rel, `벽FK 현재 ${wallNow.toFixed(2)} vs 구동작 ${wallLegacy.toFixed(2)}`).toBeLessThan(0.05);
+    // 그리고 **빠른 재개보다 확실히 길다** — 이게 "벽만 심판 대기"의 실질 내용이다.
+    expect(wallNow, `벽FK ${wallNow.toFixed(2)} vs 사거리밖FK ${noWallFkSpan(defaultEngineConfig).toFixed(2)}`)
+      .toBeGreaterThan(noWallFkSpan(defaultEngineConfig) * 1.5);
   });
+
+  it("롤백 등가 — gate.enabled=false 는 게이트 도입 **이전과 같은 정지 길이**다", () => {
+    // ⚠️ 독립검증 B2: 초판은 `legacyBase(..., true)` 를 상수로 넘겨 **사거리 밖 프리킥이 8 → 14틱**
+    // 이 됐다 = 롤백 스위치가 0.32.0 이 아니었고, 이 파일의 모든 관계식이 부풀려진 baseline 위에
+    // 걸려 있었다. 그 부류를 다시 놓치지 않게 **구 공식을 여기서 직접 재현해** 비교한다.
+    const legacy = legacyCfg();
+    const expected =
+      legacy.rules.freeKickStoppageTicks + legacy.setPiece.freeKick.wallSetupTicks; // 벽 프리킥
+    const expectedNoWall = legacy.rules.freeKickStoppageTicks; // 사거리 밖 = 벽 가산 없음
+    expect(wallFkSpan(legacy)).toBeGreaterThanOrEqual(expected);
+    // 사거리 밖 프리킥이 벽 가산을 받으면 안 된다 — 그게 B2 의 지문이다.
+    expect(noWallFkSpan(legacy), `사거리밖FK(롤백) ${noWallFkSpan(legacy).toFixed(2)}`).toBeLessThan(
+      expected,
+    );
+    expect(noWallFkSpan(legacy)).toBeGreaterThanOrEqual(expectedNoWall - 1);
+  }, 600_000);
 
   it("데드락 없음 — 재개가 실제로 일어난다(경기당 ≥ 5건)", () => {
     expect(now.resumes / seeds.length).toBeGreaterThanOrEqual(5);

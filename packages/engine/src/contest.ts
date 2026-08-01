@@ -10,6 +10,7 @@ import { kickBall, nearestOnSweep } from "./ball";
 import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
 import { deliverySpeedFx, loftHangTicks, shotPowerFx } from "./kick";
 import { xgAtPoint } from "./decision";
+import { freeKickWallCount } from "./setpiece";
 import { kickoffSpot } from "./deadball";
 import { restartGateOf, gateBaseTicks, type RestartGate } from "./restart-gate";
 
@@ -169,7 +170,8 @@ function placeRestart(
   const base =
     gate === null
       ? config.setPiece.stoppageTicks
-      : gateBaseTicks(config, gate, kind as "throw_in" | "goal_kick");
+      // 스로인·골킥엔 벽이 없다 → withWall=false(구 코드의 `setPiece.stoppageTicks` 와 같은 자리).
+      : gateBaseTicks(config, gate, kind as "throw_in" | "goal_kick", false);
   if (taker) {
     // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 루프가 도달 시 글루.
     // 정지 시간 = taker 가 걸어와 도달하는 데 필요한 만큼(멀면 연장) → 점프 없이 끝까지 걸어옴.
@@ -306,8 +308,9 @@ export function restartFreeKick(
   // 실제 축구에서도 벽을 세우는 프리킥은 준비가 더 길다.
   // #378: 벽을 부르는 프리킥만 **심판 대기**(ceremonial), 사거리 밖이면 **빠른 재개**(Law 13 기본값).
   // hero: "1에서 말한 상황은 심판이 프리킥 벽 세울 때까지 기다려야 돼."
+  const wall = freeKickWallCount(pitch, config, side, spot.x, spot.y);
   const gate = restartGateOf(state, pitch, config, "free_kick", side, spot.x, spot.y);
-  const base = gateBaseTicks(config, gate, "free_kick");
+  const base = gateBaseTicks(config, gate, "free_kick", wall > 0);
   if (taker) {
     // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 = 도달까지(멀면 연장).
     const dist = assignWalkingTaker(state, taker, spot.x, spot.y);

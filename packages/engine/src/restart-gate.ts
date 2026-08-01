@@ -105,16 +105,26 @@ function teamGoalKickDirectness(state: SimState, side: TeamSide): number {
  * ⚠️ 상한(`walkStoppage` 의 `base + 16`)은 그대로 둔다 — 데드락 방지(#231/#239)가 최우선이라
  * 어떤 게이트도 무한 대기가 될 수 없다.
  */
-export function gateBaseTicks(config: EngineConfig, gate: RestartGate, kind: GatedKind): number {
+export function gateBaseTicks(
+  config: EngineConfig,
+  gate: RestartGate,
+  kind: GatedKind,
+  withWall: boolean,
+): number {
   const r = config.rules.restart.gate;
-  if (!r.enabled) return legacyBase(config, kind, true);
+  // ⚠️ `withWall` 을 **반드시 호출부에서 받아야 한다**. 초판은 여기서 `true` 를 상수로 넘겨서,
+  // 롤백 경로(`enabled=false`)의 **사거리 밖 프리킥이 8틱이 아니라 14틱**이 됐다 = 0.32.0 이
+  // 아니었다. 그 위에 이 웨이브의 관계식 계약과 증거 수치가 전부 걸려 있었다(독립검증 B2).
+  // 롤백 스위치가 조용히 다른 동작을 하는 것은 이 리포가 `vision`·`hold-pressure` 해시로
+  // 계약화해 온 규율의 정면 위반이다.
+  if (!r.enabled) return legacyBase(config, kind, withWall);
   switch (gate) {
     case "quick":
       return r.quickBaseTicks;
     case "teamShape":
       return r.teamShapeTicks;
     case "ceremonial":
-      return legacyBase(config, kind, true);
+      return legacyBase(config, kind, withWall);
   }
 }
 
