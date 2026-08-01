@@ -18,6 +18,22 @@ import { MatchLog } from "./match-log.js";
 export const SimulateHalf = z.union([z.literal(1), z.literal(2)]);
 export type SimulateHalf = z.infer<typeof SimulateHalf>;
 
+/**
+ * **계수 오버레이**(#383) — `EngineConfig` 의 수치/불리언 리프를 **점경로**로 덮어쓴다.
+ * 예: `{"contest.shootXgThreshold": 0.07, "decisionWeights.shoot": 0.34}`
+ *
+ * 중첩 JSON 이 아니라 평평한 맵인 이유는 **오타가 조용히 죽지 않게** 하기 위해서다 — 중첩
+ * deep-merge 는 존재하지 않는 키를 받아도 성공하고 아무 일도 안 일어난다("필드가 계약에 있다 ≠
+ * 엔진이 읽는다", #321·#337·#338). 평평한 경로는 기본 config 의 리프 전수와 집합 대조가 되므로
+ * 미지 경로가 곧 400 이다. 판정·병합의 SoT = 러너(`packages/server/src/runner/config-overlay.ts`) —
+ * 어떤 경로가 유효한지는 엔진을 손에 든 쪽만 알 수 있다.
+ *
+ * 값 타입이 number|boolean 뿐인 이유: `EngineConfig` 의 비수치 리프는 `version`·`coordMode`·
+ * `formations` 셋뿐이고 셋 다 **구조**라 오버레이 금지 대상이다.
+ */
+export const EngineConfigOverrides = z.record(z.string(), z.union([z.number(), z.boolean()]));
+export type EngineConfigOverrides = z.infer<typeof EngineConfigOverrides>;
+
 export const SimulateRequest = z.object({
   seed: z.string(),
   selectData: SelectData,
@@ -25,6 +41,14 @@ export const SimulateRequest = z.object({
   awayInput: TacticalInput,
   half: SimulateHalf,
   resumeState: z.unknown().optional(),
+  /**
+   * 계수 오버레이(#383). **additive optional** — 없으면 러너 기본값 = 이 필드 이전과 bit-identical.
+   *
+   * 서버는 이 값을 **매치 생성 시점에 매치 행에 복사**해 두고 두 하프에 같은 값을 실어 보낸다.
+   * 진행 중 매치가 "지금 라이브 값"을 조회하는 경로는 없다 — 그게 #241(버전 범프가 진행 매치를
+   * FAILED 로 밀어낸 사건) 재발을 규율이 아니라 구조로 막는 자리다.
+   */
+  configOverrides: EngineConfigOverrides.optional(),
 });
 export type SimulateRequest = z.infer<typeof SimulateRequest>;
 
@@ -46,5 +70,15 @@ export const SimulateResponse = z.object({
    * 클라 배율 보정이 필요하다. 그래서 **optional 이고 additive** 다.
    */
   playbackMs: z.number().int().positive().optional(),
+  /**
+   * **이 하프가 실제로 어떤 config 로 돌았나**의 지문(#383, sha256 앞 16자).
+   *
+   * 오버레이가 아니라 **병합된 유효 config 전체**의 해시다 — 러너 이미지가 바뀌어 기본값이
+   * 달라지면 같은 오버레이라도 다른 경기가 나오고, 그 사고가 지문에 잡혀야 한다. 서버는 이 값을
+   * 하프 번들(`match_halves`)에 박아 재현 계약의 네 번째 항("어떤 config 였나")을 완결시킨다.
+   *
+   * additive optional — 구 러너는 안 준다(그때는 `matches.engine_version` 만이 근거였다).
+   */
+  effectiveConfigHash: z.string().optional(),
 });
 export type SimulateResponse = z.infer<typeof SimulateResponse>;

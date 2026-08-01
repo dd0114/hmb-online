@@ -1,13 +1,19 @@
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from "node:http";
 import { pathToFileURL } from "node:url";
-import { SimulateRequest } from "@hmb/shared";
+import { EngineConfigOverrides, SimulateRequest } from "@hmb/shared";
 import { defaultEngineConfig } from "@hmb/engine";
 import { simulate } from "./simulate.js";
+import { OverrideError } from "./config-overlay.js";
+import { SmokeError, knobCatalog, validateOverrides } from "./config-validate.js";
 
 /**
  * 엔진러너(서번트①) HTTP 엔트리 — 무상태 RPC. env RUNNER_PORT(기본 8790).
  * GET /health → {engineVersion}. POST /simulate → SimulateRequest/Response(zod, shared).
  * 시뮬 경로에 Math.random/Date.now 없음(결정론, §2-5) — simulate.ts 참고.
+ *
+ * #383 계수 오버레이: GET /config/knobs(오버레이 가능한 리프 전수) · POST /config/validate
+ * (드라이런 — server-java admin 이 원장에 쓰기 **전에** 부른다). 러너는 여전히 **무상태**다 —
+ * "지금 걸린 오버레이"를 보유하지 않는다. 권위는 Java 하나이고, 러너는 요청에 실린 값만 본다.
  */
 
 async function readBody(req: IncomingMessage): Promise<string> {
@@ -21,6 +27,16 @@ function json(res: ServerResponse, code: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+/**
+ * 오류 본문. `issues` 를 **따로 실어 준다** — 운영자는 curl 로 이걸 읽는다(#383 §9).
+ * 문제 여럿을 한 번에 돌려주지 않으면 오타 하나마다 왕복이 한 번씩 는다.
+ */
+function errorBody(e: unknown): { error: string; issues?: string[] } {
+  const error = e instanceof Error ? e.message : String(e);
+  if (e instanceof OverrideError || e instanceof SmokeError) return { error, issues: e.issues };
+  return { error };
+}
+
 /** 서버 인스턴스 생성(listen 은 호출부 책임 — 테스트에서 임의 포트로 기동 가능). */
 export function createRunnerServer(): Server {
   return createServer((req, res) => {
@@ -29,6 +45,37 @@ export function createRunnerServer(): Server {
 
       if (req.method === "GET" && url === "/health") {
         json(res, 200, { engineVersion: defaultEngineConfig.version });
+        return;
+      }
+
+      if (req.method === "GET" && url === "/config/knobs") {
+        json(res, 200, knobCatalog());
+        return;
+      }
+
+      if (req.method === "POST" && url === "/config/validate") {
+        let body: unknown;
+        try {
+          body = JSON.parse((await readBody(req)) || "{}");
+        } catch (e) {
+          json(res, 400, { error: `invalid JSON body: ${e instanceof Error ? e.message : String(e)}` });
+          return;
+        }
+        const parsed = EngineConfigOverrides.optional().safeParse(
+          (body as { overrides?: unknown } | null)?.overrides,
+        );
+        if (!parsed.success) {
+          json(res, 400, {
+            error: "invalid overrides",
+            issues: parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`),
+          });
+          return;
+        }
+        try {
+          json(res, 200, validateOverrides(parsed.data));
+        } catch (e) {
+          json(res, 400, errorBody(e));
+        }
         return;
       }
 
@@ -62,8 +109,8 @@ export function createRunnerServer(): Server {
           const response = simulate(parsed.data);
           json(res, 200, response);
         } catch (e) {
-          // resumeState 형태 불량/버전 불일치 등도 malformed-request 취급(§ malformed → 400).
-          json(res, 400, { error: e instanceof Error ? e.message : String(e) });
+          // resumeState 형태 불량/버전 불일치, configOverrides 검증 실패 모두 malformed-request(400).
+          json(res, 400, errorBody(e));
         }
         return;
       }

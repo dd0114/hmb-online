@@ -10,6 +10,7 @@ import {
   type SimState,
   type SimPlayer,
 } from "@hmb/engine";
+import { applyOverrides, effectiveConfigHash } from "./config-overlay.js";
 import {
   TeamSide,
   Duty,
@@ -197,6 +198,15 @@ const SimStateSchema = z.object({
 
 const SerializedCarrySchema = z.object({
   configVersion: z.string(),
+  /**
+   * **유효 config 지문**(#383) — 계수 오버레이가 열리면 `configVersion` 만으로는 "같은 config 로
+   * 재개하는가"에 답할 수 없다(오버레이는 버전을 올리지 않는다 — 올리면 그게 #241 재현이다).
+   * 이 값이 h1 과 다르면 후반은 **다른 경기**가 되고, 그 갈라짐은 아무 신호도 내지 않는다.
+   *
+   * `.optional()` 인 것이 이 필드의 절반이다: 배포 순간 비행 중이던 **구 resumeState** 에는 이
+   * 키가 없고, 그걸 거부하면 이 웨이브 자신이 #241 을 일으킨다. 없으면 검사하지 않는다.
+   */
+  configHash: z.string().optional(),
   seed: z.string(),
   rngState: z.number(),
   nextTick: z.number(),
@@ -219,6 +229,7 @@ export function serializeCarry(carry: CarryState): SerializedCarry {
   const { byId: _byId, ...restState } = carry.state;
   return {
     configVersion: carry.config.version,
+    configHash: effectiveConfigHash(carry.config),
     seed: carry.seed,
     rngState: carry.rng.serialize(),
     nextTick: carry.nextTick,
@@ -245,6 +256,18 @@ export function deserializeCarry(raw: unknown, config: EngineConfig): CarryState
     throw new Error(
       `resumeState config version mismatch: resumeState=${s.configVersion} runner=${config.version}`,
     );
+  }
+  // #383: 버전이 같아도 **계수 오버레이가 다르면 다른 경기**다. 조용히 갈라지느니 여기서 죽는다
+  // (무음 desync 는 #154·#279·#306·#320 이 반복해 물린 함정이다). 구 상태(지문 없음)는 통과 —
+  // 그 관대함이 이 웨이브가 진행 중 매치를 죽이지 않는 이유다.
+  if (s.configHash !== undefined) {
+    const current = effectiveConfigHash(config);
+    if (s.configHash !== current) {
+      throw new Error(
+        `resumeState effective config mismatch: resumeState=${s.configHash} runner=${current} ` +
+          `(configOverrides 가 전반과 달라졌습니다 — 한 매치는 시작 시점 스냅샷 하나로만 돌아야 합니다)`,
+      );
+    }
   }
   const rng = createRng(s.seed);
   rng.restore(s.rngState);
@@ -307,13 +330,19 @@ function lastHashOf(matchLog: MatchLog): string {
  * 요청 검증(zod)은 HTTP 레이어(runner-main.ts) 책임 — 여기서는 이미 파싱된 타입을 받는다.
  * (resumeState 는 계약상 unknown 이라 여기서 직접 형태 검증한다.)
  *
- * config 파라미터: 러너(HTTP)는 항상 기본값 defaultEngineConfig 로 호출한다(운영 계약).
- * 비기본 config 는 fixture 생성 스크립트 전용(짧은 매치 샘플 — scripts/generate-runner-fixtures.ts).
+ * config 파라미터 = **기준(base) config**. 러너(HTTP)는 항상 defaultEngineConfig 를 쓰고,
+ * fixture 생성 스크립트만 짧은 매치 샘플용 config 를 넘긴다.
+ *
+ * #383: 요청의 `configOverrides`(점경로 계수 오버레이)를 그 base 위에 얹는다. 오버레이가 없으면
+ * `applyOverrides` 가 base 를 **그대로**(동일 객체) 돌려주므로 이 필드 이전과 bit-identical 이다.
+ * 검증 실패는 여기서 throw → 호출부(runner-main)가 400 으로 매핑한다.
  */
 export function simulate(
   req: SimulateRequest,
-  config: EngineConfig = defaultEngineConfig,
+  baseConfig: EngineConfig = defaultEngineConfig,
 ): SimulateResponse {
+  const { config, hash: effectiveHash } = applyOverrides(baseConfig, req.configOverrides);
+
   if (req.half === 1) {
     const carry = runFirstHalf(req.seed, req.homeInput, req.awayInput, req.selectData, config);
     const matchLog = carryToMatchLog(carry);
@@ -322,6 +351,7 @@ export function simulate(
       resumeState: serializeCarry(carry),
       lastHash: lastHashOf(matchLog),
       playbackMs: playbackMsOf(matchLog),
+      effectiveConfigHash: effectiveHash,
     };
   }
 
@@ -342,7 +372,12 @@ export function simulate(
         away: full.finalScore.away - half1Score.away,
       },
     };
-    return { matchLog, lastHash: lastHashOf(matchLog), playbackMs: playbackMsOf(matchLog) };
+    return {
+      matchLog,
+      lastHash: lastHashOf(matchLog),
+      playbackMs: playbackMsOf(matchLog),
+      effectiveConfigHash: effectiveHash,
+    };
   }
 
   // half === 2, resumeState 없음: 로스터 교체 폴백 — 독립 후반 시뮬(연속성 손실 PoC 허용,
@@ -351,5 +386,10 @@ export function simulate(
   // R2(#66) 지원 시 이 분기 제거.
   const carry = runFirstHalf(req.seed, req.homeInput, req.awayInput, req.selectData, config);
   const matchLog = carryToMatchLog(carry);
-  return { matchLog, lastHash: lastHashOf(matchLog), playbackMs: playbackMsOf(matchLog) };
+  return {
+    matchLog,
+    lastHash: lastHashOf(matchLog),
+    playbackMs: playbackMsOf(matchLog),
+    effectiveConfigHash: effectiveHash,
+  };
 }
