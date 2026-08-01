@@ -9,6 +9,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import online.hmb.common.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -119,6 +120,82 @@ public class EngineRunnerClient {
         } catch (Exception e) {
             throw new IllegalStateException("runner 호출 실패: " + e.getMessage(), e);
         }
+    }
+
+    // ── #383 계수 오버레이 운영 표면 ────────────────────────────────────
+    //
+    // 판정을 Java 가 흉내내지 않는 이유: **유효한 경로가 무엇인지는 엔진을 손에 든 쪽만 안다.**
+    // 여기서 규칙을 복제하면 엔진이 바뀔 때 두 곳의 진실이 조용히 갈라지고, 그 갈라짐은 "설정했는데
+    // 아무 일도 안 일어난다"(= 죽은 노브)로 나타난다 — #321·#337·#338 이 반복해 물린 형태다.
+
+    /** 오버레이 가능한 리프 전수 + 현재 기본값. */
+    public JsonNode configKnobs() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(runnerUrl + "/config/knobs"))
+                    .timeout(timeout)
+                    .GET()
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException("runner /config/knobs HTTP " + response.statusCode());
+            }
+            return objectMapper.readTree(response.body());
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("runner /config/knobs 호출 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 오버레이 드라이런 검증. 400 이면 <b>운영자에게 그대로 보여줄</b> 사유가 본문 {@code issues[]} 에
+     * 있다 — 여기서 뭉개면 오타 하나마다 왕복이 한 번씩 는다.
+     *
+     * @throws ApiException 400(검증 실패) — 호출부가 원장에 쓰지 않고 그대로 올린다.
+     */
+    public JsonNode validateConfigOverrides(Object overrides) {
+        try {
+            String body = objectMapper.writeValueAsString(Map.of("overrides",
+                    overrides == null ? Map.of() : overrides));
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(runnerUrl + "/config/validate"))
+                    .timeout(timeout)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            JsonNode root = objectMapper.readTree(response.body());
+            if (response.statusCode() == 400) {
+                throw ApiException.validation(issuesOf(root));
+            }
+            if (response.statusCode() != 200) {
+                throw new IllegalStateException("runner /config/validate HTTP " + response.statusCode()
+                        + ": " + truncate(response.body()));
+            }
+            return root;
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            // 러너가 안 떠 있으면 **검증 없이 통과시키지 않는다** — 게이트가 열려 있는 편이 낫다는
+            // 판단은 여기서 할 수 없다(그 값은 이후 모든 신규 매치에 실린다).
+            throw new IllegalStateException("runner /config/validate 호출 실패: " + e.getMessage(), e);
+        }
+    }
+
+    private static String issuesOf(JsonNode root) {
+        StringBuilder sb = new StringBuilder(root.path("error").asText("계수 검증 실패"));
+        JsonNode issues = root.path("issues");
+        if (issues.isArray() && !issues.isEmpty()) {
+            sb.setLength(0);
+            for (JsonNode i : issues) {
+                if (sb.length() > 0) {
+                    sb.append("; ");
+                }
+                sb.append(i.asText());
+            }
+        }
+        return sb.toString();
     }
 
     private static String truncate(String s) {

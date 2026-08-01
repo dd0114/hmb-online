@@ -31,16 +31,70 @@ public class AdminController {
     private final AdminNoticeService notices;
     private final AdminNoticeAssetService noticeAssets;
     private final AdminMailService mails;
+    private final AdminEngineConfigService engineConfig;
 
     public AdminController(AdminUserQueryService users, AdminPointsService points,
                            AdminEconomyService economy, AdminNoticeService notices,
-                           AdminNoticeAssetService noticeAssets, AdminMailService mails) {
+                           AdminNoticeAssetService noticeAssets, AdminMailService mails,
+                           AdminEngineConfigService engineConfig) {
         this.users = users;
         this.points = points;
         this.economy = economy;
         this.notices = notices;
         this.noticeAssets = noticeAssets;
         this.mails = mails;
+        this.engineConfig = engineConfig;
+    }
+
+    // ── 계수 무배포 운영 (#383) ───────────────────────────────────────────
+    //
+    // economy(#209)와 형태는 닮았지만 **적용 시점이 다르다**: economy 는 리로드 즉시 전 유저에게
+    // 걸리고, 계수는 **이 호출 이후 생성되는 매치부터** 걸린다(진행 중 매치는 시작 시점 스냅샷으로
+    // 끝까지 돈다 — #241 재발 방지). 그래서 응답에 그 문장을 실어 보낸다.
+
+    /** 지금 새 매치에 실릴 오버레이 + 출처 + 적용 시점. */
+    @GetMapping("/engine-config")
+    public Object engineConfig() {
+        return engineConfig.current().value();
+    }
+
+    /** 리비전 이력(누가·언제·왜·무엇을). 원장은 append-only 라 과거가 지워지지 않는다. */
+    @GetMapping("/engine-config/history")
+    public List<online.hmb.engine.LiveEngineConfigService.Row> engineConfigHistory(
+            @RequestParam(name = "limit", required = false, defaultValue = "20") int limit) {
+        return engineConfig.history(limit);
+    }
+
+    /** 오버레이 가능한 경로 전수 + 현재 기본값 — 경로 이름을 추측하지 않게 한다. */
+    @GetMapping("/engine-config/knobs")
+    public Object engineConfigKnobs() {
+        return engineConfig.knobs();
+    }
+
+    /** 드라이런 — 원장을 만들지 않는다. 400 이면 사유가 그대로 온다. */
+    @PostMapping("/engine-config/validate")
+    public Object validateEngineConfig(@RequestAttribute("userId") String actorUserId,
+                                       @RequestBody(required = false) EngineConfigRequest body) {
+        return engineConfig.validate(actorUserId, body == null ? null : body.overrides());
+    }
+
+    /**
+     * 오버레이 <b>전체 교체</b>. {@code Idempotency-Key} 를 항상 보내라 — 같은 키 + 같은 내용은
+     * 재전송으로 흡수되고, 같은 키 + <b>다른</b> 내용은 409 다. 기본값 복귀는 {@code overrides:{}}.
+     */
+    @PutMapping("/engine-config")
+    public Object replaceEngineConfig(@RequestAttribute("userId") String actorUserId,
+                                      @RequestBody EngineConfigRequest body,
+                                      @RequestHeader(name = "Idempotency-Key", required = false)
+                                      String idempotencyKey) {
+        if (body == null) {
+            throw online.hmb.common.ApiException.validation("요청 바디가 비어 있습니다");
+        }
+        return engineConfig.replace(actorUserId, body.overrides(), body.reason(), idempotencyKey).value();
+    }
+
+    /** 계수 오버레이 요청 — 점경로 맵 + 사유. 경로 유효성 판정은 러너가 한다(서버가 흉내내지 않는다). */
+    public record EngineConfigRequest(java.util.Map<String, Object> overrides, String reason) {
     }
 
     /** 유저 목록·닉네임 검색·페이징. 비번은 조회 SQL 에도 DTO 에도 없다. */
