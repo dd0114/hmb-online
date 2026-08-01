@@ -314,3 +314,43 @@ export function setFatigueObserver(o: FatigueObserver | null): void {
 export function fatigueObserver(): FatigueObserver | null {
   return activeFatigueObserver;
 }
+
+/**
+ * **예고 읽기 관측자**(#369, 진단 전용·옵트인) — `FatigueObserver` 와 같은 규율·같은 이유.
+ *
+ * 왜 필요한가: 누가 예고를 **읽었는가**는 스냅샷·이벤트 어디에도 안 나온다. 그런데 이 웨이브의
+ * AC 는 정확히 "읽은 리시버가 먼저 움직인다"라서, 읽은 쪽과 안 읽은 쪽을 **가르지 못하면**
+ * 관찰량이 반사실 팔(`readBase=1` 로 경기 전개를 통째로 바꾼 config)로 밀려난다 — 독립검증 m1 이
+ * 지적한 것이 그것이다. 여기서 읽기 판정을 그대로 흘려보내면 **출하 config 그대로** 두 표본을
+ * 가를 수 있다(신호도 6.6배로 훨씬 크다).
+ *
+ * ⚠️ 판정식을 진단 쪽에서 **다시 구현하지 않는다**는 것이 핵심이다 — 그러면 계약이 구현과
+ * 조용히 갈린다(이 리포가 `loft.ts`·`jitter.ts` 에서 지켜 온 "측정 함수 공유" 규율).
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type PlanReadObserver = (sample: {
+  tick: number;
+  side: string;
+  /** 예고 대상(리시버) id. */
+  forId: string;
+  /** 그 예고가 게시된 틱(수명 판정의 기준). */
+  planTick: number;
+  /** 도착 예정 지점(고정소수). */
+  xFx: number;
+  yFx: number;
+  /** 이 틱에 실제로 읽었는가. */
+  read: boolean;
+}) => void;
+
+let activePlanReadObserver: PlanReadObserver | null = null;
+
+/** 예고 읽기 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setPlanReadObserver(o: PlanReadObserver | null): void {
+  activePlanReadObserver = o;
+}
+
+/** 현재 활성 예고 읽기 관측자(없으면 null). */
+export function planReadObserver(): PlanReadObserver | null {
+  return activePlanReadObserver;
+}

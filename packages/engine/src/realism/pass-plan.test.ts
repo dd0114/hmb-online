@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { setDecisionObserver } from "../action";
-import { measurePlanLead, allReadConfig } from "./pass-plan";
+import { measurePlanSplit } from "./pass-plan";
 import type { SimState } from "../simstate";
 import type { MatchLog, TacticalInput } from "@hmb/shared";
 
@@ -98,17 +98,31 @@ describe("#369 예고 패스 — 리시버가 찰 것 같다를 읽는다", () =
   it("**출하값에서 읽은 리시버가 공보다 먼저 움직인다** — 광고한 동작이 실제로 난다", () => {
     // ⚠️ 이 계약이 이 웨이브에서 가장 중요한 것이다. 변이체 킬(위)은 "경기가 달라진다"만 말하고
     // **"광고한 동작이 나는가"는 말하지 않는다**. 실제로 초판 `pull` 0.45 는 변이체 킬이 green
-    // 이면서 읽은 리시버가 도착 예정 지점에서 평균 **2.27m 멀어지고** 있었다 = 기능이 사실상
-    // 발화하지 않는 상태. §2.5 새 노브 레지스트리가 세운 기준("값을 바꾸면 경기가 달라진다"가
-    // 아니라 "광고한 동작이 출하값에서 난다")을 이 파일에서 집행한다.
+    // 이면서 읽은 리시버가 도착 예정 지점에서 평균 2.4m **멀어지고** 있었다 = 사실상 미발화.
+    // §2.5 새 노브 레지스트리의 기준("값을 바꾸면 달라진다"가 아니라 "광고한 동작이 **출하값에서**
+    // 난다")을 이 파일에서 집행한다.
     //
-    // 안 읽은 리시버(출하 `readBase` 0.35 → 3분의 2)는 자기 역할 자리로 가는 것이 정상이라
-    // 평균에 섞이면 기제가 안 보인다 → **전원 읽기 팔**에서 잰다. 출하 빈도는 `readBase` 가 정한다.
-    const r = measurePlanLead(allReadConfig(defaultEngineConfig), seeds.slice(0, 2));
-    expect(r.launched, "표본(수명 안에 발사된 예고)").toBeGreaterThan(80);
-    expect(r.gainAvgM, `발사 전 좁힌 거리 ${r.gainAvgM.toFixed(2)}m`).toBeGreaterThan(0);
-    expect(r.gainPosPct, `좁힌 장면 ${r.gainPosPct.toFixed(1)}%`).toBeGreaterThan(30);
-  }, 300_000);
+    // ⚠️ 관찰량을 한 번 갈아탔다(독립검증 m1). 초판은 `readBase: 1`(전원 읽기) 팔의 평균으로
+    // 쟀는데 그건 **경기 전개 자체를 바꾼 반사실 팔**이라, "출하값에서 나는가"라는 질문에
+    // 답하지 못한다(메모리 `metric-artifact-magnitude-floor` 가 경고하는 표본 구성 아티팩트).
+    // 지금은 **출하 config 한 경기 안에서** 엔진의 읽기 판정(`setPlanReadObserver`)으로 표본을
+    // 갈라 READ vs UNREAD 를 대조한다 — config 를 안 건드리니 반사실이 없고 신호가 7배로 크다.
+    // (안 읽은 리시버가 도착 지점에서 멀어지는 것은 **정상**이다 — 자기 역할 자리로 가니까.
+    //  그래서 이 대조는 "읽는 것이 실제로 움직임을 바꾼다"를 직접 말한다.)
+    const r = measurePlanSplit(defaultEngineConfig, seeds);
+    expect(r.read.n, "READ 표본").toBeGreaterThan(150);
+    expect(r.unread.n, "UNREAD 표본").toBeGreaterThan(150);
+    // ① 읽은 쪽이 안 읽은 쪽보다 **훨씬 자주** 먼저 좁힌다(출하 실측 36.8% vs 5.1% = 7.2배).
+    expect(
+      r.read.gainPosPct,
+      `READ 좁힌 ${r.read.gainPosPct.toFixed(1)}% vs UNREAD ${r.unread.gainPosPct.toFixed(1)}%`,
+    ).toBeGreaterThan(r.unread.gainPosPct * 3);
+    // ② 절대 수준도 본다 — 관계식만 두면 UNREAD 가 조용해질 때 통과할 수 있다(#377 M2 에서
+    //    mark-jitter 가 정확히 그 방식으로 거짓 신호를 냈다: 분모가 움직이는 자[尺]).
+    expect(r.read.gainPosPct, `READ 좁힌 ${r.read.gainPosPct.toFixed(1)}%`).toBeGreaterThan(25);
+    // ③ 방향 — 읽은 쪽이 안 읽은 쪽보다 도착 지점에 **가깝게** 끝난다.
+    expect(r.read.gainAvgM).toBeGreaterThan(r.unread.gainAvgM + 2);
+  }, 600_000);
 
   it("능력치가 높은 팀이 더 자주 읽는다 — '훈련된 동료'가 계량된다", () => {
     // 읽기 확률 = readBase + readAttrSwing × ((mental+positioning)/2 − 50)/50.

@@ -11,6 +11,6 @@ export * from "./hash";
 export * from "./match";
 export * from "./fixtures";
 export type { SimState, SimPlayer, Ball, BallFlight, PossessionReason } from "./simstate";
-export { playerKey, buildById, playerAt, ballOwnerOf, claimantSideOf, otherSide, setPossession } from "./simstate";
+export { playerKey, buildById, playerAt, ballOwnerOf, claimantSideOf, otherSide, setPossession, INTENT_KINDS } from "./simstate";
 export type { TeamPlan } from "./teamplan";
 export { computeTeamPlan } from "./teamplan";

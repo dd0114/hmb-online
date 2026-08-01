@@ -24,6 +24,17 @@ const FLIGHT_KIND_CODE: Record<"pass" | "shot" | "loose", number> = { pass: 1, s
 const FNV_OFFSET = 2166136261;
 const FNV_PRIME = 16777619;
 
+/** 짧은 식별자 문자열(`H9`·`A11`)을 32bit 정수로 — 해시에만 쓴다(결정론: 순수 함수). */
+function strCode(v: string | undefined): number {
+  if (!v) return 0;
+  let x = 2166136261;
+  for (let i = 0; i < v.length; i++) {
+    x ^= v.charCodeAt(i) & 0xff;
+    x = Math.imul(x, 16777619);
+  }
+  return x >>> 0;
+}
+
 function mix(h: number, v: number): number {
   // 32bit 정수 v 를 4바이트로 흡수.
   let x = h;
@@ -103,6 +114,12 @@ export function hashState(state: SimState): string {
     h = mix(h, it.xFx | 0);
     h = mix(h, it.yFx | 0);
     h = mix(h, it.expiresTick | 0);
+    // ⚠️ `side`·`forId` 도 섞는다(#369, 독립검증 m3). 예고 패스가 들어오면서 **누구에게 붙은
+    // 의도인가가 동작을 결정하는 상태**가 됐다 — `forId` 가 다르면 다음 틱에 움직이는 선수가
+    // 달라진다. 해시에 없으면 그 값만 어긋난 상태가 **그 틱은 통과하고 다음 틱부터 갈라진다**
+    // (바로 아래 `runOrder` 주석이 같은 이유를 적어 뒀다). 문자열은 정수 스트림으로 흡수한다.
+    h = mix(h, it.side === "home" ? 1 : 2);
+    h = mix(h, strCode(it.forId));
   }
 
   // id 정렬 사본으로 순서 독립.

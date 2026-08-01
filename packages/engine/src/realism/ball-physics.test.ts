@@ -175,30 +175,11 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
    * 운 좋은 표본 덕이다 — 같은 config 의 60경기 환산은 3배가 아니라 5건이다). 60경기면 기대값이
    * 2~5 로 올라 오탐이 14% 이하로 내려간다. `harness.ts` 의 GUARD_SEEDS 도입 근거와 같은 논리다.
    */
-  // ⚠️ **표본 60 → 120**(#377 M3-A). 같은 이유·같은 방식이다 — 임계(`> 0`)는 한 자리도 안
-  // 건드리고 표본만 늘린다. 이번엔 60경기 표본이 실제로 0 을 뽑았다: 같은 웨이브에서
-  // `movement.passPlan.pull` 0.45 → 0.75 로 가며 GUARD_SEEDS 60경기 헤더 골이 3 → **0** 이 됐는데,
-  // **120경기로 넓혀 재면 39슛/6골 → 48슛/4골** 이다(헤더 슛은 오히려 **늘었다**).
-  // 즉 헤딩이 죽은 것이 아니라 60경기 기대값이 2~3 이라 포아송 P(0) ≈ 5~14% 인 게이트가
-  // 그 눈금을 뽑은 것이다. 120경기면 기대값 4~6 → P(0) ≈ 0.2~1.8%.
-  // (헤더 슛 래칫은 GUARD_SEEDS 60 그대로 둔다 — 고빈도라 검정력이 충분하고, 기준선 이력이
-  //  그 표본에 붙어 있다. 표본을 바꾸면 그 이력이 끊긴다.)
-  const HEADER_SEEDS = [
-    ...GUARD_SEEDS,
-    ...REALISM_SEEDS.map((s) => `29${s}`),
-    ...REALISM_SEEDS.map((s) => `31${s}`),
-    ...REALISM_SEEDS.map((s) => `37${s}`),
-  ];
-
-  function countHeaders(): { headerShots: number; headerGoals: number; goalSample: number } {
+  function countHeaders(): { headerShots: number; headerGoals: number } {
     const c = countHeaderStats(GUARD_SEEDS.map(logOf));
-    const wide = countHeaderStats(HEADER_SEEDS.map(logOf));
     // eslint-disable-next-line no-console
-    console.log(
-      `  [#306] ${GUARD_SEEDS.length}경기 헤더 슛 ${c.headerShots}건 · ` +
-        `헤더 골 ${wide.headerGoals}건(${HEADER_SEEDS.length}경기 표본)`,
-    );
-    return { ...c, goalSample: wide.headerGoals };
+    console.log(`  [#306] ${GUARD_SEEDS.length}경기 헤더 슛 ${c.headerShots}건 · 헤더 골 ${c.headerGoals}건`);
+    return c;
   }
 
   /**
@@ -222,7 +203,13 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
     // #365(경기 90 → 45분): 총량 래칫은 **경기 길이에 비례하는 카운트**다. 상수 20 을 그대로 두면
     // 길이를 반으로 줄인 날 "헤딩이 침식됐다"는 거짓 신호가 난다. 래칫의 뜻(기준선의 0.83배)은
     // 그대로 두고 **길이로 환산**한다. 기준선 이력: 0.28.0 = 24건/60경기(90분) · #358 = 28건.
-    const floor = Math.round(20 * (defaultEngineConfig.matchMinutes / 90));
+    // ⚠️ #377 M3-A 로 **래칫을 조인다**(10 → 12). 이유: 그 웨이브의 예고 패스(#369)가 헤더 슛을
+    // 60경기 **24 → 15 로 침식**시켰는데(패스가 잘 이어져 걷어내기·롱볼 경합이 줄었다),
+    // 하한 10 은 기준선 24 의 0.42배라 그 37% 침식이 **조용히 통과했다** — 독립검증이 지적한
+    // "상류 래칫도 이 회귀를 못 잡는다"가 정확했다. 침식 자체는 config 주석에 **선언된 회귀**로
+    // 남기고(근본 해소는 #316/S5 크로스 생성기), 다음 침식은 여기서 잡는다.
+    // 12 = 현 실측 15 의 0.8배 = 원래 래칫이 쓰던 비율(20/24 ≈ 0.83)과 같은 뜻.
+    const floor = Math.max(12, Math.round(20 * (defaultEngineConfig.matchMinutes / 90)));
     expect(HEADERS.headerShots, `헤더 슛 총량 래칫 (하한 ${floor})`).toBeGreaterThanOrEqual(floor);
   });
 
@@ -242,7 +229,12 @@ describe("#306 S6 — 공중볼과 헤딩", () => {
   // 공격수가 골 근처면 헤더 슛이 된다. 크로스 없이도 **공중볼 경합의 총량**이 올라간 것이 원인이다.
   // → `it.fails` 해제. 이제 이 계약은 정방향 게이트다.
   it("헤더 슛 중 골도 0 이 아니다", () => {
-    expect(HEADERS.goalSample, `헤더 골 총 0건 (${HEADER_SEEDS.length}경기)`).toBeGreaterThan(0);
+    // ⚠️ **표본을 늘려 통과시키지 않는다**(#377 M3-A 독립검증 blocker). 이 웨이브 초판은
+    // `pull` 0.75 에서 이 게이트가 red(60경기 골 0)가 되자 표본을 60 → 120 으로 넓혔고,
+    // 그 근거로 "120경기로 재면 헤더 슛이 오히려 늘었다(39→48)"를 적었다. **틀린 수치였다** —
+    // 커밋된 시드 구성으로 다시 재면 43 → 29(−33%)로 **부호가 반대**였다(내가 다른 시드 집합으로
+    // 쟀다). 표본 확대를 되돌리고, `pull` 을 0.7 로 내려 **원래 표본에서** green 이 되게 했다.
+    expect(HEADERS.headerGoals, `헤더 골 총 0건 (${GUARD_SEEDS.length}경기)`).toBeGreaterThan(0);
   });
 
   // ── #327 착지 계약 — "떠 있는 공은 반드시 떨어진다" ────────────────────────────────

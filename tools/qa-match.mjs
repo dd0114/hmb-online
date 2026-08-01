@@ -70,10 +70,14 @@ for (const o of ev.filter((e) => e.type === "shot" && e.detail === "off_target")
   // 의 `kickBoundedEnd`(창을 하프 안으로 자르기)와도 같은 부류다 — 회귀가 아니라 **측정 창 버그**.
   // 실제 오탐: #377 M3-A 데모의 `off_target@719` → t720 이 half_whistle+kickoff 였다
   // (t719 실측 공 x=-3.5 = 골라인 밖, 즉 벗어남은 정상적으로 보였다).
+  // ⚠️ 이 경우 **검사를 건너뛴다**(선방 검사의 `whistleCuts` 와 같은 처리). 이벤트 틱의 공으로
+  // 대신 보려 했다가 더 나쁜 오탐을 얻었다 — 그 틱의 공은 아직 슈터 발밑이라 거의 항상
+  // 포스트 사이·피치 안이다. 판정할 근거가 없을 땐 판정하지 않는 것이 맞다.
   const cutByWhistle = ev.some(
     (e) => (e.type === "half_whistle" || e.type === "full_whistle" || e.type === "kickoff") && e.tick === o.tick + 1,
   );
-  const rb = (cutByWhistle ? ballAt(o.tick) : ballAt(o.tick + 1)) || ballAt(o.tick);
+  if (cutByWhistle) continue;
+  const rb = ballAt(o.tick + 1) || ballAt(o.tick);
   if (rb && rb.x > 0 && rb.x < 105 && inPosts(rb.y)) P(`빗나감 t${o.tick}: 공이 골문 안쪽에 머묾 (${rb.x.toFixed(1)},${rb.y.toFixed(1)}) — 벗어남 안 보임`);
 }
 

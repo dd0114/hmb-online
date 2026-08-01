@@ -5,6 +5,7 @@ import {
   defaultEngineConfig,
   createRng,
   buildById,
+  INTENT_KINDS,
   type EngineConfig,
   type CarryState,
   type SimState,
@@ -157,7 +158,10 @@ const TeamPhaseSchema = z.enum([
 const IntentSchema = z.object({
   side: z.enum(["home", "away"]),
   fromId: z.string(),
-  kind: z.enum(["pass_to", "run_to", "cross_from"]),
+  // ⚠️ 엔진의 `INTENT_KINDS` 를 **그대로** 쓴다 — 손으로 베낀 사본이던 시절, 엔진이 `pass_plan`
+  // 을 추가했는데 이 enum 이 따라오지 않아 **하프 경계 상태에 그 의도가 실린 시드에서만**
+  // `resumeState` 가 거부됐다(진행 중 매치 재개 실패, #241 계열). 사본을 없애는 것이 해법이다.
+  kind: z.enum(INTENT_KINDS),
   xFx: z.number(),
   yFx: z.number(),
   tick: z.number(),

@@ -226,7 +226,7 @@ describe("롤백 스위치 (#147 W3)", () => {
   // #377 M3-A(#369 예고 패스)도 같은 성격이다 — 예고 게시·읽기는 **오프더볼 목표**를 움직이는
   // 전역 변경이라 시야 롤백 경로(`vision.enabled=false`)에서도 똑같이 걸린다. 이 계층의 스위치는
   // 따로 있다(`movement.passPlan.enabled`). 21c1b46f → 아래 상수.
-  const ROLLBACK_HASH = "cc6ade0f";
+  const ROLLBACK_HASH = "5fdcb658";
   // #182 재보정(foul.base 0.017→0.0178)으로 marked 변형의 해시가 바뀐다.
   // ⚠️ **내 트리 출력을 베끼지 않았다** — `origin/main`(6f1b12b) 를 별도 워크트리로 체크아웃해
   // 같은 foul.base 를 넣고 독립 도출한 값이다(main 에는 corner 기능 자체가 없다):
@@ -255,7 +255,7 @@ describe("롤백 스위치 (#147 W3)", () => {
   // #349/#347(engine@0.31.0) → 아래 상수(위 ROLLBACK_HASH 와 같은 이유).
   // #377 M2(engine@0.32.0) → 아래 상수(위 ROLLBACK_HASH 와 같은 이유).
   // #370 되돌림 → 3a11b097.
-  const ROLLBACK_HASH_MARKED = "d103da24"; // #377 M3-A(#369 예고 패스) 재기록 — 위와 같은 이유.
+  const ROLLBACK_HASH_MARKED = "347d54a5"; // #377 M3-A(#369 예고 패스) 재기록 — 위와 같은 이유.
 
   // #176: 데드볼 접근 금지 규칙은 **롤백 스위치 없이 무조건 적용**(hero 결정)이라 vision-off 출력도
   // 함께 움직인다. 이 상수의 목적은 "레거시와 같다"가 아니라 **"롤백 경로가 조용히 드리프트하지

@@ -8,6 +8,7 @@ import { fromFixed, fclamp, fdist, toFixed, stepToward, isqrt } from "./fixedmat
 import { attackGoal, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
 import { passOptions, nearestOpponent, pressureCount, pressureCountAt } from "./perception";
 import { aimErrorDeg, aimWithError, deliverySpeedFx, isLofted, overhitOut, passPowerFx, shotPowerFx } from "./kick";
+import { planReadObserver } from "./action";
 
 /**
  * decision — 행동 선택.
@@ -1020,7 +1021,16 @@ function readPassPlan(state: SimState, player: SimPlayer, config: EngineConfig):
     // **한 예고에 대해 판정이 매 틱 뒤집히지 않게** 한다(뒤집히면 그게 곧 #185 진동이다).
     const attr = (player.attrs.mental + player.attrs.positioning) / 2;
     const prob = pp.readBase + pp.readAttrSwing * ((attr - 50) / 50);
-    if (varietyNoise(state.seedHash, player.idHash, it.tick) >= prob) return null;
+    const read = varietyNoise(state.seedHash, player.idHash, it.tick) < prob;
+    // 진단 훅(옵트인·결정론 영향 0) — 읽기 여부는 로그 어디에도 안 나오므로, 계약이 출하 config
+    // 그대로 "읽은 쪽 vs 안 읽은 쪽"을 가르려면 창이 하나 필요하다(독립검증 m1).
+    const obs = planReadObserver();
+    if (obs) obs({ tick: state.tick, side: player.side, forId: player.id, planTick: it.tick, xFx: it.xFx, yFx: it.yFx, read });
+    // ⚠️ 읽기에 실패하면 **그 틱엔 다른 예고도 안 본다**(첫 건에서 return). 의도다 —
+    // 판정 버킷이 게시 틱이라, 실패한 예고를 건너뛰고 다음 예고를 보면 "이번 틱엔 안 읽혔는데
+    // 다음 틱엔 읽힌다"가 수명 안에서 계속 뒤집힌다 = 목표가 매 틱 튀는 #185 진동이다.
+    // 한 리시버는 한 예고에 대해 **수명 내내 같은 판정**을 유지한다.
+    if (!read) return null;
     return { x: it.xFx, y: it.yFx };
   }
   return null;
