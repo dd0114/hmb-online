@@ -113,6 +113,11 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 > 배포 지시가 오기 전에 **미리 등록해 두는** 자리다. 여기 있는 건 §0.5 를 돌릴 때 **반드시 같이** 확인하고,
 > 처리하고 나면 항목을 지우고 `deploy-log` 에만 남긴다.
 
+**등록분 — 없음.** (직전 = 엔진 열차 `engine@0.34.0` → **소진**: 2026-08-01 `v3.14` 로 발차. 라이브 engine@0.34.0 ·
+Flyway v36 · 잔여 결함 **#388**(헤더 시계 0~44', apps/web 소유 — 표시 전용이라 롤백 안 함). 아래 접힌 원문은 이력.)
+
+<details><summary>소진된 등록분 — 엔진 열차 engine@0.33.0→0.34.0 (v3.14 로 배포됨)</summary>
+
 **등록분 — 엔진 열차 `engine@0.33.0` (hero 확정, 중간 발차 / 조립 GO 는 main 이 머지 SHA 와 함께 준다)**
 
 > ⚠️ 이 열차는 **v3.02 이후 처음으로 `release/*` 계보가 아니라 `main` 직행**이다(엔진 배포 승인 =
@@ -177,6 +182,8 @@ executor 도 `packages/server` 변경이라 **재기동**하고, **release 워�
 
 *(직전 등록분 = #309 운영 컨텐츠 무배포화(V30~V32) — **소진**: 라이브 Flyway **v36**, `notice_assets`·`char_bundles` 존재 확인. 그 앞 = `V25`·`V21` = `deploy-2` 에서 소진.)*
 
+</details>
+
 ---
 
 ## 0.8 배포 실행 실무 — 함정과 판정법 (여러 번 데인 것만)
@@ -192,6 +199,34 @@ executor 도 `packages/server` 변경이라 **재기동**하고, **release 워�
 - 절차: 배포는 태그 체크아웃으로 하고, **기록은 `git checkout -B <작업브랜치> origin/main` 후 append → commit → push**. 앵커(직전 항목 제목)가 파일에 있는지 먼저 `grep -c` 로 확인하라.
 - ⚠️ **덮어쓰기는 브랜치 계보 말고 `Edit` 자체로도 난다**(v3.09 에서 실제로 냈다). 새 항목을 넣으려고 `old_string` 에 **직전 항목의 `## 제목` 줄까지 물리고** `new_string` 에 그 줄을 **되돌려 놓지 않으면**, 본문은 남고 제목만 증발해 직전 배포가 내 항목에 흡수된다(파일은 멀쩡해 보인다). 앵커는 `---` 위쪽에서 끊고, **커밋 전에 반드시 두 줄로 검산**하라:
   `grep -c "배포 v<직전>" docs/deploy-log.md` → **1** · `git diff --numstat docs/deploy-log.md` → **삭제 0**(순수 추가여야 한다).
+
+### ⚠️ **이미지를 새로 빌드했으면 태그 전환 전에 컨테이너 스모크를 한다** (#385, v3.14 실패에서 승격)
+
+로컬 게이트는 **워크스페이스 심볼릭링크** 위에서 돈다. 이미지는 `Dockerfile` 이 **명시적으로 COPY 한 것만** 들고 간다.
+그래서 **러너가 새 워크스페이스를 import 하기 시작한 날**, vitest·typecheck·러너 로컬 기동이 전부 green 인데
+컨테이너만 죽는다 — v3.14 1차 발차가 정확히 그렇게 죽었다(`ERR_MODULE_NOT_FOUND: @hmb/viewer-core`, 재기동 8회).
+**라이브 스택을 건드리기 전에** 버려도 되는 컨테이너로 확인하면 이 부류가 전부 걸린다:
+
+```bash
+docker build -f packages/server/Dockerfile -t hmb/servants:trial .          # 리포 루트
+docker run -d --name runner-smoke --user node -e RUNNER_PORT=8790 \
+  -p 18795:8790 hmb/servants:trial npm run runner --workspace=@hmb/server
+docker logs runner-smoke | tail -5          # ① 모듈 로드 — 여기서 ERR_MODULE_NOT_FOUND 가 잡힌다
+curl -s localhost:18795/health              # ② {"engineVersion":"engine@x.y.z"}
+# ③ 실제 왕복 — import 만 통과하고 호출부에서 죽는 경우가 있다. 엔진 픽스처로 한 판 태운다.
+docker exec runner-smoke node -e '
+import("tsx/esm/api").then(async (api)=>{ api.register();
+  const e = await import("/app/packages/engine/src/index.ts");
+  const r = await fetch("http://localhost:8790/simulate",{method:"POST",
+    headers:{"content-type":"application/json"},
+    body: JSON.stringify({seed:e.demoSeed, selectData:e.demoSelect, homeInput:e.demoHome, awayInput:e.demoAway, half:1})});
+  const j = await r.json();
+  console.log(r.status, j.matchLog?.tickSnapshots?.length, j.playbackMs, j.lastHash); });'
+docker rm -f runner-smoke
+```
+
+③ 이 핵심이다 — v3.14 의 결손 심볼(`autoPaceDurationMs`)은 `playbackMs` 를 만드는 함수라, **`playbackMs` 가
+숫자로 나왔다는 것 자체가 그 호출부까지 실행됐다는 증거**다. `/health` 만 보면 못 잡는 결손이 있다.
 
 ### 스모크 판정법 (틀린 판정을 부르는 것들)
 - **"보인다/가려졌다" 는 좌표로 판정하지 마라 — 실제로 클릭해서 타이핑해 보고 값을 회수하라.** `elementFromPoint` 가 **조상 컨테이너**를 돌려주는 걸 "가림"으로 오독한 적이 있다(v3.01). 뷰포트 판정도 `getBoundingClientRect` + **입력 성공**을 같이 본다(v3.08 에서 4개 뷰포트 그렇게 검증).

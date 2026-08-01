@@ -6,6 +6,80 @@
 
 ---
 
+## 2026-08-01T12:44Z — **배포 v3.14 — 엔진 열차** `engine@0.23.0 → 0.34.0` (**main 직행**, 롤백 이후 첫 엔진 배포)
+
+- **git**: **`8a0352d`**(`main`) = **`f7d26be`**(hero 확정 머지 SHA = `release/engine-v2@44dd3e3` + #382 정경 문구 `2fa9923`) **+ Dockerfile 픽스 1커밋**(#385, 아래).
+- **버전**: engine **`engine@0.34.0`** · server-java 0.1.0 · servants 0.0.1 · web `8a0352d`.
+- **이미지**: `hmb/server-java:p3` = `sha256:8cc6d23449f5…`(f7d26be 빌드 재사용 — server-java 코드 무변경) · `hmb/servants:p3` = `sha256:c47df9167cb1…`(**재빌드**).
+- **롤백 지점**: `prev-live` = java `sha256:4c1deafe4b55…` / runner `sha256:f724f3fd5e1a…`(= engine@0.23.0).
+- **URL**: web `https://hmb-online.pages.dev` → 백엔드 `https://proceeds-micro-praise-sorts.trycloudflare.com`.
+- **DB 백업**: `~/hmb-db-backups/pre-enginetrain2-20260801T124259Z.db` — `integrity_check ok` · flyway **36** · users **189** · matches **78** · sha256 `cab5a67273e7…`.
+- **마이그레이션 0건**(발차 직전 재스캔). java 기동 로그 = `Successfully validated 36 migrations` / `No migration necessary`.
+- **#241 관문**: 발차 직전 진행 중 매치 **0건** → 단절 피해 **0**. (12:44:32Z 확인 → 12:44:39Z 태그 전환.)
+
+### ⚠️ 이 열차는 한 번 실패하고 되돌아왔다 — 그게 이 항목의 핵심 교훈이다
+
+**1차 발차(12:31Z)에서 러너가 크래시루프로 죽었다**: `Cannot find package '@hmb/viewer-core' imported from
+/app/packages/server/src/runner/simulate.ts` (재기동 8회). ~60초 만에 `prev-live` 로 롤백, **피해 0**
+(그 창에 생성된 매치 0 · 진행 중 매치 0 · web 미배포 · DB 무변경). 원인·픽스 = **#385**.
+
+원인은 코드가 아니라 **이미지 조립 목록**이었다 — `packages/server/Dockerfile` 이 shared·engine·server
+세 워크스페이스만 `COPY` 하는데 러너가 `@hmb/viewer-core/playback`(`autoPaceDurationMs`)을 새로 import 한다.
+**로컬은 워크스페이스 심볼릭링크로 해석되므로 vitest·typecheck·러너 로컬 기동이 전부 green** 이었고,
+결손은 **컨테이너 안에서만** 드러났다.
+
+📌 **그래서 이번엔 발차 전에 컨테이너 스모크를 넣었다**(신설 절차 — 플레이북 §0.8 에 승격):
+새 이미지를 **버려도 되는 컨테이너로 별도 포트에 띄워** ①모듈 로드 ②`/health` ③**실제 `/simulate` 왕복**까지
+확인하고 나서 태그를 전환했다. 실측: `status 200 · ticks 1350 · events 330 · playbackMs 202767 · lastHash 987c5789`
+— `playbackMs` 가 나왔다는 건 **문제의 `autoPaceDurationMs` 호출부까지 실행됐다**는 뜻이라 이 스모크가
+1차 실패를 정확히 잡는다.
+
+### 동승분 (0.23.0 → 0.34.0 사이 전부 — "엔진만 올린다"가 아니다)
+
+0.26(공 물리 속도벡터·행동 계층·`clearance`) · 0.28(사슬 코어 — **v3.09 로 나갔다 롤백된 그 버전**) ·
+0.29(**파울 복구** 2.15→11.55) · 0.30(#365 경기 45분·표기 0~90·재생 1.2x) · 0.31(데드볼 룰 정합) ·
+0.32(입력 소생 — 피로 경제·죽은 슬라이더 배선) · 0.33(데드볼 유동 재시작) · 0.34
+\+ **#365 후속 재생 방식**(`7e3a134` — 하프 창 = 매치별 실제 재생 길이 `playbackMs` · 고정 배속.
+*v3.12 로 단독 발차하려다 HOLD 했던 그 변경* — 엔진이 같이 올라가는 이 열차에서만 옳다) + #382 정경 문구.
+
+### 스모크 — 실계정 `deploy-smoke` 연습 1경기 완주(BRIEFING → FIRST_HALF → SECOND_HALF → FINISHED, 2:0)
+
+| 항목 | 결과 |
+|---|---|
+| 러너 엔진 | `{"engineVersion":"engine@0.34.0"}` · 재기동 **0** |
+| 서빙된 하프 로그 | `configVersion=engine@0.34.0` (전·후반 둘 다) |
+| **하프 창 = `playbackMs`** | **189017ms · 187633ms** — 폴백 `half-real-ms: 220000` **아님** ⇒ #365 후속이 실제로 산다 |
+| 재생 완주 | 1350틱을 189s 창 안에서 완주(헤더 22분 ≈ 1320틱) |
+| **되감기** | **0** (2초 간격 107 샘플, 전 구간 단조) |
+| 최장 정체 | 10s |
+| **파울 복구** | **4 : 4** (v3.09 의 2.15 퇴보 해소 = 0.29 복구분 확인) |
+| 카드 / 프리킥 | **1** / **8** |
+| `clearance` | **6** (0.26 신설 행동이 라이브에서 발화) |
+| 슛 / 골 | 20 : 12 / 2 : 0 |
+| 오토모드 | ✅ 감독시간 자동 스킵(전반 종료 즉시 후반) |
+| 메시지함 / 리그(V36) | ✅ 200 / ACTIVE — **마이그레이션 diff 0 이라 무변경** |
+| JS 콘솔 에러 | **0**. 4xx 는 `/api/chars/index` 404 **1건뿐이고 설계된 폴백 트리거**다(`char_bundles` 0행 → web 이 구운 `/chars` 사용) |
+
+### ⚠️ 스모크에서 **새 결함 1건 발견 — 롤백하지 않고 라이브 유지**: 헤더 시계가 0~44' (#388)
+
+같은 순간에 **헤더 25'** / **로그줄 48'~51'** — 정확히 2배. #365 가 하프를 1350틱으로 줄이고 표기를
+`displayMinutes: 90` 으로 분리했는데 `apps/web` 헤더(`stage-state.ts:clockLabel`)만 **엔진 틱을 그대로
+분으로 읽는다**(`tick/60`). 엔진은 `minute` 을 제대로 구워 보낸다(실측 `half_whistle tick=1350 minute=45`).
+
+**직전 라이브 0.23.0 은 하프 2700틱이라 `tick/60` 이 우연히 0~90 과 일치했다 — 이 열차가 그 우연을 깼다.**
+표시 전용이고 스코어·보상·재생 속도·하프 창은 전부 정상이라 **롤백 사유로 보지 않았다**. 픽스는
+`apps/web` 소유 → **#388**. (viewer-core `clockScaleOf` 주석이 이 결함을 정확히 예고해 뒀는데도 났다.)
+
+### 실행 기록
+
+executor 는 **main 체크아웃**(`/Users/peter.park/spider2/hmb-online`)에서 재기동 — 구 프로세스는 릴리스
+워크트리에서 돌고 있었다(PID 지정 종료, `pkill -f` 금지). web 은 `dist` 삭제 후 **콜드 빌드** → Pages 배포.
+`status.sh` 전 항목 ✓ (java·runner healthy · executor · 터널 · CORS 결선 · web→백엔드 결선).
+
+배포자: hmb:deploy2 세션 (hero GO — "배포해", main 조립 지시).
+
+---
+
 ## 2026-07-31T17:10Z — **배포 v3.13** — **웹 단독**: 데스크톱 레이아웃 2건(#354 감독시간 입력칸 · #355 결과 CTA 화면 밖)
 
 - **git**: **`27249c3`**(`release/3.13`) = **`deploy-3.11` 계보 + `cherry-pick -m 1 36e7e85`**(본체 3커밋 `5449020`·`5d84eb9`·`f0f4da9`). 충돌 0.
