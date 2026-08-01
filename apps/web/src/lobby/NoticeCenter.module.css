@@ -36,6 +36,10 @@
   border: 1px solid var(--bg-elevated);
 }
 
+/*
+ * 높이 규칙은 팝업(`NoticePopup.module.css` 머리말)과 **같다** (#386) — 목록도 같은 공지 본문을
+ * 같은 렌더러로 그리므로, 한쪽만 고치면 "팝업에선 읽히는데 다시 보기에선 안 읽히는" 상태가 된다.
+ */
 .overlay {
   position: fixed;
   inset: 0;
@@ -44,6 +48,7 @@
   align-items: center;
   justify-content: center;
   padding: 18px;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px) + (100lvh - 100svh));
   z-index: 40;
 }
 
@@ -82,7 +87,18 @@
   flex: 1 1 auto;
 }
 
+/*
+ * ⚠️ **`flex: 0 0 auto` 가 이 목록이 스크롤되는 이유다** (#386).
+ *
+ * `.list` 는 세로 플렉스라 `li` 의 기본값은 `flex-shrink: 1` — 내용이 넘치면 목록이 스크롤되는 게
+ * 아니라 **항목들이 눌린다**. 게다가 여기 `overflow: hidden` 이 붙어 있어 눌린 만큼이 **소리 없이
+ * 잘린다**: 오시야스 공지(히어로 이미지 + 본문)를 펼치면 실측 항목 높이가 **641 → 368**(clientHeight,
+ * 390×664·공지 4건 표본)로 눌려 이미지(321) 아래 글이 통째로 사라졌고, `scrollHeight === clientHeight`
+ * (505/505) 라 **스크롤도 안 됐다**
+ * (= "다 읽을 방법이 없다"). 팝업 쪽 같은 증상(#386 ②)과 뿌리가 다르니 같이 되돌리지 마라.
+ */
 .item {
+  flex: 0 0 auto;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg);

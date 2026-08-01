@@ -116,16 +116,18 @@ test.describe("#248 후속 — 튜토리얼이 공지보다 먼저다", () => {
   });
 
   /**
-   * **튜토리얼이 끝나는 순간에도 띄우지 않는다**(매니저 확정).
+   * ⚠️ **이 계약은 #386 에서 뒤집혔다** — 예전 성질은 "완료 **직후 같은 화면**에는 안 뜨고 다음
+   * 진입에 뜬다"였다(매니저 확정: 완료 저장이 `["deck"]`·`["me"]` 를 무효화하며 화면이 바뀌는
+   * 프레임을 피한다). 그 미룸 자체는 옳았지만 **"다음 진입"이 영영 안 오는 경로**가 있었다:
+   * 온보딩이 완료 저장되지 않은 채 끝나면 접속할 때마다 코치마크가 처음부터 다시 돌아, 매 세션
+   * 첫 홈이 늘 튜토리얼 방문이었다(#386 W1 실측 — 신규 유저가 공지를 한 번도 못 봤다).
    *
-   * 완료 저장(`persistTutorialDone`)이 `["deck"]`·`["me"]` 캐시를 무효화해 덱 지급 결과로 화면이
-   * 바뀌는 바로 그 프레임이다 — 거기에 점검 공지를 얹으면 **지금 고치려는 상황이 그대로 재현된다**.
-   * 그렇다고 삼키지도 않는다: **다음 로비 진입**에 정상적으로 뜬다.
-   *
-   * ⚠️ 마지막 단언(억제 저장소가 비어 있다)이 이 계약의 핵심이다 — 안 띄운 공지를 "봤다"로
-   * 기록해 버리면 그 유저는 **영영 못 본다**. 미룸과 삼킴의 차이가 정확히 이 저장소에 있다.
+   * hero 확정(2026-08-01): **코치마크가 끝나면 그 자리에서 띄운다.** 원래 피하려던 "화면이 바뀌는
+   * 프레임"은 방문 전체가 아니라 **정착 시간**(`TUTORIAL_SETTLE_MS`)으로만 피한다.
+   * 새 계약의 본체는 `e2e/p386-notice-gate.spec.ts` 이고, 여기서는 **미룸이 삼킴이 아니라는 것**
+   * (억제 저장소 소진 0)만 남긴다 — 그건 뒤집히지 않은 성질이다.
    */
-  test("튜토리얼 완료 **직후 같은 화면**에도 안 뜨고, **다음 진입**에 뜬다 (소진 기록 0)", async ({
+  test("튜토리얼 중에는 미루지만 **삼키지 않는다** — 끝나면 같은 화면에서 뜬다 (소진 기록 0)", async ({
     page,
   }) => {
     await mockLobby(page, { payload: oneNotice, tutorialDone: false });
@@ -133,15 +135,7 @@ test.describe("#248 후속 — 튜토리얼이 공지보다 먼저다", () => {
     await expect(page.getByTestId("tutorial-bubble")).toBeVisible();
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
 
-    // ① 완료(건너뛰기) — 코치마크는 사라지지만 공지는 아직 아니다.
-    await page.getByTestId("tutorial-skip").click();
-    await expect(page.getByTestId("tutorial-bubble")).toHaveCount(0);
-    // 완료 처리·캐시 무효화가 다 끝날 시간을 준다(늦게 튀어나오는 것도 잡는다).
-    await page.waitForTimeout(1500);
-    await expect(page.getByTestId("notice-popup"), "완료 직후 같은 화면에는 안 뜬다").toHaveCount(0);
-    await expect(page.locator('[role="dialog"]')).toHaveCount(0);
-
-    // ② 아직 아무것도 소진되지 않았다 — 미룬 것이지 본 것이 아니다.
+    // ① 아직 아무것도 소진되지 않았다 — 미룬 것이지 본 것이 아니다.
     expect(
       await page.evaluate(() => window.sessionStorage.getItem("hmb.notice.closed.v1")),
     ).toBeNull();
@@ -149,31 +143,24 @@ test.describe("#248 후속 — 튜토리얼이 공지보다 먼저다", () => {
       await page.evaluate(() => window.localStorage.getItem("hmb.notice.dismissed.v1")),
     ).toBeNull();
 
-    // ③ 화면을 떠났다 돌아오는 것(**리로드 없는 SPA 라우트 이동**)만으로 다음 진입이 성립한다.
-    //    래치가 컴포넌트 수명에 살아야 여기서 풀린다 — 모듈 변수나 서버 플래그로 만들었다면
-    //    SPA 이동은 그것들을 건드리지 않으므로 공지가 계속 미뤄진다.
-    await page.getByTestId("home-tile-players").click();
-    // 떠난 것을 확인한다 — 여기서 홈 요소를 단언하면 "떠나지 않았다"도 통과한다(#286 이관 실수).
-    await expect(page.getByTestId("codex-owned-total")).toBeVisible();
-    // 네비는 하단탭(모바일)·사이드바(데스크탑) 두 벌이 렌더된다 — 보이는 쪽을 누른다.
-    await page.locator('[data-testid="nav-home"]:visible').first().click();
-    await expect(page.getByTestId("home-page")).toBeVisible();   // #286: 로비 → 홈
+    // ② 완료(건너뛰기) — 코치마크가 사라지면 **같은 화면에서** 공지가 뜬다(#386).
+    await page.getByTestId("tutorial-skip").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveCount(0);
     await expect(page.getByTestId("notice-popup")).toBeVisible();
     await expect(page.getByTestId("notice-title")).toHaveText("새벽 정기 점검 안내");
-    // 튜토리얼이 다시 뜨지도 않는다(완료가 저장됐다).
-    await expect(page.getByTestId("tutorial-bubble")).toHaveCount(0);
   });
 
   test("리로드로 다시 들어와도 미룬 공지는 살아 있다 (영구 미룸이 아니다)", async ({ page }) => {
     await mockLobby(page, { payload: oneNotice, tutorialDone: false });
     await gotoLobby(page);
     await page.getByTestId("tutorial-skip").click();
-    await expect(page.getByTestId("notice-popup")).toHaveCount(0);
+    await expect(page.getByTestId("tutorial-bubble")).toHaveCount(0);
 
     // ⚠️ 서버 플래그는 여전히 tutorialDone=false 다(목이 안 바뀐다) — 그럼에도 리로드 뒤엔
     // 튜토리얼이 안 뜨고(로컬 완료 저장) 공지가 뜬다. 서버 값 변화로 판정했다면 여기서 깨진다.
     await gotoLobby(page);
     await expect(page.getByTestId("notice-popup")).toBeVisible();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveCount(0);
   });
 
   test("무회귀 — 튜토리얼을 이미 마친 유저는 예전처럼 진입 즉시 공지를 본다", async ({ page }) => {

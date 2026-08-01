@@ -327,14 +327,19 @@ test.describe("AC-B1 — 신규 유저 온보딩", () => {
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck");
     await expect(page.getByTestId("tutorial-progress")).toHaveText("5 / 7");
     await expectBubblePointsAt(page, "home-tile-deck");
-    // 덱 스텝을 아직 안 봤으므로 '시작하기'(=끝)라고 말하지 않는다.
-    await expect(page.getByTestId("tutorial-next")).toHaveText("다음");
+    /**
+     * ⚠️ **#386 에서 뒤집힌 성질.** 예전엔 여기서 [다음]을 눌러도 완료로 저장하지 않았다
+     * (덱 스텝 2개를 아직 안 봤으므로) — 그래서 라벨도 '다음'이었다. 그런데 이 클릭이 실제
+     * 유저의 흔한 종료였고, 저장이 안 되니 **접속할 때마다 코치마크가 처음부터 다시 돌았다**
+     * (덱 지급 트리거·공지 노출이 전부 그 뒤에 묶여 있었다). 지금은 **유저가 눌러서 끝낸 것은
+     * 저장한다** — 그래서 라벨도 '시작하기'다(라벨과 저장이 어긋나면 안 된다).
+     */
+    await expect(page.getByTestId("tutorial-next")).toHaveText("시작하기");
 
     await page.getByTestId("tutorial-next").click();
-    // 이 화면에서 보여줄 게 없으니 조용히 닫히고 — 완료로 저장하지도 않는다.
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
     await expect(page.getByTestId("home-tile-game")).toBeVisible();
-    expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBe("1");
   });
 
   test("건너뛰기 → 즉시 종료", async ({ page }) => {
@@ -700,10 +705,11 @@ test.describe("못 본 스텝은 완료를 막는다 (BLK-2 회귀 가드)", () 
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "deck");
 
-    // 덱 화면 스텝이 남아 있으므로 여기서 닫혀도 완료가 아니다 — 덱에 들어가면 이어진다.
+    // 여기까지가 이 가드의 본체다: **건너뛰어진 shop 이 완료 전에 반드시 다시 나왔다**.
+    // (마지막 [다음]으로 유저가 끝내면 그건 완료 저장이다 — #386, 위 AC-B1 테스트가 소유한다.)
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
-    expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBeNull();
+    expect(await page.evaluate(() => localStorage.getItem("hmb.tutorial.done.u1"))).toBe("1");
   });
 
   test("브라우저 뒤로가기로 돌아와도 못 본 스텝부터 재개된다", async ({ page }) => {
@@ -854,25 +860,33 @@ test.describe("덱 스텝 — 라우트 넘나듦", () => {
     expect(await doneFlag(page)).toBe("1");
   });
 
-  test("(b) 로비에서 지나쳐도 로비를 괴롭히지 않고, 첫 덱 진입에서 이어져 완료된다", async ({
+  /**
+   * ⚠️ **시나리오를 #386 에 맞춰 바꿔 썼다.** 예전 (b) 는 "홈 마지막 스텝에서 [다음]을 눌러
+   * 끝냈어도 저장하지 않고, 첫 덱 진입에서 이어진다"였다 — 그 클릭은 이제 **완료 저장**이다
+   * (그 성질이 신규 유저에게 코치마크 무한 반복 + 공지 미노출을 만들었다).
+   *
+   * 지키려던 성질 자체("저장 없이 내려간 튜토리얼은 그 화면에 도착하면 이어진다")는 여전히
+   * 살아 있고, 그 문은 이제 **대상 부재 스킵**이다 — 유저의 종료가 아니라 화면 사정으로 내려간
+   * 경우. 그래서 그 경로로 다시 세운다.
+   */
+  test("(b) 대상 부재로 내려간 튜토리얼은 저장 없이, 첫 덱 진입에서 이어져 완료된다", async ({
     page,
   }) => {
     await mockApi(page);
     await registerNewUser(page);
-    await toDeckCta(page);
+    for (let i = 0; i < 3; i += 1) await page.getByTestId("tutorial-next").click();
+    await expect(page.getByTestId("tutorial-bubble")).toHaveAttribute("data-step-id", "league");
 
-    // '다음' 으로 로비 몫을 끝낸다 — 덱 스텝은 못 봤으므로 저장 없음.
+    // 덱 타일이 잠깐 안 그려진다(지연/조건부 렌더) → 마지막 홈 스텝이 유저 종료가 아니라
+    // **화면 사정**으로 건너뛰어진다 → 저장 없이 내려간다.
+    await page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>('[data-testid="home-tile-deck"]')!;
+      el.style.display = "none";
+      setTimeout(() => (el.style.display = ""), 1500);
+    });
     await page.getByTestId("tutorial-next").click();
     await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
     expect(await doneFlag(page)).toBeNull();
-
-    // 로비를 떠났다 돌아와도 다시 뜨지 않는다(로비에서 보여줄 스텝이 없다).
-    await page.getByTestId("home-tile-recruit").click();
-    await expect(page).toHaveURL(/\/recruit$/);
-    await page.locator('[data-testid="nav-home"]:visible').click();
-    await expect(page).toHaveURL(/\/home$/);
-    await page.waitForTimeout(1200);
-    await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
 
     // 그러다 유저가 스스로 덱 화면에 들어가면 남은 스텝이 이어서 뜬다.
     await page.getByTestId("home-tile-deck").click();

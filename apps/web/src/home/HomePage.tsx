@@ -13,6 +13,7 @@ import { MailCenter } from "../mail/MailCenter";
 import { NoticePopup } from "../lobby/NoticePopup";
 import { visibleNotices, type Notice } from "../lobby/notice-logic";
 import { pickLobbyPopup } from "../lobby/lobby-popup";
+import { useUnbiddenPopupHold } from "../lobby/tutorial-hold";
 import { useTutorial } from "../common/tutorial-context";
 import { DecklessDialog } from "../common/DecklessDialog";
 import { deckMissing } from "../common/deckless";
@@ -83,17 +84,14 @@ export function HomePage() {
   );
 
   /**
-   * **이번 방문 동안 온보딩이 화면을 잡았는가** — 한 번 참이면 이 방문 내내 참(래치).
+   * **지금 온보딩이 화면을 잡고 있는가** — 코치마크가 도는 동안 + 그 직후 정착 시간만(#386).
    *
-   * `tutorialActive` 만으로 부족한 이유: 튜토리얼이 **끝나는 그 순간**에 공지를 띄우면 완료
-   * 저장(`persistTutorialDone`)이 `["deck"]`·`["me"]` 를 무효화해 화면이 바뀌는 바로 그 프레임에
-   * 점검 공지가 덮는다. → 공지는 **다음에 홈에 들어올 때** 뜬다.
-   * 서버 플래그로 판정하지 않는 이유: 그건 계정에 남는 값이라 리로드 뒤에도 "방금 끝났다"로
-   * 읽혀 공지가 영영 미뤄질 수 있다. 이 래치는 **컴포넌트 수명**에만 산다 = 정확히 "다음 진입".
+   * ⚠️ 예전 구조는 *이번 방문 동안 한 번이라도 튜토리얼이 돌았으면 계속 참*인 래치였고, 공지를
+   * "다음 홈 진입"으로 미뤘다(#248b). 그 미룸이 **온보딩이 완료 저장되지 않는 경로**와 겹쳐
+   * "다음 진입"이 영영 오지 않았다 — 신규 유저가 공지를 한 번도 못 보는 실제 원인이었다.
+   * 판정 규칙과 근거는 `lobby/tutorial-hold.ts`.
    */
-  const tutorialHeldThisVisit = useRef(false);
-  if (tutorialActive) tutorialHeldThisVisit.current = true;
-  const tutorialHold = tutorialActive || tutorialHeldThisVisit.current;
+  const tutorialHold = useUnbiddenPopupHold(tutorialActive);
 
   // 첫 진입에 보인 목록을 **고정**한다. 포커스 복귀 refetch 로 목록이 갈리면 스택 인덱스가
   // 어긋나 유저가 이미 닫은 장이 다시 앞으로 나온다. 온보딩이 잡은 방문에서는 고정도 하지

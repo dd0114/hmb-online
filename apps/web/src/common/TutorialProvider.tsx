@@ -268,30 +268,43 @@ export function TutorialProvider({
 
   const currentId = runSteps[index]?.id;
 
-  /** enabled 스텝을 하나도 빠짐없이 보여줬는가 = 완료 저장의 유일한 조건. */
+  /** enabled 스텝을 하나도 빠짐없이 보여줬는가. */
   const allSeen = runSteps.every((s) => seen.has(s.id));
 
   /**
-   * 다음 스텝으로 이동하거나 끝낸다. **'다음' 클릭과 대상 부재 스킵이 같은 규칙을 쓴다** —
-   * 진행 경로가 갈리면 한쪽에만 구멍이 나기 때문이다(그 구멍으로 3라운드 연속 뚫렸다).
+   * 다음 스텝으로 이동하거나 끝낸다. 갈 곳이 없을 때 **저장하느냐**가 이 함수의 전부다.
    *
-   * 규칙은 단 하나: **전부 보여줬을 때만 완료 저장**. 아직 못 본 스텝이 남았는데 지금은
-   * 보여줄 수 없으면(대상 부재) 저장하지 않고 내려간다 — 다음 진입 때 거기서 재개된다.
-   * 유저가 직접 끝내고 싶으면 언제든 '건너뛰기'(optOut)가 있고 그건 저장한다.
+   * 규칙은 둘이다.
+   *  ① **전부 보여줬으면** 저장한다(원래 규칙).
+   *  ② **유저가 [다음]을 눌러 끝냈으면** 아직 못 본 스텝이 남았어도 저장한다 (#386, hero 확정
+   *     2026-08-01). 근거: 이건 **'건너뛰기'(optOut)와 같은 성질의 종료**다 — 유저가 안내를 끝까지
+   *     읽고 마지막 [다음]을 누른 것이고, optOut 은 예전부터 `allSeen` 없이 저장해 왔다.
+   *
+   * ⚠️ **대상 부재 스킵(`onMissingTarget`)은 ②에 해당하지 않는다.** 그건 유저의 종료가 아니라
+   * 화면 사정이므로 예전처럼 저장 없이 내려간다 — 안 그러면 "본 적 없는 스텝이 조용히 완료
+   * 처리되는" 사고(이 파일이 세 라운드 걸쳐 막은 것)가 되살아난다.
+   *
+   * ② 가 없으면 어떻게 되나(#386 W1 실측): 홈 마지막 스텝에서 [덱 구성] 타일 대신 [다음]을 누른
+   * 신규 유저는 덱 스텝 2개를 영영 못 채워 **완료가 저장되지 않는다** → 접속할 때마다 코치마크가
+   * 처음부터 다시 돌고, 서버의 **덱 지급**(#209) 트리거도 안 걸리며, 공지는 매번 미뤄진다.
+   * 남은 덱 화면 안내는 덱 셋업 워크스루(`startDeckSetup`, `/deck?setup=1`)가 따로 맡는다.
    */
-  const advanceOrEnd = useCallback(() => {
-    const next = nextCandidate(currentId);
-    if (next >= 0) {
-      goTo(next);
-      return;
-    }
-    if (allSeen) {
-      persistIfOwner();
-      return;
-    }
-    setActive(false);
-    setSetupMode(false);
-  }, [nextCandidate, currentId, goTo, allSeen, persistIfOwner]);
+  const advanceOrEnd = useCallback(
+    (userDriven: boolean) => {
+      const next = nextCandidate(currentId);
+      if (next >= 0) {
+        goTo(next);
+        return;
+      }
+      if (allSeen || userDriven) {
+        persistIfOwner();
+        return;
+      }
+      setActive(false);
+      setSetupMode(false);
+    },
+    [nextCandidate, currentId, goTo, allSeen, persistIfOwner],
+  );
 
   const restart = useCallback(() => {
     resetTutorialDone(userId);
@@ -338,19 +351,19 @@ export function TutorialProvider({
           step={step}
           index={index}
           total={runSteps.length}
-          onNext={advanceOrEnd}
+          onNext={() => advanceOrEnd(true)}
           onSkip={optOut}
-          onMissingTarget={advanceOrEnd}
+          // 대상이 사라져 건너뛰는 것은 **유저의 종료가 아니다** — 저장 경로를 타지 않는다.
+          onMissingTarget={() => advanceOrEnd(false)}
           onShown={markSeen}
           /**
            * '시작하기' 라벨은 **이번 클릭으로 튜토리얼이 진짜 끝날 때만** 단다.
-           * 이 화면에 다음 후보가 없다는 것만으로는 부족하다 — 다른 화면(덱)에 못 본 스텝이
-           * 남아 있으면 저장도 안 되고 그 화면에서 이어지므로, '시작하기'는 거짓말이 된다.
+           *
+           * #386 이후 그 조건은 "이 화면에 다음 후보가 없다"와 같아졌다 — 유저가 누른 종료는
+           * 다른 화면에 못 본 스텝이 남아 있어도 그대로 완료로 저장되기 때문이다(`advanceOrEnd`).
+           * 라벨과 실제 동작이 갈리면 '다음'을 눌렀는데 온보딩이 끝나 버린 것처럼 읽힌다.
            */
-          isLast={
-            nextCandidate(step.id) < 0 &&
-            runSteps.every((s) => s.id === step.id || seen.has(s.id))
-          }
+          isLast={nextCandidate(step.id) < 0}
           missingGraceMs={missingGraceMs}
         />
       )}

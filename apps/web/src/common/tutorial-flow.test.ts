@@ -580,36 +580,60 @@ describe("라우트 넘나듦 (홈 → 덱)", () => {
     expect(screen.getByTestId("tutorial-title").textContent).toBe("홈2");
   });
 
-  /** 라벨이 저장과 어긋나면 안 된다 — '시작하기'인데 완료가 안 되면 유저는 끝난 줄 안다. */
-  it("다른 화면에 못 본 스텝이 남아 있으면 '시작하기'라고 하지 않는다", () => {
+  /**
+   * 라벨이 저장과 어긋나면 안 된다 — 이제 **이 화면에서 끝나는 클릭이면 그게 곧 완료**이므로
+   * (#386) 다른 화면 스텝이 남아 있어도 '시작하기'라고 말해야 한다. 예전처럼 '다음'이라고 하면
+   * 눌렀는데 온보딩이 끝나 버린 것처럼 읽힌다.
+   */
+  it("이 화면에서 끝나는 클릭이면 '시작하기'라고 말한다 (라벨 = 실제 저장)", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS);
-    fireEvent.click(screen.getByTestId("tutorial-next")); // 로비의 마지막 스텝(로비2)
+    fireEvent.click(screen.getByTestId("tutorial-next")); // 홈의 마지막 스텝(홈2)
     expect(screen.getByTestId("tutorial-title").textContent).toBe("홈2");
-    // 이 화면엔 다음 후보가 없지만 덱 스텝이 남아 있다 → 아직 끝이 아니다.
-    expect(screen.getByTestId("tutorial-next").textContent).toBe("다음");
+    expect(screen.getByTestId("tutorial-next").textContent).toBe("시작하기");
   });
 
-  it("덱 스텝을 못 봤으면 로비를 다 봐도 완료로 저장하지 않는다", () => {
+  /**
+   * ⚠️ **#386 에서 뒤집힌 규칙.** 예전 성질은 "덱 스텝을 못 봤으면 홈을 다 봐도 저장하지 않는다"
+   * 였다(그래야 처음 덱 화면에서 이어서 뜬다). 그런데 실제 유저는 마지막 홈 스텝에서 [덱 구성]
+   * 타일 대신 [다음]을 누르고, 그러면 **완료가 영영 저장되지 않아** 접속할 때마다 코치마크가
+   * 처음부터 다시 돌았다 — 서버의 덱 지급(#209) 트리거도, 공지 노출도 그 뒤에 묶여 있었다.
+   *
+   * 지금 규칙: **유저가 눌러서 끝낸 것은 저장한다**(건너뛰기 optOut 과 같은 성질).
+   * 남은 덱 화면 안내는 덱 셋업 워크스루(`/deck?setup=1`)가 따로 맡고, 유저는 [내 정보]의
+   * '튜토리얼 다시 보기'로 언제든 되돌릴 수 있다.
+   */
+  it("유저가 눌러서 끝내면 못 본 덱 스텝이 남아 있어도 완료로 저장한다 (#386)", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS);
     fireEvent.click(screen.getByTestId("tutorial-next")); // home2
-    fireEvent.click(screen.getByTestId("tutorial-next")); // 더 볼 게 없다 → 중단
+    fireEvent.click(screen.getByTestId("tutorial-next")); // 이 화면에서 끝 → 완료
 
     expect(screen.queryByTestId("tutorial-overlay")).toBeNull();
-    expect(readLocalDone("u1")).toBe(false);
+    expect(readLocalDone("u1")).toBe(true);
   });
 
-  it("덱 화면에 들어가면 못 본 덱 스텝이 이어서 뜨고, 그때 완료된다", () => {
+  /**
+   * ⚠️ **저장의 문은 '유저가 눌렀나' 하나뿐이다.** 대상이 사라져 내려간 것(화면 사정)은 예전처럼
+   * 저장하지 않는다 — 안 그러면 "본 적 없는 스텝이 조용히 완료 처리되는" 사고가 되살아난다.
+   */
+  it("대상 부재로 내려간 것은 완료가 아니다 — 그 화면에 들어가면 이어서 뜬다", () => {
     markTutorialPending();
     renderApp(CROSS_STEPS);
-    fireEvent.click(screen.getByTestId("tutorial-next"));
-    fireEvent.click(screen.getByTestId("tutorial-next")); // 로비 몫 종료(저장 없음)
+    // 덱 화면인데 보드가 아직 안 그려졌다(지연 렌더) → 유저 종료가 아니라 화면 사정으로 내려간다.
+    act(() => {
+      delete rects.t1;
+      delete rects.t3;
+      fireEvent.click(screen.getByTestId("go-deck"));
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(screen.queryByTestId("tutorial-overlay")).toBeNull();
     expect(readLocalDone("u1")).toBe(false);
 
+    // 보드가 그려진 뒤 다시 덱에 들어오면 덱 스텝이 이어서 뜬다.
+    goLobby();
     goDeck();
     expect(screen.getByTestId("tutorial-title").textContent).toBe("덱보드");
-    // 마지막 남은 스텝이므로 여기서 끝내면 저장된다.
     expect(screen.getByTestId("tutorial-next").textContent).toBe("시작하기");
     fireEvent.click(screen.getByTestId("tutorial-next"));
     expect(readLocalDone("u1")).toBe(true);
@@ -634,9 +658,14 @@ describe("라우트 넘나듦 (홈 → 덱)", () => {
     renderApp(CROSS_STEPS);
     expect(screen.getByTestId("tutorial-title").textContent).toBe("홈1");
 
-    goDeck();
-    expect(screen.getByTestId("tutorial-title").textContent).toBe("덱보드");
-    fireEvent.click(screen.getByTestId("tutorial-next")); // 덱에서는 더 볼 게 없다 → 중단
+    // ⚠️ 여기서 [다음]으로 끝내면 안 된다 — 그건 이제 **완료 저장**이라(#386) 재개할 것이
+    // 남지 않아 이 가드가 무의미해진다. 대상 부재(화면 사정)로 내려간 상태에서 재개를 본다.
+    act(() => {
+      delete rects.t1;
+      delete rects.t3;
+      fireEvent.click(screen.getByTestId("go-deck"));
+      window.dispatchEvent(new Event("resize"));
+    });
     expect(screen.queryByTestId("tutorial-overlay")).toBeNull();
 
     goLobby();
