@@ -40,7 +40,9 @@ const CENTER_Y = config.pitch.height / 2; // 34
 //     **14개**(3·6·9·10·11·16·17·18·21·22·27·31·33·34) — 넉넉하다. 34 는 PK 3건으로 표본 최다.
 //   → **21**(#378 M1-본 · 재개 게이트 — 정지 길이가 게이트의 함수가 되며 전개가 바뀌어 시드 34
 //     에서 페널티가 소멸). 재스캔(1~40): penalty 보유 시드 14개. 21 = PK 2건 + 8골(표본 넉넉).
-const PK_SEED = "21";
+//   → **28**(#370 되돌림 `shootXgThreshold` 0.197 → 0.07, 배포 발차 — 볼륨이 크게 움직여
+//     시드 21 에서 페널티가 소멸). 재스캔(1~40): PK 보유 시드 5·12·28·35. 28 = 9골 + PK 1건.
+const PK_SEED = "28";
 
 function snapByTick(log: MatchLog): Map<number, TickSnapshot> {
   return new Map(log.tickSnapshots.map((s) => [s.tick, s]));
