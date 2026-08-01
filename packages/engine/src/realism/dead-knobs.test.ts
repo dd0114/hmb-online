@@ -97,13 +97,14 @@ const LIVE: Knob[] = [
   { path: "chain.throughPass.enabled", mutate: (c) => { c.chain.throughPass.enabled = false; } },
   { path: "chain.throughPass.behindLineM", mutate: (c) => { c.chain.throughPass.behindLineM = 12; } },
   { path: "chain.throughPass.minRunGainM", mutate: (c) => { c.chain.throughPass.minRunGainM = 12; } },
-  // ⚠️ 섭동을 20 → **24** 로 넉넉히 벌렸다(#379 M3-B). 이유는 M3-C 가 이미 기록한 성질이다 —
-  // 채택된 스루패스의 리드는 **상한(`maxLeadM` 25)에 몰려 있어**(8/12건) 하한은 상한 근처로
-  // 올라가야 비로소 발화한다. 실측: `minLeadM` 2·15 는 **8시드에서도 bit-identical**, 20 은
-  // 3시드 INERT / 8시드 LIVE, **24 는 3시드에서도 LIVE**(laneRead on/off 양쪽). 즉 20 은 원래부터
-  // "표본에 사례가 있으면 걸리는" 경계값이었고, 이 웨이브가 궤적을 바꾸며 3시드 사례가 사라졌다.
-  // 노브가 죽은 것이 아니다 — 레버성 판정은 넉넉히 흔든다(이 파일 LIVE 절 머리 주석과 같은 규율).
-  { path: "chain.throughPass.minLeadM", mutate: (c) => { c.chain.throughPass.minLeadM = 24; } },
+  // ⚠️ 섭동 폭을 **건드리지 않는다**(M3-C 가 정한 20 그대로). #379 M3-B 가 한때 24 로 벌렸다가
+  // 독립검증 m3 에서 **되돌렸다** — 그 근거("20 은 3시드에서 INERT 가 됐다")가 재현되지 않는다.
+  // HEAD 재측정(3시드 최종 해시, 출하 config): base `69489f63 beb01ff8 49be688f` vs
+  // minLeadM=20 `3d198097 beb01ff8 3e6e803c` = **3시드 중 2개가 갈린다 → LIVE**(24 도 같은 2개가
+  // 갈린다 — 즉 20 과 24 는 검출력이 같다). 남는 사실은 M3-C 가 기록한 성질뿐이다: 채택된
+  // 스루패스의 리드가 **상한(`maxLeadM` 25)에 몰려 있어**(8/12건) 하한은 상한 근처로 올라가야
+  // 발화하고, `minLeadM` 2·15 는 8시드에서도 bit-identical 이다. 20 은 이미 그 위다.
+  { path: "chain.throughPass.minLeadM", mutate: (c) => { c.chain.throughPass.minLeadM = 20; } },
   { path: "chain.throughPass.maxLeadM", mutate: (c) => { c.chain.throughPass.maxLeadM = 12; } },
   { path: "chain.throughPass.minMarginTicks", mutate: (c) => { c.chain.throughPass.minMarginTicks = 6; } },
   { path: "chain.throughPass.raceBase", mutate: (c) => { c.chain.throughPass.raceBase = 0.05; } },

@@ -35,6 +35,16 @@ import { measureLaneSplit } from "./lane";
  * 읽힌 레인에서 +6%p 가 나도 전체로는 +0.02%p 다(팔 간 산포 ±0.5%p 의 1/20). 신호가 없는
  * 게이트에 값을 맞추는 것은 금지돼 있으므로(메모리 `balance-measure-multiseed`) 계약에 넣지
  * 않고, 실측과 그 산수를 `evidence/377/M3-B.md` 에 남긴다.
+ *
+ * ## ⚠️ `coveredM` 과 점유 지표(`guardedPct`)는 **서로의 독립 증거가 아니다**(독립검증 m2)
+ * 후보 게이트 `vision.laneRead.coveredM`(출하 3m)과 점유 측정 임계 `lane.ts:LANE_NEAR_M`(3m)은
+ * **같은 숫자**이고 **같은 함수**(`perception.ts:laneDangerOn`)를 임계와 비교한다 — 방향만 반대다
+ * (전자는 `> coveredM` 인 레인만 후보로 받고, 후자는 `≤ LANE_NEAR_M` 이면 점유로 센다).
+ * 그래서 `coveredM` 을 올리면 점유는 **기제와 무관하게 산술로** 무너진다: 4시드 실측 READ 점유
+ * 3 → **58.8%** · 4 → 46.8% · 5 → 27.9% · **8 → 0.0%**(표본도 1125 → 53). 이 파일의 사다리가
+ * `coveredM` 을 **고정하고 `pull`·`maxStepM` 만** 흔드는 이유가 그것이다. 두 값이 같은 것 자체는
+ * 의도된 정합(같은 질문을 같은 자로 잰다)이므로 값·동작은 바꾸지 않는다 — 금지되는 것은 둘을
+ * **서로의 확인**으로 인용하는 것이다.
  */
 
 const seeds = REALISM_SEEDS.slice(0, 8);

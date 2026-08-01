@@ -30,7 +30,28 @@ import type { EngineConfig } from "../config";
  * **다음 틱 실제 위치**(스냅샷)뿐이다.
  */
 
-/** 레인 점유 판정 거리(m) — W0 §1-2 의 "패스 레인에 상대 3m 안"과 같은 값. */
+/**
+ * 레인 점유 판정 거리(m) — W0 §1-2 의 "패스 레인에 상대 3m 안"과 같은 값.
+ *
+ * ## ⚠️ 이 값과 `vision.laneRead.coveredM` 을 **독립 증거로 쓰면 안 된다**(독립검증 m2)
+ *
+ * 출하값에서 둘 다 **3m** 이고, 둘 다 **같은 함수**(`perception.ts:laneDangerOn`)의 출력을
+ * 임계와 비교한다. 다만 방향이 반대다 —
+ *  - `coveredM` 은 **후보 게이트**: `laneDangerOn > coveredM` 인 레인만 읽기 후보가 된다
+ *    (= "이미 막힌 레인엔 겹치지 않는다").
+ *  - `LANE_NEAR_M` 은 **점유 측정**: 이동 후 `laneDangerOn ≤ LANE_NEAR_M` 이면 점유로 센다.
+ *
+ * 그래서 `coveredM` 을 올리면 관측되는 레인은 정의상 전부 `g0 > coveredM` 이 되고, 한 틱 선점량은
+ * `maxStepM`(2.5m) 이하라 `coveredM − maxStepM > LANE_NEAR_M` 이 되는 순간 **점유가 기계적으로
+ * 0 이 된다.** 4시드 실측(READ / UNREAD 점유): coveredM 3 → **58.8% / 52.8%** · 4 → 46.8% / 39.7% ·
+ * 5 → 27.9% / 24.2% · **8 → 0.0% / 0.0%**(표본도 1125 → 53 으로 붕괴한다).
+ *
+ * 즉 **"coveredM 을 흔들었더니 점유가 움직였다"는 기제의 증거가 아니라 산술의 귀결**이다.
+ * 이 축으로 무언가를 주장하려면 `coveredM` 을 **고정**하고 세기(`pull`·`maxStepM`)만 흔들어야 한다
+ * (그게 `lane-read.test.ts` 의 용량–반응 사다리가 하는 일이다). 값·동작은 바꾸지 않는다 —
+ * 두 임계가 같은 것 자체는 의도된 정합(같은 질문을 같은 자로 잰다)이고, 문제는 그 둘을 **서로의
+ * 독립 확인**으로 인용하는 것이다.
+ */
 export const LANE_NEAR_M = 3;
 
 export interface LaneOccupancy {
@@ -91,7 +112,12 @@ export interface LaneArm {
   closedPosPct: number;
   /** 레인의 **팀 최근접**(laneDangerOn)이 그 틱에 줄어든 평균(m). */
   guardedAvgM: number;
-  /** 이동 후 그 레인이 `LANE_NEAR_M` 안으로 막혀 있던 비율(%) — AC 의 점유 정의 그대로. */
+  /**
+   * 이동 후 그 레인이 `LANE_NEAR_M` 안으로 막혀 있던 비율(%) — AC 의 점유 정의 그대로.
+   *
+   * ⚠️ **`vision.laneRead.coveredM` 과 독립이 아니다** — 근거·실측은 `LANE_NEAR_M` 주석.
+   * 이 값을 인용할 때는 `coveredM` 이 출하값(3)에 고정돼 있는지 먼저 확인한다.
+   */
   guardedPct: number;
   /** 인지 능력 평균((positioning+mental)/2) — 읽기 확률이 능력 비례라 READ 쪽이 높다. */
   attrAvg: number;
