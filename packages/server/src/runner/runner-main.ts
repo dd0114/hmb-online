@@ -31,6 +31,21 @@ function json(res: ServerResponse, code: number, body: unknown): void {
  * 오류 본문. `issues` 를 **따로 실어 준다** — 운영자는 curl 로 이걸 읽는다(#383 §9).
  * 문제 여럿을 한 번에 돌려주지 않으면 오타 하나마다 왕복이 한 번씩 는다.
  */
+/**
+ * `/config/validate` 실패의 HTTP 코드.
+ *
+ * ⚠️ **모든 예외를 400 으로 뭉개지 않는다**(독립검증 m5). 400 = "운영자가 보낸 값이 문제다",
+ * 5xx = "러너가 고장났다" — 합치면 러너 내부 결함이 "계수 검증 실패"로 보고돼 운영자가
+ * <b>고칠 수 없는 것을 고치려 든다</b>(계수를 계속 바꿔 보며 헤맨다). 두 상황에서 취할 행동이
+ * 완전히 다르므로 코드도 달라야 한다.
+ *
+ * 함수로 뽑아 둔 이유: 인라인 삼항이면 그 분기에 계약을 걸 자리가 없어 **400 고정으로 되돌려도
+ * 전 스위트가 통과했다**(5차 m5 실측).
+ */
+export function validateStatusFor(e: unknown): number {
+  return e instanceof OverrideError || e instanceof SmokeError ? 400 : 500;
+}
+
 function errorBody(e: unknown): { error: string; issues?: string[] } {
   const error = e instanceof Error ? e.message : String(e);
   if (e instanceof OverrideError || e instanceof SmokeError) return { error, issues: e.issues };
@@ -77,8 +92,7 @@ export function createRunnerServer(): Server {
           // ⚠️ **모든 예외를 400 으로 뭉치지 않는다**(독립검증 m5). 400 = "운영자가 보낸 값이
           // 문제다", 500 = "러너가 고장났다" — 둘을 합치면 러너 내부 결함이 운영자에게
           // "계수 검증 실패"로 보고돼, 고칠 수 없는 것을 고치려 들게 된다.
-          const userFault = e instanceof OverrideError || e instanceof SmokeError;
-          json(res, userFault ? 400 : 500, errorBody(e));
+          json(res, validateStatusFor(e), errorBody(e));
         }
         return;
       }

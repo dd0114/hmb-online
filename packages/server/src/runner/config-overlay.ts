@@ -287,9 +287,15 @@ export function assertAuthorable(base: EngineConfig, overrides: EngineConfigOver
  * 남고 서버가 WARN 을 찍는다. 유효 config 지문은 <b>실제로 돈 config</b>를 가리키므로 재현 계약도
  * 그대로다.
  *
- * <b>남는 단 하나의 throw = {@link assertAffordable}</b>(런타임 비용). 이건 성질이 정확히 반대다 —
- * "이 값이 러너를 재우는가"는 시간이 지나도 답이 안 바뀌고, 재생 시점에도 <b>진짜로</b> 위험하다
- * (러너는 단일 프로세스라 한 요청이 다른 매치의 하프를 전부 세운다).
+ * <b>이 함수는 한 줄도 던지지 않는다.</b> 런타임 비용 상한(`matchMinutes`)마저 버린다 —
+ * 처음엔 그것만 "성질이 반대라 재생에 남아도 된다"는 근거로 남겼는데, <b>그 근거가 거짓이었다</b>
+ * (독립검증 M-A): 상한은 `matchMinutes × 60000 / msPerTick` 이고 `msPerTick` 은 <b>구조값</b>이라
+ * 오버레이가 아니라 <b>배포된 base</b> 에서 온다. 버리면 base 값으로 복귀하고 base 는 정의상
+ * 상한 안이라, 러너를 재우는 위험은 던지지 않고도 그대로 막힌다.
+ *
+ * ⚠️ 여기에 throw 를 다시 넣고 싶어질 때 읽을 것: 위 B2·B3·M-A 는 <b>전부 같은 실수</b>였고
+ * 그때마다 "이건 다르다"는 그럴듯한 근거가 있었다. 던져도 되는 유일한 조건은 <b>그 판정의 답이
+ * 배포로 바뀌지 않는 것</b>이고, 세 번 다 그 조건을 확인하지 않고 그렇다고 믿었다.
  */
 export function applyOverrides(
   base: EngineConfig,
@@ -332,7 +338,10 @@ export function applyOverrides(
   //
   // 버리는 것이 안전한 이유: 버리면 `matchMinutes` 가 **base 값으로 복귀**하고 base 는 정의상
   // 상한 안이다. 러너를 재우는 위험은 그대로 막힌다.
-  if (!affordable(config)) {
+  // ⚠️ 이 폴백은 **base 가 상한 안**임을 전제한다(독립검증 m8). 오늘 HTTP 경로의 base 는
+  // `defaultEngineConfig` 뿐이라 항상 참이지만, 전제가 깨지면 조용히 상한 밖 config 를 돌려주게
+  // 되므로 그때는 오버레이 탓을 하지 않고 base 를 그대로 돌려준다(원인을 오귀속하지 않는다).
+  if (!affordable(config) && affordable(base)) {
     const base0 = base.matchMinutes;
     (config as { matchMinutes: number }).matchMinutes = base0;
     const idx = accepted.findIndex((c) => c.path === "matchMinutes");

@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 import online.hmb.common.ApiException;
+import org.springframework.http.HttpStatus;
 import online.hmb.common.Ulid;
 import online.hmb.engine.EngineRunnerClient;
 import online.hmb.engine.LiveEngineConfigService;
@@ -134,8 +135,15 @@ public class AdminEngineConfigService {
         } catch (RuntimeException e) {
             audit(actorUserId, ACTION_SET, "failed", reason,
                     Map.of("attempted", clean, "error", String.valueOf(e.getMessage())));
-            throw e instanceof ApiException api ? api
-                    : ApiException.validation("계수 검증에 실패했습니다: " + e.getMessage());
+            // ⚠️ **러너 장애를 400 으로 감싸지 않는다**(독립검증 5차 m5). 400 은 "운영자가 보낸 값이
+            // 문제다"라는 뜻이고, 그 문구를 받은 운영자는 고칠 수 없는 것을 고치려 든다 — 러너가
+            // 안 떠 있는데 계수를 계속 바꿔 보게 만드는 것이 정확히 그 상태다. 값 문제는
+            // EngineRunnerClient 가 이미 ApiException(400)으로 올려 준다; 나머지는 그대로 5xx 다.
+            if (e instanceof ApiException api) {
+                throw api;
+            }
+            throw new ApiException(HttpStatus.BAD_GATEWAY, "RUNNER_UNAVAILABLE",
+                    "계수 검증기(러너)에 도달하지 못했습니다: " + e.getMessage());
         }
 
         String effectiveHash = validated.path("effectiveConfigHash").asText(null);

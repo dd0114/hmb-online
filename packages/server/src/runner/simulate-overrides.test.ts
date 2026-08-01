@@ -18,6 +18,9 @@ const h1 = (configOverrides?: Record<string, number | boolean>): SimulateRequest
 /** 오버레이가 실제로 경기를 바꾸는 노브 — "선언만 하고 미소비"를 잡으려면 살아 있는 노브여야 한다. */
 const LIVE_KNOB = { "contest.shootRange": 40 } as const;
 
+/** resumeState 안의 오버레이 지문 필드명 — 계약이 실제 이름을 참조하게 해 개명에 깨지게 한다. */
+const RESUME_HASH_FIELD = "overridesHash";
+
 describe("T-R1 등가 — 오버레이 없음 == {} == undefined (현행 bit-identical)", () => {
   it("half=1: 세 형태의 응답이 완전히 동일", () => {
     const absent = simulate({ ...base, half: 1 });
@@ -91,19 +94,34 @@ describe("T-R5/T-R6 재개 config 가드 — 무음 desync 금지 · 구 상태 
     expect(() => simulate({ ...base, half: 2, resumeState: a.resumeState })).toThrow(/config/i);
   });
 
-  it("T-R6: `configHash` 가 **없는 구 resumeState** 는 그대로 통과한다 (#241 재발 방지)", () => {
+  /**
+   * 구 러너(= 지금 라이브)가 만든 resumeState 를 흉내낸다.
+   *
+   * ⚠️ **전제를 먼저 단언한다.** 이 계약은 한 번 통째로 공허했다(독립검증 5차 blocker): B4 가
+   * 필드를 `configHash` → `overridesHash` 로 개명했는데 여기 `delete` 는 옛 이름을 지우고 있었다.
+   * 없는 키를 지우는 것은 no-op 이라 **가드를 필수로 굳혀도 405/405 가 통과했다** — 즉
+   * "#241 재발 방지의 마지막 조각"을 지키는 것이 아무것도 없었다. 키 이름이 다시 바뀌면
+   * **여기서 먼저 깨지게** 만든다.
+   */
+  const legacyResumeState = (resumeState: unknown): Record<string, unknown> => {
+    const copy = { ...(resumeState as Record<string, unknown>) };
+    expect(RESUME_HASH_FIELD in copy, `resumeState 에 ${RESUME_HASH_FIELD} 가 없다 — 필드가 개명됐으면 ` +
+      `이 계약도 같이 고쳐야 한다(안 고치면 아무것도 안 지운 채 통과한다)`).toBe(true);
+    delete copy[RESUME_HASH_FIELD];
+    return copy;
+  };
+
+  it("T-R6: 지문이 **없는 구 resumeState** 는 그대로 통과한다 (#241 재발 방지)", () => {
+    // 이 브랜치가 배포되는 순간 비행 중인 매치의 resumeState 에는 이 키가 없다. 필수로 굳으면
+    // 배포 그 자체가 진행 중 매치를 전부 FAILED 로 민다 = 이 웨이브가 막겠다는 사건.
     const a = simulate(h1());
-    const legacy = { ...(a.resumeState as Record<string, unknown>) };
-    delete legacy["configHash"];
-    expect(() => simulate({ ...base, half: 2, resumeState: legacy })).not.toThrow();
+    expect(() => simulate({ ...base, half: 2, resumeState: legacyResumeState(a.resumeState) })).not.toThrow();
   });
 
   it("구 resumeState 재개 결과는 가드 이전과 동일하다(가드가 동작을 바꾸지 않는다)", () => {
     const a = simulate(h1());
     const withHash = simulate({ ...base, half: 2, resumeState: a.resumeState });
-    const legacy = { ...(a.resumeState as Record<string, unknown>) };
-    delete legacy["configHash"];
-    const withoutHash = simulate({ ...base, half: 2, resumeState: legacy });
+    const withoutHash = simulate({ ...base, half: 2, resumeState: legacyResumeState(a.resumeState) });
     expect(withoutHash.lastHash).toBe(withHash.lastHash);
   });
 });

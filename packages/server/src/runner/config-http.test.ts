@@ -2,7 +2,9 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { demoSeed, demoHome, demoAway, demoSelect, defaultEngineConfig } from "@hmb/engine";
-import { createRunnerServer } from "./runner-main.js";
+import { createRunnerServer, validateStatusFor } from "./runner-main.js";
+import { OverrideError } from "./config-overlay.js";
+import { SmokeError } from "./config-validate.js";
 
 /**
  * #383 W1 — 러너 HTTP 표면 (T-R3 매핑 · T-R7 validate/knobs).
@@ -120,6 +122,16 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
     expect(body.knobs.some((k) => k.path === "decisionWeights.shoot")).toBe(false);
     const inert = body.inertKnobs.find((k) => k.path === "decisionWeights.shoot");
     expect(inert?.reason).toContain("실행 경로가 없다");
+  });
+
+  it("`/config/validate` 실패 분류 — 값 문제만 400, 러너 결함은 500 (독립검증 m5)", () => {
+    // 이 분기가 인라인 삼항이었을 땐 400 고정으로 되돌려도 전 스위트가 통과했다. 러너에
+    // 내부 결함을 주입할 손잡이가 없으므로 **분류 함수 자체**를 계약으로 건다.
+    expect(validateStatusFor(new OverrideError(["x"]))).toBe(400);
+    expect(validateStatusFor(new SmokeError(["y"]))).toBe(400);
+    expect(validateStatusFor(new Error("러너가 터졌다")), "러너 결함을 400 으로 말하면 운영자가 " +
+      "고칠 수 없는 것을 고치려 든다").toBe(500);
+    expect(validateStatusFor(new TypeError("undefined is not a function"))).toBe(500);
   });
 
   it("POST /simulate — 미지 경로는 **200 + droppedOverrides**(400 이 아니다, B3)", async () => {

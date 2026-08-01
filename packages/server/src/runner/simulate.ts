@@ -350,7 +350,7 @@ function lastHashOf(matchLog: MatchLog): string {
  * ⚠️ 이 경로는 **재생**이다 — 적용 못 하는 경로(엔진이 지운 노브 등)는 400 이 아니라
  * **버려지고 `droppedOverrides` 로 보고**된다(독립검증 B3). 그래야 엔진 배포가 진행 중 매치와
  * 신규 매치를 죽이지 않는다. 새 값의 거절은 작성 게이트(`config-validate.ts`) 소관이다.
- * 여기서 남는 throw 는 런타임 비용 상한뿐이고, 그건 호출부가 400 으로 매핑한다.
+ * `applyOverrides` 는 이제 <b>한 줄도 던지지 않는다</b>(비용 상한마저 버린다 — M-A).
  */
 export function simulate(
   req: SimulateRequest,

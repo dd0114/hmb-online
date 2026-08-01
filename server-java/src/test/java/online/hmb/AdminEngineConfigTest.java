@@ -43,6 +43,16 @@ class AdminEngineConfigTest extends ApiTestBase {
                 server.createContext("/config/validate", exchange -> {
                     String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                     validateCalls.add(body);
+                    // 러너 **내부 결함**(500) 흉내 — 값 문제(400)와 구분돼야 한다(독립검증 5차 m5).
+                    if (body.contains("\"boom")) {
+                        byte[] err = "{\"error\":\"runner exploded\"}".getBytes(StandardCharsets.UTF_8);
+                        exchange.getResponseHeaders().set("Content-Type", "application/json");
+                        exchange.sendResponseHeaders(500, err.length);
+                        try (OutputStream os = exchange.getResponseBody()) {
+                            os.write(err);
+                        }
+                        return;
+                    }
                     boolean ok = !body.contains("\"nope");
                     String response = ok
                             ? "{\"effectiveConfigHash\":\"deadbeefdeadbeef\",\"engineVersion\":\"engine@test\","
@@ -267,6 +277,30 @@ class AdminEngineConfigTest extends ApiTestBase {
         assertThat(res.getBody().size()).isGreaterThanOrEqualTo(2);
         Map<?, ?> newest = (Map<?, ?>) res.getBody().get(0);
         assertThat(String.valueOf(newest.get("reason"))).isEqualTo("이력 2");
+    }
+
+    /**
+     * <b>러너 장애를 400 으로 감싸지 않는다</b>(독립검증 5차 m5).
+     *
+     * <p>400 은 "당신이 보낸 값이 문제다"라는 뜻이다. 러너가 고장났는데 그 문구를 받으면 운영자는
+     * <b>고칠 수 없는 것을 고치려 든다</b> — 계수를 계속 바꿔 보며 왜 안 되는지 헤맨다. 값 문제와
+     * 인프라 문제는 운영자가 취할 행동이 완전히 다르므로 코드도 달라야 한다.
+     */
+    @Test
+    void aBrokenRunnerIsNotReportedAsTheOperatorsMistake() {
+        String admin = adminToken();
+        int before = revisionCount();
+
+        ResponseEntity<Map> res = put(admin,
+                Map.of("overrides", Map.of("boom.knob", 1), "reason", "러너 장애"), null);
+
+        assertThat(res.getStatusCode())
+                .as("러너 500 이 400 으로 둔갑하면 운영자가 자기 값을 의심한다")
+                .isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(String.valueOf(res.getBody().get("code"))).isEqualTo("RUNNER_UNAVAILABLE");
+
+        // 그리고 원장은 여전히 fail-closed 다 — 검증 못 한 값이 실리지 않는다.
+        assertThat(revisionCount()).isEqualTo(before);
     }
 
     @Test

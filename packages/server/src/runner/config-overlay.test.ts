@@ -323,9 +323,11 @@ describe("#338 무효 노브 목록 자체의 위생", () => {
       "utf8",
     );
     const block = registry.slice(registry.indexOf("const INERT: Knob[] = ["), registry.indexOf("const LIVE"));
-    // ⚠️ 줄 주석을 먼저 걷어낸다(독립검증 m3): 안 그러면 엔진에서 항목을 **주석 처리**했을 때
+    // ⚠️ 주석을 먼저 걷어낸다(독립검증 m3·m6): 안 그러면 엔진에서 항목을 **주석 처리**했을 때
     // 가드가 통과한다 — 완전 삭제만 잡히고 "잠깐 꺼 둔다"는 못 잡는다. 실효는 삭제와 같다.
+    // 줄 주석만 걷으면 블록 주석(`/* … */`)이 그대로 새어 통과했다(5차 m6 실측).
     const live = block
+      .replace(/\/\*[\s\S]*?\*\//g, "")
       .split("\n")
       .filter((line) => !line.trim().startsWith("//"))
       .join("\n");
