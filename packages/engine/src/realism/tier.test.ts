@@ -64,16 +64,22 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
    *    ⓑ `isDirectory()` 는 **심볼릭 링크 디렉토리에 false** 인데 vitest 는 따라 들어간다
    *    ⓒ 텍스트 정규식이라 **헬퍼 경유**(`helper.ts` 가 호출하고 테스트는 boolean 만 import)를 못 본다
    *
-   * 그래서 지금은 ⓐ **전체 경로**로 면제하고, ⓑ `statSync`(링크를 따라간다)로 디렉토리를 판정하며
-   * 순환은 방문 집합으로 막고, ⓒ **`.test.ts` 가 아닌 `.ts` 도 스캔한다** — 게이트 판단은
-   * 등록된 자리에만 있어야 하고, 헬퍼로 감싸는 것이 곧 우회로다.
+   * 3. `atLeastTier(` 라는 **문자열**을 찾는 방식이라 네 형태가 더 뚫렸다(역시 심어서 확인):
+   *    별칭 import(`atLeastTier as gate`) · `TIER < 1` 직접 비교 · `process.env.HMB_TIER` 직접 읽기 ·
+   *    **점으로 시작하는 디렉토리**(`.hidden/`)는 스캔이 건너뛰는데 vitest 는 수집한다.
+   *
+   * 그래서 지금은 **호출 문자열이 아니라 "티어 모듈에 닿는가"** 로 본다 — `tier` 모듈 import 또는
+   * `HMB_TIER` 언급. 무엇을 하든 티어를 알려면 둘 중 하나를 지나야 하므로 별칭·비교·env 우회가
+   * 전부 걸린다. 스캔은 링크를 따라가고(`statSync`), 점 디렉토리도 들어가며, `.mts/.cts` 도 본다.
+   * 면제는 **전체 경로**로만(basename 면제가 우회로였다).
    */
-  it("atLeastTier 를 쓰는 파일이 전부 등록돼 있다 (수집 범위 전체 · 링크 · 헬퍼 포함)", () => {
+  it("티어 모듈에 닿는 파일이 전부 등록돼 있다 (별칭·직접비교·env·링크·숨김 포함)", () => {
     const registered = new Set(PARTIAL_GATED.map((e) => e.file));
-    // 정의부와 이 가드 자신은 **전체 경로**로만 면제한다(basename 면제는 우회로였다).
     const exempt = new Set([
-      "packages/engine/src/realism/tier.ts",
-      "packages/engine/src/realism/tier.test.ts",
+      "packages/engine/src/realism/tier.ts", // 정의부
+      "packages/engine/src/realism/tier.test.ts", // 이 가드 자신
+      "vitest.config.ts", // T0 제외를 소비하는 자리(별도 계약이 지킨다)
+      "packages/engine/dev-viewer/e2e/global-setup.ts", // 하위 vitest 에 티어를 **명시**(별도 계약)
     ]);
     const roots = ["packages", "apps", "data", "tools"].map((d) => join(REPO, d));
     const found: string[] = [];
@@ -94,7 +100,7 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
         return;
       }
       for (const name of entries) {
-        if (name === "node_modules" || name === "dist" || name === "__snapshots__" || name.startsWith(".")) continue;
+        if (name === "node_modules" || name === "dist" || name === "__snapshots__" || name === ".git") continue;
         const abs = join(dir, name);
         let st;
         try {
@@ -103,18 +109,20 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
           continue;
         }
         if (st.isDirectory()) {
-          walk(abs);
+          walk(abs); // 점 디렉토리도 들어간다 — vitest 가 수집하므로
           continue;
         }
-        if (!name.endsWith(".ts") || name.endsWith(".d.ts")) continue;
+        if (!/\.(ts|mts|cts)$/.test(name) || name.endsWith(".d.ts")) continue;
         const rel = relative(REPO, abs);
         if (exempt.has(rel)) continue;
-        if (!/atLeastTier\s*\(/.test(readFileSync(abs, "utf8"))) continue;
+        const text = readFileSync(abs, "utf8");
+        const touchesTier = /from\s+["'][^"']*\/tier["']|from\s+["']\.\/tier["']|HMB_TIER/.test(text);
+        if (!touchesTier) continue;
         if (!registered.has(rel)) found.push(rel);
       }
     };
     for (const r of roots) walk(r);
-    expect(found, `PARTIAL_GATED 에 없는 게이트 사용: ${found.join(", ")}`).toEqual([]);
+    expect(found, `PARTIAL_GATED 에 없는 티어 사용: ${found.join(", ")}`).toEqual([]);
   });
 
   it("vitest.config.ts 가 정확히 이 목록만 T0 에서 제외한다", () => {
@@ -166,6 +174,20 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
      * `test:ladder` 와 **같은 클래스의 결함**이라 같이 막는다.
      */
     expect(pkg.scripts["e2e"], "e2e 가 티어를 고정하지 않는다").toMatch(/HMB_TIER=[12]/);
+  });
+
+  /**
+   * `typecheck` 가 **세 프로젝트**를 도는지 박제한다. 세 번째(`tsconfig.tools-m0.json`)가 조용히
+   * 빠지면 M0 도구가 타입 게이트 밖으로 나가는데, green 은 그대로라 아무도 모른다.
+   */
+  it("typecheck 가 M0 도구 프로젝트까지 돈다", () => {
+    const pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    for (const proj of ["tsconfig.json", "apps/web/tsconfig.json", "tsconfig.tools-m0.json"]) {
+      expect(pkg.scripts["typecheck"], `${proj} 가 typecheck 에 없다`).toContain(proj);
+    }
+    expect(existsSync(join(REPO, "tsconfig.tools-m0.json"))).toBe(true);
   });
 
   /** globalSetup 이 부르는 하위 vitest 도 티어를 명시해야 한다(호출자 환경에 좌우되면 안 된다). */

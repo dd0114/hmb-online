@@ -31,8 +31,16 @@ import { homedir } from "node:os";
 const DIR = process.env.HMB_GATE_LOCK_DIR || join(homedir(), ".hmb-gate-locks");
 const SLOTS = Math.max(1, Number(process.env.HMB_GATE_SLOTS || 1));
 const TIMEOUT_MS = Math.max(0, Number(process.env.HMB_GATE_TIMEOUT_MS || 30 * 60 * 1000));
-/** 게이트 **밖** 실행에 양보하는 상한 — 통제 못 하는 대상이라 홀더 대기보다 훨씬 짧다. */
-const FOREIGN_WAIT_MS = Math.max(0, Number(process.env.HMB_GATE_FOREIGN_WAIT_MS || 5 * 60 * 1000));
+/**
+ * 게이트 **밖** 실행에 양보하는 상한. **기본 0 = 알리기만 하고 기다리지 않는다.**
+ *
+ * ⚠️ 이 기본값은 두 번의 사고에서 나왔다. 감지는 `ps` 휴리스틱이라 틀릴 수 있는데, 그걸
+ * **권위**로 쓰면 틀리는 순간 fleet 전체가 선다(유휴 워처 하나에 모든 게이트 실행이 5분씩 멈췄다).
+ * **강제는 슬롯 락이 한다**(그건 우리가 쓰는 파일이라 확실하다). 감지는 **정보**다 — "지금 수치가
+ * 흔들릴 수 있다"를 알려주는 것이 본래 값어치고, 그건 0ms 로도 온전히 남는다.
+ * 정말 기다리고 싶으면 `HMB_GATE_FOREIGN_WAIT_MS=300000` 처럼 **명시적으로 켠다**.
+ */
+const FOREIGN_WAIT_MS = Math.max(0, Number(process.env.HMB_GATE_FOREIGN_WAIT_MS || 0));
 const POLL_MS = 1500;
 
 const argv = process.argv.slice(2);
@@ -88,47 +96,58 @@ function holders() {
  * 게이트를 **거치지 않은** 무거운 실행 감지 — 협조적 락의 구멍을 좁힌다.
  *
  * 실물로 겪었다(2026-08-01): `--status` 는 슬롯 0/1 인데 load 가 **330** 이었다. 다른 세션이
- * `npm exec vitest run …` 을 직접 돌리고 있었고, 홀더 파일만 세는 게이트에는 그게 보이지 않았다.
- * 협조적 락은 협조하지 않는 실행을 못 막지만, **보고 알릴 수는 있다.**
+ * `npm test` 를 직접 돌리고 있었고, 홀더 파일만 세는 게이트에는 그게 보이지 않았다.
+ * 협조적 락은 협조하지 않는 실행을 못 막지만, **보고 알릴 수는 있다** — 그리고 이건
+ * **알림이지 강제가 아니다**(기본 대기 0, 위 `FOREIGN_WAIT_MS` 주석 참조).
  *
- * 차단이 아니라 **짧은 양보**다(기본 5분). 우리가 통제하지 못하는 프로세스에 무한정 묶이는 것이
- * 부하보다 나쁘고, 오탐(다른 리포·워치 모드)도 있다. 홀더 대기(30분)보다 짧은 이유 = 홀더는
- * 곧 놓는다는 약속이 있고 외부는 없다.
- */
-/**
- * ⚠️ **vitest 는 macOS 에서 자기 프로세스 타이틀을 덮어쓴다.** 실측 형태:
- * ```
- * 57197     1  npm test                 ← 부모(스크립트 문자열은 이미 사라졌다)
- * 57266 57237  node (vitest)            ← 루트. 숫자가 없다
- * 57286 57266  node (vitest 6)          ← 워커. 숫자가 있다
- * ```
- * 그래서 **루트를 찾는 유일한 신호가 `(vitest)` 타이틀**인 경우가 많다(`npm test` 는 원래
- * 커맨드라인이 남지 않는다). 앞선 판(`\(vitest ?\d*\)` 로 전부 제외)이 바로 이 루트를 지워서
- * `npm test` 를 통째로 못 잡았다 — 그때 "중복 2건"이라 본 것은 `npm exec vitest`(부모) +
- * `node (vitest)`(루트) 였고, **눌렀어야 할 쪽은 부모가 아니라 아무것도 아니었다**(ppid 로 접었어야 했다).
+ * ⚠️ **프로세스 이름으로는 "무거운가"를 알 수 없다.** 두 번 데었다:
  *
- * 그래서 이제:
- * - 워커 제외는 **숫자 필수**(`(vitest 6)`), 숫자 없는 `(vitest)` 는 **루트로 센다**
- * - 중복 제거 축은 타이틀이 아니라 **ppid 체인** — 조상이 이미 후보면 접는다
- * - 조상 중에 `run-gate.mjs` 가 있으면 **게이트를 거친 실행**이라 홀더 쪽에서 세므로 제외
+ * ```
+ * 82256     1  0.0  npm exec vitest --watch   ← 부모에만 --watch 가 남는다
+ * 82354 82256  0.0  node (vitest)             ← 워처 루트. 실행 중인 것과 타이틀이 같다
+ * 82364 82354  0.0  node (vitest 2)           ← 워처도 워커를 갖는다(구조로 구별 불가)
+ *
+ * 57266 57197 54.1  node (vitest)             ← 실제 실행 중
+ * 57286 57266 52.8  node (vitest 8)           ← 워커가 CPU 를 태운다
+ * ```
+ * ①처음엔 `(vitest)` 를 워커로 오인해 지워서 **게이트 밖 `npm test` 를 통째로 놓쳤고**(2차 blocker)
+ * ②고쳐서 루트로 세니 이번엔 **유휴 워처가 잡혀** 게이트가 5분씩 섰다(3차 blocker).
+ *
+ * 결론: 판정 축은 이름이 아니라 **지금 CPU 를 태우고 있는가**여야 한다 — #376 이 실제로 걱정한 것도
+ * 프로세스의 존재가 아니라 **부하**였다. 그래서 **트리 CPU 합**(루트+자손)으로 판정한다.
+ * 유휴 워처는 0.0% 라 자연히 빠지고, 실행 중이면 워처든 아니든 잡히는 게 맞다.
+ * (`--watch` 부모 표기는 보조 신호로만 쓴다 — `npm run watch` 처럼 안 남는 경우가 있다.)
  */
 const WORKER_TITLE = /\((?:vitest|playwright)\s+\d+\)/; // 숫자 필수 = 워커
 const ROOT_TITLE = /\((?:vitest|playwright)\)/; // 숫자 없음 = 루트
 const SHELLish = /shell-snapshots|^\/?(usr\/)?bin\/(ba|z|d)?sh\b/;
-const WATCHish = /--watch|\bvitest\s+watch\b|--ui\b/;
+const WATCHish = /--watch\b|\bvitest\s+watch\b|--ui\b/;
 
-/** ps 한 줄 → `{pid, ppid, cmd}`. 파싱 못 하면 null. */
+/** 트리 CPU 합이 이 값 미만이면 "지금 무겁지 않다"로 본다(%). */
+const CPU_MIN = Number(process.env.HMB_GATE_CPU_MIN || 50);
+
+/** ps 한 줄(`pid ppid %cpu command`) → 객체. 파싱 못 하면 null. */
 export function parsePsLine(line) {
-  const m = /^\s*(\d+)\s+(\d+)\s+(.*\S)\s*$/.exec(line);
+  const m = /^\s*(\d+)\s+(\d+)\s+([\d.]+)\s+(.*\S)\s*$/.exec(line);
   if (!m) return null;
-  return { pid: Number(m[1]), ppid: Number(m[2]), cmd: m[3] };
+  return { pid: Number(m[1]), ppid: Number(m[2]), cpu: Number(m[3]), cmd: m[4] };
 }
 
-export function parseForeignHeavy(psLines, ownPids) {
+/**
+ * @param psLines `ps -Ao pid,ppid,%cpu,command` 출력(헤더 제외)
+ * @param ownPids 우리 실행 pid 집합
+ * @param cpuMin 트리 CPU 하한(%). 기본 `HMB_GATE_CPU_MIN`.
+ */
+export function parseForeignHeavy(psLines, ownPids, cpuMin = CPU_MIN) {
   const rows = psLines.map(parsePsLine).filter(Boolean);
   const byPid = new Map(rows.map((r) => [r.pid, r]));
+  const children = new Map();
+  for (const r of rows) {
+    if (!children.has(r.ppid)) children.set(r.ppid, []);
+    children.get(r.ppid).push(r);
+  }
 
-  /** 조상 체인을 훑는다(순환·고아 대비 상한). */
+  /** 조상 체인(순환·고아 대비 상한). */
   const ancestors = (row) => {
     const out = [];
     let cur = byPid.get(row.ppid);
@@ -137,6 +156,21 @@ export function parseForeignHeavy(psLines, ownPids) {
       cur = byPid.get(cur.ppid);
     }
     return out;
+  };
+
+  /** 자기 + 자손의 %cpu 합. 이게 "지금 머신을 먹고 있는 양"이다. */
+  const treeCpu = (row) => {
+    let sum = 0;
+    const stack = [row];
+    const seen = new Set();
+    while (stack.length) {
+      const cur = stack.pop();
+      if (seen.has(cur.pid)) continue;
+      seen.add(cur.pid);
+      sum += cur.cpu;
+      for (const ch of children.get(cur.pid) ?? []) stack.push(ch);
+    }
+    return sum;
   };
 
   const isCandidate = (r) => {
@@ -161,9 +195,16 @@ export function parseForeignHeavy(psLines, ownPids) {
   for (const c of candidates) {
     const anc = ancestors(c);
     if (ownPids.has(c.pid) || anc.some((a) => ownPids.has(a.pid))) continue; // 우리 실행과 그 자손
-    if (anc.some((a) => /run-gate\.mjs/.test(a.cmd))) continue; // 게이트를 거친 실행
+    // ⚠️ 조상이 **게이트 실행 자체**일 때만 제외한다. raw 문자열로 보면 명령줄에 그 이름을 품은
+    // 셸 래퍼까지 걸려 진짜 감지가 통째로 죽는다(3차 검증 실측).
+    if (anc.some((a) => !SHELLish.test(a.cmd) && /run-gate\.mjs/.test(a.cmd))) continue;
     if (anc.some((a) => candidatePids.has(a.pid))) continue; // 같은 트리는 루트 하나만
-    out.push({ pid: c.pid, cmd: c.cmd.slice(0, 110) });
+    // ⚠️ 여기서 조상의 `--watch` 를 보고 빼면 안 된다. **워처를 면제하는 게 아니라 유휴를 빼는 것**이고,
+    // 워처가 실제로 돌기 시작하면 그건 잡혀야 하는 부하다. 판정은 CPU 한 축으로 통일한다
+    // (계약이 이 자기모순을 잡았다 — "워처가 돌기 시작하면 잡는다" 케이스가 red 였다).
+    const cpu = treeCpu(c);
+    if (cpu < cpuMin) continue; // 유휴 워처 등 — 지금 머신을 먹고 있지 않다
+    out.push({ pid: c.pid, cpu: Math.round(cpu), cmd: c.cmd.slice(0, 110) });
   }
   return out;
 }
@@ -171,7 +212,10 @@ export function parseForeignHeavy(psLines, ownPids) {
 function foreignHeavy(ownPids) {
   let psOut;
   try {
-    psOut = execFileSync("ps", ["-Ao", "pid,ppid,command"], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+    psOut = execFileSync("ps", ["-Ao", "pid,ppid,%cpu,command"], {
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
   } catch {
     return []; // ps 를 못 읽으면 감지를 포기한다 — 막지 않는다
   }
@@ -238,7 +282,7 @@ if (isMain && flag("--status")) {
   const foreign = foreignHeavy(new Set([process.pid, ...cur.flatMap((h) => [h.pid, h.childPid].filter(Boolean))]));
   if (foreign.length) {
     process.stdout.write(`⚠️ 게이트를 안 거친 무거운 실행 ${foreign.length}건 — 슬롯 계산에 안 잡힌다:\n`);
-    for (const f of foreign) process.stdout.write(`  pid ${f.pid} · ${f.cmd}\n`);
+    for (const f of foreign) process.stdout.write(`  pid ${f.pid} · CPU ${f.cpu}% · ${f.cmd}\n`);
   }
   process.exit(0);
 }
@@ -267,20 +311,21 @@ async function main() {
       const own = new Set([process.pid, ...holders().flatMap((h) => [h.pid, h.childPid].filter(Boolean))]);
       const foreign = foreignHeavy(own);
       if (foreign.length === 0) break;
-      if (Date.now() > foreignDeadline) {
-        process.stderr.write(
-          `⚠️ 게이트 밖 실행 ${foreign.length}건이 계속 돈다 — 더 기다리지 않고 진행한다.\n` +
-            `   부하가 겹치면 게이트 수치가 흔들릴 수 있다(#344).\n`,
-        );
-        break;
-      }
       if (!foreignAnnounced) {
         foreignAnnounced = true;
         process.stderr.write(
-          `⏳ 게이트를 안 거친 무거운 실행 대기(최대 ${humanWait(FOREIGN_WAIT_MS)}):\n` +
-            foreign.map((f) => `   pid ${f.pid} · ${f.cmd}`).join("\n") +
+          `⚠️ 게이트를 안 거친 무거운 실행 ${foreign.length}건 — 슬롯 계산에 안 잡힌다:\n` +
+            foreign.map((f) => `   pid ${f.pid} · CPU ${f.cpu}% · ${f.cmd}`).join("\n") +
+            `\n   부하가 겹치면 게이트 수치가 흔들릴 수 있다(#344).` +
             `\n   (표준 경로는 npm test · test:t* · e2e — npx vitest 직접 실행은 이 게이트를 우회한다)\n`,
         );
+      }
+      // 기본은 **알리고 진행**. 기다리려면 HMB_GATE_FOREIGN_WAIT_MS 로 명시적으로 켠다.
+      if (Date.now() > foreignDeadline) {
+        if (FOREIGN_WAIT_MS > 0) {
+          process.stderr.write(`⚠️ 게이트 밖 실행이 계속 돈다 — 더 기다리지 않고 진행한다.\n`);
+        }
+        break;
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
     }

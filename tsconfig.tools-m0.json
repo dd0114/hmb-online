@@ -8,13 +8,21 @@
     }
   },
   /**
-   * M0(#377) 이 소유한 도구 TS 만 타입체크한다.
+   * M0(#377) 이 소유한 **TS** 도구만 타입체크한다.
    *
-   * 왜 `tools/**` 전체가 아닌가: 다른 세션 소유 파일에 기존 타입오류가 12건 이상 있다
-   * (`league-difficulty-sweep.ts`·`pace-config.test.ts`·`qa-console/*` 등). 전체를 넣으면
-   * 남의 게이트를 red 로 만든다 — 내 스코프가 아니다. 대신 **내가 만든 것은 반드시 본다**:
-   * 그러지 않으면 `npm run typecheck` green 이 이 파일들에 대해서는 아무 증거가 아니다.
-   * 새 M0 도구 TS 를 추가하면 여기 include 에 넣는다.
+   * ## 왜 `tools/**` 전체가 아닌가
+   * 다른 세션 소유 파일에 기존 타입오류가 **44건 / 6파일** 있다(실측: `league-difficulty-sweep.ts` ·
+   * `live-input-audit.test.ts` · `pace-config.test.ts` · `qa-console/{registry,server,wait}.test.ts`).
+   * 전체를 넣으면 남의 게이트를 red 로 만든다 — 내 스코프가 아니다. 새 M0 도구 TS 를 추가하면
+   * 여기 include 에 넣는다.
+   *
+   * ## ⚠️ 알려진 공백 — 하네스 런타임(`tools/tuning-harness/*.mjs`)은 여기 없다
+   * JSDoc `.mjs` 라 `checkJs` 를 켜야 검사되는데, 켜면 **전이 import 로
+   * `packages/viewer-core/src/*.mjs`(다른 트랙 소유)까지 끌려와 241건**이 뜬다(실측).
+   * 남의 코드를 내 게이트로 red 만드는 쪽이 더 나쁘다고 판단해 켜지 않았다.
+   * 대신 하네스는 **런타임 계약**으로 지킨다 — `config-override.test.ts`(주입·오타·결정론) ·
+   * `real-deck-smoke.test.ts`(픽스처 소비) · 기동/API 스모크.
+   * viewer-core 가 `viewer.ts` 처럼 타입 표면을 갖추면 그때 편입한다.
    */
   "include": ["tools/run-gate.test.ts", "tools/tuning-harness/**/*.ts"],
   "exclude": ["**/node_modules", "**/dist"]
