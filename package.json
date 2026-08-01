@@ -12,12 +12,12 @@
     "test:watch": "vitest",
     "test:ladder": "HMB_TIER=1 HMB_LADDER=1 node tools/run-gate.mjs --label ladder -- vitest run packages/engine/src/realism",
     "test:full": "npm run test:t2",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p tsconfig.tools-m0.json",
     "harness": "tsx tools/tuning-harness/server.mjs",
     "test:t0": "HMB_TIER=0 node tools/run-gate.mjs --label t0 -- vitest run",
     "test:t1": "HMB_TIER=1 node tools/run-gate.mjs --label t1 -- vitest run",
     "test:t2": "HMB_TIER=2 HMB_LADDER=1 node tools/run-gate.mjs --label t2 -- vitest run",
-    "e2e": "node tools/run-gate.mjs --label playwright --exclusive -- playwright test"
+    "e2e": "HMB_TIER=1 node tools/run-gate.mjs --label playwright --exclusive -- playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

@@ -95,32 +95,75 @@ function holders() {
  * 부하보다 나쁘고, 오탐(다른 리포·워치 모드)도 있다. 홀더 대기(30분)보다 짧은 이유 = 홀더는
  * 곧 놓는다는 약속이 있고 외부는 없다.
  */
+/**
+ * ⚠️ **vitest 는 macOS 에서 자기 프로세스 타이틀을 덮어쓴다.** 실측 형태:
+ * ```
+ * 57197     1  npm test                 ← 부모(스크립트 문자열은 이미 사라졌다)
+ * 57266 57237  node (vitest)            ← 루트. 숫자가 없다
+ * 57286 57266  node (vitest 6)          ← 워커. 숫자가 있다
+ * ```
+ * 그래서 **루트를 찾는 유일한 신호가 `(vitest)` 타이틀**인 경우가 많다(`npm test` 는 원래
+ * 커맨드라인이 남지 않는다). 앞선 판(`\(vitest ?\d*\)` 로 전부 제외)이 바로 이 루트를 지워서
+ * `npm test` 를 통째로 못 잡았다 — 그때 "중복 2건"이라 본 것은 `npm exec vitest`(부모) +
+ * `node (vitest)`(루트) 였고, **눌렀어야 할 쪽은 부모가 아니라 아무것도 아니었다**(ppid 로 접었어야 했다).
+ *
+ * 그래서 이제:
+ * - 워커 제외는 **숫자 필수**(`(vitest 6)`), 숫자 없는 `(vitest)` 는 **루트로 센다**
+ * - 중복 제거 축은 타이틀이 아니라 **ppid 체인** — 조상이 이미 후보면 접는다
+ * - 조상 중에 `run-gate.mjs` 가 있으면 **게이트를 거친 실행**이라 홀더 쪽에서 세므로 제외
+ */
+const WORKER_TITLE = /\((?:vitest|playwright)\s+\d+\)/; // 숫자 필수 = 워커
+const ROOT_TITLE = /\((?:vitest|playwright)\)/; // 숫자 없음 = 루트
+const SHELLish = /shell-snapshots|^\/?(usr\/)?bin\/(ba|z|d)?sh\b/;
+const WATCHish = /--watch|\bvitest\s+watch\b|--ui\b/;
+
+/** ps 한 줄 → `{pid, ppid, cmd}`. 파싱 못 하면 null. */
+export function parsePsLine(line) {
+  const m = /^\s*(\d+)\s+(\d+)\s+(.*\S)\s*$/.exec(line);
+  if (!m) return null;
+  return { pid: Number(m[1]), ppid: Number(m[2]), cmd: m[3] };
+}
+
 export function parseForeignHeavy(psLines, ownPids) {
+  const rows = psLines.map(parsePsLine).filter(Boolean);
+  const byPid = new Map(rows.map((r) => [r.pid, r]));
+
+  /** 조상 체인을 훑는다(순환·고아 대비 상한). */
+  const ancestors = (row) => {
+    const out = [];
+    let cur = byPid.get(row.ppid);
+    for (let i = 0; i < 24 && cur; i++) {
+      out.push(cur);
+      cur = byPid.get(cur.ppid);
+    }
+    return out;
+  };
+
+  const isCandidate = (r) => {
+    if (SHELLish.test(r.cmd)) return false;
+    if (WATCHish.test(r.cmd)) return false;
+    if (WORKER_TITLE.test(r.cmd)) return false;
+    if (/run-gate\.mjs/.test(r.cmd)) return false;
+    return (
+      ROOT_TITLE.test(r.cmd) ||
+      /(^|\/)node\b[^|]*\bvitest\b/.test(r.cmd) ||
+      /\bnpm\s+exec\s+vitest\b/.test(r.cmd) ||
+      /\.bin\/vitest\b/.test(r.cmd) ||
+      /\.bin\/playwright\b/.test(r.cmd) ||
+      /\bplaywright\s+test\b/.test(r.cmd)
+    );
+  };
+
+  const candidates = rows.filter(isCandidate);
+  const candidatePids = new Set(candidates.map((c) => c.pid));
+
   const out = [];
-  for (const line of psLines) {
-    const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
-    if (!m) continue;
-    const [, pidStr, ppidStr, cmd] = m;
-    const pid = Number(pidStr);
-    const ppid = Number(ppidStr);
-    if (ownPids.has(pid) || ownPids.has(ppid)) continue; // 우리 실행과 그 워커
-    // ⚠️ **"vitest 라는 글자가 있다"로는 못 센다.** 실측에서 세션 래퍼 셸
-    // (`/bin/bash -c source …shell-snapshots/…`)이 명령줄에 그 단어를 품고 있어 통째로 오탐됐다.
-    // 오탐 하나가 곧 "남의 유휴 셸 때문에 내 게이트가 5분 선다"이므로 **실제 호출 형태**만 센다.
-    if (/shell-snapshots|^\/?(usr\/)?bin\/(ba|z|d)?sh\b/.test(cmd)) continue;
-    const invocation =
-      /(^|\/)node\b[^|]*\bvitest\b/.test(cmd) ||
-      /\bnpm\s+exec\s+vitest\b/.test(cmd) ||
-      /\.bin\/vitest\b/.test(cmd) ||
-      /\.bin\/playwright\b/.test(cmd) ||
-      /\bplaywright\s+test\b/.test(cmd);
-    if (!invocation) continue;
-    if (/--watch|\bvitest\s+watch\b|--ui\b/.test(cmd)) continue; // 워치/UI 모드는 상시 떠 있다
-    if (/run-gate\.mjs/.test(cmd)) continue; // 게이트를 거친 실행은 홀더 쪽에서 센다
-    // 워커·메인 프로세스(`node (vitest)` · `node (vitest 3)`)는 루트와 같은 트리라 **루트만** 센다.
-    // ⚠️ 공백이 선택적이다 — `\(vitest \d*\)` 로 쓰면 `node (vitest)` 를 놓쳐 한 실행이 2건으로 잡혔다(실측).
-    if (/\(vitest ?\d*\)/.test(cmd)) continue;
-    out.push({ pid, cmd: cmd.slice(0, 110) });
+  for (const c of candidates) {
+    const anc = ancestors(c);
+    if (ownPids.has(c.pid) || anc.some((a) => ownPids.has(a.pid))) continue; // 우리 실행과 그 자손
+    if (anc.some((a) => /run-gate\.mjs/.test(a.cmd))) continue; // 게이트를 거친 실행
+    if (anc.some((a) => candidatePids.has(a.pid))) continue; // 같은 트리는 루트 하나만
+    out.push({ pid: c.pid, cmd: c.cmd.slice(0, 110) });
   }
   return out;
 }
@@ -205,32 +248,19 @@ if (isMain && cmd.length === 0) {
   process.exit(2);
 }
 
+/** 분 단위로 반올림하면 짧은 상한이 "최대 0분"으로 찍힌다 — 60초 미만은 초로 쓴다. */
+function humanWait(ms) {
+  return ms < 60_000 ? `${Math.round(ms / 1000)}초` : `${Math.round(ms / 60_000)}분`;
+}
+
 async function main() {
   let held = null;
   if (!process.env.HMB_NO_GATE) {
-    const deadline = Date.now() + TIMEOUT_MS;
-    let announced = false;
-    for (;;) {
-      const got = tryAcquire();
-      if (got.ok) {
-        held = got.file;
-        break;
-      }
-      if (Date.now() > deadline) {
-        process.stderr.write(`⚠️ 게이트 대기 ${Math.round(TIMEOUT_MS / 60000)}분 초과 — 막지 않고 진행한다.\n`);
-        break;
-      }
-      if (!announced) {
-        announced = true;
-        const who = got.blockedBy
-          .map((h) => `pid ${h.pid} ${h.label}${h.exclusive ? "[배타]" : ""} (${h.cwd})`)
-          .join(", ");
-        process.stderr.write(`⏳ 다른 세션이 무거운 검증 중 — 대기: ${who}\n   (우회: HMB_NO_GATE=1)\n`);
-      }
-      await new Promise((r) => setTimeout(r, POLL_MS));
-    }
-
-    // 슬롯은 얻었지만 게이트 **밖**에서 도는 무거운 실행이 있으면 짧게 양보한다.
+    /**
+     * ① 게이트 **밖** 실행에 먼저 양보한다 — **슬롯을 잡기 전에**.
+     * 잡고 나서 양보하면 그 5분 동안 슬롯을 쥔 채로 다른 **게이트 안** 실행을 굶긴다
+     * (게이트 밖에 양보하려다 게이트 안을 벌주는 셈). 최악 대기도 30분+5분 → 30분으로 준다.
+     */
     const foreignDeadline = Date.now() + FOREIGN_WAIT_MS;
     let foreignAnnounced = false;
     for (;;) {
@@ -247,10 +277,33 @@ async function main() {
       if (!foreignAnnounced) {
         foreignAnnounced = true;
         process.stderr.write(
-          `⏳ 게이트를 안 거친 무거운 실행 대기(최대 ${Math.round(FOREIGN_WAIT_MS / 60000)}분):\n` +
+          `⏳ 게이트를 안 거친 무거운 실행 대기(최대 ${humanWait(FOREIGN_WAIT_MS)}):\n` +
             foreign.map((f) => `   pid ${f.pid} · ${f.cmd}`).join("\n") +
             `\n   (표준 경로는 npm test · test:t* · e2e — npx vitest 직접 실행은 이 게이트를 우회한다)\n`,
         );
+      }
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
+
+    // ② 그 다음 슬롯을 잡는다.
+    const deadline = Date.now() + TIMEOUT_MS;
+    let announced = false;
+    for (;;) {
+      const got = tryAcquire();
+      if (got.ok) {
+        held = got.file;
+        break;
+      }
+      if (Date.now() > deadline) {
+        process.stderr.write(`⚠️ 게이트 대기 ${humanWait(TIMEOUT_MS)} 초과 — 막지 않고 진행한다.\n`);
+        break;
+      }
+      if (!announced) {
+        announced = true;
+        const who = got.blockedBy
+          .map((h) => `pid ${h.pid} ${h.label}${h.exclusive ? "[배타]" : ""} (${h.cwd})`)
+          .join(", ");
+        process.stderr.write(`⏳ 다른 세션이 무거운 검증 중 — 대기: ${who}\n   (우회: HMB_NO_GATE=1)\n`);
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
     }

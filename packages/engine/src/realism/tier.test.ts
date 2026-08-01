@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync, statSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve, relative } from "node:path";
 
@@ -57,33 +57,59 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
   /**
    * 고아 검출 — 티어 토큰을 쓰는데 등록되지 않은 파일이 있으면 목록이 진실이 아니다.
    *
-   * ⚠️ **vitest 가 수집하는 범위 전체를 재귀로** 훑는다. 처음엔 `packages/engine/src` 두 디렉토리의
-   * 직속 파일만 봤는데, 독립검증이 `dev-viewer/` 에 미등록 게이트를 심자 가드가 **green 인 채로**
-   * 통과했다. 스캔 범위가 테스트 이름의 주장보다 좁으면 그게 곧 거짓 green 이다.
+   * ⚠️ 이 스캔은 **두 번** 좁아서 뚫렸다. 기록해 둔다 — 같은 실수를 또 하지 않으려면:
+   * 1. 처음엔 두 디렉토리의 **직속 파일만** 봤다 → `dev-viewer/` 에 심으면 green.
+   * 2. 재귀로 고친 뒤에도 세 형태가 남았다(독립검증이 실제로 심어서 실행까지 확인):
+   *    ⓐ **basename** 으로 자기 자신을 면제해 `어디든/tier.test.ts` 면 통과
+   *    ⓑ `isDirectory()` 는 **심볼릭 링크 디렉토리에 false** 인데 vitest 는 따라 들어간다
+   *    ⓒ 텍스트 정규식이라 **헬퍼 경유**(`helper.ts` 가 호출하고 테스트는 boolean 만 import)를 못 본다
+   *
+   * 그래서 지금은 ⓐ **전체 경로**로 면제하고, ⓑ `statSync`(링크를 따라간다)로 디렉토리를 판정하며
+   * 순환은 방문 집합으로 막고, ⓒ **`.test.ts` 가 아닌 `.ts` 도 스캔한다** — 게이트 판단은
+   * 등록된 자리에만 있어야 하고, 헬퍼로 감싸는 것이 곧 우회로다.
    */
-  it("atLeastTier 를 쓰는 테스트 파일이 전부 등록돼 있다 (수집 범위 전체 재귀)", () => {
+  it("atLeastTier 를 쓰는 파일이 전부 등록돼 있다 (수집 범위 전체 · 링크 · 헬퍼 포함)", () => {
     const registered = new Set(PARTIAL_GATED.map((e) => e.file));
-    // vitest.config include 와 같은 뿌리들.
+    // 정의부와 이 가드 자신은 **전체 경로**로만 면제한다(basename 면제는 우회로였다).
+    const exempt = new Set([
+      "packages/engine/src/realism/tier.ts",
+      "packages/engine/src/realism/tier.test.ts",
+    ]);
     const roots = ["packages", "apps", "data", "tools"].map((d) => join(REPO, d));
     const found: string[] = [];
+    const seen = new Set<string>();
     const walk = (dir: string): void => {
-      let entries;
+      let real: string;
       try {
-        entries = readdirSync(dir, { withFileTypes: true });
+        real = realpathSync(dir);
       } catch {
         return;
       }
-      for (const e of entries) {
-        if (e.isDirectory()) {
-          if (e.name === "node_modules" || e.name === "dist" || e.name === "__snapshots__") continue;
-          walk(join(dir, e.name));
+      if (seen.has(real)) return; // 심볼릭 링크 순환 방지
+      seen.add(real);
+      let entries: string[];
+      try {
+        entries = readdirSync(dir);
+      } catch {
+        return;
+      }
+      for (const name of entries) {
+        if (name === "node_modules" || name === "dist" || name === "__snapshots__" || name.startsWith(".")) continue;
+        const abs = join(dir, name);
+        let st;
+        try {
+          st = statSync(abs); // lstat 아님 — 링크를 **따라간다**(vitest 와 같은 관점)
+        } catch {
           continue;
         }
-        if (!e.name.endsWith(".test.ts")) continue;
-        if (e.name === "tier.test.ts") continue; // 가드 자신 — 티어를 검사하려면 당연히 참조한다.
-        const abs = join(dir, e.name);
-        if (!/atLeastTier\s*\(/.test(readFileSync(abs, "utf8"))) continue;
+        if (st.isDirectory()) {
+          walk(abs);
+          continue;
+        }
+        if (!name.endsWith(".ts") || name.endsWith(".d.ts")) continue;
         const rel = relative(REPO, abs);
+        if (exempt.has(rel)) continue;
+        if (!/atLeastTier\s*\(/.test(readFileSync(abs, "utf8"))) continue;
         if (!registered.has(rel)) found.push(rel);
       }
     };
@@ -134,6 +160,22 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
      */
     expect(pkg.scripts["test:ladder"], "사다리가 티어를 고정하지 않는다").toMatch(/HMB_TIER=[12]/);
     expect(pkg.scripts["test:ladder"]).toContain("HMB_LADDER=1");
+    /**
+     * ⚠️ `e2e` 도 고정해야 한다 — globalSetup 이 `generate-demo.test.ts`(T0 제외 목록)를
+     * `npx vitest run` 으로 부른다. 앰비언트 `HMB_TIER=0` 이면 "No test files found" 로 죽는다.
+     * `test:ladder` 와 **같은 클래스의 결함**이라 같이 막는다.
+     */
+    expect(pkg.scripts["e2e"], "e2e 가 티어를 고정하지 않는다").toMatch(/HMB_TIER=[12]/);
+  });
+
+  /** globalSetup 이 부르는 하위 vitest 도 티어를 명시해야 한다(호출자 환경에 좌우되면 안 된다). */
+  it("e2e globalSetup 의 하위 vitest 호출이 티어를 명시한다", () => {
+    const gs = readFileSync(join(REPO, "packages/engine/dev-viewer/e2e/global-setup.ts"), "utf8");
+    const calls = gs.match(/execSync\(\s*["'`]npx vitest[\s\S]*?\)\;/g) ?? [];
+    expect(calls.length, "globalSetup 의 vitest 호출을 못 찾았다 — 스캔이 낡았다").toBeGreaterThan(0);
+    for (const c of calls) {
+      expect(c, `티어 미명시 호출: ${c.slice(0, 80)}`).toMatch(/HMB_TIER:\s*["'`][12]["'`]/);
+    }
   });
 
   /** 무거운 실행이 게이트를 통과하도록 배선돼 있는가(#376 동시성 상한). */

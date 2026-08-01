@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "@hmb/shared": ["./packages/shared/src/index.ts"],
+      "@hmb/engine": ["./packages/engine/src/index.ts"]
+    }
+  },
+  /**
+   * M0(#377) 이 소유한 도구 TS 만 타입체크한다.
+   *
+   * 왜 `tools/**` 전체가 아닌가: 다른 세션 소유 파일에 기존 타입오류가 12건 이상 있다
+   * (`league-difficulty-sweep.ts`·`pace-config.test.ts`·`qa-console/*` 등). 전체를 넣으면
+   * 남의 게이트를 red 로 만든다 — 내 스코프가 아니다. 대신 **내가 만든 것은 반드시 본다**:
+   * 그러지 않으면 `npm run typecheck` green 이 이 파일들에 대해서는 아무 증거가 아니다.
+   * 새 M0 도구 TS 를 추가하면 여기 include 에 넣는다.
+   */
+  "include": ["tools/run-gate.test.ts", "tools/tuning-harness/**/*.ts"],
+  "exclude": ["**/node_modules", "**/dist"]
+}
