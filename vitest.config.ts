@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { TIER, t0ExcludedFiles } from "./packages/engine/src/realism/tier";
 
 export default defineConfig({
@@ -22,9 +22,11 @@ export default defineConfig({
      * 스킵해도 collect 단계에서 이미 계산이 끝난다. 그래서 파일째 제외가 유일한 수단이다.
      * 기본(T1)과 T2 에서는 **아무것도 제외되지 않는다** — 목록·근거·정합성은 `tier.test.ts` 가 지킨다.
      */
+    // ⚠️ `exclude` 는 vitest 기본값을 **덮어쓴다**(병합이 아니다). 손으로 두 줄만 적으면
+    // `**/cypress/**`·`**/.{idea,git,cache,output,temp}/**` 보호가 조용히 사라진다 — 지금은 그
+    // 경로에 `.test.ts` 가 0건이라 무해하지만, 무해함이 우연이면 계약이 아니다. 기본값을 편다.
     exclude: [
-      "**/node_modules/**",
-      "**/dist/**",
+      ...configDefaults.exclude,
       ...(TIER === 0 ? t0ExcludedFiles() : []),
     ],
   },

@@ -112,7 +112,13 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
           walk(abs); // 점 디렉토리도 들어간다 — vitest 가 수집하므로
           continue;
         }
-        if (!/\.(ts|mts|cts)$/.test(name) || name.endsWith(".d.ts")) continue;
+        // ⚠️ **JS 확장자도 스캔한다.** 5차 검증이 여기로 뚫었다 — `realism/zz-probe-helper.mjs` 가
+        // `process.env.HMB_TIER` 를 읽어 boolean 을 export 하고, `.test.ts` 는 `skipIf(!heavyOn())`
+        // 만 써서 티어 문자열을 **한 글자도 안 담는다**. TS 만 보면 이 파일 쌍은 레지스트리 밖에서
+        // 조용히 T0 을 건너뛴다. 가공의 형태가 아니다 — 이 리포는 테스트 옆 `.mjs` 헬퍼를 실제로
+        // 쓴다(`stats.impl.mjs`·`owner-side.mjs`·`playback.mjs`). "헬퍼 경유"를 닫았다던 ⓒ 주석과
+        // **같은 결함 클래스가 확장자 축에 남아 있었다.**
+        if (!/\.(ts|mts|cts|js|mjs|cjs)$/.test(name) || name.endsWith(".d.ts")) continue;
         const rel = relative(REPO, abs);
         if (exempt.has(rel)) continue;
         const text = readFileSync(abs, "utf8");
