@@ -98,7 +98,38 @@ export function pressureCount(
   return pressureCountAt(state, player.side, player.posFx.x, player.posFx.y, config, rangeM);
 }
 
-/** 점(px,py)-선분(ax,ay)-(bx,by) 사이 최단거리 fixed(정수 산술). */
+/**
+ * 점(px,py) 에서 선분(ax,ay)-(bx,by) 위의 **가장 가까운 점과 그 거리**(fixed, 정수 산술).
+ *
+ * ⚠️ 단일 출처(#377 M3-B): 레인을 재는 쪽(`laneDangerOn`)과 레인을 **선점하러 가는 쪽**
+ * (`decision.ts:readLane`)이 같은 기하를 써야 한다. 수비가 자기 사본으로 투영점을 잡으면
+ * "계약이 재는 레인"과 "수비가 서는 레인"이 조용히 어긋난다(#377 M3-C 가 오프사이드 라인에서
+ * 겪은 것과 같은 부류). 산술·반올림이 그대로라 이 추출은 bit-identical 이다.
+ */
+export function laneClosest(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): { x: number; y: number; dist: number } {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 === 0) return { x: ax, y: ay, dist: fdist(px, py, ax, ay) };
+  // t = clamp( (ap·ab)/ab2 , 0..1 ), 정수화 위해 분자/분모로.
+  let tNum = apx * abx + apy * aby;
+  if (tNum < 0) tNum = 0;
+  if (tNum > ab2) tNum = ab2;
+  const cx = ax + Math.round((abx * tNum) / ab2);
+  const cy = ay + Math.round((aby * tNum) / ab2);
+  return { x: cx, y: cy, dist: fdist(px, py, cx, cy) };
+}
+
+/** 점-선분 최단거리 fixed. `laneClosest` 의 거리 성분(같은 산술). */
 function pointSegDist(
   px: number,
   py: number,
@@ -107,19 +138,7 @@ function pointSegDist(
   bx: number,
   by: number,
 ): number {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const apx = px - ax;
-  const apy = py - ay;
-  const ab2 = abx * abx + aby * aby;
-  if (ab2 === 0) return fdist(px, py, ax, ay);
-  // t = clamp( (ap·ab)/ab2 , 0..1 ), 정수화 위해 분자/분모로.
-  let tNum = apx * abx + apy * aby;
-  if (tNum < 0) tNum = 0;
-  if (tNum > ab2) tNum = ab2;
-  const cx = ax + Math.round((abx * tNum) / ab2);
-  const cy = ay + Math.round((aby * tNum) / ab2);
-  return fdist(px, py, cx, cy);
+  return laneClosest(px, py, ax, ay, bx, by).dist;
 }
 
 /**

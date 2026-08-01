@@ -289,7 +289,10 @@ describe("데드볼 중 정지 (#307 H3)", () => {
       defaultEngineConfig.rules.deadBall.walkSpeedM,
       defaultEngineConfig.rules.deadBall.cornerWalkSpeedM,
     );
-    const worst = logs.map(({ seed, log }) => ({ seed, m: measureDeadBallMotion(log) }));
+    // 순간 재배치(킥오프 포메이션 리셋)는 **속도 표본이 아니다** — 임계는 config 의 물리 상한에서
+    // 온다(하드코딩 금지). 창이 하프 끝 골→킥오프를 삼키면 그 프레임이 들어온다(#379 M3-B).
+    const reposM = defaultEngineConfig.speed.maxPerTick + 0.5;
+    const worst = logs.map(({ seed, log }) => ({ seed, m: measureDeadBallMotion(log, { repositionM: reposM }) }));
     const over = worst.filter((w) => w.m.maxStepM > cap + 0.15);
     expect(
       over.map((w) => `${w.seed}: max ${w.m.maxStepM}m/tick > cap ${cap}`),

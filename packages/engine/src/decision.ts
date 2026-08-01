@@ -1,14 +1,14 @@
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer } from "./simstate";
-import { playerAt, otherSide, claimantSideOf, isBallOwner, restartRequiresKick } from "./simstate";
+import { playerAt, otherSide, claimantSideOf, isBallOwner, restartRequiresKick, ballOwnerOf } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
 import { fromFixed, fclamp, fdist, toFixed, stepToward, isqrt } from "./fixedmath";
 import { attackGoal, attackProgressX, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
-import { passOptions, nearestOpponent, pressureCount, pressureCountAt } from "./perception";
+import { passOptions, nearestOpponent, pressureCount, pressureCountAt, laneClosest, laneDangerOn } from "./perception";
 import { aimErrorDeg, aimWithError, deliverySpeedFx, isLofted, overhitOut, passPowerFx, shotPowerFx } from "./kick";
-import { planReadObserver } from "./action";
+import { laneReadObserver, planReadObserver } from "./action";
 
 /**
  * decision — 행동 선택.
@@ -1041,6 +1041,121 @@ function readPassPlan(state: SimState, player: SimPlayer, config: EngineConfig):
 }
 
 /**
+ * **수비 레인 예측**(#379 M3-B, W0 §2-B) — 수비수가 공을 쫓는 대신 **패스 레인을 읽고 먼저 선점**한다.
+ *
+ * ## 무엇이 없었나
+ * 오프더볼 수비의 목표는 ①블록(공 x 를 따라 압축) ②마크(위협도−도달비용이 최대인 상대 하나)
+ * ③압박(최근접 1명이 공으로) 셋뿐이었다. 셋 다 **사람 아니면 공**을 본다 — "저 둘 **사이**"라는
+ * 개념이 없어서, 캐리어와 위협적인 리시버를 잇는 선은 아무도 서지 않아도 비어 있었다.
+ *
+ * ## ⚠️ 정보 출처가 이 기제의 정의다 — **A(#369)의 게시판을 안 읽는다**
+ * 입력은 셋뿐이다: **공 위치**(= 캐리어. 공은 누구나 본다) · **이 수비수가 인지한 상대**
+ * (`perceiveOpponents` 의 기억 — 마지막 본 위치, 낡을 수 있다) · **우리 골대**. 전부 기하다.
+ * `state.intents`(`pass_plan`) 도 상대의 `runOrder` 도 **보지 않는다** — 그건 아군 전용 게시판이고
+ * 수비가 읽으면 텔레파시다. W0 이 A 와 B 를 다른 축으로 그은 이유가 정확히 이것이라,
+ * `realism/lane-read.test.ts` 가 이 함수의 **소스**를 그 문자열들로 검사한다.
+ *
+ * ## 왜 확률로 읽나 (연속 강도가 아니라)
+ * `readPassPlan`(#369)과 같은 관용구다. 연속 강도로 만들면 전원이 조금씩 읽어서 **출하 config
+ * 안에 대조군이 없어진다** — "읽은 수비수가 정말 레인으로 갔나"를 반사실 팔 없이 물을 수 없게 된다
+ * (M3-A 독립검증 m1 의 교훈: 반사실 팔의 평균은 "출하값에서 광고한 동작이 나는가"에 답하지 못한다).
+ * 확률이면 같은 기하에서 READ/UNREAD 가 갈리고, 그 둘의 다음 틱 실제 이동을 비교하면 된다.
+ * 판정은 `varietyNoise` 라 **RNG 스트림 소비 0**(재개 계약이 후보 수의 함수가 되지 않는다).
+ *
+ * ## 진동을 만들지 않는 방법 (#178/#185 의 교훈)
+ *  - 판정 버킷이 `readPeriodTicks` 라 같은 수비수가 매 틱 읽었다 말았다 하지 않는다.
+ *  - 선점량이 **레인까지 거리의 비율**(`pull`)이라 투영점을 **넘어가지 않는다**. #178 의 오버슛은
+ *    당김이 *고정 길이 스텝*이라 이미 붙어 있으면 지나쳐 반대편을 목표로 잡은 것이었다.
+ *
+ * @returns 읽을 만한 레인이 있었으면 그 결과(읽지 못했으면 `stepFx = 0`), 없었으면 null.
+ */
+function readLane(
+  state: SimState,
+  player: SimPlayer,
+  config: EngineConfig,
+  known: KnownOpponent[],
+  ownGoal: { x: number; y: number },
+): { dx: number; dy: number } | null {
+  const lr = config.vision.laneRead;
+  if (!lr.enabled) return null;
+  // 캐리어가 있어야 레인이 있다. 루즈볼·우리 공이면 읽을 선이 없다(그때는 블록·압박의 몫).
+  const carrier = ballOwnerOf(state);
+  if (!carrier || carrier.side === player.side) return null;
+
+  const scale = config.fixedScale;
+  const ax = state.ball.posFx.x;
+  const ay = state.ball.posFx.y;
+  const reachFx = toFixed(lr.reachM, scale);
+  const minThreatFx = toFixed(lr.minThreatM, scale);
+  const coveredFx = toFixed(lr.coveredM, scale);
+  // 위협 = "그 리시버가 받으면 공이 우리 골에 얼마나 더 가까워지나". 순수 기하다.
+  const ballThreat = fdist(ax, ay, ownGoal.x, ownGoal.y);
+
+  let bestVal = 0;
+  let best: { k: KnownOpponent; lane: { x: number; y: number; dist: number }; guard: number } | null = null;
+  for (const k of known) {
+    // 캐리어 자신은 리시버가 아니다(그 "레인"은 길이 0 이라 압박과 같은 말이 된다).
+    if (k.id === carrier.id) continue;
+    const gain = ballThreat - fdist(k.x, k.y, ownGoal.x, ownGoal.y);
+    if (gain < minThreatFx) continue;
+    const lane = laneClosest(player.posFx.x, player.posFx.y, ax, ay, k.x, k.y);
+    if (lane.dist > reachFx) continue; // 닿지 않는 레인을 향해 자리를 버리지 않는다.
+    // **이미 막혀 있는 레인에는 겹치지 않는다.** 이 게이트가 없으면 가치식의 −도달비용 항 때문에
+    // "내가 이미 서 있는 레인"이 언제나 이기고, 그건 선점이 아니라 제자리다 — 실측으로 확인했다:
+    // 게이트 없이는 세기를 4배로 올리고 전원이 읽게 해도 **레인 점유 집계가 한 톨도 안 움직였다**
+    // (57.98% → 57.95%, 6 rung 사다리 전 구간 평평). 자[尺]는 `laneDangerOn` 하나뿐이라
+    // 계약·증거가 재는 "점유"와 수비가 판단하는 "점유"가 같은 값이다.
+    const guard = laneDangerOn(state, carrier.side, ax, ay, k.x, k.y);
+    if (guard <= coveredFx) continue;
+    // 선택은 `chooseMarkTarget` 과 같은 관용구다 — 가치 = 위협 − 도달비용, ≤0 이면 안 움직인다.
+    const val = gain - Math.round(lane.dist * lr.laneCostWeight);
+    if (val > bestVal) {
+      bestVal = val;
+      best = { k, lane, guard };
+    }
+  }
+  if (!best) return null;
+
+  // 읽기 판정: 능력 비례 + 시드 노이즈. 버킷을 틱/기간으로 잡아 판정이 매 틱 뒤집히지 않게 한다.
+  const attr = (player.attrs.positioning + player.attrs.mental) / 2;
+  const prob = lr.readBase + lr.readAttrSwing * ((attr - 50) / 50);
+  const bucket = Math.floor(state.tick / Math.max(1, Math.round(lr.readPeriodTicks)));
+  const read = varietyNoise((state.seedHash ^ 0x5bf03635) >>> 0, player.idHash, bucket) < prob;
+
+  const { k, lane } = best;
+  // 선점량 = 레인까지 거리의 `pull` 배(상한 `maxStepM`). 비율이라 투영점을 넘지 않는다.
+  const stepFx = read
+    ? Math.min(Math.round(lane.dist * lr.pull), toFixed(lr.maxStepM, scale))
+    : 0;
+
+  const obs = laneReadObserver();
+  if (obs) {
+    obs({
+      tick: state.tick,
+      side: player.side,
+      playerId: player.id,
+      attr,
+      read,
+      fromXFx: ax,
+      fromYFx: ay,
+      toXFx: k.x,
+      toYFx: k.y,
+      toId: k.id,
+      laneDistFx: lane.dist,
+      // 팀 전체 최근접(= AC 의 자[尺]). 위 covered 게이트가 이미 계산한 값을 그대로 흘린다 —
+      // 진단이 다시 재면 "수비가 판단한 점유"와 "계약이 재는 점유"가 갈릴 수 있다.
+      laneDangerFx: best.guard,
+      stepFx,
+    });
+  }
+  if (stepFx <= 0 || lane.dist <= 0) return null;
+  return {
+    dx: Math.round(((lane.x - player.posFx.x) * stepFx) / lane.dist),
+    dy: Math.round(((lane.y - player.posFx.y) * stepFx) / lane.dist),
+  };
+}
+
+/**
  * `duty` 배수(#366 T5). 미배선이거나 꺼져 있으면 1(= 0.31.0 이전 동작, 변이체 킬 대조군).
  *
  * 결판은 **(a) 배선한다**로 갔다(#366 권장). 이유: 이미 유저에게 노출된 UI 셀렉트라 계약에서
@@ -1168,6 +1283,15 @@ export function decideOffBall(
 
   let tx = player.baseFx.x;
   let ty = player.baseFx.y;
+  /**
+   * 이 틱에 **압박 런**이 걸렸나(목표 = 공). #379: 압박 담당은 레인을 읽지 않는다 —
+   * 그의 이번 틱 일은 레인이 아니라 **공**이고, 거기에 레인 오프셋을 더하면 압박이 그만큼
+   * 빗나간다. 실측(16시드 · SE≈0.40): 압박 담당까지 읽게 두면 팀당 걷어내기 **4.03**, 빼면
+   * **4.78** (+1.9σ). ⚠️ **밴드(≥5)로 돌아오지는 않는다** — 그 잔여분은 이 웨이브가 남긴 것이고
+   * (60시드 off 5.17±0.21 vs on 4.78±0.19 = 1.4σ) 근거·한계는 `evidence/377/M3-B.md` 에 있다.
+   * 여기서 이 제외를 하는 이유는 그 수치가 아니라 **역할**이다: 압박 담당의 그 틱 목표는 공이다.
+   */
+  let pressing = false;
   /** #369: 읽은 예고 패스의 도착 예정 지점(없으면 null). 대입 **직전**에 섞는다. */
   let planPt: { x: number; y: number } | null = null;
   const attacking = state.possession === player.side;
@@ -1260,6 +1384,7 @@ export function decideOffBall(
     ) {
       tx = ball.posFx.x;
       ty = ball.posFx.y;
+      pressing = true;
     }
   }
 
@@ -1281,6 +1406,14 @@ export function decideOffBall(
         py += Math.round(((player.posFx.y - k.y) * w) / k.dist);
       }
     } else {
+      // #379(M3-B): **마크 판단보다 앞에서** 레인을 읽는다. 순서에 이유가 있다 — 아래
+      // `runReadFrac` 블록이 `known` 의 한 항목(마크 대상)을 도착 예정 지점 쪽으로 **변이**하므로,
+      // 뒤에 두면 레인 끝점이 "마지막 본 위치"가 아니라 그 보정값이 된다(= 입력이 조용히 달라진다).
+      const lane = pressing ? null : readLane(state, player, config, known, ownGoal);
+      if (lane) {
+        px += lane.dx;
+        py += lane.dy;
+      }
       // 수비: 붙을 가치가 가장 큰 상대 하나만.
       const target = chooseMarkTarget(known, player, config, ownGoal);
       if (target) {

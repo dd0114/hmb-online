@@ -405,3 +405,58 @@ export function setPassAimObserver(o: PassAimObserver | null): void {
 export function passAimObserver(): PassAimObserver | null {
   return activePassAimObserver;
 }
+
+/**
+ * **수비 레인 예측 관측자**(#379 M3-B, 진단 전용·옵트인) — 위 관측자들과 같은 규율.
+ *
+ * 왜 필요한가: 이 웨이브의 판정은 *"출하 config 에서 레인을 **읽은** 수비수가 안 읽은 수비수보다
+ * 레인으로 실제로 다가간다"* 인데, **누가 읽었는지는 스냅샷·이벤트 어디에도 없다**(M3-A 가
+ * `setPlanReadObserver` 를 만든 것과 같은 이유). 게다가 **어느 레인을 읽었는지**(선분 두 끝점)를
+ * 로그에서 되추론할 방법이 없다 — 그건 인지 기억(`player.seen`)의 함수라 관측 시점에만 존재한다.
+ *
+ * 판정식을 진단이 다시 구현하지 않는 것이 핵심이다. 여기서 흘려보내는 것은 **엔진이 실제로 쓴
+ * 값**이고, 계약·증거는 그 위에서 다음 틱 실제 위치만 재면 된다(같은 자[尺] = `laneClosest`).
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type LaneReadObserver = (sample: {
+  tick: number;
+  side: string;
+  /** 레인을 읽은(또는 읽지 못한) 수비수. */
+  playerId: string;
+  /** 그 수비수의 인지 능력 (positioning+mental)/2. */
+  attr: number;
+  /** 읽기 판정 — false 면 이 틱에 이 레인을 선점하지 않는다(대조군). */
+  read: boolean;
+  /** 레인 시작(공=캐리어 위치) fixed. */
+  fromXFx: number;
+  fromYFx: number;
+  /** 레인 끝(**인지한** 위협 리시버의 마지막 본 위치) fixed. */
+  toXFx: number;
+  toYFx: number;
+  /** 그 리시버 id. */
+  toId: string;
+  /** 지금 내 위치에서 레인까지 최단거리(fixed). */
+  laneDistFx: number;
+  /**
+   * 그 레인에 대한 **수비 팀 전체의 최근접 거리**(fixed) = `perception.ts:laneDangerOn`.
+   * AC 의 "레인 점유"가 쓰는 자[尺] 그대로다 — 개인이 다가갔는지가 아니라 **레인이 실제로
+   * 막혔는지**를 같은 함수로 본다. 이 값은 `readLane` 의 "이미 막힌 레인엔 겹치지 않는다" 게이트가
+   * **이미 계산한 것**을 그대로 흘린 것이다(진단이 다시 재면 두 정의가 갈릴 수 있다).
+   */
+  laneDangerFx: number;
+  /** 이번 틱 목표에 더한 선점 이동량(fixed). 안 읽었으면 0. */
+  stepFx: number;
+}) => void;
+
+let activeLaneReadObserver: LaneReadObserver | null = null;
+
+/** 레인 예측 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setLaneReadObserver(o: LaneReadObserver | null): void {
+  activeLaneReadObserver = o;
+}
+
+/** 현재 활성 레인 예측 관측자(없으면 null). */
+export function laneReadObserver(): LaneReadObserver | null {
+  return activeLaneReadObserver;
+}

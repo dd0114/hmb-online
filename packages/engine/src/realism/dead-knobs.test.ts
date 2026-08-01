@@ -97,11 +97,30 @@ const LIVE: Knob[] = [
   { path: "chain.throughPass.enabled", mutate: (c) => { c.chain.throughPass.enabled = false; } },
   { path: "chain.throughPass.behindLineM", mutate: (c) => { c.chain.throughPass.behindLineM = 12; } },
   { path: "chain.throughPass.minRunGainM", mutate: (c) => { c.chain.throughPass.minRunGainM = 12; } },
-  { path: "chain.throughPass.minLeadM", mutate: (c) => { c.chain.throughPass.minLeadM = 20; } },
+  // ⚠️ 섭동을 20 → **24** 로 넉넉히 벌렸다(#379 M3-B). 이유는 M3-C 가 이미 기록한 성질이다 —
+  // 채택된 스루패스의 리드는 **상한(`maxLeadM` 25)에 몰려 있어**(8/12건) 하한은 상한 근처로
+  // 올라가야 비로소 발화한다. 실측: `minLeadM` 2·15 는 **8시드에서도 bit-identical**, 20 은
+  // 3시드 INERT / 8시드 LIVE, **24 는 3시드에서도 LIVE**(laneRead on/off 양쪽). 즉 20 은 원래부터
+  // "표본에 사례가 있으면 걸리는" 경계값이었고, 이 웨이브가 궤적을 바꾸며 3시드 사례가 사라졌다.
+  // 노브가 죽은 것이 아니다 — 레버성 판정은 넉넉히 흔든다(이 파일 LIVE 절 머리 주석과 같은 규율).
+  { path: "chain.throughPass.minLeadM", mutate: (c) => { c.chain.throughPass.minLeadM = 24; } },
   { path: "chain.throughPass.maxLeadM", mutate: (c) => { c.chain.throughPass.maxLeadM = 12; } },
   { path: "chain.throughPass.minMarginTicks", mutate: (c) => { c.chain.throughPass.minMarginTicks = 6; } },
   { path: "chain.throughPass.raceBase", mutate: (c) => { c.chain.throughPass.raceBase = 0.05; } },
   { path: "chain.throughPass.raceGainPerTick", mutate: (c) => { c.chain.throughPass.raceGainPerTick = 0; } },
+  // #379 M3-B 수비 레인 예측. 10개 전부 3시드에서 해시가 움직이는 것을 **등록 전에** 확인했다.
+  // (레인 후보가 하나만 달라져도 그 수비수의 목표가 달라지고, 그 자리가 다음 경합을 바꾼다 —
+  //  그래서 발화 빈도가 낮아도(수비수-틱의 ~4%) 레버성 판정이 견고하다.)
+  { path: "vision.laneRead.enabled", mutate: (c) => { c.vision.laneRead.enabled = false; } },
+  { path: "vision.laneRead.readBase", mutate: (c) => { c.vision.laneRead.readBase = 0; } },
+  { path: "vision.laneRead.readAttrSwing", mutate: (c) => { c.vision.laneRead.readAttrSwing = 1.2; } },
+  { path: "vision.laneRead.readPeriodTicks", mutate: (c) => { c.vision.laneRead.readPeriodTicks = 25; } },
+  { path: "vision.laneRead.pull", mutate: (c) => { c.vision.laneRead.pull = 0.9; } },
+  { path: "vision.laneRead.maxStepM", mutate: (c) => { c.vision.laneRead.maxStepM = 0.2; } },
+  { path: "vision.laneRead.reachM", mutate: (c) => { c.vision.laneRead.reachM = 3; } },
+  { path: "vision.laneRead.laneCostWeight", mutate: (c) => { c.vision.laneRead.laneCostWeight = 0; } },
+  { path: "vision.laneRead.minThreatM", mutate: (c) => { c.vision.laneRead.minThreatM = 30; } },
+  { path: "vision.laneRead.coveredM", mutate: (c) => { c.vision.laneRead.coveredM = 8; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {

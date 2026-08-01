@@ -46,4 +46,5 @@ apps/web/e2e-out/
 evidence/377/m2-*.json
 evidence/377/m1-main-*.json
 evidence/377/m3a-*.json
+evidence/377/m3b-*.json
 evidence/377/m3c-*.json

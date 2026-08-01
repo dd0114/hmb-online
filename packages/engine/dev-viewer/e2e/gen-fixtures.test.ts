@@ -11,7 +11,7 @@ import { demoSelect, makeTacticalInput } from "../../src/fixtures";
 // 없을 수 있다. 이 시드(real config)는 셋 다 포함하므로, 그 타입 계약검증용 풀해상도 로그를
 // e2e/fixture-real.json 으로 만든다. (생성물은 gitignore.)
 const here = dirname(fileURLToPath(import.meta.url));
-const SEED = "1000000434";
+const SEED = "1000000020";
 // ⚠️ 매치 전개가 바뀌면 **아래 5조건 전부**로 재스캔한다(gameqa 체크리스트, #186 이 스캐너 체크인 소유):
 //   ①offside ≥1  ②card ≥1  ③penalty ≥1  ④#42 패턴(세이브→라이브체인→빗나감) 포함
 //   ⑤**그 체인의 스팬이 짧을 것** — ④만 맞고 스팬이 길면 e2e 가 그 구간을 실제 재생하다 타임아웃한다
@@ -82,6 +82,10 @@ const SEED = "1000000434";
 //   → **…434**(#377 M3-C 스루패스 — 공간 타깃 후보가 붙으며 전개가 바뀌어 …570 의 조합이 소멸).
 //   재스캔(`--count 1500 --max-span 25`) 후보 **5개**:
 //     **1000000434:8**(save@2252) · …1119:18 · …45:21 · …334:23 · …1191:23.
+//   → **…020**(#377 M3-B · #379 수비 레인 예측 — 수비 오프더볼 목표가 바뀌며 전개가 달라져
+//     …434 의 조합이 소멸: 이 파일의 ①offside 단언이 실패했다).
+//   재스캔(`--count 1500 --max-span 25`) 후보 **6개**:
+//     **1000000020:12**(save@569) · …1245:16 · …184:19 · …223:23 · …461:24 · …1472:24.
 // ⚠️ 이 시드들 중 `shot:one_on_one` 을 가진 것은 **하나도 없다** — chain 코어가 one_on_one
 //    판정 자체를 갖고 있지 않기 때문이다(decision.ts 에만 있고 chain.ts 에는 없다).
 //    상세는 shot-outcomes.spec.ts 의 test.fail 주석.
