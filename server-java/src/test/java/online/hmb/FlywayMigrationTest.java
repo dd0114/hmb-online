@@ -105,7 +105,9 @@ class FlywayMigrationTest {
             //   (reason='league_daily_gem|point', ref_id=match_id) 기존 멱등 인덱스에 얹힌다.
             //   이 표가 사는 이유는 지급이 아니라 **박제**다: 금액·칸수·대량위치가 전부 economy
             //   노브라, 읽을 때 재계산하면 노브를 돌리는 순간 오늘 받은 이력이 소급 변조된다.
-            "league_daily_rewards"
+            "league_daily_rewards",
+            // #383 라이브 계수 오버레이 원장(V37). append-only — 매치가 config_revision_id 로 가리킨다.
+            "engine_config_revisions"
     );
 
     @Test

@@ -17,6 +17,7 @@ import java.util.Set;
 import online.hmb.common.ApiException;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
+import online.hmb.engine.LiveEngineConfigService;
 import online.hmb.league.LeagueService;
 import online.hmb.meta.DeckService;
 import online.hmb.meta.DeckSnapshot;
@@ -105,6 +106,7 @@ public class MatchService {
     private final SecureRandom secureRandom = new SecureRandom();
 
     private final online.hmb.league.LeagueDailyRewardService dailyRewardService;
+    private final LiveEngineConfigService liveEngineConfig;
 
     public MatchService(JdbcClient jdbcClient,
                         TxRunner txRunner,
@@ -118,6 +120,7 @@ public class MatchService {
                         online.hmb.away.AwayViewAccess awayViewAccess,
                         online.hmb.league.LeagueDailyRewardService dailyRewardService,
                         MatchAutoProperties autoProps,
+                        LiveEngineConfigService liveEngineConfig,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
         this.jdbcClient = jdbcClient;
@@ -132,6 +135,7 @@ public class MatchService {
         this.awayViewAccess = awayViewAccess;
         this.dailyRewardService = dailyRewardService;
         this.autoProps = autoProps;
+        this.liveEngineConfig = liveEngineConfig;
         this.halftimeSubsMax = halftimeSubsMax;
         this.promptMaxChars = promptMaxChars;
     }
@@ -146,7 +150,12 @@ public class MatchService {
                            String conditionsJson, String mode, String leagueFixtureId,
                            String kickoffAt, String phaseStartAt, String phaseEndsAt,
                            Integer scoreH2Home, Integer scoreH2Away,
-                           String h2TacticsJson, String h2ShapeJson, boolean auto) {
+                           String h2TacticsJson, String h2ShapeJson, boolean auto,
+                           /**
+                            * 이 매치가 **시작할 때** 유효했던 계수 오버레이의 값 복사(#383). null = 없음.
+                            * 진행 중에 라이브 값을 다시 조회하지 않는다 — 그게 #241 재발 방지의 전부다.
+                            */
+                           String configOverridesJson, String configRevisionId) {
     }
 
     public MatchRow getOwned(String userId, String matchId) {
@@ -184,7 +193,8 @@ public class MatchService {
                                score_home, score_away, result, created_at, finished_at,
                                conditions_json, mode, league_fixture_id,
                                kickoff_at, phase_start_at, phase_ends_at,
-                               score_h2_home, score_h2_away, h2_tactics_json, h2_shape_json, auto_mode
+                               score_h2_home, score_h2_away, h2_tactics_json, h2_shape_json, auto_mode,
+                               config_overrides_json, config_revision_id
                         FROM matches WHERE id = ?
                         """)
                 .param(matchId)
@@ -202,7 +212,8 @@ public class MatchService {
                         rs.getString("phase_ends_at"),
                         (Integer) rs.getObject("score_h2_home"), (Integer) rs.getObject("score_h2_away"),
                         rs.getString("h2_tactics_json"), rs.getString("h2_shape_json"),
-                        rs.getInt("auto_mode") == 1))
+                        rs.getInt("auto_mode") == 1,
+                        rs.getString("config_overrides_json"), rs.getString("config_revision_id")))
                 .optional();
     }
 
@@ -250,13 +261,18 @@ public class MatchService {
         // 컨디션 날짜는 **매치 생성 시각(KST)** 에 앵커 — 킥오프 재캡처가 자정을 넘겨도 같은 시드(아래 참조).
         String conditionsJson =
                 computeConditionsJson(userId, conditionService.dateOf(createdAt), rosterPlayerIdsOf(readJson(snapshot)));
+        // #383: **지금** 유효한 계수 오버레이를 매치에 값으로 복사한다. 이후 오버레이가 바뀌어도 이
+        // 매치는 자기 컬럼만 읽으므로 영향이 없다(user_deck_json 과 같은 관용구 — 진행 중 매치 보호).
+        LiveEngineConfigService.Pin configPin = liveEngineConfig.pinForNewMatch();
 
         txRunner.run(() -> jdbcClient.sql("""
                         INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
-                                            user_deck_json, conditions_json, mode, created_at)
-                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'practice', ?)
+                                            user_deck_json, conditions_json, mode, created_at,
+                                            config_overrides_json, config_revision_id)
+                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'practice', ?, ?, ?)
                         """)
-                .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, now)
+                .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, now,
+                        configPin.overridesJson(), configPin.revisionId())
                 .update());
         // engine_version='pending' — 실제 EngineConfig.version은 h1 시뮬 응답의
         // matchLog.configVersion으로 갱신된다(러너가 버전의 SoT).
@@ -281,13 +297,18 @@ public class MatchService {
         String now = createdAt.toString();
         String conditionsJson =
                 computeConditionsJson(userId, conditionService.dateOf(createdAt), rosterPlayerIdsOf(readJson(snapshot)));
+        // #383: **지금** 유효한 계수 오버레이를 매치에 값으로 복사한다. 이후 오버레이가 바뀌어도 이
+        // 매치는 자기 컬럼만 읽으므로 영향이 없다(user_deck_json 과 같은 관용구 — 진행 중 매치 보호).
+        LiveEngineConfigService.Pin configPin = liveEngineConfig.pinForNewMatch();
 
         txRunner.run(() -> jdbcClient.sql("""
                         INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
-                                            user_deck_json, conditions_json, mode, league_fixture_id, created_at)
-                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'league', ?, ?)
+                                            user_deck_json, conditions_json, mode, league_fixture_id, created_at,
+                                            config_overrides_json, config_revision_id)
+                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'league', ?, ?, ?, ?)
                         """)
-                .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, leagueFixtureId, now)
+                .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, leagueFixtureId, now,
+                        configPin.overridesJson(), configPin.revisionId())
                 .update());
 
         return getOwned(userId, matchId);
@@ -327,14 +348,19 @@ public class MatchService {
         String now = createdAt.toString();
         String conditionsJson =
                 computeConditionsJson(userId, conditionService.dateOf(createdAt), rosterPlayerIdsOf(readJson(snapshot)));
+        // #383: **지금** 유효한 계수 오버레이를 매치에 값으로 복사한다. 이후 오버레이가 바뀌어도 이
+        // 매치는 자기 컬럼만 읽으므로 영향이 없다(user_deck_json 과 같은 관용구 — 진행 중 매치 보호).
+        LiveEngineConfigService.Pin configPin = liveEngineConfig.pinForNewMatch();
 
         txRunner.run(() -> {
             jdbcClient.sql("""
                             INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
-                                                user_deck_json, conditions_json, mode, created_at)
-                            VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'away', ?)
+                                                user_deck_json, conditions_json, mode, created_at,
+                                                config_overrides_json, config_revision_id)
+                            VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'away', ?, ?, ?)
                             """)
-                    .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, now)
+                    .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, now,
+                            configPin.overridesJson(), configPin.revisionId())
                     .update();
             jdbcClient.sql("""
                             INSERT INTO away_challenges(match_id, defender_id, ghost_bot_id,

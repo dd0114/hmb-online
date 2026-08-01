@@ -526,8 +526,14 @@ public class MatchOrchestrator {
                     .orElse(null);
         }
 
+        // #383: 오버레이는 **이 매치가 시작할 때 박힌 값**이다(라이브 조회 아님). h1·h2 가 같은 컬럼을
+        // 읽으므로 그 사이 운영이 값을 바꿔도 이 매치는 끝까지 하나의 config 로 돈다.
+        JsonNode configOverrides = match.configOverridesJson() == null || match.configOverridesJson().isBlank()
+                ? null : matchService.readJson(match.configOverridesJson());
+
         EngineRunnerClient.SimulateResult result =
-                runnerClient.simulate(halfSeed, selectData, homeInput, awayInput, half, resumeState);
+                runnerClient.simulate(halfSeed, selectData, homeInput, awayInput, half, resumeState,
+                        configOverrides);
 
         JsonNode finalScore = result.matchLog().path("finalScore");
         int scoreHome = finalScore.path("home").asInt();
@@ -539,13 +545,18 @@ public class MatchOrchestrator {
                 jdbcClient.sql("""
                                 INSERT INTO match_halves(match_id, half, select_data_json, home_input_json,
                                                          away_input_json, half_seed, match_log_json,
-                                                         resume_state_json, last_hash)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                                         resume_state_json, last_hash,
+                                                         config_overrides_json, effective_config_hash)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """)
                         .params(match.id(), half, toJson(selectData), homeInputJson, awayInputJson,
                                 halfSeed, result.matchLog().toString(),
                                 result.resumeState() == null ? null : result.resumeState().toString(),
-                                result.lastHash())
+                                result.lastHash(),
+                                // 하프 번들 = **실적**(실제로 이걸로 돌았다). matches.* 는 의도.
+                                // 갈라질 수 있으니 따로 적는다 — 갈라진 사실이 보여야 고칠 수 있다.
+                                configOverrides == null ? null : configOverrides.toString(),
+                                result.effectiveConfigHash())
                         .update();
             } catch (DataAccessException e) {
                 if (SqliteErrors.isUniqueViolation(e)) {
