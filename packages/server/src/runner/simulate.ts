@@ -335,13 +335,18 @@ function lastHashOf(matchLog: MatchLog): string {
  *
  * #383: 요청의 `configOverrides`(점경로 계수 오버레이)를 그 base 위에 얹는다. 오버레이가 없으면
  * `applyOverrides` 가 base 를 **그대로**(동일 객체) 돌려주므로 이 필드 이전과 bit-identical 이다.
- * 검증 실패는 여기서 throw → 호출부(runner-main)가 400 으로 매핑한다.
+ * ⚠️ 이 경로는 **재생**이다 — 적용 못 하는 경로(엔진이 지운 노브 등)는 400 이 아니라
+ * **버려지고 `droppedOverrides` 로 보고**된다(독립검증 B3). 그래야 엔진 배포가 진행 중 매치와
+ * 신규 매치를 죽이지 않는다. 새 값의 거절은 작성 게이트(`config-validate.ts`) 소관이다.
+ * 여기서 남는 throw 는 런타임 비용 상한뿐이고, 그건 호출부가 400 으로 매핑한다.
  */
 export function simulate(
   req: SimulateRequest,
   baseConfig: EngineConfig = defaultEngineConfig,
 ): SimulateResponse {
-  const { config, hash: effectiveHash } = applyOverrides(baseConfig, req.configOverrides);
+  const { config, hash: effectiveHash, dropped } = applyOverrides(baseConfig, req.configOverrides);
+  // 빈 배열은 싣지 않는다 — 이 필드 이전과 같은 와이어가 정상 경로의 모양이어야 한다.
+  const droppedField = dropped.length === 0 ? {} : { droppedOverrides: dropped };
 
   if (req.half === 1) {
     const carry = runFirstHalf(req.seed, req.homeInput, req.awayInput, req.selectData, config);
@@ -352,6 +357,7 @@ export function simulate(
       lastHash: lastHashOf(matchLog),
       playbackMs: playbackMsOf(matchLog),
       effectiveConfigHash: effectiveHash,
+      ...droppedField,
     };
   }
 
@@ -377,6 +383,7 @@ export function simulate(
       lastHash: lastHashOf(matchLog),
       playbackMs: playbackMsOf(matchLog),
       effectiveConfigHash: effectiveHash,
+      ...droppedField,
     };
   }
 
@@ -391,5 +398,6 @@ export function simulate(
     lastHash: lastHashOf(matchLog),
     playbackMs: playbackMsOf(matchLog),
     effectiveConfigHash: effectiveHash,
+    ...droppedField,
   };
 }

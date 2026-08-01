@@ -2,10 +2,9 @@ import { defaultEngineConfig, demoSeed, demoHome, demoAway, demoSelect } from "@
 import type { EngineConfigOverrides } from "@hmb/shared";
 import {
   applyOverrides,
-  inertIssues,
+  assertAuthorable,
   knobPaths,
   INERT_KNOBS,
-  OverrideError,
   type ChangedKnob,
 } from "./config-overlay.js";
 import { simulate } from "./simulate.js";
@@ -98,9 +97,8 @@ function smokeOnce(seed: string, overrides: EngineConfigOverrides | undefined): 
  * 되지 못한다(무효라면 경기가 어차피 동일하다).
  */
 export function validateOverrides(overrides: EngineConfigOverrides | undefined): ValidateResult {
-  // 무효 노브 먼저 — 스모크를 돌리기 전에 잡는다(어차피 경기가 안 바뀌므로 돌릴 이유도 없다).
-  const inert = inertIssues(overrides);
-  if (inert.length > 0) throw new OverrideError(inert);
+  // 작성 게이트 전수 — 경로/타입/구조 + 무효 노브(#338). 재생은 이 판정을 받지 않는다(B2·B3).
+  assertAuthorable(defaultEngineConfig, overrides);
 
   const { config, hash, changed } = applyOverrides(defaultEngineConfig, overrides);
 

@@ -535,6 +535,19 @@ public class MatchOrchestrator {
                 runnerClient.simulate(halfSeed, selectData, homeInput, awayInput, half, resumeState,
                         configOverrides);
 
+        // #383 B3 — 러너가 버린 경로가 있으면 **소리를 낸다**. 조용히 버리면 "설정했는데 아무 일도
+        // 안 일어난다"(= #338)가 되고, 400 으로 죽이면 엔진 노브 삭제 한 번이 게임 루프를 세운다.
+        // 그 사이가 이것이다 — 매치는 계속 돌고, 사실은 하프 번들과 로그 양쪽에 남는다.
+        final String droppedJson =
+                result.droppedOverrides() != null && result.droppedOverrides().size() > 0
+                        ? result.droppedOverrides().toString() : null;
+        if (droppedJson != null) {
+            log.warn("match {} half {}: 박힌 계수 오버레이 {}개를 적용하지 못해 버렸습니다(엔진이 그 노브를 "
+                            + "지웠거나 타입이 바뀌었습니다). 현재 라이브 리비전도 같은 키를 들고 있다면 "
+                            + "PUT /api/admin/engine-config 로 갱신하세요: {}",
+                    match.id(), half, result.droppedOverrides().size(), droppedJson);
+        }
+
         JsonNode finalScore = result.matchLog().path("finalScore");
         int scoreHome = finalScore.path("home").asInt();
         int scoreAway = finalScore.path("away").asInt();
@@ -546,8 +559,9 @@ public class MatchOrchestrator {
                                 INSERT INTO match_halves(match_id, half, select_data_json, home_input_json,
                                                          away_input_json, half_seed, match_log_json,
                                                          resume_state_json, last_hash,
-                                                         config_overrides_json, effective_config_hash)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                                         config_overrides_json, effective_config_hash,
+                                                         dropped_overrides_json)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 """)
                         .params(match.id(), half, toJson(selectData), homeInputJson, awayInputJson,
                                 halfSeed, result.matchLog().toString(),
@@ -556,7 +570,8 @@ public class MatchOrchestrator {
                                 // 하프 번들 = **실적**(실제로 이걸로 돌았다). matches.* 는 의도.
                                 // 갈라질 수 있으니 따로 적는다 — 갈라진 사실이 보여야 고칠 수 있다.
                                 configOverrides == null ? null : configOverrides.toString(),
-                                result.effectiveConfigHash())
+                                result.effectiveConfigHash(),
+                                droppedJson)
                         .update();
             } catch (DataAccessException e) {
                 if (SqliteErrors.isUniqueViolation(e)) {

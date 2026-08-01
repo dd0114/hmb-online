@@ -115,7 +115,7 @@ public class LiveEngineConfigService {
     }
 
     /**
-     * <b>"현재 값" 을 정하는 정렬 = 삽입 순서(SQLite {@code rowid})</b>.
+     * <b>"현재 값" 을 정하는 정렬 = 삽입 순서({@code seq})</b>.
      *
      * <p>다른 표들은 {@code created_at DESC, id DESC} 로 정렬하지만 그건 <b>표시 순서</b>라 동률이
      * 미관 문제로 끝난다. 여기서는 순서가 곧 <b>동작</b>이다 — 최신 행 하나가 다음 매치에 박히는
@@ -131,8 +131,11 @@ public class LiveEngineConfigService {
      *       확률로 무시된다</b>. 테스트에서 재현된 그대로가 운영에서도 참이다.</li>
      * </ul>
      *
-     * <p>{@code rowid} 는 삽입 순서 그 자체이고, 이 표는 append-only(DELETE 없음)라 재사용 함정도
-     * 없다. 계약 = {@code EngineConfigSnapshotTest.sameMillisecondRevisionsStillOrderByInsertion}.
+     * <p>그래서 이 표만 PK 가 {@code seq INTEGER PRIMARY KEY AUTOINCREMENT} 다(V37) — <b>재사용하지
+     * 않는 단조 증가</b>를 스키마가 보장한다. SQLite {@code rowid} 로도 되지만 그건 문서화된 보장이
+     * 아니라 구현 세부이고 {@code VACUUM} 이 재배치할 수 있다(독립검증 m10) — 장애 대응 중 손으로
+     * VACUUM 을 치는 일은 충분히 있을 수 있다. 계약 =
+     * {@code EngineConfigSnapshotTest.sameMillisecondRevisionsStillOrderByInsertion}.
      *
      * <p>최근 리비전 이력(누가·언제·왜·무엇을) — {@link #load()} 도 같은 정렬을 쓴다.
      */
@@ -142,7 +145,7 @@ public class LiveEngineConfigService {
                         SELECT r.id, r.overrides_json, r.effective_hash, r.reason, r.request_hash,
                                r.created_at, u.nickname AS actor
                         FROM engine_config_revisions r JOIN users u ON u.id = r.actor_user_id
-                        ORDER BY r.rowid DESC
+                        ORDER BY r.seq DESC
                         LIMIT ?
                         """)
                 .param(capped)
@@ -160,7 +163,7 @@ public class LiveEngineConfigService {
                         SELECT r.id, r.overrides_json, r.effective_hash, r.reason, r.request_hash,
                                r.created_at, u.nickname AS actor
                         FROM engine_config_revisions r JOIN users u ON u.id = r.actor_user_id
-                        ORDER BY r.rowid DESC
+                        ORDER BY r.seq DESC
                         LIMIT 1
                         """)
                 .query((rs, n) -> new Row(rs.getString("id"), rs.getString("overrides_json"),

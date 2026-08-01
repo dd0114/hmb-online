@@ -122,7 +122,10 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
     expect(inert?.reason).toContain("실행 경로가 없다");
   });
 
-  it("POST /simulate — 잘못된 오버레이는 400 + issues (500 이 아니다)", async () => {
+  it("POST /simulate — 미지 경로는 **200 + droppedOverrides**(400 이 아니다, B3)", async () => {
+    // 재생 경로다. 400 을 내면 그 오버레이가 박힌 진행 중 매치가 FAILED 가 되고, 원장의 현재
+    // 리비전이 그 키를 든 한 신규 매치도 전부 h1 에서 죽는다(자동 복구 경로 0). 노브 삭제는
+    // 엔진 열차의 정상 활동이라 그 정상 활동이 게임 루프를 멈추면 안 된다.
     const res = await post("/simulate", {
       seed: demoSeed,
       selectData: demoSelect,
@@ -131,8 +134,22 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
       half: 1,
       configOverrides: { "nope.nope": 1 },
     });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { droppedOverrides?: { path: string; reason: string }[] };
+    expect(body.droppedOverrides?.map((d) => d.path)).toEqual(["nope.nope"]);
+  });
+
+  it("POST /simulate — 러너를 재우는 값은 재생에서도 400 (성질이 다른 유일한 게이트)", async () => {
+    const res = await post("/simulate", {
+      seed: demoSeed,
+      selectData: demoSelect,
+      homeInput: demoHome,
+      awayInput: demoAway,
+      half: 1,
+      configOverrides: { matchMinutes: 100000 },
+    });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { issues: string[] }).issues.join(" ")).toContain("nope.nope");
+    expect(((await res.json()) as { issues: string[] }).issues.join(" ")).toContain("단일 프로세스");
   });
 
   it("POST /simulate — 유효한 오버레이는 200 + effectiveConfigHash 동반", async () => {

@@ -260,6 +260,63 @@ class EngineConfigSnapshotTest extends MatchTestBase {
     }
 
     /**
+     * <b>B3 — 엔진이 노브를 지워도 매치는 죽지 않는다.</b>
+     *
+     * <p>3차 독립검증의 blocker 다. 매치는 생성 시점 오버레이를 들고 두 하프를 도는데, 그 사이
+     * 엔진 배포가 노브를 삭제·개명하면(0.26.0 이 {@code ball.settleSpeed} 를 지웠다) 그 경로는 더
+     * 이상 적용할 수 없다. 러너가 거기서 400 을 내면 {@code MatchOrchestrator} 가 {@code failMatch}
+     * 를 부르고, 원장의 현재 리비전이 그 키를 든 한 {@code pinForNewMatch()} 가 계속 박아
+     * <b>이후 생성되는 모든 매치</b>가 h1 에서 죽는다 — 자동 복구 경로가 없어 운영자가 유저 신고로
+     * 알아채야 끝난다. 노브 삭제는 사고가 아니라 <b>엔진 열차의 정상 활동</b>이다.
+     *
+     * <p>그래서 버리고 진행하되 <b>조용히 버리지 않는다</b>: 하프 번들에 남고 서버가 WARN 을 찍는다.
+     */
+    @Test
+    void aKnobTheEngineNoLongerHasDoesNotKillTheMatch() {
+        String token = setupUserWithDeck("cfg_dead_knob");
+        setLive(Map.of("ball.settleSpeed", 4, "contest.shootRange", 22), "before-engine-deploy");
+        String matchId = createMatch(token, "BOT_BAL");
+
+        // 엔진 배포로 그 노브가 사라졌다 — 매치는 이미 그 값을 들고 있다.
+        RUNNER.deadKnobs.add("ball.settleSpeed");
+        try {
+            driveToHalfTime(token, matchId);
+
+            String state = jdbcClient.sql("SELECT state FROM matches WHERE id = ?")
+                    .param(matchId).query(String.class).single();
+            assertThat(state)
+                    .as("사라진 노브 하나가 매치를 FAILED 로 밀면 안 된다 — 그게 blocker B3 다")
+                    .isNotEqualTo("FAILED");
+
+            String dropped = jdbcClient
+                    .sql("SELECT dropped_overrides_json FROM match_halves WHERE match_id = ? AND half = 1")
+                    .param(matchId).query(String.class).single();
+            assertThat(dropped)
+                    .as("버린 사실이 하프 번들에 남아야 한다 — 조용히 버리는 것과의 차이 전부가 이것이다")
+                    .isNotNull();
+            assertThat(dropped).contains("ball.settleSpeed");
+
+            // 살아 있는 노브는 그대로 실려 갔다(하나가 죽어도 나머지는 산다).
+            assertThat(overridesSentForHalf(1).path("contest.shootRange").asInt()).isEqualTo(22);
+        } finally {
+            RUNNER.deadKnobs.clear();
+        }
+    }
+
+    /** 정상 경로에서는 그 컬럼이 NULL 이다 — 이 기록이 소음이 되면 아무도 안 본다. */
+    @Test
+    void nothingIsRecordedAsDroppedOnTheHappyPath() {
+        String token = setupUserWithDeck("cfg_no_drop");
+        setLive(Map.of("contest.shootRange", 22), "happy");
+        String matchId = createMatch(token, "BOT_BAL");
+        driveToHalfTime(token, matchId);
+
+        assertThat(jdbcClient
+                .sql("SELECT dropped_overrides_json FROM match_halves WHERE match_id = ? AND half = 1")
+                .param(matchId).query(String.class).optional().orElse(null)).isNull();
+    }
+
+    /**
      * <b>같은 밀리초에 들어온 리비전도 삽입 순서대로다</b> — "현재 값"은 경합으로 정해지지 않는다.
      *
      * <p>이 계약이 없어서 3차 게이트가 빨갛게 났다. 정렬을 ULID({@code id})로 두면 48bit ms 뒤가

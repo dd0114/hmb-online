@@ -103,6 +103,15 @@ export interface ChangedKnob {
   to: number | boolean;
 }
 
+/**
+ * <b>재생에서 적용하지 못하고 버린 경로</b>(#383 독립검증 B3). 작성 시점엔 유효했는데 그 뒤
+ * 엔진이 노브를 지우거나 타입을 바꾸면 여기 담긴다 — 버리되 <b>버렸다는 사실이 남는다</b>.
+ */
+export interface DroppedKnob {
+  path: string;
+  reason: string;
+}
+
 /** 검증 실패 — 여러 문제를 **한 번에** 들고 있다(운영자는 curl 로 쓴다. 왕복을 줄인다). */
 export class OverrideError extends Error {
   readonly issues: string[];
@@ -167,71 +176,112 @@ export function effectiveConfigHash(config: EngineConfig): string {
   return createHash("sha256").update(canonical(config)).digest("hex").slice(0, 16);
 }
 
+/** 한 경로를 판정한 결과 — 적용 / 무변화 / 적용 불가(사유). */
+type Verdict =
+  | { kind: "apply"; knob: ChangedKnob }
+  | { kind: "noop" }
+  | { kind: "reject"; reason: string };
+
+/** 경로/타입/구조 판정 — 작성과 재생이 <b>같은 규칙</b>을 쓰고 처분만 달리한다. */
+function judge(base: EngineConfig, knobs: Map<string, Knob>, path: string, value: number | boolean): Verdict {
+  const head = path.split(".")[0] ?? path;
+  if (STRUCTURAL_KEYS.includes(head)) {
+    return { kind: "reject", reason: "구조 경로라 오버레이할 수 없습니다(계수가 아닙니다)" };
+  }
+  const knob = knobs.get(path);
+  if (!knob) {
+    // "없다"와 "있지만 못 만진다"를 구분한다(독립검증 M3): `chain.mode` 같은 문자열 리프에
+    // "경로가 없습니다"라고 답하면 **거짓말**이고, 운영자는 오타를 찾아 소스를 뒤진다.
+    return {
+      kind: "reject",
+      reason: leafExists(base, path)
+        ? "존재하지만 오버레이 대상이 아닙니다(수·참거짓 리프만 가능 — 문자열/배열/구조는 배포로만 바꾼다)"
+        : "EngineConfig 에 없는 경로입니다(오타이거나, 이 엔진 버전에서 삭제·개명된 노브입니다)",
+    };
+  }
+  if (typeof value !== knob.type) {
+    return { kind: "reject", reason: `${knob.type} 이어야 합니다(받은 값: ${typeof value})` };
+  }
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    return { kind: "reject", reason: "유한한 수여야 합니다(NaN·Infinity 금지)" };
+  }
+  return value === knob.value ? { kind: "noop" } : { kind: "apply", knob: { path, from: knob.value, to: value } };
+}
+
 /**
- * 오버레이 적용. 실패는 {@link OverrideError}(호출부가 400 으로 매핑).
+ * <b>작성 게이트</b> — 새 오버레이를 원장에 쓰기 전에 전수 검사한다. 하나라도 걸리면
+ * {@link OverrideError}(400). 무효 노브(#338)까지 여기서 본다({@link inertIssues}).
+ *
+ * 이름을 {@link applyOverrides} 와 갈라 둔 이유는 두 라운드 연속으로 <b>이 판정이 재생 경로에
+ * 섞였기 때문</b>이다(B2·B3). 함수가 하나면 "여기 검사 하나 더 넣자"가 자연스러워 보이고, 그
+ * 한 줄이 진행 중 매치를 죽인다. 이제 그러려면 <b>이름이 authoring 인 함수</b>를 골라야 한다.
+ */
+export function assertAuthorable(base: EngineConfig, overrides: EngineConfigOverrides | undefined): void {
+  const issues = inertIssues(overrides);
+  const knobs = knobPaths(base);
+  for (const [path, value] of Object.entries(overrides ?? {})) {
+    if (INERT_KNOBS.includes(path)) continue; // 위에서 이미 사유를 담았다
+    const v = judge(base, knobs, path, value);
+    if (v.kind === "reject") issues.push(`${path}: ${v.reason}`);
+  }
+  if (issues.length > 0) throw new OverrideError(issues);
+}
+
+/**
+ * <b>재생 경로</b> — 매치에 <b>이미 박힌</b> 오버레이를 그 매치의 config 로 병합한다.
  *
  * <b>결과가 base 와 같으면 base 를 그대로 돌려준다</b>(동일 객체). 오버레이 없음/빈 맵/기본값과
  * 같은 값만 담긴 맵은 전부 "오늘과 한 비트도 다르지 않다"가 되어야 하고, 그걸 `===` 로 보장한다.
  *
- * <h4>이 함수는 재생 경로다 — 작성 게이트를 여기 두지 않는다 (독립검증 B2)</h4>
+ * <h4>여기서는 <b>거절하지 않고 버린다</b> (독립검증 B2 · B3)</h4>
  *
- * `simulate()` 가 <b>매 하프</b> 부른다. 그 입력은 운영자가 방금 친 값이 아니라 <b>매치 생성
- * 시점에 박제된 오버레이</b>다. 그래서 여기서 던지는 규칙은 "지금 이 값을 쓰는 게 좋은가"가 아니라
- * <b>"이 값으로 경기를 돌릴 수 있는가"</b> 여야 한다 — 전자는 시간이 지나면 답이 바뀌고, 바뀐 답을
- * 과거 데이터에 소급하면 <b>이미 시작한 매치가 죽는다</b>.
+ * `simulate()` 가 <b>매 하프</b> 부르고, 입력은 운영자가 방금 친 값이 아니라 <b>매치 생성 시점에
+ * 박제된 오버레이</b>다. 그래서 여기서 던지는 규칙은 "지금 이 값을 쓰는 게 좋은가"가 아니라
+ * <b>"이 요청이 서버를 위험하게 하는가"</b> 여야 한다 — 전자는 <b>시간이 지나면 답이 바뀌고</b>,
+ * 바뀐 답을 과거 데이터에 소급하면 이미 시작한 매치가 죽는다.
  *
- * 그래서 여기 남는 것: 경로 실재·타입·유한성(값이 없으면 병합 자체가 불가) + {@link assertAffordable}
- * (런타임 비용 — 재생 경로에서도 진짜로 위험하다). 여기서 빠지는 것: <b>무효 노브 판정</b>
- * ({@link INERT_KNOBS}) — 그건 엔진 버전에 따라 변하는 잣대라 `validateOverrides`(작성 게이트)
- * 소관이다. 엔진이 노브를 LIVE→INERT 로 옮기는 것은 가정이 아니라 전례다(0.24.0 이 17개를 한 번에
- * 옮겼다). 그 판정을 여기 두면 그런 업그레이드 한 번이 ①그 오버레이가 박힌 진행 중 매치 전부와
- * ②원장의 현재 리비전이 그 키를 담고 있는 한 <b>이후 생성되는 모든 매치</b>를 h1 에서 죽인다.
- * 보호 가치는 0 이다 — 값이 무효라 경기는 어차피 동일하고, 신규 작성은 작성 게이트가 이미 막는다.
+ * 두 라운드가 같은 실수를 서로 다른 판정으로 반복했다:
+ * <ul>
+ *   <li><b>B2</b> — 무효 노브(#338). 엔진이 노브를 LIVE→INERT 로 옮기면(0.24.0 이 17개를 한 번에)
+ *       그 오버레이가 박힌 매치가 전부 죽는다.</li>
+ *   <li><b>B3</b> — <b>경로 실재</b>. 엔진이 노브를 <b>지우면</b>(0.26.0 이 `ball.settleSpeed` 를
+ *       지웠다) 같은 일이 난다. 게다가 이쪽이 더 나쁘다 — 원장의 현재 리비전이 그 키를 든 채라
+ *       {@code pinForNewMatch()} 가 계속 박고, <b>이후 생성되는 모든 매치</b>가 h1 에서 죽는다.
+ *       자동 복구 경로가 없어 운영자가 유저 신고로 알아채야 끝난다.</li>
+ * </ul>
+ *
+ * 노브 삭제·개명은 사고가 아니라 <b>엔진 열차의 정상 활동</b>이다(그래서 엔진에 죽은-노브 스냅샷
+ * 게이트가 있다). 정상 활동이 게임 루프를 멈춰서는 안 된다. 그래서 적용 못 하는 경로는
+ * <b>버리고 {@link DroppedKnob} 로 보고</b>한다 — 조용히 버리는 게 아니다: 러너 응답과 하프 번들에
+ * 남고 서버가 WARN 을 찍는다. 유효 config 지문은 <b>실제로 돈 config</b>를 가리키므로 재현 계약도
+ * 그대로다.
+ *
+ * <b>남는 단 하나의 throw = {@link assertAffordable}</b>(런타임 비용). 이건 성질이 정확히 반대다 —
+ * "이 값이 러너를 재우는가"는 시간이 지나도 답이 안 바뀌고, 재생 시점에도 <b>진짜로</b> 위험하다
+ * (러너는 단일 프로세스라 한 요청이 다른 매치의 하프를 전부 세운다).
  */
 export function applyOverrides(
   base: EngineConfig,
   overrides: EngineConfigOverrides | undefined,
-): { config: EngineConfig; hash: string; changed: ChangedKnob[] } {
+): { config: EngineConfig; hash: string; changed: ChangedKnob[]; dropped: DroppedKnob[] } {
   const entries = Object.entries(overrides ?? {});
   if (entries.length === 0) {
-    return { config: base, hash: effectiveConfigHash(base), changed: [] };
+    return { config: base, hash: effectiveConfigHash(base), changed: [], dropped: [] };
   }
 
   const knobs = knobPaths(base);
-  const issues: string[] = [];
+  const dropped: DroppedKnob[] = [];
   const accepted: ChangedKnob[] = [];
 
   for (const [path, value] of entries) {
-    const head = path.split(".")[0] ?? path;
-    if (STRUCTURAL_KEYS.includes(head)) {
-      issues.push(`${path}: 구조 경로라 오버레이할 수 없습니다(계수가 아닙니다)`);
-      continue;
-    }
-    const knob = knobs.get(path);
-    if (!knob) {
-      // "없다"와 "있지만 못 만진다"를 구분한다(독립검증 M3): `chain.mode` 같은 문자열 리프에
-      // "경로가 없습니다"라고 답하면 **거짓말**이고, 운영자는 오타를 찾아 소스를 뒤진다.
-      issues.push(
-        leafExists(base, path)
-          ? `${path}: 존재하지만 오버레이 대상이 아닙니다(수·참거짓 리프만 가능 — 문자열/배열/구조는 배포로만 바꾼다)`
-          : `${path}: EngineConfig 에 없는 경로입니다(오타입니다)`,
-      );
-      continue;
-    }
-    if (typeof value !== knob.type) {
-      issues.push(`${path}: ${knob.type} 이어야 합니다(받은 값: ${typeof value})`);
-      continue;
-    }
-    if (typeof value === "number" && !Number.isFinite(value)) {
-      issues.push(`${path}: 유한한 수여야 합니다(NaN·Infinity 금지)`);
-      continue;
-    }
-    if (value !== knob.value) accepted.push({ path, from: knob.value, to: value });
+    const v = judge(base, knobs, path, value);
+    if (v.kind === "reject") dropped.push({ path, reason: v.reason });
+    else if (v.kind === "apply") accepted.push(v.knob);
   }
 
-  if (issues.length > 0) throw new OverrideError(issues);
+  dropped.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   if (accepted.length === 0) {
-    return { config: base, hash: effectiveConfigHash(base), changed: [] };
+    return { config: base, hash: effectiveConfigHash(base), changed: [], dropped };
   }
 
   const config = structuredClone(base);
@@ -244,7 +294,7 @@ export function applyOverrides(
   // 경로 순서를 정렬해 두면 감사 원장·diff 가 요청 키 순서에 흔들리지 않는다.
   accepted.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
   assertAffordable(config);
-  return { config, hash: effectiveConfigHash(config), changed: accepted };
+  return { config, hash: effectiveConfigHash(config), changed: accepted, dropped };
 }
 
 /**

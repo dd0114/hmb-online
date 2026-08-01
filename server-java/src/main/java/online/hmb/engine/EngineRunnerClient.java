@@ -52,7 +52,7 @@ public class EngineRunnerClient {
      *                   불필요해진다(#365, hero 확정: 고정 배속만).
      */
     public record SimulateResult(JsonNode matchLog, JsonNode resumeState, String lastHash, long playbackMs,
-                                 String effectiveConfigHash) {
+                                 String effectiveConfigHash, JsonNode droppedOverrides) {
     }
 
     /**
@@ -114,7 +114,12 @@ public class EngineRunnerClient {
             // #383 additive optional — 구 러너는 안 준다(그때는 engine_version 만이 근거였다).
             String configHash = root.hasNonNull("effectiveConfigHash")
                     ? root.path("effectiveConfigHash").asText() : null;
-            return new SimulateResult(matchLog, resume, root.path("lastHash").asText(), playbackMs, configHash);
+            // #383 B3 — 박힌 오버레이 중 이 재생에서 **적용하지 못해 버린** 경로. 정상 경로에서는
+            // 키 자체가 없다. 러너가 400 대신 이걸 주는 이유는 노브 삭제(엔진 열차의 정상 활동)가
+            // 진행 중 매치와 이후 모든 신규 매치를 죽이면 안 되기 때문이다.
+            JsonNode dropped = root.has("droppedOverrides") ? root.get("droppedOverrides") : null;
+            return new SimulateResult(matchLog, resume, root.path("lastHash").asText(), playbackMs,
+                    configHash, dropped);
         } catch (RuntimeException e) {
             throw e;
         } catch (Exception e) {

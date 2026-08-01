@@ -3995,12 +3995,16 @@ components:
         overrides:
           type: object
           description: |
-            **점경로 맵**. 예: `{"contest.shootXgThreshold": 0.07, "decisionWeights.shoot": 0.34}`.
+            **점경로 맵**. 예: `{"contest.shootXgThreshold": 0.07, "contest.shootRange": 22}`.
+            (⚠️ `decisionWeights.*` 는 예로 쓰지 마라 — 8개 전부 #338 INERT 라 400 이다.)
             중첩 JSON 이 아닌 이유는 **오타가 조용히 죽지 않게** 하기 위해서다 — 중첩 deep-merge 는
             존재하지 않는 키를 200 으로 삼키고 아무 일도 안 한다("필드가 계약에 있다 ≠ 엔진이 읽는다",
-            #321·#337·#338). 평평한 경로는 기본 config 의 리프 전수와 집합 대조가 되므로 미지 경로가 곧 400.
-            값은 number 또는 boolean 만(EngineConfig 의 비수치 리프 셋은 전부 구조라 오버레이 금지).
-            **빈 객체 = 기본값 복귀(롤백)**.
+            #321·#337·#338). 평평한 경로는 기본 config 의 리프 전수와 집합 대조가 되므로 미지 경로가
+            곧 400 이다 — 단 **작성 시점에만** 그렇다. 이미 매치에 박힌 오버레이의 재생은 그 사이
+            엔진이 노브를 지웠어도 죽지 않고 그 경로를 버린 뒤 보고한다(#383 B3).
+            값은 number 또는 boolean 만. EngineConfig 의 비수치 리프는 **넷**이고(`version`·`coordMode`·
+            `formations` + **`chain.mode`**) 앞의 셋은 구조, `chain.mode` 는 결정 코어 롤백 스위치라
+            문자열이다 — 넷 다 배포로만 바뀐다. **빈 객체 = 기본값 복귀(롤백)**.
           additionalProperties:
             oneOf: [{ type: number }, { type: boolean }]
         reason:
@@ -4035,6 +4039,13 @@ components:
       type: object
       properties:
         engineVersion: { type: string }
+        caveat:
+          type: string
+          description: |
+            **"설정 가능하다 ≠ 경기가 달라진다"** 를 응답에 적어 보내는 단서(#383 M5).
+            이 필터는 엔진 #338 레지스트리 **등재분만** 걷어내고, 등재 밖에도 실행 경로가 없는
+            노브가 더 있다(#393). 문서에만 두면 스키마로 클라이언트를 만든 쪽이 목록을 전수로
+            믿으므로 **응답의 일부**로 나간다. 계약 = `config-http.test.ts`.
         knobs:
           type: array
           description: |

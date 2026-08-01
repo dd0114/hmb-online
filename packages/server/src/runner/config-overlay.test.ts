@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   applyOverrides,
+  assertAuthorable,
   inertIssues,
   knobPaths,
   OverrideError,
@@ -70,10 +71,10 @@ describe("knobPaths — 오버레이 가능한 리프 전수", () => {
   });
 });
 
-describe("applyOverrides — 거부 (T-R3)", () => {
+describe("assertAuthorable — 거부 (T-R3, **작성 게이트**)", () => {
   const bad = (overrides: Record<string, number | boolean>): OverrideError => {
     try {
-      applyOverrides(defaultEngineConfig, overrides);
+      assertAuthorable(defaultEngineConfig, overrides);
     } catch (e) {
       return e as OverrideError;
     }
@@ -108,6 +109,50 @@ describe("applyOverrides — 거부 (T-R3)", () => {
 
   it("중간 객체 경로(리프 아님) = 거부", () => {
     expect(bad({ contest: 1 }).issues.join(" ")).toContain("contest");
+  });
+});
+
+/**
+ * **B3 — 같은 입력이 재생에서는 매치를 죽이지 않는다.**
+ *
+ * 위 describe 전부가 <b>작성</b>에서 400 인 값들이다. 그 값이 이미 매치에 박혀 있는 상황
+ * (= 작성 당시엔 유효했는데 그 뒤 엔진이 노브를 지웠다)에서 같은 판정을 하면, 엔진 배포 한 번이
+ * ①그 오버레이가 박힌 진행 중 매치 전부와 ②원장의 현재 리비전이 그 키를 든 한 <b>이후 생성되는
+ * 모든 매치</b>를 h1 에서 죽인다. 노브 삭제는 사고가 아니라 엔진 열차의 정상 활동이다.
+ */
+describe("#383 B3 — 재생은 적용 못 하는 경로를 **버리고 보고**한다(죽지 않는다)", () => {
+  it("엔진이 지운 노브가 박혀 있어도 재생은 성공하고, 버린 사실이 남는다", () => {
+    // `ball.settleSpeed` = 엔진 0.26.0 이 실제로 **제거**한 노브(루트 CLAUDE.md 0.26.0 항).
+    const { config, dropped, changed } = applyOverrides(defaultEngineConfig, { "ball.settleSpeed": 4 });
+    expect(dropped.map((d) => d.path)).toEqual(["ball.settleSpeed"]);
+    expect(dropped[0]!.reason).toContain("삭제·개명");
+    expect(changed).toEqual([]);
+    expect(config).toBe(defaultEngineConfig); // 나머지는 오늘의 기본값 그대로
+  });
+
+  it("살아 있는 노브는 버리지 않고 적용한다 — 한 경로가 죽어도 나머지는 산다", () => {
+    const { config, changed, dropped } = applyOverrides(defaultEngineConfig, {
+      "ball.settleSpeed": 4,
+      "contest.shootRange": 22,
+    });
+    expect(dropped.map((d) => d.path)).toEqual(["ball.settleSpeed"]);
+    expect(changed.map((c) => c.path)).toEqual(["contest.shootRange"]);
+    expect(config.contest.shootRange).toBe(22);
+  });
+
+  it("타입이 바뀐 노브도 같은 처분이다(엔진이 number→boolean 으로 바꾼 경우)", () => {
+    const { dropped } = applyOverrides(defaultEngineConfig, { "vision.enabled": 3 });
+    expect(dropped.map((d) => d.path)).toEqual(["vision.enabled"]);
+  });
+
+  it("정상 경로에서는 `dropped` 가 비어 있다 — 이 필드가 소음이 되면 안 된다", () => {
+    expect(applyOverrides(defaultEngineConfig, undefined).dropped).toEqual([]);
+    expect(applyOverrides(defaultEngineConfig, { "contest.shootRange": 22 }).dropped).toEqual([]);
+  });
+
+  it("**작성은 여전히 거부한다** — 버리기가 작성 게이트를 무르게 하지 않는다", () => {
+    expect(() => assertAuthorable(defaultEngineConfig, { "ball.settleSpeed": 4 })).toThrow(OverrideError);
+    expect(() => assertAuthorable(defaultEngineConfig, { "vision.enabled": 3 })).toThrow(OverrideError);
   });
 });
 
@@ -284,7 +329,7 @@ describe("에러 메시지가 거짓말하지 않는다 (독립검증 M3)", () =
   it("존재하지만 오버레이 불가한 리프(`chain.mode`)에 '경로가 없다'고 하지 않는다", () => {
     let err: OverrideError | undefined;
     try {
-      applyOverrides(defaultEngineConfig, { "chain.mode": 1 });
+      assertAuthorable(defaultEngineConfig, { "chain.mode": 1 });
     } catch (e) {
       err = e as OverrideError;
     }
@@ -295,11 +340,11 @@ describe("에러 메시지가 거짓말하지 않는다 (독립검증 M3)", () =
   it("정말 없는 경로에는 '오타입니다'라고 한다", () => {
     let err: OverrideError | undefined;
     try {
-      applyOverrides(defaultEngineConfig, { "contest.nopeNope": 1 });
+      assertAuthorable(defaultEngineConfig, { "contest.nopeNope": 1 });
     } catch (e) {
       err = e as OverrideError;
     }
-    expect(err!.issues.join(" ")).toContain("오타입니다");
+    expect(err!.issues.join(" ")).toContain("오타");
   });
 
   it("프로토타입 체인의 이름은 '실재한다'가 아니다 (독립검증 m6)", () => {
@@ -308,11 +353,11 @@ describe("에러 메시지가 거짓말하지 않는다 (독립검증 M3)", () =
     for (const path of ["contest.constructor", "contest.toString", "chain.hasOwnProperty"]) {
       let err: OverrideError | undefined;
       try {
-        applyOverrides(defaultEngineConfig, { [path]: 1 });
+        assertAuthorable(defaultEngineConfig, { [path]: 1 });
       } catch (e) {
         err = e as OverrideError;
       }
-      expect(err!.issues.join(" "), `${path} 가 실재로 판정됐다`).toContain("오타입니다");
+      expect(err!.issues.join(" "), `${path} 가 실재로 판정됐다`).toContain("오타");
     }
   });
 });

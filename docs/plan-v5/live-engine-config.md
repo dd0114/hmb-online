@@ -86,6 +86,34 @@ QA #25 도메인이라 수정하지 않는다), **드리프트는 계약이 엔�
 나눠 박는다: "PUT/validate 는 INERT 를 거부한다" + **"이미 박힌 오버레이의 재생은 INERT 여부와
 무관하게 성공한다"**.
 
+⚠️⚠️ **같은 계층 오류가 한 겹 더 있었다 — 경로 실재 판정**(독립검증 B3). 위 수습은 INERT 만 옮겼는데,
+"이 경로가 지금 `EngineConfig` 에 있는가" 역시 **엔진 배포마다 답이 바뀐다**. 엔진 0.26.0 이
+`ball.settleSpeed` 를 **지웠다** — 그 오버레이가 박힌 매치를 재생하면 `applyOverrides` 가 "없는
+경로"로 throw 하고, 러너 400 → `failMatch` 다. 이쪽이 INERT 보다 나쁘다: 원장의 현재 리비전이 그
+키를 든 한 `pinForNewMatch()` 가 계속 박아 **이후 생성되는 모든 매치**가 h1 에서 죽고, 부팅·러너
+교체 시 현재 리비전을 재검증하는 코드가 없어 **자동 복구 경로가 0** 이다(운영자가 유저 신고로
+알아채야 끝난다).
+
+**노브 삭제·개명은 사고가 아니라 엔진 열차의 정상 활동**이다(그래서 엔진에 죽은-노브 스냅샷
+게이트가 있다 — 루트 §2.5). 정상 활동이 게임 루프를 멈추면 안 된다. 그래서 재생에서는
+**거절하지 않고 버린다** — 다만 **조용히 버리지 않는다**:
+
+| | 작성(`assertAuthorable`) | 재생(`applyOverrides`) |
+|---|---|---|
+| 미지·삭제된 경로 | **400** | **버리고 `droppedOverrides` 로 보고** |
+| 타입 불일치 | **400** | 〃 |
+| 구조 경로 | **400** | 〃 |
+| 무효 노브(#338) | **400** | 통과(값이 무효라 경기가 어차피 같다) |
+| 런타임 비용 상한 | **400** | **400** (성질이 다르다 — 아래) |
+
+버린 사실은 러너 응답 → `match_halves.dropped_overrides_json` → 서버 WARN 세 곳에 남는다. 재현
+계약은 `effectiveConfigHash`(실제로 돈 config **전체**의 지문)가 계속 완결시킨다 — 버린 경로가
+있어도 "무엇으로 돌았나"의 답은 정확하다.
+
+⚠️ 함수 이름을 `assertAuthorable` / `applyOverrides` 로 **갈라 둔 것 자체가 방어**다. 함수가 하나면
+"여기 검사 하나 더 넣자"가 자연스러워 보이고 그 한 줄이 진행 중 매치를 죽인다 — 두 라운드 연속으로
+그렇게 됐다(B2·B3). 이제 그러려면 **이름이 authoring 인 함수**를 골라야 한다.
+
 **런타임 비용 상한 — 이건 반대로 재생 경로에도 남는다.** `matchMinutes` 는 수치 리프라 검증을 전부
 통과하는데 러너는 **단일 프로세스**다 — `{"matchMinutes":100000}` 한 줄이 스모크와 이후 모든
 `/simulate` 를 분 단위로 붙잡아 **진행 중인 전 매치의 하프를 같이 세운다**. 한 하프가
@@ -155,7 +183,8 @@ applyOverrides(defaultEngineConfig, overrides) → { config, hash, changed[] }
 
 ```sql
 CREATE TABLE engine_config_revisions (
-  id            TEXT PRIMARY KEY,        -- ULID (정렬 = 시간순)
+  seq           INTEGER PRIMARY KEY AUTOINCREMENT,  -- 삽입 순서 = "최신 = 현재"의 유일한 기준
+  id            TEXT NOT NULL UNIQUE,    -- ULID (매치가 config_revision_id 로 가리킨다)
   overrides_json TEXT NOT NULL,          -- 정본(키 정렬) 오버레이 전체 — 델타가 아니라 스냅샷
   effective_hash TEXT NOT NULL,          -- 러너가 계산해 준 유효 config 지문
   actor_user_id TEXT NOT NULL REFERENCES users(id),
@@ -166,8 +195,16 @@ CREATE TABLE engine_config_revisions (
 );
 CREATE UNIQUE INDEX uq_engine_config_rev_idem ON engine_config_revisions(idem_key)
   WHERE idem_key IS NOT NULL;
-CREATE INDEX idx_engine_config_rev_time ON engine_config_revisions(created_at DESC, id DESC);
 ```
+
+⚠️ **PK 가 `seq` 이고 ULID 가 UNIQUE 인 것은 오타가 아니다.** 이 표는 **정렬이 곧 동작**이다 —
+최신 행 하나가 다음 매치에 박히는 값이라, 동률이 나면 잘못된 계수가 남은 채 **롤백이 무시된다**.
+후보 둘 다 동률에서 깨진다: `created_at` 은 `Instant.toString()` 이 나노초 0 이면 소수부를 생략해
+사전순이 뒤집히고(m2), **ULID 는 48bit ms + 80bit 난수라 같은 밀리초 안에서는 난수가 순서를
+정한다**(3차 게이트에서 실제로 발화 — 연달아 친 롤백이 반반 확률로 무시됐다). SQLite `rowid` 로도
+되지만 그건 문서화된 보장이 아니라 구현 세부이고 `VACUUM` 이 재배치할 수 있다(m10).
+`(created_at, id)` 인덱스는 **두지 않는다**(m9) — 어느 쿼리도 안 쓸뿐더러 **코드가 의도적으로 기각한
+정렬을 스키마가 광고하면** 다음 사람이 그걸 근거로 되돌린다.
 
 - **왜 override 파일이 아니라 DB 인가**: economy(#209)가 파일을 쓴 이유는 **base 가 이미지에 구워진
   발행물**이라 "리로드만으로는 아무 일도 안 일어나기" 때문이다. 여기 base 는 컴파일된 상수이고
@@ -284,6 +321,15 @@ PUT /api/admin/engine-config
   **재생 경로에도 남아야 한다**(T-R8b 와 짝: 무엇이 계층을 가르는지가 계약으로 보인다).
 - `T-R10` `/config/knobs` 응답에 **"목록이 실효를 보장하지 않는다"는 단서**(`caveat`)가 실린다
   (독립검증 M5 — 문서에만 두면 API 소비자는 목록을 전수로 믿는다).
+- `T-R11` **엔진이 지운 노브가 박혀 있어도 재생은 성공**하고, 버린 경로가 `droppedOverrides` 로
+  보고되며, 그 하프는 **오버레이 없이 돈 하프와 비트 동일**하다(버린 값이 몰래 새지 않는다).
+  같은 값이 **작성에서는 여전히 400** 이라는 것도 같이 박는다 — 버리기가 작성 게이트를 무르게
+  하면 안 된다. 독립검증 B3.
+- `T-J9` 그 매치가 **FAILED 로 가지 않고**, `match_halves.dropped_overrides_json` 에 사실이 남고,
+  같은 오버레이의 **살아 있는 노브는 그대로 적용**된다(하나가 죽어도 나머지는 산다).
+  정상 경로에서는 그 컬럼이 NULL 이다(이 기록이 소음이 되면 아무도 안 본다).
+- `T-J10` **같은 밀리초에 들어온 리비전도 삽입 순서대로다** — 20회 루프 + "같은 ms 가 실제로
+  발생했는지"의 전제 단언(전제가 사라지면 계약이 조용히 공허해진다).
 
 **server-java** — `./gradlew test --rerun-tasks`(절대경로, memory `server-java-rerun-tasks-gate`)
 - `T-J1` 오버레이 설정 → **그 전에 생성된** BRIEFING 매치의 h1·h2 요청에 **옛 값**이 실린다(#241 핵심).
@@ -326,6 +372,12 @@ PUT /api/admin/engine-config
   기능의 사정거리 밖이다(#252 참조) — "계수는 다 무배포"라고 말하면 거짓말이 된다.
 - **여전히 남는 #241 축**: 엔진 코드 배포로 `config.version` 이 오르면 진행 중 매치의 resumeState 는
   여전히 거부된다. 이 웨이브는 그 **빈도를 낮출** 뿐 그 축을 고치지 않는다(별건 — #241).
+- ⚠️ **엔진이 노브를 지우면 박힌 오버레이의 그 항목은 소리 없이가 아니라 "소리를 내며" 사라진다.**
+  경기는 그 노브만 기본값으로 돌고, 사실은 `match_halves.dropped_overrides_json` + 서버 WARN 에
+  남는다. **자동 복구는 아니다** — 원장의 현재 리비전은 여전히 죽은 키를 들고 있고, 그걸 치우는
+  것은 운영자의 `PUT` 이다(§9 런북에 단계로 넣었다). 부팅·러너 교체 시점에 현재 리비전을 자동
+  재검증하는 장치는 **이 웨이브 범위 밖**이다(별건). 이 축이 §8 에 없었던 것이 독립검증 B3 의
+  절반이었다 — 실패 모드가 문서에도 계약에도 런북에도 없으면 "구조로 막았다"고 말할 수 없다.
 - **web 무변경**. 운영은 curl.
 - **AI 실행기 무영향** — 오버레이는 `TacticalInput` 이 아니라 엔진 config 다. 프롬프트 광고
   필드(`advertised-fields.test.ts`)와 무관.
@@ -351,7 +403,16 @@ curl -s $API/api/admin/engine-config/knobs     -H "$ADMIN" | jq '.knobs[] | sele
 
 # 1) 드라이런(리비전 안 생김) — 오타·파괴적 값이면 여기서 400
 curl -s -X POST $API/api/admin/engine-config/validate -H "$ADMIN" -H 'content-type: application/json' \
-  -d '{"overrides":{"contest.shootXgThreshold":0.07,"decisionWeights.shoot":0.34}}' | jq
+  -d '{"overrides":{"contest.shootXgThreshold":0.07,"contest.shootRange":22}}' | jq
+#    ⚠️ 예제에 `decisionWeights.*` 를 쓰지 마라 — 8개 전부 #338 INERT 라 **400** 이다(1차 B1).
+#       만질 수 있는 경로는 위 0단계의 `knobs` 가, 못 만지는 경로는 `inertKnobs` 가 사유와 함께 답한다.
+
+#    ⚠️ **엔진을 배포한 뒤에는 이 0~1단계를 한 번 돌려라** — 그 배포가 노브를 지웠거나 이름을
+#       바꿨으면 지금 걸린 리비전의 그 항목이 조용히 무효가 된다(재생은 죽지 않고 버린다, B3).
+#       이미 그런 하프가 있었는지는 아래로 본다:
+#         sqlite3 $DB "SELECT match_id, half, dropped_overrides_json FROM match_halves
+#                      WHERE dropped_overrides_json IS NOT NULL ORDER BY rowid DESC LIMIT 20;"
+#       나오면 그 경로를 뺀 오버레이로 PUT 해서 원장을 정리한다(원장은 자동으로 안 고쳐진다).
 
 # 2) 적용 — Idempotency-Key 를 항상 붙인다(재전송 안전)
 curl -s -X PUT $API/api/admin/engine-config -H "$ADMIN" -H 'content-type: application/json' \

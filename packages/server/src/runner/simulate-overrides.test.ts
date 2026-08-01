@@ -108,8 +108,25 @@ describe("T-R5/T-R6 재개 config 가드 — 무음 desync 금지 · 구 상태 
   });
 });
 
-describe("T-R3(계약 레이어) 잘못된 오버레이는 simulate 이전에 걸린다", () => {
-  it("미지 경로는 throw — 러너 HTTP 가 400 으로 매핑한다", () => {
-    expect(() => simulate(h1({ "contest.nopeNope": 1 }))).toThrow(/contest\.nopeNope/);
+/**
+ * B3 — **`simulate` 는 미지 경로로 죽지 않는다.** 이 자리엔 원래 "미지 경로는 throw" 계약이
+ * 있었고, 그게 정확히 blocker 였다: `simulate` 를 부르는 것은 운영자가 아니라 **이미 시작한
+ * 매치**다. 엔진이 노브를 지운 뒤 그 오버레이가 박힌 매치가 h1 을 돌리면 러너 400 →
+ * `failMatch` → 매치 FAILED 이고, 원장의 현재 리비전이 그 키를 든 한 신규 매치도 전부 같은
+ * 길로 간다. 거절은 작성 게이트가 한다(`config-http.test.ts` 의 `/config/validate` 400).
+ */
+describe("B3 — simulate(재생)은 미지 경로에 죽지 않고 버린다", () => {
+  it("미지 경로가 박혀 있어도 하프가 정상 산출된다 + 버린 사실이 응답에 실린다", () => {
+    const res = simulate(h1({ "contest.nopeNope": 1 }));
+    expect(res.matchLog.tickSnapshots.length).toBeGreaterThan(0);
+    expect(res.droppedOverrides?.map((d) => d.path)).toEqual(["contest.nopeNope"]);
+  });
+
+  it("그 하프는 오버레이 없이 돈 하프와 **비트 동일**하다 — 버린 값이 몰래 새지 않는다", () => {
+    expect(simulate(h1({ "contest.nopeNope": 1 })).lastHash).toBe(simulate(h1()).lastHash);
+  });
+
+  it("런타임 비용 상한은 재생에서도 여전히 throw 다 — 성질이 다른 유일한 게이트", () => {
+    expect(() => simulate(h1({ matchMinutes: 100000 }))).toThrow(/단일 프로세스/);
   });
 });
