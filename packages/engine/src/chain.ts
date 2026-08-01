@@ -573,7 +573,7 @@ function candidateEv(
       // 먹혔다). 여기서 **롱 옵션의 EV** 를 가감한다 — `shootTendency`(위)와 동형.
       // 롱에만 거는 이유: "다이렉트하게" 는 "길게 앞으로" 라는 뜻이고, 숏까지 같이 올리면
       // 그건 패스 자체의 가중이라 축이 아니다.
-      if (behavior && opt.long) {
+      if (behavior && opt.long && ctx.config.chain.passDirectnessEnabled) {
         inner = mulFrac(inner, toMul(0.5 + holder.behavior.passDirectness));
       }
       // 할인: 패스도 한 수를 쓰는 행동이다(슛/드리블과 같은 자에 놓으려면 여기서 깎아야 한다).

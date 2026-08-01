@@ -126,6 +126,17 @@ describe("#338 조건부 LIVE — 1대1 계열(#316 빈도 미달이라 상황�
     expect(hashes(withClear(0.5, 1.05))).not.toEqual(hashes(withClear(0.5, 3.0)));
   }, 120_000);
 
+  it("rules.restart.fallbackKick 도 조건부 LIVE 다 — 킥 후보가 0 일 때만 발화(#349)", () => {
+    // 독립검증 m5: 4시드에서 INERT 로 보이지만 소비자는 실재한다(`decision.ts` 의 wClear 폴백 ·
+    // `chain.ts` 의 pushClear(force)). 재시작에서 **패스 옵션 0 + 사거리 밖 + 걷어내기 부적격**이
+    // 동시에 성립해야 발화하므로 표본에 사례가 없을 뿐이다. `mustKick` 을 끄면 이 폴백 자체가
+    // 도달 불가가 되므로, "켠 상태에서 폴백만 끄기"가 의미를 갖는 유일한 대조다.
+    const off = hashes((c) => { c.rules.restart.fallbackKick = false; });
+    // 사례가 없으면 동일한 것이 **정상**이다 — 이 단언은 "동일함"을 기록해 두는 것이 목적이고,
+    // 깨지면(달라지면) 폴백이 실제로 발화하기 시작했다는 뜻이라 그때 LIVE 로 올린다.
+    expect(off).toEqual(BASE);
+  }, 120_000);
+
   it("⚠️ 기본 반경에서는 3시드에 사례가 없다 — #316(1대1 빈도 0.5/경기)의 직접 증거", () => {
     // 이 단언이 **깨지면 좋은 일**이다(#316 이 해소돼 사례가 늘었다는 뜻) → 그때 이 블록을
     // 통째로 LIVE 로 올리고 이 주석을 지워라.
