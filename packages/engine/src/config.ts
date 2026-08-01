@@ -645,6 +645,28 @@ export interface EngineConfig {
        */
       mustKick: boolean;
       /**
+       * **재개 게이트**(#378) — 정지 길이를 "taker 가 우연히 얼마나 멀리 있었나"가 아니라
+       * **무엇을 기다리는가**의 함수로 만든다. 상세·근거는 `restart-gate.ts` 와
+       * `research/deadball-restart.md`.
+       */
+      gate: {
+        /** false = 0.32.0 이전 동작(전 재시작이 ceremonial = 항상 기다린다). 롤백·변이체 킬. */
+        enabled: boolean;
+        /**
+         * `quick` 재시작의 정지 하한(틱). taker 가 더 멀면 도보 시간이 이긴다.
+         * 0 이 아닌 이유: 공을 스팟에 놓고 taker 가 잡는 프레임이 최소 한 번은 보여야 한다
+         * (#59 순간이동 금지의 최소 단위).
+         */
+        quickBaseTicks: number;
+        /** `teamShape`(골킥 롱볼) 대기 틱 — 우리 팀이 올라갈 시간. */
+        teamShapeTicks: number;
+        /**
+         * 골킥에서 `teamShape` 로 갈리는 팀 `passDirectness` 평균 임계.
+         * 이 값 미만이면 짧게 빨리(quick) — 2019 Law 16 개정이 1급으로 만든 선택지.
+         */
+        goalKickDirectThreshold: number;
+      };
+      /**
        * 킥 후보(슛·패스·롱패스·걷어내기)가 하나도 생성되지 않았을 때 **걷어내기를 무조건**
        * 후보로 넣을지. false 면 그 상황에서 후보가 0 개가 되어 결정 코어가 설 자리가 없다.
        * 걷어내기를 쓰는 이유는 새 행동을 만들지 않기 위해서다 — 실행·이벤트·기하가 전부
@@ -871,6 +893,12 @@ export interface EngineConfig {
       backupCount: number;
       /** 지원 인원이 서는 스팟 기준 반경(m). */
       backupRadiusM: number;
+      /**
+       * Law 13 — 수비 **3명 이상**이 벽을 이루면 공격팀은 그 벽에서 이 거리(m) 밖에 있어야 한다
+       * (어기면 수비팀 간접 프리킥). 백업 반경(8m)과 벽 거리(9.15+standoff)가 1m 남짓이라
+       * 슬롯이 겹칠 수 있어(실측 237표본 중 1건 · min 0.97m) 슬롯 단계에서 밀어낸다.
+       */
+      wallClearM: number;
       /**
        * 역할(벽·백업)을 배정받은 선수가 접근 금지 구역(#176)에 막혔을 때 **경계를 따라 돌아갈지**.
        * false = 0.30.0 이전 동작(이동 취소 = 그 자리에 굳음) — 롤백 스위치이자 변이체 킬 대조군.
@@ -1314,7 +1342,16 @@ export const defaultEngineConfig: EngineConfig = {
   //   **교호작용 +0.57**(가법 분해가 아니다 — 피로가 만든 여유를 배선이 형태로 쓴다).
   //   구 밸런스는 "경기의 43.2% 구간 전원 최대 피로"라는 **상수** 위에 맞춰져 있었다
   //   (#346 본문 79.4% 는 90분 레짐 값 — 45분에서는 43.2%). 재보정은 트랙 T 소관이다.
-  version: "engine@0.32.0",
+  // 0.33.0 = **데드볼 유동 재시작**(#377 M1-본 · #378). 정지 길이를 **taker 가 우연히 얼마나 멀리
+  //   있었나**가 아니라 **무엇을 기다리는가**(`RestartGate`)의 함수로 만든다: 스로인·사거리 밖
+  //   프리킥 = `quick` · 벽 프리킥 = `ceremonial`(심판 대기) · 골킥 = 팀 `passDirectness` 가 정하는
+  //   `quick`/`teamShape`(전원 전진 후 롱볼). 실측(8시드) 스로인 정지 12.9 → **7.4틱**,
+  //   그리고 hero 요구의 직접 지표인 **재개 틱에 아직 움직이는 중인 선수 9.1% → 17.0%**
+  //   (= "자리를 찾기 전에 진행된다"). 데드볼 왕복·단독질주 무회귀.
+  //   ⚠️ 정지 중 `decideOffBall` 을 켜는 안은 **기각**(0.25.0 목표 램프 전례 — 왕복 0.00 → 1.17/100).
+  //   짧아진 정지가 재개 후 평소 로직으로 자연히 이어져 "이동 중 판단"이 성립한다.
+  //   Law 13 "벽에서 1m"(공격팀 백업 vs 3인 이상 벽) 신설 — 조사에서 나온 규칙 결손.
+  version: "engine@0.33.0",
   msPerTick: 1000,
   // #365: 90 → 45. **경기 자체를 짧게** 만드는 것이 하프 3분의 유일한 수단이다(같은 틱을 더 빨리
   // 재생하는 안 = 2.3배속은 hero 가 실관전으로 이미 기각, #221). 45 를 고른 근거는 둘 —
@@ -1672,6 +1709,20 @@ export const defaultEngineConfig: EngineConfig = {
       // #349: 규칙이지 밸런스 노브가 아니다. false 는 롤백·변이체 킬 대조군 전용.
       mustKick: true,
       fallbackKick: true,
+      gate: {
+        // #378 러프 기본값. quick **5틱**(구 하한은 스로인/골킥 12 · 프리킥 8).
+        // ⚠️ 처음엔 2 로 잡았다가 **Law 13 침범**이 생겨 5 로 올렸다 — 실측(8시드, 차는 틱에
+        // 9.15m 안 수비수): quick 2 → 벽FK 1/90 · 빠른FK 1/7 · **quick 5 → 0/94 · 0/15** ·
+        // quick 8 → 0/99 · 0/11. 즉 5 가 "빠르되 규칙을 안 깨는" 가장 짧은 지점이다.
+        // 이걸 계수로 푼 이유: 그러지 않으면 `deadball-laws` A 와 `freekick-setpiece` 침범 계약을
+        // **완화**해야 하는데, 계수 하나로 규칙이 성립하면 계약을 약하게 만들 이유가 없다.
+        // teamShape 10틱 = 구 골킥 하한(12)보다 짧지만 "전원 전진"이 눈에 보이는 길이.
+        // 임계 0.5 = 성향 중간값 — 프롬프트가 "길게 넘겨라"를 걸어야 롱볼 대기로 간다.
+        enabled: true,
+        quickBaseTicks: 5,
+        teamShapeTicks: 10,
+        goalKickDirectThreshold: 0.5,
+      },
     },
   },
   variety: {
@@ -1756,6 +1807,8 @@ export const defaultEngineConfig: EngineConfig = {
       wallSetupTicks: 6,
       backupCount: 3,
       backupRadiusM: 8,
+      // Law 13 상수(1m). 규칙값이라 튜닝 대상이 아니다.
+      wallClearM: 1,
       // #349: 벽이 실제로 서려면 필수다(false 면 도착률 12.3%).
       routeAroundZone: true,
     },

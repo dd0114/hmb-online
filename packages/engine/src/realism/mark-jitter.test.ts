@@ -56,8 +56,14 @@ describe("마크 진동 상한 (#178)", () => {
   // 그게 이 계약이 실제로 지키려는 것이고, 분모가 또 움직여도 살아남는다.
   it(`수비수 전원의 큰 왕복 — 관계식 ≤1.35배 + 처리군 자체 비회귀 (현재 ${report.all.bigReversalPer100} vs 기준선 ${visionOff.all.bigReversalPer100})`, () => {
     expect(report.all.bigReversalPer100).toBeLessThanOrEqual(visionOff.all.bigReversalPer100 * 1.35);
-    // 처리군 절대 비회귀: #377 M2 시점 실측 4.51. 넘으면 **진짜로 진동이 늘어난 것**이다.
-    expect(report.all.bigReversalPer100).toBeLessThanOrEqual(4.6);
+    // 처리군 절대 비회귀. ⚠️ #378(재개 게이트)로 **재기준 4.6 → 5.5**.
+    // 같은 커밋 아블레이션(gate on/off, 4시드): 처리군 4.44 → **5.35**(+20.5%) · 대조군 3.50 →
+    // **4.25**(+21.4%) — **양 팔이 함께 올랐고 대조군이 더 올라 관계식은 1.269 → 1.259 로
+    // 오히려 좋아졌다.** `nearOwner` 도 25.40 → **24.34** 로 내려가고 평균 이동은 3.24 → 3.15 다.
+    // 기제: 정지 창이 짧아져 표본에서 **라이브 플레이 비중이 커졌다**(데드볼 틱은 조용하다).
+    // `bigReversal` 은 선수-틱 100 당 카운터라 표본 구성이 바뀌면 같은 행동에도 값이 움직인다.
+    // 즉 진동이 늘어난 게 아니라 **재는 구간이 바뀐 것**이다(#178 이 이미 겪은 부류).
+    expect(report.all.bigReversalPer100).toBeLessThanOrEqual(5.5);
   });
 
   it(`볼 옆 수비수 평균 이동이 시야off 기준선의 1.2배 이하 (현재 ${report.nearOwner.avgMoveM} vs 기준선 ${visionOff.nearOwner.avgMoveM}) — 진동은 주행거리도 부풀린다`, () => {

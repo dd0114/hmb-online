@@ -10,8 +10,8 @@ import { kickBall, nearestOnSweep } from "./ball";
 import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
 import { deliverySpeedFx, loftHangTicks, shotPowerFx } from "./kick";
 import { xgAtPoint } from "./decision";
-import { freeKickWallCount } from "./setpiece";
 import { kickoffSpot } from "./deadball";
+import { restartGateOf, gateBaseTicks, type RestartGate } from "./restart-gate";
 
 /**
  * contest — 경합 판정(패스/인터셉트/태클/슛).
@@ -163,7 +163,13 @@ function placeRestart(
     kind === "goal_kick"
       ? (goalkeeperOf(state, side) ?? nearestOfSide(state, side, spot.x, spot.y))
       : (nearestOfSide(state, side, spot.x, spot.y) ?? goalkeeperOf(state, side));
-  const base = config.setPiece.stoppageTicks;
+  // #378: 코너는 게이트 밖(박스 크라우딩이 성립해야 코너다). 스로인·골킥만 게이트를 탄다.
+  const gate: RestartGate | null =
+    kind === "corner" ? null : restartGateOf(state, pitch, config, kind, side, spot.x, spot.y);
+  const base =
+    gate === null
+      ? config.setPiece.stoppageTicks
+      : gateBaseTicks(config, gate, kind as "throw_in" | "goal_kick");
   if (taker) {
     // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 루프가 도달 시 글루.
     // 정지 시간 = taker 가 걸어와 도달하는 데 필요한 만큼(멀면 연장) → 점프 없이 끝까지 걸어옴.
@@ -298,8 +304,10 @@ export function restartFreeKick(
   // #307 H4: 벽을 세우는 프리킥은 정지를 늘린다. 벽·백업은 **걸어서** 자리를 잡아야 하므로
   // (#59/#174 순간이동 금지) 시간을 안 주면 자리를 잡기 전에 재시작돼 "벽이 없는" 그림이 그대로다.
   // 실제 축구에서도 벽을 세우는 프리킥은 준비가 더 길다.
-  const wall = freeKickWallCount(pitch, config, side, spot.x, spot.y);
-  const base = config.rules.freeKickStoppageTicks + (wall > 0 ? config.setPiece.freeKick.wallSetupTicks : 0);
+  // #378: 벽을 부르는 프리킥만 **심판 대기**(ceremonial), 사거리 밖이면 **빠른 재개**(Law 13 기본값).
+  // hero: "1에서 말한 상황은 심판이 프리킥 벽 세울 때까지 기다려야 돼."
+  const gate = restartGateOf(state, pitch, config, "free_kick", side, spot.x, spot.y);
+  const base = gateBaseTicks(config, gate, "free_kick");
   if (taker) {
     // #59: 공은 스팟에 두고 taker 가 걸어가 잡게(순간배치 제거). 정지 = 도달까지(멀면 연장).
     const dist = assignWalkingTaker(state, taker, spot.x, spot.y);

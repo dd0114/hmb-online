@@ -38,7 +38,9 @@ const CENTER_Y = config.pitch.height / 2; // 34
 //   → **34**(#377 M1-pre · engine@0.31.0 — #349 재시작 킥 강제 + #347 킥오프 자기진영 배치로
 //     전개가 통째로 바뀌며 시드 1 에서 페널티가 소멸). 재스캔 실측(1~40): penalty 보유 시드
 //     **14개**(3·6·9·10·11·16·17·18·21·22·27·31·33·34) — 넉넉하다. 34 는 PK 3건으로 표본 최다.
-const PK_SEED = "34";
+//   → **21**(#378 M1-본 · 재개 게이트 — 정지 길이가 게이트의 함수가 되며 전개가 바뀌어 시드 34
+//     에서 페널티가 소멸). 재스캔(1~40): penalty 보유 시드 14개. 21 = PK 2건 + 8골(표본 넉넉).
+const PK_SEED = "21";
 
 function snapByTick(log: MatchLog): Map<number, TickSnapshot> {
   return new Map(log.tickSnapshots.map((s) => [s.tick, s]));
@@ -60,6 +62,36 @@ function halfBoundedEnd(log: MatchLog, from: number, stop: number): number {
   return Math.min(from + stop, cap);
 }
 
+
+/**
+ * 정지 창의 끝 = **공이 실제로 차인 틱**(#378).
+ *
+ * 구 코드는 창을 `이벤트 틱 + rules.freeKickStoppageTicks`(8) 로 **하드코딩**했다. 그건 "정지는
+ * 항상 8틱"이라는 가정인데, #378 이 정지 길이를 게이트의 함수로 만들면서 그 가정이 깨졌다 —
+ * 빠른 재개(quick)는 2~3틱이라 그 뒤 구간은 **정지가 아니라 라이브 플레이**이고, 날아가는 공을
+ * "드리프트 36m"로 읽는다.
+ *
+ * 그래서 창을 **관측 신호**로 닫는다: 한 틱 변위가 걷기 속도를 넘으면 그건 걸어서 끌고 간 게
+ * 아니라 **찬 것**이다. #48 이 잡으려던 버그(taker 가 공을 발에 붙이고 걸어나감)는 정의상
+ * 걷기 속도 이하라 이 창 안에 그대로 남는다.
+ */
+function kickBoundedEnd(
+  log: MatchLog,
+  from: number,
+  hardCap: number,
+  byTick: Map<number, TickSnapshot>,
+  walkM: number,
+): number {
+  const capped = halfBoundedEnd(log, from, hardCap);
+  for (let t = from + 1; t <= capped; t++) {
+    const a = byTick.get(t - 1);
+    const b = byTick.get(t);
+    if (!a || !b) continue;
+    if (Math.hypot(b.ball.x - a.ball.x, b.ball.y - a.ball.y) > walkM) return t - 1;
+  }
+  return capped;
+}
+
 describe("penalty spot no-drift (#48)", () => {
   it("PK 정지 동안 공이 페널티 스팟에서 드리프트하지 않는다(스팟에서 슛)", () => {
     const log = runMatch(PK_SEED, demoHome, demoAway, demoSelect, config);
@@ -79,7 +111,7 @@ describe("penalty spot no-drift (#48)", () => {
       // 선언~슛(정지 종료)까지 공이 스팟에 머무는가.
       let maxDrift = 0;
       let worst = -1;
-      const end = halfBoundedEnd(log, p.tick, STOP);
+      const end = kickBoundedEnd(log, p.tick, STOP, byTick, config.rules.deadBall.walkSpeedM);
       for (let t = p.tick; t <= end; t++) {
         const s = byTick.get(t);
         if (!s) continue;
@@ -109,7 +141,7 @@ describe("penalty spot no-drift (#48)", () => {
       const spot = byTick.get(fk.tick)!.ball;
       let maxDrift = 0;
       let worst = -1;
-      const end = halfBoundedEnd(log, fk.tick, STOP);
+      const end = kickBoundedEnd(log, fk.tick, STOP, byTick, config.rules.deadBall.walkSpeedM);
       for (let t = fk.tick; t <= end; t++) {
         const s = byTick.get(t);
         if (!s) continue;

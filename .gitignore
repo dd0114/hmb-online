@@ -44,3 +44,4 @@ apps/web/e2e-out/
 # #377 M2 관전 증거 로그 — 생성물(결정론적으로 재생성 가능, 22MB)
 # 재생성: npx tsx evidence/377/gen-m2.ts
 evidence/377/m2-*.json
+evidence/377/m1-main-*.json

@@ -5,6 +5,8 @@ import { defaultEngineConfig, type EngineConfig } from "./config";
 import { makeTacticalInput, makeSelectData, demoSeed, demoHome, demoAway, demoSelect } from "./fixtures";
 import { showcaseConfig } from "../dev-viewer/generate-demo";
 import { REALISM_SEEDS } from "./realism/harness";
+import { freeKickWallCount } from "./setpiece";
+import { createPitch } from "./pitch";
 
 /**
  * #176 — 데드볼 정지 중 "상대는 물러나 있어야 한다"(실제 축구 규칙) 계약.
@@ -132,6 +134,8 @@ export interface Violation {
   tick: number;
   playerId: string;
   detail: string;
+  /** #378: 이 재시작이 **무엇을 기다렸는가**. 계약 A 가 이 축으로 갈린다(아래 주석). */
+  ceremonial?: boolean;
 }
 
 /** 한 경기의 데드볼 규칙 위반 전수 스캔. */
@@ -142,6 +146,7 @@ function scanLaws(log: MatchLog, config: EngineConfig, tag: string): {
   teleport: Violation[];
   windows: number;
 } {
+  const pitch = createPitch(config);
   const byTick = new Map(log.tickSnapshots.map((s) => [s.tick, s]));
   const atRestart: Violation[] = [];
   const entered: Violation[] = [];
@@ -211,7 +216,20 @@ function scanLaws(log: MatchLog, config: EngineConfig, tag: string): {
         if (!p.playerId.startsWith(oppPrefix) || p.playerId === oppGk) continue;
         const c = clearance(zone, p.pos.x, p.pos.y);
         if (c < -EPS) {
-          atRestart.push({ kind, tick: lastTick, playerId: p.playerId, detail: `여유 ${c.toFixed(2)}m` });
+          atRestart.push({
+            kind,
+            tick: lastTick,
+            playerId: p.playerId,
+            detail: `여유 ${c.toFixed(2)}m`,
+            // #378: 의식(ceremonial) 재시작인가 = "심판이 거리를 재준" 재개인가.
+            // 코너는 박스 크라우딩이 성립해야 하므로 항상 의식이고, 프리킥은 **벽을 부를 때만**이다.
+            // 스로인·골킥은 빠른 재개(quick)라 "이미 물러나 있을 것"을 요구하지 않는다(Law 13/16).
+            ceremonial:
+              kind === "corner" ||
+              kind === "penalty" ||
+              kind === "kickoff" ||
+              (kind === "free_kick" && freeKickWallCount(pitch, config, e.team!, spot.x, spot.y) > 0),
+          });
         }
       }
     }
@@ -305,6 +323,10 @@ describe("데드볼 접근 금지 — 실제 축구 규칙 (#176)", () => {
   });
 
   it("A) 재시작 실행 틱에 금지구역 안 상대가 없다", () => {
+    // ⚠️ #378(재개 게이트)에서 이 계약을 **의식/빠른 재개로 쪼갤 뻔했다**(Law 13 은 빠르게 찬
+    // 킥을 9.15m 안 상대가 가로채도 속행시킨다). 그러지 않았다 — `quickBaseTicks` 를 2 → 5 로
+    // 잡으니 침범이 **전수 0** 이 됐기 때문이다(실측: quick 2 → 벽FK 1/90·빠른FK 1/7 ·
+    // quick 5 → 0/94 · 0/15). 계수 하나로 규칙이 성립하면 계약을 약하게 만들 이유가 없다.
     const v = collect((c) => scans.find((x) => x.c === c)!.s.atRestart);
     expect(v.slice(0, 20), `${v.length}건\n${v.slice(0, 20).join("\n")}`).toEqual([]);
   });

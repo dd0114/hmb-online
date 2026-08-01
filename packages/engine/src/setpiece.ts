@@ -181,8 +181,31 @@ export function computeSetPiecePlan(
       const [alongK, acrossK] = BACKUP_SLOTS[i]!;
       const along = Math.round((radFx * alongK) / BACKUP_SCALE);
       const across = Math.round((radFx * acrossK) / BACKUP_SCALE);
-      const px = sp.x + Math.round((dx * along) / d) + Math.round((-dy * across) / d);
-      const py = sp.y + Math.round((dy * along) / d) + Math.round((dx * across) / d);
+      let px = sp.x + Math.round((dx * along) / d) + Math.round((-dy * across) / d);
+      let py = sp.y + Math.round((dy * along) / d) + Math.round((dx * across) / d);
+      // Law 13: 수비 3명 이상이 벽을 이루면 **공격팀은 그 벽에서 1m 밖**에 있어야 한다
+      // (어기면 수비팀 간접 프리킥). 백업 반경(8m)과 벽 거리(9.5m)가 1m 남짓이라 슬롯이
+      // 겹칠 수 있다 — 실측 237표본 중 1건(min 0.97m). 슬롯 단계에서 **스팟 쪽으로 당겨**
+      // 구조적으로 막는다(벽이 3명 미만이면 Law 13 이 요구하지 않으므로 그대로 둔다).
+      if (wallPlaced >= 3) {
+        const needFx = toFixed(fk.wallClearM, scale);
+        for (const w of slots.values()) {
+          if (w.role !== "wall") continue;
+          const gap = isqrt((px - w.x) * (px - w.x) + (py - w.y) * (py - w.y));
+          if (gap >= needFx) continue;
+          // 벽에서 멀어지는 방향 = 스팟 쪽(백업은 원래 스팟 주변 역할이라 자연스럽다).
+          const bx = px - w.x;
+          const by = py - w.y;
+          const bd = isqrt(bx * bx + by * by);
+          if (bd <= 0) {
+            px = sp.x;
+            py = sp.y;
+          } else {
+            px = w.x + Math.round((bx * needFx) / bd);
+            py = w.y + Math.round((by * needFx) / bd);
+          }
+        }
+      }
       const c = clampToPitch(pitch, px, py);
       slots.set(playerKey(picked[i]!.p.side, picked[i]!.p.id), { x: c.x, y: c.y, role: "backup" });
       backupPlaced++;
