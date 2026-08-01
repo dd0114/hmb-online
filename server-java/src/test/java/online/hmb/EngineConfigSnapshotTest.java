@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import jakarta.annotation.Resource;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -256,5 +257,44 @@ class EngineConfigSnapshotTest extends MatchTestBase {
         driveToHalfTime(token, matchId);
         // 빈 오버레이 = 기본값 = **키를 아예 안 보낸다**(러너 입장에서 오늘과 동일).
         assertThat(overridesSentForHalf(1)).isNull();
+    }
+
+    /**
+     * <b>같은 밀리초에 들어온 리비전도 삽입 순서대로다</b> — "현재 값"은 경합으로 정해지지 않는다.
+     *
+     * <p>이 계약이 없어서 3차 게이트가 빨갛게 났다. 정렬을 ULID({@code id})로 두면 48bit ms 뒤가
+     * <b>80bit 난수</b>라 같은 ms 안에서는 순서가 <b>동전 던지기</b>다. 운영에서의 의미는
+     * 하나뿐이다 — <b>연달아 친 롤백이 무시될 수 있다</b>(잘못된 계수가 그대로 남은 채 "적용됐다"는
+     * 200 을 받는다). 이 기능의 되돌리기 경로가 확률적이면 안 된다.
+     *
+     * <p>루프를 20회 도는 이유: 한두 번으로는 같은 ms 에 안 걸리면 <b>공허하게 통과</b>한다.
+     * 20개가 우연히 난수 순서대로 정렬될 확률은 1/20! 이라 사실상 0 이고, 그래서 잘못된 정렬을
+     * <b>결정적으로</b> 죽인다. 같은 ms 가 실제로 발생했는지도 아래에서 같이 단언한다 —
+     * 전제가 사라지면(머신이 느려져 매 삽입이 1ms 를 넘으면) 이 테스트가 조용히 공허해지므로.
+     */
+    @Test
+    void sameMillisecondRevisionsStillOrderByInsertion() {
+        for (int i = 1; i <= 20; i++) {
+            setLive(Map.of("contest.shootRange", i), "ms-race-" + i);
+        }
+
+        assertThat(liveConfig.current().overrides().path("contest.shootRange").asInt())
+                .as("마지막으로 넣은 값이 현재여야 한다 — 아니면 롤백이 확률적으로 무시된다")
+                .isEqualTo(20);
+
+        List<LiveEngineConfigService.Row> recent = liveConfig.history(20);
+        List<String> reasons = recent.stream().map(LiveEngineConfigService.Row::reason).toList();
+        assertThat(reasons)
+                .as("이력은 삽입 역순이어야 한다(ULID 난수가 순서를 정하면 여기서 흐트러진다)")
+                .containsExactly(java.util.stream.IntStream.rangeClosed(1, 20)
+                        .map(i -> 21 - i).mapToObj(i -> "ms-race-" + i).toArray(String[]::new));
+
+        // 전제 확인: ULID 앞 10자 = 48bit ms. 겹치는 쌍이 하나도 없으면 이 테스트는 아무것도 태우지
+        // 않은 것이므로, 그 사실이 통과로 위장되지 않게 여기서 깨뜨린다.
+        long distinctMs = recent.stream().map(r -> r.id().substring(0, 10)).distinct().count();
+        assertThat(distinctMs)
+                .as("20개가 전부 다른 ms 에 들어갔다 — 같은 ms 경합을 재현하지 못했으므로 이 계약은 "
+                        + "공허하다(루프를 늘리거나 배치 삽입으로 바꿔야 한다)")
+                .isLessThan(20);
     }
 }

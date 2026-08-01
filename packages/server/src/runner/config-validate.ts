@@ -1,6 +1,13 @@
 import { defaultEngineConfig, demoSeed, demoHome, demoAway, demoSelect } from "@hmb/engine";
 import type { EngineConfigOverrides } from "@hmb/shared";
-import { applyOverrides, knobPaths, INERT_KNOBS, type ChangedKnob } from "./config-overlay.js";
+import {
+  applyOverrides,
+  inertIssues,
+  knobPaths,
+  INERT_KNOBS,
+  OverrideError,
+  type ChangedKnob,
+} from "./config-overlay.js";
 import { simulate } from "./simulate.js";
 
 /**
@@ -82,8 +89,19 @@ function smokeOnce(seed: string, overrides: EngineConfigOverrides | undefined): 
 /**
  * 오버레이를 실제로 돌려 본다. 경로/타입 문제는 {@link applyOverrides} 가 먼저 던지고
  * (`OverrideError`), 여기서는 <b>돌려 본 결과</b>만 판정한다.
+ *
+ * <b>여기가 무효 노브(#338)의 유일한 게이트다</b>(독립검증 B2). 이 함수는 <b>작성 시점</b>에만
+ * 불린다 — server-java 가 원장에 쓰기 전에 부르는 드라이런이다. 같은 판정을 재생 경로
+ * ({@link applyOverrides})에 두면 엔진이 노브를 LIVE→INERT 로 옮기는 순간(0.24.0 이 17개를
+ * 한 번에 옮긴 전례가 있다) 그 오버레이를 이미 박아 둔 <b>진행 중 매치가 전부 죽는다</b>.
+ * 재생은 과거의 값을 그대로 돌리는 일이고, 그 값이 지금 무효라는 사실은 재생을 막을 이유가
+ * 되지 못한다(무효라면 경기가 어차피 동일하다).
  */
 export function validateOverrides(overrides: EngineConfigOverrides | undefined): ValidateResult {
+  // 무효 노브 먼저 — 스모크를 돌리기 전에 잡는다(어차피 경기가 안 바뀌므로 돌릴 이유도 없다).
+  const inert = inertIssues(overrides);
+  if (inert.length > 0) throw new OverrideError(inert);
+
   const { config, hash, changed } = applyOverrides(defaultEngineConfig, overrides);
 
   const smoke: SmokeResult[] = [];
@@ -115,9 +133,23 @@ export function validateOverrides(overrides: EngineConfigOverrides | undefined):
  * 고르면 200 + diff + 새 지문 + 리비전을 받는데 경기는 한 비트도 안 바뀐다 — 이 기능이 막겠다고
  * 선언한 바로 그 실패 모드다. 대신 `inertKnobs` 로 **왜 못 만지는지와 함께** 따로 보여준다:
  * 목록에서 통째로 지우면 "내가 아는 그 노브가 왜 없지?"가 되어 결국 소스를 뒤지게 된다.
+ *
+ * ⚠️ <b>`knobs` 에 있다 ≠ 경기가 달라진다</b>(독립검증 M5). 이 필터는 엔진 #338 레지스트리
+ * <b>등재분만</b> 걷어낸다 — 독립검증 전수 스윕은 등재 밖에서도 완전 무변화 노브를 15개 더
+ * 찾았다(**#393** — QA #25 서브). 러너가 자체 판정하지 않는 이유는 "무효"의 SoT 가 엔진이기 때문이고
+ * (러너가 흉내내면 두 진실이 갈라진다), 얕은 섭동으로 판정하면 조건부 LIVE 를 무효로
+ * 오분류한다(그 스윕도 2시드에서 의심한 26개 중 9개가 8시드에서 뒤집혔다).
+ * 그래서 목록으로 약속하지 않고 <b>{@link CATALOG_CAVEAT} 로 응답에 적어 내보낸다</b>.
  */
+export const CATALOG_CAVEAT =
+  "이 목록은 **설정 가능한 경로**이지 '값을 바꾸면 경기가 달라지는 경로'가 아니다. 여기서 거르는 " +
+  "것은 엔진 #338 레지스트리에 **등재된** 무효 노브뿐이고, 등재 밖에도 실행 경로가 없는 노브가 " +
+  "더 있다(#383 M5 → **#393**). 적용 확인은 `changed` diff·새 지문이 아니라 **실제 경기 관측**으로 한다 " +
+  "— 이 기능이 인용한 사고(#321·#337·#338)가 전부 '신호는 왔는데 경기는 그대로'였다.";
+
 export function knobCatalog(): {
   engineVersion: string;
+  caveat: string;
   knobs: { path: string; type: string; value: number | boolean }[];
   inertKnobs: { path: string; value: number | boolean; reason: string }[];
 } {
@@ -133,5 +165,5 @@ export function knobCatalog(): {
       reason: "사슬 기본(engine 0.24.0+)에서 실행 경로가 없다 — 바꿔도 경기가 비트 동일하다(#338). "
         + "롤백 스위치 chain.mode=\"weighted\" 의 자산이라 남아 있다.",
     }));
-  return { engineVersion: defaultEngineConfig.version, knobs, inertKnobs };
+  return { engineVersion: defaultEngineConfig.version, caveat: CATALOG_CAVEAT, knobs, inertKnobs };
 }

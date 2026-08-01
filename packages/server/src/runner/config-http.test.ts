@@ -104,6 +104,14 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
     expect(((await res.json()) as { issues: string[] }).issues.join(" ")).toContain("실행 경로가 없는 노브");
   });
 
+  it("GET /config/knobs — 목록이 **실효를 보장하지 않는다**는 단서가 응답에 실린다 (독립검증 M5)", async () => {
+    // 이 목록은 엔진 #338 **등재분**만 거른다. 등재 밖에도 무효 노브가 15개 더 있다(#393).
+    // 단서를 문서에만 두면 API 소비자는 목록을 전수로 믿는다 — 그게 이 웨이브가 인용한 사고의 형태다.
+    const body = (await (await fetch(`${base}/config/knobs`)).json()) as { caveat?: string };
+    expect(body.caveat, "단서가 사라졌다 — 목록이 '실효 보장'으로 읽힌다").toBeTruthy();
+    expect(body.caveat).toContain("실제 경기 관측");
+  });
+
   it("GET /config/knobs — 무효 노브는 settable 목록이 아니라 `inertKnobs` 에 사유와 함께 있다", async () => {
     const body = (await (await fetch(`${base}/config/knobs`)).json()) as {
       knobs: { path: string }[];

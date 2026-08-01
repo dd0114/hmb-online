@@ -1,16 +1,27 @@
 import { describe, it, expect } from "vitest";
-import { defaultEngineConfig } from "@hmb/engine";
+import type { EngineConfig } from "@hmb/engine";
+import { defaultEngineConfig, demoSeed, demoHome, demoAway, demoSelect } from "@hmb/engine";
+import { simulate } from "./simulate.js";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   applyOverrides,
+  inertIssues,
   knobPaths,
   OverrideError,
   effectiveConfigHash,
   INERT_KNOBS,
   MAX_HALF_TICKS,
 } from "./config-overlay.js";
+
+/** 이 config 로 전반을 돌린 결과의 지문 — "값을 바꿔도 경기가 같은가"의 관측 지점. */
+function hashOfHalf(config: EngineConfig): string {
+  return simulate(
+    { seed: demoSeed, selectData: demoSelect, homeInput: demoHome, awayInput: demoAway, half: 1 },
+    config,
+  ).lastHash;
+}
 
 /**
  * #383 W1 — 계수 오버레이의 **경로/타입/거부** 계약 (T-R3 + knobs 목록).
@@ -162,20 +173,66 @@ describe("effectiveConfigHash — 유효 config 지문", () => {
  *
  * 무효 노브를 통과시키면 운영자는 200 · diff · 새 지문 · 원장 리비전까지 "적용됐다"는 신호를
  * 넷이나 받고 경기는 한 비트도 안 바뀐다. 그게 정확히 #338 이다.
+ *
+ * ⚠️ 이 판정은 **작성 게이트 전용**이다(독립검증 B2). 아래 "재생" describe 가 짝이다 — 둘을
+ * 같이 읽어야 이 설계가 보인다.
  */
-describe("#338 무효 노브는 오버레이할 수 없다", () => {
+describe("#338 무효 노브는 **새로 작성**할 수 없다", () => {
   it("INERT 노브는 거부되고, 사유가 '왜 무효인지'를 말한다", () => {
     for (const path of INERT_KNOBS) {
-      let err: OverrideError | undefined;
-      try {
-        applyOverrides(defaultEngineConfig, { [path]: 0.123 });
-      } catch (e) {
-        err = e as OverrideError;
-      }
-      expect(err, `${path} 가 통과했다 — 죽은 노브가 '적용됨'으로 보인다`).toBeInstanceOf(OverrideError);
-      expect(err!.issues.join(" ")).toContain("실행 경로가 없는 노브");
+      const issues = inertIssues({ [path]: 0.123 });
+      expect(issues.length, `${path} 가 통과했다 — 죽은 노브가 '적용됨'으로 보인다`).toBe(1);
+      expect(issues.join(" ")).toContain("실행 경로가 없는 노브");
     }
   });
+
+  it("무효가 아닌 노브는 걸리지 않는다 — 게이트가 전부를 막으면 기능이 죽는다", () => {
+    expect(inertIssues({ "contest.shootRange": 22 })).toEqual([]);
+    expect(inertIssues(undefined)).toEqual([]);
+    expect(inertIssues({})).toEqual([]);
+  });
+});
+
+/**
+ * **B2 — 이미 박힌 오버레이의 재생은 무효 여부와 무관하게 성공한다.**
+ *
+ * 이 계약이 없어서 1차 수습이 무효 판정을 재생 경로(`applyOverrides`)에 넣었다. 그러면 엔진이
+ * 노브를 LIVE→INERT 로 옮기는 순간(0.24.0 이 17개를 한 번에 옮긴 **전례**) ①그 오버레이가 박힌
+ * 진행 중 매치 전부와 ②원장의 현재 리비전이 그 키를 담고 있는 한 이후 모든 신규 매치가 h1 에서
+ * 죽는다 — #241 의 정확한 형태다. 그리고 막아서 얻는 것이 **0** 이다: 값이 무효라 경기는 어차피
+ * 동일하고, 신규 작성은 위 describe 의 게이트가 이미 막는다.
+ *
+ * INERT_KNOBS 를 재생 입력으로 쓰는 것이 곧 "LIVE→INERT 이동" 시나리오다 — 그 노브들은 구
+ * 엔진에서 LIVE 였고, 그때 박제된 오버레이가 지금 재생되는 상황이 바로 이것이다.
+ */
+describe("#383 B2 — 박제된 오버레이의 재생은 작성 게이트에 걸리지 않는다", () => {
+  it("`applyOverrides` 는 INERT 노브를 **받아들인다**(재생 경로에 작성 게이트를 두지 않는다)", () => {
+    for (const path of INERT_KNOBS) {
+      expect(
+        () => applyOverrides(defaultEngineConfig, { [path]: 0.123 }),
+        `${path} 를 담은 오버레이가 재생에서 거부됐다 — 엔진 업그레이드 한 번이 진행 중 매치를 ` +
+          `전부 FAILED 로 민다(#241 재발)`,
+      ).not.toThrow();
+    }
+  });
+
+  it("무효 노브만 담긴 오버레이는 **경기를 바꾸지 않는다** — 막을 이유가 없다는 근거", () => {
+    // "무효라서 안전하다"를 주장만 하지 않고 여기서 확인한다. 값이 실제로 경기를 바꾼다면
+    // 그건 레지스트리가 틀린 것이고, 그때는 위 계약이 아니라 레지스트리를 고쳐야 한다.
+    const { config } = applyOverrides(defaultEngineConfig, { "decisionWeights.shoot": 0.123 });
+    expect(config.decisionWeights.shoot).toBe(0.123); // 병합은 된다(값이 들어간다)
+    expect(hashOfHalf(config)).toBe(hashOfHalf(defaultEngineConfig)); // 경기는 같다
+  });
+
+  it("재생 경로에도 남아야 하는 게이트는 **런타임 비용**뿐이다", () => {
+    // assertAffordable 은 자리가 맞다: "지금 이 값을 쓰는 게 좋은가"가 아니라 "이 요청이 러너를
+    // 재우는가"라서 시간이 지나도 답이 안 바뀐다. 위 INERT 와 정확히 반대 성질이다.
+    const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
+    expect(() => applyOverrides(defaultEngineConfig, { matchMinutes: overMinutes })).toThrow(OverrideError);
+  });
+});
+
+describe("#338 무효 노브 목록 자체의 위생", () => {
 
   it("설계 문서 §9 런북 예제가 쓰던 `decisionWeights.shoot` 은 **무효**다(문서가 틀렸던 지점)", () => {
     expect(INERT_KNOBS).toContain("decisionWeights.shoot");
@@ -243,5 +300,19 @@ describe("에러 메시지가 거짓말하지 않는다 (독립검증 M3)", () =
       err = e as OverrideError;
     }
     expect(err!.issues.join(" ")).toContain("오타입니다");
+  });
+
+  it("프로토타입 체인의 이름은 '실재한다'가 아니다 (독립검증 m6)", () => {
+    // `in` 으로 판정하면 `contest.constructor` 가 실재로 잡혀 "존재하지만 오버레이 대상이
+    // 아닙니다"라는 **틀린 안내**가 나간다 — 운영자는 있지도 않은 노브를 찾아 소스를 뒤진다.
+    for (const path of ["contest.constructor", "contest.toString", "chain.hasOwnProperty"]) {
+      let err: OverrideError | undefined;
+      try {
+        applyOverrides(defaultEngineConfig, { [path]: 1 });
+      } catch (e) {
+        err = e as OverrideError;
+      }
+      expect(err!.issues.join(" "), `${path} 가 실재로 판정됐다`).toContain("오타입니다");
+    }
   });
 });

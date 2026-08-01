@@ -41,13 +41,23 @@ export const STRUCTURAL_KEYS: readonly string[] = [
  * 이유는 롤백 스위치(`chain.mode="weighted"`)의 자산이기 때문이고, 엔진은 "값을 바꿔도 경기가
  * bit-identical" 임을 계약으로 박제해 두고 있다.
  *
- * <b>여기서 거부하지 않으면 이 기능이 정확히 #338 을 다시 만든다</b>: 운영자는 200 · `changed` diff ·
- * 새 지문 · 원장 리비전까지 <b>"적용됐다"는 신호를 넷</b>이나 받는데 경기는 한 비트도 안 바뀐다.
- * 죽은 노브를 못 잡는 것이 이 웨이브가 인용한 사고(#321·#337·#338) 그 자체다.
+ * <b>작성 시점에 거부하지 않으면 이 기능이 정확히 #338 을 다시 만든다</b>: 운영자는 200 ·
+ * `changed` diff · 새 지문 · 원장 리비전까지 <b>"적용됐다"는 신호를 넷</b>이나 받는데 경기는 한
+ * 비트도 안 바뀐다. 죽은 노브를 못 잡는 것이 이 웨이브가 인용한 사고(#321·#337·#338) 그 자체다.
+ *
+ * ⚠️ <b>그러나 이 판정은 {@link applyOverrides}(=재생 경로)에 두지 않는다</b> — 소비처는
+ * `config-validate.ts:validateOverrides` <b>하나뿐</b>이다. 이유는 {@link applyOverrides} 의
+ * 주석에 적었다. 요약: 무효 판정은 <b>엔진 버전에 따라 변하는 값</b>이고, 재생은 <b>과거에 박힌
+ * 오버레이</b>를 돌린다. 변하는 잣대를 과거 데이터에 소급 적용하면 엔진 업그레이드 한 번이
+ * 진행 중인 매치를 전부 FAILED 로 민다(#241 의 정확한 형태).
  *
  * ⚠️ 이 목록은 엔진 레지스트리의 <b>복사본</b>이다(엔진은 QA #25 도메인이라 여기서 수정하지 않는다).
  * 드리프트는 `config-overlay.test.ts` 가 엔진 레지스트리를 <b>직접 읽어</b> 집합 대조로 막는다 —
  * 엔진이 노브를 살리거나 죽이면 그 테스트가 이름을 짚어 깨진다.
+ *
+ * ⚠️ 이 목록은 <b>무효의 전수가 아니다</b> — 엔진 레지스트리에 등재된 것만이다. 등재 밖에도
+ * 실효 없는 노브가 더 있다(#383 독립검증 M5 → **#393**). 여기서 자체 판정하지 않는 이유는
+ * "무효"의 SoT 가 엔진이기 때문이다 — 러너가 흉내내면 두 진실이 조용히 갈라진다.
  */
 export const INERT_KNOBS: readonly string[] = [
   "decisionWeights.shoot",
@@ -162,6 +172,21 @@ export function effectiveConfigHash(config: EngineConfig): string {
  *
  * <b>결과가 base 와 같으면 base 를 그대로 돌려준다</b>(동일 객체). 오버레이 없음/빈 맵/기본값과
  * 같은 값만 담긴 맵은 전부 "오늘과 한 비트도 다르지 않다"가 되어야 하고, 그걸 `===` 로 보장한다.
+ *
+ * <h4>이 함수는 재생 경로다 — 작성 게이트를 여기 두지 않는다 (독립검증 B2)</h4>
+ *
+ * `simulate()` 가 <b>매 하프</b> 부른다. 그 입력은 운영자가 방금 친 값이 아니라 <b>매치 생성
+ * 시점에 박제된 오버레이</b>다. 그래서 여기서 던지는 규칙은 "지금 이 값을 쓰는 게 좋은가"가 아니라
+ * <b>"이 값으로 경기를 돌릴 수 있는가"</b> 여야 한다 — 전자는 시간이 지나면 답이 바뀌고, 바뀐 답을
+ * 과거 데이터에 소급하면 <b>이미 시작한 매치가 죽는다</b>.
+ *
+ * 그래서 여기 남는 것: 경로 실재·타입·유한성(값이 없으면 병합 자체가 불가) + {@link assertAffordable}
+ * (런타임 비용 — 재생 경로에서도 진짜로 위험하다). 여기서 빠지는 것: <b>무효 노브 판정</b>
+ * ({@link INERT_KNOBS}) — 그건 엔진 버전에 따라 변하는 잣대라 `validateOverrides`(작성 게이트)
+ * 소관이다. 엔진이 노브를 LIVE→INERT 로 옮기는 것은 가정이 아니라 전례다(0.24.0 이 17개를 한 번에
+ * 옮겼다). 그 판정을 여기 두면 그런 업그레이드 한 번이 ①그 오버레이가 박힌 진행 중 매치 전부와
+ * ②원장의 현재 리비전이 그 키를 담고 있는 한 <b>이후 생성되는 모든 매치</b>를 h1 에서 죽인다.
+ * 보호 가치는 0 이다 — 값이 무효라 경기는 어차피 동일하고, 신규 작성은 작성 게이트가 이미 막는다.
  */
 export function applyOverrides(
   base: EngineConfig,
@@ -190,13 +215,6 @@ export function applyOverrides(
         leafExists(base, path)
           ? `${path}: 존재하지만 오버레이 대상이 아닙니다(수·참거짓 리프만 가능 — 문자열/배열/구조는 배포로만 바꾼다)`
           : `${path}: EngineConfig 에 없는 경로입니다(오타입니다)`,
-      );
-      continue;
-    }
-    if (INERT_KNOBS.includes(path)) {
-      issues.push(
-        `${path}: 지금 엔진(사슬 기본)에서 **실행 경로가 없는 노브**입니다 — 값을 바꿔도 경기가 ` +
-          `비트 단위로 동일합니다(#338 레지스트리). 롤백 스위치의 자산이라 남아 있을 뿐입니다.`,
       );
       continue;
     }
@@ -229,14 +247,39 @@ export function applyOverrides(
   return { config, hash: effectiveConfigHash(config), changed: accepted };
 }
 
-/** 경로가 config 에 실재하는가(타입 무관) — 에러 메시지를 정직하게 만들기 위한 조회. */
+/**
+ * 경로가 config 에 실재하는가(타입 무관) — 에러 메시지를 정직하게 만들기 위한 조회.
+ *
+ * `in` 이 아니라 `hasOwnProperty` 인 이유(독립검증 m6): `in` 은 프로토타입 체인을 본다. 그래서
+ * `contest.constructor` · `toString` 같은 경로가 "실재한다"로 판정돼, 오타를 오타라고 못 부르고
+ * "존재하지만 오버레이 대상이 아닙니다"라는 <b>틀린 안내</b>를 하게 된다(운영자는 소스를 뒤진다).
+ */
 function leafExists(base: EngineConfig, path: string): boolean {
   let node: unknown = base;
   for (const part of path.split(".")) {
-    if (!isPlainObject(node) || !(part in node)) return false;
+    if (!isPlainObject(node) || !Object.prototype.hasOwnProperty.call(node, part)) return false;
     node = node[part];
   }
   return node !== undefined;
+}
+
+/**
+ * <b>작성 게이트 전용</b> — 오버레이에 무효 노브(#338)가 있으면 사유 목록을 돌려준다(없으면 빈 배열).
+ *
+ * {@link applyOverrides} 가 아니라 여기 따로 있는 이유는 위 주석(B2)에 있다: 이 판정은
+ * <b>새 값을 받을 때만</b> 유효하고, 재생에 적용하면 엔진 업그레이드가 진행 중 매치를 죽인다.
+ * 그래서 <b>순수 함수로 분리</b>해 두고 `validateOverrides` 한 곳에서만 부른다 — 재생 경로가
+ * 실수로 이걸 다시 부르면 그건 코드 리뷰에서 보이는 한 줄이 된다.
+ */
+export function inertIssues(overrides: EngineConfigOverrides | undefined): string[] {
+  return Object.keys(overrides ?? {})
+    .filter((path) => INERT_KNOBS.includes(path))
+    .sort()
+    .map(
+      (path) =>
+        `${path}: 지금 엔진(사슬 기본)에서 **실행 경로가 없는 노브**입니다 — 값을 바꿔도 경기가 ` +
+        `비트 단위로 동일합니다(#338 레지스트리). 롤백 스위치의 자산이라 남아 있을 뿐입니다.`,
+    );
 }
 
 /**

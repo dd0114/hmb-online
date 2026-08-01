@@ -115,12 +115,26 @@ public class LiveEngineConfigService {
     }
 
     /**
-     * 최근 리비전 이력(누가·언제·왜·무엇을).
+     * <b>"현재 값" 을 정하는 정렬 = 삽입 순서(SQLite {@code rowid})</b>.
      *
-     * <p>정렬이 <b>ULID 단독</b>인 이유(독립검증 m2): {@code Instant.now().toString()} 은 나노초가
-     * 0 이면 소수부를 생략하므로 {@code …T12:00:00Z} 가 {@code …T12:00:00.400Z} 보다 사전순으로
-     * <b>크다</b> — 같은 초 안에서 앞선 리비전이 "최신"으로 뽑힐 수 있다. ULID 는 시간 정렬이라
-     * 그 함정이 없다. "현재 값"을 정하는 쿼리라 이 순서가 곧 동작이다.
+     * <p>다른 표들은 {@code created_at DESC, id DESC} 로 정렬하지만 그건 <b>표시 순서</b>라 동률이
+     * 미관 문제로 끝난다. 여기서는 순서가 곧 <b>동작</b>이다 — 최신 행 하나가 다음 매치에 박히는
+     * 값이다. 그래서 "대체로 맞는" 정렬로는 부족하다.
+     *
+     * <p>후보 둘 다 <b>동률에서 깨진다</b>:
+     * <ul>
+     *   <li>{@code created_at}: {@code Instant.now().toString()} 은 나노초가 0 이면 소수부를 생략해
+     *       {@code …T12:00:00Z} 가 {@code …T12:00:00.400Z} 보다 사전순으로 <b>크다</b>(독립검증 m2).</li>
+     *   <li>{@code id}(ULID): 48bit ms + <b>80bit 난수</b>라 <b>같은 밀리초 안에서는 난수가 순서를
+     *       정한다</b>({@code Ulid.next()} 는 단조가 아니다). m2 수습이 여기로 옮겼다가 이 결함이
+     *       3차 게이트에서 실제로 발화했다 — 연속 PUT 두 번이 같은 ms 에 들어가면 <b>롤백이 반반
+     *       확률로 무시된다</b>. 테스트에서 재현된 그대로가 운영에서도 참이다.</li>
+     * </ul>
+     *
+     * <p>{@code rowid} 는 삽입 순서 그 자체이고, 이 표는 append-only(DELETE 없음)라 재사용 함정도
+     * 없다. 계약 = {@code EngineConfigSnapshotTest.sameMillisecondRevisionsStillOrderByInsertion}.
+     *
+     * <p>최근 리비전 이력(누가·언제·왜·무엇을) — {@link #load()} 도 같은 정렬을 쓴다.
      */
     public List<Row> history(int limit) {
         int capped = Math.max(1, Math.min(limit, 100));
@@ -128,7 +142,7 @@ public class LiveEngineConfigService {
                         SELECT r.id, r.overrides_json, r.effective_hash, r.reason, r.request_hash,
                                r.created_at, u.nickname AS actor
                         FROM engine_config_revisions r JOIN users u ON u.id = r.actor_user_id
-                        ORDER BY r.id DESC
+                        ORDER BY r.rowid DESC
                         LIMIT ?
                         """)
                 .param(capped)
@@ -140,12 +154,13 @@ public class LiveEngineConfigService {
 
     // ── 내부 ────────────────────────────────────────────────────────────
 
+    /** 현재 = 마지막으로 삽입된 리비전. 정렬 근거는 {@link #history(int)} 의 주석. */
     private Current load() {
         return jdbcClient.sql("""
                         SELECT r.id, r.overrides_json, r.effective_hash, r.reason, r.request_hash,
                                r.created_at, u.nickname AS actor
                         FROM engine_config_revisions r JOIN users u ON u.id = r.actor_user_id
-                        ORDER BY r.id DESC
+                        ORDER BY r.rowid DESC
                         LIMIT 1
                         """)
                 .query((rs, n) -> new Row(rs.getString("id"), rs.getString("overrides_json"),
