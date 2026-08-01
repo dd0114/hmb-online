@@ -185,6 +185,8 @@ describe("프리킥 벽 + 백업 (#307 H4)", () => {
    * 충돌하면 둘 중 하나가 진다: 벽이 안 서거나(retreatPoint 가 밀어냄) 규칙이 깨진다.
    */
   it("벽이 접근 금지를 침범하지 않는다 — 차는 틱 9.15m 안 수비 아웃필더 0", () => {
+    // ⚠️ #378(재개 게이트) 후에도 **전수 0 을 유지한다** — `quickBaseTicks` 5 가 빠른 재개에서도
+    // 상대가 물러날 시간을 남긴다(§config 주석의 아블레이션 참조). 계약을 쪼개지 않았다.
     const bad = cases.filter((c) => c.encroach.length > 0);
     const shown = bad.slice(0, 10).map((c) => `${c.seed} t${c.kickTick} ${c.encroach.join(",")}`);
     expect(shown, `${bad.length}건`).toEqual([]);

@@ -309,10 +309,15 @@ export function buildStoppages(events) {
   // 골킥만 아무 신호 없이 지나가는 세트피스였다 — 관객은 왜 공이 골문 앞에 놓였는지 모른 채
   // 선수들이 재배치되는 것만 봤다. 빈도 부담(경기당 ~13회)은 정지를 없애는 대신 hold 를
   // 스로인급(650ms)으로 짧게 잡아 흡수한다(코너 900ms 로 하면 경기당 +11초).
+  // #347/#378: 킥오프도 **한 호흡**을 준다. 엔진이 그 틱에 전원을 자기 진영 킥오프 배치로
+  // 순간이동시키므로(Law 8), 신호 없이 지나가면 관객에겐 그냥 "선수들이 순간이동한 프레임"이다.
+  // 자막 + 짧은 freeze 가 그 점프를 "킥오프다"로 읽히게 만든다(골킥 #230 과 같은 처방).
+  // detail 있는 kickoff(코너/스로인/골킥)는 `eventKind` 가 이미 갈라내므로 여기 안 걸린다.
   const SETPIECE_STOP = {
     corner: { big: "⛳ CORNER!", col: "#e7edf6", hold: 900 },
     throw_in: { big: "🙌 THROW-IN!", col: "#e7edf6", hold: 650 },
     goal_kick: { big: "🥅 GOAL KICK!", col: "#e7edf6", hold: 650 },
+    kickoff: { big: "▶ KICK-OFF!", col: "#e7edf6", hold: 700 },
   };
   // 프리킥만 자막 없는 짧은 정지 비트 유지.
   const PAUSE_BEAT = { free_kick: 600 };

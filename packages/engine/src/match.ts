@@ -11,7 +11,7 @@ import type {
 } from "@hmb/shared";
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer } from "./simstate";
-import { buildById, playerAt, ballOwnerOf, isBallOwner } from "./simstate";
+import { buildById, playerAt, ballOwnerOf, isBallOwner, playerKey } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import { defaultEngineConfig } from "./config";
@@ -46,9 +46,11 @@ import {
   deadBallShapeTarget,
   deadBallUsesShape,
   deadBallPaceStep,
+  deadBallSlide,
+  type DeadBallZone,
 } from "./deadball";
-import { computeSetPiecePlan } from "./setpiece";
-import { decisionObserver } from "./action";
+import { computeSetPiecePlan, type SetPiecePlan } from "./setpiece";
+import { decisionObserver, fatigueObserver } from "./action";
 import { attackGoal } from "./pitch";
 import type { OutCross } from "./ball";
 import { hashState } from "./hash";
@@ -221,6 +223,20 @@ function resolveOut(carry: Carry, out: OutCross, tick: number, minute: number): 
   }
 }
 
+/**
+ * 이 선수가 **세트피스 역할 슬롯**(벽·백업, #307)을 받았고 그 자리가 규칙상 적법한가. (#349)
+ *
+ * 적법할 때만 참이라, 구역 안으로 잡힌 슬롯(피치 클램프 등)은 종전대로 후퇴 규칙이 이긴다 —
+ * 규칙(#176)이 역할보다 위라는 순서는 바뀌지 않는다. 바뀌는 것은 **적법한 역할 자리**를
+ * 후퇴로 덮어쓰지 않는다는 것 하나다.
+ */
+function roleSlotLegal(plan: SetPiecePlan | null, zone: DeadBallZone | null, p: SimPlayer): boolean {
+  if (!plan || !zone) return false;
+  const slot = plan.slots.get(playerKey(p.side, p.id));
+  if (!slot) return false;
+  return deadBallClearance(zone, slot.x, slot.y) >= 0;
+}
+
 /** 한 틱 진행(perceive→decide→act→resolve→fatigue). 이벤트는 carry.events 로 push. */
 function stepTick(carry: Carry): void {
   const { state, rng, config, pitch } = carry;
@@ -265,6 +281,11 @@ function stepTick(carry: Carry): void {
       if (shapeSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, shapeSp, spPlan);
       else decideOffBall(state, p, config, pitch, null);
       if (!zone || !deadBallExcluded(p, zone)) continue;
+      // #349: 역할(벽)을 배정받은 선수는 **도착이 계약**이라 페이싱에서 뺀다 — 링을 돌아가는
+      // 경로는 직선보다 길어 `deadBallPaceStep`(직선 거리 기준)이 속도를 과소 산정한다.
+      // ⚠️ 규칙(#176)은 그대로 이긴다: 구역 **안**이면 아래 후퇴가 슬롯을 덮어쓰고 먼저 나간다.
+      // 벽이 못 서던 이유는 후퇴 자체가 아니라, 나간 **뒤에** 링을 따라 슬롯으로 못 가던 것이다.
+      if (roleSlotLegal(spPlan, zone, p)) noPace.add(p);
       // 구역 안에 있으면 전술 목표보다 **나가는 것이 우선**(안 그러면 반대편 목표로 가느라
       // 스팟을 더 가깝게 지나친다). 목표만 안이면 경계까지 = 벽 세우고 서기.
       const inside = deadBallClearance(zone, p.posFx.x, p.posFx.y) < 0;
@@ -283,6 +304,9 @@ function stepTick(carry: Carry): void {
       shapeSp != null ? config.rules.deadBall.walkSpeedM : config.rules.deadBall.cornerWalkSpeedM,
       config.fixedScale,
     );
+    // #346: 정지 중에도 피로가 갱신된다(구 모델은 이 분기가 먼저 return 해 **정지 틱이 통째로
+    // 피로 밖**이었다). 데드볼은 실축에서 숨 고르는 구간이라 회복 배수가 붙는다.
+    const deadMoved = new Map<SimPlayer, number>();
     for (const p of state.players) {
       // #174: 데드볼엔 뛰지 않고 **걸어서** 자리를 잡는다 — 정지 중엔 공도 멈춰 있어서 한 명만
       // 풀스피드로 가로지르면 "공보다 선수가 빠른" 그림이 된다(실측 최대 6.4 m/tick).
@@ -294,8 +318,17 @@ function stepTick(carry: Carry): void {
       const paceCap = noPace.has(p) ? Infinity : deadBallPaceStep(config, p, state.stoppage + 1);
       const step = Math.min(speedStep(p, config), walkCap, paceCap);
       const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
-      const c = clampToPitch(pitch, next.x, next.y);
-      if (zone && deadBallExcluded(p, zone) && deadBallBlocked(zone, p, c)) continue;
+      let c = clampToPitch(pitch, next.x, next.y);
+      if (zone && deadBallExcluded(p, zone) && deadBallBlocked(zone, p, c)) {
+        // #349: 역할 배정자는 굳는 대신 **경계를 따라 돈다**(그 밖은 종전대로 이동 취소).
+        const slid =
+          config.setPiece.freeKick.routeAroundZone && roleSlotLegal(spPlan, zone, p)
+            ? deadBallSlide(pitch, zone, config, c)
+            : null;
+        if (!slid) continue;
+        c = slid;
+      }
+      deadMoved.set(p, fdist(p.posFx.x, p.posFx.y, c.x, c.y));
       p.posFx.x = c.x;
       p.posFx.y = c.y;
     }
@@ -380,6 +413,12 @@ function stepTick(carry: Carry): void {
       }
       if (!keepSetPiece) state.setPiece = null;
     }
+    if (config.fatigue.recoveryEnabled) {
+      for (const p of state.players) {
+        applyFatigueTick(p, config, deadMoved.get(p) ?? 0, false, config.fatigue.deadBallRecoverMult);
+      }
+    }
+    emitFatigue(state);
     return;
   }
 
@@ -401,7 +440,7 @@ function stepTick(carry: Carry): void {
 
   // --- 압박 담당 지정(수비팀만) ---
   const defSide: TeamSide = state.possession === "home" ? "away" : "home";
-  const presser = assignPresser(state, defSide);
+  const presser = assignPresser(state, defSide, config, pitch);
 
   // --- decide: 오프더볼/수비 목표 ---
   const ownerId = state.ball.owner;
@@ -429,6 +468,9 @@ function stepTick(carry: Carry): void {
       p.targetFx = deadBallRetreatPoint(pitch, liveZone, config, p.posFx.x, p.posFx.y);
     }
   }
+
+  // #346: 이번 틱 선수별 이동거리(fixed). 피로 부하의 입력이다 — 아래 act 루프가 채운다.
+  const moved = new Map<SimPlayer, number>();
 
   // 이번 틱에 막 쏜 슛인지 — 그렇다면 이 틱엔 공을 슈터 발밑에 두고 다음 틱부터
   // 골문으로 비행시킨다(같은 틱 순간 해상 방지 → 눈에 보이는 슛 궤적 확보).
@@ -693,9 +735,18 @@ function stepTick(carry: Carry): void {
     const raw = speedStep(p, config);
     const step = liveSp ? Math.min(raw, toFixed(config.rules.deadBall.walkSpeedM, config.fixedScale)) : raw;
     const next = stepToward(p.posFx.x, p.posFx.y, p.targetFx.x, p.targetFx.y, step);
-    const c = clampToPitch(pitch, next.x, next.y);
+    let c = clampToPitch(pitch, next.x, next.y);
     // #176: 아직 안 찬 세트피스면 정지 때와 같은 일방통행 벽을 유지(직선 경로 가로지르기 차단).
-    if (liveZone && deadBallExcluded(p, liveZone) && deadBallBlocked(liveZone, p, c)) continue;
+    if (liveZone && deadBallExcluded(p, liveZone) && deadBallBlocked(liveZone, p, c)) {
+      const slid =
+        config.setPiece.freeKick.routeAroundZone && roleSlotLegal(liveSpPlan, liveZone, p)
+          ? deadBallSlide(pitch, liveZone, config, c)
+          : null;
+      if (!slid) continue;
+      c = slid;
+    }
+    // #346: 피로 부하는 **실제로 움직인 거리**다. 여기서만 잰다(이동을 적용하는 유일한 지점).
+    moved.set(p, fdist(p.posFx.x, p.posFx.y, c.x, c.y));
     p.posFx.x = c.x;
     p.posFx.y = c.y;
   }
@@ -759,9 +810,51 @@ function stepTick(carry: Carry): void {
     // ⚠️ 캡처 시점(curOwner*) 값을 쓴다 — 여기서 state 를 다시 읽으면 틱 중간의 소유권 이전이
     //    피로에 반영돼 동작이 바뀐다(실측: 골든 7건 깨짐).
     const active = (p.id === curOwnerId && p.side === curOwnerSide) || p === presser;
-    const exertion = p.isGK ? 0.3 : active ? 1.6 : 1.0;
-    p.fatigue = Math.min(1, p.fatigue + config.fatiguePerTick * exertion);
+    if (!config.fatigue.recoveryEnabled) {
+      // 롤백 경로 = 0.31.0 이전 모델(단조 증가). 한 줄도 안 바꾼다.
+      const exertion = p.isGK ? 0.3 : active ? 1.6 : 1.0;
+      p.fatigue = Math.min(1, p.fatigue + config.fatiguePerTick * exertion);
+      continue;
+    }
+    applyFatigueTick(p, config, moved.get(p) ?? 0, active, 1);
   }
+  emitFatigue(state);
+}
+
+/** 피로 곡선 관측(옵트인·쓰기 전용, #346). 기본 null 이라 프로덕션 경로는 `if (obs)` 한 줄이다. */
+function emitFatigue(state: SimState): void {
+  const obs = fatigueObserver();
+  if (!obs) return;
+  obs(
+    state.tick,
+    state.players.map((p) => ({ id: p.id, side: p.side, isGK: p.isGK, fatigue: p.fatigue })),
+  );
+}
+
+/**
+ * 피로 한 틱(#346). **부하는 실제 이동량, 그 위에 회복 항.**
+ *
+ * `movedFx` = 그 틱에 실제로 이동한 거리(fixed). 구 모델은 "소유자/압박자냐"는 **불리언**만 봤는데
+ * 그건 매 틱 2명뿐이라 사실상 전원이 같은 값을 받았다 — 누가 얼마나 뛰었는지가 피로에 안 들어갔다.
+ * `recoverMult` = 회복 배수(인플레이 1, 데드볼 정지 `deadBallRecoverMult`).
+ *
+ * 결정론: 부동소수 산술이지만 구 모델과 **같은 성질**이다(순수 함수 · 난수 0 · 상태 함수).
+ */
+function applyFatigueTick(
+  p: SimPlayer,
+  config: EngineConfig,
+  movedFx: number,
+  active: boolean,
+  recoverMult: number,
+): void {
+  const f = config.fatigue;
+  const maxStepFx = config.speed.maxPerTick * config.fixedScale;
+  const moveFrac = maxStepFx > 0 ? Math.min(1, movedFx / maxStepFx) : 0;
+  const load = f.exertionPerTick * moveFrac * (p.isGK ? f.gkMult : active ? f.activeMult : 1);
+  // 누진 회복: 지쳤을수록 더 빨리 회복 → 1.0 아래에 평형이 생긴다(포화 재발 방지).
+  const rec = f.recoverPerTick * recoverMult * (1 + f.recoverFatigueGain * p.fatigue);
+  const next = p.fatigue + load - rec;
+  p.fatigue = Math.min(1, Math.max(f.floor, next));
 }
 
 /** carry 의 nextTick 부터 endTick(미포함) 까지 시뮬레이션하며 스냅샷/이벤트 수집. */
@@ -890,7 +983,15 @@ function initCarry(
  * 동일성을 유지한다(applyDelta 를 전반과 동일 입력으로 주면 baseFx·teams 무변경 → 결과 동일).
  */
 function secondHalfKickoff(carry: Carry): void {
-  const { state, pitch } = carry;
+  const { state, pitch, config } = carry;
+  // #346 **하프타임 회복**. 구 모델엔 리셋이 없어서 후반은 전반이 끝난 피로(대개 전원 1.0)에서
+  // 그대로 시작했다 — 교체(≤3)도 컨디션도 닿을 자리가 없었다. `runMatch`(통짜)와
+  // `resumeSecondHalf`(분할)가 **같은 지점**에서 이 함수를 부르므로 재개 동일성은 유지된다.
+  if (config.fatigue.recoveryEnabled && config.fatigue.halfTimeRecover > 0) {
+    for (const p of state.players) {
+      p.fatigue = Math.max(config.fatigue.floor, p.fatigue - config.fatigue.halfTimeRecover);
+    }
+  }
   const c = centerSpot(pitch);
   state.setPiece = { kind: "kickoff", side: "away", x: c.x, y: c.y };
   state.stoppage = 1;

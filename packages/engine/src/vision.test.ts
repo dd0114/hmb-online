@@ -214,7 +214,16 @@ describe("롤백 스위치 (#147 W3)", () => {
   // (`runningMult` 는 vision 과 무관한 `contest.tryTackle` 안에 있다). b2f4a92b → 201948a0.
   // #365(경기 길이 90 → 45분 + 표기 스케일): 매치가 절반 길이가 됐으므로 **모든** 경로의 최종
   // 해시가 움직인다. 롤백 스위치와 무관한 전역 변경이라 위 갱신들과 같은 성격이다. → 아래 상수.
-  const ROLLBACK_HASH = "e8e09719";
+  // #349/#347(engine@0.31.0 데드볼 룰 정합)도 같은 성격이다 — 재시작 킥 강제·프리킥 벽 경로
+  // 우회·킥오프 자기진영 배치는 **전역 규칙**이라 시야 롤백 경로에서도 똑같이 걸린다
+  // (각자의 스위치는 `rules.restart.mustKick` · `setPiece.freeKick.routeAroundZone` ·
+  // `setPiece.kickoff.compress` 로 따로 있다). e8e09719 → 아래 상수.
+  // #377 M2(engine@0.32.0 — 피로 경제 #346 · 입력 배선 #361/#366)도 같은 성격이다: 전역 변경이라
+  // 시야 롤백 경로도 함께 움직인다(각자의 스위치 = `fatigue.recoveryEnabled` · `press.trigger.enabled`
+  // · `duty.enabled`). 7387ca1c → 아래 상수.
+  // #370 되돌림(shootXgThreshold 0.197 → 0.07, 배포 발차)도 같은 성격이다 — 전역 볼륨 노브라
+  // 시야 롤백 경로도 함께 움직인다. 26781828 → 아래 상수.
+  const ROLLBACK_HASH = "21c1b46f";
   // #182 재보정(foul.base 0.017→0.0178)으로 marked 변형의 해시가 바뀐다.
   // ⚠️ **내 트리 출력을 베끼지 않았다** — `origin/main`(6f1b12b) 를 별도 워크트리로 체크아웃해
   // 같은 foul.base 를 넣고 독립 도출한 값이다(main 에는 corner 기능 자체가 없다):
@@ -240,7 +249,9 @@ describe("롤백 스위치 (#147 W3)", () => {
   // 무소유·무비행 공(데드엔드 지문)도 한 번도 안 걸렸다는 뜻이다. 변경의 사거리가 좁다는 증거로
   // 남겨 둔다(#239 의 GK 회수는 데드엔드 지문에만 걸리게 좁혔다 — `decision.ts` 주석).
   // #358 파울 재보정 → 89995755, #365 경기 45분화 → 아래 상수(위 ROLLBACK_HASH 와 같은 이유).
-  const ROLLBACK_HASH_MARKED = "8d22d465";
+  // #349/#347(engine@0.31.0) → 아래 상수(위 ROLLBACK_HASH 와 같은 이유).
+  // #377 M2(engine@0.32.0) → 아래 상수(위 ROLLBACK_HASH 와 같은 이유).
+  const ROLLBACK_HASH_MARKED = "3a11b097"; // #370 되돌림 재기록 — 위와 같은 이유.
 
   // #176: 데드볼 접근 금지 규칙은 **롤백 스위치 없이 무조건 적용**(hero 결정)이라 vision-off 출력도
   // 함께 움직인다. 이 상수의 목적은 "레거시와 같다"가 아니라 **"롤백 경로가 조용히 드리프트하지

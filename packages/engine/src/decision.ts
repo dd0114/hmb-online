@@ -1,6 +1,6 @@
 import type { EngineConfig } from "./config";
 import type { SimState, SimPlayer } from "./simstate";
-import { playerAt, otherSide, claimantSideOf, isBallOwner } from "./simstate";
+import { playerAt, otherSide, claimantSideOf, isBallOwner, restartRequiresKick } from "./simstate";
 import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
@@ -721,6 +721,10 @@ export function decideBallOwner(
   const goal = attackGoal(pitch, owner.side);
   const ownerInFinalThird =
     attackProgress(pitch, owner.side, owner.posFx.x) >= config.setPiece.finalThirdLine;
+  // #349: 재시작 틱은 **킥만**(Law 8/13/15/16). 롤백 코어에도 같은 제약을 건다 — 규칙이 코어마다
+  // 다르면 그건 두 개의 엔진이다. 실측상 이 코어의 재시작 드리블은 18~20% 로 사슬(78.5%)보다
+  // 낮았을 뿐 0 이 아니었다.
+  const mustKick = restartRequiresKick(state, config);
 
   // --- 슛 후보(좋은 위치/각도/찬스일 때만; xG 임계 미만 speculative 억제) ---
   const { xg: rawXg, distM } = computeXg(owner, config, pitch);
@@ -764,7 +768,7 @@ export function decideBallOwner(
   const spaceM = near ? fromFixed(near.dist, config.fixedScale) : config.perceptionRadius;
   const spaceFactor = fclamp(spaceM / config.perceptionRadius, 0.1, 1);
   let wDribble =
-    w.dribble *
+    (mustKick ? 0 : w.dribble) *
     (0.25 + softCapped(owner.behavior.dribbleTendency, sc)) *
     spaceFactor *
     attrFactor(owner.attrs.technical) *
@@ -784,16 +788,22 @@ export function decideBallOwner(
   }
 
   // --- 홀드 후보(압박 심하면 안전하게) ---
-  const wHold = w.hold * (0.5 + 0.5 * owner.behavior.supportDepth);
+  // #349: 재시작에서 hold 를 남기면 드리블만 막아도 "안 차고 서 있는" 데드락이 된다.
+  const wHold = mustKick ? 0 : w.hold * (0.5 + 0.5 * owner.behavior.supportDepth);
 
   // --- 걷어내기 후보(#314 A) — 자기 진영 + 압박 + 좋은 패스 없음 ---
-  const wClear = clearanceWeight(
+  let wClear = clearanceWeight(
     state,
     owner,
     bestOpt ? picked.score : -Infinity,
     config,
     pitch,
   );
+  // #349 폴백: 재시작인데 킥 후보가 하나도 없으면(슛 사거리 밖 + 패스 옵션 0 + 걷어내기 부적격)
+  // 적격 판정을 건너뛰고 걷어내기를 연다. 사슬 코어의 `pushClear(force)` 와 **같은 자리**의 장치다.
+  if (mustKick && config.rules.restart.fallbackKick && wShoot + wPass + wClear <= 0) {
+    wClear = Math.max(config.decisionWeights.clearance, 1);
+  }
 
   // --- 시드 확률 샘플링 ---
   const total = wShoot + wPass + wDribble + wHold + wClear;
@@ -955,6 +965,19 @@ function cornerHolderRank(
 }
 
 /**
+ * `duty` 배수(#366 T5). 미배선이거나 꺼져 있으면 1(= 0.31.0 이전 동작, 변이체 킬 대조군).
+ *
+ * 결판은 **(a) 배선한다**로 갔다(#366 권장). 이유: 이미 유저에게 노출된 UI 셀렉트라 계약에서
+ * 빼는 비용이 더 크고(shared 프리즈 + web 정리), 배선은 이 함수 하나로 끝난다.
+ */
+function dutyMult(config: EngineConfig, player: SimPlayer, axis: "forwardRun" | "supportPull"): number {
+  const d = config.duty;
+  if (!d.enabled) return 1;
+  const table = axis === "forwardRun" ? d.forwardRunMult : d.supportPullMult;
+  return table[player.duty] ?? 1;
+}
+
+/**
  * 오프더볼/수비 이동 목표 계산. player.targetFx 를 설정.
  * (볼 소유자는 match 에서 행동에 따라 별도 처리)
  */
@@ -1073,19 +1096,31 @@ export function decideOffBall(
 
   if (attacking) {
     // 전진 런: 역할 위치에서 골 방향으로.
-    const runFrac = mv.forwardRunReach * player.behavior.forwardRunFreq;
+    // #366 T5: **`duty`(밸런스/공격가담/수비안정/연결고리)가 여기서 처음 소비된다.** UI·계약·
+    // `SimPlayer` 까지 전부 배선돼 있는데 읽는 코드가 0건이라 유저가 고른 셀렉트가 무효였다.
+    // ⚠️ 자연어 우회와 **이중 계상**이 된다(같은 지시가 문장으로도 `forwardRunFreq` 를 올린다) →
+    // 배수를 일부러 얕게 잡는다. 이 값들은 러프 기본값이고 조정은 트랙 T 소관이다.
+    const runFrac = mv.forwardRunReach * player.behavior.forwardRunFreq * dutyMult(config, player, "forwardRun");
     tx += Math.round((g.x - player.baseFx.x) * runFrac);
     // 인포제션 폭 확장: 자기 반쪽 기준 바깥으로 벌림.
     // 정확히 중앙(y=center) 선수(4-3-3 의 ST·CM)는 idHash 패리티로 좌/우 분배 — 구 `<center?-1:1` 은
     // 중앙 선수를 항상 +y(아래)로 밀어 공격이 하프 아래로 쏠렸다(슛 96%·코너 98.6% 편중 → 코너 반복
     // 단조로움, #25). idHash 패리티는 결정론을 유지하며(전역 난수 미사용) 좌우 균형을 회복한다.
     const widthDir = player.baseFx.y < center ? -1 : player.baseFx.y > center ? 1 : ((player.idHash & 1) ? 1 : -1);
-    ty += widthDir * Math.round(pitch.hFx * mv.attackWidthReach * player.behavior.widthTendency);
+    // #361 T1: **팀 폭 슬라이더**가 여기서 처음 소비된다(그 전엔 참조 0건 — 유저가 "넓게 벌려라"
+    // 를 아무리 올려도 경기가 비트 단위로 같았다). 선수별 `widthTendency` 와 **곱**으로 결합한다:
+    // 팀 지시는 개인 성향을 지우는 것이 아니라 **전체를 스케일**하는 축이라 그게 맞다.
+    // 0.5 를 더하는 것은 `chain.ts` 의 `shootTendency`·`passRisk` 배수와 **같은 관용구**다
+    // (슬라이더 0 이 곱을 0 으로 만들어 축 자체를 죽이지 않게).
+    ty += widthDir * Math.round(
+      pitch.hFx * mv.attackWidthReach * player.behavior.widthTendency * (0.5 + team.width),
+    );
     // 팀 업필드 push: 볼 x 를 따라 라인 전진 → length 압축 + 다이내믹(제자리 방지).
     tx += Math.round((ball.posFx.x - player.baseFx.x) * mv.attackLinePush);
-    // 지원: 공 쪽으로 약하게 당김.
-    tx += Math.round((ball.posFx.x - tx) * mv.supportPull * player.behavior.supportDepth);
-    ty += Math.round((ball.posFx.y - ty) * mv.supportPull * player.behavior.supportDepth);
+    // 지원: 공 쪽으로 약하게 당김. (#366 T5 — "연결고리"가 더 붙고 "수비 안정"이 덜 붙는다)
+    const supportFrac = mv.supportPull * player.behavior.supportDepth * dutyMult(config, player, "supportPull");
+    tx += Math.round((ball.posFx.x - tx) * supportFrac);
+    ty += Math.round((ball.posFx.y - ty) * supportFrac);
     // roam: positioningFreedom 이 크면 공쪽으로 더.
     tx += Math.round((ball.posFx.x - tx) * mv.roamFactor * player.behavior.positioningFreedom);
     // 수비/풀백 오버랩: 시드 노이즈가 임계 미만이면 여러 틱 동안 라인 위로 전진(뒤 공간 노출 리스크).
@@ -1112,7 +1147,10 @@ export function decideOffBall(
     tx += Math.round((blockCenterX - player.baseFx.x) * mv.defendCompactX * compact);
     // 폭: 블록으로 좁힘(볼 y 쪽으로 수축).
     const widthDir = player.baseFx.y < center ? -1 : player.baseFx.y > center ? 1 : ((player.idHash & 1) ? 1 : -1);
-    ty += widthDir * Math.round(pitch.hFx * mv.defendWidthReach * player.behavior.widthTendency);
+    // #361 T1: 수비 블록 폭도 같은 축이다(공격만 넓히면 "넓게"가 반쪽이 된다).
+    ty += widthDir * Math.round(
+      pitch.hFx * mv.defendWidthReach * player.behavior.widthTendency * (0.5 + team.width),
+    );
     ty += Math.round((ball.posFx.y - ty) * mv.defendCompactY * compact);
 
     // 마크: 시야 계층이 켜져 있으면 아래에서 가치 기반으로 처리한다(#147 W3) — markTarget 은
@@ -1335,7 +1373,33 @@ export function chooseMarkTarget(
   return best;
 }
 
-/** side 팀의 압박 담당(공 최근접) 지정. */
-export function assignPresser(state: SimState, side: SimPlayer["side"]): SimPlayer | null {
+/**
+ * side 팀의 압박 담당(공 최근접) 지정.
+ *
+ * #361 T1: **`pressingScheme.triggerLine`(압박 시작선)** 이 여기서 처음 소비된다 — 그 전엔 참조가
+ * 0건이라 유저가 "하이프레스" 를 골라도 경기가 비트 단위로 같았다. 게이트 하나로 **로우블록 vs
+ * 하이프레스**가 갈린다: 공이 우리 진영 깊숙이(진행도가 `1 − triggerLine` 미만) 오기 전에는
+ * 압박 담당을 지정하지 않는다 = 블록을 유지하고 나가지 않는다.
+ *
+ *  - triggerLine 1.0 → 상대 골라인까지 쫓아가 압박(최고 하이프레스)
+ *  - triggerLine 0.5 → 하프라인까지만(현행 기본과 유사)
+ *  - triggerLine 0.0 → 우리 골라인 앞까지 끌어들인 뒤에야 압박(극단 로우블록)
+ *
+ * ⚠️ `enabled=false` 면 게이트 없음 = 0.31.0 이전 동작(롤백 스위치·변이체 킬 대조군).
+ */
+export function assignPresser(
+  state: SimState,
+  side: SimPlayer["side"],
+  config: EngineConfig,
+  pitch: Pitch,
+): SimPlayer | null {
+  const g = config.press.trigger;
+  if (g.enabled) {
+    // 수비팀 관점의 "공이 얼마나 올라와 있나". 0 = 우리 골라인, 1 = 상대 골라인.
+    // `triggerLine` 은 **어디까지 나가서 압박하는가**의 선이다 — 그 선 위쪽(상대 진영 더 깊은 곳)
+    // 에 공이 있으면 나가지 않고 블록을 유지한다.
+    const prog = attackProgress(pitch, side, state.ball.posFx.x);
+    if (prog > state.teams[side].pressingScheme.triggerLine + g.marginProgress) return null;
+  }
   return closestToBall(state, side);
 }

@@ -99,9 +99,24 @@ export const showcaseConfig = {
   },
 };
 
+/**
+ * 쇼케이스 전용 시드 — `demoSeed`(리얼 벤치·증거 로그가 쓰는 시드)와 **분리**한다.
+ *
+ * 왜: 뷰어 데모는 "관전 재미"가 기준이고(§2-6), e2e 계약 몇 개가 이 로그의 **희귀 연출**에
+ * 의존한다(`shot-outcomes.spec.ts` 의 `shot:one_on_one`). 1대1 빈도가 경기당 0.5~1건(#316
+ * 잔여)이라 여유가 얇아서, 엔진 전개가 바뀔 때마다 **우연히** 0 이 되고 그때 브라우저 스펙이
+ * 빨개진다(#377 M1-pre 에서 실제로 겪었다). `demoSeed` 를 바꾸면 리얼 증거 로그까지 흔들리므로
+ * 쇼케이스만 따로 고른다 — `showcaseConfig` 를 따로 두는 것과 같은 이유다.
+ *
+ * 선정 기준 = 1대1 **여유**(≥2) + 골·선방·코너·카드가 고루 있을 것.
+ * 이력: `demoSeed`(4815162342) → **27182818**(#377 M2 · engine@0.32.0 — 1대1 4건 · 골 9 ·
+ * 선방 15 · 코너 12 · 카드 5). 재선정 스캔은 `scan` 유틸 없이 쇼케이스 config 로 직접 돌린다.
+ */
+export const SHOWCASE_SEED = "27182818";
+
 /** 쇼케이스 MatchLog(뷰어용). */
 export function buildShowcaseLog(): MatchLog {
-  return runMatch(demoSeed, demoHome, demoAway, demoSelect, showcaseConfig);
+  return runMatch(SHOWCASE_SEED, makeTacticalInput("H", SHOWCASE_SEED), makeTacticalInput("A", SHOWCASE_SEED), demoSelect, showcaseConfig);
 }
 
 /**

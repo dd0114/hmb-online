@@ -219,6 +219,12 @@ export interface ChainProbe {
   recurseClipped: number;
   /** 노드 예산(maxNodes) 소진으로 조기 확정한 결정 수. */
   budgetHit: number;
+  /**
+   * **재시작 틱**으로 판정돼 킥 후보만 생성한 결정 수(#349). 이 틱에는 `carry`/`hold` 생성기가
+   * 아예 안 돌므로, "매 결정마다 carry·hold 각 1개"라는 자릿수 계약이 여기만큼 어긋난다
+   * (`chain-search.test.ts` 가 그 관계식을 그대로 검증한다).
+   */
+  restarts: number;
 }
 
 export function newChainProbe(): ChainProbe {
@@ -228,6 +234,7 @@ export function newChainProbe(): ChainProbe {
     return r;
   };
   return {
+    restarts: 0,
     decisions: 0,
     generated: zero(),
     picked: zero(),
@@ -282,4 +289,28 @@ export function setDecisionObserver(o: DecisionObserver | null): void {
 /** 현재 활성 결정 관측자(없으면 null). */
 export function decisionObserver(): DecisionObserver | null {
   return activeDecisionObserver;
+}
+
+/**
+ * **피로 관측자**(#346, 진단 전용·옵트인) — `DecisionObserver` 와 같은 규율.
+ *
+ * 왜 필요한가: `fatigue` 는 스냅샷·이벤트 **어디에도 노출되지 않는다**. 그래서 "경기의 79% 가
+ * 전원 fatigue = 1.0" 이라는 사실이 로그 어디에서도 안 보였고, 그게 #346 이 이렇게 오래 안 잡힌
+ * 이유다. 계약이 이 성질을 지키려면 곡선을 읽을 창이 하나는 있어야 한다.
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ * 매 틱 **끝**(applyFatigue 직후)에 그 틱의 (선수, 피로) 를 흘려보낸다.
+ */
+export type FatigueObserver = (tick: number, samples: { id: string; side: string; isGK: boolean; fatigue: number }[]) => void;
+
+let activeFatigueObserver: FatigueObserver | null = null;
+
+/** 피로 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setFatigueObserver(o: FatigueObserver | null): void {
+  activeFatigueObserver = o;
+}
+
+/** 현재 활성 피로 관측자(없으면 null). */
+export function fatigueObserver(): FatigueObserver | null {
+  return activeFatigueObserver;
 }
