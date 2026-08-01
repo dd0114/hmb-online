@@ -1,4 +1,4 @@
-import type { SimState, TeamPhase, Intent } from "./simstate";
+import type { SimState, TeamPhase, Intent, SetPiece, DeferredRestart } from "./simstate";
 
 /** 문자열 열거를 해시에 넣기 위한 고정 코드(값은 바뀌면 안 된다 — 골든이 움직인다). */
 const PHASE_CODE: Record<TeamPhase, number> = {
@@ -14,6 +14,20 @@ const PHASE_CODE: Record<TeamPhase, number> = {
 const INTENT_CODE: Record<Intent["kind"], number> = { pass_to: 1, run_to: 2, cross_from: 3, pass_plan: 4 };
 /** 공 비행 종류 코드(#306). 0 = 비행 없음. */
 const FLIGHT_KIND_CODE: Record<"pass" | "shot" | "loose", number> = { pass: 1, shot: 2, loose: 3 };
+// ⚠️ 위와 같은 전수 Record(#377 M3-A 2R). 세트피스 종류를 늘리면 여기서 컴파일이 깨진다 =
+// "해시에 넣을 코드를 정하라"는 신호다. 0 은 `setPiece === null` 센티넬이라 쓰지 않는다.
+const SET_PIECE_CODE: Record<SetPiece["kind"], number> = {
+  corner: 1,
+  throw_in: 2,
+  goal_kick: 3,
+  kickoff: 4,
+  goal: 5,
+  free_kick: 6,
+  penalty: 7,
+  shot_out: 8,
+};
+/** 지연 재시작 종류 코드. 0 = `restart` 없음 센티넬. */
+const DEFERRED_RESTART_CODE: Record<DeferredRestart["kind"], number> = { corner: 1, goal_kick: 2, penalty: 3 };
 
 /**
  * hash — 틱 상태 해시(FNV-1a, 32bit 정수).
@@ -120,6 +134,32 @@ export function hashState(state: SimState): string {
     // (바로 아래 `runOrder` 주석이 같은 이유를 적어 뒀다). 문자열은 정수 스트림으로 흡수한다.
     h = mix(h, it.side === "home" ? 1 : 2);
     h = mix(h, strCode(it.forId));
+  }
+
+  // ⚠️ **데드볼 상태**(#377 M3-A 2R). `stoppage`·`setPiece` 는 재개로 관통하는데 **해시에 한 번도
+  // 들어간 적이 없었다** — 하프 경계가 정지 중이면(스로인·프리킥·골 세리머니) 그 상태가 유실돼도
+  // 그 틱은 통과하고 **다음 틱부터** 갈라진다. `possessionSince`/`runOrder`/`hangTicks` 가 각각
+  // 밟은 것과 **정확히 같은 함정**이고(#154 계열), 그것들을 하나씩 메워 온 이 파일의 규율은
+  // "재개로 관통하는 상태는 전부 흡수한다"이다. 데드볼 가족을 여기서 닫는다.
+  // (일부만 넣으면 더 나쁘다 — 커버된 줄 알고 `x/y/restart` 유실을 못 잡는다. 그래서 전부다.)
+  // ⚠️ **아직 안 닫힌 가족이 하나 남는다**: `teams`(TeamInput)·`seedHash` 같은 **경기 내내 상수**인
+  // 입력. 성격이 달라(매 틱 변하는 상태가 아니라 재개 요청이 다시 실어 주는 입력) 여기 섞으면
+  // 해시 비용만 늘고 잡는 것은 "요청이 다른 팀 전술을 보냈다"뿐이다 — 그건 왕복 등가성 계약
+  // (`resume-roundtrip.test.ts`)이 이미 직접 본다. 판단해서 **뺀 것**이지 빠뜨린 것이 아니다.
+  h = mix(h, state.stoppage | 0);
+  const sp = state.setPiece;
+  h = mix(h, sp ? SET_PIECE_CODE[sp.kind] : 0);
+  if (sp) {
+    h = mix(h, sp.side === "home" ? 1 : 2);
+    h = mix(h, sp.x | 0);
+    h = mix(h, sp.y | 0);
+    const r = sp.restart;
+    h = mix(h, r ? DEFERRED_RESTART_CODE[r.kind] : 0);
+    if (r) {
+      h = mix(h, r.side === "home" ? 1 : 2);
+      // nearY 는 corner 변형에만 있다(다른 변형은 0 센티넬).
+      h = mix(h, r.kind === "corner" ? r.nearY | 0 : 0);
+    }
   }
 
   // id 정렬 사본으로 순서 독립.

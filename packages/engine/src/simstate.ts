@@ -254,6 +254,26 @@ export type DeferredRestart =
   // 박스 파울 → 공을 접촉 지점에 두는 "파울 비트" 정지 후 페널티 스팟 배치+런업(2단계, 코너 패턴).
   | { kind: "penalty"; side: TeamSide };
 
+/**
+ * 세트피스 종류의 **단일 출처**(#377 M3-A 2R). 직렬화 스키마(`packages/server` 의 `SetPieceSchema`)가
+ * 이 배열을 그대로 쓰므로, 종류를 늘리면 스키마가 **자동으로 따라온다**.
+ *
+ * ⚠️ `INTENT_KINDS`(아래) 와 **같은 이유**로 만든다 — 그쪽은 손복사본이 `pass_plan` 을 놓쳐
+ * "하프 경계에 그 상태가 실린 시드에서만" 재개가 400 으로 죽었고, 그게 **운**이라 두 웨이브의
+ * 전체 게이트를 green 으로 통과했다. `kind` 는 그 함정을 **똑같이** 갖고 있던 마지막 손복사본이다
+ * (진단이 아니라 구조 문제이므로 "지금은 안 깨지니 둔다"가 답이 아니다).
+ */
+export const SET_PIECE_KINDS = [
+  "corner",
+  "throw_in",
+  "goal_kick",
+  "kickoff",
+  "goal",
+  "free_kick",
+  "penalty",
+  "shot_out",
+] as const;
+
 /** 진행 중인 세트피스 컨텍스트(정지 동안 재배치에 사용). */
 export interface SetPiece {
   /**
@@ -266,7 +286,7 @@ export interface SetPiece {
    *    (키퍼 위치 또는 포스트 옆)에 머물고(코너 깃발 직행 금지), 정지가 끝나면 restart
    *    (코너킥/골킥) 세트피스가 시작된다.
    */
-  kind: "corner" | "throw_in" | "goal_kick" | "kickoff" | "goal" | "free_kick" | "penalty" | "shot_out";
+  kind: (typeof SET_PIECE_KINDS)[number];
   /** 재시작(수혜) 팀. goal 이면 킥오프할 실점팀. shot_out 이면 정지 동안 공을 지킨 수비팀. */
   side: TeamSide;
   /** 재시작 지점(fixed). */
