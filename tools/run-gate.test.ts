@@ -20,6 +20,16 @@ const find = (lines: string[], own: number[] = [], cpuMin = 50): Found[] =>
  * 구조도 같은데(워처도 워커를 갖는다) CPU 만 다르다.**
  */
 
+/**
+ * 실측 — 이 리포의 **표준 워치**(`npm run test:watch`). ⚠️ `--watch` 가 **어디에도 없다** —
+ * 부모는 `npm run test:watch`, 루트는 `node (vitest)`. 이름으로 워치를 가르는 건 불가능하다.
+ */
+const REAL_NPM_WATCH = [
+  "  30001     1   0.0 npm run test:watch  ",
+  "  30002 30001   0.0 node (vitest)  ",
+  "  30003 30002   0.0 node (vitest 1)     ",
+];
+
 /** 실측 — 유휴 워처. 루트·워커 전부 0.0%. 실행 중인 것과 **타이틀·구조가 같다**. */
 const REAL_IDLE_WATCH = [
   "  82256     1   0.0 npm exec vitest --watch   ",
@@ -92,6 +102,35 @@ describe("parseForeignHeavy — 실측 형태 (#376)", () => {
   /** 3차 blocker: 타이틀·구조가 실행 중인 것과 같아 이름으로는 절대 못 가른다. CPU 가 유일한 축이다. */
   it("유휴 워처는 안 센다 — 타이틀·구조가 같아도 CPU 가 0이다", () => {
     expect(find(REAL_IDLE_WATCH)).toEqual([]);
+  });
+
+  /** 이 리포의 표준 워치 — `--watch` 문자열이 아예 없어 이름 기반 필터가 원리적으로 불가능하다. */
+  it("`npm run test:watch` 유휴도 안 센다 (--watch 문자열이 어디에도 없다)", () => {
+    expect(REAL_NPM_WATCH.join(" ")).not.toContain("--watch");
+    expect(find(REAL_NPM_WATCH)).toEqual([]);
+    // 돌기 시작하면 잡힌다.
+    expect(find(REAL_NPM_WATCH.map((l) => l.replace(/\s0\.0\s/, "  60.0 ")))).toHaveLength(1);
+  });
+
+  /** ROOT_TITLE 이 없으면 이 형태를 아무 패턴도 못 잡는다(playwright 는 vitest 패턴에 안 걸린다). */
+  it("playwright 루트 타이틀(`node (playwright)`)을 잡는다", () => {
+    const out = find(["  40001     1   0.5 npm run e2e  ", "  40002 40001  80.0 node (playwright)  "]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.pid).toBe(40002);
+  });
+
+  /**
+   * 조상에 `run-gate.mjs` 라는 **글자만** 있는 셸 래퍼가 진짜 감지를 죽이던 결함(3차 검증 실측).
+   * 조상 검사에서 셸을 빼지 않으면 이 케이스가 `[]` 로 새어나간다.
+   */
+  it("명령줄에 run-gate 를 품은 셸 아래의 진짜 실행은 잡는다", () => {
+    const out = find([
+      "  50001     1   0.2 /bin/bash -c npx vitest run pkg; node tools/run-gate.mjs --status",
+      "  50002 50001   1.0 npm exec vitest run pkg    ",
+      "  50003 50002  90.0 node (vitest)  ",
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]?.pid).toBe(50002);
   });
 
   it("워처가 **실제로 돌기 시작하면** 잡는다(유휴만 빼는 것이지 워처를 면제하는 게 아니다)", () => {

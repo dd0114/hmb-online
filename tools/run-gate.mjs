@@ -116,15 +116,24 @@ function holders() {
  * 결론: 판정 축은 이름이 아니라 **지금 CPU 를 태우고 있는가**여야 한다 — #376 이 실제로 걱정한 것도
  * 프로세스의 존재가 아니라 **부하**였다. 그래서 **트리 CPU 합**(루트+자손)으로 판정한다.
  * 유휴 워처는 0.0% 라 자연히 빠지고, 실행 중이면 워처든 아니든 잡히는 게 맞다.
- * (`--watch` 부모 표기는 보조 신호로만 쓴다 — `npm run watch` 처럼 안 남는 경우가 있다.)
+ *
+ * ⚠️ 이름 기반 워치 필터는 **두지 않는다.** 이 리포의 표준 워치는 `npm run test:watch` 라
+ * 부모에도 `--watch` 가 **어디에도 안 남는다**(실측). 이름으로 워치를 가르려는 시도는 전부
+ * 실패했고, CPU 축이 유일한 방어다.
  */
 const WORKER_TITLE = /\((?:vitest|playwright)\s+\d+\)/; // 숫자 필수 = 워커
 const ROOT_TITLE = /\((?:vitest|playwright)\)/; // 숫자 없음 = 루트
 const SHELLish = /shell-snapshots|^\/?(usr\/)?bin\/(ba|z|d)?sh\b/;
-const WATCHish = /--watch\b|\bvitest\s+watch\b|--ui\b/;
 
-/** 트리 CPU 합이 이 값 미만이면 "지금 무겁지 않다"로 본다(%). */
-const CPU_MIN = Number(process.env.HMB_GATE_CPU_MIN || 50);
+/**
+ * 트리 CPU 합이 이 값 미만이면 "지금 무겁지 않다"로 본다(%).
+ *
+ * ⚠️ **절대 임계라 머신이 바쁠수록 미탐이 커진다** — 같은 실행이 한산할 때 78% 인데 load 130 에서는
+ * 11~35% 로 떨어진다(실측). 즉 경고가 가장 필요한 순간에 약해진다. 그래서 임계를 **낮게** 잡는다:
+ * 유휴 워처는 실측 **0.0%** 라 10 으로도 확실히 걸러지고, 부하 중 눌린 실행(11~35%)은 잡힌다.
+ * 완전한 해법은 아니다(기동 램프 ~2.5초 구간은 여전히 미탐) — 감지가 **알림 전용**인 이유이기도 하다.
+ */
+const CPU_MIN = Number(process.env.HMB_GATE_CPU_MIN || 10);
 
 /** ps 한 줄(`pid ppid %cpu command`) → 객체. 파싱 못 하면 null. */
 export function parsePsLine(line) {
@@ -175,7 +184,6 @@ export function parseForeignHeavy(psLines, ownPids, cpuMin = CPU_MIN) {
 
   const isCandidate = (r) => {
     if (SHELLish.test(r.cmd)) return false;
-    if (WATCHish.test(r.cmd)) return false;
     if (WORKER_TITLE.test(r.cmd)) return false;
     if (/run-gate\.mjs/.test(r.cmd)) return false;
     return (
@@ -358,10 +366,36 @@ async function main() {
     if (held && existsSync(held)) rmSync(held, { force: true });
     held = null;
   };
-  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(sig, () => { release(); process.exit(130); });
+
+  /** @type {import("node:child_process").ChildProcess | null} */
+  let child = null;
+
+  /**
+   * ⚠️ **자식을 두고 슬롯만 놓지 않는다.** 종전엔 시그널에서 곧장 `release()` 후 종료해서,
+   * `kill -TERM <wrapper>` 하면 vitest 는 계속 도는데 슬롯이 비었다 — `holders()` 가
+   * "둘 중 하나라도 살아 있으면 점유"라고 적어 둔 불변식과 정면으로 어긋난다. 그리고 이 도구의
+   * 논거 자체가 "감지는 알림, **강제는 슬롯 락**"이라, 가장 흔한 중단 경로에서 그 강제가 새면
+   * 남는 게 없다. (이 머신에 고아 `node (vitest N)` 이 쌓여 있던 것과 같은 뿌리로 보인다.)
+   *
+   * 그래서 시그널을 **자식에게 전달**하고, 슬롯 해제는 자식의 `exit` 핸들러에 맡긴다.
+   * 자식이 아직 없으면 그 자리에서 놓고 나간다.
+   */
+  const onSignal = (sig) => {
+    if (child && child.exitCode === null && child.signalCode === null) {
+      try {
+        child.kill(sig);
+      } catch {
+        /* 이미 죽었으면 exit 핸들러가 정리한다 */
+      }
+      return; // release 는 child.on("exit") 가 한다
+    }
+    release();
+    process.exit(130);
+  };
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(sig, () => onSignal(sig));
   process.on("exit", release);
 
-  const child = spawn(cmd[0], cmd.slice(1), { stdio: "inherit", shell: false });
+  child = spawn(cmd[0], cmd.slice(1), { stdio: "inherit", shell: false });
   // 자식 PID 를 홀더 파일에 기록 — wrapper 가 `kill -9` 로 죽어도 살아 있는 자식이 있으면
   // 슬롯을 회수하지 않는다(그러지 않으면 두 번째 무거운 실행이 함께 뜬다).
   if (held && existsSync(held)) {

@@ -116,7 +116,11 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
         const rel = relative(REPO, abs);
         if (exempt.has(rel)) continue;
         const text = readFileSync(abs, "utf8");
-        const touchesTier = /from\s+["'][^"']*\/tier["']|from\s+["']\.\/tier["']|HMB_TIER/.test(text);
+        // 확장자 표기(`./tier.js` — 이 리포에 10건+)와 동적 import(`await import("./tier")` —
+        // `log-lines.idleak.test.ts` 가 실사용)도 포함한다. 3차·4차 검증이 이 둘로 뚫었다.
+        // ⚠️ 반드시 **모듈 경로 형태**로 앵커한다(`/tier` 앞에 슬래시). 처음엔 "tier 라는 단어를
+        // 담은 문자열"로 잡았다가 등급 표기(`"gold-tier"` 등)를 쓰는 web 파일 5개가 오탐됐다.
+        const touchesTier = /["'](?:\.{1,2}\/|[^"']*\/)tier(?:\.(?:js|ts|mjs|cjs))?["']|HMB_TIER/.test(text);
         if (!touchesTier) continue;
         if (!registered.has(rel)) found.push(rel);
       }
@@ -188,6 +192,46 @@ describe("티어 레지스트리 (#376 / #377 M0-3)", () => {
       expect(pkg.scripts["typecheck"], `${proj} 가 typecheck 에 없다`).toContain(proj);
     }
     expect(existsSync(join(REPO, "tsconfig.tools-m0.json"))).toBe(true);
+    /**
+     * ⚠️ **include 가 0파일이 되면 프로젝트는 있는데 아무것도 안 본다** — 스크립트 문자열만 보는
+     * 계약은 그 공허함을 영원히 green 으로 통과시킨다(실측: `tools/tuning-harness/**\/*.ts` 는
+     * 하네스가 전부 `.mjs` 라 0파일 매칭이었다). 그래서 **패턴마다 실파일이 있는지** 확인한다.
+     */
+    const proj = JSON.parse(
+      readFileSync(join(REPO, "tsconfig.tools-m0.json"), "utf8").replace(/\/\*[\s\S]*?\*\//g, ""),
+    ) as { include: string[] };
+    for (const pattern of proj.include) {
+      const literal = pattern.includes("*") ? null : join(REPO, pattern);
+      if (literal) {
+        expect(existsSync(literal), `include 패턴이 없는 파일을 가리킨다: ${pattern}`).toBe(true);
+        continue;
+      }
+      // 글롭이면 그 뿌리 디렉토리에 해당 확장자 파일이 실제로 있는지 본다.
+      const root = join(REPO, pattern.slice(0, pattern.indexOf("*")));
+      const ext = pattern.slice(pattern.lastIndexOf("."));
+      const hit = (function scan(d: string): boolean {
+        let names: string[];
+        try {
+          names = readdirSync(d);
+        } catch {
+          return false;
+        }
+        for (const n of names) {
+          const abs = join(d, n);
+          let st;
+          try {
+            st = statSync(abs);
+          } catch {
+            continue;
+          }
+          if (st.isDirectory()) {
+            if (scan(abs)) return true;
+          } else if (n.endsWith(ext)) return true;
+        }
+        return false;
+      })(root);
+      expect(hit, `include 글롭이 0파일에 매치한다(프로젝트가 공허해진다): ${pattern}`).toBe(true);
+    }
   });
 
   /** globalSetup 이 부르는 하위 vitest 도 티어를 명시해야 한다(호출자 환경에 좌우되면 안 된다). */
