@@ -371,6 +371,31 @@ function sendOff(state: SimState, player: SimPlayer): void {
 }
 
 /**
+ * 오프사이드 라인의 진행도(공격 `side` 관점) — **뒤에서 2번째 상대**. 없으면 null.
+ *
+ * ⚠️ **단일 출처**(#377 M3-C 독립검증 m5). 심판(`checkOffside`)과 스루패스 생성기
+ * (`through.ts:throughPassOptions` · `chain.ts`)가 **같은 자**를 써야 한다 — 다르면
+ * "라인 뒤로 찔렀는데 깃발이 오른다"(또는 그 반대)가 두 정의의 오차만큼 상시 발생한다.
+ * 초판은 이 성질을 **소스 문자열 비교**로 걸었는데(`toContain("progs.sort(...)")`), 그건
+ * 포맷만 바뀌어도 깨지고 손복사본이 두 벌 있어도 통과한다. 그래서 심판이 이 함수를
+ * **실제로 부르게** 만들어 구조로 보장하고, 계약은 그 성질을 동작으로 검정한다
+ * (`realism/through-pass.test.ts` ⑦).
+ *
+ * ⚠️ 골키퍼를 빼지 않는다 — 보통 GK 가 가장 깊으므로 2번째 = 최종 필드 수비수가 되고,
+ * 그게 실축의 오프사이드 라인이다.
+ */
+export function offsideLineProg(state: SimState, side: TeamSide, pitch: Pitch): number | null {
+  const progs: number[] = [];
+  for (const p of state.players) {
+    if (p.side === side) continue;
+    progs.push(attackProgressX(pitch, side, p.posFx.x));
+  }
+  if (progs.length < 2) return null;
+  progs.sort((a, b) => b - a);
+  return progs[1]!;
+}
+
+/**
  * 오프사이드 판정(전진 패스 순간). 리시버가 공격 진영에서 2nd-last 수비수보다
  * 앞(상대 골 쪽)이면 오프사이드. 수비팀 offsideTrap on 이면 라인을 높여 더 자주 유도.
  */
@@ -391,15 +416,10 @@ export function checkOffside(
   if (recProg <= attackProgressX(pitch, side, owner.posFx.x)) return false;
 
   const defSide: TeamSide = side === "home" ? "away" : "home";
-  // 수비팀 선수들의 진행도(공격자 관점). 큰 값일수록 자기 골에 가까움(=마지막 수비수).
-  const progs: number[] = [];
-  for (const p of state.players) {
-    if (p.side !== defSide) continue;
-    progs.push(attackProgressX(pitch, side, p.posFx.x));
-  }
-  if (progs.length < 2) return false;
-  progs.sort((a, b) => b - a);
-  let lineProg = progs[1]!; // 2nd-last defender.
+  // 라인은 **위 단일 출처 함수**로 잡는다(손복사본 금지 — 스루패스 생성기가 같은 함수를 쓴다).
+  const line = offsideLineProg(state, side, pitch);
+  if (line === null) return false;
+  let lineProg = line; // 2nd-last defender.
   const tolNorm = o.toleranceM / config.pitch.width;
   const trap = state.teams[defSide].offsideTrap;
   // offsideTrap on 이면 라인을 하프웨이 쪽으로 끌어올림 → 더 많은 리시버가 라인 앞.

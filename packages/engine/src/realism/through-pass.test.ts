@@ -3,8 +3,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { defaultEngineConfig, type EngineConfig } from "../config";
-import { runMatch } from "../match";
+import { runMatch, runFirstHalf } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
+import { checkOffside, offsideLineProg } from "../contest";
+import { attackProgressX, createPitch } from "../pitch";
+import { createRng } from "../rng";
+import type { SimState } from "../simstate";
 import { REALISM_SEEDS } from "./harness";
 import { measureThrough } from "./through";
 
@@ -71,7 +75,10 @@ describe("#377 M3-C 스루패스 — 공간 타깃 패스 후보", () => {
     ).toBe(true);
   }, 600_000);
 
-  it("③ 생성 게이트가 **전부 발화한다** — 선언만 하고 안 걸리는 게이트가 없다", () => {
+  // ⚠️ 제목이 "전부 발화한다"였는데 그건 사실이 아니다(#377 M3-C 독립검증 m2): 여덟 게이트 중
+  //    `unreachable`·`shortLead` 는 8시드에서 **0** 이다. 아래 단언이 이미 그 둘을 `.toBe(0)` 으로
+  //    정직하게 박고 있었으므로 계약은 그대로 두고 **요약 문장만** 사실에 맞춘다.
+  it("③ 생성 게이트 — 여섯은 실제로 자르고, 둘(unreachable·shortLead)은 **0 이 정상**이다", () => {
     const r = measureThrough(defaultEngineConfig, seeds);
     const g = r.gates;
     expect(g.mates, "심사 표본").toBeGreaterThan(10_000);
@@ -123,14 +130,65 @@ describe("#377 M3-C 스루패스 — 공간 타깃 패스 후보", () => {
     expect(src).not.toContain("Math.random");
   });
 
-  it("⑦ 오프사이드 라인 정의가 심판과 **한 자**다 (손복사본 금지)", () => {
+  it("⑦ 오프사이드 라인 정의가 심판과 **한 자**다 — 소스 문자열이 아니라 동작으로", () => {
     // 라인을 다르게 잡으면 "라인 뒤로 찔렀는데 깃발이 오른다"가 두 정의의 오차만큼 상시 발생한다.
-    // 둘 다 `attackProgressX`(pitch.ts 단일 출처) 위에서 **뒤에서 2번째**를 쓴다.
-    const a = readFileSync(join(here, "..", "through.ts"), "utf8");
-    const b = readFileSync(join(here, "..", "contest.ts"), "utf8");
-    expect(a).toContain("attackProgressX");
-    expect(b).toContain("attackProgressX");
-    expect(a).toContain("progs.sort((a, b) => b - a)");
-    expect(b).toContain("progs.sort((a, b) => b - a)");
+    //
+    // ⚠️ 초판은 이걸 **소스 문자열 비교**로 걸었다(`toContain("progs.sort((a, b) => b - a)")`).
+    // 그건 포맷만 바뀌어도 의미 없이 깨지고, 반대로 손복사본이 두 벌 있어도 통과한다
+    // (#377 M3-C 독립검증 m5). 지금은 두 겹이다:
+    //   ① **구조** — `checkOffside` 가 `contest.ts:offsideLineProg` 를 실제로 부른다(사본 없음).
+    //   ② **동작**(이 계약) — 리시버를 라인 앞뒤로 쓸면 깃발이 `offsideLineProg + toleranceM`
+    //      에서 **정확히** 바뀐다. 심판이 다른 자(예: 뒤에서 3번째)를 쓰면 여기서 걸린다.
+    const cfg: EngineConfig = {
+      ...defaultEngineConfig,
+      // 호출 게이트(callProb)는 빈도 보정이라 판정을 흐린다 → 1 로 고정해 기하만 본다.
+      rules: {
+        ...defaultEngineConfig.rules,
+        offside: { ...defaultEngineConfig.rules.offside, callProb: 1, trapCallMult: 1 },
+      },
+    };
+    const pitch = createPitch(cfg);
+    const seed = seeds[0]!;
+    const half = runFirstHalf(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, cfg);
+    const state = structuredClone(half.state) as SimState;
+    state.teams.home.offsideTrap = false;
+    state.teams.away.offsideTrap = false;
+
+    const side = "home" as const;
+    const tolNorm = cfg.rules.offside.toleranceM / cfg.pitch.width;
+    const outfield = state.players.filter((p) => p.side === side && !p.isGK);
+    const owner = outfield[0]!;
+    const receiver = outfield[1]!;
+    // 소유자는 자기 진영 깊숙이 — "공격 진영(recProg ≥ 0.5)" · "전진 패스" 게이트를 항상 통과시킨다.
+    owner.posFx = { x: Math.round(pitch.wFx * 0.05), y: Math.round(pitch.hFx / 2) };
+
+    function sweep(label: string): number {
+      const line = offsideLineProg(state, side, pitch);
+      expect(line, `${label}: 라인이 잡혀야 한다`).not.toBeNull();
+      const seen = new Set<boolean>();
+      for (const dM of [-4, -2, -0.5, 0.5, 2, 4]) {
+        const prog = line! + tolNorm + dM / cfg.pitch.width;
+        receiver.posFx = { x: Math.round(pitch.wFx * prog), y: Math.round(pitch.hFx / 2) };
+        const recProg = attackProgressX(pitch, side, receiver.posFx.x);
+        const ownerProg = attackProgressX(pitch, side, owner.posFx.x);
+        // 심판이 `offsideLineProg` 와 같은 자를 쓴다면 판정은 이 식과 **정확히** 일치한다.
+        const expected = recProg >= 0.5 && recProg > ownerProg && recProg > line! + tolNorm;
+        const got = checkOffside(state, createRng(`offside-${label}-${dM}`), cfg, pitch, owner, receiver);
+        expect(got, `${label}: 라인+tol 에서 ${dM}m — 기대 ${expected}`).toBe(expected);
+        seen.add(expected);
+      }
+      // 공회전 방지: 이 쓸기가 실제로 경계를 **넘어야** 의미가 있다(전부 false 면 tautology).
+      expect(seen.has(true) && seen.has(false), `${label}: 경계를 넘지 못했다`).toBe(true);
+      return line!;
+    }
+
+    const before = sweep("기본 라인");
+    // 라인을 실제로 **옮겨** 다시 잰다 — 심판이 상수를 쓰거나 다른 순위를 보고 있으면 갈린다.
+    const defs = state.players
+      .filter((p) => p.side !== side)
+      .sort((a, b) => attackProgressX(pitch, side, b.posFx.x) - attackProgressX(pitch, side, a.posFx.x));
+    defs[1]!.posFx = { x: Math.round(pitch.wFx * 0.55), y: defs[1]!.posFx.y };
+    const after = sweep("2nd-last 를 옮긴 뒤");
+    expect(after, "라인이 실제로 움직여야 두 번째 쓸기가 의미를 갖는다").not.toBe(before);
   });
 });

@@ -5,6 +5,7 @@ import type { PassOption } from "./perception";
 import { laneDangerOn } from "./perception";
 import { fclamp, fdist, toFixed } from "./fixedmath";
 import { attackProgressX, clampToPitch, distToAttackGoal } from "./pitch";
+import { offsideLineProg } from "./contest";
 import { ballReachTicks } from "./kick";
 import { passDelivery, speedStep } from "./decision";
 
@@ -36,23 +37,12 @@ import { passDelivery, speedStep } from "./decision";
  */
 
 /**
- * 오프사이드 라인의 진행도 — **`contest.ts:checkOffside` 와 같은 정의**(뒤에서 2번째 상대).
+ * 오프사이드 라인 = **심판의 자**를 그대로 쓴다(`contest.ts:offsideLineProg`).
  *
- * 같은 자를 쓰는 것이 계약이다. 다른 자로 잡으면 "라인 뒤로 찔렀는데 심판은 오프사이드가
- * 아니라고 본다"(또는 그 반대)가 두 정의의 오차만큼 상시 발생한다.
- * ⚠️ 골키퍼를 빼지 않는다 — `checkOffside` 가 안 빼기 때문이다(보통 GK 가 가장 깊으므로
- * 2번째 = 최종 필드 수비수가 되고, 그게 실축의 오프사이드 라인이다).
+ * ⚠️ 여기에 사본을 두지 않는다(#377 M3-C 독립검증 m5). 다른 자로 잡으면 "라인 뒤로 찔렀는데
+ * 심판은 오프사이드라고 본다"(또는 그 반대)가 두 정의의 오차만큼 상시 발생한다. 초판은 그
+ * 성질을 소스 문자열 비교로 걸었는데, 지금은 **같은 함수를 부르는 것**이 보장이다.
  */
-export function offsideLineProg(state: SimState, side: SimPlayer["side"], pitch: Pitch): number | null {
-  const progs: number[] = [];
-  for (const p of state.players) {
-    if (p.side === side) continue;
-    progs.push(attackProgressX(pitch, side, p.posFx.x));
-  }
-  if (progs.length < 2) return null;
-  progs.sort((a, b) => b - a);
-  return progs[1]!;
-}
 
 /**
  * **생성 게이트 계측**(옵트인, 진단 전용) — `ChainProbe` 와 같은 규율.

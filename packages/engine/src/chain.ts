@@ -8,7 +8,9 @@ import type { ActionCandidate, GeneratorId, ChainProbe } from "./action";
 import { fromFixed, fclamp, fdist, fdistSq, isqrt, toFixed } from "./fixedmath";
 import { attackGoal, attackProgressX, clampToPitch, distToAttackGoal } from "./pitch";
 import { passOptions, pressureCount } from "./perception";
-import { throughPassOptions, offsideLineProg } from "./through";
+import { throughPassOptions } from "./through";
+// 오프사이드 라인은 **심판의 자**를 그대로 쓴다(#377 M3-C 독립검증 m5 — 손복사본 금지).
+import { offsideLineProg } from "./contest";
 import { shotPowerFx } from "./kick";
 
 import {
