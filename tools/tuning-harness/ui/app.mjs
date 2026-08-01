@@ -27,6 +27,7 @@ let lastRun = null; // A/B 대조 — 직전 런의 집계
 let tiles = []; // {match, viewer, canvas}
 let focusViewer = null;
 let focusMatch = null;
+let focusIdx = null;
 
 // ── 부트 ────────────────────────────────────────────────────────────────
 const meta = await (await fetch("/api/meta")).json();
@@ -282,6 +283,7 @@ function openFocus(i) {
   const t = tiles[i];
   if (!t) return;
   focusMatch = t.match;
+  focusIdx = i;
   $("focus").classList.add("on");
   if (focusViewer) focusViewer.stop();
   focusViewer = createViewer($("focusCanvas"), {
@@ -344,6 +346,37 @@ $("fClose").onclick = () => {
   if (focusViewer) focusViewer.stop();
   focusViewer = null;
 };
+/**
+ * "왜?" — 지금 보고 있는 틱에서 **슛이 후보였는지**를 서버에 묻는다.
+ * hero 질문("완벽한 슛찬스였는데 왜 뒤로 패스했나")의 답은 두 갈래로 갈리고 고칠 곳이 다르다:
+ * 후보로 **생성조차 안 됐다**(사거리·xG 게이트) vs 후보였는데 **EV 로 졌다**. 눈으로는 구별이 안 된다.
+ */
+$("fWhy").onclick = async () => {
+  const box = $("fWhyBox");
+  const t = focusViewer?.hooks.cur()?.tick;
+  if (t == null || !lastRun || focusIdx == null) return;
+  box.style.display = "block";
+  box.textContent = "판정 중…";
+  try {
+    const r = await fetch(`/api/why/${lastRun.runId}/${focusIdx}/${t}`);
+    const j = await r.json();
+    if (j.error) { box.textContent = j.error; return; }
+    box.innerHTML =
+      `<div style="font-weight:700;margin-bottom:5px">${fmt(j.tick ?? t)} · tick ${j.tick ?? t}` +
+      (j.movedFrom != null ? `<span style="color:var(--dim);font-weight:400;font-size:11px"> (요청 ${j.movedFrom} → 가까운 소유 틱)</span>` : "") +
+      `</div>` +
+      `<div style="margin-bottom:6px">${j.verdict ?? ""}</div>` +
+      (j.holder
+        ? `<div style="color:var(--dim);font-size:11px">소유 ${j.side} #${j.holder} · 골거리 ${j.distM}m(사거리 ${j.shootRange}) · ` +
+          `xG ${j.xg}(임계 ${j.shootXgThreshold}) · 슛 후보 ${j.shotCandidateGenerated ? "생성됨" : "<b style='color:var(--warn)'>생성 안 됨</b>"}</div>` +
+          (j.actedNext?.length ? `<div style="color:var(--dim);font-size:11px;margin-top:4px">직후 행동: ${j.actedNext.join(", ")}</div>` : "") +
+          (j.note ? `<div style="color:var(--dim);font-size:10px;margin-top:5px">${j.note}</div>` : "")
+        : "");
+  } catch (e) {
+    box.textContent = String(e.message || e);
+  }
+};
+
 $("fPlay").onclick = () => focusViewer?.togglePlay();
 $("fScrub").oninput = (e) => focusViewer?.scrubTo(e.target.value);
 $("speed").onchange = () => {
@@ -364,6 +397,7 @@ window.__harness = {
   tileViewer: (i) => tiles[i]?.viewer ?? null,
   focus: () => focusViewer,
   focusMatch: () => focusMatch,
+  focusIdx: () => focusIdx,
   curTick: () => focusViewer?.hooks.cur()?.tick ?? null,
   loaded: () => Boolean(focusViewer?.hooks.ready()),
 };

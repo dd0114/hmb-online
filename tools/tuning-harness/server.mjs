@@ -40,6 +40,11 @@ import { REALISM_SEEDS } from "../../packages/engine/src/realism/harness.ts";
 // 측정은 게이트와 **같은 함수**를 쓴다 — 하네스와 계약이 다른 수를 보이면 hero 가 본 화면과
 // green/red 가 어긋난다.
 import { computeMatchStats, ownerSideOfSnapshot } from "../../packages/engine/dev-viewer/match-stats.ts";
+// "이 순간 왜 안 쐈나" 판정 — 슛 후보 생성 게이트가 읽는 것과 **같은 함수**를 쓴다
+// (`chain.ts` 의 shoot 생성기: `distToGoalM > shootRange || xgHere < shootXgThreshold` 면 후보를 안 만든다).
+import { xgAtPoint } from "../../packages/engine/src/decision.ts";
+import { createPitch } from "../../packages/engine/src/pitch.ts";
+import { toFixed } from "../../packages/engine/src/fixedmath.ts";
 import { listRealDeckCases, loadRealDeckCase } from "../../packages/engine/src/realism/real-decks.ts";
 // 시계 스케일은 로그가 정한다(#365 — 엔진 45분 / 표기 0–90분). UI 라벨이 뷰어 시계와 갈라지지
 // 않게 **코어의 함수**를 쓴다.
@@ -249,6 +254,10 @@ async function executeRun(body) {
       pins: pinsOf(log),
       logUrl: `/api/log/${runId}/${i}`,
       logPath,
+      // "왜?" 판정용 — 그 경기 로스터의 슛 능력치(스냅샷에는 능력치가 없다).
+      shootBy: Object.fromEntries(
+        [...inp.select.home.players, ...inp.select.away.players].map((p) => [p.playerId, p.attributes.shooting]),
+      ),
     });
   }
 
@@ -354,6 +363,93 @@ async function handle(req, res) {
       return sendJson(res, 200, { ...run, matches: run.matches });
     } catch (e) {
       return sendJson(res, 400, { error: String(e && e.message ? e.message : e) });
+    }
+  }
+
+  /**
+   * GET /api/why/:runId/:idx/:tick — **"이 순간 왜 안 쐈나"**.
+   *
+   * hero 실관전 질문("완벽한 슛찬스였는데 왜 뒤로 패스했나")에서 나왔다. 그 답은 두 갈래로 갈리고
+   * **고칠 곳이 완전히 다르다**: ①슛이 후보로 **생성조차 안 됐다**(사거리·xG 게이트) ②후보였는데
+   * **EV 로 졌다**. 눈으로는 구별이 안 되므로 도구가 답해야 한다.
+   *
+   * ⚠️ 지금 답할 수 있는 것은 **①의 판정까지**다. 후보별 EV 표까지 보려면 그 틱의 `SimState` 가
+   * 필요한데 MatchLog 스냅샷에는 없다(엔진 쪽 per-tick 덤프 훅이 있어야 한다 — 별건).
+   */
+  const whyMatch = /^\/api\/why\/([\w.-]+)\/(\d+)\/(\d+)$/.exec(path);
+  if (whyMatch) {
+    const run = runs.get(whyMatch[1]);
+    const m = run?.matches[Number(whyMatch[2])];
+    if (!m) return sendJson(res, 404, { error: "no such match" });
+    const tick = Number(whyMatch[3]);
+    try {
+      const log = JSON.parse(await readFile(m.logPath, "utf8"));
+      /**
+       * ⚠️ 정확히 그 틱이 **무소유**인 경우가 흔하다 — 상황 핀 점프는 빌드업을 보여주려고 몇 틱
+       * 앞에서 멈추고(`jumpToTick` 이 -3), 공이 날아가는 동안에도 주인이 없다. 그때 "무소유"만
+       * 답하면 버튼이 쓸모없다. **가까운 소유 틱**(±6)을 찾아 그걸 답하고, 옮겼다는 사실을 밝힌다.
+       */
+      const byTick = new Map(log.tickSnapshots.map((s) => [s.tick, s]));
+      let sn = byTick.get(tick);
+      if (!sn) return sendJson(res, 404, { error: `tick ${tick} 없음` });
+      let usedTick = tick;
+      if (!sn.ballOwner || !ownerSideOfSnapshot(sn)) {
+        let found = null;
+        for (let d = 1; d <= 6 && !found; d++) {
+          for (const cand of [tick + d, tick - d]) {
+            const c = byTick.get(cand);
+            if (c && c.ballOwner && ownerSideOfSnapshot(c)) { found = c; break; }
+          }
+        }
+        if (!found) {
+          return sendJson(res, 200, { tick, verdict: "무소유 구간 — 앞뒤 6틱 안에 공 주인이 없다(루즈볼·비행 중)." });
+        }
+        sn = found;
+        usedTick = found.tick;
+      }
+      const side = ownerSideOfSnapshot(sn);
+      const pl = sn.players.find((p) => p.playerId === sn.ballOwner && p.team === side);
+      if (!pl) return sendJson(res, 200, { tick, verdict: "소유자 미발견" });
+      const cfg = applyConfigOverrides(defaultEngineConfig, run.overrides);
+      const pitch = createPitch(cfg);
+      const { xg, distM } = xgAtPoint(
+        side,
+        toFixed(pl.pos.x, cfg.fixedScale),
+        toFixed(pl.pos.y, cfg.fixedScale),
+        m.shootBy?.[sn.ballOwner] ?? 55,
+        pl.fatigue ?? 0,
+        cfg,
+        pitch,
+      );
+      const inRange = distM <= cfg.contest.shootRange;
+      const overXg = xg >= cfg.contest.shootXgThreshold;
+      const generated = inRange && overXg;
+      const acted = log.events.filter((e) => e.tick >= tick && e.tick <= tick + 4).map((e) => e.type + (e.detail ? ":" + e.detail : ""));
+      return sendJson(res, 200, {
+        tick: usedTick,
+        askedTick: tick,
+        movedFrom: usedTick !== tick ? tick : null,
+        side,
+        holder: sn.ballOwner,
+        distM: Math.round(distM * 10) / 10,
+        shootRange: cfg.contest.shootRange,
+        xg: Math.round(xg * 10000) / 10000,
+        shootXgThreshold: cfg.contest.shootXgThreshold,
+        inRange,
+        overXg,
+        shotCandidateGenerated: generated,
+        verdict: !inRange
+          ? `사거리 밖 — 골까지 ${distM.toFixed(1)}m (사거리 ${cfg.contest.shootRange}m). 슛은 후보로 만들어지지도 않았다.`
+          : !overXg
+            ? `⛔ xG 게이트 배제 — 이 자리 xG ${xg.toFixed(3)} < 임계 ${cfg.contest.shootXgThreshold}. **슛이 후보 목록에 아예 없었다.**`
+            : `✅ 슛은 후보였다 (xG ${xg.toFixed(3)} ≥ ${cfg.contest.shootXgThreshold}). 다른 행동이 EV 로 이겼다.`,
+        note: generated
+          ? "후보별 EV 표는 아직 못 보여준다 — 그 틱의 SimState 가 필요하다(엔진 per-tick 덤프 훅, 별건)."
+          : `임계를 ${xg < 0.07 ? "더" : ""} 낮추면(예: 0.07) 이 자리는 후보가 ${xg >= 0.07 ? "된다" : "여전히 안 된다"}.`,
+        actedNext: acted,
+      });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e && e.message ? e.message : e) });
     }
   }
 
