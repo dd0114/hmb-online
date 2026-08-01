@@ -113,34 +113,69 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 > 배포 지시가 오기 전에 **미리 등록해 두는** 자리다. 여기 있는 건 §0.5 를 돌릴 때 **반드시 같이** 확인하고,
 > 처리하고 나면 항목을 지우고 `deploy-log` 에만 남긴다.
 
-**등록분 — #309 운영 컨텐츠 무배포화**(브랜치 `issue/285-deck-icon-policy`, 머지 대기):
+**등록분 — 엔진 열차 `engine@0.33.0` (hero 확정, 중간 발차 / 조립 GO 는 main 이 머지 SHA 와 함께 준다)**
 
-- **새 마이그레이션 3개** (현재 V30·V31·V32 로 작성 — ⚠️ 번호는 머지 시점 재배정 가능):
-  - `notice_assets`(공지 이미지 메타) · `char_bundles`(아트 번들 리비전) — 둘 다 **additive**
-  - ⚠️ **`admin_catalog_audit` 테이블 재작성**(CHECK 에 `unit_purge` 추가) — **`DROP TABLE` 이 있다**
-    (§0.5 체크 7 이 잡는 항목). SQLite 는 CHECK 를 ALTER 로 못 바꿔 표준 재작성이 유일한 방법이다.
-    **데이터는 변환하지 않고 전 컬럼 복사**, `.sql.conf` 없음 = 트랜잭션 원자적(리허설로 실측:
-    중간 실패 시 DROP+RENAME 이 롤백되고 flyway 이력에도 안 남아 재시도 안전), 이 표를 FK 로
-    참조하는 표 없음, **인덱스 4개 재생성**(V14 셋 + V15 하나 — ⚠️ 한때 셋으로 잘못 적혀 있었다).
-    계약 = `FlywayV32CatalogAuditRebuildTest`.
-    ⇒ **§8 백업 + 리허설 권장**(감사 원장이라 잃으면 복원 근거가 사라진다).
-- **볼륨에 파일이 추가된다**: `/var/lib/hmb/notice-assets/` · `/var/lib/hmb/char-bundles/`.
-  DB 와 **같은 볼륨**이라 일상 배포에는 영향 없지만, **볼륨을 잃을 수 있는 작업 앞에서는
-  §8 의 자산 tar 백업도 같이** 뜬다(DB 만 복원하면 공지 그림·아트가 404 가 된다).
-- **서블릿 업로드 상한이 8MB → 96MB** 로 올라간다(아트 번들 zip 이 실물 약 6MB). 앱 상한은
-  따로다(공지 이미지 2MB · 번들 해제 후 64MB) — 사람에게 보여줄 거절은 항상 앱 상한이 한다.
-- **배포 직후 확인(재작성 검증 포함)**:
-  `docker exec hmb-java sh -c "sqlite3 /var/lib/hmb/hmb.db 'SELECT COUNT(*) FROM admin_catalog_audit'"`
-  → **배포 전 값과 같아야 한다**(재작성이 행을 잃지 않았는가). 그리고
-  `… 'SELECT COUNT(*) FROM sqlite_master WHERE tbl_name=\"admin_catalog_audit\" AND type=\"index\" AND name NOT LIKE \"sqlite_%\"'`
-  → **4**(인덱스 4개 재생성: `idx_catalog_audit_player`·`idx_catalog_audit_actor`·
-  `uq_catalog_audit_idem`·`uq_catalog_audit_create_idem`). ⚠️ **3 이 나오면 회귀다** — 대상별 멱등
-  인덱스가 빠진 것이고, 그러면 `update`/`deactivate`/`activate`/`override_reset` 의 DB 백스톱이 없다.
-- **배포 직후 확인 1줄**: `curl -sI <터널>/api/notices/assets/x | head -1` → `404`(정상: 없는 자산),
-  `curl -s <터널>/api/chars/index | head -c 80` → `404` 본문(정상: 활성 아트 번들 없음 = 구운 폴백 사용).
-  둘 다 **500 이면 배포가 잘못된 것**이다.
+> ⚠️ 이 열차는 **v3.02 이후 처음으로 `release/*` 계보가 아니라 `main` 직행**이다(엔진 배포 승인 =
+> runner 재빌드 허용). 그래서 **main 에 쌓인 웹·서버 변경이 전부 동승한다** — "엔진만 올린다"가 아니다.
 
-*(직전 등록분 = `V25` 다이스 소각 · `V21` matches 재작성 — **배포 v2(`deploy-2`, 2026-07-29)에서 소진**.)*
+**동승분 — 라이브에 처음 올라가는 것(2026-08-01 기준 실측)**
+- **엔진 `0.23.0 → 0.33.0`**: 0.26(공 물리 속도벡터·행동 계층) · 0.28(사슬 코어 — **v3.09 로 나갔다 롤백된 그 버전**) ·
+  0.29(**파울 복구** 2.15→11.55) · 0.30(#365) · 0.33(engwave 안전값+골든+T1).
+- **#365 경기 단축**(`19094b9`) — **하프 3분 · 1.2x · 0-90 표기**. 유저가 체감하는 변화가 엔진 수치보다 크다.
+- **#365 후속 재생 방식**(`7e3a134`) — 하프 창 = 매치별 실제 재생 길이(`playbackMs` additive) · **고정 배속**.
+  *v3.12 로 단독 발차하려다 **HOLD** 한 그 변경이다*(그때 이유 = `half-real-ms` 가 **engine@0.30.0 실측**으로
+  캘리브레이션돼 0.23.0 과 안 맞았다). 엔진이 같이 올라가는 지금은 그 전제가 해소된다 — **이 열차에서만 옳다.**
+- 이미 라이브인 것(체리픽으로 먼저 나감, SHA 만 다르다): #354/#355(v3.13) · #368(v3.11) · #367(v3.10) · #348(v3.08) · #342(v3.07).
+
+**마이그레이션 — 현재 0건. 단 GO 시 재스캔이 계약이다.**
+```bash
+git diff --name-only <라이브SHA>..<머지SHA> -- server-java/src/main/resources/db/migration/
+```
+2026-08-01 스캔 = **0건**(리포 최신 `V36__league_daily_reward`, 라이브 DB 도 **v36**). engwave 머지가
+새 마이그레이션을 들고 올 수 있으므로 **발차 직전 한 번 더** 돌리고, 나오면 §0.5-2/7 성격 판정 + §8 리허설.
+
+**⚠️ #241 — 발차 직전 "진행 중 매치 0" 확인 (이 열차의 필수 관문)**
+버전 범프라 진행 중 매치의 `resumeState` 가 거부된다(v3.09 실측: `resumeState config version mismatch`).
+`hmb-java` 컨테이너엔 `sqlite3` 가 없으므로 **볼륨을 read-only 로 붙여** 조회한다:
+```bash
+docker run --rm -v hmb-p3-db:/data:ro alpine:3.20 sh -c \
+  "apk add --no-cache sqlite >/dev/null 2>&1 && sqlite3 -header 'file:/data/hmb.db?mode=ro' \
+   \"SELECT id,user_id,state,engine_version,phase_ends_at FROM matches \
+     WHERE state NOT IN ('FINISHED','FAILED','ABANDONED')\""
+```
+- **0건이면 즉시 발차.**
+- **있으면**: `phase_ends_at` 으로 잔여를 계산한다. **`FIRST_HALF` 면 완주까지 감독시간+후반이 남아 ≈10분 이상**이다
+  (v3.13 때 5분 관찰로는 못 끝났다). 짧으면 기다리고, 길거나 급하면 **hero 확인 후** 진행한다.
+- 강행하면 그 매치는 `FAILED` 가 된다(#217 이 회수 안전망 — 종결 상태라 새 매치 생성은 안 막힌다).
+  **유저 id·매치 id·그 시점 스코어를 반드시 기록**한다(보상 판단 근거).
+- 📌 **완료된 매치의 리플레이는 무영향**이다 — 재생은 `resumeState` 가 아니라 **저장된 하프 로그**를 서빙한다(v3.09 확인).
+
+**보상 프로토콜 (상비 — 별희 선례 2026-07-31)**
+피해가 나면 지급은 **hero/main 판단**이다. 임의 집행하지 않고, 지시가 오면 이 형태로 보낸다:
+```bash
+curl -s -X POST "$BACKEND/api/admin/mails" -H "Authorization: Bearer $ADMIN" \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: <유일키>' \
+  -d '{"audience":"USERS","userIds":["<userId>"],"title":"경기 중단 보상",
+       "body":"...","attachments":{"points":0,"gems":300,"players":[]},
+       "expiresInDays":30,"reason":"<사유 — 감사 원장에 남는다>"}'
+```
+- `gems`=Z(유상) · `points`=G(무료). **201=발송 / 200=같은 멱등키 재전송(추가 발송 0) / 409=같은 키+다른 내용.**
+- 발송 후 `GET /api/admin/mails/{id}` 로 첨부·문안 대조 + **`claimedCount: 0` 확인**. **수령은 유저 몫 — 대신 누르지 않는다.**
+- 문안·금액 정정은 **수령 전에만** 가능(`/revoke` 후 재발송). ⚠️ 재발송 땐 **멱등키를 새 값으로** — 안 그러면 409 로 조용히 무효가 된다.
+
+**빌드 범위** — runner **재빌드 필수**(엔진), java 재빌드, **web 도 main 에서 재빌드**(viewer-core·shared 동승).
+executor 도 `packages/server` 변경이라 **재기동**하고, **release 워크트리가 아니라 main 체크아웃**에서 띄운다
+(⚠️ `node_modules` 를 다른 체크아웃에서 심링크하지 마라 — `@hmb/*` 가 남의 트리를 가리킨다, v3.10 실책).
+
+**스모크(이 열차 전용으로 봐야 할 것)** — 엔진 수치만 보지 말 것:
+- **하프가 실제로 3분인가** · 재생이 **끊기거나 침묵 없이** 하프 창과 맞는가 · **되감기 없는가**(7e3a134 의 목적).
+- 시계 **0-90 표기** · 파울/PK/카드가 **돌아왔는가**(0.29 복구분) · 골·슛이 밴드 안인가.
+- 무회귀: 리그 일일보상(V36) · 오토모드 · 메시지함.
+
+**롤백 주의** — 되돌리기도 **방향만 반대인 #241** 이다(0.33.0 → 0.23.0 도 진행 중 매치를 끊는다).
+`prev-live` 이미지 2개를 발차 전에 고정하고, 되돌릴 때도 **진행 중 매치 0 을 먼저 확인**한다.
+
+*(직전 등록분 = #309 운영 컨텐츠 무배포화(V30~V32) — **소진**: 라이브 Flyway **v36**, `notice_assets`·`char_bundles` 존재 확인. 그 앞 = `V25`·`V21` = `deploy-2` 에서 소진.)*
 
 ---
 
