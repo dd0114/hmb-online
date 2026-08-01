@@ -91,6 +91,17 @@ const LIVE: Knob[] = [
   { path: "movement.passPlan.readAttrSwing", mutate: (c) => { c.movement.passPlan.readAttrSwing = 1.5; } },
   { path: "movement.passPlan.pull", mutate: (c) => { c.movement.passPlan.pull = 0.95; } },
   { path: "movement.passPlan.expireTicks", mutate: (c) => { c.movement.passPlan.expireTicks = 1; } },
+  // #377 M3-C 스루패스(공간 타깃 패스 후보). 8개 전부 3시드에서 해시가 움직이는 것을 확인하고
+  // 등록했다 — 후보 **수**가 바뀌면 `chain.temperature` 샘플링의 k·floor 가 바뀌므로,
+  // "채택이 안 바뀌어도" 동작은 바뀐다(그래서 표본이 얇아도 레버성 판정이 견고하다).
+  { path: "chain.throughPass.enabled", mutate: (c) => { c.chain.throughPass.enabled = false; } },
+  { path: "chain.throughPass.behindLineM", mutate: (c) => { c.chain.throughPass.behindLineM = 12; } },
+  { path: "chain.throughPass.minRunGainM", mutate: (c) => { c.chain.throughPass.minRunGainM = 12; } },
+  { path: "chain.throughPass.minLeadM", mutate: (c) => { c.chain.throughPass.minLeadM = 20; } },
+  { path: "chain.throughPass.maxLeadM", mutate: (c) => { c.chain.throughPass.maxLeadM = 12; } },
+  { path: "chain.throughPass.minMarginTicks", mutate: (c) => { c.chain.throughPass.minMarginTicks = 6; } },
+  { path: "chain.throughPass.raceBase", mutate: (c) => { c.chain.throughPass.raceBase = 0.05; } },
+  { path: "chain.throughPass.raceGainPerTick", mutate: (c) => { c.chain.throughPass.raceGainPerTick = 0; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {

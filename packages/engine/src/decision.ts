@@ -5,7 +5,7 @@ import type { Pitch } from "./pitch";
 import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
 import { fromFixed, fclamp, fdist, toFixed, stepToward, isqrt } from "./fixedmath";
-import { attackGoal, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
+import { attackGoal, attackProgressX, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
 import { passOptions, nearestOpponent, pressureCount, pressureCountAt } from "./perception";
 import { aimErrorDeg, aimWithError, deliverySpeedFx, isLofted, overhitOut, passPowerFx, shotPowerFx } from "./kick";
 import { planReadObserver } from "./action";
@@ -323,7 +323,7 @@ export function clearanceEligible(
 ): boolean {
   const c = config.clearance;
   if (!c.enabled) return false;
-  if (attackProgress(pitch, owner.side, owner.posFx.x) > c.maxProgress) return false;
+  if (attackProgressX(pitch, owner.side, owner.posFx.x) > c.maxProgress) return false;
   return pressureCount(state, owner, config, config.contest.passPressureRangeM) >= c.minPressers;
 }
 
@@ -344,7 +344,7 @@ export function clearanceWeight(
   if (base <= 0) return 0;
   if (bestPassScore >= c.passScoreCeil) return 0;
   if (!clearanceEligible(state, owner, config, pitch)) return 0;
-  const progress = attackProgress(pitch, owner.side, owner.posFx.x);
+  const progress = attackProgressX(pitch, owner.side, owner.posFx.x);
   const pressers = pressureCount(state, owner, config, config.contest.passPressureRangeM);
   const depth = fclamp(1 - progress / Math.max(0.01, c.maxProgress), 0, 1);
   const press = fclamp(pressers / Math.max(1, c.minPressers), 1, 3);
@@ -410,11 +410,6 @@ export function scoreOption(
   return score;
 }
 
-/** 공격 방향 정규화 진행도(0:자기골 라인, 1:상대골 라인). */
-function attackProgress(pitch: Pitch, side: SimPlayer["side"], x: number): number {
-  const frac = x / pitch.wFx;
-  return side === "home" ? frac : 1 - frac;
-}
 
 /** side 팀 관점에서 (x,y) 최근접 상대 선수. */
 function nearestOpponentTo(
@@ -481,6 +476,9 @@ export function receiverArrival(
   config: EngineConfig,
   pitch: Pitch,
 ): { x: number; y: number } {
+  // #377 M3-C: 공간 타깃(스루패스)은 조준점이 **이미 정해져 있다** — 리시버의 미래 위치가 아니라
+  // 라인 뒤 그 지점이다. `planPass` 도 같은 분기를 타므로 확률·실행이 같은 점을 본다.
+  if (opt.aimFx) return { x: opt.aimFx.x, y: opt.aimFx.y };
   const { speedFx } = passDelivery(state, owner, opt, config);
   return leadAim(owner.posFx, opt.receiver, speedFx, config, pitch);
 }
@@ -512,7 +510,7 @@ export function computePassProb(
   const fwdM = fromFixed(opt.forwardGain, scale);
   const forwardFrac = fclamp(fwdM / 20, 0, 1);
   const inFinalThird =
-    attackProgress(pitch, owner.side, receiver.posFx.x) >= config.setPiece.finalThirdLine;
+    attackProgressX(pitch, owner.side, receiver.posFx.x) >= config.setPiece.finalThirdLine;
   // 패스 압박은 근접(passPressureRangeM) 상대만 — pressRange(22m, 압박배정용)는 패스엔 과도.
   const pressers = pressureCount(state, owner, config, c.passPressureRangeM);
   // #353: 받는 쪽 압박 — **도착 예측 지점** 기준. 노브가 주는 쪽과 별개인 이유는
@@ -534,6 +532,10 @@ export function computePassProb(
   prob -= c.passReceiverPressurePenalty * recvPressers;
   prob -= c.passDistancePenalty * Math.max(0, distM - c.passBaseDistM);
   prob += attrBonus;
+  // #377 M3-C: **경주 계수**. 공간 타깃(스루패스)만 이 항을 갖는다 — "러너가 먼저 닿나"가
+  // 성공확률의 실체이기 때문이다. `undefined` 인 발밑 패스는 곱이 없어 벤치 78–85% 캘리브레이션
+  // (E1)이 그대로 유지된다(= 이 줄이 기존 패스에 대해 no-op 임이 타입으로 보인다).
+  if (opt.raceFrac !== undefined) prob *= opt.raceFrac;
   return fclamp(prob, 0.05, 0.98);
 }
 
@@ -636,7 +638,9 @@ export function planPass(
   );
   // 리드패스(#181): 리시버가 **도착 시점에 있을 자리**로 찬다 → 공과 사람이 같은 지점에서 만난다.
   // 예측에 쓰는 공속은 이제 상수가 아니라 **이 패스의 실제 세기**다(느린 패스는 더 앞을 본다).
-  const intended = leadAim(owner.posFx, receiver, speedFx, config, pitch);
+  // #377 M3-C: 공간 타깃이면 그 좌표가 조준점이다. `receiverArrival` 과 **같은 분기**를 타야
+  // 확률이 본 지점과 공이 가는 지점이 갈리지 않는다.
+  const intended = receiverArrival(state, owner, opt, config, pitch);
 
   if (rng.next() < prob) {
     const hit = aimWithError(
@@ -733,7 +737,7 @@ export function decideBallOwner(
   const sc = config.softCap;
   const goal = attackGoal(pitch, owner.side);
   const ownerInFinalThird =
-    attackProgress(pitch, owner.side, owner.posFx.x) >= config.setPiece.finalThirdLine;
+    attackProgressX(pitch, owner.side, owner.posFx.x) >= config.setPiece.finalThirdLine;
   // #349: 재시작 틱은 **킥만**(Law 8/13/15/16). 롤백 코어에도 같은 제약을 건다 — 규칙이 코어마다
   // 다르면 그건 두 개의 엔진이다. 실측상 이 코어의 재시작 드리블은 18~20% 로 사슬(78.5%)보다
   // 낮았을 뿐 0 이 아니었다.
@@ -932,7 +936,7 @@ function teamCornerCommit(team: SimState["teams"]["home"], cn: EngineConfig["set
  * 올라가고("코너 때 올라가라"), 원래 올라갈 공격수가 남는다("뒤를 봐라").
  */
 function cornerGoScore(pitch: Pitch, p: SimPlayer, cn: EngineConfig["setPiece"]["corner"]): number {
-  return attackProgress(pitch, p.side, p.baseFx.x) + (cornerRunTendency(p) - 0.5) * cn.playerOverrideWeight;
+  return attackProgressX(pitch, p.side, p.baseFx.x) + (cornerRunTendency(p) - 0.5) * cn.playerOverrideWeight;
 }
 
 /**
@@ -1146,7 +1150,7 @@ export function decideOffBall(
       const lineX = attackingCorner ? cn.stayBackLineX : cn.leaveHighLineX;
       // 한 줄로 세우지 않는다(#182 폴리시): ①슬롯 깊이를 일부 보존해 역할 층을 만들고
       // (CB 가 풀백보다 뒤) ②그룹 내 순위로 깊이를 균등 배분해 동일 슬롯끼리도 겹치지 않게.
-      const baseProg = attackProgress(pitch, player.side, player.baseFx.x);
+      const baseProg = attackProgressX(pitch, player.side, player.baseFx.x);
       const centered = hold.rank - (hold.count - 1) / 2; // 그룹 중심 기준 ±
       const prog = lineX + (baseProg - lineX) * cn.slotSpread + centered * cn.jitterX;
       const hx = player.side === "home" ? prog : 1 - prog;
@@ -1203,7 +1207,7 @@ export function decideOffBall(
     tx += Math.round((ball.posFx.x - tx) * mv.roamFactor * player.behavior.positioningFreedom);
     // 수비/풀백 오버랩: 시드 노이즈가 임계 미만이면 여러 틱 동안 라인 위로 전진(뒤 공간 노출 리스크).
     const vr = config.variety;
-    const baseProg = attackProgress(pitch, player.side, player.baseFx.x);
+    const baseProg = attackProgressX(pitch, player.side, player.baseFx.x);
     if (vr.defenderOverlapProb > 0 && baseProg < vr.overlapBaseLine) {
       const obucket = Math.floor(state.tick / Math.max(1, vr.overlapPeriodTicks));
       const on = varietyNoise((state.seedHash ^ 0x9e3779b9) >>> 0, player.idHash, obucket);
@@ -1485,7 +1489,7 @@ export function assignPresser(
     // 수비팀 관점의 "공이 얼마나 올라와 있나". 0 = 우리 골라인, 1 = 상대 골라인.
     // `triggerLine` 은 **어디까지 나가서 압박하는가**의 선이다 — 그 선 위쪽(상대 진영 더 깊은 곳)
     // 에 공이 있으면 나가지 않고 블록을 유지한다.
-    const prog = attackProgress(pitch, side, state.ball.posFx.x);
+    const prog = attackProgressX(pitch, side, state.ball.posFx.x);
     if (prog > state.teams[side].pressingScheme.triggerLine + g.marginProgress) return null;
   }
   return closestToBall(state, side);

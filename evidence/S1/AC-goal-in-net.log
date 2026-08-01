@@ -1,21 +1,20 @@
-=== AC-goal-in-net: showcase(viewer) (engine@0.35.0-showcase, seed 27706463) ===
+=== AC-goal-in-net: showcase(viewer) (engine@0.36.0-showcase, seed 27706468) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
-총 골: 8
-  #1 tick=255 team=home ball=(104.50,34.57) 골라인=O 포스트내=O => PASS
-  #2 tick=401 team=home ball=(104.50,33.73) 골라인=O 포스트내=O => PASS
-  #3 tick=658 team=home ball=(104.50,33.95) 골라인=O 포스트내=O => PASS
-  #4 tick=998 team=away ball=(0.50,34.29) 골라인=O 포스트내=O => PASS
-  #5 tick=1182 team=away ball=(0.50,33.69) 골라인=O 포스트내=O => PASS
-  #6 tick=1258 team=home ball=(104.50,33.51) 골라인=O 포스트내=O => PASS
-  #7 tick=1326 team=away ball=(0.50,33.12) 골라인=O 포스트내=O => PASS
-  #8 tick=1397 team=home ball=(104.50,33.93) 골라인=O 포스트내=O => PASS
+총 골: 6
+  #1 tick=201 team=home ball=(104.50,33.98) 골라인=O 포스트내=O => PASS
+  #2 tick=379 team=away ball=(0.50,34.89) 골라인=O 포스트내=O => PASS
+  #3 tick=508 team=home ball=(104.50,32.98) 골라인=O 포스트내=O => PASS
+  #4 tick=1214 team=away ball=(0.50,33.20) 골라인=O 포스트내=O => PASS
+  #5 tick=1258 team=home ball=(104.50,34.04) 골라인=O 포스트내=O => PASS
+  #6 tick=1340 team=home ball=(104.50,33.35) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
 
-=== AC-goal-in-net: real(default) (engine@0.35.0, seed 4815162342) ===
+=== AC-goal-in-net: real(default) (engine@0.36.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
-총 골: 4
-  #1 tick=953 team=home ball=(104.50,34.59) 골라인=O 포스트내=O => PASS
-  #2 tick=1431 team=away ball=(0.50,34.60) 골라인=O 포스트내=O => PASS
-  #3 tick=2028 team=away ball=(0.50,35.05) 골라인=O 포스트내=O => PASS
-  #4 tick=2631 team=home ball=(104.50,34.54) 골라인=O 포스트내=O => PASS
+총 골: 5
+  #1 tick=822 team=away ball=(0.50,34.45) 골라인=O 포스트내=O => PASS
+  #2 tick=876 team=away ball=(0.50,34.05) 골라인=O 포스트내=O => PASS
+  #3 tick=1500 team=away ball=(0.50,34.63) 골라인=O 포스트내=O => PASS
+  #4 tick=1910 team=home ball=(104.50,33.25) 골라인=O 포스트내=O => PASS
+  #5 tick=2027 team=away ball=(0.50,34.97) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)

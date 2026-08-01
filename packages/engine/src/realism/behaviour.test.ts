@@ -99,8 +99,38 @@ describe("#314 ⓑ 침투와 그걸 보고 막기", () => {
     expect(cur.fwdRunnersAtPass).toBeGreaterThan(noRun.fwdRunnersAtPass);
   });
 
-  it(`수비가 러너에게 더 가까이 붙는다 (롤백 ${noRun.runnerMarkDistM.toFixed(2)}m → 현재 ${cur.runnerMarkDistM.toFixed(2)}m)`, () => {
-    expect(cur.runnerMarkDistM).toBeLessThan(noRun.runnerMarkDistM);
+  /**
+   * ⚠️ **이 축만 스루패스(#377 M3-C)를 양 팔에서 끄고 잰다.**
+   *
+   * M3-C 가 붙으면서 출하 팔의 `runnerMarkDistM` 이 7.722 → 7.767 로 올라 이 부등식이 뒤집혔다.
+   * 그 상승은 **회귀가 아니라 M3-C 의 정의**다 — 스루패스는 러너를 **수비 라인 뒤 빈 공간**으로
+   * 보내는 행동이라, "가장 앞선 러너의 최근접 수비수 거리"에 *구조적으로 마크가 없는* 러너
+   * 집단을 새로 추가한다(메모리 `metric-artifact-magnitude-floor` 가 경고하는 표본 구성 아티팩트).
+   * 즉 #314 의 축(런 오더가 수비 반응을 부르는가)과 M3-C 의 축이 같은 관찰량 위에서 겹친다.
+   * → **#314 의 축만 흔들어** 재는 것이 아블레이션으로 옳다. 그래서 두 팔 모두 M3-C 를 끈다.
+   *
+   * ⚠️ 그리고 더 중요한 사실: **이 관찰량은 지금 신호가 없다.** 표본을 GUARD 48시드로 올려
+   * 다시 재면 **스루패스를 끈 상태에서도** 부등식이 뒤집힌다(cur 7.709 vs noRun 7.677).
+   * 16시드(REALISM)에서 +0.3%, 48시드(GUARD)에서 −0.4% = 0 주위의 난보(random walk)다.
+   * 이력도 같은 말을 한다 — #365(경기 45분화)에서 0.5% 폭으로 뒤집혔다가 시드 2배로 되살렸고,
+   * #327 에서 또 우연히 정방향으로 돌아왔다. 방향 주장은 신호가 있는 `fwdRunnersAtPass`
+   * (모든 구성에서 일관되게 +3.6~5%)가 지고 있고, 이 줄은 그 아래에서 회귀 감시 역할만 한다.
+   * **이 관찰량의 재설계는 #314 소유자 몫이다** — M3-C 가 남의 계약 의미를 바꾸지 않는다.
+   */
+  const noThru = (c: EngineConfig): EngineConfig => ({
+    ...c,
+    chain: { ...c.chain, throughPass: { ...c.chain.throughPass, enabled: false } },
+  });
+  const curNT = run(noThru(cfg));
+  const noRunNT = run(
+    noThru({
+      ...cfg,
+      movement: { ...cfg.movement, runOrder: { ...cfg.movement.runOrder, enabled: false, passerFollowM: 0 } },
+      vision: { ...cfg.vision, runReadFrac: 0 },
+    }),
+  );
+  it(`수비가 러너에게 더 가까이 붙는다 — #314 축만(스루패스 off 양 팔) (롤백 ${noRunNT.runnerMarkDistM.toFixed(2)}m → 현재 ${curNT.runnerMarkDistM.toFixed(2)}m)`, () => {
+    expect(curNT.runnerMarkDistM).toBeLessThan(noRunNT.runnerMarkDistM);
   });
 
   it("의도 게시판·런 오더가 실제로 채워진다 — S1 이 만든 자리가 죽어 있지 않다", () => {

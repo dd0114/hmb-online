@@ -7,7 +7,7 @@ import type { Rng } from "./rng";
 import type { MatchEvent, TeamSide } from "@hmb/shared";
 import { fdist, fclamp, toFixed } from "./fixedmath";
 import { kickBall, nearestOnSweep } from "./ball";
-import { centerSpot, defendGoal, attackGoal, clampToPitch } from "./pitch";
+import { centerSpot, defendGoal, attackGoal, attackProgressX, clampToPitch } from "./pitch";
 import { deliverySpeedFx, loftHangTicks, shotPowerFx } from "./kick";
 import { xgAtPoint } from "./decision";
 import { freeKickWallCount } from "./setpiece";
@@ -281,11 +281,6 @@ export function launchCornerCross(
   taker.dribbleStreak = 0;
 }
 
-/** 공격 방향 정규화 진행도(0:자기골 라인, 1:상대골 라인). */
-function attackProgressX(pitch: Pitch, side: TeamSide, x: number): number {
-  const frac = x / pitch.wFx;
-  return side === "home" ? frac : 1 - frac;
-}
 
 /**
  * 프리킥 재시작(파울/오프사이드). side 팀이 (x,y) 에서 재개. dead-ball 정지.

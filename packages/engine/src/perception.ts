@@ -18,6 +18,26 @@ export interface PassOption {
   forwardGain: number;
   /** 롱패스(인식 반경 밖 원거리 동료 대상 = 의도적 롱볼/전환/스루볼) 여부. (E2) */
   long: boolean;
+
+  /**
+   * **공간 조준점**(#377 M3-C 스루패스, fixed). 있으면 공을 리시버 **발밑이 아니라 이 지점**으로
+   * 찬다 — `planPass` 의 `leadAim`(리시버의 미래 위치)을 이 좌표가 대신한다.
+   *
+   * ## 왜 `PassOption` 에 붙나 (새 행동을 안 만드는 이유)
+   * 스루패스는 **패스다.** 실행(`planPass`)·도착(`resolveArrival`)·이벤트(`pass`)·오프사이드가
+   * 전부 같은 함수를 타야 두 코어와 스탯이 갈리지 않는다(#314 `clearance` 가 별도 타입이 되면서
+   * `MatchEventType` 을 건드려 #326 을 만든 전례). 그래서 바뀌는 것은 **조준점 하나**다.
+   *
+   * ⚠️ `passOptions`(아래)는 이 필드를 **절대 채우지 않는다** — 채우는 곳은 스루패스 생성기
+   * (`through.ts`)뿐이고, 그래서 weighted 롤백 경로는 이 필드를 한 번도 보지 않는다(bit-identical).
+   */
+  aimFx?: { x: number; y: number };
+
+  /**
+   * **경주 계수**(0..1, #377 M3-C). 스루패스의 성공확률에 곱한다 — "러너가 먼저 닿나, 수비가
+   * 먼저 닿나"를 확률로 옮기는 항이다. `undefined` 면 곱하지 않는다(= 기존 패스 무영향).
+   */
+  raceFrac?: number;
 }
 
 /** 두 선수 거리(fixed). */
@@ -103,6 +123,31 @@ function pointSegDist(
 }
 
 /**
+ * **패스 레인 위험** — (ax,ay)→(bx,by) 선분에 가장 가까운 `side` 팀의 상대까지 거리(fixed).
+ * 상대가 하나도 없으면 `Infinity`(기존 관용구 유지).
+ *
+ * ⚠️ 단일 출처(#377 M3-C): `passOptions`(발밑 패스)와 `through.ts`(공간 조준점)가 **같은 자**로
+ * 레인을 잰다. 스루패스가 자기 사본을 들고 있으면 "레인이 위험한데 EV 는 안전하다고 본다"가
+ * 조용히 성립한다. 반복 순서·산술이 그대로라 이 추출은 bit-identical 이다.
+ */
+export function laneDangerOn(
+  state: SimState,
+  side: SimPlayer["side"],
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  let danger = Infinity;
+  for (const opp of state.players) {
+    if (opp.side === side) continue;
+    const sd = pointSegDist(opp.posFx.x, opp.posFx.y, ax, ay, bx, by);
+    if (sd < danger) danger = sd;
+  }
+  return danger;
+}
+
+/**
  * 볼 소유자의 패스 옵션 후보. 인식 반경 안 동료를 대상으로
  * 레인 위험(가장 가까운 상대)과 전진 이득을 계산해 반환.
  */
@@ -134,19 +179,14 @@ export function passOptions(
     if (isLong && d < longMinFx) continue;
 
     // 레인 위험: 상대들 중 패스선에 가장 가까운 거리.
-    let laneDanger = Infinity;
-    for (const opp of state.players) {
-      if (opp.side === owner.side) continue;
-      const sd = pointSegDist(
-        opp.posFx.x,
-        opp.posFx.y,
-        owner.posFx.x,
-        owner.posFx.y,
-        mate.posFx.x,
-        mate.posFx.y,
-      );
-      if (sd < laneDanger) laneDanger = sd;
-    }
+    const laneDanger = laneDangerOn(
+      state,
+      owner.side,
+      owner.posFx.x,
+      owner.posFx.y,
+      mate.posFx.x,
+      mate.posFx.y,
+    );
 
     options.push({ receiver: mate, dist: d, laneDanger, forwardGain, long: !inShort });
   }

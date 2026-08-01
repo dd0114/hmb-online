@@ -73,8 +73,9 @@ export type ActionForm =
  * 고정되고, 노드 예산 컷오프가 항상 같은 지점에서 걸린다.
  * S5 에서 `"lead" | "through" | "cross" | "switch"` 가 **뒤에** 추가된다(앞에 끼우면 기존 순서가 밀린다).
  * #314 A 가 `"clear"`(걷어내기)를 그 규율대로 **뒤에** 붙였다.
+ * #377 M3-C 가 `"through"`(공간 타깃 스루패스)를 같은 규율대로 **맨 뒤에** 붙였다.
  */
-export const GENERATORS = ["shoot", "direct", "long", "carry", "hold", "clear"] as const;
+export const GENERATORS = ["shoot", "direct", "long", "carry", "hold", "clear", "through"] as const;
 export type GeneratorId = (typeof GENERATORS)[number];
 
 /**
@@ -170,8 +171,11 @@ export function toActionCandidate(
     kind: "pass",
     form,
     gen,
-    toXFx: opt.receiver.posFx.x,
-    toYFx: opt.receiver.posFx.y,
+    // #377 M3-C: **좌표가 1급이라는 S2 의 산출이 여기서 처음 쓰인다.** 발밑 패스면 리시버 위치와
+    // 같고(기존과 bit-identical), 공간 타깃이면 라인 뒤 조준점이다 — `receiver` 는 "누구를 위한
+    // 패스인가"로 남고 `toXFx/toYFx` 가 "공이 어디로 가나"를 소유한다.
+    toXFx: opt.aimFx ? opt.aimFx.x : opt.receiver.posFx.x,
+    toYFx: opt.aimFx ? opt.aimFx.y : opt.receiver.posFx.y,
     receiver: opt.receiver,
     ballSpeedFx,
     flightTicks,
@@ -353,4 +357,51 @@ export function setPlanReadObserver(o: PlanReadObserver | null): void {
 /** 현재 활성 예고 읽기 관측자(없으면 null). */
 export function planReadObserver(): PlanReadObserver | null {
   return activePlanReadObserver;
+}
+
+/**
+ * **패스 조준 관측자**(#377 M3-C, 진단 전용·옵트인) — 위 관측자들과 같은 규율.
+ *
+ * 왜 필요한가: 이 웨이브의 AC 는 *"리드 거리 분포가 이동한다 — 10~25m 구간 후보가 실제로
+ * 뽑힌다"* 다. 그런데 로그에는 **조준점이 없다** — `pass` 이벤트는 도착 틱에 리시버 id 로
+ * 발행되고(`resolveArrival`), 스냅샷에는 공 좌표뿐이다. 로그로 되추론하면 실제 도달점(오차·
+ * 굴러간 거리 포함)을 재게 되는데, 그건 "무엇을 골랐나"가 아니라 "어떻게 끝났나"라 다른 질문이다.
+ *
+ * 그래서 **결정 직후 계획 조준점**을 그대로 흘려보낸다. 이 창이 있어야 계약과 증거가
+ * **출하 config 한 경기 안에서** through 팔과 발밑 팔을 가를 수 있다(M3-A 독립검증 m1 의 교훈 —
+ * `enabled:false` 반사실 팔로 재면 경기 전개 자체가 다르다).
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type PassAimObserver = (sample: {
+  tick: number;
+  side: string;
+  /** 어느 생성기가 낸 후보였나 — `"through"` 가 공간 타깃이다. */
+  gen: GeneratorId;
+  form: ActionForm;
+  passerId: string;
+  receiverId: string;
+  /** **리드 거리**(fixed): 발사 틱 리시버 위치 → 계획 조준점. 발밑 패스면 leadAim 거리다. */
+  leadFx: number;
+  /** 패서 → 계획 조준점 거리(fixed). */
+  distFx: number;
+  /** 계획 조준점(fixed). */
+  aimXFx: number;
+  aimYFx: number;
+  /** 조준점이 상대 오프사이드 라인 뒤인가(`through.ts:offsideLineProg` 와 같은 자). */
+  behindLine: boolean;
+  /** 경주 계수(공간 타깃만). 발밑 패스는 null. */
+  raceFrac: number | null;
+}) => void;
+
+let activePassAimObserver: PassAimObserver | null = null;
+
+/** 패스 조준 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setPassAimObserver(o: PassAimObserver | null): void {
+  activePassAimObserver = o;
+}
+
+/** 현재 활성 패스 조준 관측자(없으면 null). */
+export function passAimObserver(): PassAimObserver | null {
+  return activePassAimObserver;
 }
