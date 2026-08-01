@@ -34,10 +34,37 @@
   color: var(--text-muted);
 }
 
-.note {
+/*
+ * 정경 문구(#382) — 구 `.note`(시스템 설명 한 줄)의 자리를 이어받았다.
+ *
+ * ⚠️ `min-height` 는 장식이 아니다: 문장 길이에 따라 1↔2줄을 오가면 그때마다 아래 [경기 포기]
+ * 버튼이 위아래로 튄다. 두 줄을 미리 잡아 두면 문구만 갈리고 레이아웃은 가만히 있는다.
+ */
+.scene {
   margin: 0;
-  font-size: 12px;
+  max-width: 22em;
+  min-height: 3em;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--text-muted);
+  animation: sceneIn 420ms ease-out;
+}
+
+@keyframes sceneIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene {
+    animation: none;
+  }
 }
 
 .failIcon {
