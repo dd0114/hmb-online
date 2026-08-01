@@ -8,7 +8,7 @@ import { fromFixed, fclamp, fdist, toFixed, stepToward, isqrt } from "./fixedmat
 import { attackGoal, attackProgressX, defendGoal, distToAttackGoal, clampToPitch } from "./pitch";
 import { passOptions, nearestOpponent, pressureCount, pressureCountAt, laneClosest, laneDangerOn } from "./perception";
 import { aimErrorDeg, aimWithError, deliverySpeedFx, isLofted, overhitOut, passPowerFx, shotPowerFx } from "./kick";
-import { laneReadObserver, planReadObserver } from "./action";
+import { laneReadObserver, planReadObserver, pressUnitObserver } from "./action";
 
 /**
  * decision — 행동 선택.
@@ -1177,7 +1177,7 @@ export function decideOffBall(
   player: SimPlayer,
   config: EngineConfig,
   pitch: Pitch,
-  pressAssignee: SimPlayer | null,
+  unit: PressUnit | null,
 ): void {
   const scale = config.fixedScale;
   const mv = config.movement;
@@ -1295,6 +1295,24 @@ export function decideOffBall(
   /** #369: 읽은 예고 패스의 도착 예정 지점(없으면 null). 대입 **직전**에 섞는다. */
   let planPt: { x: number; y: number } | null = null;
   const attacking = state.possession === player.side;
+  /**
+   * S3-A: 이 선수의 압박 유닛 역할(없으면 null). legacy 경로에서는 `"presser"` 만 나오고
+   * 아래 오염 제외가 **걸리지 않는다**(= 0.37.0 이전 동작 그대로).
+   */
+  const pressRole = pressRoleOf(unit, player);
+  const member = unit && !unit.legacy ? memberOf(unit, player) : null;
+  /**
+   * **압박 목표 오염 제거**(#303 마지막 항). 유닛 소속은 그 틱의 일이 분명하다 — 압박 담당은
+   * **공**, 커버는 **맡은 레인**이다. 그런데 지금까지 압박 담당의 목표는 `tx,ty = ball` 로 잡힌
+   * **뒤에** 마크 당김(`markReach` 3m)과 로밍 노이즈(`roamNoiseAmp` 3m, 축마다 ±)가 그대로
+   * 덧씌워졌다 — 즉 실제로 달려간 곳은 공이 아니라 **공 ± 최대 ~6m** 였다. M3-B(#379)가
+   * `readLane` 만 제외했고 나머지 두 항은 그대로 남아 있었다.
+   *
+   * ⚠️ **역할 라벨이 아니라 "그 틱에 실제로 그 일을 하는가"로 건다.** 압박 담당으로 뽑혔지만
+   * 개인 문턱에서 물러난 선수(`pressing === false`)는 평범한 수비수이므로 제외하지 않는다 —
+   * 라벨로 걸면 그 선수가 마크도 로밍도 못 하는 유령이 된다.
+   */
+  let unitFocused = !!member;
 
   if (attacking) {
     // #369: **예고 패스를 읽었으면** 도착 예정 지점 쪽으로 미리 움직인다. 전진 런 계산보다
@@ -1377,14 +1395,19 @@ export function decideOffBall(
     }
 
     // 압박: 지정된 최근접 수비수이고 압박 성향이면 공으로 돌진.
+    //
+    // ⚠️ 개인 문턱(`pressAggression × intensity > 0.15`)은 **그대로 둔다**. #362 가 지적한 것은
+    // "이 문턱이 `intensity` 의 **유일한** 소비라 올리는 방향으로 효과가 0"이라는 것이고, 그 결손은
+    // 유닛 쪽(인원·사거리)에서 연속으로 해소했다. 이 문턱 자체는 여전히 의미가 있다 — "이 선수가
+    // 애초에 나가는 성향인가". 지우면 소극적인 선수까지 공으로 돌진해 구동작이 통째로 바뀐다.
     if (
-      pressAssignee &&
-      pressAssignee.id === player.id &&
+      pressRole === "presser" &&
       player.behavior.pressAggression * team.pressingScheme.intensity > 0.15
     ) {
       tx = ball.posFx.x;
       ty = ball.posFx.y;
       pressing = true;
+      if (unit && !unit.legacy) unitFocused = true;
     }
   }
 
@@ -1409,13 +1432,17 @@ export function decideOffBall(
       // #379(M3-B): **마크 판단보다 앞에서** 레인을 읽는다. 순서에 이유가 있다 — 아래
       // `runReadFrac` 블록이 `known` 의 한 항목(마크 대상)을 도착 예정 지점 쪽으로 **변이**하므로,
       // 뒤에 두면 레인 끝점이 "마지막 본 위치"가 아니라 그 보정값이 된다(= 입력이 조용히 달라진다).
-      const lane = pressing ? null : readLane(state, player, config, known, ownGoal);
+      // S3-A: 유닛 소속(압박 중이거나 커버 배정)은 레인을 읽지 않는다. 압박 담당은 M3-B 가
+      // 이미 뺐고(그 틱 목표는 공이다), **커버는 이미 맡은 레인이 있다** — 거기서 또 다른 레인을
+      // 읽으면 배정과 개인 판단이 서로 당겨 둘 다 못 한다.
+      const lane = pressing || unitFocused ? null : readLane(state, player, config, known, ownGoal);
       if (lane) {
         px += lane.dx;
         py += lane.dy;
       }
       // 수비: 붙을 가치가 가장 큰 상대 하나만.
-      const target = chooseMarkTarget(known, player, config, ownGoal);
+      // S3-A: 유닛 소속은 마크 당김을 받지 않는다(= 압박 목표 오염 제거, 위 `unitFocused` 주석).
+      const target = unitFocused ? null : chooseMarkTarget(known, player, config, ownGoal);
       if (target) {
         const radFx = vis.radiusM * scale;
         // #314 B(수비측, hero ⓑ "뛰어들어가는 선수를 보고 막는"): 지금까지 마킹은 상대의
@@ -1464,7 +1491,9 @@ export function decideOffBall(
   }
 
   // --- 포지셔널 로밍: 시드 노이즈로 목표 위치에 시간가변 오프셋(슬롯 고착 방지, 팀 형태는 유지) ---
-  const rn = config.variety.roamNoiseAmp;
+  // S3-A: 유닛 소속에게는 로밍을 태우지 않는다 — 압박·커버는 "슬롯 고착 방지"가 필요한 상태가
+  // 아니라 **지금 정확히 저기 서 있어야 하는** 상태다(오염 제거의 나머지 절반).
+  const rn = unitFocused ? 0 : config.variety.roamNoiseAmp;
   if (rn > 0) {
     const bucket = Math.floor(state.tick / Math.max(1, config.variety.roamPeriodTicks));
     const nx = varietyNoise(state.seedHash, player.idHash, bucket * 2 + 1);
@@ -1488,7 +1517,36 @@ export function decideOffBall(
     tx += Math.round((planPt.x - tx) * pull);
     ty += Math.round((planPt.y - ty) * pull);
   }
+  // S3-A 커버 섀도: 배정된 레인 지점 쪽으로 **대입 직전에** 당긴다(M3-A ⓐ 의 교훈 — 중간에서
+  // `player.targetFx` 에 쓰면 이 대입에 덮어써지는 **완전한 no-op** 이고 tsc 는 통과한다).
+  // 역할 자리를 지우지 않고 기울인다: `coverLanePull` 0 이면 **플라시보 팔**(역할은 배정되고
+  // 로밍·마크 제외도 그대로인데 선점만 없다) = A4 의 대조군이 이 한 줄로 만들어진다.
+  if (member) {
+    const u = config.press.unit;
+    const pull = member.role === "cover" ? u.coverLanePull : u.supportSlotPull;
+    tx += Math.round((member.xFx - tx) * pull);
+    ty += Math.round((member.yFx - ty) * pull);
+  }
   player.targetFx = clampToPitch(pitch, tx, ty);
+  // 진단(옵트인) — 배정한 쪽이 역할 라벨을 단다(#378 좌표 되추론 오분류의 처방).
+  // ⚠️ **실제로 그 일을 한 선수만** 흘린다. 압박 담당으로 뽑혔지만 개인 문턱에서 물러난 선수를
+  // 섞으면 오염 관찰량(`ballDistFx`)이 "공으로 안 간 사람"까지 포함해 의미를 잃는다.
+  if ((pressRole === "presser" && pressing) || member) {
+    const obs = pressUnitObserver();
+    if (obs) {
+      obs({
+        kind: "member",
+        tick: state.tick,
+        side: player.side,
+        playerId: player.id,
+        role: member ? member.role : "presser",
+        // 오염 관찰량: **최종 목표**에서 공까지 거리. 압박 담당이면 0 이어야 한다.
+        ballDistFx: fdist(player.targetFx.x, player.targetFx.y, ball.posFx.x, ball.posFx.y),
+        laneToId: member ? member.toId : null,
+        laneDistFx: member ? member.distFx : 0,
+      });
+    }
+  }
 }
 
 /** 시야 기억에서 복원한 "이 선수가 아는 상대" 하나. 위치는 마지막으로 본 값(정확하지만 낡을 수 있음). */
@@ -1626,4 +1684,343 @@ export function assignPresser(
     if (prog > state.teams[side].pressingScheme.triggerLine + g.marginProgress) return null;
   }
   return closestToBall(state, side);
+}
+
+/* ------------------------------------------------------------------------- *
+ * 압박 유닛 (#377 S3-A · #350 · #362 · #303)
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 유닛 안의 역할.
+ *  - `presser` — 공으로 간다.
+ *  - `cover` — 위험한 **패스 레인** 위에 선다(커버 섀도, #303).
+ *  - `support` — 끊을 레인이 없을 때 압박 담당을 **받치러** 간다(#350 이 문자 그대로 말한 것).
+ */
+export type PressRole = "presser" | "cover" | "support";
+
+/** 유닛 구성원 한 명의 배정 — 목표 지점(fixed)과 그 근거. */
+export interface PressMember {
+  player: SimPlayer;
+  role: "cover" | "support";
+  /** `cover` 면 맡은 레인의 상대(리시버) id. `support` 면 null. */
+  toId: string | null;
+  /**
+   * 목표 지점(fixed).
+   *  - cover = 공 쪽 `coverLaneReachM` 구간으로 **자른** 레인 선분의 최근접점
+   *  - support = 공에서 자기 골 쪽 `supportGapM` 지점(랭크별 횡 오프셋)
+   */
+  xFx: number;
+  yFx: number;
+  /** 배정 시점 이 선수에서 그 지점까지 거리(fixed, 진단용). */
+  distFx: number;
+}
+
+/** 한 팀의 이번 틱 압박 유닛. `state` 에 담지 않는다 — 매 틱 순수하게 다시 계산된다. */
+export interface PressUnit {
+  /** 압박 담당(공으로 간다). null = 아무도 안 나간다(트리거 게이트 등). */
+  presser: SimPlayer | null;
+  /** 커버·지원. legacy 경로에서는 항상 빈 배열. */
+  members: PressMember[];
+  /** `press.unit.enabled=false` 경로인가(= 0.37.0 이전 동작). */
+  legacy: boolean;
+}
+
+/** 유닛에서 이 선수의 역할(없으면 null). 선수 수가 한 자리라 선형 탐색으로 충분하다. */
+export function pressRoleOf(unit: PressUnit | null, player: SimPlayer): PressRole | null {
+  if (!unit) return null;
+  if (unit.presser === player) return "presser";
+  for (const m of unit.members) if (m.player === player) return m.role;
+  return null;
+}
+
+/** 유닛에서 이 선수의 배정(압박 담당이거나 미배정이면 null). */
+function memberOf(unit: PressUnit | null, player: SimPlayer): PressMember | null {
+  if (!unit) return null;
+  for (const m of unit.members) if (m.player === player) return m;
+  return null;
+}
+
+/**
+ * 위험거리(fixed) — **공 → 우리 골** 거리에 횡오프셋을 가중해 더한 값.
+ * `setpiece.ts:threatDistance` 와 **같은 정의**다(각도 대용, 삼각함수 금지 §5-4). 그쪽은 세트피스
+ * 스팟을, 여기는 인플레이 공을 잰다는 것만 다르다.
+ */
+function pressDangerFx(
+  pitch: Pitch,
+  config: EngineConfig,
+  side: SimPlayer["side"],
+  x: number,
+  y: number,
+): number {
+  const goal = defendGoal(pitch, side);
+  const d = fdist(x, y, goal.x, goal.y);
+  const lateral = Math.abs(y - goal.y);
+  return d + Math.round(lateral * config.press.unit.wideWeight);
+}
+
+/**
+ * 위험거리(fixed) + 압박 강도 → 유닛 총원(압박 담당 포함).
+ *
+ * 매핑 형태는 `setpiece.ts:wallCountFor` 와 **같다**(near 이하 → `countNear`, far 이상 →
+ * `countFar`, 사이는 선형). 새 관용구를 만들지 않는 것이 요점이다 — 이 리포에서 "위협거리 →
+ * 인원"은 이미 한 번 풀린 문제다(0.25.0 프리킥 벽).
+ *
+ * `intensity` 는 여기서 **연속으로** 들어간다(#362): 반올림 **전에** 곱해야 슬라이더가 인원에
+ * 실제로 반영된다(반올림 뒤에 곱하면 계단이 두 번 생겨 중간 값이 죽는다).
+ */
+function pressUnitCount(config: EngineConfig, scale: number, dangerFx: number, intensity: number): number {
+  const u = config.press.unit;
+  const nearFx = toFixed(u.dangerNearM, scale);
+  const farFx = toFixed(u.dangerFarM, scale);
+  let base: number;
+  if (dangerFx <= nearFx) base = u.countNear;
+  else if (dangerFx >= farFx || farFx <= nearFx) base = u.countFar;
+  else base = u.countNear + ((u.countFar - u.countNear) * (dangerFx - nearFx)) / (farFx - nearFx);
+  const scaled = base * (1 + u.intensityCountGain * (intensity - 0.5));
+  return Math.max(0, Math.round(scaled));
+}
+
+/**
+ * **압박 유닛 배정**(틱당 1회, `decideOffBall` 루프 **앞**) — #350 "한 명만 붙고 나머지는 구경".
+ *
+ * ## 왜 여기(팀 레벨)에서 하나
+ * `decideOffBall` 안에서 하면 그 함수가 `state.players` 순회 안에서 불리고 `player.seen` 을
+ * **변이**하므로 배열 순서 의존이 생긴다(결정론 규율 §5-1). `computeTeamPlan`·`assignPresser`·
+ * `computeSetPiecePlan` 과 **같은 자리·같은 규율**이다.
+ *
+ * ## ⚠️ 인식(perception) 이 아니라 팀 구조다
+ * 커버 배정은 **각 수비수가 무엇을 봤는가**(`player.seen`, 0.17.0)가 아니라 실제 좌표로 한다.
+ * M3-B(#379)의 `readLane` 은 반대로 인지 기억만 쓴다 — 그 둘이 다른 것은 의도다:
+ *  - `readLane` = **개인의 예측**. 정보 출처가 기억이어야 텔레파시가 아니다.
+ *  - 여기 = **팀의 구조**(감독이 짜 둔 압박 트리거·커버 규칙). `assignPresser`·`computeTeamPlan` 이
+ *    이미 실제 공 위치를 쓰는 것과 같은 인식론이고, 개인 인지로 바꾸면 팀 배정이 선수마다
+ *    달라져 "유닛"이라는 말 자체가 성립하지 않는다.
+ *
+ * ## 결정론
+ * RNG 를 **한 번도 소비하지 않는다**(순수 기하 + 전순서 정렬). 그래서 유닛 인원 수가 바뀌어도
+ * 난수 스트림이 흔들리지 않는다 — #369 가 경고한 "후보 수에 비례한 RNG 소비"를 구조적으로 회피.
+ */
+/** 게이트 계측 0 값(진단 전용). 발화하지 않은 경로가 흘리는 값. */
+const ZERO_GATES = { cands: 0, lanes: 0, want: 0, rejGain: 0, rejCovered: 0, rejReach: 0, rejVal: 0 };
+
+export function assignPressUnit(
+  state: SimState,
+  side: SimPlayer["side"],
+  config: EngineConfig,
+  pitch: Pitch,
+): PressUnit {
+  const u = config.press.unit;
+  const presser = assignPresser(state, side, config, pitch);
+  const scale = config.fixedScale;
+  const ax = state.ball.posFx.x;
+  const ay = state.ball.posFx.y;
+  const dangerFx = pressDangerFx(pitch, config, side, ax, ay);
+  const intensity = state.teams[side].pressingScheme.intensity;
+  const obs = pressUnitObserver();
+
+  // 롤백 경로 = 0.37.0 이전. 압박 담당 1명, 커버 0 — 한 줄도 다르게 돌지 않는다.
+  if (!u.enabled) {
+    const unit: PressUnit = { presser, members: [], legacy: true };
+    if (obs) {
+      obs({
+        kind: "unit",
+        tick: state.tick,
+        side,
+        dangerFx,
+        intensity,
+        count: presser ? 1 : 0,
+        coverCount: 0,
+        legacy: true,
+        gates: ZERO_GATES,
+      });
+    }
+    return unit;
+  }
+
+  const unit: PressUnit = { presser, members: [], legacy: false };
+  // 압박 담당이 없으면(트리거 게이트가 막았으면) 유닛도 없다 — 규칙이 역할보다 위다.
+  // 그리고 캐리어가 없으면(루즈볼) 막을 **레인이 없다** — 그때는 블록·루즈볼 쟁탈의 몫이다.
+  const carrier = presser ? ballOwnerOf(state) : null;
+  if (!presser || !carrier || carrier.side === side) {
+    if (obs) {
+      obs({
+        kind: "unit",
+        tick: state.tick,
+        side,
+        dangerFx,
+        intensity,
+        count: presser ? 1 : 0,
+        coverCount: 0,
+        legacy: false,
+        gates: ZERO_GATES,
+      });
+    }
+    return unit;
+  }
+
+  const total = pressUnitCount(config, scale, dangerFx, intensity);
+  const wantCovers = Math.max(0, total - 1);
+  const gates = { ...ZERO_GATES, want: wantCovers };
+  if (wantCovers > 0) {
+    const rangeFx = Math.round(
+      toFixed(u.rangeM, scale) * Math.max(0, 1 + u.intensityRangeGain * (intensity - 0.5)),
+    );
+    const reachFx = toFixed(u.reachM, scale);
+    const dangerRefFx = toFixed(u.dangerRefM, scale);
+    const minThreatFx = toFixed(u.minThreatM, scale);
+    const coveredFx = toFixed(u.coveredM, scale);
+    const laneReachFx = toFixed(u.coverLaneReachM, scale);
+    const ballThreat = fdist(ax, ay, defendGoal(pitch, side).x, defendGoal(pitch, side).y);
+
+    // 후보 수비수 — 압박 담당·GK 제외, 공에서 사거리 안.
+    const cands: SimPlayer[] = [];
+    for (const p of state.players) {
+      if (p.side !== side || p.isGK || p === presser) continue;
+      if (fdist(p.posFx.x, p.posFx.y, ax, ay) > rangeFx) continue;
+      cands.push(p);
+    }
+    gates.cands = cands.length;
+
+    // 막을 값이 있는 레인들 — **한 번만** 계산해 재사용한다(후보마다 다시 돌면 O(n²) 이 커진다).
+    interface Lane { toId: string; bx: number; by: number; threat: number }
+    const lanes: Lane[] = [];
+    const ownGoal = defendGoal(pitch, side);
+    for (const o of state.players) {
+      if (o.side === side || o.isGK) continue;
+      if (o === carrier) continue; // 캐리어 자신의 "레인"은 길이 0 이라 압박과 같은 말이 된다.
+      const recvDist = fdist(o.posFx.x, o.posFx.y, ownGoal.x, ownGoal.y);
+      // 위협 = **수신 위치의 위험도**(절대) + 전진 이득(가산). ⚠️ 방향 게이트를 두면 안 된다 —
+      // 공이 우리 박스 앞이면 캐리어가 보통 가장 깊은 공격수라 나머지 전원의 전진 이득이 음수가
+      // 되어 기제가 통째로 죽는다(실측 9명 중 8.96 탈락). 근거·실패 이력은 config 주석에 있다.
+      const gain = ballThreat - recvDist;
+      const threat = Math.max(0, dangerRefFx - recvDist) + Math.max(0, gain);
+      if (threat <= minThreatFx) { gates.rejGain += 1; continue; }
+      // **이미 막혀 있는 레인엔 겹치지 않는다** — M3-B 가 실측으로 확인한 게이트(같은 자).
+      if (laneDangerOn(state, carrier.side, ax, ay, o.posFx.x, o.posFx.y) <= coveredFx) { gates.rejCovered += 1; continue; }
+      lanes.push({ toId: o.id, bx: o.posFx.x, by: o.posFx.y, threat });
+    }
+    // 전순서(§5-3): 위협 내림차순 → id. 배열 순서에 기대지 않는다.
+    gates.lanes = lanes.length;
+    lanes.sort((l, r) => (l.threat !== r.threat ? r.threat - l.threat : l.toId < r.toId ? -1 : 1));
+
+    // 그리디 배정: (수비수, 레인) 쌍의 가치를 전부 만들어 전순서로 정렬한 뒤 위에서부터 집는다.
+    // 한 레인엔 한 명, 한 수비수는 한 레인 — 겹치면 "다 같이 한 곳"이 되어 유닛이 아니다.
+    interface Pair { p: SimPlayer; lane: Lane; val: number; x: number; y: number; dist: number }
+    const pairs: Pair[] = [];
+    for (const p of cands) {
+      for (const lane of lanes) {
+        // 레인을 **공 쪽 구간으로 자른다** — 커버는 압박 담당을 받치는 자리다(config 주석 참조).
+        const dx = lane.bx - ax;
+        const dy = lane.by - ay;
+        const len = isqrt(dx * dx + dy * dy);
+        let ex = lane.bx;
+        let ey = lane.by;
+        if (len > laneReachFx && len > 0) {
+          ex = ax + Math.round((dx * laneReachFx) / len);
+          ey = ay + Math.round((dy * laneReachFx) / len);
+        }
+        const c = laneClosest(p.posFx.x, p.posFx.y, ax, ay, ex, ey);
+        if (c.dist > reachFx) { gates.rejReach += 1; continue; } // 닿지 않는 레인을 향해 자리를 버리지 않는다.
+        // 가치 = 위협 − 도달비용. `chooseMarkTarget`·`readLane` 과 같은 관용구다.
+        const val = lane.threat - Math.round(c.dist * u.laneCostWeight);
+        if (val <= 0) { gates.rejVal += 1; continue; }
+        pairs.push({ p, lane, val, x: c.x, y: c.y, dist: c.dist });
+      }
+    }
+    pairs.sort((a, b) =>
+      a.val !== b.val
+        ? b.val - a.val
+        : a.p.idHash !== b.p.idHash
+          ? a.p.idHash - b.p.idHash
+          : a.p.id !== b.p.id
+            ? (a.p.id < b.p.id ? -1 : 1)
+            : a.lane.toId < b.lane.toId
+              ? -1
+              : 1,
+    );
+    const usedP = new Set<string>();
+    const usedL = new Set<string>();
+    for (const pair of pairs) {
+      if (unit.members.length >= wantCovers) break;
+      if (usedP.has(pair.p.id) || usedL.has(pair.lane.toId)) continue;
+      usedP.add(pair.p.id);
+      usedL.add(pair.lane.toId);
+      unit.members.push({
+        player: pair.p,
+        role: "cover",
+        toId: pair.lane.toId,
+        xFx: pair.x,
+        yFx: pair.y,
+        distFx: pair.dist,
+      });
+    }
+
+    // --- 지원(support): 끊을 레인이 없으면 압박 담당을 받치러 간다 (#350) ---
+    // 위험한 레인은 희소하다(실측: want 2.0 인데 살아남은 레인 0.65) — 그때 나머지 유닛원이
+    // 자기 자리에 그냥 서 있으면 그게 정확히 hero 가 본 "구경"이다. config 주석에 근거가 있다.
+    if (unit.members.length < wantCovers) {
+      const goal = defendGoal(pitch, side);
+      const gx = goal.x - ax;
+      const gy = goal.y - ay;
+      const glen = isqrt(gx * gx + gy * gy);
+      if (glen > 0) {
+        const gapFx = toFixed(u.supportGapM, scale);
+        const spreadFx = toFixed(u.supportSpreadM, scale);
+        // 공 → 자기 골 방향으로 gapFx, 그 수직으로 랭크별 ±간격(서로·압박 담당과 안 겹치게).
+        const bx = ax + Math.round((gx * gapFx) / glen);
+        const by = ay + Math.round((gy * gapFx) / glen);
+        const px = -gy; // 수직 단위벡터(정수 산술 — 삼각함수 금지 §5-4)
+        const py = gx;
+        let rank = 0;
+        // 남은 후보를 **전순서**로 정렬해 고른다(거리² → idHash → id, §5-3).
+        const rest = cands
+          .filter((p) => !usedP.has(p.id))
+          .map((p) => ({ p, d2: (p.posFx.x - bx) * (p.posFx.x - bx) + (p.posFx.y - by) * (p.posFx.y - by) }))
+          .sort((a, b) =>
+            a.d2 !== b.d2
+              ? a.d2 - b.d2
+              : a.p.idHash !== b.p.idHash
+                ? a.p.idHash - b.p.idHash
+                : a.p.id < b.p.id
+                  ? -1
+                  : 1,
+          );
+        for (const r of rest) {
+          if (unit.members.length >= wantCovers) break;
+          // 랭크 0 → +1칸, 1 → −1칸, 2 → +2칸 … (압박 담당이 공 위에 있으므로 0 칸은 안 쓴다)
+          const step = Math.floor(rank / 2) + 1;
+          const dir = rank % 2 === 0 ? 1 : -1;
+          const off = dir * step * spreadFx;
+          const sx = bx + Math.round((px * off) / glen);
+          const sy = by + Math.round((py * off) / glen);
+          const pt = clampToPitch(pitch, sx, sy);
+          usedP.add(r.p.id);
+          unit.members.push({
+            player: r.p,
+            role: "support",
+            toId: null,
+            xFx: pt.x,
+            yFx: pt.y,
+            distFx: fdist(r.p.posFx.x, r.p.posFx.y, pt.x, pt.y),
+          });
+          rank += 1;
+        }
+      }
+    }
+  }
+
+  if (obs) {
+    obs({
+      kind: "unit",
+      tick: state.tick,
+      side,
+      dangerFx,
+      intensity,
+      count: 1 + unit.members.length,
+      coverCount: unit.members.filter((m) => m.role === "cover").length,
+      legacy: false,
+      gates,
+    });
+  }
+  return unit;
 }

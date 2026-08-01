@@ -122,6 +122,35 @@ const LIVE: Knob[] = [
   { path: "vision.laneRead.laneCostWeight", mutate: (c) => { c.vision.laneRead.laneCostWeight = 0; } },
   { path: "vision.laneRead.minThreatM", mutate: (c) => { c.vision.laneRead.minThreatM = 30; } },
   { path: "vision.laneRead.coveredM", mutate: (c) => { c.vision.laneRead.coveredM = 8; } },
+  // #377 S3-A 압박 유닛. 19개 전부 3시드에서 해시가 움직이는 것을 **등록 전에** 확인했다.
+  //
+  // ⚠️ **셋이 서로 같은 해시를 낸다** — `minThreatM=40` · `reachM=2` · `coveredM=12` 가 전부
+  // `3cf6ccd0 2cf000d5 ac5beb8c` 다. 결함이 아니라 **같은 기제를 서로 다른 문에서
+  // 끄고 있다는 증거**였다(다섯 다 커버 생성 게이트 → 극단에서 "커버 0" 한 상태로 수렴).
+  // 그리고 그 상태는 `enabled=false`(`69489f63 …`)와 **달랐다** — 커버가 없어도 목표 오염 제거는
+  // 살아 있기 때문이다. 즉 그 표가 "커버"와 "오염 제거"가 **분리 가능한 두 효과**임을 같이 보여
+  // 줬다. (지금은 지원 역할이 생겨 수렴 지점이 갈라진다.)
+  // (등급성 — 중간값에서도 레버인가 — 은 `press-unit.test.ts` 의 용량–반응 사다리가 따로 본다.
+  //  레지스트리의 질문은 "값을 바꾸면 경기가 달라지는가" 하나다.)
+  { path: "press.unit.enabled", mutate: (c) => { c.press.unit.enabled = false; } },
+  { path: "press.unit.wideWeight", mutate: (c) => { c.press.unit.wideWeight = 2; } },
+  { path: "press.unit.dangerNearM", mutate: (c) => { c.press.unit.dangerNearM = 70; } },
+  { path: "press.unit.dangerFarM", mutate: (c) => { c.press.unit.dangerFarM = 26; } },
+  { path: "press.unit.countNear", mutate: (c) => { c.press.unit.countNear = 6; } },
+  { path: "press.unit.countFar", mutate: (c) => { c.press.unit.countFar = 4; } },
+  { path: "press.unit.rangeM", mutate: (c) => { c.press.unit.rangeM = 60; } },
+  { path: "press.unit.intensityCountGain", mutate: (c) => { c.press.unit.intensityCountGain = 3; } },
+  { path: "press.unit.intensityRangeGain", mutate: (c) => { c.press.unit.intensityRangeGain = 3; } },
+  { path: "press.unit.coverLanePull", mutate: (c) => { c.press.unit.coverLanePull = 0; } },
+  { path: "press.unit.coverLaneReachM", mutate: (c) => { c.press.unit.coverLaneReachM = 40; } },
+  { path: "press.unit.dangerRefM", mutate: (c) => { c.press.unit.dangerRefM = 0; } },
+  { path: "press.unit.minThreatM", mutate: (c) => { c.press.unit.minThreatM = 40; } },
+  { path: "press.unit.reachM", mutate: (c) => { c.press.unit.reachM = 2; } },
+  { path: "press.unit.coveredM", mutate: (c) => { c.press.unit.coveredM = 12; } },
+  { path: "press.unit.laneCostWeight", mutate: (c) => { c.press.unit.laneCostWeight = 5; } },
+  { path: "press.unit.supportGapM", mutate: (c) => { c.press.unit.supportGapM = 25; } },
+  { path: "press.unit.supportSpreadM", mutate: (c) => { c.press.unit.supportSpreadM = 20; } },
+  { path: "press.unit.supportSlotPull", mutate: (c) => { c.press.unit.supportSlotPull = 0; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {

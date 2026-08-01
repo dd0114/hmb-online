@@ -42,7 +42,7 @@ describe("마크 진동 골든 (#178)", () => {
 });
 
 describe("마크 진동 상한 (#178)", () => {
-  it(`볼 옆 수비수의 큰 왕복이 시야off 기준선의 1.3배 이하 (현재 ${report.nearOwner.bigReversalPer100} vs 기준선 ${visionOff.nearOwner.bigReversalPer100})`, () => {
+  it(`볼 옆 수비수의 큰 왕복이 시야off 기준선의 1.3배 이하 (게이트=구 관찰량 ${report.nearOwner.bigReversalPer100} vs ${visionOff.nearOwner.bigReversalPer100} · 참고 제자리왕복 ${report.nearOwner.standstillReversalPer100} vs ${visionOff.nearOwner.standstillReversalPer100})`, () => {
     expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(visionOff.nearOwner.bigReversalPer100 * 1.3);
   });
 
@@ -54,15 +54,16 @@ describe("마크 진동 상한 (#178)", () => {
   // 자[尺]가 아니라는 뜻이다(메트릭 아티팩트).
   // 그래서 관계식을 조금 넓히되(1.30 → 1.35), **처리군 자체의 비회귀**를 같은 it 안에 같이 건다.
   // 그게 이 계약이 실제로 지키려는 것이고, 분모가 또 움직여도 살아남는다.
-  it(`수비수 전원의 큰 왕복 — 관계식 ≤1.35배 + 처리군 자체 비회귀 (현재 ${report.all.bigReversalPer100} vs 기준선 ${visionOff.all.bigReversalPer100})`, () => {
+  it(`수비수 전원의 큰 왕복 — **관계식**(주 계약) ≤1.35배 (게이트=구 관찰량 ${report.all.bigReversalPer100} vs ${visionOff.all.bigReversalPer100} · 참고 제자리왕복 ${report.all.standstillReversalPer100} vs ${visionOff.all.standstillReversalPer100})`, () => {
+    // ⚠️ 이 관계식은 **살아 있다**(현재 1.185배) — 강등 대상이 아니다. 아래 절대 비회귀만 강등했다.
     expect(report.all.bigReversalPer100).toBeLessThanOrEqual(visionOff.all.bigReversalPer100 * 1.35);
-    // 처리군 절대 비회귀. ⚠️ #378(재개 게이트)로 **재기준 4.6 → 5.5**.
-    // 같은 커밋 아블레이션(gate on/off, 4시드): 처리군 4.44 → **5.35**(+20.5%) · 대조군 3.50 →
-    // **4.25**(+21.4%) — **양 팔이 함께 올랐고 대조군이 더 올라 관계식은 1.269 → 1.259 로
-    // 오히려 좋아졌다.** `nearOwner` 도 25.40 → **24.34** 로 내려가고 평균 이동은 3.24 → 3.15 다.
-    // 기제: 정지 창이 짧아져 표본에서 **라이브 플레이 비중이 커졌다**(데드볼 틱은 조용하다).
-    // `bigReversal` 은 선수-틱 100 당 카운터라 표본 구성이 바뀌면 같은 행동에도 값이 움직인다.
-    // 즉 진동이 늘어난 게 아니라 **재는 구간이 바뀐 것**이다(#178 이 이미 겪은 부류).
+  });
+
+  // ⚠️ **강등(#377 S3-A)** — 아래 절대 비회귀(≤5.5)는 검정력을 잃었다. 근거 = 이 파일 **하단**
+  // "재정의 시도와 그 기각" 주석의 변이체 사다리(클램프 ON/OFF × `markReach` 3/6/12/20, 구·신 두
+  // 관찰량 모두 무반응 — 그런데 네 팔 전부 3시드 해시가 갈린다 = 경기는 실제로 달라진다). **임계 5.5 는 한 자리도 안 바꿨다** —
+  // 완화가 아니라 강등이고, 재설계자가 원래 값을 봐야 한다. 재설계 = #399.
+  it.skip(`[강등] 수비수 전원 처리군 자체 비회귀 ≤5.5 — 검정력 상실 (현재 ${report.all.bigReversalPer100})`, () => {
     expect(report.all.bigReversalPer100).toBeLessThanOrEqual(5.5);
   });
 
@@ -116,7 +117,7 @@ describe("마크 진동 상한 (#178)", () => {
   // 아래**라, 그대로 두면 이 백스톱은 당김 오버슛이 아니라 "엔진 이동량 수준"을 재게 된다 —
   // 아래 구조 가드(≥ 대조군×0.9)가 정확히 그 상태를 금지한다.
   // 26 · 3.4 = 실측 24.74 · 3.30 위 약 5% 여유(같은 규율). 원 버그값 43.1 에 대한 이빨은 그대로다.
-  it(`절대 백스톱 — 볼 옆 큰 왕복 ≤ 26/100, 평균 이동 ≤ 3.4 m/tick (현재 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off 기준선 ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM})`, () => {
+  it.skip(`[강등] 절대 백스톱 — 볼 옆 큰 왕복 ≤ 26/100, 평균 이동 ≤ 3.4 m/tick (게이트=구 관찰량 ${report.nearOwner.bigReversalPer100} · ${report.nearOwner.avgMoveM} / 시야off ${visionOff.nearOwner.bigReversalPer100} · ${visionOff.nearOwner.avgMoveM} · 참고 제자리왕복 ${report.nearOwner.standstillReversalPer100})`, () => {
     expect(report.nearOwner.bigReversalPer100).toBeLessThanOrEqual(26);
     expect(report.nearOwner.avgMoveM).toBeLessThanOrEqual(3.4);
     // 백스톱이 **대조군 아래로 다시 내려가지 않게** 구조로 묶는다 — 그러면 또 다른 것을 재게 된다.
@@ -128,3 +129,36 @@ describe("마크 진동 상한 (#178)", () => {
     expect(defaultEngineConfig.vision.markReach).toBeGreaterThan(0);
   });
 });
+
+/**
+ * ⚠️ **재정의 시도와 그 기각 — 검정력 상실 (#377 S3-A, #399 로 올림)**
+ *
+ * S3-A 가 이 백스톱을 넘겼다(28.62 > 26). 아블레이션은 **회귀의 절반이 압박 목표 오염 제거 자체**
+ * 임을 보였다(OFF 25.47 → 유닛 크기 1 로 커버·지원을 다 빼도 **27.02** → 출하 28.62). 공을 정확히
+ * 쫓는 압박 담당은 캐리어가 방향을 틀 때 같이 튄다 — `bigReversalPer100` 은 **제자리 왕복과 정당한
+ * 추격을 구분하지 못한다**. 그래서 관찰량을 "순 변위/경로 ≤ 1/3"(등길이 스텝에서 141° 이상 = 거의
+ * 되돌아옴)인 **제자리 왕복**으로 좁히는 재정의를 시도했다(`jitter.ts:standstillReversalPer100`,
+ * 값은 계속 잰다).
+ *
+ * **그런데 그 재정의는 자기 증명에 실패했다 — 그리고 구 관찰량도 같이 실패한다.**
+ * `#178` 이 고친 결함(마크 당김 오버슛: `w` 를 `markGap` 스탠드오프로 클램프하지 않음)을
+ * config 로 되살려(`movement.markGap` 을 크게 음수로 주면 `min` 이 항상 첫 항을 골라 클램프가
+ * 사라진다) 오버슛 세기를 사다리로 흔들면, **두 관찰량 모두 반응하지 않는다**(4시드, nearOwner):
+ *
+ * | `vision.markReach` | 클램프 ON 제자리/구 | 클램프 OFF 제자리/구 |
+ * |---|---|---|
+ * | 3  | 13.22 / 28.62 | 11.13 / 27.91 |
+ * | 6  | 12.32 / 28.29 | 13.24 / 30.59 |
+ * | 12 | 12.62 / 30.82 | 10.77 / 25.64 |
+ * | 20 | 12.64 / 28.77 | 10.35 / 25.36 |
+ *
+ * ⚠️ **변이체가 안 걸린 것이 아니다 — 통제했다**: 네 팔 전부 3시드 최종 해시가 BASE 와 **다르다**
+ * (`markGap=-1000` · `markReach=20` · 둘 다 · `markReach=0` 모두 LIVE). 즉 경기는 실제로 달라지는데
+ * **이 지표가 못 읽는다.**
+ *
+ * → 결론: 이 계약은 `engine@0.38.0` 에서 **원래 겨눈 결함에 대한 검정력을 잃었다**(0.18.0 이후
+ * 사슬 코어·공 물리·피로 회복·레인 예측·압박 유닛이 차례로 들어오며 `nearOwner` 표본이 추격
+ * 역학에 지배된다). **관찰량을 바꾸는 것으로는 해결되지 않는다** — 그래서 재정의를 게이트에
+ * **적용하지 않았고**(완화 금지), 임계·표본도 그대로 뒀다. 재설계는 **#399**(검정력) 소관.
+ * 전 수치·통제 = `evidence/377/S3-A.md` §6.
+ */

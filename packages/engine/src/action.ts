@@ -460,3 +460,85 @@ export function setLaneReadObserver(o: LaneReadObserver | null): void {
 export function laneReadObserver(): LaneReadObserver | null {
   return activeLaneReadObserver;
 }
+
+/**
+ * **압박 유닛 관측자**(#377 S3-A, 진단 전용·옵트인) — 위 셋과 같은 규율·같은 이유.
+ *
+ * 왜 필요한가: **누가 압박 유닛에 배정됐는지는 스냅샷·이벤트 어디에도 안 나온다.** 좌표에서
+ * 역할을 되추론하면 이 트랙이 이미 물린 함정을 다시 밟는다 — #378 이 벽/백업을 좌표로 되추론했다가
+ * 백업 2/3 을 벽으로 오분류해 "9.15m 침범 566건"이라는 **가짜 위반**을 만들었다(1m 차이가 계측을
+ * 속였다). 그래서 그때와 같은 처방을 쓴다: **배정한 쪽이 역할 라벨을 단다.**
+ *
+ * 두 종류를 흘린다(질문이 다르다):
+ *  - `kind:"unit"` — 그 틱 그 팀의 **배정 총원**과 위험거리. **인원 0 인 틱도 나온다**(중요:
+ *    멤버 샘플만 모으면 0 인 틱이 표본에서 빠져 평균이 위로 편향된다).
+ *  - `kind:"member"` — 배정된 개인의 역할·최종 목표. `ballDistFx` 가 **목표 오염**(#303 마지막 항)의
+ *    직접 관찰량이다.
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type PressUnitSample =
+  | {
+      kind: "unit";
+      tick: number;
+      side: string;
+      /** 위험거리(fixed) = 공→우리 골 + wideWeight × 횡오프셋. */
+      dangerFx: number;
+      /** 그 팀의 압박 강도 슬라이더(0..1). */
+      intensity: number;
+      /** 배정 총원(압박 담당 + 커버). 0 = 아무도 안 나간다(트리거 게이트 등). */
+      count: number;
+      /** 그중 커버 수. */
+      coverCount: number;
+      /** 유닛이 legacy 경로인가(= `press.unit.enabled=false`). */
+      legacy: boolean;
+      /**
+       * **생성 게이트 계측** — "커버가 왜 안 뽑혔나"를 추측이 아니라 수치로 답한다
+       * (M3-C `ThroughProbe.gates` 와 같은 목적·같은 형태). 이 웨이브의 초판이 정확히 이것
+       * 때문에 헛돌았다: 커버가 팀-틱의 2.4% 에서만 생겨서 지표가 안 움직였는데, 계측이 없으면
+       * 어느 문이 닫혔는지 못 본다.
+       */
+      gates: {
+        /** 사거리 안 커버 후보 수비수. */
+        cands: number;
+        /** 막을 값이 있다고 판정된 레인 수. */
+        lanes: number;
+        /** 원하는 커버 수(= 총원 − 1). */
+        want: number;
+        /** 전진 이득 부족으로 버린 상대. */
+        rejGain: number;
+        /** 이미 막혀 있어서(`coveredM`) 버린 레인. */
+        rejCovered: number;
+        /** 레인이 사거리(`reachM`) 밖이라 버린 (수비수,레인) 쌍. */
+        rejReach: number;
+        /** 가치 ≤ 0 이라 버린 쌍. */
+        rejVal: number;
+      };
+    }
+  | {
+      kind: "member";
+      tick: number;
+      side: string;
+      playerId: string;
+      role: "presser" | "cover" | "support";
+      /** 이 선수의 **최종 목표**에서 공까지 거리(fixed). 압박 담당은 0 이어야 한다(오염 없음). */
+      ballDistFx: number;
+      /** 커버가 맡은 레인의 리시버 id(압박 담당·지원은 null). */
+      laneToId: string | null;
+      /** 배정 시점 그 구성원에서 목표 지점까지 거리(fixed). 압박 담당은 0. */
+      laneDistFx: number;
+    };
+
+export type PressUnitObserver = (sample: PressUnitSample) => void;
+
+let activePressUnitObserver: PressUnitObserver | null = null;
+
+/** 압박 유닛 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setPressUnitObserver(o: PressUnitObserver | null): void {
+  activePressUnitObserver = o;
+}
+
+/** 현재 활성 압박 유닛 관측자(없으면 null). */
+export function pressUnitObserver(): PressUnitObserver | null {
+  return activePressUnitObserver;
+}

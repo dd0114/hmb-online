@@ -124,7 +124,7 @@ export const showcaseConfig = {
  * 27706475(3·3·3·12) · 27706481(4·2·3·13).)
  * 재선정 스캔은 `scan` 유틸 없이 쇼케이스 config 로 직접 돌린다.
  */
-export const SHOWCASE_SEED = "27706468";
+export const SHOWCASE_SEED = "27706472";
 
 /** 쇼케이스 MatchLog(뷰어용). */
 export function buildShowcaseLog(): MatchLog {

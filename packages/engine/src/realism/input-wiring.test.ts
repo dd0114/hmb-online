@@ -135,7 +135,12 @@ describe("#361 T1 — pressingScheme.triggerLine 이 실제 레버다", () => {
   it("롤백 — press.trigger.enabled=false 면 triggerLine 이 다시 무효다(변이체 킬의 대조군)", () => {
     const off: EngineConfig = {
       ...defaultEngineConfig,
-      press: { trigger: { ...defaultEngineConfig.press.trigger, enabled: false } },
+      // S3-A: `press` 에 `unit` 이 생겨 스프레드가 필요하다(타입 정합만 — **임계·표본·단언 무변경**,
+      // 이 스위트의 방향 계약은 #399 소관이라 손대지 않는다).
+      press: {
+        ...defaultEngineConfig.press,
+        trigger: { ...defaultEngineConfig.press.trigger, enabled: false },
+      },
     };
     expect(hashes(off, high)).toEqual(hashes(off, low));
   }, 300_000);

@@ -20,7 +20,7 @@ import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
 import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
 import { glueBallToOwner, advanceBall, kickBall } from "./ball";
 import { loftHangTicks } from "./kick";
-import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
+import { decideBallOwner, decideOffBall, assignPressUnit, pressRoleOf, speedStep } from "./decision";
 import { decideBallOwnerChain } from "./chain";
 import { applyRunOrders, clearIntents, computeTeamPlan, gcIntents } from "./teamplan";
 import {
@@ -466,9 +466,13 @@ function stepTick(carry: Carry): void {
   // #314 B: 만료된 의도·런 오더 폐기(틱당 1회, 배열 순서 보존).
   gcIntents(state);
 
-  // --- 압박 담당 지정(수비팀만) ---
+  // --- 압박 유닛 배정(수비팀만) ---
+  // #377 S3-A: 구버전은 여기서 **1명**(`assignPresser`)만 뽑았다 — 커버라는 개념이 코드에 자리가
+  // 없어서 "한 명만 붙고 나머지는 구경"(#350 hero 실관전)이 구조적으로 강제됐다. 이제 위험도에
+  // 따라 유닛(압박 담당 + 커버)을 배정한다. 자리·규율은 그대로다(decide 루프 앞, 틱당 1회, 순수).
   const defSide: TeamSide = state.possession === "home" ? "away" : "home";
-  const presser = assignPresser(state, defSide, config, pitch);
+  const unit = assignPressUnit(state, defSide, config, pitch);
+  const presser = unit.presser;
 
   // --- decide: 오프더볼/수비 목표 ---
   const ownerId = state.ball.owner;
@@ -486,9 +490,9 @@ function stepTick(carry: Carry): void {
     if (p.id === ownerId && p.side === ownerSide) continue;
     // 볼을 안 가진 선수는 드리블 체인 리셋(활성 캐리어만 연속 누적).
     p.dribbleStreak = 0;
-    const pa = p.side === defSide ? presser : null;
+    const pu = p.side === defSide ? unit : null;
     if (liveSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, liveSp, liveSpPlan);
-    else decideOffBall(state, p, config, pitch, pa);
+    else decideOffBall(state, p, config, pitch, pu);
     if (!liveZone || !deadBallExcluded(p, liveZone)) continue;
     const inside = deadBallClearance(liveZone, p.posFx.x, p.posFx.y) < 0;
     const targetInside = deadBallClearance(liveZone, p.targetFx.x, p.targetFx.y) < 0;
@@ -839,7 +843,11 @@ function stepTick(carry: Carry): void {
     // #231: 소유자는 (id, side) 쌍, 압박 담당은 **객체 동일성**(같은 id 의 반대 팀 선수 오인 방지).
     // ⚠️ 캡처 시점(curOwner*) 값을 쓴다 — 여기서 state 를 다시 읽으면 틱 중간의 소유권 이전이
     //    피로에 반영돼 동작이 바뀐다(실측: 골든 7건 깨짐).
-    const active = (p.id === curOwnerId && p.side === curOwnerSide) || p === presser;
+    // #377 S3-A: **커버도 압박이다.** `active` 를 압박 담당 1명으로만 두면 유닛이 늘어난 만큼
+    // 다인 압박이 **공짜**가 된다(#362 AC 가 명시적으로 경고한 항목) — 인원을 늘리는 웨이브가
+    // 피로를 같이 안 고치면 "3명이 몰아쳐도 아무도 안 지친다"가 성립한다.
+    const active =
+      (p.id === curOwnerId && p.side === curOwnerSide) || p === presser || pressRoleOf(unit, p) != null;
     if (!config.fatigue.recoveryEnabled) {
       // 롤백 경로 = 0.31.0 이전 모델(단조 증가). 한 줄도 안 바꾼다.
       const exertion = p.isGK ? 0.3 : active ? 1.6 : 1.0;

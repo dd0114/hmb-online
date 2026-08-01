@@ -1,23 +1,21 @@
-=== AC-goal-in-net: showcase(viewer) (engine@0.37.0-showcase, seed 27706468) ===
+=== AC-goal-in-net: showcase(viewer) (engine@0.38.0-showcase, seed 27706472) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
-총 골: 9
-  #1 tick=73 team=away ball=(0.50,33.73) 골라인=O 포스트내=O => PASS
-  #2 tick=136 team=away ball=(0.50,34.73) 골라인=O 포스트내=O => PASS
-  #3 tick=341 team=home ball=(104.50,33.92) 골라인=O 포스트내=O => PASS
-  #4 tick=639 team=home ball=(104.50,32.94) 골라인=O 포스트내=O => PASS
-  #5 tick=714 team=away ball=(0.50,33.48) 골라인=O 포스트내=O => PASS
-  #6 tick=889 team=away ball=(0.50,33.31) 골라인=O 포스트내=O => PASS
-  #7 tick=948 team=away ball=(0.50,34.07) 골라인=O 포스트내=O => PASS
-  #8 tick=1052 team=home ball=(104.50,33.54) 골라인=O 포스트내=O => PASS
-  #9 tick=1192 team=home ball=(104.50,34.31) 골라인=O 포스트내=O => PASS
+총 골: 7
+  #1 tick=41 team=away ball=(0.50,33.57) 골라인=O 포스트내=O => PASS
+  #2 tick=118 team=away ball=(0.50,34.00) 골라인=O 포스트내=O => PASS
+  #3 tick=460 team=away ball=(0.50,33.87) 골라인=O 포스트내=O => PASS
+  #4 tick=525 team=home ball=(104.50,34.87) 골라인=O 포스트내=O => PASS
+  #5 tick=1097 team=away ball=(0.50,32.90) 골라인=O 포스트내=O => PASS
+  #6 tick=1235 team=away ball=(0.50,34.49) 골라인=O 포스트내=O => PASS
+  #7 tick=1380 team=home ball=(104.50,31.98) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
 
-=== AC-goal-in-net: real(default) (engine@0.37.0, seed 4815162342) ===
+=== AC-goal-in-net: real(default) (engine@0.38.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
 총 골: 5
-  #1 tick=261 team=away ball=(0.50,33.88) 골라인=O 포스트내=O => PASS
-  #2 tick=314 team=home ball=(104.50,33.60) 골라인=O 포스트내=O => PASS
-  #3 tick=719 team=home ball=(104.50,33.91) 골라인=O 포스트내=O => PASS
-  #4 tick=1515 team=away ball=(0.50,32.90) 골라인=O 포스트내=O => PASS
-  #5 tick=2333 team=home ball=(104.50,33.57) 골라인=O 포스트내=O => PASS
+  #1 tick=613 team=away ball=(0.50,33.55) 골라인=O 포스트내=O => PASS
+  #2 tick=1056 team=away ball=(0.50,32.87) 골라인=O 포스트내=O => PASS
+  #3 tick=1265 team=away ball=(0.50,32.87) 골라인=O 포스트내=O => PASS
+  #4 tick=1581 team=away ball=(0.50,33.67) 골라인=O 포스트내=O => PASS
+  #5 tick=1888 team=away ball=(0.50,33.35) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
