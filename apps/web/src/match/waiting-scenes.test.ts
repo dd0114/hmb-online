@@ -86,6 +86,17 @@ describe("WAITING_SCENE_LINES — 문구 풀", () => {
 });
 
 describe("waitingSceneAt — 경과 시간으로 도는 로테이션", () => {
+  /**
+   * ⚠️ 아래 계약들이 전부 `WAITING_SCENE_ROTATE_SEC` 로 파라미터화돼 있어서, 주기를 600초로
+   * 늘려도 **유닛이 한 건도 안 죽는다**(독립검증 MIN-1 실측). 그러면 "지루함 해소"라는 목적만
+   * 조용히 사라진다 — 그래서 **리터럴 밴드**를 따로 박는다.
+   * 하한 2초: 읽는 중에 갈린다. 상한 8초: 짧은 대기(실측 6~14초)에서 한두 문장만 보고 끝난다.
+   */
+  it("회전 주기가 사람이 읽을 수 있는 밴드 안이다 (2~8초)", () => {
+    expect(WAITING_SCENE_ROTATE_SEC).toBeGreaterThanOrEqual(2);
+    expect(WAITING_SCENE_ROTATE_SEC).toBeLessThanOrEqual(8);
+  });
+
   it(`${WAITING_SCENE_ROTATE_SEC}초마다 다음 문장으로 넘어간다`, () => {
     const R = WAITING_SCENE_ROTATE_SEC;
     expect(waitingSceneAt(0)).toBe(WAITING_SCENE_LINES[0]);
