@@ -7,12 +7,18 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/package.json
 COPY packages/engine/package.json packages/engine/package.json
+COPY packages/viewer-core/package.json packages/viewer-core/package.json
 COPY packages/server/package.json packages/server/package.json
 RUN npm ci --omit=dev
 
-# 2) 소스 복사(엔진·shared·server 는 TS 소스).
+# 2) 소스 복사(엔진·shared·viewer-core·server 는 TS 소스).
+# ⚠️ viewer-core 를 빼면 `npm start` 가 컨테이너에서만 ERR_MODULE_NOT_FOUND 로 죽는다(#385).
+#    러너가 `@hmb/viewer-core/playback`(autoPaceDurationMs)을 import 하는데, 로컬은 워크스페이스
+#    심볼릭링크로 통과하고 이미지 안에만 그 패키지가 없어서 **로컬 게이트가 전부 green 이었다**.
+#    러너 의존성이 늘면 이 두 칸(매니페스트·소스)에 같이 추가한다.
 COPY packages/shared packages/shared
 COPY packages/engine packages/engine
+COPY packages/viewer-core packages/viewer-core
 COPY packages/server packages/server
 
 ENV NODE_ENV=production
