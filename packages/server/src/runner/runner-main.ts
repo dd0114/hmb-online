@@ -74,7 +74,11 @@ export function createRunnerServer(): Server {
         try {
           json(res, 200, validateOverrides(parsed.data));
         } catch (e) {
-          json(res, 400, errorBody(e));
+          // ⚠️ **모든 예외를 400 으로 뭉치지 않는다**(독립검증 m5). 400 = "운영자가 보낸 값이
+          // 문제다", 500 = "러너가 고장났다" — 둘을 합치면 러너 내부 결함이 운영자에게
+          // "계수 검증 실패"로 보고돼, 고칠 수 없는 것을 고치려 들게 된다.
+          const userFault = e instanceof OverrideError || e instanceof SmokeError;
+          json(res, userFault ? 400 : 500, errorBody(e));
         }
         return;
       }

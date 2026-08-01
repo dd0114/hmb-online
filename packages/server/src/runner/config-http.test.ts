@@ -139,7 +139,13 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
     expect(body.droppedOverrides?.map((d) => d.path)).toEqual(["nope.nope"]);
   });
 
-  it("POST /simulate — 러너를 재우는 값은 재생에서도 400 (성질이 다른 유일한 게이트)", async () => {
+  it("POST /config/validate — 러너를 재우는 값은 **작성에서** 400 (재생은 버린다, M-A)", async () => {
+    const res = await post("/config/validate", { overrides: { matchMinutes: 100000 } });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { issues: string[] }).issues.join(" ")).toContain("단일 프로세스");
+  });
+
+  it("POST /simulate — 그 값이 이미 박혀 있으면 **200 + 버림**(진행 중 매치를 죽이지 않는다)", async () => {
     const res = await post("/simulate", {
       seed: demoSeed,
       selectData: demoSelect,
@@ -148,8 +154,9 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
       half: 1,
       configOverrides: { matchMinutes: 100000 },
     });
-    expect(res.status).toBe(400);
-    expect(((await res.json()) as { issues: string[] }).issues.join(" ")).toContain("단일 프로세스");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { droppedOverrides?: { path: string }[] };
+    expect(body.droppedOverrides?.map((d) => d.path)).toEqual(["matchMinutes"]);
   });
 
   it("POST /simulate — 유효한 오버레이는 200 + effectiveConfigHash 동반", async () => {

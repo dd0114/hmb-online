@@ -69,7 +69,11 @@ public class LiveEngineConfigService {
     public Pin pinForNewMatch() {
         Current c = current();
         if (c.isEmpty()) {
-            return new Pin(null, null);
+            // ⚠️ 오버레이는 null 이지만 <b>리비전 id 는 남긴다</b>(독립검증 m6). 둘 다 null 로 두면
+            // "이 기능 이전에 만들어진 매치"와 "명시적 롤백 리비전 하에서 만들어진 매치"가 DB 에서
+            // 구별되지 않는다 — 원장이 있는데 그 매치가 어느 리비전 아래 있었는지 답할 수 없게 된다.
+            // 러너에 실리는 것은 오버레이뿐이라 와이어는 그대로다(T-J8 무영향).
+            return new Pin(null, c.revisionId());
         }
         return new Pin(c.overridesJson(), c.revisionId());
     }

@@ -270,6 +270,10 @@ class EngineConfigSnapshotTest extends MatchTestBase {
      * 알아채야 끝난다. 노브 삭제는 사고가 아니라 <b>엔진 열차의 정상 활동</b>이다.
      *
      * <p>그래서 버리고 진행하되 <b>조용히 버리지 않는다</b>: 하프 번들에 남고 서버가 WARN 을 찍는다.
+     *
+     * <p>⚠️ 이 계약이 지키는 범위는 <b>이 웨이브가 만든 실패 모드</b>다 — 오버레이 때문에 죽는 것을
+     * 막는다. 엔진이 <b>동작을 바꾸며 `config.version` 을 올린</b> 경우 진행 중 매치의 resumeState 가
+     * 거부되는 것은 <b>여전히 그대로</b>이고(선존 #241 축), 이 웨이브는 그걸 고치지 않는다.
      */
     @Test
     void aKnobTheEngineNoLongerHasDoesNotKillTheMatch() {
@@ -298,6 +302,18 @@ class EngineConfigSnapshotTest extends MatchTestBase {
 
             // 살아 있는 노브는 그대로 실려 갔다(하나가 죽어도 나머지는 산다).
             assertThat(overridesSentForHalf(1).path("contest.shootRange").asInt()).isEqualTo(22);
+
+            // **h2 도 같다**(독립검증 m4). h1 만 태우면 T-J9 문안("그 매치가 FAILED 로 가지 않고")이
+            // 후반을 포함하는 것처럼 읽히는데 실제로는 검증되지 않는다 — 같은 코드 경로라도
+            // 계약이 말하는 범위와 태우는 범위는 같아야 한다.
+            driveToFinish(token, matchId);
+            assertThat(jdbcClient.sql("SELECT state FROM matches WHERE id = ?")
+                    .param(matchId).query(String.class).single()).isNotEqualTo("FAILED");
+            assertThat(jdbcClient
+                    .sql("SELECT dropped_overrides_json FROM match_halves WHERE match_id = ? AND half = 2")
+                    .param(matchId).query(String.class).single())
+                    .as("후반 번들에도 버린 사실이 남아야 한다")
+                    .contains("ball.settleSpeed");
         } finally {
             RUNNER.deadKnobs.clear();
         }

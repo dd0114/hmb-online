@@ -10,7 +10,7 @@ import {
   type SimState,
   type SimPlayer,
 } from "@hmb/engine";
-import { applyOverrides, effectiveConfigHash } from "./config-overlay.js";
+import { applyOverrides, effectiveConfigHash, overlayFingerprint } from "./config-overlay.js";
 import {
   TeamSide,
   Duty,
@@ -21,6 +21,7 @@ import {
   type MatchEvent,
   type MatchLog,
   type SimulateRequest,
+  type EngineConfigOverrides,
   type SimulateResponse,
 } from "@hmb/shared";
 // @ts-expect-error — viewer-core 는 순수 .mjs(타입 선언 없음). 재생 길이 모델의 SoT 라 여기서
@@ -206,7 +207,7 @@ const SerializedCarrySchema = z.object({
    * `.optional()` 인 것이 이 필드의 절반이다: 배포 순간 비행 중이던 **구 resumeState** 에는 이
    * 키가 없고, 그걸 거부하면 이 웨이브 자신이 #241 을 일으킨다. 없으면 검사하지 않는다.
    */
-  configHash: z.string().optional(),
+  overridesHash: z.string().optional(),
   seed: z.string(),
   rngState: z.number(),
   nextTick: z.number(),
@@ -225,11 +226,15 @@ type SerializedCarry = z.infer<typeof SerializedCarrySchema>;
 
 /** CarryState(엔진 재개 상태) → JSON-안전 포맷. Map(byId)·함수(rng)를 평탄화하고, 전반 스냅샷/이벤트는
  *  개수만 보관한다(내용은 half=1 응답의 matchLog 가 이미 전달했으므로 중복 저장하지 않는다). */
-export function serializeCarry(carry: CarryState): SerializedCarry {
+export function serializeCarry(
+  carry: CarryState,
+  overrides?: EngineConfigOverrides,
+): SerializedCarry {
   const { byId: _byId, ...restState } = carry.state;
   return {
     configVersion: carry.config.version,
-    configHash: effectiveConfigHash(carry.config),
+    // #383 B4 — **오버레이의** 지문이지 병합 config 의 지문이 아니다. 이유는 overlayFingerprint 주석.
+    overridesHash: overlayFingerprint(overrides),
     seed: carry.seed,
     rngState: carry.rng.serialize(),
     nextTick: carry.nextTick,
@@ -246,7 +251,11 @@ export function serializeCarry(carry: CarryState): SerializedCarry {
  * snapshots/events 는 개수만큼의 placeholder 배열로 복원(resumeSecondHalf 가 push 만 하므로 안전) —
  * 호출부가 반드시 결과에서 원래 개수만큼 slice 해 후반분만 취해야 한다.
  */
-export function deserializeCarry(raw: unknown, config: EngineConfig): CarryState {
+export function deserializeCarry(
+  raw: unknown,
+  config: EngineConfig,
+  overrides?: EngineConfigOverrides,
+): CarryState {
   const parsed = SerializedCarrySchema.safeParse(raw);
   if (!parsed.success) {
     throw new Error(`invalid resumeState: ${parsed.error.issues.map((i) => i.message).join("; ")}`);
@@ -260,11 +269,14 @@ export function deserializeCarry(raw: unknown, config: EngineConfig): CarryState
   // #383: 버전이 같아도 **계수 오버레이가 다르면 다른 경기**다. 조용히 갈라지느니 여기서 죽는다
   // (무음 desync 는 #154·#279·#306·#320 이 반복해 물린 함정이다). 구 상태(지문 없음)는 통과 —
   // 그 관대함이 이 웨이브가 진행 중 매치를 죽이지 않는 이유다.
-  if (s.configHash !== undefined) {
-    const current = effectiveConfigHash(config);
-    if (s.configHash !== current) {
+  //
+  // ⚠️ 비교 대상은 **오버레이**다. 병합 config 전체를 비교하면 러너 재배포(기본값 한 글자 변경)가
+  // 오버레이를 안 쓰는 매치까지 전부 죽인다 — 독립검증 B4. 근거는 `overlayFingerprint` 주석.
+  if (s.overridesHash !== undefined) {
+    const current = overlayFingerprint(overrides);
+    if (s.overridesHash !== current) {
       throw new Error(
-        `resumeState effective config mismatch: resumeState=${s.configHash} runner=${current} ` +
+        `resumeState overrides mismatch: resumeState=${s.overridesHash} runner=${current} ` +
           `(configOverrides 가 전반과 달라졌습니다 — 한 매치는 시작 시점 스냅샷 하나로만 돌아야 합니다)`,
       );
     }
@@ -353,7 +365,7 @@ export function simulate(
     const matchLog = carryToMatchLog(carry);
     return {
       matchLog,
-      resumeState: serializeCarry(carry),
+      resumeState: serializeCarry(carry, req.configOverrides),
       lastHash: lastHashOf(matchLog),
       playbackMs: playbackMsOf(matchLog),
       effectiveConfigHash: effectiveHash,
@@ -363,7 +375,7 @@ export function simulate(
 
   // half === 2, resumeState 있음: 전반 상태 승계 재개 → 후반분만 슬라이스해 반환.
   if (req.resumeState !== undefined) {
-    const carry = deserializeCarry(req.resumeState, config);
+    const carry = deserializeCarry(req.resumeState, config, req.configOverrides);
     const half1TickCount = carry.snapshots.length;
     const half1EventCount = carry.events.length;
     const half1Score = { ...carry.state.score };

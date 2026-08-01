@@ -110,6 +110,41 @@ class FlywayMigrationTest {
             "engine_config_revisions"
     );
 
+    /**
+     * V37 은 <b>스키마 모양 자체가 결정</b>이다(#383 독립검증 m2). 테이블 이름만 세면 그 결정이
+     * 계약에 안 잡힌다 — "현재 리비전 = 마지막으로 삽입된 행"이라는 동작이 PK 종류에 달려 있고,
+     * 지운 인덱스는 <b>코드가 의도적으로 기각한 정렬</b>이라 되살아나면 안 된다.
+     *
+     * <p>동작 계약({@code EngineConfigSnapshotTest.sameMillisecondRevisionsStillOrderByInsertion})이
+     * 이미 변이체를 죽이지만, 그건 "정렬이 맞나"를 보고 이건 "그 정렬을 <b>가능하게 하는 구조</b>가
+     * 남아 있나"를 본다. 누군가 PK 를 되돌리면 여기서 이름을 짚어 깨진다.
+     */
+    @Test
+    void engineConfigRevisionsKeepsTheOrderingSchemaItDependsOn() {
+        String ddl = jdbcClient
+                .sql("SELECT sql FROM sqlite_master WHERE type='table' AND name='engine_config_revisions'")
+                .query(String.class).single();
+
+        assertThat(ddl.replaceAll("\\s+", " "))
+                .as("PK 가 단조 증가 정수여야 한다 — ULID 는 같은 ms 안에서 난수가 순서를 정한다")
+                .contains("seq INTEGER PRIMARY KEY AUTOINCREMENT");
+        assertThat(ddl.replaceAll("\\s+", " "))
+                .as("ULID 는 매치가 가리키는 값이라 여전히 유일해야 한다")
+                .contains("id TEXT NOT NULL UNIQUE");
+
+        List<String> indexes = jdbcClient.sql(
+                        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='engine_config_revisions' "
+                                + "AND name NOT LIKE 'sqlite_%'")
+                .query(String.class).list();
+        assertThat(indexes)
+                .as("멱등 백스톱은 남아 있어야 한다")
+                .contains("uq_engine_config_rev_idem");
+        assertThat(indexes)
+                .as("(created_at, id) 인덱스를 되살리지 마라 — 코드가 기각한 정렬을 스키마가 광고하면 "
+                        + "다음 사람이 그걸 근거로 정렬을 되돌린다(m9)")
+                .doesNotContain("idx_engine_config_rev_time");
+    }
+
     @Test
     void migrationCreatesAllErdTables() {
         List<String> tables = jdbcClient.sql(

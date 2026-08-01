@@ -67,4 +67,7 @@ ALTER TABLE match_halves ADD COLUMN effective_config_hash  TEXT;
 -- 그 경로는 더 이상 적용할 수 없다. 그때 러너가 400 을 내면 진행 중 매치가 FAILED 가 되고 원장의
 -- 현재 리비전이 그 키를 든 한 신규 매치도 전부 죽는다 — 노브 삭제는 사고가 아니라 엔진 열차의
 -- 정상 활동이므로 버리고 진행한다. **버린 사실은 여기 남는다**(조용히 버리는 것과의 차이 전부).
+--
+-- ⚠️ 이것이 막는 것은 **오버레이 때문에 죽는 것**뿐이다. 엔진이 동작을 바꾸며 config.version 을
+--    올리면 진행 중 매치의 resumeState 가 거부되는 것은 여전히 그대로다(선존 #241 축, 별건).
 ALTER TABLE match_halves ADD COLUMN dropped_overrides_json TEXT;

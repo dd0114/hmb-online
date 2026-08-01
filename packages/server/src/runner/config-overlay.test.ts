@@ -269,11 +269,34 @@ describe("#383 B2 — 박제된 오버레이의 재생은 작성 게이트에 �
     expect(hashOfHalf(config)).toBe(hashOfHalf(defaultEngineConfig)); // 경기는 같다
   });
 
-  it("재생 경로에도 남아야 하는 게이트는 **런타임 비용**뿐이다", () => {
-    // assertAffordable 은 자리가 맞다: "지금 이 값을 쓰는 게 좋은가"가 아니라 "이 요청이 러너를
-    // 재우는가"라서 시간이 지나도 답이 안 바뀐다. 위 INERT 와 정확히 반대 성질이다.
+  it("런타임 비용 상한도 **재생에서는 버린다** — 던지지 않는다 (독립검증 M-A)", () => {
+    // 처음엔 이 게이트를 "답이 시간에 따라 안 바뀌니 재생에 남겨도 된다"는 근거로 남겼는데,
+    // 그 전제가 거짓이었다: 상한은 `matchMinutes × 60000 / msPerTick` 이고 `msPerTick` 은
+    // **구조값**이라 배포된 base 에서 온다(Tier C 로 가면 1000→250, 상한 900분→225분).
+    // 버리면 `matchMinutes` 가 base 로 복귀하고 base 는 정의상 상한 안이라 위험은 그대로 막힌다.
     const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
-    expect(() => applyOverrides(defaultEngineConfig, { matchMinutes: overMinutes })).toThrow(OverrideError);
+    const { config, dropped, changed } = applyOverrides(defaultEngineConfig, { matchMinutes: overMinutes });
+    expect(dropped.map((d) => d.path)).toEqual(["matchMinutes"]);
+    expect(config.matchMinutes).toBe(defaultEngineConfig.matchMinutes);
+    expect(changed).toEqual([]);
+  });
+
+  it("**작성은 여전히 400** — 운영자가 지금 고칠 수 있는 유일한 시점이다", () => {
+    const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
+    expect(() => assertAuthorable(defaultEngineConfig, { matchMinutes: overMinutes }))
+      .toThrow(/단일 프로세스/);
+  });
+
+  it("상한을 넘겨도 **다른 노브는 살아남는다**(하나가 죽어도 나머지는 산다)", () => {
+    const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
+    const { config, changed, dropped } = applyOverrides(defaultEngineConfig, {
+      matchMinutes: overMinutes,
+      "contest.shootRange": 22,
+    });
+    expect(dropped.map((d) => d.path)).toEqual(["matchMinutes"]);
+    expect(changed.map((c) => c.path)).toEqual(["contest.shootRange"]);
+    expect(config.contest.shootRange).toBe(22);
+    expect(config.matchMinutes).toBe(defaultEngineConfig.matchMinutes);
   });
 });
 
@@ -300,7 +323,13 @@ describe("#338 무효 노브 목록 자체의 위생", () => {
       "utf8",
     );
     const block = registry.slice(registry.indexOf("const INERT: Knob[] = ["), registry.indexOf("const LIVE"));
-    const engineInert = [...block.matchAll(/path:\s*"([^"]+)"/g)].map((m) => m[1] as string);
+    // ⚠️ 줄 주석을 먼저 걷어낸다(독립검증 m3): 안 그러면 엔진에서 항목을 **주석 처리**했을 때
+    // 가드가 통과한다 — 완전 삭제만 잡히고 "잠깐 꺼 둔다"는 못 잡는다. 실효는 삭제와 같다.
+    const live = block
+      .split("\n")
+      .filter((line) => !line.trim().startsWith("//"))
+      .join("\n");
+    const engineInert = [...live.matchAll(/path:\s*"([^"]+)"/g)].map((m) => m[1] as string);
 
     expect(engineInert.length, "엔진 INERT 레지스트리를 못 읽었다 — 파싱이 낡았다").toBeGreaterThan(0);
     expect([...INERT_KNOBS].sort()).toEqual([...engineInert].sort());
@@ -308,11 +337,11 @@ describe("#338 무효 노브 목록 자체의 위생", () => {
 });
 
 describe("런타임 비용 상한 (독립검증 M2)", () => {
-  it("한 하프가 상한 틱을 넘기는 matchMinutes 는 거부된다", () => {
+  it("한 하프가 상한 틱을 넘기는 matchMinutes 는 **작성에서** 거부된다", () => {
     const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
     let err: OverrideError | undefined;
     try {
-      applyOverrides(defaultEngineConfig, { matchMinutes: overMinutes });
+      assertAuthorable(defaultEngineConfig, { matchMinutes: overMinutes });
     } catch (e) {
       err = e as OverrideError;
     }
@@ -321,7 +350,8 @@ describe("런타임 비용 상한 (독립검증 M2)", () => {
   });
 
   it("상식적인 실험 범위(기본의 몇 배)는 계속 허용된다 — 상한이 기능을 죽이면 안 된다", () => {
-    expect(() => applyOverrides(defaultEngineConfig, { matchMinutes: 180 })).not.toThrow();
+    expect(() => assertAuthorable(defaultEngineConfig, { matchMinutes: 180 })).not.toThrow();
+    expect(applyOverrides(defaultEngineConfig, { matchMinutes: 180 }).config.matchMinutes).toBe(180);
   });
 });
 

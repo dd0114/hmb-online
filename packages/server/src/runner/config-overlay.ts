@@ -176,6 +176,27 @@ export function effectiveConfigHash(config: EngineConfig): string {
   return createHash("sha256").update(canonical(config)).digest("hex").slice(0, 16);
 }
 
+/**
+ * <b>오버레이 자체</b>의 지문 — 재개 가드가 비교하는 값이다(#383 독립검증 B4).
+ *
+ * ⚠️ 여기서 {@link effectiveConfigHash}(=병합된 config 전체)를 쓰면 안 된다. 그건 <b>러너 이미지가
+ * 바뀌기만 해도</b> 달라지므로, 기본값이 한 글자 달라진 재배포가 <b>오버레이를 한 번도 쓴 적 없는</b>
+ * 진행 중 매치의 h2 를 전부 죽인다 — 이 웨이브가 "아무도 안 쓰면 no-op"이라고 선언한 바로 그
+ * 지점에서 전 유저를 때리는 실패 모드다(초판이 실제로 그랬다).
+ *
+ * 게다가 그 민감도는 <b>과하다</b>: 무효 노브(#338) 하나를 지우는 배포는 경기가 bit-identical 이라
+ * `config.version` 을 올릴 이유가 없는데 유효 config 지문은 달라진다. 경기가 같은 변화에 매치가
+ * 죽으면 그건 가드가 아니라 결함이다.
+ *
+ * 가드가 실제로 물어야 하는 것은 <b>"h2 가 h1 과 같은 오버레이를 받았는가"</b> 하나다 —
+ * 그건 서버가 매치별로 통제하는 값이고, 엔진 배포와 무관하다. 러너 기본값이 진짜로 경기를 바꾸는
+ * 변화는 `config.version` 범프가 잡는다(그 축이 `configVersion` 대조로 이미 있다).
+ */
+export function overlayFingerprint(overrides: EngineConfigOverrides | undefined): string {
+  const entries = Object.entries(overrides ?? {}).sort((a, b) => (a[0] < b[0] ? -1 : 1));
+  return createHash("sha256").update(canonical(Object.fromEntries(entries))).digest("hex").slice(0, 16);
+}
+
 /** 한 경로를 판정한 결과 — 적용 / 무변화 / 적용 불가(사유). */
 type Verdict =
   | { kind: "apply"; knob: ChangedKnob }
@@ -219,12 +240,22 @@ function judge(base: EngineConfig, knobs: Map<string, Knob>, path: string, value
 export function assertAuthorable(base: EngineConfig, overrides: EngineConfigOverrides | undefined): void {
   const issues = inertIssues(overrides);
   const knobs = knobPaths(base);
+  const merged = structuredClone(base) as unknown as Record<string, unknown>;
   for (const [path, value] of Object.entries(overrides ?? {})) {
     if (INERT_KNOBS.includes(path)) continue; // 위에서 이미 사유를 담았다
     const v = judge(base, knobs, path, value);
-    if (v.kind === "reject") issues.push(`${path}: ${v.reason}`);
+    if (v.kind === "reject") {
+      issues.push(`${path}: ${v.reason}`);
+      continue;
+    }
+    const parts = path.split(".");
+    let node = merged;
+    for (const part of parts.slice(0, -1)) node = node[part] as Record<string, unknown>;
+    node[parts[parts.length - 1] as string] = value;
   }
   if (issues.length > 0) throw new OverrideError(issues);
+  // 비용 상한은 **작성에서 400** 이다 — 운영자가 지금 고칠 수 있는 유일한 시점이다.
+  assertAffordable(merged as unknown as EngineConfig);
 }
 
 /**
@@ -293,7 +324,25 @@ export function applyOverrides(
   }
   // 경로 순서를 정렬해 두면 감사 원장·diff 가 요청 키 순서에 흔들리지 않는다.
   accepted.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  assertAffordable(config);
+  // 비용 상한도 **재생에서는 버린다**(독립검증 M-A). 이 판정 역시 시간이 지나면 답이 바뀐다 —
+  // 상한은 `matchMinutes × 60000 / msPerTick` 인데 `msPerTick` 은 **구조값**이라 오버레이가 아니라
+  // 배포된 base 에서 온다(Tier C 0.25초 물리로 가면 1000→250, 허용 상한이 900분→225분이 된다).
+  // 그러면 어제 통과한 오버레이가 오늘 진행 중 매치를 죽인다 = B2/B3 과 같은 구조다.
+  // B2 수습이 "이건 답이 안 바뀌니 남겨도 된다"고 근거를 댄 자리인데 그 전제가 거짓이었다.
+  //
+  // 버리는 것이 안전한 이유: 버리면 `matchMinutes` 가 **base 값으로 복귀**하고 base 는 정의상
+  // 상한 안이다. 러너를 재우는 위험은 그대로 막힌다.
+  if (!affordable(config)) {
+    const base0 = base.matchMinutes;
+    (config as { matchMinutes: number }).matchMinutes = base0;
+    const idx = accepted.findIndex((c) => c.path === "matchMinutes");
+    if (idx >= 0) accepted.splice(idx, 1);
+    dropped.push({ path: "matchMinutes", reason: affordabilityReason(base) });
+    dropped.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    if (accepted.length === 0) {
+      return { config: base, hash: effectiveConfigHash(base), changed: [], dropped };
+    }
+  }
   return { config, hash: effectiveConfigHash(config), changed: accepted, dropped };
 }
 
@@ -335,12 +384,32 @@ export function inertIssues(overrides: EngineConfigOverrides | undefined): strin
 /**
  * 이 config 로 한 하프를 돌리는 비용이 상한 안인가(#383 독립검증 M2). 러너는 단일 프로세스라
  * 한 요청이 오래 돌면 <b>다른 매치의 하프가 전부 밀린다</b> — 값 하나가 가용성 사고가 되는 자리다.
+ *
+ * ⚠️ 처분은 계층마다 다르다(M-A): <b>작성은 400</b>(운영자가 지금 고칠 수 있다),
+ * <b>재생은 그 경로만 버린다</b>(base 값으로 복귀 = 정의상 상한 안 = 위험은 그대로 막힌다).
+ * 재생에서 던지면 `msPerTick` 배포 변경이 이미 걸린 오버레이를 소급 무효로 만들어 매치를 죽인다.
  */
+function ticksPerHalf(config: EngineConfig): number {
+  return Math.ceil((config.matchMinutes * 60_000) / config.msPerTick / 2);
+}
+
+function affordable(config: EngineConfig): boolean {
+  return ticksPerHalf(config) <= MAX_HALF_TICKS;
+}
+
+function affordabilityReason(base: EngineConfig): string {
+  return (
+    `한 하프가 상한 ${MAX_HALF_TICKS}틱을 넘습니다(러너는 단일 프로세스라 이 값 하나가 진행 중인 ` +
+    `다른 매치의 하프까지 세웁니다). 이 재생에서는 그 경로를 버리고 기본값 ` +
+    `${base.matchMinutes}분으로 돌립니다.`
+  );
+}
+
+/** 작성 게이트용 — 상한을 넘으면 {@link OverrideError}. */
 function assertAffordable(config: EngineConfig): void {
-  const ticksPerHalf = Math.ceil((config.matchMinutes * 60_000) / config.msPerTick / 2);
-  if (ticksPerHalf > MAX_HALF_TICKS) {
+  if (!affordable(config)) {
     throw new OverrideError([
-      `matchMinutes=${config.matchMinutes}: 한 하프가 ${ticksPerHalf}틱이 되어 상한 ` +
+      `matchMinutes=${config.matchMinutes}: 한 하프가 ${ticksPerHalf(config)}틱이 되어 상한 ` +
         `${MAX_HALF_TICKS}틱을 넘습니다. 러너는 단일 프로세스라 이 값 하나가 진행 중인 다른 ` +
         `매치의 하프까지 세웁니다.`,
     ]);
