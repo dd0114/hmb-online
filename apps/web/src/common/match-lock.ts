@@ -73,15 +73,26 @@ export function matchInProgressIdOf(err: unknown): string | null {
   return typeof detail?.matchId === "string" ? detail.matchId : null;
 }
 
-/** 상태 → 이어하기 카드에 쓸 한 줄. 알 수 없는 상태도 카드가 사라지지 않게 폴백을 준다. */
+/**
+ * 상태 → 이어하기 카드에 쓸 한 줄. 알 수 없는 상태도 카드가 사라지지 않게 폴백을 준다.
+ *
+ * <p>⚠️ **이 줄은 카드의 유일한 상태 정보다** — 제목은 `경기 진행 중` 으로 고정이라, 유저가
+ * "멈춘 매치를 포기할까"를 판단할 근거가 여기밖에 없다. 그래서 문구를 바꿀 때 **어느 단계에서
+ * 멈췄는지**는 반드시 남긴다(계약이 전/후반 구분까지 건다).
+ *
+ * <p>⚠️ 동시에 **시스템 어휘는 쓰지 않는다**(#382 MIN-3, hero 확정). 구 문구는
+ * *"전반 작전을 생성하는 중입니다"* 였는데, hero 가 대기 화면에서 걷어낸 *"작전 생성/반영"* 이
+ * <b>같은 대기 상태를 설명하는 자리</b>에 그대로 남아 있던 것이다(`match/waiting-scenes.ts` 참조).
+ * 단, <b>FAILED 는 이 규칙 밖</b>이다 — 사고를 정경으로 덮으면 유저가 그냥 기다리다 갇힌다.
+ */
 export function resumeLabelFor(state: string | undefined): string {
   switch (state) {
     case "BRIEFING":
       return "경기 전 브리핑에서 멈춰 있습니다";
     case "GEN1":
-      return "전반 작전을 생성하는 중입니다";
+      return "전반 킥오프를 기다리는 중입니다";
     case "GEN2":
-      return "후반 작전을 생성하는 중입니다";
+      return "후반 킥오프를 기다리는 중입니다";
     case "FIRST_HALF":
       return "전반이 진행 중입니다";
     case "HALFTIME":

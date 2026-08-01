@@ -105,4 +105,37 @@ describe("resumeLabelFor", () => {
     expect(resumeLabelFor("SOMETHING_NEW")).toBeTruthy();
     expect(resumeLabelFor(undefined)).toBeTruthy();
   });
+
+  /**
+   * #382 MIN-3 (hero 확정) — 대기 화면에서 걷어낸 *"작전을 생성하는 중"* 어휘가 **같은 대기 상태를
+   * 설명하는 이 카드**에 남아 있었다. 톤을 통일하되, 이 줄은 카드의 **유일한 상태 정보**라
+   * (제목은 `경기 진행 중` 고정) 정경으로 덮어 버리면 *"멈춘 매치를 포기할까"* 판단 근거가 사라진다.
+   * 그래서 계약이 **양쪽**을 건다: 시스템 어휘 0 **그리고** 단계 정보 유지.
+   */
+  it("GEN 대기 줄에서 시스템 어휘가 사라졌다 (대기 화면과 톤 통일)", () => {
+    for (const state of ["GEN1", "GEN2"]) {
+      const label = resumeLabelFor(state);
+      for (const word of ["작전", "생성", "AI", "반영", "지시"]) {
+        expect(label, `시스템 어휘가 남아 있다: "${label}" ← "${word}"`).not.toContain(word);
+      }
+    }
+  });
+
+  it("그래도 어느 단계에서 멈췄는지는 말한다 (포기 판단의 근거 — 카드의 유일한 상태 정보)", () => {
+    expect(resumeLabelFor("GEN1")).toContain("전반");
+    expect(resumeLabelFor("GEN2")).toContain("후반");
+    // 전/후반이 같은 문장으로 뭉개지면 "어디서 멈췄나"를 알 수 없다.
+    expect(resumeLabelFor("GEN1")).not.toBe(resumeLabelFor("GEN2"));
+  });
+
+  /**
+   * ⚠️ **실패 고지는 정경 규칙 밖이다.** FAILED 는 기다림이 아니라 사고이고, 이 줄은 원인과
+   * 다음 행동(재시도/포기)을 말해야 한다 — 정경 문장으로 덮으면 유저가 "그냥 기다리면 되는 줄"
+   * 알고 갇힌다(#217 AC3 이 막으려던 바로 그 상태). 톤 통일이 여기까지 번지지 않게 못 박는다.
+   */
+  it("FAILED 는 정경으로 덮지 않는다 — 사고임을 말하고 행동을 준다", () => {
+    const label = resumeLabelFor("FAILED");
+    expect(label).toContain("실패");
+    expect(label).toContain("포기");
+  });
 });
