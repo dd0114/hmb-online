@@ -460,6 +460,15 @@ public class PromptContextBuilder {
      * 저장 시점에 만들어 둔 A 를 그대로 재사용한다(#402 AC1).
      */
     public BaseJob botBaseJob(MatchService.MatchRow match, BotService.BotRow bot) {
+        return botBaseJob(bot);
+    }
+
+    /**
+     * 봇팀 A 잡 — <b>매치 없이</b>. A 는 매치에 매이지 않으므로(재료는 봇 덱뿐) 위 오버로드와 같은
+     * 산출이며, 매치가 아직 없는 자리에서도 킥오프가 찾을 것과 <b>같은 baseId</b> 를 만든다.
+     * 리그 시즌 시작이 상대 9팀을 한꺼번에 예열하는 진입점(#402 AC7).
+     */
+    public BaseJob botBaseJob(BotService.BotRow bot) {
         JsonNode deck = readJson(bot.deckJson());
         List<RosterEntry> roster = buildRoster(deck, List.of());
         Map<String, String> playerPrompts = deckBasePlayerPrompts(deck, roster);

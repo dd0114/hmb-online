@@ -57,8 +57,16 @@ class LeagueDivisionRosterDumpTest extends MatchTestBase {
             JsonNode teams = mapper.readTree(
                     jdbcClient.sql("SELECT teams_json FROM league_seasons WHERE id=?")
                             .param(seasonId).query(String.class).single());
-            double mul = jdbcClient.sql("SELECT strength_mul FROM bots WHERE id LIKE ? LIMIT 1")
-                    .param(seasonId + "-T%").query(Double.class).single();
+            // 봇 id 는 시즌이 아니라 디비전에 매인다(#402 AC5) — 시즌이 선언한 teamId 로 찾는다.
+            String anyBotId = null;
+            for (JsonNode t : teams) {
+                if (!t.path("isUser").asBoolean()) {
+                    anyBotId = t.path("teamId").asText();
+                    break;
+                }
+            }
+            double mul = jdbcClient.sql("SELECT strength_mul FROM bots WHERE id = ?")
+                    .param(anyBotId).query(Double.class).single();
             List<Map<String, Object>> botTeams = new ArrayList<>();
             for (JsonNode t : teams) {
                 if (t.path("isUser").asBoolean()) {

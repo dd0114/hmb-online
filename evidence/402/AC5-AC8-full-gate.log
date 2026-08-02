@@ -1,0 +1,111 @@
+> Task :compileJava
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+/private/tmp/claude-1609956905/-Users-peter-park-spider8-hmb-online/1e8b68a3-b9af-4171-9594-eda1e7518925/scratchpad/wt-402/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:171: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+/private/tmp/claude-1609956905/-Users-peter-park-spider8-hmb-online/1e8b68a3-b9af-4171-9594-eda1e7518925/scratchpad/wt-402/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:188: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+2 warnings
+
+> Task :processTestResources
+> Task :testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+> Task :test
+
+MatchClockShippedDefaultsTest > shippedHalfRealMsMatchesMeasuredPlaybackLength() FAILED
+    java.lang.AssertionError at MatchClockShippedDefaultsTest.java:55
+
+2026-08-02T17:38:57.816+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-97 - Shutdown initiated...
+2026-08-02T17:38:57.823+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-97 - Shutdown completed.
+2026-08-02T17:38:57.826+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-98 - Shutdown initiated...
+2026-08-02T17:38:57.840+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-98 - Shutdown completed.
+2026-08-02T17:38:57.844+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-99 - Shutdown initiated...
+2026-08-02T17:38:57.852+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-99 - Shutdown completed.
+2026-08-02T17:38:57.860+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-100 - Shutdown initiated...
+2026-08-02T17:38:57.879+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-100 - Shutdown completed.
+2026-08-02T17:38:57.882+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-101 - Shutdown initiated...
+2026-08-02T17:38:57.886+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-101 - Shutdown completed.
+2026-08-02T17:38:57.889+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-102 - Shutdown initiated...
+2026-08-02T17:38:57.901+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-102 - Shutdown completed.
+2026-08-02T17:38:57.905+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-103 - Shutdown initiated...
+2026-08-02T17:38:57.918+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-103 - Shutdown completed.
+2026-08-02T17:38:57.922+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-104 - Shutdown initiated...
+2026-08-02T17:38:57.934+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-104 - Shutdown completed.
+2026-08-02T17:38:57.938+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-105 - Shutdown initiated...
+2026-08-02T17:38:57.950+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-105 - Shutdown completed.
+2026-08-02T17:38:57.953+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-106 - Shutdown initiated...
+2026-08-02T17:38:57.972+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-106 - Shutdown completed.
+2026-08-02T17:38:57.976+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-107 - Shutdown initiated...
+2026-08-02T17:38:57.994+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-107 - Shutdown completed.
+2026-08-02T17:38:57.996+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-108 - Shutdown initiated...
+2026-08-02T17:38:58.005+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-108 - Shutdown completed.
+2026-08-02T17:38:58.006+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-109 - Shutdown initiated...
+2026-08-02T17:38:58.013+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-109 - Shutdown completed.
+2026-08-02T17:38:58.014+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-110 - Shutdown initiated...
+2026-08-02T17:38:58.022+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-110 - Shutdown completed.
+2026-08-02T17:38:58.023+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-111 - Shutdown initiated...
+2026-08-02T17:38:58.033+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-111 - Shutdown completed.
+2026-08-02T17:38:58.034+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-112 - Shutdown initiated...
+2026-08-02T17:38:58.041+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-112 - Shutdown completed.
+2026-08-02T17:38:58.042+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-113 - Shutdown initiated...
+2026-08-02T17:38:58.049+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-113 - Shutdown completed.
+2026-08-02T17:38:58.050+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-114 - Shutdown initiated...
+2026-08-02T17:38:58.057+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-114 - Shutdown completed.
+2026-08-02T17:38:58.059+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-115 - Shutdown initiated...
+2026-08-02T17:38:58.071+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-115 - Shutdown completed.
+2026-08-02T17:38:58.074+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-116 - Shutdown initiated...
+2026-08-02T17:38:58.086+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-116 - Shutdown completed.
+2026-08-02T17:38:58.089+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-117 - Shutdown initiated...
+2026-08-02T17:38:58.101+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-117 - Shutdown completed.
+2026-08-02T17:38:58.104+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-118 - Shutdown initiated...
+2026-08-02T17:38:58.120+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-118 - Shutdown completed.
+2026-08-02T17:38:58.124+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-119 - Shutdown initiated...
+2026-08-02T17:38:58.129+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-119 - Shutdown completed.
+2026-08-02T17:38:58.132+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-120 - Shutdown initiated...
+2026-08-02T17:38:58.136+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-120 - Shutdown completed.
+2026-08-02T17:38:58.139+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-121 - Shutdown initiated...
+2026-08-02T17:38:58.142+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-121 - Shutdown completed.
+2026-08-02T17:38:58.145+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-122 - Shutdown initiated...
+2026-08-02T17:38:58.150+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-122 - Shutdown completed.
+2026-08-02T17:38:58.153+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-123 - Shutdown initiated...
+2026-08-02T17:38:58.157+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-123 - Shutdown completed.
+2026-08-02T17:38:58.161+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-124 - Shutdown initiated...
+2026-08-02T17:38:58.165+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-124 - Shutdown completed.
+2026-08-02T17:38:58.168+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-125 - Shutdown initiated...
+2026-08-02T17:38:58.174+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-125 - Shutdown completed.
+2026-08-02T17:38:58.177+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-126 - Shutdown initiated...
+2026-08-02T17:38:58.180+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-126 - Shutdown completed.
+2026-08-02T17:38:58.183+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-127 - Shutdown initiated...
+2026-08-02T17:38:58.199+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-127 - Shutdown completed.
+2026-08-02T17:38:58.202+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-128 - Shutdown initiated...
+2026-08-02T17:38:58.208+09:00  INFO 89109 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-128 - Shutdown completed.
+
+> Task :test
+
+982 tests completed, 1 failed, 1 skipped
+
+> Task :test FAILED
+
+[Incubating] Problems report is available at: file:///private/tmp/claude-1609956905/-Users-peter-park-spider8-hmb-online/1e8b68a3-b9af-4171-9594-eda1e7518925/scratchpad/wt-402/server-java/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///private/tmp/claude-1609956905/-Users-peter-park-spider8-hmb-online/1e8b68a3-b9af-4171-9594-eda1e7518925/scratchpad/wt-402/server-java/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 1m 37s
+5 actionable tasks: 5 executed

@@ -153,7 +153,15 @@ class LeagueApiTest extends MatchTestBase {
         assertThat(bots).isEqualTo(9);
 
         // 봇 bots 행 삽입 확인(deck_json 선발 11, GK 슬롯0) — 매치 상대로 소비 가능.
-        String botTeamId = seasonId + "-T1";
+        // ⚠️ id 모양을 가정하지 않는다 — 봇 id 는 시즌이 아니라 디비전에 매인다(#402 AC5).
+        String botTeamId = null;
+        for (JsonNode t : teams) {
+            if (!t.path("isUser").asBoolean()) {
+                botTeamId = t.path("teamId").asText();
+                break;
+            }
+        }
+        assertThat(botTeamId).isNotNull();
         String deckJson = jdbcClient.sql("SELECT deck_json FROM bots WHERE id = ?")
                 .param(botTeamId).query(String.class).single();
         JsonNode deck = matchServiceReadJson(deckJson);

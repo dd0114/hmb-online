@@ -24,9 +24,34 @@ public class LeagueController {
         this.orchestrator = orchestrator;
     }
 
+    /**
+     * 시즌 시작(멱등). 시즌이 만들어지면 그 자리에서 <b>상대 9팀 전부의 A 를 예열</b>한다(#402 AC7).
+     *
+     * <p>왜 여기인가: 리그는 더블 라운드로빈이라 상대를 각각 두 번 만난다. A 를 매치 생성 때만
+     * 예열하면 첫 만남 9번이 전부 풀생성(라이브 19~107초)이고 두 번째 만남만 캐시에 맞는다.
+     * 시즌이 생기는 순간 상대는 이미 정해져 있으므로 한꺼번에 세워 둔다.
+     *
+     * <p>⚠️ {@code startSeason} 의 <b>트랜잭션이 커밋된 뒤</b>다. 선실행은 최적화지 정합성 경로가
+     * 아니므로 큐잉이 시즌 생성 트랜잭션을 오염시키거나 실패시키면 안 된다(오케스트레이터가
+     * 봇 단위로 예외를 삼킨다). 이미 ACTIVE 인 시즌으로 되돌아온 경우에도 같은 자리를 지난다 —
+     * 전부 멱등이라 새 잡은 생기지 않고, 캐시가 회수된 뒤라면 오히려 복구된다.
+     */
     @PostMapping("/api/league/start")
     public LeagueService.LeagueResponse start(@RequestAttribute("userId") String userId) {
-        return leagueService.startSeason(userId);
+        LeagueService.LeagueResponse response = leagueService.startSeason(userId);
+        orchestrator.prefetchBotBaseInputs(opponentTeamIds(response));
+        return response;
+    }
+
+    /** 이 시즌의 상대(봇) teamId = bots.id. 유저 팀은 빠진다. */
+    private static java.util.List<String> opponentTeamIds(LeagueService.LeagueResponse response) {
+        if (response.season() == null || response.season().teams() == null) {
+            return java.util.List.of();
+        }
+        return response.season().teams().stream()
+                .filter(t -> !t.isUser())
+                .map(LeagueService.LeagueTeam::teamId)
+                .toList();
     }
 
     @GetMapping("/api/league")

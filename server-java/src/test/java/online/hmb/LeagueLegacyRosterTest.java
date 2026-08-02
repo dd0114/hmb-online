@@ -163,16 +163,26 @@ class LeagueLegacyRosterTest extends MatchTestBase {
         return (String) ((Map<?, ?>) res.getBody().get("season")).get("id");
     }
 
+    /** 봇 id 는 시즌이 아니라 디비전에 매인다(#402 AC5) — 시즌이 선언한 teamId 를 따라간다. */
     private List<Map<String, Object>> botDecksOf(String seasonId) {
-        return jdbcClient.sql("SELECT id, deck_json FROM bots WHERE id LIKE ?")
-                .param(seasonId + "-T%")
-                .query((rs, n) -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", rs.getString("id"));
-                    m.put("deck_json", rs.getString("deck_json"));
-                    return m;
-                })
-                .list();
+        String teamsJson = jdbcClient.sql("SELECT teams_json FROM league_seasons WHERE id = ?")
+                .param(seasonId).query(String.class).single();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (JsonNode t : readJson(teamsJson)) {
+            if (t.path("isUser").asBoolean()) {
+                continue;
+            }
+            rows.addAll(jdbcClient.sql("SELECT id, deck_json FROM bots WHERE id = ?")
+                    .param(t.path("teamId").asText())
+                    .query((rs, n) -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("id", rs.getString("id"));
+                        m.put("deck_json", rs.getString("deck_json"));
+                        return m;
+                    })
+                    .list());
+        }
+        return rows;
     }
 
     private JsonNode readJson(String json) {
