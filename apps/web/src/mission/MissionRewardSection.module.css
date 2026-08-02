@@ -1,0 +1,83 @@
+/* 결과 화면 미션 섹션 (#408). ⚠️ #405 가 ResultPanel 을 재작성하므로 **자립형**으로 둔다 —
+   ResultPage.module.css 의 클래스를 빌려 쓰면 그 재작성이 이 섹션을 조용히 깨뜨린다. */
+
+.card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+.title {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.row {
+  display: grid;
+  gap: 4px;
+  background: var(--sunk);
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+/* 한 줄에 다 넣으면 390px 에서 [받기]가 밀린다 — 이름/보상 · 진행/액션 두 줄로 나눈다. */
+.line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.progress {
+  flex: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.done {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ok);
+}
+.reward {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--warn);
+}
+.claim {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.claim:disabled {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+.claimed {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--danger);
+}

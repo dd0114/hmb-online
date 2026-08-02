@@ -116,6 +116,13 @@
       "big": 300
     }
   },
+  "mission": {
+    "reward": {
+      "EASY": 100,
+      "NORMAL": 200,
+      "HARD": 300
+    }
+  },
   "growth": {
     "xpBase": 100,
     "xpLvBase": 100,

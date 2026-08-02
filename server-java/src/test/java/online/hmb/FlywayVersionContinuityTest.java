@@ -33,6 +33,19 @@ class FlywayVersionContinuityTest {
     private static final Path MIGRATION_DIR = Path.of("src/main/resources/db/migration");
     private static final Pattern VERSIONED = Pattern.compile("^V(\\d+)__.+\\.sql$");
 
+    /*
+     * ⚠️ 예외 목록(구 {@code RESERVED_BY_OTHER_BRANCH})은 <b>없다</b> — 되살리지 마라.
+     *
+     * <p>한때 main 이 병렬 에픽에 번호를 미리 나눠 줘서(#405=V38, #408=V39) 뒤 번호를 받은 브랜치가
+     * 혼자서는 결번이었고, 그동안만 열거된 번호를 예외로 뒀다. #405 가 머지되며 V38·V39 가 둘 다
+     * 들어왔고 #408 은 V40 으로 옮겼다 = <b>결번이 없다</b>. 예외가 사라진 지금 연속성 검사는
+     * 제 힘으로 선다.
+     *
+     * <p>다시 필요해지면 <b>그때 다시 만들되</b>, 예약이 채워지면 목록을 지우도록 강제하는 짝
+     * 테스트를 반드시 같이 둬라. 목록만 남고 강제가 없으면 그 번호는 영구 사각지대가 된다 —
+     * 아래 {@link #migrationVersionsHaveNoGaps} 가 그 번호에서 조용히 눈을 감는다.
+     */
+
     @Test
     void migrationVersionsHaveNoGaps() {
         List<Integer> versions = versions();

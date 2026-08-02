@@ -113,7 +113,14 @@ public class MatchClockService {
      * 슛·골·정지 개수가 정하므로 매치마다 다르다(실측 2:36~3:31).
      *
      * <p>{@code playbackMs <= 0}(구 러너·계산 실패)이면 config 폴백
-     * {@code hmb.match.clock.half-real-ms} — 그 경우엔 예전처럼 클라 배율 보정이 창을 맞춘다.
+     * {@code hmb.match.clock.half-real-ms} — 그 창은 고정값이라 그 하프의 실제 재생 길이와 어긋난다.
+     *
+     * <p>⚠️ <b>그 어긋남을 보정하는 것은 없다</b>(#416). 한때 여기 "예전처럼 클라 배율 보정이 창을
+     * 맞춘다"고 적혀 있었는데 사실이 아니다 — {@code apps/web/src/match/live-pace.ts} 의
+     * {@code paceRate} 는 <b>프로덕션 호출부가 0건</b>인 휴면 함수이고(재생 루프는 "배율은 건드리지
+     * 않는다(고정 배속만)"), 폴백이 발동한다고 자동으로 되살아나지 않는다. 그래서 이 경로에서는
+     * 창보다 긴 하프는 끝이 안 보인 채 하프타임으로 넘어가고 짧은 하프는 빈 시간이 생긴다.
+     * 폴백값이 실측 밴드 안이어야 하는 이유가 그것이다(계약 = {@code MatchClockShippedDefaultsTest}).
      */
     public String liveWindowEnd(Instant start, long playbackMs) {
         long window = playbackMs > 0 ? playbackMs : props.getHalfRealMs();

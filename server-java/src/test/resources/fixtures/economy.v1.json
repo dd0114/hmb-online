@@ -1791,6 +1791,13 @@
       "big": 70
     }
   },
+  "mission": {
+    "reward": {
+      "EASY": 11,
+      "NORMAL": 22,
+      "HARD": 33
+    }
+  },
   "starterTop": {
     "pool": [
       "P018",

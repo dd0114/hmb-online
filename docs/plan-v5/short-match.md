@@ -103,6 +103,12 @@ tickToMinute(tick) = floor(tick * msPerTick / 60000 * scale)     // = floor(tick
   361s 로 12% 줄였다. 그래서 3분을 **창이 정의**하게 두고(hero 스펙의 hard 부분) 드리프트는
   `paceRate` 가 흡수하게 한다. `matchMinutes` 를 매번 실측에 맞춰 재조정하면 엔진 웨이브마다
   재조정해야 한다.
+  ⚠️ **정정(#416, 2026-08-03)**: 이 "드리프트는 `paceRate` 가 흡수한다"는 **지금 성립하지 않는다.**
+  #365 이후 운영 창은 러너가 주는 `playbackMs`(= 그 하프의 실제 재생 길이)라 흡수할 오차가 없고,
+  `paceRate` 는 **호출부 0건의 휴면 함수**가 됐다. 고정 `half-real-ms` 를 쓰는 **폴백 경로엔 보정이
+  없어서** 창보다 긴 하프는 그냥 잘린다. 위 배율 계산(0.87~1.15)도 engine@0.30.0 실측이라 낡았다 —
+  현행은 `MatchClockShippedDefaultsTest` 가 실측 min~max 로 들고 있고, 재측정은
+  `node tools/measure-playback-pace.mjs`.
 - `tools/pace-config.test.ts` 는 **엔진으로 직접 재서 yml 과 ±20% 대조**하므로 자동 재유도된다.
   단, 그 안의 `snapshots.length > 2000`(하프가 리얼 config 인지 확인하는 안전장치)은 **1350틱 기준으로
   같이 옮긴다** — 안 옮기면 이 가드가 먼저 빨간다.

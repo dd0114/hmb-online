@@ -7,6 +7,7 @@ import { ErrorToast } from "../common/ErrorToast";
 import { useDecklessGuard } from "../common/useDecklessGuard";
 import { useAwayRankings } from "../api/hooks-p286";
 import { RankingBoard } from "../common/RankingBoard";
+import { DailyMissionSection } from "../mission/DailyMissionSection";
 import { RevengeQueue } from "./RevengeQueue";
 import { matchInProgressIdOf } from "../common/match-lock";
 import { awayStartError } from "./away-page-logic";
@@ -89,6 +90,11 @@ export function AwayPage() {
             <div className={styles.scoreLabel}>내 원정 레이팅</div>
           </section>
         )}
+
+        {/* 오늘의 미션 (#408, hero 확정 자리 = 원정 페이지 안 섹션). **[원정 떠나기] 위**에
+            두는 이유는 순서가 곧 동기이기 때문이다 — "오늘 뭘 하면 되나"를 읽고 나가야 미션이
+            원정을 치는 이유가 된다. 서버가 미션 블록을 안 주면 이 자리는 조용히 비어 있다. */}
+        <DailyMissionSection />
 
         {!picking && (
           <button

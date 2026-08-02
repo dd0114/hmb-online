@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
 import { deriveTeamStats, TEAM_STAT_LABELS, type MatchEventLike } from "../match-logic";
 import { GrowthReportSection } from "../GrowthReportSection";
+import { MissionRewardSection } from "../../mission/MissionRewardSection";
 import { Amount } from "../../common/Amount";
 import { CURRENCY_POINT } from "../../common/currency";
 import type { MatchDailyReward } from "../../api/p3";
@@ -84,6 +85,11 @@ export function ResultPanel({ match, homeName, awayName, onOpenRewards }: Result
           )}
           <DailyRewardLine reward={(result as { dailyReward?: MatchDailyReward | null })?.dailyReward} />
         </section>
+
+        {/* 오늘의 미션 (#408) — **한 줄 삽입**이다. 섹션 전체가 자립형 컴포넌트라 #405 의
+            보상 탭이 랜딩하면 이 줄을 그쪽으로 옮기기만 하면 된다(이 파일 재구조화 없음).
+            원정이 아니거나 구 서버면 스스로 null 을 돌려주므로 여기서 분기하지 않는다. */}
+        <MissionRewardSection missions={(result as { missions?: unknown })?.missions} />
 
         <section className={styles.statsCard} data-testid="team-stats">
           <h3 className={styles.statsTitle}>팀 스탯</h3>

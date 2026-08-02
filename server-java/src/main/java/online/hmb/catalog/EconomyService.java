@@ -37,6 +37,7 @@ public class EconomyService {
     public record Economy(String version, int initialPoints, int initialGems, List<String> starterPack,
                           Gacha gacha, Rewards rewards, JsonNode trade, JsonNode league,
                           LeagueGemReward leagueGemReward, LeagueDailyReward leagueDailyReward,
+                          DailyMissionReward dailyMissionReward,
                           Growth growth, Star star, Potential potential, Dice dice, Gems gems,
                           StarterTop starterTop, List<Currency> currencies) {
 
@@ -213,6 +214,38 @@ public class EconomyService {
      */
     public static final LeagueDailyReward DEFAULT_LEAGUE_DAILY_REWARD =
             new LeagueDailyReward(18, Set.of(9, 18), CURRENCY_GEM, 30, 300);
+
+    /**
+     * economy `mission.reward` 노드 (#408 hero 확정) — <b>원정 데일리 미션의 티어별 보상액</b>.
+     *
+     * <p>hero 확정값: 쉬움 100 Z · 보통 200 Z · 어려움 300 Z(전부 다이아). 하루 2개라 하루 상한이
+     * 600 Z 이고, 그 서열(리그 일일 트랙 이론 상한 1,080 · 시즌 완주 3,000 미만)은 계약이 지킨다.
+     *
+     * <p><b>금액만</b> 여기 산다. 미션 <b>카탈로그</b>(14종의 id·티어·판정규칙·목표·문구)는
+     * {@code application.yml hmb.mission.*} 이 소유한다 — 값의 성격이 다르다: 금액은 economy
+     * override 로 <b>무배포</b> 조정하는 경제 곡선이고, 카탈로그는 게임 규칙의 구조라 바뀌면
+     * 판정 코드(rule)와 같이 움직인다. #245 가 {@code away.reward.mode} 를 application.yml 에 두고
+     * 곡선 값은 economy 를 <b>참조</b>한 것과 같은 갈라짐이다.
+     */
+    public record DailyMissionReward(Map<String, Integer> byTier) {
+
+        /** 그 티어의 보상액. 모르는 티어면 0 — 카탈로그와 보상표가 어긋난 상태이므로 지급하지 않는다. */
+        public int amountFor(String tier) {
+            return byTier == null || tier == null ? 0 : byTier.getOrDefault(tier, 0);
+        }
+    }
+
+    /**
+     * 데일리 미션 보상 기본값 (#408 hero 확정) — {@link #DEFAULT_LEAGUE_DAILY_REWARD} 와 같은
+     * <b>last-known-good 폴백층</b>이다.
+     *
+     * <p>⚠️ 이 상수가 있어야 하는 이유 = <b>override 트랩</b>(#251·#368 이 겪은 그 형태): 운영
+     * override 는 무배포로 얹힌 <b>구 스냅샷</b>이라 새 블록이 없다. "모르면 0원"이면 override 가
+     * 깔린 <b>라이브에서만</b> 미션은 뜨는데 보상이 조용히 0 이 되고, 테스트 환경에선 끝까지 안 보인다.
+     * 소비 쪽은 항상 {@link #dailyMissionReward()} 로만 읽는다.
+     */
+    public static final DailyMissionReward DEFAULT_DAILY_MISSION_REWARD =
+            new DailyMissionReward(Map.of("EASY", 100, "NORMAL", 200, "HARD", 300));
 
     /**
      * economy.v2.json `growth` 노드 (에픽 #179 V2-5, 메이플 피벗 GM1) — 경기 스탯별 XP 트랙 수치.
@@ -398,6 +431,14 @@ public class EconomyService {
         return snapshot.economy().map(Economy::leagueDailyReward).orElse(DEFAULT_LEAGUE_DAILY_REWARD);
     }
 
+    /**
+     * 데일리 미션 티어별 보상액 (#408) — <b>economy 파일이 아예 없어도 값을 준다</b>.
+     * 소비 쪽은 항상 이 접근자를 쓴다(override 트랩, {@link #DEFAULT_DAILY_MISSION_REWARD} 주석 참조).
+     */
+    public DailyMissionReward dailyMissionReward() {
+        return snapshot.economy().map(Economy::dailyMissionReward).orElse(DEFAULT_DAILY_MISSION_REWARD);
+    }
+
     /** override 파일 경로(존재 여부와 무관). 운영 API 가 여기에 쓰고 지운다. */
     public String overridePath() {
         return overrideFile;
@@ -442,6 +483,8 @@ public class EconomyService {
             // league.gemReward(#212) — 없으면 null(리그 젬 지급 비활성).
             LeagueGemReward leagueGemReward = parseLeagueGemReward(league);
             LeagueDailyReward leagueDailyReward = parseLeagueDailyReward(league);
+            // mission.reward(#408) — 블록이 없거나 티어가 빠져 있으면 **티어 단위로** 기본값을 메운다.
+            DailyMissionReward dailyMissionReward = parseDailyMissionReward(root.path("mission"));
 
             // growth/star/potential/dice 블록(#179 V2-5, GM1 발행) — 구파일엔 없을 수 있어 null(성장 기능 비활성).
             Growth growth = parseGrowth(root.path("growth"));
@@ -471,7 +514,7 @@ public class EconomyService {
                     starterTop != null ? starterTop.pool().size() + " pool/" + starterTop.count() : "absent");
             return Optional.of(new Economy(version, initialPoints, initialGems, List.copyOf(starterPack),
                     gacha, rewards, trade, league, leagueGemReward, leagueDailyReward,
-                    growth, star, potential, dice, gems, starterTop, currencies));
+                    dailyMissionReward, growth, star, potential, dice, gems, starterTop, currencies));
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to load economy from {}: {} — continuing without economy config",
                     file.getAbsolutePath(), e.toString());
@@ -749,6 +792,33 @@ public class EconomyService {
             bigSlots = Set.copyOf(parsed);
         }
         return new LeagueDailyReward(slots, bigSlots, currency, small, big);
+    }
+
+    /**
+     * {@code mission.reward} 파싱 (#408) — {@link #parseLeagueDailyReward} 와 <b>같은 규율</b>:
+     * 블록이 없거나 티어가 빠져 있으면 {@link #DEFAULT_DAILY_MISSION_REWARD} 에서 <b>티어 단위로</b>
+     * 메운다(구 override 스냅샷 호환).
+     *
+     * <p>⚠️ {@code rankBonus}/{@code bigSlots} 와 달리 <b>통짜 교체가 아니라 티어 단위 병합</b>이다.
+     * 표가 곡선이 아니라 <b>세 개의 독립된 가격</b>이기 때문이다 — 쉬움만 120 으로 올리고 싶을 때
+     * 나머지를 같이 적게 강요하면, 안 적었을 때 보통·어려움이 0 원이 된다(= 미션은 뜨는데 보상이
+     * 사라지는, §9 가 금지한 상태). {@code currencies} 의 필드 단위 병합과 같은 성질이다.
+     */
+    private static DailyMissionReward parseDailyMissionReward(JsonNode mission) {
+        JsonNode n = mission == null ? null : mission.path("reward");
+        if (n == null || !n.isObject()) {
+            return DEFAULT_DAILY_MISSION_REWARD;
+        }
+        Map<String, Integer> byTier = new LinkedHashMap<>(DEFAULT_DAILY_MISSION_REWARD.byTier());
+        n.properties().forEach(e -> {
+            int amount = e.getValue().asInt(-1);
+            if (amount >= 0) {
+                byTier.put(e.getKey(), amount);
+            } else {
+                log.warn("mission.reward.{} 이 유효하지 않아 기본값을 쓴다: {}", e.getKey(), e.getValue());
+            }
+        });
+        return new DailyMissionReward(Map.copyOf(byTier));
     }
 
     private static int positiveOr(JsonNode n, String field, int fallback) {

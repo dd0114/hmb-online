@@ -118,7 +118,17 @@ class FlywayMigrationTest {
             //   reward_bundles       = 공용 보상 봉투(§2.9). E5 미션·리그·우편이 source 만 바꿔 쓴다.
             "growth_level_choices",
             "growth_legacy_base",
-            "reward_bundles"
+            "reward_bundles",
+            // V40 원정 데일리 미션(2) — #408: 하루(KST) 2개 · 14종 균등 추첨 · 티어별 다이아.
+            //   daily_missions          = 그날의 미션 한 개 = 1행. **지급 원장을 새로 만들지 않았다** —
+            //     돈은 gem_ledger 로 나가고(reason='daily_mission', ref_id=미션 행 id) 기존 멱등
+            //     인덱스에 얹힌다(V33 규율). 이 표가 사는 이유는 지급이 아니라 **박제**다: 문구·티어·
+            //     판정규칙·목표·금액이 전부 config 노브라, 읽을 때 재계산하면 노브를 돌리는 순간
+            //     오늘 이미 받은 이력이 소급 변조되고 카탈로그에서 뺀 미션의 미수령분이 표시 불가가 된다.
+            //   daily_mission_progress  = 경기 × 미션의 진행 델타. **멱등**(재정산 이중 가산 차단)과
+            //     결과 화면의 `missions` 배열(누적값에서 사후 분해 불가)이 둘 다 이 행에 걸려 있다.
+            "daily_missions",
+            "daily_mission_progress"
     );
 
     /**

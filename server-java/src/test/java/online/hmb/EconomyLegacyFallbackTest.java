@@ -145,6 +145,44 @@ class EconomyLegacyFallbackTest {
         java.nio.file.Files.deleteIfExists(tmp);
     }
 
+    /**
+     * #408 <b>override 트랩</b> — 운영 override 는 무배포로 얹힌 구 스냅샷이라 {@code mission} 블록이
+     * 없다. "모르면 0원"이면 <b>override 가 깔린 라이브에서만</b> 미션은 뜨는데 보상이 사라지고,
+     * 그건 §9 가 명시적으로 금지한 상태다(고장으로 읽힌다). 구파일도 기본값으로 메운다.
+     */
+    @Test
+    void missionRewardFallsBackToDefaultsWhenTheBlockIsAbsent() {
+        EconomyService.DailyMissionReward cfg = loadLegacy().dailyMissionReward();
+        assertThat(cfg).isEqualTo(EconomyService.DEFAULT_DAILY_MISSION_REWARD);
+        assertThat(cfg.amountFor("EASY")).isEqualTo(100);
+        assertThat(cfg.amountFor("NORMAL")).isEqualTo(200);
+        assertThat(cfg.amountFor("HARD")).isEqualTo(300);
+        assertThat(cfg.amountFor("SOMETHING_ELSE"))
+                .as("카탈로그와 보상표가 어긋나면 지급하지 않는다").isZero();
+    }
+
+    /**
+     * ⚠️ {@code mission.reward} 는 {@code rankBonus} 와 반대로 <b>티어 단위 병합</b>이다. 표가
+     * 곡선이 아니라 세 개의 독립된 가격이라, 쉬움만 올리려고 한 줄 적었을 때 나머지가 0 원이 되면
+     * 그건 "보상이 사라지는" 상태다. 이 성질을 여기서 박제한다 — 두 블록의 규칙이 다르다는 사실
+     * 자체가 손편집하는 사람이 걸려 넘어지는 자리다.
+     */
+    @Test
+    void missionRewardIsMergedPerTierNotReplacedWholesale() throws Exception {
+        java.nio.file.Path tmp = java.nio.file.Files.createTempFile("economy-partial-mission", ".json");
+        java.nio.file.Files.writeString(tmp, """
+                {"version":"partial","initialPoints":0,"starterPack":[],
+                 "mission":{"reward":{"EASY":120,"HARD":-5}}}
+                """);
+        EconomyService.DailyMissionReward cfg = new EconomyService(new ObjectMapper(), tmp.toString())
+                .get().orElseThrow().dailyMissionReward();
+
+        assertThat(cfg.amountFor("EASY")).isEqualTo(120);
+        assertThat(cfg.amountFor("NORMAL")).as("안 적은 티어는 0 이 아니라 기본값").isEqualTo(200);
+        assertThat(cfg.amountFor("HARD")).as("음수는 버리고 기본값 — 마이너스 지급 없음").isEqualTo(300);
+        java.nio.file.Files.deleteIfExists(tmp);
+    }
+
     /** 발행물(현행 v3)이 hero 확정 금액을 싣고 있는지 — data 발행물이 SoT 라는 계약. */
     @Test
     void publishedEconomyCarriesTheConfirmedSeasonGemAmounts() {

@@ -148,11 +148,14 @@ hmb:
       # 전에 하프타임을 열었다(켬 모드 실측의 57%). 리얼 config 하프를 코어 페이싱
       # (크루즈 4x / 키장면 1x / 데드볼 홀드)으로 돌려 잰다.
       # (구 실측 = 90분·배속 1.0 시절 하프 2700틱: min 392s · p50 422s · max 463s.)
-      # 총 경기 길이 조절 노브다. 줄이면 web 이 배율(live-pace.paceRate)로 재생을 당겨 맞춘다.
+      # 총 경기 길이 조절 노브다. ⚠️ 줄인 만큼을 **되찾아 주는 장치는 없다**(#416) — 한때 여기
+      # "web 이 배율(live-pace.paceRate)로 재생을 당겨 맞춘다"고 적혀 있었지만 그 함수는
+      # 프로덕션 호출부가 0건인 휴면 함수다(재생 루프 = 고정 배속만). 줄이면 그만큼 안 보인다.
       # 구속력 있는 범위는 하나다 — `tools/pace-config.test.ts` 가 **엔진으로 직접 하프를 돌려**
       # 재생 길이를 재고 이 값과 ±20% 를 대조한다. 이 밖으로 나가려면 그 테스트도 함께 고쳐야 하고,
       # 그건 "재생과 창을 어긋나게 두겠다"는 의도적 결정이다.
-      # ⚠️ 물리적으로도 무한정 줄일 수 없다: **배율 상한 1.6** 에 물리면 하프 끝이 잘린다.
+      # ⚠️ 잘림이 시작되는 지점은 배율 상한 1.6 이 아니라 **1.0**(창 < 재생 길이)이다 — 위와 같은
+      #   이유로 흡수 장치가 없다. 창보다 긴 하프는 그 차이만큼 끝이 안 보인 채 하프타임이 열린다.
       # ⚠️ #365 이후 이 값은 **폴백**이다. 운영 창은 러너가 준 그 하프의 실제 재생 길이
       #   (`SimulateResponse.playbackMs`)로 잡힌다 — 창 == 재생 길이라야 클라가 배속을 창에 맞춰
       #   보정할 필요가 없다(hero 확정: 고정 배속만). 러너가 값을 안 주면 여기로 떨어진다.
@@ -167,6 +170,13 @@ hmb:
       # ⚠️ 이 값은 **폴백일 뿐**이다(바로 위 #365 주석 참조) — 운영 창은 러너가 준
       #   `SimulateResponse.playbackMs`(그 하프의 실제 재생 길이)로 잡히므로, 엔진이 또 바뀌어도
       #   운영은 자동 추종한다. 여기는 "러너가 값을 안 줬을 때 과도하게 짧지 않은가"만 지키면 된다.
+      # ── engine@0.41.0 재측정 (#405·#407 머지 후, #416) ────────────────────────────────
+      # 실측(measure-playback-pace, 16하프) = min 196.4 / p50 225.7 / mean 224.0 / max 246.1 s
+      #   → 권장값(= mean 반올림) 그대로 **220000 유지**. 값은 안 바꾼다.
+      # ⚠️ 220000 은 "안전해서"가 아니라 **평균에 맞춘 값**이다. 창 하나로 산포를 못 덮으므로
+      #   폴백 경로에서 최장 하프(246.1s)는 끝 약 26s(11%)가 안 보이고, 최속 하프(196.4s)는
+      #   약 24s 빈 시간이 생긴다. 둘을 가운데서 맞바꾼 값이다(배율 보정이 없어 둘 다 못 없앤다).
+      # 계약 = MatchClockShippedDefaultsTest(밴드 = 위 실측 min~max) + tools/pace-config.test.ts.
       half-real-ms: 220000         # 하프당 실시간 재생 길이(폴백. 운영 창은 playbackMs)
       halftime-ms: 180000          # 감독시간(#216 hero 지시 = 3분. 구 60초)
       auto-resume-on-expiry: true  # 만료 시 후반 자동 시작(전반 프롬프트 승계)
@@ -307,6 +317,39 @@ hmb:
       # 수비자가 **졌을 때** 보상을 주는가. hero: "덱 세팅 잘해두면 돈이 들어오고, 지면 남 좋은
       # 일만 하는 구조" → 패배는 0.
       defender-on-loss: false
+  mission:                         # #408 원정 데일리 미션 (설계 SoT = docs/plan-v5/away-daily-mission.md)
+    daily:
+      # 하루에 주는 미션 수(hero 확정 Q2 = 완전 랜덤 2개, 14종 균등·중복만 금지).
+      # ⚠️ **0 = 기능 끄기**(롤백 스위치, env HMB_MISSION_DAILY_COUNT=0). 새 미션이 생성되지 않고
+      #    화면은 섹션을 통째로 안 그린다. 이미 달성한 미수령 보상은 그대로 남는다(§6.3).
+      #    금액을 0 으로 내리는 방식은 쓰지 않는다 — 미션은 뜨는데 보상이 0 이면 고장으로 읽힌다(§9).
+      count: 2
+      # 슬롯당 리롤 횟수(hero 확정 1회 = 하루 2회). ⚠️ 이 값은 **배분 규칙과 한 쌍**이다(§5.1/§6.2):
+      # 균등 추첨이라 "1판짜리 미션이 하나도 없는 날"이 40% 인데 리롤이 그날의 유일한 구제 장치다.
+      # 좁히려면 배분 규칙을 같이 다시 봐야 한다.
+      reroll-per-slot: 1
+      # 미션 풀 14종 — **문구는 hero 산출물(§4 표)이라 임의 수정 금지**.
+      # 티어→금액은 여기 없다. 그건 economy `mission.reward` 가 소유한다(무배포 조정 대상).
+      # 개인 득점·어시스트·무승부 미션은 §4 "풀에서 뺀 것"의 근거로 **의도적으로 없다** —
+      # 되살리려면 그 표의 근거를 먼저 뒤집어야 한다.
+      catalog:
+        # 쉬움(T1) — 1판이면 닿는다
+        - { id: away_play_1,    tier: EASY,   rule: PLAY,             target: 1, title: "원정 경기를 1회 치른다" }
+        - { id: away_win_1,     tier: EASY,   rule: WIN,              target: 1, title: "원정에서 1승" }
+        - { id: away_goals_2,   tier: EASY,   rule: BEST_MATCH_GOALS, target: 2, title: "원정 한 경기에서 2골" }
+        - { id: away_first_goal, tier: EASY,  rule: FIRST_GOAL,       target: 1, title: "원정 경기에서 선제골을 넣는다" }
+        - { id: away_play_2,    tier: EASY,   rule: PLAY,             target: 2, title: "원정 경기를 2회 치른다" }
+        # 보통(T2) — 2~3판
+        - { id: away_win_2,     tier: NORMAL, rule: WIN,              target: 2, title: "원정에서 2승" }
+        - { id: away_streak_2,  tier: NORMAL, rule: WIN_STREAK,       target: 2, title: "원정 2연승" }
+        - { id: away_goals_3,   tier: NORMAL, rule: BEST_MATCH_GOALS, target: 3, title: "원정 한 경기에서 3골" }
+        - { id: away_clean_win, tier: NORMAL, rule: CLEAN_WIN,        target: 1, title: "원정에서 무실점 승리" }
+        - { id: away_play_3,    tier: NORMAL, rule: PLAY,             target: 3, title: "원정 경기를 3회 치른다" }
+        # 어려움(T3) — 3~4판
+        - { id: away_win_3,     tier: HARD,   rule: WIN,              target: 3, title: "원정에서 3승" }
+        - { id: away_streak_3,  tier: HARD,   rule: WIN_STREAK,       target: 3, title: "원정 3연승" }
+        - { id: away_margin_3,  tier: HARD,   rule: BEST_WIN_MARGIN,  target: 3, title: "3골차 이상으로 승리" }
+        - { id: away_goals_4,   tier: HARD,   rule: BEST_MATCH_GOALS, target: 4, title: "원정 한 경기에서 4골" }
   relation:                        # AC-C4 관계/사기 변동 규칙 (LLD-p2-server §4) — 하드코딩 금지(config)
     starter-bonus: 2               # 선발 기용 +2
     win-bonus: 3                   # 승리 전원 +3
