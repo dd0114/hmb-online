@@ -10,7 +10,6 @@ import { HalftimePanel } from "../HalftimePanel";
 import { useHalftimeDraft } from "../useHalftimeDraft";
 import { AutoModeToggle } from "../AutoModeToggle";
 import { SkipButton } from "../SkipButton";
-import { HalfReportModal } from "../HalfReportModal";
 import { ScoreBar } from "./ScoreBar";
 import { StatsPanel } from "./StatsPanel";
 import { PlayerStatsPanel } from "./PlayerStatsPanel";
@@ -62,6 +61,16 @@ interface StageShellProps {
   myTeamSide?: "home" | "away" | null;
   /** 리그 라운드(MatchDetail 에 없어 navigation state 로만 온다) — 스코어바 뱃지용. */
   leagueRound?: number | null;
+  /**
+   * 스킵 성공 신호를 **위로** 넘긴다(#424 D6). 셸이 리포트를 소유하면 패널이 갈리는 순간
+   * (스킵 응답이 `GEN2` → `panelForState` 가 `GenWaitPanel`) 셸과 함께 사라진다.
+   */
+  onSkipped?: (half: 1 | 2) => void;
+  /**
+   * 흐름 오버레이(#424)가 떠 있는가 — **무대를 마운트하지 않기 위한 신호**다.
+   * 정지 플래그를 뷰어에 새로 만들지 않는다(라이브 게이트 effect 와 주인이 둘이 된다, #421 경계).
+   */
+  overlayOpen?: boolean;
 }
 
 /**
@@ -86,14 +95,13 @@ export function StageShell({
   awayName,
   myTeamSide = null,
   leagueRound = null,
+  onSkipped,
+  overlayOpen = false,
 }: StageShellProps) {
   const navigate = useNavigate();
   const [preferredTab, setPreferredTab] = useState<TabKey | null>(null);
   // 재생 플레이헤드(뷰어가 미러링). 통계·로그·시계가 "지금까지"를 계산하는 기준.
   const [tick, setTick] = useState<number | null>(null);
-  // 스킵 리포트(#421) — 셸이 갖는 건 **"어느 하프를 리포트로 보여줄까"** 한 줄뿐이다.
-  // 버튼·요청·409 처리는 `SkipButton` 이, 카드 조립은 `HalfReportModal` 이 소유한다.
-  const [reportHalf, setReportHalf] = useState<1 | 2 | null>(null);
 
   const half = halfForState(match.state);
   const statePanel = statePanelFor(match.state, match.auto);
@@ -201,13 +209,14 @@ export function StageShell({
         } ${sheetKind === "input" ? styles.bodyInput : ""}`}
       >
         {/*
-          ⚠️ **리포트가 떠 있는 동안 무대를 렌더하지 않는다**(#421). 팝업 뒤에서 캔버스가 계속
-          돌면 안 되는데, 정지 명령을 거는 대신 **아예 마운트하지 않아** 구조적으로 0 으로 만든다
-          (`VisualPlayback` 의 cleanup 이 `v.stop()` 을 부른다). 정지 플래그를 뷰어에 하나 더
-          만들면 라이브 게이트 effect 와 두 주인이 생긴다 — 그 자리는 손대지 않는다.
+          ⚠️ **흐름 오버레이가 떠 있는 동안 무대를 렌더하지 않는다**(#421 → #424). 팝업 뒤에서
+          캔버스가 계속 돌면 안 되는데, 정지 명령을 거는 대신 **아예 마운트하지 않아** 구조적으로
+          0 으로 만든다(`VisualPlayback` 의 cleanup 이 `v.stop()` 을 부른다). 정지 플래그를 뷰어에
+          하나 더 만들면 라이브 게이트 effect 와 두 주인이 생긴다 — 그 자리는 손대지 않는다.
+          신호는 이제 **위에서 내려온다**(`overlayOpen`) — 오버레이 소유자가 `MatchPage` 이기 때문(D6).
           전반 스킵은 어차피 응답이 HALFTIME 이라 `managing` 이 곧 무대를 내린다.
         */}
-        {!managing && reportHalf == null && (
+        {!managing && !overlayOpen && (
           <section className={styles.stage} data-testid="stage-canvas">
             <MatchViewer
               matchId={match.id}
@@ -220,7 +229,7 @@ export function StageShell({
               logEnabled={logEnabled}
               baseline={baseline}
               /* #421 스킵 — 자립 부품 한 줄(어느 쪽이 먼저 머지되든 충돌이 한 줄로 끝난다). */
-              skipSlot={<SkipButton match={match} onSkipped={setReportHalf} />}
+              skipSlot={<SkipButton match={match} onSkipped={(h) => onSkipped?.(h)} />}
             />
           </section>
         )}
@@ -369,25 +378,11 @@ export function StageShell({
       )}
 
       {/*
-        스킵 리포트(#421) — 닫으면 **그 자리에서 다음 단계**다. 서버가 이미 전이시켜 놓았으므로
-        (전반 스킵 → HALFTIME, 오토면 SECOND_HALF / 후반 스킵 → FINISHED) 여기서 할 일은 팝업을
-        내리는 것뿐이고, 뒤에는 감독 패널·결과 패널이 이미 그려져 있다.
-
-        ⚠️ 베이스라인은 **리포트가 말하는 하프** 기준이다. 위 `baseline` 은 지금 무대의 하프
-        기준이라, 오토 모드(전반 스킵 → 응답이 바로 SECOND_HALF)에서 전반 리포트에 전반 스코어를
-        한 번 더 얹는다. 규칙은 `playedBaseline` 이 소유하므로 하프만 바꿔서 다시 부른다.
+        스킵 리포트 마운트는 **여기 없다**(#424 D6). 소유자가 `MatchPage` 로 올라갔다 —
+        셸에 매달아 두면 스킵 응답이 `GEN2` 일 때(오토 + 후반 프리페치 미완) 패널 라우팅이
+        `GenWaitPanel` 로 갈리며 셸과 함께 리포트가 사라진다. 리포트·브릿지는 이제 하나의
+        `MatchFlowOverlay` 다.
       */}
-      {reportHalf != null && (
-        <HalfReportModal
-          matchId={match.id}
-          half={reportHalf}
-          homeName={homeName}
-          awayName={awayName}
-          myTeamSide={myTeamSide}
-          baseline={playedBaseline(reportHalf === 1 ? "FIRST_HALF" : "SECOND_HALF", match)}
-          onClose={() => setReportHalf(null)}
-        />
-      )}
     </div>
   );
 }

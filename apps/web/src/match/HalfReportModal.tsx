@@ -10,16 +10,48 @@ import styles from "./HalfReportModal.module.css";
 /** 뒤에 비치는 카드 최대 장수 — `NoticePopup` 과 같은 값(그 이상은 시각 소음). */
 const MAX_BEHIND = 2;
 
+/**
+ * 스택의 카드 한 장. #424 가 **브릿지 카드를 이 스택에 얹기 위해** 뽑아낸 모양이다 —
+ * 리포트와 브릿지가 **하나의 카드 스택 · 하나의 닫기**여야 z-index·포커스 트랩 싸움이 생기지 않는다
+ * (설계 §5: 레이어 분리안 기각).
+ */
+export interface ReportStackCard {
+  id: string;
+  title: string;
+  body: ReactNode;
+  /** 카드 상단 kicker. 기본은 `리포트`. */
+  kicker?: string;
+  /** 이 장이 마지막일 때 주 버튼 라벨. 기본은 `닫기`. */
+  ctaLabel?: string;
+  /** 카드 시각 강조(조정 포인트 §11-10) — 호출부 CSS 모듈의 클래스를 그대로 얹는다. */
+  className?: string;
+}
+
 export interface HalfReportModalProps {
   matchId: string;
-  /** 리포트가 말하는 하프(스킵한 하프). */
-  half: 1 | 2;
+  /**
+   * 리포트가 말하는 하프(스킵한 하프). **`null` 이면 리포트 카드가 없다** — 스킵 없이 열린 브릿지가
+   * 이 스택을 그대로 쓰는 경로다(그때 카드는 `extraCards` 뿐이고 하프 로그도 조회하지 않는다).
+   */
+  half: 1 | 2 | null;
   homeName: string;
   awayName: string;
   /** 내가 선 사이드 — 평점 카드의 팀 필터에 쓴다. 모르면 null(양 팀 통합). */
   myTeamSide?: "home" | "away" | null;
   /** 이 하프 앞에 확정된 스코어(#233) — 후반 리포트가 경기 누적을 말하게 한다. */
   baseline?: ScorePair | null;
+  /** 리포트 카드 **뒤에** 붙는 카드들(#424 브릿지). 기본 = 없음 → 현행 동작 그대로. */
+  extraCards?: readonly ReportStackCard[];
+  /**
+   * 스코어 줄 값. `half == null`(로그를 안 읽는 경로)에서만 쓰인다 —
+   * **`null` 이면 줄을 그리지 않는다**(0 : 0 을 지어내지 않는다).
+   */
+  score?: ScorePair | null;
+  /**
+   * testid 접두. 기본 `half-report`(=리포트 스택). 리포트가 없는 브릿지 전용 스택은 다른 이름을
+   * 받아야 한다 — 안 그러면 "리포트가 뜨지 않는다"를 단언하는 계약(#421 i)이 브릿지를 리포트로 오인한다.
+   */
+  testIdBase?: string;
   onClose: () => void;
 }
 
@@ -56,10 +88,16 @@ export function HalfReportModal({
   awayName,
   myTeamSide = null,
   baseline = null,
+  extraCards,
+  score: scoreOverride = null,
+  testIdBase = "half-report",
   onClose,
 }: HalfReportModalProps) {
-  const { data: log, isLoading } = useHalfLog(matchId, half);
+  // half 가 없으면 조회하지 않는다 — 리포트 카드가 없는 스택이 하프 로그를 부르면 409(아직 안 열린
+  // 하프)를 유발하거나 쓸데없이 로그를 끌어온다.
+  const { data: log, isLoading } = useHalfLog(matchId, half ?? 1, half != null);
   const { data: catalog } = usePlayers();
+  const tid = testIdBase;
 
   /**
    * 선수 이름 조회. **`(team, playerId)` 축을 받는다**(#231/#324 — 같은 선수가 양 팀에 뛴다).
@@ -81,26 +119,27 @@ export function HalfReportModal({
     [log],
   );
   const rows = useMemo(() => buildHalfReportRows(events, { nameOf }), [events, nameOf]);
-  const score = useMemo(() => halfReportScore(events, baseline), [events, baseline]);
+  const logScore = useMemo(() => halfReportScore(events, baseline), [events, baseline]);
+  const score = half != null ? logScore : scoreOverride;
   // 팀 필터 = **우리 팀**이 기본이다(유저가 자기 팀 서사를 읽는 화면). 사이드를 모르면 양 팀 통합.
   const top = useMemo(
-    () => topRatedOfHalf(log ?? null, myTeamSide ? { team: myTeamSide } : {}),
-    [log, myTeamSide],
+    () => (half == null ? null : topRatedOfHalf(log ?? null, myTeamSide ? { team: myTeamSide } : {})),
+    [half, log, myTeamSide],
   );
 
-  const label = halfLabelOf(half);
+  const label = halfLabelOf(half ?? 1);
   // 팀을 모르는 이벤트에 홈 이름을 붙이지 않는다 — 없는 소속을 지어내면 그게 곧 오독이다.
   const teamNameOf = (team: string | undefined) =>
     team === "home" ? homeName : team === "away" ? awayName : "";
 
-  const cards: { id: string; title: string; body: ReactNode }[] = [
+  const cards: ReportStackCard[] = half == null ? [] : [
     {
       id: "timeline",
       title: `${label} 리포트`,
       body: (
-        <ol className={styles.rows} data-testid="half-report-timeline">
+        <ol className={styles.rows} data-testid={`${tid}-timeline`}>
           {rows.map((r) => (
-            <li key={r.key} className={styles.row} data-testid={`half-report-row-${r.tick}`} data-kind={r.kind}>
+            <li key={r.key} className={styles.row} data-testid={`${tid}-row-${r.tick}`} data-kind={r.kind}>
               <span className={styles.clock}>{r.clock}</span>
               <span className={styles.icon} aria-hidden="true">
                 {r.icon}
@@ -116,7 +155,7 @@ export function HalfReportModal({
             </li>
           ))}
           {rows.length === 0 && (
-            <li className={styles.empty} data-testid="half-report-empty">
+            <li className={styles.empty} data-testid={`${tid}-empty`}>
               {isLoading ? "기록 불러오는 중…" : `${label}에는 골·카드 기록이 없습니다`}
             </li>
           )}
@@ -130,18 +169,22 @@ export function HalfReportModal({
       id: "top-rated",
       title: `${label} 주요 인물`,
       body: (
-        <div className={styles.motm} data-testid="half-report-motm">
-          <span className={styles.motmName} data-testid="half-report-motm-name">
+        <div className={styles.motm} data-testid={`${tid}-motm`}>
+          <span className={styles.motmName} data-testid={`${tid}-motm-name`}>
             {nameOf(top.team, top.playerId) ?? top.playerId}
           </span>
           <span className={styles.motmTeam}>{teamNameOf(top.team)}</span>
-          <span className={styles.motmRating} data-testid="half-report-motm-rating">
+          <span className={styles.motmRating} data-testid={`${tid}-motm-rating`}>
             {top.rating.toFixed(1)}
           </span>
         </div>
       ),
     });
   }
+
+  // #424: 브릿지 카드는 **언제나 마지막**이다 = "무슨 일이 있었나 → 이제 뭐가 오나" 순서이고,
+  // 마지막 장의 CTA 가 곧 끝맺음 포인트다(설계 §3.2, 조정 포인트 §11-3).
+  if (extraCards?.length) cards.push(...extraCards);
 
   const [index, setIndex] = useState(0);
   const total = cards.length;
@@ -163,44 +206,50 @@ export function HalfReportModal({
       // 장이 바뀌면 새 카드로 포커스가 옮겨가도록 다시 마운트한다(스크린리더가 새 제목을 읽는다).
       key={current.id}
       onClose={onClose}
-      labelledBy="half-report-title"
+      labelledBy={`${tid}-title`}
       overlayClassName={styles.overlay}
       className={styles.stack}
-      testId="half-report"
-      overlayTestId="half-report-overlay"
-      initialFocus='[data-testid="half-report-next"]'
+      testId={tid}
+      overlayTestId={`${tid}-overlay`}
+      initialFocus={`[data-testid="${tid}-next"]`}
     >
       {Array.from({ length: behind }, (_, i) => (
         <div
           key={`behind-${i}`}
           className={`${styles.behind} ${i === 0 ? styles.behind1 : styles.behind2}`}
-          data-testid={`half-report-behind-${i + 1}`}
+          data-testid={`${tid}-behind-${i + 1}`}
           aria-hidden="true"
         />
       ))}
 
-      <div className={styles.card} data-testid="half-report-card" data-card={current.id}>
+      <div
+        className={`${styles.card} ${current.className ?? ""}`}
+        data-testid={`${tid}-card`}
+        data-card={current.id}
+      >
         <div className={styles.top}>
-          <span className={styles.kicker}>리포트</span>
+          <span className={styles.kicker}>{current.kicker ?? "리포트"}</span>
           {total > 1 && (
-            <span className={styles.pager} data-testid="half-report-pager">
+            <span className={styles.pager} data-testid={`${tid}-pager`}>
               {index + 1} / {total}
             </span>
           )}
         </div>
 
-        <h2 id="half-report-title" className={styles.title} data-testid="half-report-title">
+        <h2 id={`${tid}-title`} className={styles.title} data-testid={`${tid}-title`}>
           {current.title}
         </h2>
 
-        <p className={styles.meta} data-testid="half-report-score">
-          {homeName} {score.home} : {score.away} {awayName}
-        </p>
+        {score && (
+          <p className={styles.meta} data-testid={`${tid}-score`}>
+            {homeName} {score.home} : {score.away} {awayName}
+          </p>
+        )}
 
-        <ReportBody>{current.body}</ReportBody>
+        <ReportBody testId={tid}>{current.body}</ReportBody>
 
         {total > 1 && (
-          <div className={styles.dots} data-testid="half-report-dots">
+          <div className={styles.dots} data-testid={`${tid}-dots`}>
             {cards.map((c, i) => (
               <span
                 key={c.id}
@@ -212,8 +261,15 @@ export function HalfReportModal({
         )}
 
         <div className={styles.actions}>
-          <button type="button" className={styles.primary} data-testid="half-report-next" onClick={advance}>
-            {last ? "닫기" : "다음"}
+          <button
+            type="button"
+            className={styles.primary}
+            data-testid={`${tid}-next`}
+            /* 현재 장이 무엇인지 버튼에도 남긴다 — 계약이 "브릿지 CTA"를 접두 이름 없이 겨눌 수 있게. */
+            data-card={current.id}
+            onClick={advance}
+          >
+            {last ? (current.ctaLabel ?? "닫기") : "다음"}
           </button>
         </div>
       </div>
@@ -229,7 +285,7 @@ export function HalfReportModal({
  * 때만 켜고 **끝에 닿으면 끈다**(남아 있으면 그것대로 거짓 신호다). 골이 많이 난 하프면 목록이
  * 카드 높이를 넘는다 — 그때 접힌 것을 알 방법이 이것뿐이다.
  */
-function ReportBody({ children }: { children: ReactNode }) {
+function ReportBody({ children, testId }: { children: ReactNode; testId: string }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [more, setMore] = useState(false);
 
@@ -254,11 +310,11 @@ function ReportBody({ children }: { children: ReactNode }) {
   }, [measure, children]);
 
   return (
-    <div className={styles.bodyArea} data-more={more ? "true" : "false"} data-testid="half-report-body-area">
+    <div className={styles.bodyArea} data-more={more ? "true" : "false"} data-testid={`${testId}-body-area`}>
       <div
         ref={scrollRef}
         className={styles.body}
-        data-testid="half-report-body"
+        data-testid={`${testId}-body`}
         onScroll={measure}
         // 키보드만 쓰는 사용자도 본문을 내릴 수 있어야 한다(버튼 하나만 포커서블이면 갇힌다).
         tabIndex={0}

@@ -4,6 +4,7 @@ import { useAbandonMatch, useActiveMatch, useRetry, type MatchDetail } from "../
 import { ErrorToast } from "../common/ErrorToast";
 import { genWaitCopy } from "./match-logic";
 import { waitingSceneAt } from "./waiting-scenes";
+import { FlowStepper } from "./flow/FlowStepper";
 import styles from "./GenWaitPanel.module.css";
 
 interface GenWaitPanelProps {
@@ -101,6 +102,8 @@ export function GenWaitPanel({ match }: GenWaitPanelProps) {
       <p key={scene} className={styles.scene} data-testid="genwait-scene">
         {scene}
       </p>
+      {/* 대기형 브릿지(#424 B1·B3) = 이 화면의 **승격**이다. 위 문구(#382)는 그대로 두고 단계 정보만 더한다. */}
+      <FlowStepper state={match.state} auto={match.auto} />
       {canAbandon && (
         <button
           type="button"

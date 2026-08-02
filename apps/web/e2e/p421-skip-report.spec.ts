@@ -128,6 +128,48 @@ async function openMatch(page: Page, state: string, over: Partial<Harness> = {})
   return h;
 }
 
+/**
+ * ⚠️ **#424 가 스택의 마지막에 브릿지 카드를 더했다**(`docs/plan-v5/match-flow-bridge.md` §3.2:
+ * *"전반 종료(스킵함) : [전반 리포트][주요 인물][B2 브릿지]"*). 스킵 리포트를 **별도 레이어가
+ * 아니라 브릿지의 앞 카드**로 둔 결정이라, 여기 계약의 "닫기 = 클릭 한 번"이라는 전제만 바뀐다
+ * (리포트가 무엇을 말하는가 · 무대가 도는가 · 409 처리는 그대로다).
+ *
+ * 그래서 장 수를 세는 대신 **끝까지 넘긴다** — 카드가 몇 장이 되든(#403 평점 카드가 들어오면 3장)
+ * "닫으면 바로 다음 단계"라는 #421 의 요구는 이 헬퍼로 계속 검증된다.
+ */
+async function closeStack(page: Page) {
+  const dialog = page.getByTestId("half-report");
+  const card = page.getByTestId("half-report-card");
+  /*
+   * ⚠️ **먼저 떠 있는지 기다린다.** 스택은 스킵 응답이 온 뒤에 뜨므로, 이 헬퍼가 곧바로 `count()`
+   * 를 재면 아직 0 이고 아래 루프가 **한 번도 돌지 않은 채** 끝난다 — 그러면 정작 다음 단언에서
+   * "안 닫혔다"로 실패해 원인이 엉뚱한 곳을 가리킨다(실측: 그 상태로 test g 만 재현 실패했다).
+   */
+  await expect(dialog).toBeVisible();
+  for (let i = 0; i < 8 && (await dialog.count()) > 0; i++) {
+    const before = await card.getAttribute("data-card");
+    await page.getByTestId("half-report-next").click();
+    /*
+     * ⚠️ **클릭 횟수를 세지 말고 진행을 본다.** dev 서버는 `StrictMode` 라 컴포넌트가 마운트 →
+     * 언마운트 → 재마운트 되는데(실측 로그로 확인), 그 창에 들어간 클릭의 `setIndex` 는 버려지는
+     * 인스턴스에 적용돼 **사라진다**. 그러면 카드가 안 넘어가고, 횟수로 세는 루프는 조용히 끝난 뒤
+     * 엉뚱한 곳에서 실패한다(실제로 그렇게 났다). 진행이 없으면 다음 루프가 다시 누른다.
+     * (프로덕션 빌드에는 이중 마운트가 없다 — dev 하네스 한정 성질이다.)
+     */
+    await page
+      .waitForFunction(
+        (prev) => {
+          const c = document.querySelector('[data-testid="half-report-card"]');
+          return !c || c.getAttribute("data-card") !== prev;
+        },
+        before,
+        { timeout: 3000 },
+      )
+      .catch(() => undefined);
+  }
+  await expect(dialog).toHaveCount(0);
+}
+
 test.use({ viewport: { width: 390, height: 844 } });
 
 test.describe("#421 스킵 버튼 · 하프 리포트", () => {
@@ -206,8 +248,12 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await expect(page.getByTestId("stage-canvas")).toHaveCount(0);
     await expect(page.locator('[data-testid="viewer-canvas-half2"]')).toHaveCount(0);
 
-    // 닫으면 무대가 돌아온다(가드가 화면을 영구히 뺏지 않는다).
+    // 다음 장(브릿지)으로 넘어가도 여전히 무대는 없다 — 가드는 **스택 전체**에 걸린다.
     await page.getByTestId("half-report-next").click();
+    await expect(page.getByTestId("stage-canvas")).toHaveCount(0);
+
+    // 닫으면 무대가 돌아온다(가드가 화면을 영구히 뺏지 않는다).
+    await closeStack(page);
     await expect(page.getByTestId("stage-canvas")).toBeVisible();
   });
 
@@ -218,24 +264,36 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await expect(page.locator('[data-testid="viewer-canvas-half1"]')).toHaveCount(0);
   });
 
-  test("e. 평점 모듈(#403) 머지 전에는 스택이 1장이다 — 빈 카드·유령 페이저가 없다", async ({ page }) => {
+  test("e. 평점 모듈(#403) 머지 전에는 리포트 1장 + 브릿지 1장이다 — 빈 `주요 인물` 카드가 없다", async ({
+    page,
+  }) => {
+    /*
+     * ⚠️ 원래 이 계약은 "스택이 **1장**"이었다. #424 가 브릿지를 마지막 카드로 더하면서 2장이 됐고,
+     * 그건 설계가 의도한 변화다(§3.2). 그래도 **지키려던 것은 그대로다**: 평점 SoT(#403)가 오기
+     * 전에 `주요 인물` 카드가 빈 채로 끼어들지 않는다. 그래서 장 수가 아니라 **어떤 카드가 있나**를 센다.
+     */
     await openMatch(page, "FIRST_HALF");
     await page.getByTestId("match-skip").click();
     await expect(page.getByTestId("half-report")).toBeVisible();
 
-    await expect(page.getByTestId("half-report-pager")).toHaveCount(0);
-    await expect(page.getByTestId("half-report-dots")).toHaveCount(0);
-    await expect(page.getByTestId("half-report-behind-1")).toHaveCount(0);
-    await expect(page.getByTestId("half-report-next")).toHaveText("닫기");
+    await expect(page.getByTestId("half-report-pager")).toHaveText("1 / 2");
+    await expect(page.getByTestId("half-report-dots").locator("span")).toHaveCount(2);
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
+
+    await page.getByTestId("half-report-next").click();
+    // 두 번째 장은 **브릿지**다 — 평점 카드가 없으므로 `top-rated` 는 나타나지 않는다.
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
+    await expect(page.getByTestId("half-report-motm")).toHaveCount(0);
+    // 마지막 장의 CTA 가 곧 끝맺음이다(라벨은 브릿지가 상태에서 파생한다 — #424).
+    await expect(page.getByTestId("half-report-next")).toHaveText("감독시간으로");
   });
 
   test("f. 닫으면 바로 감독시간 — 기존 [후반 시작] 동선으로 이어진다", async ({ page }) => {
     await openMatch(page, "FIRST_HALF");
     await page.getByTestId("match-skip").click();
     await expect(page.getByTestId("half-report")).toBeVisible();
-    await page.getByTestId("half-report-next").click();
+    await closeStack(page);
 
-    await expect(page.getByTestId("half-report")).toHaveCount(0);
     await expect(page.getByTestId("resume-button")).toBeVisible();
     // 감독시간에는 스킵할 재생이 없다 — 버튼이 남아 있으면 409 를 부르는 손잡이가 된다.
     await expect(page.getByTestId("match-skip")).toHaveCount(0);
@@ -244,7 +302,7 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
   test("g. 돌려보는 화면(감독시간 `경기장면` 탭)에는 스킵 버튼이 없다", async ({ page }) => {
     await openMatch(page, "FIRST_HALF");
     await page.getByTestId("match-skip").click();
-    await page.getByTestId("half-report-next").click();
+    await closeStack(page);
     await expect(page.getByTestId("resume-button")).toBeVisible();
 
     await page.getByTestId("stage-tab-stage").click();
@@ -268,8 +326,7 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
       `테스터 ${HALF.home} : ${HALF.away} 봇 FC`,
     );
 
-    await page.getByTestId("half-report-next").click();
-    await expect(page.getByTestId("half-report")).toHaveCount(0);
+    await closeStack(page);
     await expect(page.getByTestId("result-page")).toBeVisible();
   });
 
