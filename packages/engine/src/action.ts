@@ -542,3 +542,98 @@ export function setPressUnitObserver(o: PressUnitObserver | null): void {
 export function pressUnitObserver(): PressUnitObserver | null {
   return activePressUnitObserver;
 }
+
+/**
+ * **수비 형태 관측**(#377 S3-B) — 공유 수비 라인 · 오픈플레이 레스트디펜스.
+ *
+ * S3-A 와 같은 처방을 쓴다: **배정한 쪽이 역할 라벨을 단다.** #378 이 벽/백업을 좌표로 되추론했다가
+ * 가짜 위반 566건을 만든 전례가 있고, 여기서는 그 위험이 더 크다 — "라인 멤버"와 "그냥 뒤에 있는
+ * 선수"는 좌표만으로 구분되지 않는다(둘 다 자기 진영에 서 있다).
+ *
+ * 네 종류를 흘린다(질문이 다르다):
+ *  - `kind:"line"` — 그 틱 그 팀의 라인 요약. **멤버 0/미달 틱도 나온다**(안 그러면 "라인이 안
+ *    잡힌 틱"이 표본에서 빠져 발화율을 과대평가한다 — S3-A `kind:"unit"` 과 같은 이유).
+ *  - `kind:"lineMember"` — 보정 전/후/목표 진행도. **`before`↔`after` 가 L2 의 직접 관찰량**이고,
+ *    `desired` 와의 차이가 `lineDiscipline` 이 실제로 걸렸는지를 말한다.
+ *  - `kind:"rest"` — 그 틱 그 팀의 잔류 배정 요약(요청 인원 vs 실제 배정).
+ *  - `kind:"restMember"` — 잔류 개인의 상한 적용 전/후. `capped` 가 **"상한이 물었나"** 의 직접 관찰량.
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type DefShapeSample =
+  | {
+      kind: "line";
+      tick: number;
+      side: string;
+      /** 라인 멤버 수. `minMembers` 미달이면 보정이 안 걸리고 이 값만 나온다. */
+      members: number;
+      /** 압박 유닛이 데려가 라인에서 빠진 인원(진단 — 멤버가 왜 적은지의 답). */
+      excludedByUnit: number;
+      /** 보정이 실제로 걸렸나(`enabled` · `minMembers` · `lineDiscipline>0` 전부 통과). */
+      applied: boolean;
+      /** 기준선 진행도(fixed, 자기 골 0). */
+      refProgFx: number;
+      /** 라인 높이 가감량(fixed) — `defensiveLineHeight` 슬라이더의 실권한. */
+      heightBiasFx: number;
+      /** 보정 **전** 멤버 진행도 산포(fixed, max−min). */
+      beforeSpreadFx: number;
+      /** 보정 **후** 산포(fixed). */
+      afterSpreadFx: number;
+    }
+  | {
+      kind: "lineMember";
+      tick: number;
+      side: string;
+      playerId: string;
+      /** 보정 전 목표 진행도(fixed). */
+      beforeProgFx: number;
+      /** 보정이 겨냥한 진행도(fixed) = 기준선 + 역할 오프셋. */
+      desiredProgFx: number;
+      /** 보정 후 목표 진행도(fixed). */
+      afterProgFx: number;
+      /**
+       * 이 틱 **실제 위치**의 진행도(fixed).
+       *
+       * ⚠️ 이게 없으면 이 계약이 **동어반복**이 된다 — 목표만 보면 "보정이 목표를 모았다"는 정의상
+       * 참이다. 실제로 답해야 하는 질문은 "그래서 **선수들이** 한 줄에 서는가"이고, 그건 위치로만
+       * 답할 수 있다(#377 M2 `wallClearM` 이 정확히 이 함정에 빠졌다).
+       */
+      posProgFx: number;
+    }
+  | {
+      kind: "rest";
+      tick: number;
+      side: string;
+      /** 가담도 매핑이 요청한 잔류 인원. */
+      want: number;
+      /** 실제로 잔류로 배정된 인원. */
+      assigned: number;
+      /** 그중 상한에 실제로 걸린 인원. */
+      capped: number;
+    }
+  | {
+      kind: "restMember";
+      tick: number;
+      side: string;
+      playerId: string;
+      /** 상한 적용 전 목표 진행도(fixed). */
+      beforeProgFx: number;
+      /** 적용 후(fixed). */
+      afterProgFx: number;
+      /** 상한이 실제로 물었나. */
+      capped: boolean;
+    };
+
+export type DefShapeObserver = (sample: DefShapeSample) => void;
+
+let activeDefShapeObserver: DefShapeObserver | null = null;
+
+/** 수비 형태 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setDefShapeObserver(o: DefShapeObserver | null): void {
+  activeDefShapeObserver = o;
+}
+
+/** 현재 활성 수비 형태 관측자(없으면 null). */
+export function defShapeObserver(): DefShapeObserver | null {
+  return activeDefShapeObserver;
+}

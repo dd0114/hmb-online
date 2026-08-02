@@ -1,34 +1,41 @@
-=== AC-kickoff: showcase(viewer, 골 많음) (engine@0.38.0-showcase, seed 27706472) ===
+=== AC-kickoff: showcase(viewer, 골 많음) (engine@0.39.0-showcase, seed 27706472) ===
 판정: 각 골 → 25틱 뒤 kickoff 이벤트 존재 + 킥오프틱 공=센터(52.5,34)·실점팀 소유 + 포메이션 t0 슬롯 복귀(테이커 제외, 허용오차 0.1m)
 
-총 골: 7
+총 골: 10
 #  goalTick  team  koTick  koEvt  ball(x,y)       소유    전dev(dwell)   후dev(kickoff)   판정
-1  41        away  66      O      (52.5,34.0)     home  17.48m        0.00m(21/21)    PASS
-2  118       away  143     O      (52.5,34.0)     home  2.33m         0.00m(21/21)    PASS
-3  460       away  485     O      (52.5,34.0)     home  27.25m        0.00m(21/21)    PASS
-4  525       home  550     O      (52.5,34.0)     away  2.45m         0.00m(20/20)    PASS
-5  1097      away  1122    O      (52.5,34.0)     home  2.32m         0.00m(21/21)    PASS
-6  1235      away  1260    O      (52.5,34.0)     home  17.93m        0.00m(21/21)    PASS
-7  1380      home  1405    O      (52.5,34.0)     away  2.27m         0.00m(20/20)    PASS
+1  89        away  114     O      (52.5,34.0)     home  22.06m        0.00m(21/21)    PASS
+2  131       home  156     O      (52.5,34.0)     away  2.53m         0.00m(20/20)    PASS
+3  495       home  520     O      (52.5,34.0)     away  4.53m         0.00m(20/20)    PASS
+4  654       away  679     O      (52.5,34.0)     home  2.43m         0.00m(21/21)    PASS
+5  694       home  719     O      (52.5,34.0)     away  2.37m         0.00m(20/20)    PASS
+6  755       home  780     O      (52.5,34.0)     away  11.70m        0.00m(20/20)    PASS
+7  899       away  924     O      (52.5,34.0)     home  2.53m         0.00m(21/21)    PASS
+8  940       home  965     O      (52.5,34.0)     away  2.46m         0.00m(20/20)    PASS
+9  1000      away  1025    O      (52.5,34.0)     home  18.40m        0.00m(21/21)    PASS
+10 1220      home  1245    O      (52.5,34.0)     away  2.45m         0.00m(20/20)    PASS
 
-후반 시작(tick 720): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=58.16m 후dev=0.00m(20/20) => PASS
+후반 시작(tick 720): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=0.00m 후dev=0.00m(20/20) => PASS
 
 개시(t0) 킥오프: team=home taker=H9 ball=(52.5,34.0) (t0 가 기준 슬롯)
 
 결과: ALL PASS  (전dev=세리머니 dwell 흩어짐 → 후dev≈0 = 포메이션 리셋 확인)
 
-=== AC-kickoff: real(default) (engine@0.38.0, seed 4815162342) ===
+=== AC-kickoff: real(default) (engine@0.39.0, seed 4815162342) ===
 판정: 각 골 → 25틱 뒤 kickoff 이벤트 존재 + 킥오프틱 공=센터(52.5,34)·실점팀 소유 + 포메이션 t0 슬롯 복귀(테이커 제외, 허용오차 0.1m)
 
-총 골: 5
+총 골: 9
 #  goalTick  team  koTick  koEvt  ball(x,y)       소유    전dev(dwell)   후dev(kickoff)   판정
-1  613       away  638     O      (52.5,34.0)     home  2.65m         0.00m(21/21)    PASS
-2  1056      away  1081    O      (52.5,34.0)     home  2.40m         0.00m(21/21)    PASS
-3  1265      away  1290    O      (52.5,34.0)     home  20.10m        0.00m(21/21)    PASS
-4  1581      away  1606    O      (52.5,34.0)     home  2.18m         0.00m(21/21)    PASS
-5  1888      away  1913    O      (52.5,34.0)     home  2.57m         0.00m(21/21)    PASS
+1  351       away  376     O      (52.5,34.0)     home  2.38m         0.00m(21/21)    PASS
+2  390       home  415     O      (52.5,34.0)     away  2.16m         0.00m(20/20)    PASS
+3  818       away  843     O      (52.5,34.0)     home  2.02m         0.00m(21/21)    PASS
+4  867       away  892     O      (52.5,34.0)     home  2.92m         0.00m(21/21)    PASS
+5  1244      away  1269    O      (52.5,34.0)     home  2.11m         0.00m(21/21)    PASS
+6  1666      home  1691    O      (52.5,34.0)     away  2.30m         0.00m(20/20)    PASS
+7  2057      away  2082    O      (52.5,34.0)     home  2.28m         0.00m(21/21)    PASS
+8  2357      away  2382    O      (52.5,34.0)     home  2.48m         0.00m(21/21)    PASS
+9  2403      away  2428    O      (52.5,34.0)     home  10.13m        0.00m(21/21)    PASS
 
-후반 시작(tick 1350): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=33.67m 후dev=0.00m(20/20) => PASS
+후반 시작(tick 1350): koEvt=O(away) ball=(52.5,34.0) 소유=away 전dev=35.33m 후dev=0.00m(20/20) => PASS
 
 개시(t0) 킥오프: team=home taker=H9 ball=(52.5,34.0) (t0 가 기준 슬롯)
 

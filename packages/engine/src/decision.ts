@@ -9,6 +9,7 @@ import { attackGoal, attackProgressX, defendGoal, distToAttackGoal, clampToPitch
 import { passOptions, nearestOpponent, pressureCount, pressureCountAt, laneClosest, laneDangerOn } from "./perception";
 import { aimErrorDeg, aimWithError, deliverySpeedFx, isLofted, overhitOut, passPowerFx, shotPowerFx } from "./kick";
 import { laneReadObserver, planReadObserver, pressUnitObserver } from "./action";
+import { holderRank } from "./teamplan";
 
 /**
  * decision — 행동 선택.
@@ -966,19 +967,10 @@ function cornerHolderRank(
   const count = attacking
     ? Math.round(cn.stayBackMax + (cn.stayBackMin - cn.stayBackMax) * commit)
     : Math.round(cn.leaveHighMin + (cn.leaveHighMax - cn.leaveHighMin) * commit);
-  if (count <= 0) return miss;
-  const mine = cornerGoScore(pitch, player, cn);
-  let ahead = 0;
-  for (const p of state.players) {
-    if (p.side !== player.side || p.isGK || p.id === player.id) continue;
-    if (isBallOwner(state, p)) continue;
-    const r = cornerGoScore(pitch, p, cn);
-    // 동률(예: LCB/RCB 가 슬롯·성향 모두 같음)은 idHash → id 로 안정 정렬.
-    const tie = p.idHash !== player.idHash ? p.idHash < player.idHash : p.id < player.id;
-    const better = r === mine ? tie : attacking ? r < mine : r > mine;
-    if (better && ++ahead >= count) return miss;
-  }
-  return { rank: ahead, count };
+  // #377 S3-B: 순위 매핑 자체는 **`teamplan.ts:holderRank` 로 일반화**했다(오픈플레이 레스트디펜스가
+  // 두 번째 소비자). 점수 함수·비교 순서·조기 종료가 한 글자도 바뀌지 않았으므로 이 이관은
+  // **비트 동일**이고, 골든 해시가 그것을 증명한다 — 증명이 안 되면 되돌린다는 것이 사전 합의였다.
+  return holderRank(state, player, count, attacking, (p) => cornerGoScore(pitch, p, cn));
 }
 
 

@@ -22,7 +22,14 @@ import { glueBallToOwner, advanceBall, kickBall } from "./ball";
 import { loftHangTicks } from "./kick";
 import { decideBallOwner, decideOffBall, assignPressUnit, pressRoleOf, speedStep } from "./decision";
 import { decideBallOwnerChain } from "./chain";
-import { applyRunOrders, clearIntents, computeTeamPlan, gcIntents } from "./teamplan";
+import {
+  applyDefensiveLine,
+  applyRestDefence,
+  applyRunOrders,
+  clearIntents,
+  computeTeamPlan,
+  gcIntents,
+} from "./teamplan";
 import {
   tryIntercept,
   tryTackle,
@@ -762,6 +769,23 @@ function stepTick(carry: Carry): void {
   // 팀 전체를 보는 계산이라 선수 루프 밖·틱당 1회 — `computeTeamPlan` 과 같은 규율(§5-1).
   // 아직 안 찬 세트피스(liveSp) 구간은 규칙기반 배치가 소유하므로 건너뛴다(#174/#185 재발 방지).
   if (!liveSp) applyRunOrders(state, config, pitch);
+
+  // --- 수비 형태(#377 S3-B): 공유 수비 라인 + 오픈플레이 레스트디펜스 ---
+  // ⚠️ **여기(decide 루프 뒤)인 것이 설계의 핵심**이다. 이 둘은 또 하나의 스프링이 아니라
+  // **제약**이라 `decideOffBall` 이 만든 목표를 입력으로 받아야 한다 — 마크·압박·roam·런이 정한
+  // 자리를 지우지 않고 "너무 나간 사람만 되돌린다". 앞에서 돌면 뒤따르는 항들이 전부 덮어써
+  // 조용한 no-op 이 되고 tsc 는 통과한다(M3-A ⓐ 의 교훈).
+  // 런 오더 **뒤**인 것도 의도다: "뒤에 남아라"가 "뛰어들어가라"를 이긴다.
+  // 세트피스(liveSp)·정지 구간은 규칙기반 배치가 소유하므로 건너뛴다(#176/#185/#307 재발 방지).
+  if (!liveSp) {
+    // 압박 유닛이 데려간 선수는 라인에서 뺀다 — 압박 담당의 그 틱 목표는 **공**이고 커버·지원은
+    // 이미 맡은 자리가 있다(S3-A). 라인으로 되당기면 그 웨이브를 그대로 되돌린다.
+    const unitBusy = new Set<SimPlayer>();
+    if (unit.presser) unitBusy.add(unit.presser);
+    for (const m of unit.members) unitBusy.add(m.player);
+    applyDefensiveLine(state, config, pitch, defSide, unitBusy);
+    applyRestDefence(state, config, pitch, state.possession);
+  }
 
   // --- act: 선수 이동 ---
   for (const p of state.players) {

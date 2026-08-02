@@ -33,7 +33,12 @@ import { measureDeadBallMotion } from "./deadball-motion";
  */
 
 const select = makeSelectData();
-const seed = REALISM_SEEDS[0]!;
+// #377 S3-B(engine@0.39.0) **베이스 시드 재선정** — 이 파일이 스스로 예고한 유지보수다
+// ("정지 창 안에 주입 가능한 틱이 없다 — 베이스 시드 재선정 필요"). 전개가 바뀌며 시드[0] 에서는
+// 임계 **아래**(7 m/tick) 주입이 재배치로 오분류됐다(선수 자신의 이동과 합쳐져 임계를 넘김).
+// 스캔 결과 시드[1] 이 네 조건(베이스 max < 임계 · 주입 틱 존재 · over 배제 · under 포착)을
+// 전부 만족한다. **임계·표본·단언은 한 글자도 안 건드렸다**(#377 M3-B 소유 계약).
+const seed = REALISM_SEEDS[1]!;
 const BASE: MatchLog = runMatch(
   seed,
   makeTacticalInput("H", seed),

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { TacticalInput } from "@hmb/shared";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
@@ -39,6 +40,16 @@ function hashes(mutate: (c: EngineConfig) => void): string[] {
   mutate(c);
   return seeds.map((s) => {
     const log = runMatch(s, makeTacticalInput("H", s), makeTacticalInput("A", s), select, c);
+    return log.tickSnapshots[log.tickSnapshots.length - 1]!.hash;
+  });
+}
+
+/** 노브 + **팀 지시**를 같이 바꾼 config 로 최종 해시들(조건부 LIVE 검정용). */
+function hashesWith(mutate: (c: EngineConfig) => void, patch: (t: TacticalInput) => TacticalInput): string[] {
+  const c = JSON.parse(JSON.stringify(defaultEngineConfig)) as EngineConfig;
+  mutate(c);
+  return seeds.map((s) => {
+    const log = runMatch(s, patch(makeTacticalInput("H", s)), patch(makeTacticalInput("A", s)), select, c);
     return log.tickSnapshots[log.tickSnapshots.length - 1]!.hash;
   });
 }
@@ -113,6 +124,26 @@ const LIVE: Knob[] = [
   // (레인 후보가 하나만 달라져도 그 수비수의 목표가 달라지고, 그 자리가 다음 경합을 바꾼다 —
   //  그래서 발화 빈도가 낮아도(수비수-틱의 ~4%) 레버성 판정이 견고하다.)
   { path: "vision.laneRead.enabled", mutate: (c) => { c.vision.laneRead.enabled = false; } },
+  // #377 S3-B 공유 수비 라인 + 오픈플레이 레스트디펜스. 12개 전부 3시드에서 해시가 움직이는 것을
+  // **등록 전에** 확인했다. `movement.lineDiscipline` 은 0.38.0 까지 **선언만 있고 소비자가 0**
+  // 이었고(0/0.5/1.0 이 3시드 해시까지 동일) 이 레지스트리에도 없어서 그 사실이 아무 데서도
+  // 부정되지 않았다 — 이 웨이브가 소비처를 만들고 여기 등록한다.
+  { path: "movement.lineDiscipline", mutate: (c) => { c.movement.lineDiscipline = 1; } },
+  { path: "movement.defLine.enabled", mutate: (c) => { c.movement.defLine.enabled = false; } },
+  { path: "movement.defLine.memberProgressMax", mutate: (c) => { c.movement.defLine.memberProgressMax = 0.5; } },
+  { path: "movement.defLine.minMembers", mutate: (c) => { c.movement.defLine.minMembers = 4; } },
+  { path: "movement.defLine.roleOffsetKeep", mutate: (c) => { c.movement.defLine.roleOffsetKeep = 1; } },
+  { path: "movement.defLine.blockLineRangeM", mutate: (c) => { c.movement.defLine.blockLineRangeM = 15; } },
+  { path: "movement.defLine.heightRangeX", mutate: (c) => { c.movement.defLine.heightRangeX = 0.1; } },
+  { path: "movement.defLine.refMode", mutate: (c) => { c.movement.defLine.refMode = "planLine"; } },
+  // `bandMode` 는 **밴드의 어느 쪽이 무는가**다. `"holdBack"`(앞으로 튀어나간 선수만 되돌림)은
+  // 응집을 거의 못 만든다(위치 산포 p90 23.77 → 20.75, 비단조) — 라인을 만드는 일의 대부분은
+  // **뒤처진 선수를 밀어 올리는 쪽**이 한다는 실측이고, 그래서 이 노브는 아블레이션 자산이다.
+  { path: "movement.defLine.bandMode", mutate: (c) => { c.movement.defLine.bandMode = "holdBack"; } },
+  { path: "movement.restDefence.enabled", mutate: (c) => { c.movement.restDefence.enabled = false; } },
+  { path: "movement.restDefence.countMin", mutate: (c) => { c.movement.restDefence.countMin = 5; } },
+  { path: "movement.restDefence.countMax", mutate: (c) => { c.movement.restDefence.countMax = 1; } },
+  { path: "movement.restDefence.lineCapProgress", mutate: (c) => { c.movement.restDefence.lineCapProgress = 1; } },
   { path: "vision.laneRead.readBase", mutate: (c) => { c.vision.laneRead.readBase = 0; } },
   { path: "vision.laneRead.readAttrSwing", mutate: (c) => { c.vision.laneRead.readAttrSwing = 1.2; } },
   { path: "vision.laneRead.readPeriodTicks", mutate: (c) => { c.vision.laneRead.readPeriodTicks = 25; } },
@@ -209,6 +240,66 @@ describe("#338 조건부 LIVE — 1대1 계열(#316 빈도 미달이라 상황�
     // 통째로 LIVE 로 올리고 이 주석을 지워라.
     expect(hashes((c) => { c.contest.oneOnOneXgMult = 1.01; })).toEqual(BASE);
   }, 120_000);
+});
+
+/**
+ * **조건부 LIVE** — #377 S3-B 레스트디펜스의 가담도·성향 매핑 3종.
+ *
+ * 셋 다 출하 픽스처에서 **비트 동일**이다. 이유는 노브가 죽어서가 아니라 **픽스처 값이 정확히
+ * 중립점**이기 때문이다:
+ *  - `commitTempoWeight` 는 `(tempo − 0.5)` 에 곱해지는데 픽스처 tempo 가 **정확히 0.5** 다 → 0 곱.
+ *  - `commitLineWeight` 는 `(defensiveLineHeight − 0.5) = 0.05` 라 기여가 미세하고, 인원이
+ *    `Math.round` 로 정수화되므로 반올림 경계를 못 넘는다(둘 다 3명).
+ *  - `playerOverrideWeight` 는 **순위를 뒤집을 때만** 발화하는데, 픽스처의 CB 는 이미 전진 성향이
+ *    낮아 가중치를 키우면 "남는다"가 **더 확실해질 뿐** 순서가 안 바뀐다.
+ *
+ * 그래서 **조건을 만들어 놓고** 레버성을 확인한다(1대1 계열과 같은 처방). 이건 게임 언어로도
+ * 의미가 있다 — 마지막 것은 *"이 센터백은 올라가라"* 라는 프롬프트가 잔류 선정을 실제로 뒤집는가다.
+ */
+describe("#377 S3-B 조건부 LIVE — 레스트디펜스 가담도·성향 매핑(픽스처 값이 중립점이라 조건을 만든다)", () => {
+  const withTeam = (mut: (t: TacticalInput["team"]) => TacticalInput["team"]) => (t: TacticalInput): TacticalInput => ({
+    ...t,
+    team: mut(t.team),
+  });
+  const lineHi = withTeam((t) => ({ ...t, defensiveLineHeight: 0.9 }));
+  const tempoHi = withTeam((t) => ({ ...t, tempo: 0.9 }));
+  /** 센터백(슬롯 2·3)에게 높은 전진 성향 = "이 CB 는 올라가라". */
+  const cbForward = (t: TacticalInput): TacticalInput => ({
+    ...t,
+    players: t.players.map((p, i) =>
+      i === 2 || i === 3 ? { ...p, behavior: { ...p.behavior, forwardRunFreq: 0.95 } } : p,
+    ),
+  });
+
+  it("commitLineWeight 는 레버다 — 라인 지시가 중립이 아니면 잔류 인원이 달라진다", () => {
+    expect(hashesWith((c) => { c.movement.restDefence.commitLineWeight = 3; }, lineHi)).not.toEqual(
+      hashesWith(() => {}, lineHi),
+    );
+  }, 120_000);
+
+  it("commitTempoWeight 는 레버다 — 템포가 정확히 0.5 가 아니면 발화한다", () => {
+    expect(hashesWith((c) => { c.movement.restDefence.commitTempoWeight = 3; }, tempoHi)).not.toEqual(
+      hashesWith(() => {}, tempoHi),
+    );
+  }, 120_000);
+
+  it("playerOverrideWeight 는 레버다 — 성향이 슬롯 순서를 뒤집을 수 있을 때 발화한다", () => {
+    expect(hashesWith((c) => { c.movement.restDefence.playerOverrideWeight = 3; }, cbForward)).not.toEqual(
+      hashesWith(() => {}, cbForward),
+    );
+  }, 120_000);
+
+  it("⚠️ 출하 픽스처에서는 셋 다 비트 동일이다 — 죽은 것이 아니라 **중립점**이라는 기록", () => {
+    // 이 단언이 깨지면(달라지면) 픽스처 슬라이더 값이 중립점을 벗어났다는 뜻이다 → 그때 위
+    // LIVE 로 올리고 이 블록을 지워라.
+    for (const mut of [
+      (c: EngineConfig) => { c.movement.restDefence.commitLineWeight = 3; },
+      (c: EngineConfig) => { c.movement.restDefence.commitTempoWeight = 3; },
+      (c: EngineConfig) => { c.movement.restDefence.playerOverrideWeight = 3; },
+    ]) {
+      expect(hashes(mut)).toEqual(BASE);
+    }
+  }, 180_000);
 });
 
 describe("#338 롤백 경로에서는 죽은 노브가 살아난다 (지우면 안 되는 이유)", () => {

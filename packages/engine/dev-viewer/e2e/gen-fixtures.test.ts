@@ -11,7 +11,7 @@ import { demoSelect, makeTacticalInput } from "../../src/fixtures";
 // 없을 수 있다. 이 시드(real config)는 셋 다 포함하므로, 그 타입 계약검증용 풀해상도 로그를
 // e2e/fixture-real.json 으로 만든다. (생성물은 gitignore.)
 const here = dirname(fileURLToPath(import.meta.url));
-const SEED = "1000000693";
+const SEED = "1000001263";
 // ⚠️ 매치 전개가 바뀌면 **아래 5조건 전부**로 재스캔한다(gameqa 체크리스트, #186 이 스캐너 체크인 소유):
 //   ①offside ≥1  ②card ≥1  ③penalty ≥1  ④#42 패턴(세이브→라이브체인→빗나감) 포함
 //   ⑤**그 체인의 스팬이 짧을 것** — ④만 맞고 스팬이 길면 e2e 가 그 구간을 실제 재생하다 타임아웃한다
@@ -88,6 +88,15 @@ const SEED = "1000000693";
 //     …434 의 조합이 소멸: 이 파일의 ①offside 단언이 실패했다).
 //   재스캔(`--count 1500 --max-span 25`) 후보 **6개**:
 //     **1000000020:12**(save@569) · …1245:16 · …184:19 · …223:23 · …461:24 · …1472:24.
+//   → **…1263**(#377 S3-B · engine@0.39.0 — 공유 수비 라인 + 오픈플레이 레스트디펜스. 수비
+//     오프더볼 목표와 공격 시 잔류 배치가 함께 바뀌며 …020 의 ④체인이 소멸: `restarts.spec.ts:95`
+//     가 "체인 없음"으로 실패했다).
+//   ⚠️ **①②③만 보고 고르지 마라** — 이 웨이브가 그 함정에 한 번 빠졌다. 세 타입만 맞는 시드
+//     (…111)를 골랐다가 ④체인이 없어 playwright 만 빨갛게 됐다. 반드시 **스캐너**를 쓴다:
+//     `npx tsx packages/engine/dev-viewer/e2e/scan-fixture-seed.mjs --count 1500 --max-span 25`
+//     (⚠️ `node` 로는 안 돈다 — .ts 를 import 하므로 `npx tsx` 로 실행한다).
+//   재스캔(`--count 1500 --max-span 25`) 후보 **6개**(스팬):
+//     **1000001263:13**(save@1754) · …1485:14 · …240:19 · …572:20 · …883:21 · …1276:24.
 // ⚠️ 이 시드들 중 `shot:one_on_one` 을 가진 것은 **하나도 없다** — chain 코어가 one_on_one
 //    판정 자체를 갖고 있지 않기 때문이다(decision.ts 에만 있고 chain.ts 에는 없다).
 //    상세는 shot-outcomes.spec.ts 의 test.fail 주석.

@@ -64,7 +64,8 @@ const CENTER_Y = config.pitch.height / 2; // 34
 //     시드 29 에서 페널티가 소멸). 재스캔(1~200): PK 보유 시드 **8개** —
 //     44(PK1·골5) · 51(1·6) · 105(1·6) · 108(1·6) · 157(1·8) · **179(1·11)** · 189(1·4) · 195(1·4).
 //     179 는 골 11 로 표본이 가장 넉넉하다.
-const PK_SEED = "209";
+// #377 S3-B(0.39.0): 전개가 바뀌며 209 에서 PK 가 사라졌다 → 재스캔(후보 15·23·199·202·210·285).
+const PK_SEED = "15";
 
 function snapByTick(log: MatchLog): Map<number, TickSnapshot> {
   return new Map(log.tickSnapshots.map((s) => [s.tick, s]));
