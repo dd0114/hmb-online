@@ -1,0 +1,24 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`S3-B L3 — 결과 지표 후보 4종은 **게이트가 아니다** (무신호를 관측 기록으로 박제한다) > 후보 4종의 사다리 반응을 **스냅샷으로 기록**한다 — 게이트가 아니라 관측 기록이다 1`] = `
+{
+  "lineDiscipline=0": {
+    "behindLinePossPct": 55.91,
+    "concededShotDistP50M": 17.65,
+    "lineStepMeanM": 1.86,
+    "offsideLineSdM": 11.21,
+  },
+  "lineDiscipline=0.5": {
+    "behindLinePossPct": 52.92,
+    "concededShotDistP50M": 17.62,
+    "lineStepMeanM": 1.95,
+    "offsideLineSdM": 11.45,
+  },
+  "lineDiscipline=1": {
+    "behindLinePossPct": 51.24,
+    "concededShotDistP50M": 17.68,
+    "lineStepMeanM": 1.99,
+    "offsideLineSdM": 13.66,
+  },
+}
+`;
