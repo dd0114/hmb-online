@@ -917,10 +917,40 @@ describe("평점 — 계수는 RATING_WEIGHTS 한 곳에만 있다", () => {
     expect(at(bump((w) => { w.discipline.foul += 0.5; }))).toBeGreaterThan(ref);
     expect(at(bump((w) => { w.position.MF.attack += 0.5; }))).toBeGreaterThan(ref);
     expect(at(bump((w) => { w.position.MF.defence += 0.5; }))).toBeGreaterThan(ref);
-    // 선방률이 기준선보다 높은 표본이라(4선방 2실점) 스케일을 키우면 올라간다.
-    expect(at(bump((w) => { w.keeper.saveRateScale += 1; }))).toBeGreaterThan(ref);
-    // 기준선을 올리면 같은 성적이 상대적으로 나빠진다.
-    expect(at(bump((w) => { w.keeper.expectedSaveRate += 0.1; }))).toBeLessThan(ref);
+    /**
+     * ⚠️ **선방률 두 노브는 위 `line`(4선방 2실점) 위에서 재면 안 된다 — 세 번째 지뢰였다.**
+     *
+     * 기여의 부호는 `shrunk − E = (saves − E·faced) / (faced + prior)` 라 **생 선방률 vs
+     * `expectedSaveRate`** 하나로 정해진다(`priorFaced` 와 무관하다). `line` 의 생 선방률은
+     * 4/6 = **0.667** 이라, hero 가 `expectedSaveRate` 를 **실축값 0.70** 으로 올리는 순간
+     * 그 표본이 "기준선보다 잘한 키퍼"가 아니게 되어 `saveRateScale` 을 키워도 평점이
+     * **안 오른다** — `E = 0.7` 에서 두 팔이 `9.6` 대 `9.6` 으로 붙는다(실측).
+     * ⚠️ 그 red 구간은 **단조롭지 않다** — 표시 반올림(0.1) 경계에 걸리기 때문에 출하 0.5 에서
+     * 겨우 **0.011** 만 올려도(`E = 0.511`) 이미 한 번 red 가 나고, `E ≥ 0.64` 부터는 계속 red 다
+     * (0.5~0.8 을 0.001 간격으로 훑어 218/301 지점이 red). 즉 "여유가 0.075 있다"가 아니라
+     * **여유가 있다고 말할 수 없는 자리**였다.
+     * 그런데 `expectedSaveRate 0.5` 는 실측값이고 **실축 ~0.70 이 아니라는 것이 hero 조정
+     * 포인트로 명시돼 있다** = 가장 자연스러운 첫 조정이 게이트를 red 로 만든다.
+     * 조정하면 깨지는 계약은 신호가 아니라 지뢰다(#403 W1f minor-1 — W1d minor-1 ·
+     * W1e 의 `priorFaced` 와 **같은 부류의 세 번째**다).
+     *
+     * 그래서 **무실점 표본**으로 옮긴다: 생 선방률 1.0 은 `expectedSaveRate` 가 무엇이든
+     * (1.0 이라는 퇴화값이 아닌 한) 기준선보다 높다. 그리고 그 전제를 추론으로 두지 않고
+     * **계약이 스스로 단언**한다 — 전제가 깨지면 방향 단언이 아니라 전제 줄이 먼저 말한다.
+     * `saveRateScale` 증분을 크게 잡는 이유는 표시 반올림(0.1)이 사다리를 삼키지 않게 하려는
+     * 것뿐이다(아래 `priorFaced` 사다리가 `saveRateScale = 10` 을 주입하는 것과 같은 이유).
+     */
+    const shutout = blank({ saves: 6, goalsConceded: 0 });
+    const atGk = (w: RatingWeights): number => ratingWithWeights(shutout, "MF", w);
+    const gkRef = atGk(UNCLAMPED);
+    expect(
+      shutout.saves / (shutout.saves + shutout.goalsConceded),
+      "전제: 표본이 기준선보다 잘한 키퍼여야 `saveRateScale` 의 방향이 정의된다",
+    ).toBeGreaterThan(RATING_WEIGHTS.keeper.expectedSaveRate);
+    expect(atGk(bump((w) => { w.keeper.saveRateScale += 5; }))).toBeGreaterThan(gkRef);
+    // 기준선을 올리면 같은 성적이 상대적으로 나빠진다. 이 방향은 표본 선방률과 **무관하게**
+    // 성립한다 — E 에 대한 기울기가 `−faced/(faced + prior) · scale` 로 항상 음수다.
+    expect(atGk(bump((w) => { w.keeper.expectedSaveRate += 0.1; }))).toBeLessThan(gkRef);
     // 옐로/레드는 이 표본에 없다 — 있는 표본으로 따로 건다(무발화 노브 방지).
     const carded = blank({ yellowCards: 1 });
     expect(ratingWithWeights(carded, "MF", bump((w) => { w.discipline.yellow += 0.5; })))
@@ -962,6 +992,13 @@ describe("GK 평점 = 선방률 축 — 일한 양과 무관한 상수가 아니
   /**
    * 소표본 수축 — 유효슛 2개짜리 하프에서 선방률이 0%/100% 로 튀는 것을 막는다.
    * **같은 비율이면 표본이 클수록 기준선에서 멀어야** 한다(확신이 커진 것이니까).
+   *
+   * ⚠️ **이름이 말하는 것을 그대로 재고 있지는 않다 — 다음 사람이 오해하지 마라**(#403 W1f 기록).
+   * 이 단언을 성립시키는 힘의 상당 부분은 수축이 아니라 **볼륨 항**(`saveVolume`/`goalConceded`)
+   * 과 상한 클램프다: 볼륨 항을 0 으로 만들면 `priorFaced = 0` 에서 `2.8 == 2.8` 로 red 가 된다
+   * (출하 `priorFaced = 4` 에서는 그래도 통과한다 — 그래서 지금은 무해하다).
+   * **수축 자체**를 재는 계약은 아래 "`priorFaced` 가 그 수축의 세기다" describe 이고, 그쪽이
+   * 이 축을 덮는다. 여기는 W1f 스코프 밖이라 **재작성하지 않았다**(주석만).
    */
   it("표본이 얇을수록 기준선 쪽으로 당겨진다", () => {
     const small = computeRating(gk(2, 0), "GK") - B; // 유효슛 2, 100%
@@ -1062,13 +1099,20 @@ describe("GK 평점 = 선방률 축 — 일한 양과 무관한 상수가 아니
    * 출하값 사실 게이트였다(= 0 으로 내리면 red = 지뢰).
    *
    * 실은 그 등가가 **모든 `priorFaced ≥ 0` 에서** 참이다:
-   *  - `prior > 0` → `faced = 0` 에서 `shrunk = (0 + prior·E)/(0 + prior) = E` → 기여 정확히 **0**.
+   *  - `prior > 0` → `faced = 0` 에서 `shrunk = (0 + prior·E)/(0 + prior) = E` → 기여 **0**.
    *  - `prior = 0` → `denom = faced` 라 두 조건이 **문자 그대로 같다**.
    * 그래서 값을 보지 않고 그 등가 자체를 건다 — "유효슛을 상대한 적 없는 선수에게 이 축은
-   * 정확히 0 을 준다, `priorFaced` 가 무엇이든". 가드를 `if (true)` 로 무력화하면
+   * 0 을 준다, `priorFaced` 가 무엇이든". 가드를 `if (true)` 로 무력화하면
    * `prior = 0` 팔에서 `0/0 = NaN` 이 되어 여기서 걸린다(NaN 은 clamp 를 통과한다).
+   *
+   * ⚠️ **"정확히 0"은 아니다 — 이 계약이 재는 것은 표시값이다**(#403 W1f minor-2).
+   * `prior·E / prior` 는 부동소수에서 `E` 로 정확히 돌아오지 않는 조합이 있다(실측 20,200 쌍 중
+   * **2,237 = 11.1%**, 최악 `prior 3 · E 0.7` → `0.6999999999999998`). 여기서 태우는
+   * `E = 0.5` + `prior [0,1,4,16]` 은 전부 float-exact 라 잔차가 **아예 없고**, 그 밖의 조합도
+   * `Math.round(x * 10) / 10` 이 흡수한다(141,400 조합에서 표시 위반 0).
+   * 그래서 단언은 `toBe(w.base)` = **표시 동일성**이다.
    */
-  it("분모 가드는 `priorFaced` 값과 무관하게 옳다 — faced = 0 이면 기여가 정확히 0", () => {
+  it("분모 가드는 `priorFaced` 값과 무관하게 옳다 — faced = 0 이면 표시 기여가 0", () => {
     for (const prior of [0, 1, 4, 16]) {
       const w = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
       w.keeper.priorFaced = prior;

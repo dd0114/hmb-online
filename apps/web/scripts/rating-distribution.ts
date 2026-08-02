@@ -207,10 +207,20 @@ export function hashSources(root: string): string {
  *
  * ⚠️ **범위는 `packages/engine/src/**` 하나다 — 그 이상으로 읽지 마라**(#403 W1e minor-d).
  * 문구가 그냥 *"엔진이 바뀌면"* 이라 `packages/shared/**`(직렬화 계약)까지 덮는 것처럼 읽혔는데
- * **안 덮는다.** 지금은 무해하다 — shared 는 zod 스키마·`clamp` 뿐이고 **시뮬 수식이 없으며**
- * 계약 프리즈 대상(루트 CLAUDE.md §10)이라 표본을 조용히 움직일 경로가 아니다.
- * 그 전제가 깨지면(shared 에 수치 로직이 생기면) 여기에 `hashSources(SHARED_SRC_DIR)` 를
- * **더해야 한다** — 문구만 넓히지 말고.
+ * **안 덮는다.** 지금은 무해하다 — 다만 ⚠️ **그 근거가 "shared 에 수치 로직이 없다"가 아니다**
+ * (#403 W1f minor-3, 종전 문구 정정). 실측하면 `packages/shared/src` 는 `.ts` **1,967줄**
+ * (비테스트 1,158줄)이고 `growth.ts`(138) · `formation.ts`(117, `FORMATION_BASE_POSITIONS` 보유) ·
+ * `tactical-patch.ts`(235) · `match-clock.ts`(130) 처럼 **수치 로직이 이미 들어 있다.**
+ *
+ * 진짜(그리고 더 강한) 근거는 **이 하네스의 경로가 그것을 실행하지 않는다**는 것이다 —
+ * 위 shared import 는 `import type` 이라 컴파일에 지워지고, 표본을 만드는
+ * `packages/engine/src` 도 **비테스트 47파일 전수에서 `@hmb/shared` 값 import 가 0건**이다
+ * (전부 `import type`). 실행되지 않는 코드는 표본을 움직일 수 없다.
+ *
+ * 그러니 트리거는 *"shared 에 수치 로직이 생기면"* 이 **아니다**(그건 이미 충족돼 있어서
+ * 불필요한 변경을 부른다). **`packages/engine/src` 나 `player-stats.ts` 가 `@hmb/shared` 를
+ * 값으로 import 하기 시작하면** — 그때 여기에 `hashSources(SHARED_SRC_DIR)` 를 **더해야 한다**.
+ * 문구만 넓히지 말고.
  */
 let engineSrcHashMemo: string | null = null;
 function engineSourceHash(): string {
