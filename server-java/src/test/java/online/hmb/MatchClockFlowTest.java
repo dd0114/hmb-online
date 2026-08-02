@@ -93,7 +93,13 @@ class MatchClockFlowTest extends MatchTestBase {
         assertThat(((Number) clock.get("halftimeMs")).longValue()).isEqualTo(HALFTIME_MS);
         assertThat(clock.get("seekForwardBlocked")).isEqualTo(true);
 
-        // 창 = kickoffAt .. kickoffAt + halfRealMs (AC-W3-2/3)
+        // 창이 **열리는 순간**의 값 = kickoffAt .. kickoffAt + halfRealMs (AC-W3-2/3).
+        //
+        // ⚠️ 이 단언의 의도는 "스위퍼가 늦게 돌아도 창 계산에 누적 오차가 없다"이지 <b>"창은 끝까지
+        // 이 길이로 남는다"가 아니다</b>. #421 스킵({@code POST /api/matches/{id}/skip})은 유저 요청으로
+        // 이 창을 **앞으로 당긴다** — 당기는 방향만, 그리고 phase CAS 아래에서. 그 표본은 이 클래스가
+        // 아니라 {@code MatchSkipTest}(당김·되감기 금지·경합·보상 1회)가 소유한다. 여기서 "당길 수
+        // 없다"까지 읽어 버리면, 스킵을 지운 변이체가 이 단언을 근거로 통과한다.
         Instant start = Instant.parse((String) clock.get("phaseStartAt"));
         Instant end = Instant.parse((String) clock.get("phaseEndsAt"));
         assertThat(Duration.between(start, end).toMillis()).isEqualTo(HALF_REAL_MS);
@@ -110,6 +116,11 @@ class MatchClockFlowTest extends MatchTestBase {
 
     // ── T-W2-1: 후반 앞당기기 금지 + 전반 중 사전입력 허용 ────────────────
 
+    /**
+     * ⚠️ #421 이후에도 {@code /resume} 은 전반에서 409 다 — 스킵은 <b>다른 문</b>이다
+     * ({@code /skip} + 바디 phase CAS + 롤백 스위치). "전반에서 후반 잡을 바로 큐잉한다"는 전이는
+     * 여전히 없고, 스킵은 재생 창을 닫아 <b>기존 만료 전이</b>가 밟게 할 뿐이다.
+     */
     @Test
     void resumeIsRejectedDuringFirstHalfButPreInputIsAllowed() {
         String token = setupUserWithDeck("clk_pre");

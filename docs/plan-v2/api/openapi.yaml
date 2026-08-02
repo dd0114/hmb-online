@@ -622,7 +622,14 @@ paths:
       operationId: resumeMatch
       summary: 후반 시작 — half2 AI 잡 enqueue(전반 요약 컨텍스트 포함), HALFTIME → GEN2
       description: |
-        허용 상태 = **HALFTIME 만**. FIRST_HALF 에서 호출하면 409 — 후반 앞당기기는 금지다(P4-D1).
+        허용 상태 = **HALFTIME 만**. FIRST_HALF 에서 호출하면 409 — 이 엔드포인트로 후반 잡을
+        앞당겨 큐잉하는 것은 계속 금지다(P4-D1).
+
+        ⚠️ **#421 스킵과의 관계**: 재생 장면을 건너뛰고 싶으면 `POST /api/matches/{id}/skip` 이다.
+        스킵은 "후반을 앞당기는 전이"가 아니라 **재생 창을 닫는 것**이고, 그 뒤는 아래에 적힌
+        만료 전이가 그대로 밟는다(전이 엣지 신설 0). 즉 P4-D1 이 금지한 것 중 **재생 창을 유저가
+        닫는 것**만 hero 지시로 열렸고(롤백 스위치 `hmb.match.skip.enabled`), `/resume` 의 상태
+        규칙은 한 줄도 바뀌지 않았다.
 
         감독시간(`clock.phaseEndsAt`)이 만료되면 **서버가 같은 전이를 자동 수행**한다
         (`hmb.match.clock.auto-resume-on-expiry`). 이때 하프타임 프롬프트가 없으면 **전반 인풋이
@@ -634,6 +641,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MatchDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/InvalidState"
+
+  /api/matches/{id}/skip:
+    parameters:
+      - $ref: "#/components/parameters/MatchId"
+    post:
+      tags: [matches]
+      operationId: skipMatchPhase
+      summary: 경기 스킵 — 재생 중인 하프의 창을 지금으로 당긴다 (#421)
+      description: |
+        **허용 상태** = `FIRST_HALF` · `SECOND_HALF`(= 재생 창이 열려 있는 단계). 그 외는 **409**.
+
+        **새 상태 전이는 없다.** 서버는 `phase_ends_at` 을 `now` 로 **당기기만** 하고, 그 자리에서
+        **기존 만료 전이**를 밟는다 — 전반 스킵이면 감독시간 개시(오토 #249 면 같은 체인으로 후반
+        재생까지), 후반 스킵이면 종료·정산. 응답은 **전이 후** `MatchDetail`(새 `clock` 포함)이다.
+        스위퍼 주기(1s)를 기다리지 않는 이유는 "닫으면 바로 다음"이 이 기능의 요구이기 때문이다.
+
+        **바디 `phase` 는 필수이고 CAS 키다.** 서버는 `UPDATE ... WHERE state = :phase` 로만 창을
+        당긴다. 전반 막바지 스킵과 스위퍼의 감독시간 개시가 1초 안에 겹칠 수 있는데, phase 가 없으면
+        재전송 한 번이 **다음 단계를 통째로 날린다**. 그래서 지금 도는 단계와 다른 phase 는 409 다
+        (이미 전이된 뒤의 재전송도 마찬가지 — 조용한 200 을 주지 않는다).
+
+        **되감기 불가**: 이미 지난 창은 당기지 않는다(`AND phase_ends_at > now`). 창을 **늘리는**
+        방향으로는 이 API 를 쓸 수 없다 — 지는 경기의 시간벌기 차단.
+
+        **결정론 무영향**: 하프 로그·`resumeState`·`lastHash` 는 창이 열리기 **전에** 확정되고
+        `phase_ends_at` 은 시뮬 입력 어디에도 들어가지 않는다. 스킵으로 결과가 달라질 경로는 0개다.
+
+        **보상**: 후반 스킵의 정산은 기존 경계 CAS 를 그대로 타므로 **정확히 1회**다.
+
+        운영 스위치 `hmb.match.skip.enabled=false` 면 **409**(창 무접촉) = P4-D1 원 규칙으로 롤백.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phase]
+              properties:
+                phase:
+                  type: string
+                  enum: [FIRST_HALF, SECOND_HALF]
+                  description: 유저가 지금 보고 있는 단계. 현재 상태와 다르면 409.
+      responses:
+        "200":
+          description: OK — 전이 후 매치 상태(clock 포함)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchDetail"
+        "400":
+          description: phase 누락 또는 라이브 단계가 아닌 값. code=VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":

@@ -20,13 +20,16 @@ public class MatchController {
     private final MatchOrchestrator orchestrator;
     private final MatchClockService clockService;
     private final MatchLockService lockService;
+    private final MatchSkipService skipService;
 
     public MatchController(MatchService matchService, MatchOrchestrator orchestrator,
-                           MatchClockService clockService, MatchLockService lockService) {
+                           MatchClockService clockService, MatchLockService lockService,
+                           MatchSkipService skipService) {
         this.matchService = matchService;
         this.orchestrator = orchestrator;
         this.clockService = clockService;
         this.lockService = lockService;
+        this.skipService = skipService;
     }
 
     /**
@@ -144,6 +147,27 @@ public class MatchController {
         orchestrator.enqueueHalf(id, 2);
         return ResponseEntity.status(HttpStatus.ACCEPTED)
                 .body(matchService.toDetail(matchService.getOwned(userId, id)));
+    }
+
+    /** 스킵 바디(#421) — 필수. 유저가 지금 보고 있다고 주장하는 단계. */
+    public record SkipRequest(String phase) {
+    }
+
+    /**
+     * 경기 스킵 (#421) — 재생 중인 하프의 창을 <b>지금으로 당긴다</b>. 새 전이 엣지는 없다: 창을 닫고
+     * 그 자리에서 기존 만료 전이를 밟아(감독시간 개시 / 종료·정산) <b>전이 후</b> 상태를 돌려준다.
+     * "닫으면 바로 후반"이 성립하려면 스위퍼 주기(1s)를 기다려선 안 되기 때문에 무거운 전이도 여기서
+     * 끝낸다({@link MatchClockService#advanceDue} — 조회 경로가 쓰는 가벼운 버전이 아니다).
+     *
+     * <p>바디 {@code phase} 는 <b>필수</b>고 CAS 키다 — 이유·계약은 {@link MatchSkipService} 참고.
+     * 롤백 스위치 = {@code hmb.match.skip.enabled}(false 면 409).
+     */
+    @PostMapping("/api/matches/{id}/skip")
+    public MatchDetail skip(@RequestAttribute("userId") String userId,
+                            @PathVariable("id") String id,
+                            @RequestBody(required = false) SkipRequest request) {
+        skipService.skip(userId, id, request == null ? null : request.phase());
+        return matchService.toDetail(matchService.getOwned(userId, id));
     }
 
     public record AutoRequest(Boolean auto) {
