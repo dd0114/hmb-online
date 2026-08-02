@@ -267,6 +267,34 @@ class MissionDailyTest extends MatchTestBase {
                 .as("오늘 미션이 대신 밀렸다").isPositive();
     }
 
+    /**
+     * <b>{@code finishedAt} 파라미터가 권위다 — 주변 시계가 아니라.</b>
+     *
+     * <p>{@link MissionFinishHookWiringTest} 가 "호출자가 <b>종료 시각</b>을 넘긴다"를 지키고, 이건
+     * "서비스가 <b>넘겨받은 값</b>을 쓴다"를 지킨다. 둘이 붙어야 §6.1 의 날짜 앵커가 완전히 박힌다.
+     *
+     * <p>⚠️ 이 계약이 없으면 {@code dateOf(finishedAt)} → {@code today()} 변이가 <b>아무 테스트도
+     * 죽이지 않는다</b>(독립검증 minor-3) — 유일 호출자가 {@code now()} 를 넘기니 값이 같아서다.
+     * 그 상태에선 <b>파라미터가 장식</b>이고, 나중에 재정산 도구·백필처럼 "지금"이 아닌 시각으로
+     * 부르는 두 번째 호출자가 생기는 순간 조용히 오늘 미션을 민다.
+     */
+    @Test
+    void settleAnchorsToTheGivenFinishTimeNotToWhateverTimeItIsNow() {
+        String uid = user("mis_param");
+        NOW.set(BEFORE_MIDNIGHT);
+        String yesterday = seed(uid, "2026-08-02", 1, "away_play_3");
+        fillOtherSlot(uid, "2026-08-02", "away_win_3");
+
+        // 시계는 이미 다음 날인데, **08-02 에 끝난 경기**를 지금 정산한다.
+        NOW.set(AFTER_MIDNIGHT);
+        missionService.settle(Ulid.next(), uid, "WIN", 1, 0, true, BEFORE_MIDNIGHT);
+
+        assertThat(progressOf(yesterday)).as("넘겨받은 종료일(08-02) 미션이 밀린다").isEqualTo(1);
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM daily_missions WHERE user_id = ? AND day = ?")
+                .params(uid, "2026-08-03").query(Long.class).single())
+                .as("'지금'(08-03) 미션은 만들어지지도 않는다 — 그 경기는 어제 것이다").isZero();
+    }
+
     // ── 규칙별 판정 ──────────────────────────────────────────────────────
 
     /** 출전형은 승패와 무관하게 센다(패배도 "치른 경기"다). */
