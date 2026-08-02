@@ -228,26 +228,67 @@ describe("#407 N4 — hold EV 에 확실한 슛(1대1) 예외", () => {
     expect(on.oneOnOnePct, label).toBeGreaterThan(off.oneOnOnePct * 1.5);
   });
 
-  it("출하 기본에서는 거의 중립이다 (볼륨·박스 편중을 흔들지 않는다)", () => {
+  /**
+   * 출하 기본 짝 대조(예외 off vs on) — **두 `it` 이 공유한다**.
+   *
+   * ⚠️ **왜 `it` 을 둘로 쪼갰나**(#407 ⑦ 독립 검증 M2). 원래 두 축(볼륨·박스 중립 / 1대1 바닥
+   * 가드)이 **한 `it` 안**에 있었고, 첫 단언 `|Δshots| < 1.0` 이 실패하면서 vitest 가 거기서
+   * `it` 을 끝내 **1대1 가드가 한 번도 실행되지 않았다** — 직전 웨이브(N1+N4)가 독립 검증
+   * major-1 수습으로 넣은 회귀 감시 계약이 **한 웨이브 만에 조용히 무력화**된 것이다.
+   * 분리는 **임계 완화가 아니라 실행 복원**이다(임계 셋 다 그대로: 1.0 · 5 · ×0.75).
+   * 앞으로 한쪽이 빨개져도 다른 쪽은 계속 돌고, red 개수가 계약 개수와 일치한다.
+   *
+   * 그리고 그 red 자체가 **12시드 소표본 아티팩트**였다(독립 검증 실측, `callProb` 별 |Δshots|):
+   *   0.013 → 12시드 0.25 / n60 0.21 · 0.03 → 0.84 / **0.02** ·
+   *   **0.045(출하) → 1.0000(red) / n60 0.24** · 0.07 → 0.12 / 0.14
+   * 즉 **n60 에서 N4 는 여전히 중립**(Δ 0.24)이고, 12시드 노이즈가 `< 1.0` 경계에 정확히
+   * 착지했을 뿐이다. 임계 재도출·표본 상향은 이 계약의 소유 이슈 소관이다(#377 함정 ④).
+   *
+   * 재측정은 **한 번만** 한다(12시드 × 2팔 = 24 매치). 결정론이라 메모가 안전하다.
+   */
+  let shippingArms: { off: Profile; on: Profile } | undefined;
+  function shippingPair(): { off: Profile; on: Profile } {
+    if (!shippingArms) {
+      const off = profile(tweak((c) => { c.chain.hold.oneOnOnePenalty = 0; }), SEEDS12);
+      const on = profile(cfg, SEEDS12);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[#407 N4 출하 중립] 슛 ${off.shots}→${on.shots} · 박스 ${off.inBoxPct}%→${on.inBoxPct}% · ` +
+          `1대1 ${off.oneOnOnePct}%→${on.oneOnOnePct}%`,
+      );
+      shippingArms = { off, on };
+    }
+    return shippingArms;
+  }
+
+  it("출하 기본에서는 볼륨·박스 편중이 거의 중립이다", () => {
     // 기본 트리는 1대1 에서 이미 슛으로 끝나는 편이라 바뀔 결정이 적다 — 이 중립성이
     // "N4 를 켜도 재보정이 필요 없다"의 근거다. 12시드: 슛 17.58→17.33 · 박스 41.5→43.8.
     //
-    // ⚠️ 그러나 **중립은 볼륨·거리 축에 한한다**(#407 독립 검증 major-1). 60시드 짝 대조에서
+    // ⚠️ **중립은 볼륨·거리 축에 한한다**(#407 독립 검증 major-1). 60시드 짝 대조에서
     // 출하 팔의 1대1 은 **6.08% → 5.05%**(−17% 상대 · 절대 126→106건) 로 **내려갔다** —
     // 원인 미규명이고, `hp−2.0` 팔에서 1대1 을 살린 것(3.33→5.33)과 방향이 반대다.
-    // 그래서 아래에 **로그 + 세 번째 단언**을 붙인다: 위 두 줄(`shots`·`inBoxPct`)은 **정작
+    // 그래서 그 축은 **아래 별도 `it`** 이 본다: 이 `it` 의 두 줄(`shots`·`inBoxPct`)은 **정작
     // 움직인 지표를 안 보고**, #316 계약(`one-on-one.test.ts` = `total > 0`)도 이 정도 감소를
-    // 잡을 검정력이 없다. (다만 소시드에서 잡히는 것은 붕괴뿐이다 — 근거는 단언 위 주석.)
-    const off = profile(tweak((c) => { c.chain.hold.oneOnOnePenalty = 0; }), SEEDS12);
-    const on = profile(cfg, SEEDS12);
-    // eslint-disable-next-line no-console
-    console.log(
-      `[#407 N4 출하 중립] 슛 ${off.shots}→${on.shots} · 박스 ${off.inBoxPct}%→${on.inBoxPct}% · ` +
-        `1대1 ${off.oneOnOnePct}%→${on.oneOnOnePct}%`,
-    );
+    // 잡을 검정력이 없다.
+    const { off, on } = shippingPair();
     expect(Math.abs(on.shots - off.shots), `슛 ${off.shots} → ${on.shots}`).toBeLessThan(1.0);
     expect(Math.abs(on.inBoxPct - off.inBoxPct), `박스 ${off.inBoxPct}% → ${on.inBoxPct}%`)
       .toBeLessThan(5);
+  });
+
+  it("출하 기본에서 1대1 이 붕괴하지 않는다 (바닥 가드)", () => {
+    const { off, on } = shippingPair();
+    // ⚠️ **이 `it` 이 실제로 돌았다는 증거를 매 실행 남긴다**(#407 ⑦ M2). 분리 전에는 옆 단언이
+    // 먼저 죽어 이 줄이 **한 번도 실행되지 않았고**, 그 사실이 리포트 어디에도 안 보였다 —
+    // 통과/실패가 아니라 **부재**가 문제였으므로 로그가 곧 계약의 일부다(vitest 기본 리포터는
+    // 느린 테스트만 이름을 찍는데, 이 `it` 은 메모된 값만 읽어 0ms 라 목록에 안 뜬다).
+    // eslint-disable-next-line no-console
+    console.log(
+      `[#407 N4 1대1 바닥 가드 실행] on ${on.oneOnOnePct}% vs 하한 ` +
+        `${(off.oneOnOnePct * 0.75).toFixed(2)}% (= off ${off.oneOnOnePct}% × 0.75)`,
+    );
+    // 소시드에서 잡히는 것은 **붕괴뿐**이다 — 근거는 아래.
     // **하한 = base 대비 상대 −25%. 왜 그 폭인가, 그리고 이 줄이 무엇을 못 하는가:**
     //  · ⚠️ **12시드는 60시드의 −17% 를 재현하지 못한다.** 여기서 실측한 짝 대조는
     //    **5.69% → 5.77%**(+1.4%, 부호가 오히려 반대)다. 즉 이 표본에서 그 이동은
@@ -266,8 +307,10 @@ describe("#407 N4 — hold EV 에 확실한 슛(1대1) 예외", () => {
     //    재현 커맨드 = `issues/2026-08-02-engine-shot-gate-decay.md` §8)에 남는다. 그 수치는
     //    노트 §3 표에 박제돼 있고, **원인은 아직 미규명**이다(#407 후속 과제).
     //  · N2 웨이브가 1대1 을 되살리면 이 하한을 **올려서** 그 성과를 박제하는 것이 다음 순서다.
-    //  · 그때까지 이 줄의 값어치는 임계가 아니라 **위 `console.log`** 다 — 볼륨·박스만 보던
-    //    중립 계약이 이제 정작 움직인 지표를 **매 실행 출력**한다(회귀가 눈에 보인다).
+    //  · 그때까지 이 줄의 값어치는 임계가 아니라 `shippingPair()` 의 **`console.log`** 다 —
+    //    볼륨·박스만 보던 중립 계약이 이제 정작 움직인 지표를 **매 실행 출력**한다.
+    //  · ⚠️ 그 로그도 **이 `it` 이 실제로 도는 것**이 전제다. 옆 `it`(볼륨 중립)이 빨개져도
+    //    여기는 계속 돈다 — 그게 `it` 을 분리한 이유다(#407 ⑦ M2, describe 상단 주석).
     expect(
       on.oneOnOnePct,
       `1대1 ${off.oneOnOnePct}% → ${on.oneOnOnePct}% (60시드 실측 6.08 → 5.05 = −17%)`,
