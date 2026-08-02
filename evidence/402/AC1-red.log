@@ -1,0 +1,59 @@
+> Task :compileJava
+> Task :processResources
+> Task :classes
+
+> Task :compileTestJava
+/private/tmp/claude-1609956905/-Users-peter-park-spider8-hmb-online/1e8b68a3-b9af-4171-9594-eda1e7518925/scratchpad/wt-402/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:171: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+/private/tmp/claude-1609956905/-Users-peter-park-spider8-hmb-online/1e8b68a3-b9af-4171-9594-eda1e7518925/scratchpad/wt-402/server-java/src/test/java/online/hmb/NoticeByIdApiTest.java:188: warning: non-varargs call of varargs method with inexact argument type for last parameter;
+        assertThat(res.getBody()).containsOnlyKeys(PUBLIC_KEYS);
+                                                   ^
+  cast to Object for a varargs call
+  cast to Object[] for a non-varargs call and to suppress this warning
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+2 warnings
+
+> Task :processTestResources
+> Task :testClasses
+OpenJDK 64-Bit Server VM warning: Sharing is only supported for boot loader classes because bootstrap classpath has been appended
+
+> Task :test
+
+AwayGhostBaseKeyTest > theGhostFullContextCarriesTheDefendersTeamPromptToo() FAILED
+    org.opentest4j.AssertionFailedError at AwayGhostBaseKeyTest.java:160
+
+AwayGhostBaseKeyTest > aGhostLooksUpTheSameBaseAsItsDefenderWhenTheDeckHasATeamPrompt() FAILED
+    org.opentest4j.AssertionFailedError at AwayGhostBaseKeyTest.java:142
+
+2026-08-02T16:59:34.054+09:00  INFO 50272 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown initiated...
+2026-08-02T16:59:34.065+09:00  INFO 50272 --- [hmb-server] [ionShutdownHook] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Shutdown completed.
+
+> Task :test FAILED
+
+4 tests completed, 2 failed
+
+[Incubating] Problems report is available at: file:///private/tmp/claude-1609956905/-Users-peter-park-spider8-hmb-online/1e8b68a3-b9af-4171-9594-eda1e7518925/scratchpad/wt-402/server-java/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':test'.
+> There were failing tests. See the report at: file:///private/tmp/claude-1609956905/-Users-peter-park-spider8-hmb-online/1e8b68a3-b9af-4171-9594-eda1e7518925/scratchpad/wt-402/server-java/build/reports/tests/test/index.html
+
+* Try:
+> Run with --scan to get full insights.
+
+BUILD FAILED in 12s
+5 actionable tasks: 5 executed
+
+===== per-test verdict (red run) =====
+PASS seedBotsStillUseTheirPersonaAsTeamPrompt()
+FAIL theGhostFullContextCarriesTheDefendersTeamPromptToo()
+   org.opentest4j.AssertionFailedError:  | expected: "수비 라인을 끌어올려라" |  but was: ""
+PASS aGhostAlsoMatchesItsDefenderWhenTheDeckHasNoTeamPrompt()
+FAIL aGhostLooksUpTheSameBaseAsItsDefenderWhenTheDeckHasATeamPrompt()
+   org.opentest4j.AssertionFailedError: [고스트 A 키 = 수비자가 이미 만들어 둔 A 키 — 아니면 매번 20~180초 풀생성이다]  | expected: "d6b4b68631bbe7e5e09a4bae1236867c" |  but was: "393e4cd879787449a881ddbd1b838bf6"

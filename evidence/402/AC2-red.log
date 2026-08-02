@@ -1,0 +1,10 @@
+# AC2 red — GET /api/deck 가 A 를 보증하지 않는 상태(구현 전)
+# cmd: ./gradlew test --tests 'online.hmb.DeckReadEnsureWarmTest' --rerun-tasks
+FAIL theBaseWarmedByReadingIsTheOneTheMatchLooksUp()
+   java.util.NoSuchElementException: No value present
+FAIL readingTheDeckWarmsAMissingBase()
+   org.opentest4j.AssertionFailedError: [조회가 그 덱의 A 를 채운다]  | expected: 1L |  but was: 0L
+PASS readingWithoutADeckStillReturnsNotFoundAndWarmsNothing()
+PASS readingAnAlreadyWarmDeckWritesNothing()
+FAIL readingTheDeckRevivesABaseThatDiedAsFailed()
+   org.opentest4j.AssertionFailedError: [실패로 굳은 A 가 조회 한 번으로 다시 큐에 선다]  | expected: "queued" |  but was: "failed"
