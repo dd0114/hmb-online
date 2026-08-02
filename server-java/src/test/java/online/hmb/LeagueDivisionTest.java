@@ -658,17 +658,36 @@ class LeagueDivisionTest extends MatchTestBase {
         }
     }
 
+    /**
+     * 이 시즌의 봇 행. <b>id 모양으로 찾지 않는다</b> — 봇 id 는 시즌이 아니라 디비전에 매이므로
+     * (#402 AC5) 시즌이 선언한 teamId 를 따라간다. 그게 실제 매치가 물리는 경로이기도 하다.
+     */
     private List<Map<String, Object>> botRowsOf(String seasonId) {
-        return jdbcClient.sql("SELECT id, kind, strength_mul FROM bots WHERE id LIKE ?")
-                .param(seasonId + "-T%")
-                .query((rs, n) -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", rs.getString("id"));
-                    m.put("kind", rs.getString("kind"));
-                    m.put("strength_mul", rs.getDouble("strength_mul"));
-                    return m;
-                })
-                .list();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (String teamId : botTeamIdsOf(seasonId)) {
+            rows.addAll(jdbcClient.sql("SELECT id, kind, strength_mul FROM bots WHERE id = ?")
+                    .param(teamId)
+                    .query((rs, n) -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("id", rs.getString("id"));
+                        m.put("kind", rs.getString("kind"));
+                        m.put("strength_mul", rs.getDouble("strength_mul"));
+                        return m;
+                    })
+                    .list());
+        }
+        return rows;
+    }
+
+    /** 시즌 teams_json 이 선언한 봇 teamId(= bots.id). */
+    private List<String> botTeamIdsOf(String seasonId) {
+        List<String> ids = new ArrayList<>();
+        for (JsonNode t : teamsJson(seasonId)) {
+            if (!t.path("isUser").asBoolean()) {
+                ids.add(t.path("teamId").asText());
+            }
+        }
+        return ids;
     }
 
     private List<Map<String, Object>> playedBotFixtures(String seasonId) {
@@ -699,15 +718,19 @@ class LeagueDivisionTest extends MatchTestBase {
     }
 
     private List<Map<String, Object>> botDecksOf(String seasonId) {
-        return jdbcClient.sql("SELECT id, deck_json FROM bots WHERE id LIKE ?")
-                .param(seasonId + "-T%")
-                .query((rs, n) -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("id", rs.getString("id"));
-                    m.put("deck_json", rs.getString("deck_json"));
-                    return m;
-                })
-                .list();
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (String teamId : botTeamIdsOf(seasonId)) {
+            rows.addAll(jdbcClient.sql("SELECT id, deck_json FROM bots WHERE id = ?")
+                    .param(teamId)
+                    .query((rs, n) -> {
+                        Map<String, Object> m = new LinkedHashMap<>();
+                        m.put("id", rs.getString("id"));
+                        m.put("deck_json", rs.getString("deck_json"));
+                        return m;
+                    })
+                    .list());
+        }
+        return rows;
     }
 
     private JsonNode readJson(String json) {

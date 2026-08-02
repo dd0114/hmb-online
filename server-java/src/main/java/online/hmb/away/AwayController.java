@@ -29,14 +29,17 @@ public class AwayController {
     private final MatchService matchService;
     private final MatchLockService lockService;
     private final AwaySeasonService seasonService;
+    private final online.hmb.match.MatchOrchestrator orchestrator;
 
     public AwayController(AwayService awayService, MatchService matchService,
                           MatchLockService lockService,
-                          AwaySeasonService seasonService) {
+                          AwaySeasonService seasonService,
+                          online.hmb.match.MatchOrchestrator orchestrator) {
         this.awayService = awayService;
         this.matchService = matchService;
         this.lockService = lockService;
         this.seasonService = seasonService;
+        this.orchestrator = orchestrator;
     }
 
     /**
@@ -57,6 +60,11 @@ public class AwayController {
         lockService.assertCanCreateMatch(userId);
         MatchService.MatchRow row = awayService.start(userId,
                 request == null ? null : request.defenderId());
+        // A 프리페치(#95) — 연습(MatchController.create)·리그(LeagueController.nextMatch)와 같은 자리.
+        // ⚠️ 원정에만 이 호출이 빠져 있었다(#402 W1): 라이브 07-31 이후 원정 봇 사이드 풀생성 9건이
+        // 전부 "그 id 의 A 행이 DB 에 아예 없음"이었다. 수비자가 A 를 갖고 있으면 AC1(키 정렬)이
+        // 그걸 재사용하고, 없으면(구 규약 유저) 여기서 킥오프 임계경로 밖에 만들기 시작한다.
+        orchestrator.prefetchBaseInputs(row.id());
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 

@@ -55,6 +55,15 @@ public class LeagueService {
 
     /** 유저 팀 teamId(고정). 픽스처 home/away 가 이 값이면 유저 경기(is_user=1). */
     public static final String USER_TEAM_ID = "USER";
+
+    /**
+     * 고정 봇 풀의 파생 시드 — <b>시즌 seed 와 분리된 상수</b>(#402 AC5).
+     *
+     * <p>⚠️ 시즌 seed({@code league_seasons.seed})는 계속 {@link LeagueSeedSource#newSeed()} 랜덤이다.
+     * {@link #botMatchResult}(봇전 간이결과) 같은 다른 파생이 그걸 쓰므로, 같이 고정하면 시즌마다
+     * 리그 결과가 똑같아진다. 고정하는 건 <b>봇 팀 구성뿐</b>이라 두 축을 여기서 갈라 놓는다.
+     */
+    private static final String FIXED_BOT_POOL_SEED = "hmb:league:botpool:v1";
     private static final int WIN_POINTS = 3;
     private static final int DRAW_POINTS = 1;
     /** 등급 서열(등급-층화 샘플 순회 기준). */
@@ -238,7 +247,7 @@ public class LeagueService {
             // 시즌 도중 승급/강등이 반영되면 이미 치른 라운드와 남은 라운드의 상대 강도가 달라져
             // 순위표가 뜻을 잃는다.
             int division = divisionOf(userId);
-            List<TeamBuild> teams = buildTeams(userId, seasonId, seed, data, division);
+            List<TeamBuild> teams = buildTeams(userId, data, division);
             insertBotRows(teams, divisionSpec(data, division));
             String teamsJson = teamsJson(teams);
             jdbcClient.sql("""
@@ -573,8 +582,21 @@ public class LeagueService {
                              String formation, List<String> rosterPlayerIds, int power, boolean isUser) {
     }
 
-    private List<TeamBuild> buildTeams(String userId, String seasonId, String seed,
-                                       LeagueDataService.LeagueData data, int division) {
+    /**
+     * 봇 팀 id — <b>시즌이 아니라 디비전에 매인다</b>(#402 AC5). 같은 디비전의 모든 유저가 같은 9팀을
+     * 만나므로 첫 유저가 만든 봇 A(AI 인풋)를 그 뒤 전원이 재사용한다.
+     *
+     * <p>예전엔 {@code seasonId + "-T" + i} 였다 — seasonId 가 id 와 로스터 rng 재료에 둘 다 섞여
+     * 유저·시즌마다 상대 9팀이 전부 고유했고(라이브 63행 : 중복 0), 봇 A id 는 덱 해시라 아무도
+     * 남의 A 를 물려받지 못해 매 라운드 19~107초 풀생성을 했다.
+     *
+     * @param index 1-based
+     */
+    public static String fixedBotTeamId(int division, int index) {
+        return "LEAGUE-D" + division + "-T" + index;
+    }
+
+    private List<TeamBuild> buildTeams(String userId, LeagueDataService.LeagueData data, int division) {
         List<TeamBuild> teams = new ArrayList<>();
         // 유저 팀(index 0) — 파워는 활성 덱 선발 능력치합(정보용).
         teams.add(new TeamBuild(USER_TEAM_ID, "내 팀", null, null, null, List.of(),
@@ -582,14 +604,17 @@ public class LeagueService {
 
         Map<String, List<PlayerRow>> byGrade = playerPoolByGrade();
         List<PlayerRow> gkPool = gkPool();
-        SplittableRandom clubRng = rngFromSeed(seed + ":clubs");
+        // 클럽명·페르소나·로스터 전부 (division, index) 결정론이다 — 시즌 seed 는 여기 들어오지
+        // 않는다(위 FIXED_BOT_POOL_SEED 의 ⚠️). 풀이 **디비전별**인 이유는 강도가 디비전
+        // 스펙(gradeSlots·strengthMul)을 따르기 때문이다.
+        SplittableRandom clubRng = rngFromSeed(FIXED_BOT_POOL_SEED + ":d" + division + ":clubs");
         List<String> clubNames = pickDistinct(clubRng, data.clubNames(), botTeamCount);
         List<PersonaPreset> personas = personaPresets(data);
         LeagueDataService.Division spec = divisionSpec(data, division);
 
         for (int i = 0; i < botTeamCount; i++) {
-            String teamId = seasonId + "-T" + (i + 1);
-            SplittableRandom rng = rngFromSeed(seed + ":team:" + teamId);
+            String teamId = fixedBotTeamId(division, i + 1);
+            SplittableRandom rng = rngFromSeed(FIXED_BOT_POOL_SEED + ":team:" + teamId);
             PersonaPreset persona = personas.get(Math.floorMod(rng.nextInt(), personas.size()));
             List<String> roster = sampleRoster(rng, gkPool, byGrade, spec, persona.formation());
             // 파워는 **배율 적용 후** 값이다 — 화면에 뜨는 파워와 피치 위 실제 강도가 같아야 하고,
@@ -1011,6 +1036,13 @@ public class LeagueService {
      * <p>{@code kind='league'} (#252): 이 행들은 <b>연습 매칭 풀이 아니다</b>. 예전엔 표식이 없어
      * {@code BotService.pickRandom} 이 이 행들까지 뽑았고, 시즌이 늘수록 연습 상대가 리그 봇팀으로
      * 대체됐다(라이브 45행 : 시드봇 3행). {@code strength_mul} 은 그 시즌 디비전의 값이다.
+     *
+     * <p><b>{@code DO NOTHING} 이다</b>(#402 AC6). 봇 id 가 {@link #fixedBotTeamId 디비전 고정}이 되면서
+     * <b>여러 유저가 같은 행을 가리킨다</b> — 갱신 upsert 면 새 유저의 시즌 생성이 <b>남이 지금 하고
+     * 있는 경기의 상대 덱</b>을 바꾼다. 시뮬은 하프마다 봇 덱을 다시 읽으므로 전·후반 사이에 상대가
+     * 바뀌고 재현이 깨진다({@code AwayService.bakeGhost} 가 같은 이유로 DO NOTHING). 재계산은
+     * 결정론이라 평소엔 바이트가 같고, 달라지는 건 카탈로그가 바뀌었을 때뿐이다 — 그때 갱신하지
+     * <b>않는 것</b>이 옳다(진행 중인 경기가 우선).
      */
     private void insertBotRows(List<TeamBuild> teams, LeagueDataService.Division spec) {
         double mul = spec == null ? 1.0 : spec.strengthMul();
@@ -1022,9 +1054,7 @@ public class LeagueService {
             jdbcClient.sql("""
                             INSERT INTO bots(id, name, persona, analysis_text, deck_json, kind, strength_mul)
                             VALUES (?, ?, ?, ?, ?, 'league', ?)
-                            ON CONFLICT(id) DO UPDATE SET name = excluded.name, persona = excluded.persona,
-                              analysis_text = excluded.analysis_text, deck_json = excluded.deck_json,
-                              kind = 'league', strength_mul = excluded.strength_mul
+                            ON CONFLICT(id) DO NOTHING
                             """)
                     .params(t.teamId(), t.name(), t.persona() == null ? "" : t.persona(),
                             t.description() == null ? "" : t.description(), deckJson, mul)

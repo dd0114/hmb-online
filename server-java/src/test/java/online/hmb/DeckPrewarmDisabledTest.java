@@ -33,19 +33,41 @@ class DeckPrewarmDisabledTest extends MatchTestBase {
     @Test
     void deckSaveDoesNotWarmAnythingWhenDisabled() {
         String token = login("prewarm_off");
-        List<Map<String, Object>> slots = new ArrayList<>();
-        slots.add(slot("P001", "starter", 0));
-        for (int i = 2; i <= 11; i++) {
-            slots.add(slot(String.format("P%03d", i), "starter", i - 1));
-        }
-        slots.add(slot("P012", "bench", 0));
 
-        assertThat(authPut("/api/deck", token, deckBody("4-4-2", slots), Map.class)
+        assertThat(authPut("/api/deck", token, deckBody("4-4-2", starters11PlusBench()), Map.class)
                 .getStatusCode()).isEqualTo(HttpStatus.OK);
 
         assertThat(jdbcClient.sql("SELECT COUNT(*) FROM ai_jobs WHERE match_id IS NULL")
                 .query(Long.class).single()).isZero();
         assertThat(jdbcClient.sql("SELECT COUNT(*) FROM deck_prewarm").query(Long.class).single())
                 .isZero();
+    }
+
+    /**
+     * 조회 경로의 상시 보증(#402 AC2)도 <b>같은 스위치</b> 뒤에 있다 — 롤백은 하나여야 한다.
+     * (여기서 새는 경로가 있으면 "선실행을 껐는데 조회가 계속 큐를 채운다"가 된다.)
+     */
+    @Test
+    void deckReadDoesNotWarmAnythingWhenDisabled() {
+        String token = login("prewarm_off_get");
+        assertThat(authPut("/api/deck", token, deckBody("4-4-2", starters11PlusBench()), Map.class)
+                .getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(authGet("/api/deck", token, Map.class).getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM ai_jobs WHERE match_id IS NULL")
+                .query(Long.class).single()).isZero();
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM deck_prewarm").query(Long.class).single())
+                .isZero();
+    }
+
+    private static List<Map<String, Object>> starters11PlusBench() {
+        List<Map<String, Object>> slots = new ArrayList<>();
+        slots.add(slot("P001", "starter", 0));
+        for (int i = 2; i <= 11; i++) {
+            slots.add(slot(String.format("P%03d", i), "starter", i - 1));
+        }
+        slots.add(slot("P012", "bench", 0));
+        return slots;
     }
 }

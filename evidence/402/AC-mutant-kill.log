@@ -1,0 +1,29 @@
+# 변이체 킬 검증 (#402 W1) — 픽스를 하나씩 되돌려 "그 계약만" 죽는지 본다
+# 공통 실행 대상(103 tests): AwayGhostBaseKeyTest, DeckReadEnsureWarmTest, AwayBasePrefetchTest,
+#   DeckPrewarmDisabledTest, DeckPrewarmTest, MatchBotPrefetchTest, BaseKeyTacticsSplitTest,
+#   DeckTeamPromptTest, AwayV2Test, AwayRaidTest, DeckApiTest
+# cmd: ./gradlew test --tests <위 목록> --rerun-tasks   (매 변이체마다 콜드)
+# 기준선(변이 없음): 103 tests / 0 failed
+
+## M1 — AC1 되돌림: PromptContextBuilder.botTeamPrompt 를 `return bot.persona();` 로
+total=103 failed=3
+KILLED: AwayGhostBaseKeyTest.aGhostLooksUpTheSameBaseAsItsDefenderWhenTheDeckHasATeamPrompt()
+KILLED: AwayGhostBaseKeyTest.theGhostFullContextCarriesTheDefendersTeamPromptToo()
+KILLED: AwayBasePrefetchTest.awayKickoffReusesTheDefendersStoredInputWithZeroCalls()
+   → 앞 2건 = AC1 계약. 3번째는 AC3 의 **결합 결과**(원정 킥오프 상대 사이드 콜0)로, 설계상
+     AC1 없이는 성립하지 않는다(테스트 javadoc 에 "AC1 + AC3 의 결합 결과"로 명시).
+   → 무회귀 대상(AwayV2/AwayRaid/DeckPrewarm/MatchBotPrefetch/BaseKeyTacticsSplit/DeckTeamPrompt/
+     DeckApi/DeckPrewarmDisabled) 전부 생존 = 부수 피해 0.
+
+## M2 — AC2 되돌림: DeckController.getDeck 의 prewarmService.ensureWarm(userId) 삭제
+total=103 failed=3
+KILLED: DeckReadEnsureWarmTest.readingTheDeckWarmsAMissingBase()
+KILLED: DeckReadEnsureWarmTest.readingTheDeckRevivesABaseThatDiedAsFailed()
+KILLED: DeckReadEnsureWarmTest.theBaseWarmedByReadingIsTheOneTheMatchLooksUp()
+   → AC2 계약만. AC1·AC3 계약 및 무회귀 대상 전부 생존.
+
+## M3 — AC3 되돌림: AwayController.start 의 orchestrator.prefetchBaseInputs(row.id()) 삭제
+total=103 failed=1
+KILLED: AwayBasePrefetchTest.startingAnAwayMatchPrefetchesBothBases()
+   → AC3 훅 계약만. (같은 클래스의 재사용 E2E 는 수비자 A 가 이미 done 이면 프리페치 없이도
+     성립하므로 생존한다 — 그래서 훅 자체를 죽이는 계약을 따로 뒀다.)

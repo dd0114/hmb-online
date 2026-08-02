@@ -426,6 +426,33 @@ public class MatchOrchestrator {
         }
     }
 
+    /**
+     * 봇 A(베이스) 프리페치 — <b>매치 없이 봇 id 목록만으로</b>(#402 AC7).
+     *
+     * <p>리그 시즌이 만들어지는 순간 상대 9팀은 이미 정해져 있는데, A 를 매치 생성 때만 예열하면
+     * 더블 라운드로빈의 <b>첫 만남 9번이 전부 풀생성</b>(라이브 19~107초)이고 두 번째 만남만 캐시에
+     * 맞는다. 시즌 시작에서 한꺼번에 세워 두면 첫 경기 때 이미 준비돼 있다.
+     *
+     * <p>멱등: baseId = 덱 재료 해시 + {@code enqueueBase} 가 INSERT OR IGNORE 라 이미 있으면 no-op
+     * (AI 콜 0). <b>호출자는 시즌 생성 트랜잭션 바깥에서 부른다</b> — 선실행은 최적화지 정합성
+     * 경로가 아니므로 여기서 나는 실패가 시즌 생성을 깨뜨리면 안 된다. 봇 하나가 실패해도 나머지는
+     * 계속 세운다(로그만).
+     */
+    public void prefetchBotBaseInputs(List<String> botIds) {
+        for (String botId : botIds) {
+            try {
+                BotService.BotRow bot = botService.find(botId).orElse(null);
+                if (bot == null) {
+                    continue;
+                }
+                PromptContextBuilder.BaseJob base = contextBuilder.botBaseJob(bot);
+                jobQueue.enqueueBase(base.baseId(), base.context());
+            } catch (Exception e) {
+                log.warn("봇 A 프리페치(bot {}) 실패 — 무시(킥오프 때 풀생성 폴백): {}", botId, e.toString());
+            }
+        }
+    }
+
     /** done 인 A(베이스) 잡의 result_json(없거나 미완이면 null). */
     private String doneResultOf(String baseId) {
         return jobQueue.find(baseId)

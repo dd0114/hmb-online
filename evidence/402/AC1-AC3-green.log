@@ -1,0 +1,19 @@
+# AC1~AC3 green — 구현 후 (cold: --rerun-tasks)
+# cmd: ./gradlew test --tests 'online.hmb.AwayGhostBaseKeyTest' --tests 'online.hmb.DeckReadEnsureWarmTest' --tests 'online.hmb.AwayBasePrefetchTest' --tests 'online.hmb.DeckPrewarmDisabledTest' --rerun-tasks
+##### online.hmb.AwayGhostBaseKeyTest  tests=4 failures=0 errors=0
+PASS seedBotsStillUseTheirPersonaAsTeamPrompt()
+PASS theGhostFullContextCarriesTheDefendersTeamPromptToo()
+PASS aGhostAlsoMatchesItsDefenderWhenTheDeckHasNoTeamPrompt()
+PASS aGhostLooksUpTheSameBaseAsItsDefenderWhenTheDeckHasATeamPrompt()
+##### online.hmb.DeckReadEnsureWarmTest  tests=5 failures=0 errors=0
+PASS theBaseWarmedByReadingIsTheOneTheMatchLooksUp()
+PASS readingTheDeckWarmsAMissingBase()
+PASS readingWithoutADeckStillReturnsNotFoundAndWarmsNothing()
+PASS readingAnAlreadyWarmDeckWritesNothing()
+PASS readingTheDeckRevivesABaseThatDiedAsFailed()
+##### online.hmb.AwayBasePrefetchTest  tests=2 failures=0 errors=0
+PASS startingAnAwayMatchPrefetchesBothBases()
+PASS awayKickoffReusesTheDefendersStoredInputWithZeroCalls()
+##### online.hmb.DeckPrewarmDisabledTest  tests=2 failures=0 errors=0
+PASS deckReadDoesNotWarmAnythingWhenDisabled()
+PASS deckSaveDoesNotWarmAnythingWhenDisabled()

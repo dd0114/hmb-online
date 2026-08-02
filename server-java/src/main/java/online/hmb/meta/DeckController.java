@@ -25,9 +25,22 @@ public class DeckController {
         this.prewarmService = prewarmService;
     }
 
+    /**
+     * 조회이면서 <b>보증</b>이다: "활성 덱이 있으면 그 덱의 AI 인풋(A)도 있다" (#402 AC2).
+     *
+     * <p>왜 읽기 경로에 다나: A 재생성 트리거가 {@code PUT /api/deck} 뿐이라 <b>덱을 안 건드리는
+     * 유저는 영영 복구되지 않았다</b> — 라이브 활성덱 유저 61명 중 36명(59%)이 현재 덱의 A 가 없었고
+     * (전원 A 키 규약 범프 #324 이전 저장), 그 사람들은 경기마다 20~180초를 새로 만들어 기다렸다.
+     * 앱을 켜서 덱을 한 번 보기만 하면 채워지는 자리가 여기다.
+     *
+     * <p>순서가 계약이다: <b>먼저 응답 데이터를 확보하고</b> 보증을 건다. 보증은 최적화라 실패해도
+     * 조회는 성공해야 한다({@code ensureWarm} 이 안에서 전부 삼키고, 이미 준비된 흔한 경우엔 쓰기 0).
+     */
     @GetMapping("/api/deck")
     public DeckResponse getDeck(@RequestAttribute("userId") String userId) {
-        return deckService.getActiveDeck(userId);
+        DeckResponse deck = deckService.getActiveDeck(userId);
+        prewarmService.ensureWarm(userId);
+        return deck;
     }
 
     /**

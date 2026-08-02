@@ -1,0 +1,33 @@
+# AC4 무회귀 — 전체 게이트, 콜드 재실행
+# cmd: cd server-java && ./gradlew test --rerun-tasks
+total=971 failed=1 skipped=1
+FAIL online.hmb.MatchClockShippedDefaultsTest.shippedHalfRealMsMatchesMeasuredPlaybackLength()
+   java.lang.AssertionError: [half-real-ms 는 켬 모드 실측 재생 길이(156~207s) 안이어야 한다 — 짧으면 재생이 끝나기 전에 하프타임이 열리고, 길면 재생이 먼저 끝나 빈 시간이 생긴다]  | Expecting actual: |   220000L | to be between: |   [156000L, 207000L] | 
+
+## 유일한 실패 = 선행(base) 실패, 이번 변경과 무관 — 증명
+MatchClockShippedDefaultsTest 는 스프링을 띄우지 않고 **파일 두 개만** 읽는 순수 판정이다:
+  ① server-java/src/main/resources/application.yml 의 half-real-ms
+  ② online.hmb.match.MatchClockProperties 의 기본값
+즉 이 테스트의 결과는 그 두 파일의 함수이고, 이번 변경은 둘 다 건드리지 않았다.
+### base(e2ca113) 대비 변경 파일 목록
+evidence/402/AC1-AC3-green.log
+evidence/402/AC1-red.log
+evidence/402/AC2-red.log
+evidence/402/AC3-red.log
+server-java/src/main/java/online/hmb/away/AwayController.java
+server-java/src/main/java/online/hmb/match/DeckPrewarmService.java
+server-java/src/main/java/online/hmb/match/PromptContextBuilder.java
+server-java/src/main/java/online/hmb/meta/DeckController.java
+server-java/src/test/java/online/hmb/AwayBasePrefetchTest.java
+server-java/src/test/java/online/hmb/AwayGhostBaseKeyTest.java
+server-java/src/test/java/online/hmb/DeckPrewarmDisabledTest.java
+server-java/src/test/java/online/hmb/DeckReadEnsureWarmTest.java
+### 그 목록에 application.yml / MatchClockProperties 가 있나
+(없음)
+### 두 파일의 base vs 워킹트리 해시
+application.yml   base=79193c4f0b0fe0fd32e060f347b72abfa5cbc794
+application.yml    work=79193c4f0b0fe0fd32e060f347b72abfa5cbc794
+MatchClockProperties base=1d72f41451dd6ba4c1ba7721ac882bf8a3a96065
+MatchClockProperties work=1d72f41451dd6ba4c1ba7721ac882bf8a3a96065
+### 실측 값
+163:      half-real-ms: 220000         # 하프당 실시간 재생 길이(폴백. 운영 창은 playbackMs)
