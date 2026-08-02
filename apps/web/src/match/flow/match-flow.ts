@@ -52,9 +52,22 @@ export interface BridgeSignal {
  *    **경기 종료 브릿지가 안 뜬다 = AC4 의 네 번째 지점이 소실**된다(독립검증 N3).
  *    → B2 를 `to` 로 넓힌 것과 **같은 논리**를 B4 의 `from` 에 적용한다.
  *
- * ⚠️ **그래도 `BRIEFING`·`GEN1` 은 넣지 않는다.** 거기서 `FINISHED` 로 가는 전이는 실재하지만
- * (상대가 브리핑에서 무른 **몰수** — 0:0, 재생할 하프가 없다) 그 경기에 `90분이 끝났습니다` 를 띄우면
- * 카드가 **거짓말**한다. 넓히는 기준은 "관측을 건너뛴 것"이지 "전이가 있는 것"이 아니다.
+ * ⚠️ **`BRIEFING`·`GEN1` 도 같은 이유로 들어 있다**(W6 에서 정정). 한때 여기엔 *"거기서 `FINISHED`
+ * 로 가는 전이는 실재한다(상대가 브리핑에서 무른 **몰수** — 0:0, 재생할 하프가 없다)"* 라고 적혀
+ * 있었는데 **거짓이었다**. 서버 실측:
+ *  · `state='FINISHED'` 를 쓰는 곳은 `MatchOrchestrator.java:786,793`(둘 다 `finishMatch`) **뿐**이고,
+ *    그 `fromState` 는 `GEN2`(시계 롤백 — `enterSecondHalf`:731) 또는 `SECOND_HALF`(재생 창 만료 —
+ *    `settleFinishedIfDue`:757) **둘뿐**이다.
+ *  · **몰수·포기는 `ABANDONED`** 로 간다(`MatchLockService.java:246,310`). `to` 가 `FINISHED` 하나이므로
+ *    몰수는 애초에 이 표에 닿지 않는다.
+ * ⇒ 클라가 `BRIEFING`/`GEN1 → FINISHED` 를 보는 **유일한** 경로는 오토 모드 + 탭이 경기 내내
+ *   백그라운드(React Query 가 hidden 에서 폴링을 멈춘다)다 = `HALFTIME`/`FIRST_HALF` 를 넣은 것과
+ *   **정확히 같은 부류**(관측을 건너뛴 것). 자기 기준을 지키려면 넣어야 한다.
+ *
+ * ⚠️ **그래서 `90분이 끝났습니다` 도 거짓말이 아니다.** `FINISHED` 는 구조적으로 두 하프 시뮬을
+ * 마친 상태에서만 도달한다(위 두 경로 뿐 — 몰수는 `ABANDONED`). 즉 문구의 참을 **상태가 보증**하므로
+ * (설계 P7 "내용은 상태가 정한다") `from` 별 변종 문구가 필요 없다. 넓히는 기준은 여전히 "관측을
+ * 건너뛴 것"이지 "전이가 있는 것"이 아니다 — `to: ["FINISHED"]` 가 그 경계를 지킨다.
  */
 const BRIDGE_TABLE: ReadonlyArray<{
   from: readonly string[];
@@ -73,7 +86,7 @@ const BRIDGE_TABLE: ReadonlyArray<{
   // 레거시 상태명(P4 이전 배포본의 진행 중 매치) — `panelForState` 가 같이 취급한다.
   { from: ["H1_BREAK"], to: ["GEN2"], kind: "h2_start", form: "panel" },
   {
-    from: ["SECOND_HALF", "GEN2", "HALFTIME", "H1_BREAK", "FIRST_HALF"],
+    from: ["SECOND_HALF", "GEN2", "HALFTIME", "H1_BREAK", "FIRST_HALF", "GEN1", "BRIEFING"],
     to: ["FINISHED"],
     kind: "match_end",
     form: "overlay",
@@ -309,10 +322,16 @@ export interface MatchEndHandoff {
 }
 
 /**
- * 경기 종료 브릿지의 **다음 화면**. #405 가 제공한다.
+ * 경기 종료 브릿지의 **다음 화면** 확장점.
  *
- * · 넘기지 않으면(=미머지) CTA 라벨은 `결과 보기` 이고, 누르면 오버레이가 닫혀 `FINISHED` 결과 탭이
- *   보인다(**현행 동작 그대로** — #405 없이 #424 를 먼저 배포할 수 있다는 뜻, C2).
+ * ⚠️ **현재 프로덕션 호출부는 0 이다**(W6 정정). #405 는 이 prop 이 아니라 **`StageShell` 이 소유한
+ * `RewardSheet` + `!overlayOpen` 게이트**로 착지했다(브릿지가 앞, 닫으면 그 자리에서 시트 —
+ * `e2e/p424-flow-bridge.spec.ts` ⑨). 그래도 이 타입·배선을 **지우지 않는다**: #405 에 공개한 계약이고,
+ * C2(없어도 흐름이 완결된다)가 이 브랜치의 선배포 근거이며, "브릿지 CTA 뒤에 오버레이 안에서 뭔가를
+ * 더 보여준다"는 확장점이 사라지면 다음 소비자가 라우트를 새로 파게 된다(C3 이 기각한 형태).
+ *
+ * · 넘기지 않으면 CTA 라벨은 `보상과 결과 보기` 이고, 누르면 오버레이가 닫혀 보상 시트(봉투 미확인
+ *   시) → `FINISHED` 결과 탭이 보인다(C2).
  * · 넘기면 CTA 가 `보상 받기` 로 바뀌고, 누른 순간 **같은 오버레이 안에서** 이 노드가 렌더된다(C3).
  *   `onDone()` 을 부르면 오버레이가 닫히고 결과 탭으로 간다. `onDone` 은 **멱등**이다(C4).
  */

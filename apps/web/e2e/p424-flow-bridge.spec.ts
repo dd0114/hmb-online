@@ -10,7 +10,7 @@ import { readFileSync } from "node:fs";
  *  ③ **내용은 현재 상태 파생** — 감독시간이 만료돼도 카드가 거짓말하지 않는다.
  *  ④ **오토 모드 특수분기 0** — `FIRST_HALF → GEN2` 직행도 같은 브릿지가 받는다.
  *  ⑤ **D6 회귀** — 스킵 응답이 `GEN2` 여서 `StageShell` 이 언마운트돼도 리포트/브릿지가 살아 있다.
- *  ⑥ continuation(#405) 없이도 흐름이 완결된다(`결과 보기` 폴백 = 현행 동작).
+ *  ⑥ `matchEndContinuation` 없이도 흐름이 완결된다(`보상과 결과 보기` 폴백 = 출하 형태).
  *  ⑦ **대기형은 대기 화면을 가리지 않는다** — 경과 시계·[경기 포기](#217 AC3)가 눌린다.
  *  ⑧ **B4 는 건너뛴 전이에서도 발화한다**(`GEN2 → FINISHED` 시계 롤백 — 독립검증 N3).
  *  ⑨ **#405 보상 시트와 겹치지 않는다** — 브릿지가 앞이고 CTA 가 시트로 넘긴다(main `4095cff` 이후).
@@ -315,7 +315,7 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
   });
 
-  test("⑥ B4 경기 종료 — continuation 없이도 흐름이 완결된다(`결과 보기` 폴백)", async ({ page }) => {
+  test("⑥ B4 경기 종료 — `matchEndContinuation` 없이도 흐름이 완결된다(출하 형태)", async ({ page }) => {
     const h = await openMatch(page, { state: "SECOND_HALF" });
     await waitLive(page, 2);
     await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
@@ -330,8 +330,14 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     );
 
     const cta = page.getByTestId("flow-bridge-next");
-    // #405 미머지 상태의 라벨 — 이것이 선배포 형태다(C2).
-    await expect(cta).toHaveText("결과 보기");
+    /*
+     * ⚠️ 이 자리에 *"#405 미머지 상태의 라벨"* 이라고 적혀 있었는데 **#405 는 이미 머지됐다**
+     * (`origin/main` `4095cff` — 다만 `matchEndContinuation` 이 아니라 `StageShell` 소유
+     * `RewardSheet` + `!overlayOpen` 로 착지, 아래 ⑨ 가 그 계약이다). 라벨이 갈리는 축은
+     * "#405 머지 여부"가 아니라 **`matchEndContinuation` prop 을 넘겼는가**이고, 그 호출부는
+     * 프로덕션에 0 이다. 이 테스트는 **봉투가 없는** 매치라 닫으면 곧바로 결과 탭이다.
+     */
+    await expect(cta).toHaveText("보상과 결과 보기");
     expect(await hitTestId(page, cta)).toBe("flow-bridge-next");
     await cta.click();
     await expect(page.getByTestId("flow-bridge")).toHaveCount(0);

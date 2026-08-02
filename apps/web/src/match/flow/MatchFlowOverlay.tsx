@@ -16,7 +16,12 @@ export interface MatchFlowOverlayProps {
   homeName: string;
   awayName: string;
   myTeamSide?: "home" | "away" | null;
-  /** #405 보상 흐름. 없으면 CTA 가 `결과 보기` 이고 닫으면 결과 탭이다(C2 — 선배포 형태). */
+  /**
+   * #405 보상 흐름 확장점. **현재 프로덕션 호출부는 0** — #405 는 다른 방식으로 착지했다
+   * (`StageShell` 소유 `RewardSheet` + `!overlayOpen` 게이트). 넘기지 않으면 CTA 는
+   * `보상과 결과 보기` 이고, 닫으면 봉투가 미확인일 때 그 시트가, 아니면 결과 탭이 나온다
+   * (C2 — 이 prop 없이도 흐름이 완결된다).
+   */
   matchEndContinuation?: MatchEndContinuation | null;
 }
 

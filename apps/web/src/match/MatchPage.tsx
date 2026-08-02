@@ -29,8 +29,12 @@ const STATE_LABELS: Record<string, string> = {
 
 export interface MatchPageProps {
   /**
-   * 경기 종료 브릿지(B4) 뒤에 올 화면 — **#405 보상 흐름이 이 prop 하나만 채운다**(설계 §9.2).
-   * 없으면 CTA 는 `결과 보기` 이고 닫으면 결과 탭이다(= 현행 동작, C2 선배포 형태).
+   * 경기 종료 브릿지(B4) 뒤에 **오버레이 안에서** 올 화면(설계 §9.2 확장점).
+   *
+   * ⚠️ **아무도 넘기지 않는다 — 그리고 그게 현재의 정상 상태다**(W6 정정). 설계 §9.2 는 #405 가
+   * 이 prop 을 채운다고 적었지만, 실제 #405 는 **`StageShell` 소유 `RewardSheet` + `!overlayOpen`
+   * 게이트**로 착지했다(브릿지가 앞, 닫으면 그 자리에서 시트). 없으면 CTA 는 `보상과 결과 보기`
+   * 이고 닫으면 보상 시트(봉투 미확인 시) → 결과 탭이다(C2 선배포 형태).
    */
   matchEndContinuation?: MatchEndContinuation | null;
 }

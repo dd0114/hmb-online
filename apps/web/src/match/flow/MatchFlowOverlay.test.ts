@@ -62,10 +62,11 @@ afterEach(() => {
 });
 
 describe("C2 — continuation 없이도 흐름이 완결된다(선배포 형태)", () => {
-  it("CTA 가 `결과 보기` 이고 누르면 오버레이가 닫힌다", () => {
+  it("CTA 가 `보상과 결과 보기` 이고 누르면 오버레이가 닫힌다", () => {
     const flow = open({ kind: "match_end", report: null }, { detail: { result: "WIN" } });
     const cta = screen.getByTestId("flow-bridge-next");
-    expect(cta.textContent).toBe("결과 보기");
+    // W6: 닫은 자리에 오는 것이 (봉투 미확인이면) #405 보상 시트라 `결과 보기` 는 참이 아니었다.
+    expect(cta.textContent).toBe("보상과 결과 보기");
     expect(screen.getByTestId("flow-bridge-text").textContent).toContain("승리");
     fireEvent.click(cta);
     expect(flow.close).toHaveBeenCalledTimes(1);

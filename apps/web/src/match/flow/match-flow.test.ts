@@ -82,10 +82,28 @@ describe("N3 — B4 는 건너뛴 전이에서도 발화한다(`FINISHED` 로 �
     expect(bridgeForTransition("H1_BREAK", "FINISHED")?.kind).toBe("match_end");
   });
 
-  it("⚠️ 넓혀도 몰수는 제외다 — 브리핑에서 무른 경기에 `90분이 끝났습니다` 는 거짓말이다", () => {
-    // 이 전이는 실재한다(상대 몰수, 0:0). 그래도 B4 를 열지 않는 것이 규칙이다.
-    expect(bridgeForTransition("BRIEFING", "FINISHED")).toBeNull();
-    expect(bridgeForTransition("GEN1", "FINISHED")).toBeNull();
+  it("ⓒ 경기 내내 백그라운드였다 — `BRIEFING`/`GEN1` 에서 곧바로 `FINISHED` (W6 정정)", () => {
+    /*
+     * 옛 계약은 이 둘이 `null` 이어야 한다고 단언했고 근거가 **거짓**이었다("상대가 브리핑에서
+     * 무른 몰수"). 서버 실측: `FINISHED` 를 쓰는 곳은 `MatchOrchestrator.java:786,793` 뿐이고
+     * `fromState ∈ {GEN2, SECOND_HALF}` 뿐이다. 몰수·포기는 `ABANDONED`(`MatchLockService.java:246,310`).
+     * ⇒ 이 두 전이의 유일한 발생 경로는 **관측 누락**(탭 백그라운드)이고, 그건 ⓑ 와 같은 부류다.
+     * 변이: `from` 에서 `GEN1`/`BRIEFING` 을 빼면 이 테스트가 죽는다.
+     */
+    expect(bridgeForTransition("GEN1", "FINISHED")?.kind).toBe("match_end");
+    expect(bridgeForTransition("BRIEFING", "FINISHED")?.kind).toBe("match_end");
+  });
+
+  it("⚠️ 넓힌 것은 `FINISHED` 로 들어오는 문뿐이다 — 몰수(`ABANDONED`)는 여전히 아무것도 안 연다", () => {
+    /*
+     * `90분이 끝났습니다` 가 참인 근거는 **도착 상태**다: `FINISHED` 는 두 하프 시뮬을 마쳐야만
+     * 도달하고, 재생할 하프가 없는 몰수·포기는 `ABANDONED` 로 간다. 그 경계를 지키는 것은
+     * `from` 이 아니라 `to: ["FINISHED"]` 다. 변이: `to` 에 `ABANDONED` 를 더하면 이게 죽는다.
+     */
+    for (const from of ["BRIEFING", "GEN1", "FIRST_HALF", "SECOND_HALF"]) {
+      expect(bridgeForTransition(from, "ABANDONED")).toBeNull();
+      expect(bridgeForTransition(from, "FAILED")).toBeNull();
+    }
   });
 
   it("넓혀도 **중복 발화가 없다** — 큐는 병합하고 소비 이력은 되살리지 않는다", () => {
@@ -94,7 +112,9 @@ describe("N3 — B4 는 건너뛴 전이에서도 발화한다(`FINISHED` 로 �
      * 것은 큐(`enqueueBridge` 병합)와 소비 이력(`seen`)이 보장한다 — 넓히기가 그 두 층 **위**에
      * 있기 때문이다. 이 계약이 없으면 다음 사람이 `from` 을 더 넓힐 때 그 보장을 다시 확인하지 않는다.
      */
-    const kinds = (["SECOND_HALF", "GEN2", "HALFTIME", "H1_BREAK", "FIRST_HALF"] as const).map(
+    const kinds = (
+      ["SECOND_HALF", "GEN2", "HALFTIME", "H1_BREAK", "FIRST_HALF", "GEN1", "BRIEFING"] as const
+    ).map(
       (from) => bridgeForTransition(from, "FINISHED")!.kind,
     );
     // ① 큐: 어느 문으로 들어와도 같은 kind 라 병합된다(스택이 두 벌 생기지 않는다).
@@ -225,7 +245,11 @@ describe("P7 — 카드 내용은 현재 상태 파생이다", () => {
     expect(bridgeCardModel("match_end", { ...base, state: "FINISHED", auto: false, outcome: null }).body).toBe(
       "90분이 끝났습니다.",
     );
-    expect(bridgeCardModel("match_end", { ...base, state: "FINISHED", auto: false }).cta).toBe("결과 보기");
+    // W6: 출하 라벨은 `보상과 결과 보기` 다 — 봉투가 미확인이면 닫은 자리에 #405 보상 시트가 먼저
+    // 오고, 없으면 결과 탭이다. 두 경우 다 참인 문장이라야 CTA 가 거짓말하지 않는다.
+    expect(bridgeCardModel("match_end", { ...base, state: "FINISHED", auto: false }).cta).toBe(
+      "보상과 결과 보기",
+    );
     expect(
       bridgeCardModel("match_end", { ...base, state: "FINISHED", auto: false, hasContinuation: true }).cta,
     ).toBe("보상 받기");

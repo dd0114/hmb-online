@@ -42,6 +42,22 @@ function sceneTicksOf(events: readonly { tick: number; type: string; detail?: st
 }
 
 /**
+ * 그 틱의 장면 이벤트 **모양**(종류 집합). 아래 신선도 계약이 틱 값·간격만 재고 **모양은 주석으로만
+ * 약속**하던 갭을 닫는다(#421/#424 W6) — 재생성으로 S1·S2 가 뒤바뀌어도(선방 표본이 골이 되거나
+ * 그 반대) 옛 계약은 그대로 초록이었다. 시퀀서가 다루는 두 부류(득점 / 유효슛+선방)를 한 번에
+ * 태우는 것이 이 표본의 목적이므로, 모양이 무너지면 계약이 재는 대상이 달라진다.
+ */
+function sceneShapeAt(
+  events: readonly { tick: number; type: string; detail?: string }[],
+  tick: number,
+): string[] {
+  return events
+    .filter((e) => e.tick === tick && sceneTicksOf([e]).length > 0)
+    .map((e) => (e.detail ? `${e.type}:${e.detail}` : e.type))
+    .sort();
+}
+
+/**
  * 남겨 둘 장면 두 개 — **멀리 떨어져 있어야** "건너뛰었다"가 자연 재생과 구분된다(아래 신선도 계약).
  *
  * ⚠️ **엔진이 움직이면 이 두 값을 다시 고른다**(시드 재선정 — 루트 CLAUDE.md 가 반복해 기록한 유형).
@@ -53,8 +69,10 @@ function sceneTicksOf(events: readonly { tick: number; type: string; detail?: st
  * 지우고, 그러면 d2·f·h 같은 계약이 **공허하게 통과**한다. 그걸 막는 것이 아래 신선도 계약이고,
  * 실제로 그것이 이 재선정을 잡았다(리베이스 직후 `장면 == []`).
  *
- * 고르는 기준(= 신선도 계약이 그대로 단언한다): `S1 > 720` · `S2 − S1 > 320` · `S2 + 100 < TICKS`.
- * 모양도 맞춘다 — S1 은 `shot:saved + save`(같은 틱), S2 는 `goal`.
+ * 고르는 기준(= 신선도 계약이 그대로 단언한다): `S1 > 720` · `S2 − S1 > 320` · `S2 + 100 < TICKS`
+ * **그리고 모양** — S1 은 `shot:saved + save`(같은 틱), S2 는 `goal`.
+ * ⚠️ 모양은 한때 여기 주석으로만 있었다(W6 에서 계약으로 승격) — 재생성에서 둘이 뒤바뀌어도
+ * 옛 계약은 그대로 초록이었다.
  */
 const S1 = 764; // shot:saved + save (같은 틱)
 const S2 = 1238; // goal
@@ -236,13 +254,30 @@ test.use({ viewport: { width: 390, height: 844 } });
 
 test.describe("#421 W4 하이라이트 순서 재생", () => {
   test("픽스처 신선도 — 두 장면이 자연 재생으로는 못 건너올 만큼 떨어져 있어야 계약이 성립한다", () => {
-    const scenes = sceneTicksOf(reelLog().events);
+    const events = reelLog().events;
+    const scenes = sceneTicksOf(events);
     expect(scenes, "남긴 장면은 정확히 둘이어야 한다").toEqual([S1, S2]);
     // 자연 재생 상한(크루즈 4x ≈ 8틱/초)으로도 이 간격은 40초 이상이다 = 테스트 창 안엔 못 온다.
     expect((S2 - S1) / 8).toBeGreaterThan(40);
     expect(S1 / 8).toBeGreaterThan(90);
     expect(sceneTicksOf(scenelessLog().events), "장면 0개 표본").toEqual([]);
     expect(TICKS).toBeGreaterThan(S2 + 100);
+
+    /*
+     * **모양까지 잰다**(W6). 위 주석이 약속만 하던 것을 계약이 실제로 재게 만든 것 — 표본 두 개는
+     * 시퀀서가 다루는 서로 다른 부류(유효슛+선방 / 득점)를 하나씩 맡고 있어서, 재생성에서 둘이
+     * 같은 부류가 되거나 뒤바뀌면 이 스펙이 재는 대상 자체가 달라진다.
+     *
+     * ⚠️ **일부러 위 숫자 단언들 뒤에 둔다** — 변이가 앞줄에서 먼저 죽으면 "옛 계약이 눈이 멀었다"가
+     * 증명되지 않는다(apps/web CLAUDE.md 가 반복 경고하는 형태). 변이 `S1=831`(goal) ·
+     * `S2=1176`(save+shot:saved) 는 데모 로그에 실재하는 틱이라 **위 다섯 줄을 전부 통과**하고
+     * 아래 두 줄에서만 죽는다(실측 확인).
+     */
+    expect(sceneShapeAt(events, S1), "S1 = 같은 틱의 shot:saved + save").toEqual([
+      "save",
+      "shot:saved",
+    ]);
+    expect(sceneShapeAt(events, S2), "S2 = goal").toEqual(["goal"]);
   });
 
   test("a·b. 종료된 경기 — 디폴트가 하이라이트고 #1 → #2 로 이어진다", async ({ page }) => {

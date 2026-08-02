@@ -99,7 +99,22 @@ export const FLOW_COPY = {
       unknown: "90분이 끝났습니다.",
     } as Record<string, string>,
     nextHint: "다음 · 경기 보상과 결과 확인",
-    /** continuation(#405) 유무로 갈린다(조정 포인트 §11-9). 없어도 흐름이 완결된다(C2). */
-    cta: { reward: "보상 받기", result: "결과 보기" },
+    /**
+     * continuation(#405) 유무로 갈린다(조정 포인트 §11-9). 없어도 흐름이 완결된다(C2).
+     *
+     * ⚠️ **`result` 가 `결과 보기` 가 아니라 `보상과 결과 보기` 인 이유**(W6 정정): #405 는
+     * `matchEndContinuation` 이 아니라 **`StageShell` 이 소유한 `RewardSheet` + `!overlayOpen` 게이트**로
+     * 착지했다. 그래서 이 CTA 를 누르면 봉투가 미확인일 때 **먼저 보상 시트**가 뜨고(그 뒤가 결과 탭),
+     * 봉투가 없을 때만 곧바로 결과 탭이다 — `결과 보기` 는 앞의 경우에 실제로 오는 화면을 말하지
+     * 않는다. 두 경우 모두에서 참인 문장으로 맞췄고, 바로 위 `nextHint` 와도 같은 말을 한다.
+     * (브릿지는 봉투 유무를 **모른다** — 그 상태는 `StageShell` 이 소유하고, 알려고 prop 을 늘리면
+     * 오버레이가 보상 데이터를 아는 셈이 돼 C1 이 깨진다. 그래서 라벨을 갈 게 아니라 **둘 다 참인
+     * 문장**을 고른다.)
+     *
+     * ⚠️ `reward`(`보상 받기`)는 **프로덕션 호출부가 0** 이다(`MatchPage.matchEndContinuation` 는
+     * 아무도 넘기지 않는다). 지우지 않는 이유 = #405 에 공개한 확장점이고 C2~C5 계약이 그 경로를
+     * 탄다(`MatchFlowOverlay.test.ts`). 죽은 문구가 아니라 **아직 호출부가 없는 분기**다.
+     */
+    cta: { reward: "보상 받기", result: "보상과 결과 보기" },
   },
 } as const;
