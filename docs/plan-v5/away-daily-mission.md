@@ -384,7 +384,56 @@ CREATE INDEX idx_daily_mission_user_day  ON daily_missions(user_id, day);
 
 `GET /api/missions/daily` 가 **문구·진행도·목표·보상액·상태를 완성해서** 내려준다.
 클라가 티어→금액을 다시 계산하면 노브를 돌린 순간 화면이 거짓말한다(#368 이 같은 이유로 18칸을 통째로 내려준다).
-수령 = `POST /api/missions/{id}/claim`, 리롤 = `POST /api/missions/{id}/reroll`.
+
+```jsonc
+// GET /api/missions/daily
+{
+  "day": "2026-08-02",                       // KST
+  "resetAtKst": "2026-08-03T00:00:00+09:00", // 화면의 "자정에 초기화" 문구용 — 클라가 계산하지 않는다
+  "missions": [
+    {
+      "id": "01J...",                        // daily_missions 행 id (claim·reroll 의 키)
+      "missionId": "away_streak_2",          // 카탈로그 키(분석·디버깅용, 화면 표시 아님)
+      "title": "원정 2연승",                  // 서버가 완성한 문구
+      "tier": "NORMAL",                      // 'EASY'|'NORMAL'|'HARD' — 배지 색/라벨용
+      "currency": "GEM", "amount": 200,      // 재화와 금액은 항상 같이 온다(#232)
+      "progress": 1, "target": 2,
+      "state": "IN_PROGRESS",                // 'IN_PROGRESS'|'COMPLETED'|'CLAIMED'
+      "rerollable": true                     // 서버 판단(1회 소진·달성 여부를 클라가 추론하지 않는다)
+    }
+  ],
+  "claimableCount": 0,                       // 홈 "받을 보상 N건" 한 줄 — 지난 날짜의 미수령분을 포함한다
+  "claimableAmount": 0
+}
+```
+
+- **`claimableCount` 는 오늘 것만이 아니다.** §6.3 대로 달성분은 기한 없이 남으므로 어제·그제 미수령분을 합산한다.
+  안 그러면 홈 한 줄이 "받을 게 없다"고 말하는데 미션 화면엔 받을 게 있는 상태가 된다.
+- **구 서버 폴백**: 이 블록이 없으면 web 은 섹션을 **통째로 안 그린다**(#286 W5 규율 — 스켈레톤·에러를 띄우면
+  "아직 없는 기능"이 "고장 난 화면"이 된다).
+
+```jsonc
+// POST /api/missions/{id}/claim   → 200
+{ "claimed": { "currency": "GEM", "amount": 200 }, "wallet": { "points": 3000, "gems": 12200 } }
+// 이미 받았으면 409 MISSION_ALREADY_CLAIMED · 미달성이면 409 MISSION_NOT_COMPLETED
+
+// POST /api/missions/{id}/reroll  → 200
+{ "mission": { …새 미션 객체(위 형태와 동일)… } }
+// 리롤 소진 409 MISSION_REROLL_USED · 달성한 미션 409 MISSION_ALREADY_COMPLETED
+```
+
+### 결과 화면 — `GET /api/matches/{id}/result` 에 additive 필드
+
+#368 이 `dailyReward` 를 얹은 자리와 같은 규율. **구 클라는 필드를 무시하면 그만이라 배포 순서 결합이 없다.**
+
+```jsonc
+{ …, "missions": [ { "id": "01J…", "title": "원정 2연승", "tier": "NORMAL",
+                     "currency": "GEM", "amount": 200,
+                     "progress": 2, "target": 2, "completedNow": true } ] }
+```
+
+`completedNow` = **이 경기로 달성됐다**(이전에 이미 달성된 것과 구분). 진행만 오른 미션도 배열에 포함한다 —
+"이 경기로 미션이 얼마나 갔나"를 보여주는 게 결과 화면의 일이다. 이 배열이 #405 보상 탭의 **미션 섹션** 원료다.
 
 ### 계약 (E2E-TDD — 구현 전에 박는다)
 
