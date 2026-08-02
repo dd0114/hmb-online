@@ -34,6 +34,14 @@ interface PlayerStatsPanelProps {
    */
   selected?: PlayerSelection | null;
   onSelect?: (sel: PlayerSelection) => void;
+  /**
+   * 행 탭 → **선수 상세 모달**(#403 W3, 목업 ① *"행을 누르면 그 선수 상세로 → ③"*).
+   *
+   * ⚠️ `onSelect`((B) 피치 강조)와 **다른 축**이다. 하나로 합치면 피치 터치가 붙는 순간 토큰을
+   * 고르기만 해도 모달이 열린다 — 강조와 열람은 다른 동작이다. 둘 다 안 주면 행은 버튼이
+   * 아니고, 이 탭은 그대로 돈다((A) 단독 머지 성질 유지).
+   */
+  onOpenDetail?: (sel: PlayerSelection) => void;
 }
 
 /**
@@ -59,6 +67,7 @@ export function PlayerStatsPanel({
   myTeamSide = null,
   selected = null,
   onSelect,
+  onOpenDetail,
 }: PlayerStatsPanelProps) {
   const [team, setTeam] = useState<TeamSide>(() => defaultSegment(myTeamSide));
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
@@ -178,6 +187,7 @@ export function PlayerStatsPanel({
               motm={win.kind === "settled" && isMotmKey(result, r.key)}
               picked={selected?.team === r.team && selected?.playerId === r.playerId}
               onSelect={onSelect}
+              onOpenDetail={onOpenDetail}
             />
           ))}
         </tbody>
@@ -209,13 +219,21 @@ function Row({
   motm,
   picked,
   onSelect,
+  onOpenDetail,
 }: {
   row: PlayerRow;
   motm: boolean;
   picked: boolean;
   onSelect?: (sel: PlayerSelection) => void;
+  onOpenDetail?: (sel: PlayerSelection) => void;
 }) {
-  const pick = () => onSelect?.({ team: row.team, playerId: row.playerId });
+  /** 한 번의 탭이 두 일을 한다: (B) 피치 강조를 갱신하고, 상세를 연다. 둘은 서로를 안 기다린다. */
+  const interactive = Boolean(onSelect || onOpenDetail);
+  const pick = () => {
+    const sel: PlayerSelection = { team: row.team, playerId: row.playerId };
+    onSelect?.(sel);
+    onOpenDetail?.(sel);
+  };
   const tier = ratingTier(row.line.rating, motm);
   return (
     <tr
@@ -223,8 +241,8 @@ function Row({
       data-testid={`players-row-${row.team}-${row.playerId}`}
       data-gk={row.isGk}
       data-picked={picked}
-      role={onSelect ? "button" : undefined}
-      tabIndex={onSelect ? 0 : undefined}
+      role={interactive ? "button" : undefined}
+      tabIndex={interactive ? 0 : undefined}
       onClick={pick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
