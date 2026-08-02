@@ -8,7 +8,6 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -63,6 +62,10 @@ public class MissionService {
      */
     public static final String LEDGER_REASON = "daily_mission";
 
+    static final String STATE_IN_PROGRESS = "IN_PROGRESS";
+    static final String STATE_COMPLETED = "COMPLETED";
+    static final String STATE_CLAIMED = "CLAIMED";
+
     /** {@code resetAtKst} 표기 — 초까지 고정폭으로 쓴다(ISO_OFFSET_DATE_TIME 은 0초를 생략한다). */
     private static final DateTimeFormatter RESET_AT = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX");
 
@@ -100,12 +103,31 @@ public class MissionService {
     }
 
     /**
+     * @param pendingClaims <b>지난 날짜</b>의 달성·미수령분. 오늘 것은 여기 없다 — 이미
+     *                      {@code missions} 에 {@code state=COMPLETED} 로 있다(중복 금지).
      * @param claimableCount <b>오늘 것만이 아니다</b> — §6.3 대로 달성분은 기한 없이 남으므로 어제·
      *                       그제 미수령분을 합산한다. 안 그러면 홈 한 줄이 "받을 게 없다"고 말하는데
      *                       미션 화면엔 받을 게 있는 상태가 된다.
+     *                       <p>⚠️ <b>그 반대 방향이 실제로 터졌다</b>(W3): 합계만 전 기간이고 목록은
+     *                       오늘 것뿐이라, 어제 달성하고 안 받은 유저는 홈에서 "받을 보상 1건"을 보는데
+     *                       원정 화면엔 받을 카드가 없었다 = §6.3 이 <b>화면에서 도달 불가능</b>했다.
+     *                       그래서 이 수는 독립 집계가 아니라 <b>화면이 실제로 그릴 수 있는 것에서
+     *                       파생</b>시킨다(아래 {@code daily()}) — 구조적으로 어긋날 수 없게.
      */
     public record DailyView(String day, String resetAtKst, List<MissionView> missions,
+                            List<PendingClaim> pendingClaims,
                             int claimableCount, long claimableAmount) {
+    }
+
+    /**
+     * 지난 날짜에 달성했는데 아직 안 받은 보상 한 건.
+     *
+     * <p>{@code progress}/{@code target}/{@code rerollable} 이 없다 — 이미 끝난 미션이라 진행도는
+     * 의미가 없고, 리롤은 <b>오늘 것만</b> 되기 때문이다(지난 미션은 410 {@code MISSION_EXPIRED}).
+     * 수령은 오늘 것과 <b>같은 엔드포인트</b>를 쓴다({@code claim} 은 날짜를 보지 않는다).
+     */
+    public record PendingClaim(String id, String day, String missionId, String title, String tier,
+                               String currency, int amount) {
     }
 
     /** 수령 결과 — 재화와 금액은 항상 같이 온다(#232). */
@@ -123,10 +145,13 @@ public class MissionService {
      * 결과 화면의 미션 한 줄 (§8 additive).
      *
      * @param completedNow <b>이 경기로</b> 달성됐다 — 이전에 이미 달성돼 있던 것과 구분한다.
+     * @param state {@code IN_PROGRESS|COMPLETED|CLAIMED}. ⚠️ <b>필수 필드다.</b> 없으면 결과 화면이
+     *              "지금 받을 수 있나"를 {@code progress >= target} 으로 재계산해야 하고, 그러면
+     *              <b>수령한 뒤에도 "받기"가 계속 보인다</b> — 이 설계가 금지한 바로 그 짓이다.
      */
     public record MatchMissionView(String id, String missionId, String title, String tier,
                                    String currency, int amount, int progress, int target,
-                                   boolean completedNow) {
+                                   boolean completedNow, String state) {
     }
 
     // ── 조회 ────────────────────────────────────────────────────────────
@@ -140,8 +165,21 @@ public class MissionService {
         for (Row row : live(rows)) {
             views.add(toView(row, rerollsUsed(rows, row.slotNo())));
         }
-        Claimable claimable = claimable(userId);
-        return new DailyView(day, resetAtKst(), views, claimable.count(), claimable.amount());
+        List<PendingClaim> pending = pendingClaims(userId, day);
+        // ⚠️ 합계는 **화면이 그릴 수 있는 것에서 파생**시킨다 — 독립 쿼리로 세면 "홈은 1건이라는데
+        // 화면엔 카드가 없다"(또는 그 반대)가 조용히 다시 열린다. 원본이 하나면 어긋날 수 없다.
+        int count = pending.size();
+        long amount = 0;
+        for (PendingClaim p : pending) {
+            amount += p.amount();
+        }
+        for (MissionView v : views) {
+            if (STATE_COMPLETED.equals(v.state())) {   // CLAIMED 는 이미 받은 것이라 세지 않는다
+                count++;
+                amount += v.amount();
+            }
+        }
+        return new DailyView(day, resetAtKst(), views, pending, count, amount);
     }
 
     // ── 정산(판정) ──────────────────────────────────────────────────────
@@ -204,7 +242,10 @@ public class MissionService {
             }
             applied.add(new MatchMissionView(row.id(), row.missionId(), row.title(), row.tier(),
                     row.currency(), row.amount(), after, row.target(),
-                    before < row.target() && after >= row.target()));
+                    before < row.target() && after >= row.target(),
+                    // 방금 UPDATE 한 결과를 반영한다 — row 는 갱신 **전** 스냅샷이라 completed_at 만
+                    // 보면 이 경기로 달성된 미션이 IN_PROGRESS 로 나간다.
+                    stateOf(row.completedAt() != null || after >= row.target(), row.claimedAt())));
         }
         return applied;
     }
@@ -269,7 +310,7 @@ public class MissionService {
     public List<MatchMissionView> progressOf(String matchId, String viewerId) {
         return jdbcClient.sql("""
                         SELECT m.id, m.mission_id, m.title, m.tier, m.currency, m.amount, m.target,
-                               p.progress_before, p.progress_after
+                               m.completed_at, m.claimed_at, p.progress_before, p.progress_after
                           FROM daily_mission_progress p
                           JOIN daily_missions m ON m.id = p.mission_row_id
                          WHERE p.match_id = ? AND m.user_id = ?
@@ -282,7 +323,8 @@ public class MissionService {
                     int after = rs.getInt("progress_after");
                     return new MatchMissionView(rs.getString("id"), rs.getString("mission_id"),
                             rs.getString("title"), rs.getString("tier"), rs.getString("currency"),
-                            rs.getInt("amount"), after, target, before < target && after >= target);
+                            rs.getInt("amount"), after, target, before < target && after >= target,
+                            stateOf(rs.getString("completed_at") != null, rs.getString("claimed_at")));
                 })
                 .list();
     }
@@ -499,9 +541,6 @@ public class MissionService {
                        int progress, String completedAt, String claimedAt, String rerolledAt) {
     }
 
-    private record Claimable(int count, long amount) {
-    }
-
     private static final String COLUMNS = """
             id, user_id, day, slot_no, mission_id, title, tier, rule, currency, amount, target,
             progress, completed_at, claimed_at, rerolled_at
@@ -558,8 +597,7 @@ public class MissionService {
     }
 
     private MissionView toView(Row row, int rerollsUsed) {
-        String state = row.claimedAt() != null ? "CLAIMED"
-                : row.completedAt() != null ? "COMPLETED" : "IN_PROGRESS";
+        String state = stateOf(row.completedAt() != null, row.claimedAt());
         // 리롤 가능 여부는 **서버 판단**이다 — 클라가 "1회 소진·달성 여부"를 추론하면 규칙이 바뀔 때
         // 조용히 어긋난다(§8).
         boolean rerollable = row.completedAt() == null && rerollsUsed < props.getRerollPerSlot();
@@ -567,22 +605,32 @@ public class MissionService {
                 row.amount(), row.progress(), row.target(), state, rerollable);
     }
 
-    /** 전 기간 미수령 달성분 — 홈의 "받을 보상 N건" 한 줄이 읽는 값(§8). */
-    private Claimable claimable(String userId) {
-        Map<String, Object> agg = jdbcClient.sql("""
-                        SELECT COUNT(*) AS c, COALESCE(SUM(amount), 0) AS a FROM daily_missions
-                         WHERE user_id = ? AND completed_at IS NOT NULL AND claimed_at IS NULL
+    /**
+     * <b>지난 날짜</b>의 달성·미수령분(오래된 것부터). 오늘 것은 {@code missions} 가 이미 싣고 있다.
+     *
+     * <p>⚠️ {@code day < today} 의 문자열 비교는 여기서만 안전하다 — {@code day} 는 <b>고정폭</b>
+     * {@code yyyy-MM-dd} 라 사전순 = 시간순이다. ISO <b>타임스탬프</b>를 문자열로 비교하면 소수초가
+     * 붙은 값이 안 붙은 값보다 작게 정렬돼 어긋난다(#245 가 겪은 함정) — 그건 이 컬럼 얘기가 아니다.
+     */
+    private List<PendingClaim> pendingClaims(String userId, String today) {
+        return jdbcClient.sql("""
+                        SELECT id, day, mission_id, title, tier, currency, amount
+                          FROM daily_missions
+                         WHERE user_id = ? AND day < ?
+                           AND completed_at IS NOT NULL AND claimed_at IS NULL
                            AND rerolled_at IS NULL
+                         ORDER BY day, slot_no
                         """)
-                .param(userId)
-                .query((rs, n) -> {
-                    Map<String, Object> m = new LinkedHashMap<>();
-                    m.put("c", rs.getInt("c"));
-                    m.put("a", rs.getLong("a"));
-                    return m;
-                })
-                .single();
-        return new Claimable((Integer) agg.get("c"), (Long) agg.get("a"));
+                .params(userId, today)
+                .query((rs, n) -> new PendingClaim(rs.getString("id"), rs.getString("day"),
+                        rs.getString("mission_id"), rs.getString("title"), rs.getString("tier"),
+                        rs.getString("currency"), rs.getInt("amount")))
+                .list();
+    }
+
+    /** 상태 판정의 유일한 자리 — 조회·정산·결과 화면이 같은 규칙을 쓴다(두 곳에 적으면 갈라진다). */
+    private static String stateOf(boolean completed, String claimedAt) {
+        return claimedAt != null ? STATE_CLAIMED : completed ? STATE_COMPLETED : STATE_IN_PROGRESS;
     }
 
     /** 오늘(KST) — 주입된 Clock 존이 SoT 다({@code hmb.match.condition.zone}). */

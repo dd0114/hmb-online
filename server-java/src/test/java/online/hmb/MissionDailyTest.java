@@ -652,6 +652,179 @@ class MissionDailyTest extends MatchTestBase {
         assertThat(missionService.daily(uid).claimableCount()).isZero();
     }
 
+    // ── 지난 날짜의 미수령분 (pendingClaims) ─────────────────────────────
+
+    /** 지난 날짜의 달성·미수령 행을 심는다(그날 미션은 이미 교체됐지만 보상은 남는다, §6.3). */
+    private String seedCompletedOn(String userId, String day, int slotNo, String missionId) {
+        String id = seed(userId, day, slotNo, missionId);
+        jdbcClient.sql("UPDATE daily_missions SET progress = target, completed_at = ? WHERE id = ?")
+                .params(day + "T12:00:00Z", id)
+                .update();
+        return id;
+    }
+
+    /**
+     * <b>홈이 "받을 보상 1건"이라고 말하면 화면에 그 카드가 있어야 한다.</b>
+     *
+     * <p>합계({@code claimableCount})만 전 기간이고 목록({@code missions})은 오늘 것뿐이면,
+     * 어제 달성하고 안 받은 유저는 홈에서 1건을 보는데 원정 화면엔 받을 카드가 없다 —
+     * §6.3(달성분은 기한 없이 남는다)이 <b>화면에서 도달 불가능</b>해진다. 그 반대 방향 버그도 같다.
+     */
+    @Test
+    void pendingClaimsCarriesPastDaysUnclaimedRewardsSoTheyStayReachable() {
+        String uid = user("mis_pending");
+        NOW.set(MIDDAY);
+        String yesterday = seedCompletedOn(uid, "2026-08-01", 1, "away_win_2");
+
+        MissionService.DailyView view = missionService.daily(uid);
+        assertThat(view.pendingClaims()).singleElement().satisfies(p -> {
+            assertThat(p.id()).isEqualTo(yesterday);
+            assertThat(p.day()).isEqualTo("2026-08-01");
+            assertThat(p.missionId()).isEqualTo("away_win_2");
+            assertThat(p.title()).isEqualTo("원정에서 2승");
+            assertThat(p.tier()).isEqualTo("NORMAL");
+            assertThat(p.currency()).isEqualTo("GEM");
+            assertThat(p.amount()).isEqualTo(22);   // 픽스처 NORMAL
+        });
+
+        // **수령은 오늘 것과 같은 엔드포인트**다 — claim 은 날짜를 보지 않는다.
+        long before = gems(uid);
+        assertThat(missionService.claim(uid, yesterday).claimed().amount()).isEqualTo(22);
+        assertThat(gems(uid)).isEqualTo(before + 22);
+        assertThat(missionService.daily(uid).pendingClaims()).isEmpty();
+    }
+
+    /**
+     * ⚠️ <b>오늘 것은 {@code pendingClaims} 에 들어가지 않는다</b> — 이미 {@code missions} 에
+     * {@code state=COMPLETED} 로 있다. 중복으로 실으면 화면이 같은 보상을 두 장 그리고,
+     * 유저는 하나를 받은 뒤 나머지 한 장이 409 를 뱉는 걸 본다.
+     */
+    @Test
+    void todaysCompletedMissionLivesInMissionsOnlyAndIsNeverDuplicatedIntoPendingClaims() {
+        String uid = user("mis_pending_dup");
+        NOW.set(MIDDAY);
+        String today = seed(uid, "2026-08-02", 1, "away_play_1");
+        fillOtherSlot(uid, "2026-08-02", "away_play_3");
+        String yesterday = seedCompletedOn(uid, "2026-08-01", 1, "away_win_2");
+        play(uid, "WIN", 1, 0);   // 오늘 것을 달성시킨다
+
+        MissionService.DailyView view = missionService.daily(uid);
+        assertThat(view.missions()).filteredOn(m -> m.id().equals(today))
+                .singleElement()
+                .satisfies(m -> assertThat(m.state()).isEqualTo("COMPLETED"));
+        assertThat(view.pendingClaims().stream().map(MissionService.PendingClaim::id))
+                .as("오늘 것은 missions 에 있다 — 여기 또 실으면 같은 보상이 두 장 그려진다")
+                .containsExactly(yesterday);
+    }
+
+    /**
+     * <b>합계와 목록이 어긋나지 않는다</b>: {@code claimableCount/Amount}
+     * = {@code missions} 의 COMPLETED(미수령) + {@code pendingClaims} 전부.
+     *
+     * <p>관계식으로 걸어야 한다 — 숫자만 단정하면 "합계는 전 기간, 목록은 오늘"이라는 <b>원래의 갭</b>이
+     * 그대로 통과한다. 표본에 <b>어제 행</b>이 반드시 있어야 관계가 공허하지 않다.
+     */
+    @Test
+    void claimableTotalsAlwaysMatchWhatTheScreenCanActuallyShow() {
+        String uid = user("mis_cl_rel");
+        NOW.set(MIDDAY);
+        String today = seed(uid, "2026-08-02", 1, "away_play_1");     // EASY 11
+        fillOtherSlot(uid, "2026-08-02", "away_play_3");
+        seedCompletedOn(uid, "2026-08-01", 1, "away_win_2");          // NORMAL 22
+        seedCompletedOn(uid, "2026-07-31", 1, "away_margin_3");       // HARD 33
+        play(uid, "WIN", 1, 0);                                       // 오늘 것 달성
+
+        MissionService.DailyView view = missionService.daily(uid);
+        long shownCount = view.missions().stream().filter(m -> "COMPLETED".equals(m.state())).count()
+                + view.pendingClaims().size();
+        long shownAmount = view.missions().stream().filter(m -> "COMPLETED".equals(m.state()))
+                .mapToLong(MissionService.MissionView::amount).sum()
+                + view.pendingClaims().stream().mapToLong(MissionService.PendingClaim::amount).sum();
+
+        assertThat(view.claimableCount()).isEqualTo((int) shownCount).isEqualTo(3);
+        assertThat(view.claimableAmount()).isEqualTo(shownAmount).isEqualTo(11 + 22 + 33);
+
+        // 하나 받으면 합계와 목록이 **같이** 줄어든다.
+        missionService.claim(uid, today);
+        MissionService.DailyView after = missionService.daily(uid);
+        assertThat(after.claimableCount()).isEqualTo(
+                (int) (after.missions().stream().filter(m -> "COMPLETED".equals(m.state())).count()
+                        + after.pendingClaims().size()))
+                .isEqualTo(2);
+        assertThat(after.missions()).filteredOn(m -> m.id().equals(today))
+                .singleElement().satisfies(m -> assertThat(m.state()).isEqualTo("CLAIMED"));
+    }
+
+    /** 오래된 것부터 — 유저가 받는 순서를 예측할 수 있어야 한다(같은 날은 슬롯 순). */
+    @Test
+    void pendingClaimsAreOrderedOldestFirst() {
+        String uid = user("mis_p_order");
+        NOW.set(MIDDAY);
+        String older = seedCompletedOn(uid, "2026-07-30", 1, "away_win_1");
+        String midSlot2 = seedCompletedOn(uid, "2026-08-01", 2, "away_goals_3");
+        String midSlot1 = seedCompletedOn(uid, "2026-08-01", 1, "away_win_2");
+
+        assertThat(missionService.daily(uid).pendingClaims()
+                .stream().map(MissionService.PendingClaim::id))
+                .containsExactly(older, midSlot1, midSlot2);
+    }
+
+    /** 은퇴한(리롤된) 행은 지난 날짜여도 목록에 없다 — 유저가 갖고 있던 미션이 아니다. */
+    @Test
+    void retiredRowsNeverAppearInPendingClaims() {
+        String uid = user("mis_p_retired");
+        NOW.set(MIDDAY);
+        String retired = seedCompletedOn(uid, "2026-08-01", 1, "away_win_2");
+        jdbcClient.sql("UPDATE daily_missions SET rerolled_at = '2026-08-01T13:00:00Z' WHERE id = ?")
+                .param(retired).update();
+        String live = seedCompletedOn(uid, "2026-08-01", 2, "away_play_1");
+
+        MissionService.DailyView view = missionService.daily(uid);
+        assertThat(view.pendingClaims().stream().map(MissionService.PendingClaim::id))
+                .containsExactly(live);
+        assertThat(view.claimableCount()).isEqualTo(1);
+    }
+
+    // ── 결과 화면 미션의 state ───────────────────────────────────────────
+
+    /**
+     * <b>결과 화면 미션에 {@code state} 가 실린다.</b> 없으면 web 이 "지금 받을 수 있나"를
+     * {@code progress >= target} 으로 <b>재계산</b>해야 하고, 그러면 <b>수령한 뒤에도 "받기"가 계속
+     * 보인다</b> — 이 설계가 금지한 바로 그 짓이다(§8). 그래서 W3 는 결과 화면에 수령 버튼을 못 달았다.
+     */
+    @Test
+    void resultMissionsCarryStateSoTheScreenNeverRecomputesIt() {
+        String uid = user("mis_result_state");
+        NOW.set(MIDDAY);
+        String done = seed(uid, "2026-08-02", 1, "away_play_1");    // 이 경기로 달성된다
+        String ongoing = seed(uid, "2026-08-02", 2, "away_play_3"); // 아직 진행 중
+
+        String matchId = Ulid.next();
+        List<MissionService.MatchMissionView> applied =
+                missionService.settle(matchId, uid, "WIN", 1, 0, true, NOW.get());
+        assertThat(applied).filteredOn(v -> v.id().equals(done)).singleElement()
+                .satisfies(v -> {
+                    assertThat(v.completedNow()).isTrue();
+                    assertThat(v.state()).isEqualTo("COMPLETED");
+                });
+        assertThat(applied).filteredOn(v -> v.id().equals(ongoing)).singleElement()
+                .satisfies(v -> assertThat(v.state()).isEqualTo("IN_PROGRESS"));
+
+        // 다시 읽어도 같다(결과 화면은 여러 번 열린다).
+        assertThat(missionService.progressOf(matchId, uid))
+                .filteredOn(v -> v.id().equals(done)).singleElement()
+                .satisfies(v -> assertThat(v.state()).isEqualTo("COMPLETED"));
+
+        // ⚠️ **수령하면 CLAIMED 로 바뀐다** — 이게 안 바뀌면 결과 화면이 받은 보상을 또 권한다.
+        missionService.claim(uid, done);
+        assertThat(missionService.progressOf(matchId, uid))
+                .filteredOn(v -> v.id().equals(done)).singleElement()
+                .satisfies(v -> {
+                    assertThat(v.state()).isEqualTo("CLAIMED");
+                    assertThat(v.completedNow()).as("'이 경기로 달성됐다'는 사실은 안 바뀐다").isTrue();
+                });
+    }
+
     // ── 리롤 ────────────────────────────────────────────────────────────
 
     /** 리롤 = 슬롯당 1회 · 전체 풀에서 재추첨(보유분 제외) · 진행도 0 · 두 번째는 409. */

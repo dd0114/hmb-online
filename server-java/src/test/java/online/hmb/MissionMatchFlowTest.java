@@ -129,7 +129,11 @@ class MissionMatchFlowTest extends MatchTestBase {
         assertThat(carried).hasSize(2);
         for (Map<String, Object> m : carried) {
             assertThat(m).containsKeys("id", "missionId", "title", "tier", "currency", "amount",
-                    "progress", "target", "completedNow");
+                    "progress", "target", "completedNow", "state");
+            // state 가 없으면 web 이 progress>=target 으로 재계산해야 하고, 그러면 수령한 뒤에도
+            // "받기"가 계속 보인다(§8). 결과 화면에서 수령을 여는 열쇠라 **필수 필드**다.
+            assertThat((String) m.get("state"))
+                    .isIn("IN_PROGRESS", "COMPLETED", "CLAIMED");
             assertThat((String) m.get("title")).isNotBlank();
             assertThat(((Number) m.get("amount")).intValue())
                     .as("재화와 금액은 항상 같이 온다(#232)").isPositive();
@@ -231,7 +235,10 @@ class MissionMatchFlowTest extends MatchTestBase {
         ResponseEntity<Map> res = authGet("/api/missions/daily", token, Map.class);
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = res.getBody();
-        assertThat(body).containsKeys("day", "resetAtKst", "missions", "claimableCount", "claimableAmount");
+        assertThat(body).containsKeys("day", "resetAtKst", "missions", "pendingClaims",
+                "claimableCount", "claimableAmount");
+        assertThat((List<?>) body.get("pendingClaims"))
+                .as("새 유저에겐 지난 날짜 미수령분이 없다 — 키는 있고 배열은 비어 있다").isEmpty();
         List<Map<String, Object>> missions = (List<Map<String, Object>>) body.get("missions");
         assertThat(missions).hasSize(2);
         assertThat(missions.get(0)).containsKeys("id", "missionId", "title", "tier", "currency",

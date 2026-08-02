@@ -450,13 +450,20 @@ CREATE TABLE daily_mission_progress (
       "rerollable": true                     // 서버 판단(1회 소진·달성 여부를 클라가 추론하지 않는다)
     }
   ],
-  "claimableCount": 0,                       // 홈 "받을 보상 N건" 한 줄 — 지난 날짜의 미수령분을 포함한다
-  "claimableAmount": 0
+  "pendingClaims": [                         // ← 지난 날짜의 달성·미수령분(오늘 것은 missions 에 있다)
+    { "id": "01J…", "day": "2026-08-01", "missionId": "away_win_2", "title": "원정에서 2승",
+      "tier": "NORMAL", "currency": "GEM", "amount": 200 }
+  ],
+  "claimableCount": 1,                       // 홈 "받을 보상 N건" 한 줄 = missions 의 COMPLETED + pendingClaims
+  "claimableAmount": 200
 }
 ```
 
 - **`claimableCount` 는 오늘 것만이 아니다.** §6.3 대로 달성분은 기한 없이 남으므로 어제·그제 미수령분을 합산한다.
   안 그러면 홈 한 줄이 "받을 게 없다"고 말하는데 미션 화면엔 받을 게 있는 상태가 된다.
+- ⚠️ **그래서 `pendingClaims` 가 반드시 같이 온다.** 합계만 주고 목록을 안 주면 **정확히 반대 방향의 같은 버그**가 된다 —
+  홈은 "받을 보상 1건"이라는데 미션 화면엔 받을 카드가 없다. 수령은 오늘 것과 **같은 엔드포인트**를 쓴다
+  (`claim` 은 날짜를 보지 않는다. 날짜를 보는 건 리롤뿐 — 지난 미션은 교체 대상이 아니다).
 - **구 서버 폴백**: 이 블록이 없으면 web 은 섹션을 **통째로 안 그린다**(#286 W5 규율 — 스켈레톤·에러를 띄우면
   "아직 없는 기능"이 "고장 난 화면"이 된다).
 
@@ -485,11 +492,16 @@ CREATE TABLE daily_mission_progress (
 ```jsonc
 { …, "missions": [ { "id": "01J…", "title": "원정 2연승", "tier": "NORMAL",
                      "currency": "GEM", "amount": 200,
-                     "progress": 2, "target": 2, "completedNow": true } ] }
+                     "progress": 2, "target": 2, "completedNow": true,
+                     "state": "COMPLETED" } ] }
 ```
 
 `completedNow` = **이 경기로 달성됐다**(이전에 이미 달성된 것과 구분). 진행만 오른 미션도 배열에 포함한다 —
 "이 경기로 미션이 얼마나 갔나"를 보여주는 게 결과 화면의 일이다. 이 배열이 #405 보상 탭의 **미션 섹션** 원료다.
+
+⚠️ **`state` 가 없으면 결과 화면에서 수령을 열 수 없다.** §6.6 은 원정 직후 결과 화면에서 받는 흐름을 말하는데,
+`state` 가 빠지면 web 이 "지금 받을 수 있나"를 `progress >= target` 으로 **재계산**해야 하고 그건 이 문서가
+금지한 바로 그 짓이다(수령한 뒤에도 계속 "받기"가 보인다). ⇒ `state` 는 이 배열의 필수 필드다.
 
 ### 계약 (E2E-TDD — 구현 전에 박는다)
 
@@ -530,4 +542,31 @@ CREATE TABLE daily_mission_progress (
 | 달성 후에도 진행도를 다시 계산 | DB 의 `WHERE completed_at IS NULL` 가드가 막아 **DB 단정만으로는** 관측이 안 됐다(응답에는 틀린 값이 실린다) | `settle` **반환값**(결과 화면 payload)의 progress 도 단정 |
 | 리롤을 같은 티어 안에서만 | "리롤 결과 티어가 셋 다 나온다"가 **어차피 참** — 원래 미션 티어가 이미 셋에 걸쳐 있다 | 관계식으로 교체: **티어를 건너뛴 리롤이 실제로 일어나는가** |
 
-최종 21/21 사망. 전체 표는 웨이브 보고 참조(훅 제거 · 훅을 몰수 경로에 이식 · UTC 자정 · 정산 멱등 제거 · 수령 CAS 약화 · 미달성 수령 · 달성 미션 리롤 · 무한 리롤 · 무승부가 연승을 끊음 · 한 경기 N골을 합계로 · 골 차가 패배도 셈 · 선제골이 사이드 무시 · 추첨 편향 · 결과 화면 뷰어 미스코프 · 롤백 스위치 무시 · economy 폴백 0원 · lazy 생성 제거).
+### W4 후속(계약 갭 2건 마감) — 11/12 사망 · 등가 1
+
+W3(web)이 **계약 자체의 구멍 2개**를 드러냈다: ①`claimableCount` 는 전 기간인데 목록은 오늘 것뿐이라
+어제 미수령분이 **화면에서 도달 불가능**했다 ②결과 화면 미션에 `state` 가 없어 web 이 수령 버튼을 못 달았다.
+
+| 변이 | 죽은 계약 |
+|---|---|
+| `pendingClaims` 가 오늘 것까지 실음(중복) | `todaysCompletedMissionLivesInMissionsOnly…` · `claimableTotalsAlwaysMatch…` |
+| `pendingClaims` 를 아예 안 실음(**원래의 갭**) | 위 + `pendingClaimsCarriesPastDays…` · `pendingClaimsAreOrderedOldestFirst` · `retiredRowsNeverAppear…` · `completedRewardsSurvive…` |
+| 합계가 은퇴 행까지 셈 | `retiredRowsNeverAppearInPendingClaims` |
+| 합계가 오늘 것만 셈(**원래 갭의 반대 방향**) | `claimableTotalsAlwaysMatch…` · `retiredRowsNeverAppear…` |
+| 합계가 이미 받은 것도 셈 | `claimableTotalsAlwaysMatch…` · `completedRewardsSurvive…` |
+| `pendingClaims` 가 은퇴 행도 실음 | `retiredRowsNeverAppearInPendingClaims` |
+| `pendingClaims` 정렬이 최신순 | `pendingClaimsAreOrderedOldestFirst` |
+| 결과 화면 `state` 를 상수로 | `resultMissionsCarryStateSoTheScreenNeverRecomputesIt` |
+| 수령한 미션이 결과 화면에서 여전히 COMPLETED | 〃 |
+| `claim` 이 날짜를 봄(지난 보상 수령 불가) | `pendingClaimsCarriesPastDaysUnclaimedRewardsSoTheyStayReachable` |
+
+⚠️ **등가 변이 1건을 숨기지 않고 적어 둔다**: 합계를 "화면에서 파생"이 아니라 **의미가 같은 독립
+쿼리**(전 기간 · 미수령 · 비은퇴)로 되돌리는 변이는 **아무 테스트도 죽이지 않는다** — 두 계산이
+정의상 같은 집합을 세기 때문이다. 파생형을 쓰는 이유는 지금 값이 달라서가 아니라 **구조적**이다:
+원본이 하나면 나중에 한쪽만 고치는 드리프트가 열리지 않는다. 그 드리프트를 실제로 만드는 변이
+세 종류(은퇴 포함 · 오늘만 · 수령분 포함)는 전부 죽는다. **"변이체가 죽었다"와 "이 줄이 계약으로
+지켜진다"는 다른 말**이고, 후자를 주장할 수 없을 땐 그렇게 적어야 한다(#286 규율).
+
+---
+
+최종 W1~W2 21/21 사망. 전체 표는 웨이브 보고 참조(훅 제거 · 훅을 몰수 경로에 이식 · UTC 자정 · 정산 멱등 제거 · 수령 CAS 약화 · 미달성 수령 · 달성 미션 리롤 · 무한 리롤 · 무승부가 연승을 끊음 · 한 경기 N골을 합계로 · 골 차가 패배도 셈 · 선제골이 사이드 무시 · 추첨 편향 · 결과 화면 뷰어 미스코프 · 롤백 스위치 무시 · economy 폴백 0원 · lazy 생성 제거).
