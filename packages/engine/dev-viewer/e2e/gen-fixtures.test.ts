@@ -11,7 +11,7 @@ import { demoSelect, makeTacticalInput } from "../../src/fixtures";
 // 없을 수 있다. 이 시드(real config)는 셋 다 포함하므로, 그 타입 계약검증용 풀해상도 로그를
 // e2e/fixture-real.json 으로 만든다. (생성물은 gitignore.)
 const here = dirname(fileURLToPath(import.meta.url));
-const SEED = "1000001263";
+const SEED = "1000000039";
 // ⚠️ 매치 전개가 바뀌면 **아래 5조건 전부**로 재스캔한다(gameqa 체크리스트, #186 이 스캐너 체크인 소유):
 //   ①offside ≥1  ②card ≥1  ③penalty ≥1  ④#42 패턴(세이브→라이브체인→빗나감) 포함
 //   ⑤**그 체인의 스팬이 짧을 것** — ④만 맞고 스팬이 길면 e2e 가 그 구간을 실제 재생하다 타임아웃한다
@@ -97,6 +97,13 @@ const SEED = "1000001263";
 //     (⚠️ `node` 로는 안 돈다 — .ts 를 import 하므로 `npx tsx` 로 실행한다).
 //   재스캔(`--count 1500 --max-span 25`) 후보 **6개**(스팬):
 //     **1000001263:13**(save@1754) · …1485:14 · …240:19 · …572:20 · …883:21 · …1276:24.
+//   → **…0039**(#407 ⑦ · engine@0.42.0 — 오프사이드 호출 게이트 `rules.offside.callProb`
+//     0.013 → 0.045. 콜이 늘며 전개가 갈려 …1263 에서 ③penalty 가 소멸했다).
+//   재스캔(`--count 1500 --max-span 25`) 후보 **8개**(스팬):
+//     **1000000039:16**(save@834) · …883:16 · …1393:19 · …182:20 · …043:22 · …1187:22 ·
+//     …227:23 · …1276:24.
+//   ⚠️ 후보 목록은 출하 `callProb` 에 민감하다(0.055 로 재면 11개·추천 …0153). 그 노브를
+//     다시 만지면 스캐너를 다시 돌린다.
 // ⚠️ 이 시드들 중 `shot:one_on_one` 을 가진 것은 **하나도 없다** — chain 코어가 one_on_one
 //    판정 자체를 갖고 있지 않기 때문이다(decision.ts 에만 있고 chain.ts 에는 없다).
 //    상세는 shot-outcomes.spec.ts 의 test.fail 주석.

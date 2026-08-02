@@ -179,6 +179,8 @@ describe("S3-B R6 — `cornerHolderRank` → `holderRank` 관용구 추출이 no
     // 증명 실패 시 추출을 포기한다는 것도 함께 정했다. 이 해시가 그 증명이다.
         // ⚠️ #407 N4(engine@0.41.0) 재기록 — `chain.hold.oneOnOnePenalty` 는 이 플래그 밖의 전역
     //    변경이다. 0.38.0 값 = ["8c1af96c","3bfd7771","f3049b84","364419fc"].
-    expect(hashes(OFF, SEEDS4)).toEqual(["656652e2", "3bfd7771", "41f847a1", "364419fc"]);
+    // ⚠️ #407 ⑦(engine@0.42.0) 재기록 — `rules.offside.callProb` 도 같은 부류(플래그 밖 전역).
+    //    0.41.0 값 = ["656652e2","3bfd7771","41f847a1","364419fc"].
+    expect(hashes(OFF, SEEDS4)).toEqual(["8531adc4", "3bfd7771", "7d94e80b", "364419fc"]);
   });
 });

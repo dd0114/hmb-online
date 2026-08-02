@@ -279,8 +279,15 @@ describe("#407 N4 — hold EV 에 확실한 슛(1대1) 예외", () => {
  * 롤백 계약 — 스위치 2개를 끄면 0.40.0 과 **bit-identical**
  * ------------------------------------------------------------------ */
 describe("#407 N1+N4 롤백 — 스위치를 끄면 0.40.0 과 비트 동일", () => {
-  /** 0.40.0(origin/main 80e25a8) 에서 실측한 최종 스냅샷 해시. */
-  const GOLDEN_040 = ["f9d9d778", "756ec350", "f7031974", "e5b0e30b"];
+  /**
+   * 0.40.0(origin/main 80e25a8) 에서 실측한 최종 스냅샷 해시 =
+   * ["f9d9d778","756ec350","f7031974","e5b0e30b"].
+   * ⚠️ #407 ⑦(engine@0.42.0) 재기록 — `rules.offside.callProb` 0.013 → 0.045 는 이 웨이브의 두
+   * 스위치 **밖**에서 도는 심판 판정이라 롤백 경로에서도 걸린다(`vision.test.ts` ·
+   * `press-unit.test.ts` · `def-line.test.ts` 와 같은 처방). 계약 주장은 그대로다:
+   * "N1/N4 스위치를 끄면 그 두 웨이브의 코드가 한 줄도 안 돈다".
+   */
+  const GOLDEN_040 = ["7b731a91", "756ec350", "460ce36e", "e263aa15"];
   it("chain.shootDistance.enabled=false + chain.hold.oneOnOnePenalty=0 → 0.40.0 해시", () => {
     const c = tweak((x) => {
       x.chain.shootDistance.enabled = false;

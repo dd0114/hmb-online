@@ -208,17 +208,26 @@ describe("#353 롤백 등가 — 노브를 되돌리면 0.27.0 동작 규칙으�
     //   이 계층의 스위치는 `chain.hold.oneOnOnePenalty=0` 이다. 계약 내용은 그대로다.
     //   0.40.0 값 = 0e24b839 · 4b54a605 · ec7b86bf → **뒤 두 개가 움직였다**(첫 매치에서는
     //   1대1 판정이 한 번도 안 걸렸다).
-    "4815162342": "0e24b839",
-    "9999999999": "d19cc3c9",
-    "1234567890": "6abe6156",
+    // #407 ⑦(engine@0.42.0) 재기록 — `rules.offside.callProb` 0.013 → 0.07 은 **심판 판정**이라
+    //   레거시 노브 셋(hold 압박)의 사거리 밖에서 돈다. 계약 내용은 그대로다.
+    //   0.41.0 값 = 0e24b839 · d19cc3c9 · 6abe6156 → **셋 다 움직였다**(기하 오프사이드 패스가
+    //   팀-경기당 ~28건이라 45분 한 경기에서 롤이 0.013~0.045 창을 안 밟을 확률은 낮다).
+    "4815162342": "8d7a3393",
+    "9999999999": "b90b84ff",
+    "1234567890": "68fa701e",
   };
 
   it("레거시 노브 셋으로 최종 해시가 박제값과 같다(조용한 드리프트 금지)", () => {
+    // ⚠️ **시드별 `toBe` 루프를 쓰지 않는다**(#407 ⑦) — 첫 불일치에서 멈춰 **한 시드만** 보여
+    // 주므로, 재기록할 때마다 "고치고 다시 돌려 다음 시드를 본다"를 반복하게 된다(실제로 이
+    // 웨이브에서 그 왕복이 났다). 전부 모아 한 번에 대조하면 diff 가 세 줄 다 나온다.
     const L = legacy0270();
-    for (const [seed, hash] of Object.entries(GOLDEN)) {
+    const got: Record<string, string> = {};
+    for (const seed of Object.keys(GOLDEN)) {
       const log = runMatch(seed, makeTacticalInput("H", seed), makeTacticalInput("A", seed), select, L);
-      expect(log.tickSnapshots[log.tickSnapshots.length - 1]!.hash).toBe(hash);
+      got[seed] = log.tickSnapshots[log.tickSnapshots.length - 1]!.hash;
     }
+    expect(got).toEqual(GOLDEN);
   }, 120_000);
 
   it("기본 config 는 그 해시와 **다르다**(변경이 실제로 켜져 있다)", () => {

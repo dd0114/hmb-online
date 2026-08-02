@@ -190,6 +190,11 @@ const LIVE: Knob[] = [
   //    레버성 판정은 **0(=예외 없음)** 으로만 잰다. 등록 전 확인: 4시드 중 2개(seed#1·#2)가 갈린다.
   { path: "chain.shootDistance.enabled", mutate: (c) => { c.chain.shootDistance.enabled = true; } },
   { path: "chain.hold.oneOnOnePenalty", mutate: (c) => { c.chain.hold.oneOnOnePenalty = 0; } },
+  // #407 ⑦ (0.42.0). **미등록이었다** — 0.5.0 도입 이후 아무도 재보정하지 않은 채 콜 빈도가
+  // 4배 아래로 내려앉았는데(1.88 → 0.425) 그 사실을 부정하는 계약이 어디에도 없었다.
+  // 섭동은 **0**(= 호출 게이트를 완전히 닫음). 기하 오프사이드가 팀-경기당 27.93건 발생하므로
+  // 게이트를 닫으면 반드시 갈린다. 빈도의 밴드·단조는 `offside-call.test.ts` 가 따로 본다.
+  { path: "rules.offside.callProb", mutate: (c) => { c.rules.offside.callProb = 0; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {

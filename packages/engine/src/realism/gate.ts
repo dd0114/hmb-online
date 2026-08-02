@@ -79,4 +79,9 @@ export const LADDER_SUITES: { file: string; what: string; issue: string }[] = [
     what: "오프사이드 트랩 `stepUpM` 사다리 3 rung(n60 — 라인 뒤 상대 · 라인 높이 단조)",
     issue: "#377 S3-C 독립검증 m1 (n20 인접 rung 은 t 0.70~1.06 으로 분해 불가)",
   },
+  {
+    file: "offside-call.test.ts",
+    what: "오프사이드 호출 게이트 `rules.offside.callProb` 사다리 4 rung(n60 — 콜 빈도 엄격 단조)",
+    issue: "#407 ⑦ (rung 간격은 se 의 3.5~7배 — 촘촘한 rung 은 검출력 부족이라 일부러 뺐다)",
+  },
 ];
