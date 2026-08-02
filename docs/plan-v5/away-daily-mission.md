@@ -349,7 +349,7 @@ SoT 는 `ConditionService.dateOf(instant)` 다. 체감이 어긋나면 "어제 �
 순간 **오늘 이미 받은 보상의 이력이 소급 변조된다**("아까 200 받았는데 화면엔 100"). **`amount` 와 `tier` 를 행에 박제**한다.
 
 ```sql
--- 실제 구현(V39__daily_missions.sql). 초안에서 **네 군데가 넓어졌다** — 근거는 바로 아래.
+-- 실제 구현(V40__daily_missions.sql). 초안에서 **네 군데가 넓어졌다** — 근거는 바로 아래.
 CREATE TABLE daily_missions (
   id          TEXT PRIMARY KEY,          -- ULID
   user_id     TEXT NOT NULL,
@@ -393,9 +393,9 @@ CREATE TABLE daily_mission_progress (
 | `daily_mission_progress` 신설 | ①**멱등** — 재정산이 진행도를 두 번 올리면 "출전 3회"가 한 판으로 끝난다(`league_daily_rewards.match_id` PK 와 같은 층, 여기선 경기×미션 축이라 복합 PK) ②**결과 화면의 `missions` 배열** — "이 경기가 얼마나 밀었나"는 누적 진행도에서 **사후에 분해되지 않는다**(1→2 인지 0→2 인지 알 길이 없다). GET 은 몇 번을 불러도 같은 답을 해야 하므로 델타를 행으로 남긴다 |
 | ~~`completedNow` 컬럼~~ (두지 않음) | `progress_before < target ≤ progress_after` 로 파생되고 `target` 이 박제라 두 값이 갈라질 수 없다 |
 
-- 마이그레이션 번호 = **V39** (main 배정 2026-08-02 — V38 은 #405 성장 트랙). `FlywayMigrationTest` 기대 목록에도 등록.
-  ⚠️ Flyway 가 **1부터 빈틈 없는 연속**을 강제하므로(`out-of-order=false`), **#405 의 V38 보다 먼저 머지되면 안 된다** — 머지 순서는 main 이 잡는다.
-  ⚠️ 그래서 이 브랜치 단독으로는 `FlywayVersionContinuityTest` 가 **결번**을 본다. 검사를 지우거나 배정을 무시하고 V38 을 가져가는 대신, 그 테스트에 **예약 목록**(`RESERVED_BY_OTHER_BRANCH = {38: "#405"}`)을 뒀다 — 열거된 번호만 예외이고, 예약이 실제로 채워지면 `reservedNumbersAreStillMissing` 이 **목록을 지우라고 실패**하므로 낡은 채로 진짜 결번을 덮을 수 없다.
+- 마이그레이션 번호 = **V40** (V39 에서 개번). `FlywayMigrationTest` 기대 목록에도 등록.
+  ⚠️ 이력: main 이 2026-08-02 에 V38 을 #405, V39 를 #408 에 배정했는데 **#405 가 머지되며 V38·V39 를 둘 다** 가져가서 V40 으로 옮겼다. 아직 배포되지 않은 마이그레이션이라 리넘버가 안전하다(#248 이 V23→V25→V26 으로 두 번 옮긴 것과 같다).
+  ⚠️ 리베이스 전까지 `FlywayVersionContinuityTest` 에 뒀던 **예약 목록**(`RESERVED_BY_OTHER_BRANCH = {38: "#405"}`)은 **제거했다** — 결번이 사라졌으니 연속성 검사가 제 힘으로 선다. 예외 목록은 그 자체가 사각지대라(열거된 번호에서 검사가 눈을 감는다) 필요가 끝나면 바로 지운다.
 - 미션 추첨은 **시드 RNG**(`sha256(userId:day:slotN)` 앞 15 hex → 후보 수로 나눈 나머지, `UserOnboardingService.pickStarterTop` 과 같은 계열) — 결정론이라 "왜 이 미션이 나왔나"를 재현할 수 있다.
 - **카탈로그는 `application.yml hmb.mission.daily.*`, 금액만 economy.** 값의 성격이 다르다: 금액은 economy override + reload 로 **무배포** 조정하는 경제 곡선이고, 카탈로그(id·티어·판정규칙·목표·문구)는 게임 규칙의 **구조**라 바뀌면 판정 코드(`MissionRule`)와 같이 움직여야 한다. #245 가 `hmb.away.reward.mode` 는 application.yml 에 두고 **금액은 economy 를 참조**한 것과 같은 갈라짐이다.
   ⚠️ economy 는 `data/players/economy.v3.json` 에 **손으로 얹었다**(`mission.reward`). 이건 #251·#368 이 같은 파일에 한 것과 같은 방식이다 — `data/players/generate.ts` 의 `economyV3` 는 v2 를 그대로 복사할 뿐이라 **재생성하면 #251/#368 블록이 통째로 사라진다**(그래서 `data.test.ts` 의 바이트 동일성 목록에도 economy.v3 이 없다). 생성기와 발행물이 갈라진 상태이고 **#408 이 만든 문제가 아니다** — data 도메인에 이슈 레이즈가 필요하다.

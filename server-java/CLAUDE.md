@@ -722,7 +722,7 @@ DTO 에 실으면 클라가 **서버가 하지 않는 전이를 화면에 단언
 (쉬움 100 · 보통 200 · 어려움 300) · 미션당 리롤 1회. 설계·근거 = `docs/plan-v5/away-daily-mission.md`
 (hero 확정 2026-08-02 §7 — **게임 수치·한글 문구는 hero 산출물이라 임의 변경 금지**).
 
-- **표는 둘(V39), 원장은 0개 신설**: `daily_missions`(그날 미션 1개 = 1행) + `daily_mission_progress`
+- **표는 둘(V40), 원장은 0개 신설**: `daily_missions`(그날 미션 1개 = 1행) + `daily_mission_progress`
   (경기 × 미션의 진행 델타). 돈은 `gem_ledger`(`reason='daily_mission'`, `ref_id`=미션 행 id)로 나간다 —
   **여기에 새 지갑/멱등 메커니즘을 만들지 마라**(V33 우편함 규율: "왜 다이아가 늘었나"의 답이 두 곳이 되면 안 된다).
 - ⚠️ **행 하나만 읽어도 표시·판정·지급이 완결돼야 한다.** 그래서 `title`·`rule` 까지 박제한다 —
@@ -758,10 +758,12 @@ DTO 에 실으면 클라가 **서버가 하지 않는 전이를 화면에 단언
   409 `MISSION_REROLL_UNAVAILABLE`(후보 고갈, 현행 config 에선 도달 불가). 없는 미션과 **남의 미션**은
   같은 404 다.
 - ⚠️ **`/api/missions/**` 를 `WebMvcConfig` 인증 제외 목록에 넣지 마라** — 우편함과 같은 이유로 정의상 내 것이다.
-- ⚠️ **마이그레이션 결번**: V38 은 #405 가 쓴다(main 배정). 이 브랜치 단독으로는 결번이라
-  `FlywayVersionContinuityTest` 에 **예약 목록**(`RESERVED_BY_OTHER_BRANCH`)을 뒀다 — 열거된 번호만
-  예외이고, 예약이 채워지면 `reservedNumbersAreStillMissing` 이 **목록을 지우라고 실패**한다.
-  이 목록이 비어 있지 않은 브랜치는 **단독 배포 대상이 아니다**.
+- ⚠️ **마이그레이션 번호 이력**: V39 → **V40**. main 이 V38 을 #405 에, V39 를 #408 에 배정했는데
+  #405 가 머지되며 **V38·V39 를 둘 다** 가져가서 옮겼다(아직 배포되지 않은 마이그레이션이라
+  리넘버가 안전하다 — #248 이 V23→V25→V26 으로 두 번 옮긴 것과 같은 상황).
+  그동안 `FlywayVersionContinuityTest` 에 두었던 **예약 목록**(`RESERVED_BY_OTHER_BRANCH`)은
+  **제거했다** — 결번이 없어졌으므로 연속성 검사가 제 힘으로 선다. 예외 목록은 그 자체가
+  사각지대라 필요가 끝나면 바로 지운다.
 - ⚠️ **`data/players/economy.v3.json` 은 생성기와 갈라져 있다**(#408 이 만든 문제 아님). `generate.ts` 의
   `economyV3` 는 v2 를 복사할 뿐이라 **재생성하면 #251(`gemReward`)·#368(`dailyReward`)·#408(`mission`)이
   통째로 사라진다** — 그래서 `data.test.ts` 바이트 동일성 목록에도 economy.v3 이 없다. data 도메인 이슈 필요.
