@@ -55,6 +55,13 @@ export function rewardBundleOf(result: unknown): RewardBundle | null {
 
 export const SECTION_CURRENCY = "CURRENCY";
 export const SECTION_GROWTH = "GROWTH";
+/**
+ * 미션(#408). ⚠️ **이 섹션의 자료는 봉투 안에 없다** — `GET /api/matches/{id}/result` 의 additive
+ * `missions` 블록에서 온다(설계 §8). 그래서 레지스트리의 `isPresent`·`render` 가 봉투가 아니라
+ * **응답**을 읽는다(`registry.ts` 머리말). 서버가 언젠가 이 자료를 봉투 섹션으로 옮기면 그때
+ * `entriesOf(bundle, SECTION_MISSION)` 로 갈아타면 되고, 화면 계약은 그대로다.
+ */
+export const SECTION_MISSION = "MISSION";
 
 /** 이 봉투의 섹션 목록(모양이 아니면 빈 배열). */
 export function sectionsOf(bundle: RewardBundle | null | undefined): RewardSection[] {

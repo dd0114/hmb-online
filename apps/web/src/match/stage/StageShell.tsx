@@ -282,6 +282,13 @@ export function StageShell({
                    * 손잡이를 남기지 않는다.
                    */
                   onOpenRewards={bundle ? () => setSheetReopened(true) : undefined}
+                  /*
+                   * 미션 섹션(#408)은 **봉투가 있으면 시트가 소유한다**(보상 탭). 여기에도 그리면
+                   * 같은 보상이 두 번 보이고, 그 중 하나는 이미 받은 뒤의 낡은 사본이 된다.
+                   * 봉투가 없는 매치(구 정산 · 봉투 생성이 삼켜진 경우)에는 시트 자체가 없으므로
+                   * 결과 화면이 **유일한 자리**다 — 그때만 결과 패널이 그린다.
+                   */
+                  hasRewardSheet={Boolean(bundle)}
                 />
               )}
             </div>
@@ -293,6 +300,8 @@ export function StageShell({
         <RewardSheet
           bundle={bundle}
           matchId={match.id}
+          // 봉투 밖 additive 블록(미션 #408)을 읽는 섹션이 있다 — 셸은 안을 안 보고 그대로 넘긴다.
+          result={result}
           badge={resultKey ? RESULT_LABELS[resultKey] ?? resultKey : null}
           badgeTone={(resultKey as "WIN" | "DRAW" | "LOSS" | undefined) ?? null}
           subtitle={`${match.scoreHome ?? "-"} : ${match.scoreAway ?? "-"}`}
