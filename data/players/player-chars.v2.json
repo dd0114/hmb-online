@@ -3,12 +3,11 @@
   "rule": "#207 U-D5/U-D8/U-D9: 활성 LEGEND 5 = units 1:1 실아트 · 비활성 LEGEND = 현행 유지(구 14 characters 1:1, 미입고 3 미매핑) · DIA = characters 포지션 풀 · GOLD/SILVER/BRONZE = units default-unit 공용",
   "note": "매핑값은 **축 태그가 붙은 객체**다({axis,id}). v1(문자열)을 읽던 소비자는 타입 가드에서 null 로 떨어져 폴백한다 — 틀린 그림을 그리지 않는 fail-safe 형상. 소비자는 playerId 로 조인한다.",
   "charsSource": "ref-pixel-fantasy-football",
-  "unitsSource": "hero-imageRef-2026-07-29-rev4",
+  "unitsSource": "hero-imageRef-2026-08-01-rev5",
   "playersSource": "players.v2.4.json",
   "catalogCount": 182,
-  "playerCount": 180,
+  "playerCount": 181,
   "unmapped": [
-    "P174",
     "P178"
   ],
   "players": {
@@ -703,6 +702,10 @@
     "P173": {
       "axis": "units",
       "id": "bonaldo"
+    },
+    "P174": {
+      "axis": "units",
+      "id": "kwonssi"
     },
     "P175": {
       "axis": "units",
@@ -1771,6 +1774,12 @@
       "playerId": "P173",
       "axis": "units",
       "id": "bonaldo",
+      "rule": "unit-exclusive"
+    },
+    {
+      "playerId": "P174",
+      "axis": "units",
+      "id": "kwonssi",
       "rule": "unit-exclusive"
     },
     {

@@ -226,9 +226,16 @@ describe("무회귀 — characters 축과 폴백 계단", () => {
   });
 
   it("아트 미입고 LEGEND 는 프레임 + 아이콘 폴백(깨진 이미지 0)", async () => {
-    render(h(FullArtCard, { playerId: "P174", name: "권씨", grade: "LEGEND" }));
-    await waitFor(() => expect(card("P174").dataset.artKind).toBe("frame-only"));
-    expect(layers("P174", "art")).toHaveLength(0);
-    expect(screen.getByTestId("char-avatar-P174").dataset.avatarKind).toBe("placeholder-css");
+    // ⚠️ 표본을 **리터럴로 박지 않는다.** 여기 P174(권씨)가 박혀 있었는데 #389 로 아트가
+    // 입고되며 이 테스트가 깨졌다 — 성질("미입고면 폴백")은 그대로인데 표본만 낡은 것이다.
+    // 발행물이 스스로 선언하는 `unmapped` 에서 뽑으면 다음 입고에도 자동으로 따라간다.
+    // (남은 미입고 = P178 석신. 전원 입고되면 아래 단언이 그 사실을 알린다.)
+    const unmapped = mappingFile.unmapped as string[];
+    expect(unmapped.length, "미입고 LEGEND 가 0 이다 — 이 폴백 계약은 픽스처로 태워야 한다").toBeGreaterThan(0);
+    const playerId = unmapped[0]!;
+    render(h(FullArtCard, { playerId, name: "미입고 LEGEND", grade: "LEGEND" }));
+    await waitFor(() => expect(card(playerId).dataset.artKind).toBe("frame-only"));
+    expect(layers(playerId, "art")).toHaveLength(0);
+    expect(screen.getByTestId(`char-avatar-${playerId}`).dataset.avatarKind).toBe("placeholder-css");
   });
 });
