@@ -73,9 +73,16 @@ hmb:
     #   머지됐고 활성화는 **어드민 카탈로그 API 토글**이 한다(배포 불필요). 따라서 v2.4 의
     #   `active:false` 총계 = 17 + 2 = **19**. ⚠️ 이 2종이 켜지는 순간 **획득 가능 LEGEND 의
     #   DF 0 · GK 0 갭이 닫힌다**(그때 PlayerCatalogV24SeedTest 의 갭 박제 테스트가 성공적으로 실패한다).
-    # 계약 = PlayerCatalogV24SeedTest(현행) · V23/V22 SeedTest(구 발행물 임포트 회귀 가드).
+    # → **v2.5(현행 소비본, #405 W1)** = v2.4 와 **행·필드 전부 동일**(182행, 신규 채번 0)이고
+    #   바뀐 축은 하나뿐이다: **능력치 9종을 신규 시작 밴드로 재롤**
+    #   (BRONZE 32-42 / SILVER 41-51 / GOLD 50-60 / DIA 59-69 / LEGEND 68-78,
+    #    `docs/plan-v5/growth-redesign.md` §2.2). 성장 여백을 만들기 위한 **초기 스탯 하향**이다.
+    #   ⚠️ 성장 천장(72/78/84/90/95)은 이 파일에 없다 — 런타임 SoT 는 `GrowthTuning.bands.growCeil`(§2.8.1).
+    #   ⚠️ 부팅 임포트가 기존 players 행을 덮으므로(PlayerCatalogService) 라이브 전환은 §2.7 순서를
+    #      지켜야 한다(백업 → V38 스냅샷 → 이 경로 스위치 → 소급 백필). 그 배선은 후속 웨이브 소관.
+    # 계약 = PlayerCatalogV24SeedTest(v2.4 고정) · V23/V22 SeedTest(구 발행물 임포트 회귀 가드).
     # ⚠️ 이 경로는 Dockerfile 의 HMB_DATA_PLAYERSFILE 과 **둘 다** 올려야 한다(v8 에서 실제로 어긋났다).
-    players-file: ../data/players/players.v2.4.json
+    players-file: ../data/players/players.v2.5.json
     # economy 는 **v3**(#209) — v2 그대로 + starterTop(가입 최상위 후보) 블록. 값은 #212 리스케일까지
     # 포함해 v2 와 동일하고(생성기 한 소스), 추가된 것은 그 블록 하나뿐이다.
     # ⚠️ 이 경로는 Dockerfile 의 HMB_DATA_ECONOMYFILE 과 **둘 다** 올려야 한다.
