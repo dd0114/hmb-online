@@ -1037,20 +1037,28 @@ describe("GK 평점 = 선방률 축 — 일한 양과 무관한 상수가 아니
   });
 });
 
-// ── 10-c. 상한 포화 (m2 — 값을 고치는 계약이 아니라 **사실 기록**) ──────────
+// ── 10-c. 상한 클램프 (m2 — **계수를 방어하지 않는다**) ─────────────────────
 
 /**
- * ⚠️ **이 describe 는 계수를 방어하지 않는다.** 상한 헤드룸이 수비 볼륨 대비 얇다는 **사실**을
- * 코드 옆에 남겨, 다음 사람이 "포화는 없다"고 오해하지 않게 하는 것이 목적이다.
- * 조정 권한은 hero 에게 있다(#403 W1b 조정 포인트).
+ * ⚠️ **여기에 계수 회귀 게이트를 만들지 마라.**
  *
- * 근거 수치(리얼 config 실측):
- *  - 독립 검증이 재현한 라이브형 라인 `태클 12 + 가로챔 17` 은 **세 포지션 전부** 상한에 닿는다
- *    (DF 11.84 · MF 10.62 · FW 13.29 → 전부 10.0 으로 clamp).
- *  - 픽스처 표본에서도 발화한다 — **DF 800 중 10건(1.25%)이 0골·0어시로 10.0**
- *    (예: `seed 1122334455` 의 `home:H3`).
+ * 처음 이 describe 는 *"`태클 12 + 가로챔 17` 은 **세 포지션 전부** 상한에 닿는다"* 를 단언했다.
+ * 우변에 리터럴이 없어(`toBe(RATING_WEIGHTS.max)`) "사실 기록"처럼 보였지만, 실제로는 **그 입력이
+ * 상한에 닿는다는 것 자체**를 박제하는 계수 게이트였다 — 통합 검증 실측으로 변이 4종
+ * (`defence.tackle 0.22→0.11` · `defence.interception 0.13→0.065` · `max 10→20` ·
+ * `position.DF.defence 1.1→0.5`)이 **정확히 이 두 건만** red 로 만들었다.
+ * 그 넷은 전부 hero 가 "수비 볼륨 포화"를 완화하려고 **내일 내릴 바로 그 값**이다
+ * (#403 W1b 조정 포인트 1번). **조정하면 red 가 되는 계약은 신호가 아니라 지뢰다.**
+ *
+ * 그래서 지금 남은 것은 **계수와 무관하게 참인 성질**뿐이다 — 클램프는 `[min, max]` 밖으로
+ * 내보내지 않고, 그 잘림이 실제로 클램프다. **얼마나 포화하는가는 코드가 아니라 문서·하네스가
+ * 기록한다**(`apps/web/scripts/rating-distribution.ts` 의 `포화%` 열은 계수를 바꾸면 당연히 바뀐다).
+ *
+ * 근거 수치(W1c 시점 리얼 config 실측 — **스냅샷이지 계약이 아니다**):
+ *  - 라이브형 라인 `태클 12 + 가로챔 17` = DF 11.84 · MF 10.62 · FW 13.29 → 전부 10.0 으로 clamp.
+ *  - 픽스처 표본에서 **DF 800 중 10건(1.25%)이 0골·0어시로 10.0**(예: `seed 1122334455` 의 `home:H3`).
  */
-describe("상한 포화 — 수비 볼륨만으로 10.0 에 닿는 입력이 실재한다(사실 기록)", () => {
+describe("상한 클램프 — 계수와 무관하게 참인 성질만 건다", () => {
   const line = (over: Partial<PlayerStatLine>): PlayerStatLine => ({
     key: "home:D", team: "home", playerId: "D",
     goals: 0, shots: 0, shotsOnTarget: 0, shotsOffTarget: 0, xg: 0,
@@ -1063,23 +1071,93 @@ describe("상한 포화 — 수비 볼륨만으로 10.0 에 닿는 입력이 실
     ...over,
   });
 
-  it("`태클 12 + 가로챔 17` 은 0골·0어시인데도 세 포지션 전부 상한에 닿는다", () => {
+  /**
+   * 수비 볼륨이 아무리 커도 표시값은 밴드 안이다 — 계수를 올리든 내리든 참이다.
+   * (구 계약은 여기서 `toBe(max)` 였고, 그래서 계수를 **내리는** 순간 red 였다.)
+   */
+  it("수비 볼륨이 큰 라인도 어떤 포지션에서든 [min, max] 안이다", () => {
     const heavy = line({ tackles: 12, interceptions: 17 });
     for (const pos of ["DF", "MF", "FW"] as const) {
-      expect(computeRating(heavy, pos)).toBe(RATING_WEIGHTS.max);
+      const v = computeRating(heavy, pos);
+      expect(v, `${pos}: ${v}`).toBeLessThanOrEqual(RATING_WEIGHTS.max);
+      expect(v, `${pos}: ${v}`).toBeGreaterThanOrEqual(RATING_WEIGHTS.min);
     }
+    // 입력의 사실(계수와 무관) — 이 라인은 공격 기여가 0 이다.
     expect(heavy.goals).toBe(0);
     expect(heavy.assists).toBe(0);
   });
 
-  /** 클램프가 없었다면 얼마였나 = 헤드룸이 얼마나 얇은지의 척도. */
-  it("클램프를 풀면 상한을 얼마나 넘는지(헤드룸 진단)", () => {
-    const unclamped = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
-    unclamped.max = 1e6;
-    const heavy = line({ tackles: 12, interceptions: 17 });
-    for (const pos of ["DF", "MF", "FW"] as const) {
-      expect(ratingWithWeights(heavy, pos, unclamped)).toBeGreaterThan(RATING_WEIGHTS.max);
+  /**
+   * 잘림이 **진짜 클램프인지**는 계수 없이도 검사할 수 있다 — 밴드를 활짝 연 표로 같은 라인을
+   * 재고, 출하 표의 결과가 그 값을 `[min, max]` 로 자른 것과 같은지 본다.
+   * ⚠️ **헤드룸이 얼마인지는 단언하지 않는다** — 그게 계수 게이트가 되던 자리다.
+   */
+  it("표시값 = 밴드를 연 계산값을 [min, max] 로 자른 것(클램프가 실제로 클램프다)", () => {
+    const wide = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+    wide.max = 1e6;
+    wide.min = -1e6;
+    for (const l of [line({ tackles: 12, interceptions: 17 }), line({ goals: 9 }), line({ fouls: 40 })]) {
+      for (const pos of ["DF", "MF", "FW"] as const) {
+        const raw = ratingWithWeights(l, pos, wide);
+        const cut = Math.min(RATING_WEIGHTS.max, Math.max(RATING_WEIGHTS.min, raw));
+        expect(computeRating(l, pos)).toBeCloseTo(cut, 5);
+      }
     }
+  });
+});
+
+// ── 10-d. 계수표는 런타임에도 못 바꾼다 (통합 검증 minor-2) ─────────────────
+
+/**
+ * `DeepReadonly` 는 **컴파일 타임 전용**이라 주장이 실효를 넘었다 — 검증자가 실행으로 확인한
+ * 우회가 이것이다(tsc 0 에러):
+ * ```ts
+ * const alias: RatingWeights = RATING_WEIGHTS;  // readonly → mutable 대입은 TS 가 안 본다
+ * alias.base = 3.0;                             // 앱 전역 평점이 바뀐다
+ * ```
+ * 주장을 낮추는 대신 **주장이 참이 되게** 재귀 `Object.freeze` 를 걸었다. 이 계약은 그 잠금이
+ * 조용히 풀리는 것을 잡는다(값은 하나도 안 본다 = hero 의 조정과 무관하다).
+ */
+describe("RATING_WEIGHTS 는 런타임에도 못 바꾼다", () => {
+  const blank = (): PlayerStatLine => ({
+    key: "home:X", team: "home", playerId: "X",
+    goals: 0, shots: 0, shotsOnTarget: 0, shotsOffTarget: 0, xg: 0,
+    tackles: 0, interceptions: 0, clearances: 0, fouls: 0,
+    yellowCards: 0, redCards: 0, secondYellow: false, sentOff: false,
+    offsides: 0, saves: 0, goalsConceded: 0,
+    passesAttempted: 0, passesCompleted: 0, longPasses: 0, longPassesCompleted: 0,
+    keyPasses: 0, assists: 0, touches: 0, carries: 0, carryDistanceM: 0, carryProgressM: 0,
+    dispossessed: 0, distanceM: 0, ticksPlayed: 1, minutesPlayed: 1, heat: [], rating: 0,
+  });
+
+  it("중첩까지 얼어 있다 — 별칭으로도 못 바꾼다", () => {
+    expect(Object.isFrozen(RATING_WEIGHTS)).toBe(true);
+    expect(Object.isFrozen(RATING_WEIGHTS.attack)).toBe(true);
+    expect(Object.isFrozen(RATING_WEIGHTS.keeper)).toBe(true);
+    expect(Object.isFrozen(RATING_WEIGHTS.position)).toBe(true);
+    expect(Object.isFrozen(RATING_WEIGHTS.position.FW)).toBe(true);
+
+    // TS 는 이 대입을 막지 않는다(readonly → mutable) — 그래서 런타임이 막아야 한다.
+    const alias = RATING_WEIGHTS as unknown as RatingWeights;
+    const base = alias.base;
+    const fwAttack = alias.position.FW.attack;
+    expect(() => {
+      alias.base = 3.0;
+    }).toThrow(TypeError);
+    expect(() => {
+      alias.position.FW.attack = 99;
+    }).toThrow(TypeError);
+    expect(alias.base).toBe(base);
+    expect(alias.position.FW.attack).toBe(fwAttack);
+    expect(computeRating(blank(), "MF")).toBe(RATING_WEIGHTS.base);
+  });
+
+  it("정당한 스윕 경로(`ratingWithWeights`)는 그대로 열려 있다", () => {
+    const w = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+    w.base = RATING_WEIGHTS.base + 1;
+    expect(ratingWithWeights(blank(), "MF", w)).toBe(w.base);
+    // 원본은 그대로 — 복제본을 만졌다고 전역이 따라 움직이면 잠금이 무의미하다.
+    expect(computeRating(blank(), "MF")).toBe(RATING_WEIGHTS.base);
   });
 });
 

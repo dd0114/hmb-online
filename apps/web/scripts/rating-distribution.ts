@@ -29,7 +29,7 @@
  * node tools/run-gate.mjs --label ratedist -- \
  *   npx tsx apps/web/scripts/rating-distribution.ts --real-decks --seeds 5
  *
- * # 캐시를 무시하고 다시 시뮬
+ * # 캐시를 무시하고 다시 시뮬 (⚠️ 픽스처 모드 전용 — 실덱 경로는 캐시 자체가 없다)
  * npx tsx apps/web/scripts/rating-distribution.ts --fresh
  *
  * # JSON 으로(다른 도구에 물릴 때)
@@ -57,7 +57,7 @@
  *
  * ⚠️ 엔진은 **읽기만** 한다(무접촉).
  */
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import { writeFileSync, readFileSync, readdirSync, existsSync, mkdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -166,6 +166,51 @@ export interface SampleSet {
   fingerprint?: string;
 }
 
+export const ENGINE_SRC_DIR = fileURLToPath(new URL("../../../packages/engine/src", import.meta.url));
+
+/**
+ * 지문에 들어가는 파일 목록(정렬 고정). 테스트가 "무엇을 세는지"를 직접 본다.
+ *
+ * 대상 = `packages/engine/src/**` 의 `.ts`(**테스트 제외** — 표본에 영향이 없고, 넣으면 엔진
+ * 테스트를 고칠 때마다 헛되이 재시뮬한다) + `.json`(실덱 입력이 여기 있다).
+ */
+export function engineSourceFiles(root: string): string[] {
+  const out: string[] = [];
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(p);
+      else if ((p.endsWith(".ts") && !p.endsWith(".test.ts")) || p.endsWith(".json")) out.push(p);
+    }
+  };
+  walk(root);
+  return out.sort();
+}
+
+/** 경로 + 내용을 같이 해시한다 — 그래야 **파일이 사라지거나 이름이 바뀌는 것**도 잡힌다. */
+export function hashSources(root: string): string {
+  const h = createHash("sha256");
+  for (const f of engineSourceFiles(root)) {
+    h.update(f.slice(root.length));
+    h.update(createHash("sha256").update(readFileSync(f)).digest());
+  }
+  return h.digest("hex");
+}
+
+/**
+ * 엔진 **소스** 해시 — `config.version` 이 못 덮는 축을 덮는다.
+ *
+ * ⚠️ **`config.version` 은 "엔진이 바뀌었다"의 신호가 아니다.** 튜닝 웨이브에서는 코드를 고치고도
+ * 버전을 안 올리는 것이 흔하고(범프는 "재현 계약이 바뀔 때"다 — 루트 CLAUDE.md §6), 그 상태에서
+ * 지문이 그대로면 하네스가 **낡은 표본을 조용히 재사용**한다 = m6 이 막겠다던 사고가 이 축에만
+ * 남아 있었다(#403 통합 검증 minor-5). 비용은 1회 수십 ms 라 캐시를 한 번 잘못 쓰는 것보다 싸다.
+ */
+let engineSrcHashMemo: string | null = null;
+function engineSourceHash(): string {
+  engineSrcHashMemo ??= hashSources(ENGINE_SRC_DIR);
+  return engineSrcHashMemo;
+}
+
 /**
  * 캐시 무효화 키 — **표본을 만든 것이 바뀌면 캐시를 버린다.**
  *
@@ -173,14 +218,16 @@ export interface SampleSet {
  * **엔진이나 `computePlayerStats` 가 바뀌면 낡은 표본을 조용히 돌려준다** — 그러면 hero 가
  * 조용히 틀린 근거로 밸런스를 잡는다. 이 에픽에서 죽은 하네스로 **네 번** 사고가 났다.
  *
- * 지문 = 엔진 `config.version` + 집계 모듈(`player-stats.ts`) 소스 해시 + 모드/시드.
+ * 지문 = 엔진 `config.version` + **엔진 소스 해시**(버전을 안 올린 엔진 수정, minor-5) +
+ * 집계 모듈(`player-stats.ts`) 소스 해시 + 모드/시드.
  * (평점 계수는 **일부러 안 넣는다** — 표본은 계수와 무관하고, 넣으면 스윕마다 재시뮬한다.)
  */
-function fingerprintOf(mode: string, seeds: string[]): string {
+export function fingerprintOf(mode: string, seeds: string[], engineHash: string = engineSourceHash()): string {
   const srcPath = fileURLToPath(new URL("../src/match/player-stats.ts", import.meta.url));
   const src = readFileSync(srcPath, "utf8");
   return createHash("sha256")
     .update(`${defaultEngineConfig.version}\n`)
+    .update(`engine=${engineHash}\n`)
     .update(`mode=${mode}\n`)
     .update(`seeds=${seeds.join(",")}\n`)
     .update(createHash("sha256").update(src).digest("hex"))
@@ -231,6 +278,13 @@ export function buildSamples(
  * 실덱은 4-4-2·5-3-2·로우블록 등 **입력 분포 자체**가 다르다.
  *
  * 판정 규율도 다르다 — **평균이 아니라 최악 덱**을 본다(`--real-decks` 출력의 덱별 spread).
+ *
+ * ⚠️ **이 경로는 캐시를 쓰지 않는다 — 그래서 `--cache`·`--fresh` 는 실덱 모드에서 무동작이다**
+ * (#403 통합 검증 minor-5 부수). 캐시가 없으니 낡은 표본을 돌려줄 일도 없고, 대신 매번 재시뮬한다
+ * (덱 10 × 시드 N). 지문은 **일관성을 위해** 같은 규칙으로 붙여 둔다 — 결과 JSON 을 다른 도구가
+ * 물었을 때 "무엇으로 만든 표본인가"가 픽스처 모드와 같은 축으로 읽히게.
+ * 캐시를 붙이고 싶다면 `buildSamples` 와 **같은 `fingerprintOf`** 를 쓰고, 실덱 입력(JSON)이
+ * 엔진 소스 해시에 이미 들어 있다는 점을 확인해라(`engineSourceHash` 는 `.json` 도 센다).
  */
 export function buildRealDeckSamples(seedsPerDeck: number): SampleSet {
   const cases = loadAllRealDeckCases();
@@ -249,7 +303,7 @@ export function buildRealDeckSamples(seedsPerDeck: number): SampleSet {
       seeds.push(key);
     }
   }
-  return { seeds, samples, motmBySeed };
+  return { seeds, samples, motmBySeed, fingerprint: fingerprintOf("real-decks", seeds) };
 }
 
 /** 덱 id 별로 표본을 가른다(최악 덱을 보기 위해). */
@@ -531,6 +585,10 @@ export function main(argv: string[]): void {
   const t0 = Date.now();
   // 실덱 모드는 시드가 덱에서 나오므로 `--seeds` 는 **덱당 시드 수**로 읽는다(기본 5).
   const perDeck = argv.includes("--seeds") ? a.seeds : 5;
+  // 무동작 플래그를 조용히 삼키지 않는다 — 실덱 경로엔 캐시가 없다(`buildRealDeckSamples` 주석).
+  if (a.realDecks && (a.fresh || argv.includes("--cache"))) {
+    process.stderr.write("⚠️ 실덱 모드는 캐시를 쓰지 않는다 — `--cache`/`--fresh` 는 무동작이다.\n");
+  }
   const set = a.realDecks
     ? buildRealDeckSamples(perDeck)
     : buildSamples(seedsFor(a.seeds), a.cache, { fresh: a.fresh });

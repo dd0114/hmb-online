@@ -256,12 +256,32 @@ export interface RatingWeights {
 type DeepReadonly<T> = { readonly [K in keyof T]: T[K] extends object ? DeepReadonly<T[K]> : T[K] };
 
 /**
- * ⚠️ **깊게 `Readonly` 다.** 이 상수는 앱 전체 평점의 단일 출처라, 가변이면 어떤 소비자든
- * `RATING_WEIGHTS.base = 3` 한 줄로 전 화면의 평점을 조용히 바꿀 수 있다.
+ * 중첩 객체까지 `Object.freeze`.
+ *
+ * ⚠️ **타입만으로는 못 막는다** — 한때 이 자리엔 `DeepReadonly` 만 있고 주석은 "런타임에 못
+ * 바꾼다"고 적혀 있었는데, 실제로는 **한 줄로 우회되고 tsc 는 0 에러**였다(#403 통합 검증 minor-2):
+ * ```ts
+ * const alias: RatingWeights = RATING_WEIGHTS; // readonly→mutable 대입은 TS 가 안 본다
+ * alias.base = 3.0;                            // 앱 전역 평점이 바뀐다
+ * ```
+ * 주장을 낮추는 대신 **주장이 참이 되게** 잠근다(엄격 모드에서 대입은 TypeError).
+ */
+function deepFreeze<T>(o: T): T {
+  if (o && typeof o === "object") {
+    for (const v of Object.values(o as Record<string, unknown>)) deepFreeze(v);
+    Object.freeze(o);
+  }
+  return o;
+}
+
+/**
+ * ⚠️ **깊게 얼려 둔다(`Object.freeze` + `DeepReadonly`).** 이 상수는 앱 전체 평점의 단일 출처라,
+ * 가변이면 어떤 소비자든 `RATING_WEIGHTS.base = 3` 한 줄로 전 화면의 평점을 조용히 바꿀 수 있다.
  * 계수를 갈아끼워야 하는 정당한 용도(분포 하네스의 스윕)는 **`ratingWithWeights` 가
  * 이미 제공**하므로 — 표를 주입받는 산식 — 이 상수까지 가변일 이유가 없다.
+ * 계약 = `player-stats.test.ts` "`RATING_WEIGHTS` 는 런타임에도 못 바꾼다".
  */
-export const RATING_WEIGHTS: DeepReadonly<RatingWeights> = {
+export const RATING_WEIGHTS: DeepReadonly<RatingWeights> = deepFreeze({
   /** 무관여 기본점(hero 확정 ②) — "잘하면 오르고 못하면 깎인다". */
   base: 6.5,
   min: 3.0,
@@ -332,7 +352,7 @@ export const RATING_WEIGHTS: DeepReadonly<RatingWeights> = {
     FW: { attack: 0.58, defence: 1.4 },
     UNKNOWN: { attack: 1.0, defence: 1.0 },
   },
-};
+});
 
 // ── 유틸 ─────────────────────────────────────────────────────────────────
 

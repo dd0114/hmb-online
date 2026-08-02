@@ -1,9 +1,14 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
+  AWAY_GK,
   BOT,
   H1_SCORER,
+  HOME_GK,
+  LOG_H1,
+  LOG_H2,
   ME,
   PHONE,
+  POSITION_BY_ID,
   box,
   goalSum,
   mockApi,
@@ -14,6 +19,14 @@ import {
   viewerReady,
   MATCH_ID,
 } from "./p403-mocks";
+import {
+  combinePlayerStats,
+  computePlayerStats,
+  playerKey,
+  type PlayerPosition,
+  type StatMatchLog,
+  type TeamSide,
+} from "../src/match/player-stats";
 
 /**
  * #403 W2 **(A) 선수 기록 탭** 계약 (목업 화면 ①).
@@ -459,5 +472,131 @@ test.describe("⑤ 데스크탑 — 목록이 목록으로 보인다", () => {
     const s = await pageScroll(page);
     expect(s.v).toBeLessThanOrEqual(1);
     expect(s.h).toBeLessThanOrEqual(1);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════
+/**
+ * ⑥ **평점 — 화면이 재보정을 따라간다**(#403 통합 검증 minor-3).
+ *
+ * ⚠️ 이 축에 계약이 **한 건도 없었다**. 통합 브랜치에서 검증자가 넣은 변이 4종
+ * (`base 6.5→6.0` · `FW.attack 0.58→5.8` · `DF.defence 1.1→11.0` · **`keeper.saveRateScale 5.5→0`**)이
+ * 이 파일 30건을 **전부 통과**했다 — 마지막 변이는 실화면 GK 평점을 **8.6 → 7.4** 로 바꾸는데
+ * 아무도 보지 않았다. 값 고정은 유닛(`player-stats.test.ts`)이 하고, 여기서는 **화면이 그 값을
+ * 그리는가**를 잰다.
+ *
+ * ⚠️ **값 리터럴 금지** — hero 가 내일 계수를 조정한다. 여기 있는 것은 전부
+ * ①집계 모듈과의 **동치**(계수를 바꾸면 양쪽이 같이 움직인다) ②**축이 살아 있는지**의 관계식이다.
+ */
+
+type Rendered = { key: string; rating: number; rowText: string };
+
+async function renderedRows(page: Page, team: TeamSide): Promise<Rendered[]> {
+  return page.evaluate((t) => {
+    const out: { key: string; rating: number; rowText: string }[] = [];
+    for (const el of document.querySelectorAll(`[data-testid^="players-rating-${t}-"]`)) {
+      const id = (el.getAttribute("data-testid") ?? "").slice(`players-rating-${t}-`.length);
+      out.push({
+        key: `${t}:${id}`,
+        rating: Number(el.textContent),
+        rowText: document.querySelector(`[data-testid="players-row-${t}-${id}"]`)?.textContent ?? "",
+      });
+    }
+    return out;
+  }, team);
+}
+
+/** 화면이 받는 것과 **같은 입력**으로 집계 모듈을 직접 돌린 값(종료 경기 = 전량, 상한 없음). */
+function moduleRatings(): Map<string, number> {
+  const positions: Record<string, PlayerPosition> = {};
+  const gkKeys = new Set<string>();
+  for (const log of [LOG_H1, LOG_H2] as StatMatchLog[]) {
+    for (const s of log.tickSnapshots ?? []) {
+      for (const p of s.players) {
+        const key = playerKey(p.team as TeamSide, p.playerId);
+        const pos = POSITION_BY_ID[p.playerId]!;
+        positions[key] = pos;
+        if (pos === "GK") gkKeys.add(key);
+      }
+    }
+  }
+  const res = combinePlayerStats(
+    [
+      computePlayerStats(LOG_H1 as StatMatchLog, { gkKeys, positions }),
+      computePlayerStats(LOG_H2 as StatMatchLog, { gkKeys, positions }),
+    ],
+    { positions },
+  );
+  return new Map(res.players.filter((p) => p.ticksPlayed > 0).map((p) => [p.key, p.rating]));
+}
+
+test.describe("⑥ 평점 — 화면이 산식을 따라간다", () => {
+  /**
+   * **동치 계약** — 계수가 어떻게 바뀌든 화면과 모듈이 같이 움직여야 하므로 red 가 되지 않는다.
+   * 대신 **배선**이 끊기면 죽는다: 포지션표(`positions`)나 GK 키를 안 넘기면 배수·키퍼축이
+   * 빠져 값이 갈린다(그 회귀가 지금까지 e2e 사각지대였다).
+   */
+  test("종료 경기 — 모든 행의 평점이 집계 모듈이 낸 값과 같다", async ({ page }) => {
+    await openPlayers(page, "FINISHED");
+    const expected = moduleRatings();
+    const seen: string[] = [];
+    const positionsSeen = new Set<string>();
+
+    for (const team of ["away", "home"] as const) {
+      await page.getByTestId(`players-team-${team}`).click();
+      await expect(page.locator(`[data-testid^="players-row-${team}-"]`)).not.toHaveCount(0);
+      for (const r of await renderedRows(page, team)) {
+        expect(expected.has(r.key), `${r.key} 가 모듈 결과에 없다 — 표본이 어긋났다`).toBe(true);
+        expect(r.rating, `${r.key}: 화면 ${r.rating} ≠ 모듈 ${expected.get(r.key)}`).toBe(expected.get(r.key));
+        // 포지션이 **화면까지** 왔나 — 안 오면 평점의 포지션 배수도 안 걸린 것이다.
+        const pos = POSITION_BY_ID[r.key.split(":")[1]!]!;
+        expect(r.rowText, `${r.key}: 행에 포지션(${pos})이 없다`).toContain(pos);
+        positionsSeen.add(pos);
+        seen.push(r.key);
+      }
+    }
+    expect(seen.length, "양 팀 22행 이상이 나와야 이 계약이 공허하지 않다").toBeGreaterThanOrEqual(22);
+    // ⚠️ 목이 GK/MF 만 배정하던 시절엔 DF·FW 배수가 **원리적으로** 발화하지 않았다(minor-4).
+    expect([...positionsSeen].sort(), "네 포지션이 다 나와야 배수 축이 실제로 걸린다").toEqual([
+      "DF",
+      "FW",
+      "GK",
+      "MF",
+    ]);
+  });
+
+  /**
+   * **GK 축이 살아 있다** — 선방률 축(`keeper.saveRateScale`)을 0 으로 죽이면 두 골키퍼가
+   * 같은 점수로 붙는다(실측 8.6 / 7.7 → **7.4 / 7.4**). 그게 W1b 헤드라인이 고친 바로 그 결함
+   * ("6실점 6선방 GK 가 무관여와 같은 점수")의 재발이라 **관계식으로** 건다 —
+   * 스케일이 0 보다 크기만 하면 값이 어떻든 참이다.
+   */
+  test("무실점 GK 가 실점한 GK 보다 높다 — 선방률 축이 죽으면 여기서 걸린다", async ({ page }) => {
+    await openPlayers(page, "FINISHED");
+    // 표본 유효성 ①: 실점 차이가 실재한다(헤더가 말하는 확정 스코어).
+    await expect(page.getByTestId("stage-score")).toContainText("0 : 3");
+
+    const read = async (team: TeamSide, id: string) => {
+      await page.getByTestId(`players-team-${team}`).click();
+      const rating = Number(await page.getByTestId(`players-rating-${team}-${id}`).textContent());
+      // GK 행의 `수비` 열은 **선방**이다("3선방").
+      const saves = parseInt((await page.getByTestId(`players-defence-${team}-${id}`).textContent()) ?? "", 10);
+      await expect(page.getByTestId(`players-row-${team}-${id}`)).toHaveAttribute("data-gk", "true");
+      return { rating, saves };
+    };
+
+    const clean = await read("away", AWAY_GK); // 내 팀 GK — 무실점
+    const beaten = await read("home", HOME_GK); // 상대 GK — 3실점
+
+    // 표본 유효성 ②: 둘 다 실제로 일했다(선방 0 이면 비교가 공허하다).
+    expect(clean.saves, "무실점 GK 의 선방이 0 이면 이 관계식은 공허하다").toBeGreaterThan(0);
+    expect(beaten.saves, "실점한 GK 의 선방이 0 이면 이 관계식은 공허하다").toBeGreaterThan(0);
+    // 실점한 GK 가 **더 많이** 막았다 — 그래서 볼륨 항만으로는 이 관계가 서지 않는다.
+    expect(beaten.saves).toBeGreaterThanOrEqual(clean.saves);
+
+    expect(
+      clean.rating,
+      `무실점 GK ${clean.rating} ≤ 3실점 GK ${beaten.rating} — 선방률 축이 평점에 안 걸린다`,
+    ).toBeGreaterThan(beaten.rating);
   });
 });

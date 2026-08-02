@@ -42,7 +42,40 @@ export const H1_SCORER = "P034";
 /** 후반 득점자(away, tick 1364 · 1566). 스포일러 계약이 이 둘을 쓴다. */
 export const H2_SCORER = "P108";
 
-const GK_IDS = new Set(["P116", "P014"]);
+export type MockPosition = "GK" | "DF" | "MF" | "FW";
+
+/**
+ * ⚠️ **포지션도 표본이다.** 한때 이 목은 `GK 2명 + 나머지 전원 MF` 였고, 그래서 평점의
+ * **`DF`·`FW` 포지션 배수가 (A) e2e·실화면에서 원리적으로 발화하지 않았다** — W1b/W1c 가 가장
+ * 크게 움직인 축이 정확히 그 둘인데, 그 재보정을 되돌리는 변이가 전부 green 이었다
+ * (#403 통합 검증 minor-3/minor-4). 이제 **네 포지션이 다 나온다**.
+ *
+ * 값은 지어낸 것이 아니라 **픽스처 킥오프 스냅샷의 좌표**에서 읽은 4-3-3 이다(x = 자기 골문에서의
+ * 거리, 105m 피치):
+ *   home  GK 4 · DF 19~29 · MF 53 · FW 82~89
+ *   away  GK 100 · DF 79~84 · MF 47~58 · FW 21~32
+ * 후반 교체(P179→P092 · P175→P108 · P034→P093)도 **같은 슬롯**으로 들어온다.
+ *
+ * ⚠️ `/api/players` 는 **id 축**이다(팀이 없다) — 이 픽스처는 양 팀 id 가 겹치지 않아 성립한다.
+ * 겹치는 픽스처로 갈아타면 이 표가 아니라 서버 계약부터 다시 봐야 한다(루트 #231).
+ */
+export const POSITION_BY_ID: Record<string, MockPosition> = {
+  // home (봇) — 4-3-3
+  P116: "GK",
+  P118: "DF", P121: "DF", P124: "DF", P126: "DF",
+  P166: "MF", P129: "MF", P127: "MF",
+  P171: "FW", P141: "FW", P172: "FW",
+  // away (유저) — 4-3-3 + 후반 교체 3명
+  P014: "GK",
+  P078: "DF", P079: "DF", P077: "DF", P090: "DF",
+  P145: "MF", P179: "MF", P025: "MF", P092: "MF",
+  P175: "FW", P034: "FW", P106: "FW", P108: "FW", P093: "FW",
+};
+
+/** 양 팀 골키퍼 — GK 축 계약이 이 두 행을 직접 본다. */
+export const HOME_GK = "P116";
+export const AWAY_GK = "P014";
+
 const ALL_IDS = [
   ...new Set(
     [...LOG_H1.tickSnapshots, ...LOG_H2.tickSnapshots].flatMap((s: { players: { playerId: string }[] }) =>
@@ -51,11 +84,18 @@ const ALL_IDS = [
   ),
 ] as string[];
 
+// 표가 조용히 낡지 않게 — 픽스처에 있는 선수인데 포지션이 없으면 **여기서 터진다**.
+// (없으면 그 선수만 포지션 미상으로 떨어져 계약이 검사하는 척만 한다.)
+const MISSING = ALL_IDS.filter((id) => !POSITION_BY_ID[id]);
+if (MISSING.length > 0) {
+  throw new Error(`p403-mocks: 픽스처 선수 ${MISSING.join(",")} 의 포지션이 POSITION_BY_ID 에 없다`);
+}
+
 /** 봇 로스터도 **같은 선수 카탈로그**를 쓴다(루트 #231) → 상대 이름·포지션도 여기서 나온다. */
 export const PLAYERS = ALL_IDS.map((id) => ({
   id,
   name: `선수${id.slice(1)}`,
-  position: GK_IDS.has(id) ? "GK" : "MF",
+  position: POSITION_BY_ID[id]!,
   grade: "SILVER",
   owned: true,
   ownedCount: 1,
