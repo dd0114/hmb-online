@@ -1212,7 +1212,9 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
 (`data-state` · 버튼 `toHaveCount(0)`)을 단언해라. **같은 축을 이 에픽에서 두 번 당했다** —
 「헤더 지갑이 따라온다」가 아무 단언도 없던 것이 첫 번째다.
 - 계약 = `mission/mission-logic.test.ts`(36) + `home/home-logic.test.ts`(5) +
-  `e2e/p408-daily-mission.spec.ts`(33, 390×844). **변이 23종 전부 사망 확인**(신규 8 + 기존 15 재확인).
+  `e2e/p408-daily-mission.spec.ts`(**34**, 390×844). **변이 26종 전부 사망 확인**(신규 8 + 기존 15 재확인
+  + blocker-1 되돌리기 3종). 34번째 = 「수령하면 [받기]가 사라지고 CLAIMED 로 바뀐다」 — 독립검증 1R 이
+  잡은 blocker 의 계약이고, **동적 목**(수령 전 COMPLETED → 후 CLAIMED)이라야 탄다.
   ⚠️ **달성 판정은 양방향 표본으로 태워라** — 원정은 `2/2 + IN_PROGRESS` 와 `0/3 + COMPLETED`,
   결과 화면은 `2/2 + CLAIMED` 와 `0/3 + COMPLETED`. 한쪽만 두면 "state 를 보되 progress 도 같이
   본다"는 변이체가 산다(실제로 그 변이를 만들어 죽는 것을 확인했다).
