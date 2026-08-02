@@ -146,6 +146,34 @@ h5.cat{font-size:10px;color:var(--muted);letter-spacing:.09em;margin:12px 0 5px;
   linear-gradient(180deg,var(--grass-a),var(--grass-b));border:1px solid var(--hairline);position:relative}
 .lock{font-size:10px;color:var(--muted);border:1px solid var(--hairline);border-radius:5px;padding:1px 6px}
 
+/* --- 강화탭 능력치 레이어 재현 (CardGrowthDetail) --- */
+.layerTg{display:flex;gap:4px;background:var(--sunk);border:1px solid var(--hairline);border-radius:8px;padding:3px;margin-bottom:9px}
+.layerTg button{flex:1;background:none;border:none;color:var(--muted);font-size:11px;padding:5px 0;border-radius:5px}
+.layerTg button.on{background:rgba(76,141,255,.16);color:var(--text);font-weight:600}
+.radarWrap{display:flex;gap:9px;align-items:center}
+.radarWrap svg{flex:0 0 auto}
+.chips{display:flex;flex-direction:column;gap:5px;flex:1;min-width:0}
+.chip2{background:var(--sunk);border-radius:7px;padding:4px 7px;display:flex;justify-content:space-between;font-size:11px}
+.chip2 span:first-child{color:var(--muted)}
+.chip2 b{font-variant-numeric:tabular-nums;font-weight:600}
+.chip2 b i{color:var(--muted);font-style:normal;font-weight:400}
+.axwin{font-size:10px;color:var(--muted);margin:0 0 6px}
+.arow{display:grid;grid-template-columns:74px 1fr 52px;gap:7px;align-items:center;padding:5px 0;border-top:1px solid var(--hairline)}
+.arow .an{font-size:11px;display:flex;align-items:center;gap:4px;min-width:0}
+.arow .lv{font-size:8.5px;background:var(--sunk);border:1px solid var(--hairline);border-radius:3px;padding:0 3px;color:var(--muted);flex:0 0 auto}
+.arow .bars{min-width:0}
+.xpb{display:block;width:100%;height:3px;border-radius:2px;background:var(--sunk);overflow:hidden;margin-bottom:3px}
+.xpb i{display:block;height:100%;background:#c9a227}
+.vb{display:block;width:100%;position:relative;height:7px;border-radius:4px;background:var(--sunk);overflow:hidden}
+.vb .fill{position:absolute;left:0;top:0;bottom:0;background:var(--us);border-radius:4px}
+.vb .reach{position:absolute;top:0;bottom:0;background:rgba(76,141,255,.22)}
+.vb .capl{position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--warn)}
+.vb .basel{position:absolute;top:-1px;bottom:-1px;width:1px;background:rgba(255,255,255,.45)}
+.arow .av{font-size:12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.arow .av i{color:var(--muted);font-style:normal;font-size:10px;font-weight:400}
+.legend{font-size:9.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;margin-top:7px}
+.legend b{font-weight:400;color:var(--text)}
+
 /* result */
 .rbadge{text-align:center;font-size:20px;font-weight:800;padding:10px 0 2px}
 .fscore{text-align:center;font-size:13px;color:var(--muted);margin-bottom:10px}
@@ -486,12 +514,14 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
 
 <!-- ==================== 4 ==================== -->
 <section class="screen" id="s4">
-  <h2>④ 선수 상세 모달 — [선수 정보] 탭 <span class="tag">요구 F / 성장 값은 #405 확정 후 배선</span></h2>
-  <p class="why">같은 모달의 두 번째 탭. <b>능력치 + 성장(승급) 정보</b>. 지금 있는 카드 상세 화면의 내용을
-     <b>경기중에도, 상대 선수에도</b> 열 수 있게 만드는 것이 이 요구의 핵심이다.</p>
+  <h2>④ 선수 상세 모달 — [선수 정보] 탭 <span class="tag">요구 F / <b>강화탭 능력치 UI 재사용</b>(hero 지시 2026-08-02)</span></h2>
+  <p class="why">같은 모달의 두 번째 탭. 능력치는 <b>새로 그리지 않고 강화 화면(<code>CardGrowthDetail</code>)에서 쓰는 표시를 그대로</b> 쓴다 —
+     <b>레이더 ↔ 막대 2레이어 토글</b>, 막대에는 <b>스탯 레벨 뱃지 · XP 바 · 현재값/성장상한(cap)/기본값(base) 마커</b>.
+     같은 능력치가 화면마다 다르게 보이지 않게 하는 것이 요점이고, 유지보수도 한 곳으로 모인다.</p>
   <div class="row">
+
     <div>
-    <div class="phone modalphone" style="height:900px">
+    <div class="phone modalphone" style="height:1150px">
       <div class="scorebar"><div class="line1"><div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
         <div class="score">1 : 0</div><div class="tname"><span class="n">붉은늑대</span></div></div>
         <div class="clock"><span class="dot">●</span> 전반 34:20 · LIVE</div></div>
@@ -502,48 +532,148 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
               <div class="art dia">DIA<br>아트</div>
               <div style="min-width:0">
                 <div style="font-size:15px;font-weight:700">김도현 <span class="ppos">ST</span> <span style="font-size:10px;color:var(--muted)">#9</span></div>
-                <div style="font-size:10px;color:var(--muted)">다이아 ★3 · Lv.12 · OVR 78</div>
+                <div style="font-size:10px;color:var(--muted)">다이아 ★3 · Lv.12 · 완성도 71%</div>
               </div>
               <div style="margin-left:auto;text-align:right"><div style="font-size:20px;font-weight:800">78</div>
                 <div style="font-size:9px;color:var(--muted)">OVR</div></div>
             </div>
             <div class="mtabs"><button>이 경기</button><button class="on">선수 정보</button></div>
             <div class="mbody">
-              <h5 class="cat">능력치</h5>
-              <div class="attr">
-                <div class="a"><div class="l"><span>슈팅</span><b>84</b></div><div class="bar"><i style="width:84%"></i></div></div>
-                <div class="a"><div class="l"><span>스피드</span><b>79</b></div><div class="bar"><i style="width:79%"></i></div></div>
-                <div class="a"><div class="l"><span>드리블</span><b>76</b></div><div class="bar"><i style="width:76%"></i></div></div>
-                <div class="a"><div class="l"><span>패스</span><b>68</b></div><div class="bar"><i style="width:68%"></i></div></div>
-                <div class="a"><div class="l"><span>피지컬</span><b>72</b></div><div class="bar"><i style="width:72%"></i></div></div>
-                <div class="a"><div class="l"><span>수비</span><b>41</b></div><div class="bar"><i style="width:41%"></i></div></div>
+              <h5 class="cat">능력치 <span style="color:var(--us);font-weight:600">· 강화탭과 동일</span></h5>
+              <div class="layerTg"><button class="on">레이더</button><button>막대</button></div>
+              <div class="radarWrap">
+                <svg width="176" height="176" viewBox="0 0 200 200" aria-hidden="true">
+                  <polygon points="100,30 160.6,65 160.6,135 100,170 39.4,135 39.4,65" fill="none" stroke="rgba(255,255,255,.10)"/>
+                  <polygon points="100,53.3 140.4,76.65 140.4,123.35 100,146.7 59.6,123.35 59.6,76.65" fill="none" stroke="rgba(255,255,255,.07)"/>
+                  <polygon points="100,76.7 120.2,88.35 120.2,111.65 100,123.3 79.8,111.65 79.8,88.35" fill="none" stroke="rgba(255,255,255,.07)"/>
+                  <polygon points="100,34.2 154,68.85 152.1,130.1 100,154.6 50.3,128.7 69.1,82.15" fill="none" stroke="#ffc24b" stroke-dasharray="3 3" stroke-width="1.2"/>
+                  <polygon points="100,41.2 147.9,72.35 146.1,126.6 100,147.6 56.4,125.2 75.1,85.65" fill="rgba(76,141,255,.30)" stroke="#4c8dff" stroke-width="1.6"/>
+                  <g font-size="9" fill="#9aa1ad" text-anchor="middle">
+                    <text x="100" y="20">슈팅</text><text x="176" y="62">스피드</text><text x="176" y="145">드리블</text>
+                    <text x="100" y="188">패스</text><text x="24" y="145">피지컬</text><text x="24" y="62">수비</text>
+                  </g>
+                </svg>
+                <div class="chips">
+                  <div class="chip2"><span>결정력</span><b>81<i> /88</i></b></div>
+                  <div class="chip2"><span>위치선정</span><b>74<i> /83</i></b></div>
+                  <div class="chip2"><span>정신력</span><b>69<i> /77</i></b></div>
+                </div>
               </div>
+              <p class="legend" style="margin-top:8px">
+                <span><b style="color:#4c8dff">■</b> 현재</span><span><b style="color:#ffc24b">┄</b> 성장 상한</span>
+              </p>
+
+              <h5 class="cat">능력치 — 막대 레이어 <span style="color:var(--muted);font-weight:400">(토글하면 이 화면)</span></h5>
+              <p class="axwin">스탯 축 35–95</p>
+              <div class="arow">
+                  <div class="an">슈팅<i class="lv">Lv.7</i></div>
+                  <div class="bars">
+                    <span class="xpb"><i style="width:68%"></i></span>
+                    <span class="vb">
+                      <i class="reach" style="left:84%;width:8%"></i>
+                      <i class="fill" style="width:84%"></i>
+                      <i class="capl" style="left:92%"></i>
+                      <i class="basel" style="left:71%"></i>
+                    </span>
+                  </div>
+                  <div class="av">84<i>/92</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">스피드<i class="lv">Lv.5</i></div>
+                  <div class="bars">
+                    <span class="xpb"><i style="width:40%"></i></span>
+                    <span class="vb">
+                      <i class="reach" style="left:79%;width:7%"></i>
+                      <i class="fill" style="width:79%"></i>
+                      <i class="capl" style="left:86%"></i>
+                      <i class="basel" style="left:70%"></i>
+                    </span>
+                  </div>
+                  <div class="av">79<i>/86</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">드리블<i class="lv">Lv.6</i></div>
+                  <div class="bars">
+                    <span class="xpb"><i style="width:55%"></i></span>
+                    <span class="vb">
+                      <i class="reach" style="left:76%;width:8%"></i>
+                      <i class="fill" style="width:76%"></i>
+                      <i class="capl" style="left:84%"></i>
+                      <i class="basel" style="left:66%"></i>
+                    </span>
+                  </div>
+                  <div class="av">76<i>/84</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">패스<i class="lv">Lv.3</i></div>
+                  <div class="bars">
+                    <span class="xpb"><i style="width:22%"></i></span>
+                    <span class="vb">
+                      <i class="reach" style="left:68%;width:11%"></i>
+                      <i class="fill" style="width:68%"></i>
+                      <i class="capl" style="left:79%"></i>
+                      <i class="basel" style="left:61%"></i>
+                    </span>
+                  </div>
+                  <div class="av">68<i>/79</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">피지컬<i class="lv">Lv.4</i></div>
+                  <div class="bars">
+                    <span class="xpb"><i style="width:80%"></i></span>
+                    <span class="vb">
+                      <i class="reach" style="left:72%;width:9%"></i>
+                      <i class="fill" style="width:72%"></i>
+                      <i class="capl" style="left:81%"></i>
+                      <i class="basel" style="left:64%"></i>
+                    </span>
+                  </div>
+                  <div class="av">72<i>/81</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">수비<i class="lv">Lv.1</i></div>
+                  <div class="bars">
+                    <span class="xpb"><i style="width:12%"></i></span>
+                    <span class="vb">
+                      <i class="reach" style="left:41%;width:14%"></i>
+                      <i class="fill" style="width:41%"></i>
+                      <i class="capl" style="left:55%"></i>
+                      <i class="basel" style="left:38%"></i>
+                    </span>
+                  </div>
+                  <div class="av">41<i>/55</i></div>
+                </div>
+              <p class="legend">
+                <span><b style="color:#4c8dff">■</b> 현재값</span>
+                <span><b style="color:#ffc24b">▮</b> 성장 상한(cap)</span>
+                <span><b>▮</b> 기본값(base)</span>
+                <span><b style="color:#c9a227">▬</b> 스탯 XP</span>
+              </p>
 
               <h5 class="cat">성장 · 승급</h5>
-              <div class="pend">⚙️ 이 영역은 <b>성장 개편(#405)</b> 이 형상을 정한다 —
-                레벨/경험치/승급 표기는 <b>자리만 잡고</b> 값 배선은 #405 인터페이스 확정 후</div>
+              <div class="pend">⚙️ 이 영역은 <b>성장 개편(#405)</b> 이 형상을 정한다 — 레벨/경험치/승급 표기는 <b>자리만</b> 잡고 값 배선은 #405 인터페이스 확정 후</div>
               <div class="slist" style="margin-top:8px">
-                <div class="dim2"><span>레벨 · 경험치</span><span>Lv.12 · 340 / 500</span></div>
                 <div class="dim2"><span>성 승급(★)</span><span>★3 → ★4 (조각 2/5)</span></div>
                 <div class="dim2"><span>잠재 티어</span><span>EPIC</span></div>
               </div>
+              <p style="font-size:10px;color:var(--muted);margin:6px 0 0">⚠️ 강화·리롤 <b>버튼은 이 모달에 없다</b> — 열람 전용. 강화는 기존 강화 화면에서.</p>
 
               <h5 class="cat">지시(프롬프트)</h5>
               <div class="slist">
                 <div><span>선수 지시</span><span style="font-size:11px;color:var(--muted)">"박스 안에서 과감하게…"</span></div>
               </div>
-              <p style="font-size:10px;color:var(--muted);margin:6px 0 0">↑ 내 선수일 때만. 상대·타 유저는 <span class="lock">🔒 지시 있음</span> 만 표시</p>
               <button class="btn ghost" style="margin-top:14px">닫기</button>
             </div>
           </div>
         </div>
       </div>
     </div>
-    <p class="cap"><b>내 선수</b> — 지시문까지 보인다.</p>
+    <p class="cap"><b>내 선수 — 전체 표시.</b> 두 레이어를 한 화면에 같이 그려 뒀지만 실제로는 <b>토글로 하나씩</b> 본다(강화탭과 동일).
+       강화·리롤 버튼은 넣지 않는다 — 경기중에 카드를 강화하게 만드는 건 이 요구가 아니다.</p>
     </div>
 
     <div>
-    <div class="phone modalphone" style="height:900px">
+    <div class="phone modalphone" style="height:1000px">
       <div class="scorebar"><div class="line1"><div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
         <div class="score">1 : 0</div><div class="tname"><span class="n">붉은늑대</span></div></div>
         <div class="clock"><span class="dot">●</span> 전반 34:20 · LIVE</div></div>
@@ -561,15 +691,51 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
             </div>
             <div class="mtabs"><button>이 경기</button><button class="on">선수 정보</button></div>
             <div class="mbody">
-              <h5 class="cat">능력치</h5>
-              <div class="attr">
-                <div class="a"><div class="l"><span>슈팅</span><b>77</b></div><div class="bar"><i style="width:77%"></i></div></div>
-                <div class="a"><div class="l"><span>스피드</span><b>81</b></div><div class="bar"><i style="width:81%"></i></div></div>
-                <div class="a"><div class="l"><span>드리블</span><b>69</b></div><div class="bar"><i style="width:69%"></i></div></div>
-                <div class="a"><div class="l"><span>패스</span><b>60</b></div><div class="bar"><i style="width:60%"></i></div></div>
+              <h5 class="cat">능력치 <span style="color:var(--muted);font-weight:600">· 같은 UI · 축소 표시</span></h5>
+              <div class="layerTg"><button class="on">레이더</button><button>막대</button></div>
+              <div class="radarWrap">
+                <svg width="176" height="176" viewBox="0 0 200 200" aria-hidden="true">
+                  <polygon points="100,30 160.6,65 160.6,135 100,170 39.4,135 39.4,65" fill="none" stroke="rgba(255,255,255,.10)"/>
+                  <polygon points="100,53.3 140.4,76.65 140.4,123.35 100,146.7 59.6,123.35 59.6,76.65" fill="none" stroke="rgba(255,255,255,.07)"/>
+                  <polygon points="100,76.7 120.2,88.35 120.2,111.65 100,123.3 79.8,111.65 79.8,88.35" fill="none" stroke="rgba(255,255,255,.07)"/>
+                  <polygon points="100,46.1 145,74.5 141,128 100,151 54,127 71.5,84" fill="rgba(255,107,107,.26)" stroke="#ff6b6b" stroke-width="1.6"/>
+                  <g font-size="9" fill="#9aa1ad" text-anchor="middle">
+                    <text x="100" y="20">슈팅</text><text x="176" y="62">스피드</text><text x="176" y="145">드리블</text>
+                    <text x="100" y="188">패스</text><text x="24" y="145">피지컬</text><text x="24" y="62">수비</text>
+                  </g>
+                </svg>
+                <div class="chips">
+                  <div class="chip2"><span>결정력</span><b>74</b></div>
+                  <div class="chip2"><span>위치선정</span><b>70</b></div>
+                  <div class="chip2"><span>정신력</span><b>66</b></div>
+                </div>
               </div>
+              <p class="legend" style="margin-top:8px"><span><b style="color:#ff6b6b">■</b> 현재</span>
+                <span style="color:var(--muted)">성장 상한 점선 없음 — 남의 성장 진행도는 안 준다</span></p>
+
+              <h5 class="cat">능력치 — 막대 레이어</h5>
+              <div class="arow"><div class="an">슈팅</div>
+                <div class="bars"><span class="vb"><i class="fill" style="width:77%;background:var(--them)"></i></span></div>
+                <div class="av">77</div></div>
+              <div class="arow"><div class="an">스피드</div>
+                <div class="bars"><span class="vb"><i class="fill" style="width:81%;background:var(--them)"></i></span></div>
+                <div class="av">81</div></div>
+              <div class="arow"><div class="an">드리블</div>
+                <div class="bars"><span class="vb"><i class="fill" style="width:69%;background:var(--them)"></i></span></div>
+                <div class="av">69</div></div>
+              <div class="arow"><div class="an">패스</div>
+                <div class="bars"><span class="vb"><i class="fill" style="width:60%;background:var(--them)"></i></span></div>
+                <div class="av">60</div></div>
+              <div class="arow"><div class="an">피지컬</div>
+                <div class="bars"><span class="vb"><i class="fill" style="width:66%;background:var(--them)"></i></span></div>
+                <div class="av">66</div></div>
+              <div class="arow"><div class="an">수비</div>
+                <div class="bars"><span class="vb"><i class="fill" style="width:38%;background:var(--them)"></i></span></div>
+                <div class="av">38</div></div>
+
               <h5 class="cat">성장 · 승급</h5>
-              <div class="slist"><div class="dim2"><span>공개 범위</span><span>결정 요청 ③ 참조</span></div></div>
+              <div class="slist"><div class="dim2"><span>등급 · 성</span><span>골드 ★2</span></div></div>
+
               <h5 class="cat">지시(프롬프트)</h5>
               <div style="text-align:center;padding:10px 0"><span class="lock">🔒 지시 있음 — 내용 비공개</span></div>
               <button class="btn ghost" style="margin-top:14px">닫기</button>
@@ -578,10 +744,18 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
         </div>
       </div>
     </div>
-    <p class="cap"><b>상대 선수</b> — 아트는 <b>다이아 이상만</b> 그린다는 기존 정책 그대로(골드는 아이콘).
-       지시문은 <b>있다는 사실만</b> 보인다.</p>
+    <p class="cap"><b>상대·타 유저 선수 — 같은 컴포넌트, 축소 모드.</b> 아트는 <b>다이아 이상만</b> 그린다는 기존 정책 그대로(골드는 아이콘).
+       지시문은 있다는 사실만.</p>
     </div>
   </div>
+
+  <p class="note" style="max-width:1000px"><b>⚠️ 여기 데이터 경계가 하나 있다 (개발 기준으로 확정한 것)</b><br>
+    강화탭의 <b>Lv · XP · 성장상한(cap) · 기본값(base)</b> 은 <b>내 카드에만</b> 있는 값이다(내 카드의 성장 진행도라
+    서버가 남의 것을 주지 않는다). 그래서 <b>상대·타 유저 선수는 같은 컴포넌트를 "축소 모드"</b>로 그린다 —
+    <b>능력치 수치와 레이더는 그대로</b>, Lv 뱃지 · XP 바 · cap/base 마커만 빠진다.<br>
+    <b>왜 이게 맞나</b>: 결정 ③(타 유저 공개 범위)에서 공개하기로 한 것은 <b>능력치</b>지 <b>성장 진행도</b>가 아니다.
+    남의 XP·성장상한까지 열면 "저 사람 카드가 얼마나 컸나"가 보여서 공개 범위가 한 칸 더 넓어진다.
+    바꾸고 싶으면 말씀해 주시면 서버 쪽에 필드를 요청한다.</p>
 </section>
 
 <!-- ==================== 5 ==================== -->
