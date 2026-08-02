@@ -266,18 +266,41 @@ function TradeLogsTab() {
   );
 }
 
+/**
+ * ⚠️ **`detail.target` 은 객체가 아니라 문자열 playerId 다** (#406 W1c).
+ *
+ * <p>여기 원래 `detail.target as {name?: string}` → `target?.name` 이 있었는데 서버는
+ * `detail.put("target", targetId)` 로 **id 문자열**을 넣는다(`TradeService.logTrade`, `trade_log`
+ * INSERT 는 리포에 그 한 곳뿐이라 다른 모양이 올 경로가 없다). 즉 이 표현은 <b>항상 undefined</b> —
+ * 트레이드 이력에 선수 이름이 <b>한 번도 뜬 적이 없다</b>. 타입이 `Record<string, unknown>` 이라
+ * 캐스트가 컴파일을 통과했고, 그래서 "죽은 표현"이 조용히 살아 있었다.
+ *
+ * <p>이름은 초크포인트로 물어 되살린다. 축은 <b>full</b> — 이 줄은 `[FA 영입 · 이름]` 한 덩어리로
+ * 행의 주 텍스트를 통째로 쓰는 자리다(옆의 결과 뱃지는 이름과 폭을 다투지 않는다).
+ *
+ * <p>⚠️ <b>사다리 3단(`미상 선수`)은 그리지 않는다.</b> 근거는 <b>"문구가 갈리지 않는다"가 아니다</b> —
+ * 채택안도 로딩→도착 사이에 `FA 영입` → `FA 영입 · 이름` 으로 갈린다(폭이 덜 흔들릴 뿐이다).
+ * 근거는 <b>정보가 0인 조각을 안 그린다</b>는 것이다: 카탈로그가 아직 안 왔거나(로딩) 회수된
+ * 유닛이면 `· 미상 선수` 는 유저에게 아무것도 말하지 않으면서 줄만 길게 만든다.
+ * 못 찾으면 <b>수정 전과 같이 이름 조각 자체를 생략</b>한다 — 그래도 <b>id 는 절대 안 나온다</b>
+ * (그게 사다리가 막는 것이다). 판정은 `resolve().source` 로, 화면이 `미상 선수` 문구를 다시
+ * 비교하지 않는다(그 문구는 조정 후보 1순위라 언제든 바뀐다).
+ */
 function TradeLogRow({ item }: { item: TradeLogItem }) {
+  const names = usePlayerNames();
   const detail = (item.detail ?? {}) as Record<string, unknown>;
-  const target = detail.target as { name?: string } | undefined;
+  const targetId = typeof detail.target === "string" ? detail.target.trim() : "";
+  const target = targetId ? names.resolve(targetId, "full") : null;
+  const targetName = target && target.source !== "unknown" ? target.text : null;
   const points = typeof detail.points === "number" ? detail.points : null;
   const success = item.result === "SUCCESS";
   return (
     <li>
       <div className={styles.row} data-testid={`trade-log-${item.id}`}>
         <div className={styles.rowMain}>
-          <span className={styles.opp}>
+          <span className={styles.opp} data-testid={`trade-log-target-${item.id}`}>
             {item.kind === "FA" ? "FA 영입" : "트레이드"}
-            {target?.name ? ` · ${target.name}` : ""}
+            {targetName ? ` · ${targetName}` : ""}
           </span>
           <span
             className={[styles.badge, success ? styles.badgeWin : styles.badgeLoss]

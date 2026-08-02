@@ -246,15 +246,67 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
    *   <li>(덤) <b>별칭 n단</b> — `const a = m.get(id); const b = a; b.name`</li>
    * </ul>
    * ⚠️ 호출 프롬프트가 이름 붙인 축은 N1~N6·N8 이고 <b>N7 은 지목되지 않았다</b> — 번호가 비어
-   * 있는 것이지 "빠뜨린 것"이 아니다. 실제로 남은 미탐은 전부 아래에 적는다.
+   * 있는 것이지 "빠뜨린 것"이 아니다.
+   * ⚠️ 이 자리에 한때 *"실제로 남은 미탐은 <b>전부</b> 아래에 적는다"* 고 적혀 있었다.
+   * <b>지킨 적이 없는 약속이다</b> — 4차가 O1~O5 를, 5차가 O6·O7 을 미기재 상태에서 발견했다.
+   * 아래 목록은 "지금까지 확인된 경계"이지 완전한 목록이 아니다(다음 절 머리말 참조).
+   *
+   * <h3>4차에 넓힌 것 — <b>연산자 축</b>(O1~O5)</h3>
+   * 4차 독립검증이 지적한 것은 우회가 아니라 <b>약속 위반</b>이었다: 아래 다섯 형태가 미탐 목록에도
+   * 음성 대조에도 <b>없었다</b>(트리에 실물은 0건). 머리말이 *"새 형태를 발견하면 여기에 추가해라"*
+   * 로 계약을 세운 이상, 적지 않은 채로 두면 다음 사람이 "목록에 없으니 잡히는 형태"로 읽는다.
+   * 다섯 다 <b>값이 어디에 있는지가 문법으로 확정</b>되는 형태라 예외표를 키우지 않고 넓힐 수 있어
+   * — <b>전부 잡는 쪽</b>으로 갔다(안 잡고 적기만 하면 `&&` 하나로 스캐너가 사실상 무력해진다):
+   * <ul>
+   *   <li><b>O1 `&&` 가드 선언</b> — `const p = ready && m.get(id)`. <b>React 최빈 관용구</b>이고
+   *       이게 제일 위험했다: 그때 `bareLeft` 가 `??`·`||` 의 <b>왼쪽</b>만 벗겨서, 조건 하나만
+   *       앞에 붙이면 위 N1~N8 · 삼항 확장이 <b>통째로</b> 무력해졌다. 값은 <b>오른쪽</b>이다.
+   *       ⚠️ 그때 이 자리에 *"(`??`/`||` 와 <b>반대</b> 축)"* 이라고 적었는데 <b>거짓이었다</b> —
+   *       5차 O6 을 보라.</li>
+   *   <li><b>O2 `??=`·`||=`·`&&=` 바인딩</b> — `let p; p ??= m.get(id)`. `collect` 가 `EqualsToken`
+   *       만 봤다(N3 의 사각).</li>
+   *   <li><b>O3 `??=`·`||=` id 폴백</b> — `label ??= playerId`. `check` ② 가 `??`·`||` <b>토큰</b>만
+   *       봤다 — 같은 폴백을 대입형으로 쓰면 안 걸렸다.</li>
+   *   <li><b>O4 `satisfies`</b> — `(m.get(id) satisfies Row).name`. `bare()` 가 paren/nonnull/`as`
+   *       만 벗겼다. `as` 를 벗기면서 형제 하나를 빠뜨린 것이다.</li>
+   *   <li><b>O5 콤마 연산자</b> — `const p = (touch(), m.get(id))`. 값은 <b>오른쪽</b>이다.</li>
+   * </ul>
+   * ⚠️ 넓히면서 <b>기존 음성 대조는 하나도 깨지지 않았다</b> — 다섯 다 그 목록에 없던 형태라서다.
+   * 그 사실 자체가 이 지적의 요지다(목록이 경계를 <b>전부</b> 적고 있지 않았다). 새 형태를
+   * 넓힐 때는 양성 대조(O1~O5)와 아래 미탐 목록을 <b>같이</b> 갱신해라.
+   *
+   * <h3>5차에 넓힌 것 — <b>O1 의 거울상과 프로퍼티 대상</b>(O6·O7)</h3>
+   * 5차 독립검증의 blocker 는 <b>4차가 적은 근거 문장이 거짓</b>이라는 것이었다:
+   * *"`??`/`||` 는 <b>왼쪽</b>이 원래 얻으려던 값이고 `&&` 는 <b>오른쪽</b>이다"* — 반대가 아니라
+   * <b>대칭</b>이다(`a ?? lookup()` 은 `a` 가 nullish 면 <b>오른쪽이 값</b>). 그 한 문장 때문에
+   * O1 의 정확한 거울상이 잡히지도, 미탐 목록에 적히지도 않았다. 프로브 4종이 그 사각으로
+   * 살아남았고, 그중 <b>실재하는 모양</b>이 트리에 있다 —
+   * `AdminPage.tsx:161` 의 `const selectedRow = detail.data?.user ?? users.find(…) ?? null`
+   * (오늘은 `.nickname` 이라 위반이 아니지만, 그 자리가 선수 카탈로그로 바뀌는 순간 사각이 된다).
+   * <ul>
+   *   <li><b>O6 `??`·`||` 의 오른쪽</b> — `const p = cached ?? m.get(id)` · `props.player || m.get(id)`.
+   *       이제 {@link branches} 가 <b>양쪽</b>을 편다.</li>
+   *   <li><b>O7 프로퍼티 대상 바인딩</b> — `s.p = m.get(id)` · `s.p ??= m.get(id)` 뒤의 `s.p.name`.
+   *       `collect` 가 `ts.isIdentifier(n.left)` 를 요구해, N1(`{ player: m.get(id) }`)은 잡으면서
+   *       <b>같은 값을 대입으로 담으면</b> 못 잡는 비대칭이었다(읽는 쪽은 이미 프로퍼티 경유를 봤다).</li>
+   * </ul>
+   * ⚠️ 여기서도 <b>음성 대조는 하나도 깨지지 않았다</b>(`&&` 의 왼쪽은 계속 안 본다) — 넷 다
+   * 목록에 없던 형태라서다. 그게 4차와 <b>똑같은 실패 모양</b>이고, 그래서 아래 미탐 목록의
+   * 완전성 주장을 걷어냈다.
    *
    * <h3>⚠️ 이 스캐너가 <b>안 잡는</b> 형태 — 커버리지를 믿지 마라</h3>
    * 오탐 비용만 적고 미탐을 안 적으면 다음 사람이 "스캔이 초록이니 우회가 없다"고 읽는다.
    * 아래 목록은 <b>알면서 남긴 경계</b>다(전부 잡는 것이 목표가 아니다 — 잡히는 형태를 늘릴수록
    * 오탐 예외표가 커진다). <b>이 목록에 없는 형태를 새로 발견하면 여기에 추가해라.</b>
+   *
+   * <p>⚠️ <b>이 목록은 완전하지 않다 — 완전하다고 읽지 마라.</b> 4차가 O1~O5 를, 5차가 O6·O7 을
+   * <b>미기재 상태에서</b> 발견했다(둘 다 "목록에 없으니 잡히는 형태"로 읽힐 수 있던 사각).
+   * 목록에 없다는 것은 <b>"잡힌다"가 아니라 "아직 아무도 그 형태를 프로브로 태우지 않았다"</b>일
+   * 수 있다. 커버리지의 근거는 이 산문이 아니라 <b>아래 양성/음성 대조가 실제로 태우는 형태</b>뿐이다.
    * <ul>
    *   <li><b>인덱스 접근</b> — `m[id].name` · `Object.fromEntries(…)[id].name` · `filter(…)[0].name`
-   *       (`ElementAccessExpression` 은 조회로 안 본다)</li>
+   *       (`ElementAccessExpression` 은 조회로 안 본다). <b>대입 대상이 인덱스인 경우</b>도 같다 —
+   *       `s["p"] = m.get(id)` 뒤의 `s["p"].name`(O7 은 <b>프로퍼티 접근</b> 대상만 본다).</li>
    *   <li><b>조회 메서드 한정</b> — {@link LOOKUP_METHODS} 는 <b>`find`·`get` 둘뿐</b>이다.
    *       `filter`·`flatMap`·`at`·`reduce` 는 안 본다.</li>
    *   <li><b>함수 경계</b> — `const rowOf = (id) => roster.find(…)` 뒤의 `rowOf(id).name`.
@@ -262,7 +314,18 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
    *   <li><b>메서드 별칭</b> — `const g = m.get.bind(m); g(id).name`(호출부가 `.get` 이 아니다)</li>
    *   <li><b>`name` 필드 이름 고정</b> — `shortName`·`displayName` 우회는 안 걸린다.</li>
    *   <li><b>id 폴백의 우변이 식이면 놓친다</b> — `?? String(id)` · ``?? `${id}` `` ·
-   *       `?? s["playerId"]`. 식별자 이름이 id 로 안 끝나도 마찬가지(`?? key`).</li>
+   *       `?? s["playerId"]`. 식별자 이름이 id 로 안 끝나도 마찬가지(`?? key`).
+   *       ⚠️ <b>대입형</b>(`??=`·`||=`)은 4차(O3)에 넓혔지만 <b>우변 규칙은 같다</b> —
+   *       `label ??= String(playerId)` 는 여전히 안 걸린다(막는 축이 좌변이 아니라 우변이라서).</li>
+   *   <li><b>`&&` 의 왼쪽</b> — `const p = m.get(id) && fallbackRow;` 처럼 조회가 <b>왼쪽</b>에
+   *       오면 안 걸린다. 근거는 <b>의미론</b>이다: `a && b` 가 `a` 를 값으로 내는 것은 `a` 가
+   *       <b>falsy 일 때뿐</b>이고, `.name` 을 가진 행은 truthy 다 — 즉 왼쪽 갈래에서 나온 값은
+   *       <b>행일 수 없다</b>. (`??`/`||` 는 다르다 — 오른쪽이 truthy 한 행일 수 있어서 O6 로
+   *       넓혔다.) 그래서 O1 은 <b>가드 관용구</b>(조건 && 조회)만 잡는다.
+   *       ⚠️ 여기 한때 *"왼쪽까지 행으로 보면 `if (row && …)` 류가 <b>전부 오탐</b>이 된다"* 고
+   *       적혀 있었는데 그건 <b>재보지 않고 쓴 문장</b>이었다. 실제로 재보면(왼쪽까지 보는 변이 +
+   *       `apps/web/src` 전수 재스캔) <b>새 offender 0건</b>이고 깨지는 것은 아래 음성 대조 1건뿐이다
+   *       — 오탐이 쏟아지지는 않는다. 좁게 두는 이유는 오탐 비용이 아니라 위 의미론이다.</li>
    *   <li><b>순회 자체는 조회가 아니다</b> — `roster.map((p) => <b>{p.name}</b>)`. 콜백 파라미터는
    *       배열 원소에 묶이는 것이라 <b>어느 컬렉션에서 왔는지</b>를 이 스캐너는 모른다.
    *       ⚠️ 한때 여기 *"반복이라 안 걸린다"* 고만 적혀 있었는데 <b>그 문장이 실재 우회를 덮고
@@ -311,6 +374,23 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
   const MEMO_WRAPPERS = new Set(["useMemo"]);
   /** `id` · `playerId` · `s.playerId` — 이름 자리에 흘러들면 화면에 `P077` 이 뜨는 값. */
   const ID_LIKE = /(^|[a-z])[Ii]d$/;
+  /**
+   * 이름 하나에 값을 묶는 대입 — `=` 만이 아니다(O2). `p ??= m.get(id)` 도 그 변수에 행을 담는다.
+   * `&&=` 는 "이미 참일 때만 갈아끼움"이라 담기는 값은 여전히 우변이다.
+   */
+  const BIND_TOKENS = new Set<ts.SyntaxKind>([
+    ts.SyntaxKind.EqualsToken,
+    ts.SyntaxKind.QuestionQuestionEqualsToken,
+    ts.SyntaxKind.BarBarEqualsToken,
+    ts.SyntaxKind.AmpersandAmpersandEqualsToken,
+  ]);
+  /** `이름 ?? id` 의 **대입형까지** — `label ??= playerId` 는 같은 폴백이다(O3). */
+  const FALLBACK_TOKENS = new Set<ts.SyntaxKind>([
+    ts.SyntaxKind.QuestionQuestionToken,
+    ts.SyntaxKind.BarBarToken,
+    ts.SyntaxKind.QuestionQuestionEqualsToken,
+    ts.SyntaxKind.BarBarEqualsToken,
+  ]);
 
   interface Violation {
     kind: "catalog-name" | "id-fallback";
@@ -319,7 +399,8 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
   }
 
   /**
-   * `(x)` · `x!` · `x as T` 를 벗긴다.
+   * `(x)` · `x!` · `x as T` · **`x satisfies T`**(O4) · **`(f(), x)`**(O5) 를 벗긴다.
+   * 다섯 다 <b>값이 하나로 확정</b>되는 껍질이다(콤마는 오른쪽 하나가 값이다).
    *
    * <p>⚠️ **삼항은 여기서 벗기지 않는다** — 갈래마다 값이 달라 "하나의 값"으로 축약할 수 없다.
    * 삼항이 필요한 자리는 축마다 따로 처리한다: <b>선언부</b>는 {@link isRowLookup},
@@ -329,24 +410,50 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
   function bare(n: ts.Node): ts.Node {
     let cur = n;
     for (;;) {
-      if (ts.isParenthesizedExpression(cur) || ts.isNonNullExpression(cur) || ts.isAsExpression(cur)) {
+      if (
+        ts.isParenthesizedExpression(cur) ||
+        ts.isNonNullExpression(cur) ||
+        ts.isAsExpression(cur) ||
+        ts.isSatisfiesExpression(cur)
+      ) {
         cur = cur.expression;
+        continue;
+      }
+      // O5 — 콤마 연산자. 앞은 부수효과, 값은 오른쪽 하나다.
+      if (ts.isBinaryExpression(cur) && cur.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+        cur = cur.right;
         continue;
       }
       return cur;
     }
   }
-  /** 위에 더해 `a ?? b` · `a || b` 의 **왼쪽**(= 원래 얻으려던 값)까지 벗긴다. */
-  function bareLeft(n: ts.Node): ts.Node {
-    let cur = bare(n);
-    while (
-      ts.isBinaryExpression(cur) &&
-      (cur.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
-        cur.operatorToken.kind === ts.SyntaxKind.BarBarToken)
-    ) {
-      cur = bare(cur.left);
+  /**
+   * 값이 될 수 있는 **갈래를 전부** 편다 — 하나라도 조회면 그 자리엔 행이 담길 수 있다.
+   *
+   * <p>⚠️ <b>여기 한때 거짓이 적혀 있었다</b>: *"`??`/`||` 는 <b>왼쪽</b>이 원래 얻으려던 값이고
+   * `&&` 는 <b>오른쪽</b>이다 — 두 축의 방향이 반대"*. 반대가 아니라 <b>대칭</b>이다.
+   * `a ?? lookup()` · `a || lookup()` 은 왼쪽이 nullish/falsy 일 때 <b>오른쪽이 값</b>이라,
+   * `cond && lookup()`(O1)의 정확한 거울상이 `??`/`||` 의 <b>오른쪽</b>이다. 그 문장 때문에
+   * 왼쪽만 벗기고 있었고 — 5차 독립검증 프로브 4종이 그 사각으로 살아남았다(O6·O7).
+   *
+   * <p>지금 펴는 갈래:
+   * <ul>
+   *   <li>삼항 — 양 갈래(선언부 축, {@link isRowLookup} 머리말 참조)</li>
+   *   <li><b>`a ?? b` · `a || b` — 양쪽</b>(O6)</li>
+   *   <li>`cond && x` — <b>오른쪽만</b>(O1). 왼쪽은 일부러 안 본다 — 미탐 목록에 기재.</li>
+   * </ul>
+   */
+  function branches(n: ts.Node): ts.Node[] {
+    const c = bare(n);
+    if (ts.isConditionalExpression(c)) return [...branches(c.whenTrue), ...branches(c.whenFalse)];
+    if (ts.isBinaryExpression(c)) {
+      const kind = c.operatorToken.kind;
+      if (kind === ts.SyntaxKind.QuestionQuestionToken || kind === ts.SyntaxKind.BarBarToken) {
+        return [...branches(c.left), ...branches(c.right)];
+      }
+      if (kind === ts.SyntaxKind.AmpersandAmpersandToken) return branches(c.right);
     }
-    return cur;
+    return [c];
   }
   /** `useMemo(() => X, deps)` 처럼 한 겹 감싼 함수 인자의 **반환식**들(중첩 함수는 안 들어간다). */
   function returnedExprs(fn: ts.Node): ts.Expression[] {
@@ -376,9 +483,11 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
    * 바뀌었을 뿐 담긴 것은 여전히 행이다. 이름을 갈아타는 축(N1·N2·N3·N5·N8)은 {@link isRowValue}.
    */
   function isRowLookup(n: ts.Node): boolean {
-    const c = bareLeft(n);
-    // 갈래 중 **하나라도** 조회면 조회다. 중첩 삼항도 재귀로 따라간다.
-    if (ts.isConditionalExpression(c)) return isRowLookup(c.whenTrue) || isRowLookup(c.whenFalse);
+    // 갈래 중 **하나라도** 조회면 조회다(삼항·`??`/`||`·`&&` 는 {@link branches} 가 편다).
+    return branches(n).some(isLookupCall);
+  }
+  /** 갈래 하나가 조회인가 — {@link branches} 로 이미 펴진 노드에만 쓴다. */
+  function isLookupCall(c: ts.Node): boolean {
     // N4 — spread 사본(`{ ...m.get(id) }`). 사본에도 `name` 이 그대로 실린다.
     if (ts.isObjectLiteralExpression(c)) {
       return c.properties.some((p) => ts.isSpreadAssignment(p) && isRowLookup(p.expression));
@@ -429,13 +538,12 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
      * <p>이름이 파일 단위 평면 집합(`fromLookup`)이라 <b>별칭 한 겹</b>(`const b = a`)과
      * <b>프로퍼티 경유</b>(`x.player.name`)가 같이 따라온다 — 그게 N1/N8 을 잡는 방식이다.
      */
-    const isRowValue = (n: ts.Node): boolean => {
-      const c = bareLeft(n);
-      if (ts.isConditionalExpression(c)) return isRowValue(c.whenTrue) || isRowValue(c.whenFalse);
-      if (ts.isIdentifier(c)) return fromLookup.has(c.text);
-      if (ts.isPropertyAccessExpression(c) && fromLookup.has(c.name.text)) return true;
-      return isRowLookup(c);
-    };
+    const isRowValue = (n: ts.Node): boolean =>
+      branches(n).some((c) => {
+        if (ts.isIdentifier(c)) return fromLookup.has(c.text);
+        if (ts.isPropertyAccessExpression(c) && fromLookup.has(c.name.text)) return true;
+        return isLookupCall(c);
+      });
 
     /**
      * ⚠️ `name` 자체는 절대 행 이름으로 등록하지 않는다 — `{ name: player }` 한 줄이 파일 안의
@@ -445,10 +553,18 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
       if (text !== "name") fromLookup.add(text);
     };
 
-    /** 이름 하나에 값을 묶는다 — 선언·재대입·파라미터 기본값이 전부 여기로 들어온다. */
+    /**
+     * 이름 하나에 값을 묶는다 — 선언·재대입·파라미터 기본값이 전부 여기로 들어온다.
+     *
+     * <p>대상이 <b>프로퍼티</b>여도 묶는다(O7, `s.p = m.get(id)` · `s.p ??= m.get(id)`).
+     * 읽는 쪽({@link isRowValue})은 이미 프로퍼티 경유(`s.p.name`)를 보고 있었는데 <b>쓰는 쪽만</b>
+     * `Identifier` 를 요구해 비대칭이었다 — N1(`{ player: m.get(id) }`)은 잡으면서 같은 값을
+     * 대입으로 담으면 못 잡았다(5차 독립검증 프로브).
+     */
     const bind = (name: ts.Node, init: ts.Expression): void => {
       if (isRowValue(init)) {
         if (ts.isIdentifier(name)) addRow(name.text);
+        else if (ts.isPropertyAccessExpression(name)) addRow(name.name.text);
         else if (ts.isObjectBindingPattern(name)) {
           // `const { name } = map.get(id) ?? { name: id }`
           for (const el of name.elements) {
@@ -464,7 +580,9 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
           }
         }
       }
-      if (ts.isIdentifier(name) && isNameAccess(bareLeft(init))) fromName.add(name.text);
+      if (!branches(init).some(isNameAccess)) return;
+      if (ts.isIdentifier(name)) fromName.add(name.text);
+      else if (ts.isPropertyAccessExpression(name)) fromName.add(name.name.text);
     };
 
     const collect = (n: ts.Node): void => {
@@ -472,11 +590,12 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
       // N5 — 파라미터 기본값 · 구조분해 기본값(`function F({ player = m.get(id) })`)
       if (ts.isParameter(n) && n.initializer) bind(n.name, n.initializer);
       if (ts.isBindingElement(n) && n.initializer) bind(n.name, n.initializer);
-      // N3 — `let p; … p = m.get(id)`
+      // N3 — `let p; … p = m.get(id)` / O2 — `p ??= m.get(id)` · `||=` · `&&=`
+      // O7 — 대상이 **프로퍼티**여도 같다(`s.p = m.get(id)` · `s.p ??= m.get(id)`).
       if (
         ts.isBinaryExpression(n) &&
-        n.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        ts.isIdentifier(n.left)
+        BIND_TOKENS.has(n.operatorToken.kind) &&
+        (ts.isIdentifier(n.left) || ts.isPropertyAccessExpression(n.left))
       ) {
         bind(n.left, n.right);
       }
@@ -511,11 +630,10 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
       if (ts.isPropertyAccessExpression(n) && n.name.text === "name") {
         if (isRowValue(n.expression)) push("catalog-name", n);
       }
-      // ② 이름 → id 폴백 (`??`/`||`)
+      // ② 이름 → id 폴백 (`??`/`||`, **그리고 그 대입형 `??=`/`||=`** — O3)
       if (
         ts.isBinaryExpression(n) &&
-        (n.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken ||
-          n.operatorToken.kind === ts.SyntaxKind.BarBarToken) &&
+        FALLBACK_TOKENS.has(n.operatorToken.kind) &&
         isNameValue(n.left) &&
         isIdLike(n.right)
       ) {
@@ -677,6 +795,87 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
       "별칭 n단 — 3차 확장으로 음성 대조에서 넘어왔다",
     ).toContain("catalog-name");
 
+    // ── 4차 확장 — **연산자 축 O1~O5**(트리 실물 0건, 약속대로 경계를 메운 것) ──
+    // O1: `&&` 가드. 조건 하나로 위 확장 전체를 우회할 수 있던 자리 = 제일 위험했다.
+    expect(
+      caught("const p = ready && playersById.get(id);\nreturn <>{p.name}</>;"),
+      "O1 && 가드 선언 (React 최빈 관용구)",
+    ).toContain("catalog-name");
+    expect(
+      caught("const p = a && b && roster.find((x) => x.id === id);\nreturn <>{p.name}</>;"),
+      "O1' && 다단 가드",
+    ).toContain("catalog-name");
+    expect(
+      caught("const p = ready && (cond ? m.get(id) : undefined);\nreturn <>{p.name}</>;"),
+      "O1'' && 가드 × 삼항 선언부 (확장끼리 합성된다)",
+    ).toContain("catalog-name");
+    // O2: `??=` 바인딩 — `collect` 가 `=` 만 보던 사각(N3 의 형제).
+    expect(
+      caught("let p;\np ??= playersById.get(id);\nreturn <>{p.name}</>;"),
+      "O2 ??= 바인딩",
+    ).toContain("catalog-name");
+    expect(
+      caught("let p = null;\np ||= roster.find((x) => x.id === id);\nreturn <>{p.name}</>;"),
+      "O2' ||= 바인딩",
+    ).toContain("catalog-name");
+    // O3: 같은 id 폴백의 대입 표기. `check` 가 `??`·`||` **토큰**만 보던 사각.
+    expect(
+      caught("let label = p?.name;\nlabel ??= playerId;\nreturn <>{label}</>;"),
+      "O3 ??= id 폴백",
+    ).toContain("id-fallback");
+    expect(
+      caught("let label = row.name;\nlabel ||= s.playerId;\nreturn <>{label}</>;"),
+      "O3' ||= id 폴백",
+    ).toContain("id-fallback");
+    // O4: `satisfies` — `as` 는 벗기면서 형제 하나를 빠뜨렸던 자리.
+    expect(
+      caught("const p = m.get(id) satisfies Row;\nreturn <>{p.name}</>;"),
+      "O4 satisfies (선언부)",
+    ).toContain("catalog-name");
+    expect(
+      caught("return <>{(playersById.get(id) satisfies Row).name}</>;"),
+      "O4' satisfies (사용부 즉시 접근)",
+    ).toContain("catalog-name");
+    // O5: 콤마 연산자 — 값은 오른쪽 하나다.
+    expect(
+      caught("const p = (touch(), playersById.get(id));\nreturn <>{p.name}</>;"),
+      "O5 콤마 연산자",
+    ).toContain("catalog-name");
+
+    // ── 5차 확장 — **O1 의 거울상(O6)과 프로퍼티 대상(O7)** ────────────────────
+    // O6: `??`/`||` 의 **오른쪽**. 4차 주석이 "`??`/`||` 는 왼쪽"이라 단정해 이 축이 통째로 사각이었다.
+    expect(
+      caught("const p = cached ?? playersById.get(id);\nreturn <>{p.name}</>;"),
+      "O6 ?? 오른쪽 (O1 의 거울상)",
+    ).toContain("catalog-name");
+    expect(
+      caught("const p = props.player || playersById.get(id);\nreturn <>{p.name}</>;"),
+      "O6' || 오른쪽",
+    ).toContain("catalog-name");
+    expect(
+      caught("return <>{(cached ?? roster.find((x) => x.id === id)).name}</>;"),
+      "O6'' ?? 오른쪽 (사용부 즉시 접근)",
+    ).toContain("catalog-name");
+    // O7: **프로퍼티 대상** 바인딩. `collect` 가 `ts.isIdentifier(n.left)` 를 요구하던 비대칭 —
+    // N1(`{ player: m.get(id) }`)은 잡는데 같은 값을 대입으로 담으면 못 잡았다.
+    expect(
+      caught("s.p = playersById.get(id);\nreturn <>{s.p.name}</>;"),
+      "O7 프로퍼티 대입",
+    ).toContain("catalog-name");
+    expect(
+      caught("s.p ??= playersById.get(id);\nreturn <>{s.p.name}</>;"),
+      "O7' 프로퍼티 대상 ??=",
+    ).toContain("catalog-name");
+    // 실재하는 모양(AdminPage.tsx:161) — 오늘은 `nickname` 이라 위반이 아니지만, 선수 카탈로그로
+    // 오는 순간 catalog-name 축이 통째로 사각이 되던 자리다.
+    expect(
+      caught(
+        "const selectedRow = detail.data?.user ?? users.find((u) => u.id === selected) ?? null;\n" +
+          "return <>{selectedRow?.name ?? selected}</>;",
+      ),
+      "O6''' 다단 ?? + find (AdminPage.selectedRow 의 실제 모양)",
+    ).toContain("catalog-name");
+
     // ── 구 스캐너도 잡던 6형태(회귀 방지) ────────────────────────────────────
     expect(caught("playersById.get(s.playerId)?.name ?? s.playerId")).toContain("catalog-name");
     expect(caught("const x = playersById.get(errorPlayerId)!.name;")).toContain("catalog-name");
@@ -694,6 +893,13 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
       "playersById.get(id)?.position",
       "<>{props.name}</>",
       "const t = notices.find((x) => x.id === id)?.title ?? id;",
+      // O1 확장이 초크포인트를 쓰는 정상 코드까지 걸지 않는다(`&&` 오른쪽이 조회가 아니다).
+      "const shown = ready && names.short(playerId);\nreturn <>{shown}</>;",
+      "const p = ready && playersById.get(id);\nreturn <>{p?.position}</>;",
+      // O6/O7 확장도 마찬가지 — 갈래가 조회여도 꺼내는 필드가 `name` 이 아니면 안 걸린다.
+      "const label = cached ?? names.full(playerId);\nreturn <>{label}</>;",
+      "const p = cached ?? playersById.get(id);\nreturn <>{p?.position}</>;",
+      "s.p = playersById.get(id);\nreturn <>{s.p.grade}</>;",
     ]) {
       expect(caught(clean), clean).toEqual([]);
     }
@@ -733,11 +939,24 @@ describe("우회 금지 — 이름 조회는 초크포인트로만", () => {
       ["?? `${id}`", "return <>{p?.name ?? `${playerId}`}</>;"],
       ["?? key (id 로 안 끝나는 식별자)", "return <>{p?.name ?? key}</>;"],
       ["?? s[\"playerId\"] (인덱스 우변)", 'return <>{p?.name ?? s["playerId"]}</>;'],
+      // O7 은 **프로퍼티 접근** 대상만 본다 — 인덱스 대상은 위 인덱스 축과 같이 경계 밖이다.
+      ["인덱스 대입 대상", 's["p"] = playersById.get(id);\nreturn <>{s["p"].name}</>;'],
       // ⚠️ 면제 사유가 **"반복이라 조회가 아니다"가 아니다** — 반복 안에서 조회하는 N1 은 위
       // 양성 대조에서 잡힌다. 여기서 안 걸리는 건 "이미 손에 든 배열을 그리는 것"뿐이다.
       [".map 순회 렌더(조회 없음)", "return <>{roster.map((p) => <b key={p.id}>{p.name}</b>)}</>;"],
       // 파일을 넘는 프롭 — 받는 쪽 파일에 조회가 없다(`TradePlayerCard.player` 가 그 모양).
       ["다른 파일에서 온 프롭", "function Card({ player }) {\n  return <>{player.name}</>;\n}"],
+      // ── 4차에 O1~O5 를 넓히며 **새로 고정한 경계** ─────────────────────────
+      // 대입형 폴백(O3)은 잡지만 **우변 규칙은 그대로**다 — 우변이 식이면 여전히 못 본다.
+      ["??= String(id) (대입형이어도 우변이 식)", "let label = p?.name;\nlabel ??= String(playerId);"],
+      // `&&` 는 **오른쪽만** 본다 — `a && b` 가 `a` 를 값으로 내는 건 `a` 가 falsy 일 때뿐이라
+      // 왼쪽 갈래의 값은 (truthy 한) 행일 수 없다. `??`/`||` 의 오른쪽은 그렇지 않아 O6 로 넓혔다.
+      // ⚠️ 실측(왼쪽까지 보는 변이 + `apps/web/src` 전수 재스캔): 새 offender **0건**, 깨지는 건
+      // 이 음성 대조 1건뿐이다 — "오탐이 쏟아진다"가 좁게 두는 이유가 **아니다**(머리말 참조).
+      [
+        "&& 의 왼쪽에 놓인 조회",
+        "const p = playersById.get(id) && fallbackRow;\nreturn <>{p.name}</>;",
+      ],
     ];
     for (const [label, code] of missed) {
       expect(caught(code), `미탐 목록에 적힌 형태다 — 잡히기 시작했으면 머리말을 갱신해라: ${label}`).toEqual(
