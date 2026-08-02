@@ -6,6 +6,47 @@
 
 ---
 
+## 2026-08-02T07:55Z — **배포 v3.16 — web 단독** — 권씨 아트 입고(#389) + 웹픽스 2건(#386·#388). **web 배포 동결 해제**
+
+- **git**: **`80e25a8`**(main). **백엔드 무접촉** — java·runner digest 배포 전후 **동일**
+  (`d053b40a8d12…` / `0fde29d1966f…`, `engine@0.40.0`). *(`hmb-java` 는 재기동됐지만 `deploy-pages.sh`
+  의 CORS 재결선 단계라 **이미지는 그대로**다 — digest 로 확인했다.)*
+- **URL**: web `https://hmb-online.pages.dev` → 백엔드 `https://accept-legislation-loose-ryan.trycloudflare.com`.
+- **실린 것**(라이브 `8a0352d` → `80e25a8`, apps/web 축): `00a2511` 권씨(P174) 아트 입고(#389) ·
+  `6601d17` #388 헤더 시계 · `0ab43ee` #386 공지 미노출/스크롤.
+
+### 🔓 **web 배포 동결 해제 — hero 확정 "배포하고 비활성 유지"**
+
+동결(#389, 2026-08-01 등록)은 **"비활성이어도 web 배포하면 아트·이름이 공개된다"**는 것이었다.
+발차 전 **빌드 산출물로 사실을 확인해 hero 에게 소명**했다 — 추정이 아니다:
+
+- `dist/chars/units/manifest.json` 에 `"kwonssi": {"name":"권씨","position":"FW", card: art-kwonssi.png}`
+- `dist/chars/player-chars.json` 에 `P174 → kwonssi` (**어느 선수인지까지**)
+- `art-kwonssi.png` 300KB · `face-kwonssi.png` 82KB
+- ⚠️ 게다가 **URL 을 아는 사람만 보는 게 아니다** — `apps/web/src/common/char-assets-store.ts:56` 이
+  **앱 부팅 때 `units/manifest.json` 을 무조건 fetch** 한다. 접속하는 모든 브라우저가 받는다.
+- **DB `active=0` 은 이걸 하나도 막지 못한다**(막는 건 "게임에서 뽑히거나 쓰이는 것"이고,
+  아트·이름·매핑은 **web 정적 파일**이라 서버를 안 거친다).
+
+**hero 판단 = 그대로 배포하고 비활성 유지**(권씨 AC). 소명 후 확정이라 그대로 발차했다.
+⇒ **이후 web 열차는 이 제약 없이 간다**(메가 에픽 web 열차 기준선).
+
+### 검증
+
+| 항목 | 결과 |
+|---|---|
+| 앱 로드 | `/home` 정상 — 지갑 `12,600 G / 12,030 Z` · 덱 · 도감 · **공지 `1 / 2 오시야스 합류!`** 렌더 |
+| **권씨 아트 서빙** | `/chars/units/art-kwonssi.png` · `face-kwonssi.png` → **`content-type: image/png`** |
+| 판별 대조군 | 없는 파일 `art-nonexistent-xyz.png` → **`text/html`**(SPA 폴백). ⚠️ v3.15 에 적어 둔 그 판별법 — **상태코드는 둘 다 200 이라 content-type 으로만 갈린다** |
+| **P174 비활성 유지** | 라이브 DB **read-only 사본** 조회: `P174 권씨 LEGEND active=0`. 대조 `P182 오시야스 active=1`. **활성화 조작 0**(오픈은 hero 별도 진행) |
+| **#388** | **해소 확인.** 같은 순간 헤더/로그줄이 **48/48 · 49/49 · 50/50 · 51/51** 로 일치(구 버그 = 정확히 2배 차이). 리플레이 헤더 `52'` = 0~90 축 |
+| **#386** | 홈에 공지 노출(`공지 1 / 2`) 확인 — 세부 QA 는 noticeux 트랙 |
+| JS 에러 | **0**. 4xx 는 `/api/chars/index` 404 **1건뿐이고 설계된 폴백 트리거**(`char_bundles` 0행) |
+
+배포자: hmb:deploy2 (hero 확정 — 유출 소명 후 "배포하고 비활성 유지", main 조립 지시).
+
+---
+
 ## 2026-08-02T07:07Z — **배포 v3.15 — 백엔드 온리** `engine@0.34.0 → 0.40.0` + **#383 무배포 계수(V37)**
 
 - **git**: **`e2ca113`**(main) — hero 발차 확정. **web 재빌드 없음**(🚫 권씨 #389 유출 동결, §0.7).
