@@ -9,6 +9,8 @@ import { MatchViewer } from "../MatchViewer";
 import { HalftimePanel } from "../HalftimePanel";
 import { useHalftimeDraft } from "../useHalftimeDraft";
 import { AutoModeToggle } from "../AutoModeToggle";
+import { SkipButton } from "../SkipButton";
+import { HalfReportModal } from "../HalfReportModal";
 import { ScoreBar } from "./ScoreBar";
 import { StatsPanel } from "./StatsPanel";
 import { PlayerStatsPanel } from "./PlayerStatsPanel";
@@ -89,6 +91,9 @@ export function StageShell({
   const [preferredTab, setPreferredTab] = useState<TabKey | null>(null);
   // 재생 플레이헤드(뷰어가 미러링). 통계·로그·시계가 "지금까지"를 계산하는 기준.
   const [tick, setTick] = useState<number | null>(null);
+  // 스킵 리포트(#421) — 셸이 갖는 건 **"어느 하프를 리포트로 보여줄까"** 한 줄뿐이다.
+  // 버튼·요청·409 처리는 `SkipButton` 이, 카드 조립은 `HalfReportModal` 이 소유한다.
+  const [reportHalf, setReportHalf] = useState<1 | 2 | null>(null);
 
   const half = halfForState(match.state);
   const statePanel = statePanelFor(match.state, match.auto);
@@ -195,7 +200,14 @@ export function StageShell({
           managing ? styles.bodyManaging : ""
         } ${sheetKind === "input" ? styles.bodyInput : ""}`}
       >
-        {!managing && (
+        {/*
+          ⚠️ **리포트가 떠 있는 동안 무대를 렌더하지 않는다**(#421). 팝업 뒤에서 캔버스가 계속
+          돌면 안 되는데, 정지 명령을 거는 대신 **아예 마운트하지 않아** 구조적으로 0 으로 만든다
+          (`VisualPlayback` 의 cleanup 이 `v.stop()` 을 부른다). 정지 플래그를 뷰어에 하나 더
+          만들면 라이브 게이트 effect 와 두 주인이 생긴다 — 그 자리는 손대지 않는다.
+          전반 스킵은 어차피 응답이 HALFTIME 이라 `managing` 이 곧 무대를 내린다.
+        */}
+        {!managing && reportHalf == null && (
           <section className={styles.stage} data-testid="stage-canvas">
             <MatchViewer
               matchId={match.id}
@@ -207,6 +219,8 @@ export function StageShell({
               clockOffsetMs={offsetMs}
               logEnabled={logEnabled}
               baseline={baseline}
+              /* #421 스킵 — 자립 부품 한 줄(어느 쪽이 먼저 머지되든 충돌이 한 줄로 끝난다). */
+              skipSlot={<SkipButton match={match} onSkipped={setReportHalf} />}
             />
           </section>
         )}
@@ -351,6 +365,27 @@ export function StageShell({
             setSheetDismissed(true);
             setSheetReopened(false);
           }}
+        />
+      )}
+
+      {/*
+        스킵 리포트(#421) — 닫으면 **그 자리에서 다음 단계**다. 서버가 이미 전이시켜 놓았으므로
+        (전반 스킵 → HALFTIME, 오토면 SECOND_HALF / 후반 스킵 → FINISHED) 여기서 할 일은 팝업을
+        내리는 것뿐이고, 뒤에는 감독 패널·결과 패널이 이미 그려져 있다.
+
+        ⚠️ 베이스라인은 **리포트가 말하는 하프** 기준이다. 위 `baseline` 은 지금 무대의 하프
+        기준이라, 오토 모드(전반 스킵 → 응답이 바로 SECOND_HALF)에서 전반 리포트에 전반 스코어를
+        한 번 더 얹는다. 규칙은 `playedBaseline` 이 소유하므로 하프만 바꿔서 다시 부른다.
+      */}
+      {reportHalf != null && (
+        <HalfReportModal
+          matchId={match.id}
+          half={reportHalf}
+          homeName={homeName}
+          awayName={awayName}
+          myTeamSide={myTeamSide}
+          baseline={playedBaseline(reportHalf === 1 ? "FIRST_HALF" : "SECOND_HALF", match)}
+          onClose={() => setReportHalf(null)}
         />
       )}
     </div>
