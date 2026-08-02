@@ -80,7 +80,49 @@ class RewardBundleFlowTest extends MatchTestBase {
         List<Map<String, Object>> growthEntries = (List<Map<String, Object>>) growth.get("entries");
         assertThat(growthEntries).isNotEmpty();
         assertThat(growthEntries.get(0)).containsKeys("playerId", "name", "position", "grade",
-                "xpGained", "levelBefore", "levelAfter", "pendingChoices");
+                "xpGained", "levelBefore", "levelAfter", "pendingChoices",
+                // 목업 화면 ② — 행 XP 진행바 + 미투입/교체 구분의 재료
+                "cardXp", "xpToNext", "minutes");
+    }
+
+    /**
+     * <b>XP 바의 재료는 서버가 계산해 내린다</b>(목업 화면 ②). 클라가 {@code xpToNext} 곡선을 미러하면
+     * {@code xp.lvBase}/{@code lvPow} 를 무배포로 돌리는 순간 <b>화면만 옛 곡선</b>으로 그려진다 —
+     * §2.8 이 막으려는 바로 그 상태다. 그래서 계약은 "필드가 있다"가 아니라 <b>관계</b>로 건다:
+     * 진행도는 항상 {@code 0 ≤ cardXp < xpToNext} 안에 있어야 한다(만렙 제외).
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void growthEntriesCarryServerComputedXpProgressAndMinutes() {
+        String token = setupUserWithDeck("rb_xpbar");
+        String matchId = driveToFinished(token);
+        Map<String, Object> bundle = (Map<String, Object>) authGet(
+                "/api/matches/" + matchId + "/result", token, Map.class).getBody().get("rewardBundle");
+        List<Map<String, Object>> sections = (List<Map<String, Object>>) bundle.get("sections");
+        List<Map<String, Object>> entries = (List<Map<String, Object>>) sections.stream()
+                .filter(s -> "GROWTH".equals(s.get("kind"))).findFirst().orElseThrow().get("entries");
+
+        assertThat(entries).hasSizeGreaterThan(1);
+        for (Map<String, Object> e : entries) {
+            int cardXp = ((Number) e.get("cardXp")).intValue();
+            int xpToNext = ((Number) e.get("xpToNext")).intValue();
+            assertThat(cardXp).as("%s", e.get("playerId")).isGreaterThanOrEqualTo(0);
+            assertThat(xpToNext).as("%s: 만렙이 아닌데 xpToNext 가 0 이면 바가 영영 안 찬다", e.get("playerId"))
+                    .isGreaterThan(0);
+            assertThat(cardXp).as("%s: 진행도가 임계를 넘었다 = 레벨업이 안 돌았다", e.get("playerId"))
+                    .isLessThan(xpToNext);
+            assertThat((String) e.get("minutes")).isIn("starter", "partial", "bench");
+        }
+
+        // 미투입 벤치와 선발이 **구분**된다 — 한쪽으로 뭉개지면 화면이 회색 행을 못 그린다.
+        java.util.Set<Object> minutes = new java.util.HashSet<>();
+        entries.forEach(e -> minutes.add(e.get("minutes")));
+        assertThat(minutes).as("선발 11 + 미출전 벤치 2 인데 출전 구분이 한 종류다").hasSizeGreaterThan(1);
+        // 미출전은 XP 가 0 이라 레벨이 그대로다(구분이 장식이 아니라 실제 정산과 맞물려 있다).
+        Map<String, Object> bench = entries.stream()
+                .filter(e -> "bench".equals(e.get("minutes"))).findFirst().orElseThrow();
+        assertThat(((Number) bench.get("xpGained")).intValue()).isZero();
+        assertThat(bench.get("levelBefore")).isEqualTo(bench.get("levelAfter"));
     }
 
     @SuppressWarnings("unchecked")

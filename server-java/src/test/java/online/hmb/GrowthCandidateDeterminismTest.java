@@ -41,7 +41,8 @@ class GrowthCandidateDeterminismTest {
 
     private GrowthCandidates.Draw drawAt(int level, Map<String, Double> stats) {
         String seed = GrowthCandidates.seed(MATCH, USER, PLAYER, level);
-        return GrowthCandidates.draw(T, seed, "MF", "GOLD", 1, stats, zero(), zero(), "WIN", level);
+        return GrowthCandidates.draw(T, seed, "MF", "GOLD", 1, stats, zero(), zero(), "WIN", level,
+                GrowthCandidates.Evidence.ofMatch(Map.of(), Map.of()));
     }
 
     // ── 계약 1: 결정론 ───────────────────────────────────────────────────
@@ -120,6 +121,104 @@ class GrowthCandidateDeterminismTest {
         assertThat(drawAt(1, flatStats(99.0)).isEmpty()).isTrue();
     }
 
+    // ── reason: "왜 이 후보인가" (W2b 후속, 목업 화면 ③) ─────────────────
+
+    private static final Map<String, Long> SHOT_HEAVY = Map.of("shot", 4L, "goal", 1L);
+    private static final Map<String, Double> SHOOTY_ROLE = Map.of("shootTendency", 0.82);
+
+    private GrowthCandidates.Draw drawWithEvidence(int level, Map<String, Double> stats,
+                                                   Map<String, Long> eventCounts,
+                                                   Map<String, Double> behavior, String result) {
+        String seed = GrowthCandidates.seed(MATCH, USER, PLAYER, level);
+        return GrowthCandidates.draw(T, seed, "MF", "GOLD", 1, stats,
+                GrowthCandidates.eventScore(T, eventCounts), GrowthCandidates.behaviorScore(T, behavior),
+                result, level, GrowthCandidates.Evidence.ofMatch(eventCounts, behavior));
+    }
+
+    /** <b>reason 도 결정론이다</b> — gain 과 같은 계약(재계산해도 같은 이유). */
+    @Test
+    void reasonIsDeterministicForTheSameKey() {
+        Map<String, Double> stats = flatStats(55.0);
+        for (int level = 1; level <= 5; level++) {
+            GrowthCandidates.Draw first = drawWithEvidence(level, stats, SHOT_HEAVY, SHOOTY_ROLE, "WIN");
+            GrowthCandidates.Draw again = drawWithEvidence(level, stats, SHOT_HEAVY, SHOOTY_ROLE, "WIN");
+            assertThat(again.choices()).as("level=%d", level).isEqualTo(first.choices());
+            assertThat(first.choices()).allSatisfy(c -> assertThat(c.reason()).isNotNull());
+        }
+    }
+
+    /**
+     * <b>이유는 원자료를 가리킨다.</b> 슛 4회 + "적극적으로 슛"(shootTendency 0.82)인 경기에서
+     * shooting 이 뽑히면 그 이유는 EVENT 나 BEHAVIOR 여야 하고, <b>세부에 실제 횟수·값이 들어 있어야</b>
+     * 한다 — 종류만 내리면 화면이 "이 경기 활약"이라는 빈 문장밖에 못 쓴다.
+     */
+    @Test
+    void shootingsReasonPointsAtTheActualShotsOrTheActualRole() {
+        Map<String, Double> stats = flatStats(55.0);
+        GrowthCandidates.Choice shooting = null;
+        for (int level = 1; level <= 60 && shooting == null; level++) {
+            shooting = drawWithEvidence(level, stats, SHOT_HEAVY, SHOOTY_ROLE, "WIN").choices().stream()
+                    .filter(c -> "shooting".equals(c.stat())).findFirst().orElse(null);
+        }
+        assertThat(shooting).as("60 레벨을 훑어도 shooting 이 한 번도 안 뽑히면 이 계약이 공허해진다")
+                .isNotNull();
+        GrowthCandidates.Reason reason = shooting.reason();
+        assertThat(reason.kind()).isIn(GrowthCandidates.Reason.EVENT, GrowthCandidates.Reason.BEHAVIOR);
+        if (GrowthCandidates.Reason.EVENT.equals(reason.kind())) {
+            assertThat(reason.detail()).containsEntry("type", "shot").containsEntry("count", 4L);
+        } else {
+            assertThat(reason.detail()).containsEntry("param", "shootTendency").containsEntry("value", 0.82);
+        }
+    }
+
+    /** 활약도 역할도 없는 경기 → 남는 축은 포지션(또는 승리)이다. 없는 이유를 지어내지 않는다. */
+    @Test
+    void withNoEventsAndNoRoleTheReasonFallsBackToPositionOrResult() {
+        GrowthCandidates.Draw draw = drawWithEvidence(1, flatStats(55.0), Map.of(), Map.of(), "DRAW");
+        assertThat(draw.choices()).allSatisfy(c ->
+                assertThat(c.reason().kind()).isEqualTo(GrowthCandidates.Reason.POSITION));
+        assertThat(draw.choices().get(0).reason().detail()).containsEntry("position", "MF");
+    }
+
+    /** 소급 지급분은 매치 컨텍스트가 없다 — 클라가 구분할 수 있게 <b>LEGACY</b> 로 표시한다. */
+    @Test
+    void legacyGrantsAreLabelledAsLegacyNotAsAMatchReason() {
+        String seed = GrowthCandidates.seed("legacy:", USER, PLAYER, 1);
+        GrowthCandidates.Draw draw = GrowthCandidates.draw(T, seed, "MF", "GOLD", 1, flatStats(55.0),
+                zero(), zero(), null, 1, GrowthCandidates.Evidence.ofLegacy());
+        assertThat(draw.choices()).isNotEmpty();
+        assertThat(draw.choices()).allSatisfy(c ->
+                assertThat(c.reason().kind()).isEqualTo(GrowthCandidates.Reason.LEGACY));
+    }
+
+    /**
+     * <b>이유는 가중을 따라간다.</b> 활약을 크게 키우면 그 스탯의 이유가 EVENT 로 넘어가야 한다 —
+     * 안 넘어가면 reason 이 실제 계산과 무관한 장식이라는 뜻이다.
+     */
+    @Test
+    void reasonFollowsWhicheverAxisActuallyDominates() {
+        Map<String, Double> stats = flatStats(55.0);
+        Map<String, Long> tackleHeavy = Map.of("tackle", 30L);
+        int eventReasons = 0;
+        int positionReasons = 0;
+        for (int level = 1; level <= 40; level++) {
+            for (GrowthCandidates.Choice c : drawWithEvidence(level, stats, tackleHeavy, Map.of(), "DRAW")
+                    .choices()) {
+                if (!"tackling".equals(c.stat())) {
+                    continue;
+                }
+                if (GrowthCandidates.Reason.EVENT.equals(c.reason().kind())) {
+                    eventReasons++;
+                } else if (GrowthCandidates.Reason.POSITION.equals(c.reason().kind())) {
+                    positionReasons++;
+                }
+            }
+        }
+        assertThat(eventReasons).as("태클 30회짜리 경기인데 tackling 의 이유가 EVENT 가 아니다")
+                .isGreaterThan(0);
+        assertThat(positionReasons).isZero();
+    }
+
     // ── 가중이 실제로 후보 분포를 움직인다 ───────────────────────────────
 
     /**
@@ -134,7 +233,8 @@ class GrowthCandidateDeterminismTest {
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (int level = 1; level <= 200; level++) {
             String seed = GrowthCandidates.seed(MATCH, USER, PLAYER, level);
-            GrowthCandidates.draw(T, seed, "MF", "GOLD", 1, stats, eventScore, zero(), "WIN", 1)
+            GrowthCandidates.draw(T, seed, "MF", "GOLD", 1, stats, eventScore, zero(), "WIN", 1,
+                            GrowthCandidates.Evidence.ofMatch(Map.of(), Map.of()))
                     .choices().forEach(c -> seen.add(c.stat()));
         }
         assertThat(seen).as("wBase 가 있는데도 안 나오는 스탯이 있다").hasSize(GrowthTuning.STATS.size());
@@ -155,7 +255,8 @@ class GrowthCandidateDeterminismTest {
         int hits = 0;
         for (int level = 1; level <= 300; level++) {
             String seed = GrowthCandidates.seed(MATCH, USER, PLAYER, level);
-            if (GrowthCandidates.draw(T, seed, "MF", "GOLD", 1, stats, eventScore, zero(), "WIN", 1)
+            if (GrowthCandidates.draw(T, seed, "MF", "GOLD", 1, stats, eventScore, zero(), "WIN", 1,
+                    GrowthCandidates.Evidence.ofMatch(Map.of(), Map.of()))
                     .choices().stream().anyMatch(c -> c.stat().equals(stat))) {
                 hits++;
             }

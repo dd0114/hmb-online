@@ -72,6 +72,59 @@ class GrowthChoiceApiTest extends MatchTestBase {
         assertThat(statAdd(userId, "P001", stat)).isEqualTo(20.0 + gainBefore);
     }
 
+    /**
+     * <b>이유도 gain 과 함께 박제된다</b>(목업 화면 ③ "왜 이 후보인가"). 재계산 방식이면 그 사이
+     * 다음 경기를 치른 카드의 이유가 바뀌어 "슛 4회라서 나왔다"던 후보가 다른 말을 한다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void everyCandidateCarriesAFrozenReason() {
+        String token = setupUserWithDeck("gch_reason");
+        String userId = userIdOf("gch_reason");
+        settleOnce(token, userId, "gch_reason");
+
+        List<Map<String, Object>> before =
+                (List<Map<String, Object>>) firstPending(userId, "P001").get("candidates");
+        assertThat(before).allSatisfy(c -> {
+            Map<String, Object> reason = (Map<String, Object>) c.get("reason");
+            assertThat(reason).as("후보에 reason 이 없다 — 화면이 '왜 이 후보인가'를 못 그린다").isNotNull();
+            assertThat(reason).containsKeys("kind", "detail");
+            assertThat((String) reason.get("kind"))
+                    .isIn("EVENT", "BEHAVIOR", "POSITION", "RESULT", "LEGACY", "BASE");
+        });
+
+        // ⚠️ **응답이 박제본과 같은지**를 DB 바이트와 대조한다. 앞뒤를 응답끼리만 비교하면 읽기
+        //    경로를 <b>일관되게</b> 망가뜨리는 변이체가 통과한다 — 실제로 readReason 이 항상 BASE 를
+        //    돌려주게 만든 변이체가 그 형태로 살아남았다(before == after 라 관측 불가).
+        Map<String, Object> pending = firstPending(userId, "P001");
+        assertThat(storedCandidates(userId, "P001", ((Number) pending.get("level")).intValue()))
+                .as("응답의 후보가 candidates_json 박제본과 다르다 — 어딘가가 재계산하거나 삼키고 있다")
+                .isEqualTo(pending.get("candidates"));
+
+        // 그 사이 카드가 자라도 이유는 그대로여야 한다(gain 과 같은 계약).
+        jdbcClient.sql("UPDATE user_players SET stat_add_json = ? WHERE user_id=? AND player_id='P001'")
+                .params("{\"shooting\": 20.0, \"tackling\": 15.0}", userId).update();
+        assertThat(firstPending(userId, "P001").get("candidates"))
+                .as("스탯이 움직이자 후보의 reason 이 바뀌었다 — 박제되지 않았다")
+                .isEqualTo(before);
+    }
+
+    /** DB 에 실제로 박힌 후보 배열(응답이 아니라 <b>바이트</b>). */
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> storedCandidates(String userId, String playerId, int level) {
+        String json = jdbcClient.sql("""
+                        SELECT candidates_json FROM growth_level_choices
+                        WHERE user_id=? AND player_id=? AND level=?
+                        """)
+                .params(userId, playerId, level).query(String.class).single();
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(json, java.util.List.class);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
     // ── 계약 5: 중복 선택 차단 ───────────────────────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -201,12 +254,42 @@ class GrowthChoiceApiTest extends MatchTestBase {
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = res.getBody();
         assertThat(body).containsKeys("cardLevel", "cardXp", "xpToNext", "maxLevel",
-                "pendingChoices", "statAdd");
+                "pendingChoices", "statAdd", "growCeil", "starCeilBonus", "attrHardCap");
         // 기존 키가 사라지지 않았다(구 클라 무회귀).
         assertThat(body).containsKeys("attributes", "prePotential", "caps", "base", "statLevels",
                 "potential", "ovr", "completion");
         assertThat(((Number) body.get("cardLevel")).intValue()).isGreaterThan(1);
         assertThat((List<?>) body.get("pendingChoices")).isNotEmpty();
+    }
+
+    /**
+     * <b>천장 분해</b>(목업 화면 ⑤ "천장 73 = 72 + ★2 보너스 1"). 합쳐진 {@code caps} 만 내리면
+     * 화면이 star 기여를 보여줄 수 없다. 계약은 값이 아니라 <b>관계</b>로 건다 —
+     * {@code caps == min(growCeil + starCeilBonus, attrHardCap)} 이 성립해야 라벨이 거짓말을 안 한다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void cardCeilingIsDecomposedIntoGradeCeilingAndStarBonus() {
+        String token = login("gch_ceiling");
+        String userId = userIdOf("gch_ceiling");
+        jdbcClient.sql("UPDATE user_players SET star = 3 WHERE user_id=? AND player_id='P001'")
+                .param(userId).update();
+
+        Map<String, Object> body = authGet("/api/growth/card/P001", token, Map.class).getBody();
+        int growCeil = ((Number) body.get("growCeil")).intValue();
+        int starBonus = ((Number) body.get("starCeilBonus")).intValue();
+        int hardCap = ((Number) body.get("attrHardCap")).intValue();
+        double cap = ((Number) ((Map<String, Object>) body.get("caps")).get("shooting")).doubleValue();
+
+        assertThat(cap).isEqualTo(Math.min(growCeil + starBonus, hardCap));
+        assertThat(starBonus).as("3★ 인데 승급 보너스가 0 이면 분해가 star 를 안 보고 있다").isGreaterThan(0);
+
+        // 1★ 카드는 보너스가 없다 — 같은 응답이 star 를 실제로 반영하는지 대조군으로 본다.
+        jdbcClient.sql("UPDATE user_players SET star = 1 WHERE user_id=? AND player_id='P001'")
+                .param(userId).update();
+        Map<String, Object> oneStar = authGet("/api/growth/card/P001", token, Map.class).getBody();
+        assertThat(((Number) oneStar.get("growCeil")).intValue()).isEqualTo(growCeil);
+        assertThat(((Number) oneStar.get("starCeilBonus")).intValue()).isLessThan(starBonus);
     }
 
     // ── 헬퍼 ─────────────────────────────────────────────────────────────

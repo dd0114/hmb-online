@@ -848,6 +848,34 @@ admin API 로 조정 불가한 것이 0개.** 하드코딩 잔존 = FAIL.
 - ⚠️ **`players` 를 참조하는 표가 둘 늘었다**(`growth_level_choices`·`growth_legacy_base`) →
   `AdminCatalogService.REFERENCING_TABLES` 에 등록했다. 빠뜨리면 유닛 회수가 깔끔한 409 대신
   생 FK 위반으로 떨어진다(계약 = `AdminUnitPurgeTest.referencingTablesListMatchesTheSchema`).
+### W3(web) 소비용 additive 3종 (목업 복원)
+
+hero 가 승인한 목업 요소 3개가 "서버에 그 데이터가 없다"는 이유로 web 에서 빠졌다. 셋 다 서버가
+채운다 — **계수는 하나도 늘지 않았다**(전부 이미 계산하고 버리던 값이다).
+
+- **후보 `reason`** — `{"kind":"EVENT|BEHAVIOR|POSITION|RESULT|LEGACY|BASE","detail":{…}}`.
+  그 스탯의 가중을 가장 크게 밀어올린 축 하나 + **원자료**(`{"type":"shot","count":4}` ·
+  `{"param":"shootTendency","value":0.82}`). **gain 과 같이 박제**한다(재계산하면 다음 경기를 치른
+  뒤 이유가 바뀐다). 동점은 `EVENT → BEHAVIOR → POSITION → RESULT` **고정 순서**로 깬다 —
+  맵 순회에 맡기면 같은 시드가 실행마다 다른 이유를 말한다.
+  - ⚠️ **서버는 구조만 내리고 문장을 만들지 않는다**(재화 표기 #232 와 같은 이유 — 문안이 코드에
+    박히면 문구 하나 고치는 데 배포가 필요하다).
+  - `LEGACY` = 소급 지급분(매치 컨텍스트 없음) · `BASE` = 어느 축도 기여 안 함(= `wBase` 만).
+    기본 계수에선 `positionBaseline` 이 9종 모두 >0 이라 `BASE` 는 실질적으로 안 나오지만,
+    가중을 0 으로 오버레이하면 나온다 — **그때 POSITION 이라고 말하면 거짓**이라 자리를 비워 둔다.
+  - ⚠️ W2b 초판에 만들어진 행에는 `reason` 이 **없다**(필드가 나중에 붙었다). `readReason` 이 null
+    을 돌려주고 클라는 이유 줄을 생략한다 — 없는 것을 지어내지 않는다.
+- **봉투 GROWTH 엔트리 `cardXp`·`xpToNext`·`minutes`** — 행 XP 진행바와 미투입/교체 구분.
+  ⚠️ **`xpToNext` 를 클라가 미러하면 안 된다**: `xp.lvBase`/`lvPow` 를 무배포로 돌리는 순간
+  화면만 옛 곡선으로 그려진다(§2.8 이 막으려는 상태). 그래서 정산 시점에 서버가 계산해 스냅샷에
+  박는다. 만렙은 `xpToNext=0`(“다음까지 100”이라고 하면 영영 안 차는 바가 그려진다).
+- **카드 응답 `growCeil`·`starCeilBonus`·`attrHardCap`** — "천장 73 = 72 + ★2 보너스 1" 라벨.
+  `caps` 는 이미 `min(growCeil + starCeilBonus, attrHardCap)` 로 합쳐진 값이라 **셋을 다 줘야**
+  라벨이 거짓말을 안 한다. 계약도 값이 아니라 그 **관계식**으로 건다.
+- ⚠️ **박제 계약은 응답끼리 비교하면 안 된다**(실측으로 잡혔다). "미뤄도 안 바뀐다"를 before/after
+  응답으로만 걸었더니 `readReason` 이 **항상 BASE 를 돌려주게** 만든 변이체가 살아남았다 —
+  before == after 라 관측이 안 된다. 지금은 응답을 **`candidates_json` 바이트와 대조**한다.
+
 - **새 계수 하나**: `candidate.resultTilt.<stat>`(승리 가중 벡터). 설계가 값 표를 남기지 않아
   `perfEventWeight` 와 같은 자리의 **첫 기본값**이다(mental 1.0 / positioning 0.4 / stamina 0.2).
   역할 축(shooting·tackling…)과 겹치지 않게 고른 이유: 겹치면 `wResult` 가 `wPosition` 의

@@ -493,6 +493,11 @@ public class GrowthService {
         out.put("xpToNext", card.level() >= tuning.xp().maxLevel()
                 ? 0 : GrowthMath.xpToNext(tuning, card.level()));
         out.put("maxLevel", tuning.xp().maxLevel());
+        // 천장 분해(설계 §2.6) — 화면이 "천장 73 = 72 + ★2 보너스 1" 을 조립할 수 있게 **값만** 내린다.
+        // caps = min(growCeil + starCeilBonus, attrHardCap) 이라 셋을 다 줘야 라벨이 거짓말을 안 한다.
+        out.put("growCeil", GrowthMath.band(tuning, pb.grade()).growCeil());
+        out.put("starCeilBonus", tuning.star().ceilBonus().getOrDefault(card.star(), 0));
+        out.put("attrHardCap", tuning.attrHardCap());
         out.put("pendingChoices", pendingChoices(userId, playerId));
         // 구 모델의 스탯별 레벨 — 이제 <b>유효스탯에 관여하지 않는다</b>(소급 이관의 입력이자
         // 롤백 근거로만 남는다). 화면이 "성장 이력"을 보여줄 수 있도록 계속 싣는다.
@@ -1034,14 +1039,16 @@ public class GrowthService {
                 Map<String, Double> eventScore = GrowthCandidates.eventScore(tuning, events);
                 Map<String, Double> behaviorScore = GrowthCandidates.behaviorScore(tuning,
                         behaviorByPlayer.getOrDefault(pid, Map.of()));
+                GrowthCandidates.Evidence evidence = GrowthCandidates.Evidence.ofMatch(events,
+                        behaviorByPlayer.getOrDefault(pid, Map.of()));
                 for (int i = 0; i < after.levelUps(); i++) {
                     int level = card.level() + i;
                     grantChoice(tuning, userId, pid, pb, card.star(), level, matchId, matchId,
-                            pre, eventScore, behaviorScore, result, now).ifPresent(pending::add);
+                            pre, eventScore, behaviorScore, result, now, evidence).ifPresent(pending::add);
                 }
             }
             persistReportSnapshot(matchId, userId, pid, xpDelta, perfBonus, card.level(), after.level(),
-                    pending, revisionId);
+                    after.xp(), xpToNextAt(tuning, after.level()), minutesKey, pending, revisionId);
         }
     }
 
@@ -1051,12 +1058,19 @@ public class GrowthService {
      */
     private void persistReportSnapshot(String matchId, String userId, String playerId,
                                        int xpGained, double perfBonus, int levelBefore, int levelAfter,
+                                       int cardXp, int xpToNext, String minutes,
                                        List<Map<String, Object>> pendingChoices, String revisionId) {
         Map<String, Object> snap = new LinkedHashMap<>();
         snap.put("xpGained", xpGained);
         snap.put("perfBonus", round2(perfBonus));
         snap.put("levelBefore", levelBefore);
         snap.put("levelAfter", levelAfter);
+        // ⚠️ XP 바(레벨 내 진행도)는 **서버가 계산해 내린다**. 클라가 xpToNext 곡선을 미러하면
+        //    xp.lvBase/lvPow 를 무배포로 돌리는 순간 화면만 옛 곡선으로 그려진다(§2.8 이 막으려는 상태).
+        snap.put("cardXp", cardXp);
+        snap.put("xpToNext", xpToNext);
+        // 미투입/교체 구분 — 로스터 행을 회색으로 그릴지, "교체 투입"으로 그릴지의 근거.
+        snap.put("minutes", minutes);
         snap.put("pendingChoices", pendingChoices);
         snap.put("tuningRevisionId", revisionId);
         try {
@@ -1066,6 +1080,11 @@ public class GrowthService {
         } catch (Exception e) {
             log.warn("report snapshot persist failed for match={} player={}: {}", matchId, playerId, e.toString());
         }
+    }
+
+    /** 만렙에서는 0 — "다음 레벨까지 100" 이라고 말하면 영영 안 차는 바가 그려진다. */
+    private static int xpToNextAt(GrowthTuning tuning, int level) {
+        return level >= tuning.xp().maxLevel() ? 0 : GrowthMath.xpToNext(tuning, level);
     }
 
     /**
@@ -1174,10 +1193,11 @@ public class GrowthService {
                                                       Map<String, Double> prePotential,
                                                       Map<String, Double> eventScore,
                                                       Map<String, Double> behaviorScore,
-                                                      String result, String now) {
+                                                      String result, String now,
+                                                      GrowthCandidates.Evidence evidence) {
         String seed = GrowthCandidates.seed(seedSource, userId, playerId, level);
         GrowthCandidates.Draw draw = GrowthCandidates.draw(tuning, seed, pb.position(), pb.grade(), star,
-                prePotential, eventScore, behaviorScore, result, level);
+                prePotential, eventScore, behaviorScore, result, level, evidence);
         if (draw.isEmpty()) {
             return Optional.empty();
         }
@@ -1206,23 +1226,33 @@ public class GrowthService {
         out.put("choiceId", row.id());
         out.put("playerId", row.playerId());
         out.put("level", row.level());
-        out.put("candidates", row.candidates().stream().map(c -> {
-            Map<String, Object> m = new LinkedHashMap<>();
-            m.put("stat", c.stat());
-            m.put("gain", round2(c.gain()));
-            return (Object) m;
-        }).toList());
+        out.put("candidates", row.candidates().stream()
+                .map(c -> (Object) candidateMap(c)).toList());
         return out;
+    }
+
+    /**
+     * 후보 한 칸의 직렬화 형태 — <b>박제본과 응답이 같은 함수를 쓴다</b>. 두 곳에 따로 적으면
+     * DB 에는 있는 {@code reason} 이 화면엔 안 나가는 상태가 조용히 생긴다.
+     */
+    private static Map<String, Object> candidateMap(GrowthCandidates.Choice c) {
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("stat", c.stat());
+        m.put("gain", round2(c.gain()));
+        if (c.reason() != null) {
+            Map<String, Object> reason = new LinkedHashMap<>();
+            reason.put("kind", c.reason().kind());
+            reason.put("detail", c.reason().detail());
+            m.put("reason", reason);
+        }
+        return m;
     }
 
     private String writeCandidates(List<GrowthCandidates.Choice> choices) {
         try {
             List<Map<String, Object>> raw = new ArrayList<>();
             for (GrowthCandidates.Choice c : choices) {
-                Map<String, Object> m = new LinkedHashMap<>();
-                m.put("stat", c.stat());
-                m.put("gain", round2(c.gain()));
-                raw.add(m);
+                raw.add(candidateMap(c));
             }
             return objectMapper.writeValueAsString(raw);
         } catch (Exception e) {
@@ -1237,13 +1267,31 @@ public class GrowthService {
             List<GrowthCandidates.Choice> out = new ArrayList<>();
             for (Map<String, Object> m : raw) {
                 out.add(new GrowthCandidates.Choice((String) m.get("stat"),
-                        ((Number) m.get("gain")).doubleValue()));
+                        ((Number) m.get("gain")).doubleValue(), readReason(m.get("reason"))));
             }
             return out;
         } catch (Exception e) {
             // 박제본이 안 읽히면 유저가 무엇을 고르는지 서버도 모른다 — 조용히 빈 후보로 눕히지 않는다.
             throw new IllegalStateException("candidates_json 파싱 실패: " + json, e);
         }
+    }
+
+    /**
+     * 박제된 이유를 읽는다. <b>W2b 초판 행에는 {@code reason} 이 없다</b>(이 필드는 그 뒤에 붙었다) —
+     * 없는 것을 지어내지 않고 null 로 둔다. 클라는 이유 줄을 생략한다.
+     */
+    @SuppressWarnings("unchecked")
+    private GrowthCandidates.Reason readReason(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Object kind = map.get("kind");
+        if (!(kind instanceof String k)) {
+            return null;
+        }
+        Object detail = map.get("detail");
+        return new GrowthCandidates.Reason(k,
+                detail instanceof Map ? Map.copyOf((Map<String, Object>) detail) : Map.of());
     }
 
     private Optional<ChoiceRow> choiceRow(String userId, String playerId, int level) {
@@ -1394,6 +1442,9 @@ public class GrowthService {
             if (row.reportJson() == null) {
                 entry.put("levelBefore", null);
                 entry.put("levelAfter", null);
+                entry.put("cardXp", null);
+                entry.put("xpToNext", null);
+                entry.put("minutes", null);
                 entry.put("pendingChoices", List.of());
                 entries.add(entry);
                 continue;
@@ -1405,10 +1456,16 @@ public class GrowthService {
                         ? snap.path("levelBefore").asInt() : null);
                 entry.put("levelAfter", snap.path("levelAfter").isNumber()
                         ? snap.path("levelAfter").asInt() : null);
+                entry.put("cardXp", snap.path("cardXp").isNumber() ? snap.path("cardXp").asInt() : null);
+                entry.put("xpToNext", snap.path("xpToNext").isNumber() ? snap.path("xpToNext").asInt() : null);
+                entry.put("minutes", snap.path("minutes").isTextual() ? snap.path("minutes").asText() : null);
                 entry.put("pendingChoices", objectMapper.convertValue(snap.path("pendingChoices"),
                         new TypeReference<List<Map<String, Object>>>() { }));
             } catch (Exception e) {
                 log.warn("report snapshot parse failed for match={} player={}", matchId, row.playerId());
+                entry.putIfAbsent("cardXp", null);
+                entry.putIfAbsent("xpToNext", null);
+                entry.putIfAbsent("minutes", null);
                 entry.put("pendingChoices", List.of());
             }
             entries.add(entry);
@@ -1446,7 +1503,7 @@ public class GrowthService {
         for (int i = 0; i < grantCount; i++) {
             int level = i + 1;
             grantChoice(tuning, userId, playerId, pb, card.star(), level, LEGACY_SEED_SOURCE, null,
-                    pre, historyScore, Map.of(), null, now);
+                    pre, historyScore, Map.of(), null, now, GrowthCandidates.Evidence.ofLegacy());
         }
         int granted = jdbcClient.sql("""
                         SELECT COUNT(*) FROM growth_level_choices
