@@ -122,6 +122,11 @@ describe("#361 T1 — pressingScheme.triggerLine 이 실제 레버다", () => {
       }
       return n > 0 ? sum / n : 0;
     };
+    // ⚠️ #377 M3-B(#379 레인 예측) 이후 **red** 다(low 9.18 vs high 9.30). 그런데 이 관찰량은
+    //   **6시드에서 부호가 표본 아티팩트**다 — 20시드로 재면 기준선(레인 예측 off) 마진이
+    //   **+0.035m** 로 사실상 0 이고, 레인 예측 on 은 **+0.163m** 로 오히려 방향이 더 뚜렷하다
+    //   (`evidence/377/M3-B.md`). 위 ①②③ 이력과 같은 부류이고, 다음은 관찰량이 아니라
+    //   **표본(검정력)** 차례다 — M3-B 는 남의 계약을 재표본하지 않는다(value-shopping 회피).
     const h = nearest(high);
     const l = nearest(low);
     expect(l, `low ${l.toFixed(2)}m vs high ${h.toFixed(2)}m`).toBeGreaterThan(h);
@@ -130,7 +135,12 @@ describe("#361 T1 — pressingScheme.triggerLine 이 실제 레버다", () => {
   it("롤백 — press.trigger.enabled=false 면 triggerLine 이 다시 무효다(변이체 킬의 대조군)", () => {
     const off: EngineConfig = {
       ...defaultEngineConfig,
-      press: { trigger: { ...defaultEngineConfig.press.trigger, enabled: false } },
+      // S3-A: `press` 에 `unit` 이 생겨 스프레드가 필요하다(타입 정합만 — **임계·표본·단언 무변경**,
+      // 이 스위트의 방향 계약은 #399 소관이라 손대지 않는다).
+      press: {
+        ...defaultEngineConfig.press,
+        trigger: { ...defaultEngineConfig.press.trigger, enabled: false },
+      },
     };
     expect(hashes(off, high)).toEqual(hashes(off, low));
   }, 300_000);

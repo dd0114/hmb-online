@@ -175,6 +175,44 @@ export function loftHangTicks(distFx: number, speedFx: number, config: EngineCon
 }
 
 /**
+ * **공이 이 거리를 지나는 데 걸리는 틱**(#377 M3-C) — 마찰을 그대로 누적해서 센다.
+ *
+ * 왜 `ceil(거리/속도)` 가 아닌가: #327 이 lofted 에서 이미 확인한 것과 같은 이유다. 공은 매 틱
+ * `friction` 으로 감쇠하므로 등속 가정은 도달 틱을 **10~30% 짧게** 본다. 스루패스의 성공확률은
+ * "러너가 공보다 먼저 그 지점에 닿나"라는 **경주**라, 그 자를 등속으로 잡으면 러너가 실제보다
+ * 불리하게 평가돼 후보가 한 번도 안 뽑힌다(트랙 D 가 세 번 밟은 "선언했는데 무발화").
+ *
+ * 도달 불가(감속 거리가 목표보다 짧다)면 `Infinity` — 그건 "찰 수는 있지만 거기까지 못 간다"이고
+ * 생성기가 그 후보를 버리는 근거가 된다.
+ *
+ * ⚠️ lofted 는 `loftHangTicks` 가 **착지 틱**을 소유한다(그쪽이 물리의 권위). 여기서는 같은
+ * 누적을 종류별 마찰로 돌려 **도달 시점 추정**만 한다 — 판정이 아니라 후보 생성용 자다.
+ *
+ * 결정론: 정수 곱/반올림만. 루프 상한 `MAX_TICKS` 는 튜닝값이 아니라 **구조적 안전장치**다
+ * (마찰 < 1 이라 항상 그 전에 끝난다 — 90분 = 2700틱이므로 64틱은 물리적으로 도달 불가 판정과 같다).
+ */
+const MAX_TICKS = 64;
+export function ballReachTicks(
+  distFx: number,
+  speedFx: number,
+  lofted: boolean,
+  config: EngineConfig,
+): number {
+  if (distFx <= 0) return 0;
+  const k = lofted ? config.ball.friction.lofted : config.ball.friction.ground;
+  const stopFx = toFixed(config.ball.stopSpeedM, config.fixedScale);
+  let v = Math.max(1, Math.round(speedFx));
+  let travelled = 0;
+  for (let t = 1; t <= MAX_TICKS; t++) {
+    travelled += v;
+    if (travelled >= distFx) return t;
+    v = Math.round(v * k);
+    if (v < stopFx) return Infinity; // 목표 전에 섰다 — 이 세기로는 못 간다.
+  }
+  return Infinity;
+}
+
+/**
  * **오버힛으로 라인 밖**(fail_out) 도달점 — 의도 방향 그대로 피치 밖까지 지나간 지점.
  *
  * 구버전은 "수신자에서 가장 가까운 경계 밖을 **정조준**" 했다. 그건 조준 오차가 아니라

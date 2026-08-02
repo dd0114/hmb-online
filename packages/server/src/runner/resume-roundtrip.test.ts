@@ -6,6 +6,8 @@ import {
   demoHome,
   demoAway,
   demoSelect,
+  INTENT_KINDS,
+  SET_PIECE_KINDS,
   type CarryState,
   type SimState,
 } from "@hmb/engine";
@@ -94,10 +96,23 @@ describe("resumeState 왕복 동등성 — 전 필드 합성 상태 (드리프�
     // S4/S5 자리 — **기본값(open / 빈 배열)으로 두면 안 된다.** 스키마가 이 필드를 흘려도
     // 기본값끼리는 우연히 같아 보일 수 있으므로, 비기본값을 넣어야 드리프트가 드러난다.
     state.phase = { home: "final_third", away: "transition_lose" };
-    state.intents = [
-      { side: "home", fromId: "H6", kind: "pass_to", xFx: 77_000, yFx: 22_000, tick: 1230, expiresTick: 1235, forId: "H9" },
-      { side: "away", fromId: "A3", kind: "run_to", xFx: 12_000, yFx: 55_000, tick: 1231, expiresTick: 1237 },
-    ];
+    // ⚠️ **의도 종류를 전부 태운다**(#377 M3-A 2R). 여기가 "드리프트 탐지의 **본체**"인데
+    // `pass_to`/`run_to` 두 종류만 넣고 있었다 — 그래서 서버 스키마가 `pass_plan` 을 놓친
+    // 바로 그 부류를 **이 테스트가 못 잡았고**, 실제 하프 경계에 그 의도가 실린 시드에서만
+    // 재개가 400 으로 죽었다(= 운에 맡긴 게이트). `INTENT_KINDS` 를 돌면 종류가 늘 때
+    // **자동으로 따라온다** — 단일 출처의 값은 여기 있다.
+    state.intents = INTENT_KINDS.map((kind, i) => ({
+      side: i % 2 === 0 ? ("home" as const) : ("away" as const),
+      fromId: i % 2 === 0 ? "H6" : "A3",
+      kind,
+      xFx: 70_000 + i * 1_000,
+      yFx: 20_000 + i * 1_500,
+      tick: 1230 + i,
+      expiresTick: 1235 + i,
+      // 지목 러너가 있는 변형과 공개 게시 변형을 **둘 다** 태운다(`forId` 는 선택 필드라
+      // 스키마가 흘려도 undefined 끼리 우연히 같아 보인다).
+      ...(i % 2 === 0 ? { forId: i % 4 === 0 ? "H9" : "H7" } : {}),
+    }));
   }
 
   it("모든 선택 필드가 채워진 상태가 왕복 후 deep-equal (하나라도 미선언이면 여기서 깨진다)", () => {
@@ -118,6 +133,22 @@ describe("resumeState 왕복 동등성 — 전 필드 합성 상태 (드리프�
       const carry = carryFor(demoSeed);
       fillAllOptionals(carry.state);
       carry.state.setPiece = { kind: "shot_out", side: "away", x: 1_000, y: 2_000, restart };
+      const before = structuredClone(stateBody(carry.state));
+      const after = stateBody(roundTrip(carry).state);
+      expect(after.setPiece).toEqual(before.setPiece);
+      expect(after).toEqual(before);
+    });
+  }
+
+  // ⚠️ `setPiece.kind` 도 **전 종류를 태운다**(#377 M3-A 2R). 위 루프는 `restart` 변형만 훑고
+  // `kind` 는 항상 `"shot_out"` 이었다 — 즉 스키마의 8개 리터럴 사본이 뒤처져도 그 종류가 하프
+  // 경계에 걸린 시드가 나오기 전까지 아무도 몰랐다(`pass_plan` 과 같은 함정). 단일 출처를 돌면
+  // 종류가 늘 때 자동으로 따라온다.
+  for (const kind of SET_PIECE_KINDS) {
+    it(`setPiece.kind = ${kind} 가 왕복에서 살아남는다`, () => {
+      const carry = carryFor(demoSeed);
+      fillAllOptionals(carry.state);
+      carry.state.setPiece = { kind, side: "home", x: 3_000, y: 4_000 };
       const before = structuredClone(stateBody(carry.state));
       const after = stateBody(roundTrip(carry).state);
       expect(after.setPiece).toEqual(before.setPiece);

@@ -73,8 +73,9 @@ export type ActionForm =
  * 고정되고, 노드 예산 컷오프가 항상 같은 지점에서 걸린다.
  * S5 에서 `"lead" | "through" | "cross" | "switch"` 가 **뒤에** 추가된다(앞에 끼우면 기존 순서가 밀린다).
  * #314 A 가 `"clear"`(걷어내기)를 그 규율대로 **뒤에** 붙였다.
+ * #377 M3-C 가 `"through"`(공간 타깃 스루패스)를 같은 규율대로 **맨 뒤에** 붙였다.
  */
-export const GENERATORS = ["shoot", "direct", "long", "carry", "hold", "clear"] as const;
+export const GENERATORS = ["shoot", "direct", "long", "carry", "hold", "clear", "through"] as const;
 export type GeneratorId = (typeof GENERATORS)[number];
 
 /**
@@ -170,8 +171,11 @@ export function toActionCandidate(
     kind: "pass",
     form,
     gen,
-    toXFx: opt.receiver.posFx.x,
-    toYFx: opt.receiver.posFx.y,
+    // #377 M3-C: **좌표가 1급이라는 S2 의 산출이 여기서 처음 쓰인다.** 발밑 패스면 리시버 위치와
+    // 같고(기존과 bit-identical), 공간 타깃이면 라인 뒤 조준점이다 — `receiver` 는 "누구를 위한
+    // 패스인가"로 남고 `toXFx/toYFx` 가 "공이 어디로 가나"를 소유한다.
+    toXFx: opt.aimFx ? opt.aimFx.x : opt.receiver.posFx.x,
+    toYFx: opt.aimFx ? opt.aimFx.y : opt.receiver.posFx.y,
     receiver: opt.receiver,
     ballSpeedFx,
     flightTicks,
@@ -313,4 +317,331 @@ export function setFatigueObserver(o: FatigueObserver | null): void {
 /** 현재 활성 피로 관측자(없으면 null). */
 export function fatigueObserver(): FatigueObserver | null {
   return activeFatigueObserver;
+}
+
+/**
+ * **예고 읽기 관측자**(#369, 진단 전용·옵트인) — `FatigueObserver` 와 같은 규율·같은 이유.
+ *
+ * 왜 필요한가: 누가 예고를 **읽었는가**는 스냅샷·이벤트 어디에도 안 나온다. 그런데 이 웨이브의
+ * AC 는 정확히 "읽은 리시버가 먼저 움직인다"라서, 읽은 쪽과 안 읽은 쪽을 **가르지 못하면**
+ * 관찰량이 반사실 팔(`readBase=1` 로 경기 전개를 통째로 바꾼 config)로 밀려난다 — 독립검증 m1 이
+ * 지적한 것이 그것이다. 여기서 읽기 판정을 그대로 흘려보내면 **출하 config 그대로** 두 표본을
+ * 가를 수 있다(신호도 6.6배로 훨씬 크다).
+ *
+ * ⚠️ 판정식을 진단 쪽에서 **다시 구현하지 않는다**는 것이 핵심이다 — 그러면 계약이 구현과
+ * 조용히 갈린다(이 리포가 `loft.ts`·`jitter.ts` 에서 지켜 온 "측정 함수 공유" 규율).
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type PlanReadObserver = (sample: {
+  tick: number;
+  side: string;
+  /** 예고 대상(리시버) id. */
+  forId: string;
+  /** 그 예고가 게시된 틱(수명 판정의 기준). */
+  planTick: number;
+  /** 도착 예정 지점(고정소수). */
+  xFx: number;
+  yFx: number;
+  /** 이 틱에 실제로 읽었는가. */
+  read: boolean;
+}) => void;
+
+let activePlanReadObserver: PlanReadObserver | null = null;
+
+/** 예고 읽기 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setPlanReadObserver(o: PlanReadObserver | null): void {
+  activePlanReadObserver = o;
+}
+
+/** 현재 활성 예고 읽기 관측자(없으면 null). */
+export function planReadObserver(): PlanReadObserver | null {
+  return activePlanReadObserver;
+}
+
+/**
+ * **패스 조준 관측자**(#377 M3-C, 진단 전용·옵트인) — 위 관측자들과 같은 규율.
+ *
+ * 왜 필요한가: 이 웨이브의 AC 는 *"리드 거리 분포가 이동한다 — 10~25m 구간 후보가 실제로
+ * 뽑힌다"* 다. 그런데 로그에는 **조준점이 없다** — `pass` 이벤트는 도착 틱에 리시버 id 로
+ * 발행되고(`resolveArrival`), 스냅샷에는 공 좌표뿐이다. 로그로 되추론하면 실제 도달점(오차·
+ * 굴러간 거리 포함)을 재게 되는데, 그건 "무엇을 골랐나"가 아니라 "어떻게 끝났나"라 다른 질문이다.
+ *
+ * 그래서 **결정 직후 계획 조준점**을 그대로 흘려보낸다. 이 창이 있어야 계약과 증거가
+ * **출하 config 한 경기 안에서** through 팔과 발밑 팔을 가를 수 있다(M3-A 독립검증 m1 의 교훈 —
+ * `enabled:false` 반사실 팔로 재면 경기 전개 자체가 다르다).
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type PassAimObserver = (sample: {
+  tick: number;
+  side: string;
+  /** 어느 생성기가 낸 후보였나 — `"through"` 가 공간 타깃이다. */
+  gen: GeneratorId;
+  form: ActionForm;
+  passerId: string;
+  receiverId: string;
+  /** **리드 거리**(fixed): 발사 틱 리시버 위치 → 계획 조준점. 발밑 패스면 leadAim 거리다. */
+  leadFx: number;
+  /** 패서 → 계획 조준점 거리(fixed). */
+  distFx: number;
+  /** 계획 조준점(fixed). */
+  aimXFx: number;
+  aimYFx: number;
+  /** 조준점이 상대 오프사이드 라인 뒤인가(`through.ts:offsideLineProg` 와 같은 자). */
+  behindLine: boolean;
+  /** 경주 계수(공간 타깃만). 발밑 패스는 null. */
+  raceFrac: number | null;
+}) => void;
+
+let activePassAimObserver: PassAimObserver | null = null;
+
+/** 패스 조준 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setPassAimObserver(o: PassAimObserver | null): void {
+  activePassAimObserver = o;
+}
+
+/** 현재 활성 패스 조준 관측자(없으면 null). */
+export function passAimObserver(): PassAimObserver | null {
+  return activePassAimObserver;
+}
+
+/**
+ * **수비 레인 예측 관측자**(#379 M3-B, 진단 전용·옵트인) — 위 관측자들과 같은 규율.
+ *
+ * 왜 필요한가: 이 웨이브의 판정은 *"출하 config 에서 레인을 **읽은** 수비수가 안 읽은 수비수보다
+ * 레인으로 실제로 다가간다"* 인데, **누가 읽었는지는 스냅샷·이벤트 어디에도 없다**(M3-A 가
+ * `setPlanReadObserver` 를 만든 것과 같은 이유). 게다가 **어느 레인을 읽었는지**(선분 두 끝점)를
+ * 로그에서 되추론할 방법이 없다 — 그건 인지 기억(`player.seen`)의 함수라 관측 시점에만 존재한다.
+ *
+ * 판정식을 진단이 다시 구현하지 않는 것이 핵심이다. 여기서 흘려보내는 것은 **엔진이 실제로 쓴
+ * 값**이고, 계약·증거는 그 위에서 다음 틱 실제 위치만 재면 된다(같은 자[尺] = `laneClosest`).
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type LaneReadObserver = (sample: {
+  tick: number;
+  side: string;
+  /** 레인을 읽은(또는 읽지 못한) 수비수. */
+  playerId: string;
+  /** 그 수비수의 인지 능력 (positioning+mental)/2. */
+  attr: number;
+  /** 읽기 판정 — false 면 이 틱에 이 레인을 선점하지 않는다(대조군). */
+  read: boolean;
+  /** 레인 시작(공=캐리어 위치) fixed. */
+  fromXFx: number;
+  fromYFx: number;
+  /** 레인 끝(**인지한** 위협 리시버의 마지막 본 위치) fixed. */
+  toXFx: number;
+  toYFx: number;
+  /** 그 리시버 id. */
+  toId: string;
+  /** 지금 내 위치에서 레인까지 최단거리(fixed). */
+  laneDistFx: number;
+  /**
+   * 그 레인에 대한 **수비 팀 전체의 최근접 거리**(fixed) = `perception.ts:laneDangerOn`.
+   * AC 의 "레인 점유"가 쓰는 자[尺] 그대로다 — 개인이 다가갔는지가 아니라 **레인이 실제로
+   * 막혔는지**를 같은 함수로 본다. 이 값은 `readLane` 의 "이미 막힌 레인엔 겹치지 않는다" 게이트가
+   * **이미 계산한 것**을 그대로 흘린 것이다(진단이 다시 재면 두 정의가 갈릴 수 있다).
+   */
+  laneDangerFx: number;
+  /** 이번 틱 목표에 더한 선점 이동량(fixed). 안 읽었으면 0. */
+  stepFx: number;
+}) => void;
+
+let activeLaneReadObserver: LaneReadObserver | null = null;
+
+/** 레인 예측 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setLaneReadObserver(o: LaneReadObserver | null): void {
+  activeLaneReadObserver = o;
+}
+
+/** 현재 활성 레인 예측 관측자(없으면 null). */
+export function laneReadObserver(): LaneReadObserver | null {
+  return activeLaneReadObserver;
+}
+
+/**
+ * **압박 유닛 관측자**(#377 S3-A, 진단 전용·옵트인) — 위 셋과 같은 규율·같은 이유.
+ *
+ * 왜 필요한가: **누가 압박 유닛에 배정됐는지는 스냅샷·이벤트 어디에도 안 나온다.** 좌표에서
+ * 역할을 되추론하면 이 트랙이 이미 물린 함정을 다시 밟는다 — #378 이 벽/백업을 좌표로 되추론했다가
+ * 백업 2/3 을 벽으로 오분류해 "9.15m 침범 566건"이라는 **가짜 위반**을 만들었다(1m 차이가 계측을
+ * 속였다). 그래서 그때와 같은 처방을 쓴다: **배정한 쪽이 역할 라벨을 단다.**
+ *
+ * 두 종류를 흘린다(질문이 다르다):
+ *  - `kind:"unit"` — 그 틱 그 팀의 **배정 총원**과 위험거리. **인원 0 인 틱도 나온다**(중요:
+ *    멤버 샘플만 모으면 0 인 틱이 표본에서 빠져 평균이 위로 편향된다).
+ *  - `kind:"member"` — 배정된 개인의 역할·최종 목표. `ballDistFx` 가 **목표 오염**(#303 마지막 항)의
+ *    직접 관찰량이다.
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type PressUnitSample =
+  | {
+      kind: "unit";
+      tick: number;
+      side: string;
+      /** 위험거리(fixed) = 공→우리 골 + wideWeight × 횡오프셋. */
+      dangerFx: number;
+      /** 그 팀의 압박 강도 슬라이더(0..1). */
+      intensity: number;
+      /** 배정 총원(압박 담당 + 커버). 0 = 아무도 안 나간다(트리거 게이트 등). */
+      count: number;
+      /** 그중 커버 수. */
+      coverCount: number;
+      /** 유닛이 legacy 경로인가(= `press.unit.enabled=false`). */
+      legacy: boolean;
+      /**
+       * **생성 게이트 계측** — "커버가 왜 안 뽑혔나"를 추측이 아니라 수치로 답한다
+       * (M3-C `ThroughProbe.gates` 와 같은 목적·같은 형태). 이 웨이브의 초판이 정확히 이것
+       * 때문에 헛돌았다: 커버가 팀-틱의 2.4% 에서만 생겨서 지표가 안 움직였는데, 계측이 없으면
+       * 어느 문이 닫혔는지 못 본다.
+       */
+      gates: {
+        /** 사거리 안 커버 후보 수비수. */
+        cands: number;
+        /** 막을 값이 있다고 판정된 레인 수. */
+        lanes: number;
+        /** 원하는 커버 수(= 총원 − 1). */
+        want: number;
+        /** 전진 이득 부족으로 버린 상대. */
+        rejGain: number;
+        /** 이미 막혀 있어서(`coveredM`) 버린 레인. */
+        rejCovered: number;
+        /** 레인이 사거리(`reachM`) 밖이라 버린 (수비수,레인) 쌍. */
+        rejReach: number;
+        /** 가치 ≤ 0 이라 버린 쌍. */
+        rejVal: number;
+      };
+    }
+  | {
+      kind: "member";
+      tick: number;
+      side: string;
+      playerId: string;
+      role: "presser" | "cover" | "support";
+      /** 이 선수의 **최종 목표**에서 공까지 거리(fixed). 압박 담당은 0 이어야 한다(오염 없음). */
+      ballDistFx: number;
+      /** 커버가 맡은 레인의 리시버 id(압박 담당·지원은 null). */
+      laneToId: string | null;
+      /** 배정 시점 그 구성원에서 목표 지점까지 거리(fixed). 압박 담당은 0. */
+      laneDistFx: number;
+    };
+
+export type PressUnitObserver = (sample: PressUnitSample) => void;
+
+let activePressUnitObserver: PressUnitObserver | null = null;
+
+/** 압박 유닛 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setPressUnitObserver(o: PressUnitObserver | null): void {
+  activePressUnitObserver = o;
+}
+
+/** 현재 활성 압박 유닛 관측자(없으면 null). */
+export function pressUnitObserver(): PressUnitObserver | null {
+  return activePressUnitObserver;
+}
+
+/**
+ * **수비 형태 관측**(#377 S3-B) — 공유 수비 라인 · 오픈플레이 레스트디펜스.
+ *
+ * S3-A 와 같은 처방을 쓴다: **배정한 쪽이 역할 라벨을 단다.** #378 이 벽/백업을 좌표로 되추론했다가
+ * 가짜 위반 566건을 만든 전례가 있고, 여기서는 그 위험이 더 크다 — "라인 멤버"와 "그냥 뒤에 있는
+ * 선수"는 좌표만으로 구분되지 않는다(둘 다 자기 진영에 서 있다).
+ *
+ * 네 종류를 흘린다(질문이 다르다):
+ *  - `kind:"line"` — 그 틱 그 팀의 라인 요약. **멤버 0/미달 틱도 나온다**(안 그러면 "라인이 안
+ *    잡힌 틱"이 표본에서 빠져 발화율을 과대평가한다 — S3-A `kind:"unit"` 과 같은 이유).
+ *  - `kind:"lineMember"` — 보정 전/후/목표 진행도. **`before`↔`after` 가 L2 의 직접 관찰량**이고,
+ *    `desired` 와의 차이가 `lineDiscipline` 이 실제로 걸렸는지를 말한다.
+ *  - `kind:"rest"` — 그 틱 그 팀의 잔류 배정 요약(요청 인원 vs 실제 배정).
+ *  - `kind:"restMember"` — 잔류 개인의 상한 적용 전/후. `capped` 가 **"상한이 물었나"** 의 직접 관찰량.
+ *
+ * ⚠️ 결정론 영향 0: 기본 null(옵트인) · 반환값을 시뮬이 읽지 않는다 · 관측자는 읽기만 해야 한다.
+ */
+export type DefShapeSample =
+  | {
+      kind: "line";
+      tick: number;
+      side: string;
+      /** 라인 멤버 수. `minMembers` 미달이면 보정이 안 걸리고 이 값만 나온다. */
+      members: number;
+      /** 압박 유닛이 데려가 라인에서 빠진 인원(진단 — 멤버가 왜 적은지의 답). */
+      excludedByUnit: number;
+      /** 보정이 실제로 걸렸나(`enabled` · `minMembers` · `lineDiscipline>0` 전부 통과). */
+      applied: boolean;
+      /** 기준선 진행도(fixed, 자기 골 0). */
+      refProgFx: number;
+      /** 라인 높이 가감량(fixed) — `defensiveLineHeight` 슬라이더의 실권한. */
+      heightBiasFx: number;
+      /**
+       * **오프사이드 트랩 전진량**(fixed, #377 S3-C). 0 = 그 틱 트랩이 안 걸렸다.
+       *
+       * ⚠️ **배정한 쪽이 라벨을 단다** — 좌표로 "이 틱에 트랩이 걸렸나"를 되추론하면 라인이
+       * 그냥 전진한 것과 구별되지 않는다(#378 이 벽/백업을 그렇게 되추론했다가 가짜 위반
+       * 566건을 만들었다). 발화 판정의 SoT 는 이 값 하나다.
+       */
+      trapBiasFx: number;
+      /** 보정 **전** 멤버 진행도 산포(fixed, max−min). */
+      beforeSpreadFx: number;
+      /** 보정 **후** 산포(fixed). */
+      afterSpreadFx: number;
+    }
+  | {
+      kind: "lineMember";
+      tick: number;
+      side: string;
+      playerId: string;
+      /** 보정 전 목표 진행도(fixed). */
+      beforeProgFx: number;
+      /** 보정이 겨냥한 진행도(fixed) = 기준선 + 역할 오프셋. */
+      desiredProgFx: number;
+      /** 보정 후 목표 진행도(fixed). */
+      afterProgFx: number;
+      /**
+       * 이 틱 **실제 위치**의 진행도(fixed).
+       *
+       * ⚠️ 이게 없으면 이 계약이 **동어반복**이 된다 — 목표만 보면 "보정이 목표를 모았다"는 정의상
+       * 참이다. 실제로 답해야 하는 질문은 "그래서 **선수들이** 한 줄에 서는가"이고, 그건 위치로만
+       * 답할 수 있다(#377 M2 `wallClearM` 이 정확히 이 함정에 빠졌다).
+       */
+      posProgFx: number;
+    }
+  | {
+      kind: "rest";
+      tick: number;
+      side: string;
+      /** 가담도 매핑이 요청한 잔류 인원. */
+      want: number;
+      /** 실제로 잔류로 배정된 인원. */
+      assigned: number;
+      /** 그중 상한에 실제로 걸린 인원. */
+      capped: number;
+    }
+  | {
+      kind: "restMember";
+      tick: number;
+      side: string;
+      playerId: string;
+      /** 상한 적용 전 목표 진행도(fixed). */
+      beforeProgFx: number;
+      /** 적용 후(fixed). */
+      afterProgFx: number;
+      /** 상한이 실제로 물었나. */
+      capped: boolean;
+    };
+
+export type DefShapeObserver = (sample: DefShapeSample) => void;
+
+let activeDefShapeObserver: DefShapeObserver | null = null;
+
+/** 수비 형태 관측 켜기/끄기(옵트인). 켜고 끄는 것이 시뮬 결과를 바꾸지 않는다. */
+export function setDefShapeObserver(o: DefShapeObserver | null): void {
+  activeDefShapeObserver = o;
+}
+
+/** 현재 활성 수비 형태 관측자(없으면 null). */
+export function defShapeObserver(): DefShapeObserver | null {
+  return activeDefShapeObserver;
 }

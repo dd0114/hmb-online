@@ -39,6 +39,11 @@ export interface DeadBallMotion {
   samples: number;
   /** 정지 창 수 */
   windows: number;
+  /**
+   * 창 안에서 만난 **순간 재배치** 프레임 수(속도 표본에서 제외된 것). 0 이 아니면
+   * 그 창이 킥오프 리셋을 삼켰다는 뜻이다 — 조용히 사라지지 않게 값으로 남긴다.
+   */
+  repositions: number;
 }
 
 export interface MotionOpts {
@@ -50,6 +55,46 @@ export interface MotionOpts {
   sprintM?: number;
   /** 정지 창 최대 길이(틱). */
   maxWindow?: number;
+  /**
+   * **순간 재배치 판정 하한**(m/tick) — 이보다 큰 변위는 *달린 것*이 아니라 **재배치**다.
+   *
+   * 선수의 물리 상한은 `config.speed.maxPerTick`(7.0 m/tick)이라 그보다 큰 변위는 이동으로
+   * 나올 수 없다. 실제로 나오는 경우는 **킥오프 포메이션 리셋**(0.8.0 · Law 8 #347) 하나이고,
+   * 그건 설계된 순간이동이다. 텔레포트를 사이에 두고 속도를 재면 그 값은 속도가 아니다 —
+   * 그래서 그 프레임에서는 기준점만 다시 잡고 표본에 넣지 않는다(뷰어가 `spansReposition` 으로
+   * 잔상을 컷하는 것과 **같은 판단**, #142).
+   *
+   * ## ⚠️ 이 **기본값**을 바꾸면 소비자 3개가 선언 없이 따라 움직인다 (독립검증 m5)
+   *
+   * `repositionM` 을 넘기지 않는 호출부는 전부 이 기본값(7.5)을 물려받는다. 지금 3곳이다 —
+   *  1. `realism/restart-gate.test.ts` — #378 "데드볼 왕복·단독질주가 구 동작보다 나빠지지 않는다"
+   *     (4시드 × 출하/legacy 두 팔)
+   *  2. `realism/h3-ablate.test.ts` — #307 H3 아블레이션(6시드, `HMB_H3=1` 게이트)
+   *  3. `freekick-setpiece.test.ts` 의 **#185 왕복 회귀 계약**(60시드). ⚠️ 같은 파일의 #174
+   *     최대변위 계약은 `repositionM` 을 **명시적으로** 넘기므로 여기 해당하지 않는다.
+   *
+   * 이 기본값이 들어온 시점(#379 M3-B)의 실측 파급은 **0** 이다 — 위 세 곳의 입력에서 이 배제가
+   * 한 번도 발화하지 않기 때문이다(`repositions = 0`). 기본값 7.5 vs 배제 없음(∞) 대조:
+   *
+   * | 소비자 | n | 왕복/100 | 단독질주/100 | maxStepM | repositions |
+   * |---|---|---|---|---|---|
+   * | restart-gate (출하) | 4 | 0.030 vs 0.030 | 0.000 vs 0.000 | 4.50 vs 4.50 | 0 |
+   * | restart-gate (legacy) | 4 | 0.017 vs 0.017 | 0.000 vs 0.000 | 4.51 vs 4.51 | 0 |
+   * | h3-ablate | 6 | 0.033 vs 0.033 | 0.000 vs 0.000 | 4.51 vs 4.51 | 0 |
+   * | freekick-setpiece #185 | 60 | 0.038 vs 0.038 | 0.000 vs 0.000 | 4.51 vs 4.51 | 0 |
+   *
+   * **"영향 0" 은 안심 근거가 아니라 경고다**: 배제가 어디서도 발화하지 않으면 조용히 깨져도
+   * 아무도 모른다 → 그래서 `deadball-motion-guard.test.ts` 가 합성 로그로 **양방향**을 직접 태운다
+   * (조건이 있으면 배제되고, 없으면 잡힌다). 기본값을 바꾸는 사람은 위 표를 다시 재고 그 계약을
+   * 함께 본다.
+   *
+   * ⚠️ 왜 이제야 필요한가(#379 M3-B): 창은 "재시작 이벤트 ~ 공이 스팟을 떠나기 전"이라,
+   * **하프 끝 골 → 킥오프**가 겹치면 창이 하프타임 리셋 틱을 한 번 삼킨다. 어느 시드에서
+   * 그 겹침이 나느냐는 전개에 달려 있어(같은 시드의 laneRead off 팔은 같은 틱에 **32.01m**
+   * 재배치가 있는데 창이 거기까지 안 닿는다) 지금까지 우연히 안 걸렸을 뿐이다.
+   * 계약의 *의미*("정지 중 아무도 질주하지 않는다")는 그대로다.
+   */
+  repositionM?: number;
 }
 
 /**
@@ -69,6 +114,8 @@ export function measureDeadBallMotion(log: MatchLog, opts: MotionOpts = {}): Dea
   const stillM = opts.stillM ?? 0.05;
   const sprintM = opts.sprintM ?? 2.0;
   const maxWindow = opts.maxWindow ?? 45;
+  // 기본값 = 물리 상한 7.0 m/tick(`speed.maxPerTick`) + 여유 0.5. 계약은 config 에서 넘긴다.
+  const repositionM = opts.repositionM ?? 7.5;
 
   const byTick = new Map<number, TickSnapshot>(log.tickSnapshots.map((s) => [s.tick, s]));
   let reversals = 0;
@@ -79,6 +126,7 @@ export function measureDeadBallMotion(log: MatchLog, opts: MotionOpts = {}): Dea
   let windows = 0;
   let frozenTicks = 0;
   let tickCount = 0;
+  let repositions = 0;
 
   for (const r of restartTicks(log)) {
     const s0 = byTick.get(r.tick);
@@ -99,6 +147,13 @@ export function measureDeadBallMotion(log: MatchLog, opts: MotionOpts = {}): Dea
           const dx = p.pos.x - before.x;
           const dy = p.pos.y - before.y;
           const step = Math.hypot(dx, dy);
+          if (step > repositionM) {
+            // 순간 재배치 — 속도로 셀 수 없다. 기준점만 다시 잡고(prevPos 갱신은 아래) 표본에서 뺀다.
+            repositions++;
+            prevDelta.delete(p.playerId);
+            prevPos.set(p.playerId, { x: p.pos.x, y: p.pos.y });
+            continue;
+          }
           steps.push(step);
           allSteps.push(step);
           stepSum += step;
@@ -137,5 +192,6 @@ export function measureDeadBallMotion(log: MatchLog, opts: MotionOpts = {}): Dea
     meanStepM: samples > 0 ? Math.round((stepSum / samples) * 1000) / 1000 : 0,
     samples,
     windows,
+    repositions,
   };
 }

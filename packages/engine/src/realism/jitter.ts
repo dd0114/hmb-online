@@ -38,14 +38,57 @@ const REVERSAL_FLOOR_M = 0.5;
 const BIG_REVERSAL_FLOOR_M = 2;
 /** 세트피스 재배치·스팟 배치의 1틱 텔레포트는 이동으로 치지 않는다. */
 const TELEPORT_M = 12;
+/**
+ * **제자리 왕복 판정 — 직진성 상한**(#377 S3-A 재정의).
+ *
+ * ## 왜 필요한가: 구 관찰량이 두 상태를 섞었다
+ * `bigReversalPer100` 은 "사이각 > 90° + 양쪽 ≥2m" 였다. 그런데 그 조건은 **제자리 왕복**
+ * (#178 이 잡으려던 병리)과 **정당한 추격**(캐리어가 방향을 틀면 정확히 쫓는 수비수도 같이 튼다)을
+ * 구분하지 못한다. S3-A 가 압박 담당의 목표 오염을 없애자(목표가 이제 정확히 공이다) 추격이
+ * 늘면서 이 지표가 25.47 → 28.62 로 올랐는데, **그중 절반이 오염 제거 자체**였다(아블레이션:
+ * 유닛 크기 1 로 커버·지원을 다 빼도 27.02).
+ *
+ * `#178` 의 **의도**는 파일 상단에 문장으로 남아 있다 — hero 제보는 *"제자리에서 위아래로 빠르게"*
+ * 였고 진단은 *"마크를 지나쳐 반대편을 목표로 잡는다 → 다음 틱 방향 반전"* 이다. 즉 **순 변위가
+ * 0 에 가까운 반전**이 대상이지, 방향을 틀며 실제로 이동한 것이 아니다.
+ *
+ * ## 정의는 성질로 (임의 상수가 아니다)
+ * 두 변위의 **순 변위 / 경로 길이** = `|d0 + d1| / (|d0| + |d1|)`. 되돌아왔으면 0 에 가깝고,
+ * 방향만 틀고 진행했으면 크다. 등길이 스텝에서 이 비는 정확히 `cos(θ/2)` 이므로
+ * **1/3 = θ ≥ 141°** — "거의 되돌아왔다"의 기하학적 정의다. 값을 실측에 맞춰 고른 것이 아니라
+ * 각도에서 나온다(그래서 재보정에도 살아남는다).
+ *
+ * ⚠️ 구 관찰량(`bigReversalPer100`)은 **지우지 않았다** — 계속 재서 보고한다(이력 연속성).
+ */
+const REVERSAL_STRAIGHTNESS_MAX = 1 / 3;
 
 export interface JitterSample {
   /** (선수, 틱) 표본 수 — 연속 3스냅샷이 확보된 것만. */
   samples: number;
   /** 방향 반전(사이각 > 90°, 양쪽 모두 크기 하한 위) 100표본당 횟수. */
   reversalPer100: number;
-  /** 큰 왕복(양쪽 변위 모두 ≥ 2m/tick 이면서 반전) 100표본당 횟수 — 관객이 보는 병리 그 자체. */
+  /**
+   * 큰 왕복(양쪽 변위 모두 ≥ 2m/tick 이면서 반전) 100표본당 횟수.
+   * ⚠️ S3-A 에서 **절대 백스톱만 `it.skip` 으로 강등**됐다(임계 26·5.5 는 원문 보존).
+   * **관계식 게이트(`vision-off` 대조군 ≤1.3배)는 이 값을 계속 쓴다** — `#178` 의 주 계약이다.
+   * 강등 사유: 추격과 진동을 섞는다(압박 담당이 캐리어를 정확히 쫓으면 같이 튄다).
+   */
   bigReversalPer100: number;
+  /**
+   * **제자리 왕복** 100표본당 횟수 = 큰 왕복 중 **순 변위/경로 ≤ `REVERSAL_STRAIGHTNESS_MAX`**
+   * 인 것만. `#178` 이 실제로 겨눈 병리의 정의다.
+   *
+   * ⚠️ **게이트에 쓰이지 않는다 — 이 관찰량도 자기 검증에 실패했다**(S3-A, 독립검증 3R 재현).
+   * 0.18.0 이 고친 마크 당김 오버슛을 config 로 되살린 변이체 사다리에서 **구·신 두 값 모두
+   * 반응하지 않는다**(신 13.22 → 10.35, 구 28.62 → 25.36; `markReach` 3→20 · 클램프 ON/OFF).
+   * 네 팔 전부 **해시는 갈린다** = 경기는 달라지는데 지표가 못 읽는다. 결정적으로
+   * **`vision.markReach = 0`(당김 자체 off)에서도 구 값이 26.85 로 임계 26 을 넘는다** —
+   * 이 계약은 자기가 재는 기제를 통째로 껐을 때도 실패한다 = **검정력 상실**.
+   * 재설계는 **#399** 소관이고, 임계가 아니라 **표본 정의 + 직접적인 자**(마커의 스탠드오프 링
+   * 주변 진폭 등)부터 손대야 한다. 그때까지 `#178` 이 겨눈 결함을 지키는 게이트는 **0개**다.
+   * 여기 남겨 둔 이유는 재설계자의 **출발점**으로 쓰라는 것이지 "쓸 수 있는 지표"라서가 아니다.
+   */
+  standstillReversalPer100: number;
   /** 표본의 평균 변위(m/tick). 진동은 이동량도 부풀린다. */
   avgMoveM: number;
   /** 표본 변위의 최대값(m/tick) — 이상치 감시용. */
@@ -64,11 +107,12 @@ interface Acc {
   n: number;
   rev: number;
   bigRev: number;
+  standRev: number;
   sum: number;
   max: number;
 }
 
-const newAcc = (): Acc => ({ n: 0, rev: 0, bigRev: 0, sum: 0, max: 0 });
+const newAcc = (): Acc => ({ n: 0, rev: 0, bigRev: 0, standRev: 0, sum: 0, max: 0 });
 
 interface Pt {
   x: number;
@@ -88,7 +132,12 @@ function add(acc: Acc, d0: Pt, d1: Pt): void {
   if (m0 < REVERSAL_FLOOR_M || m1 < REVERSAL_FLOOR_M) return;
   if (d0.x * d1.x + d0.y * d1.y >= 0) return;
   acc.rev += 1;
-  if (m0 >= BIG_REVERSAL_FLOOR_M && m1 >= BIG_REVERSAL_FLOOR_M) acc.bigRev += 1;
+  if (m0 >= BIG_REVERSAL_FLOOR_M && m1 >= BIG_REVERSAL_FLOOR_M) {
+    acc.bigRev += 1;
+    // 제자리 왕복만: 순 변위가 경로 길이 대비 작다(= 되돌아왔다).
+    const net = Math.hypot(d0.x + d1.x, d0.y + d1.y);
+    if (net <= (m0 + m1) * REVERSAL_STRAIGHTNESS_MAX) acc.standRev += 1;
+  }
 }
 
 const round = (v: number, d = 2): number => Math.round(v * 10 ** d) / 10 ** d;
@@ -97,6 +146,7 @@ const report = (acc: Acc): JitterSample => ({
   samples: acc.n,
   reversalPer100: acc.n > 0 ? round((acc.rev / acc.n) * 100) : 0,
   bigReversalPer100: acc.n > 0 ? round((acc.bigRev / acc.n) * 100) : 0,
+  standstillReversalPer100: acc.n > 0 ? round((acc.standRev / acc.n) * 100) : 0,
   avgMoveM: acc.n > 0 ? round(acc.sum / acc.n) : 0,
   maxMoveM: round(acc.max),
 });

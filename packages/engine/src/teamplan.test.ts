@@ -222,12 +222,34 @@ describe("#279 S1 후속 — 독립 검증 blocker 2건", () => {
         s.teams[side] = { ...s.teams[side], defensiveLineHeight: dlh };
         s.ball.posFx.x = Math.round(pitch.wFx * 0.42);
         // decision.ts:decideOffBall 수비 분기의 blockCenterX 를 그대로 재현.
+        // #377 S3-B: 구 리터럴 0.2 는 **config 로 승격**됐다(`movement.defLine.heightRangeX`,
+        // §2-4). 가드의 주장은 그대로다 — 단일 출처가 이제 config 라, 리터럴을 다시 적으면
+        // 이 가드가 막으려던 **이중 출처**를 가드 자신이 만들게 된다.
         const sign = side === "home" ? 1 : -1;
-        const lineShift = (dlh - 0.5) * pitch.wFx * 0.2;
+        const lineShift = (dlh - 0.5) * pitch.wFx * defaultEngineConfig.movement.defLine.heightRangeX;
         const expected =
           s.ball.posFx.x - sign * Math.round(pitch.wFx * 0.06) + sign * Math.round(lineShift);
         expect(computeTeamPlan(s, side, defaultEngineConfig, pitch).lineX).toBe(expected);
       }
+    }
+  });
+
+  // #377 S3-B: 롤백 경로는 **구 상수 0.2** 를 쓴다 — 그래야 `defLine.enabled=false` 가 0.38.0 과
+  // 비트 동일이다. 승격이 롤백을 조용히 오염시키지 않았다는 것을 따로 박제한다.
+  it("롤백(defLine.enabled=false)은 승격 전 상수 0.2 를 쓴다", () => {
+    const s = freshState();
+    const pitch = createPitch(defaultEngineConfig);
+    const off = JSON.parse(JSON.stringify(defaultEngineConfig)) as typeof defaultEngineConfig;
+    off.movement.defLine.enabled = false;
+    // 승격 값(0.5)과 구 상수(0.2)가 다른 값이어야 이 가드가 의미를 갖는다.
+    expect(defaultEngineConfig.movement.defLine.heightRangeX).not.toBe(0.2);
+    for (const side of ["home", "away"] as const) {
+      s.teams[side] = { ...s.teams[side], defensiveLineHeight: 1 };
+      s.ball.posFx.x = Math.round(pitch.wFx * 0.42);
+      const sign = side === "home" ? 1 : -1;
+      const expected =
+        s.ball.posFx.x - sign * Math.round(pitch.wFx * 0.06) + sign * Math.round(0.5 * pitch.wFx * 0.2);
+      expect(computeTeamPlan(s, side, off, pitch).lineX).toBe(expected);
     }
   });
 });

@@ -33,14 +33,26 @@ describe("dev-viewer demo generation", () => {
    * 1대1 빈도는 경기당 0.5~1건(#316 잔여)이라 **여유가 얇다** — 0 이 되면 시드 재선정이 처방이고,
    * 근본은 #316(빈도 자체를 올리는 것)이다.
    */
-  it("쇼케이스 데모에 shot:one_on_one 이 남아 있다 (e2e 가 의존 · #316 여유 얇음)", () => {
+  it("쇼케이스 데모에 e2e 가 의존하는 이벤트가 전부 남아 있다", () => {
+    // ⚠️ 초판은 `shot:one_on_one` **하나만** 봤다. 그러다 #377 M3-A 에서 이번엔 `tackle` 이
+    // 0 이 되며 `log.spec.ts`(티어 렌더)가 브라우저에서 빨개졌다 — **같은 부류가 두 번째**다.
+    // 하나씩 추가하는 대신 **e2e 가 의존하는 타입 전체**를 여기서 건다. 처방은 언제나 같다:
+    // `generate-demo.ts` 의 SHOWCASE_SEED 재선정(네 축 모두 있는 시드).
     const { path } = writeDemo();
     const log = JSON.parse(readFileSync(path, "utf8")) as MatchLog;
-    const oo = log.events.filter((e) => e.type === "shot" && e.detail === "one_on_one").length;
-    expect(
-      oo,
-      "쇼케이스 데모에서 1대1 이 사라졌다 → `shot-outcomes.spec.ts` 가 빨개진다. " +
-        "처방: fixtures.ts 의 demoSeed 재선정(1대1 ≥1 인 시드) 또는 #316(빈도) 해소.",
-    ).toBeGreaterThan(0);
+    const count = (f: (e: MatchLog["events"][number]) => boolean) => log.events.filter(f).length;
+    const need: [string, number, string][] = [
+      ["shot:one_on_one", count((e) => e.type === "shot" && e.detail === "one_on_one"), "shot-outcomes.spec.ts"],
+      ["tackle", count((e) => e.type === "tackle"), "log.spec.ts(티어 렌더)"],
+      ["card", count((e) => e.type === "card"), "log.spec.ts(major 티어)"],
+      ["goal", count((e) => e.type === "goal"), "captions/goal 연출 + perceptibility 골 빈도"],
+    ];
+    for (const [name, n, who] of need) {
+      expect(
+        n,
+        `쇼케이스 데모에서 ${name} 이 사라졌다 → ${who} 가 빨개진다. ` +
+          "처방: generate-demo.ts 의 SHOWCASE_SEED 재선정(의존 타입 전부 있는 시드).",
+      ).toBeGreaterThan(0);
+    }
   });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { TacticalInput } from "@hmb/shared";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
@@ -39,6 +40,16 @@ function hashes(mutate: (c: EngineConfig) => void): string[] {
   mutate(c);
   return seeds.map((s) => {
     const log = runMatch(s, makeTacticalInput("H", s), makeTacticalInput("A", s), select, c);
+    return log.tickSnapshots[log.tickSnapshots.length - 1]!.hash;
+  });
+}
+
+/** 노브 + **팀 지시**를 같이 바꾼 config 로 최종 해시들(조건부 LIVE 검정용). */
+function hashesWith(mutate: (c: EngineConfig) => void, patch: (t: TacticalInput) => TacticalInput): string[] {
+  const c = JSON.parse(JSON.stringify(defaultEngineConfig)) as EngineConfig;
+  mutate(c);
+  return seeds.map((s) => {
+    const log = runMatch(s, patch(makeTacticalInput("H", s)), patch(makeTacticalInput("A", s)), select, c);
     return log.tickSnapshots[log.tickSnapshots.length - 1]!.hash;
   });
 }
@@ -85,6 +96,92 @@ const LIVE: Knob[] = [
   { path: "contest.shootXgThreshold", mutate: (c) => { c.contest.shootXgThreshold = 0.2; } },
   { path: "clearance.maxProgress", mutate: (c) => { c.clearance.maxProgress = 0.99; } },
   { path: "clearance.minPressers", mutate: (c) => { c.clearance.minPressers = 9; } },
+  // #369 예고 패스(M3-A). 등록 절차는 CLAUDE.md §2.5 — 스냅샷이 깨지면 여기 먼저 등록한다.
+  { path: "movement.passPlan.enabled", mutate: (c) => { c.movement.passPlan.enabled = false; } },
+  { path: "movement.passPlan.readBase", mutate: (c) => { c.movement.passPlan.readBase = 0; } },
+  { path: "movement.passPlan.readAttrSwing", mutate: (c) => { c.movement.passPlan.readAttrSwing = 1.5; } },
+  { path: "movement.passPlan.pull", mutate: (c) => { c.movement.passPlan.pull = 0.95; } },
+  { path: "movement.passPlan.expireTicks", mutate: (c) => { c.movement.passPlan.expireTicks = 1; } },
+  // #377 M3-C 스루패스(공간 타깃 패스 후보). 8개 전부 3시드에서 해시가 움직이는 것을 확인하고
+  // 등록했다 — 후보 **수**가 바뀌면 `chain.temperature` 샘플링의 k·floor 가 바뀌므로,
+  // "채택이 안 바뀌어도" 동작은 바뀐다(그래서 표본이 얇아도 레버성 판정이 견고하다).
+  { path: "chain.throughPass.enabled", mutate: (c) => { c.chain.throughPass.enabled = false; } },
+  { path: "chain.throughPass.behindLineM", mutate: (c) => { c.chain.throughPass.behindLineM = 12; } },
+  { path: "chain.throughPass.minRunGainM", mutate: (c) => { c.chain.throughPass.minRunGainM = 12; } },
+  // ⚠️ 섭동 폭을 **건드리지 않는다**(M3-C 가 정한 20 그대로). #379 M3-B 가 한때 24 로 벌렸다가
+  // 독립검증 m3 에서 **되돌렸다** — 그 근거("20 은 3시드에서 INERT 가 됐다")가 재현되지 않는다.
+  // HEAD 재측정(3시드 최종 해시, 출하 config): base `69489f63 beb01ff8 49be688f` vs
+  // minLeadM=20 `3d198097 beb01ff8 3e6e803c` = **3시드 중 2개가 갈린다 → LIVE**(24 도 같은 2개가
+  // 갈린다 — 즉 20 과 24 는 검출력이 같다). 남는 사실은 M3-C 가 기록한 성질뿐이다: 채택된
+  // 스루패스의 리드가 **상한(`maxLeadM` 25)에 몰려 있어**(8/12건) 하한은 상한 근처로 올라가야
+  // 발화하고, `minLeadM` 2·15 는 8시드에서도 bit-identical 이다. 20 은 이미 그 위다.
+  { path: "chain.throughPass.minLeadM", mutate: (c) => { c.chain.throughPass.minLeadM = 20; } },
+  { path: "chain.throughPass.maxLeadM", mutate: (c) => { c.chain.throughPass.maxLeadM = 12; } },
+  { path: "chain.throughPass.minMarginTicks", mutate: (c) => { c.chain.throughPass.minMarginTicks = 6; } },
+  { path: "chain.throughPass.raceBase", mutate: (c) => { c.chain.throughPass.raceBase = 0.05; } },
+  { path: "chain.throughPass.raceGainPerTick", mutate: (c) => { c.chain.throughPass.raceGainPerTick = 0; } },
+  // #379 M3-B 수비 레인 예측. 10개 전부 3시드에서 해시가 움직이는 것을 **등록 전에** 확인했다.
+  // (레인 후보가 하나만 달라져도 그 수비수의 목표가 달라지고, 그 자리가 다음 경합을 바꾼다 —
+  //  그래서 발화 빈도가 낮아도(수비수-틱의 ~4%) 레버성 판정이 견고하다.)
+  { path: "vision.laneRead.enabled", mutate: (c) => { c.vision.laneRead.enabled = false; } },
+  // #377 S3-B 공유 수비 라인 + 오픈플레이 레스트디펜스. 12개 전부 3시드에서 해시가 움직이는 것을
+  // **등록 전에** 확인했다. `movement.lineDiscipline` 은 0.38.0 까지 **선언만 있고 소비자가 0**
+  // 이었고(0/0.5/1.0 이 3시드 해시까지 동일) 이 레지스트리에도 없어서 그 사실이 아무 데서도
+  // 부정되지 않았다 — 이 웨이브가 소비처를 만들고 여기 등록한다.
+  { path: "movement.lineDiscipline", mutate: (c) => { c.movement.lineDiscipline = 1; } },
+  { path: "movement.defLine.enabled", mutate: (c) => { c.movement.defLine.enabled = false; } },
+  { path: "movement.defLine.memberProgressMax", mutate: (c) => { c.movement.defLine.memberProgressMax = 0.5; } },
+  { path: "movement.defLine.minMembers", mutate: (c) => { c.movement.defLine.minMembers = 4; } },
+  { path: "movement.defLine.roleOffsetKeep", mutate: (c) => { c.movement.defLine.roleOffsetKeep = 1; } },
+  { path: "movement.defLine.blockLineRangeM", mutate: (c) => { c.movement.defLine.blockLineRangeM = 15; } },
+  { path: "movement.defLine.heightRangeX", mutate: (c) => { c.movement.defLine.heightRangeX = 0.1; } },
+  { path: "movement.defLine.refMode", mutate: (c) => { c.movement.defLine.refMode = "planLine"; } },
+  // `bandMode` 는 **밴드의 어느 쪽이 무는가**다. `"holdBack"`(앞으로 튀어나간 선수만 되돌림)은
+  // 응집을 거의 못 만든다(위치 산포 p90 23.77 → 20.75, 비단조) — 라인을 만드는 일의 대부분은
+  // **뒤처진 선수를 밀어 올리는 쪽**이 한다는 실측이고, 그래서 이 노브는 아블레이션 자산이다.
+  { path: "movement.defLine.bandMode", mutate: (c) => { c.movement.defLine.bandMode = "holdBack"; } },
+  { path: "movement.restDefence.enabled", mutate: (c) => { c.movement.restDefence.enabled = false; } },
+  { path: "movement.restDefence.countMin", mutate: (c) => { c.movement.restDefence.countMin = 5; } },
+  { path: "movement.restDefence.countMax", mutate: (c) => { c.movement.restDefence.countMax = 1; } },
+  { path: "movement.restDefence.lineCapProgress", mutate: (c) => { c.movement.restDefence.lineCapProgress = 1; } },
+  { path: "vision.laneRead.readBase", mutate: (c) => { c.vision.laneRead.readBase = 0; } },
+  { path: "vision.laneRead.readAttrSwing", mutate: (c) => { c.vision.laneRead.readAttrSwing = 1.2; } },
+  { path: "vision.laneRead.readPeriodTicks", mutate: (c) => { c.vision.laneRead.readPeriodTicks = 25; } },
+  { path: "vision.laneRead.pull", mutate: (c) => { c.vision.laneRead.pull = 0.9; } },
+  { path: "vision.laneRead.maxStepM", mutate: (c) => { c.vision.laneRead.maxStepM = 0.2; } },
+  { path: "vision.laneRead.reachM", mutate: (c) => { c.vision.laneRead.reachM = 3; } },
+  { path: "vision.laneRead.laneCostWeight", mutate: (c) => { c.vision.laneRead.laneCostWeight = 0; } },
+  { path: "vision.laneRead.minThreatM", mutate: (c) => { c.vision.laneRead.minThreatM = 30; } },
+  { path: "vision.laneRead.coveredM", mutate: (c) => { c.vision.laneRead.coveredM = 8; } },
+  // #377 S3-A 압박 유닛. 19개 전부 3시드에서 해시가 움직이는 것을 **등록 전에** 확인했다.
+  //
+  // ⚠️ **셋이 서로 같은 해시를 낸다** — `minThreatM=40` · `reachM=2` · `coveredM=12` 가 전부
+  // `3cf6ccd0 2cf000d5 ac5beb8c` 다. 결함이 아니라 **같은 기제를 서로 다른 문에서
+  // 끄고 있다는 증거**였다(다섯 다 커버 생성 게이트 → 극단에서 "커버 0" 한 상태로 수렴).
+  // 그리고 그 상태는 `enabled=false`(`69489f63 …`)와 **달랐다** — 커버가 없어도 목표 오염 제거는
+  // 살아 있기 때문이다. 즉 그 표가 "커버"와 "오염 제거"가 **분리 가능한 두 효과**임을 같이 보여
+  // 줬다. (지금은 지원 역할이 생겨 수렴 지점이 갈라진다.)
+  // (등급성 — 중간값에서도 레버인가 — 은 `press-unit.test.ts` 의 용량–반응 사다리가 따로 본다.
+  //  레지스트리의 질문은 "값을 바꾸면 경기가 달라지는가" 하나다.)
+  { path: "press.unit.enabled", mutate: (c) => { c.press.unit.enabled = false; } },
+  { path: "press.unit.wideWeight", mutate: (c) => { c.press.unit.wideWeight = 2; } },
+  { path: "press.unit.dangerNearM", mutate: (c) => { c.press.unit.dangerNearM = 70; } },
+  { path: "press.unit.dangerFarM", mutate: (c) => { c.press.unit.dangerFarM = 26; } },
+  { path: "press.unit.countNear", mutate: (c) => { c.press.unit.countNear = 6; } },
+  { path: "press.unit.countFar", mutate: (c) => { c.press.unit.countFar = 4; } },
+  { path: "press.unit.rangeM", mutate: (c) => { c.press.unit.rangeM = 60; } },
+  { path: "press.unit.intensityCountGain", mutate: (c) => { c.press.unit.intensityCountGain = 3; } },
+  { path: "press.unit.intensityRangeGain", mutate: (c) => { c.press.unit.intensityRangeGain = 3; } },
+  { path: "press.unit.coverLanePull", mutate: (c) => { c.press.unit.coverLanePull = 0; } },
+  { path: "press.unit.coverLaneReachM", mutate: (c) => { c.press.unit.coverLaneReachM = 40; } },
+  { path: "press.unit.dangerRefM", mutate: (c) => { c.press.unit.dangerRefM = 0; } },
+  { path: "press.unit.minThreatM", mutate: (c) => { c.press.unit.minThreatM = 40; } },
+  { path: "press.unit.reachM", mutate: (c) => { c.press.unit.reachM = 2; } },
+  { path: "press.unit.coveredM", mutate: (c) => { c.press.unit.coveredM = 12; } },
+  { path: "press.unit.laneCostWeight", mutate: (c) => { c.press.unit.laneCostWeight = 5; } },
+  { path: "press.unit.supportGapM", mutate: (c) => { c.press.unit.supportGapM = 25; } },
+  { path: "press.unit.supportSpreadM", mutate: (c) => { c.press.unit.supportSpreadM = 20; } },
+  { path: "press.unit.supportSlotPull", mutate: (c) => { c.press.unit.supportSlotPull = 0; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {
@@ -143,6 +240,112 @@ describe("#338 조건부 LIVE — 1대1 계열(#316 빈도 미달이라 상황�
     // 통째로 LIVE 로 올리고 이 주석을 지워라.
     expect(hashes((c) => { c.contest.oneOnOneXgMult = 1.01; })).toEqual(BASE);
   }, 120_000);
+});
+
+/**
+ * **조건부 LIVE** — #377 S3-B 레스트디펜스의 가담도·성향 매핑 3종.
+ *
+ * 셋 다 출하 픽스처에서 **비트 동일**이다. 이유는 노브가 죽어서가 아니라 **픽스처 값이 정확히
+ * 중립점**이기 때문이다:
+ *  - `commitTempoWeight` 는 `(tempo − 0.5)` 에 곱해지는데 픽스처 tempo 가 **정확히 0.5** 다 → 0 곱.
+ *  - `commitLineWeight` 는 `(defensiveLineHeight − 0.5) = 0.05` 라 기여가 미세하고, 인원이
+ *    `Math.round` 로 정수화되므로 반올림 경계를 못 넘는다(둘 다 3명).
+ *  - `playerOverrideWeight` 는 **순위를 뒤집을 때만** 발화하는데, 픽스처의 CB 는 이미 전진 성향이
+ *    낮아 가중치를 키우면 "남는다"가 **더 확실해질 뿐** 순서가 안 바뀐다.
+ *
+ * 그래서 **조건을 만들어 놓고** 레버성을 확인한다(1대1 계열과 같은 처방). 이건 게임 언어로도
+ * 의미가 있다 — 마지막 것은 *"이 센터백은 올라가라"* 라는 프롬프트가 잔류 선정을 실제로 뒤집는가다.
+ */
+describe("#377 S3-B 조건부 LIVE — 레스트디펜스 가담도·성향 매핑(픽스처 값이 중립점이라 조건을 만든다)", () => {
+  const withTeam = (mut: (t: TacticalInput["team"]) => TacticalInput["team"]) => (t: TacticalInput): TacticalInput => ({
+    ...t,
+    team: mut(t.team),
+  });
+  const lineHi = withTeam((t) => ({ ...t, defensiveLineHeight: 0.9 }));
+  const tempoHi = withTeam((t) => ({ ...t, tempo: 0.9 }));
+  /** 센터백(슬롯 2·3)에게 높은 전진 성향 = "이 CB 는 올라가라". */
+  const cbForward = (t: TacticalInput): TacticalInput => ({
+    ...t,
+    players: t.players.map((p, i) =>
+      i === 2 || i === 3 ? { ...p, behavior: { ...p.behavior, forwardRunFreq: 0.95 } } : p,
+    ),
+  });
+
+  it("commitLineWeight 는 레버다 — 라인 지시가 중립이 아니면 잔류 인원이 달라진다", () => {
+    expect(hashesWith((c) => { c.movement.restDefence.commitLineWeight = 3; }, lineHi)).not.toEqual(
+      hashesWith(() => {}, lineHi),
+    );
+  }, 120_000);
+
+  it("commitTempoWeight 는 레버다 — 템포가 정확히 0.5 가 아니면 발화한다", () => {
+    expect(hashesWith((c) => { c.movement.restDefence.commitTempoWeight = 3; }, tempoHi)).not.toEqual(
+      hashesWith(() => {}, tempoHi),
+    );
+  }, 120_000);
+
+  it("playerOverrideWeight 는 레버다 — 성향이 슬롯 순서를 뒤집을 수 있을 때 발화한다", () => {
+    expect(hashesWith((c) => { c.movement.restDefence.playerOverrideWeight = 3; }, cbForward)).not.toEqual(
+      hashesWith(() => {}, cbForward),
+    );
+  }, 120_000);
+
+  it("⚠️ 출하 픽스처에서는 셋 다 비트 동일이다 — 죽은 것이 아니라 **중립점**이라는 기록", () => {
+    // 이 단언이 깨지면(달라지면) 픽스처 슬라이더 값이 중립점을 벗어났다는 뜻이다 → 그때 위
+    // LIVE 로 올리고 이 블록을 지워라.
+    for (const mut of [
+      (c: EngineConfig) => { c.movement.restDefence.commitLineWeight = 3; },
+      (c: EngineConfig) => { c.movement.restDefence.commitTempoWeight = 3; },
+      (c: EngineConfig) => { c.movement.restDefence.playerOverrideWeight = 3; },
+    ]) {
+      expect(hashes(mut)).toEqual(BASE);
+    }
+  }, 180_000);
+});
+
+/**
+ * **조건부 LIVE** — #377 S3-C 오프사이드 트랩(+ 심판 보정 2종).
+ *
+ * 발화 조건이 **유저 전술 입력**(`team.offsideTrap`)이다. 출하 픽스처는 그 지시가 `false` 이므로
+ * (`fixtures.ts` — 하이리스크 전술을 전 벤치마크에 기본 탑재하지 않는다) 이 노브들은 출하값에서
+ * **비트 동일**이다. 그건 죽은 것이 아니라 **지시가 없는 것**이고, 둘은 처방이 정반대라 갈라서
+ * 박제한다(1대1 계열 · 레스트디펜스 매핑과 같은 처방).
+ *
+ * ⚠️ **등록 전에 확인했다** — 여섯 노브 전부 트랩을 켠 3시드에서 최종 해시가 움직인다.
+ * (`wallClearM` 재발 방지: "참조가 있다"는 통과 기준이 아니고 **"값을 바꾸면 경기가 달라진다"**
+ *  가 기준이다 — CLAUDE.md §2.5.)
+ */
+describe("#377 S3-C 조건부 LIVE — 오프사이드 트랩(지시가 있어야 발화한다)", () => {
+  const trapOn = (t: TacticalInput): TacticalInput => ({ ...t, team: { ...t.team, offsideTrap: true } });
+  const BASE_TRAP = hashesWith(() => {}, trapOn);
+
+  const knobs: Knob[] = [
+    { path: "movement.defLine.trap.enabled", mutate: (c) => { c.movement.defLine.trap.enabled = false; } },
+    { path: "movement.defLine.trap.stepUpM", mutate: (c) => { c.movement.defLine.trap.stepUpM = 8; } },
+    { path: "movement.defLine.trap.minBallDistM", mutate: (c) => { c.movement.defLine.trap.minBallDistM = 0; } },
+    { path: "movement.defLine.trap.shoulderBandM", mutate: (c) => { c.movement.defLine.trap.shoulderBandM = 20; } },
+    { path: "movement.defLine.trap.minShoulder", mutate: (c) => { c.movement.defLine.trap.minShoulder = 0; } },
+    { path: "movement.defLine.trap.releaseSmooth", mutate: (c) => { c.movement.defLine.trap.releaseSmooth = 0.1; } },
+    // 심판 게이트 2종. `trapBiasM` 은 출하 **0**(#377 S3-C — 기하가 물리로 움직이므로 이중 계상
+    // 방지) 이지만 **지우지 않는다**: `trap.enabled=false` + 2.5 = 0.39.0 재현 팔이다.
+    { path: "rules.offside.trapBiasM", mutate: (c) => { c.rules.offside.trapBiasM = 6; } },
+    { path: "rules.offside.trapCallMult", mutate: (c) => { c.rules.offside.trapCallMult = 4; } },
+  ];
+
+  for (const k of knobs) {
+    it(`조건부 LIVE: ${k.path} 는 트랩 지시가 있으면 레버다`, () => {
+      expect(hashesWith(k.mutate, trapOn), `${k.path} 가 트랩 ON 에서도 무효다 — 선언만 남은 노브(#338)`).not.toEqual(BASE_TRAP);
+    }, 120_000);
+  }
+
+  it("⚠️ 출하 픽스처(트랩 off)에서는 여섯 개 전부 비트 동일이다 — 죽은 것이 아니라 **지시가 없는 것**", () => {
+    // 이 단언이 깨지면(달라지면) 트랩 기제가 지시 없이도 발화하기 시작했다는 뜻이다 →
+    // 그때는 위 LIVE 로 올리고 이 블록을 지워라. (`trapCallMult` 는 지시 없이도 읽히지 않는다 —
+    // `checkOffside` 의 `trap ? … : …` 분기 안이다.)
+    for (const k of knobs) {
+      if (k.path === "rules.offside.trapBiasM" || k.path === "rules.offside.trapCallMult") continue;
+      expect(hashes(k.mutate), `${k.path}`).toEqual(BASE);
+    }
+  }, 300_000);
 });
 
 describe("#338 롤백 경로에서는 죽은 노브가 살아난다 (지우면 안 되는 이유)", () => {

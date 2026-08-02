@@ -20,9 +20,16 @@ import { createPitch, slotToReal, clampToPitch, centerSpot } from "./pitch";
 import { toFixed, fromFixed, stepToward, fdist } from "./fixedmath";
 import { glueBallToOwner, advanceBall, kickBall } from "./ball";
 import { loftHangTicks } from "./kick";
-import { decideBallOwner, decideOffBall, assignPresser, speedStep } from "./decision";
+import { decideBallOwner, decideOffBall, assignPressUnit, pressRoleOf, speedStep } from "./decision";
 import { decideBallOwnerChain } from "./chain";
-import { applyRunOrders, clearIntents, computeTeamPlan, gcIntents } from "./teamplan";
+import {
+  applyDefensiveLine,
+  applyRestDefence,
+  applyRunOrders,
+  clearIntents,
+  computeTeamPlan,
+  gcIntents,
+} from "./teamplan";
 import {
   tryIntercept,
   tryTackle,
@@ -237,6 +244,34 @@ function roleSlotLegal(plan: SetPiecePlan | null, zone: DeadBallZone | null, p: 
   return deadBallClearance(zone, slot.x, slot.y) >= 0;
 }
 
+/**
+ * **예고 패스 게시**(#369) — 캐리어가 아직 안 찼을 때(hold/dribble) 사슬이 계산해 둔 최상위
+ * 패스 후보를 팀 게시판에 올린다. 읽기는 `decideOffBall` 이 **다음 틱**에 한다(틱 순서상
+ * 오프더볼 결정이 볼 소유자 결정보다 앞이라, 같은 틱에 읽으면 순서 의존이 생긴다).
+ *
+ * 그래서 이 게시가 곧 **"찰 것 같다"의 1틱 선행**이다 — 캐리어가 두 틱 이상 들고 있으면
+ * 리시버는 공이 떠나기 전에 이미 움직이고 있다.
+ */
+function publishPassPlan(
+  state: SimState,
+  config: EngineConfig,
+  owner: SimPlayer,
+  forecast: { receiverId: string; toX: number; toY: number; speedFx: number } | undefined,
+): void {
+  const pp = config.movement.passPlan;
+  if (!pp.enabled || !forecast) return;
+  state.intents.push({
+    side: owner.side,
+    fromId: owner.id,
+    kind: "pass_plan",
+    xFx: forecast.toX,
+    yFx: forecast.toY,
+    tick: state.tick,
+    expiresTick: state.tick + pp.expireTicks,
+    forId: forecast.receiverId,
+  });
+}
+
 /** 한 틱 진행(perceive→decide→act→resolve→fatigue). 이벤트는 carry.events 로 push. */
 function stepTick(carry: Carry): void {
   const { state, rng, config, pitch } = carry;
@@ -438,9 +473,13 @@ function stepTick(carry: Carry): void {
   // #314 B: 만료된 의도·런 오더 폐기(틱당 1회, 배열 순서 보존).
   gcIntents(state);
 
-  // --- 압박 담당 지정(수비팀만) ---
+  // --- 압박 유닛 배정(수비팀만) ---
+  // #377 S3-A: 구버전은 여기서 **1명**(`assignPresser`)만 뽑았다 — 커버라는 개념이 코드에 자리가
+  // 없어서 "한 명만 붙고 나머지는 구경"(#350 hero 실관전)이 구조적으로 강제됐다. 이제 위험도에
+  // 따라 유닛(압박 담당 + 커버)을 배정한다. 자리·규율은 그대로다(decide 루프 앞, 틱당 1회, 순수).
   const defSide: TeamSide = state.possession === "home" ? "away" : "home";
-  const presser = assignPresser(state, defSide, config, pitch);
+  const unit = assignPressUnit(state, defSide, config, pitch);
+  const presser = unit.presser;
 
   // --- decide: 오프더볼/수비 목표 ---
   const ownerId = state.ball.owner;
@@ -458,9 +497,9 @@ function stepTick(carry: Carry): void {
     if (p.id === ownerId && p.side === ownerSide) continue;
     // 볼을 안 가진 선수는 드리블 체인 리셋(활성 캐리어만 연속 누적).
     p.dribbleStreak = 0;
-    const pa = p.side === defSide ? presser : null;
+    const pu = p.side === defSide ? unit : null;
     if (liveSp) p.targetFx = deadBallShapeTarget(state, pitch, config, p, liveSp, liveSpPlan);
-    else decideOffBall(state, p, config, pitch, pa);
+    else decideOffBall(state, p, config, pitch, pu);
     if (!liveZone || !deadBallExcluded(p, liveZone)) continue;
     const inside = deadBallClearance(liveZone, p.posFx.x, p.posFx.y) < 0;
     const targetInside = deadBallClearance(liveZone, p.targetFx.x, p.targetFx.y) < 0;
@@ -707,11 +746,13 @@ function stepTick(carry: Carry): void {
         case "dribble": {
           owner.dribbleStreak = Math.min(config.variety.dribbleChainMaxTicks, owner.dribbleStreak + 1);
           owner.targetFx = { x: action.toX, y: action.toY };
+          publishPassPlan(state, config, owner, action.forecast);
           break;
         }
         case "hold": {
           owner.dribbleStreak = 0;
           owner.targetFx = { x: owner.posFx.x, y: owner.posFx.y };
+          publishPassPlan(state, config, owner, action.forecast);
           break;
         }
       }
@@ -728,6 +769,23 @@ function stepTick(carry: Carry): void {
   // 팀 전체를 보는 계산이라 선수 루프 밖·틱당 1회 — `computeTeamPlan` 과 같은 규율(§5-1).
   // 아직 안 찬 세트피스(liveSp) 구간은 규칙기반 배치가 소유하므로 건너뛴다(#174/#185 재발 방지).
   if (!liveSp) applyRunOrders(state, config, pitch);
+
+  // --- 수비 형태(#377 S3-B): 공유 수비 라인 + 오픈플레이 레스트디펜스 ---
+  // ⚠️ **여기(decide 루프 뒤)인 것이 설계의 핵심**이다. 이 둘은 또 하나의 스프링이 아니라
+  // **제약**이라 `decideOffBall` 이 만든 목표를 입력으로 받아야 한다 — 마크·압박·roam·런이 정한
+  // 자리를 지우지 않고 "너무 나간 사람만 되돌린다". 앞에서 돌면 뒤따르는 항들이 전부 덮어써
+  // 조용한 no-op 이 되고 tsc 는 통과한다(M3-A ⓐ 의 교훈).
+  // 런 오더 **뒤**인 것도 의도다: "뒤에 남아라"가 "뛰어들어가라"를 이긴다.
+  // 세트피스(liveSp)·정지 구간은 규칙기반 배치가 소유하므로 건너뛴다(#176/#185/#307 재발 방지).
+  if (!liveSp) {
+    // 압박 유닛이 데려간 선수는 라인에서 뺀다 — 압박 담당의 그 틱 목표는 **공**이고 커버·지원은
+    // 이미 맡은 자리가 있다(S3-A). 라인으로 되당기면 그 웨이브를 그대로 되돌린다.
+    const unitBusy = new Set<SimPlayer>();
+    if (unit.presser) unitBusy.add(unit.presser);
+    for (const m of unit.members) unitBusy.add(m.player);
+    applyDefensiveLine(state, config, pitch, defSide, unitBusy);
+    applyRestDefence(state, config, pitch, state.possession);
+  }
 
   // --- act: 선수 이동 ---
   for (const p of state.players) {
@@ -809,7 +867,11 @@ function stepTick(carry: Carry): void {
     // #231: 소유자는 (id, side) 쌍, 압박 담당은 **객체 동일성**(같은 id 의 반대 팀 선수 오인 방지).
     // ⚠️ 캡처 시점(curOwner*) 값을 쓴다 — 여기서 state 를 다시 읽으면 틱 중간의 소유권 이전이
     //    피로에 반영돼 동작이 바뀐다(실측: 골든 7건 깨짐).
-    const active = (p.id === curOwnerId && p.side === curOwnerSide) || p === presser;
+    // #377 S3-A: **커버도 압박이다.** `active` 를 압박 담당 1명으로만 두면 유닛이 늘어난 만큼
+    // 다인 압박이 **공짜**가 된다(#362 AC 가 명시적으로 경고한 항목) — 인원을 늘리는 웨이브가
+    // 피로를 같이 안 고치면 "3명이 몰아쳐도 아무도 안 지친다"가 성립한다.
+    const active =
+      (p.id === curOwnerId && p.side === curOwnerSide) || p === presser || pressRoleOf(unit, p) != null;
     if (!config.fatigue.recoveryEnabled) {
       // 롤백 경로 = 0.31.0 이전 모델(단조 증가). 한 줄도 안 바꾼다.
       const exertion = p.isGK ? 0.3 : active ? 1.6 : 1.0;

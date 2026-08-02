@@ -57,6 +57,20 @@ export function defendGoal(pitch: Pitch, side: TeamSide): { x: number; y: number
   };
 }
 
+/**
+ * 공격 방향 정규화 진행도(0:자기 골라인, 1:상대 골라인).
+ *
+ * ⚠️ **단일 출처**(#377 M3-C). 같은 두 줄이 `decision.ts:attackProgress` 와
+ * `contest.ts:attackProgressX` 에 **각각** 있었고, 스루패스 생성기가 세 번째 사본을 만들 뻔했다.
+ * 오프사이드 라인 판정(`checkOffside`)과 스루패스 조준점 판정이 **같은 자**를 써야 한다 —
+ * 다르면 "라인 뒤로 찔렀는데 오프사이드로 잡히는" 그림이 두 정의의 오차만큼 생긴다.
+ * (산술은 세 사본이 동일해 이 통합은 bit-identical 이다.)
+ */
+export function attackProgressX(pitch: Pitch, side: TeamSide, x: number): number {
+  const frac = x / pitch.wFx;
+  return side === "home" ? frac : 1 - frac;
+}
+
 /** 상대 골대까지 거리 fixed. */
 export function distToAttackGoal(pitch: Pitch, side: TeamSide, x: number, y: number): number {
   const g = attackGoal(pitch, side);

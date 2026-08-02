@@ -6,8 +6,11 @@ import type { Rng } from "./rng";
 import type { PassOption } from "./perception";
 import type { ActionCandidate, GeneratorId, ChainProbe } from "./action";
 import { fromFixed, fclamp, fdist, fdistSq, isqrt, toFixed } from "./fixedmath";
-import { attackGoal, clampToPitch, distToAttackGoal } from "./pitch";
+import { attackGoal, attackProgressX, clampToPitch, distToAttackGoal } from "./pitch";
 import { passOptions, pressureCount } from "./perception";
+import { throughPassOptions } from "./through";
+// 오프사이드 라인은 **심판의 자**를 그대로 쓴다(#377 M3-C 독립검증 m5 — 손복사본 금지).
+import { offsideLineProg } from "./contest";
 import { shotPowerFx } from "./kick";
 
 import {
@@ -19,10 +22,12 @@ import {
   planClearance,
   planPass,
   passDelivery,
+  receiverArrival,
   planShot,
   shotPressureXg,
   xgAtPoint,
   type Action,
+  type PassForecast,
 } from "./decision";
 import {
   EV_SCALE,
@@ -30,6 +35,7 @@ import {
   GENERATORS,
   candidateKey,
   chainProbe,
+  passAimObserver,
   toActionCandidate,
 } from "./action";
 
@@ -415,6 +421,19 @@ const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void>
       distFx: 0,
     });
   },
+  /**
+   * **스루패스(공간 타깃)** — #377 M3-C. 후보 지점은 **전진 중인 동료의 앞 공간**(상대 최종
+   * 수비 라인 뒤)이고, EV 는 **기존 식 그대로**다: `p × V(도달 상태) + (1−p) × V(턴오버)`.
+   * 달라지는 것은 `p` 뿐이다 — 그 안에 **경주**(`PassOption.raceFrac`)가 들어 있다.
+   *
+   * 생성 조건·기하는 전부 `through.ts` 가 소유한다(여기서 재구현하지 않는다). 후보를 감싸는
+   * 어댑터는 발밑 패스와 **같은 `toActionCandidate`** 이고, 실행도 같은 `planPass` 다.
+   */
+  through: (g, out) => {
+    for (const o of throughPassOptions(g.ctx.state, g.holder, g.ctx.config, g.ctx.pitch)) {
+      out.push(toActionCandidate(o, "through", "through", candidateSpeedFx(g, o)));
+    }
+  },
 };
 
 /**
@@ -459,9 +478,14 @@ const RESTART_GENERATORS: readonly GeneratorId[] = GENERATORS.filter((g) => g !=
  * 재귀 안쪽에서 도는 생성기 부분집합. 원본과 동일하게 **패스와 슛만** 본다 — 안쪽의 "제자리"는
  * 이미 `base`(상태 가치 자체)가 대표하고, 안쪽 드리블까지 펴면 분기폭이 곱으로 늘어난다.
  * `GENERATORS` 와 **같은 상대 순서**를 유지한다.
+ *
+ * #377 M3-C: `through` 도 여기서 뺀다. 두 가지 이유이고 **둘 다 정확성 쪽**이다:
+ *  ⓐ 안쪽 노드의 홀더는 **가상 도착 지점의 사람**인데 `throughPassOptions` 는 러너의 실제 좌표·
+ *    목표·수비 배치를 읽는다 — 가상 미래를 현재 좌표로 읽는 것이라 #316 이 이미 기각한 함정이다.
+ *  ⓑ 비용: 후보당 O(동료×상대) 라 안쪽(결정당 ~280 노드)에서 돌리면 루트 대비 두 자릿수로 늘어난다.
  */
 const INNER_GENERATORS: readonly GeneratorId[] = GENERATORS.filter(
-  (g) => g !== "carry" && g !== "hold" && g !== "clear",
+  (g) => g !== "carry" && g !== "hold" && g !== "clear" && g !== "through",
 );
 
 function generate(
@@ -522,10 +546,18 @@ function cheapScore(ctx: SearchCtx, cand: ActionCandidate, side: SimPlayer["side
   return Math.round((w.advEv * adv + w.threatEv * toFrac(xg)) / FRAC_SCALE);
 }
 
-/** 후보의 도착 상태(가상) — 패스면 리시버, 캐리면 이동 후 지점, 홀드/슛이면 제자리. */
+/**
+ * 후보의 도착 상태(가상) — 패스면 **공이 가는 지점**을 리시버의 속성으로, 캐리면 이동 후 지점,
+ * 홀드/슛이면 제자리.
+ *
+ * ⚠️ #377 M3-C 에서 좌표의 출처가 `receiver.posFx` → `cand.toXFx/toYFx` 로 바뀌었다. 발밑 패스는
+ * 그 둘이 **같은 값**이라(`toActionCandidate`) bit-identical 이고, 공간 타깃은 그래야 **라인 뒤
+ * 지점의 가치**가 EV 에 들어간다. 구 형태였다면 스루패스의 도착 가치가 러너의 **현재 자리**로
+ * 계산돼 "공간으로 찌르는 이득"이 EV 에 한 번도 안 나타난다(= 후보를 만들어도 안 뽑힌다).
+ */
 function arrivalHypo(cand: ActionCandidate, here: Hypo): Hypo {
   const r = cand.receiver;
-  if (r) return { side: here.side, xFx: r.posFx.x, yFx: r.posFx.y, shooting: r.attrs.shooting, fatigue: r.fatigue };
+  if (r) return { side: here.side, xFx: cand.toXFx, yFx: cand.toYFx, shooting: r.attrs.shooting, fatigue: r.fatigue };
   return { ...here, xFx: cand.toXFx, yFx: cand.toYFx };
 }
 
@@ -560,8 +592,21 @@ function candidateEv(
       const opt = cand.opt as PassOption;
       const pFrac = toFrac(computePassProb(ctx.state, holder, opt, ctx.config, ctx.pitch));
       const succ = arrivalHypo(cand, here);
+      /**
+       * #377 M3-C: 공간 타깃은 **재귀하지 않는다** — 도착 상태 가치로 종결한다.
+       * `bestEvAt` 는 홀더의 **실제 좌표**에서 다음 수를 펴는데, 스루패스의 도착 상태는 러너가
+       * 아직 가지 않은 지점이다. 두 대안을 실측으로 갈랐다(8시드):
+       *  ⓐ 리시버의 **현재 좌표**로 재귀(= `!spaceTarget` 게이트 제거): through 채택 **0**.
+       *    "라인 뒤에서 받았다"가 아니라 "지금 자리에서 받았다"를 계산해 EV 가 붕괴한다 —
+       *    생성기를 만들어 놓고 **한 번도 안 뽑히는** 그 부류의 사고가 정확히 이렇게 난다.
+       *  ⓑ 리시버를 **조준점으로 옮긴 가상 홀더**로 재귀: 최종 해시가 **bit-identical**.
+       *    안쪽 후보가 도착 상태 가치(`base`)를 못 넘기 때문이다. 즉 얻는 것이 0 이고
+       *    비용(가상 홀더 객체 + 재귀 노드)만 는다.
+       * → 둘 다 아닌 **종결**을 쓴다. ⓐ 는 틀렸고 ⓑ 는 같은 값을 더 비싸게 낸다.
+       */
+      const spaceTarget = opt.aimFx !== undefined;
       const vSucc =
-        recurse && depth > 1 && cand.receiver
+        recurse && depth > 1 && cand.receiver && !spaceTarget
           ? bestEvAt(ctx, cand.receiver, depth - 1)
           : evaluateStateEv(ctx, succ);
       let tov = turnoverEv(ctx, succ);
@@ -876,6 +921,34 @@ export function decideBallOwnerChain(
     case "pass": {
       const opt = cand.opt as PassOption;
       const plan = planPass(state, owner, opt, config, rng, pitch);
+      // 진단 관측(옵트인·쓰기 전용) — **계획 조준점**을 그대로 흘려보낸다. 로그에는 이 값이
+      // 없어서(pass 이벤트는 도착 틱·리시버 id) 리드 거리를 되추론하면 "어떻게 끝났나"를 재게 된다.
+      {
+        const obs = passAimObserver();
+        if (obs) {
+          const line = offsideLineProg(state, owner.side, pitch);
+          // ⚠️ **조준점은 `cand.toXFx` 가 아니라 `receiverArrival`** 이다. 발밑 패스의 후보 좌표는
+          // 정의상 리시버의 **현재 위치**(`toActionCandidate`)라 리드 거리를 그걸로 재면 **항상 0**
+          // 이 나온다(초판 실측: 전 패스 p50 0.00m). 실제로 공이 향하는 지점은 실행 시
+          // `leadAim`(리시버의 미래 위치)이고, 공간 타깃이면 `aimFx` 다 — 두 팔을 **같은 자**로
+          // 재려면 `planPass` 가 쓰는 그 함수를 그대로 불러야 한다(Rng 소비 0, 순수).
+          const at = receiverArrival(state, owner, opt, config, pitch);
+          obs({
+            tick: state.tick,
+            side: owner.side,
+            gen: cand.gen,
+            form: cand.form,
+            passerId: owner.id,
+            receiverId: opt.receiver.id,
+            leadFx: fdist(opt.receiver.posFx.x, opt.receiver.posFx.y, at.x, at.y),
+            distFx: fdist(owner.posFx.x, owner.posFx.y, at.x, at.y),
+            aimXFx: at.x,
+            aimYFx: at.y,
+            behindLine: line !== null && attackProgressX(pitch, owner.side, at.x) > line,
+            raceFrac: opt.raceFrac ?? null,
+          });
+        }
+      }
       return {
         kind: "pass",
         receiver: opt.receiver,
@@ -889,13 +962,49 @@ export function decideBallOwnerChain(
       };
     }
     case "carry":
-      return { kind: "dribble", toX: cand.toXFx, toY: cand.toYFx };
+      return { kind: "dribble", toX: cand.toXFx, toY: cand.toYFx, forecast: forecastOf(ctx, owner, scored, config) };
     case "clear": {
       // 실행은 롤백 경로와 **같은 함수** — 두 코어의 걷어내기 기하가 갈리지 않는다.
       const cp = planClearance(owner, config, rng, pitch);
       return { kind: "clearance", toX: cp.toX, toY: cp.toY, speedFx: cp.speedFx, lofted: cp.lofted };
     }
     default:
-      return { kind: "hold" };
+      return { kind: "hold", forecast: forecastOf(ctx, owner, scored, config) };
   }
+}
+
+/**
+ * **예고 패스**(#369) — 캐리어가 아직 안 찼을 때, 사슬이 **이미 계산한** 후보 중 최상위 패스를
+ * 그대로 돌려준다.
+ *
+ * ## 왜 새 예측기를 안 만드나
+ * hero 요구는 *"받는 쪽이 패스하는 사람의 생각을 예측"* 인데, 캐리어의 사슬은 이 틱에 이미
+ * 그 생각을 **정수 EV 로 다 계산해 뒀다**. 리시버가 같은 탐색을 다시 돌리면 비용이 22배가 되고
+ * 결과도 같다. **계산을 다시 하지 말고 게시한다** — 그게 이 설계의 전부다.
+ *
+ * ## 결정론
+ * `scored` 는 이미 전순서로 정렬돼 있다(EV → `candidateKey`). 여기서 **읽기만** 하므로
+ * RNG 도, 상태 변경도 없다. 예고를 만드는 것 자체는 동작을 바꾸지 않고,
+ * 바꾸는 것은 `match.ts` 가 그걸 게시하고 동료가 읽는 단계다.
+ */
+function forecastOf(
+  ctx: SearchCtx,
+  owner: SimPlayer,
+  scored: { cand: ActionCandidate; ev: number }[],
+  config: EngineConfig,
+): PassForecast | undefined {
+  if (!config.movement.passPlan.enabled) return undefined;
+  for (const s of scored) {
+    if (s.cand.kind !== "pass" || !s.cand.receiver) continue;
+    const opt = s.cand.opt as PassOption;
+    // 실행 시 조준(`planPass`)은 Rng 를 소비하므로 여기서 부르면 안 된다 — 예고는 **후보의
+    // 계획 좌표**(오차 이전)를 쓴다. 어차피 리시버가 "어디로 올 것 같다"만 알면 되는 값이다.
+    return {
+      receiverId: opt.receiver.id,
+      toX: s.cand.toXFx,
+      toY: s.cand.toYFx,
+      speedFx: s.cand.ballSpeedFx,
+    };
+  }
+  return undefined;
 }

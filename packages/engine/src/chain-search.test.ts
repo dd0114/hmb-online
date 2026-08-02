@@ -54,7 +54,8 @@ describe("#279 S2 — 후보 표현형(action.ts)", () => {
   it("GENERATORS 순서가 계약이다 (새 생성기는 **뒤에** 추가한다)", () => {
     // 앞에 끼우면 정렬 tiebreak(candidateKey 의 첫 키 = gen)와 노드 예산 소진 순서가 통째로 밀린다.
     // #314 A 가 `clear`(걷어내기)를 그 규율대로 맨 뒤에 붙였다 — 앞 5개의 상대 순서는 불변.
-    expect([...GENERATORS]).toEqual(["shoot", "direct", "long", "carry", "hold", "clear"]);
+    // #314 A 가 `clear` 를, #377 M3-C 가 `through`(공간 타깃 스루패스)를 규율대로 **뒤에** 붙였다.
+    expect([...GENERATORS]).toEqual(["shoot", "direct", "long", "carry", "hold", "clear", "through"]);
     expect([...GENERATORS].slice(0, 5)).toEqual(["shoot", "direct", "long", "carry", "hold"]);
   });
 

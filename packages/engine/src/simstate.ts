@@ -254,6 +254,26 @@ export type DeferredRestart =
   // 박스 파울 → 공을 접촉 지점에 두는 "파울 비트" 정지 후 페널티 스팟 배치+런업(2단계, 코너 패턴).
   | { kind: "penalty"; side: TeamSide };
 
+/**
+ * 세트피스 종류의 **단일 출처**(#377 M3-A 2R). 직렬화 스키마(`packages/server` 의 `SetPieceSchema`)가
+ * 이 배열을 그대로 쓰므로, 종류를 늘리면 스키마가 **자동으로 따라온다**.
+ *
+ * ⚠️ `INTENT_KINDS`(아래) 와 **같은 이유**로 만든다 — 그쪽은 손복사본이 `pass_plan` 을 놓쳐
+ * "하프 경계에 그 상태가 실린 시드에서만" 재개가 400 으로 죽었고, 그게 **운**이라 두 웨이브의
+ * 전체 게이트를 green 으로 통과했다. `kind` 는 그 함정을 **똑같이** 갖고 있던 마지막 손복사본이다
+ * (진단이 아니라 구조 문제이므로 "지금은 안 깨지니 둔다"가 답이 아니다).
+ */
+export const SET_PIECE_KINDS = [
+  "corner",
+  "throw_in",
+  "goal_kick",
+  "kickoff",
+  "goal",
+  "free_kick",
+  "penalty",
+  "shot_out",
+] as const;
+
 /** 진행 중인 세트피스 컨텍스트(정지 동안 재배치에 사용). */
 export interface SetPiece {
   /**
@@ -266,7 +286,7 @@ export interface SetPiece {
    *    (키퍼 위치 또는 포스트 옆)에 머물고(코너 깃발 직행 금지), 정지가 끝나면 restart
    *    (코너킥/골킥) 세트피스가 시작된다.
    */
-  kind: "corner" | "throw_in" | "goal_kick" | "kickoff" | "goal" | "free_kick" | "penalty" | "shot_out";
+  kind: (typeof SET_PIECE_KINDS)[number];
   /** 재시작(수혜) 팀. goal 이면 킥오프할 실점팀. shot_out 이면 정지 동안 공을 지킨 수비팀. */
   side: TeamSide;
   /** 재시작 지점(fixed). */
@@ -345,10 +365,27 @@ export type TeamPhase =
   | "transition_lose";
 
 /** 의도 게시(#279 S5). S1 에서는 생성되지 않는다. */
+/**
+ * 의도 종류의 **단일 출처**(#369). 직렬화 스키마(`packages/server` 의 `IntentSchema`)가 이 배열을
+ * 그대로 쓰므로, 종류를 늘리면 스키마가 **자동으로 따라온다**.
+ *
+ * ⚠️ 왜 상수인가: `pass_plan` 을 추가했을 때 서버 스키마의 enum 이 손으로 베낀 사본이라 따라오지
+ * 않았고, **하프 경계 상태에 그 의도가 실린 시드에서만** `resumeState` 가 400 으로 거부됐다
+ * (= 진행 중 매치 재개 실패, #241 계열). 더 나쁜 것은 그게 **운(어느 시드가 경계에 뭘 실었나)**
+ * 에 달려 있어 두 웨이브를 green 으로 통과했다는 점이다. 사본을 없애는 것이 유일한 구조적 해법이다.
+ * (해시 쪽은 `hash.ts` 의 전수 `Record<Intent["kind"], number>` 가 이미 컴파일로 막고 있다.)
+ */
+export const INTENT_KINDS = ["pass_to", "run_to", "cross_from", "pass_plan"] as const;
+
 export interface Intent {
   side: TeamSide;
   fromId: string;
-  kind: "pass_to" | "run_to" | "cross_from";
+  /**
+   * `pass_plan`(#369) = **아직 안 찬 예고**다. 캐리어가 hold/carry 를 골랐지만 사슬이 계산해 둔
+   * 최상위 패스 후보를 팀에 미리 알리는 것 — hero 의 *"찰 것 같다 → 미리 움직인다"*.
+   * `pass_to` 는 **찬 뒤**(#314)라 성격이 다르다: 그건 실행 기록이고 이건 예고다.
+   */
+  kind: (typeof INTENT_KINDS)[number];
   /** 목표 지점(고정소수). */
   xFx: number;
   yFx: number;

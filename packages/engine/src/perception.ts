@@ -18,6 +18,26 @@ export interface PassOption {
   forwardGain: number;
   /** 롱패스(인식 반경 밖 원거리 동료 대상 = 의도적 롱볼/전환/스루볼) 여부. (E2) */
   long: boolean;
+
+  /**
+   * **공간 조준점**(#377 M3-C 스루패스, fixed). 있으면 공을 리시버 **발밑이 아니라 이 지점**으로
+   * 찬다 — `planPass` 의 `leadAim`(리시버의 미래 위치)을 이 좌표가 대신한다.
+   *
+   * ## 왜 `PassOption` 에 붙나 (새 행동을 안 만드는 이유)
+   * 스루패스는 **패스다.** 실행(`planPass`)·도착(`resolveArrival`)·이벤트(`pass`)·오프사이드가
+   * 전부 같은 함수를 타야 두 코어와 스탯이 갈리지 않는다(#314 `clearance` 가 별도 타입이 되면서
+   * `MatchEventType` 을 건드려 #326 을 만든 전례). 그래서 바뀌는 것은 **조준점 하나**다.
+   *
+   * ⚠️ `passOptions`(아래)는 이 필드를 **절대 채우지 않는다** — 채우는 곳은 스루패스 생성기
+   * (`through.ts`)뿐이고, 그래서 weighted 롤백 경로는 이 필드를 한 번도 보지 않는다(bit-identical).
+   */
+  aimFx?: { x: number; y: number };
+
+  /**
+   * **경주 계수**(0..1, #377 M3-C). 스루패스의 성공확률에 곱한다 — "러너가 먼저 닿나, 수비가
+   * 먼저 닿나"를 확률로 옮기는 항이다. `undefined` 면 곱하지 않는다(= 기존 패스 무영향).
+   */
+  raceFrac?: number;
 }
 
 /** 두 선수 거리(fixed). */
@@ -78,7 +98,38 @@ export function pressureCount(
   return pressureCountAt(state, player.side, player.posFx.x, player.posFx.y, config, rangeM);
 }
 
-/** 점(px,py)-선분(ax,ay)-(bx,by) 사이 최단거리 fixed(정수 산술). */
+/**
+ * 점(px,py) 에서 선분(ax,ay)-(bx,by) 위의 **가장 가까운 점과 그 거리**(fixed, 정수 산술).
+ *
+ * ⚠️ 단일 출처(#377 M3-B): 레인을 재는 쪽(`laneDangerOn`)과 레인을 **선점하러 가는 쪽**
+ * (`decision.ts:readLane`)이 같은 기하를 써야 한다. 수비가 자기 사본으로 투영점을 잡으면
+ * "계약이 재는 레인"과 "수비가 서는 레인"이 조용히 어긋난다(#377 M3-C 가 오프사이드 라인에서
+ * 겪은 것과 같은 부류). 산술·반올림이 그대로라 이 추출은 bit-identical 이다.
+ */
+export function laneClosest(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): { x: number; y: number; dist: number } {
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+  const ab2 = abx * abx + aby * aby;
+  if (ab2 === 0) return { x: ax, y: ay, dist: fdist(px, py, ax, ay) };
+  // t = clamp( (ap·ab)/ab2 , 0..1 ), 정수화 위해 분자/분모로.
+  let tNum = apx * abx + apy * aby;
+  if (tNum < 0) tNum = 0;
+  if (tNum > ab2) tNum = ab2;
+  const cx = ax + Math.round((abx * tNum) / ab2);
+  const cy = ay + Math.round((aby * tNum) / ab2);
+  return { x: cx, y: cy, dist: fdist(px, py, cx, cy) };
+}
+
+/** 점-선분 최단거리 fixed. `laneClosest` 의 거리 성분(같은 산술). */
 function pointSegDist(
   px: number,
   py: number,
@@ -87,19 +138,32 @@ function pointSegDist(
   bx: number,
   by: number,
 ): number {
-  const abx = bx - ax;
-  const aby = by - ay;
-  const apx = px - ax;
-  const apy = py - ay;
-  const ab2 = abx * abx + aby * aby;
-  if (ab2 === 0) return fdist(px, py, ax, ay);
-  // t = clamp( (ap·ab)/ab2 , 0..1 ), 정수화 위해 분자/분모로.
-  let tNum = apx * abx + apy * aby;
-  if (tNum < 0) tNum = 0;
-  if (tNum > ab2) tNum = ab2;
-  const cx = ax + Math.round((abx * tNum) / ab2);
-  const cy = ay + Math.round((aby * tNum) / ab2);
-  return fdist(px, py, cx, cy);
+  return laneClosest(px, py, ax, ay, bx, by).dist;
+}
+
+/**
+ * **패스 레인 위험** — (ax,ay)→(bx,by) 선분에 가장 가까운 `side` 팀의 상대까지 거리(fixed).
+ * 상대가 하나도 없으면 `Infinity`(기존 관용구 유지).
+ *
+ * ⚠️ 단일 출처(#377 M3-C): `passOptions`(발밑 패스)와 `through.ts`(공간 조준점)가 **같은 자**로
+ * 레인을 잰다. 스루패스가 자기 사본을 들고 있으면 "레인이 위험한데 EV 는 안전하다고 본다"가
+ * 조용히 성립한다. 반복 순서·산술이 그대로라 이 추출은 bit-identical 이다.
+ */
+export function laneDangerOn(
+  state: SimState,
+  side: SimPlayer["side"],
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
+  let danger = Infinity;
+  for (const opp of state.players) {
+    if (opp.side === side) continue;
+    const sd = pointSegDist(opp.posFx.x, opp.posFx.y, ax, ay, bx, by);
+    if (sd < danger) danger = sd;
+  }
+  return danger;
 }
 
 /**
@@ -134,19 +198,14 @@ export function passOptions(
     if (isLong && d < longMinFx) continue;
 
     // 레인 위험: 상대들 중 패스선에 가장 가까운 거리.
-    let laneDanger = Infinity;
-    for (const opp of state.players) {
-      if (opp.side === owner.side) continue;
-      const sd = pointSegDist(
-        opp.posFx.x,
-        opp.posFx.y,
-        owner.posFx.x,
-        owner.posFx.y,
-        mate.posFx.x,
-        mate.posFx.y,
-      );
-      if (sd < laneDanger) laneDanger = sd;
-    }
+    const laneDanger = laneDangerOn(
+      state,
+      owner.side,
+      owner.posFx.x,
+      owner.posFx.y,
+      mate.posFx.x,
+      mate.posFx.y,
+    );
 
     options.push({ receiver: mate, dist: d, laneDanger, forwardGain, long: !inShort });
   }

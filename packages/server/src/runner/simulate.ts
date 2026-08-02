@@ -5,10 +5,13 @@ import {
   defaultEngineConfig,
   createRng,
   buildById,
+  INTENT_KINDS,
+  SET_PIECE_KINDS,
   type EngineConfig,
   type CarryState,
   type SimState,
   type SimPlayer,
+  type DeferredRestart,
 } from "@hmb/engine";
 import {
   TeamSide,
@@ -118,19 +121,31 @@ const BallSchema = z.object({
   flight: BallFlightSchema.nullable(),
 });
 
-const DeferredRestartSchema = z.union([
-  z.object({ kind: z.literal("corner"), side: TeamSide, nearY: z.number() }),
-  z.object({ kind: z.literal("goal_kick"), side: TeamSide }),
-  /**
-   * #279 S1 드리프트 수리: 2단계 페널티(박스 파울 → "파울 비트" 정지 → 스팟 배치)의 변형이
-   * 엔진에는 있는데 여기 없었다. 하프 **마지막 틱**에 박스 파울이 나면 union 파싱이 실패해
-   * `deserializeCarry` 가 throw → 후반 재개가 **400** 으로 죽는다(드문 만큼 늦게 터진다).
-   */
-  z.object({ kind: z.literal("penalty"), side: TeamSide }),
-]);
+/**
+ * #279 S1 드리프트 수리: 2단계 페널티(박스 파울 → "파울 비트" 정지 → 스팟 배치)의 변형이
+ * 엔진에는 있는데 여기 없었다. 하프 **마지막 틱**에 박스 파울이 나면 union 파싱이 실패해
+ * `deserializeCarry` 가 throw → 후반 재개가 **400** 으로 죽는다(드문 만큼 늦게 터진다).
+ *
+ * ⚠️ #377 M3-A 2R: 변형마다 **모양이 달라** `z.enum` 한 줄로 못 줄인다. 대신 **전수 `Record`**
+ * 로 적어 컴파일 가드를 만든다 — 엔진 `DeferredRestart` union 에 종류가 늘면 이 Record 의 키가
+ * 모자라 **여기서 컴파일이 깨진다**(= 스키마를 같이 늘리라는 신호). `hash.ts` 의 `INTENT_CODE`
+ * 와 같은 방식이다.
+ */
+const DEFERRED_RESTART_SHAPES: Record<DeferredRestart["kind"], z.ZodTypeAny> = {
+  corner: z.object({ kind: z.literal("corner"), side: TeamSide, nearY: z.number() }),
+  goal_kick: z.object({ kind: z.literal("goal_kick"), side: TeamSide }),
+  penalty: z.object({ kind: z.literal("penalty"), side: TeamSide }),
+};
+
+const DeferredRestartSchema = z.union(
+  Object.values(DEFERRED_RESTART_SHAPES) as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]],
+);
 
 const SetPieceSchema = z.object({
-  kind: z.enum(["corner", "throw_in", "goal_kick", "kickoff", "goal", "free_kick", "penalty", "shot_out"]),
+  // ⚠️ 엔진의 `SET_PIECE_KINDS` 를 **그대로** 쓴다(#377 M3-A 2R). 이전에는 8개 리터럴을 손으로
+  // 베낀 사본이라, 종류가 늘면 `IntentSchema` 가 `pass_plan` 을 놓쳤던 것과 **같은 방식**으로
+  // 조용히 뒤처져 "하프 경계에 그 세트피스가 걸린 시드에서만" 재개가 400 으로 죽는다.
+  kind: z.enum(SET_PIECE_KINDS),
   side: TeamSide,
   x: z.number(),
   y: z.number(),
@@ -157,7 +172,10 @@ const TeamPhaseSchema = z.enum([
 const IntentSchema = z.object({
   side: z.enum(["home", "away"]),
   fromId: z.string(),
-  kind: z.enum(["pass_to", "run_to", "cross_from"]),
+  // ⚠️ 엔진의 `INTENT_KINDS` 를 **그대로** 쓴다 — 손으로 베낀 사본이던 시절, 엔진이 `pass_plan`
+  // 을 추가했는데 이 enum 이 따라오지 않아 **하프 경계 상태에 그 의도가 실린 시드에서만**
+  // `resumeState` 가 거부됐다(진행 중 매치 재개 실패, #241 계열). 사본을 없애는 것이 해법이다.
+  kind: z.enum(INTENT_KINDS),
   xFx: z.number(),
   yFx: z.number(),
   tick: z.number(),

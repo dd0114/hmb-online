@@ -1,4 +1,4 @@
-import type { SimState, TeamPhase, Intent } from "./simstate";
+import type { SimState, TeamPhase, Intent, SetPiece, DeferredRestart } from "./simstate";
 
 /** 문자열 열거를 해시에 넣기 위한 고정 코드(값은 바뀌면 안 된다 — 골든이 움직인다). */
 const PHASE_CODE: Record<TeamPhase, number> = {
@@ -9,9 +9,25 @@ const PHASE_CODE: Record<TeamPhase, number> = {
   transition_win: 5,
   transition_lose: 6,
 };
-const INTENT_CODE: Record<Intent["kind"], number> = { pass_to: 1, run_to: 2, cross_from: 3 };
+// ⚠️ 이 Record 는 **전수(exhaustive)** 다 — 의도 종류를 늘리면 여기서 컴파일이 깨진다.
+// 그게 의도다: 해시에 안 들어간 상태는 desync 를 조용히 만든다.
+const INTENT_CODE: Record<Intent["kind"], number> = { pass_to: 1, run_to: 2, cross_from: 3, pass_plan: 4 };
 /** 공 비행 종류 코드(#306). 0 = 비행 없음. */
 const FLIGHT_KIND_CODE: Record<"pass" | "shot" | "loose", number> = { pass: 1, shot: 2, loose: 3 };
+// ⚠️ 위와 같은 전수 Record(#377 M3-A 2R). 세트피스 종류를 늘리면 여기서 컴파일이 깨진다 =
+// "해시에 넣을 코드를 정하라"는 신호다. 0 은 `setPiece === null` 센티넬이라 쓰지 않는다.
+const SET_PIECE_CODE: Record<SetPiece["kind"], number> = {
+  corner: 1,
+  throw_in: 2,
+  goal_kick: 3,
+  kickoff: 4,
+  goal: 5,
+  free_kick: 6,
+  penalty: 7,
+  shot_out: 8,
+};
+/** 지연 재시작 종류 코드. 0 = `restart` 없음 센티넬. */
+const DEFERRED_RESTART_CODE: Record<DeferredRestart["kind"], number> = { corner: 1, goal_kick: 2, penalty: 3 };
 
 /**
  * hash — 틱 상태 해시(FNV-1a, 32bit 정수).
@@ -21,6 +37,17 @@ const FLIGHT_KIND_CODE: Record<"pass" | "shot" | "loose", number> = { pass: 1, s
 
 const FNV_OFFSET = 2166136261;
 const FNV_PRIME = 16777619;
+
+/** 짧은 식별자 문자열(`H9`·`A11`)을 32bit 정수로 — 해시에만 쓴다(결정론: 순수 함수). */
+function strCode(v: string | undefined): number {
+  if (!v) return 0;
+  let x = 2166136261;
+  for (let i = 0; i < v.length; i++) {
+    x ^= v.charCodeAt(i) & 0xff;
+    x = Math.imul(x, 16777619);
+  }
+  return x >>> 0;
+}
 
 function mix(h: number, v: number): number {
   // 32bit 정수 v 를 4바이트로 흡수.
@@ -101,6 +128,43 @@ export function hashState(state: SimState): string {
     h = mix(h, it.xFx | 0);
     h = mix(h, it.yFx | 0);
     h = mix(h, it.expiresTick | 0);
+    // ⚠️ `side`·`forId` 도 섞는다(#369, 독립검증 m3). 예고 패스가 들어오면서 **누구에게 붙은
+    // 의도인가가 동작을 결정하는 상태**가 됐다 — `forId` 가 다르면 다음 틱에 움직이는 선수가
+    // 달라진다. 해시에 없으면 그 값만 어긋난 상태가 **그 틱은 통과하고 다음 틱부터 갈라진다**
+    // (바로 아래 `runOrder` 주석이 같은 이유를 적어 뒀다). 문자열은 정수 스트림으로 흡수한다.
+    h = mix(h, it.side === "home" ? 1 : 2);
+    h = mix(h, strCode(it.forId));
+  }
+
+  // ⚠️ **데드볼 상태**(#377 M3-A 2R). `stoppage`·`setPiece` 는 재개로 관통하는데 **해시에 한 번도
+  // 들어간 적이 없었다** — 하프 경계가 정지 중이면(스로인·프리킥·골 세리머니) 그 상태가 유실돼도
+  // 그 틱은 통과하고 **다음 틱부터** 갈라진다. `possessionSince`/`runOrder`/`hangTicks` 가 각각
+  // 밟은 것과 **정확히 같은 함정**이고(#154 계열), 그것들을 하나씩 메워 온 이 파일의 규율은
+  // "재개로 관통하는 상태는 전부 흡수한다"이다. 데드볼 가족을 여기서 닫는다.
+  // (일부만 넣으면 더 나쁘다 — 커버된 줄 알고 `x/y/restart` 유실을 못 잡는다. 그래서 전부다.)
+  // ⚠️ **여기가 닫는 것은 데드볼 가족뿐이다** — 이 해시는 재개 상태의 전수 커버가 아니다.
+  // 미포함이 확인된 것(독립검증 3R 변이체 스캔 실측, 전부 조작해도 해시가 안 갈린다):
+  //   · `teams`(TeamInput)·`seedHash` — **경기 내내 상수**인 입력(재개 요청이 다시 실어 준다)
+  //   · `ball.owner`·`ball.ownerSide`·`player.markTarget`·`dribbleStreak`·`seen`·`sentOff`·`yellow`
+  // 이것들이 위험하지 않은 이유는 두 겹이다: ①전부 **서버 스키마에 있어** 왕복 등가성 계약
+  // (`resume-roundtrip.test.ts` 의 전체 deep-equal)이 직접 본다 ②매 틱 소비되는 값이라 유실되면
+  // **다음 틱 동작이 갈려** 해시 체인이 결국 잡는다(해시가 놓치는 것은 "그 틱 하나"뿐이다).
+  // 그래도 **커버리지를 과대평가하지 말 것** — 초판 주석은 "안 닫힌 가족이 하나 남는다"라고 적어
+  // 다음 사람이 나머지를 닫힌 것으로 오해할 수 있었다(3R minor n3R-1).
+  h = mix(h, state.stoppage | 0);
+  const sp = state.setPiece;
+  h = mix(h, sp ? SET_PIECE_CODE[sp.kind] : 0);
+  if (sp) {
+    h = mix(h, sp.side === "home" ? 1 : 2);
+    h = mix(h, sp.x | 0);
+    h = mix(h, sp.y | 0);
+    const r = sp.restart;
+    h = mix(h, r ? DEFERRED_RESTART_CODE[r.kind] : 0);
+    if (r) {
+      h = mix(h, r.side === "home" ? 1 : 2);
+      // nearY 는 corner 변형에만 있다(다른 변형은 0 센티넬).
+      h = mix(h, r.kind === "corner" ? r.nearY | 0 : 0);
+    }
   }
 
   // id 정렬 사본으로 순서 독립.
