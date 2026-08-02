@@ -64,7 +64,7 @@ class GrowthTuningLiveTest extends ApiTestBase {
     void loweringTheGoldGrowthCeilingActuallyLowersTheEffectiveStat() {
         String userId = onboard("gt_ceiling");
         grant(userId, "P010");
-        setStatLv(userId, "P010", "positioning", 999);   // 천장까지 밀어붙인다
+        setStatAdd(userId, "P010", "positioning", 999);   // 천장까지 밀어붙인다
 
         // 오버레이 없음: 천장 = bands.GOLD.growCeil(84) + star.ceilBonus[1](0)
         assertThat(positioningOf(userId, "P010")).isEqualTo(84.0);
@@ -83,7 +83,7 @@ class GrowthTuningLiveTest extends ApiTestBase {
     void starCeilingBonusIsAddedOnTopOfTheGradeCeiling() {
         String userId = onboard("gt_starbonus");
         grant(userId, "P010");
-        setStatLv(userId, "P010", "positioning", 999);
+        setStatAdd(userId, "P010", "positioning", 999);
         setStar(userId, "P010", 3);
 
         // star.ceilBonus[3] = 2 → 84 + 2
@@ -102,7 +102,7 @@ class GrowthTuningLiveTest extends ApiTestBase {
         String userId = onboard("gt_onestar");
         grant(userId, "P010");
         assertThat(starOf(userId, "P010")).isEqualTo(1);
-        setStatLv(userId, "P010", "shooting", 999);
+        setStatAdd(userId, "P010", "shooting", 999);
 
         assertThat(effectiveOf(userId, "P010", "shooting"))
                 .as("1★ 이 등급 천장(84)에 못 닿으면 승급 게이트가 살아 있는 것이다")
@@ -115,7 +115,7 @@ class GrowthTuningLiveTest extends ApiTestBase {
         String userId = onboard("gt_hardcap");
         grant(userId, "P016");   // LEGEND, base shooting 86
         setStar(userId, "P016", 4);
-        setStatLv(userId, "P016", "shooting", 999);
+        setStatAdd(userId, "P016", "shooting", 999);
         insertPotential(userId, "P016", """
                 [{"slot":1,"tier":"UNIQUE","type":"STAT_PCT","stat":"shooting","value":50}]
                 """);
@@ -141,7 +141,7 @@ class GrowthTuningLiveTest extends ApiTestBase {
     void publishScopedKnobsDoNotMoveAnyRuntimeNumber() {
         String userId = onboard("gt_publish_scope");
         grant(userId, "P010");
-        setStatLv(userId, "P010", "positioning", 5);
+        setStatAdd(userId, "P010", "positioning", 5);
         Map<String, Object> before = growthService.cardEffective(userId, "P010");
 
         java.util.Map<String, Object> overrides = new java.util.LinkedHashMap<>();
@@ -290,10 +290,15 @@ class GrowthTuningLiveTest extends ApiTestBase {
                 .params(userId, playerId).query(Integer.class).single();
     }
 
-    private void setStatLv(String userId, String playerId, String stat, int lv) {
+    /**
+     * 상승분 주입. #405 W2b 로 저장 형태가 {@code stat_levels_json}(정수 lv)에서
+     * {@code stat_add_json}(소수 누적)으로 바뀌었다 — 검사의 주제(천장·하드캡·승급 보너스가 실제로
+     * 소비되는가)는 그대로이고 주입 지점만 옮긴다.
+     */
+    private void setStatAdd(String userId, String playerId, String stat, double add) {
         try {
-            String json = MAPPER.writeValueAsString(Map.of(stat, Map.of("lv", lv, "xp", 0)));
-            jdbcClient.sql("UPDATE user_players SET stat_levels_json = ? WHERE user_id=? AND player_id=?")
+            String json = MAPPER.writeValueAsString(Map.of(stat, add));
+            jdbcClient.sql("UPDATE user_players SET stat_add_json = ? WHERE user_id=? AND player_id=?")
                     .params(json, userId, playerId).update();
         } catch (Exception e) {
             throw new IllegalStateException(e);

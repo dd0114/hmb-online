@@ -74,7 +74,8 @@ public record GrowthTuning(
     /** 3지선다 후보 추첨(§2.5). */
     public record Candidate(int count, double wBase, double wPosition, double wEvents, double wBehavior,
                             double wResult, Map<String, Map<String, Double>> behaviorStatMap,
-                            Map<String, Map<String, Double>> eventStatMap, boolean excludeAtCeiling) {
+                            Map<String, Map<String, Double>> eventStatMap,
+                            Map<String, Double> resultTilt, boolean excludeAtCeiling) {
     }
 
     /** 승급(§2.6) — 잠재 해금은 그대로, 천장은 <b>보너스</b>로만 관여한다(게이트 아님). */
@@ -184,6 +185,25 @@ public record GrowthTuning(
     }
 
     /**
+     * 승리 가중(§2.5 {@code wResult × (WIN ? resultTilt_i : 0)}). ⚠️ 설계가 <b>이 벡터의 값 표를
+     * 남기지 않았다</b> — {@code perfEventWeight} 와 같은 자리이므로 <b>여기서 정하는 첫 기본값</b>이고,
+     * 무배포 조정 대상이라 실플레이 후 언제든 바뀐다.
+     *
+     * <p>왜 정신력 쪽인가: 승패는 <b>역할과 무관한</b> 축이다. 이긴 경기라고 슈팅·태클이 더 나와야 할
+     * 이유는 없고(그건 이미 {@code eventScore}·{@code behaviorScore} 가 본다), 승리가 말해 주는 건
+     * "이 선수가 이기는 경기를 버텼다"에 가깝다. 그래서 역할 축과 겹치지 않는 mental/positioning/stamina
+     * 로만 기울인다 — 겹치게 두면 {@code wResult} 가 사실상 {@code wPosition} 의 배수가 되어
+     * <b>노브 하나가 다른 노브의 그림자</b>가 된다(운영자가 조정할 수 없는 상태).
+     */
+    private static Map<String, Double> defaultResultTilt() {
+        Map<String, Double> m = new LinkedHashMap<>();
+        m.put("mental", 1.0);
+        m.put("positioning", 0.4);
+        m.put("stamina", 0.2);
+        return Map.copyOf(m);
+    }
+
+    /**
      * 포지션 baseline 폴백 — 발행물({@code economy.growth.baselineByPosition})이 이기고, 없는 포지션만
      * 이 값이 메운다. 발행물에 실린 뒤에도 지우지 않는다(last-known-good 층).
      */
@@ -232,7 +252,7 @@ public record GrowthTuning(
                     Map.of("BRONZE", 1.3, "SILVER", 1.2, "GOLD", 1.0, "DIA", 0.85, "LEGEND", 0.7),
                     0.5, defaultPerfEventWeight(), 100, 0.5, 40),
             new Candidate(3, 1.0, 2.5, 2.0, 2.0, 0.5,
-                    defaultBehaviorStatMap(), defaultEventStatMap(), true),
+                    defaultBehaviorStatMap(), defaultEventStatMap(), defaultResultTilt(), true),
             defaultPositionBaseline(),
             new Star(Map.of(1, 0, 2, 1, 3, 2, 4, 3), Map.of(2, 2, 3, 3, 4, 5)),
             new Legacy(39));
@@ -360,6 +380,9 @@ public record GrowthTuning(
             for (String stat : STATS) {
                 put(m, "candidate.eventStatMap." + ev + "." + stat, KnobType.DOUBLE, -10, 10);
             }
+        }
+        for (String stat : STATS) {
+            put(m, "candidate.resultTilt." + stat, KnobType.DOUBLE, -10, 10);
         }
         put(m, "candidate.excludeAtCeiling", KnobType.BOOL, 0, 1);
         // 29 포지션 baseline

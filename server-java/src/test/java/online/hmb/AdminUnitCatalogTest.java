@@ -554,22 +554,36 @@ class AdminUnitCatalogTest extends ApiTestBase {
     }
 
     /** 성 4★ + 전 스탯 레벨 투자 카드 — 등급 하향 손실이 실제로 계산되는 조건(§1.6-1). */
+    /**
+     * 투자된 카드(성 + 성장분). ⚠️ #405 W2b 로 <b>상승분의 자리가 바뀌었다</b> —
+     * {@code stat_levels_json}(구 모델의 정수 lv, 이제 유효스탯에 관여하지 않는다)이 아니라
+     * {@code stat_add_json}(3지선다로 누적되는 소수)이 유효스탯을 올린다. 둘 다 심어 둔다:
+     * 이 테스트의 주제는 "투자한 카드일수록 등급 하향이 크게 깎는다"이고, 그 투자가 어느 컬럼에
+     * 사는지는 주제가 아니다.
+     */
     private void giveInvestedCard(String userId, String playerId, int star, int lv) {
-        StringBuilder json = new StringBuilder("{");
+        StringBuilder levels = new StringBuilder("{");
+        StringBuilder add = new StringBuilder("{");
         List<String> keys = List.of("technical", "mental", "physical", "passing", "shooting",
                 "tackling", "pace", "stamina", "positioning");
         for (int i = 0; i < keys.size(); i++) {
-            json.append(i == 0 ? "" : ",").append('"').append(keys.get(i))
+            levels.append(i == 0 ? "" : ",").append('"').append(keys.get(i))
                     .append("\":{\"lv\":").append(lv).append(",\"xp\":0}");
+            add.append(i == 0 ? "" : ",").append('"').append(keys.get(i))
+                    .append("\":").append((double) lv);
         }
-        json.append('}');
+        levels.append('}');
+        add.append('}');
         jdbcClient.sql("""
-                        INSERT INTO user_players(user_id, player_id, count, acquired_at, star, stat_levels_json)
-                        VALUES (?, ?, 1, ?, ?, ?)
+                        INSERT INTO user_players(user_id, player_id, count, acquired_at, star,
+                                                 stat_levels_json, stat_add_json)
+                        VALUES (?, ?, 1, ?, ?, ?, ?)
                         ON CONFLICT(user_id, player_id) DO UPDATE SET star = excluded.star,
-                                                                      stat_levels_json = excluded.stat_levels_json
+                                                                      stat_levels_json = excluded.stat_levels_json,
+                                                                      stat_add_json = excluded.stat_add_json
                         """)
-                .params(userId, playerId, java.time.Instant.now().toString(), star, json.toString())
+                .params(userId, playerId, java.time.Instant.now().toString(), star,
+                        levels.toString(), add.toString())
                 .update();
     }
 

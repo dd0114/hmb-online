@@ -794,7 +794,64 @@ admin API 로 조정 불가한 것이 0개.** 하드코딩 잔존 = FAIL.
 - ⚠️ **W2a 는 계수와 인프라까지다.** 정산·3지선다·소급 백필·보상 API 는 W2b 이고, **V38 은
   `user_players` 를 건드리지 않는다**(스키마 변경은 백업·백필과 한 세트여야 한다 — 계약 =
   `FlywayMigrationTest.v38DoesNotTouchUserPlayers`). 그래서 상승분 `add_i` 는 아직 기존
-  `stat_levels_json` 의 정수 `lv` 를 그대로 읽는 **어댑터**다.
+  `stat_levels_json` 의 정수 `lv` 를 그대로 읽는 **어댑터**였다(W2b 가 교체했다 — 아래 절).
+
+## 성장 로직 본체 — 카드 XP · 3지선다 · 이관 · 보상 봉투 (#405 W2b, V39)
+
+- **정산이 스탯을 올리지 않는다.** `GrowthService.settleMatch` 는 이제 **카드 XP** 만 적립하고
+  (`matchXp = xp.matchBase × minutesMult × resultMult × gradeMult × (1 + perfBonus)`), 레벨업마다
+  `growth_level_choices` 1행을 남긴다. 스탯이 오르는 유일한 경로는 **유저의 선택**
+  (`POST /api/growth/choices/{id}`)이다. 구 모델(스탯별 XP 자동 레벨업)은 통째로 은퇴했다 —
+  계약 = `GrowthCardLevelSettlementTest.settlementAloneRaisesNoStat`(두 모델이 동시에 도는
+  "스탯 두 배" 사고를 이 한 줄이 막는다).
+- **상승분의 자리가 `stat_levels_json` → `stat_add_json`(소수) 으로 옮겼다.** 구 컬럼은 **남긴다** —
+  ①소급 이관의 입력 ②롤백 근거. `compute()` 는 이제 `stat_add_json` 만 읽는다(어댑터 은퇴).
+  ⚠️ 테스트에서 "키운 카드"를 만들 땐 `stat_add_json` 에 넣어라. 구 컬럼에 넣으면 **아무 일도
+  일어나지 않는데 테스트는 통과할 수 있다**(실제로 `AdminUnitCatalogTest` 의 등급 하향 영향
+  계산이 그렇게 0 이 됐다).
+- **3지선다는 프롬프트를 키워드 매칭하지 않는다.** AI 가 이미 변환해 `match_halves.*_input_json`
+  에 박제한 `PlayerBehavior` 9 파라미터를 쓴다(`GrowthCandidates.behaviorScore`). 유저 사이드는
+  `userIsHome(match)` 로 고르고, 이벤트는 `event.team` 필터가 필수다(봇과 `playerId` 가 겹친다).
+  - **결정론**: `seed = sha256(matchId + userId + playerId + ":" + level)`. `Math.random`·시계 금지.
+    같은 키는 몇 번을 재계산해도 같은 3개 + 같은 gain 이다 — 그 성질이 없으면 "박제"가 성립하지 않는다.
+  - **후보와 gain 을 둘 다 박제**한다. 미루는 동안 다른 픽으로 스탯이 오르면 gain 이 줄어
+    "화면엔 +2.9 였는데 +2.1 이 들어왔다"가 된다.
+  - ⚠️ **설계 §2.5 공식과의 편차 하나**: `eventScore`·`behaviorScore` 를 **최대성분 1 로 정규화**한다.
+    원값은 스케일이 다르다(이벤트는 횟수라 패스 300회면 항이 60, behavior 는 0..1) — 정규화하지
+    않으면 `wBase`·`wPosition` 이 통째로 삼켜져 **모든 카드가 패스만 뽑는다**. 순위는 보존되고
+    절대량만 떨어진다.
+  - **천장에 닿은 스탯은 후보에서 제외**(`candidate.excludeAtCeiling`). 전부 천장이면 **선택권을
+    만들지 않는다** — 빈 대기 뱃지는 유저가 지울 수 없다.
+- **선택은 CAS 로 한 번만**(`WHERE chosen_stat IS NULL`) + `UNIQUE(user_id, player_id, level)`.
+  `MatchLockService.assertNotLocked(userId, "growth.choice")` 를 반드시 건다 — `growth.star`·
+  `growth.dice` 와 **같은 이유**(`buildSelectData` 가 시뮬 시점에 유효스탯을 읽어 전·후반 사이
+  강화가 후반만 올린다).
+- **소급 이관**(`GrowthLegacyBackfillService`, `@Order(50)` = 카탈로그 임포트 0 뒤 · 부트스트랩 100 앞):
+  기존 **스탯 레벨 합 = 선택권 수**(상한 `legacy.levelGrantCap`·만렙−1), `card_level = 1 + 지급수`.
+  후보 가중은 매치 컨텍스트가 없으므로 `positionBaseline` + 그 카드의 스탯 XP 분포다.
+  - ⚠️ **하향분 Δ 를 `stat_add_json` 으로 되메우지 않는다.** 그건 설계가 이름 붙여 기각한 **안 A**
+    (무손실 백필)이고, Δ 를 채우면 그 카드는 감쇠 곡선 꼭대기에 앉아 앞으로의 gain 이 영원히
+    `gainMin` 이 된다 = **기존 유저만 성장이 멈춘다**. 갚는 수단은 **선택권**이다(1장이 낮은
+    스탯에서 +3 이상 = 구 모델 1레벨 +1 보다 크다). 계약 =
+    `GrowthLegacyBackfillTest.theLegacyBaseSnapshotIsNeverBackfilledIntoStatAdd`.
+  - `growth_legacy_base`(V39 가 채운다)의 쓸모는 **감사·롤백**이다. **Flyway 는 ApplicationRunner
+    보다 먼저 돈다** → 스냅샷은 *직전 부팅이 임포트한* 값이다: 원자 배포면 v2.4(하향 전),
+    v2.5 가 먼저 나갔으면 현재값과 같다(= 설계 §2.7 "배포 원자성" 사고 신호 → **WARN 로그**).
+    두 경우 모두 **지급 수는 같다**.
+  - **멱등은 두 겹**: `meta_kv` 완료 마커 + `UNIQUE(user,player,level)`. 마커만 믿으면 마커 쓰기
+    직전에 죽은 배포가 두 배로 지급한다.
+- **보상 봉투**(`RewardBundleService`, 설계 §2.9)는 매치 전용이 아니라 **공용 계약**이다 —
+  E5 미션·리그·우편이 `source` 만 바꿔 쓴다. `GET /api/matches/{id}/result` 에 **additive**
+  (`rewardBundle`, #368 선례라 openapi 무변경) · `POST /api/rewards/{id}/ack` 는 멱등이고
+  **확인 시각을 덮지 않는다**. ⚠️ 재화는 **코드만** 싣는다(`{"code":"POINT","amount":N}`) —
+  이름·심볼을 서버 응답에 넣으면 표기 변경(#232)이 곧 배포가 된다.
+- ⚠️ **`players` 를 참조하는 표가 둘 늘었다**(`growth_level_choices`·`growth_legacy_base`) →
+  `AdminCatalogService.REFERENCING_TABLES` 에 등록했다. 빠뜨리면 유닛 회수가 깔끔한 409 대신
+  생 FK 위반으로 떨어진다(계약 = `AdminUnitPurgeTest.referencingTablesListMatchesTheSchema`).
+- **새 계수 하나**: `candidate.resultTilt.<stat>`(승리 가중 벡터). 설계가 값 표를 남기지 않아
+  `perfEventWeight` 와 같은 자리의 **첫 기본값**이다(mental 1.0 / positioning 0.4 / stamina 0.2).
+  역할 축(shooting·tackling…)과 겹치지 않게 고른 이유: 겹치면 `wResult` 가 `wPosition` 의
+  그림자가 되어 **운영자가 따로 조정할 수 없는 노브**가 된다.
 
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).

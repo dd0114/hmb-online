@@ -29,7 +29,11 @@ class GrowthHardcodeGuardTest {
     /** 성장 계수가 흐르는 소스 — 계수는 이 파일들에서 {@code GrowthTuning} 으로만 들어와야 한다. */
     private static final List<Path> SCANNED = List.of(
             Path.of("src/main/java/online/hmb/growth/GrowthService.java"),
-            Path.of("src/main/java/online/hmb/growth/GrowthMath.java"));
+            Path.of("src/main/java/online/hmb/growth/GrowthMath.java"),
+            // #405 W2b — 정산·3지선다·소급 이관이 새로 흐르는 경로. 여기에 계수를 심으면
+            // AC-G0 이 그대로 뚫린다(후보 가중치·감쇠는 전부 GrowthTuning 에서 와야 한다).
+            Path.of("src/main/java/online/hmb/growth/GrowthCandidates.java"),
+            Path.of("src/main/java/online/hmb/growth/GrowthLegacyBackfillService.java"));
 
     /**
      * 계수가 아닌 리터럴만. <b>항목마다 근거가 있다</b> — 근거를 못 쓰면 그건 계수다.
@@ -41,10 +45,12 @@ class GrowthHardcodeGuardTest {
      *   <li>{@code 1.5} — economy.potential 부재 시 폴백 레코드의 {@code ceilingMult}(성장 계수 아님)</li>
      *   <li>{@code 100.0 · 10000.0} — 소수 반올림 자릿수, 백분율 변환</li>
      *   <li>{@code 999999} — {@code ceilingAt} 무한 표시용 센티널(화면 값)</li>
+     *   <li>{@code 50} — 소급 백필 러너의 {@code @Order}(카탈로그 임포트 0 &lt; 50 &lt; 부트스트랩 100).
+     *       게임 계수가 아니라 <b>부팅 순서</b>이고, 그 순서 자체가 이 백필의 전제다(설계 §2.7).</li>
      * </ul>
      */
     private static final Set<String> ALLOWED = new LinkedHashSet<>(List.of(
-            "0", "1", "2", "8", "9", "0.0", "1.0", "1.5", "100.0", "10000.0", "999999"));
+            "0", "1", "2", "8", "9", "50", "0.0", "1.0", "1.5", "100.0", "10000.0", "999999"));
 
     private static final Pattern NUMBER = Pattern.compile("(?<![\\w.])(\\d+\\.\\d+|\\d+)(?![\\w.])");
 

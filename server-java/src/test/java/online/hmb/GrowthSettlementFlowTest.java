@@ -58,10 +58,16 @@ class GrowthSettlementFlowTest extends MatchTestBase {
                 .params(matchId, userId).query(Long.class).single();
         assertThat(applied).isEqualTo(13);
 
-        // 선발 P001 stat_levels_json 이 채워짐(V2: 스탯별 XP/레벨).
-        String statLevels = jdbcClient.sql("SELECT stat_levels_json FROM user_players WHERE user_id=? AND player_id='P001'")
-                .param(userId).query(String.class).single();
-        assertThat(statLevels).isNotNull();
+        // #405 W2b: 선발 P001 은 **카드 레벨**이 오른다(구 모델의 stat_levels_json 자동 상승은 은퇴).
+        Integer cardLevel = jdbcClient.sql("SELECT card_level FROM user_players WHERE user_id=? AND player_id='P001'")
+                .param(userId).query(Integer.class).single();
+        assertThat(cardLevel).isGreaterThan(1);
+        // 레벨업은 3지선다 선택권을 남긴다 — 스탯은 유저가 고르기 전까지 오르지 않는다.
+        assertThat(jdbcClient.sql("SELECT COUNT(*) FROM growth_level_choices WHERE user_id=? AND player_id='P001'")
+                .param(userId).query(Long.class).single()).isGreaterThan(0L);
+        assertThat(jdbcClient.sql("SELECT stat_add_json FROM user_players WHERE user_id=? AND player_id='P001'")
+                .param(userId).query(String.class).optional().orElse(null))
+                .as("정산만으로 스탯이 올랐다 — 자동 상승 경로가 살아 있다").isNull();
 
         // 리포트 노출(ResultPage S1).
         ResponseEntity<Map> report = authGet("/api/growth/report/" + matchId, token, Map.class);

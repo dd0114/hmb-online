@@ -109,7 +109,16 @@ class FlywayMigrationTest {
             // #383 라이브 계수 오버레이 원장(V37). append-only — 매치가 config_revision_id 로 가리킨다.
             "engine_config_revisions",
             // #405 성장 계수 오버레이 원장(V38). V37 과 동형 — append-only, seq 정렬이 곧 "현재 값".
-            "growth_config_revisions"
+            "growth_config_revisions",
+            // #405 W2b 성장 로직 본체(V39, 3) —
+            //   growth_level_choices = 레벨업 1회 = 1행. **후보 3개 + gain 을 박제**한다(미뤄서 골라도
+            //     화면에 보였던 숫자가 그대로 들어간다). UNIQUE(user,player,level) 이 멱등의 뿌리다.
+            //   growth_legacy_base   = 하향 전 base 스냅샷. players 는 부팅 임포트가 덮으므로
+            //     이 표가 없으면 "얼마나 깎였나"에 아무도 답할 수 없다(감사·롤백 근거).
+            //   reward_bundles       = 공용 보상 봉투(§2.9). E5 미션·리그·우편이 source 만 바꿔 쓴다.
+            "growth_level_choices",
+            "growth_legacy_base",
+            "reward_bundles"
     );
 
     /**
@@ -191,6 +200,46 @@ class FlywayMigrationTest {
         assertThat(migration.toLowerCase(java.util.Locale.ROOT))
                 .as("V38 은 오버레이 원장만 만든다 — user_players 변경은 W2b(백업·백필과 한 세트)")
                 .doesNotContain("user_players");
+    }
+
+    /**
+     * <b>V39 가 W2a 의 경계를 지킨 채로 그 다음을 한다</b> — {@code user_players} 스키마 변경은
+     * 여기서 처음 일어나고, <b>같은 마이그레이션이 하향 전 base 스냅샷을 남긴다</b>. 둘이 갈라지면
+     * (컬럼만 추가하고 스냅샷은 나중에) 그 사이 부팅의 카탈로그 임포트가 v2.4 원본을 덮어
+     * <b>되돌릴 근거가 영구히 사라진다</b>.
+     */
+    @Test
+    void v39AddsCardGrowthColumnsAndCapturesTheLegacyBaseInTheSameMigration() {
+        assertThat(columnsOf("user_players"))
+                .as("카드 축(레벨·XP)과 소수 상승분이 없으면 신 모델이 저장될 자리가 없다")
+                .contains("card_level", "card_xp", "stat_add_json");
+        assertThat(columnsOf("user_players"))
+                .as("stat_levels_json 은 소급 이관의 입력이자 롤백 근거다 — 드롭 금지")
+                .contains("stat_levels_json");
+
+        String migration = readMigration("V39__growth_choices.sql").replaceAll("--[^\n]*", "");
+        assertThat(migration.toLowerCase(java.util.Locale.ROOT))
+                .as("컬럼만 추가하고 스냅샷을 안 남기면 롤백 근거가 다음 부팅에 사라진다")
+                .contains("insert into growth_legacy_base");
+
+        // 멱등의 뿌리 — 같은 레벨에 선택권이 두 번 생기면 스탯을 공짜로 두 번 준다.
+        List<String> indexes = jdbcClient.sql(
+                        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='growth_level_choices' "
+                                + "AND name NOT LIKE 'sqlite_%'")
+                .query(String.class).list();
+        assertThat(indexes).contains("uq_growth_choice_level");
+
+        List<String> bundleIndexes = jdbcClient.sql(
+                        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='reward_bundles' "
+                                + "AND name NOT LIKE 'sqlite_%'")
+                .query(String.class).list();
+        assertThat(bundleIndexes)
+                .as("같은 출처로 봉투가 둘 생기면 유저가 같은 보상을 두 번 본다")
+                .contains("uq_reward_bundle_source");
+    }
+
+    private List<String> columnsOf(String table) {
+        return jdbcClient.sql("SELECT name FROM pragma_table_info(?)").param(table).query(String.class).list();
     }
 
     private static String readMigration(String name) {

@@ -123,9 +123,13 @@ public class GrowthService {
     private record PlayerBase(String id, String position, String grade, Map<String, Integer> attributes) {
     }
 
-    private record CardState(int star) {
+    /**
+     * 카드의 성장 상태. {@code level}/{@code xp} 는 #405 W2b 가 추가한 <b>카드 단위</b> 축이다 —
+     * 구 모델의 스탯별 XP 풀 9개를 대체한다(설계 §2.1).
+     */
+    private record CardState(int star, int level, int xp) {
         static CardState fresh() {
-            return new CardState(1);
+            return new CardState(1, 1, 0);
         }
     }
 
@@ -152,19 +156,13 @@ public class GrowthService {
     /** 순수 계산 결과 — CardEffective(shared) 를 그대로 채울 수 있는 형태. */
     private record Effective(String grade, int star, Map<String, Double> attributes,
                              Map<String, Double> prePotential, Map<String, Integer> base,
-                             Map<String, Double> caps, Map<String, StatLevelState> statLevels,
+                             Map<String, Double> caps, Map<String, Double> statAdd,
                              boolean potentialUnlocked, String potentialTier, String potentialMaxTier,
                              List<PotentialLine> potentialLines, int rollsSinceTierUp, int ceilingAt,
                              double ovr, double completion) {
     }
 
     // ── config 조회 (없으면 503) ────────────────────────────────────────
-
-    private EconomyService.Growth growthCfg() {
-        return economyService.get().map(EconomyService.Economy::growth)
-                .orElseThrow(() -> new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "GROWTH_CONFIG_MISSING",
-                        "성장 설정(economy.growth)이 로드되지 않았습니다"));
-    }
 
     // ⚠️ starCfg() 는 제거됐다 — 성 관련 계수(copies·천장 보너스)의 SoT 가 GrowthTuning 으로
     //    옮겨졌기 때문이다(economy.star 는 그 기본값의 출처로만 남는다). economy 에서 직접 읽는
@@ -240,16 +238,11 @@ public class GrowthService {
                 .orElse(Integer.MAX_VALUE);
     }
 
-    /** xpToNext(lv) = xpLvBase × xpLvGrowth^lv (V2-2, 지수 임계). */
-    static int xpToNext(int lv, EconomyService.Growth gc) {
-        return (int) Math.max(1, Math.round(gc.xpLvBase() * Math.pow(gc.xpLvGrowth(), lv)));
-    }
-
     /**
      * 순수 유효스탯 계산 — RNG 없음, DB 조회 결과만으로 결정론.
      * <b>모든 수치는 {@code tuning} 에서 온다</b>(하드코딩 0 — AC-G0).
      */
-    private static Effective compute(PlayerBase pb, CardState card, Map<String, StatLevelState> levels,
+    private static Effective compute(PlayerBase pb, CardState card, Map<String, Double> add,
                                      PotentialRow prow, GrowthTuning tuning,
                                      EconomyService.Potential pc) {
         GrowthTuning.Band band = GrowthMath.band(tuning, pb.grade());
@@ -270,8 +263,10 @@ public class GrowthService {
             double baseI = pb.attributes().getOrDefault(stat, 0);
             // ⚠️ 천장은 base 와 무관하다(구 starFrac 공식과의 결정적 차이) — 등급 천장 + 승급 보너스.
             double capI = ceiling;
-            // add_i 어댑터: 기존 stat_levels_json 의 정수 lv 를 그대로 상승분으로 읽는다(W2b 가 교체).
-            double addI = levels.getOrDefault(stat, StatLevelState.fresh()).lv();
+            // #405 W2b: 상승분은 **유저가 고른 3지선다의 gain 누적**(stat_add_json, 소수)이다.
+            // W2a 의 "정수 lv 를 읽는 어댑터"는 여기서 은퇴했다 — 자동 상승 경로가 사라졌으므로
+            // stat_levels_json 은 소급 이관의 입력이자 롤백 근거로만 남는다(설계 §2.1·§2.7).
+            double addI = add.getOrDefault(stat, 0.0);
             double preI = clamp(baseI + addI, lo, capI);
 
             double flatSum = 0.0;
@@ -303,7 +298,11 @@ public class GrowthService {
         double completion = capGapSum <= 1e-9 ? 1.0 : clamp(lvSum / capGapSum, 0.0, 1.0);
 
         Map<String, Integer> baseInt = new LinkedHashMap<>(pb.attributes());
-        return new Effective(pb.grade(), card.star(), attributes, prePotential, baseInt, caps, levels,
+        Map<String, Double> addOut = new LinkedHashMap<>();
+        for (String stat : ATTR_KEYS) {
+            addOut.put(stat, round2(add.getOrDefault(stat, 0.0)));
+        }
+        return new Effective(pb.grade(), card.star(), attributes, prePotential, baseInt, caps, addOut,
                 unlocked, prow.tier(), maxTier, prow.lines(), prow.rollsSinceTierUp(),
                 ceilingAt(prow.tier(), pc), round2(ovr), round4(completion));
     }
@@ -318,20 +317,82 @@ public class GrowthService {
                 .optional();
     }
 
-    private CardState cardState(String userId, String playerId) {
-        return jdbcClient.sql("SELECT star FROM user_players WHERE user_id = ? AND player_id = ?")
+    private static final String CARD_STATE_SQL =
+            "SELECT star, card_level, card_xp FROM user_players WHERE user_id = ? AND player_id = ?";
+
+    private Optional<CardState> cardStateOpt(String userId, String playerId) {
+        return jdbcClient.sql(CARD_STATE_SQL)
                 .params(userId, playerId)
-                .query((rs, n) -> new CardState(rs.getInt("star")))
-                .optional()
-                .orElse(CardState.fresh());
+                .query((rs, n) -> new CardState(rs.getInt("star"), Math.max(1, rs.getInt("card_level")),
+                        rs.getInt("card_xp")))
+                .optional();
+    }
+
+    private CardState cardState(String userId, String playerId) {
+        return cardStateOpt(userId, playerId).orElse(CardState.fresh());
     }
 
     private CardState cardStateForUpdate(String userId, String playerId) {
-        return jdbcClient.sql("SELECT star FROM user_players WHERE user_id = ? AND player_id = ?")
-                .params(userId, playerId)
-                .query((rs, n) -> new CardState(rs.getInt("star")))
-                .optional()
+        return cardStateOpt(userId, playerId)
                 .orElseThrow(() -> ApiException.notFound("보유하지 않은 선수입니다: " + playerId));
+    }
+
+    /**
+     * 상승분 누적({@code stat_add_json}) — 9종 전부 채워서 돌려준다(없는 키는 0.0).
+     * <b>소수</b>인 이유는 감쇠 곡선(§2.3)이 상승폭을 소수로 주기 때문이다.
+     */
+    private Map<String, Double> loadStatAdd(String userId, String playerId) {
+        String json = jdbcClient.sql("SELECT stat_add_json FROM user_players WHERE user_id = ? AND player_id = ?")
+                .params(userId, playerId).query(String.class).optional().orElse(null);
+        return parseStatAdd(json);
+    }
+
+    private Map<String, Double> parseStatAdd(String json) {
+        Map<String, Double> out = new LinkedHashMap<>();
+        for (String stat : ATTR_KEYS) {
+            out.put(stat, 0.0);
+        }
+        if (json == null || json.isBlank()) {
+            return out;
+        }
+        try {
+            Map<String, Object> raw = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() { });
+            raw.forEach((k, v) -> {
+                if (v instanceof Number num && out.containsKey(k)) {
+                    out.put(k, num.doubleValue());
+                }
+            });
+        } catch (Exception e) {
+            // 파싱 불가는 "성장 0"으로 눕히지 않는다 — 그러면 유저 자산이 조용히 사라진다.
+            throw new IllegalStateException("stat_add_json 파싱 실패: " + json, e);
+        }
+        return out;
+    }
+
+    private String writeStatAdd(Map<String, Double> add) {
+        try {
+            Map<String, Object> out = new LinkedHashMap<>();
+            add.forEach((k, v) -> out.put(k, round2(v)));
+            return objectMapper.writeValueAsString(out);
+        } catch (Exception e) {
+            throw new IllegalStateException("stat_add_json 직렬화 실패: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 현재 pre-잠재 스탯 = {@code clamp(base + add, startLo, ceiling)}.
+     * 감쇠 곡선과 천장 제외 판정이 <b>같은 값</b>을 봐야 하므로 자리를 하나로 고정한다.
+     */
+    private static Map<String, Double> prePotential(GrowthTuning tuning, PlayerBase pb, int star,
+                                                    Map<String, Double> add) {
+        GrowthTuning.Band band = GrowthMath.band(tuning, pb.grade());
+        double ceiling = GrowthMath.ceiling(tuning, pb.grade(), star);
+        Map<String, Double> out = new LinkedHashMap<>();
+        for (String stat : ATTR_KEYS) {
+            double baseI = pb.attributes().getOrDefault(stat, 0);
+            out.put(stat, clamp(baseI + add.getOrDefault(stat, 0.0), band.startLo(), ceiling));
+        }
+        return out;
     }
 
     private Map<String, StatLevelState> loadStatLevels(String userId, String playerId) {
@@ -354,16 +415,6 @@ public class GrowthService {
             });
         } catch (Exception e) {
             return Map.of();
-        }
-    }
-
-    private String writeStatLevelsJson(Map<String, StatLevelState> levels) {
-        try {
-            Map<String, Object> out = new LinkedHashMap<>();
-            levels.forEach((k, v) -> out.put(k, Map.of("lv", v.lv(), "xp", v.xp())));
-            return objectMapper.writeValueAsString(out);
-        } catch (Exception e) {
-            throw new IllegalStateException("stat_levels_json 직렬화 실패: " + e.getMessage(), e);
         }
     }
 
@@ -430,11 +481,25 @@ public class GrowthService {
     public Map<String, Object> cardEffective(String userId, String playerId) {
         PlayerBase pb = playerBase(playerId)
                 .orElseThrow(() -> ApiException.notFound("선수를 찾을 수 없습니다: " + playerId));
+        GrowthTuning tuning = tuning();
         CardState card = cardState(userId, playerId);
-        Map<String, StatLevelState> levels = loadStatLevels(userId, playerId);
+        Map<String, Double> add = loadStatAdd(userId, playerId);
         PotentialRow prow = potentialRow(userId, playerId).orElse(PotentialRow.fresh());
-        Effective e = compute(pb, card, levels, prow, tuning(), potentialCfg());
-        return toCardEffectiveMap(playerId, e);
+        Effective e = compute(pb, card, add, prow, tuning, potentialCfg());
+        Map<String, Object> out = toCardEffectiveMap(playerId, e);
+        // #405 W2b additive (설계 §3, E1 #403 공유 계약) — 구 클라는 무시하면 그만이다.
+        out.put("cardLevel", card.level());
+        out.put("cardXp", card.xp());
+        out.put("xpToNext", card.level() >= tuning.xp().maxLevel()
+                ? 0 : GrowthMath.xpToNext(tuning, card.level()));
+        out.put("maxLevel", tuning.xp().maxLevel());
+        out.put("pendingChoices", pendingChoices(userId, playerId));
+        // 구 모델의 스탯별 레벨 — 이제 <b>유효스탯에 관여하지 않는다</b>(소급 이관의 입력이자
+        // 롤백 근거로만 남는다). 화면이 "성장 이력"을 보여줄 수 있도록 계속 싣는다.
+        Map<String, Object> statLevels = new LinkedHashMap<>();
+        loadStatLevels(userId, playerId).forEach((k, v) -> statLevels.put(k, Map.of("lv", v.lv(), "xp", v.xp())));
+        out.put("statLevels", statLevels);
+        return out;
     }
 
     // ── 등급 변경 영향 사전 계산 (#207 §1.6-1) ─────────────────────────
@@ -484,10 +549,10 @@ public class GrowthService {
         double worst = 0.0;
         for (String owner : owners) {
             CardState card = cardState(owner, playerId);
-            Map<String, StatLevelState> levels = loadStatLevels(owner, playerId);
+            Map<String, Double> add = loadStatAdd(owner, playerId);
             PotentialRow prow = potentialRow(owner, playerId).orElse(PotentialRow.fresh());
-            double before = compute(pb, card, levels, prow, tuning, pc).ovr();
-            double after = compute(hypothetical, card, levels, prow, tuning, pc).ovr();
+            double before = compute(pb, card, add, prow, tuning, pc).ovr();
+            double after = compute(hypothetical, card, add, prow, tuning, pc).ovr();
             double delta = after - before;
             sum += delta;
             worst = Math.min(worst, delta);
@@ -516,9 +581,7 @@ public class GrowthService {
         out.put("prePotential", e.prePotential());
         out.put("base", e.base());
         out.put("caps", e.caps());
-        Map<String, Object> statLevels = new LinkedHashMap<>();
-        e.statLevels().forEach((k, v) -> statLevels.put(k, Map.of("lv", v.lv(), "xp", v.xp())));
-        out.put("statLevels", statLevels);
+        out.put("statAdd", e.statAdd());
         Map<String, Object> potential = new LinkedHashMap<>();
         potential.put("unlocked", e.potentialUnlocked());
         potential.put("tier", e.potentialTier());
@@ -546,9 +609,9 @@ public class GrowthService {
             }
             PlayerBase pb = pbOpt.get();
             CardState card = cardState(userId, playerId);
-            Map<String, StatLevelState> levels = loadStatLevels(userId, playerId);
+            Map<String, Double> add = loadStatAdd(userId, playerId);
             PotentialRow prow = potentialRow(userId, playerId).orElse(PotentialRow.fresh());
-            Effective e = compute(pb, card, levels, prow, tuning(),
+            Effective e = compute(pb, card, add, prow, tuning(),
                     economyService.get().get().potential());
             Map<String, Object> out = new LinkedHashMap<>();
             e.attributes().forEach(out::put);
@@ -891,28 +954,43 @@ public class GrowthService {
     // ── 성장 정산 (V2-2, 매치 정산 트랜잭션 내 멱등) ─────────────────────
 
     /**
-     * 매치 정산 — 기용 선수별 스탯 XP 적립(growth_applied PK 멱등). MatchOrchestrator finishMatch
-     * 트랜잭션 안에서 1회 호출. 같은 매치 재정산은 growth_applied 중복 삽입이 무시돼 no-op.
+     * <b>매치 정산 — 카드 XP 적립 + 레벨업마다 3지선다 선택권 생성</b>(#405 W2b, 설계 §2.4·§2.5).
+     * MatchOrchestrator finishMatch 트랜잭션 안에서 1회 호출.
+     *
+     * <pre>
+     *   matchXp     = xp.matchBase × minutesMult × resultMult × gradeMult × (1 + perfBonus)
+     *   xpToNext(L) = round(xp.lvBase × L^xp.lvPow)
+     * </pre>
+     *
+     * <p><b>스탯은 여기서 오르지 않는다.</b> 구 모델(V10)은 정산이 스탯별 XP 를 적립해 자동으로
+     * 레벨업시켰고, 그것을 걷어내는 것이 이 개편의 내용이다 — 상승은 오직 유저의 선택
+     * ({@link #applyChoice})으로만 일어난다. 계약 =
+     * {@code GrowthCardLevelSettlementTest.settlementAloneRaisesNoStat}.
+     *
+     * <p>멱등은 그대로 {@code growth_applied}(PK match/user/player). 재정산은 INSERT 가 무시돼
+     * XP·선택권이 늘지 않는다. 선택권 쪽에도 UNIQUE(user,player,level) 백스톱이 따로 있다 —
+     * 앱의 check-then-act 는 경합을 못 막기 때문이다.
+     *
+     * <p>{@code report_json} 에 <b>정산에 쓴 계수 리비전</b>을 박제한다(설계 §2.8.3) — 성장 계수는
+     * 매치 pin 을 하지 않으므로, 어떤 값으로 정산했는지는 이 필드만이 답할 수 있다.
      *
      * @param starters 스냅샷 선발 playerId, bench 스냅샷 벤치 playerId
      * @param subsOut  교체 아웃 playerId, subsIn 교체 인 playerId
+     * @param result   {@code WIN|DRAW|LOSS} — 유저 관점(어웨이 리그경기면 유저 골=away)
      */
     public void settleMatch(String matchId, String userId,
                             List<String> starters, List<String> bench,
-                            Set<String> subsOut, Set<String> subsIn, boolean userHome) {
-        EconomyService.Growth gc = economyService.get().map(EconomyService.Economy::growth).orElse(null);
-        if (gc == null) {
-            log.warn("growth config absent — match {} finished without growth settlement", matchId);
-            return;
-        }
+                            Set<String> subsOut, Set<String> subsIn, boolean userHome, String result) {
+        GrowthTuning tuning = tuning();
         // B2(#179 gverify): 봇 로스터가 같은 카탈로그를 쓰므로 playerId 가 겹친다 —
         // 유저 사이드 이벤트만 귀속(event.team 필터). 아니면 상대 동명 선수 행동으로 XP 가 적립된다.
         String userSide = userHome ? "home" : "away";
         Map<String, Map<String, Long>> eventsByPlayer = eventCountsByPlayer(matchId, userSide);
+        Map<String, Map<String, Double>> behaviorByPlayer = behaviorsByPlayer(matchId, userSide);
+        String revisionId = growthConfig.currentRevisionId();
         String now = Instant.now().toString();
         List<String> roster = new ArrayList<>(starters);
         roster.addAll(bench);
-        Map<String, Double> minutes = tuning().xp().minutesMult();
         for (String pid : roster) {
             // 출전 배율도 계수다 — 코드에 0.5/1.0 을 적어 두면 그 값만 무배포 조정 밖에 남는다.
             String minutesKey;
@@ -921,37 +999,66 @@ public class GrowthService {
             } else {
                 minutesKey = subsIn.contains(pid) ? "partial" : "bench"; // 미출전 XP=0(V2-1)
             }
-            double minutesMult = minutes.getOrDefault(minutesKey, 0.0);
             PlayerBase pb = playerBase(pid).orElse(null);
             if (pb == null) {
                 continue;
             }
-            Map<String, Integer> perStat = computeStatXpDeltas(pb, minutesMult,
-                    eventsByPlayer.getOrDefault(pid, Map.of()), gc);
-            // M1(#179 gverify): 리포트는 재계산하지 않는다 — 정산 시점 스냅샷(report_json)을 저장.
-            double ovrBefore = ovrOf(userId, pid);
-            List<String> levelUps = applyStatXp(matchId, userId, pid, perStat, gc, now);
-            if (levelUps == null) {
-                continue; // 이미 정산됨(멱등 no-op) — 기존 report_json 보존
+            Map<String, Long> events = eventsByPlayer.getOrDefault(pid, Map.of());
+            double perfBonus = GrowthCandidates.perfBonus(tuning, events);
+            double xpGained = GrowthMath.matchXp(tuning, pb.grade(), minutesKey, result, perfBonus);
+            int xpDelta = (int) Math.round(xpGained);
+
+            int inserted = jdbcClient.sql("""
+                            INSERT OR IGNORE INTO growth_applied(match_id, user_id, player_id, xp_delta, applied_at)
+                            VALUES (?, ?, ?, ?, ?)
+                            """)
+                    .params(matchId, userId, pid, xpDelta, now)
+                    .update();
+            if (inserted != 1) {
+                continue;   // 이미 정산됨 — 멱등 no-op(기존 report_json 보존)
             }
-            double ovrAfter = ovrOf(userId, pid);
-            persistReportSnapshot(matchId, userId, pid, perStat, levelUps, ovrBefore, ovrAfter);
+
+            CardState card = cardState(userId, pid);
+            GrowthMath.LevelState after = GrowthMath.applyXp(tuning, card.level(), card.xp(), xpGained);
+            int updated = jdbcClient.sql(
+                            "UPDATE user_players SET card_level = ?, card_xp = ? WHERE user_id = ? AND player_id = ?")
+                    .params(after.level(), after.xp(), userId, pid)
+                    .update();
+
+            List<Map<String, Object>> pending = new ArrayList<>();
+            if (updated == 1) {
+                // 보유하지 않은 카드(스냅샷에는 있으나 그 사이 trade 로 나간 등)에는 선택권을 만들지
+                // 않는다 — 고를 수 없는 대기 뱃지가 영원히 남는다.
+                Map<String, Double> add = loadStatAdd(userId, pid);
+                Map<String, Double> pre = prePotential(tuning, pb, card.star(), add);
+                Map<String, Double> eventScore = GrowthCandidates.eventScore(tuning, events);
+                Map<String, Double> behaviorScore = GrowthCandidates.behaviorScore(tuning,
+                        behaviorByPlayer.getOrDefault(pid, Map.of()));
+                for (int i = 0; i < after.levelUps(); i++) {
+                    int level = card.level() + i;
+                    grantChoice(tuning, userId, pid, pb, card.star(), level, matchId, matchId,
+                            pre, eventScore, behaviorScore, result, now).ifPresent(pending::add);
+                }
+            }
+            persistReportSnapshot(matchId, userId, pid, xpDelta, perfBonus, card.level(), after.level(),
+                    pending, revisionId);
         }
     }
 
-    private double ovrOf(String userId, String playerId) {
-        Object ovr = cardEffective(userId, playerId).get("ovr");
-        return ovr instanceof Number n ? n.doubleValue() : 0.0;
-    }
-
+    /**
+     * 정산 시점 스냅샷 — <b>재계산하지 않는다</b>(M1, #179 gverify). 계수가 바뀌면 과거 리포트가
+     * 뒤늦게 다른 말을 하기 때문이다. {@code tuningRevisionId} 가 "그때 어떤 계수였나"의 답이다.
+     */
     private void persistReportSnapshot(String matchId, String userId, String playerId,
-                                       Map<String, Integer> statXp, List<String> levelUps,
-                                       double ovrBefore, double ovrAfter) {
+                                       int xpGained, double perfBonus, int levelBefore, int levelAfter,
+                                       List<Map<String, Object>> pendingChoices, String revisionId) {
         Map<String, Object> snap = new LinkedHashMap<>();
-        snap.put("statXp", statXp);
-        snap.put("levelUps", levelUps);
-        snap.put("ovrBefore", round2(ovrBefore));
-        snap.put("ovrAfter", round2(ovrAfter));
+        snap.put("xpGained", xpGained);
+        snap.put("perfBonus", round2(perfBonus));
+        snap.put("levelBefore", levelBefore);
+        snap.put("levelAfter", levelAfter);
+        snap.put("pendingChoices", pendingChoices);
+        snap.put("tuningRevisionId", revisionId);
         try {
             jdbcClient.sql("UPDATE growth_applied SET report_json = ? WHERE match_id = ? AND user_id = ? AND player_id = ?")
                     .params(objectMapper.writeValueAsString(snap), matchId, userId, playerId)
@@ -961,30 +1068,53 @@ public class GrowthService {
         }
     }
 
-    /** xp_i = xpBase × (baselineByPosition[pos]_i + eventBonus_i) × minutesMult × gradeXpMult[grade]. */
-    private Map<String, Integer> computeStatXpDeltas(PlayerBase pb, double minutesMult,
-                                                      Map<String, Long> eventCounts, EconomyService.Growth gc) {
-        // 포지션 baseline 은 OVR 과 **같은 표**를 쓴다(설계 §2.8.1 #29) — 두 곳이 갈라지면
-        // "이 포지션은 무엇을 하는 선수인가"의 정의가 화면과 성장에서 달라진다.
-        Map<String, Double> baseline = tuning().positionBaseline().getOrDefault(pb.position(), Map.of());
-        double gradeMult = gc.gradeXpMult().getOrDefault(pb.grade(), 1.0);
-        Map<String, Integer> out = new LinkedHashMap<>();
-        for (String stat : ATTR_KEYS) {
-            double baselineW = baseline.getOrDefault(stat, 0.0);
-            double eventBonus = 0.0;
-            for (Map.Entry<String, Long> ev : eventCounts.entrySet()) {
-                Map<String, Double> statWeights = gc.eventStatMap().get(ev.getKey());
-                if (statWeights == null) {
+    /**
+     * 하프별 AI 인풋({@code match_halves.home_input_json}/{@code away_input_json})에 박제된
+     * {@code PlayerBehavior} 9 파라미터를 선수별로 모은다 — <b>프롬프트의 구조화 결과</b>다(설계 §2.5).
+     *
+     * <p>여러 하프에 등장하면 <b>평균</b>한다. 하프타임 지시로 역할이 바뀔 수 있고, 후반 투입 선수는
+     * h1 에 아예 없다 — h1 만 읽으면 교체 투입 선수의 역할이 통째로 사라진다.
+     */
+    private Map<String, Map<String, Double>> behaviorsByPlayer(String matchId, String userSide) {
+        String column = "home".equals(userSide) ? "home_input_json" : "away_input_json";
+        Map<String, Map<String, Double>> sums = new LinkedHashMap<>();
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        for (int half = 1; half <= 2; half++) {
+            String json = jdbcClient.sql(
+                            "SELECT " + column + " FROM match_halves WHERE match_id = ? AND half = ?")
+                    .params(matchId, half).query(String.class).optional().orElse(null);
+            if (json == null || json.isBlank()) {
+                continue;
+            }
+            JsonNode root;
+            try {
+                root = objectMapper.readTree(json);
+            } catch (Exception e) {
+                continue;
+            }
+            for (JsonNode player : root.path("players")) {
+                String pid = player.path("playerId").asText("");
+                JsonNode behavior = player.path("behavior");
+                if (pid.isEmpty() || !behavior.isObject()) {
                     continue;
                 }
-                Double w = statWeights.get(stat);
-                if (w != null) {
-                    eventBonus += w * ev.getValue();
+                Map<String, Double> acc = sums.computeIfAbsent(pid, k -> new LinkedHashMap<>());
+                for (String param : GrowthTuning.BEHAVIORS) {
+                    JsonNode value = behavior.get(param);
+                    if (value != null && value.isNumber()) {
+                        acc.merge(param, value.doubleValue(), Double::sum);
+                    }
                 }
+                counts.merge(pid, 1, Integer::sum);
             }
-            double xp = gc.xpBase() * (baselineW + eventBonus) * minutesMult * gradeMult;
-            out.put(stat, (int) Math.round(xp));
         }
+        Map<String, Map<String, Double>> out = new LinkedHashMap<>();
+        sums.forEach((pid, acc) -> {
+            int n = Math.max(1, counts.getOrDefault(pid, 1));
+            Map<String, Double> avg = new LinkedHashMap<>();
+            acc.forEach((param, total) -> avg.put(param, total / n));
+            out.put(pid, avg);
+        });
         return out;
     }
 
@@ -1025,87 +1155,223 @@ public class GrowthService {
         return out;
     }
 
+    // ── 3지선다 선택권 (설계 §2.5) ──────────────────────────────────────
+
     /**
-     * growth_applied 멱등 삽입 → 신규일 때만 stat_levels_json 갱신(레벨업 임계 지수 자동 반영).
+     * 레벨업 1회분의 선택권을 만든다. <b>후보 3개 + 각각의 상승폭(gain)을 그 자리에서 박제</b>한다 —
+     * 미루는 동안 다른 픽으로 스탯이 올라 gain 이 줄면 "화면엔 +2.9 였는데 +2.1 이 들어왔다"가 되기
+     * 때문이다(hero 명시 요구, 설계 §2.5).
      *
-     * @return 이번 정산으로 레벨업한 스탯 키(없으면 빈 리스트). 이미 정산된 매치면 null(멱등 no-op).
+     * <p>멱등: {@code UNIQUE(user_id, player_id, level)} 위의 {@code INSERT OR IGNORE}. 이미 있으면
+     * <b>기존 행을 읽어</b> 돌려준다 — 재정산·재백필이 같은 답을 주는 것이 이 계약의 내용이다.
+     *
+     * @param seedSource 시드 접두. 매치 정산은 {@code matchId}, 소급 지급은 {@code "legacy"}.
+     * @return 후보가 하나도 없으면(전 스탯 천장) {@code empty} — <b>빈 선택 대기를 만들지 않는다</b>.
      */
-    private List<String> applyStatXp(String matchId, String userId, String playerId, Map<String, Integer> perStatDelta,
-                                     EconomyService.Growth gc, String now) {
-        int total = perStatDelta.values().stream().mapToInt(Integer::intValue).sum();
+    private Optional<Map<String, Object>> grantChoice(GrowthTuning tuning, String userId, String playerId,
+                                                      PlayerBase pb, int star, int level,
+                                                      String seedSource, String sourceMatchId,
+                                                      Map<String, Double> prePotential,
+                                                      Map<String, Double> eventScore,
+                                                      Map<String, Double> behaviorScore,
+                                                      String result, String now) {
+        String seed = GrowthCandidates.seed(seedSource, userId, playerId, level);
+        GrowthCandidates.Draw draw = GrowthCandidates.draw(tuning, seed, pb.position(), pb.grade(), star,
+                prePotential, eventScore, behaviorScore, result, level);
+        if (draw.isEmpty()) {
+            return Optional.empty();
+        }
+        String id = Ulid.next();
+        String candidatesJson = writeCandidates(draw.choices());
         int inserted = jdbcClient.sql("""
-                        INSERT OR IGNORE INTO growth_applied(match_id, user_id, player_id, xp_delta, applied_at)
-                        VALUES (?, ?, ?, ?, ?)
+                        INSERT OR IGNORE INTO growth_level_choices(id, user_id, player_id, level,
+                            candidates_json, seed, source_match_id, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """)
-                .params(matchId, userId, playerId, total, now)
+                .params(id, userId, playerId, level, candidatesJson, seed, sourceMatchId, now)
                 .update();
         if (inserted != 1) {
-            return null; // 이미 정산됨 — 멱등 no-op
+            return choiceRow(userId, playerId, level).map(GrowthService::toChoiceMap);
         }
-        Map<String, StatLevelState> levels = loadStatLevels(userId, playerId);
-        List<String> levelUps = new ArrayList<>();
-        for (String stat : ATTR_KEYS) {
-            int delta = perStatDelta.getOrDefault(stat, 0);
-            if (delta <= 0) {
-                continue;
+        return Optional.of(toChoiceMap(new ChoiceRow(id, userId, playerId, level, draw.choices(), null)));
+    }
+
+    /** 선택권 한 행 — 후보는 <b>박제된 그대로</b> 읽는다(재계산하지 않는다). */
+    private record ChoiceRow(String id, String userId, String playerId, int level,
+                             List<GrowthCandidates.Choice> candidates, String chosenStat) {
+    }
+
+    private static Map<String, Object> toChoiceMap(ChoiceRow row) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("choiceId", row.id());
+        out.put("playerId", row.playerId());
+        out.put("level", row.level());
+        out.put("candidates", row.candidates().stream().map(c -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("stat", c.stat());
+            m.put("gain", round2(c.gain()));
+            return (Object) m;
+        }).toList());
+        return out;
+    }
+
+    private String writeCandidates(List<GrowthCandidates.Choice> choices) {
+        try {
+            List<Map<String, Object>> raw = new ArrayList<>();
+            for (GrowthCandidates.Choice c : choices) {
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("stat", c.stat());
+                m.put("gain", round2(c.gain()));
+                raw.add(m);
             }
-            StatLevelState before = levels.get(stat);
-            StatLevelState after = applyForward(before, delta, gc);
-            if (after.lv() > before.lv()) {
-                levelUps.add(stat);
+            return objectMapper.writeValueAsString(raw);
+        } catch (Exception e) {
+            throw new IllegalStateException("candidates_json 직렬화 실패: " + e.getMessage(), e);
+        }
+    }
+
+    private List<GrowthCandidates.Choice> readCandidates(String json) {
+        try {
+            List<Map<String, Object>> raw = objectMapper.readValue(json,
+                    new TypeReference<List<Map<String, Object>>>() { });
+            List<GrowthCandidates.Choice> out = new ArrayList<>();
+            for (Map<String, Object> m : raw) {
+                out.add(new GrowthCandidates.Choice((String) m.get("stat"),
+                        ((Number) m.get("gain")).doubleValue()));
             }
-            levels.put(stat, after);
+            return out;
+        } catch (Exception e) {
+            // 박제본이 안 읽히면 유저가 무엇을 고르는지 서버도 모른다 — 조용히 빈 후보로 눕히지 않는다.
+            throw new IllegalStateException("candidates_json 파싱 실패: " + json, e);
         }
-        int updated = jdbcClient.sql("UPDATE user_players SET stat_levels_json = ? WHERE user_id = ? AND player_id = ?")
-                .params(writeStatLevelsJson(levels), userId, playerId)
-                .update();
-        if (updated != 1) {
-            log.warn("stat_levels_json update affected {} rows for user={} player={}", updated, userId, playerId);
-        }
-        return levelUps;
     }
 
-    private static StatLevelState applyForward(StatLevelState state, int delta, EconomyService.Growth gc) {
-        int lv = state.lv();
-        int xp = state.xp() + delta;
-        while (xp >= xpToNext(lv, gc)) {
-            xp -= xpToNext(lv, gc);
-            lv++;
-        }
-        return new StatLevelState(lv, xp);
+    private Optional<ChoiceRow> choiceRow(String userId, String playerId, int level) {
+        return jdbcClient.sql("""
+                        SELECT id, user_id, player_id, level, candidates_json, chosen_stat
+                        FROM growth_level_choices WHERE user_id = ? AND player_id = ? AND level = ?
+                        """)
+                .params(userId, playerId, level)
+                .query(this::mapChoiceRow)
+                .optional();
     }
 
-    /** total = Σ_{n=0}^{lv-1} xpToNext(n) + xp — (lv,xp) ↔ 누적 xp 상호 변환(리포트 역산용, 정확 가역). */
-    private static long cumulativeXp(StatLevelState s, EconomyService.Growth gc) {
-        long total = s.xp();
-        for (int n = 0; n < s.lv(); n++) {
-            total += xpToNext(n, gc);
-        }
-        return total;
+    private ChoiceRow mapChoiceRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+        return new ChoiceRow(rs.getString("id"), rs.getString("user_id"), rs.getString("player_id"),
+                rs.getInt("level"), readCandidates(rs.getString("candidates_json")),
+                rs.getString("chosen_stat"));
     }
 
-    private static StatLevelState stateFromCumulative(long total, EconomyService.Growth gc) {
-        long remaining = Math.max(0, total);
-        int lv = 0;
-        while (remaining >= xpToNext(lv, gc)) {
-            remaining -= xpToNext(lv, gc);
-            lv++;
+    /**
+     * 대기 중인 선택권 목록(GET /api/growth/choices). {@code playerId} 가 null 이면 전 카드.
+     * 정렬은 (playerId, level) — 화면이 "어느 카드의 몇 레벨"을 순서대로 그릴 수 있어야 한다.
+     */
+    public List<Map<String, Object>> pendingChoices(String userId, String playerId) {
+        String sql = """
+                SELECT id, user_id, player_id, level, candidates_json, chosen_stat
+                FROM growth_level_choices
+                WHERE user_id = ? AND chosen_stat IS NULL
+                """ + (playerId == null ? "" : " AND player_id = ?")
+                + " ORDER BY player_id, level";
+        var spec = playerId == null
+                ? jdbcClient.sql(sql).params(userId)
+                : jdbcClient.sql(sql).params(userId, playerId);
+        return spec.query(this::mapChoiceRow).list().stream().map(GrowthService::toChoiceMap).toList();
+    }
+
+    /**
+     * <b>선택 적용</b>(POST /api/growth/choices/{choiceId}) — 박제된 gain 을 {@code stat_add_json} 에
+     * 가산한다. 화면에 보였던 숫자가 그대로 들어가는 것이 이 경로의 계약이다(재계산 금지).
+     *
+     * <p>중복 선택은 <b>CAS</b>(`WHERE chosen_stat IS NULL`)로 막는다 — 읽고 나서 쓰는 사이에 다른
+     * 요청이 끼면 같은 선택권이 두 번 적용되고, 그건 스탯을 공짜로 두 배 주는 사고다.
+     */
+    public Map<String, Object> applyChoice(String userId, String choiceId, String stat) {
+        if (stat == null || stat.isBlank()) {
+            throw ApiException.validation("stat이 필요합니다");
         }
-        return new StatLevelState(lv, (int) remaining);
+        return txRunner.run(() -> {
+            ChoiceRow row = jdbcClient.sql("""
+                            SELECT id, user_id, player_id, level, candidates_json, chosen_stat
+                            FROM growth_level_choices WHERE id = ?
+                            """)
+                    .param(choiceId)
+                    .query(this::mapChoiceRow)
+                    .optional()
+                    // 남의 선택권도 **404** 다 — 403 은 "그 id 는 실재한다"를 흘린다.
+                    .filter(r -> r.userId().equals(userId))
+                    .orElseThrow(() -> ApiException.notFound("선택권을 찾을 수 없습니다: " + choiceId));
+            if (row.chosenStat() != null) {
+                throw new ApiException(HttpStatus.CONFLICT, "CHOICE_ALREADY_MADE",
+                        "이미 선택한 성장입니다", Map.of("choiceId", choiceId, "stat", row.chosenStat()));
+            }
+            GrowthCandidates.Choice picked = row.candidates().stream()
+                    .filter(c -> c.stat().equals(stat))
+                    .findFirst()
+                    .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
+                            "후보에 없는 능력치입니다: " + stat,
+                            Map.of("choiceId", choiceId,
+                                    "candidates", row.candidates().stream()
+                                            .map(GrowthCandidates.Choice::stat).toList())));
+
+            int updated = jdbcClient.sql("""
+                            UPDATE growth_level_choices SET chosen_stat = ?, chosen_at = ?
+                            WHERE id = ? AND chosen_stat IS NULL
+                            """)
+                    .params(stat, Instant.now().toString(), choiceId)
+                    .update();
+            if (updated != 1) {
+                throw new ApiException(HttpStatus.CONFLICT, "CHOICE_ALREADY_MADE",
+                        "이미 선택한 성장입니다", Map.of("choiceId", choiceId));
+            }
+
+            Map<String, Double> add = loadStatAdd(userId, row.playerId());
+            add.merge(stat, picked.gain(), Double::sum);
+            int applied = jdbcClient.sql(
+                            "UPDATE user_players SET stat_add_json = ? WHERE user_id = ? AND player_id = ?")
+                    .params(writeStatAdd(add), userId, row.playerId())
+                    .update();
+            if (applied != 1) {
+                // 보유하지 않은 카드에 선택권이 있을 수 없다(생성 경로가 보유를 확인한다). 여기 오면
+                // 그 사이 카드가 사라진 것이므로 선택도 없던 일이 되어야 한다.
+                throw new ApiException(HttpStatus.CONFLICT, "CHOICE_CARD_MISSING",
+                        "보유하지 않은 선수입니다: " + row.playerId(), Map.of("playerId", row.playerId()));
+            }
+
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("choiceId", choiceId);
+            out.put("playerId", row.playerId());
+            out.put("level", row.level());
+            out.put("stat", stat);
+            out.put("gain", round2(picked.gain()));
+            out.put("card", cardEffective(userId, row.playerId()));
+            return out;
+        });
     }
 
     // ── GET /api/growth/report/{matchId} ────────────────────────────────
 
     /**
-     * MatchGrowthReport(shared) — growth_applied(이 매치·유저) 대상으로 스탯 XP·레벨업을 재현한다.
-     * 매치 로그(불변)로 Δstat 을 새로 계산 → 현재 상태에서 그 Δ 만큼 역산(누적 xp 차감)해 before 를 얻는다.
-     * (동일 카드가 이후 매치들로 더 성장했다면 근사 — 이 매치 정산 직후 조회(S1 ResultPage)를 전제로 정확.)
+     * 매치 성장 리포트 — {@code growth_applied.report_json}(정산 시점 스냅샷)을 그대로 돌려준다.
+     *
+     * <p>⚠️ #405 W2b 로 <b>재계산 폴백이 사라졌다</b>. 구현이 사라진 게 아니라 <b>재계산이 불가능</b>
+     * 해졌기 때문이다: 구 모델은 "매치 로그 → 스탯 XP" 가 순함수라 역산할 수 있었지만, 신 모델의
+     * 결과는 <b>유저가 무엇을 골랐는가</b>에 달려 있어 로그만으로 복원되지 않는다. 스냅샷 없는
+     * 구 정산분(W2b 이전)은 최소 정보(xp)만 싣는다 — 없는 것을 지어내는 것보다 낫다.
      */
     public Map<String, Object> growthReport(String userId, String matchId) {
-        EconomyService.Growth gc = growthCfg();
-        List<Map<String, Object>> entries = new ArrayList<>();
-        record Applied(String playerId, int xpDelta) {
-        }
+        List<Map<String, Object>> entries = growthEntries(userId, matchId);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("matchId", matchId);
+        out.put("entries", entries);
+        return out;
+    }
+
+    /**
+     * 보상 봉투(§2.9)의 {@code GROWTH} 섹션 엔트리이자 성장 리포트의 본문 — <b>같은 자료</b>다.
+     * 두 곳이 다른 형태를 만들면 화면 둘이 같은 경기를 다르게 말한다.
+     */
+    public List<Map<String, Object>> growthEntries(String userId, String matchId) {
         record AppliedRow(String playerId, int xpDelta, String reportJson) {
         }
         List<AppliedRow> rows = jdbcClient.sql("""
@@ -1116,111 +1382,88 @@ public class GrowthService {
                 .query((rs, n) -> new AppliedRow(rs.getString("player_id"), rs.getInt("xp_delta"),
                         rs.getString("report_json")))
                 .list();
-        if (rows.isEmpty()) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("matchId", matchId);
-            out.put("entries", entries);
-            return out;
-        }
-        // M1(#179 gverify): 정산 시점 스냅샷(report_json)이 있으면 그대로 반환 — 재계산 금지
-        // (교체 mult 불일치·과거 리포트 드리프트·사이드 오귀속 전부 원천 차단).
-        List<Applied> applied = new ArrayList<>();
+        List<Map<String, Object>> entries = new ArrayList<>();
         for (AppliedRow row : rows) {
-            if (row.reportJson() != null) {
-                try {
-                    JsonNode snap = objectMapper.readTree(row.reportJson());
-                    Map<String, Object> entry = new LinkedHashMap<>();
-                    entry.put("playerId", row.playerId());
-                    entry.put("name", playerName(row.playerId()));
-                    entry.put("statXp", objectMapper.convertValue(snap.path("statXp"),
-                            new TypeReference<Map<String, Integer>>() { }));
-                    entry.put("levelUps", objectMapper.convertValue(snap.path("levelUps"),
-                            new TypeReference<List<String>>() { }));
-                    entry.put("ovrBefore", snap.path("ovrBefore").asDouble());
-                    entry.put("ovrAfter", snap.path("ovrAfter").asDouble());
-                    entries.add(entry);
-                    continue;
-                } catch (Exception e) {
-                    log.warn("report snapshot parse failed for match={} player={} — 레거시 역산 폴백", matchId, row.playerId());
-                }
-            }
-            applied.add(new Applied(row.playerId(), row.xpDelta()));
-        }
-        if (applied.isEmpty()) {
-            Map<String, Object> out = new LinkedHashMap<>();
-            out.put("matchId", matchId);
-            out.put("entries", entries);
-            return out;
-        }
-        // ── 레거시 폴백(스냅샷 없는 구 정산분) — 근사 재계산. 유저 사이드는 home 근사(연습매치 항상 home).
-        Map<String, Map<String, Long>> eventsByPlayer = eventCountsByPlayer(matchId, "home");
-        Set<String> starters = snapshotStarters(matchId, userId);
-
-        for (Applied a : applied) {
-            PlayerBase pb = playerBase(a.playerId()).orElse(null);
-            if (pb == null) {
+            Map<String, Object> entry = new LinkedHashMap<>();
+            entry.put("playerId", row.playerId());
+            PlayerBase pb = playerBase(row.playerId()).orElse(null);
+            entry.put("name", playerName(row.playerId()));
+            entry.put("position", pb == null ? null : pb.position());
+            entry.put("grade", pb == null ? null : pb.grade());
+            entry.put("xpGained", row.xpDelta());
+            if (row.reportJson() == null) {
+                entry.put("levelBefore", null);
+                entry.put("levelAfter", null);
+                entry.put("pendingChoices", List.of());
+                entries.add(entry);
                 continue;
             }
-            Map<String, Double> minutes = tuning().xp().minutesMult();
-            double minutesMult = minutes.getOrDefault(
-                    starters.contains(a.playerId()) ? "starter" : "bench", 0.0);
-            Map<String, Integer> perStat = computeStatXpDeltas(pb, minutesMult,
-                    eventsByPlayer.getOrDefault(a.playerId(), Map.of()), gc);
-
-            Map<String, StatLevelState> after = loadStatLevels(userId, a.playerId());
-            Map<String, StatLevelState> before = new LinkedHashMap<>();
-            List<String> levelUps = new ArrayList<>();
-            Map<String, Integer> statXp = new LinkedHashMap<>();
-            for (String stat : ATTR_KEYS) {
-                int delta = perStat.getOrDefault(stat, 0);
-                statXp.put(stat, delta);
-                StatLevelState afterState = after.get(stat);
-                long cumAfter = cumulativeXp(afterState, gc);
-                long cumBefore = Math.max(0, cumAfter - delta);
-                StatLevelState beforeState = stateFromCumulative(cumBefore, gc);
-                before.put(stat, beforeState);
-                if (afterState.lv() > beforeState.lv()) {
-                    levelUps.add(stat);
-                }
+            try {
+                JsonNode snap = objectMapper.readTree(row.reportJson());
+                entry.put("xpGained", snap.path("xpGained").asInt(row.xpDelta()));
+                entry.put("levelBefore", snap.path("levelBefore").isNumber()
+                        ? snap.path("levelBefore").asInt() : null);
+                entry.put("levelAfter", snap.path("levelAfter").isNumber()
+                        ? snap.path("levelAfter").asInt() : null);
+                entry.put("pendingChoices", objectMapper.convertValue(snap.path("pendingChoices"),
+                        new TypeReference<List<Map<String, Object>>>() { }));
+            } catch (Exception e) {
+                log.warn("report snapshot parse failed for match={} player={}", matchId, row.playerId());
+                entry.put("pendingChoices", List.of());
             }
-            EconomyService.Potential pc = economyService.get().map(EconomyService.Economy::potential)
-                    .orElse(new EconomyService.Potential(Map.of(), Map.of(), Map.of(), Map.of(), 1.5, 1.0,
-                            Map.of()));
-            CardState card = cardState(userId, a.playerId());
-            PotentialRow prow = potentialRow(userId, a.playerId()).orElse(PotentialRow.fresh());
-            double ovrBefore = compute(pb, card, before, prow, tuning(), pc).ovr();
-            double ovrAfter = compute(pb, card, after, prow, tuning(), pc).ovr();
-
-            Map<String, Object> entry = new LinkedHashMap<>();
-            entry.put("playerId", a.playerId());
-            entry.put("name", playerName(a.playerId()));
-            entry.put("statXp", statXp);
-            entry.put("levelUps", levelUps);
-            entry.put("ovrBefore", ovrBefore);
-            entry.put("ovrAfter", ovrAfter);
             entries.add(entry);
         }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("matchId", matchId);
-        out.put("entries", entries);
-        return out;
+        return entries;
     }
 
-    private Set<String> snapshotStarters(String matchId, String userId) {
-        String deckJson = jdbcClient.sql("SELECT user_deck_json FROM matches WHERE id = ? AND user_id = ?")
-                .params(matchId, userId).query(String.class).optional().orElse(null);
-        if (deckJson == null) {
-            return Set.of();
+    // ── 소급 이관 지급 (설계 §2.7) ──────────────────────────────────────
+
+    /**
+     * <b>소급 선택권 지급</b> — {@link GrowthLegacyBackfillService} 전용 진입점.
+     *
+     * <p>매치 컨텍스트가 없으므로 후보 가중은 <b>포지션 baseline + 그 카드에 쌓여 있던 스탯 XP 분포</b>
+     * 로 정한다(설계 §2.7). 그 분포가 곧 "이 카드가 실제로 무엇을 했나"의 이력이라 정합적이다 —
+     * 매치 이벤트 자리에 그대로 넣는다({@code eventScore} 인자).
+     *
+     * <p>멱등: 레벨마다 {@code UNIQUE(user,player,level)} 라 재실행이 행을 늘리지 않고,
+     * {@code card_level} 은 계산이 아니라 <b>실제 선택권 수</b>에서 파생하므로 두 번 돌아도 같은 값이다.
+     *
+     * @param grantCount 지급할 선택권 수(호출부가 이미 {@code legacy.levelGrantCap}·만렙으로 클램프)
+     * @param historyScore 스탯별 성장 이력 점수(정규화는 후보 추첨이 한다)
+     * @return 실제로 존재하게 된 선택권 수(= card_level − 1)
+     */
+    public int grantLegacyChoices(String userId, String playerId, int grantCount,
+                                  Map<String, Double> historyScore) {
+        GrowthTuning tuning = tuning();
+        PlayerBase pb = playerBase(playerId).orElse(null);
+        if (pb == null) {
+            return 0;
         }
-        Set<String> starters = new java.util.HashSet<>();
-        try {
-            objectMapper.readTree(deckJson).path("starters")
-                    .forEach(s -> starters.add(s.path("playerId").asText()));
-        } catch (Exception ignored) {
-            // no-op — 빈 집합 반환
+        CardState card = cardState(userId, playerId);
+        Map<String, Double> add = loadStatAdd(userId, playerId);
+        Map<String, Double> pre = prePotential(tuning, pb, card.star(), add);
+        String now = Instant.now().toString();
+        for (int i = 0; i < grantCount; i++) {
+            int level = i + 1;
+            grantChoice(tuning, userId, playerId, pb, card.star(), level, LEGACY_SEED_SOURCE, null,
+                    pre, historyScore, Map.of(), null, now);
         }
-        return starters;
+        int granted = jdbcClient.sql("""
+                        SELECT COUNT(*) FROM growth_level_choices
+                        WHERE user_id = ? AND player_id = ? AND source_match_id IS NULL
+                        """)
+                .params(userId, playerId).query(Integer.class).single();
+        jdbcClient.sql("UPDATE user_players SET card_level = ? WHERE user_id = ? AND player_id = ?")
+                .params(granted + 1, userId, playerId)
+                .update();
+        return granted;
     }
+
+    /**
+     * 소급 지급분의 시드 접두. 매치 정산은 {@code matchId} 를 쓰므로, 이 문자열이 매치 id 와 겹치지
+     * 않는 한 같은 (유저, 카드, 레벨)의 두 지급이 같은 후보를 갖는 일이 없다.
+     */
+    static final String LEGACY_SEED_SOURCE = "legacy:";
 
     private String playerName(String playerId) {
         return jdbcClient.sql("SELECT name FROM players WHERE id = ?")
