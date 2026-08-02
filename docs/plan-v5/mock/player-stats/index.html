@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#403 선수 기록·정보 — 화면 구성 목업</title>
+<style>
+:root{
+  --bg:#0f1115; --surface:#111826; --sunk:#0c111b; --elevated:#171a21;
+  --text:#eef0f4; --muted:#9aa1ad; --hairline:rgba(255,255,255,.07); --border:#2a2e37;
+  --us:#4c8dff; --them:#ff6b6b; --warn:#ffc24b; --ok:#3ddc84;
+  --grass-a:#17603a; --grass-b:#14562f; --pitch-line:rgba(255,255,255,.22);
+  color-scheme:dark;
+  font-family:system-ui,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:#07090d;color:var(--text);font-size:15px;line-height:1.5}
+header.top{padding:28px 24px 8px;max-width:1400px;margin:0 auto}
+header.top h1{margin:0 0 6px;font-size:22px}
+header.top p{margin:0;color:var(--muted);font-size:13px}
+nav.jump{max-width:1400px;margin:14px auto 0;padding:0 24px;display:flex;flex-wrap:wrap;gap:8px}
+nav.jump a{font-size:12px;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:999px;padding:5px 11px}
+nav.jump a:hover{color:var(--text);border-color:var(--us)}
+main{max-width:1400px;margin:0 auto;padding:8px 24px 80px}
+section.screen{margin:34px 0 0;border-top:1px solid var(--hairline);padding-top:22px}
+section.screen > h2{font-size:17px;margin:0 0 4px}
+section.screen > h2 .tag{font-size:11px;color:var(--muted);font-weight:400;margin-left:8px}
+section.screen > .why{color:var(--muted);font-size:13px;margin:0 0 16px;max-width:900px}
+.row{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+.cap{font-size:12px;color:var(--muted);margin:8px 0 0;max-width:390px}
+.cap b{color:var(--text);font-weight:600}
+
+/* phone frame */
+.phone{width:390px;height:760px;background:var(--bg);border:1px solid #333a46;border-radius:26px;
+  overflow:hidden;display:flex;flex-direction:column;position:relative;flex:0 0 auto;
+  box-shadow:0 18px 50px rgba(0,0,0,.55)}
+.phone.short{height:620px}
+/* 목업 전용: 모달 전체를 스크롤 없이 한 장으로 보이게(실제 앱에선 모달 안이 스크롤된다) */
+.phone.modalphone{height:1290px}
+.phone.modalphone .mbody{overflow:visible}
+.phone.modalphone .modal{max-height:none}
+.phone.modalphone .dim{align-items:flex-start;padding-top:14px}
+.stack{display:flex;flex-direction:column;gap:6px}
+
+/* --- app chrome --- */
+.scorebar{background:var(--surface);border-bottom:1px solid var(--hairline);padding:9px 12px;flex:0 0 auto}
+.scorebar .line1{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.tname{font-size:13px;display:flex;align-items:center;gap:5px;min-width:0}
+.tname span.n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mechip{font-size:9px;background:var(--us);color:#04101f;border-radius:4px;padding:1px 5px;font-weight:700;flex:0 0 auto}
+.score{font-size:20px;font-weight:800;letter-spacing:1px;flex:0 0 auto}
+.clock{font-size:11px;color:var(--muted);text-align:center;margin-top:2px}
+.clock .dot{color:var(--them)}
+
+.pitchwrap{flex:1 1 auto;min-height:0;background:linear-gradient(180deg,var(--grass-a),var(--grass-b));position:relative;overflow:hidden}
+.pitchwrap.small{flex:0 0 172px}
+.pl{position:absolute;background:var(--pitch-line)}
+.tok{position:absolute;width:17px;height:17px;border-radius:50%;font-size:9px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;color:#fff;transform:translate(-50%,-50%)}
+.tok.us{background:var(--us)} .tok.them{background:var(--them)}
+.tok.sel{outline:2.5px solid var(--warn);outline-offset:2px;box-shadow:0 0 14px rgba(255,194,75,.7)}
+.ball{position:absolute;width:7px;height:7px;border-radius:50%;background:#fff;transform:translate(-50%,-50%)}
+
+.tabbar{display:flex;background:var(--sunk);border-top:1px solid var(--hairline);flex:0 0 auto}
+.tabbar button{flex:1;background:none;border:none;color:var(--muted);font-size:12px;padding:9px 2px;border-bottom:2px solid transparent}
+.tabbar button.on{color:var(--text);border-bottom-color:var(--us);background:rgba(76,141,255,.07)}
+.tabbar button.new{color:var(--warn)}
+.sheet{flex:0 0 auto;background:var(--surface);display:flex;flex-direction:column;min-height:0}
+.sheet.tall{flex:1 1 auto}
+.sheetscroll{overflow:auto;padding:10px 12px 14px}
+
+/* --- player list --- */
+.seg{display:flex;background:var(--sunk);border:1px solid var(--hairline);border-radius:9px;padding:3px;gap:3px;margin-bottom:9px}
+.seg button{flex:1;background:none;border:none;color:var(--muted);font-size:12px;padding:6px 4px;border-radius:6px}
+.seg button.on{background:rgba(76,141,255,.16);color:var(--text);font-weight:600}
+.seg button.on.them{background:rgba(255,107,107,.16)}
+.livecap{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--warn);
+  background:rgba(255,194,75,.08);border:1px solid rgba(255,194,75,.25);border-radius:7px;padding:5px 8px;margin-bottom:9px}
+.sortrow{display:flex;gap:5px;margin-bottom:7px;overflow-x:auto;min-width:0}
+.sortrow button{flex:0 0 auto;font-size:11px;background:var(--sunk);border:1px solid var(--hairline);
+  color:var(--muted);border-radius:999px;padding:3px 9px}
+.sortrow button.on{border-color:var(--us);color:var(--text)}
+
+table.plist{width:100%;border-collapse:collapse;font-size:12px}
+table.plist th{color:var(--muted);font-size:10px;font-weight:600;text-align:right;padding:0 0 5px}
+table.plist th:first-child{text-align:left}
+table.plist td{padding:7px 0;border-top:1px solid var(--hairline);text-align:right;font-variant-numeric:tabular-nums}
+table.plist td:first-child{text-align:left}
+.pcell{display:flex;align-items:center;gap:7px;min-width:0}
+.num{width:19px;height:19px;border-radius:50%;background:var(--us);color:#fff;font-size:9px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.num.them{background:var(--them)}
+.pname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ppos{font-size:9px;color:var(--muted);border:1px solid var(--hairline);border-radius:3px;padding:0 3px;flex:0 0 auto}
+.rt{display:inline-block;min-width:30px;border-radius:5px;padding:1px 5px;font-weight:700;font-size:11px;color:#04101f;background:#7f8894}
+.rt.hi{background:var(--ok)} .rt.mid{background:var(--warn)} .rt.motm{background:#c9a227;color:#1a1400}
+tr.hl td{background:rgba(255,194,75,.07)}
+.gk td:first-child .num{background:#3ddc84;color:#04140b}
+
+/* --- popover (pitch tap) --- */
+.pop{position:absolute;left:50%;transform:translateX(-50%);bottom:12px;width:300px;background:var(--elevated);
+  border:1px solid var(--border);border-radius:13px;padding:11px 12px;box-shadow:0 12px 34px rgba(0,0,0,.6)}
+.pop h4{margin:0;font-size:13px;display:flex;align-items:center;gap:7px}
+.pop .sub{font-size:10px;color:var(--muted);margin:2px 0 8px}
+.popgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:9px}
+.popgrid div{background:var(--sunk);border-radius:7px;padding:5px 3px;text-align:center}
+.popgrid b{display:block;font-size:14px;font-variant-numeric:tabular-nums}
+.popgrid span{font-size:9px;color:var(--muted)}
+.btn{display:block;width:100%;text-align:center;background:var(--us);color:#04101f;font-weight:700;
+  border:none;border-radius:8px;padding:8px;font-size:12px}
+.btn.ghost{background:none;border:1px solid var(--border);color:var(--muted);font-weight:500}
+
+/* --- modal --- */
+.dim{position:absolute;inset:0;background:rgba(0,0,0,.62);display:flex;align-items:flex-end;justify-content:center;padding-bottom:14px}
+.modal{width:358px;max-height:96%;background:var(--elevated);border:1px solid var(--border);border-radius:15px;
+  display:flex;flex-direction:column;overflow:hidden}
+.mhead{padding:11px 13px;border-bottom:1px solid var(--hairline);display:flex;gap:11px;align-items:center}
+.art{width:52px;height:52px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  font-size:10px;text-align:center;color:var(--muted);background:var(--sunk);border:1px solid var(--hairline)}
+.art.dia{background:linear-gradient(150deg,#1d3b6b,#0e1a2e);border-color:#4ea3ff;color:#8fc4ff}
+.mtabs{display:flex;border-bottom:1px solid var(--hairline);flex:0 0 auto}
+.mtabs button{flex:1;background:none;border:none;color:var(--muted);font-size:12px;padding:9px 0;border-bottom:2px solid transparent}
+.mtabs button.on{color:var(--text);border-bottom-color:var(--us)}
+.mbody{overflow:auto;padding:11px 13px 14px}
+.kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:11px}
+.kpi div{background:var(--sunk);border-radius:8px;padding:7px 3px;text-align:center}
+.kpi b{display:block;font-size:16px;font-variant-numeric:tabular-nums}
+.kpi span{font-size:9px;color:var(--muted)}
+h5.cat{font-size:10px;color:var(--muted);letter-spacing:.09em;margin:12px 0 5px;text-transform:uppercase}
+.slist{display:flex;flex-direction:column;gap:0}
+.slist div{display:flex;justify-content:space-between;font-size:12px;padding:5px 0;border-top:1px solid var(--hairline)}
+.slist div span:last-child{font-variant-numeric:tabular-nums}
+.slist div.dim2 span{color:var(--muted)}
+.bar{height:5px;border-radius:3px;background:var(--sunk);overflow:hidden;margin-top:3px}
+.bar i{display:block;height:100%;background:var(--us)}
+.attr{display:flex;flex-direction:column;gap:6px}
+.attr .a{font-size:11px}
+.attr .a .l{display:flex;justify-content:space-between;color:var(--muted)}
+.attr .a .l b{color:var(--text);font-variant-numeric:tabular-nums}
+.pend{border:1px dashed rgba(255,194,75,.4);background:rgba(255,194,75,.05);border-radius:9px;padding:10px;
+  font-size:11px;color:var(--warn);text-align:center}
+.heat{height:92px;border-radius:8px;background:
+  radial-gradient(circle at 30% 50%,rgba(255,140,60,.75),transparent 42%),
+  radial-gradient(circle at 46% 30%,rgba(255,90,60,.55),transparent 38%),
+  radial-gradient(circle at 55% 66%,rgba(255,190,80,.45),transparent 40%),
+  linear-gradient(180deg,var(--grass-a),var(--grass-b));border:1px solid var(--hairline);position:relative}
+.lock{font-size:10px;color:var(--muted);border:1px solid var(--hairline);border-radius:5px;padding:1px 6px}
+
+/* result */
+.rbadge{text-align:center;font-size:20px;font-weight:800;padding:10px 0 2px}
+.fscore{text-align:center;font-size:13px;color:var(--muted);margin-bottom:10px}
+.motm{display:flex;align-items:center;gap:9px;background:linear-gradient(90deg,rgba(201,162,39,.18),transparent);
+  border:1px solid rgba(201,162,39,.35);border-radius:10px;padding:8px 10px;margin-bottom:11px}
+.motm .t{font-size:9px;color:#e5c766;letter-spacing:.1em}
+.motm .n2{font-size:13px;font-weight:700}
+
+/* list rows (logs / ranking) */
+.lrow{display:flex;align-items:center;gap:9px;padding:9px 2px;border-top:1px solid var(--hairline);font-size:12px}
+.lrow .rk{width:20px;color:var(--muted);font-variant-numeric:tabular-nums}
+.lrow .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lrow .mv{color:var(--muted);font-variant-numeric:tabular-nums}
+.lrow .go{font-size:10px;color:var(--us);border:1px solid rgba(76,141,255,.4);border-radius:999px;padding:2px 7px}
+.crest{width:22px;height:22px;border-radius:7px;background:var(--sunk);border:1px solid var(--hairline);
+  display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted);flex:0 0 auto}
+
+/* formation mini */
+.mini{height:186px;border-radius:10px;background:linear-gradient(180deg,var(--grass-a),var(--grass-b));position:relative;
+  border:1px solid var(--hairline);margin-bottom:10px}
+
+/* decisions */
+.dec{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-top:16px}
+.dec h3{margin:0 0 3px;font-size:15px}
+.dec .q{color:var(--muted);font-size:13px;margin:0 0 12px}
+.opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}
+.opt{border:1px solid var(--border);border-radius:10px;padding:11px 12px;background:var(--sunk)}
+.opt.rec{border-color:var(--ok);box-shadow:inset 0 0 0 1px rgba(61,220,132,.18)}
+.opt h4{margin:0 0 5px;font-size:12.5px}
+.opt h4 em{font-style:normal;font-size:10px;color:var(--ok);margin-left:6px}
+.opt p{margin:0;font-size:11.5px;color:var(--muted);line-height:1.55}
+.opt p b{color:var(--text);font-weight:600}
+.note{font-size:12px;color:var(--muted);border-left:2px solid var(--border);padding-left:11px;margin:22px 0 0;max-width:980px}
+.note b{color:var(--warn)}
+code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>#403 선수 기록·정보 — 화면 구성 목업</h1>
+  <p>요구 1(경기중/종료후 개인 기록 탭) · 요구 1-2(선수 상세 + 타 유저 열람). <b>이 페이지 승인 = 개발 착수 게이트.</b>
+     수치는 전부 예시(더미)이고, 실제로 낼 수 있는 지표만 올렸다 — 못 내는 것은 §맨 아래 "안 넣은 것"에 이유와 함께 적었다.</p>
+</header>
+
+<nav class="jump">
+  <a href="#s1">① 경기중 · 선수 기록 탭</a>
+  <a href="#s2">② 피치 선수 터치</a>
+  <a href="#s3">③ 선수 상세 · 이 경기</a>
+  <a href="#s4">④ 선수 상세 · 선수 정보</a>
+  <a href="#s5">⑤ 종료 후 · 개인 성적</a>
+  <a href="#s6">⑥ 과거 경기</a>
+  <a href="#s7">⑦ 타 유저 선수단</a>
+  <a href="#dec">🛑 결정 요청 5건</a>
+</nav>
+
+<main>
+
+<!-- ==================== 1 ==================== -->
+<section class="screen" id="s1">
+  <h2>① 경기중 — 선수 기록 탭 <span class="tag">요구 A·B / 관전 셸 시트에 탭 1개 추가</span></h2>
+  <p class="why">지금 시트 탭은 <b>통계(팀)·로그·후반지시</b> 3개다. 여기에 <b>선수</b> 탭을 넣는다.
+     상단 세그먼트로 <b>우리 ↔ 상대</b>를 바꾼다(상대도 요구사항). 기록은 <b>재생 위치까지만</b> 집계된다 —
+     앞을 훔쳐보는 창구가 되면 안 되므로 기존 스포일러 게이트와 같은 축(tick)으로 자른다.</p>
+  <div class="row">
+
+    <div>
+    <div class="phone">
+      <div class="scorebar">
+        <div class="line1">
+          <div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
+          <div class="score">1 : 0</div>
+          <div class="tname"><span class="n">붉은늑대</span></div>
+        </div>
+        <div class="clock"><span class="dot">●</span> 전반 34:20 · LIVE</div>
+      </div>
+      <div class="pitchwrap small">
+        <div class="pl" style="left:50%;top:0;width:1px;height:100%"></div>
+        <div class="pl" style="left:50%;top:50%;width:54px;height:54px;border:1px solid var(--pitch-line);background:none;border-radius:50%;transform:translate(-50%,-50%)"></div>
+        <div class="tok us" style="left:12%;top:50%">1</div><div class="tok us" style="left:26%;top:24%">2</div>
+        <div class="tok us" style="left:24%;top:66%">5</div><div class="tok us" style="left:38%;top:44%">8</div>
+        <div class="tok us" style="left:47%;top:70%">11</div><div class="tok us" style="left:44%;top:20%">7</div>
+        <div class="tok them" style="left:88%;top:50%">1</div><div class="tok them" style="left:70%;top:36%">4</div>
+        <div class="tok them" style="left:60%;top:58%">6</div><div class="tok them" style="left:55%;top:30%">9</div>
+        <div class="ball" style="left:41%;top:47%"></div>
+      </div>
+      <div class="tabbar">
+        <button>통계</button><button class="on new">선수</button><button>로그</button><button>후반지시</button>
+      </div>
+      <div class="sheet tall">
+        <div class="sheetscroll">
+          <div class="seg">
+            <button class="on">우리 · FC 페터</button><button>상대 · 붉은늑대</button>
+          </div>
+          <div class="livecap">⏱ <span><b>34분까지</b>의 기록 — 재생이 진행되면 같이 늘어난다</span></div>
+          <div class="sortrow">
+            <button class="on">평점</button><button>골</button><button>슈팅</button><button>패스%</button><button>수비</button><button>번호</button>
+          </div>
+          <table class="plist">
+            <thead><tr><th>선수</th><th>평점</th><th>골</th><th>슛</th><th>패스%</th><th>수비</th></tr></thead>
+            <tbody>
+              <tr class="hl"><td><div class="pcell"><i class="num">9</i><span class="pname">김도현</span><span class="ppos">ST</span></div></td>
+                  <td><i class="rt hi">7.8</i></td><td>1</td><td>3</td><td>72%</td><td>1</td></tr>
+              <tr><td><div class="pcell"><i class="num">7</i><span class="pname">박세훈</span><span class="ppos">RW</span></div></td>
+                  <td><i class="rt mid">7.1</i></td><td>0</td><td>2</td><td>81%</td><td>2</td></tr>
+              <tr><td><div class="pcell"><i class="num">8</i><span class="pname">이준영</span><span class="ppos">CM</span></div></td>
+                  <td><i class="rt mid">6.9</i></td><td>0</td><td>1</td><td>89%</td><td>4</td></tr>
+              <tr><td><div class="pcell"><i class="num">11</i><span class="pname">최민서</span><span class="ppos">LW</span></div></td>
+                  <td><i class="rt">6.5</i></td><td>0</td><td>1</td><td>76%</td><td>1</td></tr>
+              <tr><td><div class="pcell"><i class="num">5</i><span class="pname">정태우</span><span class="ppos">CB</span></div></td>
+                  <td><i class="rt mid">7.0</i></td><td>0</td><td>0</td><td>91%</td><td>6</td></tr>
+              <tr><td><div class="pcell"><i class="num">2</i><span class="pname">한지훈</span><span class="ppos">RB</span></div></td>
+                  <td><i class="rt">6.4</i></td><td>0</td><td>0</td><td>84%</td><td>3</td></tr>
+              <tr class="gk"><td><div class="pcell"><i class="num">1</i><span class="pname">오성민</span><span class="ppos">GK</span></div></td>
+                  <td><i class="rt mid">7.2</i></td><td>0</td><td>0</td><td>68%</td><td>3<small style="color:var(--muted)">선방</small></td></tr>
+            </tbody>
+          </table>
+          <p style="font-size:10px;color:var(--muted);margin:9px 0 0">행을 누르면 그 선수 상세로 → ③</p>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>왜 이 6열인가</b> — 실제 축구 앱(Opta/소파스코어)의 요약 열과 같다. 폰 폭 390에서 이름+5수치가 잘리지 않는 한계가 6열이다.
+       나머지 20여 지표는 상세(③)로 내린다.</p>
+    </div>
+
+    <div>
+    <div class="phone short">
+      <div class="scorebar">
+        <div class="line1">
+          <div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
+          <div class="score">1 : 0</div>
+          <div class="tname"><span class="n">붉은늑대</span></div>
+        </div>
+        <div class="clock"><span class="dot">●</span> 전반 34:20 · LIVE</div>
+      </div>
+      <div class="tabbar"><button>통계</button><button class="on new">선수</button><button>로그</button><button>후반지시</button></div>
+      <div class="sheet tall">
+        <div class="sheetscroll">
+          <div class="seg"><button>우리 · FC 페터</button><button class="on them">상대 · 붉은늑대</button></div>
+          <div class="livecap">⏱ <span><b>34분까지</b>의 기록</span></div>
+          <div class="sortrow"><button class="on">평점</button><button>골</button><button>슈팅</button><button>패스%</button><button>수비</button></div>
+          <table class="plist">
+            <thead><tr><th>선수</th><th>평점</th><th>골</th><th>슛</th><th>패스%</th><th>수비</th></tr></thead>
+            <tbody>
+              <tr><td><div class="pcell"><i class="num them">9</i><span class="pname">레온 카터</span><span class="ppos">ST</span></div></td>
+                  <td><i class="rt mid">7.0</i></td><td>0</td><td>4</td><td>64%</td><td>0</td></tr>
+              <tr><td><div class="pcell"><i class="num them">10</i><span class="pname">디에고 모라</span><span class="ppos">AM</span></div></td>
+                  <td><i class="rt mid">7.3</i></td><td>0</td><td>2</td><td>85%</td><td>2</td></tr>
+              <tr><td><div class="pcell"><i class="num them">6</i><span class="pname">유리 노박</span><span class="ppos">DM</span></div></td>
+                  <td><i class="rt">6.6</i></td><td>0</td><td>0</td><td>88%</td><td>5</td></tr>
+              <tr><td><div class="pcell"><i class="num them">4</i><span class="pname">토마스 랑</span><span class="ppos">CB</span></div></td>
+                  <td><i class="rt">6.2</i></td><td>0</td><td>0</td><td>90%</td><td>4</td></tr>
+              <tr class="gk"><td><div class="pcell"><i class="num">1</i><span class="pname">M. 슈밋</span><span class="ppos">GK</span></div></td>
+                  <td><i class="rt mid">7.4</i></td><td>0</td><td>0</td><td>61%</td><td>5<small style="color:var(--muted)">선방</small></td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:12px" class="pend">🔒 상대의 <b>지시(프롬프트)</b>는 보이지 않는다 — 기록만 공개</div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>상대 탭</b> — 같은 표를 팀색만 바꿔 재사용. 상대 <b>지시문은 비공개</b>(자산)이고 <b>기록은 공개</b>다.
+       공개 범위는 결정 요청 ③ 참조.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ==================== 2 ==================== -->
+<section class="screen" id="s2">
+  <h2>② 경기중 — 피치에서 선수 터치 <span class="tag">요구 E</span></h2>
+  <p class="why">경기장의 선수 토큰을 누르면 그 선수가 <b>강조되고</b>, 아래에 <b>현재 경기 요약 카드</b>가 뜬다.
+     카드에서 <b>[선수 정보 전체보기]</b> 를 누르면 상세 모달(③)로 이어진다. 카드를 띄운 동안에도 경기는 계속 흐른다.</p>
+  <div class="row">
+    <div>
+    <div class="phone">
+      <div class="scorebar">
+        <div class="line1"><div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
+          <div class="score">1 : 0</div><div class="tname"><span class="n">붉은늑대</span></div></div>
+        <div class="clock"><span class="dot">●</span> 전반 34:20 · LIVE</div>
+      </div>
+      <div class="pitchwrap">
+        <div class="pl" style="left:50%;top:0;width:1px;height:100%"></div>
+        <div class="pl" style="left:50%;top:50%;width:70px;height:70px;border:1px solid var(--pitch-line);background:none;border-radius:50%;transform:translate(-50%,-50%)"></div>
+        <div class="pl" style="left:0;top:30%;width:12%;height:40%;border:1px solid var(--pitch-line);background:none"></div>
+        <div class="pl" style="right:0;top:30%;width:12%;height:40%;border:1px solid var(--pitch-line);background:none"></div>
+        <div class="tok us" style="left:9%;top:50%">1</div><div class="tok us" style="left:22%;top:20%">2</div>
+        <div class="tok us" style="left:20%;top:40%">5</div><div class="tok us" style="left:20%;top:62%">3</div>
+        <div class="tok us" style="left:34%;top:32%">8</div><div class="tok us" style="left:32%;top:56%">6</div>
+        <div class="tok us sel" style="left:47%;top:26%">9</div>
+        <div class="tok us" style="left:44%;top:70%">11</div>
+        <div class="tok them" style="left:91%;top:50%">1</div><div class="tok them" style="left:72%;top:30%">4</div>
+        <div class="tok them" style="left:70%;top:60%">5</div><div class="tok them" style="left:58%;top:44%">6</div>
+        <div class="ball" style="left:49%;top:29%"></div>
+        <div class="pop">
+          <h4><i class="num" style="width:22px;height:22px;font-size:10px">9</i> 김도현 <span class="ppos">ST</span>
+            <span style="margin-left:auto"><i class="rt hi">7.8</i></span></h4>
+          <div class="sub">FC 페터 · 34분까지 · 다이아 ★3</div>
+          <div class="popgrid">
+            <div><b>1</b><span>골</span></div><div><b>3</b><span>슈팅</span></div>
+            <div><b>0.41</b><span>xG</span></div><div><b>72%</b><span>패스</span></div>
+          </div>
+          <div class="popgrid" style="grid-template-columns:repeat(3,1fr)">
+            <div><b>18</b><span>터치</span></div><div><b>4.1km</b><span>뛴거리</span></div><div><b>2</b><span>피지컬 듀얼</span></div>
+          </div>
+          <button class="btn">선수 정보 전체보기 →</button>
+          <button class="btn ghost" style="margin-top:5px">닫기</button>
+        </div>
+      </div>
+      <div class="tabbar"><button>통계</button><button class="new">선수</button><button class="on">로그</button><button>후반지시</button></div>
+      <div class="sheet"><div class="sheetscroll" style="font-size:11px;color:var(--muted)">
+        34' 김도현 슈팅 — 골! · 33' 이준영 패스 · 33' 박세훈 드리블 …
+      </div></div>
+    </div>
+    <p class="cap"><b>주의</b> — 이 "선수 터치" 히트테스트는 <b>#406(경기 화면 UX)의 "선수 하이라이트"와 같은 표면</b>이다.
+       두 에픽이 각각 만들면 두 번 구현된다 → main 이 배정한다(결정 요청 ⑤).</p>
+    </div>
+
+    <div>
+      <p class="cap" style="max-width:420px"><b>동선 요약</b></p>
+      <div style="max-width:420px;font-size:13px;color:var(--muted);line-height:1.9">
+        <div>피치 토큰 <b style="color:var(--text)">탭</b> → 토큰 강조 + 요약 카드</div>
+        <div style="padding-left:14px">↳ <b style="color:var(--text)">[선수 정보 전체보기]</b> → 상세 모달 ③</div>
+        <div style="padding-left:14px">↳ <b style="color:var(--text)">[닫기]</b> / 빈 곳 탭 → 원복</div>
+        <div style="margin-top:10px">선수 탭(①) 행 <b style="color:var(--text)">탭</b> → 상세 모달 ③ (같은 목적지)</div>
+        <div style="margin-top:10px">상대 선수도 <b style="color:var(--text)">완전히 동일</b>하게 동작</div>
+      </div>
+      <p class="cap" style="margin-top:18px"><b>기술 메모</b> — 경기장 그리는 코어(viewer-core)는 이미
+        <code>curPlayers()</code> 로 <b>그린 픽셀 좌표</b>를 내보낸다. 그래서 코어를 고치지 않고 웹 쪽에서
+        캔버스에 터치 리스너만 붙여 최근접 토큰을 찾으면 된다 — <b>경계를 넘지 않는다.</b></p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 3 ==================== -->
+<section class="screen" id="s3">
+  <h2>③ 선수 상세 모달 — [이 경기] 탭 <span class="tag">요구 E·F / 경기중·종료후·과거 공통</span></h2>
+  <p class="why">한 선수의 <b>이 경기 전체 기록</b>. 실제 축구 앱처럼 <b>공격 / 패스 / 수비 / 활동량 / 규율</b> 카테고리로 묶는다.
+     라이브면 "34분까지"가 붙고, 종료 경기면 붙지 않는다 — <b>화면은 같다.</b></p>
+  <div class="row">
+    <div>
+    <div class="phone modalphone">
+      <div class="scorebar"><div class="line1"><div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
+        <div class="score">1 : 0</div><div class="tname"><span class="n">붉은늑대</span></div></div>
+        <div class="clock"><span class="dot">●</span> 전반 34:20 · LIVE</div></div>
+      <div class="pitchwrap" style="flex:1 1 auto">
+        <div class="dim">
+          <div class="modal">
+            <div class="mhead">
+              <div class="art dia">DIA<br>아트</div>
+              <div style="min-width:0">
+                <div style="font-size:15px;font-weight:700">김도현 <span class="ppos">ST</span> <span style="font-size:10px;color:var(--muted)">#9</span></div>
+                <div style="font-size:10px;color:var(--muted)">FC 페터 · 다이아 ★3 · Lv.12</div>
+              </div>
+              <div style="margin-left:auto;text-align:right">
+                <i class="rt hi" style="font-size:14px;min-width:38px">7.8</i>
+                <div style="font-size:9px;color:var(--muted);margin-top:2px">평점</div>
+              </div>
+            </div>
+            <div class="mtabs"><button class="on">이 경기</button><button>선수 정보</button></div>
+            <div class="mbody">
+              <div class="livecap">⏱ <span><b>34분까지</b>의 기록</span></div>
+              <div class="kpi">
+                <div><b>1</b><span>골</span></div><div><b>0</b><span>도움</span></div>
+                <div><b>3</b><span>슈팅</span></div><div><b>0.41</b><span>xG</span></div>
+              </div>
+
+              <h5 class="cat">공격</h5>
+              <div class="slist">
+                <div><span>슈팅 (유효)</span><span>3 (2)</span></div>
+                <div><span>기대득점 xG</span><span>0.41</span></div>
+                <div><span>기회 창출(키패스)</span><span>1</span></div>
+                <div><span>박스 안 터치</span><span>6</span></div>
+                <div><span>오프사이드</span><span>1</span></div>
+              </div>
+
+              <h5 class="cat">패스</h5>
+              <div class="slist">
+                <div><span>패스 성공 / 시도</span><span>13 / 18</span></div>
+                <div><span>패스 성공률</span><span>72%</span></div>
+                <div><span>전진 패스</span><span>5</span></div>
+                <div><span>롱 패스</span><span>1</span></div>
+              </div>
+              <div class="bar"><i style="width:72%"></i></div>
+
+              <h5 class="cat">수비 · 경합</h5>
+              <div class="slist">
+                <div><span>태클 성공</span><span>1</span></div>
+                <div><span>가로채기</span><span>0</span></div>
+                <div><span>걷어내기</span><span>0</span></div>
+                <div><span>공중볼 승리</span><span>2</span></div>
+                <div><span>볼 뺏김</span><span>4</span></div>
+              </div>
+
+              <h5 class="cat">활동량</h5>
+              <div class="slist">
+                <div><span>뛴 거리</span><span>4.1 km</span></div>
+                <div><span>터치</span><span>18</span></div>
+                <div><span>드리블 전진</span><span>7회 · 63 m</span></div>
+                <div><span>출전 시간</span><span>34분</span></div>
+              </div>
+              <h5 class="cat">히트맵</h5>
+              <div class="heat"></div>
+
+              <h5 class="cat">규율</h5>
+              <div class="slist">
+                <div><span>파울</span><span>1</span></div>
+                <div class="dim2"><span>경고 / 퇴장</span><span>— / —</span></div>
+              </div>
+              <button class="btn ghost" style="margin-top:14px">닫기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>골키퍼</b>는 카테고리 하나가 바뀐다 — 공격 대신 <b>선방 / 실점 / 선방률 / 골킥 성공률</b>.</p>
+    </div>
+
+    <div style="max-width:430px">
+      <p class="cap" style="max-width:none"><b>이 21개 지표는 전부 지금 데이터로 낼 수 있다.</b>
+        (경기 로그에 <b>선수·팀·틱</b>이 전부 실려 있고, 매 틱 전원 좌표가 보관돼 있다.)
+        아래는 <b>실제 축구 앱엔 있는데 우리가 못 내는 것</b>과 그 이유다 — 목업에도 일부러 안 넣었다.</p>
+      <div class="slist" style="font-size:12px">
+        <div><span>크로스</span><span style="color:var(--muted)">엔진이 크로스를 패스와 구분해 기록 안 함</span></div>
+        <div><span>슛 블록</span><span style="color:var(--muted)">엔진에 블록 개념 자체가 없음</span></div>
+        <div><span>드리블 성공/실패</span><span style="color:var(--muted)">돌파 성공 여부가 기록에 안 남음</span></div>
+        <div><span>피파울(당한 파울)</span><span style="color:var(--muted)">가해자만 기록, 피해자 미기록</span></div>
+        <div><span>경합 시도 수</span><span style="color:var(--muted)">이긴 쪽만 기록</span></div>
+      </div>
+      <p class="cap" style="max-width:none;margin-top:12px">이 5개는 <b>엔진 트랙(#25/E4)에 요청만 넣고 이 에픽에서는 만들지 않는다</b>
+        (엔진 수정 금지가 이 에픽 규칙). 요청이 반영되면 <b>화면은 그대로 두고 값만 채워진다</b>.</p>
+      <p class="cap" style="max-width:none;margin-top:12px"><b>패스 성공률에 대한 솔직한 메모</b> — hero 가 콕 집은 지표인데,
+        경기 로그의 패스 기록은 <b>받은 사람</b>만 남기고 <b>찬 사람</b>은 안 남긴다. 그래서 공 소유가 누구에게서
+        누구에게로 갔는지를 <b>매 틱 좌표로 되짚어 복원</b>해서 낸다. 양팀에 같은 이름의 선수가 동시에 뛰는 경우
+        (실제로 자주 있다) 아주 드물게 어긋날 수 있어, 정확한 기록을 위해 엔진 트랙에 "찬 사람도 기록하라"를 요청해 뒀다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 4 ==================== -->
+<section class="screen" id="s4">
+  <h2>④ 선수 상세 모달 — [선수 정보] 탭 <span class="tag">요구 F / 성장 값은 #405 확정 후 배선</span></h2>
+  <p class="why">같은 모달의 두 번째 탭. <b>능력치 + 성장(승급) 정보</b>. 지금 있는 카드 상세 화면의 내용을
+     <b>경기중에도, 상대 선수에도</b> 열 수 있게 만드는 것이 이 요구의 핵심이다.</p>
+  <div class="row">
+    <div>
+    <div class="phone modalphone" style="height:900px">
+      <div class="scorebar"><div class="line1"><div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
+        <div class="score">1 : 0</div><div class="tname"><span class="n">붉은늑대</span></div></div>
+        <div class="clock"><span class="dot">●</span> 전반 34:20 · LIVE</div></div>
+      <div class="pitchwrap" style="flex:1 1 auto">
+        <div class="dim">
+          <div class="modal">
+            <div class="mhead">
+              <div class="art dia">DIA<br>아트</div>
+              <div style="min-width:0">
+                <div style="font-size:15px;font-weight:700">김도현 <span class="ppos">ST</span> <span style="font-size:10px;color:var(--muted)">#9</span></div>
+                <div style="font-size:10px;color:var(--muted)">다이아 ★3 · Lv.12 · OVR 78</div>
+              </div>
+              <div style="margin-left:auto;text-align:right"><div style="font-size:20px;font-weight:800">78</div>
+                <div style="font-size:9px;color:var(--muted)">OVR</div></div>
+            </div>
+            <div class="mtabs"><button>이 경기</button><button class="on">선수 정보</button></div>
+            <div class="mbody">
+              <h5 class="cat">능력치</h5>
+              <div class="attr">
+                <div class="a"><div class="l"><span>슈팅</span><b>84</b></div><div class="bar"><i style="width:84%"></i></div></div>
+                <div class="a"><div class="l"><span>스피드</span><b>79</b></div><div class="bar"><i style="width:79%"></i></div></div>
+                <div class="a"><div class="l"><span>드리블</span><b>76</b></div><div class="bar"><i style="width:76%"></i></div></div>
+                <div class="a"><div class="l"><span>패스</span><b>68</b></div><div class="bar"><i style="width:68%"></i></div></div>
+                <div class="a"><div class="l"><span>피지컬</span><b>72</b></div><div class="bar"><i style="width:72%"></i></div></div>
+                <div class="a"><div class="l"><span>수비</span><b>41</b></div><div class="bar"><i style="width:41%"></i></div></div>
+              </div>
+
+              <h5 class="cat">성장 · 승급</h5>
+              <div class="pend">⚙️ 이 영역은 <b>성장 개편(#405)</b> 이 형상을 정한다 —
+                레벨/경험치/승급 표기는 <b>자리만 잡고</b> 값 배선은 #405 인터페이스 확정 후</div>
+              <div class="slist" style="margin-top:8px">
+                <div class="dim2"><span>레벨 · 경험치</span><span>Lv.12 · 340 / 500</span></div>
+                <div class="dim2"><span>성 승급(★)</span><span>★3 → ★4 (조각 2/5)</span></div>
+                <div class="dim2"><span>잠재 티어</span><span>EPIC</span></div>
+              </div>
+
+              <h5 class="cat">지시(프롬프트)</h5>
+              <div class="slist">
+                <div><span>선수 지시</span><span style="font-size:11px;color:var(--muted)">"박스 안에서 과감하게…"</span></div>
+              </div>
+              <p style="font-size:10px;color:var(--muted);margin:6px 0 0">↑ 내 선수일 때만. 상대·타 유저는 <span class="lock">🔒 지시 있음</span> 만 표시</p>
+              <button class="btn ghost" style="margin-top:14px">닫기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>내 선수</b> — 지시문까지 보인다.</p>
+    </div>
+
+    <div>
+    <div class="phone modalphone" style="height:900px">
+      <div class="scorebar"><div class="line1"><div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
+        <div class="score">1 : 0</div><div class="tname"><span class="n">붉은늑대</span></div></div>
+        <div class="clock"><span class="dot">●</span> 전반 34:20 · LIVE</div></div>
+      <div class="pitchwrap" style="flex:1 1 auto">
+        <div class="dim">
+          <div class="modal">
+            <div class="mhead">
+              <div class="art">GOLD<br>아트 없음</div>
+              <div style="min-width:0">
+                <div style="font-size:15px;font-weight:700">레온 카터 <span class="ppos">ST</span> <span style="font-size:10px;color:var(--muted)">#9</span></div>
+                <div style="font-size:10px;color:var(--muted)">붉은늑대 · 골드 ★2</div>
+              </div>
+              <div style="margin-left:auto;text-align:right"><div style="font-size:20px;font-weight:800">71</div>
+                <div style="font-size:9px;color:var(--muted)">OVR</div></div>
+            </div>
+            <div class="mtabs"><button>이 경기</button><button class="on">선수 정보</button></div>
+            <div class="mbody">
+              <h5 class="cat">능력치</h5>
+              <div class="attr">
+                <div class="a"><div class="l"><span>슈팅</span><b>77</b></div><div class="bar"><i style="width:77%"></i></div></div>
+                <div class="a"><div class="l"><span>스피드</span><b>81</b></div><div class="bar"><i style="width:81%"></i></div></div>
+                <div class="a"><div class="l"><span>드리블</span><b>69</b></div><div class="bar"><i style="width:69%"></i></div></div>
+                <div class="a"><div class="l"><span>패스</span><b>60</b></div><div class="bar"><i style="width:60%"></i></div></div>
+              </div>
+              <h5 class="cat">성장 · 승급</h5>
+              <div class="slist"><div class="dim2"><span>공개 범위</span><span>결정 요청 ③ 참조</span></div></div>
+              <h5 class="cat">지시(프롬프트)</h5>
+              <div style="text-align:center;padding:10px 0"><span class="lock">🔒 지시 있음 — 내용 비공개</span></div>
+              <button class="btn ghost" style="margin-top:14px">닫기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>상대 선수</b> — 아트는 <b>다이아 이상만</b> 그린다는 기존 정책 그대로(골드는 아이콘).
+       지시문은 <b>있다는 사실만</b> 보인다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 5 ==================== -->
+<section class="screen" id="s5">
+  <h2>⑤ 종료 후 — 양팀 개인 성적 <span class="tag">요구 C</span></h2>
+  <p class="why">지금 결과 탭은 <b>스코어 · 보상 · 팀 스탯 · 성장 리포트</b> 순이다. 그 사이(팀 스탯 뒤)에
+     <b>MOTM + 양팀 개인 성적</b>을 넣는다. 표는 ①과 같은 컴포넌트 — 라이브 캡션만 없다.</p>
+  <div class="row">
+    <div>
+    <div class="phone">
+      <div class="scorebar"><div class="line1"><div class="tname"><span class="n">FC 페터</span><span class="mechip">나</span></div>
+        <div class="score">2 : 1</div><div class="tname"><span class="n">붉은늑대</span></div></div>
+        <div class="clock">경기 종료 · 90'</div></div>
+      <div class="tabbar"><button class="on">결과</button><button class="new">선수</button><button>통계</button><button>로그</button></div>
+      <div class="sheet tall"><div class="sheetscroll">
+        <div class="rbadge" style="color:var(--ok)">승리</div>
+        <div class="fscore">FC 페터 2 : 1 붉은늑대</div>
+        <div class="motm">
+          <i class="num" style="width:26px;height:26px;font-size:11px">9</i>
+          <div><div class="t">MAN OF THE MATCH</div><div class="n2">김도현 <span class="rt motm">8.4</span></div></div>
+        </div>
+        <div class="seg"><button class="on">우리 · FC 페터</button><button>상대 · 붉은늑대</button></div>
+        <table class="plist">
+          <thead><tr><th>선수</th><th>평점</th><th>골</th><th>슛</th><th>패스%</th><th>수비</th></tr></thead>
+          <tbody>
+            <tr class="hl"><td><div class="pcell"><i class="num">9</i><span class="pname">김도현</span><span class="ppos">ST</span></div></td>
+                <td><i class="rt motm">8.4</i></td><td>2</td><td>5</td><td>74%</td><td>2</td></tr>
+            <tr><td><div class="pcell"><i class="num">8</i><span class="pname">이준영</span><span class="ppos">CM</span></div></td>
+                <td><i class="rt hi">7.6</i></td><td>0</td><td>2</td><td>88%</td><td>7</td></tr>
+            <tr><td><div class="pcell"><i class="num">7</i><span class="pname">박세훈</span><span class="ppos">RW</span></div></td>
+                <td><i class="rt mid">7.2</i></td><td>0</td><td>3</td><td>79%</td><td>3</td></tr>
+            <tr><td><div class="pcell"><i class="num">5</i><span class="pname">정태우</span><span class="ppos">CB</span></div></td>
+                <td><i class="rt mid">7.0</i></td><td>0</td><td>0</td><td>92%</td><td>11</td></tr>
+            <tr><td><div class="pcell"><i class="num">11</i><span class="pname">최민서</span><span class="ppos">LW</span></div></td>
+                <td><i class="rt">6.3</i></td><td>0</td><td>1</td><td>71%</td><td>2</td></tr>
+            <tr class="gk"><td><div class="pcell"><i class="num">1</i><span class="pname">오성민</span><span class="ppos">GK</span></div></td>
+                <td><i class="rt mid">7.1</i></td><td>0</td><td>0</td><td>66%</td><td>4<small style="color:var(--muted)">선방</small></td></tr>
+            <tr><td colspan="6" style="text-align:center;color:var(--muted);font-size:11px;padding-top:9px">교체 투입 2명 더보기 ▾</td></tr>
+          </tbody>
+        </table>
+        <h5 class="cat">성장 리포트</h5>
+        <div class="slist"><div class="dim2"><span>기존 XP 막대 영역 (그대로 유지)</span><span>#405</span></div></div>
+        <button class="btn" style="margin-top:14px">로비로</button>
+      </div></div>
+    </div>
+    <p class="cap"><b>탭에도 들어간다</b> — 결과 탭 안 요약 + <b>선수</b> 탭에서 전체 목록·상세. 종료 후엔 선수 탭도 계속 살아 있다(요구 C).</p>
+    </div>
+    <div style="max-width:400px">
+      <p class="cap" style="max-width:none"><b>MOTM 을 넣는 이유</b> — 개인 성적표는 숫자만 있으면 안 읽힌다.
+        "누가 잘했나"를 한 줄로 주는 것이 실제 축구 앱의 기본이고, 우리 게임은 <b>선수별 프롬프트</b>가 차별점이라
+        "내 지시가 통했나"를 가장 빨리 알려주는 자리이기도 하다. 다만 <b>평점 산식은 우리가 정해야 한다</b> → 결정 요청 ①.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 6 ==================== -->
+<section class="screen" id="s6">
+  <h2>⑥ 과거 경기 — 같은 화면 재사용 <span class="tag">요구 D / 새 화면 없음</span></h2>
+  <p class="why">과거 경기 상세는 <b>이미 종료 경기 화면(⑤)으로 들어간다</b>. 서버가 경기 로그를 <b>전부 영구 보관</b>하고 있어서
+     (지우는 코드가 없다) 지난 경기도 <b>똑같이</b> 개인 성적이 나온다. 새 화면이 필요 없다 — 목록에 진입 힌트만 붙인다.</p>
+  <div class="row">
+    <div>
+    <div class="phone short">
+      <div class="scorebar"><div class="line1"><div class="tname"><span class="n">기록</span></div>
+        <div style="font-size:12px;color:var(--muted)">경기 기록</div><div class="tname"></div></div></div>
+      <div class="sheet tall"><div class="sheetscroll">
+        <div class="seg"><button class="on">전체</button><button>리그</button><button>원정</button><button>연습</button></div>
+        <div class="lrow"><div class="crest">RW</div><div class="who">vs 붉은늑대</div>
+          <div class="mv">2 : 1</div><span class="rt hi" style="min-width:0">승</span><span class="go">▶ 기록</span></div>
+        <div class="lrow"><div class="crest">BS</div><div class="who">vs 블루스타</div>
+          <div class="mv">0 : 3</div><span class="rt" style="min-width:0;background:#7f8894">패</span><span class="go">▶ 기록</span></div>
+        <div class="lrow"><div class="crest">GT</div><div class="who">vs 그린타이거</div>
+          <div class="mv">1 : 1</div><span class="rt" style="min-width:0;background:#7f8894">무</span><span class="go">▶ 기록</span></div>
+        <div class="lrow"><div class="crest">SN</div><div class="who">vs 실버넥스</div>
+          <div class="mv">3 : 2</div><span class="rt hi" style="min-width:0">승</span><span class="go">▶ 기록</span></div>
+        <p class="cap" style="margin-top:14px">행을 누르면 그 경기의 <b>종료 화면(⑤)</b> 이 열린다 — 개인 성적·선수 상세 전부 동일.</p>
+      </div></div>
+    </div>
+    </div>
+    <div style="max-width:430px">
+      <p class="cap" style="max-width:none"><b>바뀌는 것</b> — 목록 행의 <code>▶ 재생</code> 배지를 <code>▶ 기록</code> 으로
+        (재생도 되고 기록도 된다는 뜻을 담아). 그 외 목록 화면은 손대지 않는다.</p>
+      <p class="cap" style="max-width:none"><b>확인한 것</b> — 경기 로그는 하프당 약 0.6 MB 로 <b>삭제·만료 없이 전부</b> 남아 있다.
+        즉 "이전 경기 개인 성적"은 <b>데이터가 이미 다 있고</b> 화면만 없었던 것이다.</p>
+      <p class="cap" style="max-width:none"><b>결정 요청 ④</b> — 시즌이 쌓이면 로그가 계속 늘어난다(경기당 ~1.1 MB).
+        지금은 문제가 아니지만 언젠가는 정리 정책이 필요하다. 이 에픽에서 다룰 일은 아니고, 별도 이슈로 남길지 판단만 받는다.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== 7 ==================== -->
+<section class="screen" id="s7">
+  <h2>⑦ 타 유저 선수단 열람 <span class="tag">요구 G / 서버 신규 API 1개 필요</span></h2>
+  <p class="why">원정 상대 카드와 랭킹보드 행에서 <b>유저를 누르면</b> 그 유저의 선수단이 열린다.
+     지금은 이 화면들이 <b>닉네임과 레이팅만</b> 보여주고 <b>누를 수도 없다</b>. 서버에도 타인 스쿼드를 주는 API 가 없다.</p>
+  <div class="row">
+    <div>
+    <div class="phone short">
+      <div class="scorebar"><div class="line1"><div class="tname"><span class="n">원정</span></div>
+        <div style="font-size:12px;color:var(--muted)">상대 고르기</div><div class="tname"></div></div></div>
+      <div class="sheet tall"><div class="sheetscroll">
+        <p style="font-size:11px;color:var(--muted);margin:0 0 8px">2명 중 한 명에게 원정을 떠난다.</p>
+        <div style="border:1px solid var(--border);border-radius:11px;padding:11px;margin-bottom:9px;background:var(--sunk)">
+          <div style="display:flex;align-items:center;gap:9px">
+            <div class="crest" style="width:34px;height:34px">👤</div>
+            <div style="flex:1"><div style="font-size:14px;font-weight:700">별희</div>
+              <div style="font-size:10px;color:var(--muted)">레이팅 1284 · 3연승</div></div>
+            <span class="go">선수단 보기</span>
+          </div>
+          <button class="btn" style="margin-top:9px">원정 떠나기</button>
+        </div>
+        <div style="border:1px solid var(--border);border-radius:11px;padding:11px;background:var(--sunk)">
+          <div style="display:flex;align-items:center;gap:9px">
+            <div class="crest" style="width:34px;height:34px">👤</div>
+            <div style="flex:1"><div style="font-size:14px;font-weight:700">오시야스</div>
+              <div style="font-size:10px;color:var(--muted)">레이팅 1207</div></div>
+            <span class="go">선수단 보기</span>
+          </div>
+          <button class="btn" style="margin-top:9px">원정 떠나기</button>
+        </div>
+        <h5 class="cat">원정 랭킹</h5>
+        <div class="lrow"><div class="rk">1</div><div class="crest">👤</div><div class="who">별희</div><div class="mv">1284</div><span class="go">선수단</span></div>
+        <div class="lrow"><div class="rk">2</div><div class="crest">👤</div><div class="who">오시야스</div><div class="mv">1207</div><span class="go">선수단</span></div>
+        <div class="lrow"><div class="rk">3</div><div class="crest">👤</div><div class="who">나</div><div class="mv">1155</div><span></span></div>
+      </div></div>
+    </div>
+    <p class="cap"><b>진입점 2곳</b> — 원정 상대 카드 · 랭킹보드 행(원정/리그 공용 컴포넌트라 <b>두 곳이 한 번에</b> 살아난다).
+       ⚠️ 원정 상대 카드에서는 <b>[선수단 보기]와 [원정 떠나기]를 확실히 분리</b>해야 한다 —
+       카드를 누르면 곧바로 원정이 시작되는 게 현재 동작이라, 잘못 누르면 제시가 소모된다.</p>
+    </div>
+
+    <div>
+    <div class="phone modalphone" style="height:740px">
+      <div class="scorebar"><div class="line1"><div class="tname"><span class="n">원정</span></div>
+        <div style="font-size:12px;color:var(--muted)">상대 고르기</div><div class="tname"></div></div></div>
+      <div class="pitchwrap" style="flex:1 1 auto;background:var(--bg)">
+        <div class="dim">
+          <div class="modal">
+            <div class="mhead">
+              <div class="crest" style="width:42px;height:42px;font-size:16px">👤</div>
+              <div><div style="font-size:15px;font-weight:700">별희</div>
+                <div style="font-size:10px;color:var(--muted)">레이팅 1284 · 3연승 · 디비전 D4</div></div>
+            </div>
+            <div class="mbody">
+              <h5 class="cat">선발 11 · 4-3-3</h5>
+              <div class="mini">
+                <div class="tok them" style="left:8%;top:50%">1</div>
+                <div class="tok them" style="left:26%;top:16%">2</div><div class="tok them" style="left:24%;top:38%">4</div>
+                <div class="tok them" style="left:24%;top:62%">5</div><div class="tok them" style="left:26%;top:84%">3</div>
+                <div class="tok them" style="left:48%;top:26%">8</div><div class="tok them" style="left:46%;top:50%">6</div>
+                <div class="tok them" style="left:48%;top:74%">10</div>
+                <div class="tok them" style="left:74%;top:20%">7</div><div class="tok them" style="left:76%;top:50%">9</div>
+                <div class="tok them" style="left:74%;top:80%">11</div>
+              </div>
+              <table class="plist">
+                <tbody>
+                  <tr><td><div class="pcell"><i class="num them">9</i><span class="pname">레온 카터</span><span class="ppos">ST</span></div></td>
+                      <td style="color:#8fc4ff">DIA ★3</td><td>OVR 79</td><td><span class="lock">🔒</span></td></tr>
+                  <tr><td><div class="pcell"><i class="num them">10</i><span class="pname">디에고 모라</span><span class="ppos">AM</span></div></td>
+                      <td style="color:#c9a227">GOLD ★2</td><td>OVR 73</td><td><span class="lock">🔒</span></td></tr>
+                  <tr><td><div class="pcell"><i class="num them">6</i><span class="pname">유리 노박</span><span class="ppos">DM</span></div></td>
+                      <td style="color:#c9a227">GOLD ★1</td><td>OVR 70</td><td></td></tr>
+                  <tr><td><div class="pcell"><i class="num them">4</i><span class="pname">토마스 랑</span><span class="ppos">CB</span></div></td>
+                      <td style="color:#9aa1ad">SILVER</td><td>OVR 66</td><td></td></tr>
+                </tbody>
+              </table>
+              <p style="font-size:10px;color:var(--muted);margin:8px 0 0">행을 누르면 그 선수의 <b>선수 정보</b>(④) — 경기 기록 탭은 없다.
+                 <span class="lock">🔒</span> = 지시가 걸려 있음(내용은 비공개)</p>
+              <button class="btn ghost" style="margin-top:12px">닫기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="cap"><b>공개 범위(초안)</b> — 이름·포지션·등급·★·OVR·능력치 · "지시 있음" 여부.
+       <b>비공개</b> — 지시문 내용, 팀 전술 지시. 최종 범위는 결정 요청 ③.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ==================== decisions ==================== -->
+<section class="screen" id="dec">
+  <h2>🛑 결정 요청 — 5건</h2>
+  <p class="why">아래 5개는 <b>게임 내용·공개 범위</b> 문제라 hero 판단이 필요하다.
+     구현 방법·검증 절차는 세션이 알아서 하고 묻지 않는다. 각 항목의 <span style="color:var(--ok)">권장</span> 을 그대로 가도 되고, 다른 걸 골라도 된다.</p>
+
+  <div class="dec">
+    <h3>① 선수 평점(rating)을 넣을까?</h3>
+    <p class="q">실제 축구 앱은 전부 평점이 있다. 우리는 <b>산식을 직접 만들어야</b> 한다 — 즉 "무엇을 잘한 것으로 칠지"를
+       게임이 정하는 일이라 밸런스·체감에 직접 영향이 있다.</p>
+    <div class="opts">
+      <div class="opt rec"><h4>A. 넣는다 (기본 6.0 ± 가감)<em>권장</em></h4>
+        <p>골·도움·유효슛·패스성공·태클/가로채기는 <b>+</b>, 뺏김·파울·실점은 <b>−</b>. MOTM 도 자동으로 나온다.
+          <b>장점</b>: 개인 성적표가 한눈에 읽히고, "내 프롬프트가 통했나"를 바로 준다.
+          <b>단점</b>: 산식이 곧 게임의 가치판단이라 나중에 바꾸면 유저가 체감한다. 첫 산식은 hero 가 한 번 봐야 한다.</p></div>
+      <div class="opt"><h4>B. 안 넣는다 (숫자만)</h4>
+        <p>골·슛·패스% 등 원시 수치만. <b>장점</b>: 우리가 만든 판단이 안 섞여 논란이 없다.
+          <b>단점</b>: 11명 표가 숫자 밭이 되어 "누가 잘했나"가 안 읽힌다. MOTM 도 못 뽑는다.</p></div>
+      <div class="opt"><h4>C. 나중에 (자리만)</h4>
+        <p>이번엔 수치만 내고 평점 열은 비워 둔다. <b>단점</b>: 표 레이아웃을 두 번 만지게 된다.</p></div>
+    </div>
+  </div>
+
+  <div class="dec">
+    <h3>② 경기중 <b>상대 선수</b> 기록을 어디까지 보여줄까?</h3>
+    <p class="q">요구는 "상대 기록도 열람"이다. 다만 하프타임에 지시를 바꿀 수 있는 게임이라,
+       상대 정보가 <b>전략 자원</b>이 된다. (재생 위치보다 앞선 정보는 어느 안이든 절대 안 보여준다.)</p>
+    <div class="opts">
+      <div class="opt rec"><h4>A. 우리와 완전히 동일<em>권장</em></h4>
+        <p>기록은 <b>이미 벌어진 일</b>이고 관중도 보는 것이다. 지시문만 가린다.
+          <b>장점</b>: 규칙이 단순하고 하프타임 지시가 <b>근거 있는 판단</b>이 된다(게임이 깊어진다).
+          <b>단점</b>: 상대 약점(예: 패스 성공률 낮은 선수)을 집어 공략하는 최적해가 생긴다.</p></div>
+      <div class="opt"><h4>B. 요약만</h4>
+        <p>상대는 골·슛·카드 같은 <b>중계에 나오는</b> 것만. 뛴거리·히트맵·패스맵은 우리만.
+          <b>장점</b>: 정보 우위가 자기 팀에만 생긴다. <b>단점</b>: "상대도 동일하게"라는 요구에서 한 발 물러난다.</p></div>
+      <div class="opt"><h4>C. 하프타임/종료 후에만 상대 공개</h4>
+        <p>진행 중엔 우리 선수만. <b>단점</b>: 요구 B 를 사실상 미룬다.</p></div>
+    </div>
+  </div>
+
+  <div class="dec">
+    <h3>③ 타 유저 선수단은 어디까지 공개할까?</h3>
+    <p class="q">프롬프트(지시문)가 비공개인 것은 확정이다(기존 정책). 문제는 <b>능력치·성장</b>이다.
+       원정은 상대를 <b>고른 뒤 공격</b>하는 모드라, 스쿼드가 보이면 "약한 상대 고르기"가 가능해진다.</p>
+    <div class="opts">
+      <div class="opt rec"><h4>A. 이름·포지션·등급·★·OVR·능력치 + "지시 있음"<em>권장</em></h4>
+        <p>선수단을 <b>구경</b>할 수 있게 하되 <b>지시문·전술은 비공개</b>. 요구 G 를 그대로 만족한다.
+          <b>단점</b>: 원정 상대 2택에서 스쿼드를 비교하고 고르게 된다 — 이건 <b>의도된 재미</b>로도 볼 수 있다.</p></div>
+      <div class="opt"><h4>B. 등급·OVR 까지만 (능력치 숨김)</h4>
+        <p>"어떤 카드를 모았나"는 보이고 세부 수치는 안 보인다. <b>장점</b>: 정찰 최적화가 얕아진다.</p></div>
+      <div class="opt"><h4>C. 랭킹보드에서만 공개, 원정 상대는 비공개</h4>
+        <p>구경은 되지만 상대 고르기에는 못 쓴다. <b>단점</b>: 같은 화면 두 규칙 → 유저가 헷갈린다.</p></div>
+    </div>
+  </div>
+
+  <div class="dec">
+    <h3>④ 경기 로그 보관 정책 — 지금 정할까?</h3>
+    <p class="q">경기 로그는 <b>경기당 약 1.1 MB 로 전부 영구 보관</b> 중이다(삭제 코드 없음). 덕분에 과거 개인 기록이 공짜로 나온다.
+       테스터 규모에서는 문제가 아니지만, 유저·시즌이 쌓이면 DB 가 계속 커진다.</p>
+    <div class="opts">
+      <div class="opt rec"><h4>A. 지금은 그대로, 별도 이슈만 남긴다<em>권장</em></h4>
+        <p>이 에픽에서 건드리면 <b>기록이 사라지는 방향</b>의 변경이라 위험하다. 관측만 남긴다.</p></div>
+      <div class="opt"><h4>B. 이번에 보존 기간을 정한다</h4>
+        <p>예: 최근 N경기 + 리그 경기는 영구. <b>단점</b>: "이전 경기 기록 열람" 요구와 정면으로 부딪힌다.</p></div>
+    </div>
+  </div>
+
+  <div class="dec">
+    <h3>⑤ 피치 "선수 터치" 는 누가 만들까? (#403 ↔ #406)</h3>
+    <p class="q">#406(경기 화면 UX)에 <b>"선수 하이라이트"</b> 가 있다. 이 에픽의 <b>"선수 터치"</b> 와
+       <b>같은 기능</b>(경기장에서 선수를 집어내는 것)이다. 나눠서 만들면 두 번 만들거나 서로 덮어쓴다.</p>
+    <div class="opts">
+      <div class="opt rec"><h4>A. #403 이 만들고 #406 이 쓴다<em>권장</em></h4>
+        <p>이 에픽이 <b>터치→선택→카드</b>까지 필요하므로 여기서 만들고, #406 은 그 선택 상태에 하이라이트 연출만 얹는다.
+          <b>조건</b>: #403 이 먼저 머지돼야 한다 → main 이 순서를 잡아 준다.</p></div>
+      <div class="opt"><h4>B. #406 이 만들고 #403 이 기다린다</h4>
+        <p><b>단점</b>: 이 에픽의 요구 E 가 #406 일정에 묶인다.</p></div>
+    </div>
+  </div>
+
+  <p class="note">이 목업은 <b>화면 구성 확인용</b>이다 — 색·간격·아이콘은 실제 구현에서 앱의 디자인 시스템을 따른다(여기 쓴 색도 앱 토큰 그대로).
+     수치는 전부 더미다. <b>승인해 주시면</b> 이 구성대로 개발에 들어가고,
+     다르게 가고 싶은 부분은 화면 번호(①~⑦)와 결정 번호(①~⑤)로 짚어 주시면 된다.</p>
+</section>
+
+</main>
+</body>
+</html>
+</content>
