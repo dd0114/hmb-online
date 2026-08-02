@@ -1,0 +1,188 @@
+/* 3지선다 후보 카드 (#405 §2.5) — 보상 시트와 강화탭이 **같은 스타일**을 쓴다.
+   목업: docs/plan-v5/mockups/growth-reward-mockup.html 화면 ③·⑤. */
+
+/* ⚠️ **`position: relative` 를 걸지 마라.** `CelebrationOverlay` 는 `position: absolute; inset: 0`
+   이라 가장 가까운 위치지정 조상을 덮는다 — 여기에 relative 를 걸면 축하가 후보 목록 박스 안에만
+   갇혀 결과 카드 위에 유령처럼 겹친다(실화면 캡처로 확인). 위를 비워 두면 보상 시트에서는 시트
+   오버레이(fixed), 강화탭에서는 카드 프레임을 덮는다 — 두 자리 모두 의도한 범위다. */
+.wrap {
+  min-width: 0;
+}
+
+.lockNote {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  margin: 0 0 11px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 194, 75, 0.32);
+  border-radius: 10px;
+  background: rgba(255, 194, 75, 0.09);
+  color: #e6d3a3;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.lockNote > span:first-child {
+  flex: none;
+}
+
+/* 진행 중 매치라 막혔을 때 — 안내 + 나가는 문(#217). */
+.blocked {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 11px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 90, 90, 0.4);
+  border-radius: 10px;
+  background: rgba(255, 90, 90, 0.09);
+  font-size: 12px;
+  color: #f0c9c9;
+}
+
+.blockedCta {
+  margin-left: auto;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cands {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cand {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 13px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.cand:hover:not(:disabled) {
+  border-color: #4a5c80;
+  background: #141c2c;
+}
+
+.cand:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.candTop {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.candStat {
+  font-size: 14.5px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gainBadge {
+  margin-left: auto;
+  flex: none;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--ok);
+  color: #131720;
+  font-size: 13px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.candNums {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 9px 0 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.candFrom {
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--text-muted);
+}
+
+.candArrow {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+.candTo {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--ok);
+}
+
+/* 천장 대비 진행 — 축은 그 스탯의 **발행 원본 → 천장**(둘 다 서버 값, 미러 없음). */
+.ceilBar {
+  position: relative;
+  display: block;
+  height: 8px;
+  margin-top: 8px;
+  border-radius: 5px;
+  background: #20262f;
+  overflow: hidden;
+}
+
+.ceilBar i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px;
+}
+
+.ceilCur {
+  left: 0;
+  background: linear-gradient(90deg, #3a5f7d, #4f8cff);
+}
+
+.ceilAdd {
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+}
+
+.ceilLegend {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.decayNote {
+  margin: 9px 2px 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.applied {
+  padding: 13px;
+  border: 1px solid #3a4a68;
+  border-radius: 14px;
+  background: #1a2333;
+}

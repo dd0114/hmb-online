@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { scoreAt, type LogEvent } from "@hmb/viewer-core";
-import { useHalfLog, type MatchDetail } from "../../api/hooks";
+import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
+import { RewardSheet } from "../../rewards/RewardSheet";
+import { rewardBundleOf, shouldShowRewardSheet } from "../../rewards/types";
 import { captureOffsetMs, logAvailableFor } from "../live-clock";
 import { MatchViewer } from "../MatchViewer";
 import { HalftimePanel } from "../HalftimePanel";
@@ -11,7 +13,7 @@ import { ScoreBar } from "./ScoreBar";
 import { StatsPanel } from "./StatsPanel";
 import { LogPanel } from "./LogPanel";
 import { SecondHalfBriefPanel } from "./SecondHalfBriefPanel";
-import { ResultPanel } from "./ResultPanel";
+import { ResultPanel, RESULT_LABELS } from "./ResultPanel";
 import {
   halfForState,
   headerMinute,
@@ -128,6 +130,25 @@ export function StageShell({
    * 중에도 이 컴포넌트는 언마운트되지 않아 초안이 끊기지 않는다.
    */
   const draft = useHalftimeDraft(match.id);
+
+  /**
+   * **보상 시트** (#405 §2.9) — 경기 종료 → 보상 → `[확인]` → 결과 화면.
+   *
+   * ⚠️ 셸이 소유하는 이유: 시트는 무대 **위로** 올라오고(결과 탭 안이 아니다) 결과 패널의
+   * "지금 선택하기"가 다시 열 수 있어야 한다. 결과 패널 안에 두면 다른 탭으로 넘어가는 순간
+   * 확인 안 한 보상이 사라진다.
+   *
+   * ⚠️ **자동 노출은 상태 전이 한 번**이다(`sheetDismissed`). 봉투의 `acknowledgedAt` 은 ack 응답이
+   * 돌아와야 바뀌는데, 그 사이 렌더에서 조건이 그대로 참이라 시트가 다시 뜬다. 로컬 래치가
+   * 그 프레임을 막는다.
+   */
+  const { data: result } = useMatchResult(match.id, match.state === "FINISHED");
+  const bundle = useMemo(() => rewardBundleOf(result), [result]);
+  const [sheetDismissed, setSheetDismissed] = useState(false);
+  const [sheetReopened, setSheetReopened] = useState(false);
+  const resultKey = match.result ?? result?.result ?? undefined;
+  const showRewardSheet =
+    Boolean(bundle) && ((shouldShowRewardSheet(bundle) && !sheetDismissed) || sheetReopened);
 
   return (
     <div className={styles.shell} data-testid="stage-shell">
@@ -251,12 +272,36 @@ export function StageShell({
                 </section>
               )}
               {activeTab === "result" && (
-                <ResultPanel match={match} homeName={homeName} awayName={awayName} />
+                <ResultPanel
+                  match={match}
+                  homeName={homeName}
+                  awayName={awayName}
+                  /*
+                   * ⚠️ **봉투가 있을 때만 문을 준다.** 없으면 눌러도 열 시트가 없어 죽은 버튼이
+                   * 된다(W2b 이전 매치 · 봉투 생성이 삼켜진 경우). 만져도 아무 데도 안 가는
+                   * 손잡이를 남기지 않는다.
+                   */
+                  onOpenRewards={bundle ? () => setSheetReopened(true) : undefined}
+                />
               )}
             </div>
           </aside>
         )}
       </div>
+
+      {showRewardSheet && bundle && (
+        <RewardSheet
+          bundle={bundle}
+          matchId={match.id}
+          badge={resultKey ? RESULT_LABELS[resultKey] ?? resultKey : null}
+          badgeTone={(resultKey as "WIN" | "DRAW" | "LOSS" | undefined) ?? null}
+          subtitle={`${match.scoreHome ?? "-"} : ${match.scoreAway ?? "-"}`}
+          onClose={() => {
+            setSheetDismissed(true);
+            setSheetReopened(false);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -155,118 +155,24 @@
   font-weight: 800;
 }
 
-.growthList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 10px;
-}
-
-.growthRow {
-  border: 1px solid var(--border);
+/* 남은 선택으로 가는 문 — 뱃지만 달고 갈 곳이 없으면 막다른 길이다(#405 W3). */
+.growthPendingCta {
+  display: block;
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 10px;
+  border: 1px solid rgba(255, 194, 75, 0.4);
   border-radius: 10px;
-  padding: 10px 12px;
-  display: grid;
-  gap: 4px;
-}
-
-.growthMain {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.growthName {
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.growthLevel {
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.06em;
-  color: #141a20;
-  background: linear-gradient(120deg, #5cc98b, #63d193);
-  border-radius: 5px;
-  padding: 2px 6px;
-}
-
-.growthMeta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-}
-
-.growthXp {
-  color: #5cc98b;
+  background: rgba(255, 194, 75, 0.09);
+  color: var(--warn);
+  font-size: 12.5px;
   font-weight: 800;
+  cursor: pointer;
 }
 
-.growthOvr {
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.growthAttrs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-}
-
-.growthAttrTag {
-  font-size: 10.5px;
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 1px 8px;
-}
-
-/* 스탯별 XP 막대(§V2-6) */
-.growthStatBars {
-  display: grid;
-  gap: 3px;
-  margin-top: 2px;
-}
-
-.growthStatBarRow {
-  display: grid;
-  grid-template-columns: 44px 1fr 34px;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.growthStatLabel {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-
-.growthStatBarTrack {
-  position: relative;
-  height: 5px;
-  border-radius: 3px;
-  background: #20262f;
-  overflow: hidden;
-}
-
-.growthStatBarFill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 3px;
-  background: linear-gradient(90deg, #3fa06a, #63d193);
-}
-
-.growthStatBarXp {
-  font-size: 10px;
-  font-weight: 700;
-  color: #5cc98b;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
+/* ⚠️ 구 성장 리포트의 클래스(.growthList/.growthRow/.growthMeta/.growthOvr/.growthStatBar*)는
+   **삭제했다** — 서버가 스탯별 XP·OVR before/after 를 더는 만들지 않는다(#405 W2b). 행은 이제
+   보상 시트와 공유하는 `rewards/sections/GrowthSection.module.css` 가 그린다. */
 
 /* #368 오늘의 보상 줄 — 소멸분은 취소선으로 "날렸다"를 말한다(색 단일 채널이 아니다). */
 .rewardSlotHint {

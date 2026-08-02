@@ -39,12 +39,12 @@ export const GRADE_POTENTIAL_LINES: Record<Grade, number> = {
   LEGEND: 3,
 };
 
-/** growth.xpLvBase × xpLvGrowth^lv (V2-5) — 스탯 XP 진행바 임계(표시 전용). */
-export const XP_LV_BASE = 100;
-export const XP_LV_GROWTH = 1.7;
-export function xpToNextLevel(lv: number): number {
-  return Math.round(XP_LV_BASE * Math.pow(XP_LV_GROWTH, Math.max(0, lv)));
-}
+/*
+ * ⚠️ 스탯별 XP 임계 미러(`XP_LV_BASE`·`XP_LV_GROWTH`·`xpToNextLevel`)는 **제거했다** (#405 W3).
+ * 소비처였던 강화탭의 스탯별 XP 막대가 사라졌고(구 `statLevels` 는 유효스탯에 관여하지 않는다),
+ * 카드 레벨의 임계는 **서버가 `xpToNext` 로 내려준다** — 클라가 곡선을 다시 그리면 계수를 무배포로
+ * 바꾸는 날(§2.8) 막대만 조용히 거짓말한다.
+ */
 
 /** 잠재 티어 색상 — 레어=흰 / 에픽=보라 / 유니크=금(§V2-6). */
 export const TIER_COLORS: Record<PotentialTier, string> = {
@@ -68,32 +68,40 @@ export const TIER_LABELS: Record<PotentialTier, string> = {
  */
 
 /**
- * 밴드 앵커 축 윈도우(#179 후속, hero 피드백 "주식 차트처럼 y축 하한 잘라서 드라마틱하게").
- * 등급별 능력치 롤 밴드 — `research`/밸런스 분석 산출(BRONZE 40-55 … LEGEND 80-95). 서버가 SoT 인
- * 실제 롤 분포와 표시용 윈도우 앵커일 뿐 다른 growth-config 상수와 같은 미러 성격(§ 상단 주석 참고).
+ * 축 윈도우(#179 후속, hero 피드백 "주식 차트처럼 y축 하한 잘라서 드라마틱하게").
+ *
+ * ⚠️ **등급별 밴드 미러(`GRADE_BANDS` BRONZE 40-55 … LEGEND 80-95)는 제거했다** (#405 W3).
+ * v2.5 발행이 초기 스탯을 하향(BRONZE 32-42 … LEGEND 68-78, 설계 §2.2)하면서 그 상수는 **틀린
+ * 값**이 됐고, 밴드는 `bands.<GRADE>.{startLo,startHi,growCeil}` 로 **무배포 조정 대상**이라
+ * (§2.8 하드 AC) 클라 미러는 언제든 다시 낡는다 — `DICE_BUY_COST` 가 10배 어긋난 채 배포됐던
+ * 것과 같은 형태다(#213).
+ *
+ * 대신 축을 **카드가 실제로 들고 온 값**에서 만든다: 하한 = 발행 원본(`base`)의 최소값 −여유,
+ * 상한 = 서버가 계산한 천장(`caps`)의 최대값. 미러가 없으므로 서버가 밴드를 바꿔도 축이 따라온다.
  */
-export const GRADE_BANDS: Record<Grade, { lo: number; hi: number }> = {
-  BRONZE: { lo: 40, hi: 55 },
-  SILVER: { lo: 50, hi: 65 },
-  GOLD: { lo: 60, hi: 75 },
-  DIA: { lo: 70, hi: 85 },
-  LEGEND: { lo: 80, hi: 95 },
-};
-
-/** 윈도우 하한 여유 — band.lo 아래로 이만큼 더 보여준다(막대·레이더 공통). */
 export const AXIS_LO_MARGIN = 5;
-/** 윈도우 상한 여유 — band.hi 위로 이만큼(잠재/성장 천장까지 드라마틱하게 보이도록). */
-export const AXIS_HI_ROOM = 15;
 
 export interface AxisWindow {
   lo: number;
   hi: number;
 }
 
-/** 등급 → 밴드 앵커 축 윈도우. 예: GOLD(60-75) → [55, 90]. */
-export function computeAxisWindow(grade: Grade): AxisWindow {
-  const band = GRADE_BANDS[grade];
-  return { lo: band.lo - AXIS_LO_MARGIN, hi: band.hi + AXIS_HI_ROOM };
+/**
+ * 카드의 `base`/`caps` 에서 축 윈도우를 만든다 — **한 카드의 9막대·레이더가 같은 축을 쓴다**.
+ *
+ * 값이 하나도 없으면(응답 손상) `{lo:0, hi:100}` 으로 눕힌다. 폭 0 축은 모든 막대를 0%로 만들어
+ * "성장이 하나도 없다"는 거짓을 그린다.
+ */
+export function cardAxisWindow(
+  base: Record<string, number> | undefined,
+  caps: Record<string, number> | undefined,
+): AxisWindow {
+  const bases = Object.values(base ?? {}).filter((v) => Number.isFinite(v));
+  const ceils = Object.values(caps ?? {}).filter((v) => Number.isFinite(v));
+  if (bases.length === 0 || ceils.length === 0) return { lo: 0, hi: 100 };
+  const lo = Math.floor(Math.min(...bases)) - AXIS_LO_MARGIN;
+  const hi = Math.ceil(Math.max(...ceils));
+  return hi > lo ? { lo, hi } : { lo, hi: lo + 1 };
 }
 
 /** value 를 윈도우 안에서 0..1 로 정규화(클램프). 막대 width%·레이더 반경 비율 공통 계산. */

@@ -287,59 +287,12 @@
   gap: 6px;
 }
 
-.lvBadge {
-  font-size: 9.5px;
-  font-weight: 800;
-  color: #63d193;
-  background: #182420;
-  border-radius: 5px;
-  padding: 1px 5px;
-  transition: transform 0.2s, background 0.2s;
-}
-
-.lvBadgeUp {
-  animation: lvpop 0.7s;
-}
-
-@keyframes lvpop {
-  0% {
-    transform: scale(1);
-    background: #182420;
-  }
-  35% {
-    transform: scale(1.35);
-    background: #2c5c43;
-  }
-  100% {
-    transform: scale(1);
-    background: #182420;
-  }
-}
-
 .attrBarCell {
   grid-column: 1 / 2;
   margin: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
-}
-
-.xpBar {
-  position: relative;
-  display: block;
-  height: 4px;
-  border-radius: 2px;
-  background: #20262f;
-  overflow: hidden;
-}
-
-.xpFill {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, #38b3c9, #5cc98b);
-  transition: width 0.4s ease;
 }
 
 .bar {
@@ -350,14 +303,36 @@
   background: #20262f;
 }
 
-.fill {
+/* ── 3층 막대 (#405 §2.10): 기본 | 성장분 | (잠재) + 천장 선 ──────────────────────
+   회색 여백 = "아직 갈 수 있는 곳". 이 개편의 핵심 정보라 색을 셋으로 가른다.
+   ⚠️ 구 `.fill`(0→유효 한 덩어리)·`.reach`(유효→천장 빗금)·`.baseLine` 은 은퇴했다 —
+   한 덩어리로 그리면 "발행 원본"과 "내가 키운 몫"이 화면에서 구분되지 않는다. */
+.layerBase {
   position: absolute;
   left: 0;
   top: 0;
   bottom: 0;
-  border-radius: 5px;
+  border-radius: 5px 0 0 5px;
+  background: #4f6b8e;
+}
+
+.layerGrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0 5px 5px 0;
   background: linear-gradient(90deg, #3fa06a, #63d193);
-  transition: width 0.4s ease;
+  transition: width 0.45s ease, left 0.45s ease;
+}
+
+/* 잠재 보정분 — 성장이 아니라 옵션이라 색을 가른다(0 이면 렌더 자체를 안 한다). */
+.layerPotential {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0 5px 5px 0;
+  background: linear-gradient(90deg, #6b5bb5, #b98bf5);
+  opacity: 0.85;
 }
 
 .fillUp {
@@ -376,15 +351,6 @@
   }
 }
 
-.reach {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 5px;
-  background: repeating-linear-gradient(90deg, #39424f 0 4px, transparent 4px 8px);
-  opacity: 0.7;
-}
-
 .capLine {
   position: absolute;
   top: -3px;
@@ -392,15 +358,6 @@
   width: 2px;
   background: #e7c24c;
   border-radius: 2px;
-}
-
-.baseLine {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: #5f6b7a;
-  opacity: 0.6;
 }
 
 .attrNum {
@@ -422,6 +379,141 @@
 .attrCap {
   color: #e7c24c;
   font-size: 9px;
+}
+
+.attrAdd {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--ok);
+}
+
+.attrAddZero {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  color: #5c646f;
+}
+
+/* 3층 범례 — 색이 무엇을 뜻하는지 말하지 않으면 3층은 그냥 알록달록한 막대다. */
+.attrLegend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.attrLegend i {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.lgBase {
+  background: #4f6b8e;
+}
+
+.lgGrow {
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+}
+
+.lgCeil {
+  width: 3px !important;
+  height: 12px !important;
+  border-radius: 2px;
+  background: #e7c24c;
+}
+
+/* ── 카드 레벨 + XP (#405 §2.10, ★ 옆) ─────────────────────────────────────── */
+.lvBlock {
+  /* 헤더 아래 **전폭** 한 줄 — 좁은 칼럼에 끼우면 Lv 와 XP 가 서로 밀어 접힌다(#405 W3 실화면). */
+  margin: 10px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid #2f3844;
+  border-radius: 10px;
+  background: #141922;
+}
+
+.lvBlockTop {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.lvBig {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.lvXpNum {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.lvBar {
+  position: relative;
+  display: block;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 3px;
+  background: #20262f;
+  overflow: hidden;
+}
+
+.lvBarFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+  transition: width 0.45s ease;
+}
+
+/* ── 선택 대기 배너 (#405 §2.10) ────────────────────────────────────────────── */
+.pendBanner {
+  margin: 0 0 12px;
+  padding: 10px 11px;
+  border: 1px solid rgba(255, 194, 75, 0.4);
+  border-radius: 12px;
+  background: rgba(255, 194, 75, 0.08);
+}
+
+.pendBannerTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--warn);
+}
+
+.pendToggle {
+  margin-left: auto;
+  padding: 4px 9px;
+  border: 1px solid rgba(255, 194, 75, 0.4);
+  border-radius: 7px;
+  background: none;
+  color: var(--warn);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.pendBannerBody {
+  margin-top: 10px;
 }
 
 /* 잠재능력 */
@@ -721,4 +813,18 @@
 .confirmOk {
   background: var(--accent);
   color: var(--accent-contrast);
+}
+
+/* 적용 후 남은 선택으로 잇는 버튼 — 한 카드에 레벨업이 여러 번 나면 하나씩 끝까지 찍게 한다. */
+.pendNext {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--warn);
+  color: #131720;
+  font-size: 12.5px;
+  font-weight: 900;
+  cursor: pointer;
 }

@@ -8,7 +8,8 @@ import { CURRENCY_POINT } from "../../common/currency";
 import type { MatchDailyReward } from "../../api/p3";
 import styles from "../ResultPage.module.css";
 
-const RESULT_LABELS: Record<string, string> = {
+/** 승패 라벨 — 결과 카드와 보상 시트 뱃지가 **같은 표**를 쓴다(두 곳이 갈리면 안 된다). */
+export const RESULT_LABELS: Record<string, string> = {
   WIN: "승리",
   DRAW: "무승부",
   LOSS: "패배",
@@ -18,6 +19,8 @@ interface ResultPanelProps {
   match: MatchDetail;
   homeName: string;
   awayName: string;
+  /** 보상 시트를 다시 여는 문(#405) — 미룬 3지선다가 남아 있을 때 성장 리포트가 부른다. */
+  onOpenRewards?: (() => void) | undefined;
 }
 
 /**
@@ -41,7 +44,7 @@ interface ResultPanelProps {
  * (`StageShell.OWN_SCROLL_TABS`).
  * 계약 = `e2e/p348-desktop-viewport.spec.ts` ⑥(전 비율 CTA 가시 · 성장 리포트 유 · **스크롤 불변**).
  */
-export function ResultPanel({ match, homeName, awayName }: ResultPanelProps) {
+export function ResultPanel({ match, homeName, awayName, onOpenRewards }: ResultPanelProps) {
   const navigate = useNavigate();
   const { data: result } = useMatchResult(match.id);
   const { data: log1 } = useHalfLog(match.id, 1);
@@ -108,7 +111,7 @@ export function ResultPanel({ match, homeName, awayName }: ResultPanelProps) {
           </table>
         </section>
 
-        <GrowthReportSection matchId={match.id} />
+        <GrowthReportSection matchId={match.id} onOpenRewards={onOpenRewards} />
       </div>
 
       {/* ⚠️ 스크롤 **밖**이다(위 헤더) — `.scroll` 안으로 되돌리면 #355 가 그대로 재발한다. */}

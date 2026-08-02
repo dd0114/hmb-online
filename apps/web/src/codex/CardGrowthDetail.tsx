@@ -12,6 +12,7 @@ import { useAppConfigValue } from "../common/AppConfigContext";
 import {
   INSUFFICIENT_MATERIALS_CODE,
   type PotentialTier,
+  type PendingChoice,
   type Star,
   type StarUpResult,
 } from "../api/growth";
@@ -24,12 +25,12 @@ import {
   STAT_LABELS,
   TIER_COLORS,
   TIER_LABELS,
-  computeAxisWindow,
+  cardAxisWindow,
   normalizeInWindow,
   radarAxisValue,
-  xpToNextLevel,
   type Position,
 } from "../growth/growth-config";
+import { ChoiceCandidates } from "../growth/ChoiceCards";
 import type { CatalogPlayer } from "../api/hooks";
 import { Amount, useCurrency } from "../common/Amount";
 import { balanceFor, CURRENCY_GEM, CURRENCY_POINT } from "../common/currency";
@@ -98,13 +99,23 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
   // GM7b: 성★ 승급 이펙트 — StarUpResult 자체를 들고 있어 오버레이가 승급된 star/해금 여부를 그대로 쓴다.
   const [starUpOverlay, setStarUpOverlay] = useState<StarUpResult | null>(null);
   const [justUpAttrs, setJustUpAttrs] = useState<Set<string>>(new Set());
-  const [justUpLv, setJustUpLv] = useState<Set<string>>(new Set());
   // 레이더 후속(hero 실시간 지시 — "+보너스 탭 잘 안 보여" 제거): 능력치 표시 2레이어 — 레이더(기본) ↔ 막대.
   // 성장/잠재 기여는 별도 탭이 아니라 막대의 cap/base 마커 + 레이더의 cap 점선 폴리곤으로 충분.
   const [layer, setLayer] = useState<"radar" | "total">("radar");
+  const [pendOpen, setPendOpen] = useState(true);
+  /**
+   * 배너가 지금 띄우고 있는 선택권 — **카드 응답이 아니라 여기가 소유한다**.
+   *
+   * ⚠️ 적용에 성공하면 서버가 갱신된 카드를 주고 그 카드의 `pendingChoices` 에서 이 항목이 빠진다.
+   * 배너를 `pendingChoices[0]` 로 직접 그리면 그 순간 `ChoiceCandidates` 가 **언마운트되고 축하
+   * 오버레이가 같은 프레임에 사라진다**(e2e 가 두 번 잡았다 — 시트에서 한 번, 여기서 한 번).
+   * "성공 콜백에서 붙잡기"로는 못 막는다: 캐시 갱신 렌더가 **먼저** 와서 이미 한 번 언마운트되고,
+   * 그 뒤 다시 마운트되면서 후보 목록이 되살아난다(실제 실패 스냅샷이 그 모양이었다).
+   * 그래서 **처음 대기가 보이는 순간 붙잡고**, 사용자가 [이어서 선택]을 누를 때만 다음으로 넘긴다.
+   */
+  const [shownChoice, setShownChoice] = useState<PendingChoice | null>(null);
 
   const prevAttrsRef = useRef<Record<string, number> | null>(null);
-  const prevLvRef = useRef<Record<string, number> | null>(null);
 
   // 성장/롤/승급 후 카드가 갱신되면 어떤 스탯이 올랐는지 감지해 +1 델타 플래시(§V2-6, hero 피드백).
   useEffect(() => {
@@ -125,30 +136,44 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
     return () => window.clearTimeout(t);
   }, [card]);
 
-  useEffect(() => {
-    if (!card) return;
-    const lvs = Object.fromEntries(Object.entries(card.statLevels).map(([k, v]) => [k, v.lv]));
-    const prev = prevLvRef.current;
-    prevLvRef.current = lvs;
-    if (!prev) return;
-    const up = new Set<string>();
-    for (const key of Object.keys(lvs)) {
-      const cur = lvs[key] ?? 0;
-      const before = prev[key] ?? cur;
-      if (cur > before) up.add(key);
-    }
-    if (up.size === 0) return;
-    setJustUpLv(up);
-    const t = window.setTimeout(() => setJustUpLv(new Set()), 1400);
-    return () => window.clearTimeout(t);
-  }, [card]);
+  /*
+   * ⚠️ 구 `statLevels` 델타 플래시(스탯별 Lv 뱃지)는 **제거했다** (#405 W2b). 그 값은 이제
+   * 유효스탯에 관여하지 않는다(소급 이관의 입력·롤백 근거로만 남는다) — 안 움직이는 숫자를
+   * "성장"으로 계속 띄우면 이 개편이 화면에서 없던 일이 된다.
+   */
 
   const grade: Grade = card?.grade ?? player.grade;
   const frameColor = GRADE_COLORS[grade];
   const star: Star = card?.star ?? 1;
-  // 밴드 앵커 축 윈도우(hero: "y축 하한 잘라서 드라마틱하게") — 막대·레이더 공통 정규화.
-  const axisWindow = computeAxisWindow(grade);
+  /**
+   * 축 윈도우(hero: "y축 하한 잘라서 드라마틱하게") — 막대·레이더 공통 정규화.
+   *
+   * ⚠️ **등급별 밴드 미러(`computeAxisWindow`)를 버렸다** (#405 W3): v2.5 하향으로 그 상수가 틀린
+   * 값이 됐고, 밴드는 무배포 조정 대상이라 미러는 언제든 다시 낡는다(§2.8). 이제 축은 이 카드가
+   * 실제로 들고 온 `base`/`caps` 에서 나온다 — 서버가 밴드를 바꾸면 축이 따라온다.
+   */
+  const axisWindow = cardAxisWindow(
+    card?.base as unknown as Record<string, number> | undefined,
+    card?.caps as unknown as Record<string, number> | undefined,
+  );
   const pct = (v: number) => normalizeInWindow(v, axisWindow) * 100;
+  /** 카드 레벨/XP (#405 W2b additive) — 없으면(구 서버·구 목) 그 블록을 통째로 안 그린다. */
+  const cardLevel = card?.cardLevel;
+  const maxLevel = card?.maxLevel;
+  const cardXp = card?.cardXp ?? 0;
+  const xpToNext = card?.xpToNext ?? 0;
+  const statAdd = (card?.statAdd ?? {}) as Record<string, number>;
+  const pendingChoices = Array.isArray(card?.pendingChoices) ? card!.pendingChoices! : [];
+  const firstPendingId = pendingChoices[0]?.choiceId;
+
+  // 대기가 처음 보이면 붙잡는다(위 주석) — 이미 잡고 있으면 카드가 갱신돼도 놓지 않는다.
+  useEffect(() => {
+    if (shownChoice || !firstPendingId) return;
+    setShownChoice(pendingChoices[0]!);
+    // pendingChoices 는 매 렌더 새 배열이라 id 로만 의존한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstPendingId, shownChoice]);
+
   // 포지션별 6축 매핑(hero 2026-07-26: "FIFA 가 GK 에 다른 6축 쓰는 방식처럼") — 카드 position 으로 선택.
   const position = player.position as Position;
   const radarGroups = RADAR_GROUPS_BY_POSITION[position];
@@ -313,11 +338,78 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
           </div>
         </div>
 
+        {/*
+          카드 레벨 + XP 진행바 (#405 §2.10, 목업 화면 ⑤ — ★ 아래 한 줄).
+          ⚠️ **헤더 플렉스 안에 넣지 마라.** `headText` 는 아트와 ★ 사이에 낀 좁은 칼럼이라
+          `Lv 12 / 40` 과 `60 / 346 XP` 가 서로 밀어 두 줄로 접힌다(실화면 캡처로 확인).
+          값이 없으면(W2b 이전 서버·구 목) **블록 자체를 안 그린다** — `Lv 0 / 0` 은 거짓이다.
+          임계(`xpToNext`)도 서버가 준 값이지 클라 곡선이 아니다.
+        */}
+        {typeof cardLevel === "number" && (
+          <div className={styles.lvBlock} data-testid="growth-card-level" data-level={cardLevel}>
+            <div className={styles.lvBlockTop}>
+              <span className={styles.lvBig}>Lv {cardLevel}</span>
+              {typeof maxLevel === "number" && <span>/ {maxLevel}</span>}
+              <span className={styles.lvXpNum} data-testid="growth-card-xp">
+                {xpToNext > 0 ? `${cardXp} / ${xpToNext} XP` : "만렙"}
+              </span>
+            </div>
+            <span className={styles.lvBar}>
+              <i
+                className={styles.lvBarFill}
+                style={{ width: `${xpToNext > 0 ? clampPct((cardXp / xpToNext) * 100) : 100}%` }}
+              />
+            </span>
+          </div>
+        )}
+
         {isLoading && <p className={styles.loading}>불러오는 중…</p>}
         {isError && <ErrorToast message="성장 정보를 불러오지 못했습니다" />}
 
         {card && (
           <>
+            {/*
+              **미룬 3지선다를 여기서 찍는다** (#405 §2.10). 최상단에 세우는 이유는 유저가 이
+              화면에 온 이유가 대부분 그것이기 때문이다(보상 시트에서 [나중에 선택]을 눌렀다).
+              후보 카드는 보상 시트와 **같은 컴포넌트**다 — 두 자리에서 모양이 갈리면 안 된다.
+              접기가 기본이 아니다: 접힌 채 두면 뱃지만 보이고 할 일이 안 보인다.
+            */}
+            {shownChoice && (
+              <div className={styles.pendBanner} data-testid="growth-pending-banner">
+                <div className={styles.pendBannerTop}>
+                  <span>{pendingChoices.length > 0 ? `선택 대기 ${pendingChoices.length}` : "성장 적용 완료"}</span>
+                  <button
+                    type="button"
+                    className={styles.pendToggle}
+                    data-testid="growth-pending-toggle"
+                    aria-expanded={pendOpen}
+                    onClick={() => setPendOpen((v) => !v)}
+                  >
+                    {pendOpen ? "접기" : "펼치기"}
+                  </button>
+                </div>
+                {pendOpen && (
+                  <div className={styles.pendBannerBody}>
+                    <ChoiceCandidates
+                      key={shownChoice.choiceId}
+                      choice={shownChoice}
+                      card={card}
+                    />
+                    {pendingChoices[0] && pendingChoices[0].choiceId !== shownChoice.choiceId && (
+                      <button
+                        type="button"
+                        className={styles.pendNext}
+                        data-testid="growth-pending-next"
+                        onClick={() => setShownChoice(pendingChoices[0]!)}
+                      >
+                        이어서 선택 {pendingChoices.length}
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className={styles.starUpRow}>
               <button
                 type="button"
@@ -414,9 +506,32 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
             )}
 
             {layer === "total" && (
-              <p className={styles.axisWindowLabel} data-testid="growth-attr-window">
-                스탯 축 {Math.round(axisWindow.lo)}–{Math.round(axisWindow.hi)}
-              </p>
+              <>
+                <p className={styles.axisWindowLabel} data-testid="growth-attr-window">
+                  스탯 축 {Math.round(axisWindow.lo)}–{Math.round(axisWindow.hi)}
+                </p>
+                {/*
+                  범례 (#405 §2.10) — 이 개편의 핵심 정보는 "회색 여백 = 아직 갈 수 있는 곳"이다.
+                  ⚠️ 천장 라벨은 숫자만이다. 목업은 `천장 73 = 72 + ★2 보너스 1` 로 star 기여를
+                  분해했는데, **서버가 `growCeil`·`star.ceilBonus` 를 클라에 주지 않는다**
+                  (`caps` 는 이미 합쳐진 값이고, 둘 다 무배포 조정 대상이라 미러하면 곧 낡는다).
+                  분해를 되살리려면 서버가 그 두 값을 내려야 한다.
+                */}
+                <p className={styles.attrLegend} data-testid="growth-attr-legend">
+                  <span>
+                    <i className={styles.lgBase} />
+                    기본(발행 원본)
+                  </span>
+                  <span>
+                    <i className={styles.lgGrow} />
+                    성장분(선택으로 올린 몫)
+                  </span>
+                  <span>
+                    <i className={styles.lgCeil} />
+                    천장
+                  </span>
+                </p>
+              </>
             )}
 
             {layer === "total" && (
@@ -425,48 +540,54 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
                   const cur = card.attributes[key];
                   const cap = card.caps[key];
                   const base = card.base[key];
-                  const sl = card.statLevels[key] ?? { lv: 0, xp: 0 };
-                  const xpNeed = xpToNextLevel(sl.lv);
-                  const xpPct = clampPct((sl.xp / Math.max(1, xpNeed)) * 100);
-                  const lvUp = justUpLv.has(key);
+                  // 성장분 = 3지선다 누적(`statAdd`). 구 `statLevels` 는 **유효스탯에 관여하지
+                  // 않으므로**(#405 W2b) 이 화면에서 성장으로 그리지 않는다 — 안 움직이는 막대가
+                  // 성장 화면의 주인공이 되면 개편이 없던 일이 된다.
+                  const add = statAdd[key] ?? 0;
+                  const grown = Math.min(cap, base + add);
                   const attrUp = justUpAttrs.has(key);
-                  // 밴드 앵커 윈도우 정규화 — 막대 width%/left% 는 원시 능력치가 아니라 axisWindow 기준.
+                  // 축 정규화 — width%/left% 는 원시 능력치가 아니라 axisWindow 기준.
                   const curPct = pct(cur);
                   const capPct = pct(cap);
                   const basePct = pct(base);
+                  const grownPct = pct(grown);
                   return (
                     <div key={key} className={styles.attrRow} data-testid={`growth-attr-${key}`}>
-                      <dt className={styles.attrName}>
-                        {label}
-                        <span
-                          className={lvUp ? `${styles.lvBadge} ${styles.lvBadgeUp}` : styles.lvBadge}
-                          data-testid={`growth-lv-${key}`}
-                        >
-                          Lv.{sl.lv}
-                        </span>
-                      </dt>
+                      <dt className={styles.attrName}>{label}</dt>
                       <dd className={styles.attrBarCell}>
-                        <span className={styles.xpBar} data-testid={`growth-xp-${key}`} data-value={Math.round(xpPct)}>
-                          <i className={styles.xpFill} style={{ width: `${xpPct}%` }} />
-                        </span>
                         <span className={styles.bar}>
+                          {/* ① 기본(발행 원본) */}
+                          <i className={styles.layerBase} style={{ width: `${basePct}%` }} />
+                          {/* ② 성장분 — 이 개편이 만든 유일한 성장 축 */}
                           <i
-                            className={styles.reach}
-                            style={{ left: `${curPct}%`, width: `${Math.max(0, capPct - curPct)}%` }}
+                            className={attrUp ? `${styles.layerGrow} ${styles.fillUp}` : styles.layerGrow}
+                            data-testid={`growth-grow-${key}`}
+                            data-add={add.toFixed(2)}
+                            style={{ left: `${basePct}%`, width: `${Math.max(0, grownPct - basePct)}%` }}
                           />
+                          {/* ③ 잠재 보정분 — 성장이 아니라 옵션이라 색을 가른다(0 이면 안 그린다) */}
+                          {curPct > grownPct + 0.01 && (
+                            <i
+                              className={styles.layerPotential}
+                              style={{ left: `${grownPct}%`, width: `${curPct - grownPct}%` }}
+                            />
+                          )}
                           <i
-                            className={attrUp ? `${styles.fill} ${styles.fillUp}` : styles.fill}
-                            data-testid={`growth-fill-${key}`}
-                            data-value={Math.round(cur)}
-                            style={{ width: `${curPct}%` }}
+                            className={styles.capLine}
+                            data-testid={`growth-cap-${key}`}
+                            data-value={Math.round(cap)}
+                            style={{ left: `${capPct}%` }}
                           />
-                          <i className={styles.capLine} style={{ left: `${capPct}%` }} />
-                          <i className={styles.baseLine} style={{ left: `${basePct}%` }} />
                         </span>
                       </dd>
                       <span className={`${styles.attrNum} ${styles.attrNumBig}`}>
-                        {Math.round(cur)}
-                        <span className={styles.attrCap}> /{Math.round(cap)}</span>
+                        <b data-testid={`growth-value-${key}`} data-value={Math.round(cur)}>
+                          {Math.round(cur)}
+                        </b>
+                        <em className={add > 0 ? styles.attrAdd : styles.attrAddZero}>
+                          +{add.toFixed(1)}
+                        </em>
+                        <span className={styles.attrCap}>천장 {Math.round(cap)}</span>
                       </span>
                     </div>
                   );

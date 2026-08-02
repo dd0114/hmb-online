@@ -30,11 +30,52 @@ export interface PotentialLine {
   value: number; // pct 는 % 단위(예 4 = +4%), flat 은 절대값
 }
 
-/** 스탯 1종의 성장 상태. */
+/**
+ * 스탯 1종의 성장 상태 — **구 모델의 이력**이다.
+ *
+ * ⚠️ #405 W2b 부터 **유효스탯에 관여하지 않는다**. 스탯이 오르는 유일한 경로는 3지선다
+ * 선택(`statAdd`)이고, `statLevels` 는 소급 이관의 입력이자 롤백 근거로만 남는다.
+ * **화면에 "성장"으로 그리지 마라** — 안 움직이는 막대가 성장 화면의 주인공이 된다.
+ */
 export interface StatLevel {
   lv: number;
   xp: number; // 현재 레벨에서 쌓인 xp (임계 = xpLvBase × xpLvGrowth^lv)
 }
+
+/**
+ * 3지선다 후보 1개 (#405 §2.5) — **레벨업 순간 서버가 박제**한다(`candidates_json`).
+ * `gain` 까지 박제되므로 미뤘다가 골라도 화면에 보였던 숫자가 그대로 들어간다.
+ */
+export interface ChoiceCandidate {
+  stat: string;
+  gain: number;
+}
+
+/** 대기 중인 레벨업 선택권 1건. 레벨업 1회 = 선택 1회(같은 경기에 여러 건이 날 수 있다). */
+export interface PendingChoice {
+  choiceId: string;
+  playerId: string;
+  level: number;
+  candidates: ChoiceCandidate[];
+}
+
+/**
+ * POST /api/growth/choices/{choiceId} 결과.
+ *
+ * ⚠️ **`card` 가 같이 온다 — 재조회하지 마라.** 서버가 갱신된 카드를 응답에 실어 주므로
+ * 훅이 그대로 캐시에 넣는다(왕복 1회 + 화면이 옛 값을 한 프레임 보여주는 일이 없다).
+ */
+export interface ChoiceResult {
+  choiceId: string;
+  playerId: string;
+  level: number;
+  stat: string;
+  gain: number;
+  card: CardEffective;
+}
+
+/** 이미 고른 선택권에 다시 보냈다 — 409. 화면은 목록을 새로 받아 그 항목을 지운다. */
+export const CHOICE_ALREADY_MADE_CODE = "CHOICE_ALREADY_MADE";
 
 /** 카드 상세/주입용 유효 상태 (GET /api/growth/card). */
 export interface CardEffective {
@@ -44,8 +85,25 @@ export interface CardEffective {
   attributes: PlayerAttributes; // 잠재 반영 최종 유효 스탯
   prePotential: PlayerAttributes; // 잠재 반영 전(base+성장, cap 클램프)
   base: PlayerAttributes; // 뽑기 롤 원본
-  caps: PlayerAttributes; // 성★ 이 개방한 스탯별 천장
-  statLevels: Record<string, StatLevel>; // 9종 키
+  caps: PlayerAttributes; // 성★ 이 개방한 스탯별 천장 = growCeil[grade] + star.ceilBonus[star]
+  statLevels: Record<string, StatLevel>; // 9종 키 — **구 이력**(위 StatLevel 주석)
+  /**
+   * ── #405 W2b additive (설계 §3) ─────────────────────────────────────────────────────
+   * 전부 **옵셔널**이다. W2b 이전 서버·구 목이 이 키들을 안 보내는데, 필수로 선언하면 타입만
+   * 안심시키고 화면은 `undefined` 를 그린다(`Lv undefined / undefined`). 타입이 호출부에
+   * 가드를 강제하게 둔다.
+   */
+  /** 3지선다 누적(소수) = 막대의 **성장분** 층. 유효스탯을 움직이는 유일한 성장 축이다. */
+  statAdd?: Record<string, number>;
+  /** 카드 레벨(1..maxLevel). 스탯별 레벨이 아니다 — 카드 하나에 하나. */
+  cardLevel?: number;
+  /** 현재 레벨에서 쌓인 XP. */
+  cardXp?: number;
+  /** 다음 레벨까지의 **임계**(cardXp / xpToNext = 진행률). 만렙이면 0. */
+  xpToNext?: number;
+  maxLevel?: number;
+  /** 이 카드에 남아 있는 선택권(강화탭 배너). */
+  pendingChoices?: PendingChoice[];
   potential: {
     unlocked: boolean; // 2★ 이상
     tier: PotentialTier;
@@ -87,14 +145,31 @@ export interface DiceRollResult {
   wallet: WalletBalance; // 롤 비용 차감 후 잔액(재화를 정하는 쪽이 잔액도 준다, #232)
 }
 
-/** 매치 후 성장 리포트 1인분 — 스탯별 XP·레벨업 (GET /api/growth/report). */
+/**
+ * 매치 후 성장 1인분 (#405 W2b) — **보상 봉투 `GROWTH` 섹션 엔트리와 같은 자료**다
+ * (`GrowthService.growthEntries` 하나가 둘 다 만든다). 두 화면이 같은 경기를 다르게 말하지
+ * 않으려면 타입도 하나여야 한다.
+ *
+ * ⚠️ **구 모델 필드(`statXp`·`levelUps`·`ovrBefore/After`)는 사라졌다.** 서버가 더는 만들지
+ * 않는다 — 신 모델의 결과는 "유저가 무엇을 골랐나"에 달려 있어 매치 로그로 복원되지 않기
+ * 때문이다. 되살리지 마라(구 `GrowthReportSection` 은 `Object.entries(e.statXp)` 로 그 부재에
+ * 그대로 터졌다 = 결과 화면 흰 화면).
+ *
+ * ⚠️ `levelBefore`/`levelAfter` 는 **null 일 수 있다** — W2b 이전 정산분은 스냅샷이 없어
+ * 서버가 xp 만 싣는다. 0 으로 때우면 "Lv 0" 이라는 거짓이 뜬다.
+ */
 export interface MatchGrowthEntry {
   playerId: string;
   name: string;
-  statXp: Record<string, number>; // 스탯별 획득 XP
-  levelUps: string[]; // 이번 경기로 레벨업한 스탯 키
-  ovrBefore: number;
-  ovrAfter: number;
+  /** 카탈로그에 없는 선수면 null(발행 사고) — 그 경우 아트 정책은 fail-closed 로 닫힌다. */
+  position?: string | null;
+  grade?: string | null;
+  /** 이 경기에서 얻은 카드 XP. **0 = 미투입**(안 뛰면 안 큰다 — 화면이 그걸 말해야 한다). */
+  xpGained: number;
+  levelBefore?: number | null;
+  levelAfter?: number | null;
+  /** 이 경기 레벨업으로 생긴 선택권(정산 스냅샷 = **그때 무엇이 생겼나**). */
+  pendingChoices?: PendingChoice[];
 }
 
 export interface MatchGrowthReport {
