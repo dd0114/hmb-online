@@ -316,7 +316,10 @@ function trapStepUpFx(
   if (!tp.enabled) return 0;
   // 지시가 없으면 트랩은 없다 — 이 웨이브가 실효화하는 것이 바로 이 불리언이다.
   if (!state.teams[defSide].offsideTrap) return 0;
-  if (tp.stepUpM <= 0 && tp.releaseSmooth < 0) return 0;
+  // ⚠️ 여기 있던 `if (stepUpM <= 0 && releaseSmooth < 0) return 0;` 은 **죽은 줄**이라 지웠다
+  // (S3-C 독립검증 m4) — `releaseSmooth < 0` 은 어떤 config 에서도 참이 아니다. `||` 로 "고치면"
+  // `stepUpM < 0` 팔이 조기 반환돼 **부호 반전 변이체(T2)가 무효**가 된다. 음수 스텝은 계약이
+  // 쓰는 팔이므로 여기서 막지 않는다 — `stepUpM = 0`(플라시보)은 아래 곱셈이 0 을 돌려준다.
   const scale = config.fixedScale;
 
   // ① 거리 게이트 — 공이 우리 골에서 충분히 멀 때만. 세기는 `releaseSmooth` 폭에 걸쳐 연속.

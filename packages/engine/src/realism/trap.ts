@@ -412,14 +412,32 @@ export function measureTrap(
 export interface TrapFireReport {
   /** 관측된 수비 팀-틱 수. **트랩이 안 걸린 틱도 분모에 들어간다**(S3-A/B 관용구). */
   lineTicks: number;
-  /** 그중 트랩이 걸린 틱 비율(%). */
+  /** 그중 트랩이 걸린 틱 비율(%). **전진(양수)만 센다** — 음수 팔은 0 이 된다. */
   firePct: number;
+  /**
+   * 부호 무관 발화 비율(%) = 기준점이 **조금이라도 옮겨진** 틱. 음수 `stepUpM`(부호 반전 변이체)
+   * 에서 "기제가 돌긴 하는가"를 보는 자다 — `firePct` 는 양수만 세므로 그쪽에서 0 이 된다.
+   */
+  fireAnyPct: number;
   /** 걸린 틱에서의 전진량 평균(m). */
   biasWhenFiredM: number;
-  /** 전 틱 평균 전진량(m) = 라인 평균 높이에 트랩이 기여한 몫. */
+  /**
+   * 전 틱 평균 **전진**량(m) = 라인 평균 높이에 트랩이 기여한 몫. 분자는 양수 발화만 담는다
+   * (출하값에서는 음수 이동이 없어 `biasSignedAllTicksM` 과 같은 값이다).
+   */
   biasAllTicksM: number;
+  /**
+   * **부호 있는** 전 틱 평균 이동량(m). `biasAllTicksM` 은 양수 발화만 담아 부호를 못 가른다.
+   * ⚠️ 이것은 **엔진이 단 라벨**(`trapBiasFx`)의 통계다 = 기제가 만든 값을 그대로 되읽는다.
+   * 그래서 이 자는 *"config 의 부호가 기제까지 도달했는가"* 만 판정할 수 있고 *"선수가 그 방향
+   * 으로 실제로 섰는가"* 는 판정하지 못한다(그건 스냅샷 좌표를 읽는 `TrapSideMeasure.lineMeanM`
+   * 의 몫이다). 계약이 이 경계를 명시적으로 둘로 나눠 건다(offside-trap T2).
+   */
+  biasSignedAllTicksM: number;
   /** 걸린 틱의 최대 전진량(m) — `stepUpM` 을 넘지 않아야 한다. */
   biasMaxM: number;
+  /** 관측된 최소(가장 음수인) 이동량(m). 음수 팔에서만 0 이 아니다. */
+  biasMinM: number;
   /** 연속 발화 구간 길이 평균(틱) — "잠깐 걸었다 푼다"의 직접 관찰량. */
   runLenMeanTicks: number;
   /** 발화 ↔ 비발화 **전환 횟수** / 100틱 — 플리커(#178) 검출. */
@@ -436,9 +454,12 @@ export function measureTrapFire(
   const select = makeSelectData();
   let lineTicks = 0;
   let fired = 0;
+  let firedAny = 0;
   let biasFiredSum = 0;
   let biasAllSum = 0;
+  let biasSignedSum = 0;
   let biasMax = 0;
+  let biasMin = 0;
   let toggles = 0;
   const runLens: number[] = [];
 
@@ -459,10 +480,13 @@ export function measureTrapFire(
       if (s.kind !== "line") continue;
       lineTicks += 1;
       const bias = s.trapBiasFx / scale;
-      biasAllSum += bias;
+      biasSignedSum += bias;
       const on = s.trapBiasFx > 0;
+      if (s.trapBiasFx !== 0) firedAny += 1;
+      if (bias < biasMin) biasMin = bias;
       if (on) {
         fired += 1;
+        biasAllSum += bias;
         biasFiredSum += bias;
         if (bias > biasMax) biasMax = bias;
       }
@@ -487,9 +511,12 @@ export function measureTrapFire(
   return {
     lineTicks,
     firePct: lineTicks ? (fired / lineTicks) * 100 : 0,
+    fireAnyPct: lineTicks ? (firedAny / lineTicks) * 100 : 0,
     biasWhenFiredM: fired ? biasFiredSum / fired : 0,
     biasAllTicksM: lineTicks ? biasAllSum / lineTicks : 0,
+    biasSignedAllTicksM: lineTicks ? biasSignedSum / lineTicks : 0,
     biasMaxM: biasMax,
+    biasMinM: biasMin,
     runLenMeanTicks: mean(runLens),
     togglesPer100: lineTicks ? (toggles / lineTicks) * 100 : 0,
   };
@@ -547,7 +574,11 @@ export function measureRefereeLineMismatch(
       const line = defProgs[1]!;
       const pr = prog(rec.pos.x);
       // 생성기 기준으로는 온사이드(라인+tol 이하)인데 깃발이 올랐다 = 심판만 다른 라인을 썼다.
-      if (pr <= line + tol && bias > 0) mismatched++;
+      // ⚠️ 여기 있던 `&& bias > 0` 은 **검정 대상 노브를 측정 조건에 하드코딩한 것**이라 T9 의
+      // "출하값 0 에서 불일치 0"을 **겉보기 tautology** 로 만들고 있었다(S3-C 독립검증 m3).
+      // 지웠고, 값은 바뀌지 않는다 — bias=0 이면 심판과 생성기가 **같은 라인**을 쓰므로 온사이드
+      // 위치에서 깃발이 오를 수 없다(실측 0.00 / 2.5 → 0.75 / 6 → 2.13, 가드 있을 때와 동일).
+      if (pr <= line + tol) mismatched++;
     }
   }
   const n = seeds.length || 1;

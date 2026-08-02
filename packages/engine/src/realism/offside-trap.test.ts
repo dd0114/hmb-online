@@ -1,11 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { TacticalInput } from "@hmb/shared";
 import { defaultEngineConfig, type EngineConfig } from "../config";
-import { REALISM_SEEDS } from "./harness";
+import { REALISM_SEEDS, GUARD_SEEDS } from "./harness";
+import { LADDER, LADDER_TAG } from "./gate";
 import { setDefShapeObserver } from "../action";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
-import { measureTrap, measureTrapFire, measureRefereeLineMismatch, measureDeadStops, trapOn, withLine } from "./trap";
+import { measureTrap, measureTrapFire, measureRefereeLineMismatch, measureDeadStops, trapOn, withLine, type TrapFireReport } from "./trap";
 
 /**
  * #377 트랙 D **S3-C — 오프사이드 트랩**(로드맵 W5-3).
@@ -22,26 +23,41 @@ import { measureTrap, measureTrapFire, measureRefereeLineMismatch, measureDeadSt
  * 높다"*. 두 독립 레버가 같은 교환곡선 위에 앉는 것을 먼저 확인했으므로 이 주장은
  * **정의상 참이 아니고 실패할 수 있는 주장**이었다.
  *
- * **그리고 실패했다.** 60시드 실측(전부 트랩 ON 레짐, 플라시보 대조):
+ * **그리고 실패했다.** 60시드 실측(전부 트랩 ON 레짐, 플라시보 대조 — 아래 표는 minor 수습에서
+ * **콜드 재측정**한 값이라 착지 표와 소수 셋째 자리가 다르다. 결론은 같다):
  *
- * | 팔 | 라인(m) | 잡힘 | 뚫림% | 프론티어 대비 가격 |
- * |---|---|---|---|---|
- * | 플라시보(`stepUpM=0`) | 27.723 | 0.6011 | 10.469 | — (기준) |
- * | 트랩 2.5(출하) | 28.078 | 0.6212 | 11.275 | **2.0배** |
- * | 트랩 4 | 28.199 | 0.6284 | 11.573 | **2.0배** |
- * | 트랩 6 | 28.731 | 0.6803 | 13.403 | **1.85배** |
- * | 무차별 `defensiveLineHeight` 0.60 | 28.150 | **0.6762** | **11.978** | 1.0 (프론티어) |
- * | 무차별 0.65 | 28.595 | 0.7407 | 13.153 | 1.0 |
- * | 무차별 0.75 | 29.392 | 0.9253 | 16.540 | 1.0 |
+ * | 팔 | 라인(m) | 잡힘 | 뚫림% |
+ * |---|---|---|---|
+ * | 플라시보(`stepUpM=0`) | 27.719 | 0.6015 | 10.480 |
+ * | 트랩 2.5(출하) | 28.073 | 0.6210 | 11.291 |
+ * | 트랩 6 | **28.731** | **0.6803** | **13.445** |
+ * | 무차별 `defensiveLineHeight` 0.60 | 28.152 | 0.6763 | 11.976 |
+ * | 무차별 0.65 | **28.585** | **0.7401** | **13.158** |
  *
- * 무차별 0.60 은 트랩 6 과 **거의 같은 잡힘(0.6762 vs 0.6803)을 1.4pp 적은 위험**으로 산다.
- * 즉 이 엔진에서 조건부 라인 상향은 무차별 상향에 **지배당한다**. 다섯 가지 기제 변형
- * (어깨 게이트 off · 밴드 8m · 거리 45/55m)으로도 프론티어 아래를 벗어나지 못했다(T3 블록).
+ * **같은 라인 높이에서 무차별 상향이 트랩을 순수 지배한다** — 무차별 0.65 는 트랩 6 보다
+ * 라인이 **더 낮은데도**(28.585 vs 28.731) **더 많이 잡고**(0.7401 vs 0.6803) **덜 뚫린다**
+ * (13.158 vs 13.445). 세 축이 전부 같은 쪽이라 교환곡선을 그릴 필요조차 없다. 커밋된 n20
+ * 스냅샷도 같은 형태다(트랩 6: 28.73 / 0.695 / 14.03 · 무차별 0.65: 28.71 / 0.740 / 13.17).
  *
- * **그래서 계수를 T3 에 맞추지 않았다** — 스코프 단계에서 그 실패 조건을 미리 선언했고
- * (#377 함정 ④ = "신호 없는 게이트에 계수를 맞춘다"), 대신 **반증을 스냅샷으로 박제**한다.
- * 다음 사람이 같은 주장을 다시 세우지 않게, 그리고 미래 설계(hold/cooldown)가 이걸 뒤집으면
- * **스냅샷이 움직여 그 사실이 보이게**.
+ * ⚠️ **"프론티어 대비 몇 배"라는 표현은 철회했다**(독립검증 m6) — 그건 프론티어 기울기를
+ * **한 점에서** 추정해 나눈 파생량이라 표본에 취약하다(같은 `min0` 팔이 n20 **1.04배** ·
+ * n60 **1.59배**). 반증 결론은 그 파생량 **없이** 위 세 축의 지배로 성립한다.
+ * 다섯 가지 기제 변형(어깨 게이트 off · 밴드 8m · 거리 45/55m)도 전부 프론티어 위로 못
+ * 올라갔다 = **T3 를 통과시키는 계수는 발견되지 않았다**(T3 블록).
+ *
+ * **그래서 계수를 T3 에 맞추지 않았다** — 정확히는 **맞출 계수가 없었다**(다섯 변형 중 최선도
+ * 프론티어 위로 못 올라갔다). 스코프 단계에서 그 실패 조건을 미리 선언했으므로(#377 함정 ④ =
+ * "신호 없는 게이트에 계수를 맞춘다") 대신 **반증을 스냅샷으로 박제**한다. 다음 사람이 같은
+ * 주장을 다시 세우지 않게, 그리고 미래 설계(hold/cooldown)가 이걸 뒤집으면 **스냅샷이 움직여
+ * 그 사실이 보이게**.
+ *
+ * ## 대조군이 왜 "트랩 OFF"가 아니라 **플라시보**인가
+ * 트랩 지시(`team.offsideTrap`)를 끄면 기제만 꺼지는 게 아니라 **심판도 달라진다** —
+ * `rules.offside.trapCallMult`(1.8)가 판정 확률을 갈라 그 뒤 전개가 통째로 발산한다. 그래서
+ * 두 팔은 지시를 **둘 다 켜 두고** 이동량만 0 으로 만든다(라벨·게이트·심판 전부 동일).
+ * ⚠️ 이 선택은 **논리 때문이지 효과 크기 때문이 아니다** — 실제로 두 기준선은 같은 자리에
+ * 있다(n60 `caught`: 트랩 OFF 0.6027 vs 플라시보 0.6015, t **−0.25**). 출하까지의 상승분도
+ * 어느 쪽으로 재든 같다(OFF→출하 +0.0182 · 플라시보→출하 +0.0195 = **차이 7%**).
  *
  * ## 그럼 왜 착지시키나
  * 이 웨이브가 고치는 것은 "트랩이 좋은 전술인가"가 아니라 **"트랩 지시가 실재하는가"** 다.
@@ -53,6 +69,7 @@ import { measureTrap, measureTrapFire, measureRefereeLineMismatch, measureDeadSt
 
 const S8 = REALISM_SEEDS.slice(0, 8);
 const S20 = REALISM_SEEDS;
+const S60 = GUARD_SEEDS;
 const select = makeSelectData();
 
 function cfg(mut: (c: EngineConfig) => void): EngineConfig {
@@ -61,8 +78,10 @@ function cfg(mut: (c: EngineConfig) => void): EngineConfig {
   return c;
 }
 const ON = trapOn("both");
+/** `stepUpM` 만 바꾼 config. */
+const step = (v: number): EngineConfig => cfg((c) => { c.movement.defLine.trap.stepUpM = v; });
 /** 플라시보 — 배정·게이트·라벨은 그대로, **이동만 0**. 라벨이 아니라 기제가 원인임을 가른다. */
-const PLACEBO = cfg((c) => { c.movement.defLine.trap.stepUpM = 0; });
+const PLACEBO = step(0);
 /** 롤백 = 0.39.0 동작 재현(기제 off + 구 심판 보정). */
 const ROLLBACK = cfg((c) => {
   c.movement.defLine.trap.enabled = false;
@@ -85,6 +104,12 @@ const trapOnPatch = (t: TacticalInput): TacticalInput => ({ ...t, team: { ...t.t
  */
 const REF_0_39_0_SHIPPING = ["f9d9d778", "756ec350", "f7031974", "e5b0e30b", "2729ba3f", "5835c656", "c32240d5", "19ccfdd9"];
 const REF_0_39_0_TRAP_ON = ["35e56352", "5e9060da", "a87a7465", "bca6a382", "6709e43e", "295057c6", "43c19131", "7d411e90"];
+
+/**
+ * 플라시보 팔의 n20 측정 — **T2 엔드포인트와 T2c 절대값 변이체가 공유**한다(같은 20경기를
+ * 두 번 돌리지 않는다). 모듈 로드 시 1회.
+ */
+const A0 = measureTrap(PLACEBO, S20, ON).both;
 
 function strictlyIncreasing(v: readonly number[]): boolean {
   for (let i = 1; i < v.length; i++) if (!(v[i]! > v[i - 1]!)) return false;
@@ -128,30 +153,126 @@ describe("S3-C T1 — 발화", () => {
  * T2 — 용량–반응: `stepUpM` 이 실제로 레버다
  * ------------------------------------------------------------------------- */
 
-describe("S3-C T2 — `stepUpM` 사다리 (관찰량은 **상대 선수**의 위치다)", () => {
+describe("S3-C T2 — `stepUpM` 이 레버다 (엔드포인트 · 결과 쪽 관찰량 둘)", () => {
   /**
-   * ⚠️ **1m 칸은 뺐다 — 분해되지 않는다.** 5칸(0/1/2.5/4/6)으로 재면 1m 칸이 뒤집힌다:
-   *   n20  0.606 · **0.585** · 0.622 · 0.639 · 0.695
-   *   n60  0.6011 · **0.5892** · 0.6212 · 0.6284 · 0.6803
-   * 두 표본이 **같은 방향으로** 뒤집히므로 이건 시드 노이즈가 아니라 **효과가 없는 것**이다 —
-   * 1m 전진 × 발화 28% ≈ 평균 0.28m 이고 선수의 물리 지연이 그걸 삼킨다. 표본을 늘려도
-   * 안 살아나는 칸을 사다리에 넣으면 계약이 플래키해진다(#182 의 rung 폭 교훈).
-   * 남긴 4칸은 **n20·n60 둘 다 엄격 단조**다.
+   * ## ⚠️ 초판은 **자기 임계에 검정력이 모자란 사다리**였다 (독립검증 m1)
+   * 초판 = `[0, 2.5, 4, 6]` 인접 rung **엄격 단조**를 n20 에서 요구했다. 그런데 그 세 스텝의
+   * 대응표본 t(같은 시드 쌍, `caughtMean`)를 **직접 재 보면**:
+   *
+   * | 스텝 | Δ (n20) | t (n20) | Δ (n60) | t (n60) |
+   * |---|---|---|---|---|
+   * | 0 → 2.5 | +0.0156 | **1.06** | +0.0195 | 2.03 |
+   * | 2.5 → 4 | +0.0155 | **0.86** | +0.0067 | **0.70** |
+   * | 4 → 6 | +0.0583 | 3.42 | +0.0526 | 5.63 |
+   *
+   * 즉 세 스텝 중 둘이 |t| < 1.1 이고, `2.5 → 4` 는 **n60 으로 키워도 t = 0.70** 이다 —
+   * 구현자가 "분해 안 된다"며 뺀 1m 칸(t = −1.22)**보다도 신호가 약하다**. 지금 초록인 것은
+   * 운이고 재표집에서 뒤집힌다.
+   *
+   * ## 그래서 임계를 낮추지 않고 **계약을 다시 정의했다**
+   * 신호가 있는 것만 항상 걸고, 없는 것은 게이트로 내리거나 값으로만 남긴다:
+   *
+   *  - **여기(항상)** = 양 끝(0 vs 6)의 **큰 효과**. n20 에서 `caught` +0.0894(t **5.23**) ·
+   *    수비 라인 높이 +1.065m(t **5.54**). 임계는 그 절반 근방(0.05 / 0.5m)이라 2~3 SE 여유다.
+   *  - **사다리(`HMB_LADDER=1`)** = `[0, 2.5, 6]` 엄격 단조를 **n60** 에서. 이 간격이면 두 스텝
+   *    모두 t ≥ 2.03(`caught`) · ≥ 2.75(라인)로 분해된다. `4` 칸은 **뺐다** — 2.5 와 4 사이는
+   *    표본을 3배로 키워도 안 갈라진다(위 표). "표본을 늘려도 안 살아나는 칸을 사다리에 넣으면
+   *    계약이 플래키해진다"는 1m 칸과 **같은 판정**이다.
+   *  - 1m 칸은 계속 뺀다 — n20 · n60 이 **같은 방향으로** 뒤집힌다(0.606/**0.585** ·
+   *    0.6011/**0.5892**). 노이즈가 아니라 효과가 없는 것이다.
+   *
+   * ## 런타임 (사다리는 게이트돼 있다 — §2.5 · #371)
+   * 초판 = 사다리 4팔 × n20 + 변이체 1팔 × n20 = **100경기**가 `npm test` 안에서 **항상**.
+   * 지금 = 항상 도는 것 **84경기**(엔드포인트 2팔 × n20 = 40 · 부호 라벨 3팔 × n8 = 24 ·
+   * 절대값 변이체 1팔 × n20 = 20, 플라시보 팔은 **재사용**) + 게이트된 n60 사다리 180경기
+   * (실측 46.1s)는 **노브를 만진 웨이브에서만**. 즉 `npm test` 는 싸지고 검정력은 올라간다.
    */
-  const rungs = [0, 2.5, 4, 6];
-  const caught = rungs.map((v) =>
-    measureTrap(cfg((c) => { c.movement.defLine.trap.stepUpM = v; }), S20, ON).both.caughtMean,
-  );
+  const A6 = measureTrap(step(6), S20, ON).both;
 
-  it(`라인 뒤에 남겨진 상대 수가 단조 증가한다 (${caught.map((x) => x.toFixed(3)).join(" · ")})`, () => {
-    expect(strictlyIncreasing(caught), `stepUpM ${rungs.join("/")} → ${caught.join(", ")}`).toBe(true);
+  it(`엔드포인트 — 라인 뒤에 남겨진 상대가 는다 (${A0.caughtMean.toFixed(3)} → ${A6.caughtMean.toFixed(3)})`, () => {
+    // 실측 Δ +0.0894 (t 5.23) · n60 +0.0788 (t 8.29). 임계는 그 절반.
+    expect(A6.caughtMean - A0.caughtMean, `caught ${A0.caughtMean} → ${A6.caughtMean}`).toBeGreaterThan(0.05);
   }, 300_000);
 
-  it("부호를 뒤집으면 방향도 뒤집힌다 (변이체 킬 — 라벨이 아니라 이동이 원인이다)", () => {
-    // 라인을 **뒤로** 당기면 라인 뒤 상대가 줄어야 한다. 이 단언이 통과하지 않으면
-    // `caughtMean` 이 트랩 이동이 아니라 다른 무언가를 재고 있다는 뜻이다.
-    const back = measureTrap(cfg((c) => { c.movement.defLine.trap.stepUpM = -4; }), S20, ON).both.caughtMean;
-    expect(back).toBeLessThan(caught[0]!);
+  it(`엔드포인트 — **수비 라인 자체가** 올라간다 (${A0.lineMeanM.toFixed(2)} → ${A6.lineMeanM.toFixed(2)}m)`, () => {
+    // 위 `caught` 는 **상대**의 위치이고 이건 **우리**의 위치다 — 둘이 같이 움직여야 "라인을
+    // 밀어올렸다"가 성립한다(하나만 보면 상대가 알아서 전진한 경우와 구분되지 않는다).
+    // 실측 Δ +1.065m (t 5.54) · n60 +1.012m (t 7.30). 관찰량은 스냅샷 좌표다(라벨 아님).
+    expect(A6.lineMeanM - A0.lineMeanM, `line ${A0.lineMeanM} → ${A6.lineMeanM}`).toBeGreaterThan(0.5);
+  }, 300_000);
+});
+
+/**
+ * **용량–반응 사다리**(게이트: `HMB_LADDER=1` · #371). 위 주석의 검정력 표가 rung 선택 근거다.
+ */
+describe.skipIf(!LADDER)(`S3-C T2b — \`stepUpM\` 사다리 (n60) ${LADDER_TAG}`, () => {
+  // ⚠️ 측정은 **`it` 안에서** 한다 — `describe.skipIf` 는 콜백을 그대로 실행하므로(수집 단계)
+  // describe 본문에 두면 **스킵될 때도 n60 이 돈다**(실측 수집 +46s). lane-read 와 같은 관용구.
+  it("`stepUpM` 을 올리면 라인 뒤 상대도 라인 높이도 단조 증가한다", () => {
+    const rungs = [0, 2.5, 6];
+    const arms = rungs.map((v) => measureTrap(step(v), S60, ON).both);
+    const caught = arms.map((a) => a.caughtMean);
+    const line = arms.map((a) => a.lineMeanM);
+    // 실측(n60): caught 0.6015 · 0.6210 · 0.6803 (스텝 t 2.03 · 6.06)
+    //            line   27.719 · 28.073 · 28.731 (스텝 t 2.75 · 5.47)
+    expect(strictlyIncreasing(caught), `caught: stepUpM ${rungs.join("/")} → ${caught.map((x) => x.toFixed(4)).join(", ")}`).toBe(true);
+    expect(strictlyIncreasing(line), `line: stepUpM ${rungs.join("/")} → ${line.map((x) => x.toFixed(3)).join(", ")}`).toBe(true);
+  }, 1_800_000);
+});
+
+/* ------------------------------------------------------------------------- *
+ * T2c — 부호 판별 (변이체 킬 **2단**: 구조 라벨 + 결과 위치)
+ * ------------------------------------------------------------------------- */
+
+describe("S3-C T2c — 부호를 뒤집으면 기제도 뒤집힌다", () => {
+  /**
+   * ## ⚠️ 초판의 변이체 킬은 **방향을 판별하지 못했다** (독립검증 m2)
+   * 초판 = `stepUpM = −4` 의 `caughtMean` 이 플라시보보다 작다. 그런데 실측하면
+   *   −4 → 0.5895 (Δ −0.0168, t **−0.93**)   ·   **+1 → 0.5849 (Δ −0.0215)**
+   * 로 **양수 +1 을 먹여도 그 단언이 통과한다** = 부호가 아니라 잡음을 재고 있었다.
+   *
+   * ## 왜 결과 축으로는 못 가르나 (실측 사실, 원인은 규명하지 않았다)
+   * 음의 팔은 **기제가 정상적으로 돈다** — 라벨 기준 발화 28.63%(양의 팔 28.82% 와 같다) ·
+   * 부호 있는 평균 이동 **−0.955m**. 그런데 결과 축은 거의 안 움직인다:
+   *   라인 높이 Δ  −4 **−0.183(t −0.85)** · −6 −0.041(t −0.21) · −8 −0.275(t **−1.85**)
+   *   (같은 자로 잰 양의 팔: +6 **+1.065(t 5.54)** · +8 +2.071(t 8.49))
+   * 표본을 늘려서 될 문제가 아니다(−8 에서도 2σ 미만). 백4 위치(평균·최전방·최후방)로 바꿔도
+   * 전부 |t| < 1.9 였다. **왜 비대칭인지는 이 수습에서 규명하지 않았다** — 규명 없이 기제를
+   * 지어내지 않고, 대신 판정을 두 층으로 나눈다.
+   *
+   * ## 2단 계약
+   *  ① **구조(부호 확실)** — config 의 부호가 기제 라벨(`DefShapeSample.trapBiasFx`)까지 그대로
+   *     간다. ⚠️ **동어반복 경계**: 이 자는 기제가 만든 값을 되읽으므로 *"선수가 그 방향으로
+   *     섰다"* 는 판정하지 못한다. 판정하는 것은 *"부호가 코드 안에서 살아 있다"* 뿐이다
+   *     (`Math.abs` · 부호 상수화 같은 변이체는 여기서 죽는다).
+   *  ② **결과(위치)** — 그 방향성이 선수 위치까지 도달한다는 것은 **양의 방향**에서 T2 가
+   *     증명한다(라인 +1.065m). 그리고 음의 팔이 라인을 **올리지는 않는다**를 여기서 건다 —
+   *     `stepUpM` 을 절대값으로 읽는 변이체는 −4 를 +4(라인 **+0.586m**)로 만들므로 걸린다.
+   */
+  const fire = (v: number): TrapFireReport => measureTrapFire(step(v), S8, ON);
+
+  it("① 구조 — 음수는 음수로, 양수는 양수로 기제까지 간다 (동어반복 경계는 주석)", () => {
+    const neg = fire(-4);
+    const pos = fire(1);
+    // 실측: −4 → −0.9553m · +1 → +0.2451m. 부호가 갈리는 것이 이 단언의 전부다.
+    expect(neg.biasSignedAllTicksM, "음의 stepUpM 인데 기준점이 앞으로 갔다").toBeLessThan(0);
+    expect(pos.biasSignedAllTicksM, "양의 stepUpM 인데 기준점이 뒤로 갔다").toBeGreaterThan(0);
+    // 세기도 따라간다(−6 이 −4 보다 더 음수). 부호를 상수로 박은 변이체를 함께 잡는다.
+    expect(fire(-6).biasSignedAllTicksM).toBeLessThan(neg.biasSignedAllTicksM);
+    // 이동량 상한은 부호 대칭이다(T1 의 `biasMaxM` 과 짝).
+    expect(neg.biasMinM).toBeGreaterThanOrEqual(-4 - 1e-9);
+    // **음의 팔도 기제는 정상적으로 돈다** — 발화율이 양의 팔과 같은 자리다(실측 28.63 vs 29.49%).
+    // 이 단언이 있어야 "결과 축이 안 움직인다"가 *미발화 때문이 아니라는 것*이 계약에 남는다.
+    expect(neg.fireAnyPct).toBeGreaterThan(pos.fireAnyPct * 0.7);
+  }, 300_000);
+
+  it("② 결과 — 음의 팔은 라인을 **올리지 않는다** (절대값 변이체 킬)", () => {
+    const back = measureTrap(step(-4), S20, ON).both.lineMeanM;
+    const placebo = A0.lineMeanM; // 위에서 이미 잰 플라시보 팔을 재사용한다.
+    // 실측 −4 → 27.498 vs 플라시보 27.681 (Δ −0.183). `Math.abs` 변이체면 +4 의 28.267 이 되어
+    // Δ **+0.586** 이 된다. 임계 +0.3 은 그 사이에 있고, 잡음(SE ≈ 0.21)에는 −0.183 에서
+    // 2.3 SE 여유다. **단측**인 이유는 위 주석 — 음의 방향 효과 크기는 이 자로 못 잰다.
+    expect(back, `line(−4) ${back} vs 플라시보 ${placebo}`).toBeLessThan(placebo + 0.3);
   }, 300_000);
 });
 
@@ -172,7 +293,7 @@ describe("S3-C T3/T4 — 프론티어를 이기지 못한다 · 위험지역으�
     const rows = [
       arm("placebo", PLACEBO, trapOnPatch),
       arm("trap 2.5", defaultEngineConfig, trapOnPatch),
-      arm("trap 6", cfg((c) => { c.movement.defLine.trap.stepUpM = 6; }), trapOnPatch),
+      arm("trap 6", step(6), trapOnPatch),
       arm("blanket lineH 0.60", PLACEBO, (t) => withLine(0.6)(trapOnPatch(t))),
       arm("blanket lineH 0.65", PLACEBO, (t) => withLine(0.65)(trapOnPatch(t))),
     ];
@@ -187,7 +308,7 @@ describe("S3-C T3/T4 — 프론티어를 이기지 못한다 · 위험지역으�
       const b = measureTrap(c, S20, ON).both;
       return `${label}: ` + b.byDanger.map((x, i) => `${["<25", "25-40", "40-60", ">60"][i]} b${x.behindPct.toFixed(2)}`).join(" ");
     };
-    expect([row("placebo", PLACEBO), row("trap 2.5", defaultEngineConfig), row("trap 6", cfg((c) => { c.movement.defLine.trap.stepUpM = 6; }))].join("\n")).toMatchSnapshot();
+    expect([row("placebo", PLACEBO), row("trap 2.5", defaultEngineConfig), row("trap 6", step(6))].join("\n")).toMatchSnapshot();
   }, 600_000);
 
   it("결과 축(오프사이드·골·1대1)은 노이즈 바닥과 같은 자릿수다 — 게이트로 쓰지 마라", () => {

@@ -74,4 +74,9 @@ export const LADDER_SUITES: { file: string; what: string; issue: string }[] = [
     what: "수비 레인 예측 용량–반응(세기 4 rung — 읽힌 레인의 좁힘·점유 격차가 단조)",
     issue: "#379 (트랙 D M3-B)",
   },
+  {
+    file: "offside-trap.test.ts",
+    what: "오프사이드 트랩 `stepUpM` 사다리 3 rung(n60 — 라인 뒤 상대 · 라인 높이 단조)",
+    issue: "#377 S3-C 독립검증 m1 (n20 인접 rung 은 t 0.70~1.06 으로 분해 불가)",
+  },
 ];
