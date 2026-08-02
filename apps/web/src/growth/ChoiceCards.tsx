@@ -21,16 +21,19 @@ import styles from "./ChoiceCards.module.css";
  * 매핑·규율은 `choice-reason.ts`. 만들 수 없으면(모르는 enum · `BASE` · 초판 행의 `null`)
  * **줄을 생략**한다. 지어내지 않는다.
  *
- * ── 막대의 원점은 **세 후보가 공유**해야 한다 ────────────────────────────────────────────
- * 감쇠가 `r = (v − startLo)/(ceiling − startLo)` 이므로, 막대를 스탯별 `base` 에서 시작시키면
- * 세 후보가 **서로 다른 원점**을 갖게 되어 "낮은 스탯일수록 크게 오른다"가 화면에서 안 읽힌다
- * (초판이 그 상태였고 독립 검증이 잡았다) — 목업이 이 화면에 부여한 유일한 정보 기능이다.
- * 그래서 원점은 카드 전체 축(`cardAxisWindow`)에서 온다. **강화탭 막대와 같은 함수**라 두 화면이
- * 갈릴 수 없다.
- * ⚠️ 목업의 정확한 원점은 등급 공유 `startLo` 인데 **서버가 아직 안 내린다**(`growCeil`·
- * `starCeilBonus` 는 온다). 그래서 지금은 카드의 발행 원본 최소값에서 앵커를 잡는다 — 공유
- * 원점이라는 성질은 같고, 값만 근사다. `bands.<GRADE>.startLo` 가 오면 그 값으로 바꾸고
- * 좌측 라벨을 `시작 {startLo}` 로 되살린다.
+ * ── 막대의 원점 = 등급 `startLo` (서버 `619d18b`) ────────────────────────────────────────
+ * 감쇠가 `r = (v − startLo)/(ceiling − startLo)` 이므로 **이 값이 원점이어야** gain 차이가 막대
+ * 길이로 읽힌다. 스탯별 `base` 에서 시작시키면 세 후보가 서로 다른 원점을 갖게 되어 "낮은 스탯일수록
+ * 크게 오른다"가 화면에서 사라진다(초판이 그 상태였고 독립 검증이 잡았다).
+ * 앵커는 `cardAxisWindow` 가 소유한다 — **강화탭 막대와 같은 함수**라 두 화면이 갈릴 수 없다.
+ * 구 서버라 `startLo` 가 없으면 근사 앵커로 그리되 **`시작 N` 라벨은 안 붙인다**(`axis.exact`).
+ *
+ * ── ⚠️ 후보 **순서를 다시 정렬하지 마라** ────────────────────────────────────────────────
+ * 서버가 `positionBaseline × gain` 내림차순으로 내린다(`ChoiceCandidate` 주석). 화면에서 제일
+ * 눈에 띄는 숫자는 gain 배지인데 감쇠 탓에 gain 이 큰 쪽은 **낮은 스탯**이라, gain 순으로 그리면
+ * 1번 자리에 **전력(OVR)으로는 지는 선택**이 온다(GK 의 `shooting` 이 그 예: gain 은 2등인데
+ * 서버 순서로는 꼴찌다). 정렬 기준값은 안 내려오니 여기서 재현할 수도 없다 — 받은 순서 그대로 그린다.
+ * 계약 = `p405-reward-sheet.spec.ts` (gain 내림차순이 **아닌** 응답으로 순서를 단언한다).
  */
 
 const CELEBRATION_MS = 1700;
@@ -50,8 +53,12 @@ export interface CandidateView {
   cap: number | null;
   /** 세 후보가 **공유**하는 막대 원점(위 머리말). 카드가 없으면 null. */
   axisLo: number | null;
+  /** 원점이 서버 `startLo` 인가 — 참일 때만 `시작 N` 라벨을 붙인다. */
+  axisExact: boolean;
   /** 화면에 그릴 근거 한 줄. 만들 수 없으면 null → 줄 생략. */
   reason: string | null;
+  /** 그 포지션 핵심 스탯인가. **모르면 null**(구 박제분) → 배지 생략. */
+  core: boolean | null;
 }
 
 const num = (v: unknown): number | null =>
@@ -72,7 +79,7 @@ export function candidateView(c: ChoiceCandidate, card: CardEffective | undefine
   const cap = num(caps?.[stat]);
   const to = from == null ? null : cap == null ? from + c.gain : Math.min(cap, from + c.gain);
   // 강화탭 막대와 **같은 함수**로 원점을 잡는다 — 두 화면이 다른 축을 쓰면 같은 카드가 두 모습이 된다.
-  const axisLo = base && caps ? cardAxisWindow(base, caps).lo : null;
+  const axis = base && caps ? cardAxisWindow(base, caps, card?.startLo) : null;
   return {
     stat,
     label: STAT_LABEL_MAP[stat] ?? stat,
@@ -80,8 +87,11 @@ export function candidateView(c: ChoiceCandidate, card: CardEffective | undefine
     from,
     to,
     cap,
-    axisLo,
+    axisLo: axis?.lo ?? null,
+    axisExact: Boolean(axis?.exact),
     reason: reasonTextOf(c.reason),
+    // `false` 로 눕히지 않는다 — 없는 사실을 단언하게 된다(ChoiceCandidate.core 주석).
+    core: typeof c.core === "boolean" ? c.core : null,
   };
 }
 
@@ -102,7 +112,14 @@ function CandidateButton({
   const hi = view.cap ?? 100;
   const span = hi > lo ? hi - lo : 1;
   const curPct = view.from == null ? 0 : pct(((view.from - lo) / span) * 100);
-  const toPct = view.to == null ? curPct : pct(((view.to - lo) / span) * 100);
+  /*
+   * ⚠️ 상승 구간의 길이는 **증분에서** 낸다(`(to − from)/span`), 두 절대 위치의 차가 아니다.
+   * 위치로 내면 값이 축 하한 아래인 카드에서 양쪽이 0% 로 클램프돼 **상승분이 통째로 사라진다**
+   * (실화면 캡처로 확인 — 이 화면에서 gain 은 지워지면 안 되는 유일한 정보다).
+   * 천장에 걸려 실제 적용분이 gain 보다 작으면 `to` 가 이미 잘려 있으므로 이 식이 그대로 정직하다.
+   */
+  const addPct =
+    view.from == null || view.to == null ? 0 : pct(((view.to - view.from) / span) * 100);
   return (
     <button
       type="button"
@@ -114,6 +131,16 @@ function CandidateButton({
     >
       <span className={styles.candTop}>
         <span className={styles.candStat}>{view.label}</span>
+        {/*
+          포지션 핵심 배지 — gain 배지 **옆**에 둔다. 이 화면의 판단은 "얼마나 오르나"(gain)와
+          "그게 이 선수에게 값어치가 있나"(core) 둘인데, 후자가 없어서 화면이 지는 선택을
+          유도하고 있었다(서버 `619d18b`). 두 축을 나란히 보여야 비교가 성립한다.
+        */}
+        {view.core === true && (
+          <span className={styles.coreBadge} data-testid={`choice-core-${view.stat}`}>
+            포지션 핵심
+          </span>
+        )}
         <span className={styles.gainBadge} data-testid={`choice-gain-${view.stat}`}>
           +{view.gain.toFixed(2)}
         </span>
@@ -131,16 +158,16 @@ function CandidateButton({
           </span>
           <span className={styles.ceilBar}>
             <i className={styles.ceilCur} style={{ width: `${curPct}%` }} />
-            <i
-              className={styles.ceilAdd}
-              style={{ left: `${curPct}%`, width: `${Math.max(0, toPct - curPct)}%` }}
-            />
+            <i className={styles.ceilAdd} style={{ left: `${curPct}%`, width: `${addPct}%` }} />
           </span>
           <span className={styles.ceilLegend}>
-            {/* ⚠️ 좌측에 `시작 {startLo}` 라벨을 붙이지 않았다 — 서버가 `startLo` 를 안 내려서
-                이 원점은 근사치다(머리말). 값이 오면 라벨과 함께 되살린다. 근사치에 정확한 이름을
-                붙이면 그게 곧 화면의 거짓말이다. */}
-            <span />
+            {/* 원점이 서버 `startLo` 일 때만 이름을 붙인다 — 근사 폴백에 정확한 라벨을 달면
+                그게 곧 화면의 거짓말이다(`cardAxisWindow` 주석). */}
+            {view.axisExact && view.axisLo != null ? (
+              <span data-testid={`choice-start-${view.stat}`}>시작 {view.axisLo}</span>
+            ) : (
+              <span />
+            )}
             {view.cap != null && <span>천장까지 {n1(Math.max(0, view.cap - view.to))} 남음</span>}
             {view.cap != null && <span>천장 {n1(view.cap)}</span>}
           </span>
@@ -248,6 +275,7 @@ export function ChoiceCandidates({ choice, card, onApplied, footer }: ChoiceCand
         <AppliedChoiceCard applied={applied} />
       ) : (
         <>
+          {/* ⚠️ **받은 순서 그대로**(머리말) — `sort` 를 끼워 넣는 순간 이 화면의 요점이 사라진다. */}
           <div className={styles.cands} data-testid="choice-candidates">
             {views.map((v) => (
               <CandidateButton key={v.stat} view={v} onPick={() => pick(v)} disabled={apply.isPending} />

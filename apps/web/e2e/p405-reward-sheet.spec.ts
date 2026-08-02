@@ -57,15 +57,17 @@ const CHOICES = [
     // ⚠️ 세 후보의 `reason.kind` 를 **일부러 다르게** 잡았다 — 목업 화면 ③ 의 확인 포인트가
     // "셋 다 다른 축(그 경기 이벤트 / 지시 / 포지션)"이고, 한 축만 태우면 매핑 구멍이 안 보인다.
     candidates: [
-      { stat: "tackling", gain: 3.82, reason: { kind: "EVENT", detail: { type: "tackle", count: 6 } } },
-      { stat: "physical", gain: 3.11, reason: { kind: "POSITION", detail: { position: "DF" } } },
-      { stat: "pace", gain: 2.45, reason: { kind: "BEHAVIOR", detail: { param: "widthTendency", value: 0.79 } } },
+      { stat: "tackling", gain: 3.82, core: true, reason: { kind: "EVENT", detail: { type: "tackle", count: 6 } } },
+      { stat: "physical", gain: 3.11, core: true, reason: { kind: "POSITION", detail: { position: "DF" } } },
+      { stat: "pace", gain: 2.45, core: false, reason: { kind: "BEHAVIOR", detail: { param: "widthTendency", value: 0.79 } } },
     ],
   },
   {
     choiceId: "c-2",
     playerId: "P003",
     level: 12,
+    // ⚠️ 구 박제분 표본 — `core` 키가 **아예 없다**. 화면은 배지를 생략해야 한다(false 로 눕히면
+    // "핵심이 아니다"라는 없는 사실을 단언하게 된다).
     candidates: [
       { stat: "positioning", gain: 3.4, reason: { kind: "RESULT", detail: { result: "WIN" } } },
       // `BASE` 와 `reason` 부재(구 행)는 **줄이 없어야** 한다 — 지어내지 않는 성질의 표본.
@@ -77,11 +79,15 @@ const CHOICES = [
     choiceId: "c-3",
     playerId: "P006",
     level: 8,
+    // 🚨 **gain 내림차순이 아니다 — 일부러 그렇다**(서버 `619d18b` 실응답 P001 GK 와 같은 모양).
+    // `shooting` 은 gain 이 `technical` 보다 큰데(2.9 > 2.4) **맨 뒤**다: 이 포지션에 shooting 은
+    // OVR 기여가 거의 없어 서버가 `positionBaseline × gain` 으로 뒤로 보냈다.
+    // 클라가 gain 순으로 재정렬하면 1번 자리에 **지는 선택**이 오고, 그게 이 작업의 이유다.
     candidates: [
-      { stat: "passing", gain: 2.8, reason: { kind: "BEHAVIOR", detail: { param: "passRisk", value: 0.7 } } },
-      { stat: "technical", gain: 2.4, reason: { kind: "EVENT", detail: { type: "pass", count: 41 } } },
-      // 서버가 축을 늘렸을 때 — 모르는 kind 는 죽지 않고 줄만 생략한다.
-      { stat: "shooting", gain: 1.9, reason: { kind: "MORALE", detail: { value: 1 } } },
+      { stat: "passing", gain: 2.8, core: true, reason: { kind: "BEHAVIOR", detail: { param: "passRisk", value: 0.7 } } },
+      { stat: "technical", gain: 2.4, core: true, reason: { kind: "EVENT", detail: { type: "pass", count: 41 } } },
+      // 서버가 축을 늘렸을 때 — 모르는 kind 는 죽지 않고 줄만 생략한다. `core:false` = 비핵심.
+      { stat: "shooting", gain: 2.9, core: false, reason: { kind: "MORALE", detail: { value: 1 } } },
     ],
   },
 ];
@@ -238,6 +244,7 @@ async function mockApi(page: Page, opts: MockOpts = {}) {
       growCeil: 72,
       starCeilBonus: 1,
       attrHardCap: 99,
+      startLo: 32, // BRONZE 시작 밴드 하한 — 후보 막대의 좌측 앵커
       pendingChoices: pending.filter((c) => c.playerId === playerId),
       statLevels: {},
       potential: { unlocked: true, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
@@ -282,6 +289,7 @@ async function mockApi(page: Page, opts: MockOpts = {}) {
         growCeil: 72,
         starCeilBonus: 1,
         attrHardCap: 99,
+        startLo: 32,
         pendingChoices: pending.filter((c) => c.playerId === row.playerId),
         statLevels: {},
         potential: { unlocked: true, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
@@ -422,8 +430,23 @@ test("f. 레벨업 행 → 후보 3장 → 선택 → 적용·축하 + 남은 �
   await expect(page.getByTestId("choice-why-physical")).toContainText("포지션 DF 핵심");
   await expect(page.getByTestId("choice-why-pace")).toContainText('지시 "넓게 벌려"');
 
-  // ⚠️ 세 막대가 **같은 원점**을 쓴다 — 원점이 스탯별 base 면 gain 차이가 화면에서 안 읽힌다.
-  // 축 좌변이 공유값이므로 `+gain` 이 큰 후보의 초록 구간이 실제로 더 길다.
+  // 좌측 앵커 = 서버 `startLo`(BRONZE 32) — 근사치가 아니라 **이름을 붙일 수 있는 값**이다.
+  await expect(page.getByTestId("choice-start-tackling")).toHaveText("시작 32");
+
+  // ⚠️ 라벨과 **막대 원점이 실제로 맞물리는가**. 축 = [32, 73] 이므로 44.0 은 (44−32)/41 ≈ 29.3%.
+  // 라벨만 맞고 막대가 옛 앵커로 그려지는 상태를 이 단언이 죽인다(숫자 두 개가 같은 축을 말한다).
+  const curFrac = await page
+    .getByTestId("choice-cand-tackling")
+    .locator('[class*="ceilCur"]')
+    .evaluate((el) => {
+      const box = (el as HTMLElement).getBoundingClientRect();
+      const track = (el.parentElement as HTMLElement).getBoundingClientRect();
+      return box.width / track.width;
+    });
+  expect(curFrac).toBeGreaterThan(0.27);
+  expect(curFrac).toBeLessThan(0.32);
+
+  // 세 막대가 같은 원점을 쓰므로 `+gain` 이 큰 후보의 초록 구간이 실제로 더 길다.
   const widths = await page
     .getByTestId("choice-candidates")
     .locator('[class*="ceilAdd"]')
@@ -431,6 +454,11 @@ test("f. 레벨업 행 → 후보 3장 → 선택 → 적용·축하 + 남은 �
   expect(widths).toHaveLength(3);
   expect(widths[0]).toBeGreaterThan(widths[1]!); // +3.82 > +3.11
   expect(widths[1]).toBeGreaterThan(widths[2]!); // +3.11 > +2.45
+
+  // `core` 배지 — 있는 것만 그린다(pace 는 core:false).
+  await expect(page.getByTestId("choice-core-tackling")).toHaveText("포지션 핵심");
+  await expect(page.getByTestId("choice-core-physical")).toBeVisible();
+  await expect(page.getByTestId("choice-core-pace")).toHaveCount(0);
 
   await expect(page.getByTestId("reward-pick-later")).toBeVisible();
   await page.screenshot({ path: `${CAP_DIR}sheet-pick-390.png` });
@@ -535,4 +563,50 @@ test("i. 근거를 못 만들면 줄을 생략한다 — 지어내지 않는다 
   await expect(page.getByTestId("choice-why-mental")).toHaveCount(0); // BASE
   await expect(page.getByTestId("choice-why-stamina")).toHaveCount(0); // reason 부재(구 행)
   await expect(page.getByTestId("choice-cand-mental")).toBeVisible(); // 카드는 멀쩡히 있다
+});
+
+
+test("j. 🚨 후보 순서는 **응답 그대로** — gain 순으로 재정렬하지 않는다 (#405, 서버 619d18b)", async ({ page }) => {
+  mkdirSync(CAP_DIR, { recursive: true });
+  await mockApi(page);
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+  await page.getByTestId("reward-tab-GROWTH").click();
+  await page.getByTestId("reward-section-GROWTH").getByTestId("growth-row-P006").click();
+
+  /*
+   * 목 c-3 은 **gain 내림차순이 아니다**: passing 2.8 · technical 2.4 · shooting 2.9.
+   * 서버가 `positionBaseline × gain` 으로 정렬했고 shooting 은 이 포지션에 OVR 기여가 없어 꼴찌다.
+   * 클라가 gain 으로 다시 정렬하면 shooting 이 **1번 자리**로 올라온다 = 화면이 지는 선택을 유도한다.
+   * 이 단언이 그 재정렬을 죽인다.
+   */
+  const order = await page
+    .getByTestId("choice-candidates")
+    .locator("button")
+    .evaluateAll((els) => els.map((el) => el.getAttribute("data-testid")));
+  expect(order).toEqual(["choice-cand-passing", "choice-cand-technical", "choice-cand-shooting"]);
+
+  // 그리고 그 꼴찌가 **가장 큰 gain** 이다 — 이 표본이 계약을 공허하지 않게 만드는 조건이다.
+  await expect(page.getByTestId("choice-gain-shooting")).toHaveText("+2.90");
+  await expect(page.getByTestId("choice-gain-passing")).toHaveText("+2.80");
+  // 화면은 대신 `포지션 핵심` 으로 판단 근거를 준다(shooting 에는 없다).
+  await expect(page.getByTestId("choice-core-passing")).toBeVisible();
+  await expect(page.getByTestId("choice-core-shooting")).toHaveCount(0);
+  await page.screenshot({ path: `${CAP_DIR}sheet-pick-order-390.png` });
+});
+
+test("k. `core` 키가 없는 구 박제분은 배지를 생략한다 — false 로 눕히지 않는다", async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+  await page.getByTestId("reward-tab-GROWTH").click();
+  // c-2 는 P003 의 두 번째 선택권 — c-1 을 소진해야 도달한다.
+  await page.getByTestId("reward-section-GROWTH").getByTestId("growth-row-P003").click();
+  await page.getByTestId("choice-cand-tackling").click();
+  await page.getByTestId("reward-pick-next").click();
+
+  // 후보 3장은 멀쩡히 있는데 배지만 0 개다(공허한 toHaveCount(0) 방지 앵커).
+  await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
+  await expect(page.getByTestId("choice-cand-positioning")).toBeVisible();
+  await expect(page.getByTestId("choice-candidates").locator('[data-testid^="choice-core-"]')).toHaveCount(0);
 });

@@ -203,3 +203,16 @@
   color: var(--accent);
   font-weight: 800;
 }
+
+/* 포지션 핵심 배지 (#405, 서버 `619d18b`) — gain 옆에 서서 "얼마나 오르나" 옆에 "값어치가 있나"를
+   놓는다. 중립 톤이다: gain(초록)과 색으로 경쟁하면 어느 쪽을 봐야 하는지가 다시 흐려진다. */
+.coreBadge {
+  flex: none;
+  padding: 2px 7px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: #9dc0ff;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}

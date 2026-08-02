@@ -149,12 +149,15 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
    * 축 윈도우(hero: "y축 하한 잘라서 드라마틱하게") — 막대·레이더 공통 정규화.
    *
    * ⚠️ **등급별 밴드 미러(`computeAxisWindow`)를 버렸다** (#405 W3): v2.5 하향으로 그 상수가 틀린
-   * 값이 됐고, 밴드는 무배포 조정 대상이라 미러는 언제든 다시 낡는다(§2.8). 이제 축은 이 카드가
-   * 실제로 들고 온 `base`/`caps` 에서 나온다 — 서버가 밴드를 바꾸면 축이 따라온다.
+   * 값이 됐고, 밴드는 무배포 조정 대상이라 미러는 언제든 다시 낡는다(§2.8). 축은 서버가 준
+   * `startLo`/`caps` 에서 나온다 — 밴드를 바꾸면 축이 따라온다.
    */
   const axisWindow = cardAxisWindow(
     card?.base as unknown as Record<string, number> | undefined,
     card?.caps as unknown as Record<string, number> | undefined,
+    // 앵커는 등급 `startLo` 다(서버 `619d18b`) — 후보 막대와 **같은 함수·같은 인자**라야 두 화면이
+    // 같은 카드를 같은 축으로 그린다.
+    card?.startLo,
   );
   const pct = (v: number) => normalizeInWindow(v, axisWindow) * 100;
   /** 카드 레벨/XP (#405 W2b additive) — 없으면(구 서버·구 목) 그 블록을 통째로 안 그린다. */

@@ -59,12 +59,26 @@ export interface ChoiceReason {
 
 /**
  * 3지선다 후보 1개 (#405 §2.5) — **레벨업 순간 서버가 박제**한다(`candidates_json`).
- * `gain`·`reason` 까지 박제되므로 미뤘다가 골라도 화면에 보였던 숫자와 이유가 그대로 들어간다.
+ * `gain`·`reason`·**순서·`core` 까지** 박제되므로 미뤘다가 골라도 화면에 보였던 것이 그대로다.
+ *
+ * ⚠️ **배열 순서에 의미가 있다 — 클라가 다시 정렬하지 마라**(서버 `619d18b`).
+ * 서버가 `positionBaseline[pos][stat] × gain` 내림차순으로 내린다. 화면에서 가장 크고 눈에 띄는
+ * 숫자는 `gain` 배지인데, 감쇠 특성상 gain 이 큰 쪽은 **낮은 스탯**이라 gain 순으로 그리면
+ * **화면이 유도하는 선택이 전력(OVR)으로는 지는 선택**이 된다(GK 에게 `shooting` 이 그 예).
+ * 정렬 기준인 `positionBaseline` **값 자체는 안 내려온다** — 무배포 조정 대상이라 클라가 미러하면
+ * 노브를 돌린 뒤 화면만 옛 기준으로 정렬한다(§2.8). 서버가 끝낸 결과만 받는다.
  */
 export interface ChoiceCandidate {
   stat: string;
   gain: number;
   reason?: ChoiceReason | null;
+  /**
+   * 그 포지션의 **핵심 스탯**인가(상위 `candidate.coreStatCount`).
+   *
+   * ⚠️ **키가 없으면 표시를 생략한다 — `false` 로 눕히지 마라.** 구 박제분에는 이 값이 없고,
+   * "없음"을 "핵심이 아니다"로 읽으면 없는 사실을 단언하게 된다(`reason` 과 같은 패턴).
+   */
+  core?: boolean | null;
 }
 
 /** 대기 중인 레벨업 선택권 1건. 레벨업 1회 = 선택 1회(같은 경기에 여러 건이 날 수 있다). */
@@ -128,6 +142,14 @@ export interface CardEffective {
   growCeil?: number;
   starCeilBonus?: number;
   attrHardCap?: number;
+  /**
+   * 등급 **시작 밴드 하한** — 후보 막대의 좌측 앵커 (서버 `619d18b`).
+   *
+   * 감쇠가 `r = (v − startLo)/(ceiling − startLo)` 라 **이 값이 원점이어야** gain 차이가 막대
+   * 길이로 읽힌다. 없으면(구 서버) 근사 앵커로 그리되 `시작 N` 라벨은 붙이지 않는다 —
+   * 근사치에 정확한 이름을 붙이는 것이 곧 화면의 거짓말이다.
+   */
+  startLo?: number;
   potential: {
     unlocked: boolean; // 2★ 이상
     tier: PotentialTier;

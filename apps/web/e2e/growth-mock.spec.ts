@@ -106,11 +106,13 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
       choiceId: "c1",
       playerId: OWNED_ID,
       level: 12,
-      // 서버 `00b3586` 부터 후보마다 `reason` 이 박제돼 온다(문장은 클라가 만든다).
+      // 서버 `00b3586` 부터 후보마다 `reason`, `619d18b` 부터 `core` + **OVR 정렬 순서**가 온다.
+      // ⚠️ FW 카드라 tackling 은 gain 이 제일 큰데(3.8) **맨 뒤**다 — 서버가 positionBaseline 으로
+      // 뒤로 보냈다. 목이 gain 순으로 흉내 내면 순서 계약이 공허해진다(목은 계약의 일부다).
       candidates: [
-        { stat: "shooting", gain: 2.4, reason: { kind: "EVENT", detail: { type: "shot", count: 4 } } },
-        { stat: "passing", gain: 3.1, reason: { kind: "POSITION", detail: { position: "FW" } } },
-        { stat: "tackling", gain: 3.8, reason: { kind: "BEHAVIOR", detail: { param: "pressAggression", value: 0.6 } } },
+        { stat: "shooting", gain: 2.4, core: true, reason: { kind: "EVENT", detail: { type: "shot", count: 4 } } },
+        { stat: "passing", gain: 3.1, core: true, reason: { kind: "POSITION", detail: { position: "FW" } } },
+        { stat: "tackling", gain: 3.8, core: false, reason: { kind: "BEHAVIOR", detail: { param: "pressAggression", value: 0.6 } } },
       ],
     },
   ];
@@ -163,6 +165,7 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
           growCeil: 72,
           starCeilBonus: 1,
           attrHardCap: 99,
+          startLo: 50, // GOLD 시작 밴드 하한
           pendingChoices: pending,
           statLevels: statLevels(statBump > 0 ? 1 : 0),
           potential: {
@@ -204,6 +207,7 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
           growCeil: 72,
           starCeilBonus: 1,
           attrHardCap: 99,
+          startLo: 50,
           pendingChoices: [],
           statLevels: statLevels(0),
           potential: { unlocked: false, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
@@ -257,6 +261,7 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
             growCeil: 72,
             starCeilBonus: 1,
             attrHardCap: 99,
+            startLo: 50,
             pendingChoices: pending,
             statLevels: statLevels(statBump > 0 ? 1 : 0),
             potential: {
@@ -398,10 +403,10 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
     await expect(page.getByTestId(`growth-radar-axis-${k}`)).toContainText(label);
   }
   await expect(page.getByTestId("growth-radar-axis-shooting")).toContainText("55"); // shooting 원시값
-  // ⚠️ 축은 **등급 밴드 미러가 아니라 카드가 들고 온 값**에서 나온다(#405 W3 — v2.5 하향으로
-  // 구 미러 GRADE_BANDS 가 틀린 값이 됐고, 밴드는 무배포 조정 대상이라 미러는 또 낡는다).
-  // 이 목: base 최소 30(tackling) − 여유 5 = 25 … caps 최대 82(pace).
-  await expect(page.getByTestId("growth-radar-window")).toHaveText("25–82");
+  // ⚠️ 축은 **등급 밴드 미러가 아니라 서버가 준 값**에서 나온다(#405 W3 — v2.5 하향으로 구 미러
+  // GRADE_BANDS 가 틀린 값이 됐고, 밴드는 무배포 조정 대상이라 미러는 또 낡는다).
+  // 원점 = 서버 `startLo`(GOLD 50, `619d18b`) · 상단 = caps 최대 82.
+  await expect(page.getByTestId("growth-radar-window")).toHaveText("50–82");
   await expect(page.getByTestId("growth-side-chip-mental")).toBeVisible();
   await expect(page.getByTestId("growth-side-chip-mental")).toContainText("멘탈");
   await expect(page.getByTestId("growth-side-chip-mental")).toContainText("41");
@@ -415,7 +420,7 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   await expect(page.getByTestId("growth-attrs")).toHaveAttribute("data-layer", "total");
   await expect(page.getByTestId("growth-layer-total")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("growth-radar-svg")).toHaveCount(0); // 레이더는 사라진다
-  await expect(page.getByTestId("growth-attr-window")).toHaveText("스탯 축 25–82");
+  await expect(page.getByTestId("growth-attr-window")).toHaveText("스탯 축 50–82");
   // 3층 막대(#405 §2.10) — 기본 | 성장분 | 천장. 범례가 없으면 3층은 그냥 알록달록한 막대다.
   await expect(page.getByTestId("growth-attr-legend")).toContainText("기본(발행 원본)");
   await expect(page.getByTestId("growth-attr-legend")).toContainText("성장분");
@@ -488,9 +493,26 @@ test("G4 강화탭 성장(#405 §2.10): Lv/XP 헤더 + 선택 대기 배너 → 
   await expect(page.getByTestId("choice-lock-note")).toContainText("선택지는 고정됩니다");
   await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
   await expect(page.getByTestId("choice-gain-tackling")).toHaveText("+3.80");
-  // 근거 줄은 보상 시트와 **같은 컴포넌트**가 그린다 — 두 자리에서 모양이 갈리면 안 된다.
+  // 근거 줄·순서·core 배지 전부 보상 시트와 **같은 컴포넌트**가 그린다 — 두 자리가 갈리면 안 된다.
   await expect(page.getByTestId("choice-why-shooting")).toContainText("이 경기 슛 4회");
   await expect(page.getByTestId("choice-why-tackling")).toContainText('지시 "강하게 압박"');
+  // 🚨 응답 순서 그대로 — tackling 이 gain 최대(3.8)인데 FW 라 꼴찌다(재정렬하면 여기서 죽는다).
+  const order = await page
+    .getByTestId("choice-candidates")
+    .locator("button")
+    .evaluateAll((els) => els.map((el) => el.getAttribute("data-testid")));
+  expect(order).toEqual(["choice-cand-shooting", "choice-cand-passing", "choice-cand-tackling"]);
+  await expect(page.getByTestId("choice-core-shooting")).toBeVisible();
+  await expect(page.getByTestId("choice-core-tackling")).toHaveCount(0);
+  // 좌측 앵커는 서버 `startLo`(GOLD 50) — 강화탭 축 라벨(50–82)과 **같은 원점**이다.
+  await expect(page.getByTestId("choice-start-shooting")).toHaveText("시작 50");
+  // ⚠️ 이 목의 `패스`(42.0)는 GOLD 시작 밴드(50) **아래**다(레거시 픽스처). 그래도 상승 구간은
+  // 보여야 한다 — 위치 차로 폭을 내면 양쪽이 0% 로 클램프돼 gain 이 통째로 사라진다(실화면에서 잡음).
+  const addWidth = await page
+    .getByTestId("choice-cand-passing")
+    .locator('[class*="ceilAdd"]')
+    .evaluate((el) => (el as HTMLElement).getBoundingClientRect().width);
+  expect(addWidth).toBeGreaterThan(2);
   await page.screenshot({ path: `${SMOKE_DIR}growth-enhance-pending.png`, fullPage: true });
 
   // 선택 → 축하 + 성장분(statAdd) 층이 실제로 오른다 + 배너가 사라진다.

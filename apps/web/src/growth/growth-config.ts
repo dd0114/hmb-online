@@ -84,10 +84,19 @@ export const AXIS_LO_MARGIN = 5;
 export interface AxisWindow {
   lo: number;
   hi: number;
+  /** 원점이 서버 `startLo` 인가(=`시작 N` 라벨을 붙여도 되는가). 근사 폴백이면 false. */
+  exact?: boolean;
 }
 
 /**
- * 카드의 `base`/`caps` 에서 축 윈도우를 만든다 — **한 카드의 9막대·레이더가 같은 축을 쓴다**.
+ * 카드의 축 윈도우 — **한 카드의 9막대·레이더·후보 막대가 전부 같은 축을 쓴다**.
+ *
+ * 좌측 원점은 **등급 시작 밴드 하한(`startLo`, 서버 `619d18b`)** 이다. 감쇠가
+ * `r = (v − startLo)/(ceiling − startLo)` 라 이 값이 원점이어야 gain 차이가 막대 길이로 읽힌다.
+ *
+ * ⚠️ `startLo` 가 없으면(구 서버) **근사 앵커**(발행 원본 최소값 − 여유)로 떨어진다 — 화면이
+ * 성립하는 것이 우선이고, 대신 호출부는 `시작 N` **라벨을 붙이지 않는다**(근사치에 정확한 이름을
+ * 붙이면 그게 거짓말이다). 근사인지 아닌지는 `exact` 로 알린다.
  *
  * 값이 하나도 없으면(응답 손상) `{lo:0, hi:100}` 으로 눕힌다. 폭 0 축은 모든 막대를 0%로 만들어
  * "성장이 하나도 없다"는 거짓을 그린다.
@@ -95,13 +104,18 @@ export interface AxisWindow {
 export function cardAxisWindow(
   base: Record<string, number> | undefined,
   caps: Record<string, number> | undefined,
+  startLo?: number | null,
 ): AxisWindow {
-  const bases = Object.values(base ?? {}).filter((v) => Number.isFinite(v));
   const ceils = Object.values(caps ?? {}).filter((v) => Number.isFinite(v));
-  if (bases.length === 0 || ceils.length === 0) return { lo: 0, hi: 100 };
+  const hi = ceils.length > 0 ? Math.ceil(Math.max(...ceils)) : 100;
+  if (typeof startLo === "number" && Number.isFinite(startLo)) {
+    const lo = Math.round(startLo);
+    return { lo, hi: hi > lo ? hi : lo + 1, exact: true };
+  }
+  const bases = Object.values(base ?? {}).filter((v) => Number.isFinite(v));
+  if (bases.length === 0 || ceils.length === 0) return { lo: 0, hi: 100, exact: false };
   const lo = Math.floor(Math.min(...bases)) - AXIS_LO_MARGIN;
-  const hi = Math.ceil(Math.max(...ceils));
-  return hi > lo ? { lo, hi } : { lo, hi: lo + 1 };
+  return { lo, hi: hi > lo ? hi : lo + 1, exact: false };
 }
 
 /** value 를 윈도우 안에서 0..1 로 정규화(클램프). 막대 width%·레이더 반경 비율 공통 계산. */
