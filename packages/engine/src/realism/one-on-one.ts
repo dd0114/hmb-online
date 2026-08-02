@@ -172,8 +172,13 @@ export function collectOneOnOne(
     const { xg: xgHere, distM } = xgAtPoint(
       owner.side, owner.posFx.x, owner.posFx.y, owner.attrs.shooting, owner.fatigue, config, pitch,
     );
+    // 이 진단의 표본 정의 = **1대1 부스트 자격 거리**(`decision.oneOnOneShot` 이 쓰는 그 자)다.
+    // ⚠️ #407 N1(0.41.0) 이후로는 `chain.ts:GEN_FN.shoot` 의 **생성** 거리 게이트와 더 이상 같지
+    // 않다 — 그쪽은 `chain.shootDistance` 를 켜면 `genMaxM` 까지 넓어진다. 여기 자를 따라 넓히지
+    // 말 것: 이 파일이 재는 것은 "슛 사거리 안 결정 중 hold 비율"이 아니라 **1대1 찬스**이고,
+    // 그 자격이 `contest.shootRange` 이기 때문이다(`oneOnOneShot` 의 조건과 하나로 유지).
     if (distM > config.contest.shootRange) return;
-    // `chain.ts:GEN_FN.shoot` 의 생성 게이트와 **같은 식**.
+    // xG 질 게이트는 N1 이후에도 `GEN_FN.shoot` 에 그대로 남아 있다 — 여기와 **같은 식**이다.
     const shootGen = xgHere >= config.contest.shootXgThreshold;
     inRange += 1;
     const k = kind as DecisionKind;

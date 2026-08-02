@@ -1,5 +1,5 @@
 === HMB S1 엔진 재튜닝 — 매치 스탯 (v2) ===
-meta: {"configVersion":"engine@0.40.0","seed":"4815162342","finalScore":{"home":2,"away":7}}
+meta: {"configVersion":"engine@0.41.0","seed":"4815162342","finalScore":{"home":2,"away":7}}
 
 지표                      home      away      합/평균        벤치마크(팀)
 슛(시도)                   14        20        17          12-16

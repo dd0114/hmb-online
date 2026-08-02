@@ -182,6 +182,14 @@ const LIVE: Knob[] = [
   { path: "press.unit.supportGapM", mutate: (c) => { c.press.unit.supportGapM = 25; } },
   { path: "press.unit.supportSpreadM", mutate: (c) => { c.press.unit.supportSpreadM = 20; } },
   { path: "press.unit.supportSlotPull", mutate: (c) => { c.press.unit.supportSlotPull = 0; } },
+  // #407 N1/N4 (0.41.0). 둘 다 **롤백 스위치**라 섭동은 "끈 값 ↔ 켠 값"이다.
+  //  · `shootDistance.enabled` = 출하 **false**(감쇠 미사용). 켜면 슛 생성이 `genMaxM` 까지
+  //    넓어지므로 3시드에서 반드시 갈린다.
+  //  · `hold.oneOnOnePenalty` = 출하 4.0. **사실상 불리언이다** — 1대1 에서 hold 의 우위가 작아
+  //    2.0/6.0/20.0 의 20시드 집계가 완전히 동일했다. 그래서 위쪽으로 흔들면 bit-identical 이고,
+  //    레버성 판정은 **0(=예외 없음)** 으로만 잰다. 등록 전 확인: 4시드 중 2개(seed#1·#2)가 갈린다.
+  { path: "chain.shootDistance.enabled", mutate: (c) => { c.chain.shootDistance.enabled = true; } },
+  { path: "chain.hold.oneOnOnePenalty", mutate: (c) => { c.chain.hold.oneOnOnePenalty = 0; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {
@@ -263,11 +271,19 @@ describe("#377 S3-B 조건부 LIVE — 레스트디펜스 가담도·성향 매�
   });
   const lineHi = withTeam((t) => ({ ...t, defensiveLineHeight: 0.9 }));
   const tempoHi = withTeam((t) => ({ ...t, tempo: 0.9 }));
-  /** 센터백(슬롯 2·3)에게 높은 전진 성향 = "이 CB 는 올라가라". */
+  /**
+   * 수비 4명(슬롯 1~4) 전원에게 높은 전진 성향 = "수비도 다 올라가라".
+   *
+   * ⚠️ **0.41.0(#407 N4)에서 조건을 강화했다.** 구 시나리오는 센터백 2명(슬롯 2·3)만 0.95 였는데,
+   * N4 로 궤적이 옮겨간 뒤 그 시나리오가 3시드에서 **순위를 한 번도 안 뒤집는다**(가중치를
+   * 3→20 으로 키워도 전부 bit-identical — 즉 "가중치가 작아서"가 아니라 **비교가 애초에 안 갈리는**
+   * 상태다). 4명 전원으로 넓히면 다시 발화한다. 판정 기준("성향이 순서를 뒤집을 수 있을 때
+   * 레버인가")은 그대로고 **조건만** 넓혔다 — 계약을 약화시키지 않았다.
+   */
   const cbForward = (t: TacticalInput): TacticalInput => ({
     ...t,
     players: t.players.map((p, i) =>
-      i === 2 || i === 3 ? { ...p, behavior: { ...p.behavior, forwardRunFreq: 0.95 } } : p,
+      i >= 1 && i <= 4 ? { ...p, behavior: { ...p.behavior, forwardRunFreq: 0.99 } } : p,
     ),
   });
 
@@ -344,6 +360,50 @@ describe("#377 S3-C 조건부 LIVE — 오프사이드 트랩(지시가 있어�
     for (const k of knobs) {
       if (k.path === "rules.offside.trapBiasM" || k.path === "rules.offside.trapCallMult") continue;
       expect(hashes(k.mutate), `${k.path}`).toEqual(BASE);
+    }
+  }, 300_000);
+});
+
+/**
+ * **조건부 LIVE** — #407 N1 슛 거리 감쇠의 형태 노브 4종.
+ *
+ * 출하 기본이 `chain.shootDistance.enabled=false` 라 이 넷은 출하값에서 **비트 동일**이다.
+ * 죽은 것이 아니라 **스위치가 꺼져 있는 것**이고, 둘은 처방이 정반대라 갈라서 박제한다
+ * (1대1 계열 · 레스트디펜스 매핑 · 오프사이드 트랩과 같은 처방).
+ *
+ * ⚠️ **왜 기본이 off 인가**: 감쇠 축은 축 A(거리 분포)를 확실히 개선하지만 축 B(선수 다양성)를
+ * 예외 없이 악화시킨다(슛 top1 95.8%→97.3~100% · 1대1 7.17%→0~4.3%, 27지점·20시드 스윕).
+ * hero 가 축 B 악화를 하드 제약으로 걸었으므로 켤 수 없다 — 상세 = `config.ts` 주석 ·
+ * `issues/2026-08-02-engine-shot-gate-decay.md`.
+ *
+ * ⚠️ **등록 전에 확인했다** — 넷 전부 감쇠를 켠 3시드에서 최종 해시가 움직인다.
+ */
+describe("#407 N1 조건부 LIVE — 거리 감쇠 형태 노브(스위치를 켜야 레버다)", () => {
+  const on = (c: EngineConfig): void => { c.chain.shootDistance.enabled = true; };
+  const BASE_ON = hashes(on);
+
+  const knobs: Knob[] = [
+    { path: "chain.shootDistance.genMaxM", mutate: (c) => { on(c); c.chain.shootDistance.genMaxM = 34; } },
+    { path: "chain.shootDistance.freeM", mutate: (c) => { on(c); c.chain.shootDistance.freeM = 0; } },
+    { path: "chain.shootDistance.perM", mutate: (c) => { on(c); c.chain.shootDistance.perM = 0.02; } },
+    { path: "chain.shootDistance.floor", mutate: (c) => { on(c); c.chain.shootDistance.floor = 0.9; } },
+  ];
+
+  for (const k of knobs) {
+    it(`조건부 LIVE: ${k.path} 는 감쇠를 켜면 레버다`, () => {
+      expect(hashes(k.mutate), `${k.path} 가 감쇠 ON 에서도 무효다 — 선언만 남은 노브(#338)`)
+        .not.toEqual(BASE_ON);
+    }, 120_000);
+  }
+
+  it("⚠️ 출하 기본(감쇠 off)에서는 넷 전부 비트 동일이다 — 죽은 것이 아니라 **스위치가 꺼진 것**", () => {
+    // 이 단언이 깨지면 감쇠가 스위치 없이 발화하기 시작했다는 뜻이다 → 그때 위 LIVE 로 올린다.
+    for (const k of knobs) {
+      const off = (c: EngineConfig): void => {
+        k.mutate(c);
+        c.chain.shootDistance.enabled = false;
+      };
+      expect(hashes(off), `${k.path}`).toEqual(BASE);
     }
   }, 300_000);
 });

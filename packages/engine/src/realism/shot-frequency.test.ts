@@ -211,6 +211,44 @@ describe.skipIf(!LADDER)(`G-A 단조성: 슛 노브↑ → 슛 수↑ (config �
     expect(span, `${label} — 절대 폭 하한(무한 침식 방지, 경기 길이 비례)`).toBeGreaterThan(SPAN_FLOOR);
   });
 
+  /**
+   * #407 N1 — **슛 거리 감쇠(`chain.shootDistance`)의 사다리.**
+   *
+   * 이 노브는 출하 기본이 `enabled:false` 다(축 B 악화 때문 — `config.ts` 주석). 그래도 사다리를
+   * 두는 이유는 #338 의 교훈 그대로다: **"지금 안 쓰는 레버"와 "죽은 레버"는 다르고, 둘을
+   * 구분해 두지 않으면 다음 웨이브(N2)가 이 노브를 켰을 때 무엇이 고장 난 건지 알 수 없다.**
+   * 그래서 스위치를 켠 위에서 단조성을 잰다(`dead-knobs.test.ts` 의 조건부 LIVE 와 같은 규율).
+   *
+   * 판정식은 이 파일의 다른 사다리와 **같다**(비율 1.35 · 절대 `SPAN_FLOOR`). 새로 정하지 않는다.
+   * rung 은 `freeM=0`(전 거리 감쇠) 팔에서 잡았다 — 20시드 실측:
+   *   perM 0.05 → 6.90 · 0.04 → 10.85 · 0.03 → 16.50 · 0.02 → 25.20  (감쇠↑ = 슛↓)
+   * 3점으로 줄인 이유는 게이트 시간이다(60시드 × 1점 ≈ 25초).
+   */
+  it("chain.shootDistance.perM 사다리 0.05→0.02 엄격 단조(감쇠↓ = 슛↑)", () => {
+    const rungs = [0.05, 0.03, 0.02];
+    const measure = (perM: number) =>
+      aggregateRealism(
+        {
+          ...cfg,
+          chain: {
+            ...cfg.chain,
+            shootDistance: { enabled: true, genMaxM: 34, freeM: 0, perM, floor: 0.05 },
+          },
+        },
+        GUARD_SEEDS,
+      ).mean.shots;
+    const shots = rungs.map(measure);
+    for (let i = 1; i < shots.length; i++) {
+      expect(shots[i], `perM ${rungs[i - 1]}→${rungs[i]} 구간에서 증가해야 (측정 ${shots.join(" → ")})`)
+        .toBeGreaterThan(shots[i - 1]!);
+    }
+    const span = shots[shots.length - 1]! - shots[0]!;
+    const ratio = shots[shots.length - 1]! / shots[0]!;
+    const label = `총효과 (0.05=${shots[0]} → 0.02=${shots[shots.length - 1]}) 절대 ${span.toFixed(2)} · 비율 ${ratio.toFixed(2)}배`;
+    expect(ratio, `${label} — 레버 비율이 죽었다`).toBeGreaterThan(1.35);
+    expect(span, `${label} — 절대 폭 하한(무한 침식 방지, 경기 길이 비례)`).toBeGreaterThan(SPAN_FLOOR);
+  });
+
   // 롤백 경로(`chain.mode: "weighted"`)의 레버도 살아 있어야 한다 — 롤백이 "돌아가긴 하는데 튜닝은
   // 못 하는" 상태면 롤백 스위치로서 쓸모가 없다. 2점 대비(사다리 아님)인 이유는 비용이다.
   // 실측(engine@0.24.0 weighted, GUARD_SEEDS=60): 0.15→9.53 · 0.80→13.69 = 절대 4.16 · 1.44배.

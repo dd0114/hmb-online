@@ -235,7 +235,10 @@ describe("롤백 스위치 (#147 W3)", () => {
   // 스위치는 따로 있다(`chain.throughPass.enabled`). 3d259b68 → 아래 상수.
   // #377 S3-B(engine@0.39.0) 재기록 — 아래 ROLLBACK_HASH 와 같은 이유(롤백 스위치 밖의 전역 변경:
   //   공유 수비 라인 + 오픈플레이 레스트디펜스는 `vision.enabled` 와 무관하게 돈다).
-  const ROLLBACK_HASH = "b8b7834e";
+  // #407 N4(engine@0.41.0) 재기록 — 같은 이유(롤백 스위치 밖의 전역 변경). hold EV 의 1대1 예외
+  //   (`chain.hold.oneOnOnePenalty`)는 **볼 소유자 결정 코어** 변경이라 `vision.enabled=false`
+  //   에서도 똑같이 걸린다. 이 계층의 스위치는 따로 있다(그 노브를 0 으로). b8b7834e → 아래 상수.
+  const ROLLBACK_HASH = "1d8a173d";
   // #182 재보정(foul.base 0.017→0.0178)으로 marked 변형의 해시가 바뀐다.
   // ⚠️ **내 트리 출력을 베끼지 않았다** — `origin/main`(6f1b12b) 를 별도 워크트리로 체크아웃해
   // 같은 foul.base 를 넣고 독립 도출한 값이다(main 에는 corner 기능 자체가 없다):
@@ -269,6 +272,8 @@ describe("롤백 스위치 (#147 W3)", () => {
   // #377 M3-C(스루패스) 재기록 — 위 ROLLBACK_HASH 와 같은 이유(롤백 스위치 밖의 전역 변경).
   // #377 S3-A(압박 유닛) 재기록 — 같은 이유. 압박 유닛·목표 오염 제거는 **오프더볼 목표**를
   // 움직이는 전역 변경이라 시야 롤백 경로에서도 걸린다. 이 계층의 스위치는 `press.unit.enabled`.
+  // ⚠️ #407 N4(engine@0.41.0) 에서는 **이 상수만 안 움직였다**(plain 은 움직였다). 그 매치에서
+  //   1대1 판정이 한 번도 안 걸렸다는 뜻이다 — #316/#239 때와 같은 부류의 기록이라 남겨 둔다.
   const ROLLBACK_HASH_MARKED = "7d1ea7a7";
 
   // #176: 데드볼 접근 금지 규칙은 **롤백 스위치 없이 무조건 적용**(hero 결정)이라 vision-off 출력도

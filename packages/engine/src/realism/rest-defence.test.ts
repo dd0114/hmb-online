@@ -177,6 +177,8 @@ describe("S3-B R6 — `cornerHolderRank` → `holderRank` 관용구 추출이 no
   it("코너 경로는 이 웨이브의 플래그와 무관하게 도는데, 롤백 해시가 0.38.0 과 같다", () => {
     // 남의 계약(`corner-rest-defence.test.ts`)을 내 변경에 맞추지 않는다는 것이 사전 합의였고,
     // 증명 실패 시 추출을 포기한다는 것도 함께 정했다. 이 해시가 그 증명이다.
-    expect(hashes(OFF, SEEDS4)).toEqual(["8c1af96c", "3bfd7771", "f3049b84", "364419fc"]);
+        // ⚠️ #407 N4(engine@0.41.0) 재기록 — `chain.hold.oneOnOnePenalty` 는 이 플래그 밖의 전역
+    //    변경이다. 0.38.0 값 = ["8c1af96c","3bfd7771","f3049b84","364419fc"].
+    expect(hashes(OFF, SEEDS4)).toEqual(["656652e2", "3bfd7771", "41f847a1", "364419fc"]);
   });
 });
