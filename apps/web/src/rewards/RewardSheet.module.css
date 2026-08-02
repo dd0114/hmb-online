@@ -320,3 +320,33 @@
   letter-spacing: 0.06em;
   color: var(--text-muted);
 }
+
+/*
+ * 🚨 미수령 경고 (#405 ↔ #408) — `[확인]` 바로 위, **스크롤 밖**이다(`.cta` 와 같은 층).
+ * 색만으로 말하지 않는다(#262 적록색약 규율): 건수와 이유가 **텍스트**로 서고 색은 보조다.
+ */
+.unclaimed {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0 12px 8px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 194, 75, 0.38);
+  border-radius: 10px;
+  background: rgba(255, 194, 75, 0.09);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.unclaimed b {
+  color: var(--warn);
+  font-size: 13px;
+}
+
+/* 확인 단계에 들어섰다 — 같은 자리에서 말이 세진다(자리를 옮기면 유저가 다시 찾아야 한다). */
+.unclaimedArmed {
+  border-color: var(--warn);
+  background: rgba(255, 194, 75, 0.16);
+}

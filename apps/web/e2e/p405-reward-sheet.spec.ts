@@ -153,6 +153,16 @@ const CARD_CAPS: Record<string, number> = Object.fromEntries(
   Object.keys(CARD_ATTRS).map((k) => [k, 73]),
 );
 
+/**
+ * 결과 응답의 **additive 미션 블록**(#408 §8). 봉투 `sections[]` 안이 아니다 — 미션 섹션의
+ * `isPresent`/`render` 가 봉투가 아니라 **응답**을 읽는 이유가 이것이다(`registry.ts`).
+ */
+const mission = (over: Record<string, unknown> = {}) => ({
+  id: "MS1", missionId: "away_win_2", title: "원정에서 2승", tier: "NORMAL",
+  currency: "GEM", amount: 222, progress: 2, target: 2,
+  completedNow: true, state: "COMPLETED", ...over,
+});
+
 interface MockOpts {
   /** 봉투 자체를 안 준다(W2b 이전 매치). */
   noBundle?: boolean;
@@ -160,10 +170,14 @@ interface MockOpts {
   acknowledged?: boolean;
   /** 재화 섹션을 비운다(§2.9.1 `isPresent` — 탭이 사라지는지). */
   currencyEmpty?: boolean;
+  /** 결과 응답의 additive `missions` 블록(#408). 안 주면 원정이 아닌 경기다. */
+  missions?: unknown;
   /** ack 호출 기록기. */
   onAck?: (bundleId: string) => void;
   /** 선택 적용 기록기. */
   onChoose?: (choiceId: string, stat: string) => void;
+  /** 미션 수령 기록기. */
+  onClaim?: (missionId: string) => void;
 }
 
 async function mockApi(page: Page, opts: MockOpts = {}) {
@@ -197,6 +211,11 @@ async function mockApi(page: Page, opts: MockOpts = {}) {
   );
 
   let acked = Boolean(opts.acknowledged);
+  /**
+   * ⚠️ 수령하면 서버는 그 행을 `CLAIMED` 로 바꾼다 — **다음 결과 조회부터 그 값이 온다**.
+   * 목이 정적이면 "받고 나면 경고가 사라지나"를 **구조적으로 못 잡는다**(#408 blocker-1 교훈).
+   */
+  let servedMissions = opts.missions;
   await page.route((url) => url.pathname === `/api/matches/${MATCH_ID}/result`, (route) => {
     const sections = opts.currencyEmpty
       ? [{ kind: "GROWTH", entries: growthEntries() }]
@@ -207,10 +226,23 @@ async function mockApi(page: Page, opts: MockOpts = {}) {
       scoreAway: 1,
       result: "WIN",
       pointsAwarded: 1200,
+      ...(servedMissions === undefined ? {} : { missions: servedMissions }),
       rewardBundle: opts.noBundle
         ? null
         : { ...bundle({ acknowledgedAt: acked ? "2026-08-02T01:00:00Z" : null }), sections },
     }));
+  });
+
+  await page.route((url) => /^\/api\/missions\/[^/]+\/claim$/.test(url.pathname), (route) => {
+    const id = route.request().url().split("/api/missions/")[1]!.split("/")[0]!;
+    opts.onClaim?.(id);
+    // 받은 줄은 CLAIMED 가 된다 → `unclaimed` 가 줄고, 다 받으면 경고가 사라져야 한다.
+    if (Array.isArray(servedMissions)) {
+      servedMissions = (servedMissions as Record<string, unknown>[]).map((m) =>
+        m.id === id ? { ...m, state: "CLAIMED" } : m,
+      );
+    }
+    route.fulfill(json({ claimed: { currency: "GEM", amount: 222 }, wallet: { points: 20000, gems: 272 } }));
   });
 
   await page.route((url) => /^\/api\/rewards\/[^/]+\/ack$/.test(url.pathname), (route) => {
@@ -609,4 +641,167 @@ test("k. `core` 키가 없는 구 박제분은 배지를 생략한다 — false 
   await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
   await expect(page.getByTestId("choice-cand-positioning")).toBeVisible();
   await expect(page.getByTestId("choice-candidates").locator('[data-testid^="choice-core-"]')).toHaveCount(0);
+});
+
+/* ───────────────────────────────────────────────────────────────────────────────────────────
+ * #405 ↔ #408 통합 — 미션 섹션이 보상 탭으로 들어온다 (요구 2 "모든 보상이 이 탭 구조를 쓴다")
+ *
+ * 🚨 이 묶음의 본체는 **`claim ≠ ack`** 다. 매치 재화·성장은 자동 지급이라 `[확인]`(ack)이
+ * *"봤다"* 로 충분하지만, 미션은 **`[받기]` 를 눌러야 지급**된다. 그냥 합치면 유저가
+ * *"확인 눌렀으니 다 받았겠지"* 하고 미수령분을 지나치는데 그건 **실제 손실**이다.
+ * ─────────────────────────────────────────────────────────────────────────────────────────── */
+
+test("l. 미션이 실려 오면 **보상 탭**에 미션 섹션이 뜬다 — 결과 화면에는 없다(이중 렌더 금지)", async ({ page }) => {
+  mkdirSync(CAP_DIR, { recursive: true });
+  await mockApi(page, { missions: [mission(), mission({ id: "MS2", title: "원정 3회", progress: 1, target: 3, completedNow: false, state: "IN_PROGRESS" })] });
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+
+  // ⚠️ `evaluateAll` 은 **기다리지 않는다** — 시트가 붙기 전에 재면 빈 배열이 나와 계약이
+  // 자기가 못 본 것을 단언한다. 앵커를 먼저 세운다.
+  await expect(page.getByTestId("reward-tab-MISSION")).toBeVisible();
+
+  // 재화·성장 뒤 세 번째 탭(order 30) — 순서가 화면마다 달라지면 근육기억이 깨진다.
+  const tabs = await page.locator('[data-testid^="reward-tab-"]').evaluateAll((els) =>
+    els.map((e) => e.getAttribute("data-testid")).filter((t) => t !== "reward-tab-badge"),
+  );
+  expect(tabs).toEqual(["reward-tab-CURRENCY", "reward-tab-GROWTH", "reward-tab-MISSION"]);
+
+  await page.getByTestId("reward-tab-MISSION").click();
+  const section = page.getByTestId("result-missions");
+  await expect(section).toBeVisible();
+  await expect(section.getByTestId("result-mission")).toHaveCount(2);
+  // 금액은 서버 표기 메타를 따라온다(#232) — 섹션이 옮겨져도 그 규율은 그대로.
+  await expect(section.locator('[data-mission-id="MS1"] [data-currency]')).toHaveAttribute("data-amount", "222");
+  await page.screenshot({ path: `${CAP_DIR}sheet-mission-390.png` });
+
+  // 다 받고 나서 결과 화면으로 — 미션 섹션이 **양쪽에 있으면 안 된다**.
+  await page.locator('[data-mission-id="MS1"]').getByTestId("result-mission-claim").click();
+  await expect(page.locator('[data-mission-id="MS1"]')).toHaveAttribute("data-state", "CLAIMED");
+  await page.getByTestId("reward-confirm").click();
+  await expect(page.getByTestId("result-page")).toBeVisible();
+  await expect(page.getByTestId("result-missions")).toHaveCount(0);
+  await page.screenshot({ path: `${CAP_DIR}result-no-mission-390.png` });
+});
+
+test("m. 🚨 미수령 미션이 있으면 [확인]이 **조용히 ack 하지 않는다**", async ({ page }) => {
+  mkdirSync(CAP_DIR, { recursive: true });
+  const acks: string[] = [];
+  await mockApi(page, { missions: [mission()], onAck: (id) => acks.push(id) });
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+  await expect(page.getByTestId("reward-sheet")).toBeVisible();
+
+  // ① 누르기 **전에** 이미 경고가 서 있다 — 사후 통보가 아니라 경고다.
+  const warn = page.getByTestId("reward-unclaimed");
+  await expect(warn).toBeVisible();
+  await expect(warn).toHaveAttribute("data-count", "1");
+  await expect(warn).toHaveAttribute("data-armed", "0");
+  await expect(warn).toContainText("받지 않은 미션 1개");
+  // 막다른 경고 금지 — 지금 안 받아도 어디서 받는지 말한다.
+  await expect(page.getByTestId("reward-unclaimed-hint")).toContainText("원정 화면");
+  // ⚠️ `toBeVisible()` 은 opacity 를 안 본다(#405 f 의 교훈) — 실제로 읽히는지 computed 로 잰다.
+  await expect
+    .poll(async () => Number(await warn.evaluate((el) => getComputedStyle(el).opacity)))
+    .toBeGreaterThan(0.9);
+
+  // ② 첫 [확인] — ack 가 나가지 않고 시트도 안 닫힌다. 미션 탭으로 데려간다.
+  await page.getByTestId("reward-confirm").click();
+  await expect(page.getByTestId("reward-sheet")).toBeVisible();
+  await expect(page.getByTestId("reward-sheet")).toHaveAttribute("data-acknowledged", "0");
+  await expect(page.getByTestId("result-missions")).toBeVisible();
+  await expect(warn).toHaveAttribute("data-armed", "1");
+  await expect(page.getByTestId("reward-confirm")).toHaveText("받지 않고 확인");
+  expect(acks, "미수령이 남았는데 ack 가 나갔다 = 유저가 모르고 지나친다").toEqual([]);
+  await page.screenshot({ path: `${CAP_DIR}sheet-mission-armed-390.png` });
+
+  // ③ 두 번째 [확인] — "알고 넘어간다". 막지는 않는다(놓쳐도 기한 없이 남는다).
+  await page.getByTestId("reward-confirm").click();
+  await expect(page.getByTestId("result-page")).toBeVisible();
+  expect(acks).toEqual(["B405"]);
+});
+
+test("n. 미션을 다 받으면 경고가 사라지고 [확인] **한 번**에 넘어간다", async ({ page }) => {
+  const acks: string[] = [];
+  const claims: string[] = [];
+  await mockApi(page, { missions: [mission()], onAck: (id) => acks.push(id), onClaim: (id) => claims.push(id) });
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+
+  await page.getByTestId("reward-tab-MISSION").click();
+  await page.locator('[data-mission-id="MS1"]').getByTestId("result-mission-claim").click();
+  await expect(page.locator('[data-mission-id="MS1"]')).toHaveAttribute("data-state", "CLAIMED");
+  expect(claims).toEqual(["MS1"]);
+
+  // 받을 것이 없으니 경고도 없고 확인 단계도 하나다 — 가드가 영원히 남으면 그게 새 결함이다.
+  await expect(page.getByTestId("reward-unclaimed")).toHaveCount(0);
+  await expect(page.getByTestId("reward-confirm")).toHaveText("확인");
+  await page.getByTestId("reward-confirm").click();
+  await expect(page.getByTestId("result-page")).toBeVisible();
+  expect(acks).toEqual(["B405"]);
+});
+
+test("o. 미션이 없으면 **탭도 섹션도 안 생긴다** — 진행 중만 있으면 [확인]도 안 막는다", async ({ page }) => {
+  const acks: string[] = [];
+
+  // (1) 원정이 아닌 경기 = `missions` 블록 자체가 없다 → 탭 2개 그대로(회귀 0).
+  await mockApi(page, { onAck: (id) => acks.push(id) });
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+  await expect(page.getByTestId("reward-sheet")).toBeVisible();
+  await expect(page.getByTestId("reward-tab-MISSION")).toHaveCount(0);
+  await expect(page.getByTestId("result-missions")).toHaveCount(0);
+  await expect(page.getByTestId("reward-unclaimed")).toHaveCount(0);
+  // 앵커 — 탭 구조 자체는 살아 있다(공허한 toHaveCount(0) 방지).
+  await expect(page.getByTestId("reward-tab-GROWTH")).toBeVisible();
+  await page.getByTestId("reward-confirm").click();
+  await expect(page.getByTestId("result-page")).toBeVisible();
+  expect(acks, "미션이 없는데 [확인]이 막혔다 = 기존 흐름 회귀").toEqual(["B405"]);
+});
+
+test("o2. 손상된 missions / 빈 배열에도 빈 탭이 생기지 않는다", async ({ page }) => {
+  // ⚠️ `isPresent` 와 섹션 컴포넌트의 null 조건이 갈리면 여기서 **탭은 있는데 안이 빈** 상태가 뜬다.
+  for (const missions of [[], { nope: true }, [{ noId: 1 }], "x"]) {
+    await page.context().clearCookies();
+    await mockApi(page, { missions });
+    await page.setViewportSize(PHONE);
+    await page.goto(`/match/${MATCH_ID}`);
+    await expect(page.getByTestId("reward-sheet")).toBeVisible();
+    await expect(page.getByTestId("reward-tab-MISSION")).toHaveCount(0);
+    await expect(page.getByTestId("reward-tab-GROWTH")).toBeVisible(); // 앵커
+  }
+});
+
+test("p. 미수령이 있어도 진행 중 미션만이면 안 막는다 — `progress>=target` 재계산 변이체 킬", async ({ page }) => {
+  const acks: string[] = [];
+  await mockApi(page, {
+    // 둘 다 진행도는 목표에 닿았지만 서버 state 는 아니다 → 받을 것이 없다.
+    missions: [
+      mission({ id: "A", state: "IN_PROGRESS", progress: 2, target: 2, completedNow: false }),
+      mission({ id: "B", state: "CLAIMED", progress: 2, target: 2, completedNow: false }),
+    ],
+    onAck: (id) => acks.push(id),
+  });
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+  // 탭은 생긴다(그릴 줄이 있다) — 하지만 경고는 없다.
+  await expect(page.getByTestId("reward-tab-MISSION")).toBeVisible();
+  await expect(page.getByTestId("reward-unclaimed")).toHaveCount(0);
+  await page.getByTestId("reward-confirm").click();
+  await expect(page.getByTestId("result-page")).toBeVisible();
+  expect(acks).toEqual(["B405"]);
+});
+
+test("q. 봉투가 없는 매치(구 정산)는 **결과 화면**이 미션을 그린다 — 시트가 없으니 유일한 자리다", async ({ page }) => {
+  mkdirSync(CAP_DIR, { recursive: true });
+  await mockApi(page, { noBundle: true, missions: [mission()] });
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+
+  await expect(page.getByTestId("result-page")).toBeVisible();
+  await expect(page.getByTestId("reward-sheet")).toHaveCount(0);
+  const section = page.getByTestId("result-missions");
+  await expect(section).toBeVisible();
+  await expect(section.getByTestId("result-mission-claim")).toBeEnabled();
+  await page.screenshot({ path: `${CAP_DIR}result-mission-nobundle-390.png`, fullPage: true });
 });

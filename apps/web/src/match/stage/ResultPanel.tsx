@@ -22,6 +22,12 @@ interface ResultPanelProps {
   awayName: string;
   /** 보상 시트를 다시 여는 문(#405) — 미룬 3지선다가 남아 있을 때 성장 리포트가 부른다. */
   onOpenRewards?: (() => void) | undefined;
+  /**
+   * 이 매치에 보상 시트가 있나(= 봉투가 왔나).
+   *
+   * ⚠️ 미션 섹션(#408)의 **자리를 가르는 값**이다 — 아래 `MissionRewardSection` 주석이 SoT.
+   */
+  hasRewardSheet?: boolean;
 }
 
 /**
@@ -45,7 +51,13 @@ interface ResultPanelProps {
  * (`StageShell.OWN_SCROLL_TABS`).
  * 계약 = `e2e/p348-desktop-viewport.spec.ts` ⑥(전 비율 CTA 가시 · 성장 리포트 유 · **스크롤 불변**).
  */
-export function ResultPanel({ match, homeName, awayName, onOpenRewards }: ResultPanelProps) {
+export function ResultPanel({
+  match,
+  homeName,
+  awayName,
+  onOpenRewards,
+  hasRewardSheet,
+}: ResultPanelProps) {
   const navigate = useNavigate();
   const { data: result } = useMatchResult(match.id);
   const { data: log1 } = useHalfLog(match.id, 1);
@@ -86,10 +98,22 @@ export function ResultPanel({ match, homeName, awayName, onOpenRewards }: Result
           <DailyRewardLine reward={(result as { dailyReward?: MatchDailyReward | null })?.dailyReward} />
         </section>
 
-        {/* 오늘의 미션 (#408) — **한 줄 삽입**이다. 섹션 전체가 자립형 컴포넌트라 #405 의
-            보상 탭이 랜딩하면 이 줄을 그쪽으로 옮기기만 하면 된다(이 파일 재구조화 없음).
-            원정이 아니거나 구 서버면 스스로 null 을 돌려주므로 여기서 분기하지 않는다. */}
-        <MissionRewardSection missions={(result as { missions?: unknown })?.missions} />
+        {/*
+          오늘의 미션 (#408) — **기본 자리는 여기가 아니라 보상 시트의 미션 탭**이다(#405 요구 2,
+          설계 §2.9.1). #408 이 남긴 *"보상 탭이 랜딩하면 이 줄을 그쪽으로 옮기기만 하면 된다"* 를
+          그대로 이행한 것이고, 등록 줄은 `rewards/registry.ts` 에 있다.
+
+          ⚠️ **그런데 조건부다 — 이 매치에 봉투가 없을 때만 그린다.**
+           · 봉투가 있으면 시트가 그린다. 여기서도 그리면 **같은 보상이 두 번** 보이고, 시트에서
+             받고 내려온 유저는 결과 화면에서 이미 받은 줄을 다시 본다(이중 렌더 금지).
+           · 봉투가 없는 매치(구 정산 · 봉투 생성이 삼켜진 경우)에는 **시트 자체가 열리지 않으므로**
+             여기가 미션에 닿는 유일한 자리다. 지우면 그 유저는 결과 화면에서 미션을 못 본다.
+          즉 "한 곳"은 유지되고, 그 한 곳이 봉투 유무에 따라 갈릴 뿐이다.
+          (원정이 아니거나 구 서버면 컴포넌트가 스스로 null 을 돌려주므로 그 분기는 여기 없다.)
+        */}
+        {!hasRewardSheet && (
+          <MissionRewardSection missions={(result as { missions?: unknown })?.missions} />
+        )}
 
         <section className={styles.statsCard} data-testid="team-stats">
           <h3 className={styles.statsTitle}>팀 스탯</h3>
