@@ -56,6 +56,17 @@ public final class GrowthMath {
         return clamp(Math.max(decay.gainMin(), raw), 0.0, upper);
     }
 
+    /**
+     * 잠재까지 얹은 최종 유효스탯 — {@code min((pre + flat) × (1 + pct/100), attrHardCap)}.
+     *
+     * <p>{@code GrowthService.compute} 가 이 함수를 쓴다. 공식을 서비스 안에 두면 "전역 상한이
+     * 어디서 걸리나"의 답이 계산기와 서비스 두 곳에 생기고, 그 둘은 언젠가 갈라진다.
+     */
+    public static double effectiveStat(GrowthTuning tuning, double pre, double potentialFlat,
+                                       double potentialPct) {
+        return Math.min((pre + potentialFlat) * (1.0 + potentialPct / 100.0), tuning.attrHardCap());
+    }
+
     /** 다음 레벨까지 필요한 XP(§2.4) = round(lvBase × level^lvPow). level 은 1부터. */
     public static int xpToNext(GrowthTuning tuning, int level) {
         int effectiveLevel = Math.max(1, level);

@@ -248,7 +248,6 @@ public class GrowthService {
         GrowthTuning.Band band = GrowthMath.band(tuning, pb.grade());
         int lo = band.startLo();
         double ceiling = GrowthMath.ceiling(tuning, pb.grade(), card.star());
-        double hardCap = tuning.attrHardCap();
 
         Map<String, Double> baseline = tuning.positionBaseline().getOrDefault(pb.position(), Map.of());
 
@@ -282,8 +281,8 @@ public class GrowthService {
                 }
             }
             // 전역 하드 상한은 **잠재 적용 후** 최종 클램프다 — 여기 없으면 잠재 %가 100 을 넘긴다
-            // (선존 결함, 설계 §2.6).
-            double effI = Math.min((preI + flatSum) * (1 + pctSum / 100.0), hardCap);
+            // (선존 결함, 설계 §2.6). 공식의 자리는 GrowthMath 하나다.
+            double effI = GrowthMath.effectiveStat(tuning, preI, flatSum, pctSum);
 
             attributes.put(stat, round2(effI));
             prePotential.put(stat, round2(preI));

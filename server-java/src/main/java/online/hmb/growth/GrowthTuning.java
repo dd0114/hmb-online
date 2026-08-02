@@ -245,7 +245,15 @@ public record GrowthTuning(
             // (v2.4 79.4%) · 전체 23.6%(21.9%). 표가 낡았고 발행물이 맞다.
             new Bands(defaultBands(), 3, 4),
             99,
-            new Decay(4.0, 1.4, 0.3, 0.0),
+            // ⚠️ gainMax 6.5 · decayPow 0.8 — 설계 §2.3 의 4.0/1.4 <b>재보정</b>(독립검증 BL-1).
+            // §2.2 의 "2단계 역전"을 게임이 실제 쓰는 축(OVR)으로 다시 재니 4.0/1.4 는 세 쌍 전부
+            // 미달이었다. growCeil(72/78/84/90/95)·maxLevel(40)은 hero 확정값이라 못 건드리고
+            // (천장은 99 로 올려도 안 된다 — 4스탯만 밀면 나머지 5스탯이 시작값에 남아 OVR 을
+            // 끌어내린다), hero 가 값을 고른 적 없는 유일한 축이 감쇠라 여기서 푼다.
+            // ⚠️ 대가: 9스탯 총상승이 97.5 → 168.2(약 1.7배)로 인플레된다. 피할 수 없다 —
+            // OVR 2단계 역전은 구조적으로 총량 1.53배 이상을 요구한다(탐색공간 하한).
+            // 몰빵 효율비는 오히려 30% → 17% 로 **강화**된다(1스탯 총상승은 천장에 묶여 29.0 고정).
+            new Decay(6.5, 0.8, 0.3, 0.0),
             new Xp(100,
                     Map.of("starter", 1.0, "partial", 0.5, "bench", 0.0),
                     Map.of("WIN", 1.2, "DRAW", 1.0, "LOSS", 0.85),
@@ -332,8 +340,10 @@ public record GrowthTuning(
         Map<String, Spec> m = new LinkedHashMap<>();
         // 1~3 밴드 (등급별 시작 하한·상한·성장 천장)
         for (String grade : GRADES) {
+            // startLo 는 RUNTIME 이다 — 유효스탯 하한 클램프(GrowthService)와 감쇠 비율 r 의 분모
+            // (GrowthMath.gain)가 읽는다. startHi 는 **발행 시점 추첨 상한**이라 런타임 소비자가 0 이다.
             put(m, "bands." + grade + ".startLo", KnobType.INT, 1, 99);
-            put(m, "bands." + grade + ".startHi", KnobType.INT, 1, 99);
+            put(m, "bands." + grade + ".startHi", KnobType.INT, 1, 99, KnobScope.PUBLISH);
             put(m, "bands." + grade + ".growCeil", KnobType.INT, 1, 99);
         }
         // 4~5 발행 시점 바이어스 — RUNTIME 이 아니다(카드 스탯은 발행물에 이미 구워져 있다).

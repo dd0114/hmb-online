@@ -778,10 +778,17 @@ admin API 로 조정 불가한 것이 0개.** 하드코딩 잔존 = FAIL.
 - ⚠️ **"노브가 330개인데 왜 안 먹지"의 답** — 오버레이가 저장·병합되는 것과 **누가 그 값을 읽는가**는
   다른 문제다. 축이 둘이다:
   - **`KnobSpec.scope`**(`RUNTIME` | `PUBLISH`) = 구조적 구분. `PUBLISH` 는 **`bands.primaryBias` ·
-    `bands.traitBias` 둘뿐**이고, 카드 스탯은 `players.v*.json` 발행물에 이미 구워져 있어 **이미 발행된
-    카드는 안 바뀐다**(#412 어드민 선수 등록 API 가 승계할 인터페이스). `/knobs` 응답의 `scope` ·
-    `appliesWhen` 이 그 사실을 운영자에게 보낸다. 계약 = `GrowthTuningLiveTest.
+    `bands.traitBias` · `bands.<GRADE>.startHi`(×5)** 이고, 카드 스탯은 `players.v*.json` 발행물에 이미
+    구워져 있어 **이미 발행된 카드는 안 바뀐다**(#412 어드민 선수 등록 API 가 승계할 인터페이스).
+    `/knobs` 응답의 `scope` · `appliesWhen` 이 그 사실을 운영자에게 보낸다. 계약 = `GrowthTuningLiveTest.
     publishScopedKnobsDoNotMoveAnyRuntimeNumber`(표기가 사실임을 기계로 박는다).
+    - ⚠️ `startHi` 는 원래 RUNTIME 이었는데 **런타임 소비자가 0**이었다(독립검증). 런타임이 읽는 밴드
+      값은 `startLo`(유효스탯 하한 클램프 + 감쇠 비율 `r` 의 분모)와 `growCeil` 뿐이다.
+    - 🚨 **그 구멍을 막는 것이 `GrowthConsumerGuardTest`** 다: `GrowthMath`·`GrowthCandidates` 순수
+      함수 전부를 고정 격자에 태워 **노브 하나만 바꾼 tuning 의 지문이 달라지는지** 본다
+      (`everyKnobIsOverridable` 과 같은 모양, **대상만 소비자**). 소비자 없는 RUNTIME 노브 = FAIL.
+      서비스 레이어에서만 읽히는 것(`star.copies.*` · `legacy.levelGrantCap`)은 **근거를 적은
+      allowlist** 로 뺀다 — **그 목록이 길어지면 그 자체가 경고**다.
     ⚠️ 두 노브의 기본값은 설계 §2.8.1 표(5/6)가 아니라 **발행 실적 3/4** 다 — 밴드 폭이 16→11 로 줄어
     5+6 = 폭 전체가 되면 주스탯∩trait 가 상한에 박혀 **롤과 무관한 상수**가 되기 때문(클램프 100% →
     76.5%, v2.4 의 79.4% 복원). 표가 낡았고 발행물이 맞다.
@@ -791,6 +798,19 @@ admin API 로 조정 불가한 것이 0개.** 하드코딩 잔존 = FAIL.
     정산·3지선다 소비는 **W2b** 가 붙인다. 그래서
     `GrowthTuningRegistryTest.everyKnobIsOverridable` 은 **값이 바뀌는 것**을 증명하지 소비자 존재를
     증명하지 않는다 — 소비 여부는 `GrowthTuningLiveTest` 가 종목별로 따로 본다.
+- ⚠️ **감쇠는 설계값이 아니라 재보정값이다** — `decay.gainMax 6.5` · `decayPow 0.8`(설계 §2.3 은
+  4.0/1.4). 설계 §2.2 의 "2단계 역전"을 **게임이 실제 쓰는 축(OVR)** 으로 재니 4.0/1.4 는 세 쌍 전부
+  미달이었다(−5.95 / −6.78 / −7.69). `growCeil`·`maxLevel` 은 hero 확정값이라 못 건드리고(천장은 99 로
+  올려도 안 된다 — 4스탯만 밀면 나머지 5스탯이 시작값에 남아 OVR 을 끌어내린다), 남은 자유 축이 감쇠였다.
+  - **대가**: 9스탯 총상승 97.5 → 168.2(**약 1.7배 인플레**). 구조적으로 불가피하다 — 탐색공간 하한이
+    총량 1.53배다. 몰빵 효율비는 오히려 30% → **17%** 로 강화된다(1스탯 총상승은 천장에 묶여 29.0 고정).
+  - 계약 = `GrowthProgressionContractTest`(**관계식** — 값이 아니라 부등식. 감쇠를 되돌리면 즉시 깨진다).
+  - ⚠️ **아직 미달인 부분을 숨기지 않는다**: 위 마진은 **밴드 중앙 ↔ 밴드 중앙** 기준이다(양변 같은
+    계산기 — §2.2 초판이 좌변 4스탯/우변 9스탯으로 단위를 섞은 결함의 재발 방지). **발행물 실제
+    로스터 기준**은 주스탯·trait 바이어스가 미성장 쪽 OVR 만 +1.7~2.0 올려서 마진이 그만큼 낮다:
+    **B>G +1.30 · S>D −0.11 · G>L −1.71** = S>D·G>L 은 여전히 미달. 포지션별로도 **MF 가 가장 약하다**
+    (baseline 이 평평해 집중 육성 이득이 작다 — `theMidfielderGapIsRecordedAsAKnownShortfall` 가 그
+    미달을 기록으로 박아 둔다). 완전 해소는 후속 결정 사항이다.
 - ⚠️ **W2a 는 계수와 인프라까지다.** 정산·3지선다·소급 백필·보상 API 는 W2b 이고, **V38 은
   `user_players` 를 건드리지 않는다**(스키마 변경은 백업·백필과 한 세트여야 한다 — 계약 =
   `FlywayMigrationTest.v38DoesNotTouchUserPlayers`). 그래서 상승분 `add_i` 는 아직 기존

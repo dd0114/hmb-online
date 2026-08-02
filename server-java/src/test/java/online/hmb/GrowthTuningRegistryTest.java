@@ -105,16 +105,27 @@ class GrowthTuningRegistryTest {
     }
 
     /**
-     * <b>발행 시점 노브는 둘뿐</b>이다. 목록을 리터럴로 박는 이유: 새 계수를 무심코 {@code PUBLISH}
-     * 로 달면 "저장은 되는데 아무 일도 안 일어나는" 노브가 조용히 늘어난다 — 그 판단은 매번 명시적
-     * 이어야 한다(늘릴 땐 이 줄을 같이 고친다).
+     * <b>발행 시점 노브는 카드 추첨에만 쓰이는 셋 뿐</b>이다 — 바이어스 둘 + <b>시작 밴드 상한</b>
+     * ({@code startHi} × 5등급). 목록을 리터럴로 박는 이유: 새 계수를 무심코 {@code PUBLISH} 로 달면
+     * "저장은 되는데 아무 일도 안 일어나는" 노브가 조용히 늘어난다 — 그 판단은 매번 명시적이어야
+     * 한다(늘릴 땐 이 줄을 같이 고친다).
+     *
+     * <p>⚠️ {@code startHi} 는 원래 {@code RUNTIME} 이었는데 <b>런타임 소비자가 0</b>이었다
+     * (독립검증). 카드 스탯 추첨은 발행 시점({@code data/players/generate.ts})에 끝나고, 런타임이
+     * 읽는 밴드 값은 {@code startLo}(유효스탯 하한 클램프 + 감쇠 비율 {@code r} 의 분모)와
+     * {@code growCeil} 뿐이다. 스코프 표기가 거짓이면 운영자는 "적용됐다"고 읽는다.
+     * 그 구멍을 구조적으로 막는 것이 {@code GrowthConsumerGuardTest} 다.
      */
     @Test
-    void onlyTheGenerationTimeBiasesArePublishScoped() {
+    void onlyGenerationTimeKnobsArePublishScoped() {
+        List<String> expectedPublish = new ArrayList<>(List.of("bands.primaryBias", "bands.traitBias"));
+        for (String grade : GrowthTuning.GRADES) {
+            expectedPublish.add("bands." + grade + ".startHi");
+        }
         assertThat(GrowthTuning.knobsWithScope(GrowthTuning.KnobScope.PUBLISH))
-                .containsExactlyInAnyOrder("bands.primaryBias", "bands.traitBias");
+                .containsExactlyInAnyOrderElementsOf(expectedPublish);
         assertThat(GrowthTuning.knobsWithScope(GrowthTuning.KnobScope.RUNTIME))
-                .hasSize(GrowthTuning.KNOBS.size() - 2);
+                .hasSize(GrowthTuning.KNOBS.size() - expectedPublish.size());
     }
 
     /** 문서 경로 ↔ 저장 경로 변환은 <b>짝</b>으로만 옳다 — 한쪽만 고치면 조용히 어긋난다. */
@@ -152,8 +163,11 @@ class GrowthTuningRegistryTest {
         expected.put("bands.primaryBias", 3);
         expected.put("bands.traitBias", 4);
         expected.put("attrHardCap", 99);
-        expected.put("decay.gainMax", 4.0);
-        expected.put("decay.decayPow", 1.4);
+        // ⚠️ 설계 §2.3 의 4.0/1.4 를 **재보정**한 값이다(독립검증 BL-1) — 그 값으로는 §2.2 의
+        //    "2단계 역전"이 OVR 축에서 세 쌍 전부 미달이었다. 근거는 GrowthTuning 의 주석과
+        //    GrowthProgressionContractTest(관계식 계약).
+        expected.put("decay.gainMax", 6.5);
+        expected.put("decay.decayPow", 0.8);
         expected.put("decay.gainMin", 0.3);
         expected.put("decay.levelPenaltyPerLv", 0.0);
         expected.put("xp.matchBase", 100);
