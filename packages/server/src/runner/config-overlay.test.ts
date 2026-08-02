@@ -230,6 +230,33 @@ describe("#338 무효 노브는 **새로 작성**할 수 없다", () => {
     }
   });
 
+  it("무효 **이면서** 타입도 틀리면 **둘 다** 돌려준다 (독립검증 6차 m-C)", () => {
+    // 무효 사유만 주면 운영자는 그것만 고쳐 다시 보내고, 두 번째 왕복에서 타입 오류를 만난다.
+    // 이 파일이 선언한 "여러 문제를 한 번에"와 어긋난다 — curl 이 유일한 운영 표면이다.
+    let err: OverrideError | undefined;
+    try {
+      assertAuthorable(defaultEngineConfig, { "decisionWeights.shoot": true });
+    } catch (e) {
+      err = e as OverrideError;
+    }
+    expect(err).toBeInstanceOf(OverrideError);
+    const joined = err!.issues.join(" ");
+    expect(joined, "무효 사유가 빠졌다").toContain("실행 경로가 없는 노브");
+    expect(joined, "타입 오류가 빠졌다 — 운영자가 왕복을 한 번 더 한다").toContain("number 이어야 합니다");
+    expect(err!.issues.length).toBe(2);
+  });
+
+  it("타입이 맞는 무효 노브는 사유가 **하나**다 — 중복으로 겁주지 않는다", () => {
+    let err: OverrideError | undefined;
+    try {
+      assertAuthorable(defaultEngineConfig, { "decisionWeights.shoot": 0.2 });
+    } catch (e) {
+      err = e as OverrideError;
+    }
+    expect(err!.issues.length).toBe(1);
+    expect(err!.issues[0]).toContain("실행 경로가 없는 노브");
+  });
+
   it("무효가 아닌 노브는 걸리지 않는다 — 게이트가 전부를 막으면 기능이 죽는다", () => {
     expect(inertIssues({ "contest.shootRange": 22 })).toEqual([]);
     expect(inertIssues(undefined)).toEqual([]);

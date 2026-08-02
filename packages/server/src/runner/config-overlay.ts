@@ -236,7 +236,11 @@ export function assertAuthorable(base: EngineConfig, overrides: EngineConfigOver
   const issues = inertIssues(overrides);
   const knobs = knobPaths(base);
   for (const [path, value] of Object.entries(overrides ?? {})) {
-    if (INERT_KNOBS.includes(path)) continue; // 위에서 이미 사유를 담았다
+    // ⚠️ 무효 노브라고 여기서 `continue` 하지 않는다(독립검증 6차 m-C). 그러면 무효 **이면서**
+    // 타입도 틀린 값이 무효 사유만 돌려받고, 운영자는 그걸 고쳐 다시 보낸 뒤에야 타입 오류를
+    // 만난다 — 이 파일이 선언한 "여러 문제를 **한 번에** 돌려준다(운영자는 curl 로 쓴다.
+    // 왕복을 줄인다)"와 어긋난다. 정상 타입의 무효 노브는 `judge` 가 apply/noop 을 돌려주므로
+    // 중복 사유가 붙지 않는다.
     const v = judge(base, knobs, path, value);
     if (v.kind === "reject") issues.push(`${path}: ${v.reason}`);
   }
