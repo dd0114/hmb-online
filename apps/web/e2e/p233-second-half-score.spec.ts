@@ -22,6 +22,8 @@ const H1 = { home: 1, away: 4 };
 
 interface Snap {
   tick: number;
+  /** 엔진이 구워 내린 표기 분(0~90'). 헤더 시계의 **유일한 분 축**이다(#388). */
+  minute?: number;
 }
 interface Ev {
   tick: number;
@@ -123,11 +125,37 @@ interface ViewerWindow {
   __viewer?: { pause?: () => void; seek?: (t: number) => void };
 }
 
-async function seek(page: Page, tick: number) {
+/**
+ * 그 로그가 **구운** 표기 분 = 헤더가 말할 분(#388 축). 화면이 `tick/60` 으로 유도하는 값이 아니다 —
+ * 데모 로그는 표기 1분이 16틱이라 유도하면 정확히 다른 숫자가 나온다(전반 무회귀 케이스가 그 자리다).
+ */
+function bakedMinuteAt(log: { tickSnapshots: Snap[] }, tick: number): number {
+  let found = 0;
+  for (const s of log.tickSnapshots) {
+    if (s.tick <= tick && typeof s.minute === "number") found = s.minute;
+  }
+  return found;
+}
+
+/**
+ * 헤더 시계가 그 틱에 **도착했는지** 확인하는 동기 배리어(스코어 단언 앞의 전제).
+ *
+ * ⚠️ **#406 W2 가 헤더 표기를 `mm'ss"` 로 바꿨다**(`24'` → `24'00"`). 그 커밋이 이 스펙을 갱신하지
+ *    않아 여기서 7건이 timeout 났다(`Expected "24'" / Received "24'00\""`).
+ *    기대를 `toContain` 으로 뭉개지 **않는다** — 그러면 "분이 맞는가"를 못 재고, 이 스펙은
+ *    스포일러/스코어 상한의 주 계약이라 그 검정력을 잃으면 안 된다. 그래서 **W2 가 세운 축 그대로**:
+ *      · 분 = 로그가 **구운** `minute` 과 정확히 일치(정규식을 `^…` 로 앵커해 `2'` 가 `26'12"` 를
+ *        통과시키지 못한다)
+ *      · 초 = 그 분 위의 경과라 **값은 묻지 않되 형식(`ss"`)이 붙어 있는지는 본다** — 초 표기가
+ *        통째로 사라지는 회귀는 여기서 죽고, 정확한 초 값은 `p406-header-clock-seconds.spec.ts`
+ *        (W2 전용 계약)가 잰다. 플레이헤드가 같은 분 안 다른 틱에 서도 흔들리지 않는 형태다.
+ */
+async function seek(page: Page, tick: number, log: { tickSnapshots: Snap[] } = H2_LOG) {
   await page.evaluate((t) => (window as unknown as ViewerWindow).__viewer?.seek?.(t), tick);
+  const minute = bakedMinuteAt(log, tick);
   await expect
     .poll(() => page.getByTestId("stage-clock").textContent(), { timeout: 10_000 })
-    .toBe(`${Math.floor(tick / 60)}'`);
+    .toMatch(new RegExp(`^${minute}'\\d{2}"$`));
 }
 
 const score = (page: Page) => page.getByTestId("stage-score");
@@ -169,8 +197,15 @@ test.describe("#233 후반 헤더 스코어", () => {
     await page.getByTestId("stage-tab-log").click();
     await seek(page, PROBE_TICK);
 
-    const goalRows = page.locator('[data-testid="stage-panel-log"] li', { hasText: "GOAL" });
-    await expect(goalRows.last()).toContainText(`${H1.home + DELTA.home}-${H1.away + DELTA.away}`);
+    /*
+     * ⚠️ 골 줄을 **라벨 문자열로 고르지 않는다.** 옛 셀렉터는 `hasText: "GOAL"` 이었는데 #406 W1b 가
+     *    로그 라벨을 한글화하면서(`⚽ GOAL` → `⚽ 골!`) 0건이 됐다 — 이 스펙이 재는 것은 라벨이 아니라
+     *    **스코어 축의 일치**이므로, 언어 독립 표지인 `l.score`(`2-5`)가 붙은 줄로 고른다.
+     *    (라벨 자체의 한글화 계약은 W1b 소관이다.)
+     */
+    const scoredRows = page.locator('[data-testid="stage-panel-log"] li', { hasText: /\d+-\d+/ });
+    expect(await scoredRows.count(), "스코어가 붙은 로그줄이 없다 = 표본이 잘못됐다").toBeGreaterThan(0);
+    await expect(scoredRows.last()).toContainText(`${H1.home + DELTA.home}-${H1.away + DELTA.away}`);
   });
 
   test("e. 전반 확정값 없는 후반(구 매치)은 '-' — 틀린 숫자를 대신 그리지 않는다", async ({ page }) => {
@@ -191,7 +226,9 @@ test.describe("#233 경기 분 상시 표시", () => {
 
     const clock = page.getByTestId("stage-clock");
     await expect(clock).toBeVisible();
-    await expect(clock).toHaveText(`${Math.floor(PROBE_TICK / 60)}'`);
+    // ⚠️ W2(#406) 이후 표기는 `mm'ss"` 다 — 분은 **구운 값과 정확히** 일치해야 하고(앵커된 정규식),
+    //    초는 붙어 있기만 하면 된다(값 계약은 p406-header-clock-seconds 소관). 위 `seek` 주석 참조.
+    await expect(clock).toHaveText(new RegExp(`^${bakedMinuteAt(H2_LOG, PROBE_TICK)}'\\d{2}"$`));
 
     // 배포본이 12px 였다 — "있긴 한데 안 보인다"로 되돌아가지 않게 크기를 계약으로 건다.
     const px = await clock.evaluate((el) => parseFloat(getComputedStyle(el).fontSize));
@@ -253,7 +290,9 @@ test.describe("무회귀 — 전반은 그대로 재생을 따라간다", () => 
     await page.goto(`/match/${MATCH_ID}`);
     await page.locator('[data-testid="viewer-canvas-half1"]').waitFor({ state: "visible", timeout: 30_000 });
     await page.evaluate(() => (window as unknown as ViewerWindow).__viewer?.pause?.());
-    await seek(page, PROBE_TICK - H2_START);
+    // ⚠️ 전반은 **DEMO 로그**(표기 1분 = 16틱)라 구운 분이 다르다 — `H2_LOG` 기본값을 그대로 쓰면
+    //    `2'` 를 기다리다 `8'15"` 에서 timeout 난다(W2 이전에도 틀려 있던 자리다).
+    await seek(page, PROBE_TICK - H2_START, DEMO);
     // 전반은 그 로그의 델타가 곧 스코어다(H1 베이스라인이 더해지면 안 된다).
     await expect(score(page)).toContainText(`${DELTA.home} : ${DELTA.away}`);
   });

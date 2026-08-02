@@ -125,6 +125,50 @@
   opacity: 1;
 }
 
+/*
+  과거 전용 시크바(#406 W3)의 자리 — 무대 **가로 전체**의 아래 가장자리.
+  QA 칩 묶음(`.controlsOverlay`)은 오른쪽 구석에 모이지만 시간바는 트랙 길이가 곧 정밀도라
+  같은 규칙을 쓸 수 없다(구석에 두면 폰에서 트랙이 100px 남짓이 된다).
+*/
+.controlsSeek {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+}
+
+/*
+  ⚠️ **이 박스는 클릭을 통과시킨다** — #406 W3(시크바) ↔ #421/#424(하이라이트 토글·스킵)가 같은
+  오버레이 층을 공유하며 실제로 깨진 자리다.
+
+  이 컨테이너는 `bottom` 고정 + **높이는 내용이 정한다**. 시크바 하나였을 때는 얇은 띠였는데
+  하이라이트 토글(34px 행)과 스킵 버튼이 같은 층에 들어오며 박스가 위로 자라 **피치 위를
+  가로 전체로 130px 남짓 덮었다**. `left/right` 로 폭을 잡아 두었으니 그 띠 안의 선수 탭은
+  캔버스가 아니라 이 div 에 떨어진다 = **선수 하이라이트(#406 W4)가 통째로 죽는다**
+  (실측 `document.elementFromPoint` → `.controlsSeek`, `p406-player-highlight` 5건 red).
+
+  층을 쪼개지 않는다 — 어느 자리에 무엇이 오는지는 위 주석이 소유하는 결정이다. 대신 컨테이너를
+  포인터 투명으로 두고 **실제 컨트롤만** 이벤트를 받게 한다(오버레이의 표준 패턴).
+  ⚠️ 새 인터랙티브 요소를 이 층에 넣으면 아래 목록에 추가해라 — 빠뜨리면 그 컨트롤이 안 눌린다.
+*/
+.controlsSeek {
+  pointer-events: none;
+}
+
+.controlsSeek button,
+.controlsSeek input,
+.controlsSeek select,
+.controlsSeek textarea,
+.controlsSeek a,
+.controlsSeek [role="slider"] {
+  pointer-events: auto;
+}
+
+.controlsSeek > div {
+  margin-top: 0;
+}
+
 /* 시각 재생 실패 시 같은 무대 자리에 텍스트 타임라인(스크롤은 이 안에서만). */
 .timelineFill {
   position: absolute;

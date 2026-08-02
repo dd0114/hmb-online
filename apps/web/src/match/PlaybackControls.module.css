@@ -161,6 +161,153 @@
   outline: 1px solid #fff;
 }
 
+/* ── #406 W3 과거 전용 시크바 (요구 5-3) ───────────────────────────────────────
+   목업 `docs/plan-v5/mock/406-matchux/match-ux.html` §3 의 3구간 트랙.
+   관전에서는 무대 아래 가장자리 오버레이(`MatchViewer.module.css .controlsSeek`)에 앉는다. */
+.seek {
+  width: 100%;
+  padding: 4px 8px 6px;
+  border-radius: 10px;
+  background: rgba(15, 20, 32, 0.72);
+}
+
+/*
+  배지·[현재로] 자리. **비어 있으면 높이 0** 이다 — 이 바는 무대 위 오버레이라 상시 자리를 잡으면
+  폰(390×844, 무대 세로 237px)에서 피치를 그만큼 계속 가린다. 컨테이너가 `bottom` 기준이라
+  배지가 뜰 때 바는 **위로** 자라고 트랙은 제자리다(= 조작 중인 손잡이가 튀지 않는다).
+*/
+.seekTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seekBadge,
+.seekNow {
+  margin-bottom: 6px;
+}
+
+.seekBadge {
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+  background: #3a2a12;
+  border: 1px solid #6a4a17;
+  color: #ffd98a;
+}
+
+.seekNow {
+  margin-left: auto;
+  min-height: 22px;
+  padding: 2px 12px;
+  border-radius: 999px;
+  border: 1px solid #2f5aa8;
+  background: #1d3b6e;
+  color: #dbe7ff;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.seekTrack {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 26px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: #12151c;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* 구간은 그림일 뿐이다 — 포인터는 슬라이더(=닿을 수 있는 구간)와 핀만 받는다. */
+.seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+.segPast {
+  background: linear-gradient(180deg, #2f6fd0, #25538f);
+}
+.segUnseen {
+  background: #1f2735;
+}
+/* 아직 안 온 구간 — 빗금 + "왜 못 가는지"를 글자로 말한다(잠긴 컨트롤은 이유가 보여야 한다). */
+.segFuture {
+  background: repeating-linear-gradient(135deg, #171b24 0 7px, #12151c 7px 14px);
+  border-left: 1px dashed #465773;
+}
+.segFuture::after {
+  content: "아직 진행되지 않음";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 9.5px;
+  color: #5f6d84;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* `현재` 선 — 라이브 헤드. 상한이 없으면(종료) 숨는다. */
+.liveMark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #ff6b6b;
+  box-shadow: 0 0 6px #ff6b6b;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/*
+  슬라이더는 **닿을 수 있는 구간만** 덮는다(폭은 그리기 루프가 %로 넣는다). 그래서 미래 구간 위에는
+  애초에 손잡이가 없다 — "끌어도 안 간다"가 아니라 "끌 수 있는 곳이 거기까지"다.
+  min-width 는 하프 초반(상한 ≈ 0%)에도 엄지로 잡히게 하는 하한이라 기하보다 몇 px 넓을 수 있다 —
+  값은 그래도 `max`(라이브 헤드)가 자른다.
+*/
+.seekInput {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 26px;
+  min-width: 24px;
+  margin: 0;
+  z-index: 2;
+  accent-color: var(--us);
+  background: none;
+}
+.seekInput:disabled {
+  opacity: 0.4;
+}
+
+.seekPin {
+  position: absolute;
+  top: 3px;
+  z-index: 4;
+  width: 3px;
+  height: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+.seekPinMajor {
+  width: 4px;
+  height: 13px;
+}
+/*
+ * ⚠️ 여기 있던 `.seekPin[data-future="true"] { opacity: .28 }` 는 **지웠다**(#406 W3 독립검증 blocker).
+ * 흐린 핀도 DOM 에 남아 `title`/`aria-label` 로 아직 안 온 골이 읽혔다 — 스포일러 방어는 CSS 가 아니라
+ * **렌더 부재**다(`PlaybackControls.SeekBar` 의 `shown`). 이 규칙을 되살리지 마라: 되살리는 순간
+ * "감췄다"는 착각으로 미래 핀이 다시 DOM 에 들어온다.
+ */
+
 /* ── #244 돌려보기 레이아웃 (감독시간 경기장면 탭) ─────────────────────────────
    무대용 오버레이 스킨(작은 글자·모서리 정렬)이 아니라 **화면 안 도구**다. */
 .barReview {

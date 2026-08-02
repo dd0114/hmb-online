@@ -4,9 +4,20 @@ import type { MatchClock } from "@hmb/shared";
 import { liveGate } from "./live-clock";
 import { driftAllowanceTicks, indexOfPlayhead, tickOfIndex } from "./live-pace";
 import type { ControlMode } from "./playback-controls";
-import { PlaybackControls } from "./PlaybackControls";
+import { PlaybackControls, type SeekBarHandle } from "./PlaybackControls";
 import { buildTimelinePins, type TimelinePin } from "./timeline-pins";
-import { indexFromPct } from "./qa-time-controls";
+import { clampTick, indexFromPct, pctFromIndex } from "./qa-time-controls";
+import {
+  atLiveEdge,
+  gatedTick,
+  indexOfTick,
+  isFutureIndex,
+  policyOf,
+  tickOfSnapIndex,
+  withinTrack,
+  type GatedSeek,
+  type SeekPolicy,
+} from "./seek-gate";
 import { buildViewerSkins } from "./viewer-skins";
 // #421 W4 하이라이트 순서 재생 — 판정은 순수 모듈, 구동은 이 훅, 표시는 이 부품(호출부엔 한 줄씩).
 import { useHighlightSequencer } from "./useHighlightSequencer";
@@ -76,6 +87,18 @@ export function VisualPlayback({
   // 건드린다(자막 오버레이와 같은 패턴). state 로 받으면 초당 60회 리렌더가 난다.
   const clockRef = useRef<HTMLSpanElement>(null);
   const scrubRef = useRef<HTMLInputElement>(null);
+  /*
+   * ── 과거 전용 시크바의 상태(#406 W3) ──────────────────────────────────────────────────────
+   * 셋 다 **ref** 다. 재생 헤드와 라이브 상한은 프레임/250ms 마다 바뀌므로 state 로 들면 관전
+   * 화면이 초당 수십 번 리렌더된다(위 시계·스크럽과 같은 이유). 시크바는 이 값을 읽어 직접 그린다.
+   */
+  const headIndexRef = useRef(0);
+  // ⚠️ 초기값 0 = **fail-closed**. 상한을 모르는 동안 전 구간을 열어 두면 그 한 프레임이 곧 스포일러다
+  //    (#285 아이콘 정책과 같은 태도 — 모르면 잠근다). 라이브가 아니면 아래 게이트 effect 가 null 로 연다.
+  const liveIndexRef = useRef<number | null>(0);
+  const pastModeRef = useRef(false);
+  const seekBarRef = useRef<SeekBarHandle | null>(null);
+  const repaintSeekBar = () => seekBarRef.current?.paint();
   const [pins, setPins] = useState<TimelinePin[]>([]);
   // 재생 범위 메타(#180) — 초단위 스텝/스크럽이 "어디까지 갈 수 있나"를 알아야 한다.
   const [range, setRange] = useState<{ snapCount: number; lastTick: number }>({ snapCount: 0, lastTick: 0 });
@@ -140,8 +163,12 @@ export function VisualPlayback({
       onScrub: (pct) => {
         // 드래그 중에는 사용자 입력이 이긴다(핸들이 손에서 튀지 않게).
         // 슬라이더 눈금은 % 가 아니라 **스냅샷 인덱스**다(1칸 = 1초, #180).
+        const idx = indexFromPct(pct, snapCountRef.current);
         const el = scrubRef.current;
-        if (el && document.activeElement !== el) el.value = String(indexFromPct(pct, snapCountRef.current));
+        if (el && document.activeElement !== el) el.value = String(idx);
+        // 유저 시크바(#406 W3)도 같은 신호로 헤드를 따라간다 — 재생 위치의 출처를 둘로 만들지 않는다.
+        headIndexRef.current = idx;
+        repaintSeekBar();
       },
       onLoaded: ({ events, snapCount }) => {
         // onLoaded 는 v.load() 안에서 불린다 = viewerRef 대입 **전** → 지역 참조(created)를 본다.
@@ -212,15 +239,105 @@ export function VisualPlayback({
   }, [log]);
   const tickCount = snapTicks.length;
 
+  /** 지금 이 순간의 정책. **호출할 때마다 다시 잰다** — 라이브 상한은 계속 흐른다. */
+  const policyNow = (): SeekPolicy => {
+    const { clock: c, clockOffsetMs: off, half: h } = gateInput.current;
+    return policyOf(liveGate(c, h, tickCount, Date.now(), off));
+  };
+
+  /*
+   * ── 유저 시크 창구 (#406 W3 / 요구 5-3) ────────────────────────────────────────────────────
+   * 컨트롤(시크바·QA 스텝·핀)은 **여기만** 부른다. 예전에는 각자 `viewer.scrubTo`·`jumpToTick`·
+   * `hooks.seek` 를 직접 불렀고 그 호출들은 `clampSeek` 를 거치지 않았다 — 그래서 라이브에서도
+   * 바 오른쪽 끝까지 끌렸다(= 아직 일어나지 않은 장면이 열렸다).
+   *
+   * ⚠️ 상한 규칙을 여기서 다시 쓰지 않는다. `policy.clampIndex` 는 `liveGate.clamp` → `clampSeek`
+   *    (shared) 그대로다. 계산을 복제하면 변이체가 통과한다(#233 독립검증 minor-1).
+   */
+  const seek = useMemo<GatedSeek | null>(() => {
+    if (!viewerReady) return null;
+    const snapCount = range.snapCount;
+    const lastTick = range.lastTick;
+    /** 이동한 자리가 라이브 헤드에서 떨어져 있으면 = 유저가 과거를 보는 중. */
+    const note = (index: number, p: SeekPolicy) => {
+      pastModeRef.current = !atLiveEdge(index, p);
+      repaintSeekBar();
+    };
+    return {
+      toIndex(index) {
+        const v = viewerRef.current;
+        if (!v) return 0;
+        const p = policyNow();
+        const capped = p.clampIndex(withinTrack(index, snapCount));
+        v.scrubTo(pctFromIndex(capped, snapCount));
+        note(capped, p);
+        return capped;
+      },
+      toTick(tick) {
+        const v = viewerRef.current;
+        if (!v) return 0;
+        const p = policyNow();
+        const target = gatedTick(clampTick(tick, lastTick), snapTicks, p);
+        // 정밀 이동은 hooks.seek 로만 — jumpToTick 은 맥락용 3 스냅샷 되감기가 붙는다(#180).
+        (v.hooks as unknown as { seek?: (t: number) => void }).seek?.(target);
+        note(indexOfTick(snapTicks, target), p);
+        return target;
+      },
+      toScene(tick) {
+        const v = viewerRef.current;
+        if (!v) return false;
+        const p = policyNow();
+        const idx = indexOfTick(snapTicks, tick);
+        // 아직 안 온 장면으로는 보내지 않는다 — 상한으로 당겨서 "엉뚱한 데로 간다"보다 거부가 정직하다.
+        if (isFutureIndex(idx, p)) return false;
+        v.jumpToTick(clampTick(tick, lastTick));
+        note(idx, p);
+        return true;
+      },
+      isFutureTick(tick) {
+        return isFutureIndex(indexOfTick(snapTicks, tick), policyNow());
+      },
+      toNow() {
+        const v = viewerRef.current;
+        if (!v) return;
+        const p = policyNow();
+        pastModeRef.current = false;
+        repaintSeekBar();
+        if (p.liveIndex == null) return;
+        v.jumpToTick(tickOfSnapIndex(snapTicks, p.liveIndex));
+        v.play();
+      },
+    };
+    // policyNow 는 매 호출 새로 재므로 의존성이 아니다(gateInput ref 를 본다).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewerReady, snapTicks, range.snapCount, range.lastTick]);
+
+  /**
+   * 하프·로그·단계가 바뀌면 "과거 보는 중"은 끝난다 — 새 하프에서 배지가 남아 있으면 유저가
+   * 라이브를 놓친 줄 알고, 복구 루프도 억제된 채 시작한다.
+   */
+  useEffect(() => {
+    pastModeRef.current = false;
+    repaintSeekBar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [log, half, clock?.phase]);
+
   useEffect(() => {
     const v = viewerRef.current;
-    if (!viewerReady || !v || tickCount <= 0) return;
+    if (!viewerReady || !v) return;
     const gateNow = () => {
       const { clock: c, clockOffsetMs: off, half: h } = gateInput.current;
       return liveGate(c, h, tickCount, Date.now(), off);
     };
+    /** 시크바가 그릴 상한. 라이브가 아니면 **null = 잠금 없음**(종료 후 전 구간 이동, 요구 5-3 후반부). */
+    const pushLive = (g: ReturnType<typeof gateNow>) => {
+      liveIndexRef.current = g.isLive ? g.liveTick : null;
+      repaintSeekBar();
+    };
 
     const entry = gateNow();
+    pushLive(entry);
+    if (tickCount <= 0) return;
     // 지나간 하프·종료·레거시 = 제한 없음. 배율도 자연 페이스로 돌려놓는다(단계가 바뀐 뒤에도
     // 직전 창의 배율이 남아 있으면 다시보기가 미묘하게 빠르거나 느려진다).
     if (!entry.isLive) {
@@ -231,13 +348,32 @@ export function VisualPlayback({
     // 서버 시계는 **인덱스**로 말하고 뷰어는 절대 틱으로 움직인다 — 후반 로그(틱 2700~)에서
     // 이 둘을 섞으면 seek-to-now 가 로그 맨 앞으로 가고 상한 비교가 늘 참이 된다(후반 정지).
     const drift = driftAllowanceTicks(tickCount);
-    v.jumpToTick(tickOfIndex(snapTicks, entry.liveTick)); // seek-to-now
-    v.play();
+    // ⚠️ 유저가 과거를 보는 중이면 **입장 점프도 하지 않는다**(#406 W3). 이 effect 는 단계가 바뀔 때
+    //    다시 도는데, 그때마다 현재로 끌어당기면 뒤로 돌려놓은 화면이 이유 없이 튄다.
+    if (!pastModeRef.current) {
+      v.jumpToTick(tickOfIndex(snapTicks, entry.liveTick)); // seek-to-now
+      v.play();
+    }
 
     const timer = window.setInterval(() => {
       const gate = gateNow();
+      pushLive(gate);
       if (!gate.isLive) return;
       const curIdx = indexOfPlayhead(snapTicks, Number(v.hooks.cur()?.tick ?? 0));
+      headIndexRef.current = curIdx;
+      /*
+       * **유저가 과거를 보는 중이면 끌어당기지 않는다**(#406 W3, hero 확정 ③=B 수동 [현재로]만).
+       * 이 억제가 없으면 뒤로 끌어 놓아도 0.25초 뒤에 현재로 튕겨 온다 = 과거를 붙잡을 수 없다.
+       * 자동 복귀는 넣지 않는다 — 다만 자유 재생이 **스스로** 라이브 헤드에 닿으면 그건 유저가
+       * 따라잡은 것이므로 추종을 재개한다(그래야 배지가 영영 켜져 있지 않다).
+       */
+      if (pastModeRef.current) {
+        if (atLiveEdge(curIdx, policyOf(gate))) {
+          pastModeRef.current = false;
+          repaintSeekBar();
+        }
+        return;
+      }
       // 자유 재생의 앞섬은 배율로 되돌린다. 드리프트 폭을 넘는 건 의도적 점프(스크럽·핀)로 보고
       // 상한으로 회수한다 — 앞서보기 차단(AC-W3-1)은 여기 한 곳에만 남는다.
       if (curIdx > gate.clamp(curIdx) + drift) {
@@ -309,8 +445,22 @@ export function VisualPlayback({
       {/*
        * 무대 모드에선 컨트롤을 화면 모서리에 **겹친다**(리서치 R6 — 뷰 컨트롤은 무대 가장자리).
        * 돌려보는 화면(#244 review)에서는 겹치면 피치를 가리므로 **캔버스 아래 흐름**으로 내린다.
+       * 유저 시크바(#406 W3)는 같은 오버레이지만 **무대 가로 전체**를 쓴다 — 오른쪽 구석에 모인
+       * QA 칩 묶음과 다른 축이라(목업 §3 "무대 아래(돌려보기) 또는 무대 위 오버레이") 자리를 가른다.
        */}
-      <div className={review ? styles.controlsFlow : styles.controlsOverlay}>
+      {/*
+       * ⚠️ 플레이 모드는 **무대 가로 전체**를 쓰는 시크바 층(#406 W3)이고, 그 안에 #421 의
+       * 하이라이트 토글·스킵 버튼이 같이 앉는다 — 두 축이 같은 오버레이 컨테이너를 공유한다.
+       */}
+      <div
+        className={
+          review
+            ? styles.controlsFlow
+            : controlMode === "play"
+              ? styles.controlsSeek
+              : styles.controlsOverlay
+        }
+      >
         {/* 하이라이트 ↔ 전체 보기(#421 W4) — 스킵 버튼 위 줄. 돌려보는 화면엔 뜨지 않는다(view.visible). */}
         <HighlightToggle view={highlight.view} onToggle={highlight.toggle} />
         {/*
@@ -329,6 +479,11 @@ export function VisualPlayback({
           canSwitch={canSwitch}
           onMode={onControlMode}
           viewer={viewerReady ? viewerRef.current : null}
+          seek={seek}
+          headRef={headIndexRef}
+          liveRef={liveIndexRef}
+          pastRef={pastModeRef}
+          seekBarRef={seekBarRef}
           clockRef={clockRef}
           scrubRef={scrubRef}
           pins={pins}

@@ -87,17 +87,39 @@ describe("MatchViewer 컨트롤 — 플레이 모드(일반 유저)", () => {
     expect((window as unknown as { __viewer?: unknown }).__viewer).toBe(viewer.hooks);
   });
 
-  it("플레이 모드엔 컨트롤이 없다 — 하이라이트 토글도 사라졌다(#216)", () => {
+  /**
+   * ⚠️ **이 계약은 #406 W3 에서 좁혀졌다.** 예전 문장은 "플레이 모드 컨트롤 바에는 버튼이 0개"였는데,
+   * 요구 5-3(과거 전용 시크바)이 유저용 시간바를 그 자리에 넣었다 — 정책이 바뀐 것이지 잊어서 깨진 게
+   * 아니다(apps/web CLAUDE.md §계약이 거짓말하는 방식 8: 도달 불가가 된 계약은 지우지 말고 **지금 참인
+   * 것**으로 다시 쓴다). 남아 있는 규칙은 **"QA 도구는 관객 화면에 없다"** 다.
+   * ⚠️ 표본이 계약의 절반이다 — 이 스펙 기본 픽스처는 스냅샷 0개라 시크바가 애초에 안 그려진다.
+   *    그 픽스처로 재면 QA 도구가 되살아나도 통과할 수 있어, 여기서는 **스냅샷 있는 로그**로 잰다.
+   */
+  it("플레이 모드엔 QA 도구가 없다 — 유저 시크바만 있다(#216 · #406 W3)", () => {
+    fx.log = {
+      tickSnapshots: Array.from({ length: 60 }, (_, i) => ({ tick: i })),
+      events: [],
+      finalScore: { home: 0, away: 0 },
+    } as unknown;
     renderViewer(false);
+    act(() => {
+      const chrome = (createViewer.mock.calls[0] as unknown as unknown[])[1] as {
+        onLoaded?: (info: { events: unknown[]; snapCount: number; statusText: string }) => void;
+      };
+      chrome.onLoaded!({ events: [], snapCount: 60, statusText: "" });
+    });
+
     expect(screen.queryByTestId("viewer-highlight-toggle-half1")).toBeNull();
-    // 경기는 자동 진행 — 재생/일시정지·배속·스크럽·프레임점프·모드토글은 아예 없다.
+    // 경기는 자동 진행 — 재생/일시정지·배속·프레임점프·mm:ss·모드토글은 아예 없다.
     expect(screen.queryByTestId("viewer-play-toggle-half1")).toBeNull();
     for (const s of [1, 2, 4]) expect(screen.queryByTestId(`viewer-speed-${s}-half1`)).toBeNull();
-    expect(screen.queryByTestId("viewer-scrub-half1")).toBeNull();
+    expect(screen.queryByTestId("viewer-scrub-half1"), "QA 스크럽은 admin 전용").toBeNull();
     expect(screen.queryByTestId("viewer-prev-goal-half1")).toBeNull();
+    expect(screen.queryByTestId("viewer-goto-half1")).toBeNull();
     expect(screen.queryByTestId("viewer-mode-toggle-half1")).toBeNull();
-    const buttons = screen.getByTestId("viewer-controls-half1").querySelectorAll("button");
-    expect(buttons.length, "플레이 모드 컨트롤 바에는 버튼이 없다").toBe(0);
+    expect(screen.queryByTestId("viewer-admin-half1"), "풀컨트롤 묶음 자체가 없다").toBeNull();
+    // 그 자리에 있는 유일한 컨트롤 = 과거 전용 시크바(#406 W3).
+    expect(screen.getByTestId("viewer-seek-bar-half1")).toBeTruthy();
   });
 
   /**

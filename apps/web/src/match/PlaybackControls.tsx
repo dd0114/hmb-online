@@ -1,15 +1,19 @@
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type MutableRefObject, type RefObject } from "react";
 import type { ViewerController } from "@hmb/viewer-core";
 import type { ControlMode } from "./playback-controls";
 import { type TimelinePin } from "./timeline-pins";
-import {
-  clampTick,
-  parseClockInput,
-  pctFromIndex,
-  qaKeyAction,
-  stepSeconds,
-} from "./qa-time-controls";
+import { parseClockInput, qaKeyAction, stepSeconds } from "./qa-time-controls";
+import { trackGeometry, type GatedSeek } from "./seek-gate";
 import styles from "./PlaybackControls.module.css";
+
+/**
+ * 시크바 다시 그리기 핸들. 재생 헤드·라이브 상한은 **프레임마다** 바뀌므로 state 로 받으면
+ * 초당 60회 리렌더가 난다 — 자막 오버레이·QA 스크럽과 같은 패턴으로 ref + 직접 DOM 이다.
+ * 호스트(`VisualPlayback`)가 값을 자기 ref 에 쓰고 이 핸들로 "다시 그려라"만 알린다.
+ */
+export interface SeekBarHandle {
+  paint(): void;
+}
 
 interface PlaybackControlsProps {
   half: 1 | 2;
@@ -19,6 +23,19 @@ interface PlaybackControlsProps {
   onMode: (m: ControlMode) => void;
   /** 직접 마운트한 코어 컨트롤러(#169 S3) — full 모드 풀컨트롤이 이걸 조작한다. */
   viewer: ViewerController | null;
+  /**
+   * **모든 유저 시크가 지나야 하는 창구**(#406 W3). 컨트롤은 `viewer.scrubTo/jumpToTick` 을 직접
+   * 부르지 않는다 — 그 호출은 라이브 상한(`clampSeek`)을 거치지 않아 미래로 끌린다.
+   */
+  seek: GatedSeek | null;
+  /** 재생 헤드(스냅샷 인덱스) — 호스트가 코어 onScrub 에서 쓴다. */
+  headRef?: MutableRefObject<number>;
+  /** 라이브 상한(스냅샷 인덱스). null = 상한 없음(종료·지나간 하프). */
+  liveRef?: MutableRefObject<number | null>;
+  /** "유저가 과거를 보는 중"인가 — 배지·[현재로] 노출과 복구 루프 억제가 같은 값을 본다. */
+  pastRef?: MutableRefObject<boolean>;
+  /** 시크바 다시 그리기 핸들 등록처. */
+  seekBarRef?: MutableRefObject<SeekBarHandle | null>;
   /** QA 시계(`12'34" / 24'00"`) 표시 슬롯 — 호스트가 코어 onClock 으로 직접 갱신한다(#177). */
   clockRef?: RefObject<HTMLSpanElement>;
   /** 스크럽 핸들 — 호스트가 코어 onScrub 으로 위치를 따라가게 한다(#177). */
@@ -46,9 +63,11 @@ const SPEEDS = [0.1, 0.25, 0.5, 1, 2, 4] as const;
 
 /**
  * 경기 재생 컨트롤 바 (#148, #169 S3 직접 마운트).
- *  - 플레이 모드(일반 유저): **컨트롤 없음**. 경기는 하이라이트 연출로 자동 진행된다.
- *    (#216 에서 하이라이트 토글을 지웠다 — 끔 모드는 렌더가 깨진 채였고, 라이브 재생이 그 경로를
- *     강제로 타고 있었다. 켬이 유일 모드가 되면서 끌 수단 자체가 사라졌다.)
+ *  - 플레이 모드(일반 유저): QA 도구는 **없다**(재생/정지·배속·프레임 스텝·모드 토글). 경기는
+ *    하이라이트 연출로 자동 진행된다. (#216 에서 하이라이트 토글을 지웠다 — 끔 모드는 렌더가 깨진
+ *    채였고, 라이브 재생이 그 경로를 강제로 타고 있었다.)
+ *    ⚠️ **#406 W3 에서 여기에 유저용 시크바가 들어왔다**(요구 5-3 "과거만 돌려보기"). 예전 계약
+ *    ("플레이 모드엔 컨트롤이 0개")은 그 요구가 대체한 것이지, 잊어서 깨진 게 아니다.
  *  - full 모드(admin/QA): 코어 풀컨트롤(재생·배속·스크럽·프레임점프·뷰모드) — 디버그/검수용.
  *    (S2 이전엔 iframe 안 dev-viewer 컨트롤을 썼으나, S3 에서 iframe 이 사라져 web 이 직접 그린다.)
  */
@@ -58,6 +77,11 @@ export function PlaybackControls({
   canSwitch,
   onMode,
   viewer,
+  seek,
+  headRef,
+  liveRef,
+  pastRef,
+  seekBarRef,
   clockRef,
   scrubRef,
   pins,
@@ -76,10 +100,34 @@ export function PlaybackControls({
         <ReviewControls
           half={half}
           viewer={viewer}
+          seek={seek}
           clockRef={clockRef}
           scrubRef={scrubRef}
           pins={pins}
           snapCount={snapCount ?? 0}
+        />
+      )}
+
+      {/*
+        유저용 과거 전용 시크바 (#406 W3). 관전(라이브)·결과 화면 **양쪽 다 이 하나**다 —
+        종료 뒤에는 서버 시계가 null 이라 게이트가 저절로 꺼지고 전 구간이 열린다(잠금만 빠진 같은 바).
+
+        **플레이 모드에만** 그린다:
+         · 돌려보기(#244 review)는 자기 트랜스포트를 이미 갖고 있다 — 여기서 또 그리면 트랙이 둘이 된다.
+         · full(admin/QA)에는 스크럽·핀·초 스텝이 이미 있다. 그쪽도 이제 `seek` 을 지나므로 상한은
+           똑같이 걸리고, 과거로 갔다면 QA 스크럽을 오른쪽 끝까지 끌면(= 상한으로 클램프) 추종이 재개된다.
+        스냅샷이 1개 이하면 애초에 이동할 곳이 없다 → 바를 만들지 않는다.
+      */}
+      {mode === "play" && !review && (snapCount ?? 0) > 1 && headRef && liveRef && pastRef && (
+        <SeekBar
+          half={half}
+          snapCount={snapCount ?? 0}
+          pins={pins ?? []}
+          seek={seek}
+          headRef={headRef}
+          liveRef={liveRef}
+          pastRef={pastRef}
+          handleRef={seekBarRef}
         />
       )}
 
@@ -90,6 +138,7 @@ export function PlaybackControls({
           <AdminControls
             half={half}
             viewer={viewer}
+            seek={seek}
             pins={[]}
             snapCount={snapCount ?? 0}
             lastTick={lastTick ?? 0}
@@ -103,6 +152,7 @@ export function PlaybackControls({
         <AdminControls
           half={half}
           viewer={viewer}
+          seek={seek}
           clockRef={clockRef}
           scrubRef={scrubRef}
           pins={pins}
@@ -138,6 +188,195 @@ export function PlaybackControls({
 }
 
 /**
+ * **과거 전용 시크바** (#406 W3 / 요구 5-3, 목업 `docs/plan-v5/mock/406-matchux/match-ux.html` §3).
+ *
+ *   [⏪ 과거 보는 중] [현재로 ▶]
+ *   ▓▓▓▓▓▓▓▓░░░░│▨▨▨▨▨▨▨▨▨▨▨▨   ← 재생된 과거 / 진행됐지만 안 본 구간 / │현재 / 아직 안 온 미래(잠김)
+ *
+ * 세 가지가 이 부품의 계약이다:
+ *  ① **미래로 못 간다** — 슬라이더가 트랙 전체가 아니라 **라이브 헤드까지만** 덮고(`maxIndex`),
+ *     그 오른쪽은 빗금 친 비대화 영역이다. 값 자체도 `seek.toIndex` 에서 `clampSeek` 를 한 번 더 지난다
+ *     (두 층 — 어느 한 층이 지워져도 스포일러가 새지 않게).
+ *  ② **미래 핀은 DOM 에 만들지 않는다** — 상한이 흐르면 그때 나타난다.
+ *     ⚠️ 처음엔 `opacity: .28` 로 **흐리게만** 그렸고 그게 독립검증 blocker 였다: 라벨(`title`/
+ *     `aria-label` = `30' · HOME GOAL`)·색·위치가 그대로 살아 있어 호버·스크린리더·DOM 조회로
+ *     **아직 안 온 골이 읽혔다**(후반 25% 시점 실측 핀 46개 중 미래 34개, 미발생 골 8개).
+ *     `opacity` 는 방어가 아니다 — apps/web CLAUDE.md §"스포일러 규칙은 폴백에도 걸린다"(#233/#238)
+ *     가 텍스트 폴백까지 막아 둔 규칙을 무대 위 상시 부품이 우회하는 꼴이었다.
+ *     클릭 거부(`seek.toScene`)는 **두 번째 층으로 남긴다** — 한 층이 지워져도 새지 않게.
+ *  ③ **자동 복귀는 없다**(hero 확정 ③=B) — 뒤로 가면 배지와 [현재로]가 뜨고, 유저가 누를 때까지
+ *     화면은 그 자리에 머문다. 재생이 자연히 라이브 헤드에 닿으면 그때 추종이 재개된다.
+ *
+ * ⚠️ 그리기는 **명령형**이다(state 아님). 헤드·상한이 프레임마다 바뀌어서다. 그래서 아래 요소들은
+ * JSX 에서 `style`·`max`·`disabled` 를 **주지 않는다** — 주면 React 가 리렌더마다 그 값을 되돌려
+ * 놓아 화면이 깜빡이며 낡은 상태로 돌아간다.
+ * **예외는 핀 목록 하나**(`shown`) — 감추는 수단이 "속성"이 아니라 **DOM 부재**라 state 여야 하고,
+ * 열리는 사건은 프레임이 아니라 핀 개수만큼만 일어나 리렌더가 싸다.
+ */
+function SeekBar({
+  half,
+  snapCount,
+  pins,
+  seek,
+  headRef,
+  liveRef,
+  pastRef,
+  handleRef,
+}: {
+  half: 1 | 2;
+  snapCount: number;
+  pins: TimelinePin[];
+  seek: GatedSeek | null;
+  headRef: MutableRefObject<number>;
+  liveRef: MutableRefObject<number | null>;
+  pastRef: MutableRefObject<boolean>;
+  handleRef?: MutableRefObject<SeekBarHandle | null>;
+}) {
+  const trackRef = useRef<HTMLSpanElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const pastSegRef = useRef<HTMLSpanElement>(null);
+  const unseenSegRef = useRef<HTMLSpanElement>(null);
+  const futureSegRef = useRef<HTMLSpanElement>(null);
+  const liveMarkRef = useRef<HTMLSpanElement>(null);
+  const badgeRef = useRef<HTMLSpanElement>(null);
+  const nowRef = useRef<HTMLButtonElement>(null);
+
+  // 최신 seek 을 그리기 루프에서 보기 위한 참조(핸들은 마운트 때 한 번만 등록한다).
+  const seekRef = useRef(seek);
+  seekRef.current = seek;
+
+  /**
+   * **지금 그려도 되는 핀** — 아직 안 온 장면은 여기 없다(위 계약 ②).
+   *
+   * 이것만 state 인 이유: 나머지 그리기(세그먼트·핸들·배지)는 프레임마다 바뀌어 명령형이지만,
+   * "핀 하나가 열렸다"는 하프당 핀 수만큼만 일어나는 **드문 사건**이라 리렌더가 싸다. 그리고
+   * 감추는 수단이 **DOM 부재**여야 하므로 style 토글로는 표현할 수 없다.
+   */
+  const [shown, setShown] = useState<TimelinePin[]>([]);
+
+  useEffect(() => {
+    /**
+     * ⚠️ 미래 판정은 `seek.isFutureTick`(→ `seek-gate.isFutureIndex`) **하나만** 쓴다.
+     * 예전엔 여기서 `Number(el.dataset.pinPct) > g.livePct` 로 상한 규칙을 **pct 축에 복제**했다 —
+     * `seek-gate.ts` 머리말이 스스로 금지한 형태고, 그래서 정책이 바뀌어도 화면만 조용히 갈라졌다.
+     * 창구가 아직 없으면(뷰어 준비 전) **fail-closed**: 상한이 걸린 하프에서는 아무것도 그리지 않는다.
+     */
+    const visiblePins = (): TimelinePin[] => {
+      const s = seekRef.current;
+      if (!s) return liveRef.current == null ? pins : [];
+      return pins.filter((p) => !s.isFutureTick(p.tick));
+    };
+    const sameTicks = (a: readonly TimelinePin[], b: readonly TimelinePin[]) =>
+      a.length === b.length && a.every((p, i) => p.tick === b[i]!.tick);
+
+    const paint = () => {
+      const live = liveRef.current;
+      const g = trackGeometry(headRef.current, live, snapCount);
+      const seg = (el: HTMLElement | null, left: number, width: number) => {
+        if (!el) return;
+        el.style.left = `${left}%`;
+        el.style.width = `${Math.max(0, width)}%`;
+      };
+      seg(pastSegRef.current, 0, g.headPct);
+      seg(unseenSegRef.current, g.headPct, g.reachPct - g.headPct);
+      seg(futureSegRef.current, g.reachPct, 100 - g.reachPct);
+      if (futureSegRef.current) futureSegRef.current.hidden = !g.locked;
+      if (liveMarkRef.current) {
+        liveMarkRef.current.hidden = live == null;
+        liveMarkRef.current.style.left = `${g.livePct}%`;
+      }
+
+      const input = inputRef.current;
+      if (input) {
+        input.max = String(g.maxIndex);
+        // 슬라이더는 **닿을 수 있는 구간만** 덮는다 — 오른쪽 끝이 곧 스포일러였던 자리(#406 W0).
+        input.style.width = `${g.livePct}%`;
+        input.disabled = !seekRef.current || g.maxIndex <= 0;
+        input.setAttribute("aria-valuemax", String(g.maxIndex));
+        input.setAttribute("aria-valuenow", String(Math.min(headRef.current, g.maxIndex)));
+        // 드래그 중에는 사용자 입력이 이긴다(핸들이 손에서 튀지 않게 — QA 스크럽과 같은 규칙).
+        if (document.activeElement !== input) input.value = String(Math.min(headRef.current, g.maxIndex));
+      }
+
+      // 상한이 흐르면 새로 열린 핀이 여기서 붙는다(값이 같으면 React 가 리렌더를 건너뛴다).
+      setShown((prev) => {
+        const next = visiblePins();
+        return sameTicks(prev, next) ? prev : next;
+      });
+
+      const past = pastRef.current && live != null;
+      if (badgeRef.current) badgeRef.current.hidden = !past;
+      if (nowRef.current) nowRef.current.hidden = !past;
+    };
+    if (handleRef) handleRef.current = { paint };
+    paint();
+    return () => {
+      if (handleRef && handleRef.current?.paint === paint) handleRef.current = null;
+    };
+  }, [snapCount, pins, handleRef, headRef, liveRef, pastRef]);
+
+  return (
+    <div className={styles.seek} data-testid={`viewer-seek-bar-half${half}`}>
+      <div className={styles.seekTop}>
+        <span className={styles.seekBadge} data-testid={`viewer-seek-past-half${half}`} ref={badgeRef} hidden>
+          ⏪ 과거 보는 중
+        </span>
+        <button
+          type="button"
+          className={styles.seekNow}
+          data-testid={`viewer-seek-now-half${half}`}
+          ref={nowRef}
+          hidden
+          onClick={() => seekRef.current?.toNow()}
+        >
+          현재로 ▶
+        </button>
+      </div>
+      <span className={styles.seekTrack} data-testid={`viewer-seek-track-half${half}`} ref={trackRef}>
+        <span className={`${styles.seg} ${styles.segPast}`} ref={pastSegRef} aria-hidden="true" />
+        <span className={`${styles.seg} ${styles.segUnseen}`} ref={unseenSegRef} aria-hidden="true" />
+        <span
+          className={`${styles.seg} ${styles.segFuture}`}
+          data-testid={`viewer-seek-future-half${half}`}
+          ref={futureSegRef}
+          aria-hidden="true"
+        />
+        <span
+          className={styles.liveMark}
+          data-testid={`viewer-seek-live-half${half}`}
+          ref={liveMarkRef}
+          aria-hidden="true"
+        />
+        <input
+          ref={inputRef}
+          type="range"
+          min={0}
+          step={1}
+          defaultValue={0}
+          className={styles.seekInput}
+          data-testid={`viewer-seek-half${half}`}
+          aria-label="시간바 (뒤로만 이동 — 아직 진행되지 않은 구간은 잠깁니다)"
+          onInput={(e) => seekRef.current?.toIndex(Number((e.target as HTMLInputElement).value))}
+        />
+        {/* ⚠️ `pins` 가 아니라 `shown` 이다 — 미래 핀은 렌더 자체를 하지 않는다(계약 ②). */}
+        {shown.map((p) => (
+          <button
+            key={`${p.kind}-${p.tick}`}
+            type="button"
+            className={`${styles.seekPin} ${p.major ? styles.seekPinMajor : ""}`}
+            data-testid={`viewer-seek-pin-${p.tick}`}
+            title={p.label}
+            aria-label={p.label}
+            style={{ left: `${p.pct}%`, background: p.color }}
+            onClick={() => seekRef.current?.toScene(p.tick)}
+          />
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/**
  * admin/QA 풀컨트롤 — 코어 컨트롤러 직접 조작(#169 S3). 뷰어 준비 전이면 비활성.
  * #177: 구 QA 뷰어 셸이 갖고 있던 **시계(분:초)·재생위치 추종 스크럽·타임라인 이벤트 핀**을
  * 여기로 되살렸다. hero 의 눈 QA 절차("몇 분 몇 초 장면을 지목하고 되돌려 본다")가 이것에 걸려 있다.
@@ -145,6 +384,7 @@ export function PlaybackControls({
 function AdminControls({
   half,
   viewer,
+  seek,
   clockRef,
   scrubRef,
   pins,
@@ -154,6 +394,8 @@ function AdminControls({
 }: {
   half: 1 | 2;
   viewer: ViewerController | null;
+  /** 게이트를 지나는 시크 창구(#406 W3) — QA 도구도 라이브 상한을 우회하지 않는다. */
+  seek: GatedSeek | null;
   clockRef?: RefObject<HTMLSpanElement>;
   scrubRef?: RefObject<HTMLInputElement>;
   pins?: TimelinePin[];
@@ -172,20 +414,21 @@ function AdminControls({
   // --- 초단위 이동(#180) ---
   // 정밀 이동은 **hooks.seek** 로만 한다: 컨트롤러의 jumpToTick 은 맥락용으로 3 스냅샷 되감기 때문에
   // (viewer.impl.mjs) "그 초에 정확히 선다"를 만족하지 못한다. 핀 클릭(장면 점프)만 jumpToTick 유지.
+  // ⚠️ #406 W3: 호출은 전부 `seek`(게이트 창구)을 지난다 — 여기서 `hooks.seek`/`scrubTo` 를 직접
+  //    부르면 QA 경로만 라이브 상한을 우회한다(그 상태로 앞을 보면 그게 곧 스포일러다).
   const hooks = () => v?.hooks as unknown as {
     cur?: () => { tick?: number; tickPosIdx?: number };
-    seek?: (tick: number) => void;
   } | undefined;
   const curTick = () => Number(hooks()?.cur?.()?.tick ?? 0);
   const curIndex = () => {
     const c = hooks()?.cur?.();
     return Number(c?.tickPosIdx ?? c?.tick ?? 0);
   };
-  const seekTick = (tick: number) => hooks()?.seek?.(clampTick(tick, lastTick));
+  const seekTick = (tick: number) => seek?.toTick(tick);
   const stepSec = (delta: number) => seekTick(stepSeconds(curTick(), delta, lastTick));
   const stepFrame = (delta: number) => {
     if (snapCount <= 1) return;
-    v?.scrubTo(pctFromIndex(curIndex() + delta, snapCount));
+    seek?.toIndex(curIndex() + delta);
   };
   const gotoClock = () => {
     const tick = parseClockInput(gotoRef.current?.value);
@@ -313,7 +556,7 @@ function AdminControls({
           className={styles.scrub}
           data-testid={`viewer-scrub-half${half}`}
           disabled={disabled || snapCount <= 1}
-          onInput={(e) => v?.scrubTo(pctFromIndex(Number((e.target as HTMLInputElement).value), snapCount))}
+          onInput={(e) => seek?.toIndex(Number((e.target as HTMLInputElement).value))}
           aria-label="스크럽(1칸 = 1초)"
         />
         {/* 키 장면 핀 — 클릭하면 그 틱으로 점프(구 QA 뷰어와 동일한 색·높이 규칙). */}
@@ -333,7 +576,7 @@ function AdminControls({
               background: p.color,
               zIndex: p.z,
             }}
-            onClick={() => v?.jumpToTick(p.tick)}
+            onClick={() => seek?.toScene(p.tick)}
           />
         ))}
       </span>
@@ -358,6 +601,7 @@ const REVIEW_SPEEDS = [1, 2, 0.5] as const;
 function ReviewControls({
   half,
   viewer,
+  seek,
   clockRef,
   scrubRef,
   pins,
@@ -365,6 +609,9 @@ function ReviewControls({
 }: {
   half: 1 | 2;
   viewer: ViewerController | null;
+  /** 게이트를 지나는 시크 창구(#406 W3). 돌려보기 화면은 보통 지나간 하프라 clamp 가 무해하지만,
+   *  규칙은 한 곳이어야 한다 — 여기만 raw 로 두면 다음 사람이 그걸 복사한다. */
+  seek: GatedSeek | null;
   clockRef?: RefObject<HTMLSpanElement>;
   scrubRef?: RefObject<HTMLInputElement>;
   pins?: TimelinePin[];
@@ -383,7 +630,7 @@ function ReviewControls({
       dir === 1
         ? (scenes.find((p) => p.tick > cur + 1) ?? scenes[scenes.length - 1])
         : ([...scenes].reverse().find((p) => p.tick < cur - 1) ?? scenes[0]);
-    if (next) v.jumpToTick(next.tick);
+    if (next) seek?.toScene(next.tick);
   };
 
   return (
@@ -446,7 +693,7 @@ function ReviewControls({
             className={styles.reviewScrub}
             data-testid={`viewer-scrub-half${half}`}
             disabled={disabled || snapCount <= 1}
-            onInput={(e) => v?.scrubTo(pctFromIndex(Number((e.target as HTMLInputElement).value), snapCount))}
+            onInput={(e) => seek?.toIndex(Number((e.target as HTMLInputElement).value))}
             aria-label="시간바 (드래그해서 장면 이동)"
           />
           {scenes.map((p) => (
@@ -459,7 +706,7 @@ function ReviewControls({
               aria-label={p.label}
               disabled={disabled}
               style={{ left: `${p.pct}%`, background: p.color }}
-              onClick={() => v?.jumpToTick(p.tick)}
+              onClick={() => seek?.toScene(p.tick)}
             />
           ))}
         </span>
@@ -473,7 +720,7 @@ function ReviewControls({
               className={p.major ? `${styles.scene} ${styles.sceneMajor}` : styles.scene}
               data-testid={`viewer-scene-${p.tick}`}
               disabled={disabled}
-              onClick={() => v?.jumpToTick(p.tick)}
+              onClick={() => seek?.toScene(p.tick)}
             >
               <span className={styles.sceneTime}>{p.clock}</span>
               <span className={styles.sceneName}>{sceneLabel(p)}</span>

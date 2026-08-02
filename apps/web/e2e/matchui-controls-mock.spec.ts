@@ -161,17 +161,25 @@ function pickPaceProbes(): { quietTick: number; keySceneTick: number } {
 
 test.beforeAll(() => mkdirSync(CAP_DIR, { recursive: true }));
 
-test("#148/#216 플레이 모드: 컨트롤이 없고 경기는 자동 진행한다", async ({ page }) => {
+/*
+ * ⚠️ **이 계약은 #406 W3 에서 좁혀졌다.** 예전엔 "플레이 모드 컨트롤 바에는 버튼이 0개"였는데,
+ * 요구 5-3(과거 전용 시크바)이 유저용 시간바를 그 자리에 넣었다 — 정책 교체지 회귀가 아니다.
+ * 지금 참인 규칙 = **"QA 도구(재생·배속·프레임 스텝·mm:ss·모드 토글)는 관객 화면에 없다"**.
+ * 시크바 자체의 계약은 `p406-past-seek.spec.ts` 가 진다.
+ */
+test("#148/#216 플레이 모드: QA 도구가 없고 경기는 자동 진행한다", async ({ page }) => {
   await openHalftime(page, false);
 
-  // (1) web 바에 컨트롤이 하나도 없다(하이라이트 토글·재생·배속·스크럽·프레임점프·모드토글 전부).
+  // (1) web 바에 QA 도구가 하나도 없다(하이라이트 토글·재생·배속·QA 스크럽·프레임점프·모드토글 전부).
   await expect(page.getByTestId("viewer-highlight-toggle-half1")).toHaveCount(0);
   await expect(page.getByTestId("viewer-play-toggle-half1")).toHaveCount(0);
   for (const s of [1, 2, 4]) await expect(page.getByTestId(`viewer-speed-${s}-half1`)).toHaveCount(0);
   await expect(page.getByTestId("viewer-scrub-half1")).toHaveCount(0);
+  await expect(page.getByTestId("viewer-goto-half1")).toHaveCount(0);
   await expect(page.getByTestId("viewer-mode-toggle-half1")).toHaveCount(0);
-  const buttons = await page.getByTestId("viewer-controls-half1").locator("button").count();
-  expect(buttons, "플레이 모드 컨트롤 바에는 버튼이 없다").toBe(0);
+  await expect(page.getByTestId("viewer-admin-half1"), "풀컨트롤 묶음 자체가 없다").toHaveCount(0);
+  // 그 자리에 있는 유일한 유저 컨트롤 = 과거 전용 시크바(#406 W3).
+  await expect(page.getByTestId("viewer-seek-bar-half1")).toBeVisible();
 
   // 스코어는 무대(캔버스)가 아니라 호스트 스코어바가 소유한다(중복 없이 한 곳).
   await expect(page.getByTestId("stage-scorebar")).toBeVisible();
@@ -220,7 +228,7 @@ test("#148 admin 모드: 코어 풀컨트롤 노출 + 모드 토글로 플레이
   await expect(page.getByTestId("viewer-highlight-admin-half1")).toHaveCount(0);
   await page.screenshot({ path: `${CAP_DIR}admin-full-mode.png`, fullPage: false });
 
-  // 모드 토글 → 플레이어가 보는 화면으로 즉시 전환(풀컨트롤 사라지고 빈 바만).
+  // 모드 토글 → 플레이어가 보는 화면으로 즉시 전환(QA 풀컨트롤이 사라지고 유저 시크바만 남는다).
   await page.getByTestId("viewer-mode-play-half1").click();
   await expect(page.getByTestId("viewer-scrub-half1")).toHaveCount(0);
   await expect(page.getByTestId("viewer-play-toggle-half1")).toHaveCount(0);
