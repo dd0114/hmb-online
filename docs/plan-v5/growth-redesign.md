@@ -244,6 +244,30 @@ seed = sha256(matchId + userId + playerId + ":" + level)      // 결정론
 **가중치 기본값**: `wBase 1.0 · wPosition 2.5 · wEvents 2.0 · wBehavior 2.0 · wResult 0.5` (전부 config).
 → 어떤 스탯도 확률 0 이 아니고(`wBase`), 역할·활약이 뚜렷하면 그쪽이 확실히 잘 나온다.
 
+⚠️ **구현 편차 — `eventScore`/`behaviorScore` 는 최대성분 1 로 정규화한다**(W2b). 위 식을 원값으로 쓰면 `eventScore` 가 이벤트 **횟수**에 비례해(한 경기 패스 300회 → passing 항이 60) `wBase`(1.0)·`wPosition`(≤0.6)을 통째로 삼켜 **모든 카드가 패스만 뽑는다**. 반면 `behaviorScore` 는 0..1 이라 같은 가중치가 100배 작게 먹는다. 정규화하면 벡터의 **모양(순위)** 만 남고 절대량이 사라진다. `positionBaseline` 은 원값 유지.
+※ 이건 계수가 아니라 **구조**라 노브가 아니다 — 바꾸려면 코드.
+
+**`resultTilt` 기본값**: `mental 1.0 · positioning 0.4 · stamina 0.2`. 설계 공식엔 `resultTilt_i` 가 있었으나 값이 없어 W2b 가 정했다. **역할 축(포지션)과 겹치지 않는 스탯**을 고른 이유 = 겹치면 `wResult` 가 `wPosition` 의 그림자가 되어 독립 조정이 불가능해진다.
+
+#### 2.5.1 후보 `reason` — 목업의 "왜 이 후보인가" (게이트 2 승인분)
+
+후보마다 **그 스탯의 가중을 가장 크게 밀어올린 축**을 원자료와 함께 박제한다. **서버는 구조만 내리고 문장을 만들지 않는다**(#232 재화 표기와 같은 이유 — 문안이 서버 코드에 박히면 문구 하나 고치는 데 배포가 필요하다).
+
+| `kind` | `detail` | 클라 문구 예 |
+|---|---|---|
+| `EVENT` | `{"type":"shot","count":4}` | `이 경기 슛 4회` |
+| `BEHAVIOR` | `{"param":"shootTendency","value":0.82}` | `지시 "적극적으로 슛"` |
+| `POSITION` | `{"position":"MF"}` | `포지션 MF 핵심` |
+| `RESULT` | `{"result":"WIN"}` | `승리 보너스` |
+| `LEGACY` | `{}` | `이관 보상` (소급 지급분 — 매치 컨텍스트 없음) |
+| `BASE` | `{}` | **줄 생략** (어느 축도 기여 안 함 = 균등 바닥만) |
+
+- **gain 과 같은 취급**(박제·결정론). 재계산 방식이면 다음 경기를 치른 뒤 이유가 바뀌어 "슛 4회라서 나왔다"던 후보가 다른 말을 한다.
+- 동점은 **`EVENT → BEHAVIOR → POSITION → RESULT` 고정 순서**로 깬다 — 맵 순회에 맡기면 같은 시드가 실행마다 다른 이유를 말해 결정론이 깨진다.
+- `BASE` 자리에 `POSITION` 이라고 쓰면 **거짓**이므로 자리를 비운다. 클라는 `BASE`/`null` 을 "이유 줄 생략"으로 처리(안전한 실패 방향).
+
+⚠️ **계약 함정(W2b 실측)**: "미뤄도 안 바뀐다"를 **before/after 응답끼리** 비교하면 공허하다 — 읽기 경로를 *일관되게* 오염시키는 변이체는 양쪽이 똑같이 망가져 관측되지 않는다(실제로 살아남았다). **응답 ↔ `candidates_json` 바이트 대조**로 걸어야 죽는다.
+
 **후보 박제 (hero 명시 요구)**
 레벨업 순간 `growth_level_choices` 행을 만들고 `candidates_json` 에 **스탯 3개 + 각각의 상승폭(gain)까지** 박제한다.
 - 선택을 미뤄도 선택지가 안 바뀐다 ✔
@@ -370,8 +394,9 @@ RewardBundle {
     { kind:"CURRENCY", entries:[{ code, amount }] },
     { kind:"GROWTH",   entries:[{ playerId, name, position, grade,
                                   xpGained, levelBefore, levelAfter,
+                                  cardXp, xpToNext, minutes,   // 행 XP 바 + 출전 구분
                                   pendingChoices:[{ choiceId, level,
-                                                    candidates:[{ stat, gain }] }] }] },
+                                                    candidates:[{ stat, gain, reason }] }] }] },
     { kind:"ITEM",     entries:[…] }        // 미래 확장 자리
   ]
 }
@@ -383,6 +408,10 @@ POST /api/growth/choices/{choiceId}   { stat }
 - 성장 탭 = **11명 한 페이지 + 스크롤**(선발 11 + 투입된 교체). 행마다 XP 바 · 레벨업 뱃지 · "선택 대기" 표시.
 - 선택은 **여기서 바로** 하거나 **미루고 나중에 선수 강화탭에서**. 미룬 것은 홈/선수탭에 뱃지로 남는다.
 - 기존 `ResultPanel` 의 성장 리포트 섹션(`GrowthReportSection`)은 이 구조로 대체된다.
+
+**행 XP 바 = `cardXp / xpToNext`**(레벨 내 진행도). 만렙은 `xpToNext: 0` → 나누지 말고 꽉 찬 상태로. **`minutes` = `starter | partial | bench`** 로 행 스타일을 가른다(미투입은 `xpGained: 0`).
+⚠️ **`xpToNext` 는 정산 시점에 서버가 계산해 박제한다** — 클라가 XP 곡선을 미러하면 `xp.lvBase`/`lvPow` 무배포 조정이 화면에서만 옛 곡선으로 남는다(§2.8 이 막으려는 상태). 대가: 곡선을 바꿔도 **과거 봉투의 바는 옛 곡선**으로 남는다(리포트=스냅샷 규율의 의도된 귀결).
+구 매치는 `rewardBundle: null`, 스냅샷 없는 구 정산분은 위 필드가 `null` — **클라가 방어**해야 한다.
 
 ⚠️ 웹 제약(이미 확인): 금액은 **반드시 `<Amount code=… />`**(재화 하드코딩 금지 e2e 계약) · 스테이지 셸은 **문서 스크롤 0**(스크롤은 패널 내부에만, `svh` 사용) · 카드 아트 노출은 **DIA 이상**(`icon-policy`, 화면에서 등급 비교 금지).
 
@@ -413,7 +442,9 @@ export const REWARD_SECTIONS: RewardSectionDef[] = [ … ];
 기존 `CardGrowthDetail`(모달, 725줄, 진입점 2개 = 선수탭·덱편성)에 얹는다. 새 탭을 만들지 않는다.
 - 헤더에 **레벨 + XP 바** 추가(★ 4칸 옆).
 - **선택 대기 N** 이 있으면 최상단에 3장 후보 카드 → 하나 탭하면 즉시 반영 + 축하 연출(`CelebrationOverlay` 재사용).
-- 능력치 막대에 `base | 성장분(add) | 천장` 3층 마커(현행 `base/cap/현재` 마커 확장).
+- 능력치 막대에 `base | 성장분(statAdd) | 천장` 3층 마커(현행 `base/cap/현재` 마커 확장).
+- 천장 라벨 `천장 73 = 72 + ★2 보너스 1` 은 서버가 내리는 `growCeil` + `starCeilBonus` 로 조립한다. ⚠️ **`attrHardCap`(99)에 잘리는 경우**(고성 LEGEND)는 합이 `caps` 와 달라지므로 세 값을 다 보고 문구를 정한다 — `caps[stat] === min(growCeil + starCeilBonus, attrHardCap)`.
+- ⚠️ **클라가 등급 밴드를 미러하지 마라.** 실제로 `growth-config.ts` 의 `GRADE_BANDS` 가 v2.5 하향 후에도 옛 값(40-55…)이라 **막대·레이더 축이 잘못 그려지고 있었다**(W3 이 발견·제거). 축은 카드 응답의 `base`/`caps` 에서 파생한다 — 그래야 무배포로 밴드를 바꿔도 화면이 따라온다.
 - 경기 중에는 기존대로 잠금(`MatchLockService`, `growth.choice` 액션 추가 — 후반 스탯만 오르는 버그 차단).
 
 ---
