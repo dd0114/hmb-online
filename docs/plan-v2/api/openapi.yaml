@@ -1957,6 +1957,114 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiError" }
 
+  # ─────────────────── engine-config (계수 무배포 변경, #383) ───────────────────
+  # economy(#209)와 형태는 닮았지만 **적용 시점이 다르다**: economy 는 리로드 즉시 전 유저에게
+  # 걸리고, 계수는 **이 호출 이후 생성되는 매치부터** 걸린다. 진행 중 매치는 시작 시점 스냅샷으로
+  # 끝까지 돈다(matches.config_overrides_json — #241 재발 방지가 최우선 제약).
+  # 경로 유효성 판정은 서버가 하지 않는다 — 러너(POST /config/validate)가 한다. 유효한 경로가
+  # 무엇인지는 엔진을 손에 든 쪽만 알고, 서버가 규칙을 복제하면 엔진이 바뀔 때 조용히 갈라진다.
+  /api/admin/engine-config:
+    get:
+      tags: [admin]
+      operationId: adminGetEngineConfig
+      summary: 지금 **새 매치에 실릴** 계수 오버레이 + 출처 + 적용 시점
+      responses:
+        "200":
+          description: 현재 오버레이
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineConfigView" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [admin]
+      operationId: adminReplaceEngineConfig
+      summary: |
+        오버레이 **전체 교체**(PATCH 아님). 부분 병합은 "지금 뭐가 걸려 있나"를 운영자가 머릿속으로
+        추적하게 만들고 롤백을 역연산으로 바꾼다 — GET → 수정 → PUT 이 유일한 루프이고, 그래서
+        원장의 모든 행이 완결 스냅샷이다. **기본값 복귀 = `overrides: {}`**.
+        원장에 쓰기 전에 러너 검증을 통과해야 한다(실패 시 리비전 0 + 감사에 failed).
+      parameters:
+        - { name: Idempotency-Key, in: header, required: false, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EngineConfigRequest" }
+      responses:
+        "200":
+          description: 적용됨 또는 멱등 재전송
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineConfigView" }
+        "400": { description: "reason 누락 · 값 타입 위반 · **러너 검증 실패**(미지 경로·구조 경로·NaN·스모크 실패). code=VALIDATION_ERROR, message 에 사유 전부", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: "멱등키 충돌(같은 키가 이미 다른 내용에 쓰였다). code=CONFLICT", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+
+  /api/admin/engine-config/history:
+    get:
+      tags: [admin]
+      operationId: adminEngineConfigHistory
+      summary: 리비전 이력(누가·언제·왜·무엇을). 원장은 append-only 라 과거가 지워지지 않는다
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 20, maximum: 100 } }
+      responses:
+        "200":
+          description: 최신순
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EngineConfigRevision" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/engine-config/knobs:
+    get:
+      tags: [admin]
+      operationId: adminEngineConfigKnobs
+      summary: |
+        오버레이 가능한 리프 전수 + 현재 기본값(러너 위임). 운영자가 경로 이름을 **추측하지 않게**
+        한다 — 이게 없으면 오타 → 400 → 소스 뒤지기의 왕복이 생긴다.
+        구조 경로(version·**matchMinutes**·msPerTick·fixedScale·coordMode·gridSize·pitch.*·formations.*)는 목록에 없다.
+        무효 노브(#338)는 `knobs` 가 아니라 `inertKnobs` 에 **사유와 함께** 따로 나온다 — 목록에서
+        통째로 지우면 "내가 아는 그 노브가 왜 없지?"가 되어 결국 소스를 뒤지게 된다.
+        ⚠️ `knobs` 에 있다는 것이 **경기가 달라진다는 보장은 아니다** — 이 필터는 엔진 #338
+        레지스트리 등재분만 걷어낸다. 등재 밖의 실효 없는 노브가 더 있다(#383 M5 → #393).
+        확정은 `validate` 의 스모크·`changed` diff 가 아니라 **실제 경기 관측**으로 한다.
+      responses:
+        "200":
+          description: 경로 카탈로그
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineConfigKnobs" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/admin/engine-config/validate:
+    post:
+      tags: [admin]
+      operationId: adminValidateEngineConfig
+      summary: |
+        드라이런 — **원장을 만들지 않는다**. 값을 확정하기 전에 diff·스모크만 본다.
+        스모크는 구조 불변식만 본다(이벤트>0 · 양 팀 패스>0 · 공 소유 전환>0) — **밸런스 밴드는
+        보지 않는다**. 밴드를 맞추는 것이 이 기능의 목적이므로 여기서 강제하면 자기 목적을 막는다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EngineConfigRequest" }
+      responses:
+        "200":
+          description: 통과 — 유효 config 지문 + 변경 diff + 스모크 결과
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineConfigValidateResult" }
+        "400": { description: "검증 실패. code=VALIDATION_ERROR", content: { application/json: { schema: { $ref: "#/components/schemas/ApiError" } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   # ───────────────────────────── mails (우편함, #323) ─────────────────────────────
   /api/admin/mails:
     get:
@@ -3879,3 +3987,111 @@ components:
             등급을 **낮출 때만** 필요. 없으면 409 + detail(AdminUnitGradeImpact).
             등급 상향·동일에는 영향이 없으므로 요구하지 않는다.
         reason: { type: string, maxLength: 500 }
+
+    EngineConfigRequest:
+      type: object
+      required: [overrides]
+      properties:
+        overrides:
+          type: object
+          description: |
+            **점경로 맵**. 예: `{"contest.shootXgThreshold": 0.07, "contest.shootRange": 22}`.
+            (⚠️ `decisionWeights.*` 는 예로 쓰지 마라 — 8개 전부 #338 INERT 라 400 이다.)
+            중첩 JSON 이 아닌 이유는 **오타가 조용히 죽지 않게** 하기 위해서다 — 중첩 deep-merge 는
+            존재하지 않는 키를 200 으로 삼키고 아무 일도 안 한다("필드가 계약에 있다 ≠ 엔진이 읽는다",
+            #321·#337·#338). 평평한 경로는 기본 config 의 리프 전수와 집합 대조가 되므로 미지 경로가
+            곧 400 이다 — 단 **작성 시점에만** 그렇다. 이미 매치에 박힌 오버레이의 재생은 그 사이
+            엔진이 노브를 지웠어도 죽지 않고 그 경로를 버린 뒤 보고한다(#383 B3).
+            값은 number 또는 boolean 만. EngineConfig 의 비수치 리프는 **넷**이고(`version`·`coordMode`·
+            `formations` + **`chain.mode`**) 앞의 셋은 구조, `chain.mode` 는 결정 코어 롤백 스위치라
+            문자열이다 — 넷 다 배포로만 바뀐다. **빈 객체 = 기본값 복귀(롤백)**.
+          additionalProperties:
+            oneOf: [{ type: number }, { type: boolean }]
+        reason:
+          type: string
+          maxLength: 500
+          description: 운영 사유. PUT 에서는 **필수**(원장에 남는다). validate 에서는 무시된다.
+    EngineConfigView:
+      type: object
+      properties:
+        revisionId: { type: string, nullable: true, description: "null = 오버레이 없음(러너 기본값)" }
+        overrides: { type: object, additionalProperties: true }
+        effectiveConfigHash: { type: string, nullable: true, description: "러너가 계산한 **유효 config 전체**의 지문" }
+        actor: { type: string, nullable: true }
+        reason: { type: string, nullable: true }
+        changedAt: { type: string, nullable: true }
+        appliesTo:
+          type: string
+          description: |
+            **언제부터 적용되나**를 서버가 말해 준다. 이게 없으면 운영자가 "왜 아직 안 바뀌었나"를 묻게 된다 —
+            진행 중 매치는 시작 시점 스냅샷으로 끝까지 돌기 때문이다.
+    EngineConfigRevision:
+      type: object
+      properties:
+        id: { type: string }
+        overridesJson: { type: string, description: "정본(키 정렬) 오버레이 **전체 스냅샷**(델타 아님)" }
+        effectiveHash: { type: string }
+        actor: { type: string }
+        reason: { type: string }
+        requestHash: { type: string, description: "멱등 판정의 **유일** 기준" }
+        createdAt: { type: string }
+    EngineConfigKnobs:
+      type: object
+      properties:
+        engineVersion: { type: string }
+        caveat:
+          type: string
+          description: |
+            **"설정 가능하다 ≠ 경기가 달라진다"** 를 응답에 적어 보내는 단서(#383 M5).
+            이 필터는 엔진 #338 레지스트리 **등재분만** 걷어내고, 등재 밖에도 실행 경로가 없는
+            노브가 더 있다(#393). 문서에만 두면 스키마로 클라이언트를 만든 쪽이 목록을 전수로
+            믿으므로 **응답의 일부**로 나간다. 계약 = `config-http.test.ts`.
+        knobs:
+          type: array
+          description: |
+            **설정 가능한** 경로. 무효 노브(#338)는 여기 없다 — `inertKnobs` 참조.
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              type: { type: string, enum: [number, boolean] }
+              value: { oneOf: [{ type: number }, { type: boolean }] }
+        inertKnobs:
+          type: array
+          description: |
+            **실행 경로가 없는 노브**(#338 레지스트리) — 값을 바꿔도 경기가 비트 단위로 동일하다.
+            PUT·validate 는 이 경로를 400 으로 거부한다(작성 게이트). 다만 **이미 매치에 박힌
+            오버레이의 재생은 막지 않는다** — 엔진이 노브를 LIVE→INERT 로 옮길 때(0.24.0 이 17개를
+            한 번에 옮겼다) 진행 중 매치가 전부 죽는 것이 #241 이기 때문이다.
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              value: { oneOf: [{ type: number }, { type: boolean }] }
+              reason: { type: string, description: 왜 못 만지는지(운영자가 소스를 뒤지지 않도록) }
+    EngineConfigValidateResult:
+      type: object
+      properties:
+        effectiveConfigHash: { type: string }
+        engineVersion: { type: string }
+        changed:
+          type: array
+          description: 무엇이 무엇으로 바뀌는가(기본값 대비 diff)
+          items:
+            type: object
+            properties:
+              path: { type: string }
+              from: { oneOf: [{ type: number }, { type: boolean }] }
+              to: { oneOf: [{ type: number }, { type: boolean }] }
+        smoke:
+          type: array
+          description: 시드별 **구조 불변식** 실측(밸런스 밴드가 아니다)
+          items:
+            type: object
+            properties:
+              seed: { type: string }
+              ticks: { type: integer }
+              events: { type: integer }
+              passEventsHome: { type: integer }
+              passEventsAway: { type: integer }
+              ownerChanges: { type: integer }

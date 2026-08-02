@@ -119,7 +119,12 @@ public class AdminRouteGuard implements ApplicationRunner {
             // #323 우편함 발송. 게이트 밖으로 나가면 **아무나 자기에게 보상을 발행할 수 있다** —
             // 이 목록에서 가장 직접적인 경제 표면이다(G·Z·카드가 한 요청에 나간다).
             // 유저 쪽 수령(MailService, /api/mails)은 이 빈에 의존하지 않으므로 영향이 없다.
-            AdminMailService.class);
+            AdminMailService.class,
+            // #383 계수 무배포 운영. 게이트 밖으로 나가면 **아무나 매치 엔진의 계수를 바꿀 수 있다** —
+            // 경제 표면은 아니지만 게임 자체의 규칙이고, 검증 게이트를 통과한 값이라도 밸런스를
+            // 임의로 흔든다. 진행 중 매치는 스냅샷이 막지만 **이후 생성되는 모든 매치**가 영향을 받는다.
+            // 조회 전용 경로가 따로 없다(유저가 볼 값이 아니다) — 전부 이 빈 뒤에 있다.
+            AdminEngineConfigService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;
