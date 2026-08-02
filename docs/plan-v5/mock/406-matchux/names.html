@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>#406 요구6 — 선수명 전역 한글화 이름안 (게이트)</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212a; --line:#2a2f3a;
+    --fg:#e6e9ef; --dim:#98a0b0; --accent:#6ea8fe; --warn:#ffb454; --bad:#ff6b6b;
+    --ok:#4ec9a0; --purple:#c08cff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;
+    line-height:1.62; font-size:15px;}
+  .wrap{max-width:1180px;margin:0 auto;padding:32px 20px 96px}
+  h1{font-size:26px;margin:0 0 6px;letter-spacing:-.3px}
+  h2{font-size:20px;margin:44px 0 12px;padding-top:14px;border-top:1px solid var(--line)}
+  h3{font-size:16px;margin:24px 0 8px;color:var(--accent)}
+  p{margin:8px 0}
+  .lede{color:var(--dim);font-size:14px;margin-bottom:20px}
+  .lede b{color:var(--fg)}
+  code{background:#000;padding:1px 5px;border-radius:4px;font-size:12.5px;color:#ffd479;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:16px 0}
+  .box.decide{border-color:#3d5a99;background:linear-gradient(180deg,#182035,#171a21)}
+  .box.warn{border-color:#6b4a12;background:#1e1a12}
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.4px;
+    padding:2px 8px;border-radius:999px;vertical-align:middle}
+  .tag.rec{background:#14432f;color:#6ee7b7;border:1px solid #2b7a58}
+  .tag.deny{background:#4a1717;color:#ff9d9d;border:1px solid #7d2b2b}
+  .tag.soft{background:#43331a;color:#ffcf8f;border:1px solid #7a5a25}
+  .tag.g3{background:#3a2a4d;color:#d9b8ff;border:1px solid #6b4a91}
+  .tag.dup{background:#123a44;color:#8fe3f5;border:1px solid #2b6c7d}
+  .tag.keep{background:#22262f;color:#a9b3c4;border:1px solid #39404f}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+  .opt{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .opt.pick{border-color:#2b7a58;box-shadow:0 0 0 1px #2b7a5844}
+  .opt h4{margin:0 0 4px;font-size:16px}
+  .opt .sub{color:var(--dim);font-size:12.5px;margin-bottom:10px}
+  .opt ul{margin:6px 0 0;padding-left:18px}
+  .opt li{margin:4px 0;font-size:13.5px}
+  li.plus::marker{content:"+ "; color:var(--ok)}
+  li.minus::marker{content:"− "; color:var(--bad)}
+  li.neu::marker{content:"· "; color:var(--dim)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px}
+  th,td{border-bottom:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:var(--panel2);position:sticky;top:0;z-index:2;font-size:12.5px;color:var(--dim);
+    font-weight:600;white-space:nowrap}
+  tbody tr:hover{background:#1a1e27}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--dim)}
+  .ko{font-weight:600}
+  .short{color:var(--accent);font-weight:600}
+  .note{color:var(--dim);font-size:12px}
+  .g{display:inline-block;min-width:56px;text-align:center;font-size:11px;font-weight:700;
+    padding:1px 6px;border-radius:5px}
+  .g.LEGEND{background:#4a3a12;color:#ffd479}
+  .g.DIA{background:#123a44;color:#8fe3f5}
+  .g.GOLD{background:#3d3413;color:#e8cf7a}
+  .g.SILVER{background:#2b2f38;color:#c8d0dc}
+  .g.BRONZE{background:#33251c;color:#d3a183}
+  .p{display:inline-block;min-width:30px;text-align:center;font-size:11px;font-weight:700;
+    padding:1px 5px;border-radius:5px;background:#22262f;color:#a9b3c4}
+  .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 10px;
+    position:sticky;top:0;background:var(--bg);padding:10px 0;z-index:3;border-bottom:1px solid var(--line)}
+  .controls .grp{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);
+    border-radius:9px;padding:4px}
+  button.f{background:transparent;border:0;color:var(--dim);font:inherit;font-size:12.5px;
+    padding:4px 10px;border-radius:6px;cursor:pointer}
+  button.f:hover{color:var(--fg)}
+  button.f.on{background:var(--accent);color:#0d1117;font-weight:700}
+  input[type=search]{background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    color:var(--fg);font:inherit;font-size:13px;padding:7px 12px;min-width:220px}
+  input[type=search]::placeholder{color:#5d6675}
+  .count{color:var(--dim);font-size:12.5px;margin-left:auto}
+  .tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:14px 0}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat .n{font-size:22px;font-weight:800;letter-spacing:-.5px}
+  .stat .l{font-size:11.5px;color:var(--dim)}
+  .demo{display:flex;flex-wrap:wrap;gap:16px;margin-top:10px}
+  .demoCard{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:230px}
+  .demoCard .cap{font-size:11px;color:var(--dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:.6px}
+  .row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:#12151c;margin-bottom:4px;font-size:13px}
+  .row .num{width:20px;color:var(--dim);font-size:11px;text-align:right}
+  .slot{width:64px;height:64px;border-radius:10px;background:#1c3a5e;border:1px solid #2f5c92;
+    display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;text-align:center;padding:4px;overflow:hidden}
+  .token{width:30px;height:30px;border-radius:50%;background:#2f5c92;display:flex;align-items:center;
+    justify-content:center;font-size:9px;font-weight:800}
+  .logline{font-size:12.5px;padding:3px 0;border-bottom:1px solid #22262f}
+  .logline .t{color:var(--dim);font-family:ui-monospace,monospace}
+  small{color:var(--dim)}
+  .footnote{color:var(--dim);font-size:12.5px;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>선수명 전역 한글화 — 이름안 결정 게이트</h1>
+<p class="lede">
+① <b>무엇을 결정받는가</b> — 로스터 <b>182명</b>의 이름을 한글로 바꾼다. 그 <b>이름 짓는 방식</b>(3안 중 택1)과 <b>182개 개별 이름안</b>을 승인받는 문서다.<br>
+② <b>왜 지금인가</b> — 이름은 로비·덱·상점·도감·경기로그 전부의 표시 문자열이고 <code>data/**</code> 시드가 SoT다. 이름이 확정돼야 발행물(<code>players.v2.5.json</code>)·DB 반영 경로·web 렌더를 한 번에 짤 수 있다.<br>
+③ <b>지금 막혀 있는 것</b> — <code>data/players/data.test.ts</code>의 게이트 2건이 <b>한글 이름을 명시적으로 금지</b>한다. 어느 안을 고르냐에 따라 그 가드를 어떻게 다시 정의할지가 갈린다.
+</p>
+<p class="footnote">에픽 #406 요구 6 · 브랜치 <code>epic/406-matchux</code> · 이 문서는 읽기 전용 산출물이다(<code>data/**</code>·<code>apps/web/**</code>·<code>server-java/**</code> 무접촉).</p>
+<div class="stats"><div class="stat"><div class="n">182</div><div class="l">전체 선수</div></div><div class="stat"><div class="n">24</div><div class="l">LEGEND</div></div><div class="stat"><div class="n">25</div><div class="l">DIA</div></div><div class="stat"><div class="n">46</div><div class="l">GOLD</div></div><div class="stat"><div class="n">52</div><div class="l">SILVER</div></div><div class="stat"><div class="n">35</div><div class="l">BRONZE</div></div></div><div class="stats"><div class="stat"><div class="n">15</div><div class="l">GK</div></div><div class="stat"><div class="n">54</div><div class="l">DF</div></div><div class="stat"><div class="n">62</div><div class="l">MF</div></div><div class="stat"><div class="n">51</div><div class="l">FW</div></div><div class="stat"><div class="n" style="color:var(--bad)">6</div><div class="l">denylist 충돌</div></div><div class="stat"><div class="n" style="color:var(--warn)">1</div><div class="l">denylist 준충돌</div></div><div class="stat"><div class="n" style="color:var(--purple)">36</div><div class="l">3음절 가드 충돌</div></div><div class="stat"><div class="n" style="color:#8fe3f5">4</div><div class="l">짧은이름 중복(행)</div></div></div>
+<h2>결정 안건 — 이름 방식 3안</h2>
+<div class="box decide">
+<p style="margin-top:0"><b>질문 한 줄:</b> 182명을 <b>실존 선수 이름의 한글 음역</b>으로 갈 것인가, <b>전부 패러디 창작명</b>으로 갈 것인가, <b>섞을</b> 것인가?</p>
+<p class="footnote" style="margin-bottom:0">배경: 지금 로스터는 실존 선수 영문명 172 + 이미 한글 패러디인 신규 유닛 10(보날두·권씨·열라도나·춘바페·덕브라이너·석신·욱링엄·경니시우스·석다이크·오시야스)으로 <b>이미 섞여 있다</b>. 즉 "섞는다"는 새 규칙이 아니라 현 상태의 연장이다.</p>
+</div>
+
+<div class="grid3">
+
+<div class="opt">
+  <h4>A · 실명 음역</h4>
+  <div class="sub">"Lev Yashin" → <b>레프 야신</b> / "Kevin De Bruyne" → <b>케빈 더 브라위너</b></div>
+  <ul>
+    <li class="plus">유저가 <b>알던 선수를 그대로 식별</b>한다. 덱·도감의 수집 가치가 유지된다.</li>
+    <li class="plus">읽기 쉽다 — 요구 6의 원인("영어 이름 보기 힘듦")을 가장 직접 해소.</li>
+    <li class="plus">번역 작업이 <b>기계적</b>이라 검수 비용이 낮고, 이 문서로 이미 182개가 다 나왔다.</li>
+    <li class="minus"><code>REAL_NAME_KO_DENYLIST</code>와 <b>정면 충돌</b> — 야신·마라도나·호나우두·벨링엄·음바페·비니시우스 6명이 그 목록에 그대로 들어간다. 가드를 <b>재정의해야만</b> 통과한다.</li>
+    <li class="minus">실명 한글 표기는 영문보다 <b>더 눈에 띈다</b>. 초상권/실명 라이선스 백로그(<code>data/CLAUDE.md</code>)의 노출 위험이 커진다.</li>
+    <li class="minus">패러디 10명과 <b>톤이 어긋난다</b>("레프 야신" 옆에 "석신").</li>
+  </ul>
+</div>
+
+<div class="opt">
+  <h4>B · 전면 패러디 창작</h4>
+  <div class="sub">기존 10명의 톤을 182명 전체로. "Lev Yashin" → <b>레포 야싱</b> / "Erling Haaland" → <b>홀랑</b></div>
+  <ul>
+    <li class="plus">게임 톤이 <b>하나로 일치</b>한다. 보날두·권씨가 이물감 없이 섞인다.</li>
+    <li class="plus">실명·초상권 <b>부담이 구조적으로 사라진다</b> — 상용화 차단 항목이 하나 줄어든다.</li>
+    <li class="plus">denylist 가드를 <b>그대로 유지</b>한 채 전 로스터로 확대 적용하면 된다(가드 재정의 불필요, 오히려 강화).</li>
+    <li class="minus"><b>182명 창작 비용</b>이 크고, 작명 품질은 기계적으로 검수할 수 없다(전부 사람 눈).</li>
+    <li class="minus"><b>유저가 알던 선수가 사라진다.</b> "홀란을 뽑았다"가 "홀랑을 뽑았다"가 되면 수집 동기의 근거가 흔들리고, 기존 덱에 대한 애착이 끊긴다.</li>
+    <li class="minus">라이브 DB 152개 하프에 박제된 과거 매치 라벨과 <b>완전히 다른 이름</b>이 된다 — 리플레이가 낯설어진다.</li>
+    <li class="minus">한국 선수 32명은 <b>원명이 이미 한글</b>이라 비틀 여지가 적다(손흥민→손흥맨 수준).</li>
+  </ul>
+</div>
+
+<div class="opt pick">
+  <h4>C · 하이브리드 <span class="tag rec">권장</span></h4>
+  <div class="sub">실명 172 = 음역, 패러디 10 = 현행 유지. 실질적으로 <b>A + 패러디 보존</b></div>
+  <ul>
+    <li class="plus"><b>현 상태의 자연스러운 연장</b>이다 — 지금도 172 실명 + 10 패러디이고, 그 경계는 <code>FROZEN_ROSTER_COUNT</code>(172)로 <b>이미 코드에 그어져 있다</b>.</li>
+    <li class="plus">A의 식별성 이점을 그대로 얻으면서 패러디 유닛의 캐릭터성·기존 유저 인지도(별희 등 라이브 유저가 이미 보유)를 보존한다.</li>
+    <li class="plus"><b>가드 재정의가 가장 좁다</b> — denylist를 "전체"가 아니라 <b>패러디 유닛(P173~P182)에만</b> 적용하도록 범위를 명시하면 된다. 원래 그 가드의 목적이 "패러디명에 실명이 새어 들어오는 것 차단"이었으므로 <b>의도에 오히려 더 정확해진다</b>(현재 구현도 사실상 NEW_UNITS 루프 안에서만 돈다).</li>
+    <li class="plus">등급 대비가 생긴다 — 실명군 위에 패러디 LEGEND 10종이 "특별 유닛"으로 읽힌다.</li>
+    <li class="minus">톤이 여전히 <b>두 겹</b>이다("레프 야신"과 "석신"이 같은 목록에).</li>
+    <li class="minus">실명 노출 리스크는 A와 동일하게 남는다(상용화 전 가상화 백로그 유지).</li>
+    <li class="neu">B로 가더라도 이 문서의 C 표가 <b>중간 산출물로 그대로 쓰인다</b> — 음역이 있어야 무엇을 비틀지 정할 수 있다.</li>
+  </ul>
+</div>
+
+</div>
+
+<div class="box warn">
+<h3 style="margin-top:0;color:var(--warn)">⚠ 어느 안을 고르든 건드려야 하는 데이터 게이트 2건</h3>
+<table>
+<thead><tr><th>위치</th><th>현재 단언</th><th>A/C 선택 시</th><th>B 선택 시</th></tr></thead>
+<tbody>
+<tr>
+  <td class="mono">data.test.ts:352-358<br>"동결 172명 이름이 실선수 형태"</td>
+  <td class="mono">name.toMatch(/[A-Za-z]/)<br>name.not.toMatch(/^[가-힣]{3}$/)</td>
+  <td><b>172건 전부 FAIL</b>. 라틴 문자 단언은 폐기하고 "한글 또는 라틴"으로 재정의해야 한다.<br>3음절 단언은 <b>36건</b>이 걸린다(한국 선수 32 + 3음절 음역 4: 알리송·로드리·페드리·엔드릭).</td>
+  <td><b>172건 전부 FAIL</b> + 패러디 3음절(보날두 등)도 걸린다. 가드 목적("v1 절차생성 가상명 재유입 차단")이 <b>수명을 다한다</b> → 폐기 후 "발행물 이름 동결 대조"로 대체.</td>
+</tr>
+<tr>
+  <td class="mono">data.test.ts:132<br>REAL_NAME_KO_DENYLIST</td>
+  <td class="mono">9개 문자열 부분일치 금지<br>(현재 NEW_UNITS 루프에만 적용)</td>
+  <td><b>6명이 목록과 정확히 일치</b>(P001 레프 야신, P005 디에고 마라도나, P010 호나우두 나자리우, P025 주드 벨링엄, P032 킬리안 음바페, P033 비니시우스 주니오르).<br>→ 적용 범위를 <b>P173~P182 로 명시</b>해 좁힌다(=C안의 핵심 조치). 목록 자체는 지우지 않는다.</td>
+  <td>실명이 아예 없어지므로 <b>그대로 두고 전 로스터로 확대</b>하면 된다(가드 강화).</td>
+</tr>
+</tbody>
+</table>
+<p class="footnote" style="margin-bottom:0">준충돌 1건: <b>P024 케빈 더 브라위너</b> — denylist 문자열은 <code>데브라위너</code>(붙여쓰기)라 부분일치에 걸리지 않지만 <b>같은 인물을 겨냥한 항목</b>이다. 표기를 어느 쪽으로 정하든 가드 의도상 같은 판단을 받아야 한다.</p>
+</div>
+
+<h2>짧은 이름 규칙 — 왜 두 축이 필요한가</h2>
+<p>한글 풀네임은 영문보다 길어지는 경우가 많다(<code>Kvaratskhelia</code> 13자 → <code>흐비차 크바라츠헬리아</code> 11자, 하지만 <b>한글은 글자당 폭이 넓다</b>). 그런데 이름이 들어가는 자리 중 상당수는 <b>폭이 구조적으로 고정</b>돼 있다 — 전술보드 슬롯은 정사각형이고, 경기 토큰은 선수 원 안이며, 로그줄은 시각·아이콘·동사와 한 줄을 나눠 쓴다. 여기에 풀네임을 넣으면 잘리거나(<code>text-overflow</code>) 레이아웃이 밀린다.</p>
+<p>그래서 <b>풀네임(정체성)</b>과 <b>짧은 이름(호칭)</b> 두 축을 데이터에 같이 싣는다. 짧은 이름은 임의 truncate가 아니라 <b>중계에서 실제로 부르는 통칭</b>이다 — 대개 성, 브라질·스페인계는 애칭, 한국 선수는 풀네임 그대로. 기계적으로 앞 3글자를 자르면 "흐비차 크"가 되지만, 중계 통칭을 쓰면 "크바라츠헬리아"가 되고 유저가 그 이름으로 그 선수를 안다.</p>
+
+<table>
+<thead><tr><th>자리</th><th>가용 폭</th><th>사용</th><th>예시</th></tr></thead>
+<tbody>
+<tr><td>선수 상세 / 카드 앞면</td><td>넓음</td><td><b>풀네임</b></td><td>흐비차 크바라츠헬리아</td></tr>
+<tr><td>도감 · 상점 뽑기 결과</td><td>넓음</td><td><b>풀네임</b>(2줄 허용)</td><td>트렌트 알렉산더아널드</td></tr>
+<tr><td>덱 리스트 행</td><td>중간(아바타+등급+포지션+스탯과 공유)</td><td><b>풀네임</b>, 넘치면 짧은 이름 폴백</td><td>케빈 더 브라위너 → 더 브라위너</td></tr>
+<tr><td>라인업 / 교체 목록</td><td>중간</td><td><b>짧은 이름</b> + 등번호</td><td>#17 더 브라위너</td></tr>
+<tr><td>전술보드 슬롯</td><td><b>좁음</b>(정사각 64px급)</td><td><b>짧은 이름</b></td><td>홀란 · 사카 · 텔</td></tr>
+<tr><td>경기 필드 토큰</td><td><b>매우 좁음</b>(원 안)</td><td>등번호. 선택·하이라이트 시에만 <b>짧은 이름</b> 라벨</td><td>9 → (선택) 홀란</td></tr>
+<tr><td>경기 로그줄 (요구 5-4)</td><td><b>좁음</b>(시각+아이콘+동사와 공유)</td><td><b>짧은 이름</b></td><td>12'34" ⚽ 홀란 골!</td></tr>
+<tr><td>토스트 · 상황 자막</td><td>좁음</td><td><b>짧은 이름</b></td><td>사카 → 파울</td></tr>
+<tr><td>결과 화면 득점자</td><td>중간</td><td><b>짧은 이름</b> + 시각</td><td>홀란 23', 사카 67'</td></tr>
+</tbody>
+</table>
+
+<h3>규칙</h3>
+<ul>
+<li><b>기본</b> = 성(姓)의 한글 표기. 예: Haaland → <b>홀란</b>, Saka → <b>사카</b>.</li>
+<li><b>브라질·포르투갈·스페인계</b>는 등록명/애칭. 예: Pelé → <b>펠레</b>, Marquinhos → <b>마르키뉴스</b>, Casemiro → <b>카세미루</b>, Gabriel Magalhães → <b>가브리에우</b>(등록명 Gabriel).</li>
+<li><b>한국 선수</b>는 풀네임 = 짧은 이름. 성만 쓰면 김/이/박이 겹친다.</li>
+<li><b>성이 겹치면 이름으로</b> 부른다 — 중계 관행 그대로. Martínez 2명 → <b>라우타로</b>/<b>리산드로</b>, Fernandes/Fernández 2명 → <b>페르난드스</b>/<b>엔소</b>.</li>
+<li><b>최장 8자 · 최단 1자</b>가 실제 분포다(크바라츠헬리아 8 / 텔 1). UI는 이 범위를 견뎌야 한다 — 고정폭 슬롯은 8자 기준으로 잡거나 자동 축소.</li>
+</ul>
+
+<div class="demo">
+  <div class="demoCard">
+    <div class="cap">덱 리스트 행 (풀네임)</div>
+    <div class="row"><span class="num">9</span><span class="g DIA">DIA</span><span class="p">FW</span><span class="ko">엘링 홀란</span></div>
+    <div class="row"><span class="num">7</span><span class="g GOLD">GOLD</span><span class="p">FW</span><span class="ko">부카요 사카</span></div>
+    <div class="row"><span class="num">17</span><span class="g DIA">DIA</span><span class="p">MF</span><span class="ko">케빈 더 브라위너</span></div>
+    <div class="row"><span class="num">77</span><span class="g GOLD">GOLD</span><span class="p">FW</span><span class="ko">흐비차 크바라츠헬리아</span></div>
+  </div>
+  <div class="demoCard">
+    <div class="cap">전술보드 슬롯 (짧은 이름)</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="slot">홀란</div><div class="slot">사카</div><div class="slot">더 브라위너</div>
+      <div class="slot">크바라츠헬리아</div><div class="slot">텔</div>
+    </div>
+  </div>
+  <div class="demoCard">
+    <div class="cap">경기 로그 (짧은 이름 · 요구 5-4)</div>
+    <div class="logline"><span class="t">12'34"</span> ⚽ <b class="short">홀란</b> 골!</div>
+    <div class="logline"><span class="t">13'02"</span> ↔ <b class="short">더 브라위너</b> → <b class="short">사카</b> 패스</div>
+    <div class="logline"><span class="t">14'19"</span> ✋ <b class="short">알리송</b> 선방</div>
+    <div class="logline"><span class="t">15'41"</span> ⚑ <b class="short">손흥민</b> 오프사이드</div>
+    <div class="logline" style="border:0"><span class="t">16'08"</span> ✕ <b class="short">크바라츠헬리아</b> 걷어내기</div>
+  </div>
+  <div class="demoCard">
+    <div class="cap">경기 토큰 (번호 → 선택 시 라벨)</div>
+    <div style="display:flex;gap:14px;align-items:center">
+      <div class="token">9</div><div class="token">7</div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:3px">
+        <div class="token" style="box-shadow:0 0 0 3px #ffd47955">17</div>
+        <div style="font-size:10px;font-weight:700">더 브라위너</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>전체 182행 — 제안 한글 이름 (A/C안)</h2>
+<p class="lede">표기 규칙 = 축구 중계 관용 표기 우선, 없으면 국립국어원 외래어 표기법. 한국 선수는 한글 본명.
+<b>패러디 10명(P173~P182)은 현행 유지</b>.</p>
+
+<div class="controls">
+  <div class="grp" id="fGrade">
+    <button class="f on" data-k="ALL">전체</button>
+<button class="f" data-k="LEGEND">LEGEND 24</button><button class="f" data-k="DIA">DIA 25</button><button class="f" data-k="GOLD">GOLD 46</button><button class="f" data-k="SILVER">SILVER 52</button><button class="f" data-k="BRONZE">BRONZE 35</button></div><div class="grp" id="fPos"><button class="f on" data-k="ALL">전체</button><button class="f" data-k="GK">GK 15</button><button class="f" data-k="DF">DF 54</button><button class="f" data-k="MF">MF 62</button><button class="f" data-k="FW">FW 51</button></div><div class="grp" id="fFlag"><button class="f on" data-k="ALL">전체</button><button class="f" data-k="deny">denylist 충돌</button><button class="f" data-k="g3">3음절 가드</button><button class="f" data-k="dup">짧은이름 중복</button><button class="f" data-k="parody">패러디</button></div><input type="search" id="q" placeholder="ID · 영문 · 한글 · 짧은 이름 검색"><span class="count" id="count"></span></div><div class="tblwrap"><table id="main"><thead><tr><th>ID</th><th>등급</th><th>POS</th><th>현행 영문</th><th>제안 한글(풀네임)</th><th>표시용 짧은 이름</th><th>비고</th></tr></thead><tbody><tr data-g="LEGEND" data-p="GK" data-f="deny" data-h="p001 lev yashin 레프 야신 야신"><td class="mono">P001</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">GK</span></td><td>Lev Yashin</td><td class="ko">레프 야신</td><td class="short">야신</td><td><span class="tag deny">denylist 야신</span><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="DF" data-f="" data-h="p002 franz beckenbauer 프란츠 베켄바워 베켄바워"><td class="mono">P002</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">DF</span></td><td>Franz Beckenbauer</td><td class="ko">프란츠 베켄바워</td><td class="short">베켄바워</td><td><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="DF" data-f="" data-h="p003 paolo maldini 파올로 말디니 말디니"><td class="mono">P003</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">DF</span></td><td>Paolo Maldini</td><td class="ko">파올로 말디니</td><td class="short">말디니</td><td><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="DF" data-f="" data-h="p004 franco baresi 프랑코 바레시 바레시"><td class="mono">P004</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">DF</span></td><td>Franco Baresi</td><td class="ko">프랑코 바레시</td><td class="short">바레시</td><td><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="MF" data-f="deny" data-h="p005 diego maradona 디에고 마라도나 마라도나"><td class="mono">P005</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>Diego Maradona</td><td class="ko">디에고 마라도나</td><td class="short">마라도나</td><td><span class="tag deny">denylist 마라도나</span><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="MF" data-f="" data-h="p006 zinedine zidane 지네딘 지단 지단"><td class="mono">P006</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>Zinedine Zidane</td><td class="ko">지네딘 지단</td><td class="short">지단</td><td><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="MF" data-f="" data-h="p007 michel platini 미셸 플라티니 플라티니"><td class="mono">P007</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>Michel Platini</td><td class="ko">미셸 플라티니</td><td class="short">플라티니</td><td><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="MF" data-f="" data-h="p008 lothar matthäus 로타어 마테우스 마테우스"><td class="mono">P008</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>Lothar Matthäus</td><td class="ko">로타어 마테우스</td><td class="short">마테우스</td><td><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="" data-h="p009 pelé 펠레 펠레"><td class="mono">P009</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>Pelé</td><td class="ko">펠레</td><td class="short">펠레</td><td><span class="note">애칭 단독 표기</span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="deny" data-h="p010 ronaldo nazário 호나우두 나자리우 호나우두"><td class="mono">P010</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>Ronaldo Nazário</td><td class="ko">호나우두 나자리우</td><td class="short">호나우두</td><td><span class="tag deny">denylist 호나우두</span><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="" data-h="p011 johan cruyff 요한 크루이프 크루이프"><td class="mono">P011</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>Johan Cruyff</td><td class="ko">요한 크루이프</td><td class="short">크루이프</td><td><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="" data-h="p012 marco van basten 마르코 판 바스턴 판 바스턴"><td class="mono">P012</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>Marco van Basten</td><td class="ko">마르코 판 바스턴</td><td class="short">판 바스턴</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="GK" data-f="g3" data-h="p013 alisson 알리송 알리송"><td class="mono">P013</td><td><span class="g DIA">DIA</span></td><td><span class="p">GK</span></td><td>Alisson</td><td class="ko">알리송</td><td class="short">알리송</td><td><span class="tag g3">3음절 가드</span> <span class="note">성 Becker 생략이 관용</span></td></tr>
+<tr data-g="DIA" data-p="GK" data-f="" data-h="p014 thibaut courtois 티보 쿠르투아 쿠르투아"><td class="mono">P014</td><td><span class="g DIA">DIA</span></td><td><span class="p">GK</span></td><td>Thibaut Courtois</td><td class="ko">티보 쿠르투아</td><td class="short">쿠르투아</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="DF" data-f="" data-h="p015 virgil van dijk 버질 판다이크 판다이크"><td class="mono">P015</td><td><span class="g DIA">DIA</span></td><td><span class="p">DF</span></td><td>Virgil van Dijk</td><td class="ko">버질 판다이크</td><td class="short">판다이크</td><td><span class="note">패러디 P181 석다이크의 원본</span></td></tr>
+<tr data-g="DIA" data-p="DF" data-f="" data-h="p016 rúben dias 후벵 디아스 디아스"><td class="mono">P016</td><td><span class="g DIA">DIA</span></td><td><span class="p">DF</span></td><td>Rúben Dias</td><td class="ko">후벵 디아스</td><td class="short">디아스</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="DF" data-f="" data-h="p017 achraf hakimi 아슈라프 하키미 하키미"><td class="mono">P017</td><td><span class="g DIA">DIA</span></td><td><span class="p">DF</span></td><td>Achraf Hakimi</td><td class="ko">아슈라프 하키미</td><td class="short">하키미</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="DF" data-f="" data-h="p018 alphonso davies 알폰소 데이비스 데이비스"><td class="mono">P018</td><td><span class="g DIA">DIA</span></td><td><span class="p">DF</span></td><td>Alphonso Davies</td><td class="ko">알폰소 데이비스</td><td class="short">데이비스</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="DF" data-f="" data-h="p019 antonio rüdiger 안토니오 뤼디거 뤼디거"><td class="mono">P019</td><td><span class="g DIA">DIA</span></td><td><span class="p">DF</span></td><td>Antonio Rüdiger</td><td class="ko">안토니오 뤼디거</td><td class="short">뤼디거</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="DF" data-f="" data-h="p020 william saliba 윌리앙 살리바 살리바"><td class="mono">P020</td><td><span class="g DIA">DIA</span></td><td><span class="p">DF</span></td><td>William Saliba</td><td class="ko">윌리앙 살리바</td><td class="short">살리바</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="DF" data-f="" data-h="p021 theo hernández 테오 에르난데스 테오"><td class="mono">P021</td><td><span class="g DIA">DIA</span></td><td><span class="p">DF</span></td><td>Theo Hernández</td><td class="ko">테오 에르난데스</td><td class="short">테오</td><td><span class="note">성이 흔해 중계는 이름으로 부른다</span></td></tr>
+<tr data-g="DIA" data-p="DF" data-f="g3" data-h="p022 kim min-jae 김민재 김민재"><td class="mono">P022</td><td><span class="g DIA">DIA</span></td><td><span class="p">DF</span></td><td>Kim Min-jae</td><td class="ko">김민재</td><td class="short">김민재</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="MF" data-f="g3" data-h="p023 rodri 로드리 로드리"><td class="mono">P023</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Rodri</td><td class="ko">로드리</td><td class="short">로드리</td><td><span class="tag g3">3음절 가드</span> <span class="note">본명 Rodrigo Hernández</span></td></tr>
+<tr data-g="DIA" data-p="MF" data-f="deny" data-h="p024 kevin de bruyne 케빈 더 브라위너 더 브라위너"><td class="mono">P024</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Kevin De Bruyne</td><td class="ko">케빈 더 브라위너</td><td class="short">더 브라위너</td><td><span class="tag soft">준충돌 데브라위너</span><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="MF" data-f="deny" data-h="p025 jude bellingham 주드 벨링엄 벨링엄"><td class="mono">P025</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Jude Bellingham</td><td class="ko">주드 벨링엄</td><td class="short">벨링엄</td><td><span class="tag deny">denylist 벨링엄</span><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="MF" data-f="" data-h="p026 federico valverde 페데리코 발베르데 발베르데"><td class="mono">P026</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Federico Valverde</td><td class="ko">페데리코 발베르데</td><td class="short">발베르데</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="MF" data-f="" data-h="p027 luka modrić 루카 모드리치 모드리치"><td class="mono">P027</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Luka Modrić</td><td class="ko">루카 모드리치</td><td class="short">모드리치</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="MF" data-f="" data-h="p028 toni kroos 토니 크로스 크로스"><td class="mono">P028</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Toni Kroos</td><td class="ko">토니 크로스</td><td class="short">크로스</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="MF" data-f="" data-h="p029 martin ødegaard 마르틴 외데고르 외데고르"><td class="mono">P029</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Martin Ødegaard</td><td class="ko">마르틴 외데고르</td><td class="short">외데고르</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="MF" data-f="g3" data-h="p030 pedri 페드리 페드리"><td class="mono">P030</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Pedri</td><td class="ko">페드리</td><td class="short">페드리</td><td><span class="tag g3">3음절 가드</span> <span class="note">본명 Pedro González</span></td></tr>
+<tr data-g="DIA" data-p="FW" data-f="" data-h="p031 erling haaland 엘링 홀란 홀란"><td class="mono">P031</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Erling Haaland</td><td class="ko">엘링 홀란</td><td class="short">홀란</td><td><span class="note">중계 관용 = 홀란(홀란드 아님)</span></td></tr>
+<tr data-g="DIA" data-p="FW" data-f="deny" data-h="p032 kylian mbappé 킬리안 음바페 음바페"><td class="mono">P032</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Kylian Mbappé</td><td class="ko">킬리안 음바페</td><td class="short">음바페</td><td><span class="tag deny">denylist 음바페</span><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="FW" data-f="deny" data-h="p033 vinícius júnior 비니시우스 주니오르 비니시우스"><td class="mono">P033</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Vinícius Júnior</td><td class="ko">비니시우스 주니오르</td><td class="short">비니시우스</td><td><span class="tag deny">denylist 비니시우스</span><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="FW" data-f="" data-h="p034 harry kane 해리 케인 케인"><td class="mono">P034</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Harry Kane</td><td class="ko">해리 케인</td><td class="short">케인</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="FW" data-f="" data-h="p035 mohamed salah 모하메드 살라 살라"><td class="mono">P035</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Mohamed Salah</td><td class="ko">모하메드 살라</td><td class="short">살라</td><td><span class="note"></span></td></tr>
+<tr data-g="DIA" data-p="FW" data-f="" data-h="p036 lautaro martínez 라우타로 마르티네스 라우타로"><td class="mono">P036</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Lautaro Martínez</td><td class="ko">라우타로 마르티네스</td><td class="short">라우타로</td><td><span class="note">성 마르티네스가 P078과 겹쳐 이름으로 부른다</span></td></tr>
+<tr data-g="DIA" data-p="FW" data-f="g3" data-h="p037 son heung-min 손흥민 손흥민"><td class="mono">P037</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Son Heung-min</td><td class="ko">손흥민</td><td class="short">손흥민</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="GK" data-f="" data-h="p038 ederson 에데르송 에데르송"><td class="mono">P038</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">GK</span></td><td>Ederson</td><td class="ko">에데르송</td><td class="short">에데르송</td><td><span class="note">본명 Ederson Moraes</span></td></tr>
+<tr data-g="GOLD" data-p="GK" data-f="" data-h="p039 gianluigi donnarumma 잔루이지 돈나룸마 돈나룸마"><td class="mono">P039</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">GK</span></td><td>Gianluigi Donnarumma</td><td class="ko">잔루이지 돈나룸마</td><td class="short">돈나룸마</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="GK" data-f="" data-h="p040 jan oblak 얀 오블라크 오블라크"><td class="mono">P040</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">GK</span></td><td>Jan Oblak</td><td class="ko">얀 오블라크</td><td class="short">오블라크</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p041 trent alexander-arnold 트렌트 알렉산더아널드 알렉산더아널드"><td class="mono">P041</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Trent Alexander-Arnold</td><td class="ko">트렌트 알렉산더아널드</td><td class="short">알렉산더아널드</td><td><span class="note">짧은 이름이 7자 — 밀집 UI 최장. 대안 '아널드' 검토</span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p042 kyle walker 카일 워커 워커"><td class="mono">P042</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Kyle Walker</td><td class="ko">카일 워커</td><td class="short">워커</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p043 marquinhos 마르키뉴스 마르키뉴스"><td class="mono">P043</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Marquinhos</td><td class="ko">마르키뉴스</td><td class="short">마르키뉴스</td><td><span class="note">애칭 단독 표기</span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p044 éder militão 에데르 밀리탕 밀리탕"><td class="mono">P044</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Éder Militão</td><td class="ko">에데르 밀리탕</td><td class="short">밀리탕</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p045 ronald araújo 로날드 아라우호 아라우호"><td class="mono">P045</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Ronald Araújo</td><td class="ko">로날드 아라우호</td><td class="short">아라우호</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p046 josko gvardiol 요슈코 그바르디올 그바르디올"><td class="mono">P046</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Josko Gvardiol</td><td class="ko">요슈코 그바르디올</td><td class="short">그바르디올</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p047 jules koundé 쥘 쿤데 쿤데"><td class="mono">P047</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Jules Koundé</td><td class="ko">쥘 쿤데</td><td class="short">쿤데</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p048 reece james 리스 제임스 제임스"><td class="mono">P048</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Reece James</td><td class="ko">리스 제임스</td><td class="short">제임스</td><td><span class="note">P094 '제임스 매디슨'의 이름과 표기 충돌 — 성/이름 축이 달라 표시상 혼동 가능</span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p049 joão cancelo 주앙 칸셀루 칸셀루"><td class="mono">P049</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>João Cancelo</td><td class="ko">주앙 칸셀루</td><td class="short">칸셀루</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p050 david alaba 다비드 알라바 알라바"><td class="mono">P050</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>David Alaba</td><td class="ko">다비드 알라바</td><td class="short">알라바</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p051 matthijs de ligt 마테이스 더 리흐트 더 리흐트"><td class="mono">P051</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Matthijs de Ligt</td><td class="ko">마테이스 더 리흐트</td><td class="short">더 리흐트</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="" data-h="p052 andrew robertson 앤드루 로버트슨 로버트슨"><td class="mono">P052</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Andrew Robertson</td><td class="ko">앤드루 로버트슨</td><td class="short">로버트슨</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p053 bruno fernandes 브루누 페르난드스 페르난드스"><td class="mono">P053</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Bruno Fernandes</td><td class="ko">브루누 페르난드스</td><td class="short">페르난드스</td><td><span class="note">이름 '브루누'가 P065와 겹쳐 성으로 부른다</span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p054 bernardo silva 베르나르두 실바 베르나르두"><td class="mono">P054</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Bernardo Silva</td><td class="ko">베르나르두 실바</td><td class="short">베르나르두</td><td><span class="note">성 실바가 흔해 이름으로 부른다</span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p055 frenkie de jong 프렝키 더 용 더 용"><td class="mono">P055</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Frenkie de Jong</td><td class="ko">프렝키 더 용</td><td class="short">더 용</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p056 declan rice 데클런 라이스 라이스"><td class="mono">P056</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Declan Rice</td><td class="ko">데클런 라이스</td><td class="short">라이스</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p057 ilkay gündogan 일카이 귄도안 귄도안"><td class="mono">P057</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Ilkay Gündogan</td><td class="ko">일카이 귄도안</td><td class="short">귄도안</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p058 nicolò barella 니콜로 바렐라 바렐라"><td class="mono">P058</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Nicolò Barella</td><td class="ko">니콜로 바렐라</td><td class="short">바렐라</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p059 jamal musiala 자말 무시알라 무시알라"><td class="mono">P059</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Jamal Musiala</td><td class="ko">자말 무시알라</td><td class="short">무시알라</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p060 enzo fernández 엔소 페르난데스 엔소"><td class="mono">P060</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Enzo Fernández</td><td class="ko">엔소 페르난데스</td><td class="short">엔소</td><td><span class="note">성 페르난데스가 P053과 겹쳐 이름으로 부른다</span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p061 aurélien tchouaméni 오렐리앵 추아메니 추아메니"><td class="mono">P061</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Aurélien Tchouaméni</td><td class="ko">오렐리앵 추아메니</td><td class="short">추아메니</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p062 casemiro 카세미루 카세미루"><td class="mono">P062</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Casemiro</td><td class="ko">카세미루</td><td class="short">카세미루</td><td><span class="note">애칭 단독 표기</span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p063 joshua kimmich 요주아 키미히 키미히"><td class="mono">P063</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Joshua Kimmich</td><td class="ko">요주아 키미히</td><td class="short">키미히</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p064 phil foden 필 포든 포든"><td class="mono">P064</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Phil Foden</td><td class="ko">필 포든</td><td class="short">포든</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="" data-h="p065 bruno guimarães 브루누 기마랑이스 기마랑이스"><td class="mono">P065</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Bruno Guimarães</td><td class="ko">브루누 기마랑이스</td><td class="short">기마랑이스</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="" data-h="p066 bukayo saka 부카요 사카 사카"><td class="mono">P066</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Bukayo Saka</td><td class="ko">부카요 사카</td><td class="short">사카</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="" data-h="p067 rafael leão 하파엘 레앙 레앙"><td class="mono">P067</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Rafael Leão</td><td class="ko">하파엘 레앙</td><td class="short">레앙</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="" data-h="p068 julián álvarez 훌리안 알바레스 알바레스"><td class="mono">P068</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Julián Álvarez</td><td class="ko">훌리안 알바레스</td><td class="short">알바레스</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="" data-h="p069 victor osimhen 빅터 오시멘 오시멘"><td class="mono">P069</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Victor Osimhen</td><td class="ko">빅터 오시멘</td><td class="short">오시멘</td><td><span class="note">패러디 P182 오시야스와 어감이 가깝다(동일 문자열 아님)</span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="" data-h="p070 marcus rashford 마커스 래시퍼드 래시퍼드"><td class="mono">P070</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Marcus Rashford</td><td class="ko">마커스 래시퍼드</td><td class="short">래시퍼드</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="" data-h="p071 lamine yamal 라민 야말 야말"><td class="mono">P071</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Lamine Yamal</td><td class="ko">라민 야말</td><td class="short">야말</td><td><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="" data-h="p072 khvicha kvaratskhelia 흐비차 크바라츠헬리아 크바라츠헬리아"><td class="mono">P072</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Khvicha Kvaratskhelia</td><td class="ko">흐비차 크바라츠헬리아</td><td class="short">크바라츠헬리아</td><td><span class="note">짧은 이름이 8자 — 밀집 UI 최장. 대안 '크바라' 검토</span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="" data-h="p073 robert lewandowski 로베르트 레반도프스키 레반도프스키"><td class="mono">P073</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Robert Lewandowski</td><td class="ko">로베르트 레반도프스키</td><td class="short">레반도프스키</td><td><span class="note">짧은 이름 6자</span></td></tr>
+<tr data-g="SILVER" data-p="GK" data-f="dup" data-h="p074 andré onana 앙드레 오나나 오나나"><td class="mono">P074</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">GK</span></td><td>André Onana</td><td class="ko">앙드레 오나나</td><td class="short">오나나</td><td><span class="tag dup">짧은이름 중복 P105</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="GK" data-f="" data-h="p075 yann sommer 얀 조머 조머"><td class="mono">P075</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">GK</span></td><td>Yann Sommer</td><td class="ko">얀 조머</td><td class="short">조머</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="GK" data-f="" data-h="p076 david raya 다비드 라야 라야"><td class="mono">P076</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">GK</span></td><td>David Raya</td><td class="ko">다비드 라야</td><td class="short">라야</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p077 raphaël varane 라파엘 바란 바란"><td class="mono">P077</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Raphaël Varane</td><td class="ko">라파엘 바란</td><td class="short">바란</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p078 lisandro martínez 리산드로 마르티네스 리산드로"><td class="mono">P078</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Lisandro Martínez</td><td class="ko">리산드로 마르티네스</td><td class="short">리산드로</td><td><span class="note">성 마르티네스가 P036과 겹쳐 이름으로 부른다</span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p079 cristian romero 크리스티안 로메로 로메로"><td class="mono">P079</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Cristian Romero</td><td class="ko">크리스티안 로메로</td><td class="short">로메로</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p080 gabriel magalhães 가브리에우 마갈량이스 가브리에우"><td class="mono">P080</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Gabriel Magalhães</td><td class="ko">가브리에우 마갈량이스</td><td class="short">가브리에우</td><td><span class="note">등록명이 Gabriel — 이름으로 부른다</span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p081 ben white 벤 화이트 화이트"><td class="mono">P081</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Ben White</td><td class="ko">벤 화이트</td><td class="short">화이트</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p082 pau torres 파우 토레스 토레스"><td class="mono">P082</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Pau Torres</td><td class="ko">파우 토레스</td><td class="short">토레스</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p083 nathan aké 네이선 아케 아케"><td class="mono">P083</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Nathan Aké</td><td class="ko">네이선 아케</td><td class="short">아케</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p084 manuel akanji 마누엘 아칸지 아칸지"><td class="mono">P084</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Manuel Akanji</td><td class="ko">마누엘 아칸지</td><td class="short">아칸지</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p085 alessandro bastoni 알레산드로 바스토니 바스토니"><td class="mono">P085</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Alessandro Bastoni</td><td class="ko">알레산드로 바스토니</td><td class="short">바스토니</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p086 federico dimarco 페데리코 디마르코 디마르코"><td class="mono">P086</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Federico Dimarco</td><td class="ko">페데리코 디마르코</td><td class="short">디마르코</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p087 destiny udogie 데스티니 우도지 우도지"><td class="mono">P087</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Destiny Udogie</td><td class="ko">데스티니 우도지</td><td class="short">우도지</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p088 marcos acuña 마르코스 아쿠냐 아쿠냐"><td class="mono">P088</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Marcos Acuña</td><td class="ko">마르코스 아쿠냐</td><td class="short">아쿠냐</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p089 jeremie frimpong 제레미 프림퐁 프림퐁"><td class="mono">P089</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Jeremie Frimpong</td><td class="ko">제레미 프림퐁</td><td class="short">프림퐁</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p090 kieran trippier 키어런 트리피어 트리피어"><td class="mono">P090</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Kieran Trippier</td><td class="ko">키어런 트리피어</td><td class="short">트리피어</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="" data-h="p091 raphaël guerreiro 하파엘 게레이루 게레이루"><td class="mono">P091</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Raphaël Guerreiro</td><td class="ko">하파엘 게레이루</td><td class="short">게레이루</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p092 mason mount 메이슨 마운트 마운트"><td class="mono">P092</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Mason Mount</td><td class="ko">메이슨 마운트</td><td class="short">마운트</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p093 kai havertz 카이 하베르츠 하베르츠"><td class="mono">P093</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Kai Havertz</td><td class="ko">카이 하베르츠</td><td class="short">하베르츠</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p094 james maddison 제임스 매디슨 매디슨"><td class="mono">P094</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>James Maddison</td><td class="ko">제임스 매디슨</td><td class="short">매디슨</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p095 dominik szoboszlai 도미니크 소보슬러이 소보슬러이"><td class="mono">P095</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Dominik Szoboszlai</td><td class="ko">도미니크 소보슬러이</td><td class="short">소보슬러이</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p096 alexis mac allister 알렉시스 맥 알리스터 맥 알리스터"><td class="mono">P096</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Alexis Mac Allister</td><td class="ko">알렉시스 맥 알리스터</td><td class="short">맥 알리스터</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p097 youri tielemans 유리 틸레만스 틸레만스"><td class="mono">P097</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Youri Tielemans</td><td class="ko">유리 틸레만스</td><td class="short">틸레만스</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p098 sandro tonali 산드로 토날리 토날리"><td class="mono">P098</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Sandro Tonali</td><td class="ko">산드로 토날리</td><td class="short">토날리</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p099 eduardo camavinga 에두아르도 카마빙가 카마빙가"><td class="mono">P099</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Eduardo Camavinga</td><td class="ko">에두아르도 카마빙가</td><td class="short">카마빙가</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p100 ryan gravenberch 라이언 흐라번베르흐 흐라번베르흐"><td class="mono">P100</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Ryan Gravenberch</td><td class="ko">라이언 흐라번베르흐</td><td class="short">흐라번베르흐</td><td><span class="note">짧은 이름 6자</span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="dup" data-h="p101 fabián ruiz 파비안 루이스 루이스"><td class="mono">P101</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Fabián Ruiz</td><td class="ko">파비안 루이스</td><td class="short">루이스</td><td><span class="tag dup">짧은이름 중복 P118</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p102 teun koopmeiners 테윈 코프메이너스 코프메이너스"><td class="mono">P102</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Teun Koopmeiners</td><td class="ko">테윈 코프메이너스</td><td class="short">코프메이너스</td><td><span class="note">짧은 이름 6자</span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p103 weston mckennie 웨스턴 매케니 매케니"><td class="mono">P103</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Weston McKennie</td><td class="ko">웨스턴 매케니</td><td class="short">매케니</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="" data-h="p104 hakan çalhanoğlu 하칸 찰하노글루 찰하노글루"><td class="mono">P104</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Hakan Çalhanoğlu</td><td class="ko">하칸 찰하노글루</td><td class="short">찰하노글루</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="dup" data-h="p105 amadou onana 아마두 오나나 오나나"><td class="mono">P105</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Amadou Onana</td><td class="ko">아마두 오나나</td><td class="short">오나나</td><td><span class="tag dup">짧은이름 중복 P074</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p106 gabriel jesus 가브리에우 제주스 제주스"><td class="mono">P106</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Gabriel Jesus</td><td class="ko">가브리에우 제주스</td><td class="short">제주스</td><td><span class="note">P080과 등록명 Gabriel 이 같아 이쪽은 성으로 부른다</span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p107 marcus thuram 마르퀴스 튀랑 튀랑"><td class="mono">P107</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Marcus Thuram</td><td class="ko">마르퀴스 튀랑</td><td class="short">튀랑</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p108 rasmus højlund 라스무스 호일룬 호일룬"><td class="mono">P108</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Rasmus Højlund</td><td class="ko">라스무스 호일룬</td><td class="short">호일룬</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p109 randal kolo muani 랑달 콜로 무아니 콜로 무아니"><td class="mono">P109</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Randal Kolo Muani</td><td class="ko">랑달 콜로 무아니</td><td class="short">콜로 무아니</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p110 cody gakpo 코디 하크포 하크포"><td class="mono">P110</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Cody Gakpo</td><td class="ko">코디 하크포</td><td class="short">하크포</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p111 ollie watkins 올리 왓킨스 왓킨스"><td class="mono">P111</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Ollie Watkins</td><td class="ko">올리 왓킨스</td><td class="short">왓킨스</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p112 alexander isak 알렉산더 이사크 이사크"><td class="mono">P112</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Alexander Isak</td><td class="ko">알렉산더 이사크</td><td class="short">이사크</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p113 dušan vlahović 두샨 블라호비치 블라호비치"><td class="mono">P113</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Dušan Vlahović</td><td class="ko">두샨 블라호비치</td><td class="short">블라호비치</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p114 nicolas jackson 니콜라 잭슨 잭슨"><td class="mono">P114</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Nicolas Jackson</td><td class="ko">니콜라 잭슨</td><td class="short">잭슨</td><td><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="" data-h="p115 serhou guirassy 세루 기라시 기라시"><td class="mono">P115</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Serhou Guirassy</td><td class="ko">세루 기라시</td><td class="short">기라시</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="GK" data-f="" data-h="p116 giorgi mamardashvili 기오르기 마마르다슈빌리 마마르다슈빌리"><td class="mono">P116</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">GK</span></td><td>Giorgi Mamardashvili</td><td class="ko">기오르기 마마르다슈빌리</td><td class="short">마마르다슈빌리</td><td><span class="note">짧은 이름이 7자 — 밀집 UI 최장. 대안 '마마르다' 검토</span></td></tr>
+<tr data-g="BRONZE" data-p="GK" data-f="" data-h="p117 guglielmo vicario 굴리엘모 비카리오 비카리오"><td class="mono">P117</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">GK</span></td><td>Guglielmo Vicario</td><td class="ko">굴리엘모 비카리오</td><td class="short">비카리오</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="dup" data-h="p118 rico lewis 리코 루이스 루이스"><td class="mono">P118</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Rico Lewis</td><td class="ko">리코 루이스</td><td class="short">루이스</td><td><span class="tag dup">짧은이름 중복 P101</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="" data-h="p119 levi colwill 리바이 콜윌 콜윌"><td class="mono">P119</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Levi Colwill</td><td class="ko">리바이 콜윌</td><td class="short">콜윌</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="" data-h="p120 leny yoro 르니 요로 요로"><td class="mono">P120</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Leny Yoro</td><td class="ko">르니 요로</td><td class="short">요로</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="" data-h="p121 nico schlotterbeck 니코 슐로터베크 슐로터베크"><td class="mono">P121</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Nico Schlotterbeck</td><td class="ko">니코 슐로터베크</td><td class="short">슐로터베크</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="" data-h="p122 castello lukeba 카스텔로 루케바 루케바"><td class="mono">P122</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Castello Lukeba</td><td class="ko">카스텔로 루케바</td><td class="short">루케바</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="" data-h="p123 riccardo calafiori 리카르도 칼라피오리 칼라피오리"><td class="mono">P123</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Riccardo Calafiori</td><td class="ko">리카르도 칼라피오리</td><td class="short">칼라피오리</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="" data-h="p124 giorgio scalvini 조르조 스칼비니 스칼비니"><td class="mono">P124</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Giorgio Scalvini</td><td class="ko">조르조 스칼비니</td><td class="short">스칼비니</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="" data-h="p125 jarrad branthwaite 재러드 브랜스웨이트 브랜스웨이트"><td class="mono">P125</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Jarrad Branthwaite</td><td class="ko">재러드 브랜스웨이트</td><td class="short">브랜스웨이트</td><td><span class="note">짧은 이름 6자</span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="" data-h="p126 micky van de ven 미키 판 더 벤 판 더 벤"><td class="mono">P126</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Micky van de Ven</td><td class="ko">미키 판 더 벤</td><td class="short">판 더 벤</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p127 warren zaïre-emery 워런 자이르에메리 자이르에메리"><td class="mono">P127</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Warren Zaïre-Emery</td><td class="ko">워런 자이르에메리</td><td class="short">자이르에메리</td><td><span class="note">짧은 이름 6자</span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p128 kobbie mainoo 코비 마이누 마이누"><td class="mono">P128</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Kobbie Mainoo</td><td class="ko">코비 마이누</td><td class="short">마이누</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p129 gavi 가비 가비"><td class="mono">P129</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Gavi</td><td class="ko">가비</td><td class="short">가비</td><td><span class="note">애칭 단독 표기</span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p130 arda güler 아르다 귈레르 귈레르"><td class="mono">P130</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Arda Güler</td><td class="ko">아르다 귈레르</td><td class="short">귈레르</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p131 carlos baleba 카를로스 발레바 발레바"><td class="mono">P131</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Carlos Baleba</td><td class="ko">카를로스 발레바</td><td class="short">발레바</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p132 adam wharton 애덤 와튼 와튼"><td class="mono">P132</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Adam Wharton</td><td class="ko">애덤 와튼</td><td class="short">와튼</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p133 joão neves 주앙 네베스 네베스"><td class="mono">P133</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>João Neves</td><td class="ko">주앙 네베스</td><td class="short">네베스</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p134 manu koné 마누 코네 코네"><td class="mono">P134</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Manu Koné</td><td class="ko">마누 코네</td><td class="short">코네</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="" data-h="p135 ángel gomes 앙헬 고메스 고메스"><td class="mono">P135</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Ángel Gomes</td><td class="ko">앙헬 고메스</td><td class="short">고메스</td><td><span class="note">잉글랜드 선수지만 국내 중계 관용은 '앙헬'</span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="g3" data-h="p136 endrick 엔드릭 엔드릭"><td class="mono">P136</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Endrick</td><td class="ko">엔드릭</td><td class="short">엔드릭</td><td><span class="tag g3">3음절 가드</span> <span class="note">애칭 단독 표기</span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="" data-h="p137 mathys tel 마티스 텔 텔"><td class="mono">P137</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Mathys Tel</td><td class="ko">마티스 텔</td><td class="short">텔</td><td><span class="note">짧은 이름 1자 — 최단. 밀집 UI 하한 사례</span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="" data-h="p138 benjamin šeško 베냐민 셰슈코 셰슈코"><td class="mono">P138</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Benjamin Šeško</td><td class="ko">베냐민 셰슈코</td><td class="short">셰슈코</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="" data-h="p139 johan bakayoko 요한 바카요코 바카요코"><td class="mono">P139</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Johan Bakayoko</td><td class="ko">요한 바카요코</td><td class="short">바카요코</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="" data-h="p140 karim adeyemi 카림 아데예미 아데예미"><td class="mono">P140</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Karim Adeyemi</td><td class="ko">카림 아데예미</td><td class="short">아데예미</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="" data-h="p141 hugo ekitike 위고 에키티케 에키티케"><td class="mono">P141</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Hugo Ekitike</td><td class="ko">위고 에키티케</td><td class="short">에키티케</td><td><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="" data-h="p142 alejandro garnacho 알레한드로 가르나초 가르나초"><td class="mono">P142</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Alejandro Garnacho</td><td class="ko">알레한드로 가르나초</td><td class="short">가르나초</td><td><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="MF" data-f="g3" data-h="p143 park ji-sung 박지성 박지성"><td class="mono">P143</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>Park Ji-sung</td><td class="ko">박지성</td><td class="short">박지성</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="g3" data-h="p144 cha bum-kun 차범근 차범근"><td class="mono">P144</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>Cha Bum-kun</td><td class="ko">차범근</td><td class="short">차범근</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="g3" data-h="p145 lee kang-in 이강인 이강인"><td class="mono">P145</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Lee Kang-in</td><td class="ko">이강인</td><td class="short">이강인</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="g3" data-h="p146 ki sung-yueng 기성용 기성용"><td class="mono">P146</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Ki Sung-yueng</td><td class="ko">기성용</td><td class="short">기성용</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="MF" data-f="g3" data-h="p147 yoo sang-chul 유상철 유상철"><td class="mono">P147</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Yoo Sang-chul</td><td class="ko">유상철</td><td class="short">유상철</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="g3" data-h="p148 hong myung-bo 홍명보 홍명보"><td class="mono">P148</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Hong Myung-bo</td><td class="ko">홍명보</td><td class="short">홍명보</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="g3" data-h="p149 lee young-pyo 이영표 이영표"><td class="mono">P149</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Lee Young-pyo</td><td class="ko">이영표</td><td class="short">이영표</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="DF" data-f="g3" data-h="p150 kim joo-sung 김주성 김주성"><td class="mono">P150</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Kim Joo-sung</td><td class="ko">김주성</td><td class="short">김주성</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="g3" data-h="p151 hwang hee-chan 황희찬 황희찬"><td class="mono">P151</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Hwang Hee-chan</td><td class="ko">황희찬</td><td class="short">황희찬</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="g3" data-h="p152 ahn jung-hwan 안정환 안정환"><td class="mono">P152</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Ahn Jung-hwan</td><td class="ko">안정환</td><td class="short">안정환</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="g3" data-h="p153 lee dong-gook 이동국 이동국"><td class="mono">P153</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Lee Dong-gook</td><td class="ko">이동국</td><td class="short">이동국</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="GOLD" data-p="FW" data-f="g3" data-h="p154 hwang sun-hong 황선홍 황선홍"><td class="mono">P154</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Hwang Sun-hong</td><td class="ko">황선홍</td><td class="short">황선홍</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="g3" data-h="p155 lee jae-sung 이재성 이재성"><td class="mono">P155</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Lee Jae-sung</td><td class="ko">이재성</td><td class="short">이재성</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="g3" data-h="p156 hwang in-beom 황인범 황인범"><td class="mono">P156</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Hwang In-beom</td><td class="ko">황인범</td><td class="short">황인범</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="g3" data-h="p157 koo ja-cheol 구자철 구자철"><td class="mono">P157</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Koo Ja-cheol</td><td class="ko">구자철</td><td class="short">구자철</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="MF" data-f="g3" data-h="p158 lee chung-yong 이청용 이청용"><td class="mono">P158</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Lee Chung-yong</td><td class="ko">이청용</td><td class="short">이청용</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="g3" data-h="p159 kim young-gwon 김영권 김영권"><td class="mono">P159</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Kim Young-gwon</td><td class="ko">김영권</td><td class="short">김영권</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="DF" data-f="g3" data-h="p160 kim jin-su 김진수 김진수"><td class="mono">P160</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">DF</span></td><td>Kim Jin-su</td><td class="ko">김진수</td><td class="short">김진수</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="GK" data-f="g3" data-h="p161 cho hyun-woo 조현우 조현우"><td class="mono">P161</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">GK</span></td><td>Cho Hyun-woo</td><td class="ko">조현우</td><td class="short">조현우</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="g3" data-h="p162 park chu-young 박주영 박주영"><td class="mono">P162</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Park Chu-young</td><td class="ko">박주영</td><td class="short">박주영</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="g3" data-h="p163 seol ki-hyeon 설기현 설기현"><td class="mono">P163</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Seol Ki-hyeon</td><td class="ko">설기현</td><td class="short">설기현</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="SILVER" data-p="FW" data-f="g3" data-h="p164 cho gue-sung 조규성 조규성"><td class="mono">P164</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Cho Gue-sung</td><td class="ko">조규성</td><td class="short">조규성</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="g3" data-h="p165 bae jun-ho 배준호 배준호"><td class="mono">P165</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Bae Jun-ho</td><td class="ko">배준호</td><td class="short">배준호</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="g3" data-h="p166 hong hyun-seok 홍현석 홍현석"><td class="mono">P166</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Hong Hyun-seok</td><td class="ko">홍현석</td><td class="short">홍현석</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="MF" data-f="g3" data-h="p167 paik seung-ho 백승호 백승호"><td class="mono">P167</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Paik Seung-ho</td><td class="ko">백승호</td><td class="short">백승호</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="DF" data-f="g3" data-h="p168 seol young-woo 설영우 설영우"><td class="mono">P168</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">DF</span></td><td>Seol Young-woo</td><td class="ko">설영우</td><td class="short">설영우</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="GK" data-f="g3" data-h="p169 kim seung-gyu 김승규 김승규"><td class="mono">P169</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">GK</span></td><td>Kim Seung-gyu</td><td class="ko">김승규</td><td class="short">김승규</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="g3" data-h="p170 yang min-hyuk 양민혁 양민혁"><td class="mono">P170</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Yang Min-hyuk</td><td class="ko">양민혁</td><td class="short">양민혁</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="g3" data-h="p171 oh hyeon-gyu 오현규 오현규"><td class="mono">P171</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Oh Hyeon-gyu</td><td class="ko">오현규</td><td class="short">오현규</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="BRONZE" data-p="FW" data-f="g3" data-h="p172 yang hyun-jun 양현준 양현준"><td class="mono">P172</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Yang Hyun-jun</td><td class="ko">양현준</td><td class="short">양현준</td><td><span class="tag g3">3음절 가드</span><span class="note"></span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="parody" data-h="p173 보날두 보날두 보날두"><td class="mono">P173</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>보날두</td><td class="ko">보날두</td><td class="short">보날두</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 크리스티아누 호날두)</span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="parody" data-h="p174 권씨 권씨 권씨"><td class="mono">P174</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>권씨</td><td class="ko">권씨</td><td class="short">권씨</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 메시)</span></td></tr>
+<tr data-g="LEGEND" data-p="MF" data-f="parody" data-h="p175 열라도나 열라도나 열라도나"><td class="mono">P175</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>열라도나</td><td class="ko">열라도나</td><td class="short">열라도나</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 마라도나)</span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="parody" data-h="p176 춘바페 춘바페 춘바페"><td class="mono">P176</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>춘바페</td><td class="ko">춘바페</td><td class="short">춘바페</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 음바페)</span></td></tr>
+<tr data-g="LEGEND" data-p="MF" data-f="parody" data-h="p177 덕브라이너 덕브라이너 덕브라"><td class="mono">P177</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>덕브라이너</td><td class="ko">덕브라이너</td><td class="short">덕브라</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 더 브라위너). 5자라 밀집 UI 용 3자 축약 제안</span></td></tr>
+<tr data-g="LEGEND" data-p="GK" data-f="parody" data-h="p178 석신 석신 석신"><td class="mono">P178</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">GK</span></td><td>석신</td><td class="ko">석신</td><td class="short">석신</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 야신)</span></td></tr>
+<tr data-g="LEGEND" data-p="MF" data-f="parody" data-h="p179 욱링엄 욱링엄 욱링엄"><td class="mono">P179</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>욱링엄</td><td class="ko">욱링엄</td><td class="short">욱링엄</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 벨링엄)</span></td></tr>
+<tr data-g="LEGEND" data-p="FW" data-f="parody" data-h="p180 경니시우스 경니시우스 경니시"><td class="mono">P180</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>경니시우스</td><td class="ko">경니시우스</td><td class="short">경니시</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 비니시우스). 5자라 밀집 UI 용 3자 축약 제안</span></td></tr>
+<tr data-g="LEGEND" data-p="DF" data-f="parody" data-h="p181 석다이크 석다이크 석다이크"><td class="mono">P181</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">DF</span></td><td>석다이크</td><td class="ko">석다이크</td><td class="short">석다이크</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 판다이크)</span></td></tr>
+<tr data-g="LEGEND" data-p="GK" data-f="parody" data-h="p182 오시야스 오시야스 오시야스"><td class="mono">P182</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">GK</span></td><td>오시야스</td><td class="ko">오시야스</td><td class="short">오시야스</td><td><span class="tag keep">현행 유지</span> <span class="note">현행 유지 (원본 카시야스)</span></td></tr>
+</tbody></table></div>
+<p class="footnote">
+<span class="tag deny">denylist</span> = <code>REAL_NAME_KO_DENYLIST</code> 문자열이 제안 이름에 그대로 들어간다(6건) ·
+<span class="tag soft">준충돌</span> = 같은 인물을 겨냥한 항목이나 표기가 달라 부분일치는 피한다(1건) ·
+<span class="tag g3">3음절 가드</span> = <code>not.toMatch(/^[가-힣]{3}$/)</code>에 걸린다(36건) ·
+<span class="tag dup">짧은이름 중복</span> = 다른 선수와 짧은 이름이 같다(4행 / 2쌍) ·
+<span class="tag keep">현행 유지</span> = 패러디 유닛(10건)
+</p>
+<h3>짧은 이름 충돌 — 구분안</h3><table><thead><tr><th>짧은 이름</th><th>해당 선수</th><th>구분안</th></tr></thead><tbody><tr><td class="short">오나나</td><td>P074 앙드레 오나나 (GK, SILVER) / P105 아마두 오나나 (MF, SILVER)</td><td>포지션이 갈리므로 <b>등번호 병기</b>로 충분(로그줄 "#24 오나나"). 같은 팀에 동시 출전 시엔 <b>앙드레 오나나 / 아마두 오나나</b> 풀네임 폴백.</td></tr><tr><td class="short">루이스</td><td>P101 파비안 루이스 (MF, SILVER) / P118 리코 루이스 (DF, BRONZE)</td><td>중계 관행대로 <b>이름 병기</b>: 파비안 / 리코. 밀집 UI에선 <b>파비안</b>·<b>리코</b> 2~3자로 대체 가능.</td></tr><tr><td class="short">제임스 (표기 겹침)</td><td>P048 리스 제임스(성) / P094 제임스 매디슨(이름)</td><td>짧은 이름은 서로 다르다(제임스 / 매디슨) — <b>충돌 아님</b>. 다만 화면에 "제임스"와 "제임스 매디슨"이 같이 뜨면 혼동될 수 있어 기록해 둔다.</td></tr></tbody></table><p class="footnote">호날두 계열 중복은 <b>발생하지 않는다</b> — 로스터에 크리스티아누 호날두는 없고 Ronaldo Nazário(P010 호나우두) 1명뿐이다. 패러디 P173 보날두와도 문자열이 다르다.</p>
+<h2>옵션 B 샘플 30명 — 전면 패러디 창작안</h2>
+<p class="lede">B안을 고를 경우 182명이 <b>전부</b> 이런 이름이 된다. 기존 패러디 10종의 작명 톤(원명을 비튼 한국어 말장난)을 따르되
+<code>REAL_NAME_KO_DENYLIST</code> 9개 문자열을 전부 피했다. 등급별로 고르게 뽑은 <b>샘플</b>이며, 나머지 152명은 이 안이 채택될 때 생산한다.</p>
+<div class="tblwrap"><table><thead><tr><th>ID</th><th>등급</th><th>POS</th><th>현행 영문</th><th>창작 한글</th><th>짧은 이름</th><th>말장난 근거</th></tr></thead><tbody><tr><td class="mono">P001</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">GK</span></td><td>Lev Yashin</td><td class="ko">레포 야싱</td><td class="short">야싱</td><td class="note">야신→야싱. denylist 문자열 회피</td></tr>
+<tr><td class="mono">P002</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">DF</span></td><td>Franz Beckenbauer</td><td class="ko">백건바워</td><td class="short">백건</td><td class="note">'황제'→성씨 백(白) 말장난</td></tr>
+<tr><td class="mono">P003</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">DF</span></td><td>Paolo Maldini</td><td class="ko">말딩니</td><td class="short">말딩</td><td class="note">말디니→말딩(순한 맛)</td></tr>
+<tr><td class="mono">P006</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">MF</span></td><td>Zinedine Zidane</td><td class="ko">지딴머리</td><td class="short">지딴</td><td class="note">박치기 일화 + 지단</td></tr>
+<tr><td class="mono">P009</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>Pelé</td><td class="ko">뻴래</td><td class="short">뻴래</td><td class="note">펠레의 된소리화</td></tr>
+<tr><td class="mono">P011</td><td><span class="g LEGEND">LEGEND</span></td><td><span class="p">FW</span></td><td>Johan Cruyff</td><td class="ko">크루아상</td><td class="short">크루아</td><td class="note">크루이프 턴 → 크루아상</td></tr>
+<tr><td class="mono">P031</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Erling Haaland</td><td class="ko">홀랑</td><td class="short">홀랑</td><td class="note">홀란 + '홀랑 넣는다'</td></tr>
+<tr><td class="mono">P034</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Harry Kane</td><td class="ko">해로케인</td><td class="short">해로</td><td class="note">해리 케인 → 허리케인</td></tr>
+<tr><td class="mono">P035</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Mohamed Salah</td><td class="ko">쌀라면</td><td class="short">쌀라</td><td class="note">살라 → 쌀라면</td></tr>
+<tr><td class="mono">P027</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Luka Modrić</td><td class="ko">모드치킨</td><td class="short">모드치</td><td class="note">모드리치 → 치킨</td></tr>
+<tr><td class="mono">P028</td><td><span class="g DIA">DIA</span></td><td><span class="p">MF</span></td><td>Toni Kroos</td><td class="ko">또니 크루즈</td><td class="short">크루즈</td><td class="note">크로스 → 크루즈(유람선)</td></tr>
+<tr><td class="mono">P037</td><td><span class="g DIA">DIA</span></td><td><span class="p">FW</span></td><td>Son Heung-min</td><td class="ko">손흥맨</td><td class="short">손흥맨</td><td class="note">한국 선수는 원명이 이미 한글 — 최소 변형</td></tr>
+<tr><td class="mono">P062</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Casemiro</td><td class="ko">카세트미루</td><td class="short">카세트</td><td class="note">카세미루 → 카세트</td></tr>
+<tr><td class="mono">P066</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Bukayo Saka</td><td class="ko">사카린</td><td class="short">사카린</td><td class="note">사카 → 사카린</td></tr>
+<tr><td class="mono">P069</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Victor Osimhen</td><td class="ko">오심맨</td><td class="short">오심맨</td><td class="note">오시멘 → 오심(誤審)맨</td></tr>
+<tr><td class="mono">P073</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">FW</span></td><td>Robert Lewandowski</td><td class="ko">레반돈까스</td><td class="short">레반돈</td><td class="note">레반도프스키 → 돈가스</td></tr>
+<tr><td class="mono">P064</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">MF</span></td><td>Phil Foden</td><td class="ko">포동이</td><td class="short">포동이</td><td class="note">포든 → 포동이</td></tr>
+<tr><td class="mono">P041</td><td><span class="g GOLD">GOLD</span></td><td><span class="p">DF</span></td><td>Trent Alexander-Arnold</td><td class="ko">알렉산더왕</td><td class="short">알렉산</td><td class="note">알렉산더아널드 → 알렉산더 대왕</td></tr>
+<tr><td class="mono">P092</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Mason Mount</td><td class="ko">메이슨 마운틴</td><td class="short">마운틴</td><td class="note">마운트 → 마운틴</td></tr>
+<tr><td class="mono">P106</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Gabriel Jesus</td><td class="ko">갑리엘 제주스</td><td class="short">제주스</td><td class="note">제주스 → 제주도 연상</td></tr>
+<tr><td class="mono">P112</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Alexander Isak</td><td class="ko">이삭토스트</td><td class="short">이삭</td><td class="note">이사크 → 이삭</td></tr>
+<tr><td class="mono">P114</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Nicolas Jackson</td><td class="ko">니콜라 짹슨</td><td class="short">짹슨</td><td class="note">잭슨 → 짹슨</td></tr>
+<tr><td class="mono">P111</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">FW</span></td><td>Ollie Watkins</td><td class="ko">올리브 왓킨스</td><td class="short">올리브</td><td class="note">올리 → 올리브</td></tr>
+<tr><td class="mono">P098</td><td><span class="g SILVER">SILVER</span></td><td><span class="p">MF</span></td><td>Sandro Tonali</td><td class="ko">토날리깡</td><td class="short">토날리</td><td class="note">토날리 → 새우깡</td></tr>
+<tr><td class="mono">P129</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Gavi</td><td class="ko">커피가비</td><td class="short">가비</td><td class="note">가비(珈琲) = 커피의 옛 표기</td></tr>
+<tr><td class="mono">P136</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Endrick</td><td class="ko">엔딩드릭</td><td class="short">엔딩</td><td class="note">엔드릭 → 엔딩</td></tr>
+<tr><td class="mono">P137</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Mathys Tel</td><td class="ko">마티스 텔레콤</td><td class="short">텔레콤</td><td class="note">텔 → 텔레콤</td></tr>
+<tr><td class="mono">P138</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Benjamin Šeško</td><td class="ko">셰슈크림</td><td class="short">셰슈</td><td class="note">셰슈코 → 슈크림</td></tr>
+<tr><td class="mono">P142</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">FW</span></td><td>Alejandro Garnacho</td><td class="ko">가르나초코</td><td class="short">나초코</td><td class="note">가르나초 → 나초/초코</td></tr>
+<tr><td class="mono">P128</td><td><span class="g BRONZE">BRONZE</span></td><td><span class="p">MF</span></td><td>Kobbie Mainoo</td><td class="ko">코비 마이쭈</td><td class="short">마이쭈</td><td class="note">마이누 → 마이쮸</td></tr>
+</tbody></table></div>
+<p class="footnote">
+샘플이 드러내는 것 2가지 — ① <b>한국 선수 32명은 비틀 여지가 거의 없다</b>(손흥민→손흥맨). 원명이 이미 한글이라 말장난이 억지스러워진다.
+② <b>BRONZE 유망주는 인지도가 낮아</b> 말장난의 기준점이 없다(엔드릭→엔딩드릭이 무슨 뜻인지 알려면 원명을 알아야 한다).
+즉 B안의 창작 비용은 182명 균등이 아니라 <b>인지도 높은 상위 등급에 몰려 있고, 하위 등급에서는 이름이 그냥 무의미해진다</b>.
+</p>
+
+<h2>승인 후 진행</h2>
+<ol>
+<li><b>발행</b> — <code>data/players/roster.ts</code> 는 이름을 직접 고치지 않고(RNG 스트림·동결 계약), <code>generate.ts</code> 의 이름 정정 테이블(<code>V23_NAME_CORRECTIONS</code> 선례) 방식으로 <b><code>players.v2.5.json</code></b> 신규 발행.</li>
+<li><b>가드 재정의</b> — 위 표의 2건. A/C면 라틴 문자 단언 폐기 + denylist 적용 범위를 P173~P182로 명시, B면 denylist를 전 로스터로 확대.</li>
+<li><b>DB 반영</b> — <code>players.name</code> 은 부팅 시 전량 upsert로 자동 갱신되지만 <code>admin_locked=1</code> 3행(P180·P181·P182)은 제외된다 → 그 3행은 패러디라 <b>현행 유지가 정답</b>이라 추가 조치 불필요.</li>
+<li><b>과거 매치</b> — <code>match_halves.select_data_json</code> 152행은 <b>UPDATE 하지 않는다</b>(재현 번들 불변). 조회 시 playerId → 현재 이름으로 덮어쓴다.</li>
+<li><b>web</b> — 선수명 렌더 36곳에 흩어진 <code>playersById.get(id)?.name ?? id</code> 패턴을 공용 훅으로 모으고 <code>풀네임 / 짧은 이름</code> 두 축을 노출. <code>CharAvatar.initialsOf()</code>(공백 분할 이니셜)는 한글 단일 토큰에서 무의미해지므로 같이 수정.</li>
+</ol>
+
+</div>
+<script>
+(function(){
+  var st={grade:"ALL",pos:"ALL",flag:"ALL",q:""};
+  var rows=[].slice.call(document.querySelectorAll("#main tbody tr"));
+  var cnt=document.getElementById("count");
+  function apply(){
+    var n=0;
+    rows.forEach(function(tr){
+      var ok = (st.grade==="ALL"||tr.dataset.g===st.grade)
+            && (st.pos==="ALL"||tr.dataset.p===st.pos)
+            && (st.flag==="ALL"||tr.dataset.f.split(",").indexOf(st.flag)>=0)
+            && (st.q===""||tr.dataset.h.indexOf(st.q)>=0);
+      tr.style.display = ok ? "" : "none";
+      if(ok) n++;
+    });
+    cnt.textContent = n + " / " + rows.length + " 명";
+  }
+  function wire(id,key){
+    var box=document.getElementById(id);
+    box.addEventListener("click",function(e){
+      var b=e.target.closest("button.f"); if(!b) return;
+      [].forEach.call(box.querySelectorAll("button.f"),function(x){x.classList.remove("on");});
+      b.classList.add("on"); st[key]=b.dataset.k; apply();
+    });
+  }
+  wire("fGrade","grade"); wire("fPos","pos"); wire("fFlag","flag");
+  document.getElementById("q").addEventListener("input",function(e){
+    st.q=e.target.value.trim().toLowerCase(); apply();
+  });
+  apply();
+})();
+</script>
+</body>
+</html>

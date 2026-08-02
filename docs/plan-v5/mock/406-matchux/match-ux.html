@@ -1,0 +1,1744 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>경기 화면 UX 목업 — 시계·하이라이트·시크바·로그·이펙트 (#406)</title>
+<style>
+  :root{
+    /* apps/web/src/index.css 와 같은 토큰 */
+    --bg:#0f1115; --bg-elevated:#171a21; --text:#eef0f4; --text-muted:#9aa1ad;
+    --border:#2a2e37; --accent:#4f8cff; --surface:#111826; --sunk:#0c111b;
+    --hairline:rgba(255,255,255,.07);
+    /* 팀색 = viewer-core teamRgb SoT */
+    --home:#3b82f6; --away:#ef4444; --owner:#fde047; --ball:#ffe600;
+    --ok:#3ecf8e; --warn:#f0b429; --bad:#ff6b6b; --info:#38bdf8;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text)}
+  body{
+    font:14px/1.65 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Segoe UI",sans-serif;
+    padding:0 0 90px;
+  }
+  a{color:var(--accent)}
+  h1,h2,h3,h4{margin:0;line-height:1.35}
+  p{margin:0 0 10px}
+  code,kbd{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.88em;
+    background:var(--sunk);border:1px solid var(--border);border-radius:4px;padding:1px 5px;
+  }
+  .wrap{max-width:1500px;margin:0 auto;padding:0 20px}
+
+  /* ── 페이지 헤더 ─────────────────────────────────── */
+  header.page{
+    background:linear-gradient(180deg,#141b28,#0f1115);
+    border-bottom:1px solid var(--border);padding:26px 0 18px;margin-bottom:22px;
+  }
+  header.page h1{font-size:23px;letter-spacing:-.01em}
+  header.page .sub{color:var(--text-muted);font-size:12.5px;margin-top:5px}
+  .lead{
+    margin-top:14px;background:var(--surface);border:1px solid var(--border);
+    border-left:3px solid var(--accent);border-radius:10px;padding:13px 16px;max-width:960px;
+  }
+  .lead ol{margin:0;padding-left:20px}
+  .lead li{margin:3px 0}
+
+  /* ── 뷰포트 토글 ─────────────────────────────────── */
+  .vpbar{
+    position:sticky;top:0;z-index:50;background:rgba(15,17,21,.94);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);padding:9px 0;margin-bottom:26px;
+  }
+  .vpbar .inner{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .vpbar .lbl{color:var(--text-muted);font-size:12px}
+  .seg{display:inline-flex;background:var(--sunk);border:1px solid var(--border);border-radius:999px;padding:3px}
+  .seg button{
+    background:none;border:0;color:var(--text-muted);font:inherit;font-size:12.5px;font-weight:600;
+    padding:6px 14px;border-radius:999px;cursor:pointer;
+  }
+  .seg button[aria-pressed="true"]{background:#1c2841;color:#dbe7ff}
+  .jump{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+  .jump a{
+    color:var(--text-muted);text-decoration:none;font-size:12px;border:1px solid var(--border);
+    border-radius:999px;padding:4px 11px;
+  }
+  .jump a:hover{color:var(--text);border-color:#425068}
+
+  /* ── 섹션 ─────────────────────────────────────────── */
+  section.sec{margin:0 0 46px;scroll-margin-top:64px}
+  .secHead{display:flex;align-items:baseline;gap:11px;flex-wrap:wrap;margin-bottom:6px}
+  .secNo{
+    font-size:12px;font-weight:800;color:#0f1115;background:var(--accent);
+    border-radius:6px;padding:2px 8px;letter-spacing:.03em;
+  }
+  .secHead h2{font-size:19px}
+  .secHead .req{color:var(--text-muted);font-size:12px}
+  .secIntro{color:#c3cbd6;max-width:980px;font-size:13.5px}
+  .secIntro strong{color:#fff}
+
+  .note{
+    background:#151d2b;border:1px solid #26364d;border-left:3px solid var(--info);
+    border-radius:8px;padding:11px 14px;font-size:12.8px;color:#c8d4e2;margin:12px 0;max-width:1000px;
+  }
+  .note.warn{background:#241d12;border-color:#4a3a1c;border-left-color:var(--warn);color:#e8dbc0}
+  .note.bad{background:#241416;border-color:#4d2429;border-left-color:var(--bad);color:#f0cdd0}
+  .note b{color:#fff}
+
+  /* 현행/제안 나란히 */
+  .duo{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin:14px 0}
+  .vp{max-width:100%}
+  body[data-vp="phone"] .vp{width:390px}
+  body[data-vp="desk"] .vp{width:min(880px,100%)}
+  .card{
+    background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;overflow:hidden;
+  }
+  .card > .cardHead{
+    display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);
+    background:var(--surface);font-size:11.5px;font-weight:700;letter-spacing:.03em;
+  }
+  .tagNow{color:#c4b58a;background:#2c2617;border:1px solid #4a3f21;border-radius:999px;padding:1px 8px;font-size:10.5px}
+  .tagNew{color:#a8d5ff;background:#152437;border:1px solid #27456b;border-radius:999px;padding:1px 8px;font-size:10.5px}
+  .cardBody{padding:12px}
+  .cardFoot{padding:8px 12px;border-top:1px solid var(--border);color:var(--text-muted);font-size:11.5px}
+
+  /* ── 스코어바 리플리카 (ScoreBar.tsx / StageShell.module.css) ── */
+  .sbar{
+    display:flex;align-items:center;gap:8px;padding:8px 12px;
+    background:var(--bg-elevated);border-bottom:1px solid var(--border);min-width:0;
+  }
+  .sbar .back{color:var(--text-muted);font-size:14px;flex-shrink:0}
+  .sbar .teams{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;min-width:0}
+  .sbar .tn{display:flex;align-items:center;gap:4px;flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;white-space:nowrap}
+  .sbar .tn .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis}
+  .sbar .tn.home{justify-content:flex-end;color:#7ab0ff}
+  .sbar .tn.away{justify-content:flex-start;color:#ff8f8f}
+  .sbar .chip{
+    flex:0 0 auto;padding:1px 5px;border:1px solid rgba(255,255,255,.28);border-radius:999px;
+    color:rgba(255,255,255,.72);font-size:10px;font-weight:700;white-space:nowrap;
+  }
+  .sbar .sc{font-size:20px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums;flex-shrink:0}
+  .sbar .meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0}
+  .sbar .clock{
+    font-size:17px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;
+    letter-spacing:.5px;line-height:1.1;padding:1px 8px;border-radius:8px;
+    background:color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  .sbar .clock .sec{font-size:11px;font-weight:700;color:#b9c6da;letter-spacing:0;margin-left:1px}
+  .sbar .phase{
+    font-size:10px;font-weight:700;letter-spacing:.5px;border-radius:999px;padding:1px 7px;
+    border:1px solid var(--border);color:var(--text-muted);white-space:nowrap;
+  }
+  .sbar .phase.live{color:#ff6b6b;border-color:#ff6b6b}
+  .sbar .league{font-size:10px;font-weight:700;color:var(--accent);background:rgba(79,140,255,.15);border-radius:999px;padding:1px 7px}
+
+  /* ── 결정 안건 박스 ───────────────────────────────── */
+  .gate{
+    margin-top:20px;background:#12161f;border:1px solid #33405a;border-radius:12px;overflow:hidden;
+    max-width:1100px;
+  }
+  .gate > h3{
+    background:linear-gradient(90deg,#1b2740,#141a26);padding:10px 15px;font-size:13.5px;
+    border-bottom:1px solid #33405a;display:flex;align-items:center;gap:8px;
+  }
+  .gate > h3::before{content:"결정";font-size:10px;font-weight:800;color:#0f1115;background:#8ab4ff;border-radius:5px;padding:2px 7px}
+  .gate .gb{padding:14px 16px}
+  .gate .prob{color:#dfe6ef;font-size:13px;margin-bottom:12px}
+  .opts{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(255px,1fr))}
+  .opt{background:#161b26;border:1px solid var(--border);border-radius:10px;padding:11px 13px}
+  .opt.rec{border-color:#3d6b4d;background:#141d18}
+  .opt h4{font-size:12.5px;margin-bottom:5px;display:flex;align-items:center;gap:6px}
+  .opt h4 .k{font-size:10.5px;font-weight:800;background:#2a3242;color:#cdd8e8;border-radius:5px;padding:1px 6px}
+  .opt.rec h4 .k{background:#2c5c3f;color:#c8f2d9}
+  .opt .d{font-size:12px;color:#b6c0cd;line-height:1.6}
+  .opt .to{font-size:11.5px;color:#8e9aa8;margin-top:7px;border-top:1px dashed #2f3948;padding-top:6px}
+  .opt .to b{color:#cfd8e3;font-weight:600}
+  .recline{
+    margin-top:13px;background:#132018;border:1px solid #2e5540;border-radius:9px;padding:10px 13px;
+    font-size:12.8px;color:#d3ecdd;
+  }
+  .recline b{color:#8ef0b8}
+
+  /* ── 표 ───────────────────────────────────────────── */
+  table.t{border-collapse:collapse;width:100%;max-width:1100px;font-size:12.6px;margin:12px 0}
+  table.t th,table.t td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+  table.t th{background:var(--surface);color:#c9d3e0;font-weight:700;font-size:12px}
+  table.t td.mono{font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#b7c2d0}
+  table.t tr:nth-child(even) td{background:#12151c}
+
+  /* ── 컨트롤 ───────────────────────────────────────── */
+  .ctrls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  .btn{
+    background:var(--surface);border:1px solid var(--border);color:#dbe4f0;font:inherit;font-size:12.5px;
+    font-weight:600;border-radius:9px;padding:7px 13px;cursor:pointer;
+  }
+  .btn:hover{border-color:#42536e;background:#16203180}
+  .btn[aria-pressed="true"]{background:#1c2841;color:#dbe7ff;border-color:#3c5279}
+  .btn.pri{background:#1d3b6e;border-color:#2f5aa8;color:#dbe7ff}
+  .btn.home{border-color:#2a5099;color:#a9c8ff}
+  .btn.away{border-color:#8a2f2f;color:#ffb4b4}
+  .btn.sm{font-size:11.5px;padding:5px 10px}
+  label.chk{display:inline-flex;align-items:center;gap:6px;font-size:12.3px;color:#c3cbd6;cursor:pointer}
+  label.chk input{accent-color:var(--accent)}
+  .hint{color:var(--text-muted);font-size:11.7px}
+
+  /* ── 피치 캔버스 ─────────────────────────────────── */
+  .pitchWrap{position:relative;border-radius:10px;overflow:hidden;background:#0f1420}
+  canvas.pitch{display:block;width:100%;cursor:pointer}
+  .toast{
+    position:absolute;left:50%;top:10px;transform:translateX(-50%);
+    background:rgba(8,12,20,.92);border:1px solid #3a4658;border-radius:8px;
+    padding:5px 12px;font-size:12px;color:#e6edf7;pointer-events:none;opacity:0;transition:opacity .2s;
+  }
+  .toast.on{opacity:1}
+
+  /* 선수 정보 카드 */
+  .infoRow{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .infoRow > .pitchCol{flex:1 1 380px;min-width:0}
+  .infoRow > .cardCol{flex:0 1 300px;min-width:0}
+  body[data-vp="phone"] .infoRow{display:block}
+  body[data-vp="phone"] .infoRow > .cardCol{margin-top:12px}
+  .pcard{background:var(--surface);border:1px solid var(--border);border-radius:11px;overflow:hidden}
+  .pcard .ph{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--border)}
+  .pcard .av{
+    width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:13px;
+    color:#fff;flex:0 0 auto;border:2px solid transparent;
+  }
+  .pcard .nm{min-width:0}
+  .pcard .nm b{display:block;font-size:14px}
+  .pcard .nm span{display:block;font-size:11.5px;color:var(--text-muted)}
+  .pcard .who{margin-left:auto;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 8px;white-space:nowrap}
+  .who.mine{background:#14331f;color:#8ef0b8;border:1px solid #2e5540}
+  .who.opp{background:#2b1a1a;color:#ffb0b0;border:1px solid #5a2c2c}
+  .pcard .pb{padding:11px 12px}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
+  .stat{background:var(--sunk);border:1px solid var(--border);border-radius:8px;padding:6px 8px;text-align:center}
+  .stat b{display:block;font-size:14px;font-variant-numeric:tabular-nums}
+  .stat span{font-size:10px;color:var(--text-muted)}
+  .pcard textarea{
+    width:100%;min-height:64px;resize:vertical;background:var(--sunk);border:1px solid var(--border);
+    border-radius:8px;color:var(--text);font:inherit;font-size:12.5px;padding:8px 9px;
+  }
+  .pcard .saveline{font-size:11px;color:var(--text-muted);margin-top:5px}
+  .pcard .empty{color:var(--text-muted);font-size:12.3px;text-align:center;padding:26px 8px}
+
+  /* ── 시크바 ───────────────────────────────────────── */
+  .seek{background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:11px 13px}
+  .seekTop{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap}
+  .seekClock{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:.4px}
+  .seekBadge{
+    font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap;
+    background:#3a2a12;border:1px solid #6a4a17;color:#ffd98a;display:none;
+  }
+  .seekBadge.on{display:inline-block}
+  .seekNow{
+    margin-left:auto;background:#1d3b6e;border:1px solid #2f5aa8;color:#dbe7ff;font:inherit;font-size:11.5px;
+    font-weight:700;border-radius:999px;padding:4px 12px;cursor:pointer;display:none;
+  }
+  .seekNow.on{display:inline-block}
+  .seekLive{margin-left:auto;font-size:10.5px;color:#ff8f8f;font-weight:700;display:flex;align-items:center;gap:5px}
+  .seekLive i{width:7px;height:7px;border-radius:50%;background:#ff6b6b;display:inline-block;animation:blink 1.6s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  .track{
+    position:relative;height:34px;border-radius:8px;background:var(--sunk);
+    border:1px solid var(--border);overflow:hidden;touch-action:none;cursor:pointer;user-select:none;
+  }
+  .track .seg{position:absolute;top:0;bottom:0}
+  .segPast{background:linear-gradient(180deg,#2f6fd0,#25538f)}
+  .segUnseen{background:#1f2735}
+  .segFuture{
+    background:
+      repeating-linear-gradient(135deg,#171b24 0 7px,#12151c 7px 14px);
+    border-left:1px dashed #465773;
+  }
+  .segFuture::after{
+    content:"아직 진행되지 않음";position:absolute;inset:0;display:grid;place-items:center;
+    font-size:10px;color:#5f6d84;letter-spacing:.02em;white-space:nowrap;overflow:hidden;
+  }
+  .liveMark{position:absolute;top:-2px;bottom:-2px;width:2px;background:#ff6b6b;box-shadow:0 0 6px #ff6b6b}
+  .liveMark::after{
+    content:"현재";position:absolute;top:-1px;left:4px;font-size:9.5px;font-weight:800;color:#ffb4b4;
+    background:rgba(20,10,12,.85);border-radius:3px;padding:0 3px;white-space:nowrap;
+  }
+  .headMark{
+    position:absolute;top:50%;width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;
+    background:#fff;border:2px solid #1d3b6e;box-shadow:0 1px 5px rgba(0,0,0,.6);
+  }
+  .pin{
+    position:absolute;top:3px;width:3px;height:9px;border-radius:2px;transform:translateX(-1.5px);
+    border:0;padding:0;cursor:pointer;
+  }
+  .pin.major{height:13px;width:4px}
+  .pin.locked{opacity:.3;cursor:not-allowed}
+  .seekFoot{display:flex;justify-content:space-between;color:var(--text-muted);font-size:10.5px;margin-top:5px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:9px;font-size:11px;color:var(--text-muted)}
+  .legend i{width:12px;height:9px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}
+
+  /* ── 로그 패널 리플리카 ───────────────────────────── */
+  .logPanel{background:var(--bg-elevated);padding:10px 12px}
+  ol.log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+  ol.log li{display:flex;align-items:baseline;gap:7px;border-radius:4px;padding:1px 3px}
+  ol.log .min{color:var(--text-muted);font-size:11px;min-width:30px;text-align:right;font-variant-numeric:tabular-nums;flex-shrink:0}
+  ol.log .lab{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  ol.log .side{color:var(--text-muted);font-size:10.5px;flex-shrink:0}
+  ol.log .side.home{color:#7ab0ff}
+  ol.log .side.away{color:#ff8f8f}
+  ol.log .xg{color:var(--text-muted);font-size:10.5px;flex-shrink:0}
+  ol.log li.major{font-size:13.5px;font-weight:800;border-left:3px solid currentColor;padding-left:6px;margin:2px 0}
+  ol.log li.minor{font-size:10.5px;opacity:.6}
+  ol.log li.goal{color:#22c55e} ol.log li.shot{color:#fbbf24} ol.log li.save{color:#38bdf8}
+  ol.log li.foul{color:#fb923c} ol.log li.card{color:#facc15} ol.log li.offside{color:#c084fc}
+  ol.log li.penalty{color:#f472b6} ol.log li.sub{color:#a3e635}
+  .clipwarn{outline:1px dashed #7a4b1e;outline-offset:1px}
+
+  /* ── 화면 지도 ────────────────────────────────────── */
+  .mapShell{
+    width:280px;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#0f1420;flex:0 0 auto;
+  }
+  .mapShell .zone{border-bottom:1px solid var(--hairline);padding:9px 11px;position:relative}
+  .mapShell .zone:last-child{border-bottom:0}
+  .mapShell .zone .zn{
+    position:absolute;right:8px;top:7px;font-size:10px;font-weight:800;color:#0f1115;background:var(--accent);
+    border-radius:5px;padding:1px 6px;
+  }
+  .mapShell .zt{font-size:11.5px;color:#c3cbd6}
+  .mapShell .zs{font-size:10.5px;color:var(--text-muted)}
+  .mapShell .zpitch{height:96px;background:#14532d;display:grid;place-items:center;color:#bfe3c8;font-size:11px}
+
+  /* ── 요약표 ───────────────────────────────────────── */
+  .summary{border:1px solid #33405a;border-radius:14px;overflow:hidden;background:#12161f;max-width:1200px}
+  .summary h2{background:linear-gradient(90deg,#1b2740,#141a26);padding:12px 16px;font-size:16px;border-bottom:1px solid #33405a}
+  .summary .sb{padding:6px 16px 16px}
+  table.sum{border-collapse:collapse;width:100%;font-size:12.7px;margin-top:10px}
+  table.sum th,table.sum td{border:1px solid var(--border);padding:9px 11px;text-align:left;vertical-align:top}
+  table.sum th{background:var(--surface);font-size:12px;color:#c9d3e0}
+  table.sum td.rec{background:#132018;color:#d3ecdd}
+  table.sum td.rec b{color:#8ef0b8}
+  .qno{font-weight:800;color:#8ab4ff;white-space:nowrap}
+
+  footer.pg{color:var(--text-muted);font-size:11.5px;margin-top:26px;border-top:1px solid var(--border);padding-top:14px}
+</style>
+</head>
+<body data-vp="phone">
+
+<header class="page">
+  <div class="wrap">
+    <h1>경기 화면 UX 목업 — 시계 · 선수 하이라이트 · 과거 시크바 · 이름 로그 · 행동 이펙트</h1>
+    <div class="sub">에픽 #406 (요구 5-1 · 5-2 · 5-3 · 5-4 · 4-2) · 개발 착수 전 <b>선검사 게이트</b> · 로컬 파일 목업(외부 전송 없음)</div>
+    <div class="lead">
+      <ol>
+        <li><b>이게 뭔가</b> — HMB 경기 화면에 넣을 5가지 변경을 <b>실제로 동작하는 상태</b>로 만들어 본 목업이다. 시계는 째깍이고, 선수는 눌러서 고를 수 있고, 시크바는 실제로 드래그되며 미래에서 막힌다.</li>
+        <li><b>무엇을 결정받나</b> — 각 섹션 끝의 <b>[결정 안건]</b> 박스 4~5개. 옵션 A/B/C 를 눈으로 비교하고 하나를 고르면 된다. 맨 아래 <b>결정 요약표</b>에 권장안이 모여 있다.</li>
+        <li><b>왜 지금 물어보나</b> — 여기서 고른 답에 따라 코드 구조가 갈린다(시계는 데이터 축, 하이라이트는 픽셀 계약, 이펙트는 엔진에 이벤트를 더 요청할지 여부). 만든 뒤에 바꾸면 되돌리는 비용이 크다.</li>
+      </ol>
+    </div>
+  </div>
+</header>
+
+<div class="vpbar">
+  <div class="wrap inner">
+    <span class="lbl">화면 폭</span>
+    <span class="seg">
+      <button data-vpbtn="phone" aria-pressed="true">📱 폰 390×844</button>
+      <button data-vpbtn="desk" aria-pressed="false">🖥 데스크탑</button>
+    </span>
+    <span class="hint">— 폰 폭에서 글자가 넘치는지 그 자리에서 확인하려고 둔 토글이다.</span>
+    <span class="jump">
+      <a href="#s1">1 시계</a><a href="#s2">2 하이라이트</a><a href="#s3">3 시크바</a><a href="#s4">4 로그</a><a href="#s5">5 이펙트</a><a href="#sum">요약</a>
+    </span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <!-- ══════════════ 화면 지도 ══════════════ -->
+  <section class="sec" id="map">
+    <div class="secHead"><span class="secNo">지도</span><h2>이 5가지가 화면 어디에 붙나</h2></div>
+    <p class="secIntro">경기 화면은 <b>3영역 고정 셸</b>이다 — 위 스코어바 / 가운데 무대(피치) / 아래 정보 시트. 문서는 스크롤하지 않고 패널 안에서만 스크롤한다. 아래 다섯 변경이 각각 어디에 앉는지부터 본다.</p>
+    <div class="duo" style="align-items:stretch">
+      <div class="mapShell">
+        <div class="zone"><span class="zn">1</span><div class="zt">[A] 스코어바</div><div class="zs">팀명 · 스코어 · <b>시계</b> · 상태</div></div>
+        <div class="zone" style="padding:0">
+          <div class="zpitch"><div style="text-align:center"><span class="zn" style="position:static;display:inline-block;margin-bottom:4px">2 · 5</span><br>[B] 무대(캔버스)<br><span style="color:#8fc39c">선수 하이라이트 · 행동 이펙트</span></div></div>
+        </div>
+        <div class="zone"><span class="zn">3</span><div class="zt">재생 컨트롤 · <b>시크바</b></div><div class="zs">무대 아래(돌려보기) 또는 무대 위 오버레이</div></div>
+        <div class="zone"><span class="zn">4</span><div class="zt">[D] 정보 시트 — 통계 · <b>로그</b> · 후반 지시</div><div class="zs">유일한 스크롤 영역</div></div>
+        <div class="zone"><div class="zt">[C] 토글바</div><div class="zs">변경 없음</div></div>
+      </div>
+      <div style="flex:1 1 380px;min-width:0">
+        <table class="t">
+          <tr><th style="width:52px">번호</th><th>요구</th><th>지금</th><th>바뀌는 것</th></tr>
+          <tr><td class="qno">1</td><td>초단위 시계 (5-1)</td><td><code>48'</code> — 분만</td><td>초까지 표시. <b>표기 방식이 안건</b></td></tr>
+          <tr><td class="qno">2</td><td>선수 하이라이트 (5-2)</td><td>선택 상태 자체가 없음</td><td>토큰 클릭 → 링 + 정보 카드. 내 선수/상대 구분</td></tr>
+          <tr><td class="qno">3</td><td>과거 전용 시크바 (5-3)</td><td>클램프 로직은 있는데 <b>UI 가 안 씀</b></td><td>미래 잠금 · 현재 표시 · [현재로] 복귀</td></tr>
+          <tr><td class="qno">4</td><td>로그 = 선수 이름 (5-4)</td><td><code>⚽ GOAL #7</code></td><td><code>⚽ 골! 손번개(7)</code> + 라벨 한글화</td></tr>
+          <tr><td class="qno">5</td><td>행동 이펙트 (4-2)</td><td>걷어내기 = 완전 미시각화</td><td>수신·가로챔·걷어내기·태클을 팀색으로</td></tr>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 1. 초단위 시계 ══════════════ -->
+  <section class="sec" id="s1">
+    <div class="secHead"><span class="secNo">1</span><h2>초단위 시계</h2><span class="req">요구 5-1 — "경기중 시간을 초까지 표시"</span></div>
+    <p class="secIntro">
+      배경부터. <b>엔진은 45분짜리 하프를 1350틱(=1350초)으로 돌리고, 표기만 0~90' 로 스케일해서 내보낸다.</b>
+      그래서 로그·스냅샷에 <b>구워진 분(<code>minute</code>)</b>이 진실이고, 화면이 <code>틱 ÷ 60</code> 으로 분을 직접 만들면
+      한 화면이 두 시각을 말한다 — 실제로 그렇게 터졌다(<b>#388</b>: 헤더 <code>25'</code> 옆에 로그줄 <code>48'</code>, 정확히 2배).
+      그 사고 이후 규율이 <i>"화면에서 표기 스케일을 다시 유도하지 마라"</i> 이고, 그래서 <b>초 표기를 일부러 버렸다.</b>
+    </p>
+    <div class="note">
+      <b>안전한 재료가 이미 있다.</b> 뷰어 코어에 <code>clockScaleOf(events, snaps)</code> 가 있고, 이건 스케일을 상수로 적는 게 아니라
+      <b>로그의 휘슬·스냅샷에서 읽어낸다</b>(<code>half_whistle.minute ÷ (tick÷60)</code>). 즉 화면이 규칙을 새로 만드는 게 아니라
+      <b>데이터가 말하는 스케일을 그대로 쓰는</b> 것이라 #388 금지 조항에 걸리지 않는다. 지금은 QA 컨트롤(<code>viewer-clock-half*</code>)에만 쓰이고 일반 유저 헤더엔 안 뜬다.
+    </div>
+    <div class="note warn">
+      <b>⚠️ 목업을 보면 바로 눈에 띄는 것 — 초가 2씩 뛴다.</b> 엔진 1틱 = 실제 1초인데 표기는 2배 스케일이라
+      <code>32" → 34" → 36"</code> 으로 짝수만 지나간다. 이건 버그가 아니라 <b>스케일 표기의 구조적 귀결</b>이다.
+      아래 토글로 <b>보간(1초씩 부드럽게)</b> 을 켜 보고 어느 쪽이 나은지 같이 봐 달라 — 보간은 "화면이 데이터에 없는 값을 만든다"는 대가가 있다.
+    </div>
+
+    <div class="ctrls">
+      <button class="btn" id="c1Play" aria-pressed="true">⏸ 멈춤</button>
+      <label class="chk"><input type="checkbox" id="c1Smooth"> 초를 보간해서 1초씩 흐르게(데이터엔 없는 값)</label>
+      <span class="hint" id="c1Hint">현재: 엔진 틱 페이스 그대로 — 2초씩</span>
+    </div>
+
+    <div class="duo">
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNow">현행</span> 분만 표시</div>
+        <div class="sbar">
+          <span class="back">← 로비</span>
+          <span class="teams">
+            <span class="tn home"><span class="lbl">별희 FC</span><span class="chip">내 팀</span></span>
+            <span class="sc">2 : 1</span>
+            <span class="tn away"><span class="lbl">천둥만 유나이티드</span></span>
+          </span>
+          <span class="meta">
+            <span class="league">리그 R7</span>
+            <span class="clock">48'</span>
+            <span class="phase live">후반 진행 중</span>
+          </span>
+        </div>
+        <div class="cardFoot">유저가 "지금 몇 분인지"는 알지만 "이 장면이 몇 초에 일어났는지"는 못 말한다.</div>
+      </div>
+    </div>
+
+    <div class="duo">
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNew">제안 A</span> 통합 표기 <code>48'32"</code></div>
+        <div class="sbar">
+          <span class="back">← 로비</span>
+          <span class="teams">
+            <span class="tn home"><span class="lbl">별희 FC</span><span class="chip">내 팀</span></span>
+            <span class="sc">2 : 1</span>
+            <span class="tn away"><span class="lbl">천둥만 유나이티드</span></span>
+          </span>
+          <span class="meta">
+            <span class="league">리그 R7</span>
+            <span class="clock" id="c1a">48'32"</span>
+            <span class="phase live">후반 진행 중</span>
+          </span>
+        </div>
+        <div class="cardFoot">한 덩어리라 읽기 쉽고 QA 컨트롤·장면 목록과 표기가 같아진다. 대신 폭이 넓어 좁은 헤더에서 팀명을 더 밀어낸다.</div>
+      </div>
+
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNew">제안 B</span> 분 크게 + 초 작게(보조)</div>
+        <div class="sbar">
+          <span class="back">← 로비</span>
+          <span class="teams">
+            <span class="tn home"><span class="lbl">별희 FC</span><span class="chip">내 팀</span></span>
+            <span class="sc">2 : 1</span>
+            <span class="tn away"><span class="lbl">천둥만 유나이티드</span></span>
+          </span>
+          <span class="meta">
+            <span class="league">리그 R7</span>
+            <span class="clock">48'<span class="sec" id="c1b">32"</span></span>
+            <span class="phase live">후반 진행 중</span>
+          </span>
+        </div>
+        <div class="cardFoot">분이 1급 정보로 남고 초는 보조. <b>분은 로그가 구운 값</b>, 초만 유도 스케일 — 두 축이 어긋날 여지가 남는다(분 경계에서 반올림 차).</div>
+      </div>
+
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNew">제안 C</span> 라이브만 초 · 종료 후엔 분</div>
+        <div class="sbar">
+          <span class="back">← 로비</span>
+          <span class="teams">
+            <span class="tn home"><span class="lbl">별희 FC</span><span class="chip">내 팀</span></span>
+            <span class="sc">2 : 1</span>
+            <span class="tn away"><span class="lbl">천둥만 유나이티드</span></span>
+          </span>
+          <span class="meta">
+            <span class="league">리그 R7</span>
+            <span class="clock" id="c1c">48'32"</span>
+            <span class="phase live">후반 진행 중</span>
+          </span>
+        </div>
+        <div class="sbar" style="border-top:1px solid var(--border)">
+          <span class="back">← 로비</span>
+          <span class="teams">
+            <span class="tn home"><span class="lbl">별희 FC</span><span class="chip">내 팀</span></span>
+            <span class="sc">2 : 1</span>
+            <span class="tn away"><span class="lbl">천둥만 유나이티드</span></span>
+          </span>
+          <span class="meta">
+            <span class="league">리그 R7</span>
+            <span class="clock">90'</span>
+            <span class="phase">경기 종료</span>
+          </span>
+        </div>
+        <div class="cardFoot">위=라이브 / 아래=종료. 진행 중엔 "지금 흐르고 있다"는 신호가 초라 생동감이 크고, 종료 화면은 조용해진다. 대신 <b>같은 헤더가 상태에 따라 다른 모양</b>이 된다.</div>
+      </div>
+    </div>
+
+    <div class="gate">
+      <h3>안건 ① — 초 시계 표기 방식</h3>
+      <div class="gb">
+        <div class="prob">
+          <b>문제:</b> 초를 보여주려면 표기 스케일(틱→분)을 화면이 알아야 하는데, 그 재유도가 #388 사고의 형태였다.
+          우회로(<code>clockScaleOf</code> — 데이터에서 읽어낸다)는 있다. 남은 것은 <b>초를 얼마나 크게 보여줄 것인가</b>이고,
+          그건 되돌리기 쉽지 않은 <b>헤더 정보 위계</b> 결정이다.
+        </div>
+        <div class="opts">
+          <div class="opt">
+            <h4><span class="k">A</span> 통합 <code>48'32"</code></h4>
+            <div class="d">분·초를 한 덩어리로. 시계 축을 <b>하나</b>로 통일한다(분도 유도 스케일에서 나온다).</div>
+            <div class="to"><b>+</b> 축이 하나라 어긋날 곳이 없고 QA 도구·장면 목록과 표기가 같다.<br><b>−</b> #388 이 지킨 <i>"분은 구운 <code>minute</code>"</i> 을 버린다. 헤더 폭도 가장 넓다(폰에서 팀명 잘림 압박).</div>
+          </div>
+          <div class="opt rec">
+            <h4><span class="k">B</span> 분 크게 + 초 작게 <span style="font-weight:400;color:#8ef0b8">(권장)</span></h4>
+            <div class="d">분은 <b>지금 그대로 구운 <code>minute</code></b>, 초만 <code>clockScaleOf</code> 로 붙인다. 시각적으로도 분이 주, 초가 보조.</div>
+            <div class="to"><b>+</b> #388 규율을 안 건드린다(분 축 불변) → 기존 계약 8건이 그대로 산다. 폭 증가도 최소.<br><b>−</b> 분 경계에서 초가 <code>59"</code>인데 분이 이미 넘어간 1틱 어긋남이 이론상 가능 → 초를 분에 <b>앵커</b>해야 한다(구현 조건).</div>
+          </div>
+          <div class="opt">
+            <h4><span class="k">C</span> 라이브만 초</h4>
+            <div class="d">진행 중엔 <code>48'32"</code>, 종료·결과 화면은 <code>90'</code>. 초를 "살아있음의 신호"로만 쓴다.</div>
+            <div class="to"><b>+</b> 라이브 체감이 가장 크고 결과 화면은 깔끔.<br><b>−</b> 상태에 따라 헤더 모양이 바뀐다 = 유저가 두 형태를 학습해야 한다. 돌려보기에서 "몇 초 장면"을 못 말해 요구의 절반만 충족.</div>
+          </div>
+        </div>
+        <div class="recline">
+          <b>권장 = B.</b> 요구("초까지 보이게")를 충족하면서 #388 이 세운 <b>"분의 축은 구운 <code>minute</code> 하나"</b> 를 유지하는 유일한 안이다.
+          초 보간은 <b>끄는 쪽</b>을 권장한다 — 데이터에 없는 값을 화면이 만들면 그게 다음 #388 이 된다(짝수 초로 뛰는 건 실제 엔진 해상도의 정직한 표현이다).
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 2. 선수 하이라이트 ══════════════ -->
+  <section class="sec" id="s2">
+    <div class="secHead"><span class="secNo">2</span><h2>선수 하이라이트</h2><span class="req">요구 5-2 — "선택한 선수가 누군지 피치에서 보이게(내 선수 · 상대 선수 둘 다)"</span></div>
+    <p class="secIntro">
+      <b>피치 위 토큰을 눌러 보라.</b> 링이 붙고 옆(폰에선 아래)에 정보 카드가 뜬다. 내 선수는 <b>프롬프트 입력</b>까지,
+      상대 선수는 <b>정보 열람</b>만. 코어에는 지금 "선택"이라는 개념 자체가 없어서 신설하는 영역이다.
+    </p>
+    <div class="note">
+      <b>같은 화면에서 겹침을 확인할 수 있게 해 뒀다.</b> 홈 <b>9번</b>은 <b>볼 소유자</b>(노란 링 <code>#fde047</code>, 반경 R+2),
+      어웨이 <b>4번</b>은 <b>경고 카드 마커</b>(반경 R+6 + 카드 아이콘)를 달고 있다. 선택 링이 이 둘과 안 싸우는지 눌러서 봐 달라.
+      (목업의 선택 링은 <b>R+9</b> 바깥에 그린다.)
+    </div>
+    <div class="note bad">
+      <b>⚠️ 실데이터의 함정 — 홈 7번과 어웨이 7번은 같은 <code>playerId</code>(P077)다.</b>
+      유저 덱과 봇 로스터가 같은 선수 카탈로그를 공유해서 라이브 하프의 상당수가 이 상태다(#324).
+      아래 체크박스로 <b>"단독 id 키"</b>를 켜고 7번을 눌러 보면 <b>반대 팀이 같이 켜진다</b> — 이게 구현에서 반드시
+      <code>skinKeyOf(team, playerId)</code> 로 키를 잡아야 하는 이유다.
+    </div>
+
+    <div class="ctrls">
+      <span class="hint">링 스타일</span>
+      <button class="btn sm" data-ring="pulse" aria-pressed="true">A 펄스 링</button>
+      <button class="btn sm" data-ring="dash" aria-pressed="false">B 파선 링(회전)</button>
+      <button class="btn sm" data-ring="spot" aria-pressed="false">C 발밑 스포트라이트</button>
+      <span style="width:12px"></span>
+      <button class="btn sm home" id="selOwner">소유자(홈 9번) 선택</button>
+      <button class="btn sm away" id="selCard">카드 받은 선수(어웨이 4번) 선택</button>
+      <button class="btn sm" id="selClear">선택 해제</button>
+    </div>
+    <div class="ctrls">
+      <label class="chk"><input type="checkbox" id="badKey"> <b>버그 재현</b> — <code>playerId</code> 단독 키로 하이라이트(팀 무시)</label>
+      <label class="chk"><input type="checkbox" id="showKeys"> 토큰에 키 표시</label>
+    </div>
+
+    <div class="duo">
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNew">제안</span> 선택 = 링 + 정보 카드</div>
+        <div class="cardBody">
+          <div class="infoRow">
+            <div class="pitchCol">
+              <div class="pitchWrap">
+                <canvas class="pitch" id="pitch2"></canvas>
+                <div class="toast" id="toast2"></div>
+              </div>
+              <div class="hint" style="margin-top:7px">토큰을 클릭 → 선택. 홈·어웨이 각각 1명씩 동시에 선택할 수 있다(내가 고른 선수 + 정보 보는 상대).</div>
+            </div>
+            <div class="cardCol">
+              <div class="pcard" id="pcard">
+                <div class="empty">선수를 눌러 보세요</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cardFoot">현행 화면에는 이 상호작용이 <b>통째로 없다</b> — 토큰을 눌러도 아무 일도 일어나지 않는다(비교 대상이 빈 화면이라 좌우 배치를 생략했다).</div>
+      </div>
+    </div>
+
+    <table class="t">
+      <tr><th style="width:120px">축</th><th>내 선수</th><th>상대 선수</th></tr>
+      <tr><td>링 색·굵기</td><td><b>흰색</b>, 굵게(3px)</td><td>슬레이트(<code>#94a3b8</code>), 얇게(2px)</td></tr>
+      <tr><td>이름표</td><td>팀색 배경 + 흰 글자</td><td>반투명 배경 + 흐린 글자</td></tr>
+      <tr><td>카드 내용</td><td>능력치 + <b>지시 입력칸</b>(자동 저장)</td><td>능력치 + 시즌 기록 (<b>읽기 전용</b>)</td></tr>
+      <tr><td>남는 시간</td><td>선택 유지(다시 누르면 해제)</td><td>선택 유지</td></tr>
+    </table>
+
+    <div class="gate">
+      <h3>안건 ② — 선택 링 스타일</h3>
+      <div class="gb">
+        <div class="prob">
+          <b>문제:</b> 토큰 주변엔 이미 신호가 둘 있다 — <b>볼 소유자 노란 링</b>(R+2)과 <b>카드 마커</b>(R+6, 노랑/빨강).
+          여기에 선택 링을 더하면 세 겹이 되고, 셋 다 켜진 선수에서 무엇이 무엇인지 못 읽으면 신호가 오히려 줄어든다.
+          게다가 web 의 <b>픽셀 계약 3종</b>(<code>p218-legend-arena</code>·<code>p285-icon-policy</code>·<code>p3-char-skin</code>)이 토큰 주변 픽셀을 재고 있어,
+          무엇을 그리든 그 계약이 먼저 깨진다(= 어느 안이든 계약 갱신 비용은 동일하다).
+        </div>
+        <div class="opts">
+          <div class="opt rec">
+            <h4><span class="k">A</span> 펄스 링 <span style="font-weight:400;color:#8ef0b8">(권장)</span></h4>
+            <div class="d">R+9 에 링 하나. 반경·투명도가 천천히 맥동한다. 정지 화면에서도 보이고 움직여서 눈에 띈다.</div>
+            <div class="to"><b>+</b> 소유자 링(R+2)·카드 마커(R+6)와 <b>반경이 갈려</b> 세 겹이어도 층이 읽힌다. 구현·계약이 가장 단순.<br><b>−</b> 맥동이 계속 돌아 캔버스가 매 프레임 다시 그려진다(이미 rAF 루프라 실비용은 작다).</div>
+          </div>
+          <div class="opt">
+            <h4><span class="k">B</span> 파선 링(회전)</h4>
+            <div class="d">점선 링이 천천히 회전. "선택 도구"라는 관용 표현이라 의미가 즉시 읽힌다.</div>
+            <div class="to"><b>+</b> 노란 실선(소유자)과 <b>선 종류</b>로 갈려서 색이 겹쳐도 구분된다.<br><b>−</b> 32px 토큰에서 점선은 조각이 3~4개뿐이라 <b>폰에서 거의 실선처럼 보인다</b>(목업에서 폰 폭으로 확인해 보라).</div>
+          </div>
+          <div class="opt">
+            <h4><span class="k">C</span> 발밑 스포트라이트</h4>
+            <div class="d">토큰 아래 타원 글로우. 링을 안 쓰니 위쪽 신호(카드 아이콘)와 절대 안 겹친다.</div>
+            <div class="to"><b>+</b> 겹침 위험이 구조적으로 0. 축구 중계 톤에도 맞는다.<br><b>−</b> 잔디 위 저채도 글로우라 <b>대비가 가장 약하다</b>. 선수가 몰린 구역에서 옆 선수의 것으로 보인다.</div>
+          </div>
+        </div>
+        <div class="recline">
+          <b>권장 = A(펄스 링).</b> 세 신호를 <b>반경으로</b> 층지게 나누는 것이 가장 확실하고, 계약도 "선택 링 반경 &gt; 카드 마커 반경"이라는
+          검사 가능한 성질로 박을 수 있다. 내 선수/상대 구분은 링 스타일이 아니라 <b>색+굵기+이름표</b>로 한다(위 표) — 스타일 축과 소유 축을 섞지 않는다.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 3. 과거 전용 시크바 ══════════════ -->
+  <section class="sec" id="s3">
+    <div class="secHead"><span class="secNo">3</span><h2>과거 전용 시크바</h2><span class="req">요구 5-3 — "동영상 바처럼 보이되 미래로는 못 가고 과거만"</span></div>
+    <p class="secIntro">
+      <b>실제로 드래그된다.</b> 라이브 바에서는 <b>빨간 [현재] 선을 넘어가려 해도 막힌다</b>. 뒤로 끌면
+      <code>과거 보는 중</code> 배지와 <b>[현재로]</b> 버튼이 뜬다. 종료 후 바는 같은 모양이지만 전 구간 자유다.
+    </p>
+    <div class="note">
+      <b>규칙은 이미 코드에 있다 — UI 가 안 쓰고 있을 뿐이다.</b>
+      <code>clampSeek(target, live, active, MS_PER_TICK)</code>(packages/shared)가 <b>뒤로 자유 · 앞으로 <code>liveTick + grace</code> 제한</b>을 이미 구현해 뒀고
+      250ms 복구 루프만 이걸 쓴다. 유저가 만지는 슬라이더는 <b>클램프를 안 거치는 raw 호출</b>이라 지금은 미래로도 끌린다.
+      또 라이브 슬라이더의 <code>max</code> 가 <code>snapCount-1</code>(하프 전체)이라 <b>바의 오른쪽 끝이 곧 스포일러</b>다.
+    </div>
+    <div class="note warn">
+      <b>⚠️ 라이브는 서버 권위 시계 위에서 돈다.</b> 250ms 마다 도는 복구 루프가 재생 위치를 서버가 말하는 지점(<code>liveTick</code>)으로 <b>끌어당긴다</b>
+      — 지금은 화면이 뜰 때마다 <code>jumpToTick(liveTick); play()</code> 를 하고, 표류(drift)가 스냅샷의 12% 를 넘으면 점프해서 따라붙는다.
+      그래서 "유저가 과거를 보는 중"이라는 <b>모드 플래그</b>가 없으면, 뒤로 끌어 놓아도 0.25초 뒤에 현재로 튕겨 온다.
+      아래 안건 ③ 은 그 모드에서 <b>어떻게 빠져나오냐</b>를 묻는 것이다.
+    </div>
+
+    <div class="duo">
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNow">현행</span> 진행 중에도 끝까지 끌린다</div>
+        <div class="cardBody">
+          <div class="seek">
+            <div class="seekTop">
+              <span class="seekClock" id="oldClock">20'40"</span>
+              <span class="seekLive"><i></i>LIVE</span>
+            </div>
+            <div class="track" id="oldTrack">
+              <div class="seg segPast" style="left:0;width:46%"></div>
+              <div class="seg segUnseen" style="left:46%;width:54%"></div>
+              <div class="headMark" style="left:46%"></div>
+              <div class="pins" id="oldPins"></div>
+            </div>
+            <div class="seekFoot"><span>0'00"</span><span>45'00"</span></div>
+          </div>
+          <div class="hint" style="margin-top:8px">현재 지점 표시가 없고, 오른쪽 끝까지 끌면 <b>아직 안 일어난 장면</b>이 열린다. 핀도 미래 것까지 다 보인다(#233 스포일러 규칙과 충돌).</div>
+        </div>
+      </div>
+
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNew">제안 · 라이브</span> 3구간 + 미래 잠금</div>
+        <div class="cardBody">
+          <div class="seek" id="seekLive">
+            <div class="seekTop">
+              <span class="seekClock" data-role="clock">0'00"</span>
+              <span class="seekBadge" data-role="badge">⏪ 과거 보는 중</span>
+              <button class="seekNow" data-role="now">현재로 ▶</button>
+              <span class="seekLive" data-role="livetag"><i></i>LIVE</span>
+            </div>
+            <div class="track" data-role="track">
+              <div class="seg segPast" data-role="past"></div>
+              <div class="seg segUnseen" data-role="unseen"></div>
+              <div class="seg segFuture" data-role="future"></div>
+              <div class="liveMark" data-role="live"></div>
+              <div class="headMark" data-role="head"></div>
+              <div data-role="pins"></div>
+            </div>
+            <div class="seekFoot"><span>0'00"</span><span data-role="right">45'00"</span></div>
+            <div class="legend">
+              <span><i style="background:linear-gradient(180deg,#2f6fd0,#25538f)"></i>재생된 과거</span>
+              <span><i style="background:#1f2735"></i>진행됐지만 안 본 구간</span>
+              <span><i style="background:repeating-linear-gradient(135deg,#171b24 0 4px,#12151c 4px 8px)"></i>아직 안 온 미래(잠김)</span>
+              <span><i style="background:#ff6b6b;width:3px"></i>현재</span>
+            </div>
+          </div>
+          <div class="ctrls" style="margin-top:10px">
+            <label class="chk"><input type="checkbox" id="autoReturn"> 8초 뒤 <b>자동으로</b> 현재로 복귀(옵션 A 체험)</label>
+          </div>
+          <div class="hint">데모라 경기 진행이 실제보다 빠르다(초당 6틱). 미래 구간이나 잠긴 핀을 눌러 보면 막히는 걸 볼 수 있다.</div>
+        </div>
+      </div>
+
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNew">제안 · 종료 후</span> 전 구간 자유</div>
+        <div class="cardBody">
+          <div class="seek" id="seekDone">
+            <div class="seekTop">
+              <span class="seekClock" data-role="clock">0'00"</span>
+              <span class="seekBadge" data-role="badge">⏪ 과거 보는 중</span>
+              <button class="seekNow" data-role="now">현재로 ▶</button>
+              <span style="margin-left:auto;font-size:10.5px;color:var(--text-muted);font-weight:700">경기 종료 · 돌려보기</span>
+            </div>
+            <div class="track" data-role="track">
+              <div class="seg segPast" data-role="past"></div>
+              <div class="seg segUnseen" data-role="unseen"></div>
+              <div class="seg segFuture" data-role="future"></div>
+              <div class="liveMark" data-role="live"></div>
+              <div class="headMark" data-role="head"></div>
+              <div data-role="pins"></div>
+            </div>
+            <div class="seekFoot"><span>0'00"</span><span data-role="right">45'00"</span></div>
+            <div class="legend">
+              <span><i style="background:linear-gradient(180deg,#2f6fd0,#25538f)"></i>본 구간</span>
+              <span><i style="background:#1f2735"></i>안 본 구간</span>
+              <span>잠긴 구간 없음 · 핀 전부 활성</span>
+            </div>
+          </div>
+          <div class="hint" style="margin-top:8px">종료 상태에서는 서버 시계가 <code>null</code> 이라 게이트 자체가 꺼진다 — <b>같은 컴포넌트에 잠금만 빠진 모습</b>이다(별도 화면을 만들지 않는다).</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="gate">
+      <h3>안건 ③ — 과거에서 현재로 돌아오는 방법</h3>
+      <div class="gb">
+        <div class="prob">
+          <b>문제:</b> 유저가 뒤로 끌어 장면을 다시 보는 동안, 라이브 경기는 계속 흐른다.
+          "과거 보는 중" 상태를 <b>언제 끝낼 것인가</b>를 정해야 한다 — 복구 루프(250ms)가 헤드를 끌어당기고 있어서
+          이 규칙이 없으면 유저가 과거를 <b>붙잡고 있을 수 없다</b>. 반대로 영영 안 돌아오면 라이브를 놓친다.
+        </div>
+        <div class="opts">
+          <div class="opt">
+            <h4><span class="k">A</span> N초 뒤 자동 복귀</h4>
+            <div class="d">마지막 조작에서 8초(예시) 지나면 스르륵 현재로. 위 체크박스로 켜서 체험할 수 있다.</div>
+            <div class="to"><b>+</b> 유저가 아무것도 안 해도 라이브로 돌아온다 — "따라가고 있다"가 기본값.<br><b>−</b> <b>골 장면을 두 번 보려던 유저의 화면이 스스로 도망간다.</b> 타이머 값이 취향 문제라 계약으로 굳히기도 애매하다.</div>
+          </div>
+          <div class="opt rec">
+            <h4><span class="k">B</span> 수동 [현재로]만 <span style="font-weight:400;color:#8ef0b8">(권장)</span></h4>
+            <div class="d">뒤로 끌면 배지 + [현재로] 버튼. 유저가 누를 때까지 그 자리에 머문다. 헤드가 <code>liveTick</code> 에 닿으면 자동으로 라이브 모드 복귀.</div>
+            <div class="to"><b>+</b> 화면이 유저 의사 없이 움직이지 않는다. 복구 루프는 "라이브 모드일 때만" 도는 <b>한 조건</b>으로 끝난다.<br><b>−</b> [현재로]를 못 본 유저는 과거에 머문 채 경기가 끝날 수 있다 → 헤더의 <code>LIVE</code> 배지가 꺼지는 것으로 상태를 계속 말해 줘야 한다.</div>
+          </div>
+          <div class="opt">
+            <h4><span class="k">C</span> 하이브리드 — 자동 복귀 + 취소</h4>
+            <div class="d">A 처럼 자동으로 돌아가되, 복귀 직전 3초 카운트다운을 띄우고 누르면 취소.</div>
+            <div class="to"><b>+</b> 두 장점을 다 갖는다.<br><b>−</b> 상태가 셋(라이브 · 과거 · 복귀 예고)이 되고, 카운트다운 UI 가 무대 위에 하나 더 올라간다. <b>지금 크기의 요구에 비해 과하다.</b></div>
+          </div>
+        </div>
+        <div class="recline">
+          <b>권장 = B(수동만).</b> 이 기능의 목적이 "방금 그 장면 다시 보기"라서, <b>자동 복귀는 그 목적과 정면으로 싸운다</b>.
+          라이브를 놓치는 위험은 <code>LIVE</code> 배지 소등 + [현재로] 상시 노출로 충분히 말할 수 있다.
+          (A 를 고르면 타이머 값이 튜닝 대상이 되므로 <code>EngineConfig</code> 가 아닌 web 상수로 어디에 둘지도 같이 정해야 한다.)
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 4. 로그 = 선수 이름 ══════════════ -->
+  <section class="sec" id="s4">
+    <div class="secHead"><span class="secNo">4</span><h2>로그 = 선수 이름</h2><span class="req">요구 5-4 — "로그를 번호가 아니라 선수 이름으로"</span></div>
+    <p class="secIntro">
+      지금 로그줄은 <code>48' ⚽ GOAL #7 2-1 천둥만</code> 이다 — <b>라벨이 영어</b>고 <b>사람이 등번호</b>다.
+      조인점은 <code>LogPanel.logLineNumber</code> 한 곳이라 이름 주입 자체는 어렵지 않다. 결정할 것은 <b>표기 형식</b>과 <b>라벨 한글화</b>다.
+    </p>
+    <div class="note">
+      <b>요구 원문의 예시</b>는 <code>48' ⚽ 골! 손흥민(7) 2-1</code> 이었다. 아래 데모는 <b>가상 이름</b>으로 돌린다 —
+      실제 어떤 이름을 쓸지(실명 음역 / 패러디 창작 / 하이브리드)는 <b>182명 전체가 걸린 별도 안건</b>이고
+      데이터 가드(<code>data.test.ts</code> 의 영문 강제 + 실명 한글 denylist)를 다시 정의해야 해서 <b><code>names.html</code> 로 분리</b>했다.
+    </div>
+
+    <div class="ctrls">
+      <span class="hint">표기 형식</span>
+      <button class="btn sm" data-nm="name" aria-pressed="false">A 이름만</button>
+      <button class="btn sm" data-nm="namenum" aria-pressed="true">B 이름+등번호</button>
+      <button class="btn sm" data-nm="short" aria-pressed="false">C 짧은이름(성)</button>
+      <span style="width:12px"></span>
+      <label class="chk"><input type="checkbox" id="longNames"> <b>긴 이름 표본</b>으로 바꿔 폭 스트레스 주기</label>
+      <label class="chk"><input type="checkbox" id="koLabels" checked> 라벨 한글화 적용</label>
+    </div>
+    <div class="hint" style="margin-bottom:6px">잘리는 줄에는 <span style="outline:1px dashed #7a4b1e;outline-offset:1px;padding:0 3px">주황 점선</span>이 붙는다. <b>폰 390px 토글</b>로 바꿔 보면 어느 형식이 넘치는지 그 자리에서 보인다.</div>
+
+    <div class="duo">
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNow">현행</span> 등번호 · 영어 라벨</div>
+        <div class="logPanel"><ol class="log" id="logBefore"></ol></div>
+        <div class="cardFoot">사람을 못 알아본다. 실경기 id(<code>P077</code>)는 번호로 안 읽혀서 등번호 표(<code>jerseyNumbers</code>)에 의존한다 — 그게 없으면 <code>#P077</code> 이 찍힌다(#334).</div>
+      </div>
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNew">제안</span> 선수 이름 · 한글 라벨 · 팀색</div>
+        <div class="logPanel"><ol class="log" id="logAfter"></ol></div>
+        <div class="cardFoot">이름 + 팀색 점으로 "누가 / 어느 팀"이 한 줄에서 읽힌다. 이름이 없으면 등번호 → id 순으로 폴백한다(구 매치 로그 방어).</div>
+      </div>
+    </div>
+
+    <h3 style="font-size:14px;margin:22px 0 4px">라벨 한글화안 (코어 <code>labelOf</code> 대응표)</h3>
+    <p class="hint" style="margin:0 0 4px">규칙 SoT 는 <code>viewer-core/log-lines.impl.mjs</code> 한 곳이라 여기만 바꾸면 web 로그 패널과 QA 뷰어 티커가 같이 따라온다.</p>
+    <table class="t" id="labelTable">
+      <tr><th style="width:34%">현행(영어)</th><th style="width:33%">제안(한글)</th><th>비고</th></tr>
+    </table>
+
+    <div class="gate">
+      <h3>안건 ④ — 로그줄 이름 표기 형식</h3>
+      <div class="gb">
+        <div class="prob">
+          <b>문제:</b> 로그줄은 <code>[분] [라벨] [사람] [스코어] [팀] [xG]</code> 6조각이 <b>한 줄</b>에 들어간다.
+          폰 390px 에서 패널 내부 폭은 약 342px 뿐이라, 이름을 넣는 만큼 라벨이 줄임표로 잘린다.
+          <b>무엇을 먼저 자를 것인가</b>를 정해야 한다.
+        </div>
+        <div class="opts">
+          <div class="opt">
+            <h4><span class="k">A</span> 이름만</h4>
+            <div class="d"><code>⚽ 골! 손번개</code></div>
+            <div class="to"><b>+</b> 가장 짧다. 폰에서 잘림이 거의 없다.<br><b>−</b> 같은 이름이 양 팀에 있을 수 있고(같은 카탈로그 공유), <b>피치 위 토큰은 등번호</b>라 로그와 화면을 눈으로 잇지 못한다.</div>
+          </div>
+          <div class="opt rec">
+            <h4><span class="k">B</span> 이름+등번호 <span style="font-weight:400;color:#8ef0b8">(권장)</span></h4>
+            <div class="d"><code>⚽ 골! 손번개(7)</code></div>
+            <div class="to"><b>+</b> 로그 ↔ 피치 토큰이 <b>번호로 이어진다</b>. 동명이인·양 팀 중복도 갈린다.<br><b>−</b> 3~4자 더 길다 → 긴 이름 + 라벨이 긴 이벤트(<code>슛 · 선방 🧤</code>)에서 폰 잘림이 생긴다. 위 토글로 실제 잘림을 확인할 것.</div>
+          </div>
+          <div class="opt">
+            <h4><span class="k">C</span> 짧은이름(성)</h4>
+            <div class="d"><code>⚽ 골! 손(7)</code> — 성 1자 + 번호</div>
+            <div class="to"><b>+</b> 폭이 가장 안정적이라 어떤 이벤트에서도 안 잘린다.<br><b>−</b> 한국식 성은 종류가 적어 <b>한 팀에 김/이/박이 여럿</b>이면 이름 역할을 못 한다. 이름 한글화의 취지("영어라 못 알아본다")를 절반만 푼다.</div>
+          </div>
+        </div>
+        <div class="recline">
+          <b>권장 = B(이름+등번호).</b> 잘림은 <b>이름이 아니라 라벨을 먼저 줄여</b> 해결한다 — 라벨 한글화가 마침 폭을 줄인다
+          (<code>Shot · off target</code> 14자 → <code>슛 · 빗나감</code> 7자). 잘림이 남으면 <code>xG</code> 를 폰에서 감추는 것이
+          다음 후보다(정보 우선순위상 사람 &gt; 수치). <b>라벨 한글화는 형식과 무관하게 채택 권장</b> — 요구 6("영어 이름 보기 힘듦")과 같은 문제의식이다.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 5. 행동 가시화 이펙트 ══════════════ -->
+  <section class="sec" id="s5">
+    <div class="secHead"><span class="secNo">5</span><h2>행동 가시화 이펙트</h2><span class="req">요구 4-2 — "지금 무슨 상황인지 보이게 · 팀별 색으로 어느 팀 행동인지"</span></div>
+    <p class="secIntro">
+      버튼을 눌러 재생해 보라. <b>반복 루프</b>를 켜면 네 이펙트가 순환한다. 색은 전부 뷰어 코어의
+      <code>teamRgb(side)</code> 를 그대로 쓴다 — 홈 <span style="color:#7ab0ff">파랑 <code>#3b82f6</code></span> / 어웨이 <span style="color:#ff8f8f">빨강 <code>#ef4444</code></span>.
+    </p>
+
+    <div class="ctrls">
+      <button class="btn sm home" data-fx="receive">공 잡음(수신)</button>
+      <button class="btn sm away" data-fx="intercept">패스 실패(가로챔)</button>
+      <button class="btn sm home" data-fx="clearance">걷어내기 <span style="color:#8ef0b8">신규</span></button>
+      <button class="btn sm away" data-fx="tackle">태클 성공</button>
+      <span style="width:12px"></span>
+      <button class="btn sm" id="fxLoop" aria-pressed="false">🔁 반복 루프</button>
+      <label class="chk"><input type="checkbox" id="fxFlip"> 팀 바꿔서 보기(색 확인)</label>
+    </div>
+
+    <div class="duo">
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNew">제안</span> 캔버스 데모</div>
+        <div class="cardBody">
+          <div class="pitchWrap">
+            <canvas class="pitch" id="pitch5"></canvas>
+          </div>
+          <div class="hint" style="margin-top:7px">이펙트는 전부 <b>이미 로그에 실려 오는 이벤트</b>로만 만들었다 — 엔진 무접촉.</div>
+        </div>
+      </div>
+      <div class="vp card">
+        <div class="cardHead"><span class="tagNow">현행</span> 같은 4개 이벤트의 현재 상태</div>
+        <div class="cardBody">
+          <table class="t" style="margin:0">
+            <tr><th>행동</th><th>엔진 이벤트</th><th>지금 화면</th></tr>
+            <tr><td>공 잡음(수신)</td><td class="mono">pass</td><td>확산 링(팀색) — <b>"떠났다"로 읽힌다</b></td></tr>
+            <tr><td>패스 실패</td><td class="mono">interception</td><td>확산 링 + 점(팀색) — 수신과 <b>모양이 거의 같다</b></td></tr>
+            <tr><td>걷어내기</td><td class="mono">clearance</td><td><b>아무것도 없음</b> — 캔버스·토스트·HUD·로그 전부 0</td></tr>
+            <tr><td>태클 성공</td><td class="mono">tackle</td><td>무채색 토스트 <code>TACKLE</code>(<code>#cbd5e1</code>) — <b>어느 팀인지 모른다</b></td></tr>
+          </table>
+          <div class="hint" style="margin-top:9px">
+            <b>1순위는 걷어내기다</b> — 엔진이 팀·선수를 다 주는데 화면 표현이 하나도 없다. 경기당 팀별 약 16회 발생한다.
+            (그리고 텍스트 타임라인에는 이미 경기당 ~32건이 폴백 문구로 노출 중이다 → #325)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <table class="t">
+      <tr><th style="width:130px">행동</th><th>제안하는 시각 문법</th><th>왜 이 모양인가</th></tr>
+      <tr><td><b>공 잡음</b></td><td><b>수축</b>하는 링(밖→안) + 토큰 밝기 플래시</td><td>현행 <b>확산</b> 링과 방향을 반대로 둬서 "받았다 / 보냈다"가 방향으로 갈린다. 색·굵기를 안 바꾸고 방향만 뒤집는 최소 변경.</td></tr>
+      <tr><td><b>가로챔</b></td><td>확산 링 + <b>X 슬래시</b> + 토스트 <code>가로챔!</code></td><td>패스 계열과 링 모양이 같아 못 갈렸다. 슬래시가 "끊었다"를 말한다.</td></tr>
+      <tr><td><b>걷어내기</b></td><td><b>쐐기(삼각) 궤적</b> + 속도선 3줄 + 토스트 <code>걷어냄!</code></td><td>방향성이 본질인 행동(위험지역 <b>밖으로</b>)이라 링이 아니라 <b>벡터</b>로 그린다. 패스와 헷갈리지 않는다.</td></tr>
+      <tr><td><b>태클 성공</b></td><td>방사 스파크 + <b>팀색</b> 토스트</td><td>모양은 그대로 두고 색만 팀색으로. 요구("어느 팀 행동인지")를 가장 싸게 충족한다.</td></tr>
+    </table>
+
+    <div class="note bad">
+      <b>⚠️ 요구 4-2 의 4개 중 2개는 지금 만들 수 없다.</b>
+      <b>태클 miss</b> 와 <b>제껴짐</b>은 사실 <b>같은 사건</b>인데, 엔진이 태클을 <b>성공했을 때만</b> 로그에 push 한다(<code>contest.ts</code>).
+      실패는 내부 observer 에만 있고 <code>MatchLog</code> 에 안 실린다. <code>dribble</code> 액션도 이벤트가 0건이다.
+      즉 <b>화면이 아무리 잘 그려도 그릴 데이터가 없다</b>.
+    </div>
+
+    <div class="gate">
+      <h3>안건 ⑤ — 태클 miss · 제껴짐을 어떻게 할 것인가</h3>
+      <div class="gb">
+        <div class="prob">
+          <b>문제:</b> 이 에픽은 <b>엔진 시뮬 로직 무접촉</b>이 전제다(엔진은 QA 트랙 #25 / E4 소유).
+          그런데 요구 4-2 가 지목한 4개 중 2개는 엔진이 이벤트를 안 만들어서 뷰어가 알 방법이 없다.
+        </div>
+        <div class="opts">
+          <div class="opt rec">
+            <h4><span class="k">A</span> 엔진 이벤트 추가 요청 <span style="font-weight:400;color:#8ef0b8">(권장)</span></h4>
+            <div class="d"><code>tackle:miss</code> · <code>dribble:past</code> 2건을 <b>#407 / QA #25</b> 에 레이즈하고, 이번 에픽은 <b>가능한 4개(수신·가로챔·걷어내기·태클성공)를 먼저 낸다</b>.</div>
+            <div class="to"><b>+</b> 이벤트가 진실이라 <b>로그·통계·리플레이가 전부 같은 사실</b>을 말한다. 결정론 재현 계약도 깨지지 않는다(이벤트 추가는 로그 스키마 additive).<br><b>−</b> 엔진 트랙 일정에 의존한다 → 요구 4-2 가 <b>두 번에 나눠</b> 완성된다.</div>
+          </div>
+          <div class="opt">
+            <h4><span class="k">B</span> 뷰어가 스냅샷으로 추론</h4>
+            <div class="d">틱 사이 소유 변화·거리 변화를 보고 "태클이 실패했나 보다"를 <b>추측</b>해서 그린다. 선례 = 지금 <code>SURGE!</code> 가 그렇게 만들어진다.</div>
+            <div class="to"><b>+</b> 엔진 없이 이번 에픽 안에서 4개를 다 낸다.<br><b>−</b> <b>이건 이벤트가 아니라 추측이다.</b> 로그·통계에는 없고 화면에만 있는 사실이 생겨, "화면엔 태클 실패가 떴는데 로그엔 없다"가 정상 상태가 된다. 엔진 튜닝이 바뀌면 추론식이 조용히 어긋나고, 그 어긋남을 잡을 계약을 세울 수가 없다(정답이 없으므로).</div>
+          </div>
+        </div>
+        <div class="recline">
+          <b>권장 = A.</b> HMB 는 <b>"보이는 것 = 데이터"</b> 를 규율로 세워 온 프로젝트고(§2-2 인지 갭), B 는 그 규율에 정면으로 반한다.
+          지금 미시각화 1순위인 <b>걷어내기</b>만 해도 체감이 크게 오르므로, 4개를 먼저 내고 2개는 엔진 이벤트가 오면 <b>같은 문법으로 얹는다</b>.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ 요약 ══════════════ -->
+  <section class="sec" id="sum">
+    <div class="summary">
+      <h2>결정 요약표 — 여기만 봐도 판단할 수 있게</h2>
+      <div class="sb">
+        <p class="hint" style="margin:8px 0 0">각 행의 링크를 누르면 그 섹션의 실동작 데모로 간다. <b>권장안을 그대로 받으면 "OK"</b> 한 마디면 되고, 바꿀 것만 짚어 주면 된다.</p>
+        <table class="sum">
+          <tr><th style="width:38px">#</th><th style="width:20%">안건</th><th>옵션</th><th style="width:30%">권장 · 근거</th></tr>
+          <tr>
+            <td class="qno">①</td>
+            <td><a href="#s1">초 시계 표기</a></td>
+            <td>A 통합 <code>48'32"</code> / <b>B 분 크게+초 작게</b> / C 라이브만 초</td>
+            <td class="rec"><b>B</b> — #388 이 세운 "분의 축은 구운 <code>minute</code> 하나"를 유지하면서 초를 얹는 유일한 안. 초 보간은 <b>끔</b>.</td>
+          </tr>
+          <tr>
+            <td class="qno">②</td>
+            <td><a href="#s2">선택 링 스타일</a></td>
+            <td><b>A 펄스 링</b> / B 파선 링 / C 발밑 스포트라이트</td>
+            <td class="rec"><b>A</b> — 소유자 링(R+2)·카드 마커(R+6)와 <b>반경으로 층이 갈려</b> 셋이 겹쳐도 읽힌다. 내/상대 구분은 색+굵기+이름표로 별도 축.</td>
+          </tr>
+          <tr>
+            <td class="qno">③</td>
+            <td><a href="#s3">과거 시크 복귀 UX</a></td>
+            <td>A 자동 복귀(N초) / <b>B 수동 [현재로]만</b> / C 하이브리드</td>
+            <td class="rec"><b>B</b> — 이 기능의 목적이 "다시 보기"라 자동 복귀는 목적과 싸운다. 라이브 이탈 위험은 <code>LIVE</code> 배지 소등으로 말한다.</td>
+          </tr>
+          <tr>
+            <td class="qno">④</td>
+            <td><a href="#s4">로그 이름 표기</a></td>
+            <td>A 이름만 / <b>B 이름+등번호</b> / C 짧은이름</td>
+            <td class="rec"><b>B</b> + <b>라벨 한글화 채택</b> — 번호가 로그와 피치 토큰을 잇는다. 폭은 이름이 아니라 라벨 한글화로 번다.</td>
+          </tr>
+          <tr>
+            <td class="qno">⑤</td>
+            <td><a href="#s5">태클 miss·제껴짐</a></td>
+            <td><b>A 엔진 이벤트 요청 후 구현</b> / B 뷰어 추론</td>
+            <td class="rec"><b>A</b> — B 는 "화면에만 있는 사실"을 만든다(§2-2 규율 위반). 이번 에픽은 <b>걷어내기 포함 4개</b>를 먼저 낸다.</td>
+          </tr>
+          <tr>
+            <td class="qno">별도</td>
+            <td>선수 이름 한글화 방식</td>
+            <td>실명 음역 / 전면 패러디 창작 / 하이브리드 — <b>182명 전량</b></td>
+            <td class="rec"><b>→ <code>names.html</code></b> 에서 별도 검사. 데이터 가드(영문 강제 + 실명 denylist) 재정의가 여기에 달려 있다.</td>
+          </tr>
+        </table>
+        <div class="note" style="max-width:none;margin-top:16px">
+          <b>이 게이트를 통과하면</b> — 승인된 안대로 module-implementer 가 구현하고 module-verifier 가 독립 검증한다.
+          예상 파일 경계: <code>apps/web/src/match/**</code>(시계·시크바·로그·정보 카드) ·
+          <code>packages/viewer-core/src/**</code>(선택 상태·이펙트, QA 도메인 — 이슈로 스코프 승인 필요) ·
+          엔진 이벤트 2건은 <b>#407 / QA #25</b> 로 레이즈.
+        </div>
+      </div>
+    </div>
+
+    <footer class="pg">
+      HMB 온라인 · 에픽 #406 목업 · 자립 HTML(외부 요청 0) · <code>docs/plan-v5/mock/406-matchux/match-ux.html</code>
+    </footer>
+  </section>
+
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════
+   공용
+   ═══════════════════════════════════════════════════════════════════ */
+const $  = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const TEAM = { home: "#3b82f6", away: "#ef4444" };
+const TEAM_RGB = { home: "59,130,246", away: "239,68,68" };
+
+/* 표기 스케일 — 엔진 하프 1350틱을 0~45' 로 표기하므로 1틱 = 2 표기초.
+   실제 구현에서는 이 값을 상수로 적지 않고 clockScaleOf(events, snaps) 로 로그에서 읽어낸다. */
+const CLOCK_SCALE = 2;
+const HALF_TICKS = 1350;
+function mmss(tick, scale) {
+  const d = Math.max(0, Math.round(tick * (scale == null ? CLOCK_SCALE : scale)));
+  return Math.floor(d / 60) + "'" + String(Math.floor(d % 60)).padStart(2, "0") + '"';
+}
+
+/* 뷰포트 토글 ---------------------------------------------------- */
+$$("[data-vpbtn]").forEach((b) => {
+  b.addEventListener("click", () => {
+    document.body.dataset.vp = b.dataset.vpbtn;
+    $$("[data-vpbtn]").forEach((o) => o.setAttribute("aria-pressed", String(o === b)));
+    requestAnimationFrame(fitAll);
+  });
+});
+function pressGroup(btns, active) {
+  btns.forEach((b) => b.setAttribute("aria-pressed", String(b === active)));
+}
+
+/* 캔버스 fit ------------------------------------------------------ */
+const CANVASES = [];
+function fitCanvas(cv) {
+  const w = cv.parentElement.clientWidth;
+  if (!w) return;
+  const h = Math.round((w * 680) / 1050);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.style.height = h + "px";
+  cv.width = Math.round(w * dpr);
+  cv.height = Math.round(h * dpr);
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cv._w = w; cv._h = h;
+}
+function fitAll() { CANVASES.forEach(fitCanvas); }
+window.addEventListener("resize", () => requestAnimationFrame(fitAll));
+
+/* 피치 --------------------------------------------------------- */
+function drawPitch(ctx, w, h) {
+  ctx.fillStyle = "#14532d";
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(255,255,255,0.035)";
+  const stripes = 12, sw = w / stripes;
+  for (let i = 0; i < stripes; i += 2) ctx.fillRect(i * sw, 0, sw, h);
+  const m = 6;
+  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.lineWidth = 1.6;
+  ctx.strokeRect(m, m, w - 2 * m, h - 2 * m);
+  ctx.beginPath(); ctx.moveTo(w / 2, m); ctx.lineTo(w / 2, h - m); ctx.stroke();
+  ctx.beginPath(); ctx.arc(w / 2, h / 2, Math.min(w, h) * 0.13, 0, Math.PI * 2); ctx.stroke();
+  const bw = (w - 2 * m) * 0.145, bh = (h - 2 * m) * 0.56;
+  ctx.strokeRect(m, (h - bh) / 2, bw, bh);
+  ctx.strokeRect(w - m - bw, (h - bh) / 2, bw, bh);
+  const gw = (w - 2 * m) * 0.05, gh = (h - 2 * m) * 0.26;
+  ctx.strokeRect(m, (h - gh) / 2, gw, gh);
+  ctx.strokeRect(w - m - gw, (h - gh) / 2, gw, gh);
+}
+const PX = (nx, w) => 6 + nx * (w - 12);
+const PY = (ny, h) => 6 + ny * (h - 12);
+
+/* 등번호 그리기(코어 drawNum 과 같은 방식) */
+function drawNum(ctx, num, px, py, fs) {
+  ctx.font = "bold " + fs + "px monospace";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.lineWidth = 3; ctx.strokeStyle = "rgba(0,0,0,0.9)"; ctx.strokeText(num, px, py);
+  ctx.fillStyle = "#fff"; ctx.fillText(num, px, py);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   1. 초단위 시계
+   ═══════════════════════════════════════════════════════════════════ */
+(function clockSection() {
+  const elA = $("#c1a"), elB = $("#c1b"), elC = $("#c1c");
+  const playBtn = $("#c1Play"), smooth = $("#c1Smooth"), hint = $("#c1Hint");
+  let tick = 1440;              // 표기 2880초 = 48'00"
+  let running = true;
+  let subSec = 0;               // 보간용
+
+  function paint() {
+    let disp;
+    if (smooth.checked) {
+      disp = tick * CLOCK_SCALE + subSec;
+    } else {
+      disp = tick * CLOCK_SCALE;
+    }
+    const mm = Math.floor(disp / 60), ss = Math.floor(disp % 60);
+    const full = mm + "'" + String(ss).padStart(2, "0") + '"';
+    elA.textContent = full;
+    elB.textContent = String(ss).padStart(2, "0") + '"';
+    elC.textContent = full;
+  }
+  setInterval(() => {
+    if (!running) return;
+    tick += 1;
+    subSec = 0;
+    paint();
+  }, 1000);
+  setInterval(() => {
+    if (!running || !smooth.checked) return;
+    if (subSec < CLOCK_SCALE - 1) { subSec += 1; paint(); }
+  }, 500);
+
+  playBtn.addEventListener("click", () => {
+    running = !running;
+    playBtn.textContent = running ? "⏸ 멈춤" : "▶ 재생";
+    playBtn.setAttribute("aria-pressed", String(running));
+  });
+  smooth.addEventListener("change", () => {
+    hint.textContent = smooth.checked
+      ? "현재: 보간 — 1초씩 흐르지만 홀수 초는 데이터에 없는 값이다"
+      : "현재: 엔진 틱 페이스 그대로 — 2초씩";
+    subSec = 0; paint();
+  });
+  paint();
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   2. 선수 하이라이트
+   ═══════════════════════════════════════════════════════════════════ */
+const ROSTER = (function () {
+  // ⚠️ 홈 7번 / 어웨이 7번이 같은 playerId(P077) — 라이브 실데이터의 함정(#324) 재현
+  const home = [
+    { n: "1",  id: "P001", nm: "정문수", pos: "GK", x: 0.05, y: 0.50 },
+    { n: "3",  id: "P003", nm: "김좌측", pos: "LB", x: 0.20, y: 0.18 },
+    { n: "4",  id: "P004", nm: "최중앙", pos: "CB", x: 0.18, y: 0.38 },
+    { n: "5",  id: "P005", nm: "강철벽", pos: "CB", x: 0.18, y: 0.62 },
+    { n: "2",  id: "P002", nm: "박우측", pos: "RB", x: 0.20, y: 0.82 },
+    { n: "8",  id: "P008", nm: "이연결", pos: "CM", x: 0.38, y: 0.30 },
+    { n: "6",  id: "P006", nm: "한중원", pos: "DM", x: 0.35, y: 0.50 },
+    { n: "10", id: "P010", nm: "조창조", pos: "AM", x: 0.40, y: 0.70 },
+    { n: "11", id: "P011", nm: "유돌파", pos: "LW", x: 0.57, y: 0.17 },
+    { n: "9",  id: "P009", nm: "나득점", pos: "ST", x: 0.61, y: 0.47 },
+    { n: "7",  id: "P077", nm: "손번개", pos: "RW", x: 0.57, y: 0.83 },
+  ];
+  const away = [
+    { n: "1",  id: "P101", nm: "문지기", pos: "GK", x: 0.95, y: 0.50 },
+    { n: "3",  id: "P103", nm: "왼발치", pos: "LB", x: 0.80, y: 0.82 },
+    { n: "4",  id: "P104", nm: "벽두께", pos: "CB", x: 0.79, y: 0.60 },
+    { n: "5",  id: "P105", nm: "굳건히", pos: "CB", x: 0.79, y: 0.38 },
+    { n: "2",  id: "P102", nm: "오른발", pos: "RB", x: 0.80, y: 0.18 },
+    { n: "8",  id: "P108", nm: "뛰는자", pos: "CM", x: 0.62, y: 0.68 },
+    { n: "6",  id: "P106", nm: "배급자", pos: "DM", x: 0.66, y: 0.50 },
+    { n: "10", id: "P110", nm: "지휘봉", pos: "AM", x: 0.60, y: 0.30 },
+    { n: "11", id: "P111", nm: "측면발", pos: "LW", x: 0.44, y: 0.84 },
+    { n: "9",  id: "P109", nm: "골욕심", pos: "ST", x: 0.42, y: 0.52 },
+    { n: "7",  id: "P077", nm: "빠름이", pos: "RW", x: 0.44, y: 0.16 },
+  ];
+  home.forEach((p) => (p.team = "home"));
+  away.forEach((p) => (p.team = "away"));
+  return home.concat(away);
+})();
+
+const OWNER = { team: "home", n: "9" };          // 볼 소유자
+const CARDED = { team: "away", n: "4" };         // 옐로 카드 마커
+
+(function highlightSection() {
+  const cv = $("#pitch2"); CANVASES.push(cv);
+  const ctx = cv.getContext("2d");
+  const toast = $("#toast2");
+  const pcardEl = $("#pcard");
+  let ringStyle = "pulse";
+  let sel = { home: null, away: null };   // playerId
+  let lastClicked = null;                 // {team,id}
+  let hit = [];
+
+  $$("[data-ring]").forEach((b) =>
+    b.addEventListener("click", () => { ringStyle = b.dataset.ring; pressGroup($$("[data-ring]"), b); })
+  );
+  $("#selOwner").addEventListener("click", () => pick(find("home", "9")));
+  $("#selCard").addEventListener("click", () => pick(find("away", "4")));
+  $("#selClear").addEventListener("click", () => { sel = { home: null, away: null }; lastClicked = null; renderCard(); });
+  $("#badKey").addEventListener("change", () => { flash($("#badKey").checked ? "단독 id 키 모드 — 7번을 눌러 보세요" : "팀 포함 키 모드(정상)"); });
+
+  function find(team, n) { return ROSTER.find((p) => p.team === team && p.n === n); }
+  function keyOf(p) { return $("#badKey").checked ? p.id : p.team + ":" + p.id; }
+  function isSel(p) {
+    if ($("#badKey").checked) {
+      return (sel.home && sel.home === p.id) || (sel.away && sel.away === p.id);
+    }
+    return sel[p.team] === p.id;
+  }
+  function selOwnerTeam(p) {
+    // 버그 모드에서 "누가 골랐나"는 마지막 클릭이 정한다 → 반대 팀도 그 스타일로 켜진다
+    if (!$("#badKey").checked) return p.team;
+    return lastClicked ? lastClicked.team : p.team;
+  }
+  function pick(p) {
+    if (!p) return;
+    if (sel[p.team] === p.id) { sel[p.team] = null; if (lastClicked && lastClicked.id === p.id) lastClicked = null; }
+    else { sel[p.team] = p.id; lastClicked = { team: p.team, id: p.id }; }
+    renderCard();
+  }
+  function flash(msg) {
+    toast.textContent = msg; toast.classList.add("on");
+    clearTimeout(flash._t); flash._t = setTimeout(() => toast.classList.remove("on"), 1800);
+  }
+
+  cv.addEventListener("click", (e) => {
+    const r = cv.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    let best = null, bd = 1e9;
+    hit.forEach((t) => {
+      const d = Math.hypot(mx - t.px, my - t.py);
+      if (d < bd) { bd = d; best = t; }
+    });
+    if (best && bd <= best.R + 8) pick(best.p);
+    else flash("빈 공간 — 선수 토큰을 눌러 보세요");
+  });
+
+  function renderCard() {
+    const p = lastClicked ? ROSTER.find((q) => q.team === lastClicked.team && q.id === lastClicked.id) : null;
+    if (!p) { pcardEl.innerHTML = '<div class="empty">선수를 눌러 보세요</div>'; return; }
+    const mine = p.team === "home";
+    const col = TEAM[p.team];
+    const stats = mine
+      ? [["82", "속도"], ["77", "슛"], ["91", "체력"]]
+      : [["7", "출전"], ["4", "골"], ["2", "도움"]];
+    pcardEl.innerHTML =
+      '<div class="ph">' +
+        '<div class="av" style="background:' + col + ';border-color:' + (mine ? "#fff" : "rgba(148,163,184,.9)") + '">' + p.n + "</div>" +
+        '<div class="nm"><b>' + p.nm + "</b><span>" + p.pos + " · " + (mine ? "별희 FC" : "천둥만 유나이티드") + "</span></div>" +
+        '<span class="who ' + (mine ? "mine" : "opp") + '">' + (mine ? "내 선수" : "상대 선수") + "</span>" +
+      "</div>" +
+      '<div class="pb">' +
+        '<div class="stats">' + stats.map((s) => '<div class="stat"><b>' + s[0] + "</b><span>" + s[1] + "</span></div>").join("") + "</div>" +
+        (mine
+          ? '<div style="font-size:11.5px;color:var(--text-muted);margin-bottom:5px">이 선수에게 후반 지시</div>' +
+            '<textarea placeholder="예: 오른쪽 측면 파고들어서 크로스보다 컷백 위주로"></textarea>' +
+            '<div class="saveline">· 타이핑이 멎으면 자동 저장됩니다</div>'
+          : '<div style="font-size:12.2px;color:var(--text-muted);line-height:1.6">상대 선수라 지시를 쓸 수 없습니다. 정보 열람만 가능합니다.</div>') +
+      "</div>";
+  }
+
+  function frame(ts) {
+    if (!cv._w) { requestAnimationFrame(frame); return; }
+    const w = cv._w, h = cv._h;
+    drawPitch(ctx, w, h);
+    const R = Math.max(8, w * 0.026);
+    const fs = Math.max(8, R * 0.95);
+    hit = [];
+
+    // 선택 스포트라이트(C안)는 토큰 아래에 먼저 깔린다
+    if (ringStyle === "spot") {
+      ROSTER.forEach((p) => {
+        if (!isSel(p)) return;
+        const px = PX(p.x, w), py = PY(p.y, h);
+        const mine = selOwnerTeam(p) === "home";
+        const g = ctx.createRadialGradient(px, py + R * 0.55, 1, px, py + R * 0.55, R * 2.5);
+        g.addColorStop(0, mine ? "rgba(255,255,255,0.55)" : "rgba(148,163,184,0.45)");
+        g.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.save(); ctx.translate(px, py + R * 0.7); ctx.scale(1, 0.45);
+        ctx.beginPath(); ctx.arc(0, 0, R * 2.5, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill(); ctx.restore();
+      });
+    }
+
+    ROSTER.forEach((p) => {
+      const px = PX(p.x, w), py = PY(p.y, h);
+      const owner = p.team === OWNER.team && p.n === OWNER.n;
+      const rr = owner ? R + 2 : R;
+      hit.push({ p: p, px: px, py: py, R: rr });
+
+      ctx.beginPath(); ctx.arc(px, py, rr, 0, Math.PI * 2);
+      ctx.fillStyle = TEAM[p.team]; ctx.fill();
+      if (owner) { ctx.strokeStyle = "#fde047"; ctx.lineWidth = 3; ctx.stroke(); }
+      drawNum(ctx, p.n, px, py, fs);
+
+      // 카드 마커(R+6)
+      if (p.team === CARDED.team && p.n === CARDED.n) {
+        ctx.beginPath(); ctx.arc(px, py, R + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = "#eab308"; ctx.lineWidth = 3; ctx.stroke();
+        const iw = 9, ih = 12, ix = px + R + 3, iy = py - R - ih - 2;
+        ctx.fillStyle = "#eab308"; ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.lineWidth = 2;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(ix, iy, iw, ih, 2); else ctx.rect(ix, iy, iw, ih);
+        ctx.fill(); ctx.stroke();
+      }
+
+      // 선택 링(R+9 바깥)
+      if (isSel(p)) {
+        const mine = selOwnerTeam(p) === "home";
+        const colr = mine ? "#ffffff" : "rgba(148,163,184,0.95)";
+        const lw = mine ? 3 : 2;
+        const base = R + 9;
+        ctx.save();
+        if (ringStyle === "pulse") {
+          const t = (ts % 1400) / 1400;
+          const rad = base + Math.sin(t * Math.PI * 2) * 2.4;
+          ctx.globalAlpha = 0.55 + 0.45 * (0.5 + 0.5 * Math.cos(t * Math.PI * 2));
+          ctx.strokeStyle = colr; ctx.lineWidth = lw;
+          ctx.beginPath(); ctx.arc(px, py, rad, 0, Math.PI * 2); ctx.stroke();
+        } else if (ringStyle === "dash") {
+          ctx.strokeStyle = colr; ctx.lineWidth = lw;
+          ctx.setLineDash([5, 4]);
+          ctx.lineDashOffset = -(ts / 40) % 9;
+          ctx.beginPath(); ctx.arc(px, py, base, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+
+        // 이름표
+        const label = p.nm + "(" + p.n + ")";
+        ctx.font = "bold " + Math.max(9, R * 0.82) + "px -apple-system,'Apple SD Gothic Neo',sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        const tw = ctx.measureText(label).width + 12;
+        const th = Math.max(15, R * 1.35);
+        const ty = py + base + th * 0.75;
+        ctx.globalAlpha = mine ? 1 : 0.8;
+        ctx.fillStyle = TEAM[p.team];
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(px - tw / 2, ty - th / 2, tw, th, th / 2);
+        else ctx.rect(px - tw / 2, ty - th / 2, tw, th);
+        ctx.fill();
+        ctx.strokeStyle = mine ? "#fff" : "rgba(226,232,240,.6)"; ctx.lineWidth = mine ? 1.6 : 1; ctx.stroke();
+        ctx.fillStyle = "#fff"; ctx.fillText(label, px, ty + 0.5);
+        ctx.globalAlpha = 1;
+      }
+
+      if ($("#showKeys").checked) {
+        ctx.font = "9px monospace"; ctx.textAlign = "center"; ctx.textBaseline = "top";
+        ctx.fillStyle = "rgba(255,255,255,.75)";
+        ctx.fillText(keyOf(p), px, py + rr + 2);
+      }
+    });
+
+    // 공(소유자 발밑)
+    const o = ROSTER.find((p) => p.team === OWNER.team && p.n === OWNER.n);
+    if (o) {
+      const px = PX(o.x, w), py = PY(o.y, h) + R + 6;
+      ctx.save(); ctx.shadowColor = "#ffe600"; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(px, py, Math.max(4, R * 0.5), 0, Math.PI * 2);
+      ctx.fillStyle = "#ffe600"; ctx.fill(); ctx.restore();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+  renderCard();
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   3. 시크바
+   ═══════════════════════════════════════════════════════════════════ */
+const PINS = [
+  { tick: 312,  kind: "save",    label: "선방",   color: "#38bdf8", major: false },
+  { tick: 480,  kind: "shot_on", label: "유효슛", color: "#fbbf24", major: false },
+  { tick: 705,  kind: "goal",    label: "골",     color: "#22c55e", major: true  },
+  { tick: 900,  kind: "corner",  label: "코너킥", color: "#a78bfa", major: false },
+  { tick: 1102, kind: "penalty", label: "페널티킥", color: "#f472b6", major: true },
+];
+
+function makeSeek(rootSel, opts) {
+  const root = $(rootSel);
+  const el = (r) => $('[data-role="' + r + '"]', root);
+  const track = el("track");
+  const st = {
+    end: HALF_TICKS,
+    live: opts.live,
+    head: opts.live,
+    following: opts.following,
+    lastSeek: 0,
+    locked: opts.locked,
+  };
+
+  // 핀 생성
+  const pinBox = el("pins");
+  const pinEls = PINS.map((p) => {
+    const b = document.createElement("button");
+    b.className = "pin" + (p.major ? " major" : "");
+    b.style.left = (p.tick / st.end) * 100 + "%";
+    b.style.background = p.color;
+    b.title = mmss(p.tick) + " · " + p.label;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (st.locked && p.tick > st.live) { bark("아직 진행되지 않은 장면입니다"); return; }
+      seekTo(p.tick, true);
+    });
+    pinBox.appendChild(b);
+    return { p: p, el: b };
+  });
+
+  function bark(msg) {
+    const t = document.createElement("div");
+    t.className = "toast on";
+    t.textContent = msg;
+    t.style.position = "absolute"; t.style.left = "50%"; t.style.top = "-4px";
+    t.style.transform = "translate(-50%,-100%)";
+    track.style.position = "relative";
+    track.appendChild(t);
+    setTimeout(() => t.remove(), 1500);
+  }
+
+  function seekTo(t, user) {
+    let target = Math.max(0, Math.min(st.end, t));
+    if (st.locked) target = Math.min(target, st.live);       // ← clampSeek 과 같은 규칙
+    st.head = target;
+    if (user) {
+      st.lastSeek = Date.now();
+      st.following = !st.locked ? false : target >= st.live - 1;
+    }
+    paint();
+  }
+
+  let dragging = false;
+  function fromEvent(e) {
+    const r = track.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    return f * st.end;
+  }
+  track.addEventListener("pointerdown", (e) => {
+    dragging = true; track.setPointerCapture(e.pointerId);
+    const t = fromEvent(e);
+    if (st.locked && t > st.live) bark("미래로는 이동할 수 없습니다");
+    seekTo(t, true);
+  });
+  track.addEventListener("pointermove", (e) => { if (dragging) seekTo(fromEvent(e), true); });
+  track.addEventListener("pointerup", (e) => { dragging = false; try { track.releasePointerCapture(e.pointerId); } catch (_) {} });
+  track.addEventListener("pointercancel", () => { dragging = false; });
+
+  const nowBtn = el("now");
+  if (nowBtn) nowBtn.addEventListener("click", () => { st.following = true; st.head = st.live; paint(); });
+
+  function paint() {
+    const pf = (st.head / st.end) * 100;
+    const lf = (st.live / st.end) * 100;
+    el("past").style.left = "0%"; el("past").style.width = pf + "%";
+    el("unseen").style.left = pf + "%"; el("unseen").style.width = Math.max(0, lf - pf) + "%";
+    el("future").style.left = lf + "%"; el("future").style.width = Math.max(0, 100 - lf) + "%";
+    el("future").style.display = st.locked && st.live < st.end ? "block" : "none";
+    el("live").style.left = lf + "%";
+    el("live").style.display = st.locked ? "block" : "none";
+    el("head").style.left = pf + "%";
+    el("clock").textContent = mmss(st.head);
+    el("right").textContent = mmss(st.end);
+    const past = st.locked && !st.following;
+    el("badge").classList.toggle("on", past);
+    if (nowBtn) nowBtn.classList.toggle("on", past);
+    const lt = el("livetag");
+    if (lt) lt.style.visibility = past ? "hidden" : "visible";
+    pinEls.forEach((pe) => pe.el.classList.toggle("locked", st.locked && pe.p.tick > st.live));
+  }
+
+  if (opts.locked) {
+    setInterval(() => {
+      if (st.live < st.end) st.live = Math.min(st.end, st.live + 6);
+      if (st.following) st.head = st.live;
+      // 옵션 A 체험 — 자동 복귀
+      if (!st.following && $("#autoReturn") && $("#autoReturn").checked && Date.now() - st.lastSeek > 8000) {
+        st.following = true; st.head = st.live;
+      }
+      paint();
+    }, 1000);
+  }
+  paint();
+  return st;
+}
+makeSeek("#seekLive", { live: 560, following: true, locked: true });
+makeSeek("#seekDone", { live: HALF_TICKS, following: true, locked: false });
+
+/* 현행 바의 핀(전부 노출 = 스포일러) */
+(function oldPins() {
+  const box = $("#oldPins");
+  PINS.forEach((p) => {
+    const b = document.createElement("button");
+    b.className = "pin" + (p.major ? " major" : "");
+    b.style.left = (p.tick / HALF_TICKS) * 100 + "%";
+    b.style.background = p.color;
+    b.title = mmss(p.tick) + " · " + p.label + " (미래인데 보인다)";
+    box.appendChild(b);
+  });
+  const track = $("#oldTrack"), clock = $("#oldClock");
+  track.addEventListener("pointerdown", (e) => {
+    const r = track.getBoundingClientRect();
+    const f = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    $(".segPast", track).style.width = f * 100 + "%";
+    $(".segUnseen", track).style.left = f * 100 + "%";
+    $(".segUnseen", track).style.width = (1 - f) * 100 + "%";
+    $(".headMark", track).style.left = f * 100 + "%";
+    clock.textContent = mmss(f * HALF_TICKS);
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   4. 로그
+   ═══════════════════════════════════════════════════════════════════ */
+const LABELS = [
+  ["⚽ GOAL", "⚽ 골!", "major"],
+  ["⚽ PENALTY awarded", "⚽ 페널티킥 선언!", "major"],
+  ["🟨 Yellow card / 🟥 Red card", "🟨 경고 / 🟥 퇴장", "major"],
+  ["🔄 Substitution", "🔄 교체", "major"],
+  ["Shot on goal", "슛", ""],
+  ["Shot · saved 🧤", "슛 · 선방 🧤", "폭 14자 → 9자"],
+  ["Shot · off target", "슛 · 빗나감", "폭 17자 → 7자 (가장 크게 준다)"],
+  ["1-on-1 chance!", "일대일 찬스!", ""],
+  ["Penalty shot", "페널티킥 슈팅", ""],
+  ["🧤 Save", "🧤 선방", ""],
+  ["Tackle", "태클", ""],
+  ["Interception", "가로챔", "폭 12자 → 3자"],
+  ["Foul", "파울", ""],
+  ["🚩 Offside", "🚩 오프사이드", ""],
+  ["Free kick (…)", "프리킥 (…)", ""],
+  ["Corner", "코너킥", ""],
+  ["Goal kick", "골킥", ""],
+  ["Throw-in", "스로인", ""],
+  ["Kick-off", "킥오프", ""],
+  ["Half-time", "전반 종료", ""],
+  ["Full-time", "경기 종료", ""],
+];
+(function labelTable() {
+  const t = $("#labelTable");
+  LABELS.forEach((r) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = '<td class="mono">' + r[0] + "</td><td><b>" + r[1] + "</b></td><td class=\"hint\" style=\"font-size:11.5px\">" + (r[2] === "major" ? "중요도 major — 굵게 표시되는 줄" : r[2]) + "</td>";
+    t.appendChild(tr);
+  });
+})();
+
+const LOG_EVENTS = [
+  { min: 41, en: "🟨 Yellow card",     ko: "🟨 경고",        who: ["home", "4"],  tier: "major",  cls: "card" },
+  { min: 43, en: "Interception",       ko: "가로챔",         who: ["home", "6"],  tier: "minor",  cls: "" },
+  { min: 44, en: "Shot · saved 🧤",    ko: "슛 · 선방 🧤",   who: ["home", "9"],  tier: "normal", cls: "shot", xg: "0.31" },
+  { min: 45, en: "Half-time",          ko: "전반 종료",      who: null,           tier: "major",  cls: "" },
+  { min: 46, en: "Corner",             ko: "코너킥",         who: ["away", "11"], tier: "minor",  cls: "" },
+  { min: 47, en: "Tackle",             ko: "태클",           who: ["home", "5"],  tier: "minor",  cls: "" },
+  { min: 47, en: "Shot · off target",  ko: "슛 · 빗나감",    who: ["away", "9"],  tier: "minor",  cls: "shot", xg: "0.08" },
+  { min: 48, en: "⚽ GOAL",            ko: "⚽ 골!",         who: ["home", "7"],  tier: "major",  cls: "goal", score: "2-1" },
+  { min: 48, en: "Kick-off",           ko: "킥오프",         who: null,           tier: "minor",  cls: "" },
+  { min: 49, en: "Foul",               ko: "파울",           who: ["away", "6"],  tier: "normal", cls: "foul" },
+];
+const LONG_NAMES = {
+  "home:4": "블라디미르하이델", "home:6": "크리스토발란테", "home:9": "알렉산드로비치",
+  "home:5": "요한아우구스투스", "home:7": "마르첼로도밍게스",
+  "away:11": "세바스티아노프", "away:9": "에마누엘레르코", "away:6": "미하일로비치엔코",
+};
+(function logSection() {
+  const before = $("#logBefore"), after = $("#logAfter");
+  let fmt = "namenum";
+  $$("[data-nm]").forEach((b) => b.addEventListener("click", () => { fmt = b.dataset.nm; pressGroup($$("[data-nm]"), b); render(); }));
+  $("#longNames").addEventListener("change", render);
+  $("#koLabels").addEventListener("change", render);
+
+  function nameOf(team, n) {
+    const p = ROSTER.find((q) => q.team === team && q.n === n);
+    if (!p) return null;
+    if ($("#longNames").checked && LONG_NAMES[team + ":" + n]) return LONG_NAMES[team + ":" + n];
+    return p.nm;
+  }
+  function personText(team, n) {
+    const nm = nameOf(team, n);
+    if (!nm) return "#" + n;
+    if (fmt === "name") return nm;
+    if (fmt === "short") return nm.slice(0, 1) + "(" + n + ")";
+    return nm + "(" + n + ")";
+  }
+  function row(e, mode) {
+    const li = document.createElement("li");
+    li.className = (e.tier === "major" ? "major " : e.tier === "minor" ? "minor " : "") + e.cls;
+    const parts = [];
+    parts.push('<span class="min">' + e.min + "'</span>");
+    const lab = mode === "after" && $("#koLabels").checked ? e.ko : e.en;
+    let body = lab;
+    if (e.who) body += " " + (mode === "after" ? personText(e.who[0], e.who[1]) : "#" + e.who[1]);
+    if (e.score) body += " " + e.score;
+    parts.push('<span class="lab">' + body + "</span>");
+    if (e.who) {
+      const teamName = e.who[0] === "home" ? "별희 FC" : "천둥만";
+      parts.push('<span class="side ' + (mode === "after" ? e.who[0] : "") + '">' + teamName + "</span>");
+    }
+    if (e.xg) parts.push('<span class="xg">xG ' + e.xg + "</span>");
+    li.innerHTML = parts.join("");
+    return li;
+  }
+  function render() {
+    before.innerHTML = ""; after.innerHTML = "";
+    LOG_EVENTS.forEach((e) => { before.appendChild(row(e, "before")); after.appendChild(row(e, "after")); });
+    requestAnimationFrame(markClipped);
+  }
+  function markClipped() {
+    $$("ol.log .lab").forEach((s) => {
+      s.parentElement.classList.toggle("clipwarn", s.scrollWidth > s.clientWidth + 1);
+    });
+  }
+  window.addEventListener("resize", () => requestAnimationFrame(markClipped));
+  $$("[data-vpbtn]").forEach((b) => b.addEventListener("click", () => setTimeout(markClipped, 60)));
+  render();
+})();
+
+/* ═══════════════════════════════════════════════════════════════════
+   5. 행동 이펙트
+   ═══════════════════════════════════════════════════════════════════ */
+(function fxSection() {
+  const cv = $("#pitch5"); CANVASES.push(cv);
+  const ctx = cv.getContext("2d");
+  const SPOTS = {
+    receive:   { x: 0.63, y: 0.34, team: "home", n: "9",  nm: "나득점" },
+    intercept: { x: 0.45, y: 0.63, team: "away", n: "6",  nm: "배급자" },
+    clearance: { x: 0.15, y: 0.50, team: "home", n: "4",  nm: "최중앙" },
+    tackle:    { x: 0.72, y: 0.56, team: "away", n: "5",  nm: "굳건히" },
+  };
+  const DUR = { receive: 900, intercept: 1000, clearance: 1300, tackle: 1000 };
+  const TXT = { receive: "받음", intercept: "가로챔!", clearance: "걷어냄!", tackle: "태클!" };
+  let fx = [];
+  let looping = false, loopIdx = 0, loopTimer = null;
+
+  function teamOf(kind) {
+    const base = SPOTS[kind].team;
+    return $("#fxFlip").checked ? (base === "home" ? "away" : "home") : base;
+  }
+  function spawn(kind) {
+    fx.push({ kind: kind, team: teamOf(kind), t0: performance.now() });
+  }
+  $$("[data-fx]").forEach((b) => b.addEventListener("click", () => spawn(b.dataset.fx)));
+  $("#fxLoop").addEventListener("click", () => {
+    looping = !looping;
+    $("#fxLoop").setAttribute("aria-pressed", String(looping));
+    if (looping) {
+      const order = ["receive", "intercept", "clearance", "tackle"];
+      const step = () => { spawn(order[loopIdx % order.length]); loopIdx++; };
+      step();
+      loopTimer = setInterval(step, 1400);
+    } else clearInterval(loopTimer);
+  });
+
+  function roundedText(ctx, text, px, py, rgb, alpha) {
+    ctx.font = "bold 12px -apple-system,'Apple SD Gothic Neo',sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    const w = ctx.measureText(text).width + 14, h = 19;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(" + rgb + ",0.92)";
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(px - w / 2, py - h / 2, w, h, 9); else ctx.rect(px - w / 2, py - h / 2, w, h);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,.5)"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.fillStyle = "#fff"; ctx.fillText(text, px, py + 0.5);
+    ctx.globalAlpha = 1;
+  }
+
+  function frame(now) {
+    if (!cv._w) { requestAnimationFrame(frame); return; }
+    const w = cv._w, h = cv._h;
+    drawPitch(ctx, w, h);
+    const R = Math.max(8, w * 0.026);
+    const fs = Math.max(8, R * 0.95);
+
+    // 고정 토큰 4개
+    Object.keys(SPOTS).forEach((k) => {
+      const s = SPOTS[k], team = teamOf(k);
+      const px = PX(s.x, w), py = PY(s.y, h);
+      ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2);
+      ctx.fillStyle = TEAM[team]; ctx.fill();
+      drawNum(ctx, s.n, px, py, fs);
+    });
+
+    fx = fx.filter((f) => now - f.t0 < DUR[f.kind] + 400);
+    fx.forEach((f) => {
+      const s = SPOTS[f.kind];
+      const px = PX(s.x, w), py = PY(s.y, h);
+      const rgb = TEAM_RGB[f.team];
+      const p = Math.min(1, (now - f.t0) / DUR[f.kind]);
+      const a = 1 - p;
+
+      if (f.kind === "receive") {
+        // 수축 링 — "받았다"
+        const r = R + 26 * (1 - p);
+        ctx.globalAlpha = Math.min(1, a * 1.3);
+        ctx.strokeStyle = "rgb(" + rgb + ")"; ctx.lineWidth = 2.6;
+        ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.stroke();
+        // 토큰 플래시
+        ctx.globalAlpha = a * 0.7;
+        ctx.fillStyle = "#fff";
+        ctx.beginPath(); ctx.arc(px, py, R * (0.4 + 0.6 * (1 - p)), 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if (f.kind === "intercept") {
+        // 확산 링 + X 슬래시
+        const r = R + 22 * p;
+        ctx.globalAlpha = a * 0.95;
+        ctx.strokeStyle = "rgb(" + rgb + ")"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.stroke();
+        const L = R * 1.5 * Math.min(1, p * 2.2);
+        ctx.lineWidth = 3.4; ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(px - L, py - L); ctx.lineTo(px + L, py + L);
+        ctx.moveTo(px + L, py - L); ctx.lineTo(px - L, py + L);
+        ctx.stroke(); ctx.lineCap = "butt";
+        ctx.globalAlpha = 1;
+      } else if (f.kind === "clearance") {
+        // 쐐기(삼각) 궤적 + 속도선 — 방향이 본질
+        const dir = f.team === "home" ? 1 : -1;
+        const len = w * 0.30 * Math.min(1, p * 1.5);
+        const tipX = px + dir * len, tipY = py - h * 0.10 * Math.min(1, p * 1.5);
+        ctx.globalAlpha = a * 0.85;
+        ctx.fillStyle = "rgba(" + rgb + ",0.35)";
+        ctx.beginPath();
+        ctx.moveTo(px, py - R * 0.7);
+        ctx.lineTo(tipX, tipY);
+        ctx.lineTo(px, py + R * 0.7);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgb(" + rgb + ")"; ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(tipX, tipY); ctx.stroke();
+        // 화살촉
+        const ang = Math.atan2(tipY - py, tipX - px);
+        ctx.beginPath();
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(tipX - 11 * Math.cos(ang - 0.42), tipY - 11 * Math.sin(ang - 0.42));
+        ctx.moveTo(tipX, tipY);
+        ctx.lineTo(tipX - 11 * Math.cos(ang + 0.42), tipY - 11 * Math.sin(ang + 0.42));
+        ctx.stroke();
+        // 속도선 3줄
+        ctx.lineWidth = 1.6;
+        for (let k = -1; k <= 1; k++) {
+          ctx.beginPath();
+          ctx.moveTo(px - dir * (R + 4), py + k * 5);
+          ctx.lineTo(px - dir * (R + 4 + 13), py + k * 5);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      } else if (f.kind === "tackle") {
+        // 방사 스파크
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = "rgb(" + rgb + ")"; ctx.lineWidth = 2.6; ctx.lineCap = "round";
+        for (let k = 0; k < 8; k++) {
+          const ang = (k / 8) * Math.PI * 2 + 0.2;
+          const r0 = R + 3 + 12 * p, r1 = r0 + 8 * (1 - p) + 4;
+          ctx.beginPath();
+          ctx.moveTo(px + Math.cos(ang) * r0, py + Math.sin(ang) * r0);
+          ctx.lineTo(px + Math.cos(ang) * r1, py + Math.sin(ang) * r1);
+          ctx.stroke();
+        }
+        ctx.lineCap = "butt"; ctx.globalAlpha = 1;
+      }
+
+      // 토스트 — 위로 떠오르며 사라진다
+      const tp = Math.min(1, (now - f.t0) / (DUR[f.kind] + 300));
+      roundedText(ctx, TXT[f.kind], px, py - R - 16 - 14 * tp, rgb, Math.max(0, 1 - tp * 1.1));
+    });
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+
+/* 초기 레이아웃 */
+requestAnimationFrame(() => { fitAll(); requestAnimationFrame(fitAll); });
+setTimeout(fitAll, 120);
+</script>
+</body>
+</html>

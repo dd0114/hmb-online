@@ -1,0 +1,1640 @@
+[
+  {
+    "id": "P001",
+    "en": "Lev Yashin",
+    "ko": "레프 야신",
+    "short": "야신",
+    "grade": "LEGEND",
+    "position": "GK",
+    "note": "denylist:야신"
+  },
+  {
+    "id": "P002",
+    "en": "Franz Beckenbauer",
+    "ko": "프란츠 베켄바워",
+    "short": "베켄바워",
+    "grade": "LEGEND",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P003",
+    "en": "Paolo Maldini",
+    "ko": "파올로 말디니",
+    "short": "말디니",
+    "grade": "LEGEND",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P004",
+    "en": "Franco Baresi",
+    "ko": "프랑코 바레시",
+    "short": "바레시",
+    "grade": "LEGEND",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P005",
+    "en": "Diego Maradona",
+    "ko": "디에고 마라도나",
+    "short": "마라도나",
+    "grade": "LEGEND",
+    "position": "MF",
+    "note": "denylist:마라도나"
+  },
+  {
+    "id": "P006",
+    "en": "Zinedine Zidane",
+    "ko": "지네딘 지단",
+    "short": "지단",
+    "grade": "LEGEND",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P007",
+    "en": "Michel Platini",
+    "ko": "미셸 플라티니",
+    "short": "플라티니",
+    "grade": "LEGEND",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P008",
+    "en": "Lothar Matthäus",
+    "ko": "로타어 마테우스",
+    "short": "마테우스",
+    "grade": "LEGEND",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P009",
+    "en": "Pelé",
+    "ko": "펠레",
+    "short": "펠레",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": "mononym:애칭 단독 표기"
+  },
+  {
+    "id": "P010",
+    "en": "Ronaldo Nazário",
+    "ko": "호나우두 나자리우",
+    "short": "호나우두",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": "denylist:호나우두"
+  },
+  {
+    "id": "P011",
+    "en": "Johan Cruyff",
+    "ko": "요한 크루이프",
+    "short": "크루이프",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P012",
+    "en": "Marco van Basten",
+    "ko": "마르코 판 바스턴",
+    "short": "판 바스턴",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P013",
+    "en": "Alisson",
+    "ko": "알리송",
+    "short": "알리송",
+    "grade": "DIA",
+    "position": "GK",
+    "note": "guard-3음절 ; mononym:성 Becker 생략이 관용"
+  },
+  {
+    "id": "P014",
+    "en": "Thibaut Courtois",
+    "ko": "티보 쿠르투아",
+    "short": "쿠르투아",
+    "grade": "DIA",
+    "position": "GK",
+    "note": ""
+  },
+  {
+    "id": "P015",
+    "en": "Virgil van Dijk",
+    "ko": "버질 판다이크",
+    "short": "판다이크",
+    "grade": "DIA",
+    "position": "DF",
+    "note": "패러디 P181 석다이크의 원본"
+  },
+  {
+    "id": "P016",
+    "en": "Rúben Dias",
+    "ko": "후벵 디아스",
+    "short": "디아스",
+    "grade": "DIA",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P017",
+    "en": "Achraf Hakimi",
+    "ko": "아슈라프 하키미",
+    "short": "하키미",
+    "grade": "DIA",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P018",
+    "en": "Alphonso Davies",
+    "ko": "알폰소 데이비스",
+    "short": "데이비스",
+    "grade": "DIA",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P019",
+    "en": "Antonio Rüdiger",
+    "ko": "안토니오 뤼디거",
+    "short": "뤼디거",
+    "grade": "DIA",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P020",
+    "en": "William Saliba",
+    "ko": "윌리앙 살리바",
+    "short": "살리바",
+    "grade": "DIA",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P021",
+    "en": "Theo Hernández",
+    "ko": "테오 에르난데스",
+    "short": "테오",
+    "grade": "DIA",
+    "position": "DF",
+    "note": "성이 흔해 중계는 이름으로 부른다"
+  },
+  {
+    "id": "P022",
+    "en": "Kim Min-jae",
+    "ko": "김민재",
+    "short": "김민재",
+    "grade": "DIA",
+    "position": "DF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P023",
+    "en": "Rodri",
+    "ko": "로드리",
+    "short": "로드리",
+    "grade": "DIA",
+    "position": "MF",
+    "note": "guard-3음절 ; mononym:본명 Rodrigo Hernández"
+  },
+  {
+    "id": "P024",
+    "en": "Kevin De Bruyne",
+    "ko": "케빈 더 브라위너",
+    "short": "더 브라위너",
+    "grade": "DIA",
+    "position": "MF",
+    "note": "denylist-soft:데브라위너"
+  },
+  {
+    "id": "P025",
+    "en": "Jude Bellingham",
+    "ko": "주드 벨링엄",
+    "short": "벨링엄",
+    "grade": "DIA",
+    "position": "MF",
+    "note": "denylist:벨링엄"
+  },
+  {
+    "id": "P026",
+    "en": "Federico Valverde",
+    "ko": "페데리코 발베르데",
+    "short": "발베르데",
+    "grade": "DIA",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P027",
+    "en": "Luka Modrić",
+    "ko": "루카 모드리치",
+    "short": "모드리치",
+    "grade": "DIA",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P028",
+    "en": "Toni Kroos",
+    "ko": "토니 크로스",
+    "short": "크로스",
+    "grade": "DIA",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P029",
+    "en": "Martin Ødegaard",
+    "ko": "마르틴 외데고르",
+    "short": "외데고르",
+    "grade": "DIA",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P030",
+    "en": "Pedri",
+    "ko": "페드리",
+    "short": "페드리",
+    "grade": "DIA",
+    "position": "MF",
+    "note": "guard-3음절 ; mononym:본명 Pedro González"
+  },
+  {
+    "id": "P031",
+    "en": "Erling Haaland",
+    "ko": "엘링 홀란",
+    "short": "홀란",
+    "grade": "DIA",
+    "position": "FW",
+    "note": "중계 관용 = 홀란(홀란드 아님)"
+  },
+  {
+    "id": "P032",
+    "en": "Kylian Mbappé",
+    "ko": "킬리안 음바페",
+    "short": "음바페",
+    "grade": "DIA",
+    "position": "FW",
+    "note": "denylist:음바페"
+  },
+  {
+    "id": "P033",
+    "en": "Vinícius Júnior",
+    "ko": "비니시우스 주니오르",
+    "short": "비니시우스",
+    "grade": "DIA",
+    "position": "FW",
+    "note": "denylist:비니시우스"
+  },
+  {
+    "id": "P034",
+    "en": "Harry Kane",
+    "ko": "해리 케인",
+    "short": "케인",
+    "grade": "DIA",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P035",
+    "en": "Mohamed Salah",
+    "ko": "모하메드 살라",
+    "short": "살라",
+    "grade": "DIA",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P036",
+    "en": "Lautaro Martínez",
+    "ko": "라우타로 마르티네스",
+    "short": "라우타로",
+    "grade": "DIA",
+    "position": "FW",
+    "note": "성 마르티네스가 P078과 겹쳐 이름으로 부른다"
+  },
+  {
+    "id": "P037",
+    "en": "Son Heung-min",
+    "ko": "손흥민",
+    "short": "손흥민",
+    "grade": "DIA",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P038",
+    "en": "Ederson",
+    "ko": "에데르송",
+    "short": "에데르송",
+    "grade": "GOLD",
+    "position": "GK",
+    "note": "mononym:본명 Ederson Moraes"
+  },
+  {
+    "id": "P039",
+    "en": "Gianluigi Donnarumma",
+    "ko": "잔루이지 돈나룸마",
+    "short": "돈나룸마",
+    "grade": "GOLD",
+    "position": "GK",
+    "note": ""
+  },
+  {
+    "id": "P040",
+    "en": "Jan Oblak",
+    "ko": "얀 오블라크",
+    "short": "오블라크",
+    "grade": "GOLD",
+    "position": "GK",
+    "note": ""
+  },
+  {
+    "id": "P041",
+    "en": "Trent Alexander-Arnold",
+    "ko": "트렌트 알렉산더아널드",
+    "short": "알렉산더아널드",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": "짧은 이름이 7자 — 밀집 UI 최장. 대안 '아널드' 검토"
+  },
+  {
+    "id": "P042",
+    "en": "Kyle Walker",
+    "ko": "카일 워커",
+    "short": "워커",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P043",
+    "en": "Marquinhos",
+    "ko": "마르키뉴스",
+    "short": "마르키뉴스",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": "mononym:애칭 단독 표기"
+  },
+  {
+    "id": "P044",
+    "en": "Éder Militão",
+    "ko": "에데르 밀리탕",
+    "short": "밀리탕",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P045",
+    "en": "Ronald Araújo",
+    "ko": "로날드 아라우호",
+    "short": "아라우호",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P046",
+    "en": "Josko Gvardiol",
+    "ko": "요슈코 그바르디올",
+    "short": "그바르디올",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P047",
+    "en": "Jules Koundé",
+    "ko": "쥘 쿤데",
+    "short": "쿤데",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P048",
+    "en": "Reece James",
+    "ko": "리스 제임스",
+    "short": "제임스",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": "P094 '제임스 매디슨'의 이름과 표기 충돌 — 성/이름 축이 달라 표시상 혼동 가능"
+  },
+  {
+    "id": "P049",
+    "en": "João Cancelo",
+    "ko": "주앙 칸셀루",
+    "short": "칸셀루",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P050",
+    "en": "David Alaba",
+    "ko": "다비드 알라바",
+    "short": "알라바",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P051",
+    "en": "Matthijs de Ligt",
+    "ko": "마테이스 더 리흐트",
+    "short": "더 리흐트",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P052",
+    "en": "Andrew Robertson",
+    "ko": "앤드루 로버트슨",
+    "short": "로버트슨",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P053",
+    "en": "Bruno Fernandes",
+    "ko": "브루누 페르난드스",
+    "short": "페르난드스",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": "이름 '브루누'가 P065와 겹쳐 성으로 부른다"
+  },
+  {
+    "id": "P054",
+    "en": "Bernardo Silva",
+    "ko": "베르나르두 실바",
+    "short": "베르나르두",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": "성 실바가 흔해 이름으로 부른다"
+  },
+  {
+    "id": "P055",
+    "en": "Frenkie de Jong",
+    "ko": "프렝키 더 용",
+    "short": "더 용",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P056",
+    "en": "Declan Rice",
+    "ko": "데클런 라이스",
+    "short": "라이스",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P057",
+    "en": "Ilkay Gündogan",
+    "ko": "일카이 귄도안",
+    "short": "귄도안",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P058",
+    "en": "Nicolò Barella",
+    "ko": "니콜로 바렐라",
+    "short": "바렐라",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P059",
+    "en": "Jamal Musiala",
+    "ko": "자말 무시알라",
+    "short": "무시알라",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P060",
+    "en": "Enzo Fernández",
+    "ko": "엔소 페르난데스",
+    "short": "엔소",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": "성 페르난데스가 P053과 겹쳐 이름으로 부른다"
+  },
+  {
+    "id": "P061",
+    "en": "Aurélien Tchouaméni",
+    "ko": "오렐리앵 추아메니",
+    "short": "추아메니",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P062",
+    "en": "Casemiro",
+    "ko": "카세미루",
+    "short": "카세미루",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": "mononym:애칭 단독 표기"
+  },
+  {
+    "id": "P063",
+    "en": "Joshua Kimmich",
+    "ko": "요주아 키미히",
+    "short": "키미히",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P064",
+    "en": "Phil Foden",
+    "ko": "필 포든",
+    "short": "포든",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P065",
+    "en": "Bruno Guimarães",
+    "ko": "브루누 기마랑이스",
+    "short": "기마랑이스",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P066",
+    "en": "Bukayo Saka",
+    "ko": "부카요 사카",
+    "short": "사카",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P067",
+    "en": "Rafael Leão",
+    "ko": "하파엘 레앙",
+    "short": "레앙",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P068",
+    "en": "Julián Álvarez",
+    "ko": "훌리안 알바레스",
+    "short": "알바레스",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P069",
+    "en": "Victor Osimhen",
+    "ko": "빅터 오시멘",
+    "short": "오시멘",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": "패러디 P182 오시야스와 어감이 가깝다(동일 문자열 아님)"
+  },
+  {
+    "id": "P070",
+    "en": "Marcus Rashford",
+    "ko": "마커스 래시퍼드",
+    "short": "래시퍼드",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P071",
+    "en": "Lamine Yamal",
+    "ko": "라민 야말",
+    "short": "야말",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P072",
+    "en": "Khvicha Kvaratskhelia",
+    "ko": "흐비차 크바라츠헬리아",
+    "short": "크바라츠헬리아",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": "짧은 이름이 8자 — 밀집 UI 최장. 대안 '크바라' 검토"
+  },
+  {
+    "id": "P073",
+    "en": "Robert Lewandowski",
+    "ko": "로베르트 레반도프스키",
+    "short": "레반도프스키",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": "짧은 이름 6자"
+  },
+  {
+    "id": "P074",
+    "en": "André Onana",
+    "ko": "앙드레 오나나",
+    "short": "오나나",
+    "grade": "SILVER",
+    "position": "GK",
+    "note": "short-dup:P105"
+  },
+  {
+    "id": "P075",
+    "en": "Yann Sommer",
+    "ko": "얀 조머",
+    "short": "조머",
+    "grade": "SILVER",
+    "position": "GK",
+    "note": ""
+  },
+  {
+    "id": "P076",
+    "en": "David Raya",
+    "ko": "다비드 라야",
+    "short": "라야",
+    "grade": "SILVER",
+    "position": "GK",
+    "note": ""
+  },
+  {
+    "id": "P077",
+    "en": "Raphaël Varane",
+    "ko": "라파엘 바란",
+    "short": "바란",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P078",
+    "en": "Lisandro Martínez",
+    "ko": "리산드로 마르티네스",
+    "short": "리산드로",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": "성 마르티네스가 P036과 겹쳐 이름으로 부른다"
+  },
+  {
+    "id": "P079",
+    "en": "Cristian Romero",
+    "ko": "크리스티안 로메로",
+    "short": "로메로",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P080",
+    "en": "Gabriel Magalhães",
+    "ko": "가브리에우 마갈량이스",
+    "short": "가브리에우",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": "등록명이 Gabriel — 이름으로 부른다"
+  },
+  {
+    "id": "P081",
+    "en": "Ben White",
+    "ko": "벤 화이트",
+    "short": "화이트",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P082",
+    "en": "Pau Torres",
+    "ko": "파우 토레스",
+    "short": "토레스",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P083",
+    "en": "Nathan Aké",
+    "ko": "네이선 아케",
+    "short": "아케",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P084",
+    "en": "Manuel Akanji",
+    "ko": "마누엘 아칸지",
+    "short": "아칸지",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P085",
+    "en": "Alessandro Bastoni",
+    "ko": "알레산드로 바스토니",
+    "short": "바스토니",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P086",
+    "en": "Federico Dimarco",
+    "ko": "페데리코 디마르코",
+    "short": "디마르코",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P087",
+    "en": "Destiny Udogie",
+    "ko": "데스티니 우도지",
+    "short": "우도지",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P088",
+    "en": "Marcos Acuña",
+    "ko": "마르코스 아쿠냐",
+    "short": "아쿠냐",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P089",
+    "en": "Jeremie Frimpong",
+    "ko": "제레미 프림퐁",
+    "short": "프림퐁",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P090",
+    "en": "Kieran Trippier",
+    "ko": "키어런 트리피어",
+    "short": "트리피어",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P091",
+    "en": "Raphaël Guerreiro",
+    "ko": "하파엘 게레이루",
+    "short": "게레이루",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P092",
+    "en": "Mason Mount",
+    "ko": "메이슨 마운트",
+    "short": "마운트",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P093",
+    "en": "Kai Havertz",
+    "ko": "카이 하베르츠",
+    "short": "하베르츠",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P094",
+    "en": "James Maddison",
+    "ko": "제임스 매디슨",
+    "short": "매디슨",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P095",
+    "en": "Dominik Szoboszlai",
+    "ko": "도미니크 소보슬러이",
+    "short": "소보슬러이",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P096",
+    "en": "Alexis Mac Allister",
+    "ko": "알렉시스 맥 알리스터",
+    "short": "맥 알리스터",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P097",
+    "en": "Youri Tielemans",
+    "ko": "유리 틸레만스",
+    "short": "틸레만스",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P098",
+    "en": "Sandro Tonali",
+    "ko": "산드로 토날리",
+    "short": "토날리",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P099",
+    "en": "Eduardo Camavinga",
+    "ko": "에두아르도 카마빙가",
+    "short": "카마빙가",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P100",
+    "en": "Ryan Gravenberch",
+    "ko": "라이언 흐라번베르흐",
+    "short": "흐라번베르흐",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": "짧은 이름 6자"
+  },
+  {
+    "id": "P101",
+    "en": "Fabián Ruiz",
+    "ko": "파비안 루이스",
+    "short": "루이스",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": "short-dup:P118"
+  },
+  {
+    "id": "P102",
+    "en": "Teun Koopmeiners",
+    "ko": "테윈 코프메이너스",
+    "short": "코프메이너스",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": "짧은 이름 6자"
+  },
+  {
+    "id": "P103",
+    "en": "Weston McKennie",
+    "ko": "웨스턴 매케니",
+    "short": "매케니",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P104",
+    "en": "Hakan Çalhanoğlu",
+    "ko": "하칸 찰하노글루",
+    "short": "찰하노글루",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P105",
+    "en": "Amadou Onana",
+    "ko": "아마두 오나나",
+    "short": "오나나",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": "short-dup:P074"
+  },
+  {
+    "id": "P106",
+    "en": "Gabriel Jesus",
+    "ko": "가브리에우 제주스",
+    "short": "제주스",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": "P080과 등록명 Gabriel 이 같아 이쪽은 성으로 부른다"
+  },
+  {
+    "id": "P107",
+    "en": "Marcus Thuram",
+    "ko": "마르퀴스 튀랑",
+    "short": "튀랑",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P108",
+    "en": "Rasmus Højlund",
+    "ko": "라스무스 호일룬",
+    "short": "호일룬",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P109",
+    "en": "Randal Kolo Muani",
+    "ko": "랑달 콜로 무아니",
+    "short": "콜로 무아니",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P110",
+    "en": "Cody Gakpo",
+    "ko": "코디 하크포",
+    "short": "하크포",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P111",
+    "en": "Ollie Watkins",
+    "ko": "올리 왓킨스",
+    "short": "왓킨스",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P112",
+    "en": "Alexander Isak",
+    "ko": "알렉산더 이사크",
+    "short": "이사크",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P113",
+    "en": "Dušan Vlahović",
+    "ko": "두샨 블라호비치",
+    "short": "블라호비치",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P114",
+    "en": "Nicolas Jackson",
+    "ko": "니콜라 잭슨",
+    "short": "잭슨",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P115",
+    "en": "Serhou Guirassy",
+    "ko": "세루 기라시",
+    "short": "기라시",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P116",
+    "en": "Giorgi Mamardashvili",
+    "ko": "기오르기 마마르다슈빌리",
+    "short": "마마르다슈빌리",
+    "grade": "BRONZE",
+    "position": "GK",
+    "note": "짧은 이름이 7자 — 밀집 UI 최장. 대안 '마마르다' 검토"
+  },
+  {
+    "id": "P117",
+    "en": "Guglielmo Vicario",
+    "ko": "굴리엘모 비카리오",
+    "short": "비카리오",
+    "grade": "BRONZE",
+    "position": "GK",
+    "note": ""
+  },
+  {
+    "id": "P118",
+    "en": "Rico Lewis",
+    "ko": "리코 루이스",
+    "short": "루이스",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": "short-dup:P101"
+  },
+  {
+    "id": "P119",
+    "en": "Levi Colwill",
+    "ko": "리바이 콜윌",
+    "short": "콜윌",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P120",
+    "en": "Leny Yoro",
+    "ko": "르니 요로",
+    "short": "요로",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P121",
+    "en": "Nico Schlotterbeck",
+    "ko": "니코 슐로터베크",
+    "short": "슐로터베크",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P122",
+    "en": "Castello Lukeba",
+    "ko": "카스텔로 루케바",
+    "short": "루케바",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P123",
+    "en": "Riccardo Calafiori",
+    "ko": "리카르도 칼라피오리",
+    "short": "칼라피오리",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P124",
+    "en": "Giorgio Scalvini",
+    "ko": "조르조 스칼비니",
+    "short": "스칼비니",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P125",
+    "en": "Jarrad Branthwaite",
+    "ko": "재러드 브랜스웨이트",
+    "short": "브랜스웨이트",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": "짧은 이름 6자"
+  },
+  {
+    "id": "P126",
+    "en": "Micky van de Ven",
+    "ko": "미키 판 더 벤",
+    "short": "판 더 벤",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": ""
+  },
+  {
+    "id": "P127",
+    "en": "Warren Zaïre-Emery",
+    "ko": "워런 자이르에메리",
+    "short": "자이르에메리",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": "짧은 이름 6자"
+  },
+  {
+    "id": "P128",
+    "en": "Kobbie Mainoo",
+    "ko": "코비 마이누",
+    "short": "마이누",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P129",
+    "en": "Gavi",
+    "ko": "가비",
+    "short": "가비",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": "mononym:애칭 단독 표기"
+  },
+  {
+    "id": "P130",
+    "en": "Arda Güler",
+    "ko": "아르다 귈레르",
+    "short": "귈레르",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P131",
+    "en": "Carlos Baleba",
+    "ko": "카를로스 발레바",
+    "short": "발레바",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P132",
+    "en": "Adam Wharton",
+    "ko": "애덤 와튼",
+    "short": "와튼",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P133",
+    "en": "João Neves",
+    "ko": "주앙 네베스",
+    "short": "네베스",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P134",
+    "en": "Manu Koné",
+    "ko": "마누 코네",
+    "short": "코네",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": ""
+  },
+  {
+    "id": "P135",
+    "en": "Ángel Gomes",
+    "ko": "앙헬 고메스",
+    "short": "고메스",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": "잉글랜드 선수지만 국내 중계 관용은 '앙헬'"
+  },
+  {
+    "id": "P136",
+    "en": "Endrick",
+    "ko": "엔드릭",
+    "short": "엔드릭",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": "guard-3음절 ; mononym:애칭 단독 표기"
+  },
+  {
+    "id": "P137",
+    "en": "Mathys Tel",
+    "ko": "마티스 텔",
+    "short": "텔",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": "짧은 이름 1자 — 최단. 밀집 UI 하한 사례"
+  },
+  {
+    "id": "P138",
+    "en": "Benjamin Šeško",
+    "ko": "베냐민 셰슈코",
+    "short": "셰슈코",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P139",
+    "en": "Johan Bakayoko",
+    "ko": "요한 바카요코",
+    "short": "바카요코",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P140",
+    "en": "Karim Adeyemi",
+    "ko": "카림 아데예미",
+    "short": "아데예미",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P141",
+    "en": "Hugo Ekitike",
+    "ko": "위고 에키티케",
+    "short": "에키티케",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P142",
+    "en": "Alejandro Garnacho",
+    "ko": "알레한드로 가르나초",
+    "short": "가르나초",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": ""
+  },
+  {
+    "id": "P143",
+    "en": "Park Ji-sung",
+    "ko": "박지성",
+    "short": "박지성",
+    "grade": "LEGEND",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P144",
+    "en": "Cha Bum-kun",
+    "ko": "차범근",
+    "short": "차범근",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P145",
+    "en": "Lee Kang-in",
+    "ko": "이강인",
+    "short": "이강인",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P146",
+    "en": "Ki Sung-yueng",
+    "ko": "기성용",
+    "short": "기성용",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P147",
+    "en": "Yoo Sang-chul",
+    "ko": "유상철",
+    "short": "유상철",
+    "grade": "GOLD",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P148",
+    "en": "Hong Myung-bo",
+    "ko": "홍명보",
+    "short": "홍명보",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P149",
+    "en": "Lee Young-pyo",
+    "ko": "이영표",
+    "short": "이영표",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P150",
+    "en": "Kim Joo-sung",
+    "ko": "김주성",
+    "short": "김주성",
+    "grade": "GOLD",
+    "position": "DF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P151",
+    "en": "Hwang Hee-chan",
+    "ko": "황희찬",
+    "short": "황희찬",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P152",
+    "en": "Ahn Jung-hwan",
+    "ko": "안정환",
+    "short": "안정환",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P153",
+    "en": "Lee Dong-gook",
+    "ko": "이동국",
+    "short": "이동국",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P154",
+    "en": "Hwang Sun-hong",
+    "ko": "황선홍",
+    "short": "황선홍",
+    "grade": "GOLD",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P155",
+    "en": "Lee Jae-sung",
+    "ko": "이재성",
+    "short": "이재성",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P156",
+    "en": "Hwang In-beom",
+    "ko": "황인범",
+    "short": "황인범",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P157",
+    "en": "Koo Ja-cheol",
+    "ko": "구자철",
+    "short": "구자철",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P158",
+    "en": "Lee Chung-yong",
+    "ko": "이청용",
+    "short": "이청용",
+    "grade": "SILVER",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P159",
+    "en": "Kim Young-gwon",
+    "ko": "김영권",
+    "short": "김영권",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P160",
+    "en": "Kim Jin-su",
+    "ko": "김진수",
+    "short": "김진수",
+    "grade": "SILVER",
+    "position": "DF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P161",
+    "en": "Cho Hyun-woo",
+    "ko": "조현우",
+    "short": "조현우",
+    "grade": "SILVER",
+    "position": "GK",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P162",
+    "en": "Park Chu-young",
+    "ko": "박주영",
+    "short": "박주영",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P163",
+    "en": "Seol Ki-hyeon",
+    "ko": "설기현",
+    "short": "설기현",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P164",
+    "en": "Cho Gue-sung",
+    "ko": "조규성",
+    "short": "조규성",
+    "grade": "SILVER",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P165",
+    "en": "Bae Jun-ho",
+    "ko": "배준호",
+    "short": "배준호",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P166",
+    "en": "Hong Hyun-seok",
+    "ko": "홍현석",
+    "short": "홍현석",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P167",
+    "en": "Paik Seung-ho",
+    "ko": "백승호",
+    "short": "백승호",
+    "grade": "BRONZE",
+    "position": "MF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P168",
+    "en": "Seol Young-woo",
+    "ko": "설영우",
+    "short": "설영우",
+    "grade": "BRONZE",
+    "position": "DF",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P169",
+    "en": "Kim Seung-gyu",
+    "ko": "김승규",
+    "short": "김승규",
+    "grade": "BRONZE",
+    "position": "GK",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P170",
+    "en": "Yang Min-hyuk",
+    "ko": "양민혁",
+    "short": "양민혁",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P171",
+    "en": "Oh Hyeon-gyu",
+    "ko": "오현규",
+    "short": "오현규",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P172",
+    "en": "Yang Hyun-jun",
+    "ko": "양현준",
+    "short": "양현준",
+    "grade": "BRONZE",
+    "position": "FW",
+    "note": "guard-3음절"
+  },
+  {
+    "id": "P173",
+    "en": "보날두",
+    "ko": "보날두",
+    "short": "보날두",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": "parody:현행 유지 (원본 크리스티아누 호날두)"
+  },
+  {
+    "id": "P174",
+    "en": "권씨",
+    "ko": "권씨",
+    "short": "권씨",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": "parody:현행 유지 (원본 메시)"
+  },
+  {
+    "id": "P175",
+    "en": "열라도나",
+    "ko": "열라도나",
+    "short": "열라도나",
+    "grade": "LEGEND",
+    "position": "MF",
+    "note": "parody:현행 유지 (원본 마라도나)"
+  },
+  {
+    "id": "P176",
+    "en": "춘바페",
+    "ko": "춘바페",
+    "short": "춘바페",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": "parody:현행 유지 (원본 음바페)"
+  },
+  {
+    "id": "P177",
+    "en": "덕브라이너",
+    "ko": "덕브라이너",
+    "short": "덕브라",
+    "grade": "LEGEND",
+    "position": "MF",
+    "note": "parody:현행 유지 (원본 더 브라위너). 5자라 밀집 UI 용 3자 축약 제안"
+  },
+  {
+    "id": "P178",
+    "en": "석신",
+    "ko": "석신",
+    "short": "석신",
+    "grade": "LEGEND",
+    "position": "GK",
+    "note": "parody:현행 유지 (원본 야신)"
+  },
+  {
+    "id": "P179",
+    "en": "욱링엄",
+    "ko": "욱링엄",
+    "short": "욱링엄",
+    "grade": "LEGEND",
+    "position": "MF",
+    "note": "parody:현행 유지 (원본 벨링엄)"
+  },
+  {
+    "id": "P180",
+    "en": "경니시우스",
+    "ko": "경니시우스",
+    "short": "경니시",
+    "grade": "LEGEND",
+    "position": "FW",
+    "note": "parody:현행 유지 (원본 비니시우스). 5자라 밀집 UI 용 3자 축약 제안"
+  },
+  {
+    "id": "P181",
+    "en": "석다이크",
+    "ko": "석다이크",
+    "short": "석다이크",
+    "grade": "LEGEND",
+    "position": "DF",
+    "note": "parody:현행 유지 (원본 판다이크)"
+  },
+  {
+    "id": "P182",
+    "en": "오시야스",
+    "ko": "오시야스",
+    "short": "오시야스",
+    "grade": "LEGEND",
+    "position": "GK",
+    "note": "parody:현행 유지 (원본 카시야스)"
+  }
+]
