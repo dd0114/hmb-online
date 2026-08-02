@@ -113,56 +113,11 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 > 배포 지시가 오기 전에 **미리 등록해 두는** 자리다. 여기 있는 건 §0.5 를 돌릴 때 **반드시 같이** 확인하고,
 > 처리하고 나면 항목을 지우고 `deploy-log` 에만 남긴다.
 
-**등록분 — 다음 열차 = 백엔드 온리** (`engine@0.40.0` + `#383` 무배포 계수). hero GO 기수령, **최종 SHA 2건 대기**.
+**등록분 — 열차 없음.** (직전 = `v3.15` 백엔드 온리 = `engine@0.40.0` + `#383` 무배포 계수 →
+**소진**: 2026-08-02 발차. 라이브 engine@0.40.0 · **Flyway v37** · web 은 `8a0352d` 로 **동결 유지**.
+V37 리허설·구 java 기동 확인·#396 프리플라이트 근거는 `deploy-log` v3.15 항목에 남겼다.)
 
-> ⚠️ **web 재빌드 금지** — 아래 🚫 권씨 동결 창이 걸려 있다. 이 열차는 **백엔드 도커만** 나간다.
-> `#386`/`#388` web 픽스는 **이 열차에 싣지 않는다**(main 지시).
-
-**동승분**: ①`engine@0.40.0`(`release/engine-v2` 최종 — M3 + S3-B/S3-C) ②`#383` 무배포 계수
-(server-java **V37** + `packages/shared` additive + runner `configOverrides`).
-
-**빌드 범위**: java 재빌드 · runner 재빌드(엔진) · executor 재기동. **web 은 손대지 않는다.**
-
-**① V37 마이그레이션 — 리허설 선행 완료(2026-08-02, 라이브 데이터 복사본)**
-
-`V37__engine_config_overrides.sql` = **순수 additive**. 신규 표 `engine_config_revisions` 1개 +
-부분 UNIQUE 인덱스 1개 + `ALTER TABLE ADD COLUMN` 5개(`matches` 2 · `match_halves` 3). **파괴 연산 0.**
-**`.sql.conf` 짝파일 없음 = 기본 트랜잭션**(비원자 마이그레이션의 그 위험은 이 건엔 없다).
-
-리허설 실측(라이브 사본 544MB): DDL **OK · 0ms** · `integrity_check ok` · 행수 **무변경**
-(matches 85 · match_halves 147 · users 191 · league_fixtures 630) · 신규 컬럼 5개 생성 확인 ·
-**기존 행은 전부 NULL**(신규 컬럼 non-null 0건 = "이 기능 이전과 동일" 보장).
-
-📌 **java 롤백은 V37 이 막지 않는다 — 실제로 띄워서 확인했다.** V37 적용 DB + `flyway_schema_history`
-에 37 행을 넣은 볼륨에 **구 java 이미지**를 붙여 기동: `Successfully validated 37 migrations` →
-`WARN: Schema "main" has a version (37) that is newer than the latest available migration (36)` →
-**`Started Application`**. 즉 경고만 내고 뜬다(`validateOnMigrate` 가 미해결 **상위** 버전은 막지 않는다).
-남는 컬럼은 구 코드가 그냥 무시한다. ⇒ **롤백 계획에 스키마 되돌리기를 넣을 필요 없다.**
-
-**② #241 관문** — `engine@0.34.0 → 0.40.0` 범프라 진행 중 매치의 `resumeState` 가 거부된다.
-발차 직전 **진행 중 매치 0** 확인은 이 열차도 필수(명령은 아래 §0.7 원문 블록과 동일).
-
-**③ #396 러너 롤백 절차 — 되돌릴 때의 관문(이 열차가 만드는 새 위험)**
-
-`#383` 이후 러너는 `configOverrides` 를 받는다. **앞으로 굴리는 배포는 안전**하지만(신규 필드가
-전부 optional) **되돌리는 배포는 아니다**: 오버레이가 걸린 상태로 러너를 롤백하면 구 러너의 zod 가
-미선언 키를 **조용히 strip** 해 **전반은 튜닝값 · 후반은 기본값**인 매치가 만들어지고,
-**어디에도 신호가 남지 않는다**(구 러너는 `effective_config_hash` 자체를 안 보낸다).
-과거 이미지를 바꿀 수 없으니 **코드로는 못 고친다 — 그래서 절차다.**
-
-```bash
-bash infra/preflight-runner-rollback.sh     # ⚠️ 러너 롤백 전 필수. 읽기전용, 0=가능 1=금지 2=판정불가
-```
-`HMB_ADMIN_TOKEN` 없이 돌리면 `/api/admin/engine-config` 가 **401 이라 404 와 구분이 안 돼** 2(판정 불가)로
-**닫힌다**(fail-closed). 토큰을 주면 오버레이 유무로 정확히 갈린다. 막히면 순서는 ①오버레이를 `{}` 로
-PUT(원장에 `reason` 이 남는다) ②**진행 중 매치 소진 대기**(비워도 그 매치들은 **자기 스냅샷**으로 돈다 —
-V37 이 값 복사라서다) ③재점검 후 롤백. 세 경로 전부 검증했다(안전 0 · 미인증 2 · 오버레이 걸림 1).
-
-**④ 롤백 기준선** — 발차 전 `prev-live` 2개 고정(현재 = java `8cc6d234…` / runner `c47df916…`, engine@0.34.0).
-
----
-
-*(직전 = 엔진 열차 `engine@0.34.0` → **소진**: 2026-08-01 `v3.14` 로 발차. 잔여 결함 **#388** = apps/web 소유.)*
+⚠️ **아래 동결 창은 계속 유효하다** — 소진되지 않았다.
 
 ### 🚫 **상비 제약 — web 배포 동결 창** (#389 권씨, main 등록 2026-08-01)
 

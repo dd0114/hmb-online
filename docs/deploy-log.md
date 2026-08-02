@@ -6,6 +6,70 @@
 
 ---
 
+## 2026-08-02T07:07Z — **배포 v3.15 — 백엔드 온리** `engine@0.34.0 → 0.40.0` + **#383 무배포 계수(V37)**
+
+- **git**: **`e2ca113`**(main) — hero 발차 확정. **web 재빌드 없음**(🚫 권씨 #389 유출 동결, §0.7).
+- **버전**: engine **`engine@0.40.0`** · server-java 0.1.0 · servants 0.0.1 · **web 은 `8a0352d` 그대로**.
+- **이미지**: `hmb/server-java:p3` = `sha256:d053b40a8d12…` · `hmb/servants:p3` = `sha256:0fde29d1966f…` (둘 다 재빌드).
+- **롤백 기준선**: `prev-live` = java `sha256:8cc6d23449f5…` / runner `sha256:c47df9167cb1…` (= engine@0.34.0).
+- **URL**: web `https://hmb-online.pages.dev`(무접촉) → 백엔드 `https://accept-legislation-loose-ryan.trycloudflare.com`.
+- **DB 백업**: `~/.local/state/hmb/db-backups/pre-v315-20260802T070503Z.db` — `integrity_check ok` ·
+  flyway **36** · users **191** · matches **86** · sha256 `fb7261d6c08d…`.
+- **#241 관문**: 발차 직전 진행 중 매치 **0**(07:06:51Z) → 단절 피해 **0**. (축구왕여르 진행분은 소진 완료 상태였다.)
+
+### V37 — 리허설을 먼저 하고 갔다 (예측 = 실측)
+
+`V37__engine_config_overrides.sql` = 신규 표 1 + 부분 UNIQUE 인덱스 1 + `ADD COLUMN` 5. **파괴 연산 0**,
+`.sql.conf` 짝파일 없음(= 기본 트랜잭션). **8/2 사전 리허설**(라이브 사본 544MB): DDL OK · `integrity ok` ·
+행수 무변경 · 신규 컬럼 전부 NULL. **라이브 실적**: `Migrating schema "main" to version "37"` →
+`Successfully applied 1 migration … (execution time 00:00.008s)` → `Started Application`. 재기동 **0**.
+
+📌 **롤백 계획에 스키마 되돌리기는 넣지 않았다** — 근거를 추론이 아니라 **실측**으로 잡았다. V37 적용 DB +
+`flyway_schema_history` 37 행에 **구 java 이미지**를 실제로 붙여 띄워 보니 `validated 37 migrations` →
+`WARN: version (37) newer than latest available (36)` → **`Started Application`**. 경고만 내고 뜬다.
+
+### 발차 전 컨테이너 스모크 (#385 재발 방지 — v3.14 에서 승격한 절차)
+
+태그 전환 **전에** 새 러너 이미지를 버려도 되는 컨테이너로 별도 포트에 띄워 확인했다:
+
+| | |
+|---|---|
+| 모듈 로드 / 재기동 | 정상 / **0** (v3.14 1차 발차를 죽인 그 실패 모드) |
+| `/health` | `engine@0.40.0` |
+| `/simulate` 기본 | `200 · ticks 1350 · events 317 · playbackMs 217683 · hash 9244334d` |
+| **`/simulate` + `configOverrides`** | `200 · hash fe119448 · effectiveConfigHash 2fff3c434ec49ca2` |
+| **오버레이가 경기를 실제로 바꾸나** | **✓** 기본과 **해시가 다르다**(참조만 있고 무효인 경우를 배제) |
+
+이번 열차엔 `src/runner/dockerfile-workspaces.test.ts`(전이 의존 대조) 회귀 가드도 실렸다 —
+사람 기억이 아니라 계약이 #385 부류를 막는다.
+
+### 스모크 — 실계정 `deploy-smoke` 연습 1경기 완주 (4:2)
+
+- `configVersion` **`engine@0.40.0`**(전·후반 둘 다) · 하프 창 **195867 / 178817 ms**(러너 `playbackMs`, 폴백 아님)
+- 이벤트: pass 467 · shot 32 · **goal 6** · clearance 3 · foul 3 · free_kick 3 · save 2 · 오토모드 감독시간 자동 스킵
+- ⑤ **골 5.65→6.45(+14%)는 hero 컨펌된 상태**(트랙 T 재보정 전) — **이상 아님.** 이 경기 6골도 그 밴드다.
+
+**#383 계약이 라이브에서 실제로 발화한다**: `match_halves.effective_config_hash` 가 전·후반 **둘 다
+`d0357c20661c61fd` 로 동일**(= 무음 desync 가드 작동) · `config_overrides_json`·`dropped_overrides_json`
+= NULL(오버레이 미설정 = 기본값, 원장 비어 있음). `GET /api/admin/engine-config` → **200**
+`{"revisionId":null,"overrides":{},…}`.
+
+### #396 러너 롤백 관문 — 라이브에서 판정 확인
+
+`bash infra/preflight-runner-rollback.sh` → **exit 0 (롤백 가능)**: `라이브 오버레이 = {}` · `진행 중 매치 0`.
+사전에 만들 때는 API 가 없어 404 경로로만 검증했는데, **이제 실제 200 응답 형태로 EMPTY 분기가 검증됐다.**
+
+### 🚫 권씨 동결 준수 — 확인까지 했다
+
+`deploy-pages.sh` 미실행. 서빙 번들 `index-CzxOp5Y0.js` = 배포 전 스냅샷과 **동일**.
+⚠️ **`/chars/units/art-kwonssi.png` 이 `200` 을 낸다 — 그런데 유출이 아니다.** `content-type: text/html`
+= **SPA 폴백**이고, 존재하지 않는 `art-nonexistent-xyz.png` 도 똑같이 200/text/html 이다(실물은
+`frame-LEGEND.png` 처럼 `image/png`). **상태코드만 보면 유출로 오판한다 — content-type 으로 갈라야 한다.**
+
+배포자: hmb:deploy2 (hero 발차 확정, main 조립 지시).
+
+---
+
 ## 2026-08-01T15:07Z — **[장애·복구] 터널 58분 다운** — 워치독 치유가 매달려 재시도를 굶겼다 (#391)
 
 - **영향 창**: **14:08:06Z ~ 15:07Z (약 58분)** 테스터 접속 불가. **백엔드·러너·executor 는 내내 정상**
