@@ -129,12 +129,18 @@ ovr           = Σ eff_i × baselineByPosition[pos][i]
 
 - **특화(몰빵) 저등급**: BRONZE 한 스탯을 천장까지 밀면 **70.3** = 오늘의 GOLD 평균(69.4) 수준. "브론즈 전문 스트라이커"가 실제로 성립한다. 대신 나머지 스탯은 37 근처라 종합력은 낮다.
 - **만렙끼리의 순서는 여전히 등급순**(57 < 65 < 73 < 80.8 < 88.1) — 뽑기 가치는 보존된다.
-- 바이어스(+5/+6)는 그대로 두되 **새 시작밴드 상한에 클램프** → 주스탯은 여전히 튀지만 성장 천장과는 분리된다.
+- ⚠️ **바이어스는 폭에 비례해 축소한다: 주스탯 `+5 → +3` · trait `+6 → +4`** (W1 실측으로 정정된 값. 발행물 `players.v2.5.json` 이 이 값이다).
+  - 초안은 "바이어스는 그대로 두되 새 시작밴드 상한에 클램프"였는데, **밴드 폭이 16→11 로 줄면 가산 합 +5+6=11 이 폭 전체와 같아져** 주스탯∩trait 스탯 **170/170(100%)이 예외 없이 상한에 박힌다** — 롤이 무의미해지고 그 스탯이 상수가 된다(같은 포지션·trait 카드가 전부 동일 = 수집 게임의 다양성 손실).
+  - **성장 여백과는 무관하다** — 천장이 시작밴드 hi 가 아니라 별도 `growCeil` 이므로 시작 상한에 박혀도 여백이 남는다.
+  - `+3/+4` 가 v2.4 특성을 복원한다: 교집합 클램프 **76.5%**(v2.4 79.4%) · 전체 **23.6%**(21.9%) · 설계 중앙 편차 +1.17~+1.52(v2.4 +2.07).
+  - 🚨 **함정으로 기억할 것: 밴드 폭을 줄이면 바이어스도 같이 줄여야 한다.** `data/CLAUDE.md` 와 `generate.ts` 에도 기록했다.
 
-⚠️ **트레이드오프 — 엔진 밸런스**: 엔진 공식 다수가 `(x−50)/50` 을 중립점으로 쓴다(`decision.ts`). 신규 BRONZE/SILVER 팀은 37~46 이라 **오늘보다 확실히 서툴게 플레이한다**(패스 실패↑ 등). 유저·봇이 같은 카탈로그를 쓰므로 상대 밸런스는 유지되지만, 리얼리즘 지표(슛·골·패스성공)는 움직일 수 있다.
-→ **구현 웨이브의 게이트로 엔진 다시드 밸런스 스윕을 넣는다**(신규 밴드 로스터로 20~60시드, `research/engine-realism-gap.md` 밴드 대조). 이탈하면 밴드를 −8 안(아래 옵션 B)으로 완화한다.
+⚠️ **트레이드오프 — 엔진 밸런스**: 엔진 공식 다수가 `(x−50)/50` 을 중립점으로 쓴다(`decision.ts`). 신규 BRONZE/SILVER 팀은 38~47 이라 **오늘보다 확실히 서툴게 플레이한다**(패스 실패↑ 등). 유저·봇이 같은 카탈로그를 쓰므로 상대 밸런스는 유지되지만, 리얼리즘 지표(슛·골·패스성공)는 움직일 수 있다.
 
-**옵션 B(보수안, 하향폭 −8)**: BRONZE 36–46 / SILVER 45–55 / GOLD 54–64 / DIA 63–73 / LEGEND 72–82. 여백 14~18로 줄지만 엔진 리스크가 작다.
+⚠️ **검증 방식 정정 — 절대 밴드 게이트를 쓸 수 없다.** 초안은 "신규 밴드로 리얼리즘 밴드 스윕"을 게이트로 두었으나, **그 기준선이 이미 깨져 있다**: QA 에픽 #25 에 아블레이션까지 끝난 분석이 있다(engine 0.34.0~0.40.0 누적, 팀당 슛 17.27 vs 밴드 7.2–8.4, 단일 토글로 복구 불가, *"지금은 회귀 게이트가 서지 않는다"*). 그 red 는 이 에픽과 무관하다(`packages/**` 무변경).
+→ **관계식으로 바꾼다**: 같은 엔진·같은 시드에서 **v2.4 로스터 vs v2.5 로스터의 델타**를 재서 "스탯을 내려도 경기 성질이 무너지지 않는다"를 증명한다(패스성공·점유·슛 분포의 상대 변화). 절대 임계 대신 대조군 대비 — #178 `mark-jitter`·#231 `deadball-duplicate-id` 가 쓴 것과 같은 형태다.
+
+**완화 옵션(필요 시, 하향폭 −8)**: BRONZE 36–46 / SILVER 45–55 / GOLD 54–64 / DIA 63–73 / LEGEND 72–82. 여백이 줄지만 엔진 리스크가 작다.
 
 ### 2.3 감쇠 곡선 (레벨업 1회당 상승폭)
 
@@ -270,6 +276,9 @@ ceiling_i = growCeil[grade] + starCeilBonus[star]    // growCeil = §2.2 천장 
 - 소급된 선택권의 후보는 매치 컨텍스트가 없으므로 **포지션 baseline + 그 카드에 쌓여 있던 스탯 XP 분포**로 가중한다(그 카드가 실제로 한 일의 이력이라 정합적).
 - `star`(승급 이력 1건)·`card_potentials`(1건)는 **무변경 승계**.
 
+🚨 **배포 원자성 — 이 에픽 최대 리스크.** W1(v2.5 하향, base −11~−15)과 W2a(천장 개방)만 라이브에 나가면 **기존 유저 카드는 깎이기만 하고 소급 지급은 없다**(안 C 의 절반). 라이브 유저의 누적 성장은 p50 단 1레벨이라 천장이 열려도 메워지지 않는다.
+→ **W1·W2a·W2b 는 반드시 한 배로 나간다.** V38 이 `user_players` 를 건드리지 않는 것을 계약(`v38DoesNotTouchUserPlayers`)으로 박아, 백필 없는 부분 배포가 스키마상으로도 성립하지 않게 했다.
+
 **구현 순서 (⚠️ `players` 부팅 임포트가 기존 행을 덮어쓴다 — `PlayerCatalogService.java:131-146`)**
 1. **DB 백업**(`infra/` 백업 경로, `docs/deploy-log.md` 기록) ← 필수
 2. `V38` 이 **하향 전 `players.attributes_json` 을 `growth_legacy_base` 로 스냅샷** + 신규 컬럼 추가
@@ -291,8 +300,8 @@ ceiling_i = growCeil[grade] + starCeilBonus[star]    // growCeil = §2.2 천장 
 | 1 | `bands.<GRADE>.startLo` | int | 32/41/50/59/68 | 시작 밴드 하한 (§2.2) |
 | 2 | `bands.<GRADE>.startHi` | int | 42/51/60/69/78 | 시작 밴드 상한 |
 | 3 | `bands.<GRADE>.growCeil` | int | 72/78/84/90/95 | **성장 천장** |
-| 4 | `bands.primaryBias` | int | 5 | 포지션 주스탯 가산 |
-| 5 | `bands.traitBias` | int | 6 | trait 가산 |
+| 4 | `bands.primaryBias` | int | **3** | 포지션 주스탯 가산 — **scope=PUBLISH** |
+| 5 | `bands.traitBias` | int | **4** | trait 가산 — **scope=PUBLISH** |
 | 6 | `attrHardCap` | int | 99 | 잠재 포함 최종 상한 |
 | 7 | `decay.gainMax` | double | 4.0 | 감쇠 최대 상승폭 |
 | 8 | `decay.decayPow` | double | 1.4 | 감쇠 지수 |
@@ -320,6 +329,11 @@ ceiling_i = growCeil[grade] + starCeilBonus[star]    // growCeil = §2.2 천장 
 | 30 | `star.ceilBonus.<star>` | int | 0/1/2/3 | 승급 천장 보너스 |
 | 31 | `star.copies.<star>` | int | 2/3/5 | 승급 필요 중복(현행 승계) |
 | 32 | `legacy.levelGrantCap` | int | 39 | 소급 지급 선택권 상한 (§2.7) |
+
+**노브 스코프 — "200 인데 안 바뀐다"를 막는 축** (W2a 에서 신설)
+`KnobSpec.scope ∈ {RUNTIME, PUBLISH}`. 대부분 `RUNTIME`(서버가 즉시 읽는다). **`bands.primaryBias`·`bands.traitBias` 만 `PUBLISH`** — 카드 생성이 발행 시점(`data/players/generate.ts`)이라 오버레이해도 이미 발행된 카드는 안 바뀌고 **다음 발행부터** 적용된다. 이 표기가 사실임을 계약으로 박는다(`PUBLISH` 노브를 바꿔도 `GrowthService.compute()` 결과 불변). `/api/admin/growth-config/knobs` 가 스코프를 실어 운영자가 착각하지 않게 한다. #412 가 어드민 선수 등록을 붙이면 이 둘이 실제로 살아난다.
+
+⚠️ **오버레이는 되지만 소비자는 W2b 인 노브가 있다** — W2a 시점에 서버가 실제로 읽는 것은 `bands.*` · `attrHardCap` · `star.*` · `positionBaseline` · `xp.minutesMult` 뿐이고, `decay.*` · 나머지 `xp.*` · `candidate.*` · `legacy.*` 는 W2b(정산·3지선다)가 붙인다. `everyKnobIsOverridable` 은 **값이 바뀌는 것**을 증명하지 소비자 존재를 증명하지 않는다 — 이 구분을 `server-java/CLAUDE.md` 에도 기록했다.
 
 ⚠️ **현행 하드코딩 2곳을 반드시 없앤다** — `GrowthService.java:59-65`(`GRADE_BAND`) 와 `data/players/generate.ts:294-300`(`GRADE_BANDS`). data 쪽은 **발행 시점 롤 전용**으로만 남기고(발행물은 이미 구운 값이라 성질상 배포 필요), **런타임 SoT 는 `GrowthTuning.bands`** 로 단일화한다.
 

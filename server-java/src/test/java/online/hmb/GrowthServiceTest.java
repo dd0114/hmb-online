@@ -74,23 +74,28 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(((Number) eff.get("technical")).doubleValue()).isEqualTo(40.0);
     }
 
+    /**
+     * ⚠️ 이 테스트는 <b>#405 W2a 로 기대값이 바뀌었다</b>. 구 모델은
+     * {@code cap = base + starFrac[star] × (band.hi − base)} 라 2★ P001 의 positioning 천장이
+     * 51.5 였다(밴드 여백의 절반). 신규 모델은 {@code growCeil[BRONZE](72) + star.ceilBonus[2](1)}
+     * = <b>73</b> — 성장 천장이 base 와 무관해지고 승급은 보너스만 준다(설계 §2.6).
+     */
     @Test
-    void statLevelRaisesAttributeAndClampsAtStarCap() {
+    void statLevelRaisesAttributeAndClampsAtTheGrowthCeiling() {
         String userId = onboard("g_grow");
-        // star=2 → starFrac 0.5 → GK positioning cap = 48 + 0.5*(55-48) = 51.5
         setStar(userId, "P001", 2);
         setStatLv(userId, "P001", "positioning", 999);
 
         Map<String, Object> card = growthService.cardEffective(userId, "P001");
         Map<?, ?> attrs = (Map<?, ?>) card.get("attributes");
-        assertThat(((Number) attrs.get("positioning")).doubleValue()).isEqualTo(51.5);
+        assertThat(((Number) attrs.get("positioning")).doubleValue()).isEqualTo(73.0);
         assertThat(((Number) card.get("completion")).doubleValue()).isGreaterThan(0.0);
     }
 
     @Test
-    void allStatsClampedToStarFractionCap() {
+    void allStatsClampedToTheGrowthCeiling() {
         String userId = onboard("g_clamp");
-        setStar(userId, "P001", 1); // starFrac .25 → cap = base + .25*(55-base)
+        setStar(userId, "P001", 1); // 1★ 도 등급 천장까지 간다(승급 게이트 없음)
         for (String stat : List.of("technical", "mental", "physical", "passing", "shooting",
                 "tackling", "pace", "stamina", "positioning")) {
             setStatLv(userId, "P001", stat, 999);

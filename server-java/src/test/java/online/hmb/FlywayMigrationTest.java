@@ -107,7 +107,9 @@ class FlywayMigrationTest {
             //   노브라, 읽을 때 재계산하면 노브를 돌리는 순간 오늘 받은 이력이 소급 변조된다.
             "league_daily_rewards",
             // #383 라이브 계수 오버레이 원장(V37). append-only — 매치가 config_revision_id 로 가리킨다.
-            "engine_config_revisions"
+            "engine_config_revisions",
+            // #405 성장 계수 오버레이 원장(V38). V37 과 동형 — append-only, seq 정렬이 곧 "현재 값".
+            "growth_config_revisions"
     );
 
     /**
@@ -143,6 +145,61 @@ class FlywayMigrationTest {
                 .as("(created_at, id) 인덱스를 되살리지 마라 — 코드가 기각한 정렬을 스키마가 광고하면 "
                         + "다음 사람이 그걸 근거로 정렬을 되돌린다(m9)")
                 .doesNotContain("idx_engine_config_rev_time");
+    }
+
+    /**
+     * V38 도 <b>스키마 모양 자체가 결정</b>이다 — V37 과 같은 이유로 같은 구조를 골랐으므로
+     * (같은 밀리초 동률에서 롤백이 무시되는 것을 막는 {@code seq}) 같은 계약을 건다.
+     * 성장 계수는 정산이 근거로 가리키는 값이라 "현재 = 마지막 삽입"이 흔들리면 안 된다.
+     */
+    @Test
+    void growthConfigRevisionsKeepsTheOrderingSchemaItDependsOn() {
+        String ddl = jdbcClient
+                .sql("SELECT sql FROM sqlite_master WHERE type='table' AND name='growth_config_revisions'")
+                .query(String.class).single();
+
+        assertThat(ddl.replaceAll("\\s+", " "))
+                .as("PK 가 단조 증가 정수여야 한다 — ULID 는 같은 ms 안에서 난수가 순서를 정한다")
+                .contains("seq INTEGER PRIMARY KEY AUTOINCREMENT");
+        assertThat(ddl.replaceAll("\\s+", " "))
+                .as("리비전 id 는 정산 리포트가 가리키는 값이라 유일해야 한다")
+                .contains("id TEXT NOT NULL UNIQUE");
+        assertThat(ddl.replaceAll("\\s+", " "))
+                .as("사유 없는 이력은 이력이 아니다")
+                .contains("reason TEXT NOT NULL");
+
+        List<String> indexes = jdbcClient.sql(
+                        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='growth_config_revisions' "
+                                + "AND name NOT LIKE 'sqlite_%'")
+                .query(String.class).list();
+        assertThat(indexes)
+                .as("멱등 백스톱(부분 유니크)이 없으면 같은 키 동시 PUT 이 '현재 값'을 경합에 맡긴다")
+                .contains("uq_growth_config_rev_idem");
+    }
+
+    /**
+     * ⚠️ V38 은 <b>{@code user_players} 를 건드리지 않는다</b>. 성장 스키마 변경(소수 상승분 저장·
+     * 소급 지급)은 백업·백필과 한 세트여야 해서 W2b 소관이고, 이 웨이브만 적용해도 서버가 그대로
+     * 떠야 한다. 그 경계를 문장이 아니라 계약으로 박아 둔다 — 나중에 여기에 컬럼을 몰래 얹으면
+     * 백필 없이 배포되는 길이 열린다.
+     */
+    @Test
+    void v38DoesNotTouchUserPlayers() {
+        // 주석은 코드가 아니다 — 이 마이그레이션의 주석이 바로 그 경계를 설명하고 있다.
+        String migration = readMigration("V38__growth_config_overrides.sql")
+                .replaceAll("--[^\n]*", "");
+        assertThat(migration.toLowerCase(java.util.Locale.ROOT))
+                .as("V38 은 오버레이 원장만 만든다 — user_players 변경은 W2b(백업·백필과 한 세트)")
+                .doesNotContain("user_players");
+    }
+
+    private static String readMigration(String name) {
+        try {
+            return java.nio.file.Files.readString(
+                    java.nio.file.Path.of("src/main/resources/db/migration", name));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("마이그레이션을 읽지 못했다: " + name, e);
+        }
     }
 
     @Test

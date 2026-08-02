@@ -37,8 +37,11 @@
     경로가 카탈로그에 없는 id 를 건너뛴다(= 최상위 누락 ≪ 서비스 중단).
 - ⚠️ **무배포로 되는 것과 안 되는 것**(과장 금지): 되는 것 = `economy.starterTop`(스타터 최상위 후보).
   **여전히 배포가 필요** = 선수 스탯·등급·신규 유닛(`players.v2.1.json` → players 테이블 부팅 임포트),
-  그리고 gacha 확률·rewards·growth 등 나머지 economy 블록(파일에는 있으나 **API 가 없다** — 볼륨
+  그리고 gacha 확률·rewards 등 나머지 economy 블록(파일에는 있으나 **API 가 없다** — 볼륨
   손편집 + 리로드만 가능). 유닛 카탈로그의 무배포 운영은 #207 파트 A 소관이다.
+  - ⚠️ **`growth` 는 이 목록에서 빠졌다**(#405 W2a): 성장 계수는 이제 `GrowthTuning` + `V38`
+    오버레이 원장 + `/api/admin/growth-config` 로 **무배포 조정된다**(아래 절). economy 의
+    `growth`/`star` 블록은 그 **기본값의 출처**로만 남는다.
 
 ## 매치 잠금·재입장 (#217)
 
@@ -741,6 +744,57 @@ DTO 에 실으면 클라가 **서버가 하지 않는 전이를 화면에 단언
   (슬래시 없음)라 `doesNotContain("/api/nope")` 는 **아무것도 잡지 못했다** — 독립검증이 변이체로
   실증했다(문구만 바꾸고 경로는 노출하는 구현이 통과). 프레임워크 문구는 버전마다 바뀌므로
   **경로 반사**가 남는 축이다.
+
+## 성장 계수 무배포 — `GrowthTuning` + V38 (#405 W2a)
+
+설계 SoT = `docs/plan-v5/growth-redesign.md` §2.8. **AC-G0(hero 하드 AC): 성장 개편이 만드는 계수 중
+admin API 로 조정 불가한 것이 0개.** 하드코딩 잔존 = FAIL.
+
+- **계수의 SoT 는 `GrowthTuning` 하나**다(`online.hmb.growth`). 등급 밴드는 `GrowthService.GRADE_BAND`
+  **하드코딩이었고 삭제됐다** — 밴드 한 칸 바꾸는 데 배포가 필요했던 것이 개편의 출발점이다(설계 §1.3).
+- **기본값의 출처가 둘**이다: 코드 기본값(`CODE_DEFAULTS`, 설계 §2.8.1 표) ⊕ **발행물 승계**
+  (`positionBaseline` · `star.copies` · `xp.minutesMult` 만 — 설계가 "현행 승계"로 표시한 항목).
+  ⚠️ **`xp.gradeMult` 는 승계하지 않는다** — economy 현행(레전드 3배)을 **뒤집는 것**이 개편 내용이다(Q5).
+- **유효값 = 기본값 ⊕ 최신 리비전**(경로 단위 병합). 원장 = `growth_config_revisions`(V38, **V37 동형**:
+  `seq AUTOINCREMENT` append-only · `overrides_json` 전체 스냅샷 · `reason` 필수 · `idem_key` 부분 유니크
+  + `request_hash` 409). "현재 = 마지막 삽입"의 근거는 V37 javadoc 과 같다(ULID·`created_at` 정렬은
+  동률에서 깨져 **롤백이 반반 확률로 무시된다**).
+- **매치 pin 은 하지 않는다**(#383 엔진 계수와 다른 점). 성장은 매치 **종료 후** 한 번 계산되므로 진행 중
+  매치가 도중에 값이 바뀌어 깨지는 #241 형태의 위험이 없다. 대신 `currentRevisionId()` 를 노출한다 —
+  정산이 쓴 리비전을 리포트에 박제하는 것은 W2b.
+- **검증은 서버 내부**다(#383 은 러너 위임). 성장 계수는 **이 서버가 소비자**라 위임할 대상이 없다:
+  경로 화이트리스트(`GrowthTuning.KNOBS`) + 타입 + 범위. **무효 노브는 항목별 이유를 `detail.issues[]`
+  로 한 번에** 돌려준다(첫 오류에서 끊으면 10개 고치는 데 10번 왕복).
+- API: `GET/PUT /api/admin/growth-config` · `GET .../history` · `GET .../knobs` · `POST .../validate`.
+  PUT 은 **전체 교체**(기본값 복귀 = `overrides:{}`), 성공·**실패 모두** `admin_ops_audit` 기록.
+- **star 의 역할이 바뀌었다**(설계 §2.6): `starFrac` 천장 게이트 제거 — 1★ 도 등급 천장까지 성장한다.
+  천장 = `bands[grade].growCeil + star.ceilBonus[star]`. `economy.star.starFrac` 은 발행물에 남아 있지만
+  **더 이상 읽지 않는다**. 전역 `attrHardCap`(99)은 **잠재 적용 후** 최종 클램프다(잠재가 100 을 넘길 수
+  있던 선존 결함).
+- ⚠️ **계약 3종이 AC-G0 을 집행한다** — `GrowthTuningRegistryTest`(모든 노브가 실제로 오버레이되는가 ·
+  레지스트리를 빠져나간 잎이 없는가) · `GrowthHardcodeGuardTest`(성장 소스의 숫자 리터럴 **화이트리스트**) ·
+  `GrowthTuningLiveTest`(**서버가 그 값을 실제로 쓰는가** — 계수 객체가 바뀌는 것과 화면 값이 바뀌는 것은
+  다른 명제다). 새 계수를 추가하면 `KNOBS` 에 등록하기 전까지 두 번째 테스트가 깨진다.
+- ⚠️ **"노브가 330개인데 왜 안 먹지"의 답** — 오버레이가 저장·병합되는 것과 **누가 그 값을 읽는가**는
+  다른 문제다. 축이 둘이다:
+  - **`KnobSpec.scope`**(`RUNTIME` | `PUBLISH`) = 구조적 구분. `PUBLISH` 는 **`bands.primaryBias` ·
+    `bands.traitBias` 둘뿐**이고, 카드 스탯은 `players.v*.json` 발행물에 이미 구워져 있어 **이미 발행된
+    카드는 안 바뀐다**(#412 어드민 선수 등록 API 가 승계할 인터페이스). `/knobs` 응답의 `scope` ·
+    `appliesWhen` 이 그 사실을 운영자에게 보낸다. 계약 = `GrowthTuningLiveTest.
+    publishScopedKnobsDoNotMoveAnyRuntimeNumber`(표기가 사실임을 기계로 박는다).
+    ⚠️ 두 노브의 기본값은 설계 §2.8.1 표(5/6)가 아니라 **발행 실적 3/4** 다 — 밴드 폭이 16→11 로 줄어
+    5+6 = 폭 전체가 되면 주스탯∩trait 가 상한에 박혀 **롤과 무관한 상수**가 되기 때문(클램프 100% →
+    76.5%, v2.4 의 79.4% 복원). 표가 낡았고 발행물이 맞다.
+  - **웨이브 진행도** = 시간 축. `RUNTIME` 노브 중 W2a 가 실제로 소비하는 것은 **`bands.*` ·
+    `attrHardCap` · `star.ceilBonus`/`star.copies` · `positionBaseline` · `xp.minutesMult`** 뿐이다.
+    `decay.*` · `xp.*`(나머지) · `candidate.*` · `legacy.*` 는 **`GrowthMath` 순수 함수까지만** 도달하고
+    정산·3지선다 소비는 **W2b** 가 붙인다. 그래서
+    `GrowthTuningRegistryTest.everyKnobIsOverridable` 은 **값이 바뀌는 것**을 증명하지 소비자 존재를
+    증명하지 않는다 — 소비 여부는 `GrowthTuningLiveTest` 가 종목별로 따로 본다.
+- ⚠️ **W2a 는 계수와 인프라까지다.** 정산·3지선다·소급 백필·보상 API 는 W2b 이고, **V38 은
+  `user_players` 를 건드리지 않는다**(스키마 변경은 백업·백필과 한 세트여야 한다 — 계약 =
+  `FlywayMigrationTest.v38DoesNotTouchUserPlayers`). 그래서 상승분 `add_i` 는 아직 기존
+  `stat_levels_json` 의 정수 `lv` 를 그대로 읽는 **어댑터**다.
 
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).

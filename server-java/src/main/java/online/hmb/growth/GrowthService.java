@@ -41,37 +41,43 @@ import org.springframework.stereotype.Service;
  * 계산해 다음 매치 SelectData 에 주입한다. {@code matches.select_data_json} 스냅샷 불변 → 과거 리플레이
  * bit-identical(성장·잠재 0 인 카드는 유효스탯 == 원본).
  *
- * <p><b>유효스탯 계산(V2-2)</b>:
+ * <p><b>유효스탯 계산(#405 W2a 개편, 설계 §2.6)</b>:
  * <pre>
- *   cap_i(star)  = base_i + starFrac[star] × (band.hi − base_i)
- *   prePotential_i = clamp(base_i + statLv_i, band.lo, cap_i(star))     // statLv_i = 레벨 수(=+1/Lv 누적)
- *   eff_i        = (prePotential_i + Σ잠재flat_i) × (1 + Σ잠재pct_i/100)
- *   ovr          = Σ(eff_i × baselineByPosition[pos]_i)
- *   완성도        = Σ statLv_i / Σ (cap_i(star) − base_i)
+ *   ceiling_i    = bands[grade].growCeil + star.ceilBonus[star]        // 계수 = GrowthTuning
+ *   prePotential_i = clamp(base_i + add_i, bands[grade].startLo, ceiling_i)
+ *   eff_i        = min((prePotential_i + Σ잠재flat_i) × (1 + Σ잠재pct_i/100), attrHardCap)
+ *   ovr          = Σ(eff_i × positionBaseline[pos]_i)
+ *   완성도        = Σ add_i / Σ (ceiling_i − base_i)
  * </pre>
+ *
+ * <p><b>바뀐 것 둘</b>(구 모델 대비):
+ * <ul>
+ *   <li><b>{@code starFrac} 천장 게이트 제거</b> — 구 공식은
+ *       {@code cap = base + starFrac[star] × (band.hi − base)} 라 1★ 카드가 밴드 여백의 25% 밖에
+ *       못 썼다(실측 성장 여백 1.4). 승급은 이제 잠재 해금 + <b>소폭 천장 보너스</b>만 담당하고,
+ *       승급 없이도 등급 성장 천장까지 간다. {@code economy.star.starFrac} 는 발행물에 남아 있지만
+ *       <b>이 경로에서 더 이상 읽지 않는다</b>.</li>
+ *   <li><b>전역 하드 상한 {@code attrHardCap}</b> 을 잠재 적용 <b>후</b>에 씌운다 — 지금까지 잠재에
+ *       상한이 없어 100 을 넘을 수 있었던 <b>선존 결함</b>을 이참에 막는다.</li>
+ * </ul>
+ *
+ * <p>⚠️ {@code add_i} 는 아직 <b>기존 {@code stat_levels_json} 의 정수 {@code lv}</b> 를 그대로 읽는다
+ * (어댑터). 소수 상승폭 저장 형태와 3지선다·정산 개편은 W2b 소관이라, 이 웨이브만 적용해도 서버가
+ * 그대로 뜨도록 스키마를 건드리지 않았다.
  */
 @Service
 public class GrowthService {
 
     private static final Logger log = LoggerFactory.getLogger(GrowthService.class);
 
-    /** 등급 밴드 [lo, hi] — 기존 유지(V2-1: 등급 승급 없음, 성이 밴드 내 천장만 개방). */
-    static final Map<String, int[]> GRADE_BAND = Map.of(
-            "BRONZE", new int[]{40, 55},
-            "SILVER", new int[]{50, 65},
-            "GOLD", new int[]{60, 75},
-            "DIA", new int[]{70, 85},
-            "LEGEND", new int[]{80, 95});
-
-    /** shared PlayerAttributes 9종 — 순서 고정(직렬화·반복 안정). */
-    static final List<String> ATTR_KEYS = List.of(
-            "technical", "mental", "physical", "passing", "shooting",
-            "tackling", "pace", "stamina", "positioning");
+    /**
+     * shared PlayerAttributes 9종 — 순서 고정(직렬화·반복 안정).
+     * SoT 는 {@link GrowthTuning#STATS} 다(계수 경로 전개가 같은 목록을 써야 한다).
+     */
+    static final List<String> ATTR_KEYS = GrowthTuning.STATS;
 
     /** 잠재 티어 서열(랙칫) — shared growth.ts POTENTIAL_TIERS 와 동일. */
     static final List<String> TIER_ORDER = List.of("RARE", "EPIC", "UNIQUE");
-
-    private static final double MINUTES_STARTER_KEY_MISSING = 1.0;
 
     private final JdbcClient jdbcClient;
     private final TxRunner txRunner;
@@ -79,19 +85,31 @@ public class GrowthService {
     private final EconomyService economyService;
     private final WalletService walletService;
     private final GachaRandomSource randomSource;
+    private final LiveGrowthConfigService growthConfig;
 
     public GrowthService(JdbcClient jdbcClient,
                          TxRunner txRunner,
                          ObjectMapper objectMapper,
                          EconomyService economyService,
                          WalletService walletService,
-                         GachaRandomSource randomSource) {
+                         GachaRandomSource randomSource,
+                         LiveGrowthConfigService growthConfig) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.objectMapper = objectMapper;
         this.economyService = economyService;
         this.walletService = walletService;
         this.randomSource = randomSource;
+        this.growthConfig = growthConfig;
+    }
+
+    /**
+     * 지금 유효한 성장 계수. <b>매 호출마다 다시 묻는다</b> — 값을 필드에 담아 두면 무배포 변경이
+     * "재기동해야 반영되는" 것이 되어 이 기능의 목적이 사라진다(캐시는
+     * {@link LiveGrowthConfigService} 안에 있다).
+     */
+    private GrowthTuning tuning() {
+        return growthConfig.effective();
     }
 
     // ── 순수 계산 자료구조 ───────────────────────────────────────────────
@@ -148,11 +166,9 @@ public class GrowthService {
                         "성장 설정(economy.growth)이 로드되지 않았습니다"));
     }
 
-    private EconomyService.Star starCfg() {
-        return economyService.get().map(EconomyService.Economy::star)
-                .orElseThrow(() -> new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "STAR_CONFIG_MISSING",
-                        "성 설정(economy.star)이 로드되지 않았습니다"));
-    }
+    // ⚠️ starCfg() 는 제거됐다 — 성 관련 계수(copies·천장 보너스)의 SoT 가 GrowthTuning 으로
+    //    옮겨졌기 때문이다(economy.star 는 그 기본값의 출처로만 남는다). economy 에서 직접 읽는
+    //    경로를 남겨 두면 무배포 오버레이가 그 경로만 조용히 못 덮는다(AC-G0 구멍).
 
     private EconomyService.Potential potentialCfg() {
         return economyService.get().map(EconomyService.Economy::potential)
@@ -229,16 +245,19 @@ public class GrowthService {
         return (int) Math.max(1, Math.round(gc.xpLvBase() * Math.pow(gc.xpLvGrowth(), lv)));
     }
 
-    /** 순수 유효스탯 계산 — RNG 없음, DB 조회 결과만으로 결정론. */
+    /**
+     * 순수 유효스탯 계산 — RNG 없음, DB 조회 결과만으로 결정론.
+     * <b>모든 수치는 {@code tuning} 에서 온다</b>(하드코딩 0 — AC-G0).
+     */
     private static Effective compute(PlayerBase pb, CardState card, Map<String, StatLevelState> levels,
-                                     PotentialRow prow, EconomyService.Growth gc, EconomyService.Star sc,
+                                     PotentialRow prow, GrowthTuning tuning,
                                      EconomyService.Potential pc) {
-        int[] band = GRADE_BAND.getOrDefault(pb.grade(), new int[]{0, 100});
-        int lo = band[0];
-        int hi = band[1];
-        double starFrac = sc.starFrac().getOrDefault(card.star(), 1.0);
+        GrowthTuning.Band band = GrowthMath.band(tuning, pb.grade());
+        int lo = band.startLo();
+        double ceiling = GrowthMath.ceiling(tuning, pb.grade(), card.star());
+        double hardCap = tuning.attrHardCap();
 
-        Map<String, Double> baseline = gc.baselineByPosition().getOrDefault(pb.position(), Map.of());
+        Map<String, Double> baseline = tuning.positionBaseline().getOrDefault(pb.position(), Map.of());
 
         Map<String, Double> attributes = new LinkedHashMap<>();
         Map<String, Double> prePotential = new LinkedHashMap<>();
@@ -249,9 +268,11 @@ public class GrowthService {
 
         for (String stat : ATTR_KEYS) {
             double baseI = pb.attributes().getOrDefault(stat, 0);
-            double capI = baseI + starFrac * (hi - baseI);
-            int lv = levels.getOrDefault(stat, StatLevelState.fresh()).lv();
-            double preI = clamp(baseI + lv, lo, capI);
+            // ⚠️ 천장은 base 와 무관하다(구 starFrac 공식과의 결정적 차이) — 등급 천장 + 승급 보너스.
+            double capI = ceiling;
+            // add_i 어댑터: 기존 stat_levels_json 의 정수 lv 를 그대로 상승분으로 읽는다(W2b 가 교체).
+            double addI = levels.getOrDefault(stat, StatLevelState.fresh()).lv();
+            double preI = clamp(baseI + addI, lo, capI);
 
             double flatSum = 0.0;
             double pctSum = 0.0;
@@ -265,13 +286,15 @@ public class GrowthService {
                     pctSum += line.value();
                 }
             }
-            double effI = (preI + flatSum) * (1 + pctSum / 100.0);
+            // 전역 하드 상한은 **잠재 적용 후** 최종 클램프다 — 여기 없으면 잠재 %가 100 을 넘긴다
+            // (선존 결함, 설계 §2.6).
+            double effI = Math.min((preI + flatSum) * (1 + pctSum / 100.0), hardCap);
 
             attributes.put(stat, round2(effI));
             prePotential.put(stat, round2(preI));
             caps.put(stat, round2(capI));
             ovr += effI * baseline.getOrDefault(stat, 0.0);
-            lvSum += lv;
+            lvSum += addI;
             capGapSum += Math.max(0, capI - baseI);
         }
 
@@ -410,7 +433,7 @@ public class GrowthService {
         CardState card = cardState(userId, playerId);
         Map<String, StatLevelState> levels = loadStatLevels(userId, playerId);
         PotentialRow prow = potentialRow(userId, playerId).orElse(PotentialRow.fresh());
-        Effective e = compute(pb, card, levels, prow, growthCfg(), starCfg(), potentialCfg());
+        Effective e = compute(pb, card, levels, prow, tuning(), potentialCfg());
         return toCardEffectiveMap(playerId, e);
     }
 
@@ -420,11 +443,10 @@ public class GrowthService {
      * <b>등급을 바꾸면 기보유 카드의 유효스탯이 얼마나 움직이는가</b>를 실제 계산해 돌려준다.
      * 어드민 카탈로그 API 가 <b>등급 하향 PATCH 를 막는 판정 근거</b>로 쓴다(추정이 아니라 실측).
      *
-     * <p>왜 필요한가: 캡 공식이 {@code cap_i = base_i + starFrac[star] × (band.hi − base_i)} 라
-     * 등급이 내려가면 {@code band.hi} 가 함께 내려가고, <b>성을 많이 올린 카드일수록 더 크게</b>
-     * 깎인다(실측 예: LEGEND→DIA 시 4★ 평균 −7.33 / 1★ −1.83). 즉 <b>투자한 유저가 더 손해</b>다.
-     * 운영자가 그걸 모르고 등급을 내리는 일이 없도록 호출부가 영향 규모를 먼저 보여주고
-     * 명시 확인을 받는다.
+     * <p>왜 필요한가: 등급이 내려가면 <b>성장 천장</b>({@code bands[grade].growCeil}, #405 개편 전에는
+     * {@code base + starFrac[star] × (band.hi − base)})이 함께 내려가고, <b>많이 키운 카드일수록 더
+     * 크게</b> 깎인다 — 즉 <b>투자한 유저가 더 손해</b>다. 운영자가 그걸 모르고 등급을 내리는 일이
+     * 없도록 호출부가 영향 규모를 먼저 보여주고 명시 확인을 받는다.
      *
      * <p>순수 읽기 — RNG·쓰기 없음. 카드 상태(성·스탯레벨·잠재)는 그대로 두고 <b>등급만</b> 바꿔
      * 같은 {@link #compute} 를 두 번 돌린 차이다. 그래서 여기 값과 실제 반영 후 값이 어긋날 수 없다
@@ -436,9 +458,9 @@ public class GrowthService {
     public GradeChangeImpact gradeChangeImpact(String playerId, String newGrade) {
         PlayerBase pb = playerBase(playerId)
                 .orElseThrow(() -> ApiException.notFound("선수를 찾을 수 없습니다: " + playerId));
-        int[] fromBand = GRADE_BAND.getOrDefault(pb.grade(), new int[]{0, 100});
-        int[] toBand = GRADE_BAND.getOrDefault(newGrade, new int[]{0, 100});
-        boolean capLowered = toBand[1] < fromBand[1];
+        GrowthTuning tuning = tuning();
+        boolean capLowered = GrowthMath.band(tuning, newGrade).growCeil()
+                < GrowthMath.band(tuning, pb.grade()).growCeil();
 
         List<String> owners = jdbcClient.sql("SELECT user_id FROM user_players WHERE player_id = ? ORDER BY user_id")
                 .param(playerId).query(String.class).list();
@@ -448,12 +470,8 @@ public class GrowthService {
                     owners.size(), 0.0, 0.0, true);
         }
 
-        EconomyService.Growth gc;
-        EconomyService.Star sc;
         EconomyService.Potential pc;
         try {
-            gc = growthCfg();
-            sc = starCfg();
             pc = potentialCfg();
         } catch (RuntimeException e) {
             log.warn("gradeChangeImpact: 경제 설정 부재로 영향 계산 불가 player={} → {}", playerId, e.toString());
@@ -468,8 +486,8 @@ public class GrowthService {
             CardState card = cardState(owner, playerId);
             Map<String, StatLevelState> levels = loadStatLevels(owner, playerId);
             PotentialRow prow = potentialRow(owner, playerId).orElse(PotentialRow.fresh());
-            double before = compute(pb, card, levels, prow, gc, sc, pc).ovr();
-            double after = compute(hypothetical, card, levels, prow, gc, sc, pc).ovr();
+            double before = compute(pb, card, levels, prow, tuning, pc).ovr();
+            double after = compute(hypothetical, card, levels, prow, tuning, pc).ovr();
             double delta = after - before;
             sum += delta;
             worst = Math.min(worst, delta);
@@ -530,8 +548,8 @@ public class GrowthService {
             CardState card = cardState(userId, playerId);
             Map<String, StatLevelState> levels = loadStatLevels(userId, playerId);
             PotentialRow prow = potentialRow(userId, playerId).orElse(PotentialRow.fresh());
-            Effective e = compute(pb, card, levels, prow, economyService.get().get().growth(),
-                    economyService.get().get().star(), economyService.get().get().potential());
+            Effective e = compute(pb, card, levels, prow, tuning(),
+                    economyService.get().get().potential());
             Map<String, Object> out = new LinkedHashMap<>();
             e.attributes().forEach(out::put);
             return out;
@@ -544,16 +562,21 @@ public class GrowthService {
     // ── POST /api/growth/star ───────────────────────────────────────────
 
     public Map<String, Object> starUp(String userId, String playerId) {
-        EconomyService.Star sc = starCfg();
+        // 승급 필요 중복 수는 이제 GrowthTuning 이 SoT 다(발행물 economy.star.copies 를 승계하되
+        // 무배포 오버레이가 그 위에 얹힌다) — 계수를 economy 에서 직접 읽으면 AC-G0 에 구멍이 난다.
+        GrowthTuning.Star starTuning = tuning().star();
         EconomyService.Potential pc = potentialCfg();
         return txRunner.run(() -> {
             CardState st = cardStateForUpdate(userId, playerId);
-            if (st.star() >= 4) {
-                throw new ApiException(HttpStatus.BAD_REQUEST, "STAR_MAX", "이미 최대 성(4★)입니다",
-                        Map.of("star", st.star()));
+            // 최대 성은 상수가 아니라 **승급표에서 파생**한다 — 표에 없는 성으로는 올라갈 수 없으므로
+            // copies 의 최대 키가 곧 상한이고, 표를 늘리면 상한도 따라온다(하드코딩 4 제거).
+            int maxStar = starTuning.copies().keySet().stream().mapToInt(Integer::intValue).max().orElse(1);
+            if (st.star() >= maxStar) {
+                throw new ApiException(HttpStatus.BAD_REQUEST, "STAR_MAX",
+                        "이미 최대 성(" + maxStar + "★)입니다", Map.of("star", st.star()));
             }
             int targetStar = st.star() + 1;
-            int copies = sc.copies().getOrDefault(targetStar, Integer.MAX_VALUE);
+            int copies = starTuning.copies().getOrDefault(targetStar, Integer.MAX_VALUE);
             // B1(#179 gverify): count = 총 보유(원본 포함). 소모 가능한 "중복"은 여분(count−1)뿐 —
             // 원본 1장은 절대 소모하지 않는다(승급으로 카드가 미보유가 되는 사고 방지). UI 문구("중복 −N")와 정합.
             int spareCopies = ownedCount(userId, playerId) - 1;
@@ -889,17 +912,16 @@ public class GrowthService {
         String now = Instant.now().toString();
         List<String> roster = new ArrayList<>(starters);
         roster.addAll(bench);
+        Map<String, Double> minutes = tuning().xp().minutesMult();
         for (String pid : roster) {
-            double minutesMult;
+            // 출전 배율도 계수다 — 코드에 0.5/1.0 을 적어 두면 그 값만 무배포 조정 밖에 남는다.
+            String minutesKey;
             if (starters.contains(pid)) {
-                minutesMult = subsOut.contains(pid)
-                        ? gc.minutesMult().getOrDefault("partial", 0.5)
-                        : gc.minutesMult().getOrDefault("starter", MINUTES_STARTER_KEY_MISSING);
+                minutesKey = subsOut.contains(pid) ? "partial" : "starter";
             } else {
-                minutesMult = subsIn.contains(pid)
-                        ? gc.minutesMult().getOrDefault("partial", 0.5)
-                        : gc.minutesMult().getOrDefault("bench", 0.0); // 미출전 XP=0(V2-1)
+                minutesKey = subsIn.contains(pid) ? "partial" : "bench"; // 미출전 XP=0(V2-1)
             }
+            double minutesMult = minutes.getOrDefault(minutesKey, 0.0);
             PlayerBase pb = playerBase(pid).orElse(null);
             if (pb == null) {
                 continue;
@@ -942,7 +964,9 @@ public class GrowthService {
     /** xp_i = xpBase × (baselineByPosition[pos]_i + eventBonus_i) × minutesMult × gradeXpMult[grade]. */
     private Map<String, Integer> computeStatXpDeltas(PlayerBase pb, double minutesMult,
                                                       Map<String, Long> eventCounts, EconomyService.Growth gc) {
-        Map<String, Double> baseline = gc.baselineByPosition().getOrDefault(pb.position(), Map.of());
+        // 포지션 baseline 은 OVR 과 **같은 표**를 쓴다(설계 §2.8.1 #29) — 두 곳이 갈라지면
+        // "이 포지션은 무엇을 하는 선수인가"의 정의가 화면과 성장에서 달라진다.
+        Map<String, Double> baseline = tuning().positionBaseline().getOrDefault(pb.position(), Map.of());
         double gradeMult = gc.gradeXpMult().getOrDefault(pb.grade(), 1.0);
         Map<String, Integer> out = new LinkedHashMap<>();
         for (String stat : ATTR_KEYS) {
@@ -1137,9 +1161,9 @@ public class GrowthService {
             if (pb == null) {
                 continue;
             }
-            double minutesMult = starters.contains(a.playerId())
-                    ? gc.minutesMult().getOrDefault("starter", 1.0)
-                    : gc.minutesMult().getOrDefault("bench", 0.0);
+            Map<String, Double> minutes = tuning().xp().minutesMult();
+            double minutesMult = minutes.getOrDefault(
+                    starters.contains(a.playerId()) ? "starter" : "bench", 0.0);
             Map<String, Integer> perStat = computeStatXpDeltas(pb, minutesMult,
                     eventsByPlayer.getOrDefault(a.playerId(), Map.of()), gc);
 
@@ -1159,15 +1183,13 @@ public class GrowthService {
                     levelUps.add(stat);
                 }
             }
-            EconomyService.Star sc = economyService.get().map(EconomyService.Economy::star)
-                    .orElse(new EconomyService.Star(Map.of(), Map.of()));
             EconomyService.Potential pc = economyService.get().map(EconomyService.Economy::potential)
                     .orElse(new EconomyService.Potential(Map.of(), Map.of(), Map.of(), Map.of(), 1.5, 1.0,
                             Map.of()));
             CardState card = cardState(userId, a.playerId());
             PotentialRow prow = potentialRow(userId, a.playerId()).orElse(PotentialRow.fresh());
-            double ovrBefore = compute(pb, card, before, prow, gc, sc, pc).ovr();
-            double ovrAfter = compute(pb, card, after, prow, gc, sc, pc).ovr();
+            double ovrBefore = compute(pb, card, before, prow, tuning(), pc).ovr();
+            double ovrAfter = compute(pb, card, after, prow, tuning(), pc).ovr();
 
             Map<String, Object> entry = new LinkedHashMap<>();
             entry.put("playerId", a.playerId());

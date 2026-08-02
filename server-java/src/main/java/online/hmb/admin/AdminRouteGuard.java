@@ -124,7 +124,12 @@ public class AdminRouteGuard implements ApplicationRunner {
             // 경제 표면은 아니지만 게임 자체의 규칙이고, 검증 게이트를 통과한 값이라도 밸런스를
             // 임의로 흔든다. 진행 중 매치는 스냅샷이 막지만 **이후 생성되는 모든 매치**가 영향을 받는다.
             // 조회 전용 경로가 따로 없다(유저가 볼 값이 아니다) — 전부 이 빈 뒤에 있다.
-            AdminEngineConfigService.class);
+            AdminEngineConfigService.class,
+            // #405 성장 계수 무배포 운영. 게이트 밖으로 나가면 **아무나 성장 천장·XP 곡선·후보
+            // 가중치를 바꿀 수 있다** — 카드 유효스탯이 곧 전력이므로 경제 표면이기도 하다.
+            // 유저 쪽 조회(GrowthService, /api/growth/*)는 LiveGrowthConfigService 에만 의존하므로
+            // 영향이 없다 — 그 방향(admin → growth) 한 방향을 유지하는 것이 구조의 전부다.
+            AdminGrowthConfigService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;

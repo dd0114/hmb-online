@@ -32,11 +32,13 @@ public class AdminController {
     private final AdminNoticeAssetService noticeAssets;
     private final AdminMailService mails;
     private final AdminEngineConfigService engineConfig;
+    private final AdminGrowthConfigService growthConfig;
 
     public AdminController(AdminUserQueryService users, AdminPointsService points,
                            AdminEconomyService economy, AdminNoticeService notices,
                            AdminNoticeAssetService noticeAssets, AdminMailService mails,
-                           AdminEngineConfigService engineConfig) {
+                           AdminEngineConfigService engineConfig,
+                           AdminGrowthConfigService growthConfig) {
         this.users = users;
         this.points = points;
         this.economy = economy;
@@ -44,6 +46,58 @@ public class AdminController {
         this.noticeAssets = noticeAssets;
         this.mails = mails;
         this.engineConfig = engineConfig;
+        this.growthConfig = growthConfig;
+    }
+
+    // ── 성장 계수 무배포 운영 (#405 W2a) ─────────────────────────────────
+    //
+    // engine-config(#383)와 형태는 같지만 **검증 주체와 적용 시점이 다르다**: 엔진 계수는 러너가
+    // 판정하고 매치 생성 시점에 pin 되지만, 성장 계수는 **이 서버가 소비자**라 검증도 여기서 하고
+    // pin 없이 다음 정산·조회부터 즉시 걸린다(설계 §2.8.3). 그래서 응답에 그 문장을 실어 보낸다.
+
+    /** 지금 성장 계산에 쓰이는 오버레이 + 유효 계수 전체 + 출처. */
+    @GetMapping("/growth-config")
+    public Object growthConfig() {
+        return growthConfig.current();
+    }
+
+    /** 리비전 이력(누가·언제·왜·무엇을). 원장은 append-only 라 과거가 지워지지 않는다. */
+    @GetMapping("/growth-config/history")
+    public List<online.hmb.growth.LiveGrowthConfigService.Row> growthConfigHistory(
+            @RequestParam(name = "limit", required = false, defaultValue = "20") int limit) {
+        return growthConfig.history(limit);
+    }
+
+    /** 오버레이 가능한 경로 전수 + 타입·범위·현재값 — 경로 이름을 추측하지 않게 한다. */
+    @GetMapping("/growth-config/knobs")
+    public Object growthConfigKnobs() {
+        return growthConfig.knobs();
+    }
+
+    /** 드라이런 — 원장을 만들지 않는다. 무효 노브는 {@code issues[]} 에 이유가 항목별로 온다. */
+    @PostMapping("/growth-config/validate")
+    public Object validateGrowthConfig(@RequestAttribute("userId") String actorUserId,
+                                       @RequestBody(required = false) GrowthConfigRequest body) {
+        return growthConfig.validate(actorUserId, body == null ? null : body.overrides());
+    }
+
+    /**
+     * 오버레이 <b>전체 교체</b>. {@code Idempotency-Key} 를 항상 보내라 — 같은 키 + 같은 내용은
+     * 재전송으로 흡수되고, 같은 키 + <b>다른</b> 내용은 409 다. 기본값 복귀는 {@code overrides:{}}.
+     */
+    @PutMapping("/growth-config")
+    public Object replaceGrowthConfig(@RequestAttribute("userId") String actorUserId,
+                                      @RequestBody GrowthConfigRequest body,
+                                      @RequestHeader(name = "Idempotency-Key", required = false)
+                                      String idempotencyKey) {
+        if (body == null) {
+            throw online.hmb.common.ApiException.validation("요청 바디가 비어 있습니다");
+        }
+        return growthConfig.replace(actorUserId, body.overrides(), body.reason(), idempotencyKey);
+    }
+
+    /** 성장 계수 오버레이 요청 — 점경로 맵 + 사유. 경로 유효성은 서버가 판정한다(소비자가 서버라서). */
+    public record GrowthConfigRequest(java.util.Map<String, Object> overrides, String reason) {
     }
 
     // ── 계수 무배포 운영 (#383) ───────────────────────────────────────────
