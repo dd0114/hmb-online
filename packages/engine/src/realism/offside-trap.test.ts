@@ -106,6 +106,17 @@ const REF_0_39_0_SHIPPING = ["f9d9d778", "756ec350", "f7031974", "e5b0e30b", "27
 const REF_0_39_0_TRAP_ON = ["35e56352", "5e9060da", "a87a7465", "bca6a382", "6709e43e", "295057c6", "43c19131", "7d411e90"];
 
 /**
+ * ⚠️ **#407 N4(engine@0.41.0) 재기록.** hold EV 의 1대1 예외(`chain.hold.oneOnOnePenalty`)는
+ * **볼 소유자 결정 코어**의 전역 변경이라 트랩 스위치 밖에서 돈다 — 이 파일의 두 롤백 계약은
+ * 그래서 값이 움직인다(다른 롤백 계약들과 같은 처방: `vision.test.ts` · `press-unit.test.ts` ·
+ * `def-line.test.ts`). **계약 내용은 그대로다**: "트랩 기제가 꺼져 있으면 트랩 도입 전과 같다".
+ * 위 0.39.0 상수는 **이력으로 남긴다**(지우면 그 사실이 어디에도 안 남는다).
+ * 8시드 중 실제로 갈린 것은 shipping 4/8 · trap-on 5/8 이다(N4 는 1대1 이 실제로 난 매치에서만 걸린다).
+ */
+const REF_0_41_0_SHIPPING = ["f9d9d778", "e816d215", "6a479763", "e5b0e30b", "2729ba3f", "26945380", "8a13900e", "19ccfdd9"];
+const REF_0_41_0_TRAP_ON = ["a2910ec7", "dc6849c4", "1f724206", "bca6a382", "f751df47", "295057c6", "43c19131", "a2c11142"];
+
+/**
  * 플라시보 팔의 n20 측정 — **T2 엔드포인트와 T2c 절대값 변이체가 공유**한다(같은 20경기를
  * 두 번 돌리지 않는다). 모듈 로드 시 1회.
  */
@@ -330,15 +341,15 @@ describe("S3-C T5 — 롤백이 `3d38e86`(0.39.0) 과 비트 동일", () => {
   it("출하 픽스처(트랩 off)는 0.39.0 과 **똑같다** — 이 웨이브는 골든을 안 움직인다", () => {
     // 이것이 전술 기본값을 off 로 둔 이유다(스코프 §4-b). 깨지면 그 전제가 무너진 것이므로
     // `-u` 로 넘기지 말고 원인을 실측으로 설명해야 한다.
-    expect(hashes(defaultEngineConfig)).toEqual(REF_0_39_0_SHIPPING);
+    expect(hashes(defaultEngineConfig)).toEqual(REF_0_41_0_SHIPPING);
   }, 300_000);
 
   it("트랩을 켠 경기도 롤백 config(`trap.enabled=false` + `trapBiasM=2.5`)면 0.39.0 과 같다", () => {
-    expect(hashes(ROLLBACK, trapOnPatch)).toEqual(REF_0_39_0_TRAP_ON);
+    expect(hashes(ROLLBACK, trapOnPatch)).toEqual(REF_0_41_0_TRAP_ON);
   }, 300_000);
 
   it("그리고 기제가 켜지면 다르다 (롤백 계약이 공허하지 않다)", () => {
-    expect(hashes(defaultEngineConfig, trapOnPatch)).not.toEqual(REF_0_39_0_TRAP_ON);
+    expect(hashes(defaultEngineConfig, trapOnPatch)).not.toEqual(REF_0_41_0_TRAP_ON);
   }, 300_000);
 });
 

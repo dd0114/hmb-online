@@ -129,6 +129,8 @@ interface Weights {
   turnoverFrac: number;
   goalValueEv: number;
   holdPenaltyEv: number;
+  /** #407 N4 — 1대1 일 때 hold 유지 항에서 **추가로** 빼는 페널티(정수 EV). */
+  oneOnOneHoldEv: number;
   discountFrac: number;
   spaceRefFx: number;
   advExp: number;
@@ -143,6 +145,7 @@ function bakeWeights(config: EngineConfig): Weights {
     turnoverFrac: Math.round(c.turnoverWeight * FRAC_SCALE),
     goalValueEv: Math.round(c.goalValue * EV_SCALE),
     holdPenaltyEv: Math.round(c.holdPenalty * EV_SCALE),
+    oneOnOneHoldEv: Math.round(c.hold.oneOnOnePenalty * EV_SCALE),
     discountFrac: Math.round(c.discount * FRAC_SCALE),
     spaceRefFx: Math.round(c.spaceRefM * config.fixedScale),
     advExp: c.advanceExponent,
@@ -167,6 +170,13 @@ interface SearchCtx {
    * 매번 다시 돈다. 담기는 값은 전부 (상태, 좌표)의 순수 함수라 **비트 동일**이고 결정론 영향 0.
    */
   near: Map<number, PointCache>;
+  /**
+   * #407 N4 — **이 결정의 홀더가 1대1(단독 찬스)인가.** 루트에서 `decision.oneOnOneShot` 이 낸
+   * 판정을 그대로 싣는다(재발명 금지 — 기하가 갈리면 계약과 진단이 어긋난다). hold 후보는
+   * 루트에서만 생성되므로(`INNER_GENERATORS` 가 제외) 이 플래그가 가상 도착 지점에서 쓰이는
+   * 일은 없다. `evaluateState`(외부 진단 래퍼) 경로에서는 언제나 false 다.
+   */
+  oneOnOne: boolean;
   /** EV 평가 노드 카운터(예산 대상). */
   nodes: number;
   maxNodes: number;
@@ -241,6 +251,27 @@ function spaceFrac(nd: number, spaceRefFx: number): number {
   return v > FRAC_SCALE ? FRAC_SCALE : v;
 }
 
+/**
+ * #407 N1 — 슛 EV 골 항의 **결정 전용 거리 감쇠 계수**(FRAC).
+ *
+ *   f(d) = clamp(1 − perM × max(0, d − freeM), floor, 1)
+ *
+ * `freeM` 안은 1.0(0.40.0 과 같은 결정), 그 밖은 선형으로 깎되 `floor` 아래로는 안 간다 —
+ * **먼 슛이 선택지에서 사라지지 않게** 하는 것이 이 하한의 유일한 목적이다(floor=0 이면 아주 먼
+ * 곳에서 EV 가 0 이 되어 하드 게이트가 부활한다).
+ *
+ * 결정론: 부동 산술은 곱·뺄셈·비교뿐이고(IEEE754 로 정확히 규정) 결과는 `toFrac` 이 정수로
+ * 굽는다 — EV 비교는 언제나 정수 도메인에서 일어난다. `Math.pow` 같은 구현 근사 함수는 안 쓴다.
+ */
+function shootDistanceFrac(config: EngineConfig, distM: number): number {
+  const sd = config.chain.shootDistance;
+  if (!sd.enabled) return FRAC_SCALE;
+  const over = distM - sd.freeM;
+  if (over <= 0) return FRAC_SCALE;
+  const f = 1 - sd.perM * over;
+  return toFrac(f < sd.floor ? sd.floor : f);
+}
+
 /** side 팀 관점의 최근접 상대 거리(fixed). */
 function nearestOppDist(ctx: SearchCtx, side: SimPlayer["side"], xFx: number, yFx: number): number {
   const d = pointAt(ctx, xFx, yFx);
@@ -296,6 +327,7 @@ function newCtx(state: SimState, config: EngineConfig, pitch: Pitch): SearchCtx 
     pitch,
     w: bakeWeights(config),
     near: new Map(),
+    oneOnOne: false,
     nodes: 0,
     maxNodes: s.maxNodes > 0 ? s.maxNodes : Number.MAX_SAFE_INTEGER,
     budgetHit: false,
@@ -338,10 +370,23 @@ function candidateSpeedFx(g: GenInput, o: PassOption): number {
  * 고정된다). S5 는 여기에 항목을 **뒤에** 추가한다.
  */
 const GEN_FN: Record<GeneratorId, (g: GenInput, out: ActionCandidate[]) => void> = {
-  // 슛: 사거리·xG 임계 안일 때만. 타깃은 아직 골 중앙 고정(조준점 분산은 S5).
+  /**
+   * 슛. 타깃은 아직 골 중앙 고정(조준점 분산은 S5).
+   *
+   * ## #407 N1 — 거리 컷은 **여기서 사라졌다**(0.41.0)
+   * 구 형태는 `distToGoalM > contest.shootRange` 면 후보를 **아예 안 만들었다**. 그 한 줄이
+   *  ⓐ 오픈플레이 와이드 슛을 확률 0 으로 만들었고(와이드 문턱 20.4m > shootRange 19m — 산수다),
+   *  ⓑ 그 노브로 볼륨을 내리면 박스 밖 슛을 통째로 지워 박스 편중을 41.2%→90~100% 로 밀었다.
+   * 이제 생성은 **안전 상한**(`chain.shootDistance.genMaxM`)까지 넓게 하고, 거리에 따른 억제는
+   * `candidateEv` 의 shoot 분기(`shootDistanceFrac`)가 **결정 축에서만** 한다.
+   * **xG 질 게이트(`shootXgThreshold`)는 그대로 남는다** — 저xG 슛을 거르는 것은 거리와 다른
+   * 축이고, 그 사다리가 `shot-frequency.test.ts` 의 계약이다.
+   */
   shoot: (g, out) => {
     const c = g.ctx.config;
-    if (g.distToGoalM > c.contest.shootRange || g.xgHere < c.contest.shootXgThreshold) return;
+    const sd = c.chain.shootDistance;
+    const genMaxM = sd.enabled ? sd.genMaxM : c.contest.shootRange;
+    if (g.distToGoalM > genMaxM || g.xgHere < c.contest.shootXgThreshold) return;
     const speed = shotPowerFx(g.holder.attrs.shooting, c);
     const flight = speed > 0 ? Math.ceil(g.distToGoalFx / speed) : 0;
     out.push({
@@ -581,9 +626,21 @@ function candidateEv(
 
   switch (cand.kind) {
     case "shoot": {
-      const { xg } = xgAtPoint(here.side, here.xFx, here.yFx, here.shooting, here.fatigue, ctx.config, ctx.pitch);
+      const { xg, distM } = xgAtPoint(
+        here.side, here.xFx, here.yFx, here.shooting, here.fatigue, ctx.config, ctx.pitch,
+      );
       const xgFrac = toFrac(xg);
-      let ev = mulFrac(w.goalValueEv, xgFrac) + mulFrac(turnoverEv(ctx, here), FRAC_SCALE - xgFrac);
+      /**
+       * #407 N1 — **결정 전용 거리 감쇠**. 생성기의 하드 컷(`distToGoalM > shootRange`)을 대체한다.
+       *
+       * 감쇠는 **골 항에만** 곱한다(턴오버 항 제외). 턴오버 항은 음수라, 거기까지 같이 곱하면
+       * 먼 슛의 EV 가 **덜 나쁜 쪽으로** 올라가 부호가 뒤집힌 보정이 된다. 골 항만 깎으면
+       * `perM` 이 항상 같은 방향(값↑ → 슛↓)의 단조 레버가 된다.
+       *
+       * ⚠️ `xgAtPoint` 는 여기서 **읽기만** 한다. xG(결과 모델)를 깎는 것이 Phase 2-A 의 기각 사유였다.
+       */
+      const gain = mulFrac(mulFrac(w.goalValueEv, xgFrac), shootDistanceFrac(ctx.config, distM));
+      let ev = gain + mulFrac(turnoverEv(ctx, here), FRAC_SCALE - xgFrac);
       // 슛 성향(프롬프트 behavior)은 EV 를 곱으로 가감 — 전술 입력이 계속 살아 있어야 한다.
       if (behavior) ev = mulFrac(ev, toMul(0.5 + holder.behavior.shootTendency));
       return ev;
@@ -666,7 +723,15 @@ function candidateEv(
        * 루트에서만 돈다(`INNER_GENERATORS` 가 제외). 즉 가상 지점에서 압박을 재는 일이 없다.
        */
       const keepFrac = toFrac(holdKeepProb(ctx.state, holder, ctx.config));
-      const stay = evaluateStateEv(ctx, here) - w.holdPenaltyEv;
+      /**
+       * #407 N4 — **"확실한 슛"(1대1) 예외.** 1대1 은 정의상 "반경 안 비-GK 상대 0명" = `p_keep`
+       * 최대라, 위 구조에서는 **가장 자유로운 순간에 hold 가 가장 강해진다**. 그래서 hold 계열을
+       * 볼륨 레버로 쓰면 #316 의 1대1 이 먼저 죽었다(2-A 안 A: 팀-경기 95.8%에서 0건).
+       * 여기서 유지 항을 한 번 더 깎아, `holdPenalty` 를 밀어도 1대1 은 슛으로 귀결되게 한다.
+       * 판정은 루트의 `oneOnOneShot` 결과(`ctx.oneOnOne`) — 기하를 여기서 다시 재지 않는다.
+       */
+      const stay =
+        evaluateStateEv(ctx, here) - w.holdPenaltyEv - (ctx.oneOnOne ? w.oneOnOneHoldEv : 0);
       return mulFrac(stay, keepFrac) + mulFrac(turnoverEv(ctx, here), FRAC_SCALE - keepFrac);
     }
   }
@@ -823,6 +888,9 @@ export function decideBallOwnerChain(
    *    밀지 않으므로 볼륨(팀당 슛) 재보정이 필요 없다 — 움직이는 것은 골 계열뿐이다.
    */
   const oo = oneOnOneShot(state, owner, rawXg, distM, config);
+  // #407 N4: 그 판정을 **탐색 문맥에 싣는다** — hold EV 의 "확실한 슛" 예외가 이 플래그를 읽는다.
+  // 여기가 유일한 세팅 지점이라 1v1 기하는 루트에서 한 번만 재진다(위 원칙 그대로).
+  ctx.oneOnOne = oo.detail === "one_on_one";
 
   // #349: 재시작 틱이면 **킥 후보만** 만든다(Law 8/13/15/16). 사슬 코어는 `state.setPiece` 를
   // 보지 않아 재시작에도 carry 를 그대로 만들었고, EV 가 그걸 이겨 프리킥 재개의 78.5% 가

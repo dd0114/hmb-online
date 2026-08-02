@@ -66,8 +66,8 @@ export const LADDER_TAG = "[사다리 · HMB_LADDER=1]";
 export const LADDER_SUITES: { file: string; what: string; issue: string }[] = [
   {
     file: "shot-frequency.test.ts",
-    what: "슛 볼륨 레버 사다리 3종(chain.goalValue 단조 + 현 볼륨 노브 단조 + weighted 롤백 2점 대비)",
-    issue: "#99 G-A / #279 / #338 / #357",
+    what: "슛 볼륨 레버 사다리 4종(chain.goalValue 단조 + contest.shootXgThreshold 단조 + chain.shootDistance.perM 단조 + weighted 롤백 2점 대비)",
+    issue: "#99 G-A / #279 / #338 / #357 / #407 N1",
   },
   {
     file: "lane-read.test.ts",

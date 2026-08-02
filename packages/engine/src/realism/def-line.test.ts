@@ -246,7 +246,10 @@ describe("S3-B L5 — 롤백 스위치가 0.38.0 과 비트 동일하다", () =>
     //  ② `computeTeamPlan` 의 `heightRangeX` 승격이 롤백 경로에서 구 상수를 그대로 쓴다
     //  ③ `cornerHolderRank` → `teamplan.ts:holderRank` **관용구 추출이 no-op** 이다
     //     (코너 경로는 이 플래그와 무관하게 돌므로, 여기서 해시가 같다는 것이 곧 그 증명이다)
-    expect(hashes(OFF, SEEDS4)).toEqual(["8c1af96c", "3bfd7771", "f3049b84", "364419fc"]);
+        // ⚠️ #407 N4(engine@0.41.0) 재기록 — hold EV 의 1대1 예외(`chain.hold.oneOnOnePenalty`)는
+    //    이 웨이브의 두 스위치 **밖**에서 도는 볼 소유자 결정 코어 변경이라 롤백 경로에서도 걸린다.
+    //    계약 내용(①②③)은 그대로다. 0.38.0 값 = ["8c1af96c","3bfd7771","f3049b84","364419fc"].
+    expect(hashes(OFF, SEEDS4)).toEqual(["656652e2", "3bfd7771", "41f847a1", "364419fc"]);
   });
 
   it("켜면 달라진다 — 두 기제가 **각각** 발화한다(무발화 가드)", () => {

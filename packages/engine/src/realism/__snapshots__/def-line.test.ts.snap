@@ -3,22 +3,22 @@
 exports[`S3-B L3 — 결과 지표 후보 4종은 **게이트가 아니다** (무신호를 관측 기록으로 박제한다) > 후보 4종의 사다리 반응을 **스냅샷으로 기록**한다 — 게이트가 아니라 관측 기록이다 1`] = `
 {
   "lineDiscipline=0": {
-    "behindLinePossPct": 55.91,
-    "concededShotDistP50M": 17.65,
-    "lineStepMeanM": 1.86,
-    "offsideLineSdM": 11.21,
+    "behindLinePossPct": 54.07,
+    "concededShotDistP50M": 17.64,
+    "lineStepMeanM": 1.88,
+    "offsideLineSdM": 11.16,
   },
   "lineDiscipline=0.5": {
-    "behindLinePossPct": 52.92,
-    "concededShotDistP50M": 17.62,
-    "lineStepMeanM": 1.95,
-    "offsideLineSdM": 11.45,
+    "behindLinePossPct": 52.41,
+    "concededShotDistP50M": 17.57,
+    "lineStepMeanM": 1.91,
+    "offsideLineSdM": 11.49,
   },
   "lineDiscipline=1": {
-    "behindLinePossPct": 51.24,
-    "concededShotDistP50M": 17.68,
-    "lineStepMeanM": 1.99,
-    "offsideLineSdM": 13.66,
+    "behindLinePossPct": 50.08,
+    "concededShotDistP50M": 17.27,
+    "lineStepMeanM": 2.04,
+    "offsideLineSdM": 13.07,
   },
 }
 `;
