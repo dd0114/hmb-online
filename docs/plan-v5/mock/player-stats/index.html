@@ -166,6 +166,9 @@ h5.cat{font-size:10px;color:var(--muted);letter-spacing:.09em;margin:12px 0 5px;
 .xpb i{display:block;height:100%;background:#c9a227}
 .vb{display:block;width:100%;position:relative;height:7px;border-radius:4px;background:var(--sunk);overflow:hidden}
 .vb .fill{position:absolute;left:0;top:0;bottom:0;background:var(--us);border-radius:4px}
+.vb .lyBase{position:absolute;left:0;top:0;bottom:0;background:#3d6fc4;border-radius:4px 0 0 4px}
+.vb .lyGrow{position:absolute;top:0;bottom:0;background:var(--ok)}
+.vb .lyPot{position:absolute;top:0;bottom:0;background:rgba(201,162,39,.75)}
 .vb .reach{position:absolute;top:0;bottom:0;background:rgba(76,141,255,.22)}
 .vb .capl{position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--warn)}
 .vb .basel{position:absolute;top:-1px;bottom:-1px;width:1px;background:rgba(255,255,255,.45)}
@@ -515,8 +518,13 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
 <!-- ==================== 4 ==================== -->
 <section class="screen" id="s4">
   <h2>④ 선수 상세 모달 — [선수 정보] 탭 <span class="tag">요구 F / <b>강화탭 능력치 UI 재사용</b>(hero 지시 2026-08-02)</span></h2>
+  <p class="note" style="max-width:1000px;margin:0 0 14px"><b>⚠️ 갱신 2026-08-03 — 강화탭이 그 사이 바뀌었다(#405 W3 <code>023884e</code>).</b><br>
+    hero 가 승인한 것은 <b>"강화탭과 같이 보이게"라는 의도</b>이지 구 픽셀이 아니므로, <b>머지된 main 의 실제 강화탭을 SoT</b> 로 다시 그렸다.
+    <b>바뀐 것</b>: 막대가 <b>3층(기본 | 성장분 | 잠재 보정분) + 천장 마커</b> 로 · <b>스탯별 Lv 뱃지·XP 바 제거</b>(<code>statLevels</code> 는 죽은 이력) ·
+    축이 <code>cardAxisWindow(base, caps, startLo)</code> 로(등급 밴드 클라 미러는 <b>틀린 값이 돼서 제거</b>됐다).
+    <b>안 바뀐 것</b>: 레이더↔막대 2레이어 토글 · 상대는 축소 모드 · 열람 전용(강화·리롤 버튼 없음).</p>
   <p class="why">같은 모달의 두 번째 탭. 능력치는 <b>새로 그리지 않고 강화 화면(<code>CardGrowthDetail</code>)에서 쓰는 표시를 그대로</b> 쓴다 —
-     <b>레이더 ↔ 막대 2레이어 토글</b>, 막대에는 <b>스탯 레벨 뱃지 · XP 바 · 현재값/성장상한(cap)/기본값(base) 마커</b>.
+     <b>레이더 ↔ 막대 2레이어 토글</b>, 막대는 <b>3층(기본 | 성장분 | 잠재 보정분) + 천장 마커</b>.
      같은 능력치가 화면마다 다르게 보이지 않게 하는 것이 요점이고, 유지보수도 한 곳으로 모인다.</p>
   <div class="row">
 
@@ -564,97 +572,91 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
               </p>
 
               <h5 class="cat">능력치 — 막대 레이어 <span style="color:var(--muted);font-weight:400">(토글하면 이 화면)</span></h5>
-              <p class="axwin">스탯 축 35–95</p>
-              <div class="arow">
-                  <div class="an">슈팅<i class="lv">Lv.7</i></div>
-                  <div class="bars">
-                    <span class="xpb"><i style="width:68%"></i></span>
-                    <span class="vb">
-                      <i class="reach" style="left:84%;width:8%"></i>
-                      <i class="fill" style="width:84%"></i>
-                      <i class="capl" style="left:92%"></i>
-                      <i class="basel" style="left:71%"></i>
-                    </span>
-                  </div>
-                  <div class="av">84<i>/92</i></div>
-                </div>
-                <div class="arow">
-                  <div class="an">스피드<i class="lv">Lv.5</i></div>
-                  <div class="bars">
-                    <span class="xpb"><i style="width:40%"></i></span>
-                    <span class="vb">
-                      <i class="reach" style="left:79%;width:7%"></i>
-                      <i class="fill" style="width:79%"></i>
-                      <i class="capl" style="left:86%"></i>
-                      <i class="basel" style="left:70%"></i>
-                    </span>
-                  </div>
-                  <div class="av">79<i>/86</i></div>
-                </div>
-                <div class="arow">
-                  <div class="an">드리블<i class="lv">Lv.6</i></div>
-                  <div class="bars">
-                    <span class="xpb"><i style="width:55%"></i></span>
-                    <span class="vb">
-                      <i class="reach" style="left:76%;width:8%"></i>
-                      <i class="fill" style="width:76%"></i>
-                      <i class="capl" style="left:84%"></i>
-                      <i class="basel" style="left:66%"></i>
-                    </span>
-                  </div>
-                  <div class="av">76<i>/84</i></div>
-                </div>
-                <div class="arow">
-                  <div class="an">패스<i class="lv">Lv.3</i></div>
-                  <div class="bars">
-                    <span class="xpb"><i style="width:22%"></i></span>
-                    <span class="vb">
-                      <i class="reach" style="left:68%;width:11%"></i>
-                      <i class="fill" style="width:68%"></i>
-                      <i class="capl" style="left:79%"></i>
-                      <i class="basel" style="left:61%"></i>
-                    </span>
-                  </div>
-                  <div class="av">68<i>/79</i></div>
-                </div>
-                <div class="arow">
-                  <div class="an">피지컬<i class="lv">Lv.4</i></div>
-                  <div class="bars">
-                    <span class="xpb"><i style="width:80%"></i></span>
-                    <span class="vb">
-                      <i class="reach" style="left:72%;width:9%"></i>
-                      <i class="fill" style="width:72%"></i>
-                      <i class="capl" style="left:81%"></i>
-                      <i class="basel" style="left:64%"></i>
-                    </span>
-                  </div>
-                  <div class="av">72<i>/81</i></div>
-                </div>
-                <div class="arow">
-                  <div class="an">수비<i class="lv">Lv.1</i></div>
-                  <div class="bars">
-                    <span class="xpb"><i style="width:12%"></i></span>
-                    <span class="vb">
-                      <i class="reach" style="left:41%;width:14%"></i>
-                      <i class="fill" style="width:41%"></i>
-                      <i class="capl" style="left:55%"></i>
-                      <i class="basel" style="left:38%"></i>
-                    </span>
-                  </div>
-                  <div class="av">41<i>/55</i></div>
-                </div>
-              <p class="legend">
-                <span><b style="color:#4c8dff">■</b> 현재값</span>
-                <span><b style="color:#ffc24b">▮</b> 성장 상한(cap)</span>
-                <span><b>▮</b> 기본값(base)</span>
-                <span><b style="color:#c9a227">▬</b> 스탯 XP</span>
+              <p class="axwin">스탯 축 50–82 <span style="color:var(--muted)">— 카드의 base/caps 에서 파생(등급 밴드 미러 없음)</span></p>
+              <p class="legend" style="margin:0 0 6px">
+                <span><b style="color:#3d6fc4">■</b> 기본(발행 원본)</span>
+                <span><b style="color:#3ddc84">■</b> 성장분(선택으로 올린 몫)</span>
+                <span><b style="color:#c9a227">■</b> 잠재 보정분</span>
+                <span><b style="color:#ffc24b">▮</b> 천장</span>
               </p>
-
+              <div class="arow">
+                  <div class="an">슈팅</div>
+                  <div class="bars">
+                    <span class="vb">
+                      <i class="lyBase" style="width:71%"></i>
+                      <i class="lyGrow" style="left:71%;width:8%"></i>
+                      <i class="lyPot" style="left:79%;width:5%"></i>
+                      <i class="capl" style="left:92%"></i>
+                    </span>
+                  </div>
+                  <div class="av">84<i> +8.0</i><br><i>천장 92</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">스피드</div>
+                  <div class="bars">
+                    <span class="vb">
+                      <i class="lyBase" style="width:70%"></i>
+                      <i class="lyGrow" style="left:70%;width:5%"></i>
+                      <i class="lyPot" style="left:75%;width:4%"></i>
+                      <i class="capl" style="left:86%"></i>
+                    </span>
+                  </div>
+                  <div class="av">79<i> +5.0</i><br><i>천장 86</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">드리블</div>
+                  <div class="bars">
+                    <span class="vb">
+                      <i class="lyBase" style="width:66%"></i>
+                      <i class="lyGrow" style="left:66%;width:6%"></i>
+                      <i class="lyPot" style="left:72%;width:4%"></i>
+                      <i class="capl" style="left:84%"></i>
+                    </span>
+                  </div>
+                  <div class="av">76<i> +6.0</i><br><i>천장 84</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">패스</div>
+                  <div class="bars">
+                    <span class="vb">
+                      <i class="lyBase" style="width:61%"></i>
+                      <i class="lyGrow" style="left:61%;width:3%"></i>
+                      <i class="lyPot" style="left:64%;width:4%"></i>
+                      <i class="capl" style="left:79%"></i>
+                    </span>
+                  </div>
+                  <div class="av">68<i> +3.0</i><br><i>천장 79</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">피지컬</div>
+                  <div class="bars">
+                    <span class="vb">
+                      <i class="lyBase" style="width:64%"></i>
+                      <i class="lyGrow" style="left:64%;width:5%"></i>
+                      <i class="lyPot" style="left:69%;width:3%"></i>
+                      <i class="capl" style="left:81%"></i>
+                    </span>
+                  </div>
+                  <div class="av">72<i> +5.0</i><br><i>천장 81</i></div>
+                </div>
+                <div class="arow">
+                  <div class="an">수비</div>
+                  <div class="bars">
+                    <span class="vb">
+                      <i class="lyBase" style="width:38%"></i>
+                      <i class="lyGrow" style="left:38%;width:2%"></i>
+                      <i class="lyPot" style="left:40%;width:1%"></i>
+                      <i class="capl" style="left:55%"></i>
+                    </span>
+                  </div>
+                  <div class="av">41<i> +2.0</i><br><i>천장 55</i></div>
+                </div>
               <h5 class="cat">성장 · 승급</h5>
               <div class="pend">⚙️ 이 영역은 <b>성장 개편(#405)</b> 이 형상을 정한다 — 레벨/경험치/승급 표기는 <b>자리만</b> 잡고 값 배선은 #405 인터페이스 확정 후</div>
               <div class="slist" style="margin-top:8px">
-                <div class="dim2"><span>성 승급(★)</span><span>★3 → ★4 (조각 2/5)</span></div>
+                <div class="dim2"><span>성(★)</span><span>★3</span></div>
                 <div class="dim2"><span>잠재 티어</span><span>EPIC</span></div>
+                <p style="font-size:10px;color:var(--muted);margin:6px 0 0">⚠️ 승급 예고(조각 n/5)는 안 띄운다 — 조각 수는 이 모달이 받지 않는 축이고(강화 화면 소관) 여기는 <b>열람 전용</b>이다.</p>
               </div>
               <p style="font-size:10px;color:var(--muted);margin:6px 0 0">⚠️ 강화·리롤 <b>버튼은 이 모달에 없다</b> — 열람 전용. 강화는 기존 강화 화면에서.</p>
 
@@ -737,7 +739,7 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
               <div class="slist"><div class="dim2"><span>등급 · 성</span><span>골드 ★2</span></div></div>
 
               <h5 class="cat">지시(프롬프트)</h5>
-              <div style="text-align:center;padding:10px 0"><span class="lock">🔒 지시 있음 — 내용 비공개</span></div>
+              <div style="text-align:center;padding:10px 0"><span class="lock">🔒 지시(프롬프트)는 비공개</span></div>
               <button class="btn ghost" style="margin-top:14px">닫기</button>
             </div>
           </div>
@@ -750,9 +752,11 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
   </div>
 
   <p class="note" style="max-width:1000px"><b>⚠️ 여기 데이터 경계가 하나 있다 (개발 기준으로 확정한 것)</b><br>
-    강화탭의 <b>Lv · XP · 성장상한(cap) · 기본값(base)</b> 은 <b>내 카드에만</b> 있는 값이다(내 카드의 성장 진행도라
+    강화탭의 <b>기본(base) · 성장분(statAdd) · 천장(caps)</b> 은 <b>내 카드에만</b> 있는 값이다(내 카드의 성장 진행도라
     서버가 남의 것을 주지 않는다). 그래서 <b>상대·타 유저 선수는 같은 컴포넌트를 "축소 모드"</b>로 그린다 —
-    <b>능력치 수치와 레이더는 그대로</b>, Lv 뱃지 · XP 바 · cap/base 마커만 빠진다.<br>
+    <b>능력치 수치와 레이더는 그대로</b>, 3층·천장 마커·범례가 빠지고 <b>단층 막대</b>가 된다(축 0–100).
+    ⚠️ <b>없는 층을 0 으로 그리지 않는다</b> — "성장분 0"은 거짓이다(모르는 것이지 0이 아니다).
+    화면이 그 사실을 말한다: <b>"카탈로그 기본치입니다 — 이 선수가 키운 성장분·천장은 공개되지 않습니다"</b>.<br>
     <b>왜 이게 맞나</b>: 결정 ③(타 유저 공개 범위)에서 공개하기로 한 것은 <b>능력치</b>지 <b>성장 진행도</b>가 아니다.
     남의 XP·성장상한까지 열면 "저 사람 카드가 얼마나 컸나"가 보여서 공개 범위가 한 칸 더 넓어진다.
     바꾸고 싶으면 말씀해 주시면 서버 쪽에 필드를 요청한다.</p>
@@ -923,7 +927,7 @@ code{background:var(--sunk);border-radius:4px;padding:1px 5px;font-size:11.5px}
                 </tbody>
               </table>
               <p style="font-size:10px;color:var(--muted);margin:8px 0 0">행을 누르면 그 선수의 <b>선수 정보</b>(④) — 경기 기록 탭은 없다.
-                 <span class="lock">🔒</span> = 지시가 걸려 있음(내용은 비공개)</p>
+                 <span class="lock">🔒</span> = 지시는 비공개 (⚠️ <b>있는지 없는지도 우리가 모른다</b> — 서버가 선수별로 안 알려준다, #431)</p>
               <button class="btn ghost" style="margin-top:12px">닫기</button>
             </div>
           </div>
