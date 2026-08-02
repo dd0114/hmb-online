@@ -203,10 +203,26 @@ export function reelFor(events: readonly ReelEventLike[], liveTick?: number): Sc
 
 export interface HighlightToggleView {
   visible: boolean;
-  /** 버튼에 쓰는 글자 — **지금 무엇이 도는지**를 말한다. */
+  /**
+   * 버튼에 쓰는 글자 — **주어는 고정(`하이라이트`)이고 뒤에 상태(`ON`/`OFF`)만 붙는다**.
+   *
+   * ⚠️ 예전엔 `✨ 하이라이트`(켜짐) / `▶ 전체 보기`(꺼짐)였다. 주어가 상태마다 **바뀌면서**
+   * `aria-pressed` 와 의미축이 갈렸다(독립검증 N5): 꺼진 상태의 이름이 `전체 보기` 인데
+   * `aria-pressed=false` 라, 스크린리더는 *"전체 보기, 안 눌림"* 이라고 읽는데 화면은 실제로
+   * **전체 보기 중**이었다. 시각 사용자에게도 그 글자는 상태가 아니라 **액션**으로 읽혔다.
+   * 지금은 `auto-mode.autoCopy`(`오토 ON`/`오토 OFF` + `aria-pressed`)와 **같은 모양**이다 —
+   * 주어 고정 + 상태 표기 + `aria-pressed` 가 한 축을 가리킨다.
+   */
   label: string;
-  /** title/aria — 누르면 **뭐가 달라지나**(`auto-mode` 규칙). */
+  /** title — 누르면 **뭐가 달라지나**(`auto-mode` 규칙). **접근성 이름이 아니다**(아래 `pressed` 주석). */
   hint: string;
+  /**
+   * 하이라이트 모드가 켜져 있나 = `aria-pressed`.
+   *
+   * ⚠️ 이 값이 `aria-pressed` 로 나가므로 **`label` 의 주어와 같은 것**을 가리켜야 한다.
+   * 그리고 버튼의 접근성 이름은 **고정**이어야 한다(`aria-label="하이라이트 모드"`) — `hint`
+   * 를 이름으로 쓰면 이름이 액션 문장이 되어 `aria-pressed`(상태)와 또 갈린다.
+   */
   pressed: boolean;
   /** 지금 재생 중인 하이라이트(`#2 · 48' HOME GOAL`). 없으면 null. */
   status: string | null;
@@ -245,7 +261,7 @@ export function highlightToggleView(input: HighlightToggleInput): HighlightToggl
   const index = input.index ?? 0;
   return {
     visible: true,
-    label: input.enabled ? "✨ 하이라이트" : "▶ 전체 보기",
+    label: input.enabled ? "✨ 하이라이트 ON" : "✨ 하이라이트 OFF",
     hint: input.enabled
       ? "골·유효슛·세이브 장면만 순서대로 봅니다. 누르면 전체 재생으로 돌아갑니다."
       : "경기를 처음부터 전부 재생합니다. 누르면 주요 장면만 순서대로 봅니다.",

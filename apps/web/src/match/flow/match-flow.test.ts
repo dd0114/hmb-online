@@ -66,6 +66,50 @@ describe("P6 — 오토 모드는 감독시간을 건너뛴다(전이 타겟이 
   });
 });
 
+describe("N3 — B4 는 건너뛴 전이에서도 발화한다(`FINISHED` 로 들어오는 문이 하나가 아니다)", () => {
+  /*
+   * 독립검증 N3. B2 는 오토 대응으로 `to` 를 넷까지 넓혔는데 B4 는 `from: "SECOND_HALF"` 단일이라,
+   * 아래 두 실경로에서 **경기 종료 브릿지가 안 뜬다 = AC4 의 네 번째 지점이 소실**됐다.
+   * 변이: `from` 을 `["SECOND_HALF"]` 로 되돌리면 이 describe 가 통째로 죽는다(실측 3/3).
+   */
+  it("ⓐ 시계 롤백 — enterSecondHalf 가 finishMatch(..., S_GEN2) 를 태운 `GEN2 → FINISHED`", () => {
+    expect(bridgeForTransition("GEN2", "FINISHED")).toEqual({ kind: "match_end", form: "overlay" });
+  });
+
+  it("ⓑ 탭이 백그라운드였다 — 중간 상태를 못 보고 곧바로 FINISHED 가 관측된다", () => {
+    expect(bridgeForTransition("FIRST_HALF", "FINISHED")?.kind).toBe("match_end");
+    expect(bridgeForTransition("HALFTIME", "FINISHED")?.kind).toBe("match_end");
+    expect(bridgeForTransition("H1_BREAK", "FINISHED")?.kind).toBe("match_end");
+  });
+
+  it("⚠️ 넓혀도 몰수는 제외다 — 브리핑에서 무른 경기에 `90분이 끝났습니다` 는 거짓말이다", () => {
+    // 이 전이는 실재한다(상대 몰수, 0:0). 그래도 B4 를 열지 않는 것이 규칙이다.
+    expect(bridgeForTransition("BRIEFING", "FINISHED")).toBeNull();
+    expect(bridgeForTransition("GEN1", "FINISHED")).toBeNull();
+  });
+
+  it("넓혀도 **중복 발화가 없다** — 큐는 병합하고 소비 이력은 되살리지 않는다", () => {
+    /*
+     * `from` 이 넓어지면 같은 매치에서 B4 를 여는 전이 후보가 여럿이 된다. 그래도 종류당 한 번인
+     * 것은 큐(`enqueueBridge` 병합)와 소비 이력(`seen`)이 보장한다 — 넓히기가 그 두 층 **위**에
+     * 있기 때문이다. 이 계약이 없으면 다음 사람이 `from` 을 더 넓힐 때 그 보장을 다시 확인하지 않는다.
+     */
+    const kinds = (["SECOND_HALF", "GEN2", "HALFTIME", "H1_BREAK", "FIRST_HALF"] as const).map(
+      (from) => bridgeForTransition(from, "FINISHED")!.kind,
+    );
+    // ① 큐: 어느 문으로 들어와도 같은 kind 라 병합된다(스택이 두 벌 생기지 않는다).
+    const queued = kinds.reduce<QueuedBridge[]>(
+      (q, kind) => enqueueBridge(q, [], { kind: kind as "match_end", report: null }),
+      [],
+    );
+    expect(queued).toHaveLength(1);
+    // ② 이력: 한 번 닫은 뒤에는 어느 문으로 다시 관측돼도 안 열린다.
+    for (const kind of kinds) {
+      expect(enqueueBridge([], ["match_end"], { kind: kind as "match_end", report: null })).toEqual([]);
+    }
+  });
+});
+
 describe("대기형은 오버레이 큐에 들어가지 않는다", () => {
   it("panel 형태(B1·B3)는 overlay kind 가 아니다", () => {
     // 변이: isOverlayKind 를 상수 true 로 → GenWaitPanel 의 경과 시계·[경기 포기]가 덮인다.

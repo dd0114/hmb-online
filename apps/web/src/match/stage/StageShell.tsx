@@ -157,6 +157,17 @@ export function StageShell({
    * ⚠️ **자동 노출은 상태 전이 한 번**이다(`sheetDismissed`). 봉투의 `acknowledgedAt` 은 ack 응답이
    * 돌아와야 바뀌는데, 그 사이 렌더에서 조건이 그대로 참이라 시트가 다시 뜬다. 로컬 래치가
    * 그 프레임을 막는다.
+   *
+   * ⚠️ **경기 종료 브릿지(#424 B4)가 떠 있는 동안은 시트를 열지 않는다.** 둘 다 `FINISHED` 순간에
+   * 자동으로 뜨므로(브릿지 = `SECOND_HALF→FINISHED` 전이 / 시트 = 미확인 봉투) 게이트가 없으면
+   * **두 오버레이가 겹친다** — `common/Modal` 포커스 트랩이 2겹이 되는, 이 리포가 설계 단계에서
+   * 이미 기각한 사고 유형이다(설계 §3.2 *"하나의 카드 스택, 하나의 닫기"*).
+   * 순서는 **브릿지가 앞**이다: 브릿지 CTA 를 누르면 `overlayOpen` 이 내려가고 그 자리에서 시트가
+   * 뜬다(브릿지 `nextHint` = `다음 · 경기 보상과 결과 확인` 과 화면이 일치한다).
+   *
+   * ⚠️ **미룰 뿐 삼키지 않는다** — 게이트는 `showRewardSheet` 의 다른 항을 건드리지 않으므로
+   * 봉투가 미확인인 한 브릿지가 닫힌 뒤 반드시 뜬다. 그래서 `FINISHED` 재입장(브릿지가 구조적으로
+   * 안 뜨는 경로, 설계 C6)에서도 시트는 평소대로 자동 노출된다 = **미수령 회수 경로가 #405 쪽에 있다**.
    */
   const { data: result } = useMatchResult(match.id, match.state === "FINISHED");
   const bundle = useMemo(() => rewardBundleOf(result), [result]);
@@ -164,7 +175,9 @@ export function StageShell({
   const [sheetReopened, setSheetReopened] = useState(false);
   const resultKey = match.result ?? result?.result ?? undefined;
   const showRewardSheet =
-    Boolean(bundle) && ((shouldShowRewardSheet(bundle) && !sheetDismissed) || sheetReopened);
+    Boolean(bundle) &&
+    !overlayOpen &&
+    ((shouldShowRewardSheet(bundle) && !sheetDismissed) || sheetReopened);
 
   /**
    * 선수 기록 (#403). **탭과 피치 카드가 같은 결과를 본다**(집계 한 번) — 공통 조상이 여기뿐이다.

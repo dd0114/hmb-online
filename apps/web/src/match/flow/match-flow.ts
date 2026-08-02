@@ -41,27 +41,43 @@ export interface BridgeSignal {
 /**
  * 전이표 (설계 §4 확정표 · §6.3).
  *
- * ⚠️ `to` 가 배열인 이유 = **오토 모드(#249)**. 서버가 감독시간을 0초로 열고 같은 스윕에서
- * 후반까지 잇기 때문에 `FIRST_HALF` 다음 관측 상태가 `HALFTIME` 이 아니라 `GEN2`/`SECOND_HALF`
- * 일 수 있다. 여기서 그 타겟을 빼면 **오토 유저는 전반 종료 브릿지를 영영 못 본다**.
+ * ⚠️ **`from`·`to` 가 둘 다 배열인 이유는 같다 — 관측이 중간 상태를 건너뛴다.**
+ *  · `to` 가 넓은 이유 = **오토 모드(#249)**. 서버가 감독시간을 0초로 열고 같은 스윕에서 후반까지
+ *    잇기 때문에 `FIRST_HALF` 다음 관측 상태가 `HALFTIME` 이 아니라 `GEN2`/`SECOND_HALF` 일 수 있다.
+ *    여기서 그 타겟을 빼면 **오토 유저는 전반 종료 브릿지를 영영 못 본다**.
+ *  · `from` 이 넓은 이유 = **`FINISHED` 로 들어오는 문이 `SECOND_HALF` 하나가 아니다.** 시계 롤백
+ *    경로에서 `enterSecondHalf` 가 `finishMatch(..., S_GEN2)` 를 태우면 관측되는 전이는
+ *    **`GEN2 → FINISHED`** 이고, 탭이 후반 창 내내 백그라운드였다가 돌아오면 중간 상태를 아예 못 보고
+ *    `FIRST_HALF`/`HALFTIME` 에서 곧바로 `FINISHED` 가 관측된다. `from` 을 하나로 두면 그 경로에서
+ *    **경기 종료 브릿지가 안 뜬다 = AC4 의 네 번째 지점이 소실**된다(독립검증 N3).
+ *    → B2 를 `to` 로 넓힌 것과 **같은 논리**를 B4 의 `from` 에 적용한다.
+ *
+ * ⚠️ **그래도 `BRIEFING`·`GEN1` 은 넣지 않는다.** 거기서 `FINISHED` 로 가는 전이는 실재하지만
+ * (상대가 브리핑에서 무른 **몰수** — 0:0, 재생할 하프가 없다) 그 경기에 `90분이 끝났습니다` 를 띄우면
+ * 카드가 **거짓말**한다. 넓히는 기준은 "관측을 건너뛴 것"이지 "전이가 있는 것"이 아니다.
  */
 const BRIDGE_TABLE: ReadonlyArray<{
-  from: string;
+  from: readonly string[];
   to: readonly string[];
   kind: BridgeKind;
   form: BridgeForm;
 }> = [
-  { from: "BRIEFING", to: ["GEN1"], kind: "match_start", form: "panel" },
+  { from: ["BRIEFING"], to: ["GEN1"], kind: "match_start", form: "panel" },
   {
-    from: "FIRST_HALF",
+    from: ["FIRST_HALF"],
     to: ["HALFTIME", "H1_BREAK", "GEN2", "SECOND_HALF"],
     kind: "h1_end",
     form: "overlay",
   },
-  { from: "HALFTIME", to: ["GEN2"], kind: "h2_start", form: "panel" },
+  { from: ["HALFTIME"], to: ["GEN2"], kind: "h2_start", form: "panel" },
   // 레거시 상태명(P4 이전 배포본의 진행 중 매치) — `panelForState` 가 같이 취급한다.
-  { from: "H1_BREAK", to: ["GEN2"], kind: "h2_start", form: "panel" },
-  { from: "SECOND_HALF", to: ["FINISHED"], kind: "match_end", form: "overlay" },
+  { from: ["H1_BREAK"], to: ["GEN2"], kind: "h2_start", form: "panel" },
+  {
+    from: ["SECOND_HALF", "GEN2", "HALFTIME", "H1_BREAK", "FIRST_HALF"],
+    to: ["FINISHED"],
+    kind: "match_end",
+    form: "overlay",
+  },
 ];
 
 const BEAT_TABLE: ReadonlyArray<{ from: string; to: string; beat: BeatKind }> = [
@@ -81,7 +97,7 @@ export function bridgeForTransition(
   next: string | null | undefined,
 ): BridgeSignal | null {
   if (prev == null || next == null || prev === next) return null;
-  const row = BRIDGE_TABLE.find((r) => r.from === prev && r.to.includes(next));
+  const row = BRIDGE_TABLE.find((r) => r.from.includes(prev) && r.to.includes(next));
   return row ? { kind: row.kind, form: row.form } : null;
 }
 

@@ -41,9 +41,16 @@ export function HighlightToggle({ view, onToggle }: HighlightToggleProps) {
         className={`${styles.toggle} ${view.pressed ? styles.on : ""}`}
         data-testid="highlight-toggle"
         data-highlight={view.pressed ? "on" : "off"}
+        /*
+         * ⚠️ **세 축이 한 곳을 가리켜야 한다**(독립검증 N5 — `AutoModeToggle` 과 같은 모양):
+         *  · 이름 = **고정**(`하이라이트 모드`). 예전엔 `aria-label={view.hint}` 라 이름이 **액션
+         *    문장**이었고, 그게 상태를 말하는 `aria-pressed` 와 정면으로 갈렸다.
+         *  · `aria-pressed` = 하이라이트가 켜져 있나(= 보이는 글자의 `ON`/`OFF` 와 같은 축).
+         *  · `hint`(누르면 뭐가 되나)는 **설명**이라 `title` 로만 나간다 — 이름으로 쓰지 마라.
+         */
         aria-pressed={view.pressed}
+        aria-label="하이라이트 모드"
         title={view.hint}
-        aria-label={view.hint}
         onClick={onToggle}
       >
         {view.label}

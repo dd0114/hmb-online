@@ -325,4 +325,37 @@ describe("⑤ 적용 범위와 전체 재생 복귀", () => {
 
     expect(highlightToggleView({ available: false, enabled: true }).visible).toBe(false);
   });
+
+  /*
+   * 독립검증 N5 — 라벨과 `aria-pressed` 가 **같은 의미축**을 가리켜야 한다.
+   *
+   * 구 동작: `✨ 하이라이트`(켜짐) / `▶ 전체 보기`(꺼짐) + `aria-pressed=enabled`.
+   * 꺼진 상태의 이름이 `전체 보기` 인데 `aria-pressed=false` 라 스크린리더는 *"전체 보기, 안 눌림"*
+   * 이라고 읽는데 화면은 실제로 **전체 보기 중**이었다(모순). 시각 사용자에겐 그 글자가 상태가
+   * 아니라 **액션**으로 읽혔다. 지금은 `auto-mode.autoCopy`(`오토 ON`/`오토 OFF`)와 같은 모양이다.
+   *
+   * 변이 킬 확인: 라벨을 `enabled ? "✨ 하이라이트" : "▶ 전체 보기"` 로 되돌리면 아래 ①②가
+   * 죽는다(주어 고정 · 상태 표기). 컴포넌트 쪽(`aria-label` 을 `hint` 로 되돌리기)은
+   * `HighlightToggle` 렌더 계약이 잡는다.
+   */
+  it("N5 — 주어는 고정이고 상태만 바뀐다(라벨 축 == aria-pressed 축)", () => {
+    const on = highlightToggleView({ available: true, enabled: true, total: 8 });
+    const off = highlightToggleView({ available: true, enabled: false, total: 8 });
+
+    // ① 주어 고정 — 켜짐/꺼짐 둘 다 같은 것을 가리킨다(액션으로 읽히는 다른 이름이 아니다).
+    expect(on.label).toContain("하이라이트");
+    expect(off.label).toContain("하이라이트");
+    // 구 라벨(액션 문구)이 되돌아오면 죽는다.
+    expect(off.label).not.toContain("전체 보기");
+
+    // ② 라벨의 상태 표기가 `pressed` 와 같은 것을 말한다.
+    expect(on.label).toContain("ON");
+    expect(off.label).toContain("OFF");
+    expect(on.pressed).toBe(true);
+    expect(off.pressed).toBe(false);
+
+    // ③ `hint` 는 **액션**이라 이름이 아니라 설명 자리다 — 두 축이 섞이지 않게 서로 다르다.
+    expect(on.hint).not.toBe(on.label);
+    expect(off.hint).not.toBe(off.label);
+  });
 });

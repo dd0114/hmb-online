@@ -146,6 +146,17 @@ async function closeStack(page: Page) {
    * "안 닫혔다"로 실패해 원인이 엉뚱한 곳을 가리킨다(실측: 그 상태로 test g 만 재현 실패했다).
    */
   await expect(dialog).toBeVisible();
+  /**
+   * 진행 기록 — **실패했을 때 원인을 말하기 위한 것**이다(독립검증 N6).
+   *
+   * ⚠️ 아래 `waitForFunction` 의 타임아웃을 `.catch(() => undefined)` 로 **통째로 삼키면 안 된다**.
+   * 삼키면 "카드가 안 넘어갔다"가 흔적 없이 사라지고, 실패는 루프 뒤 `toHaveCount(0)` 에서
+   * *"다이얼로그가 안 닫혔다"* 로만 나타난다 — 클릭이 안 먹은 건지, 카드가 안 넘어간 건지,
+   * 마지막 장에서 안 닫힌 건지 구분할 수 없다. 그렇다고 그 자리에서 **던지면 계약의 뜻이 바뀐다**:
+   * 이 헬퍼는 StrictMode 이중 마운트로 클릭이 버려지는 것을 **재시도로 견디는 것이 정상 동작**이다.
+   * ⇒ 견디되 **기록**하고, 끝내 못 닫으면 그 기록을 실패 메시지로 낸다.
+   */
+  const trace: string[] = [];
   for (let i = 0; i < 8 && (await dialog.count()) > 0; i++) {
     const before = await card.getAttribute("data-card");
     await page.getByTestId("half-report-next").click();
@@ -156,18 +167,25 @@ async function closeStack(page: Page) {
      * 엉뚱한 곳에서 실패한다(실제로 그렇게 났다). 진행이 없으면 다음 루프가 다시 누른다.
      * (프로덕션 빌드에는 이중 마운트가 없다 — dev 하네스 한정 성질이다.)
      */
-    await page
-      .waitForFunction(
+    try {
+      await page.waitForFunction(
         (prev) => {
           const c = document.querySelector('[data-testid="half-report-card"]');
           return !c || c.getAttribute("data-card") !== prev;
         },
         before,
         { timeout: 3000 },
-      )
-      .catch(() => undefined);
+      );
+      trace.push(`#${i + 1} ${before} → ${(await card.count()) > 0 ? await card.getAttribute("data-card") : "(닫힘)"}`);
+    } catch {
+      // 견딘다(다음 루프가 다시 누른다) — 대신 **무엇이 멈췄는지** 남긴다.
+      trace.push(`#${i + 1} ${before} → 진행 없음(3s 타임아웃, StrictMode 로 클릭이 버려졌을 수 있다)`);
+    }
   }
-  await expect(dialog).toHaveCount(0);
+  await expect(
+    dialog,
+    `카드 스택이 8회 안에 닫히지 않았다. 진행 기록:\n  ${trace.join("\n  ")}`,
+  ).toHaveCount(0);
 }
 
 test.use({ viewport: { width: 390, height: 844 } });

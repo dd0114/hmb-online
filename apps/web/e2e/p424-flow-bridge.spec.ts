@@ -12,6 +12,9 @@ import { readFileSync } from "node:fs";
  *  ⑤ **D6 회귀** — 스킵 응답이 `GEN2` 여서 `StageShell` 이 언마운트돼도 리포트/브릿지가 살아 있다.
  *  ⑥ continuation(#405) 없이도 흐름이 완결된다(`결과 보기` 폴백 = 현행 동작).
  *  ⑦ **대기형은 대기 화면을 가리지 않는다** — 경과 시계·[경기 포기](#217 AC3)가 눌린다.
+ *  ⑧ **B4 는 건너뛴 전이에서도 발화한다**(`GEN2 → FINISHED` 시계 롤백 — 독립검증 N3).
+ *  ⑨ **#405 보상 시트와 겹치지 않는다** — 브릿지가 앞이고 CTA 가 시트로 넘긴다(main `4095cff` 이후).
+ *  ⑩ **C6** — `FINISHED` 재입장엔 브릿지가 없고 미수령 보상은 #405 시트가 회수한다.
  *
  * ⚠️ 라우트 매칭은 pathname 술어로 한다. glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지 잡아 흰 화면.
  * ⚠️ `toBeVisible()` 로만 단언하지 않는다 — 주 CTA 는 `elementFromPoint` 로 실제 피격을 잰다(#294·#355 실적).
@@ -47,6 +50,14 @@ interface Harness {
   skipTo: string;
   skips: unknown[];
   abandonable: boolean;
+  /**
+   * `/result` 가 **미확인 보상 봉투**(#405)를 실어 주는가.
+   *
+   * 기본은 `false` = 봉투가 없던 시절의 정산(W2b 이전 매치) — 기존 계약은 전부 그 형태라 손대지
+   * 않는다. `true` 로 켜면 `StageShell` 의 보상 시트가 `FINISHED` 에서 자동으로 뜨려 하고,
+   * 그때 **B4 브릿지와 겹치는가**를 잴 수 있다.
+   */
+  bundle: boolean;
 }
 
 /** 감독시간 창(3분) — 카운트다운이 실제로 도는지 보려면 시계가 있어야 한다. */
@@ -104,7 +115,25 @@ async function mockApi(page: Page, h: Harness) {
     if (url.pathname === `/api/matches/${MATCH_ID}`) return route.fulfill({ json: detailOf(h) });
     if (url.pathname === `/api/matches/${MATCH_ID}/result`) {
       return route.fulfill({
-        json: { matchId: MATCH_ID, result: "WIN", scoreHome: HALF.home * 2, scoreAway: HALF.away * 2, rewardPoints: 500 },
+        json: {
+          matchId: MATCH_ID,
+          result: "WIN",
+          scoreHome: HALF.home * 2,
+          scoreAway: HALF.away * 2,
+          rewardPoints: 500,
+          // #405 봉투. `acknowledgedAt: null` = 아직 확인 전 = 시트가 자동으로 뜨는 조건.
+          ...(h.bundle
+            ? {
+                rewardBundle: {
+                  bundleId: "b-p424",
+                  source: "MATCH",
+                  sourceRef: MATCH_ID,
+                  acknowledgedAt: null,
+                  sections: [{ kind: "CURRENCY", entries: [{ code: "POINT", amount: 500 }] }],
+                },
+              }
+            : {}),
+        },
       });
     }
     if (/\/api\/matches\/.+\/halves\/[12]\/log$/.test(url.pathname)) return route.fulfill({ json: LOG });
@@ -124,6 +153,7 @@ async function openMatch(page: Page, over: Partial<Harness> = {}): Promise<Harne
     skipTo: "HALFTIME",
     skips: [],
     abandonable: false,
+    bundle: false,
     ...over,
   };
   await mockApi(page, h);
@@ -306,6 +336,70 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     await cta.click();
     await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
     await expect(page.getByTestId("result-page")).toBeVisible();
+  });
+
+  test("⑧ N3 — B4 는 `GEN2 → FINISHED`(시계 롤백)에서도 발화한다", async ({ page }) => {
+    /*
+     * 독립검증 N3. B2 는 오토 대응으로 `to` 를 넷까지 넓혔는데 B4 는 `from: "SECOND_HALF"` 단일이라,
+     * 시계 롤백으로 `enterSecondHalf` 가 `finishMatch(..., S_GEN2)` 를 태우는 경로에서 관측되는
+     * 전이는 **`GEN2 → FINISHED`** 였고 → **경기 종료 브릿지가 안 떴다**(AC4 네 번째 지점 소실).
+     * ⚠️ 변이: `from` 을 `["SECOND_HALF"]` 로 되돌리면 이 테스트가 죽는다.
+     */
+    const h = await openMatch(page, { state: "GEN2" });
+    await expect(page.getByTestId("genwait-panel")).toBeVisible();
+    await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
+
+    h.state = "FINISHED";
+    await expect(page.getByTestId("flow-bridge")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("flow-bridge-title")).toHaveText("경기 종료");
+
+    // 넓혔다고 두 벌 뜨지 않는다 — 큐 병합 + 소비 이력이 위에 있다.
+    await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+    await page.getByTestId("flow-bridge-next").click();
+    await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
+    await page.waitForTimeout(2500);
+    await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
+  });
+
+  test("⑨ #405 보상 시트와 겹치지 않는다 — 브릿지가 앞이고 CTA 가 시트로 넘긴다", async ({ page }) => {
+    /*
+     * `origin/main` 이 #405 보상 탭을 실었다(`4095cff`). 시트는 `StageShell` 이 소유하고
+     * **미확인 봉투 + `FINISHED`** 면 자동으로 뜬다 — B4 브릿지와 **정확히 같은 순간**이다.
+     * 게이트가 없으면 두 오버레이가 겹치고 `common/Modal` 포커스 트랩이 2겹이 된다(설계가 기각한
+     * 사고 유형). 순서는 **브릿지 → 보상 시트**다.
+     * ⚠️ 변이: `StageShell` 의 `!overlayOpen` 항을 지우면 아래 "겹치지 않는다"가 죽는다.
+     */
+    const h = await openMatch(page, { state: "SECOND_HALF", bundle: true });
+    await waitLive(page, 2);
+
+    h.state = "FINISHED";
+    await expect(page.getByTestId("flow-bridge")).toBeVisible({ timeout: 15_000 });
+
+    // ① 브릿지가 떠 있는 동안 보상 시트는 **없다**(같은 순간에 둘이 뜨지 않는다).
+    await expect(page.getByTestId("reward-sheet")).toHaveCount(0);
+    await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+    const cta = page.getByTestId("flow-bridge-next");
+    expect(await hitTestId(page, cta), "보상 시트가 브릿지 CTA 를 덮으면 안 된다").toBe("flow-bridge-next");
+
+    // ② 브릿지를 닫으면 **그 자리에서** 보상 시트다(`nextHint` 가 예고한 그대로).
+    await cta.click();
+    await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
+    await expect(page.getByTestId("reward-sheet")).toBeVisible();
+
+    // ③ 미루기만 했지 삼키지 않았다 = 봉투가 미확인인 한 반드시 뜬다.
+    await expect(page.getByTestId("reward-confirm")).toBeVisible();
+  });
+
+  test("⑩ C6 — `FINISHED` 재입장에는 브릿지가 없고, 미수령 보상은 #405 가 회수한다", async ({ page }) => {
+    /*
+     * 설계 C6: 첫 관측 무발화 규칙 때문에 `FINISHED` 재입장에는 B4 가 **구조적으로** 안 뜬다.
+     * 그러면 "그때 못 받은 보상은?"이 열린 질문이 되는데, #405 시트가 `acknowledgedAt` 을 보고
+     * 자동 노출하므로 그 경로는 **브릿지와 무관하게** 산다. 위 ⑨ 의 게이트가 그것을 막지 않는다는
+     * 것이 이 계약의 요지다(미루기지 삼키기가 아니다).
+     */
+    await openMatch(page, { state: "FINISHED", bundle: true });
+    await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
+    await expect(page.getByTestId("reward-sheet")).toBeVisible();
   });
 
   test("B1 대기형 — 스텝퍼가 뜨고 경과 시계·[경기 포기]를 가리지 않는다", async ({ page }) => {
