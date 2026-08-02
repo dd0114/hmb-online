@@ -990,6 +990,97 @@ describe("GK 평점 = 선방률 축 — 일한 양과 무관한 상수가 아니
     expect(computeRating(gk(8, 2))).toBeGreaterThan(B);
     expect(computeRating(gk(2, 8))).toBeLessThan(B);
   });
+
+  /**
+   * ⚠️ **이 계약이 `keeperAxis` 의 분모 가드가 존재하는 이유다.**
+   *
+   * `priorFaced = 0`(수축 끄기)은 가상의 설정이 아니다 — 수축 아블레이션과 하네스의
+   * `--weights` 경로가 **실제로 쓰는 값**이고, hero 가 조정하라고 내준 표면 위에 있다.
+   * 거기에 `faced = 0`(유효슛을 한 번도 안 상대한 선수 = **필드 플레이어 전원**)이 겹치면
+   * `0/0 = NaN` 이 되고, NaN 은 `Math.min`/`Math.max` 비교를 **전부 통과**해 클램프도 못 막는다
+   * → 화면의 모든 평점이 NaN.
+   *
+   * 그래서 "계수를 0 으로 내려도 유한값이 나온다"를 계약으로 박는다. 가드를 지우거나
+   * 조건을 무력화(`if (true)`)하면 여기서 걸린다.
+   */
+  it("hero 가 `priorFaced` 를 0 으로 내려도 평점이 유한하다(NaN 금지)", () => {
+    const w = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+    w.keeper.priorFaced = 0;
+    for (const [saves, conceded] of [[0, 0], [3, 0], [0, 3], [4, 4]] as const) {
+      const v = ratingWithWeights(gk(saves, conceded), "GK", w);
+      expect(Number.isFinite(v)).toBe(true);
+      expect(Number.isNaN(v)).toBe(false);
+    }
+    // 필드 플레이어(유효슛 0)도 — 여기가 NaN 이면 화면 전체가 NaN 이 된다.
+    const field = ratingWithWeights(gk(0, 0), "MF", w);
+    expect(Number.isFinite(field)).toBe(true);
+    expect(field).toBe(w.base);
+  });
+
+  it("출하값에서는 분모 가드가 `faced > 0` 과 같은 답을 낸다(거동 변경 0)", () => {
+    // priorFaced > 0 이면 faced = 0 에서 shrunk === expectedSaveRate → 기여가 정확히 0.
+    expect(RATING_WEIGHTS.keeper.priorFaced).toBeGreaterThan(0);
+    expect(computeRating(gk(0, 0), "GK")).toBe(B);
+  });
+
+  /** 계수를 전부 0 으로 내려도(hero 가 축을 꺼 보는 극단) 깨지지 않는다. */
+  it("계수를 0 으로 내린 극단에서도 유한하다", () => {
+    const w = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+    w.keeper.priorFaced = 0;
+    w.keeper.saveRateScale = 0;
+    w.keeper.expectedSaveRate = 0;
+    w.keeper.saveVolume = 0;
+    w.keeper.goalConceded = 0;
+    for (const [s, c] of [[0, 0], [5, 5]] as const) {
+      expect(Number.isFinite(ratingWithWeights(gk(s, c), "GK", w))).toBe(true);
+    }
+  });
+});
+
+// ── 10-c. 상한 포화 (m2 — 값을 고치는 계약이 아니라 **사실 기록**) ──────────
+
+/**
+ * ⚠️ **이 describe 는 계수를 방어하지 않는다.** 상한 헤드룸이 수비 볼륨 대비 얇다는 **사실**을
+ * 코드 옆에 남겨, 다음 사람이 "포화는 없다"고 오해하지 않게 하는 것이 목적이다.
+ * 조정 권한은 hero 에게 있다(#403 W1b 조정 포인트).
+ *
+ * 근거 수치(리얼 config 실측):
+ *  - 독립 검증이 재현한 라이브형 라인 `태클 12 + 가로챔 17` 은 **세 포지션 전부** 상한에 닿는다
+ *    (DF 11.84 · MF 10.62 · FW 13.29 → 전부 10.0 으로 clamp).
+ *  - 픽스처 표본에서도 발화한다 — **DF 800 중 10건(1.25%)이 0골·0어시로 10.0**
+ *    (예: `seed 1122334455` 의 `home:H3`).
+ */
+describe("상한 포화 — 수비 볼륨만으로 10.0 에 닿는 입력이 실재한다(사실 기록)", () => {
+  const line = (over: Partial<PlayerStatLine>): PlayerStatLine => ({
+    key: "home:D", team: "home", playerId: "D",
+    goals: 0, shots: 0, shotsOnTarget: 0, shotsOffTarget: 0, xg: 0,
+    tackles: 0, interceptions: 0, clearances: 0, fouls: 0,
+    yellowCards: 0, redCards: 0, secondYellow: false, sentOff: false,
+    offsides: 0, saves: 0, goalsConceded: 0,
+    passesAttempted: 0, passesCompleted: 0, longPasses: 0, longPassesCompleted: 0,
+    keyPasses: 0, assists: 0, touches: 0, carries: 0, carryDistanceM: 0, carryProgressM: 0,
+    dispossessed: 0, distanceM: 0, ticksPlayed: 1, minutesPlayed: 1, heat: [], rating: 0,
+    ...over,
+  });
+
+  it("`태클 12 + 가로챔 17` 은 0골·0어시인데도 세 포지션 전부 상한에 닿는다", () => {
+    const heavy = line({ tackles: 12, interceptions: 17 });
+    for (const pos of ["DF", "MF", "FW"] as const) {
+      expect(computeRating(heavy, pos)).toBe(RATING_WEIGHTS.max);
+    }
+    expect(heavy.goals).toBe(0);
+    expect(heavy.assists).toBe(0);
+  });
+
+  /** 클램프가 없었다면 얼마였나 = 헤드룸이 얼마나 얇은지의 척도. */
+  it("클램프를 풀면 상한을 얼마나 넘는지(헤드룸 진단)", () => {
+    const unclamped = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+    unclamped.max = 1e6;
+    const heavy = line({ tackles: 12, interceptions: 17 });
+    for (const pos of ["DF", "MF", "FW"] as const) {
+      expect(ratingWithWeights(heavy, pos, unclamped)).toBeGreaterThan(RATING_WEIGHTS.max);
+    }
+  });
 });
 
 describe("MOTM", () => {

@@ -25,6 +25,13 @@
  * # 원자료(그룹별 평균 기록량) — 계수를 "엔진 볼륨"에 맞춰 사이징할 때
  * npx tsx apps/web/scripts/rating-distribution.ts --volumes
  *
+ * # ⚠️ 실덱(라이브 입력 10조합 × 덱당 N시드) — 픽스처와 **반드시 같이** 본다
+ * node tools/run-gate.mjs --label ratedist -- \
+ *   npx tsx apps/web/scripts/rating-distribution.ts --real-decks --seeds 5
+ *
+ * # 캐시를 무시하고 다시 시뮬
+ * npx tsx apps/web/scripts/rating-distribution.ts --fresh
+ *
  * # JSON 으로(다른 도구에 물릴 때)
  * npx tsx apps/web/scripts/rating-distribution.ts --json
  * ```
@@ -35,6 +42,11 @@
  * 2. **다시드 필수.** 엔진은 카오스적이라 한 경기로는 아무것도 못 말한다(memory
  *    `balance-measure-multiseed`). `--split` 이 시드셋을 홀/짝으로 갈라 같은 계수로 재서,
  *    그룹 중앙값이 시드셋을 바꿔도 안 흔들리는지 **실측으로** 보여 준다.
+ * 2-b. ⚠️ **기본(픽스처) 모드의 "N시드"는 한 매치업의 RNG N회다.** `makeTacticalInput` 은
+ *    시드마다 `seed` 필드만 다르고 포메이션·전술·능력치가 전부 같다 → 입력 분포가 고정이라
+ *    **덱마다 달라지는 결함을 원리적으로 못 잡는다**(#374 가 엔진에서 겪은 그것).
+ *    그래서 계수를 바꾸면 **`--real-decks` 도 같이** 본다. 실제로 두 모드는 그룹 **순서가
+ *    다르다**(픽스처는 MF 최고·FW 최저, 실덱은 FW 최고·MF 최저) — 한쪽만 보면 오독한다.
  * 3. **로그 생성은 엔진의 기존 경로를 그대로 쓴다.** `runMatch` + `makeSelectData` +
  *    `makeTacticalInput` — `packages/engine/src/realism/harness.ts` 의 다시드 집계와 같은 경로다.
  *    TS 로 재구현하면 검증이 구현과 같은 실수를 공유한다(`tools/league-difficulty-sweep.ts` 선례).
@@ -46,11 +58,15 @@
  * ⚠️ 엔진은 **읽기만** 한다(무접촉).
  */
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import type { SelectData, TacticalInput } from "@hmb/shared";
 import { runMatch } from "../../../packages/engine/src/match";
 import { defaultEngineConfig } from "../../../packages/engine/src/config";
 import { makeSelectData, makeTacticalInput } from "../../../packages/engine/src/fixtures";
 import { REALISM_SEEDS } from "../../../packages/engine/src/realism/harness";
+import { loadAllRealDeckCases } from "../../../packages/engine/src/realism/real-decks";
 import {
   computePlayerStats,
   ratingWithWeights,
@@ -98,9 +114,16 @@ export interface PlayerSample {
 
 /** 한 시드의 경기를 리얼 config 로 돌려 선수별 기록을 뽑는다. */
 export function sampleSeed(seed: string): { samples: PlayerSample[]; motmKey: string | null } {
-  const select = makeSelectData();
-  const home = makeTacticalInput("H", seed);
-  const away = makeTacticalInput("A", seed);
+  return sampleMatch(seed, makeSelectData(), makeTacticalInput("H", seed), makeTacticalInput("A", seed));
+}
+
+/** 임의 입력 3종세트로 한 경기를 돌려 표본을 뽑는다(픽스처·실덱 공용 경로). */
+export function sampleMatch(
+  seed: string,
+  select: SelectData,
+  home: TacticalInput,
+  away: TacticalInput,
+): { samples: PlayerSample[]; motmKey: string | null } {
   const log = runMatch(seed, home, away, select, defaultEngineConfig);
 
   // 포지션·GK 키는 **엔진 픽스처의 SelectData 에서 읽는다**(역할표 재작성 금지).
@@ -139,15 +162,48 @@ export interface SampleSet {
   samples: PlayerSample[];
   /** 시드별 MOTM 키 — MOTM 점유율은 **계수에 따라 달라지므로** 재계산한다(캐시엔 참고용). */
   motmBySeed: Record<string, string | null>;
+  /** 이 표본을 만든 코드의 지문. 안 맞으면 캐시를 버린다(아래 참조). */
+  fingerprint?: string;
 }
 
-/** 다시드 표본. `cachePath` 를 주면 시뮬 결과를 재사용한다(계수 스윕이 즉시 끝난다). */
-export function buildSamples(seeds: string[], cachePath?: string): SampleSet {
-  if (cachePath && existsSync(cachePath)) {
+/**
+ * 캐시 무효화 키 — **표본을 만든 것이 바뀌면 캐시를 버린다.**
+ *
+ * ⚠️ 종전에는 **시드 목록만** 대조했다. 계수 스윕은 사후 채점이라 안전했지만,
+ * **엔진이나 `computePlayerStats` 가 바뀌면 낡은 표본을 조용히 돌려준다** — 그러면 hero 가
+ * 조용히 틀린 근거로 밸런스를 잡는다. 이 에픽에서 죽은 하네스로 **네 번** 사고가 났다.
+ *
+ * 지문 = 엔진 `config.version` + 집계 모듈(`player-stats.ts`) 소스 해시 + 모드/시드.
+ * (평점 계수는 **일부러 안 넣는다** — 표본은 계수와 무관하고, 넣으면 스윕마다 재시뮬한다.)
+ */
+function fingerprintOf(mode: string, seeds: string[]): string {
+  const srcPath = fileURLToPath(new URL("../src/match/player-stats.ts", import.meta.url));
+  const src = readFileSync(srcPath, "utf8");
+  return createHash("sha256")
+    .update(`${defaultEngineConfig.version}\n`)
+    .update(`mode=${mode}\n`)
+    .update(`seeds=${seeds.join(",")}\n`)
+    .update(createHash("sha256").update(src).digest("hex"))
+    .digest("hex")
+    .slice(0, 16);
+}
+
+/**
+ * 다시드 표본. `cachePath` 를 주면 시뮬 결과를 재사용한다(계수 스윕이 즉시 끝난다).
+ * `fresh` 면 캐시를 읽지 않고 다시 돌린다.
+ */
+export function buildSamples(
+  seeds: string[],
+  cachePath?: string,
+  opts: { fresh?: boolean; mode?: string } = {},
+): SampleSet {
+  const mode = opts.mode ?? "fixture";
+  const fp = fingerprintOf(mode, seeds);
+  if (cachePath && !opts.fresh && existsSync(cachePath)) {
     const cached = JSON.parse(readFileSync(cachePath, "utf8")) as SampleSet;
-    if (cached.seeds.length === seeds.length && cached.seeds.every((s, i) => s === seeds[i])) {
-      return cached;
-    }
+    if (cached.fingerprint === fp) return cached;
+    // 지문 불일치 = 엔진·집계 모듈·시드셋 중 뭔가 바뀌었다. **조용히 쓰지 않는다.**
+    process.stderr.write(`캐시 무효(지문 불일치) — 다시 시뮬한다: ${cachePath}\n`);
   }
   const samples: PlayerSample[] = [];
   const motmBySeed: Record<string, string | null> = {};
@@ -156,12 +212,60 @@ export function buildSamples(seeds: string[], cachePath?: string): SampleSet {
     samples.push(...r.samples);
     motmBySeed[seed] = r.motmKey;
   }
-  const set: SampleSet = { seeds, samples, motmBySeed };
+  const set: SampleSet = { seeds, samples, motmBySeed, fingerprint: fp };
   if (cachePath) {
     mkdirSync(dirname(cachePath), { recursive: true });
     writeFileSync(cachePath, JSON.stringify(set));
   }
   return set;
+}
+
+// ── 실덱 모드 (m4) ───────────────────────────────────────────────────────
+
+/**
+ * **실덱 표본** — `packages/engine/src/realism/real-decks/` 의 라이브 입력 조합으로 잰다.
+ *
+ * ⚠️ **왜 픽스처만으로는 부족한가**: `makeTacticalInput` 은 시드마다 `seed` 필드만 다르고
+ * 포메이션·전술·능력치가 **완전히 동일**하다. 즉 "100시드"는 **한 매치업의 RNG 100회**이고,
+ * 덱마다 달라지는 결함을 원리적으로 못 잡는다(#374 가 엔진 쪽에서 세운 바로 그 교훈).
+ * 실덱은 4-4-2·5-3-2·로우블록 등 **입력 분포 자체**가 다르다.
+ *
+ * 판정 규율도 다르다 — **평균이 아니라 최악 덱**을 본다(`--real-decks` 출력의 덱별 spread).
+ */
+export function buildRealDeckSamples(seedsPerDeck: number): SampleSet {
+  const cases = loadAllRealDeckCases();
+  const samples: PlayerSample[] = [];
+  const motmBySeed: Record<string, string | null> = {};
+  const seeds: string[] = [];
+  for (const c of cases) {
+    for (let i = 0; i < seedsPerDeck; i++) {
+      // 덱의 실제 시드에서 결정론적으로 파생(시드를 지어내지 않는다).
+      const seed = i === 0 ? c.seed : `${i}${c.seed}`;
+      const key = `${c.id}#${seed}`;
+      const r = sampleMatch(seed, c.selectData, c.homeInput, c.awayInput);
+      // 표본의 seed 필드를 덱별로 유일하게 — MOTM 집계가 덱을 섞지 않게.
+      for (const s of r.samples) samples.push({ ...s, seed: key });
+      motmBySeed[key] = r.motmKey;
+      seeds.push(key);
+    }
+  }
+  return { seeds, samples, motmBySeed };
+}
+
+/** 덱 id 별로 표본을 가른다(최악 덱을 보기 위해). */
+export function byDeck(set: SampleSet): Map<string, SampleSet> {
+  const out = new Map<string, SampleSet>();
+  for (const s of set.samples) {
+    const deck = s.seed.split("#")[0]!;
+    let cur = out.get(deck);
+    if (!cur) {
+      cur = { seeds: [], samples: [], motmBySeed: set.motmBySeed };
+      out.set(deck, cur);
+    }
+    cur.samples.push(s);
+    if (!cur.seeds.includes(s.seed)) cur.seeds.push(s.seed);
+  }
+  return out;
 }
 
 // ── 집계 ─────────────────────────────────────────────────────────────────
@@ -370,6 +474,8 @@ interface Args {
   split: boolean;
   json: boolean;
   volumes: boolean;
+  realDecks: boolean;
+  fresh: boolean;
   weights?: string;
   compare?: string[];
   cache: string;
@@ -381,6 +487,8 @@ function parseArgs(argv: string[]): Args {
     split: false,
     json: false,
     volumes: false,
+    realDecks: false,
+    fresh: false,
     // ⚠️ 기본 캐시는 **git 이 무시하는 곳**에 둔다 — `.cache/` 는 `.gitignore` 에 없어서
     //    거기에 쓰면 하네스를 한 번 돌릴 때마다 작업 트리가 더러워진다.
     cache: "node_modules/.cache/hmb-rating-samples.json",
@@ -391,6 +499,8 @@ function parseArgs(argv: string[]): Args {
     else if (t === "--split") a.split = true;
     else if (t === "--json") a.json = true;
     else if (t === "--volumes") a.volumes = true;
+    else if (t === "--real-decks") a.realDecks = true;
+    else if (t === "--fresh") a.fresh = true;
     else if (t === "--weights") a.weights = argv[++i];
     else if (t === "--compare") a.compare = (argv[++i] ?? "").split(",").filter(Boolean);
     else if (t === "--cache") a.cache = argv[++i]!;
@@ -418,9 +528,13 @@ function subset(set: SampleSet, keep: (i: number) => boolean): SampleSet {
 
 export function main(argv: string[]): void {
   const a = parseArgs(argv);
-  const seeds = seedsFor(a.seeds);
   const t0 = Date.now();
-  const set = buildSamples(seeds, a.cache);
+  // 실덱 모드는 시드가 덱에서 나오므로 `--seeds` 는 **덱당 시드 수**로 읽는다(기본 5).
+  const perDeck = argv.includes("--seeds") ? a.seeds : 5;
+  const set = a.realDecks
+    ? buildRealDeckSamples(perDeck)
+    : buildSamples(seedsFor(a.seeds), a.cache, { fresh: a.fresh });
+  const seeds = set.seeds;
   const simMs = Date.now() - t0;
 
   if (a.compare) {
@@ -445,10 +559,33 @@ export function main(argv: string[]): void {
   }
 
   const out: string[] = [];
-  out.push(`시드 ${seeds.length}개 · 선수-경기 표본 ${set.samples.length}개 · 시뮬 ${(simMs / 1000).toFixed(1)}s`);
-  out.push(`config = defaultEngineConfig(리얼) · 계수 = ${a.weights ?? "현재 RATING_WEIGHTS"}`);
+  out.push(
+    `${a.realDecks ? "실덱" : "픽스처"} · 경기 ${seeds.length}개 · 선수-경기 표본 ${set.samples.length}개 · 시뮬 ${(simMs / 1000).toFixed(1)}s`,
+  );
+  // `defaultEngineConfig.version` 은 이미 `engine@x.y.z` 형태다 — 접두를 또 붙이지 않는다.
+  out.push(`config = defaultEngineConfig(리얼, ${defaultEngineConfig.version}) · 계수 = ${a.weights ?? "현재 RATING_WEIGHTS"}`);
   out.push("");
-  out.push(renderTable(dist, "포지션 그룹별 평점 분포"));
+  out.push(renderTable(dist, a.realDecks ? "포지션 그룹별 평점 분포 (실덱 pooled)" : "포지션 그룹별 평점 분포"));
+  if (a.realDecks) {
+    // ⚠️ 판정은 평균이 아니라 **최악 덱**이다(#374 규율). 덱별 spread 를 같이 낸다.
+    out.push("");
+    out.push("### 덱별 그룹 중앙값 spread (최악 덱이 판정 기준)");
+    out.push("| 덱 | n | GK | DF | MF | FW | spread |");
+    out.push("|----|---|----|----|----|----|--------|");
+    const rows = [...byDeck(set).entries()]
+      .map(([deck, sub]) => {
+        const d = summarize(sub, w);
+        const m = (g: PositionGroup): string => {
+          const row = d.find((x) => x.group === g)!;
+          return row.n > 0 ? row.median.toFixed(2) : "—";
+        };
+        return { deck, n: sub.samples.length, gk: m("GK"), df: m("DF"), mf: m("MF"), fw: m("FW"), sp: medianSpread(d) };
+      })
+      .sort((x, y) => y.sp - x.sp);
+    for (const r of rows) {
+      out.push(`| ${r.deck} | ${r.n} | ${r.gk} | ${r.df} | ${r.mf} | ${r.fw} | **${r.sp.toFixed(2)}** |`);
+    }
+  }
   if (a.split) {
     out.push("");
     out.push("— 표본 충분성 확인: 같은 계수로 시드셋을 홀/짝으로 갈라 재측정 —");

@@ -191,6 +191,25 @@ const DEFAULT_HEAT_BINS = { cols: 12, rows: 8 } as const;
  * ⚠️ **계수는 실축 통계가 아니라 이 엔진의 볼륨에 맞춰 사이징한다.** 실축 계수를 그대로 걸었더니
  * 수비 볼륨만으로 상한 10.0 에 붙는 무득점 MOTM 이 나왔다(#403 독립 검증 m4). 그룹별 실제
  * 기록량과 그 결과 분포는 `apps/web/scripts/rating-distribution.ts --volumes` 로 언제든 다시 잰다.
+ *
+ * ## ⚠️ 계수를 조정하면 **두 모드를 다 봐라** — 그룹 순서가 서로 뒤집힌다
+ *
+ * `--real-decks`(라이브 입력 10조합) 와 기본 픽스처 모드는 **결론이 다르다**. 픽스처는
+ * `makeTacticalInput` 이 시드마다 `seed` 필드만 바꿔서 사실상 **한 매치업의 RNG 반복**이고,
+ * 실덱은 4-4-2·5-3-2·로우블록까지 **입력 분포 자체**가 다르다(#374 가 엔진에서 세운 교훈).
+ *
+ * | | 픽스처 100시드 | 실덱 10덱×5시드 |
+ * |---|---|---|
+ * | GK / DF / MF / FW 중앙값 | 7.30 / 7.50 / **7.80** / 7.30 | 7.05 / 7.20 / 7.10 / **7.70** |
+ * | 최고 그룹 | **MF** | **FW** ← 뒤집힌다 |
+ * | 그룹 spread | 0.50 | 0.65 (최악 덱 1.70) |
+ * | FW 상한포화 | 4.7% | 6.5% |
+ * | FW MOTM | 55% | 48% |
+ *
+ * 독립 검증 실측(별도 시드 파생, before → after): pooled spread **1.80 → 0.70** ·
+ * FW 포화 **17.7% → 5.1%** · MOTM FW/DF/GK **78%/0%/0% → 50%/12%/10%** ·
+ * 최악 덱 spread **3.15 → 1.55**. **10개 덱 전부 개선** = 방향은 일반화된다.
+ * 다만 `deck-03` 은 GK 6.15 vs DF 7.10 으로 **여전히 벌어져 있다**(조정 포인트).
  */
 export interface RatingWeights {
   base: number;
@@ -233,7 +252,16 @@ export interface RatingWeights {
   position: Record<PlayerPosition | "UNKNOWN", { attack: number; defence: number }>;
 }
 
-export const RATING_WEIGHTS: RatingWeights = {
+/** 깊은 readonly. `RATING_WEIGHTS` 를 런타임에 못 바꾸게 한다(아래 주석 참조). */
+type DeepReadonly<T> = { readonly [K in keyof T]: T[K] extends object ? DeepReadonly<T[K]> : T[K] };
+
+/**
+ * ⚠️ **깊게 `Readonly` 다.** 이 상수는 앱 전체 평점의 단일 출처라, 가변이면 어떤 소비자든
+ * `RATING_WEIGHTS.base = 3` 한 줄로 전 화면의 평점을 조용히 바꿀 수 있다.
+ * 계수를 갈아끼워야 하는 정당한 용도(분포 하네스의 스윕)는 **`ratingWithWeights` 가
+ * 이미 제공**하므로 — 표를 주입받는 산식 — 이 상수까지 가변일 이유가 없다.
+ */
+export const RATING_WEIGHTS: DeepReadonly<RatingWeights> = {
   /** 무관여 기본점(hero 확정 ②) — "잘하면 오르고 못하면 깎인다". */
   base: 6.5,
   min: 3.0,
@@ -281,8 +309,21 @@ export const RATING_WEIGHTS: RatingWeights = {
     red: -0.9,
   },
   /**
-   * 포지션 보정 = **희소성**. 그 포지션에서 드문 기여를 더 쳐주고, 흔한 기여는 할인한다.
-   * 그룹 중앙값을 서로 맞추는 최종 레버이기도 하다(실측 = `scripts/rating-distribution.ts`).
+   * 포지션 보정 — ⚠️ **레벨링의 대부분을 여기가 한다.** 단가 사이징이 아니다.
+   *
+   * 아블레이션(배수를 전부 1.0 으로, 리얼 config 100시드):
+   *   그룹 중앙값 spread **0.50 → 0.90** · FW 상한포화 **4.7% → 21.2%** ·
+   *   FW MOTM 점유 **55.0% → 95.0%**.
+   * 즉 위의 단가(골·태클·패스…)만으로는 포지션 균형이 서지 **않고**, 이 표가 그걸 세운다.
+   * 계수를 조정할 때 단가만 만지면 분포가 잘 안 움직이는 이유가 이것이다.
+   *
+   * 이름은 "희소성 보정"이지만 실제로는 두 가지가 섞여 있고, **섞여 있다는 것을 알고 써야 한다**:
+   *  - 희소성: `DF.attack 1.6`(수비수의 골은 드무니 더) · `FW.defence 1.4`(공격수의 볼뺏기는 드무니 더)
+   *  - **균일 축소**: `MF 0.85/0.85` 는 공·수가 **같은 값**이라 희소성이 아니다 —
+   *    미드필더는 패스·인터셉트 볼륨이 구조적으로 커서 그룹 중앙값을 그냥 끌어내린 것이다.
+   *    `FW.attack 0.58` 도 절반은 같은 성격(골 폭발을 상한 안에 눌러 담기).
+   *
+   * 실측 = `apps/web/scripts/rating-distribution.ts`(픽스처) · `--real-decks`(라이브 입력).
    */
   position: {
     GK: { attack: 1.8, defence: 1.3 },
@@ -958,9 +999,17 @@ export function ratingWithWeights(
 function keeperAxis(line: PlayerStatLine, W: RatingWeights): number {
   const faced = line.saves + line.goalsConceded; // 유효슛 = 선방 or 실점 (항등식)
   let out = line.saves * W.keeper.saveVolume + line.goalsConceded * W.keeper.goalConceded;
-  if (faced > 0) {
-    const prior = W.keeper.priorFaced;
-    const shrunk = (line.saves + prior * W.keeper.expectedSaveRate) / (faced + prior);
+  // ⚠️ **분모를 지킨다** — `faced > 0` 이 아니라 `denom > 0` 이다.
+  //    이 가드가 막는 유일한 것은 `faced = 0` **이면서** `priorFaced = 0` 일 때의 `0/0 = NaN`
+  //    이고, `priorFaced = 0` 은 가상의 값이 아니라 **수축 아블레이션과 하네스 `--weights`
+  //    경로가 실제로 쓰는 설정**이다. 여기가 NaN 이면 그 선수의 평점이 NaN 이 되고
+  //    (NaN 은 clamp 의 min/max 비교를 전부 통과한다) 화면까지 그대로 흘러간다.
+  //    `priorFaced > 0` 이면 `faced = 0` 에서도 shrunk === expectedSaveRate 라 기여가 정확히
+  //    0 이다 — 즉 출하값에서 이 조건은 `faced > 0` 과 **비트 동일**이고, 0 으로 내렸을 때만
+  //    다르게 행동한다. 계약 = "hero 가 계수를 0 으로 내려도 유한값이 나온다".
+  const denom = faced + W.keeper.priorFaced;
+  if (denom > 0) {
+    const shrunk = (line.saves + W.keeper.priorFaced * W.keeper.expectedSaveRate) / denom;
     out += (shrunk - W.keeper.expectedSaveRate) * W.keeper.saveRateScale;
   }
   return out;
