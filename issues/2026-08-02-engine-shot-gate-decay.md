@@ -111,9 +111,18 @@ const stay = evaluateStateEv(ctx, here) - w.holdPenaltyEv - (ctx.oneOnOne ? w.on
 | **파울** | 4.67 ▼ | **4.83** | **15.87** ✗✗ | 4.58 | 5.5–6.0 (base 이미 미달) |
 | 주행 (km) | 6.54 | 6.53 | 5.57 | 6.53 | — |
 
-**출하(0.41.0) 판정**: 볼륨 미달(17.48 — 이 웨이브가 못 고친 것)을 빼면 **모든 하드 제약을 만족하거나
-개선**했다. 축 A 41.2→41.5(중립) · 축 B **세 지표 전부 개선**(HHI 0.910→0.905 · 비ST 슛 0.81→0.87 ·
-비ST 박스수신 0.54→0.71) · 파울 4.67→4.83(밴드 쪽으로 이동, 악화 아님) · 구조 밴드 전부 유지.
+**출하(0.41.0) 판정**: 볼륨 미달(17.48 — 이 웨이브가 못 고친 것)과 **1대1 6.08 → 5.05(−17% 상대 ·
+절대 126→106건 · 원인 미규명)** 두 가지를 빼면 **모든 하드 제약을 만족하거나 개선**했다.
+축 A 41.2→41.5(중립) · 축 B **세 지표 전부 개선**(HHI 0.910→0.905 · 비ST 슛 0.81→0.87 ·
+비ST 박스수신 0.54→0.71) · 파울 4.67→4.83(밴드 쪽으로 이동, 악화 아님) · 그 밖 구조 밴드 전부 유지.
+
+> ⚠️ **1대1 예외(#407 독립 검증 major-1)**: hero AC 원문의 구조 밴드 목록에 **1대1(#316)이 명시**돼
+> 있으므로 이 감소는 "밴드 전부 유지"에 포함되지 않는다. N4 가 `hp−2.0` 팔에서 1대1 을 **살린**
+> 것(3.33→5.33)과 출하 팔에서 **깎은** 것(6.08→5.05)은 방향이 반대이고, 후자의 기전은 아직
+> 규명되지 않았다(N4 는 20시드에서 7.17→7.11 = 중립으로 보였다 — 60시드에서만 드러난다).
+> 감시 = 60시드 프로브(§8 재현 커맨드) + `shot-distance-decay.test.ts` 중립 계약의 매-실행 로그.
+> 소시드(≤12)로는 이 크기의 이동을 못 잡는다(12시드 실측 5.69→5.77, 부호가 반대 — 노이즈 1 SE
+> 안이다). 원인 규명·복구는 **#407 후속(N2 웨이브)** 소관.
 
 ### 3-1. N4 의 목적 달성 증거 (60시드 · 짝 대조)
 
@@ -185,7 +194,11 @@ const stay = evaluateStateEv(ctx, here) - w.holdPenaltyEv - (ctx.oneOnOne ? w.on
    20%p 이상 낮다**(측정: 하드 sr14 100.0% @8.63 vs 감쇠 61.7% @11.75). 절대치가 아니라 **두 축의 차이**를
    박았다 — 절대치는 다른 노브 재보정에 딸려 움직이지만 이 부등식은 기제의 성질이다.
 6. **N4 — `holdPenalty` 를 볼륨 레버로 밀어도 1대1 이 살아남는다**(12시드: off 2.78% → on 6.28%, 임계 1.5배).
-7. **N4 는 출하 기본에서 중립** — 슛 Δ<1.0 · 박스 편중 Δ<5%p.
+7. **N4 는 출하 기본에서 중립** — 슛 Δ<1.0 · 박스 편중 Δ<5%p. **+ `oneOnOnePct` 를 같이 본다**
+   (독립 검증 major-1 수습): 짝 대조 1대1 을 **매 실행 로그로 뱉고**, base 대비 상대 −25% 하한을
+   단언한다. ⚠️ 이 하한은 **밴드 재판정이 아니라 붕괴(−50%, 2-A 안 A 가 죽은 방식) 바닥 가드**다 —
+   12시드에서 60시드의 −17% 는 재현되지 않는다(실측 5.69→5.77, 이항 SE ±19% 안). 근거·한계는
+   테스트 파일 주석에 정량으로 박아 뒀다.
 8. **롤백** — `shootDistance.enabled=false` + `hold.oneOnOnePenalty=0` → **0.40.0 해시와 bit-identical**
    (`f9d9d778 · 756ec350 · f7031974 · e5b0e30b`).
 
@@ -216,15 +229,28 @@ bit-identical 인 것이 그 증명이다). 감쇠를 켰을 때의 비용은 60
 | 게이트 | 결과 |
 |---|---|
 | `npm run typecheck` | ✅ pass |
-| `npm test` (T1, 콜드) | **2897 passed / 7 failed** — 7건 **전부 선행 실패**(§6-1) |
-| `npm run test:ladder` | **373 passed / 7 failed** — 6건은 위와 동일 + `shootXgThreshold` 사다리 1건(선행, §6-1) |
+| `npm test` (T1, 콜드) | **2885 passed / 6 failed / 67 skipped** (총 2958) — 6건 **전부 선행 실패**(§6-1) |
+| `npm run test:ladder` | **360 passed / 7 failed** — 6건은 위와 동일 + `shootXgThreshold` 사다리 1건(선행, §6-1) |
 | `npm run e2e` (playwright) | ✅ **74/74** |
 | `node tools/qa-match.mjs` | ✅ 상황-데이터 정합성 문제 없음 (engine@0.41.0-showcase) |
 | `node tools/perceptibility.mjs` | ✅ **6/6** |
-| 결정론 | ✅ desync 0 · resume 동일 · hygiene grep 0 (T1 안에 포함, 전량 green) |
+| 결정론 | ✅ desync 0 × 80 · resume 동일 · hygiene grep 0 (T1 안에 포함, 전량 green) |
 | 골든 갱신 | 스냅샷 6 + 해시 상수 6곳(§6-2) |
 
+> **수치 정정 이력(독립 검증 minor-1·minor-3)**
+> - 최초 기록은 `npm test` **7 failed / 2897 passed** 였으나 **오기**다. 7번째
+>   (`shootXgThreshold` 사다리)는 **`HMB_LADDER=1` 에서만** 도는데 §6-1 "선행 실패" 표에서
+>   `npm test` 행으로 이월됐다. 검증자 콜드 재실행 = **6 failed / 2898 passed / 54 skipped**(2958).
+> - 그 뒤 **미추적 프로브 2건**(`e407-deadball-probe` · `e407-offside-probe`, 13 tests)에
+>   `HMB_E407DEADBALL`·`HMB_E407OFFSIDE` **env 가드**를 부여했다(minor-3 수습). 그래서 지금 트리의
+>   콜드 값은 **6 failed / 2885 passed / 67 skipped** — 총수 2958 과 실패 6 은 그대로이고
+>   passed 13 이 skipped 로 옮겨간 것이 전부다(2898−13=2885 · 54+13=67). 같은 이유로 ladder 도
+>   콜드 재실행 **7 failed / 360 passed / 51 skipped**(418, 239.5s) — 373−13=360 · 실패 집합 불변.
+
 ### 6-1. 선행 실패 7건 — **전부 main(0.40.0)에서 이미 red**
+
+⚠️ 이 7건은 **`npm test` 6건 + ladder 전용 1건**(`shootXgThreshold`)의 합이다 — `npm test`
+한 판에서 7건이 나는 것이 아니다(위 정정 이력).
 
 `chain.hold.oneOnOnePenalty=0`(= 0.40.0 bit-identical)으로 되돌려 같은 파일을 돌려 귀속을 확정했다:
 
@@ -296,6 +322,11 @@ HMB_SEEDS=60 HMB_COMBOS='[
  {"label":"0.41.0 N1 on","ov":{"chain.shootDistance.enabled":true}}
 ]' node tools/run-gate.mjs --label e407 -- npx tsx research/e407-probe/e407-diversity.ts
 
+# 분석 전용 프로브(전부 env 가드 — 없으면 `npm test` 에서 skip, 독립 검증 minor-3)
+HMB_E407GOAL=1     node tools/run-gate.mjs --label e407-goal     -- npx vitest run packages/engine/src/realism/e407-goal-probe.test.ts
+HMB_E407DEADBALL=1 node tools/run-gate.mjs --label e407-deadball -- npx vitest run packages/engine/src/realism/e407-deadball-probe.test.ts
+HMB_E407OFFSIDE=1  node tools/run-gate.mjs --label e407-offside  -- npx vitest run packages/engine/src/realism/e407-offside-probe.test.ts
+
 # N1 프론티어 재현(§3-2) — floor 를 균일 계수로 쓰는 팔
 HMB_SEEDS=20 HMB_COMBOS='[
  {"label":"HARD sr14","ov":{"contest.shootRange":14}},
@@ -303,3 +334,100 @@ HMB_SEEDS=20 HMB_COMBOS='[
    "chain.shootDistance.freeM":0,"chain.shootDistance.perM":10,"chain.shootDistance.floor":0.36}}
 ]' node tools/run-gate.mjs --label e407 -- npx tsx research/e407-probe/e407-diversity.ts
 ```
+
+---
+
+## 독립 검증 (별도 컨텍스트 module-verifier · 2026-08-02)
+
+> 위 §1~§8 은 **구현자 서술**이고, 이 절은 **분리된 컨텍스트의 검증자**가 적대적으로 재검증한
+> 결과다(자기검수 금지 원칙, 루트 CLAUDE.md §2-2). 검증자는 리포 파일을 못 고치는 역할이라
+> 이 절의 **기록과 수습은 구현 세션이 대행**했다(수습 목록 = 아래 §V-8).
+
+**판정 = PASS** · **blocker 0 · major 2 · minor 5**.
+
+### V-1. 최우선 감사 3건 — 전부 무혐의
+
+"볼륨 미달을 게이트에서 숨기려 한 흔적"을 먼저 팠고, 셋 다 아니었다.
+
+| 감사 대상 | 확인 방법 | 결과 |
+|---|---|---|
+| `shot-frequency.test.ts` 밴드 완화? | `git diff 80e25a8..07163c6` | **38줄 순수 추가 · 삭제 0**. 밴드 상수(7.2/8.4 · 2.8/3.7 · 1.4/1.85 · 2.9/3.5 · 0.18/0.24 · 17/22) · `SPAN_FLOOR` · 비율 1.35 **불변**. 밴드는 여전히 **red**(17.48 > 8.4) |
+| `gate.ts` 로 red 은닉? | 레지스트리 diff | `LADDER_SUITES[0].what/issue` **설명 문자열 2줄**뿐. 등록 스위트 3개 유지 · **은닉 0**. 신설 `shot-distance-decay.test.ts` 는 게이트 레지스트리를 안 쓰므로 **항상 돈다** |
+| `one-on-one.ts` 표본 정의 변조? | 파일 diff | **주석 전용**. 표본 정의 코드 **무변경** |
+
+### V-2. 절대 제약 3건 — PASS
+
+- **`xgAtPoint` 무수정** — diff 빈 값. 그 위에 계약이 실제로 문다는 것도 변이체 M3 로 확인(아래).
+- **봉인 노브 2종 의미 보존** — `decision.ts:137` · `decision.ts:753` · `one-on-one.ts:180` 무변경
+  (`shootRange` = 1대1 자격 · weighted 롤백 코어 · 진단 / `shootXgThreshold` = 생성기 질 게이트).
+- **`GENERATORS` 배열 무변경** — diff 빈 값(생성기 순서 = 결정론 표면).
+
+### V-3. N1 off 정합성 — PASS
+
+**base 워크트리에서 4시드 최종 스냅샷 해시를 독립 재계산**했고
+`["f9d9d778","756ec350","f7031974","e5b0e30b"]` 가 계약의 `GOLDEN_040` 과 **완전 일치**했다
+(구현자가 상수를 손으로 적어 넣은 것이 아니라는 증거).
+`dead-knobs` 등록도 정직하다 — `enabled` = LIVE + 하위 4종(`genMaxM`·`freeM`·`perM`·`floor`) =
+"조건부 LIVE"이고, **출하 기본(off)에서 넷 다 비트 동일**이라는 사실을 *같이* 박제했다.
+어느 쪽도 숨기지 않는다.
+
+### V-4. 변이체 킬 4/4 — 계약이 실제로 문다
+
+| 변이체 | 주입 | 결과 |
+|---|---|---|
+| M1 | 감쇠를 no-op 로 | **FAIL 2건**(단조 레버 · 박스 편중 가드) ✅ |
+| M2 | `ctx.oneOnOne = false` 고정 | **N4 계약 FAIL** ✅ |
+| M3 | `xgAtPoint` 에 감쇠 주입 | **xG bit-identical 계약 FAIL** ✅ |
+| M4/M5 | 구 `cbForward` 복원 | 3시드 **해시 동일** — 구현자 §6-3 주장(비교가 애초에 안 갈린다)이 **참** ✅ |
+
+### V-5. 선행 red 독립 대조 — 신규 red 0건
+
+**별도 worktree 에 base 를 체크아웃**해 대조했다(공유 트리 미교란 · `git stash` 금지 규율 준수).
+실패 집합이 **정확히 일치**하고 신규 0건. base→head 로 4건은 오히려 **개선**됐다:
+
+| 지표 | base(0.40.0) | head(0.41.0) |
+|---|---|---|
+| 경기당 골 | 6.45 | **6.43** |
+| 팀당 골 | 3.23 | **3.22** |
+| 유효슛 | 6.54 | **6.43** |
+| 무소유 급정지 | 27.0 | **26.875** |
+| 파울 | 4.675 | **4.833**(밴드 쪽) |
+
+### V-6. 게이트 콜드 재실행 (검증자 실행)
+
+| 게이트 | 검증자 실측 |
+|---|---|
+| `npm run typecheck` | ✅ |
+| `npm test` | **6 failed / 2898 passed** (207.6s) |
+| `npm run test:ladder` | 7 failed / 373 passed (225.7s) |
+| `npm run e2e` | ✅ **74/74** |
+| `node tools/qa-match.mjs` | ✅ |
+| `node tools/perceptibility.mjs` | ✅ **6/6** |
+| 결정론 | ✅ desync 0 × 80 · resume 동일 · hygiene green |
+
+> (수습 후 이 트리의 콜드 값 = **6 failed / 2885 passed / 67 skipped** — 프로브 env 가드로
+> passed 13 이 skipped 로 옮겨간 것뿐, 총수 2958 과 실패 6 은 동일. §6 정정 이력 참조.)
+>
+> ⚠️ 구현자 §6 표의 `npm test` 행이 **7 failed / 2897** 이었던 것은 오기다(minor-1) — 7번째
+> (`shootXgThreshold` 사다리)는 **`HMB_LADDER=1` 에서만** 도는데 "선행 실패 7건" 표에서 `npm test`
+> 행으로 이월됐다. `test:ladder` 행(7 failed / 373)은 정확하다. §6 은 수습에서 정정했다.
+
+또한 **§3 의 60시드 표는 전 셀이 소수점까지 재현 일치**했고, **골든 갱신 6곳은 전부 정당**하다
+(구 값을 주석에 남기고 동반 단언이 생존 · 8시드 중 **4~5개만** 이동 = N4 사거리가 좁다는 직접 증거).
+
+### V-7. 경계 — PASS
+
+코드 변경은 전부 `packages/engine/**`(owned-glob) 안. `packages/shared/**` **무변경**.
+검증자 흔적 0(검증용 worktree·변이체는 전부 되돌림).
+
+### V-8. major 2 · minor 5 와 수습 결과
+
+| # | 등급 | 내용 | 수습 |
+|---|---|---|---|
+| major-1 | major | **출하 config 1대1 6.08 → 5.05**(−17% 상대 · 126→106건). AC 원문의 구조 밴드 목록에 1대1(#316)이 **명시**돼 있는데 §3 판정문이 "볼륨 미달을 빼면 전부 만족"으로 뭉갰다. 게다가 중립 계약(`shot-distance-decay.test.ts`)이 `shots`·`inBoxPct` 만 재서 **정작 움직인 지표를 안 본다** | ✅ 수습 — §3 판정문에 예외 명시 · CLAUDE.md 0.41.0 행에 병기 · `config.ts` 주석을 20시드(7.17→7.11) → **60시드(6.08→5.05)** 로 갱신 · 중립 계약에 `oneOnOnePct` **로그 + 상대 −25% 바닥 가드** 추가(한계는 정량 주석으로 박제) |
+| major-2 | major | **볼륨 밴드 7.2–8.4 미달**(17.48) — 이 웨이브의 원 목표 | ⛔ **수습 대상 아님**(매니저 스코프 판정): 이 웨이브 = **레버 신설**, 볼륨 달성은 **N2 웨이브로 이월**. 노트 §7-1 에 이미 명시 |
+| minor-1 | minor | §6 `npm test` 수치 오기(7/2897 → **6/2898**) | ✅ 정정(콜드 재실행으로 직접 확인) |
+| minor-2 | minor | `shot-distance-decay.test.ts` 의 소시드(≤12) 규율상 60시드급 이동을 못 잡는다 | ✅ 한계를 테스트 주석·노트 §4-7 에 **정량으로** 기록(SE 계산 포함) |
+| minor-3 | minor | 미추적 프로브 2건(`e407-deadball-probe` · `e407-offside-probe`)에 **env 가드가 없어** `npm test` 에 다시드 시뮬이 딸려간다 | ✅ `HMB_E407DEADBALL` · `HMB_E407OFFSIDE` 가드 부여(=`HMB_E407GOAL` 관용구) + 재현 커맨드 헤더 주석 + 커밋에 포함 |
+| minor-4 | minor | `config.ts` 주석의 20시드 근거가 60시드로 갱신되지 않음 | ✅ 갱신(20시드 값은 이력으로 남김) |
+| minor-5 | minor | `shot-distance-decay.test.ts` 의 `harsh.shots < hardGate.shots * 2` 여유가 얇다(실측 1.36배) | ✅ **관측 기록만** — 같은 describe 의 단조성 단언이 엄격 킬러라 이중 방어 성립(결함 아님). 주석으로 박제 |
