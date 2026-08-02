@@ -365,7 +365,8 @@ CREATE UNIQUE INDEX uq_daily_mission_slot ON daily_missions(user_id, day, slot_n
 CREATE INDEX idx_daily_mission_user_day  ON daily_missions(user_id, day);
 ```
 
-- 마이그레이션 번호는 **main 배정**(리포 최고 V37, #405 도 V38+ 를 노려 충돌). `FlywayMigrationTest` 기대 목록에도 등록.
+- 마이그레이션 번호 = **V39** (main 배정 2026-08-02 — V38 은 #405 성장 트랙). `FlywayMigrationTest` 기대 목록에도 등록.
+  ⚠️ Flyway 가 **1부터 빈틈 없는 연속**을 강제하므로(`out-of-order=false`), **#405 의 V38 보다 먼저 머지되면 안 된다** — 머지 순서는 main 이 잡는다.
 - 미션 추첨은 **시드 RNG**(`rngFromSeed(userId + day)`) — 결정론이라 "왜 이 미션이 나왔나"를 재현할 수 있다.
 
 ### 지급 — 새 원장을 만들지 않는다
