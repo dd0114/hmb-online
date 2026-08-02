@@ -4,7 +4,8 @@ import { CURRENCY_GEM, CURRENCY_POINT } from "../common/currency";
 import { Modal } from "../common/Modal";
 import { NoticeBody } from "../common/NoticeBody";
 import { useClaimMail, useMails, useReadMail } from "../api/mail-hooks";
-import { useMe, usePlayers } from "../api/hooks";
+import { useMe } from "../api/hooks";
+import { usePlayerNames } from "../common/player-names";
 import type { Mail } from "../api/mails";
 import {
   attachmentChips,
@@ -210,16 +211,24 @@ function MailRow({
 }
 
 /**
- * 카드 첨부 한 칩. 이름은 카탈로그에서 찾고, **없으면 id 를 그대로** 보여준다 —
- * 지어낸 이름은 "뭘 받았는지"를 틀리게 말한다(응답 형태를 믿지 않는 규율과 같은 결).
+ * 카드 첨부 한 칩 — 이름은 **초크포인트로만** 묻는다(`usePlayerNames`, #406 요구 6).
+ *
+ * <p>⚠️ 여기엔 한때 `roster.find(…)?.name ?? playerId` 가 직접 적혀 있었다. 카탈로그가 모르는
+ * 선수면 화면에 <b>`P077` 이 떴고</b>, 같은 질문("이 id 의 이름이 뭐냐")에 앱이 <b>두 개의
+ * 상반된 답</b>을 갖고 있었다 — 다른 화면 전부는 `미상 선수` 로 닫혀 있었다. 정책이 갈리면
+ * 이름 규칙을 한 번 바꿀 때 이 칩만 옛 규칙으로 남는다(그게 초크포인트를 만든 이유다).
+ *
+ * <p>사다리 3단(`미상 선수`)이 id 노출보다 나은 이유: id 는 유저 언어가 아니라 <b>내부 키</b>라
+ * "뭘 받았는지"를 알려 주지 못한다. 정말로 알아야 하는 상황(카탈로그에 없는 선수가 우편으로
+ * 왔다)은 <b>발행 사고</b>이므로 화면이 아니라 서버 원장에서 봐야 한다.
+ *
+ * <p>축은 <b>짧은 이름</b> — 칩은 `[이름][n장]` 이 한 줄에 같이 앉는 밀집 UI 다.
  */
 function PlayerChip({ playerId, count }: { playerId: string; count: number }) {
-  const { data: players } = usePlayers();
-  const roster = Array.isArray(players) ? players : [];
-  const name = roster.find((p) => p.id === playerId)?.name;
+  const names = usePlayerNames();
   return (
     <>
-      {name ?? playerId} {count}장
+      {names.short(playerId)} {count}장
     </>
   );
 }

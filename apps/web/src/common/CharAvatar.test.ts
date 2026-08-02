@@ -73,6 +73,36 @@ describe("initialsOf", () => {
   it("빈 이름도 터지지 않는다", () => {
     expect(initialsOf("   ")).toBe("?");
   });
+
+  /**
+   * #406 요구 6 — 이름이 한글로 바뀌면 로마자 이니셜 규칙이 **글자 조각**을 만든다.
+   * `레프 야신` → `레야` 는 사람이 못 읽는다(단어별 첫 글자를 뽑은 결과).
+   * 한글에서 신원을 지고 있는 조각은 **마지막 토큰**(= 발행물 `shortName` 이 고른 것과 같다).
+   */
+  describe("한글 이름 (#406)", () => {
+    it("공백 음역은 마지막 토큰(성)을 쓴다 — 단어별 첫 글자가 아니다", () => {
+      expect(initialsOf("레프 야신")).toBe("야신");
+      expect(initialsOf("프란츠 베켄바워")).toBe("베켄");
+      // 변이 방어: 구 규칙(각 단어 첫 글자)이 되살아나면 이 값들이 나온다.
+      expect(initialsOf("레프 야신")).not.toBe("레야");
+      expect(initialsOf("프란츠 베켄바워")).not.toBe("프베");
+    });
+
+    it("한 덩어리 한글 이름은 앞 2글자", () => {
+      expect(initialsOf("오현규")).toBe("오현");
+      expect(initialsOf("크바라츠헬리아")).toBe("크바");
+    });
+
+    it("2글자 이하는 그대로 (자르지 않는다)", () => {
+      expect(initialsOf("석신")).toBe("석신");
+      expect(initialsOf("텔")).toBe("텔");
+    });
+
+    it("한글 규칙이 로마자 경로를 죽이지 않는다 — 구 서버·과거 스냅샷은 여전히 영어다", () => {
+      expect(initialsOf("Paolo Maldini")).toBe("PM");
+      expect(initialsOf("Yashin")).toBe("YA");
+    });
+  });
 });
 
 describe("에셋 번들 로더", () => {

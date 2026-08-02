@@ -3,6 +3,7 @@ import { useDraggable } from "@dnd-kit/core";
 import type { CatalogPlayer } from "../api/hooks";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
 import { CharAvatar } from "../common/CharAvatar";
+import { playerNameOf } from "../common/player-names";
 import { findPlayerSlot, type DeckDraft } from "./deck-logic";
 import { positionWeight } from "./auto-lineup";
 import { rankPlayers } from "./player-ranking";
@@ -85,7 +86,9 @@ function PoolItem({ player, placed, onPick, condition, fit, pending, selectable 
       data-testid={`pick-${player.id}`}
       data-pending={pending ? "true" : "false"}
       /* aria-pressed 는 @dnd-kit attributes 가 소유한다(드래그 상태) — 배치 대기는 data-pending + aria-label 로. */
-      aria-label={pending ? `${player.name} — 배치할 슬롯을 고르세요` : undefined}
+      /* 접근가능 이름은 **보이는 이름과 같은 축**(short)이어야 한다 — 갈라지면 음성 안내와
+         화면이 다른 이름을 말한다. */
+      aria-label={pending ? `${playerNameOf(player, "short")} — 배치할 슬롯을 고르세요` : undefined}
       disabled={disabled}
       onClick={() => onPick(player.id)}
       style={isDragging ? { opacity: 0.4 } : undefined}
@@ -103,9 +106,13 @@ function PoolItem({ player, placed, onPick, condition, fit, pending, selectable 
           </span>
         </span>
       )}
-      <CharAvatar playerId={player.id} name={player.name} grade={player.grade} size={34} />
+      {/* 이니셜 폴백은 풀네임 축(`initialsOf` 의 한글 규칙이 성 기준) — TacticsBoard 와 같다. */}
+      <CharAvatar playerId={player.id} name={playerNameOf(player, "full")} grade={player.grade} size={34} />
       <span className={styles.who}>
-        <b className={styles.name}>{player.name}</b>
+        {/* 덱 리스트 행 = 밀집 UI → **짧은 축**(`player-names.ts` 두 축 표). 지금은 서버가
+            `shortName` 을 안 실어 풀네임과 같은 값이지만(#411), 스위치가 켜지는 날 문서와
+            화면이 갈리지 않게 지금 배선해 둔다. */}
+        <b className={styles.name}>{playerNameOf(player, "short")}</b>
         <span className={styles.sub}>
           {player.position}
           <span className={styles.grade} style={{ color: GRADE_COLORS[player.grade] }}>

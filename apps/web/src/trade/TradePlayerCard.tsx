@@ -4,6 +4,7 @@ import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
 import { CharAvatar } from "../common/CharAvatar";
 import { FullArtCard } from "../common/FullArtCard";
 import { PersonalityBadge } from "../common/RelationBits";
+import { playerNameOf } from "../common/player-names";
 import styles from "./TradePlayerCard.module.css";
 
 /** Attributes shown compactly on a trade card (subset of codex's 9). */
@@ -42,6 +43,14 @@ export function TradePlayerCard({
   fullArt = false,
 }: TradePlayerCardProps) {
   const gradeColor = GRADE_COLORS[player.grade];
+  /*
+   * ⚠️ **여기서만 우선순위가 뒤집혀 있었다**(#406 W1b). 부모(`TradeSlotCard`)는 `catalog.get(playerId)`
+   * 로 카탈로그 행을 조인해 `detail` 로 넘기는데, 이 카드는 이름만 서버 `PlayerRef.name` 에서
+   * 읽었다 — 사다리(카탈로그 → given → `미상 선수`)와 정반대다. 카탈로그가 한글로 갈린 뒤
+   * 트레이드에서만 옛 이름이 남는 형태가 된다. 축은 **full**: 카드 한 줄을 통째로 쓰는 자리이고
+   * 아바타 이니셜(`initialsOf`)도 풀네임 전제다(TacticsBoard 선례).
+   */
+  const displayName = playerNameOf(detail, "full", player.name);
   return (
     <div
       className={[styles.card, reveal ? styles.reveal : ""].filter(Boolean).join(" ")}
@@ -56,7 +65,7 @@ export function TradePlayerCard({
       {fullArt ? (
         <FullArtCard
           playerId={player.playerId}
-          name={player.name}
+          name={displayName}
           grade={player.grade}
           position={player.position}
           size="detail"
@@ -68,13 +77,13 @@ export function TradePlayerCard({
       ) : (
         <CharAvatar
           playerId={player.playerId}
-          name={player.name}
+          name={displayName}
           grade={player.grade}
           size={44}
           className={styles.face}
         />
       )}
-      <span className={styles.name}>{player.name}</span>
+      <span className={styles.name}>{displayName}</span>
       <span className={styles.grade} style={{ color: gradeColor }}>
         {GRADE_LABELS[player.grade]}
       </span>

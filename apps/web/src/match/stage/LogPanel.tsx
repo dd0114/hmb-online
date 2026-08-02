@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { logLines, skinLookup, type LogEvent, type LogLine } from "@hmb/viewer-core";
 import { jerseyNumbers } from "../viewer-skins";
 import { useHalfLog } from "../../api/hooks";
+import { usePlayerNames, type PlayerNameBook } from "../../common/player-names";
+import { koLogLabel } from "./log-labels";
 import styles from "./panels.module.css";
 
 interface LogPanelProps {
@@ -33,6 +35,31 @@ export function logLineNumber(
   line: Pick<LogLine, "playerId" | "team" | "number">,
 ): string | undefined {
   return (line.playerId ? skinLookup(nums, line.team, line.playerId) : undefined) ?? line.number;
+}
+
+/**
+ * 로그줄의 **사람 조각** — `손번개(7)` (#406 요구 5-4, hero 확정 ④ = 이름 + 등번호).
+ *
+ * <p><b>조인은 여기 한 곳이다.</b> 호출부마다 `이름 + "(" + 번호 + ")"` 를 흩뿌리면 표기 규칙이
+ * 화면마다 갈린다 — `logLineNumber` 를 컴포넌트 밖으로 뺀 것과 같은 이유(계약을 걸 자리를 만든다).
+ *
+ * <p><b>축 = 짧은 이름</b>이다. 로그줄은 `[분][라벨][사람][스코어][팀][xG]` 6조각이 390px 안에서
+ * 한 줄을 나눠 갖는 밀집 UI라, 풀네임(`크바라츠헬리아` 8자)을 넣으면 라벨이 줄임표로 먹힌다.
+ *
+ * <p>폴백: 이름 없음 + 번호 있음 → `#7`(현행 동작 유지). 둘 다 없음 → 사람 조각 자체를 뺀다
+ * (휘슬·킥오프처럼 주체가 없는 줄). <b>`미상 선수` 를 붙이지 않는다</b> — 주체가 없는 줄에
+ * 사람을 만들어 내는 것이 되기 때문이다.
+ */
+export function logLinePerson(
+  names: PlayerNameBook,
+  nums: Record<string, string>,
+  line: Pick<LogLine, "playerId" | "team" | "number">,
+): string | undefined {
+  const num = logLineNumber(nums, line);
+  const resolved = line.playerId ? names.resolve(line.playerId, "short") : null;
+  const name = resolved && resolved.source !== "unknown" ? resolved.text : undefined;
+  if (name) return num ? `${name}(${num})` : name;
+  return num ? `#${num}` : undefined;
 }
 
 /** 이벤트 타입별 색 클래스(뷰어 티커와 같은 팔레트). 없으면 기본색. */
@@ -76,7 +103,13 @@ export function LogPanel({ matchId, half, homeName, awayName, tick, baseline = n
    * 순서로 매긴다(#324 와 같은 표·같은 `(team, playerId)` 키 — 같은 선수가 양 팀에 뛸 수 있다).
    */
   const nums = useMemo(() => (log ? jerseyNumbers(log) : {}), [log]);
-  const numberOf = (l: LogLine): string | undefined => logLineNumber(nums, l);
+  /**
+   * 이름은 **카탈로그(playerId 조인)가 우선**이다 — 과거 매치의 `select_data_json` 에는 옛 영어
+   * 이름이 박제돼 있고(라이브 152/152) 저장은 고치지 않기로 했다(W0 결정: 조회 시 덮는다).
+   * 로그 이벤트는 애초에 playerId 만 실어 오므로 이 패널은 그 규칙의 가장 깨끗한 소비자다.
+   */
+  const names = usePlayerNames();
+  const personOf = (l: LogLine): string | undefined => logLinePerson(names, nums, l);
 
   // 최신 라인이 항상 보이게(스크롤은 이 패널 안에서만 — 문서는 스크롤하지 않는다).
   useEffect(() => {
@@ -90,7 +123,7 @@ export function LogPanel({ matchId, half, homeName, awayName, tick, baseline = n
     <ol className={`${styles.log} ${styles.logBody}`} data-testid="stage-panel-log">
       {lines.length === 0 && <li className={styles.note}>아직 기록된 장면이 없습니다</li>}
       {lines.map((l, i) => {
-        const num = numberOf(l); // 행마다 한 번만(독립검증 minor-5)
+        const person = personOf(l); // 행마다 한 번만(독립검증 minor-5)
         return (
         <li
           key={`${l.tick}-${i}`}
@@ -100,8 +133,8 @@ export function LogPanel({ matchId, half, homeName, awayName, tick, baseline = n
         >
           <span className={styles.minute}>{l.minute}'</span>
           <span className={styles.label}>
-            {l.label}
-            {num ? ` #${num}` : ""}
+            {koLogLabel(l)}
+            {person ? ` ${person}` : ""}
             {l.score ? ` ${l.score}` : ""}
           </span>
           {l.team && <span className={styles.side}>{l.team === "home" ? homeName : awayName}</span>}

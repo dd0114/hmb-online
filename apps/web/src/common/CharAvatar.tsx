@@ -3,6 +3,7 @@ import { GRADE_COLORS, type Grade } from "./grades";
 import { resolveTile, tileStyle, unitIconBackground } from "./char-manifest";
 import { showsCharacterArt } from "./icon-policy";
 import { charRefFor } from "./char-assets-store";
+import { initialsOf } from "./char-assets";
 import { useCharAssets } from "./useCharAssets";
 import styles from "./CharAvatar.module.css";
 
@@ -45,15 +46,13 @@ export interface CharAvatarProps {
   alt?: string;
 }
 
-/** 이름 → 최대 2글자 이니셜. 공백 분절이 없으면 앞 2글자(한글 이름 대응). */
-export function initialsOf(name: string): string {
-  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  const first = parts[0];
-  const last = parts[parts.length - 1];
-  if (!first || !last) return "?";
-  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
-  return (first.charAt(0) + last.charAt(0)).toUpperCase();
-}
+/**
+ * 이름 → 최대 2글자 이니셜. **규칙 본체는 `char-assets.ts` 한 곳**에 있다(#406 W1b 수리) —
+ * 거기 `avatarInitial`("첫 글자 한 개")이라는 **다른 답**이 따로 살아 있어서 형제 함수 둘이
+ * 같은 질문에 서로 다른 규칙을 갖고 있었다. 여기서는 <b>재수출만</b> 한다(이 파일을 import 하던
+ * 계약·호출부가 그대로 성립하도록).
+ */
+export { initialsOf };
 
 export function CharAvatar({
   playerId,

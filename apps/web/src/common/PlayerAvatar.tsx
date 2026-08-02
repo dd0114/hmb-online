@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { GRADE_COLORS } from "./grades";
 import { avatarInitial, resolvePlayerAvatar, type AvatarPlayer } from "./char-assets";
+import { playerNameOf } from "./player-names";
 import styles from "./PlayerAvatar.module.css";
 
 export type AvatarSize = "sm" | "md" | "lg";
@@ -25,12 +26,17 @@ export function PlayerAvatar({ player, size = "md", className }: PlayerAvatarPro
   const useDot = dotSrc !== null && !imgFailed;
   const kind = useDot ? "legend-dot" : "placeholder";
   const color = GRADE_COLORS[player.grade];
-  const initial = avatarInitial(player.name);
+  /* 행을 이미 손에 들었어도 이름은 초크포인트를 지난다(#406 요구 6) — 이니셜 규칙(`avatarInitial`)이
+     풀네임 전제라 축은 **full**, 이름이 비면 `미상 선수`(빈 aria-label 이 남지 않는다).
+     ⚠️ 지금 제품 화면에 소비자가 없다. 그래서 더더욱 여기서 막아 둔다 — 되살리는 사람이
+     "여긴 원래 이랬으니까"로 우회를 부활시키는 자리가 정확히 이런 파일이다(PresetPanel 선례). */
+  const displayName = playerNameOf(player, "full");
+  const initial = avatarInitial(displayName);
 
   return (
     <span
       role="img"
-      aria-label={player.name}
+      aria-label={displayName}
       className={[styles.avatar, styles[size], className].filter(Boolean).join(" ")}
       data-testid={`player-avatar-${player.id}`}
       data-avatar-kind={kind}

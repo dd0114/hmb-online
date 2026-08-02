@@ -100,11 +100,45 @@ export function resolvePlayerAvatar(player: AvatarPlayer): ResolvedAvatar {
   return { kind: "legend-dot", src };
 }
 
-/** placeholder 이니셜(이름 첫 글자, 없으면 '?'). 유닛테스트/컴포넌트 공용. */
-export function avatarInitial(name: string): string {
-  const chars = [...(name ?? "").trim()];
-  return chars[0] ?? "?";
+/**
+ * 이름 → 최대 2글자 이니셜 (**아바타 폴백의 유일한 규칙**). **스크립트에 따라 규칙이 갈린다**
+ * (#406 요구 6 한글화).
+ *
+ * <p><b>왜 갈라야 하나</b>: 로마자 이름의 관례는 "각 단어의 첫 글자"(`Paolo Maldini` → `PM`)인데,
+ * 그 규칙을 한글 음역에 그대로 적용하면 <b>글자 조각이 나온다</b> — `레프 야신` → `레야`,
+ * `프란츠 베켄바워` → `프베`. 사람이 못 읽는다. 한글에서 신원을 지고 있는 조각은 <b>마지막 토큰</b>
+ * (성 = 발행물 `shortName` 이 고른 것과 같은 조각: `레프 야신` → `야신`)이다.
+ *
+ * <ul>
+ *   <li><b>한글 포함</b> → 마지막 토큰의 앞 2글자. `레프 야신`→`야신` · `오현규`→`오현` ·
+ *       `크바라츠헬리아`→`크바`. 아바타는 28~40px 라 2글자가 상한이다.</li>
+ *   <li><b>로마자</b> → 기존 규칙 그대로(첫 단어 첫 글자 + 마지막 단어 첫 글자). 구 서버·과거
+ *       스냅샷이 영어 이름을 계속 내려보내므로 이 경로는 <b>죽지 않았다</b>.</li>
+ * </ul>
+ *
+ * <p>⚠️ <b>이 함수는 `CharAvatar` 에 있었고, 여기엔 "첫 글자 한 개"라는 <em>다른</em> 규칙
+ * (`avatarInitial`)이 따로 살아 있었다.</b> 같은 질문(이 이름의 이니셜은?)에 형제 파일 둘이
+ * 서로 다른 답을 갖고 있었던 것이다 — `레프 야신` → `레` vs `야신`. 화면 영향은 없었지만
+ * (`avatarInitial` 의 유일한 소비자 `PlayerAvatar` 를 아무 화면도 안 쓴다) 다음 사람이 어느
+ * 쪽을 근거로 삼을지 알 수 없는 상태였다. 규칙은 <b>여기 하나</b>이고 `CharAvatar` 는 이걸
+ * 재수출한다(그 파일의 계약 `CharAvatar.test.ts` 가 계속 성립하도록).
+ */
+export function initialsOf(name: string): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  if (!first || !last) return "?";
+  // 한글이 한 글자라도 있으면 한글 규칙 — 혼합 표기(`FC 손흥민` 같은 운영 입력)도 읽히는 쪽으로.
+  if (/[가-힣]/.test(name)) return last.slice(0, 2);
+  if (parts.length === 1) return first.slice(0, 2).toUpperCase();
+  return (first.charAt(0) + last.charAt(0)).toUpperCase();
 }
+
+/**
+ * `PlayerAvatar` placeholder 이니셜 — {@link initialsOf} 의 **별칭**이다(규칙 복제 금지).
+ * 이름만 다른 이유는 호출부 호환뿐이니, 새 코드는 {@link initialsOf} 를 직접 써라.
+ */
+export const avatarInitial = initialsOf;
 
 /** 테스트 헬퍼 — 런타임 seam 에 stub 도트 주입/해제(unit 편의; E2E 는 addInitScript). */
 export function __setLegendDotAsset(charId: string, src: string): void {

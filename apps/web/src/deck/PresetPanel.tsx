@@ -2,10 +2,16 @@
  * ⚠️ 이슈 #106 R1 — 프롬프트 프리셋 패널는 덱 화면에서 **내렸다**(삭제가 아니라 렌더 중단).
  * hero 판정: 컨셉 확정 전의 프리셋은 시기상조 → 세팅 하나(활성 덱)만 편집·저장한다.
  * 이 파일·훅·서버 계약(/api/presets*)은 재도입 대비로 존치한다. 되돌리려면 DeckPage 에서 다시 렌더.
+ *
+ * <p>⚠️ **렌더를 내렸다고 계약 밖은 아니다.** 여기 남아 있던 `player.name` 직조회가 정확히
+ * "오늘은 유저 영향 0 이라 아무도 안 고치는데, 되돌리는 날 우회가 초록인 채로 부활하는" 자리였다
+ * (#406 W1b 3차). 지금은 선수명 스캐너(`common/player-names.test.ts`)가 이 파일도 스캔하고
+ * 초크포인트(`playerNameOf`)를 지난다 — 되돌릴 때 이름 경로는 손댈 것이 없다.
  */
 import { useState } from "react";
 import type { CatalogPlayer, PromptPreset } from "../api/hooks";
 import { ErrorToast } from "../common/ErrorToast";
+import { playerNameOf } from "../common/player-names";
 import { PROMPT_MAX_CHARS, type DeckDraft } from "./deck-logic";
 import styles from "./PresetPanel.module.css";
 
@@ -37,9 +43,13 @@ export function PresetPanel({
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const deckPlayers = draft.slots
-    .map((s) => ({ slot: s, player: playersById.get(s.playerId) }))
-    .filter((x): x is { slot: (typeof draft.slots)[number]; player: CatalogPlayer } => Boolean(x.player));
+  /**
+   * ⚠️ **카탈로그가 모르는 선수를 목록에서 지우지 않는다**(#406 요구 6).
+   * 구 코드는 `.filter(Boolean(x.player))` 로 미상 선수를 통째로 빼서, 덱에 앉아 있는데
+   * 일괄 적용 목록에는 **없는** 선수가 생겼다 — 유저는 그 선수에게만 프리셋이 안 걸린 걸
+   * 모른다. 사다리대로 `미상 선수` 로 남기고 체크·적용은 `slot.playerId` 로 한다.
+   */
+  const deckPlayers = draft.slots.map((s) => ({ slot: s, player: playersById.get(s.playerId) }));
 
   function toggle(playerId: string) {
     setChecked((prev) => {
@@ -140,18 +150,20 @@ export function PresetPanel({
         ) : (
           <ul className={styles.bulkList}>
             {deckPlayers.map(({ slot, player }) => (
-              <li key={player.id}>
+              <li key={slot.playerId}>
                 <label className={styles.bulkItem}>
                   <input
                     type="checkbox"
-                    data-testid={`bulk-check-${player.id}`}
-                    checked={checked.has(player.id)}
-                    onChange={() => toggle(player.id)}
+                    data-testid={`bulk-check-${slot.playerId}`}
+                    checked={checked.has(slot.playerId)}
+                    onChange={() => toggle(slot.playerId)}
                   />
                   <span className={styles.bulkName}>
-                    {player.name}
+                    {/* 체크박스 + 포지션 + 역할이 한 줄에 같이 앉는 **밀집 UI** → 짧은 이름 축.
+                        (`player-names.ts` 두 축 규칙: 이름 옆에 다른 조각이 앉으면 short.) */}
+                    {playerNameOf(player, "short")}
                     <span className={styles.bulkMeta}>
-                      {player.position} · {slot.role === "starter" ? "선발" : "벤치"}
+                      {player?.position ?? "?"} · {slot.role === "starter" ? "선발" : "벤치"}
                     </span>
                   </span>
                 </label>

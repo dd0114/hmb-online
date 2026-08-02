@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useDeck, usePlayers, type MatchDetail } from "../../api/hooks";
 import { PromptBlock } from "../../common/PromptBlock";
+import { usePlayerNames } from "../../common/player-names";
 import { countdownLabel, halftimeLengthLabel } from "../live-clock";
 import { useCountdown } from "../useCountdown";
 import { hasText, writtenSummary, type PromptTarget } from "../halftime-draft";
@@ -28,7 +29,10 @@ function canSubmitIn(state: string): boolean {
 interface TargetOption {
   /** null = 팀 전체. */
   target: PromptTarget;
+  /** 넓은 자리(입력 블록 제목) — 풀네임. */
   label: string;
+  /** 대상 칩(가로 스크롤 18칸) — 밀집 UI라 짧은 이름을 쓴다(#406 요구 6). */
+  chipLabel: string;
   /** 칩 밑에 붙는 신원 보조(포지션). 팀은 없다. */
   position?: string;
 }
@@ -67,15 +71,17 @@ export function SecondHalfBriefPanel({ match, clockOffsetMs = 0, draft }: Second
   const halftimeLabel = halftimeLengthLabel(clock?.halftimeMs);
   const editable = canSubmitIn(match.state);
 
+  /** 이름은 초크포인트로만(#406 요구 6) — 이 표는 포지션 때문에 남는다. */
+  const names = usePlayerNames();
   const playersById = useMemo(() => {
-    const map = new Map<string, { name: string; position: string }>();
-    for (const p of players ?? []) map.set(p.id, { name: p.name, position: p.position });
+    const map = new Map<string, { position: string }>();
+    for (const p of players ?? []) map.set(p.id, { position: p.position });
     return map;
   }, [players]);
 
   /** 대상 목록 — 팀이 먼저, 그 뒤 선발(자리 순) → 벤치. */
   const options: TargetOption[] = useMemo(() => {
-    const out: TargetOption[] = [{ target: null, label: "팀 전체" }];
+    const out: TargetOption[] = [{ target: null, label: "팀 전체", chipLabel: "팀 전체" }];
     const snap = match.userDeckSnapshot;
     const ids: string[] = snap
       ? [...(snap.starters ?? [])]
@@ -87,11 +93,15 @@ export function SecondHalfBriefPanel({ match, clockOffsetMs = 0, draft }: Second
           .map((s) => s.playerId)
           .concat((deck?.slots ?? []).filter((s) => s.role === "bench").map((s) => s.playerId));
     for (const id of ids) {
-      const p = playersById.get(id);
-      out.push({ target: id, label: p?.name ?? id, position: p?.position });
+      out.push({
+        target: id,
+        label: names.full(id),
+        chipLabel: names.short(id),
+        position: playersById.get(id)?.position,
+      });
     }
     return out;
-  }, [match.userDeckSnapshot, deck, playersById]);
+  }, [match.userDeckSnapshot, deck, playersById, names]);
 
   const selectedOption = options.find((o) => o.target === selected) ?? options[0]!;
   const text =
@@ -123,7 +133,7 @@ export function SecondHalfBriefPanel({ match, clockOffsetMs = 0, draft }: Second
               disabled={!editable}
               onClick={() => setSelected(o.target)}
             >
-              {o.label}
+              {o.chipLabel}
               {hasText(draft.draft, o.target) && (
                 <span className={styles.targetDot} aria-label="적어둠" data-testid={`brief-dot-${key}`}>
                   ●

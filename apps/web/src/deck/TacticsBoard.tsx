@@ -4,6 +4,7 @@ import type { CatalogPlayer } from "../api/hooks";
 import type { ConditionMap } from "../api/v2";
 import { GRADE_COLORS } from "../common/grades";
 import { CharAvatar } from "../common/CharAvatar";
+import { playerNameOf } from "../common/player-names";
 import { BENCH_MAX, getSlot, type DeckDraft, type SlotRole } from "./deck-logic";
 import { starterCoords } from "./tactics-logic";
 import { conditionColor, conditionLabel, conditionTier } from "../match/condition-clock";
@@ -126,7 +127,10 @@ function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberL
         {player && (
           <CharAvatar
             playerId={player.id}
-            name={player.name}
+            /* 이니셜 폴백도 초크포인트를 지난다(#406 요구 6). 여긴 넓은 자리가 아니지만 축은
+               **풀네임**이다 — `initialsOf` 의 한글 규칙이 성(마지막 어절) 기준이라 풀네임을
+               전제로 설계됐고, 다른 CharAvatar 호출부도 같은 축을 넘긴다. */
+            name={playerNameOf(player, "full")}
             grade={player.grade}
             size={38}
             className={styles.tokenFace}
@@ -136,7 +140,9 @@ function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberL
         {/* 지시(프롬프트) 있음 = 말풍선 점. 이름 옆 5px 점은 이름 말줄임에 같이 잘려 안 보였다. */}
         {hasPrompt ? <span className={styles.sayDot} title="지시 있음" /> : null}
       </span>
-      <span className={styles.tokenName}>{player?.name ?? playerId}</span>
+      {/* 보드 토큰 = 밀집 UI(390px 에 11칸) → 짧은 이름 축(#406 요구 6). 선수를 못 찾으면
+          `미상 선수` — 구 동작은 여기에 **playerId 를 그대로 찍었다**(`P077`). */}
+      <span className={styles.tokenName}>{playerNameOf(player, "short")}</span>
       {/* 교체로 빠지는 선수 — 60초 안에 "누굴 뺐더라"를 보드에서 바로 읽어야 한다(#244). */}
       {out && (
         <span className={styles.outBadge} data-testid={`token-out-${playerId}`}>
@@ -200,7 +206,14 @@ function SlotCell(props: SlotCellProps) {
       style={style}
       data-testid={`board-slot-${role}-${slotIndex}`}
       data-filled={slot ? "true" : "false"}
-      aria-label={player ? `${player.name} — ${role === "starter" ? "선발" : "벤치"}` : "빈 슬롯"}
+      /* ⚠️ 분기 조건은 **`slot`**(자리가 찼나)이지 `player`(카탈로그가 아나)가 아니다.
+         `player` 로 가르면 카탈로그 미상 선수가 앉은 자리에서 화면(`styles.tokenName`)은 `미상 선수` 인데
+         스크린리더만 "빈 슬롯"이라고 말한다 — `data-filled="true"` 인데도. 같은 상태를 두
+         가지로 말하지 않는다. 축도 보이는 이름과 **같은 short** 로 맞춘다(접근가능 이름 ⊇
+         보이는 라벨). */
+      aria-label={
+        slot ? `${playerNameOf(player, "short")} — ${role === "starter" ? "선발" : "벤치"}` : "빈 슬롯"
+      }
       onClick={() => onSlotTap({ role, slotIndex })}
     >
       {slot ? (

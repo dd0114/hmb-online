@@ -13,6 +13,7 @@ import type { CatalogPlayer } from "../api/hooks";
 import type { ConditionMap, RelationsResponse } from "../api/v2";
 import { relationOf } from "../common/relations";
 import { Modal } from "../common/Modal";
+import { buildPlayerNames } from "../common/player-names";
 import { findPlayerSlot, removePlayer, setPrompt, type DeckDraft } from "./deck-logic";
 import { movePlayerToSlot, type EditorState } from "./tactics-logic";
 import { slotPosition } from "./sheet-metrics";
@@ -330,6 +331,12 @@ export function DeckEditor(props: DeckEditorProps) {
   }, [starterSlots, playersById]);
 
   const selectedPlayer = selection.playerId ? playersById.get(selection.playerId) : undefined;
+  /**
+   * 이름은 초크포인트로만(#406 요구 6). 여기는 **API 훅을 안 쓰는 프레젠테이션 컴포넌트**라
+   * (`TeamSheet.test` 가 Provider 없이 단독 렌더한다) 훅이 아니라 순수 빌더를 쓴다 —
+   * 표는 이미 프롭으로 받고 있다.
+   */
+  const names = useMemo(() => buildPlayerNames(playersById), [playersById]);
   const selectedSlotData = selection.playerId ? findPlayerSlot(draft, selection.playerId) : undefined;
   const railRelation = selectedPlayer ? relationOf(relations, selectedPlayer.id) : undefined;
 
@@ -403,8 +410,10 @@ export function DeckEditor(props: DeckEditorProps) {
                 <>
                   {/* 힌트는 한 줄로 — 세 줄로 접히면 보드 카드가 그만큼 커져 프롬프트를 밀어낸다. */}
                   <span className={styles.boardHint}>
+                    {/* 이름은 초크포인트로만(#406 요구 6) — 한 줄을 통째로 쓰는 안내라 풀네임 축.
+                        카탈로그 미상이면 `미상 선수`(구 동작은 빈 문자열/원시 필드였다). */}
                     {selectedPlayer
-                      ? `${selectedPlayer.name} 편집 중`
+                      ? `${names.full(selectedPlayer.id)} 편집 중`
                       : "선수 = 프롬프트 · 빈 자리 = 선수 고르기"}
                   </span>
                   {selectedPlayer && (
@@ -475,9 +484,9 @@ export function DeckEditor(props: DeckEditorProps) {
                 {pickNote}
               </p>
             )}
-            {errorPlayerId && playersById.get(errorPlayerId) && (
+            {errorPlayerId && names.has(errorPlayerId) && (
               <p className={styles.errorNote} data-testid="editor-error-player">
-                문제 선수: {playersById.get(errorPlayerId)!.name}
+                문제 선수: {names.full(errorPlayerId)}
               </p>
             )}
           </section>

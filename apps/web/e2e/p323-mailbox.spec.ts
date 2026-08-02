@@ -27,6 +27,12 @@ interface MailSeed {
   state: "UNREAD" | "READ" | "CLAIMED" | "EXPIRED";
   points?: number;
   gems?: number;
+  /**
+   * 선수 첨부. ⚠️ 한때 이 축이 **항상 `[]`** 이라 `MailCenter.PlayerChip` 에 렌더 계약이 **0건**
+   * 이었다 — 그 컴포넌트가 #406 1차 blocker(화면에 `P077`)의 진원지였는데도 지키는 것이
+   * 정적 스캐너뿐이었고, 그 스캐너는 두 번 뚫렸다.
+   */
+  players?: Array<{ playerId: string; count: number }>;
 }
 
 function mail(seed: MailSeed) {
@@ -34,7 +40,7 @@ function mail(seed: MailSeed) {
     id: seed.id,
     title: seed.title ?? `${seed.id} 제목`,
     body: `${seed.id} 본문입니다`,
-    attachments: { points: seed.points ?? 0, gems: seed.gems ?? 0, players: [] },
+    attachments: { points: seed.points ?? 0, gems: seed.gems ?? 0, players: seed.players ?? [] },
     sentAt: "2026-07-30T00:00:00Z",
     expiresAt: null,
     readAt: seed.state === "UNREAD" ? null : "2026-07-30T01:00:00Z",
@@ -50,6 +56,8 @@ interface HomeMock {
   wallet?: { points: number; gems: number };
   rating?: number;
   records?: { wins: number; draws: number; losses: number };
+  /** `GET /api/players` 카탈로그. 기본은 빈 배열(= 이름을 아무도 모르는 상태). */
+  catalog?: Array<Record<string, unknown>>;
 }
 
 /** 현재 우편함 상태를 서버처럼 들고 있는 목 — 읽음·수령이 실제로 반영돼야 뱃지 계약이 성립한다. */
@@ -76,7 +84,9 @@ async function mockHome(page: Page, mock: HomeMock) {
   await page.route((url) => url.pathname === "/api/notices/active", (route) =>
     route.fulfill(json({ notices: [] })),
   );
-  await page.route((url) => url.pathname === "/api/players", (route) => route.fulfill(json([])));
+  await page.route((url) => url.pathname === "/api/players", (route) =>
+    route.fulfill(json(mock.catalog ?? [])),
+  );
 
   await page.route((url) => url.pathname === "/api/mails", (route) => {
     state.listCalls += 1;
@@ -121,7 +131,11 @@ async function mockHome(page: Page, mock: HomeMock) {
           id,
           claimed: true,
           applied: true,
-          granted: { points: target.attachments.points, gems: target.attachments.gems, players: [] },
+          granted: {
+            points: target.attachments.points,
+            gems: target.attachments.gems,
+            players: target.attachments.players,
+          },
           wallet: { points: 62000 + target.attachments.points, gems: 120 },
         }),
       );
@@ -208,6 +222,53 @@ test.describe("#323 — 홈 헤더 우편함(hero 확정 A)", () => {
 
     await item.locator("button").first().click();
     await expect(page.getByTestId("mail-claim")).toBeDisabled();
+  });
+
+  /**
+   * ★ <b>선수 첨부 칩 — 이름은 초크포인트로만</b>(#406 요구 6).
+   *
+   * <p>⚠️ `MailCenter.PlayerChip` 이 1차 blocker 의 <b>진원지</b>였다
+   * (`const name = roster.find(…)?.name;` + 다음 줄 `name ?? playerId` → 화면에 <b>`P077`</b>).
+   * 그런데 위 `mail()` 헬퍼가 `players` 를 <b>항상 `[]`</b> 로 만들어서, 이 컴포넌트를 <b>렌더로</b>
+   * 검증하는 계약이 <b>0건</b>이었다 — 지키는 것이 정적 스캐너뿐이었고 <b>그 스캐너는 두 번
+   * 뚫렸다</b>. 그래서 동작으로 박제한다.
+   *
+   * <p>표본은 셋이고 <b>규칙 하나당 표본 하나</b>다(#286 W5 교훈 — 축이 다른 규칙을 한 픽스처에
+   * 겹치면 앞 분기가 결과를 덮는다):
+   * <ul>
+   *   <li>ⓐ 카탈로그 히트 + `shortName` <b>있음</b>(#411 스위치 <b>후</b> 응답 모양) → <b>짧은 이름</b>.
+   *       밀집 UI 축을 `full` 로 되돌리는 변이가 여기서 죽는다.</li>
+   *   <li>ⓑ 카탈로그 히트 + `shortName` <b>없음</b>(= <b>지금 라이브</b> 응답 모양) → 풀네임 폴백.
+   *       배포 순서가 뒤집혀도 칩이 비지 않는다.</li>
+   *   <li>ⓒ 카탈로그 <b>미상</b> → `미상 선수`. 그리고 화면 어디에도 playerId 가 없다.</li>
+   * </ul>
+   */
+  test("선수 첨부 칩 — 짧은 이름 · 미상은 `미상 선수`(playerId 노출 0)", async ({ page }) => {
+    await mockHome(page, {
+      mails: [
+        mail({ id: "M1", state: "UNREAD", players: [{ playerId: "P077", count: 2 }] }),
+        mail({ id: "M2", state: "UNREAD", players: [{ playerId: "P001", count: 1 }] }),
+        mail({ id: "M3", state: "UNREAD", players: [{ playerId: "P999", count: 3 }] }),
+      ],
+      unread: 3,
+      catalog: [
+        { id: "P077", name: "크바라츠헬리아", shortName: "크바라", position: "FW", grade: "DIA" },
+        { id: "P001", name: "레프 야신", position: "GK", grade: "LEGEND" },
+      ],
+    });
+    await gotoHome(page);
+    await page.getByTestId("mail-center-open").click();
+    await expect(page.getByTestId("mail-item")).toHaveCount(3);
+
+    const item = (id: string) => page.locator(`[data-testid="mail-item"][data-mail-id="${id}"]`);
+    await expect(item("M1")).toContainText("크바라 2장");
+    await expect(item("M2")).toContainText("레프 야신 1장");
+    await expect(item("M3")).toContainText("미상 선수 3장");
+
+    // ⓐ 가 **짧은 축**이라는 것 — `names.full(…)` 로 되돌리면 여기가 죽는다.
+    await expect(item("M1")).not.toContainText("크바라츠헬리아");
+    // ⓒ id 는 어디로도 안 샌다 — 칩 밖으로 새는 경로까지 같이 본다.
+    await expect(page.getByTestId("mail-center")).not.toContainText("P999");
   });
 
   /**

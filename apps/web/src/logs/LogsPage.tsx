@@ -6,6 +6,7 @@ import type { MatchLogItem, RankingsResponse, TradeLogItem } from "../api/v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
+import { usePlayerNames } from "../common/player-names";
 import {
   DEFAULT_MATCH_LOG_FILTER,
   MODE_LABELS,
@@ -394,6 +395,12 @@ function PersonalRecordsCard({
   const pr = data.personalRecords;
   const scorer = pr?.topScorer ?? null;
   const joined = scorer ? catalog.get(scorer.playerId) : undefined;
+  /**
+   * ⚠️ **카탈로그가 이긴다**(#406 W0 결정). 서버가 같이 실어 보내는 `scorer.name` 은 그 기록이
+   * 만들어질 당시의 스냅샷이라 **옛 영어 이름**일 수 있다 — 그래서 이름만 초크포인트로 물어
+   * playerId 로 현재 카탈로그를 먼저 본다. 등급·포지션은 서버 값 폴백을 그대로 둔다(개명과 무관).
+   */
+  const names = usePlayerNames();
   const grade = joined?.grade ?? scorer?.grade;
   return (
     <section className={styles.card} data-testid="personal-records">
@@ -406,7 +413,7 @@ function PersonalRecordsCard({
               className={styles.scorerName}
               style={grade ? { color: GRADE_COLORS[grade] } : undefined}
             >
-              {joined?.name ?? scorer.name}
+              {names.full(scorer.playerId, scorer.name)}
             </span>
             {grade && <span className={styles.scorerGrade}>{GRADE_LABELS[grade]}</span>}
             <span className={styles.scorerPos}>{joined?.position ?? scorer.position}</span>

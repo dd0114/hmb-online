@@ -4,6 +4,7 @@ import type { FaProposeRequest } from "../api/v2";
 import { GRADE_LABELS } from "../common/grades";
 import { Amount, useCurrency } from "../common/Amount";
 import { CURRENCY_POINT } from "../common/currency";
+import { playerNameOf } from "../common/player-names";
 import {
   canPropose,
   initialProposal,
@@ -53,7 +54,9 @@ export function ProposeBuilder({ owned, maxPoints, pending, onSubmit }: ProposeB
                 onClick={() => setState((s) => togglePlayer(s, p.id))}
               >
                 <span className={styles.chipPos}>{p.position}</span>
-                <span className={styles.chipName}>{p.name}</span>
+                {/* 칩 = 포지션·이름·등급이 한 줄에 같이 앉는 **밀집 UI** → 짧은 이름 축.
+                    행을 이미 손에 들었어도 초크포인트를 지난다(#406 요구 6). */}
+                <span className={styles.chipName}>{playerNameOf(p, "short")}</span>
                 <span className={styles.chipGrade}>{GRADE_LABELS[p.grade]}</span>
               </button>
             );

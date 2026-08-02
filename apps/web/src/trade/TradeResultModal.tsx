@@ -1,6 +1,7 @@
 import type { CatalogPlayer } from "../api/hooks";
 import type { TradeResolveResponse } from "../api/v2";
 import { Modal } from "../common/Modal";
+import { playerNameOf } from "../common/player-names";
 import { formatProbability } from "./trade-logic";
 import { TradePlayerCard } from "./TradePlayerCard";
 import styles from "./TradeResultModal.module.css";
@@ -47,7 +48,10 @@ export function TradeResultModal({ result, catalog, onClose }: TradeResultModalP
           />
           {result.released && (
             <p className={styles.released} data-testid="trade-result-released">
-              {result.released.name} 선수가 팀을 떠났습니다.
+              {/* 같은 사다리(카탈로그 우선 → 서버가 준 이름 → `미상 선수`)를 쓴다 — 여기만 서버
+                  `PlayerRef.name` 을 직독하면 이 한 줄만 옛 이름으로 남는다(#406 요구 6). */}
+              {playerNameOf(catalog.get(result.released.playerId), "full", result.released.name)}{" "}
+              선수가 팀을 떠났습니다.
             </p>
           )}
         </div>

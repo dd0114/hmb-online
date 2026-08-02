@@ -3,6 +3,7 @@ import {
   __clearLegendDotAssets,
   __setLegendDotAsset,
   avatarInitial,
+  initialsOf,
   resolveCharId,
   resolvePlayerAvatar,
   type AvatarPlayer,
@@ -52,13 +53,26 @@ describe("resolvePlayerAvatar — 분기", () => {
   });
 });
 
-describe("avatarInitial", () => {
-  it("이름 첫 글자", () => {
-    expect(avatarInitial("손흥민")).toBe("손");
-    expect(avatarInitial("  Ada Lovelace")).toBe("A");
+/**
+ * ⚠️ **규칙이 하나로 합쳐졌다**(#406 W1b 수리). 예전엔 `avatarInitial` 이 "첫 글자 한 개"
+ * (`손흥민`→`손`)였고 형제 함수 `CharAvatar.initialsOf` 는 "마지막 토큰 2글자"(`레프 야신`→`야신`)
+ * 라 **같은 질문에 답이 둘**이었다. 지금은 `avatarInitial === initialsOf` 다 — 그래서 여기 기대값도
+ * 한글 2글자·로마자 이니셜로 바뀐다. 화면 영향 0(유일 소비자 `PlayerAvatar` 를 쓰는 화면이 없다).
+ */
+describe("avatarInitial — initialsOf 와 같은 규칙(별칭)", () => {
+  it("한글은 마지막 토큰 2글자, 로마자는 첫+끝 이니셜", () => {
+    expect(avatarInitial("손흥민")).toBe("손흥");
+    expect(avatarInitial("레프 야신")).toBe("야신");
+    expect(avatarInitial("  Ada Lovelace")).toBe("AL");
   });
   it("빈 이름 → '?'", () => {
     expect(avatarInitial("")).toBe("?");
     expect(avatarInitial("   ")).toBe("?");
+  });
+  it("두 이름이 실제로 같은 함수다 — 규칙이 다시 갈라지면 죽는다", () => {
+    expect(avatarInitial).toBe(initialsOf);
+    for (const n of ["손흥민", "레프 야신", "Paolo Maldini", "", "   ", "크바라츠헬리아"]) {
+      expect(avatarInitial(n)).toBe(initialsOf(n));
+    }
   });
 });

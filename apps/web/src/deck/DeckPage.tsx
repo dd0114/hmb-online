@@ -10,6 +10,7 @@ import { useNavLocked } from "../common/nav-lock";
 import { useTutorial } from "../common/tutorial-context";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
+import { usePlayerNames } from "../common/player-names";
 import { useNavGuardRun, useRegisterNavGuard, type NavGuard } from "../common/NavGuard";
 import {
   emptyDraft,
@@ -131,6 +132,8 @@ export function DeckPage() {
   }, [players]);
 
   const ownedPlayers = useMemo(() => (Array.isArray(players) ? players : []).filter((p) => p.owned), [players]);
+  /** 이름은 초크포인트로만(#406 요구 6). */
+  const names = usePlayerNames();
 
   const dirty = editor != null && baseline != null && isDirty(editor, "", baseline);
 
@@ -288,8 +291,8 @@ export function DeckPage() {
         {serverError && (
           <p className={styles.serverError} data-testid="deck-server-error">
             저장 실패 [{serverError.rule}] {serverError.message}
-            {serverError.playerId && playersById.get(serverError.playerId)
-              ? ` — ${playersById.get(serverError.playerId)!.name}`
+            {serverError.playerId && names.has(serverError.playerId)
+              ? ` — ${names.full(serverError.playerId)}`
               : ""}
           </p>
         )}

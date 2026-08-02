@@ -11,6 +11,7 @@ import {
 } from "../api/hooks";
 import { useRelations } from "../api/hooks-v2";
 import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
+import { usePlayerNames } from "../common/player-names";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
 import { AutoModeToggle } from "./AutoModeToggle";
@@ -84,6 +85,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
     for (const p of players ?? []) map.set(p.id, p);
     return map;
   }, [players]);
+  /** 이름은 초크포인트로만(#406 요구 6) — `playersById` 는 포지션·등급 등 나머지 정보용. */
+  const names = usePlayerNames();
   const ownedPlayers = useMemo(() => (players ?? []).filter((p) => p.owned), [players]);
 
   // initialize the editor from the active deck once (snapshot to fully edit — AC-B2).
@@ -111,10 +114,11 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
     () =>
       starters.map((s) => ({
         playerId: s.playerId,
-        name: playersById.get(s.playerId)?.name ?? s.playerId,
+        // 드롭다운 한 줄 · 안내 문장 = 넓은 자리 → 풀네임.
+        name: names.full(s.playerId),
         position: playersById.get(s.playerId)?.position ?? "?",
       })),
-    [starters, playersById],
+    [starters, playersById, names],
   );
 
   /** 마킹 원탭 확정 — 대상 상대에게 붙일 수비수(선택/자동)의 프롬프트에 "[상대] 막아" 합성. */
@@ -305,7 +309,7 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
                 {starters.map((s) => (
                   <li key={s.playerId} className={styles.condItem} data-testid={`cond-${s.playerId}`}>
                     <ConditionClock value={match.conditions![s.playerId] ?? 0.5} size={26} testId={`cond-clock-${s.playerId}`} />
-                    <span className={styles.condName}>{playersById.get(s.playerId)?.name ?? s.playerId}</span>
+                    <span className={styles.condName}>{names.short(s.playerId)}</span>
                   </li>
                 ))}
               </ul>
@@ -323,7 +327,7 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
             {starters.map((s) => (
               <li key={s.playerId} className={styles.condItem} data-testid={`cond-${s.playerId}`}>
                 <ConditionClock value={match.conditions![s.playerId] ?? 0.5} size={26} testId={`cond-clock-${s.playerId}`} />
-                <span className={styles.condName}>{playersById.get(s.playerId)?.name ?? s.playerId}</span>
+                <span className={styles.condName}>{names.short(s.playerId)}</span>
               </li>
             ))}
           </ul>

@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { useMatch, usePlayers, type CatalogPlayer } from "../api/hooks";
 import { useSaveTeamPreset, useTeamPresets } from "../api/hooks-v2";
 import { Modal } from "../common/Modal";
+import { usePlayerNames } from "../common/player-names";
 import { snapshotSummary } from "../deck/preset-selector-logic";
 import { TACTICS_KEYS, TACTICS_LABELS } from "../deck/tactics-logic";
 import {
@@ -60,6 +61,8 @@ export function MatchSnapshotDialog({ matchId, opponentName, createdAt, onClose 
     () => new Map<string, CatalogPlayer>((players ?? []).map((p) => [p.id, p])),
     [players],
   );
+  /** 이름은 초크포인트로만(#406 요구 6) — `playersById` 는 파워 계산(능력치)에 계속 쓰인다. */
+  const names = usePlayerNames();
   const summary = useMemo(
     () => (snapshot ? snapshotSummary(snapshot, playersById) : null),
     [snapshot, playersById],
@@ -122,7 +125,7 @@ export function MatchSnapshotDialog({ matchId, opponentName, createdAt, onClose 
           <ul className={styles.starters} data-testid="snapshot-starters">
             {starterIdsInOrder(snapshot).map((playerId) => (
               <li key={playerId} className={styles.starter} data-testid={`snapshot-starter-${playerId}`}>
-                {playersById.get(playerId)?.name ?? playerId}
+                {names.full(playerId)}
               </li>
             ))}
           </ul>

@@ -4,6 +4,7 @@ import type { Personality, TeamTactics } from "../api/v2";
 import { PersonalityBadge, TrustGauge } from "../common/RelationBits";
 import { FullArtCard } from "../common/FullArtCard";
 import { PromptBlock } from "../common/PromptBlock";
+import { playerNameOf } from "../common/player-names";
 import { conditionLabel } from "../match/condition-clock";
 import { PROMPT_MAX_CHARS, type DraftSlot } from "./deck-logic";
 import {
@@ -384,7 +385,7 @@ function PlayerContext(props: PlayerContextProps) {
         <span data-rail-art>
           <FullArtCard
             playerId={player.id}
-            name={player.name}
+            name={playerNameOf(player, "full")}
             grade={player.grade}
             position={player.position}
             size="rail"
@@ -395,7 +396,9 @@ function PlayerContext(props: PlayerContextProps) {
         </span>
         <span className={styles.mini}>{slotNumber ?? "—"}</span>
         <span className={styles.who}>
-          <b data-testid="rail-title">{player.name}</b>
+          {/* 레일 헤드 = **지시 헤더**(한 줄을 통째로 쓰는 넓은 자리) → 풀네임 축
+              (`player-names.ts` 두 축 표). 밀집 UI 인 리스트 행·보드 토큰과 다른 축인 것이 의도다. */}
+          <b data-testid="rail-title">{playerNameOf(player, "full")}</b>
           <span data-testid="rail-subtitle">
             {player.position}
             {condition != null ? ` · 컨디션 ${conditionLabel(condition)}` : ""}

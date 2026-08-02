@@ -88,9 +88,14 @@ describe("스냅샷 요약", () => {
 
     expect(screen.getByTestId("snapshot-formation").textContent).toBe("4-3-3");
     expect(screen.getByTestId("snapshot-starter-count").textContent).toContain("11");
-    // 카탈로그에 있는 선수는 이름, 없으면 playerId 폴백
     expect(screen.getByTestId("snapshot-starter-P0").textContent).toBe("골키퍼짱");
-    expect(screen.getByTestId("snapshot-starter-P5").textContent).toBe("P5");
+    /**
+     * ⚠️ **폴백이 바뀌었다 (#406 요구 6)**: 카탈로그에 없는 선수는 예전엔 `P5`(=playerId)를
+     * 그대로 찍었다. 유저에게 `P077` 은 이름이 아니다 — 이제 사다리 끝은 `미상 선수` 다
+     * (`common/player-names.ts`). 이 줄은 그 결정을 화면에서 박제한다.
+     */
+    expect(screen.getByTestId("snapshot-starter-P5").textContent).toBe("미상 선수");
+    expect(screen.getByTestId("snapshot-starter-P5").textContent).not.toBe("P5");
     expect(screen.getByTestId("snapshot-tactic-line").textContent).toBe("0.80");
     expect(screen.getByTestId("snapshot-tactic-width").textContent).toBe("0.20");
     expect(screen.getByTestId("snapshot-team-prompt").textContent).toContain("역습 위주");

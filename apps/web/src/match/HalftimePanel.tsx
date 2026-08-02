@@ -8,6 +8,7 @@ import {
   type MatchDetail,
 } from "../api/hooks";
 import { ErrorToast } from "../common/ErrorToast";
+import { usePlayerNames } from "../common/player-names";
 import { DeckEditor } from "../deck/DeckEditor";
 import { emptyDraft, type DeckDraft } from "../deck/deck-logic";
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
@@ -162,7 +163,13 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
     }
   }, [editor, deck, shapeMode, baseDraft, firstHalfTactics, draft.draft]);
 
-  const nameOf = (id: string) => playersById.get(id)?.name ?? id;
+  /**
+   * 이름은 초크포인트로만(#406 요구 6). 두 축을 나눠 쓴다 —
+   * `nameOf` = 안내 문장·aria 라벨(넓은 자리) / `shortNameOf` = 교체 칩(밀집 UI, 390px 에 최대 3장).
+   */
+  const names = usePlayerNames();
+  const nameOf = (id: string) => names.full(id);
+  const shortNameOf = (id: string) => names.short(id);
   const posOf = (id: string) => playersById.get(id)?.position;
 
   /**
@@ -348,7 +355,7 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
       <div className={styles.subsBar} data-testid="halftime-subs-bar">
         {subs.map((s, i) => (
           <span key={`${s.out}-${s.in}`} className={styles.subChip} data-testid={`sub-chip-${i}`}>
-            {nameOf(s.out)} → {nameOf(s.in)}
+            {shortNameOf(s.out)} → {shortNameOf(s.in)}
             <button
               type="button"
               className={styles.subChipX}
