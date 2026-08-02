@@ -393,3 +393,257 @@
   color: var(--text-muted);
   line-height: 1.5;
 }
+
+/* ── 선수 기록 탭 (#403 W2, 목업 화면 ①) ─────────────────────────
+   ⚠️ 이 패널에는 **가로로 긴 줄이 둘**(정렬 칩 · 6열 표) 있다. 시트/패널의 `min-width: 0` 이
+   지켜 주는 것은 "부모가 안 늘어난다"까지고, 넘치는 몫을 **자기 안에서** 처리하는 것은 여기 몫이다
+   (#284: 칩 줄이 시트를 989px 로 밀어 탭바가 화면 밖으로 나갔는데 문서 스크롤은 0 이었다). */
+.playersBody {
+  width: 100%;
+  max-width: 720px;
+  margin-inline: auto;
+  min-width: 0;
+}
+
+.playerSeg {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  margin-bottom: 8px;
+  border-radius: 9px;
+  background: var(--sunk, #0c111b);
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.07));
+  min-width: 0;
+}
+
+.playerSegBtn {
+  flex: 1;
+  min-width: 0;
+  /* 터치 타깃 하한(#73 P1). */
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+.playerSegOn {
+  background: #1c2841;
+  color: #dbe7ff;
+  font-weight: 600;
+}
+
+/* 줄임표는 **이름에만** — "내 팀" 칩이 그 안에 있으면 긴 팀명 뒤에서 통째로 잘리는데 DOM 엔
+   남아 `toBeVisible()` 이 통과한다(#322 실적). */
+.playerSegName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playerLiveCap {
+  display: block;
+  margin: 0 0 7px;
+  font-size: 11px;
+  color: #ffc24b;
+  background: rgba(255, 194, 75, 0.08);
+  border: 1px solid rgba(255, 194, 75, 0.25);
+  border-radius: 7px;
+  padding: 4px 8px;
+}
+
+.playerSort {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 7px;
+  /* 좁은 폭에서 줄바꿈으로 시트를 밀지 않고 **자기 안에서** 스크롤한다. */
+  overflow-x: auto;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+.playerSort::-webkit-scrollbar {
+  display: none;
+}
+
+.playerSortChip {
+  flex: 0 0 auto;
+  font-size: 11px;
+  background: var(--sunk, #0c111b);
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.07));
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 5px 10px;
+}
+
+.playerSortOn {
+  border-color: var(--accent, #4c8dff);
+  color: var(--text);
+}
+
+/* `table-layout: fixed` = 넘침 방지의 본체다. 열 폭이 내용으로 정해지면 긴 팀/선수 이름 하나가
+   표를 통째로 밀어낸다(그리고 시트가 따라 늘어난다). 이름은 셀 안에서 줄임표로 진다. */
+.plist {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.colRating {
+  width: 42px;
+}
+
+.colNum {
+  width: 26px;
+}
+
+.colPass {
+  width: 46px;
+}
+
+.colDef {
+  width: 38px;
+}
+
+.plist th {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: right;
+  padding: 0 0 5px;
+}
+
+.plist th:first-child {
+  text-align: left;
+}
+
+.plist td {
+  padding: 7px 0;
+  border-top: 1px solid var(--hairline, rgba(255, 255, 255, 0.07));
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.plist td:first-child {
+  text-align: left;
+}
+
+.plistRow {
+  cursor: pointer;
+}
+
+.plistRowOn td {
+  background: rgba(255, 194, 75, 0.1);
+}
+
+.pcell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pnum {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  font-style: normal;
+  color: #fff;
+}
+
+.pnumHome {
+  background: #3b82f6;
+}
+
+.pnumAway {
+  background: #ef4444;
+}
+
+.pname {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ppos {
+  flex: 0 0 auto;
+  font-size: 9px;
+  color: var(--text-muted);
+  border: 1px solid var(--hairline, rgba(255, 255, 255, 0.07));
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.rating {
+  display: inline-block;
+  min-width: 30px;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 11px;
+  color: #04101f;
+  background: #7f8894;
+}
+
+.rating[data-tier="hi"] {
+  background: #3ddc84;
+}
+
+.rating[data-tier="mid"] {
+  background: #ffc24b;
+}
+
+.rating[data-tier="motm"] {
+  background: #c9a227;
+  color: #1a1400;
+}
+
+/* "기록 불완전" — 색 하나로만 말하지 않는다(적록색약). 글자가 뜻을 지고 title 이 수치를 준다. */
+.playerIncomplete {
+  display: block;
+  margin-top: 2px;
+  font-size: 8.5px;
+  font-weight: 600;
+  color: #ffc24b;
+  white-space: nowrap;
+}
+
+.pnote {
+  margin-left: 3px;
+  font-size: 8.5px;
+  color: var(--text-muted);
+}
+
+/* 상대 탭의 "지시는 비공개" 안내(#403 결정 ②) — 기록이 다 보이는 자리에서 **무엇이 가려져 있는지**
+   화면이 말한다. 색 하나로 말하지 않는다(적록색약): 자물쇠 글리프 + 문장. */
+.playerLocked {
+  margin: 12px 0 0;
+  padding: 9px 10px;
+  border: 1px dashed rgba(255, 194, 75, 0.4);
+  background: rgba(255, 194, 75, 0.05);
+  border-radius: 9px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #ffc24b;
+  text-align: center;
+}
+
+.playerLocked b {
+  font-weight: 700;
+}

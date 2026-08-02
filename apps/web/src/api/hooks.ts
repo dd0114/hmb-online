@@ -65,13 +65,19 @@ export function useModes(enabled: boolean = true) {
   });
 }
 
-/** GET /api/players — full catalog (110) + owned flags. Shared by /deck and /codex. */
-export function usePlayers() {
+/**
+ * GET /api/players — full catalog (110) + owned flags. Shared by /deck and /codex.
+ *
+ * `enabled` 는 **additive optional** 이다(#403 W2 m8) — 선수 탭처럼 "열었을 때만" 필요한 소비자가
+ * 안 여는 유저에게까지 110명을 내려받지 않게 한다. 기존 호출부는 인자를 안 주므로 무영향이고,
+ * 캐시는 공유라 다른 화면이 이미 받아 뒀으면 왕복 0 이다.
+ */
+export function usePlayers(enabled: boolean = true) {
   const { token } = useToken();
   return useQuery({
     queryKey: ["players"],
     queryFn: () => apiFetch<CatalogPlayer[]>("/api/players"),
-    enabled: Boolean(token),
+    enabled: Boolean(token) && enabled,
   });
 }
 

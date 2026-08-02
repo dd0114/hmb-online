@@ -11,6 +11,8 @@ import { useHalftimeDraft } from "../useHalftimeDraft";
 import { AutoModeToggle } from "../AutoModeToggle";
 import { ScoreBar } from "./ScoreBar";
 import { StatsPanel } from "./StatsPanel";
+import { PlayerStatsPanel } from "./PlayerStatsPanel";
+import { useMatchPlayerStats } from "../usePlayerStats";
 import { LogPanel } from "./LogPanel";
 import { SecondHalfBriefPanel } from "./SecondHalfBriefPanel";
 import { ResultPanel, RESULT_LABELS } from "./ResultPanel";
@@ -31,8 +33,9 @@ import styles from "./StageShell.module.css";
  * 시트 높이 등급 → 클래스. 등급 축은 `stage-state.sheetHeight` 가 소유하고 여기선 이름만 붙인다 —
  * 삼항으로 쓰면 등급이 셋이 된 순간(#348 `input`) 새 등급이 조용히 `info` 로 떨어진다(실제로 그 모양이었다).
  */
-const SHEET_HEIGHT_CLASS: Record<"info" | "input" | "state" | "result", string> = {
+const SHEET_HEIGHT_CLASS: Record<"info" | "list" | "input" | "state" | "result", string> = {
   info: styles.sheetInfo!,
+  list: styles.sheetList!,
   input: styles.sheetInput!,
   state: styles.sheetState!,
   result: styles.sheetResult!,
@@ -150,6 +153,23 @@ export function StageShell({
   const showRewardSheet =
     Boolean(bundle) && ((shouldShowRewardSheet(bundle) && !sheetDismissed) || sheetReopened);
 
+  /**
+   * 선수 기록 (#403). **탭과 피치 카드가 같은 결과를 본다**(집계 한 번) — 공통 조상이 여기뿐이다.
+   *
+   * 상한·캡션은 `statsWindow` 하나가 정한다(BL-1: 둘이 따로 놀아 감독시간이 "7분까지의 기록"
+   * 위에 전 선수 0 을 그렸다). 여기서 분·상한을 조립하지 마라 — `clockMinute` 을 넘기기만 한다.
+   *
+   * ⚠️ **보고 있을 때만 켠다**(`enabled`). 이 집계는 O(스냅샷 × 선수)이고 플레이헤드마다 다시
+   * 도는데, 항상 켜 두면 아무도 안 보는 동안에도 매 틱 수만 번이 돌아 관전 프레임 예산을 먹는다.
+   */
+  const playerStats = useMatchPlayerStats(
+    match.id,
+    match.state,
+    tick,
+    clockMinute,
+    activeTab === "players",
+  );
+
   return (
     <div className={styles.shell} data-testid="stage-shell">
       <ScoreBar
@@ -222,12 +242,34 @@ export function StageShell({
               여기서 스크롤을 넘겨주면 CTA 가 스크롤 **밖** 바닥에 앉아 어떤 위치에서도 안 덮는다.
               목록 = `OWN_SCROLL_TABS`(위) — 삼항으로 쓰면 두 번째 탭이 조용히 빠진다.
             */}
-            <div className={`${styles.panel} ${OWN_SCROLL_TABS.has(activeTab) ? styles.panelFlush : ""}`}>
+            {/*
+              ⚠️ **`key={activeTab}` 가 필요하다 — 없으면 새 탭이 이미 스크롤된 채로 열린다.**
+              이 `div` 가 시트의 유일한 스크롤러이고 탭이 바뀌어도 **같은 DOM 노드**라 앞 탭의
+              `scrollTop` 을 그대로 물고 간다. 로그 패널은 마운트마다 마지막 줄을
+              `scrollIntoView` 하므로(LogPanel), 로그를 보다 다른 탭으로 가면 그만큼 내려간 자리에서
+              시작한다 — 실측 1280×800 에서 **235px**. 선수 탭에서는 그 235px 가 팀 세그먼트
+              (우리↔상대)와 라이브 캡션을 통째로 덮어 "상대 기록을 볼 방법이 없는 화면"이 됐다.
+              **문서 스크롤은 0 이라 기존 계약이 전부 green 이었고, 실화면 캡처로만 보였다**(루트 §2-2).
+              key 를 주면 탭마다 새 노드라 항상 맨 위에서 시작하고, 로그의 자동 스크롤은 그 새 노드
+              위에서 그대로 동작한다(자식 effect 가 마운트 뒤에 돈다).
+            */}
+            <div
+              key={activeTab}
+              className={`${styles.panel} ${OWN_SCROLL_TABS.has(activeTab) ? styles.panelFlush : ""}`}
+            >
               {activeTab === "stats" && (
                 <StatsPanel
                   matchId={match.id}
                   half={half}
                   tick={tick}
+                  homeName={homeName}
+                  awayName={awayName}
+                  myTeamSide={myTeamSide}
+                />
+              )}
+              {activeTab === "players" && (
+                <PlayerStatsPanel
+                  stats={playerStats}
                   homeName={homeName}
                   awayName={awayName}
                   myTeamSide={myTeamSide}
