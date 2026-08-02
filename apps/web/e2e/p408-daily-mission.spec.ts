@@ -506,8 +506,14 @@ test("#408 홈 — 구 서버면 미션 몫이 0 이라 줄이 안 뜬다", asyn
 
 // ── (9) 결과 화면 ────────────────────────────────────────────────────────
 
-async function bootstrapResult(page: Page, missions?: unknown) {
+/**
+ * @param afterClaim 수령이 성공한 **뒤** `/api/matches/M1/result` 가 돌려줄 `missions`.
+ *   ⚠️ 이게 이 스펙의 급소다 — 목이 처음부터 `CLAIMED` 를 주는 **정적** 표본으로는
+ *   "수령 후 화면이 갱신되나"를 **구조적으로 못 잡는다**(독립검증 blocker-1 이 그 구멍이었다).
+ */
+async function bootstrapResult(page: Page, missions?: unknown, opts: { afterClaim?: unknown } = {}) {
   const hits = { me: 0, claim: [] as string[] };
+  let served = missions;
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "guest");
@@ -516,6 +522,8 @@ async function bootstrapResult(page: Page, missions?: unknown) {
   await mockAppConfig(page, appConfigPayload());
   await page.route((url) => /^\/api\/missions\/[^/]+\/claim$/.test(url.pathname), (route) => {
     hits.claim.push(route.request().url().split("/api/missions/")[1].split("/")[0]);
+    // 서버는 수령 즉시 그 행을 CLAIMED 로 바꾼다 — 다음 결과 조회부터 그 값이 온다.
+    if (opts.afterClaim !== undefined) served = opts.afterClaim;
     return route.fulfill(json({
       claimed: { currency: "GEM", amount: 222 },
       wallet: { points: 10000, gems: 322 },
@@ -538,7 +546,7 @@ async function bootstrapResult(page: Page, missions?: unknown) {
     route.fulfill(json({
       matchId: "M1", scoreHome: 3, scoreAway: 1, result: "WIN",
       pointsAwarded: 5000, teamStats: {}, playerStats: [],
-      ...(missions === undefined ? {} : { missions }),
+      ...(served === undefined ? {} : { missions: served }),
     })),
   );
   await page.goto("/match/M1");
@@ -602,6 +610,33 @@ test("#408 결과 화면 [받기] — 달성분을 그 자리에서 받는다(�
   // 같은 엔드포인트, 같은 id.
   await expect.poll(() => hits.claim).toEqual(["R1"]);
   await expect.poll(() => hits.me, { timeout: 5000 }).toBeGreaterThan(before);
+});
+
+test("#408 결과 화면 — **수령하면 [받기]가 사라지고 `CLAIMED` 로 바뀐다** (독립검증 blocker-1)", async ({ page }) => {
+  /**
+   * ⚠️ **이 계약이 없어서 blocker 가 살았다.** 바로 위 테스트는 `claim` 호출과 `/api/me` 재조회만
+   * 단언하고 **버튼이 사라지는지는 안 봤고**, "양방향" 표본은 목이 처음부터 `CLAIMED` 를 주는
+   * **정적** 케이스라 이 경로를 아예 안 탄다. 그 사이에서 `useMatchResult`(staleTime: Infinity)가
+   * 무효화되지 않아 `missions[].state` 가 **영원히 COMPLETED** 였다 — 다이아를 받았는데 버튼이
+   * 남아 다시 누르면 409 "이미 받은 보상입니다"를 본다. 이 화면엔 지갑 배지도 없어서 유저는
+   * 받았는지 확인할 방법이 없다.
+   *
+   * 교훈: 뮤테이션 계약은 "무효화 호출이 나갔나"가 아니라 **결과 화면의 최종 상태**로 단언한다.
+   */
+  const hits = await bootstrapResult(page, [rm({})], { afterClaim: [rm({ state: "CLAIMED" })] });
+
+  const row = page.locator('[data-mission-id="R1"]');
+  await expect(row).toHaveAttribute("data-state", "COMPLETED");
+  await expect(row.getByTestId("result-mission-claim")).toBeEnabled();
+
+  await row.getByTestId("result-mission-claim").click();
+
+  // 화면이 서버의 새 상태를 따라온다 — 문이 닫힌다.
+  await expect(row).toHaveAttribute("data-state", "CLAIMED");
+  await expect(row.getByTestId("result-mission-claim")).toHaveCount(0);
+  await expect(row.getByTestId("result-mission-claimed")).toContainText("받음");
+  // 한 번만 호출됐다(= 유저가 다시 누를 이유가 생기지 않았다).
+  expect(hits.claim).toEqual(["R1"]);
 });
 
 test("#408 결과 화면 — ⚠️ **양방향**: 진행도가 닿아도 CLAIMED 면 버튼이 없고, 못 닿아도 COMPLETED 면 있다", async ({ page }) => {

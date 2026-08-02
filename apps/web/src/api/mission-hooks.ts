@@ -44,9 +44,20 @@ export function useDailyMissions(enabled = true) {
 /**
  * `POST /api/missions/{id}/claim`.
  *
- * ⚠️ **지갑이 움직이므로 `["me"]` 를 반드시 무효화한다**(가챠·우편함 선례). 안 하면 헤더 잔액과
- * 실제가 어긋난 화면이 남고, 유저는 다이아가 들어왔는지 확인할 방법이 없다.
- * 실패(409)에도 미션 목록은 무효화한다 — 409 는 "화면이 낡았다"는 신호다(다른 탭에서 이미 받음 등).
+ * ⚠️ **수령은 미션을 그리는 화면이 둘이라 무효화도 둘이다.** 하나만 하면 다른 쪽이 낡은 채 남는다.
+ *
+ *  · `MISSIONS_QUERY_KEY` — 원정 페이지 섹션(오늘 미션 · 받지 않은 보상)
+ *  · **`["matchResult"]`** — 결과 화면(`useMatchResult`). ⚠️ 그 쿼리는 `staleTime: Infinity` 라
+ *    무효화하지 않으면 `missions[].state` 가 **영원히 `COMPLETED`** 로 남는다 → 다이아를 받았는데
+ *    [받기]가 그대로 보이고, 다시 누르면 409 "이미 받은 보상입니다". **이 화면엔 지갑 배지가
+ *    없어서** 유저는 받았는지 확인할 방법조차 없다(독립검증 blocker-1). 버튼 판정
+ *    (`missionClaimable`)은 옳았고 **입력 데이터가 낡은 것**이었다 — 설계 §8 이 `state` 를 필수로
+ *    만든 유일한 근거가 이 성질이므로, 필드만 싣고 여기서 끊으면 그 계약이 화면에서 성립하지 않는다.
+ *    키는 `["matchResult", id]` 라 접두 무효화로 열려 있는 결과 화면이 따라온다.
+ *  · `["me"]` — 지갑이 움직인다(가챠·우편함 선례). 안 하면 헤더 잔액과 실제가 어긋난다.
+ *
+ * 실패(409)에도 두 목록은 무효화한다 — 409 는 "화면이 낡았다"는 신호다(다른 탭에서 이미 받음 등).
+ * 지갑은 안 움직였으므로 `["me"]` 는 건드리지 않는다.
  */
 export function useClaimMission() {
   const queryClient = useQueryClient();
@@ -54,10 +65,12 @@ export function useClaimMission() {
     mutationFn: (id: string) => apiFetch<MissionClaimResult>(missionClaimPath(id), { method: "POST" }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: MISSIONS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["matchResult"] });
       queryClient.invalidateQueries({ queryKey: ["me"] });
     },
     onError: () => {
       queryClient.invalidateQueries({ queryKey: MISSIONS_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: ["matchResult"] });
     },
   });
 }
