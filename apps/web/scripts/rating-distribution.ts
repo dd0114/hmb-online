@@ -204,6 +204,13 @@ export function hashSources(root: string): string {
  * 버전을 안 올리는 것이 흔하고(범프는 "재현 계약이 바뀔 때"다 — 루트 CLAUDE.md §6), 그 상태에서
  * 지문이 그대로면 하네스가 **낡은 표본을 조용히 재사용**한다 = m6 이 막겠다던 사고가 이 축에만
  * 남아 있었다(#403 통합 검증 minor-5). 비용은 1회 수십 ms 라 캐시를 한 번 잘못 쓰는 것보다 싸다.
+ *
+ * ⚠️ **범위는 `packages/engine/src/**` 하나다 — 그 이상으로 읽지 마라**(#403 W1e minor-d).
+ * 문구가 그냥 *"엔진이 바뀌면"* 이라 `packages/shared/**`(직렬화 계약)까지 덮는 것처럼 읽혔는데
+ * **안 덮는다.** 지금은 무해하다 — shared 는 zod 스키마·`clamp` 뿐이고 **시뮬 수식이 없으며**
+ * 계약 프리즈 대상(루트 CLAUDE.md §10)이라 표본을 조용히 움직일 경로가 아니다.
+ * 그 전제가 깨지면(shared 에 수치 로직이 생기면) 여기에 `hashSources(SHARED_SRC_DIR)` 를
+ * **더해야 한다** — 문구만 넓히지 말고.
  */
 let engineSrcHashMemo: string | null = null;
 function engineSourceHash(): string {
@@ -215,12 +222,13 @@ function engineSourceHash(): string {
  * 캐시 무효화 키 — **표본을 만든 것이 바뀌면 캐시를 버린다.**
  *
  * ⚠️ 종전에는 **시드 목록만** 대조했다. 계수 스윕은 사후 채점이라 안전했지만,
- * **엔진이나 `computePlayerStats` 가 바뀌면 낡은 표본을 조용히 돌려준다** — 그러면 hero 가
- * 조용히 틀린 근거로 밸런스를 잡는다. 이 에픽에서 죽은 하네스로 **네 번** 사고가 났다.
+ * `packages/engine/src/**` 나 `computePlayerStats` 가 바뀌면 낡은 표본을 조용히 돌려준다 —
+ * 그러면 hero 가 조용히 틀린 근거로 밸런스를 잡는다. 이 에픽에서 죽은 하네스로 **네 번** 사고가 났다.
  *
- * 지문 = 엔진 `config.version` + **엔진 소스 해시**(버전을 안 올린 엔진 수정, minor-5) +
- * 집계 모듈(`player-stats.ts`) 소스 해시 + 모드/시드.
- * (평점 계수는 **일부러 안 넣는다** — 표본은 계수와 무관하고, 넣으면 스윕마다 재시뮬한다.)
+ * 지문에 **들어가는 것** = 엔진 `config.version` + `packages/engine/src/**` 소스 해시
+ * (버전을 안 올린 엔진 수정, minor-5) + 집계 모듈(`player-stats.ts`) 소스 해시 + 모드/시드.
+ * 지문에 **안 들어가는 것** = 평점 계수(표본과 무관 — 넣으면 스윕마다 재시뮬한다) ·
+ * `packages/shared/**`(`engineSourceHash` 주석의 근거 참조) · 이 파일 자신의 집계 로직 밖 코드.
  */
 export function fingerprintOf(mode: string, seeds: string[], engineHash: string = engineSourceHash()): string {
   const srcPath = fileURLToPath(new URL("../src/match/player-stats.ts", import.meta.url));

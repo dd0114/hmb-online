@@ -40,6 +40,18 @@ describe("엔진 소스 지문", () => {
     expect(files.filter((f) => f.endsWith(".test.ts"))).toEqual([]);
   });
 
+  /**
+   * ⚠️ **문구와 실효를 맞춘다**(#403 W1e minor-d). 주석이 그냥 *"엔진이 바뀌면"* 이라
+   * `packages/shared/**` 까지 덮는 것처럼 읽혔는데 **안 덮는다**. 지금은 무해하지만
+   * (shared = zod 스키마·`clamp`, **시뮬 수식 없음** + 계약 프리즈), 범위를 코드가 말하게 둔다.
+   * shared 에 수치 로직이 생기면 지문에 **더해야** 하고, 그때 이 계약이 그 자리를 가리킨다.
+   */
+  it("범위는 `packages/engine/src/**` 하나다 — shared 는 안 센다", () => {
+    expect(ENGINE_SRC_DIR.replace(/\\/g, "/")).toMatch(/\/packages\/engine\/src$/);
+    const files = engineSourceFiles(ENGINE_SRC_DIR);
+    expect(files.filter((f) => f.includes("/packages/shared/"))).toEqual([]);
+  });
+
   it("같은 트리는 같은 지문(결정론) · 내용이 바뀌면 다른 지문", () => {
     const a = tree();
     expect(hashSources(a)).toBe(hashSources(a));

@@ -1024,9 +1024,12 @@ function keeperAxis(line: PlayerStatLine, W: RatingWeights): number {
   //    이고, `priorFaced = 0` 은 가상의 값이 아니라 **수축 아블레이션과 하네스 `--weights`
   //    경로가 실제로 쓰는 설정**이다. 여기가 NaN 이면 그 선수의 평점이 NaN 이 되고
   //    (NaN 은 clamp 의 min/max 비교를 전부 통과한다) 화면까지 그대로 흘러간다.
-  //    `priorFaced > 0` 이면 `faced = 0` 에서도 shrunk === expectedSaveRate 라 기여가 정확히
-  //    0 이다 — 즉 출하값에서 이 조건은 `faced > 0` 과 **비트 동일**이고, 0 으로 내렸을 때만
-  //    다르게 행동한다. 계약 = "hero 가 계수를 0 으로 내려도 유한값이 나온다".
+  //    ⚠️ 이 등가는 **출하값의 성질이 아니라 항등식**이다(#403 W1e) — `priorFaced` 가 무엇이든
+  //    이 가드는 `faced > 0` 과 같은 답을 낸다: `prior > 0` 이면 `faced = 0` 에서도
+  //    shrunk === expectedSaveRate 라 기여가 정확히 0 이고, `prior = 0` 이면 `denom` 이 곧
+  //    `faced` 라 두 조건이 문자 그대로 같다. 그러니 이 줄을 **출하값에 기대어 읽지 마라** —
+  //    가드가 막는 것은 `if (true)` 로 조건을 없앴을 때의 `0/0` 뿐이다.
+  //    계약 = "분모 가드는 `priorFaced` 값과 무관하게 옳다" + "0 으로 내려도 유한값".
   const denom = faced + W.keeper.priorFaced;
   if (denom > 0) {
     const shrunk = (line.saves + W.keeper.priorFaced * W.keeper.expectedSaveRate) / denom;

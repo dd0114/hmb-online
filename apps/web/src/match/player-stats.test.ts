@@ -973,11 +973,50 @@ describe("GK 평점 = 선방률 축 — 일한 양과 무관한 상수가 아니
     expect(bigBad).toBeGreaterThan(smallBad);
   });
 
-  it("`priorFaced` 가 그 수축의 세기다 — 0 이면 얇은 표본이 그대로 튄다", () => {
-    const noShrink = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
-    noShrink.keeper.priorFaced = 0;
-    const thin = gk(2, 0);
-    expect(ratingWithWeights(thin, "GK", noShrink)).toBeGreaterThan(computeRating(thin, "GK"));
+  /**
+   * ⚠️ **출하값을 한쪽 팔로 쓰지 마라 — 그게 지뢰다.**
+   *
+   * 종전 계약은 `priorFaced = 0` 을 **출하 표와** 견줬다(`> computeRating(thin, "GK")`).
+   * 그러면 hero 가 출하값을 0 으로 내리는 순간 두 팔이 같은 값이 되어 **비교가 자기 자신과의
+   * 비교로 퇴화**하고 red 가 된다 — 그런데 `priorFaced = 0` 은 가상의 설정이 아니라
+   * **수축 아블레이션과 하네스 `--weights` 경로가 실제로 쓰는 값**이다(`player-stats.ts` 의
+   * `keeperAxis` 주석). 조정하면 red 가 되는 계약은 신호가 아니라 지뢰다(#403 W1d minor-1 과 같은 부류).
+   *
+   * 그래서 **두 팔을 다 주입한다.** 출하값이 무엇이든 성질이 성립하고, 재는 것은 계수가 아니라
+   * `keeperAxis` 의 **수축 산식**이다: 사전표본을 많이 깔수록 얇은 표본의 답이 기준선으로 당겨진다.
+   * (`saveRateScale` 도 고정 상수로 주입한다 — 이 계약은 "수축이 작동하는가"이지 그 세기가 아니다.)
+   */
+  describe("`priorFaced` 가 그 수축의 세기다 — 출하값과 무관한 성질로 건다", () => {
+    /** 축을 켠 채 밴드를 연 표. `priorFaced` 만 바뀌고 나머지는 모든 팔에서 동일하다. */
+    const at = (prior: number, line: PlayerStatLine): number => {
+      const w = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+      w.keeper.priorFaced = prior;
+      w.keeper.saveRateScale = 10; // 반올림(0.1)이 사다리를 삼키지 않게 크게
+      w.keeper.expectedSaveRate = 0.5;
+      w.max = 1e6; // 클램프가 비교를 먹으면 "안 움직였다"가 거짓 red 가 된다
+      w.min = -1e6;
+      return ratingWithWeights(line, "GK", w);
+    };
+    const LADDER = [0, 1, 4, 16] as const;
+
+    it("사전표본을 늘릴수록 얇은 표본이 기준선으로 당겨진다(양방향)", () => {
+      // 위쪽 — 유효슛 2개를 다 막은 키퍼. 수축이 세질수록 내려온다.
+      const up = LADDER.map((p) => at(p, gk(2, 0)));
+      for (let i = 1; i < up.length; i++) {
+        expect(up[i]!, `prior ${LADDER[i]} vs ${LADDER[i - 1]}: ${up}`).toBeLessThan(up[i - 1]!);
+      }
+      // 아래쪽 — 유효슛 2개를 다 먹은 키퍼. 수축이 세질수록 올라온다.
+      const down = LADDER.map((p) => at(p, gk(0, 2)));
+      for (let i = 1; i < down.length; i++) {
+        expect(down[i]!, `prior ${LADDER[i]} vs ${LADDER[i - 1]}: ${down}`).toBeGreaterThan(down[i - 1]!);
+      }
+    });
+
+    it("수축은 **얇은** 표본에 더 세게 걸린다(그게 이 장치가 있는 이유다)", () => {
+      const thin = Math.abs(at(0, gk(2, 0)) - at(16, gk(2, 0)));
+      const thick = Math.abs(at(0, gk(24, 0)) - at(16, gk(24, 0)));
+      expect(thin, `thin ${thin} · thick ${thick}`).toBeGreaterThan(thick);
+    });
   });
 
   /** 필드 플레이어에게 무해해야 한다 — 포지션 라벨이 아니라 **한 일**로 분기하므로. */
@@ -1017,9 +1056,30 @@ describe("GK 평점 = 선방률 축 — 일한 양과 무관한 상수가 아니
     expect(field).toBe(w.base);
   });
 
-  it("출하값에서는 분모 가드가 `faced > 0` 과 같은 답을 낸다(거동 변경 0)", () => {
-    // priorFaced > 0 이면 faced = 0 에서 shrunk === expectedSaveRate → 기여가 정확히 0.
-    expect(RATING_WEIGHTS.keeper.priorFaced).toBeGreaterThan(0);
+  /**
+   * ⚠️ 종전 계약은 *"**출하값에서는** 분모 가드가 `faced > 0` 과 같은 답을 낸다"* 였고,
+   * 그 성질은 `RATING_WEIGHTS.keeper.priorFaced > 0` **이기 때문에만** 참이라 단언 한 줄이
+   * 출하값 사실 게이트였다(= 0 으로 내리면 red = 지뢰).
+   *
+   * 실은 그 등가가 **모든 `priorFaced ≥ 0` 에서** 참이다:
+   *  - `prior > 0` → `faced = 0` 에서 `shrunk = (0 + prior·E)/(0 + prior) = E` → 기여 정확히 **0**.
+   *  - `prior = 0` → `denom = faced` 라 두 조건이 **문자 그대로 같다**.
+   * 그래서 값을 보지 않고 그 등가 자체를 건다 — "유효슛을 상대한 적 없는 선수에게 이 축은
+   * 정확히 0 을 준다, `priorFaced` 가 무엇이든". 가드를 `if (true)` 로 무력화하면
+   * `prior = 0` 팔에서 `0/0 = NaN` 이 되어 여기서 걸린다(NaN 은 clamp 를 통과한다).
+   */
+  it("분모 가드는 `priorFaced` 값과 무관하게 옳다 — faced = 0 이면 기여가 정확히 0", () => {
+    for (const prior of [0, 1, 4, 16]) {
+      const w = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+      w.keeper.priorFaced = prior;
+      const idle = ratingWithWeights(gk(0, 0), "GK", w);
+      expect(Number.isNaN(idle), `prior ${prior}`).toBe(false);
+      // 기여가 0 = 이 축을 통째로 건너뛴 것(`faced > 0` 가드)과 같은 답.
+      expect(idle, `prior ${prior}`).toBe(w.base);
+      // 필드 플레이어도 같다 — 여기가 NaN 이면 화면의 모든 평점이 NaN 이 된다.
+      expect(ratingWithWeights(gk(0, 0), "MF", w), `prior ${prior}`).toBe(w.base);
+    }
+    // 출하 경로에서도 같은 답인지 한 번 더(주입 경로만 맞고 기본 경로가 어긋나는 것 방지).
     expect(computeRating(gk(0, 0), "GK")).toBe(B);
   });
 
@@ -1096,7 +1156,17 @@ describe("상한 클램프 — 계수와 무관하게 참인 성질만 건다", 
     const wide = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
     wide.max = 1e6;
     wide.min = -1e6;
-    for (const l of [line({ tackles: 12, interceptions: 17 }), line({ goals: 9 }), line({ fouls: 40 })]) {
+    /**
+     * ⚠️ **표본이 상한만 건드리면 `min` 커버리지가 0 이다**(통합 검증 minor-b): `min` 클램프를
+     * 지워도 위 세 표본은 전부 green 이었다 — `fouls 40` 조차 4.5 로 밴드 **안**이라, 하한을
+     * 잡는 것은 오직 옆의 `[min, max] 안이다` 계약 하나뿐이었다. 그게 언젠가 은퇴하면 조용히 0 이 된다.
+     * 그래서 **규율 항이 확실히 하한을 넘기는 합성 라인**을 넣는다. 규율은 포지션 배수를 안 타므로
+     * (`ratingWithWeights`: `discipline` 은 `pos` 와 안 곱한다) 세 포지션 모두에서 아래로 뚫린다.
+     * ⚠️ 계수 게이트가 아니다 — 단언은 여전히 "잘린 값과 같다"이고, 계수가 바뀌어 이 표본이
+     * 하한에 안 닿아도 **red 가 되지 않는다**(커버리지만 줄어든다).
+     */
+    const belowMin = line({ fouls: 40, dispossessed: 40, yellowCards: 2, secondYellow: true, sentOff: true });
+    for (const l of [line({ tackles: 12, interceptions: 17 }), line({ goals: 9 }), line({ fouls: 40 }), belowMin]) {
       for (const pos of ["DF", "MF", "FW"] as const) {
         const raw = ratingWithWeights(l, pos, wide);
         const cut = Math.min(RATING_WEIGHTS.max, Math.max(RATING_WEIGHTS.min, raw));
@@ -1162,17 +1232,50 @@ describe("RATING_WEIGHTS 는 런타임에도 못 바꾼다", () => {
 });
 
 describe("MOTM", () => {
+  /**
+   * ⚠️ **"결정적 공격 기여자 중 하나"는 값 의존이었다.**
+   *
+   * 종전 계약은 MOTM 이 `goals > 0 || assists > 0` 인 선수여야 한다고 걸었다. 그건 이 픽스처에서
+   * 공격 기여자가 최고 평점이라는 **계수 의존 사실**이라, GK 축을 만지면(예: 수축 아블레이션
+   * `priorFaced 4→0` — 얇은 표본의 선방률이 그대로 튀어 GK 가 1위로 올라온다) 무너진다.
+   * MOTM 이 잘못 뽑힌 게 아니라 **1위가 바뀐 것**인데 계약이 red 가 되는 = 지뢰다.
+   *
+   * 남기는 것은 계수와 무관하게 참인 성질뿐이다 — ① 뽑힌 사람의 평점이 실제 최댓값이고
+   * ② 그 최댓값 집합 안에서 골랐으며 ③ 후보 풀이 **양 팀에 걸쳐 있다**(= "팀 무관"이 이 표본에서
+   * 실제로 시험된다). "팀 무관"에 이빨을 주는 것은 아래의 원정 1위 케이스다.
+   */
   it("팀 무관 최고 평점 1명", () => {
     const res = computePlayerStats(FIXTURE, { gkKeys: GK_KEYS });
-    const best = [...res.players].filter((p) => p.ticksPlayed > 0).sort((a, b) => b.rating - a.rating)[0]!;
+    const playing = res.players.filter((p) => p.ticksPlayed > 0);
     expect(res.motm).not.toBeNull();
-    expect(res.motm!.rating).toBe(best.rating);
-    // ⚠️ **누가** MOTM 인지는 계수에 따라 바뀐다 — 이 픽스처의 후보는 골을 넣은 H2 와
-    //    어시+키패스+태클의 H4 이고, 둘의 우열은 hero 가 내일 조정할 값에 달렸다.
-    //    그래서 이름을 박지 않고 "결정적 공격 기여자 중 하나"라는 관계로 건다.
-    const decisive = res.players.filter((p) => p.goals > 0 || p.assists > 0).map((p) => p.key);
-    expect(decisive.length).toBeGreaterThan(0);
-    expect(decisive).toContain(res.motm!.key);
+    const best = Math.max(...playing.map((p) => p.rating));
+    expect(res.motm!.rating).toBe(best);
+    const top = playing.filter((p) => p.rating === best).map((p) => p.key);
+    expect(top).toContain(res.motm!.key);
+    // 이 픽스처가 "팀 무관"을 실제로 시험하는가 — 한쪽 팀만 있으면 위 단언은 공허하다.
+    expect([...new Set(playing.map((p) => p.team))].sort()).toEqual(["away", "home"]);
+  });
+
+  /**
+   * 팀 무관에 이빨 — 1위가 원정이면 원정이 MOTM 이다. 가정은 **"골은 평점을 올린다"** 하나뿐이고
+   * (hero 확정 ① 의 방향 불변식) 값은 하나도 안 본다.
+   */
+  it("최고 평점이 원정 선수면 원정이 MOTM 이다", () => {
+    const res = computePlayerStats({
+      tickSnapshots: [
+        {
+          tick: 0, minute: 0, ball: { x: 50, y: 34 }, ballOwner: null,
+          players: [
+            { playerId: "H1", team: "home", pos: { x: 10, y: 34 } },
+            { playerId: "A1", team: "away", pos: { x: 90, y: 34 } },
+          ],
+        },
+      ],
+      events: [{ tick: 0, type: "goal", team: "away", playerId: "A1" }],
+    });
+    expect(stat(res, "away", "A1").rating).toBeGreaterThan(stat(res, "home", "H1").rating);
+    expect(res.motm!.key).toBe("away:A1");
+    expect(res.motm!.team).toBe("away");
   });
 
   it("동점이면 골 → 어시스트 → 키 순으로 결정론적으로 고른다(순서를 바꿔도 같은 답)", () => {
