@@ -1,20 +1,20 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`S3-C T3/T4 — 프론티어를 이기지 못한다 · 위험지역으로 새어 나간다 (반증 박제) > 결과 축(오프사이드·골·1대1)은 노이즈 바닥과 같은 자릿수다 — 게이트로 쓰지 마라 1`] = `
-"placebo: ofs 1.40 goal 6.95 1v1 2.05 shot 30.98
-trap 2.5: ofs 1.55 goal 6.60 1v1 1.95 shot 31.65"
+"placebo: ofs 3.80 goal 6.55 1v1 1.85 shot 30.38
+trap 2.5: ofs 4.60 goal 5.75 1v1 1.55 shot 30.73"
 `;
 
 exports[`S3-C T3/T4 — 프론티어를 이기지 못한다 · 위험지역으로 새어 나간다 (반증 박제) > 위험지역(<25m) 뚫림 — 트랩은 거기서 걸지 않는데도 대가는 치른다 1`] = `
-"placebo: <25 b28.56 25-40 b10.76 40-60 b1.75 >60 b0.00
-trap 2.5: <25 b30.16 25-40 b11.09 40-60 b1.99 >60 b0.00
-trap 6: <25 b35.53 25-40 b15.07 40-60 b3.78 >60 b0.00"
+"placebo: <25 b27.44 25-40 b10.26 40-60 b1.99 >60 b0.00
+trap 2.5: <25 b29.90 25-40 b10.08 40-60 b2.00 >60 b0.00
+trap 6: <25 b31.66 25-40 b13.49 40-60 b2.86 >60 b0.00"
 `;
 
 exports[`S3-C T3/T4 — 프론티어를 이기지 못한다 · 위험지역으로 새어 나간다 (반증 박제) > 트랩 팔과 무차별 상향 팔의 효율(잡힘/뚫림) 1`] = `
-"placebo: line 27.67 caught 0.590 behind 10.35 eff 0.0570
-trap 2.5: line 27.87 caught 0.613 behind 11.01 eff 0.0557
-trap 6: line 28.81 caught 0.690 behind 13.79 eff 0.0500
-blanket lineH 0.60: line 28.22 caught 0.675 behind 12.14 eff 0.0556
-blanket lineH 0.65: line 28.58 caught 0.747 behind 13.71 eff 0.0545"
+"placebo: line 27.61 caught 0.574 behind 10.04 eff 0.0572
+trap 2.5: line 28.01 caught 0.603 behind 10.50 eff 0.0574
+trap 6: line 28.65 caught 0.653 behind 12.04 eff 0.0543
+blanket lineH 0.60: line 28.09 caught 0.638 behind 11.61 eff 0.0549
+blanket lineH 0.65: line 28.22 caught 0.743 behind 13.05 eff 0.0569"
 `;

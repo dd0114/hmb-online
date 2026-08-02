@@ -117,6 +117,18 @@ const REF_0_41_0_SHIPPING = ["f9d9d778", "e816d215", "6a479763", "e5b0e30b", "27
 const REF_0_41_0_TRAP_ON = ["a2910ec7", "dc6849c4", "1f724206", "bca6a382", "f751df47", "295057c6", "43c19131", "a2c11142"];
 
 /**
+ * ⚠️ **#407 ⑦(engine@0.42.0) 재기록.** 오프사이드 **호출 게이트**(`rules.offside.callProb`
+ * 0.013 → 0.045)는 트랩 스위치 **밖**의 심판 판정이라(트랩 배수 `trapCallMult` 는 그대로) 이
+ * 파일의 두 롤백 계약 값이 움직인다 — 0.41.0 재기록과 같은 처방이다.
+ * **계약 내용은 그대로다**: "트랩 기제가 꺼져 있으면 트랩 도입 전과 같다".
+ * 위 0.39.0/0.41.0 상수는 **이력으로 남긴다**. shipping 은 8시드 중 **6개**가 갈렸고
+ * (`7b731a91`·`26945380` 는 불변 = 그 매치의 기하 오프사이드 롤이 0.013~0.045 창을 안 밟았다)
+ * trap-on 은 **8/8** 갈렸다(트랩 배수 1.8 이 곱해져 창이 더 넓다).
+ */
+const REF_0_42_0_SHIPPING = ["7b731a91", "e816d215", "460ce36e", "ed78f19e", "20f453fc", "26945380", "a241f391", "21dbf606"];
+const REF_0_42_0_TRAP_ON = ["4aa27f64", "e6929d05", "6913d420", "020536f1", "141980a2", "86c934dd", "06bf496f", "95b8ff9d"];
+
+/**
  * 플라시보 팔의 n20 측정 — **T2 엔드포인트와 T2c 절대값 변이체가 공유**한다(같은 20경기를
  * 두 번 돌리지 않는다). 모듈 로드 시 1회.
  */
@@ -341,15 +353,15 @@ describe("S3-C T5 — 롤백이 `3d38e86`(0.39.0) 과 비트 동일", () => {
   it("출하 픽스처(트랩 off)는 0.39.0 과 **똑같다** — 이 웨이브는 골든을 안 움직인다", () => {
     // 이것이 전술 기본값을 off 로 둔 이유다(스코프 §4-b). 깨지면 그 전제가 무너진 것이므로
     // `-u` 로 넘기지 말고 원인을 실측으로 설명해야 한다.
-    expect(hashes(defaultEngineConfig)).toEqual(REF_0_41_0_SHIPPING);
+    expect(hashes(defaultEngineConfig)).toEqual(REF_0_42_0_SHIPPING);
   }, 300_000);
 
   it("트랩을 켠 경기도 롤백 config(`trap.enabled=false` + `trapBiasM=2.5`)면 0.39.0 과 같다", () => {
-    expect(hashes(ROLLBACK, trapOnPatch)).toEqual(REF_0_41_0_TRAP_ON);
+    expect(hashes(ROLLBACK, trapOnPatch)).toEqual(REF_0_42_0_TRAP_ON);
   }, 300_000);
 
   it("그리고 기제가 켜지면 다르다 (롤백 계약이 공허하지 않다)", () => {
-    expect(hashes(defaultEngineConfig, trapOnPatch)).not.toEqual(REF_0_41_0_TRAP_ON);
+    expect(hashes(defaultEngineConfig, trapOnPatch)).not.toEqual(REF_0_42_0_TRAP_ON);
   }, 300_000);
 });
 

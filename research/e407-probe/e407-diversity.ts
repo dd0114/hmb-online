@@ -34,7 +34,14 @@ import { reconstructTransfers } from "../../packages/engine/src/realism/deepen";
 import { computeMatchStats } from "../../packages/engine/dev-viewer/match-stats";
 
 const N = Number(process.env.HMB_SEEDS || 20);
-const SEEDS = N > 20 ? GUARD_SEEDS.slice(0, N) : REALISM_SEEDS.slice(0, N);
+/**
+ * #407 ⑦: 배치 노이즈 점검용 시드 창 시작점(기본 0 = 기존 동작 그대로).
+ * 같은 지표를 **정의는 그대로 두고** 독립 배치로 나눠 재서 부호 일관성을 본다
+ * (`harness.ts` GUARD_SEEDS 주석의 "6배치 중 2개 역전" 실적과 같은 규율).
+ */
+const START = Number(process.env.HMB_SEED_START || 0);
+const POOL = START > 0 || N > 20 ? GUARD_SEEDS : REALISM_SEEDS;
+const SEEDS = POOL.slice(START, START + N);
 const select = makeSelectData();
 const GK_IDS = new Set(["H0", "A0"]);
 const DEFENDER_IDS = new Set(["H1", "H2", "H3", "H4", "A1", "A2", "A3", "A4"]);
