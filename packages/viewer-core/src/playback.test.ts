@@ -353,6 +353,40 @@ describe("buildAnnotations", () => {
     expect(foul?.anchor, "파울 토스트 anchor=파울러").toBe("A2");
     expect(card?.anchor, "카드 토스트 anchor=파울러").toBe("A2");
   });
+  /**
+   * #406 W5 (요구 4-2). 걷어내기는 **토스트가 아예 없었고**, 태클·가로챔은 무채색이라 "어느 팀
+   * 행동인지"를 말하지 못했다. 셋 다 행동 주체 앵커 + `team` 표식으로 통일한다.
+   *
+   * ⚠️ **색은 여기서 정하지 않는다** — 팔레트 SoT 는 `viewer.impl.mjs.teamRgb` 하나다. 이 층이
+   * 색을 실으면 두 곳이 되어 조용히 갈라진다. 그래서 단언도 `team` 필드에 건다.
+   */
+  it("#406 걷어내기·태클·가로챔 토스트 = 행동 주체 앵커 + team 표식(색은 렌더가 정한다)", () => {
+    const a = buildAnnotations(
+      [
+        { type: "clearance", tick: 40, team: "home", playerId: "P004" },
+        { type: "tackle", tick: 50, team: "away", playerId: "P077" },
+        { type: "interception", tick: 60, team: "home", playerId: "P009" },
+      ],
+      snaps,
+    );
+    const pick = (text: string) => a.find((x) => x.text === text && x.kind === "toast");
+    const cleared = pick("CLEARED!"), tackle = pick("TACKLE"), intc = pick("INTERCEPT");
+    expect(cleared, "걷어내기 토스트가 생긴다(종전 0건)").toBeTruthy();
+    for (const [t, id, side] of [[cleared, "P004", "home"], [tackle, "P077", "away"], [intc, "P009", "home"]] as const) {
+      expect(t!.anchor, `${t!.text} 앵커`).toBe(id);
+      expect(t!.anchorTeam, `${t!.text} 앵커 팀`).toBe(side);
+      expect((t as any).team, `${t!.text} team 표식`).toBe(side);
+    }
+    // 팔레트가 이 층으로 새 나가지 않았다 — col 은 팀 없는 구 로그 폴백값 그대로.
+    expect(cleared!.col).toBe("#cbd5e1");
+  });
+  it("#406 팀이 없는 구 로그에서는 team 표식 없이 종전 무채색으로 떨어진다", () => {
+    const a = buildAnnotations([{ type: "tackle", tick: 40 }], snaps);
+    const t = a.find((x) => x.text === "TACKLE")!;
+    expect((t as any).team).toBeUndefined();
+    expect(t.anchor).toBeUndefined();
+    expect(t.col).toBe("#cbd5e1");
+  });
   it("롱 드리블(같은 소유자 6틱+ 전진)에 '돌파!' 토스트", () => {
     const s: any[] = [];
     // #324: 전진 방향 판정이 소유팀을 **스냅샷에서** 찾으므로 players 를 싣는다(실 로그와 같은 모양).

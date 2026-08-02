@@ -51,7 +51,16 @@ export interface ViewerHooks {
   curPlayers(): unknown[];
   trail(): unknown[];
   playerTrailAt(tick: number): unknown[];
+  /** 살아 있는 행동 이펙트 + **실제로 그린** 기하(`r`·`tip`·`slashL`, #406 W5). */
   fx(): unknown[];
+  /** 행동 이펙트 **그리기만** on/off(스폰·감쇠 무영향) — 가시성 하한 계약용(#406 W5). */
+  setFxLayer(on: boolean): void;
+  fxLayer(): boolean;
+  /** 상태를 바꾸지 않고 현재 상태를 다시 그린다(seek/renderAt 과 달리 정지 시퀀스를 리셋하지 않음). */
+  redraw(): void;
+  /** 공 따라가기(팔로우 줌, 토큰 R=11) — 계약이 **실사용 기하**를 재현할 수 있게(#406 MAJOR-1). */
+  setFollow(on: boolean): void;
+  follow(): boolean;
   surgeTicks(): number[];
   cardMarks(): unknown[];
   /** 이 프레임에 그려진 토스트(앵커 계약 검증용, #324). */
@@ -66,6 +75,33 @@ export interface ViewerHooks {
   idxOfTick(tick: number): number;
   setSkin(payload: unknown): void;
   skinReady(): boolean;
+  /** 선수 하이라이트 주입(#406 W4). `team` 은 필수 — 같은 playerId 가 양 팀에 있다(#324). */
+  setSelection(list: PlayerSelectionInput[] | PlayerSelectionInput | null): void;
+  /** 이 프레임에 **실제로 그린** 선택 링(주입값이 아니라 렌더 결과). */
+  selection(): DrawnSelection[];
+}
+
+/** 코어에 넘기는 선택 항목(#406 W4). */
+export interface PlayerSelectionInput {
+  /** **필수** — 없으면 그 항목은 무시된다(fail-closed: 반대 팀을 켜느니 안 켠다). */
+  team: "home" | "away";
+  playerId: string;
+  /** 내 팀 선수인가(스타일 축). 판정은 부모 몫 — 코어는 유저를 모른다. */
+  mine?: boolean;
+  /** 이름표 문구. 없으면 코어가 실제로 그린 등번호(`#7`)로 떨어진다. */
+  label?: string | null;
+}
+
+/** `hooks.selection()` 이 돌려주는, 그려진 링 하나. */
+export interface DrawnSelection {
+  id: string;
+  team: "home" | "away";
+  mine: boolean;
+  /** 그린 링 반경(px). 맥동하므로 프레임마다 조금씩 다르다 — 층 관계(> R+6)는 항상 참. */
+  r: number;
+  label: string | null;
+  px: number;
+  py: number;
 }
 
 /** createViewer 반환 컨트롤러 — 마운트/재생/컨트롤 + 읽기 훅. */
@@ -87,6 +123,8 @@ export interface ViewerController {
   setViewMode(m: string): void;
   setFixZoom(z: number): number;
   setSkin(payload: unknown): void;
+  /** 선수 하이라이트(#406 W4) — 컨트롤러 표면(호스트가 상태를 소유하고 프레임마다 밀어 넣는다). */
+  setSelection(list: PlayerSelectionInput[] | PlayerSelectionInput | null): void;
   hooks: ViewerHooks;
 }
 

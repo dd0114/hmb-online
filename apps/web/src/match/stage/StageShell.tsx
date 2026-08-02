@@ -274,6 +274,7 @@ export function StageShell({
               baseline={baseline}
               /* #421 스킵 — 자립 부품 한 줄(어느 쪽이 먼저 머지되든 충돌이 한 줄로 끝난다). */
               skipSlot={<SkipButton match={match} onSkipped={(h) => onSkipped?.(h)} />}
+              myTeamSide={myTeamSide}
             />
           </section>
         )}
@@ -377,6 +378,7 @@ export function StageShell({
                     clockOffsetMs={offsetMs}
                     logEnabled={logEnabled}
                     baseline={baseline}
+                    myTeamSide={myTeamSide}
                     reviewControls
                   />
                 </section>

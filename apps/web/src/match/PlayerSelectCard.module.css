@@ -1,0 +1,149 @@
+/*
+  선택 선수 신원 카드(#406 W4) — 무대 **왼쪽 위** 오버레이.
+
+  왜 왼쪽 위인가: 아래 가장자리는 과거 전용 시크바(`.controlsSeek`, 무대 가로 전체)와 QA 칩
+  묶음(`.controlsOverlay`, 오른쪽 구석)이 이미 쓴다. 가운데 위는 골 자막(`.capFlash`)·상황 카드
+  (`.capSituation`)가 지나간다. 남는 자리가 왼쪽 위이고, 거기서도 배너(`.capBanner`, 가운데 정렬)와
+  세로로 안 겹치게 `top` 을 한 줄 내린다.
+*/
+.card {
+  position: absolute;
+  left: 6px;
+  top: 34px;
+  z-index: 4;
+  max-width: min(280px, calc(100% - 12px));
+  padding: 8px 9px 9px;
+  border-radius: 10px;
+  border: 1px solid #33415f;
+  background: rgba(10, 14, 22, 0.92);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  color: #e2e8f0;
+  /*
+    ⚠️ **탭을 삼키지 않는다**(#406 W4 독립검증 m-6). 이 카드는 무대 왼쪽 위를 280×~120px 덮는데
+    390 폰에서 그 자리엔 토큰이 4~6개 들어간다 — `pointer-events: auto` 이던 동안 그 선수들은
+    **선택 자체가 불가능**했다. 요구 5-2 는 "아무 선수나 눌러 누군지 본다"이므로 카드가 그 조작을
+    막는 것은 기능 손실이다. 카드 본문은 읽기 전용이라 포인터가 필요 없다 → 통과시키고,
+    실제 조작 요소(✕ · 선수 정보)만 다시 받는다.
+  */
+  pointer-events: none;
+}
+
+.close,
+.detail {
+  pointer-events: auto;
+}
+
+/* 링과 같은 축으로 카드도 갈린다(목업 §2 표) — 내 선수는 흰 테두리, 상대는 슬레이트. */
+.mine {
+  border-color: #ffffff;
+}
+
+.opp {
+  border-color: rgba(148, 163, 184, 0.9);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/*
+  ⚠️ 얼굴 아트가 아니다 — 경기장 노출 정책(#285)이 임계 아래 선수를 팀색 원 + 등번호로 그리므로
+  카드도 같은 그림을 쓴다. 여기에 <img> 를 넣으면 하이라이트가 그 정책의 우회로가 된다.
+*/
+.disc {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 800 12px/1 monospace;
+  color: #fff;
+  border: 2px solid rgba(0, 0, 0, 0.5);
+}
+
+.discHome {
+  background: #3b82f6;
+}
+
+.discAway {
+  background: #ef4444;
+}
+
+.ident {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.name {
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sub {
+  font-size: 10.5px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.who {
+  flex: none;
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.whoMine {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.whoOpp {
+  background: rgba(148, 163, 184, 0.18);
+  color: #cbd5e1;
+}
+
+.close {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid #33415f;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.note {
+  margin: 7px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.detail {
+  margin-top: 7px;
+  width: 100%;
+  padding: 5px 8px;
+  border-radius: 7px;
+  border: 1px solid #33415f;
+  background: rgba(59, 130, 246, 0.16);
+  color: #dbeafe;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+}

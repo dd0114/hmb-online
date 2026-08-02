@@ -11,7 +11,7 @@ import { demoSelect, makeTacticalInput } from "../../src/fixtures";
 // 없을 수 있다. 이 시드(real config)는 셋 다 포함하므로, 그 타입 계약검증용 풀해상도 로그를
 // e2e/fixture-real.json 으로 만든다. (생성물은 gitignore.)
 const here = dirname(fileURLToPath(import.meta.url));
-const SEED = "1000000039";
+const SEED = "1000006181";
 // ⚠️ 매치 전개가 바뀌면 **아래 5조건 전부**로 재스캔한다(gameqa 체크리스트, #186 이 스캐너 체크인 소유):
 //   ①offside ≥1  ②card ≥1  ③penalty ≥1  ④#42 패턴(세이브→라이브체인→빗나감) 포함
 //   ⑤**그 체인의 스팬이 짧을 것** — ④만 맞고 스팬이 길면 e2e 가 그 구간을 실제 재생하다 타임아웃한다
@@ -104,6 +104,32 @@ const SEED = "1000000039";
 //     …227:23 · …1276:24.
 //   ⚠️ 후보 목록은 출하 `callProb` 에 민감하다(0.055 로 재면 11개·추천 …0153). 그 노브를
 //     다시 만지면 스캐너를 다시 돌린다.
+//   → **…6181**(#406 W5 를 origin/main 위로 리베이스 — 조건이 **여섯**이 됐다. 아래 ⑥ 참조).
+//   ⚠️ **조건 ⑥ 신설: 네 행동 이벤트(pass·interception·clearance·tackle)가 홈·어웨이 양쪽에 있고,
+//     각각 "고립 표본"(±2틱에 같은 타입 없음)과 "단독 표본"(±3틱에 다른 행동 없음 + SURGE 없음)을
+//     가질 것.** `action-effects.spec.ts`(#406 W5 행동 가시화 이펙트)가 이 픽스처에서 표본을 고른다 —
+//     그 스펙은 표본이 없으면 초록이 아니라 **빨강**이 나도록 픽스처 전제를 맨 앞에서 단언한다.
+//     스캐너(`scan-fixture-seed.mjs`)는 아직 ①~⑤만 본다 → **추천 시드를 그대로 쓰지 말고**
+//     후보를 ⑥ 으로 한 번 더 걸러라.
+//   ⚠️ **두 축은 거의 양립하지 않는다 — 8000시드에서 ①~⑤ 34개 중 ⑥ 까지 통과한 것은 2개다**
+//     (…6181 span10 · …5422 span19). 1000~1500 시드 범위에는 **하나도 없다**(구 후보 8개 전멸:
+//     …039 는 clearance 5건이 전부 away · 나머지는 tackle/clearance 단독표본 0). 그래서
+//     **`--count` 를 8000 까지 늘려야 했다** — 다음 재선정자도 범위를 먼저 넓혀라.
+//     ⑥ 단독 적중률은 400시드에서 39/400(9.75%)이고 탈락 사유는 압도적으로 **단독표본 부재**
+//     (clearance!solo 302 · tackle!solo 217) 다. 패스가 경기당 ~430건이라 ±3틱 빈 창이 드물다.
+//   ⚠️ **`surgeTicks` 를 근사하지 마라.** 그 값은 `viewer-core/playback.mjs:buildAnnotations` 가
+//     **스냅샷의 드리블 전진**에서 만든다(슛 이벤트가 아니다). "on_target 슛"으로 근사해 스캔했다가
+//     "통과"로 읽은 시드가 브라우저에서 빨갛게 났다 — 스캔은 그 함수를 **직접 import** 해서 재라.
+//   🚨 **SEED 를 바꿨으면 `e2e/fixture-real.json` 을 손으로 지워라.** `global-setup.ts` 의 신선도
+//     판정은 `configVersion` **접두만** 본다 — 엔진 버전이 같고 시드만 바뀐 경우를 **감지하지
+//     못해** 낡은 로그로 계약이 돈다. 리베이스에서 실제로 겪었다: SEED 를 고친 뒤 playwright 를
+//     돌렸는데 구 시드 로그가 그대로 쓰여 같은 7건이 다시 빨갛게 났다. 로그에 `seed` 필드가
+//     **이미 있으므로** 그 판정에 시드를 넣는 것이 근본 수리다(이 웨이브 스코프 밖 — 이슈 레이즈).
+//     지금 당장의 절차: `rm packages/engine/dev-viewer/e2e/fixture-real.json` 후 재실행.
+//   ⚠️ **다음 재선정자에게**: 8000시드에 후보 2개는 구조적으로 취약하다. 엔진이 또 움직이면 6조건을
+//     만족하는 시드가 0개일 수 있다 — 그때는 스팬 상한을 늘리지 말고 **`action-effects.spec.ts` 에
+//     자체 픽스처를 주는 쪽**으로 가라(선례 = #421 W8 이 하이라이트 e2e 를 자체 픽스처로 분리한 것).
+//     희귀 이벤트 5종과 행동 표본은 서로 무관한 축이라 한 로그에 묶을 이유가 없다.
 // ⚠️ 이 시드들 중 `shot:one_on_one` 을 가진 것은 **하나도 없다** — chain 코어가 one_on_one
 //    판정 자체를 갖고 있지 않기 때문이다(decision.ts 에만 있고 chain.ts 에는 없다).
 //    상세는 shot-outcomes.spec.ts 의 test.fail 주석.
@@ -115,6 +141,19 @@ describe("e2e fixtures", () => {
     expect(log.events.some((e) => e.type === "offside")).toBe(true);
     expect(log.events.some((e) => e.type === "card")).toBe(true);
     expect(log.events.some((e) => e.type === "penalty")).toBe(true);
+    /*
+     * 조건 ⑥ (#406 W5) — 네 행동 이벤트가 **양쪽 팀에** 있다. `action-effects.spec.ts` 가 여기서
+     * 표본을 고르므로, 없으면 playwright 가 7건 빨갛게 죽는다(리베이스에서 실제로 그렇게 됐다:
+     * 구 시드 …039 는 clearance 5건이 전부 away 였다). 그 신호를 **픽스처를 굽는 이 자리에서**
+     * 먼저 잡는다 — 브라우저를 띄우기 전에 시드 문제임을 알려 주는 것이 훨씬 싸다.
+     *
+     * ⚠️ 고립/단독 표본까지는 여기서 재지 않는다(그 판정식은 스펙이 소유한다 — 여기에 복제하면
+     *    두 곳이 조용히 갈라진다). 여기가 잡는 것은 "축이 통째로 비었다"는 가장 흔한 경우다.
+     */
+    for (const t of ["pass", "interception", "clearance", "tackle"]) {
+      const sides = [...new Set(log.events.filter((e) => e.type === t).map((e) => e.team))].sort();
+      expect(sides, `${t} 홈·어웨이 표본(조건 ⑥, action-effects.spec.ts)`).toEqual(["away", "home"]);
+    }
     writeFileSync(join(here, "fixture-real.json"), JSON.stringify(log));
   });
 });

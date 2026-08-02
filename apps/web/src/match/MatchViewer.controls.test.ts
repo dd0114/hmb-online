@@ -33,11 +33,21 @@ const viewer = vi.hoisted(() => {
     play: vi.fn(),
     seek: vi.fn(),
     scrubTo: vi.fn(),
+    // #406 W4: 선수 하이라이트. **목은 계약의 일부다** — 실제 컨트롤러에 있는 메서드를 빠뜨리면
+    // 그 테스트는 자기가 만든 세계를 검증한다(#342). 여기 없던 동안 65건이 red 였다.
+    setSelection: vi.fn(),
     hooks,
   };
 });
 const createViewer = vi.hoisted(() => vi.fn(() => viewer));
-vi.mock("@hmb/viewer-core", () => ({ createViewer }));
+// `createViewer` **만** 목이고 나머지는 실물이다 — `skinKeyOf` 를 목으로 덮으면 선택 키가
+// undefined 가 되어 #324 축(양 팀 동일 playerId)이 이 파일에서 구조적으로 검사 불가가 된다.
+// ⚠️ 종전엔 주석만 "실물 그대로"라 적고 **규칙을 손으로 베껴** 넣었다(#406 W4 m-1). 손으로 벤
+// 목은 계약이 아니라 자기가 만든 세계다(#342) — 규칙이 갈려도 이 파일은 조용히 초록이다.
+vi.mock("@hmb/viewer-core", async () => ({
+  ...(await vi.importActual<typeof import("@hmb/viewer-core")>("@hmb/viewer-core")),
+  createViewer,
+}));
 
 const fx = {
   log: { tickSnapshots: [], events: [], finalScore: { home: 0, away: 0 } } as unknown,

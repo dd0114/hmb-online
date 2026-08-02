@@ -22,6 +22,18 @@ import { buildViewerSkins } from "./viewer-skins";
 // #421 W4 하이라이트 순서 재생 — 판정은 순수 모듈, 구동은 이 훅, 표시는 이 부품(호출부엔 한 줄씩).
 import { useHighlightSequencer } from "./useHighlightSequencer";
 import { HighlightToggle } from "./HighlightToggle";
+import {
+  arenaLabelOf,
+  canvasPointOf,
+  hitTestToken,
+  mineOf,
+  selectionKey,
+  toggleSelection,
+  type DrawnToken,
+  type SelectedPlayer,
+  type TeamSide,
+} from "./player-selection";
+import { PlayerSelectCard } from "./PlayerSelectCard";
 import type { Grade } from "../common/grades";
 import { useCharAssets } from "../common/useCharAssets";
 import styles from "./MatchViewer.module.css";
@@ -56,6 +68,30 @@ export interface VisualPlaybackProps {
    * 자리는 아래 렌더 주석 참조: 무대 오버레이 층이되 재생 컨트롤 바 **밖**이다.
    */
   skipSlot?: ReactNode;
+  /**
+   * 선수 하이라이트(#406 W4)용 표시 정보. **부모가 주입한다** — `grades` 와 같은 이유로
+   * 이 부품은 API 를 모른다(위 주석). 이름은 `common/player-names` 초크포인트를 거친 값이어야
+   * 한다(#406 요구 6) — 여기서 `catalog.name` 을 직접 읽지 마라.
+   */
+  playerInfo?: Record<string, ArenaPlayerInfo | undefined> | null;
+  /** 내 팀이 선 사이드(#322). 모르면 null — 카드가 내/상대 뱃지를 아예 달지 않는다. */
+  myTeamSide?: TeamSide | null;
+  /** 사이드 라벨 그대로의 팀 이름(#322 `teamNamesOf` 산출). 카드 부제에 쓴다. */
+  teamNames?: { home: string; away: string } | null;
+  /**
+   * **controlled 선택**(seam). 주면 이 부품은 상태를 소유하지 않고 부모를 따른다 —
+   * 지시 대상 칩(후반 지시/감독 패널)과 피치 하이라이트를 한 값으로 묶고 싶을 때
+   * `StageShell` 로 상태를 들어올리는 자리다(`player-selection.ts` 머리말 참조).
+   */
+  selection?: SelectedPlayer[];
+  onSelectionChange?: (next: SelectedPlayer[]) => void;
+}
+
+/** 카드·이름표가 쓰는 선수 표시 정보(두 축 = 넓은 자리 `full` · 밀집 UI `short`). */
+export interface ArenaPlayerInfo {
+  full: string;
+  short: string;
+  position?: string | null;
 }
 
 /**
@@ -77,6 +113,11 @@ export function VisualPlayback({
   clockOffsetMs,
   grades = null,
   skipSlot,
+  playerInfo = null,
+  myTeamSide = null,
+  teamNames = null,
+  selection: selectionProp,
+  onSelectionChange,
 }: VisualPlaybackProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
@@ -109,6 +150,71 @@ export function VisualPlayback({
   const charAssets = useCharAssets();
   const skins = useMemo(() => buildViewerSkins(charAssets, log, grades), [charAssets, log, grades]);
   const [failed, setFailed] = useState(false);
+
+  /*
+   * ── 선수 하이라이트(#406 W4, 요구 5-2) ────────────────────────────────────────────────────
+   * 상태 SoT = **이 부품**(캔버스 표면). 부모가 `selection` 을 주면 controlled 로 넘어간다 —
+   * 축 구분과 후속 배선 자리는 `player-selection.ts` 머리말이 소유한다.
+   *
+   * ⚠️ 히트테스트를 재구현하지 않는다 — 좌표는 코어가 "실제로 그렸다"고 알려주는
+   *    `hooks.curPlayers()` 의 `px/py/r` 이다(#218 규율). 카메라 변환(baseScale·zoom·팔로우 줌)을
+   *    밖에서 다시 계산하면 렌더와 조용히 어긋난다.
+   */
+  const [innerSelection, setInnerSelection] = useState<SelectedPlayer[]>([]);
+  const selected = selectionProp ?? innerSelection;
+  const applySelection = (next: SelectedPlayer[]) => {
+    if (!selectionProp) setInnerSelection(next);
+    onSelectionChange?.(next);
+  };
+  /**
+   * 눌린 순간 코어가 **그 토큰에 실제로 그린** 등번호. `skins.nums` 를 다시 조회하지 않는 이유 =
+   * 코어는 셀의 `entry.num` 을 우선하므로 두 값이 갈릴 수 있고, 카드가 피치와 다른 번호를 말하면
+   * 그게 곧 "누구를 골랐나"를 헷갈리게 한다.
+   */
+  const selectedNumsRef = useRef<Record<string, string>>({});
+
+  // 하프·로그가 바뀌면 선택은 끝난다(코어도 재마운트돼 링이 사라진다 — 카드만 남으면 유령이다).
+  useEffect(() => {
+    selectedNumsRef.current = {};
+    if (!selectionProp) setInnerSelection([]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [log, half]);
+
+  // 선택 → 코어. 이름표는 **밀집 UI 축(short)**, 카드는 넓은 자리라 full(아래 렌더).
+  useEffect(() => {
+    const v = viewerRef.current;
+    if (!viewerReady || !v) return;
+    v.setSelection(
+      selected.map((s) => ({
+        team: s.team,
+        playerId: s.playerId,
+        mine: mineOf(s.team, myTeamSide) === true,
+        label: arenaLabelOf(
+          playerInfo?.[s.playerId]?.short,
+          selectedNumsRef.current[selectionKey(s.team, s.playerId)],
+        ),
+      })),
+    );
+  }, [viewerReady, selected, myTeamSide, playerInfo]);
+
+  const onCanvasPick = (clientX: number, clientY: number) => {
+    const v = viewerRef.current;
+    const canvas = canvasRef.current;
+    if (!v || !canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const pt = canvasPointOf(rect, canvas.width, canvas.height, clientX, clientY);
+    if (!pt) return;
+    const tokens = (v.hooks.curPlayers() as unknown as DrawnToken[]) ?? [];
+    const hit = hitTestToken(tokens, pt.x, pt.y);
+    // 빈 공간은 **아무 일도 하지 않는다**(승인 목업 §2). 해제는 같은 선수 재탭 또는 카드 ✕ —
+    // 빈 공간을 해제로 쓰면 시크·팬 조작 끝의 탭이 선택을 계속 지운다.
+    if (!hit) return;
+    selectedNumsRef.current[selectionKey(hit.team, hit.id)] = hit.num ?? "";
+    applySelection(toggleSelection(selected, { team: hit.team, playerId: hit.id }));
+  };
+
+  /** 카드는 **마지막에 누른** 선수를 보여준다(팀당 1명씩 최대 2명이 링을 달 수 있다). */
+  const cardTarget = selected.length ? selected[selected.length - 1]! : null;
 
   // 콜백은 마운트 시 고정하되 최신 onTick 은 ref 로 본다(stale closure 방지).
   const onTickRef = useRef(onTick);
@@ -437,7 +543,24 @@ export function VisualPlayback({
         height={680}
         className={styles.stageCanvas}
         data-testid={`viewer-canvas-half${half}`}
+        /* 선수 탭 → 하이라이트(#406 W4). `click` 은 터치에서도 발화하고 드래그(시크 조작)에서는
+           발화하지 않는다 — pointerup 으로 잡으면 무대 위를 스치는 조작마다 선택이 바뀐다. */
+        onClick={(e) => onCanvasPick(e.clientX, e.clientY)}
       />
+      {cardTarget && (
+        <PlayerSelectCard
+          team={cardTarget.team}
+          playerId={cardTarget.playerId}
+          /* 넓은 자리 = 풀네임. 이름을 못 찾으면 **id 를 내보내지 않는다**(초크포인트 규율) —
+             부모가 표를 아직 못 받았을 때의 폴백 문구는 여기 한 곳에만 둔다. */
+          name={playerInfo?.[cardTarget.playerId]?.full ?? "선수 정보 불러오는 중…"}
+          num={selectedNumsRef.current[selectionKey(cardTarget.team, cardTarget.playerId)] || null}
+          position={playerInfo?.[cardTarget.playerId]?.position ?? null}
+          teamName={teamNames ? teamNames[cardTarget.team] : null}
+          mine={mineOf(cardTarget.team, myTeamSide)}
+          onClose={() => applySelection([])}
+        />
+      )}
       {/* 자막 오버레이(호스트 DOM) — 코어가 chrome 콜백으로 표시/숨김 토글. aria-live 로 골만 읽어줌. */}
       <div ref={flashRef} className={styles.capFlash} aria-live="polite" />
       <div ref={situationRef} className={styles.capSituation} aria-hidden="true" />

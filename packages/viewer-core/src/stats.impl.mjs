@@ -52,6 +52,13 @@ export function liveEventStats(events, uptoTick) {
         // 가로챔 = 상대 패스 실패 → 상대 passAttempts++.
         if (side) S(opp(side)).passAttempts++;
         break;
+      // ⚠️ `clearance` 는 **의도적으로 어느 항목에도 안 센다**(#406 W5 에서 재확인).
+      //  ① 패스로 세면 안 된다 — 엔진이 별도 타입으로 뺀 이유가 정확히 "패스 성공률 캘리브레이션
+      //     오염 방지"다(shared `MatchEventType` 주석). 지금 default 로 떨어지는 게 맞는 동작이다.
+      //  ② 새 항목(`clearances`)을 만들려면 이 함수의 짝인 `packages/engine/dev-viewer/match-stats.ts`
+      //     (종료 후 일괄 집계)와 HUD 그리드를 그리는 **호스트 둘**(dev-viewer 셸 · apps/web)을 같이
+      //     고쳐야 한다. 셋 다 이 모듈 밖이라 여기만 늘리면 두 정의가 조용히 갈라진다(머리말 규율).
+      //  요구 4-2(행동 가시화)는 캔버스 축이라 HUD 항목을 요구하지 않는다 — 필요해지면 별도 이슈.
       case "kickoff":
         if (e.detail === "corner" && side) S(side).corners++;
         else if (e.detail === "throw_in" && side) S(opp(side)).passAttempts++; // 상대 스로인 = 내 패스 아웃

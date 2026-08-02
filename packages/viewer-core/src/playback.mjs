@@ -375,6 +375,9 @@ export function buildStoppages(events) {
  * @property {string} [col]
  * @property {string} [anchor] 토스트: 공 대신 이 playerId 선수 위치에 앵커(파울/카드 등 선수 사건).
  * @property {string} [anchorTeam] 그 선수의 팀 (#324) — 중복 playerId 에서 앵커가 반대편에 붙는 것 방지.
+ * @property {string} [team] **행동 주체 팀**(#406 W5, 요구 4-2 "팀별 색 구분"). 있으면 렌더가
+ *   `col` 대신 팀색으로 그린다 — 색 SoT 는 `viewer.impl.mjs.teamRgb` 하나이므로 **여기에 색을
+ *   적지 않는다**(적으면 팔레트가 두 곳이 되어 조용히 갈라진다). `col` 은 팀 없는 구 로그 폴백.
  */
 /**
  * 액션 토스트(선수 근처) + 상황 배너(상단) + 돌파 추론 주석.
@@ -387,12 +390,21 @@ export function buildAnnotations(events, snaps) {
     // anchor(선택): 토스트를 공이 아니라 그 playerId 선수 위치에 앵커(선수 사건용). #69.
     const T = (text, col, anchor) => annos.push({ kind: "toast", tick: e.tick, at: e.tick, text, col, ...(anchor ? { anchor, anchorTeam: e.team } : {}) });
     const B = (text, col) => annos.push({ kind: "banner", tick: e.tick, text, col });
+    // 팀색 토스트(#406 W5) — 선수 앵커 + `team` 표식. 색은 렌더가 정한다(위 typedef 참조).
+    const TT = (text, col) => annos.push({
+      kind: "toast", tick: e.tick, at: e.tick, text, col,
+      ...(e.playerId ? { anchor: e.playerId, anchorTeam: e.team } : {}),
+      ...(e.team ? { team: e.team } : {}),
+    });
     if (k === "shot") T("SHOT!", "#fbbf24");
     else if (k === "shot_one_on_one") T("1-ON-1!", "#fbbf24");
     else if (k === "save") T("🧤 SAVE!", "#38bdf8");
     else if (k === "shot_off_target") T("OFF TARGET", "#94a3b8");
-    else if (k === "tackle") T("TACKLE", "#cbd5e1");
-    else if (k === "interception") T("INTERCEPT", "#cbd5e1");
+    // #406 W5 요구 4-2: 태클/가로챔은 무채색(#cbd5e1)이라 "어느 팀 행동인지"를 말하지 못했고,
+    // 걷어내기는 캔버스에 **아무것도 없었다**. 셋 다 행동 주체에 앵커 + 팀색으로 통일한다.
+    else if (k === "tackle") TT("TACKLE", "#cbd5e1");
+    else if (k === "interception") TT("INTERCEPT", "#cbd5e1");
+    else if (k === "clearance") TT("CLEARED!", "#cbd5e1");
     else if (k === "foul") { T("FOUL", "#fb923c", e.playerId); B("😠 FOUL", "#fb923c"); } // 재시작(프리킥/페널티)은 후속 배너가 표시 — 박스 파울에 "프리킥" 오표기 방지.
     else if (k === "card") {
       // #334: id 파생이 등번호로 안 읽히면 **번호를 빼고** 찍는다 — 실경기 id 는 "P077" 이라

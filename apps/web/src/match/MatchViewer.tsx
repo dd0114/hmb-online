@@ -19,7 +19,8 @@ import {
   type ControlMode,
 } from "./playback-controls";
 // 관전 캔버스는 별 파일로 분리했다(#191) — QA 콘솔과 **같은 부품**을 쓴다.
-import { VisualPlayback } from "./VisualPlayback";
+import { VisualPlayback, type ArenaPlayerInfo } from "./VisualPlayback";
+import { playerNameOf } from "../common/player-names";
 import { liveGate } from "./live-clock";
 import { tickOfIndex } from "./live-pace";
 import styles from "./MatchViewer.module.css";
@@ -63,6 +64,11 @@ interface MatchViewerProps {
    * 부품을 **셸이 만들어 넘긴다**(`StageShell`). 돌려보는 자리(`reviewControls`)에는 넘기지 않는다.
    */
   skipSlot?: ReactNode;
+  /**
+   * 내 팀이 선 사이드(#322) — 선수 하이라이트의 **내 선수 / 상대 선수** 구분에 쓴다(#406 W4).
+   * 모르면 null: 카드가 뱃지를 아예 안 달고 링은 중립(상대) 스타일로 떨어진다. 거짓 표식 금지.
+   */
+  myTeamSide?: "home" | "away" | null;
 }
 
 type ViewMode = "visual" | "timeline";
@@ -85,6 +91,7 @@ export function MatchViewer({
   baseline = null,
   reviewControls = false,
   skipSlot,
+  myTeamSide = null,
 }: MatchViewerProps) {
   const { data: log, isLoading, isError } = useHalfLog(matchId, half, logEnabled);
   /*
@@ -104,6 +111,25 @@ export function MatchViewer({
     () => (Array.isArray(catalog) ? Object.fromEntries(catalog.map((p) => [p.id, p.grade])) : null),
     [catalog],
   );
+  /*
+   * 선수 하이라이트(#406 W4)용 표시 정보 — 같은 카탈로그에서 뽑아 캔버스 부품에 **주입한다**
+   * (`grades` 와 같은 이유: 그 부품은 API 를 모른다). 이름은 반드시 `playerNameOf` 초크포인트를
+   * 거친다 — `p.name` 을 직접 읽으면 한글화 규칙이 이 화면만 옛것으로 남는다(#406 요구 6).
+   * 형태를 믿지 않는 가드도 위와 같다(구 서버·목의 `{}` → null → 카드가 폴백 문구를 쓴다).
+   */
+  const playerInfo = useMemo<Record<string, ArenaPlayerInfo> | null>(() => {
+    if (!Array.isArray(catalog)) return null;
+    const out: Record<string, ArenaPlayerInfo> = {};
+    for (const p of catalog) {
+      if (!p?.id) continue;
+      out[p.id] = {
+        full: playerNameOf(p, "full"),
+        short: playerNameOf(p, "short"),
+        position: p.position ?? null,
+      };
+    }
+    return out;
+  }, [catalog]);
   const [mode, setMode] = useState<ViewMode>("visual");
   /*
    * 폴백 타임라인의 라이브 상한(#238) — 시각 재생과 **같은 출처**(`liveGate`)를 쓴다.
@@ -182,6 +208,9 @@ export function MatchViewer({
           review={reviewControls}
           grades={grades}
           skipSlot={skipSlot}
+          playerInfo={playerInfo}
+          myTeamSide={myTeamSide}
+          teamNames={{ home: homeName, away: awayName }}
         />
       ) : (
         <div className={styles.timelineFill}>

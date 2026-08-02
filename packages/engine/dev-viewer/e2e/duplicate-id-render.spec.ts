@@ -174,6 +174,156 @@ test("중복 playerId: **홈** 파울이면 줌·토스트가 홈 선수로 간�
   expect(Math.abs(foul.px - home.px), "토스트가 홈 파울러 위에").toBeLessThan(Math.abs(foul.px - away.px));
 });
 
+/* ──────────────────────────────────────────────────────────────────────────────────────────
+ * 행동 이펙트(#406 W5)의 **팀 축** — 여기가 그 계약의 자리다.
+ *
+ * ⚠️ `action-effects.spec.ts` 는 *"홈·어웨이 양쪽 표본을 태우니 방어된다"* 고 적어 뒀지만
+ *    **사실이 아니었다**: `fixture-real` 의 선수 id 가 `H0..A10` 이라 `playerId[0]=== "H"` 추측이
+ *    **우연히 맞는다**. 독립검증이 `fxSideOf` 를 그 추측으로 되돌리고 앵커의 팀 필터를 지운 변이를
+ *    태웠는데 **41/41 통과하며 생존**했다(memory `fixture-ids-hide-live-defects` 재발).
+ *    라이브 하프의 38%가 양 팀에 같은 id 를 태운다(#324) — 그 표본 위에서만 이 변이가 죽는다.
+ *
+ * 그래서 축을 **주입 로그(P078 양 팀)** 위로 옮긴다. 색은 `team` 이 SoT 인지, 앵커는 그 팀 선수
+ * 위인지 두 가지를 잰다.
+ * ────────────────────────────────────────────────────────────────────────────────────────── */
+
+const HOME_RGB = "59,130,246";
+const AWAY_RGB = "239,68,68";
+
+/**
+ * 행동 이벤트 4종을 **P078 양 팀**에 태운 로그. 두 P078 은 x 로 66m · y 로 14m 떨어져 있어
+ * 앵커가 팀을 무시하면 좌표가 그만큼 어긋난다. 공은 둘 중 어느 쪽도 아닌 중앙에 둔다 —
+ * 앵커가 공으로 떨어지는 회귀도 같이 잡힌다.
+ */
+const ACTION_LOG = {
+  configVersion: "dup-fx@1",
+  seed: "dup-fx-1",
+  finalScore: { home: 0, away: 0 },
+  events: [
+    { tick: 10, minute: 0, type: "clearance", team: "home", playerId: "P078" },
+    { tick: 25, minute: 0, type: "clearance", team: "away", playerId: "P078" },
+    { tick: 40, minute: 0, type: "interception", team: "home", playerId: "P078" },
+    { tick: 55, minute: 0, type: "interception", team: "away", playerId: "P078" },
+    { tick: 70, minute: 0, type: "tackle", team: "home", playerId: "P078" },
+    { tick: 85, minute: 0, type: "tackle", team: "away", playerId: "P078" },
+  ],
+  tickSnapshots: Array.from({ length: 100 }, (_, t) => ({
+    tick: t,
+    minute: 0,
+    // 공은 중앙에서 천천히 흐른다 — 걷어내기 방향(다음 스냅샷 변위)이 0 이 아니어야 한다.
+    ball: { x: 48 + (t % 10) * 0.4, y: 34 },
+    ballOwner: null,
+    players: [
+      { playerId: "P074", team: "home", pos: { x: 5, y: 34 } },
+      { playerId: "P078", team: "home", pos: { x: 21, y: 34 } },
+      { playerId: "P078", team: "away", pos: { x: 87, y: 20 } },
+      { playerId: "P116", team: "away", pos: { x: 99, y: 34 } },
+    ],
+  })),
+};
+
+const ANCHOR = {
+  home: { x: 21, y: 34 },
+  away: { x: 87, y: 20 },
+} as const;
+
+async function injectActions(page: import("@playwright/test").Page) {
+  await loadViewer(page, VIEWER_URL);
+  await page.evaluate((log) => window.postMessage({ type: "loadMatchLog", matchLog: log }, "*"), ACTION_LOG);
+  await page.waitForFunction(
+    (n) => (window as any).__viewer?.ready() && (window as any).__viewer.events().length === n,
+    ACTION_LOG.events.length,
+    { timeout: 15000 },
+  );
+}
+
+/** startTick-1 부터 재생하며 fx() 에 type 이 나타나는 순간의 그 이펙트. */
+async function playUntilFx(page: import("@playwright/test").Page, startTick: number, type: string) {
+  await page.evaluate((t: number) => {
+    const v = (window as any).__viewer;
+    v.autoPace(false); v.pause(); v.seek(t - 1); v.play();
+  }, startTick);
+  const handle = await page.waitForFunction(
+    (ty: string) => (window as any).__viewer.fx().find((f: any) => f.type === ty) ?? null,
+    type,
+    { timeout: 12000 },
+  );
+  const val = await handle.jsonValue();
+  await page.evaluate(() => (window as any).__viewer.pause());
+  return val as { type: string; rgb: string; x: number; y: number };
+}
+
+const FX_CASES = [
+  { tick: 10, team: "home", fxType: "clear" },
+  { tick: 25, team: "away", fxType: "clear" },
+  { tick: 40, team: "home", fxType: "steal" },
+  { tick: 55, team: "away", fxType: "steal" },
+  { tick: 70, team: "home", fxType: "tackle" },
+  { tick: 85, team: "away", fxType: "tackle" },
+] as const;
+
+test("중복 playerId: 행동 이펙트 색이 **이벤트 team** 을 따른다 (id 첫 글자 추측 금지)", async ({ page }) => {
+  await injectActions(page);
+  for (const c of FX_CASES) {
+    const f = await playUntilFx(page, c.tick, c.fxType);
+    // `playerId[0]==="H"` 추측은 "P078" 에서 **항상 away** 를 낸다 → 홈 3건이 전부 빨강이 된다.
+    expect(f.rgb, `tick ${c.tick} ${c.fxType}/${c.team} 색`).toBe(c.team === "home" ? HOME_RGB : AWAY_RGB);
+  }
+});
+
+test("중복 playerId: 행동 이펙트가 **그 팀** 선수 위에 뜬다 (반대편·공이 아니라)", async ({ page }) => {
+  await injectActions(page);
+  for (const c of FX_CASES) {
+    const f = await playUntilFx(page, c.tick, c.fxType);
+    const mine = ANCHOR[c.team];
+    const other = ANCHOR[c.team === "home" ? "away" : "home"];
+    // 팀 필터를 지우면 `find` 가 항상 먼저 걸리는 **홈** P078 을 집는다 → 어웨이 3건이 66m 어긋난다.
+    expect(Math.hypot(f.x - mine.x, f.y - mine.y), `tick ${c.tick} ${c.fxType}/${c.team} 앵커`).toBeLessThan(1);
+    expect(Math.hypot(f.x - other.x, f.y - other.y), "반대 팀 P078 위가 아니어야").toBeGreaterThan(10);
+    expect(Math.abs(f.x - 50), "공(중앙) 위가 아니어야").toBeGreaterThan(10);
+  }
+});
+
+test("중복 playerId: 행동 토스트 색·앵커가 **그 팀** 을 따른다", async ({ page }) => {
+  await injectActions(page);
+  const CASES = [
+    { tick: 10, team: "home", text: "CLEARED!" },
+    { tick: 25, team: "away", text: "CLEARED!" },
+    { tick: 40, team: "home", text: "INTERCEPT" },
+    { tick: 55, team: "away", text: "INTERCEPT" },
+    { tick: 70, team: "home", text: "TACKLE" },
+    { tick: 85, team: "away", text: "TACKLE" },
+  ] as const;
+  for (const c of CASES) {
+    const got = await page.evaluate(
+      ([tick, txt]: [number, string]) => {
+        const v = (window as any).__viewer;
+        v.seek(tick);
+        v.redraw();
+        const hits = v.toasts().filter((x: any) => x.text === txt);
+        const players = v.curPlayers();
+        return {
+          n: hits.length,
+          t: hits[0] ?? null,
+          home: players.find((p: any) => p.id === "P078" && p.team === "home"),
+          away: players.find((p: any) => p.id === "P078" && p.team === "away"),
+        };
+      },
+      [c.tick, c.text] as [number, string],
+    );
+    expect(got.n, `tick ${c.tick} "${c.text}" 토스트 1개`).toBe(1);
+    expect(got.t.col, `tick ${c.tick} ${c.text}/${c.team} 색`).toBe(
+      `rgb(${c.team === "home" ? HOME_RGB : AWAY_RGB})`,
+    );
+    expect(got.t.anchorTeam).toBe(c.team);
+    const mine = c.team === "home" ? got.home : got.away;
+    const other = c.team === "home" ? got.away : got.home;
+    expect(Math.abs(got.t.px - mine.px), "토스트가 그 팀 P078 위에").toBeLessThan(
+      Math.abs(got.t.px - other.px),
+    );
+  }
+});
+
 /**
  * `koById`(킥오프 잔상 클립) — 골 후 킥오프 트윈이 **자기 팀** 위치로 가는가.
  *

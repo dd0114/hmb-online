@@ -32,13 +32,36 @@ interface Ev {
   team?: "home" | "away";
 }
 
-/** 데모 로그(전반 형상) → 후반 형상. 실제 후반 로그는 틱이 **절대값**(전반 끝 다음부터)이다. */
+/**
+ * 데모 로그(전반 형상) → 후반 형상. 실제 후반 로그는 틱이 **절대값**(전반 끝 다음부터)이다.
+ *
+ * ⚠️ **분을 틱에서 재유도하지 마라**(#388, #406 W5 수리). 이 함수는 한때
+ *      `minute: Math.floor((x.tick + offset) / 60)`
+ *    이었다. `60` 은 어디에서도 오지 않은 숫자다 — 이 데모 로그는 **표기 1분 = 16틱**이고
+ *    (1440틱 / 90분) 엔진이 `matchMinutes`·틱 해상도를 바꾸면 또 달라진다. 그런데도 초록이었던
+ *    이유는 **덮어쓴 축을 그대로 되읽었기 때문**이다: 픽스처가 분을 만들고, 기대값도 같은
+ *    픽스처에서 읽으니 무엇을 넣어도 자기일관이다.
+ *
+ *    ⚠️ 그래서 **옛 형태는 red 가 아니라 항진명제였다**(2026-08-03 콜드 재실행 9/9 green — "선행
+ *    red" 로 인계된 증상은 이 트리에서 재현되지 않는다). 문제는 실패가 아니라 **검정력**이다:
+ *    화면이 엔진이 구운 분을 말하는지(#388 의 요구 그 자체)를 이 스펙이 한 번도 묻지 않았다.
+ *    화면이 `tick/60` 으로 분을 유도하도록 회귀해도 픽스처가 같은 식을 쓰므로 통과한다.
+ *
+ * 그래서 **구운 분을 들고 하프 경계만큼만 민다** — 틱을 `마지막 틱 + 1` 로 미는 것과 정확히 같은
+ * 규칙을 분 축에도 적용한다(`마지막 분 + 1`). 스케일 상수가 한 개도 없으므로 데모 로그가 1440틱이든
+ * 2700틱이든, 표기 1분이 16틱이든 30틱이든 이 픽스처는 그대로 성립한다.
+ * (하드코딩 `+45` 를 쓰지 않는 이유도 같다 — 이 데모는 90분 풀매치라 "전반"의 길이가 45가 아니다.)
+ *
+ * 이 규율 자체는 아래 "픽스처 규율" 테스트가 지킨다(옛 형태로 되돌리면 red).
+ */
 function asSecondHalf(log: { tickSnapshots: Snap[]; events: Ev[] }) {
-  const offset = log.tickSnapshots[log.tickSnapshots.length - 1]!.tick + 1;
+  const lastSnap = log.tickSnapshots[log.tickSnapshots.length - 1]!;
+  const offset = lastSnap.tick + 1;
+  const minuteOffset = (lastSnap.minute ?? 0) + 1;
   const shift = <T extends { tick: number; minute?: number }>(x: T): T => ({
     ...x,
     tick: x.tick + offset,
-    ...(typeof x.minute === "number" ? { minute: Math.floor((x.tick + offset) / 60) } : {}),
+    ...(typeof x.minute === "number" ? { minute: x.minute + minuteOffset } : {}),
   });
   return {
     log: {
@@ -47,13 +70,14 @@ function asSecondHalf(log: { tickSnapshots: Snap[]; events: Ev[] }) {
       events: log.events.map(shift),
     },
     offset,
+    minuteOffset,
   };
 }
 
 const DEMO = JSON.parse(
   readFileSync(new URL("../../../packages/engine/dev-viewer/match-log.json", import.meta.url).pathname, "utf8"),
 ) as { tickSnapshots: Snap[]; events: Ev[] };
-const { log: H2_LOG, offset: H2_START } = asSecondHalf(DEMO);
+const { log: H2_LOG, offset: H2_START, minuteOffset: H2_MINUTE_OFFSET } = asSecondHalf(DEMO);
 const H2_GOALS = H2_LOG.events.filter((e) => e.type === "goal");
 
 /** 두 번째 골 직후 = 델타가 확실히 0 이 아닌 지점. */
@@ -166,6 +190,38 @@ test.describe("#233 후반 헤더 스코어", () => {
   test("픽스처 신선도 — 후반 델타가 0 이면 이 스펙은 아무것도 증명하지 못한다", () => {
     expect(H2_GOALS.length, "데모 로그에 골이 2개 이상 있어야 한다(재생성 시 확인)").toBeGreaterThanOrEqual(2);
     expect(DELTA.home + DELTA.away, "프로브 지점의 후반 델타가 0 이면 before/after 가 같아진다").toBeGreaterThan(0);
+  });
+
+  /**
+   * 픽스처 규율 — **후반 형상이 분을 틱에서 재유도하지 않는다**(#388 / #406 W5).
+   *
+   * 옛 형태(`minute: Math.floor((tick + offset) / 60)`)로 되돌리면 여기서 죽는다: 그 축은 구운 축과
+   * **상수 차이가 아니기 때문**이다(데모는 표기 1분 = 16틱인데 60 으로 나눈다). 위 `asSecondHalf`
+   * 주석이 설명하는 함정을 **문장이 아니라 계약으로** 잡아 둔다 — 되유도는 자기일관이라
+   * 나머지 단언 8건 어디에서도 red 가 안 난다.
+   *
+   * 그리고 이 가드는 **`f` 의 시계 단언에 검정력을 준다**(둘이 합쳐져야 성립한다):
+   *   · 여기: 픽스처의 분 ≠ `floor(tick/60)`  (아래 두 번째 단언)
+   *   · `f`:  화면의 분 == 픽스처의 **구운** 분
+   *   ⇒ 화면이 분을 `tick/60` 으로 유도하도록 회귀하면 `f` 가 red. 옛 픽스처에서는 두 값이
+   *     **정의상 같아서** 그 회귀가 통과했다 — 고친 것은 red 가 아니라 그 구멍이다.
+   */
+  test("픽스처 규율 — 후반 분 축은 **구운 분 + 상수**다(틱에서 만들지 않는다)", () => {
+    const deltas = new Set<number>();
+    for (let i = 0; i < DEMO.tickSnapshots.length; i += 1) {
+      const before = DEMO.tickSnapshots[i]!;
+      const after = H2_LOG.tickSnapshots[i]!;
+      if (typeof before.minute !== "number") continue;
+      deltas.add(after.minute! - before.minute);
+    }
+    expect([...deltas], "구운 분 대비 오프셋이 단 하나여야 한다").toEqual([H2_MINUTE_OFFSET]);
+
+    // 그리고 그 축이 `tick/60` 과 **실제로 다르다**는 것 = 위 단언이 공허하지 않다는 증거.
+    // (같다면 옛 형태로 되돌려도 안 죽으므로 이 계약은 아무 하중을 지지 않는다.)
+    const last = H2_LOG.tickSnapshots[H2_LOG.tickSnapshots.length - 1]!;
+    expect(last.minute, "데모 로그의 표기 스케일이 60틱/분이면 이 가드는 무력하다").not.toBe(
+      Math.floor(last.tick / 60),
+    );
   });
 
   test("a. 후반 킥오프에도 전반 스코어가 살아 있다(`0 : 0` 아님)", async ({ page }) => {
