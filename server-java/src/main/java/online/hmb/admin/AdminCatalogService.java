@@ -546,7 +546,7 @@ public class AdminCatalogService {
      * P-공간을 점유</b>한다. 만든 지 1분 된 실수를 지우는 수단이 수동 DB 개입뿐이었다.
      *
      * <p><b>왜 거의 항상 거부되는가(그리고 그게 옳은가)</b>: {@code players(id)} 를 FK 로 참조하는
-     * 표가 <b>여덟</b>이다({@link #REFERENCING_TABLES}). 누군가 한 번이라도 뽑았으면 {@code user_players}
+     * 표가 <b>열</b>이다({@link #REFERENCING_TABLES}). 누군가 한 번이라도 뽑았으면 {@code user_players}
      * 가 가리키고, 그 행을 지우면 <b>유저의 카드가 사라진다</b>. 그래서 참조가 하나라도 있으면
      * <b>409</b> 이고 응답에 어느 표가 몇 건인지 싣는다 — 운영자가 "왜 안 지워지나"에 스스로 답할 수 있게.
      * 실질 적용 범위는 <b>방금 만들어 아무도 손대지 않은 유닛</b>이고, 그게 #210 이 말한 바로 그 경우다.
@@ -633,15 +633,19 @@ public class AdminCatalogService {
      * 못 보고 지워서 FK 위반으로 죽거나(운이 좋은 경우) 데이터가 끊긴다. 계약이 이 목록을
      * 스키마와 대조한다({@code AdminUnitPurgeTest.referencingTablesListMatchesTheSchema}).
      */
-    public static final Map<String, String> REFERENCING_TABLES = Map.of(
-            "user_players", "player_id = ? AND ? IS NOT NULL",
-            "deck_slots", "player_id = ? AND ? IS NOT NULL",
-            "gacha_results", "player_id = ? AND ? IS NOT NULL",
-            "player_relations", "player_id = ? AND ? IS NOT NULL",
-            "growth_applied", "player_id = ? AND ? IS NOT NULL",
-            "card_potentials", "player_id = ? AND ? IS NOT NULL",
-            "dice_rolls", "player_id = ? AND ? IS NOT NULL",
-            "trade_slots", "target_player_id = ? OR demand_player_id = ?");
+    public static final Map<String, String> REFERENCING_TABLES = Map.ofEntries(
+            Map.entry("user_players", "player_id = ? AND ? IS NOT NULL"),
+            Map.entry("deck_slots", "player_id = ? AND ? IS NOT NULL"),
+            Map.entry("gacha_results", "player_id = ? AND ? IS NOT NULL"),
+            Map.entry("player_relations", "player_id = ? AND ? IS NOT NULL"),
+            Map.entry("growth_applied", "player_id = ? AND ? IS NOT NULL"),
+            Map.entry("card_potentials", "player_id = ? AND ? IS NOT NULL"),
+            Map.entry("dice_rolls", "player_id = ? AND ? IS NOT NULL"),
+            // #405 W2b(V39) — 둘 다 players(id) FK 다. 목록에서 빠지면 회수가 깔끔한 409 대신
+            // 생 FK 위반으로 떨어지고, 운영자는 "왜 안 지워지나"에 스스로 답할 수 없다.
+            Map.entry("growth_level_choices", "player_id = ? AND ? IS NOT NULL"),
+            Map.entry("growth_legacy_base", "player_id = ? AND ? IS NOT NULL"),
+            Map.entry("trade_slots", "target_player_id = ? OR demand_player_id = ?"));
 
     /**
      * <b>지금까지 발급한 가장 큰 유닛 번호</b>(`meta_kv`). 회수가 번호를 비울 때 여기에 남겨,

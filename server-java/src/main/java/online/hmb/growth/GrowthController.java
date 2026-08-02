@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
@@ -40,6 +41,9 @@ public class GrowthController {
     public record DiceRequest(String playerId, String kind) {
     }
 
+    public record ChoiceRequest(String stat) {
+    }
+
     @GetMapping("/api/growth/card/{playerId}")
     public Map<String, Object> card(@RequestAttribute("userId") String userId,
                                     @PathVariable("playerId") String playerId) {
@@ -65,6 +69,35 @@ public class GrowthController {
         // 잠재 리롤도 유효스탯을 바꾼다 — star 와 같은 이유로 진행 중 매치에서는 막는다.
         lockService.assertNotLocked(userId, "growth.dice");
         return growthService.dice(userId, body.playerId(), body.kind());
+    }
+
+    /**
+     * 대기 중인 3지선다 목록(#405 W2b). {@code playerId} 를 주면 그 카드만 — 강화탭은 카드별로,
+     * 홈 뱃지는 전체로 묻는다.
+     */
+    @GetMapping("/api/growth/choices")
+    public Map<String, Object> choices(@RequestAttribute("userId") String userId,
+                                       @RequestParam(name = "playerId", required = false) String playerId) {
+        return Map.of("choices", growthService.pendingChoices(userId,
+                playerId == null || playerId.isBlank() ? null : playerId));
+    }
+
+    /**
+     * 3지선다 선택 — 박제된 gain 을 {@code stat_add_json} 에 가산한다.
+     *
+     * <p>⚠️ {@code growth.star}·{@code growth.dice} 와 <b>같은 이유로</b> 진행 중 매치에서 막는다
+     * (#217 AC2): {@code MatchOrchestrator.buildSelectData} 가 시뮬 시점에 유효스탯을 읽으므로,
+     * 전·후반 사이에 스탯을 올리면 같은 경기 안에서 후반만 강해진다. 취향이 아니라 버그 차단이다.
+     */
+    @PostMapping("/api/growth/choices/{choiceId}")
+    public Map<String, Object> choose(@RequestAttribute("userId") String userId,
+                                      @PathVariable("choiceId") String choiceId,
+                                      @RequestBody(required = false) ChoiceRequest body) {
+        lockService.assertNotLocked(userId, "growth.choice");
+        if (body == null || body.stat() == null || body.stat().isBlank()) {
+            throw ApiException.validation("stat이 필요합니다");
+        }
+        return growthService.applyChoice(userId, choiceId, body.stat());
     }
 
     @GetMapping("/api/growth/report/{matchId}")

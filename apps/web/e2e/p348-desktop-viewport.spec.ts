@@ -149,13 +149,17 @@ async function mockApi(page: Page, state: string, growth = false) {
         ? route.fulfill({
             json: {
               matchId: MATCH_ID,
-              entries: PLAYERS.slice(0, 11).map((p) => ({
+              // #405 W2b 모양 — 구 `statXp`/`levelUps`/`ovrBefore/After` 는 서버가 더는 만들지 않는다.
+              // 목이 옛 모양을 흉내 내면 이 계약이 실제 화면 대신 자기가 만든 세계를 재게 된다(#342).
+              entries: PLAYERS.slice(0, 11).map((p, i) => ({
                 playerId: p.id,
                 name: p.name,
-                statXp: { shooting: 40, passing: 25, stamina: 12 },
-                levelUps: ["shooting"],
-                ovrBefore: 60,
-                ovrAfter: 61,
+                position: p.position,
+                grade: p.grade,
+                xpGained: 90 + i * 5,
+                levelBefore: 6,
+                levelAfter: i === 0 ? 7 : 6,
+                pendingChoices: [],
               })),
             },
           })

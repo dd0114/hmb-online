@@ -2,7 +2,8 @@ import { useEffect, useRef } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import styles from "./CelebrationOverlay.module.css";
 
-export type CelebrationVariant = "starUp" | "tierUp";
+/** `growth` = 3지선다 적용(#405 §2.5) — 성★/잠재와 같은 연출 인터페이스를 쓴다. */
+export type CelebrationVariant = "starUp" | "tierUp" | "growth";
 
 export interface CelebrationOverlayProps {
   /** 연출 종류 — 현재는 data-variant 마킹에만 쓰이고, 실제 색은 accentColor 로 별도 주입된다. */

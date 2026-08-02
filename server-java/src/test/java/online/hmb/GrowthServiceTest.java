@@ -74,26 +74,31 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(((Number) eff.get("technical")).doubleValue()).isEqualTo(40.0);
     }
 
+    /**
+     * ⚠️ 이 테스트는 <b>#405 W2a 로 기대값이 바뀌었다</b>. 구 모델은
+     * {@code cap = base + starFrac[star] × (band.hi − base)} 라 2★ P001 의 positioning 천장이
+     * 51.5 였다(밴드 여백의 절반). 신규 모델은 {@code growCeil[BRONZE](72) + star.ceilBonus[2](1)}
+     * = <b>73</b> — 성장 천장이 base 와 무관해지고 승급은 보너스만 준다(설계 §2.6).
+     */
     @Test
-    void statLevelRaisesAttributeAndClampsAtStarCap() {
+    void statLevelRaisesAttributeAndClampsAtTheGrowthCeiling() {
         String userId = onboard("g_grow");
-        // star=2 → starFrac 0.5 → GK positioning cap = 48 + 0.5*(55-48) = 51.5
         setStar(userId, "P001", 2);
-        setStatLv(userId, "P001", "positioning", 999);
+        setStatAdd(userId, "P001", "positioning", 999);
 
         Map<String, Object> card = growthService.cardEffective(userId, "P001");
         Map<?, ?> attrs = (Map<?, ?>) card.get("attributes");
-        assertThat(((Number) attrs.get("positioning")).doubleValue()).isEqualTo(51.5);
+        assertThat(((Number) attrs.get("positioning")).doubleValue()).isEqualTo(73.0);
         assertThat(((Number) card.get("completion")).doubleValue()).isGreaterThan(0.0);
     }
 
     @Test
-    void allStatsClampedToStarFractionCap() {
+    void allStatsClampedToTheGrowthCeiling() {
         String userId = onboard("g_clamp");
-        setStar(userId, "P001", 1); // starFrac .25 → cap = base + .25*(55-base)
+        setStar(userId, "P001", 1); // 1★ 도 등급 천장까지 간다(승급 게이트 없음)
         for (String stat : List.of("technical", "mental", "physical", "passing", "shooting",
                 "tackling", "pace", "stamina", "positioning")) {
-            setStatLv(userId, "P001", stat, 999);
+            setStatAdd(userId, "P001", stat, 999);
         }
         Map<String, Object> card = growthService.cardEffective(userId, "P001");
         Map<?, ?> attrs = (Map<?, ?>) card.get("attributes");
@@ -424,21 +429,26 @@ class GrowthServiceTest extends MatchTestBase {
                 "P006", "P007", "P008", "P009", "P010", "P011");
         List<String> bench = List.of("P012", "P013");
 
-        growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of(), true);
+        growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of(), true, "DRAW");
         long applied1 = appliedCount(matchId);
-        int starterLvSum1 = statLvSum(userId, "P001");
-        int benchLvSum1 = statLvSum(userId, "P012");
+        int starterLevel1 = cardLevelOf(userId, "P001");
+        int benchLevel1 = cardLevelOf(userId, "P012");
 
         assertThat(applied1).isEqualTo(13); // 11 선발 + 2 벤치
         // 미출전 벤치는 minutesMult=0 → XP 0 → 레벨 변화 없음(V2-1 "미출전 XP=0").
-        assertThat(benchLvSum1).isEqualTo(0);
-        assertThat(starterLvSum1).isGreaterThanOrEqualTo(0);
+        assertThat(benchLevel1).isEqualTo(1);
+        assertThat(starterLevel1).isGreaterThan(1);
 
         // 재정산 → growth_applied 중복 무시(멱등), 상태 변화 없음.
-        growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of(), true);
+        growthService.settleMatch(matchId, userId, starters, bench, Set.of(), Set.of(), true, "DRAW");
         assertThat(appliedCount(matchId)).isEqualTo(13);
-        assertThat(statLvSum(userId, "P001")).isEqualTo(starterLvSum1);
-        assertThat(statLvSum(userId, "P012")).isEqualTo(0);
+        assertThat(cardLevelOf(userId, "P001")).isEqualTo(starterLevel1);
+        assertThat(cardLevelOf(userId, "P012")).isEqualTo(1);
+    }
+
+    private int cardLevelOf(String userId, String playerId) {
+        return jdbcClient.sql("SELECT card_level FROM user_players WHERE user_id=? AND player_id=?")
+                .params(userId, playerId).query(Integer.class).single();
     }
 
     @Test
@@ -449,7 +459,7 @@ class GrowthServiceTest extends MatchTestBase {
         forceState(matchId, "FINISHED");
         List<String> starters = List.of("P001", "P002", "P003", "P004", "P005",
                 "P006", "P007", "P008", "P009", "P010", "P011");
-        growthService.settleMatch(matchId, userId, starters, List.of(), Set.of(), Set.of(), true);
+        growthService.settleMatch(matchId, userId, starters, List.of(), Set.of(), Set.of(), true, "DRAW");
 
         Map<String, Object> report = growthService.growthReport(userId, matchId);
         assertThat(report.get("matchId")).isEqualTo(matchId);
@@ -458,10 +468,11 @@ class GrowthServiceTest extends MatchTestBase {
         Map<?, ?> e = (Map<?, ?>) entries.stream()
                 .filter(x -> "P001".equals(((Map<?, ?>) x).get("playerId")))
                 .findFirst().orElseThrow();
-        assertThat(e.get("playerId")).isEqualTo("P001");
-        assertThat(((Number) e.get("ovrAfter")).doubleValue())
-                .isGreaterThanOrEqualTo(((Number) e.get("ovrBefore")).doubleValue());
-        assertThat((Map<?, ?>) e.get("statXp")).isNotEmpty();
+        // #405 W2b: 리포트는 **카드 축**이다 — 스탯별 XP 가 아니라 얻은 XP·레벨·선택 대기다.
+        assertThat(((Number) e.get("xpGained")).intValue()).isGreaterThan(0);
+        assertThat(((Number) e.get("levelAfter")).intValue())
+                .isGreaterThan(((Number) e.get("levelBefore")).intValue());
+        assertThat((List<?>) e.get("pendingChoices")).isNotEmpty();
     }
 
     // ── V2.2 재화 이원화 (젬 지갑, WalletService.applyGems) ─────────────────
@@ -525,8 +536,13 @@ class GrowthServiceTest extends MatchTestBase {
                 .params(star, userId, playerId).update();
     }
 
-    private void setStatLv(String userId, String playerId, String stat, int lv) {
-        String json = jdbcClient.sql("SELECT stat_levels_json FROM user_players WHERE user_id=? AND player_id=?")
+    /**
+     * 상승분 주입 — #405 W2b 로 저장 형태가 {@code stat_levels_json}(정수 lv)에서
+     * {@code stat_add_json}(소수 누적)으로 바뀌었다. 테스트의 <b>의도</b>("이만큼 키운 카드")는
+     * 그대로이고 주입 지점만 옮긴다.
+     */
+    private void setStatAdd(String userId, String playerId, String stat, double add) {
+        String json = jdbcClient.sql("SELECT stat_add_json FROM user_players WHERE user_id=? AND player_id=?")
                 .params(userId, playerId).query(String.class).optional().orElse(null);
         Map<String, Object> map = new java.util.LinkedHashMap<>();
         if (json != null) {
@@ -536,32 +552,13 @@ class GrowthServiceTest extends MatchTestBase {
                 map = new java.util.LinkedHashMap<>();
             }
         }
-        map.put(stat, Map.of("lv", lv, "xp", 0));
+        map.put(stat, add);
         try {
             String out = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(map);
-            jdbcClient.sql("UPDATE user_players SET stat_levels_json = ? WHERE user_id=? AND player_id=?")
+            jdbcClient.sql("UPDATE user_players SET stat_add_json = ? WHERE user_id=? AND player_id=?")
                     .params(out, userId, playerId).update();
         } catch (Exception e) {
             throw new RuntimeException(e);
-        }
-    }
-
-    private int statLvSum(String userId, String playerId) {
-        String json = jdbcClient.sql("SELECT stat_levels_json FROM user_players WHERE user_id=? AND player_id=?")
-                .params(userId, playerId).query(String.class).optional().orElse(null);
-        if (json == null) {
-            return 0;
-        }
-        try {
-            Map<String, Map<String, Object>> map = new com.fasterxml.jackson.databind.ObjectMapper()
-                    .readValue(json, Map.class);
-            int sum = 0;
-            for (Map<String, Object> v : map.values()) {
-                sum += ((Number) v.get("lv")).intValue();
-            }
-            return sum;
-        } catch (Exception e) {
-            return 0;
         }
     }
 
@@ -593,17 +590,35 @@ class GrowthServiceTest extends MatchTestBase {
         assertThat(countOf(userId, "P001")).isEqualTo(1); // owned 유지 — 목록·덱에서 사라지지 않음
     }
 
+    /**
+     * B2(#179 gverify) 무회귀 — 봇 로스터가 같은 카탈로그를 쓰므로 {@code playerId} 가 겹친다.
+     * <b>상대 사이드 이벤트가 귀속되면 안 된다.</b>
+     *
+     * <p>#405 W2b 로 이벤트가 흘러 들어가는 자리가 바뀌었다(스탯별 XP → {@code perfBonus} 와 후보
+     * 가중). 그래서 계약도 <b>대조군 대비 관계식</b>으로 다시 세운다: away 골 100개짜리 매치의
+     * XP 가 <b>이벤트가 아예 없는 매치</b>의 XP 와 같아야 한다. 필터를 떼면 100 × 0.15 가
+     * {@code perfBonusCap} 까지 차서 XP 가 눈에 띄게 커진다(= 이 단언이 죽는다).
+     */
     @Test
     void settleMatchIgnoresOpponentSideEvents_b2() {
         String userId = onboard("g_b2");
-        String matchId = "gb2-match";
-        // 봇 로스터가 같은 카탈로그를 쓰므로 playerId 가 겹친다 — away 이벤트는 귀속되면 안 된다.
         StringBuilder events = new StringBuilder();
-        events.append("{\"type\":\"save\",\"playerId\":\"P001\",\"team\":\"home\",\"tick\":1}");
+        events.append("{\"type\":\"kickoff\",\"team\":\"home\",\"tick\":0}");
         for (int i = 0; i < 100; i++) {
-            events.append(",{\"type\":\"goal\",\"playerId\":\"P001\",\"team\":\"away\",\"tick\":").append(i + 2).append("}");
+            events.append(",{\"type\":\"goal\",\"playerId\":\"P001\",\"team\":\"away\",\"tick\":")
+                    .append(i + 2).append("}");
         }
-        String log = "{\"events\":[" + events + "]}";
+        int noisyXp = settleWithLog(userId, "gb2-noisy", "{\"events\":[" + events + "]}");
+        int quietXp = settleWithLog(userId, "gb2-quiet", "{\"events\":[]}");
+
+        assertThat(noisyXp)
+                .as("상대 사이드 골 100개가 유저 선수의 XP 를 움직였다 — event.team 필터가 죽었다")
+                .isEqualTo(quietXp);
+        assertThat(quietXp).as("대조군 XP 가 0 이면 이 관계식이 공허해진다").isGreaterThan(0);
+    }
+
+    /** 주어진 매치 로그로 P001 을 선발 정산하고 적립된 XP 를 돌려준다. */
+    private int settleWithLog(String userId, String matchId, String log) {
         jdbcClient.sql("""
                         INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version, user_deck_json, created_at)
                         VALUES (?, ?, 'BOT_BAL', 'FINISHED', 's', 'v', '{}', ?)
@@ -615,40 +630,9 @@ class GrowthServiceTest extends MatchTestBase {
                         VALUES (?, 1, '{}', '{}', '{}', 's1', ?, 'h')
                         """)
                 .params(matchId, log).update();
-
-        growthService.settleMatch(matchId, userId, List.of("P001"), List.of(), Set.of(), Set.of(), true);
-
-        Map<String, GrowthService.StatLevelState> levels = statLevelsOf(userId, "P001");
-        // away 골 100개가 귀속됐다면 shooting xp 가 폭증한다(이벤트당 0.3 × 100 × xpBase).
-        // 필터가 작동하면 shooting 은 baseline-only — save(home) 보정을 받은 positioning 보다 작아야 한다.
-        long shootingXp = cumulativeOf(levels.get("shooting"));
-        long positioningXp = cumulativeOf(levels.get("positioning"));
-        assertThat(positioningXp).isGreaterThan(shootingXp);
-        assertThat(shootingXp).isLessThan(100); // baseline 스케일(오귀속 시 수백 이상)
-    }
-
-    private Map<String, GrowthService.StatLevelState> statLevelsOf(String userId, String playerId) {
-        String json = jdbcClient.sql("SELECT stat_levels_json FROM user_players WHERE user_id=? AND player_id=?")
-                .params(userId, playerId).query(String.class).single();
-        try {
-            var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
-            Map<String, GrowthService.StatLevelState> out = new java.util.LinkedHashMap<>();
-            node.fields().forEachRemaining(e -> out.put(e.getKey(),
-                    new GrowthService.StatLevelState(e.getValue().path("lv").asInt(), e.getValue().path("xp").asInt())));
-            return out;
-        } catch (Exception e) {
-            throw new IllegalStateException(e);
-        }
-    }
-
-    /** 테스트 근사 누적 xp — 레벨 임계(fixture xpLvBase=100, growth=1.7)를 그대로 재현. */
-    private long cumulativeOf(GrowthService.StatLevelState s) {
-        long total = s == null ? 0 : s.xp();
-        int lv = s == null ? 0 : s.lv();
-        for (int n = 0; n < lv; n++) {
-            total += Math.round(100 * Math.pow(1.7, n));
-        }
-        return total;
+        growthService.settleMatch(matchId, userId, List.of("P001"), List.of(), Set.of(), Set.of(), true, "DRAW");
+        return jdbcClient.sql("SELECT xp_delta FROM growth_applied WHERE match_id=? AND player_id='P001'")
+                .param(matchId).query(Integer.class).single();
     }
 
     /**

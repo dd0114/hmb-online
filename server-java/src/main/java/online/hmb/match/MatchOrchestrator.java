@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import online.hmb.catalog.EconomyService;
+import online.hmb.rewards.RewardBundleService;
 import online.hmb.common.Hashes;
 import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
@@ -58,6 +59,8 @@ public class MatchOrchestrator {
     private final online.hmb.league.LeagueService leagueService;
     private final online.hmb.league.LeagueDailyRewardService leagueDailyRewardService;
     private final online.hmb.growth.GrowthService growthService;
+    /** #405 W2b §2.9 — 정산 결과를 한 장으로 묶는 공용 보상 봉투(표시용, 지급의 SoT 아님). */
+    private final RewardBundleService rewardBundleService;
     private final MatchClockService clockService;
     private final ObjectMapper objectMapper;
     /** #193 라운드2 — 지시 델타 라우팅 노브(전부 config, 하드코딩 금지). */
@@ -82,6 +85,7 @@ public class MatchOrchestrator {
                              online.hmb.league.LeagueService leagueService,
                              online.hmb.league.LeagueDailyRewardService leagueDailyRewardService,
                              online.hmb.growth.GrowthService growthService,
+                             RewardBundleService rewardBundleService,
                              MatchClockService clockService,
                              DeckPrewarmService prewarmService,
                              ObjectMapper objectMapper,
@@ -106,6 +110,7 @@ public class MatchOrchestrator {
         this.leagueService = leagueService;
         this.leagueDailyRewardService = leagueDailyRewardService;
         this.growthService = growthService;
+        this.rewardBundleService = rewardBundleService;
         this.clockService = clockService;
         this.objectMapper = objectMapper;
         this.deltaEnabled = deltaEnabled;
@@ -811,11 +816,13 @@ public class MatchOrchestrator {
         // AC-C4: 관계/사기 변동 — FINISHED 전이 트랜잭션 내 멱등 적용(relations_applied 플래그 CAS).
         relationService.applyMatchResult(match.userId(), match.id(), result);
 
-        // #179 §4: 성장 정산 — 기용 선수별 Δxp 적립(growth_applied PK 멱등). FINISHED CAS 통과 후 1회.
-        settleGrowth(match);
+        // #179 §4 / #405 W2b: 성장 정산 — 기용 선수별 카드 XP 적립 + 레벨업마다 3지선다 선택권
+        // (growth_applied PK 멱등). FINISHED CAS 통과 후 1회. 결과(WIN/DRAW/LOSS)가 XP 배율이다.
+        settleGrowth(match, result);
 
         // #212: 보상은 **모드별**(rewards.byMode) — hero 확정 곡선 "연습 적게 < 리그 매판 적당".
         // byMode 에 해당 모드가 없으면 레거시 flat 값으로 폴백한다(구 economy 파일 호환).
+        long[] awarded = {0};
         economyService.get().ifPresentOrElse(economy -> {
             // #245 E6: 원정의 돈은 **리그 한 판과 같게**(hero 지시). economy 에 away 키를 새로 만들지
             // 않고 리그 곡선을 **참조**한다 — data/** 는 이 모듈 소유가 아니고, "리그와 같게"는 값
@@ -824,15 +831,40 @@ public class MatchOrchestrator {
             int amount = economy.rewards().forMode(rewardMode).by(result);
             String reason = "reward_" + result.toLowerCase();
             walletService.apply(match.userId(), amount, reason, match.id());
+            awarded[0] = amount;
         }, () -> log.warn("economy unavailable — match {} finished without reward", match.id()));
+
+        // #405 W2b §2.9: 보상 봉투 — 정산이 <b>끝난 뒤</b> 그 결과를 한 장으로 묶는다(멱등).
+        // 표시용이므로 실패해도 정산을 되돌리지 않는다(RewardBundleService 내부에서 삼킨다).
+        createRewardBundle(match, awarded[0]);
         return true;
+    }
+
+    /**
+     * 매치 보상 봉투(§2.9) — 재화 섹션 + 성장 섹션. <b>재화는 코드만</b> 싣는다(#232 표기 메타).
+     * 성장 섹션의 내용은 {@code growth_applied.report_json} 스냅샷 그대로다 — 여기서 다시 계산하면
+     * 화면 둘이 같은 경기를 다르게 말한다.
+     */
+    private void createRewardBundle(MatchService.MatchRow match, long pointsAwarded) {
+        try {
+            List<Map<String, Object>> currency = new ArrayList<>();
+            if (pointsAwarded != 0) {
+                currency.add(RewardBundleService.currency(EconomyService.CURRENCY_POINT, pointsAwarded));
+            }
+            List<Map<String, Object>> growth = growthService.growthEntries(match.userId(), match.id());
+            rewardBundleService.create(match.userId(), RewardBundleService.SOURCE_MATCH, match.id(),
+                    List.of(new RewardBundleService.Section(RewardBundleService.KIND_CURRENCY, currency),
+                            new RewardBundleService.Section(RewardBundleService.KIND_GROWTH, growth)));
+        } catch (RuntimeException e) {
+            log.warn("reward bundle 생성 실패 match={}: {}", match.id(), e.toString());
+        }
     }
 
     /**
      * 성장 정산 호출(#179 §4) — 매치 스냅샷 로스터(선발+벤치) + 교체를 GrowthService 에 넘긴다.
      * 멱등은 GrowthService(growth_applied PK)에서 보장 — FINISHED CAS 통과 경로에서만 도달한다.
      */
-    private void settleGrowth(MatchService.MatchRow match) {
+    private void settleGrowth(MatchService.MatchRow match, String result) {
         try {
             JsonNode snapshot = matchService.readJson(match.userDeckJson());
             List<String> starters = new ArrayList<>();
@@ -851,7 +883,7 @@ public class MatchOrchestrator {
             }
             // B2(#179 gverify): 유저 사이드 전달 — 이벤트 귀속을 event.team 으로 필터(봇과 playerId 겹침).
             growthService.settleMatch(match.id(), match.userId(), starters, bench, subsOut, subsIn,
-                    userIsHome(match));
+                    userIsHome(match), result);
         } catch (RuntimeException e) {
             // 정산 실패가 매치 완료(보상/전적)를 되돌리지 않게 — 로그만(멱등이라 재정산 가능).
             log.error("growth settlement failed for match {}: {}", match.id(), e.toString());

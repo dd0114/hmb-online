@@ -1,0 +1,200 @@
+/* 보상 봉투 — 성장 섹션 (#405 §2.9, 목업 화면 ②). */
+
+.summary {
+  margin: 2px 2px 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.summary b {
+  color: var(--text);
+}
+
+.rows {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 9px 11px 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.rowTappable {
+  cursor: pointer;
+}
+
+.rowTappable:hover {
+  border-color: #4a5c80;
+}
+
+/* 레벨업 행 — 배경 한 단계 + 좌측 노란 라인. 목록에서 갈리는 것이 이 섹션의 요점이다. */
+.rowLevelUp {
+  background: #1a2333;
+  border-color: #3a4a68;
+}
+
+.rowLevelUp::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--warn);
+}
+
+/* 미투입 — 흐리게. "안 뛰면 안 큰다"의 시각 신호. */
+.rowIdle {
+  opacity: 0.55;
+}
+
+.avatar {
+  flex: none;
+}
+
+.avatarFallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: #20262f;
+  color: #d7dde6;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.rowMain {
+  display: block;
+  min-width: 0;
+}
+
+.rowTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.rowName {
+  font-size: 13.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.xpGain {
+  margin-left: auto;
+  flex: none;
+  color: var(--ok);
+  font-size: 12.5px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.xpGainZero {
+  color: #5c646f;
+}
+
+.rowBot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 5px;
+  min-width: 0;
+}
+
+.lvLine {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 10.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.lvArrow {
+  color: var(--text-muted);
+}
+
+.lvNext {
+  color: var(--ok);
+}
+
+/* 행 XP 바 — 임계는 **서버가 준 `xpToNext`** 다(GrowthSection.tsx 머리말). */
+.xpBar {
+  position: relative;
+  flex: 1;
+  min-width: 24px;
+  height: 6px;
+  border-radius: 3px;
+  background: #20262f;
+  overflow: hidden;
+}
+
+.xpBarFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+}
+
+.pendTag {
+  margin-left: auto;
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--warn);
+  color: #131720;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.benchDivider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 2px 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.benchDivider::before,
+.benchDivider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}

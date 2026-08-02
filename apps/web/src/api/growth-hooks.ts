@@ -13,9 +13,11 @@ import { ApiError, apiFetch } from "./client";
 import { useToken } from "../auth/TokenContext";
 import type {
   CardEffective,
+  ChoiceResult,
   DiceRollResult,
   GemTopupResult,
   MatchGrowthReport,
+  PendingChoice,
   StarUpResult,
 } from "./growth";
 
@@ -76,6 +78,59 @@ export function useGemTopup() {
       apiFetch<GemTopupResult>("/api/shop/gems/topup", { method: "POST", body }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+}
+
+/** 대기 중 선택권 쿼리 키. 전체(홈 뱃지)와 카드별(강화탭)이 **다른 키**다. */
+export const growthChoicesKey = (playerId?: string) =>
+  ["growthChoices", playerId ?? null] as const;
+
+/**
+ * GET /api/growth/choices[?playerId=] — **아직 안 고른** 선택권 목록 (#405 §2.5).
+ *
+ * ⚠️ 보상 봉투 안의 `pendingChoices` 는 **정산 시점 스냅샷**이라 유저가 고른 뒤에도 그대로다
+ * (서버가 봉투를 되쓰지 않는다 — 봉투는 "그때 무슨 일이 있었나"의 기록이다). 그래서 "지금
+ * 무엇이 남았나"는 **이 쿼리**가 답한다. 둘을 섞으면 이미 고른 선택이 뱃지에 영원히 남는다.
+ */
+export function usePendingChoices(playerId?: string, enabled: boolean = true) {
+  const { token } = useToken();
+  return useQuery({
+    queryKey: growthChoicesKey(playerId),
+    queryFn: async (): Promise<PendingChoice[]> => {
+      const q = playerId ? `?playerId=${encodeURIComponent(playerId)}` : "";
+      const res = await apiFetch<{ choices?: unknown }>(`/api/growth/choices${q}`);
+      // 구 서버·목이 `{}` 를 줄 수 있다. 배열이 아니면 빈 목록 — 화면 전체를 죽이지 않는다.
+      return Array.isArray(res?.choices) ? (res.choices as PendingChoice[]) : [];
+    },
+    enabled: Boolean(token) && enabled,
+    retry: false,
+  });
+}
+
+/**
+ * POST /api/growth/choices/{choiceId} — 3지선다 적용.
+ *
+ * **응답에 갱신된 카드가 실려 온다** → 그대로 캐시에 넣는다(재조회 금지, `ChoiceResult` 주석).
+ * 대기 목록은 전체·카드별 두 키가 있으므로 접두사로 한꺼번에 무효화한다.
+ *
+ * 에러 3종은 화면이 갈라 처리한다(문구를 하나로 합치면 유저가 다음 행동을 못 고른다):
+ *  · 400 `VALIDATION_ERROR`(후보 밖) · 404(남의/없는 선택권) · 409 `CHOICE_ALREADY_MADE`
+ *  · **409 `MATCH_IN_PROGRESS`** — 토스트가 아니라 `detail.matchId` 로 **이어하기 안내**(#217).
+ */
+export function useApplyChoice() {
+  const queryClient = useQueryClient();
+  return useMutation<ChoiceResult, ApiError, { choiceId: string; stat: string }>({
+    mutationFn: ({ choiceId, stat }) =>
+      apiFetch<ChoiceResult>(`/api/growth/choices/${choiceId}`, { method: "POST", body: { stat } }),
+    onSuccess: (res) => {
+      if (res?.card) queryClient.setQueryData(growthCardKey(res.playerId), res.card);
+      queryClient.invalidateQueries({ queryKey: ["growthChoices"] });
+      queryClient.invalidateQueries({ queryKey: ["players"] });
+    },
+    // 실패해도 목록을 새로 받는다 — 409(이미 선택)는 "내 목록이 낡았다"는 뜻이라 갱신이 곧 해소다.
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["growthChoices"] });
     },
   });
 }

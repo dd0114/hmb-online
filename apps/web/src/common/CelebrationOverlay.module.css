@@ -111,3 +111,46 @@
     transform: scale(1);
   }
 }
+
+/* ── `growth` 변이 (#405 §2.5, 목업 화면 ④) ───────────────────────────────────────────────
+   3지선다 적용은 성★/티어업과 **연출 무게가 다르다**: 목업은 알약 뱃지가 아니라 화면을 가로지르는
+   큰 금색 `LEVEL UP` + 스탯명 + `44.0 → 47.8 (+3.82)` 세 줄이다.
+   공용 `.badge`/`.subtitle` 을 고치면 성★·티어업이 같이 바뀌므로 **이 변이에만** 얹는다
+   (`variant` 는 마킹이자 스타일 스코프다 — 그러라고 있는 훅이다). */
+/* 목업 ④ 는 **어두운 전면 딤 위의 밝은 금색**이다. 공용 `.flash` 만으로는 화면이 금색으로 물들어
+   글자가 배경에 묻는다(실화면 캡처로 확인) — 그래서 딤을 이 변이에 직접 깔고, 플래시는 그 위에서
+   색만 얹는다. `.body` 의 박스는 지운다(목업엔 상자가 없다). */
+.overlay[data-variant="growth"] {
+  background: rgba(6, 10, 16, 0.78);
+  /* 총 노출이 1.7s 라 공용 420/240ms 스태거로는 마지막 줄이 뜨기 전에 사라진다. */
+  --celebration-step-base: 160ms;
+  --celebration-step-stagger: 120ms;
+}
+
+.overlay[data-variant="growth"] .body {
+  gap: 6px;
+  padding: 26px 30px;
+  background: none;
+  backdrop-filter: none;
+}
+
+.overlay[data-variant="growth"] .badge {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  font-size: 34px;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 24px rgba(255, 194, 75, 0.5);
+}
+
+.overlay[data-variant="growth"] .subtitle {
+  font-size: 19px;
+}
+
+/* 상승폭 줄만 초록(성장분 색) — 제목의 금색과 축을 나눈다. */
+.overlay[data-variant="growth"] .step {
+  color: var(--ok);
+  font-size: 15px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}

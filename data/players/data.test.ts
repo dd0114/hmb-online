@@ -126,6 +126,40 @@ const V24_NEW_INACTIVE_IDS: readonly string[] = ["P181", "P182"];
 const INACTIVE_IDS_V24: readonly string[] = [...INACTIVE_IDS_V23, ...V24_NEW_INACTIVE_IDS];
 
 /**
+ * #405 W1 — **초기 스탯 하향 밴드**(players.v2.5). `docs/plan-v5/growth-redesign.md` §2.2 확정표에서
+ * 직접 박제한다(generate.ts 의 `GRADE_BANDS_V25` 재사용은 자기참조 — 설계와 코드가 어긋나도 못 잡는다).
+ *
+ * ⚠️ **여기 있는 것은 "시작 밴드"뿐이다.** 성장 천장(72/78/84/90/95)은 data 가 발행하지 않는다 —
+ * 런타임 SoT 는 server 의 `GrowthTuning.bands.growCeil` 이다(§2.8.1). 그 경계를 아래
+ * `V25_GROW_CEIL_NOT_PUBLISHED` 계약이 직접 지킨다.
+ */
+const V25_BANDS: Record<Grade, readonly [number, number]> = {
+  BRONZE: [32, 42],
+  SILVER: [41, 51],
+  GOLD: [50, 60],
+  DIA: [59, 69],
+  LEGEND: [68, 78],
+};
+/** §2.2 "시작 중앙" 열 — 밴드 중앙값이 설계표와 일치하는지 직접 대조한다. */
+const V25_START_MEDIAN: Record<Grade, number> = {
+  BRONZE: 37,
+  SILVER: 46,
+  GOLD: 55,
+  DIA: 64,
+  LEGEND: 73,
+};
+/** §2.2 성장 천장 — **server 소관**. data 발행물에 이 값이 새어 나오면 경계가 무너진 것이다. */
+const V25_GROW_CEIL_NOT_PUBLISHED: Record<Grade, number> = {
+  BRONZE: 72,
+  SILVER: 78,
+  GOLD: 84,
+  DIA: 90,
+  LEGEND: 95,
+};
+/** v2.5 = v2.4 와 **같은 182행**(신규 채번 0, 능력치만 재롤). */
+const V25_TOTAL = 182;
+
+/**
  * 패러디 유닛명에 실명이 새어 들어오지 않는지 — 소스 실선수의 한글 표기 denylist(부분문자열 금지).
  * 실명 유입 차단이 목적이므로 가드를 지우지 않고 **한글 축으로 확장**한다.
  */
@@ -242,7 +276,7 @@ const REAL_CLUB_TOKENS: readonly string[] = [
 ];
 
 const {
-  players, playersV2, playersV21, playersV22, playersV23, playersV24,
+  players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25,
   economy, economyV3, bots, league, leagueV2, botsV3,
 } = generateAll();
 
@@ -1537,6 +1571,286 @@ describe("players.v2.4 — 신규 LEGEND 2종 채번 (#256 석다이크·오시�
   });
 });
 
+// ── #405 W1: 초기 스탯 하향 밴드 (players.v2.5) ────────────────────────────
+// 설계 SoT = docs/plan-v5/growth-redesign.md §2.2. 이 발행물은 **시작 밴드만** 바꾼다 —
+// 성장 천장·감쇠·XP 는 전부 server(GrowthTuning) 소관이라 data 는 손대지 않는다(§2.8.1 경계).
+describe("players.v2.5 — 초기 스탯 하향 밴드 (#405 §2.2)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const ATTR_KEYS = [
+    "technical", "mental", "physical", "passing", "shooting",
+    "tackling", "pace", "stamina", "positioning",
+  ] as const;
+  const diskV24 = JSON.parse(readFileSync(join(here, "players.v2.4.json"), "utf8")) as {
+    id: string;
+    name: string;
+    position: Position;
+    grade: Grade;
+    attributes: PlayerSeed["attributes"];
+    personality: Personality;
+    active: boolean;
+  }[];
+
+  // ── 설계표 자체의 성질(리터럴 대조) ──────────────────────────────────────
+  it("신규 시작 밴드가 §2.2 확정표와 일치 — 폭 11 · 시작 격차 9 · 중앙 37/46/55/64/73", () => {
+    for (const g of GRADES) {
+      const [lo, hi] = V25_BANDS[g];
+      expect(hi - lo + 1, `${g} 밴드 폭`).toBe(11);
+      expect((lo + hi) / 2, `${g} 시작 중앙`).toBe(V25_START_MEDIAN[g]);
+    }
+    // 등급 간 시작 격차 9 (§2.2 "시작 격차 9 / 천장 격차 6").
+    for (let i = 1; i < GRADES.length; i++) {
+      const prev = V25_BANDS[GRADES[i - 1]!];
+      const cur = V25_BANDS[GRADES[i]!];
+      expect(cur[0] - prev[0], `${GRADES[i]} 하한 격차`).toBe(9);
+      expect(cur[1] - prev[1], `${GRADES[i]} 상한 격차`).toBe(9);
+    }
+  });
+
+  it("구 밴드보다 확실히 낮다 — 하향이 목적이다(모든 등급에서 lo·hi 둘 다 감소)", () => {
+    for (const g of GRADES) {
+      expect(V25_BANDS[g][0], `${g} lo`).toBeLessThan(BANDS[g][0]);
+      expect(V25_BANDS[g][1], `${g} hi`).toBeLessThan(BANDS[g][1]);
+    }
+  });
+
+  // ── data / server 경계 (§2.8.1) ─────────────────────────────────────────
+  it("성장 천장은 data 발행물에 없다 — 런타임 SoT 는 server 의 GrowthTuning.bands.growCeil", () => {
+    // data 가 발행하는 것은 **시작 스탯 원본값**뿐이다. 어떤 행의 어떤 스탯도 시작 밴드 상한을
+    // 넘지 않는다 = 천장 값이 이 파일에서 나오지 않는다.
+    for (const g of GRADES) {
+      expect(V25_BANDS[g][1], `${g} 시작 상한 < 성장 천장`).toBeLessThan(
+        V25_GROW_CEIL_NOT_PUBLISHED[g],
+      );
+    }
+    const maxByGrade: Record<Grade, number> = { BRONZE: 0, SILVER: 0, GOLD: 0, DIA: 0, LEGEND: 0 };
+    for (const p of playersV25) {
+      for (const k of ATTR_KEYS) {
+        maxByGrade[p.grade] = Math.max(maxByGrade[p.grade], p.attributes[k]);
+      }
+    }
+    for (const g of GRADES) {
+      expect(maxByGrade[g], `${g} 발행 최댓값이 시작 밴드 상한 이하`).toBeLessThanOrEqual(
+        V25_BANDS[g][1],
+      );
+    }
+  });
+
+  // ── 핵심 AC: 전 182행이 자기 등급 신규 밴드 안 ──────────────────────────
+  it(`v2.5 = ${V25_TOTAL}행 — 신규 채번 0, 행 수·id 순서가 v2.4 와 동일`, () => {
+    expect(playersV25).toHaveLength(V25_TOTAL);
+    expect(diskV24).toHaveLength(V25_TOTAL);
+    expect(playersV25.map((p) => p.id)).toEqual(diskV24.map((p) => p.id));
+  });
+
+  it("전 182행의 능력치 9종이 **자기 등급의 신규 시작 밴드** 안(정수)", () => {
+    for (const p of playersV25) {
+      const [lo, hi] = V25_BANDS[p.grade];
+      for (const k of ATTR_KEYS) {
+        const v = p.attributes[k];
+        expect(v, `${p.id} ${p.grade} ${k} ≥ ${lo}`).toBeGreaterThanOrEqual(lo);
+        expect(v, `${p.id} ${p.grade} ${k} ≤ ${hi}`).toBeLessThanOrEqual(hi);
+        expect(Number.isInteger(v), `${p.id} ${k} integer`).toBe(true);
+      }
+    }
+  });
+
+  it("등급별 최솟값·최댓값이 밴드 경계를 실제로 채운다 — 밴드가 이름뿐이 아니다", () => {
+    // 밴드를 넓게 잡아 놓고 실제로는 한 점만 쓰는 상태를 배제한다(밴드 계약의 유효성).
+    for (const g of GRADES) {
+      const vals = playersV25
+        .filter((p) => p.grade === g)
+        .flatMap((p) => ATTR_KEYS.map((k) => p.attributes[k]));
+      expect(vals.length, `${g} 표본`).toBeGreaterThan(0);
+      expect(Math.min(...vals), `${g} 최솟값 = 밴드 하한`).toBe(V25_BANDS[g][0]);
+      expect(Math.max(...vals), `${g} 최댓값 = 밴드 상한`).toBe(V25_BANDS[g][1]);
+    }
+  });
+
+  it("등급 단조 — 등급별 평균 능력치가 BRONZE<SILVER<GOLD<DIA<LEGEND (뽑기 가치 보존)", () => {
+    const avg = (g: Grade) => {
+      const vals = playersV25
+        .filter((p) => p.grade === g)
+        .flatMap((p) => ATTR_KEYS.map((k) => p.attributes[k]));
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    };
+    for (let i = 1; i < GRADES.length; i++) {
+      expect(avg(GRADES[i]!), `${GRADES[i]} > ${GRADES[i - 1]}`).toBeGreaterThan(avg(GRADES[i - 1]!));
+    }
+  });
+
+  it("v2.4 대비 전 등급에서 평균이 내려갔다 — '초기 스탯 하향'의 방향성 계약", () => {
+    const avgOf = (rows: { grade: Grade; attributes: PlayerSeed["attributes"] }[], g: Grade) => {
+      const vals = rows
+        .filter((p) => p.grade === g)
+        .flatMap((p) => ATTR_KEYS.map((k) => p.attributes[k]));
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    };
+    for (const g of GRADES) {
+      expect(avgOf(playersV25, g), `${g} 평균 하향`).toBeLessThan(avgOf(diskV24, g));
+    }
+  });
+
+  // ── 능력치 **만** 바뀐다 ────────────────────────────────────────────────
+  it("name/position/grade/personality/active 가 디스크 v2.4 와 완전 동일 — 바뀐 축은 attributes 뿐", () => {
+    expect(playersV25).toHaveLength(diskV24.length);
+    diskV24.forEach((old, i) => {
+      const now = playersV25[i]!;
+      expect(now.id, `#${i} id`).toBe(old.id);
+      expect(now.name, `${old.id} name`).toBe(old.name);
+      expect(now.position, `${old.id} position`).toBe(old.position);
+      expect(now.grade, `${old.id} grade`).toBe(old.grade);
+      expect(now.personality, `${old.id} personality`).toBe(old.personality);
+      expect(now.active, `${old.id} active`).toBe(old.active);
+    });
+    // attributes 를 제외하면 두 발행물은 바이트 동일해야 한다(누락 축 검출).
+    const strip = (rows: typeof diskV24) => rows.map(({ attributes, ...rest }) => rest);
+    expect(JSON.stringify(strip(playersV25 as typeof diskV24))).toBe(JSON.stringify(strip(diskV24)));
+  });
+
+  it("v2.5 = v2.4 와 스키마 동일 — 필드 순서/개수 무변경(신설 필드 0)", () => {
+    for (const p of playersV25) {
+      expect(Object.keys(p)).toEqual([
+        "id", "name", "position", "grade", "attributes", "personality", "active",
+      ]);
+      expect(Object.keys(p.attributes)).toEqual([...ATTR_KEYS]);
+    }
+  });
+
+  it("traits 승계 — ROSTER 가 v2.5 행과 index 단위로 정합(포지션·등급 일치, 재배열 0)", () => {
+    // traits 는 발행 필드가 아니라 ROSTER 축이다. "traits 를 그대로 승계했다"의 관측 가능한
+    // 형태 = **로스터 index 정합**(빌더가 같은 순서의 같은 엔트리로 굴렸다).
+    expect(ROSTER.length).toBe(V25_TOTAL);
+    playersV25.forEach((p, i) => {
+      expect(p.name, `${p.id} 로스터 index 정합`).toBe(diskV24[i]!.name);
+      expect(p.position).toBe(ROSTER[i]!.position);
+      expect(p.grade).toBe(ROSTER[i]!.grade);
+    });
+  });
+
+  // ⚠️ 바이어스 계약을 **평균 비교로 걸지 않는다.** 실제로 걸어 봤더니 `entry.traits` 를 빈
+  // 배열로 바꾼 변이체가 살아남았다 — traits 가 주스탯과 자주 겹쳐서, 바이어스를 완전히 없애도
+  // trait 평균이 여전히 +1.03 높게 나왔기 때문이다(측정값). 대신 **구조적 하한**으로 건다:
+  // 바이어스는 롤 뒤 순수 가산이고 가산 대상 스탯은 raw ≥ lo 이므로, 클램프 후에도 **반드시
+  // lo+bias 이상**이다(lo+3, lo+4 ≤ hi=lo+10). 확률이 아니라 항등식이다.
+  //
+  // 이 계약은 실제로 살아 있다 — 바이어스를 +5/+6 → +3/+4 로 바꾼 순간 아래 두 건이 **먼저
+  // 깨졌고**(lo+5/lo+6 미달), 값을 갱신해서 통과시켰다. 상수를 코드에서 재사용하지 않고 리터럴로
+  // 박는 이유가 이것이다(자기참조면 같이 따라 움직여 아무것도 못 잡는다).
+  it("바이어스 유지 ① — 포지션 주스탯이 전원 **lo+3 이상**(가산이 실제로 들어갔다)", () => {
+    for (const p of playersV25) {
+      const lo = V25_BANDS[p.grade][0];
+      for (const k of PRIMARY[p.position]) {
+        expect(p.attributes[k], `${p.id} ${p.position} 주스탯 ${k} ≥ ${lo + 3}`).toBeGreaterThanOrEqual(lo + 3);
+      }
+    }
+  });
+
+  it("바이어스 유지 ② — trait 스탯이 전원 **lo+4 이상**(traits 승계가 실제로 반영됐다)", () => {
+    playersV25.forEach((p, i) => {
+      const lo = V25_BANDS[p.grade][0];
+      for (const k of ROSTER[i]!.traits) {
+        expect(p.attributes[k], `${p.id} trait ${k} ≥ ${lo + 4}`).toBeGreaterThanOrEqual(lo + 4);
+      }
+    });
+  });
+
+  /**
+   * ⚠️ **함정 계약: 밴드 폭을 줄이면 바이어스도 같이 줄여야 한다.**
+   *
+   * #405 1차 발행에서 실제로 밟았다 — 폭만 16→11 로 줄이고 +5/+6 을 그대로 뒀더니 주스탯이면서
+   * trait 인 스탯은 가산 합 +11 = 폭 전체라 **170/170(100%)** 이 상한에 박혀 롤이 무의미한
+   * **상수**가 됐다. 같은 (포지션, trait) 조합 카드가 그 스탯에서 전부 동일해지는 다양성 손실이다.
+   * 이 계약이 그 상태로의 회귀를 막는다: 가산 합이 폭을 덮으면 안 된다.
+   */
+  it("degenerate 가드 — 바이어스 합(주스탯+trait) < 밴드 폭 (교집합 스탯이 상수가 되지 않는다)", () => {
+    const width = 11; // = hi − lo + 1
+    expect(3 + 4, "주스탯+trait 가산 합").toBeLessThan(width);
+    // 산출물로도 확인 — 교집합 스탯이 전부 상한이면 그 스탯은 상수다.
+    let both = 0, bothAtHi = 0;
+    playersV25.forEach((p, i) => {
+      const hi = V25_BANDS[p.grade][1];
+      const pr = new Set(PRIMARY[p.position] as string[]);
+      for (const k of ROSTER[i]!.traits) {
+        if (!pr.has(k)) continue;
+        both++;
+        if (p.attributes[k] === hi) bothAtHi++;
+      }
+    });
+    expect(both, "주스탯∩trait 표본").toBeGreaterThan(0);
+    expect(bothAtHi / both, "주스탯∩trait 클램프율 < 100%").toBeLessThan(1);
+  });
+
+  it("바이어스가 무차별이 아니다 — 바이어스 없는 스탯은 밴드 하한까지 실제로 내려간다", () => {
+    // 위 두 계약은 "가산 대상이 높다"만 본다. 반대편(비대상)이 정말 밴드 바닥을 쓰는지 확인해야
+    // "전 스탯에 +6 을 발라 놨다"는 상태와 구별된다.
+    let sawFloor = 0;
+    playersV25.forEach((p, i) => {
+      const lo = V25_BANDS[p.grade][0];
+      const biased = new Set<string>([...PRIMARY[p.position], ...(ROSTER[i]!.traits as string[])]);
+      for (const k of ATTR_KEYS) {
+        if (!biased.has(k) && p.attributes[k] === lo) sawFloor++;
+      }
+    });
+    expect(sawFloor, "밴드 하한을 찍는 비바이어스 스탯이 존재").toBeGreaterThan(0);
+  });
+
+  it("모든 행이 shared PlayerCard 스키마로 파싱된다(하향 밴드가 계약을 안 깬다)", () => {
+    for (const p of playersV25) {
+      const card = PlayerCard.parse({
+        playerId: p.id, name: p.name, position: p.position, attributes: p.attributes,
+      });
+      expect(card.playerId).toBe(p.id);
+    }
+  });
+
+  // ── 결정론 + 과거 발행물 불변 ───────────────────────────────────────────
+  it("v2.5 재생성 바이트 동일 — 같은 SEED → 같은 산출물", () => {
+    const a = generateAll();
+    const b = generateAll();
+    expect(JSON.stringify(a.playersV25, null, 2)).toBe(JSON.stringify(b.playersV25, null, 2));
+    // 디스크 발행물과도 동일해야 한다(재생성 누락 검출 — 동기화 describe 와 이중 가드).
+    expect(readFileSync(join(here, "players.v2.5.json"), "utf8")).toBe(
+      JSON.stringify(a.playersV25, null, 2) + "\n",
+    );
+  });
+
+  it("과거 발행물 5종(v2·v2.1·v2.2·v2.3·v2.4)이 디스크와 바이트 동일 — v2.5 가 과거를 안 흔들었다", () => {
+    const cases: readonly [string, unknown][] = [
+      ["players.v2.json", playersV2],
+      ["players.v2.1.json", playersV21],
+      ["players.v2.2.json", playersV22],
+      ["players.v2.3.json", playersV23],
+      ["players.v2.4.json", playersV24],
+    ];
+    for (const [file, data] of cases) {
+      expect(readFileSync(join(here, file), "utf8"), file).toBe(
+        JSON.stringify(data, null, 2) + "\n",
+      );
+    }
+  });
+
+  it("구 밴드 롤(v2/…/v2.4)은 계속 구 밴드로 돈다 — GRADE_BANDS 는 손대지 않았다", () => {
+    // v2.4 행이 여전히 **구** 밴드 안이고 신규 밴드 밖이라는 것 = 두 밴드가 분리돼 있다는 증거.
+    for (const p of diskV24) {
+      const [lo, hi] = BANDS[p.grade];
+      for (const k of ATTR_KEYS) {
+        expect(p.attributes[k], `${p.id} ${k} 구 밴드`).toBeGreaterThanOrEqual(lo);
+        expect(p.attributes[k], `${p.id} ${k} 구 밴드`).toBeLessThanOrEqual(hi);
+      }
+    }
+  });
+
+  it("economy starterPack / 봇 덱 / starterTop 이 v2.5 에서도 전부 실재 id 를 가리킨다", () => {
+    const ids = new Set(playersV25.map((p) => p.id));
+    for (const id of economy.starterPack) expect(ids.has(id), `starterPack ${id}`).toBe(true);
+    for (const b of [...bots, ...botsV3]) {
+      for (const st of b.deck.starters) expect(ids.has(st.playerId), `${b.id} ${st.playerId}`).toBe(true);
+      for (const id of b.deck.bench) expect(ids.has(id), `${b.id} bench ${id}`).toBe(true);
+    }
+    for (const id of economyV3.starterTop!.pool) expect(ids.has(id), `starterTop ${id}`).toBe(true);
+  });
+});
+
 describe("동결 발행물 불변 — 기존 172명 바이트 동일 (#207 결정론 가드)", () => {
   const here = dirname(fileURLToPath(import.meta.url));
 
@@ -1743,6 +2057,7 @@ describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과
     ["players.v2.2.json", playersV22],
     ["players.v2.3.json", playersV23],
     ["players.v2.4.json", playersV24],
+    ["players.v2.5.json", playersV25],
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
     ["league.v1.json", league],
@@ -1765,6 +2080,8 @@ describe("재생성 결정론 (AC-PL1)", () => {
     expect(JSON.stringify(a.playersV21, null, 2)).toBe(JSON.stringify(b.playersV21, null, 2));
     expect(JSON.stringify(a.playersV22, null, 2)).toBe(JSON.stringify(b.playersV22, null, 2));
     expect(JSON.stringify(a.playersV23, null, 2)).toBe(JSON.stringify(b.playersV23, null, 2));
+    expect(JSON.stringify(a.playersV24, null, 2)).toBe(JSON.stringify(b.playersV24, null, 2));
+    expect(JSON.stringify(a.playersV25, null, 2)).toBe(JSON.stringify(b.playersV25, null, 2));
     expect(JSON.stringify(a.economy, null, 2)).toBe(JSON.stringify(b.economy, null, 2));
     expect(JSON.stringify(a.bots, null, 2)).toBe(JSON.stringify(b.bots, null, 2));
     expect(JSON.stringify(a.league, null, 2)).toBe(JSON.stringify(b.league, null, 2));

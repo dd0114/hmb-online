@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HMB — 성장·보상 개편 목업 (에픽 #405 게이트 2)</title>
+<!--
+  ⚠️ 로컬 검토용 HTML 목업 하나. 외부 리소스 0(폰트·이미지·CDN 없음), 앱 코드 무수정.
+  설계 정본 = docs/plan-v5/growth-redesign.md (§2.2 밴드/천장 · §2.3 감쇠 · §2.4 XP곡선
+  · §2.5 3지선다 · §2.9 보상 탭 · §2.10 강화탭).
+  디자인 토큰 = apps/web/src/index.css · 등급색/라벨 = apps/web/src/common/grades.ts
+  · 스탯 라벨 = apps/web/src/growth/growth-config.ts (STAT_LABELS).
+  선수 아트는 실제 에셋이 없으므로 **이니셜 아바타(플레이스홀더)** 로 대체했다.
+  화면의 모든 수치는 페이지 안에서 §2.3 감쇠식으로 **실제 계산**한다(하드코딩 아님).
+-->
+<style>
+/* ── 디자인 토큰: apps/web/src/index.css 그대로 ───────────────────────── */
+:root{
+  --bg:#0f1115; --bg-elevated:#171a21; --text:#eef0f4; --text-muted:#9aa1ad;
+  --border:#2a2e37; --accent:#4f8cff; --accent-contrast:#ffffff;
+  --danger:#ff5a5a; --success:#37c26f;
+  --us:#4c8dff; --them:#ff6b6b; --warn:#ffc24b; --ok:#3ddc84;
+  --surface:#111826; --sunk:#0c111b; --hairline:rgba(255,255,255,.07);
+  --grass-a:#17603a; --grass-b:#14562f; --pitch-line:rgba(255,255,255,.22);
+  /* 등급색 — common/grades.ts GRADE_COLORS */
+  --g-BRONZE:#b0793f; --g-SILVER:#b8c0cc; --g-GOLD:#f2c744; --g-DIA:#5ac8e8; --g-LEGEND:#c07cf5;
+  color-scheme:dark; font-family:system-ui,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:#07090d;color:var(--text);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;display:flex;flex-direction:column}
+button{font:inherit;cursor:pointer}
+
+/* ── 목업 하네스(제품 화면 아님) ─────────────────────────────────────── */
+.mockbar{flex:none;display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:10px 16px;background:#12151c;border-bottom:1px solid var(--border)}
+.mocktag{font-size:11px;font-weight:900;letter-spacing:.14em;color:#0b0d12;background:var(--warn);
+  border-radius:5px;padding:3px 8px}
+.mocktitle{font-size:13px;font-weight:700}
+.mocktitle small{display:block;font-weight:500;font-size:11px;color:var(--text-muted)}
+.mocknav{display:flex;gap:6px;margin-left:auto;flex-wrap:wrap}
+.mocknav button{background:var(--surface);border:1px solid var(--border);color:var(--text-muted);
+  border-radius:999px;padding:7px 13px;font-size:12px;font-weight:700}
+.mocknav button[aria-current="true"]{background:#1c2841;color:#dbe7ff;border-color:#2f4470}
+
+.stage{flex:1;min-height:0;display:flex;gap:26px;padding:22px;overflow:auto;align-items:flex-start}
+.phonecol{flex:none;display:flex;flex-direction:column;align-items:center;gap:8px}
+.phone{position:relative;width:390px;height:844px;border-radius:34px;overflow:hidden;
+  background:var(--bg);border:1px solid #222a36;box-shadow:0 0 0 9px #0b0d12,0 22px 60px rgba(0,0,0,.6)}
+.phonecap{font-size:11px;color:var(--text-muted);letter-spacing:.04em}
+.notes{flex:1;min-width:300px;max-width:560px;background:#10141b;border:1px solid var(--border);
+  border-radius:14px;padding:16px 18px}
+.notes h2{margin:0 0 2px;font-size:16px}
+.notes .sub{margin:0 0 14px;font-size:12px;color:var(--text-muted)}
+.notes h3{margin:16px 0 6px;font-size:12px;letter-spacing:.08em;color:var(--warn);text-transform:uppercase}
+.notes ul{margin:0;padding-left:17px}
+.notes li{font-size:13px;margin:5px 0;color:#cfd5df}
+.notes li b{color:#fff}
+.notes .ref{margin-top:16px;padding-top:12px;border-top:1px solid var(--hairline);font-size:11.5px;color:var(--text-muted)}
+.notes code{background:#0b0f16;border:1px solid var(--border);border-radius:4px;padding:0 4px;font-size:11.5px}
+
+/* ── 폰 안: 3영역 고정 셸 (StageShell 규약) ───────────────────────────
+   실제 앱은 position:fixed + height:100svh. 목업은 폰 프레임이 뷰포트 대역이라
+   position:absolute + inset:0 으로 같은 성질(문서 스크롤 0)을 만든다.
+   스크롤은 **패널 내부에만** 있다. */
+.shell{position:absolute;inset:0;display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+  overflow:hidden;background:var(--bg);color:var(--text)}
+
+/* 스코어바 */
+.scorebar{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);
+  background:var(--bg-elevated);min-width:0}
+.teams{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;min-width:0}
+.teamName{display:flex;align-items:center;gap:4px;flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;white-space:nowrap}
+.teamName.home{justify-content:flex-end;color:#7ab0ff}
+.teamName.away{justify-content:flex-start;color:#ff8f8f}
+.teamLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.myTeamTag{flex:0 0 auto;padding:1px 5px;border:1px solid rgba(255,255,255,.28);border-radius:999px;
+  color:rgba(255,255,255,.72);font-size:10px;font-weight:700;white-space:nowrap}
+.score{font-size:20px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums;flex-shrink:0}
+.phaseTag{font-size:10px;font-weight:700;letter-spacing:.5px;border-radius:999px;padding:1px 7px;
+  border:1px solid var(--border);color:var(--text-muted);white-space:nowrap}
+
+/* 무대(피치 자리) — 보상 시트 뒤에 살아있는 무대 */
+.stagePitch{position:relative;background:#0f1420;overflow:hidden;
+  background-image:repeating-linear-gradient(90deg,var(--grass-a) 0 34px,var(--grass-b) 34px 68px)}
+.stagePitch::after{content:"";position:absolute;inset:14px;border:2px solid var(--pitch-line);border-radius:3px}
+.stagePitch .ball{position:absolute;left:52%;top:44%;width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:0 0 8px rgba(255,255,255,.7)}
+.stageNote{position:absolute;left:0;right:0;bottom:6px;text-align:center;font-size:10px;color:rgba(255,255,255,.5)}
+
+/* 보상 시트(오버레이) */
+.dim{position:absolute;inset:0;background:rgba(4,6,10,.62)}
+.sheetWrap{position:absolute;left:0;right:0;bottom:0;top:96px;display:flex;flex-direction:column;
+  background:var(--bg-elevated);border-top:1px solid var(--border);border-radius:18px 18px 0 0;
+  box-shadow:0 -14px 40px rgba(0,0,0,.55)}
+.grabber{flex:none;width:38px;height:4px;border-radius:999px;background:#39414e;margin:8px auto 2px}
+.sheetHead{flex:none;display:flex;align-items:center;gap:8px;padding:6px 14px 8px}
+.sheetTitle{font-size:15px;font-weight:800;margin:0}
+.resultBadge{padding:3px 12px;border-radius:999px;font-size:12px;font-weight:700;
+  background:rgba(55,194,111,.15);border:1px solid var(--success);color:var(--success)}
+.sheetScoreLine{margin-left:auto;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+
+/* 탭(알약 세그먼트 — StageShell .tabs 규약) */
+.tabs{flex:none;display:flex;gap:4px;margin:2px 12px 8px;padding:3px;border-radius:999px;background:var(--sunk)}
+.tab{flex:1;min-height:44px;background:none;border:none;border-radius:999px;color:var(--text-muted);
+  font-size:13px;font-weight:600;padding:9px 8px;white-space:nowrap;display:flex;align-items:center;justify-content:center;gap:6px}
+.tabActive{color:#dbe7ff;background:#1c2841}
+.tab[disabled]{opacity:.38;cursor:default}
+.tabDot{min-width:18px;height:18px;border-radius:999px;background:var(--warn);color:#131720;
+  font-size:11px;font-weight:900;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+.soonTag{font-size:9px;font-weight:800;letter-spacing:.06em;border:1px solid var(--border);border-radius:4px;padding:0 4px}
+
+/* 유일한 스크롤 영역 */
+.panel{flex:1;min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden;padding:2px 12px 12px;overscroll-behavior:contain}
+.cta{flex:none;margin:0 12px 12px;padding:14px;border-radius:10px;border:none;background:var(--accent);
+  color:var(--accent-contrast);font-size:16px;font-weight:700;width:calc(100% - 24px)}
+.ctaGhost{flex:none;margin:0 12px 10px;padding:12px;border-radius:10px;border:1px solid var(--border);
+  background:transparent;color:var(--text-muted);font-size:14px;font-weight:700;width:calc(100% - 24px)}
+
+/* 재화 섹션 */
+.card{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:12px 14px;margin-bottom:10px}
+.cardTitle{margin:0 0 8px;font-size:12px;font-weight:800;color:var(--text-muted);letter-spacing:.04em}
+.curRow{display:flex;align-items:center;gap:10px;padding:9px 0}
+.curRow + .curRow{border-top:1px solid var(--hairline)}
+.curIcon{flex:none;width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:900;background:#20262f;border:1px solid var(--border);color:var(--warn)}
+.curIcon.gem{color:#7fd6ff;border-color:#2b4a5c}
+.curLabel{font-size:13.5px;font-weight:600}
+.curHint{display:block;font-size:11px;color:var(--text-muted);font-weight:400}
+.curAmt{margin-left:auto;font-size:16px;font-weight:900;color:var(--warn);font-variant-numeric:tabular-nums}
+.curAmt.gem{color:#7fd6ff}
+.mockHint{font-size:11px;color:var(--text-muted);margin:8px 2px 0;line-height:1.5}
+.mockHint b{color:#c7cedb}
+
+/* 성장 행 */
+.growthSummary{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);margin:2px 2px 10px}
+.growthSummary b{color:var(--text)}
+.rows{display:grid;gap:8px}
+.row{position:relative;display:grid;grid-template-columns:40px 1fr;gap:10px;align-items:center;
+  border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:9px 11px 9px 12px}
+.row.levelup{background:#1a2333;border-color:#3a4a68}
+.row.levelup::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:var(--warn)}
+.row.idle{opacity:.5}
+.row.tappable{cursor:pointer}
+.row.tappable:hover{border-color:#4a5c80}
+.av{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:800;background:#20262f;border:2px solid var(--border);color:#d7dde6}
+.rowMain{min-width:0}
+.rowTop{display:flex;align-items:center;gap:6px;min-width:0}
+.rowName{font-size:13.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip{flex:none;font-size:9.5px;font-weight:800;letter-spacing:.04em;border:1px solid var(--border);
+  border-radius:5px;padding:1px 5px;color:var(--text-muted)}
+.chipGrade{border-color:currentColor}
+.xpGain{margin-left:auto;font-size:12.5px;font-weight:900;color:var(--ok);font-variant-numeric:tabular-nums;flex:none}
+.xpGain.zero{color:#5c646f}
+.rowBot{display:flex;align-items:center;gap:7px;margin-top:5px}
+.lvTag{font-size:10px;font-weight:800;color:var(--text-muted);font-variant-numeric:tabular-nums;flex:none}
+.lvTag.next{color:var(--ok)}
+.lvBar{flex:1;min-width:0;position:relative;height:6px;border-radius:3px;background:#20262f;overflow:hidden}
+.lvBar i{position:absolute;left:0;top:0;bottom:0;border-radius:3px}
+.lvBar .was{background:#39424f}
+.lvBar .got{background:linear-gradient(90deg,#3fa06a,#63d193)}
+.pendTag{flex:none;font-size:10px;font-weight:900;color:#131720;background:var(--warn);border-radius:5px;padding:2px 6px;white-space:nowrap}
+.benchDivider{display:flex;align-items:center;gap:8px;margin:16px 2px 8px;font-size:11px;color:var(--text-muted)}
+.benchDivider::before,.benchDivider::after{content:"";flex:1;height:1px;background:var(--hairline)}
+
+/* 3지선다 */
+.pickHead{display:flex;align-items:center;gap:11px;padding:10px 12px;border:1px solid var(--border);
+  border-radius:12px;background:var(--surface);margin-bottom:10px}
+.pickHead .av{width:46px;height:46px;font-size:17px}
+.pickName{font-size:15px;font-weight:800}
+.pickMeta{font-size:11px;color:var(--text-muted);display:flex;gap:6px;align-items:center;margin-top:2px}
+.lvJump{margin-left:auto;text-align:right;flex:none}
+.lvJump b{display:block;font-size:15px;font-weight:900;color:var(--ok);font-variant-numeric:tabular-nums}
+.lvJump span{font-size:10px;color:var(--text-muted);letter-spacing:.06em}
+.lockNote{display:flex;gap:7px;align-items:flex-start;font-size:11.5px;line-height:1.45;color:#e6d3a3;
+  background:rgba(255,194,75,.09);border:1px solid rgba(255,194,75,.32);border-radius:10px;padding:8px 10px;margin-bottom:11px}
+.lockNote span:first-child{flex:none;font-size:12px}
+.cands{display:grid;gap:10px}
+.cand{position:relative;width:100%;text-align:left;border:1px solid var(--border);border-radius:14px;
+  background:var(--surface);padding:12px 13px;color:inherit;display:block}
+.cand:hover{border-color:#4a5c80;background:#141c2c}
+.candTop{display:flex;align-items:center;gap:9px}
+.statIcon{flex:none;width:28px;height:28px;background:#2b3442;border:1px solid #3b4657}
+.statIcon[data-shape="circle"]{border-radius:50%}
+.statIcon[data-shape="square"]{border-radius:6px}
+.statIcon[data-shape="diamond"]{border-radius:6px;transform:rotate(45deg);width:22px;height:22px;margin:3px}
+.statIcon[data-shape="tri"]{clip-path:polygon(50% 4%,96% 96%,4% 96%);border:none;background:#3b4657}
+.candStat{font-size:14.5px;font-weight:800}
+.gainBadge{margin-left:auto;font-size:13px;font-weight:900;color:#131720;background:var(--ok);
+  border-radius:6px;padding:2px 8px;font-variant-numeric:tabular-nums}
+.candNums{display:flex;align-items:baseline;gap:8px;margin:9px 0 2px;font-variant-numeric:tabular-nums}
+.candFrom{font-size:22px;font-weight:900;color:var(--text-muted)}
+.candArrow{font-size:15px;color:var(--text-muted)}
+.candTo{font-size:28px;font-weight:900;color:var(--ok)}
+.ceilWrap{margin-top:8px}
+.ceilBar{display:block;position:relative;height:8px;border-radius:5px;background:#20262f;overflow:hidden}
+.ceilBar i{position:absolute;top:0;bottom:0;border-radius:5px}
+.ceilBar .cur{left:0;background:linear-gradient(90deg,#3a5f7d,#4f8cff)}
+.ceilBar .add{background:linear-gradient(90deg,#3fa06a,#63d193)}
+.ceilLegend{display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted);margin-top:4px;font-variant-numeric:tabular-nums}
+.candWhy{margin:9px 0 0;font-size:11.5px;color:#b7c0cd;display:flex;gap:6px;align-items:flex-start}
+.candWhy span:first-child{flex:none;color:var(--accent);font-weight:800}
+
+/* 축하 오버레이 */
+.celebrate{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:6px;background:rgba(6,10,16,.78);z-index:9;animation:celeIn .25s ease}
+.celebrate.gone{opacity:0;pointer-events:none;transition:opacity .5s ease}
+.celeTitle{font-size:34px;font-weight:900;letter-spacing:.1em;color:var(--warn);text-shadow:0 0 24px rgba(255,194,75,.5)}
+.celeStat{font-size:19px;font-weight:800}
+.celeGain{font-size:15px;font-weight:900;color:var(--ok);font-variant-numeric:tabular-nums}
+@keyframes celeIn{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:scale(1)}}
+.remainBar{display:flex;align-items:center;gap:8px;border:1px solid rgba(255,194,75,.35);
+  background:rgba(255,194,75,.09);border-radius:10px;padding:8px 11px;margin-bottom:11px;font-size:12px}
+.remainBar b{color:var(--warn)}
+.remainBar button{margin-left:auto;background:var(--warn);border:none;border-radius:8px;color:#131720;
+  font-size:11.5px;font-weight:900;padding:6px 10px}
+.applied{border:1px solid #3a4a68;border-radius:14px;background:#1a2333;padding:13px}
+.appliedHead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.appliedHead .candStat{font-size:15px}
+
+/* 강화탭(CardGrowthDetail 룩) */
+.frame{position:absolute;left:0;right:0;bottom:0;top:52px;background:linear-gradient(160deg,#1e232c,#171b22);
+  border:2px solid var(--border);border-radius:18px 18px 0 0;display:flex;flex-direction:column;overflow:hidden}
+.frameHead{flex:none;display:flex;align-items:flex-start;gap:10px;padding:16px 16px 0}
+.artBox{flex:none;width:96px;height:132px;border-radius:12px;border:1px dashed #4a5460;background:#141922;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;color:#5f6b7a}
+.artInitial{font-size:38px;font-weight:900}
+.artNote{font-size:8.5px;letter-spacing:.06em}
+.headText{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.gradeTag{font-size:11px;font-weight:800;letter-spacing:.06em}
+.cardName{font-size:17px;font-weight:800;margin:0}
+.cardPos{font-size:11px;color:var(--text-muted);font-weight:700}
+.stars{display:flex;gap:2px;margin-top:5px}
+.star{color:#e7c24c;font-size:15px;line-height:1;filter:drop-shadow(0 0 3px rgba(231,194,76,.5))}
+.starOff{color:#3a424e;filter:none}
+/* 신규: ★ 옆 레벨 + XP 바 (§2.10) */
+.lvBlock{margin-top:7px;padding:7px 9px;border:1px solid #2f3844;border-radius:10px;background:#141922}
+.lvBlockTop{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-muted)}
+.lvBig{font-size:14px;font-weight:900;color:var(--text);font-variant-numeric:tabular-nums}
+.lvBlockTop .xpNum{margin-left:auto;font-variant-numeric:tabular-nums}
+.frameScroll{flex:1;min-height:0;overflow-y:auto;padding:12px 16px 0;overscroll-behavior:contain}
+.pendBanner{border:1px solid rgba(255,194,75,.4);background:rgba(255,194,75,.08);border-radius:12px;padding:10px 11px;margin-bottom:12px}
+.pendBannerTop{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:800;color:var(--warn)}
+.pendBannerTop button{margin-left:auto;background:none;border:1px solid rgba(255,194,75,.4);border-radius:7px;
+  color:var(--warn);font-size:11px;font-weight:800;padding:4px 9px}
+.pendBannerBody{margin-top:10px}
+.ringWrap{position:relative;width:96px;height:96px;margin:2px auto 2px}
+.ringCenter{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.ovr{font-size:30px;font-weight:900;line-height:1}
+.ovrLbl{font-size:9px;color:var(--text-muted);letter-spacing:.14em;font-weight:800}
+.completion{font-size:12px;color:#5cc98b;font-weight:800;text-align:center;margin:0 0 12px}
+.attrLegend{display:flex;gap:12px;justify-content:center;font-size:10px;color:var(--text-muted);margin:0 0 10px;flex-wrap:wrap}
+.attrLegend i{display:inline-block;width:12px;height:8px;border-radius:3px;vertical-align:-1px;margin-right:4px}
+.lg-base{background:#4f6b8e}
+.lg-grow{background:linear-gradient(90deg,#3fa06a,#63d193)}
+.lg-ceil{width:3px !important;height:12px !important;background:#e7c24c;border-radius:2px}
+.attrs{display:grid;gap:11px;margin:0 0 14px}
+.attrRow{display:grid;grid-template-columns:1fr 74px;gap:4px 8px;align-items:center}
+.attrName{grid-column:1/2;font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px}
+.attrBarCell{grid-column:1/2;margin:0}
+.bar3{position:relative;display:block;height:10px;border-radius:5px;background:#20262f}
+.bar3 i{position:absolute;top:0;bottom:0}
+.bar3 .b-base{left:0;border-radius:5px 0 0 5px;background:#4f6b8e}
+.bar3 .b-grow{border-radius:0 5px 5px 0;background:linear-gradient(90deg,#3fa06a,#63d193);transition:width .55s ease,left .55s ease}
+.bar3 .b-baseline{top:-3px;bottom:-3px;width:2px;background:#5f6b7a;opacity:.75;border-radius:2px}
+.bar3 .b-ceil{top:-4px;bottom:-4px;width:2px;background:#e7c24c;border-radius:2px}
+.attrNum{grid-column:2/3;grid-row:1/3;text-align:right;font-variant-numeric:tabular-nums;align-self:center}
+.attrNum b{font-size:16px;font-weight:900}
+.attrNum small{display:block;font-size:9px;color:#e7c24c}
+.attrNum em{font-style:normal;font-size:10px;font-weight:800;color:var(--ok)}
+.axisNote{margin:0 0 8px;font-size:10.5px;color:var(--text-muted);text-align:center;font-weight:700}
+.legacyRow{position:relative;flex:none;display:flex;gap:8px;padding:10px 16px 14px;border-top:1px solid var(--hairline);background:#161a21}
+.legacyBtn{flex:1;padding:11px 8px;border-radius:10px;border:1px solid #e7c24c88;
+  background:linear-gradient(120deg,#2a2418,#1e2129);color:#e7c24c;font-size:12.5px;font-weight:800}
+.legacyBtn.plain{border-color:var(--border);background:#20262f;color:#cfd5df}
+.unchanged{position:absolute;right:14px;top:-9px;font-size:8.5px;font-weight:900;letter-spacing:.06em;
+  color:#131720;background:#5f6b7a;border-radius:4px;padding:1px 5px}
+</style>
+</head>
+<body>
+
+<header class="mockbar">
+  <span class="mocktag">MOCKUP</span>
+  <div class="mocktitle">성장·보상 개편 — 보상 화면 목업
+    <small>에픽 #405 게이트 2 · 설계 정본 docs/plan-v5/growth-redesign.md · 앱 코드 무수정 · 로컬 파일</small>
+  </div>
+  <nav class="mocknav" id="nav"></nav>
+</header>
+
+<main class="stage">
+  <div class="phonecol">
+    <div class="phone"><div id="phone"></div></div>
+    <div class="phonecap">390 × 844 (iPhone 13 세로) · 폰 프레임 = 뷰포트 대역</div>
+  </div>
+  <aside class="notes" id="notes"></aside>
+</main>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════
+   1. 계수 — growth-redesign.md §2.2 / §2.3 / §2.4 (GrowthTuning 전수 32항 중 화면에 쓰이는 것)
+   ═══════════════════════════════════════════════════════════════════════ */
+const BANDS = {
+  BRONZE:{startLo:32,startHi:42,growCeil:72},
+  SILVER:{startLo:41,startHi:51,growCeil:78},
+  GOLD  :{startLo:50,startHi:60,growCeil:84},
+  DIA   :{startLo:59,startHi:69,growCeil:90},
+  LEGEND:{startLo:68,startHi:78,growCeil:95},
+};
+const DECAY = { gainMax:4.0, decayPow:1.4, gainMin:0.3 };
+const XPC = {
+  matchBase:100,
+  minutesMult:{starter:1.0, partial:0.5, bench:0},
+  resultMult:{WIN:1.2, DRAW:1.0, LOSS:0.85},
+  gradeMult:{BRONZE:1.3, SILVER:1.2, GOLD:1.0, DIA:0.85, LEGEND:0.7},
+  lvBase:100, lvPow:0.5, maxLevel:40,
+};
+const STAR_CEIL_BONUS = {1:0, 2:1, 3:2, 4:3};
+
+/** §2.3 — gain = max(gainMin, gainMax × (1−r)^decayPow), r=(v−startLo)/(ceiling−startLo) */
+function ceilingOf(grade, star){ return BANDS[grade].growCeil + (STAR_CEIL_BONUS[star]||0); }
+function gainFor(v, grade, star){
+  const lo = BANDS[grade].startLo, ceil = ceilingOf(grade, star);
+  const r = Math.max(0, Math.min(1, (v - lo) / (ceil - lo)));
+  return Math.max(DECAY.gainMin, DECAY.gainMax * Math.pow(1 - r, DECAY.decayPow));
+}
+const xpToNext = lv => Math.round(XPC.lvBase * Math.pow(lv, XPC.lvPow));
+
+/* 라벨 — apps/web/src/common/grades.ts · apps/web/src/growth/growth-config.ts 그대로 */
+const GRADE_LABELS = {BRONZE:"브론즈",SILVER:"실버",GOLD:"골드",DIA:"다이아",LEGEND:"레전드"};
+const GRADE_COLORS = {BRONZE:"#b0793f",SILVER:"#b8c0cc",GOLD:"#f2c744",DIA:"#5ac8e8",LEGEND:"#c07cf5"};
+const STAT_KEYS = ["shooting","pace","positioning","technical","passing","stamina","physical","mental","tackling"];
+const STAT_LABELS = {shooting:"슛",pace:"스피드",positioning:"위치선정",technical:"테크닉",
+  passing:"패스",stamina:"스태미나",physical:"피지컬",mental:"멘탈",tackling:"태클"};
+/* 아이콘 대체 도형(실아이콘 미발행) */
+const STAT_SHAPE = {shooting:"tri",pace:"diamond",positioning:"circle",technical:"square",
+  passing:"circle",stamina:"square",physical:"square",mental:"diamond",tackling:"tri"};
+
+/* ═══════════════════════════════════════════════════════════════════════
+   2. 가상 로스터 — base 스탯 + 적용된 픽 이력으로부터 현재값을 **계산**한다.
+      (하드코딩한 현재값이 아니라 감쇠식을 실제로 돌린 결과라 §2.3 과 어긋날 수 없다)
+   ═══════════════════════════════════════════════════════════════════════ */
+const POS_OFFSET = {
+  FW:{shooting:10,pace:9,positioning:8,technical:6,passing:4,stamina:5,physical:4,mental:5,tackling:1},
+  MF:{shooting:4,pace:6,positioning:6,technical:9,passing:10,stamina:8,physical:4,mental:6,tackling:5},
+  DF:{shooting:1,pace:5,positioning:9,technical:4,passing:5,stamina:6,physical:9,mental:6,tackling:10},
+  GK:{shooting:0,pace:3,positioning:10,technical:7,passing:5,stamina:4,physical:7,mental:9,tackling:2},
+};
+const PICK_CYCLE = {
+  FW:["shooting","pace","positioning","shooting","technical","pace","shooting","positioning","technical","pace","shooting","stamina"],
+  MF:["passing","technical","stamina","passing","positioning","technical","passing","stamina","pace","passing","technical","mental"],
+  DF:["tackling","physical","positioning","tackling","pace","physical","tackling","positioning","mental","tackling","physical","stamina"],
+  GK:["positioning","mental","technical","positioning","physical","mental","positioning","passing","technical","positioning","mental","physical"],
+};
+/* name, pos, grade, star, level, pending(선택 대기), jitter, perfBonus, minutes */
+const RAW = [
+  ["강태산","GK","SILVER",1,12,0, 0,0.10,"starter"],
+  ["박정우","DF","GOLD"  ,1, 9,0, 1,0.16,"starter"],
+  ["이현수","DF","BRONZE",2,12,2,-1,0.18,"starter"],
+  ["최민재","DF","GOLD"  ,1, 6,0, 0,0.06,"starter"],
+  ["윤성호","DF","SILVER",1,10,0, 1,0.12,"starter"],
+  ["김도현","MF","GOLD"  ,1, 8,2,-1,0.24,"starter"],
+  ["정우영","MF","DIA"   ,2, 5,0, 0,0.20,"starter"],
+  ["한지훈","MF","BRONZE",1,16,0, 1,0.08,"starter"],
+  ["오세훈","FW","GOLD"  ,1,11,0,-1,0.30,"starter"],
+  ["류지호","FW","LEGEND",1, 3,0, 0,0.36,"starter"],
+  ["남기웅","FW","SILVER",1, 8,0, 1,0.04,"starter"],
+  ["서준혁","MF","GOLD"  ,1, 5,1, 0,0.22,"partial"],
+  ["백승주","DF","SILVER",1, 7,0, 0,0   ,"bench"],
+  ["조현탁","FW","BRONZE",1, 9,0, 1,0   ,"bench"],
+  ["문세영","MF","GOLD"  ,1, 4,0,-1,0   ,"bench"],
+  ["임태경","GK","BRONZE",1, 6,0, 0,0   ,"bench"],
+];
+const ROSTER = RAW.map(([name,pos,grade,star,level,pending,jit,perf,minutes]) => {
+  const b = BANDS[grade];
+  const base = {};
+  for (const s of STAT_KEYS){
+    const o = POS_OFFSET[pos][s] + (s==="shooting"||s==="tackling" ? 0 : jit);
+    base[s] = Math.max(b.startLo, Math.min(b.startHi, b.startLo + o));
+  }
+  const applied = Math.max(0, (level - 1) - pending);   // 레벨업 1회 = 선택 1회
+  const cur = {...base};
+  const cycle = PICK_CYCLE[pos];
+  for (let i=0;i<applied;i++){
+    const s = cycle[i % cycle.length];
+    cur[s] = Math.min(ceilingOf(grade,star), cur[s] + gainFor(cur[s], grade, star));
+  }
+  const xpGained = Math.round(XPC.matchBase * XPC.minutesMult[minutes] * XPC.resultMult.WIN
+                              * XPC.gradeMult[grade] * (1 + perf));
+  const leveled = pending > 0;                          // 이번 판에 레벨업한 선수
+  const need = xpToNext(level);
+  const xpInLevel = leveled ? Math.round(need * 0.18) : Math.round(need * 0.42);
+  const xpBefore = leveled ? 0 : Math.max(0, xpInLevel - xpGained);
+  return {name,pos,grade,star,level,pending,minutes,base,cur,xpGained,
+          levelBefore: leveled ? level-1 : level, need, xpInLevel, xpBefore, leveled};
+});
+const byName = n => ROSTER.find(p => p.name === n);
+
+/* §2.5 후보 3장 — 스탯 + "왜 이게 나왔나" 한 줄 근거(포지션 / 그 경기 이벤트 / AI behavior) */
+const CANDIDATES = {
+  "김도현":[
+    {stat:"shooting", why:'이 경기 슛 4회 · 지시 "적극적으로 슛"'},
+    {stat:"tackling", why:"가로채기 3회"},
+    {stat:"passing",  why:"포지션 MF 핵심"},
+  ],
+  "이현수":[
+    {stat:"tackling", why:"포지션 DF 핵심 · 태클 성공 6회"},
+    {stat:"physical", why:"몸싸움 경합 승리 5회"},
+    {stat:"pace",     why:'지시 "뒷공간을 빠르게 커버해"'},
+  ],
+  "서준혁":[
+    {stat:"stamina",  why:"교체 투입 후 전력 질주 구간 최다"},
+    {stat:"passing",  why:"포지션 MF 핵심"},
+    {stat:"mental",   why:'지시 "침착하게 경기를 잠그자"'},
+  ],
+};
+function candList(p){
+  return CANDIDATES[p.name].map(c => {
+    const from = p.cur[c.stat];
+    const gain = gainFor(from, p.grade, p.star);
+    return {...c, from, gain, to: Math.min(ceilingOf(p.grade,p.star), from+gain)};
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   3. 상태 + 렌더
+   ═══════════════════════════════════════════════════════════════════════ */
+const SCREENS = [
+  {id:"s1", nav:"① 보상·재화"},
+  {id:"s2", nav:"② 보상·성장"},
+  {id:"s3", nav:"③ 3지선다"},
+  {id:"s4", nav:"④ 반영·축하"},
+  {id:"s5", nav:"⑤ 강화탭"},
+];
+const state = {screen:"s1", pickPlayer:"김도현", chosen:null};
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const n1 = v => v.toFixed(1);
+const money = n => n.toLocaleString("ko-KR");
+const pendingPlayers = () => ROSTER.filter(p => p.pending > 0);
+const pendingChoices = () => pendingPlayers().reduce((a,p)=>a+p.pending,0);
+
+function avatar(p, cls){
+  return `<div class="av ${cls||""}" style="border-color:${GRADE_COLORS[p.grade]}" data-art-policy="placeholder"
+    title="실제 아트 미발행 — 이니셜 플레이스홀더">${esc(p.name[0])}</div>`;
+}
+function gradeChip(p){
+  return `<span class="chip chipGrade" style="color:${GRADE_COLORS[p.grade]}">${GRADE_LABELS[p.grade]}</span>`;
+}
+function scorebar(){
+  return `<div class="scorebar">
+    <div class="teams">
+      <div class="teamName home"><span class="teamLabel">피터의 팀</span><span class="myTeamTag">내 팀</span></div>
+      <div class="score">2 : 1</div>
+      <div class="teamName away"><span class="teamLabel">붉은늑대 FC</span></div>
+    </div>
+    <span class="phaseTag">종료</span>
+  </div>`;
+}
+function pitch(){
+  return `<div class="stagePitch"><div class="ball"></div>
+    <div class="stageNote">무대는 살아있다 — 보상 시트가 그 위로 올라온다</div></div>`;
+}
+
+/* ── 화면 1·2: 보상 시트 ─────────────────────────────────────────────── */
+function rewardSheet(tab){
+  // 뱃지 기준 = 선택 "횟수"(유저가 해야 할 액션 수). 선수 수가 아니다 — 두 곳이 갈리면 안 된다.
+  const pend = pendingChoices();
+  return `<div class="shell">
+    ${scorebar()}
+    ${pitch()}
+    <div></div>
+    <div class="dim"></div>
+    <div class="sheetWrap">
+      <div class="grabber"></div>
+      <div class="sheetHead">
+        <h2 class="sheetTitle">경기 보상</h2>
+        <span class="resultBadge">승리</span>
+        <span class="sheetScoreLine">2 : 1 · 리그 R7</span>
+      </div>
+      <div class="tabs">
+        <button class="tab ${tab==="cur"?"tabActive":""}" data-tab="cur">재화</button>
+        <button class="tab ${tab==="growth"?"tabActive":""}" data-tab="growth">
+          성장 <span class="tabDot">${pend}</span></button>
+        <button class="tab" disabled>미션 <span class="soonTag">준비중</span></button>
+      </div>
+      <div class="panel">${tab==="cur"?currencyTab():growthTab()}</div>
+      <button class="cta" data-act="confirm">확인</button>
+    </div>
+  </div>`;
+}
+function currencyTab(){
+  return `<div class="card">
+    <h3 class="cardTitle">재화</h3>
+    <div class="curRow">
+      <div class="curIcon">P</div>
+      <div><div class="curLabel">경기 보상</div><span class="curHint">승리 · 리그 R7</span></div>
+      <div class="curAmt" data-amount="POINT:1200">+1,200 P</div>
+    </div>
+    <div class="curRow">
+      <div class="curIcon gem">Z</div>
+      <div><div class="curLabel">오늘의 보상</div><span class="curHint">3번째 칸</span></div>
+      <div class="curAmt gem" data-amount="GEM:50">+50 Z</div>
+    </div>
+  </div>
+  <p class="mockHint">
+    <b>실제 앱 배선:</b> 금액·심볼은 코드에 적지 않고 <code>&lt;Amount code=… value=… /&gt;</code> 가
+    <code>GET /api/config</code> 표기 메타로 그린다(#232). 이 목업의 <code>P</code>/<code>Z</code> 는
+    그 결과를 흉내낸 것이다.<br>
+    <b>구조:</b> 이 섹션은 <code>RewardBundle.sections[kind="CURRENCY"]</code> 하나다 — 리그가 아니면
+    ‘오늘의 보상’ 줄이 없고, 섹션이 비면 탭 자체가 안 그려진다(§2.9.1 <code>isPresent</code>).
+  </p>`;
+}
+function growthTab(){
+  const played = ROSTER.filter(p => p.minutes !== "bench");
+  const bench  = ROSTER.filter(p => p.minutes === "bench");
+  const ups = played.filter(p => p.leveled).length;
+  return `<div class="growthSummary">
+      <span><b>${played.length}명</b> 출전 · <b>${ups}명</b> 레벨업 · 선택 대기 <b>${pendingChoices()}회</b></span>
+    </div>
+    <div class="rows">${played.map(growthRow).join("")}</div>
+    <div class="benchDivider">미투입 벤치 · XP 0</div>
+    <div class="rows">${bench.map(growthRow).join("")}</div>
+    <p class="mockHint">
+      <b>확인:</b> 선발 11 + 투입된 교체 1 = <b>12행</b>이 한 페이지에 스크롤로 들어온다.
+      벤치 미투입 4명은 <code>+0 XP</code> 회색 — “안 뛰면 안 큰다”가 화면에서 읽혀야 한다.
+    </p>`;
+}
+function growthRow(p){
+  const pct = v => Math.max(0, Math.min(100, v));
+  const beforePct = pct(p.xpBefore / p.need * 100);
+  const nowPct = pct(p.xpInLevel / p.need * 100);
+  const cls = ["row", p.leveled ? "levelup" : "", p.minutes==="bench" ? "idle" : "",
+               p.pending>0 ? "tappable" : ""].join(" ");
+  return `<div class="${cls}" ${p.pending>0?`data-pick="${esc(p.name)}"`:""}>
+    ${avatar(p)}
+    <div class="rowMain">
+      <div class="rowTop">
+        <span class="rowName">${esc(p.name)}</span>
+        <span class="chip">${p.pos}</span>${gradeChip(p)}
+        ${p.minutes==="partial"?'<span class="chip">교체 투입</span>':""}
+        <span class="xpGain ${p.xpGained?"":"zero"}">+${p.xpGained} XP</span>
+      </div>
+      <div class="rowBot">
+        <span class="lvTag">Lv ${p.levelBefore}</span>
+        <span class="lvBar">
+          <i class="was" style="width:${beforePct}%"></i>
+          <i class="got" style="left:${beforePct}%;width:${Math.max(0,nowPct-beforePct)}%"></i>
+        </span>
+        <span class="lvTag ${p.leveled?"next":""}">Lv ${p.level}</span>
+        ${p.pending>0?`<span class="pendTag">선택 대기 ${p.pending}</span>`:""}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── 화면 3: 3지선다 ─────────────────────────────────────────────────── */
+function candCard(p, c, idx){
+  const lo = BANDS[p.grade].startLo, ceil = ceilingOf(p.grade, p.star);
+  const span = ceil - lo;
+  const curPct = (c.from - lo) / span * 100;
+  const addPct = (c.to - c.from) / span * 100;
+  return `<button class="cand" data-cand="${idx}">
+    <div class="candTop">
+      <span class="statIcon" data-shape="${STAT_SHAPE[c.stat]}"></span>
+      <span class="candStat">${STAT_LABELS[c.stat]}</span>
+      <span class="gainBadge">+${c.gain.toFixed(2)}</span>
+    </div>
+    <div class="candNums">
+      <span class="candFrom">${n1(c.from)}</span>
+      <span class="candArrow">→</span>
+      <span class="candTo">${n1(c.to)}</span>
+    </div>
+    <div class="ceilWrap">
+      <span class="ceilBar">
+        <i class="cur" style="width:${curPct}%"></i>
+        <i class="add" style="left:${curPct}%;width:${addPct}%"></i>
+      </span>
+      <div class="ceilLegend">
+        <span>시작 ${lo}</span>
+        <span>천장까지 ${n1(ceil - c.to)} 남음</span>
+        <span>천장 ${ceil}</span>
+      </div>
+    </div>
+    <p class="candWhy"><span>왜</span><span>${esc(c.why)}</span></p>
+  </button>`;
+}
+function pickScreen(){
+  const p = byName(state.pickPlayer);
+  const cs = candList(p);
+  return `<div class="shell">
+    ${scorebar()}
+    <div class="sheetWrap" style="top:52px">
+      <div class="grabber"></div>
+      <div class="sheetHead"><h2 class="sheetTitle">레벨업 보상 선택</h2>
+        <span class="sheetScoreLine">1 / ${p.pending}</span></div>
+      <div class="panel">
+        <div class="pickHead">
+          ${avatar(p)}
+          <div>
+            <div class="pickName">${esc(p.name)}</div>
+            <div class="pickMeta"><span class="chip">${p.pos}</span>${gradeChip(p)}
+              <span>★${p.star} · 천장 ${ceilingOf(p.grade,p.star)}</span></div>
+          </div>
+          <div class="lvJump"><b>Lv ${p.levelBefore} → ${p.level}</b><span>LEVEL UP</span></div>
+        </div>
+        <div class="lockNote"><span>🔒</span>
+          <span>선택지는 고정됩니다 — 나중에 골라도 바뀌지 않아요.
+          상승폭도 지금 값 그대로 들어갑니다.</span></div>
+        <div class="cands">${cs.map((c,i)=>candCard(p,c,i)).join("")}</div>
+        <p class="mockHint">
+          <b>확인:</b> 막대는 <b>시작 밴드 하한 → 성장 천장</b> 구간에서 이 스탯이 어디쯤인지 보여준다.
+          오른쪽에 가까울수록 상승폭이 작다(§2.3 감쇠) — 세 후보의 <code>+gain</code> 이 서로 다른 이유가
+          여기서 눈으로 읽혀야 한다.
+        </p>
+      </div>
+      <button class="ctaGhost" data-act="later">나중에 선택</button>
+    </div>
+  </div>`;
+}
+
+/* ── 화면 4: 선택 반영 + 축하 ────────────────────────────────────────── */
+function appliedScreen(){
+  const p = byName(state.pickPlayer);
+  const c = state.chosen || candList(p)[0];
+  const lo = BANDS[p.grade].startLo, ceil = ceilingOf(p.grade, p.star);
+  const span = ceil - lo;
+  const fromPct = (c.from - lo)/span*100, toPct = (c.to - lo)/span*100;
+  const remain = p.pending - 1;
+  return `<div class="shell">
+    ${scorebar()}
+    <div class="sheetWrap" style="top:52px">
+      <div class="grabber"></div>
+      <div class="sheetHead"><h2 class="sheetTitle">레벨업 보상 선택</h2>
+        <span class="sheetScoreLine">적용 완료</span></div>
+      <div class="panel">
+        ${remain>0?`<div class="remainBar">
+          <span>같은 경기에서 <b>선택 대기 ${remain}</b>이 남았습니다</span>
+          <button data-act="again">이어서 선택</button></div>`:""}
+        <div class="pickHead">
+          ${avatar(p)}
+          <div><div class="pickName">${esc(p.name)}</div>
+            <div class="pickMeta"><span class="chip">${p.pos}</span>${gradeChip(p)}
+              <span>★${p.star} · 천장 ${ceil}</span></div></div>
+          <div class="lvJump"><b>Lv ${p.level}</b><span>적용됨</span></div>
+        </div>
+        <div class="applied">
+          <div class="appliedHead">
+            <span class="statIcon" data-shape="${STAT_SHAPE[c.stat]}"></span>
+            <span class="candStat">${STAT_LABELS[c.stat]}</span>
+            <span class="gainBadge">+${c.gain.toFixed(2)}</span>
+          </div>
+          <div class="candNums">
+            <span class="candFrom">${n1(c.from)}</span>
+            <span class="candArrow">→</span>
+            <span class="candTo" id="growTo">${n1(c.from)}</span>
+          </div>
+          <span class="ceilBar">
+            <i class="cur" style="width:${fromPct}%"></i>
+            <i class="add" id="growFill" style="left:${fromPct}%;width:0%;transition:width .9s ease"></i>
+          </span>
+          <div class="ceilLegend"><span>시작 ${lo}</span>
+            <span>천장까지 ${n1(ceil - c.to)} 남음</span><span>천장 ${ceil}</span></div>
+        </div>
+        <p class="mockHint">
+          <b>확인:</b> 숫자와 막대가 <code>${n1(c.from)} → ${n1(c.to)}</code> 로 실제로 차오른다.
+          축하 오버레이(<code>CelebrationOverlay</code> 재사용)는 짧게 지나가고, 남은 선택은
+          상단 배너가 이어서 유도한다.
+        </p>
+      </div>
+      <button class="cta" data-act="confirm">확인</button>
+    </div>
+    <div class="celebrate" id="cele">
+      <div class="celeTitle">LEVEL UP</div>
+      <div class="celeStat">${STAT_LABELS[c.stat]}</div>
+      <div class="celeGain">${n1(c.from)} → ${n1(c.to)} (+${c.gain.toFixed(2)})</div>
+    </div>
+  </div>`;
+}
+
+/* ── 화면 5: 선수 강화탭 ─────────────────────────────────────────────── */
+function enhanceScreen(){
+  const p = byName("이현수");
+  const ceil = ceilingOf(p.grade, p.star);
+  const lo = BANDS[p.grade].startLo, span = ceil - lo;
+  const cs = candList(p);
+  const ovr = STAT_KEYS.reduce((a,s)=>a+p.cur[s],0)/9;
+  const grown = STAT_KEYS.reduce((a,s)=>a+(p.cur[s]-p.base[s]),0);
+  const room  = STAT_KEYS.reduce((a,s)=>a+(ceil-p.base[s]),0);
+  const completion = grown/room;
+  const xpPct = Math.round(p.xpInLevel/p.need*100);
+  const bars = STAT_KEYS.map(s => {
+    const basePct = (p.base[s]-lo)/span*100;
+    const curPct  = (p.cur[s]-lo)/span*100;
+    const add = p.cur[s]-p.base[s];
+    return `<div class="attrRow">
+      <dt class="attrName">${STAT_LABELS[s]}</dt>
+      <dd class="attrBarCell">
+        <span class="bar3">
+          <i class="b-base" style="width:${basePct}%"></i>
+          <i class="b-grow" style="left:${basePct}%;width:${Math.max(0,curPct-basePct)}%"></i>
+          <i class="b-baseline" style="left:${basePct}%"></i>
+          <i class="b-ceil" style="left:100%"></i>
+        </span>
+      </dd>
+      <span class="attrNum"><b>${n1(p.cur[s])}</b>
+        ${add>0?`<em>+${n1(add)}</em>`:'<em style="color:#5c646f">+0</em>'}
+        <small>천장 ${ceil}</small></span>
+    </div>`;
+  }).join("");
+  return `<div class="shell">
+    <div class="scorebar"><div class="teams"><span style="font-size:13px;font-weight:700">선수 · 강화</span></div></div>
+    <div style="position:absolute;inset:0;background:rgba(0,0,0,.6)"></div>
+    <div class="frame" style="border-color:${GRADE_COLORS[p.grade]}">
+      <div class="frameHead">
+        <div class="artBox"><div class="artInitial">${esc(p.name[0])}</div><div class="artNote">ART PLACEHOLDER</div></div>
+        <div class="headText">
+          <span class="gradeTag" style="color:${GRADE_COLORS[p.grade]}">${GRADE_LABELS[p.grade]}</span>
+          <h2 class="cardName">${esc(p.name)}</h2>
+          <span class="cardPos">${p.pos}</span>
+          <div class="stars">${[1,2,3,4].map(i=>`<span class="star ${i<=p.star?"":"starOff"}">★</span>`).join("")}</div>
+          <div class="lvBlock">
+            <div class="lvBlockTop">
+              <span class="lvBig">Lv ${p.level}</span>
+              <span>/ ${XPC.maxLevel}</span>
+              <span class="xpNum">${p.xpInLevel} / ${p.need} XP</span>
+            </div>
+            <span class="lvBar" style="margin-top:5px;display:block">
+              <i class="got" style="width:${xpPct}%"></i></span>
+          </div>
+        </div>
+      </div>
+      <div class="frameScroll">
+        <div class="pendBanner">
+          <div class="pendBannerTop"><span>선택 대기 ${p.pending}</span>
+            <button data-act="collapse">접기</button></div>
+          <div class="pendBannerBody">
+            <div class="cands">${cs.map((c,i)=>candCard(p,c,i)).join("")}</div>
+          </div>
+        </div>
+        <div class="ringWrap">
+          <svg width="96" height="96" viewBox="0 0 96 96" aria-hidden="true">
+            <circle cx="48" cy="48" r="42" fill="none" stroke="#2a313c" stroke-width="7"/>
+            <circle cx="48" cy="48" r="42" fill="none" stroke="url(#gr)" stroke-width="7" stroke-linecap="round"
+              stroke-dasharray="263.9" stroke-dashoffset="${(263.9*(1-completion)).toFixed(1)}"
+              transform="rotate(-90 48 48)"/>
+            <defs><linearGradient id="gr" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#38b3c9"/><stop offset="1" stop-color="#5cc98b"/>
+            </linearGradient></defs>
+          </svg>
+          <div class="ringCenter"><div class="ovr">${Math.round(ovr)}</div><div class="ovrLbl">OVR</div></div>
+        </div>
+        <p class="completion">완성도 ${Math.round(completion*100)}%</p>
+        <p class="axisNote">스탯 축 ${lo} – ${ceil} (시작 밴드 하한 → 성장 천장)</p>
+        <div class="attrLegend">
+          <span><i class="lg-base"></i>기본(발행 원본)</span>
+          <span><i class="lg-grow"></i>성장분(선택으로 올린 몫)</span>
+          <span><i class="lg-ceil"></i>천장 ${ceil} = ${BANDS[p.grade].growCeil} + ★${p.star} 보너스 ${STAR_CEIL_BONUS[p.star]}</span>
+        </div>
+        <dl class="attrs">${bars}</dl>
+      </div>
+      <div class="legacyRow">
+        <span class="unchanged">변경 없음</span>
+        <button class="legacyBtn">성 승급 → 3★</button>
+        <button class="legacyBtn plain">잠재 재설정</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── 주석 패널 ───────────────────────────────────────────────────────── */
+const NOTES = {
+ s1:{t:"화면 1 — 보상 시트 · 재화 탭",
+  s:"경기 종료 직후 아래에서 올라온 보상 오버레이. 설계 = §2.9 RewardBundle",
+  what:["매치가 끝나면 결과 화면보다 <b>먼저</b> 보상 시트가 올라온다. [확인] 을 눌러야 결과 화면으로 간다.",
+        "이 시트는 매치 전용이 아니다 — <code>RewardBundle{source: MATCH|MISSION|LEAGUE|MAIL}</code> 공용 셸이다."],
+  chk:["탭이 <b>확장 가능한 구조</b>로 보이는가 — [재화] [성장] 뒤에 비활성 [미션 준비중] 자리가 있다. E5 데일리 미션이 <code>sections[]</code> 한 칸만 추가하면 붙는다(§2.9.1).",
+       "금액이 <b>심볼과 함께</b> 나온다(1,200 P / 50 Z). 실제 앱에선 <code>&lt;Amount&gt;</code> 가 서버 표기 메타로 그린다 — 화면 코드에 “P”·“포인트”를 적지 않는다(#232).",
+       "리그 매치에만 있는 ‘오늘의 보상’ 줄이 별도 항목으로 서 있다(#368 규칙 승계).",
+       "하단 [확인] 은 <b>스크롤 밖 고정</b>이다 — 목록이 아무리 길어도 나가는 문이 화면에 있다(#355 규율)."]},
+ s2:{t:"화면 2 — 보상 시트 · 성장 탭 ⭐",
+  s:"선발 11 + 투입 교체 1 = 12행 · 그 아래 미투입 벤치 4행 (§2.9)",
+  what:["한 판이 12명에게 각각 얼마의 XP를 줬고 누가 레벨업했는지를 <b>한 페이지</b>에서 본다.",
+        "XP = <code>100 × 출전배율 × 결과배율(승 1.2) × 등급배율 × (1+활약)</code> — 등급배율이 뒤집혀 브론즈가 가장 빨리 큰다(§2.4)."],
+  chk:["<b>12행이 스크롤로 다 들어오는가.</b> 스크롤은 시트 내부에만 있고 폰 화면(문서)은 안 움직인다 — 실제 앱의 <code>position:fixed + 100svh + overflow-y:auto</code> 구조를 그대로 재현했다.",
+       "레벨업 3명(이현수·김도현·서준혁)이 <b>배경 한 단계 밝게 + 좌측 노란 라인 + ‘선택 대기 N’ 뱃지</b>로 나머지와 갈린다.",
+       "벤치 미투입 4명은 <code>+0 XP</code> 회색 — “안 뛰면 안 큰다”가 읽히는가.",
+       "탭 뱃지 <b>●3</b> 은 <b>선수 수</b>이고 요약 줄의 ‘선택 대기 5회’ 는 <b>선택 횟수</b>다. ⚠️ 어느 쪽을 뱃지 숫자로 쓸지 <b>결정이 필요</b>하다(설계 문서 미정).",
+       "레벨업 행을 탭하면 화면 3으로 간다(실제로 눌러 보세요)."]},
+ s3:{t:"화면 3 — 3지선다 선택 ⭐",
+  s:"§2.5 후보 가중 추첨 + §2.3 감쇠 · 후보는 서버가 박제(candidates_json)",
+  what:["레벨업 1회 = 선택 1회. 9스탯 중 3개가 포지션·그 경기 활약·AI behavior(프롬프트의 구조화 결과) 가중으로 뽑힌다.",
+        "상승폭은 <b>레벨과 무관</b>하고 오직 그 스탯이 얼마나 높은지로 결정된다(§2.3)."],
+  chk:["<b>세 후보의 상승폭이 서로 다르다</b> — 낮은 스탯일수록 크게 오른다. 천장 대비 진행바가 그 이유를 말한다.",
+       "‘왜 이 후보가 나왔나’ 한 줄이 셋 다 다른 축이다(그 경기 이벤트 / 지시=프롬프트 / 포지션 핵심). 프롬프트를 <b>키워드 매칭하지 않고</b> AI가 만든 behavior 파라미터를 쓴다는 설계가 화면에서 이 문장으로만 드러난다.",
+       "<b>“선택지는 고정됩니다 — 나중에 골라도 바뀌지 않아요”</b> 안내가 후보 위에 박혀 있다(hero 명시 요구). 상승폭까지 박제한다는 것도 같이 적었다.",
+       "[나중에 선택] 은 보조(고스트) 버튼 — 미루는 것이 기본 동선이 아니다.",
+       "후보 카드를 탭하면 화면 4로 간다."]},
+ s4:{t:"화면 4 — 선택 반영 + 축하",
+  s:"CelebrationOverlay 재사용 · 남은 선택으로 이어붙이기",
+  what:["고른 스탯이 즉시 올라간다. 숫자와 막대가 실제로 차오른다(진입 시 애니메이션 1회)."],
+  chk:["축하 오버레이가 <b>짧게</b> 지나가고 사라진다(과한 연출 금지). 지나간 뒤에도 결과가 화면에 남는다.",
+       "막대·숫자가 <code>from → to</code> 로 <b>차오르는 게 보이는가</b>(탭을 다시 눌러 재생).",
+       "남은 <b>선택 대기 1</b> 이 상단 배너로 서서 [이어서 선택] 으로 유도한다 — 한 경기에 여러 레벨업이 나도 하나씩 끝까지 찍게 된다.",
+       "천장까지 남은 여백이 갱신돼 “다음엔 덜 오른다”가 예고된다."]},
+ s5:{t:"화면 5 — 선수 강화탭(미룬 선택을 나중에)",
+  s:"§2.10 — 기존 CardGrowthDetail 모달에 <b>얹는다</b>. 새 탭을 만들지 않는다",
+  what:["보상 시트에서 미룬 선택을 여기서 찍는다. 진입점은 기존 그대로(선수탭·덱편성).",
+        "표본은 이현수 — 브론즈 ★2 Lv12, 선택 대기 2."],
+  chk:["헤더에 <b>★ 4칸 + Lv 12/40 + XP 진행바</b>가 새로 붙었다(기존 ★ 옆).",
+       "최상단 <b>선택 대기 2</b> 배너가 화면 3과 <b>같은 후보 카드</b>를 펼친다 — 두 자리에서 모양이 갈리면 안 된다.",
+       "⭐ 능력치 9종 막대의 <b>3층</b>: 파랑=기본(발행 원본) / 초록=성장분 / 노란 선=천장. 회색 여백이 “아직 갈 수 있는 곳”이다. 이 개편의 핵심 정보라 여기를 가장 꼼꼼히 봐 주세요.",
+       "천장 라벨이 <code>72(브론즈) + ★2 보너스 1 = 73</code> 으로 star 의 새 역할(게이트 아님, 소폭 보너스)을 말한다(§2.6).",
+       "하단 [성 승급] · [잠재 재설정] 은 <b>변경 없음</b> — 기존 기능이 그대로 있다는 표시."]},
+};
+function renderNotes(){
+  const n = NOTES[state.screen];
+  document.getElementById("notes").innerHTML = `
+    <h2>${n.t}</h2><p class="sub">${n.s}</p>
+    <h3>무엇을 보는 화면인가</h3><ul>${n.what.map(x=>`<li>${x}</li>`).join("")}</ul>
+    <h3>확인 포인트</h3><ul>${n.chk.map(x=>`<li>${x}</li>`).join("")}</ul>
+    <p class="ref">수치는 전부 이 페이지가 §2.3 감쇠식
+      <code>gain = max(0.3, 4.0×(1−r)^1.4)</code>, <code>r=(v−시작밴드lo)/(천장−시작밴드lo)</code> 로
+      <b>실제 계산</b>한 값이다(하드코딩 아님). 밴드/천장 = §2.2, XP 곡선 = §2.4.<br>
+      선수 아트는 실제 에셋이 없어 <b>이니셜 플레이스홀더</b>다.</p>`;
+}
+
+function render(){
+  const el = document.getElementById("phone");
+  el.innerHTML =
+    state.screen==="s1" ? rewardSheet("cur") :
+    state.screen==="s2" ? rewardSheet("growth") :
+    state.screen==="s3" ? pickScreen() :
+    state.screen==="s4" ? appliedScreen() : enhanceScreen();
+  document.querySelectorAll("#nav button").forEach(b =>
+    b.setAttribute("aria-current", b.dataset.screen === state.screen ? "true" : "false"));
+  renderNotes();
+  if (state.screen === "s4") runApplyAnim();
+}
+function runApplyAnim(){
+  const p = byName(state.pickPlayer);
+  const c = state.chosen || candList(p)[0];
+  const lo = BANDS[p.grade].startLo, ceil = ceilingOf(p.grade,p.star), span = ceil-lo;
+  const fill = document.getElementById("growFill");
+  const num  = document.getElementById("growTo");
+  requestAnimationFrame(() => {
+    fill.style.width = ((c.to-c.from)/span*100) + "%";
+    const t0 = performance.now(), dur = 900;
+    (function tick(t){
+      const k = Math.min(1, (t-t0)/dur);
+      num.textContent = n1(c.from + (c.to-c.from)*k);
+      if (k < 1) requestAnimationFrame(tick);
+    })(t0);
+  });
+  const cele = document.getElementById("cele");
+  setTimeout(()=>cele.classList.add("gone"), 1700);
+}
+
+/* 네비 + 인터랙션 */
+document.getElementById("nav").innerHTML =
+  SCREENS.map(s=>`<button data-screen="${s.id}">${s.nav}</button>`).join("");
+document.addEventListener("click", e => {
+  const nav = e.target.closest("#nav button");
+  if (nav){ state.screen = nav.dataset.screen; render(); return; }
+  const tab = e.target.closest(".tab[data-tab]");
+  if (tab){ state.screen = tab.dataset.tab === "cur" ? "s1" : "s2"; render(); return; }
+  const row = e.target.closest("[data-pick]");
+  if (row){ state.pickPlayer = row.dataset.pick; state.chosen = null; state.screen = "s3"; render(); return; }
+  const cand = e.target.closest("[data-cand]");
+  if (cand){
+    const p = byName(state.pickPlayer);
+    state.chosen = candList(p)[+cand.dataset.cand];
+    state.screen = "s4"; render(); return;
+  }
+  const act = e.target.closest("[data-act]");
+  if (act){
+    const a = act.dataset.act;
+    if (a === "later" || a === "confirm") { state.screen = "s2"; render(); }
+    if (a === "again") { state.chosen = null; state.screen = "s3"; render(); }
+    if (a === "collapse") { act.closest(".pendBanner").querySelector(".pendBannerBody").hidden ^= true; }
+  }
+});
+render();
+</script>
+</body>
+</html>

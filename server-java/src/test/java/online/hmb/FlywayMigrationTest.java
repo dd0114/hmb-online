@@ -107,7 +107,18 @@ class FlywayMigrationTest {
             //   노브라, 읽을 때 재계산하면 노브를 돌리는 순간 오늘 받은 이력이 소급 변조된다.
             "league_daily_rewards",
             // #383 라이브 계수 오버레이 원장(V37). append-only — 매치가 config_revision_id 로 가리킨다.
-            "engine_config_revisions"
+            "engine_config_revisions",
+            // #405 성장 계수 오버레이 원장(V38). V37 과 동형 — append-only, seq 정렬이 곧 "현재 값".
+            "growth_config_revisions",
+            // #405 W2b 성장 로직 본체(V39, 3) —
+            //   growth_level_choices = 레벨업 1회 = 1행. **후보 3개 + gain 을 박제**한다(미뤄서 골라도
+            //     화면에 보였던 숫자가 그대로 들어간다). UNIQUE(user,player,level) 이 멱등의 뿌리다.
+            //   growth_legacy_base   = 하향 전 base 스냅샷. players 는 부팅 임포트가 덮으므로
+            //     이 표가 없으면 "얼마나 깎였나"에 아무도 답할 수 없다(감사·롤백 근거).
+            //   reward_bundles       = 공용 보상 봉투(§2.9). E5 미션·리그·우편이 source 만 바꿔 쓴다.
+            "growth_level_choices",
+            "growth_legacy_base",
+            "reward_bundles"
     );
 
     /**
@@ -143,6 +154,101 @@ class FlywayMigrationTest {
                 .as("(created_at, id) 인덱스를 되살리지 마라 — 코드가 기각한 정렬을 스키마가 광고하면 "
                         + "다음 사람이 그걸 근거로 정렬을 되돌린다(m9)")
                 .doesNotContain("idx_engine_config_rev_time");
+    }
+
+    /**
+     * V38 도 <b>스키마 모양 자체가 결정</b>이다 — V37 과 같은 이유로 같은 구조를 골랐으므로
+     * (같은 밀리초 동률에서 롤백이 무시되는 것을 막는 {@code seq}) 같은 계약을 건다.
+     * 성장 계수는 정산이 근거로 가리키는 값이라 "현재 = 마지막 삽입"이 흔들리면 안 된다.
+     */
+    @Test
+    void growthConfigRevisionsKeepsTheOrderingSchemaItDependsOn() {
+        String ddl = jdbcClient
+                .sql("SELECT sql FROM sqlite_master WHERE type='table' AND name='growth_config_revisions'")
+                .query(String.class).single();
+
+        assertThat(ddl.replaceAll("\\s+", " "))
+                .as("PK 가 단조 증가 정수여야 한다 — ULID 는 같은 ms 안에서 난수가 순서를 정한다")
+                .contains("seq INTEGER PRIMARY KEY AUTOINCREMENT");
+        assertThat(ddl.replaceAll("\\s+", " "))
+                .as("리비전 id 는 정산 리포트가 가리키는 값이라 유일해야 한다")
+                .contains("id TEXT NOT NULL UNIQUE");
+        assertThat(ddl.replaceAll("\\s+", " "))
+                .as("사유 없는 이력은 이력이 아니다")
+                .contains("reason TEXT NOT NULL");
+
+        List<String> indexes = jdbcClient.sql(
+                        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='growth_config_revisions' "
+                                + "AND name NOT LIKE 'sqlite_%'")
+                .query(String.class).list();
+        assertThat(indexes)
+                .as("멱등 백스톱(부분 유니크)이 없으면 같은 키 동시 PUT 이 '현재 값'을 경합에 맡긴다")
+                .contains("uq_growth_config_rev_idem");
+    }
+
+    /**
+     * ⚠️ V38 은 <b>{@code user_players} 를 건드리지 않는다</b>. 성장 스키마 변경(소수 상승분 저장·
+     * 소급 지급)은 백업·백필과 한 세트여야 해서 W2b 소관이고, 이 웨이브만 적용해도 서버가 그대로
+     * 떠야 한다. 그 경계를 문장이 아니라 계약으로 박아 둔다 — 나중에 여기에 컬럼을 몰래 얹으면
+     * 백필 없이 배포되는 길이 열린다.
+     */
+    @Test
+    void v38DoesNotTouchUserPlayers() {
+        // 주석은 코드가 아니다 — 이 마이그레이션의 주석이 바로 그 경계를 설명하고 있다.
+        String migration = readMigration("V38__growth_config_overrides.sql")
+                .replaceAll("--[^\n]*", "");
+        assertThat(migration.toLowerCase(java.util.Locale.ROOT))
+                .as("V38 은 오버레이 원장만 만든다 — user_players 변경은 W2b(백업·백필과 한 세트)")
+                .doesNotContain("user_players");
+    }
+
+    /**
+     * <b>V39 가 W2a 의 경계를 지킨 채로 그 다음을 한다</b> — {@code user_players} 스키마 변경은
+     * 여기서 처음 일어나고, <b>같은 마이그레이션이 하향 전 base 스냅샷을 남긴다</b>. 둘이 갈라지면
+     * (컬럼만 추가하고 스냅샷은 나중에) 그 사이 부팅의 카탈로그 임포트가 v2.4 원본을 덮어
+     * <b>되돌릴 근거가 영구히 사라진다</b>.
+     */
+    @Test
+    void v39AddsCardGrowthColumnsAndCapturesTheLegacyBaseInTheSameMigration() {
+        assertThat(columnsOf("user_players"))
+                .as("카드 축(레벨·XP)과 소수 상승분이 없으면 신 모델이 저장될 자리가 없다")
+                .contains("card_level", "card_xp", "stat_add_json");
+        assertThat(columnsOf("user_players"))
+                .as("stat_levels_json 은 소급 이관의 입력이자 롤백 근거다 — 드롭 금지")
+                .contains("stat_levels_json");
+
+        String migration = readMigration("V39__growth_choices.sql").replaceAll("--[^\n]*", "");
+        assertThat(migration.toLowerCase(java.util.Locale.ROOT))
+                .as("컬럼만 추가하고 스냅샷을 안 남기면 롤백 근거가 다음 부팅에 사라진다")
+                .contains("insert into growth_legacy_base");
+
+        // 멱등의 뿌리 — 같은 레벨에 선택권이 두 번 생기면 스탯을 공짜로 두 번 준다.
+        List<String> indexes = jdbcClient.sql(
+                        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='growth_level_choices' "
+                                + "AND name NOT LIKE 'sqlite_%'")
+                .query(String.class).list();
+        assertThat(indexes).contains("uq_growth_choice_level");
+
+        List<String> bundleIndexes = jdbcClient.sql(
+                        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='reward_bundles' "
+                                + "AND name NOT LIKE 'sqlite_%'")
+                .query(String.class).list();
+        assertThat(bundleIndexes)
+                .as("같은 출처로 봉투가 둘 생기면 유저가 같은 보상을 두 번 본다")
+                .contains("uq_reward_bundle_source");
+    }
+
+    private List<String> columnsOf(String table) {
+        return jdbcClient.sql("SELECT name FROM pragma_table_info(?)").param(table).query(String.class).list();
+    }
+
+    private static String readMigration(String name) {
+        try {
+            return java.nio.file.Files.readString(
+                    java.nio.file.Path.of("src/main/resources/db/migration", name));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("마이그레이션을 읽지 못했다: " + name, e);
+        }
     }
 
     @Test

@@ -171,6 +171,54 @@ export const INACTIVE_PLAYER_IDS_V24: readonly string[] = [
   ...V24_INACTIVE_NEW_UNIT_IDS,
 ];
 
+/**
+ * players 카탈로그 v2.5 (#405 W1, hero 확정 2026-08-02 — `docs/plan-v5/growth-redesign.md` §2.2).
+ * v2.4 위에 **행 수·필드 무변경**, 바뀌는 축은 단 하나다: **능력치 9종을 신규 시작 밴드로 재롤**.
+ *
+ * 왜: 현행 시작 밴드(40-55…80-95)는 등급 상한에 이미 붙어 있어 성장 여백이 거의 없었다(§1.4).
+ * 시작을 내려 여백을 만들고, 성장 천장은 **등급 간에 겹치게** 둔다 — 그래야 "다 키운 브론즈가
+ * 방치된 골드보다 세다"가 성립한다.
+ *
+ * ⚠️ **경계(§2.8.1)**: data 는 **시작 밴드만** 발행한다. 성장 천장(72/78/84/90/95)은 여기 없고
+ * 런타임 SoT 는 server 의 `GrowthTuning.bands.growCeil` 이다. 이 파일의 `GRADE_BANDS_V25` 는
+ * **발행 시점 롤 전용**(이미 구운 값이라 성질상 재발행=배포가 필요) — 런타임 튜닝 노브가 아니다.
+ */
+export const PLAYERS_V25_VERSION = "v2.5";
+
+/**
+ * players.v2.4 가 발행된 시점의 로스터 크기(182). v2.5 는 **행을 늘리지 않으므로** 이 값이 곧
+ * v2.5 의 행 수이기도 하다 — 빌더가 이 경계를 fail-closed 로 검증한다(`buildPlayersV25`).
+ */
+export const FROZEN_ROSTER_COUNT_V24 = 182;
+
+/**
+ * #405 §2.2 확정 — **신규 시작 밴드**. 폭 11(구 16), 등급 간 시작 격차 9.
+ *
+ * ⚠️ `GRADE_BANDS`(구 밴드)는 **절대 건드리지 않는다**. v2/v2.1/v2.2/v2.3/v2.4 발행물은 그 밴드로
+ * 구워졌고 발행 후 수정 금지이므로, 구 빌더는 계속 구 밴드로 돌아야 바이트 동일 재현이 유지된다.
+ * 신규 밴드는 **v2.5 빌더에서만** 쓰인다(밴드 축이 둘 = 발행 축이 둘인 것과 같은 구조).
+ */
+export const GRADE_BANDS_V25: Record<Grade, readonly [number, number]> = {
+  BRONZE: [32, 42],
+  SILVER: [41, 51],
+  GOLD: [50, 60],
+  DIA: [59, 69],
+  LEGEND: [68, 78],
+};
+
+/**
+ * v2.5 재롤 스트림의 시드. **의도적으로 `SEED` 와 같은 값이되 별도 인스턴스**다.
+ *
+ * 같은 시드를 쓰는 이유 = **카드 개성 보존**. `rollAttributes` 는 스탯마다 `lo + nextInt(hi-lo+1)`
+ * 이므로, 같은 균등난수 u 를 폭만 바꿔 쓰면 `floor(u×16)` → `floor(u×11)` 로 **단조 재스케일**된다.
+ * 즉 v2.4 에서 그 카드가 상대적으로 높았던 스탯은 v2.5 에서도 높다 — 하향은 하되 "이 선수는
+ * 슈팅형"이라는 카드의 성격이 그대로 간다. 새 시드를 쓰면 그 대응이 끊긴다.
+ *
+ * ⚠️ **별도 인스턴스**라 메인 스트림(`generateAll` 의 `createRng(SEED)`)을 한 틱도 소비하지 않는다
+ * → v2/…/v2.4 발행물은 바이트 동일하게 유지된다(`data.test.ts` 가 디스크와 대조).
+ */
+export const SEED_V25 = SEED;
+
 /** league 시드 데이터 버전(봇 클럽명·성향 프리셋·순위 보상). */
 export const LEAGUE_VERSION = "v1";
 
@@ -275,6 +323,12 @@ export type PlayerSeedV23 = PlayerSeedV22;
  */
 export type PlayerSeedV24 = PlayerSeedV23;
 
+/**
+ * players.v2.5 = v2.4 와 **스키마·행 수 동일**. 바뀌는 것은 `attributes` 값뿐이다(#405 §2.2).
+ * 별칭으로 두는 이유는 v2.3/v2.4 와 같다 — 소비자 타입이 버전 축을 이름으로 부를 수 있게.
+ */
+export type PlayerSeedV25 = PlayerSeedV24;
+
 const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "technical",
   "mental",
@@ -287,8 +341,40 @@ const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "positioning",
 ];
 
-/** trait 시그니처 능력치 바이어스(+, 밴드 상한 클램프). */
+/**
+ * 포지션 주스탯 바이어스(+, 밴드 상한 클램프) — **v2~v2.4 발행물이 구워진 값. 수정 금지.**
+ * (구 코드는 이 값을 rollAttributes 안에 리터럴 `5` 로 박아 뒀다. #405 에서 상수로 뽑았을 뿐
+ *  값은 그대로다 — 과거 발행물 재현이 바이트 단위로 걸려 있다.)
+ */
+const PRIMARY_BIAS = 5;
+
+/** trait 시그니처 능력치 바이어스(+, 밴드 상한 클램프) — **v2~v2.4 발행 값. 수정 금지.** */
 const TRAIT_BIAS = 6;
+
+/**
+ * ⚠️⚠️ **함정: 밴드 폭을 줄이면 바이어스도 같이 줄여야 한다.** ⚠️⚠️
+ *
+ * #405 1차 발행에서 실제로 밟은 함정이다. 밴드 폭만 16 → **11** 로 줄이고 바이어스를 +5/+6 그대로
+ * 두었더니, 주스탯이면서 trait 인 스탯은 가산 합이 **+11 = 폭 전체**라 `lo + roll(0..10) + 11` 이
+ * 항상 `hi(=lo+10)` 를 넘어 **예외 없이 상한에 클램프**됐다. 실측 클램프율 79.4% → **100.0%**
+ * (170/170) — 그 스탯들은 롤이 아무 의미 없는 **상수**가 됐고, 같은 (포지션, trait) 조합 카드가
+ * 그 스탯에서 전부 동일해졌다. 수집 게임에서 이건 카드 개성의 소실이다.
+ *
+ * 성장 여백은 이 문제와 무관하다 — 신규 설계에서 **성장 천장은 시작밴드 hi 가 아니라 별도
+ * `growCeil`**(72/78/84/90/95, server 소관)이라 GOLD 가 시작 상한 60 에 박혀도 천장 84 까지 24점이
+ * 남는다. 그래서 하향의 목적(성장 여백)은 지키고 상수화만 없애면 된다.
+ *
+ * 해법 = **바이어스를 폭에 비례 축소**(hero 확정 2026-08-02). 비율이 거의 보존된다:
+ *   주스탯만  구 5/16 = 31.3%  → 신 3/11 = 27.3%
+ *   trait만   구 6/16 = 37.5%  → 신 4/11 = 36.4%
+ *   교집합    구 11/16 = 68.8% → 신 7/11 = 63.6%
+ * "주스탯·trait 가 튄다"는 의도는 유지되고 degenerate 상수화만 사라진다.
+ *
+ * ⚠️ 이 상수는 **v2.5 발행 경로 전용**이다. `PRIMARY_BIAS`/`TRAIT_BIAS`(5/6)는 v2~v2.4 발행물이
+ * 구워진 값이라 절대 건드리지 않는다(밴드 축이 둘인 것과 같은 구조).
+ */
+export const PRIMARY_BIAS_V25 = 3;
+export const TRAIT_BIAS_V25 = 4;
 
 /** 등급별 능력치 밴드 [min, max] (LLD §2). */
 export const GRADE_BANDS: Record<Grade, readonly [number, number]> = {
@@ -328,23 +414,33 @@ function clamp(v: number, lo: number, hi: number): number {
  * ⚠️ 파라미터에 **이름이 없다**. 이것이 "유닛명을 고쳐도 스탯이 안 흔들린다"(#207 U-D6)의
  * 구조적 근거다 — export 하는 이유도 data.test.ts 가 이름을 뒤바꾼 로스터로 재파생해 그 성질을
  * 직접 증명하기 위해서다(주석 주장 대신 실행 가능한 증명).
+ *
+ * `bands`·`bias` 는 **기본값이 구 값**이다(#405). 인자를 안 주면 v2~v2.4 빌더가 발행 당시와 완전히
+ * 동일하게 돌고, v2.5 빌더만 `GRADE_BANDS_V25` + `PRIMARY_BIAS_V25/TRAIT_BIAS_V25` 를 명시적으로
+ * 넘긴다 — 교체가 과거 발행물로 새어 나갈 수 없는 구조다. RNG 소비 횟수는 밴드·바이어스와 무관하게
+ * 9회로 고정(스트림 정합 유지).
+ *
+ * ⚠️ **두 인자는 짝이다.** 밴드 폭을 줄이면서 바이어스를 안 줄이면 가산 대상 스탯이 통째로 상한에
+ * 클램프돼 상수가 된다 — `PRIMARY_BIAS_V25` 주석의 함정 기록 참조.
  */
 export function rollAttributes(
   rng: ReturnType<typeof createRng>,
   grade: Grade,
   position: Position,
   traits: readonly (keyof PlayerAttributes)[],
+  bands: Record<Grade, readonly [number, number]> = GRADE_BANDS,
+  bias: { primary: number; trait: number } = { primary: PRIMARY_BIAS, trait: TRAIT_BIAS },
 ): PlayerAttributes {
-  const [lo, hi] = GRADE_BANDS[grade];
+  const [lo, hi] = bands[grade];
   const attrs = {} as PlayerAttributes;
   for (const key of ATTR_KEYS) {
     attrs[key] = lo + rng.nextInt(hi - lo + 1);
   }
   for (const key of PRIMARY_STATS[position]) {
-    attrs[key] = clamp(attrs[key] + 5, lo, hi);
+    attrs[key] = clamp(attrs[key] + bias.primary, lo, hi);
   }
   for (const key of traits) {
-    attrs[key] = clamp(attrs[key] + TRAIT_BIAS, lo, hi);
+    attrs[key] = clamp(attrs[key] + bias.trait, lo, hi);
   }
   return attrs;
 }
@@ -737,8 +833,10 @@ export interface GeneratedData {
   playersV22: PlayerSeedV22[];
   /** players.v2.3.json — v2.2 + 유닛명 정정 2건 + 신규 비활성 3건 (#207 U-D5/U-D6). 동결. */
   playersV23: PlayerSeedV23[];
-  /** players.v2.4.json — v2.3 + 신규 LEGEND 2종 append (#256 석다이크·오시야스). 현행 소비본. */
+  /** players.v2.4.json — v2.3 + 신규 LEGEND 2종 append (#256 석다이크·오시야스). */
   playersV24: PlayerSeedV24[];
+  /** players.v2.5.json — v2.4 전 182행을 **신규 시작 밴드**로 재롤 (#405 §2.2). 현행 소비본. */
+  playersV25: PlayerSeedV25[];
   economy: EconomySeed;
   bots: BotSeed[];
   /** league.v1.json — 봇 클럽명·성향 프리셋·순위 보상. */
@@ -896,6 +994,79 @@ function buildPlayersV24(
 
   if (new Set(out.map((p) => p.name)).size !== out.length) {
     throw new Error("v2.4 유닛명 충돌 — 신규 채번명이 기존 이름과 겹친다");
+  }
+  return out;
+}
+
+/**
+ * players.v2.4 위에 v2.5 를 만든다 (#405 W1, §2.2). **v2.2/v2.3/v2.4 빌더는 건드리지 않는다** —
+ * 그 발행물들이 바이트 동일하게 재현돼야 하기 때문(v2.4 가 v2.3 을 대하는 방식과 동일).
+ *
+ * 하는 일은 하나뿐이다: **행·필드는 그대로 두고 `attributes` 9종만 신규 시작 밴드로 재롤**.
+ * name/position/grade/personality/active 는 v2.4 에서 그대로 승계하고, traits 는 `roster` 에서
+ * 같은 index 로 읽는다(traits 는 발행 필드가 아니라 큐레이션 축이다).
+ *
+ * RNG: `createRng(SEED_V25)` **별도 스트림**을 로스터 순서로 소비한다. 메인 스트림을 건드리지
+ * 않으므로 과거 발행물은 무영향이고, 같은 시드라 v2.4 롤과 **단조 대응**한다(SEED_V25 주석 참조).
+ *
+ * fail-closed 로 보는 것(조용한 사고를 전부 터뜨린다):
+ *   ① 입력 행 수가 `FROZEN_ROSTER_COUNT_V24` — v2.4 발행 경계가 밀리면 즉시 터진다.
+ *   ② `roster` 길이가 입력과 같다 — 로스터에 뭔가 append 됐는데 v2.5 만 안 따라간 상태 차단.
+ *   ③ id 가 P001.. 순차 — 순서가 어긋나면 엉뚱한 traits 로 굴린다(가장 조용한 사고).
+ *   ④ 각 행의 position/grade 가 로스터 엔트리와 일치 — 로스터 재배열 검출.
+ *   ⑤ 산출 9종이 전부 신규 밴드 안 — 클램프/바이어스 실수 차단.
+ */
+function buildPlayersV25(
+  playersV24: PlayerSeedV24[],
+  roster: readonly { position: Position; grade: Grade; traits: readonly (keyof PlayerAttributes)[] }[],
+): PlayerSeedV25[] {
+  if (playersV24.length !== FROZEN_ROSTER_COUNT_V24) {
+    throw new Error(
+      `v2.4 발행 경계가 ${FROZEN_ROSTER_COUNT_V24} 이어야 하는데 ${playersV24.length} 이다 — ` +
+        `FROZEN_ROSTER_COUNT_V24 재확정 필요(#405)`,
+    );
+  }
+  if (roster.length !== playersV24.length) {
+    throw new Error(
+      `로스터(${roster.length})와 v2.4(${playersV24.length}) 행 수가 다르다 — ` +
+        `v2.5 는 v2.4 전 행을 재롤하므로 두 축이 반드시 일치해야 한다(#405)`,
+    );
+  }
+
+  const rng = createRng(SEED_V25);
+  const out: PlayerSeedV25[] = playersV24.map((p, i) => {
+    const expectedId = `P${String(i + 1).padStart(3, "0")}`;
+    if (p.id !== expectedId) {
+      throw new Error(`v2.5 입력 id 순서가 어긋났다: #${i} 가 ${p.id} (기대 ${expectedId})`);
+    }
+    const entry = roster[i]!;
+    if (entry.position !== p.position || entry.grade !== p.grade) {
+      throw new Error(
+        `${p.id}(${p.name}) 의 로스터 엔트리가 v2.4 와 다르다 ` +
+          `(로스터 ${entry.position}/${entry.grade} vs v2.4 ${p.position}/${p.grade}) — ` +
+          `ROSTER 를 재배열했다면 되돌려라(#405: v2.5 는 traits 를 index 로 승계한다).`,
+      );
+    }
+    // spread 로 기존 키 순서를 유지한 채 attributes 값만 덮는다(필드 순서·개수 무변경).
+    return {
+      ...p,
+      attributes: rollAttributes(rng, p.grade, p.position, entry.traits, GRADE_BANDS_V25, {
+        // ⚠️ 폭에 비례 축소한 v2.5 전용 바이어스. 구 +5/+6 을 그대로 쓰면 교집합 스탯이 100%
+        //    상한 클램프돼 상수화된다(PRIMARY_BIAS_V25 주석의 함정 기록 참조).
+        primary: PRIMARY_BIAS_V25,
+        trait: TRAIT_BIAS_V25,
+      }),
+    };
+  });
+
+  for (const p of out) {
+    const [lo, hi] = GRADE_BANDS_V25[p.grade];
+    for (const key of ATTR_KEYS) {
+      const v = p.attributes[key];
+      if (!Number.isInteger(v) || v < lo || v > hi) {
+        throw new Error(`${p.id} ${key}=${v} 가 ${p.grade} 신규 시작 밴드 [${lo},${hi}] 밖이다(#405)`);
+      }
+    }
   }
   return out;
 }
@@ -1457,6 +1628,8 @@ export function generateAll(): GeneratedData {
   const playersV22 = buildPlayersV22(buildPlayersV21(players.slice(0, FROZEN_ROSTER_COUNT_V22)));
   const playersV23 = buildPlayersV23(playersV22);
   const playersV24 = buildPlayersV24(playersV23, buildPlayersV21(players));
+  // #405: v2.5 는 v2.4 위에 얹는 **재롤 레이어**(행 추가 0). 별도 RNG 스트림이라 위 발행물 무영향.
+  const playersV25 = buildPlayersV25(playersV24, ROSTER);
   const league = buildLeague();
 
   // economy v3(#209) = v2 그대로 + starterTop 블록. v2 객체는 건드리지 않는다(발행물 불변).
@@ -1467,7 +1640,7 @@ export function generateAll(): GeneratedData {
   };
 
   return {
-    players, playersV2, playersV21, playersV22, playersV23, playersV24,
+    players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25,
     economy, economyV3, bots, league,
     leagueV2: buildLeagueV2(league),
     botsV3,
@@ -1485,7 +1658,7 @@ const isMain = (() => {
 
 if (isMain) {
   const {
-    players, playersV2, playersV21, playersV22, playersV23, playersV24,
+    players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25,
     economy, economyV3, bots, league, leagueV2, botsV3,
   } = generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
@@ -1506,6 +1679,10 @@ if (isMain) {
     join(here, `players.${PLAYERS_V24_VERSION}.json`),
     JSON.stringify(playersV24, null, 2) + "\n",
   );
+  writeFileSync(
+    join(here, `players.${PLAYERS_V25_VERSION}.json`),
+    JSON.stringify(playersV25, null, 2) + "\n",
+  );
   writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
   writeFileSync(
     join(here, `economy.${ECONOMY_V3_VERSION}.json`),
@@ -1521,8 +1698,9 @@ if (isMain) {
   // eslint-disable-next-line no-console
   console.log(
     `generated ${players.length} players (v2/v2.1 frozen ${playersV2.length}, v2.2 ${playersV22.length} ` +
-      `with active, v2.3 ${playersV23.length}, v2.4 ${playersV24.length} ` +
-      `active=${playersV24.filter((p) => p.active).length}), ` +
+      `with active, v2.3 ${playersV23.length}, v2.4 ${playersV24.length}, ` +
+      `v2.5 ${playersV25.length} rerolled to lowered start bands ` +
+      `active=${playersV25.filter((p) => p.active).length}), ` +
       `economy.${DATA_VERSION}.json + economy.${ECONOMY_V3_VERSION}.json(starterTop), ` +
       `${bots.length} bots, league.${LEAGUE_VERSION}.json -> data/players/`,
   );

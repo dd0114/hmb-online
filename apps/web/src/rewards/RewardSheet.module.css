@@ -1,0 +1,322 @@
+/* 보상 시트 (#405 §2.9, 목업 화면 ①~④).
+
+   구조는 관전 셸과 같은 규약이다: 오버레이가 뷰포트를 고정하고(문서 스크롤 0), 스크롤은
+   `.panel` 안에만, `[확인]`은 그 **밖** 바닥에 앉는다(#355 — 목록에 상한이 없어 높이로는
+   영영 못 고친다). `dvh` 금지 — 툴바가 접힐 때마다 읽는 도중 리플로우한다. */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: rgba(4, 6, 10, 0.62);
+  /* 접히는 브라우저 UI(100lvh − 100svh) + 홈 인디케이터 몫. 축이 달라 이중계상이 아니다(#386). */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + (100lvh - 100svh));
+}
+
+.sheet {
+  display: flex;
+  flex-direction: column;
+  /* 무대가 시트 위로 보여야 "경기가 끝났고 그 위에 보상이 올라왔다"가 읽힌다(목업). */
+  height: min(78svh, 100% - 56px);
+  min-height: 0;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  border-radius: 18px 18px 0 0;
+  background: var(--bg-elevated);
+  color: var(--text);
+  box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.55);
+  outline: none;
+}
+
+@media (min-width: 720px) {
+  .overlay {
+    justify-content: center;
+    align-items: center;
+    padding: 24px;
+  }
+
+  .sheet {
+    width: min(520px, 100%);
+    height: min(78svh, 720px);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+  }
+}
+
+.grabber {
+  flex: none;
+  width: 38px;
+  height: 4px;
+  margin: 8px auto 2px;
+  border-radius: 999px;
+  background: #39414e;
+}
+
+.head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 14px 8px;
+}
+
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.badge {
+  flex: none;
+  padding: 3px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.badgeWin {
+  border-color: var(--success);
+  background: rgba(55, 194, 111, 0.15);
+  color: var(--success);
+}
+
+.badgeDraw {
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.badgeLoss {
+  border-color: var(--danger);
+  background: rgba(255, 90, 90, 0.13);
+  color: var(--danger);
+}
+
+.headMeta {
+  margin-left: auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 알약 세그먼트 — StageShell `.tabs` 와 같은 모양(두 화면이 다르게 생기면 안 된다). */
+.tabs {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  min-width: 0;
+  margin: 2px 12px 8px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--sunk);
+}
+
+.tab {
+  flex: 1;
+  min-width: 0;
+  /* 44px = 터치 타깃 하한. 목록이 길어져도 여기는 줄이지 않는다. */
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 8px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tabActive {
+  background: #1c2841;
+  color: #dbe7ff;
+}
+
+.tabDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: #131720;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+/* 유일한 스크롤 영역. `min-width: 0` 이 없으면 넘치는 자식이 스크롤 대신 시트를 늘린다(#284). */
+.panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 2px 12px 12px;
+}
+
+.cta {
+  flex: none;
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cta:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* 미루는 것은 기본 동선이 아니다 — 보조(고스트) 버튼(목업 화면 ③). */
+.ghostCta {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.remainBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 11px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 194, 75, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 194, 75, 0.09);
+  font-size: 12px;
+}
+
+.remainBar b {
+  color: var(--warn);
+}
+
+.remainCta {
+  margin-left: auto;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: var(--warn);
+  color: #131720;
+  font-size: 11.5px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.appliedHead {
+  margin: 0 2px 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── 선택 화면 헤드 (목업 화면 ③) — 누구의 무슨 레벨업인지 ───────────────────── */
+.pickHead {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.pickMain {
+  display: block;
+  min-width: 0;
+}
+
+.pickName {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pickMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.pickChip {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.pickAvatarFallback {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: #20262f;
+  color: #d7dde6;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.pickLv {
+  margin-left: auto;
+  flex: none;
+  text-align: right;
+}
+
+.pickLv b {
+  display: block;
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--ok);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pickLv span {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
