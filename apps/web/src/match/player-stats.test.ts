@@ -21,6 +21,8 @@ import {
   playerKey,
   playerKeySet,
   passAttributionCoverage,
+  ratingWithWeights,
+  type RatingWeights,
   type PlayerStatLine,
   type PlayerStatsResult,
   type StatEvent,
@@ -776,51 +778,217 @@ describe("평점 — 계수는 RATING_WEIGHTS 한 곳에만 있다", () => {
     ...over,
   });
 
-  it("아무것도 안 하면 6.0", () => {
-    expect(computeRating(blank())).toBe(6);
+  const B = RATING_WEIGHTS.base;
+
+  it("아무것도 안 하면 기본점 그대로 — 그리고 그 기본점은 6.5 다(hero 확정 ②)", () => {
+    expect(computeRating(blank())).toBe(B);
+    // ⚠️ 이 리터럴만은 남긴다: "무관여 6.0 → 6.5" 는 hero 가 내린 **결정**이지
+    //    내일 흔들 튜닝값이 아니다. 되돌아가면 여기서 걸려야 한다.
+    expect(B).toBe(6.5);
   });
 
   it("골·도움·수비 기여는 올리고, 뺏김·파울·카드·실점은 내린다", () => {
-    expect(computeRating(blank({ goals: 1 }))).toBeGreaterThan(6);
-    expect(computeRating(blank({ assists: 1 }))).toBeGreaterThan(6);
-    expect(computeRating(blank({ tackles: 1 }))).toBeGreaterThan(6);
-    expect(computeRating(blank({ interceptions: 1 }))).toBeGreaterThan(6);
-    expect(computeRating(blank({ clearances: 1 }))).toBeGreaterThan(6);
-    expect(computeRating(blank({ saves: 1 }))).toBeGreaterThan(6);
-    expect(computeRating(blank({ passesAttempted: 10, passesCompleted: 10 }))).toBeGreaterThan(6);
-    expect(computeRating(blank({ dispossessed: 1 }))).toBeLessThan(6);
-    expect(computeRating(blank({ fouls: 1 }))).toBeLessThan(6);
-    expect(computeRating(blank({ yellowCards: 1 }))).toBeLessThan(6);
-    expect(computeRating(blank({ redCards: 1, sentOff: true }))).toBeLessThan(6);
-    expect(computeRating(blank({ goalsConceded: 1 }))).toBeLessThan(6);
-    expect(computeRating(blank({ passesAttempted: 10, passesCompleted: 0 }))).toBeLessThan(6);
+    expect(computeRating(blank({ goals: 1 }))).toBeGreaterThan(B);
+    expect(computeRating(blank({ assists: 1 }))).toBeGreaterThan(B);
+    expect(computeRating(blank({ keyPasses: 1 }))).toBeGreaterThan(B);
+    expect(computeRating(blank({ tackles: 1 }))).toBeGreaterThan(B);
+    expect(computeRating(blank({ interceptions: 1 }))).toBeGreaterThan(B);
+    expect(computeRating(blank({ clearances: 1 }))).toBeGreaterThan(B);
+    expect(computeRating(blank({ saves: 1 }))).toBeGreaterThan(B);
+    expect(computeRating(blank({ passesAttempted: 10, passesCompleted: 10 }))).toBeGreaterThan(B);
+    expect(computeRating(blank({ dispossessed: 1 }))).toBeLessThan(B);
+    // ⚠️ 파울 1개는 **표시 해상도(소수 1자리) 아래**다(−0.05 → 반올림하면 기본점 그대로).
+    //    의도한 성질이라(한 번 반칙했다고 평점이 내려가면 과하다) 발화하는 볼륨으로 건다.
+    expect(computeRating(blank({ fouls: 1 }))).toBe(B);
+    expect(computeRating(blank({ fouls: 4 }))).toBeLessThan(B);
+    expect(computeRating(blank({ yellowCards: 1 }))).toBeLessThan(B);
+    expect(computeRating(blank({ redCards: 1, sentOff: true }))).toBeLessThan(B);
+    expect(computeRating(blank({ goalsConceded: 1 }))).toBeLessThan(B);
+    expect(computeRating(blank({ passesAttempted: 10, passesCompleted: 0 }))).toBeLessThan(B);
   });
 
-  it("골 1점 = +1.0 · 도움 = +0.7 (표의 값이 그대로 반영된다)", () => {
-    expect(computeRating(blank({ goals: 1 }))).toBe(7);
-    expect(computeRating(blank({ assists: 1 }))).toBe(6.7);
-    expect(computeRating(blank({ saves: 2 }))).toBe(6.6);
+  it("골 1점 = 정확히 +1.0 (hero 확정 ①)", () => {
+    expect(computeRating(blank({ goals: 1 }))).toBe(B + 1.0);
+    expect(RATING_WEIGHTS.attack.goal).toBe(1.0);
   });
 
-  it("3.0~10.0 으로 클램프된다", () => {
-    expect(computeRating(blank({ goals: 20 }))).toBe(10);
-    expect(computeRating(blank({ fouls: 100 }))).toBe(3);
+  /**
+   * ⚠️ `keyPasses` 는 **어시스트를 포함**한다(`PlayerStatLine.keyPasses` 정의) → 어시스트 1개는
+   * `assist` 와 `keyPass` **두 항에 모두** 걸린다. 계수를 조정할 때 `assist` 만 보면 실제보다
+   * 낮게 읽는다. 그 실효치를 계약으로 박아 둔다 — 산식이 바뀌면 여기서 먼저 걸린다.
+   */
+  it("어시스트의 실효 가치 = assist + keyPass 이고, 골보다는 작다", () => {
+    const eff = computeRating(blank({ assists: 1, keyPasses: 1 })) - B;
+    // 평점은 소수 1자리로 반올림돼 나오므로 그 해상도로 비교한다.
+    expect(eff).toBeCloseTo(RATING_WEIGHTS.attack.assist + RATING_WEIGHTS.attack.keyPass, 1);
+    // 실효치가 골보다 작다 — 계수표에서도, 실제 산출에서도.
+    expect(RATING_WEIGHTS.attack.assist + RATING_WEIGHTS.attack.keyPass)
+      .toBeLessThan(RATING_WEIGHTS.attack.goal);
+    expect(computeRating(blank({ assists: 1, keyPasses: 1 })))
+      .toBeLessThan(computeRating(blank({ goals: 1 })));
   });
 
-  it("포지션 희소성 보정 — 수비수의 골은 더, 공격수의 태클은 더 쳐준다", () => {
+  it("min~max 로 클램프된다", () => {
+    expect(computeRating(blank({ goals: 200 }))).toBe(RATING_WEIGHTS.max);
+    expect(computeRating(blank({ fouls: 1000 }))).toBe(RATING_WEIGHTS.min);
+  });
+
+  it("포지션 희소성 보정 — 수비수의 골은 더, 공격수의 볼뺏기는 더 쳐준다", () => {
     expect(computeRating(blank({ goals: 1 }), "DF")).toBeGreaterThan(computeRating(blank({ goals: 1 }), "FW"));
     expect(computeRating(blank({ tackles: 5 }), "FW")).toBeGreaterThan(computeRating(blank({ tackles: 5 }), "DF"));
-    // 포지션을 모르면 보정이 없다(= UNKNOWN).
-    expect(computeRating(blank({ goals: 1 }))).toBe(computeRating(blank({ goals: 1 }), "GK"));
+    // 포지션을 모르면 보정이 없다(= UNKNOWN 은 1.0 중립이라 곱해도 그대로다).
+    expect(RATING_WEIGHTS.position.UNKNOWN).toEqual({ attack: 1, defence: 1 });
+    expect(computeRating(blank({ goals: 1, tackles: 3 }))).toBeCloseTo(
+      B + RATING_WEIGHTS.attack.goal + 3 * RATING_WEIGHTS.defence.tackle,
+      1,
+    );
   });
 
-  it("계수 표가 이 값이다(hero 가 조정하는 자리 — 바뀌면 여기서 먼저 걸린다)", () => {
-    expect(RATING_WEIGHTS.base).toBe(6.0);
-    expect(RATING_WEIGHTS.attack.goal).toBe(1.0);
-    expect(RATING_WEIGHTS.attack.assist).toBe(0.7);
-    expect(RATING_WEIGHTS.defence.tackle).toBe(0.18);
-    expect(RATING_WEIGHTS.keeper.save).toBe(0.3);
-    expect(RATING_WEIGHTS.discipline.red).toBe(-0.9);
+  /**
+   * ⚠️ 여기에 **계수 값을 리터럴로 박지 않는다** — hero 가 릴리스 상태에서 조정하는 자리이고,
+   * 리터럴로 박으면 조정할 때마다 계약이 깨져 신호가 죽는다(§2.5 사다리 정신).
+   * 대신 **바뀌면 안 되는 것**만 건다: 부호 · 크기 순서 · 노브의 존재.
+   */
+  it("계수표의 구조 계약 — 부호와 크기 순서(값 자체는 hero 조정 대상이라 안 박는다)", () => {
+    const W = RATING_WEIGHTS;
+    // 보상은 +, 벌점은 −.
+    for (const v of [W.attack.goal, W.attack.assist, W.attack.keyPass, W.attack.passCompleted,
+      W.defence.tackle, W.defence.interception, W.defence.clearance,
+      W.keeper.saveVolume, W.keeper.saveRateScale]) expect(v).toBeGreaterThan(0);
+    for (const v of [W.attack.passFailed, W.keeper.goalConceded,
+      W.discipline.dispossessed, W.discipline.foul, W.discipline.yellow, W.discipline.red]) expect(v).toBeLessThan(0);
+    // 골 > 어시(실효) > 키패스 > 패스 1개.
+    expect(W.attack.goal).toBeGreaterThan(W.attack.assist + W.attack.keyPass);
+    expect(W.attack.keyPass).toBeGreaterThan(W.attack.passCompleted);
+    // 퇴장이 경고보다 아프다.
+    expect(W.discipline.red).toBeLessThan(W.discipline.yellow);
+    // 상한/하한이 기본점을 사이에 둔다.
+    expect(W.min).toBeLessThan(W.base);
+    expect(W.base).toBeLessThan(W.max);
+  });
+
+  /**
+   * 사다리(단조성) — **"이 계수가 정말 레버인가"**. 값을 박는 대신 *올리면 그 방향으로
+   * 움직인다*를 건다. 계수가 코드에서 안 읽히면(=죽은 노브) 여기서 걸린다(§2.5).
+   */
+  it("계수를 올리면 평점이 그 방향으로 움직인다(죽은 노브 검출)", () => {
+    /**
+     * ⚠️ 클램프를 풀고 잰다. 안 그러면 상한 10.0 에 붙은 표본에서 **모든 bump 가 10 → 10** 이라
+     * "안 움직였다"가 되고, 그건 노브가 죽어서가 아니라 자[尺]가 막힌 것이다(거짓 red).
+     */
+    const UNCLAMPED = ((): RatingWeights => {
+      const w = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+      w.max = 1e6;
+      w.min = -1e6;
+      return w;
+    })();
+    const bump = (path: (w: RatingWeights) => void): RatingWeights => {
+      const w = JSON.parse(JSON.stringify(UNCLAMPED)) as RatingWeights;
+      path(w);
+      return w;
+    };
+    const line = blank({
+      goals: 1, assists: 1, keyPasses: 2, shots: 3, shotsOnTarget: 2,
+      passesAttempted: 20, passesCompleted: 16, longPassesCompleted: 3,
+      carries: 4, carryProgressM: 40,
+      tackles: 2, interceptions: 3, clearances: 2,
+      dispossessed: 1, fouls: 1, saves: 4, goalsConceded: 2,
+    });
+    const at = (w: RatingWeights): number => ratingWithWeights(line, "MF", w);
+    const ref = at(UNCLAMPED);
+
+    expect(at(bump((w) => { w.base += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.goal += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.assist += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.keyPass += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.shot += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.shotOnTarget += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.passCompleted += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.passFailed += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.longPassCompleted += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.carry += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.attack.carryProgressPer10m += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.defence.tackle += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.defence.interception += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.defence.clearance += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.keeper.saveVolume += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.keeper.goalConceded += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.discipline.dispossessed += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.discipline.foul += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.position.MF.attack += 0.5; }))).toBeGreaterThan(ref);
+    expect(at(bump((w) => { w.position.MF.defence += 0.5; }))).toBeGreaterThan(ref);
+    // 선방률이 기준선보다 높은 표본이라(4선방 2실점) 스케일을 키우면 올라간다.
+    expect(at(bump((w) => { w.keeper.saveRateScale += 1; }))).toBeGreaterThan(ref);
+    // 기준선을 올리면 같은 성적이 상대적으로 나빠진다.
+    expect(at(bump((w) => { w.keeper.expectedSaveRate += 0.1; }))).toBeLessThan(ref);
+    // 옐로/레드는 이 표본에 없다 — 있는 표본으로 따로 건다(무발화 노브 방지).
+    const carded = blank({ yellowCards: 1 });
+    expect(ratingWithWeights(carded, "MF", bump((w) => { w.discipline.yellow += 0.5; })))
+      .toBeGreaterThan(ratingWithWeights(carded, "MF", UNCLAMPED));
+    const off = blank({ redCards: 1, sentOff: true });
+    expect(ratingWithWeights(off, "MF", bump((w) => { w.discipline.red += 0.5; })))
+      .toBeGreaterThan(ratingWithWeights(off, "MF", UNCLAMPED));
+  });
+});
+
+// ── 10-b. GK 선방률 축 (hero 확정 ③) ─────────────────────────────────────
+
+describe("GK 평점 = 선방률 축 — 일한 양과 무관한 상수가 아니어야 한다", () => {
+  const gk = (saves: number, conceded: number): PlayerStatLine => ({
+    key: "home:GK", team: "home", playerId: "GK",
+    goals: 0, shots: 0, shotsOnTarget: 0, shotsOffTarget: 0, xg: 0,
+    tackles: 0, interceptions: 0, clearances: 0, fouls: 0,
+    yellowCards: 0, redCards: 0, secondYellow: false, sentOff: false,
+    offsides: 0, saves, goalsConceded: conceded,
+    passesAttempted: 0, passesCompleted: 0, longPasses: 0, longPassesCompleted: 0,
+    keyPasses: 0, assists: 0, touches: 0, carries: 0, carryDistanceM: 0, carryProgressM: 0,
+    dispossessed: 0, distanceM: 0, ticksPlayed: 1, minutesPlayed: 1, heat: [], rating: 0,
+  });
+  const B = RATING_WEIGHTS.base;
+
+  /** 이 웨이브가 고치러 온 결함 그 자체(hero 제보). */
+  it("6실점 6선방 GK 가 무관여와 같은 점수가 **아니다** (구 산식은 정확히 상쇄됐다)", () => {
+    expect(computeRating(gk(6, 6), "GK")).not.toBe(B);
+    // 구 산식: saves*0.30 + conceded*(−0.30) = 0 → 정확히 기본점. 그 상쇄가 사라졌는지 본다.
+    expect(RATING_WEIGHTS.keeper.saveVolume + RATING_WEIGHTS.keeper.goalConceded).not.toBe(0);
+  });
+
+  it("많이 막은 키퍼가 많이 먹은 키퍼보다 높다(같은 유효슛 수)", () => {
+    expect(computeRating(gk(8, 2), "GK")).toBeGreaterThan(computeRating(gk(2, 8), "GK"));
+    expect(computeRating(gk(8, 2), "GK")).toBeGreaterThan(B);
+    expect(computeRating(gk(2, 8), "GK")).toBeLessThan(B);
+  });
+
+  /**
+   * 소표본 수축 — 유효슛 2개짜리 하프에서 선방률이 0%/100% 로 튀는 것을 막는다.
+   * **같은 비율이면 표본이 클수록 기준선에서 멀어야** 한다(확신이 커진 것이니까).
+   */
+  it("표본이 얇을수록 기준선 쪽으로 당겨진다", () => {
+    const small = computeRating(gk(2, 0), "GK") - B; // 유효슛 2, 100%
+    const big = computeRating(gk(12, 0), "GK") - B; // 유효슛 12, 100%
+    expect(big).toBeGreaterThan(small);
+    // 아래쪽도 같다.
+    const smallBad = B - computeRating(gk(0, 2), "GK");
+    const bigBad = B - computeRating(gk(0, 12), "GK");
+    expect(bigBad).toBeGreaterThan(smallBad);
+  });
+
+  it("`priorFaced` 가 그 수축의 세기다 — 0 이면 얇은 표본이 그대로 튄다", () => {
+    const noShrink = JSON.parse(JSON.stringify(RATING_WEIGHTS)) as RatingWeights;
+    noShrink.keeper.priorFaced = 0;
+    const thin = gk(2, 0);
+    expect(ratingWithWeights(thin, "GK", noShrink)).toBeGreaterThan(computeRating(thin, "GK"));
+  });
+
+  /** 필드 플레이어에게 무해해야 한다 — 포지션 라벨이 아니라 **한 일**로 분기하므로. */
+  it("유효슛을 상대한 적이 없으면 이 축은 통째로 0 이다", () => {
+    expect(computeRating(gk(0, 0), "GK")).toBe(B);
+    expect(computeRating(gk(0, 0), "FW")).toBe(B);
+  });
+
+  it("`positions` 를 안 넘겨도 GK 는 제 축을 받는다(옵션 누락에 견딘다)", () => {
+    expect(computeRating(gk(8, 2))).toBeGreaterThan(B);
+    expect(computeRating(gk(2, 8))).toBeLessThan(B);
   });
 });
 
@@ -830,8 +998,12 @@ describe("MOTM", () => {
     const best = [...res.players].filter((p) => p.ticksPlayed > 0).sort((a, b) => b.rating - a.rating)[0]!;
     expect(res.motm).not.toBeNull();
     expect(res.motm!.rating).toBe(best.rating);
-    // 이 픽스처에서는 골+어시 없는 H4 대신 골을 넣은 H2 가 최고여야 한다.
-    expect(res.motm!.key).toBe("home:H2");
+    // ⚠️ **누가** MOTM 인지는 계수에 따라 바뀐다 — 이 픽스처의 후보는 골을 넣은 H2 와
+    //    어시+키패스+태클의 H4 이고, 둘의 우열은 hero 가 내일 조정할 값에 달렸다.
+    //    그래서 이름을 박지 않고 "결정적 공격 기여자 중 하나"라는 관계로 건다.
+    const decisive = res.players.filter((p) => p.goals > 0 || p.assists > 0).map((p) => p.key);
+    expect(decisive.length).toBeGreaterThan(0);
+    expect(decisive).toContain(res.motm!.key);
   });
 
   it("동점이면 골 → 어시스트 → 키 순으로 결정론적으로 고른다(순서를 바꿔도 같은 답)", () => {
@@ -1034,9 +1206,11 @@ describe("`gkKeys`·`positions` 도 팀 스코프 키를 쓴다 (옵션이 이 �
 
   it("포지션 보정도 지정한 팀에만 걸린다", () => {
     const res = computePlayerStats(dupGk, { positions: { "home:P7": "DF" } });
-    // 골 1(+1.0) + 유효슛 1(+0.1) = 공격항 1.1 → 보정 없으면 7.1, DF(×1.3)면 6+1.43 = 7.4.
-    expect(stat(res, "home", "P7").rating).toBe(7.4);
-    expect(stat(res, "away", "P7").rating).toBe(7.1);
+    // 둘 다 골 1 + 유효슛 1 로 **기록이 같다** → 차이는 오직 포지션 보정에서 온다.
+    // (값은 hero 조정 대상이라 안 박고, DF 공격 보정이 UNKNOWN 보다 크다는 관계로 건다.)
+    expect(RATING_WEIGHTS.position.DF.attack).toBeGreaterThan(RATING_WEIGHTS.position.UNKNOWN.attack);
+    expect(stat(res, "home", "P7").rating).toBeGreaterThan(stat(res, "away", "P7").rating);
+    expect(stat(res, "away", "P7").rating).toBe(computeRating(stat(res, "away", "P7")));
   });
 
   it("맨 playerId 를 키로 주면 아무에게도 안 걸린다(조용히 절반만 걸리는 것보다 낫다)", () => {
@@ -1044,8 +1218,9 @@ describe("`gkKeys`·`positions` 도 팀 스코프 키를 쓴다 (옵션이 이 �
       positions: { P7: "DF" } as Record<string, "DF">,
       gkKeys: new Set(["P1"]),
     });
-    expect(stat(res, "home", "P7").rating).toBe(7.1);
-    expect(stat(res, "away", "P7").rating).toBe(7.1);
+    // 아무도 보정을 못 받았다 = 양쪽이 **같다**(리터럴이 필요 없는 더 강한 계약).
+    expect(stat(res, "home", "P7").rating).toBe(stat(res, "away", "P7").rating);
+    expect(stat(res, "home", "P7").rating).toBe(computeRating(stat(res, "home", "P7")));
     expect(stat(res, "home", "P1").goalsConceded).toBe(0);
   });
 
@@ -1063,9 +1238,14 @@ describe("옵션이 결과까지 흐른다 (직접 호출만 검사하면 배선
     stat(computePlayerStats(FIXTURE, { gkKeys: GK_KEYS, positions: p }), "home", "H4").rating;
 
   it("computePlayerStats — 포지션에 따라 최종 평점이 갈린다", () => {
-    expect(posOf(undefined)).toBe(7.0);
-    expect(posOf({ "home:H4": "DF" })).toBe(7.3); // 공격 기여 ×1.3
-    expect(posOf({ "home:H4": "FW" })).toBe(7.1); // 수비 기여 ×1.3
+    // H4 = 어시+키패스(공격) + 태클(수비) → DF·FW 보정이 **서로 다른 항**을 키운다.
+    // 값은 hero 조정 대상이라 안 박고, "보정이 파이프라인 끝까지 흐른다"를 관계로 건다.
+    const none = posOf(undefined);
+    const df = posOf({ "home:H4": "DF" });
+    const fw = posOf({ "home:H4": "FW" });
+    // 세 값이 **서로 다르다** = 옵션이 파이프라인 끝까지 흘렀고 실제로 답을 바꾼다.
+    // (어느 쪽이 큰지는 계수표에 달렸다 — FW 는 공격 보정이 1 미만이라 H4 를 낮출 수도 있다.)
+    expect(new Set([none, df, fw]).size).toBe(3);
   });
 
   it("combinePlayerStats — 합산 결과에도 포지션이 흐른다", () => {
@@ -1088,9 +1268,8 @@ describe("옵션이 결과까지 흐른다 (직접 호출만 검사하면 배선
     const plain = stat(combinePlayerStats(halves()), "home", "H4").rating;
     const asDf = stat(combinePlayerStats(halves(), { positions: { "home:H4": "DF" } }), "home", "H4").rating;
     const asFw = stat(combinePlayerStats(halves(), { positions: { "home:H4": "FW" } }), "home", "H4").rating;
-    expect(asDf).toBeGreaterThan(plain);
-    expect(asFw).toBeGreaterThan(plain);
-    expect(asDf).not.toBe(asFw);
+    // 합산 경로에서도 세 값이 서로 다르다(= 포지션이 흐른다). 방향은 계수표 소관.
+    expect(new Set([plain, asDf, asFw]).size).toBe(3);
   });
 });
 

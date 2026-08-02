@@ -138,7 +138,7 @@ export interface PlayerStatLine {
   /** 히트맵 빈(길이 = cols × rows, row-major, x=길이축·y=폭축). */
   heat: number[];
 
-  /** 6.0 기준 가감(`RATING_WEIGHTS`). 소수 1자리. */
+  /** 기본점(`RATING_WEIGHTS.base`) 기준 가감. 소수 1자리. */
   rating: number;
 }
 
@@ -186,51 +186,112 @@ const DEFAULT_HEAT_BINS = { cols: 12, rows: 8 } as const;
  * 평점 계수 — **여기 한 곳**이 게임의 가치판단이다. 화면·다른 모듈에 숫자를 흩뿌리지 마라.
  * hero 가 이 표를 보고 조정한다.
  *
- * 구조: `6.0 ± (공격항 × 포지션공격배수) ± (수비항 × 포지션수비배수) ± 키퍼항 ± 규율항`.
- * 포지션 보정은 **희소성**이다 — 그 포지션에서 드문 기여를 더 쳐줘서 수비수가 구조적으로
- * 낮게 깔리지 않게 한다(최소한으로만).
+ * 구조: `base ± (공격항 × 포지션공격배수) ± (수비항 × 포지션수비배수) ± 키퍼항 ± 규율항`.
+ *
+ * ⚠️ **계수는 실축 통계가 아니라 이 엔진의 볼륨에 맞춰 사이징한다.** 실축 계수를 그대로 걸었더니
+ * 수비 볼륨만으로 상한 10.0 에 붙는 무득점 MOTM 이 나왔다(#403 독립 검증 m4). 그룹별 실제
+ * 기록량과 그 결과 분포는 `apps/web/scripts/rating-distribution.ts --volumes` 로 언제든 다시 잰다.
  */
-export const RATING_WEIGHTS = {
-  base: 6.0,
+export interface RatingWeights {
+  base: number;
+  min: number;
+  max: number;
+  attack: {
+    goal: number;
+    assist: number;
+    keyPass: number;
+    shotOnTarget: number;
+    shot: number;
+    passCompleted: number;
+    passFailed: number;
+    longPassCompleted: number;
+    carry: number;
+    carryProgressPer10m: number;
+  };
+  defence: { tackle: number; interception: number; clearance: number };
+  /**
+   * 골키퍼 축 — **선방률**이 주축이다(hero 확정 ③). 종전엔 `save +0.30` 과
+   * `goalConceded −0.30` 이 정확히 상쇄돼 6실점 6선방 GK 가 기본점과 같았다
+   * (= GK 평점이 일한 양과 무관한 상수였다).
+   */
+  keeper: {
+    /** 기준 선방률. 이 값보다 잘 막으면 +, 못 막으면 −. 리얼 config 실측 기반. */
+    expectedSaveRate: number;
+    /**
+     * 소표본 수축(베이지안 셋업) — "평균적인 유효슛"을 이만큼 미리 깔고 비율을 낸다.
+     * 없으면 유효슛 2개짜리 하프에서 선방률이 0%/100% 로 튀어 GK 분산이 필드의 몇 배가 된다.
+     */
+    priorFaced: number;
+    /** 선방률 편차 1.0(=100%p) 당 평점. */
+    saveRateScale: number;
+    /** 선방 1회당 — "일한 양"에 주는 소액. 비율이 같아도 바쁜 키퍼를 조금 더 쳐준다. */
+    saveVolume: number;
+    /** 실점 잔여 감점. **주축은 선방률**이라 여긴 작게(같은 정보를 두 번 세지 않는다). */
+    goalConceded: number;
+  };
+  discipline: { dispossessed: number; foul: number; yellow: number; red: number };
+  position: Record<PlayerPosition | "UNKNOWN", { attack: number; defence: number }>;
+}
+
+export const RATING_WEIGHTS: RatingWeights = {
+  /** 무관여 기본점(hero 확정 ②) — "잘하면 오르고 못하면 깎인다". */
+  base: 6.5,
   min: 3.0,
   max: 10.0,
   attack: {
+    /** 골(hero 확정 ①: 유지). */
     goal: 1.0,
-    assist: 0.7,
-    keyPass: 0.12,
-    shotOnTarget: 0.1,
-    shot: 0.04,
+    /**
+     * ⚠️ **어시스트의 실효 가치는 `assist + keyPass` 다** — `keyPasses` 는 어시스트를
+     * **포함**하므로(위 `PlayerStatLine.keyPasses` 정의) 어시스트 1개는 두 항에 모두 걸린다.
+     * 지금 값의 실효치 = 0.75 + 0.11 = **0.86**(골 1.0 의 86%). 이 값을 조정할 때는
+     * 반드시 합으로 보고 골과 견줘라 — `assist` 만 보면 실제보다 낮게 읽는다.
+     */
+    assist: 0.75,
+    /** 리시버가 그 소유 구간에서 슛한 패스(**어시스트 포함**) — MF 3.4/경기, FW 2.0/경기. */
+    keyPass: 0.11,
+    shotOnTarget: 0.05,
+    shot: 0.01,
+    /** 전개 — 볼륨이 커서(MF 28.5/경기) 단가는 작아야 한다. */
     passCompleted: 0.01,
     passFailed: -0.014,
-    longPassCompleted: 0.02,
-    carry: 0.01,
-    /** 캐리 전진 10m 당. */
-    carryProgressPer10m: 0.01,
+    /** 롱패스 성공 — GK 5.5·DF 2.5/경기라 후방 전개의 주 보상이다. */
+    longPassCompleted: 0.035,
+    carry: 0.004,
+    /** 캐리 전진 10m 당. FW 가 경기당 75m 를 몰고 가 단가가 작아야 한다. */
+    carryProgressPer10m: 0.002,
   },
   defence: {
-    tackle: 0.18,
-    interception: 0.15,
-    clearance: 0.06,
+    tackle: 0.22,
+    interception: 0.13,
+    clearance: 0.12,
   },
   keeper: {
-    save: 0.3,
-    goalConceded: -0.3,
+    expectedSaveRate: 0.5,
+    priorFaced: 4,
+    saveRateScale: 5.5,
+    saveVolume: 0.14,
+    goalConceded: -0.04,
   },
   discipline: {
-    dispossessed: -0.1,
-    foul: -0.08,
+    dispossessed: -0.08,
+    foul: -0.05,
     /** 경고 누적 퇴장은 옐로 1장 + 레드 1장이지만 **감점은 레드 한 번만** 먹는다. */
     yellow: -0.25,
     red: -0.9,
   },
+  /**
+   * 포지션 보정 = **희소성**. 그 포지션에서 드문 기여를 더 쳐주고, 흔한 기여는 할인한다.
+   * 그룹 중앙값을 서로 맞추는 최종 레버이기도 하다(실측 = `scripts/rating-distribution.ts`).
+   */
   position: {
-    GK: { attack: 1.0, defence: 1.0 },
-    DF: { attack: 1.3, defence: 1.0 },
-    MF: { attack: 1.1, defence: 1.05 },
-    FW: { attack: 1.0, defence: 1.3 },
+    GK: { attack: 1.8, defence: 1.3 },
+    DF: { attack: 1.6, defence: 1.1 },
+    MF: { attack: 0.85, defence: 0.85 },
+    FW: { attack: 0.58, defence: 1.4 },
     UNKNOWN: { attack: 1.0, defence: 1.0 },
   },
-} as const;
+};
 
 // ── 유틸 ─────────────────────────────────────────────────────────────────
 
@@ -822,9 +883,25 @@ function cmp(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** 6.0 기준 가감. 계수는 전부 `RATING_WEIGHTS`. */
+/** 기본점 기준 가감. 계수는 전부 `RATING_WEIGHTS`. */
 export function computeRating(line: PlayerStatLine, position?: PlayerPosition): number {
-  const W = RATING_WEIGHTS;
+  return ratingWithWeights(line, position, RATING_WEIGHTS);
+}
+
+/**
+ * `computeRating` 의 본체 — 계수표를 **주입**받는 형태. `computeRating` 은 이 함수에
+ * `RATING_WEIGHTS` 를 넘기는 얇은 껍데기다.
+ *
+ * ⚠️ 왜 나뉘어 있나: 분포 하네스(`apps/web/scripts/rating-distribution.ts`)가 계수 후보를
+ * 같은 시드셋에서 비교하려면 표를 갈아끼워야 하는데, 그러자고 산식을 하네스에 다시 쓰면
+ * **측정이 구현과 다른 실수를 공유하게 된다**. 산식은 여기 하나뿐이다.
+ * `computeRating(line, position?)` 의 공개 시그니처는 그대로다(#421 이 붙어 있다).
+ */
+export function ratingWithWeights(
+  line: PlayerStatLine,
+  position: PlayerPosition | undefined,
+  W: RatingWeights,
+): number {
   const pos = W.position[position ?? "UNKNOWN"] ?? W.position.UNKNOWN;
 
   const passFailed = Math.max(0, line.passesAttempted - line.passesCompleted);
@@ -845,7 +922,7 @@ export function computeRating(line: PlayerStatLine, position?: PlayerPosition): 
     line.interceptions * W.defence.interception +
     line.clearances * W.defence.clearance;
 
-  const keeper = line.saves * W.keeper.save + line.goalsConceded * W.keeper.goalConceded;
+  const keeper = keeperAxis(line, W);
 
   // 경고 누적 퇴장은 한 사건이다 — 그 옐로는 레드로 흡수한다(카드 2장으로 세지 않는다).
   const effectiveYellows = Math.max(0, line.yellowCards - (line.secondYellow ? 1 : 0));
@@ -858,6 +935,35 @@ export function computeRating(line: PlayerStatLine, position?: PlayerPosition): 
   const raw = W.base + attack * pos.attack + defence * pos.defence + keeper + discipline;
   const clamped = Math.min(W.max, Math.max(W.min, raw));
   return Math.round(clamped * 10) / 10;
+}
+
+/**
+ * 골키퍼 축 — **선방률**(hero 확정 ③). 구 산식은 `save +0.30` 과 `goalConceded −0.30` 이
+ * 정확히 상쇄돼 **6실점 6선방 GK 가 무관여와 같은 점수**였다(= 일한 양과 무관한 상수).
+ *
+ * ## 재료
+ * 엔진에서 유효슛의 결말은 **선방 아니면 골** 둘뿐이다(빗나간 슛은 GK 의 일이 아니다) →
+ * `상대한 유효슛 = saves + goalsConceded` 가 근사가 아니라 **항등식**이다. 다른 팀의
+ * 라인을 볼 필요가 없어 `computeRating(line, position?)` 시그니처를 지킬 수 있다.
+ *
+ * ## 소표과 수축이 핵심이다
+ * 한 하프에 유효슛이 2개면 생 선방률은 0% 아니면 100% 로 튄다. 그대로 쓰면 GK 평점 분산이
+ * 필드 플레이어의 몇 배가 되고, "평점"이 실력이 아니라 **표본 크기**를 보여 주게 된다.
+ * 그래서 `priorFaced` 개의 "평균적인 유효슛"을 미리 깔고 비율을 낸다(베이지안 셋업) —
+ * 표본이 얇을수록 답이 기준선(`expectedSaveRate`)으로 당겨지고, 많이 상대할수록 실측이 이긴다.
+ *
+ * ⚠️ **포지션 라벨이 아니라 실제 한 일로 분기한다** — `faced === 0` 이면 이 축은 통째로 0 이라
+ * 필드 플레이어에게 무해하고, `positions` 를 안 넘겨도 GK 가 제 축을 받는다(옵션 누락에 견딘다).
+ */
+function keeperAxis(line: PlayerStatLine, W: RatingWeights): number {
+  const faced = line.saves + line.goalsConceded; // 유효슛 = 선방 or 실점 (항등식)
+  let out = line.saves * W.keeper.saveVolume + line.goalsConceded * W.keeper.goalConceded;
+  if (faced > 0) {
+    const prior = W.keeper.priorFaced;
+    const shrunk = (line.saves + prior * W.keeper.expectedSaveRate) / (faced + prior);
+    out += (shrunk - W.keeper.expectedSaveRate) * W.keeper.saveRateScale;
+  }
+  return out;
 }
 
 /**
