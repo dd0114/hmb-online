@@ -8,6 +8,9 @@ import { PlaybackControls } from "./PlaybackControls";
 import { buildTimelinePins, type TimelinePin } from "./timeline-pins";
 import { indexFromPct } from "./qa-time-controls";
 import { buildViewerSkins } from "./viewer-skins";
+// #421 W4 하이라이트 순서 재생 — 판정은 순수 모듈, 구동은 이 훅, 표시는 이 부품(호출부엔 한 줄씩).
+import { useHighlightSequencer } from "./useHighlightSequencer";
+import { HighlightToggle } from "./HighlightToggle";
 import type { Grade } from "../common/grades";
 import { useCharAssets } from "../common/useCharAssets";
 import styles from "./MatchViewer.module.css";
@@ -261,6 +264,23 @@ export function VisualPlayback({
     (viewerRef.current as unknown as { pause?: () => void } | null)?.pause?.();
   }, [review, viewerReady]);
 
+  /*
+   * 하이라이트 순서 재생(#421 W4) — 후반 디폴트. **라이브 게이트 effect(위)는 무수정**이고, 이 훅은
+   * 그것과 **배타**로만 움직인다(배타 규칙·근거 = `highlight-sequencer.ts` 머리말 ①).
+   * ⚠️ 조기 반환(`if (failed)`)보다 **위**에 둔다 — 아래로 내리면 실패 경로에서 훅 수가 줄어
+   *    "Rendered fewer hooks than expected" 로 화면이 통째로 크래시한다(위 review effect 와 같은 함정).
+   */
+  const highlight = useHighlightSequencer({
+    viewerRef,
+    viewerReady,
+    log,
+    half,
+    review,
+    clock,
+    clockOffsetMs,
+    snapTicks,
+  });
+
   if (failed) {
     return (
       <div className={styles.note} data-testid={`viewer-visual-error-half${half}`}>
@@ -291,6 +311,8 @@ export function VisualPlayback({
        * 돌려보는 화면(#244 review)에서는 겹치면 피치를 가리므로 **캔버스 아래 흐름**으로 내린다.
        */}
       <div className={review ? styles.controlsFlow : styles.controlsOverlay}>
+        {/* 하이라이트 ↔ 전체 보기(#421 W4) — 스킵 버튼 위 줄. 돌려보는 화면엔 뜨지 않는다(view.visible). */}
+        <HighlightToggle view={highlight.view} onToggle={highlight.toggle} />
         {/*
           경기 스킵(#421) — **재생 컨트롤 바 옆이지, 그 안이 아니다.**
           #216 계약은 *"플레이 모드 컨트롤 바에는 버튼이 0개"* 다(`matchui-controls-mock` ·
