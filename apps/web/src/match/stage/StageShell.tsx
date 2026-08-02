@@ -188,6 +188,11 @@ export function StageShell({
    * 상한·캡션은 `statsWindow` 하나가 정한다(BL-1: 둘이 따로 놀아 감독시간이 "7분까지의 기록"
    * 위에 전 선수 0 을 그렸다). 여기서 분·상한을 조립하지 마라 — `clockMinute` 을 넘기기만 한다.
    *
+   * ⚠️ **넘기는 것은 `.minute` 하나다.** 이 시계는 #406 W2 부터 `{minute, second}` 두 축이고
+   * (헤더는 `48'32"` 를 그린다), 이 훅이 받는 값은 **캡션용 분**이다("N분까지의 기록") — 초를
+   * 같이 넘길 자리가 없다. 두 축을 합친 객체를 그대로 넘기면 캡션이 분을 잃는다.
+   * 초 축의 소비자는 헤더(`ScoreBar`)뿐이고, 그래서 `minute` prop 만 `HeaderClock` 을 받는다.
+   *
    * ⚠️ **보고 있을 때만 켠다**(`enabled`). 이 집계는 O(스냅샷 × 선수)이고 플레이헤드마다 다시
    * 도는데, 항상 켜 두면 아무도 안 보는 동안에도 매 틱 수만 번이 돌아 관전 프레임 예산을 먹는다.
    * W2 독립검증 MAJ-1 이 정확히 이 게이트였다 — 페치만 끄면 **캐시가 채워 줘서 안 막힌다**
@@ -203,7 +208,7 @@ export function StageShell({
     match.id,
     match.state,
     tick,
-    clockMinute,
+    clockMinute?.minute ?? null,
     needsPlayerStats(activeTab),
   );
 

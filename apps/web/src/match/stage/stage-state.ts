@@ -175,6 +175,99 @@ export function displayMinuteAt(log: unknown, tick: number | null): number | nul
 }
 
 /**
+ * ─── 초는 어디서 오나 (#406 W2) ────────────────────────────────────────────────────────────
+ *
+ * 요구는 "경기중 시간을 초까지"(`48'32"`)인데, #388 이 못 박은 규율은 **"화면에서 표기 스케일을
+ * 다시 유도하지 마라"** 다. 둘을 동시에 지키는 방법은 하나뿐이다:
+ *
+ *   분 = 로그가 구운 `minute` (그대로)
+ *   초 = **그 분이 로그에서 처음 나타난 틱**부터의 경과 (앵커 기준)
+ *
+ * 이러면 초가 아무리 틀려도 **분은 구조적으로 어긋날 수 없다** — 분을 만드는 축이 하나뿐이라서다.
+ * 그리고 "1 틱이 몇 표기초냐"도 **상수로 적지 않는다**: 구워진 `minute` 들의 앵커 간격에서 되유도한다
+ * (`clockScaleOf`(viewer-core) 와 같은 태도 — 재료가 휘슬이냐 스냅샷 앵커냐만 다르다).
+ *
+ * ⚠️ **`30` 이나 `2` 를 적지 마라.** 엔진이 `matchMinutes`/`displayMinutes` 를 바꾸는 날
+ * 화면만 조용히 어긋난다 — #388 이 정확히 그 모양이었다(하프 2700틱 시절엔 `tick/60` 이 **우연히**
+ * 맞았다). 계약 = `stage-state.test.ts` 의 "스케일이 다른 로그" 대조군.
+ *
+ * ⚠️ **보간하지 않는다**(hero 확정 2026-08-02, #406 안건 ①). 현행 레짐은 1틱 = 표기 2초라
+ * 초가 짝수로만 뛴다. 1초씩 흐르게 만들 수는 있으나 그건 **데이터에 없는 값을 화면이 지어내는 것**
+ * 이고 #388 과 같은 축의 잘못이다.
+ *
+ * ⚠️ `clockScaleOf` 를 그대로 부르지 못한 이유: `packages/viewer-core` 의 배럴(`index.ts`)이
+ * `playback.mjs` 를 export 하지 않고, 그 패키지는 이 웨이브의 소유가 아니다. 배럴에 한 줄 추가되면
+ * 여기 `displayTicksPerMinute` 의 휘슬 폴백은 그쪽으로 접어야 한다(다음 웨이브 후보).
+ */
+
+/** 표기 분 → **그 분이 처음 보인 틱**. 초의 앵커이자 "틱↔표기분" 관계의 유일한 재료다. */
+function minuteAnchors(snaps: SnapshotLike[]): Map<number, number> {
+  const anchors = new Map<number, number>();
+  for (const s of snaps) {
+    const t = finiteOrNull(s?.tick);
+    const m = finiteOrNull(s?.minute);
+    if (t == null || m == null) continue;
+    const prev = anchors.get(m);
+    if (prev == null || t < prev) anchors.set(m, t);
+  }
+  return anchors;
+}
+
+/**
+ * **표기 1분이 몇 틱인가** — 로그에서 되유도한다(상수 금지).
+ *
+ * ① 앵커 간격이 우선이다: 구운 분은 `floor` 라 앵커(그 분의 첫 틱)는 정확히 `분 × 틱/분` 이고,
+ *    첫 앵커와 마지막 앵커를 이으면 트림된 로그에서도 정확한 값이 나온다.
+ * ② 분이 하나뿐이면(아주 짧은 트림) 휘슬로 떨어진다 — `clockScaleOf` 와 같은 재료·같은 보정
+ *    (`full_whistle` 은 그 틱까지 **포함**이라 +1).
+ * ③ 둘 다 없으면 **null** — 모르면 초를 지어내지 않는다.
+ */
+export function displayTicksPerMinute(log: unknown): number | null {
+  const snaps = snapshotsOf(log);
+  if (snaps) {
+    const anchors = minuteAnchors(snaps);
+    if (anchors.size >= 2) {
+      const minutes = [...anchors.keys()].sort((a, b) => a - b);
+      const lo = minutes[0]!;
+      const hi = minutes[minutes.length - 1]!;
+      const span = anchors.get(hi)! - anchors.get(lo)!;
+      if (span > 0 && hi > lo) return span / (hi - lo);
+    }
+  }
+  for (const e of eventsOf(log)) {
+    const isFull = e?.type === "full_whistle";
+    if (!isFull && e?.type !== "half_whistle") continue;
+    const t = finiteOrNull(e?.tick);
+    const m = finiteOrNull(e?.minute);
+    if (t == null || m == null || m <= 0) continue;
+    const ticks = t + (isFull ? 1 : 0);
+    if (ticks > 0) return ticks / m;
+  }
+  return null;
+}
+
+/**
+ * 플레이헤드 틱의 **표기 초**(0~59) = 그 분의 앵커에서 흐른 만큼.
+ *
+ * `minute` 인자는 **`displayMinuteAt` 이 준 값**이어야 한다 — 여기서 분을 다시 구하면 축이 둘이 된다.
+ * 앵커를 못 찾거나 스케일을 못 구하면 **null**(초를 붙이지 않는다, 0 으로 때우지 않는다).
+ *
+ * 상한 59 로 접는 이유: 성긴/손상 로그에서 앵커가 실제 분 시작보다 뒤일 수 있는데, 그때 `20'74"`
+ * 같은 시계를 그리느니 경계에 붙이는 편이 낫다(분은 여전히 구운 값이라 거짓말이 아니다).
+ */
+export function displaySecondAt(log: unknown, tick: number | null, minute: number | null): number | null {
+  if (tick == null || minute == null) return null;
+  const snaps = snapshotsOf(log);
+  if (!snaps) return null;
+  const anchor = minuteAnchors(snaps).get(minute);
+  if (anchor == null) return null;
+  const perMinute = displayTicksPerMinute(log);
+  if (perMinute == null || !(perMinute > 0)) return null;
+  const sec = Math.floor(((tick - anchor) * 60) / perMinute);
+  return sec < 0 ? 0 : sec > 59 ? 59 : sec;
+}
+
+/**
  * 이 하프가 끝난 **표기 분**. 감독시간 헤더(#226)가 쓴다.
  *
  * ⚠️ **마지막 스냅샷이 아니라 종료 휘슬 이벤트가 먼저다.** 전반 마지막 스냅샷은 틱 1349 → 구운
@@ -197,20 +290,48 @@ export function halfEndMinuteOf(log: unknown): number | null {
 }
 
 /**
- * 헤더 시계가 말할 **표기 분** (#226 규칙 유지 + #388 축 교정).
+ * 헤더 시계가 말할 시각. **분이 권위고 초는 그 분 위의 경과일 뿐**이다(#388 축 + #406 W2).
+ *
+ * `second: null` = "초를 말할 근거가 없다" — 0 초가 아니다. 감독시간이 그렇다(아래).
+ */
+export interface HeaderClock {
+  /** 로그가 구운 표기 분. 화면이 유도한 값이 아니다(#388). */
+  minute: number;
+  /** 그 분의 앵커 틱에서 흐른 표기 초(0~59). 모르면 null → 시계에 초를 붙이지 않는다. */
+  second: number | null;
+}
+
+/**
+ * 헤더 시계가 말할 **시각** (#226 규칙 유지 + #388 축 교정 + #406 초 표기).
  *
  * 감독시간에는 **그 하프가 끝난 지점**을 고정으로 가리킨다 — 그 하프는 이미 끝났고(스코어도 확정)
  * 그 밑에서 도는 재생은 자유 리뷰라, 플레이헤드를 따라가면 헤더가 "전반 결과"가 아니라 "지금 어디까지
  * 다시 보는 중"을 말하게 된다(되감으면 그대로 `0'` — hero 제보 화면).
  * 하프 끝을 모르면(로그 미도착) 플레이헤드로 **되돌아가지 않고** null 이다 — 틀린 숫자보다 없는 게 낫다.
+ *
+ * ⚠️ **감독시간에는 초가 없다**(`second: null` → `45'`). 그 값의 권위는 **종료 휘슬**이고
+ * (`halfEndMinuteOf`) 휘슬 분에는 앵커가 없다 — 전반 마지막 스냅샷은 구운 분 44 인데 로그줄은
+ * `45' 전반 종료`다. 여기에 초를 붙이면 없는 앵커에서 숫자를 지어내는 것이고, 애초에 이 시계는
+ * 흐르는 시각이 아니라 **끝난 지점**을 말한다(#226).
  */
-export function headerMinute(
+export function headerClock(
   state: string | undefined,
   log: unknown,
   playheadTick: number | null,
-): number | null {
-  return isHalftimeState(state) ? halfEndMinuteOf(log) : displayMinuteAt(log, playheadTick);
+): HeaderClock | null {
+  if (isHalftimeState(state)) {
+    const end = halfEndMinuteOf(log);
+    return end == null ? null : { minute: end, second: null };
+  }
+  const minute = displayMinuteAt(log, playheadTick);
+  return minute == null ? null : { minute, second: displaySecondAt(log, playheadTick, minute) };
 }
+
+/**
+ * @deprecated 이름만 남은 별칭. 호출부(`StageShell.tsx`)는 이번 웨이브의 파일 경계 밖이라
+ * 개명하지 않았다 — 그 파일을 여는 웨이브가 `headerClock` 으로 바꾸고 이 줄을 지워라.
+ */
+export const headerMinute = headerClock;
 
 export const CLOCK_PLACEHOLDER = "--'";
 
@@ -227,10 +348,14 @@ export const CLOCK_PLACEHOLDER = "--'";
  *  · 라이브/다시보기인데 플레이헤드가 아직 없다 → **`--'`**(자리는 지킨다). 곧 채워질 값이고,
  *    슬롯이 사라졌다 나타나면 헤더가 흔들린다.
  */
-export function clockLabel(state: string | undefined, minute: number | null): string | null {
-  // ⚠️ 인자는 **표기 분**이다(#388). 틱을 넘기면 정확히 절반이 그려진다 — 그게 이 결함이었다.
-  if (isHalftimeState(state)) return minute == null ? null : `${minute}'`;
-  return minute == null ? CLOCK_PLACEHOLDER : `${minute}'`;
+export function clockLabel(state: string | undefined, clock: HeaderClock | null): string | null {
+  // ⚠️ 인자는 **`headerClock` 이 만든 시각**이다(#388/#406). 틱을 넘기면 정확히 절반이 그려진다 —
+  //    그게 이 결함이었다. 여기서 분·초를 계산하지 말고 받은 것만 그려라.
+  if (clock == null) return isHalftimeState(state) ? null : CLOCK_PLACEHOLDER;
+  // 통합 표기 `48'32"` (hero 확정 안 A). 초를 모르면 분만 — 자리표시 `00"` 을 지어내지 않는다.
+  return clock.second == null
+    ? `${clock.minute}'`
+    : `${clock.minute}'${String(clock.second).padStart(2, "0")}"`;
 }
 
 /**

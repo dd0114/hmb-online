@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { MatchDetail } from "../../api/hooks";
-import { clockLabel, headerScore, isHalftimeState } from "./stage-state";
+import { clockLabel, headerScore, isHalftimeState, type HeaderClock } from "./stage-state";
 import styles from "./StageShell.module.css";
 
 interface ScoreBarProps {
@@ -13,14 +13,19 @@ interface ScoreBarProps {
    */
   liveScore: { home: number; away: number } | null;
   /**
-   * 헤더 시계가 말할 **표기 분**(0~90'). 로그가 구운 값이지 틱이 아니다 — 규칙은 `headerMinute`
-   * 이 소유한다(#388). 감독시간엔 하프 끝 분, 그 외엔 재생 플레이헤드의 분.
+   * 헤더 시계가 말할 **시각**(`{minute, second}`) — 로그가 구운 분 + 그 분의 앵커에서 흐른 초
+   * (#388 축 · #406 W2 통합 표기). 규칙은 전부 `headerClock` 이 소유한다: 감독시간엔 하프 끝 분
+   * (초 없음), 그 외엔 재생 플레이헤드의 분·초. **여기서 틱을 분으로 바꾸지 마라** — 그 직독이
+   * 헤더만 0~44' 로 흐르게 한 결함이다(#388).
    *
    * 이 값이 "하프 끝"인지 "플레이헤드"인지는 **여기서 상태로 다시 판정**한다(props 로 안 받는다).
    * 호출자가 같은 사실을 두 번 넘기면 둘이 어긋난 상태가 만들어질 수 있고, 그 어긋남은 상태만 보는
    * 단위 테스트에 안 잡힌다(독립검증 minor-3 — 그 변이체가 실제로 단위테스트를 전부 통과했다).
+   *
+   * ⚠️ prop 이름이 `minute` 인 채로 남은 이유는 유일한 호출부(`StageShell.tsx`)가 이번 웨이브의
+   * 파일 경계 밖이기 때문이다. 그 파일을 여는 웨이브가 `clock` 으로 개명하라.
    */
-  minute: number | null;
+  minute: HeaderClock | null;
   /** 내 팀이 선 사이드(#322 안 C). 모르면 null — 표식을 달지 않는다. */
   myTeamSide?: "home" | "away" | null;
   /** 리그 매치일 때 라운드(navigation state 로만 오는 값). */

@@ -106,9 +106,16 @@ test.describe("#388 헤더 시계 — 로그줄과 같은 시각을 말한다", 
     await seekTo(page, SEEK_TICK);
 
     const clock = (await page.getByTestId("stage-clock").textContent())?.trim();
-    expect(clock, "헤더가 표기 분을 말한다").toBe(`${EXPECTED_MINUTE}'`);
+    /*
+     * #406 W2 부터 헤더는 초까지 말한다(`48'32"`, hero 확정 안 A). **분은 그대로 구운 `minute`** 이고
+     * 초는 그 분의 앵커에서 흐른 값이라 이 계약의 축은 바뀌지 않는다 — 앞자리만 떼어 본다.
+     * SEEK_TICK 은 그 분이 시작된 틱이라 초는 `00` 이다(그 성질의 계약 = `p406-header-clock-seconds`).
+     */
+    expect(clock, "헤더가 표기 분 + 초를 말한다").toBe(`${EXPECTED_MINUTE}'00"`);
+    const shownMinute = Number(/^(\d+)'/.exec(clock ?? "")?.[1]);
     // 구 규칙이 만들던 값이 아님을 못박는다(정확히 절반).
-    expect(clock).not.toBe(`${Math.floor(SEEK_TICK / 60)}'`);
+    expect(shownMinute).toBe(EXPECTED_MINUTE);
+    expect(shownMinute).not.toBe(Math.floor(SEEK_TICK / 60));
 
     // 같은 순간의 로그줄 — 마지막 줄의 분이 헤더를 넘지 않고, 같은 축 위에 있다.
     await page.getByTestId("stage-tab-log").click();
@@ -125,8 +132,27 @@ test.describe("#388 헤더 시계 — 로그줄과 같은 시각을 말한다", 
   /**
    * AC5 — 같은 화면의 **장면 목록·핀 툴팁**도 같은 축이어야 한다. 헤더만 고치면 로그줄 20' 옆에서
    * 장면 목록이 `10'00"` 라고 말한다(같은 뿌리, 다른 소비자).
+   *
+   * ⚠️ **전제 갱신 (#406 W2, 2026-08-02).** 이 계약은 원래 *"`mm'ss"` 가 보이면 틱 직독"* 이라는
+   * **지문 하나**로 서 있었다. W2 가 헤더를 `48'32"` 로 바꾸면서 그 전제는 **화면 전체 기준으로는
+   * 낡았다** — 초 표기는 더 이상 그 자체로 버그의 표식이 아니다.
+   *
+   * **두 표기가 한 화면에 공존하는 것이 정상이다**(헤더 `20'00"` / 장면 목록·핀 `20'`).
+   * 장면 목록은 `timeline-pins.pinClock` 이 **분 단위로 두기로 한 자리**다(#388 의도: 초까지 쓰려면
+   * 표기 스케일을 화면에서 다시 유도해야 하고, 그 재유도가 정확히 이 결함의 모양이다). 불일치로
+   * 오인해 통일하지 마라 — 통일하는 쪽이 회귀다.
+   *
+   * 그래서 **무엇을 금지하는지**를 다시 세운다(삭제가 아니라 재정의 — 막으려던 결함인 틱 직독은
+   * 그대로 막는다):
+   *  ① **양성(본체)** — 장면의 분 == 그 틱 이벤트에 **구워진 `minute`**. 픽스처에서 유도한다
+   *     (앱 코드를 import 하지 않는다 — 계약이 구현식을 베끼면 같이 틀린다). 구 계약은 음성
+   *     하나뿐이라 `pinClock` 폴백을 `${floor(tick/60)}'`(초 **없는** 직독)으로 바꾸는 변이를
+   *     그대로 통과시켰다 — 값은 절반인데 모양은 분 표기라서.
+   *  ② **음성(유지)** — 이 목록에 한해 `mm'ss"` 는 여전히 금지다. 여기서 초가 붙는 경로는
+   *     `formatMatchClock`(틱 직독 폴백) **하나뿐**이라, 화면 전체에서는 낡은 지문이어도
+   *     **이 자리에서는** 아직 그 폴백의 지문이다.
    */
-  test("장면 목록·핀 툴팁도 구워진 분을 쓴다 (`mm'ss\"` 절반 표기 0)", async ({ page }) => {
+  test("장면 목록·핀 툴팁도 구워진 분을 쓴다 (틱 직독 0 · 분 표기 유지)", async ({ page }) => {
     // ⚠️ 장면 목록은 **돌려보기(review) 화면**에만 있다 — 관전 무대(플레이 모드)엔 컨트롤이 아예
     //    없다(#148/#216). 그래서 감독시간의 `경기장면` 탭(#244)에서 잰다.
     await openStage(page, "HALFTIME");
@@ -137,20 +163,43 @@ test.describe("#388 헤더 시계 — 로그줄과 같은 시각을 말한다", 
     // 픽스처에 세이브 2 · 유효슛이 들어 있다 — 0 이면 계약이 공허해지므로 그 자체를 막는다.
     expect(n, "장면 목록에 핀이 있어야 이 계약이 무언가를 검사한다").toBeGreaterThan(0);
 
+    /** 그 틱에 **구워진** 표기 분 — 픽스처가 SoT 다(구현식을 베끼지 않는다). */
+    const bakedMinuteAt = (tick: number): number | null => {
+      const ms = [...new Set(HALF1.events.filter((e) => e.tick === tick).map((e) => e.minute))];
+      return ms.length === 1 ? ms[0]! : null;
+    };
+
+    let discriminating = 0; // 구 규칙(tick/60)과 값이 **갈리는** 장면 수
     for (let i = 0; i < n; i += 1) {
-      const text = (await scenes.nth(i).textContent()) ?? "";
-      // 초 표기(`10'00"`)가 남아 있으면 그건 틱 직독 폴백 경로다.
+      const btn = scenes.nth(i);
+      // 버튼 자신이 자기 틱을 말한다(`viewer-scene-<tick>`) → 기대값을 픽스처에서 바로 유도한다.
+      const testid = (await btn.getAttribute("data-testid")) ?? "";
+      const tick = Number(/^viewer-scene-(\d+)$/.exec(testid)?.[1]);
+      expect(Number.isFinite(tick), `장면 버튼에서 틱을 읽었다: ${testid}`).toBe(true);
+      const baked = bakedMinuteAt(tick);
+      expect(baked, `픽스처에 틱 ${tick} 이벤트가 하나의 구운 분으로 있다`).not.toBeNull();
+
+      const text = ((await btn.textContent()) ?? "").trim();
+      // ② 음성 — 이 목록에서 초가 붙는 경로는 틱 직독 폴백뿐이다.
       expect(text, `장면 ${i} 시각이 분 표기여야 한다: ${text}`).not.toMatch(/\d+'\d\d"/);
       const min = Number(/(\d+)'/.exec(text)?.[1]);
-      expect(Number.isFinite(min)).toBe(true);
+      expect(Number.isFinite(min), `장면 ${i} 에서 분을 읽었다: ${text}`).toBe(true);
+      // ① 양성 — 값 자체가 로그줄과 같은 축(구운 분)이다. 절반(tick/60)이면 여기서 죽는다.
+      expect(min, `장면 ${i}(tick ${tick}) = 구워진 분: ${text}`).toBe(baked);
       expect(min).toBeLessThanOrEqual(EXPECTED_MINUTE);
+      if (baked !== Math.floor(tick / 60)) discriminating += 1;
     }
+    // 신선도 가드(#188) — 구 규칙과 값이 같은 장면만 있으면 ①은 아무것도 가르지 못한다.
+    expect(discriminating, "구 규칙(tick/60)과 갈리는 장면이 없으면 이 계약은 공허하다").toBeGreaterThan(0);
 
-    // 핀 툴팁(aria-label)도 같은 문자열을 쓴다 — 목록과 툴팁이 갈라지지 않는다.
+    // 핀 툴팁(aria-label)도 같은 축·같은 문자열을 쓴다 — 목록과 툴팁이 갈라지지 않는다.
     const pins = page.locator('[data-testid^="viewer-pin-"]');
     if (await pins.count()) {
-      const label = (await pins.first().getAttribute("aria-label")) ?? "";
+      const pin = pins.first();
+      const pinTick = Number(/^viewer-pin-(\d+)$/.exec((await pin.getAttribute("data-testid")) ?? "")?.[1]);
+      const label = (await pin.getAttribute("aria-label")) ?? "";
       expect(label).not.toMatch(/\d+'\d\d"/);
+      expect(Number(/(\d+)'/.exec(label)?.[1]), `핀 툴팁도 구운 분: ${label}`).toBe(bakedMinuteAt(pinTick));
     }
     await page.screenshot({ path: "test-results/p388-scenes.png" });
   });

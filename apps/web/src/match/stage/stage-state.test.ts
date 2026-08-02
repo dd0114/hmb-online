@@ -5,9 +5,12 @@ import {
   clockLabel,
   DEFAULT_INFO_TAB,
   displayMinuteAt,
+  displaySecondAt,
+  displayTicksPerMinute,
   halfEndMinuteOf,
   halfForState,
   headerScore,
+  headerClock,
   headerMinute,
   INFO_TAB_KEYS,
   isHalftimeState,
@@ -67,20 +70,22 @@ describe("감독시간 판정 / 헤더 시계 (#226)", () => {
 
   it("감독시간 헤더 시계는 재생 플레이헤드가 아니라 하프 끝을 가리킨다", () => {
     // 되감아 플레이헤드가 0 이어도 헤더는 하프 끝 — hero 제보(0')의 재현 조건이 바로 이것.
-    expect(headerMinute("HALFTIME", H1_LOG, 0)).toBe(45);
-    expect(headerMinute("H1_BREAK", H1_LOG, 600)).toBe(45);
+    expect(headerClock("HALFTIME", H1_LOG, 0)?.minute).toBe(45);
+    expect(headerClock("H1_BREAK", H1_LOG, 600)?.minute).toBe(45);
+    // 옛 이름은 별칭으로만 남는다(호출부가 다른 웨이브 소유) — 같은 함수여야 한다.
+    expect(headerMinute).toBe(headerClock);
   });
 
   it("라이브 하프는 그대로 플레이헤드를 따라간다", () => {
-    expect(headerMinute("FIRST_HALF", H1_LOG, 600)).toBe(20);
-    expect(headerMinute("SECOND_HALF", H2_LOG, 2100)).toBe(70);
-    expect(headerMinute("FINISHED", H2_LOG, 2699)).toBe(89);
+    expect(headerClock("FIRST_HALF", H1_LOG, 600)?.minute).toBe(20);
+    expect(headerClock("SECOND_HALF", H2_LOG, 2100)?.minute).toBe(70);
+    expect(headerClock("FINISHED", H2_LOG, 2699)?.minute).toBe(89);
   });
 
   it("하프 끝을 모르면(로그 미도착) 플레이헤드로 되돌아가지 않고 시계를 접는다", () => {
     // null 을 주면 ScoreBar 가 시계를 아예 안 그린다 = 틀린 분보다 없는 편이 낫다.
-    expect(headerMinute("HALFTIME", null, 0)).toBeNull();
-    expect(headerMinute("HALFTIME", {}, 600)).toBeNull();
+    expect(headerClock("HALFTIME", null, 0)).toBeNull();
+    expect(headerClock("HALFTIME", {}, 600)).toBeNull();
   });
 });
 
@@ -141,13 +146,168 @@ describe("#388 헤더 시계 — 구워진 표기 분을 쓴다", () => {
   });
 });
 
-describe("경기 분 표기 — 상시 표시 (#233 스코프 추가)", () => {
-  it("라이브/다시보기는 재생 위치의 **표기 분**을 그대로 그린다", () => {
-    // ⚠️ 인자가 틱이 아니라 **분**이다(#388) — 스케일 계산은 화면이 아니라 로그가 한다.
-    expect(clockLabel("FIRST_HALF", 0)).toBe("0'");
-    expect(clockLabel("FIRST_HALF", 43)).toBe("43'");
-    expect(clockLabel("SECOND_HALF", 45)).toBe("45'");
-    expect(clockLabel("FINISHED", 89)).toBe("89'");
+/**
+ * #406 W2 — **초를 붙이되 분은 여전히 로그가 굽는다.**
+ *
+ * hero 확정: `48'32"` 통합 표기 · 보간 없음(1틱 = 표기 2초라 초가 2씩 뛴다 — 데이터에 없는 값을
+ * 화면이 지어내지 않는다). 그래서 초는 **그 분의 앵커 틱에서 흐른 만큼**이고, "1틱이 몇 표기초냐"는
+ * **로그에서 되유도**한다. 상수를 적으면 엔진이 레짐을 바꾸는 날 #388 이 그대로 재발한다.
+ *
+ * ⚠️ 그래서 이 블록에는 **레짐이 다른 대조군**(90분 레짐 = 60틱/분)이 같이 탄다. 대조군이 없으면
+ * `30` 을 박은 변이체가 전부 초록으로 통과한다 — 그게 #388 이 3개월 산 방식이다.
+ */
+/** 대조군: 구 레짐(하프 2700틱 · minute = floor(tick/60)). **틱→분 관계만** 다르다. */
+const snap60 = (tick: number) => ({ tick, minute: Math.floor(tick / 60) });
+const LEGACY_LOG = {
+  tickSnapshots: Array.from({ length: 46 }, (_, i) => snap60(i * 60)),
+  events: [{ tick: 2700, minute: 45, type: "half_whistle" }],
+};
+
+/**
+ * ★ **라이브 형상 표본** — 한 분 안에 스냅샷이 **여러 개**다.
+ *
+ * 위 `H1_LOG`/`LEGACY_LOG` 는 분당 스냅샷이 정확히 1개(`i*30`)라 **그 분의 첫 틱과 마지막 틱이
+ * 구조적으로 같다** → "앵커 = 그 분의 **첫** 틱" 규칙을 한 건도 검사하지 못한다. 실제로 앵커를
+ * *마지막* 틱으로 바꾸는 변이가 이 파일 63건을 **전부 통과**했다(e2e 에서만 죽었다).
+ * 실서버는 `simulateRange` 가 **틱당 스냅샷 1개**를 내리므로 **라이브가 바로 이 케이스**다.
+ *
+ * ⚠️ **이벤트를 비워 둔 것은 의도다.** 진행 중인 하프에는 종료 휘슬이 아직 없다(= 실제 라이브 형상)
+ * → `displayTicksPerMinute` 의 휘슬 폴백이 **앵커 계산의 오류를 가려 주지 못한다**. 휘슬을 넣으면
+ * `1350/45 = 30` 이 우연히 같은 답을 내서 스케일 계약이 공허해진다.
+ */
+const DENSE_LOG = {
+  /** 틱 600..690 = 표기 20'~23'(현행 레짐 30틱/분). 한 분에 스냅샷 30개. */
+  tickSnapshots: Array.from({ length: 91 }, (_, i) => snap(600 + i)),
+  events: [],
+};
+
+describe("#406 헤더 시계 초 — 앵커 기준, 스케일은 로그에서", () => {
+  it("표기 1분의 틱 수를 **로그에서** 되유도한다 (레짐마다 다르다)", () => {
+    expect(displayTicksPerMinute(H1_LOG)).toBe(30); // 현행: 하프 1350틱 / 45'
+    expect(displayTicksPerMinute(H2_LOG)).toBe(30);
+    expect(displayTicksPerMinute(LEGACY_LOG)).toBe(60); // 구 레짐: 2700틱 / 45'
+  });
+
+  it("분이 하나뿐인 트림 로그는 **휘슬**로 떨어진다(clockScaleOf 와 같은 재료)", () => {
+    expect(displayTicksPerMinute({ tickSnapshots: [snap(600)], events: H1_LOG.events })).toBe(30);
+    // full_whistle 은 그 틱까지 포함이라 +1 보정 — 2699 → 2700/90.
+    expect(displayTicksPerMinute({ tickSnapshots: [snap(2100)], events: H2_LOG.events })).toBe(30);
+  });
+
+  it("근거가 없으면 스케일도 초도 **지어내지 않는다**", () => {
+    const lonely = { tickSnapshots: [snap(600)], events: [] };
+    expect(displayTicksPerMinute(lonely)).toBeNull();
+    expect(displaySecondAt(lonely, 610, 20)).toBeNull();
+    // 앵커가 없는 분(감독시간 휘슬 분 45 는 스냅샷에 없다)에도 초를 만들지 않는다.
+    expect(displaySecondAt(H1_LOG, 1349, 46)).toBeNull();
+    expect(displaySecondAt(H1_LOG, null, 20)).toBeNull();
+    expect(displaySecondAt(H1_LOG, 600, null)).toBeNull();
+  });
+
+  it("초는 그 분의 **시작 틱에서 00**, 분이 넘어가기 직전이 최대다", () => {
+    expect(displaySecondAt(H1_LOG, 600, 20)).toBe(0); // 20' 앵커
+    expect(displaySecondAt(H1_LOG, 629, 20)).toBe(58); // 다음 틱이면 21'
+    expect(displayMinuteAt(H1_LOG, 630)).toBe(21);
+    expect(displaySecondAt(H1_LOG, 630, 21)).toBe(0);
+    // 60 을 넘기지 않는다 — 넘으면 `20'60"` 이라는 없는 시각이 된다.
+    for (let t = 600; t < 630; t += 1) {
+      const s = displaySecondAt(H1_LOG, t, 20)!;
+      expect(s, `tick ${t}`).toBeGreaterThanOrEqual(0);
+      expect(s, `tick ${t}`).toBeLessThan(60);
+    }
+  });
+
+  /**
+   * ★ **변이체 킬** — `30`(또는 `2초/틱`)을 상수로 박으면 여기가 죽는다.
+   * 같은 틱 620 이 레짐에 따라 다른 초를 말해야 한다: 현행 40" vs 구 레짐 20".
+   */
+  it("같은 틱이라도 로그의 레짐이 다르면 초도 다르다 (스케일 하드코딩 사망)", () => {
+    expect(displayMinuteAt(H1_LOG, 620)).toBe(20);
+    expect(displaySecondAt(H1_LOG, 620, 20)).toBe(40);
+
+    expect(displayMinuteAt(LEGACY_LOG, 620)).toBe(10);
+    expect(displaySecondAt(LEGACY_LOG, 620, 10)).toBe(20);
+
+    // 라벨까지 관통 — 화면 문자열이 레짐을 따라간다.
+    expect(clockLabel("FIRST_HALF", headerClock("FIRST_HALF", H1_LOG, 620))).toBe("20'40\"");
+    expect(clockLabel("FIRST_HALF", headerClock("FIRST_HALF", LEGACY_LOG, 620))).toBe("10'20\"");
+  });
+
+  /**
+   * ★ **이 웨이브의 불변식** — 초가 붙어도 헤더의 분은 **로그줄의 분**(구운 `minute`)과 같다.
+   * #388 은 헤더가 분을 직접 유도해서 생긴 사고다. 초를 앵커로 만드는 한 이건 구조적으로 참이지만,
+   * 누군가 `clockLabel` 안에서 시각을 다시 계산하는 순간 깨지므로 라벨 문자열에서 되읽어 확인한다.
+   */
+  it("헤더가 그리는 분 == 그 틱의 구운 분 (전 구간 스윕)", () => {
+    for (const [log, ticks] of [
+      [H1_LOG, [0, 1, 29, 30, 315, 620, 1290, 1349]],
+      [H2_LOG, [1350, 1380, 2100, 2669, 2699]],
+      [LEGACY_LOG, [0, 59, 60, 620, 2400, 2700]],
+    ] as const) {
+      for (const t of ticks) {
+        const label = clockLabel("FIRST_HALF", headerClock("FIRST_HALF", log, t))!;
+        const shown = Number(/^(\d+)'/.exec(label)?.[1]);
+        expect(shown, `tick ${t} → ${label}`).toBe(displayMinuteAt(log, t));
+      }
+    }
+  });
+});
+
+/**
+ * #406 W2 계약 보강 — **앵커는 그 분의 첫 틱이다**(독립검증이 남긴 검정력 갭 ①).
+ *
+ * 위 블록의 계약들은 전부 "분당 스냅샷 1개" 로그로 서 있어서, 앵커를 **마지막** 틱으로 바꿔도
+ * 값이 하나도 안 바뀐다(첫 = 마지막). 그 변이는 라이브 형상(틱당 1스냅샷)에서만 죽는다:
+ * 마지막-틱 앵커는 ⓐ 앵커 간격을 왜곡해 **스케일 자체**를 틀리게 하고 ⓑ 분 앞부분의 초를
+ * 음수로 만들어 **0 으로 눌러 버린다**(`19'..20'` 내내 `00"`).
+ */
+describe("#406 초의 앵커 = 그 분의 **첫** 틱 (라이브 형상: 틱당 1스냅샷)", () => {
+  const ticksOfMinute = (log: { tickSnapshots: { tick: number; minute: number }[] }, m: number) =>
+    log.tickSnapshots.filter((s) => s.minute === m).map((s) => s.tick);
+
+  it("표본이 갭을 실제로 재현한다 — 프로브 분에 스냅샷이 여러 개다(신선도 가드)", () => {
+    const ticks = ticksOfMinute(DENSE_LOG, 20);
+    expect(ticks.length, "분당 1개면 첫/마지막이 같아 앵커 규칙을 못 잰다").toBeGreaterThan(1);
+    expect(Math.min(...ticks)).not.toBe(Math.max(...ticks));
+    // ⚠️ 기존 표본이 이 축에 **공허한 이유**를 같이 박제한다 — 20' 에 스냅샷이 딱 하나다.
+    expect(ticksOfMinute(H1_LOG, 20)).toHaveLength(1);
+  });
+
+  it("틱/표기분을 **첫 앵커 간격**에서 되유도한다 (마지막-틱 앵커면 간격이 찌그러진다)", () => {
+    // 첫 앵커: 600·630·660·690 → 30. 마지막-틱 앵커: 629·659·689·690 → 20.33(사망).
+    expect(displayTicksPerMinute(DENSE_LOG)).toBe(30);
+  });
+
+  it("분 중간 틱의 초는 그 분의 **시작**에서 흐른 값이다", () => {
+    expect(displayMinuteAt(DENSE_LOG, 610)).toBe(20);
+    expect(displaySecondAt(DENSE_LOG, 600, 20)).toBe(0);
+    expect(displaySecondAt(DENSE_LOG, 610, 20)).toBe(20);
+    expect(displaySecondAt(DENSE_LOG, 629, 20)).toBe(58);
+    // 분 경계 — 다음 틱은 새 분의 00.
+    expect(displayMinuteAt(DENSE_LOG, 630)).toBe(21);
+    expect(displaySecondAt(DENSE_LOG, 630, 21)).toBe(0);
+    // 라벨까지 관통(화면이 실제로 그리는 문자열).
+    expect(clockLabel("FIRST_HALF", headerClock("FIRST_HALF", DENSE_LOG, 610))).toBe("20'20\"");
+  });
+
+  it("한 분 내내 초가 **단조 증가**한다 — 앵커가 뒤로 밀리면 앞구간이 통째로 00\" 로 눌린다", () => {
+    const secs = Array.from({ length: 30 }, (_, i) => displaySecondAt(DENSE_LOG, 600 + i, 20));
+    // 1틱 = 표기 2초(보간 없음, hero 확정) → 00,02,…,58.
+    expect(secs).toEqual(Array.from({ length: 30 }, (_, i) => i * 2));
+  });
+});
+
+describe("경기 분 표기 — 상시 표시 (#233 스코프 추가 · #406 초)", () => {
+  it("라이브/다시보기는 재생 위치의 **표기 분 + 초**를 그린다", () => {
+    // ⚠️ 인자가 틱이 아니라 **시각 객체**다(#388/#406) — 스케일 계산은 화면이 아니라 로그가 한다.
+    expect(clockLabel("FIRST_HALF", { minute: 0, second: 0 })).toBe("0'00\"");
+    expect(clockLabel("FIRST_HALF", { minute: 43, second: 8 })).toBe("43'08\"");
+    expect(clockLabel("SECOND_HALF", { minute: 48, second: 32 })).toBe("48'32\"");
+    expect(clockLabel("FINISHED", { minute: 89, second: 58 })).toBe("89'58\"");
+  });
+
+  it("초를 모르면 분만 그린다 — `00\"` 을 지어내지 않는다", () => {
+    expect(clockLabel("FIRST_HALF", { minute: 43, second: null })).toBe("43'");
   });
 
   it("플레이헤드가 아직 없으면 슬롯을 지운다 — 값만 비운다", () => {
@@ -156,9 +316,14 @@ describe("경기 분 표기 — 상시 표시 (#233 스코프 추가)", () => {
     expect(clockLabel("FIRST_HALF", null)).toBe(CLOCK_PLACEHOLDER);
   });
 
-  it("감독시간은 하프 끝 분을 그리고, 모르면 접는다(#226 유지)", () => {
-    expect(clockLabel("HALFTIME", 45)).toBe("45'");
-    expect(clockLabel("H1_BREAK", 45)).toBe("45'");
+  /**
+   * 감독시간 시계는 **흐르는 시각이 아니라 끝난 지점**이다(#226) — 그 값의 권위는 종료 휘슬이고
+   * 휘슬 분에는 앵커가 없다(전반 마지막 스냅샷은 44'). 초를 붙이면 없는 앵커에서 지어내는 것이다.
+   */
+  it("감독시간은 하프 끝 분을 **초 없이** 그리고, 모르면 접는다(#226 유지)", () => {
+    expect(clockLabel("HALFTIME", headerClock("HALFTIME", H1_LOG, 0))).toBe("45'");
+    expect(clockLabel("H1_BREAK", headerClock("H1_BREAK", H1_LOG, 600))).toBe("45'");
+    expect(headerClock("HALFTIME", H1_LOG, 600)?.second).toBeNull();
     expect(clockLabel("HALFTIME", null)).toBeNull();
   });
 });
