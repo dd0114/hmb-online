@@ -1,0 +1,6 @@
+# 관전 증거 경기 로그(각 3~4MB)는 트래킹하지 않는다 — 생성기(gen-*.ts)로 재생성한다.
+# ⚠️ 루트 .gitignore 가 m2/m3a/m3b/m3c 만 잡고 s3a/s3b 를 놓쳐 ~15MB 가 트래킹돼 있었다(#377 리뷰팩 발견).
+review-4w-*.json
+s3a-*.json
+s3b-*.json
+s3c-*.json
