@@ -1,0 +1,382 @@
+/**
+ * 선수 기록 **표시 계층**의 순수 로직 (#403 W2).
+ *
+ * 집계는 `player-stats.ts`(W1) 가 소유한다 — 여기서 지표를 다시 계산하지 않는다. 이 파일이 하는 일은
+ * "그 줄들을 화면에 어떻게 세우나"뿐이다: 이름·등번호·포지션 붙이기 · 정렬 · 열 값 파생 · 세그먼트.
+ * React·DOM 의존 0(그래서 계약이 브라우저 없이 이 규칙들을 죽인다).
+ *
+ * ⚠️ 키는 전부 `playerKey(team, playerId)` 다. 유저 덱과 봇 로스터가 **같은 카탈로그를 공유**해
+ * 같은 `playerId` 가 양 팀에 동시에 뛴다(#231) — 맨 id 로 조회하면 두 사람이 한 줄로 합쳐진다.
+ */
+import { jerseyNumbers } from "./viewer-skins";
+import { halfForState, isHalftimeState } from "./stage/stage-state";
+import {
+  passPct,
+  playerKey,
+  playerKeySet,
+  type PlayerPosition,
+  type PlayerStatLine,
+  type PlayerStatsResult,
+  type TeamSide,
+} from "./player-stats";
+
+/**
+ * **선택된 선수 한 명** — 표의 행 강조·피치 강조·요약 카드가 같은 것을 가리키는 키.
+ *
+ * ⚠️ 키는 반드시 `(team, playerId)` 다 — 같은 `playerId` 가 양 팀에 동시에 뛴다(#231).
+ * ⚠️ 이 타입이 **(A) 쪽에 사는 것이 의도**다. 원래 `pitch-hit.ts`((B))에 있었는데, 그러면 선수 탭이
+ * 피치 모듈에 의존해 **(A) 만 떼서 머지할 수가 없다**(#421 로 (B) 통합이 보류된 동안 필요한 성질).
+ * 피치 쪽은 `PitchSelection` 이라는 이름으로 이걸 재수출한다 — (B) 의 공개 API 는 안 바뀐다.
+ */
+export interface PlayerSelection {
+  team: TeamSide;
+  playerId: string;
+}
+
+/** 카탈로그(`GET /api/players`) 에서 우리가 쓰는 최소 형상. 응답 형태는 믿지 않는다. */
+export interface CatalogLike {
+  id?: unknown;
+  name?: unknown;
+  position?: unknown;
+}
+
+export interface RosterMeta {
+  name: string;
+  position: PlayerPosition | null;
+  /** 등번호(1~11). 로그 등장 순서로 코어와 **같은 규칙**을 쓴다 — 토큰과 표가 다른 번호를 말하면 안 된다. */
+  num: string | null;
+}
+
+const POSITIONS: ReadonlySet<string> = new Set(["GK", "DF", "MF", "FW"]);
+
+/**
+ * 로그에 등장하는 `(team, playerId)` 전원의 표시 메타.
+ *
+ * 이름·포지션은 **카탈로그**에서 온다 — 봇 로스터도 같은 선수 카탈로그를 쓰므로 상대 팀까지
+ * 여기서 나온다(루트 CLAUDE §#231). 등번호는 `viewer-skins.jerseyNumbers` 를 **재사용**한다:
+ * 경기장 토큰이 그 규칙으로 번호를 달고 있어서, 표가 따로 매기면 같은 선수가 화면에서 두 번호를
+ * 갖는다(그리고 유저는 토큰↔행을 번호로 잇는다).
+ *
+ * ⚠️ `/api/players` 가 배열이 아닐 수 있다(구 서버·목의 `200 {}`) → `Array.isArray` 가드.
+ * 없으면 이름이 id 로 떨어질 뿐 화면은 성립한다 — 여기서 던지면 관전 화면이 흰 화면이 된다.
+ */
+export function buildRosterMeta(
+  log: unknown,
+  catalog: readonly CatalogLike[] | null | undefined,
+): Map<string, RosterMeta> {
+  const byId = new Map<string, { name: string; position: PlayerPosition | null }>();
+  if (Array.isArray(catalog)) {
+    for (const c of catalog) {
+      if (!c || typeof c.id !== "string") continue;
+      const pos = typeof c.position === "string" && POSITIONS.has(c.position) ? (c.position as PlayerPosition) : null;
+      byId.set(c.id, { name: typeof c.name === "string" && c.name ? c.name : c.id, position: pos });
+    }
+  }
+  const nums = jerseyNumbers(log);
+  const out = new Map<string, RosterMeta>();
+  for (const [key, num] of Object.entries(nums)) {
+    const i = key.indexOf(":");
+    const id = i >= 0 ? key.slice(i + 1) : key;
+    const meta = byId.get(id);
+    out.set(key, { name: meta?.name ?? id, position: meta?.position ?? null, num });
+  }
+  return out;
+}
+
+/** 평점의 포지션 보정용 표 — `computePlayerStats({ positions })` 가 그대로 받는다. */
+export function positionsOf(roster: ReadonlyMap<string, RosterMeta>): Record<string, PlayerPosition> {
+  const out: Record<string, PlayerPosition> = {};
+  for (const [key, meta] of roster) if (meta.position) out[key] = meta.position;
+  return out;
+}
+
+/** GK 키 집합 — `computePlayerStats({ gkKeys })` 규약대로 **`playerKey` 형태**로 만든다. */
+export function gkKeysOf(roster: ReadonlyMap<string, RosterMeta>): Set<string> {
+  const pairs: [TeamSide, string][] = [];
+  for (const [key, meta] of roster) {
+    if (meta.position !== "GK") continue;
+    const i = key.indexOf(":");
+    const side = key.slice(0, i);
+    if (side !== "home" && side !== "away") continue;
+    pairs.push([side, key.slice(i + 1)]);
+  }
+  return playerKeySet(pairs);
+}
+
+// ── 행 ───────────────────────────────────────────────────────────────────
+
+export interface PlayerRow {
+  key: string;
+  team: TeamSide;
+  playerId: string;
+  name: string;
+  position: PlayerPosition | null;
+  num: string | null;
+  isGk: boolean;
+  line: PlayerStatLine;
+  /** 표의 `패스%` 열 — 시도 0 이면 null(0% 는 거짓말이다, `passPct` 규약). */
+  passPct: number | null;
+  /**
+   * 표의 `수비` 열. 필드 플레이어 = 태클+가로채기+걷어내기, **GK = 선방**(목업 ① 그대로).
+   * 한 열이 두 뜻을 갖는 건 실제 축구 앱의 요약 표가 하는 것과 같다 — 대신 행에 `data-gk` 를
+   * 달아 화면이 "선방"이라고 **말하게** 한다(숫자만 두면 GK 가 수비를 5번 한 것으로 읽힌다).
+   */
+  defence: number;
+}
+
+/**
+ * 그 팀의 행들. 로그에 **등장한 선수만**(로스터에 있어도 안 뛴 선수는 표에 없다 — 출전 0 을
+ * 0.0 평점으로 깔면 표가 벤치로 채워진다).
+ */
+export function rowsFor(
+  result: PlayerStatsResult,
+  team: TeamSide,
+  roster: ReadonlyMap<string, RosterMeta>,
+): PlayerRow[] {
+  const out: PlayerRow[] = [];
+  for (const line of result.players) {
+    if (line.team !== team) continue;
+    if (line.ticksPlayed <= 0) continue;
+    const meta = roster.get(line.key);
+    const isGk = meta?.position === "GK";
+    out.push({
+      key: line.key,
+      team: line.team,
+      playerId: line.playerId,
+      name: meta?.name ?? line.playerId,
+      position: meta?.position ?? null,
+      num: meta?.num ?? null,
+      isGk,
+      line,
+      passPct: passPct(line),
+      defence: isGk ? line.saves : line.tackles + line.interceptions + line.clearances,
+    });
+  }
+  return out;
+}
+
+// ── 정렬 ─────────────────────────────────────────────────────────────────
+
+export type SortKey = "rating" | "goals" | "shots" | "passPct" | "defence" | "num";
+
+/** 정렬 칩 — 순서까지 계약이다(목업 ①). */
+export const SORT_KEYS: readonly SortKey[] = ["rating", "goals", "shots", "passPct", "defence", "num"];
+
+export const SORT_LABELS: Record<SortKey, string> = {
+  rating: "평점",
+  goals: "골",
+  shots: "슈팅",
+  passPct: "패스%",
+  defence: "수비",
+  num: "번호",
+};
+
+/**
+ * 처음 열었을 때 고르는 축 = **평점**(목업 ① — 평점 칩이 눌린 채로 그려져 있다).
+ * 값이 아니라 **의도**다: 표의 첫 질문은 "누가 잘했나"이고, 등번호 순은 그걸 안 알려 준다.
+ * ⚠️ 계약이 이 값을 리터럴로 박고(`player-stats-view.test.ts`) 화면에서도 확인한다
+ * (`e2e/p403-player-tab.spec.ts` ② — 칩 선택 + **실제 정렬 결과**). 예전엔 둘 다 없어서
+ * `"goals"` 로 바꾸는 변이가 유닛 91 + e2e 14 를 전부 통과했다(독립검증 m2).
+ */
+export const DEFAULT_SORT: SortKey = "rating";
+
+/**
+ * 정렬. 수치 칩은 **내림차순**(잘한 순), `번호`만 오름차순(라인업 순으로 읽는 자리).
+ *
+ * ⚠️ 동점은 **평점 → 등번호 → 키** 로 끝까지 끊는다. 안 끊으면 같은 화면을 두 번 열었을 때
+ * 순서가 달라 보이고(브라우저 sort 는 안정적이지만 입력 순서가 바뀌면 결과도 바뀐다) 계약을 못 쓴다.
+ * `패스%` 의 null(시도 0)은 **항상 뒤**로 — 0% 로 취급하면 안 찬 선수가 최악으로 읽힌다.
+ */
+export function sortRows(rows: readonly PlayerRow[], key: SortKey): PlayerRow[] {
+  const out = rows.slice();
+  out.sort((a, b) => {
+    if (key === "num") {
+      const d = numValue(a) - numValue(b);
+      if (d !== 0) return d;
+    } else {
+      const av = sortValue(a, key);
+      const bv = sortValue(b, key);
+      if (av !== bv) return bv - av;
+      if (a.line.rating !== b.line.rating) return b.line.rating - a.line.rating;
+      const d = numValue(a) - numValue(b);
+      if (d !== 0) return d;
+    }
+    return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+  });
+  return out;
+}
+
+/** 정렬 축의 값. `패스%` 의 null 은 -1 = 항상 맨 뒤(0% 와 구분된다). */
+function sortValue(row: PlayerRow, key: Exclude<SortKey, "num">): number {
+  switch (key) {
+    case "rating":
+      return row.line.rating;
+    case "goals":
+      return row.line.goals;
+    case "shots":
+      return row.line.shots;
+    case "passPct":
+      return row.passPct ?? -1;
+    case "defence":
+      return row.defence;
+  }
+}
+
+/** 등번호 정렬값 — 번호가 없으면 맨 뒤. */
+function numValue(row: PlayerRow): number {
+  const n = row.num == null ? NaN : Number(row.num);
+  return Number.isFinite(n) ? n : Number.MAX_SAFE_INTEGER;
+}
+
+// ── 표시 파생 ────────────────────────────────────────────────────────────
+
+export type RatingTier = "motm" | "hi" | "mid" | "low";
+
+/**
+ * 평점 칩의 등급. 실축 앱 관례(7.5+ 호평 / 7.0+ 무난 / 그 아래 평범)를 그대로 쓰되,
+ * **MOTM 은 값이 아니라 신분**이라 별도다(집계가 이미 뽑아 준다).
+ */
+export function ratingTier(rating: number, isMotm: boolean): RatingTier {
+  if (isMotm) return "motm";
+  if (rating >= 7.5) return "hi";
+  if (rating >= 7.0) return "mid";
+  return "low";
+}
+
+/** `72%` / 시도가 없으면 `—`. */
+export function passPctLabel(v: number | null): string {
+  return v == null ? "—" : `${Math.round(v)}%`;
+}
+
+/**
+ * 패스 귀속이 불완전한가 — `passAttributionCoverage` 가 1 미만이면 참.
+ *
+ * ⚠️ **숨기지 않는 것이 이 화면의 입장이다**(W1 독립 검증 권고). 스냅샷이 성긴 로그(서버 트림·
+ * 구 매치)에서는 소유 체인이 끊겨 패스 시도의 일부가 아무에게도 안 붙는다 — 그 상태에서 숫자만
+ * 보여주면 "이 선수는 패스를 10번밖에 안 했다"는 **거짓**이 된다. 커버리지를 같이 말한다.
+ * 커버리지를 모르면(시도 0) 경고하지 않는다 — 아직 아무 일도 안 일어난 화면이다.
+ */
+export function passIncomplete(coverage: number | null): boolean {
+  return coverage != null && coverage < 0.999;
+}
+
+/** `기록 불완전 (패스 82% 귀속)` — 무엇이 불완전한지까지 말한다. */
+export function coverageLabel(coverage: number | null): string | null {
+  if (!passIncomplete(coverage)) return null;
+  return `패스 귀속 ${Math.floor((coverage ?? 0) * 100)}%`;
+}
+
+// ── 팀 세그먼트 ──────────────────────────────────────────────────────────
+
+export interface TeamSegment {
+  side: TeamSide;
+  label: string;
+  /** 내 팀인가 — 칩은 **이름 바로 뒤**에 붙는다(#322 표식 자리 규칙). */
+  mine: boolean;
+}
+
+/**
+ * `우리 ↔ 상대` 세그먼트 (#403 결정 ② = 상대도 **완전히 동일**, 지시문만 비공개).
+ *
+ * ⚠️ **순서는 홈 먼저다 — 내 팀을 앞으로 당기지 않는다**(#322 hero 확정 안 C).
+ * 스코어바·통계 탭이 이미 사이드 순서로 읽히는데 여기만 유저 시점으로 뒤집으면, 어웨이 라운드에서
+ * 한 화면의 왼쪽/오른쪽이 탭마다 다른 팀을 뜻한다. 대신 **내 팀 칩**이 어느 쪽이 나인지 말한다.
+ * 어느 쪽도 내 팀이 아니면(관전) 칩이 없다 — 거짓 표식을 달지 않는다.
+ */
+export function teamSegments(
+  names: { home: string; away: string },
+  myTeamSide: "home" | "away" | null | undefined,
+): TeamSegment[] {
+  return [
+    { side: "home", label: names.home, mine: myTeamSide === "home" },
+    { side: "away", label: names.away, mine: myTeamSide === "away" },
+  ];
+}
+
+/** 처음 열었을 때 고를 팀 = **내 팀**(모르면 홈). 순서를 안 바꾸는 대신 선택으로 답한다. */
+export function defaultSegment(myTeamSide: "home" | "away" | null | undefined): TeamSide {
+  return myTeamSide === "away" ? "away" : "home";
+}
+
+/**
+ * ── 집계 창(窓) — **상한과 캡션의 단일 출처** (#403 W2 독립검증 BL-1) ─────────────────────────
+ *
+ * 처음엔 상한(`uptoTick`)은 훅이, 캡션은 화면이 각각 만들었다. 그래서 **둘이 따로 놀았고**
+ * 감독시간에서 정확히 그 사고가 났다: 무대가 `경기장면` 탭으로 내려가(#244) `MatchViewer` 가
+ * 마운트되지 않으니 `tick === null` → 상한이 `0` 으로 폴백 → **전 선수 0** 인데, 캡션은
+ * `headerMinute`(감독시간엔 하프 끝 분)을 받아 **"7분까지의 기록"** 이라고 말했다.
+ * 헤더가 `0 : 1` 을 말하는 같은 화면에서 표는 전부 0 이었다 — #388 의 "한 화면이 두 시각을
+ * 말했다"와 같은 부류이고, 요구 A·결정 ②가 가장 필요로 하는 자리다(하프타임 지시의 근거).
+ *
+ * 그래서 **하나가 둘을 같이 정한다.** 상한이 없으면 분을 말하지 않고, 분을 말하면 상한이 있다.
+ *
+ * ## 갈림의 축은 "매치가 끝났나"가 아니라 **"지금 보는 하프가 끝났나"** 다
+ *  · 전반은 `HALFTIME`·`H1_BREAK`·`GEN2` 부터 이미 **확정**이다(헤더가 `scoreH1*` 로 말한다).
+ *  · 후반은 `FINISHED` 에서 확정.
+ * 확정된 하프에는 상한이 없다 — 재생 위치로 자를 이유가 없고, 자르면 위 결함이 된다.
+ *
+ * ## `tick === null` 은 0 이 아니다
+ * "아직 모른다"와 "0틱까지"는 다른 사실이다. 확정 하프면 위 규칙이 먼저 답하고, **진행 중인데
+ * 재생 위치를 모르면** `pending` 이다.
+ * ⚠️ 독립검증은 이 경우 *"상한 없음이 안전하다"* 고 제안했지만 **그대로 따르지 않았다** —
+ * 진행 중 하프에 상한이 없으면 그건 곧 **앞을 보여주는 것**이라 #233/#238 을 정면으로 어긴다.
+ * 대신 `uptoTick: -1`(그 하프에서 아무것도 세지 않는다) + **"기다리는 중"이라고 말하는 캡션**으로
+ * 간다. 0 을 데이터로 그리지도, 앞을 열지도 않는다. (도달 경로 = 라이브 하프의 첫 프레임, 그리고
+ * 캔버스가 죽어 텍스트 폴백으로 떨어진 상태.)
+ */
+export type StatsWindowKind = "settled" | "live" | "pending";
+
+export interface StatsWindow {
+  kind: StatsWindowKind;
+  /** 이 하프에 걸리는 상한(포함). **null = 상한 없음**(그 하프는 확정이다). */
+  uptoTick: number | null;
+  /** 선수 탭 캡션. null = 캡션 없음(확정 하프 — 목업 ①·③ "종료 경기면 붙지 않는다"). */
+  caption: string | null;
+  /** 피치 카드의 꼬리표(`26분까지`). 같은 창에서 나온다 — 두 화면이 다른 말을 하지 않게. */
+  shortLabel: string | null;
+}
+
+/** 지금 무대가 보는 하프가 **이미 끝났나**. `halfForState` 와 같은 축으로 판정한다. */
+export function currentHalfSettled(state: string | undefined): boolean {
+  if (halfForState(state) === 2) return state === "FINISHED";
+  // 전반을 보는 상태들 중 전반이 이미 끝난 것들.
+  return isHalftimeState(state) || state === "GEN2";
+}
+
+/**
+ * 상한 + 캡션. **`minute` 은 로그가 구운 값**(#388, `headerMinute` 이 준 것)을 그대로 받는다 —
+ * 여기서 `floor(tick/60)` 같은 유도를 하지 마라.
+ */
+export function statsWindow(
+  state: string | undefined,
+  playheadTick: number | null,
+  minute: number | null,
+): StatsWindow {
+  if (currentHalfSettled(state)) {
+    return { kind: "settled", uptoTick: null, caption: null, shortLabel: null };
+  }
+  if (playheadTick == null) {
+    // A-4(독립검증, 필수 아님): 어느 하프를 기다리는지 말한다. 후반 대기 화면에서 "재생 위치를
+    // 기다리는 중"만 뜨면 유저는 **전반 기록도 없는 것**으로 읽는다(실제로는 전반은 이미 표에 있다).
+    const label = halfForState(state) === 2 ? "후반" : "전반";
+    return {
+      kind: "pending",
+      uptoTick: -1,
+      caption: `${label} 재생 위치를 기다리는 중`,
+      shortLabel: "재생 대기",
+    };
+  }
+  return {
+    kind: "live",
+    uptoTick: playheadTick,
+    caption: minute == null ? "지금까지의 기록" : `${minute}분까지의 기록`,
+    shortLabel: minute == null ? "지금까지" : `${minute}분까지`,
+  };
+}
+
+/** MOTM 인가 — 키 비교 한 곳(맨 id 비교로 되돌아가지 않게). */
+export function isMotmKey(result: PlayerStatsResult, key: string): boolean {
+  return result.motm != null && result.motm.key === key;
+}
+
+export { playerKey };

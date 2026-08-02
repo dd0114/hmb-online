@@ -10,10 +10,13 @@
  * hero: *"탭 구조면 그 안에서 조정하면 되지 껐다켰다 할 필요가 없다."* → 토글바를 없애고 탭바
  * 하나만 남긴다. **무엇이 탭으로 뜨는지는 이제 매치 상태가 정한다**(유저 설정이 아니다):
  *
- *   FIRST_HALF   → 통계 · 로그 · 후반 지시
- *   HALFTIME     → 감독 · 경기장면 · 통계 · 로그     (후반 지시는 **감독 탭이 소유**한다 — 아래)
- *   SECOND_HALF  → 통계 · 로그
- *   FINISHED     → 결과 · 통계 · 로그
+ *   FIRST_HALF   → 통계 · 선수 · 로그 · 후반 지시
+ *   HALFTIME     → 감독 · 경기장면 · 통계 · 선수 · 로그   (후반 지시는 **감독 탭이 소유**한다 — 아래)
+ *   SECOND_HALF  → 통계 · 선수 · 로그
+ *   FINISHED     → 결과 · 통계 · 선수 · 로그
+ *
+ * `선수`(#403) = 선수별 경기 기록. 상태 제한이 **없다** — 기록은 어느 단계에서든 볼 수 있고
+ * (진행 중이면 진행분까지), 종료 후 개인 성적도 같은 탭이 답한다(요구 A·B·C).
  *
  * 패널은 여전히 두 종류다:
  *  · **정보 탭**(stats/log/brief): 항상 보인다. 다만 `brief` 는 **써서 의미가 있는 상태에서만**
@@ -24,7 +27,7 @@
 
 import { suppressHalftimePanel } from "../auto-mode";
 
-export type InfoTabKey = "stats" | "log" | "brief";
+export type InfoTabKey = "stats" | "players" | "log" | "brief";
 export type StatePanelKey = "halftime" | "result";
 /**
  * `stage` = **경기장면 탭**(감독시간 전용, #244).
@@ -37,8 +40,13 @@ export type StatePanelKey = "halftime" | "result";
 export type StageTabKey = "stage";
 export type TabKey = InfoTabKey | StatePanelKey | StageTabKey;
 
-/** 정보 탭의 **표시 순서**(내용과 무관한 고정 순서 — 화면마다 달라지면 근육기억이 깨진다). */
-export const INFO_TAB_KEYS: readonly InfoTabKey[] = ["stats", "log", "brief"];
+/**
+ * 정보 탭의 **표시 순서**(내용과 무관한 고정 순서 — 화면마다 달라지면 근육기억이 깨진다).
+ *
+ * `players`(선수 기록, #403)는 **통계 다음**이다 — 목업 ① 그대로이고, 이유는 두 탭이 같은 축의
+ * 두 해상도(팀 → 선수)라 나란히 있어야 "같은 것을 더 자세히"로 읽히기 때문이다.
+ */
+export const INFO_TAB_KEYS: readonly InfoTabKey[] = ["stats", "players", "log", "brief"];
 
 /**
  * 상태 패널이 없을 때 기본으로 열리는 탭 (#284 hero 확정 = 로그).
@@ -50,6 +58,7 @@ export const DEFAULT_INFO_TAB: InfoTabKey = "log";
 /** #244: 이모지를 뺀다 — 색·아이콘이 의미 없이 알록달록해지던 축(재설계 원칙 "색은 4개만"). */
 export const TAB_LABELS: Record<TabKey, string> = {
   stats: "통계",
+  players: "선수",
   log: "로그",
   brief: "후반 지시",
   halftime: "감독",
@@ -387,6 +396,7 @@ export function resolveActiveTab(tabs: readonly TabKey[], preferred: TabKey | nu
 /**
  * 시트 높이 등급 — **콘텐츠와 무관**하다(내용이 쌓여도 높이가 안 변한다). 탭 종류로만 갈린다:
  *  · info(통계·로그) = 낮게 → 무대를 크게 본다(관전이 주목적).
+ *  · **list(선수)** = 목록 → 아래 참조.
  *  · **input(후반 지시)** = 중간 → 관전 중이지만 **적는** 자리라 입력칸까지는 들어와야 한다.
  *  · state(감독·경기장면) = 높게 → 실제로 조작해야 하는 폼/표라 볼 게 많다.
  *  · **result(결과)** = 가장 높게 → 경기가 끝나 무대는 다시보기라 비중이 낮고, 읽을 것(스코어·
@@ -408,11 +418,25 @@ export function resolveActiveTab(tabs: readonly TabKey[], preferred: TabKey | nu
  * (`GrowthReportSection` 이 기용 선수 수만큼 행을 붙인다) — 어떤 고정값도 언젠가 모자란다.
  * CTA 를 지키는 것은 `ResultPanel` 의 **스크롤 밖 고정층**이고(감독시간과 같은 구조), 이 등급은
  * "얼마나 읽히나"를 좋게 할 뿐이다. 둘을 바꿔 생각하면 높이만 만지다 같은 버그로 돌아온다.
+ *
+ * ⚠️ **`players` 는 `info` 도 `state` 도 아니다 — 새 등급 `list` 다** (#403 W2).
+ *  · `info`(26svh → 1280×800 에서 시트 208px · 패널 ~150px)로는 **세그먼트 + 캡션 + 정렬 칩 +
+ *    표 머리**만으로 ~120px 이라 데이터가 한 줄도 안 남는다. 목록인데 목록으로 안 보이면
+ *    아무도 스크롤하지 않는다 — #355 가 결과 카드에서 이미 겪은 실패 모양이다.
+ *  · `state`(40svh/상한 420) 는 **감독시간 조작 폼**의 예산이고, 그 값이 움직이는 이유(보드·
+ *    교체·레일)와 이 화면이 움직여야 할 이유(행 수)가 전혀 다르다. 붙여 두면 한쪽을 고칠 때
+ *    다른 쪽이 근거 없이 따라간다.
+ *  · `result`(52svh/상한 640) 는 **경기가 끝나 무대가 다시보기**인 상태의 값이다. 선수 탭은
+ *    관전 **중에도** 열리므로 그만큼 무대를 먹으면 안 된다.
+ * 값은 `.sheetList`(StageShell.module.css)가 정하고, 지켜야 할 성질(정렬 칩 + 표 머리 + **3행**이
+ * 화면 안 · 나머지는 패널 스크롤로 닿는다)은 `e2e/p403-player-tab.spec.ts` ⑤ 가 데스크탑 9비율
+ * (**세로 짧은 창 포함** — 브라우저 확대가 거기로 떨어진다, #348 MAJOR-1)로 잰다.
  */
-export function sheetHeight(tab: TabKey | null): "info" | "input" | "state" | "result" | null {
+export function sheetHeight(tab: TabKey | null): "info" | "list" | "input" | "state" | "result" | null {
   if (!tab) return null;
   if (tab === "result") return "result";
   // 경기장면 탭도 "state" 높이를 쓴다 — 정보 패널(통계·로그)보다 크게 봐야 뭘 보는지 알 수 있다.
   if (tab === "halftime" || tab === "stage") return "state";
+  if (tab === "players") return "list";
   return tab === "brief" ? "input" : "info";
 }

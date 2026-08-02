@@ -23,7 +23,7 @@ import {
 
 describe("정보 탭 상수 (#284)", () => {
   it("표시 순서는 통계·로그·후반지시로 고정", () => {
-    expect(INFO_TAB_KEYS).toEqual(["stats", "log", "brief"]);
+    expect(INFO_TAB_KEYS).toEqual(["stats", "players", "log", "brief"]);
   });
 
   it("기본 탭은 로그 — 표시 순서의 첫 탭과 **다르다**(둘은 다른 축)", () => {
@@ -242,15 +242,15 @@ describe("탭 구성 (#284 — 토글 제거, 상태가 정한다)", () => {
   });
 
   it("상태별 탭 구성 — hero 확정(#284)", () => {
-    expect(tabsFor("FIRST_HALF", null)).toEqual(["stats", "log", "brief"]);
+    expect(tabsFor("FIRST_HALF", null)).toEqual(["stats", "players", "log", "brief"]);
     // #244: 감독시간에는 무대가 상시가 아니라 **탭**이다 → 감독 패널 바로 뒤에 `stage` 가 온다.
-    expect(tabsFor("HALFTIME", "halftime")).toEqual(["halftime", "stage", "stats", "log"]);
+    expect(tabsFor("HALFTIME", "halftime")).toEqual(["halftime", "stage", "stats", "players", "log"]);
     expect(tabsFor("H1_BREAK", "halftime"), "레거시 상태명도 같은 구성").toEqual([
-      "halftime", "stage", "stats", "log",
+      "halftime", "stage", "stats", "players", "log",
     ]);
-    expect(tabsFor("SECOND_HALF", null)).toEqual(["stats", "log"]);
+    expect(tabsFor("SECOND_HALF", null)).toEqual(["stats", "players", "log"]);
     expect(tabsFor("FINISHED", "result"), "관전·결과에는 경기장면 탭이 없다").toEqual([
-      "result", "stats", "log",
+      "result", "stats", "players", "log",
     ]);
   });
 
@@ -304,8 +304,28 @@ describe("탭 구성 (#284 — 토글 제거, 상태가 정한다)", () => {
     expect(sheetHeight("brief")).not.toBe(sheetHeight("log"));
   });
 
+  /**
+   * #403 W2 — **`players` 는 네 등급 어디에도 안 붙는다.**
+   *
+   * `info`(26svh → 1280×800 시트 208px)면 세그먼트+캡션+정렬 칩+표 머리만으로 크롬이 차서
+   * 데이터가 한 줄도 안 남는다(= 목록인데 목록으로 안 보인다, #355 가 결과 카드에서 겪은 모양).
+   * `state`·`result` 는 각각 **감독시간 조작 폼**·**종료 후 읽기**의 예산이라 움직여야 할 이유가
+   * 다르다 — 붙여 두면 한쪽을 고칠 때 다른 쪽이 근거 없이 따라간다.
+   *
+   * ⚠️ 여기서 `"info"` 로 되돌리면 픽셀 계약(`e2e/p403-player-tab.spec.ts` ③ 데스크탑 스윕 —
+   * 정렬 칩 + 표 머리 + 최소 4행)이 같이 깨진다. 두 층이다.
+   */
+  it("선수 기록은 **list** 등급 — info/state/result 어느 것도 아니다(#403)", () => {
+    expect(sheetHeight("players")).toBe("list");
+    for (const other of ["stats", "log", "brief", "halftime", "stage", "result"] as TabKey[]) {
+      expect(sheetHeight("players"), `players 가 ${other} 와 같은 등급이면 안 된다`).not.toBe(
+        sheetHeight(other),
+      );
+    }
+  });
+
   it("활성 탭: 고른 탭이 살아 있으면 유지", () => {
-    const tabs: TabKey[] = ["halftime", "stage", "stats", "log"];
+    const tabs: TabKey[] = ["halftime", "stage", "stats", "players", "log"];
     expect(resolveActiveTab(tabs, "log")).toBe("log");
     expect(resolveActiveTab(tabs, "stage")).toBe("stage");
     expect(resolveActiveTab([], "stats")).toBeNull();

@@ -327,11 +327,13 @@ test.describe("① 후반 지시 입력칸 — 데스크톱 전 비율", () => {
     });
   }
 
+  // ⚠️ 제목이 **전 탭**이라고 말하면 실제로 전 탭을 돌아야 한다 — `players`(#403)를 빠뜨린 채
+  //    두면 이름이 사실과 어긋나고, 새 탭의 오버플로가 이 스윕을 조용히 비켜간다(독립검증 m3).
   test("문서 스크롤 0 · 시트 폭 ≤ 뷰포트 (데스크톱 전 비율, 전 탭)", async ({ page }) => {
     for (const vp of DESKTOP) {
       await page.setViewportSize(vp);
       await openMatch(page, "FIRST_HALF");
-      for (const key of ["stats", "log", "brief"]) {
+      for (const key of ["stats", "players", "log", "brief"]) {
         await page.getByTestId(`stage-tab-${key}`).click();
         const s = await pageScroll(page);
         expect(s.v, `${vp.name}/${key}: 문서 세로 스크롤 0`).toBeLessThanOrEqual(1);

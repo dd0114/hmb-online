@@ -163,7 +163,7 @@ test.describe("① 토글 제거 — 정보 영역은 처음부터 열려 있다
 
   test("c. 전반 = 통계·로그·후반 지시 / 기본으로 열린 건 **로그**", async ({ page }) => {
     await openMatch(page, "FIRST_HALF");
-    expect(await tabLabels(page)).toEqual(["통계", "로그", "후반 지시"]);
+    expect(await tabLabels(page)).toEqual(["통계", "선수", "로그", "후반 지시"]);
     // 표시 순서의 첫 탭(통계)이 아니다 — 둘은 다른 축이다(hero 확정).
     await expect(page.getByTestId("stage-panel-log")).toBeVisible();
     await expect(page.getByTestId("stage-tab-log")).toHaveAttribute("aria-selected", "true");
@@ -171,7 +171,7 @@ test.describe("① 토글 제거 — 정보 영역은 처음부터 열려 있다
 
   test("d. 무대는 어떤 탭에서도 남는다 (#169 AC-W1-1 유지)", async ({ page }) => {
     await openMatch(page, "FIRST_HALF");
-    for (const key of ["stats", "log", "brief"]) {
+    for (const key of ["stats", "players", "log", "brief"]) {
       await page.getByTestId(`stage-tab-${key}`).click();
       await expect(page.getByTestId("stage-canvas"), `${key} 탭에서도 무대가 있어야 한다`).toBeVisible();
     }
@@ -179,7 +179,7 @@ test.describe("① 토글 제거 — 정보 영역은 처음부터 열려 있다
 
   test("e. 390px 세로/가로 스크롤 0 — 모든 탭에서", async ({ page }) => {
     await openMatch(page, "FIRST_HALF");
-    for (const key of ["stats", "log", "brief"]) {
+    for (const key of ["stats", "players", "log", "brief"]) {
       await page.getByTestId(`stage-tab-${key}`).click();
       const s = await pageScroll(page);
       expect(s.vScroll, `${key} 탭에서 문서 세로 스크롤 0(스크롤은 패널 안에만)`).toBeLessThanOrEqual(1);
@@ -195,7 +195,7 @@ test.describe("① 토글 제거 — 정보 영역은 처음부터 열려 있다
    */
   test("g. 시트가 뷰포트보다 넓어지지 않는다 — 대상 칩 줄이 밀어내면 안 된다", async ({ page }) => {
     await openMatch(page, "FIRST_HALF");
-    for (const key of ["stats", "log", "brief"]) {
+    for (const key of ["stats", "players", "log", "brief"]) {
       await page.getByTestId(`stage-tab-${key}`).click();
       const sheet = (await page.getByTestId("stage-sheet").boundingBox())!;
       expect(sheet.width, `${key} 탭에서 시트 폭이 뷰포트를 넘으면 안 됨`).toBeLessThanOrEqual(PHONE.width + 1);
@@ -223,7 +223,7 @@ test.describe("① 토글 제거 — 정보 영역은 처음부터 열려 있다
 
   test("f. 후반·종료에는 `후반 지시` 탭이 없다 — 내봐야 서버가 409", async ({ page }) => {
     await openMatch(page, "SECOND_HALF");
-    expect(await tabLabels(page)).toEqual(["통계", "로그"]);
+    expect(await tabLabels(page)).toEqual(["통계", "선수", "로그"]);
     await expect(page.getByTestId("stage-tab-brief")).toHaveCount(0);
   });
 });
@@ -441,7 +441,7 @@ test.describe("③ 감독시간으로 이어진다 — 다시 타이핑 금지",
 
   test("c. 감독시간에는 `후반 지시` 탭이 없다 — 같은 문장을 두 칸에서 고치지 않는다", async ({ page }) => {
     await prewriteThenHalftime(page);
-    expect(await tabLabels(page)).toEqual(["감독", "경기장면", "통계", "로그"]);
+    expect(await tabLabels(page)).toEqual(["감독", "경기장면", "통계", "선수", "로그"]);
     await expect(page.getByTestId("stage-tab-brief")).toHaveCount(0);
   });
 
