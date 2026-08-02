@@ -338,7 +338,37 @@ public class PromptContextBuilder {
         }
         List<RosterEntry> roster = buildRoster(deck, List.of()); // 봇은 교체 없음(PoC)
         return context(match, side, half, deck.path("formation").asText(),
-                roster, bot.persona(), playerPrompts, prevSummary);
+                roster, botTeamPrompt(deck, bot), playerPrompts, prevSummary);
+    }
+
+    /**
+     * 봇의 팀 지시문 — 덱 JSON 에 {@code teamPrompt} 필드가 <b>있으면 그 값</b>, 없으면
+     * {@code bot.persona()}(종전 동작).
+     *
+     * <p><b>왜</b>(#402 W1, 라이브 실측): 원정 상대는 실유저 덱을 복사해 구운 <b>고스트</b>다
+     * ({@code AwayService.bakeGhost}). 수비자는 덱 저장 선실행(#215)으로 자기 A 를 이미 만들어 뒀는데,
+     * 고스트로 조회하는 A 키는 이 <b>팀 지시문 자리 하나</b>만 달라서 그걸 못 찾고 매번 풀생성
+     * (20~180초)했다 — 수비자 A 는 <b>덱 팀 문장</b>(#253)을 쓰고 {@code bakeGhost} 는 persona 를
+     * {@code ""} 로 굽기 때문이다. 라이브 증거: 07-31T03:17:58Z 부터 done 이던 수비자 A 를 08-01·08-02
+     * 원정 3건이 못 찾고 58/96/23초를 새로 만들었고, 이 자리만 덱 값으로 바꿔 조회하니 3건 전부 즉시
+     * done 이 나왔다.
+     *
+     * <p><b>왜 이 한 자리로 충분한가</b>: 고스트 덱 JSON = {@code withFrozenAttributes(DeckSnapshot.json(deck, null))}
+     * 로 수비자 A 와 <b>같은 직렬화</b>이고, 얼려 넣은 {@code attributes} 는 A 키에 들어가지 않는다
+     * (키의 attributes 는 {@code players} 카탈로그 조회값 — {@link #playerRow}). 그래서 이 값만 맞추면
+     * {@code deckBaseJob(고스트덱)} 과 <b>바이트 동일</b>한 키가 나온다.
+     *
+     * <p><b>왜 리그봇·시드봇은 무영향인가</b>: {@code DeckSnapshot.json} 은 덱 팀 문장이 non-blank 일
+     * 때만 {@code teamPrompt} 필드를 넣는다. 리그봇·시드봇 덱 JSON 에는 그 필드가 아예 없으므로
+     * (라이브 {@code bots} 전수 확인) 폴백이 그대로 걸린다 = 기존 A 키 무변경.
+     *
+     * <p>⚠️ 키만 맞추면 안 된다 — 봇이 AI 프롬프트로 <b>받는</b> 팀 지시문도 같은 값이어야 한다
+     * ({@link #buildBotContext} 도 이 함수를 쓴다). 어긋나면 "재사용한 결과와 실제 프롬프트가 다른"
+     * 상태가 된다. (hero 승인: 고스트가 수비자의 팀 지시대로 싸우는 것이 의도다.)
+     */
+    private String botTeamPrompt(JsonNode deck, BotService.BotRow bot) {
+        JsonNode node = deck == null ? null : deck.get("teamPrompt");
+        return node != null && node.isTextual() ? node.asText() : bot.persona();
     }
 
     private Map<String, Object> context(MatchService.MatchRow match, String side, int half,
@@ -422,12 +452,18 @@ public class PromptContextBuilder {
         return baseJob(deck.path("formation").asText(), roster, deckTeamPrompt(deck), playerPrompts);
     }
 
-    /** 봇팀 A 잡(봇 덱 기준). teamPrompt = 봇 페르소나(고정). */
+    /**
+     * 봇팀 A 잡(봇 덱 기준). teamPrompt = {@link #botTeamPrompt} — 덱에 팀 문장이 실려 있으면
+     * (원정 고스트) 그 값, 아니면 봇 페르소나(리그봇·시드봇).
+     *
+     * <p>고스트일 때 이 산출은 {@link #deckBaseJob}(수비자 덱)과 <b>바이트 동일</b>하다 = 수비자가
+     * 저장 시점에 만들어 둔 A 를 그대로 재사용한다(#402 AC1).
+     */
     public BaseJob botBaseJob(MatchService.MatchRow match, BotService.BotRow bot) {
         JsonNode deck = readJson(bot.deckJson());
         List<RosterEntry> roster = buildRoster(deck, List.of());
         Map<String, String> playerPrompts = deckBasePlayerPrompts(deck, roster);
-        return baseJob(deck.path("formation").asText(), roster, bot.persona(), playerPrompts);
+        return baseJob(deck.path("formation").asText(), roster, botTeamPrompt(deck, bot), playerPrompts);
     }
 
     private BaseJob baseJob(String formation, List<RosterEntry> roster,

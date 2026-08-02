@@ -87,6 +87,59 @@ public class DeckPrewarmService {
     }
 
     /**
+     * <b>활성 덱이 있으면 그 덱의 A 도 있다</b>를 상시 보증한다 — 읽기 경로({@code GET /api/deck})가 건다.
+     *
+     * <p><b>왜</b>(라이브 실측, #402 W1): A 재생성 트리거가 {@link #onDeckSaved}(덱 저장) 하나뿐이라
+     * <b>덱을 안 건드리면 영영 복구되지 않는다</b>. 라이브 활성덱 보유 유저 61명 중 <b>36명(59%)</b> 이
+     * 현재 덱의 A 를 아예 갖고 있지 않았다 — 전원 마지막 저장이 A 키 규약 v1→v2 범프(#324) 이전이거나
+     * 저장 이력이 없다. 그 유저들은 경기를 시작할 때마다 20~180초를 새로 만들어 기다린다. 규약 범프·
+     * 카탈로그 교체처럼 <b>서버 사정으로</b> 캐시가 무효화되는 일은 앞으로도 있으므로, 복구를 유저의
+     * 저장 행위에 매달아 두면 안 된다.
+     *
+     * <p><b>핫 경로 규율</b>: 덱 조회는 화면 진입마다 일어난다. 흔한 경우(A 가 이미 있고 failed 가
+     * 아니며 원장도 그 baseId 를 가리킴)에는 <b>DB 쓰기가 0</b> 이다 — 조회를 쓰기로 만들면
+     * {@code deck_prewarm} 이 유저당 1행이라 write 경합까지 따라온다. 그 밖의 경우에만 {@link #warm}
+     * (회수+원장+enqueue 한 트랜잭션, {@code reviveIfDead} 포함)으로 간다.
+     *
+     * <p>실패는 전부 삼킨다 — <b>조회 응답을 절대 깨뜨리지 않는다</b>. 덱이 없는 유저(신규)의 404 도
+     * 여기로 오므로 로그는 debug 다(정상 상태를 warn 으로 쌓지 않는다).
+     */
+    public void ensureWarm(String userId) {
+        if (!enabled) {
+            return;
+        }
+        try {
+            DeckService.DeckResponse deck = deckService.getActiveDeck(userId);
+            String deckJson = deckSnapshot.json(deck, null);   // 저장 선실행과 같은 직렬화(같은 키)
+            PromptContextBuilder.BaseJob base =
+                    contextBuilder.deckBaseJob(contextBuilder.readJson(deckJson));
+            if (isWarm(userId, base.baseId())) {
+                return;   // 흔한 경로 — 쓰기 0
+            }
+            warm(userId, base);
+        } catch (Exception e) {
+            log.debug("덱 조회 선실행 보증 실패(user {}) — 무시(킥오프 폴백이 소유): {}", userId, e.toString());
+        }
+    }
+
+    /**
+     * 이 유저에 대해 <b>더 할 일이 없나</b> = 그 A 행이 살아 있고(failed 아님) 원장도 그걸 가리킨다.
+     *
+     * <p>둘 다 봐야 한다: 행만 보면 원장 미기록 유저가 남의 재저장에 회수당하고(F2 가 막은 그것),
+     * 원장만 보면 잡이 실패로 굳거나 사라진 것을 못 잡는다.
+     */
+    private boolean isWarm(String userId, String baseId) {
+        Long n = jdbcClient.sql("""
+                        SELECT COUNT(*) FROM ai_jobs j
+                        JOIN deck_prewarm p ON p.user_id = ? AND p.base_id = j.id
+                        WHERE j.id = ? AND j.match_id IS NULL AND j.status <> 'failed'
+                        """)
+                .params(userId, baseId)
+                .query(Long.class).single();
+        return n != null && n > 0;
+    }
+
+    /**
      * <b>한 트랜잭션</b>: 직전 잡 회수 → 원장 갱신 → 새 A enqueue. 셋이 쪼개지면 그 사이에
      * "회수는 됐는데 새 잡은 없는" 상태가 남에게 보이고, 그때 킥오프가 오면 폴백 풀생성으로 떨어진다.
      */
