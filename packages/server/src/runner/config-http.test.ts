@@ -4,7 +4,7 @@ import type { Server } from "node:http";
 import { demoSeed, demoHome, demoAway, demoSelect, defaultEngineConfig } from "@hmb/engine";
 import { createRunnerServer, validateStatusFor } from "./runner-main.js";
 import { OverrideError } from "./config-overlay.js";
-import { SmokeError } from "./config-validate.js";
+import { SmokeError, smokeIssues } from "./config-validate.js";
 
 /**
  * #383 W1 — 러너 HTTP 표면 (T-R3 매핑 · T-R7 validate/knobs).
@@ -90,14 +90,27 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
     expect(res.status).toBe(400);
   });
 
-  it("POST /config/validate — **경기가 성립하지 않는 값**은 400 (스모크 게이트 발화, T-R7 후반)", async () => {
+  it("스모크 게이트가 **판정을 한다** — 경기가 성립하지 않는 결과를 통과시키지 않는다 (T-R7 후반)", () => {
     // 이 스모크는 배포 게이트를 없앤 대가로 존재하는 **유일한 대체 게이트**다(AC5). 경로/타입
-    // 오류만 테스트하면 이 게이트가 조용히 죽어도 아무 데서도 빨간불이 안 켜진다(독립검증 M4).
-    // matchMinutes=1 은 경로도 타입도 멀쩡하다 — 돌려 봐야만 "경기가 안 된다"를 알 수 있다.
-    const res = await post("/config/validate", { overrides: { matchMinutes: 1 } });
-    expect(res.status).toBe(400);
-    const body = (await res.json()) as { issues: string[] };
-    expect(body.issues.join(" ")).toMatch(/패스가 0건|이벤트가 하나도|소유자가 한 번도|예외로 죽었/);
+    // 오류만 테스트하면 게이트가 조용히 죽어도 아무 데서도 빨간불이 안 켜진다(독립검증 M4).
+    //
+    // ⚠️ 원래 이 계약은 `{"matchMinutes":1}` 로 게이트를 태웠다. 그런데 `matchMinutes` 가 거부
+    // 목록으로 가면서(W0 부록 2항) **게이트를 발화시킬 오버레이 입력이 없어졌다** — 극단값을
+    // 넣어도 엔진이 이벤트·패스·소유 전환을 계속 만든다(실측: speed.maxPerTick:0 ·
+    // ball.passSpeed:0 · contest.passBase:0 전부 ev≈200~450). 엔진이 견고한 것은 좋은 일이지만
+    // 그 때문에 게이트가 관측 불가가 되면 M4 로 되돌아간다. 그래서 **판정 자체**를 태운다.
+    for (const broken of [
+      { seed: "s", ticks: 0, events: 0, passEventsHome: 0, passEventsAway: 0, ownerChanges: 0 },
+      { seed: "s", ticks: 100, events: 0, passEventsHome: 1, passEventsAway: 1, ownerChanges: 1 },
+      { seed: "s", ticks: 100, events: 10, passEventsHome: 0, passEventsAway: 1, ownerChanges: 1 },
+      { seed: "s", ticks: 100, events: 10, passEventsHome: 1, passEventsAway: 0, ownerChanges: 1 },
+      { seed: "s", ticks: 100, events: 10, passEventsHome: 1, passEventsAway: 1, ownerChanges: 0 },
+    ]) {
+      expect(smokeIssues(broken).length, `${JSON.stringify(broken)} 가 통과했다`).toBeGreaterThan(0);
+    }
+    // 정상 결과는 통과시킨다 — 게이트가 전부를 막으면 기능이 죽는다.
+    expect(smokeIssues({ seed: "s", ticks: 1350, events: 300, passEventsHome: 100, passEventsAway: 100, ownerChanges: 400 }))
+      .toEqual([]);
   });
 
   it("POST /config/validate — 무효 노브(#338)는 400 (죽은 노브를 '적용됨'으로 보이게 하지 않는다)", async () => {
@@ -151,10 +164,10 @@ describe("runner HTTP — 계수 오버레이 (#383)", () => {
     expect(body.droppedOverrides?.map((d) => d.path)).toEqual(["nope.nope"]);
   });
 
-  it("POST /config/validate — 러너를 재우는 값은 **작성에서** 400 (재생은 버린다, M-A)", async () => {
+  it("POST /config/validate — `matchMinutes` 는 **구조 경로**라 400 (W0 부록 2항)", async () => {
     const res = await post("/config/validate", { overrides: { matchMinutes: 100000 } });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { issues: string[] }).issues.join(" ")).toContain("단일 프로세스");
+    expect(((await res.json()) as { issues: string[] }).issues.join(" ")).toContain("구조 경로");
   });
 
   it("POST /simulate — 그 값이 이미 박혀 있으면 **200 + 버림**(진행 중 매치를 죽이지 않는다)", async () => {

@@ -26,6 +26,14 @@ import type { EngineConfigOverrides } from "@hmb/shared";
  */
 export const STRUCTURAL_KEYS: readonly string[] = [
   "version",
+  // ⚠️ `matchMinutes` 는 계수처럼 보이지만 **거부한다**(main 확정, W0 부록 2항). 이유는 이 값이
+  // 오버레이 중 유일하게 **런타임 비용**을 정하기 때문이다 — 러너는 단일 프로세스라
+  // `{"matchMinutes":100000}` 한 줄이 이후 모든 `/simulate` 를 붙잡아 **진행 중인 전 매치의
+  // 하프를 같이 세운다**(실측 8분+ 미완). 틱 상한으로 막아 봤지만 그 상한 자체가
+  // `msPerTick`(구조값, 배포에서 온다)에 달려 있어 **어제 통과한 값이 오늘 무효가 되는** 축을
+  // 새로 만들었다(독립검증 M-A). 노브 하나를 포기해 그 축을 통째로 없애는 쪽이 싸다 —
+  // 경기 길이를 무배포로 실험할 일은 없고, 계수 튜닝이라는 이 기능의 목적과도 무관하다.
+  "matchMinutes",
   "msPerTick",
   "fixedScale",
   "coordMode",
@@ -78,19 +86,6 @@ export const INERT_KNOBS: readonly string[] = [
   "clearance.boxWeightMult",
   "ball.shotSpeed",
 ];
-
-/**
- * 한 하프가 넘어서면 안 되는 틱 수(#383 독립검증 M2).
- *
- * `matchMinutes` 는 수치 리프라 검증을 전부 통과하는데, 러너는 <b>단일 프로세스</b>다 —
- * `{"matchMinutes":100000}` 한 줄이 `/config/validate` 스모크와 이후 모든 `/simulate` 를 분 단위로
- * 붙잡아 <b>진행 중인 전 매치의 하프를 같이 세운다</b>(실측 8분+ 미완). 원장은 fail-closed 라
- * 안전하지만 가용성 사고는 그대로 난다. 오타 하나(`100`→`100000`)로 재현된다.
- *
- * 기본값(45분 · 1초 틱)의 하프는 1350틱이다. 20배를 상한으로 둔다 — 실험 여지는 남기고
- * "러너를 재우는 값"은 막는 자리.
- */
-export const MAX_HALF_TICKS = 27_000;
 
 export type KnobType = "number" | "boolean";
 export interface Knob {
@@ -240,22 +235,12 @@ function judge(base: EngineConfig, knobs: Map<string, Knob>, path: string, value
 export function assertAuthorable(base: EngineConfig, overrides: EngineConfigOverrides | undefined): void {
   const issues = inertIssues(overrides);
   const knobs = knobPaths(base);
-  const merged = structuredClone(base) as unknown as Record<string, unknown>;
   for (const [path, value] of Object.entries(overrides ?? {})) {
     if (INERT_KNOBS.includes(path)) continue; // 위에서 이미 사유를 담았다
     const v = judge(base, knobs, path, value);
-    if (v.kind === "reject") {
-      issues.push(`${path}: ${v.reason}`);
-      continue;
-    }
-    const parts = path.split(".");
-    let node = merged;
-    for (const part of parts.slice(0, -1)) node = node[part] as Record<string, unknown>;
-    node[parts[parts.length - 1] as string] = value;
+    if (v.kind === "reject") issues.push(`${path}: ${v.reason}`);
   }
   if (issues.length > 0) throw new OverrideError(issues);
-  // 비용 상한은 **작성에서 400** 이다 — 운영자가 지금 고칠 수 있는 유일한 시점이다.
-  assertAffordable(merged as unknown as EngineConfig);
 }
 
 /**
@@ -287,15 +272,16 @@ export function assertAuthorable(base: EngineConfig, overrides: EngineConfigOver
  * 남고 서버가 WARN 을 찍는다. 유효 config 지문은 <b>실제로 돈 config</b>를 가리키므로 재현 계약도
  * 그대로다.
  *
- * <b>이 함수는 한 줄도 던지지 않는다.</b> 런타임 비용 상한(`matchMinutes`)마저 버린다 —
- * 처음엔 그것만 "성질이 반대라 재생에 남아도 된다"는 근거로 남겼는데, <b>그 근거가 거짓이었다</b>
- * (독립검증 M-A): 상한은 `matchMinutes × 60000 / msPerTick` 이고 `msPerTick` 은 <b>구조값</b>이라
- * 오버레이가 아니라 <b>배포된 base</b> 에서 온다. 버리면 base 값으로 복귀하고 base 는 정의상
- * 상한 안이라, 러너를 재우는 위험은 던지지 않고도 그대로 막힌다.
+ * <b>이 함수는 한 줄도 던지지 않는다.</b> 마지막까지 남아 있던 런타임 비용 상한은 <b>노브 자체를
+ * 포기해</b> 없앴다(main 확정, W0 부록 2항) — `matchMinutes` 가 {@link STRUCTURAL_KEYS} 로 올라가
+ * 여기서는 다른 구조 경로와 똑같이 <b>버려진다</b>. 상한을 재생에 두면 그 상한이 `msPerTick`
+ * (구조값, 배포에서 온다)에 달려 있어 <b>어제 통과한 값이 오늘 무효가 되는</b> 축이 생겼고
+ * (독립검증 M-A), 상한을 재생에서 버리는 것으로 고치면 코드와 계약이 그만큼 남는다.
+ * 노브 하나를 포기하는 쪽이 싸다 — 경기 길이를 무배포로 실험할 일은 없다.
  *
- * ⚠️ 여기에 throw 를 다시 넣고 싶어질 때 읽을 것: 위 B2·B3·M-A 는 <b>전부 같은 실수</b>였고
- * 그때마다 "이건 다르다"는 그럴듯한 근거가 있었다. 던져도 되는 유일한 조건은 <b>그 판정의 답이
- * 배포로 바뀌지 않는 것</b>이고, 세 번 다 그 조건을 확인하지 않고 그렇다고 믿었다.
+ * ⚠️ 여기에 throw 를 다시 넣고 싶어질 때 읽을 것: B2·B3·M-A 는 <b>전부 같은 실수</b>였고 그때마다
+ * "이건 다르다"는 그럴듯한 근거가 있었다. 던져도 되는 유일한 조건은 <b>그 판정의 답이 배포로
+ * 바뀌지 않는 것</b>이고, 세 번 다 그 조건을 확인하지 않고 그렇다고 믿었다.
  */
 export function applyOverrides(
   base: EngineConfig,
@@ -330,28 +316,6 @@ export function applyOverrides(
   }
   // 경로 순서를 정렬해 두면 감사 원장·diff 가 요청 키 순서에 흔들리지 않는다.
   accepted.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-  // 비용 상한도 **재생에서는 버린다**(독립검증 M-A). 이 판정 역시 시간이 지나면 답이 바뀐다 —
-  // 상한은 `matchMinutes × 60000 / msPerTick` 인데 `msPerTick` 은 **구조값**이라 오버레이가 아니라
-  // 배포된 base 에서 온다(Tier C 0.25초 물리로 가면 1000→250, 허용 상한이 900분→225분이 된다).
-  // 그러면 어제 통과한 오버레이가 오늘 진행 중 매치를 죽인다 = B2/B3 과 같은 구조다.
-  // B2 수습이 "이건 답이 안 바뀌니 남겨도 된다"고 근거를 댄 자리인데 그 전제가 거짓이었다.
-  //
-  // 버리는 것이 안전한 이유: 버리면 `matchMinutes` 가 **base 값으로 복귀**하고 base 는 정의상
-  // 상한 안이다. 러너를 재우는 위험은 그대로 막힌다.
-  // ⚠️ 이 폴백은 **base 가 상한 안**임을 전제한다(독립검증 m8). 오늘 HTTP 경로의 base 는
-  // `defaultEngineConfig` 뿐이라 항상 참이지만, 전제가 깨지면 조용히 상한 밖 config 를 돌려주게
-  // 되므로 그때는 오버레이 탓을 하지 않고 base 를 그대로 돌려준다(원인을 오귀속하지 않는다).
-  if (!affordable(config) && affordable(base)) {
-    const base0 = base.matchMinutes;
-    (config as { matchMinutes: number }).matchMinutes = base0;
-    const idx = accepted.findIndex((c) => c.path === "matchMinutes");
-    if (idx >= 0) accepted.splice(idx, 1);
-    dropped.push({ path: "matchMinutes", reason: affordabilityReason(base) });
-    dropped.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
-    if (accepted.length === 0) {
-      return { config: base, hash: effectiveConfigHash(base), changed: [], dropped };
-    }
-  }
   return { config, hash: effectiveConfigHash(config), changed: accepted, dropped };
 }
 
@@ -388,39 +352,4 @@ export function inertIssues(overrides: EngineConfigOverrides | undefined): strin
         `${path}: 지금 엔진(사슬 기본)에서 **실행 경로가 없는 노브**입니다 — 값을 바꿔도 경기가 ` +
         `비트 단위로 동일합니다(#338 레지스트리). 롤백 스위치의 자산이라 남아 있을 뿐입니다.`,
     );
-}
-
-/**
- * 이 config 로 한 하프를 돌리는 비용이 상한 안인가(#383 독립검증 M2). 러너는 단일 프로세스라
- * 한 요청이 오래 돌면 <b>다른 매치의 하프가 전부 밀린다</b> — 값 하나가 가용성 사고가 되는 자리다.
- *
- * ⚠️ 처분은 계층마다 다르다(M-A): <b>작성은 400</b>(운영자가 지금 고칠 수 있다),
- * <b>재생은 그 경로만 버린다</b>(base 값으로 복귀 = 정의상 상한 안 = 위험은 그대로 막힌다).
- * 재생에서 던지면 `msPerTick` 배포 변경이 이미 걸린 오버레이를 소급 무효로 만들어 매치를 죽인다.
- */
-function ticksPerHalf(config: EngineConfig): number {
-  return Math.ceil((config.matchMinutes * 60_000) / config.msPerTick / 2);
-}
-
-function affordable(config: EngineConfig): boolean {
-  return ticksPerHalf(config) <= MAX_HALF_TICKS;
-}
-
-function affordabilityReason(base: EngineConfig): string {
-  return (
-    `한 하프가 상한 ${MAX_HALF_TICKS}틱을 넘습니다(러너는 단일 프로세스라 이 값 하나가 진행 중인 ` +
-    `다른 매치의 하프까지 세웁니다). 이 재생에서는 그 경로를 버리고 기본값 ` +
-    `${base.matchMinutes}분으로 돌립니다.`
-  );
-}
-
-/** 작성 게이트용 — 상한을 넘으면 {@link OverrideError}. */
-function assertAffordable(config: EngineConfig): void {
-  if (!affordable(config)) {
-    throw new OverrideError([
-      `matchMinutes=${config.matchMinutes}: 한 하프가 ${ticksPerHalf(config)}틱이 되어 상한 ` +
-        `${MAX_HALF_TICKS}틱을 넘습니다. 러너는 단일 프로세스라 이 값 하나가 진행 중인 다른 ` +
-        `매치의 하프까지 세웁니다.`,
-    ]);
-  }
 }

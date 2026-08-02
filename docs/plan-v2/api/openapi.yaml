@@ -2027,7 +2027,7 @@ paths:
       summary: |
         오버레이 가능한 리프 전수 + 현재 기본값(러너 위임). 운영자가 경로 이름을 **추측하지 않게**
         한다 — 이게 없으면 오타 → 400 → 소스 뒤지기의 왕복이 생긴다.
-        구조 경로(version·msPerTick·fixedScale·coordMode·gridSize·pitch.*·formations.*)는 목록에 없다.
+        구조 경로(version·**matchMinutes**·msPerTick·fixedScale·coordMode·gridSize·pitch.*·formations.*)는 목록에 없다.
         무효 노브(#338)는 `knobs` 가 아니라 `inertKnobs` 에 **사유와 함께** 따로 나온다 — 목록에서
         통째로 지우면 "내가 아는 그 노브가 왜 없지?"가 되어 결국 소스를 뒤지게 된다.
         ⚠️ `knobs` 에 있다는 것이 **경기가 달라진다는 보장은 아니다** — 이 필터는 엔진 #338

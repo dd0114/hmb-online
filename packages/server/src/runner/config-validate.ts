@@ -51,6 +51,33 @@ export class SmokeError extends Error {
   }
 }
 
+/**
+ * 스모크 결과 하나를 판정한다 — <b>"경기가 성립하는가"</b>만 본다(밸런스 밴드는 보지 않는다).
+ *
+ * <b>왜 순수 함수로 뽑았나</b>(독립검증 6차 후속): `matchMinutes` 가 거부 목록으로 가면서
+ * <b>이 게이트를 발화시킬 수 있는 오버레이 입력이 없어졌다</b>. 실측으로 확인했다 —
+ * `speed.maxPerTick:0` · `ball.passSpeed:0` · `contest.passBase:0`(+`controlRange:0`) ·
+ * `ball.friction.ground:0|1` · `chain.goalValue:0` 등 극단값을 넣어도 엔진은 이벤트·패스·소유
+ * 전환을 계속 만든다(전부 `ev≈200~450 · own≈250~600`). <b>엔진이 견고한 것은 좋은 일이지만</b>,
+ * 그 결과로 이 게이트를 태울 자연 입력이 사라지면 <b>게이트가 조용히 죽어도 아무 데서도 빨간불이
+ * 안 켜진다</b> — 1차 독립검증 M4 가 지적한 바로 그 상태로 되돌아간다.
+ *
+ * 그래서 <b>판정을 값에서 분리</b>해 계약이 결과를 지어내 태울 수 있게 한다. 배포 게이트를 없앤
+ * 대가로 둔 유일한 대체 게이트이므로, "실제로 발화하는 입력이 지금 없다"는 것이 "판정이 없어도
+ * 된다"는 뜻이 되면 안 된다.
+ */
+export function smokeIssues(r: SmokeResult): string[] {
+  const issues: string[] = [];
+  if (r.ticks === 0) issues.push(`seed=${r.seed}: 틱이 하나도 생성되지 않았습니다`);
+  if (r.events === 0) issues.push(`seed=${r.seed}: 이벤트가 하나도 없습니다(경기가 성립하지 않습니다)`);
+  if (r.passEventsHome === 0) issues.push(`seed=${r.seed}: home 팀 패스가 0건입니다`);
+  if (r.passEventsAway === 0) issues.push(`seed=${r.seed}: away 팀 패스가 0건입니다`);
+  if (r.ownerChanges === 0) {
+    issues.push(`seed=${r.seed}: 공 소유자가 한 번도 바뀌지 않았습니다(경기가 멈춰 있습니다)`);
+  }
+  return issues;
+}
+
 function smokeOnce(seed: string, overrides: EngineConfigOverrides | undefined): SmokeResult {
   const res = simulate({
     seed,
@@ -113,11 +140,7 @@ export function validateOverrides(overrides: EngineConfigOverrides | undefined):
       continue;
     }
     smoke.push(r);
-    if (r.ticks === 0) issues.push(`seed=${seed}: 틱이 하나도 생성되지 않았습니다`);
-    if (r.events === 0) issues.push(`seed=${seed}: 이벤트가 하나도 없습니다(경기가 성립하지 않습니다)`);
-    if (r.passEventsHome === 0) issues.push(`seed=${seed}: home 팀 패스가 0건입니다`);
-    if (r.passEventsAway === 0) issues.push(`seed=${seed}: away 팀 패스가 0건입니다`);
-    if (r.ownerChanges === 0) issues.push(`seed=${seed}: 공 소유자가 한 번도 바뀌지 않았습니다(경기가 멈춰 있습니다)`);
+    issues.push(...smokeIssues(r));
   }
   if (issues.length > 0) throw new SmokeError(issues);
 

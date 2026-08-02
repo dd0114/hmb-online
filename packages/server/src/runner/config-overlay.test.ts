@@ -13,7 +13,6 @@ import {
   OverrideError,
   effectiveConfigHash,
   INERT_KNOBS,
-  MAX_HALF_TICKS,
 } from "./config-overlay.js";
 
 /** 이 config 로 전반을 돌린 결과의 지문 — "값을 바꿔도 경기가 같은가"의 관측 지점. */
@@ -269,34 +268,12 @@ describe("#383 B2 — 박제된 오버레이의 재생은 작성 게이트에 �
     expect(hashOfHalf(config)).toBe(hashOfHalf(defaultEngineConfig)); // 경기는 같다
   });
 
-  it("런타임 비용 상한도 **재생에서는 버린다** — 던지지 않는다 (독립검증 M-A)", () => {
-    // 처음엔 이 게이트를 "답이 시간에 따라 안 바뀌니 재생에 남겨도 된다"는 근거로 남겼는데,
-    // 그 전제가 거짓이었다: 상한은 `matchMinutes × 60000 / msPerTick` 이고 `msPerTick` 은
-    // **구조값**이라 배포된 base 에서 온다(Tier C 로 가면 1000→250, 상한 900분→225분).
-    // 버리면 `matchMinutes` 가 base 로 복귀하고 base 는 정의상 상한 안이라 위험은 그대로 막힌다.
-    const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
-    const { config, dropped, changed } = applyOverrides(defaultEngineConfig, { matchMinutes: overMinutes });
+  it("`matchMinutes` 는 **구조 경로**라 재생에서도 다른 구조 경로와 똑같이 버려진다", () => {
+    const { config, dropped, changed } = applyOverrides(defaultEngineConfig, { matchMinutes: 100000 });
     expect(dropped.map((d) => d.path)).toEqual(["matchMinutes"]);
+    expect(dropped[0]!.reason).toContain("구조 경로");
     expect(config.matchMinutes).toBe(defaultEngineConfig.matchMinutes);
     expect(changed).toEqual([]);
-  });
-
-  it("**작성은 여전히 400** — 운영자가 지금 고칠 수 있는 유일한 시점이다", () => {
-    const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
-    expect(() => assertAuthorable(defaultEngineConfig, { matchMinutes: overMinutes }))
-      .toThrow(/단일 프로세스/);
-  });
-
-  it("상한을 넘겨도 **다른 노브는 살아남는다**(하나가 죽어도 나머지는 산다)", () => {
-    const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
-    const { config, changed, dropped } = applyOverrides(defaultEngineConfig, {
-      matchMinutes: overMinutes,
-      "contest.shootRange": 22,
-    });
-    expect(dropped.map((d) => d.path)).toEqual(["matchMinutes"]);
-    expect(changed.map((c) => c.path)).toEqual(["contest.shootRange"]);
-    expect(config.contest.shootRange).toBe(22);
-    expect(config.matchMinutes).toBe(defaultEngineConfig.matchMinutes);
   });
 });
 
@@ -338,25 +315,46 @@ describe("#338 무효 노브 목록 자체의 위생", () => {
   });
 });
 
-describe("런타임 비용 상한 (독립검증 M2)", () => {
-  it("한 하프가 상한 틱을 넘기는 matchMinutes 는 **작성에서** 거부된다", () => {
-    const overMinutes = Math.ceil((MAX_HALF_TICKS * 2 * 1000) / 60_000) + 10;
+/**
+ * **`matchMinutes` 는 오버레이할 수 없다**(main 확정, W0 부록 2항 — 6차 검증 후속).
+ *
+ * 계수처럼 보이지만 이 값만 **런타임 비용**을 정한다: 러너는 단일 프로세스라
+ * `{"matchMinutes":100000}` 한 줄이 이후 모든 `/simulate` 를 붙잡아 진행 중인 전 매치의 하프를
+ * 같이 세운다. 틱 상한으로 막아 봤더니 그 상한 자체가 `msPerTick`(구조값)에 달려 있어
+ * **어제 통과한 값이 오늘 무효가 되는** 축을 새로 만들었다(독립검증 M-A). 노브 하나를 포기해
+ * 그 축을 통째로 없앴다 — 경기 길이를 무배포로 실험할 일은 없다.
+ */
+describe("matchMinutes 는 구조 경로다 (W0 부록 2항)", () => {
+  it("작성에서 거부된다 — 사유가 '구조 경로'다(비용 상한이 아니라)", () => {
     let err: OverrideError | undefined;
     try {
-      assertAuthorable(defaultEngineConfig, { matchMinutes: overMinutes });
+      assertAuthorable(defaultEngineConfig, { matchMinutes: 100000 });
     } catch (e) {
       err = e as OverrideError;
     }
-    expect(err, "러너를 분 단위로 재우는 값이 통과했다").toBeInstanceOf(OverrideError);
-    expect(err!.issues.join(" ")).toContain("단일 프로세스");
+    expect(err, "경기 길이가 오버레이로 통과했다").toBeInstanceOf(OverrideError);
+    expect(err!.issues.join(" ")).toContain("구조 경로");
   });
 
-  it("상식적인 실험 범위(기본의 몇 배)는 계속 허용된다 — 상한이 기능을 죽이면 안 된다", () => {
-    expect(() => assertAuthorable(defaultEngineConfig, { matchMinutes: 180 })).not.toThrow();
-    expect(applyOverrides(defaultEngineConfig, { matchMinutes: 180 }).config.matchMinutes).toBe(180);
+  it("**상식적인 값이어도** 거부된다 — 상한이 아니라 축 자체를 없앤 것이다", () => {
+    expect(() => assertAuthorable(defaultEngineConfig, { matchMinutes: 90 })).toThrow(OverrideError);
+  });
+
+  it("`knobs` 목록에 아예 없다 — 운영자가 400 을 겪기 전에 목록에서부터 안 보인다", () => {
+    expect(knobPaths(defaultEngineConfig).has("matchMinutes")).toBe(false);
+  });
+
+  it("같이 보낸 **다른 노브는 산다**(하나가 죽어도 나머지는 산다)", () => {
+    const { config, changed, dropped } = applyOverrides(defaultEngineConfig, {
+      matchMinutes: 100000,
+      "contest.shootRange": 22,
+    });
+    expect(dropped.map((d) => d.path)).toEqual(["matchMinutes"]);
+    expect(changed.map((c) => c.path)).toEqual(["contest.shootRange"]);
+    expect(config.contest.shootRange).toBe(22);
+    expect(config.matchMinutes).toBe(defaultEngineConfig.matchMinutes);
   });
 });
-
 describe("에러 메시지가 거짓말하지 않는다 (독립검증 M3)", () => {
   it("존재하지만 오버레이 불가한 리프(`chain.mode`)에 '경로가 없다'고 하지 않는다", () => {
     let err: OverrideError | undefined;

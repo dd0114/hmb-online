@@ -193,13 +193,14 @@ describe("B3 — simulate(재생)은 미지 경로에 죽지 않고 버린다", 
     expect(simulate(h1({ "contest.nopeNope": 1 })).lastHash).toBe(simulate(h1()).lastHash);
   });
 
-  it("**재생에는 throw 가 하나도 남지 않았다** — 비용 상한마저 버린다(M-A)", () => {
+  it("**재생에는 오버레이 때문에 죽는 throw 가 없다** — `matchMinutes` 도 그냥 버린다", () => {
     // 이 자리엔 "비용 상한은 재생에서도 throw" 계약이 있었다. 그 근거("답이 시간에 따라 안 바뀐다")가
-    // 거짓이라 M-A 로 뒤집혔다 — 상한은 `msPerTick`(구조값, 배포로 바뀐다)에 달려 있다.
+    // 거짓이었고(M-A: 상한이 `msPerTick`= 구조값에 달려 있다), 결국 **노브 자체를 거부 목록으로**
+    // 올려 그 축을 없앴다(W0 부록 2항). 이제 다른 구조 경로와 처분이 같다.
     const res = simulate(h1({ matchMinutes: 100000 }));
     expect(res.matchLog.tickSnapshots.length).toBeGreaterThan(0);
     expect(res.droppedOverrides?.map((d) => d.path)).toEqual(["matchMinutes"]);
-    // 버린 뒤엔 base 값으로 돈다 = 러너를 재우는 위험은 그대로 막혔다.
+    // 버렸으므로 오버레이 없이 돈 하프와 비트 동일 = 러너를 재우는 위험도 없다.
     expect(res.lastHash).toBe(simulate(h1()).lastHash);
   });
 });
