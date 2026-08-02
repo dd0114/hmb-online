@@ -63,8 +63,18 @@ function defaultMissions(): MissionSpec[] {
   ];
 }
 
+/** 지난 날짜 달성·미수령 한 건. **`progress`/`target`/`rerollable` 이 없다**(서버 계약). */
+interface PendingSpec {
+  id: string;
+  day: string;
+  title: string;
+  tier: string;
+  amount: number;
+}
+
 interface DailyOpts {
   missions?: MissionSpec[];
+  pendingClaims?: PendingSpec[];
   claimableCount?: number;
   claimableAmount?: number;
   /** 구 서버 재현 — `/api/missions/daily` 자체가 404. */
@@ -86,11 +96,25 @@ function dailyPayload(o: DailyOpts = {}) {
     state: m.state,
     rerollable: m.rerollable,
   }));
+  const pendingClaims = (o.pendingClaims ?? []).map((p) => ({
+    id: p.id,
+    day: p.day,
+    missionId: "away_win_2",
+    title: p.title,
+    tier: p.tier,
+    currency: "GEM",
+    amount: p.amount,
+  }));
   return {
     day: "2026-08-02",
     resetAtKst: "2026-08-03T00:00:00+09:00",
     missions,
-    claimableCount: o.claimableCount ?? missions.filter((m) => m.state === "COMPLETED").length,
+    pendingClaims,
+    // 서버는 이 둘을 **화면 데이터에서 파생**시킨다(missions 의 COMPLETED + pendingClaims 전부).
+    // 목도 같은 규칙을 지켜야 계약이 자기가 만든 세계를 검사하지 않는다(#342 규율).
+    claimableCount:
+      o.claimableCount ??
+      missions.filter((m) => m.state === "COMPLETED").length + pendingClaims.length,
     claimableAmount: o.claimableAmount ?? 0,
   };
 }
@@ -150,12 +174,22 @@ async function bootstrapAway(page: Page, o: DailyOpts = {}, state?: Partial<Mock
     if (s.claimStatus) {
       return route.fulfill(err(s.claimStatus.status, s.claimStatus.code, s.claimStatus.message, s.claimStatus.detail));
     }
-    const row = s.daily.missions.find((m) => m.id === id)!;
-    s.gems += row.amount;
-    row.state = "CLAIMED";
+    // 수령은 **하나의 엔드포인트**다 — 오늘 것/지난 것을 서버가 구분하지 않는다(계약).
+    const row = s.daily.missions.find((m) => m.id === id);
+    if (row) {
+      s.gems += row.amount;
+      row.state = "CLAIMED";
+    } else {
+      const idx = s.daily.pendingClaims.findIndex((p) => p.id === id);
+      if (idx < 0) return route.fulfill(err(404, "NOT_FOUND", "미션을 찾을 수 없습니다"));
+      s.gems += s.daily.pendingClaims[idx].amount;
+      // 받은 지난 보상은 목록에서 빠진다(서버가 `claimed_at` 을 채우면 다음 조회에 안 온다).
+      s.daily.pendingClaims.splice(idx, 1);
+    }
     s.daily.claimableCount = Math.max(0, s.daily.claimableCount - 1);
+    const claimed = row ?? { currency: "GEM", amount: 0 };
     return route.fulfill(json({
-      claimed: { currency: row.currency, amount: row.amount },
+      claimed: { currency: claimed.currency, amount: claimed.amount },
       wallet: { points: 10000, gems: s.gems },
     }));
   });
@@ -331,6 +365,77 @@ test("#408 [다시 뽑기] 소진 409 — 이유를 말한다", async ({ page })
   await expect(card.getByTestId("mission-error")).toContainText("이미 다시 뽑았습니다");
 });
 
+// ── (4.5) 받지 않은 보상 — 지난 날짜 (#408 갭1) ─────────────────────────
+
+const PENDING: PendingSpec[] = [
+  { id: "PC1", day: "2026-08-01", title: "원정에서 2승", tier: "NORMAL", amount: 222 },
+  { id: "PC2", day: "2026-07-31", title: "원정 3연승", tier: "HARD", amount: 333 },
+];
+
+test("#408 지난 보상 묶음이 뜬다 — 날짜·금액·[받기], **진행도와 리롤은 없다**", async ({ page }) => {
+  await bootstrapAway(page, { pendingClaims: PENDING });
+
+  const group = page.getByTestId("pending-claims");
+  await expect(group).toBeVisible();
+  await expect(group.getByTestId("pending-claim")).toHaveCount(2);
+
+  const first = group.locator('[data-mission-id="PC1"]');
+  await expect(first.getByTestId("mission-title")).toHaveText("원정에서 2승");
+  await expect(first.getByTestId("pending-claim-day")).toHaveText("8월 1일");
+  await expect(first.locator("[data-currency]")).toHaveAttribute("data-amount", "222");
+  await expect(first.getByTestId("pending-claim-claim")).toBeEnabled();
+
+  // 없는 데이터를 0 으로 그리지 않는다 — "0 / 0" 이나 잠긴 [다시 뽑기]가 뜨면 거짓말이다.
+  await expect(first.getByTestId("mission-progress")).toHaveCount(0);
+  await expect(first.getByTestId("mission-reroll")).toHaveCount(0);
+
+  // 오늘 미션 묶음과 **섞이지 않는다**(두 축이다).
+  await expect(page.getByTestId("daily-mission-section").getByTestId("mission-card")).toHaveCount(2);
+
+  mkdirSync(SMOKE_DIR, { recursive: true });
+  await page.screenshot({ path: `${SMOKE_DIR}p408-pending-claims.png`, fullPage: true });
+});
+
+test("#408 지난 보상도 **같은 엔드포인트**로 받는다 — 받으면 목록에서 빠진다", async ({ page }) => {
+  const s = await bootstrapAway(page, { pendingClaims: PENDING });
+  await expect(page.getByTestId("pending-claims")).toBeVisible();
+  const before = s.meHits;
+
+  await page.locator('[data-mission-id="PC1"]').getByTestId("pending-claim-claim").click();
+
+  await expect(page.locator('[data-mission-id="PC1"]')).toHaveCount(0);
+  await expect(page.getByTestId("pending-claim")).toHaveCount(1);
+  // 지갑이 움직였으니 `["me"]` 도 다시 나가야 한다.
+  await expect.poll(() => s.meHits, { timeout: 5000 }).toBeGreaterThan(before);
+});
+
+test("#408 ⚠️ 오늘 미션이 없어도(롤백 스위치) 받지 않은 보상은 받을 수 있다", async ({ page }) => {
+  // 설계 §9 — 끄기가 지갑을 뺏지 않는다. 여기서 섹션을 통째로 감추면 W3 이 잡은 버그
+  // ("홈은 받을 보상 1건이라는데 원정 화면엔 받을 카드가 없다")가 롤백 경로에서 되살아난다.
+  await bootstrapAway(page, { missions: [], pendingClaims: [PENDING[0]] });
+
+  await expect(page.getByTestId("daily-mission-section")).toBeVisible();
+  await expect(page.getByTestId("mission-card")).toHaveCount(0);
+  await expect(page.getByTestId("pending-claim")).toHaveCount(1);
+  await expect(page.locator('[data-mission-id="PC1"]').getByTestId("pending-claim-claim")).toBeEnabled();
+});
+
+test("#408 받지 않은 보상이 없으면 그 묶음 자체가 없다", async ({ page }) => {
+  await bootstrapAway(page);
+  await expect(page.getByTestId("daily-mission-section")).toBeVisible();
+  await expect(page.getByTestId("pending-claims")).toHaveCount(0);
+});
+
+test("#408 홈 숫자와 원정 화면이 **같은 것을 가리킨다** — 홈이 세는 건수만큼 받을 자리가 있다", async ({ page }) => {
+  // 이게 W3 이 잡은 버그의 직접 계약이다. 오늘 COMPLETED 1 + 지난 2 = 3 건.
+  await bootstrapAway(page, { pendingClaims: PENDING });
+  const today = await page.getByTestId("mission-claim").evaluateAll(
+    (els) => els.filter((e) => !(e as HTMLButtonElement).disabled).length,
+  );
+  const past = await page.getByTestId("pending-claim-claim").count();
+  expect(today + past).toBe(3); // = 목이 계산한 claimableCount(오늘 COMPLETED 1 + pending 2)
+});
+
 // ── (5)(6) 구 서버 폴백 · 손상 응답 ─────────────────────────────────────
 
 test("#408 구 서버(404)면 미션 섹션만 사라지고 원정 화면은 그대로", async ({ page }) => {
@@ -402,13 +507,24 @@ test("#408 홈 — 구 서버면 미션 몫이 0 이라 줄이 안 뜬다", asyn
 // ── (9) 결과 화면 ────────────────────────────────────────────────────────
 
 async function bootstrapResult(page: Page, missions?: unknown) {
+  const hits = { me: 0, claim: [] as string[] };
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "guest");
   });
   await page.route((url) => url.pathname.startsWith("/api/"), (route) => route.fulfill(json({})));
   await mockAppConfig(page, appConfigPayload());
-  await page.route((url) => url.pathname === "/api/me", (route) => route.fulfill(json(mePayload())));
+  await page.route((url) => /^\/api\/missions\/[^/]+\/claim$/.test(url.pathname), (route) => {
+    hits.claim.push(route.request().url().split("/api/missions/")[1].split("/")[0]);
+    return route.fulfill(json({
+      claimed: { currency: "GEM", amount: 222 },
+      wallet: { points: 10000, gems: 322 },
+    }));
+  });
+  await page.route((url) => url.pathname === "/api/me", (route) => {
+    hits.me += 1;
+    return route.fulfill(json(mePayload()));
+  });
   await page.route((url) => url.pathname === "/api/matches/M1", (route) =>
     route.fulfill(json({
       id: "M1", state: "FINISHED", mode: "away",
@@ -427,12 +543,20 @@ async function bootstrapResult(page: Page, missions?: unknown) {
   );
   await page.goto("/match/M1");
   await expect(page.getByTestId("result-page")).toBeVisible();
+  return hits;
 }
+
+/** 결과 화면 미션 한 건. `state` 는 **필수**다(#408 갭2) — 빼면 문이 닫힌 쪽으로 떨어진다. */
+const rm = (over: Record<string, unknown>) => ({
+  id: "R1", missionId: "away_win_2", title: "원정에서 2승", tier: "NORMAL",
+  currency: "GEM", amount: 222, progress: 2, target: 2,
+  completedNow: true, state: "COMPLETED", ...over,
+});
 
 test("#408 결과 화면 — 이 경기가 민 미션이 뜨고, 이번에 달성한 것을 구분한다", async ({ page }) => {
   await bootstrapResult(page, [
-    { id: "R1", missionId: "away_win_2", title: "원정에서 2승", tier: "NORMAL", currency: "GEM", amount: 222, progress: 2, target: 2, completedNow: true },
-    { id: "R2", missionId: "away_play_3", title: "원정 경기를 3회 치른다", tier: "NORMAL", currency: "GEM", amount: 333, progress: 1, target: 3, completedNow: false },
+    rm({}),
+    rm({ id: "R2", title: "원정 경기를 3회 치른다", amount: 333, progress: 1, target: 3, completedNow: false, state: "IN_PROGRESS" }),
   ]);
 
   const section = page.getByTestId("result-missions");
@@ -464,4 +588,67 @@ test("#408 결과 화면 — 손상된 missions(배열 아님·깨진 항목)에
   await bootstrapResult(page, { nope: true });
   await expect(page.getByTestId("result-missions")).toHaveCount(0);
   await expect(page.getByTestId("reward-points")).toBeVisible();
+});
+
+// ── (9.5) 결과 화면 수령 (#408 갭2) ──────────────────────────────────────
+
+test("#408 결과 화면 [받기] — 달성분을 그 자리에서 받는다(지갑 조회가 다시 나간다)", async ({ page }) => {
+  const hits = await bootstrapResult(page, [rm({})]);
+  const before = hits.me;
+
+  const row = page.locator('[data-mission-id="R1"]');
+  await row.getByTestId("result-mission-claim").click();
+
+  // 같은 엔드포인트, 같은 id.
+  await expect.poll(() => hits.claim).toEqual(["R1"]);
+  await expect.poll(() => hits.me, { timeout: 5000 }).toBeGreaterThan(before);
+});
+
+test("#408 결과 화면 — ⚠️ **양방향**: 진행도가 닿아도 CLAIMED 면 버튼이 없고, 못 닿아도 COMPLETED 면 있다", async ({ page }) => {
+  // 한쪽만 두면 "state 도 보되 progress 도 본다"는 변이가 산다. `2/2 + CLAIMED` 가
+  // "수령 후에도 버튼이 남는" 결함을 죽이는 표본이다.
+  await bootstrapResult(page, [
+    rm({ id: "C", progress: 2, target: 2, state: "CLAIMED", completedNow: false }),
+    rm({ id: "D", progress: 0, target: 3, state: "COMPLETED", completedNow: false }),
+  ]);
+
+  const claimed = page.locator('[data-mission-id="C"]');
+  await expect(claimed.getByTestId("result-mission-claim")).toHaveCount(0);
+  // 색이 아니라 **말**로 알린다.
+  await expect(claimed.getByTestId("result-mission-claimed")).toContainText("받음");
+
+  await expect(page.locator('[data-mission-id="D"]').getByTestId("result-mission-claim")).toBeEnabled();
+});
+
+test("#408 결과 화면 — 진행 중이면 버튼도 '받음'도 없다(누를 것이 없다)", async ({ page }) => {
+  await bootstrapResult(page, [rm({ id: "P", progress: 1, target: 3, state: "IN_PROGRESS", completedNow: false })]);
+  const row = page.locator('[data-mission-id="P"]');
+  await expect(row.getByTestId("result-mission-claim")).toHaveCount(0);
+  await expect(row.getByTestId("result-mission-claimed")).toHaveCount(0);
+  await expect(row.getByTestId("result-mission-progress")).toHaveText("1 / 3"); // 앵커
+});
+
+test("#408 결과 화면 — `state` 없는 구 서버 응답은 **문이 닫힌다**(fail-closed)", async ({ page }) => {
+  const { state: _drop, ...noState } = rm({ progress: 2, target: 2 });
+  await bootstrapResult(page, [noState]);
+  await expect(page.getByTestId("result-mission")).toHaveCount(1); // 줄은 그린다
+  await expect(page.getByTestId("result-mission-claim")).toHaveCount(0); // 버튼은 없다
+});
+
+test("#408 결과 화면 — 수령 실패(409)는 그 줄에서 이유를 말한다", async ({ page }) => {
+  await bootstrapResult(page, [rm({})]);
+  // ⚠️ **bootstrap 뒤에** 얹는다 — Playwright 는 나중에 등록된 핸들러를 먼저 본다.
+  // 앞에 등록하면 bootstrap 의 성공 핸들러가 이겨서 이 테스트가 성공 경로를 검사하게 된다.
+  await page.route((url) => /^\/api\/missions\/[^/]+\/claim$/.test(url.pathname), (route) =>
+    route.fulfill(err(409, "MISSION_ALREADY_CLAIMED", "이미 수령했습니다")),
+  );
+
+  const row = page.locator('[data-mission-id="R1"]');
+  await row.getByTestId("result-mission-claim").click();
+  await expect(row.getByTestId("result-mission-error")).toContainText("이미 받은 보상입니다");
+});
+
+test("#408 결과 화면 — '원정 화면에서 받으세요' 안내는 사라졌다(더 이상 사실이 아니다)", async ({ page }) => {
+  await bootstrapResult(page, [rm({})]);
+  await expect(page.getByTestId("result-missions")).not.toContainText("원정 화면에서");
 });

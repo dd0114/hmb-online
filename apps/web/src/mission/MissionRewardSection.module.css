@@ -19,13 +19,18 @@
   gap: 6px;
 }
 .row {
+  display: grid;
+  gap: 4px;
+  background: var(--sunk);
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+/* 한 줄에 다 넣으면 390px 에서 [받기]가 밀린다 — 이름/보상 · 진행/액션 두 줄로 나눈다. */
+.line {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
-  background: var(--sunk);
-  border-radius: 10px;
-  padding: 9px 10px;
 }
 .name {
   flex: 1;
@@ -35,7 +40,7 @@
   overflow-wrap: anywhere;
 }
 .progress {
-  flex: 0 0 auto;
+  flex: 1;
   font-size: 11px;
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -52,8 +57,27 @@
   font-weight: 700;
   color: var(--warn);
 }
-.foot {
-  margin: 8px 0 0;
+.claim {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.claim:disabled {
+  background: var(--surface);
+  color: var(--text-muted);
+}
+.claimed {
+  flex: 0 0 auto;
   font-size: 11px;
   color: var(--text-muted);
+}
+.error {
+  margin: 0;
+  font-size: 11px;
+  color: var(--danger);
 }

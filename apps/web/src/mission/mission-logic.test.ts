@@ -3,6 +3,7 @@ import {
   claimableSummary,
   missionClaimLabel,
   missionClaimable,
+  missionDayLabel,
   missionStateLabel,
   missionTierLabel,
   normalizeMatchMissions,
@@ -42,8 +43,21 @@ const payload = (missions: unknown[], over: Record<string, unknown> = {}) => ({
   day: "2026-08-02",
   resetAtKst: "2026-08-03T00:00:00+09:00",
   missions,
+  pendingClaims: [],
   claimableCount: 0,
   claimableAmount: 0,
+  ...over,
+});
+
+/** 지난 날짜 달성·미수령 한 건. `progress`/`target`/`rerollable` 이 **없다**(끝난 미션이라). */
+const pending = (over: Record<string, unknown> = {}) => ({
+  id: "P1",
+  day: "2026-08-01",
+  missionId: "away_win_2",
+  title: "원정에서 2승",
+  tier: "NORMAL",
+  currency: "GEM",
+  amount: 200,
   ...over,
 });
 
@@ -67,8 +81,17 @@ describe("pickDailyMissions — 응답 형태를 믿지 않는다", () => {
     expect(pickDailyMissions({ missions: "nope" })).toBeNull();
   });
 
-  it("`missions: []`(롤백 스위치 ON)도 null — 빈 껍데기를 띄우지 않는다", () => {
+  it("`missions: []` 이고 받을 것도 없으면 null — 빈 껍데기를 띄우지 않는다", () => {
     expect(pickDailyMissions(payload([]))).toBeNull();
+  });
+
+  it("⚠️ **오늘 미션이 없어도 받을 보상이 남았으면 그린다** — 롤백 스위치가 지갑을 뺏으면 안 된다", () => {
+    // 설계 §9: 끄기(`daily.count: 0`)는 새 미션을 안 만들 뿐 **이미 달성한 미수령분은 그대로
+    // 받을 수 있다**. 여기서 null 을 돌려주면 그 보상이 화면에서 도달 불가능해진다 = W3 이 잡은
+    // 그 버그가 롤백 경로에서 되살아난다.
+    const view = pickDailyMissions(payload([], { pendingClaims: [pending()], claimableCount: 1 }));
+    expect(view?.missions).toEqual([]);
+    expect(view?.pendingClaims).toHaveLength(1);
   });
 
   it("깨진 항목은 떨어뜨리고 나머지는 산다 — 배열 하나가 화면을 죽이지 않는다", () => {
@@ -86,6 +109,48 @@ describe("pickDailyMissions — 응답 형태를 믿지 않는다", () => {
   it("`rerollable` 은 **엄격히 true 일 때만** 참 — truthy 문자열로 문이 열리지 않는다", () => {
     const view = pickDailyMissions(payload([{ ...base, rerollable: "yes" }]));
     expect(view?.missions[0]?.rerollable).toBe(false);
+  });
+});
+
+describe("pendingClaims — 지난 날짜 달성·미수령 (#408 갭1)", () => {
+  it("서버가 준 항목을 그대로 꺼낸다 — 순서도 서버 것(오래된 것부터)", () => {
+    const view = pickDailyMissions(
+      payload([base], {
+        pendingClaims: [pending({ id: "P1", day: "2026-07-31" }), pending({ id: "P2", day: "2026-08-01", amount: 999 })],
+      }),
+    );
+    expect(view?.pendingClaims.map((p) => p.id)).toEqual(["P1", "P2"]);
+    expect(view?.pendingClaims[1]?.amount).toBe(999);
+  });
+
+  it("배열이 아니거나 없으면 빈 배열 — 구 서버가 이 키를 안 준다", () => {
+    expect(pickDailyMissions(payload([base]))?.pendingClaims).toEqual([]);
+    expect(pickDailyMissions(payload([base], { pendingClaims: "nope" }))?.pendingClaims).toEqual([]);
+    // 키 자체가 없는 구 서버(6b38674 이전)
+    const legacy = { day: "d", resetAtKst: "", missions: [base], claimableCount: 0, claimableAmount: 0 };
+    expect(pickDailyMissions(legacy)?.pendingClaims).toEqual([]);
+  });
+
+  it("깨진 항목은 떨어뜨린다(id 없으면 받을 키가 없다)", () => {
+    const view = pickDailyMissions(payload([base], { pendingClaims: [null, { title: "id 없음" }, pending(), 7] }));
+    expect(view?.pendingClaims.map((p) => p.id)).toEqual(["P1"]);
+  });
+
+  it("숫자가 아닌 금액은 0 으로 떨어진다", () => {
+    const view = pickDailyMissions(payload([base], { pendingClaims: [pending({ amount: "많이" })] }));
+    expect(view?.pendingClaims[0]?.amount).toBe(0);
+  });
+});
+
+describe("missionDayLabel — 지난 보상이 **언제 것인지** 말한다", () => {
+  it("yyyy-MM-dd 를 그대로 읽는다(타임존 환산 없음)", () => {
+    expect(missionDayLabel("2026-08-01")).toBe("8월 1일");
+    expect(missionDayLabel("2026-12-25")).toBe("12월 25일");
+  });
+
+  it("못 읽으면 null — 문구를 지어내지 않는다", () => {
+    expect(missionDayLabel("")).toBeNull();
+    expect(missionDayLabel("어제")).toBeNull();
   });
 });
 
@@ -209,6 +274,30 @@ describe("normalizeMatchMissions — 결과 화면", () => {
     expect(normalizeMatchMissions(undefined)).toEqual([]);
     expect(normalizeMatchMissions({})).toEqual([]);
     expect(normalizeMatchMissions("x")).toEqual([]);
+  });
+
+  it("`state` 를 보존한다 — 결과 화면의 [받기] 문이 이 값 하나다 (#408 갭2)", () => {
+    const rows = normalizeMatchMissions([{ ...base, state: "CLAIMED" }]);
+    expect(rows[0]?.state).toBe("CLAIMED");
+  });
+
+  it("`state` 가 없는 구 서버 응답은 빈 문자열 — 문이 **닫힌 쪽**으로 떨어진다", () => {
+    // 없는 값을 COMPLETED 로 추측하면 이미 받은 보상에 [받기]가 다시 뜬다. fail-closed.
+    const { state: _drop, ...noState } = { ...base, state: "COMPLETED" };
+    const rows = normalizeMatchMissions([noState]);
+    expect(rows[0]?.state).toBe("");
+    expect(missionClaimable(rows[0]!)).toBe(false);
+  });
+
+  it("⚠️ **양방향** — 진행도가 닿아도 CLAIMED 면 못 받고, 못 닿아도 COMPLETED 면 받는다", () => {
+    // 한쪽만 두면 "state 도 보되 progress 도 본다"는 변이가 산다(지난 웨이브와 같은 함정).
+    // 특히 `2/2 + CLAIMED` 가 **수령 후에도 버튼이 남는** 결함을 죽이는 표본이다.
+    const rows = normalizeMatchMissions([
+      { ...base, id: "C", progress: 2, target: 2, state: "CLAIMED" },
+      { ...base, id: "D", progress: 0, target: 3, state: "COMPLETED" },
+    ]);
+    expect(missionClaimable(rows[0]!)).toBe(false);
+    expect(missionClaimable(rows[1]!)).toBe(true);
   });
 
   it("깨진 항목은 떨어뜨린다", () => {

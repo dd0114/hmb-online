@@ -33,6 +33,12 @@
   display: grid;
   gap: 8px;
 }
+/* 받지 않은 보상 묶음 — 오늘 미션과 **눈에 보이게** 갈라 둔다(다른 축이다). */
+.group {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
 .mission {
   display: grid;
   gap: 6px;
@@ -132,6 +138,21 @@
   background: var(--surface);
   color: var(--text-muted);
   border-color: transparent;
+}
+/* 지난 보상 줄의 [받기] — 오늘 카드처럼 폭을 다 먹지 않는다(진행 막대가 없어 줄이 짧다). */
+.claimSmall {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+.claimSmall:disabled {
+  background: var(--surface);
+  color: var(--text-muted);
 }
 .reason {
   font-size: 10.5px;
