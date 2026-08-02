@@ -11,14 +11,15 @@ import styles from "./GrowthSection.module.css";
  * 선발 11 + 투입 교체가 위, 미투입 벤치는 구분선 아래 `+0 XP` 회색 — *"안 뛰면 안 큰다"* 가
  * 화면에서 읽혀야 한다는 게 이 섹션의 확인 포인트다.
  *
- * ⚠️ **행의 XP 진행바는 없다**(목업에는 있었다). 봉투의 성장 엔트리에는 `xpGained`·`levelBefore`
- * ·`levelAfter` 만 있고 **현재 레벨 안에서 얼마나 찼는지(`cardXp`/`xpToNext`)가 없다** — 서버가
- * 정산 스냅샷에 싣지 않는다. 임계는 무배포 조정 대상이라(§2.8 `xp.lvBase`/`lvPow`) 클라가 곡선을
- * 미러링해 그리면 계수를 바꾸는 날 막대만 조용히 거짓말한다. 그래서 **레벨 전이(Lv N → Lv M)를
- * 직접 보여주고 막대는 그리지 않는다**. 되살리려면 서버가 엔트리에 두 값을 실어야 한다.
+ * ⚠️ **XP 바의 임계는 서버가 준 `xpToNext` 다**(#405 W3, 서버 `00b3586`). 클라가 `xp.lvBase`/
+ * `lvPow` 곡선을 미러링해 그리면 계수를 무배포로 바꾸는 날 **막대만 조용히 옛 곡선**으로 남는다
+ * (§2.8 이 막으려는 상태). 그래서 정산 시점 값을 그대로 그린다:
+ *  · **만렙은 `xpToNext === 0`** → 나누지 말고 꽉 찬 상태로(0 으로 나누면 `Infinity%` 다).
+ *  · W2b 초판 정산분은 두 값이 `null` → **바를 안 그린다**(레벨 전이 표시는 그대로 남는다).
  *
- * ⚠️ **'교체 투입' 칩도 없다** — 엔트리에 출전 구분(starter/partial/bench)이 없다. 화면이 아는
- * 것은 `xpGained === 0`(미투입)뿐이라 그 축만 그린다. 반쯤 아는 것을 다 아는 척 그리지 않는다.
+ * ⚠️ **출전 구분은 `minutes`(`starter|partial|bench`)가 소유한다.** `xpGained === 0` 은 그 값이
+ * 없는 구 정산분에서만 쓰는 **폴백**이다 — 두 축을 섞으면 "0 XP 로 뛴 선수"(배율 0 인 계수 조합)를
+ * 벤치로 오독한다.
  */
 
 /** 등급을 아는 행만 아바타를 그린다 — `CharAvatar.grade` 는 필수 prop 이고 정책은 fail-closed(#285). */
@@ -57,7 +58,9 @@ function GrowthRow({ entry, open, onPick }: GrowthRowProps) {
     typeof entry.levelBefore === "number" &&
     typeof entry.levelAfter === "number" &&
     entry.levelAfter > entry.levelBefore;
-  const idle = !entry.xpGained;
+  const idle = isBench(entry);
+  const partial = entry.minutes === "partial";
+  const xpPct = xpBarPctOf(entry);
   const tappable = open.length > 0 && Boolean(onPick);
   const cls = [styles.row, leveled ? styles.rowLevelUp : "", idle ? styles.rowIdle : ""]
     .filter(Boolean)
@@ -72,6 +75,11 @@ function GrowthRow({ entry, open, onPick }: GrowthRowProps) {
           {isGrade(entry.grade) && (
             <span className={styles.chip} style={{ color: GRADE_COLORS[entry.grade], borderColor: "currentColor" }}>
               {GRADE_LABELS[entry.grade]}
+            </span>
+          )}
+          {partial && (
+            <span className={styles.chip} data-testid={`growth-partial-${entry.playerId}`}>
+              교체 투입
             </span>
           )}
           <span
@@ -97,6 +105,15 @@ function GrowthRow({ entry, open, onPick }: GrowthRowProps) {
           ) : (
             // W2b 이전 정산분 — 서버가 레벨을 모른다. 0 으로 때우면 "Lv 0" 이라는 거짓이 뜬다.
             <span className={styles.lvLine}>레벨 기록 없음</span>
+          )}
+          {xpPct != null && (
+            <span
+              className={styles.xpBar}
+              data-testid={`growth-xpbar-${entry.playerId}`}
+              data-value={Math.round(xpPct)}
+            >
+              <i className={styles.xpBarFill} style={{ width: `${xpPct}%` }} />
+            </span>
           )}
           {open.length > 0 && (
             <span className={styles.pendTag} data-testid={`growth-pending-${entry.playerId}`}>
@@ -137,6 +154,28 @@ export interface GrowthRowsProps {
   onPick?: ((choice: PendingChoice) => void) | undefined;
 }
 
+/**
+ * **미투입인가.** 축은 `minutes` 이고, 없을 때만(구 정산분) `xpGained === 0` 으로 떨어진다.
+ * 두 축을 섞지 마라 — 배율 조합에 따라 "뛰었는데 0 XP" 가 나올 수 있고 그걸 벤치로 그리면 거짓이다.
+ */
+export function isBench(entry: RewardGrowthEntry): boolean {
+  if (typeof entry.minutes === "string" && entry.minutes.length > 0) return entry.minutes === "bench";
+  return !(entry.xpGained ?? 0);
+}
+
+/**
+ * 행 XP 바의 채움(%) — 서버가 준 `cardXp`/`xpToNext` 로만. 못 그리면 `null`(바 자체를 안 그린다).
+ * **만렙(`xpToNext === 0`)은 100%** — 나누면 `Infinity` 다.
+ */
+export function xpBarPctOf(entry: RewardGrowthEntry): number | null {
+  const xp = entry.cardXp;
+  const need = entry.xpToNext;
+  if (typeof xp !== "number" || !Number.isFinite(xp)) return null;
+  if (typeof need !== "number" || !Number.isFinite(need)) return null;
+  if (need <= 0) return 100;
+  return Math.max(0, Math.min(100, (xp / need) * 100));
+}
+
 function openOf(entry: RewardGrowthEntry, ids: ReadonlySet<string> | undefined): PendingChoice[] {
   const all = Array.isArray(entry.pendingChoices) ? entry.pendingChoices : [];
   return ids ? all.filter((c) => ids.has(c.choiceId)) : all;
@@ -144,8 +183,8 @@ function openOf(entry: RewardGrowthEntry, ids: ReadonlySet<string> | undefined):
 
 /** 행 목록만 — 결과 화면의 성장 리포트가 같은 행을 재사용한다(두 화면이 갈리지 않게). */
 export function GrowthRows({ entries, openChoiceIds, onPick }: GrowthRowsProps) {
-  const played = entries.filter((e) => (e.xpGained ?? 0) > 0);
-  const bench = entries.filter((e) => !(e.xpGained ?? 0));
+  const played = entries.filter((e) => !isBench(e));
+  const bench = entries.filter((e) => isBench(e));
   const ups = played.filter(
     (e) =>
       typeof e.levelBefore === "number" &&

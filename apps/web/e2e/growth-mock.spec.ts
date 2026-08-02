@@ -106,10 +106,11 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
       choiceId: "c1",
       playerId: OWNED_ID,
       level: 12,
+      // 서버 `00b3586` 부터 후보마다 `reason` 이 박제돼 온다(문장은 클라가 만든다).
       candidates: [
-        { stat: "shooting", gain: 2.4 },
-        { stat: "passing", gain: 3.1 },
-        { stat: "tackling", gain: 3.8 },
+        { stat: "shooting", gain: 2.4, reason: { kind: "EVENT", detail: { type: "shot", count: 4 } } },
+        { stat: "passing", gain: 3.1, reason: { kind: "POSITION", detail: { position: "FW" } } },
+        { stat: "tackling", gain: 3.8, reason: { kind: "BEHAVIOR", detail: { param: "pressAggression", value: 0.6 } } },
       ],
     },
   ];
@@ -157,6 +158,11 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
           cardXp: 60,
           xpToNext: 346,
           maxLevel: 40,
+          // caps 는 이 목에서 스탯별로 다르다(레거시 픽스처) → 최대 82 vs growCeil+bonus 73 이라
+          // **덧셈이 성립하지 않는다** → 화면은 분해 없이 합계만 말해야 한다(거짓 식 금지).
+          growCeil: 72,
+          starCeilBonus: 1,
+          attrHardCap: 99,
           pendingChoices: pending,
           statLevels: statLevels(statBump > 0 ? 1 : 0),
           potential: {
@@ -182,16 +188,22 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
         json({
           playerId: GK_ID,
           grade: "GOLD",
-          star: 1,
+          star: 2,
           attributes: attrs,
           prePotential: attrs,
           base: attrs,
-          caps,
+          // ⚠️ **실서버는 천장이 스탯 공통이다**(growCeil[grade] + star.ceilBonus[star]).
+          // 위 OWNED 카드의 스탯별 caps 는 레거시 픽스처라 그대로 두되(그쪽은 "덧셈이 성립하지
+          // 않을 때 분해를 안 쓴다"는 가지를 태운다), 이 카드는 서버 실물 모양으로 둔다.
+          caps: Object.fromEntries(Object.keys(attrs).map((k) => [k, 73])),
           statAdd: {},
           cardLevel: 4,
           cardXp: 10,
           xpToNext: 200,
           maxLevel: 40,
+          growCeil: 72,
+          starCeilBonus: 1,
+          attrHardCap: 99,
           pendingChoices: [],
           statLevels: statLevels(0),
           potential: { unlocked: false, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
@@ -242,6 +254,9 @@ async function mockGrowth(page: Page, opts: GrowthMockOpts = {}) {
             cardXp: 60,
             xpToNext: 346,
             maxLevel: 40,
+            growCeil: 72,
+            starCeilBonus: 1,
+            attrHardCap: 99,
             pendingChoices: pending,
             statLevels: statLevels(statBump > 0 ? 1 : 0),
             potential: {
@@ -404,6 +419,9 @@ test("G4 도감 성장 상세: ★·스탯Lv·잠재 3줄·티어색 렌더 + �
   // 3층 막대(#405 §2.10) — 기본 | 성장분 | 천장. 범례가 없으면 3층은 그냥 알록달록한 막대다.
   await expect(page.getByTestId("growth-attr-legend")).toContainText("기본(발행 원본)");
   await expect(page.getByTestId("growth-attr-legend")).toContainText("성장분");
+  // ⚠️ 이 목의 caps 는 스탯별로 달라(최대 82) growCeil(72)+★보너스(1)=73 과 **안 맞는다** →
+  // 화면은 분해를 쓰지 않고 합계만 말해야 한다. 덧셈이 성립하지 않는데 식을 쓰면 그게 거짓말이다.
+  await expect(page.getByTestId("growth-ceil-legend")).toHaveText("천장 82");
   await expect(page.getByTestId("growth-value-shooting")).toHaveAttribute("data-value", "55");
   await expect(page.getByTestId("growth-cap-shooting")).toHaveAttribute("data-value", "80");
   // 아직 아무것도 안 골랐으니 성장분 층은 폭 0 — 이 막대가 이 개편의 유일한 성장 축이다.
@@ -470,6 +488,9 @@ test("G4 강화탭 성장(#405 §2.10): Lv/XP 헤더 + 선택 대기 배너 → 
   await expect(page.getByTestId("choice-lock-note")).toContainText("선택지는 고정됩니다");
   await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
   await expect(page.getByTestId("choice-gain-tackling")).toHaveText("+3.80");
+  // 근거 줄은 보상 시트와 **같은 컴포넌트**가 그린다 — 두 자리에서 모양이 갈리면 안 된다.
+  await expect(page.getByTestId("choice-why-shooting")).toContainText("이 경기 슛 4회");
+  await expect(page.getByTestId("choice-why-tackling")).toContainText('지시 "강하게 압박"');
   await page.screenshot({ path: `${SMOKE_DIR}growth-enhance-pending.png`, fullPage: true });
 
   // 선택 → 축하 + 성장분(statAdd) 층이 실제로 오른다 + 배너가 사라진다.
@@ -506,6 +527,21 @@ test("G4 포지션별 레이더 6축(hero 2026-07-26): GK 카드 1번 축 = '선
   await expect(page.getByTestId("growth-side-chip-shooting")).toContainText("슛");
   await expect(page.getByTestId("growth-side-chip-tackling")).toBeVisible();
   await expect(page.getByTestId("growth-side-chip-tackling")).toContainText("태클");
+});
+
+test("G4 강화탭 천장 라벨: `천장 73 = 72 + ★2 보너스 1` 분해 (#405 §2.6)", async ({ page }) => {
+  mkdirSync(SMOKE_DIR, { recursive: true });
+  await mockGrowth(page);
+  await seedAuth(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/codex");
+  await page.getByTestId(`codex-card-${GK_ID}`).getByRole("button").first().click();
+  await page.getByTestId("growth-layer-total").click();
+
+  // 승급(★)이 게이트가 아니라 **소폭 보너스**라는 §2.6 의 새 역할은 이 한 줄로만 화면에 나온다.
+  // ⚠️ 세 값 전부 서버가 준 것이다 — 밴드 표를 클라가 미러해 재구성하면 무배포 조정에 어긋난다.
+  await expect(page.getByTestId("growth-ceil-legend")).toHaveText("천장 73 = 72 + ★2 보너스 1");
+  await page.screenshot({ path: `${SMOKE_DIR}growth-ceiling-label.png`, fullPage: true });
 });
 
 test("G4 성★ 승급 오버레이(GM7b): 클릭 → growth-starup-overlay 등장(2★ 달성!·잠재능력 해금) → 소멸", async ({ page }) => {
@@ -797,6 +833,9 @@ const REPORT = {
       xpGained: 120,
       levelBefore: 3,
       levelAfter: 4,
+      cardXp: 59,
+      xpToNext: 141,
+      minutes: "starter",
       pendingChoices: [
         {
           choiceId: "c-report-1",
@@ -818,6 +857,9 @@ const REPORT = {
       xpGained: 0,
       levelBefore: 5,
       levelAfter: 5,
+      cardXp: 10,
+      xpToNext: 200,
+      minutes: "bench",
       pendingChoices: [],
     },
   ],

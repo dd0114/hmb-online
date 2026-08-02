@@ -6,7 +6,8 @@ import type { CardEffective, ChoiceCandidate, ChoiceResult, PendingChoice } from
 import { CelebrationOverlay } from "../common/CelebrationOverlay";
 import { ErrorToast } from "../common/ErrorToast";
 import { matchInProgressIdOf } from "../common/match-lock";
-import { STAT_LABEL_MAP } from "./growth-config";
+import { cardAxisWindow, STAT_LABEL_MAP } from "./growth-config";
+import { reasonTextOf } from "./choice-reason";
 import styles from "./ChoiceCards.module.css";
 
 /**
@@ -15,20 +16,29 @@ import styles from "./ChoiceCards.module.css";
  * 두 자리에서 모양이 갈리면 안 된다는 게 설계 §2.10 의 명시 요구다. 그래서 선택 뮤테이션·축하
  * 연출·에러 처리까지 **여기 하나가** 갖는다 — 호출부가 흉내 내기 시작하면 한쪽만 낡는다.
  *
- * ── 화면에 없는 것: "왜 이 후보인가" 한 줄 ────────────────────────────────────────────────
- * 목업에는 후보마다 근거 문장이 있었다(*"이 경기 슛 4회 · 지시 …"*). **서버가 그 문자열을 주지
- * 않는다** — 응답의 후보는 `{stat, gain}` 뿐이고, 가중치를 만든 재료(포지션 baseline·이벤트
- * 점수·behavior 파라미터)는 서버 안에서 소비되고 버려진다. 클라가 지어내면 그건 **그럴듯한
- * 거짓말**이고, 포지션만으로 흉내 내려 해도 `baselineByPosition` 은 무배포 조정 대상이라
- * (§2.8) 미러가 곧 낡는다.
+ * ── "왜 이 후보인가" 한 줄 ──────────────────────────────────────────────────────────────
+ * 서버가 후보마다 `reason` 을 박제해 내린다(`{kind, detail}`). **문장은 클라가 만든다** —
+ * 매핑·규율은 `choice-reason.ts`. 만들 수 없으면(모르는 enum · `BASE` · 초판 행의 `null`)
+ * **줄을 생략**한다. 지어내지 않는다.
  *
- * 그래서 후보별 근거는 **빼고**, 대신 응답 값으로 실제 확인되는 사실 한 줄(감쇠 = 낮은 스탯이
- * 더 오른다)을 남긴다. 세 후보의 `+gain` 이 왜 다른지는 그 줄과 천장 막대가 설명한다.
- * 근거 문장을 되살리려면 **서버가 후보에 `reason` 을 실어야 한다**(#405 후속 이슈 대상).
+ * ── 막대의 원점은 **세 후보가 공유**해야 한다 ────────────────────────────────────────────
+ * 감쇠가 `r = (v − startLo)/(ceiling − startLo)` 이므로, 막대를 스탯별 `base` 에서 시작시키면
+ * 세 후보가 **서로 다른 원점**을 갖게 되어 "낮은 스탯일수록 크게 오른다"가 화면에서 안 읽힌다
+ * (초판이 그 상태였고 독립 검증이 잡았다) — 목업이 이 화면에 부여한 유일한 정보 기능이다.
+ * 그래서 원점은 카드 전체 축(`cardAxisWindow`)에서 온다. **강화탭 막대와 같은 함수**라 두 화면이
+ * 갈릴 수 없다.
+ * ⚠️ 목업의 정확한 원점은 등급 공유 `startLo` 인데 **서버가 아직 안 내린다**(`growCeil`·
+ * `starCeilBonus` 는 온다). 그래서 지금은 카드의 발행 원본 최소값에서 앵커를 잡는다 — 공유
+ * 원점이라는 성질은 같고, 값만 근사다. `bands.<GRADE>.startLo` 가 오면 그 값으로 바꾸고
+ * 좌측 라벨을 `시작 {startLo}` 로 되살린다.
  */
 
 const CELEBRATION_MS = 1700;
-const CELEBRATION_ACCENT = "#5cc98b";
+/**
+ * 목업 화면 ④ 의 `LEVEL UP` 금색(`--warn`). 초록(성장분 색)이 아니다 — 초록은 **막대의 성장분**을
+ * 뜻하는 색이라 축하 제목까지 초록으로 쓰면 두 뜻이 겹친다. 목업이 제목만 금색으로 뺀 이유다.
+ */
+const CELEBRATION_ACCENT = "#ffc24b";
 
 /** 스탯 1종의 "지금 → 적용 후"와 그 스탯의 천장. 카드가 아직 없으면 null(숫자를 지어내지 않는다). */
 export interface CandidateView {
@@ -37,8 +47,11 @@ export interface CandidateView {
   gain: number;
   from: number | null;
   to: number | null;
-  base: number | null;
   cap: number | null;
+  /** 세 후보가 **공유**하는 막대 원점(위 머리말). 카드가 없으면 null. */
+  axisLo: number | null;
+  /** 화면에 그릴 근거 한 줄. 만들 수 없으면 null → 줄 생략. */
+  reason: string | null;
 }
 
 const num = (v: unknown): number | null =>
@@ -58,14 +71,17 @@ export function candidateView(c: ChoiceCandidate, card: CardEffective | undefine
   const from = num(pre?.[stat]) ?? num(attrs?.[stat]);
   const cap = num(caps?.[stat]);
   const to = from == null ? null : cap == null ? from + c.gain : Math.min(cap, from + c.gain);
+  // 강화탭 막대와 **같은 함수**로 원점을 잡는다 — 두 화면이 다른 축을 쓰면 같은 카드가 두 모습이 된다.
+  const axisLo = base && caps ? cardAxisWindow(base, caps).lo : null;
   return {
     stat,
     label: STAT_LABEL_MAP[stat] ?? stat,
     gain: c.gain,
     from,
     to,
-    base: num(base?.[stat]),
     cap,
+    axisLo,
+    reason: reasonTextOf(c.reason),
   };
 }
 
@@ -81,8 +97,8 @@ function CandidateButton({
   onPick: () => void;
   disabled: boolean;
 }) {
-  // 막대 축 = **그 스탯의 발행 원본 → 천장**. 카드가 실제로 들고 온 두 값이라 미러가 없다.
-  const lo = view.base ?? 0;
+  // 막대 축 = **카드 공유 원점 → 그 스탯의 천장**. 원점이 셋 다 같아야 gain 차이가 읽힌다(머리말).
+  const lo = view.axisLo ?? 0;
   const hi = view.cap ?? 100;
   const span = hi > lo ? hi - lo : 1;
   const curPct = view.from == null ? 0 : pct(((view.from - lo) / span) * 100);
@@ -121,11 +137,20 @@ function CandidateButton({
             />
           </span>
           <span className={styles.ceilLegend}>
-            {view.base != null && <span>기본 {n1(view.base)}</span>}
+            {/* ⚠️ 좌측에 `시작 {startLo}` 라벨을 붙이지 않았다 — 서버가 `startLo` 를 안 내려서
+                이 원점은 근사치다(머리말). 값이 오면 라벨과 함께 되살린다. 근사치에 정확한 이름을
+                붙이면 그게 곧 화면의 거짓말이다. */}
+            <span />
             {view.cap != null && <span>천장까지 {n1(Math.max(0, view.cap - view.to))} 남음</span>}
             {view.cap != null && <span>천장 {n1(view.cap)}</span>}
           </span>
         </>
+      )}
+      {view.reason && (
+        <span className={styles.candWhy} data-testid={`choice-why-${view.stat}`}>
+          <span className={styles.candWhyTag}>왜</span>
+          <span>{view.reason}</span>
+        </span>
       )}
     </button>
   );
@@ -229,7 +254,7 @@ export function ChoiceCandidates({ choice, card, onApplied, footer }: ChoiceCand
             ))}
           </div>
 
-          {/* 후보별 근거 대신 남기는 한 줄 — 응답 값으로 실제 확인되는 사실만 말한다(파일 머리말). */}
+          {/* 세 막대가 **같은 원점**을 쓰는 이유를 말하는 줄 — 그게 이 화면의 정보 기능이다(머리말). */}
           <p className={styles.decayNote}>낮은 스탯일수록 크게 오릅니다 — 천장에 가까울수록 상승폭이 줄어듭니다.</p>
 
           {footer}
@@ -238,15 +263,20 @@ export function ChoiceCandidates({ choice, card, onApplied, footer }: ChoiceCand
 
       {celebrate && (
         <CelebrationOverlay
+          // `growth` 변이는 마킹이자 **스타일 스코프**다 — 목업 ④ 는 알약 뱃지가 아니라 큰 금색
+          // `LEVEL UP` 이라, 공용 CSS 를 바꾸는 대신 이 변이에만 룩을 얹는다(성★·티어업 무영향).
           variant="growth"
           testId="choice-celebration"
           accentColor={CELEBRATION_ACCENT}
           title="LEVEL UP"
-          subtitle={
-            celebrate.from != null && celebrate.to != null
-              ? `${celebrate.label} ${n1(celebrate.from)} → ${n1(celebrate.to)}`
-              : `${celebrate.label} +${celebrate.gain.toFixed(2)}`
-          }
+          subtitle={celebrate.label}
+          steps={[
+            <span key="delta" data-testid="choice-celebration-delta">
+              {celebrate.from != null && celebrate.to != null
+                ? `${n1(celebrate.from)} → ${n1(celebrate.to)} (+${celebrate.gain.toFixed(2)})`
+                : `+${celebrate.gain.toFixed(2)}`}
+            </span>,
+          ]}
           durationMs={CELEBRATION_MS}
           onDone={() => setCelebrate(null)}
         />

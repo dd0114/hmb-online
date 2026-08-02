@@ -150,6 +150,26 @@
   color: var(--ok);
 }
 
+/* 행 XP 바 — 임계는 **서버가 준 `xpToNext`** 다(GrowthSection.tsx 머리말). */
+.xpBar {
+  position: relative;
+  flex: 1;
+  min-width: 24px;
+  height: 6px;
+  border-radius: 3px;
+  background: #20262f;
+  overflow: hidden;
+}
+
+.xpBarFill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+}
+
 .pendTag {
   margin-left: auto;
   flex: none;

@@ -186,3 +186,20 @@
   border-radius: 14px;
   background: #1a2333;
 }
+
+/* "왜 이 후보인가" (#405, 목업 화면 ③) — 서버 `reason` 을 문장으로 옮긴 줄. 못 만들면 안 그린다. */
+.candWhy {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  margin-top: 9px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #b7c0cd;
+}
+
+.candWhyTag {
+  flex: none;
+  color: var(--accent);
+  font-weight: 800;
+}

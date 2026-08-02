@@ -43,12 +43,28 @@ export interface StatLevel {
 }
 
 /**
+ * **왜 이 후보가 나왔나** — 그 스탯의 가중을 가장 크게 밀어올린 축 + 원자료(#405, 서버 `00b3586`).
+ *
+ * ⚠️ **서버는 구조만 내리고 문장을 만들지 않는다**(#232 와 같은 이유 — 문안이 서버 코드에 박히면
+ * 문구 하나 바꾸는 데 배포가 필요하다). 표시 문장은 클라가 만든다 → `growth/choice-reason.ts`.
+ *
+ * ⚠️ **`null` 일 수 있다**: 이 필드는 W2b 초판 뒤에 붙었으므로 그때 만들어진 선택권 행에는 없다.
+ * `BASE`(어느 축도 기여 안 함)와 같이 **줄을 생략**한다 — 없는 이유를 지어내지 않는다.
+ */
+export interface ChoiceReason {
+  /** `EVENT` | `BEHAVIOR` | `POSITION` | `RESULT` | `LEGACY` | `BASE` — 모르는 값이면 줄 생략. */
+  kind: string;
+  detail?: Record<string, unknown> | null;
+}
+
+/**
  * 3지선다 후보 1개 (#405 §2.5) — **레벨업 순간 서버가 박제**한다(`candidates_json`).
- * `gain` 까지 박제되므로 미뤘다가 골라도 화면에 보였던 숫자가 그대로 들어간다.
+ * `gain`·`reason` 까지 박제되므로 미뤘다가 골라도 화면에 보였던 숫자와 이유가 그대로 들어간다.
  */
 export interface ChoiceCandidate {
   stat: string;
   gain: number;
+  reason?: ChoiceReason | null;
 }
 
 /** 대기 중인 레벨업 선택권 1건. 레벨업 1회 = 선택 1회(같은 경기에 여러 건이 날 수 있다). */
@@ -104,6 +120,14 @@ export interface CardEffective {
   maxLevel?: number;
   /** 이 카드에 남아 있는 선택권(강화탭 배너). */
   pendingChoices?: PendingChoice[];
+  /**
+   * 천장의 **분해** — `caps = min(growCeil + starCeilBonus, attrHardCap)`.
+   * `caps` 만으로는 `천장 73 = 72 + ★2 보너스 1` 라벨을 만들 수 없어서 셋을 따로 받는다.
+   * ⚠️ 클라가 밴드 표를 미러해 재구성하면 무배포 조정에 조용히 어긋난다(§2.8) — 받은 값만 쓴다.
+   */
+  growCeil?: number;
+  starCeilBonus?: number;
+  attrHardCap?: number;
   potential: {
     unlocked: boolean; // 2★ 이상
     tier: PotentialTier;
@@ -168,6 +192,20 @@ export interface MatchGrowthEntry {
   xpGained: number;
   levelBefore?: number | null;
   levelAfter?: number | null;
+  /**
+   * 정산 **직후** 레벨 안에서의 진행도 — 행 XP 바는 `cardXp / xpToNext` 다.
+   *
+   * ⚠️ **서버가 계산해 스냅샷에 박는다**(클라가 `xp.lvBase`/`lvPow` 곡선을 미러하면 무배포
+   * 조정이 화면에서만 옛 곡선으로 남는다, §2.8). **만렙이면 `xpToNext === 0`** → 나누지 말고
+   * 꽉 찬 상태로. W2b 초판 정산분은 둘 다 `null` → **바를 안 그린다**(레벨 전이 표시는 유지).
+   */
+  cardXp?: number | null;
+  xpToNext?: number | null;
+  /**
+   * 출전 구분 `starter` | `partial`(교체 인/아웃) | `bench`(미투입).
+   * 초판 정산분은 `null` → `xpGained === 0` 로 벤치를 추정한다(그때 알 수 있는 전부다).
+   */
+  minutes?: string | null;
   /** 이 경기 레벨업으로 생긴 선택권(정산 스냅샷 = **그때 무엇이 생겼나**). */
   pendingChoices?: PendingChoice[];
 }

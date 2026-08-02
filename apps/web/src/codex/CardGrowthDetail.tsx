@@ -164,6 +164,28 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
   const xpToNext = card?.xpToNext ?? 0;
   const statAdd = (card?.statAdd ?? {}) as Record<string, number>;
   const pendingChoices = Array.isArray(card?.pendingChoices) ? card!.pendingChoices! : [];
+  const topCeiling = Math.max(
+    0,
+    ...Object.values((card?.caps ?? {}) as unknown as Record<string, number>).filter((v) => Number.isFinite(v)),
+  );
+  /**
+   * 천장 라벨 — `천장 73 = 72 + ★2 보너스 1`(목업 화면 ⑤).
+   *
+   * `caps = min(growCeil + starCeilBonus, attrHardCap)` 이라 합계만으로는 star 기여를 말할 수 없다.
+   * 서버가 셋을 따로 준다(`00b3586`). ⚠️ 하드캡에 걸려 합이 잘렸으면 **덧셈이 성립하지 않으므로**
+   * 분해를 쓰지 않는다 — `72 + 3 = 74` 같은 틀린 식을 그리느니 합계만 말한다.
+   */
+  const ceilingLabel = (() => {
+    const cap = Math.round(topCeiling);
+    const growCeil = card?.growCeil;
+    const bonus = card?.starCeilBonus;
+    if (typeof growCeil !== "number" || typeof bonus !== "number") return `천장 ${cap}`;
+    if (Math.round(growCeil + bonus) !== cap) return `천장 ${cap}`;
+    return bonus > 0
+      ? `천장 ${cap} = ${growCeil} + ★${star} 보너스 ${bonus}`
+      : `천장 ${cap} (★${star} 보너스 0)`;
+  })();
+
   const firstPendingId = pendingChoices[0]?.choiceId;
 
   // 대기가 처음 보이면 붙잡는다(위 주석) — 이미 잡고 있으면 카드가 갱신돼도 놓지 않는다.
@@ -512,10 +534,11 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
                 </p>
                 {/*
                   범례 (#405 §2.10) — 이 개편의 핵심 정보는 "회색 여백 = 아직 갈 수 있는 곳"이다.
-                  ⚠️ 천장 라벨은 숫자만이다. 목업은 `천장 73 = 72 + ★2 보너스 1` 로 star 기여를
-                  분해했는데, **서버가 `growCeil`·`star.ceilBonus` 를 클라에 주지 않는다**
-                  (`caps` 는 이미 합쳐진 값이고, 둘 다 무배포 조정 대상이라 미러하면 곧 낡는다).
-                  분해를 되살리려면 서버가 그 두 값을 내려야 한다.
+                  천장은 **분해해서** 말한다(`천장 73 = 72 + ★2 보너스 1`) — 그래야 승급(★)이
+                  게이트가 아니라 소폭 보너스라는 §2.6 의 새 역할이 화면에서 읽힌다.
+                  ⚠️ 세 값은 **서버가 준 것만** 쓴다(`growCeil`/`starCeilBonus`, 서버 `00b3586`).
+                  밴드 표를 클라가 미러해 재구성하면 무배포 조정에 조용히 어긋난다(§2.8).
+                  못 받았으면(구 서버) 분해를 생략하고 합계만 — 지어내지 않는다.
                 */}
                 <p className={styles.attrLegend} data-testid="growth-attr-legend">
                   <span>
@@ -526,9 +549,9 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
                     <i className={styles.lgGrow} />
                     성장분(선택으로 올린 몫)
                   </span>
-                  <span>
+                  <span data-testid="growth-ceil-legend">
                     <i className={styles.lgCeil} />
-                    천장
+                    {ceilingLabel}
                   </span>
                 </p>
               </>

@@ -54,10 +54,12 @@ const CHOICES = [
     choiceId: "c-1",
     playerId: "P003",
     level: 11,
+    // ⚠️ 세 후보의 `reason.kind` 를 **일부러 다르게** 잡았다 — 목업 화면 ③ 의 확인 포인트가
+    // "셋 다 다른 축(그 경기 이벤트 / 지시 / 포지션)"이고, 한 축만 태우면 매핑 구멍이 안 보인다.
     candidates: [
-      { stat: "tackling", gain: 3.82 },
-      { stat: "physical", gain: 3.11 },
-      { stat: "pace", gain: 2.45 },
+      { stat: "tackling", gain: 3.82, reason: { kind: "EVENT", detail: { type: "tackle", count: 6 } } },
+      { stat: "physical", gain: 3.11, reason: { kind: "POSITION", detail: { position: "DF" } } },
+      { stat: "pace", gain: 2.45, reason: { kind: "BEHAVIOR", detail: { param: "widthTendency", value: 0.79 } } },
     ],
   },
   {
@@ -65,8 +67,9 @@ const CHOICES = [
     playerId: "P003",
     level: 12,
     candidates: [
-      { stat: "positioning", gain: 3.4 },
-      { stat: "mental", gain: 2.9 },
+      { stat: "positioning", gain: 3.4, reason: { kind: "RESULT", detail: { result: "WIN" } } },
+      // `BASE` 와 `reason` 부재(구 행)는 **줄이 없어야** 한다 — 지어내지 않는 성질의 표본.
+      { stat: "mental", gain: 2.9, reason: { kind: "BASE", detail: {} } },
       { stat: "stamina", gain: 2.2 },
     ],
   },
@@ -75,9 +78,10 @@ const CHOICES = [
     playerId: "P006",
     level: 8,
     candidates: [
-      { stat: "passing", gain: 2.8 },
-      { stat: "technical", gain: 2.4 },
-      { stat: "shooting", gain: 1.9 },
+      { stat: "passing", gain: 2.8, reason: { kind: "BEHAVIOR", detail: { param: "passRisk", value: 0.7 } } },
+      { stat: "technical", gain: 2.4, reason: { kind: "EVENT", detail: { type: "pass", count: 41 } } },
+      // 서버가 축을 늘렸을 때 — 모르는 kind 는 죽지 않고 줄만 생략한다.
+      { stat: "shooting", gain: 1.9, reason: { kind: "MORALE", detail: { value: 1 } } },
     ],
   },
 ];
@@ -96,6 +100,12 @@ function growthEntries() {
       levelBefore: lv,
       // 레벨업 선수는 선택권 수만큼 오른다(레벨업 1회 = 선택 1회) — P003 은 2레벨이다.
       levelAfter: lv + ids.length,
+      // 정산 **직후** 진행도. 서버가 계산해 스냅샷에 박는다(클라가 곡선을 미러하지 않는다).
+      cardXp: 20 + i * 10,
+      // P012(마지막 선발)만 만렙 표본 — `xpToNext: 0` 이면 바가 꽉 차야 한다(나누면 Infinity).
+      xpToNext: i === STARTERS.length - 1 ? 0 : 141,
+      // 교체 투입 표본 하나 — 목업 ② 의 `교체 투입` 칩.
+      minutes: i === STARTERS.length - 1 ? "partial" : "starter",
       pendingChoices: CHOICES.filter((c) => ids.includes(c.choiceId)),
     };
   });
@@ -107,6 +117,9 @@ function growthEntries() {
     xpGained: 0,
     levelBefore: 4 + i,
     levelAfter: 4 + i,
+    cardXp: 30,
+    xpToNext: 141,
+    minutes: "bench",
     pendingChoices: [],
   }));
   return [...played, ...bench];
@@ -221,6 +234,10 @@ async function mockApi(page: Page, opts: MockOpts = {}) {
       cardXp: 60,
       xpToNext: 346,
       maxLevel: 40,
+      // caps(73) = growCeil(72) + starCeilBonus(★2 → 1), 하드캡 99 미만이라 덧셈이 성립한다.
+      growCeil: 72,
+      starCeilBonus: 1,
+      attrHardCap: 99,
       pendingChoices: pending.filter((c) => c.playerId === playerId),
       statLevels: {},
       potential: { unlocked: true, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
@@ -262,6 +279,9 @@ async function mockApi(page: Page, opts: MockOpts = {}) {
         cardXp: 60,
         xpToNext: 346,
         maxLevel: 40,
+        growCeil: 72,
+        starCeilBonus: 1,
+        attrHardCap: 99,
         pendingChoices: pending.filter((c) => c.playerId === row.playerId),
         statLevels: {},
         potential: { unlocked: true, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
@@ -366,8 +386,19 @@ test("e. 재화 탭은 서버 표기 메타를 따라오고, 성장 탭 뱃지�
   await expect(growth.getByTestId("growth-pending-P003")).toHaveText("선택 대기 2");
   await expect(growth.getByTestId("growth-pending-P006")).toHaveText("선택 대기 1");
   await expect(growth.getByTestId("growth-pending-P001")).toHaveCount(0);
+
+  // 행 XP 바 = 서버가 준 cardXp / xpToNext (클라가 곡선을 미러하지 않는다).
+  // P001: 20 / 141 = 14%. ⚠️ 만렙 표본 P012 는 xpToNext 0 → 꽉 참(나누면 Infinity 다).
+  await expect(growth.getByTestId("growth-xpbar-P001")).toHaveAttribute("data-value", "14");
+  await expect(growth.getByTestId("growth-xpbar-P012")).toHaveAttribute("data-value", "100");
+  // 출전 구분은 `minutes` 가 소유한다 — 교체 투입 칩은 그 값이 `partial` 인 행에만.
+  await expect(growth.getByTestId("growth-partial-P012")).toHaveText("교체 투입");
+  await expect(growth.getByTestId("growth-partial-P001")).toHaveCount(0);
   await expectNoDocumentScroll(page);
   await page.screenshot({ path: `${CAP_DIR}sheet-growth-390.png` });
+  // 교체 투입 칩 · 만렙 바 · 벤치 구분선은 목록 아래쪽이라 스크롤해서 한 장 더 남긴다.
+  await growth.getByTestId("growth-row-P016").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: `${CAP_DIR}sheet-growth-390-bottom.png` });
 });
 
 test("f. 레벨업 행 → 후보 3장 → 선택 → 적용·축하 + 남은 대기 유도", async ({ page }) => {
@@ -385,11 +416,43 @@ test("f. 레벨업 행 → 후보 3장 → 선택 → 적용·축하 + 남은 �
   await expect(page.getByTestId("choice-gain-tackling")).toHaveText("+3.82");
   // 44 → min(73, 44+3.82) = 47.8. 서버가 박제한 gain 이 화면 숫자와 같아야 한다.
   await expect(page.getByTestId("choice-to-tackling")).toHaveText("47.8");
+
+  // "왜 이 후보인가" — 셋 다 **다른 축**이다(그 경기 이벤트 / 포지션 / 지시). 목업 화면 ③ 확인 포인트.
+  await expect(page.getByTestId("choice-why-tackling")).toContainText("이 경기 태클 6회");
+  await expect(page.getByTestId("choice-why-physical")).toContainText("포지션 DF 핵심");
+  await expect(page.getByTestId("choice-why-pace")).toContainText('지시 "넓게 벌려"');
+
+  // ⚠️ 세 막대가 **같은 원점**을 쓴다 — 원점이 스탯별 base 면 gain 차이가 화면에서 안 읽힌다.
+  // 축 좌변이 공유값이므로 `+gain` 이 큰 후보의 초록 구간이 실제로 더 길다.
+  const widths = await page
+    .getByTestId("choice-candidates")
+    .locator('[class*="ceilAdd"]')
+    .evaluateAll((els) => els.map((el) => (el as HTMLElement).getBoundingClientRect().width));
+  expect(widths).toHaveLength(3);
+  expect(widths[0]).toBeGreaterThan(widths[1]!); // +3.82 > +3.11
+  expect(widths[1]).toBeGreaterThan(widths[2]!); // +3.11 > +2.45
+
   await expect(page.getByTestId("reward-pick-later")).toBeVisible();
   await page.screenshot({ path: `${CAP_DIR}sheet-pick-390.png` });
 
   await page.getByTestId("choice-cand-tackling").click();
-  await expect(page.getByTestId("choice-celebration")).toBeVisible();
+  const celebration = page.getByTestId("choice-celebration");
+  await expect(celebration).toBeVisible();
+  // 목업 화면 ④ — 알약 뱃지가 아니라 **큰 금색 LEVEL UP** + 스탯명 + `44.0 → 47.8 (+3.82)`.
+  await expect(celebration).toContainText("LEVEL UP");
+  await expect(celebration).toContainText("태클");
+  const delta = page.getByTestId("choice-celebration-delta");
+  await expect(delta).toHaveText("44.0 → 47.8 (+3.82)");
+  // ⚠️ `toBeVisible()` 은 **opacity 를 안 본다** — 스태거가 너무 길면 줄이 뜨기 전에 오버레이가
+  // 사라지는데도 계약은 초록이다(실제로 그 상태를 캡처가 잡았다). 실제로 보이는지 opacity 로 잰다.
+  await expect
+    .poll(async () => Number(await delta.evaluate((el) => getComputedStyle(el.parentElement!).opacity)))
+    .toBeGreaterThan(0.9);
+  await page.screenshot({ path: `${CAP_DIR}sheet-celebration-390.png` });
+  // 크기·색은 `growth` 변이 전용 규칙이다 — 알약(작은 22px)으로 되돌아가면 여기서 죽는다.
+  const title = celebration.locator('[class*="badge"]').first();
+  expect(Number.parseFloat(await title.evaluate((el) => getComputedStyle(el).fontSize))).toBeGreaterThan(28);
+  expect(await title.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe("0px");
   expect(chosen).toEqual([["c-1", "tackling"]]);
   await expect(page.getByTestId("choice-applied")).toBeVisible();
   // 같은 경기에 남은 대기가 있으면 이어서 찍게 유도한다(한 판에 여러 레벨업이 날 수 있다).
@@ -444,4 +507,32 @@ test("h. 확인 뒤에도 결과 화면에서 남은 선택으로 갈 문이 있
   await expect(page.getByTestId("reward-sheet")).toBeVisible();
   // 다시 연 시트는 **이미 확인된 봉투**다 — [확인]은 닫기일 뿐 ack 를 또 치지 않는다.
   await expect(page.getByTestId("reward-sheet")).toHaveAttribute("data-acknowledged", "1");
+});
+
+
+test("i. 근거를 못 만들면 줄을 생략한다 — 지어내지 않는다 (BASE · 부재 · 모르는 kind)", async ({ page }) => {
+  await mockApi(page);
+  await page.setViewportSize(PHONE);
+  await page.goto(`/match/${MATCH_ID}`);
+  await page.getByTestId("reward-tab-GROWTH").click();
+  await page.getByTestId("reward-section-GROWTH").getByTestId("growth-row-P006").click();
+
+  // c-3: passing = BEHAVIOR(있다) · technical = EVENT(있다) · shooting = 모르는 kind(없다)
+  await expect(page.getByTestId("choice-why-passing")).toContainText('지시 "과감한 패스"');
+  await expect(page.getByTestId("choice-why-technical")).toContainText("이 경기 패스 41회");
+  await expect(page.getByTestId("choice-why-shooting")).toHaveCount(0);
+  // 후보 카드 자체는 셋 다 멀쩡히 있다 — 줄만 없다(공허한 toHaveCount(0) 방지 앵커).
+  await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
+  await expect(page.getByTestId("choice-cand-shooting")).toBeVisible();
+
+  // c-2 는 P003 의 **두 번째** 선택권이라 c-1 을 소진해야 도달한다 — `BASE`·`reason` 부재 표본.
+  await page.getByTestId("reward-pick-later").click();
+  await page.getByTestId("reward-section-GROWTH").getByTestId("growth-row-P003").click();
+  await page.getByTestId("choice-cand-tackling").click();
+  await page.getByTestId("reward-pick-next").click();
+
+  await expect(page.getByTestId("choice-why-positioning")).toContainText("승리 보너스"); // RESULT
+  await expect(page.getByTestId("choice-why-mental")).toHaveCount(0); // BASE
+  await expect(page.getByTestId("choice-why-stamina")).toHaveCount(0); // reason 부재(구 행)
+  await expect(page.getByTestId("choice-cand-mental")).toBeVisible(); // 카드는 멀쩡히 있다
 });
