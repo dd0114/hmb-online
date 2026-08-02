@@ -575,6 +575,14 @@ export type DefShapeSample =
       refProgFx: number;
       /** 라인 높이 가감량(fixed) — `defensiveLineHeight` 슬라이더의 실권한. */
       heightBiasFx: number;
+      /**
+       * **오프사이드 트랩 전진량**(fixed, #377 S3-C). 0 = 그 틱 트랩이 안 걸렸다.
+       *
+       * ⚠️ **배정한 쪽이 라벨을 단다** — 좌표로 "이 틱에 트랩이 걸렸나"를 되추론하면 라인이
+       * 그냥 전진한 것과 구별되지 않는다(#378 이 벽/백업을 그렇게 되추론했다가 가짜 위반
+       * 566건을 만들었다). 발화 판정의 SoT 는 이 값 하나다.
+       */
+      trapBiasFx: number;
       /** 보정 **전** 멤버 진행도 산포(fixed, max−min). */
       beforeSpreadFx: number;
       /** 보정 **후** 산포(fixed). */

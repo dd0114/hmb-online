@@ -302,6 +302,52 @@ describe("#377 S3-B 조건부 LIVE — 레스트디펜스 가담도·성향 매�
   }, 180_000);
 });
 
+/**
+ * **조건부 LIVE** — #377 S3-C 오프사이드 트랩(+ 심판 보정 2종).
+ *
+ * 발화 조건이 **유저 전술 입력**(`team.offsideTrap`)이다. 출하 픽스처는 그 지시가 `false` 이므로
+ * (`fixtures.ts` — 하이리스크 전술을 전 벤치마크에 기본 탑재하지 않는다) 이 노브들은 출하값에서
+ * **비트 동일**이다. 그건 죽은 것이 아니라 **지시가 없는 것**이고, 둘은 처방이 정반대라 갈라서
+ * 박제한다(1대1 계열 · 레스트디펜스 매핑과 같은 처방).
+ *
+ * ⚠️ **등록 전에 확인했다** — 여섯 노브 전부 트랩을 켠 3시드에서 최종 해시가 움직인다.
+ * (`wallClearM` 재발 방지: "참조가 있다"는 통과 기준이 아니고 **"값을 바꾸면 경기가 달라진다"**
+ *  가 기준이다 — CLAUDE.md §2.5.)
+ */
+describe("#377 S3-C 조건부 LIVE — 오프사이드 트랩(지시가 있어야 발화한다)", () => {
+  const trapOn = (t: TacticalInput): TacticalInput => ({ ...t, team: { ...t.team, offsideTrap: true } });
+  const BASE_TRAP = hashesWith(() => {}, trapOn);
+
+  const knobs: Knob[] = [
+    { path: "movement.defLine.trap.enabled", mutate: (c) => { c.movement.defLine.trap.enabled = false; } },
+    { path: "movement.defLine.trap.stepUpM", mutate: (c) => { c.movement.defLine.trap.stepUpM = 8; } },
+    { path: "movement.defLine.trap.minBallDistM", mutate: (c) => { c.movement.defLine.trap.minBallDistM = 0; } },
+    { path: "movement.defLine.trap.shoulderBandM", mutate: (c) => { c.movement.defLine.trap.shoulderBandM = 20; } },
+    { path: "movement.defLine.trap.minShoulder", mutate: (c) => { c.movement.defLine.trap.minShoulder = 0; } },
+    { path: "movement.defLine.trap.releaseSmooth", mutate: (c) => { c.movement.defLine.trap.releaseSmooth = 0.1; } },
+    // 심판 게이트 2종. `trapBiasM` 은 출하 **0**(#377 S3-C — 기하가 물리로 움직이므로 이중 계상
+    // 방지) 이지만 **지우지 않는다**: `trap.enabled=false` + 2.5 = 0.39.0 재현 팔이다.
+    { path: "rules.offside.trapBiasM", mutate: (c) => { c.rules.offside.trapBiasM = 6; } },
+    { path: "rules.offside.trapCallMult", mutate: (c) => { c.rules.offside.trapCallMult = 4; } },
+  ];
+
+  for (const k of knobs) {
+    it(`조건부 LIVE: ${k.path} 는 트랩 지시가 있으면 레버다`, () => {
+      expect(hashesWith(k.mutate, trapOn), `${k.path} 가 트랩 ON 에서도 무효다 — 선언만 남은 노브(#338)`).not.toEqual(BASE_TRAP);
+    }, 120_000);
+  }
+
+  it("⚠️ 출하 픽스처(트랩 off)에서는 여섯 개 전부 비트 동일이다 — 죽은 것이 아니라 **지시가 없는 것**", () => {
+    // 이 단언이 깨지면(달라지면) 트랩 기제가 지시 없이도 발화하기 시작했다는 뜻이다 →
+    // 그때는 위 LIVE 로 올리고 이 블록을 지워라. (`trapCallMult` 는 지시 없이도 읽히지 않는다 —
+    // `checkOffside` 의 `trap ? … : …` 분기 안이다.)
+    for (const k of knobs) {
+      if (k.path === "rules.offside.trapBiasM" || k.path === "rules.offside.trapCallMult") continue;
+      expect(hashes(k.mutate), `${k.path}`).toEqual(BASE);
+    }
+  }, 300_000);
+});
+
 describe("#338 롤백 경로에서는 죽은 노브가 살아난다 (지우면 안 되는 이유)", () => {
   it("weighted 코어로 되돌리면 decisionWeights.shoot 이 다시 레버다", () => {
     const w = (shoot: number): string[] => {

@@ -3,7 +3,7 @@ import type { EngineConfig } from "./config";
 import type { Pitch } from "./pitch";
 import type { SimState, SimPlayer } from "./simstate";
 import { isBallOwner } from "./simstate";
-import { attackGoal, attackProgressX, clampToPitch, distToAttackGoal } from "./pitch";
+import { attackGoal, attackProgressX, clampToPitch, defendGoal, distToAttackGoal } from "./pitch";
 import { fclamp, fdist, isqrt } from "./fixedmath";
 import { defShapeObserver } from "./action";
 
@@ -271,6 +271,91 @@ export function holderRank(
  * @param unitBusy 압박 유닛이 데려간 선수들. 압박 담당의 그 틱 목표는 **공**이고 커버·지원은
  *   이미 맡은 자리가 있다 — 라인으로 되당기면 S3-A 를 그대로 되돌린다.
  */
+/**
+ * **오프사이드 트랩 — 라인 기준점의 조건부 전진량**(#377 S3-C · 로드맵 W5-3).
+ *
+ * ## 무엇이 없었나 (구조 사실 — 측정이 아니다)
+ * `team.offsideTrap` 의 소비처는 `contest.ts:checkOffside` **하나**였고, 거기서 하는 일은
+ * **심판이 쓰는 판정선을 `rules.offside.trapBiasM` 만큼 옮기는 것**이 전부였다. 선수 목표를
+ * 읽는 코드도, 라인을 미는 코드도 0줄이다. 즉 트랩은 약한 것이 아니라 **없었다**.
+ *
+ * ## 설계 — "얼마나 세게"가 아니라 **"어디서 거는가"**
+ * 20시드 실측에서 어깨 위 러너(라인 앞 4m)는 25–40m 구간에서 위험지역과 거의 같은 밀도로
+ * 존재하는데(0.841 vs 0.858) 뚫렸을 때의 대가는 1/3 이고 40–60m 이면 1/20 이다(수치표는 config
+ * `defLine.trap` 주석). 그래서 이 함수의 대부분은 **게이트**이고 세기는 노브 하나다.
+ *
+ *   세기 = clamp((공↔우리골 − minBallDistM) / releaseSmooth, 0, 1)   ← 연속(계단 아님)
+ *   전진량 = stepUpM × 세기                                          ← 어깨 러너가 있을 때만
+ *
+ * ⚠️ **연속인 이유**: 이진 on/off 면 목표가 매 틱 앞뒤로 튀어 #178(마크 당김 진동)이 그대로
+ * 재현된다 — 선수는 제자리에서 왕복하고 총 이동만 늘어난다.
+ *
+ * ⚠️ **무상태인 이유**(hold/cooldown 을 저장하지 않는다): `SimState` 에 필드를 늘리면
+ * `packages/server` 의 `SimStateSchema` 가 미선언 키를 **조용히 버려** 하프 재개에서 무음 유실이
+ * 된다(#154/#241 계열, 그 파일이 그 사고를 두 번 적어 뒀다). 창(window)은 저장하는 것이 아니라
+ * **트리거 조건 자체의 지속**에서 나온다 — 러너는 어깨에 몇 틱씩 머문다.
+ *
+ * ## 규율
+ *  - 순수 함수. `Rng` 를 받지 않는다(= 소비할 수 없다) · 정수 고정소수만 · 상대 위치는 **실측**
+ *    좌표를 쓴다(`seen` 기억이 아니다 — 라인 배정은 팀 단위 계산이고 선수 인지 계층이 아니다).
+ *  - `state.players` 순회 순서에 의존하지 않는다(합·비교만).
+ *
+ * @returns 기준점에 더할 전진량(고정소수, 진행도 축). 트랩이 안 걸리면 0.
+ */
+function trapStepUpFx(
+  state: SimState,
+  config: EngineConfig,
+  pitch: Pitch,
+  defSide: TeamSide,
+  members: readonly SimPlayer[],
+  refProgFx: number,
+  progOf: (x: number) => number,
+): number {
+  const tp = config.movement.defLine.trap;
+  // 롤백 경로 = 0.39.0. 한 줄도 다르게 돌지 않는다.
+  if (!tp.enabled) return 0;
+  // 지시가 없으면 트랩은 없다 — 이 웨이브가 실효화하는 것이 바로 이 불리언이다.
+  if (!state.teams[defSide].offsideTrap) return 0;
+  if (tp.stepUpM <= 0 && tp.releaseSmooth < 0) return 0;
+  const scale = config.fixedScale;
+
+  // ① 거리 게이트 — 공이 우리 골에서 충분히 멀 때만. 세기는 `releaseSmooth` 폭에 걸쳐 연속.
+  const goal = defendGoal(pitch, defSide);
+  const ballDistFx = fdist(state.ball.posFx.x, state.ball.posFx.y, goal.x, goal.y);
+  const minDistFx = toFixedM(tp.minBallDistM, scale);
+  const smoothFx = Math.max(1, toFixedM(tp.releaseSmooth, scale));
+  const overFx = ballDistFx - minDistFx;
+  if (overFx <= 0) return 0;
+  // strength = min(1, over/smooth) 를 정수로. 분해능 1/1000(고정소수 반올림 누적 회피).
+  const strengthMilli = Math.min(1000, Math.round((overFx * 1000) / smoothFx));
+  if (strengthMilli <= 0) return 0;
+
+  // ② 어깨 게이트 — 라인 **바로 앞**(아직 온사이드)에 상대가 있어야 건다. 잡을 사람이 없으면
+  //    라인을 올릴 이유가 없다(그건 그냥 하이라인이고, 대가만 치른다).
+  //
+  //    ⚠️ 축 방향에 주의: `progOf` 는 **우리 골 0 → 상대 골 +** 다. 그러니 우리 라인보다
+  //    **작은** 진행도 = 우리 골 쪽 = **이미 라인 뒤(오프사이드 위치)** 이고, 밀어올려서 잡을
+  //    수 있는 "어깨 위 러너"는 라인보다 **큰** 쪽 밴드 `[ref, ref + band]` 에 있다.
+  const bandFx = toFixedM(tp.shoulderBandM, scale);
+  let shoulder = 0;
+  for (const p of state.players) {
+    if (p.side === defSide || p.isGK) continue;
+    const prog = progOf(p.posFx.x);
+    if (prog < refProgFx) continue; // 이미 라인 뒤 = 트랩 대상이 아니다(이미 잡혀 있다).
+    if (prog <= refProgFx + bandFx) shoulder++;
+  }
+  if (shoulder < tp.minShoulder) return 0;
+
+  // ③ 전진량. 멤버가 하나도 없으면 호출부가 여기 오지 않는다(applied 게이트).
+  if (members.length === 0) return 0;
+  return Math.round((toFixedM(tp.stepUpM, scale) * strengthMilli) / 1000);
+}
+
+/** 미터 → 고정소수(정수). `toFixed` 를 import 하지 않고 같은 규칙을 쓴다(정수 반올림). */
+function toFixedM(m: number, scale: number): number {
+  return Math.round(m * scale);
+}
+
 export function applyDefensiveLine(
   state: SimState,
   config: EngineConfig,
@@ -307,6 +392,7 @@ export function applyDefensiveLine(
   const applied = members.length >= dl.minMembers;
   let refProgFx = 0;
   let heightBiasFx = 0;
+  let trapBiasFx = 0;
   let beforeSpreadFx = 0;
   let afterSpreadFx = 0;
 
@@ -331,6 +417,10 @@ export function applyDefensiveLine(
     // 기준점에 높이 가산을 더하면 매 틱 앞으로 미는 되먹임(폭주)이 된다.
     heightBiasFx = 0;
     refProgFx = dl.refMode === "planLine" ? progOf(state.plan[defSide].lineX) : meanP;
+    // #377 S3-C 오프사이드 트랩 — 기준점을 **조건부로** 앞으로 민다. 밴드는 그대로라
+    // 라인 전체가 같이 움직인다(= 유닛으로 올라간다). 자세한 근거는 config `defLine.trap` 주석.
+    trapBiasFx = trapStepUpFx(state, config, pitch, defSide, members, refProgFx, progOf);
+    refProgFx += trapBiasFx;
     const bandFx = Math.round(dl.blockLineRangeM * scale);
 
     const k = config.movement.lineDiscipline;
@@ -378,6 +468,7 @@ export function applyDefensiveLine(
       applied,
       refProgFx,
       heightBiasFx,
+      trapBiasFx,
       beforeSpreadFx,
       afterSpreadFx,
     });
