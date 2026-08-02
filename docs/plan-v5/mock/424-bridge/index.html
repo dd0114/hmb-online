@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#424 경기 흐름 브릿지 — 시안</title>
+<style>
+:root{
+  --bg:#0f1115; --bg-elevated:#171a21; --text:#eef0f4; --text-muted:#9aa1ad;
+  --border:#2a2e37; --accent:#4f8cff; --danger:#ff5a5a;
+  --us:#4c8dff; --them:#ff6b6b; --warn:#ffc24b; --ok:#3ddc84;
+  --surface:#111826; --sunk:#0c111b; --hairline:rgba(255,255,255,.07);
+  --grass-a:#17603a; --grass-b:#14562f;
+  color-scheme:dark;
+  font-family:system-ui,"Segoe UI",Roboto,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);padding:24px 16px 64px}
+h1{font-size:18px;margin:0 0 4px}
+.sub{color:var(--text-muted);font-size:13px;margin:0 0 24px;line-height:1.6}
+.sub b{color:var(--warn);font-weight:600}
+.grid{display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start}
+.case{width:340px}
+.caseHead{font-size:13px;font-weight:700;margin:0 0 2px}
+.caseNote{font-size:11.5px;color:var(--text-muted);margin:0 0 10px;line-height:1.55;min-height:46px}
+.caseNote code{background:var(--sunk);padding:1px 4px;border-radius:4px;font-size:11px}
+
+/* ── 폰 프레임 ─────────────────────────────────────────── */
+.phone{position:relative;width:340px;height:604px;background:var(--bg);
+  border:1px solid var(--border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+
+/* 스코어바 */
+.bar{display:flex;align-items:center;gap:8px;padding:9px 10px;border-bottom:1px solid var(--hairline);
+  font-size:12px;background:var(--bg-elevated);flex:none}
+.bar .back{color:var(--text-muted)}
+.bar .t{font-weight:600}
+.bar .t.h{color:var(--us)} .bar .t.a{color:var(--them)}
+.bar .score{font-weight:700;font-size:14px}
+.bar .clock{margin-left:auto;color:var(--warn);font-variant-numeric:tabular-nums}
+.chip{font-size:9.5px;border:1px solid var(--hairline);border-radius:999px;padding:1px 5px;color:var(--text-muted)}
+
+/* 무대(피치) */
+.stage{flex:1;position:relative;background:
+  repeating-linear-gradient(90deg,var(--grass-a) 0 26px,var(--grass-b) 26px 52px);
+  display:flex;align-items:center;justify-content:center}
+.stage::after{content:"";position:absolute;inset:10px;border:1px solid rgba(255,255,255,.22);border-radius:2px}
+.dot{position:absolute;width:11px;height:11px;border-radius:50%;box-shadow:0 0 0 1.5px rgba(0,0,0,.35)}
+.skipBtn{position:absolute;right:10px;bottom:10px;z-index:2;font-size:11px;padding:5px 10px;border-radius:999px;
+  background:rgba(0,0,0,.55);border:1px solid var(--hairline);color:var(--text)}
+/* 시트 */
+.sheet{flex:none;height:150px;background:var(--surface);border-top:1px solid var(--hairline);padding:8px 10px}
+.tabs{display:flex;gap:6px;margin-bottom:8px}
+.tab{font-size:11px;padding:4px 9px;border-radius:8px;color:var(--text-muted);background:var(--sunk)}
+.tab.on{color:var(--text);background:#1b2434}
+.line{font-size:11px;color:var(--text-muted);padding:3px 0;border-bottom:1px solid var(--hairline)}
+.line b{color:var(--text);font-weight:600}
+
+/* ── 대기(GenWait) 패널 = B1/B3 ───────────────────────── */
+.wait{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:18px 16px;text-align:center}
+.spinner{width:30px;height:30px;border-radius:50%;border:3px solid var(--hairline);border-top-color:var(--accent);
+  animation:spin 1s linear infinite;margin-bottom:14px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.wait h3{font-size:16px;margin:0 0 6px}
+.wait .elapsed{font-size:12px;color:var(--text-muted);margin:0 0 14px;font-variant-numeric:tabular-nums}
+.wait .scene{font-size:13px;color:var(--text-muted);line-height:1.6;margin:0;max-width:250px}
+.waitTag{font-size:9.5px;color:var(--text-muted);letter-spacing:.08em;margin-bottom:8px}
+
+/* 스텝퍼(신규) */
+.stepper{flex:none;padding:10px 12px 12px;border-top:1px solid var(--hairline);background:var(--sunk)}
+.steps{display:flex;align-items:center;gap:0;justify-content:space-between}
+.step{display:flex;flex-direction:column;align-items:center;gap:4px;flex:1;min-width:0}
+.step .pip{width:9px;height:9px;border-radius:50%;background:#2c3342}
+.step .lb{font-size:8.5px;color:#5f6776;white-space:nowrap}
+.step.done .pip{background:#2f4a3a;box-shadow:inset 0 0 0 1.5px var(--ok)}
+.step.done .lb{color:#79838f}
+.step.now .pip{background:var(--accent);box-shadow:0 0 0 4px rgba(79,140,255,.18)}
+.step.now .lb{color:var(--text);font-weight:700}
+.step.skip .pip{background:transparent;box-shadow:inset 0 0 0 1.5px #3a414f}
+.step.skip .lb{color:#4d545f;text-decoration:line-through}
+.stepRail{position:relative;height:1px;background:#242a36;margin:-16px 16px 7px}
+.nextLine{margin:9px 0 0;font-size:11.5px;color:var(--text-muted);text-align:center}
+.nextLine b{color:var(--text)}
+
+/* ── 오버레이(브릿지 카드 스택) = B2/B4 ───────────────── */
+.ov{position:absolute;inset:0;background:rgba(6,9,14,.72);backdrop-filter:blur(2px);
+  display:flex;align-items:center;justify-content:center;padding:16px 14px calc(18px + 14px)}
+.stack{position:relative;width:100%;max-width:296px}
+.behind{position:absolute;left:0;right:0;top:0;height:100%;border-radius:14px;background:var(--bg-elevated);
+  border:1px solid var(--hairline)}
+.behind.b1{transform:translateY(9px) scale(.965);opacity:.62}
+.behind.b2{transform:translateY(18px) scale(.93);opacity:.34}
+.card{position:relative;background:var(--bg-elevated);border:1px solid var(--border);border-radius:14px;
+  padding:14px 14px 12px;display:flex;flex-direction:column;gap:9px}
+.card.bridge{background:linear-gradient(180deg,#1b2333 0%,var(--bg-elevated) 62%);border-color:#33405a}
+.top{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--text-muted)}
+.kicker{letter-spacing:.1em}
+.kicker.b{color:var(--accent)}
+.title{font-size:19px;margin:0;letter-spacing:-.01em}
+.title.big{font-size:23px}
+.meta{margin:0;font-size:12px;color:var(--text-muted);font-variant-numeric:tabular-nums}
+.meta .h{color:var(--us)} .meta .a{color:var(--them)}
+.bodyText{margin:0;font-size:13px;line-height:1.62;color:#cfd5de}
+.aux{margin:0;font-size:12px;color:var(--warn);font-variant-numeric:tabular-nums}
+.next{margin:0;font-size:11.5px;color:var(--text-muted)}
+.next b{color:var(--text)}
+.rows{list-style:none;margin:0;padding:0;max-height:150px;overflow:auto}
+.rows li{display:flex;align-items:center;gap:7px;font-size:11.5px;padding:5px 0;border-bottom:1px solid var(--hairline)}
+.rows .ck{color:var(--text-muted);width:26px;font-variant-numeric:tabular-nums}
+.rows .wht{flex:1}
+.rows .who{color:var(--text-muted);font-size:10.5px}
+.motm{display:flex;flex-direction:column;align-items:center;gap:3px;padding:10px 0}
+.motm .nm{font-size:17px;font-weight:700}
+.motm .tm{font-size:11px;color:var(--text-muted)}
+.motm .rt{font-size:26px;font-weight:800;color:var(--ok);font-variant-numeric:tabular-nums}
+.dots{display:flex;gap:5px;justify-content:center}
+.dots i{width:5px;height:5px;border-radius:50%;background:#333b48}
+.dots i.on{background:var(--accent)}
+.cta{width:100%;border:0;border-radius:10px;padding:11px;font-size:13.5px;font-weight:700;
+  background:var(--accent);color:#fff}
+.cta.ghost{background:#222a37;color:var(--text)}
+
+/* 비트 */
+.beat{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  background:radial-gradient(circle at 50% 45%,rgba(8,12,18,.66) 0%,rgba(8,12,18,.18) 62%,transparent 78%)}
+.beat .bt{font-size:32px;font-weight:800;letter-spacing:-.02em;text-shadow:0 2px 14px rgba(0,0,0,.7)}
+.beat .bs{font-size:13px;color:var(--warn);letter-spacing:.14em;font-weight:700}
+.beat .bm{position:absolute;bottom:14px;font-size:10px;color:rgba(255,255,255,.5)}
+
+.legend{margin:30px 0 0;font-size:12px;color:var(--text-muted);line-height:1.75;max-width:760px}
+.legend b{color:var(--text)}
+</style>
+</head>
+<body>
+
+<h1>#424 경기 흐름 브릿지 — 4지점 시안 (+ #421 스킵 합류)</h1>
+<p class="sub">
+  로컬 목업. 정지 화면 시안이고 인터랙션은 없다. 문구·색·간격은 전부 <b>조정 포인트</b>(설계 문서 §11) —
+  실제 값은 <code>flow/flow-copy.ts</code> 한 곳에 모인다.<br>
+  설계 SoT = <code>docs/plan-v5/match-flow-bridge.md</code>
+</p>
+
+<div class="grid">
+
+  <!-- ① B1 경기 시작 -->
+  <div class="case">
+    <p class="caseHead">① B1 경기 시작 브릿지 — <span style="color:var(--ok)">기존 GenWaitPanel 승격</span></p>
+    <p class="caseNote">
+      트리거 <code>BRIEFING→GEN1</code> · 끝맺음 <b>자동</b>(서버가 FIRST_HALF 를 열면).<br>
+      제목·정경 문장은 <b>#382 확정 문구 그대로</b>. 브릿지가 더하는 것은 아래 <b>스텝퍼 + 다음 안내</b>뿐.
+    </p>
+    <div class="phone">
+      <div class="wait">
+        <div class="spinner"></div>
+        <h3>전반 킥오프를 앞둔 경기장</h3>
+        <p class="elapsed">경과 0:07</p>
+        <p class="scene">선수들이 그라운드로 걸어 나오고, 관중석의 함성이 커집니다.</p>
+      </div>
+      <div class="stepper">
+        <div class="steps">
+          <div class="step done"><span class="pip"></span><span class="lb">브리핑</span></div>
+          <div class="step now"><span class="pip"></span><span class="lb">전반 준비</span></div>
+          <div class="step"><span class="pip"></span><span class="lb">전반</span></div>
+          <div class="step"><span class="pip"></span><span class="lb">감독시간</span></div>
+          <div class="step"><span class="pip"></span><span class="lb">후반</span></div>
+          <div class="step"><span class="pip"></span><span class="lb">결과</span></div>
+        </div>
+        <p class="nextLine">다음 · <b>전반 킥오프</b></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ①-b 킥오프 비트 -->
+  <div class="case">
+    <p class="caseHead">①-b 킥오프 비트 — B1/B3 의 <span style="color:var(--warn)">끝맺음 표현</span></p>
+    <p class="caseNote">
+      <code>GEN1→FIRST_HALF</code> 전이에 1.2초 자동 소멸(클릭 시 즉시). 백드롭 없이 경기 화면이 비친다.<br>
+      비용 = 1.2초 ≈ 게임 7초. <b>길이 0 이면 비트가 없다</b>(조정 포인트 1·2).
+    </p>
+    <div class="phone">
+      <div class="bar">
+        <span class="back">←</span><span class="t h">내 팀</span><span class="chip">내 팀</span>
+        <span class="score">0 : 0</span><span class="t a">Thunder Bay</span><span class="clock">0'</span>
+      </div>
+      <div class="stage">
+        <span class="dot" style="left:38%;top:44%;background:var(--us)"></span>
+        <span class="dot" style="left:52%;top:52%;background:var(--them)"></span>
+        <span class="dot" style="left:46%;top:63%;background:var(--us)"></span>
+        <div class="beat">
+          <div class="bt">전반 시작</div>
+          <div class="bs">킥오프!</div>
+          <div class="bm">화면을 누르면 바로 넘어갑니다</div>
+        </div>
+      </div>
+      <div class="sheet">
+        <div class="tabs"><span class="tab">통계</span><span class="tab on">로그</span><span class="tab">후반 지시</span></div>
+        <p class="line">경기가 곧 시작됩니다</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ② B2 전반 종료 -->
+  <div class="case">
+    <p class="caseHead">② B2 전반 종료 브릿지 — <span style="color:var(--accent)">오버레이 카드 1장</span></p>
+    <p class="caseNote">
+      트리거 <code>FIRST_HALF→HALFTIME</code>(만료 또는 스킵) · 끝맺음 <b>유저 버튼</b>.<br>
+      뒤에 감독시간 화면이 이미 그려져 있다. <b>남은 감독시간을 표시</b>해 잠식을 보이게 한다(§4.2).
+    </p>
+    <div class="phone">
+      <div class="bar">
+        <span class="back">←</span><span class="t h">내 팀</span><span class="chip">내 팀</span>
+        <span class="score">1 : 2</span><span class="t a">Thunder Bay</span><span class="clock">45'</span>
+      </div>
+      <div class="sheet" style="flex:1;height:auto">
+        <div class="tabs"><span class="tab on">감독</span><span class="tab">경기장면</span><span class="tab">통계</span><span class="tab">로그</span></div>
+        <p class="line"><b>감독시간 2:47</b> 남았습니다</p>
+        <p class="line">전술 보드 · 교체 · 감독의 한마디</p>
+      </div>
+      <div class="ov">
+        <div class="stack">
+          <div class="card bridge">
+            <div class="top"><span class="kicker b">다음 단계</span></div>
+            <h2 class="title">전반 종료</h2>
+            <p class="meta"><span class="h">내 팀</span> 1 : 2 <span class="a">Thunder Bay</span></p>
+            <p class="bodyText">전반이 끝났습니다. 이제 감독시간입니다 — 지시를 남기고 교체를 준비하세요.</p>
+            <p class="aux">남은 감독시간 2:47</p>
+            <button class="cta">감독시간으로</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ②-b 스킵 합류 -->
+  <div class="case">
+    <p class="caseHead">②-b 스킵 합류 — <span style="color:var(--ok)">같은 스택에 카드가 앞에 붙는다</span></p>
+    <p class="caseNote">
+      전반을 <b>스킵</b>하면 <code>[리포트][주요 인물][B2 브릿지]</code> 3장. <b>브릿지가 언제나 마지막</b>이고
+      그 CTA 가 끝맺음이다 — 팝업 두 개가 아니라 <b>한 흐름·한 닫기</b>(설계 §5 권장안 A).
+    </p>
+    <div class="phone">
+      <div class="bar">
+        <span class="back">←</span><span class="t h">내 팀</span><span class="chip">내 팀</span>
+        <span class="score">1 : 2</span><span class="t a">Thunder Bay</span><span class="clock">45'</span>
+      </div>
+      <div class="sheet" style="flex:1;height:auto">
+        <div class="tabs"><span class="tab on">감독</span><span class="tab">경기장면</span><span class="tab">통계</span><span class="tab">로그</span></div>
+        <p class="line">전술 보드 · 교체 · 감독의 한마디</p>
+      </div>
+      <div class="ov">
+        <div class="stack">
+          <div class="behind b2"></div>
+          <div class="behind b1"></div>
+          <div class="card">
+            <div class="top"><span class="kicker">리포트</span><span>1 / 3</span></div>
+            <h2 class="title">전반 리포트</h2>
+            <p class="meta"><span class="h">내 팀</span> 1 : 2 <span class="a">Thunder Bay</span></p>
+            <ol class="rows">
+              <li><span class="ck">12'</span><span class="wht">⚽ 골!</span><span class="who">오시야스 · Thunder Bay</span></li>
+              <li><span class="ck">23'</span><span class="wht">🟨 옐로카드</span><span class="who">김레온 · 내 팀</span></li>
+              <li><span class="ck">31'</span><span class="wht">⚽ 골!</span><span class="who">보날두 · 내 팀</span></li>
+              <li><span class="ck">44'</span><span class="wht">⚽ 골!</span><span class="who">오시야스 · Thunder Bay</span></li>
+            </ol>
+            <div class="dots"><i class="on"></i><i></i><i></i></div>
+            <button class="cta">다음</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ③ B3 후반 시작 -->
+  <div class="case">
+    <p class="caseHead">③ B3 후반 시작 브릿지 — <span style="color:var(--ok)">GenWaitPanel(GEN2) 승격</span></p>
+    <p class="caseNote">
+      트리거 <code>HALFTIME→GEN2</code>([후반 시작] 또는 만료) · 끝맺음 <b>자동</b> + 킥오프 비트②.<br>
+      오토 모드면 <b>감독시간 스텝이 흐림 + 건너뜀</b>(스텝을 지우지 않는다 — 화면을 두 번 배우게 하지 않는다).
+    </p>
+    <div class="phone">
+      <div class="wait">
+        <div class="waitTag">오토 모드</div>
+        <div class="spinner"></div>
+        <h3>후반 킥오프를 앞둔 경기장</h3>
+        <p class="elapsed">경과 0:02</p>
+        <p class="scene">주심이 시계를 확인하고, 양 팀이 하프라인에 다시 섭니다.</p>
+      </div>
+      <div class="stepper">
+        <div class="steps">
+          <div class="step done"><span class="pip"></span><span class="lb">브리핑</span></div>
+          <div class="step done"><span class="pip"></span><span class="lb">전반 준비</span></div>
+          <div class="step done"><span class="pip"></span><span class="lb">전반</span></div>
+          <div class="step skip"><span class="pip"></span><span class="lb">감독시간</span></div>
+          <div class="step now"><span class="pip"></span><span class="lb">후반 준비</span></div>
+          <div class="step"><span class="pip"></span><span class="lb">후반</span></div>
+          <div class="step"><span class="pip"></span><span class="lb">결과</span></div>
+        </div>
+        <p class="nextLine">다음 · <b>후반 킥오프</b></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④ B4 경기 종료 -->
+  <div class="case">
+    <p class="caseHead">④ B4 경기 종료 브릿지 — <span style="color:var(--accent)">#405 보상 흐름의 앞단</span></p>
+    <p class="caseNote">
+      트리거 <code>SECOND_HALF→FINISHED</code> · 끝맺음 <b>유저 버튼</b>(시간 압박 0 = 가장 강한 종결).<br>
+      CTA 는 #405 continuation 이 있으면 <b>보상 받기</b>, 없으면 <b>결과 보기</b>(폴백 = 지금 그대로 동작).
+    </p>
+    <div class="phone">
+      <div class="bar">
+        <span class="back">←</span><span class="t h">내 팀</span><span class="chip">내 팀</span>
+        <span class="score">3 : 2</span><span class="t a">Thunder Bay</span><span class="clock">90'</span>
+      </div>
+      <div class="stage" style="max-height:190px">
+        <span class="dot" style="left:44%;top:48%;background:var(--us)"></span>
+        <span class="dot" style="left:56%;top:56%;background:var(--them)"></span>
+      </div>
+      <div class="sheet">
+        <div class="tabs"><span class="tab on">결과</span><span class="tab">통계</span><span class="tab">로그</span></div>
+        <p class="line"><b>승리</b> · 내 팀 3 : 2 Thunder Bay</p>
+        <p class="line">경기 보상 +500 G</p>
+      </div>
+      <div class="ov">
+        <div class="stack">
+          <div class="card bridge">
+            <div class="top"><span class="kicker b">다음 단계</span></div>
+            <h2 class="title big">경기 종료</h2>
+            <p class="meta"><span class="h">내 팀</span> 3 : 2 <span class="a">Thunder Bay</span></p>
+            <p class="bodyText">90분이 끝났습니다. 승리했습니다!</p>
+            <p class="next">다음 · <b>경기 보상과 결과 확인</b></p>
+            <button class="cta">보상 받기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ④-b 스킵 합류 + 주요 인물 -->
+  <div class="case">
+    <p class="caseHead">④-b 후반 스킵 → 주요 인물 카드 → 종료 브릿지</p>
+    <p class="caseNote">
+      후반 스킵도 같은 구조. 평점 모듈(#403)이 아직 <code>null</code> 스텁이라 실제로는 2장으로 줄 수 있다 —
+      <b>스택이 1장 줄 뿐 흐름은 안 깨진다</b>(#421 W2 격리막).
+    </p>
+    <div class="phone">
+      <div class="bar">
+        <span class="back">←</span><span class="t h">내 팀</span><span class="chip">내 팀</span>
+        <span class="score">3 : 2</span><span class="t a">Thunder Bay</span><span class="clock">90'</span>
+      </div>
+      <div class="sheet" style="flex:1;height:auto">
+        <div class="tabs"><span class="tab on">결과</span><span class="tab">통계</span><span class="tab">로그</span></div>
+        <p class="line"><b>승리</b> · 내 팀 3 : 2 Thunder Bay</p>
+      </div>
+      <div class="ov">
+        <div class="stack">
+          <div class="behind b1"></div>
+          <div class="card">
+            <div class="top"><span class="kicker">리포트</span><span>2 / 3</span></div>
+            <h2 class="title">후반 주요 인물</h2>
+            <p class="meta"><span class="h">내 팀</span> 3 : 2 <span class="a">Thunder Bay</span></p>
+            <div class="motm">
+              <span class="nm">보날두</span>
+              <span class="tm">내 팀 · FW</span>
+              <span class="rt">8.4</span>
+            </div>
+            <div class="dots"><i></i><i class="on"></i><i></i></div>
+            <button class="cta">다음</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="legend">
+  <b>읽는 법</b> — ①·③ 은 <b>이미 있는 대기 화면(GenWaitPanel)에 스텝퍼 한 줄을 얹은 것</b>이고, ②·④ 는
+  <b>신규 오버레이 카드</b>다. ②-b·④-b 가 이 웨이브의 핵심 결정: 스킵 리포트는 별도 레이어가 아니라
+  <b>같은 스택의 앞 카드</b>이고, <b>브릿지 카드가 언제나 마지막</b>이라 닫기가 하나다.<br>
+  <b>안 하는 것</b> — 패널 라우팅(<code>panelForState</code>)·시트 높이 등급·탭 규칙은 한 줄도 안 건드린다.
+  <code>VisualPlayback</code>·<code>PlaybackControls</code>·<code>viewer-core</code> 무접촉(#406 경계).<br>
+  <b>오버레이 소유자는 <code>MatchPage</code></b> — 그래야 <code>GEN2</code> 로 라우팅이 갈려
+  <code>StageShell</code> 이 언마운트돼도 카드가 산다(#421 이 남긴 D6 갭 해소).
+</p>
+
+</body>
+</html>
+</content>
