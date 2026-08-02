@@ -108,6 +108,7 @@ public class MatchService {
     private final online.hmb.league.LeagueDailyRewardService dailyRewardService;
     /** #405 W2b — 결과 화면에 additive 로 실리는 보상 봉투(설계 §2.9). */
     private final online.hmb.rewards.RewardBundleService rewardBundleService;
+    private final online.hmb.mission.MissionService missionService;
     private final LiveEngineConfigService liveEngineConfig;
 
     public MatchService(JdbcClient jdbcClient,
@@ -122,6 +123,7 @@ public class MatchService {
                         online.hmb.away.AwayViewAccess awayViewAccess,
                         online.hmb.league.LeagueDailyRewardService dailyRewardService,
                         online.hmb.rewards.RewardBundleService rewardBundleService,
+                        online.hmb.mission.MissionService missionService,
                         MatchAutoProperties autoProps,
                         LiveEngineConfigService liveEngineConfig,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
@@ -138,6 +140,7 @@ public class MatchService {
         this.awayViewAccess = awayViewAccess;
         this.dailyRewardService = dailyRewardService;
         this.rewardBundleService = rewardBundleService;
+        this.missionService = missionService;
         this.autoProps = autoProps;
         this.liveEngineConfig = liveEngineConfig;
         this.halftimeSubsMax = halftimeSubsMax;
@@ -1347,12 +1350,16 @@ public class MatchService {
      * @param rewardBundle #405 W2b §2.9 <b>additive</b> — 재화/성장을 한 장으로 묶은 보상 봉투.
      *     W2b 이전에 끝난 매치는 {@code null} 이다(봉투가 없다). 구 클라는 이 필드를 무시하면
      *     그만이라 배포 순서 결합이 없다(#368 선례).
+     * @param missions #408 additive — <b>이 경기가 원정 데일리 미션을 얼마나 밀었나</b>. 구 클라는
+     *                 필드를 무시하면 그만이라 배포 순서 결합이 없다(#368 {@code dailyReward} 와 같은 규율).
+     *                 원정이 아닌 경기·미션이 없는 유저는 빈 배열이다.
      */
     public record MatchResult(String matchId, int scoreHome, int scoreAway, String result,
                                long pointsAwarded, Map<String, Object> teamStats,
                                List<Map<String, Object>> playerStats,
                                online.hmb.league.LeagueDailyRewardService.SlotRow dailyReward,
-                               online.hmb.rewards.RewardBundleService.Bundle rewardBundle) {
+                               online.hmb.rewards.RewardBundleService.Bundle rewardBundle,
+                               List<online.hmb.mission.MissionService.MatchMissionView> missions) {
     }
 
     public MatchResult result(String userId, String matchId) {
@@ -1400,11 +1407,15 @@ public class MatchService {
             }
         }
 
+        // ⚠️ 미션은 **보는 사람 기준**으로 좁힌다(#408). 이 GET 은 원정 수비자에게도 열려 있어서
+        // (getViewable, #245) 좁히지 않으면 공격자의 미션 진행도가 상대에게 그대로 나간다 —
+        // "권한 확대는 읽기냐 쓰기냐만이 아니라 무엇을 읽느냐도 좁혀야 한다"(#245 BL-1).
         return new MatchResult(matchId, row.scoreHome(), row.scoreAway(), row.result(),
                 pointsAwarded, Map.copyOf(teamCounters), List.copyOf(perPlayer.values()),
                 dailyRewardService.slotOfMatch(matchId).orElse(null),
                 // ⚠️ 봉투는 **매치 소유자**의 것이다 — 관전(수비자)에는 남의 보상이 보이면 안 된다.
-                rewardBundleService.ofMatch(row.userId(), matchId).orElse(null));
+                rewardBundleService.ofMatch(row.userId(), matchId).orElse(null),
+                missionService.progressOf(matchId, userId));
     }
 
     // ── 스냅샷/JSON 헬퍼 ────────────────────────────────────────────────

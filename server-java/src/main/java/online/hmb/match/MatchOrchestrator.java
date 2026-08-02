@@ -61,6 +61,7 @@ public class MatchOrchestrator {
     private final online.hmb.growth.GrowthService growthService;
     /** #405 W2b §2.9 — 정산 결과를 한 장으로 묶는 공용 보상 봉투(표시용, 지급의 SoT 아님). */
     private final RewardBundleService rewardBundleService;
+    private final online.hmb.mission.MissionService missionService;
     private final MatchClockService clockService;
     private final ObjectMapper objectMapper;
     /** #193 라운드2 — 지시 델타 라우팅 노브(전부 config, 하드코딩 금지). */
@@ -86,6 +87,7 @@ public class MatchOrchestrator {
                              online.hmb.league.LeagueDailyRewardService leagueDailyRewardService,
                              online.hmb.growth.GrowthService growthService,
                              RewardBundleService rewardBundleService,
+                             online.hmb.mission.MissionService missionService,
                              MatchClockService clockService,
                              DeckPrewarmService prewarmService,
                              ObjectMapper objectMapper,
@@ -111,6 +113,7 @@ public class MatchOrchestrator {
         this.leagueDailyRewardService = leagueDailyRewardService;
         this.growthService = growthService;
         this.rewardBundleService = rewardBundleService;
+        this.missionService = missionService;
         this.clockService = clockService;
         this.objectMapper = objectMapper;
         this.deltaEnabled = deltaEnabled;
@@ -811,6 +814,15 @@ public class MatchOrchestrator {
         // (FINISHED CAS 통과 후 1회, 내부 멱등). 수비자는 이 경로 말고는 결과를 알 길이 없다.
         if ("away".equals(modeOf(match))) {
             awayService.settle(match.id(), match.userId(), result, userGoals, oppGoals);
+            // #408: 원정 데일리 미션 판정 — 원정 정산과 **같은 자리**(FINISHED CAS 통과 후 1회,
+            // 내부 멱등). 날짜 앵커는 **종료 시각**이다(생성 시각이면 자정을 넘겨 끝난 판이 어제
+            // 미션을 채우고, 유저는 오늘 화면에서 그 판이 사라진 걸 본다).
+            // ⚠️ 훅이 **여기에만** 있는 것이 §6.5("포기는 진행도를 올리지 않는다")를 구조적으로
+            //    보장한다 — 자발 포기는 forfeitIfVoluntaryAwayAbandon 경로라 finishMatch 를 지나지
+            //    않는다. 훅을 awayService.settle 안으로 옮기면 몰수도 세어져 "출전 3회"를 포기
+            //    3번으로 클리어할 수 있다(계약 = MissionMatchFlowTest 의 포기 표본).
+            missionService.settle(match.id(), match.userId(), result, userGoals, oppGoals,
+                    userHome, clockService.now());
         }
 
         // AC-C4: 관계/사기 변동 — FINISHED 전이 트랜잭션 내 멱등 적용(relations_applied 플래그 CAS).

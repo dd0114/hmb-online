@@ -346,28 +346,56 @@ SoT 는 `ConditionService.dateOf(instant)` 다. 체감이 어긋나면 "어제 �
 순간 **오늘 이미 받은 보상의 이력이 소급 변조된다**("아까 200 받았는데 화면엔 100"). **`amount` 와 `tier` 를 행에 박제**한다.
 
 ```sql
+-- 실제 구현(V39__daily_missions.sql). 초안에서 **네 군데가 넓어졌다** — 근거는 바로 아래.
 CREATE TABLE daily_missions (
   id          TEXT PRIMARY KEY,          -- ULID
   user_id     TEXT NOT NULL,
   day         TEXT NOT NULL,             -- 'yyyy-MM-dd' (KST)
   slot_no     INTEGER NOT NULL,          -- 1 | 2
   mission_id  TEXT NOT NULL,             -- 'away_streak_2' 등 (카탈로그 키)
+  title       TEXT NOT NULL,             -- ← 추가: 화면 문구 (박제)
   tier        TEXT NOT NULL,             -- 'EASY'|'NORMAL'|'HARD'  (박제)
+  rule        TEXT NOT NULL,             -- ← 추가: 판정 규칙       (박제)
   currency    TEXT NOT NULL,             -- 'GEM'                   (박제)
   amount      INTEGER NOT NULL,          -- 그 미션의 보상액         (박제)
-  progress    INTEGER NOT NULL DEFAULT 0,
   target      INTEGER NOT NULL,          -- 박제(카탈로그가 바뀌어도 오늘 목표는 안 바뀐다)
+  progress    INTEGER NOT NULL DEFAULT 0,
   completed_at TEXT, claimed_at TEXT, rerolled_at TEXT,
   created_at  TEXT NOT NULL,
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
-CREATE UNIQUE INDEX uq_daily_mission_slot ON daily_missions(user_id, day, slot_no);
+-- ← 부분 유니크: **살아 있는** 미션만 슬롯을 차지한다(은퇴 행은 이력으로 남는다)
+CREATE UNIQUE INDEX uq_daily_mission_slot
+    ON daily_missions(user_id, day, slot_no) WHERE rerolled_at IS NULL;
 CREATE INDEX idx_daily_mission_user_day  ON daily_missions(user_id, day);
+
+-- ← 추가 테이블: 경기 한 판이 미션 하나를 얼마나 밀었나
+CREATE TABLE daily_mission_progress (
+  match_id        TEXT NOT NULL,
+  mission_row_id  TEXT NOT NULL,
+  progress_before INTEGER NOT NULL,
+  progress_after  INTEGER NOT NULL,
+  created_at      TEXT NOT NULL,
+  PRIMARY KEY (match_id, mission_row_id),
+  FOREIGN KEY (mission_row_id) REFERENCES daily_missions(id)
+);
 ```
+
+**초안에서 넓어진 네 가지와 근거** (구현 중 확정):
+
+| 추가 | 왜 |
+|---|---|
+| `title` · `rule` 박제 | §6.3 이 "달성했는데 안 받은 보상은 **기한 없이** 남는다"이고 §9 롤백이 "카탈로그를 비운다"이므로, **카탈로그에서 사라진 미션의 미수령 행**이 반드시 생긴다. 그때 문구를 카탈로그에서 조회하면 화면에 빈 제목이 뜨고, 판정 규칙을 조회하면 그날 남은 경기에서 진행도가 안 오른다. **행 하나만 읽어도 표시·판정·지급이 완결**되어야 한다 |
+| 슬롯 유니크를 **부분 인덱스**로 | 리롤을 제자리 UPDATE 로 하면 진행도 원장이 가리키는 행의 미션이 사후에 바뀌어, **지난 경기 결과 화면이 "그 경기가 밀지도 않은 미션"을 그린다**. 그래서 리롤 = 은퇴 + 새 행이고, 은퇴 행은 유니크 제약 밖으로 빠져야 한다. 리롤 소진은 별도 카운터가 아니라 **그 슬롯의 은퇴 행 수**로 센다(두 값이 갈라질 수 없다) |
+| `daily_mission_progress` 신설 | ①**멱등** — 재정산이 진행도를 두 번 올리면 "출전 3회"가 한 판으로 끝난다(`league_daily_rewards.match_id` PK 와 같은 층, 여기선 경기×미션 축이라 복합 PK) ②**결과 화면의 `missions` 배열** — "이 경기가 얼마나 밀었나"는 누적 진행도에서 **사후에 분해되지 않는다**(1→2 인지 0→2 인지 알 길이 없다). GET 은 몇 번을 불러도 같은 답을 해야 하므로 델타를 행으로 남긴다 |
+| ~~`completedNow` 컬럼~~ (두지 않음) | `progress_before < target ≤ progress_after` 로 파생되고 `target` 이 박제라 두 값이 갈라질 수 없다 |
 
 - 마이그레이션 번호 = **V39** (main 배정 2026-08-02 — V38 은 #405 성장 트랙). `FlywayMigrationTest` 기대 목록에도 등록.
   ⚠️ Flyway 가 **1부터 빈틈 없는 연속**을 강제하므로(`out-of-order=false`), **#405 의 V38 보다 먼저 머지되면 안 된다** — 머지 순서는 main 이 잡는다.
-- 미션 추첨은 **시드 RNG**(`rngFromSeed(userId + day)`) — 결정론이라 "왜 이 미션이 나왔나"를 재현할 수 있다.
+  ⚠️ 그래서 이 브랜치 단독으로는 `FlywayVersionContinuityTest` 가 **결번**을 본다. 검사를 지우거나 배정을 무시하고 V38 을 가져가는 대신, 그 테스트에 **예약 목록**(`RESERVED_BY_OTHER_BRANCH = {38: "#405"}`)을 뒀다 — 열거된 번호만 예외이고, 예약이 실제로 채워지면 `reservedNumbersAreStillMissing` 이 **목록을 지우라고 실패**하므로 낡은 채로 진짜 결번을 덮을 수 없다.
+- 미션 추첨은 **시드 RNG**(`sha256(userId:day:slotN)` 앞 15 hex → 후보 수로 나눈 나머지, `UserOnboardingService.pickStarterTop` 과 같은 계열) — 결정론이라 "왜 이 미션이 나왔나"를 재현할 수 있다.
+- **카탈로그는 `application.yml hmb.mission.daily.*`, 금액만 economy.** 값의 성격이 다르다: 금액은 economy override + reload 로 **무배포** 조정하는 경제 곡선이고, 카탈로그(id·티어·판정규칙·목표·문구)는 게임 규칙의 **구조**라 바뀌면 판정 코드(`MissionRule`)와 같이 움직여야 한다. #245 가 `hmb.away.reward.mode` 는 application.yml 에 두고 **금액은 economy 를 참조**한 것과 같은 갈라짐이다.
+  ⚠️ economy 는 `data/players/economy.v3.json` 에 **손으로 얹었다**(`mission.reward`). 이건 #251·#368 이 같은 파일에 한 것과 같은 방식이다 — `data/players/generate.ts` 의 `economyV3` 는 v2 를 그대로 복사할 뿐이라 **재생성하면 #251/#368 블록이 통째로 사라진다**(그래서 `data.test.ts` 의 바이트 동일성 목록에도 economy.v3 이 없다). 생성기와 발행물이 갈라진 상태이고 **#408 이 만든 문제가 아니다** — data 도메인에 이슈 레이즈가 필요하다.
 
 ### 지급 — 새 원장을 만들지 않는다
 
@@ -380,6 +408,22 @@ CREATE INDEX idx_daily_mission_user_day  ON daily_missions(user_id, day);
 `MatchOrchestrator.finishMatch` 의 **FINISHED CAS 통과 이후**, 원정 정산(`awayService.settle`) 바로 옆.
 `mode == "away"` 일 때만. 그 자리에서 `result`·`userGoals`·`oppGoals` 가 이미 계산돼 있다.
 "선제골" 판정만 매치로그 파싱이 필요하고, 그건 `GrowthService.eventCountsByPlayer` 가 같은 트랜잭션에서 하는 일과 같다.
+
+**판정 규칙은 일곱 갈래**(`MissionRule`)로 14종을 전부 표현한다 — 미션마다 분기를 쓰면 카탈로그를 늘릴 때마다 판정 코드를 고쳐야 하고, 그때 **이미 발급된 행의 판정이 바뀐다**.
+
+| rule | 전이 | 쓰는 미션 |
+|---|---|---|
+| `PLAY` | +1 (승패 무관) | `away_play_{1,2,3}` |
+| `WIN` | WIN 이면 +1 | `away_win_{1,2,3}` |
+| `WIN_STREAK` | 승 +1 · **패 0 으로 끊김** · **무승부 유지** | `away_streak_{2,3}` |
+| `BEST_MATCH_GOALS` | `max(progress, userGoals)` — **합계가 아니다** | `away_goals_{2,3,4}` |
+| `CLEAN_WIN` | `WIN && oppGoals==0` 이면 +1 | `away_clean_win` |
+| `BEST_WIN_MARGIN` | `max(progress, WIN ? userGoals-oppGoals : 0)` | `away_margin_3` |
+| `FIRST_GOAL` | 매치로그 **첫 goal 이벤트**가 우리 팀이면 +1 | `away_first_goal` |
+
+- **연승의 하루 경계**는 별도 집계가 필요 없다 — 미션 행이 `day` 로 잘려 있어 `progress` 자체가 "그날 안의 연승"이다(`away_streaks` 는 통산이라 그대로 쓸 수 없다). **무승부 유지**는 `AwayService` 통산 연승(hero E4)과 같은 규칙으로 맞췄다 — 두 화면이 서로 다른 "연승"을 말하면 유저는 어느 쪽도 믿지 않는다.
+- **달성 후에는 진행도가 언다**(`UPDATE … WHERE completed_at IS NULL`). 안 그러면 나중 패배가 연승 미션을 0 으로 되돌려 이미 딴 보상이 사라진다.
+- **§6.4 를 "첫 조회 → 첫 조회 *또는* 첫 정산"으로 넓혔다.** 그러지 않으면 앱을 안 켜고 원정만 친 유저의 진행도가 통째로 사라진다(그날 미션 행이 없으니 밀 대상이 없다). 추첨이 시드 결정론이라 **어느 쪽이 먼저 만들어도 같은 두 미션**이라 §6.1 의 lazy 원칙은 그대로다.
 
 ### 조회 계약 — 클라는 아무것도 계산하지 않는다
 
@@ -423,6 +467,14 @@ CREATE INDEX idx_daily_mission_user_day  ON daily_missions(user_id, day);
 // 리롤 소진 409 MISSION_REROLL_USED · 달성한 미션 409 MISSION_ALREADY_COMPLETED
 ```
 
+**구현이 계약보다 코드 두 개가 많다** — §8 이 열거하지 않은 상태이고, 각각 유저가 취할 행동이 다르다(#286 이 복수에서 세 개를 더한 것과 같은 규율):
+
+| 코드 | 상태 |
+|---|---|
+| 404 `NOT_FOUND` | 없는 미션 **과 남의 미션**. 갈라 두면 id 실재가 새어 나간다(#297·#323) |
+| 410 `MISSION_EXPIRED` | **지난 날짜**의 미션을 리롤하려 함. 그날은 끝났고 남은 건 수령뿐이다 — 여기에 `MISSION_REROLL_USED` 를 쓰면 거짓말이다 |
+| 409 `MISSION_REROLL_UNAVAILABLE` | 풀이 보유분보다 작아 뽑을 후보가 없음(14종 ≫ 2 라 현행 config 에선 도달 불가, 카탈로그를 줄이면 열린다) |
+
 ### 결과 화면 — `GET /api/matches/{id}/result` 에 additive 필드
 
 #368 이 `dailyReward` 를 얹은 자리와 같은 규율. **구 클라는 필드를 무시하면 그만이라 배포 순서 결합이 없다.**
@@ -455,7 +507,24 @@ CREATE INDEX idx_daily_mission_user_day  ON daily_missions(user_id, day);
 
 ## 9. 되돌리기
 
-- **끄기**: 미션 카탈로그 config 를 비우면 새 날짜의 미션이 생성되지 않는다(이미 받은 보상은 그대로).
+- **끄기**: **`hmb.mission.daily.count: 0`**(env `HMB_MISSION_DAILY_COUNT=0`) = 새 날짜의 미션이 생성되지 않는다.
+  화면은 섹션을 통째로 안 그리고, **이미 달성한 미수령 보상은 그대로 받을 수 있다**(§6.3 — 끄기가 지갑을 뺏지 않는다).
   금액만 0 으로 내리는 방법은 **쓰지 않는다** — 미션은 뜨는데 보상이 0 이면 고장으로 읽힌다.
+  ⚠️ 초안은 "카탈로그를 비우면"이었는데, **YAML 리스트는 env·property 하나로 비울 수 없다** = 그 방식은 재배포를 요구하므로 롤백 수단이 아니다. 카탈로그가 비어도 같은 결과가 되도록 방어는 남겼다.
+  계약 = `MissionRollbackOffTest`(끄기 + 끈 뒤 수령 가능).
 - **금액 조정**: economy 노브(무배포). 박제 규율 덕에 **이미 지급된 것은 소급 변조되지 않는다**.
 - **코드 롤백**: `finishMatch` 의 한 줄 + 라우트 등록 + web 섹션 한 줄.
+
+---
+
+## 10. 변이체 킬 검증 (server-java 웨이브, 21/21 사망)
+
+계약이 "통과만 하는 장식"이 아닌지 구현을 되돌려 실측했다. **초판에서 3건이 살아남았고 셋 다 계약을 고쳤다** — 그 세 건이 이 리포가 반복해 온 함정의 실례라 기록해 둔다.
+
+| 살아남았던 변이 | 왜 안 죽었나 | 어떻게 고쳤나 |
+|---|---|---|
+| 생성 지점의 금액을 상수 100/200/300 으로 | 금액 계약이 **테스트 헬퍼가 심은 행**을 읽고 있었다 = 생산 경로(추첨→insert)를 한 번도 안 탔다 | 미션을 심지 않고 **`daily()` 로 생성된 행**의 금액을 40명분 관측(픽스처 11/22/33) |
+| 달성 후에도 진행도를 다시 계산 | DB 의 `WHERE completed_at IS NULL` 가드가 막아 **DB 단정만으로는** 관측이 안 됐다(응답에는 틀린 값이 실린다) | `settle` **반환값**(결과 화면 payload)의 progress 도 단정 |
+| 리롤을 같은 티어 안에서만 | "리롤 결과 티어가 셋 다 나온다"가 **어차피 참** — 원래 미션 티어가 이미 셋에 걸쳐 있다 | 관계식으로 교체: **티어를 건너뛴 리롤이 실제로 일어나는가** |
+
+최종 21/21 사망. 전체 표는 웨이브 보고 참조(훅 제거 · 훅을 몰수 경로에 이식 · UTC 자정 · 정산 멱등 제거 · 수령 CAS 약화 · 미달성 수령 · 달성 미션 리롤 · 무한 리롤 · 무승부가 연승을 끊음 · 한 경기 N골을 합계로 · 골 차가 패배도 셈 · 선제골이 사이드 무시 · 추첨 편향 · 결과 화면 뷰어 미스코프 · 롤백 스위치 무시 · economy 폴백 0원 · lazy 생성 제거).

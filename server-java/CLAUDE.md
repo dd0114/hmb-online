@@ -716,6 +716,63 @@ DTO 에 실으면 클라가 **서버가 하지 않는 전이를 화면에 단언
   **상대 만료 재전송은 200** / 수신자 순서 무관 / 거절 부수효과 0 / 회수 / 회수 후 유저 목록 EXPIRED /
   감사(성공·실패·검증실패) / 목록 창 밖 단건 조회 / 게이트) · `MailFanoutCapTest`.
 
+## 원정 데일리 미션 (#408)
+
+하루(KST) 2개 · 14종 균등 추첨(중복만 금지) · **전부 원정 경기로만 판정** · 티어별 다이아
+(쉬움 100 · 보통 200 · 어려움 300) · 미션당 리롤 1회. 설계·근거 = `docs/plan-v5/away-daily-mission.md`
+(hero 확정 2026-08-02 §7 — **게임 수치·한글 문구는 hero 산출물이라 임의 변경 금지**).
+
+- **표는 둘(V39), 원장은 0개 신설**: `daily_missions`(그날 미션 1개 = 1행) + `daily_mission_progress`
+  (경기 × 미션의 진행 델타). 돈은 `gem_ledger`(`reason='daily_mission'`, `ref_id`=미션 행 id)로 나간다 —
+  **여기에 새 지갑/멱등 메커니즘을 만들지 마라**(V33 우편함 규율: "왜 다이아가 늘었나"의 답이 두 곳이 되면 안 된다).
+- ⚠️ **행 하나만 읽어도 표시·판정·지급이 완결돼야 한다.** 그래서 `title`·`rule` 까지 박제한다 —
+  §6.3 이 "달성했는데 안 받은 보상은 **기한 없이** 남는다"이고 §9 롤백이 카탈로그를 줄이는 것이라,
+  **카탈로그에서 사라진 미션의 미수령 행**이 반드시 생긴다. 그때 문구를 카탈로그에서 조회하면 빈 제목이
+  뜨고, 판정 규칙을 조회하면 그날 남은 경기에서 진행도가 안 오른다.
+- **리롤은 제자리 UPDATE 가 아니라 은퇴 + 새 행**이다(`rerolled_at` + **부분** 유니크 인덱스).
+  UPDATE 로 하면 진행도 원장이 가리키는 행의 미션이 사후에 바뀌어 **지난 경기 결과 화면이 "그 경기가
+  밀지도 않은 미션"을 그린다**. 리롤 소진은 별도 카운터가 아니라 **그 슬롯의 은퇴 행 수**로 센다.
+- ⚠️ **훅은 `MatchOrchestrator.finishMatch` 에만 있다** — 그게 §6.5("포기는 진행도를 올리지 않는다")를
+  **구조적으로** 보장한다. 자발 포기는 `forfeitIfVoluntaryAwayAbandon` 경로라 `finishMatch` 를 지나지
+  않는다. 훅을 `awayService.settle` 안으로 옮기면 몰수도 세어져 "원정 3회"를 **만들고 무르기 3번**으로
+  끝낼 수 있다(계약 = `MissionMatchFlowTest.abandoningAnAwayMatchInBriefingDoesNotAdvanceAnyMission`,
+  변이체로 실측 사망).
+- **금액은 economy(`mission.reward`), 카탈로그는 `application.yml hmb.mission.daily.*`.** 값의 성격이
+  다르다 — 금액은 override+reload 로 **무배포** 조정하는 경제 곡선이고, 카탈로그(id·티어·판정규칙·목표·
+  문구)는 게임 규칙의 **구조**라 판정 코드(`MissionRule`)와 같이 움직인다(#245 의 `away.reward.mode` 와
+  같은 갈라짐). ⚠️ `mission.reward` 는 `rankBonus`/`bigSlots` 와 달리 **티어 단위 병합**이다 — 표가
+  곡선이 아니라 독립된 세 가격이라, 쉬움만 올리려고 한 줄 적었을 때 나머지가 0 원이 되면 그건
+  §9 가 금지한 "보상이 사라지는" 상태다. 폴백 = `DEFAULT_DAILY_MISSION_REWARD`(override 트랩).
+- **롤백 = `hmb.mission.daily.count: 0`**(env `HMB_MISSION_DAILY_COUNT=0`). 설계 §9 의 "카탈로그를
+  비우면"은 **YAML 리스트를 env 로 비울 수 없어서** 실제로는 재배포를 요구한다 = 롤백 수단이 아니다.
+  금액을 0 으로 내리는 방식은 쓰지 않는다(미션은 뜨는데 보상이 0 = 고장으로 읽힌다).
+- ⚠️ **결과 화면 `missions` 는 보는 사람으로 좁힌다.** `GET /api/matches/{id}/result` 는 원정 수비자
+  에게도 열려 있어서(#245 `getViewable`) 매치 축으로만 조회하면 **공격자의 미션 진행도가 상대에게 샌다**
+  ("권한 확대는 읽기냐 쓰기냐만이 아니라 무엇을 읽느냐도 좁혀야 한다" — #245 BL-1).
+  ⚠️ #368 의 `dailyReward` 는 "원정 매치엔 칸 행이 없어 현재는 안전하다"였는데, **미션은 원정 축이라
+  그 논거가 성립하지 않는다** — 좁은 사실에 안전성을 매달지 마라.
+- **미션 생성은 조회 *또는* 정산 시점**(설계 §6.4 의 "첫 조회"를 넓혔다). 안 그러면 앱을 안 켜고 원정만
+  친 유저의 진행도가 통째로 사라진다. 추첨이 시드 결정론(`sha256(userId:day:slotN)`)이라 어느 쪽이 먼저
+  만들어도 같은 두 미션이다. **리셋 잡은 없다**(#368·#245 와 같은 lazy 원칙).
+- 에러 코드가 계약보다 둘 많다: 410 `MISSION_EXPIRED`(지난 날짜 리롤 — `REROLL_USED` 로 뭉치면 거짓말) ·
+  409 `MISSION_REROLL_UNAVAILABLE`(후보 고갈, 현행 config 에선 도달 불가). 없는 미션과 **남의 미션**은
+  같은 404 다.
+- ⚠️ **`/api/missions/**` 를 `WebMvcConfig` 인증 제외 목록에 넣지 마라** — 우편함과 같은 이유로 정의상 내 것이다.
+- ⚠️ **마이그레이션 결번**: V38 은 #405 가 쓴다(main 배정). 이 브랜치 단독으로는 결번이라
+  `FlywayVersionContinuityTest` 에 **예약 목록**(`RESERVED_BY_OTHER_BRANCH`)을 뒀다 — 열거된 번호만
+  예외이고, 예약이 채워지면 `reservedNumbersAreStillMissing` 이 **목록을 지우라고 실패**한다.
+  이 목록이 비어 있지 않은 브랜치는 **단독 배포 대상이 아니다**.
+- ⚠️ **`data/players/economy.v3.json` 은 생성기와 갈라져 있다**(#408 이 만든 문제 아님). `generate.ts` 의
+  `economyV3` 는 v2 를 복사할 뿐이라 **재생성하면 #251(`gemReward`)·#368(`dailyReward`)·#408(`mission`)이
+  통째로 사라진다** — 그래서 `data.test.ts` 바이트 동일성 목록에도 economy.v3 이 없다. data 도메인 이슈 필요.
+- 계약 = `MissionDailyTest`(28: 카탈로그·추첨 커버리지·KST 경계·규칙 7종·멱등·박제·수령 4중·리롤 4종·
+  발행값·경제 서열) · `MissionMatchFlowTest`(6: **훅**·포기·연습 무영향·수비자 미노출·인증·HTTP 모양) ·
+  `MissionRollbackOffTest`(2) · `EconomyLegacyFallbackTest`(폴백·티어 병합). **변이체 21/21 사망.**
+  ⚠️ 초판에서 **3건이 살아남았다** — ①금액 계약이 테스트 헬퍼가 심은 행을 읽어 **생산 경로를 안 탔다**
+  ②"달성 후 동결"이 DB 가드에 가려 응답의 틀린 값이 관측되지 않았다 ③"리롤 티어가 셋 다 나온다"가
+  **어차피 참**이었다(원래 미션 티어가 이미 셋). 셋 다 계약을 고쳐 죽였고, 이 세 형태는 이 리포에서
+  반복된다.
+
 ## 없는 경로는 404 다 (#335)
 
 매핑 안 된 요청은 Spring 이 **정적 리소스 조회로 흘리고**, 거기서 난 `NoResourceFoundException` 이

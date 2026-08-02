@@ -33,6 +33,36 @@ class FlywayVersionContinuityTest {
     private static final Path MIGRATION_DIR = Path.of("src/main/resources/db/migration");
     private static final Pattern VERSIONED = Pattern.compile("^V(\\d+)__.+\\.sql$");
 
+    /**
+     * <b>다른 진행 중 브랜치가 선점한 번호</b> — main 이 배정했고, 그 브랜치가 머지되는 순간 채워진다.
+     *
+     * <p>왜 목록이 필요한가: main 이 병렬 에픽에 번호를 미리 나눠 주면(#405=V38, #408=V39) 뒤 번호를
+     * 받은 브랜치는 <b>혼자서는 결번</b>이다. 그 상태로 이 검사가 실패하면 "게이트 green" 이라는 말이
+     * 브랜치 위에서 성립하지 않아, 다음 사람이 검사를 통째로 지우거나 배정을 무시하고 앞 번호를
+     * 가져간다(= main 이 막으려던 중복이 그대로 열린다).
+     *
+     * <p>그래서 <b>열거된 번호만</b> 예외다. 여기 없는 결번은 여전히 실패한다. 그리고
+     * {@link #reservedNumbersAreStillMissing} 가 <b>예약이 실제로 채워지면 목록을 지우도록</b>
+     * 강제하므로 이 목록이 낡은 채로 남아 진짜 결번을 덮을 수 없다.
+     *
+     * <p>⚠️ 이 목록이 비어 있지 않은 브랜치는 <b>단독 배포 대상이 아니다</b> — 예약 번호를 가진
+     * 브랜치가 먼저 머지돼야 한다. 머지 순서는 main 이 잡는다.
+     */
+    private static final java.util.Map<Integer, String> RESERVED_BY_OTHER_BRANCH =
+            java.util.Map.of(38, "#405 성장 트랙 (main 배정 2026-08-02, #408 은 V39)");
+
+    /** 예약이 실제로 들어왔으면 목록에서 지워라 — 안 그러면 그 번호가 영구 사각지대가 된다. */
+    @Test
+    void reservedNumbersAreStillMissing() {
+        List<Integer> versions = versions();
+        for (var e : RESERVED_BY_OTHER_BRANCH.entrySet()) {
+            assertThat(versions)
+                    .as("V%d(%s)이 이미 들어왔다 — RESERVED_BY_OTHER_BRANCH 에서 이 항목을 지워라",
+                            e.getKey(), e.getValue())
+                    .doesNotContain(e.getKey());
+        }
+    }
+
     @Test
     void migrationVersionsHaveNoGaps() {
         List<Integer> versions = versions();
@@ -42,6 +72,7 @@ class FlywayVersionContinuityTest {
         List<Integer> missing = Stream.iterate(1, v -> v + 1)
                 .limit(versions.get(versions.size() - 1))
                 .filter(v -> !versions.contains(v))
+                .filter(v -> !RESERVED_BY_OTHER_BRANCH.containsKey(v))
                 .toList();
 
         assertThat(missing).as("""
