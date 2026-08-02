@@ -51,8 +51,14 @@ public final class GrowthCandidates {
      * <p>{@code reason} 이 gain 과 같은 취급을 받는 이유는 같다: 미뤄서 골라도 화면이 안 바뀌어야
      * 한다. 나중에 재계산하면 그 사이 다음 경기를 치른 카드의 이유가 바뀌어 "슛 4회라서 나왔다던
      * 후보가 갑자기 태클 3회 때문"이 된다.
+     *
+     * <p><b>{@code core}</b> = 그 포지션의 {@code positionBaseline} 상위 {@code candidate.coreStatCount}
+     * 스탯인가. 화면에서 가장 큰 숫자는 <b>gain 배지</b>인데 감쇠 특성상 gain 이 큰 쪽은 <b>낮은
+     * 스탯</b>이라, 화면이 유도하는 선택(gain 최대)이 OVR 로는 <b>지는 선택</b>이 된다.
+     * 판단 근거를 화면에 노출해 그 함정을 없앤다.
+     * ⚠️ {@code null} = W2b 초판에 박제된 행(이 필드가 나중에 붙었다). 클라는 표시를 생략한다.
      */
-    public record Choice(String stat, double gain, Reason reason) {
+    public record Choice(String stat, double gain, Reason reason, Boolean core) {
     }
 
     /**
@@ -230,6 +236,7 @@ public final class GrowthCandidates {
         }
 
         SplittableRandom rng = rngFromSeed(seed);
+        List<String> core = coreStats(tuning, baseline);
         List<Choice> picked = new ArrayList<>();
         int want = Math.min(Math.max(0, cfg.count()), pool.size());
         while (picked.size() < want) {
@@ -237,11 +244,52 @@ public final class GrowthCandidates {
             String stat = pool.get(index);
             picked.add(new Choice(stat,
                     GrowthMath.gain(tuning, grade, star, currentPre.getOrDefault(stat, 0.0), level),
-                    reasonFor(tuning, stat, position, baseline, events, behaviors, win, result, evidence)));
+                    reasonFor(tuning, stat, position, baseline, events, behaviors, win, result, evidence),
+                    core.contains(stat)));
             pool.remove(index);
             weights.remove(index);
         }
+        picked.sort(byOvrContribution(baseline));
         return new Draw(seed, List.copyOf(picked));
+    }
+
+    /**
+     * <b>OVR 기여 내림차순</b>({@code positionBaseline[pos][stat] × gain}).
+     *
+     * <p>왜 서버가 정렬하나: 화면에서 가장 크고 눈에 띄는 숫자는 <b>gain 배지</b>인데, 감쇠 곡선상
+     * gain 이 큰 쪽은 <b>낮은 스탯</b>이다 — 즉 화면이 유도하는 선택(gain 최대)이 OVR 로는 지는
+     * 선택일 수 있다. 판단 근거인 {@code positionBaseline} 은 화면에 없으므로 유저가 그걸 알아낼
+     * 방법이 없다.
+     *
+     * <p><b>가중치 값 자체는 내리지 않는다</b> — 무배포 조정 대상이라 클라가 미러하면 노브를 돌리는
+     * 순간 화면만 옛 기준으로 정렬한다(§2.8 이 막으려는 상태). 서버가 정렬·판정한 <b>결과만</b> 준다.
+     *
+     * <p>동점은 {@link GrowthTuning#STATS} 순서로 깬다 — 정렬을 값에만 맡기면 같은 시드가
+     * 실행마다 다른 순서를 낼 수 있고, 그러면 "순서도 박제된다"가 성립하지 않는다.
+     */
+    private static java.util.Comparator<Choice> byOvrContribution(Map<String, Double> baseline) {
+        return (a, b) -> {
+            double left = baseline.getOrDefault(a.stat(), 0.0) * a.gain();
+            double right = baseline.getOrDefault(b.stat(), 0.0) * b.gain();
+            int cmp = Double.compare(right, left);
+            return cmp != 0 ? cmp
+                    : Integer.compare(GrowthTuning.STATS.indexOf(a.stat()), GrowthTuning.STATS.indexOf(b.stat()));
+        };
+    }
+
+    /**
+     * 그 포지션의 <b>핵심 스탯</b>({@code positionBaseline} 상위 {@code candidate.coreStatCount}).
+     * 동점은 {@link GrowthTuning#STATS} 순서 — 여기도 결정론이 곧 박제 가능성이다.
+     */
+    private static List<String> coreStats(GrowthTuning tuning, Map<String, Double> baseline) {
+        List<String> ordered = new ArrayList<>(GrowthTuning.STATS);
+        ordered.sort((a, b) -> {
+            int cmp = Double.compare(baseline.getOrDefault(b, 0.0), baseline.getOrDefault(a, 0.0));
+            return cmp != 0 ? cmp
+                    : Integer.compare(GrowthTuning.STATS.indexOf(a), GrowthTuning.STATS.indexOf(b));
+        });
+        int n = Math.min(Math.max(0, tuning.candidate().coreStatCount()), ordered.size());
+        return List.copyOf(ordered.subList(0, n));
     }
 
     /**

@@ -219,6 +219,107 @@ class GrowthCandidateDeterminismTest {
         assertThat(positionReasons).isZero();
     }
 
+    // ── 정렬 + core: "최적 선택을 화면이 숨기지 않는다" ─────────────────────
+
+    /**
+     * 포지션별 <b>핵심 4스탯</b>을 리터럴로 박는다. {@code positionBaseline} 표에서 다시 계산하면
+     * 구현과 같은 실수를 같이 하고, 표가 바뀌어도 계약이 따라가 아무것도 못 잡는다 —
+     * {@code shippedDefaultsMatchTheConfirmedDesign} 과 같은 이유의 앵커다.
+     * (값을 <b>의도적으로</b> 바꿀 땐 이 표도 같이 고친다.)
+     */
+    private static final Map<String, List<String>> EXPECTED_CORE = Map.of(
+            "FW", List.of("shooting", "pace", "positioning", "technical"),
+            "MF", List.of("passing", "technical", "stamina", "positioning"),
+            "DF", List.of("tackling", "positioning", "physical", "mental"),
+            "GK", List.of("positioning", "mental", "physical", "tackling"));
+
+    /** 9개를 전부 뽑아 한 화면에서 관측한다(기본 3개로는 표를 다 볼 수 없다). */
+    private GrowthCandidates.Draw drawAll(String position, Map<String, Double> stats) {
+        GrowthTuning nine = T.withOverrides(Map.of("candidate.count", 9),
+                new com.fasterxml.jackson.databind.ObjectMapper());
+        return GrowthCandidates.draw(nine, GrowthCandidates.seed(MATCH, USER, PLAYER, 1),
+                position, "GOLD", 1, stats, zero(), zero(), null, 1,
+                GrowthCandidates.Evidence.ofMatch(Map.of(), Map.of()));
+    }
+
+    @Test
+    void coreFlagsMatchThePositionsTopFourStats() {
+        for (Map.Entry<String, List<String>> e : EXPECTED_CORE.entrySet()) {
+            List<String> flagged = drawAll(e.getKey(), flatStats(55.0)).choices().stream()
+                    .filter(c -> Boolean.TRUE.equals(c.core()))
+                    .map(GrowthCandidates.Choice::stat)
+                    .sorted()
+                    .toList();
+            assertThat(flagged).as("position=%s", e.getKey())
+                    .containsExactlyInAnyOrderElementsOf(e.getValue());
+        }
+    }
+
+    /**
+     * <b>정렬 키는 gain 이 아니라 OVR 기여</b>({@code baseline × gain})다. 스탯이 전부 같으면
+     * gain 도 같으므로 순서는 곧 baseline 순서 — 그 서열을 리터럴로 박는다.
+     * 정렬을 지우면 추첨 순서(시드 의존)가 나와 즉시 깨진다.
+     */
+    @Test
+    void candidatesArriveSortedByOvrContribution() {
+        List<String> order = drawAll("FW", flatStats(55.0)).choices().stream()
+                .map(GrowthCandidates.Choice::stat).toList();
+        assertThat(order).containsExactly("shooting", "pace", "positioning", "technical",
+                "passing", "stamina", "physical", "mental", "tackling");
+    }
+
+    /**
+     * <b>이 정렬이 존재하는 이유 그 자체</b>: gain 이 더 큰 후보가 뒤로 갈 수 있어야 한다.
+     * 감쇠 때문에 gain 이 큰 쪽은 낮은 스탯이고, 그게 OVR 로는 지는 선택일 수 있다 —
+     * gain 으로 정렬하면 화면이 계속 그 함정을 1번 자리에 놓는다.
+     */
+    @Test
+    void aBiggerGainCanRankBelowASmallerOneWhenTheRoleWeightSaysSo() {
+        // MF 주스탯 passing(baseline .20) 이 비주력 tackling(.06) 보다 **아주 조금** 높게 자란 상태.
+        // 감쇠가 tackling 의 gain 을 더 크게 주지만, 역할 가중이 그 차이를 뒤집는다.
+        Map<String, Double> stats = flatStats(55.0);
+        stats.put("passing", 55.0);    // gain 조금 작다
+        stats.put("tackling", 51.0);   // gain 더 크다 (배지가 더 눈에 띈다)
+
+        List<GrowthCandidates.Choice> choices = drawAll("MF", stats).choices();
+        GrowthCandidates.Choice passing = pick(choices, "passing");
+        GrowthCandidates.Choice tackling = pick(choices, "tackling");
+
+        assertThat(tackling.gain()).as("표본이 의도한 상황이 아니다 — 낮은 스탯의 gain 이 더 커야 한다")
+                .isGreaterThan(passing.gain());
+        assertThat(choices.indexOf(passing))
+                .as("gain 이 작은 주스탯이 뒤로 갔다 — 정렬 키가 OVR 기여가 아니라 gain 이다")
+                .isLessThan(choices.indexOf(tackling));
+    }
+
+    private static GrowthCandidates.Choice pick(List<GrowthCandidates.Choice> choices, String stat) {
+        return choices.stream().filter(c -> c.stat().equals(stat)).findFirst().orElseThrow();
+    }
+
+    /** 순서·core 도 결정론이다 — 재계산해도 같은 배열이어야 박제가 성립한다. */
+    @Test
+    void orderAndCoreAreDeterministicForTheSameKey() {
+        Map<String, Double> stats = flatStats(55.0);
+        for (int level = 1; level <= 5; level++) {
+            assertThat(drawAt(level, stats).choices()).as("level=%d", level)
+                    .isEqualTo(drawAt(level, stats).choices());
+        }
+        // core 가 전부 null 이면(필드를 안 채우면) 위 비교가 공허해진다.
+        assertThat(drawAt(1, stats).choices()).allSatisfy(c -> assertThat(c.core()).isNotNull());
+    }
+
+    /** {@code candidate.coreStatCount} 가 실제 소비되는 노브다(0 이면 핵심 표시가 사라진다). */
+    @Test
+    void coreStatCountIsAConsumedKnob() {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        GrowthTuning none = T.withOverrides(Map.of("candidate.count", 9, "candidate.coreStatCount", 0), mapper);
+        List<GrowthCandidates.Choice> off = GrowthCandidates.draw(none,
+                GrowthCandidates.seed(MATCH, USER, PLAYER, 1), "FW", "GOLD", 1, flatStats(55.0),
+                zero(), zero(), null, 1, GrowthCandidates.Evidence.ofMatch(Map.of(), Map.of())).choices();
+        assertThat(off).allSatisfy(c -> assertThat(c.core()).isFalse());
+        assertThat(drawAll("FW", flatStats(55.0)).choices()).anySatisfy(c -> assertThat(c.core()).isTrue());
+    }
+
     // ── 가중이 실제로 후보 분포를 움직인다 ───────────────────────────────
 
     /**

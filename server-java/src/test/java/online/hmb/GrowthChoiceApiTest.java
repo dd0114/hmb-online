@@ -125,6 +125,41 @@ class GrowthChoiceApiTest extends MatchTestBase {
         }
     }
 
+    /**
+     * <b>순서와 core 도 박제된다.</b> 정렬 키가 {@code baseline × gain} 이라 스탯이 자라면 gain 이
+     * 줄어 <b>재계산하면 순서가 바뀌는</b> 상태를 일부러 만든다 — 그런데도 응답이 그대로여야 하고,
+     * 그 응답이 {@code candidates_json} <b>바이트와 같아야</b> 한다.
+     *
+     * <p>⚠️ 응답끼리만 비교하면 안 된다: 읽기 경로를 일관되게 오염시키는 변이체(예:
+     * {@code readReason} 이 항상 BASE)가 before == after 로 통과한 전례가 있다.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void candidateOrderAndCoreAreFrozenAndMatchTheStoredBytes() {
+        String token = setupUserWithDeck("gch_order");
+        String userId = userIdOf("gch_order");
+        settleOnce(token, userId, "gch_order");
+
+        Map<String, Object> pending = firstPending(userId, "P001");
+        List<Map<String, Object>> before = (List<Map<String, Object>>) pending.get("candidates");
+        assertThat(before).as("후보가 3개가 아니면 순서 계약이 공허해진다").hasSize(3);
+        assertThat(before).allSatisfy(c -> assertThat(c).containsKey("core"));
+        assertThat(before.stream().map(c -> c.get("stat")).toList())
+                .as("응답 순서가 박제본 순서와 다르다 — 어딘가가 다시 정렬한다")
+                .isEqualTo(storedCandidates(userId, "P001", ((Number) pending.get("level")).intValue())
+                        .stream().map(c -> c.get("stat")).toList());
+
+        // 1번 후보의 스탯을 천장 근처까지 밀어 올린다 → 재계산이면 그 후보의 gain 이 급감해
+        // 순서가 뒤로 밀린다(= 재계산 여부가 관측 가능해진다).
+        String top = (String) before.get(0).get("stat");
+        jdbcClient.sql("UPDATE user_players SET stat_add_json = ? WHERE user_id=? AND player_id='P001'")
+                .params("{\"" + top + "\": 25.0}", userId).update();
+
+        assertThat(firstPending(userId, "P001").get("candidates"))
+                .as("스탯이 움직이자 후보 배열(순서·gain·core)이 바뀌었다 — 박제되지 않았다")
+                .isEqualTo(before);
+    }
+
     // ── 계약 5: 중복 선택 차단 ───────────────────────────────────────────
 
     @SuppressWarnings("unchecked")
@@ -254,7 +289,7 @@ class GrowthChoiceApiTest extends MatchTestBase {
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = res.getBody();
         assertThat(body).containsKeys("cardLevel", "cardXp", "xpToNext", "maxLevel",
-                "pendingChoices", "statAdd", "growCeil", "starCeilBonus", "attrHardCap");
+                "pendingChoices", "statAdd", "startLo", "growCeil", "starCeilBonus", "attrHardCap");
         // 기존 키가 사라지지 않았다(구 클라 무회귀).
         assertThat(body).containsKeys("attributes", "prePotential", "caps", "base", "statLevels",
                 "potential", "ovr", "completion");

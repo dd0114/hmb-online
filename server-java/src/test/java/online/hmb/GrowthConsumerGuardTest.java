@@ -151,7 +151,11 @@ class GrowthConsumerGuardTest {
                 // 두 표본: 여유 있는 카드 / 일부 스탯이 천장에 닿은 카드(excludeAtCeiling 관측용)
                 for (Map<String, Double> current : List.of(midCard(), ceilingCard(t))) {
                     // 시드를 여러 개 밟는다 — 가중이 조금 움직여도 어느 한 시드에서는 뽑기가 뒤집힌다.
-                    for (int seed = 0; seed < 12; seed++) {
+                    // ⚠️ 시드 수를 줄이지 마라. 후보가 **정렬된 채로** 나오면서(OVR 기여 내림차순,
+                    //    #405 W3 후속) 추첨 **순서**가 지문에서 사라졌다 — 이제 관측 가능한 것은
+                    //    "뽑힌 집합"뿐이라 작은 가중 변화(mutate 는 +0.25)를 잡으려면 표본이 더 필요하다.
+                    //    실제로 12 에서는 `candidate.wPosition` 이 고아로 잘못 잡혔다.
+                    for (int seed = 0; seed < 120; seed++) {
                         sb.append(GrowthCandidates.draw(t, "probe-" + seed, position, "GOLD", 1,
                                         current, eventScore, behaviorScore, result, 3,
                                         GrowthCandidates.Evidence.ofMatch(events, behavior))

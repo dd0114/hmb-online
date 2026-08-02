@@ -75,7 +75,8 @@ public record GrowthTuning(
     public record Candidate(int count, double wBase, double wPosition, double wEvents, double wBehavior,
                             double wResult, Map<String, Map<String, Double>> behaviorStatMap,
                             Map<String, Map<String, Double>> eventStatMap,
-                            Map<String, Double> resultTilt, boolean excludeAtCeiling) {
+                            Map<String, Double> resultTilt, boolean excludeAtCeiling,
+                            int coreStatCount) {
     }
 
     /** 승급(§2.6) — 잠재 해금은 그대로, 천장은 <b>보너스</b>로만 관여한다(게이트 아님). */
@@ -259,8 +260,11 @@ public record GrowthTuning(
                     Map.of("WIN", 1.2, "DRAW", 1.0, "LOSS", 0.85),
                     Map.of("BRONZE", 1.3, "SILVER", 1.2, "GOLD", 1.0, "DIA", 0.85, "LEGEND", 0.7),
                     0.5, defaultPerfEventWeight(), 100, 0.5, 40),
+            // coreStatCount 4 — 설계 §2.2 가 "2단계 역전"을 계산한 축이 **4스탯 집중**이다.
+            // 화면의 "핵심" 표시가 그 축과 같은 수를 써야 유저가 보는 판단 근거와 밸런스 근거가
+            // 어긋나지 않는다. 몇 개를 핵심으로 볼지는 튜닝 대상이라 계수로 둔다(AC-G0).
             new Candidate(3, 1.0, 2.5, 2.0, 2.0, 0.5,
-                    defaultBehaviorStatMap(), defaultEventStatMap(), defaultResultTilt(), true),
+                    defaultBehaviorStatMap(), defaultEventStatMap(), defaultResultTilt(), true, 4),
             defaultPositionBaseline(),
             new Star(Map.of(1, 0, 2, 1, 3, 2, 4, 3), Map.of(2, 2, 3, 3, 4, 5)),
             new Legacy(39));
@@ -395,6 +399,7 @@ public record GrowthTuning(
             put(m, "candidate.resultTilt." + stat, KnobType.DOUBLE, -10, 10);
         }
         put(m, "candidate.excludeAtCeiling", KnobType.BOOL, 0, 1);
+        put(m, "candidate.coreStatCount", KnobType.INT, 0, 9);
         // 29 포지션 baseline
         for (String pos : POSITIONS) {
             for (String stat : STATS) {

@@ -127,6 +127,32 @@ class GrowthTuningLiveTest extends ApiTestBase {
         assertThat(effectiveOf(userId, "P016", "shooting")).isEqualTo(90.0);
     }
 
+    /**
+     * <b>{@code startLo} 는 서버가 내리고, 오버레이를 따라간다</b>(#405 W3 후속).
+     *
+     * <p>web 은 후보 막대의 좌측 앵커로 근사치({@code min(base) − 5})를 쓰고 있었다 — 감쇠가
+     * {@code r = (v − startLo)/(ceiling − startLo)} 라 앵커가 틀리면 세 후보의 gain 차이가 막대
+     * 길이로 읽히지 않고, 근사치에 "시작 50" 이라는 정확한 라벨을 붙이면 <b>화면이 거짓말</b>을 한다.
+     *
+     * <p>값 자체보다 중요한 것은 <b>따라오는가</b>다: 클라가 밴드를 미러하면 무배포로 밴드를 돌리는
+     * 순간 화면만 옛 앵커로 그린다(§2.8 이 막으려는 상태).
+     */
+    @Test
+    void cardCarriesTheBandStartLoAndFollowsTheOverlay() {
+        String userId = onboard("gt_startlo");
+        grant(userId, "P010");   // GOLD
+
+        int shipped = (int) ((Number) growthService.cardEffective(userId, "P010").get("startLo")).intValue();
+        assertThat(shipped).as("발행 기본값(GOLD 시작 하한)").isEqualTo(50);
+
+        record(userId, Map.of("bands.GOLD.startLo", 20), "앵커 이동");
+        assertThat(((Number) growthService.cardEffective(userId, "P010").get("startLo")).intValue())
+                .as("밴드를 무배포로 내렸는데 응답이 그대로면 클라가 미러할 수밖에 없다")
+                .isEqualTo(20);
+        // 다른 등급은 같이 움직이지 않는다(경로 단위 병합이 여기까지 살아 있는가).
+        assertThat(liveGrowthConfig.effective().bands().byGrade().get("BRONZE").startLo()).isEqualTo(32);
+    }
+
     // ── 스코프 표기가 사실인가 ───────────────────────────────────────────
 
     /**

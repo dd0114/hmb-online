@@ -494,6 +494,10 @@ public class GrowthService {
         out.put("maxLevel", tuning.xp().maxLevel());
         // 천장 분해(설계 §2.6) — 화면이 "천장 73 = 72 + ★2 보너스 1" 을 조립할 수 있게 **값만** 내린다.
         // caps = min(growCeil + starCeilBonus, attrHardCap) 이라 셋을 다 줘야 라벨이 거짓말을 안 한다.
+        // startLo 는 후보 막대의 **좌측 앵커**다 — 감쇠가 r = (v − startLo)/(ceiling − startLo) 라
+        // 앵커가 이 값이어야 세 후보의 gain 차이가 막대 길이로 읽힌다. 클라가 근사치(min(base)−5)를
+        // 쓰면 "시작 50" 이라는 정확한 라벨을 붙일 수 없다(화면이 거짓말을 하게 된다).
+        out.put("startLo", GrowthMath.band(tuning, pb.grade()).startLo());
         out.put("growCeil", GrowthMath.band(tuning, pb.grade()).growCeil());
         out.put("starCeilBonus", tuning.star().ceilBonus().getOrDefault(card.star(), 0));
         out.put("attrHardCap", tuning.attrHardCap());
@@ -1244,6 +1248,9 @@ public class GrowthService {
             reason.put("detail", c.reason().detail());
             m.put("reason", reason);
         }
+        if (c.core() != null) {
+            m.put("core", c.core());
+        }
         return m;
     }
 
@@ -1266,7 +1273,11 @@ public class GrowthService {
             List<GrowthCandidates.Choice> out = new ArrayList<>();
             for (Map<String, Object> m : raw) {
                 out.add(new GrowthCandidates.Choice((String) m.get("stat"),
-                        ((Number) m.get("gain")).doubleValue(), readReason(m.get("reason"))));
+                        ((Number) m.get("gain")).doubleValue(), readReason(m.get("reason")),
+                        // ⚠️ 순서는 **저장된 순서 그대로** 유지한다(여기서 다시 정렬하지 않는다) —
+                        //    정렬은 박제 대상이고, 읽으면서 재정렬하면 계수를 돌린 뒤 과거 선택권의
+                        //    순서가 소급으로 바뀐다. 구 박제분은 core 가 없어 null 이다.
+                        m.get("core") instanceof Boolean b ? b : null));
             }
             return out;
         } catch (Exception e) {
