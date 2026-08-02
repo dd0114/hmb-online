@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAbandonMatch, useActiveMatch, useAwayReports, useDeck, useMe, usePlayers, type CatalogPlayer } from "../api/hooks";
 import { useTradeSlots } from "../api/hooks-v2";
 import { useActiveNotices } from "../api/notice-hooks";
+import { useDailyMissions } from "../api/mission-hooks";
+import { claimableSummary } from "../mission/mission-logic";
 import { useToken } from "../auth/TokenContext";
 import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
@@ -70,9 +72,16 @@ export function HomePage() {
   // 미확인 피원정 건수 — 알림 줄의 절반. **모르는 동안(로딩)도 묻지 않는다** — GamePage 와 같은
   // 표현이어야 한다(#245 규칙이 화면마다 다르면 다음 사람이 어느 쪽을 따를지 모른다).
   const { data: awayReports } = useAwayReports("unseen", !activeLoading && !locked);
+  /**
+   * 받을 수 있는 미션 보상 (#408). `/api/me` 에 요약이 없어 이 한 줄을 위해 조회가 하나 는다 —
+   * `retry:false` + 30초 stale 이고, 구 서버(404)면 조용히 0 이다. (`me.mail` 처럼 요약 필드가
+   * 생기면 그쪽으로 옮기는 게 맞다 — 우편함이 그렇게 정리됐다.)
+   */
+  const { data: missions } = useDailyMissions(!activeLoading && !locked);
   const notice = homeNotice({
     unseenAwayReports: typeof awayReports?.unseen === "number" ? awayReports.unseen : 0,
     openTrades: openTradeCount(trade?.slots),
+    claimableMissions: claimableSummary(missions).count,
   });
 
   const notices = useActiveNotices();

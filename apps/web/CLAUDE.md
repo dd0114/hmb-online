@@ -1141,6 +1141,44 @@ GEN1/GEN2 대기 화면(`GenWaitPanel`)의 서술 문구는 **축구장 정경 �
 - 계약 = `AdminPage.test.ts`(서버 모양 픽스처 · deck null) + `e2e/p3-admin-mock.spec.ts`(정직해진 목)
   + **`e2e/p342-admin-live.capture.ts`(목 0, 실서버 왕복)** — 이 계열은 목으로 못 막으니 실서버 증빙을 남긴다.
 
+## 원정 데일리 미션 (#408) — **클라 계산 0** 이 이 화면의 전부다
+
+하루(KST) 2개 · 티어별 다이아 · 미션당 1회 리롤. 설계 = `docs/plan-v5/away-daily-mission.md`
+(**게임 수치·한글 미션 문구는 hero 산출물이라 임의 변경 금지**). 자리 셋 = 원정 페이지 섹션
+(`mission/DailyMissionSection`) · 홈 알림 한 줄(`home-logic.homeNotice`) · 결과 화면
+(`mission/MissionRewardSection`).
+
+- **판정 로직은 `mission/mission-logic.ts` 하나**고, 거기 있는 규칙은 **정규화와 라벨 매핑뿐**이다.
+  티어→금액 · 달성 여부 · 리롤 가능 여부를 화면이 다시 만들면 노브(economy `mission.reward`,
+  `hmb.mission.daily.*`)를 돌린 순간 화면이 서버가 하지 않는 일을 단언한다(#262·#368 규율).
+  - ⚠️ **`missionClaimable` 은 `state === "COMPLETED"` 다 — `progress >= target` 이 아니다.**
+    달성은 경기 정산이 판정하고(`completed_at`) 진행도는 달성 후 **언다**. 두 값이 갈라지는 창이
+    실재하고, 그때 클라 계산은 "받으세요"라고 말하면서 서버는 409 를 준다.
+  - ⚠️ **리롤 문은 서버의 `rerollable` 하나**다. `state` 로 추론하지 마라 — 잠긴 **이유**를 고를
+    때만 `state` 를 읽는다(문을 여는 판정이 아니라 안내 문구다).
+  - ⚠️ **"자정에 초기화"를 문자열로 적지 마라.** 경계는 서버가 `resetAtKst` 로 말한다.
+    `new Date(...)` 로 파싱하면 브라우저 타임존으로 **환산돼** KST 밖 기기에서 00:00 이 아닌 값이
+    뜬다 — 그 값은 서버가 오프셋을 박아 보낸 벽시계라 환산 대상이 아니다(정규식으로 그대로 읽는다).
+- **홈 한 줄은 `claimableCount` 를 쓴다 — 오늘 미션 배열을 세지 않는다.** 달성분은 기한 없이
+  남아서(설계 §6.3) 서버가 **지난 날짜 미수령분까지** 합산해 준다. 배열로 만들면 어제 못 받은
+  것이 홈에서 사라진다.
+  - ⚠️ **알려진 갭**: `GET /api/missions/daily.missions` 는 **오늘 행만** 준다. 그래서 지난 날짜
+    미수령분은 홈 숫자에는 잡히지만 **받을 화면이 없다**. 서버에 미수령 목록 조회가 필요하다
+    (레이즈 대상) — web 이 지어낼 수 있는 것이 아니다.
+- **부재가 정상 상태다**: 구 서버(404) · 롤백 스위치(`hmb.mission.daily.count: 0` → `missions: []`)
+  둘 다 **섹션을 통째로 안 그린다**(#286 W5). 스켈레톤·에러를 띄우면 "아직 없는 기능"이 "고장 난
+  화면"이 된다. `pickDailyMissions` 가 그 판정의 유일한 지점(빈 배열도 null).
+- **결과 화면 섹션은 일부러 자립형**이다(#405 가 `ResultPanel`·`StageShell`·`GrowthReportSection`
+  을 재작성 중) — `ResultPanel` 에는 **한 줄만** 얹혀 있고 CSS 도 자기 모듈이다. #405 보상 탭이
+  랜딩하면 그 한 줄을 옮기기만 하면 된다. **여기엔 수령 버튼이 없다** — 결과 payload 에 `state` 가
+  없어 "지금 받을 수 있나"를 알 수 없고, 추론하면 그게 위에서 금지한 재계산이다.
+- 계약 = `mission/mission-logic.test.ts`(26) + `home/home-logic.test.ts`(5) +
+  `e2e/p408-daily-mission.spec.ts`(22, 390×844). **변이 15종 전부 사망 확인** — 특히 위 세 개의
+  ⚠️ 는 각각 전용 표본이 있다(달성은 **양방향** 표본: `2/2 + IN_PROGRESS` 와 `0/3 + COMPLETED`.
+  한쪽만 두면 "state 를 보되 progress 도 같이 본다"는 변이체가 산다).
+- ⚠️ **픽스처 금액을 발행값(100/200/300)과 다르게 둬라.** 같게 두면 클라가 티어→금액을 재계산해도
+  관측값이 같아서 그 변이체가 살아남는다(server 웨이브에서 실제로 그렇게 살아남았다).
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - ⚠️ **e2e 는 리포의 `evidence/**` 에 직접 쓰지 않는다**(#314). 증거 캡처는 `HMB_WRITE_EVIDENCE=1`

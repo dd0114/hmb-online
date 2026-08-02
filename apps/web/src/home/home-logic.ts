@@ -119,17 +119,29 @@ export interface HomeNotice {
   to: string;
 }
 
-export function homeNotice(input: { unseenAwayReports: number; openTrades: number }): HomeNotice | null {
+export function homeNotice(input: {
+  unseenAwayReports: number;
+  openTrades: number;
+  /**
+   * 받을 수 있는 데일리 미션 보상 건수 (#408). **서버의 `claimableCount` 그대로** —
+   * 지난 날짜의 미수령분까지 서버가 합산해 준다(설계 §6.3). 오늘치 미션 배열을 세어 만들면
+   * 어제 못 받은 것이 홈에서 사라진다. 구 서버·미도착이면 0 이라 이 조각이 빠질 뿐이다.
+   */
+  claimableMissions?: number;
+}): HomeNotice | null {
+  const missions = input.claimableMissions ?? 0;
   const bits: string[] = [];
   if (input.unseenAwayReports > 0) bits.push(`원정 피침공 ${input.unseenAwayReports}건`);
+  if (missions > 0) bits.push(`받을 보상 ${missions}건`);
   if (input.openTrades > 0) bits.push(`트레이드 제안 ${input.openTrades}건`);
-  const count = input.unseenAwayReports + input.openTrades;
+  const count = input.unseenAwayReports + missions + input.openTrades;
   if (count === 0) return null;
   return {
     count,
     text: `새 소식 ${count}건 — ${bits.join(" · ")}`,
-    // 원정 쪽이 있으면 거기가 우선이다(피침공은 시간이 지나면 밀려나 사라진다).
-    to: input.unseenAwayReports > 0 ? "/game" : "/recruit",
+    // 원정 피침공이 있으면 거기가 우선이다(시간이 지나면 밀려나 사라진다). 미션 보상은 만료가
+    // 없지만 **받는 자리가 원정 화면**이라 그 다음이다.
+    to: input.unseenAwayReports > 0 ? "/game" : missions > 0 ? "/away" : "/recruit",
   };
 }
 

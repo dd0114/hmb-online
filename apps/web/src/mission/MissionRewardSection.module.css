@@ -1,0 +1,59 @@
+/* 결과 화면 미션 섹션 (#408). ⚠️ #405 가 ResultPanel 을 재작성하므로 **자립형**으로 둔다 —
+   ResultPage.module.css 의 클래스를 빌려 쓰면 그 재작성이 이 섹션을 조용히 깨뜨린다. */
+
+.card {
+  background: var(--surface);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-top: 10px;
+}
+.title {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  background: var(--sunk);
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+.name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+.progress {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.done {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ok);
+}
+.reward {
+  flex: 0 0 auto;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--warn);
+}
+.foot {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
