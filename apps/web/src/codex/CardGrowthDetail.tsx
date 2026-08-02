@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { Modal } from "../common/Modal";
 import { ErrorToast } from "../common/ErrorToast";
 import { CelebrationOverlay } from "../common/CelebrationOverlay";
-import { StatRadar } from "../common/StatRadar";
 import { GRADE_COLORS, GRADE_LABELS, type Grade } from "../common/grades";
 import { FullArtCard } from "../common/FullArtCard";
 import { ApiError } from "../api/client";
@@ -18,18 +17,13 @@ import {
 } from "../api/growth";
 import {
   GRADE_POTENTIAL_LINES,
-  RADAR_CHIP_STATS_BY_POSITION,
-  RADAR_GROUPS_BY_POSITION,
   STAR_COPY_COST,
-  STAT_LABEL_MAP,
   STAT_LABELS,
   TIER_COLORS,
   TIER_LABELS,
-  cardAxisWindow,
-  normalizeInWindow,
-  radarAxisValue,
-  type Position,
 } from "../growth/growth-config";
+import { AttributeLayers } from "../growth/AttributeLayers";
+import { attributeViewOf } from "../growth/attribute-view";
 import { ChoiceCandidates } from "../growth/ChoiceCards";
 import type { CatalogPlayer } from "../api/hooks";
 import { Amount, useCurrency } from "../common/Amount";
@@ -73,12 +67,16 @@ interface CardGrowthDetailProps {
 }
 
 /**
- * 보유 카드 성장 상세(에픽 #179 §V2-6, GM3 + V2.1-3 GM7 + 레이더 후속) — S2/S3/S4/S6:
- * OVR 링 + 완성도 · 능력치 2레이어 토글([레이더(기본)]/[막대], 밴드 앵커 윈도우 정규화 공통 적용) ·
- * ★1~4(성 승급) · 스탯 9종(Lv+XP바) · 잠재 패널(전줄 동일 티어, 패널·프레임 글로우 승격) ·
- * 다이스 롤 + 티어업 전체 오버레이. 성장/잠재 기여는 별도 탭이 아니라 막대의 cap/base 마커 +
- * 레이더의 cap 점선 폴리곤으로 표시(구 "+보너스" 분해 탭은 hero 피드백으로 제거).
+ * 보유 카드 성장 상세(에픽 #179 §V2-6, GM3 + V2.1-3 GM7 + #405 W2b/W3 성장 개편) — S2/S3/S4/S6:
+ * OVR 링 + 완성도 · 카드 레벨/XP · 3지선다 대기 배너 · **능력치 2레이어**(레이더 기본 ↔ 3층 막대) ·
+ * ★1~4(성 승급) · 잠재 패널(전줄 동일 티어, 패널·프레임 글로우 승격) · 다이스 롤 + 티어업 오버레이.
  * 프레임 **테두리 색**은 등급(불변, 승급 없음) 고정 — **글로우**는 잠재 티어색(승급 시 전환).
+ *
+ * ⚠️ **스탯별 `Lv` 뱃지·XP 바는 없다** (#405 W2b) — `statLevels` 는 유효스탯에 관여하지 않는
+ * 구 이력이다. 한때 이 자리에 그 설명이 남아 있어 스펙처럼 읽혔다(#403 W3 에서 정정).
+ *
+ * ⚠️ **능력치 표시는 이 파일이 소유하지 않는다** (#403 W3) — `growth/AttributeLayers` 가 그리고
+ * 선수 상세 모달(경기중·상대 포함)이 **같은 컴포넌트**를 쓴다. 여기서 막대를 다시 그리지 마라.
  */
 export function CardGrowthDetail({ player, onClose, source = "players" }: CardGrowthDetailProps) {
   // 유상재화 아이콘도 서버 표기 메타에서 (#232) — 이모지를 코드에 박으면 표기 변경이 배포가 된다.
@@ -99,9 +97,6 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
   // GM7b: 성★ 승급 이펙트 — StarUpResult 자체를 들고 있어 오버레이가 승급된 star/해금 여부를 그대로 쓴다.
   const [starUpOverlay, setStarUpOverlay] = useState<StarUpResult | null>(null);
   const [justUpAttrs, setJustUpAttrs] = useState<Set<string>>(new Set());
-  // 레이더 후속(hero 실시간 지시 — "+보너스 탭 잘 안 보여" 제거): 능력치 표시 2레이어 — 레이더(기본) ↔ 막대.
-  // 성장/잠재 기여는 별도 탭이 아니라 막대의 cap/base 마커 + 레이더의 cap 점선 폴리곤으로 충분.
-  const [layer, setLayer] = useState<"radar" | "total">("radar");
   const [pendOpen, setPendOpen] = useState(true);
   /**
    * 배너가 지금 띄우고 있는 선택권 — **카드 응답이 아니라 여기가 소유한다**.
@@ -145,49 +140,19 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
   const grade: Grade = card?.grade ?? player.grade;
   const frameColor = GRADE_COLORS[grade];
   const star: Star = card?.star ?? 1;
-  /**
-   * 축 윈도우(hero: "y축 하한 잘라서 드라마틱하게") — 막대·레이더 공통 정규화.
-   *
-   * ⚠️ **등급별 밴드 미러(`computeAxisWindow`)를 버렸다** (#405 W3): v2.5 하향으로 그 상수가 틀린
-   * 값이 됐고, 밴드는 무배포 조정 대상이라 미러는 언제든 다시 낡는다(§2.8). 축은 서버가 준
-   * `startLo`/`caps` 에서 나온다 — 밴드를 바꾸면 축이 따라온다.
-   */
-  const axisWindow = cardAxisWindow(
-    card?.base as unknown as Record<string, number> | undefined,
-    card?.caps as unknown as Record<string, number> | undefined,
-    // 앵커는 등급 `startLo` 다(서버 `619d18b`) — 후보 막대와 **같은 함수·같은 인자**라야 두 화면이
-    // 같은 카드를 같은 축으로 그린다.
-    card?.startLo,
-  );
-  const pct = (v: number) => normalizeInWindow(v, axisWindow) * 100;
   /** 카드 레벨/XP (#405 W2b additive) — 없으면(구 서버·구 목) 그 블록을 통째로 안 그린다. */
   const cardLevel = card?.cardLevel;
   const maxLevel = card?.maxLevel;
   const cardXp = card?.cardXp ?? 0;
   const xpToNext = card?.xpToNext ?? 0;
-  const statAdd = (card?.statAdd ?? {}) as Record<string, number>;
   const pendingChoices = Array.isArray(card?.pendingChoices) ? card!.pendingChoices! : [];
-  const topCeiling = Math.max(
-    0,
-    ...Object.values((card?.caps ?? {}) as unknown as Record<string, number>).filter((v) => Number.isFinite(v)),
-  );
+
   /**
-   * 천장 라벨 — `천장 73 = 72 + ★2 보너스 1`(목업 화면 ⑤).
-   *
-   * `caps = min(growCeil + starCeilBonus, attrHardCap)` 이라 합계만으로는 star 기여를 말할 수 없다.
-   * 서버가 셋을 따로 준다(`00b3586`). ⚠️ 하드캡에 걸려 합이 잘렸으면 **덧셈이 성립하지 않으므로**
-   * 분해를 쓰지 않는다 — `72 + 3 = 74` 같은 틀린 식을 그리느니 합계만 말한다.
+   * 능력치 뷰모델 (#403 W3) — 축·3층·천장 라벨·레이더 축 전부 여기서 나온다.
+   * 이 화면은 **내 보유 카드**라 항상 `full` 이다(`base`/`caps` 가 온다). 응답이 손상돼 능력치가
+   * 없으면 `null` — 그러면 능력치 블록을 통째로 안 그린다(빈 막대 아홉 줄보다 정직하다).
    */
-  const ceilingLabel = (() => {
-    const cap = Math.round(topCeiling);
-    const growCeil = card?.growCeil;
-    const bonus = card?.starCeilBonus;
-    if (typeof growCeil !== "number" || typeof bonus !== "number") return `천장 ${cap}`;
-    if (Math.round(growCeil + bonus) !== cap) return `천장 ${cap}`;
-    return bonus > 0
-      ? `천장 ${cap} = ${growCeil} + ★${star} 보너스 ${bonus}`
-      : `천장 ${cap} (★${star} 보너스 0)`;
-  })();
+  const attrView = attributeViewOf(player.position, card ?? undefined);
 
   const firstPendingId = pendingChoices[0]?.choiceId;
 
@@ -199,20 +164,6 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstPendingId, shownChoice]);
 
-  // 포지션별 6축 매핑(hero 2026-07-26: "FIFA 가 GK 에 다른 6축 쓰는 방식처럼") — 카드 position 으로 선택.
-  const position = player.position as Position;
-  const radarGroups = RADAR_GROUPS_BY_POSITION[position];
-  const chipStats = RADAR_CHIP_STATS_BY_POSITION[position];
-  const radarAxes = card
-    ? radarGroups.map((g) => ({
-        key: g.key,
-        label: g.label,
-        value: radarAxisValue(g, card.attributes as unknown as Record<string, number>),
-        cap: radarAxisValue(g, card.caps as unknown as Record<string, number>),
-      }))
-    : [];
-  const chipAttrs = card?.attributes as unknown as Record<string, number> | undefined;
-  const chipCaps = card?.caps as unknown as Record<string, number> | undefined;
   const completion = card ? Math.max(0, Math.min(1, card.completion)) : 0;
   const busy = starUp.isPending || diceRoll.isPending || rollingKind !== null;
   // V2.1-3: 잠재 승급 = 카드 전체 인상을 바꾼다 — 프레임 글로우를 잠재 티어색으로.
@@ -490,135 +441,13 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
               완성도 {Math.round(completion * 100)}%
             </p>
 
-            <div className={styles.layerToggle} role="tablist" aria-label="능력치 보기" data-testid="growth-attr-layer">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={layer === "radar"}
-                className={layer === "radar" ? `${styles.layerBtn} ${styles.layerBtnActive}` : styles.layerBtn}
-                data-testid="growth-layer-radar"
-                onClick={() => setLayer("radar")}
-              >
-                레이더
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={layer === "total"}
-                className={layer === "total" ? `${styles.layerBtn} ${styles.layerBtnActive}` : styles.layerBtn}
-                data-testid="growth-layer-total"
-                onClick={() => setLayer("total")}
-              >
-                막대
-              </button>
-            </div>
-
-            {layer === "radar" && (
-              <div className={styles.radarRow} data-testid="growth-radar-row">
-                <StatRadar axes={radarAxes} window={axisWindow} size={200} accentColor={frameColor} testId="growth-radar" />
-                <div className={styles.sideChips}>
-                  {chipStats.map((key) => (
-                    <div key={key} className={styles.mentalChip} data-testid={`growth-side-chip-${key}`}>
-                      <span className={styles.mentalLabel}>{STAT_LABEL_MAP[key]}</span>
-                      <span className={styles.mentalValue}>
-                        {Math.round(chipAttrs?.[key] ?? 0)}
-                        <span className={styles.mentalCap}> /{Math.round(chipCaps?.[key] ?? 0)}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {layer === "total" && (
-              <>
-                <p className={styles.axisWindowLabel} data-testid="growth-attr-window">
-                  스탯 축 {Math.round(axisWindow.lo)}–{Math.round(axisWindow.hi)}
-                </p>
-                {/*
-                  범례 (#405 §2.10) — 이 개편의 핵심 정보는 "회색 여백 = 아직 갈 수 있는 곳"이다.
-                  천장은 **분해해서** 말한다(`천장 73 = 72 + ★2 보너스 1`) — 그래야 승급(★)이
-                  게이트가 아니라 소폭 보너스라는 §2.6 의 새 역할이 화면에서 읽힌다.
-                  ⚠️ 세 값은 **서버가 준 것만** 쓴다(`growCeil`/`starCeilBonus`, 서버 `00b3586`).
-                  밴드 표를 클라가 미러해 재구성하면 무배포 조정에 조용히 어긋난다(§2.8).
-                  못 받았으면(구 서버) 분해를 생략하고 합계만 — 지어내지 않는다.
-                */}
-                <p className={styles.attrLegend} data-testid="growth-attr-legend">
-                  <span>
-                    <i className={styles.lgBase} />
-                    기본(발행 원본)
-                  </span>
-                  <span>
-                    <i className={styles.lgGrow} />
-                    성장분(선택으로 올린 몫)
-                  </span>
-                  <span data-testid="growth-ceil-legend">
-                    <i className={styles.lgCeil} />
-                    {ceilingLabel}
-                  </span>
-                </p>
-              </>
-            )}
-
-            {layer === "total" && (
-              <dl className={styles.attrs} data-testid="growth-attrs" data-layer={layer}>
-                {STAT_LABELS.map(([key, label]) => {
-                  const cur = card.attributes[key];
-                  const cap = card.caps[key];
-                  const base = card.base[key];
-                  // 성장분 = 3지선다 누적(`statAdd`). 구 `statLevels` 는 **유효스탯에 관여하지
-                  // 않으므로**(#405 W2b) 이 화면에서 성장으로 그리지 않는다 — 안 움직이는 막대가
-                  // 성장 화면의 주인공이 되면 개편이 없던 일이 된다.
-                  const add = statAdd[key] ?? 0;
-                  const grown = Math.min(cap, base + add);
-                  const attrUp = justUpAttrs.has(key);
-                  // 축 정규화 — width%/left% 는 원시 능력치가 아니라 axisWindow 기준.
-                  const curPct = pct(cur);
-                  const capPct = pct(cap);
-                  const basePct = pct(base);
-                  const grownPct = pct(grown);
-                  return (
-                    <div key={key} className={styles.attrRow} data-testid={`growth-attr-${key}`}>
-                      <dt className={styles.attrName}>{label}</dt>
-                      <dd className={styles.attrBarCell}>
-                        <span className={styles.bar}>
-                          {/* ① 기본(발행 원본) */}
-                          <i className={styles.layerBase} style={{ width: `${basePct}%` }} />
-                          {/* ② 성장분 — 이 개편이 만든 유일한 성장 축 */}
-                          <i
-                            className={attrUp ? `${styles.layerGrow} ${styles.fillUp}` : styles.layerGrow}
-                            data-testid={`growth-grow-${key}`}
-                            data-add={add.toFixed(2)}
-                            style={{ left: `${basePct}%`, width: `${Math.max(0, grownPct - basePct)}%` }}
-                          />
-                          {/* ③ 잠재 보정분 — 성장이 아니라 옵션이라 색을 가른다(0 이면 안 그린다) */}
-                          {curPct > grownPct + 0.01 && (
-                            <i
-                              className={styles.layerPotential}
-                              style={{ left: `${grownPct}%`, width: `${curPct - grownPct}%` }}
-                            />
-                          )}
-                          <i
-                            className={styles.capLine}
-                            data-testid={`growth-cap-${key}`}
-                            data-value={Math.round(cap)}
-                            style={{ left: `${capPct}%` }}
-                          />
-                        </span>
-                      </dd>
-                      <span className={`${styles.attrNum} ${styles.attrNumBig}`}>
-                        <b data-testid={`growth-value-${key}`} data-value={Math.round(cur)}>
-                          {Math.round(cur)}
-                        </b>
-                        <em className={add > 0 ? styles.attrAdd : styles.attrAddZero}>
-                          +{add.toFixed(1)}
-                        </em>
-                        <span className={styles.attrCap}>천장 {Math.round(cap)}</span>
-                      </span>
-                    </div>
-                  );
-                })}
-              </dl>
+            {/*
+              능력치 표시 = **공용 컴포넌트**(#403 W3). 선수 상세 모달(경기중·상대 포함)이 같은
+              것을 쓴다 — `ChoiceCards` 와 같은 이유로, 호출부가 흉내 내면 한쪽만 낡는다.
+              레이어 상태·축·3층 계산은 전부 그쪽이 소유한다. 여기서 다시 그리지 마라.
+            */}
+            {attrView && (
+              <AttributeLayers view={attrView} accentColor={frameColor} highlight={justUpAttrs} />
             )}
 
             <div

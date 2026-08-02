@@ -1,0 +1,280 @@
+/*
+ * 능력치 표시 CSS — `CardGrowthDetail.module.css` 에서 **선언 그대로** 옮겨 왔다 (#403 W3).
+ * 강화탭 화면이 픽셀 동일이어야 하므로 값을 "정리"하지 마라. 여기가 이제 두 화면의 SoT 다.
+ */
+
+/* 능력치 2레이어 토글(V2.1-3) — [레이더] / [막대]. */
+.layerToggle {
+  display: flex;
+  gap: 6px;
+  margin: 14px 0 10px;
+  background: #171b22;
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.layerBtn {
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 7px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.layerBtnActive {
+  background: #2a313c;
+  color: var(--text);
+}
+
+/* 레이더 레이어(기본) — StatRadar + 사이드 칩(레이더 밖). */
+.radarRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin: 6px 0 16px;
+  flex-wrap: wrap;
+}
+
+/* 포지션별 사이드 칩 2개(레이더 밖 스탯) — 세로 스택. */
+.sideChips {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mentalChip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #171b22;
+  min-width: 66px;
+}
+
+.mentalLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.mentalValue {
+  font-size: 18px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.mentalCap {
+  color: #e7c24c;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* 막대 레이어 축 라벨(밴드 앵커 윈도우 표시, 정직성 — hero: "주식 y축처럼"). */
+.axisWindowLabel {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-align: center;
+  font-weight: 700;
+}
+
+.attrs {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.attrRow {
+  display: grid;
+  grid-template-columns: 1fr 48px;
+  gap: 6px 8px;
+  align-items: center;
+}
+
+.attrName {
+  grid-column: 1 / 2;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.attrBarCell {
+  grid-column: 1 / 2;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bar {
+  position: relative;
+  display: block;
+  height: 8px;
+  border-radius: 5px;
+  background: #20262f;
+}
+
+/* ── 3층 막대 (#405 §2.10): 기본 | 성장분 | (잠재) + 천장 선 ──────────────────────
+   회색 여백 = "아직 갈 수 있는 곳". 이 개편의 핵심 정보라 색을 셋으로 가른다.
+   ⚠️ 구 `.fill`(0→유효 한 덩어리)·`.reach`(유효→천장 빗금)·`.baseLine` 은 은퇴했다 —
+   한 덩어리로 그리면 "발행 원본"과 "내가 키운 몫"이 화면에서 구분되지 않는다. */
+.layerBase {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px 0 0 5px;
+  background: #4f6b8e;
+}
+
+/*
+ * 축소 모드(상대·타 유저)의 **단층** 막대 — 층이 하나뿐이라 오른쪽 모서리도 둥글다.
+ * ⚠️ 색은 `.layerBase` 와 **같다**. 팀색으로 가르고 싶어지지만, 이 화면에서 파랑은
+ * "기본(발행 원본)"이라는 **뜻을 가진 색**이고 축소 모드가 그리는 것이 정확히 그 값이다 —
+ * 색을 바꾸면 같은 값이 화면마다 다른 색이 된다. 누구의 카드인지는 모달 헤더가 말한다.
+ */
+.layerSingle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 5px;
+  background: #4f6b8e;
+}
+
+.layerGrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0 5px 5px 0;
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+  transition: width 0.45s ease, left 0.45s ease;
+}
+
+/* 잠재 보정분 — 성장이 아니라 옵션이라 색을 가른다(0 이면 렌더 자체를 안 한다). */
+.layerPotential {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0 5px 5px 0;
+  background: linear-gradient(90deg, #6b5bb5, #b98bf5);
+  opacity: 0.85;
+}
+
+.fillUp {
+  animation: fillflash 0.9s;
+}
+
+@keyframes fillflash {
+  0% {
+    box-shadow: 0 0 0 rgba(92, 201, 139, 0);
+  }
+  30% {
+    box-shadow: 0 0 10px 2px rgba(92, 201, 139, 0.85);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(92, 201, 139, 0);
+  }
+}
+
+.capLine {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: #e7c24c;
+  border-radius: 2px;
+}
+
+.attrNum {
+  grid-column: 2 / 3;
+  grid-row: 1 / 3;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  align-self: center;
+  transition: font-size 0.2s ease;
+}
+
+/* [총 능력치] 레이어(V2.1-3) — "유효 숫자 크게". */
+.attrNumBig {
+  font-size: 16px;
+}
+
+.attrCap {
+  color: #e7c24c;
+  font-size: 9px;
+}
+
+.attrAdd {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--ok);
+}
+
+.attrAddZero {
+  display: block;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 800;
+  color: #5c646f;
+}
+
+/* 3층 범례 — 색이 무엇을 뜻하는지 말하지 않으면 3층은 그냥 알록달록한 막대다. */
+.attrLegend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.attrLegend i {
+  display: inline-block;
+  width: 12px;
+  height: 8px;
+  margin-right: 4px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+.lgBase {
+  background: #4f6b8e;
+}
+
+.lgGrow {
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+}
+
+.lgCeil {
+  width: 3px !important;
+  height: 12px !important;
+  border-radius: 2px;
+  background: #e7c24c;
+}
+
+/* 축소 모드 안내 — "없는 것"을 화면이 말하는 자리(#403 W3, 목업 ④ 데이터 경계). */
+.reducedNote {
+  margin: 0 0 10px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  text-align: center;
+}
