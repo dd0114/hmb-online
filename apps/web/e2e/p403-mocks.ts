@@ -175,12 +175,17 @@ export async function mockApi(page: Page, state: string, shape: Shape = "away-fi
   });
 }
 
-export async function open(page: Page, state: string, shape: Shape = "away-fixture") {
-  await mockApi(page, state, shape);
+/** 로그인 상태 주입 — 목 스펙이 `/match` 밖(예: `/me` 목록)에서 시작할 때도 같은 경로를 쓴다. */
+export async function authInit(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "local");
   });
+}
+
+export async function open(page: Page, state: string, shape: Shape = "away-fixture") {
+  await mockApi(page, state, shape);
+  await authInit(page);
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.getByTestId("stage-shell")).toBeVisible();
 }
@@ -189,6 +194,104 @@ export async function openPlayers(page: Page, state: string, shape: Shape = "awa
   await open(page, state, shape);
   await page.getByTestId("stage-tab-players").click();
   await expect(page.getByTestId("stage-panel-players")).toHaveCount(1);
+}
+
+/**
+ * ── W4 (종료·과거 경기) 추가 목 ─────────────────────────────────────────────────────────
+ *
+ * ⚠️ 아래 헬퍼들은 전부 **`mockApi`(=`open`) 뒤에** 등록한다 — playwright 는 나중에 등록한
+ * 라우트가 먼저 매칭되므로 catch-all 을 이긴다(`mockGrowthCard` 와 같은 규율).
+ */
+
+/**
+ * **하프 로그가 없는 경기** — `match_halves` 행이 없으면 서버가 404 `해당 half 로그가 없습니다`
+ * 를 준다(`MatchService.halfLogJson` 실측). 과거 경기 목록이 그런 매치를 `hasHalves:false` 로
+ * 구분해 그리므로 **정상적으로 존재하는 상태**이고, 그 경기의 결과 화면이 무엇을 말하는지가
+ * W4 의 빈 상태 계약이다.
+ *
+ * ⚠️ 404 **본문 형태까지 서버와 같게** 준다(`{code,message}`) — 형태가 다르면 `apiFetch` 가
+ * `ApiError.status` 를 못 실어 주고, 그러면 화면이 "기록 없음"과 "불러오지 못함"을 못 가른다.
+ * 목이 낡으면 그 스펙은 자기가 만든 세계를 검증한다(#342).
+ */
+export const NO_LOG_MATCH_ID = "01KYS2QM76YBKANGNZ6QTX8W00";
+
+export async function mockNoLogMatch(page: Page, id: string = NO_LOG_MATCH_ID) {
+  await page.route(
+    (url) => url.pathname.startsWith(`/api/matches/${id}`),
+    (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (/\/halves\/[12]\/log$/.test(p)) {
+        return route.fulfill({
+          status: 404,
+          json: { code: "NOT_FOUND", message: "해당 half 로그가 없습니다" },
+        });
+      }
+      if (p.endsWith("/result")) {
+        return route.fulfill({
+          json: { matchId: id, result: "LOSS", scoreHome: 3, scoreAway: 0, pointsAwarded: 0 },
+        });
+      }
+      return route.fulfill({
+        json: {
+          id,
+          state: "FINISHED",
+          scoreH1Home: 2,
+          scoreH1Away: 0,
+          scoreHome: 3,
+          scoreAway: 0,
+          result: "LOSS",
+          createdAt: "2026-06-01T10:00:00Z",
+          finishedAt: "2026-06-01T10:20:00Z",
+          mode: "practice",
+          ownerName: ME,
+          opponent: { name: "구경기봇", deck: [] },
+          homeName: "구경기봇",
+          awayName: ME,
+          clock: null,
+        },
+      });
+    },
+  );
+}
+
+/**
+ * 과거 경기 목록(`GET /api/logs/matches`) — **요구 D 의 진입 경로**다.
+ * `/logs` 는 `/me` 로 리다이렉트되고 `MePage` 가 `LogsPage embedded` 를 그린다(App.tsx).
+ *
+ * 두 행을 싣는다: 로그가 있는 경기(뱃지 있음)와 **없는 경기**(뱃지 없음) — 규칙 하나당 표본 하나.
+ */
+export const PAST_LOGS = [
+  {
+    id: MATCH_ID,
+    mode: "league",
+    opponentName: BOT,
+    result: "WIN",
+    scoreHome: 0,
+    scoreAway: 3,
+    userWasHome: false,
+    seasonNo: 1,
+    round: 4,
+    hasHalves: true,
+    createdAt: "2026-07-30T08:37:23Z",
+  },
+  {
+    id: NO_LOG_MATCH_ID,
+    mode: "practice",
+    opponentName: "구경기봇",
+    result: "LOSS",
+    scoreHome: 3,
+    scoreAway: 0,
+    userWasHome: false,
+    hasHalves: false,
+    createdAt: "2026-06-01T10:00:00Z",
+  },
+];
+
+export async function mockPastLogs(page: Page) {
+  await page.route(
+    (url) => url.pathname === "/api/logs/matches",
+    (route) => route.fulfill({ json: PAST_LOGS }),
+  );
 }
 
 /**

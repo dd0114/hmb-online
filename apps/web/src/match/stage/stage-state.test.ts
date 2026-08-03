@@ -12,6 +12,7 @@ import {
   INFO_TAB_KEYS,
   isHalftimeState,
   myTeamSide,
+  needsPlayerStats,
   playedBaseline,
   resolveActiveTab,
   sheetHeight,
@@ -398,5 +399,45 @@ describe("사이드 ↔ 팀 이름 (#322)", () => {
     expect(myTeamSide({ home: "A봇", away: "B봇" }, "축구왕여르")).toBeNull();
     expect(myTeamSide({ home: "축구왕여르", away: "봇 FC" }, null)).toBeNull();
     expect(myTeamSide({ home: "축구왕여르", away: "봇 FC" }, undefined)).toBeNull();
+  });
+});
+
+/**
+ * ── 선수 기록 집계 게이트 (#403 W2 MAJ-1 → W4) ─────────────────────────────────────────────
+ *
+ * 이 조건이 인라인(`activeTab === "players"`)이던 동안 **계약이 없었다**. W4 가 결과 탭을 더하며
+ * "언제 켜지나"가 판단이 됐으므로 전수로 못 박는다.
+ *
+ * ⚠️ **전수인 것이 핵심이다.** `toBe(true)` 두 줄만 쓰면 *"항상 참"* 변이가 통과하고, 그러면
+ * 관전 내내 아무도 안 보는 집계가 매 틱 돈다(실측 6초에 24회). 반대로 `result` 를 빼는 변이는
+ * 아래 첫 줄에서 죽는다.
+ */
+describe("needsPlayerStats — 선수 기록을 켜는 탭은 정확히 둘", () => {
+  it("players·result 만 참이고 나머지 전부 거짓 (탭 전수)", () => {
+    // ⚠️ 리터럴 배열이다 — `TabKey` 를 import 해 순회하면 타입만 보고 값은 못 잰다.
+    const ON = ["players", "result"] as const;
+    const OFF = ["stats", "log", "brief", "halftime", "stage"] as const;
+    for (const t of ON) expect(needsPlayerStats(t), `${t} 는 켜져야 한다`).toBe(true);
+    for (const t of OFF) expect(needsPlayerStats(t), `${t} 에서 집계가 돌면 안 된다`).toBe(false);
+  });
+
+  it("탭이 없으면(시트 없음) 켜지 않는다", () => {
+    expect(needsPlayerStats(null)).toBe(false);
+  });
+
+  /**
+   * 위 두 목록이 **실제 탭 전체**를 덮는지 — 새 탭이 생기면 여기서 먼저 red 가 난다.
+   * (안 그러면 새 탭이 조용히 검사 밖으로 빠지고, 그 탭이 집계를 켜야 하는지 아무도 안 묻는다.)
+   */
+  it("목록이 실제 탭 집합을 전부 덮는다", () => {
+    const covered = new Set(["players", "result", "stats", "log", "brief", "halftime", "stage"]);
+    const real = new Set<string>([
+      ...INFO_TAB_KEYS,
+      ...tabsFor("HALFTIME", "halftime"),
+      ...tabsFor("FINISHED", "result"),
+      ...tabsFor("FIRST_HALF", null),
+    ]);
+    for (const t of real) expect(covered.has(t), `탭 ${t} 가 게이트 계약에서 빠졌다`).toBe(true);
+    expect(real.size).toBe(covered.size);
   });
 });

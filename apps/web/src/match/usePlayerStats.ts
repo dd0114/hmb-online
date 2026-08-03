@@ -24,6 +24,7 @@
  * 실측 **탭 닫힘 상태에서 6초에 24회**. 주석이 지키는 게 아니라 `if (!enabled) return null` 이 지킨다.
  */
 import { useMemo } from "react";
+import { ApiError } from "../api/client";
 import { usePlayers, useHalfLog } from "../api/hooks";
 import { halfForState } from "./stage/stage-state";
 import { logAvailableFor } from "./live-clock";
@@ -55,6 +56,18 @@ export interface MatchPlayerStats {
   window: StatsWindow;
   isLoading: boolean;
   isError: boolean;
+  /**
+   * **이 경기의 하프 로그가 서버에 없다**(404) — 오류가 아니라 사실이다 (#403 W4).
+   *
+   * 서버는 `match_halves` 행이 없으면 404 `해당 half 로그가 없습니다` 를 준다
+   * (`MatchService.halfLogJson`), 그리고 과거 경기 목록은 그런 매치를 `hasHalves:false` 로
+   * 표시한다(`LogsPage`) — 즉 **정상적으로 존재하는 상태**다.
+   *
+   * ⚠️ 이걸 일반 오류와 섞으면 화면이 거짓말을 한다: "불러오지 못했습니다"는 다시 시도하면
+   * 될 것처럼 읽히는데, 이 매치는 **영영 기록이 없다**. 반대로 진짜 네트워크 오류를 "기록이
+   * 없습니다"로 덮으면 있는 기록을 없다고 말한다. 그래서 두 축을 나눠 내보낸다.
+   */
+  logMissing: boolean;
 }
 
 const EMPTY_ROSTER: ReadonlyMap<string, RosterMeta> = new Map();
@@ -77,7 +90,7 @@ export function useMatchPlayerStats(
   const half = halfForState(state);
 
   const curEnabled = enabled && Boolean(matchId) && logAvailableFor(state, half);
-  const { data: curLog, isLoading, isError } = useHalfLog(matchId, half, curEnabled);
+  const { data: curLog, isLoading, isError, error } = useHalfLog(matchId, half, curEnabled);
 
   // 후반을 보는 중이면 전반도 같이 센다 — 요구 A 는 "하프"가 아니라 **경기** 진행분이다.
   const priorEnabled = enabled && Boolean(matchId) && half === 2 && logAvailableFor(state, 1);
@@ -140,5 +153,6 @@ export function useMatchPlayerStats(
     window: win,
     isLoading: curEnabled && isLoading,
     isError: curEnabled && isError,
+    logMissing: curEnabled && isError && error instanceof ApiError && error.status === 404,
   };
 }
