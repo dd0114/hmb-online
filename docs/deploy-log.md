@@ -6,6 +6,61 @@
 
 ---
 
+## 2026-08-03T08:24Z — **배포 v3.18 — 릴리스 열차(풀스택)** `engine@0.40.0 → 0.42.0` + 성장·미션·스킵·브릿지
+
+- **git**: **`ec503c1`**(main). 범위 = `apps/web` 106 · `server-java/src` 58 · `packages/engine` 25 · `data/players` 4.
+- **탑재**: #405 성장(**V38·V39**) · #408 일일미션(**V40**) · 보상탭 통합 · #403 평점+선수기록탭 ·
+  #421 스킵 + #424 브릿지 · `engine@0.42.0`(#407 N1+N4+오프사이드).
+- **이미지**: java `sha256:893b20b4c9b0…` · runner(신규 빌드, engine 0.42.0). executor 재기동.
+- **롤백 기준선**: `prev-live` = java `2fc8a23d10e9…` / runner `0fde29d1966f…`.
+- **DB 백업**: `pre-v318-20260803T…db` — `ok` · flyway 37 · users **194** · matches **99** · **user_players 3212** · sha256 `544abd2d2a30…`.
+- **#241 관문**: 발차 직전 **0건**(08:24:19Z) → 단절 피해 0.
+
+### 마이그레이션 3건 — 리허설 선행(예측 = 실측)
+
+**`.sql.conf` 짝파일 없음** ⇒ 3건 전부 **기본 트랜잭션**(비원자 위험 없음).
+📌 파일명 패턴으로 grep 하면 `growth_config` 의 `conf` 가 걸려 **거짓 양성**이 난다 — `*.sql.conf` 로 봐야 한다
+(리포 전체 `.sql.conf` = V8·V19·V21 셋뿐).
+**파괴 연산 스캔(§0.5-7) = 0** — `UPDATE`/`DELETE`/`DROP` 없음. V39 의 `INSERT` 는 신규 표
+`growth_legacy_base` 에 **보유 카드 전량을 스냅샷**하는 것(설계 주석: 안 키운 카드도 담아야 "얼마나 깎였나"를
+나중에 물을 수 있다).
+
+리허설(라이브 사본): 3건 순서대로 **전부 OK** · `integrity ok` · 행수 무변경 ·
+`growth_legacy_base` **3212행 = 보유 카드 전량과 정확히 일치**.
+**라이브 실적**: `Migrating … 38 → 39 → 40` → `Successfully applied 3 migrations … (00:00.015s)` · 재기동 0.
+
+### ⚠️ economy override — §0.6 함정을 정확히 밟을 뻔한 자리
+
+라이브는 **`source: OVERRIDE`** 였다. 이 파일은 **부분 병합이 아니라 문서 통째 교체**라, 그냥 뒀으면
+새 발행물의 **`mission.reward` 가 조용히 무시**되고(=#408 보상이 안 나옴), 지웠으면 **가입 젬 12,000**
+(2026-07-28 운영 조정)이 날아간다. 그래서 §0.6 2-B 대로 **재작성**했다.
+
+발차 전 override ↔ 새 발행물 **전 키 diff** 로 범위를 확정했다:
+- override 에만 있는 키: **0**
+- 새 발행물에만: **`mission.reward.{EASY:100, NORMAL:200, HARD:300}`**
+- 값이 다른 것: **`initialGems` override 12000 vs 발행물 6000** ← 유일한 운영 조정
+
+⇒ 새 override = **새 이미지의 구운 발행물 + `initialGems: 12000`**. temp→mv 원자 교체(uid 10001:999) →
+`POST /api/admin/economy/reload`(사유 필수, 감사 이력). 검산: `initialGems 12000` · `mission.reward` 존재.
+
+### 스모크 — 실매치 완주(스킵 2회) 2:4
+
+| 항목 | 결과 |
+|---|---|
+| runner | `engine@0.42.0` · 재기동 0 |
+| **컨테이너 모듈 스모크**(태그 전환 **전**) | `/simulate` 200 · ticks 1350 · playbackMs 221883 · **`configOverrides` 가 해시를 바꾼다 ✓** |
+| **#421 스킵** | `GEN1` 에서는 **409 INVALID_STATE**(정상 — CAS 가드) · `FIRST_HALF` → **즉시 `HALFTIME`**(0초, H1 1:1 확정) · `SECOND_HALF` → **즉시 `FINISHED`** |
+| **보상 시트** | 실화면 렌더 — **재화/성장 2탭** · `골드 +100 G` · 확인 버튼 |
+| **#405 성장** | `reward_bundles` 1건(`CURRENCY`+`GROWTH` 섹션, `xpGained/levelBefore/levelAfter` 포함) · `card_xp>0` 10장 · 결과화면 `성장 리포트 11명 출전` + 선수별 XP |
+| **#403 선수기록** | 결과 화면 탭 `결과 · 통계 · 선수 · 로그` 노출 · `playerStats` 응답에 선수별 pass/shot/goal |
+| **#408 미션** | `GET /api/missions/daily` → **2건 발급**(EASY **100 GEM** · HARD **300 GEM**) = **재작성한 override 값이 그대로 나온다**(이 열차 economy 처리의 종단 증거) |
+| 시계 | 헤더 `78'`·`81'` = 0~90 축(#388 무회귀) |
+| JS 에러 | **0**. 4xx 는 `/api/chars/index` 404 1건 = 설계된 폴백 트리거 |
+
+배포자: hmb:deploy2 (hero 발차, main 조립 지시).
+
+---
+
 ## 2026-08-03T07:10Z — [운영 조치] **권씨 공지 문안 확정** (hero verbatim, 무배포) — revision 4
 
 앞부분을 hero 확정 문안으로 교체. **문구 임의 수정 0**(글자·문장부호 그대로), 이미지 유지.
