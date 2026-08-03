@@ -1,4 +1,4 @@
-=== AC-goal-in-net: showcase(viewer) (engine@0.42.0-showcase, seed 27706472) ===
+=== AC-goal-in-net: showcase(viewer) (engine@0.43.0-showcase, seed 27706472) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
 총 골: 8
   #1 tick=89 team=away ball=(0.50,34.14) 골라인=O 포스트내=O => PASS
@@ -11,7 +11,7 @@
   #8 tick=1047 team=home ball=(104.50,34.46) 골라인=O 포스트내=O => PASS
 결과: ALL PASS (센터(52.5,34) 리셋이면 FAIL)
 
-=== AC-goal-in-net: real(default) (engine@0.42.0, seed 4815162342) ===
+=== AC-goal-in-net: real(default) (engine@0.43.0, seed 4815162342) ===
 골라인 근처 기준: x < 3 또는 x > 102 | 골포스트 y 범위: 30.34..37.66
 총 골: 10
   #1 tick=351 team=away ball=(0.50,34.62) 골라인=O 포스트내=O => PASS

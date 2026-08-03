@@ -2,7 +2,7 @@ import type { TeamSide } from "@hmb/shared";
 import type { EngineConfig } from "./config";
 import type { Pitch } from "./pitch";
 import type { SimState, SimPlayer } from "./simstate";
-import { isBallOwner } from "./simstate";
+import { isBallOwner, ballOwnerOf } from "./simstate";
 import { attackGoal, attackProgressX, clampToPitch, defendGoal, distToAttackGoal } from "./pitch";
 import { fclamp, fdist, isqrt } from "./fixedmath";
 import { defShapeObserver } from "./action";
@@ -184,6 +184,158 @@ export function applyRunOrders(state: SimState, config: EngineConfig, pitch: Pit
     const tx = p.targetFx.x + Math.round((r.xFx - p.targetFx.x) * ro.pull);
     const ty = p.targetFx.y + Math.round((r.yFx - p.targetFx.y) * ro.pull);
     p.targetFx = clampToPitch(pitch, tx, ty);
+  }
+}
+
+/* ------------------------------------------------------------------------- *
+ * 박스 도착런(#407 N2) — "박스에 ST 말고 아무도 없다"를 조건부로 연다
+ * ------------------------------------------------------------------------- */
+
+/**
+ * **조건부 박스 도착런**(#407 N2). 파이널서드에서 우리 팀이 공을 잡고 있을 때, 아직 박스 밖에
+ * 있는 전진한 아웃필더 **소수**를 박스 안 도착 슬롯으로 당긴다.
+ *
+ * ## 왜 필요한가 (구조 사실)
+ * `decision.ts:decideOffBall` 의 인포제션 폭 항은 `widthDir` 이 **자기 base 부호 기준 바깥**이라
+ * 언제나 밖으로만 민다 — **안으로 미는 항이 없다**. 그래서 오프더볼 전진은 base y 를 유지한
+ * x 보간뿐이고, 박스 안 수신을 ST 가 90% 독점한다. 이 함수가 그 빠진 항이다.
+ *
+ * ## ⚠️ 왜 전역이 아니라 조건부인가 (실패가 이미 측정돼 있다)
+ * `movement.attackWidthReach` 전역 음수화는 축 B 를 실제로 열지만(비ST 박스수신 0.54→7.60)
+ * **팀 폭 37.1 · 스로인 1.09** 로 경기를 부순다(60시드, Phase 2-B §7-1). 조건부인 것은 취향이
+ * 아니라 그 실측의 귀결이다 — 게이트 세 개(파이널서드 · 자기팀 소유 · 박스 밖) 밖에서는
+ * 이 함수가 **한 바이트도 쓰지 않는다**.
+ *
+ * ## ⚠️ 왜 목표를 직접 당기지 않고 **`runOrder` 를 발행**하나 (초판이 여기서 틀렸다)
+ * 초판은 이 함수가 그 틱의 `targetFx` 를 박스 쪽으로 직접 당겼다. 계약은 통과했지만
+ * **선수가 박스에 도착하지 않았다** — 20시드 진단(`research/e407-probe/e407-boxpop.ts`):
+ * 게이트 틱당 박스 안 비ST 인원이 **0.46 → 0.50** (전역 팔은 0.97). 이유는 한 줄이다:
+ *
+ *   **게이트가 매 패스마다 닫힌다.** 조건 ①은 `ball.owner != null` 인데 패스·슛이 비행하는
+ *   동안 소유자는 `null` 이다. 박스까지 25m ≈ **10틱**을 뛰어야 하는데 당김은 1~3틱마다
+ *   끊기고, 끊기면 목표가 원래 자리로 돌아가 러너가 **왕복만 하고 도착하지 못한다.**
+ *
+ * 그래서 이 함수는 **지속되는 지시**를 발행한다 — 그리고 그 지시의 자료구조는 이미 있다:
+ * `SimPlayer.runOrder`(#314 B). 새 필드를 만들지 않는 것이 핵심이다(`packages/server` 재개
+ * 스키마의 미선언 키 무음 유실 #154/#241 · 그리고 그 파일은 이 모듈의 owned-glob 밖이다).
+ * 덤으로 두 가지가 공짜로 따라온다: ⓐ 만료·데드볼 취소가 `gcIntents`/`clearIntents` 에 이미
+ * 있고 ⓑ 수비가 `vision.runReadFrac` 로 **박스 러너를 예측해서 막는다**(#314 B 수비측).
+ *
+ * ## 왜 여기(decide 루프 *뒤* · `applyRunOrders` *앞*)인가
+ * 팀 전체를 보고 상위 N명을 고르는 계산이라 **팀 단위**이고, `decideOffBall` 안에서 하면
+ * `state.players` 순회 안에서 `player.seen` 을 변이하는 함수에 배열 순서 의존이 생긴다(§5-1).
+ *
+ * **소비(목표 당김)는 `applyRunOrders` 의 pull 루프가 한다** — 그래서 이 함수가 그 **앞**에
+ * 있다. 당김 로직을 복제하지 않는 것이 요지이고, 그 대가로 이 기제는 `movement.runOrder.pull`
+ * (그리고 `runOrder.enabled`)에 **의존한다**. 런 오더를 끄면 박스 도착런도 안 움직인다 —
+ * 그건 롤백 경로이므로 의도된 결합이다.
+ *
+ * ## 우선순위 (호출 순서가 곧 정책이다)
+ * `applyRunOrders` **앞** — 같은 틱에 패스 런 오더가 나면 그쪽이 **덮어쓴다**("이 패스의 이
+ * 지점으로"가 더 구체적인 지시다). `applyDefensiveLine`/`applyRestDefence` **앞** —
+ * "뒤에 남아라"가 "뛰어들어가라"를 이긴다(#377 S3-B 가 세운 순서 그대로).
+ *
+ * ## 규율
+ *  - 순수(**새 상태 없음** — 기존 `runOrder` 필드만 쓴다). `Rng` 를 받지 않는다 ·
+ *    정수 고정소수만 · `player.seen` 무접촉.
+ *  - 배열 순서 비의존: 후보를 (거리² → idHash → id) 전순서로 정렬해 상위 N명만 고른다(§5-3).
+ *  - **역할 하드코딩 금지**: 자격은 위치(진행도 · 박스 안/밖)로만 판정한다. 그래서 오버랩한
+ *    풀백은 자동 포함되고 이미 박스 안인 ST 는 자동 제외된다.
+ */
+export function applyBoxArrival(state: SimState, config: EngineConfig, pitch: Pitch): void {
+  const ba = config.movement.boxArrival;
+  if (!ba.enabled || ba.maxRunners <= 0 || ba.holdTicks <= 0) return;
+  // 게이트 ① 자기팀 소유 — **소유자가 실제로 공을 들고 있을 때만**이다.
+  // `state.possession` 은 공이 뜬 동안에도 유지되므로 그것만 보면 루즈볼에도 뛰어든다.
+  const owner = ballOwnerOf(state);
+  if (!owner) return;
+  const side = owner.side;
+  // 게이트 ② 볼 진행도(박스 진입 신호).
+  if (attackProgressX(pitch, side, state.ball.posFx.x) < ba.triggerProgress) return;
+
+  const scale = config.fixedScale;
+  const g = attackGoal(pitch, side);
+  const sign = side === "home" ? 1 : -1;
+  const center = Math.round(pitch.hFx / 2);
+  const boxDepthFx = Math.round(config.rules.penalty.boxDepthM * scale);
+  const boxHalfFx = Math.round(config.rules.penalty.boxHalfWidthM * scale);
+  const latCapFx = Math.round(ba.arrivalHalfWidthM * scale);
+  const depthFx = Math.round(ba.arrivalDepthM * scale);
+  const spreadFx = Math.round(ba.slotSpreadM * scale);
+  const latMinFx = Math.round(ba.minBaseLatM * scale);
+  const inBox = (x: number, y: number): boolean =>
+    Math.abs(x - g.x) <= boxDepthFx && Math.abs(y - center) <= boxHalfFx;
+
+  /**
+   * 이미 박스로 뛰고 있는 인원. **런 목적지가 박스 안인가**로 센다 — `RunOrder` 에 종류 필드를
+   * 붙이면 `packages/server` 의 재개 스키마(미선언 키 무음 유실, #154/#241)까지 건드려야 하고
+   * 그건 이 모듈의 owned-glob 밖이다. 목적지 기하로 판별하면 상태 계약이 한 바이트도 안 변한다.
+   * (패스 런 오더가 우연히 박스를 향하면 그것도 세는데, 그건 사실상 같은 런이라 정합한다.)
+   */
+  let active = 0;
+  for (const p of state.players) {
+    if (p.side !== side) continue;
+    const r = p.runOrder;
+    if (r && r.untilTick >= state.tick && inBox(r.xFx, r.yFx)) active += 1;
+  }
+  const room = ba.maxRunners - active;
+  if (room <= 0) return;
+
+  // --- 후보 수집 (게이트 ③ 박스 밖 + 전진해 있는 아웃필더) ---
+  const cands: { p: SimPlayer; d2: number }[] = [];
+  for (const p of state.players) {
+    if (p.side !== side || p.isGK) continue;
+    if (isBallOwner(state, p)) continue;
+    // 이미 런 중이면 새로 안 건다 — 두 당김이 겹치면 어느 쪽도 완주하지 못한다.
+    if (p.runOrder && p.runOrder.untilTick >= state.tick) continue;
+    if (attackProgressX(pitch, side, p.posFx.x) < ba.minRunnerProgress) continue;
+    // **원래 밖에 서 있는 사람만** 뛰어든다. 이 항의 존재 이유가 "폭 항이 바깥으로만 민다"인데
+    // 중앙 선수까지 부르면 박스 앞 슈팅 자리를 비워 비ST 슛이 준다 — 20시드 짝 대조(정렬키·나머지
+    // 노브 고정) lat0 → lat16: 비ST 슛 **0.73 → 0.90** · 슛 HHI 0.914 → 0.891.
+    if (Math.abs(p.baseFx.y - center) < latMinFx) continue;
+    // 이미 박스 안이면 "도착런"이 아니다. 이 한 줄이 ST 를 역할 이름 없이 제외한다.
+    if (inBox(p.posFx.x, p.posFx.y)) continue;
+    const dx = p.posFx.x - g.x;
+    cands.push({ p, d2: dx * dx });
+  }
+  if (cands.length === 0) return;
+  /**
+   * **전진도(x)만으로** 정렬한다 — 골 중앙까지의 유클리드 거리가 아니다.
+   *
+   * ⚠️ 이게 설계다(초판은 유클리드였다). 유클리드는 횡편차를 거리에 포함하므로 **같은 x 라면
+   * 중앙 선수가 항상 이긴다** — 그런데 안으로 들어와야 할 사람은 정확히 **폭 항이 밖으로 밀어낸
+   * 와이드 선수**다. 즉 유클리드 정렬은 "이미 중앙에 있는 사람을 중앙으로 부르는" 자기무효 규칙이 된다.
+   * x 만 보면 "가장 앞선 사람이 뛰어든다"가 되고 윙어·오버랩 풀백이 후보로 살아난다.
+   */
+  cands.sort((a, b) =>
+    a.d2 !== b.d2
+      ? a.d2 - b.d2
+      : a.p.idHash !== b.p.idHash
+        ? a.p.idHash - b.p.idHash
+        : a.p.id < b.p.id
+          ? -1
+          : 1,
+  );
+
+  const n = Math.min(room, cands.length);
+  for (let i = 0; i < n; i++) {
+    const p = cands[i]!.p;
+    // 도착 슬롯: base y 의 **부호를 보존**한 채 박스 폭으로 접는다(LW→왼쪽 포스트, RW→오른쪽).
+    // 슬롯 깊이는 **이미 뛰고 있는 인원까지 포함해** 어긋낸다(코너 `jitterX` 와 같은 관용구) —
+    // 안 그러면 뒤늦게 합류한 러너가 앞선 러너와 같은 점에 겹친다.
+    const latRaw = p.baseFx.y - center;
+    const lat = latRaw < -latCapFx ? -latCapFx : latRaw > latCapFx ? latCapFx : latRaw;
+    const slot = clampToPitch(
+      pitch,
+      g.x - sign * (depthFx + (active + i) * spreadFx),
+      center + lat,
+    );
+    p.runOrder = {
+      xFx: slot.x,
+      yFx: slot.y,
+      untilTick: state.tick + ba.holdTicks,
+      fromId: owner.id,
+    };
   }
 }
 
