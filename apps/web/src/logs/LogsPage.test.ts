@@ -109,10 +109,28 @@ describe("LogsPage 경기 탭 — 유저 관점 오리엔트 실측", () => {
     expect(screen.getByTestId("match-result-away-loss").textContent).toBe("패");
   });
 
-  it("하프 로그 있으면 재생 태그 노출", () => {
+  /**
+   * ⚠️ **문구를 리터럴로 박는다** (#403 W4, 목업 ⑥). `toBeTruthy()` 만 있던 동안 이 뱃지가 무엇을
+   * 말하는지는 계약 밖이었다 — 그 경기를 열면 다시보기뿐 아니라 **개인 성적·선수 상세**까지
+   * 같은 화면에서 나오므로(요구 D) `재생` 만 적으면 화면이 자기가 할 수 있는 일을 안 말한다.
+   * testid 는 **바꾸지 않는다**(참조하는 계약이 조용히 아무것도 못 찾게 되는 것을 막는다).
+   */
+  it("하프 로그 있으면 기록 태그 노출 — 문구는 `▶ 기록`", () => {
     useMatchLogs.mockReturnValue({ data: matchLogs, isLoading: false, isError: false });
     renderPage();
+    const tag = screen.getByTestId("match-replay-home-win");
+    expect(tag).toBeTruthy();
+    expect(tag.textContent?.trim()).toBe("▶ 기록");
+  });
+
+  it("하프 로그 없는 경기엔 그 뱃지가 없다 — 열어도 기록이 없는 경기를 기록으로 부르지 않는다", () => {
+    // 표본을 **그 축 하나만** 바꿔 만든다(규칙 하나당 표본 하나 — 기존 행은 손대지 않는다).
+    const mixed = [matchLogs[0]!, { ...matchLogs[1]!, hasHalves: false }];
+    useMatchLogs.mockReturnValue({ data: mixed, isLoading: false, isError: false });
+    renderPage();
+    // 양성 앵커(위 행)가 같은 화면에 있으므로 이 0 은 "아직 안 그려짐"이 아니다.
     expect(screen.getByTestId("match-replay-home-win")).toBeTruthy();
+    expect(screen.queryByTestId("match-replay-away-loss")).toBeNull();
   });
 });
 
