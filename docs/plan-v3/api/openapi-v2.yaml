@@ -47,6 +47,8 @@ tags:
     description: 원정(피침공 대전·레이팅·복수 큐·랭킹) — #245 / #286 W4
   - name: internal-ext
     description: 서번트 AI 잡 컨텍스트 additive 확장(관계·전술·컨디션) — AC-C2~C4
+  - name: users
+    description: 타 유저 공개 정보(선수단 열람) — #432 / #403 W5
 
 paths:
   # ─────────────────────────── 팀 스냅샷 프리셋 (AC-B) ───────────────────────────
@@ -686,6 +688,52 @@ paths:
                 $ref: "#/components/schemas/MyRecordResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  # ─────────────────────── 타 유저 선수단 / 매치 유효 지시 (#432 · #431) ───────────────────────
+  /api/users/{targetUserId}/squad:
+    get:
+      tags: [users]
+      operationId: getUserSquad
+      summary: 타 유저 선수단(활성 덱, 벤치 포함) — 원정 후보·랭킹보드에서 유저를 눌렀을 때
+      description: |
+        **활성 덱**이다(매치 스냅샷이 아니다) — *"이 유저가 어떤 선수단을 굴리나"*. 그 경기에 뭘
+        냈나는 이미 다른 표면이 갖고 있다(`MatchDetail.opponent.deck` = 매치 스냅샷, 원정 고스트 =
+        `bots.deck_json` 박제). **두 축을 섞지 않는다.**
+        ⚠️ 고스트는 도전 생성 시점에 굽는다 → 정찰 후 상대가 덱을 바꾸면 실제로 맞붙는 팀이 다를 수
+        있다. 두 축이 다르다는 것의 귀결이지 결함이 아니다.
+
+        **공개 범위**(hero 확정 2026-08-02 결정 ③ A안): 이름·포지션·등급·★·OVR·능력치 +
+        **"지시 있음" 여부만**. 지시문 내용·팀 지시·팀 전술·컨디션은 나가지 않고, 성장 **진행도**
+        (`caps`/`statAdd`/`startLo`)도 범위 밖이다(그건 "능력치 공개"가 아니라 "얼마나 키웠는지"다).
+        `attributes` 는 **성장 반영 유효 스탯**이다(카탈로그 기본치가 아니다).
+
+        **열람 자격은 DB 행**이다(`AwayViewAccess` 관례): 현재 유효한 원정 후보 제시(`away_offers`)
+        ∪ 나를 친 원정 기록(`away_reports`, 복수 큐) ∪ 랭킹보드 등재(원정 자격 또는 리그 시즌).
+        자격 밖·없는 유저·덱 없는 유저는 전부 **404**다 — 403 이 아니다(이 리포에 `forbidden` 팩토리가
+        없고 `MatchService.getViewable` 이 존재 자체를 숨긴다). 임의 userId 조회는 열지 않는다:
+        "상대 지목"은 `AwayService.consumeOffer` 가 명시적으로 닫은 설계다.
+
+        ⚠️ **읽기 전용**이다 — `GET /api/deck` 의 AI 인풋 프리워밍 부수효과를 가져오지 않는다.
+        남의 화면을 보는 것만으로 AI 예산이 나가면 안 된다.
+      parameters:
+        - name: targetUserId
+          in: path
+          required: true
+          description: |
+            볼 대상. 뷰어는 `Authorization` 으로 식별하므로 이름을 `userId` 로 두지 않는다 —
+            한 메서드 안에 같은 이름의 "나"와 "남"이 생기면 그 자리에서 바뀐다.
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserSquadResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
 components:
   securitySchemes:
@@ -1861,3 +1909,59 @@ components:
             awayBest:
               type: integer
               description: 원정 시즌 최고 연승(`away_streaks.best_streak`) — 축이 달라 따로 싣는다.
+
+    # ─────────────────── 타 유저 선수단 / 매치 유효 지시 (#432 · #431) ───────────────────
+    PlayerAttributeMap:
+      type: object
+      description: |
+        능력치 9종(`technical`·`mental`·`physical`·`passing`·`shooting`·`tackling`·`pace`·
+        `stamina`·`positioning`). SoT 는 `packages/shared` 의 PlayerAttributes 다.
+        ⚠️ **성장 반영 유효치**라 정수가 아닐 수 있다(소수점 2자리).
+      additionalProperties: { type: number }
+
+    UserSquadSlot:
+      type: object
+      required: [playerId, role, slotIndex, name, position, grade, star, ovr, attributes, hasPrompt]
+      properties:
+        playerId: { type: string }
+        role:
+          type: string
+          description: "`DeckSlot.role` 과 **같은 값**이다(별도 표기를 만들지 않는다)."
+          enum: [starter, bench]
+        slotIndex: { type: integer, description: "starter 0..10 · bench 0..6 — 정렬용" }
+        name: { type: string }
+        position: { $ref: "#/components/schemas/Position" }
+        grade: { $ref: "#/components/schemas/Grade" }
+        star:
+          type: integer
+          description: 카드 성. 보유 기록이 없으면 0.
+        ovr:
+          type: number
+          description: |
+            **이 응답에 실린 `attributes`** 와 포지션 가중치로 계산한 유효 OVR — 둘이 어긋날 수 없다.
+            ⚠️ `GET /api/growth/card/{playerId}` 의 `ovr` 은 반올림 전 값으로 누적하므로 최대 0.01 차.
+        attributes: { $ref: "#/components/schemas/PlayerAttributeMap" }
+        hasPrompt:
+          type: boolean
+          description: |
+            지시가 **있는지 여부만**. 내용은 이 API 의 어떤 필드로도 나가지 않는다
+            (hero 결정 ③ — 지시문·팀 지시는 비공개).
+
+    UserSquadResponse:
+      type: object
+      required: [userId, nickname, rating, streak, formation, slots]
+      properties:
+        userId: { type: string }
+        nickname: { type: string }
+        rating:
+          type: integer
+          description: 원정 레이팅(`user_ratings`). 행이 없으면 0.
+        streak:
+          type: integer
+          description: 원정 연승(`away_streaks.streak`). 행이 없으면 0.
+        formation: { type: string }
+        slots:
+          type: array
+          description: 활성 덱의 **선발 + 벤치**(선수단 구경이므로 벤치를 뺀 표는 뜻이 없다).
+          items: { $ref: "#/components/schemas/UserSquadSlot" }
+

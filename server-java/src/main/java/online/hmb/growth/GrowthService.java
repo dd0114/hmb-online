@@ -630,6 +630,56 @@ public class GrowthService {
         }
     }
 
+    // ── 타인에게 보여도 되는 좁은 접근자 (#432 / #431) ──────────────────
+
+    /**
+     * 카드 성(★). 보유 기록이 없으면 <b>0</b> — "카드가 아니다"(봇 로스터)와 1★ 카드를 섞지 않는다.
+     *
+     * <p>왜 {@link #cardEffective} 를 쓰지 않고 접근자를 새로 파나: 그 맵은 {@code caps}·
+     * {@code statAdd}·{@code startLo} 같은 <b>성장 진행도</b>를 함께 담는다. 그건 "능력치 공개"가
+     * 아니라 <b>얼마나 키웠는지</b>의 공개라 hero 결정 ③(타 유저 공개 범위 = 이름·포지션·등급·★·
+     * OVR·능력치)의 한 칸 밖이다. <b>지울 것을 열거하는 대신 담을 것만 담는다</b> —
+     * {@code MatchService.toDetailFor} 가 같은 이유로 허용 목록을 쓴다.
+     */
+    public int cardStar(String userId, String playerId) {
+        if (userId == null) {
+            return 0;   // 카드 주인이 없는 로스터(시드봇·리그봇) — ★ 는 애초에 그들의 축이 아니다.
+        }
+        return cardStateOpt(userId, playerId).map(CardState::star).orElse(0);
+    }
+
+    /**
+     * <b>넘겨준 능력치</b>와 포지션 가중치({@code growth.baselineByPosition})로 계산한 OVR.
+     *
+     * <p>입력을 인자로 받는 이유: 화면에 실린 능력치로 계산해야 <b>OVR 과 능력치가 어긋날 수
+     * 없다</b>. 원정 고스트처럼 <b>얼린 스탯</b>이 서는 자리(그 값이 실제로 경기를 뛴다)에서도 같은
+     * 함수 하나로 답한다 — 카드에서 다시 계산하면 굽고 난 뒤의 강화가 화면에만 반영돼 "표시와
+     * 경기가 다른" 값이 된다.
+     *
+     * <p>⚠️ {@code cardEffective.ovr} 은 반올림 <b>전</b> 유효스탯으로 누적하므로 이 값과 최대
+     * 0.01 차이가 날 수 있다(가중치 합 1.0 × 반올림 오차 0.005). 성장 설정이 없으면 0.
+     */
+    public double ovrOf(String position, Map<String, Object> attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            return 0.0;
+        }
+        Map<String, Double> baseline;
+        try {
+            baseline = tuning().positionBaseline().getOrDefault(position, Map.of());
+        } catch (RuntimeException ex) {
+            log.warn("ovrOf: 성장 계수 부재 position={}: {}", position, ex.toString());
+            return 0.0;
+        }
+        double ovr = 0.0;
+        for (String stat : ATTR_KEYS) {
+            Object value = attributes.get(stat);
+            if (value instanceof Number number) {
+                ovr += number.doubleValue() * baseline.getOrDefault(stat, 0.0);
+            }
+        }
+        return round2(ovr);
+    }
+
     // ── POST /api/growth/star ───────────────────────────────────────────
 
     public Map<String, Object> starUp(String userId, String playerId) {
