@@ -217,6 +217,65 @@ export function parseForeignHeavy(psLines, ownPids, cpuMin = CPU_MIN) {
   return out;
 }
 
+/**
+ * **자기 데드락 방지** — 이미 슬롯을 쥔 실행 **안에서** 또 게이트를 타는가?
+ *
+ * 실물로 두 번 겪었다(2026-08-03, matchux `406-final-t1` pid 57954 · iv-e2e-mut):
+ * `run-gate --label X -- npm test` 처럼 **표준 스크립트를 다시 감싸면** `npm test` 자체가 이미
+ * `run-gate` 를 내장하고 있어서 ①바깥이 슬롯 1/1 을 쥐고 ②안쪽이 **같은 슬롯**을 기다리는데
+ * ③바깥은 안쪽이 끝나야 놓는다 = **자기 자식을 굶긴다**. CPU 0% 로 30분(waiter 타임아웃)을 태웠다.
+ *
+ * 판정은 **프로세스 조상 체인**이다 — 내 조상 중에 현재 홀더가 있으면 나는 그 홀더의 슬롯 안에서
+ * 도는 것이므로 대기할 이유가 없다. `pid`(wrapper) 와 `childPid` 둘 다 본다: 실제 체인은
+ * `바깥 run-gate(pid) → npm/bash(childPid) → … → 안쪽 run-gate` 라 wrapper 가 죽고 자식만 남은
+ * 경우(`holders()` 가 레코드를 유지하는 그 경우)엔 **childPid 로만** 이어진다.
+ *
+ * ⚠️ **통과해도 슬롯은 잡지 않는다** — 바깥이 이미 쥐고 있으므로 동시성 상한은 그대로다.
+ * 여기서 또 잡으면 이중 계수가 된다.
+ *
+ * @param psLines `ps -Ao pid,ppid,%cpu,command` 출력(헤더 제외)
+ * @param selfPid 내 pid
+ * @param holderRecords `holders()` 결과(`{pid, childPid, label, …}`)
+ * @returns 나를 감싸고 있는 홀더, 없으면 null
+ */
+export function findNestedHolder(psLines, selfPid, holderRecords) {
+  const rows = psLines.map(parsePsLine).filter(Boolean);
+  const byPid = new Map(rows.map((r) => [r.pid, r]));
+  const self = byPid.get(selfPid);
+  if (!self) return null; // ps 를 못 읽었거나 내가 안 보이면 감지를 포기한다(= 기존 대기 동작)
+
+  const holderByPid = new Map();
+  for (const h of holderRecords ?? []) {
+    for (const p of [h.pid, h.childPid]) {
+      if (p && !holderByPid.has(p)) holderByPid.set(p, h);
+    }
+  }
+  if (holderByPid.size === 0) return null;
+
+  // 조상 walk — `ancestors()` 와 같은 상한 24(순환·고아 대비).
+  let cur = byPid.get(self.ppid);
+  for (let i = 0; i < 24 && cur; i++) {
+    const h = holderByPid.get(cur.pid);
+    if (h) return h;
+    cur = byPid.get(cur.ppid);
+  }
+  return null;
+}
+
+/** 조상 체인에 현재 홀더가 있는지. `ps` 를 못 읽으면 null(= 감지 포기, 기존 대기 동작). */
+function nestedHolder() {
+  let psOut;
+  try {
+    psOut = execFileSync("ps", ["-Ao", "pid,ppid,%cpu,command"], {
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } catch {
+    return null; // 오탐으로 통과시키는 것보다 기다리는 편이 낫다
+  }
+  return findNestedHolder(psOut.split("\n").slice(1), process.pid, holders());
+}
+
 function foreignHeavy(ownPids) {
   let psOut;
   try {
@@ -338,10 +397,25 @@ async function main() {
       await new Promise((r) => setTimeout(r, POLL_MS));
     }
 
+    /**
+     * ①.5 **중첩이면 슬롯을 잡지 않고 통과한다.** 조상이 이미 슬롯을 쥐고 있으면 그 슬롯을 기다리는
+     * 것은 자기 자식을 굶기는 것이다(위 `findNestedHolder` 주석 참조).
+     * ① 은 건드리지 않는다 — 중첩 케이스에서 바깥 홀더의 트리는 이미 `own` 에 들어가 제외된다.
+     */
+    const nested = nestedHolder();
+    if (nested) {
+      process.stderr.write(
+        `↩︎ 게이트 중첩 감지 — 이미 슬롯을 쥔 실행 안에서 돈다: ` +
+          `pid ${nested.pid} ${nested.label}${nested.childPid ? ` (child ${nested.childPid})` : ""}. ` +
+          `대기 없이 통과하고 슬롯도 추가로 잡지 않는다(이중 계수 방지).\n` +
+          `   (표준 스크립트 npm test·test:t*·test:ladder·npm run e2e 는 게이트를 내장한다 — 다시 감쌀 필요 없다)\n`,
+      );
+    }
+
     // ② 그 다음 슬롯을 잡는다.
     const deadline = Date.now() + TIMEOUT_MS;
     let announced = false;
-    for (;;) {
+    while (!nested) {
       const got = tryAcquire();
       if (got.ok) {
         held = got.file;
