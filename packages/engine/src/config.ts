@@ -2022,7 +2022,8 @@ export const defaultEngineConfig: EngineConfig = {
   //   ⚠️ 범프 필수: 골든·해시가 이동한다(구 `resumeState` 는 거부돼야 한다, #241).
   // 0.43.0 = **조건부 박스 도착런 기제 착지 — 출하는 `enabled: false`**(#407 N2, `movement.boxArrival`).
   //   ⚠️ **출하 동작은 0.42.0 과 bit-identical 이다**(스위치 off, `box-arrival.test.ts` 롤백 계약이
-  //   매 실행 증명). 범프 이유는 동작이 아니라 **`EngineConfig` 형태 변경**(노브 8개 신설) —
+  //   매 실행 증명). 범프 이유는 동작이 아니라 **`EngineConfig` 형태 변경**(노브 **9개** 신설
+  //   = `enabled` + 형태 노브 8종. 초판 "8개"는 오기, #407 독립 검증 blocker-3) —
   //   재현 계약이 `(seed + selectData + inputLog + EngineConfig 버전)` 이므로 형태가 바뀌면 버전이
   //   바뀌어야 구 `resumeState` 를 거부할 수 있다(#241).
   //   **무엇을 얻었나(60시드, 켠 팔)**: 비ST 박스수신 0.72 → **1.04~1.22** · 박스ST% 86.1 → **80.4** ·

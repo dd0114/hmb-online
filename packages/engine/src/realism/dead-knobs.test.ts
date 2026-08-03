@@ -196,7 +196,7 @@ const LIVE: Knob[] = [
   // 게이트를 닫으면 반드시 갈린다. 빈도의 밴드·단조는 `offside-call.test.ts` 가 따로 본다.
   { path: "rules.offside.callProb", mutate: (c) => { c.rules.offside.callProb = 0; } },
   // #407 N2 (0.43.0) **조건부 박스 도착런**. 출하 기본은 `enabled: false` 라 스위치만 여기 있고
-  // 형태 노브 7종은 아래 **조건부 LIVE** 블록이 본다(N1 감쇠 형태 노브와 같은 처방).
+  // 형태 노브 **8종**은 아래 **조건부 LIVE** 블록이 본다(N1 감쇠 형태 노브와 같은 처방).
   // 섭동 = 켜기. 켜면 러너의 목표가 바뀌므로 3시드에서 반드시 갈린다(등록 전 확인).
   { path: "movement.boxArrival.enabled", mutate: (c) => { c.movement.boxArrival.enabled = true; } },
 ];
@@ -418,9 +418,10 @@ describe("#407 N1 조건부 LIVE — 거리 감쇠 형태 노브(스위치를 �
 });
 
 /**
- * **조건부 LIVE** — #407 N2 박스 도착런의 형태 노브 7종.
+ * **조건부 LIVE** — #407 N2 박스 도착런의 형태 노브 **8종**.
+ * (초판 주석의 "7종"은 오기였다 — 아래 `knobs` 배열이 여덟이다. #407 독립 검증 blocker-3.)
  *
- * 출하 기본이 `movement.boxArrival.enabled=false` 라 일곱은 출하값에서 **비트 동일**이다.
+ * 출하 기본이 `movement.boxArrival.enabled=false` 라 여덟은 출하값에서 **비트 동일**이다.
  * 죽은 것이 아니라 **스위치가 꺼져 있는 것**이고, 둘은 처방이 정반대라 갈라서 박제한다
  * (N1 거리 감쇠 · 1대1 계열 · 레스트디펜스 매핑 · 오프사이드 트랩과 같은 처방).
  *
@@ -429,7 +430,7 @@ describe("#407 N1 조건부 LIVE — 거리 감쇠 형태 노브(스위치를 �
  * 5.09→4.10~4.70 으로 악화**하고(hero AC 의 하드 제약) 정작 노린 비ST 슛은 평평하다.
  * 상세 = `config.ts` 주석 · `issues/2026-08-03-engine-box-arrival-runs.md`.
  *
- * ⚠️ **등록 전에 확인했다** — 일곱 전부 스위치를 켠 3시드에서 최종 해시가 움직인다.
+ * ⚠️ **등록 전에 확인했다** — 여덟 전부 스위치를 켠 3시드에서 최종 해시가 움직인다.
  */
 describe("#407 N2 조건부 LIVE — 박스 도착런 형태 노브(스위치를 켜야 레버다)", () => {
   const on = (c: EngineConfig): void => { c.movement.boxArrival.enabled = true; };

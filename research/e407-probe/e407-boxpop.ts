@@ -84,7 +84,13 @@ function run(ov: Record<string, unknown>): Pop {
     popST: +(st / g).toFixed(3),
     popNonST: +(nonSt / g).toFixed(3),
     nonStEverPct: +((nonStEver / g) * 100).toFixed(1),
-    byRole,
+    // ⚠️ **역할별도 여기서 `g`(총 게이트틱)로 나눠 내보낸다** — 호출부에서 `gateTicks` 로 나누면
+    // 안 된다. 그 필드는 이미 팀-경기당으로 접힌 값이라 한 번 더 나누면 단위가 섞여
+    // "게이트틱당 ST 10.42" 같은 불가능한 수가 나오고 `popST + popNonST` 와도 안 맞는다
+    // (#407 독립 검증 minor). 이제 `Σ byRole == popST + popNonST` 가 성립한다.
+    byRole: Object.fromEntries(
+      Object.entries(byRole).map(([r, n]) => [r, +(n / g).toFixed(3)]),
+    ),
   };
 }
 
@@ -97,7 +103,7 @@ for (const c of combos) {
   const p = run(c.ov);
   const roles = Object.entries(p.byRole)
     .sort((a, b) => b[1] - a[1])
-    .map(([r, n]) => `${r}:${(n / Math.max(1, p.gateTicks)).toFixed(2)}`)
+    .map(([r, n]) => `${r}:${n.toFixed(2)}`)
     .join(" ");
   console.log(
     c.label.padEnd(30) + String(p.gateTicks).padStart(12) + String(p.popST).padStart(9) +
