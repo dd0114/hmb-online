@@ -50,12 +50,6 @@ class MatchPromptsReadApiTest extends MatchTestBase {
     /** 지시 조회 응답의 허용 키 — <b>정확집합</b>. */
     private static final Set<String> PROMPTS_KEYS = Set.of("teamPrompt", "players");
     private static final Set<String> PROMPT_ENTRY_KEYS = Set.of("playerId", "text", "phase");
-    /**
-     * 상대 선수 1인의 허용 키 — <b>정확집합</b>. 센티넬(문자열)만으로는 <b>컨디션·전술처럼 숫자로
-     * 새는 축</b>을 못 막는다(독립검증 blocker-1: 슬롯에 condition 을 실어도 초판 계약은 green).
-     */
-    private static final Set<String> OPPONENT_PLAYER_KEYS =
-            Set.of("playerId", "name", "position", "grade", "star", "ovr", "attributes", "hasPrompt");
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
@@ -149,6 +143,8 @@ class MatchPromptsReadApiTest extends MatchTestBase {
         assertThat(keysOf(deckOnly)).as("응답 키를 얼린다").isEqualTo(PROMPTS_KEYS);
         for (JsonNode entry : deckOnly.path("players")) {
             assertThat(keysOf(entry)).as("항목 키를 얼린다").isEqualTo(PROMPT_ENTRY_KEYS);
+            entry.properties().forEach(e -> assertThat(e.getValue().isValueNode())
+                    .as("값 자리에 객체·배열이 앉으면 그 안이 다시 자유가 된다: %s", e).isTrue());
         }
         assertThat(deckOnly.path("teamPrompt").asText()).isEqualTo(TEAM_SENTINEL);
         assertThat(playerEntry(deckOnly, "P002").path("text").asText()).isEqualTo(DECK_SENTINEL);
@@ -277,17 +273,20 @@ class MatchPromptsReadApiTest extends MatchTestBase {
 
         for (JsonNode p : deck) {
             // 키 동결 — 컨디션·전술처럼 **숫자로 새는 축**은 문자열 대조에 안 걸린다(blocker-1).
-            assertThat(keysOf(p)).as("상대 선수 키를 얼린다").isEqualTo(OPPONENT_PLAYER_KEYS);
-            assertThat(p.path("playerId").asText()).as("선수와 이을 수 있어야 한다").isNotBlank();
-            assertThat(p.path("name").asText()).isNotBlank();
-            assertThat(p.path("position").asText()).isNotBlank();
-            assertThat(p.path("grade").asText()).isNotBlank();
-            assertThat(p.has("hasPrompt")).isTrue();
+            // /squad 슬롯과 **같은 상수·같은 함수**를 쓴다(한쪽만 갱신되는 드리프트 방지).
+            PublicCardContract.assertPublicCardShape(p, PublicCardContract.OPPONENT_PLAYER_KEYS);
+            String playerId = p.path("playerId").asText();
+            assertThat(playerId).as("선수와 이을 수 있어야 한다").isNotBlank();
+            // 카탈로그가 말하는 그 값 그대로 — 문자열 필드에 다른 값을 덧붙이는 경로도 닫는다.
+            assertThat(p.path("name").asText()).isEqualTo(catalogText(playerId, "name"));
+            assertThat(p.path("position").asText()).isEqualTo(catalogText(playerId, "position"));
+            assertThat(p.path("grade").asText()).isEqualTo(catalogText(playerId, "grade"));
             assertThat(p.path("ovr").asDouble()).as("OVR 을 못 그려서 자리를 비우던 것을 채운다").isGreaterThan(0.0);
-            assertThat(p.path("attributes").isObject()).isTrue();
-            assertThat(p.path("attributes").size()).isGreaterThanOrEqualTo(9);
-            assertThat(p.has("star")).isTrue();
         }
+        // OVR 은 소수로 나간다(정수 절단 금지) — 표본을 **핀**한다. 이 선수의 값이 정수가 되면
+        // 계약이 실패해서 알린다(표본을 다시 고를 일이지 계약을 지울 일이 아니다).
+        PublicCardContract.assertOvrKeepsItsFraction(
+                deck.get(0).path("ovr").asDouble(), "opponent.deck[0]");
         // 성장 진행도는 상대에게도 나가지 않는다(#431 코멘트 — 공개 범위가 한 칸 넓어진다).
         assertThat(res.getBody()).doesNotContain("statAdd").doesNotContain("caps").doesNotContain("startLo");
     }
@@ -335,6 +334,7 @@ class MatchPromptsReadApiTest extends MatchTestBase {
             }
         }
         assertThat(p002).as("고스트 상대의 선수를 id 로 짚을 수 있어야 한다").isNotNull();
+        PublicCardContract.assertPublicCardShape(p002, PublicCardContract.OPPONENT_PLAYER_KEYS);
         // ② "지시 있음"은 말한다(내용은 아니다) — W3 이 `🔒 지시 있음` 을 복원할 근거.
         assertThat(p002.path("hasPrompt").asBoolean()).isTrue();
         // ③ ★ 는 그 유저 카드의 값이다(봇처럼 0 이 아니다).
@@ -346,6 +346,12 @@ class MatchPromptsReadApiTest extends MatchTestBase {
                 .isGreaterThan(catalogPace);
         // OVR 도 그 값으로 계산됐는지(표시와 계산이 같은 값을 쓰는지) 함께 본다.
         assertThat(p002.path("ovr").asDouble()).isGreaterThan(0.0);
+    }
+
+    /** 카탈로그가 말하는 값 — 응답이 <b>그것 그대로</b>인지 대조할 기준선. */
+    private String catalogText(String playerId, String column) {
+        return jdbcClient.sql("SELECT " + column + " FROM players WHERE id = ?")
+                .param(playerId).query(String.class).single();
     }
 
     /** 카탈로그 원본 능력치 1개 — "얼린 값"과 갈리는지 볼 기준선. */

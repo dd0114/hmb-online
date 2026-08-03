@@ -54,10 +54,6 @@ class UserSquadApiTest extends MatchTestBase {
     /** 응답 최상위에 허용된 키 — <b>정확집합</b>. */
     private static final Set<String> SQUAD_KEYS =
             Set.of("userId", "nickname", "rating", "streak", "formation", "slots");
-    /** 슬롯 1인에 허용된 키 — <b>정확집합</b>. 컨디션·지시문·성장 진행도는 여기 없다. */
-    private static final Set<String> SLOT_KEYS =
-            Set.of("playerId", "role", "slotIndex", "name", "position", "grade",
-                    "star", "ovr", "attributes", "hasPrompt");
 
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
@@ -113,10 +109,10 @@ class UserSquadApiTest extends MatchTestBase {
         }
     }
 
-    private static Set<String> keysOf(JsonNode node) {
-        Set<String> keys = new LinkedHashSet<>();
-        node.fieldNames().forEachRemaining(keys::add);
-        return keys;
+    /** 카탈로그가 말하는 값 — 응답이 <b>그것 그대로</b>인지 대조할 기준선. */
+    private String catalogText(String playerId, String column) {
+        return jdbcClient.sql("SELECT " + column + " FROM players WHERE id = ?")
+                .param(playerId).query(String.class).single();
     }
 
     private long aiJobRows() {
@@ -214,11 +210,10 @@ class UserSquadApiTest extends MatchTestBase {
 
         JsonNode body = json(raw);
         // ② 키 축 — **정확집합**. 숫자·열거로 새는 축(컨디션·팀 전술)과 아직 없는 필드까지 막는다.
-        assertThat(keysOf(body)).as("최상위 키를 얼린다").isEqualTo(SQUAD_KEYS);
+        //    바깥 키뿐 아니라 **attributes 맵 안쪽과 값의 모양**까지 얼린다(2R 실증 경로가 거기였다).
+        assertThat(PublicCardContract.keysOf(body)).as("최상위 키를 얼린다").isEqualTo(SQUAD_KEYS);
         for (JsonNode slot : body.path("slots")) {
-            assertThat(keysOf(slot))
-                    .as("슬롯 키를 얼린다 — 컨디션·지시문·성장 진행도가 끼어들 자리가 없다")
-                    .isEqualTo(SLOT_KEYS);
+            PublicCardContract.assertPublicCardShape(slot, PublicCardContract.SQUAD_SLOT_KEYS);
         }
 
         // ③ 화면이 그릴 것은 다 있다(계약 스키마 #432 코멘트).
@@ -231,11 +226,11 @@ class UserSquadApiTest extends MatchTestBase {
 
         JsonNode withPrompt = slotOf(slots, "P002");
         assertThat(withPrompt.path("hasPrompt").asBoolean()).as("있음/없음만 말한다").isTrue();
-        assertThat(withPrompt.path("name").asText()).isNotBlank();
-        assertThat(withPrompt.path("position").asText()).isNotBlank();
-        assertThat(withPrompt.path("grade").asText()).isNotBlank();
+        // 카탈로그가 말하는 그 값 그대로다 — 문자열 필드에 다른 값을 덧붙여 흘리는 경로도 여기서 닫힌다.
+        assertThat(withPrompt.path("name").asText()).isEqualTo(catalogText("P002", "name"));
+        assertThat(withPrompt.path("position").asText()).isEqualTo(catalogText("P002", "position"));
+        assertThat(withPrompt.path("grade").asText()).isEqualTo(catalogText("P002", "grade"));
         assertThat(withPrompt.path("ovr").asDouble()).isGreaterThan(0.0);
-        assertThat(withPrompt.path("attributes").size()).isGreaterThanOrEqualTo(9);
         assertThat(withPrompt.path("role").asText()).isEqualTo("starter");
         assertThat(withPrompt.path("slotIndex").asInt()).isEqualTo(1);
 
@@ -268,6 +263,40 @@ class UserSquadApiTest extends MatchTestBase {
 
         assertThat(slotOf(json(squad(viewer, targetId).getBody()).path("slots"), "P004")
                 .path("star").asInt()).isEqualTo(3);
+    }
+
+    /**
+     * <b>OVR 은 소수로 나간다</b> — 정수로 절단하면 죽는다(#432 정정 코멘트 #2: pstat 이 "소수"를
+     * 전제로 반올림한다).
+     *
+     * <p>표본 전제를 <b>독립 표면에서</b> 단언한다: 같은 카드의 OVR 을 대상 유저 자신의
+     * {@code GET /api/growth/card/{playerId}}(다른 계산 경로 — {@code GrowthService.compute} 의 누적값)
+     * 로 받아 <b>그 값부터 소수인지</b> 본다. 그래야 "표본이 우연히 정수라 계약이 조용히
+     * 항진명제가 되는" 함정에 빠지지 않는다.
+     *
+     * <p>덤으로 두 표면이 <b>같은 수</b>를 말하는지도 건다(openapi 에 적어 둔 ±0.01 — 한쪽은 반올림
+     * 전 유효치로 누적하고 한쪽은 응답에 실린 반올림값으로 계산한다).
+     */
+    @Test
+    void ovrIsSentAsADecimalNotTruncated() {
+        String targetToken = setupTargetWithSentinelDeck("squad_ovr");
+        String targetId = userIdOf("squad_ovr");
+        setupUserWithDeck("sq_ovr_prey");
+        putOnAwayBoard(targetId, userIdOf("sq_ovr_prey"));
+        String viewer = login("sq_ovr_view");
+
+        // 독립 표면(대상 본인의 성장 카드)이 말하는 OVR — 표본 전제의 근거.
+        ResponseEntity<String> card = authGet("/api/growth/card/P002", targetToken, String.class);
+        assertThat(card.getStatusCode()).as(card.getBody()).isEqualTo(HttpStatus.OK);
+        double cardOvr = json(card.getBody()).path("ovr").asDouble();
+        PublicCardContract.assertOvrKeepsItsFraction(cardOvr, "표본 전제(성장 카드 P002)");
+
+        double squadOvr = slotOf(json(squad(viewer, targetId).getBody()).path("slots"), "P002")
+                .path("ovr").asDouble();
+        PublicCardContract.assertOvrKeepsItsFraction(squadOvr, "/squad 슬롯 P002");
+        assertThat(squadOvr)
+                .as("두 표면이 같은 수를 말한다(반올림 차 ±0.01 — openapi 에 적어 둔 그 값)")
+                .isCloseTo(cardOvr, org.assertj.core.data.Offset.offset(0.01));
     }
 
     /**
