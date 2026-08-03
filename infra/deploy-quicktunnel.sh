@@ -20,7 +20,16 @@ start_tunnel() { # $1=port $2=logfile $3=pidfile → echoes URL
   nohup cloudflared tunnel --url "http://localhost:$port" --no-autoupdate --protocol "${HMB_TUNNEL_PROTOCOL:-http2}" > "$log" 2>&1 &
   echo $! > "$pidf"
   local u=""
-  for _ in $(seq 1 30); do u=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" | head -1 || true); [ -n "$u" ] && break; sleep 2; done
+# ⚠️ `grep -a` 와 `api.` 배제는 **둘 다 필수**다 — 워치독(`tunnel-heal.sh`)만 고쳐 두고 여기를 빼먹어서
+#    2026-08-03 에 실제로 깨졌다: 이 캡처가 URL 대신 **`Binary file … matches`** 를 돌려줬고
+#    그 문자열이 그대로 web `config.json` 에 배포됐다(= 내 손으로 서비스를 끊었다).
+#    ① `-a` 없으면 cloudflared 로그에 제어문자가 섞이는 순간 grep 이 바이너리로 판정한다.
+#    ② `api.trycloudflare.com` 은 cloudflared 의 **등록 엔드포인트**이지 우리 터널이 아니다(#391).
+  for _ in $(seq 1 30); do
+    u=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$log" \
+        | grep -v '^https://api\.trycloudflare\.com$' | head -1 || true)
+    [ -n "$u" ] && break; sleep 2
+  done
   [ -z "$u" ] && { echo "[deploy-qt] $port 터널 URL 실패 — $log" >&2; return 1; }
   echo "$u"
 }
