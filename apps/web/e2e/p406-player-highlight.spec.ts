@@ -50,6 +50,8 @@ const CATALOG = IDS.map((id, i) => ({
 }));
 
 function clock(phase: MatchState = "SECOND_HALF") {
+  // 종료된 경기엔 라이브 시계가 없다(`MatchViewer`: `clock === null` = 미래 잠금 해제).
+  if (phase === "FINISHED") return null;
   const now = Date.now();
   const start = now - HALF_REAL_MS * 0.5;
   return {
@@ -65,21 +67,35 @@ function clock(phase: MatchState = "SECOND_HALF") {
   };
 }
 
-type MatchState = "FIRST_HALF" | "SECOND_HALF";
+type MatchState = "FIRST_HALF" | "SECOND_HALF" | "FINISHED";
 /**
  * 목 상태 핸들 — 테스트가 **경기 중에** 상태를 갈아 끼울 수 있게 한다(계약 ⑥).
  * `useMatch` 는 라이브 상태에서 1초 폴링이므로 이 값을 바꾸면 다음 폴에 앱이 따라온다.
  */
 type MockState = { state: MatchState };
 
-async function open(page: Page, initial: MatchState = "SECOND_HALF"): Promise<MockState> {
+/**
+ * @param nickname 로그인 유저의 닉네임. **`myTeamSide` 를 정하는 유일한 축이다**
+ *   (`stage-state.myTeamSide` = 팀 이름 대조). 기본값은 `homeName` 과 같아 홈 = 나이고,
+ *   `"관전자"` 처럼 **양 팀 어느 쪽도 아닌** 이름을 주면 `myTeamSide === null` 이 된다 =
+ *   *"둘 다 남의 팀인 화면"*(`stage-state.ts:398` 이 설계로 명시한 상태 — 관전 중 봇전 등).
+ *
+ *   ⚠️ **이 매개변수가 없던 동안 `mine` 3값의 절반이 미검정이었다**(W7 MAJOR-1): 목이 항상
+ *   `homeName` 과 같은 닉네임을 줘서 `null` 이 **구조적으로 불가능**했고, 그래서
+ *   `mineOf(...)` 를 `=== true` 로 접는 변이가 10/10 생존했다.
+ */
+async function open(
+  page: Page,
+  initial: MatchState = "SECOND_HALF",
+  nickname = "테스터",
+): Promise<MockState> {
   const st: MockState = { state: initial };
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
     if (url.pathname === "/api/me") {
       return route.fulfill({
-        json: { user: { id: "u1", nickname: "테스터", points: 0, wins: 0, draws: 0, losses: 0, isAdmin: false } },
+        json: { user: { id: "u1", nickname, points: 0, wins: 0, draws: 0, losses: 0, isAdmin: false } },
       });
     }
     if (url.pathname === `/api/matches/${MATCH_ID}`) {
@@ -89,9 +105,10 @@ async function open(page: Page, initial: MatchState = "SECOND_HALF"): Promise<Mo
           state: st.state,
           scoreH1Home: 1,
           scoreH1Away: 0,
-          scoreHome: null,
-          scoreAway: null,
-          result: null,
+          // 종료 상태는 확정 스코어를 갖는다(#226 헤더 규칙 — null 이면 결과 패널이 다른 가지로 샌다).
+          scoreHome: st.state === "FINISHED" ? 2 : null,
+          scoreAway: st.state === "FINISHED" ? 1 : null,
+          result: st.state === "FINISHED" ? "WIN" : null,
           createdAt: "2026-08-02T09:00:00Z",
           mode: "practice",
           // 홈 = 나(`myTeamSide` 는 닉네임 대조로 판정한다 — #322 `stage-state.myTeamSide`).
@@ -163,34 +180,61 @@ async function tapToken(page: Page, t: Token) {
   await page.mouse.click(p.x, p.y);
 }
 
-/** 코어가 **실제로 그린** 선택 링. */
+/** 코어가 **실제로 그린** 선택 링. `mine` 은 **3값**(null = 모른다, #406 W6 m6). */
 function drawnRings(page: Page) {
   return page.evaluate(
-    () => (window as any).__viewer.selection() as Array<{ id: string; team: string; mine: boolean; r: number }>,
+    () =>
+      (window as any).__viewer.selection() as Array<{
+        id: string;
+        team: string;
+        mine: boolean | null;
+        r: number;
+        px: number;
+        py: number;
+      }>,
   );
 }
 
 /**
- * 흐름 브릿지(#424)를 닫는다 — **상태 전이마다 무대 앞에 한 겹 생겼다.**
+ * 코어가 **그 프레임에 그린** 링을 클라이언트 좌표의 원으로. 없으면 `null`.
  *
- * `match-flow.BRIDGE_TABLE` 이 `FIRST_HALF → SECOND_HALF`(`h1_end`)와 `* → FINISHED`
- * (`match_end`)에서 오버레이를 띄우고, `StageShell` 은 그동안 무대를 **마운트하지 않는다**
- * (`!managing && !overlayOpen` — 팝업 뒤에서 캔버스가 도는 것을 구조적으로 0 으로 만든 결정).
- * 그래서 전이 뒤에 곧바로 캔버스를 기다리면 20초를 기다리다 죽는다.
- *
- * ⚠️ **계약을 느슨하게 한 것이 아니다** — 아래 단언들은 그대로다(종료 화면에서도 무대가 남고
- * 선수를 고를 수 있다 · 문구가 상태와 무관하게 참이다). 유저가 실제로 지나는 한 걸음
- * (브릿지 CTA)을 테스트도 지나게 한 것뿐이다. 스킵을 안 했으므로 리포트가 없는 스택이라
- * testid 접두가 `flow-bridge` 다(`MatchFlowOverlay` 의 `testIdBase` 규칙 — 리포트로 오인하면
- * #421 의 "스킵 안 하면 리포트가 안 뜬다" 계약이 무의미해진다).
- * ⚠️ 스택이라 카드가 여러 장일 수 있다 → CTA 가 사라질 때까지 누른다(상한을 둔다).
+ * <p>반경은 backing → CSS 로 옮긴다(`object-fit: contain` 축소). 좌표를 앱과 다른 방식으로
+ * 재계산하지 않도록 위 `clientPointOf` 하나만 쓴다.
  */
-/**
- * ⚠️ **한 번만 확인하고 넘어가면 안 된다** — 목 상태를 바꾼 직후엔 브릿지가 **아직 없다**.
- * `useMatch` 폴링(1초)이 새 상태를 보고 나서야 오버레이가 열리므로, 즉시 count 를 재면 0 이고
- * 그 다음 `toBeVisible` 이 20초를 헛되게 기다린다(실제로 그렇게 한 번 틀렸다).
- * 그래서 **무대가 뜰 때까지** 돌면서 브릿지가 보이면 그때그때 닫는다(스택이라 여러 장일 수 있다).
- */
+async function ringCircleCss(
+  page: Page,
+  t: { id: string; team: "home" | "away" },
+): Promise<{ x: number; y: number; r: number } | null> {
+  const ring = (await drawnRings(page)).find((r) => r.id === t.id && r.team === t.team);
+  if (!ring) return null;
+  const center = await clientPointOf(page, ring.px, ring.py);
+  const edge = await clientPointOf(page, ring.px + ring.r, ring.py);
+  return { x: center.x, y: center.y, r: edge.x - center.x };
+}
+
+/** 그 선수 링의 CSS 반경(그려져 있어야 한다). 예산 계산이 노브를 손으로 적지 않게 하는 자리. */
+async function ringRadiusCss(page: Page, t: { id: string; team: "home" | "away" }): Promise<number> {
+  const c = await ringCircleCss(page, t);
+  expect(c, `${t.team}:${t.id} 의 링이 그려지지 않았다`).toBeTruthy();
+  expect(c!.r, "링 반경이 CSS 좌표로 옮겨졌다").toBeGreaterThan(1);
+  return c!.r;
+}
+
+/** 원 둘레 32점 중 사각 안에 든 점 수 + 중심 포함 여부. 0/false 여야 "링이 보인다". */
+function ringVsBox(
+  ring: { x: number; y: number; r: number },
+  box: { x: number; y: number; width: number; height: number },
+): { covered: number; centerInside: boolean } {
+  const inside = (x: number, y: number) =>
+    x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+  let covered = 0;
+  for (let i = 0; i < 32; i++) {
+    const a = (i / 32) * Math.PI * 2;
+    if (inside(ring.x + ring.r * Math.cos(a), ring.y + ring.r * Math.sin(a))) covered++;
+  }
+  return { covered, centerInside: inside(ring.x, ring.y) };
+}
+
 /**
  * 하이라이트 순서 재생(#421 W4)을 **끈다** — 그게 켜져 있으면 시퀀서가 장면마다 `seek` 해서
  * 플레이헤드가 계속 움직이고, 이 파일이 재는 것(탭한 좌표 → 그 선수)이 구조적으로 불안정해진다.
@@ -209,6 +253,27 @@ async function stopHighlightMode(page: Page) {
   }
 }
 
+/**
+ * 하프 전이 후 정착 대기 — 새 캔버스가 뜨고 코어가 그 로그를 물었고 재생이 멎었을 때 돌아온다.
+ * (`open()` 이 초기 로드에서 하는 것과 같은 이유: 토큰이 움직이면 클릭 좌표가 낡는다.)
+ *
+ * **흐름 브릿지(#424)를 닫는 일도 여기서 한다** — `match-flow.BRIDGE_TABLE` 이
+ * `FIRST_HALF → SECOND_HALF`(`h1_end`)와 `* → FINISHED`(`match_end`)에서 오버레이를 띄우고,
+ * `StageShell` 은 그동안 무대를 **마운트하지 않는다**(`!managing && !overlayOpen` — 팝업 뒤에서
+ * 캔버스가 도는 것을 구조적으로 0 으로 만든 결정). 그래서 전이 뒤에 곧바로 캔버스를 기다리면 죽는다.
+ * 스킵을 안 했으므로 리포트 없는 스택이라 testid 접두가 `flow-bridge` 다
+ * (`MatchFlowOverlay` 의 `testIdBase` 규칙 — 리포트로 오인하면 #421 의 "스킵 안 하면 리포트가
+ * 안 뜬다" 계약이 조용히 무의미해진다).
+ *
+ * ⚠️ **한 번만 확인하고 넘어가면 안 된다** — 목 상태를 바꾼 직후엔 브릿지가 **아직 없다**.
+ * `useMatch` 폴링(1초)이 새 상태를 보고 나서야 오버레이가 열리므로, 즉시 count 를 재면 0 이고
+ * 그 다음 `toBeVisible` 이 20초를 헛되게 기다린다(실제로 그렇게 한 번 틀렸다).
+ * 그래서 **무대가 뜰 때까지** 돌면서 브릿지가 보이면 그때그때 닫는다(스택이라 여러 장일 수 있다).
+ *
+ * ⚠️ **계약을 느슨하게 한 것이 아니다** — 아래 단언들은 그대로다(종료 화면에서도 무대가 남고
+ * 선수를 고를 수 있다 · 문구가 상태와 무관하게 참이다). 유저가 실제로 지나는 한 걸음을
+ * 테스트도 지나게 한 것뿐이다.
+ */
 async function settleHalf(page: Page, half: 1 | 2) {
   const canvas = page.getByTestId(`viewer-canvas-half${half}`);
   const cta = page.getByTestId("flow-bridge-next");
@@ -333,9 +398,14 @@ test("④ 팀당 1명 · 재탭 해제 · 카드 ✕ 로 전체 해제", async (
 test("⑤ 390px 지오메트리 — 카드가 화면 안에 있고 시크바를 덮지 않는다 · 얼굴 아트 0", async ({ page }) => {
   await open(page);
   const all = await tokens(page);
-  await tapToken(page, pickFar(all, "home", "left"));
+  // **가장 앞선 내 선수** — 무대 오른쪽이라 카드(왼쪽 위)와 겹칠 일이 없다. 표본을 고정해야
+  // 아래 시크바 단언이 "기본 자리의 기하"를 재는 것으로 남는다(#406 W6 MAJOR-A 이후 카드는
+  // 링을 피해 자리를 옮긴다 — 옮긴 자리를 재면 이 계약이 무엇을 재는지가 매 로그마다 달라진다).
+  await tapToken(page, pickFar(all, "home", "right"));
 
   const card = page.getByTestId("arena-player-card");
+  await expect(card, "전제: 카드가 기본 가장자리에 있다").toHaveAttribute("data-side", "left");
+  await expect(card, "전제: 카드가 기본 윗줄에 있다").toHaveAttribute("data-top", "34");
   const cb = (await card.boundingBox())!;
   expect(cb, "카드가 실제로 그려졌다").toBeTruthy();
   expect(cb.width).toBeGreaterThan(80);
@@ -356,7 +426,8 @@ test("⑤ 390px 지오메트리 — 카드가 화면 안에 있고 시크바를 
 /**
  * ⑧ **카드가 그 아래 선수의 탭을 삼키지 않는다**(독립검증 m-6).
  *
- * 카드는 무대 왼쪽 위를 280×~120px 덮는다. 390 폰에서 그 자리엔 토큰이 여럿 들어가는데,
+ * 카드는 무대 한 귀퉁이를 **200×76px**(내 선수 · 390 폰 실측, W7 m-8 재측정. 상대 208×76 ·
+ * 미상 152×76) 덮는다. 390 폰에서 그 자리엔 토큰이 여럿 들어가는데,
  * `pointer-events: auto` 이던 동안 그 선수들은 **선택 자체가 불가능**했다 — 요구 5-2("아무 선수나
  * 눌러 누군지 본다")의 실사용 손실이다. 카드 본문은 읽기 전용이므로 포인터를 통과시키고 조작
  * 요소(✕·선수 정보)만 받는다.
@@ -444,15 +515,47 @@ test("⑥ 하프가 바뀌면 선택이 남지 않는다(유령 카드 금지) �
 });
 
 /**
- * ⑦ 내 선수 카드의 안내 문구가 **이 상태에서 참**이다(독립검증 MAJOR-3).
+ * 이 무대에서 **뜰 수 있는 모든 탭 이름**과 그 testid. 문구가 이 중 하나를 부르면 그 탭이
+ * **지금 화면에 있어야** 한다 — 아래 ⑦ 의 성질이 그것이다.
+ * (`stage-state.tabsFor` 의 4상태 표 = `apps/web/CLAUDE.md` §"경기 화면 정보 시트".)
+ */
+const TAB_PLACES: ReadonlyArray<{ label: string; testid: string }> = [
+  { label: "후반 지시", testid: "stage-tab-brief" },
+  { label: "감독", testid: "stage-tab-halftime" },
+  { label: "경기장면", testid: "stage-tab-stage" },
+  { label: "결과", testid: "stage-tab-result" },
+  { label: "통계", testid: "stage-tab-stats" },
+  { label: "로그", testid: "stage-tab-log" },
+];
+
+/**
+ * **성질** — 문구가 이름으로 부르는 자리는 지금 화면에 실제로 있어야 한다.
  *
- * 초판은 *"지시는 **아래** [후반 지시] 탭에서 …"* 를 내 선수에게 항상 띄웠는데, 그 탭은
- * `briefTabVisible()` 상 `FIRST_HALF` 에서만 존재한다. 이 무대는 후반·종료에서도 쓰이므로
- * **없는 탭을 가리키는 문장**이 유저에게 그대로 나갔다(실브라우저 `state: SECOND_HALF` 캡처).
+ * ⚠️ 토큰 존재(`/경기 중/`)로 걸지 않는다. W6 이 그렇게 걸었고, 그래서 후반에서 **거짓인**
+ *    문구가 통과했다(W7 m-4). 여기서는 문구가 어떤 낱말을 쓰든 **그 자리의 실재**를 묻는다.
+ */
+async function expectNoteNamesOnlyPresentPlaces(page: Page, note: string, where: string) {
+  for (const place of TAB_PLACES) {
+    if (!note.includes(place.label)) continue;
+    const n = await page.getByTestId(place.testid).count();
+    expect(n, `${where}: 문구가 [${place.label}] 을 가리키는데 그 자리가 화면에 없다 — "${note}"`).toBeGreaterThan(0);
+  }
+  expect(note, `${where}: 방향으로 가리키는 자리가 있다 — "${note}"`).not.toMatch(/(아래|위)\s*\[?(후반 지시|감독|결과|경기장면)/);
+}
+
+/**
+ * ⑦ 내 선수 카드의 안내 문구가 **이 상태에서 참**이다(MAJOR-3 → W6 m2 → W7 m-4).
  *
- * 계약은 두 겹이다 — ⓐ 후반에서 "아래 탭에 있다"는 형태의 단정이 없다 ⓑ 전·후반 **양쪽에서**
- * 같은(=상태 무관하게 참인) 문구다. 문구를 후반에서만 손보고 전반은 옛 문장으로 두는 수리는
- * 여기서 죽는다.
+ * <h3>같은 문구가 세 번 왕복했다 — 그래서 계약을 성질로 다시 세웠다</h3>
+ * ① W4 *"지시는 **아래** [후반 지시] 탭에서"* → 후반에 없는 탭 ② *"전반의 [후반 지시] 탭과
+ * 감독시간의 [감독] 패널"* → `FINISHED` 에서 거짓 ③ W6 *"지시는 **경기 중** [후반 지시]·[감독]
+ * 패널에서 씁니다"* → **`SECOND_HALF` 에서 거짓**(후반엔 두 자리 다 없다. 이 테스트가 스스로
+ * 후반에서 `stage-tab-brief` count 0 을 단언한다). ③ 은 정밀도를 내주고 FINISHED 를 산 것이고,
+ * 그게 통과한 이유는 계약이 **`/경기 중/` 토큰 존재**만 봤기 때문이다.
+ *
+ * 이제 세 상태 **각각**에서 위 성질을 건다 — 문구가 부르는 자리는 그 화면에 있어야 한다.
+ * ①②③ 전부 여기서 죽는다. 그리고 ⓑ 세 상태의 문구가 **같아야** 한다(상태별로 갈아 끼우는
+ * 수리 = prop 개통을 배제).
  */
 test("⑦ 내 선수 카드 문구가 상태와 무관하게 참이다 (없는 탭을 가리키지 않는다)", async ({ page }) => {
   const mock = await open(page, "SECOND_HALF");
@@ -464,7 +567,8 @@ test("⑦ 내 선수 카드 문구가 상태와 무관하게 참이다 (없는 �
 
   // 후반에는 `후반 지시` 탭이 없다 — 이 전제가 깨지면 아래 단언이 공허하다.
   await expect(page.getByTestId("stage-tab-brief"), "후반엔 [후반 지시] 탭이 없다").toHaveCount(0);
-  expect(inSecond, `후반 문구: "${inSecond}"`).not.toMatch(/아래\s*\[?후반 지시/);
+  await expect(page.getByTestId("stage-tab-halftime"), "후반엔 [감독] 탭도 없다").toHaveCount(0);
+  await expectNoteNamesOnlyPresentPlaces(page, inSecond, "SECOND_HALF");
 
   // 전반으로 돌아가도 **같은 문구** — 상태별로 갈아 끼우는 수리를 배제한다.
   mock.state = "FIRST_HALF";
@@ -480,4 +584,309 @@ test("⑦ 내 선수 카드 문구가 상태와 무관하게 참이다 (없는 �
   await expect(card1, "전반에서도 카드가 떠야 문구를 비교할 수 있다").toHaveCount(1);
   const inFirst = (await page.getByTestId("arena-player-note").textContent())!.trim();
   expect(inFirst, "전·후반이 같은 문구(상태 무관하게 참)").toBe(inSecond);
+  await expectNoteNamesOnlyPresentPlaces(page, inFirst, "FIRST_HALF");
+
+  /*
+   * ⚠️ **종료 상태**(#406 W6 m2). 그 문구 *"지시는 전반의 [후반 지시] 탭과 감독시간의 [감독]
+   * 패널에서 씁니다"* 는 `FINISHED` 에서 **둘 다 불가능**하다.
+   *
+   * 계약은 문안을 통째로 박지 않는다(그러면 hero 조정마다 red 다) — 위 **성질**로 건다.
+   */
+  mock.state = "FINISHED";
+  await settleHalf(page, 2);
+  const cardF = page.getByTestId("arena-player-card");
+  for (let i = 0; i < 3 && (await cardF.count()) === 0; i++) {
+    await tapToken(page, pickFar(await tokens(page), "home", "left"));
+    await page.waitForTimeout(150);
+  }
+  await expect(cardF, "종료 화면에서도 무대는 남고 선수를 고를 수 있다").toHaveCount(1);
+  // 전제 — 종료 상태에는 두 자리가 **하나도 없다**. 있으면 아래 성질이 공허하다.
+  await expect(page.getByTestId("stage-tab-brief"), "종료엔 [후반 지시] 탭이 없다").toHaveCount(0);
+  await expect(page.getByTestId("stage-tab-halftime"), "종료엔 [감독] 탭이 없다").toHaveCount(0);
+
+  const inFinished = (await page.getByTestId("arena-player-note").textContent())!.trim();
+  expect(inFinished, "종료에서도 같은 문구(상태 무관하게 참인 한 문장)").toBe(inSecond);
+  await expectNoteNamesOnlyPresentPlaces(page, inFinished, "FINISHED");
+  console.log(`[m-4] 세 상태 공통 내 선수 문구: "${inSecond}"`);
+});
+
+/**
+ * ⑨ **카드가 방금 고른 그 선수의 링을 덮지 않는다** (#406 W6 MAJOR-A).
+ *
+ * <h3>왜 이 계약이 없었나</h3>
+ * ⑤ 는 카드가 뷰포트 안인지·시크바를 안 덮는지만 쟀고, ⑧ 은 카드 밑 선수를 **누를 수 있는지**만
+ * 쟀다 — m-6 수리는 *"가려도 누를 수는 있다"* 에서 끝났고 <b>"가려도 보이는가"는 아무도 안
+ * 물었다</b>. ⑧ 은 심지어 카드 아래 토큰 4개를 로그로 찍으면서 묻지 않는다. 독립검증 실측으로
+ * <b>22탭 중 7건</b>(전부 홈 = 내 선수)에서 선택 토큰 중심이 카드 사각 안이었다.
+ *
+ * <h3>어떻게 재나</h3>
+ * ⓐ 카드가 **기본 자리(왼쪽 위)** 에 있을 때의 사각을 실측한다(상수를 앱에서 import 하지 않는다 —
+ *   그러면 여백 변이가 계약과 함께 움직여 통과한다).
+ * ⓑ 그 사각 **안에 떨어지는 토큰**을 표본으로 모은다. <b>표본이 0 이면 이 계약은 공허하다</b> —
+ *   그래서 개수를 먼저 단언한다.
+ * ⓒ 표본을 하나씩 실제로 탭하고, 코어가 **그 프레임에 그린** 링(`selection()` 의 px·py·r)을 클라이언트
+ *   좌표로 옮겨 카드 사각과 겹치는지 본다. 링 둘레를 32점으로 샘플해 **한 점도 카드 안에 없어야** 한다.
+ * ⓓ 그중 최소 1건은 카드가 **실제로 비켰다**(`data-side@data-top ≠ left@34`) — 표본이 우연히 다른 곳에 있어서
+ *   통과한 것이 아님을 가른다.
+ */
+test("⑨ 고른 선수의 링을 카드가 덮지 않는다 (카드가 비킨다)", async ({ page }) => {
+  await open(page);
+  const all = await tokens(page);
+
+  /*
+   * ⓐ 기본 자리 실측 — **내 선수** 카드로 잰다. 카드 크기는 내용에 따라 다르고(내 선수 쪽이 안내
+   *   문구가 길어 더 크다) 결함이 난 쪽도 홈이었다. 가장 앞선 홈 선수는 무대 오른쪽이라 카드가
+   *   비킬 이유가 없어 **기본 자리**가 나온다.
+   */
+  const anchor = pickFar(all, "home", "right");
+  await tapToken(page, anchor);
+  const card = page.getByTestId("arena-player-card");
+  await expect(card).toHaveCount(1);
+  await page.waitForTimeout(300); // 배치 폴 1주기
+  await expect(card, "기준 자리 = 종전과 같은 왼쪽 위").toHaveAttribute("data-side", "left");
+  await expect(card, "기준 자리 = 종전과 같은 윗줄").toHaveAttribute("data-top", "34");
+  const home = (await card.boundingBox())!;
+  expect(home, "카드가 실제로 그려졌다").toBeTruthy();
+
+  // ⓑ 그 사각 안에 떨어지는 토큰들.
+  const under: Token[] = [];
+  for (const t of all) {
+    if (t.id === anchor.id && t.team === anchor.team) continue;
+    const p = await clientPointOf(page, t.px, t.py);
+    if (p.x >= home.x && p.x <= home.x + home.width && p.y >= home.y && p.y <= home.y + home.height) {
+      under.push(t);
+    }
+  }
+  const stageBox = (await page.getByTestId("viewer-canvas-half2").boundingBox())!;
+  /*
+   * **예산** — 카드가 링을 못 피하는 형상인지 아닌지는 산수다. 무대 세로에서 위·아래 여백을 뺀
+   * 자유 구간이 `카드높이 × 2 + (링반경 + 여유) × 2` 보다 커야 위/아래 중 한 줄이 반드시 비어
+   * 있다. 이 단언이 있어야 "지금은 되는데 카드가 한 줄 길어지면 조용히 깨지는" 상태를 못 만든다.
+   *
+   * 여백 상수 4/44/5 는 `CARD_INSET`·`CARD_RING_CLEAR_PX` 와 **같은 값을 손으로 적은 것**이다 —
+   * import 하면 여백을 키우는 변이가 계약과 함께 움직여 통과한다(초록거짓말 #2).
+   *
+   * ⚠️ **링 반경은 손으로 적지 않는다**(W7 m-5). W6 은 `((8 + 9 + 3) × w) / 1050` 이라 적었는데,
+   *    가운데 9 는 코어의 `SELECT.ringGap` = **hero 가 조정하는 노브**다(그 값을 계약이 다시
+   *    적으면 노브를 옮기는 날 예산이 조용히 어긋난다 — m1 이 팔레트에서 뽑아낸 것을 도로
+   *    들여온 셈이다). 여기서는 **코어가 실제로 그린 반경**(`selection().r`, 맥동 위상까지 포함)을
+   *    CSS 로 옮겨 쓴다. 아래 루프에서 여러 위상의 최댓값으로 한 번 더 검정한다.
+   */
+  const ringRcss = await ringRadiusCss(page, anchor);
+  const budget = stageBox.height - 4 - 44;
+  const needBudget = 2 * home.height + 2 * (ringRcss + 5);
+  console.log(
+    `[MAJOR-A] 무대 ${stageBox.width.toFixed(0)}×${stageBox.height.toFixed(0)} · 기본 카드 ` +
+      `${home.width.toFixed(0)}×${home.height.toFixed(0)} @(${home.x.toFixed(0)},${home.y.toFixed(0)}) · ` +
+      `예산 ${budget.toFixed(1)} vs 필요 ${needBudget.toFixed(1)} · ` +
+      `그 안에 떨어지는 토큰 ${under.length}개 [${under.map((t) => `${t.team}:${t.id}`).join(", ")}]`,
+  );
+  expect(
+    budget,
+    `카드가 커져 링을 피할 자리가 없다(예산 ${budget.toFixed(1)} < 필요 ${needBudget.toFixed(1)}) — ` +
+      `카드 높이 ${home.height.toFixed(0)}px 를 줄이거나 무대 여백을 다시 잡아라`,
+  ).toBeGreaterThanOrEqual(needBudget);
+  expect(under.length, "가려질 토큰이 없으면 이 계약은 공허하다 — 표본 전제").toBeGreaterThan(0);
+
+  /*
+   * ⓔ **자리 예절**(W7 m-6) — ⑤ 는 `data-side=left`/`data-top=34` 를 전제로 고정해서 비킨 자리
+   *   (`right@` · `top=4` · 아랫줄 · 마지막 수단)의 **뷰포트 안·시크바 비침범**을 아무도 안 쟀다.
+   *   여기서 표본마다 같이 잰다(순수 기하 전수는 `player-selection.test.ts` 의 격자 계약).
+   */
+  const seekBox = await page.getByTestId("viewer-seek-bar-half2").boundingBox();
+  const places = new Set<string>();
+  const etiquette: string[] = [];
+  let ringRmax = ringRcss;
+
+  let moved = 0;
+  for (const t of under) {
+    await page.getByTestId("arena-player-close").click(); // 매번 초기화(재탭 = 해제라 축이 뒤집힌다)
+    await expect(page.getByTestId("arena-player-card")).toHaveCount(0);
+    /*
+     * ⚠️ **좌표를 다시 읽는다.** 라이브 시계 게이트(#406 W3)가 250ms 마다 플레이헤드를 앞으로
+     *    밀어서, 루프 시작 때 잡아 둔 좌표는 몇 초 뒤엔 낡는다(실측: 3번째 표본에서 탭이 빗나가
+     *    카드가 안 떴다). #318 하네스 경합과 같은 부류다.
+     */
+    await page.evaluate(() => (window as any).__viewer.pause());
+    const fresh = (await tokens(page)).find((x) => x.id === t.id && x.team === t.team);
+    expect(fresh, `${t.team}:${t.id} 토큰이 사라졌다`).toBeTruthy();
+    await tapToken(page, fresh!);
+    await expect(card).toHaveAttribute("data-player", t.id);
+    await page.waitForTimeout(300);
+
+    const place = `${await card.getAttribute("data-side")}@${await card.getAttribute("data-top")}`;
+    if (place !== "left@34") moved++;
+    places.add(place);
+    const box = (await card.boundingBox())!;
+
+    // ⓒ 코어가 **그린** 링을 클라이언트 좌표로. 둘레 32점 중 카드 안에 든 점 수.
+    const ring = await ringCircleCss(page, t);
+    expect(ring, "탭한 선수의 링이 실제로 그려졌다").toBeTruthy();
+    if (ring!.r > ringRmax) ringRmax = ring!.r;
+    const { covered, centerInside } = ringVsBox(ring!, box);
+    console.log(
+      `[MAJOR-A] ${t.team}:${t.id} → 자리=${place} · 링 중심(${ring!.x.toFixed(0)},${ring!.y.toFixed(0)}) r=${ring!.r.toFixed(1)} · ` +
+        `카드@(${box.x.toFixed(0)},${box.y.toFixed(0)}) ${box.width.toFixed(0)}×${box.height.toFixed(0)} · 덮인 둘레점 ${covered}/32`,
+    );
+    expect(centerInside, `${t.team}:${t.id} 의 링 중심이 카드 안이다`).toBe(false);
+    expect(covered, `${t.team}:${t.id} 의 링 둘레가 카드에 덮였다`).toBe(0);
+
+    // ⓔ 그 비킨 자리도 화면 안이고 시크바를 안 덮는다.
+    if (box.x < -0.5 || box.y < -0.5) etiquette.push(`${place}: 좌상단 밖 (${box.x.toFixed(0)},${box.y.toFixed(0)})`);
+    if (box.x + box.width > 390 + 1) etiquette.push(`${place}: 오른쪽 밖 ${(box.x + box.width).toFixed(0)}`);
+    if (box.y + box.height > 844 + 1) etiquette.push(`${place}: 아래 밖 ${(box.y + box.height).toFixed(0)}`);
+    if (seekBox && box.y + box.height > seekBox.y + 1) {
+      etiquette.push(`${place}: 시크바 침범 (카드밑 ${(box.y + box.height).toFixed(0)} > 시크바위 ${seekBox.y.toFixed(0)})`);
+    }
+  }
+
+  // ⓓ 기제가 실제로 발화했다(고정 배치로 되돌리는 변이는 위 ⓒ 와 여기서 함께 죽는다).
+  expect(moved, "카드가 한 번도 비키지 않았다면 표본이 우연히 통과한 것이다").toBeGreaterThan(0);
+  console.log(`[m-6] 이 표본이 쓴 자리: ${[...places].join(" · ")} · 링 최대 반경 ${ringRmax.toFixed(1)}px`);
+  expect(etiquette, `비킨 자리의 자리 예절 위반: ${etiquette.join(" / ")}`).toEqual([]);
+  // 예산을 **관측된 최대 반경**으로 한 번 더 — 맥동 위상이 다른 표본들을 지나며 커진 값이다.
+  expect(
+    budget,
+    `링 최대 반경(${ringRmax.toFixed(1)})까지 넣으면 예산이 모자란다 — 카드 높이 ${home.height.toFixed(0)}px 를 줄여라`,
+  ).toBeGreaterThanOrEqual(2 * home.height + 2 * (ringRmax + 5));
+});
+
+/**
+ * ⑪ **두 명을 동시에 선택해도 두 링이 다 보인다** (W7 BLOCKER-1).
+ *
+ * <h3>W6 이 닫은 것은 상태공간의 절반이었다</h3>
+ * 이 화면은 팀당 1명씩 **동시 2명**을 1급으로 지원한다(계약 ④ 가 그 상태를 직접 단언한다).
+ * 그런데 카드가 피하는 링은 `hooks.selection()` 에서 **카드가 보여주는 선수**(= 마지막에 누른
+ * 선수) 하나로 좁혀져 있었다 — 두 번째를 누르면 카드가 두 번째만 피해 **기본 자리로 돌아와
+ * 첫 번째 링을 100% 덮었다**(독립검증 실측 `DUAL-RING home:H1 중심카드안=true 덮인둘레 32/32`).
+ *
+ * <h3>왜 ⑨ 가 못 잡았나</h3>
+ * ⑨ 는 매 표본 루프 첫 줄에서 `arena-player-close` 를 눌러 **항상 정확히 1명만** 선택한 상태로
+ * 잰다 — **2선택 상태가 표본에 구조적으로 없다**(초록거짓말 #4 의 부류).
+ *
+ * <h3>표본</h3>
+ * ⓐ 먼저 **기본 자리 사각 안에 있는 선수**를 고른다(그 한 명만으로도 카드는 비켜야 한다)
+ * ⓑ 그 다음 **반대 팀의 먼 선수**를 고른다 — 그 링 하나만 보면 기본 자리로 충분하므로,
+ *    "마지막 링만 피하는" 구현은 여기서 기본 자리로 되돌아가 ⓐ 를 덮는다.
+ */
+test("⑪ 홈+어웨이 동시 선택 — 먼저 고른 링도 카드에 덮이지 않는다", async ({ page }) => {
+  await open(page);
+  const all = await tokens(page);
+
+  // 기본 자리 사각 실측(⑨ 와 같은 방법 — 무대 오른쪽 홈 선수는 카드가 비킬 이유가 없다).
+  const anchor = pickFar(all, "home", "right");
+  await tapToken(page, anchor);
+  const card = page.getByTestId("arena-player-card");
+  await expect(card).toHaveCount(1);
+  await page.waitForTimeout(300);
+  await expect(card, "기준 자리 = 왼쪽 위").toHaveAttribute("data-side", "left");
+  await expect(card, "기준 자리 = 윗줄").toHaveAttribute("data-top", "34");
+  const home = (await card.boundingBox())!;
+
+  await page.getByTestId("arena-player-close").click();
+  await expect(card).toHaveCount(0);
+
+  /*
+   * 표본은 **사각 가장 깊숙이** 있는 홈 토큰으로 고른다 — 라이브 게이트가 250ms 마다 플레이헤드를
+   * 밀어서 선수가 조금씩 움직이므로(#318 부류), 경계에 걸친 토큰을 고르면 탭할 때쯤 사각 밖으로
+   * 나가 "카드가 비킬 이유가 없는" 표본이 된다.
+   */
+  await page.evaluate(() => (window as any).__viewer.pause());
+  const under: Array<{ t: Token; depth: number }> = [];
+  for (const t of await tokens(page)) {
+    if (t.team !== "home" || t.id === anchor.id) continue;
+    const p = await clientPointOf(page, t.px, t.py);
+    const depth = Math.min(p.x - home.x, home.x + home.width - p.x, p.y - home.y, home.y + home.height - p.y);
+    if (depth > 0) under.push({ t, depth });
+  }
+  under.sort((a, b) => b.depth - a.depth);
+  expect(under.length, "기본 자리에 깔리는 홈 토큰이 있어야 이 계약이 성립한다").toBeGreaterThan(0);
+
+  const first = under[0]!.t;
+  const second = pickFar(all, "away", "right");
+  for (const t of [first, second]) {
+    await page.evaluate(() => (window as any).__viewer.pause());
+    const fresh = (await tokens(page)).find((x) => x.id === t.id && x.team === t.team);
+    expect(fresh, `${t.team}:${t.id} 토큰이 사라졌다`).toBeTruthy();
+    await tapToken(page, fresh!);
+  }
+  await page.waitForTimeout(300); // 배치 폴 1주기
+
+  // 전제 — 정말 둘이 켜졌고, 카드는 **나중에** 고른 선수를 보여준다.
+  const rings = await drawnRings(page);
+  expect(rings.length, "홈+어웨이 두 링").toBe(2);
+  await expect(card, "카드는 마지막에 누른 선수").toHaveAttribute("data-player", second.id);
+
+  const box = (await card.boundingBox())!;
+  const place = `${await card.getAttribute("data-side")}@${await card.getAttribute("data-top")}`;
+  for (const t of [first, second]) {
+    const ring = await ringCircleCss(page, t);
+    expect(ring, `${t.team}:${t.id} 의 링이 그려졌다`).toBeTruthy();
+    const { covered, centerInside } = ringVsBox(ring!, box);
+    console.log(
+      `[DUAL-RING] ${t.team}:${t.id} 중심카드안=${centerInside} 덮인둘레=${covered}/32 · 자리=${place} · ` +
+        `카드@(${box.x.toFixed(0)},${box.y.toFixed(0)}) ${box.width.toFixed(0)}×${box.height.toFixed(0)}`,
+    );
+    expect(centerInside, `${t.team}:${t.id} 의 링 중심이 카드 안이다`).toBe(false);
+    expect(covered, `${t.team}:${t.id} 의 링 둘레가 카드에 덮였다`).toBe(0);
+  }
+  // 기제가 발화했다 — 첫 번째 링이 기본 자리 안이므로 카드는 반드시 비켰어야 한다.
+  expect(place, "두 링을 같이 보면 기본 자리는 답이 아니다").not.toBe("left@34");
+});
+
+/**
+ * ⑫ **내 팀을 모르는 화면**(관전 중 봇전 등) — `mine` 3값이 코어까지 관통한다 (W7 MAJOR-1).
+ *
+ * <h3>이 상태는 합성이 아니다</h3>
+ * `stage-state.ts:398` 이 *"둘 다 남의 팀인 화면"* 을 설계로 명시하고, 판정은 **닉네임 대조**다.
+ * 그런데 이 파일의 목이 `/api/me` 닉네임을 `homeName` 과 같은 `"테스터"` 로 고정해 **`myTeamSide`
+ * 가 null 이 될 수 없었다** — 그래서 `mine: mineOf(...)` 를 W6 이전(`=== true`)으로 되접는 변이가
+ * 10/10 생존했고, `.unknown` 테두리 · `data-mine="unknown"` · 뱃지 생략이 전부 미검정이었다.
+ * **목 닉네임 한 줄**이 표본을 만든다.
+ */
+test("⑫ 내 팀 미상 — 링은 3값 null, 카드는 점선 · 뱃지 없음 (거짓 표식 0)", async ({ page }) => {
+  await open(page, "SECOND_HALF", "관전자");
+  // 전제 — 정말 "둘 다 남의 팀"이다(스코어바 내 팀 칩이 없다).
+  await expect(page.getByTestId("scorebar-my-team"), "내 팀을 모르는 화면").toHaveCount(0);
+
+  const all = await tokens(page);
+  const card = page.getByTestId("arena-player-card");
+  for (const target of [pickFar(all, "home", "left"), pickFar(all, "away", "right")]) {
+    await page.evaluate(() => (window as any).__viewer.pause());
+    const fresh = (await tokens(page)).find((x) => x.id === target.id && x.team === target.team)!;
+    await tapToken(page, fresh);
+    await expect(card).toHaveAttribute("data-player", target.id);
+
+    const rings = await drawnRings(page);
+    const mine = rings.find((r) => r.id === target.id && r.team === target.team)?.mine;
+    // ⚠️ 여기가 3값 관통의 유일한 관측점이다 — `=== true` 로 접으면 이 값이 `false` 가 된다.
+    expect(mine, `${target.team}:${target.id} 코어 링의 mine 은 **모른다**여야 한다`).toBeNull();
+
+    await expect(card, "카드도 같은 말을 한다").toHaveAttribute("data-mine", "unknown");
+    await expect(page.getByTestId("arena-player-who"), "모르면 뱃지를 달지 않는다(#322)").toHaveCount(0);
+    // 클래스 이름이 아니라 **그 클래스가 만드는 그림**으로 잰다(CSS 모듈 해시에 안 묶인다).
+    const borderStyle = await card.evaluate((el) => getComputedStyle(el).borderTopStyle);
+    expect(borderStyle, "`.unknown` = 점선 테두리(확정되지 않음)").toBe("dashed");
+    const note = (await page.getByTestId("arena-player-note").textContent())!.trim();
+    console.log(`[m6] ${target.team}:${target.id} mine=${mine} 테두리=${borderStyle} 문구="${note}"`);
+    expect(note, "내/상대를 단정하지 않는다").not.toMatch(/내 선수|상대 선수|열람 전용/);
+
+    await page.getByTestId("arena-player-close").click();
+    await expect(card).toHaveCount(0);
+  }
+});
+
+/**
+ * ⑩ 카드 부제의 포지션이 **한글**이다(#406 W6 m7 · 요구 6).
+ *
+ * 목 카탈로그는 전원 `position: "MF"` 다 — 한글 이름 옆에 영문 enum 원문이 서 있었다.
+ */
+test("⑩ 카드 부제 포지션이 한글이다 (enum 원문 노출 0)", async ({ page }) => {
+  await open(page);
+  await tapToken(page, pickFar(await tokens(page), "home", "left"));
+  const card = page.getByTestId("arena-player-card");
+  await expect(card).toHaveCount(1);
+  const text = (await card.textContent())!;
+  expect(text, `카드 문구: "${text.replace(/\s+/g, " ").trim()}"`).toContain("미드필더");
+  expect(text, "포지션 enum 원문이 그대로 노출됐다").not.toMatch(/\bMF\b/);
 });

@@ -28,8 +28,10 @@ import {
   hitTestToken,
   mineOf,
   selectionKey,
+  stagePointOf,
   toggleSelection,
   type DrawnToken,
+  type RingOnStage,
   type SelectedPlayer,
   type TeamSide,
 } from "./player-selection";
@@ -188,7 +190,9 @@ export function VisualPlayback({
       selected.map((s) => ({
         team: s.team,
         playerId: s.playerId,
-        mine: mineOf(s.team, myTeamSide) === true,
+        // 3값 그대로 넘긴다 — `=== true` 로 접으면 **모른다**가 코어에서 "상대"로 그려지고,
+        // 같은 상태에서 카드는 뱃지를 안 달아 두 표면이 다른 말을 한다(#406 W6 m6).
+        mine: mineOf(s.team, myTeamSide),
         label: arenaLabelOf(
           playerInfo?.[s.playerId]?.short,
           selectedNumsRef.current[selectionKey(s.team, s.playerId)],
@@ -215,6 +219,31 @@ export function VisualPlayback({
 
   /** 카드는 **마지막에 누른** 선수를 보여준다(팀당 1명씩 최대 2명이 링을 달 수 있다). */
   const cardTarget = selected.length ? selected[selected.length - 1]! : null;
+
+  /**
+   * 카드가 비켜야 할 **지금 그려진 링 전부**(무대 상대 CSS 좌표) — #406 W6 MAJOR-A · W7 BLOCKER-1.
+   *
+   * ⚠️ **`cardTarget` 의 링 하나가 아니다.** W6 은 여기서 `selection().find(마지막에 누른 선수)` 로
+   *    한 개만 골랐는데, 이 화면은 팀당 1명씩 **동시 2명**을 지원한다(`toggleSelection`). 두 번째를
+   *    누르면 카드가 두 번째만 피해 기본 자리로 돌아와 **첫 번째 링을 100% 덮었다**(독립검증 실측
+   *    `덮인 둘레 32/32`). 카드가 무엇을 보여주든 **켜진 링은 전부** 살아 있어야 한다.
+   *
+   * ⚠️ 좌표는 코어가 "실제로 그렸다"고 말한 것(`hooks.selection()`)이다. 스냅샷에서 다시 계산하면
+   *    카메라 변환을 밖에서 재구현하는 것이고(#218 규율) 카드가 링과 다른 곳을 피하게 된다.
+   *    반경도 그린 값(`selectR`)이라 맥동 최대 위상까지 자동으로 포함된다.
+   */
+  const ringsAt = (): RingOnStage[] => {
+    const v = viewerRef.current;
+    const canvas = canvasRef.current;
+    if (!v || !canvas) return [];
+    const box = { width: canvas.clientWidth, height: canvas.clientHeight };
+    const out: RingOnStage[] = [];
+    for (const drawn of v.hooks.selection()) {
+      const p = stagePointOf(box, canvas.width, canvas.height, drawn.px, drawn.py);
+      if (p) out.push({ x: p.x, y: p.y, r: drawn.r * p.scale });
+    }
+    return out;
+  };
 
   // 콜백은 마운트 시 고정하되 최신 onTick 은 ref 로 본다(stale closure 방지).
   const onTickRef = useRef(onTick);
@@ -559,6 +588,7 @@ export function VisualPlayback({
           teamName={teamNames ? teamNames[cardTarget.team] : null}
           mine={mineOf(cardTarget.team, myTeamSide)}
           onClose={() => applySelection([])}
+          ringsAt={ringsAt}
         />
       )}
       {/* 자막 오버레이(호스트 DOM) — 코어가 chrome 콜백으로 표시/숨김 토글. aria-live 로 골만 읽어줌. */}

@@ -135,6 +135,20 @@ test("팀당 1명씩 동시에 — 홈·어웨이 두 링이 각자 자기 팀�
   expect(Math.abs(a.px - b.px)).toBeGreaterThan(50);
 });
 
+/*
+ * 층 밴드의 **위쪽 임계** (#406 W6 m1).
+ *
+ * ⚠️ 초판 하한은 `selectR >= r + 9` 였다 — 그런데 `R+9` 는 **hero 조정 포인트 ①**(#406)이라
+ *    hero 가 내일 `R+7` 을 고르면 **계약이 빨강**이 된다: 오늘의 튜닝값을 계약으로 박은 것이다.
+ *    거꾸로 위쪽은 아무것도 안 막아서 `ringGap 9 → 30`(토큰을 삼키는 거대 링)이 **41/41 생존**
+ *    했다(독립검증 변이 X_ringgap).
+ *
+ *    진짜 요구는 **층 분리**다 — 아래로는 카드 마커(`R+6`)를 침범하지 않고, 위로는 그 층에서
+ *    **토큰 반경 하나 이상** 더 벌어지지 않는다("바로 위층"이라는 말의 기하). 둘 다 `r` 로 쓴
+ *    관계라 hero 가 `ringGap` 을 7~11 사이 어디로 옮겨도 산다.
+ */
+const LAYER_CARD = 6;   // 카드 마커 층 = R+6.
+
 test("층 관계: 선택 링 > 카드 마커(R+6) > 소유자 링(R+2) — 맥동 어느 위상에서도", async ({ page }) => {
   // 홈 P078 = 소유자 + 옐로 카드 + 선택. 세 신호가 한 토큰에 겹치는 최악의 표본이다.
   const samples = await page.evaluate(() => {
@@ -149,9 +163,18 @@ test("층 관계: 선택 링 > 카드 마커(R+6) > 소유자 링(R+2) — 맥�
     return out;
   });
   expect(samples.length).toBeGreaterThan(20);
+  const rs = samples.map((s) => s.selectR);
+  console.log(
+    `[층밴드] R=${samples[0]!.r} · selectR ${Math.min(...rs).toFixed(2)}~${Math.max(...rs).toFixed(2)} · ` +
+      `밴드 (${samples[0]!.r + LAYER_CARD}, ${samples[0]!.r + LAYER_CARD + samples[0]!.r}]`,
+  );
   for (const s of samples) {
-    expect(s.selectR, "카드 마커(R+6) 위층").toBeGreaterThan(s.r + 6);
-    expect(s.selectR, "기본 반경은 R+9 이상").toBeGreaterThanOrEqual(s.r + 9);
+    expect(s.selectR, "카드 마커(R+6) 층을 침범하지 않는다").toBeGreaterThan(s.r + LAYER_CARD);
+    // 위쪽 — "바로 위층"이지 별개의 후광이 아니다. `ringGap` 을 크게 키우는 변이가 여기서 죽는다.
+    expect(
+      s.selectR,
+      `카드 마커 층에서 토큰 반경(${s.r}) 이상 벌어지지 않는다`,
+    ).toBeLessThanOrEqual(s.r + LAYER_CARD + s.r);
   }
   // 실제로 맥동한다 — 상수 링이면 여기가 죽는다.
   const spread = Math.max(...samples.map((s) => s.selectR)) - Math.min(...samples.map((s) => s.selectR));
@@ -293,6 +316,40 @@ test("내 선수 링과 상대 링은 **다르게 그려진다**", async ({ page
   });
   expect(mine.length, "렌더가 비어있지 않다").toBeGreaterThan(1000);
   expect(opp, "내 선수/상대 스타일이 같은 픽셀이면 구분이 없는 것").not.toBe(mine);
+});
+
+/**
+ * m6 — **모른다**는 세 번째 상태다(#406 W6).
+ *
+ * 종전 `sel.mine ? mine : opp` 는 미지정을 **상대 스타일**로 떨어뜨렸다. 그런데 호스트 카드는 같은
+ * 상태에서 뱃지를 달지 않는다(거짓 표식 금지 #322) — 링은 "상대"라 말하고 카드는 아무 말도 안 하는
+ * 화면이 나온다. 코어에 세 번째 스타일(점선)을 둬서 두 표면을 맞춘다.
+ *
+ * 계약은 두 겹: ⓐ 읽기 표면이 3값을 **접지 않는다** ⓑ 화면이 셋을 실제로 **다르게** 그린다
+ * (`SELECT.unknown = SELECT.opp` 로 되돌리는 변이가 ⓑ 에서 죽는다).
+ */
+test("m6 `mine` 미지정 = 내 선수도 상대도 아닌 **제3 스타일**로 그려진다", async ({ page }) => {
+  // ⓐ 읽기 표면 — `!!` 로 접으면 여기서 false 가 나온다.
+  const read = await pick(page, [{ team: "home", playerId: "P074" }]);
+  expect(read.drawn, "링은 그려진다").toHaveLength(1);
+  expect(read.drawn[0].mine, "모른다는 null 로 나온다(상대(false)가 아니다)").toBeNull();
+  const asOpp = await pick(page, [{ team: "home", playerId: "P074", mine: false }]);
+  expect(asOpp.drawn[0].mine, "명시한 상대는 false").toBe(false);
+
+  // ⓑ 픽셀 — 같은 선수·같은 플레이헤드·같은 라벨. `mine` 축만 세 갈래.
+  const { asMine, asOppPx, unknown } = await page.evaluate(() => {
+    const v = (window as any).__viewer;
+    const cv = document.getElementById("pitch") as HTMLCanvasElement;
+    const shot = (sel: any) => {
+      v.setSelection([{ team: "home", playerId: "P074", label: "동일라벨", ...sel }]);
+      v.renderAt(6.25);
+      return cv.toDataURL();
+    };
+    return { asMine: shot({ mine: true }), asOppPx: shot({ mine: false }), unknown: shot({}) };
+  });
+  expect(unknown.length).toBeGreaterThan(1000);
+  expect(unknown, "모른다 ≠ 내 선수").not.toBe(asMine);
+  expect(unknown, "모른다 ≠ 상대 — 여기가 m6 의 결함 자리다").not.toBe(asOppPx);
 });
 
 test("선택 없음은 **아무것도 그리지 않는다**(기존 픽셀 계약 무회귀)", async ({ page }) => {

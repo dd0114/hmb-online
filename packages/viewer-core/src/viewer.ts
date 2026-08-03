@@ -86,8 +86,11 @@ export interface PlayerSelectionInput {
   /** **필수** — 없으면 그 항목은 무시된다(fail-closed: 반대 팀을 켜느니 안 켠다). */
   team: "home" | "away";
   playerId: string;
-  /** 내 팀 선수인가(스타일 축). 판정은 부모 몫 — 코어는 유저를 모른다. */
-  mine?: boolean;
+  /**
+   * 내 팀 선수인가(스타일 축) — **3값**. 판정은 부모 몫이다(코어는 유저를 모른다).
+   * `true` 흰 굵은 링 / `false` 슬레이트 실선 / **`null`·미지정 = 점선**(모른다, #406 W6 m6).
+   */
+  mine?: boolean | null;
   /** 이름표 문구. 없으면 코어가 실제로 그린 등번호(`#7`)로 떨어진다. */
   label?: string | null;
 }
@@ -96,7 +99,8 @@ export interface PlayerSelectionInput {
 export interface DrawnSelection {
   id: string;
   team: "home" | "away";
-  mine: boolean;
+  /** 3값 그대로 나온다 — `null` = 모른다(점선 링). 접으면 "모른다"가 "상대"로 읽힌다. */
+  mine: boolean | null;
   /** 그린 링 반경(px). 맥동하므로 프레임마다 조금씩 다르다 — 층 관계(> R+6)는 항상 참. */
   r: number;
   label: string | null;

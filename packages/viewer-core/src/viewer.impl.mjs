@@ -67,11 +67,25 @@ export function createViewer(canvas, chrome = {}) {
   // 살아 있으므로 "같은 선수 위, 인접 틱" 조합은 그대로 겹쳐 글자가 뭉갰다(실측 dx=0 · dy=4.4px ·
   // 같은 팀색). W5 이전엔 TACKLE/INTERCEPT 가 **공 앵커**라 그 조합이 열리지 않았을 뿐이다.
   // → 판정을 **틱이 아니라 화면 근접**으로 바꾼다: 살아 있는 토스트끼리 겹치면 위로 밀어낸다.
-  // 임계는 계약(`action-effects.spec.ts` 토스트 가독성 = dx<70 && dy<14 인 쌍 없음)보다 **크게**
-  // 잡는다 — 경계에서 아슬아슬하게 통과하면 계약이 무엇도 보장하지 못한다.
-  const TOAST_NEAR_DX = 72;     // 이 안쪽으로 가까우면 "같은 가로 자리"로 본다(px).
-  const TOAST_NEAR_DY = 16;     // 그때 요구하는 최소 세로 간격(px).
-  const TOAST_STACK_GAP = 17;   // 밀어낼 때 확보하는 간격(px) — TOAST_NEAR_DY 보다 커야 한다.
+  //
+  // ⚠️ **간격은 글자가 차지하는 세로에서 나온다 — 계약 임계에서 역산하지 않는다**(#406 W6 m3).
+  //    초판은 계약(dy<14)보다 "한 칸 크게" 16/17 을 잡았는데, 실효 여유가 **1~2px** 이라 계약을
+  //    한 칸만 넓혀도(dy<20 && dx<90) 읽기 불가 쌍이 **56건** 나왔다(최악 `INTERCEPT`/`CLEARED!`
+  //    dx=0 · dy=17 = 그때의 `TOAST_STACK_GAP` 그 값). 즉 "계약보다 크다"는 아무것도 보장하지
+  //    않았고 계약이 스스로의 임계를 근거로 초록이던 것이다.
+  //    이제 기하에서 유도한다 — 글자는 `bold 15px sans-serif` 에 외곽선 `lineWidth 3`(바깥 1.5px)
+  //    이고 `textBaseline="middle"` 이다.
+  //    ⚠️ **세로 점유를 `15 × 1.1 + 3 ≈ 19.5px` 라고 적었던 것은 산술 추정이고 틀렸다**(W7 m-3).
+  //    Chromium 실측(`measureText("INTERCEPT!")`)은 잉크 **11.3px**(asc 11.0 · desc 0.3 —
+  //    전부 대문자라 디센더가 없다)이고 외곽선까지 **14.3px** 다. 되돌렸던 17 조차 2.7px
+  //    여유가 있었으므로 *"17 이면 획이
+  //    서로를 먹는다"* 는 성립하지 않았다. 값 22 는 그대로 두되(잉크 위 7.7px 여백 = 두 줄이
+  //    확실히 갈리는 간격) **근거를 실측으로 바꾼다**. 그 실측은 계약이 매번 다시 잰다
+  //    (`action-effects.spec.ts` 토스트 스윕 머리 — 폰트가 바뀌면 거기서 먼저 빨강이 난다).
+  //    가로는 실측이 근거를 받쳤다 — `INTERCEPT!` 폭 **≈90.0px** 이라 72 는 절반만 덮었다.
+  const TOAST_NEAR_DX = 96;     // 이 안쪽으로 가까우면 "같은 가로 자리"로 본다(px).
+  const TOAST_NEAR_DY = 22;     // 그때 요구하는 최소 세로 간격(px) — 위 기하에서 유도.
+  const TOAST_STACK_GAP = 24;   // 밀어낼 때 확보하는 간격(px) — TOAST_NEAR_DY 보다 커야 한다.
   const TOAST_STACK_MAX = 12;   // 밀어내기 반복 상한(무한루프 방어).
   // ── 선수 하이라이트(#406 W4, 요구 5-2) ────────────────────────────────────────────────
   // hero 확정 ② = **펄스 링 `R+9`**. 실화면 QA 후 갈아끼울 수 있게 값은 **여기 한 곳**에만 둔다.
@@ -90,8 +104,16 @@ export function createViewer(canvas, chrome = {}) {
     pulsePx: 3,     // 맥동 폭(px, 바깥 방향으로만).
     pulseTicks: 9,  // 한 주기의 플레이헤드 인덱스 수.
     labelPadPx: 12, // 이름표 알약 좌우 여백(측정 폭에 더한다).
-    mine: { color: "#ffffff", width: 3, labelAlpha: 1, labelEdge: 1.6 },
-    opp: { color: "rgba(148,163,184,0.95)", width: 2, labelAlpha: 0.8, labelEdge: 1 },
+    mine: { color: "#ffffff", width: 3, labelAlpha: 1, labelEdge: 1.6, dash: null },
+    opp: { color: "rgba(148,163,184,0.95)", width: 2, labelAlpha: 0.8, labelEdge: 1, dash: null },
+    /*
+     * **모른다**(`mine` 미지정) — 종전엔 `sel.mine ? mine : opp` 라 상대 스타일로 떨어졌다.
+     * 그런데 호스트 카드는 같은 상태에서 **뱃지를 안 단다**(거짓 표식 금지, #322) → 한 화면의 두
+     * 표면이 다른 말을 했다(#406 W6 m6: 링은 "상대", 카드는 무언). 세 번째 스타일을 둬서 둘을
+     * 맞춘다 — 점선은 "확정되지 않음"을 색을 쓰지 않고 말하는 유일한 축이다(링은 무채색 규율 —
+     * 팀색 fx 와 섞이면 안 된다, W5).
+     */
+    unknown: { color: "rgba(203,213,225,0.85)", width: 2, labelAlpha: 0.8, labelEdge: 1, dash: [5, 4] },
   };
 
   // ===== 상태 =====
@@ -386,13 +408,17 @@ export function createViewer(canvas, chrome = {}) {
       for (const pr of playerRender) {
         const sel = selection.get(skinKeyOf(pr.team, pr.id));
         if (!sel) continue;
-        const style = sel.mine ? SELECT.mine : SELECT.opp;
+        // 3값 축(#406 W6 m6) — true=내 선수 / false=상대 / null=모른다(점선). `sel.mine` 는
+        // 주입 시점에 이미 3값으로 정규화돼 있다(아래 주입 함수 주석 참조).
+        const style = sel.mine === true ? SELECT.mine : sel.mine === false ? SELECT.opp : SELECT.unknown;
         const rr = R + SELECT.ringGap + SELECT.pulsePx * wave;
         ctx.save();
         ctx.globalAlpha = 0.55 + 0.45 * wave;
         ctx.strokeStyle = style.color;
         ctx.lineWidth = style.width;
+        if (style.dash) ctx.setLineDash(style.dash);
         ctx.beginPath(); ctx.arc(pr.px, pr.py, rr, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]); // 이름표 알약 테두리까지 점선이 번지지 않게(같은 ctx 상태다).
         // 이름표 — **라벨은 부모가 준다**(코어는 선수 이름을 모른다: 도메인 지식 유출 0).
         // 안 주면 실제로 그린 등번호로 떨어지고, 그것도 없으면 이름표를 그리지 않는다.
         const label = sel.label || (pr.num ? `#${pr.num}` : "");
@@ -428,7 +454,8 @@ export function createViewer(canvas, chrome = {}) {
          *    *어느 토큰이 켜졌나*(팀 축)만 말한다.
          */
         pr.selected = true;
-        pr.selectMine = !!sel.mine;
+        // 3값 그대로 싣는다(`!!` 로 접으면 "모른다"가 밖에서 "상대"로 읽힌다 — m6 의 뿌리).
+        pr.selectMine = sel.mine;
         pr.selectR = rr;
         pr.selectLabel = label || null;
       }
@@ -879,8 +906,10 @@ export function createViewer(canvas, chrome = {}) {
    *   `skinKeyOf(team, playerId)` 다. ⚠️ 여기선 `skinLookup` 의 **단독 키 폴백을 일부러 쓰지
    *   않는다** — 스킨은 "못 찾으면 팀색 원"이라 폴백이 무해하지만, 선택은 폴백이 곧
    *   **반대 팀을 켜는 것**이라 fail-closed 가 옳다(팀을 모르면 안 켠다).
-   * - `mine` = 내 팀 선수인가(스타일 축). 모르면 상대 스타일로 떨어진다 —
-   *   "내 선수"라고 잘못 말하는 것보다 낫다. 판정은 부모 몫(코어는 유저를 모른다).
+   * - `mine` = 내 팀 선수인가(스타일 축) — **3값**이다. `true` 흰 굵은 링 / `false` 슬레이트 실선 /
+   *   **`null`·미지정 = 점선**(모른다). 판정은 부모 몫이다(코어는 유저를 모른다).
+   *   ⚠️ 종전엔 `s.mine === true` 로 접어 미지정이 **상대 스타일**이 됐는데, 호스트 카드는 같은
+   *   상태에서 뱃지를 안 달아(#322) 한 화면의 두 표면이 다른 말을 했다(#406 W6 m6).
    * - `label` = 이름표 문구. 코어는 선수 **이름을 모른다**(도메인 지식 유출 0) — 안 주면
    *   실제로 그린 등번호로 떨어진다.
    */
@@ -892,7 +921,7 @@ export function createViewer(canvas, chrome = {}) {
       next.set(skinKeyOf(s.team, s.playerId), {
         team: s.team,
         playerId: s.playerId,
-        mine: s.mine === true,
+        mine: s.mine === true ? true : s.mine === false ? false : null,
         label: typeof s.label === "string" && s.label.trim() ? s.label.trim() : null,
       });
     }
@@ -1010,7 +1039,12 @@ export function createViewer(canvas, chrome = {}) {
     selection: () =>
       lastPlayers
         .filter((p) => p.selected)
-        .map((p) => ({ id: p.id, team: p.team, mine: !!p.selectMine, r: p.selectR, label: p.selectLabel, px: p.px, py: p.py })),
+        // `mine` 은 **3값**이다(true/false/null). `!!` 로 접으면 "모른다"가 "상대"로 읽힌다(m6).
+        .map((p) => ({
+          id: p.id, team: p.team,
+          mine: p.selectMine === true ? true : p.selectMine === false ? false : null,
+          r: p.selectR, label: p.selectLabel, px: p.px, py: p.py,
+        })),
   };
 
   function start() { drawPitch(); rafId = requestAnimationFrame(tickLoop); }

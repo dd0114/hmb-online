@@ -506,12 +506,45 @@ test("가로챔 X 슬래시가 **팔로우 줌 기하**의 토큰·선택 링 �
  * `틱:팀:앵커` 라 **틱이 다르면 스택하지 않는** 성질이 그대로 드러나 읽기 불가 쌍이 5→50 이
  * 됐는데도 82건 중 아무것도 빨강이 되지 않았다(독립검증 BLOCKER-1, 실측 dx=0·dy=4.4px).
  *
- * 임계는 렌더 상수를 되읽지 않고 **글자 크기에서 나온 절대값**으로 박는다(15px bold ⇒ 행간 14px
- * 미만이면 글자가 서로를 먹고, 가로로 70px 안쪽이면 같은 가로 자리로 본다). 렌더가 임계를
+ * 임계는 렌더 상수를 되읽지 않고 **글자 크기에서 나온 절대값**으로 박는다. 렌더가 임계를
  * 넓히면 계약도 같이 느슨해지는 자기참조를 피하기 위해서다.
+ *
+ * ⚠️ **그 절대값이 처음엔 너무 작았다**(#406 W6 m3). 초판은 `dy<14 && dx<70` 이었는데 실측 여유가
+ *    **1px** 이었다 — 한 칸만 넓혀 재면(`dy<20 && dx<90`) 읽기 불가 쌍이 **56건**이고 최악이
+ *    `INTERCEPT`/`CLEARED!` `dx=0 · dy=17` = 그때의 `TOAST_STACK_GAP` 그 값이었다. 즉 계약이
+ *    "겹치지 않는다"고 말한 근거는 렌더가 정확히 그 임계 바로 위에 앉아 있었다는 것뿐이다.
+ *
+ *    글자는 `bold 15px sans-serif` + 외곽선 `lineWidth 3`(바깥 1.5px)이고 `textBaseline="middle"`.
+ *
+ * ⚠️ **그 다음 문장이 또 틀렸다**(W7 m-3). 여기엔 *"한 줄이 세로로 잡아먹는 높이 ≈ 19.5px
+ *    (15 × 1.1 + 3)"* 라고 적혀 있었는데 그건 **산술 추정**이었다. 실측은 잉크 11.3px
+ *    (asc 11.0 · desc 0.3 — 전부 대문자라 디센더가 없다) · 외곽선까지 14.3px · 폭 90.0px 라,
+ *    되돌렸던 17 도 여유가 2.7px 있었다.
+ *    임계 20 은 그대로 두되(잉크 위 5.7px = 두 줄이 확실히 갈린다) **근거를 추정에서 실측으로**
+ *    바꾼다 — 아래 첫 블록이 브라우저에서 직접 재고, 임계가 그 실측을 덮는지 단언한다.
+ *    가로는 실측이 근거를 받쳤다(`INTERCEPT!` 폭 ≈90.0px → 70 은 절반만 덮었다 → **90**).
  */
 test("토스트가 서로 겹치지 않는다 (경기 전 구간 스윕)", async ({ page }) => {
-  const MIN_DY = 14, NEAR_DX = 70;
+  const MIN_DY = 20, NEAR_DX = 90;
+
+  /*
+   * **임계의 근거를 매번 다시 잰다**(W7 m-3). 폰트·외곽선이 바뀌면 여기서 먼저 빨강이 난다 —
+   * 주석의 숫자가 스테일해지는 것이 이 축에서 두 번 사고를 냈다.
+   */
+  const ink = await page.evaluate(() => {
+    const c = document.createElement("canvas").getContext("2d")!;
+    c.font = "bold 15px sans-serif"; // 렌더와 같은 문자열(viewer.impl.mjs 토스트)
+    const m = c.measureText("INTERCEPT!");
+    return { asc: m.actualBoundingBoxAscent, desc: m.actualBoundingBoxDescent, w: m.width };
+  });
+  const inkH = ink.asc + ink.desc;
+  const strokeH = inkH + 3; // lineWidth 3 = 위아래 1.5px 씩
+  console.log(
+    `[토스트 기하] 잉크 ${inkH.toFixed(1)}px (asc ${ink.asc.toFixed(1)} · desc ${ink.desc.toFixed(1)}) · ` +
+      `외곽선 포함 ${strokeH.toFixed(1)}px · 폭 ${ink.w.toFixed(1)}px`,
+  );
+  expect(MIN_DY, `세로 임계가 실측 글자 높이(${strokeH.toFixed(1)}px)를 덮어야 한다`).toBeGreaterThanOrEqual(strokeH);
+  expect(NEAR_DX, `가로 임계가 실측 라벨 폭(${ink.w.toFixed(1)}px)을 덮어야 한다`).toBeGreaterThanOrEqual(ink.w - 1);
   const found = await page.evaluate(
     ([minDy, nearDx]: [number, number]) => {
       const v = (window as any).__viewer;
