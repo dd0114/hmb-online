@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useDeck, usePlayers, type MatchDetail } from "../../api/hooks";
 import { PromptBlock } from "../../common/PromptBlock";
 import { usePlayerNames } from "../../common/player-names";
@@ -15,6 +15,16 @@ export interface SecondHalfBriefPanelProps {
   clockOffsetMs?: number;
   /** 셸이 소유하는 초안 — 감독 탭과 **같은 것**을 본다(#284). */
   draft: HalftimeDraftHandle;
+  /**
+   * 지금 고른 지시 대상(`null` = 팀 전체). **셸이 소유한다**(#406 W9, 요구 5-2 후반) — 같은 값이
+   * 피치 하이라이트를 켜기 때문이다(`player-selection.ts` 머리말의 동시 선택 표).
+   *
+   * ⚠️ **옵셔널로 두지 않았다.** 기본값을 주면 배선을 잊은 호출부가 조용히 하이라이트 없는 화면을
+   * 만들고, 그건 이 리포가 반복해서 물린 부류다(*"프롭이 있는데 아무도 안 넘긴다"*). 필수라
+   * 배선을 빼면 **컴파일이 깨진다**.
+   */
+  target: PromptTarget;
+  onTarget: (next: PromptTarget) => void;
 }
 
 /**
@@ -58,10 +68,15 @@ interface TargetOption {
  * playerId 를 그 스냅샷으로 검증하므로(`snapshotPlayerIds`), 현재 덱에서 목록을 만들면 전반 중
  * 덱을 고친 유저에게 **400 나는 칩**을 보여주게 된다. 스냅샷이 없는 구 매치만 덱으로 폴백한다.
  */
-export function SecondHalfBriefPanel({ match, clockOffsetMs = 0, draft }: SecondHalfBriefPanelProps) {
+export function SecondHalfBriefPanel({
+  match,
+  clockOffsetMs = 0,
+  draft,
+  target: selected,
+  onTarget: setSelected,
+}: SecondHalfBriefPanelProps) {
   const { data: deck } = useDeck();
   const { data: players } = usePlayers();
-  const [selected, setSelected] = useState<PromptTarget>(null);
 
   const clock = match.clock ?? null;
   const remaining = useCountdown(clock, clockOffsetMs);

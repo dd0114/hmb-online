@@ -1,33 +1,57 @@
 /**
  * 경기 화면 **선수 선택**(#406 W4, 요구 5-2) — 순수 판정만. React/DOM 의존 0.
  *
- * <h3>선택 상태의 SoT 는 어디인가</h3>
- * 이 화면엔 "선택됨"이 될 수 있는 자리가 둘이다. **축이 다르므로 하나로 합치지 않는다** —
- * 대신 어느 쪽이 무엇을 소유하는지 여기 적어 둔다(합치려고 하면 아래 이유를 먼저 읽어라).
+ * <h3>선택 상태의 SoT 는 어디인가 — #406 W9 에서 하나로 합쳤다</h3>
+ * 이 화면엔 "선택됨"이 될 수 있는 **입력**이 둘이다(피치 탭 · 지시 대상 칩). W4 는 둘을 서로
+ * 다른 상태로 뒀는데, 요구 5-2 의 후반("프롬프트 입력 시 그 선수가 하이라이트")을 배선하면서
+ * **화면에 그려지는 선택 상태는 하나**로 모았다.
  *
  * <table>
- *   <tr><th>축</th><th>SoT</th><th>무엇</th></tr>
+ *   <tr><th>축</th><th>누가 쓰나(writer)</th><th>무엇</th></tr>
  *   <tr>
  *     <td><b>피치 열람 선택</b></td>
- *     <td><b>{@link VisualPlayback}</b>(캔버스 표면) — 이 모듈이 규칙을 소유한다</td>
- *     <td>"지금 누구를 보고 있나". 내 선수·상대 선수 <b>둘 다</b> 대상이고, 링 + 정보 카드로 답한다</td>
+ *     <td>{@link VisualPlayback} 의 캔버스 탭 → {@link toggleSelection}</td>
+ *     <td>"지금 누구를 보고 있나". 내 선수·상대 선수 <b>둘 다</b> 대상</td>
  *   </tr>
  *   <tr>
  *     <td><b>지시 대상 선택</b></td>
- *     <td>`SecondHalfBriefPanel` / `HalftimePanel`(각 패널의 로컬 상태)</td>
- *     <td>"누구에게 후반 지시를 쓰나". <b>내 팀만</b>이고 대상 칩 + 프롬프트 칸으로 답한다</td>
+ *     <td>`SecondHalfBriefPanel` 의 대상 칩 → {@link applyPromptTarget}</td>
+ *     <td>"누구에게 후반 지시를 쓰나". <b>내 팀만</b>이고 `팀 전체` 옵션이 있다</td>
+ *   </tr>
+ *   <tr>
+ *     <td><b>그려지는 상태</b></td>
+ *     <td><b>`StageShell`</b> — 위 두 writer 가 같은 배열에 쓴다</td>
+ *     <td>링 + 정보 카드. `VisualPlayback` 은 `selection`/`onSelectionChange` controlled 로 받는다</td>
  *   </tr>
  * </table>
  *
- * <p>감독시간에는 두 축이 <b>서로 다른 탭</b>에 있어(무대가 `경기장면` 탭으로 내려간다 — `StageShell`
- * 의 `managing`) 한 화면에 같이 뜨지 않는다. 전반에는 같이 뜰 수 있는데, 그때도 <b>같은 것을 두 번
- * 고르는 게 아니다</b>: 피치 링은 상대 선수에게도 붙고 지시 칩은 내 팀 전용이며 `팀 전체` 옵션이 있다.
+ * <h3>동시 선택 규칙 (판정 — #406 W9, 정하지 않는 것이 틀린 답이다)</h3>
+ * 이 화면은 <b>팀당 1명, 최대 2명</b>이 링을 단다({@link toggleSelection} · e2e 계약 ④). 두 writer 가
+ * 그 불변식 위에서 어떻게 만나는지를 이렇게 정했다:
  *
- * <p>⚠️ <b>다만 hero 요구 5-2 의 절반("프롬프트 입력 시 그 선수가 하이라이트")은 아직 반쪽이다.</b>
- * 지시 칩을 누를 때도 피치가 켜지려면 그 패널이 아래 seam 을 부르면 된다 —
- * {@link VisualPlayback} 의 `selection`/`onSelectionChange` **controlled 프롭**이 그 자리다
- * (상태를 `StageShell` 로 들어올리면 두 패널이 같은 값을 쓴다). 그 파일들은 이 웨이브의 소유가
- * 아니라(#406 W1b · #403 W2) 배선을 남겨 두고 후속으로 넘긴다.
+ * <ol>
+ *   <li><b>공존이다 — 덮어쓰기가 아니다.</b> 지시 칩은 <b>내 팀 슬롯</b>만 쓰고 상대 슬롯은 손대지
+ *       않는다. 즉 "상대를 열람하면서 내 선수에게 지시를 쓰는" 상태가 1급이다(그게 목업 §2 가 동시
+ *       2명을 허용한 이유이기도 하다).</li>
+ *   <li><b>같은 슬롯(내 팀)에서는 마지막 조작이 이긴다.</b> 칩을 누르면 링이 그 선수로 가고, 피치에서
+ *       다른 내 선수를 누르면 링이 그쪽으로 간다. 어느 손잡이도 <b>죽지 않는다</b> — "칩이 이긴다"로
+ *       고정하면 칩을 고른 뒤의 피치 탭이 아무 일도 안 하는(그런데 카드는 바뀌는) 모순이 생긴다.</li>
+ *   <li><b>`팀 전체` 칩은 내 팀 링을 끈다.</b> 대상이 사람이 아니므로 아무도 지목하지 않는 것이 참이다.</li>
+ *   <li><b>`myTeamSide` 를 모르면 칩은 링을 만들지 않는다</b>(fail-closed). 같은 playerId 가 양 팀에
+ *       동시에 뛰므로(#324/#231) 팀을 모르면 <b>반대 팀을 켤 위험</b>이 있다 — 코어 `setSelection` 이
+ *       단독 키 폴백을 일부러 안 쓰는 것과 같은 태도다.</li>
+ * </ol>
+ *
+ * <p>⚠️ <b>기각한 안: seam 에 출처 플래그(`via: "pitch" | "prompt"`)를 달아 칩 선택엔 카드를 안 띄우기.</b>
+ * 링과 카드가 갈리는 상태가 생겨 상태공간이 두 배가 되고(카드 있는 링 / 없는 링), W7 이 닫은
+ * "카드가 모든 링을 피한다"는 계약이 그 두 종류를 각각 태워야 한다. 칩 선택도 <b>같은 선택</b>이라
+ * 링 + 카드가 같이 뜬다 — 카드가 피치 위에서 이름으로 "누구인지" 답하는 것이 요구 5-2 의 문구
+ * (*"누가 선택됐는지 보이게"*)에 그대로 맞다.
+ *
+ * <p>⚠️ <b>감독시간(`HalftimePanel`)은 배선하지 않았다 — 자리가 없어서다.</b> 그 화면은 무대가
+ * `경기장면` <b>탭</b>으로 내려가(`StageShell` 의 `managing`) 프롬프트와 피치가 <b>같은 화면에 절대
+ * 같이 뜨지 않는다</b>. 게다가 거기서 지시 대상을 고르는 손잡이는 `DeckEditor` 보드(덱 도메인)
+ * 안이라, 배선해도 유저가 볼 수 있는 하이라이트가 되지 않는다. 조정 포인트로 남긴다.
  */
 import { skinKeyOf } from "@hmb/viewer-core";
 
@@ -203,6 +227,40 @@ export function toggleSelection(
   const already = current.some((s) => selectionKey(s.team, s.playerId) === nextKey);
   const others = current.filter((s) => s.team !== next.team);
   return already ? others : [...others, { team: next.team, playerId: next.playerId }];
+}
+
+/** 두 선택 목록이 **같은 내용**인가(순서 포함) — 불필요한 리렌더·라운드트립을 막는 자리. */
+export function sameSelection(a: readonly SelectedPlayer[], b: readonly SelectedPlayer[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((s, i) => selectionKey(s.team, s.playerId) === selectionKey(b[i]!.team, b[i]!.playerId))
+  );
+}
+
+/**
+ * **지시 대상 칩 → 선택 상태** (#406 W9, 요구 5-2 후반). 머리말의 동시 선택 규칙이 여기 산다.
+ *
+ * @param current 지금 그려지는 선택(피치 탭이 쓴 것 포함).
+ * @param target  칩이 고른 대상. `null` = `팀 전체`(사람이 아니다 → 내 팀 링을 끈다).
+ * @param myTeamSide 내 팀이 선 사이드. 모르면 **아무것도 하지 않는다**(fail-closed — 규칙 ④).
+ *
+ * <p>내 팀 슬롯만 갈아치우고 **상대 슬롯은 그대로 둔다**(규칙 ①). 결과가 내용상 같으면 `current` 를
+ * 그대로 돌려준다 — 호출부가 매 클릭마다 새 배열을 만들어 리렌더를 유발하지 않게.
+ *
+ * <p>⚠️ 벤치 선수도 칩에 있고(서버 로스터 = 선발+벤치) 그 선수는 피치에 **없다**. 그때는 링이
+ * 그려지지 않는 것이 참이다 — 여기서 걸러내지 않는다(누가 뛰는지는 코어가 아는 사실이고, 이 규칙이
+ * 로스터를 다시 판정하면 두 곳이 갈린다).
+ */
+export function applyPromptTarget(
+  current: readonly SelectedPlayer[],
+  target: string | null,
+  myTeamSide: TeamSide | null | undefined,
+): SelectedPlayer[] {
+  const mySide = myTeamSide === "home" || myTeamSide === "away" ? myTeamSide : null;
+  if (!mySide) return current as SelectedPlayer[];
+  const others = current.filter((s) => s.team !== mySide);
+  const next = target ? [...others, { team: mySide, playerId: target }] : others;
+  return sameSelection(current, next) ? (current as SelectedPlayer[]) : next;
 }
 
 /**

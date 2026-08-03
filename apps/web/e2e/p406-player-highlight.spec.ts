@@ -35,6 +35,26 @@ const IDS: string[] = [
     (RAW.tickSnapshots[0].players as Array<{ playerId: string }>).map((p) => p.playerId),
   ),
 ];
+/** 사이드별 로그 출전 명단 — 지시 대상 칩(`userDeckSnapshot`)을 **실제로 뛰는 선수**로 만든다. */
+const SIDE_IDS: Record<"home" | "away", string[]> = {
+  home: [...new Set((RAW.tickSnapshots[0].players as Array<{ playerId: string; team: string }>).filter((p) => p.team === "home").map((p) => p.playerId))],
+  away: [...new Set((RAW.tickSnapshots[0].players as Array<{ playerId: string; team: string }>).filter((p) => p.team === "away").map((p) => p.playerId))],
+};
+
+/**
+ * 매치 스냅샷(지시 대상 칩의 출처, #284) — **기본은 없다**.
+ *
+ * ⚠️ 기존 13개 계약의 표본을 건드리지 않으려고 옵트인으로 둔다. 스냅샷이 붙으면 `후반 지시` 탭에
+ * 선수 칩이 생기는데, 그건 요구 5-2 후반(칩 → 하이라이트)을 재는 계약만 필요한 전제다.
+ */
+function deckSnapshotOf(side: "home" | "away") {
+  return {
+    formation: "4-3-3",
+    starters: SIDE_IDS[side].slice(0, 11).map((playerId, slotIndex) => ({ playerId, slotIndex })),
+    bench: [],
+  };
+}
+
 /**
  * 등급은 **전부 BRONZE** 로 둔다 — #285 아트 정책의 임계 아래다. 하이라이트가 그 정책을 우회해
  * 카드에 얼굴을 그리면 여기서 걸린다(계약 ⑤).
@@ -88,6 +108,8 @@ async function open(
   page: Page,
   initial: MatchState = "SECOND_HALF",
   nickname = "테스터",
+  /** 지시 대상 칩을 만들 매치 스냅샷의 사이드(#406 W9). null = 스냅샷 없음(기존 표본 그대로). */
+  deckSide: "home" | "away" | null = null,
 ): Promise<MockState> {
   const st: MockState = { state: initial };
   await page.route("**/*", async (route) => {
@@ -116,6 +138,7 @@ async function open(
           homeName: "테스터",
           awayName: "봇 FC",
           opponent: { name: "봇 FC", deck: [] },
+          ...(deckSide ? { userDeckSnapshot: deckSnapshotOf(deckSide) } : {}),
           clock: clock(st.state),
         },
       });
@@ -889,4 +912,102 @@ test("⑩ 카드 부제 포지션이 한글이다 (enum 원문 노출 0)", async
   const text = (await card.textContent())!;
   expect(text, `카드 문구: "${text.replace(/\s+/g, " ").trim()}"`).toContain("미드필더");
   expect(text, "포지션 enum 원문이 그대로 노출됐다").not.toMatch(/\bMF\b/);
+});
+
+/*
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ * 요구 5-2 **후반** — 프롬프트(지시)를 쓸 때 그 선수가 피치에서 하이라이트된다 (#406 W9)
+ *
+ * hero 원문: *"경기중 내 선수를 선택하면(**프롬프트 입력**이나 선수 정보 열람 시) 그 선수가
+ * 하이라이트돼 누가 선택됐는지 보이게."* W4~W7 이 닫은 것은 **열람** 쪽 절반이고, 여기가 나머지다.
+ *
+ * <h3>이 계약이 겨누는 결함</h3>
+ * 지시 칩의 상태가 패널 **로컬**이면(W4 당시의 모양) 링을 켤 방법이 구조적으로 없다. 그래서 재는
+ * 것은 문구가 아니라 **코어가 실제로 그린 링**(`hooks.selection()`)이다 — 배선(`StageShell` →
+ * `MatchViewer` → `VisualPlayback.selection`)을 지우면 아래 셋이 전부 죽는다.
+ *
+ * <h3>동시 선택 규칙(`player-selection.ts` 머리말의 판정)도 여기서 잰다</h3>
+ * 공존이다: 칩은 **내 팀 슬롯만** 쓰고 상대 열람 링은 살아 있다. `팀 전체` 는 사람이 아니라 끈다.
+ * ══════════════════════════════════════════════════════════════════════════════════════════
+ */
+
+/** `후반 지시` 탭을 연다(전반에만 있다 — `stage-state.briefTabVisible`). */
+async function openBriefTab(page: Page) {
+  const tab = page.getByTestId("stage-tab-brief");
+  await expect(tab, "`후반 지시` 탭은 전반에만 있다").toHaveCount(1);
+  await tab.click();
+  await expect(page.getByTestId("stage-panel-brief")).toBeVisible();
+  // 전제 — 칩이 실재해야 이 계약이 무언가를 재는 것이 된다(#284 매치 스냅샷 경로).
+  await expect(page.getByTestId("brief-target-team")).toBeVisible();
+}
+
+test("⑬ 지시 대상 칩을 누르면 그 선수 링이 뜬다 · 칩을 바꾸면 따라간다 · `팀 전체`는 끈다", async ({ page }) => {
+  await open(page, "FIRST_HALF", "테스터", "home");
+  await openBriefTab(page);
+
+  const [first, second] = [SIDE_IDS.home[3]!, SIDE_IDS.home[7]!];
+  await page.getByTestId(`brief-target-${first}`).click();
+  await expect.poll(async () => (await drawnRings(page)).map((r) => `${r.team}:${r.id}`)).toEqual([
+    `home:${first}`,
+  ]);
+  // 내 팀 스타일까지 관통한다(3값 — `mineOf` 를 안 지나면 여기서 갈린다).
+  expect((await drawnRings(page))[0]!.mine, "내 팀 스타일").toBe(true);
+  // 프롬프트 칸도 같은 선수를 말한다(칩만 켜지고 대상이 안 바뀌는 상태를 배제).
+  await expect(page.getByTestId(`brief-target-${first}`)).toHaveAttribute("aria-selected", "true");
+
+  // 칩을 바꾸면 **하이라이트도 따라간다**(팀당 1명 불변식 — 두 개가 되면 안 된다).
+  await page.getByTestId(`brief-target-${second}`).click();
+  await expect.poll(async () => (await drawnRings(page)).map((r) => `${r.team}:${r.id}`)).toEqual([
+    `home:${second}`,
+  ]);
+
+  // `팀 전체` = 사람이 아니다 → 아무도 지목하지 않는다(거짓 지목 0).
+  await page.getByTestId("brief-target-team").click();
+  await expect.poll(async () => (await drawnRings(page)).length).toBe(0);
+});
+
+test("⑭ 상대 열람 링과 **공존**한다 — 칩은 내 팀 슬롯만 쓴다", async ({ page }) => {
+  await open(page, "FIRST_HALF", "테스터", "home");
+
+  // ⓐ 먼저 피치에서 상대를 눌러 열람 링을 만든다(무대는 전반에 상시 표시다).
+  const opp = pickFar(await tokens(page), "away", "right");
+  await tapToken(page, opp);
+  await expect.poll(async () => (await drawnRings(page)).map((r) => r.team)).toEqual(["away"]);
+
+  // ⓑ 그 상태에서 지시 칩을 고른다 → 링이 **둘**이다(상대 열람 + 내 지시 대상).
+  await openBriefTab(page);
+  const mine = SIDE_IDS.home[5]!;
+  await page.getByTestId(`brief-target-${mine}`).click();
+  await expect
+    .poll(async () => (await drawnRings(page)).map((r) => `${r.team}:${r.id}`).sort())
+    .toEqual([`away:${opp.id}`, `home:${mine}`].sort());
+
+  // ⓒ 칩을 바꿔도 상대 링은 그대로다(내 슬롯만 갈아치운다).
+  await page.getByTestId(`brief-target-${SIDE_IDS.home[9]!}`).click();
+  await expect
+    .poll(async () => (await drawnRings(page)).map((r) => `${r.team}:${r.id}`).sort())
+    .toEqual([`away:${opp.id}`, `home:${SIDE_IDS.home[9]!}`].sort());
+});
+
+/**
+ * ⑮ **어웨이 라운드에서도 내 팀 쪽에 붙는다**(#322).
+ *
+ * 링 키는 `skinKeyOf(team, playerId)` 라 팀을 틀리면 **반대 팀 선수가 켜진다**(#324/#231 — 같은
+ * playerId 가 양 팀에 동시에 뛴다). 칩은 팀을 모르므로 사이드는 `myTeamSide` 에서 와야 하고,
+ * 그 판정은 **닉네임 대조**다(`stage-state.myTeamSide`). 목 닉네임을 `봇 FC` 로 주면 내 팀 = away 다.
+ */
+test("⑮ 어웨이 라운드: 칩 하이라이트가 **away 슬롯**에 붙는다", async ({ page }) => {
+  await open(page, "FIRST_HALF", "봇 FC", "away");
+  await expect(page.getByTestId("scorebar-my-team"), "내 팀 표식이 있는 화면").toHaveCount(1);
+  await openBriefTab(page);
+
+  const target = SIDE_IDS.away[4]!;
+  await page.getByTestId(`brief-target-${target}`).click();
+  const rings = await (async () => {
+    await expect.poll(async () => (await drawnRings(page)).length).toBe(1);
+    return drawnRings(page);
+  })();
+  expect(rings[0]!.team, "홈으로 붙으면 반대 팀 선수를 켜는 것이다").toBe("away");
+  expect(rings[0]!.id).toBe(target);
+  expect(rings[0]!.mine, "어웨이가 내 팀이다").toBe(true);
 });

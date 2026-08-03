@@ -1007,8 +1007,16 @@ me 를 쓰면 "**브론즈 리그**에서 1위" 옆에 **실버** 뱃지가 뜬�
 
 | 자리 | 축 | 실제 소비처 |
 |---|---|---|
-| 로그줄 · 전술보드 토큰 · 덱 리스트 행 · 지시 대상 칩 · 컨디션 칩 · 제안 칩 · 우편 첨부 칩 | **short** | `LogPanel` · `TacticsBoard` · `PlayerPicker`/`PresetPanel` · `SecondHalfBriefPanel`/`HalftimePanel` · `BriefingPanel`(컨디션) · `ProposeBuilder` · `MailCenter` |
-| 카드 상세 · 지시 레일 헤드 · 상대 분석 표 · 스냅샷/이력 한 줄 · 오류 문구 · 아바타 `aria-label`·이니셜 | **full** | `TradePlayerCard`/`TradeResultModal` · `DirectiveRail` · `BriefingPanel`(분석) · `LogsPage`/`MatchSnapshotDialog` · `DeckPage`/`DeckEditor` · `PlayerAvatar` |
+| 로그줄 · 전술보드 토큰 · 덱 리스트 행 · 지시 대상 칩 · 컨디션 칩 · 제안 칩 · 우편 첨부 칩 · **선수 탭 표 행** · **하프 리포트 타임라인/주요 인물** · **보상 성장 목록 행** | **short** | `LogPanel` · `TacticsBoard` · `PlayerPicker`/`PresetPanel` · `SecondHalfBriefPanel`/`HalftimePanel` · `BriefingPanel`(컨디션) · `ProposeBuilder` · `MailCenter` · `player-stats-view`(`RosterMeta.short`→`PlayerRow.name`) · `HalfReportModal` · `rewards/sections/GrowthSection` |
+| 카드 상세 · 지시 레일 헤드 · 상대 분석 표 · 스냅샷/이력 한 줄 · 오류 문구 · 아바타 `aria-label`·이니셜 · **선수 상세 모달 헤더** · **보상 선택 헤드** | **full** | `TradePlayerCard`/`TradeResultModal` · `DirectiveRail` · `BriefingPanel`(분석) · `LogsPage`/`MatchSnapshotDialog` · `DeckPage`/`DeckEditor` · `PlayerAvatar` · `PlayerDetailModal` · `rewards/RewardSheet`(`pickName`) |
+
+- ⚠️ **한 스택·한 시트 안에서 같은 사람을 두 이름으로 부르지 마라.** 하프 리포트 스택은 타임라인
+  행과 주요 인물 카드가 **둘 다 `short`** 다(카드 이름 옆에 번호 원·포지션 칩이 같은 flex 줄에
+  앉는다). 반대로 보상 시트는 목록 행 `short` + 선택 헤드 `full` 인데, 그건 **자리가 다르기**
+  때문이다(`.pickName` 은 `display:block` 으로 한 줄을 통째로 쓰고 메타는 아랫줄이다).
+- ⚠️ **`RosterMeta` 는 이름 필드가 둘이다**(`short`/`full`, #406 W8). 하나로 합치면 소비자가 축을
+  고를 수 없어 선수 탭 표와 선수 상세 헤더 중 한쪽이 틀린 축을 그린다. 구 필드명 `name` 으로
+  되돌리지 마라 — 그 이름이었을 때 값이 `catalog.name ?? playerId` 였다.
 
 - ⚠️ **한 파일이 두 축을 다 쓰는 게 정상이다**(`BriefingPanel` · `HalftimePanel` ·
   `SecondHalfBriefPanel` · `PlayerPicker`) — 축은 파일이 아니라 **그 조각이 앉은 자리**가 정한다.
@@ -1055,6 +1063,24 @@ me 를 쓰면 "**브론즈 리그**에서 1위" 옆에 **실버** 뱃지가 뜬�
   **먼저 깨진다**(설계된 신호).
 - ⚠️ **오탐은 버그가 아니라 설계다.** 선수 카탈로그가 아닌 컬렉션도 걸린다 → `EXEMPT` 에
   **사유와 함께** 적어 "의도된 예외"로 만든다. 조용한 예외를 허용하면 계약이 다시 거짓말한다.
+- ⚠️ **`*.test.ts` 를 스캔에서 통째로 빼지 마라 (#406 W8 결정).** 테스트가 `meta.get(k)!.name` 으로
+  기대값을 단언하는 것은 화면이 아니지만, **클래스 단위 면제는 지금 파일이 아니라 앞으로 생길 모든
+  테스트 파일**에 적용돼 "이 자리는 왜 초크포인트를 안 쓰나"를 아무도 다시 묻지 않게 만든다 —
+  W1c MAJOR-1(테스트가 초크포인트를 안 써서 축이 미검정으로 남음)을 구조적으로 재생산하는 형태다.
+  표현 단위로 `EXEMPT` 에 넣으면 ①"예외는 전부 실재한다" 검사가 매 실행마다 살아 있는지 재확인하고
+  ②같은 파일에 새 위반이 생기면 표현이 달라 red 가 된다.
+  ⚠️ 알고 남긴 한계: 예외 키의 표현은 **공백 접기 + 110자 절단**이라 같은 파일에서 글자까지 같은
+  표현이 둘이면 한 항목이 둘 다 면제한다 → **예외로 남길 표현은 그 파일에서 유일하게** 이름 잡아라
+  (`RewardSheet` 의 `pickedGiven` 이 그 사례이고 근거가 주석에 있다).
+- ⚠️ **초크포인트로 이설한 화면엔 그 파일에 계약을 박아라 — 스캐너는 축을 못 본다.** 스캐너가 보는
+  것은 "직독이 없다"뿐이고, `short` ↔ `full` 을 맞바꾸는 변이는 **어떤 형태로도 안 걸린다**.
+  #406 W8 이 박은 것: `player-stats-view.names.test.ts` · `HalfReportModal.names.test.ts` ·
+  `PlayerDetailModal.names.test.ts` · `RewardSheet.names.test.ts` ·
+  `sections/GrowthSection.names.test.ts`. **표본은 `shortName ≠ name` 으로 잡아라**(오늘 라이브는
+  두 축이 같아 축 변이가 전부 생존한다).
+  ⚠️ 그리고 **이니셜로 축을 재려면 픽스처를 골라야 한다** — `initialsOf` 는 한글에서 *마지막 토큰
+  2자*라 흔한 쌍(`레프 야신`/`야신`)은 둘 다 `야신` 으로 접혀 **아바타 축 계약이 공허해진다**.
+  W8 은 `크바라츠헬리아`/`흐비차`(크바 vs 흐비)를 썼다.
 
 ### 스캐너 밖 — **파일을 넘는 프롭** 축은 각 파일이 자기 계약을 박는다 (#423)
 
@@ -1066,8 +1092,11 @@ me 를 쓰면 "**브론즈 리그**에서 1위" 옆에 **실버** 뱃지가 뜬�
   실제로 넷이 그 상태였고 지금은 각 파일에 계약이 있다: `TradePlayerCard.names.test.ts` ·
   `PlayerAvatar.names.test.ts` · `TradeResultModal.names.test.ts` · `ProposeBuilder.names.test.ts`.
   (`ProposeBuilder` 는 `.map` 콜백 파라미터라 "어느 컬렉션에서 왔는지"를 스캐너가 모른다.)
-- ⚠️ **`match/GrowthReportSection.tsx` 가 #423 목록에 없다**(서버 `e.name` 직독 + `playerId` 를
-  같이 들고 있다). **결과 화면 하단이라 유저가 실제로 본다** — 그 파일을 여는 웨이브가 같이 고쳐라.
+- ✅ **`match/GrowthReportSection.tsx` 는 해소됐다 (#406 W8).** #423 목록에 없던 자리였는데, 그
+  컴포넌트는 이제 행을 직접 그리지 않고 `rewards/sections/GrowthSection.GrowthRows` 를 재사용한다
+  (#405 W2b) — **그 한 파일을 고치면 보상 시트 성장 탭과 결과 화면 성장 리포트가 같이 낫는다**.
+  계약 = `sections/GrowthSection.names.test.ts`. ⚠️ 결과 화면 쪽에 **별도 계약은 없다** — 두 화면이
+  같은 컴포넌트를 쓴다는 사실이 유일한 연결고리이므로, 그 재사용을 끊는 변경을 하면 계약도 갈라라.
 - 트레이드 이력의 `detail.target` 은 **문자열 playerId** 다(`TradeService.logTrade`). 객체로 읽던
   옛 코드(`detail.target as {name?}`)는 **항상 undefined** 라 이력에 이름이 한 번도 뜬 적이 없었다 —
   캐스트가 컴파일을 통과시켜 타입 게이트도 조용했다. 계약 = `logs/LogsPage.trade-names.test.ts`
@@ -1078,7 +1107,25 @@ me 를 쓰면 "**브론즈 리그**에서 1위" 옆에 **실버** 뱃지가 뜬�
   위 "오늘은 두 축의 값이 같다" 규칙이 이 자리에서만 지켜지지 않고 있었다.
 
 계약 = `common/player-names.test.ts`(사다리·두 축·우회 금지 스캐너·미탐 음성 대조·발행물 정합) +
-위 4개 `*.names.test.ts` + `e2e/p406-log-names.spec.ts`(390px 실화면 폭·폴백·한글 라벨).
+위 4개 `*.names.test.ts` + **W8 의 5개**(`match/player-stats-view.names.test.ts` ·
+`match/HalfReportModal.names.test.ts` · `match/PlayerDetailModal.names.test.ts` ·
+`rewards/RewardSheet.names.test.ts` · `rewards/sections/GrowthSection.names.test.ts`) +
+`e2e/p406-log-names.spec.ts`(390px 실화면 폭·폴백·한글 라벨).
+
+### ⚠️ 리베이스로 들어온 신규 화면이 초크포인트를 우회한다 — 스캐너가 그걸 잡는 방식 (#406 W8)
+
+W8 은 새 결함을 **찾은** 웨이브가 아니다. `origin/main` 에서 #403(평점·선수 상세)·#424(브릿지
+하프리포트)·보상 시트가 들어오자 `player-names.test.ts` 의 스캐너가 **`catalog-name` 14곳 ·
+`id-fallback` 3곳**을 즉시 red 로 세웠다 — 즉 이 계약은 "지금 트리가 깨끗한가"가 아니라
+**"다음 사람이 우회하면 커밋 전에 걸리는가"** 로 값을 낸다.
+
+- **다른 에픽이 만든 파일이어도 이설은 #406 소관**이다(요구 6 = "모든 곳"). W1b 가 같은 근거로
+  `deck/**`·`logs/**`·`mail/**`·`trade/**` 15개 파일을 옮겼다. **기능은 건드리지 않고 이름 조회
+  경로만** 옮긴다.
+- 이설 자체가 **사다리 3단을 지우는 일**이라 그건 동작 변경이다: 카탈로그가 모르는 선수는
+  이제 `미상 선수` 이고 **`P077` 이 아니다**. 그 기대값을 굳히고 있던 낡은 테스트가 있으면
+  (`player-stats-view.test.ts` 의 `.name === "P9"` 가 그랬다) **테스트를 고쳐라** — 그 단언은
+  결함을 계약으로 굳히고 있던 것이다.
 
 ## 경기 화면의 사이드 — **홈은 내가 아니다** (#322)
 
@@ -1204,6 +1251,56 @@ GEN1/GEN2 대기 화면(`GenWaitPanel`)의 서술 문구는 **축구장 정경 �
 - 계약 = `match/waiting-scenes.test.ts` · `match/GenWaitPanel.test.ts`(가짜 타이머) ·
   `common/match-lock.test.ts`(잠금 카드 줄) · `e2e/p382-waiting-scenes.spec.ts`.
   캡처 = `e2e/p382-waiting.capture.ts`(`HMB_CAPTURE_LABEL=before|after` 로 같은 조건에서 두 번).
+
+## 관객 화면의 재생 컨트롤 — 금지 목록은 **한 곳**이다 (#148/#216 → #406 W9)
+
+플레이 모드(비-admin) 재생 컨트롤 바(`viewer-controls-halfN`)에 **QA 재생 조작이 없다**는 규칙.
+SoT = **`e2e/play-mode-controls.ts`**(`QA_TRANSPORT_TESTIDS` + `expectNoQaTransport`).
+소비처 = `matchui-controls-mock.spec.ts`(#216 원 계약) · `p421-skip-report.spec.ts`(스킵 버튼이
+바 **밖**에 선다). **두 곳에 따로 적지 마라** — 한쪽만 고쳐지는 날 다음 사람이 반대로 되돌린다.
+
+- ⚠️ **원래 계약은 "바 안의 `button` 개수 == 0" 이었고, 그건 이제 낡은 대리 지표다.**
+  hero 승인 요구 5-3(**과거 전용 시크바**, #406 W3)이 **그 바 안에** 유저용 시간바를 넣었고
+  키장면 핀이 `<button>` 이라 **실측 46개**다. 정책 교체지 회귀가 아니다 — 개수 단언은 그날부터
+  *정책이 바뀐 사실만* 알리고 **결함은 하나도 못 잡는** 상태였다(그래서 웨이브 간 blocker 로 터졌다).
+- 지금 참인 규칙은 두 층이다: ①**바 안의 `button` 은 전부 시크바 소유**(화이트리스트 —
+  *이름을 모르는* 새 칩도 잡는다) ②**`QA_TRANSPORT_TESTIDS` 는 바 안에 0개**(시크바 subtree
+  **안**에 끼워 넣어 ①을 우회하는 것도 잡는다 — 구 개수 단언이 원리적으로 못 잡던 자리다).
+- **약화가 아니라는 것을 변이로 확인했다**(W9): QA 풀컨트롤 부활 · 이름 없는 재생 칩 · 시크바 안에
+  숨긴 QA 칩 3종이 전부 red. 새 컨트롤을 그 바에 넣으려면 **먼저 이 두 층 중 어디에 걸리는지** 보라.
+- ⚠️ **admin 이 모드 토글로 플레이 모드를 미리 보는 상태에는 쓰지 않는다** — 그 상태엔 토글이
+  남아 있어야 한다(도구를 뺏는 계약이 아니라 관객에게 새지 않는 계약이다).
+- 시크바 자체(과거로만 이동)의 계약은 `e2e/p406-past-seek.spec.ts` 가 진다.
+
+## 경기 중 선수 하이라이트 — 입력은 둘, **그려지는 상태는 하나** (#406 요구 5-2)
+
+hero: *"경기중 선수를 선택하면(**프롬프트 입력**이나 정보 열람 시) 그 선수가 하이라이트돼 누가
+선택됐는지 보이게. **상대도** 동일."* 규칙 SoT = **`match/player-selection.ts` 머리말**(동시 선택
+표 + `applyPromptTarget`/`toggleSelection`). 화면에서 다시 판정하지 마라.
+
+| 입력(writer) | 무엇을 쓰나 |
+|---|---|
+| 피치 탭(`VisualPlayback`) | 두 팀 슬롯 — "지금 누구를 보고 있나" |
+| **지시 대상 칩**(`SecondHalfBriefPanel`) | **내 팀 슬롯만** — "누구에게 후반 지시를 쓰나" |
+| **상태 SoT = `StageShell`** | 그 배열 하나를 `MatchViewer` → `VisualPlayback.selection` controlled 로 내린다 |
+
+- **판정(#406 W9): 공존 + 같은 슬롯은 마지막 조작이 이긴다.** 칩은 상대 열람 링을 지우지 않고
+  (팀당 1명·최대 2명 = 계약 ④), 피치 탭도 죽지 않는다. `팀 전체` 칩은 사람이 아니므로 내 팀 링을 끈다.
+- ⚠️ **`myTeamSide` 를 모르면 칩은 링을 만들지 않는다**(fail-closed). 같은 playerId 가 양 팀에
+  동시에 뛰므로(#324/#231) 팀을 모르면 **반대 팀을 켜는** 것이 된다.
+- ⚠️ **셸이 상태를 들면 하프 전환 리셋도 셸 몫이다** — controlled 라 `VisualPlayback` 안의
+  리셋이 안 돈다. 안 지우면 새 하프에 지난 선택이 되살아나 **유령 카드**가 된다(계약 ⑥).
+- ⚠️ **칩 클릭이 writer 다 — effect 로 뒤늦게 동기화하지 마라.** 값이 안 바뀌면 안 돌아서 카드를
+  ✕ 로 닫은 뒤 같은 칩을 다시 눌러도 링이 안 살아나고, 무관한 리렌더가 링을 건드린다.
+- ⚠️ **감독시간(`HalftimePanel`)은 배선하지 않았다 — 자리가 없어서다**(조정 포인트). 그 화면은
+  무대가 `경기장면` **탭**이라 프롬프트와 피치가 같이 뜨지 않고, 대상 선택 손잡이도 `DeckEditor`
+  보드(덱 도메인) 안이다. 배선해도 유저가 볼 수 있는 하이라이트가 되지 않는다.
+- 벤치 선수 칩은 **링이 없다**(피치에 없으니 참이다). 카드만 뜬다 — 걸러내지 마라(누가 뛰는지는
+  코어가 아는 사실이고, 이 규칙이 로스터를 다시 판정하면 두 곳이 갈린다).
+- 계약 = `match/player-selection.test.ts`(`applyPromptTarget` 7건) +
+  `e2e/p406-player-highlight.spec.ts` ⑬⑭⑮(칩 → 링 · 칩 변경 추종 · `팀 전체` 해제 · 상대 링과 공존 ·
+  **어웨이 라운드 사이드**). ⚠️ 칩 표본은 `userDeckSnapshot` 이 있어야 생긴다(#284) — 그 스펙의
+  `open(page, state, nickname, deckSide)` 네 번째 인자가 그 옵트인이다.
 
 ## ⚠️ 계약이 **초록으로 거짓말하는** 방식 (전부 이 리포에서 실제로 당했다)
 

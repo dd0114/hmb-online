@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { expectNoQaTransport } from "./play-mode-controls";
 
 /**
  * #421 W2 — **경기 스킵 → 하프 리포트 → 닫으면 다음 단계**를 백엔드 없이 route-mock 으로 박제한다.
@@ -214,10 +215,18 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     const box = await skip.boundingBox();
     expect(box?.height ?? 0, "터치 타깃 높이").toBeGreaterThanOrEqual(32);
 
-    // ⚠️ **#216 계약을 내가 깨지 않는다**: 플레이 모드 *재생 컨트롤 바*는 여전히 버튼 0개다.
-    // 스킵은 재생 조작이 아니라 경기 흐름 액션이라 바 **밖**(같은 오버레이 층)에 선다.
-    const barButtons = await page.getByTestId("viewer-controls-half1").locator("button").count();
-    expect(barButtons, "재생 컨트롤 바에는 여전히 버튼이 없다(matchui-controls-mock 계약)").toBe(0);
+    /*
+     * ⚠️ **#216 계약을 내가 깨지 않는다**: 플레이 모드 *재생 컨트롤 바*에는 **QA 재생 조작이 없다**.
+     * 스킵은 재생 조작이 아니라 경기 흐름 액션이라 바 **밖**(같은 오버레이 층)에 선다.
+     *
+     * ⚠️ **범위가 바뀌었다(#406 W9)** — 예전엔 이 자리에서 바 안의 `button` **개수 == 0** 을 쟀다.
+     * 그 사이 hero 승인 요구 5-3(과거 전용 시크바)이 **그 바 안에** 유저용 시간바를 넣어(키장면 핀이
+     * `<button>` 이다 — 실측 46개) 개수 단언은 *정책이 바뀐 사실*만 알리고 결함은 하나도 못 잡는
+     * 지표가 됐다. 그래서 규칙을 "개수" 에서 **"금지 대상이 없다"** 로 옮겼고, 그 규칙은
+     * `matchui-controls-mock` 과 **같은 한 곳**(`play-mode-controls.ts`)이 소유한다 — 한쪽만
+     * 고치면 다음 사람이 반대로 되돌린다.
+     */
+    await expectNoQaTransport(page, 1);
   });
 
   test("b. 누르면 `phase` 를 실어 스킵을 요청하고 리포트가 뜬다", async ({ page }) => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyPromptTarget,
   arenaLabelOf,
   CARD_HOME,
   CARD_INSET,
@@ -10,12 +11,14 @@ import {
   isSelected,
   mineOf,
   pickCardPlacement,
+  sameSelection,
   selectedOf,
   selectionKey,
   stagePointOf,
   toggleSelection,
   type CardPlacement,
   type DrawnToken,
+  type SelectedPlayer,
 } from "./player-selection";
 
 /**
@@ -137,6 +140,64 @@ describe("toggleSelection — 팀당 1명, 재탭이 해제", () => {
     ];
     expect(selectedOf(cur, "away")?.playerId).toBe("P116");
     expect(selectedOf([], "home")).toBeNull();
+  });
+});
+
+/**
+ * #406 W9 — **지시 대상 칩 → 하이라이트**(요구 5-2 후반). 여기서 겨누는 결함은 넷이다:
+ * ①상대 열람 링을 같이 지운다 ②`팀 전체` 인데 아무나 지목한다 ③팀을 모르는데 켠다(반대 팀 링,
+ * #324) ④매 클릭마다 새 배열을 만들어 리렌더가 돈다.
+ */
+describe("applyPromptTarget — 지시 칩은 내 팀 슬롯만 쓴다", () => {
+  it("빈 상태에서 칩을 고르면 내 팀 링 1개", () => {
+    expect(applyPromptTarget([], "P074", "home")).toEqual([{ team: "home", playerId: "P074" }]);
+  });
+
+  it("어웨이 라운드면 내 팀은 away 다 — 사이드를 따라간다(#322)", () => {
+    expect(applyPromptTarget([], "P074", "away")).toEqual([{ team: "away", playerId: "P074" }]);
+  });
+
+  it("**상대 열람 링은 살아 있다** — 공존이 규칙이다", () => {
+    const cur = [{ team: "away" as const, playerId: "P116" }];
+    const next = applyPromptTarget(cur, "P074", "home");
+    expect(next).toHaveLength(2);
+    expect(isSelected(next, "away", "P116"), "상대 링을 지우지 않는다").toBe(true);
+    expect(isSelected(next, "home", "P074")).toBe(true);
+  });
+
+  it("칩을 바꾸면 내 팀 링이 **따라간다**(팀당 1명 불변식)", () => {
+    const first = applyPromptTarget([], "P074", "home");
+    const second = applyPromptTarget(first, "P078", "home");
+    expect(second).toEqual([{ team: "home", playerId: "P078" }]);
+  });
+
+  it("`팀 전체`(null) 는 내 팀 링을 **끈다** — 상대 링은 남는다", () => {
+    const cur = [
+      { team: "home" as const, playerId: "P074" },
+      { team: "away" as const, playerId: "P116" },
+    ];
+    expect(applyPromptTarget(cur, null, "home")).toEqual([{ team: "away", playerId: "P116" }]);
+  });
+
+  it("내 팀을 모르면 **아무것도 하지 않는다**(fail-closed) — 반대 팀을 켤 위험을 만들지 않는다", () => {
+    const cur = [{ team: "away" as const, playerId: "P116" }];
+    expect(applyPromptTarget(cur, "P074", null)).toBe(cur);
+    expect(applyPromptTarget([], "P074", undefined)).toEqual([]);
+  });
+
+  it("결과가 같으면 **같은 배열**을 돌려준다(리렌더 방지)", () => {
+    const cur = applyPromptTarget([], "P074", "home");
+    expect(applyPromptTarget(cur, "P074", "home"), "같은 칩 재클릭").toBe(cur);
+    const empty: SelectedPlayer[] = [];
+    expect(applyPromptTarget(empty, null, "home"), "팀 전체 유지").toBe(empty);
+  });
+
+  it("sameSelection 은 팀까지 본다(#324) — 순서도 내용이다", () => {
+    const a = [{ team: "home" as const, playerId: "P078" }];
+    const b = [{ team: "away" as const, playerId: "P078" }];
+    expect(sameSelection(a, b)).toBe(false);
+    expect(sameSelection(a, [...a])).toBe(true);
+    expect(sameSelection([...a, ...b], [...b, ...a]), "순서가 다르면 다르다(카드가 마지막을 본다)").toBe(false);
   });
 });
 

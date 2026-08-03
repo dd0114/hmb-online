@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, readFileSync } from "node:fs";
+import { expectNoQaTransport } from "./play-mode-controls";
 
 /**
  * #148 매치 화면 컨트롤 간소화 (#169 S3 직접 마운트) — 백엔드 없이 route-mock 으로 실화면 계약을 박제한다.
@@ -162,22 +163,19 @@ function pickPaceProbes(): { quietTick: number; keySceneTick: number } {
 test.beforeAll(() => mkdirSync(CAP_DIR, { recursive: true }));
 
 /*
- * ⚠️ **이 계약은 #406 W3 에서 좁혀졌다.** 예전엔 "플레이 모드 컨트롤 바에는 버튼이 0개"였는데,
- * 요구 5-3(과거 전용 시크바)이 유저용 시간바를 그 자리에 넣었다 — 정책 교체지 회귀가 아니다.
- * 지금 참인 규칙 = **"QA 도구(재생·배속·프레임 스텝·mm:ss·모드 토글)는 관객 화면에 없다"**.
+ * ⚠️ **이 계약은 #406 W3 에서 좁혀졌고 W9 에서 단일 출처로 옮겼다.** 예전엔 "플레이 모드 컨트롤
+ * 바에는 버튼이 0개"였는데, **hero 승인** 요구 5-3(과거 전용 시크바, 목업 §3)이 유저용 시간바를
+ * 그 자리에 넣었다 — 정책 교체지 회귀가 아니다.
+ * 지금 참인 규칙 = **"QA 재생 조작(재생·배속·프레임 스텝·mm:ss·모드 토글)은 관객 화면에 없다"**
+ * 이고, 그 규칙의 SoT 는 `play-mode-controls.ts` 다(`p421-skip-report` 가 같은 것을 쓴다 —
+ * 두 곳에 따로 적으면 한쪽만 고쳐지는 날 다음 사람이 반대로 되돌린다).
  * 시크바 자체의 계약은 `p406-past-seek.spec.ts` 가 진다.
  */
 test("#148/#216 플레이 모드: QA 도구가 없고 경기는 자동 진행한다", async ({ page }) => {
   await openHalftime(page, false);
 
-  // (1) web 바에 QA 도구가 하나도 없다(하이라이트 토글·재생·배속·QA 스크럽·프레임점프·모드토글 전부).
-  await expect(page.getByTestId("viewer-highlight-toggle-half1")).toHaveCount(0);
-  await expect(page.getByTestId("viewer-play-toggle-half1")).toHaveCount(0);
-  for (const s of [1, 2, 4]) await expect(page.getByTestId(`viewer-speed-${s}-half1`)).toHaveCount(0);
-  await expect(page.getByTestId("viewer-scrub-half1")).toHaveCount(0);
-  await expect(page.getByTestId("viewer-goto-half1")).toHaveCount(0);
-  await expect(page.getByTestId("viewer-mode-toggle-half1")).toHaveCount(0);
-  await expect(page.getByTestId("viewer-admin-half1"), "풀컨트롤 묶음 자체가 없다").toHaveCount(0);
+  // (1) web 바에 QA 재생 조작이 하나도 없다 — 이름을 아는 것 전량 + **이름을 모르는 새 칩까지**.
+  await expectNoQaTransport(page, 1);
   // 그 자리에 있는 유일한 유저 컨트롤 = 과거 전용 시크바(#406 W3).
   await expect(page.getByTestId("viewer-seek-bar-half1")).toBeVisible();
 

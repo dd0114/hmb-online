@@ -20,6 +20,7 @@ import {
 } from "./playback-controls";
 // 관전 캔버스는 별 파일로 분리했다(#191) — QA 콘솔과 **같은 부품**을 쓴다.
 import { VisualPlayback, type ArenaPlayerInfo } from "./VisualPlayback";
+import type { SelectedPlayer } from "./player-selection";
 import { playerNameOf } from "../common/player-names";
 import { liveGate } from "./live-clock";
 import { tickOfIndex } from "./live-pace";
@@ -69,6 +70,14 @@ interface MatchViewerProps {
    * 모르면 null: 카드가 뱃지를 아예 안 달고 링은 중립(상대) 스타일로 떨어진다. 거짓 표식 금지.
    */
   myTeamSide?: "home" | "away" | null;
+  /**
+   * **controlled 선수 선택**(#406 W9, 요구 5-2 후반) — 그대로 `VisualPlayback` 에 관통시킨다.
+   * 주면 이 무대는 선택 상태를 소유하지 않고 부모(`StageShell`)를 따른다. 그래야 **지시 대상 칩**과
+   * **피치 탭**이 같은 배열에 쓰고, 규칙(`player-selection.ts` 머리말의 동시 선택 표)이 한 곳에 산다.
+   * 안 주면 종전대로 무대가 자기 상태를 갖는다(QA 콘솔처럼 셸이 없는 자리).
+   */
+  selection?: SelectedPlayer[];
+  onSelectionChange?: (next: SelectedPlayer[]) => void;
 }
 
 type ViewMode = "visual" | "timeline";
@@ -92,6 +101,8 @@ export function MatchViewer({
   reviewControls = false,
   skipSlot,
   myTeamSide = null,
+  selection,
+  onSelectionChange,
 }: MatchViewerProps) {
   const { data: log, isLoading, isError } = useHalfLog(matchId, half, logEnabled);
   /*
@@ -211,6 +222,8 @@ export function MatchViewer({
           playerInfo={playerInfo}
           myTeamSide={myTeamSide}
           teamNames={{ home: homeName, away: awayName }}
+          selection={selection}
+          onSelectionChange={onSelectionChange}
         />
       ) : (
         <div className={styles.timelineFill}>

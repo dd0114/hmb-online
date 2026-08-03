@@ -8,6 +8,7 @@ import { captureOffsetMs, logAvailableFor } from "../live-clock";
 import { MatchViewer } from "../MatchViewer";
 import { HalftimePanel } from "../HalftimePanel";
 import { useHalftimeDraft } from "../useHalftimeDraft";
+import type { PromptTarget } from "../halftime-draft";
 import { AutoModeToggle } from "../AutoModeToggle";
 import { SkipButton } from "../SkipButton";
 import { ScoreBar } from "./ScoreBar";
@@ -16,6 +17,7 @@ import { PlayerStatsPanel } from "./PlayerStatsPanel";
 import { PlayerDetailModal } from "../PlayerDetailModal";
 import { useMatchPlayerStats } from "../usePlayerStats";
 import type { PlayerSelection } from "../player-stats-view";
+import { applyPromptTarget, type SelectedPlayer } from "../player-selection";
 import { LogPanel } from "./LogPanel";
 import { SecondHalfBriefPanel } from "./SecondHalfBriefPanel";
 import { ResultPanel, RESULT_LABELS } from "./ResultPanel";
@@ -221,6 +223,40 @@ export function StageShell({
    */
   const [detail, setDetail] = useState<PlayerSelection | null>(null);
 
+  /*
+   * ── 선수 하이라이트 상태 (#406 W9, 요구 5-2) ────────────────────────────────────────────────
+   * **셸이 소유한다.** W4 는 `VisualPlayback`(캔버스 표면)이 소유했는데, 요구 5-2 의 후반
+   * (*"프롬프트를 쓸 때 그 대상 선수가 피치에서 하이라이트"*)은 **시트 안의 지시 칩**이 같은 링을
+   * 켜야 하므로 두 입력의 공통 조상이 여기뿐이다(보상 시트·선수 상세 모달과 같은 이유).
+   *
+   * 규칙(공존 · 팀당 1명 · 마지막 조작이 이긴다 · 팀 미상이면 fail-closed)은 **전부**
+   * `player-selection.ts` 머리말과 `applyPromptTarget`/`toggleSelection` 이 소유한다 — 여기서
+   * 다시 판정하지 마라(두 곳이 갈리는 날 화면과 계약이 다른 말을 한다).
+   *
+   * ⚠️ **하프가 바뀌면 지운다.** controlled 로 올렸으므로 `VisualPlayback` 안의 리셋
+   * (`if (!selectionProp) setInnerSelection([])`)이 더 이상 돌지 않는다 — 안 지우면 새 하프의
+   * 코어에 지난 하프 선택이 되살아나 **유령 카드**가 된다(e2e 계약 ⑥ 이 그 축이다).
+   */
+  const [selection, setSelection] = useState<SelectedPlayer[]>([]);
+  /** 지시 대상 칩(`null` = 팀 전체) — 패널이 아니라 셸이 든다(위 주석). */
+  const [briefTarget, setBriefTarget] = useState<PromptTarget>(null);
+  useEffect(() => {
+    setSelection([]);
+    setBriefTarget(null);
+  }, [half]);
+
+  /**
+   * 칩 클릭 = **그 자리에서 링을 쓴다**(effect 로 뒤늦게 동기화하지 않는다).
+   *
+   * <p>effect 로 하면 ①같은 칩을 다시 눌러도 값이 안 바뀌어 아무 일도 안 일어나고(카드를 ✕ 로 닫은
+   * 뒤 되살릴 방법이 없다) ②탭 전환·`myTeamSide` 도착 같은 무관한 리렌더가 링을 건드린다.
+   * 클릭이 writer 면 "누르면 그 선수로 간다"가 그대로 참이다.
+   */
+  const pickBriefTarget = (next: PromptTarget) => {
+    setBriefTarget(next);
+    setSelection((cur) => applyPromptTarget(cur, next, myTeamSide));
+  };
+
   return (
     <div className={styles.shell} data-testid="stage-shell">
       <ScoreBar
@@ -275,6 +311,14 @@ export function StageShell({
               /* #421 스킵 — 자립 부품 한 줄(어느 쪽이 먼저 머지되든 충돌이 한 줄로 끝난다). */
               skipSlot={<SkipButton match={match} onSkipped={(h) => onSkipped?.(h)} />}
               myTeamSide={myTeamSide}
+              /*
+               * 선수 하이라이트는 **셸이 소유한다**(#406 W9) — 지시 칩과 피치 탭이 같은 배열에 쓴다.
+               * ⚠️ 감독시간 `경기장면` 탭의 무대(아래)에는 넘기지 않는다: 그 화면엔 지시 칩이 없고
+               *    (감독 탭의 대상 선택은 `DeckEditor` 보드 안이다) 무대와 프롬프트가 같은 화면에
+               *    같이 뜨지 않아 배선해도 유저가 볼 수 있는 하이라이트가 되지 않는다.
+               */
+              selection={selection}
+              onSelectionChange={setSelection}
             />
           </section>
         )}
@@ -355,7 +399,14 @@ export function StageShell({
                 />
               )}
               {activeTab === "brief" && (
-                <SecondHalfBriefPanel match={match} clockOffsetMs={offsetMs} draft={draft} />
+                <SecondHalfBriefPanel
+                  match={match}
+                  clockOffsetMs={offsetMs}
+                  draft={draft}
+                  /* 요구 5-2 후반 — 이 값이 피치 링을 켠다(위 `pickBriefTarget` 주석). */
+                  target={briefTarget}
+                  onTarget={pickBriefTarget}
+                />
               )}
               {activeTab === "halftime" && (
                 <HalftimePanel match={match} clockOffsetMs={offsetMs} draft={draft} />
