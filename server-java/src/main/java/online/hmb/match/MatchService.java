@@ -870,7 +870,14 @@ public class MatchService {
                 .orElse(null);
     }
 
-    /** 고스트에 얼린 유효스탯 → 없으면 카탈로그 원본. 둘 다 없으면 빈 맵(OVR 은 0 이 된다). */
+    /**
+     * 고스트에 얼린 유효스탯 → 없으면 카탈로그 원본. 둘 다 없으면 빈 맵(OVR 은 0 이 된다).
+     *
+     * <p>⚠️ <b>값의 수 표기가 두 경로에서 다르다</b>(계약 위반은 아니다 — 둘 다 {@code number}):
+     * 얼린 스냅샷은 굽는 시점의 JSON 을 그대로 되싣고, 카탈로그는 {@code attributes_json} 의 정수라
+     * {@code 40} 으로 나간다. 반면 {@code /api/users/{id}/squad} 는 지금 계산한 유효치라 {@code 40.0}
+     * 이다. <b>클라는 수 표기에 기대지 말고 number 로 읽어야 한다</b>.
+     */
     private Map<String, Object> opponentAttributes(JsonNode starter, String playerId) {
         Map<String, Object> out = new LinkedHashMap<>();
         JsonNode frozen = starter.path("attributes");

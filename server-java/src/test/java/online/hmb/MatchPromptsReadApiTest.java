@@ -3,10 +3,14 @@ package online.hmb;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import jakarta.annotation.Resource;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import online.hmb.away.AwayService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
@@ -43,11 +47,24 @@ class MatchPromptsReadApiTest extends MatchTestBase {
     private static final String DEFENDER_SENTINEL = "SENTINEL-DEF-5a7c";
     private static final String DEFENDER_TEAM_SENTINEL = "SENTINEL-DEFTEAM-6b8d";
 
+    /** 지시 조회 응답의 허용 키 — <b>정확집합</b>. */
+    private static final Set<String> PROMPTS_KEYS = Set.of("teamPrompt", "players");
+    private static final Set<String> PROMPT_ENTRY_KEYS = Set.of("playerId", "text", "phase");
+    /**
+     * 상대 선수 1인의 허용 키 — <b>정확집합</b>. 센티넬(문자열)만으로는 <b>컨디션·전술처럼 숫자로
+     * 새는 축</b>을 못 막는다(독립검증 blocker-1: 슬롯에 condition 을 실어도 초판 계약은 green).
+     */
+    private static final Set<String> OPPONENT_PLAYER_KEYS =
+            Set.of("playerId", "name", "position", "grade", "star", "ovr", "attributes", "hasPrompt");
+
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
         TestDbSupport.disableMatchClock(registry);
     }
+
+    @Resource
+    private AwayService awayService;
 
     // ── 헬퍼 ────────────────────────────────────────────────────────────
 
@@ -89,6 +106,12 @@ class MatchPromptsReadApiTest extends MatchTestBase {
         return json(res.getBody());
     }
 
+    private static Set<String> keysOf(JsonNode node) {
+        Set<String> keys = new LinkedHashSet<>();
+        node.fieldNames().forEachRemaining(keys::add);
+        return keys;
+    }
+
     private JsonNode playerEntry(JsonNode prompts, String playerId) {
         for (JsonNode entry : prompts.path("players")) {
             if (playerId.equals(entry.path("playerId").asText())) {
@@ -123,6 +146,10 @@ class MatchPromptsReadApiTest extends MatchTestBase {
 
         // ① 덱만 — 덱 문장이 그대로 유효하고 팀 문장도 덱값이다.
         JsonNode deckOnly = promptsOf(token, matchId);
+        assertThat(keysOf(deckOnly)).as("응답 키를 얼린다").isEqualTo(PROMPTS_KEYS);
+        for (JsonNode entry : deckOnly.path("players")) {
+            assertThat(keysOf(entry)).as("항목 키를 얼린다").isEqualTo(PROMPT_ENTRY_KEYS);
+        }
         assertThat(deckOnly.path("teamPrompt").asText()).isEqualTo(TEAM_SENTINEL);
         assertThat(playerEntry(deckOnly, "P002").path("text").asText()).isEqualTo(DECK_SENTINEL);
         assertThat(playerEntry(deckOnly, "P002").path("phase").asText()).isEqualTo("pre");
@@ -183,6 +210,47 @@ class MatchPromptsReadApiTest extends MatchTestBase {
                 .doesNotContain(TEAM_SENTINEL);
     }
 
+    /**
+     * <b>원정 수비자</b>(= 이 매치를 볼 수 있는 유일한 비소유자)도 지시는 못 읽는다 — 404.
+     *
+     * <p>⚠️ 이게 <b>실제 위험 경로</b>다. 아무 관계 없는 stranger 는 {@code getViewable} 로도 404 라,
+     * stranger 만으로 계약을 세우면 <b>{@code getOwned} → {@code getViewable} 로 낮추는 변경이 통과</b>
+     * 한다(독립검증 major-2). 그런데 getViewable 이 여는 그 사람이 바로 수비자이고, 수비자가 공격자
+     * 지시문을 읽는 것이 #245 BL-1 이 막았던 정확히 그 유출이다(일방적 스카우팅).
+     *
+     * <p>그래서 <b>관전 권한이 실재함을 먼저 단언</b>한다(매치 GET 200) — 그 사람이 위험한 자리에
+     * 서 있다는 사실이 증명된 뒤라야 404 가 뜻을 갖는다.
+     */
+    @Test
+    void awayDefenderCanWatchTheMatchButCannotReadPrompts() {
+        String owner = setupWithSentinelDeck("mp_pr_atk");
+        String ownerId = userIdOf("mp_pr_atk");
+        String defender = setupWithSentinelDeck("mp_pr_def", DEFENDER_SENTINEL, DEFENDER_TEAM_SENTINEL);
+        String defenderId = userIdOf("mp_pr_def");
+        String matchId = createMatch(owner, null);
+
+        // 정산된 피침공 기록 = 수비자 관전 권한의 근거(AwayViewAccess.canWatch).
+        String now = java.time.Instant.now().toString();
+        jdbcClient.sql("""
+                        INSERT INTO away_challenges(match_id, defender_id, ghost_bot_id, created_at)
+                        VALUES (?, ?, 'BOT_BAL', ?)
+                        """)
+                .params(matchId, defenderId, now).update();
+        awayService.settle(matchId, ownerId, "WIN", 2, 0);
+
+        // ① 수비자는 이 매치를 실제로 열 수 있다(= getViewable 이 여는 자리에 서 있다).
+        ResponseEntity<String> watched = authGet("/api/matches/" + matchId, defender, String.class);
+        assertThat(watched.getStatusCode()).as(watched.getBody()).isEqualTo(HttpStatus.OK);
+        assertThat(watched.getBody()).as("관전 응답에도 공격자 지시문은 없다(#245 BL-1)")
+                .doesNotContain(DECK_SENTINEL).doesNotContain(TEAM_SENTINEL);
+
+        // ② 그래도 지시 조회는 404 다 — 관전 권한은 조작·열람 권한이 아니다.
+        ResponseEntity<String> prompts =
+                authGet("/api/matches/" + matchId + "/prompts", defender, String.class);
+        assertThat(prompts.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(prompts.getBody()).doesNotContain(DECK_SENTINEL).doesNotContain(TEAM_SENTINEL);
+    }
+
     @Test
     void unknownMatchIsNotFound() {
         String token = setupWithSentinelDeck("mp_unknown");
@@ -208,6 +276,8 @@ class MatchPromptsReadApiTest extends MatchTestBase {
         assertThat(deck.size()).isEqualTo(11);
 
         for (JsonNode p : deck) {
+            // 키 동결 — 컨디션·전술처럼 **숫자로 새는 축**은 문자열 대조에 안 걸린다(blocker-1).
+            assertThat(keysOf(p)).as("상대 선수 키를 얼린다").isEqualTo(OPPONENT_PLAYER_KEYS);
             assertThat(p.path("playerId").asText()).as("선수와 이을 수 있어야 한다").isNotBlank();
             assertThat(p.path("name").asText()).isNotBlank();
             assertThat(p.path("position").asText()).isNotBlank();
@@ -228,10 +298,15 @@ class MatchPromptsReadApiTest extends MatchTestBase {
      * <p>이 경로가 진짜 누설 경로다 — 고스트 덱은 수비자의 실제 덱(선수별 지시 포함)을 구운 것이다.
      */
     @Test
-    void awayGhostOpponentShowsStarsButLeaksNoPromptText() {
+    void awayGhostOpponentShowsStarsAndFrozenStatsButLeaksNoPromptText() {
         setupWithSentinelDeck("mp_ghost_def", DEFENDER_SENTINEL, DEFENDER_TEAM_SENTINEL);
         String defenderId = userIdOf("mp_ghost_def");
         markPlayedOnce(defenderId);
+        // 수비자에게 성장을 심는다 — 그래야 "얼린 스탯"과 "카탈로그 원본"이 **갈린다**.
+        // 안 그러면 얼린 값 분기를 죽여도 값이 같아 계약이 통과한다(독립검증 minor-3).
+        jdbcClient.sql("UPDATE user_players SET stat_add_json = ? WHERE user_id = ? AND player_id = 'P002'")
+                .params("{\"pace\":5.0}", defenderId).update();
+        int catalogPace = catalogAttribute("P002", "pace");
         String attacker = setupWithSentinelDeck("mp_ghost_atk");
 
         ResponseEntity<String> candidates = authGet("/api/away/candidates", attacker, String.class);
@@ -264,5 +339,19 @@ class MatchPromptsReadApiTest extends MatchTestBase {
         assertThat(p002.path("hasPrompt").asBoolean()).isTrue();
         // ③ ★ 는 그 유저 카드의 값이다(봇처럼 0 이 아니다).
         assertThat(p002.path("star").asInt()).as("실유저 카드의 ★").isGreaterThanOrEqualTo(1);
+        // ④ **표시 = 실제로 뛰는 값**: 고스트에 얼린 수비자 유효스탯이지 카탈로그 원본이 아니다.
+        //    (이 단언이 그 분기의 존재 이유다 — 상대가 약화판으로 서면 계산이 틀린 것이다, #245 MAJ-3.)
+        assertThat(p002.path("attributes").path("pace").asDouble())
+                .as("얼린 유효스탯(성장 반영)이어야 한다 — 카탈로그 원본 %d 가 아니다", catalogPace)
+                .isGreaterThan(catalogPace);
+        // OVR 도 그 값으로 계산됐는지(표시와 계산이 같은 값을 쓰는지) 함께 본다.
+        assertThat(p002.path("ovr").asDouble()).isGreaterThan(0.0);
+    }
+
+    /** 카탈로그 원본 능력치 1개 — "얼린 값"과 갈리는지 볼 기준선. */
+    private int catalogAttribute(String playerId, String stat) {
+        String json = jdbcClient.sql("SELECT attributes_json FROM players WHERE id = ?")
+                .param(playerId).query(String.class).single();
+        return json(json).path(stat).asInt();
     }
 }

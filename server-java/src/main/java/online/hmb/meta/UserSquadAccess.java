@@ -3,7 +3,6 @@ package online.hmb.meta;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
-import online.hmb.eligibility.EligibilityService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -23,14 +22,24 @@ import org.springframework.stereotype.Component;
  *   <li><b>현재 유효한 원정 후보 제시</b>({@code away_offers}) — TTL 은 제시와 같은 값을 본다.
  *       만료된 제시로 나중에 골라 담지 못하는 것과 같은 이유로, 만료되면 볼 수도 없다.</li>
  *   <li><b>나를 친 원정 기록</b>({@code away_reports}, 내가 수비자) — 복수 큐에 뜨는 그 사람.</li>
- *   <li><b>랭킹보드 등재</b> — 원정 랭킹 자격({@link EligibilityService} 완료 경기 임계) 또는
- *       리그 시즌 참가. 보드에 이름이 실려 있는 사람이다.</li>
+ *   <li><b>랭킹보드 등재</b> — <b>보드가 실제로 내주는 목록에 있는가</b>. 원정
+ *       ({@code AwayService.rankings}) 또는 리그({@code LeagueService.rankings}) 를 <b>그대로 부른다</b>.</li>
  * </ol>
  *
- * <p>왜 {@code AwayService}·{@code LeagueService} 를 주입하지 않고 직접 조회하나: 이 판정은 세
- * 도메인에 걸쳐 있어서, 서비스를 물면 meta → away → meta 의 빈 순환을 만든다({@code AwayService} 가
- * {@link DeckService} 를 쓴다). {@code MatchService} 가 {@code league_fixtures} 를 직접 읽는 것과
- * 같은 이유·같은 관례다. <b>SoT 는 표</b>이지 서비스가 아니다.
+ * <p>⚠️ <b>보드 등재를 재발명하지 않는다</b>(독립검증 major-1). 초판은 "완료 경기 임계"
+ * ({@link online.hmb.eligibility.EligibilityService}) 하나만 복제했는데, 실제 원정 보드는 <b>시즌 창</b>(그 주에 실제로
+ * 원정을 치렀나)과 <b>상위 N</b>까지 지난다. 그래서 과거 연습 1판만 있는 제3자가 아무 관계 없는
+ * 유저에게 열렸다 — 요청서가 자격의 근거로 든 문장은 <i>"전부 클라가 이미 서버에서 그 userId 를
+ * 받은 대상"</i> 인데, 시즌 밖·순위 밖 유저의 id 는 클라에 준 적이 없다.
+ *
+ * <p><b>왜 limit 에 {@code Integer.MAX_VALUE} 를 넘기나</b>: 두 보드 모두 {@code Math.min(limit, 100)}
+ * 으로 자른다 = <b>이 보드가 어떤 요청에도 내줄 수 있는 최대 범위</b>가 100 이다. 여기에 숫자를 적으면
+ * (예: 기본값 20) 보드를 {@code ?limit=50} 으로 받은 클라가 21~50위 행을 눌렀을 때 404 가 난다
+ * (web 은 실제로 50 을 쓴다). 상한을 <b>보드가 스스로 정하게</b> 두면 그 값이 바뀌어도 따라간다.
+ *
+ * <p>절 순서도 계약이다: <b>싼 것부터</b>(제시 → 리포트 → 보드). 보드 조회는 시즌 표를 물어
+ * 순위표를 통째로 집계하는 무거운 경로라, 게임 안에서 흔한 두 경로(방금 제시받은 상대·나를 친
+ * 상대)는 거기까지 가지 않는다.
  */
 @Component
 public class UserSquadAccess {
@@ -39,23 +48,26 @@ public class UserSquadAccess {
 
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
-    private final EligibilityService eligibility;
+    private final online.hmb.away.AwayService awayService;
+    private final online.hmb.league.LeagueService leagueService;
     private final long offerTtlSec;
 
     public UserSquadAccess(JdbcClient jdbcClient,
                            ObjectMapper objectMapper,
-                           EligibilityService eligibility,
+                           online.hmb.away.AwayService awayService,
+                           online.hmb.league.LeagueService leagueService,
                            @Value("${hmb.away.match.offer-ttl-sec}") long offerTtlSec) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
-        this.eligibility = eligibility;
+        this.awayService = awayService;
+        this.leagueService = leagueService;
         this.offerTtlSec = offerTtlSec;
     }
 
     public boolean canView(String viewerId, String targetUserId) {
-        return isOnABoard(targetUserId)
-                || isOfferedTo(viewerId, targetUserId)
-                || raidedMe(viewerId, targetUserId);
+        return isOfferedTo(viewerId, targetUserId)
+                || raidedMe(viewerId, targetUserId)
+                || isOnABoard(viewerId, targetUserId);
     }
 
     /** ①서버가 지금 이 뷰어에게 제시해 둔 원정 후보인가(만료 제외). */
@@ -96,24 +108,33 @@ public class UserSquadAccess {
     }
 
     /**
-     * ③랭킹보드(원정·리그)에 실리는 유저인가.
+     * ③랭킹보드(원정·리그)가 <b>실제로 내주는 목록</b>에 있는 유저인가.
      *
-     * <p>원정 보드의 등재 조건은 <b>완료 경기 임계</b>({@code EligibilityService}) 하나다 —
-     * {@code RankingService} 가 그 값으로 자격을 판정하고 자격자만 순위에 올린다. 임계를 여기서
-     * 다시 정의하지 않는 이유가 그것이다(꺼지면 임계 0 = 보드가 전원을 싣고, 여기도 같이 열린다).
+     * <p>보드와 <b>같은 함수</b>를 부른다 — 등재 규칙(시즌 창·상위 N·정렬)을 여기서 다시 쓰면
+     * "보드엔 있는데 눌러도 안 열린다"(또는 그 반대)가 되고, 규칙이 하나 바뀔 때마다 두 곳이
+     * 갈라진다. 보드가 죽어도 조회는 "자격 없음"으로 답한다(500 로 번지지 않게).
      */
-    private boolean isOnABoard(String targetUserId) {
-        long finished = jdbcClient
-                .sql("SELECT COUNT(*) FROM matches WHERE user_id = ? AND result IS NOT NULL")
-                .param(targetUserId)
-                .query(Long.class)
-                .single();
-        if (eligibility.isEligible((int) Math.min(finished, Integer.MAX_VALUE))) {
-            return true;
+    private boolean isOnABoard(String viewerId, String targetUserId) {
+        return onAwayBoard(viewerId, targetUserId) || onLeagueBoard(viewerId, targetUserId);
+    }
+
+    private boolean onAwayBoard(String viewerId, String targetUserId) {
+        try {
+            return awayService.rankings(viewerId, Integer.MAX_VALUE).entries().stream()
+                    .anyMatch(e -> targetUserId.equals(e.userId()));
+        } catch (RuntimeException e) {
+            log.warn("away board unavailable for squad access: {}", e.toString());
+            return false;
         }
-        return jdbcClient.sql("SELECT COUNT(*) FROM league_seasons WHERE user_id = ?")
-                .param(targetUserId)
-                .query(Long.class)
-                .single() > 0;
+    }
+
+    private boolean onLeagueBoard(String viewerId, String targetUserId) {
+        try {
+            return leagueService.rankings(viewerId, "global", Integer.MAX_VALUE).entries().stream()
+                    .anyMatch(e -> targetUserId.equals(e.userId()));
+        } catch (RuntimeException e) {
+            log.warn("league board unavailable for squad access: {}", e.toString());
+            return false;
+        }
     }
 }

@@ -16,8 +16,10 @@ info:
     - `TacticalInput`/`SelectData`/`MatchLog`/`TeamInputJobContext` 상세는 `packages/shared`(zod)가 SoT.
       여기서는 필드명(camelCase)만 zod와 일치시키고 느슨히 계약한다.
     - **V1 응답 확장(additive)**: MatchDetail(컨디션·모드), CreateMatchRequest(teamTactics),
-      AiJobContext(관계·전술·컨디션 컨텍스트), CatalogPlayer(personality)는 V1 스키마에 아래
-      `*Phase2Fields` 스키마의 프로퍼티가 **추가**된 형태다(기존 필드 불변). 웹은 병합 시 이 필드를 합친다.
+      AiJobContext(관계·전술·컨디션 컨텍스트), CatalogPlayer(personality),
+      **MatchDetail.opponent.deck[]**(`OpponentPlayerPhase3Fields` — playerId·star·ovr·attributes, #431)는
+      V1 스키마에 아래 `*Phase2Fields`/`*Phase3Fields` 스키마의 프로퍼티가 **추가**된 형태다
+      (기존 필드 불변). 웹은 병합 시 이 필드를 합친다.
     - 공통 스키마(ApiError/ErrorCode/Position/Grade)는 V1과 동일 정의를 재수록(자립 생성용) — 병합 도구가
       동일 정의를 dedupe한다는 전제. code enum은 Phase 2 신규 코드를 포함한 superset.
 
@@ -1950,6 +1952,9 @@ components:
         능력치 9종(`technical`·`mental`·`physical`·`passing`·`shooting`·`tackling`·`pace`·
         `stamina`·`positioning`). SoT 는 `packages/shared` 의 PlayerAttributes 다.
         ⚠️ **성장 반영 유효치**라 정수가 아닐 수 있다(소수점 2자리).
+        ⚠️ **수 표기는 경로마다 다르다**(둘 다 `number` 라 계약 위반은 아니다): `/squad` 는 조회 시점에
+        계산한 유효치라 `40.0`, `MatchDetail.opponent.deck[]` 은 **고스트를 굽는 시점에 얼린 스냅샷**
+        (또는 카탈로그 정수)이라 `40` 이다. 클라는 표기에 기대지 말고 number 로 읽는다.
       additionalProperties: { type: number }
 
     UserSquadSlot:
