@@ -346,6 +346,35 @@ class MatchPromptsReadApiTest extends MatchTestBase {
                 .isGreaterThan(catalogPace);
         // OVR 도 그 값으로 계산됐는지(표시와 계산이 같은 값을 쓰는지) 함께 본다.
         assertThat(p002.path("ovr").asDouble()).isGreaterThan(0.0);
+
+        // ⑤ **지시 조회 × 고스트** — 이 조합이 실제 누설 경로다(#431 SoT 가 지목한 그 자리).
+        //    ⚠️ 전제부터 단언한다: 고스트 덱(bots.deck_json)에 수비자 지시문이 **정말 구워져 있어야**
+        //    이 계약이 뜻을 갖는다. 픽스처가 바뀌어 센티넬이 애초에 없으면 아래 부재 단언은 조용한
+        //    항진명제가 된다(연습 봇 매치로만 걸어 두면 시드봇 덱엔 promptText 가 없어 바로 그 꼴이다).
+        String ghostDeck = jdbcClient.sql("""
+                        SELECT b.deck_json FROM bots b
+                        JOIN away_challenges c ON c.ghost_bot_id = b.id
+                        WHERE c.match_id = ?
+                        """)
+                .param(matchId).query(String.class).single();
+        assertThat(ghostDeck)
+                .as("전제: 고스트 덱에 수비자의 선수 지시가 구워져 있다(없으면 이 계약은 아무것도 안 지킨다)")
+                .contains(DEFENDER_SENTINEL)
+                .as("전제: 고스트 덱에 수비자의 팀 지시도 구워져 있다")
+                .contains(DEFENDER_TEAM_SENTINEL);
+
+        //    그런데 공격자의 지시 조회는 **자기 것만** 돌려준다.
+        ResponseEntity<String> prompts =
+                authGet("/api/matches/" + matchId + "/prompts", attacker, String.class);
+        assertThat(prompts.getStatusCode()).as(prompts.getBody()).isEqualTo(HttpStatus.OK);
+        assertThat(prompts.getBody())
+                .as("상대(수비자) 선수 지시가 내 지시 목록에 섞이면 안 된다")
+                .doesNotContain(DEFENDER_SENTINEL)
+                .as("상대(수비자) 팀 지시도 마찬가지")
+                .doesNotContain(DEFENDER_TEAM_SENTINEL);
+        // 자기 지시는 정상적으로 읽힌다(응답이 비어서 통과한 게 아니라는 확인).
+        assertThat(playerEntry(json(prompts.getBody()), "P002").path("text").asText())
+                .isEqualTo(DECK_SENTINEL);
     }
 
     /** 카탈로그가 말하는 값 — 응답이 <b>그것 그대로</b>인지 대조할 기준선. */

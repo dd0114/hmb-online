@@ -30,6 +30,16 @@ import java.util.Set;
  *
  * <p>버린 대안: <b>"카탈로그 능력치 이름의 부분집합"</b> 으로 걸면 스탯이 늘 때 자동으로 따라가지만,
  * <b>새 능력치가 아무 검토 없이 유저 응답에 실린다</b> — 자동 갱신은 편의지 계약이 아니다.
+ *
+ * <p><b>이 계약의 한계(알고 수용한 것)</b>: 이것은 <b>형태(shape)를 얼리지 값의 의미(semantics)를
+ * 얼리지 않는다</b>. 정당한 키·정당한 스칼라 자리에 <b>다른 뜻</b>을 실어 보내는 것은 못 막는다 —
+ * 독립검증이 눈금까지 쟀다: {@code ovr} 의 하위 소수에 컨디션을 숨기거나(예 {@code + cond/1000}),
+ * 컨디션을 {@code stamina} 같은 정당한 능력치 이름으로 위장해 <b>핀 안 된 슬롯에만</b> 싣는 경로가
+ * 남는다. 다만 {@code /api/growth/card} 와의 <b>OVR 교차대조가 은닉 대역폭을 ±0.01 로 묶고</b>,
+ * 전 슬롯에 위장하면 그 교차대조에 걸린다. 이걸 마저 막으려면 13슬롯 × 9능력치 전 값을 독립
+ * 소스로 핀해야 하는데 그건 계약이 아니라 <b>응답 복제본</b>이고 정당한 성장 변화마다 깨진다.
+ * 남은 둘은 <b>실수로 쓰는 코드가 아니라 의도적 스테가노그래피</b>다. 이 계약이 죽여야 할 것은
+ * {@code attributes.put("condition", …)} 처럼 <b>실수로 쓰기 쉬운 형태</b>이고, 그건 전부 죽는다.
  */
 final class PublicCardContract {
 
@@ -84,8 +94,12 @@ final class PublicCardContract {
 
         player.properties().forEach(e -> {
             if (!"attributes".equals(e.getKey())) {
-                assertThat(e.getValue().isValueNode())
-                        .as("공개 카드 필드 값은 스칼라다 — 중첩을 허용하면 키 동결이 무의미해진다: %s", e)
+                // ⚠️ {@code isValueNode()} 만으로는 부족하다 — Jackson {@code NullNode} 도 스칼라다.
+                //    그래서 {@code "name": null} 이 통과했다(3R minor-1). 누설이 아니라 **표시 결함**
+                //    축이지만("이름 없는 카드"를 그린다), 계약이 "값이 있다"고 말하는 이상 값은 있어야 한다.
+                assertThat(e.getValue().isValueNode() && !e.getValue().isNull())
+                        .as("공개 카드 필드 값은 **비어 있지 않은** 스칼라다 — 중첩·null 을 허용하면"
+                                + " 키 동결이 무의미해진다: %s", e)
                         .isTrue();
             }
         });
