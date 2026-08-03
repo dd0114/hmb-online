@@ -21,15 +21,17 @@ public class MatchController {
     private final MatchClockService clockService;
     private final MatchLockService lockService;
     private final MatchSkipService skipService;
+    private final MatchPromptsService promptsService;
 
     public MatchController(MatchService matchService, MatchOrchestrator orchestrator,
                            MatchClockService clockService, MatchLockService lockService,
-                           MatchSkipService skipService) {
+                           MatchSkipService skipService, MatchPromptsService promptsService) {
         this.matchService = matchService;
         this.orchestrator = orchestrator;
         this.clockService = clockService;
         this.lockService = lockService;
         this.skipService = skipService;
+        this.promptsService = promptsService;
     }
 
     /**
@@ -71,6 +73,19 @@ public class MatchController {
         clockService.advanceDueForRead(id);
         // toDetailFor: 관전자(원정 수비자)에게는 상대의 덱 스냅샷(=선수별 지시·팀 전술)을 떼고 준다.
         return matchService.toDetailFor(userId, matchService.getViewable(userId, id));
+    }
+
+    /**
+     * <b>이 매치에 실제 반영된 지시</b>(#431) — 덱 ← pre ← halftime 병합 결과. <b>소유자 전용</b>이라
+     * 비소유자는 404 다(관전 경로 {@code getViewable} 을 쓰지 않는다 — 지시문은 {@code toDetailFor}
+     * 가 관전자에게서 명시적으로 떼는 정보다).
+     *
+     * <p>이게 없어서 후반에 선수 상세를 열면 방금 바꾼 지시가 아니라 덱의 옛 지시가 떴다.
+     */
+    @GetMapping("/api/matches/{id}/prompts")
+    public MatchPromptsService.MatchPrompts getPrompts(@RequestAttribute("userId") String userId,
+                                                       @PathVariable("id") String id) {
+        return promptsService.of(userId, id);
     }
 
     @PostMapping("/api/matches/{id}/prompts")

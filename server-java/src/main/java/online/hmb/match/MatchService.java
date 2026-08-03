@@ -110,6 +110,8 @@ public class MatchService {
     private final online.hmb.rewards.RewardBundleService rewardBundleService;
     private final online.hmb.mission.MissionService missionService;
     private final LiveEngineConfigService liveEngineConfig;
+    /** #431: 상대 선수의 ★·OVR — 공개 범위 안의 좁은 접근자만 쓴다(성장 상세 맵 아님). */
+    private final online.hmb.growth.GrowthService growthService;
 
     public MatchService(JdbcClient jdbcClient,
                         TxRunner txRunner,
@@ -120,6 +122,7 @@ public class MatchService {
                         DeckSnapshot deckSnapshot,
                         java.time.Clock clock,
                         MatchClockService clockService,
+                        online.hmb.growth.GrowthService growthService,
                         online.hmb.away.AwayViewAccess awayViewAccess,
                         online.hmb.league.LeagueDailyRewardService dailyRewardService,
                         online.hmb.rewards.RewardBundleService rewardBundleService,
@@ -137,6 +140,7 @@ public class MatchService {
         this.deckSnapshot = deckSnapshot;
         this.clock = clock;
         this.clockService = clockService;
+        this.growthService = growthService;
         this.awayViewAccess = awayViewAccess;
         this.dailyRewardService = dailyRewardService;
         this.rewardBundleService = rewardBundleService;
@@ -622,7 +626,20 @@ public class MatchService {
 
     // ── 조회 (MatchDetail / 상대 분석) ──────────────────────────────────
 
-    public record OpponentPlayer(String name, String position, String grade, boolean hasPrompt) {
+    /**
+     * 상대 선수 1인 — <b>hero 결정 ③ 공개 범위</b>(이름·포지션·등급·★·OVR·능력치 + "지시 있음" 여부).
+     *
+     * <p>{@code playerId}·{@code star}·{@code ovr}·{@code attributes} 는 #431/#403 W3 additive 다:
+     * 기존 4필드만 있을 때 화면은 선수와 카드를 <b>이을 수 없어</b>("있는지 없는지조차 우리가 모른다")
+     * OVR·★ 자리를 비우고 지시 문구도 낮춰 달았다. 기존 필드는 그대로 두므로 구 클라는 무해하다.
+     *
+     * <p>⚠️ {@code hasPrompt} 는 <b>여부</b>다. 지시문 원문은 이 경로로 절대 나가지 않는다 — 원정
+     * 고스트의 덱은 실유저의 덱(선수별 지시 포함)을 구운 것이라 여기가 실제 누설 경로다.
+     * {@code star} 는 카드가 없는 로스터(시드봇·리그봇)에서 <b>0</b> 이다.
+     */
+    public record OpponentPlayer(String playerId, String name, String position, String grade,
+                                 int star, double ovr, Map<String, Object> attributes,
+                                 boolean hasPrompt) {
     }
 
     public record Opponent(String name, String analysisText, List<OpponentPlayer> deck) {
@@ -823,14 +840,58 @@ public class MatchService {
     private Opponent buildOpponent(MatchRow row) {
         BotService.BotRow bot = botService.get(row.botId());
         JsonNode deck = readJson(bot.deckJson());
+        // 이 상대가 실유저의 고스트면 그 유저가 카드의 주인이다(★ 의 출처). 시드봇·리그봇은 null —
+        // 카드가 없으므로 ★ 는 0 이다. LeagueService 를 안 물고 직접 읽는 이유는 userIsHome 과 같다:
+        // 한 줄짜리 조회에 모듈 의존(그것도 순환)을 만들지 않는다.
+        String ghostOwner = awayDefenderOf(row.id());
         List<OpponentPlayer> players = new ArrayList<>();
         for (JsonNode starter : deck.path("starters")) {
             String playerId = starter.path("playerId").asText();
             Map<String, String> p = playerNameGrade(playerId);
-            players.add(new OpponentPlayer(p.get("name"), p.get("position"), p.get("grade"),
+            // 능력치는 **실제로 뛰는 값**이다: 고스트 덱에는 수비자의 유효스탯이 얼려 박혀 있고
+            // (AwayService.withFrozenAttributes), 없으면 카탈로그 원본이 선다. 카드에서 지금 다시
+            // 계산하면 굽고 난 뒤의 강화가 화면에만 반영돼 표시와 경기가 갈린다.
+            Map<String, Object> attributes = opponentAttributes(starter, playerId);
+            players.add(new OpponentPlayer(playerId, p.get("name"), p.get("position"), p.get("grade"),
+                    growthService.cardStar(ghostOwner, playerId),
+                    growthService.ovrOf(p.get("position"), attributes),
+                    attributes,
                     starter.hasNonNull("promptText")));
         }
         return new Opponent(bot.name(), bot.analysisText(), players);
+    }
+
+    /** 이 매치에서 원정을 당한 쪽(= 고스트 로스터의 주인). 원정이 아니면 null. */
+    private String awayDefenderOf(String matchId) {
+        return jdbcClient.sql("SELECT defender_id FROM away_challenges WHERE match_id = ?")
+                .param(matchId)
+                .query(String.class)
+                .optional()
+                .orElse(null);
+    }
+
+    /**
+     * 고스트에 얼린 유효스탯 → 없으면 카탈로그 원본. 둘 다 없으면 빈 맵(OVR 은 0 이 된다).
+     *
+     * <p>⚠️ <b>값의 수 표기가 두 경로에서 다르다</b>(계약 위반은 아니다 — 둘 다 {@code number}):
+     * 얼린 스냅샷은 굽는 시점의 JSON 을 그대로 되싣고, 카탈로그는 {@code attributes_json} 의 정수라
+     * {@code 40} 으로 나간다. 반면 {@code /api/users/{id}/squad} 는 지금 계산한 유효치라 {@code 40.0}
+     * 이다. <b>클라는 수 표기에 기대지 말고 number 로 읽어야 한다</b>.
+     */
+    private Map<String, Object> opponentAttributes(JsonNode starter, String playerId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        JsonNode frozen = starter.path("attributes");
+        if (frozen.isObject()) {
+            frozen.properties().forEach(e -> out.put(e.getKey(), e.getValue().numberValue()));
+            return out;
+        }
+        String json = jdbcClient.sql("SELECT attributes_json FROM players WHERE id = ?")
+                .param(playerId).query(String.class).optional().orElse(null);
+        if (json == null || json.isBlank()) {
+            return out;
+        }
+        readJson(json).properties().forEach(e -> out.put(e.getKey(), e.getValue().numberValue()));
+        return out;
     }
 
     private Map<String, String> playerNameGrade(String playerId) {
