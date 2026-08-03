@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Modal } from "../common/Modal";
 import { CharAvatar, initialsOf } from "../common/CharAvatar";
 import { GRADE_COLORS, GRADE_LABELS, GRADE_ORDER, type Grade } from "../common/grades";
+import { usePlayerNames } from "../common/player-names";
 import { useCardEffective, usePendingChoices } from "../api/growth-hooks";
 import type { ChoiceResult, PendingChoice } from "../api/growth";
 import { ChoiceCandidates, candidateView } from "../growth/ChoiceCards";
@@ -62,15 +63,21 @@ function isGrade(g: string | null | undefined): g is Grade {
   return typeof g === "string" && (GRADE_ORDER as readonly string[]).includes(g);
 }
 
-function PickAvatar({ entry }: { entry: RewardGrowthEntry }) {
+/**
+ * ⚠️ **이름을 프롭으로 받는다 — `entry.name` 을 읽지 마라**(#406 요구 6, W8).
+ * `entry.name` 은 서버가 정산 시점에 실어 보낸 값이라 카탈로그 개명(#411 스위치·어드민 개명)을
+ * 따라오지 않는다. 축은 **`full`** 이다: `initialsOf` 는 풀네임 전제이고(apps/web CLAUDE.md
+ * 두 축 표) `CharAvatar.name` 은 `aria-label`·이니셜로 쓰인다.
+ */
+function PickAvatar({ entry, name }: { entry: RewardGrowthEntry; name: string }) {
   if (!isGrade(entry.grade)) {
     return (
       <span className={styles.pickAvatarFallback} data-art-policy="hidden" aria-hidden="true">
-        {initialsOf(entry.name)}
+        {initialsOf(name)}
       </span>
     );
   }
-  return <CharAvatar playerId={entry.playerId} name={entry.name} grade={entry.grade} size={46} />;
+  return <CharAvatar playerId={entry.playerId} name={name} grade={entry.grade} size={46} />;
 }
 
 /**
@@ -123,6 +130,26 @@ export function RewardSheet({
   const growthEntries = growthEntriesOf(bundle);
   const pickedPlayer = pick ? growthEntries.find((e) => e.playerId === pick.playerId) : undefined;
   const { data: card } = useCardEffective(pick?.playerId);
+
+  /**
+   * 선수명 초크포인트(#406 요구 6). **축 = `full`** — 선택 헤드의 이름은 `.pickName`
+   * (`display:block`)이라 한 줄을 통째로 쓰고, 포지션·등급·★ 는 아랫줄(`.pickMeta`)에 앉는다.
+   * 성장 목록 행은 밀집이라 `short` 다(`sections/GrowthSection`) — 한 시트가 두 축을 쓰는 것이
+   * 정상이다(축은 파일이 아니라 그 조각이 앉은 자리가 정한다).
+   *
+   * 서버가 실어 보낸 `entry.name` 은 **사다리 2단**으로만 넘긴다 — 카탈로그가 아는 선수면
+   * 카탈로그 이름이 이긴다(W0 결정: 저장은 고치지 않고 조회 시 덮는다).
+   */
+  const names = usePlayerNames();
+  /**
+   * ⚠️ **이 한 줄이 이 파일에서 예외표(`player-names.test.ts` EXEMPT)에 등록된 유일한 표현이다.** 우회 스캐너는
+   * "조회 결과의 `.name` 을 꺼내는 것"을 금지하는데, 여기서 꺼낸 값은 화면으로 가는 게 아니라
+   * **사다리 2단 인자로 초크포인트에 들어간다**(= 금지하려는 것의 반대). 이름을 따로 뽑아 두는
+   * 이유는 표현을 예외표에서 **구별 가능하게** 만드는 것이기도 하다 — 예외 키가 `pickedPlayer.name`
+   * 이면 나중에 누가 그 값을 **직접 렌더**해도 같은 키로 조용히 면제된다.
+   */
+  const pickedGiven = pickedPlayer?.name;
+  const pickedName = pickedPlayer ? names.full(pickedPlayer.playerId, pickedGiven) : "";
 
   /**
    * 🚨 **아직 받지 않은 것** — `[확인]` 이 이걸 삼키면 안 된다 (#405 ↔ #408 통합의 본체).
@@ -201,9 +228,11 @@ export function RewardSheet({
             */}
             {pickedPlayer && (
               <div className={styles.pickHead} data-testid="reward-pick-head">
-                <PickAvatar entry={pickedPlayer} />
+                <PickAvatar entry={pickedPlayer} name={pickedName} />
                 <span className={styles.pickMain}>
-                  <span className={styles.pickName}>{pickedPlayer.name}</span>
+                  <span className={styles.pickName} data-testid="reward-pick-name">
+                    {pickedName}
+                  </span>
                   <span className={styles.pickMeta}>
                     {pickedPlayer.position && <span className={styles.pickChip}>{pickedPlayer.position}</span>}
                     {isGrade(pickedPlayer.grade) && (

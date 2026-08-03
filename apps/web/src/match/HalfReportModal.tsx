@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Modal } from "../common/Modal";
 import { useHalfLog, usePlayers } from "../api/hooks";
+import { usePlayerNames } from "../common/player-names";
 import { buildHalfReportRows, halfReportScore, type HalfReportEventLike, type NameOf } from "./half-report";
 import { halfLabelOf } from "./skip-mode";
 import { highlightStatsOf, topRatedOfHalf } from "./skip-report-rating";
@@ -84,7 +85,8 @@ export interface HalfReportModalProps {
  * **타임라인 1장**으로 줄고 페이저·도트도 사라진다(계약 = `HalfReportModal.test.ts`).
  *
  * 카드가 그리는 값은 **하나도 여기서 세지 않는다**: 평점·기록은 `skip-report-rating`(→ #403 집계),
- * 등번호·이름·포지션은 `player-stats-view.buildRosterMeta`, 평점 등급은 `ratingTier` 다.
+ * 등번호·포지션은 `player-stats-view.buildRosterMeta`, 평점 등급은 `ratingTier`,
+ * **선수 이름은 `common/player-names` 초크포인트**(#406 요구 6 — 두 카드 모두 `short` 축) 다.
  */
 export function HalfReportModal({
   matchId,
@@ -109,15 +111,26 @@ export function HalfReportModal({
    * 지금 출처(`/api/players` 카탈로그)는 id 하나로 답하지만, 시그니처가 팀을 요구해야 소비자가
    * 그 축을 접지 않는다.
    *
+   * **축 = `short`**(밀집). 타임라인 행은 `[시계][아이콘][사건][이름][팀]` 이라 이름 옆에 조각이
+   * 네 개 앉는다(축 규칙 = `common/player-names.ts` 머리말).
+   *
+   * ⚠️ **표를 여기서 만들지 마라**(#406 요구 6, W8). 구 코드는 `catalog.map((p) => [p.id, p.name])`
+   * 로 **이름 사다리를 두 번째로 선언**하고 있었다 — 카탈로그 우선순위도, 짧은 축도, `미상 선수`
+   * 폴백도 없어서 #411 스위치 날 이 카드만 옛 규칙으로 남는다.
+   *
    * ⚠️ **응답 형태를 믿지 않는다** — 구 서버·목이 200 `{}` 를 주면 `.map` 이 던져 리포트가
-   * 통째로 흰 화면이 된다(apps/web CLAUDE.md, growth-mock G4 실적). 이름은 부가 정보다.
+   * 통째로 흰 화면이 된다(apps/web CLAUDE.md, growth-mock G4 실적). 초크포인트가 그 형태를
+   * 흡수하므로(`buildPlayerNames` 는 배열·Map 이 아니면 빈 표) 여기서 가드가 사라진 게 아니다.
+   *
+   * 선수가 없는 사건(킥오프 등)은 계속 `undefined` = **이름 칸을 비운다**. 없는 소속·없는 사람을
+   * 지어내지 않는 것이 이 행의 규율이고(`half-report.ts` `playerName` 주석), `미상 선수` 는
+   * "선수가 있는데 누군지 모른다"는 다른 사실이다.
    */
-  const nameOf = useMemo<NameOf>(() => {
-    const byId = Array.isArray(catalog)
-      ? new Map(catalog.map((p) => [p.id, p.name] as const))
-      : new Map<string, string>();
-    return (_team, playerId) => (playerId ? byId.get(playerId) : undefined);
-  }, [catalog]);
+  const names = usePlayerNames();
+  const nameOf = useMemo<NameOf>(
+    () => (_team, playerId) => (playerId ? names.short(playerId) : undefined),
+    [names],
+  );
 
   const events = useMemo(
     () => ((log?.events ?? []) as unknown as HalfReportEventLike[]) ?? [],
@@ -188,7 +201,9 @@ export function HalfReportModal({
 
   if (top) {
     /*
-     * 이름·등번호·포지션은 로스터에서, 없으면 카탈로그 이름 → id 로 떨어진다.
+     * 등번호·포지션은 로스터에서. **이름은 로스터가 아니라 초크포인트(`names`)에서** 온다 —
+     * 로스터의 이름도 같은 초크포인트가 만들지만, 로스터는 등번호를 만들 수 있는 선수만 담아서
+     * 트림된 로그에서는 비어 있다(아래 ⚠️). 이름을 그 표에 매달면 그때 이름도 같이 사라진다.
      * ⚠️ 로그에 `tickSnapshots` 가 없으면(트림된 로그) 로스터가 비어 등번호가 없다 —
      *    그때 번호 자리를 `–` 로 두고 **이름은 계속 나온다**. 부가 정보가 주 정보를 죽이지 않는다.
      */
@@ -210,8 +225,17 @@ export function HalfReportModal({
             >
               {meta?.num ?? "–"}
             </i>
+            {/*
+              축 = `short`(밀집) — 이름 옆에 번호 원과 포지션 칩이 **같은 flex 줄**에 앉는다.
+              ⚠️ 여기서 `full` 을 쓰면 **같은 스택 안에서 같은 사람이 두 이름으로 불린다**
+              (앞 장 타임라인 행은 `short` 다). 오늘은 두 축의 값이 같아 화면 차이가 0이라
+              안 보이고, #411 스위치 날 갈라진다.
+              ⚠️ 구 코드는 `meta?.name ?? nameOf(…) ?? top.playerId` 라 3단이 `playerId` 였다.
+              지금은 `roster` 와 `names` 가 **같은 초크포인트**에서 같은 id 로 만든 같은 값이라
+              사다리가 하나로 접힌다.
+            */}
             <span className={styles.motmName} data-testid={`${tid}-motm-name`}>
-              {meta?.name ?? nameOf(top.team, top.playerId) ?? top.playerId}
+              {names.short(top.playerId)}
             </span>
             {meta?.position && <span className={styles.motmPos}>{meta.position}</span>}
           </p>

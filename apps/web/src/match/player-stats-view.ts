@@ -8,6 +8,7 @@
  * ⚠️ 키는 전부 `playerKey(team, playerId)` 다. 유저 덱과 봇 로스터가 **같은 카탈로그를 공유**해
  * 같은 `playerId` 가 양 팀에 동시에 뛴다(#231) — 맨 id 로 조회하면 두 사람이 한 줄로 합쳐진다.
  */
+import { buildPlayerNames, UNKNOWN_PLAYER_NAME } from "../common/player-names";
 import { jerseyNumbers } from "./viewer-skins";
 import { halfForState, isHalftimeState } from "./stage/stage-state";
 import {
@@ -33,15 +34,38 @@ export interface PlayerSelection {
   playerId: string;
 }
 
-/** 카탈로그(`GET /api/players`) 에서 우리가 쓰는 최소 형상. 응답 형태는 믿지 않는다. */
+/**
+ * 카탈로그(`GET /api/players`) 에서 우리가 쓰는 최소 형상. 응답 형태는 믿지 않는다.
+ *
+ * `name`/`shortName` 은 이 파일이 읽지 않는다 — **초크포인트가 구조 판정으로 읽는다**
+ * (`nameEntryOf`, 그래서 openapi 생성 타입에 `shortName` 이 없어도 실려 오면 살아난다).
+ * 여기 적어 두는 것은 "이 행에 무엇이 실려 오는가"의 문서용이다.
+ */
 export interface CatalogLike {
   id?: unknown;
   name?: unknown;
   position?: unknown;
 }
 
+/**
+ * 로그에 등장한 선수 한 명의 표시 메타.
+ *
+ * ⚠️ **이름 필드가 두 축인 것은 의도다**(#406 요구 6, W8). 여기 한때 `name` 하나만 있었고 그 값은
+ * `catalog.name ?? playerId` 였다 — 즉 이 파일이 **선수명 사다리를 두 번째로 선언**하고 있었고
+ * 3단이 `playerId` 였다(화면에 `P077` 이 뜬 그 패턴). 지금 두 값은 전부
+ * `common/player-names` 초크포인트가 만든다. 축은 **자리**가 정한다(그 파일 머리말 표):
+ *  · `short` = 밀집 UI — 선수 탭 표 행 · 하프 리포트 카드(번호 원·포지션 칩이 같은 줄에 앉는다)
+ *  · `full`  = 넓은 자리 — 선수 상세 모달 헤더처럼 한 줄을 통째로 쓰는 자리
+ *
+ * ⚠️ **`name` 으로 되돌리지 마라.** 하나로 합치면 소비자가 축을 고를 수 없고, 그 순간 밀집 UI 와
+ * 모달 헤더 중 한쪽이 잘못된 축을 그린다(오늘은 두 축의 값이 같아 **화면 차이가 0**이라 안 보인다 —
+ * #411 스위치 날에야 드러난다). 계약 = `player-stats-view.names.test.ts`.
+ */
 export interface RosterMeta {
-  name: string;
+  /** 밀집 UI 용 짧은 이름. 발행물에 `shortName` 이 없으면 풀네임과 같다(설계된 폴백, #411). */
+  short: string;
+  /** 넓은 자리용 풀네임. */
+  full: string;
   position: PlayerPosition | null;
   /** 등번호(1~11). 로그 등장 순서로 코어와 **같은 규칙**을 쓴다 — 토큰과 표가 다른 번호를 말하면 안 된다. */
   num: string | null;
@@ -57,19 +81,28 @@ const POSITIONS: ReadonlySet<string> = new Set(["GK", "DF", "MF", "FW"]);
  * 경기장 토큰이 그 규칙으로 번호를 달고 있어서, 표가 따로 매기면 같은 선수가 화면에서 두 번호를
  * 갖는다(그리고 유저는 토큰↔행을 번호로 잇는다).
  *
- * ⚠️ `/api/players` 가 배열이 아닐 수 있다(구 서버·목의 `200 {}`) → `Array.isArray` 가드.
- * 없으면 이름이 id 로 떨어질 뿐 화면은 성립한다 — 여기서 던지면 관전 화면이 흰 화면이 된다.
+ * ⚠️ **이름은 `buildPlayerNames` 초크포인트가 만든다**(#406 요구 6). 여기서 `c.name` 을 직접 읽지
+ * 마라 — 구 코드가 `typeof c.name === "string" && c.name ? c.name : c.id` 로 **사다리 1단과 3단을
+ * 다시 선언**하고 있었고, 그 3단이 `playerId` 였다. 정규화 자리처럼 보이지만 정규화는 초크포인트의
+ * `nameEntryOf` 가 이미 한다(빈 문자열·비문자열 거부 포함) — 여기 남기면 규칙이 두 벌이 된다.
+ * 포지션만 이 파일의 몫이라 그것만 따로 표로 만든다.
+ *
+ * ⚠️ `/api/players` 가 배열이 아닐 수 있다(구 서버·목의 `200 {}`) → 초크포인트가 그 형태를 흡수해
+ * 빈 이름표를 준다(`buildPlayerNames` 는 배열·Map 이 아니면 `size 0`). 그러면 이름이
+ * `미상 선수` 로 떨어질 뿐 화면은 성립한다 — 여기서 던지면 관전 화면이 흰 화면이 된다.
  */
 export function buildRosterMeta(
   log: unknown,
   catalog: readonly CatalogLike[] | null | undefined,
 ): Map<string, RosterMeta> {
-  const byId = new Map<string, { name: string; position: PlayerPosition | null }>();
+  const names = buildPlayerNames(catalog);
+  const posById = new Map<string, PlayerPosition>();
   if (Array.isArray(catalog)) {
     for (const c of catalog) {
       if (!c || typeof c.id !== "string") continue;
-      const pos = typeof c.position === "string" && POSITIONS.has(c.position) ? (c.position as PlayerPosition) : null;
-      byId.set(c.id, { name: typeof c.name === "string" && c.name ? c.name : c.id, position: pos });
+      if (typeof c.position === "string" && POSITIONS.has(c.position)) {
+        posById.set(c.id, c.position as PlayerPosition);
+      }
     }
   }
   const nums = jerseyNumbers(log);
@@ -77,8 +110,12 @@ export function buildRosterMeta(
   for (const [key, num] of Object.entries(nums)) {
     const i = key.indexOf(":");
     const id = i >= 0 ? key.slice(i + 1) : key;
-    const meta = byId.get(id);
-    out.set(key, { name: meta?.name ?? id, position: meta?.position ?? null, num });
+    out.set(key, {
+      short: names.short(id),
+      full: names.full(id),
+      position: posById.get(id) ?? null,
+      num,
+    });
   }
   return out;
 }
@@ -109,6 +146,11 @@ export interface PlayerRow {
   key: string;
   team: TeamSide;
   playerId: string;
+  /**
+   * 표 한 행의 이름 = **밀집 축**(`RosterMeta.short`). 행은 `[번호][이름][포지션][평점]…` 이라
+   * 이름 옆에 조각이 같이 앉는다(축 규칙 = `common/player-names.ts` 머리말).
+   * 못 찾으면 `미상 선수` — **`playerId` 로 떨어지지 않는다**(사다리 3단은 초크포인트 한 곳).
+   */
   name: string;
   position: PlayerPosition | null;
   num: string | null;
@@ -143,7 +185,9 @@ export function rowsFor(
       key: line.key,
       team: line.team,
       playerId: line.playerId,
-      name: meta?.name ?? line.playerId,
+      // 로스터에 없는 키(성긴 로그로 등번호를 못 만든 경우) → 사다리 3단. `line.playerId` 를
+      // 쓰지 마라 — 그게 화면에 `P077` 을 띄웠던 패턴이고, 3단은 초크포인트 한 곳에만 있다.
+      name: meta?.short ?? UNKNOWN_PLAYER_NAME,
       position: meta?.position ?? null,
       num: meta?.num ?? null,
       isGk,

@@ -29,6 +29,7 @@ import {
   type PlayerRow,
 } from "./player-stats-view";
 import { computePlayerStats, type StatMatchLog, type PlayerStatLine } from "./player-stats";
+import { UNKNOWN_PLAYER_NAME } from "../common/player-names";
 
 // ── 픽스처 ───────────────────────────────────────────────────────────────
 
@@ -120,19 +121,33 @@ describe("buildRosterMeta — 이름·포지션·등번호", () => {
     const meta = buildRosterMeta(makeLog(), CATALOG);
     expect(meta.has("home:P9")).toBe(true);
     expect(meta.has("away:P9")).toBe(true);
-    expect(meta.get("home:P9")!.name).toBe("김도현");
+    expect(meta.get("home:P9")!.short).toBe("김도현");
+    expect(meta.get("home:P9")!.full).toBe("김도현");
     // 번호는 **팀별** 등장 순서 — 같은 선수라도 팀이 다르면 다른 번호를 단다(코어와 같은 규칙).
     expect(meta.get("home:P9")!.num).toBe("3");
     expect(meta.get("away:P9")!.num).toBe("3");
     expect(meta.get("away:P1")!.num).toBe("1");
   });
 
-  /** `/api/players` 가 배열이 아닐 수 있다(구 서버·목의 200 `{}`) — 던지면 화면이 통째로 죽는다. */
-  it("카탈로그가 없거나 배열이 아니어도 죽지 않는다 — 이름이 id 로 떨어질 뿐", () => {
+  /**
+   * `/api/players` 가 배열이 아닐 수 있다(구 서버·목의 200 `{}`) — 던지면 화면이 통째로 죽는다.
+   *
+   * ⚠️ **여기 한때 `.name === "P9"` 라고 적혀 있었다 — 그 기대값이 결함을 계약으로 굳히고 있었다**
+   * (#406 요구 6, W8). 이름을 못 찾을 때 화면에 `playerId` 를 내보내는 것이 정확히 이 에픽이 없앤
+   * 패턴이고, 사다리 3단은 초크포인트 한 곳(`UNKNOWN_PLAYER_NAME`)이다.
+   */
+  it("카탈로그가 없거나 배열이 아니어도 죽지 않는다 — 이름은 `미상 선수`(**id 가 아니다**)", () => {
     for (const bad of [undefined, null, {} as never]) {
       const meta = buildRosterMeta(makeLog(), bad as never);
-      expect(meta.get("home:P9")!.name).toBe("P9");
-      expect(meta.get("home:P9")!.position).toBeNull();
+      const m = meta.get("home:P9")!;
+      expect(m.short).toBe(UNKNOWN_PLAYER_NAME);
+      expect(m.full).toBe(UNKNOWN_PLAYER_NAME);
+      // ★ 이 두 줄이 계약의 본체다 — id 가 이름 자리에 새면 죽는다.
+      expect(m.short).not.toBe("P9");
+      expect(m.short).not.toMatch(/^[A-Za-z]{1,2}\d+$/);
+      expect(m.position).toBeNull();
+      // 등번호는 로그에서 나오므로 카탈로그와 무관하게 살아 있다(부가 정보가 주 정보를 안 죽인다).
+      expect(m.num).toBe("3");
     }
   });
 
@@ -176,11 +191,14 @@ describe("rowsFor", () => {
   });
 
   it("이름·포지션·번호가 붙는다", () => {
-    const r = rowsFor(result, "home", roster).find((x) => x.playerId === "P9")!;
-    expect(r.name).toBe("김도현");
-    expect(r.position).toBe("FW");
-    expect(r.num).toBe("3");
-    expect(r.isGk).toBe(false);
+    // 변수명이 `r` 이면 안 된다 — 아래 `sortRows` 블록의 `.map((r) => r.name)` 콜백 파라미터와
+    // **이름이 같아서** 우회 스캐너(파일 단위 평면 집합)가 그 줄들까지 위반으로 집계한다
+    // (`player-names.test.ts` 머리말 "스코프를 모른다"). 아래 `p9.name` 한 건만 예외표에 남긴다.
+    const p9 = rowsFor(result, "home", roster).find((x) => x.playerId === "P9")!;
+    expect(p9.name).toBe("김도현");
+    expect(p9.position).toBe("FW");
+    expect(p9.num).toBe("3");
+    expect(p9.isGk).toBe(false);
   });
 
   /**

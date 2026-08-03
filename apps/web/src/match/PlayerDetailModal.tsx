@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Modal } from "../common/Modal";
 import { CharAvatar } from "../common/CharAvatar";
 import { GRADE_LABELS, type Grade } from "../common/grades";
+import { playerNameOf } from "../common/player-names";
 import { usePlayers, useDeck } from "../api/hooks";
 import { useCardEffective } from "../api/growth-hooks";
 import { AttributeLayers } from "../growth/AttributeLayers";
@@ -81,7 +82,17 @@ export function PlayerDetailModal({ selection, stats, teamName, mine, onClose }:
 
   const position = meta?.position ?? catalogPlayer?.position ?? null;
   const isGk = position === "GK";
-  const name = meta?.name ?? catalogPlayer?.name ?? playerId;
+  /**
+   * 이름 = **넓은 축**(`full`). 모달 헤더 `<h2>` 는 한 줄을 통째로 쓰는 자리다(축 규칙 =
+   * `common/player-names.ts` 머리말). 카탈로그 행을 이미 손에 들었으므로 조회 창구가 아니라
+   * `playerNameOf`(행 직접) 를 쓴다 — 훅을 하나 더 붙이지 않고 같은 사다리를 탄다.
+   *
+   * ⚠️ 구 코드는 `meta?.name ?? catalogPlayer?.name ?? playerId` 였다 — 사다리 3단이 `playerId` 라
+   * 카탈로그에 행이 없으면 헤더에 **`P077` 이 그대로 떴다**(#406 요구 6). 이제 `미상 선수` 다.
+   * `meta`(로스터)를 안 보는 이유: 그 값도 같은 초크포인트가 같은 id 로 만든 것이라 **같은 값**이고,
+   * 두 경로를 두면 규칙이 두 벌이 된다.
+   */
+  const name = playerNameOf(catalogPlayer, "full");
   const grade = (catalogPlayer?.grade ?? null) as Grade | null;
 
   /**

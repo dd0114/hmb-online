@@ -1,6 +1,7 @@
 import type { PendingChoice } from "../../api/growth";
 import { CharAvatar, initialsOf } from "../../common/CharAvatar";
 import { GRADE_COLORS, GRADE_LABELS, GRADE_ORDER, type Grade } from "../../common/grades";
+import { usePlayerNames } from "../../common/player-names";
 import type { RewardGrowthEntry } from "../types";
 import styles from "./GrowthSection.module.css";
 
@@ -27,12 +28,17 @@ function isGrade(g: string | null | undefined): g is Grade {
   return typeof g === "string" && (GRADE_ORDER as readonly string[]).includes(g);
 }
 
-function RowAvatar({ entry }: { entry: RewardGrowthEntry }) {
+/**
+ * ⚠️ **이름을 프롭으로 받는다 — `entry.name` 을 읽지 마라**(#406 요구 6, W8).
+ * 축은 **`full`**: `initialsOf` 는 풀네임 전제이고 `CharAvatar.name` 은 `aria-label`·이니셜로
+ * 쓰인다(apps/web CLAUDE.md 두 축 표 — 아바타는 `full`).
+ */
+function RowAvatar({ entry, name }: { entry: RewardGrowthEntry; name: string }) {
   if (isGrade(entry.grade)) {
     return (
       <CharAvatar
         playerId={entry.playerId}
-        name={entry.name}
+        name={name}
         grade={entry.grade}
         size={38}
         className={styles.avatar}
@@ -42,7 +48,7 @@ function RowAvatar({ entry }: { entry: RewardGrowthEntry }) {
   // 카탈로그에 없는 선수(발행 사고). 등급을 모르므로 아트도 등급색도 없다 — 자리만 지킨다.
   return (
     <span className={styles.avatarFallback} data-art-policy="hidden" aria-hidden="true">
-      {initialsOf(entry.name)}
+      {initialsOf(name)}
     </span>
   );
 }
@@ -54,6 +60,16 @@ interface GrowthRowProps {
 }
 
 function GrowthRow({ entry, open, onPick }: GrowthRowProps) {
+  /**
+   * 선수명 초크포인트(#406 요구 6). 서버가 실어 보낸 `entry.name` 은 **사다리 2단**으로만
+   * 넘긴다 — 카탈로그가 아는 선수면 카탈로그 이름이 이긴다(W0 결정).
+   *
+   * 두 축을 다 쓴다: 행 이름은 `[아바타][이름][포지션][등급][교체 투입][+XP]` 한 줄이라
+   * **`short`**, 아바타(`aria-label`·이니셜)는 **`full`** 이다.
+   */
+  const names = usePlayerNames();
+  const short = names.short(entry.playerId, entry.name);
+  const full = names.full(entry.playerId, entry.name);
   const leveled =
     typeof entry.levelBefore === "number" &&
     typeof entry.levelAfter === "number" &&
@@ -67,10 +83,12 @@ function GrowthRow({ entry, open, onPick }: GrowthRowProps) {
     .join(" ");
   const body = (
     <>
-      <RowAvatar entry={entry} />
+      <RowAvatar entry={entry} name={full} />
       <span className={styles.rowMain}>
         <span className={styles.rowTop}>
-          <span className={styles.rowName}>{entry.name}</span>
+          <span className={styles.rowName} data-testid={`growth-row-name-${entry.playerId}`}>
+            {short}
+          </span>
           {entry.position && <span className={styles.chip}>{entry.position}</span>}
           {isGrade(entry.grade) && (
             <span className={styles.chip} style={{ color: GRADE_COLORS[entry.grade], borderColor: "currentColor" }}>
