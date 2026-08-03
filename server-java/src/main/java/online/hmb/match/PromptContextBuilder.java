@@ -95,6 +95,23 @@ public class PromptContextBuilder {
     }
 
     /**
+     * 선수별 지시가 <b>어느 단계에서 확정됐는가</b>(#431 조회 API 의 {@code phase}).
+     *
+     * <p>{@link #userPromptSet} 의 병합과 <b>같은 순서로 같은 표를 훑는다</b>(뒤가 이긴다) — 값과
+     * 단계가 다른 규칙으로 만들어지면 "halftime 이라 적혀 있는데 pre 값"이 나온다. 여기 없는
+     * playerId 는 매치 시점 지시가 없다는 뜻이고, 그 값의 출처는 덱이다(= 경기 전부터 유효).
+     */
+    public Map<String, String> playerPromptPhases(String matchId, List<String> phases) {
+        Map<String, String> out = new LinkedHashMap<>();
+        for (String phase : phases) {
+            for (String playerId : phasePlayerPrompts(matchId, phase).keySet()) {
+                out.put(playerId, phase);
+            }
+        }
+        return out;
+    }
+
+    /**
      * old→new 지시 변경분 (shared {@code PromptDelta} 계약, #193 W2b-B2).
      * 팀은 값이 다를 때만 {old,new}, 선수는 달라진 playerId 만 — old 없음=신규, new 없음=삭제.
      *

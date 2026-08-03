@@ -735,6 +735,39 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/matches/{id}/prompts:
+    get:
+      tags: [matches-ext]
+      operationId: getMatchPrompts
+      summary: 이 매치에 **실제 반영된** 지시(팀 + 선수별) — 소유자 전용
+      description: |
+        쓰기(`POST /api/matches/{id}/prompts`)만 있고 읽기가 없어서, 후반에 선수 상세를 열면
+        "방금 감독시간에 바꾼 지시"가 아니라 **덱에 저장된 옛 지시**가 떴다(#431). 감독시간 입력칸은
+        로컬 초안으로 버텼지만 선수 상세는 "지금 이 선수에게 걸린 지시"를 말해야 하는 자리다.
+
+        값은 **덱 ← pre ← halftime 병합 결과**(뒤가 이긴다)이고, 규칙의 SoT 는
+        `PromptContextBuilder.userPromptSet` — AI 잡 컨텍스트에 실리는 값과 **같은 함수**여야 화면과
+        경기가 갈리지 않는다. 선발 + **벤치**를 다 싣는다(선수 상세는 벤치도 연다).
+
+        **소유자 전용**이라 비소유자는 **404**다(관전 경로 `getViewable` 을 쓰지 않는다 — 지시문은
+        `toDetailFor` 가 관전자에게서 명시적으로 떼는 정보다).
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MatchPromptsResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1965,3 +1998,56 @@ components:
           description: 활성 덱의 **선발 + 벤치**(선수단 구경이므로 벤치를 뺀 표는 뜻이 없다).
           items: { $ref: "#/components/schemas/UserSquadSlot" }
 
+    MatchPromptEntry:
+      type: object
+      required: [playerId, text, phase]
+      properties:
+        playerId: { type: string }
+        text: { type: string }
+        phase:
+          type: string
+          description: |
+            이 값이 **확정된 단계**. `halftime` = 감독시간에 쓴 것, `pre` = 경기 전부터 유효한 것
+            (브리핑 제출 **또는** 덱에 적혀 있던 값 — 둘 다 킥오프 시점에 걸려 있던 지시라 화면에서
+            같은 뜻이다).
+          enum: [pre, halftime]
+
+    MatchPromptsResponse:
+      type: object
+      required: [teamPrompt, players]
+      properties:
+        teamPrompt:
+          type: string
+          description: 병합 결과(덱 ← pre ← halftime). 어디에도 없으면 빈 문자열.
+        players:
+          type: array
+          description: 지시가 **있는** 선수만. 없는 선수는 항목 자체가 없다(빈 문자열로 있는 척하지 않는다).
+          items: { $ref: "#/components/schemas/MatchPromptEntry" }
+
+    OpponentPlayerPhase3Fields:
+      type: object
+      description: |
+        V1 `MatchDetail.opponent.deck[]`(`name`·`position`·`grade`·`hasPrompt`)에 **추가되는** 필드
+        (#431 / #403 W3). 기존 필드는 불변이라 구 클라는 무해하다.
+
+        왜: 상대 선수가 카탈로그(`GET /api/players`)에서만 나오는데 카탈로그엔 `ovr`·`star` 가 없어
+        화면이 OVR·★ 를 못 그렸고, `playerId` 가 없어 `hasPrompt` 를 선수와 이을 수도 없었다
+        (그래서 W3 은 `🔒 지시 있음` 을 "모른다"로 낮춰 달았다 — 지어내지 않는 쪽을 골랐다).
+
+        ⚠️ 공개 범위는 hero 결정 ③ 그대로다 — **성장 진행도(`caps`·`statAdd`·`startLo`)는 안 나간다.**
+      properties:
+        playerId: { type: string }
+        star:
+          type: integer
+          description: |
+            카드 성. **원정 고스트**(실유저 팀)면 그 유저 카드의 값이고, 카드가 없는 로스터
+            (시드봇·리그봇)에서는 0 이다.
+        ovr:
+          type: number
+          description: 아래 `attributes` 로 계산한 유효 OVR(표시와 계산이 같은 값을 쓴다).
+        attributes:
+          description: |
+            **실제로 뛰는 값**이다: 고스트 덱에는 수비자의 유효스탯이 얼려 박혀 있고
+            (`AwayService.withFrozenAttributes`), 없으면 카탈로그 원본이 선다. 카드에서 지금 다시
+            계산하면 굽고 난 뒤의 강화가 화면에만 반영돼 표시와 경기가 갈린다.
+          $ref: "#/components/schemas/PlayerAttributeMap"
