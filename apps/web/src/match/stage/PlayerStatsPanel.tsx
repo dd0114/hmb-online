@@ -3,7 +3,6 @@ import {
   DEFAULT_SORT,
   SORT_KEYS,
   SORT_LABELS,
-  defaultSegment,
   motmKeyFor,
   rowsFor,
   sortRows,
@@ -11,9 +10,8 @@ import {
   type PlayerSelection,
   type SortKey,
 } from "../player-stats-view";
-import { PlayerStatsTable, PlayerTeamSegments } from "../PlayerStatsTable";
+import { PlayerStatsTable, PlayerTeamSegments, useTeamSegment } from "../PlayerStatsTable";
 import type { MatchPlayerStats } from "../usePlayerStats";
-import type { TeamSide } from "../player-stats";
 import styles from "./panels.module.css";
 
 interface PlayerStatsPanelProps {
@@ -69,7 +67,8 @@ export function PlayerStatsPanel({
   onSelect,
   onOpenDetail,
 }: PlayerStatsPanelProps) {
-  const [team, setTeam] = useState<TeamSide>(() => defaultSegment(myTeamSide));
+  /** ⚠️ `myTeamSide` 는 `/api/me` 가 늦으면 나중에 온다 — `useTeamSegment` 머리말이 SoT. */
+  const [team, setTeam] = useTeamSegment(myTeamSide);
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
 
   const { result, roster, coverage, window: win, isLoading, isError } = stats;

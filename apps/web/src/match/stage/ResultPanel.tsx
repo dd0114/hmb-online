@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
 import { deriveTeamStats, TEAM_STAT_LABELS, type MatchEventLike } from "../match-logic";
 import { GrowthReportSection } from "../GrowthReportSection";
-import { PlayerStatsTable, PlayerTeamSegments } from "../PlayerStatsTable";
+import { PlayerStatsTable, PlayerTeamSegments, useTeamSegment } from "../PlayerStatsTable";
 import {
   DEFAULT_SORT,
-  defaultSegment,
   motmKeyFor,
+  motmRowOf,
   ratingTier,
   rowsFor,
   sortRows,
@@ -15,7 +15,6 @@ import {
   type PlayerRow,
 } from "../player-stats-view";
 import type { MatchPlayerStats } from "../usePlayerStats";
-import type { TeamSide } from "../player-stats";
 import { MissionRewardSection } from "../../mission/MissionRewardSection";
 import { Amount } from "../../common/Amount";
 import { CURRENCY_POINT } from "../../common/currency";
@@ -223,7 +222,11 @@ function ResultPlayersSection({
   awayName: string;
   myTeamSide: "home" | "away" | null;
 }) {
-  const [team, setTeam] = useState<TeamSide>(() => defaultSegment(myTeamSide));
+  /**
+   * ⚠️ `myTeamSide` 는 `/api/me` 가 늦으면 **마운트 뒤에** 온다 — `useTeamSegment` 머리말이 SoT.
+   * (`useState(() => defaultSegment(...))` 였을 때 어웨이 라운드가 `내 팀` 칩과 다른 표를 열었다.)
+   */
+  const [team, setTeam] = useTeamSegment(myTeamSide);
   const { result, roster, coverage, window: win, isLoading, isError, logMissing } = stats;
 
   const rows = useMemo(
@@ -232,16 +235,11 @@ function ResultPlayersSection({
   );
 
   /**
-   * MOTM 은 **양 팀에서** 찾는다 — 지금 고른 세그먼트가 상대 팀이면 그 줄이 사라져 버린다.
-   * (그리고 실제로 상대가 MOTM 인 경기가 있다. 그때 이 줄이 비면 화면이 "우리 중 최고"라는
-   * 다른 뜻으로 읽힌다.)
+   * MOTM 은 **양 팀에서** 찾는다(`motmRowOf`) — 지금 고른 세그먼트가 상대 팀이면 그 줄이 사라져
+   * 버린다. 판정을 여기서 재현하지 않는 이유는 그 함수 머리말에 있다(계약이 잴 수 있는 자리).
    */
   const motmKey = motmKeyFor(result, win);
-  const motmRow = useMemo(() => {
-    if (!result || motmKey == null) return null;
-    const all = [...rowsFor(result, "home", roster), ...rowsFor(result, "away", roster)];
-    return all.find((r) => r.key === motmKey) ?? null;
-  }, [result, roster, motmKey]);
+  const motmRow = useMemo(() => motmRowOf(result, roster, motmKey), [result, roster, motmKey]);
 
   return (
     <section className={styles.playersCard} data-testid="result-players">

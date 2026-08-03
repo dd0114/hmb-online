@@ -127,14 +127,35 @@ export const PLAYERS = ALL_IDS.map((id) => ({
 
 export type Shape = "away-fixture" | "home-fixture" | "long-name";
 
+export interface MockOpts {
+  /**
+   * `GET /api/me` 응답을 이만큼 늦춘다 (#403 W4 R1 — 독립검증 major-1 의 표본).
+   *
+   * ⚠️ **이건 인위적인 상황이 아니다.** `App.tsx RequireAuth` 는 **토큰만** 보고 화면을 띄우므로
+   * `/api/me` 는 애초에 기다려지지 않는다 — `/api/matches/:id` 가 먼저 오면 패널은 `myTeamSide`
+   * 를 **모른 채로** 마운트된다. 목이 두 응답을 같은 틱에 주면 그 순서가 구조적으로 안 생겨서,
+   * 계약이 *"내 팀 칩과 선택된 세그먼트가 같은가"* 를 영영 못 잰다.
+   * 직접 잰 지연 스윕(수정 전 코드 · `chip`/`selected`): `0ms away/away` · **`20·40·80·150·300ms`
+   * 전부 `away/home`**(= 칩과 표가 다른 팀). 수정 후에는 여섯 지연 전부 `away/away`.
+   */
+  meDelayMs?: number;
+}
+
 /** ⚠️ 라우트는 pathname 술어로 — glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지 잡아 흰 화면이 된다. */
-export async function mockApi(page: Page, state: string, shape: Shape = "away-fixture") {
+export async function mockApi(
+  page: Page,
+  state: string,
+  shape: Shape = "away-fixture",
+  opts: MockOpts = {},
+) {
   const userAway = shape !== "home-fixture";
   const bot = shape === "long-name" ? LONG_BOT : BOT;
+  const meDelayMs = opts.meDelayMs ?? 0;
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
     if (url.pathname === "/api/me") {
+      if (meDelayMs > 0) await new Promise((r) => setTimeout(r, meDelayMs));
       return route.fulfill({
         json: { user: { id: "u1", nickname: ME, points: 0, wins: 4, draws: 0, losses: 0, isAdmin: false } },
       });
@@ -183,8 +204,13 @@ export async function authInit(page: Page) {
   });
 }
 
-export async function open(page: Page, state: string, shape: Shape = "away-fixture") {
-  await mockApi(page, state, shape);
+export async function open(
+  page: Page,
+  state: string,
+  shape: Shape = "away-fixture",
+  opts: MockOpts = {},
+) {
+  await mockApi(page, state, shape, opts);
   await authInit(page);
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.getByTestId("stage-shell")).toBeVisible();
@@ -292,6 +318,83 @@ export async function mockPastLogs(page: Page) {
     (url) => url.pathname === "/api/logs/matches",
     (route) => route.fulfill({ json: PAST_LOGS }),
   );
+}
+
+/**
+ * **성장 리포트가 실제로 렌더되는 목** (#403 W4 R1 — 독립검증 minor-6a).
+ *
+ * ⚠️ 기본 `mockApi` 는 `/api/growth/report/*` 를 catch-all `{}` 로 흘린다 →
+ * `GrowthReportSection` 은 `entries.length === 0` 이면 **null 을 돌려준다** = 섹션이 DOM 에 없다.
+ * 그 상태에서 *"개인 성적이 성장 리포트보다 앞에 있다"* 를 `if (count > 0)` 로 감싸면 그 블록은
+ * **한 번도 실행되지 않는다** — 실제로 그 단언을 `<GrowthReportSection>` 뒤로 옮기는 변이가
+ * SURVIVED 했다. 목이 계약의 일부다(#342).
+ *
+ * 값은 `MatchGrowthEntry`(`api/growth.ts`) 모양 그대로 — 서버가 안 주는 필드(`statXp` 등)를
+ * 지어내지 않는다.
+ */
+export const GROWTH_ENTRIES = [
+  {
+    playerId: "P014",
+    name: "선수014",
+    position: "GK",
+    grade: "SILVER",
+    xpGained: 120,
+    levelBefore: 3,
+    levelAfter: 4,
+    cardXp: 40,
+    xpToNext: 200,
+    minutes: "starter",
+    pendingChoices: [],
+  },
+  {
+    playerId: "P034",
+    name: "선수034",
+    position: "FW",
+    grade: "SILVER",
+    xpGained: 180,
+    levelBefore: 5,
+    levelAfter: 5,
+    cardXp: 90,
+    xpToNext: 260,
+    minutes: "starter",
+    pendingChoices: [],
+  },
+];
+
+export async function mockGrowthReport(page: Page, entries: unknown[] = GROWTH_ENTRIES) {
+  await page.route(
+    (url) => url.pathname.startsWith("/api/growth/report/"),
+    (route) => route.fulfill({ json: { matchId: MATCH_ID, entries } }),
+  );
+}
+
+/**
+ * **하프 로그 조회가 진짜 오류인 경우**(500) (#403 W4 R1 — 독립검증 minor-2).
+ *
+ * `usePlayerStats.logMissing` 은 **404 일 때만** 참이어야 한다 — 500·네트워크 단절을
+ * *"이 경기는 기록이 남아 있지 않습니다"* 로 덮으면 있는 기록을 없다고 말한다. 그 방향을
+ * 검사하는 단언이 리포 전체에 0건이라 `error.status === 404` 를 지우는 변이가 SURVIVED 했다.
+ */
+export async function mockHalfLogError(page: Page, status = 500) {
+  await page.route(
+    (url) => /\/api\/matches\/.+\/halves\/[12]\/log$/.test(url.pathname),
+    (route) => route.fulfill({ status, json: { code: "INTERNAL", message: "일시적인 오류입니다" } }),
+  );
+}
+
+/**
+ * 그 경로로 나간 **요청 수**를 세는 살아 있는 카운터.
+ *
+ * 게이트 합성(`needsPlayerStats(activeTab)` → 훅 `enabled`)은 소비 화면이 없으면 **관측되지
+ * 않는다** — 출하 코드에 계측을 심지 않고 재려면 *"그 게이트가 켜져야만 나가는 요청"* 이
+ * 필요하다. 그게 **전반 로그**다(아래 스펙 ⑧ 주석 참조).
+ */
+export function countRequests(page: Page, re: RegExp): { n: number } {
+  const c = { n: 0 };
+  page.on("request", (req) => {
+    if (re.test(new URL(req.url()).pathname)) c.n += 1;
+  });
+  return c;
 }
 
 /**

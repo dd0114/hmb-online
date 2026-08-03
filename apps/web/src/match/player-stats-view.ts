@@ -395,4 +395,33 @@ export function motmKeyFor(result: PlayerStatsResult | null, win: StatsWindow): 
   return result.motm?.key ?? null;
 }
 
+/**
+ * **MOTM 한 줄이 가리킬 행** — 지금 고른 세그먼트와 무관하게 **양 팀에서** 찾는다 (#403 W4).
+ *
+ * 상대가 MOTM 인 경기가 실제로 있고(라이브 표본이 그렇다), 그때 이 줄이 비면 화면이 *"우리 중
+ * 최고"* 라는 **다른 뜻**을 말한다.
+ *
+ * ⚠️ **화면이 아니라 여기 있는 이유** = 계약이 잴 수 있는 자리로 옮긴 것이다(R1, 독립검증
+ * minor-1). 이 탐색이 `ResultPanel` 안에 있는 동안 *"`home` 항을 떨어뜨린다"* 는 변이가
+ * **살아남았다** — 리포의 e2e 표본에서 MOTM 은 **언제나 away 사이드**라서다. 그건 픽스처를
+ * 잘못 고른 것이 아니라 **구조적**이다: 평점이 10.0 에서 포화해 동점자가 여럿이고
+ * (`docs/plan-v5/player-stats.md` §7 "남은 것"), `pickMotm` 의 마지막 tie-break 가 **키 오름차순**
+ * 이라 `away:*` 가 `home:*` 를 항상 이긴다. 즉 **실로그를 어떻게 relabel 해도 home MOTM 표본은
+ * 안 나온다**(팀 라벨을 통째로 뒤집어도 tie-break 가 다시 away 를 고른다).
+ * 그래서 표본을 순수 계층에 만든다 — `player-stats-view.test.ts` 가 home/away 양쪽 MOTM 을
+ * 직접 먹여 이 함수를 잰다.
+ */
+export function motmRowOf(
+  result: PlayerStatsResult | null,
+  roster: ReadonlyMap<string, RosterMeta>,
+  motmKey: string | null,
+): PlayerRow | null {
+  if (!result || motmKey == null) return null;
+  for (const team of ["home", "away"] as const) {
+    const row = rowsFor(result, team, roster).find((r) => r.key === motmKey);
+    if (row) return row;
+  }
+  return null;
+}
+
 export { playerKey };

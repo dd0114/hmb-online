@@ -16,6 +16,7 @@ import {
   currentHalfSettled,
   isMotmKey,
   motmKeyFor,
+  motmRowOf,
   passIncomplete,
   passPctLabel,
   positionsOf,
@@ -436,5 +437,46 @@ describe("motmKeyFor — 확정된 경기에만 MOTM 이 있다", () => {
 
   it("집계가 없으면 null — 화면이 빈 줄을 그리지 않게", () => {
     expect(motmKeyFor(null, statsWindow("FINISHED", 2000, 90))).toBeNull();
+  });
+});
+
+/**
+ * ⚠️ **이 계약의 표본이 e2e 에 있을 수 없다** (#403 W4 R1, 독립검증 minor-1).
+ *
+ * 결과 탭이 MOTM 줄을 그릴 때 **양 팀에서** 찾는데, *"`home` 항을 떨어뜨린다"* 는 변이가
+ * **살아남았다**(`away` 항은 KILLED). 원인은 픽스처 선택이 아니라 **구조**다:
+ * 실표본은 평점이 10.0 에서 포화해 동점자가 여럿이고(`docs/plan-v5/player-stats.md` §7),
+ * `pickMotm` 의 마지막 tie-break 가 **키 오름차순**이라 `away:*` 가 `home:*` 를 언제나 이긴다
+ * — 즉 로그의 팀 라벨을 통째로 뒤집어도 MOTM 은 다시 away 로 간다(**MOTM 이 home 사이드인
+ * 실로그 표본은 만들 수 없다**).
+ *
+ * 그래서 표본을 **순수 계층**에 만든다. e2e 는 계속 실로그(away MOTM)를 잰다.
+ */
+describe("motmRowOf — MOTM 은 지금 고른 팀과 무관하게 양 팀에서 찾는다", () => {
+  const log = makeLog();
+  const roster = buildRosterMeta(log, CATALOG);
+  const result = computePlayerStats(log, { gkKeys: new Set<string>(), positions: {} });
+
+  it("**home 사이드** MOTM 을 찾는다 (away 만 뒤지면 줄이 사라진다)", () => {
+    // 전제 — 이 키가 실제로 home 표에 있다(없으면 아래 단언이 공허해진다).
+    expect(rowsFor(result, "home", roster).some((r) => r.key === "home:P2")).toBe(true);
+    const row = motmRowOf(result, roster, "home:P2");
+    expect(row, "home 사이드 MOTM 을 못 찾았다").not.toBeNull();
+    expect(row!.team).toBe("home");
+    expect(row!.playerId).toBe("P2");
+    expect(row!.name).toBe("정태우"); // 로스터 메타까지 실린 행이다(키만 돌려주는 게 아니다)
+  });
+
+  it("**away 사이드** MOTM 도 찾는다 — 같은 id 가 양 팀에 있어도 안 섞인다(#231)", () => {
+    const row = motmRowOf(result, roster, "away:P9");
+    expect(row).not.toBeNull();
+    expect(row!.team).toBe("away");
+    expect(row!.playerId).toBe("P9");
+  });
+
+  it("키가 표에 없으면 null — 유령 MOTM 줄을 그리지 않는다", () => {
+    expect(motmRowOf(result, roster, "home:P404")).toBeNull();
+    expect(motmRowOf(result, roster, null)).toBeNull();
+    expect(motmRowOf(null, roster, "home:P2")).toBeNull();
   });
 });

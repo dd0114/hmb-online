@@ -1,5 +1,7 @@
+import { useState } from "react";
 import {
   coverageLabel,
+  defaultSegment,
   passIncomplete,
   passPctLabel,
   ratingTier,
@@ -32,6 +34,32 @@ import styles from "./stage/panels.module.css";
  */
 
 // ── 팀 세그먼트 ──────────────────────────────────────────────────────────
+
+/**
+ * 지금 고른 팀 — **`myTeamSide` 가 늦게 와도 따라간다** (#403 W4 R1, 독립검증 major-1).
+ *
+ * 두 패널 다 `useState(() => defaultSegment(myTeamSide))` 였다. `useState` 초기화 함수는
+ * **마운트 때 한 번만** 돌고, `myTeamSide` 는 `useMe()`(=`GET /api/me`) 산출인데 `RequireAuth` 는
+ * **토큰만** 보므로 그 응답을 기다리지 않는다 — `/api/matches/:id` 가 먼저 도착하면 패널이
+ * `myTeamSide = null` 로 마운트돼 **`"home"` 에 굳는다**. 어웨이 라운드에서는 화면이
+ * `축구왕여르 [내 팀]` 칩을 달아 놓고 **상대 팀 표**를 여는 상태가 된다.
+ * 실측 지연 스윕(수정 전 코드, `chip`/`selected`): `0ms away/away` · **`20ms 부터 away/home`**
+ * (20·40·80·150·300 전부 불일치) — 수정 후에는 여섯 지연 전부 `away/away`.
+ *
+ * ⚠️ **늦게 온 값이 유저 조작을 덮으면 그게 더 나쁜 버그다.** 그래서 effect 로 되돌리지 않고
+ * *"유저가 아직 안 골랐으면 `myTeamSide` 를 따르고, 골랐으면 그 선택이 영구히 이긴다"* 로 만든다
+ * (`picked` 가 곧 "유저가 만졌다"는 신호다 — 별도 플래그를 두면 두 상태가 갈린다).
+ *
+ * ⚠️ **한 곳에 둔 이유**: 선수 탭(W2)과 결과 탭(W4)이 같은 결함을 두 벌로 갖고 있었다. 선수 탭은
+ * 유저가 눌러야 마운트돼 지금은 안 걸리지만 **같은 잠복**이다 — 사본을 두면 한쪽만 낡는다
+ * (`ChoiceCards.tsx` 머리말).
+ */
+export function useTeamSegment(
+  myTeamSide: "home" | "away" | null | undefined,
+): [TeamSide, (side: TeamSide) => void] {
+  const [picked, setPicked] = useState<TeamSide | null>(null);
+  return [picked ?? defaultSegment(myTeamSide), setPicked];
+}
 
 export interface PlayerTeamSegmentsProps {
   /** `teamSegments(names, myTeamSide)` 산출 — **순서는 홈 먼저**(#322 안 C). */

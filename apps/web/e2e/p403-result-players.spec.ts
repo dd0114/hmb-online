@@ -7,7 +7,10 @@ import {
   PHONE,
   authInit,
   box,
+  countRequests,
   mockApi,
+  mockGrowthReport,
+  mockHalfLogError,
   mockNoLogMatch,
   mockPastLogs,
   open,
@@ -36,12 +39,40 @@ test.use({ viewport: PHONE, hasTouch: true });
 const MY_TEAM = "away" as const; // 픽스처는 어웨이 라운드(#322) — `home = 나` 가 아니다.
 const OPP_TEAM = "home" as const;
 
+interface OpenOpts {
+  /** 성장 리포트가 **실제로 렌더되는** 목을 얹는다 — 기본 목의 `{}` 는 섹션을 통째로 없앤다. */
+  growth?: boolean;
+  /** `GET /api/me` 지연(ms). `myTeamSide` 가 늦게 오는 실제 순서를 만든다(major-1). */
+  meDelayMs?: number;
+}
+
 /** 결과 탭을 연다(종료 상태의 기본 탭이지만 **명시적으로** 고른다 — 기본이 바뀌어도 이 계약이 산다). */
-async function openResult(page: Page) {
-  await open(page, "FINISHED");
+async function openResult(page: Page, opts: OpenOpts = {}) {
+  if (opts.growth || opts.meDelayMs) {
+    // 목을 사이에 끼워야 해서 `open()` 을 풀어 쓴다(등록 순서: catch-all → 세부, 나중이 이긴다).
+    await mockApi(page, "FINISHED", "away-fixture", { meDelayMs: opts.meDelayMs ?? 0 });
+    if (opts.growth) await mockGrowthReport(page);
+    await authInit(page);
+    await page.goto(`/match/${MATCH_ID}`);
+    await expect(page.getByTestId("stage-shell")).toBeVisible();
+  } else {
+    await open(page, "FINISHED");
+  }
   await page.getByTestId("stage-tab-result").click();
   await expect(page.getByTestId("result-page")).toHaveCount(1);
   await expect(page.getByTestId("result-players")).toHaveCount(1);
+}
+
+/** 지금 `내 팀` 칩이 달린 세그먼트 / 지금 선택된 세그먼트 — **화면이 말하는 값만** 읽는다. */
+function segmentState(page: Page): Promise<{ mine: string | null; selected: string | null }> {
+  return page.evaluate(() => {
+    const btns = [...document.querySelectorAll('[data-testid="players-teams"] button')];
+    const sideOf = (el: Element | undefined) => el?.getAttribute("data-side") ?? null;
+    return {
+      mine: sideOf(btns.find((b) => b.querySelector('[data-testid^="players-my-team-"]'))),
+      selected: sideOf(btns.find((b) => b.getAttribute("data-selected") === "true")),
+    };
+  });
 }
 
 /** 그 팀 표의 `(playerId, 평점)` 전부 — 두 화면이 **같은 것을 말하나**를 재는 자[尺]. */
@@ -74,14 +105,20 @@ test.describe("① 결과 탭 — MOTM + 양팀 개인 성적 (목업 ⑤)", () 
    * 계약과도 얽힌다 — `p348-desktop-viewport` ⑥ 이 *"결과 카드 아래 **팀 스탯의 시작**이 보인다"*
    * 를 재므로, 개인 성적이 팀 스탯 **앞**으로 올라가면 그 계약이 재는 대상이 조용히 바뀐다.
    */
+  /**
+   * ⚠️ **`if (count > 0)` 로 감싸면 안 된다** (R1 — 독립검증 minor-6a). 기본 목은
+   * `/api/growth/report/*` 를 `{}` 로 흘리고 `GrowthReportSection` 은 `entries.length === 0` 이면
+   * **null 을 돌려준다** → 섹션이 DOM 에 없다 → 그 `if` 블록이 **한 번도 실행되지 않는다**.
+   * 실제로 이 단언을 `<GrowthReportSection>` **뒤로 옮기는 변이가 SURVIVED** 했다.
+   * 이제 성장 리포트가 실제로 뜨는 목(`mockGrowthReport`)을 주고 **존재를 단언한 뒤** 순서를 잰다.
+   */
   test("자리 = 팀 스탯 뒤 · 성장 리포트 앞", async ({ page }) => {
-    await openResult(page);
+    await openResult(page, { growth: true });
     await expect(page.getByTestId("team-stats")).toHaveCount(1);
     expect(await precedes(page, "team-stats", "result-players"), "개인 성적이 팀 스탯보다 앞에 있다").toBe(true);
-    // 성장 리포트는 서버 응답이 있어야 뜬다 — 없으면 이 단언이 공허해지므로 존재부터 확인한다.
-    if ((await page.getByTestId("growth-report").count()) > 0) {
-      expect(await precedes(page, "result-players", "growth-report"), "개인 성적이 성장 리포트보다 뒤에 있다").toBe(true);
-    }
+    // 양성 앵커 — 성장 리포트가 **실제로 그려졌다**(이게 없으면 아래 순서 단언이 공허해진다).
+    await expect(page.getByTestId("growth-report"), "성장 리포트가 안 떴다 — 목이 낡았다").toHaveCount(1);
+    expect(await precedes(page, "result-players", "growth-report"), "개인 성적이 성장 리포트보다 뒤에 있다").toBe(true);
     // 그리고 스크롤 밖 CTA 는 여전히 맨 마지막이다(#355 두 층).
     expect(await precedes(page, "result-players", "to-lobby")).toBe(true);
   });
@@ -180,6 +217,33 @@ test.describe("① 결과 탭 — MOTM + 양팀 개인 성적 (목업 ⑤)", () 
     await row.click();
     await expect(page.getByTestId("player-detail")).toHaveCount(0);
   });
+
+  /**
+   * ⚠️ **손잡이처럼 보이는 것도 손잡이다** (R1 — 독립검증 minor-5).
+   *
+   * 위 계약이 "눌러도 아무 일 없다"를 지키는 동안 `.plistRow { cursor: pointer }` 가 무조건이라
+   * 결과 탭 행에도 손가락 커서가 붙어 있었다(실측 `{"cursor":"pointer","role":null,"tabIndex":-1}`).
+   * 어포던스만 남기는 건 "만져도 아무 데도 안 가는 손잡이"를 안 남긴다는 규율과 어긋난다.
+   *
+   * ⚠️ **선수 탭이 양성 앵커다** — 거기서는 실제로 눌린다. 한쪽만 재면 CSS 를 통째로 지워도 통과한다.
+   */
+  test("커서 어포던스도 갈린다 — 결과 탭은 기본, 선수 탭(진짜 눌린다)은 pointer", async ({ page }) => {
+    const cursorOf = (testId: string) =>
+      page.evaluate(
+        (id) => getComputedStyle(document.querySelector(`[data-testid="${id}"]`)!).cursor,
+        testId,
+      );
+
+    await openResult(page);
+    expect(await cursorOf(`players-row-${MY_TEAM}-P014`), "결과 탭 행이 눌리는 척한다").not.toBe("pointer");
+
+    await page.getByTestId("stage-tab-players").click();
+    await expect(page.getByTestId("stage-panel-players")).toHaveCount(1);
+    expect(
+      await cursorOf(`players-row-${MY_TEAM}-P014`),
+      "선수 탭 행은 진짜 눌리는데 커서가 안 붙었다(= 위 단언이 공허해진다)",
+    ).toBe("pointer");
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════════════
@@ -227,6 +291,49 @@ test.describe("③ 팀 세그먼트 — 순서는 홈 먼저, 표식·기본 선
     await expect(page.getByTestId(`players-my-team-${OPP_TEAM}`)).toHaveCount(0);
     // 기본 선택도 내 팀.
     await expect(page.getByTestId(`players-team-${MY_TEAM}`)).toHaveAttribute("data-selected", "true");
+  });
+
+  /**
+   * ⚠️ **`/api/me` 가 늦으면 화면이 자기 칩과 다른 표를 열었다** (R1 — 독립검증 major-1).
+   *
+   * `myTeamSide` 는 `useMe()` 산출인데 `App.tsx RequireAuth` 는 **토큰만** 보므로 그 응답을
+   * 기다리지 않는다 → `/api/matches/:id` 가 먼저 오면 패널이 `null` 로 마운트되고,
+   * `useState(() => defaultSegment(...))` 는 **마운트 때 한 번만** 돌아 `"home"` 에 굳었다.
+   * 어웨이 라운드에서는 `축구왕여르 [내 팀]` 칩을 달아 놓고 **Thunder Bay United 표**를 여는 상태다.
+   * 직접 잰 스윕(수정 전 코드): `0ms` 만 일치, **`20ms` 부터 300ms 까지 전부 불일치** —
+   * 그래서 지연을 넉넉히 준다(하한에 붙여 재면 머신 부하에 따라 플래키해진다).
+   *
+   * 계약은 **값이 아니라 관계**다: *"선택된 세그먼트 == `내 팀` 칩이 달린 세그먼트"*.
+   * 픽스처를 홈 라운드로 바꿔도, 기본값 규칙을 바꿔도 이 성질은 그대로여야 한다.
+   */
+  test("`/api/me` 가 늦게 와도 선택 = `내 팀` 칩이 달린 세그먼트 (지연 300ms)", async ({ page }) => {
+    await openResult(page, { meDelayMs: 300 });
+    // 칩이 도착할 때까지 기다린다 — 도착 전 상태를 재면 이 계약이 다른 것을 잰다.
+    await expect(page.getByTestId(`players-my-team-${MY_TEAM}`)).toHaveCount(1);
+    await expect
+      .poll(async () => JSON.stringify(await segmentState(page)), {
+        message: "늦게 온 myTeamSide 를 세그먼트가 안 따라갔다",
+      })
+      .toBe(JSON.stringify({ mine: MY_TEAM, selected: MY_TEAM }));
+    // 표까지 따라왔나 — 선택 표시만 옮기고 행은 상대 것인 구현을 통과시키지 않는다.
+    await expect(page.getByTestId(`players-row-${MY_TEAM}-P014`)).toHaveCount(1);
+    await expect(page.getByTestId(`players-row-${OPP_TEAM}-P116`)).toHaveCount(0);
+  });
+
+  /**
+   * ⚠️ **반대 방향이 더 나쁜 버그다** — 늦게 온 데이터가 유저 조작을 덮으면 유저가 방금 고른 팀이
+   * 눈앞에서 바뀐다. 유저가 만졌으면 그 선택이 이긴다(칩과 선택이 **달라지는 것이 정답**인 유일한 자리).
+   */
+  test("`/api/me` 도착 전에 유저가 고르면 그 선택이 이긴다", async ({ page }) => {
+    await openResult(page, { meDelayMs: 600 });
+    // 아직 칩이 없다 = myTeamSide 미도착(전제).
+    await expect(page.getByTestId("players-teams").locator("[data-testid^='players-my-team-']")).toHaveCount(0);
+    await page.getByTestId(`players-team-${OPP_TEAM}`).click();
+
+    await expect(page.getByTestId(`players-my-team-${MY_TEAM}`)).toHaveCount(1); // 이제 도착
+    const s = await segmentState(page);
+    expect(s, "늦게 온 myTeamSide 가 유저 선택을 덮었다").toEqual({ mine: MY_TEAM, selected: OPP_TEAM });
+    await expect(page.getByTestId(`players-row-${OPP_TEAM}-P116`)).toHaveCount(1);
   });
 
   test("상대로 바꾸면 상대 행이 나온다 — 결정 ②(상대도 완전히 동일)", async ({ page }) => {
@@ -315,6 +422,31 @@ test.describe("⑤ 로그 없는 과거 경기 — 정직한 빈 상태", () => 
     await expect(page.getByTestId("final-score")).toHaveCount(1);
     expect((await box(page, "to-lobby")).inViewport).toBe(true);
   });
+
+  /**
+   * ⚠️ **반대 방향** — 진짜 오류(500)를 "기록 없음"으로 덮으면 **있는 기록을 없다고 말한다**
+   * (R1 — 독립검증 minor-2). `usePlayerStats.logMissing` 의 `error.status === 404` 를 지우고
+   * `curEnabled && isError` 로 바꾸는 변이가 **SURVIVED** 했다 — `result-players-error` 를 양성으로
+   * 확인하는 단언이 리포 전체에 **0건**이었기 때문이다(404 → 오류 방향만 이미 걸려 있었다).
+   *
+   * 두 문구는 유저에게 **다른 행동**을 시킨다: 오류는 다시 시도할 수 있고, 기록 없음은 영영 없다.
+   */
+  test("500 이면 '불러오지 못했습니다' — '기록 없음' 으로 덮지 않는다", async ({ page }) => {
+    await mockApi(page, "FINISHED");
+    await mockHalfLogError(page, 500);
+    await authInit(page);
+    await page.goto(`/match/${MATCH_ID}`);
+    await expect(page.getByTestId("stage-shell")).toBeVisible();
+    await page.getByTestId("stage-tab-result").click();
+
+    await expect(page.getByTestId("result-players")).toHaveCount(1); // 섹션 자체는 있다(앵커)
+    await expect(page.getByTestId("result-players-error")).toHaveCount(1);
+    await expect(page.getByTestId("result-players-error")).toContainText("불러오지 못했습니다");
+    // ⚠️ 이게 이 계약의 핵심 — 500 을 "기록이 남아 있지 않습니다" 로 말하면 안 된다.
+    await expect(page.getByTestId("result-players-missing")).toHaveCount(0);
+    await expect(page.getByTestId("players-table")).toHaveCount(0);
+    await expect(page.getByTestId("result-motm")).toHaveCount(0);
+  });
 });
 
 // ══════════════════════════════════════════════════════════════════════════════════════
@@ -382,40 +514,75 @@ test.describe("⑦ 폰 390×844 — 넘치지 않고 CTA 도 그대로다", () =
   });
 
   /**
-   * 탭 이월 스크롤 — 결과↔선수 **양방향**. `key={activeTab}` 한 줄이 지키는 성질이고,
-   * W2·W3 둘 다 계약이 green 인데 캡처에서만 보였던 부류다(그래서 양방향으로 잰다).
+   * ⚠️ **여기 있던 "탭 이월 스크롤 양방향" 단언은 공허했다** (R1 — 독립검증 minor-6b).
+   *
+   * 결과 탭은 `panelFlush`(바깥 `overflow:hidden`)라 **바깥 스크롤러의 `scrollTop` 이 애초에 0**
+   * 이고, 되돌아올 때 `result-scroll` 은 조건부 렌더라 **어차피 새 노드**다 — 그래서
+   * `key={activeTab}`(`StageShell`)을 **제거해도 SURVIVED** 했다(0 == 0 을 두 번 잰 셈).
+   * 그 성질을 실제로 지키는 계약은 `p403-player-tab.spec.ts` "로그를 보다 넘어와도 맨 위에서
+   * 열린다" **하나뿐**이고(로그 패널이 자기 마지막 줄로 스크롤해 둔 상태가 전제다), R1 에서
+   * `key` 제거 변이로 그쪽이 **KILLED** 되는 것을 확인했다. 그래서 여기서는 **지우고**,
+   * 이 화면에서 실제로 이월이 가능한 축 — **결과 탭 안의 세그먼트 전환** — 으로 재조준한다.
+   *
+   * ⚠️ 양성 앵커(`before > 8`)가 없으면 이 계약도 다시 0 == 0 이 된다.
    */
-  test("탭을 오가면 항상 맨 위에서 열린다 (결과↔선수 양방향)", async ({ page }) => {
-    await openResult(page);
+  test("세그먼트를 바꿔도 읽던 자리를 잃지 않는다 (결과 탭 내부 · 양성 앵커)", async ({ page }) => {
+    await openResult(page, { growth: true }); // 성장 리포트까지 붙여 스크롤 여유를 확보한다
     const scrollTop = () =>
       page.evaluate(() => {
         const el = document.querySelector('[data-testid="result-scroll"]') as HTMLElement | null;
         return el?.scrollTop ?? -1;
       });
-    // 결과 패널을 끝까지 내린 뒤 선수 탭으로 → 선수 탭은 0 에서 시작한다.
-    await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="result-scroll"]') as HTMLElement | null;
-      if (el) el.scrollTop = el.scrollHeight;
-    });
+
+    // 개인 성적이 화면에 오도록 내린다.
+    await page.getByTestId("result-players").scrollIntoViewIfNeeded();
     await page.waitForTimeout(120);
-    expect(await scrollTop(), "결과 패널에 스크롤 여유가 없다 — 이 계약이 공허해진다").toBeGreaterThan(8);
+    const before = await scrollTop();
+    expect(before, "결과 패널에 스크롤 여유가 없다 — 이 계약이 공허해진다").toBeGreaterThan(8);
+
+    await page.getByTestId(`players-team-${OPP_TEAM}`).click();
+    await expect(page.getByTestId(`players-team-${OPP_TEAM}`)).toHaveAttribute("data-selected", "true");
+    await page.waitForTimeout(120);
+    const after = await scrollTop();
+    expect(after, `세그먼트를 바꾸자 스크롤이 맨 위로 튕겼다(${before} → ${after})`).toBeGreaterThan(8);
+    // 그리고 표는 여전히 화면 안이다(= 자리를 지켰다는 것이 눈에도 보인다).
+    expect((await box(page, "players-teams")).hitSelf).toBe(true);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════════════════════════
+/**
+ * ⑧ **게이트 합성** — `needsPlayerStats(activeTab)` → `useMatchPlayerStats(enabled)` (R1, minor-3).
+ *
+ * `stage-state.test.ts` 는 술어를, `usePlayerStats.test.ts` 는 훅을 각각 본다. **둘의 합성**은
+ * 아무도 안 봤고, 그래서 `needsPlayerStats(activeTab)` → `true` 변이가 **SURVIVED** 했다.
+ * 현재 동작은 옳다(W2 MAJ-1 이 살던 자리이므로 회귀 위험만 남은 축이다).
+ *
+ * ⚠️ **출하 코드에 계측을 남기지 않는다** — 검증자는 `computePlayerStats` 에 카운터를 주입했지만
+ * 그건 소스를 건드리는 방법이다. 대신 **그 게이트가 켜져야만 나가는 요청**을 센다:
+ * `usePlayerStats` 의 `priorEnabled = enabled && half === 2 && …` 가 **전반 로그**를 부르는데,
+ * 셸(`StageShell`)은 지금 재생 중인 하프(=후반)만 받으므로 **후반 관전 중 `/halves/1/log` 는
+ * 선수 기록 집계가 켜졌다는 것의 유일한 외부 신호**다.
+ *
+ * ⚠️ 그래서 상태는 `SECOND_HALF` 여야 한다 — `FINISHED` 는 기본 탭이 이미 `result`(=켜짐)라
+ * "꺼져 있는 상태"를 만들 수 없다.
+ */
+test.describe("⑧ 집계는 보는 탭에서만 켜진다 (게이트 합성)", () => {
+  const H1 = /\/api\/matches\/.+\/halves\/1\/log$/;
+
+  test("로그 탭에서는 전반 로그를 안 부르고, 선수 탭으로 가면 부른다", async ({ page }) => {
+    const c = countRequests(page, H1);
+    await open(page, "SECOND_HALF");
+    // 기본 탭 = 로그(#284). 패널이 실제로 떴는지부터 확인한다(전제).
+    await expect(page.getByTestId("stage-panel-log")).toHaveCount(1);
+    await page.waitForTimeout(600); // 늦게 나가는 요청까지 잡을 여유
+    expect(c.n, `로그 탭인데 전반 로그를 ${c.n}회 불렀다 = 아무도 안 보는데 집계가 돈다`).toBe(0);
 
     await page.getByTestId("stage-tab-players").click();
     await expect(page.getByTestId("stage-panel-players")).toHaveCount(1);
-    const afterTab = await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="stage-panel-players"]')?.parentElement ?? null;
-      return (el as HTMLElement | null)?.scrollTop ?? -1;
-    });
-    expect(afterTab, "선수 탭이 앞 탭의 스크롤을 물고 열렸다").toBeLessThanOrEqual(1);
-
-    // 반대 방향 — 선수 탭을 내린 뒤 결과 탭으로.
-    await page.evaluate(() => {
-      const el = document.querySelector('[data-testid="stage-panel-players"]')?.parentElement as HTMLElement | null;
-      if (el) el.scrollTop = el.scrollHeight;
-    });
-    await page.waitForTimeout(120);
-    await page.getByTestId("stage-tab-result").click();
-    await expect(page.getByTestId("result-page")).toHaveCount(1);
-    expect(await scrollTop(), "결과 탭이 앞 탭의 스크롤을 물고 열렸다").toBeLessThanOrEqual(1);
+    // 양성 앵커 — 게이트가 켜지면 실제로 나간다(0 == 0 을 재고 끝나지 않게).
+    await expect.poll(() => c.n, { message: "선수 탭인데 전반 로그를 안 불렀다" }).toBeGreaterThan(0);
+    // 그리고 그 표는 **경기 진행분**이다(전반 골이 실려 있다 = 합쳤다는 증거).
+    await expect(page.getByTestId(`players-goals-${MY_TEAM}-P034`)).toHaveText("1");
   });
 });
