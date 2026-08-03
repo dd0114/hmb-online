@@ -22,8 +22,22 @@ import { readFileSync } from "node:fs";
  */
 
 const MATCH_ID = "m-p421hl";
+/**
+ * **커밋된 자체 픽스처**를 읽는다 — 크로스 패키지 생성물이 아니다(W8, 독립검증 blocker).
+ *
+ * 원래는 `packages/engine/dev-viewer/match-log.json` 을 읽었다. 그건 **gitignore 생성물**이고
+ * `npm test` 의 `generate-demo.test.ts` 가 **그때의 엔진으로** 다시 굽는다 — 그래서 결함이 두
+ * 방향으로 났다: ①엔진이 움직이면(main 리베이스) 장면 틱이 통째로 바뀌어 이 spec 이 결정론적으로
+ * 빨개진다(실제로 구 `S2 = 1238` 의 `goal` 이 소멸했다) ②반대로 디스크에 **낡은 로그**가 남아
+ * 있으면 그대로 초록이라, 결과가 "직전에 `npm test` 를 돌렸는가"에 의존했다
+ * (`apps/web/playwright.config.ts` 에는 `globalSetup` 이 없어 신선도를 보장할 주체가 없다).
+ *
+ * 픽스처를 커밋해 그 커플링을 끊었다(선례 = `p322-half1/2.json`). 내용은 **실엔진 산출물 그대로**고
+ * 출처·재생성법·시드 선정 근거는 `apps/web/scripts/gen-p421-fixture.ts` 머리말이 SoT 다.
+ * ⚠️ 재생성은 `HMB_GEN_P421=1` 이 붙을 때만 일어난다 — 게이트가 조용히 덮어쓰면 원상복귀다.
+ */
 const DEMO = JSON.parse(
-  readFileSync(new URL("../../../packages/engine/dev-viewer/match-log.json", import.meta.url).pathname, "utf8"),
+  readFileSync(new URL("./fixtures/p421-highlight.json", import.meta.url).pathname, "utf8"),
 ) as {
   tickSnapshots: { tick: number }[];
   events: { tick: number; type: string; detail?: string; team?: string; playerId?: string }[];
@@ -60,29 +74,30 @@ function sceneShapeAt(
 /**
  * 남겨 둘 장면 두 개 — **멀리 떨어져 있어야** "건너뛰었다"가 자연 재생과 구분된다(아래 신선도 계약).
  *
- * ⚠️ **엔진이 움직이면 이 두 값을 다시 고른다**(시드 재선정 — 루트 CLAUDE.md 가 반복해 기록한 유형).
- * 데모 로그는 gitignore 생성물이고 `npm test` 의 `generate-demo.test.ts` 가 **현재 엔진으로** 다시
- * 굽는다. main 이 `packages/engine` 을 옮기면(#407 볼륨 재보정 + 골든 이동) 장면 틱이 통째로 바뀐다 —
- * 실제로 구 값 `799`/`1220` 은 engine@0.41.0-showcase 에 **존재하지 않는다**.
+ * 픽스처가 커밋되면서(위 `DEMO` 주석) 이 두 상수는 **엔진 리베이스에 흔들리지 않는다** — 파일이
+ * 바뀌는 유일한 경로는 `HMB_GEN_P421=1` 재생성이고, 그건 사람이 의도해서 하는 행위다.
+ * 그래서 아래 계약이 재는 것도 *"생성물이 낡았나"* 가 아니라 **"커밋된 픽스처가 이 spec 의 전제를
+ * 여전히 만족하나"** 로 바뀌었다. 재생성 후 이 상수가 빨개지면 그건 고장이 아니라 **표본을 다시
+ * 고르라는 신호**다(선정 조건 = `apps/web/scripts/gen-p421-fixture.ts` "시드 선정").
  *
- * ⚠️ 그때 이 스펙은 **조용히 초록이 되지 않는다** — `reelLog()` 가 "남길 틱"을 못 찾아 장면을 전부
- * 지우고, 그러면 d2·f·h 같은 계약이 **공허하게 통과**한다. 그걸 막는 것이 아래 신선도 계약이고,
- * 실제로 그것이 이 재선정을 잡았다(리베이스 직후 `장면 == []`).
+ * ⚠️ 이 계약이 없으면 표본이 어긋나도 **조용히 초록**이 된다 — `reelLog()` 가 "남길 틱"을 못 찾아
+ * 장면을 전부 지우고, 그러면 d2·f·h 같은 계약이 **공허하게 통과**한다. 실제로 그 상태를 한 번
+ * 잡았다(리베이스 직후 `장면 == []`).
  *
  * 고르는 기준(= 신선도 계약이 그대로 단언한다): `S1 > 720` · `S2 − S1 > 320` · `S2 + 100 < TICKS`
  * **그리고 모양** — S1 은 `shot:saved + save`(같은 틱), S2 는 `goal`.
- * ⚠️ 모양은 한때 여기 주석으로만 있었다(W6 에서 계약으로 승격) — 재생성에서 둘이 뒤바뀌어도
- * 옛 계약은 그대로 초록이었다.
+ * ⚠️ 모양은 한때 여기 주석으로만 있었다(W6 에서 계약으로 승격) — 표본이 뒤바뀌어도(선방 표본이
+ * 골이 되거나 그 반대) 옛 계약은 그대로 초록이었다.
  */
-const S1 = 764; // shot:saved + save (같은 틱)
-const S2 = 1238; // goal
+const S1 = 784; // shot:saved + save (같은 틱)
+const S2 = 1245; // goal
 
 /**
  * 데모 로그에서 **그 둘만 장면으로 남긴** 로그. 나머지 장면 이벤트는 지운다.
  *
- * 왜 이렇게까지 하나: 원본 데모 로그는 장면이 21개라 서로 30~150틱 간격이다. 그 간격은 자연 재생
+ * 왜 이렇게까지 하나: 원본 픽스처는 장면이 22개라 서로 20~150틱 간격이다. 그 간격은 자연 재생
  * (크루즈 4x ≈ 8틱/초)으로도 몇 초면 지나가서, "시퀀서가 건너뛴 것"과 "그냥 재생된 것"을 **구분할 수
- * 없다** — 그런 계약은 시퀀서를 통째로 지워도 통과한다. 764 → 1238 은 자연 재생으로 **50초 이상**이라
+ * 없다** — 그런 계약은 시퀀서를 통째로 지워도 통과한다. 784 → 1245 는 자연 재생으로 **57초 이상**이라
  * 테스트 창(≤20초) 안에 도달하면 그건 점프뿐이다.
  */
 function reelLog(offsetTick = 0) {
@@ -253,7 +268,7 @@ function liveBound(elapsedFrac: number, testWindowMs: number): number {
 test.use({ viewport: { width: 390, height: 844 } });
 
 test.describe("#421 W4 하이라이트 순서 재생", () => {
-  test("픽스처 신선도 — 두 장면이 자연 재생으로는 못 건너올 만큼 떨어져 있어야 계약이 성립한다", () => {
+  test("픽스처 전제 — 두 장면이 자연 재생으로는 못 건너올 만큼 떨어져 있어야 계약이 성립한다", () => {
     const events = reelLog().events;
     const scenes = sceneTicksOf(events);
     expect(scenes, "남긴 장면은 정확히 둘이어야 한다").toEqual([S1, S2]);
@@ -269,9 +284,9 @@ test.describe("#421 W4 하이라이트 순서 재생", () => {
      * 같은 부류가 되거나 뒤바뀌면 이 스펙이 재는 대상 자체가 달라진다.
      *
      * ⚠️ **일부러 위 숫자 단언들 뒤에 둔다** — 변이가 앞줄에서 먼저 죽으면 "옛 계약이 눈이 멀었다"가
-     * 증명되지 않는다(apps/web CLAUDE.md 가 반복 경고하는 형태). 변이 `S1=831`(goal) ·
-     * `S2=1176`(save+shot:saved) 는 데모 로그에 실재하는 틱이라 **위 다섯 줄을 전부 통과**하고
-     * 아래 두 줄에서만 죽는다(실측 확인).
+     * 증명되지 않는다(apps/web CLAUDE.md 가 반복 경고하는 형태). 변이 `S1=876`(goal) ·
+     * `S2=1287`(save+shot:saved) 는 이 픽스처에 실재하는 틱이라 **위 다섯 줄을 전부 통과**하고
+     * 아래 두 줄에서만 죽는다(실측 확인 — W8 에서 새 픽스처로 재확인).
      */
     expect(sceneShapeAt(events, S1), "S1 = 같은 틱의 shot:saved + save").toEqual([
       "save",
@@ -285,14 +300,14 @@ test.describe("#421 W4 하이라이트 순서 재생", () => {
 
     await expect(toggle(page)).toHaveAttribute("data-highlight", "on");
 
-    // #1 — 자연 재생이면 여기 오는 데 100초가 걸린다(위 신선도). 15초 안에 왔다 = 점프했다.
+    // #1 — 자연 재생이면 여기 오는 데 98초가 걸린다(위 픽스처 전제). 15초 안에 왔다 = 점프했다.
     await expect
       .poll(() => playhead(page), { message: "하이라이트 #1 로 바로 들어가야 한다", timeout: 15_000 })
       .toBeGreaterThan(S1 - 20);
     expect(await playhead(page), "장면을 지나쳐 버리면 안 된다").toBeLessThan(S1 + 40);
     await expect(page.getByTestId("highlight-status")).toContainText("#1");
 
-    // #2 — 사이 421틱(≈50초)을 건너뛴다.
+    // #2 — 사이 461틱(≈58초)을 건너뛴다.
     await expect
       .poll(() => playhead(page), { message: "다음 장면으로 이어져야 한다", timeout: 20_000 })
       .toBeGreaterThan(S2 - 20);
@@ -325,7 +340,7 @@ test.describe("#421 W4 하이라이트 순서 재생", () => {
   });
 
   test("d·e. 라이브 후반 — 상한 밖 장면으로 뛰지 않고, 따라잡으면 라이브를 이어 재생한다", async ({ page }) => {
-    // 후반 10% 경과 = 상한 ≈ 144틱. 두 장면(764·1238)은 **아직 미래**다.
+    // 후반 10% 경과 = 상한 ≈ 144틱. 두 장면(784·1245)은 **아직 미래**다.
     await openMatch(page, {
       state: "SECOND_HALF",
       clock: clockFor("SECOND_HALF", 0.1),
@@ -346,7 +361,7 @@ test.describe("#421 W4 하이라이트 순서 재생", () => {
     const ticks = (await allSamples(page)).map((t) => t - H2_OFFSET);
     /*
      * 🔴 스포일러 계약. 임계는 **"장면 근처"가 아니라 상한**이다 — 장면 기준(`S1 - 8`)으로 잡으면
-     * 리드인 착지(764−8−3스냅 = 753)가 그 아래라 **상한을 무시하는 변이가 그대로 통과한다**
+     * 리드인 착지(784−8−3스냅 = 773)가 그 아래라 **상한을 무시하는 변이가 그대로 통과한다**
      * (실제로 처음 그렇게 썼다가 H1 변이가 살아남았다). 상한 = 경과분 + 게이트가 눈감아 주는
      * 자유재생 앞섬(`live-pace.PACE_DRIFT_FRAC` 12%)이고, 그 밖은 어느 것도 화면에 오면 안 된다.
      */
@@ -358,7 +373,7 @@ test.describe("#421 W4 하이라이트 순서 재생", () => {
   });
 
   test("d2. 라이브 상한 **안**의 장면은 재생하고, 그다음 장면은 열릴 때까지 안 뛴다", async ({ page }) => {
-    // 후반 60% 경과 = 상한 ≈ 1153틱 → 764 는 열렸고 1238 은 아직이다.
+    // 후반 60% 경과 = 상한 ≈ 1153틱 → 784 는 열렸고 1245 는 아직이다.
     await openMatch(page, {
       state: "SECOND_HALF",
       clock: clockFor("SECOND_HALF", 0.6),
@@ -416,7 +431,7 @@ test.describe("#421 W4 하이라이트 순서 재생", () => {
     /*
      * ⚠️ 경과를 **70%** 로 잡는 것이 이 계약의 핵심이다. 10% 로 잡으면 상한이 두 장면 앞이라
      * "디폴트가 켜져 있어도" 뛸 곳이 없어 계약이 공허하게 통과한다(#421 W4 자체 변이 확인).
-     * 70% 면 하이라이트 #1(764)이 상한 안이고 seek-to-now 는 그 뒤(≈1008)라, 시퀀서가 돌았다면
+     * 70% 면 하이라이트 #1(784)이 상한 안이고 seek-to-now 는 그 뒤(≈1008)라, 시퀀서가 돌았다면
      * 플레이헤드가 **뒤로** 끌려간다 — 그 뒷걸음질이 없다는 것으로 디폴트 OFF 를 잰다.
      */
     await openMatch(page, { state: "FIRST_HALF", clock: clockFor("FIRST_HALF", 0.7), log: reelLog() });

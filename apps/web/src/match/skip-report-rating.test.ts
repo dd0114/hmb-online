@@ -62,11 +62,57 @@ describe("topRatedOfHalf — 산식은 #403 의 것이다", () => {
 
   it("동점이면 키(`team:playerId`) 사전순 — #403 `pickMotm` 과 같은 전순서라 결정론적이다", () => {
     // 이벤트가 없으면 두 홈 선수의 집계 줄이 완전히 같다 → tie-break 만이 답을 정한다.
+    // ⚠️ 이 표본은 **마지막 단계(키)만** 잰다. 집계가 완전히 같으면 앞 단계들은 어떤 순서로
+    //    늘어놔도 같은 답이 나오므로, 전순서 자체는 아래 두 계약이 잡는다(W8 minor-1).
     const l = log([]);
     const a = topRatedOfHalf(l, { team: "home" });
     const b = topRatedOfHalf(l, { team: "home" });
     expect(a!.playerId).toBe("H1");
     expect(b!.playerId).toBe(a!.playerId); // 같은 입력 → 같은 답
+  });
+
+  /*
+   * ── tie-break **전순서**의 킬링 계약 (W8 minor-1) ────────────────────────────────────
+   * 파일 머리말이 *"`pickMotm` 과 같은 전순서여야 한다 … 순서를 바꾸지 마라"* 라고 못 박은
+   * 불변식인데, 위의 `log([])` 표본 하나로는 **순서를 뒤집어도 12/12 가 통과**했다(독립검증
+   * 변이 M3 생존) — 두 선수의 집계가 완전히 같아서 **어떤 순서든 같은 답**이 나오는 공허한
+   * 표본이었기 때문이다. 그래서 각 단계가 **실제로 갈리는** 표본을 하나씩 태운다.
+   *
+   * 이게 왜 화면에 중요한가: 리포트 카드의 주인공과 선수 탭의 MOTM 표식이 **다른 사람**을
+   * 가리키고, `isMotm` 이 뒤집혀 평점 뱃지 등급(`player-stats-view.ratingTier`)까지 갈린다.
+   *
+   * ⚠️ 표본의 기대값은 **리터럴**이다(계수를 import 하지 않는다 — apps/web CLAUDE.md ②).
+   *    `RATING_WEIGHTS` 가 바뀌면 이 숫자가 빨개지는데, 그때 고칠 것은 **표본**이지 순서가 아니다.
+   */
+  const TACKLE = (playerId: string, tick: number) => ({ tick, minute: tick, type: "tackle", team: "home", playerId });
+  const GOAL = (playerId: string, tick: number) => ({ tick, minute: tick, type: "goal", team: "home", playerId });
+
+  it("평점이 갈리면 **골이 더 많아도** 평점이 이긴다 — 골을 앞 단계로 올리는 변이가 여기서 죽는다", () => {
+    // H1 = 2골(8.6) · H2 = 태클 10(8.7). 골 수와 평점이 **반대 방향**인 표본.
+    const l = log([GOAL("H1", 1), GOAL("H1", 2), ...Array.from({ length: 10 }, () => TACKLE("H2", 1))]);
+    const rows = computePlayerStats(l, {}).players;
+    const h1 = rows.find((p) => p.key === "home:H1")!;
+    const h2 = rows.find((p) => p.key === "home:H2")!;
+    expect([h1.rating, h1.goals]).toEqual([8.6, 2]); // 표본이 의도한 모양인지 먼저 확인
+    expect([h2.rating, h2.goals]).toEqual([8.7, 0]);
+
+    // 현행(평점 → 골 → …) = H2. `골 → 어시 → 평점 → 키` 로 뒤집으면 H1 이 된다.
+    expect(topRatedOfHalf(l, { team: "home" })!.playerId).toBe("H2");
+  });
+
+  it("평점이 같으면 **골**이 가른다 — 골 단계를 빼고 키로 떨어지는 변이가 여기서 죽는다", () => {
+    // H1 = 태클 5(7.6, 0골) · H2 = 1골(7.6, 1골). 평점 동률 + 골 상이.
+    // ⚠️ 정답(H2)의 키가 **사전순 뒤**여야 한다 — 앞이면 키 단계로 떨어져도 답이 같아 공허해진다.
+    const l = log([GOAL("H2", 1), ...Array.from({ length: 5 }, () => TACKLE("H1", 1))]);
+    const rows = computePlayerStats(l, {}).players;
+    const h1 = rows.find((p) => p.key === "home:H1")!;
+    const h2 = rows.find((p) => p.key === "home:H2")!;
+    expect([h1.rating, h1.goals]).toEqual([7.6, 0]);
+    expect([h2.rating, h2.goals]).toEqual([7.6, 1]);
+
+    expect(topRatedOfHalf(l, { team: "home" })!.playerId).toBe("H2");
+    // 그리고 그 답이 **양 팀 통합 MOTM**(`pickMotm`)과 같은 사람이다 = 두 전순서가 갈리지 않았다.
+    expect(computePlayerStats(l, {}).motm!.playerId).toBe("H2");
   });
 
   it("포지션·GK 보정 입력을 #403 규약(`playerKey` 키) 그대로 넘긴다", () => {
