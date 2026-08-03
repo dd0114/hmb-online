@@ -125,6 +125,39 @@ test.describe("① 결과 탭 — MOTM + 양팀 개인 성적 (목업 ⑤)", () 
   });
 
   /**
+   * ⚠️ **MOTM 이 지금 고른 팀이 아니어도 그 줄이 있다.**
+   *
+   * 이 계약이 없는 동안 *"MOTM 을 지금 고른 세그먼트에서만 찾는다"* 는 변이가 **살아남았다**
+   * (변이 M9). 기본 픽스처는 MOTM(P079)이 하필 **내 팀**이라 기본 세그먼트와 같아서, 위 계약
+   * 전부가 그 구멍을 지나갔다 — CLAUDE.md 함정 4(*"픽스처가 두 상태를 뭉갠다"*)의 정확한 모양이다.
+   *
+   * 그래서 **홈 픽스처**(유저=홈)로 축을 갈라 잰다: 기본 세그먼트는 `home` 인데 MOTM 은 `away` 다.
+   * 그 상태에서 줄이 사라지면 화면이 "우리 중 최고"라는 **다른 뜻**을 말하게 된다.
+   */
+  test("MOTM 이 지금 고른 팀이 아니어도 줄이 남는다 (홈 픽스처 = 다른 세그먼트)", async ({ page }) => {
+    await open(page, "FINISHED", "home-fixture");
+    await page.getByTestId("stage-tab-result").click();
+    await expect(page.getByTestId("result-players")).toHaveCount(1);
+
+    // 전제 확인 — 기본 세그먼트와 MOTM 팀이 **실제로 다르다**(같으면 이 계약이 공허해진다).
+    await expect(page.getByTestId("players-team-home")).toHaveAttribute("data-selected", "true");
+    const motm = page.getByTestId("result-motm");
+    await expect(motm).toHaveCount(1);
+    await expect(motm).toHaveAttribute("data-team", "away");
+    /*
+     * 그리고 그 줄은 **그 선수가 선 사이드의 팀 이름**을 말한다 — 어느 쪽 사람인지 화면이
+     * 답한다(#322: 사이드 라벨은 서버가 주고 web 이 추론하지 않는다).
+     * ⚠️ 이 픽스처에서 홈/어웨이 **라벨만** 뒤집혔고 로그는 같다 — 그래서 같은 선수(away 사이드)가
+     * 여기서는 봇 이름을 단다. 그게 정확히 "홈은 내가 아니다"가 말하는 것이다.
+     */
+    await expect(page.getByTestId("result-motm-team")).toHaveText(BOT);
+    // 지금 표에는 그 선수가 없다(= 표에서 찾은 게 아니라는 증거).
+    const motmId = await motm.getAttribute("data-player");
+    await expect(page.getByTestId(`players-row-away-${motmId}`)).toHaveCount(0);
+    await expect(page.getByTestId(`players-row-home-${motmId}`)).toHaveCount(0);
+  });
+
+  /**
    * 결과 탭은 **요약**이다 — 정렬 컨트롤도 라이브 캡션도 없다.
    * (정렬은 `선수` 탭 소관. 캡션은 창이 `settled` 라 애초에 null 이다.)
    */
