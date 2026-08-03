@@ -71,6 +71,7 @@ function makeStats(over: Partial<MatchPlayerStats> = {}): MatchPlayerStats {
     window: statsWindow("FIRST_HALF", 900, 34),
     isLoading: false,
     isError: false,
+    logMissing: false,
     ...over,
   };
 }

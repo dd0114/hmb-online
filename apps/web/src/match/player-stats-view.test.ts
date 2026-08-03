@@ -15,6 +15,7 @@ import {
   gkKeysOf,
   currentHalfSettled,
   isMotmKey,
+  motmKeyFor,
   passIncomplete,
   passPctLabel,
   positionsOf,
@@ -398,5 +399,42 @@ describe("statsWindow — 상한과 캡션은 **한 곳**에서 나온다(BL-1)"
         expect(w.caption, `${state}: 상한이 없는 창이 캡션을 달았다`).toBeNull();
       }
     }
+  });
+});
+
+/**
+ * ── MOTM 게이트 (#403 W4) ────────────────────────────────────────────────────────────────
+ *
+ * 결과 탭(W4)과 선수 탭이 **같은 판정**을 쓴다. 게이트는 `kind === "settled"` 다 —
+ * 진행 중인 경기에 *"이 경기 최우수 선수"* 는 없다(집계는 상한까지의 1위를 계속 뽑지만
+ * 그건 "지금까지 1위"이지 이 경기의 결론이 아니다).
+ *
+ * ⚠️ 결과 탭은 `FINISHED` 전용이라 그 화면에서는 이 조건이 **항상 참**이다. 그래서 e2e 만으로는
+ * 게이트를 지워도 아무것도 안 죽는다 — 그 변이를 죽이는 것은 아래 `live`/`pending` 케이스뿐이다.
+ */
+describe("motmKeyFor — 확정된 경기에만 MOTM 이 있다", () => {
+  function resultWithMotm() {
+    const r = computePlayerStats(makeLog(), { gkKeys: new Set<string>(), positions: {} });
+    expect(r.motm, "표본에 MOTM 이 없으면 이 계약이 공허해진다").not.toBeNull();
+    return r;
+  }
+
+  it("settled 면 집계가 뽑은 키를 그대로 준다", () => {
+    const r = resultWithMotm();
+    const key = motmKeyFor(r, statsWindow("FINISHED", 2000, 90));
+    expect(key).toBe(r.motm!.key);
+    // 표 쪽 판정과 **같은 답**이어야 한다(키 비교가 두 규칙이 되면 안 된다).
+    expect(isMotmKey(r, key!)).toBe(true);
+  });
+
+  it("진행 중(live)·재생 대기(pending)에는 MOTM 이 없다", () => {
+    const r = resultWithMotm();
+    expect(motmKeyFor(r, statsWindow("SECOND_HALF", 1400, 60)), "live 에 MOTM 이 붙었다").toBeNull();
+    expect(motmKeyFor(r, statsWindow("SECOND_HALF", null, null)), "pending 에 MOTM 이 붙었다").toBeNull();
+    expect(motmKeyFor(r, statsWindow("FIRST_HALF", 900, 15)), "전반 진행 중에 MOTM 이 붙었다").toBeNull();
+  });
+
+  it("집계가 없으면 null — 화면이 빈 줄을 그리지 않게", () => {
+    expect(motmKeyFor(null, statsWindow("FINISHED", 2000, 90))).toBeNull();
   });
 });

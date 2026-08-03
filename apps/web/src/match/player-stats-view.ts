@@ -379,4 +379,20 @@ export function isMotmKey(result: PlayerStatsResult, key: string): boolean {
   return result.motm != null && result.motm.key === key;
 }
 
+/**
+ * **이 창에서 MOTM 으로 표시할 키** — 없으면 null (#403 W4).
+ *
+ * 게이트는 `kind === "settled"` 다: 진행 중인 경기에 *"이 경기 최우수 선수"* 는 없다(집계는
+ * 상한까지의 값으로 MOTM 을 계속 뽑지만, 그건 "지금까지 1위"이지 이 경기의 결론이 아니다).
+ *
+ * ⚠️ **판정이 두 곳에 있으면 안 된다.** 선수 탭은 `win.kind === "settled" && isMotmKey(…)` 를
+ * 인라인으로 쓰고 있었고, 결과 탭(W4)이 같은 식을 한 번 더 쓰면 한쪽만 낡는다 — 결과 탭은
+ * `FINISHED` 전용이라 조건이 **항상 참**이어서 그 인라인이 조용히 게이트 없는 형태로 굳는다.
+ * 그래서 두 화면 모두 이 함수를 통과한다(호출부에 `kind` 비교를 다시 적지 마라).
+ */
+export function motmKeyFor(result: PlayerStatsResult | null, win: StatsWindow): string | null {
+  if (!result || win.kind !== "settled") return null;
+  return result.motm?.key ?? null;
+}
+
 export { playerKey };
