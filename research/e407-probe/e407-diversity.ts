@@ -362,7 +362,11 @@ const COLS: { k: keyof Div; d: number; label: string; band?: [number, number] }[
   { k: "widthM", d: 1, label: "폭m", band: [40, 50] },
   { k: "corners", d: 2, label: "코너", band: [2.0, 3.0] },
   { k: "throwIns", d: 2, label: "스로인", band: [8.4, 9.4] },
-  { k: "fouls", d: 2, label: "파울", band: [5.5, 6.0] },
+  // ⚠️ #407(0.44.0) 정정: 구 표시 밴드 `[5.5, 6.0]` 은 90분 벤치(11–12)를 **선형 ×0.5** 한
+  // 손복사본이었다. 파울은 선형으로 스케일하지 않는다(실측 90→45분 **×0.63**).
+  // **정본은 게이트** `packages/engine/src/realism/foul-opportunity.test.ts:49` 의 `5.8–8.3`
+  // (45분 재도출) 하나뿐이다 — 여기 표시도 거기에 맞춘다(단일 출처).
+  { k: "fouls", d: 2, label: "파울", band: [5.8, 8.3] },
   { k: "distanceKm", d: 2, label: "주행km", band: [5, 6] },
 ];
 

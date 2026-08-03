@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { TacticalInput } from "@hmb/shared";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { REALISM_SEEDS } from "./harness";
+import { preShipping } from "./rollback";
 import { aggregateDeepen } from "./deepen";
 import { measurePressUnit, pressWithin10ByDanger, withIntensity, DANGER_BUCKETS_M } from "./press";
 import { runMatch } from "../match";
@@ -338,10 +339,19 @@ describe("S3-A A7 — 롤백 스위치가 0.37.0 과 bit-identical 이다", () =
       // 코드가 한 줄도 안 돈다". 0.38.0 이 기록한 값과 다른 것은 그 아래 층이 바뀌었기 때문이다.
       // #407 ⑦(0.42.0) 재기록 — `rules.offside.callProb` 0.013→0.045 는 압박 유닛 스위치 밖의
       // **심판 판정**이라 롤백 경로에서도 걸린다. 주장은 그대로다.
+      // #407(0.44.0) — **재기록하지 않는다.** 박스 유입 팔은 config-only(출하 튜닝값 3개)라
+      // 롤백 config 에 `preShipping()` 을 얹어 기준점을 옮겼다(`rollback.ts` 상단 참조).
+      // 그래서 이 상수는 ⑦ 이 적은 값 그대로이고, 그 값이 지금도 재현된다는 것이 아래 it 이다.
       ["15378616", "c39e6283", "1524e711"] /* 0.37.0 = 31b64865·13cb833f·d7148265 · #407 N4 = 267a2f99·2162f403·d7148265 */;
 
+  /** `OFF` + 출하 튜닝값 되돌리기 — 골든 해시 **전용**(대조군은 `OFF` 를 그대로 쓴다). */
+  const OFF_PRE = cfg((c) => {
+    c.press.unit.enabled = false;
+    preShipping(c);
+  });
+
   it("압박 유닛을 끄면 3시드 최종 해시가 0.37.0 이 기록한 값과 같다", () => {
-    expect(hashes(OFF, REALISM_SEEDS.slice(0, 3))).toEqual(GOLDEN_0_37_0);
+    expect(hashes(OFF_PRE, REALISM_SEEDS.slice(0, 3))).toEqual(GOLDEN_0_37_0);
   }, 600_000);
 
   it("켠 상태는 다르다 (스위치가 죽어 있지 않다 — 변이체 킬)", () => {

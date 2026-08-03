@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { REALISM_SEEDS } from "./harness";
+import { preShipping } from "./rollback";
 import { collectFatigue, formatFatigue } from "./fatigue";
 
 /**
@@ -21,11 +22,21 @@ import { collectFatigue, formatFatigue } from "./fatigue";
 
 const seeds = REALISM_SEEDS.slice(0, 8);
 
-/** #346 이전 모델(롤백 스위치) — 변이체 킬 대조군. */
-const legacyCfg = (): EngineConfig => ({
-  ...defaultEngineConfig,
-  fatigue: { ...defaultEngineConfig.fatigue, recoveryEnabled: false },
-});
+/**
+ * #346 이전 모델(롤백 스위치) — 변이체 킬 대조군.
+ *
+ * ⚠️ **#407(0.44.0) 기준점 이동** — 이 대조군의 임계(포화 40%)는 **0.44.0 이전 출하값에서 실측**한
+ * 것이다(당시 45.1%). 박스 유입 팔은 config-only 지만 오프더볼 목표를 바꿔 **주행·피로 분포를
+ * 건드리므로**, 되돌리지 않으면 이 대조군이 "구 모델이 포화하는가"가 아니라 "그 뒤로 튜닝이
+ * 있었는가"를 재게 된다(실측: 미적용 시 39.96% 로 임계를 **0.04 차이로** 밑돈다).
+ * 처방·사유는 `realism/rollback.ts` 상단과 동일하다.
+ */
+const legacyCfg = (): EngineConfig => {
+  const c = JSON.parse(JSON.stringify(defaultEngineConfig)) as EngineConfig;
+  c.fatigue.recoveryEnabled = false;
+  preShipping(c);
+  return c;
+};
 
 const now = collectFatigue(defaultEngineConfig, seeds);
 

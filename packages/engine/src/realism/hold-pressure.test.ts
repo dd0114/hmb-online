@@ -10,6 +10,7 @@ import { createRng } from "../rng";
 import type { SimPlayer, SimState } from "../simstate";
 import { collectOneOnOne } from "./one-on-one";
 import { REALISM_SEEDS } from "./harness";
+import { preShipping } from "./rollback";
 import { legacy0270 } from "./rollback";
 
 /**

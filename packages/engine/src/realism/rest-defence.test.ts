@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { REALISM_SEEDS } from "./harness";
+import { preShipping } from "./rollback";
 import { measureRestDefence, measureShapeOutcome } from "./defshape";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
@@ -42,6 +43,12 @@ function cfg(mut: (c: EngineConfig) => void): EngineConfig {
 const OFF = cfg((c) => {
   c.movement.defLine.enabled = false;
   c.movement.restDefence.enabled = false;
+});
+/** `OFF` + 출하 튜닝값 되돌리기 — R6 골든 해시 **전용**(`rollback.ts` 참조). */
+const OFF_PRE = cfg((c) => {
+  c.movement.defLine.enabled = false;
+  c.movement.restDefence.enabled = false;
+  preShipping(c);
 });
 /** 라인만 끈 config — 레스트 축을 격리해서 본다. */
 const REST_ONLY = cfg((c) => {
@@ -181,6 +188,9 @@ describe("S3-B R6 — `cornerHolderRank` → `holderRank` 관용구 추출이 no
     //    변경이다. 0.38.0 값 = ["8c1af96c","3bfd7771","f3049b84","364419fc"].
     // ⚠️ #407 ⑦(engine@0.42.0) 재기록 — `rules.offside.callProb` 도 같은 부류(플래그 밖 전역).
     //    0.41.0 값 = ["656652e2","3bfd7771","41f847a1","364419fc"].
-    expect(hashes(OFF, SEEDS4)).toEqual(["8531adc4", "3bfd7771", "7d94e80b", "364419fc"]);
+    // ⚠️ #407(engine@0.44.0) — 재기록 대신 **기준점 이동**. config-only 웨이브(출하 튜닝값 3개)는
+    //    골든을 새로 적을 게 아니라 롤백 config 에 `preShipping()` 을 얹어 시점을 고정한다.
+    //    사유·처방 = `realism/rollback.ts` 상단.
+    expect(hashes(OFF_PRE, SEEDS4)).toEqual(["8531adc4", "3bfd7771", "7d94e80b", "364419fc"]);
   });
 });

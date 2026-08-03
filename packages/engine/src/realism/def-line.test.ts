@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { REALISM_SEEDS } from "./harness";
+import { preShipping } from "./rollback";
 import { measureDefLine, measureShapeOutcome, withLineHeight } from "./defshape";
 import { runMatch } from "../match";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
@@ -42,6 +43,15 @@ function cfg(mut: (c: EngineConfig) => void): EngineConfig {
 const OFF = cfg((c) => {
   c.movement.defLine.enabled = false;
   c.movement.restDefence.enabled = false;
+});
+/**
+ * `OFF` + **출하 튜닝값 되돌리기**. L5 골든 해시 **전용**이다(대조군은 `OFF` 를 그대로 쓴다 —
+ * 대조는 "지금 출하값 위에서" 봐야 의미가 있고, 골든만 시점을 고정해야 한다).
+ */
+const OFF_PRE = cfg((c) => {
+  c.movement.defLine.enabled = false;
+  c.movement.restDefence.enabled = false;
+  preShipping(c);
 });
 /** 레스트만 끈 config — 라인 축을 격리해서 본다. */
 const LINE_ONLY = cfg((c) => {
@@ -252,7 +262,12 @@ describe("S3-B L5 — 롤백 스위치가 0.38.0 과 비트 동일하다", () =>
     // ⚠️ #407 ⑦(engine@0.42.0) 재기록 — 오프사이드 호출 게이트(`rules.offside.callProb`
     //    0.013 → 0.045)도 이 두 스위치 밖에서 도는 **심판 판정**이다. 계약 내용은 그대로다.
     //    0.41.0 값 = ["656652e2","3bfd7771","41f847a1","364419fc"].
-    expect(hashes(OFF, SEEDS4)).toEqual(["8531adc4", "3bfd7771", "7d94e80b", "364419fc"]);
+    // ⚠️ #407(engine@0.44.0) — **여기서 재기록을 멈춘다.** 0.44.0 박스 유입 팔은 코드가 아니라
+    //    **출하 튜닝값 3개**만 바꾼 config-only 웨이브라, 그때마다 골든을 새로 적으면 이 계약이
+    //    "구 버전과 같다"는 역사적 앵커를 영영 잃는다. 대신 롤백 config 에 `preShipping()` 을
+    //    **추가로** 적용해 기준점을 옮긴다 — 그러면 위 값이 **지금도 재현되는 사실**로 남고,
+    //    다음 config-only 웨이브는 `rollback.ts` 만 고치면 된다(이 파일 무접촉).
+    expect(hashes(OFF_PRE, SEEDS4)).toEqual(["8531adc4", "3bfd7771", "7d94e80b", "364419fc"]);
   });
 
   it("켜면 달라진다 — 두 기제가 **각각** 발화한다(무발화 가드)", () => {
