@@ -43,8 +43,14 @@ class MatchTransitionMatrixTest extends MatchTestBase {
 
     // ── 액션 정의 (전이표의 상태 의존 액션 9종; GET match는 전 상태 허용이라 제외) ──
 
+    /**
+     * SKIP 이 <b>둘</b>인 이유(#421): 스킵은 바디 {@code phase} 를 CAS {@code WHERE state=?} 에 넣는다.
+     * 액션을 하나로 두면 "전반이 도는데 후반 스킵이 왔다"는 경합 셀이 전이표에서 관측되지 않는다 —
+     * 그 셀이 정확히 이 API 의 위험(다음 단계를 통째로 삼키기)이다.
+     */
     enum MatchAction {
-        PROMPTS_PRE, PROMPTS_HALFTIME, KICKOFF, HALFTIME, RESUME, RETRY, RESULT, LOG1, LOG2
+        PROMPTS_PRE, PROMPTS_HALFTIME, KICKOFF, HALFTIME, RESUME, RETRY, RESULT, LOG1, LOG2,
+        SKIP_H1, SKIP_H2
     }
 
     private ResponseEntity<Map> execute(MatchAction action, String matchId) {
@@ -62,6 +68,8 @@ class MatchTransitionMatrixTest extends MatchTestBase {
             case RESULT -> authGet("/api/matches/" + matchId + "/result", token, Map.class);
             case LOG1 -> authGet("/api/matches/" + matchId + "/halves/1/log", token, Map.class);
             case LOG2 -> authGet("/api/matches/" + matchId + "/halves/2/log", token, Map.class);
+            case SKIP_H1 -> post.apply("/skip", Map.of("phase", "FIRST_HALF"));
+            case SKIP_H2 -> post.apply("/skip", Map.of("phase", "SECOND_HALF"));
         };
     }
 
@@ -72,18 +80,25 @@ class MatchTransitionMatrixTest extends MatchTestBase {
      *       (후반 앞당기기 금지, P4-D1).</li>
      *   <li>HALFTIME — 구 H1_BREAK 자리. 여기서만 RESUME 이 열린다.</li>
      *   <li>GEN2·SECOND_HALF — 후반 생성/재생 중에도 전반 다시보기(LOG1)는 계속 가능.</li>
+     *   <li><b>SKIP</b>(#421) — <b>재생 중인 그 하프에서만</b>. 라이브 단계가 아니면 409(창이 없다),
+     *       라이브여도 <b>바디 phase 가 지금 도는 단계와 다르면</b> 409 — 그래서 FIRST_HALF 행은
+     *       {@code SKIP_H1} 만, SECOND_HALF 행은 {@code SKIP_H2} 만 허용이다. RESUME 과 달리
+     *       FIRST_HALF 에서 열려 있는 이유: 스킵은 후반을 <b>앞당기는 전이</b>가 아니라 재생 창을
+     *       닫는 것이고, 그 뒤는 기존 만료 전이가 그대로 밟는다(hero 지시로 P4-D1 을 뒤집는다 —
+     *       롤백 스위치 {@code hmb.match.skip.enabled}).</li>
      * </ul>
      */
     private static final Map<String, List<MatchAction>> ALLOWED = Map.of(
             "BRIEFING", List.of(MatchAction.PROMPTS_PRE, MatchAction.KICKOFF),
             "GEN1", List.of(),
-            "FIRST_HALF", List.of(MatchAction.PROMPTS_HALFTIME, MatchAction.HALFTIME, MatchAction.LOG1),
+            "FIRST_HALF", List.of(MatchAction.PROMPTS_HALFTIME, MatchAction.HALFTIME, MatchAction.LOG1,
+                    MatchAction.SKIP_H1),
             "HALFTIME", List.of(MatchAction.PROMPTS_HALFTIME, MatchAction.HALFTIME,
                     MatchAction.RESUME, MatchAction.LOG1),
             "H1_BREAK", List.of(MatchAction.PROMPTS_HALFTIME, MatchAction.HALFTIME,
                     MatchAction.RESUME, MatchAction.LOG1), // 레거시 행(V8 이전 배포본)도 같은 대우
             "GEN2", List.of(MatchAction.LOG1),
-            "SECOND_HALF", List.of(MatchAction.LOG1, MatchAction.LOG2),
+            "SECOND_HALF", List.of(MatchAction.LOG1, MatchAction.LOG2, MatchAction.SKIP_H2),
             "FINISHED", List.of(MatchAction.RESULT, MatchAction.LOG1, MatchAction.LOG2),
             "FAILED", List.of(MatchAction.RETRY));
 

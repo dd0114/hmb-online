@@ -38,3 +38,7 @@ public/chars/
 *.sw?
 # #245 hero 컨펌용 실화면 캡처 — 이 모듈의 QA 증적 관례(dot-prefix + ignore)를 따른다.
 .p245-capture/
+# #421 스킵 모드 실화면 캡처(`e2e/p421-skip.capture.ts` 산출) — 같은 관례.
+.p421/
+# #424 흐름 브릿지 4지점 실화면 캡처(`e2e/p424-bridges.capture.ts` 산출).
+.p424/

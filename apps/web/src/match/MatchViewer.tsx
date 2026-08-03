@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { MatchClock } from "@hmb/shared";
 import { useHalfLog, usePlayers } from "../api/hooks";
 import {
@@ -50,6 +50,11 @@ interface MatchViewerProps {
    * ⚠️ 종료 후 결과 화면·기록 다시보기에도 같은 도구가 필요하다 — 그건 **별도 이슈**로 뺐다.
    */
   reviewControls?: boolean;
+  /**
+   * 경기 스킵 버튼(#421) — 무대 컨트롤 층까지 그대로 관통시킨다. 이 화면은 매치 상태를 모르므로
+   * 부품을 **셸이 만들어 넘긴다**(`StageShell`). 돌려보는 자리(`reviewControls`)에는 넘기지 않는다.
+   */
+  skipSlot?: ReactNode;
 }
 
 type ViewMode = "visual" | "timeline";
@@ -71,6 +76,7 @@ export function MatchViewer({
   logEnabled = true,
   baseline = null,
   reviewControls = false,
+  skipSlot,
 }: MatchViewerProps) {
   const { data: log, isLoading, isError } = useHalfLog(matchId, half, logEnabled);
   /*
@@ -167,6 +173,7 @@ export function MatchViewer({
           clockOffsetMs={clockOffsetMs}
           review={reviewControls}
           grades={grades}
+          skipSlot={skipSlot}
         />
       ) : (
         <div className={styles.timelineFill}>

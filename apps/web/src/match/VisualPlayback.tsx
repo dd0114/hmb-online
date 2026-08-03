@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createViewer, type ViewerChrome, type ViewerController } from "@hmb/viewer-core";
 import type { MatchClock } from "@hmb/shared";
 import { liveGate } from "./live-clock";
@@ -8,6 +8,9 @@ import { PlaybackControls } from "./PlaybackControls";
 import { buildTimelinePins, type TimelinePin } from "./timeline-pins";
 import { indexFromPct } from "./qa-time-controls";
 import { buildViewerSkins } from "./viewer-skins";
+// #421 W4 하이라이트 순서 재생 — 판정은 순수 모듈, 구동은 이 훅, 표시는 이 부품(호출부엔 한 줄씩).
+import { useHighlightSequencer } from "./useHighlightSequencer";
+import { HighlightToggle } from "./HighlightToggle";
 import type { Grade } from "../common/grades";
 import { useCharAssets } from "../common/useCharAssets";
 import styles from "./MatchViewer.module.css";
@@ -37,6 +40,11 @@ export interface VisualPlaybackProps {
    * 요구하게 된다. 안 주면 `buildViewerSkins` 의 공용 디폴트 백스톱이 정책을 지킨다.
    */
   grades?: Record<string, Grade | undefined> | null;
+  /**
+   * 경기 스킵 버튼(#421) — **부품을 받기만 한다**(이 부품은 매치도 API 도 모르는 재사용 조각이다).
+   * 자리는 아래 렌더 주석 참조: 무대 오버레이 층이되 재생 컨트롤 바 **밖**이다.
+   */
+  skipSlot?: ReactNode;
 }
 
 /**
@@ -57,6 +65,7 @@ export function VisualPlayback({
   clock,
   clockOffsetMs,
   grades = null,
+  skipSlot,
 }: VisualPlaybackProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
@@ -255,6 +264,23 @@ export function VisualPlayback({
     (viewerRef.current as unknown as { pause?: () => void } | null)?.pause?.();
   }, [review, viewerReady]);
 
+  /*
+   * 하이라이트 순서 재생(#421 W4) — 후반 디폴트. **라이브 게이트 effect(위)는 무수정**이고, 이 훅은
+   * 그것과 **배타**로만 움직인다(배타 규칙·근거 = `highlight-sequencer.ts` 머리말 ①).
+   * ⚠️ 조기 반환(`if (failed)`)보다 **위**에 둔다 — 아래로 내리면 실패 경로에서 훅 수가 줄어
+   *    "Rendered fewer hooks than expected" 로 화면이 통째로 크래시한다(위 review effect 와 같은 함정).
+   */
+  const highlight = useHighlightSequencer({
+    viewerRef,
+    viewerReady,
+    log,
+    half,
+    review,
+    clock,
+    clockOffsetMs,
+    snapTicks,
+  });
+
   if (failed) {
     return (
       <div className={styles.note} data-testid={`viewer-visual-error-half${half}`}>
@@ -285,6 +311,18 @@ export function VisualPlayback({
        * 돌려보는 화면(#244 review)에서는 겹치면 피치를 가리므로 **캔버스 아래 흐름**으로 내린다.
        */}
       <div className={review ? styles.controlsFlow : styles.controlsOverlay}>
+        {/* 하이라이트 ↔ 전체 보기(#421 W4) — 스킵 버튼 위 줄. 돌려보는 화면엔 뜨지 않는다(view.visible). */}
+        <HighlightToggle view={highlight.view} onToggle={highlight.toggle} />
+        {/*
+          경기 스킵(#421) — **재생 컨트롤 바 옆이지, 그 안이 아니다.**
+          #216 계약은 *"플레이 모드 컨트롤 바에는 버튼이 0개"* 다(`matchui-controls-mock` ·
+          `MatchViewer.controls.test`). 그 계약의 뜻은 "일반 유저에게 **재생 조작**(재생·배속·
+          스크럽·프레임)을 주지 않는다"이고, 스킵은 재생 조작이 아니라 **경기 흐름 액션**
+          (서버 상태를 바꾼다)이다. 그래서 같은 오버레이 층에 두되 바 밖에 세워, 그 계약을
+          글자 그대로 살려 둔다 — 안에 넣으면 버튼 수가 0 → 1 이 되어 남의 스펙을 고쳐야 한다.
+          돌려보는 화면(review)에는 그리지 않는다(지나간 하프엔 건너뛸 재생이 없다).
+        */}
+        {!review && skipSlot}
         <PlaybackControls
           half={half}
           mode={controlMode}

@@ -9,6 +9,9 @@ import { BriefingPanel } from "./BriefingPanel";
 import { GenWaitPanel } from "./GenWaitPanel";
 import { StageShell } from "./stage/StageShell";
 import { myTeamSide, teamNamesOf } from "./stage/stage-state";
+import { useMatchFlow } from "./flow/useMatchFlow";
+import { MatchFlowOverlay } from "./flow/MatchFlowOverlay";
+import type { MatchEndContinuation } from "./flow/match-flow";
 import styles from "./MatchPage.module.css";
 
 const STATE_LABELS: Record<string, string> = {
@@ -24,6 +27,18 @@ const STATE_LABELS: Record<string, string> = {
   ABANDONED: "포기한 경기", // #217
 };
 
+export interface MatchPageProps {
+  /**
+   * 경기 종료 브릿지(B4) 뒤에 **오버레이 안에서** 올 화면(설계 §9.2 확장점).
+   *
+   * ⚠️ **아무도 넘기지 않는다 — 그리고 그게 현재의 정상 상태다**(W6 정정). 설계 §9.2 는 #405 가
+   * 이 prop 을 채운다고 적었지만, 실제 #405 는 **`StageShell` 소유 `RewardSheet` + `!overlayOpen`
+   * 게이트**로 착지했다(브릿지가 앞, 닫으면 그 자리에서 시트). 없으면 CTA 는 `보상과 결과 보기`
+   * 이고 닫으면 보상 시트(봉투 미확인 시) → 결과 탭이다(C2 선배포 형태).
+   */
+  matchEndContinuation?: MatchEndContinuation | null;
+}
+
 /**
  * /match/:id — useMatch 폴링(GEN* 3s)이 주는 state로 패널 라우팅 (LLD-web §2).
  *
@@ -34,8 +49,11 @@ const STATE_LABELS: Record<string, string> = {
  *    "어느 쪽이 나인지"를 표식(`myTeamSide`)으로 따로 말한다(안 C, hero 확정).
  *
  * 쓰기 액션은 서버가 소유자에게만 허용하므로(getOwned) 관전자가 버튼을 눌러도 404 다.
+ *
+ * ⚠️ **경기 흐름 오버레이(#424)의 소유자는 여기다** — `StageShell` 이 아니다. 패널이 갈려도
+ * (`live` → `genwait`) 오버레이가 살아야 하기 때문이고, 그게 #421 이 남긴 D6 갭의 해소다.
  */
-export function MatchPage() {
+export function MatchPage({ matchEndContinuation = null }: MatchPageProps = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
@@ -64,18 +82,39 @@ export function MatchPage() {
 
   const panel = panelForState(match?.state);
 
+  /**
+   * 경기 흐름 브릿지(#424) — **전이 관측 · 큐 · 소비 이력**. 훅이 여기 있어야 패널이 갈려도
+   * 관측이 끊기지 않는다(셸 안에 두면 `live` → `genwait` 전이에서 훅이 통째로 언마운트된다).
+   */
+  const flow = useMatchFlow(match);
+  const overlay = (
+    <MatchFlowOverlay
+      flow={flow}
+      match={match}
+      homeName={homeName}
+      awayName={awayName}
+      myTeamSide={mySide}
+      matchEndContinuation={matchEndContinuation}
+    />
+  );
+
   // 관전 상태(라이브 전/후반·감독시간·종료) = 경기장면 고정 셸(#169 S1, P4-D4).
   // 준비 상태(BRIEFING/GEN*)는 아직 경기장면이 없는 폼 화면이라 기존 페이지 레이아웃을 쓴다.
   // GEN2(후반 생성)는 보통 재사용이라 눈 깜짝할 사이지만, AI 를 태우면 대기 화면이 필요하다.
   if (match && (panel === "live" || panel === "halftime" || panel === "result")) {
     return (
-      <StageShell
-        match={match}
-        homeName={homeName}
-        awayName={awayName}
-        myTeamSide={mySide}
-        leagueRound={leagueRound}
-      />
+      <>
+        <StageShell
+          match={match}
+          homeName={homeName}
+          awayName={awayName}
+          myTeamSide={mySide}
+          leagueRound={leagueRound}
+          onSkipped={flow.openReport}
+          overlayOpen={flow.overlayOpen}
+        />
+        {overlay}
+      </>
     );
   }
 
@@ -99,29 +138,36 @@ export function MatchPage() {
   );
 
   return (
-    <Layout header={header}>
-      {isLoading && <p>매치 불러오는 중…</p>}
-      {(isError || (!isLoading && !match)) && (
-        <ErrorToast message="매치를 불러오지 못했습니다" />
-      )}
+    <>
+      <Layout header={header}>
+        {isLoading && <p>매치 불러오는 중…</p>}
+        {(isError || (!isLoading && !match)) && (
+          <ErrorToast message="매치를 불러오지 못했습니다" />
+        )}
 
-      {match && panel === "briefing" && <BriefingPanel match={match} />}
+        {match && panel === "briefing" && <BriefingPanel match={match} />}
 
-      {match && (panel === "genwait" || panel === "failed") && <GenWaitPanel match={match} />}
+        {match && (panel === "genwait" || panel === "failed") && <GenWaitPanel match={match} />}
 
-      {/* #217: 회수된 매치. 여기서 로비로 돌아갈 길을 주지 않으면 유저는 포기해 놓고 갇힌다. */}
-      {match && panel === "abandoned" && (
-        <div className={styles.abandoned} data-testid="abandoned-panel">
-          <p>포기한 경기입니다. 로비에서 새 경기를 시작할 수 있습니다.</p>
-          <button type="button" onClick={() => navigate("/home")} data-testid="abandoned-to-lobby">
-            로비로
-          </button>
-        </div>
-      )}
+        {/* #217: 회수된 매치. 여기서 로비로 돌아갈 길을 주지 않으면 유저는 포기해 놓고 갇힌다. */}
+        {match && panel === "abandoned" && (
+          <div className={styles.abandoned} data-testid="abandoned-panel">
+            <p>포기한 경기입니다. 로비에서 새 경기를 시작할 수 있습니다.</p>
+            <button type="button" onClick={() => navigate("/home")} data-testid="abandoned-to-lobby">
+              로비로
+            </button>
+          </div>
+        )}
 
-      {match && panel === "unknown" && (
-        <p data-testid="unknown-state">알 수 없는 매치 상태: {match.state}</p>
-      )}
-    </Layout>
+        {match && panel === "unknown" && (
+          <p data-testid="unknown-state">알 수 없는 매치 상태: {match.state}</p>
+        )}
+      </Layout>
+      {/*
+        ⚠️ **대기 화면 위에서도 오버레이가 산다.** 스킵 응답이 `GEN2` 면 여기로 라우팅되는데,
+        오버레이가 셸 쪽에만 있으면 리포트·브릿지가 셸과 함께 사라진다(#421 D6 → #424).
+      */}
+      {overlay}
+    </>
   );
 }

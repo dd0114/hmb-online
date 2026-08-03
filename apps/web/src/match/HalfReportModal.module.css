@@ -1,0 +1,395 @@
+/*
+ * 하프 리포트 팝업 (#421 W2) — **공지 팝업과 같은 스택**이다.
+ *
+ * 구조·수치는 `lobby/NoticePopup.module.css` 를 따른다(재발명 금지). 그 파일 머리말의 두 교훈은
+ * 여기서도 그대로 유효하다:
+ *  · **딤은 `inset:0` 전체를 덮되, 카드는 "보이는 영역" 안에만 놓는다**(#386) — `100lvh − 100svh`
+ *    가 브라우저 툴바 몫이다. 오버레이 자체를 `100svh` 로 줄이면 툴바가 접히는 순간 그 띠에 딤이
+ *    안 깔려 **뒤 화면이 눌린다**. `dvh` 도 금지(읽는 도중 리플로우).
+ *  · **`.stack` 이 플렉스여야 `.card { max-height:100% }` 가 산다**(#292) — 아니면 카드가 화면
+ *    밖으로 자라 [닫기]가 툴바 밑으로 들어간다.
+ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px) + (100lvh - 100svh));
+  /* 관전 셸(스코어바 z-index)·무대 오버레이 컨트롤보다 위. 공지 팝업과 같은 층. */
+  z-index: 40;
+}
+
+.stack {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.behind {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100%;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  pointer-events: none;
+  /* ⚠️ `bottom` 고정 — center 로 두면 scale 이 아래 모서리를 끌어올려 겹침이 사라진다(#248). */
+  transform-origin: bottom center;
+}
+
+.behind1 {
+  transform: translateY(10px) scale(0.955);
+  background: #262b38;
+  border-color: #3a4152;
+  z-index: 2;
+}
+
+.behind2 {
+  transform: translateY(20px) scale(0.91);
+  background: #1f232d;
+  border-color: #313745;
+  z-index: 1;
+}
+
+.card {
+  position: relative;
+  z-index: 3;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 100%;
+  flex: 0 1 auto;
+  min-height: 0;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.pager {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: -4px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 본문 = 스크롤러 + "더 있다" 페이드(#292). 높이를 vh 로 박지 않는다 — 카드가 쓰고 남은 만큼. */
+.bodyArea {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #4a5265 rgba(255, 255, 255, 0.06);
+}
+
+.body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.body::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 3px;
+}
+
+.body::-webkit-scrollbar-thumb {
+  background: #4a5265;
+  border-radius: 3px;
+}
+
+.bodyArea::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 30px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(30, 34, 44, 0), var(--bg-elevated) 92%);
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.bodyArea[data-more="true"]::after {
+  opacity: 1;
+}
+
+/* ── 타임라인 목록 ─────────────────────────────────────────────────────── */
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+}
+
+/*
+ * ⚠️ 세로 플렉스 스크롤 컨테이너의 자식은 `flex-shrink: 1` 이 기본이라 **넘칠 때 스크롤되지 않고
+ * 눌린다**(#386 공지 목록에서 실제로 겪었다 — 항목이 눌린 채 잘려 다 읽을 방법이 없었다).
+ */
+.row {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 34px 18px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row[data-kind="goal"] .what {
+  font-weight: 700;
+}
+
+.clock {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.icon {
+  text-align: center;
+}
+
+.what {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  min-width: 0;
+  text-align: right;
+}
+
+.side {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.empty {
+  flex: 0 0 auto;
+  padding: 14px 2px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ── 주요 인물 카드 ────────────────────────────────────────────────────── */
+
+.motm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 0;
+}
+
+.motmWho {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+/* 팀색 원 + 등번호 — 선수 탭 `.pnum`(stage/panels.module.css)과 같은 표현. */
+.motmNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  color: #04101f;
+}
+
+.motmNumHome {
+  background: #6ab7ff;
+}
+
+.motmNumAway {
+  background: #ff8a7a;
+}
+
+.motmName {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.motmPos {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.motmTeam {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/*
+ * 평점 — 등급색은 선수 탭의 `.rating[data-tier]`(stage/panels.module.css)과 **같은 값**이다.
+ * 판정(`ratingTier`)은 #403 의 함수 하나를 공유하고, 여기서는 그 결과를 색으로 옮기기만 한다.
+ */
+.motmRating {
+  font-size: 30px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.motmRating[data-tier="hi"] {
+  color: #3ddc84;
+}
+
+.motmRating[data-tier="mid"] {
+  color: #ffc24b;
+}
+
+.motmRating[data-tier="motm"] {
+  color: #e5bc3f;
+}
+
+/* 하이라이트 기록 — 값이 크고 라벨이 작다(숫자를 먼저 읽는다). */
+.motmStats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.motmStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 54px;
+  gap: 1px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.motmStat b {
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.motmStat span {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── 도트·주 버튼 ──────────────────────────────────────────────────────── */
+
+.dots {
+  display: flex;
+  gap: 5px;
+  justify-content: center;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.dotOn {
+  background: var(--accent);
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.primary {
+  width: 100%;
+  padding: 11px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+}

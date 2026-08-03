@@ -193,6 +193,76 @@ public class MatchClockService {
                 .optional();
     }
 
+    // ── 스킵: 창 당기기 (#421) ──────────────────────────────────────────
+
+    /**
+     * 스킵 한 번이 만진 창 — 되돌리기에 필요한 두 값.
+     *
+     * @param previousEndsAt 당기기 전 경계(복구값)
+     * @param shortenedTo    당긴 뒤 경계(= 당시 {@code now}). 복구 CAS 의 "아무도 안 건드렸나" 조건.
+     */
+    public record PulledWindow(String previousEndsAt, String shortenedTo) {
+    }
+
+    /**
+     * 라이브 재생 창을 <b>지금으로 당긴다</b>(#421 스킵). <b>새 전이 엣지를 만들지 않는다</b> —
+     * 창만 당기고 만료 전이는 기존 경로({@link #advanceDue})가 그대로 밟는다(#249 오토가 감독시간
+     * 길이를 0으로 만들어 새 엣지 0개로 끝낸 것과 같은 수법).
+     *
+     * <p>세 가지가 <b>SQL 안에</b> 있어야 한다:
+     * <ul>
+     *   <li>{@code state = ?} — 호출자가 지목한 단계일 때만. 스킵 요청이 다음 단계에 떨어졌을 때
+     *       그 단계를 삼키지 않게 하는 유일한 방벽이다(#249 {@code auto &&} 와 같은 함정).</li>
+     *   <li>{@code phase_ends_at > now} — <b>되감기 불가</b>. 이미 지난 창을 {@code now} 로 "당기면"
+     *       그건 연장이고(다음 단계 시작이 그만큼 밀린다) 지는 경기의 시간벌기가 된다.</li>
+     *   <li>{@code phase_ends_at = 읽었던 값} — 그 사이 누가 창을 갈아치웠으면 지고 물러난다.</li>
+     * </ul>
+     *
+     * @return 당긴 창(복구용). {@code null} = 아무 것도 당기지 않았다 — 상태 불일치·시계 미적용
+     *         (창 없음)·이미 만료(멱등 no-op)·경합. 어느 쪽이든 <b>호출자는 그대로 진행</b>한다:
+     *         만료 전이는 여전히 필요하고, 그건 {@code advanceDue} 가 판정한다.
+     */
+    public PulledWindow pullWindowToNow(String matchId, String expectedState) {
+        String now = nowText();
+        ClockRow row = clockRow(matchId).orElse(null);
+        if (row == null || !expectedState.equals(row.state()) || row.phaseEndsAt() == null) {
+            return null;
+        }
+        if (row.phaseEndsAt().compareTo(now) <= 0) {
+            return null; // 이미 만료된 창은 당기지 않는다(되감기 금지 + 멱등)
+        }
+        boolean pulled = jdbcClient.sql("""
+                        UPDATE matches SET phase_ends_at = ?
+                        WHERE id = ? AND state = ?
+                          AND phase_ends_at IS NOT NULL AND phase_ends_at > ? AND phase_ends_at = ?
+                        """)
+                .params(now, matchId, expectedState, now, row.phaseEndsAt())
+                .update() == 1;
+        return pulled ? new PulledWindow(row.phaseEndsAt(), now) : null;
+    }
+
+    /**
+     * 당긴 창을 되돌린다 — <b>전이가 예외로 죽었을 때만</b>(#421 D8).
+     *
+     * <p>왜 필요한가: {@code MatchLockService.abandonable} 은 {@code phase_ends_at + stuck-grace-ms}
+     * 로 열린다. 창만 당겨 놓고 전이가 실패하면 그 유예가 통째로 앞당겨져 <b>정상 재생 중인 경기에
+     * 포기(리롤) 버튼이 열린다</b>(#217 이 막으려던 경로). 되돌림도 CAS 다 — 그 사이 스위퍼가 전이를
+     * 마쳤거나 창이 바뀌었으면 손대지 않는다(늦은 복구가 새 창을 덮는 게 더 나쁘다).
+     *
+     * @return 실제로 되돌렸으면 true
+     */
+    public boolean restoreWindow(String matchId, String expectedState, PulledWindow window) {
+        if (window == null) {
+            return false;
+        }
+        return jdbcClient.sql("""
+                        UPDATE matches SET phase_ends_at = ?
+                        WHERE id = ? AND state = ? AND phase_ends_at = ?
+                        """)
+                .params(window.previousEndsAt(), matchId, expectedState, window.shortenedTo())
+                .update() == 1;
+    }
+
     // ── 만료 전이 ───────────────────────────────────────────────────────
 
     /**

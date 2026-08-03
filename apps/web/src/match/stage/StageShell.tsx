@@ -9,6 +9,7 @@ import { MatchViewer } from "../MatchViewer";
 import { HalftimePanel } from "../HalftimePanel";
 import { useHalftimeDraft } from "../useHalftimeDraft";
 import { AutoModeToggle } from "../AutoModeToggle";
+import { SkipButton } from "../SkipButton";
 import { ScoreBar } from "./ScoreBar";
 import { StatsPanel } from "./StatsPanel";
 import { PlayerStatsPanel } from "./PlayerStatsPanel";
@@ -60,6 +61,16 @@ interface StageShellProps {
   myTeamSide?: "home" | "away" | null;
   /** 리그 라운드(MatchDetail 에 없어 navigation state 로만 온다) — 스코어바 뱃지용. */
   leagueRound?: number | null;
+  /**
+   * 스킵 성공 신호를 **위로** 넘긴다(#424 D6). 셸이 리포트를 소유하면 패널이 갈리는 순간
+   * (스킵 응답이 `GEN2` → `panelForState` 가 `GenWaitPanel`) 셸과 함께 사라진다.
+   */
+  onSkipped?: (half: 1 | 2) => void;
+  /**
+   * 흐름 오버레이(#424)가 떠 있는가 — **무대를 마운트하지 않기 위한 신호**다.
+   * 정지 플래그를 뷰어에 새로 만들지 않는다(라이브 게이트 effect 와 주인이 둘이 된다, #421 경계).
+   */
+  overlayOpen?: boolean;
 }
 
 /**
@@ -84,6 +95,8 @@ export function StageShell({
   awayName,
   myTeamSide = null,
   leagueRound = null,
+  onSkipped,
+  overlayOpen = false,
 }: StageShellProps) {
   const navigate = useNavigate();
   const [preferredTab, setPreferredTab] = useState<TabKey | null>(null);
@@ -144,6 +157,17 @@ export function StageShell({
    * ⚠️ **자동 노출은 상태 전이 한 번**이다(`sheetDismissed`). 봉투의 `acknowledgedAt` 은 ack 응답이
    * 돌아와야 바뀌는데, 그 사이 렌더에서 조건이 그대로 참이라 시트가 다시 뜬다. 로컬 래치가
    * 그 프레임을 막는다.
+   *
+   * ⚠️ **경기 종료 브릿지(#424 B4)가 떠 있는 동안은 시트를 열지 않는다.** 둘 다 `FINISHED` 순간에
+   * 자동으로 뜨므로(브릿지 = `SECOND_HALF→FINISHED` 전이 / 시트 = 미확인 봉투) 게이트가 없으면
+   * **두 오버레이가 겹친다** — `common/Modal` 포커스 트랩이 2겹이 되는, 이 리포가 설계 단계에서
+   * 이미 기각한 사고 유형이다(설계 §3.2 *"하나의 카드 스택, 하나의 닫기"*).
+   * 순서는 **브릿지가 앞**이다: 브릿지 CTA 를 누르면 `overlayOpen` 이 내려가고 그 자리에서 시트가
+   * 뜬다(브릿지 `nextHint` = `다음 · 경기 보상과 결과 확인` 과 화면이 일치한다).
+   *
+   * ⚠️ **미룰 뿐 삼키지 않는다** — 게이트는 `showRewardSheet` 의 다른 항을 건드리지 않으므로
+   * 봉투가 미확인인 한 브릿지가 닫힌 뒤 반드시 뜬다. 그래서 `FINISHED` 재입장(브릿지가 구조적으로
+   * 안 뜨는 경로, 설계 C6)에서도 시트는 평소대로 자동 노출된다 = **미수령 회수 경로가 #405 쪽에 있다**.
    */
   const { data: result } = useMatchResult(match.id, match.state === "FINISHED");
   const bundle = useMemo(() => rewardBundleOf(result), [result]);
@@ -151,7 +175,9 @@ export function StageShell({
   const [sheetReopened, setSheetReopened] = useState(false);
   const resultKey = match.result ?? result?.result ?? undefined;
   const showRewardSheet =
-    Boolean(bundle) && ((shouldShowRewardSheet(bundle) && !sheetDismissed) || sheetReopened);
+    Boolean(bundle) &&
+    !overlayOpen &&
+    ((shouldShowRewardSheet(bundle) && !sheetDismissed) || sheetReopened);
 
   /**
    * 선수 기록 (#403). **탭과 피치 카드가 같은 결과를 본다**(집계 한 번) — 공통 조상이 여기뿐이다.
@@ -195,7 +221,15 @@ export function StageShell({
           managing ? styles.bodyManaging : ""
         } ${sheetKind === "input" ? styles.bodyInput : ""}`}
       >
-        {!managing && (
+        {/*
+          ⚠️ **흐름 오버레이가 떠 있는 동안 무대를 렌더하지 않는다**(#421 → #424). 팝업 뒤에서
+          캔버스가 계속 돌면 안 되는데, 정지 명령을 거는 대신 **아예 마운트하지 않아** 구조적으로
+          0 으로 만든다(`VisualPlayback` 의 cleanup 이 `v.stop()` 을 부른다). 정지 플래그를 뷰어에
+          하나 더 만들면 라이브 게이트 effect 와 두 주인이 생긴다 — 그 자리는 손대지 않는다.
+          신호는 이제 **위에서 내려온다**(`overlayOpen`) — 오버레이 소유자가 `MatchPage` 이기 때문(D6).
+          전반 스킵은 어차피 응답이 HALFTIME 이라 `managing` 이 곧 무대를 내린다.
+        */}
+        {!managing && !overlayOpen && (
           <section className={styles.stage} data-testid="stage-canvas">
             <MatchViewer
               matchId={match.id}
@@ -207,6 +241,8 @@ export function StageShell({
               clockOffsetMs={offsetMs}
               logEnabled={logEnabled}
               baseline={baseline}
+              /* #421 스킵 — 자립 부품 한 줄(어느 쪽이 먼저 머지되든 충돌이 한 줄로 끝난다). */
+              skipSlot={<SkipButton match={match} onSkipped={(h) => onSkipped?.(h)} />}
             />
           </section>
         )}
@@ -353,6 +389,13 @@ export function StageShell({
           }}
         />
       )}
+
+      {/*
+        스킵 리포트 마운트는 **여기 없다**(#424 D6). 소유자가 `MatchPage` 로 올라갔다 —
+        셸에 매달아 두면 스킵 응답이 `GEN2` 일 때(오토 + 후반 프리페치 미완) 패널 라우팅이
+        `GenWaitPanel` 로 갈리며 셸과 함께 리포트가 사라진다. 리포트·브릿지는 이제 하나의
+        `MatchFlowOverlay` 다.
+      */}
     </div>
   );
 }
