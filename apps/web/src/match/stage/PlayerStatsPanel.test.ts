@@ -183,6 +183,34 @@ describe("선수 탭 — 팀 세그먼트(#322 어웨이 표본)", () => {
     ).toBe("true");
     expect(screen.queryByTestId("players-row-away-P9")).not.toBeNull();
   });
+
+  /**
+   * ⚠️ **값이 안 바뀌는 탭은 "골랐다"가 아니다** (R2 — 독립검증 minor-1).
+   *
+   * 도착 전 기본값은 `home` 인데, 유저가 **이미 선택된 그 칩**을 누르면 화면은 하나도 안 바뀌면서
+   * `picked` 만 굳었다 → 어웨이 라운드에서 도착 후에도 표가 **상대**에 남는다(major-1 과 같은 증상,
+   * 다른 경로). 위 두 계약의 **사이**를 여는 축이라 셋이 같이 있어야 한다:
+   * *따라간다* / *유저가 고르면 이긴다* / **그런데 "골랐다"는 화면이 바뀐 탭만이다**.
+   */
+  it("도착 전 **이미 선택된** 칩을 눌러도, 늦게 온 myTeamSide 를 따라간다", () => {
+    const view = renderPanel({ myTeamSide: null });
+    expect(screen.getByTestId("players-team-home").getAttribute("data-selected")).toBe("true");
+    fireEvent.click(screen.getByTestId("players-team-home")); // 아무것도 안 바뀌는 탭
+
+    view.rerender(
+      h(PlayerStatsPanel, {
+        stats: makeStats(),
+        ...NAMES,
+        myTeamSide: "away",
+      } as Parameters<typeof PlayerStatsPanel>[0]),
+    );
+    expect(
+      screen.getByTestId("players-team-away").getAttribute("data-selected"),
+      "무의미한 탭 한 번이 세그먼트를 상대 팀에 가뒀다",
+    ).toBe("true");
+    expect(screen.queryByTestId("players-row-away-P9"), "표가 안 따라왔다").not.toBeNull();
+    expect(screen.queryByTestId("players-row-home-P9")).toBeNull();
+  });
 });
 
 describe("선수 탭 — 표", () => {

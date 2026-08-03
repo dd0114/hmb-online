@@ -53,12 +53,25 @@ import styles from "./stage/panels.module.css";
  * ⚠️ **한 곳에 둔 이유**: 선수 탭(W2)과 결과 탭(W4)이 같은 결함을 두 벌로 갖고 있었다. 선수 탭은
  * 유저가 눌러야 마운트돼 지금은 안 걸리지만 **같은 잠복**이다 — 사본을 두면 한쪽만 낡는다
  * (`ChoiceCards.tsx` 머리말).
+ *
+ * ⚠️ **값이 안 바뀌는 탭은 "골랐다"로 치지 않는다** (R2 — 독립검증 minor-1). `myTeamSide` 도착 전
+ * 어웨이 라운드에서는 세그먼트가 `home`(= **상대**)에 선택돼 있는데, 그 상태에서 유저가 **이미
+ * 하이라이트된 그 칩**을 한 번 누르면 화면은 하나도 안 바뀌면서 `picked = "home"` 이 굳어
+ * major-1 과 **똑같은 증상**(칩은 어웨이, 표는 상대)이 영구히 남았다(실측: `meDelayMs 900` +
+ * 오탭 1회 → 도착 후 `{mine:"away", selected:"home"}` 이고 **15초 폴링 내내 안 풀린다** = 영구).
+ * 그래서 **현재 유효값과 같은 선택은 무시한다** — 그 탭은 시각적으로 아무 변화가 없어 유저에게
+ * 정보를 전달하지 않으므로 "만졌다"는 신호로 읽을 근거가 없다.
+ * ⚠️ 대가: *"이미 선택된 칩을 눌러 지금 선택을 고정한다"* 는 불가능해진다. `myTeamSide` 도착 전
+ * 화면은 어차피 신뢰할 수 없는 상태라 그 손잡이보다 위 결함이 크다고 봤다.
+ * ⚠️ **규칙은 훅 안에 둔다** — 호출부(`PlayerTeamSegments.onClick`)에서 걸러도 지금은 같은
+ * 결과지만, 세그먼트를 쓰는 자리가 늘면 한쪽만 낡는다(`ChoiceCards.tsx` 머리말과 같은 이유).
  */
 export function useTeamSegment(
   myTeamSide: "home" | "away" | null | undefined,
 ): [TeamSide, (side: TeamSide) => void] {
   const [picked, setPicked] = useState<TeamSide | null>(null);
-  return [picked ?? defaultSegment(myTeamSide), setPicked];
+  const team = picked ?? defaultSegment(myTeamSide);
+  return [team, (side: TeamSide) => (side === team ? undefined : setPicked(side))];
 }
 
 export interface PlayerTeamSegmentsProps {

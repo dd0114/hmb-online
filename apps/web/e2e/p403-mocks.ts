@@ -139,7 +139,35 @@ export interface MockOpts {
    * 전부 `away/home`**(= 칩과 표가 다른 팀). 수정 후에는 여섯 지연 전부 `away/away`.
    */
   meDelayMs?: number;
+  /**
+   * 하프 로그의 **팀 라벨만** 뒤집어 서빙한다 (#403 W4 R2).
+   *
+   * ⚠️ `shape` 로는 이 축을 못 만든다 — `away-fixture`/`home-fixture` 는 **매치 메타**의 사이드
+   * 라벨(`homeName`/`awayName`)만 뒤집고 로그는 그대로라, 두 shape 모두 MOTM 이 **away 사이드**다.
+   * 그래서 *"MOTM 이 home 사이드"* 라는 상태가 리포 e2e 에 한 번도 없었고, `motmRowOf` 의
+   * `home` 항을 떨어뜨리는 변이가 e2e 전체를 통과했다(R1 이 그것을 *"구조적으로 불가능"* 이라고
+   * 적었는데 **거짓이었다** — 뒤집으면 MOTM = `home:P079` 다. 실측은 R2 커밋 메시지).
+   *
+   * ⚠️ **이건 합성 표본이다** — 로그만 뒤집으므로 매치 메타의 스코어(`0:3`)와는 어긋난다.
+   * 그 축을 재는 계약에 쓰지 마라. 쓰는 자리는 *"MOTM 을 양 팀에서 찾는가"* 하나뿐이다.
+   */
+  flipLogTeams?: boolean;
 }
+
+/** 팀 라벨만 뒤집은 하프 로그(위 `flipLogTeams`). 로그는 크므로 한 번만 만든다. */
+function flipTeams(log: typeof LOG_H1) {
+  const flip = (t: string) => (t === "home" ? "away" : t === "away" ? "home" : t);
+  return {
+    ...log,
+    tickSnapshots: log.tickSnapshots.map((s: { players: { team: string }[] }) => ({
+      ...s,
+      players: s.players.map((p) => ({ ...p, team: flip(p.team) })),
+    })),
+    events: (log.events ?? []).map((e: { team?: string }) => (e.team ? { ...e, team: flip(e.team) } : e)),
+  };
+}
+let flippedH1: unknown;
+let flippedH2: unknown;
 
 /** ⚠️ 라우트는 pathname 술어로 — glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지 잡아 흰 화면이 된다. */
 export async function mockApi(
@@ -185,8 +213,14 @@ export async function mockApi(
         },
       });
     }
-    if (/\/api\/matches\/.+\/halves\/1\/log$/.test(url.pathname)) return route.fulfill({ json: LOG_H1 });
-    if (/\/api\/matches\/.+\/halves\/2\/log$/.test(url.pathname)) return route.fulfill({ json: LOG_H2 });
+    if (/\/api\/matches\/.+\/halves\/1\/log$/.test(url.pathname)) {
+      if (!opts.flipLogTeams) return route.fulfill({ json: LOG_H1 });
+      return route.fulfill({ json: (flippedH1 ??= flipTeams(LOG_H1)) as object });
+    }
+    if (/\/api\/matches\/.+\/halves\/2\/log$/.test(url.pathname)) {
+      if (!opts.flipLogTeams) return route.fulfill({ json: LOG_H2 });
+      return route.fulfill({ json: (flippedH2 ??= flipTeams(LOG_H2)) as object });
+    }
     if (url.pathname === `/api/matches/${MATCH_ID}/result`) {
       return route.fulfill({ json: { matchId: MATCH_ID, result: "WIN", scoreHome: 0, scoreAway: 3, pointsAwarded: 0 } });
     }
@@ -204,13 +238,25 @@ export async function authInit(page: Page) {
   });
 }
 
+/**
+ * 매치 화면을 연다.
+ *
+ * ⚠️ **추가 목이 필요해도 이 함수를 풀어 쓰지 마라** — `beforeGoto` 로 끼워라(R2, 독립검증
+ * minor-3). R1 이 성장 리포트·`/api/me` 지연 목을 얹으려고 호출부에서
+ * `mockApi → authInit → goto → expect(stage-shell)` 를 복제했는데, 그러면 여는 순서가 두 벌이 돼
+ * 한쪽만 낡는다(`ChoiceCards.tsx` 머리말 — R1 자신이 `useTeamSegment` 를 합칠 때 인용한 원칙이다).
+ * 등록 순서는 여기서 지킨다: **catch-all(`mockApi`) 먼저 → 세부 목(`beforeGoto`) 나중**
+ * (playwright 는 나중에 등록한 라우트가 먼저 매칭된다).
+ */
 export async function open(
   page: Page,
   state: string,
   shape: Shape = "away-fixture",
   opts: MockOpts = {},
+  beforeGoto?: (page: Page) => Promise<void>,
 ) {
   await mockApi(page, state, shape, opts);
+  await beforeGoto?.(page);
   await authInit(page);
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.getByTestId("stage-shell")).toBeVisible();

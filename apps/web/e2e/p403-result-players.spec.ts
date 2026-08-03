@@ -17,6 +17,7 @@ import {
   pageScroll,
   seek,
   viewerReady,
+  type Shape,
 } from "./p403-mocks";
 
 /**
@@ -44,20 +45,27 @@ interface OpenOpts {
   growth?: boolean;
   /** `GET /api/me` 지연(ms). `myTeamSide` 가 늦게 오는 실제 순서를 만든다(major-1). */
   meDelayMs?: number;
+  /** 하프 로그의 팀 라벨만 뒤집는다 → MOTM 이 **home 사이드**가 된다(R2, `p403-mocks` 참조). */
+  flipLogTeams?: boolean;
+  /** 매치 메타의 사이드 라벨(=`myTeamSide`) 축. 기본은 어웨이 라운드(#322 표본). */
+  shape?: Shape;
 }
 
-/** 결과 탭을 연다(종료 상태의 기본 탭이지만 **명시적으로** 고른다 — 기본이 바뀌어도 이 계약이 산다). */
+/**
+ * 결과 탭을 연다(종료 상태의 기본 탭이지만 **명시적으로** 고른다 — 기본이 바뀌어도 이 계약이 산다).
+ *
+ * ⚠️ **여는 경로는 한 벌이다** (R2, 독립검증 minor-3). R1 은 목을 끼우려고 여기서 `open()` 의
+ * 본문(`mockApi → authInit → goto → expect`)을 복제했는데, 그러면 셸 진입 절차가 두 곳이 돼
+ * 한쪽만 낡는다. 지금은 `open` 의 `beforeGoto` 훅으로 목만 얹는다.
+ */
 async function openResult(page: Page, opts: OpenOpts = {}) {
-  if (opts.growth || opts.meDelayMs) {
-    // 목을 사이에 끼워야 해서 `open()` 을 풀어 쓴다(등록 순서: catch-all → 세부, 나중이 이긴다).
-    await mockApi(page, "FINISHED", "away-fixture", { meDelayMs: opts.meDelayMs ?? 0 });
-    if (opts.growth) await mockGrowthReport(page);
-    await authInit(page);
-    await page.goto(`/match/${MATCH_ID}`);
-    await expect(page.getByTestId("stage-shell")).toBeVisible();
-  } else {
-    await open(page, "FINISHED");
-  }
+  await open(
+    page,
+    "FINISHED",
+    opts.shape ?? "away-fixture",
+    { meDelayMs: opts.meDelayMs ?? 0, flipLogTeams: opts.flipLogTeams },
+    opts.growth ? mockGrowthReport : undefined,
+  );
   await page.getByTestId("stage-tab-result").click();
   await expect(page.getByTestId("result-page")).toHaveCount(1);
   await expect(page.getByTestId("result-players")).toHaveCount(1);
@@ -144,7 +152,8 @@ test.describe("① 결과 탭 — MOTM + 양팀 개인 성적 (목업 ⑤)", () 
     expect(all.length, "표가 비어 있으면 이 계약이 공허해진다").toBeGreaterThan(10);
 
     /*
-     * ⚠️ **동점을 하나로 단정하지 마라.** 실측에서 이 표본은 상한 `10.0` 에 **여러 명이 붙는다**
+     * ⚠️ **동점을 하나로 단정하지 마라.** 실측에서 이 표본은 상한 `10.0` 에 **2명이 붙는다**
+     * (`home:P121` · `away:P079` — 승부는 assists 1 vs 0 에서 갈린다)
      * (평점 포화 = `docs/plan-v5/player-stats.md` §5 가 hero 게이트로 올려둔 그 축). 그래서 계약은
      * "MOTM 은 이 사람"이 아니라 **"MOTM 은 표시 최고점이고 실제로 표에 있는 행이다"** 로 건다 —
      * 집계 쪽 동점 끊기(`pickMotm`)를 화면에서 재현하면 그건 규칙의 두 번째 사본이 된다.
@@ -192,6 +201,44 @@ test.describe("① 결과 탭 — MOTM + 양팀 개인 성적 (목업 ⑤)", () 
     const motmId = await motm.getAttribute("data-player");
     await expect(page.getByTestId(`players-row-away-${motmId}`)).toHaveCount(0);
     await expect(page.getByTestId(`players-row-home-${motmId}`)).toHaveCount(0);
+  });
+
+  /**
+   * ⚠️ **MOTM 이 `home` 사이드인 표본** (#403 W4 R2 — R1 서술 철회의 실물).
+   *
+   * 위 두 계약은 MOTM 이 **언제나 away 사이드**라 `motmRowOf` 의 **`home` 항을 떨어뜨리는 변이**를
+   * 못 죽였다(두 shape 은 매치 메타의 사이드 라벨만 뒤집고 하프 로그는 같다). R1 은 그것을
+   * *"평점 포화 + 키 tie-break 때문에 실로그를 어떻게 relabel 해도 home MOTM 은 못 만든다"* 고
+   * 적었는데 **거짓이다** — 그 픽스처의 10.0 은 2명이고 승부는 **assists** 에서 갈려 키 비교는
+   * 발화조차 하지 않는다. 하프 로그의 팀 라벨을 뒤집으면 MOTM 은 그대로 **`home:P079`** 가 된다.
+   *
+   * ⚠️ 그래서 이 표본이 잰다: **지금 고른 표(내 팀 = away)에 없는 사람**이 MOTM 줄에 있고
+   * 그 줄이 **상대 팀 이름**을 단다. 순수 계층(`player-stats-view.test.ts`)은 탐색 규칙을 보고,
+   * 여기서는 그 규칙이 **화면에 배선됐나**를 본다.
+   * ⚠️ 합성 표본이라 스코어(메타 `0:3`)와는 어긋난다 — 이 축 말고 다른 것을 여기서 재지 마라.
+   */
+  test("MOTM 이 home 사이드여도 줄이 남는다 (라벨 뒤집은 로그 = away 항만 뒤지면 사라진다)", async ({
+    page,
+  }) => {
+    await openResult(page, { flipLogTeams: true });
+
+    // 전제 — 기본 선택은 내 팀(away)이고 MOTM 은 그 반대편이다(같으면 계약이 공허해진다).
+    await expect(page.getByTestId(`players-team-${MY_TEAM}`)).toHaveAttribute("data-selected", "true");
+    const motm = page.getByTestId("result-motm");
+    await expect(motm).toHaveCount(1);
+    await expect(motm).toHaveAttribute("data-team", OPP_TEAM);
+    // 그 줄은 상대(홈) 팀 이름을 말한다 — 어느 쪽 사람인지 화면이 답한다(#322).
+    await expect(page.getByTestId("result-motm-team")).toHaveText(BOT);
+
+    // 지금 열려 있는 표(내 팀)에는 그 선수가 없다 = 표에서 찾은 게 아니라는 증거.
+    const motmId = await motm.getAttribute("data-player");
+    await expect(page.getByTestId(`players-row-${MY_TEAM}-${motmId}`)).toHaveCount(0);
+    // 상대 표로 바꾸면 실제로 그 행이 있고 motm 등급이다(양성 앵커).
+    await page.getByTestId(`players-team-${OPP_TEAM}`).click();
+    await expect(page.getByTestId(`players-rating-${OPP_TEAM}-${motmId}`)).toHaveAttribute(
+      "data-tier",
+      "motm",
+    );
   });
 
   /**
@@ -323,17 +370,56 @@ test.describe("③ 팀 세그먼트 — 순서는 홈 먼저, 표식·기본 선
   /**
    * ⚠️ **반대 방향이 더 나쁜 버그다** — 늦게 온 데이터가 유저 조작을 덮으면 유저가 방금 고른 팀이
    * 눈앞에서 바뀐다. 유저가 만졌으면 그 선택이 이긴다(칩과 선택이 **달라지는 것이 정답**인 유일한 자리).
+   *
+   * ⚠️ **표본을 홈 픽스처로 바꿨다**(R2). R1 의 표본은 어웨이 픽스처에서 `home`(= 도착 전 기본값,
+   * 이미 선택된 칩)을 눌렀는데, 그건 **화면이 하나도 안 바뀌는 탭**이라 minor-1 수정 뒤로는
+   * "유저가 골랐다"가 아니다. 세그먼트가 둘뿐이라 어웨이 픽스처에서는 *따라간다*와 구별되는
+   * **진짜 선택**을 만들 수 없다 — 유저가 고를 수 있는 다른 한쪽이 곧 나중에 올 내 팀이라서다.
+   * 홈 픽스처면 기본값(home)과 내 팀(home)이 같아서, 유저가 `away` 로 **실제로 바꾼 뒤** 도착한
+   * `myTeamSide=home` 이 그것을 덮는지 볼 수 있다.
    */
-  test("`/api/me` 도착 전에 유저가 고르면 그 선택이 이긴다", async ({ page }) => {
-    await openResult(page, { meDelayMs: 600 });
-    // 아직 칩이 없다 = myTeamSide 미도착(전제).
+  test("`/api/me` 도착 전에 유저가 고르면 그 선택이 이긴다 (홈 픽스처)", async ({ page }) => {
+    await openResult(page, { meDelayMs: 600, shape: "home-fixture" });
+    // 아직 칩이 없다 = myTeamSide 미도착(전제). 이때 기본 선택은 `home` 이다.
     await expect(page.getByTestId("players-teams").locator("[data-testid^='players-my-team-']")).toHaveCount(0);
-    await page.getByTestId(`players-team-${OPP_TEAM}`).click();
+    await expect(page.getByTestId("players-team-home")).toHaveAttribute("data-selected", "true");
+    await page.getByTestId("players-team-away").click(); // 화면이 실제로 바뀌는 선택
 
-    await expect(page.getByTestId(`players-my-team-${MY_TEAM}`)).toHaveCount(1); // 이제 도착
+    await expect(page.getByTestId("players-my-team-home")).toHaveCount(1); // 이제 도착(내 팀 = home)
     const s = await segmentState(page);
-    expect(s, "늦게 온 myTeamSide 가 유저 선택을 덮었다").toEqual({ mine: MY_TEAM, selected: OPP_TEAM });
-    await expect(page.getByTestId(`players-row-${OPP_TEAM}-P116`)).toHaveCount(1);
+    expect(s, "늦게 온 myTeamSide 가 유저 선택을 덮었다").toEqual({ mine: "home", selected: "away" });
+    await expect(page.getByTestId("players-row-away-P014")).toHaveCount(1);
+    await expect(page.getByTestId("players-row-home-P116")).toHaveCount(0);
+  });
+
+  /**
+   * ⚠️ **아무것도 안 바뀌는 탭은 "골랐다"가 아니다** (R2 — 독립검증 minor-1).
+   *
+   * `myTeamSide` 도착 전에는 세그먼트가 `home`(= **상대**)에 선택돼 있다. 그때 유저가 **이미
+   * 하이라이트된 그 칩**을 한 번 누르면 값이 안 바뀌는데도 `picked` 가 굳어, 도착 후에도 표가
+   * 상대에 남았다 — **major-1 과 똑같은 증상이 오탭 경로로** 살아 있었다.
+   * (수정 전 실측 `meDelayMs 2500`: 도착 후 선택 `home`, 표 `home 11행 / away 0행`.)
+   *
+   * ⚠️ 위 "유저 선택이 이긴다" 계약과 **짝**이다 — 한쪽만 두면 반대쪽으로 되돌리는 변이가 산다.
+   * 갈리는 축은 *"그 탭이 화면을 바꿨나"* 하나다.
+   */
+  test("`/api/me` 도착 전 **이미 선택된** 칩을 눌러도 내 팀으로 따라간다", async ({ page }) => {
+    await openResult(page, { meDelayMs: 900 });
+    // 전제 — 아직 칩이 없고(myTeamSide 미도착) 선택은 상대(home)에 있다.
+    await expect(page.getByTestId("players-teams").locator("[data-testid^='players-my-team-']")).toHaveCount(0);
+    await expect(page.getByTestId(`players-team-${OPP_TEAM}`)).toHaveAttribute("data-selected", "true");
+
+    await page.getByTestId(`players-team-${OPP_TEAM}`).click(); // 무의미한 탭 1회
+
+    await expect(page.getByTestId(`players-my-team-${MY_TEAM}`)).toHaveCount(1); // 도착
+    await expect
+      .poll(async () => JSON.stringify(await segmentState(page)), {
+        message: "무의미한 탭 한 번이 세그먼트를 상대 팀에 가뒀다",
+      })
+      .toBe(JSON.stringify({ mine: MY_TEAM, selected: MY_TEAM }));
+    // 표까지 — 선택 표시만 옮기고 행은 상대 것인 구현을 통과시키지 않는다.
+    await expect(page.getByTestId(`players-row-${MY_TEAM}-P014`)).toHaveCount(1);
+    await expect(page.getByTestId(`players-row-${OPP_TEAM}-P116`)).toHaveCount(0);
   });
 
   test("상대로 바꾸면 상대 행이 나온다 — 결정 ②(상대도 완전히 동일)", async ({ page }) => {
@@ -432,11 +518,8 @@ test.describe("⑤ 로그 없는 과거 경기 — 정직한 빈 상태", () => 
    * 두 문구는 유저에게 **다른 행동**을 시킨다: 오류는 다시 시도할 수 있고, 기록 없음은 영영 없다.
    */
   test("500 이면 '불러오지 못했습니다' — '기록 없음' 으로 덮지 않는다", async ({ page }) => {
-    await mockApi(page, "FINISHED");
-    await mockHalfLogError(page, 500);
-    await authInit(page);
-    await page.goto(`/match/${MATCH_ID}`);
-    await expect(page.getByTestId("stage-shell")).toBeVisible();
+    // 같은 매치를 여는 절차는 `open` 한 곳이다 — 500 목만 `beforeGoto` 로 끼운다(R2 minor-3).
+    await open(page, "FINISHED", "away-fixture", {}, (p) => mockHalfLogError(p, 500));
     await page.getByTestId("stage-tab-result").click();
 
     await expect(page.getByTestId("result-players")).toHaveCount(1); // 섹션 자체는 있다(앵커)

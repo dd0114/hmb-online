@@ -403,13 +403,22 @@ export function motmKeyFor(result: PlayerStatsResult | null, win: StatsWindow): 
  *
  * ⚠️ **화면이 아니라 여기 있는 이유** = 계약이 잴 수 있는 자리로 옮긴 것이다(R1, 독립검증
  * minor-1). 이 탐색이 `ResultPanel` 안에 있는 동안 *"`home` 항을 떨어뜨린다"* 는 변이가
- * **살아남았다** — 리포의 e2e 표본에서 MOTM 은 **언제나 away 사이드**라서다. 그건 픽스처를
- * 잘못 고른 것이 아니라 **구조적**이다: 평점이 10.0 에서 포화해 동점자가 여럿이고
- * (`docs/plan-v5/player-stats.md` §7 "남은 것"), `pickMotm` 의 마지막 tie-break 가 **키 오름차순**
- * 이라 `away:*` 가 `home:*` 를 항상 이긴다. 즉 **실로그를 어떻게 relabel 해도 home MOTM 표본은
- * 안 나온다**(팀 라벨을 통째로 뒤집어도 tie-break 가 다시 away 를 고른다).
- * 그래서 표본을 순수 계층에 만든다 — `player-stats-view.test.ts` 가 home/away 양쪽 MOTM 을
- * 직접 먹여 이 함수를 잰다.
+ * 리포의 e2e 표본에서 **살아남았다** — 그 표본들은 MOTM 이 **언제나 away 사이드**라서다
+ * (`away-fixture`·`home-fixture` 는 매치 메타의 **사이드 라벨만** 뒤집고 하프 로그는 같다).
+ *
+ * ⚠️ **R1 이 여기에 적었던 이유 설명은 거짓이었고 R2 에서 철회한다.** 그 문단은
+ * *"평점이 10.0 에서 포화해 동점자가 여럿이고 `pickMotm` 의 마지막 tie-break 가 키 오름차순이라
+ * `away:*` 가 항상 이긴다 = 실로그를 어떻게 relabel 해도 home MOTM 표본은 안 나온다"* 였다.
+ * 직접 재보면 **기제부터 틀렸다** — 이 픽스처(출전 25명)에서 10.0 은 **2명**이고
+ * (`home:P121` goals0/assists0 · `away:P079` goals0/assists1) 승부는 **assists 에서 갈린다**.
+ * 키 tie-break 는 **한 번도 발화하지 않는다**. 그래서 relabel 이 실제로 먹힌다:
+ * 팀 라벨을 뒤집으면 MOTM = `home:P079`, 전반 로그만 쓰면 MOTM = `home:P121`(그쪽은 최고 7.4 **단독**).
+ *
+ * 그러니 순수 계층에 둔 근거는 *"e2e 로는 불가능해서"* 가 아니라 **더 싸고 정확해서**다 —
+ * 유닛은 home/away MOTM 을 **직접 먹여** 표본을 만들고(로그를 조작해 우연히 그 상태가 되기를
+ * 기대하지 않는다) 브라우저 없이 그 축만 잰다. e2e 로도 **가능하다**(라벨을 뒤집은 하프 로그를
+ * 서빙하면 home MOTM 이 나오고 위 변이가 죽는다) — `p403-result-players.spec.ts` ①의
+ * "MOTM 이 home 사이드여도" 계약이 실제로 그렇게 잰다.
  */
 export function motmRowOf(
   result: PlayerStatsResult | null,
