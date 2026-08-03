@@ -199,6 +199,15 @@ const LIVE: Knob[] = [
   // 형태 노브 **8종**은 아래 **조건부 LIVE** 블록이 본다(N1 감쇠 형태 노브와 같은 처방).
   // 섭동 = 켜기. 켜면 러너의 목표가 바뀌므로 3시드에서 반드시 갈린다(등록 전 확인).
   { path: "movement.boxArrival.enabled", mutate: (c) => { c.movement.boxArrival.enabled = true; } },
+  // #407 박스 유입 탐색(0.44.0, **출하 없음**) — **셋 다 미등록이었다.** `variety.*` 오버랩 계열은
+  // 0.4.0 도입 이후, `rules.foul.base` 는 0.28.0 재보정 이후 이 레지스트리에 없었다. 팔은 출하되지
+  // 않았지만(탐색 종료) **"레버인데 등록이 없다"는 사실 자체는 그대로**라 여기 남긴다.
+  { path: "variety.defenderOverlapProb", mutate: (c) => { c.variety.defenderOverlapProb = 0.4; } },
+  // ⚠️ **계단 노브다** — 자격 문턱이 base 슬롯 x 라 슬롯 사이 값은 전부 같은 팔이다
+  // (4-3-3: `.45`~`.70` 이 **bit-identical**). 섭동을 좁게 잡으면 **거짓 INERT** 가 난다.
+  // 출하 `.4` 에서 `.8` 은 ST 포함 전원이 대상이 되므로 반드시 갈린다.
+  { path: "variety.overlapBaseLine", mutate: (c) => { c.variety.overlapBaseLine = 0.8; } },
+  { path: "rules.foul.base", mutate: (c) => { c.rules.foul.base = 0.22; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {
@@ -255,6 +264,13 @@ describe("#338 조건부 LIVE — 1대1 계열(#316 빈도 미달이라 상황�
   it("⚠️ 기본 반경에서는 3시드에 사례가 없다 — #316(1대1 빈도 0.5/경기)의 직접 증거", () => {
     // 이 단언이 **깨지면 좋은 일**이다(#316 이 해소돼 사례가 늘었다는 뜻) → 그때 이 블록을
     // 통째로 LIVE 로 올리고 이 주석을 지워라.
+    //
+    // ⚠️ #407(0.44.0 탐색)에서 이 단언이 **한 번 뒤집혔다가 돌아왔다** — 박스 유입 팔
+    // (`variety.defenderOverlap*` 계열)을 켜면 세 번째 시드에 1대1 사례가 생겨 red 가 됐다.
+    // 그때 확인한 것: **그건 #316 해소가 아니다.** 같은 팔에서 1대1 **빈도는 오히려 5.19% →
+    // 4.12% 로 줄었고**(n60), 뒤집힌 것은 3시드 **표본의 구성**이었다. 그 팔은 출하되지 않았다
+    // (탐색 종료 — `issues/2026-08-03-engine-box-inflow-arm.md` §7-quinquies).
+    // ⇒ 이 단언이 다시 깨지거든 **빈도 지표로 먼저 확인해라**. 3시드 해시는 #316 의 판정자가 아니다.
     expect(hashes((c) => { c.contest.oneOnOneXgMult = 1.01; })).toEqual(BASE);
   }, 120_000);
 });

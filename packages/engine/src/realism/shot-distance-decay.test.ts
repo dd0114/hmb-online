@@ -6,6 +6,7 @@ import { xgAtPoint } from "../decision";
 import { createPitch } from "../pitch";
 import { makeTacticalInput, makeSelectData } from "../fixtures";
 import { REALISM_SEEDS } from "./harness";
+import { preShipping } from "./rollback";
 
 /**
  * #407 N1 + N4 — **슛 하드 게이트 → 결정단 거리 감쇠** · **hold EV 의 1대1 예외** 계약
@@ -335,6 +336,10 @@ describe("#407 N1+N4 롤백 — 스위치를 끄면 0.40.0 과 비트 동일", (
     const c = tweak((x) => {
       x.chain.shootDistance.enabled = false;
       x.chain.hold.oneOnOnePenalty = 0;
+      // #407(0.44.0) — 박스 유입 팔은 이 두 스위치 **밖**의 config-only 변경이다. ⑦ 까지의
+      // 관용구는 골든 재기록이었지만 그러면 "0.40.0 과 같다"는 앵커가 사라진다 → 대신 기준점을
+      // 옮긴다(`realism/rollback.ts`). 위 상수는 그대로이고, 이 줄이 그것을 재현 가능하게 한다.
+      preShipping(x);
     });
     const got = REALISM_SEEDS.slice(0, 4).map(
       (s) =>

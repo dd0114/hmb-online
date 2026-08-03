@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { defaultEngineConfig, type EngineConfig } from "./config";
+import { preShipping } from "./realism/rollback";
 import { perceiveOpponents, chooseMarkTarget } from "./decision";
 import { runMatch } from "./match";
 import { makeTacticalInput, makeSelectData, demoSelect } from "./fixtures";
@@ -160,11 +161,19 @@ describe("롤백 스위치 (#147 W3)", () => {
   // 롤백 경로 = 그 이후 추가된 기능 스위치를 전부 끈 상태 — 시야(#147)와 코너 rest defence(#182).
   // (#181 이후 이 계약은 "0.16.0 과 동일"이 아니라 "롤백 경로가 조용히 드리프트하지 않는다" 다.
   //  아래 상수 주석 참조.)
+  // ⚠️ #407(engine@0.44.0) — 여기서 처방이 바뀐다. 박스 유입 팔은 **코드를 한 줄도 안 바꾸고
+  // 출하 튜닝값 3개만** 바꾼 config-only 웨이브다. 아래 상수를 또 재기록하면 이 계약이 앞으로
+  // 튜닝을 할 때마다 갱신 대상이 되고, 정작 지키려던 "조용한 드리프트"와 구분이 안 된다.
+  // 대신 롤백 config 에 `preShipping()` 을 얹어 **기준점을 튜닝값 시점에 고정**한다 —
+  // 그러면 이 상수는 기제 변경에만 반응한다(사유·처방 = `realism/rollback.ts` 상단).
   const off: EngineConfig = {
     ...cfg,
     vision: { ...cfg.vision, enabled: false },
     setPiece: { ...cfg.setPiece, corner: { ...cfg.setPiece.corner, enabled: false } },
+    variety: { ...cfg.variety },
+    rules: { ...cfg.rules, foul: { ...cfg.rules.foul } },
   };
+  preShipping(off);
   const run = (c: EngineConfig, mark?: string) => {
     const home = makeTacticalInput("H", seed);
     if (mark) home.players[4]!.markTarget = mark;

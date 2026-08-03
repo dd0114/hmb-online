@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import type { TacticalInput } from "@hmb/shared";
 import { defaultEngineConfig, type EngineConfig } from "../config";
 import { REALISM_SEEDS, GUARD_SEEDS } from "./harness";
+import { preShipping } from "./rollback";
 import { LADDER, LADDER_TAG } from "./gate";
 import { setDefShapeObserver } from "../action";
 import { runMatch } from "../match";
@@ -87,6 +88,18 @@ const ROLLBACK = cfg((c) => {
   c.movement.defLine.trap.enabled = false;
   c.rules.offside.trapBiasM = 2.5;
 });
+/**
+ * T5(골든 무이동) **전용** — 롤백 + 출하 튜닝값 되돌리기. #407 0.44.0 박스 유입 팔은
+ * config-only 라 이 웨이브 스위치 밖에서 돈다. 골든을 재기록하는 대신 기준점을 옮긴다
+ * (사유·처방 = `realism/rollback.ts` 상단).
+ */
+const ROLLBACK_PRE = cfg((c) => {
+  c.movement.defLine.trap.enabled = false;
+  c.rules.offside.trapBiasM = 2.5;
+  preShipping(c);
+});
+/** T5 첫 단언용 — 출하 config 에서 **튜닝값만** 0.43.0 으로(기제는 전부 출하 그대로). */
+const SHIPPING_PRE = cfg((c) => { preShipping(c); });
 
 function hashes(config: EngineConfig, patch?: (t: TacticalInput) => TacticalInput): string[] {
   return S8.map((s) => {
@@ -353,11 +366,13 @@ describe("S3-C T5 — 롤백이 `3d38e86`(0.39.0) 과 비트 동일", () => {
   it("출하 픽스처(트랩 off)는 0.39.0 과 **똑같다** — 이 웨이브는 골든을 안 움직인다", () => {
     // 이것이 전술 기본값을 off 로 둔 이유다(스코프 §4-b). 깨지면 그 전제가 무너진 것이므로
     // `-u` 로 넘기지 말고 원인을 실측으로 설명해야 한다.
-    expect(hashes(defaultEngineConfig)).toEqual(REF_0_42_0_SHIPPING);
+    // ⚠️ #407(0.44.0) — 기준점만 `preShipping()` 으로 옮겼다(골든 재기록 아님). 이 웨이브가
+    //    바꾼 것은 **출하 튜닝값 3개**뿐이고 트랩 기제와 무관하다 — `rollback.ts` 참조.
+    expect(hashes(SHIPPING_PRE)).toEqual(REF_0_42_0_SHIPPING);
   }, 300_000);
 
   it("트랩을 켠 경기도 롤백 config(`trap.enabled=false` + `trapBiasM=2.5`)면 0.39.0 과 같다", () => {
-    expect(hashes(ROLLBACK, trapOnPatch)).toEqual(REF_0_42_0_TRAP_ON);
+    expect(hashes(ROLLBACK_PRE, trapOnPatch)).toEqual(REF_0_42_0_TRAP_ON);
   }, 300_000);
 
   it("그리고 기제가 켜지면 다르다 (롤백 계약이 공허하지 않다)", () => {
