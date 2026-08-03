@@ -215,9 +215,17 @@ function MatchLogRow({
         <div className={styles.rowMeta}>
           <span className={styles.modeTag}>{MODE_LABELS[item.mode]}</span>
           {rl && <span className={styles.roundTag}>{rl}</span>}
+          {/*
+            ⚠️ 문구는 `기록`, **testid 는 `match-replay-*` 그대로**다 (#403 W4, 목업 ⑥).
+            그 경기를 열면 다시보기만이 아니라 **개인 성적·선수 상세**까지 같은 화면에서 나온다
+            (요구 D — 서버가 하프 로그를 영구 보관하므로 새 화면이 필요 없다). `재생` 만 적어
+            두면 유저가 "기록도 여기 있다"를 알 방법이 없다.
+            testid 를 안 바꾸는 이유: 이름이 바뀌면 이걸 참조하는 계약이 **조용히 아무것도 못
+            찾는다**(`toHaveCount(0)` 부류가 통과한다, CLAUDE.md "초록으로 거짓말" #6).
+          */}
           {item.hasHalves && (
             <span className={styles.replayTag} data-testid={`match-replay-${item.id}`}>
-              ▶ 재생
+              ▶ 기록
             </span>
           )}
           <span className={styles.date}>{shortDate(item.createdAt)}</span>

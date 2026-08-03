@@ -379,4 +379,58 @@ export function isMotmKey(result: PlayerStatsResult, key: string): boolean {
   return result.motm != null && result.motm.key === key;
 }
 
+/**
+ * **이 창에서 MOTM 으로 표시할 키** — 없으면 null (#403 W4).
+ *
+ * 게이트는 `kind === "settled"` 다: 진행 중인 경기에 *"이 경기 최우수 선수"* 는 없다(집계는
+ * 상한까지의 값으로 MOTM 을 계속 뽑지만, 그건 "지금까지 1위"이지 이 경기의 결론이 아니다).
+ *
+ * ⚠️ **판정이 두 곳에 있으면 안 된다.** 선수 탭은 `win.kind === "settled" && isMotmKey(…)` 를
+ * 인라인으로 쓰고 있었고, 결과 탭(W4)이 같은 식을 한 번 더 쓰면 한쪽만 낡는다 — 결과 탭은
+ * `FINISHED` 전용이라 조건이 **항상 참**이어서 그 인라인이 조용히 게이트 없는 형태로 굳는다.
+ * 그래서 두 화면 모두 이 함수를 통과한다(호출부에 `kind` 비교를 다시 적지 마라).
+ */
+export function motmKeyFor(result: PlayerStatsResult | null, win: StatsWindow): string | null {
+  if (!result || win.kind !== "settled") return null;
+  return result.motm?.key ?? null;
+}
+
+/**
+ * **MOTM 한 줄이 가리킬 행** — 지금 고른 세그먼트와 무관하게 **양 팀에서** 찾는다 (#403 W4).
+ *
+ * 상대가 MOTM 인 경기가 실제로 있고(라이브 표본이 그렇다), 그때 이 줄이 비면 화면이 *"우리 중
+ * 최고"* 라는 **다른 뜻**을 말한다.
+ *
+ * ⚠️ **화면이 아니라 여기 있는 이유** = 계약이 잴 수 있는 자리로 옮긴 것이다(R1, 독립검증
+ * minor-1). 이 탐색이 `ResultPanel` 안에 있는 동안 *"`home` 항을 떨어뜨린다"* 는 변이가
+ * 리포의 e2e 표본에서 **살아남았다** — 그 표본들은 MOTM 이 **언제나 away 사이드**라서다
+ * (`away-fixture`·`home-fixture` 는 매치 메타의 **사이드 라벨만** 뒤집고 하프 로그는 같다).
+ *
+ * ⚠️ **R1 이 여기에 적었던 이유 설명은 거짓이었고 R2 에서 철회한다.** 그 문단은
+ * *"평점이 10.0 에서 포화해 동점자가 여럿이고 `pickMotm` 의 마지막 tie-break 가 키 오름차순이라
+ * `away:*` 가 항상 이긴다 = 실로그를 어떻게 relabel 해도 home MOTM 표본은 안 나온다"* 였다.
+ * 직접 재보면 **기제부터 틀렸다** — 이 픽스처(출전 25명)에서 10.0 은 **2명**이고
+ * (`home:P121` goals0/assists0 · `away:P079` goals0/assists1) 승부는 **assists 에서 갈린다**.
+ * 키 tie-break 는 **한 번도 발화하지 않는다**. 그래서 relabel 이 실제로 먹힌다:
+ * 팀 라벨을 뒤집으면 MOTM = `home:P079`, 전반 로그만 쓰면 MOTM = `home:P121`(그쪽은 최고 7.4 **단독**).
+ *
+ * 그러니 순수 계층에 둔 근거는 *"e2e 로는 불가능해서"* 가 아니라 **더 싸고 정확해서**다 —
+ * 유닛은 home/away MOTM 을 **직접 먹여** 표본을 만들고(로그를 조작해 우연히 그 상태가 되기를
+ * 기대하지 않는다) 브라우저 없이 그 축만 잰다. e2e 로도 **가능하다**(라벨을 뒤집은 하프 로그를
+ * 서빙하면 home MOTM 이 나오고 위 변이가 죽는다) — `p403-result-players.spec.ts` ①의
+ * "MOTM 이 home 사이드여도" 계약이 실제로 그렇게 잰다.
+ */
+export function motmRowOf(
+  result: PlayerStatsResult | null,
+  roster: ReadonlyMap<string, RosterMeta>,
+  motmKey: string | null,
+): PlayerRow | null {
+  if (!result || motmKey == null) return null;
+  for (const team of ["home", "away"] as const) {
+    const row = rowsFor(result, team, roster).find((r) => r.key === motmKey);
+    if (row) return row;
+  }
+  return null;
+}
+
 export { playerKey };

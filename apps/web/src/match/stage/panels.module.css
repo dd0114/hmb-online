@@ -536,7 +536,16 @@
   text-align: left;
 }
 
-.plistRow {
+/*
+  ⚠️ **손잡이처럼 보이는 것도 손잡이다** (#403 W4 R1, 독립검증 minor-5).
+  결과 탭 행은 일부러 버튼이 아니다(상세 모달은 셸이 소유하고 그 패널은 거기 닿지 않는다) —
+  그런데 이 규칙이 무조건이라 `role`/`tabIndex` 없는 행에도 손가락 커서가 붙어 있었다
+  (실측 `{"cursor":"pointer","role":null,"tabIndex":-1}`). 눌러도 아무 데도 안 가는 손잡이를
+  안 남긴다는 규율은 DOM 뿐 아니라 **어포던스**에도 걸린다.
+  판정축은 `PlayerStatsTable.Row` 가 상호작용 여부로 다는 `role="button"` **하나**다 —
+  클래스를 하나 더 만들면 "버튼인가"의 답이 두 개가 된다.
+*/
+.plistRow[role="button"] {
   cursor: pointer;
 }
 

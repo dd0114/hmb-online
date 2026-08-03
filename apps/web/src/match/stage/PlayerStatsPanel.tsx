@@ -3,21 +3,15 @@ import {
   DEFAULT_SORT,
   SORT_KEYS,
   SORT_LABELS,
-  coverageLabel,
-  defaultSegment,
-  isMotmKey,
-  passIncomplete,
-  passPctLabel,
-  ratingTier,
+  motmKeyFor,
   rowsFor,
   sortRows,
   teamSegments,
-  type PlayerRow,
   type PlayerSelection,
   type SortKey,
 } from "../player-stats-view";
+import { PlayerStatsTable, PlayerTeamSegments, useTeamSegment } from "../PlayerStatsTable";
 import type { MatchPlayerStats } from "../usePlayerStats";
-import type { TeamSide } from "../player-stats";
 import styles from "./panels.module.css";
 
 interface PlayerStatsPanelProps {
@@ -55,6 +49,10 @@ interface PlayerStatsPanelProps {
  * 순수 판정(정렬·열 값·세그먼트·캡션)은 `player-stats-view.ts` 에 있다 — 화면에서 규칙을 다시
  * 쓰면 계약이 못 잡는 자리가 생긴다.
  *
+ * ⚠️ **세그먼트와 표는 `../PlayerStatsTable` 공용 부품이다**(#403 W4). 결과 탭이 같은 것을
+ * 그리므로 여기에 사본을 두면 한쪽만 낡는다. 이 파일에 남은 것은 **이 탭에만 있는 것**뿐이다:
+ * 라이브 캡션 · 정렬 칩 · 상대 지시 비공개 안내.
+ *
  * ⚠️ **아이콘을 쓰지 않는다 — 팀색 원 + 등번호다**(#285 정책 절 "경기장 = 팀색 원 + 등번호").
  * 화면에 `grade === …` 비교가 없고 `CharAvatar` 도 없으므로 아트 노출 정책을 지나갈 일이 아예
  * 없다. 무엇보다 이 표는 **바로 위 경기장 토큰과 같은 것을 가리키므로** 같은 표현이어야
@@ -69,7 +67,8 @@ export function PlayerStatsPanel({
   onSelect,
   onOpenDetail,
 }: PlayerStatsPanelProps) {
-  const [team, setTeam] = useState<TeamSide>(() => defaultSegment(myTeamSide));
+  /** ⚠️ `myTeamSide` 는 `/api/me` 가 늦으면 나중에 온다 — `useTeamSegment` 머리말이 SoT. */
+  const [team, setTeam] = useTeamSegment(myTeamSide);
   const [sort, setSort] = useState<SortKey>(DEFAULT_SORT);
 
   const { result, roster, coverage, window: win, isLoading, isError } = stats;
@@ -88,7 +87,6 @@ export function PlayerStatsPanel({
    * 둘이 따로 놀던 동안 감독시간이 "7분까지의 기록" 위에 전 선수 0 을 그렸다.
    */
   const caption = win.caption;
-  const incomplete = passIncomplete(coverage);
 
   return (
     <div className={styles.playersBody} data-testid="stage-panel-players">
@@ -96,29 +94,7 @@ export function PlayerStatsPanel({
         팀 전환 — **순서는 홈 먼저**(#322 안 C). 내 팀을 앞으로 당기지 않고 칩으로 말한다.
         기본 선택만 내 팀이다(`defaultSegment`) — 순서를 안 바꾸는 대신 선택으로 답한다.
       */}
-      <div className={styles.playerSeg} data-testid="players-teams">
-        {segments.map((s) => (
-          <button
-            key={s.side}
-            type="button"
-            className={`${styles.playerSegBtn} ${s.side === team ? styles.playerSegOn : ""}`}
-            data-testid={`players-team-${s.side}`}
-            data-side={s.side}
-            data-selected={s.side === team}
-            aria-pressed={s.side === team}
-            onClick={() => setTeam(s.side)}
-          >
-            {/* ⚠️ 줄임표는 **이름에만** 건다 — 칩을 그 안에 넣으면 긴 팀명 뒤에서 통째로 잘리는데
-                DOM 엔 남아 `toBeVisible()` 이 통과한다(#322 에서 실제로 당했다). */}
-            <span className={styles.playerSegName}>{s.label}</span>
-            {s.mine && (
-              <span className={styles.myTeamTag} data-testid={`players-my-team-${s.side}`} aria-label="내 팀">
-                내 팀
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <PlayerTeamSegments segments={segments} team={team} onChange={setTeam} />
 
       {/* 라이브면 "N분까지" — 종료 경기면 이 줄이 아예 없다(목업 ①·③: 화면은 같고 문구만 붙고 뗀다). */}
       {caption && (
@@ -144,60 +120,14 @@ export function PlayerStatsPanel({
         ))}
       </div>
 
-      <table className={styles.plist} data-testid="players-table">
-        <colgroup>
-          <col />
-          <col className={styles.colRating} />
-          <col className={styles.colNum} />
-          <col className={styles.colNum} />
-          <col className={styles.colPass} />
-          <col className={styles.colDef} />
-        </colgroup>
-        <thead>
-          <tr>
-            <th scope="col">선수</th>
-            <th scope="col">평점</th>
-            <th scope="col">골</th>
-            <th scope="col">슛</th>
-            <th scope="col">
-              패스%
-              {/*
-                귀속이 불완전하면 **숨기지 않고 말한다**(W1 독립검증 권고). 스냅샷이 성긴 로그에서는
-                소유 체인이 끊겨 패스 시도의 일부가 아무에게도 안 붙는다 — 그때 숫자만 보이면
-                "이 선수는 패스를 그만큼밖에 안 했다"는 거짓이 된다.
-              */}
-              {incomplete && (
-                <span
-                  className={styles.playerIncomplete}
-                  data-testid="players-pass-incomplete"
-                  title={`기록 불완전 — ${coverageLabel(coverage)}`}
-                >
-                  기록 불완전
-                </span>
-              )}
-            </th>
-            <th scope="col">수비</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <Row
-              key={r.key}
-              row={r}
-              motm={win.kind === "settled" && isMotmKey(result, r.key)}
-              picked={selected?.team === r.team && selected?.playerId === r.playerId}
-              onSelect={onSelect}
-              onOpenDetail={onOpenDetail}
-            />
-          ))}
-        </tbody>
-      </table>
-
-      {rows.length === 0 && (
-        <p className={styles.note} data-testid="players-empty">
-          아직 기록이 없습니다
-        </p>
-      )}
+      <PlayerStatsTable
+        rows={rows}
+        motmKey={motmKeyFor(result, win)}
+        coverage={coverage}
+        selected={selected}
+        onSelect={onSelect}
+        onOpenDetail={onOpenDetail}
+      />
 
       {/*
         결정 ②(hero) = 상대도 **우리와 완전히 동일**, **지시문만 비공개**. 목업 ① 상대 탭에 그
@@ -211,77 +141,5 @@ export function PlayerStatsPanel({
         </p>
       )}
     </div>
-  );
-}
-
-function Row({
-  row,
-  motm,
-  picked,
-  onSelect,
-  onOpenDetail,
-}: {
-  row: PlayerRow;
-  motm: boolean;
-  picked: boolean;
-  onSelect?: (sel: PlayerSelection) => void;
-  onOpenDetail?: (sel: PlayerSelection) => void;
-}) {
-  /** 한 번의 탭이 두 일을 한다: (B) 피치 강조를 갱신하고, 상세를 연다. 둘은 서로를 안 기다린다. */
-  const interactive = Boolean(onSelect || onOpenDetail);
-  const pick = () => {
-    const sel: PlayerSelection = { team: row.team, playerId: row.playerId };
-    onSelect?.(sel);
-    onOpenDetail?.(sel);
-  };
-  const tier = ratingTier(row.line.rating, motm);
-  return (
-    <tr
-      className={`${styles.plistRow} ${picked ? styles.plistRowOn : ""}`}
-      data-testid={`players-row-${row.team}-${row.playerId}`}
-      data-gk={row.isGk}
-      data-picked={picked}
-      role={interactive ? "button" : undefined}
-      tabIndex={interactive ? 0 : undefined}
-      onClick={pick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          pick();
-        }
-      }}
-    >
-      <td>
-        <span className={styles.pcell}>
-          {/* 팀색 원 + 등번호 — 경기장 토큰과 **같은 표현**(#285 정책 절). */}
-          <i className={`${styles.pnum} ${row.team === "home" ? styles.pnumHome : styles.pnumAway}`} aria-hidden="true">
-            {row.num ?? "–"}
-          </i>
-          <span className={styles.pname}>{row.name}</span>
-          {row.position && <span className={styles.ppos}>{row.position}</span>}
-        </span>
-      </td>
-      <td>
-        <i
-          className={styles.rating}
-          data-tier={tier}
-          data-testid={`players-rating-${row.team}-${row.playerId}`}
-          title={motm ? "이 경기 최우수 선수" : undefined}
-        >
-          {row.line.rating.toFixed(1)}
-        </i>
-      </td>
-      <td data-testid={`players-goals-${row.team}-${row.playerId}`}>{row.line.goals}</td>
-      <td data-testid={`players-shots-${row.team}-${row.playerId}`}>{row.line.shots}</td>
-      <td data-testid={`players-passpct-${row.team}-${row.playerId}`}>{passPctLabel(row.passPct)}</td>
-      {/*
-        GK 는 이 열이 **선방**이다(목업 ①). 숫자만 두면 "GK 가 수비를 5번 했다"로 읽히므로
-        화면이 그걸 말한다 — 색·자리만으로 뜻이 갈리게 두지 않는다.
-      */}
-      <td data-testid={`players-defence-${row.team}-${row.playerId}`}>
-        {row.defence}
-        {row.isGk && <small className={styles.pnote}>선방</small>}
-      </td>
-    </tr>
   );
 }

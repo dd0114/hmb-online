@@ -22,6 +22,7 @@ import { ResultPanel, RESULT_LABELS } from "./ResultPanel";
 import {
   halfForState,
   headerMinute,
+  needsPlayerStats,
   playedBaseline,
   resolveActiveTab,
   sheetHeight,
@@ -189,13 +190,21 @@ export function StageShell({
    *
    * ⚠️ **보고 있을 때만 켠다**(`enabled`). 이 집계는 O(스냅샷 × 선수)이고 플레이헤드마다 다시
    * 도는데, 항상 켜 두면 아무도 안 보는 동안에도 매 틱 수만 번이 돌아 관전 프레임 예산을 먹는다.
+   * W2 독립검증 MAJ-1 이 정확히 이 게이트였다 — 페치만 끄면 **캐시가 채워 줘서 안 막힌다**
+   * (실측: 탭 닫힘 상태에서 6초에 24회). 지키는 것은 `usePlayerStats` 안의 `if (!enabled) return null`
+   * 이고, 계약(`usePlayerStats.test.ts`)이 호출 횟수를 직접 센다.
+   *
+   * ⚠️ **W4 에서 목록이 둘이 됐다** — 결과 탭도 개인 성적을 그린다(요구 C). 그래도 "보고 있는
+   * 탭"이라는 성질은 그대로다: 셋 다 닫혀 있으면(통계·로그·감독…) 여전히 0회다. 새 소비 화면을
+   * 붙일 때 이 배열에 넣는 것을 잊으면 그 화면은 **집계가 null 이라 아무것도 안 그린다**(조용히
+   * 틀린 값이 나오는 게 아니라 비어서 눈에 띈다 — 그렇게 실패하도록 둔 것이다).
    */
   const playerStats = useMatchPlayerStats(
     match.id,
     match.state,
     tick,
     clockMinute,
-    activeTab === "players",
+    needsPlayerStats(activeTab),
   );
 
   /**
@@ -379,6 +388,12 @@ export function StageShell({
                    * 결과 화면이 **유일한 자리**다 — 그때만 결과 패널이 그린다.
                    */
                   hasRewardSheet={Boolean(bundle)}
+                  /*
+                   * 개인 성적 (#403 W4) — 셸이 한 번 돌린 **같은 집계**를 넘긴다. 패널이 자기
+                   * 훅을 부르면 창·로스터가 갈려 같은 선수가 두 탭에서 다른 평점을 받을 수 있다.
+                   */
+                  playerStats={playerStats}
+                  myTeamSide={myTeamSide}
                 />
               )}
             </div>

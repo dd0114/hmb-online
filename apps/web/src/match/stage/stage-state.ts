@@ -440,3 +440,23 @@ export function sheetHeight(tab: TabKey | null): "info" | "list" | "input" | "st
   if (tab === "players") return "list";
   return tab === "brief" ? "input" : "info";
 }
+
+/**
+ * **선수 기록 집계를 켜는 탭** (#403 W2 MAJ-1 → W4 확장).
+ *
+ * `useMatchPlayerStats` 는 O(스냅샷 × 선수)이고 **플레이헤드가 움직일 때마다** 다시 돈다.
+ * 아무도 안 보는 동안에도 돌면 관전 프레임 예산을 먹는다 — W2 독립검증이 실측한 값이
+ * **탭 닫힘 상태에서 6초에 24회**였다(그때는 페치만 껐는데 셸이 같은 쿼리키를 이미 채워 둬서
+ * 캐시가 계속 공급했다). 지키는 것은 훅 안의 `if (!enabled) return null` 이고, 여는 조건이 이것이다.
+ *
+ * ⚠️ **함수로 뺀 이유** = 인라인 `activeTab === "players"` 였을 때 이 조건 자체에 계약이 없었다.
+ * W4 가 여기에 `result` 를 더하면서 "언제 켜지나"가 판단이 됐으므로, 그 판단을 계약이 잡을 수
+ * 있는 자리로 옮긴다(`stage-state.test.ts` 가 **탭 전수**로 검사한다 — 새 탭이 생기면 그 탭도
+ * 명시적으로 판정하게 된다).
+ *
+ * ⚠️ 새 소비 화면을 붙이고 여기 안 넣으면 그 화면은 **집계가 null 이라 비어서** 뜬다 —
+ * 조용히 틀린 값이 나오는 게 아니라 눈에 띄게 실패한다. 그렇게 실패하도록 둔 것이다.
+ */
+export function needsPlayerStats(tab: TabKey | null): boolean {
+  return tab === "players" || tab === "result";
+}

@@ -127,14 +127,72 @@ export const PLAYERS = ALL_IDS.map((id) => ({
 
 export type Shape = "away-fixture" | "home-fixture" | "long-name";
 
+export interface MockOpts {
+  /**
+   * `GET /api/me` 응답을 이만큼 늦춘다 (#403 W4 R1 — 독립검증 major-1 의 표본).
+   *
+   * ⚠️ **이건 인위적인 상황이 아니다.** `App.tsx RequireAuth` 는 **토큰만** 보고 화면을 띄우므로
+   * `/api/me` 는 애초에 기다려지지 않는다 — `/api/matches/:id` 가 먼저 오면 패널은 `myTeamSide`
+   * 를 **모른 채로** 마운트된다. 목이 두 응답을 같은 틱에 주면 그 순서가 구조적으로 안 생겨서,
+   * 계약이 *"내 팀 칩과 선택된 세그먼트가 같은가"* 를 영영 못 잰다.
+   * 직접 잰 지연 스윕(수정 전 코드 · `chip`/`selected`): `0ms away/away` · **`20·40·80·150·300ms`
+   * 전부 `away/home`**(= 칩과 표가 다른 팀). 수정 후에는 여섯 지연 전부 `away/away`.
+   */
+  meDelayMs?: number;
+  /**
+   * 하프 로그의 **팀 라벨만** 뒤집어 서빙한다 (#403 W4 R2).
+   *
+   * ⚠️ `shape` 로는 이 축을 못 만든다 — `away-fixture`/`home-fixture` 는 **매치 메타**의 사이드
+   * 라벨(`homeName`/`awayName`)만 뒤집고 로그는 그대로라, 두 shape 모두 MOTM 이 **away 사이드**다.
+   * 그래서 *"MOTM 이 home 사이드"* 라는 상태가 리포 e2e 에 한 번도 없었고, `motmRowOf` 의
+   * `home` 항을 떨어뜨리는 변이가 e2e 전체를 통과했다(R1 이 그것을 *"구조적으로 불가능"* 이라고
+   * 적었는데 **거짓이었다** — 뒤집으면 MOTM = `home:P079` 다. 실측은 R2 커밋 메시지).
+   *
+   * ⚠️ **이건 합성 표본이다** — 로그만 뒤집으므로 매치 메타의 스코어(`0:3`)와는 어긋난다.
+   * 그 축을 재는 계약에 쓰지 마라. 쓰는 자리는 *"MOTM 을 양 팀에서 찾는가"* 하나뿐이다.
+   *
+   * ⚠️ **불일치는 로그 **안**에도 하나 더 있다**(R3 — 독립검증 minor-1). `flipTeams` 는
+   * `tickSnapshots[].players[].team` 과 `events[].team` 만 뒤집고 **로그 자신의 `finalScore` 는
+   * 안 뒤집는다** — 뒤집힌 로그에서 골 이벤트는 `home` 소속인데 `finalScore` 는 `{home:0, away:1}`
+   * (H1) / `{home:0, away:2}`(H2) 그대로다. 실소비자는 `match-logic.ts:fallbackScore` 이고,
+   * 지금 이 목을 쓰는 유일한 계약(MOTM)은 스코어를 안 읽으므로 **무해하다**.
+   * **고치지 않은 이유**: 뒤집으면 매치 메타(`scoreHome/scoreAway`)·스코어바·타임라인이 같이
+   * 움직여 이 목이 재려던 축 하나가 흔들린다. 대신 여기 적어 둔다 — 다음 사람이 *"이 로그는
+   * 내부적으로 정합하다"* 고 읽으면 그 자리에서 틀린다. **스코어를 읽는 계약에 이 목을 쓰지 마라.**
+   */
+  flipLogTeams?: boolean;
+}
+
+/** 팀 라벨만 뒤집은 하프 로그(위 `flipLogTeams`). 로그는 크므로 한 번만 만든다. */
+function flipTeams(log: typeof LOG_H1) {
+  const flip = (t: string) => (t === "home" ? "away" : t === "away" ? "home" : t);
+  return {
+    ...log,
+    tickSnapshots: log.tickSnapshots.map((s: { players: { team: string }[] }) => ({
+      ...s,
+      players: s.players.map((p) => ({ ...p, team: flip(p.team) })),
+    })),
+    events: (log.events ?? []).map((e: { team?: string }) => (e.team ? { ...e, team: flip(e.team) } : e)),
+  };
+}
+let flippedH1: unknown;
+let flippedH2: unknown;
+
 /** ⚠️ 라우트는 pathname 술어로 — glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지 잡아 흰 화면이 된다. */
-export async function mockApi(page: Page, state: string, shape: Shape = "away-fixture") {
+export async function mockApi(
+  page: Page,
+  state: string,
+  shape: Shape = "away-fixture",
+  opts: MockOpts = {},
+) {
   const userAway = shape !== "home-fixture";
   const bot = shape === "long-name" ? LONG_BOT : BOT;
+  const meDelayMs = opts.meDelayMs ?? 0;
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
     if (url.pathname === "/api/me") {
+      if (meDelayMs > 0) await new Promise((r) => setTimeout(r, meDelayMs));
       return route.fulfill({
         json: { user: { id: "u1", nickname: ME, points: 0, wins: 4, draws: 0, losses: 0, isAdmin: false } },
       });
@@ -164,8 +222,14 @@ export async function mockApi(page: Page, state: string, shape: Shape = "away-fi
         },
       });
     }
-    if (/\/api\/matches\/.+\/halves\/1\/log$/.test(url.pathname)) return route.fulfill({ json: LOG_H1 });
-    if (/\/api\/matches\/.+\/halves\/2\/log$/.test(url.pathname)) return route.fulfill({ json: LOG_H2 });
+    if (/\/api\/matches\/.+\/halves\/1\/log$/.test(url.pathname)) {
+      if (!opts.flipLogTeams) return route.fulfill({ json: LOG_H1 });
+      return route.fulfill({ json: (flippedH1 ??= flipTeams(LOG_H1)) as object });
+    }
+    if (/\/api\/matches\/.+\/halves\/2\/log$/.test(url.pathname)) {
+      if (!opts.flipLogTeams) return route.fulfill({ json: LOG_H2 });
+      return route.fulfill({ json: (flippedH2 ??= flipTeams(LOG_H2)) as object });
+    }
     if (url.pathname === `/api/matches/${MATCH_ID}/result`) {
       return route.fulfill({ json: { matchId: MATCH_ID, result: "WIN", scoreHome: 0, scoreAway: 3, pointsAwarded: 0 } });
     }
@@ -175,12 +239,34 @@ export async function mockApi(page: Page, state: string, shape: Shape = "away-fi
   });
 }
 
-export async function open(page: Page, state: string, shape: Shape = "away-fixture") {
-  await mockApi(page, state, shape);
+/** 로그인 상태 주입 — 목 스펙이 `/match` 밖(예: `/me` 목록)에서 시작할 때도 같은 경로를 쓴다. */
+export async function authInit(page: Page) {
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "local");
   });
+}
+
+/**
+ * 매치 화면을 연다.
+ *
+ * ⚠️ **추가 목이 필요해도 이 함수를 풀어 쓰지 마라** — `beforeGoto` 로 끼워라(R2, 독립검증
+ * minor-3). R1 이 성장 리포트·`/api/me` 지연 목을 얹으려고 호출부에서
+ * `mockApi → authInit → goto → expect(stage-shell)` 를 복제했는데, 그러면 여는 순서가 두 벌이 돼
+ * 한쪽만 낡는다(`ChoiceCards.tsx` 머리말 — R1 자신이 `useTeamSegment` 를 합칠 때 인용한 원칙이다).
+ * 등록 순서는 여기서 지킨다: **catch-all(`mockApi`) 먼저 → 세부 목(`beforeGoto`) 나중**
+ * (playwright 는 나중에 등록한 라우트가 먼저 매칭된다).
+ */
+export async function open(
+  page: Page,
+  state: string,
+  shape: Shape = "away-fixture",
+  opts: MockOpts = {},
+  beforeGoto?: (page: Page) => Promise<void>,
+) {
+  await mockApi(page, state, shape, opts);
+  await beforeGoto?.(page);
+  await authInit(page);
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.getByTestId("stage-shell")).toBeVisible();
 }
@@ -189,6 +275,181 @@ export async function openPlayers(page: Page, state: string, shape: Shape = "awa
   await open(page, state, shape);
   await page.getByTestId("stage-tab-players").click();
   await expect(page.getByTestId("stage-panel-players")).toHaveCount(1);
+}
+
+/**
+ * ── W4 (종료·과거 경기) 추가 목 ─────────────────────────────────────────────────────────
+ *
+ * ⚠️ 아래 헬퍼들은 전부 **`mockApi`(=`open`) 뒤에** 등록한다 — playwright 는 나중에 등록한
+ * 라우트가 먼저 매칭되므로 catch-all 을 이긴다(`mockGrowthCard` 와 같은 규율).
+ */
+
+/**
+ * **하프 로그가 없는 경기** — `match_halves` 행이 없으면 서버가 404 `해당 half 로그가 없습니다`
+ * 를 준다(`MatchService.halfLogJson` 실측). 과거 경기 목록이 그런 매치를 `hasHalves:false` 로
+ * 구분해 그리므로 **정상적으로 존재하는 상태**이고, 그 경기의 결과 화면이 무엇을 말하는지가
+ * W4 의 빈 상태 계약이다.
+ *
+ * ⚠️ 404 **본문 형태까지 서버와 같게** 준다(`{code,message}`) — 형태가 다르면 `apiFetch` 가
+ * `ApiError.status` 를 못 실어 주고, 그러면 화면이 "기록 없음"과 "불러오지 못함"을 못 가른다.
+ * 목이 낡으면 그 스펙은 자기가 만든 세계를 검증한다(#342).
+ */
+export const NO_LOG_MATCH_ID = "01KYS2QM76YBKANGNZ6QTX8W00";
+
+export async function mockNoLogMatch(page: Page, id: string = NO_LOG_MATCH_ID) {
+  await page.route(
+    (url) => url.pathname.startsWith(`/api/matches/${id}`),
+    (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (/\/halves\/[12]\/log$/.test(p)) {
+        return route.fulfill({
+          status: 404,
+          json: { code: "NOT_FOUND", message: "해당 half 로그가 없습니다" },
+        });
+      }
+      if (p.endsWith("/result")) {
+        return route.fulfill({
+          json: { matchId: id, result: "LOSS", scoreHome: 3, scoreAway: 0, pointsAwarded: 0 },
+        });
+      }
+      return route.fulfill({
+        json: {
+          id,
+          state: "FINISHED",
+          scoreH1Home: 2,
+          scoreH1Away: 0,
+          scoreHome: 3,
+          scoreAway: 0,
+          result: "LOSS",
+          createdAt: "2026-06-01T10:00:00Z",
+          finishedAt: "2026-06-01T10:20:00Z",
+          mode: "practice",
+          ownerName: ME,
+          opponent: { name: "구경기봇", deck: [] },
+          homeName: "구경기봇",
+          awayName: ME,
+          clock: null,
+        },
+      });
+    },
+  );
+}
+
+/**
+ * 과거 경기 목록(`GET /api/logs/matches`) — **요구 D 의 진입 경로**다.
+ * `/logs` 는 `/me` 로 리다이렉트되고 `MePage` 가 `LogsPage embedded` 를 그린다(App.tsx).
+ *
+ * 두 행을 싣는다: 로그가 있는 경기(뱃지 있음)와 **없는 경기**(뱃지 없음) — 규칙 하나당 표본 하나.
+ */
+export const PAST_LOGS = [
+  {
+    id: MATCH_ID,
+    mode: "league",
+    opponentName: BOT,
+    result: "WIN",
+    scoreHome: 0,
+    scoreAway: 3,
+    userWasHome: false,
+    seasonNo: 1,
+    round: 4,
+    hasHalves: true,
+    createdAt: "2026-07-30T08:37:23Z",
+  },
+  {
+    id: NO_LOG_MATCH_ID,
+    mode: "practice",
+    opponentName: "구경기봇",
+    result: "LOSS",
+    scoreHome: 3,
+    scoreAway: 0,
+    userWasHome: false,
+    hasHalves: false,
+    createdAt: "2026-06-01T10:00:00Z",
+  },
+];
+
+export async function mockPastLogs(page: Page) {
+  await page.route(
+    (url) => url.pathname === "/api/logs/matches",
+    (route) => route.fulfill({ json: PAST_LOGS }),
+  );
+}
+
+/**
+ * **성장 리포트가 실제로 렌더되는 목** (#403 W4 R1 — 독립검증 minor-6a).
+ *
+ * ⚠️ 기본 `mockApi` 는 `/api/growth/report/*` 를 catch-all `{}` 로 흘린다 →
+ * `GrowthReportSection` 은 `entries.length === 0` 이면 **null 을 돌려준다** = 섹션이 DOM 에 없다.
+ * 그 상태에서 *"개인 성적이 성장 리포트보다 앞에 있다"* 를 `if (count > 0)` 로 감싸면 그 블록은
+ * **한 번도 실행되지 않는다** — 실제로 그 단언을 `<GrowthReportSection>` 뒤로 옮기는 변이가
+ * SURVIVED 했다. 목이 계약의 일부다(#342).
+ *
+ * 값은 `MatchGrowthEntry`(`api/growth.ts`) 모양 그대로 — 서버가 안 주는 필드(`statXp` 등)를
+ * 지어내지 않는다.
+ */
+export const GROWTH_ENTRIES = [
+  {
+    playerId: "P014",
+    name: "선수014",
+    position: "GK",
+    grade: "SILVER",
+    xpGained: 120,
+    levelBefore: 3,
+    levelAfter: 4,
+    cardXp: 40,
+    xpToNext: 200,
+    minutes: "starter",
+    pendingChoices: [],
+  },
+  {
+    playerId: "P034",
+    name: "선수034",
+    position: "FW",
+    grade: "SILVER",
+    xpGained: 180,
+    levelBefore: 5,
+    levelAfter: 5,
+    cardXp: 90,
+    xpToNext: 260,
+    minutes: "starter",
+    pendingChoices: [],
+  },
+];
+
+export async function mockGrowthReport(page: Page, entries: unknown[] = GROWTH_ENTRIES) {
+  await page.route(
+    (url) => url.pathname.startsWith("/api/growth/report/"),
+    (route) => route.fulfill({ json: { matchId: MATCH_ID, entries } }),
+  );
+}
+
+/**
+ * **하프 로그 조회가 진짜 오류인 경우**(500) (#403 W4 R1 — 독립검증 minor-2).
+ *
+ * `usePlayerStats.logMissing` 은 **404 일 때만** 참이어야 한다 — 500·네트워크 단절을
+ * *"이 경기는 기록이 남아 있지 않습니다"* 로 덮으면 있는 기록을 없다고 말한다. 그 방향을
+ * 검사하는 단언이 리포 전체에 0건이라 `error.status === 404` 를 지우는 변이가 SURVIVED 했다.
+ */
+export async function mockHalfLogError(page: Page, status = 500) {
+  await page.route(
+    (url) => /\/api\/matches\/.+\/halves\/[12]\/log$/.test(url.pathname),
+    (route) => route.fulfill({ status, json: { code: "INTERNAL", message: "일시적인 오류입니다" } }),
+  );
+}
+
+/**
+ * 그 경로로 나간 **요청 수**를 세는 살아 있는 카운터.
+ *
+ * 게이트 합성(`needsPlayerStats(activeTab)` → 훅 `enabled`)은 소비 화면이 없으면 **관측되지
+ * 않는다** — 출하 코드에 계측을 심지 않고 재려면 *"그 게이트가 켜져야만 나가는 요청"* 이
+ * 필요하다. 그게 **전반 로그**다(아래 스펙 ⑧ 주석 참조).
+ */
+export function countRequests(page: Page, re: RegExp): { n: number } {
+  const c = { n: 0 };
+  page.on("request", (req) => {
+    if (re.test(new URL(req.url()).pathname)) c.n += 1;
+  });
+  return c;
 }
 
 /**

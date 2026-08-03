@@ -15,6 +15,8 @@ import {
   gkKeysOf,
   currentHalfSettled,
   isMotmKey,
+  motmKeyFor,
+  motmRowOf,
   passIncomplete,
   passPctLabel,
   positionsOf,
@@ -398,5 +400,91 @@ describe("statsWindow — 상한과 캡션은 **한 곳**에서 나온다(BL-1)"
         expect(w.caption, `${state}: 상한이 없는 창이 캡션을 달았다`).toBeNull();
       }
     }
+  });
+});
+
+/**
+ * ── MOTM 게이트 (#403 W4) ────────────────────────────────────────────────────────────────
+ *
+ * 결과 탭(W4)과 선수 탭이 **같은 판정**을 쓴다. 게이트는 `kind === "settled"` 다 —
+ * 진행 중인 경기에 *"이 경기 최우수 선수"* 는 없다(집계는 상한까지의 1위를 계속 뽑지만
+ * 그건 "지금까지 1위"이지 이 경기의 결론이 아니다).
+ *
+ * ⚠️ 결과 탭은 `FINISHED` 전용이라 그 화면에서는 이 조건이 **항상 참**이다. 그래서 e2e 만으로는
+ * 게이트를 지워도 아무것도 안 죽는다 — 그 변이를 죽이는 것은 아래 `live`/`pending` 케이스뿐이다.
+ */
+describe("motmKeyFor — 확정된 경기에만 MOTM 이 있다", () => {
+  function resultWithMotm() {
+    const r = computePlayerStats(makeLog(), { gkKeys: new Set<string>(), positions: {} });
+    expect(r.motm, "표본에 MOTM 이 없으면 이 계약이 공허해진다").not.toBeNull();
+    return r;
+  }
+
+  it("settled 면 집계가 뽑은 키를 그대로 준다", () => {
+    const r = resultWithMotm();
+    const key = motmKeyFor(r, statsWindow("FINISHED", 2000, 90));
+    expect(key).toBe(r.motm!.key);
+    // 표 쪽 판정과 **같은 답**이어야 한다(키 비교가 두 규칙이 되면 안 된다).
+    expect(isMotmKey(r, key!)).toBe(true);
+  });
+
+  it("진행 중(live)·재생 대기(pending)에는 MOTM 이 없다", () => {
+    const r = resultWithMotm();
+    expect(motmKeyFor(r, statsWindow("SECOND_HALF", 1400, 60)), "live 에 MOTM 이 붙었다").toBeNull();
+    expect(motmKeyFor(r, statsWindow("SECOND_HALF", null, null)), "pending 에 MOTM 이 붙었다").toBeNull();
+    expect(motmKeyFor(r, statsWindow("FIRST_HALF", 900, 15)), "전반 진행 중에 MOTM 이 붙었다").toBeNull();
+  });
+
+  it("집계가 없으면 null — 화면이 빈 줄을 그리지 않게", () => {
+    expect(motmKeyFor(null, statsWindow("FINISHED", 2000, 90))).toBeNull();
+  });
+});
+
+/**
+ * **이 계약의 표본을 순수 계층에 만드는 이유** (#403 W4 R1 → R2 정정, 독립검증 minor-1).
+ *
+ * 결과 탭이 MOTM 줄을 그릴 때 **양 팀에서** 찾는데, *"`home` 항을 떨어뜨린다"* 는 변이가
+ * 그때의 e2e 표본에서 **살아남았다**(`away` 항은 KILLED) — 리포의 두 shape(`away-fixture`·
+ * `home-fixture`)이 매치 메타의 **사이드 라벨만** 뒤집고 하프 로그는 같아서, MOTM 이 언제나
+ * away 사이드였기 때문이다.
+ *
+ * ⚠️ **R1 이 여기 적었던 "구조적으로 불가능하다"는 거짓이고 R2 에서 철회한다.** 그 서술은
+ * *"10.0 에 동점자가 여럿 + `pickMotm` 의 마지막 tie-break 가 키 오름차순 → `away:*` 가 언제나
+ * 이긴다"* 였는데, 실측하면 그 픽스처(출전 25명)의 10.0 은 **2명**(`home:P121` g0/a0 ·
+ * `away:P079` g0/a1)이고 승부는 **assists 에서 갈려** 키 비교는 **한 번도 발화하지 않는다**.
+ * 팀 라벨을 뒤집으면 MOTM = `home:P079`, 전반만 쓰면 MOTM = `home:P121`(7.4 단독) 이다.
+ *
+ * 그래서 순수 계층인 이유는 *"불가능해서"* 가 아니라 **더 싸고 정확해서**다 — 여기서는 home/away
+ * MOTM 을 **직접 먹여** 표본을 만든다(로그를 흔들어 우연히 그 상태가 나오길 기다리지 않는다).
+ * e2e 에도 표본이 **있다**: `p403-result-players.spec.ts` ①의 "MOTM 이 home 사이드여도" 계약이
+ * 라벨을 뒤집은 하프 로그로 그 변이를 죽인다. 두 층은 대체가 아니라 각자 다른 것을 본다
+ * (여기 = 탐색 규칙 / e2e = 그 규칙이 화면에 배선됐나).
+ */
+describe("motmRowOf — MOTM 은 지금 고른 팀과 무관하게 양 팀에서 찾는다", () => {
+  const log = makeLog();
+  const roster = buildRosterMeta(log, CATALOG);
+  const result = computePlayerStats(log, { gkKeys: new Set<string>(), positions: {} });
+
+  it("**home 사이드** MOTM 을 찾는다 (away 만 뒤지면 줄이 사라진다)", () => {
+    // 전제 — 이 키가 실제로 home 표에 있다(없으면 아래 단언이 공허해진다).
+    expect(rowsFor(result, "home", roster).some((r) => r.key === "home:P2")).toBe(true);
+    const row = motmRowOf(result, roster, "home:P2");
+    expect(row, "home 사이드 MOTM 을 못 찾았다").not.toBeNull();
+    expect(row!.team).toBe("home");
+    expect(row!.playerId).toBe("P2");
+    expect(row!.name).toBe("정태우"); // 로스터 메타까지 실린 행이다(키만 돌려주는 게 아니다)
+  });
+
+  it("**away 사이드** MOTM 도 찾는다 — 같은 id 가 양 팀에 있어도 안 섞인다(#231)", () => {
+    const row = motmRowOf(result, roster, "away:P9");
+    expect(row).not.toBeNull();
+    expect(row!.team).toBe("away");
+    expect(row!.playerId).toBe("P9");
+  });
+
+  it("키가 표에 없으면 null — 유령 MOTM 줄을 그리지 않는다", () => {
+    expect(motmRowOf(result, roster, "home:P404")).toBeNull();
+    expect(motmRowOf(result, roster, null)).toBeNull();
+    expect(motmRowOf(null, roster, "home:P2")).toBeNull();
   });
 });

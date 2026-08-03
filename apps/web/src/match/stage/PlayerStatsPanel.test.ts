@@ -71,6 +71,7 @@ function makeStats(over: Partial<MatchPlayerStats> = {}): MatchPlayerStats {
     window: statsWindow("FIRST_HALF", 900, 34),
     isLoading: false,
     isError: false,
+    logMissing: false,
     ...over,
   };
 }
@@ -129,6 +130,86 @@ describe("선수 탭 — 팀 세그먼트(#322 어웨이 표본)", () => {
     expect(screen.queryByTestId("players-my-team-home")).toBeNull();
     expect(screen.queryByTestId("players-my-team-away")).toBeNull();
     expect(screen.getByTestId("players-team-home").getAttribute("data-selected")).toBe("true");
+  });
+
+  /**
+   * ⚠️ **`myTeamSide` 는 늦게 온다** (#403 W4 R1, 독립검증 major-1).
+   *
+   * `useMe()`(=`GET /api/me`) 산출인데 `RequireAuth` 는 **토큰만** 보므로 그 응답을 기다리지
+   * 않는다 — `/api/matches/:id` 가 먼저 오면 패널이 `null` 로 마운트된다. `useState` 초기화
+   * 함수는 마운트 때 한 번만 돌아서, 그때 고른 `"home"` 이 그대로 굳었다(실화면: `내 팀` 칩은
+   * 어웨이에 달렸는데 표는 홈 = **상대 팀**).
+   *
+   * ⚠️ `data-selected` 만 보면 안 된다 — **표가 실제로 그 팀 것인지**까지 본다(선택 표시만
+   * 따라가고 행은 그대로인 구현을 통과시키지 않는다).
+   */
+  it("`myTeamSide` 가 늦게 도착하면 선택이 따라온다 — 표까지", () => {
+    const view = renderPanel({ myTeamSide: null });
+    expect(screen.getByTestId("players-team-home").getAttribute("data-selected")).toBe("true");
+    expect(screen.queryByTestId("players-row-home-P9"), "전제: 처음엔 홈 표다").not.toBeNull();
+
+    view.rerender(
+      h(PlayerStatsPanel, {
+        stats: makeStats(),
+        ...NAMES,
+        myTeamSide: "away",
+      } as Parameters<typeof PlayerStatsPanel>[0]),
+    );
+    expect(screen.getByTestId("players-team-away").getAttribute("data-selected")).toBe("true");
+    expect(screen.getByTestId("players-my-team-away")).not.toBeNull();
+    expect(screen.queryByTestId("players-row-away-P9"), "표가 안 따라왔다").not.toBeNull();
+    expect(screen.queryByTestId("players-row-home-P9")).toBeNull();
+  });
+
+  /**
+   * ⚠️ **반대 방향이 더 나쁜 버그다** — 늦게 온 데이터가 유저 조작을 덮으면 유저가 방금 누른 팀이
+   * 눈앞에서 바뀐다. 그래서 판정축은 "유저가 만졌나"이고, 만졌으면 그 선택이 영구히 이긴다.
+   */
+  it("유저가 이미 고른 뒤에 도착하면 그 선택을 덮지 않는다", () => {
+    const view = renderPanel({ myTeamSide: null });
+    fireEvent.click(screen.getByTestId("players-team-away")); // 유저가 상대(=나중에 내 팀) 를 골랐다
+    expect(screen.getByTestId("players-team-away").getAttribute("data-selected")).toBe("true");
+
+    view.rerender(
+      h(PlayerStatsPanel, {
+        stats: makeStats(),
+        ...NAMES,
+        myTeamSide: "home",
+      } as Parameters<typeof PlayerStatsPanel>[0]),
+    );
+    expect(
+      screen.getByTestId("players-team-away").getAttribute("data-selected"),
+      "늦게 온 myTeamSide 가 유저 선택을 덮었다",
+    ).toBe("true");
+    expect(screen.queryByTestId("players-row-away-P9")).not.toBeNull();
+  });
+
+  /**
+   * ⚠️ **값이 안 바뀌는 탭은 "골랐다"가 아니다** (R2 — 독립검증 minor-1).
+   *
+   * 도착 전 기본값은 `home` 인데, 유저가 **이미 선택된 그 칩**을 누르면 화면은 하나도 안 바뀌면서
+   * `picked` 만 굳었다 → 어웨이 라운드에서 도착 후에도 표가 **상대**에 남는다(major-1 과 같은 증상,
+   * 다른 경로). 위 두 계약의 **사이**를 여는 축이라 셋이 같이 있어야 한다:
+   * *따라간다* / *유저가 고르면 이긴다* / **그런데 "골랐다"는 화면이 바뀐 탭만이다**.
+   */
+  it("도착 전 **이미 선택된** 칩을 눌러도, 늦게 온 myTeamSide 를 따라간다", () => {
+    const view = renderPanel({ myTeamSide: null });
+    expect(screen.getByTestId("players-team-home").getAttribute("data-selected")).toBe("true");
+    fireEvent.click(screen.getByTestId("players-team-home")); // 아무것도 안 바뀌는 탭
+
+    view.rerender(
+      h(PlayerStatsPanel, {
+        stats: makeStats(),
+        ...NAMES,
+        myTeamSide: "away",
+      } as Parameters<typeof PlayerStatsPanel>[0]),
+    );
+    expect(
+      screen.getByTestId("players-team-away").getAttribute("data-selected"),
+      "무의미한 탭 한 번이 세그먼트를 상대 팀에 가뒀다",
+    ).toBe("true");
+    expect(screen.queryByTestId("players-row-away-P9"), "표가 안 따라왔다").not.toBeNull();
+    expect(screen.queryByTestId("players-row-home-P9")).toBeNull();
   });
 });
 
