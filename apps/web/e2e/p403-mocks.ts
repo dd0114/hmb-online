@@ -150,6 +150,15 @@ export interface MockOpts {
    *
    * ⚠️ **이건 합성 표본이다** — 로그만 뒤집으므로 매치 메타의 스코어(`0:3`)와는 어긋난다.
    * 그 축을 재는 계약에 쓰지 마라. 쓰는 자리는 *"MOTM 을 양 팀에서 찾는가"* 하나뿐이다.
+   *
+   * ⚠️ **불일치는 로그 **안**에도 하나 더 있다**(R3 — 독립검증 minor-1). `flipTeams` 는
+   * `tickSnapshots[].players[].team` 과 `events[].team` 만 뒤집고 **로그 자신의 `finalScore` 는
+   * 안 뒤집는다** — 뒤집힌 로그에서 골 이벤트는 `home` 소속인데 `finalScore` 는 `{home:0, away:1}`
+   * (H1) / `{home:0, away:2}`(H2) 그대로다. 실소비자는 `match-logic.ts:fallbackScore` 이고,
+   * 지금 이 목을 쓰는 유일한 계약(MOTM)은 스코어를 안 읽으므로 **무해하다**.
+   * **고치지 않은 이유**: 뒤집으면 매치 메타(`scoreHome/scoreAway`)·스코어바·타임라인이 같이
+   * 움직여 이 목이 재려던 축 하나가 흔들린다. 대신 여기 적어 둔다 — 다음 사람이 *"이 로그는
+   * 내부적으로 정합하다"* 고 읽으면 그 자리에서 틀린다. **스코어를 읽는 계약에 이 목을 쓰지 마라.**
    */
   flipLogTeams?: boolean;
 }

@@ -373,10 +373,13 @@ test.describe("③ 팀 세그먼트 — 순서는 홈 먼저, 표식·기본 선
    *
    * ⚠️ **표본을 홈 픽스처로 바꿨다**(R2). R1 의 표본은 어웨이 픽스처에서 `home`(= 도착 전 기본값,
    * 이미 선택된 칩)을 눌렀는데, 그건 **화면이 하나도 안 바뀌는 탭**이라 minor-1 수정 뒤로는
-   * "유저가 골랐다"가 아니다. 세그먼트가 둘뿐이라 어웨이 픽스처에서는 *따라간다*와 구별되는
-   * **진짜 선택**을 만들 수 없다 — 유저가 고를 수 있는 다른 한쪽이 곧 나중에 올 내 팀이라서다.
-   * 홈 픽스처면 기본값(home)과 내 팀(home)이 같아서, 유저가 `away` 로 **실제로 바꾼 뒤** 도착한
-   * `myTeamSide=home` 이 그것을 덮는지 볼 수 있다.
+   * "유저가 골랐다"가 아니다. 홈 픽스처면 기본값(home)과 내 팀(home)이 같아서, 유저가 `away` 로
+   * **실제로 바꾼 뒤** 도착한 `myTeamSide=home` 이 그것을 덮는지 **탭 한 번으로 직접** 볼 수 있다.
+   *
+   * ⚠️ **R2 가 여기 적었던 *"어웨이 픽스처에서는 진짜 선택이 존재하지 않는다"* 는 거짓이다**(R3 —
+   * 독립검증 major-1). 참인 것은 **초기 상태에서 탭 한 번으로는 만들 수 없다**는 것뿐인데 문장이
+   * 픽스처 전체로 양화됐다. **2탭이면 만들어진다** — 아래 "2탭" 계약이 그 표본이고 직접 잰 값은
+   * 그 머리말에 있다. 홈 픽스처를 고른 이유는 불가능이 아니라 **더 직접적이기 때문**이다(1탭).
    */
   test("`/api/me` 도착 전에 유저가 고르면 그 선택이 이긴다 (홈 픽스처)", async ({ page }) => {
     await openResult(page, { meDelayMs: 600, shape: "home-fixture" });
@@ -420,6 +423,46 @@ test.describe("③ 팀 세그먼트 — 순서는 홈 먼저, 표식·기본 선
     // 표까지 — 선택 표시만 옮기고 행은 상대 것인 구현을 통과시키지 않는다.
     await expect(page.getByTestId(`players-row-${MY_TEAM}-P014`)).toHaveCount(1);
     await expect(page.getByTestId(`players-row-${OPP_TEAM}-P116`)).toHaveCount(0);
+  });
+
+  /**
+   * ⚠️ **어웨이 라운드에서도 유저의 진짜 선택이 이긴다 — 2탭 표본** (R3, 독립검증 major-1).
+   *
+   * 위 "유저 선택이 이긴다"는 홈 픽스처다(1탭이라 더 직접적이다). 그런데 `apps/web/CLAUDE.md`
+   * #322 가 *"표본이 계약의 절반"* 이라고 적어 둔 자리가 정확히 **어웨이 라운드**다 — 기존 web
+   * 목·계약이 전부 유저=홈이라 "홈은 내가 아니다"가 3개월 살았다. R2 의 표본 교체가 이 축을
+   * 홈으로 밀었으므로 여기서 되돌려 놓는다(교체 자체는 유지 — 두 표본은 짝이다).
+   *
+   * 어웨이 픽스처에서 **초기 상태의 1탭**은 *따라간다*와 구별되지 않는다(고를 수 있는 반대쪽이
+   * 곧 나중에 올 내 팀이다). **2탭이면 구별된다** — `away`(실변화 ①) → `home`(실변화 ②)은 둘 다
+   * no-op 가드에 안 걸리는 진짜 선택이고, 착지가 *따라간다*와 다르다. 직접 잰 값(`meDelayMs 900`):
+   *   · 탭 0회 → 도착 후 `{mine:"away", selected:"away"}` · `away-P014` 1행 / `home-P116` 0행
+   *   · 탭 2회 → 도착 후 `{mine:"away", selected:"home"}` · `home-P116` 1행 / `away-P014` 0행
+   *     (16초 = 폴링 여러 바퀴 뒤에도 그대로)
+   *
+   * ⚠️ **중간 상태를 같이 잰다** — 두 탭이 실제로 화면을 바꿨다는 것이 "진짜 선택"의 정의이고,
+   * 그걸 안 재면 이 계약이 no-op 탭 계약과 같은 것을 재는지 아무도 모른다.
+   */
+  test("어웨이 라운드에서 도착 전 2탭 — 유저의 진짜 선택이 이긴다", async ({ page }) => {
+    await openResult(page, { meDelayMs: 900 });
+    // 전제 — 아직 칩이 없고(myTeamSide 미도착) 기본 선택은 상대(home)다.
+    await expect(page.getByTestId("players-teams").locator("[data-testid^='players-my-team-']")).toHaveCount(0);
+    await expect(page.getByTestId(`players-team-${OPP_TEAM}`)).toHaveAttribute("data-selected", "true");
+
+    await page.getByTestId(`players-team-${MY_TEAM}`).click(); // 실변화 ① (home → away)
+    await expect(page.getByTestId(`players-team-${MY_TEAM}`)).toHaveAttribute("data-selected", "true");
+    await page.getByTestId(`players-team-${OPP_TEAM}`).click(); // 실변화 ② (away → home)
+    await expect(page.getByTestId(`players-team-${OPP_TEAM}`)).toHaveAttribute("data-selected", "true");
+
+    await expect(page.getByTestId(`players-my-team-${MY_TEAM}`)).toHaveCount(1); // 이제 도착
+    const s = await segmentState(page);
+    expect(s, "늦게 온 myTeamSide 가 어웨이 라운드에서 유저 선택을 덮었다").toEqual({
+      mine: MY_TEAM,
+      selected: OPP_TEAM,
+    });
+    // 표까지 — 선택 표시만 남기고 행은 되돌아간 구현을 통과시키지 않는다.
+    await expect(page.getByTestId(`players-row-${OPP_TEAM}-P116`)).toHaveCount(1);
+    await expect(page.getByTestId(`players-row-${MY_TEAM}-P014`)).toHaveCount(0);
   });
 
   test("상대로 바꾸면 상대 행이 나온다 — 결정 ②(상대도 완전히 동일)", async ({ page }) => {

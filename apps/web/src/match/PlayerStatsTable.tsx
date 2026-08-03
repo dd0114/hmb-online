@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   coverageLabel,
   defaultSegment,
@@ -70,8 +70,18 @@ export function useTeamSegment(
   myTeamSide: "home" | "away" | null | undefined,
 ): [TeamSide, (side: TeamSide) => void] {
   const [picked, setPicked] = useState<TeamSide | null>(null);
-  const team = picked ?? defaultSegment(myTeamSide);
-  return [team, (side: TeamSide) => (side === team ? undefined : setPicked(side))];
+  const fallback = defaultSegment(myTeamSide);
+  const team = picked ?? fallback;
+  // ⚠️ 세터는 `useCallback` + **함수형 갱신**이다 (R3 — 독립검증 minor-2). 그냥 화살표를 반환하면
+  // ① 매 렌더 새 신원이라 `React.memo`/`useCallback` 소비자가 생기는 순간 불필요 리렌더가 되고
+  // ② `team` 을 클로저로 잡아 **한 배치 안에서 두 번 부르면 두 번째가 낡은 값과 비교**한다.
+  // 함수형 갱신은 커밋 시점의 `picked` 를 읽으므로 둘 다 안 생긴다. `fallback` 은 문자열이라
+  // 값이 실제로 바뀔 때만(= `myTeamSide` 도착) 신원이 바뀐다.
+  const setTeam = useCallback(
+    (side: TeamSide) => setPicked((prev) => (side === (prev ?? fallback) ? prev : side)),
+    [fallback],
+  );
+  return [team, setTeam];
 }
 
 export interface PlayerTeamSegmentsProps {
