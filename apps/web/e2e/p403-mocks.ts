@@ -91,6 +91,29 @@ if (MISSING.length > 0) {
   throw new Error(`p403-mocks: 픽스처 선수 ${MISSING.join(",")} 의 포지션이 POSITION_BY_ID 에 없다`);
 }
 
+/**
+ * ⚠️ **`attributes` 는 `CatalogPlayer` 의 필수 필드인데 이 목이 안 싣고 있었다** (#403 W3 발견).
+ * 그동안 소비자가 없어 드러나지 않았는데, 선수 상세의 **축소 모드**(상대·타 유저 = 카탈로그
+ * 능력치가 유일한 재료)가 그걸 읽는 순간 표본이 통째로 비었다 — 목이 낡으면 그 스펙은 자기가
+ * 만든 세계를 검증한다(#342).
+ *
+ * 값은 id 에서 **결정론적으로** 만든다. 전원 같은 값이면 레이더가 정육각형이라 "포지션마다 축이
+ * 정말 다른가"도, "막대 길이가 값을 따라가나"도 화면에서 확인할 수 없다.
+ */
+const ATTR_KEYS = [
+  "shooting", "pace", "positioning", "technical", "passing",
+  "stamina", "physical", "mental", "tackling",
+] as const;
+
+export function attrsFor(id: string): Record<string, number> {
+  const seed = Number(id.slice(1)) || 1;
+  const out: Record<string, number> = {};
+  ATTR_KEYS.forEach((k, i) => {
+    out[k] = 40 + ((seed * 7 + i * 13) % 45);
+  });
+  return out;
+}
+
 /** 봇 로스터도 **같은 선수 카탈로그**를 쓴다(루트 #231) → 상대 이름·포지션도 여기서 나온다. */
 export const PLAYERS = ALL_IDS.map((id) => ({
   id,
@@ -99,6 +122,7 @@ export const PLAYERS = ALL_IDS.map((id) => ({
   grade: "SILVER",
   owned: true,
   ownedCount: 1,
+  attributes: attrsFor(id),
 }));
 
 export type Shape = "away-fixture" | "home-fixture" | "long-name";
@@ -165,6 +189,74 @@ export async function openPlayers(page: Page, state: string, shape: Shape = "awa
   await open(page, state, shape);
   await page.getByTestId("stage-tab-players").click();
   await expect(page.getByTestId("stage-panel-players")).toHaveCount(1);
+}
+
+/**
+ * ── W3 선수 상세 모달용 추가 목 ─────────────────────────────────────────────────────────
+ *
+ * 기본 `mockApi` 는 `/api/growth/card/*` 를 catch-all `{}` 로 흘린다 — 그게 **상대·타 유저의
+ * 실제 상태**(서버가 남의 카드를 안 준다)이자 `attributeViewOf` 가 축소 모드로 떨어지는 경로다.
+ * `full` 모드를 태우려면 내 선수 하나에 카드가 실려야 하므로 여기서 명시적으로 얹는다.
+ *
+ * ⚠️ **`open()` 뒤에 부른다.** playwright 는 나중에 등록한 라우트가 먼저 매칭되므로 catch-all 을
+ * 이긴다. 카드 조회는 모달을 연 뒤에 일어나니 순서상 안전하다.
+ */
+export const CARD_ATTRS = {
+  shooting: 55, pace: 60, positioning: 45, technical: 44, passing: 42,
+  stamina: 43, physical: 40, mental: 41, tackling: 30,
+};
+export const CARD_CAPS = {
+  shooting: 80, pace: 82, positioning: 71, technical: 70, passing: 69,
+  stamina: 66, physical: 65, mental: 68, tackling: 55,
+};
+/** 서버 `startLo`(등급 시작 밴드 하한) — 막대·레이더의 좌측 원점. */
+export const CARD_START_LO = 50;
+
+export async function mockGrowthCard(page: Page, playerId: string) {
+  await page.route(
+    (url) => url.pathname === `/api/growth/card/${playerId}`,
+    (route) =>
+      route.fulfill({
+        json: {
+          playerId,
+          grade: "SILVER",
+          star: 3,
+          attributes: CARD_ATTRS,
+          prePotential: CARD_ATTRS,
+          base: CARD_ATTRS,
+          caps: CARD_CAPS,
+          statAdd: { shooting: 2.5 },
+          cardLevel: 12,
+          maxLevel: 40,
+          cardXp: 60,
+          xpToNext: 346,
+          startLo: CARD_START_LO,
+          growCeil: 72,
+          starCeilBonus: 1,
+          attrHardCap: 99,
+          statLevels: {},
+          potential: { unlocked: true, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
+          ovr: 58,
+          completion: 0.31,
+        },
+      }),
+  );
+}
+
+/** 내 덱의 선수별 지시 — 상세 모달 [선수 정보] 탭의 프롬프트 출처(매치 시점 덮어쓰기는 조회 API 가 없다). */
+export async function mockDeckPrompt(page: Page, playerId: string, text: string) {
+  await page.route((url) => url.pathname === "/api/deck", (route) =>
+    route.fulfill({
+      json: { formation: "4-3-3", slots: [{ playerId, role: "starter", slotIndex: 0, promptText: text }] },
+    }),
+  );
+}
+
+/** 선수 탭에서 그 행을 눌러 상세 모달을 연다(목업 ① *"행을 누르면 그 선수 상세로 → ③"*). */
+export async function openDetail(page: Page, team: "home" | "away", playerId: string) {
+  await page.getByTestId(`players-team-${team}`).click();
+  await page.getByTestId(`players-row-${team}-${playerId}`).click();
+  await expect(page.getByTestId("player-detail")).toBeVisible();
 }
 
 export interface Box {

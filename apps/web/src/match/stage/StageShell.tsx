@@ -13,7 +13,9 @@ import { SkipButton } from "../SkipButton";
 import { ScoreBar } from "./ScoreBar";
 import { StatsPanel } from "./StatsPanel";
 import { PlayerStatsPanel } from "./PlayerStatsPanel";
+import { PlayerDetailModal } from "../PlayerDetailModal";
 import { useMatchPlayerStats } from "../usePlayerStats";
+import type { PlayerSelection } from "../player-stats-view";
 import { LogPanel } from "./LogPanel";
 import { SecondHalfBriefPanel } from "./SecondHalfBriefPanel";
 import { ResultPanel, RESULT_LABELS } from "./ResultPanel";
@@ -196,6 +198,15 @@ export function StageShell({
     activeTab === "players",
   );
 
+  /**
+   * 열려 있는 **선수 상세 모달** (#403 W3). 셸이 소유하는 이유는 두 가지다: ①집계
+   * (`playerStats`)를 그대로 넘겨 표와 모달이 **같은 결과**를 보고 ②모달이 시트 **위로**
+   * 올라와야 해서 패널 안에 두면 탭을 옮기는 순간 사라진다(보상 시트와 같은 이유).
+   *
+   * ⚠️ (B) 피치 터치는 이 브랜치에 없다(#421 대기) — 지금 진입점은 선수 탭 행 하나다.
+   */
+  const [detail, setDetail] = useState<PlayerSelection | null>(null);
+
   return (
     <div className={styles.shell} data-testid="stage-shell">
       <ScoreBar
@@ -309,6 +320,7 @@ export function StageShell({
                   homeName={homeName}
                   awayName={awayName}
                   myTeamSide={myTeamSide}
+                  onOpenDetail={setDetail}
                 />
               )}
               {activeTab === "log" && (
@@ -396,6 +408,27 @@ export function StageShell({
         `GenWaitPanel` 로 갈리며 셸과 함께 리포트가 사라진다. 리포트·브릿지는 이제 하나의
         `MatchFlowOverlay` 다.
       */}
+
+      {/*
+        선수 상세 (#403 W3, 목업 ③④). 시트 **위로** 뜬다 — 경기는 그 동안에도 계속 흐른다
+        (목업 ②: "카드를 띄운 동안에도 경기는 계속 흐른다"). 팀 이름은 사이드 기준으로 고른다
+        (#322 — `homeName = ownerName` 금지).
+
+        ⚠️ **흐름 오버레이(#424)가 떠 있는 동안은 열지 않는다.** 보상 시트가 같은 이유로 이미
+        `!overlayOpen` 게이트를 받는다 — 겹치면 `common/Modal` 포커스 트랩이 2겹이 되는, 설계
+        §3.2(*"하나의 카드 스택, 하나의 닫기"*)가 기각한 사고 유형이다. 이 모달은 유저가 열지만
+        **경기가 끝나는 순간 브릿지가 저절로 올라와** 겹칠 수 있다(열어 둔 채 후반이 끝나는 경로).
+        ⚠️ **미룰 뿐 삼키지 않는다** — `detail` 상태는 그대로라 오버레이가 닫히면 보던 선수로 돌아온다.
+      */}
+      {detail && !overlayOpen && (
+        <PlayerDetailModal
+          selection={detail}
+          stats={playerStats}
+          teamName={detail.team === "home" ? homeName : awayName}
+          mine={myTeamSide != null && detail.team === myTeamSide}
+          onClose={() => setDetail(null)}
+        />
+      )}
     </div>
   );
 }

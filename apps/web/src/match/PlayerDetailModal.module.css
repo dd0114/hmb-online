@@ -1,0 +1,425 @@
+/*
+ * 선수 상세 모달 (#403 W3, 목업 ③④). 관전 셸 **위**에 뜨는 시트라 폰에서 바텀시트,
+ * 데스크탑에서 중앙 카드 — `CardGrowthDetail` 과 같은 형태를 쓴다(두 상세가 다르게 생기면
+ * 유저가 두 화면을 따로 배워야 한다).
+ *
+ * ⚠️ 높이는 `svh` 축으로 잡는다. `100vh`(레이아웃 뷰포트)로 잡으면 폰 브라우저 툴바가 덮는
+ * 만큼이 화면 밖으로 나가 **본문 꼬리와 [닫기]가 안 보인다**(#386 공지 팝업이 겪은 그 함정).
+ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 60;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + (100lvh - 100svh));
+}
+
+.sheet {
+  width: 100%;
+  max-width: 420px;
+  outline: none;
+  max-height: 100%;
+  display: flex;
+}
+
+.frame {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(160deg, #1e232c, #171b22);
+  border: 2px solid var(--border);
+  border-bottom: none;
+  border-radius: 18px 18px 0 0;
+  padding: 16px 16px 14px;
+  max-height: 92svh;
+}
+
+.close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ── 헤더 ─────────────────────────────────────────────────────────────── */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 26px;
+  flex: none;
+}
+
+.avatar {
+  flex: none;
+}
+
+/* 등급 미상 폴백 — 선수 탭·경기장 토큰과 **같은 표현**(팀색 원 + 등번호). */
+.num {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-style: normal;
+  font-size: 14px;
+  font-weight: 800;
+  color: #04101f;
+}
+
+.numHome {
+  background: #6ea8ff;
+}
+
+.numAway {
+  background: #ff8f6e;
+}
+
+.headText {
+  flex: 1;
+  min-width: 0;
+}
+
+.name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pos {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0 4px;
+}
+
+.shirt {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.sub {
+  margin: 3px 0 0;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.mineTag {
+  margin-left: 5px;
+  font-size: 9px;
+  font-weight: 800;
+  color: #04101f;
+  background: #6ea8ff;
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.ratingWrap {
+  flex: none;
+  text-align: right;
+}
+
+.rating {
+  display: inline-block;
+  min-width: 36px;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-style: normal;
+  font-weight: 800;
+  font-size: 14px;
+  color: #04101f;
+  background: #7f8894;
+}
+
+.rating[data-tier="hi"] {
+  background: #3ddc84;
+}
+
+.rating[data-tier="mid"] {
+  background: #ffc24b;
+}
+
+.rating[data-tier="motm"] {
+  background: #c9a227;
+  color: #1a1400;
+}
+
+.ratingLbl {
+  display: block;
+  margin-top: 2px;
+  font-size: 9px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+/* ── 탭 ───────────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0 0;
+  background: #171b22;
+  border-radius: 10px;
+  padding: 3px;
+  flex: none;
+}
+
+.tab {
+  flex: 1;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 8px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.tabOn {
+  background: #2a313c;
+  color: var(--text);
+}
+
+/*
+ * 본문만 스크롤한다 — [닫기]가 스크롤 **밖** 바닥에 앉아야 어떤 위치에서도 안 덮인다
+ * (#244 BL-1 · #355 가 같은 이유로 sticky 를 버렸다).
+ */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 2px 4px;
+}
+
+.closeBtn {
+  flex: none;
+  margin-top: 10px;
+  width: 100%;
+  padding: 11px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #20262f;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* ── 본문 조각 ────────────────────────────────────────────────────────── */
+
+.liveCap {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffc24b;
+  background: rgba(255, 194, 75, 0.1);
+  border-radius: 8px;
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.kpi {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.kpi > div {
+  background: #171b22;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 4px;
+  text-align: center;
+}
+
+.kpi b {
+  display: block;
+  font-size: 17px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi span {
+  display: block;
+  margin-top: 2px;
+  font-size: 9.5px;
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.cat {
+  margin: 16px 0 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.slist {
+  margin: 0;
+  display: grid;
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.slist > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #171b22;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
+.slist dt {
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.slist dd {
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 아무 일도 없었던 줄 — 표를 0 으로 도배하지 않고 흐리게 둔다. */
+.dim {
+  opacity: 0.5;
+}
+
+.bar {
+  display: block;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 4px;
+  background: #20262f;
+  overflow: hidden;
+}
+
+.bar i {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #3fa06a, #63d193);
+}
+
+/* "기록 불완전" — 색 하나로만 말하지 않는다(적록색약). 글자가 뜻을 진다. */
+.incomplete {
+  margin: 6px 0 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffc24b;
+}
+
+.note {
+  margin: 10px 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.heat {
+  display: grid;
+  aspect-ratio: 105 / 68;
+  gap: 1px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: #12161c;
+}
+
+.heat i {
+  display: block;
+  border-radius: 1px;
+  background: #63d193;
+}
+
+.heatCap {
+  margin: 5px 0 0;
+  font-size: 9.5px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.ovrRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.ovrRow b {
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.ovrRow span {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 800;
+}
+
+.completion {
+  margin-left: auto;
+  color: #5cc98b !important;
+}
+
+.readonly {
+  margin: 8px 0 0;
+  font-size: 10px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.prompt {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  background: #171b22;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.locked {
+  margin: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: center;
+  background: #171b22;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+}
