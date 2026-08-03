@@ -8,12 +8,14 @@
  * 능력치 9종만 시드 RNG로 등급 밴드 내에서 결정론 파생한다(포지션 주스탯 +5, trait +6, 밴드 클램프).
  * ⚠️ 실명 사용 — 상용화 전 라이선스 해결 필수(백로그, data/CLAUDE.md·PRD-v2 D4 참조).
  *
- * 발행 축이 다섯이다(발행 후 수정 금지 규칙 때문에 **덮어쓰지 않고 새 버전으로 쌓는다**):
+ * 발행 축이 일곱이다(발행 후 수정 금지 규칙 때문에 **덮어쓰지 않고 새 버전으로 쌓는다**):
  *   players.v2.json   = 172명 동결(원본)
  *   players.v2.1.json = 172명 동결 + personality
  *   players.v2.2.json = 180명 동결 + personality + active (#207 U-D1/U-D4)
  *   players.v2.3.json = 180명 동결 — v2.2 + 유닛명 정정 2건 + 신규 비활성 3건 (#207 U-D5/U-D6)
- *   players.v2.4.json = **v2.3 + 신규 LEGEND 2종 append(182)** (#256 석다이크·오시야스) — 현행 소비본
+ *   players.v2.4.json = **v2.3 + 신규 LEGEND 2종 append(182)** (#256 석다이크·오시야스)
+ *   players.v2.5.json = **v2.4 전 182행 능력치 9종 재롤**(신규 시작 밴드) (#405 성장 재설계)
+ *   players.v2.6.json = **v2.5 + 한글 표시명(실선수 172) + shortName** (#406 요구 6) — 최신 발행본
  * ROSTER 는 하나이고 과거 발행물은 전부 **슬라이스로 재현**한다 — v2/v2.1 은 FROZEN_ROSTER_COUNT(172),
  * v2.2/v2.3 은 FROZEN_ROSTER_COUNT_V22(180) 경계다. 신규 유닛이 배열 맨 끝에 append 되므로 그
  * 슬라이스는 발행 당시와 바이트 동일하다(data.test.ts 가 디스크와 대조).
@@ -27,6 +29,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRng } from "./rng";
 import { ROSTER } from "./roster";
 import { PERSONALITY } from "./personality";
+import { NAMES_KO } from "./names-ko";
 
 /** 생성 결정론 시드. 절대 변경 금지 — 바꾸면 새 버전 발행 대상. */
 export const SEED = "hmb-players-v2";
@@ -219,6 +222,49 @@ export const GRADE_BANDS_V25: Record<Grade, readonly [number, number]> = {
  */
 export const SEED_V25 = SEED;
 
+/**
+ * players 카탈로그 v2.6 (#406 요구 6, hero 확정 2026-08-02 "안 C 하이브리드"). v2.5 위에 **표시명 레이어**:
+ *   ① 실선수 172명의 `name` 을 **한글 음역**으로 교체(P001 "Lev Yashin" → "레프 야신")
+ *   ② 패러디 10종(P173~P182)은 **현행 유지**
+ *   ③ `shortName` **additive 추가**(밀집 UI 용 짧은 이름, 182명 전원)
+ *
+ * ⚠️ **왜 v2.5 가 아니라 v2.6 인가**: `v2.5` 는 #405 W1(성장 재설계)이 **능력치 재롤**로 먼저 발행했다.
+ * 발행 후 수정 금지 규칙(data/CLAUDE.md)이라 같은 번호에 표시명 레이어를 얹을 수 없어 **다음 버전**으로
+ * 올렸다. 두 축은 직교한다 — #405 는 `attributes`, #406 은 `name`/`shortName` 이다. 그래서 v2.6 은
+ * v2.5 를 입력으로 받아 **이름 축만** 덮고, `attributes` 는 #405 의 재롤값을 그대로 승계한다.
+ *
+ * ⚠️ **`roster.ts` 의 영문 `name` 은 한 글자도 안 고친다.** 그 배열은 시드 RNG 스트림 순서이자
+ * v2/v2.1/v2.2/v2.3/v2.4 를 슬라이스로 **바이트 동일 재현**하는 축이다 — 영문명을 갈아치우면
+ * 그 재현 계약이 통째로 깨진다. 한글은 `names-ko.ts` 표를 통해 **이 레이어에서만** 실린다
+ * (#207 U-D6 가 ROSTER 대신 `V23_NAME_CORRECTIONS` 를 쓴 것과 정확히 같은 이유).
+ *
+ * ✅ 스탯 무영향은 구조적이다: `rollAttributes` 는 이름을 입력으로 받지 않고, 이 레이어는 RNG 가
+ * 다 돈 **뒤**의 순수 문자열 변환이다(v2.3 정정과 동일한 성질, data.test.ts 가 대조로 증명).
+ *
+ * 소비자 스위치(`hmb.data.players-file` · `server-java/Dockerfile` 의 `HMB_DATA_*`)는 **server-java
+ * 소관**이라 별도 이슈로 요청한다 — 스위치 전까지 라이브 이름은 안 바뀐다.
+ * `shortName` 은 서버 DTO 노출이 필요하면 같은 이슈에서 다룬다(Jackson
+ * `FAIL_ON_UNKNOWN_PROPERTIES=false` 라 노출 전에도 임포트는 안전하다).
+ */
+export const PLAYERS_V26_VERSION = "v2.6";
+
+/**
+ * #406 — v2.6 에서 `name` 이 바뀌지 않는 유닛(= 패러디 10종). 안 C 의 경계를 **코드에 못 박는다**.
+ * `names-ko.ts` 에서 이 id 들만 `ko` 가 없어야 하고, 결과 이름이 v2.5 와 다르면 빌더가 터진다.
+ */
+export const V26_PARODY_UNIT_IDS: readonly string[] = [
+  "P173", // 보날두
+  "P174", // 권씨
+  "P175", // 열라도나
+  "P176", // 춘바페
+  "P177", // 덕브라이너
+  "P178", // 석신
+  "P179", // 욱링엄
+  "P180", // 경니시우스
+  "P181", // 석다이크
+  "P182", // 오시야스
+];
+
 /** league 시드 데이터 버전(봇 클럽명·성향 프리셋·순위 보상). */
 export const LEAGUE_VERSION = "v1";
 
@@ -328,6 +374,16 @@ export type PlayerSeedV24 = PlayerSeedV23;
  * 별칭으로 두는 이유는 v2.3/v2.4 와 같다 — 소비자 타입이 버전 축을 이름으로 부를 수 있게.
  */
 export type PlayerSeedV25 = PlayerSeedV24;
+
+/**
+ * players.v2.6 = v2.5 + `shortName` **하나만** 추가한 additive 확장 (#406 요구 6).
+ * `name` 은 필드가 아니라 **값**이 바뀐다(실선수 172 = 한글 음역 / 패러디 10 = 현행 유지).
+ * 필드 순서는 v2.5 그대로 두고 shortName 을 마지막에 붙인다 — 이 필드를 모르는 임포터는 무시한다.
+ */
+export interface PlayerSeedV26 extends PlayerSeedV25 {
+  /** 밀집 UI(덱 행·전술보드 슬롯·경기 토큰·로그줄)용 짧은 이름. 폴백은 `name`. */
+  shortName: string;
+}
 
 const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "technical",
@@ -833,10 +889,12 @@ export interface GeneratedData {
   playersV22: PlayerSeedV22[];
   /** players.v2.3.json — v2.2 + 유닛명 정정 2건 + 신규 비활성 3건 (#207 U-D5/U-D6). 동결. */
   playersV23: PlayerSeedV23[];
-  /** players.v2.4.json — v2.3 + 신규 LEGEND 2종 append (#256 석다이크·오시야스). */
+  /** players.v2.4.json — v2.3 + 신규 LEGEND 2종 append (#256 석다이크·오시야스). 동결. */
   playersV24: PlayerSeedV24[];
-  /** players.v2.5.json — v2.4 전 182행을 **신규 시작 밴드**로 재롤 (#405 §2.2). 현행 소비본. */
+  /** players.v2.5.json — v2.4 전 182행을 **신규 시작 밴드**로 재롤 (#405 §2.2). 동결. */
   playersV25: PlayerSeedV25[];
+  /** players.v2.6.json — v2.5 + 한글 표시명(실선수 172) + shortName (#406). 최신 발행본. */
+  playersV26: PlayerSeedV26[];
   economy: EconomySeed;
   bots: BotSeed[];
   /** league.v1.json — 봇 클럽명·성향 프리셋·순위 보상. */
@@ -1066,6 +1124,95 @@ function buildPlayersV25(
       if (!Number.isInteger(v) || v < lo || v > hi) {
         throw new Error(`${p.id} ${key}=${v} 가 ${p.grade} 신규 시작 밴드 [${lo},${hi}] 밖이다(#405)`);
       }
+    }
+  }
+  return out;
+}
+
+/** 한글(공백 허용) 전용인지 — v2.6 표시명 가드. 라틴 문자·숫자·기호가 섞이면 false. */
+const HANGUL_ONLY = /^[가-힣]+(?: [가-힣]+)*$/;
+
+/**
+ * players.v2.5 위에 v2.6 을 만든다 (#406 요구 6, hero 확정 "안 C 하이브리드").
+ * **v2.5 이하 빌더는 건드리지 않는다** — 그 발행물들이 그대로 재현돼야 하기 때문(v2.5 가 v2.4 를
+ * 대하는 방식과 동일). 하는 일은 RNG 가 다 돈 뒤의 **순수 문자열 변환** 두 가지뿐이다:
+ *   ① `NAMES_KO[id].ko` 가 있으면 `name` 을 그 값으로 교체(= 실선수 172명)
+ *   ② `shortName` 을 마지막 필드로 추가(182명 전원)
+ *
+ * fail-closed 로 보는 것(조용한 사고를 전부 터뜨린다):
+ *   ① 표의 길이·순서가 v2.5 와 정확히 일치 — 로스터가 밀리면 여기서 터진다
+ *   ② `from` 앵커가 v2.5 의 현재 이름과 일치 — 누가 v2.3 정정을 되돌리거나 행이 어긋나면 터진다
+ *      (#405 의 v2.5 재롤은 `attributes` 만 바꿨으므로 이 앵커는 v2.4 영문명 그대로 성립한다)
+ *   ③ 패러디 10종(`V26_PARODY_UNIT_IDS`)은 `ko` 가 **없고** 결과 이름이 v2.5 와 동일
+ *   ④ 실선수 구간(패러디 밖)은 `ko` 가 **반드시 있고** 한글 전용(빈 문자열·라틴 혼입 0)
+ *   ⑤ `shortName` 전원 존재 + 한글 전용 + `ko`(또는 현행명)보다 길지 않다
+ *   ⑥ 이름 전역 유일(도감 중복 방지 — v2.3/v2.4 와 같은 계약)
+ *   ⑦ id/position/grade/attributes/personality/active 는 v2.5 와 **완전 동일**(표시명 레이어다)
+ *       — #405 의 재롤값을 한 점도 안 건드린다는 뜻이다
+ */
+function buildPlayersV26(playersV25: PlayerSeedV25[]): PlayerSeedV26[] {
+  if (NAMES_KO.length !== playersV25.length) {
+    throw new Error(
+      `names-ko 표가 ${playersV25.length}행이어야 하는데 ${NAMES_KO.length} 이다 — ` +
+        `로스터에 유닛을 추가했다면 names-ko.ts 에도 맨 끝 append 하라(#406).`,
+    );
+  }
+
+  const parody = new Set(V26_PARODY_UNIT_IDS);
+  const out: PlayerSeedV26[] = playersV25.map((p, i) => {
+    const e = NAMES_KO[i]!;
+    if (e.id !== p.id) {
+      throw new Error(`names-ko #${i} 가 ${e.id} 인데 v2.5 는 ${p.id} 다 — 표 순서 = 발행 순서(#406)`);
+    }
+    if (e.from !== p.name) {
+      throw new Error(
+        `${p.id} 의 v2.5 이름이 "${e.from}" 이어야 하는데 "${p.name}" 이다 — ` +
+          `v2.5 이하는 발행 후 수정 금지다. 표시명 변경은 names-ko.ts 에서만 한다.`,
+      );
+    }
+    if (parody.has(p.id)) {
+      if (e.ko !== undefined) {
+        throw new Error(
+          `${p.id} 는 패러디 유닛이라 개명 대상이 아니다(hero 확정 안 C) — names-ko 의 ko 를 지워라.`,
+        );
+      }
+    } else {
+      if (!e.ko) throw new Error(`${p.id}(${p.name}) 한글 표기 누락 — names-ko.ts 에 ko 를 채워라(#406).`);
+      if (!HANGUL_ONLY.test(e.ko)) {
+        throw new Error(`${p.id} 한글 표기가 한글 전용이 아니다: "${e.ko}"`);
+      }
+    }
+    const name = e.ko ?? p.name;
+    if (!e.short) throw new Error(`${p.id}(${name}) shortName 누락 — 밀집 UI 가 폭을 못 견딘다.`);
+    if (!HANGUL_ONLY.test(e.short)) {
+      throw new Error(`${p.id} shortName 이 한글 전용이 아니다: "${e.short}"`);
+    }
+    if (e.short.length > name.length) {
+      throw new Error(`${p.id} shortName "${e.short}" 이 표시명 "${name}" 보다 길다 — 축약이 아니다.`);
+    }
+    // v2.5 키 순서를 유지한 채 name 값만 덮고 shortName 을 마지막에 붙인다(순수 additive).
+    return { ...p, name, shortName: e.short };
+  });
+
+  for (const id of V26_PARODY_UNIT_IDS) {
+    const before = playersV25.find((p) => p.id === id);
+    const after = out.find((p) => p.id === id);
+    if (!before || !after) throw new Error(`패러디 유닛 ${id} 가 카탈로그에 없다(#406)`);
+    if (before.name !== after.name) {
+      throw new Error(`${id} 는 개명 대상이 아닌데 "${before.name}" → "${after.name}" 로 바뀌었다`);
+    }
+  }
+
+  if (new Set(out.map((p) => p.name)).size !== out.length) {
+    throw new Error("v2.6 표시명 충돌 — 한글 음역이 기존 이름과 겹친다(도감 중복)");
+  }
+
+  // 표시명 레이어다: 이름 축 밖은 v2.5 와 완전 동일해야 한다(#405 재롤값 승계).
+  for (let i = 0; i < playersV25.length; i++) {
+    const { name: _n, ...restBefore } = playersV25[i]!;
+    const { name: _m, shortName: _s, ...restAfter } = out[i]!;
+    if (JSON.stringify(restBefore) !== JSON.stringify(restAfter)) {
+      throw new Error(`v2.6 레이어가 ${playersV25[i]!.id} 의 이름 밖 축을 건드렸다(#406)`);
     }
   }
   return out;
@@ -1630,6 +1777,8 @@ export function generateAll(): GeneratedData {
   const playersV24 = buildPlayersV24(playersV23, buildPlayersV21(players));
   // #405: v2.5 는 v2.4 위에 얹는 **재롤 레이어**(행 추가 0). 별도 RNG 스트림이라 위 발행물 무영향.
   const playersV25 = buildPlayersV25(playersV24, ROSTER);
+  // #406: v2.6 은 v2.5 위에 얹는 **표시명 레이어**(RNG 미사용 = 순수 문자열 변환, 행 추가 0).
+  const playersV26 = buildPlayersV26(playersV25);
   const league = buildLeague();
 
   // economy v3(#209) = v2 그대로 + starterTop 블록. v2 객체는 건드리지 않는다(발행물 불변).
@@ -1640,7 +1789,7 @@ export function generateAll(): GeneratedData {
   };
 
   return {
-    players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25,
+    players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
     economy, economyV3, bots, league,
     leagueV2: buildLeagueV2(league),
     botsV3,
@@ -1658,7 +1807,7 @@ const isMain = (() => {
 
 if (isMain) {
   const {
-    players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25,
+    players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
     economy, economyV3, bots, league, leagueV2, botsV3,
   } = generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
@@ -1683,6 +1832,10 @@ if (isMain) {
     join(here, `players.${PLAYERS_V25_VERSION}.json`),
     JSON.stringify(playersV25, null, 2) + "\n",
   );
+  writeFileSync(
+    join(here, `players.${PLAYERS_V26_VERSION}.json`),
+    JSON.stringify(playersV26, null, 2) + "\n",
+  );
   writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
   writeFileSync(
     join(here, `economy.${ECONOMY_V3_VERSION}.json`),
@@ -1700,7 +1853,8 @@ if (isMain) {
     `generated ${players.length} players (v2/v2.1 frozen ${playersV2.length}, v2.2 ${playersV22.length} ` +
       `with active, v2.3 ${playersV23.length}, v2.4 ${playersV24.length}, ` +
       `v2.5 ${playersV25.length} rerolled to lowered start bands ` +
-      `active=${playersV25.filter((p) => p.active).length}), ` +
+      `active=${playersV25.filter((p) => p.active).length}, ` +
+      `v2.6 ${playersV26.length} ko-names+shortName), ` +
       `economy.${DATA_VERSION}.json + economy.${ECONOMY_V3_VERSION}.json(starterTop), ` +
       `${bots.length} bots, league.${LEAGUE_VERSION}.json -> data/players/`,
   );

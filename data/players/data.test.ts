@@ -161,9 +161,15 @@ const V25_TOTAL = 182;
 
 /**
  * 패러디 유닛명에 실명이 새어 들어오지 않는지 — 소스 실선수의 한글 표기 denylist(부분문자열 금지).
- * 실명 유입 차단이 목적이므로 가드를 지우지 않고 **한글 축으로 확장**한다.
+ *
+ * ⚠️ **적용 범위 = 패러디 유닛(P173~P182) 뿐이다** (#406 hero 확정 2026-08-02, 안 C 하이브리드).
+ * 원래 목적이 "패러디명이 실명을 베끼지 않는다"이므로 범위를 명시하는 것은 가드 약화가 아니라
+ * **의도에 정확해지는** 것이다. v2.6 부터 실선수 172명의 `name` 은 **한글 음역**이고(레프 야신·
+ * 디에고 마라도나·호나우두 나자리우·주드 벨링엄·킬리안 음바페·비니시우스 주니오르 = 이 목록과
+ * 정면으로 겹치는 6건), 그건 **정상 통과해야 한다** — 실명 유닛에 실명을 쓰는 것이 안 C 다.
+ * 그래서 이 배열은 실선수 축에는 절대 적용하지 않는다(그 대비는 아래 v2.6 describe 가 박제).
  */
-const REAL_NAME_KO_DENYLIST: readonly string[] = [
+const PARODY_REAL_NAME_KO_DENYLIST: readonly string[] = [
   "호날두",
   "호나우두",
   "메시",
@@ -175,16 +181,23 @@ const REAL_NAME_KO_DENYLIST: readonly string[] = [
   "비니시우스",
 ];
 
-// hero 요청(#84): 한국 유명 선수 추가. 대표 선수의 존재·등급을 명시 검증(도감 반영 보장).
-const EXPECTED_KOREANS: readonly { name: string; grade: Grade }[] = [
-  { name: "Son Heung-min", grade: "DIA" },
-  { name: "Kim Min-jae", grade: "DIA" },
-  { name: "Park Ji-sung", grade: "LEGEND" },
-  { name: "Cha Bum-kun", grade: "LEGEND" },
-  { name: "Lee Kang-in", grade: "GOLD" },
-  { name: "Hwang Hee-chan", grade: "GOLD" },
-  { name: "Cho Hyun-woo", grade: "SILVER" },
-  { name: "Yang Min-hyuk", grade: "BRONZE" },
+/**
+ * hero 요청(#84): 한국 유명 선수 추가. 대표 선수의 존재·등급을 명시 검증(도감 반영 보장).
+ *
+ * #406 로 축이 둘이 됐다 — `name`(ROSTER·v2~v2.5 발행물의 **로마자 표기**)과 `ko`(v2.6 발행물의
+ * **한글 표기**). 둘 다 박제하는 이유: 로마자 축은 로스터/동결 발행물의 정체성이라 계속 유효하고,
+ * 한글 축은 "한국 선수가 실제로 한글로 나온다"는 #406 요구 6 의 최종 결과물이기 때문이다.
+ * 한 축만 두면 v2.6 레이어가 엉뚱한 행을 개명해도 통과한다.
+ */
+const EXPECTED_KOREANS: readonly { name: string; ko: string; grade: Grade }[] = [
+  { name: "Son Heung-min", ko: "손흥민", grade: "DIA" },
+  { name: "Kim Min-jae", ko: "김민재", grade: "DIA" },
+  { name: "Park Ji-sung", ko: "박지성", grade: "LEGEND" },
+  { name: "Cha Bum-kun", ko: "차범근", grade: "LEGEND" },
+  { name: "Lee Kang-in", ko: "이강인", grade: "GOLD" },
+  { name: "Hwang Hee-chan", ko: "황희찬", grade: "GOLD" },
+  { name: "Cho Hyun-woo", ko: "조현우", grade: "SILVER" },
+  { name: "Yang Min-hyuk", ko: "양민혁", grade: "BRONZE" },
 ];
 const BANDS: Record<Grade, readonly [number, number]> = {
   BRONZE: [40, 55],
@@ -276,7 +289,7 @@ const REAL_CLUB_TOKENS: readonly string[] = [
 ];
 
 const {
-  players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25,
+  players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
   economy, economyV3, bots, league, leagueV2, botsV3,
 } = generateAll();
 
@@ -375,6 +388,13 @@ describe("players 카탈로그 — ID/이름 유일성 + 실선수(로스터 일
 
   it("동결 172명 이름이 실선수 형태(라틴 문자 포함) — 구 가상 한글 3음절 패턴 아님", () => {
     // 이 가드의 원래 목적 = v1 절차생성 가상명(한글 3음절) 재유입 차단. 실선수 블록에만 적용한다.
+    //
+    // ⚠️ **적용 축 = ROSTER/영문(`players` = v2~v2.5 발행물의 이름)** 이다 (#406 로 축이 갈렸다).
+    // v2.6 부터 발행물의 `name` 은 한글 음역이지만, 그건 **표시명 레이어**이고 ROSTER 는 여전히
+    // 로마자다 — 로마자 축이 RNG 스트림 순서이자 동결 발행물 재현의 기준이라 이 가드는 그대로
+    // 유효하다. 한글로 갈아치우는 축(v2.6)의 가드는 아래 "players.v2.6" describe 에 따로 있다
+    // (한글 포함·빈 문자열 금지·길이 상한·shortName 무결성). 즉 가드를 약화한 게 아니라
+    // **두 축에 각각 맞는 가드를 세운** 것이다.
     for (const p of players.slice(0, FROZEN_TOTAL)) {
       expect(p.name, `${p.id} 라틴 문자 포함`).toMatch(/[A-Za-z]/);
       expect(p.name, `${p.id} 구 가상 패턴 아님`).not.toMatch(/^[가-힣]{3}$/);
@@ -392,7 +412,7 @@ describe("players 카탈로그 — ID/이름 유일성 + 실선수(로스터 일
       expect(p!.name, `${u.id} 유닛명`).toBe(u.name);
       expect(p!.name, `${u.id} 한글 전용 패러디명`).toMatch(/^[가-힣]{2,}$/);
       expect(realNames.has(p!.name), `${u.id} 실선수 이름 재사용 금지`).toBe(false);
-      for (const banned of REAL_NAME_KO_DENYLIST) {
+      for (const banned of PARODY_REAL_NAME_KO_DENYLIST) {
         expect(p!.name.includes(banned), `${u.id} 실명 "${banned}" 포함 금지`).toBe(false);
       }
     }
@@ -405,7 +425,7 @@ describe("players 카탈로그 — ID/이름 유일성 + 실선수(로스터 일
     });
   });
 
-  it("한국 유명 선수 포함(hero 요청 #84) — 대표 선수 존재 + 등급 일치", () => {
+  it("한국 유명 선수 포함(hero 요청 #84) — 대표 선수 존재 + 등급 일치(로마자 축)", () => {
     const byName = new Map(players.map((p) => [p.name, p]));
     for (const k of EXPECTED_KOREANS) {
       const p = byName.get(k.name);
@@ -1255,7 +1275,7 @@ describe("players.v2.3 — 유닛명 정정 + 활성 5/비활성 3 (#207 U-D5/U-
     for (const r of V23_RENAMES) {
       const name = byId.get(r.id)!.name;
       expect(name, `${r.id} 한글 전용 패러디명`).toMatch(/^[가-힣]{2,}$/);
-      for (const banned of REAL_NAME_KO_DENYLIST) {
+      for (const banned of PARODY_REAL_NAME_KO_DENYLIST) {
         expect(name.includes(banned), `${r.id} 실명 "${banned}" 포함 금지`).toBe(false);
       }
     }
@@ -1474,7 +1494,7 @@ describe("players.v2.4 — 신규 LEGEND 2종 채번 (#256 석다이크·오시�
   it("신규 2종 이름 = 한글 패러디명 + 실명 denylist 0 (실명 유입 차단 유지)", () => {
     for (const u of V24_NEW_UNITS) {
       expect(u.name, `${u.id} 한글 전용`).toMatch(/^[가-힣]{2,}$/);
-      for (const banned of REAL_NAME_KO_DENYLIST) {
+      for (const banned of PARODY_REAL_NAME_KO_DENYLIST) {
         expect(u.name.includes(banned), `${u.id} 실명 "${banned}" 포함 금지`).toBe(false);
       }
     }
@@ -1851,6 +1871,246 @@ describe("players.v2.5 — 초기 스탯 하향 밴드 (#405 §2.2)", () => {
   });
 });
 
+// ── #406 요구 6 — 선수명 전역 한글화 (hero 확정 2026-08-02 "안 C 하이브리드") ──────────────
+//
+// ⚠️ **발행 번호가 v2.5 → v2.6 으로 밀렸다.** #405 W1(성장 재설계)이 능력치 재롤을 `v2.5` 로
+// 먼저 발행했고 data/CLAUDE.md 는 발행 후 수정을 금지한다 → 표시명 레이어는 **다음 버전**이다.
+// 두 축은 직교한다: #405 = `attributes` · #406 = `name`/`shortName`. 아래 계약이 그 직교성을
+// 직접 박제한다("이름 축 밖은 디스크 v2.5 와 완전 동일").
+//
+// 결정: **실선수 172명은 한글 음역 · 패러디 10명(P173~P182)은 현행 유지.**
+// 아래 상수는 전부 **이슈 결정표에서 직접 박제**한다 — names-ko.ts 나 generate.ts 를 재사용하면
+// 자기참조라 결정과 코드가 어긋나도 못 잡는다(NEW_UNITS·V24_NEW_UNITS 와 같은 규율).
+
+/** v2.6 에서 **이름이 바뀌지 않는** 유닛 = 패러디 10종. 안 C 의 경계. */
+const V26_PARODY_IDS: readonly string[] = [
+  "P173", "P174", "P175", "P176", "P177", "P178", "P179", "P180", "P181", "P182",
+];
+
+/**
+ * **denylist 와 정면으로 겹치는 실명 음역 6건**(#406 목업 게이트 실측). 이 6건이 v2.6 에서
+ * 정상 통과하는 것이 안 C 의 핵심이다 — `PARODY_REAL_NAME_KO_DENYLIST` 를 실선수 축에 적용하면
+ * 여기가 먼저 터진다. 즉 이 배열은 "denylist 범위를 패러디로 좁혔다"의 실행 가능한 증거다.
+ */
+const V26_DENYLIST_COLLIDING_REAL_NAMES: readonly { id: string; ko: string }[] = [
+  { id: "P001", ko: "레프 야신" },
+  { id: "P005", ko: "디에고 마라도나" },
+  { id: "P010", ko: "호나우두 나자리우" },
+  { id: "P025", ko: "주드 벨링엄" },
+  { id: "P032", ko: "킬리안 음바페" },
+  { id: "P033", ko: "비니시우스 주니오르" },
+];
+
+/**
+ * 짧은 이름 중복 **허용 2쌍**(#406 목업 게이트에서 hero 에게 보고된 실측). 성만 남기면 겹치는
+ * 실제 동성 선수라 구분이 필요한 화면은 풀네임을 쓴다. **그 외 신규 중복은 실패**여야 한다 —
+ * 새 중복은 큐레이션 실수이거나 UI 가 두 선수를 구분 못 하게 되는 회귀다.
+ */
+const V26_ALLOWED_SHORT_DUPES: readonly { short: string; ids: readonly string[] }[] = [
+  { short: "오나나", ids: ["P074", "P105"] },
+  { short: "루이스", ids: ["P101", "P118"] },
+];
+
+/** 밀집 UI 폭 상한(목업 실측 = 풀 12자 · 짧은 7자). 여유 2자를 두되 무한 확장은 막는다. */
+const V26_MAX_NAME_LEN = 14;
+const V26_MAX_SHORT_LEN = 8;
+
+/** 한글(공백 허용) 전용 — 라틴 문자·숫자·기호가 섞이면 불통과. */
+const HANGUL_ONLY_RE = /^[가-힣]+(?: [가-힣]+)*$/;
+
+describe("players.v2.6 — 선수명 한글화 + shortName (#406 요구 6, 안 C 하이브리드)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  /**
+   * 디스크의 **발행된** v2.5 — 대조 기준을 코드가 아니라 파일에서 가져온다(자기참조 회피).
+   * ⚠️ v2.4 가 아니라 **v2.5** 다: #405 W1 이 v2.5 로 능력치를 재롤해 먼저 발행했으므로 표시명
+   * 레이어의 입력은 그 발행물이다. `name` 은 v2.4 와 동일하게 승계되므로 `names-ko.ts` 의 `from`
+   * 앵커(v2.4 영문명)는 그대로 성립하고, `attributes` 는 #405 재롤값이 그대로 실린다.
+   */
+  const diskV25 = JSON.parse(readFileSync(join(here, "players.v2.5.json"), "utf8")) as {
+    id: string;
+    name: string;
+    position: Position;
+    grade: Grade;
+    attributes: PlayerSeed["attributes"];
+    personality: Personality;
+    active: boolean;
+  }[];
+  const byId = new Map(playersV26.map((p) => [p.id, p]));
+
+  // ── 이 웨이브의 진짜 게이트: 과거 발행 축이 안 흔들렸나 ────────────────────
+  it("발행물 v2 ~ v2.5 가 여전히 **바이트 동일** 재현된다 — 한글화가 과거 축을 안 건드렸다", () => {
+    // ROSTER 의 영문 name 을 덮어썼다면 여기가 통째로 터진다(그래서 덮지 않고 v2.6 레이어를 얹었다).
+    // ⚠️ v2.5(#405 능력치 재롤)까지 포함한다 — 그 발행물이 v2.6 의 **입력**이므로 여기가
+    //    무너지면 표시명 레이어가 엉뚱한 스탯 위에 얹힌다.
+    expect(readFileSync(join(here, "players.v2.json"), "utf8")).toBe(
+      JSON.stringify(playersV2, null, 2) + "\n",
+    );
+    expect(readFileSync(join(here, "players.v2.1.json"), "utf8")).toBe(
+      JSON.stringify(playersV21, null, 2) + "\n",
+    );
+    expect(readFileSync(join(here, "players.v2.2.json"), "utf8")).toBe(
+      JSON.stringify(playersV22, null, 2) + "\n",
+    );
+    expect(readFileSync(join(here, "players.v2.3.json"), "utf8")).toBe(
+      JSON.stringify(playersV23, null, 2) + "\n",
+    );
+    expect(readFileSync(join(here, "players.v2.4.json"), "utf8")).toBe(
+      JSON.stringify(playersV24, null, 2) + "\n",
+    );
+    expect(readFileSync(join(here, "players.v2.5.json"), "utf8")).toBe(
+      JSON.stringify(playersV25, null, 2) + "\n",
+    );
+  });
+
+  it("이름 축 밖은 디스크 v2.5 와 **완전 동일** — 표시명 레이어다(#405 재롤 스탯·성격·active 무변경)", () => {
+    expect(playersV26).toHaveLength(TOTAL);
+    expect(diskV25).toHaveLength(TOTAL);
+    const strip = (p: Record<string, unknown>) => {
+      const { name: _n, shortName: _s, ...rest } = p;
+      return rest;
+    };
+    expect(JSON.stringify(playersV26.map(strip), null, 2)).toBe(
+      JSON.stringify(diskV25.map(strip), null, 2),
+    );
+  });
+
+  it("v2.6 = v2.5 + shortName 하나만 — 필드 순서·개수(신설 1)", () => {
+    for (const p of playersV26) {
+      expect(Object.keys(p)).toEqual([
+        "id", "name", "position", "grade", "attributes", "personality", "active", "shortName",
+      ]);
+    }
+  });
+
+  // ── 안 C ① 실선수 172명은 한글 음역 ────────────────────────────────────
+  it(`실선수 ${FROZEN_TOTAL}명 전원이 개명됐다 — 디스크 v2.5(로마자)와 다르고 한글 전용`, () => {
+    let renamed = 0;
+    for (const p of playersV26.slice(0, FROZEN_TOTAL)) {
+      const old = diskV25.find((x) => x.id === p.id)!;
+      expect(p.name, `${p.id} 개명됨`).not.toBe(old.name);
+      expect(p.name, `${p.id} 빈 문자열 금지`).not.toBe("");
+      expect(p.name, `${p.id} 한글 포함`).toMatch(/[가-힣]/);
+      expect(p.name, `${p.id} 라틴 문자 잔류 금지`).not.toMatch(/[A-Za-z]/);
+      expect(p.name, `${p.id} 한글(공백 허용) 전용`).toMatch(HANGUL_ONLY_RE);
+      expect(p.name.length, `${p.id} 표시명 길이 상한`).toBeLessThanOrEqual(V26_MAX_NAME_LEN);
+      renamed++;
+    }
+    expect(renamed).toBe(FROZEN_TOTAL);
+  });
+
+  it("182명 전원 한글 표기 — 로마자 이름이 한 건도 안 남았다(전역 한글화 요구 6)", () => {
+    for (const p of playersV26) expect(p.name, `${p.id} 라틴 잔류`).not.toMatch(/[A-Za-z]/);
+    expect(playersV26.filter((p) => /[가-힣]/.test(p.name))).toHaveLength(TOTAL);
+  });
+
+  // ── 안 C ② 패러디 10명은 현행 유지 ─────────────────────────────────────
+  it("패러디 10종은 **이름이 안 바뀐다** — 디스크 v2.5 와 동일(개명 대상 아님)", () => {
+    expect(V26_PARODY_IDS).toHaveLength(TOTAL - FROZEN_TOTAL);
+    for (const id of V26_PARODY_IDS) {
+      const old = diskV25.find((x) => x.id === id)!;
+      expect(byId.get(id)?.name, `${id} 현행 유지`).toBe(old.name);
+    }
+    // v2.3 정정본이 그대로 실린다(되돌아가지 않았다) — 이름 축의 회귀 스팟체크.
+    expect(byId.get("P175")?.name).toBe("열라도나");
+    expect(byId.get("P179")?.name).toBe("욱링엄");
+  });
+
+  it("패러디 10종엔 여전히 실명 denylist 0 — 가드의 원래 목적은 살아 있다", () => {
+    for (const id of V26_PARODY_IDS) {
+      const name = byId.get(id)!.name;
+      expect(name, `${id} 한글 전용 패러디명`).toMatch(/^[가-힣]{2,}$/);
+      for (const banned of PARODY_REAL_NAME_KO_DENYLIST) {
+        expect(name.includes(banned), `${id} 실명 "${banned}" 포함 금지`).toBe(false);
+      }
+    }
+  });
+
+  // ── denylist 범위 축소가 의도대로 작동하는가 ───────────────────────────
+  it("실명 음역 6건이 정상 통과 — denylist 적용 범위 = 패러디 유닛뿐(#406 hero 확정)", () => {
+    for (const c of V26_DENYLIST_COLLIDING_REAL_NAMES) {
+      expect(byId.get(c.id)?.name, `${c.id} 음역`).toBe(c.ko);
+      // 이 이름들은 denylist 와 실제로 겹친다 — 겹치는데도 통과하는 것이 이 계약의 요점이다.
+      const hits = PARODY_REAL_NAME_KO_DENYLIST.filter((b) => c.ko.includes(b));
+      expect(hits.length, `${c.id} 는 denylist 와 겹쳐야 이 테스트가 의미 있다`).toBeGreaterThan(0);
+    }
+  });
+
+  it("한국 선수 대표 8명이 한글로 나온다(#84 존재 검증의 한글 축)", () => {
+    const byEnName = new Map(diskV25.map((p) => [p.name, p]));
+    for (const k of EXPECTED_KOREANS) {
+      const old = byEnName.get(k.name);
+      expect(old, `${k.name} 존재(로마자 축)`).toBeDefined();
+      const now = byId.get(old!.id)!;
+      expect(now.name, `${k.name} 한글 표기`).toBe(k.ko);
+      expect(now.grade, `${k.ko} 등급`).toBe(k.grade);
+    }
+  });
+
+  // ── 한글 이름 자체의 무결성 ────────────────────────────────────────────
+  it("id 182개 유일 + P001..P182 순서 유지 — 개명이 행을 섞지 않았다", () => {
+    const ids = playersV26.map((p) => p.id);
+    expect(new Set(ids).size).toBe(TOTAL);
+    expect(ids).toEqual(
+      Array.from({ length: TOTAL }, (_, i) => `P${String(i + 1).padStart(3, "0")}`),
+    );
+  });
+
+  it("표시명 182개 전역 유일 — 도감 중복 0", () => {
+    expect(new Set(playersV26.map((p) => p.name)).size).toBe(TOTAL);
+  });
+
+  it("shortName 전원 존재 · 한글 전용 · 풀네임보다 길지 않다 · 길이 상한", () => {
+    for (const p of playersV26) {
+      expect(p.shortName, `${p.id} shortName 존재`).toBeTruthy();
+      expect(p.shortName, `${p.id} 한글(공백 허용) 전용`).toMatch(HANGUL_ONLY_RE);
+      expect(p.shortName.length, `${p.id} shortName ≤ 표시명`).toBeLessThanOrEqual(p.name.length);
+      expect(p.shortName.length, `${p.id} shortName 길이 상한`).toBeLessThanOrEqual(
+        V26_MAX_SHORT_LEN,
+      );
+    }
+  });
+
+  it("shortName 중복은 알려진 2쌍(오나나·루이스)뿐 — 신규 중복은 실패", () => {
+    const groups = new Map<string, string[]>();
+    for (const p of playersV26) {
+      groups.set(p.shortName, [...(groups.get(p.shortName) ?? []), p.id]);
+    }
+    const dupes = [...groups.entries()]
+      .filter(([, ids]) => ids.length > 1)
+      .map(([short, ids]) => ({ short, ids }))
+      .sort((a, b) => a.short.localeCompare(b.short));
+    const expected = [...V26_ALLOWED_SHORT_DUPES]
+      .map((d) => ({ short: d.short, ids: [...d.ids] }))
+      .sort((a, b) => a.short.localeCompare(b.short));
+    expect(dupes).toEqual(expected);
+    // 중복 쌍은 풀네임으로는 구분된다 — 그래서 "구분이 필요하면 풀네임"이 성립한다.
+    for (const d of V26_ALLOWED_SHORT_DUPES) {
+      const names = d.ids.map((id) => byId.get(id)!.name);
+      expect(new Set(names).size, `${d.short} 쌍 풀네임 구분`).toBe(d.ids.length);
+    }
+  });
+
+  it("shortName 이 풀네임의 부분문자열 — 엉뚱한 별명이 아니라 축약이다(패러디 축약 2건 제외)", () => {
+    // 예외 = 5자 패러디명의 밀집 UI 축약(#406 목업): 덕브라이너→덕브라 · 경니시우스→경니시.
+    // 이 둘도 접두어라 부분문자열 규칙을 만족한다 — 예외 목록 없이 전원에 걸 수 있는지 확인한다.
+    for (const p of playersV26) {
+      expect(p.name.includes(p.shortName), `${p.id} "${p.shortName}" ⊂ "${p.name}"`).toBe(true);
+    }
+  });
+
+  it("zod PlayerCard 호환 유지 — 한글 이름·신설 필드가 계약을 깨지 않는다", () => {
+    for (const p of playersV26) {
+      const parsed = PlayerCard.safeParse({
+        playerId: p.id,
+        name: p.name,
+        position: p.position,
+        attributes: p.attributes,
+      });
+      expect(parsed.success, `${p.id} ${p.name}`).toBe(true);
+    }
+  });
+});
+
 describe("동결 발행물 불변 — 기존 172명 바이트 동일 (#207 결정론 가드)", () => {
   const here = dirname(fileURLToPath(import.meta.url));
 
@@ -2058,6 +2318,7 @@ describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과
     ["players.v2.3.json", playersV23],
     ["players.v2.4.json", playersV24],
     ["players.v2.5.json", playersV25],
+    ["players.v2.6.json", playersV26],
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
     ["league.v1.json", league],
@@ -2082,6 +2343,7 @@ describe("재생성 결정론 (AC-PL1)", () => {
     expect(JSON.stringify(a.playersV23, null, 2)).toBe(JSON.stringify(b.playersV23, null, 2));
     expect(JSON.stringify(a.playersV24, null, 2)).toBe(JSON.stringify(b.playersV24, null, 2));
     expect(JSON.stringify(a.playersV25, null, 2)).toBe(JSON.stringify(b.playersV25, null, 2));
+    expect(JSON.stringify(a.playersV26, null, 2)).toBe(JSON.stringify(b.playersV26, null, 2));
     expect(JSON.stringify(a.economy, null, 2)).toBe(JSON.stringify(b.economy, null, 2));
     expect(JSON.stringify(a.bots, null, 2)).toBe(JSON.stringify(b.bots, null, 2));
     expect(JSON.stringify(a.league, null, 2)).toBe(JSON.stringify(b.league, null, 2));
