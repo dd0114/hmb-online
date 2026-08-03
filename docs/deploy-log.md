@@ -78,9 +78,10 @@ From 유류관리중대 통제반. 그의 코에는 특별함이 있다! 지금 
 애초에 없다**). 그래서 새 문안이 대체하지 **않는** 서술 문장 `최전방을 지배하는 특급 공격수입니다.`
 하나만 뒤에 남겼다. **수치를 지어내지 않았다** — #256 규율(문안의 수치는 `players.v2.4.json` 실값만).
 
-📌 hero 가 오시야스식 스펙 블록을 원한 것이라면 실값은 이미 있다(활성화 응답 실측):
-`shooting 95 · mental 95 · technical 92 · passing 90 · pace 89 · positioning 89 · tackling 86 ·
-stamina 86 · physical 83`. 지시가 오면 그 값으로만 쓴다.
+📌 **종결(2026-08-03, hero 확정): 스펙 블록은 넣지 않는다 — 현행 문안 유지.**
+그래서 이 공지의 최종형은 revision 4 다. *(참고로 물어봤던 실값은 `shooting 95 · mental 95 ·
+technical 92 · passing 90 · pace 89 · positioning 89 · tackling 86 · stamina 86 · physical 83` —
+쓰지 않기로 했다.)*
 
 **검증 — 실화면(폰 430×932)**: 팝업 `1/3` 에 이미지(`1080×1180 · complete · 표시폭>0`) + 새 문안 렌더.
 `GET /api/notices/active` 에서 verbatim 문자열 완전 일치 확인. JS 에러 **0**.
