@@ -6,6 +6,45 @@
 
 ---
 
+## 2026-08-03T06:50Z — [운영 조치] **권씨(P174) 오픈** — 유닛 활성화 + 공지 게시 (무배포)
+
+hero 지시. **배포 없음** — 어드민 API 토글 2회다(#389 AC3 절차 그대로).
+
+**① 선행조건(아트 도달) 충족 확인** — `v3.16` 에 이미 실렸다:
+`/chars/units/manifest.json` 에 `kwonssi` 있음 · `/chars/units/art-kwonssi.png` → **`image/png`**.
+*(AC3 가 경고한 순서다 — 아트 없이 켜면 도감·뽑기에서 이니셜 폴백으로 뜬다.)*
+
+**② 활성화** — `POST /api/admin/units/P174/activate`, reason 필수. 응답 `applied:true` ·
+`changedFields:["active","adminLocked"]` · `auditId 01KZ364Q21V23TT68D01D2SC7K`.
+`admin_locked=1` 이라 **재배포해도 안 덮인다**. 되돌리기 = `/deactivate` 1콜.
+
+**③ 공지** — `POST /api/admin/notices` · id `01KZ366VARXGRY8SC38P5M5RBX` · priority **10**(오시야스와 동일) ·
+`endsAt 2026-08-10T06:50:32Z`(7일) · `status LIVE`. **문안은 hero/main 초안 그대로**(무수정) —
+제목 `신규 레전더리 선수 권씨 등장!` / 본문 `새로운 레전더리 선수 권씨가 합류했습니다. 지금 뽑기에서
+만나보세요. 최전방을 지배하는 특급 공격수입니다.` 이미지 없음 → 자산 업로드 단계 불필요.
+
+**④ 검증**
+
+| 항목 | 결과 |
+|---|---|
+| 공개 카탈로그 | **165 → 166**, `P174 권씨 FW LEGEND` 노출 |
+| 획득 가능 LEGEND FW | **3 → 4** (`P173·P174·P176·P180`) — AC3 기대치와 일치 |
+| 뽑기 풀 | `players.active=1` · 활성 LEGEND **8종**. `loadPools()` 가 뽑기마다 `WHERE active=1` 재조회 → **재시작 없이 즉시 반영** |
+| 공지 노출 | 비인증 `GET /api/notices/active` 3건 중 **1순위** · 실화면 팝업 `1/3` 로 제목·본문 그대로 렌더 |
+| **이니셜 폴백 아님** | 도감 실화면 — 카드가 **`art-kwonssi.png`(512×768) 를 실제로 로드**한다. 미보유라 잠금 실루엣으로 마스킹되지만, 폴백 카드였다면 그 `img` 자체가 없다(아트 없는 선수는 `AO`·`RV` 같은 **이니셜 원**이다) |
+
+**⑤ #397 은 이걸로 해소되지 않는다** — 권씨는 이제 `active=1` 이라 그 이슈의 대상에서 빠지지만,
+**비활성 유닛이 16종 남아 있다**(P001 Lev Yashin … 역사적 이름 자리표). #397 이 지적한 두 경로
+(강화 카드 조회 스탯 유출 · 리그 봇 로스터 편성)의 위험은 **그대로 유지**된다 — server-java 트랙 소관.
+
+**⑥ 후속(AC3 ⑤, 이 세션 밖)**: 다음 시드 발행 때 `players.v2.x` 의 P174 를 `active: true` 로 승격하고
+`gen-chars.ts` 의 `ACTIVATION_PENDING` · `chars-map.test.ts` 의 `PENDING_ACTIVATION_UNITS` 에서 빼야 한다.
+**안 하면 새 환경·새 DB 에서 다시 비활성으로 시작한다**(P180 경니시우스가 실제로 그랬다).
+
+집행자: hmb:deploy2 (hero 지시, main 전달). 문안 다듬기는 hero 가 하면 `PUT /api/admin/notices/{id}` 로 수정.
+
+---
+
 ## 2026-08-02T10:54Z — **배포 v3.17 — server-java 단독** — #402 경기 시작 대기시간 개선
 
 - **git**: **`25883d7`**(main). **server-java 단독** — `git diff 80e25a8..25883d7` = `server-java/src` 18 ·
