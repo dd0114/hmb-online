@@ -289,7 +289,9 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     await expect(page.getByTestId("half-report-title")).toHaveText("전반 리포트");
     expect(h.skips).toEqual([{ phase: "FIRST_HALF" }]);
 
-    // 다음 장이 브릿지다 — **하나의 스택, 하나의 닫기**.
+    // 다음 장이 주요 인물(#403 평점, #421 W7) → 그 다음이 브릿지다 — **하나의 스택, 하나의 닫기**.
+    await page.getByTestId("half-report-next").click();
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "top-rated");
     await page.getByTestId("half-report-next").click();
     await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
     await expect(page.getByTestId("half-report-title")).toHaveText("전반 종료");
@@ -307,8 +309,8 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     await page.getByTestId("match-skip").click();
 
     await expect(page.getByTestId("half-report")).toBeVisible();
-    // 리포트(1) + 브릿지(1) = 2장. 평점 모듈(#403) 전이라 `주요 인물` 카드는 없다.
-    await expect(page.getByTestId("half-report-pager")).toHaveText("1 / 2");
+    // 리포트(1) + 주요 인물(1, #403 평점) + 브릿지(1) = 3장. **스택이 하나**인 것이 이 계약의 축이다.
+    await expect(page.getByTestId("half-report-pager")).toHaveText("1 / 3");
     // 폴링이 몇 바퀴 더 돌아도 다이얼로그는 하나뿐이다.
     await page.waitForTimeout(2500);
     await expect(page.locator('[role="dialog"]')).toHaveCount(1);

@@ -2,9 +2,10 @@
 /**
  * #421 W2 — 하프 리포트 팝업의 **화면 계약**.
  *
- * 가장 중요한 것은 ③이다: 평점 SoT(#403 `player-stats.ts`)는 아직 main 에 없어 어댑터가 `null` 을
- * 준다. 그때 팝업이 빈 카드를 그리거나 `1 / 2` 페이저를 남기면 **모듈이 오기 전 배포가 곧 결함**이
- * 된다. 그래서 "평점 카드가 없으면 스택이 1장으로 줄고 페이저·도트가 사라진다"를 계약으로 박는다.
+ * ⚠️ 평점 SoT(#403 `player-stats.ts`)가 머지돼 어댑터는 **W7 에서 플립됐다**(더 이상 상시 `null` 이
+ * 아니다). 그래도 **`null` 경로는 사라지지 않는다** — 기록이 없는 하프·손상 로그·아직 안 온 로그가
+ * 그 자리다. 그때 팝업이 빈 카드를 그리거나 `1 / 2` 페이저를 남기면 그게 곧 결함이라,
+ * "평점 카드가 없으면 스택이 1장으로 줄고 페이저·도트가 사라진다"를 계약으로 계속 박는다.
  *
  * NOTE: 루트 vitest include 가 `apps/**\/*.test.ts` 라 JSX 없이 createElement 로 쓴다(GenWaitPanel.test 동일).
  */
@@ -23,7 +24,15 @@ vi.mock("../api/hooks", () => ({
   useHalfLog: () => ({ data: mocks.log, isLoading: mocks.isLoading }),
   usePlayers: () => ({ data: mocks.players }),
 }));
-vi.mock("./skip-report-rating", () => ({ topRatedOfHalf: () => mocks.top }));
+/**
+ * ⚠️ **`highlightStatsOf` 는 진짜를 쓴다**(`importActual`). 이 스위트가 보려는 것은 "카드가 집계
+ * 줄에서 실제로 기록을 뽑아 그리는가"라, 그것까지 목으로 갈면 빈 배열을 그려도 통과한다.
+ * 목으로 가는 것은 **어느 선수를 고르나**(= 로그 집계) 하나뿐이다.
+ */
+vi.mock("./skip-report-rating", async (orig) => ({
+  ...(await orig<typeof import("./skip-report-rating")>()),
+  topRatedOfHalf: () => mocks.top,
+}));
 
 import { HalfReportModal } from "./HalfReportModal";
 
@@ -55,7 +64,7 @@ afterEach(() => {
   mocks.top = null;
 });
 
-describe("스택 — 평점 카드가 없으면 1장이다 (#403 머지 전)", () => {
+describe("스택 — 평점 카드가 없으면 1장이다 (기록 없는 하프·손상 로그)", () => {
   it("페이저·도트·뒤 카드가 모두 없고 주 버튼이 바로 [닫기]다", () => {
     mocks.log = { events: [GOAL] };
     const onClose = open();
@@ -76,7 +85,7 @@ describe("스택 — 평점이 오면 2장이 되고 한 장씩 넘어간다", (
   it("타임라인 → 주요 인물 → 닫기", () => {
     mocks.log = { events: [GOAL] };
     mocks.players = [{ id: "P1", name: "보날두" }];
-    mocks.top = { team: "home", playerId: "P1", rating: 8.25, line: {} };
+    mocks.top = { team: "home", playerId: "P1", rating: 8.25, line: {}, isMotm: true };
     const onClose = open();
 
     expect(screen.getByTestId("half-report-pager").textContent).toBe("1 / 2");
@@ -98,6 +107,63 @@ describe("스택 — 평점이 오면 2장이 되고 한 장씩 넘어간다", (
 
     fireEvent.click(screen.getByTestId("half-report-next"));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * #421-2 ② 의 AC = "전반전 가장 평점 좋은 **주요 인물** 1장". 이름·평점만 있으면 그 사람이
+   * **왜** 주요 인물인지가 화면에 없다 — 등번호(경기장 토큰과 잇는 축)와 기록을 같이 그린다.
+   */
+  it("카드는 등번호·이름·포지션·평점 등급·하이라이트 기록을 그린다", () => {
+    mocks.log = {
+      events: [GOAL],
+      // 등번호는 `viewer-skins.jerseyNumbers` 규칙(팀별 등장 순서) — 로그가 있어야 나온다.
+      tickSnapshots: [
+        {
+          tick: 0,
+          minute: 0,
+          ball: { x: 0, y: 0 },
+          players: [
+            { playerId: "P1", team: "home", pos: { x: 1, y: 1 } },
+            { playerId: "P9", team: "away", pos: { x: 2, y: 2 } },
+          ],
+        },
+      ],
+    };
+    mocks.players = [{ id: "P1", name: "보날두", position: "FW" }];
+    mocks.top = {
+      team: "home",
+      playerId: "P1",
+      rating: 8.25,
+      isMotm: true,
+      line: { goals: 2, assists: 1, keyPasses: 0, shotsOnTarget: 0, tackles: 0 },
+    };
+    open();
+    fireEvent.click(screen.getByTestId("half-report-next"));
+
+    expect(screen.getByTestId("half-report-motm-num").textContent).toBe("1");
+    expect(screen.getByTestId("half-report-motm-name").textContent).toBe("보날두");
+    // 평점 등급은 선수 탭과 같은 판정(`ratingTier`) — 색이 화면마다 갈리지 않는다.
+    expect(screen.getByTestId("half-report-motm-rating")).toHaveProperty("dataset.tier", "motm");
+
+    const stats = screen.getByTestId("half-report-motm-stats");
+    expect(stats.textContent).toContain("골");
+    expect(stats.textContent).toContain("2");
+    expect(stats.textContent).toContain("어시스트");
+    // 0 인 항목은 싣지 않는다(소음).
+    expect(stats.textContent).not.toContain("키패스");
+  });
+
+  it("스냅샷 없는 로그(등번호 미상)에서도 이름·평점은 그린다 — 부가 정보가 주 정보를 죽이지 않는다", () => {
+    mocks.log = { events: [GOAL] };
+    mocks.players = [{ id: "P1", name: "보날두" }];
+    mocks.top = { team: "home", playerId: "P1", rating: 6.4, isMotm: false, line: {} };
+    open();
+    fireEvent.click(screen.getByTestId("half-report-next"));
+
+    expect(screen.getByTestId("half-report-motm-num").textContent).toBe("–");
+    expect(screen.getByTestId("half-report-motm-name").textContent).toBe("보날두");
+    expect(screen.getByTestId("half-report-motm-rating").textContent).toBe("6.4");
+    expect(screen.queryByTestId("half-report-motm-stats")).toBeNull();
   });
 });
 

@@ -32,8 +32,17 @@ const HALF = {
   away: GOALS.filter((g) => g.team === "away").length,
 };
 
-/** 카탈로그는 로그의 선수 id 를 그대로 덮는다 — 이름이 안 붙으면 그 자리가 빈다. */
-const PLAYERS = [...new Set(LOG.events.map((e) => e.playerId).filter(Boolean))].map((id, i) => ({
+/**
+ * 카탈로그는 로그의 선수 id 를 그대로 덮는다 — 이름이 안 붙으면 그 자리가 빈다.
+ *
+ * ⚠️ **이벤트 id 만으로는 부족하다**(#421 W7): 주요 인물 카드는 **출전한 22명 전원** 중에서
+ * 뽑히는데 이 로그에서 이벤트에 한 번이라도 등장하는 건 21명뿐이라, 하필 그 1명이 뽑히면 이름이
+ * id 원문("A4")으로 떨어져 계약이 화면 결함과 구분되지 않는다. 스냅샷 등장 순서를 먼저 깐다.
+ */
+const SNAP_IDS = ((LOG as unknown as { tickSnapshots?: { players?: { playerId: string }[] }[] }).tickSnapshots ?? [])
+  .flatMap((s) => s.players ?? [])
+  .map((p) => p.playerId);
+const PLAYERS = [...new Set([...SNAP_IDS, ...LOG.events.map((e) => e.playerId).filter(Boolean)])].map((id, i) => ({
   id,
   name: `선수${i + 1}`,
   position: "MF",
@@ -282,24 +291,39 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await expect(page.locator('[data-testid="viewer-canvas-half1"]')).toHaveCount(0);
   });
 
-  test("e. 평점 모듈(#403) 머지 전에는 리포트 1장 + 브릿지 1장이다 — 빈 `주요 인물` 카드가 없다", async ({
-    page,
-  }) => {
+  test("e. 리포트 → **주요 인물** → 브릿지 3장이다(#421-2 ②, W7 평점 플립)", async ({ page }) => {
     /*
-     * ⚠️ 원래 이 계약은 "스택이 **1장**"이었다. #424 가 브릿지를 마지막 카드로 더하면서 2장이 됐고,
-     * 그건 설계가 의도한 변화다(§3.2). 그래도 **지키려던 것은 그대로다**: 평점 SoT(#403)가 오기
-     * 전에 `주요 인물` 카드가 빈 채로 끼어들지 않는다. 그래서 장 수가 아니라 **어떤 카드가 있나**를 센다.
+     * ⚠️ 이 계약은 두 번 옮겨졌다. ①원래 "스택이 **1장**" → #424 가 브릿지를 마지막 카드로 더해 2장
+     * (설계 §3.2). ②#403 평점 모듈이 머지되며 `주요 인물` 카드가 **실제로 들어와** 3장이 됐다.
+     * 지키려던 것은 그대로다 — **빈 카드가 끼어들지 않는다**. 그래서 장 수만 세지 않고
+     * *그 카드가 무엇을 말하는지*(이름·평점)까지 본다. 평점이 비면 `null` 경로로 돌아가 2장이 되고,
+     * 그 경로는 `HalfReportModal.test.ts` 가 계속 지킨다.
      */
     await openMatch(page, "FIRST_HALF");
     await page.getByTestId("match-skip").click();
     await expect(page.getByTestId("half-report")).toBeVisible();
 
-    await expect(page.getByTestId("half-report-pager")).toHaveText("1 / 2");
-    await expect(page.getByTestId("half-report-dots").locator("span")).toHaveCount(2);
+    await expect(page.getByTestId("half-report-pager")).toHaveText("1 / 3");
+    await expect(page.getByTestId("half-report-dots").locator("span")).toHaveCount(3);
     await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
 
     await page.getByTestId("half-report-next").click();
-    // 두 번째 장은 **브릿지**다 — 평점 카드가 없으므로 `top-rated` 는 나타나지 않는다.
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "top-rated");
+    await expect(page.getByTestId("half-report-title")).toHaveText("전반 주요 인물");
+    // 카드가 **비어 있지 않다** — 이름이 카탈로그에서 붙고 평점이 숫자로 뜬다.
+    await expect(page.getByTestId("half-report-motm-name")).toHaveText(/선수\d+/);
+    await expect(page.getByTestId("half-report-motm-rating")).toHaveText(/^\d+\.\d$/);
+    // 등번호는 경기장 토큰과 같은 규칙(1~11)에서 온다 — id 원문("H3")이 새 나오면 안 된다.
+    await expect(page.getByTestId("half-report-motm-num")).toHaveText(/^(?:[1-9]|1[01])$/);
+    /*
+     * 팀 필터 기본 = **우리 팀**(유저가 자기 팀 서사를 읽는 화면). 목의 유저는 홈이므로 홈 이름이
+     * 붙어야 한다 — 필터를 지우는 변이는 상대 팀 최고를 뽑아 여기서 죽는다(데모 로그의 통합
+     * MOTM 이 어웨이일 수 있다).
+     */
+    await expect(page.getByTestId("half-report-motm")).toContainText("테스터");
+
+    await page.getByTestId("half-report-next").click();
+    // 마지막 장은 **브릿지**다(#424 — 브릿지는 언제나 스택의 끝).
     await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
     await expect(page.getByTestId("half-report-motm")).toHaveCount(0);
     // 마지막 장의 CTA 가 곧 끝맺음이다(라벨은 브릿지가 상태에서 파생한다 — #424).

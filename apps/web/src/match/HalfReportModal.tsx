@@ -3,7 +3,9 @@ import { Modal } from "../common/Modal";
 import { useHalfLog, usePlayers } from "../api/hooks";
 import { buildHalfReportRows, halfReportScore, type HalfReportEventLike, type NameOf } from "./half-report";
 import { halfLabelOf } from "./skip-mode";
-import { topRatedOfHalf } from "./skip-report-rating";
+import { highlightStatsOf, topRatedOfHalf } from "./skip-report-rating";
+import { playerKey } from "./player-stats";
+import { buildRosterMeta, gkKeysOf, positionsOf, ratingTier } from "./player-stats-view";
 import type { ScorePair } from "./match-logic";
 import styles from "./HalfReportModal.module.css";
 
@@ -77,9 +79,12 @@ export interface HalfReportModalProps {
  * 성립하지 않으므로 버튼을 그리지 않는다(선례 = `ShareNoticePage` 의 `suppressible={false}`).
  *
  * ── 평점 카드가 없으면 스택은 1장이다 ─────────────────────────────────────────────────
- * 평점 SoT(#403)는 아직 main 에 없어 `topRatedOfHalf` 가 `null` 을 준다(`skip-report-rating`).
- * 그때 스택은 **타임라인 1장**으로 줄고 페이저·도트도 사라진다 — 모듈이 오기 전에도 스킵
- * 플로우가 깨지지 않는 것이 그 격리막의 목적이다.
+ * 평점 SoT(#403 `player-stats.ts`)가 머지돼 `topRatedOfHalf` 는 **실제 인물을 준다**(W7 플립).
+ * 그래도 `null` 경로는 남는다 — 기록이 없는 하프·손상 로그·아직 안 온 로그. 그때 스택은
+ * **타임라인 1장**으로 줄고 페이저·도트도 사라진다(계약 = `HalfReportModal.test.ts`).
+ *
+ * 카드가 그리는 값은 **하나도 여기서 세지 않는다**: 평점·기록은 `skip-report-rating`(→ #403 집계),
+ * 등번호·이름·포지션은 `player-stats-view.buildRosterMeta`, 평점 등급은 `ratingTier` 다.
  */
 export function HalfReportModal({
   matchId,
@@ -121,10 +126,27 @@ export function HalfReportModal({
   const rows = useMemo(() => buildHalfReportRows(events, { nameOf }), [events, nameOf]);
   const logScore = useMemo(() => halfReportScore(events, baseline), [events, baseline]);
   const score = half != null ? logScore : scoreOverride;
+
+  /**
+   * 표시 메타(이름·등번호·포지션)와 평점 보정 입력을 **한 번에** 만든다 — 둘 다 #403 `player-stats-view`
+   * 의 것을 **소비**한다(#57: 로스터·등번호 규칙을 여기서 다시 짜지 않는다). 등번호가 경기장 토큰과
+   * 같은 규칙에서 나오는 것도 그 모듈이 보장한다.
+   */
+  const roster = useMemo(() => buildRosterMeta(half == null ? null : log ?? null, catalog), [half, log, catalog]);
+  const gkKeys = useMemo(() => gkKeysOf(roster), [roster]);
+  const positions = useMemo(() => positionsOf(roster), [roster]);
+
   // 팀 필터 = **우리 팀**이 기본이다(유저가 자기 팀 서사를 읽는 화면). 사이드를 모르면 양 팀 통합.
   const top = useMemo(
-    () => (half == null ? null : topRatedOfHalf(log ?? null, myTeamSide ? { team: myTeamSide } : {})),
-    [half, log, myTeamSide],
+    () =>
+      half == null
+        ? null
+        : topRatedOfHalf(log ?? null, {
+            ...(myTeamSide ? { team: myTeamSide } : {}),
+            gkKeys,
+            positions,
+          }),
+    [half, log, myTeamSide, gkKeys, positions],
   );
 
   const label = halfLabelOf(half ?? 1);
@@ -165,18 +187,48 @@ export function HalfReportModal({
   ];
 
   if (top) {
+    /*
+     * 이름·등번호·포지션은 로스터에서, 없으면 카탈로그 이름 → id 로 떨어진다.
+     * ⚠️ 로그에 `tickSnapshots` 가 없으면(트림된 로그) 로스터가 비어 등번호가 없다 —
+     *    그때 번호 자리를 `–` 로 두고 **이름은 계속 나온다**. 부가 정보가 주 정보를 죽이지 않는다.
+     */
+    const meta = roster.get(playerKey(top.team, top.playerId));
+    const stats = highlightStatsOf(top.line, { isGk: meta?.position === "GK" });
+    // 평점 뱃지 등급은 선수 탭과 **같은 판정**(#403 `ratingTier`)을 쓴다 — 화면 간 색이 갈리지 않게.
+    const tier = ratingTier(top.rating, top.isMotm);
     cards.push({
       id: "top-rated",
       title: `${label} 주요 인물`,
       body: (
-        <div className={styles.motm} data-testid={`${tid}-motm`}>
-          <span className={styles.motmName} data-testid={`${tid}-motm-name`}>
-            {nameOf(top.team, top.playerId) ?? top.playerId}
-          </span>
+        <div className={styles.motm} data-testid={`${tid}-motm`} data-tier={tier}>
+          <p className={styles.motmWho}>
+            {/* 팀색 원 + 등번호 — 경기장 토큰·선수 탭과 같은 표현(#285 정책 절). */}
+            <i
+              className={`${styles.motmNum} ${top.team === "home" ? styles.motmNumHome : styles.motmNumAway}`}
+              data-testid={`${tid}-motm-num`}
+              aria-hidden="true"
+            >
+              {meta?.num ?? "–"}
+            </i>
+            <span className={styles.motmName} data-testid={`${tid}-motm-name`}>
+              {meta?.name ?? nameOf(top.team, top.playerId) ?? top.playerId}
+            </span>
+            {meta?.position && <span className={styles.motmPos}>{meta.position}</span>}
+          </p>
           <span className={styles.motmTeam}>{teamNameOf(top.team)}</span>
-          <span className={styles.motmRating} data-testid={`${tid}-motm-rating`}>
+          <span className={styles.motmRating} data-tier={tier} data-testid={`${tid}-motm-rating`}>
             {top.rating.toFixed(1)}
           </span>
+          {stats.length > 0 && (
+            <ul className={styles.motmStats} data-testid={`${tid}-motm-stats`}>
+              {stats.map((s) => (
+                <li key={s.label} className={styles.motmStat} data-stat={s.label}>
+                  <b>{s.value}</b>
+                  <span>{s.label}</span>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
       ),
     });

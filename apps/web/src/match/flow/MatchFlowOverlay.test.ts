@@ -19,7 +19,15 @@ vi.mock("../../api/hooks", () => ({
   }),
   usePlayers: () => ({ data: mocks.players }),
 }));
-vi.mock("../skip-report-rating", () => ({ topRatedOfHalf: () => null }));
+/*
+ * 평점 카드는 **이 스위트의 관심사가 아니다**(브릿지 큐·스택 소유가 주제다) → 인물 선정만 목으로
+ * 끈다. 나머지(`highlightStatsOf`)는 진짜를 남긴다 — 통째로 갈면 `HalfReportModal` 이 부르는
+ * 심볼이 사라져 "테스트만 성립하는 모듈"이 된다.
+ */
+vi.mock("../skip-report-rating", async (orig) => ({
+  ...(await orig<typeof import("../skip-report-rating")>()),
+  topRatedOfHalf: () => null,
+}));
 
 import { MatchFlowOverlay } from "./MatchFlowOverlay";
 import type { MatchFlowHandle } from "./useMatchFlow";

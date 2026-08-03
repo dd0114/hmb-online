@@ -14,9 +14,12 @@ const OUT = new URL("../.p421/", import.meta.url).pathname;
 const MATCH_ID = "m-p421cap";
 const LOG = JSON.parse(
   readFileSync(new URL("../../../packages/engine/dev-viewer/match-log.json", import.meta.url).pathname, "utf8"),
-) as { events: { type: string; playerId?: string }[] };
+) as { events: { type: string; playerId?: string }[]; tickSnapshots?: { players?: { playerId: string }[] }[] };
 
-const PLAYERS = [...new Set(LOG.events.map((e) => e.playerId).filter(Boolean))].map((id, i) => ({
+// 스냅샷 등장 순서를 먼저 깐다 — 주요 인물은 **출전 22명 전원** 중에서 뽑히므로 이벤트 id 만으로는
+// 이름이 안 붙는 선수가 생긴다(계약 스펙과 같은 이유).
+const SNAP_IDS = (LOG.tickSnapshots ?? []).flatMap((s) => s.players ?? []).map((p) => p.playerId);
+const PLAYERS = [...new Set([...SNAP_IDS, ...LOG.events.map((e) => e.playerId).filter(Boolean)])].map((id, i) => ({
   id,
   name: `선수${i + 1}`,
   position: "MF",
@@ -84,7 +87,17 @@ test("스킵 버튼 → 하프 리포트 팝업", async ({ page }) => {
   await expect(page.getByTestId("half-report")).toBeVisible();
   await page.screenshot({ path: `${OUT}2-half-report.png` });
 
-  await page.getByTestId("half-report-next").click();
+  // 스택을 끝까지 넘기며 **장마다** 찍는다 — 카드가 몇 장이 되든(#403 평점 카드 + #424 브릿지)
+  // 유저가 실제로 보는 그림이 전부 남는다.
+  for (let i = 0; i < 6 && (await page.getByTestId("half-report").count()) > 0; i++) {
+    const card = await page.getByTestId("half-report-card").getAttribute("data-card");
+    await page.getByTestId("half-report-next").click();
+    if ((await page.getByTestId("half-report").count()) > 0) {
+      await expect(page.getByTestId("half-report-card")).not.toHaveAttribute("data-card", card ?? "");
+      await page.screenshot({ path: `${OUT}2-${i + 1}-card-${await page.getByTestId("half-report-card").getAttribute("data-card")}.png` });
+    }
+  }
+
   await expect(page.getByTestId("resume-button")).toBeVisible();
   await page.screenshot({ path: `${OUT}3-after-close-halftime.png` });
 });

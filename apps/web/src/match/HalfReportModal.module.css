@@ -255,9 +255,44 @@
   padding: 10px 0;
 }
 
+.motmWho {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+}
+
+/* 팀색 원 + 등번호 — 선수 탭 `.pnum`(stage/panels.module.css)과 같은 표현. */
+.motmNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  color: #04101f;
+}
+
+.motmNumHome {
+  background: #6ab7ff;
+}
+
+.motmNumAway {
+  background: #ff8a7a;
+}
+
 .motmName {
   font-size: 18px;
   font-weight: 700;
+}
+
+.motmPos {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
 }
 
 .motmTeam {
@@ -265,11 +300,61 @@
   color: var(--text-muted);
 }
 
+/*
+ * 평점 — 등급색은 선수 탭의 `.rating[data-tier]`(stage/panels.module.css)과 **같은 값**이다.
+ * 판정(`ratingTier`)은 #403 의 함수 하나를 공유하고, 여기서는 그 결과를 색으로 옮기기만 한다.
+ */
 .motmRating {
   font-size: 30px;
   font-weight: 800;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
+}
+
+.motmRating[data-tier="hi"] {
+  color: #3ddc84;
+}
+
+.motmRating[data-tier="mid"] {
+  color: #ffc24b;
+}
+
+.motmRating[data-tier="motm"] {
+  color: #e5bc3f;
+}
+
+/* 하이라이트 기록 — 값이 크고 라벨이 작다(숫자를 먼저 읽는다). */
+.motmStats {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.motmStat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 54px;
+  gap: 1px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.motmStat b {
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.motmStat span {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* ── 도트·주 버튼 ──────────────────────────────────────────────────────── */

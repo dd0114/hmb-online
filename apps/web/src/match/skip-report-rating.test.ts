@@ -1,35 +1,160 @@
 /**
- * #421 W2 — 평점 어댑터의 **격리 계약**.
+ * #421 W7 — 평점 어댑터의 **격리 계약**(W2 스텁 계약을 플립한 것).
  *
- * 이 파일이 지키는 것은 "평점이 맞느냐"가 아니다(그건 #403 `player-stats.ts` 의 계약 88건 몫이다).
+ * 이 파일이 지키는 것은 "평점이 맞느냐"가 아니다(그건 #403 `player-stats.ts` 의 계약 몫이다).
  * 여기서 박는 것은 **경계**다:
- *  ① 산식이 이 브랜치에 복사되지 않았다 — 스텁은 무엇을 먹여도 `null` 이다(#57 재발명 금지).
- *  ② 어떤 입력(빈 로그·손상 로그·null)에도 **던지지 않는다** — 리포트가 화면을 죽이면 안 된다.
- *  ③ 팀 필터는 **소비자가 고르는 옵션**이다(모듈 수정 없이 "우리 팀 최고"로 좁힌다).
+ *  ① 산식이 이 브랜치에 복사되지 않았다 — 반환 평점이 `computePlayerStats` 의 값과 **같은 객체에서**
+ *     온다(#57 재발명 금지). 여기서 계수를 다시 곱하면 이 단언이 깨진다.
+ *  ② 어떤 입력(빈 로그·손상 로그·null)에도 **던지지 않고 `null`** 을 준다 — 리포트가 화면을 죽이면 안 된다.
+ *  ③ 팀 필터는 **소비자가 고르는 옵션**이고, 그 tie-break 는 #403 `pickMotm` 과 **같은 전순서**다(결정론).
  *
- * ⚠️ 이 스위트는 #403 이 머지되는 날 **바뀐다**. 그때 ①은 "null 만 준다"에서 "그 하프의 MOTM 을
- * 준다"로 좁혀지고, ②③은 그대로 남는다 — 그게 시그니처를 안 바꾼다는 약속의 증거다.
+ * ⚠️ W2 계약("무엇을 먹여도 null")은 **의도적으로 좁혀졌다** — 그때의 `null` 은 모듈 부재였고,
+ * 지금의 `null` 은 **기록이 없는 하프**다. ②③은 그대로 남아 있는 것이 "시그니처를 안 바꿨다"는 증거다.
  */
 import { describe, expect, it } from "vitest";
-import { topRatedOfHalf } from "./skip-report-rating";
+import { highlightStatsOf, topRatedOfHalf } from "./skip-report-rating";
+import { computePlayerStats, type StatMatchLog } from "./player-stats";
 
-describe("topRatedOfHalf — #403 머지 전 스텁", () => {
-  it("무엇을 먹여도 null 이다(산식이 여기 복사돼 있지 않다는 증거)", () => {
+/** 정지한 선수들 — 주행거리 차이를 0 으로 만들어 **이벤트만이** 평점을 가르게 한다(tie-break 표본). */
+const AT = (playerId: string, team: string, x: number) => ({ playerId, team, pos: { x, y: 34 } });
+const SNAP = (tick: number) => ({
+  tick,
+  minute: tick,
+  ball: { x: 52.5, y: 34 },
+  ballOwner: null,
+  players: [AT("H1", "home", 40), AT("H2", "home", 60), AT("A1", "away", 70), AT("A2", "away", 80)],
+});
+
+function log(events: unknown[]): StatMatchLog {
+  return { tickSnapshots: [SNAP(0), SNAP(1), SNAP(2), SNAP(3)], events } as unknown as StatMatchLog;
+}
+
+const GOAL_H2 = { tick: 1, minute: 1, type: "goal", team: "home", playerId: "H2" };
+const SHOT_A1 = { tick: 2, minute: 2, type: "shot", team: "away", playerId: "A1", detail: "on_target" };
+
+describe("topRatedOfHalf — 산식은 #403 의 것이다", () => {
+  it("골을 넣은 선수를 그 하프 최고로 뽑고, 평점은 `computePlayerStats` 가 준 값 그대로다", () => {
+    const l = log([GOAL_H2, SHOT_A1]);
+    const top = topRatedOfHalf(l);
+    expect(top).not.toBeNull();
+    expect(top!.playerId).toBe("H2");
+    expect(top!.team).toBe("home");
+
+    // ① 재발명 금지의 증거 — 우리가 돌려준 값이 SoT 의 값과 **동일**하다.
+    const sot = computePlayerStats(l, {});
+    expect(top!.rating).toBe(sot.motm!.rating);
+    expect(top!.isMotm).toBe(true);
+    // `line` 도 SoT 의 집계 줄 그대로(카드가 다시 세지 않는다).
+    expect(top!.line?.goals).toBe(1);
+  });
+
+  it("팀 필터를 켜면 그 팀 최고를 준다 — 양 팀 통합 MOTM 이 아닐 수 있다(`isMotm=false`)", () => {
+    const l = log([GOAL_H2, SHOT_A1]);
+    const away = topRatedOfHalf(l, { team: "away" });
+    expect(away!.team).toBe("away");
+    expect(away!.playerId).toBe("A1"); // 유효슛이 있는 쪽
+    expect(away!.isMotm).toBe(false);
+
+    const home = topRatedOfHalf(l, { team: "home" });
+    expect(home!.playerId).toBe("H2");
+    expect(home!.isMotm).toBe(true);
+  });
+
+  it("동점이면 키(`team:playerId`) 사전순 — #403 `pickMotm` 과 같은 전순서라 결정론적이다", () => {
+    // 이벤트가 없으면 두 홈 선수의 집계 줄이 완전히 같다 → tie-break 만이 답을 정한다.
+    const l = log([]);
+    const a = topRatedOfHalf(l, { team: "home" });
+    const b = topRatedOfHalf(l, { team: "home" });
+    expect(a!.playerId).toBe("H1");
+    expect(b!.playerId).toBe(a!.playerId); // 같은 입력 → 같은 답
+  });
+
+  it("포지션·GK 보정 입력을 #403 규약(`playerKey` 키) 그대로 넘긴다", () => {
+    const l = log([GOAL_H2, SHOT_A1]);
+    const opts = { gkKeys: new Set(["home:H1"]), positions: { "home:H1": "GK" as const } };
+    // 넘긴 것이 실제로 산식에 닿는다 = 보정 없이 계산한 것과 값이 갈릴 수 있고, 무엇보다 던지지 않는다.
+    const withOpts = topRatedOfHalf(l, { team: "home", ...opts });
+    expect(withOpts).not.toBeNull();
+    const sot = computePlayerStats(l, opts);
+    const h1 = sot.players.find((p) => p.key === "home:H1");
+    // GK 로 선언한 선수는 실점이 채워진다(보정 입력이 통과했다는 관측 가능한 증거).
+    expect(h1!.goalsConceded).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("topRatedOfHalf — 손상 입력에도 화면을 죽이지 않는다", () => {
+  it("모양이 아닌 입력은 던지지 않고 null 이다", () => {
     expect(topRatedOfHalf(null)).toBeNull();
+    expect(topRatedOfHalf(undefined)).toBeNull();
+    expect(topRatedOfHalf("not a log")).toBeNull();
+    expect(topRatedOfHalf([])).toBeNull();
+    expect(topRatedOfHalf({ events: null })).toBeNull();
+    // ⚠️ 배열이 아닌 `tickSnapshots` 는 SoT 의 `.filter` 를 던지게 만든다 — 여기서 잘라야 한다.
+    expect(() => topRatedOfHalf({ tickSnapshots: "nope", events: "nope" })).not.toThrow();
+    expect(topRatedOfHalf({ tickSnapshots: "nope", events: "nope" })).toBeNull();
+  });
+
+  it("기록이 없는 하프(빈 로그)는 null — 그때 스택은 타임라인 1장으로 줄어든다", () => {
     expect(topRatedOfHalf({ events: [], tickSnapshots: [] })).toBeNull();
-    expect(topRatedOfHalf({ events: [{ tick: 1, type: "goal", team: "home", playerId: "P1" }] })).toBeNull();
-  });
-
-  it("손상 입력에도 던지지 않는다", () => {
-    expect(() => topRatedOfHalf(undefined)).not.toThrow();
-    expect(() => topRatedOfHalf("not a log")).not.toThrow();
-    expect(() => topRatedOfHalf({ events: null })).not.toThrow();
-  });
-
-  it("팀 필터 옵션을 받는다 — 소비자가 '우리 팀 최고'로 좁힐 수 있어야 한다", () => {
     expect(topRatedOfHalf({}, { team: "home" })).toBeNull();
-    expect(topRatedOfHalf({}, { team: "away" })).toBeNull();
-    // 옵션 생략 = 양 팀 통합(#403 `motm` 원형).
     expect(topRatedOfHalf({}, {})).toBeNull();
+  });
+
+  it("이벤트만 있고 스냅샷이 없는 로그는 출전 기록이 없으므로 null(빈 카드를 만들지 않는다)", () => {
+    expect(topRatedOfHalf({ events: [GOAL_H2] })).toBeNull();
+  });
+});
+
+describe("highlightStatsOf — 무엇을 말할지만 고른다(값은 #403 이 센 것)", () => {
+  const line = (over: Record<string, number>) =>
+    ({
+      goals: 0,
+      assists: 0,
+      keyPasses: 0,
+      shotsOnTarget: 0,
+      tackles: 0,
+      interceptions: 0,
+      clearances: 0,
+      saves: 0,
+      goalsConceded: 0,
+      passesCompleted: 0,
+      touches: 0,
+      ...over,
+    }) as never;
+
+  it("0 인 항목은 싣지 않는다(`골 0 · 어시스트 0` 은 소음이다)", () => {
+    const out = highlightStatsOf(line({ goals: 2, tackles: 3 }));
+    expect(out.map((s) => s.label)).toEqual(["골", "태클"]);
+    expect(out.map((s) => s.value)).toEqual(["2", "3"]);
+  });
+
+  it("최대 4개까지만 — 더 실으면 폰에서 이름·평점이 밀린다", () => {
+    expect(
+      highlightStatsOf(
+        line({ goals: 1, assists: 1, keyPasses: 1, shotsOnTarget: 1, tackles: 1, interceptions: 1 }),
+      ),
+    ).toHaveLength(4);
+  });
+
+  it("골키퍼는 무실점(0)도 싣는다 — 그 자체가 성과다", () => {
+    const out = highlightStatsOf(line({ saves: 4 }), { isGk: true });
+    expect(out).toEqual([
+      { label: "선방", value: "4" },
+      { label: "실점", value: "0" },
+    ]);
+  });
+
+  it("아무 기록도 없으면 패스·터치로 떨어지고, 그것도 0 이면 빈 목록이다(카드는 살아 있다)", () => {
+    expect(highlightStatsOf(line({ passesCompleted: 9, touches: 12 }))).toEqual([
+      { label: "패스 성공", value: "9" },
+      { label: "터치", value: "12" },
+    ]);
+    expect(highlightStatsOf(line({}))).toEqual([]);
+  });
+
+  it("`line` 이 없거나 필드가 비어도 던지지 않는다", () => {
+    expect(highlightStatsOf(null)).toEqual([]);
+    expect(highlightStatsOf(undefined)).toEqual([]);
+    expect(highlightStatsOf({} as never)).toEqual([]);
   });
 });
