@@ -70,6 +70,11 @@ export const LADDER_SUITES: { file: string; what: string; issue: string }[] = [
     issue: "#99 G-A / #279 / #338 / #357 / #407 N1",
   },
   {
+    file: "box-arrival.test.ts",
+    what: "박스 도착런 정원 사다리 3 rung(`movement.boxArrival.maxRunners` 0/1/2 — 게이트 틱당 박스 안 비ST 인구 단조. 3 이상은 자격자 수에 막혀 포화)",
+    issue: "#407 N2",
+  },
+  {
     file: "lane-read.test.ts",
     what: "수비 레인 예측 용량–반응(세기 4 rung — 읽힌 레인의 좁힘·점유 격차가 단조)",
     issue: "#379 (트랙 D M3-B)",

@@ -195,6 +195,10 @@ const LIVE: Knob[] = [
   // 섭동은 **0**(= 호출 게이트를 완전히 닫음). 기하 오프사이드가 팀-경기당 27.93건 발생하므로
   // 게이트를 닫으면 반드시 갈린다. 빈도의 밴드·단조는 `offside-call.test.ts` 가 따로 본다.
   { path: "rules.offside.callProb", mutate: (c) => { c.rules.offside.callProb = 0; } },
+  // #407 N2 (0.43.0) **조건부 박스 도착런**. 출하 기본은 `enabled: false` 라 스위치만 여기 있고
+  // 형태 노브 7종은 아래 **조건부 LIVE** 블록이 본다(N1 감쇠 형태 노브와 같은 처방).
+  // 섭동 = 켜기. 켜면 러너의 목표가 바뀌므로 3시드에서 반드시 갈린다(등록 전 확인).
+  { path: "movement.boxArrival.enabled", mutate: (c) => { c.movement.boxArrival.enabled = true; } },
 ];
 
 describe("#338 죽은 노브 레지스트리 — 사슬 기본에서 무효인 것들", () => {
@@ -411,6 +415,54 @@ describe("#407 N1 조건부 LIVE — 거리 감쇠 형태 노브(스위치를 �
       expect(hashes(off), `${k.path}`).toEqual(BASE);
     }
   }, 300_000);
+});
+
+/**
+ * **조건부 LIVE** — #407 N2 박스 도착런의 형태 노브 7종.
+ *
+ * 출하 기본이 `movement.boxArrival.enabled=false` 라 일곱은 출하값에서 **비트 동일**이다.
+ * 죽은 것이 아니라 **스위치가 꺼져 있는 것**이고, 둘은 처방이 정반대라 갈라서 박제한다
+ * (N1 거리 감쇠 · 1대1 계열 · 레스트디펜스 매핑 · 오프사이드 트랩과 같은 처방).
+ *
+ * ⚠️ **왜 기본이 off 인가**: 기제는 작동하지만(60시드 비ST 박스수신 0.72→1.04~1.22 ·
+ * 박스ST% 86.1→80.4 · HHI 0.904→0.895 를 **팀 폭·스로인 밴드 유지**로 얻는다) **파울이
+ * 5.09→4.10~4.70 으로 악화**하고(hero AC 의 하드 제약) 정작 노린 비ST 슛은 평평하다.
+ * 상세 = `config.ts` 주석 · `issues/2026-08-03-engine-box-arrival-runs.md`.
+ *
+ * ⚠️ **등록 전에 확인했다** — 일곱 전부 스위치를 켠 3시드에서 최종 해시가 움직인다.
+ */
+describe("#407 N2 조건부 LIVE — 박스 도착런 형태 노브(스위치를 켜야 레버다)", () => {
+  const on = (c: EngineConfig): void => { c.movement.boxArrival.enabled = true; };
+  const BASE_ON = hashes(on);
+
+  const knobs: Knob[] = [
+    { path: "movement.boxArrival.maxRunners", mutate: (c) => { on(c); c.movement.boxArrival.maxRunners = 4; } },
+    { path: "movement.boxArrival.holdTicks", mutate: (c) => { on(c); c.movement.boxArrival.holdTicks = 1; } },
+    { path: "movement.boxArrival.triggerProgress", mutate: (c) => { on(c); c.movement.boxArrival.triggerProgress = 0.5; } },
+    { path: "movement.boxArrival.minRunnerProgress", mutate: (c) => { on(c); c.movement.boxArrival.minRunnerProgress = 0.9; } },
+    { path: "movement.boxArrival.minBaseLatM", mutate: (c) => { on(c); c.movement.boxArrival.minBaseLatM = 4; } },
+    { path: "movement.boxArrival.arrivalDepthM", mutate: (c) => { on(c); c.movement.boxArrival.arrivalDepthM = 2; } },
+    { path: "movement.boxArrival.slotSpreadM", mutate: (c) => { on(c); c.movement.boxArrival.slotSpreadM = 20; } },
+    { path: "movement.boxArrival.arrivalHalfWidthM", mutate: (c) => { on(c); c.movement.boxArrival.arrivalHalfWidthM = 0; } },
+  ];
+
+  for (const k of knobs) {
+    it(`조건부 LIVE: ${k.path} 는 도착런을 켜면 레버다`, () => {
+      expect(hashes(k.mutate), `${k.path} 가 도착런 ON 에서도 무효다 — 선언만 남은 노브(#338)`)
+        .not.toEqual(BASE_ON);
+    }, 120_000);
+  }
+
+  it("⚠️ 출하 기본(도착런 off)에서는 여덟 전부 비트 동일이다 — 죽은 것이 아니라 **스위치가 꺼진 것**", () => {
+    // 이 단언이 깨지면 도착런이 스위치 없이 발화하기 시작했다는 뜻이다 → 그때 위 LIVE 로 올린다.
+    for (const k of knobs) {
+      const off = (c: EngineConfig): void => {
+        k.mutate(c);
+        c.movement.boxArrival.enabled = false;
+      };
+      expect(hashes(off), `${k.path}`).toEqual(BASE);
+    }
+  }, 600_000);
 });
 
 describe("#338 롤백 경로에서는 죽은 노브가 살아난다 (지우면 안 되는 이유)", () => {

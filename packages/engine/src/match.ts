@@ -23,6 +23,7 @@ import { loftHangTicks } from "./kick";
 import { decideBallOwner, decideOffBall, assignPressUnit, pressRoleOf, speedStep } from "./decision";
 import { decideBallOwnerChain } from "./chain";
 import {
+  applyBoxArrival,
   applyDefensiveLine,
   applyRestDefence,
   applyRunOrders,
@@ -768,6 +769,14 @@ function stepTick(carry: Carry): void {
   // "차면 **그 틱에** 뛰어들어간다"가 성립하는 유일한 자리다(앞에서 돌면 러너가 항상 1틱 늦는다).
   // 팀 전체를 보는 계산이라 선수 루프 밖·틱당 1회 — `computeTeamPlan` 과 같은 규율(§5-1).
   // 아직 안 찬 세트피스(liveSp) 구간은 규칙기반 배치가 소유하므로 건너뛴다(#174/#185 재발 방지).
+  // --- 박스 도착런(#407 N2) — **런 오더 배정 앞** ---
+  // 이 함수는 목표를 직접 당기지 않고 `runOrder` 를 **발행**만 한다(지속되는 지시여야 러너가
+  // 실제로 박스에 도착한다 — teamplan.ts:applyBoxArrival 주석의 실측). 소비(당김)는 바로 아래
+  // `applyRunOrders` 의 pull 루프가 하므로 **앞에** 있어야 하고, 같은 틱에 패스 런 오더가 나면
+  // 그쪽이 덮어쓴다("이 패스의 이 지점으로"가 더 구체적인 지시다).
+  // 세트피스 미킥 구간을 건너뛰는 이유는 아래와 같다(#174/#185 — 그 구간은 규칙기반 배치 소유).
+  if (!liveSp) applyBoxArrival(state, config, pitch);
+
   if (!liveSp) applyRunOrders(state, config, pitch);
 
   // --- 수비 형태(#377 S3-B): 공유 수비 라인 + 오픈플레이 레스트디펜스 ---
