@@ -90,6 +90,12 @@ async function pointerDrag(page: Page, sourceTestId: string, targetTestId: strin
 }
 
 /** data-testids of the pool row buttons, in rendered order. */
+/**
+ * ⚠️ **`pick-` 접두 스캔은 그 네임스페이스에 뭘 더하면 조용히 깨진다.** 이미 `pick-overall-` 을
+ * 한 번 제외했고, #442 가 행에 [투입] 버튼을 더할 때 `pick-assign-` 으로 지었다가 여기서
+ * **행 14개가 15개로 늘어 red** 가 났다(그래서 `pool-assign-` 으로 갈랐다).
+ * 리스트 행에 새 손잡이를 붙일 땐 이 스캐너를 먼저 보고 **다른 접두**를 써라.
+ */
 async function poolOrder(page: Page): Promise<string[]> {
   return page.locator('button[data-testid^="pick-"]:not([data-testid^="pick-overall-"])').evaluateAll((els) =>
     els.map((el) => el.getAttribute("data-testid")!.replace("pick-", "")),

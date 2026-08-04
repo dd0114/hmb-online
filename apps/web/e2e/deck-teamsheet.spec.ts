@@ -583,17 +583,26 @@ async function scanStarterSlots(page: Page): Promise<Array<{ i: number; blockedB
   );
 }
 
-/** 보유 6명 = Auto 비활성(CTA disabled) 경로. 12명 = CTA 활성 경로. */
+/**
+ * 보유 12명 = Auto 활성 · 6명 = 활성(있는 만큼 채운다, #439) · **0명 = 비활성 + 안내 오버레이**.
+ *
+ * ⚠️ **0명 갈래는 #442 R2-ⓑ 로 되살린 것이다.** 이 테스트의 블로커 내용은 CTA 상태가 아니라
+ * 아래 `blocked` 히트테스트("빈 상태 안내가 선발 슬롯을 가리지 않는다")인데, `c8fb4ae` 가
+ * 두 갈래를 모두 CTA 활성으로 재작성하면서 겨누던 오버레이(`board-empty-note`)가 **표본에서
+ * 통째로 빠졌다** — 두 갈래 다 `toHaveCount(0)` 이 되어 **한 번도 렌더된 적 없는 오버레이를
+ * 상대로 히트테스트가 돌았다 = 무조건 통과**. note 는 이제 `autoDisabled && autoHint` 에서만
+ * 뜨므로 **보유 0명**이 그 유일한 도달 경로다. 그 상태를 표본에 다시 넣어 계약을 복원한다.
+ */
 const SIX = PLAYERS.slice(0, 6);
 
 for (const width of [390, 1280]) {
-  for (const owned of [12, 6] as const) {
+  for (const owned of [12, 6, 0] as const) {
     test(`R3b A: 빈 상태에서 선발 11 슬롯이 전부 눌린다 (${width} · 보유 ${owned}명)`, async ({ page }) => {
       mkdirSync(SMOKE_DIR, { recursive: true });
       await mockApi(page, []); // 진짜 첫 진입 = 빈 덱(여기서는 이게 **실사용 상태**다)
       // ⚠️ Playwright 라우트는 **나중에 등록한 것이 이긴다** → 보유 선수 오버라이드는 mockApi 뒤에.
       await page.route((url) => url.pathname === "/api/players", (route) =>
-        route.fulfill(json(owned === 12 ? PLAYERS : SIX)),
+        route.fulfill(json(owned === 12 ? PLAYERS : owned === 6 ? SIX : [])),
       );
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
       await openDeck(page);
@@ -612,8 +621,22 @@ for (const width of [390, 1280]) {
        * 선발 슬롯을 가리지 않는다")가 그것이고, 그건 손대지 않았다. 안내 문구는 CTA 가 살아 있는
        * 지금 "막다른 길"이 아니므로 대상이 사라진 것이지 검증을 뺀 것이 아니다.
        */
-      await expect(page.getByTestId("board-empty-auto")).toBeEnabled();
-      await expect(page.getByTestId("board-empty-note")).toHaveCount(0);
+      /**
+       * ⚠️ **보유 0명은 다른 갈래다** (#442 R2-ⓑ). 채울 후보가 하나도 없으므로 CTA 는 비활성이고
+       * 그때만 안내 오버레이(`board-empty-note`)가 뜬다 — *"…슬롯을 눌러 직접 배치할 수
+       * 있습니다"*. **그렇게 지시하는 화면에서 그 오버레이가 슬롯을 가리면 막다른 길**이고,
+       * 그게 이 테스트가 원래 겨누던 블로커다. 이 갈래가 있어야 아래 히트테스트가 실물을 상대한다.
+       */
+      if (owned === 0) {
+        await expect(page.getByTestId("board-empty-auto")).toBeDisabled();
+        await expect(
+          page.getByTestId("board-empty-note"),
+          "히트테스트가 겨누는 오버레이가 실제로 렌더돼 있어야 한다",
+        ).toBeVisible();
+      } else {
+        await expect(page.getByTestId("board-empty-auto")).toBeEnabled();
+        await expect(page.getByTestId("board-empty-note")).toHaveCount(0);
+      }
 
       const scan = await scanStarterSlots(page);
       const blocked = scan.filter((s) => s.blockedBy !== null);

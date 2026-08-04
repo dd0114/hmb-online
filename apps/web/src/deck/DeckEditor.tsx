@@ -207,6 +207,17 @@ export function DeckEditor(props: DeckEditorProps) {
   const railRef = useRef<HTMLElement>(null);
   /** 시트 선택이 배치로 이어지지 못했을 때의 안내(M-2) — 막다른 길을 만들지 않는다. */
   const [pickNote, setPickNote] = useState<string | null>(null);
+  /**
+   * **투입 대기 선수** (#442 R1, hero 설계) — 목록에서 [투입]을 누른 선수. 이 값이 있으면
+   * 보드의 **모든** 슬롯이 대상이 되고, 슬롯을 탭하면 그 자리로 들어간다(빈 자리 = 배치 ·
+   * 찬 자리 = 교체).
+   *
+   * ⚠️ **후보 판정은 여기 없다** — 이 값은 시트에 실제로 그려진 행(`poolPlayers`)에서만 온다.
+   * 경기전이면 그 목록이 벤치뿐이므로(#439 R2 `poolScope`) 스쿼드 밖 선수는 이 상태에 **들어올
+   * 자리가 없다**. 여기에 `if (poolScope === "bench")` 같은 두 번째 게이트를 만들면 규칙이
+   * 두 곳에 적히고, 그게 #439 major-2 가 났던 방식이다.
+   */
+  const [assignPlayerId, setAssignPlayerId] = useState<string | null>(null);
 
   // Single DndContext spans the board slots + bench (token sources) AND the owned-player pool list.
   // MouseSensor(터치 아님) + TouchSensor 로 분리한다 — PointerSensor 를 쓰면 터치에서도
@@ -331,6 +342,23 @@ export function DeckEditor(props: DeckEditorProps) {
   }
 
   /**
+   * 목록의 [투입] — **자리를 보드에서 고르는** 동선의 시작 (#442 R1).
+   *
+   * hero: *"선수목록 들어가서 선수를 누르면 투입을 누를수 있고, 투입 누르면 '교체할 선수를
+   * 선택해주세요' 하고 후보군과 선발군 활성화되게하자."*
+   *
+   * 왜 필요한가: 폰에서 목록 시트가 보드를 **완전히 덮어** 리스트→슬롯 드래그가 도달 불가능한
+   * 죽은 코드다. 그래서 목록에서 고른 선수가 갈 수 있는 자리는 `sheetSlot ?? firstEmptySlot`
+   * 하나뿐이었고, 스쿼드가 꽉 찬 상태(=경기전 교체)에서는 막다른 안내문이 전부였다.
+   * ⛔ 드래그를 **대체하지 않는다** — 데스크탑 포인터 드래그는 그대로다(`deck-list-dnd.spec.ts`).
+   */
+  function startAssign(playerId: string) {
+    setAssignPlayerId(playerId);
+    setPickNote(null);
+    closeSheet();
+  }
+
+  /**
    * 보드 슬롯 탭.
    *   · 채워진 슬롯 → **그 선수 지시**로 (프롬프트 자리가 그 선수로 바뀐다)
    *   · 빈 슬롯     → **그 자리에 넣을 선수 시트**
@@ -339,6 +367,18 @@ export function DeckEditor(props: DeckEditorProps) {
    */
   function handleSlotTap(slot: SlotRef) {
     const occupant = draft.slots.find((s) => s.role === slot.role && s.slotIndex === slot.slotIndex);
+    /**
+     * 투입 대기 중이면 이 탭이 곧 **자리 지정**이다 (#442 R1). 빈 자리면 배치, 찬 자리면 교체 —
+     * 둘 다 `movePlayerToSlot` 한 함수가 한다(드래그 드롭과 **같은 경로**라 스왑 규칙이 갈리지
+     * 않는다). 감독시간(`boardMode`)에서는 목록 시트 자체가 없어 이 상태에 들어올 수 없지만,
+     * 그 화면의 탭 주인은 호출부이므로 명시적으로 비켜 준다.
+     */
+    if (assignPlayerId && !boardMode) {
+      mutateDraft(movePlayerToSlot(draft, assignPlayerId, slot.role, slot.slotIndex));
+      selectPlayer(assignPlayerId);
+      setAssignPlayerId(null);
+      return;
+    }
     // 교체·자리 바꾸기 모드: 탭은 전부 호출부(감독시간)로 넘긴다 — 규칙·전송은 그쪽이 소유한다.
     if (boardMode) {
       if (occupant) onBoardTap?.(occupant.playerId, slot.role);
@@ -371,9 +411,9 @@ export function DeckEditor(props: DeckEditorProps) {
       mutateDraft(movePlayerToSlot(draft, playerId, target.role, target.slotIndex));
       setPickNote(null);
     } else if (!alreadyPlaced) {
-      setPickNote(
-        `빈 자리가 없습니다 — 바꿀 자리의 선수를 누른 뒤 [이 자리 선수 바꾸기]로 교체하세요`,
-      );
+      /* #442 R1 이후 이 상태는 **막다른 길이 아니다** — 같은 행의 [투입] 이 자리를 고르게 해 준다.
+         안내는 그 손잡이를 가리킨다(구 문구는 시트를 닫고 레일까지 돌아가라고 했다). */
+      setPickNote(`빈 자리가 없습니다 — 목록에서 [투입]을 누른 뒤 교체할 선수를 고르세요`);
     } else {
       setPickNote(null);
     }
@@ -453,6 +493,25 @@ export function DeckEditor(props: DeckEditorProps) {
           {/* ② 배치(보드) — 벤치는 이 카드 안 */}
           <section className={styles.boardCol}>
             {boardHeader}
+            {/* 투입 대기 안내 (#442 R1) — 보드 **바로 위**에 둔다. 시트가 닫히면서 유저의 눈이
+                보드로 돌아오는 자리이고, 여기가 아니면 폰에서 안내와 대상이 다른 화면에 갈린다.
+                `role="status"` = 시각 신호(슬롯 맥박)와 같은 사실을 스크린리더에도 말한다. */}
+            {assignPlayerId && (
+              <div className={styles.assignBar} data-testid="assign-bar" role="status">
+                <b className={styles.assignWho}>
+                  {names.has(assignPlayerId) ? names.full(assignPlayerId) : "선수"} 투입
+                </b>
+                <span className={styles.assignHint}>교체할 선수를 선택해주세요</span>
+                <button
+                  type="button"
+                  className={styles.assignCancel}
+                  data-testid="assign-cancel"
+                  onClick={() => setAssignPlayerId(null)}
+                >
+                  취소
+                </button>
+              </div>
+            )}
             <TacticsBoard
               draft={draft}
               playersById={playersById}
@@ -460,6 +519,8 @@ export function DeckEditor(props: DeckEditorProps) {
               selectedSlot={null}
               /* 보드 모드에서는 지금 지정된 선수가 강조 대상이다(지시 대상이 아니라). */
               selectedPlayerId={boardMode ? (pendingPlayerId ?? null) : selection.playerId}
+              /* 투입 대기(#442 R1) — 선발·후보 전 슬롯이 대상이 된다. */
+              pendingPlace={Boolean(assignPlayerId)}
               subbedOut={subbedOut}
               swapMode={Boolean(boardMode)}
               /* 벤치를 펴는 건 교체 모드뿐 — 자리 바꾸기는 **선발끼리**라 넣을 선수를 고를 일이 없다. */
@@ -644,6 +705,8 @@ export function DeckEditor(props: DeckEditorProps) {
             players={poolPlayers}
             draft={draft}
             onPick={handleSheetPick}
+            /* [투입] = 자리를 보드에서 고르는 동선 (#442 R1). 후보는 `poolPlayers` 가 곧 규칙이다. */
+            onAssign={startAssign}
             conditions={conditions}
             autoFilter={sheetFilter}
             inSheet

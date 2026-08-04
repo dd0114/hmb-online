@@ -218,6 +218,27 @@
   color: var(--accent);
 }
 
+/*
+ * 투입 대기 중의 **찬 자리** = 교체 대상 (#442 R1).
+ *
+ * ⚠️ **디스크에 걸면 안 보인다 — 실캡처로 확인했다.** 처음엔 `.disc { box-shadow: 0 0 0 2px accent }`
+ * 였는데, 컨디션 링(`.condRing`, `inset:-3px`)이 디스크를 **감싸고 앞에** 있어서 그 2px 가 통째로
+ * 가려졌다(대조군 캡처와 육안 차이 거의 0). `data-assign-target` 계약은 그 상태에서도 초록이다 —
+ * #439 `.tokenDragging{opacity:.4}` 가 홀드 링을 눌렀던 것과 **같은 부류**(모듈 CLAUDE.md
+ * "계약이 초록으로 거짓말하는 방식"). 그래서 신호를 **셀 자체**(토큰 뒤 판)로 올린다.
+ */
+.cellSwapTarget {
+  border-radius: 12px;
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  animation: assignPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes assignPulse {
+  0%, 100% { background-color: rgba(79, 140, 255, 0.12); }
+  50% { background-color: rgba(79, 140, 255, 0.34); }
+}
+
 .emptyMark {
   font-size: 18px;
 }

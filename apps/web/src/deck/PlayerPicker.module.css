@@ -66,9 +66,35 @@
   flex-direction: column;
 }
 
+/* 한 행 = [본체 버튼(드래그·탭)] + [투입] (#442 R1). 버튼 중첩은 유효하지 않은 DOM 이라 형제로 둔다.
+   구분선은 행이 갖는다 — 본체 버튼에 두면 [투입] 옆으로 선이 끊긴다. */
+.row {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
+
+/* [투입] — 이 선수를 넣을 자리를 보드에서 직접 고른다. 44px 최소 탭 타깃(#73 P1). */
+.assign {
+  flex: none;
+  min-width: 52px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  touch-action: manipulation;
+}
+
 .item,
 .itemPlaced {
   width: 100%;
+  flex: 1;
+  min-width: 0;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
@@ -76,7 +102,6 @@
   padding: 8px 12px;
   min-height: 52px;
   border: none;
-  border-bottom: 1px solid var(--border);
   background: var(--bg-elevated);
   color: var(--text);
   font-size: 14px;

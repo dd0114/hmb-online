@@ -42,8 +42,18 @@ const PLAYERS = [
   P("FW1", "공격하나", "FW", "LEGEND", 90), P("FW2", "공격둘", "FW", "GOLD", 72),
   P("FW3", "공격셋", "FW", "SILVER", 69),
 ];
-/** 선발 10명(슬롯 0..9) — 4-4-2 의 **슬롯 10(FW 자리)** 하나가 비어 있다. */
-const TEN = ["GK1", "DF1", "DF2", "DF3", "DF4", "MF1", "MF2", "MF3", "MF4", "FW1"];
+/**
+ * 선발 **11명** (#442 R2-ⓐ).
+ *
+ * ⚠️ 이 픽스처는 한때 선발 **10명**이었다 — 그리고 그건 **제품이 저장할 수 없는 상태**다
+ * (`deck-logic.validateDraft` STARTER_COUNT · `DeckPage.saveDisabled`). 유저가 도달할 수 없는
+ * 덱으로 auto 를 태우면 그 계약은 **진입 조건(`canFillEmptySlots` 활성 판정 · 빈 자리를 만드는
+ * 제품 경로)이 깨지는 회귀를 원리적으로 못 잡는다**(#439 1R 독립검증 minor-2).
+ * 그래서 지금은 **저장 가능한 덱에서 출발해, 빈 자리도 제품 손잡이([덱에서 제거])로 만든다**.
+ */
+const ELEVEN = ["GK1", "DF1", "DF2", "DF3", "DF4", "MF1", "MF2", "MF3", "MF4", "FW1", "FW3"];
+/** auto 가 채워야 할 빈 자리를 만들 선수 — 4-4-2 의 **슬롯 10(FW 자리)** 주인. */
+const VACATE = "FW3";
 const BENCH = ["FW2", "GK2"];
 /** 이 두 프롬프트가 auto 뒤에도 살아 있어야 한다(hero Q1=ⓑ 의 존재 이유). */
 const MF1_PROMPT = "안쪽으로 파고들어라";
@@ -51,7 +61,7 @@ const FW2_PROMPT = "교체로 들어가면 측면을 넓게 써라";
 
 function deckSlots() {
   return [
-    ...TEN.map((playerId, i) => ({
+    ...ELEVEN.map((playerId, i) => ({
       playerId, role: "starter", slotIndex: i,
       promptText: playerId === "MF1" ? MF1_PROMPT : null,
     })),
@@ -62,7 +72,7 @@ function deckSlots() {
 
 const MATCH = {
   id: "m439", createdAt: "2026-08-04T00:00:00Z", state: "BRIEFING",
-  conditions: Object.fromEntries(TEN.map((id, i) => [id, 0.3 + (i % 5) * 0.15])),
+  conditions: Object.fromEntries(ELEVEN.map((id, i) => [id, 0.3 + (i % 5) * 0.15])),
   opponent: { name: "역습 봇", analysisText: "빠른 역습.", deck: [] },
 };
 
@@ -79,7 +89,7 @@ async function bootstrap(page: Page, slots: unknown[]) {
   await page.route((url) => url.pathname === "/api/relations", (r) =>
     r.fulfill(json({ morale: 60, streak: 0, players: [] })));
   await page.route((url) => url.pathname === "/api/conditions/today", (r) =>
-    r.fulfill(json(Object.fromEntries(TEN.map((id, i) => [id, 0.3 + (i % 5) * 0.15])))));
+    r.fulfill(json(Object.fromEntries(ELEVEN.map((id, i) => [id, 0.3 + (i % 5) * 0.15])))));
   await page.route((url) => url.pathname === "/api/me", (r) => r.fulfill(json({
     user: { id: "u1", nickname: "테스터", provider: "guest", tutorialDone: true },
     wallet: { points: 1000 }, records: { played: 0, wins: 0, draws: 0, losses: 0 },
@@ -322,6 +332,20 @@ async function clickAuto(page: Page) {
   await target.click();
 }
 
+/**
+ * **제품 손잡이로** 빈 자리를 만든다 (#442 R2-ⓐ) — 토큰 탭 → 레일 [덱에서 제거].
+ *
+ * 픽스처에 "선발 10명"을 그려 넣는 대신 이 경로를 타는 것이 이 수리의 전부다: 저장 가능한
+ * 덱(선발 11)에서 출발해 유저가 실제로 밟는 경로로 자리를 비운다. 그래야 계약이 **auto 의
+ * 진입 조건 + 그 조건을 만드는 경로**를 같이 태운다(구 픽스처는 둘 다 건너뛰었다).
+ */
+async function vacateSlot(page: Page, playerId: string) {
+  await page.getByTestId(`token-${playerId}`).click();
+  await expect(page.getByTestId("rail-remove-player")).toBeVisible();
+  await page.getByTestId("rail-remove-player").click();
+  await expect(page.getByTestId(`token-${playerId}`), `${playerId} 가 덱에서 빠져야 한다`).toHaveCount(0);
+}
+
 /** 레일에서 그 선수의 프롬프트 원문을 읽는다(토큰 탭 → 입력칸 value). */
 async function promptOf(page: Page, playerId: string): Promise<string> {
   await page.getByTestId(`token-${playerId}`).click();
@@ -331,6 +355,8 @@ async function promptOf(page: Page, playerId: string): Promise<string> {
 
 test("④ 경기전 auto — 빈 자리는 벤치 선수로 채우고, 이미 놓인 선수·프롬프트는 그대로", async ({ page }) => {
   await openBriefing(page);
+  await expect(page.getByTestId("starter-count"), "저장 가능한 덱에서 출발한다").toHaveText(/11\/11/);
+  await vacateSlot(page, VACATE); // ← 빈 자리는 **제품 경로**로 만든다(#442 R2-ⓐ)
   await expect(page.getByTestId("starter-count")).toHaveText(/10\/11/);
   const before = await page.evaluate(() =>
     [...document.querySelectorAll('[data-testid^="board-slot-"]')].map((s) => ({
@@ -369,13 +395,15 @@ test("④ 경기전 auto — 빈 자리는 벤치 선수로 채우고, 이미 �
 
 test("④ 덱셋팅 auto 도 같은 규칙 — 빈 자리만 채우고 프롬프트는 보존한다", async ({ page }) => {
   await openDeck(page);
+  await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
+  await vacateSlot(page, VACATE); // #442 R2-ⓐ — 빈 자리도 제품 경로로
   await expect(page.getByTestId("starter-count")).toHaveText(/10\/11/);
 
   await clickAuto(page);
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
 
   // 이미 배치된 선수는 자기 자리 그대로.
-  for (const [i, id] of TEN.entries()) {
+  for (const [i, id] of ELEVEN.slice(0, 10).entries()) {
     await expect(page.getByTestId(`board-slot-starter-${i}`).getByTestId(`token-${id}`)).toBeVisible();
   }
   // 빈 FW 자리는 적합도 최고(FW2, GOLD 72 > FW3 SILVER 69)가 가져간다.
@@ -434,6 +462,8 @@ test("④ 경기전 auto — **지시 없이 출전하는 선발을 남기지 �
         : s,
   );
   await openBriefing(page, seeded);
+  await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
+  await vacateSlot(page, VACATE); // #442 R2-ⓐ — 승격될 자리도 제품 경로로 비운다
   await expect(page.getByTestId("starter-count")).toHaveText(/10\/11/);
   await expect(page.getByTestId("directive-count")).toContainText("지시 10/11");
 
@@ -461,8 +491,11 @@ test("⑤ 시트로 한 명 배치한 직후에도 다음 빈 자리를 바로 �
    *
    * 판정은 좌표 추론이 아니라 **히트테스트**다 — "그 자리를 지금 손가락으로 누를 수 있나".
    */
-  const twoEmpty = deckSlots().filter((s) => !(s.role === "starter" && s.slotIndex === 9));
-  await openDeck(page, twoEmpty);
+  await openDeck(page);
+  await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
+  // 빈 자리 둘도 **제품 경로**로 만든다(#442 R2-ⓐ) — 슬롯 9(FW1) 에 다시 놓고 슬롯 10 을 눌러 본다.
+  await vacateSlot(page, VACATE);
+  await vacateSlot(page, "FW1");
   await expect(page.getByTestId("starter-count")).toHaveText(/9\/11/);
 
   await page.getByTestId("board-slot-starter-9").click();

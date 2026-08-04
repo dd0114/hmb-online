@@ -25,7 +25,14 @@ interface TacticsBoardProps {
   selectedSlot: SlotRef | null;
   /** 레일이 현재 보고 있는 선수(선택 토큰). */
   selectedPlayerId: string | null;
-  /** 배치 대기 중인(리스트에서 집어든) 선수가 있으면 빈 슬롯을 후보로 강조한다. */
+  /**
+   * **투입 대기**(#442 R1) — 목록에서 [투입]을 누른 선수가 갈 자리를 고르는 중이다.
+   * 선발·후보 **전 슬롯**이 대상이 된다(빈 자리 = 배치 · 찬 자리 = 교체). `data-assign-target`
+   * 으로 노출해 계약이 "활성화됐나"를 DOM 에서 직접 읽는다.
+   *
+   * ⚠️ 구 의미는 "빈 슬롯만 후보"였고 소비처가 0 이었다(#106 2단계 탭-투-플레이스의 잔존물).
+   * 되살리면서 **찬 자리까지** 넓힌 것이 hero 설계의 핵심이다 — 교체가 이 동선의 존재 이유다.
+   */
   pendingPlace?: boolean;
   onSlotTap: (slot: SlotRef) => void;
   /** 보드 카드 하단 바(초기화 / Auto 배치) — 벤치와 같은 카드 안에 붙는다. */
@@ -249,7 +256,9 @@ function SlotCell(props: SlotCellProps) {
   // 교체로 빠지는 선수는 **슬롯 자체를** 위로 올린다 — OUT 뱃지에 z-index 를 줘도 가리는 것이
   // 자식이 아니라 아랫줄 **형제 토큰**이라 소용없다(360×740 에서 뱃지가 덮였다, 독립 검증 minor).
   const isOut = Boolean(slot && subbedOut?.includes(slot.playerId));
-  const isCandidate = Boolean(pendingPlace) && !slot;
+  /** 투입 대기 중이면 **모든** 자리가 대상이다 — 빈 자리는 배치, 찬 자리는 교체(#442 R1). */
+  const isAssignTarget = Boolean(pendingPlace);
+  const isCandidate = isAssignTarget && !slot;
 
   return (
     <button
@@ -261,6 +270,7 @@ function SlotCell(props: SlotCellProps) {
         isTapTarget ? styles.cellSelected : "",
         isOut ? styles.cellOut : "",
         isCandidate ? styles.cellCandidate : "",
+        isAssignTarget && slot ? styles.cellSwapTarget : "",
         slot ? styles.cellFilled : styles.cellEmpty,
       ]
         .filter(Boolean)
@@ -268,6 +278,7 @@ function SlotCell(props: SlotCellProps) {
       style={style}
       data-testid={`board-slot-${role}-${slotIndex}`}
       data-filled={slot ? "true" : "false"}
+      data-assign-target={isAssignTarget ? "true" : undefined}
       /* ⚠️ 분기 조건은 **`slot`**(자리가 찼나)이지 `player`(카탈로그가 아나)가 아니다.
          `player` 로 가르면 카탈로그 미상 선수가 앉은 자리에서 화면(`styles.tokenName`)은 `미상 선수` 인데
          스크린리더만 "빈 슬롯"이라고 말한다 — `data-filled="true"` 인데도. 같은 상태를 두

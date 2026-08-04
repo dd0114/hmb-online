@@ -43,12 +43,21 @@ interface PlayerPickerProps {
    *      본문 리스트(구 동작)에서는 중복 배치가 되므로 계속 막는다.
    */
   inSheet?: boolean;
+  /**
+   * **[투입]** — 이 선수를 넣을 자리를 **보드에서 직접 고르는** 동선의 시작점 (#442 R1).
+   *
+   * 없으면 버튼 자체가 안 그려진다(시트 밖 리스트·읽기 전용 맥락). 후보 산출은 **호출부가 준
+   * `players` 목록이 전부**다 — 여기서 "누가 투입 가능한가"를 다시 판정하면 `poolScope`(#439 R2)와
+   * 갈리는 두 번째 규칙이 생긴다.
+   */
+  onAssign?: (playerId: string) => void;
 }
 
 interface PoolItemProps {
   player: CatalogPlayer;
   placed: ReturnType<typeof findPlayerSlot>;
   onPick: (playerId: string) => void;
+  onAssign?: (playerId: string) => void;
   condition?: number;
   fit: "best" | "mid" | "low" | null;
   pending: boolean;
@@ -67,8 +76,14 @@ const FIT_CLASSES: Record<"best" | "mid" | "low", string> = {
  * One owned-player row. Draggable (@dnd-kit, source id = `pool:${id}`) so it can be dragged onto a
  * board slot (보조 수단); the same button also tap-to-places (1급 수단, tap-place.ts).
  * A player already placed on the board is disabled (no drag, no tap) — no duplicates.
+ *
+ * ⚠️ **행이 곧 버튼이 아니다 — 행 안에 버튼이 둘이다**(#442 R1). 드래그 소스이자 탭-투-플레이스인
+ * 본체 버튼 옆에 **[투입]** 이 앉는다. 버튼을 중첩하면(`<button>` 안 `<button>`) 유효하지 않은
+ * DOM 이라 브라우저가 조용히 풀어 버리므로, 두 버튼은 **형제**여야 한다.
+ * ⚠️ 드래그 노드(`setNodeRef`)·리스너는 계속 **본체 버튼**에 있다 — 행 컨테이너로 옮기면 [투입]
+ * 탭이 드래그 활성화 판정에 먹힌다(터치 150ms 홀드가 버튼을 삼킨다).
  */
-function PoolItem({ player, placed, onPick, condition, fit, pending, selectable }: PoolItemProps) {
+function PoolItem({ player, placed, onPick, onAssign, condition, fit, pending, selectable }: PoolItemProps) {
   const overall = Math.round(playerOverall(player.attributes));
   const disabled = Boolean(placed) && !selectable;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -77,62 +92,75 @@ function PoolItem({ player, placed, onPick, condition, fit, pending, selectable 
   });
 
   return (
-    <button
-      ref={setNodeRef}
-      type="button"
-      className={[placed && !selectable ? styles.itemPlaced : styles.item, pending ? styles.itemPending : ""]
-        .filter(Boolean)
-        .join(" ")}
-      data-testid={`pick-${player.id}`}
-      data-pending={pending ? "true" : "false"}
-      /* aria-pressed 는 @dnd-kit attributes 가 소유한다(드래그 상태) — 배치 대기는 data-pending + aria-label 로. */
-      /* 접근가능 이름은 **보이는 이름과 같은 축**(short)이어야 한다 — 갈라지면 음성 안내와
-         화면이 다른 이름을 말한다. */
-      aria-label={pending ? `${playerNameOf(player, "short")} — 배치할 슬롯을 고르세요` : undefined}
-      disabled={disabled}
-      onClick={() => onPick(player.id)}
-      style={isDragging ? { opacity: 0.4 } : undefined}
-      {...listeners}
-      {...attributes}
-    >
-      {/* 컨디션(당일 롤). 값이 없으면(로딩/미응답) 이 칸 자체를 생략한다.
-          색각 대응(#106 R3b B): 리스트 행은 공간이 있으므로 시계(각도·파선) 위에 **글자 축**을
-          하나 더 얹는다 — 색을 전혀 못 봐도 "최상/보통/저조"로 등급이 읽힌다. */}
-      {condition !== undefined && (
-        <span className={styles.cond}>
-          <ConditionClock value={condition} size={18} testId={`pick-cond-${player.id}`} />
-          <span className={styles.condTier} data-testid={`pick-cond-tier-${player.id}`}>
-            {conditionLabel(condition)}
+    <div className={styles.row}>
+      <button
+        ref={setNodeRef}
+        type="button"
+        className={[placed && !selectable ? styles.itemPlaced : styles.item, pending ? styles.itemPending : ""]
+          .filter(Boolean)
+          .join(" ")}
+        data-testid={`pick-${player.id}`}
+        data-pending={pending ? "true" : "false"}
+        /* aria-pressed 는 @dnd-kit attributes 가 소유한다(드래그 상태) — 배치 대기는 data-pending + aria-label 로. */
+        /* 접근가능 이름은 **보이는 이름과 같은 축**(short)이어야 한다 — 갈라지면 음성 안내와
+           화면이 다른 이름을 말한다. */
+        aria-label={pending ? `${playerNameOf(player, "short")} — 배치할 슬롯을 고르세요` : undefined}
+        disabled={disabled}
+        onClick={() => onPick(player.id)}
+        style={isDragging ? { opacity: 0.4 } : undefined}
+        {...listeners}
+        {...attributes}
+      >
+        {/* 컨디션(당일 롤). 값이 없으면(로딩/미응답) 이 칸 자체를 생략한다.
+            색각 대응(#106 R3b B): 리스트 행은 공간이 있으므로 시계(각도·파선) 위에 **글자 축**을
+            하나 더 얹는다 — 색을 전혀 못 봐도 "최상/보통/저조"로 등급이 읽힌다. */}
+        {condition !== undefined && (
+          <span className={styles.cond}>
+            <ConditionClock value={condition} size={18} testId={`pick-cond-${player.id}`} />
+            <span className={styles.condTier} data-testid={`pick-cond-tier-${player.id}`}>
+              {conditionLabel(condition)}
+            </span>
+          </span>
+        )}
+        {/* 이니셜 폴백은 풀네임 축(`initialsOf` 의 한글 규칙이 성 기준) — TacticsBoard 와 같다. */}
+        <CharAvatar playerId={player.id} name={playerNameOf(player, "full")} grade={player.grade} size={34} />
+        <span className={styles.who}>
+          {/* 덱 리스트 행 = 밀집 UI → **짧은 축**(`player-names.ts` 두 축 표). 지금은 서버가
+              `shortName` 을 안 실어 풀네임과 같은 값이지만(#411), 스위치가 켜지는 날 문서와
+              화면이 갈리지 않게 지금 배선해 둔다. */}
+          <b className={styles.name}>{playerNameOf(player, "short")}</b>
+          <span className={styles.sub}>
+            {player.position}
+            <span className={styles.grade} style={{ color: GRADE_COLORS[player.grade] }}>
+              {GRADE_LABELS[player.grade]}
+            </span>
+            {placed && (
+              <span className={styles.placedMark}>{placed.role === "starter" ? "선발" : "벤치"}</span>
+            )}
           </span>
         </span>
-      )}
-      {/* 이니셜 폴백은 풀네임 축(`initialsOf` 의 한글 규칙이 성 기준) — TacticsBoard 와 같다. */}
-      <CharAvatar playerId={player.id} name={playerNameOf(player, "full")} grade={player.grade} size={34} />
-      <span className={styles.who}>
-        {/* 덱 리스트 행 = 밀집 UI → **짧은 축**(`player-names.ts` 두 축 표). 지금은 서버가
-            `shortName` 을 안 실어 풀네임과 같은 값이지만(#411), 스위치가 켜지는 날 문서와
-            화면이 갈리지 않게 지금 배선해 둔다. */}
-        <b className={styles.name}>{playerNameOf(player, "short")}</b>
-        <span className={styles.sub}>
-          {player.position}
-          <span className={styles.grade} style={{ color: GRADE_COLORS[player.grade] }}>
-            {GRADE_LABELS[player.grade]}
+        {fit && (
+          <span className={FIT_CLASSES[fit]} data-testid={`pick-fit-${player.id}`}>
+            {FIT_LABELS[fit]}
           </span>
-          {placed && (
-            <span className={styles.placedMark}>{placed.role === "starter" ? "선발" : "벤치"}</span>
-          )}
+        )}
+        {/* 스탯 총량 = playerOverall — 9개 능력치 평균(0..100). teamPower/Auto/추천정렬과 동일 지표. */}
+        <span className={styles.overall} data-testid={`pick-overall-${player.id}`} title="종합 능력치">
+          {overall}
         </span>
-      </span>
-      {fit && (
-        <span className={FIT_CLASSES[fit]} data-testid={`pick-fit-${player.id}`}>
-          {FIT_LABELS[fit]}
-        </span>
+      </button>
+      {onAssign && (
+        <button
+          type="button"
+          className={styles.assign}
+          data-testid={`pool-assign-${player.id}`}
+          aria-label={`${playerNameOf(player, "short")} 투입 — 교체할 선수를 고릅니다`}
+          onClick={() => onAssign(player.id)}
+        >
+          투입
+        </button>
       )}
-      {/* 스탯 총량 = playerOverall — 9개 능력치 평균(0..100). teamPower/Auto/추천정렬과 동일 지표. */}
-      <span className={styles.overall} data-testid={`pick-overall-${player.id}`} title="종합 능력치">
-        {overall}
-      </span>
-    </button>
+    </div>
   );
 }
 
@@ -149,7 +177,7 @@ function fitTier(player: CatalogPlayer, filter: Position | "ALL"): "best" | "mid
  * 보유 선수 리스트 — 포지션 필터 + 추천순(player-ranking) 정렬. 탭하면 배치(탭-투-플레이스),
  * 드래그는 보조. #106 R1: 슬롯을 먼저 탭하면 `autoFilter` 로 그 포지션이 자동 선택된다.
  */
-export function PlayerPicker({ players, draft, onPick, conditions, autoFilter, pendingPlayerId, inSheet }: PlayerPickerProps) {
+export function PlayerPicker({ players, draft, onPick, onAssign, conditions, autoFilter, pendingPlayerId, inSheet }: PlayerPickerProps) {
   const [filter, setFilter] = useState<Position | "ALL">("ALL");
 
   // 슬롯 탭 → 그 포지션으로 필터 전환(자동). autoFilter 가 바뀔 때만 반영한다.
@@ -192,6 +220,7 @@ export function PlayerPicker({ players, draft, onPick, conditions, autoFilter, p
               player={p}
               placed={findPlayerSlot(draft, p.id)}
               onPick={onPick}
+              onAssign={onAssign}
               condition={conditions?.[p.id]}
               fit={fitTier(p, filter)}
               pending={pendingPlayerId === p.id}
