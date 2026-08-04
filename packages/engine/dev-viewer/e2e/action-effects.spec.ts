@@ -382,6 +382,26 @@ async function measureFxPixels(
       v.pause();
       if (!born) return { err: `${ty} 이펙트가 스폰되지 않음` };
       noteSlash();
+      /*
+       * ⚠️ **플레이헤드를 고정한다** — 안 하면 이 측정이 자기 임계에서 플레이키하다(W10 B-1).
+       *
+       * 스폰 감지는 rAF 프레임을 세지만 `tickPos` 는 **벽시계 `dt`** 로 흐른다
+       * (`viewer.impl.mjs` 의 `tickPos += dt * TICKS_PER_SEC * eff`). 그래서 "스폰을 본 순간"의
+       * 플레이헤드가 머신 부하에 따라 프레임 안쪽 어딘가로 떨어지고, 앵커 토큰 좌표가 매 실행
+       * 서브픽셀만큼 달라져 **래스터화가 갈린다**. 아래 `monoBeyondRing` 실측 분포가 정확히 그
+       * 자국이다 — 콜드 13회에서 **쌍봉 29~30 / 37~38**(같은 실행 안에서는 `setFxLayer` 동기
+       * 블록이라 결정적인데, 실행 사이가 갈렸다).
+       *
+       * 픽스는 임계를 내리는 것이 아니라 **원인을 없애는 것**이다: 이벤트 틱의 스냅샷 인덱스로
+       * 플레이헤드를 정확히 옮긴다. 보간 계수가 0 이 되므로 앵커는 **스냅샷 좌표 그대로**이고
+       * 카메라도 같이 결정적이 된다. 이펙트 나이(=크기)는 아래 rAF 카운트가 그대로 정한다.
+       *
+       * ⚠️ **`seek`/`renderAt` 을 쓰면 안 된다** — 둘 다 `resetStops()` → `clearCaptions()` →
+       *    **`fx = []`** 라 재려던 이펙트를 지운다(실측 `"이펙트가 이미 사라짐"`). 그래서
+       *    `pinPlayhead` 는 플레이헤드만 옮기는 측정 심으로 따로 있다(`redraw` 와 같은 축 —
+       *    그리기는 시간을 흘리지 않는다, `stepFx` 주석).
+       */
+      v.pinPlayhead(v.idxOfTick(t));
       // 스폰 프레임이 아니라 **관객이 보는 프레임**에서 잰다(모든 이펙트는 첫 프레임이 가장 작다).
       for (let i = 0; i < nf; i++) { await raf(); noteSlash(); }
 
@@ -493,9 +513,19 @@ test("가로챔 X 슬래시가 **팔로우 줌 기하**의 토큰·선택 링 �
     Math.SQRT2 * (m.slashMin as number),
     `대각 끝 ${(Math.SQRT2 * (m.slashMin as number)).toFixed(1)}px 이 선택 링 층 ${m.tokenR + 9}px 밖`,
   ).toBeGreaterThan(m.tokenR + 9);
-  // ⓑ 그렸다는 계약(토큰 원판 밖 · 선택 링 층 밖). 팀색 회귀는 정의상 0 이라 어느 하한에도 죽는다.
-  expect(m.mono, "토큰 원판 **밖**의 밝은 무채색 픽셀").toBeGreaterThanOrEqual(60);
-  expect(m.monoBeyondRing, "**선택 링 층 밖**의 밝은 무채색 픽셀").toBeGreaterThanOrEqual(30);
+  /*
+   * ⓑ 그렸다는 계약(토큰 원판 밖 · 선택 링 층 밖). 팀색 회귀는 정의상 **0** 이라 어느 하한에도
+   * 죽는다 — 판별력은 임계가 아니라 **"밝은 무채색이 0 이 아니다"** 와 위 ⓐ 가 갖는다.
+   *
+   * ⚠️ **이 두 하한은 한때 자기 임계에서 플레이키했다**(#406 W10 B-1, 콜드 13회 중 **2회 red**).
+   *    `monoBeyondRing` 이 **29·30 / 37·38 쌍봉**으로 갈렸고 임계 30 의 여유가 0~1px 이었다.
+   *    원인은 이펙트가 아니라 **플레이헤드**였다(위 `pinPlayhead` 주석) — 임계를 내려 덮는 대신
+   *    측정을 결정론으로 만들었다. 고정 후 실측은 **`mono 72` · `monoBeyondRing 37` 고정**
+   *    (콜드 8회 전부 동일). 임계는 그 위에 여유를 두고 잡되, **판별자가 아니므로**
+   *    실측 하한(29)보다 아래로 내려도 잃는 것이 없다.
+   */
+  expect(m.mono, "토큰 원판 **밖**의 밝은 무채색 픽셀").toBeGreaterThanOrEqual(40);
+  expect(m.monoBeyondRing, "**선택 링 층 밖**의 밝은 무채색 픽셀").toBeGreaterThanOrEqual(20);
 });
 
 /**

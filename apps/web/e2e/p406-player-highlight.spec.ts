@@ -1011,3 +1011,230 @@ test("⑮ 어웨이 라운드: 칩 하이라이트가 **away 슬롯**에 붙는�
   expect(rings[0]!.id).toBe(target);
   expect(rings[0]!.mine, "어웨이가 내 팀이다").toBe(true);
 });
+
+/**
+ * ⑯ **떠 있는 컨트롤이 덮은 자리의 선수도 눌린다** (#406 W10 M-1).
+ *
+ * <h3>이 에픽의 다섯 번째 사각 — 아무도 이 자리를 안 쟀다</h3>
+ * ⑧ 은 **정보 카드** 밑을 다루는데 카드는 `pointer-events:none` 이라 애초에 탭을 통과시킨다.
+ * **떠 있는 버튼·시크바가 덮은 자리**는 어느 계약도 태우지 않았고, 그래서 독립검증이 폰에서
+ * 이걸 실측했다(390×844 · 플레이헤드 15지점 · 화면 안 토큰 298):
+ *
+ * <pre>
+ *   캔버스가 아닌 것 20 (6.7%) — highlight-toggle 17 · viewer-seek-half2 2 · match-skip 1
+ *   1280×900 은 0 (0.0%)      — 폰에서만 컨트롤 층이 피치 세로의 절반 가까이를 덮는다
+ * </pre>
+ *
+ * 그리고 그 탭은 **조용히 실패하지 않았다** — 하이라이트 토글이 눌려 릴이 켜지며 플레이헤드가
+ * `3418 → 2746` 으로 튀었다. 유저에게는 *"선수를 눌렀는데 경기가 뒤로 갔다"* 다.
+ *
+ * <h3>계약을 `elementFromPoint === canvas` 로 걸지 않는 이유</h3>
+ * 수리 방향은 **토큰 히트 우선순위**다(자리를 옮기면 폰 무대 세로를 114px 먹는다 —
+ * `VisualPlayback.overlayTokenAt` 머리말이 대안과 대가를 다 적었다). 그 방향에서는 최상위 요소가
+ * **여전히 컨트롤**이므로 그 프록시로 걸면 통과할 수 없다. 그래서 프록시가 아니라 **요구 자체**를
+ * 잰다 — ①화면 안 토큰이 눌러서 켜지는가 ②누르면 **다른 일**이 일어나지 않는가. 그리고
+ * ③컨트롤이 **여전히 눌리는가**(우선순위를 "언제나 가로채기"로 만들면 여기서 죽는다).
+ *
+ * ⚠️ **표본 전제를 테스트가 스스로 단언한다** — 덮인 자리가 0 이면 ①②는 공허하다.
+ */
+
+/** 클라이언트 좌표 → 캔버스 backing 좌표. 위 `clientPointOf` 의 역변환(같은 `contain` 규칙). */
+async function backingPointOf(page: Page, cx: number, cy: number): Promise<{ x: number; y: number }> {
+  return page.evaluate(
+    ([x, y]) => {
+      const cv = document.querySelector('[data-testid^="viewer-canvas-half"]') as HTMLCanvasElement;
+      const rect = cv.getBoundingClientRect();
+      const scale = Math.min(rect.width / cv.width, rect.height / cv.height);
+      const originX = rect.left + (rect.width - cv.width * scale) / 2;
+      const originY = rect.top + (rect.height - cv.height * scale) / 2;
+      return { x: ((x as number) - originX) / scale, y: ((y as number) - originY) / scale };
+    },
+    [cx, cy],
+  );
+}
+
+type Probed = Token & {
+  cx: number;
+  cy: number;
+  onCanvas: boolean;
+  blocker: string;
+  /** 덮은 요소가 **토큰 우선 라우팅을 하는 컨트롤 층** 안인가(`data-p406-controls`). */
+  inControls: boolean;
+  /** 무대(캔버스 사각형) 가장자리까지 거리(CSS px) — 경계 이음새와 진짜 침범을 가른다. */
+  edgeDist: number;
+};
+
+/**
+ * 지금 그려진 토큰 중 **무대 안**인 것들과, 그 자리의 **최상위 요소**.
+ *
+ * 좌표는 `clientPointOf`(이 파일의 유일한 변환 SoT)로 만들고 페이지에서는 `elementFromPoint` 만
+ * 돈다 — `contain` 산술을 여기서 또 적으면 앱과 조용히 갈린다(#218).
+ */
+async function probeTokens(page: Page): Promise<Probed[]> {
+  const ts = await tokens(page);
+  const pts: Array<{ t: Token; x: number; y: number }> = [];
+  for (const t of ts) {
+    const p = await clientPointOf(page, t.px, t.py);
+    pts.push({ t, x: p.x, y: p.y });
+  }
+  const tops = await page.evaluate((list: Array<{ x: number; y: number }>) => {
+    const cv = document.querySelector('[data-testid^="viewer-canvas-half"]') as HTMLCanvasElement;
+    const rect = cv.getBoundingClientRect();
+    return list.map(({ x, y }) => {
+      const inStage = x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+      const el = inStage ? (document.elementFromPoint(x, y) as HTMLElement | null) : null;
+      const owner = el?.closest("[data-testid]") as HTMLElement | null;
+      return {
+        inStage,
+        onCanvas: el === cv,
+        inControls: !!el?.closest("[data-p406-controls]"),
+        blocker: el ? (owner?.getAttribute("data-testid") ?? el.tagName.toLowerCase()) : "none",
+        edgeDist: Math.min(x - rect.left, rect.right - x, y - rect.top, rect.bottom - y),
+      };
+    });
+  }, pts.map(({ x, y }) => ({ x, y })));
+  return pts
+    .map(({ t, x, y }, i) => ({ ...t, cx: x, cy: y, ...tops[i]! }))
+    .filter((r) => r.inStage);
+}
+
+/** 플레이헤드 틱 — "다른 일이 일어났나"의 축(릴이 켜지면 장면으로 점프한다). */
+function curTick(page: Page): Promise<number> {
+  return page.evaluate(() => (window as any).__viewer.cur().tick as number);
+}
+
+test("⑯ 떠 있는 컨트롤이 덮은 자리의 선수도 눌린다 · 컨트롤도 그대로 눌린다 (폰 스윕)", async ({ page }) => {
+  await open(page);
+  const toggle = page.getByTestId("highlight-toggle");
+  await expect(toggle, "이 계약의 최대 기여 blocker 가 화면에 있어야 표본이 성립한다").toHaveCount(1);
+  const modeBefore = await toggle.getAttribute("data-highlight");
+
+  /*
+   * ── ⓐ 스윕: 화면 안 토큰의 최상위 요소를 전수 분류.
+   *
+   * ⚠️ **플레이헤드를 흘려서 스윕하면 표본이 한 점에 붙는다** — 초판은 `play()` 220ms 를 15번
+   *    돌렸는데 그 사이 공이 몇 m 움직일 뿐이라 15표본이 사실상 같은 배치였고(덮인 토큰이
+   *    `away:A2` 하나 · blocker 도 `highlight-toggle` 하나), **시크바·스킵이 덮는 경우를 한 번도
+   *    태우지 않았다**. 로그 과거 구간을 **넓게 seek** 해서 배치를 실제로 갈아 준다.
+   *    (라이브 게이트가 미래를 잠그므로 과거 절반 안에서만 고른다 — #406 W3.)
+   */
+  const lastTick = LOG.tickSnapshots[LOG.tickSnapshots.length - 1]!.tick as number;
+  const firstTick = LOG.tickSnapshots[0]!.tick as number;
+  const blockers = new Map<string, number>();
+  let sampled = 0;
+  let covered = 0;
+  let byControls = 0;
+  const outsideLayer: string[] = [];
+  const SWEEP = 15;
+  for (let i = 0; i < SWEEP; i++) {
+    const at = Math.round(firstTick + ((lastTick - firstTick) * 0.45 * i) / (SWEEP - 1));
+    await page.evaluate((t: number) => {
+      const v = (window as any).__viewer;
+      v.pause();
+      v.seek(t);
+    }, at);
+    for (const r of await probeTokens(page)) {
+      sampled++;
+      if (r.onCanvas) continue;
+      covered++;
+      blockers.set(r.blocker, (blockers.get(r.blocker) ?? 0) + 1);
+      if (r.inControls) byControls++;
+      else outsideLayer.push(`${r.team}:${r.id} ${r.blocker} 가장자리 ${r.edgeDist.toFixed(2)}px`);
+    }
+  }
+  const pct = ((covered / Math.max(1, sampled)) * 100).toFixed(1);
+  console.log(
+    `[M-1] 표본 ${sampled} · 캔버스가 아닌 것 ${covered} (${pct}%) · 그중 컨트롤 층 ${byControls} · ` +
+      `막은 요소 ${[...blockers].map(([k, n]) => `${k} ${n}`).join(" · ")}` +
+      (outsideLayer.length ? `\n[M-1] 층 밖: ${outsideLayer.join(" | ")}` : ""),
+  );
+  expect(sampled, "표본이 0 이면 이 계약은 공허하다").toBeGreaterThan(100);
+  expect(
+    byControls,
+    "덮인 자리가 없으면 ⓑ 를 검정할 수 없다 — 폰에서 컨트롤 층이 피치를 덮는다는 기하 전제가 무너졌다",
+  ).toBeGreaterThan(0);
+  /*
+   * **컨트롤 층 밖**의 크롬(스코어바·패널)은 이 웨이브가 라우팅으로 구제할 수 없다 —
+   * `VisualPlayback` 트리 밖이다. 셸은 그리드(`auto / 1fr / auto`)라 원래 겹치지 않고, 실제로
+   * 걸리는 것은 **무대 사각형 경계에 정확히 선 토큰**뿐이다(실측 `stage-scorebar` · 가장자리
+   * 0.00px = 캔버스 최상단 행. 유저가 토큰을 누르면 원판이 안쪽으로 뻗어 닿는다).
+   * → 그래서 "경계 이음새(≤2px)뿐"을 단언한다. 크롬이 피치 **위로** 올라오면 여기서 red 다.
+   */
+  const intruders = outsideLayer.filter((s) => {
+    const m = /가장자리 ([\d.]+)px$/.exec(s);
+    return !m || Number(m[1]) > 2;
+  });
+  expect(intruders, "컨트롤 층 밖의 크롬이 피치 안쪽까지 덮었다 — 라우팅으로 못 고친다(레이아웃)").toEqual([]);
+
+  // ── ⓑ 도달 가능: 덮인 자리를 눌러 **그 선수**가 켜지고, **다른 일은 일어나지 않는다**.
+  let proven = 0;
+  const seen: string[] = [];
+  const tried = new Set<string>();
+  for (let i = 0; i < SWEEP && proven < 3; i++) {
+    const at = Math.round(firstTick + ((lastTick - firstTick) * 0.45 * i) / (SWEEP - 1));
+    await page.evaluate((t: number) => {
+      const v = (window as any).__viewer;
+      v.pause();
+      v.seek(t);
+    }, at);
+    // 매번 **다른 자리**를 태운다 — 같은 선수·같은 컨트롤만 3번 확인하면 표본이 하나다.
+    const cand = (await probeTokens(page)).find(
+      (r) => !r.onCanvas && r.inControls && !tried.has(`${r.team}:${r.id}@${r.blocker}`),
+    );
+    if (!cand) continue;
+    tried.add(`${cand.team}:${cand.id}@${cand.blocker}`);
+    const tickBefore = await curTick(page);
+    await page.mouse.click(cand.cx, cand.cy);
+    await expect
+      .poll(
+        async () => (await drawnRings(page)).some((r) => r.id === cand.id && r.team === cand.team),
+        {
+          message:
+            `${cand.team}:${cand.id} 를 눌렀는데 링이 안 떴다 — 그 자리를 덮은 것은 ` +
+            `\`${cand.blocker}\` 다(요구 5-2: 화면 안 토큰은 전부 도달 가능해야 한다)`,
+        },
+      )
+      .toBe(true);
+    // "누르면 다른 일이 일어난다" = 0. 릴이 켜지거나 플레이헤드가 뒤로 튀면 red.
+    expect(await toggle.getAttribute("data-highlight"), "하이라이트 모드가 탭에 눌렸다").toBe(modeBefore);
+    const tickAfter = await curTick(page);
+    expect(tickAfter, `플레이헤드가 뒤로 튀었다 ${tickBefore} → ${tickAfter}`).toBeGreaterThanOrEqual(
+      tickBefore,
+    );
+    seen.push(`${cand.team}:${cand.id}@${cand.blocker}`);
+    await page.getByTestId("arena-player-close").click(); // 초기화(재탭은 해제라 축이 뒤집힌다)
+    await expect(page.getByTestId("arena-player-card")).toHaveCount(0);
+    proven++;
+  }
+  console.log(`[M-1] 덮인 자리에서 도달 확인 ${proven}건 — ${seen.join(" · ")}`);
+  expect(proven, "덮인 토큰을 하나도 못 잡았다 — 표본 전제가 흔들렸다").toBeGreaterThanOrEqual(3);
+
+  // ── ⓒ 컨트롤은 여전히 눌린다. 우선순위를 "언제나 가로채기"로 만들면(또는 컨트롤의
+  //     `pointer-events` 를 지우면) 여기서 죽는다 — ⓑ 만으로는 그 변이가 산다.
+  await page.evaluate(() => (window as any).__viewer.pause());
+  const box = (await toggle.boundingBox())!;
+  const near = await tokens(page);
+  /*
+   * 토큰에서 **넉넉히** 떨어진 지점을 토글 안에서 고른다. 임계 40 backing px 는 앱 상수
+   * (`HIT_PAD_PX`)를 **일부러 import 하지 않은** 값이다 — 계약이 앱 상수를 되읽으면 임계 변이가
+   * 계약을 데리고 움직인다(apps/web CLAUDE.md "초록으로 거짓말하는 방식" #2).
+   */
+  let free: { x: number; y: number } | null = null;
+  for (let gx = 0.1; gx <= 0.9 && !free; gx += 0.1) {
+    for (const gy of [0.5, 0.25, 0.75]) {
+      const x = box.x + box.width * gx;
+      const y = box.y + box.height * gy;
+      const b = await backingPointOf(page, x, y);
+      if (near.every((t) => Math.hypot(t.px - b.x, t.py - b.y) > 40)) {
+        free = { x, y };
+        break;
+      }
+    }
+  }
+  expect(free, "토글 안에서 토큰 없는 지점을 못 찾았다 — 이 단언의 전제").toBeTruthy();
+  await page.mouse.click(free!.x, free!.y);
+  await expect(toggle, "토큰이 없는 자리에서는 컨트롤이 그대로 눌려야 한다").not.toHaveAttribute(
+    "data-highlight",
+    modeBefore!,
+  );
+});

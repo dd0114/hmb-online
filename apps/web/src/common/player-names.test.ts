@@ -35,7 +35,10 @@ const CATALOG_TODAY = [
   { id: "P077", name: "크바라츠헬리아", position: "FW", grade: "DIA" },
 ];
 
-/** `players.v2.5` 스위치 후 응답 모양 — 같은 코드가 그대로 짧은 이름을 쓰기 시작해야 한다. */
+/**
+ * `players.v2.6` 스위치 후 응답 모양 — 같은 코드가 그대로 짧은 이름을 쓰기 시작해야 한다.
+ * ⚠️ 스위치 대상은 **v2.6** 이다(`v2.5` 는 `shortName` 0/182 + 영문 이름, #406 W10 B-2).
+ */
 const CATALOG_AFTER_SWITCH = [
   { id: "P001", name: "레프 야신", shortName: "야신", position: "GK", grade: "LEGEND" },
   { id: "P077", name: "크바라츠헬리아", shortName: "크바라츠헬리아", position: "FW", grade: "DIA" },

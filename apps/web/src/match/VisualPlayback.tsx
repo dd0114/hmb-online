@@ -201,21 +201,65 @@ export function VisualPlayback({
     );
   }, [viewerReady, selected, myTeamSide, playerInfo]);
 
-  const onCanvasPick = (clientX: number, clientY: number) => {
+  /**
+   * 그 화면 좌표 **아래에 그려진 토큰**이 있나. 좌표 변환은 `canvasPointOf` 하나만 쓴다(#218) —
+   * 두 번 적으면 탭과 배치가 조용히 갈린다.
+   */
+  const tokenAt = (clientX: number, clientY: number): DrawnToken | null => {
     const v = viewerRef.current;
     const canvas = canvasRef.current;
-    if (!v || !canvas) return;
+    if (!v || !canvas) return null;
     const rect = canvas.getBoundingClientRect();
     const pt = canvasPointOf(rect, canvas.width, canvas.height, clientX, clientY);
-    if (!pt) return;
+    if (!pt) return null;
     const tokens = (v.hooks.curPlayers() as unknown as DrawnToken[]) ?? [];
-    const hit = hitTestToken(tokens, pt.x, pt.y);
+    return hitTestToken(tokens, pt.x, pt.y);
+  };
+
+  const onCanvasPick = (clientX: number, clientY: number) => {
+    const hit = tokenAt(clientX, clientY);
     // 빈 공간은 **아무 일도 하지 않는다**(승인 목업 §2). 해제는 같은 선수 재탭 또는 카드 ✕ —
     // 빈 공간을 해제로 쓰면 시크·팬 조작 끝의 탭이 선택을 계속 지운다.
     if (!hit) return;
     selectedNumsRef.current[selectionKey(hit.team, hit.id)] = hit.num ?? "";
     applySelection(toggleSelection(selected, { team: hit.team, playerId: hit.id }));
   };
+
+  /**
+   * **떠 있는 컨트롤 밑의 선수도 눌린다** (#406 W10 M-1).
+   *
+   * <p>독립검증 실측(폰 390×844, 플레이헤드 15지점 · 화면 안 토큰 298): **20건(6.7%)** 이
+   * `document.elementFromPoint` 상 캔버스가 아니라 **떠 있는 컨트롤**이었다
+   * (`highlight-toggle` 17 · `viewer-seek-half2` 2 · `match-skip` 1). 데스크탑 1280×900 은 0 건 —
+   * 폰에서만 컨트롤 층이 피치 세로의 절반 가까이를 덮는다.
+   *
+   * <p>그리고 그 탭은 **조용히 실패하지 않았다** — 하이라이트 토글이 눌려 릴이 켜지며 플레이헤드가
+   * `3418 → 2746` 으로 튀었다. 유저에게는 *"선수를 눌렀는데 경기가 뒤로 갔다"* 다. 그게 이
+   * 수리의 두 기준이다: ①화면 안 토큰은 **전부** 도달 가능해야 한다(요구 5-2) ②**누르면 다른 일이
+   * 일어나면** 안 된다.
+   *
+   * <h3>왜 자리를 옮기지 않고 히트 우선순위로 푸나</h3>
+   * 컨트롤을 캔버스 밖(아래 흐름)으로 내리면 폰에서 무대 세로를 **114px** 먹는다(토글행 40 +
+   * 스킵 38 + 시크바 36, 캔버스 253 의 45%). 무대 박스는 셸이 피치 비율로 잡으므로 안쪽에
+   * 띠를 예약해도 `object-fit: contain` 이 좌우까지 줄여 피치 면적이 **반**이 된다. 어느 쪽이든
+   * "선수를 크게 본다"는 이 화면의 목적과 정면으로 충돌하고, 세로 예산 계약(#348)도 건드린다.
+   * → **보이는 토큰이 이긴다.** 컨트롤 배경이 반투명(`rgba(0,0,0,0.55)`)이라 밑의 토큰이 실제로
+   * 비쳐 보이고, 그 자리를 눌러 선수가 켜지는 것은 **본 대로**다.
+   *
+   * <h3>대가 — 정직하게 적는다</h3>
+   * 컨트롤 위에 토큰이 비치는 **지점**(토큰 반경 + `HIT_PAD_PX`)에서는 그 컨트롤이 눌리지 않는다.
+   * 폰에서 그 원은 CSS 반경 ~8px 이고 컨트롤은 그보다 훨씬 크므로 **다른 자리로 누르면 된다** —
+   * 반대 방향(도달 불가 + 엉뚱한 동작)에는 유저가 쓸 수 있는 우회가 **없다**.
+   *
+   * <h3>왜 컨트롤 층에만 거나</h3>
+   * 무대 전체에 걸면 **카드 ✕**(선택 해제 경로)와 정보 카드 위 탭까지 삼킨다. 그래서 이 두
+   * 핸들러는 컨트롤 컨테이너에만 달고, `target` 이 캔버스면 **손대지 않는다**(종전 `onClick` 경로
+   * 그대로 — 무대 위를 스치는 조작마다 선택이 바뀌지 않게 `click` 을 쓰는 결정을 보존한다).
+   */
+  const swallowClickRef = useRef(false);
+  /** 컨트롤 층에 떨어진 이 이벤트가 **밑의 토큰**을 겨눈 것인가. */
+  const overlayTokenAt = (target: EventTarget | null, clientX: number, clientY: number) =>
+    target === canvasRef.current ? null : tokenAt(clientX, clientY);
 
   /** 카드는 **마지막에 누른** 선수를 보여준다(팀당 1명씩 최대 2명이 링을 달 수 있다). */
   const cardTarget = selected.length ? selected[selected.length - 1]! : null;
@@ -613,6 +657,36 @@ export function VisualPlayback({
               ? styles.controlsSeek
               : styles.controlsOverlay
         }
+        /*
+         * 계약 표지(#406 W10 M-1) — 이 층이 **토큰 우선 라우팅을 하는 층**이다. 계약은 덮은 요소가
+         * 이 층 안인지(우리가 고친 것) 밖의 크롬인지(무대 경계 — 다른 소유)를 이걸로 가른다.
+         * ⑥ 의 `data-p406-probe` 와 같은 축의 표지다.
+         */
+        data-p406-controls={review ? "flow" : controlMode === "play" ? "seek" : "overlay"}
+        /*
+         * 토큰 우선 라우팅(#406 W10 M-1 — 근거·대가는 `overlayTokenAt` 머리말).
+         *
+         * ⚠️ **선택을 `pointerdown` 에서 한다** — 시크바는 `<input type="range">` 라 값 변경이
+         *    네이티브 `mousedown` 기본동작이다. `click` 만 막으면 **트랙이 이미 움직인 뒤**다.
+         *    `preventDefault()` 로 그 기본동작을 취소하고(포인터 명세: pointerdown 취소는 mousedown
+         *    계열만 억제한다), 뒤따르는 `click` 은 삼켜 컨트롤의 `onClick` 이 돌지 않게 한다.
+         *    click 이 안 오는 브라우저여도 안전하다 — 그때는 컨트롤도 같이 안 눌린다.
+         */
+        onPointerDownCapture={(e) => {
+          swallowClickRef.current = false;
+          const hit = overlayTokenAt(e.target, e.clientX, e.clientY);
+          if (!hit) return;
+          swallowClickRef.current = true;
+          e.preventDefault();
+          e.stopPropagation();
+          selectedNumsRef.current[selectionKey(hit.team, hit.id)] = hit.num ?? "";
+          applySelection(toggleSelection(selected, { team: hit.team, playerId: hit.id }));
+        }}
+        onClickCapture={(e) => {
+          if (!swallowClickRef.current) return;
+          swallowClickRef.current = false;
+          e.stopPropagation();
+        }}
       >
         {/* 하이라이트 ↔ 전체 보기(#421 W4) — 스킵 버튼 위 줄. 돌려보는 화면엔 뜨지 않는다(view.visible). */}
         <HighlightToggle view={highlight.view} onToggle={highlight.toggle} />
