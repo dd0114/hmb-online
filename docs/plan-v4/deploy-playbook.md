@@ -113,9 +113,15 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 > 배포 지시가 오기 전에 **미리 등록해 두는** 자리다. 여기 있는 건 §0.5 를 돌릴 때 **반드시 같이** 확인하고,
 > 처리하고 나면 항목을 지우고 `deploy-log` 에만 남긴다.
 
-**등록분 — 열차 없음.** (직전 = `v3.18` 릴리스 열차(풀스택) → **소진**: 2026-08-03 발차.
-라이브 engine@**0.42.0** · **Flyway v40** · web `ec503c1`. V38~V40 리허설·economy override 재작성·
-스킵 실측은 `deploy-log` v3.18 항목에 남겼다.)
+**등록분 — 열차 없음.** (직전 = `v3.19` 릴리스 열차(풀스택) → **소진**: 2026-08-04 발차.
+라이브 engine@**0.43.0** · **Flyway v40**(마이그레이션 0건) · git `b1cb98a` ·
+발행물 **`players.v2.6`**(선수명 한글화). 리허설·미오픈 캐릭터 대조·스모크 2판은
+`deploy-log` v3.19 항목에 남겼다.)
+
+📌 **`players.v2.7` 을 발행할 때 정합시킬 것**: `admin_locked=1` 4행(P174 권씨 · P180 · P181 · P182)은
+#207 보호로 시드 UPDATE 를 받지 않아 **`data_version` 이 v2.4 에 멈춰 있다**. v2.6 은 이 중 셋을
+`active:false` 로 선언하는데 라이브는 `active=1`(hero 가 8/3 에 연 상태)이라 **보호가 풀리는 순간
+세 유닛이 닫힌다**. 다음 발행에서 그 세 행을 `active:true` 로 맞춰 두면 그 함정이 사라진다.
 
 📌 **economy override 는 계속 켜져 있다**(`source: OVERRIDE`, 조정 = `initialGems 12000` 하나).
 economy 발행물을 건드리는 다음 배포도 **§0.6 2-B 재작성**이 필요하다 — 이건 소진되지 않는 상시 조건이다.
@@ -611,7 +617,11 @@ docker run --rm -v hmb-p3-db:/data -v "$HOME/.local/state/hmb/db-backups:/backup
 ```bash
 docker volume create hmb-rehearsal-db
 docker run --rm -v hmb-rehearsal-db:/data -v "$HOME/.local/state/hmb/db-backups:/backup:ro" alpine:3.20 \
-  sh -c "cp /backup/<백업파일>.db /data/hmb.db && chown 10001:999 /data/hmb.db"
+  sh -c "cp /backup/<백업파일>.db /data/hmb.db && chown -R 10001:999 /data && chmod 775 /data"
+# ⚠️ **디렉토리까지** chown 해야 한다(v3.19 에서 데였다). 파일만 chown 하면 부팅이
+#    `SQLITE_READONLY_DIRECTORY` 로 죽는다 — SQLite 가 저널 파일을 **DB 와 같은 디렉토리에**
+#    만들어야 하기 때문이다. (라이브 볼륨이 멀쩡한 이유는 그쪽이 **빈 볼륨**이라 첫 마운트에서
+#    이미지의 `/var/lib/hmb` 퍼미션이 그대로 복사됐기 때문이고, 미리 채운 볼륨엔 그 경로가 없다.)
 docker build -f server-java/Dockerfile -t hmb/server-java:rc .          # 리포 루트에서
 docker run -d --name hmb-java-rehearsal -p 18081:8080 -v hmb-rehearsal-db:/var/lib/hmb \
   -e HMB_DB_PATH=/var/lib/hmb/hmb.db -e HMB_SERVANT_INTERNALTOKEN=rehearsal \
