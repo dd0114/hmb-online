@@ -237,8 +237,66 @@
 .token:active {
   cursor: grabbing;
 }
-.tokenDragging {
+/* 잡힌 토큰은 "들려 나간" 것처럼 옅어진다(dnd-kit 관례 — 이 보드엔 DragOverlay 가 없어서 원본이
+   그 자리에 남는다).
+   ⚠️ 흐리게 하는 것은 **내용물**이지 토큰 전체가 아니다 (#439) — 루트에 `opacity` 를 걸면 자식인
+   홀드 링까지 40% 로 눌려 "잡혔다" 신호가 그 순간 가장 안 보이게 된다(실캡처로 확인했다). */
+.tokenDragging .disc,
+.tokenDragging .tokenName,
+.tokenDragging .tokenMeta {
   opacity: 0.4;
+}
+
+/* ── 롱프레스 어포던스 (#439 R1, hero Q3=ⓐ) ────────────────────────────────────────────────
+   폰에서 이 토큰은 150ms 를 참아야 잡힌다. 그 사실이 화면에 없어서 "드래그가 안 된다"로 읽혔다.
+   ⚠️ 링은 **디스크 뒤**에 깔린다(`z-index:0` + 토큰의 다른 자식은 그 위) — 얼굴·번호·컨디션 링을
+   가리면 정보를 빼는 것이 된다. 그리고 `pointer-events:none` — 어포던스가 제스처를 먹으면 안 된다.
+   ⚠️ 지속시간은 인라인 `--hold-ms`(= 센서의 activation delay)로 들어온다. 여기에 150ms 를 다시
+   적으면 임계가 두 곳이 되고, 그 순간 링이 거짓말을 시작한다(`drag-gesture.ts` 가 SoT). */
+.holdRing {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 52px;
+  height: 52px;
+  margin: -26px 0 0 -26px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  background: conic-gradient(var(--accent) 0deg, var(--accent) var(--hold-deg, 0deg), transparent var(--hold-deg, 0deg));
+  mask: radial-gradient(circle, transparent 20px, #000 21px);
+  -webkit-mask: radial-gradient(circle, transparent 20px, #000 21px);
+  animation: holdFill var(--hold-ms, 150ms) linear forwards;
+}
+.holdRing[data-phase="grabbed"] {
+  /* 다 찼다 = 잡혔다. 애니메이션을 멈춰 세워 두고(정지된 완성 링) 밝기만 올린다. */
+  --hold-deg: 360deg;
+  animation: none;
+  filter: brightness(1.35);
+}
+@keyframes holdFill {
+  from { --hold-deg: 0deg; }
+  to { --hold-deg: 360deg; }
+}
+@property --hold-deg {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+/* 잡히는 동안 토큰이 살짝 커진다 — 색을 못 보는 사용자에게도 "집혔다"가 크기 축으로 읽힌다.
+   ⚠️ `transform` 만 쓴다(레이아웃 축 금지) — 피치 위 11칸이 서로 밀리면 드롭 대상이 흔들린다. */
+.tokenHolding {
+  transform: scale(1.08);
+}
+.token[data-grabbed="true"] {
+  transform: scale(1.12);
+}
+@media (prefers-reduced-motion: reduce) {
+  /* 모션 최소화는 **끄는 게 아니라 축약**이다(#250 규율) — 차오름만 없애고 링·확대는 남긴다. */
+  .holdRing {
+    --hold-deg: 360deg;
+    animation: none;
+  }
 }
 
 .disc {

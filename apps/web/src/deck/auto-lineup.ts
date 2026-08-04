@@ -99,14 +99,67 @@ export function fitScore(player: AutoPlayer, slotPos: Position): number {
   return playerOverall(player.attributes) * positionWeight(player.position, slotPos);
 }
 
-/** Flattened starter slot list for a formation, in ascending slotIndex order. */
-function starterSlots(formation: string): Array<{ slotIndex: number; position: Position }> {
+export interface SlotSpec {
+  slotIndex: number;
+  position: Position;
+}
+
+/**
+ * Flattened starter slot list for a formation, in ascending slotIndex order.
+ * Exported so `fill-empty.ts`(#439) reads the same layout — 두 곳에서 평탄화하면 포메이션 표가
+ * 바뀌는 날 한쪽만 낡는다.
+ */
+export function starterSlotList(formation: string): SlotSpec[] {
   const layout = FORMATION_LAYOUTS[formation] ?? FORMATION_LAYOUTS[DEFAULT_FORMATION]!;
-  const slots: Array<{ slotIndex: number; position: Position }> = [];
+  const slots: SlotSpec[] = [];
   for (const row of layout) {
     for (const idx of row.slotIndexes) slots.push({ slotIndex: idx, position: row.label });
   }
   return slots.sort((a, b) => a.slotIndex - b.slotIndex);
+}
+
+/**
+ * 적합 총합 최대 배정 — 슬롯 집합 × 후보 집합의 전역 최적(Hungarian). 후보는 **playerId 오름차순
+ * 정렬 상태로** 넘겨야 한다(열 인덱스 tie-break 가 그 순서를 쓴다 = 결정론).
+ *
+ * 반환 = `slotIndex → playerId`. 슬롯보다 후보가 적으면 남는 슬롯은 비워진 채로 온다.
+ *
+ * ⚠️ `autoBuildLineup`(전면 재구성)과 `fillEmptySlots`(빈 자리만)가 **이 한 구현을 공유**한다 —
+ * "적합도 수학"은 하나여야 두 화면의 배치 기준이 갈리지 않는다(#439).
+ */
+export function assignSlots(slots: SlotSpec[], sorted: AutoPlayer[]): Map<number, string> {
+  const out = new Map<number, string>();
+  const S = slots.length;
+  const N = sorted.length;
+  if (S === 0 || N === 0) return out;
+
+  const slotsAsRows = S <= N;
+  const rows = slotsAsRows ? S : N;
+  const cols = slotsAsRows ? N : S;
+
+  const cost: number[][] = [];
+  for (let r = 0; r < rows; r++) {
+    const row: number[] = [];
+    for (let c = 0; c < cols; c++) {
+      const slot = slots[slotsAsRows ? r : c]!;
+      const player = sorted[slotsAsRows ? c : r]!;
+      // maximize fit → minimize (−scaledFit); +column tiebreak prefers lex-smaller playerId.
+      const scaled = Math.round(fitScore(player, slot.position) * COST_SCALE);
+      const tiebreakCol = slotsAsRows ? c : r; // player-index dimension carries the tiebreak
+      row.push(-scaled + tiebreakCol);
+    }
+    cost.push(row);
+  }
+
+  const rowToCol = minCostAssignment(cost);
+  for (let r = 0; r < rows; r++) {
+    const c = rowToCol[r]!;
+    if (c < 0) continue;
+    const slot = slots[slotsAsRows ? r : c]!;
+    const player = sorted[slotsAsRows ? c : r]!;
+    out.set(slot.slotIndex, player.id);
+  }
+  return out;
 }
 
 /**
@@ -183,46 +236,24 @@ interface StarterPlan {
  * When owned < 11, only the available players are placed (some slots left empty).
  */
 function planStarters(sorted: AutoPlayer[], formation: string): StarterPlan {
-  const slots = starterSlots(formation);
-  const S = slots.length;
-  const N = sorted.length;
-  const slotsAsRows = S <= N;
-  const rows = slotsAsRows ? S : N;
-  const cols = slotsAsRows ? N : S;
-
-  const cost: number[][] = [];
-  for (let r = 0; r < rows; r++) {
-    const row: number[] = [];
-    for (let c = 0; c < cols; c++) {
-      const slot = slots[slotsAsRows ? r : c]!;
-      const player = sorted[slotsAsRows ? c : r]!;
-      // maximize fit → minimize (−scaledFit); +column tiebreak prefers lex-smaller playerId.
-      const scaled = Math.round(fitScore(player, slot.position) * COST_SCALE);
-      const tiebreakCol = slotsAsRows ? c : r; // player-index dimension carries the tiebreak
-      row.push(-scaled + tiebreakCol);
-    }
-    cost.push(row);
-  }
+  const slots = starterSlotList(formation);
+  const byId = new Map(sorted.map((p) => [p.id, p]));
+  const picked = assignSlots(slots, sorted);
 
   const outSlots: DraftSlot[] = [];
   const usedIds = new Set<string>();
   let totalFit = 0;
-  if (rows > 0) {
-    const rowToCol = minCostAssignment(cost);
-    for (let r = 0; r < rows; r++) {
-      const c = rowToCol[r]!;
-      if (c < 0) continue;
-      const slot = slots[slotsAsRows ? r : c]!;
-      const player = sorted[slotsAsRows ? c : r]!;
-      outSlots.push({
-        playerId: player.id,
-        role: "starter",
-        slotIndex: slot.slotIndex,
-        promptText: POSITION_DEFAULT_PROMPTS[slot.position],
-      });
-      usedIds.add(player.id);
-      totalFit += fitScore(player, slot.position);
-    }
+  for (const slot of slots) {
+    const playerId = picked.get(slot.slotIndex);
+    if (playerId === undefined) continue;
+    outSlots.push({
+      playerId,
+      role: "starter",
+      slotIndex: slot.slotIndex,
+      promptText: POSITION_DEFAULT_PROMPTS[slot.position],
+    });
+    usedIds.add(playerId);
+    totalFit += fitScore(byId.get(playerId)!, slot.position);
   }
   outSlots.sort((a, b) => a.slotIndex - b.slotIndex);
   return { slots: outSlots, usedIds, totalFit };
@@ -237,6 +268,16 @@ export function canAutoBuild(owned: AutoPlayer[]): boolean {
  * Build the optimal squad from owned players (deterministic). Picks the best formation by total fit,
  * fills 11 starters (max fit sum), then the bench, injecting per-position default prompts. Returns a
  * full EditorState with neutral team tactics and empty team prompt (Auto = full rebuild).
+ *
+ * ⚠️ **화면 소비처는 0 이다 (#439, hero 확정 Q1=ⓑ).** 이 함수는 배치된 선수 **전원의 프롬프트를
+ * 기본문구로 덮고** 팀 전술을 중립으로 되돌리고 팀 문장을 비운다 — hero 가 경기전에서 없애라고 한
+ * [초기화] 와 **같은 종류의 피해**다. 지금 두 화면의 [auto] 는 `fill-empty.ts:fillEmptySlots`
+ * ("빈 자리만 채운다")를 탄다.
+ *
+ * 파일을 지우지 않은 이유 = **롤백 자산**(전면 재구성이 다시 필요해지는 날의 출발점)이고,
+ * 적합도 수학(`positionWeight`/`fitScore`/`assignSlots`)은 지금도 `fillEmptySlots` 가 공유한다.
+ * ⚠️ 다시 배선하려면 `auto-shared-logic.test.ts` 가 먼저 red 가 된다 — 그건 "여기 결정이 있었다"는
+ * 신호이지 고칠 계약이 아니다.
  */
 export function autoBuildLineup(
   owned: AutoPlayer[],

@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CatalogPlayer } from "../api/hooks";
 import type { ConditionMap } from "../api/v2";
@@ -6,6 +6,7 @@ import { GRADE_COLORS } from "../common/grades";
 import { CharAvatar } from "../common/CharAvatar";
 import { playerNameOf } from "../common/player-names";
 import { BENCH_MAX, getSlot, type DeckDraft, type SlotRole } from "./deck-logic";
+import { TOUCH_ACTIVATION_MS, TOUCH_TOLERANCE_PX, vibrateOnGrab } from "./drag-gesture";
 import { starterCoords } from "./tactics-logic";
 import { conditionColor, conditionLabel, conditionTier } from "../match/condition-clock";
 import styles from "./TacticsBoard.module.css";
@@ -90,18 +91,79 @@ interface TokenProps {
   compact?: boolean;
 }
 
-/** A draggable player token (used inside both pitch slots and bench cells). */
+/**
+ * A draggable player token (used inside both pitch slots and bench cells).
+ *
+ * **롱프레스 어포던스**(#439 R1, hero Q3=ⓐ): 폰에서 이 토큰은 `TOUCH_ACTIVATION_MS` 를 참아야
+ * 잡힌다. 그 사실이 화면에 없어서 "드래그가 안 된다"로 읽혔다(W0 실측: 즉시 밀기 3/3 실패 ·
+ * 300ms 홀드 3/3 성공). 그래서 두 단계를 **눈에 보이게** 만든다:
+ *   `holding` — 손가락을 댄 순간부터 링이 차오른다(= 얼마나 더 참아야 하나)
+ *   `grabbed` — 실제로 잡혔다(링 완성 + 토큰 확대 + 짧은 진동)
+ *
+ * ⚠️ **dnd-kit 의 터치 리스너를 덮어쓰지 않는다.** `{...listeners}` 를 편 **뒤에** `onTouchStart`
+ * 를 다시 선언하면 센서의 핸들러가 조용히 사라져 드래그가 통째로 죽는다 — 그래서 스프레드에서
+ * 꺼낸 원래 핸들러를 우리 핸들러 안에서 **먼저 호출**한다.
+ * ⚠️ 활성화 임계는 `drag-gesture.ts` 한 곳에서 온다(센서와 같은 값) — 갈라지면 링이 거짓말한다.
+ */
 function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberLabel, compact, out }: TokenProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: playerId });
+  const [holding, setHolding] = useState(false);
+  const originRef = useRef<{ x: number; y: number } | null>(null);
+
+  const endHold = useCallback(() => {
+    originRef.current = null;
+    setHolding(false);
+  }, []);
+
+  // 잡히는 순간(센서 활성화)에만 햅틱 — 대기 중에는 울리지 않는다(아직 아무 일도 안 일어났다).
+  useEffect(() => {
+    if (isDragging) vibrateOnGrab();
+  }, [isDragging]);
+  // 드래그가 시작되면 대기 표시는 역할이 끝난다(그 자리는 `grabbed` 가 이어받는다).
+  useEffect(() => {
+    if (isDragging) setHolding(false);
+  }, [isDragging]);
+
+  const dndTouchStart = (listeners as Record<string, ((e: React.TouchEvent) => void) | undefined> | undefined)
+    ?.onTouchStart;
+
+  const phase = isDragging ? "grabbed" : holding ? "holding" : null;
+
   return (
     <div
       ref={setNodeRef}
-      className={`${styles.token} ${selected ? styles.tokenSelected : ""} ${isDragging ? styles.tokenDragging : ""} ${out ? styles.tokenOut : ""}`}
+      className={`${styles.token} ${selected ? styles.tokenSelected : ""} ${isDragging ? styles.tokenDragging : ""} ${out ? styles.tokenOut : ""} ${holding ? styles.tokenHolding : ""}`}
       data-testid={`token-${playerId}`}
       data-out={out ? "true" : undefined}
+      data-grabbed={isDragging ? "true" : "false"}
+      data-holding={holding ? "true" : "false"}
       {...listeners}
       {...attributes}
+      onTouchStart={(e) => {
+        dndTouchStart?.(e); // ⚠️ 먼저 센서에게 준다 — 우리 표시가 드래그를 가로채면 안 된다
+        const t = e.touches[0];
+        originRef.current = t ? { x: t.clientX, y: t.clientY } : null;
+        setHolding(true);
+      }}
+      onTouchMove={(e) => {
+        // 센서가 tolerance 를 넘겨 대기를 포기하는 것과 **같은 판정**으로 표시도 내린다.
+        const o = originRef.current;
+        const t = e.touches[0];
+        if (!o || !t) return;
+        if (Math.hypot(t.clientX - o.x, t.clientY - o.y) > TOUCH_TOLERANCE_PX) endHold();
+      }}
+      onTouchEnd={endHold}
+      onTouchCancel={endHold}
     >
+      {phase && (
+        <span
+          className={styles.holdRing}
+          data-testid={`token-hold-${playerId}`}
+          data-phase={phase}
+          aria-hidden="true"
+          style={{ "--hold-ms": `${TOUCH_ACTIVATION_MS}ms` } as React.CSSProperties}
+        />
+      )}
       <span className={styles.disc}>
         {/* 컨디션 = 디스크를 **감싸는 링의 채움 비율**(#244 재설계). 그전에는 14px 시계 뱃지가
             얼굴 위 모서리에 겹쳐 있어서, 11개가 붙는 피치에서 얼굴·번호·시계가 서로를 갉아먹었다.

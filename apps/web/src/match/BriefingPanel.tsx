@@ -17,6 +17,7 @@ import { Modal } from "../common/Modal";
 import { AutoModeToggle } from "./AutoModeToggle";
 import { DeckEditor } from "../deck/DeckEditor";
 import { emptyDraft, setPrompt, toUpdateRequest, type DeckDraft } from "../deck/deck-logic";
+import { canFillEmptySlots, fillEmptySlots } from "../deck/fill-empty";
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "../deck/tactics-logic";
 import { opponentPowerFromGrades } from "../deck/team-power";
 import {
@@ -108,6 +109,22 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
     () => (editor?.draft.slots ?? []).filter((s) => s.role === "starter"),
     [editor],
   );
+
+  /**
+   * 경기전 자동 배치의 **후보 = 벤치 선수뿐** (#439, hero Q2=ⓐ + Q1=ⓑ).
+   *
+   * R2("교체선수 외 선수풀 못 쓴다")를 auto 안에 `if` 로 넣지 않는다 — 후보 목록이 곧 규칙이고,
+   * 그래서 덱셋팅과 **같은 함수**(`fillEmptySlots`)를 탄다. 시트에 무엇이 뜨는지도 같은 규칙
+   * (`poolScope="bench"`)이라 두 손잡이가 갈릴 수 없다.
+   */
+  const benchCandidates = useMemo(() => {
+    const bench = new Set(
+      (editor?.draft.slots ?? []).filter((s) => s.role === "bench").map((s) => s.playerId),
+    );
+    return ownedPlayers.filter((p) => bench.has(p.id));
+  }, [editor, ownedPlayers]);
+
+  const autoUsable = editor ? canFillEmptySlots(editor.draft, benchCandidates) : false;
 
   // 내 선발 = 마킹 배정 후보(수비수 우선). autoAssignDefender 가 DF→MF→필드 순으로 고른다.
   const myDefenders: DefenderCandidate[] = useMemo(
@@ -349,6 +366,18 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
             opponentName={match.opponent?.name}
             onOpponentInfo={match.opponent ? () => setOppOpen(true) : undefined}
             opponentApprox
+            /* #439 R3-a — 경기 직전 [초기화]는 없앤다(hero: 그 단계 초기화는 복구 부담이 과대). */
+            hideReset
+            /* #439 R2 — 시트에는 벤치만. 선발끼리 자리 바꾸기는 계속 열려 있다. */
+            poolScope="bench"
+            /* #439 R3-b — 빈 자리를 **벤치 선수로만** 채운다. 이미 놓인 선수·프롬프트는 그대로. */
+            onAuto={() => setEditor({ ...editor, draft: fillEmptySlots(editor.draft, benchCandidates) })}
+            autoDisabled={!autoUsable}
+            autoHint={
+              autoUsable
+                ? "빈 자리를 교체 선수로 자동 배치합니다 (이미 놓인 선수·지시는 그대로)"
+                : "채울 빈 자리가 없거나 투입할 교체 선수가 없습니다"
+            }
           />
         </>
       )}

@@ -15,6 +15,7 @@ import { relationOf } from "../common/relations";
 import { Modal } from "../common/Modal";
 import { buildPlayerNames } from "../common/player-names";
 import { findPlayerSlot, removePlayer, setPrompt, type DeckDraft } from "./deck-logic";
+import { MOUSE_ACTIVATION_PX, TOUCH_ACTIVATION_MS, TOUCH_TOLERANCE_PX } from "./drag-gesture";
 import { movePlayerToSlot, type EditorState } from "./tactics-logic";
 import { slotPosition } from "./sheet-metrics";
 import { teamPower } from "./team-power";
@@ -30,6 +31,12 @@ import { TeamSheetBar } from "./TeamSheetBar";
 import { DirectiveRail } from "./DirectiveRail";
 import { PlayerPicker } from "./PlayerPicker";
 import styles from "./DeckEditor.module.css";
+
+/**
+ * 프롬프트 입력칸이 화면 가장자리·하단 탭바에서 떨어져 있어야 하는 최소 여백(#244 AC13 이
+ * 요구하는 24px 보다 넉넉히). 이 값이 곧 "선수를 고르면 화면이 따라오는" 이동의 목표선이다.
+ */
+const PROMPT_SCROLL_MARGIN_PX = 32;
 
 export interface DeckEditorProps {
   /**
@@ -57,10 +64,31 @@ export interface DeckEditorProps {
   /** 상대 정보 시트 열기(#285) — 브리핑에서만 온다. 없으면 버튼 자체가 안 그려진다. */
   onOpponentInfo?: () => void;
   errorPlayerId?: string | null;
-  /** Auto 배치(결정론 auto-lineup) — 덱 화면만 넘긴다. */
+  /**
+   * Auto 배치 — **빈 자리만 채운다**(#439, hero Q1=ⓑ). 덱셋팅·경기전 **둘 다** 넘긴다.
+   * (구 동작: 덱 화면만 넘겨서 경기전엔 버튼 3종이 전부 안 그려졌다 — 실측 4/4 부재.)
+   * 무엇으로 채우는지는 호출부가 정한다(후보 목록 = 규칙, `fill-empty.ts` 머리말).
+   */
   onAuto?: () => void;
   autoDisabled?: boolean;
   autoHint?: string;
+  /**
+   * [초기화] 를 감춘다 (#439 R3-a, hero: *"경기 시작 전에 초기화 버튼은 없애. 지금 초기화 사용되지
+   * 않고 그 단계에서 초기화하면 너무 해야 할 부담이 커."*).
+   *
+   * 그 버튼은 확인창도 되돌리기도 없이 `slots: []` 로 **선발·벤치·선수별 프롬프트를 한 번에**
+   * 지운다. 덱셋팅에서는 처음부터 다시 짜는 일이 정상이라 남기고, 경기 직전에서만 없앤다
+   * — `placementLocked`(감독시간)와는 **다른 축**이다: 경기전은 배치 자체는 열려 있다.
+   */
+  hideReset?: boolean;
+  /**
+   * 선수 시트에 **누가 뜨나** (#439 R2, hero Q2=ⓐ).
+   *   · `"owned"`(기본) — 보유 선수 전체(덱셋팅)
+   *   · `"bench"` — **벤치 선수만**(경기전). 나머지는 필터·비활성이 아니라 **DOM 에 없다**.
+   * 선발끼리 자리를 바꾸는 것은 계속 열려 있다(보드 드래그·탭) — 막는 것은 "스쿼드 밖에서
+   * 데려오는 것"뿐이고, 그게 hero 가 말한 *"교체선수 외 선수풀 못 쓰게"* 의 경계다.
+   */
+  poolScope?: "owned" | "bench";
   /**
    * **배치 잠금**(#244, 뜻은 #276 에서 좁혀졌다) — 감독시간처럼 **스쿼드 밖에서 선수를 데려오지
    * 않는** 화면. 빈 슬롯을 눌러도 선수 시트가 열리지 않고 [보유 선수]·[Auto 배치]·[초기화]·
@@ -151,6 +179,8 @@ export function DeckEditor(props: DeckEditorProps) {
     onAuto,
     autoDisabled,
     autoHint,
+    hideReset = false,
+    poolScope = "owned",
     placementLocked = false,
     lineupEditable = false,
     lineupDisabled = false,
@@ -184,9 +214,14 @@ export function DeckEditor(props: DeckEditorProps) {
   // 거리 기반(distance) 활성화라 손가락이 6px 움직이는 순간 브라우저가 네이티브 스크롤을
   // 시작해 pointercancel 로 드래그가 죽는다(실측, #106 결함). 분리하면 터치는 롱프레스 150ms 로만
   // 드래그가 시작되고, 짧은 스와이프는 리스트 스크롤로 남는다(스크롤·드래그 양립).
+  //
+  // ⚠️ 임계는 `drag-gesture.ts` 한 곳에서 온다(#439) — 보드 토큰의 **롱프레스 어포던스**(차오르는
+  // 링)가 같은 값을 읽는다. 여기에 숫자를 다시 적으면 링이 다 찬 뒤에도 안 잡히거나 그 반대가 된다.
   const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 150, tolerance: 8 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: MOUSE_ACTIVATION_PX } }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: TOUCH_ACTIVATION_MS, tolerance: TOUCH_TOLERANCE_PX },
+    }),
     useSensor(KeyboardSensor),
   );
 
@@ -203,9 +238,43 @@ export function DeckEditor(props: DeckEditorProps) {
    */
   useEffect(() => {
     if (!selection.playerId) return;
-    // jsdom 에는 scrollIntoView 가 없다 — 유닛 테스트에서 화면 이동은 관심사가 아니므로 조용히 건너뛴다
-    // (계약은 실브라우저 e2e 가 잰다: p244 AC4 는 이 스크롤 **뒤에** 가림·잘림을 확인한다).
-    railRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    const rail = railRef.current;
+    if (!rail) return;
+    /**
+     * ⚠️ **최소 이동으로 바뀌었다 (#439 조정포인트).**
+     *
+     * 구현은 `railRef.scrollIntoView({ block: "center" })` 였다 — 레일은 화면보다 긴 블록이라
+     * "가운데 정렬"이 곧 **문서 끝까지 스크롤**이었고(390×844 실측 `scrollY` 0 → 415),
+     * 그 결과 배치 직후 **보드가 화면 위로 사라졌다**(W0 실측 4회 중 3회 보드 상단 `y = −228`).
+     * 선수 하나 놓을 때마다 다시 위로 스크롤해야 하니 **연속 배치가 불가능**했다.
+     *
+     * 그래서 ①대상을 레일 전체가 아니라 **프롬프트 입력칸**으로 좁히고 ②`block:"nearest"` 로
+     * **필요한 만큼만** 움직인다. #244 A′("선수를 고르면 그 입력창까지 화면이 따라온다")는
+     * 그대로 성립하고 — 그 계약이 재는 것도 "입력칸이 첫 화면에 있나"이지 이동량이 아니다 —
+     * 보드는 화면에 남는다. 계약 = `p439-phone-deck-ux.spec.ts` ⑤(다음 빈 자리 히트테스트)
+     * + `p244-prompt-first.spec.ts` AC4(가림·잘림).
+     *
+     * ⚠️ `scrollIntoView({block:"nearest"})` 로는 부족하다 — **하단 탭바가 `position:fixed`** 라
+     * 브라우저는 그것이 입력칸을 덮는 것을 모른다(실측: nearest 만 쓰면 p244 AC4 가 `bottomL←nav-home`
+     * 으로 red). 그래서 탭바 높이를 **실측해** 부족분만큼만 직접 굴린다.
+     *
+     * jsdom 에는 scrollIntoView/scrollBy 가 없다 — 유닛 테스트에서 화면 이동은 관심사가 아니므로
+     * 조용히 건너뛴다.
+     */
+    const target = rail.querySelector<HTMLElement>('[data-testid="rail-prompt-input"]') ?? rail;
+    if (typeof window.scrollBy !== "function" || typeof target.getBoundingClientRect !== "function") return;
+    const nav = document.querySelector('[data-testid="nav-bottom"]');
+    const navTop = nav ? nav.getBoundingClientRect().top : window.innerHeight;
+    const floor = Math.min(navTop, window.innerHeight) - PROMPT_SCROLL_MARGIN_PX;
+    const rect = target.getBoundingClientRect();
+    // 위로 벗어났으면 그만큼만 올리고, 탭바 아래로 숨었으면 그만큼만 내린다. 이미 보이면 **안 움직인다**.
+    const delta =
+      rect.top < PROMPT_SCROLL_MARGIN_PX
+        ? rect.top - PROMPT_SCROLL_MARGIN_PX
+        : rect.bottom > floor
+          ? rect.bottom - floor
+          : 0;
+    if (delta !== 0) window.scrollBy({ top: delta, behavior: "smooth" });
   }, [selection.playerId]);
 
   function mutateDraft(next: DeckDraft) {
@@ -314,6 +383,17 @@ export function DeckEditor(props: DeckEditorProps) {
 
   const starterSlots = draft.slots.filter((s) => s.role === "starter");
 
+  /**
+   * 시트에 실제로 그려지는 후보 (#439 R2). **필터가 아니라 목록 자체를 줄인다** — AC 가
+   * "DOM 에 없다"이고, 비활성 행으로 남기면 유저는 왜 못 고르는지 모른 채 계속 누른다.
+   */
+  const poolPlayers = useMemo(() => {
+    if (poolScope !== "bench") return players;
+    const bench = new Set(draft.slots.filter((s) => s.role === "bench").map((s) => s.playerId));
+    return players.filter((p) => bench.has(p.id));
+  }, [players, poolScope, draft.slots]);
+  const poolLabel = poolScope === "bench" ? "교체 선수" : "보유 선수";
+
   /** 자리 지정 없이 시트를 열었을 때 들어갈 자리 — 첫 빈 선발, 없으면 첫 빈 벤치. */
   const firstEmptySlot: SlotRef | null = useMemo(() => {
     const taken = (role: "starter" | "bench", i: number) =>
@@ -346,7 +426,7 @@ export function DeckEditor(props: DeckEditorProps) {
     : "ALL";
   const sheetTitle = sheetSlot
     ? `${slotNumberLabel(sheetSlot.role, sheetSlot.slotIndex)}번 ${sheetFilter === "ALL" ? "" : `${sheetFilter} `}자리에 넣을 선수`
-    : "보유 선수";
+    : poolLabel;
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -444,10 +524,10 @@ export function DeckEditor(props: DeckEditorProps) {
                       data-testid="pool-sheet-open"
                       onClick={() => openSheet(null)}
                     >
-                      보유 선수 ({players.length})
+                      {poolLabel} ({poolPlayers.length})
                     </button>
                   )}
-                  {!placementLocked && (
+                  {!placementLocked && !hideReset && (
                     <button
                       type="button"
                       className={styles.boardBtn}
@@ -561,7 +641,7 @@ export function DeckEditor(props: DeckEditorProps) {
             </button>
           </div>
           <PlayerPicker
-            players={players}
+            players={poolPlayers}
             draft={draft}
             onPick={handleSheetPick}
             conditions={conditions}

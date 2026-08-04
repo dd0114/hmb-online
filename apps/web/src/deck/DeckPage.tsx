@@ -21,7 +21,8 @@ import {
 } from "./deck-logic";
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "./tactics-logic";
 import { isDirty, makeBaseline, type EditorBaseline } from "./preset-selector-logic";
-import { autoBuildLineup, canAutoBuild } from "./auto-lineup";
+import { canAutoBuild } from "./auto-lineup";
+import { fillEmptySlots } from "./fill-empty";
 import { DeckEditor } from "./DeckEditor";
 import styles from "./DeckPage.module.css";
 
@@ -258,11 +259,17 @@ export function DeckPage() {
         relations={relations}
         conditions={conditions}
         errorPlayerId={serverError?.playerId ?? null}
-        onAuto={() => mutateEditor(autoBuildLineup(ownedPlayers))}
+        /**
+         * Auto = **빈 자리만 채운다**(#439, hero Q1=ⓑ). 후보 = 보유 선수 전체 — 이미 놓인 선수는
+         * `fillEmptySlots` 가 건드리지 않으므로 여기서 미배치로 걸러 줄 필요가 없다.
+         * ⚠️ 구 `autoBuildLineup`(전면 재구성)으로 되돌리지 마라 — 그건 전원의 프롬프트를 덮고
+         * 팀 전술·팀 문장을 초기화한다(= hero 가 없애라고 한 [초기화] 와 같은 피해).
+         */
+        onAuto={() => mutateEditor({ ...editor, draft: fillEmptySlots(editor.draft, ownedPlayers) })}
         autoDisabled={busy || !canAutoBuild(ownedPlayers)}
         autoHint={
           canAutoBuild(ownedPlayers)
-            ? "보유 선수로 최적 포메이션·선발·기본 지시를 자동 배치합니다"
+            ? "빈 자리를 보유 선수로 자동 배치합니다 (이미 놓인 선수·지시는 그대로)"
             : `보유 선수 부족 (${ownedPlayers.length}/${STARTER_COUNT})`
         }
       />
