@@ -99,8 +99,14 @@ test("W2 Auto 구성: 빈 편집기 → Auto 클릭 → 선발 11 채움 + dirty
   await expect(page.getByTestId("board-slot-starter-0").getByTestId(/^token-GK[12]$/)).toBeVisible();
   await page.screenshot({ path: `${SMOKE_DIR}w2-auto-after.png`, fullPage: true });
 
-  // 3) 결정론: 다시 Auto 눌러도 동일 선발 유지(11/11).
-  await page.getByTestId("auto-fill-top").click();
+  /*
+   * 3) 다 채운 뒤에는 **버튼이 스스로 닫힌다** (#439 major-2).
+   *    구 스텝은 "다시 눌러도 11/11 유지"(전면 재구성의 결정론)를 쟀는데, 지금 Auto 는 빈 자리
+   *    채우기라 채울 것이 없으면 **비활성 + 사유**가 맞다. 활성인 채로 두면 눌러도 아무 일이
+   *    안 일어나는 버튼이 된다 — 그게 이 웨이브가 고친 결함이다.
+   *    (결정론 자체는 `fill-empty.test.ts` 가 순수 함수 층에서 계속 잰다.)
+   */
+  await expect(page.getByTestId("auto-fill-top")).toBeDisabled();
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
 
   // 4) 저장: #106 R1 부터 이 화면은 **활성 덱 하나**만 저장한다(프리셋 슬롯 UI 는 화면에서 내림).
@@ -115,7 +121,21 @@ test("W2 Auto 구성: 빈 편집기 → Auto 클릭 → 선발 11 채움 + dirty
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
-test("W2 Auto 구성: 보유 선수 < 11 → 버튼 비활성 + 안내", async ({ page }) => {
+/**
+ * ⚠️ **이 계약은 #439 에서 의미가 뒤집혀 다시 쓰였다.**
+ *
+ * 구 계약: *"보유 선수 < 11 → 버튼 비활성 + '보유 선수 부족'"*. 그때의 Auto 는 `autoBuildLineup`
+ * (**전원에서 11명을 새로 짠다**)이라 11명이 없으면 할 수 있는 일이 정말로 없었다.
+ *
+ * 지금의 Auto 는 `fillEmptySlots`(**빈 자리를 채운다**, hero Q1=ⓑ)다 — 보유 6명이면 6칸은 채운다.
+ * 그 상태를 비활성으로 두면 **할 수 있는 일을 막는** 거짓 잠금이 된다. 그래서 새 의미로 재작성한다:
+ *   · 보유 6명 → **활성**, 누르면 6칸이 채워지고 안내가 "다 못 채운다"를 말한다
+ *   · 진짜로 할 일이 없을 때(= 덱이 이미 꽉 참) → **비활성 + 사유**
+ * 두 번째가 이 웨이브가 고친 결함 자체다(#439 2R major-2: 완성 덱에서 활성인데 눌러도 무반응,
+ * 같은 상태의 경기전은 비활성 + 사유였다 = 두 화면의 판정이 갈려 있었다).
+ * ⚠️ 되돌리려면 `DeckPage` 의 게이트를 `canAutoBuild` 로 되돌리게 되는데, 그 순간 이 파일이 red 다.
+ */
+test("W2 Auto: 보유 < 11 이어도 **있는 만큼 채운다**(비활성 아님) + 안내가 한계를 말한다", async ({ page }) => {
   await mockApi(page, PLAYERS.slice(0, 6)); // 6 owned
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
@@ -124,6 +144,34 @@ test("W2 Auto 구성: 보유 선수 < 11 → 버튼 비활성 + 안내", async (
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/deck");
 
+  await expect(page.getByTestId("starter-count")).toHaveText(/0\/11/);
+  await expect(page.getByTestId("auto-fill-top")).toBeEnabled();
+  // 안내는 **누르기 전에** "왜 11 이 안 되나"를 말한다 — 침묵하면 유저는 버튼이 고장난 줄 안다.
+  // ⚠️ 폰에서 읽는 자리는 보드 아래 `auto-hint` 가 아니라 **버튼의 `title`** 이다
+  //    (`auto-hint` 는 ≤1023px 에서 `display:none`, `auto-hint-top` 은 비활성일 때만 뜬다).
+  //    폰에서 실제로 도달 가능한 축으로 잰다.
+  await expect(page.getByTestId("auto-fill-top")).toHaveAttribute("title", /다 못 채웁니다/);
+
+  await page.getByTestId("auto-fill-top").click();
+  await expect(page.getByTestId("starter-count")).toHaveText(/6\/11/);
+  // 6명을 다 쓴 뒤에는 더 넣을 사람이 없으므로 버튼이 닫힌다(사유와 함께).
   await expect(page.getByTestId("auto-fill-top")).toBeDisabled();
-  await expect(page.getByTestId("auto-hint-top")).toContainText("보유 선수 부족");
+  await expect(page.getByTestId("auto-hint-top")).toContainText("채울 빈 자리가 없");
+});
+
+test("W2 Auto: 덱이 이미 꽉 차 있으면 **비활성 + 사유**(눌러도 무반응이던 결함, #439 major-2)", async ({ page }) => {
+  await mockApi(page, PLAYERS);
+  await page.addInitScript(() => {
+    localStorage.setItem("hmb.auth.token", "mock-token");
+    localStorage.setItem("hmb.auth.provider", "guest");
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/deck");
+
+  // 먼저 Auto 로 채운다(보유 14 → 선발 11 + 벤치 3 = 더 넣을 자리가 없다).
+  await page.getByTestId("auto-fill-top").click();
+  await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
+
+  await expect(page.getByTestId("auto-fill-top")).toBeDisabled();
+  await expect(page.getByTestId("auto-hint-top")).toContainText("채울 빈 자리가 없");
 });

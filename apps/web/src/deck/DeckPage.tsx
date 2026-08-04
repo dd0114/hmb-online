@@ -22,7 +22,7 @@ import {
 import { DEFAULT_TEAM_TACTICS, type EditorState } from "./tactics-logic";
 import { isDirty, makeBaseline, type EditorBaseline } from "./preset-selector-logic";
 import { canAutoBuild } from "./auto-lineup";
-import { fillEmptySlots } from "./fill-empty";
+import { canFillEmptySlots, fillEmptySlots } from "./fill-empty";
 import { DeckEditor } from "./DeckEditor";
 import styles from "./DeckPage.module.css";
 
@@ -266,11 +266,23 @@ export function DeckPage() {
          * 팀 전술·팀 문장을 초기화한다(= hero 가 없애라고 한 [초기화] 와 같은 피해).
          */
         onAuto={() => mutateEditor({ ...editor, draft: fillEmptySlots(editor.draft, ownedPlayers) })}
-        autoDisabled={busy || !canAutoBuild(ownedPlayers)}
+        /**
+         * ⚠️ **활성 판정은 실행 함수와 같은 것을 쓴다**(#439 2R major-2). 구 게이트는
+         * `canAutoBuild(보유 ≥ 11)` 이었는데, 그건 "전원에서 11명을 새로 짠다"의 조건이지
+         * "빈 자리를 채운다"의 조건이 아니다. 그 결과 **완성 덱에서 버튼이 활성인데 눌러도
+         * 아무 일도 안 일어났다**(경기전은 같은 상태에서 비활성 + 사유를 말한다 = 두 화면이 갈렸다).
+         * `canFillEmptySlots` 가 정확히 이 용도로 있다 — 판정을 두 번 적으면 버튼과 동작이 갈린다.
+         */
+        autoDisabled={busy || !canFillEmptySlots(editor.draft, ownedPlayers)}
         autoHint={
-          canAutoBuild(ownedPlayers)
-            ? "빈 자리를 보유 선수로 자동 배치합니다 (이미 놓인 선수·지시는 그대로)"
-            : `보유 선수 부족 (${ownedPlayers.length}/${STARTER_COUNT})`
+          canFillEmptySlots(editor.draft, ownedPlayers)
+            ? canAutoBuild(ownedPlayers)
+              ? "빈 자리를 보유 선수로 자동 배치합니다 (이미 놓인 선수·지시는 그대로)"
+              : // 보유가 11 미만이어도 **있는 만큼은 채운다** — 예전엔 이 상태가 통째로 비활성이었다.
+                `빈 자리를 채웁니다 — 보유 ${ownedPlayers.length}명이라 선발 ${STARTER_COUNT}명은 다 못 채웁니다`
+            : ownedPlayers.length === 0
+              ? "보유 선수가 없습니다"
+              : "채울 빈 자리가 없거나 넣을 선수가 없습니다"
         }
       />
 

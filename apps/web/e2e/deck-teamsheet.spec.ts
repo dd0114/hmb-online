@@ -602,12 +602,18 @@ for (const width of [390, 1280]) {
       await expect(page.getByTestId("team-sheet-bar")).toHaveAttribute("data-empty", "true");
       // 보유<11 이면 CTA 는 비활성이고, 안내가 "슬롯을 눌러 직접 배치"라고 **지시**한다 —
       // 그렇게 지시하는 화면에서 슬롯이 죽어 있으면 막다른 길이다(이게 blocker 였던 이유).
-      if (owned === 6) {
-        await expect(page.getByTestId("board-empty-auto")).toBeDisabled();
-        await expect(page.getByTestId("board-empty-note")).toContainText("직접 배치");
-      } else {
-        await expect(page.getByTestId("board-empty-auto")).toBeEnabled();
-      }
+      /**
+       * ⚠️ **#439 로 이 분기의 의미가 바뀌었다.** 구 계약은 *"보유<11 → CTA 비활성 + '직접 배치'
+       * 안내"* 였고, 그때의 Auto 는 전원에서 11명을 새로 짜는 것이라 11명이 없으면 정말 할 일이
+       * 없었다. 지금 Auto 는 **빈 자리 채우기**(hero Q1=ⓑ)라 보유 6명이면 6칸을 채운다 —
+       * 비활성으로 두면 할 수 있는 일을 막는 거짓 잠금이다. 그래서 두 폭·두 보유 수 모두 **활성**.
+       *
+       * ⚠️ 이 테스트의 **블로커 내용은 CTA 상태가 아니다** — 아래 `blocked` 히트테스트("안내가
+       * 선발 슬롯을 가리지 않는다")가 그것이고, 그건 손대지 않았다. 안내 문구는 CTA 가 살아 있는
+       * 지금 "막다른 길"이 아니므로 대상이 사라진 것이지 검증을 뺀 것이 아니다.
+       */
+      await expect(page.getByTestId("board-empty-auto")).toBeEnabled();
+      await expect(page.getByTestId("board-empty-note")).toHaveCount(0);
 
       const scan = await scanStarterSlots(page);
       const blocked = scan.filter((s) => s.blockedBy !== null);

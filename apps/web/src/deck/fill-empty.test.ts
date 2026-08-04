@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canFillEmptySlots, fillEmptySlots } from "./fill-empty";
-import type { AutoPlayer } from "./auto-lineup";
+import { POSITION_DEFAULT_PROMPTS, type AutoPlayer } from "./auto-lineup";
 import { BENCH_MAX, type DeckDraft, type DraftSlot, type Position } from "./deck-logic";
 
 /**
@@ -112,8 +112,36 @@ describe("fillEmptySlots — 빈 자리만 채운다(Q1=ⓑ)", () => {
     expect(next.formation).toBe("4-4-2");
     // 진짜 GK 가 GK 자리에.
     expect(["GK1", "GK2"]).toContain(at(next, "starter", 0));
-    // 자동 배치는 **프롬프트를 지어내지 않는다**(구 autoBuildLineup 은 전원에게 기본문구를 넣었다).
-    expect(next.slots.every((s) => (s.promptText ?? null) === null)).toBe(true);
+    /**
+     * ★ **새로 놓인 칸에는 포지션 기본 지시가 들어간다** (hero 결정 ⓐ, 2R).
+     * 초판은 "프롬프트를 지어내지 않는다"였고 그래서 빈 덱 AUTO 의 지시가 11/11 → **0/11** 로
+     * 죽었다(온보딩이 그 문장 위에 "감독 한마디"만 얹는 전제였다).
+     * 지시는 **맡은 자리**의 포지션 기준이다 — GK 슬롯의 문구가 GK 문구여야 한다.
+     */
+    expect(next.slots.every((s) => Boolean(s.promptText?.trim()))).toBe(true);
+    expect(next.slots.find((s) => s.role === "starter" && s.slotIndex === 0)!.promptText)
+      .toBe(POSITION_DEFAULT_PROMPTS.GK);
+    // 4-4-2 의 슬롯 10 = FW 행 → FW 문구.
+    expect(next.slots.find((s) => s.role === "starter" && s.slotIndex === 10)!.promptText)
+      .toBe(POSITION_DEFAULT_PROMPTS.FW);
+  });
+
+  it("기본 지시는 **원래 아무 데도 없던 선수**에게만 — 앉아 있던 선수의 빈 문장은 빈 채로 둔다", () => {
+    /**
+     * ⚠️ 기준이 "새 칸"이 아니라 "새 선수"라는 것을 가르는 계약이다.
+     * FW2 는 벤치에 앉아 있었고 프롬프트가 **빈 문자열**이다 — 빈 선발 자리로 올라가지만
+     * 그 자리는 "새 칸"이므로 기준을 잘못 잡으면 여기에 FW 기본문구가 주입된다.
+     * 그건 유저가 지운 문장을 auto 가 되살리는 것이고 Q1=ⓑ 위반이다.
+     */
+    const base = briefingDraft();
+    const draft: DeckDraft = {
+      ...base,
+      slots: base.slots.map((s) => (s.playerId === "FW2" ? { ...s, promptText: "" } : s)),
+    };
+    const next = fillEmptySlots(draft, BENCH_POOL);
+    expect(at(next, "starter", 10)).toBe("FW2");
+    expect(next.slots.find((s) => s.playerId === "FW2")!.promptText).toBe("");
+    expect(next.slots.find((s) => s.playerId === "FW2")!.promptText).not.toBe(POSITION_DEFAULT_PROMPTS.FW);
   });
 
   it("결정론 — 후보 순서를 섞어도 같은 결과", () => {

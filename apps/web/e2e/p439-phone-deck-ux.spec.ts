@@ -114,11 +114,15 @@ async function openBriefing(page: Page, slots: unknown[] = deckSlots()) {
   await expect(page.getByTestId("token-MF1")).toBeVisible();
 }
 
-async function openDeck(page: Page, slots: unknown[] = deckSlots()) {
+/**
+ * `anchor` = 보드가 다 그려진 것을 보장하는 앵커. 빈 덱에는 토큰이 하나도 없으므로 호출부가
+ * 바꿔 준다 — 이걸 고정으로 두면 "측정 시점 경합"이 계약 실패로 위장한다(W0 프로브가 당했다).
+ */
+async function openDeck(page: Page, slots: unknown[] = deckSlots(), anchor = "token-MF1") {
   await bootstrap(page, slots);
   await page.goto("/deck");
   await expect(page.getByTestId("deck-editor")).toBeVisible();
-  await expect(page.getByTestId("token-MF1")).toBeVisible();
+  await expect(page.getByTestId(anchor)).toBeVisible();
 }
 
 // ── 실터치 하네스 (CDP — Playwright touchscreen 은 tap 만 된다) ────────────────
@@ -388,6 +392,30 @@ test("④ 덱셋팅 auto 도 같은 규칙 — 빈 자리만 채우고 프롬프
   await expect(page.getByTestId("board-slot-bench-0").getByTestId("token-FW3")).toBeVisible();
 
   expect(await promptOf(page, "MF1")).toBe(MF1_PROMPT);
+});
+
+test("④ 빈 덱 + AUTO — 선발 11 과 **지시 11/11** 이 같이 채워진다(hero 결정 ⓐ)", async ({ page }) => {
+  /**
+   * ⚠️ **이 계약이 없어서 회귀가 통과했다.** 1R 은 `fillEmptySlots` 가 프롬프트를 만들지 않게
+   * 짰고, 그 결과 빈 덱 AUTO 의 지시가 `4e99e12` **11/11** → `4e493c7` **0/11** 로 죽었다.
+   * AC 7건도 기존 e2e 36건도 전부 green 이었다 — **아무도 지시 *개수* 를 안 쟀기 때문이다**
+   * (선발 수·프롬프트 보존은 쟀다. 없던 것은 "auto 가 지시를 만드나" 축 하나였다).
+   *
+   * 온보딩(`common/tutorial-steps.ts` `setup-auto` → `setup-motto`)이 *"AUTO 로 선발을 채우고
+   * 감독 한마디만 직접 타이핑"* 을 전제하므로, 지시칸이 전부 빈칸이면 그 동선이 거짓말이 된다.
+   */
+  await openDeck(page, [], "board-empty"); // 진짜 빈 덱(토큰이 0개라 앵커가 다르다)
+  await expect(page.getByTestId("starter-count")).toHaveText(/0\/11/);
+  await expect(page.getByTestId("directive-count")).toContainText("지시 0/11");
+
+  await clickAuto(page);
+  await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
+  await expect(page.getByTestId("directive-count"), "AUTO 는 지시도 같이 채운다").toContainText("지시 11/11");
+
+  // 개수만 세면 공백 한 칸으로도 통과한다 — **문구가 그 자리의 포지션 지시인지**까지 본다.
+  const gkPrompt = await promptOf(page, "GK1");
+  console.log(`[#439-auto] 빈 덱 AUTO → GK 슬롯 지시 = ${JSON.stringify(gkPrompt)}`);
+  expect(gkPrompt).toContain("골문");
 });
 
 // ── ⑤ 배치 직후에도 보드가 남아 있다(연속 배치) ───────────────────────────────
