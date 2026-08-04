@@ -82,7 +82,11 @@ hmb:
     #      지켜야 한다(백업 → V38 스냅샷 → 이 경로 스위치 → 소급 백필). 그 배선은 후속 웨이브 소관.
     # 계약 = PlayerCatalogV24SeedTest(v2.4 고정) · V23/V22 SeedTest(구 발행물 임포트 회귀 가드).
     # ⚠️ 이 경로는 Dockerfile 의 HMB_DATA_PLAYERSFILE 과 **둘 다** 올려야 한다(v8 에서 실제로 어긋났다).
-    players-file: ../data/players/players.v2.5.json
+    # → **v2.6(현행 소비본, #406 요구 6)** = v2.5 와 `attributes`·`position`·`grade`·`personality`·
+    #    `active` 가 **전부 동일**(182행, 신규 채번 0)이고 바뀐 것은 `name` 172건 한글화 + `shortName`
+    #    신설뿐이다. 즉 성장 스냅샷(§2.7)·밴드 재계산과 **직교**한다 — 이름만 바뀐다.
+    #    ⚠️ `shortName` 은 서버가 아직 임포트하지 않는다(#411 스위치 소관) → web 은 풀네임 폴백.
+    players-file: ../data/players/players.v2.6.json
     # economy 는 **v3**(#209) — v2 그대로 + starterTop(가입 최상위 후보) 블록. 값은 #212 리스케일까지
     # 포함해 v2 와 동일하고(생성기 한 소스), 추가된 것은 그 블록 하나뿐이다.
     # ⚠️ 이 경로는 Dockerfile 의 HMB_DATA_ECONOMYFILE 과 **둘 다** 올려야 한다.

@@ -65,7 +65,7 @@ RUN mkdir -p /var/lib/hmb && chown -R hmb:hmb /var/lib/hmb /app
 #    2026-07-27 v8 배포 전 실제로 어긋나 있었다: yml=players.v2.3 인데 여기가 v2.1 이라 #207 신규
 #    LEGEND 8종(P173~P180)이 프로덕션에 임포트되지 않는 상태였다.
 ENV HMB_DB_PATH=/var/lib/hmb/hmb.db \
-    HMB_DATA_PLAYERSFILE=/app/data/players/players.v2.5.json \
+    HMB_DATA_PLAYERSFILE=/app/data/players/players.v2.6.json \
     HMB_DATA_ECONOMYFILE=/app/data/players/economy.v3.json \
     HMB_DATA_BOTSFILE=/app/data/players/bots.v3.json \
     HMB_DATA_LEAGUEFILE=/app/data/players/league.v2.json \
