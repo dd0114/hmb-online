@@ -1,0 +1,1240 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>덱·선발 UX 결정 게이트 — auto / 선수풀 제한 / 폰 드래그 (#439)</title>
+<style>
+  :root{
+    /* apps/web/src/index.css 와 같은 토큰 */
+    --bg:#0f1115; --bg-elevated:#171a21; --text:#eef0f4; --text-muted:#9aa1ad;
+    --border:#2a2e37; --accent:#4f8cff; --surface:#111826; --sunk:#0c111b;
+    --ok:#3ecf8e; --warn:#f0b429; --bad:#ff6b6b; --info:#38bdf8;
+    --grass-a:#1c5c33; --grass-b:#1a5530; --pitch-line:rgba(255,255,255,.35);
+    --us:#4f8cff;
+    --gk:#f0b429; --df:#4f8cff; --mf:#3ecf8e; --fw:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);-webkit-text-size-adjust:100%}
+  body{
+    font:14px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Segoe UI",sans-serif;
+    padding:0 0 96px;
+  }
+  h1,h2,h3,h4{margin:0;line-height:1.35}
+  p{margin:0 0 9px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.87em;background:var(--sunk);border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 12px}
+
+  /* ── 헤더 ── */
+  header.page{background:linear-gradient(180deg,#141b28,#0f1115);border-bottom:1px solid var(--border);padding:18px 0 14px}
+  header.page h1{font-size:18px;letter-spacing:-.01em}
+  header.page .sub{color:var(--text-muted);font-size:12px;margin-top:4px}
+
+  .state{
+    margin-top:12px;background:#241416;border:1px solid #4d2429;border-left:3px solid var(--bad);
+    border-radius:10px;padding:11px 13px;
+  }
+  .state h3{font-size:12.5px;color:#ffc9cc;margin-bottom:6px}
+  .state ul{margin:0;padding-left:17px}
+  .state li{font-size:12.6px;color:#f0cdd0;margin:4px 0}
+  .state li b{color:#fff}
+
+  /* ── 탭 ── */
+  .tabs{position:sticky;top:0;z-index:60;background:rgba(15,17,21,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:8px 0}
+  .tabs .row{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tabs button{
+    flex:0 0 auto;background:var(--sunk);border:1px solid var(--border);color:var(--text-muted);
+    font:inherit;font-size:12.5px;font-weight:700;border-radius:999px;padding:7px 13px;cursor:pointer;
+  }
+  .tabs button[aria-selected="true"]{background:#1c2841;color:#dbe7ff;border-color:#3c5279}
+
+  section.q{display:none;padding:16px 0 10px}
+  section.q.on{display:block}
+  .qhead{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+  .qno{font-size:11px;font-weight:800;color:#0f1115;background:var(--accent);border-radius:6px;padding:2px 8px}
+  .qhead h2{font-size:16px}
+  .qask{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:11px 13px;font-size:13.5px;color:#dfe6ef;margin-bottom:12px}
+  .qask b{color:#fff}
+
+  .note{background:#151d2b;border:1px solid #26364d;border-left:3px solid var(--info);border-radius:8px;padding:10px 12px;font-size:12.4px;color:#c8d4e2;margin:11px 0}
+  .note.warn{background:#241d12;border-color:#4a3a1c;border-left-color:var(--warn);color:#e8dbc0}
+  .note b{color:#fff}
+
+  /* ── 선택지 ── */
+  .opts{display:grid;gap:8px;margin:10px 0}
+  @media(min-width:760px){.opts{grid-template-columns:repeat(3,1fr)}}
+  .opt{
+    text-align:left;background:#161b26;border:1px solid var(--border);border-radius:10px;padding:10px 12px;
+    color:var(--text);font:inherit;cursor:pointer;display:block;width:100%;
+  }
+  .opt[aria-pressed="true"]{border-color:#3c6bb5;background:#152239;box-shadow:0 0 0 1px #3c6bb5 inset}
+  .opt .k{font-size:15px;font-weight:800;margin-right:6px;color:#8ab4ff}
+  .opt .t{font-size:13px;font-weight:700}
+  .opt .d{font-size:11.8px;color:#a9b3c1;line-height:1.55;margin-top:5px}
+
+  .ctrls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  .btn{background:var(--surface);border:1px solid var(--border);color:#dbe4f0;font:inherit;font-size:12.5px;font-weight:600;border-radius:9px;padding:8px 13px;cursor:pointer;min-height:38px}
+  .btn.pri{background:#1d3b6e;border-color:#2f5aa8;color:#dbe7ff}
+  .btn.sm{font-size:11.5px;padding:6px 10px;min-height:32px}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  label.chk{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:#c3cbd6;cursor:pointer;min-height:34px}
+  label.chk input{accent-color:var(--accent);width:17px;height:17px}
+  .hint{color:var(--text-muted);font-size:11.7px}
+
+  /* ── 보드 (TacticsBoard.module.css 리플리카) ── */
+  .board{position:relative;border-radius:14px;overflow:hidden;background:var(--surface);border:1px solid var(--border)}
+  .pitch{
+    position:relative;width:100%;aspect-ratio:68/52;touch-action:none;
+    background:repeating-linear-gradient(180deg,var(--grass-a) 0 26px,var(--grass-b) 26px 52px);
+    box-shadow:inset 0 0 0 2px var(--pitch-line);
+  }
+  .pitch .ln{position:absolute;inset:0;pointer-events:none}
+  .pitch .ln *{pointer-events:none;position:absolute;left:50%;transform:translateX(-50%);border:2px solid var(--pitch-line)}
+  .pitch .ln .half{left:0;right:0;top:50%;transform:none;border:0;border-top:2px solid var(--pitch-line)}
+  .pitch .ln .circ{top:50%;transform:translate(-50%,-50%);width:26%;aspect-ratio:1;border-radius:50%}
+  .pitch .ln .pb{width:58%;height:17%}
+  .pitch .ln .gb{width:28%;height:7%}
+  .pitch .ln .us{bottom:0;border-bottom:0}
+  .pitch .ln .them{top:0;border-top:0}
+  .tokens{position:absolute;inset:26px 10px 30px}
+
+  .cell{
+    position:absolute;width:56px;min-height:52px;transform:translate(-50%,-50%);
+    padding:0;border:none;background:none;color:var(--text);cursor:pointer;touch-action:none;
+  }
+  .mark{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;border:1px dashed rgba(255,255,255,.28);background:rgba(0,0,0,.2);font-size:15px;color:rgba(255,255,255,.55)}
+  .cell[data-cand="1"] .mark{border-style:solid;border-color:var(--accent);color:var(--accent)}
+  .cell[data-sel="1"] .disc,.cell[data-sel="1"] .mark{box-shadow:0 0 0 2px var(--accent)}
+  .cell[data-over="1"] .disc,.cell[data-over="1"] .mark{box-shadow:0 0 0 3px #ffd479}
+  .cell[data-chg="1"] .disc{box-shadow:0 0 0 3px #ffd479,0 0 10px rgba(255,212,121,.55)}
+  .cell[data-chg="1"] .mark{border-color:#ffd479;border-style:solid;color:#ffd479}
+
+  .tok{position:relative;width:100%;display:flex;flex-direction:column;align-items:center;gap:2px;border-radius:9px;touch-action:none;cursor:grab}
+  .disc{
+    position:relative;width:33px;height:33px;border-radius:50%;display:grid;place-items:center;
+    background:#0e1b16;font-size:13px;font-weight:800;color:#fff;border:2px solid var(--df);
+  }
+  .disc[data-pos="GK"]{border-color:var(--gk)} .disc[data-pos="DF"]{border-color:var(--df)}
+  .disc[data-pos="MF"]{border-color:var(--mf)} .disc[data-pos="FW"]{border-color:var(--fw)}
+  .num{position:absolute;left:-3px;bottom:-4px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;background:rgba(9,12,18,.9);color:#fff;font-size:9px;line-height:15px;text-align:center;font-weight:700}
+  .ovr{position:absolute;right:-6px;top:-5px;min-width:17px;height:14px;padding:0 3px;border-radius:7px;background:#101722;border:1px solid #35405230;color:#c9d3e0;font-size:9px;line-height:14px;text-align:center;font-weight:700}
+  /* NEW 는 디스크 **왼쪽 위** — 오른쪽 위는 overall, 왼쪽 아래는 슬롯번호, 아래는 이름이 쓴다. */
+  .newBadge{position:absolute;left:-11px;top:-6px;font-size:8.5px;font-weight:800;color:#0f1115;background:#8ef0b8;border-radius:999px;padding:0 4px;line-height:13px;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.6)}
+  .tname{font-size:10px;font-weight:600;line-height:1.15;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.8)}
+  /* 홀드 진행 링 (Q3 ⓐ 어포던스) */
+  .holdRing{position:absolute;inset:-5px;border-radius:50%;pointer-events:none;
+    background:conic-gradient(#ffd479 var(--hp,0%),rgba(255,255,255,.12) 0);
+    -webkit-mask:radial-gradient(circle,transparent calc(50% - 3px),#000 calc(50% - 3px));
+    mask:radial-gradient(circle,transparent calc(50% - 3px),#000 calc(50% - 3px));}
+  .tok.armed{transform:scale(1.18);filter:drop-shadow(0 6px 12px rgba(0,0,0,.6));transition:transform .12s}
+  .tok.picked{opacity:.35}
+
+  .benchSec{border-top:1px solid #23502f;padding:6px 9px 7px;background:rgba(15,17,21,.55)}
+  .benchLbl{display:block;margin-bottom:4px;font-size:11.5px;font-weight:600;color:var(--text-muted)}
+  .benchRow{display:flex;gap:6px}
+  .bcell{position:relative;flex:1 1 40px;min-width:38px;max-width:60px;min-height:46px;padding:0;border:none;background:none;color:var(--text);cursor:pointer;touch-action:none}
+  .boardBar{display:flex;flex-wrap:wrap;gap:7px;padding:8px 9px;border-top:1px solid #23502f;background:rgba(15,17,21,.55)}
+  .boardBar .fbtn{flex:0 0 auto;background:#16203a;border:1px solid #2f3f5e;color:#cfe0ff;font:inherit;font-size:11.8px;font-weight:700;border-radius:8px;padding:7px 11px;cursor:pointer;min-height:34px}
+  .boardBar .fbtn.ghost{background:#1a1f29;border-color:#333c4b;color:#9aa4b3}
+  .formTag{margin-left:auto;align-self:center;font-size:11px;color:var(--text-muted)}
+
+  /* ── 진단줄 ── */
+  .diff{margin:10px 0;background:var(--sunk);border:1px solid var(--border);border-radius:9px;padding:10px 12px;font-size:12.6px;color:#d6dde7}
+  .diff b{color:#ffd479}
+  .diff .sub{display:block;margin-top:5px;font-size:11.6px;color:#9aa4b3;line-height:1.7}
+  .diff .in{color:#8ef0b8;font-weight:700}
+  .diff .out{color:#ffb0b0;font-weight:700}
+
+  /* ── 선수 목록 ── */
+  .plist{border:1px solid var(--border);border-radius:10px;background:var(--sunk);overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .prow{
+    display:flex;align-items:center;gap:9px;padding:8px 10px;border-bottom:1px solid #1b2130;
+    background:#111722;cursor:grab;user-select:none;-webkit-user-select:none;
+  }
+  .prow:last-child{border-bottom:0}
+  .prow .av{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;background:#0e1b16;border:2px solid var(--df);flex:0 0 auto}
+  .prow .nm{flex:1;min-width:0;font-size:12.8px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .prow .pp{font-size:10.5px;font-weight:800;border-radius:5px;padding:1px 6px;background:#1a2130;color:#c6d2e2}
+  .prow .ov{font-size:12px;font-weight:800;font-variant-numeric:tabular-nums;color:#dbe4f0;min-width:24px;text-align:right}
+  .prow .tagB{font-size:9.5px;font-weight:800;border-radius:999px;padding:1px 6px;background:#14331f;color:#8ef0b8;border:1px solid #2e5540}
+  .prow .tagP{font-size:9.5px;font-weight:800;border-radius:999px;padding:1px 6px;background:#2a2617;color:#e2cf95;border:1px solid #4a3f21}
+  .prow[data-locked="1"]{opacity:.4}
+  .prow.picked{opacity:.35}
+
+  /* ── 시트 ── */
+  .sheetBack{position:fixed;inset:0;z-index:80;background:rgba(6,9,14,.62);display:none}
+  .sheetBack.on{display:block}
+  .sheet{position:fixed;left:0;right:0;bottom:0;z-index:81;background:var(--bg-elevated);border-top:1px solid var(--border);
+    border-radius:14px 14px 0 0;display:none;flex-direction:column;max-height:min(66vh,540px);
+    padding-bottom:env(safe-area-inset-bottom,0px)}
+  .sheet.on{display:flex}
+  .sheet .sh{display:flex;align-items:center;gap:8px;padding:11px 13px;border-bottom:1px solid var(--border)}
+  .sheet .sh b{font-size:13.5px}
+  .sheet .sh .x{margin-left:auto;background:none;border:1px solid var(--border);color:#c3cbd6;border-radius:8px;font:inherit;font-size:12px;padding:5px 10px;cursor:pointer}
+  .sheet .sbody{overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .sheet .snote{padding:9px 13px;font-size:11.8px;color:#e8dbc0;background:#241d12;border-bottom:1px solid #4a3a1c}
+
+  /* ── 토스트 ── */
+  .toast{position:fixed;left:50%;bottom:78px;transform:translateX(-50%) translateY(8px);z-index:95;
+    background:#2a1414;border:1px solid #6b2f2f;color:#ffd3d3;border-radius:10px;padding:9px 14px;
+    font-size:12.5px;font-weight:600;max-width:min(360px,92vw);text-align:center;line-height:1.5;
+    opacity:0;pointer-events:none;transition:opacity .18s,transform .18s}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+  .toast.ok{background:#14331f;border-color:#2e5540;color:#c9f5dd}
+
+  /* 드래그 고스트 */
+  #ghost{position:fixed;z-index:99;pointer-events:none;display:none;transform:translate(-50%,-50%) scale(1.15);filter:drop-shadow(0 8px 16px rgba(0,0,0,.65))}
+  #ghost.on{display:block}
+
+  /* Q3 */
+  .q3grid{display:flex;gap:14px;flex-wrap:wrap}
+  .q3col{flex:1 1 330px;min-width:0;background:var(--bg-elevated);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .q3col > .h{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border);background:var(--surface)}
+  .q3col > .h .k{font-size:14px;font-weight:800;color:#8ab4ff}
+  .q3col > .h .t{font-size:12.8px;font-weight:700}
+  .q3col > .h .pick{margin-left:auto}
+  .q3col .b{padding:10px}
+  .q3col .cost{font-size:11.5px;padding:7px 12px;border-top:1px solid var(--border)}
+  .cost.good{background:#132018;color:#bfe8cf}
+  .cost.bad{background:#241416;color:#f0cdd0}
+  .promptCard{margin-top:18px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:12px;scroll-margin:12px}
+  .promptCard h4{font-size:13px;margin-bottom:7px}
+  .promptCard textarea{width:100%;min-height:90px;resize:vertical;background:var(--sunk);border:1px solid var(--border);border-radius:8px;color:var(--text);font:inherit;font-size:12.5px;padding:9px}
+
+  /* ── 요약 ── */
+  .sumCard{background:var(--surface);border:1px solid #33405a;border-radius:12px;padding:13px}
+  .sumRow{display:flex;gap:9px;align-items:baseline;padding:7px 0;border-bottom:1px dashed #2c3648;font-size:13px}
+  .sumRow:last-of-type{border-bottom:0}
+  .sumRow .lb{color:var(--text-muted);font-size:12px;flex:0 0 118px}
+  .sumRow .vl{font-weight:700;color:#fff}
+  .sumRow .vl.none{color:#8a94a3;font-weight:500}
+  .copyline{margin-top:11px;display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+  .copyline input{flex:1 1 220px;min-width:0;background:var(--sunk);border:1px solid var(--border);border-radius:9px;color:#dbe7ff;font:inherit;font-size:13px;font-weight:700;padding:10px 11px}
+
+  .stickySum{position:fixed;left:0;right:0;bottom:0;z-index:70;background:rgba(12,17,27,.96);backdrop-filter:blur(8px);
+    border-top:1px solid var(--border);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));
+    display:flex;align-items:center;gap:9px}
+  .stickySum .s{flex:1;min-width:0;font-size:12.3px;font-weight:700;color:#dbe7ff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+</head>
+<body>
+
+<header class="page">
+  <div class="wrap">
+    <h1>덱·선발 UX 결정 게이트 <span style="color:var(--text-muted);font-weight:600;font-size:13px">#439</span></h1>
+    <div class="sub">폰에서 직접 만져 보고 셋을 고르는 목업입니다. 스펙 문서가 아니라 <b>결정 도구</b>입니다.</div>
+
+    <div class="state">
+      <h3>지금 이런 상태다 (측정된 사실)</h3>
+      <ul>
+        <li>선수풀 → 보드 드래그는 <b>경로 자체가 없다</b>. #244 이후 선수풀이 보드를 <b>덮는 시트</b>라, 끌어다 놓을 보드가 화면에 없다.</li>
+        <li>살아 있는 드래그는 <b>보드 토큰 → 슬롯</b> 하나뿐이고, 그마저 <b>150ms 홀드</b>를 요구하는데 <b>그 신호가 화면에 없다</b>. 짧게 밀면 아무 일도 안 일어난다.</li>
+        <li>경기 시작 전 화면의 <b>[초기화]</b>는 선발·벤치·<b>선수별 프롬프트까지 한 번에</b> 지운다. 확인창도 되돌리기도 없다.</li>
+        <li>경기 시작 전 화면엔 <b>auto 버튼이 아예 없다</b>. auto 는 덱 화면에만 배선돼 있다.</li>
+      </ul>
+    </div>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="wrap">
+    <div class="row" role="tablist">
+      <button role="tab" data-tab="q1" aria-selected="true">Q1 · auto 는 뭘 하나</button>
+      <button role="tab" data-tab="q2" aria-selected="false">Q2 · 선수풀 제한 경계</button>
+      <button role="tab" data-tab="q3" aria-selected="false">Q3 · 폰 드래그 제스처</button>
+      <button role="tab" data-tab="sum" aria-selected="false">선택 요약</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<!-- ══════════════════ Q1 ══════════════════ -->
+<section class="q on" id="q1">
+  <div class="qhead"><span class="qno">Q1</span><h2>경기 시작 전 [auto] 버튼은 무엇을 하나?</h2></div>
+  <div class="qask">
+    경기 직전에 <b>auto</b> 를 누르면, 어디까지 손대야 할까요?
+    지금 쓰는 18명 안에서만 자리를 다시 짜면 되는지, 빈 자리만 메우면 되는지,
+    아니면 <b>덱 화면처럼 보유 선수 전원에서 다시 짜야</b> 하는지.
+  </div>
+
+  <div class="opts" id="q1opts">
+    <button class="opt" data-v="a" aria-pressed="false">
+      <span class="k">ⓐ</span><span class="t">18명 안에서만 재배치</span>
+      <span class="d">현재 선발 11 + 벤치 7 만 가지고 자리를 최적화한다. 선수풀에서 새로 데려오지 않는다.</span>
+    </button>
+    <button class="opt" data-v="b" aria-pressed="false">
+      <span class="k">ⓑ</span><span class="t">빈 자리만 채운다</span>
+      <span class="d">이미 놓인 선수는 건드리지 않는다. 비어 있는 선발·벤치 자리만 메운다.</span>
+    </button>
+    <button class="opt" data-v="c" aria-pressed="false">
+      <span class="k">ⓒ</span><span class="t">덱 화면과 동일</span>
+      <span class="d">보유 선수 전원에서 최적 11명을 다시 짠다. 지금 덱 화면의 [Auto 배치]와 같은 동작.</span>
+    </button>
+  </div>
+
+  <div class="ctrls">
+    <button class="btn pri" id="q1run">▶ 이 상태에서 auto 실행</button>
+    <button class="btn" id="q1reset">↺ 시작 상태로</button>
+    <label class="chk"><input type="checkbox" id="q1form" checked /> 포메이션도 auto 가 고른다</label>
+  </div>
+
+  <div class="board" id="q1board" data-scope="q1"></div>
+
+  <div class="diff" id="q1diff">모드를 고르고 <b>[auto 실행]</b> 을 누르면, 같은 시작 상태에서 무엇이 달라지는지 여기에 나옵니다.</div>
+
+  <div class="note bad" style="background:#241416;border-color:#4d2429;border-left-color:var(--bad);color:#f0cdd0">
+    <b>같이 정해야 하는 것 — auto 가 프롬프트를 지웁니다.</b>
+    지금 덱 화면의 auto(<code>autoBuildLineup</code>)는 배치만 하는 게 아니라
+    <b>배치된 선수 전원의 지시를 포지션 기본 문구로 덮어쓰고</b>, 팀 전술을 중립값으로 되돌리고,
+    <b>팀 프롬프트를 비웁니다</b>. 즉 ⓒ 를 경기 직전에 그대로 얹으면
+    <b>없애기로 한 [초기화]와 사실상 같은 피해</b>가 납니다.
+    ⓐ·ⓑ 를 고르더라도 <b>“이미 적어 둔 지시는 건드리지 않는다”</b>를 함께 못 박아야 합니다.
+    <span style="display:block;margin-top:5px;color:#c9a2a6;font-size:11.6px">(이 목업은 지시 덮어쓰기를 재현하지 않습니다 — 보드 변화만 보여줍니다.)</span>
+  </div>
+
+  <div class="note warn">
+    <b>시작 상태는 일부러 어질러 놨습니다</b> — 선발 2자리가 비어 있고, MF 자리에 FW·FW 자리에 DF 가 서 있고,
+    가장 좋은 선수 둘(<b>손유찬 MF 88</b>, <b>조하람 FW 86</b>)은 <b>18명 밖</b>에 있습니다.
+    ⓒ 를 누르면 그 둘이 <span style="color:#8ef0b8;font-weight:700">밖에서 들어옵니다</span> —
+    이게 곧 <b>Q2(경기 전엔 벤치 외 못 쓴다)와 정면 충돌</b>합니다.
+  </div>
+</section>
+
+<!-- ══════════════════ Q2 ══════════════════ -->
+<section class="q" id="q2">
+  <div class="qhead"><span class="qno">Q2</span><h2>"경기 시작 전엔 교체선수 외 선수풀 못 쓴다"의 경계는?</h2></div>
+  <div class="qask">
+    경기 직전에 <b>어디까지 손댈 수 있어야</b> 할까요?
+    벤치 7명만 넣을 수 있으면 되는지, 선발끼리 자리 바꾸는 것도 막아야 하는지.
+    아래 보드를 <b>직접 눌러 보고 끌어 보세요</b> — 막히면 그때 뜨는 문구가 실제로 유저가 볼 문구입니다.
+  </div>
+
+  <div class="opts" id="q2opts">
+    <button class="opt" data-v="a" aria-pressed="true">
+      <span class="k">ⓐ</span><span class="t">벤치만 투입 가능</span>
+      <span class="d">선수풀 시트에 <b>벤치 7명만</b> 뜬다. 선발끼리 자리 바꾸기는 된다.</span>
+    </button>
+    <button class="opt" data-v="b" aria-pressed="false">
+      <span class="k">ⓑ</span><span class="t">완전 잠금</span>
+      <span class="d">선발 <b>자리 이동도 막는다</b>. 벤치와의 교체만 된다.</span>
+    </button>
+    <button class="opt" data-v="c" aria-pressed="false">
+      <span class="k">ⓒ</span><span class="t">제한 없음(현행)</span>
+      <span class="d">지금처럼 <b>보유 선수 20명 전원</b>이 시트에 뜬다.</span>
+    </button>
+  </div>
+
+  <div class="note" id="q2howto"></div>
+
+  <div class="board" id="q2board" data-scope="q2"></div>
+
+  <div class="ctrls">
+    <button class="btn sm" id="q2reset">↺ 보드 되돌리기</button>
+    <span class="hint">드래그 제스처는 Q3 에서 고른 것(<b id="q2gest">홀드 150ms</b>)이 그대로 적용됩니다.</span>
+  </div>
+
+  <div class="diff" id="q2log">
+    <b>시도 기록</b><span class="sub">아직 없음 — 슬롯을 눌러 보거나 토큰을 끌어 보세요.</span>
+  </div>
+</section>
+
+<!-- ══════════════════ Q3 ══════════════════ -->
+<section class="q" id="q3">
+  <div class="qhead"><span class="qno">Q3</span><h2>폰에서 드래그는 어떤 제스처인가?</h2></div>
+  <div class="qask">
+    손가락으로 선수를 옮길 때, <b>꾹 눌렀다가</b> 끌어야 할까요, <b>대자마자</b> 끌려야 할까요?
+    아래 둘 다 진짜로 동작합니다. 보드 아래 <b>선수 목록을 손가락으로 내려 보세요</b> — 대가가 거기서 갈립니다.
+  </div>
+
+  <div class="ctrls">
+    <label class="chk"><input type="checkbox" id="q3scroll" checked /> 배치 후 프롬프트로 자동 스크롤 <span class="hint">(오늘 동작)</span></label>
+  </div>
+
+  <div class="q3grid">
+    <div class="q3col" data-scope="q3a">
+      <div class="h">
+        <span class="k">ⓐ</span><span class="t">롱프레스 150ms 후 드래그 <span class="hint">(현행 + 어포던스)</span></span>
+        <span class="pick"><button class="btn sm" data-q3pick="a">이걸로</button></span>
+      </div>
+      <div class="b">
+        <div class="board" data-board="q3a"></div>
+        <div class="hint" style="margin:8px 0 5px">보유 선수 — 끌어서 보드에 놓거나, 손가락으로 목록을 내려 보세요</div>
+        <div class="plist" data-list="q3a" style="max-height:190px"></div>
+      </div>
+      <div class="cost good">✔ 목록 세로 스크롤이 살아 있다 · 꾹 누르면 토큰이 커지고 링이 차오르며 진동한다</div>
+    </div>
+
+    <div class="q3col" data-scope="q3b">
+      <div class="h">
+        <span class="k">ⓑ</span><span class="t">즉시 드래그</span>
+        <span class="pick"><button class="btn sm" data-q3pick="b">이걸로</button></span>
+      </div>
+      <div class="b">
+        <div class="board" data-board="q3b"></div>
+        <div class="hint" style="margin:8px 0 5px">보유 선수 — 대고 밀면 바로 잡힙니다</div>
+        <div class="plist" data-list="q3b" style="max-height:190px"></div>
+      </div>
+      <div class="cost bad">✘ 이 목록은 손가락으로 <b>안 내려갑니다</b> — 미는 순간 드래그로 잡히기 때문(그 대가입니다)</div>
+    </div>
+  </div>
+
+  <div class="promptCard" id="q3prompt">
+    <h4>감독의 한마디 — <span id="q3ptarget" style="color:var(--accent)">선수를 배치하면 여기로 옵니다</span></h4>
+    <textarea placeholder="이 선수에게 줄 지시를 적습니다. 예: 오른쪽 뒷공간을 계속 노려라."></textarea>
+    <p class="hint" style="margin:7px 0 0">
+      ↑ <b>[배치 후 프롬프트로 자동 스크롤]</b> 이 켜져 있으면, 선수를 놓는 순간 화면이 여기로 이동해
+      <b>보드가 화면 위로 사라집니다</b>. 그게 오늘 동작(<code>DeckEditor.tsx:204</code>)입니다 — 남길지 판단해 주세요.
+    </p>
+  </div>
+</section>
+
+<!-- ══════════════════ 요약 ══════════════════ -->
+<section class="q" id="sum">
+  <div class="qhead"><span class="qno">✓</span><h2>선택 요약</h2></div>
+  <div class="sumCard">
+    <div class="sumRow"><span class="lb">Q1 auto 범위</span><span class="vl none" id="s1">아직 안 고름</span></div>
+    <div class="sumRow"><span class="lb">Q2 제한 경계</span><span class="vl none" id="s2">아직 안 고름</span></div>
+    <div class="sumRow"><span class="lb">Q3 드래그 제스처</span><span class="vl none" id="s3">아직 안 고름</span></div>
+    <div class="sumRow"><span class="lb">자동 스크롤</span><span class="vl" id="s4">켬</span></div>
+    <div class="sumRow"><span class="lb">Q1 포메이션 auto</span><span class="vl" id="s5">켬</span></div>
+    <div class="copyline">
+      <input id="sumStr" readonly value="Q1=? · Q2=? · Q3=?" />
+      <button class="btn pri" id="copyBtn">복사</button>
+    </div>
+    <p class="hint" style="margin:9px 0 0">이 한 줄을 이슈 #439 에 그대로 붙여넣으면 됩니다.</p>
+  </div>
+</section>
+
+</div><!-- /wrap -->
+
+<div class="stickySum">
+  <span class="s" id="stickyStr">Q1=? · Q2=? · Q3=?</span>
+  <button class="btn sm" id="stickyGo">요약</button>
+</div>
+
+<div class="sheetBack" id="sheetBack"></div>
+<div class="sheet" id="sheet">
+  <div class="sh"><b id="sheetTitle">보유 선수</b><button class="x" id="sheetClose">닫기</button></div>
+  <div class="snote" id="sheetNote" style="display:none"></div>
+  <div class="sbody"><div class="plist" data-list="sheet" style="border:0;border-radius:0;background:transparent"></div></div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="ghost"></div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════════════
+ * #439 결정 게이트 목업 — 자립 HTML(빌드·CDN·외부폰트 0). file:// 와 http 양쪽에서 동작.
+ *
+ * 실제 코드와의 대응:
+ *   · 포메이션 슬롯 배치      = apps/web/src/deck/tactics-logic.ts  starterCoords()
+ *   · 슬롯 인덱스/역할/상한   = apps/web/src/deck/deck-logic.ts     FORMATION_LAYOUTS / STARTER_COUNT=11 / BENCH_MAX=7
+ *   · fit·positionWeight      = apps/web/src/deck/auto-lineup.ts    positionWeight / fitScore
+ *   · 센서(홀드 150ms/거리6)  = apps/web/src/deck/DeckEditor.tsx:187-191
+ *   · 드롭 규칙               = apps/web/src/deck/DeckEditor.tsx:219-253
+ *   · 자동 스크롤             = apps/web/src/deck/DeckEditor.tsx:204
+ * ═════════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 가짜 선수 20명 (실제 로스터 아님) ────────────────────────────────────────── */
+var PLAYERS = [
+  {id:"P01",name:"김서준",pos:"GK",ovr:78},
+  {id:"P02",name:"오세온",pos:"GK",ovr:71},
+  {id:"P03",name:"한지후",pos:"GK",ovr:63},
+  {id:"P04",name:"박도윤",pos:"DF",ovr:84},
+  {id:"P05",name:"이건우",pos:"DF",ovr:80},
+  {id:"P06",name:"최민혁",pos:"DF",ovr:76},
+  {id:"P07",name:"정우진",pos:"DF",ovr:73},
+  {id:"P08",name:"신재하",pos:"DF",ovr:68},
+  {id:"P09",name:"강태오",pos:"DF",ovr:62},
+  {id:"P10",name:"손유찬",pos:"MF",ovr:88},
+  {id:"P11",name:"황시우",pos:"MF",ovr:82},
+  {id:"P12",name:"이서진",pos:"MF",ovr:79},
+  {id:"P13",name:"백승윤",pos:"MF",ovr:74},
+  {id:"P14",name:"남경민",pos:"MF",ovr:70},
+  {id:"P15",name:"원태경",pos:"MF",ovr:64},
+  {id:"P16",name:"조하람",pos:"FW",ovr:86},
+  {id:"P17",name:"오현빈",pos:"FW",ovr:81},
+  {id:"P18",name:"엄지호",pos:"FW",ovr:77},
+  {id:"P19",name:"양준서",pos:"FW",ovr:72},
+  {id:"P20",name:"정상원",pos:"FW",ovr:66}
+];
+var BY = {};
+PLAYERS.forEach(function(p){ BY[p.id] = p; });
+
+/* ── fit (auto-lineup.ts 그대로) ─────────────────────────────────────────────── */
+var RANK = {GK:0, DF:1, MF:2, FW:3};
+function positionWeight(pp, sp){
+  if (pp === sp) return 1.0;                      // EXACT_WEIGHT
+  if ((pp === "GK") !== (sp === "GK")) return 0.2; // GK_CROSS_WEIGHT
+  return Math.max(0.2, 1.0 - 0.15 * Math.abs(RANK[pp] - RANK[sp])); // MIN_OUTFIELD / STEP_PENALTY
+}
+function fit(p, sp){ return p.ovr * positionWeight(p.pos, sp); }
+
+/* ── 포메이션 (deck-logic.FORMATION_LAYOUTS) ─────────────────────────────────── */
+var FORMATIONS = {
+  "4-4-2":[{label:"FW",idx:[9,10]},{label:"MF",idx:[5,6,7,8]},{label:"DF",idx:[1,2,3,4]},{label:"GK",idx:[0]}],
+  "4-3-3":[{label:"FW",idx:[8,9,10]},{label:"MF",idx:[5,6,7]},{label:"DF",idx:[1,2,3,4]},{label:"GK",idx:[0]}]
+};
+var BENCH_MAX = 7, STARTER_COUNT = 11;
+
+function slotList(f){
+  var out = [];
+  FORMATIONS[f].forEach(function(r){ r.idx.forEach(function(i){ out.push({idx:i, pos:r.label}); }); });
+  return out.sort(function(a,b){ return a.idx - b.idx; });
+}
+function slotPosOf(f, idx){
+  var l = slotList(f);
+  for (var i=0;i<l.length;i++) if (l[i].idx === idx) return l[i].pos;
+  return "MF";
+}
+/* tactics-logic.starterCoords() 와 같은 식 */
+function coordsOf(f){
+  var rows = FORMATIONS[f], out = [];
+  rows.forEach(function(row, ri){
+    var y = rows.length <= 1 ? 0.5 : 0.1 + (ri/(rows.length-1))*0.82;
+    var n = row.idx.length;
+    row.idx.forEach(function(si, i){
+      var x = n === 1 ? 0.5 : 0.14 + (i/(n-1))*0.72;
+      out.push({idx:si, x:x, y:y, pos:row.label});
+    });
+  });
+  return out;
+}
+
+/* ── 배정 (⚠️ 실제 auto-lineup.ts 는 Hungarian(minCostAssignment)으로 **전역 최적**이다.
+ *    여기는 목업이라 "fit 이 가장 높은 (자리,선수) 쌍부터 확정"하는 그리디 근사를 쓴다 —
+ *    대부분 같은 답이 나오지만 항상 같다는 보장은 없다.) ───────────────────── */
+function greedyAssign(slots, pool){
+  var pairs = [];
+  slots.forEach(function(s){ pool.forEach(function(p){ pairs.push({s:s, p:p, v:fit(p, s.pos)}); }); });
+  pairs.sort(function(a,b){
+    if (b.v !== a.v) return b.v - a.v;
+    if (a.p.id !== b.p.id) return a.p.id < b.p.id ? -1 : 1; // 동점 tie-break = playerId 사전순
+    return a.s.idx - b.s.idx;
+  });
+  var us = {}, up = {}, res = {};
+  pairs.forEach(function(q){
+    if (us[q.s.idx] || up[q.p.id]) return;
+    us[q.s.idx] = 1; up[q.p.id] = 1; res[q.s.idx] = q.p.id;
+  });
+  return res;
+}
+function byOvrDesc(a,b){ return b.ovr - a.ovr || (a.id < b.id ? -1 : 1); }
+
+/** 풀 전체로 새로 짠다(= 덱 화면 autoBuildLineup). */
+function buildFrom(pool, formationCands){
+  var best = null;
+  formationCands.forEach(function(f){
+    var sl = slotList(f), a = greedyAssign(sl, pool), tot = 0;
+    sl.forEach(function(s){ if (a[s.idx]) tot += fit(BY[a[s.idx]], s.pos); });
+    if (!best || tot > best.tot) best = {f:f, a:a, tot:tot};
+  });
+  var starters = new Array(11).fill(null);
+  Object.keys(best.a).forEach(function(k){ starters[+k] = best.a[k]; });
+  var used = {};
+  starters.forEach(function(id){ if (id) used[id] = 1; });
+  var bench = pool.filter(function(p){ return !used[p.id]; }).sort(byOvrDesc)
+                  .slice(0, BENCH_MAX).map(function(p){ return p.id; });
+  while (bench.length < BENCH_MAX) bench.push(null);
+  return {formation: best.f, starters: starters, bench: bench};
+}
+
+/* ── 시작 상태 (일부러 어질러 둔다) ─────────────────────────────────────────── */
+function startState(){
+  return {
+    formation: "4-4-2",
+    //          0     1     2     3     4      5     6     7            8     9     10
+    starters: ["P02","P04","P06","P07", null, "P11","P12","P19"/*FW가 MF*/, null, "P17","P09"/*DF가 FW*/],
+    bench:    ["P01","P05","P13","P18","P08", null, null]
+  };
+}
+function clone(st){ return {formation:st.formation, starters:st.starters.slice(), bench:st.bench.slice()}; }
+function placedIds(st){
+  var s = {};
+  st.starters.concat(st.bench).forEach(function(id){ if (id) s[id] = 1; });
+  return s;
+}
+function poolOf(st){ // 18명 밖(미배치) 선수
+  var p = placedIds(st);
+  return PLAYERS.filter(function(x){ return !p[x.id]; });
+}
+function placedPlayers(st){
+  var p = placedIds(st);
+  return PLAYERS.filter(function(x){ return p[x.id]; });
+}
+
+/* ═══════════ 보드 렌더 ═══════════ */
+function initials(name){ return name ? name.charAt(0) : "?"; }
+
+function tokenHTML(id, numLabel, opts){
+  var p = BY[id]; if (!p) return "";
+  opts = opts || {};
+  return '<span class="tok" data-drag="' + id + '">' +
+    '<span class="disc" data-pos="' + p.pos + '">' + initials(p.name) +
+      '<span class="num">' + numLabel + '</span>' +
+      '<span class="ovr">' + p.ovr + '</span>' +
+      (opts.isNew ? '<span class="newBadge">NEW</span>' : '') +
+    '</span>' +
+    '<span class="tname">' + p.name + '</span>' +
+  '</span>';
+}
+
+/**
+ * @param root  .board 엘리먼트
+ * @param st    상태
+ * @param o     {footer:[{label,id,ghost}], changed:{starter:{},bench:{}}, newIds:{}, sel:{role,idx}, cand:bool}
+ */
+function renderBoard(root, st, o){
+  o = o || {};
+  var cs = coordsOf(st.formation);
+  var html = '<div class="pitch"><span class="ln">' +
+    '<span class="half"></span><span class="circ"></span>' +
+    '<span class="pb us"></span><span class="pb them"></span>' +
+    '<span class="gb us"></span><span class="gb them"></span>' +
+    '</span><div class="tokens">';
+  cs.forEach(function(c){
+    var id = st.starters[c.idx];
+    var chg = o.changed && o.changed.starter && o.changed.starter[c.idx] ? '1' : '';
+    var sel = o.sel && o.sel.role === "starter" && o.sel.idx === c.idx ? '1' : '';
+    var cand = (o.cand && !id) ? '1' : '';
+    html += '<button type="button" class="cell" data-slot="starter:' + c.idx + '"' +
+      ' data-role="starter" data-idx="' + c.idx + '" data-filled="' + (id ? 'true' : 'false') + '"' +
+      (chg ? ' data-chg="1"' : '') + (sel ? ' data-sel="1"' : '') + (cand ? ' data-cand="1"' : '') +
+      ' style="left:' + (c.x*100).toFixed(2) + '%;top:' + (c.y*100).toFixed(2) + '%"' +
+      ' aria-label="' + (id ? BY[id].name : '빈 슬롯 ' + c.pos) + '">' +
+      (id ? tokenHTML(id, String(c.idx+1), {isNew: o.newIds && o.newIds[id]}) : '<span class="mark">+</span>') +
+      '</button>';
+  });
+  html += '</div></div>';
+
+  var bn = st.bench.filter(Boolean).length;
+  html += '<div class="benchSec"><span class="benchLbl">벤치 ' + bn + ' / ' + BENCH_MAX + '</span><div class="benchRow">';
+  for (var i=0;i<BENCH_MAX;i++){
+    var bid = st.bench[i];
+    var bchg = o.changed && o.changed.bench && o.changed.bench[i] ? ' data-chg="1"' : '';
+    var bsel = (o.sel && o.sel.role === "bench" && o.sel.idx === i) ? ' data-sel="1"' : '';
+    html += '<button type="button" class="cell bcell" data-slot="bench:' + i + '" data-role="bench" data-idx="' + i + '"' +
+      ' data-filled="' + (bid ? 'true' : 'false') + '"' + bchg + bsel +
+      ' style="position:relative;transform:none;width:auto"' +
+      ' aria-label="' + (bid ? BY[bid].name : '빈 벤치 자리') + '">' +
+      (bid ? tokenHTML(bid, "B" + (i+1), {isNew: o.newIds && o.newIds[bid]}) : '<span class="mark">+</span>') +
+      '</button>';
+  }
+  html += '</div></div>';
+
+  if (o.footer && o.footer.length){
+    html += '<div class="boardBar">';
+    o.footer.forEach(function(f){
+      html += '<button type="button" class="fbtn' + (f.ghost ? ' ghost' : '') + '" data-fbtn="' + f.id + '">' + f.label + '</button>';
+    });
+    html += '<span class="formTag">' + st.formation + '</span></div>';
+  }
+  root.innerHTML = html;
+}
+
+/* ═══════════ 토스트 ═══════════ */
+var toastEl = document.getElementById("toast"), toastT = null;
+function toast(msg, ok){
+  toastEl.textContent = msg;
+  toastEl.className = "toast on" + (ok ? " ok" : "");
+  if (toastT) clearTimeout(toastT);
+  toastT = setTimeout(function(){ toastEl.className = "toast" + (ok ? " ok" : ""); }, 2600);
+}
+
+/* ═══════════ 드래그 엔진 (touch + mouse) ═══════════
+ * gesture 'hold'      = TouchSensor {delay:150, tolerance:8}  ← 현행
+ * gesture 'immediate' = 손가락이 4px 움직이면 즉시 활성(그 영역 세로 스크롤 사망)
+ * 마우스는 두 모드 모두 MouseSensor {distance:6} 로 동일.
+ */
+var SCOPES = {};       // name -> {gesture(), onDrop(playerId, from, to), canStart(playerId, from)}
+var HOLD_MS = 150, HOLD_TOL = 8, MOUSE_DIST = 6;
+var ghostEl = document.getElementById("ghost");
+var drag = null, suppressClick = false;
+
+function scopeOf(el){
+  var s = el.closest("[data-scope]");
+  return s ? s.dataset.scope : null;
+}
+function parseSlot(str){
+  var a = str.split(":");
+  return {role:a[0], idx:+a[1]};
+}
+function srcOf(el){
+  var cell = el.closest("[data-slot]");
+  if (cell) return parseSlot(cell.dataset.slot);
+  var row = el.closest("[data-poolrow]");
+  if (row) return {role:"pool", idx:-1};
+  return {role:"pool", idx:-1};
+}
+
+function beginCandidate(ev, x, y, isTouch){
+  var srcEl = ev.target.closest("[data-drag]");
+  if (!srcEl) return;
+  var scope = scopeOf(srcEl);
+  if (!scope || !SCOPES[scope]) return;
+  var playerId = srcEl.dataset.drag;
+  var from = srcOf(srcEl);
+  var cfg = SCOPES[scope];
+  if (cfg.canStart && !cfg.canStart(playerId, from)) return;
+
+  var gest = isTouch ? cfg.gesture() : "mouse";
+  drag = {
+    scope: scope, playerId: playerId, from: from, srcEl: srcEl, isTouch: isTouch,
+    gesture: gest, x0: x, y0: y, active: false, holdT: null, ring: null, rafId: 0, t0: Date.now()
+  };
+  if (gest === "hold"){
+    // 어포던스: 진행 링 + 살짝 커짐(현행엔 이 신호가 없다)
+    var ring = document.createElement("span");
+    ring.className = "holdRing";
+    var disc = srcEl.querySelector(".disc") || srcEl.querySelector(".av") || srcEl;
+    disc.appendChild(ring);
+    drag.ring = ring;
+    var tick = function(){
+      if (!drag || drag.active) return;
+      var p = Math.min(1, (Date.now() - drag.t0) / HOLD_MS);
+      ring.style.setProperty("--hp", (p*100).toFixed(0) + "%");
+      if (p < 1) drag.rafId = requestAnimationFrame(tick);
+    };
+    drag.rafId = requestAnimationFrame(tick);
+    drag.holdT = setTimeout(function(){ activate(); }, HOLD_MS);
+  }
+}
+
+function activate(){
+  if (!drag || drag.active) return;
+  drag.active = true;
+  if (drag.holdT){ clearTimeout(drag.holdT); drag.holdT = null; }
+  if (drag.rafId) cancelAnimationFrame(drag.rafId);
+  if (drag.ring && drag.ring.parentNode) drag.ring.parentNode.removeChild(drag.ring);
+  drag.ring = null;
+  if (navigator.vibrate) { try { navigator.vibrate(10); } catch(e){} }
+  var tok = drag.srcEl;
+  tok.classList.add("picked");
+  ghostEl.innerHTML = '<div style="pointer-events:none">' + ghostMarkup(drag.playerId) + '</div>';
+  ghostEl.className = "on";
+}
+function ghostMarkup(id){
+  var p = BY[id];
+  return '<span class="tok" style="width:60px"><span class="disc" data-pos="' + p.pos + '">' + initials(p.name) +
+    '<span class="ovr">' + p.ovr + '</span></span><span class="tname">' + p.name + '</span></span>';
+}
+function moveGhost(x, y){ ghostEl.style.left = x + "px"; ghostEl.style.top = y + "px"; }
+
+var lastOver = null;
+function highlight(x, y){
+  var el = document.elementFromPoint(x, y);
+  var cell = el ? el.closest("[data-slot]") : null;
+  if (cell && scopeOf(cell) !== drag.scope) cell = null;
+  if (lastOver && lastOver !== cell) lastOver.removeAttribute("data-over");
+  if (cell) cell.setAttribute("data-over", "1");
+  lastOver = cell;
+  return cell;
+}
+function clearDrag(){
+  if (!drag) return;
+  if (drag.holdT) clearTimeout(drag.holdT);
+  if (drag.rafId) cancelAnimationFrame(drag.rafId);
+  if (drag.ring && drag.ring.parentNode) drag.ring.parentNode.removeChild(drag.ring);
+  if (drag.srcEl) drag.srcEl.classList.remove("picked", "armed");
+  if (lastOver) { lastOver.removeAttribute("data-over"); lastOver = null; }
+  ghostEl.className = "";
+  ghostEl.innerHTML = "";
+  drag = null;
+}
+
+document.addEventListener("touchstart", function(e){
+  if (e.touches.length !== 1) { clearDrag(); return; }
+  var t = e.touches[0];
+  beginCandidate(e, t.clientX, t.clientY, true);
+}, {passive:true});
+
+document.addEventListener("touchmove", function(e){
+  if (!drag || !drag.isTouch) return;
+  var t = e.touches[0];
+  if (!t) return;
+  var dx = t.clientX - drag.x0, dy = t.clientY - drag.y0;
+  var dist = Math.sqrt(dx*dx + dy*dy);
+  if (!drag.active){
+    if (drag.gesture === "hold"){
+      // 홀드 전에 손가락이 움직이면 = 스크롤 의도 → 드래그 포기(리스트 스크롤이 산다)
+      if (dist > HOLD_TOL) { clearDrag(); }
+      return;
+    }
+    if (dist > 4) activate();
+  }
+  if (drag && drag.active){
+    if (e.cancelable) e.preventDefault();  // 페이지/목록 스크롤 억제
+    moveGhost(t.clientX, t.clientY);
+    highlight(t.clientX, t.clientY);
+  }
+}, {passive:false});
+
+function endTouch(e){
+  if (!drag) return;
+  if (drag.active){
+    var t = (e.changedTouches && e.changedTouches[0]) || null;
+    var cell = t ? highlight(t.clientX, t.clientY) : null;
+    finishDrop(cell);
+  } else {
+    clearDrag();
+  }
+}
+document.addEventListener("touchend", endTouch, {passive:true});
+document.addEventListener("touchcancel", function(){ clearDrag(); }, {passive:true});
+
+document.addEventListener("mousedown", function(e){
+  if (e.button !== 0) return;
+  beginCandidate(e, e.clientX, e.clientY, false);
+});
+document.addEventListener("mousemove", function(e){
+  if (!drag || drag.isTouch) return;
+  var dx = e.clientX - drag.x0, dy = e.clientY - drag.y0;
+  if (!drag.active){
+    if (Math.sqrt(dx*dx + dy*dy) > MOUSE_DIST) activate();
+    else return;
+  }
+  e.preventDefault();
+  moveGhost(e.clientX, e.clientY);
+  highlight(e.clientX, e.clientY);
+});
+document.addEventListener("mouseup", function(e){
+  if (!drag || drag.isTouch) return;
+  if (drag.active){
+    var cell = highlight(e.clientX, e.clientY);
+    finishDrop(cell);
+  } else clearDrag();
+});
+
+function finishDrop(cell){
+  var d = drag;
+  var to = cell ? parseSlot(cell.dataset.slot) : null;
+  suppressClick = true;
+  setTimeout(function(){ suppressClick = false; }, 60);
+  clearDrag();
+  if (!d || !to) return;
+  var cfg = SCOPES[d.scope];
+  if (cfg && cfg.onDrop) cfg.onDrop(d.playerId, d.from, to);
+}
+
+/* 공통 이동: swap 시맨틱 (tactics-logic.movePlayerToSlot) */
+function findSlotOf(st, playerId){
+  var i = st.starters.indexOf(playerId);
+  if (i >= 0) return {role:"starter", idx:i};
+  var j = st.bench.indexOf(playerId);
+  if (j >= 0) return {role:"bench", idx:j};
+  return null;
+}
+function getAt(st, ref){ return ref.role === "starter" ? st.starters[ref.idx] : st.bench[ref.idx]; }
+function setAt(st, ref, id){ if (ref.role === "starter") st.starters[ref.idx] = id; else st.bench[ref.idx] = id; }
+function movePlayerToSlot(st, playerId, to){
+  var next = clone(st);
+  var from = findSlotOf(next, playerId);
+  var occupant = getAt(next, to);
+  if (from && from.role === to.role && from.idx === to.idx) return next;
+  if (from) setAt(next, from, null);
+  if (occupant && occupant !== playerId){
+    if (from) setAt(next, from, occupant);   // swap
+    // from 이 없으면(풀에서 온 선수) 기존 점유자는 덱에서 빠진다 = assignPlayer 시맨틱
+  }
+  setAt(next, to, playerId);
+  return next;
+}
+
+/* ═══════════════════════════════ Q1 ═══════════════════════════════ */
+var q1 = {mode:null, st:startState(), start:startState(), formAuto:true};
+var q1boardEl = document.getElementById("q1board");
+var q1diffEl = document.getElementById("q1diff");
+
+function q1render(o){
+  renderBoard(q1boardEl, q1.st, Object.assign({footer:[]}, o || {}));
+  q1boardEl.insertAdjacentHTML("beforeend",
+    '<div class="boardBar"><span class="hint">읽기 전용 — auto 결과 확인용</span><span class="formTag">' + q1.st.formation + '</span></div>');
+}
+q1render();
+
+function q1Formations(){ return q1.formAuto ? Object.keys(FORMATIONS) : [q1.st.formation]; }
+
+/** ⓑ 빈 자리만 채운다 — 이미 놓인 선수는 그대로. */
+function fillEmptyOnly(st){
+  var next = clone(st);
+  var pool = poolOf(st);
+  var empties = slotList(next.formation).filter(function(s){ return !next.starters[s.idx]; });
+  var a = greedyAssign(empties, pool);
+  var used = {};
+  empties.forEach(function(s){ if (a[s.idx]) { next.starters[s.idx] = a[s.idx]; used[a[s.idx]] = 1; } });
+  var rest = pool.filter(function(p){ return !used[p.id]; }).sort(byOvrDesc);
+  for (var i=0;i<BENCH_MAX;i++){
+    if (!next.bench[i] && rest.length) next.bench[i] = rest.shift().id;
+  }
+  return next;
+}
+
+function runAuto(){
+  if (!q1.mode){ toast("먼저 ⓐ·ⓑ·ⓒ 중 하나를 골라 주세요"); return; }
+  var before = clone(q1.start);
+  var after;
+  if (q1.mode === "a")      after = buildFrom(placedPlayers(before), q1Formations());
+  else if (q1.mode === "b") after = fillEmptyOnly(before);
+  else                      after = buildFrom(PLAYERS.slice(), q1Formations());
+  q1.st = after;
+
+  // diff
+  var changed = {starter:{}, bench:{}}, nChanged = 0;
+  for (var i=0;i<STARTER_COUNT;i++) if (before.starters[i] !== after.starters[i]) { changed.starter[i] = 1; nChanged++; }
+  for (var j=0;j<BENCH_MAX;j++) if (before.bench[j] !== after.bench[j]) { changed.bench[j] = 1; nChanged++; }
+  var pb = placedIds(before), pa = placedIds(after);
+  var newIn = Object.keys(pa).filter(function(id){ return !pb[id]; });
+  var out   = Object.keys(pb).filter(function(id){ return !pa[id]; });
+  var newIds = {};
+  newIn.forEach(function(id){ newIds[id] = 1; });
+
+  renderBoard(q1boardEl, after, {changed:changed, newIds:newIds});
+  q1boardEl.insertAdjacentHTML("beforeend",
+    '<div class="boardBar"><span class="hint">노란 테두리 = 바뀐 자리 · NEW = 18명 밖에서 들어온 선수</span>' +
+    '<span class="formTag">' + after.formation + '</span></div>');
+
+  var nm = function(id){ return BY[id].name + "(" + BY[id].pos + " " + BY[id].ovr + ")"; };
+  var label = {a:"ⓐ 18명 안에서만 재배치", b:"ⓑ 빈 자리만 채운다", c:"ⓒ 덱 화면과 동일"}[q1.mode];
+  var s = "<b>" + label + "</b> → 바뀐 자리 <b>" + nChanged + "</b> · 새로 들어온 선수 <b>" + newIn.length +
+          "명</b> · 밀려난 선수 <b>" + out.length + "명</b>";
+  var sub = "";
+  if (before.formation !== after.formation)
+    sub += '<span style="color:#ffd479">포메이션 ' + before.formation + " → " + after.formation + " 로 바뀜</span><br/>";
+  sub += newIn.length ? '<span class="in">들어옴</span> ' + newIn.map(nm).join(", ") + "<br/>" : '<span class="in">들어옴</span> 없음<br/>';
+  sub += out.length ? '<span class="out">나감</span> ' + out.map(nm).join(", ") : '<span class="out">나감</span> 없음';
+  if (q1.mode === "c" && newIn.length)
+    sub += '<br/><span style="color:#ffb0b0">⚠ 이 선수들은 <b>벤치가 아니라 선수풀</b>에서 왔습니다 — Q2 ⓐ/ⓑ 규칙이라면 유저가 직접은 못 하는 일입니다.</span>';
+  q1diffEl.innerHTML = s + '<span class="sub">' + sub + "</span>";
+}
+
+document.getElementById("q1opts").addEventListener("click", function(e){
+  var b = e.target.closest(".opt"); if (!b) return;
+  q1.mode = b.dataset.v;
+  [].forEach.call(this.querySelectorAll(".opt"), function(x){ x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+  runAuto();
+  updateSummary();
+});
+document.getElementById("q1run").addEventListener("click", runAuto);
+document.getElementById("q1reset").addEventListener("click", function(){
+  q1.st = startState();
+  q1render();
+  q1diffEl.innerHTML = '시작 상태로 되돌렸습니다. 모드를 고르고 <b>[auto 실행]</b> 을 누르세요.';
+});
+document.getElementById("q1form").addEventListener("change", function(){
+  q1.formAuto = this.checked;
+  updateSummary();
+  if (q1.mode) runAuto();
+});
+
+/* Q3 상태는 Q2 보드가 제스처를 읽어 가므로 **먼저** 선언한다(선언 순서 의존). */
+var q3 = {gesture:"hold", pick:null, autoScroll:true,
+          a:{st:startState()}, b:{st:startState()}};
+
+/* ═══════════════════════════════ Q2 ═══════════════════════════════ */
+var q2 = {rule:"a", st:startState(), sel:null, pending:null, log:[]};
+var q2boardEl = document.getElementById("q2board");
+var q2logEl = document.getElementById("q2log");
+var q2howto = document.getElementById("q2howto");
+
+var Q2_TEXT = {
+  a: "<b>ⓐ 벤치만 투입 가능</b> — 빈 자리를 누르면 <b>벤치 7명만</b> 뜹니다. 선발 토큰끼리는 탭 두 번(또는 드래그)으로 자리를 바꿀 수 있습니다. [보유 선수 전체]를 눌러 보세요.",
+  b: "<b>ⓑ 완전 잠금</b> — 선발끼리 자리 바꾸기도 막습니다. 선발 토큰을 누르면 <b>교체할 벤치 선수</b>만 고를 수 있습니다. 선발→선발 드래그를 해 보세요.",
+  c: "<b>ⓒ 제한 없음(현행)</b> — 빈 자리를 누르면 <b>보유 선수 20명 전원</b>이 뜹니다. 지금 라이브가 이 상태입니다."
+};
+
+function q2Footer(){
+  return [
+    {id:"pool", label:"보유 선수 (20)", ghost: q2.rule !== "c"},
+    {id:"bench", label:"벤치에서 고르기"},
+    {id:"reset", label:"↺ 되돌리기", ghost:true}
+  ];
+}
+function q2render(){
+  renderBoard(q2boardEl, q2.st, {footer:q2Footer(), sel:q2.sel, cand: !!q2.pending});
+  q2howto.innerHTML = Q2_TEXT[q2.rule];
+  document.getElementById("q2gest").textContent = q3.gesture === "hold" ? "홀드 150ms" : "즉시 드래그";
+}
+function q2log(msg, ok){
+  q2.log.unshift((ok ? "✔ " : "✘ ") + msg);
+  q2.log = q2.log.slice(0, 6);
+  q2logEl.innerHTML = "<b>시도 기록</b><span class=\"sub\">" +
+    q2.log.map(function(l){ return (l.charAt(0) === "✔" ? '<span class="in">' : '<span class="out">') + l + "</span>"; }).join("<br/>") +
+    "</span>";
+}
+
+var MSG = {
+  lockedMove: "경기 시작 전에는 선발 자리를 바꿀 수 없습니다 — 벤치와의 교체만 됩니다.",
+  poolBlocked: "경기 시작 전에는 벤치 7명 외에는 투입할 수 없습니다. 선수풀 편집은 덱 화면에서 하세요.",
+  benchMove: "벤치 자리 이동은 경기 시작 전에 할 수 없습니다."
+};
+
+SCOPES.q2 = {
+  gesture: function(){ return q3.gesture; },
+  canStart: function(){ return true; },
+  onDrop: function(playerId, from, to){
+    var fromRef = findSlotOf(q2.st, playerId) || from;
+    if (q2.rule === "b"){
+      if (fromRef.role === "starter" && to.role === "starter"){
+        toast(MSG.lockedMove); q2log("드래그 선발→선발 거부 — " + MSG.lockedMove); return;
+      }
+      if (fromRef.role === "bench" && to.role === "bench"){
+        toast(MSG.benchMove); q2log("드래그 벤치→벤치 거부 — " + MSG.benchMove); return;
+      }
+    }
+    q2.st = movePlayerToSlot(q2.st, playerId, to);
+    q2.sel = null; q2.pending = null;
+    q2render();
+    q2log("드래그로 " + BY[playerId].name + " → " + (to.role === "starter" ? ("선발 " + (to.idx+1) + "번") : ("벤치 B" + (to.idx+1))), true);
+  }
+};
+
+function openSheet(title, list, note, onPick){
+  document.getElementById("sheetTitle").textContent = title;
+  var noteEl = document.getElementById("sheetNote");
+  if (note){ noteEl.textContent = note; noteEl.style.display = ""; } else noteEl.style.display = "none";
+  var body = document.querySelector('[data-list="sheet"]');
+  body.innerHTML = list.map(function(p){
+    return '<div class="prow" data-pick="' + p.id + '">' +
+      '<span class="av" style="border-color:var(--' + p.pos.toLowerCase() + ')">' + initials(p.name) + '</span>' +
+      '<span class="nm">' + p.name + '</span>' +
+      '<span class="pp">' + p.pos + '</span>' +
+      (p._tag ? '<span class="' + p._tagCls + '">' + p._tag + '</span>' : '') +
+      '<span class="ov">' + p.ovr + '</span></div>';
+  }).join("");
+  body.onclick = function(e){
+    var r = e.target.closest("[data-pick]"); if (!r) return;
+    closeSheet();
+    onPick(r.dataset.pick);
+  };
+  document.getElementById("sheet").className = "sheet on";
+  document.getElementById("sheetBack").className = "sheetBack on";
+}
+function closeSheet(){
+  document.getElementById("sheet").className = "sheet";
+  document.getElementById("sheetBack").className = "sheetBack";
+}
+document.getElementById("sheetClose").addEventListener("click", closeSheet);
+document.getElementById("sheetBack").addEventListener("click", closeSheet);
+
+function benchPlayers(st){
+  return st.bench.filter(Boolean).map(function(id){
+    var p = Object.assign({}, BY[id]); p._tag = "벤치"; p._tagCls = "tagB"; return p;
+  });
+}
+function allPlayersTagged(st){
+  var pl = placedIds(st);
+  var bench = {};
+  st.bench.forEach(function(id){ if (id) bench[id] = 1; });
+  return PLAYERS.map(function(p0){
+    var p = Object.assign({}, p0);
+    if (bench[p.id]) { p._tag = "벤치"; p._tagCls = "tagB"; }
+    else if (!pl[p.id]) { p._tag = "선수풀"; p._tagCls = "tagP"; }
+    return p;
+  });
+}
+
+function q2SlotTap(ref){
+  var occ = getAt(q2.st, ref);
+
+  if (q2.rule === "b"){
+    if (ref.role === "bench"){ toast(MSG.benchMove); q2log("벤치 자리 탭 거부 — " + MSG.benchMove); return; }
+    var title = occ ? (BY[occ].name + " 와 교체할 벤치 선수") : "이 자리에 넣을 벤치 선수";
+    openSheet(title, benchPlayers(q2.st), "경기 시작 전 — 벤치 7명만 투입할 수 있습니다.", function(pid){
+      q2.st = movePlayerToSlot(q2.st, pid, ref);
+      q2render();
+      q2log(BY[pid].name + " 교체 투입 → " + (ref.role === "starter" ? ("선발 " + (ref.idx+1) + "번") : "벤치"), true);
+    });
+    return;
+  }
+
+  // ⓐ / ⓒ : 채워진 슬롯 탭 = 자리 바꾸기 선택
+  if (occ){
+    if (q2.sel && (q2.sel.role !== ref.role || q2.sel.idx !== ref.idx)){
+      var a = getAt(q2.st, q2.sel);
+      q2.st = movePlayerToSlot(q2.st, a, ref);
+      var b = BY[occ].name;
+      q2.sel = null; q2render();
+      q2log(BY[a].name + " ↔ " + b + " 자리 바꿈", true);
+      return;
+    }
+    q2.sel = (q2.sel && q2.sel.role === ref.role && q2.sel.idx === ref.idx) ? null : ref;
+    q2render();
+    return;
+  }
+
+  // 빈 슬롯 → 시트
+  if (q2.rule === "a"){
+    openSheet("이 자리에 넣을 선수", benchPlayers(q2.st), "경기 시작 전 — 벤치 7명만 뜹니다.", function(pid){
+      q2.st = movePlayerToSlot(q2.st, pid, ref); q2render();
+      q2log(BY[pid].name + " 투입 → " + (ref.role === "starter" ? ("선발 " + (ref.idx+1) + "번") : ("벤치 B" + (ref.idx+1))), true);
+    });
+  } else {
+    openSheet("보유 선수 (20)", allPlayersTagged(q2.st), null, function(pid){
+      q2.st = movePlayerToSlot(q2.st, pid, ref); q2render();
+      q2log(BY[pid].name + " 투입 → " + (ref.role === "starter" ? ("선발 " + (ref.idx+1) + "번") : ("벤치 B" + (ref.idx+1))), true);
+    });
+  }
+}
+
+q2boardEl.addEventListener("click", function(e){
+  if (suppressClick) return;
+  var fb = e.target.closest("[data-fbtn]");
+  if (fb){
+    var k = fb.dataset.fbtn;
+    if (k === "reset"){ q2.st = startState(); q2.sel = null; q2render(); q2log("보드 되돌림", true); return; }
+    if (k === "bench"){
+      openSheet("벤치 선수", benchPlayers(q2.st), null, function(pid){
+        var empty = null;
+        for (var i=0;i<STARTER_COUNT;i++) if (!q2.st.starters[i]) { empty = {role:"starter", idx:i}; break; }
+        if (!empty){ toast("빈 선발 자리가 없습니다 — 바꿀 선수를 먼저 누르세요"); return; }
+        q2.st = movePlayerToSlot(q2.st, pid, empty); q2render();
+        q2log(BY[pid].name + " 투입 → 선발 " + (empty.idx+1) + "번", true);
+      });
+      return;
+    }
+    if (k === "pool"){
+      if (q2.rule !== "c"){ toast(MSG.poolBlocked); q2log("[보유 선수 전체] 거부 — " + MSG.poolBlocked); return; }
+      openSheet("보유 선수 (20)", allPlayersTagged(q2.st), null, function(pid){
+        var empty = null;
+        for (var i=0;i<STARTER_COUNT;i++) if (!q2.st.starters[i]) { empty = {role:"starter", idx:i}; break; }
+        if (!empty){ toast("빈 선발 자리가 없습니다"); return; }
+        q2.st = movePlayerToSlot(q2.st, pid, empty); q2render();
+        q2log(BY[pid].name + " 투입 → 선발 " + (empty.idx+1) + "번", true);
+      });
+      return;
+    }
+  }
+  var cell = e.target.closest("[data-slot]");
+  if (!cell) return;
+  q2SlotTap(parseSlot(cell.dataset.slot));
+});
+
+document.getElementById("q2opts").addEventListener("click", function(e){
+  var b = e.target.closest(".opt"); if (!b) return;
+  q2.rule = b.dataset.v;
+  q2.sel = null;
+  [].forEach.call(this.querySelectorAll(".opt"), function(x){ x.setAttribute("aria-pressed", x === b ? "true" : "false"); });
+  q2render();
+  updateSummary();
+});
+document.getElementById("q2reset").addEventListener("click", function(){
+  q2.st = startState(); q2.sel = null; q2render(); q2log("보드 되돌림", true);
+});
+q2render();
+
+/* ═══════════════════════════════ Q3 ═══════════════════════════════ */
+function q3RenderOne(key){
+  var boardEl = document.querySelector('[data-board="q3' + key + '"]');
+  renderBoard(boardEl, q3[key].st, {});
+  var listEl = document.querySelector('[data-list="q3' + key + '"]');
+  var pl = placedIds(q3[key].st);
+  listEl.innerHTML = PLAYERS.map(function(p){
+    var placed = !!pl[p.id];
+    return '<div class="prow" data-poolrow="1" data-drag="' + p.id + '"' +
+      ' style="touch-action:' + (key === "a" ? "pan-y" : "none") + (placed ? ';opacity:.45' : '') + '">' +
+      '<span class="av" style="border-color:var(--' + p.pos.toLowerCase() + ')">' + initials(p.name) + '</span>' +
+      '<span class="nm">' + p.name + '</span>' +
+      '<span class="pp">' + p.pos + '</span>' +
+      (placed ? '<span class="tagB">배치됨</span>' : '') +
+      '<span class="ov">' + p.ovr + '</span></div>';
+  }).join("");
+}
+
+function q3Drop(key){
+  return function(playerId, from, to){
+    q3[key].st = movePlayerToSlot(q3[key].st, playerId, to);
+    q3RenderOne(key);
+    document.getElementById("q3ptarget").textContent = BY[playerId].name + " (" + BY[playerId].pos + ")";
+    if (q3.autoScroll){
+      var t = document.getElementById("q3prompt");
+      if (t.scrollIntoView) t.scrollIntoView({block:"center", behavior:"smooth"});
+      toast(BY[playerId].name + " 배치 — 화면이 프롬프트로 이동했습니다(보드가 위로 사라졌죠?)", true);
+    } else {
+      toast(BY[playerId].name + " 배치 — 화면은 그대로", true);
+    }
+  };
+}
+SCOPES.q3a = {gesture: function(){ return "hold"; },      onDrop: q3Drop("a")};
+SCOPES.q3b = {gesture: function(){ return "immediate"; }, onDrop: q3Drop("b")};
+
+q3RenderOne("a"); q3RenderOne("b");
+
+document.querySelectorAll("[data-q3pick]").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    q3.pick = btn.dataset.q3pick;
+    q3.gesture = q3.pick === "b" ? "immediate" : "hold";
+    document.querySelectorAll("[data-q3pick]").forEach(function(b){
+      b.className = "btn sm" + (b.dataset.q3pick === q3.pick ? " pri" : "");
+      b.textContent = b.dataset.q3pick === q3.pick ? "✓ 선택됨" : "이걸로";
+    });
+    q2render();
+    updateSummary();
+    toast("Q3 = " + (q3.pick === "a" ? "ⓐ 롱프레스 150ms" : "ⓑ 즉시 드래그") + " 로 기록했습니다", true);
+  });
+});
+document.getElementById("q3scroll").addEventListener("change", function(){
+  q3.autoScroll = this.checked;
+  updateSummary();
+});
+
+/* ═══════════════════════════════ 탭 / 요약 ═══════════════════════════════ */
+var TABS = ["q1","q2","q3","sum"];
+document.querySelector(".tabs .row").addEventListener("click", function(e){
+  var b = e.target.closest("[data-tab]"); if (!b) return;
+  showTab(b.dataset.tab);
+});
+function showTab(name){
+  TABS.forEach(function(t){
+    document.getElementById(t).className = "q" + (t === name ? " on" : "");
+    var btn = document.querySelector('[data-tab="' + t + '"]');
+    btn.setAttribute("aria-selected", t === name ? "true" : "false");
+  });
+  window.scrollTo(0, 0);
+}
+document.getElementById("stickyGo").addEventListener("click", function(){ showTab("sum"); });
+
+var CIRC = {a:"ⓐ", b:"ⓑ", c:"ⓒ"};
+var Q1NAME = {a:"ⓐ 18명 안에서만 재배치", b:"ⓑ 빈 자리만 채운다", c:"ⓒ 덱 화면과 동일"};
+var Q2NAME = {a:"ⓐ 벤치만 투입 가능", b:"ⓑ 완전 잠금", c:"ⓒ 제한 없음(현행)"};
+var Q3NAME = {a:"ⓐ 롱프레스 150ms + 어포던스", b:"ⓑ 즉시 드래그"};
+
+function updateSummary(){
+  var e1 = document.getElementById("s1"), e2 = document.getElementById("s2"), e3 = document.getElementById("s3");
+  e1.textContent = q1.mode ? Q1NAME[q1.mode] : "아직 안 고름";
+  e1.className = "vl" + (q1.mode ? "" : " none");
+  e2.textContent = q2.rule ? Q2NAME[q2.rule] : "아직 안 고름";
+  e2.className = "vl" + (q2.rule ? "" : " none");
+  e3.textContent = q3.pick ? Q3NAME[q3.pick] : "아직 안 고름";
+  e3.className = "vl" + (q3.pick ? "" : " none");
+  document.getElementById("s4").textContent = q3.autoScroll ? "켬 (오늘 동작 유지)" : "끔 (제거)";
+  document.getElementById("s5").textContent = q1.formAuto ? "켬 (auto 가 포메이션도 고름)" : "끔 (포메이션 유지)";
+
+  var s = "Q1=" + (q1.mode ? CIRC[q1.mode] : "?") +
+          " · Q2=" + (q2.rule ? CIRC[q2.rule] : "?") +
+          " · Q3=" + (q3.pick ? CIRC[q3.pick] : "?") +
+          (q3.pick ? "(+자동스크롤 " + (q3.autoScroll ? "켬" : "끔") + ")" : "");
+  if (!q1.formAuto) s += " · Q1포메이션auto=끔";
+  document.getElementById("sumStr").value = s;
+  document.getElementById("stickyStr").textContent = s;
+}
+document.getElementById("copyBtn").addEventListener("click", function(){
+  var inp = document.getElementById("sumStr");
+  var ok = false;
+  try {
+    inp.focus(); inp.select(); inp.setSelectionRange(0, 999);
+    ok = document.execCommand && document.execCommand("copy");
+  } catch(e){ ok = false; }
+  if (!ok && navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(inp.value).then(function(){ toast("복사했습니다", true); },
+      function(){ toast("복사가 막혔습니다 — 위 칸을 길게 눌러 직접 복사해 주세요"); });
+    return;
+  }
+  toast(ok ? "복사했습니다" : "복사가 막혔습니다 — 위 칸을 길게 눌러 직접 복사해 주세요", ok);
+});
+
+updateSummary();
+</script>
+</body>
+</html>
