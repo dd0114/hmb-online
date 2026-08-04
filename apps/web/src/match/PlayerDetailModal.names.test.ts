@@ -56,6 +56,7 @@ const STATS: MatchPlayerStats = {
   window: { kind: "settled", uptoTick: null, caption: null, shortLabel: null },
   isLoading: false,
   isError: false,
+  logMissing: false,
 };
 
 function headerTextFor(playerId: string): string {
