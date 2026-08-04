@@ -418,6 +418,40 @@ test("④ 빈 덱 + AUTO — 선발 11 과 **지시 11/11** 이 같이 채워진
   expect(gkPrompt).toContain("골문");
 });
 
+test("④ 경기전 auto — **지시 없이 출전하는 선발을 남기지 않는다**(승격 선수도 채운다, hero 3R)", async ({ page }) => {
+  /**
+   * hero: *"승격되는 선수도 넣어줘"*. 2R 은 경계를 *"원래 아무 데도 없던 선수"* 로 좁게 잡아서,
+   * 벤치에서 빈 선발 자리로 올라간 선수가 **지시 없이 선발로 출전**할 수 있었다.
+   *
+   * 표본은 그 구멍만 남긴 덱이다 — 앉아 있는 선발 10명은 전부 지시가 있고, 유일한 빈칸이
+   * **승격될 벤치 선수**다. 승격 분기를 되돌리면(=`c8fb4ae`) 여기서 10/11 이 나온다.
+   */
+  const seeded = deckSlots().map((s) =>
+    s.role === "starter"
+      ? { ...s, promptText: s.promptText ?? `${s.playerId} 에게 내리는 지시` }
+      : s.playerId === "FW2"
+        ? { ...s, promptText: "" } // ← 유저가 지운 상태(빈 문자열)로 벤치에 앉아 있다
+        : s,
+  );
+  await openBriefing(page, seeded);
+  await expect(page.getByTestId("starter-count")).toHaveText(/10\/11/);
+  await expect(page.getByTestId("directive-count")).toContainText("지시 10/11");
+
+  await clickAuto(page);
+  await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
+  await expect(
+    page.getByTestId("directive-count"),
+    "승격된 선수가 지시 없이 선발로 나가면 안 된다",
+  ).toContainText("지시 11/11");
+
+  const promoted = await promptOf(page, "FW2");
+  console.log(`[#439-3R] 승격 선수 지시 = ${JSON.stringify(promoted)}`);
+  expect(promoted).toContain("전방"); // 슬롯 10 = FW 자리의 기본 문구
+
+  // ⛔ 그래도 **이미 쓴 문장은 안 덮는다** — MF1 은 앉아 있고 원문 그대로여야 한다.
+  expect(await promptOf(page, "MF1")).toBe(MF1_PROMPT);
+});
+
 // ── ⑤ 배치 직후에도 보드가 남아 있다(연속 배치) ───────────────────────────────
 test("⑤ 시트로 한 명 배치한 직후에도 다음 빈 자리를 바로 누를 수 있다", async ({ page }) => {
   /**

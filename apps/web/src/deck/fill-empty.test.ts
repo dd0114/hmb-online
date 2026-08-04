@@ -126,22 +126,41 @@ describe("fillEmptySlots — 빈 자리만 채운다(Q1=ⓑ)", () => {
       .toBe(POSITION_DEFAULT_PROMPTS.FW);
   });
 
-  it("기본 지시는 **원래 아무 데도 없던 선수**에게만 — 앉아 있던 선수의 빈 문장은 빈 채로 둔다", () => {
-    /**
-     * ⚠️ 기준이 "새 칸"이 아니라 "새 선수"라는 것을 가르는 계약이다.
-     * FW2 는 벤치에 앉아 있었고 프롬프트가 **빈 문자열**이다 — 빈 선발 자리로 올라가지만
-     * 그 자리는 "새 칸"이므로 기준을 잘못 잡으면 여기에 FW 기본문구가 주입된다.
-     * 그건 유저가 지운 문장을 auto 가 되살리는 것이고 Q1=ⓑ 위반이다.
-     */
+  /**
+   * ⚠️ **경계는 두 조건의 곱이다** (hero 결정, 3R: *"승격되는 선수도 넣어줘"*).
+   *   ① auto 가 **이번에 자리를 준** 선수여야 하고 ② 그 지시가 **비어 있어야** 한다.
+   *
+   * 2R 은 ①을 *"원래 아무 데도 없던 선수"* 로 좁게 잡아 **벤치에서 올라온 선수가 지시 없이
+   * 선발로 출전**할 수 있었다. hero 가 그 한 칸을 넓혔다. ②는 안 움직인다.
+   *
+   * 세 갈래를 한 자리에서 같이 문다 — 하나만 두면 반대쪽으로 넘어가는 변이가 산다.
+   */
+  const promptOf = (d: DeckDraft, id: string) => d.slots.find((s) => s.playerId === id)!.promptText;
+  const withPrompt = (id: string, text: string | null): DeckDraft => {
     const base = briefingDraft();
-    const draft: DeckDraft = {
-      ...base,
-      slots: base.slots.map((s) => (s.playerId === "FW2" ? { ...s, promptText: "" } : s)),
-    };
-    const next = fillEmptySlots(draft, BENCH_POOL);
+    return { ...base, slots: base.slots.map((s) => (s.playerId === id ? { ...s, promptText: text } : s)) };
+  };
+
+  it("승격된 선수의 지시가 **비어 있으면** 그 자리의 포지션 기본 문구가 들어간다", () => {
+    for (const blank of ["", "   ", null] as const) {
+      const next = fillEmptySlots(withPrompt("FW2", blank), BENCH_POOL);
+      expect(at(next, "starter", 10)).toBe("FW2");
+      expect(promptOf(next, "FW2"), `빈 문장(${JSON.stringify(blank)})이면 채운다`)
+        .toBe(POSITION_DEFAULT_PROMPTS.FW);
+    }
+  });
+
+  it("승격된 선수의 지시가 **이미 있으면** 원문 그대로 — 덮지 않는다", () => {
+    const next = fillEmptySlots(withPrompt("FW2", "측면을 넓게 써라"), BENCH_POOL);
     expect(at(next, "starter", 10)).toBe("FW2");
-    expect(next.slots.find((s) => s.playerId === "FW2")!.promptText).toBe("");
-    expect(next.slots.find((s) => s.playerId === "FW2")!.promptText).not.toBe(POSITION_DEFAULT_PROMPTS.FW);
+    expect(promptOf(next, "FW2")).toBe("측면을 넓게 써라");
+  });
+
+  it("auto 가 **자리를 주지 않은** 선수는 지시가 비어 있어도 안 건드린다(전수 채우기가 아니다)", () => {
+    // MF2 는 처음부터 선발(슬롯 6)이고 지시가 없다 — auto 는 그 자리를 만지지 않았다.
+    const next = fillEmptySlots(briefingDraft(), BENCH_POOL);
+    expect(at(next, "starter", 6)).toBe("MF2");
+    expect(promptOf(next, "MF2")).toBeNull();
   });
 
   it("결정론 — 후보 순서를 섞어도 같은 결과", () => {

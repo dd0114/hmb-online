@@ -21,22 +21,29 @@
  *   · **포메이션을 바꾸지 않는다** — 경기 직전에 진형이 조용히 바뀌는 것 자체가 결정거리다.
  *   · **팀 전술·팀 문장을 건드리지 않는다** — 이 함수의 입출력이 `DeckDraft` 뿐인 이유.
  *
- * ── 반대로 **하는** 것 하나: 새로 놓은 칸에는 포지션 기본 지시를 넣는다 (hero 결정 ⓐ, 2R) ──────
+ * ── 반대로 **하는** 것 하나: 자리를 준 선수의 **빈** 지시를 채운다 (hero 결정, 2R·3R) ────────
  * 초판은 프롬프트를 아예 만들지 않았고, 그 결과 **빈 덱 + AUTO 의 지시가 11/11 → 0/11** 로 죽었다
  * (구 `autoBuildLineup` 이 넣던 `POSITION_DEFAULT_PROMPTS` 가 그 함수의 소비처와 함께 사라졌다).
  * 온보딩 코치마크(`common/tutorial-steps.ts` `setup-auto` → `setup-motto`)가 *"자동완성 + 감독
  * 한마디만 타이핑"* 을 전제하는데 지시칸이 전부 빈칸이 됐다. hero: **"같이 채워"**.
  *
- * ⚠️ 경계가 이 항목의 전부다 — **"새로 놓이는 칸"이 아니라 "원래 아무 데도 없던 선수"** 가 기준이다.
- * 벤치에 앉아 있던 선수가 빈 선발 자리로 올라가는 것은 *새 칸*이지만 그 선수는 **이미 배치돼
- * 있었으므로** 문장을 그대로 들고 간다(비어 있었다면 비어 있는 채로). 기준을 "새 칸"으로 잡으면
- * 경기전 auto 가 유저가 지운 문장을 되살려 Q1=ⓑ 를 깬다.
+ * ⚠️ **경계가 이 항목의 전부다.** 규칙은 두 조건의 **곱**이다:
+ *   ① **auto 가 이번에 자리를 준 선수**여야 한다 — 새로 놓았거나 **벤치 → 선발 승격**.
+ *      원래 그 자리에 앉아 있던 선수는 지시가 비어 있어도 **안 건드린다**(전수 채우기가 아니다).
+ *   ② 그 선수의 지시가 **비어 있어야** 한다 — 한 글자라도 있으면 **절대 안 덮는다**(Q1=ⓑ 의 핵심).
+ *
+ * 2R 은 ①을 *"원래 아무 데도 없던 선수"* 로 좁게 잡아서, 벤치에서 올라온 선수가 **지시 없이
+ * 선발로 출전**할 수 있었다. hero 가 그 한 칸을 넓혔다: **"승격되는 선수도 넣어줘"**.
+ * ⚠️ 그래도 ②는 안 움직인다 — 유저가 지운 문장을 auto 가 되살리면 그게 Q1=ⓑ 위반이다.
  *
  * 결정론: 후보를 playerId 오름차순으로 고정한 뒤 정수 산술 Hungarian(`assignSlots`)만 쓴다.
  * 같은 입력 → 같은 출력(입력 순서 무관).
  */
 import { assignSlots, POSITION_DEFAULT_PROMPTS, starterSlotList, type AutoPlayer } from "./auto-lineup";
-import { assignPlayer, BENCH_MAX, findPlayerSlot, getSlot, setPrompt, type DeckDraft } from "./deck-logic";
+import {
+  assignPlayer, BENCH_MAX, findPlayerSlot, getSlot, setPrompt,
+  type DeckDraft, type Position,
+} from "./deck-logic";
 import { playerOverall } from "./team-power";
 
 /** playerId 오름차순 + 중복 제거(결정론 전제). */
@@ -60,8 +67,19 @@ export function fillEmptySlots(draft: DeckDraft, candidates: AutoPlayer[]): Deck
   if (pool.length === 0) return draft;
 
   let next = draft;
-  /** **호출 시점에** 어딘가 앉아 있던 선수 — 이들의 문장은 어떤 경우에도 손대지 않는다. */
-  const alreadyPlaced = new Set(draft.slots.map((s) => s.playerId));
+  /**
+   * auto 가 방금 자리를 준 선수의 지시가 비어 있으면 기본 문구를 넣는다.
+   *
+   * ⚠️ 호출은 **`assignPlayer` 직후**여야 한다 — 그 자리를 받은 슬롯에서 문장을 읽으므로,
+   * 벤치에서 올라온 선수도 자기가 들고 온 문장으로 판정된다(들고 온 것이 있으면 안 덮는다).
+   * ⚠️ **자리를 안 준 선수에게는 이 함수를 부르지 마라** — 전수 채우기가 되고, 그건 hero 가
+   * 넓힌 범위("승격까지")를 넘어 유저가 비워 둔 선발의 칸까지 건드리는 것이다.
+   */
+  const fillBlankPrompt = (d: DeckDraft, playerId: string, position: Position): DeckDraft => {
+    const seat = findPlayerSlot(d, playerId);
+    if (seat?.promptText?.trim()) return d; // 한 글자라도 있으면 절대 안 덮는다 (Q1=ⓑ)
+    return setPrompt(d, playerId, POSITION_DEFAULT_PROMPTS[position]);
+  };
 
   // ① 빈 **선발** 자리 — 후보 중 "지금 선발이 아닌" 선수(미배치 또는 벤치)만 자격이 있다.
   //    벤치 선수가 올라오는 것이 경기전 auto 의 전부다(그리고 그게 R2 가 허용하는 유일한 투입).
@@ -76,9 +94,8 @@ export function fillEmptySlots(draft: DeckDraft, candidates: AutoPlayer[]): Deck
       if (playerId === undefined) continue;
       next = assignPlayer(next, "starter", slot.slotIndex, playerId);
       // 선발 기본 지시는 **맡은 자리**의 포지션 기준(정포지션이 아니어도 그 역할의 지시).
-      if (!alreadyPlaced.has(playerId)) {
-        next = setPrompt(next, playerId, POSITION_DEFAULT_PROMPTS[slot.position]);
-      }
+      // 새로 놓인 선수든 벤치에서 승격한 선수든 같다 — hero: *"승격되는 선수도 넣어줘"*.
+      next = fillBlankPrompt(next, playerId, slot.position);
     }
   }
 
@@ -97,9 +114,7 @@ export function fillEmptySlots(draft: DeckDraft, candidates: AutoPlayer[]): Deck
     const p = rest[i]!;
     next = assignPlayer(next, "bench", idx, p.id);
     // 벤치는 맡은 자리가 없으므로 **선수 자기 포지션** 기준(구 `autoBuildLineup` 과 같은 규칙).
-    // ⚠️ `rest` 는 정의상 "아무 데도 없던 선수"라 여기 조건은 항상 참이지만, 위 선발 분기와 같은
-    //    문장으로 남긴다 — `rest` 의 정의가 바뀌는 날 조용히 남의 문장을 덮지 않게.
-    if (!alreadyPlaced.has(p.id)) next = setPrompt(next, p.id, POSITION_DEFAULT_PROMPTS[p.position]);
+    next = fillBlankPrompt(next, p.id, p.position);
     i += 1;
   }
 
