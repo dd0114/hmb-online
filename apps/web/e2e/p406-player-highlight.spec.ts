@@ -69,17 +69,47 @@ const CATALOG = IDS.map((id, i) => ({
   ownedCount: 1,
 }));
 
-function clock(phase: MatchState = "SECOND_HALF") {
+/**
+ * 목 라이브 시계.
+ *
+ * ⚠️ **하프 앵커(`kickoffAt`/`phaseStartAt`/`phaseEndsAt`)는 `open()` 시각에 한 번 고정한다 —
+ * 매 폴마다 `Date.now()` 로 다시 만들면 이 파일 전체가 구조적으로 플레이키해진다**(W10 2R).
+ *
+ * <p>기제(실측): `useMatch` 는 라이브에서 **1초 폴링**이고, 이 목이 폴마다 새 `phaseStartAt` 을
+ * 만들면 그 값이 `VisualPlayback` 라이브 게이트 effect 의 **의존성**(`[…, clock?.phase,
+ * clock?.phaseStartAt]`)이라 **1초마다 effect 가 재실행**된다. 재실행의 첫 두 줄이
+ * `v.jumpToTick(seek-to-now)` + `v.play()` 다 — 즉 **테스트가 `pause()` + `seek(과거)` 해 둔
+ * 플레이헤드를 앱이 1초 안에 라이브 헤드로 끌어가고 재생까지 시작한다.**
+ * 진단 실측(같은 목, 하이라이트 릴 **off** · `pause()` 후 `seek(2988)`):
+ * <pre>
+ *   앵커가 흐를 때 : 0ms:2988 250:2988 500:2988 **750:3416** 1000:3419 1250:3420 … (계속 3416~3420 진동)
+ *   앵커를 고정하면: 0ms:2988 250:2988 500:2988   750:2988 1000:2988 1250:2988 … (12/12 동일)
+ * </pre>
+ * 이 파일은 **좌표를 재고 그 자리를 누르는** 계약뿐이라, 그 사이에 배치가 갈리면 클릭이 빈 자리에
+ * 떨어진다(#318 하네스 경합과 같은 부류 — 화면이 움직이는 동안 좌표를 재지 마라).
+ *
+ * <p>⚠️ **계약을 느슨하게 한 것이 아니라 목을 서버 모양에 맞춘 것이다.** 실서버의 `phaseStartAt`·
+ * `kickoffAt` 은 DB 에 박힌 **그 하프의 실제 시각**이라 폴 사이에 움직이지 않는다 — 움직이던 쪽이
+ * 서버가 하지 않는 일을 흉내내고 있었다(apps/web CLAUDE.md "목은 계약의 일부다").
+ * **`serverNow` 는 그대로 흐른다**(실서버가 그렇다) — 그래서 라이브 게이트의 미래 잠금은 살아
+ * 있고, ⑯ 이 "과거 절반 안에서만 고른다"는 전제도 그대로다.
+ *
+ * <p>⚠️ 라이브 창은 `open()` 시각 기준 **+210초**까지다(하프 420초의 절반이 지난 지점에서 연다).
+ * 이 파일의 어떤 테스트도 그보다 오래 걸리지 않는다(스펙 timeout 180초) — 넘기면 하프가 끝나
+ * `highlightDefaultOn` 이 릴을 **자동으로 켠다**(`live` 가 풀리는 자리). 테스트가 그 근처까지
+ * 길어지면 여기 0.5 를 줄여라.
+ */
+function clock(phase: MatchState = "SECOND_HALF", anchorMs = Date.now()) {
   // 종료된 경기엔 라이브 시계가 없다(`MatchViewer`: `clock === null` = 미래 잠금 해제).
   if (phase === "FINISHED") return null;
-  const now = Date.now();
-  const start = now - HALF_REAL_MS * 0.5;
+  const start = anchorMs - HALF_REAL_MS * 0.5;
   return {
     phase,
     kickoffAt: new Date(start).toISOString(),
     phaseStartAt: new Date(start).toISOString(),
     phaseEndsAt: new Date(start + HALF_REAL_MS).toISOString(),
-    serverNow: new Date(now).toISOString(),
+    // 서버 시각만 실제로 흐른다 — 클라 오프셋 계산(`serverNow - clientNow`)이 그 축이다.
+    serverNow: new Date().toISOString(),
     halfRealMs: HALF_REAL_MS,
     halftimeMs: 180_000,
     seekForwardBlocked: true,
@@ -112,6 +142,8 @@ async function open(
   deckSide: "home" | "away" | null = null,
 ): Promise<MockState> {
   const st: MockState = { state: initial };
+  // 하프 앵커를 **여기서 한 번** 고정한다(이유·실측 = `clock()` 머리말).
+  const anchorMs = Date.now();
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -139,7 +171,7 @@ async function open(
           awayName: "봇 FC",
           opponent: { name: "봇 FC", deck: [] },
           ...(deckSide ? { userDeckSnapshot: deckSnapshotOf(deckSide) } : {}),
-          clock: clock(st.state),
+          clock: clock(st.state, anchorMs),
         },
       });
     }
@@ -489,8 +521,20 @@ test("⑧ 카드 아래에 깔린 선수도 눌러서 선택된다 (카드가 �
  * ⑥ 하프가 바뀌면 선택이 남지 않는다(유령 카드 금지).
  *
  * ⚠️ **초판은 `page.reload()` 로 쟀고 그건 어떤 구현이든 통과시킨다**(독립검증 MAJOR-4) —
- * 전체 내비게이션이라 React 트리가 통째로 사라져 `VisualPlayback` 의
- * `useEffect(…, [log, half])` 리셋을 **지워도 red 가 안 났다**.
+ * 전체 내비게이션이라 React 트리가 통째로 사라져 **리셋을 지워도 red 가 안 났다**.
+ *
+ * <h3>이 계약이 지키는 리셋은 `StageShell` 것이다 (W10 2R 정정)</h3>
+ * 여기 원래 *"`VisualPlayback` 의 `useEffect(…, [log, half])` 리셋"* 이라 적혀 있었는데 **stale
+ * 이다** — W9 가 선택 상태를 셸로 들어올린 뒤(controlled) 그 effect 의 리셋 줄은
+ * `if (!selectionProp) setInnerSelection([])` 라 **출하 배선에서는 한 번도 실행되지 않는다**
+ * (독립검증 실측: 그 effect 를 통째로 지워도 이 파일 **16/16 green**). 지금 계약 ⑥ 을 살리는 것은
+ * `match/stage/StageShell.tsx` 의 `useEffect(… , [half])`(`setSelection([])` +
+ * `setBriefTarget(null)`)이고, **그걸 지우면 red** 다. `StageShell` 쪽 주석은 처음부터 그렇게
+ * 적혀 있었으니 두 문서가 서로 반대 사실을 말하고 있었다.
+ *
+ * ⚠️ `VisualPlayback` 의 그 effect 는 **죽은 코드가 아니다** — 살아 있는 유일한 소비자가
+ * `qa/QaConsolePage.tsx` 의 **uncontrolled** 사용(`selection` prop 을 안 넘긴다)이다. 그래서
+ * 지우지 말고, 다만 **이 계약이 재는 축은 아니다**.
  *
  * <h3>실제 축을 찾는 데 한 번 더 틀렸다 — 그 실패가 이 주석의 알맹이다</h3>
  * 처음엔 "전반 → 후반 상태 전이"로 바꿨는데 그것도 **부품을 언마운트한다**: `MatchViewer` 는
@@ -1195,12 +1239,23 @@ test("⑯ 떠 있는 컨트롤이 덮은 자리의 선수도 눌린다 · 컨트
         },
       )
       .toBe(true);
-    // "누르면 다른 일이 일어난다" = 0. 릴이 켜지거나 플레이헤드가 뒤로 튀면 red.
+    /*
+     * "누르면 **다른 일**이 일어난다" = 0. 릴이 켜지거나 플레이헤드가 움직이면 red.
+     *
+     * ⚠️ **`>= tickBefore`(뒤로만 금지)가 아니라 정확히 같아야 한다** — 느슨하게 한 것이 아니라
+     * 반대로 조인 것이고, 원래 느슨했던 이유가 이번 blocker 와 **같은 뿌리**였다: 목 시계가 폴마다
+     * 흘러 앱이 1초마다 seek-to-now 를 걸던 동안에는 플레이헤드를 정지시킬 수 없어 방향으로밖에
+     * 못 걸었다(`clock()` 머리말). 앵커를 고정한 지금은 정지한다.
+     *
+     * 그리고 그 느슨함이 실제로 변이를 살렸다 — `onPointerDownCapture` 의 `e.preventDefault()`
+     * (시크바가 `<input type="range">` 라 값 변경이 `mousedown` **기본동작**이다)만 지우면
+     * 이 루프의 세 번째 도달점(`home:H7@viewer-seek-half2`, 그 자리 요소가 실제로 `input[range]`)
+     * 에서 **tick 2885 → 3291(Δ+406)** 로 뛰는데, **앞으로** 뛰므로 `>=` 는 통과했다(실측 3/3 생존).
+     * 유저에게는 "선수를 눌렀는데 경기가 앞으로 갔다"이고 그건 뒤로 가는 것과 같은 결함이다.
+     */
     expect(await toggle.getAttribute("data-highlight"), "하이라이트 모드가 탭에 눌렸다").toBe(modeBefore);
     const tickAfter = await curTick(page);
-    expect(tickAfter, `플레이헤드가 뒤로 튀었다 ${tickBefore} → ${tickAfter}`).toBeGreaterThanOrEqual(
-      tickBefore,
-    );
+    expect(tickAfter, `선수를 눌렀는데 플레이헤드가 움직였다 ${tickBefore} → ${tickAfter}`).toBe(tickBefore);
     seen.push(`${cand.team}:${cand.id}@${cand.blocker}`);
     await page.getByTestId("arena-player-close").click(); // 초기화(재탭은 해제라 축이 뒤집힌다)
     await expect(page.getByTestId("arena-player-card")).toHaveCount(0);
