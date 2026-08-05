@@ -22,17 +22,76 @@ const power0 = Number(await page.locator("#teamPower").innerText());
 ok("팀 전력 계산", power0 > 0, String(power0));
 ok("자동 채우기 숨김(빈칸 0)", await page.locator("#btnFill").isHidden());
 
+// ── R3-① 보유 선수 = 모달. 화면에 인라인 목록이 없어야 한다(있으면 R2 로 되돌아간 것)
+ok("보유 선수 인라인 목록 없음(= 모달로 되돌림)", (await page.locator("#poolWrap").count()) === 0);
+ok("처음엔 보유 선수 목록이 안 보인다(모달이 닫혀 있음)", !(await page.locator("#poolList").isVisible()));
+
+// ── R3-② 팀 프롬프트 자리 (실제 앱 DirectiveRail)
+{
+  const tp = page.locator("#teamPrompt");
+  ok("팀 프롬프트 칸이 화면에 있다", await tp.isVisible());
+  const said = "초반부터 강하게 압박하고, 뺏으면 곧장 역습으로 간다.";
+  await tp.fill(said);
+  await page.waitForTimeout(120);
+  ok("팀 프롬프트 글자수 표시", (await page.locator("#tpCount").innerText()).trim() === `${said.length} / 500`, await page.locator("#tpCount").innerText());
+  await page.locator("#btnTune").click();
+  await page.waitForTimeout(150);
+  ok("팀 세부 조정 펼침(라인·압박·템포·폭)", (await page.locator("#tunePanel .tuneRow").count()) === 4);
+  await page.locator("#btnTune").click();
+  await page.waitForTimeout(120);
+}
+
+// ── R3-③ 포메이션 전환 — 선수는 그대로, 자리만 다시 배치
+{
+  const before = await page.evaluate(() => [...document.querySelectorAll("#pitch .slot")].map((s) => ({
+    idx: s.dataset.idx, pid: s.querySelector(".tok")?.dataset.player ?? null,
+    x: Math.round(s.getBoundingClientRect().left), y: Math.round(s.getBoundingClientRect().top) })));
+  await page.selectOption("#formation", "4-3-3");
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => [...document.querySelectorAll("#pitch .slot")].map((s) => ({
+    idx: s.dataset.idx, pid: s.querySelector(".tok")?.dataset.player ?? null,
+    x: Math.round(s.getBoundingClientRect().left), y: Math.round(s.getBoundingClientRect().top) })));
+  const sameSet = JSON.stringify(before.map((b) => b.pid).sort()) === JSON.stringify(after.map((a) => a.pid).sort());
+  const moved = before.filter((b, i) => b.x !== after[i].x || b.y !== after[i].y).length;
+  ok("포메이션 4-3-3 → 선수 그대로, 자리만 이동", sameSet && moved >= 3, `이동 ${moved}칸 · 선수집합 ${sameSet ? "동일" : "달라짐"}`);
+  await page.locator("#phone").screenshot({ path: `${OUT}/mock-r3-433.png` });
+  await page.selectOption("#formation", "4-4-2");
+  await page.waitForTimeout(250);
+}
+
+// ── R3-① 하단 [보유 선수] → 모달이 올라오고, 포지션 필터가 실제로 걸린다
+{
+  await page.locator("#btnPool").click();
+  await page.waitForTimeout(250);
+  ok("하단 [보유 선수] → 모달 열림", await page.locator('#sheet[data-on="1"] #poolList').isVisible());
+  const all = await page.locator("#poolList .prow").count();
+  await page.locator('#posFilter button[data-pos="FW"]').click();
+  await page.waitForTimeout(150);
+  const fw = await page.evaluate(() => [...document.querySelectorAll("#poolList .prow .tok")].map((t) => t.dataset.pos));
+  ok("모달 포지션 필터(FW)", fw.length > 0 && fw.every((p) => p === "FW") && fw.length < all, `전체 ${all}명 → FW ${fw.length}명`);
+  await page.locator("#phone").screenshot({ path: `${OUT}/mock-r3-pool.png` });
+  await page.locator("#poolClose").click();
+  await page.waitForTimeout(300);
+  // 닫힘 판정은 DOM 존재가 아니라 **실제로 보이는지**로 — 시트는 내려가도 내용이 남는다(계약이 초록으로 거짓말하지 않게)
+  const shut = await page.evaluate(() => {
+    const l = document.querySelector("#poolList"); if (!l) return { gone: true };
+    const r = l.getBoundingClientRect(), ph = document.querySelector("#phone").getBoundingClientRect();
+    return { gone: false, below: r.top >= ph.bottom - 2, hit: document.elementFromPoint(r.left + 20, r.top + 10) };
+  });
+  ok("모달을 닫으면 목록이 화면 밖으로 내려간다", shut.gone || shut.below, JSON.stringify({ gone: shut.gone, below: shut.below }));
+}
+
 // ── 정한 값 3개가 처음부터 켜져 있다 (hero 는 고를 것이 없다)
 {
   const on = await page.evaluate(() => ({
     q1: document.querySelector('#q1opts .opt[data-v="A"]').dataset.on,
     q2: document.querySelector('#q2opts .opt[data-v="ㄴ"]').dataset.on,
-    q3: document.querySelector('#q3opts .opt[data-v="60"]').dataset.on,
+    q3: document.querySelector('#q3opts .opt[data-v="auto"]').dataset.on,
     live: [document.getElementById("liveQ1").textContent, document.getElementById("liveQ2").textContent, document.getElementById("liveQ3").textContent].join(" · "),
   }));
-  ok("A · ㄴ · 68:60 이 기본 선택으로 켜져 있다", on.q1 === "1" && on.q2 === "1" && on.q3 === "1", on.live);
+  ok("A · ㄴ · 남는세로전부 가 기본 선택으로 켜져 있다", on.q1 === "1" && on.q2 === "1" && on.q3 === "1", on.live);
   const v = await page.evaluate(() => ({ same: document.getElementById("sumVerdict").dataset.same, str: document.getElementById("sumStr").value }));
-  ok("컨펌 화면이 '제안 그대로' 로 뜬다", v.same === "1" && /메뉴=A안 · auto한마디=ㄴ안 · 경기장=68:60/.test(v.str), v.str.slice(0, 60));
+  ok("컨펌 화면이 '제안 그대로' 로 뜬다", v.same === "1" && /메뉴=A안 · auto한마디=ㄴ안 · 경기장=남는세로전부/.test(v.str), v.str.slice(0, 70));
 }
 
 await page.screenshot({ path: `${OUT}/mock-01-initial.png` });
@@ -117,6 +176,24 @@ const st2 = await page.locator("#pitch .slot .tok").count();
 ok("명단에서 빼기 → 선발 10명", st2 === 10, `${st2}명`);
 ok("빈칸 생기면 [자동 채우기] 노출", await page.locator("#btnFill").isVisible());
 await page.locator("#phone").screenshot({ path: `${OUT}/mock-07-empty-fill.png` });
+
+// ── R3-① 빈 자리 탭 → 그 포지션으로 필터된 모달 (실제 앱 PlayerPicker autoFilter 와 같은 성질)
+{
+  const empty = page.locator("#pitch .slot").filter({ has: page.locator(".hole") }).first();
+  const want = (await empty.locator(".posTag").innerText()).trim();
+  await empty.click();
+  await page.waitForTimeout(250);
+  const st = await page.evaluate(() => ({
+    open: document.querySelector("#sheet").dataset.on,
+    on: document.querySelector('#posFilter button[data-on="1"]')?.dataset.pos,
+    rows: [...document.querySelectorAll("#poolList .prow .tok")].map((t) => t.dataset.pos),
+  }));
+  ok("빈 자리 탭 → 그 포지션으로 필터된 모달", st.open === "1" && st.on === want && st.rows.every((p) => p === want),
+    `${want} 자리 → 필터 ${st.on} · ${st.rows.length}명`);
+  await page.locator("#phone").screenshot({ path: `${OUT}/mock-r3-emptyslot-pool.png` });
+  await page.locator("#poolClose").click();
+  await page.waitForTimeout(200);
+}
 await page.locator("#btnFill").click();
 await page.waitForTimeout(300);
 const st3 = await page.locator("#pitch .slot .tok").count();
@@ -146,29 +223,49 @@ ok("ㄴ안 auto → 쓴 한마디 보존 + 빈 칸만 채움", promptsAfter >= p
 }
 await page.locator("#phone").screenshot({ path: `${OUT}/mock-08-auto.png` });
 
-// ── 비율 슬라이더
+// ── 비율: 기본(남는 세로 전부) vs 고정 68:44
 const h0 = (await page.locator("#pitch").boundingBox()).height;
 await page.locator("#tabs button[data-t='q3']").click();
 await page.waitForTimeout(150);
-await page.locator("#pane-q3 .opt[data-v='76']").click();
+await page.locator("#pane-q3 .opt[data-v='44']").click();
 await page.locator("#tabs button[data-t='proto']").click();
-await page.waitForTimeout(250);
+await page.waitForTimeout(300);
 const h1 = (await page.locator("#pitch").boundingBox()).height;
-ok("비율 슬라이더가 경기장 높이를 바꾼다", h1 > h0 + 30, `${Math.round(h0)}px → ${Math.round(h1)}px`);
-await page.locator("#phone").screenshot({ path: `${OUT}/mock-09-ratio76.png` });
+ok("기본(남는 세로 전부)이 현행 68:44 고정보다 경기장이 크다", h0 > h1 + 30, `auto ${Math.round(h0)}px vs 68:44 ${Math.round(h1)}px`);
+await page.locator("#phone").screenshot({ path: `${OUT}/mock-09-ratio44.png` });
+await page.locator("#tabs button[data-t='q3']").click();
+await page.waitForTimeout(150);
+await page.locator("#pane-q3 .opt[data-v='auto']").click();
+await page.locator("#tabs button[data-t='proto']").click();
+await page.waitForTimeout(300);
 
 // ── 폰 실기기 뷰포트(390×844) 별도 확인
 const p2 = await (await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 })).newPage();
 await p2.goto(FILE);
 await p2.waitForTimeout(400);
-const poolH = await p2.evaluate(() => Math.round(document.querySelector("#poolWrap").getBoundingClientRect().height));
-ok("폰에서 보유 선수 목록이 남는 세로를 가져간다", poolH > 120, poolH + "px");
-const gap = await p2.evaluate(() => {
-  const ph = document.querySelector("#phone").getBoundingClientRect();
-  const pw = document.querySelector("#poolWrap").getBoundingClientRect();
-  return Math.round(ph.bottom - pw.bottom);
+const geo = await p2.evaluate(() => {
+  const r = (s) => document.querySelector(s).getBoundingClientRect();
+  const ph = r("#phone"), pb = r("#poolBar"), pt = r("#pitch"), rw = r("#railWrap");
+  return { gap: Math.round(ph.bottom - pb.bottom), pitchH: Math.round(pt.height), pitchW: Math.round(pt.width),
+    railH: Math.round(rw.height), ratio: Math.round((68 * pt.height) / pt.width) };
 });
-ok("보유 선수 아래 빈 띠 없음(= 최하단)", gap <= 2, gap + "px");
+ok("[보유 선수] 바가 화면 최하단(빈 띠 없음)", geo.gap <= 2, geo.gap + "px");
+ok("폰에서 경기장이 남는 세로를 가져간다", geo.ratio >= 60, `실측 68 : ${geo.ratio} (${geo.pitchW}×${geo.pitchH}px · 팀지시 ${geo.railH}px)`);
+ok("실측 비율이 화면에도 그대로 표시된다",
+  new RegExp(`68 : ${geo.ratio}`).test(await p2.locator("#liveQ3").innerText()), await p2.locator("#liveQ3").innerText());
+{
+  const ov = await p2.evaluate(() => {
+    // 4-4-2 미드필더 4명 이름표가 서로 겹치는지 — 좌표 추론이 아니라 실제 사각형 교차로 본다
+    const nm = [...document.querySelectorAll("#pitch .slot .tok .nm")].map((e) => e.getBoundingClientRect());
+    let hit = 0;
+    for (let i = 0; i < nm.length; i++) for (let j = i + 1; j < nm.length; j++) {
+      const a = nm[i], b = nm[j];
+      if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) hit++;
+    }
+    return hit;
+  });
+  ok("선수 이름표 겹침 0 (A1 의 원래 불만)", ov === 0, `겹친 쌍 ${ov}`);
+}
 const doc = await p2.evaluate(() => ({ ow: document.documentElement.scrollWidth, cw: document.documentElement.clientWidth }));
 ok("390px 폰에서 가로 넘침 없음", doc.ow <= doc.cw + 1, `${doc.ow} vs ${doc.cw}`);
 await p2.screenshot({ path: `${OUT}/mock-10-phone390.png`, fullPage: false });
