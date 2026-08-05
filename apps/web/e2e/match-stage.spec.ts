@@ -235,6 +235,58 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
     expect(canvas!.height, "캔버스가 납작해지면 안 됨").toBeGreaterThan(80);
   });
 
+  /*
+   * ── #456 B0 — 경기바가 경기장을 가린다 ──────────────────────────────────
+   *
+   * hero: *"바는 경기장 밖으로 빼. 경기 안 가리게 화면 늘려달라 했잖아."*
+   *
+   * ⚠️ **이 두 계약은 한 쌍으로만 뜻이 있다.** h 만 있으면 컨트롤을 아래로 내리면서 캔버스를
+   * 그만큼 줄이는 구현이 통과하고(가린 건 없어졌지만 피치가 작아졌다 = hero 가 거부한 답),
+   * i 만 있으면 컨트롤을 다시 피치 위에 얹어도 통과한다. 둘을 같이 걸어야 *"무대 행이 세로를
+   * 더 가져간다(시트가 양보한다)"* 만 남는다.
+   */
+  test("h. #456 B0 — 재생 컨트롤이 피치 **밖**에 선다 (경기장을 가리지 않는다)", async ({ page }) => {
+    await openMatch(page);
+    const canvas = (await page.locator('[data-testid^="viewer-canvas-half"]').boundingBox())!;
+    expect(canvas, "캔버스가 있어야 이 계약이 성립한다").toBeTruthy();
+
+    // 컨트롤 층 = `VisualPlayback` 이 자기 표지를 단 그 층(#406 W10 M-1 과 같은 축).
+    const controls = page.locator("[data-p406-controls]");
+    await expect(controls, "컨트롤 층은 하나다").toHaveCount(1);
+    const cb = (await controls.boundingBox())!;
+
+    expect(
+      cb.y,
+      "컨트롤 층은 캔버스가 끝난 **뒤**에 시작한다(겹치면 그 띠 아래 피치가 안 보인다)",
+    ).toBeGreaterThanOrEqual(canvas.y + canvas.height - 1);
+
+    // 무대 행(= `stage-canvas` 박스)이 컨트롤까지 담는다 — 시트 위로 흘러넘치지 않는다.
+    const stage = (await page.getByTestId("stage-canvas").boundingBox())!;
+    expect(stage.y + stage.height, "무대 행이 컨트롤까지 담는다").toBeGreaterThanOrEqual(
+      cb.y + cb.height - 1,
+    );
+    const sheet = (await page.getByTestId("stage-sheet").boundingBox())!;
+    expect(sheet.y, "시트는 컨트롤 아래에서 시작한다").toBeGreaterThanOrEqual(cb.y + cb.height - 1);
+  });
+
+  test("i. #456 B0 — 컨트롤을 밖으로 내도 **피치가 줄지 않는다**", async ({ page }) => {
+    await openMatch(page);
+    const canvas = (await page.locator('[data-testid^="viewer-canvas-half"]').boundingBox())!;
+
+    /*
+     * 폰에서 피치 크기를 정하는 것은 **가로**다(세로 상한 58svh 에 한참 못 미친다).
+     * 그래서 "안 줄었다"의 정의는 두 축이다 — ①화면 폭을 그대로 쓰고 ②그 폭에서 피치 비율.
+     * 절대값(253px)만 걸면 폭이 줄어드는 구현을 못 잡고, 비율만 걸면 통째로 축소해도 통과한다.
+     */
+    expect(canvas.width, "캔버스가 화면 폭을 그대로 쓴다").toBeGreaterThanOrEqual(PHONE.width - 2);
+    const byAspect = (canvas.width * 680) / 1050;
+    expect(canvas.height, "그 폭에서 피치 비율만큼의 높이(1050:680)").toBeGreaterThanOrEqual(
+      byAspect - 1,
+    );
+    // 현행 실측 기준선 — 회귀를 절대값으로도 한 번 더 잡는다(#456 B0 착지 시점 252.57px).
+    expect(canvas.height, "폰 피치 높이 기준선").toBeGreaterThanOrEqual(252);
+  });
+
   /**
    * #284 로 **저장할 토글이 없어졌다**(탭 구성은 상태가 정한다). 그래서 이 자리의 계약은
    * "선택이 유지되나"가 아니라 **"리로드해도 그 상태의 탭 구성이 그대로 선다"** 로 바뀐다.

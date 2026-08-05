@@ -242,6 +242,50 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await expectNoQaTransport(page, 1);
   });
 
+  /*
+   * ── #456 B1 — *"하이라이트 토글은 비활성화하고 그 자리에 스킵을. 색 톤도 통일."* (hero)
+   *
+   * ⚠️ **부품을 지우지 않았다.** `HighlightToggle`·`useHighlightSequencer` 는 그대로 있고
+   * 무대에서 **그리지 않을** 뿐이다(롤백 자산). 그래서 계약이 두 겹이다 —
+   * ①화면에 없다(여기) ②그래서 **하이라이트 모드가 켜질 경로도 없다**
+   * (`highlight-sequencer.test.ts` 의 `HIGHLIGHT_DEFAULT_HALVES`). ①만 걸면 토글만 숨기고
+   * 디폴트 ON 이 남는 구현이 통과하는데, 그 상태가 정확히 **"끄는 버튼 없이 릴이 도는"**
+   * #421 이관 발견이다(유저가 전체 재생으로 돌아갈 방법을 잃는다).
+   */
+  test("a-2. #456 B1 — 무대에 하이라이트 토글이 없다 (복귀 경로 상실 0)", async ({ page }) => {
+    await openMatch(page, "FIRST_HALF");
+    await expect(page.getByTestId("match-skip")).toBeVisible();
+
+    await expect(page.getByTestId("highlight-toggle"), "토글 버튼 비노출").toHaveCount(0);
+    await expect(page.getByTestId("highlight-mode"), "토글 묶음 자체가 없다").toHaveCount(0);
+    // 상태 줄만 남으면 "왜 장면이 건너뛰지"가 되고 끌 방법이 없다 — 같이 사라져야 한다.
+    await expect(page.getByTestId("highlight-status"), "진행 상태 줄도 없다").toHaveCount(0);
+  });
+
+  test("a-3. #456 B1 — 스킵 버튼 톤이 무대 컨트롤과 통일된다 (단색 강조 알약 아님)", async ({ page }) => {
+    await openMatch(page, "FIRST_HALF");
+    const skip = page.getByTestId("match-skip");
+    await expect(skip).toBeVisible();
+
+    const tone = await skip.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { bg: s.backgroundColor, border: s.borderTopColor, h: el.getBoundingClientRect().height };
+    });
+    /*
+     * 판정축 = **불투명 단색이 아니다**. accent 색상값을 계약에 적으면 테마 토큰을 바꾸는 순간
+     * 거짓 실패가 된다(apps/web CLAUDE.md "초록으로 거짓말하는 방식" #2와 같은 축) — 그래서
+     * 값이 아니라 **성질**(알파 < 1 인 어두운 배경)을 재고, 테두리는 배경과 **달라야** 한다.
+     */
+    const alpha = /rgba?\([^)]*,\s*([\d.]+)\s*\)/.exec(tone.bg);
+    expect(
+      alpha ? Number(alpha[1]) : 1,
+      `배경이 반투명이어야 컨트롤 층과 톤이 맞는다 — 실측 ${tone.bg}`,
+    ).toBeLessThan(1);
+    expect(tone.border, "테두리는 accent 로 남아 주 액션임을 말한다").not.toBe(tone.bg);
+    // #421 원 계약(터치 타깃)은 그대로다 — 톤을 바꾸느라 누를 수 없게 만들지 않는다.
+    expect(tone.h, "터치 타깃 높이").toBeGreaterThanOrEqual(32);
+  });
+
   test("b. 누르면 `phase` 를 실어 스킵을 요청하고 리포트가 뜬다", async ({ page }) => {
     const h = await openMatch(page, "FIRST_HALF");
     await page.getByTestId("match-skip").click();

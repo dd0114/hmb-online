@@ -278,9 +278,18 @@ describe("④ 하이라이트 #1부터 순서대로 — 같은 장면을 두 번
 // ─────────────────────────────────────────────── ⑤ 디폴트·전체 재생 복귀
 
 describe("⑤ 적용 범위와 전체 재생 복귀", () => {
-  it("디폴트는 **후반**만 — 요구 원문(전반은 토글로 연다)", () => {
-    expect(HIGHLIGHT_DEFAULT_HALVES).toEqual([2]);
-    expect(highlightDefaultOn({ half: 2 })).toBe(true);
+  /**
+   * ⚠️ **#456 B1 에서 뒤집혔다.** 원래는 *"디폴트는 후반만 — 전반은 토글로 연다"*(`[2]`)였고,
+   * 그 전제는 **화면에 토글이 있다**는 것이었다. hero 가 그 토글을 내리면서(B1) 전제가 사라졌다 —
+   * 디폴트 ON 을 그대로 두면 유저는 **끄는 버튼 없이** 릴이 도는 화면을 보게 된다(#421 이관 발견:
+   * 릴 점프로 플레이헤드가 튀는데 전체 재생으로 돌아갈 경로가 없다).
+   *
+   * 그래서 **범위를 비운다**(`[]`) — 부품·순수 로직은 그대로 살아 있고(롤백 자산) 켜는 문만 닫는다.
+   * 토글을 다시 노출하는 날 이 상수를 되돌리면 그대로 살아난다.
+   */
+  it("디폴트는 **없다** — 토글을 내렸으므로 켜는 문도 닫는다 (#456 B1)", () => {
+    expect(HIGHLIGHT_DEFAULT_HALVES).toEqual([]);
+    expect(highlightDefaultOn({ half: 2 })).toBe(false);
     expect(highlightDefaultOn({ half: 1 })).toBe(false);
   });
 
@@ -289,8 +298,19 @@ describe("⑤ 적용 범위와 전체 재생 복귀", () => {
     // 라이브의 되감기 표본 0 을 계약으로 들고 있다). 상수를 true 로 되돌리면 그 계약이 먼저 깨진다.
     expect(DEFAULT_ON_WHILE_LIVE).toBe(false);
     expect(highlightDefaultOn({ half: 2, live: true })).toBe(false);
-    // 하프가 끝나(상한이 풀려) 라이브가 아니게 되면 그 자리에서 켜진다 = 스킵의 종착 화면.
-    expect(highlightDefaultOn({ half: 2, live: false })).toBe(true);
+    /*
+     * ⚠️ **여기가 #456 B1 로 바뀐 두 번째 줄이다.** 원래는 *"하프가 끝나면 그 자리에서 켜진다
+     * (= 스킵의 종착 화면)"* 이라 `true` 였다. 지금은 적용 범위(`HIGHLIGHT_DEFAULT_HALVES`)가
+     * 비어 있어 **어떤 하프도 자동으로 켜지지 않는다** — 이 줄이 재는 것은 `live` 축이 아니라
+     * 범위 축이므로, 범위를 `[2]` 로 되돌리면 이 기대도 함께 `true` 로 돌아간다.
+     *
+     * ⚠️ **정직하게 적는다 — 라이브 축은 지금 `highlightDefaultOn` 으로는 관측되지 않는다.**
+     * 범위 게이트가 먼저 걸려 어떤 `live` 값이든 `false` 라, `DEFAULT_ON_WHILE_LIVE` 를 `true` 로
+     * 되돌리는 변이는 300행을 **통과한다**. 그 변이를 죽이는 것은 위 299행(상수 직접 단언)뿐이고,
+     * 행동 축은 범위를 되돌리는 날 함께 살아난다. 여기에 "죽는다"고 적어 두면 다음 사람이
+     * 있지도 않은 방어를 믿는다(apps/web CLAUDE.md "초록으로 거짓말하는 방식").
+     */
+    expect(highlightDefaultOn({ half: 2, live: false })).toBe(false);
     // 그래도 **고를 수는 있다** — 라이브에서도 토글은 살아 있다(유저가 요청한 되감기는 별개다).
     expect(highlightAvailable({ half: 2, live: true })).toBe(true);
   });

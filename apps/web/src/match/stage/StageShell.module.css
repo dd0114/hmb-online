@@ -171,15 +171,41 @@
   min-width: 0;
 }
 
+/*
+ * ⚠️ **무대 행은 이제 `[피치][컨트롤]` 두 칸이다**(#456 B0, hero: *"바는 경기장 밖으로 빼.
+ * 경기 안 가리게 화면 늘려달라 했잖아"*).
+ *
+ * 구 값은 이 박스에 `aspect-ratio: 1050/680` 이었다 — 그러면 컨트롤을 안에 넣는 순간 피치가
+ * 그만큼 줄어들어(`object-fit: contain` 이 좌우까지 깎는다) hero 가 거부한 답이 된다. 그래서
+ * **비율은 피치 박스로 내려가고**(`MatchViewer.module.css` 의 `.pitch`) 이 행은 내용 높이를
+ * 갖는다 = 컨트롤이 먹는 만큼 **시트가 양보**한다(시트는 `minmax(0,1fr)`).
+ *
+ * ⚠️ **그러나 상한(`max-height`)은 행에 그대로 둔다.** 초판은 이것도 피치로 내렸다가 `p348` ③
+ * (900×700 · 820×640 — 후반 지시 입력칸이 뷰포트 안)을 깼다: 상한이 피치에만 걸리면 행은 컨트롤
+ * 높이만큼 **더 커져**, 그 상한이 약속한 세로 예산(#348)이 조용히 늘어난다. 상한에 눌릴 때는
+ * **피치가 양보한다**(`.pitch { flex: 0 1 auto }`) — 컨트롤이 잘리면 스킵·시크를 아예 못 쓴다.
+ * 즉 세로 예산의 주인은 여전히 이 행이고, 바뀐 것은 *"그 안에서 컨트롤이 어디 서는가"* 다.
+ */
 .stage {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   min-width: 0;
   background: #0f1420;
   overflow: hidden;
-  aspect-ratio: 1050 / 680;
   /* 가로가 아주 넓거나 세로가 짧은 창에서 무대가 화면을 다 먹지 않게(캔버스는 안에서 다시 fit). */
   max-height: 58svh;
+}
+
+/* 뷰어 루트(무대 래퍼의 부모)는 block 이라 자식이 세로를 물려받지 못한다 — 여기부터 flex.
+   (`.stageInPanel > div` 와 같은 이유·같은 모양이다.) */
+.stage > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
 }
 
 /*
@@ -339,16 +365,48 @@
     grid-template-rows: minmax(0, 1fr);
   }
 
-  /* 높이에 맞춰 폭을 정하고(비율 유지) 가로·세로 모두 가운데 — 좌 쏠림 없음. */
+  /*
+   * 높이에 맞춰 폭을 정하고(비율 유지) 가로 가운데 — 좌 쏠림 없음.
+   *
+   * ⚠️ **#456 B0 으로 비율의 주인이 바뀌었다.** 구 값은 이 박스가 `width: auto` + `aspect-ratio`
+   * 라 높이에서 폭이 나왔다. 지금은 무대 행이 `[피치][컨트롤]` 두 칸이라 행에 비율을 걸 수 없다
+   * → 행은 그리드 폭을 그대로 쓰고(가운데 정렬은 그것으로 충족된다) **피치가 남은 세로를 받아**
+   * 그 높이에서 자기 폭을 정한다. `width: auto` + `aspect-ratio` 조합이 피치로 내려간 것이다.
+   */
+  /*
+   * ⚠️ **행을 `1fr` 로 뒤집는 것이 이 분기의 핵심이다.** 데스크탑에서 시트는 등급별 **고정
+   * 높이**(`.sheetInfo` 등 + `flex-shrink: 0`)라, 남는 세로의 주인은 무대다 — 그 사실이 원래
+   * `.stage { height: 100% }` **한 줄에 얹혀** 있었고, 무대가 비율 박스라 `auto` 행에서도 어찌어찌
+   * 높이가 나왔다. 무대가 두 칸이 되면서 그 우연이 깨졌다: 3440×1440 에서 행이 콘텐츠로 접혀
+   * 무대 아래 빈 띠가 생겼다(`p348` ① 실패). 이제 행이 직접 말한다.
+   *
+   * 감독시간(`bodyManaging`)·시트 없음(`bodyNoSheet`)은 행 구성이 다르므로 제외한다 — 안 그러면
+   * 여기가 나중에 선언돼 그 둘의 규칙을 덮는다.
+   */
+  .body:not(.bodyManaging):not(.bodyNoSheet) {
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
   .stage,
   .bodyNoSheet .stage {
-    justify-self: center;
-    align-self: center;
-    width: auto;
+    align-self: stretch;
+    justify-self: stretch;
+    width: 100%;
     height: 100%;
     max-width: 100%;
     max-height: none;
-    aspect-ratio: 1050 / 680;
+    align-items: center;
+  }
+
+  .stage :global([data-testid^="viewer-pitch-half"]),
+  .bodyNoSheet .stage :global([data-testid^="viewer-pitch-half"]) {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: none;
+    margin: 0 auto;
   }
 
   /* 시트 높이는 **콘텐츠와 무관하게 고정**한다(hero 지시 2026-07-23).
