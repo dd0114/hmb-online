@@ -67,9 +67,18 @@ export function starterCoords(formation: string): SlotCoord[] {
  * Move `playerId` onto (toRole,toSlotIndex) with swap semantics:
  *  - target empty → player moves there (source slot freed).
  *  - target occupied AND player already on the board → the two swap slots.
- *  - target occupied AND player from the pool → occupant is dropped (assignPlayer semantics),
- *    matching the tap-to-place behavior so no duplicate players can exist.
+ *  - target occupied AND player from the pool → the occupant is **demoted to the first empty
+ *    bench slot**, and only dropped from the deck when the bench is full (#442 R4-B).
  * Prompt text always travels with its player.
+ *
+ * ⚠️ **밀려난 선수의 행선지 판정은 이 함수 한 곳에만 있다** (hero #442 R4-B:
+ * *"벤치 자리있으면 벤치 벤치 자리없으면 빼자"*). 구 동작은 **무조건 덱에서 뺐다** — 빈 벤치 칸이
+ * 남아 있어도 그 선수의 **프롬프트째** 사라졌고 되돌리기가 없었다(독립검증 minor-2). 화면은 그걸
+ * "명단을 바꿨다"로 안내하고 있었으니 안내와 결과가 어긋나 있었다.
+ *
+ * ⛔ **`assignPlayer` 로 내리지 마라.** 그쪽은 저수준 원시연산이고 `fill-empty`(Auto)도 쓴다 —
+ * 거기에 이 규칙을 적으면 소비자마다 같은 규칙을 상속받아 두 곳에서 해석된다(#439 major-2).
+ * "맞바꾸기냐 밀어냄이냐"를 이미 소유한 자리가 여기다: 드래그 드롭·슬롯 탭·시트 선택이 전부 여기로 온다.
  */
 export function movePlayerToSlot(
   draft: DeckDraft,
@@ -93,7 +102,22 @@ export function movePlayerToSlot(
     return { ...draft, slots };
   }
 
-  // empty target, or from-pool onto occupied (drop occupant): assignPlayer covers both
+  if (occupant && occupant.playerId !== playerId && !source) {
+    /*
+     * 풀(스쿼드 밖) 선수가 찬 자리로 들어온다 — 밀려난 선수는 맞바꿀 자리가 없다.
+     * 벤치에 빈칸이 있으면 거기로 내리고(프롬프트는 `assignPlayer` 가 같이 옮긴다),
+     * 없으면 아래로 떨어져 구 동작(덱에서 제외)이 된다. 이것이 hero 가 고른 두 갈래 전부다.
+     * ⚠️ 대상이 **벤치 슬롯**이어도 같다 — `firstEmptyBench` 는 찬 칸을 안 고르므로 그 자리와
+     *    겹치지 않는다.
+     */
+    const benchIndex = firstEmptyBench(draft);
+    if (benchIndex !== null) {
+      const demoted = assignPlayer(draft, "bench", benchIndex, occupant.playerId);
+      return assignPlayer(demoted, toRole, toSlotIndex, playerId);
+    }
+  }
+
+  // empty target, or from-pool onto occupied with a full bench (drop occupant)
   return assignPlayer(draft, toRole, toSlotIndex, playerId);
 }
 

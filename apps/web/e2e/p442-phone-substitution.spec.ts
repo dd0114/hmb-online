@@ -259,14 +259,18 @@ test("⑤ 덱셋팅 — 빈 슬롯을 탭하면 맞바꾸기가 아니라 **배�
   expect(moved, "빈 자리 배치는 그 한 칸만 바꾼다 — 맞바꾸기가 아니다").toEqual(["board-slot-starter-8"]);
 });
 
-// ── ⑥ R3-A 용어 — 엔트리 / 명단 ──────────────────────────────────────────────
+// ── ⑥ R3-A/R4-A 용어 — 엔트리 / 벤치 / 명단 ──────────────────────────────────
 /**
- * hero: *"엔트리나, 명단으로 사용하자. 투입이랑 교체 대신 그 단어가 맞는거 같아."*
+ * hero(R3-A): *"엔트리나, 명단으로 사용하자. 투입이랑 교체 대신 그 단어가 맞는거 같아."*
+ * hero(R4-A): *"투입할도 명단에 넣을로 다 바꿔. 투입, 벤치, 명단만 단어 사용하자."*
  * ⚠️ **문자열을 리터럴로 박는다** — 앱과 같은 상수를 import 하면 상수를 바꾸는 변이가 통과한다
  * (`apps/web/CLAUDE.md` "초록으로 거짓말하는 방식" ②).
  */
-test("⑥ 용어 — 행 버튼은 [엔트리], 안내는 '명단에서 바꿀 선수를 선택하세요'", async ({ page }) => {
+test("⑥ 용어 — 행 버튼은 [엔트리], 후보 목록은 [벤치], 안내는 '명단에서 바꿀 선수를 선택하세요'", async ({ page }) => {
   await openBriefing(page);
+  // R4-A — 경기전 후보 목록의 이름은 `벤치` 다(구 `교체 선수`).
+  await expect(page.getByTestId("pool-sheet-open")).toHaveText(/^벤치 \(\d+\)$/);
+
   await page.getByTestId("pool-sheet-open").tap();
   await expect(page.getByTestId("player-pool")).toBeVisible();
   await expect(page.getByTestId("pool-assign-FW3")).toHaveText("엔트리");
@@ -275,7 +279,138 @@ test("⑥ 용어 — 행 버튼은 [엔트리], 안내는 '명단에서 바꿀 �
   const bar = page.getByTestId("assign-bar");
   await expect(bar).toContainText("명단에서 바꿀 선수를 선택하세요");
   // 구 용어가 이 동선 어디에도 남아 있지 않다(배너는 "…선수 엔트리" + 안내 + [취소]).
-  expect(await bar.innerText(), "구 용어 잔재").not.toMatch(/투입|교체할/);
+  expect(await bar.innerText(), "구 용어 잔재").not.toMatch(/투입|교체/);
+});
+
+// ── ⑨ R4-A 전수 스캔 — 한 화면에 `투입`·`교체` 가 0건 ────────────────────────
+/**
+ * hero 가 실제로 본 결함은 낱말 하나가 아니라 **한 화면에 네 단어가 같이 뜬다**였다
+ * (`엔트리` 배너 바로 윗줄이 *"…투입할 교체 선수가 없습니다"*, 시트 제목은 `교체 선수 (3)`).
+ * 그래서 계약도 낱말 하나가 아니라 **화면 전수 스캔**이다.
+ *
+ * hero 확정 용어축: **엔트리**(= 벤치 또는 선발) · **벤치** · **명단** · **투입**(= 경기장에
+ * 들어가는 것). *"투입은 경기장 투입이여서 구분되어야해."* → 덱·경기전 화면에는 경기장이 없으므로
+ * `투입` 이 뜨면 그 자체가 결함이고, `교체` 도 여기서는 축구의 교체가 아니다.
+ *
+ * ⛔ **하프타임(감독시간)은 이 스캔에서 제외한다** — 거긴 진짜 경기장 교체다(≤3명 · GK≥1 ·
+ * `subs` 전송, `match-logic.ts`). 그 화면까지 쓸어버리면 축구 규칙을 말하는 유일한 이름이 사라진다.
+ * 이 스캔의 대상은 **덱셋팅 `/deck` 과 경기전 `BRIEFING`** 두 화면뿐이다.
+ *
+ * ⚠️ `innerText` 만 보면 부족하다 — Auto 버튼의 힌트는 `title` 속성으로도 산다(`TeamSheetBar`).
+ * 스크린리더 문자열(`aria-label`)도 UI 다.
+ *
+ * ⚠️ **스캔 영역 = 스쿼드 구성 UI**(`deck-editor` 서브트리 + 시트 `pool-sheet` — 시트는 Modal 이라
+ * 포털로 밖에 산다). 그 밖의 경기 화면 부품은 대상이 아니다: 경기전 하단 [오토] 토글의 힌트가
+ * *"…감독시간(3분) 동안 후반 지시와 **교체**를 할 수 있습니다"* 인데 그건 **경기장에서 일어날 일**을
+ * 미리 말하는 문장이라 hero 축에서 `교체` 가 맞는 말이다. 다만 그 예외가 **조용히 넓어지지 않게**
+ * 아래 두 번째 단언이 "영역 밖 잔재는 전부 감독시간 문장뿐"임을 같이 잠근다.
+ */
+const SCAN_ROOTS = ["deck-editor", "pool-sheet"];
+
+async function bannedWords(page: Page, roots: string[] | null): Promise<string[]> {
+  return page.evaluate((rootIds) => {
+    const hits: string[] = [];
+    const push = (where: string, text: string | null) => {
+      if (text && /투입|교체/.test(text)) hits.push(`${where}: ${text.trim().replace(/\s+/g, " ").slice(0, 80)}`);
+    };
+    const scopes: Element[] = rootIds
+      ? rootIds
+          .map((id) => document.querySelector(`[data-testid="${id}"]`))
+          .filter((e): e is Element => Boolean(e))
+      : [document.body];
+    for (const scope of scopes) {
+      // ⚠️ **줄 단위로 쪼개서 본다** — 통짜 `innerText` 를 한 건으로 담으면 잔재 하나가 화면 전체를
+      //    한 문자열로 만들어 "어느 문장이 걸렸나"를 못 읽는다(예외 판별도 못 한다).
+      for (const line of (scope as HTMLElement).innerText.split("\n")) push("text", line);
+      for (const attr of ["title", "aria-label", "placeholder"]) {
+        for (const el of scope.querySelectorAll(`[${attr}]`)) push(attr, el.getAttribute(attr));
+      }
+    }
+    return hits;
+  }, roots);
+}
+
+test("⑨ 경기전 화면 전수 — `투입`·`교체` 가 한 글자도 없다(엔트리/벤치/명단만)", async ({ page }) => {
+  mkdirSync(SMOKE_DIR, { recursive: true });
+  await openBriefing(page);
+  expect(await bannedWords(page, SCAN_ROOTS), "경기전 기본 상태").toEqual([]);
+  /** ★ 눈 판정용 — hero 가 본 결함이 "한 화면에 네 단어가 같이 뜬다"였다. 스캔은 문자열만 보므로
+   *  **한 화면에 무엇이 같이 서 있나**는 사람이 본다(루트 §2-2). */
+  await page.screenshot({ path: `${SMOKE_DIR}p442-r4-briefing-390.png` });
+
+  await page.getByTestId("pool-sheet-open").tap();
+  await expect(page.getByTestId("player-pool")).toBeVisible();
+  expect(await bannedWords(page, SCAN_ROOTS), "벤치 시트가 열린 상태(제목·행·손잡이)").toEqual([]);
+  await page.screenshot({ path: `${SMOKE_DIR}p442-r4-briefing-sheet-390.png` });
+
+  await page.getByTestId("pool-assign-FW3").tap();
+  await expect(page.getByTestId("assign-bar")).toBeVisible();
+  expect(await bannedWords(page, SCAN_ROOTS), "엔트리 대기 상태(배너 + 보드)").toEqual([]);
+
+  // 영역 **밖**의 잔재는 감독시간(=경기장)을 말하는 문장뿐이다 — 예외가 조용히 넓어지면 여기서 죽는다.
+  const outside = await bannedWords(page, null);
+  console.log(`[#442-⑨] 영역 밖 잔재 ${outside.length}건 = ${JSON.stringify(outside)}`);
+  for (const hit of outside) {
+    expect(hit, "덱·경기전 UI 에 새 '투입/교체' 문자열이 생겼다").toContain("감독시간");
+  }
+});
+
+test("⑨-b 덱셋팅 화면 전수 — 같은 규칙(빈 자리·Auto 힌트 포함)", async ({ page }) => {
+  await openDeck(page);
+  expect(await bannedWords(page, SCAN_ROOTS), "덱셋팅 기본 상태").toEqual([]);
+
+  // 빈 자리를 만들어 Auto 힌트가 **활성 문구**로 갈리는 갈래도 태운다(둘 다 문구가 다르다).
+  await page.getByTestId("token-MF4").tap();
+  await page.getByTestId("rail-remove-player").tap();
+  await expect(page.getByTestId("starter-count")).toHaveText(/10\/11/);
+  expect(await bannedWords(page, SCAN_ROOTS), "빈 자리 있는 상태").toEqual([]);
+
+  await page.getByTestId("pool-sheet-open").tap();
+  await expect(page.getByTestId("player-pool")).toBeVisible();
+  expect(await bannedWords(page, SCAN_ROOTS), "보유 선수 시트가 열린 상태").toEqual([]);
+  // ★ 눈 판정용 — 잠긴 [엔트리]와 열린 [엔트리]가 한 화면에 서는 시트(FW4 만 열려 있다).
+  await page.getByTestId("pool-sheet").screenshot({ path: `${SMOKE_DIR}p442-r4-deck-sheet.png` });
+
+  // 덱셋팅은 경기 부품이 없다 → 화면 **전체**가 깨끗해야 한다(경기전보다 강한 단언).
+  expect(await bannedWords(page, null), "덱셋팅 화면 전체").toEqual([]);
+});
+
+// ── ⑩ R4-B 드롭 semantics — 밀려난 선수는 벤치로 ────────────────────────────
+/**
+ * hero: *"벤치 자리있으면 벤치 벤치 자리없으면 빼자."*
+ *
+ * 구 동작은 **무조건 덱에서 뺐다** — 미배치 선수를 찬 자리에 넣으면 앉아 있던 선수가 **프롬프트째**
+ * 사라졌고(빈 벤치 칸이 남아 있어도) 되돌리기가 없었다(#442 독립검증 minor-2).
+ *
+ * 스코프는 **덱셋팅뿐**이다 — 경기전 후보는 정의상 전원 벤치 선수라(#439 R2) 이 갈래에 도달할
+ * 수 없다(그 화면의 모든 이동은 맞바꾸기다, ② 가 그걸 잰다). 로직 3갈래 =
+ * `src/deck/tactics-logic.test.ts` "#442 R4-B".
+ */
+test("⑩ 덱셋팅 — 미배치 선수를 찬 자리에 넣으면 밀려난 선수가 **벤치로 내려간다**(지시도 따라간다)", async ({ page }) => {
+  await openDeck(page);
+
+  // 밀려날 선수(MF4, 선발 8)에 지시를 남긴다 — 그 문장이 살아남는지가 이 결정의 취지다.
+  await page.getByTestId("token-MF4").tap();
+  await page.getByTestId("rail-prompt-input").fill("측면을 넓게 벌려라");
+  await expect(page.getByTestId("rail-prompt-input")).toHaveValue("측면을 넓게 벌려라");
+
+  // 벤치는 FW3(0)·GK2(1) 뿐 → 첫 빈 자리는 벤치 2.
+  await expect(page.getByTestId("board-slot-bench-2").locator('[data-testid^="token-"]')).toHaveCount(0);
+
+  await startAssign(page, "FW4"); // 스쿼드 밖(미배치) — 이 갈래의 유일한 입구
+  await page.getByTestId("board-slot-starter-8").tap();
+
+  await expect(page.getByTestId("board-slot-starter-8").getByTestId("token-FW4")).toBeVisible();
+  await expect(
+    page.getByTestId("board-slot-bench-2").getByTestId("token-MF4"),
+    "빈 벤치가 있는데 덱에서 사라지면 안 된다",
+  ).toBeVisible();
+  await expect(page.getByTestId("board-slot-bench-0").getByTestId("token-FW3"), "기존 벤치는 안 밀린다").toBeVisible();
+  await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
+
+  // 지시 보존 — 밀려난 선수를 다시 눌러 그 문장이 그대로인지 본다.
+  await page.getByTestId("token-MF4").tap();
+  await expect(page.getByTestId("rail-prompt-input")).toHaveValue("측면을 넓게 벌려라");
 });
 
 // ── ⑦ R3-B 잠금 — 이미 명단에 있는 선수 ──────────────────────────────────────

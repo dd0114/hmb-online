@@ -374,9 +374,12 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
             onAuto={() => setEditor({ ...editor, draft: fillEmptySlots(editor.draft, benchCandidates) })}
             autoDisabled={!autoUsable}
             autoHint={
+              /* #442 R4-A — 용어축은 **엔트리 / 벤치 / 명단**이다(hero: *"투입할도 명단에 넣을로
+                 다 바꿔. 투입, 벤치, 명단만 단어 사용하자."*). 이 화면에는 경기장이 없으므로
+                 `투입`(= 경기장에 들어가는 것)도 `교체`(= 축구 규칙의 교체)도 여기서는 틀린 말이다. */
               autoUsable
-                ? "빈 자리를 교체 선수로 자동 배치합니다 (이미 놓인 선수·지시는 그대로)"
-                : "채울 빈 자리가 없거나 투입할 교체 선수가 없습니다"
+                ? "빈 자리를 벤치 선수로 자동 배치합니다 (이미 놓인 선수·지시는 그대로)"
+                : "채울 빈 자리가 없거나 명단에 넣을 벤치 선수가 없습니다"
             }
           />
         </>

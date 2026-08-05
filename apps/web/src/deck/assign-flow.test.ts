@@ -47,11 +47,27 @@ const PLAYERS: CatalogPlayer[] = [
   P("MF1", "미드필더", "MF", 80),
   P("FW1", "공격수", "FW", 88),
   /** 벤치 — 경기전에 엔트리로 올릴 수 있는 유일한 부류. */
-  P("FW2", "교체공격수", "FW", 74),
+  /* ⚠️ 이름에 `교체`·`투입` 을 쓰지 마라 — R4-A 용어 스캔이 선수 이름을 잔재로 잡는다(실제로 잡혔다). */
+  P("FW2", "벤치공격수", "FW", 74),
   /** 스쿼드 밖 — 경기전에는 목록에도 [엔트리]에도 없어야 한다. */
   P("FW9", "외부공격수", "FW", 92),
 ];
-const byId = new Map(PLAYERS.map((p) => [p.id, p]));
+/** 벤치 만석(7) 갈래 전용 — 이름은 안 쓰이므로 최소 형태로 만든다(#442 R4-B). */
+const BENCH_FILLERS: CatalogPlayer[] = [0, 1, 2, 3, 4, 5, 6].map((i) => P(`B${i}`, `벤치${i}`, "MF", 60));
+const byId = new Map([...PLAYERS, ...BENCH_FILLERS].map((p) => [p.id, p]));
+
+/**
+ * 벤치 7칸이 **전부 찬** 덱 — R4-B 의 "갈 곳이 없다" 갈래. 선발 3 의 DF1 이 밀려날 대상이다.
+ * (기본 픽스처는 벤치가 1명뿐이라 이 갈래를 만들 수 없다 — 표본을 겹치지 않는다.)
+ */
+const benchFullDraft = (): DeckDraft => ({
+  formation: "4-4-2",
+  slots: [
+    { playerId: "GK1", role: "starter", slotIndex: 0, promptText: null },
+    { playerId: "DF1", role: "starter", slotIndex: 3, promptText: null },
+    ...BENCH_FILLERS.map((p, i) => ({ playerId: p.id, role: "bench" as const, slotIndex: i, promptText: null })),
+  ],
+});
 
 /** 선발 4(0·3·6·9) + 벤치 1 — 빈 자리가 남아 있어 "빈 슬롯 = 배치"도 같이 잰다. */
 const draft = (): DeckDraft => ({
@@ -65,9 +81,9 @@ const draft = (): DeckDraft => ({
   ],
 });
 
-function Harness({ poolScope }: { poolScope?: "owned" | "bench" }) {
+function Harness({ poolScope, initial }: { poolScope?: "owned" | "bench"; initial?: DeckDraft }) {
   const [state, setState] = useState<EditorState>({
-    draft: draft(), tactics: { ...DEFAULT_TEAM_TACTICS }, teamPrompt: "",
+    draft: initial ?? draft(), tactics: { ...DEFAULT_TEAM_TACTICS }, teamPrompt: "",
   });
   return h(DeckEditor, {
     state,
@@ -120,7 +136,7 @@ describe("#442 R1 — 엔트리 대기 상태", () => {
     startAssign("FW2");
     expect(screen.queryByTestId("pool-sheet")).toBeNull();
     expect(screen.getByTestId("assign-bar").textContent).toContain("명단에서 바꿀 선수를 선택하세요");
-    expect(screen.getByTestId("assign-bar").textContent).toContain("교체공격수");
+    expect(screen.getByTestId("assign-bar").textContent).toContain("벤치공격수");
   });
 
   it("선발군 + 후보군 슬롯이 **전부** 대상이 된다(빈 자리 = 배치 · 찬 자리 = 맞바꾸기)", () => {
@@ -217,7 +233,67 @@ describe("#442 R3-A — 용어는 엔트리 / 명단이다", () => {
     startAssign("FW2");
     const bar = screen.getByTestId("assign-bar").textContent ?? "";
     expect(bar).toContain("명단에서 바꿀 선수를 선택하세요");
-    expect(bar, "구 용어가 한 글자도 남으면 안 된다").not.toMatch(/투입|교체할/);
+    expect(bar, "구 용어가 한 글자도 남으면 안 된다").not.toMatch(/투입|교체/);
+  });
+
+  /**
+   * #442 R4-A — **경기전 후보 목록의 이름은 `벤치` 다**(hero: *"투입, 벤치, 명단만 단어 사용하자"*).
+   * 구 라벨은 `교체 선수` 였는데, 이 화면에는 **경기장이 없어서** 거기서의 '교체'는 축구의 교체가
+   * 아니다 — hero 가 그 축을 갈랐다: *"투입은 경기장 투입이여서 구분되어야해."*
+   */
+  it("경기전 목록 손잡이·제목이 '벤치' 다 — '교체'·'투입' 이 아니다", () => {
+    render_("bench");
+    const opener = screen.getByTestId("pool-sheet-open");
+    expect(opener.textContent, "여는 버튼").toMatch(/^벤치 \(/);
+    expect(opener.textContent).not.toMatch(/투입|교체/);
+    fireEvent.click(opener);
+    expect(screen.getByTestId("pool-sheet").textContent, "시트 제목").not.toMatch(/투입|교체/);
+  });
+});
+
+/**
+ * #442 R4-B — **밀려난 선수는 벤치 자리가 있으면 벤치로 내려간다**
+ * (hero: *"벤치 자리있으면 벤치 벤치 자리없으면 빼자"*).
+ *
+ * 위 R1 블록의 "맞바꾸기"와 **다른 갈래**다 — 저기는 보드 위 선수를 옮기는 것이라 서로 자리를
+ * 맞바꾸지만, 여기는 **스쿼드 밖(미배치) 선수**가 찬 자리로 들어오는 경로라 밀려난 선수가 갈 곳이
+ * 없었다(구 동작 = 프롬프트째 덱에서 소멸, 빈 벤치가 남아 있어도). 그래서 스코프는 **덱셋팅**이다 —
+ * 경기전 후보는 정의상 전원 벤치 선수라 이 갈래에 **도달할 수 없다**(#439 R2).
+ *
+ * 로직 레벨 계약 = `tactics-logic.test.ts` "#442 R4-B". 여기서 재는 것은 **화면이 그 함수를 타는가**.
+ */
+describe("#442 R4-B — 덱셋팅: 밀려난 선수는 벤치로 내려간다", () => {
+  it("빈 벤치가 있으면 — 밀려난 선발이 첫 빈 벤치로 가고 **지시가 따라간다**", () => {
+    render_("owned");
+    // MF1 은 선발 6 · 지시 "안쪽으로". 벤치 0 은 FW2 가 쓰고 있으므로 첫 빈 자리는 벤치 1.
+    startAssign("FW9");
+    fireEvent.click(screen.getByTestId("board-slot-starter-6"));
+
+    expect(occupantOf("starter", 6)).toBe("FW9");
+    expect(occupantOf("bench", 1), "빈 벤치가 있는데 덱에서 사라지면 안 된다").toBe("MF1");
+    expect(occupantOf("bench", 0), "이미 앉아 있던 벤치는 안 밀린다").toBe("FW2");
+
+    // 지시 보존 — 밀려난 선수를 눌러 그 문장이 그대로인지 본다(hero 결정의 취지).
+    fireEvent.click(screen.getByTestId("board-slot-bench-1"));
+    expect((screen.getByTestId("rail-prompt-input") as HTMLTextAreaElement).value).toBe("안쪽으로");
+  });
+
+  it("벤치가 만석이면 — 지금처럼 덱에서 빠진다", () => {
+    render(h(Harness, { poolScope: "owned", initial: benchFullDraft() }));
+    startAssign("FW9");
+    fireEvent.click(screen.getByTestId("board-slot-starter-3"));
+
+    expect(occupantOf("starter", 3)).toBe("FW9");
+    expect(
+      document.querySelector('[data-testid="token-DF1"]'),
+      "벤치가 없으면 빼는 것이 hero 결정이다",
+    ).toBeNull();
+    // 벤치는 한 명도 안 밀렸다(밀려난 선수를 벤치에 억지로 끼워 넣지 않는다).
+    for (let i = 0; i < 7; i += 1) expect(occupantOf("bench", i)).toBe(`B${i}`);
+    /* ⚠️ **정원 카운터까지 봐야 한다.** 보드는 벤치 0..6 만 그리므로 "정원을 넘겨 8번째로 앉혔다"는
+       변이는 **토큰 부재로 위장돼 위 두 단언을 통과한다**(변이 M2 에서 실제로 통과했다). 카운터는
+       draft 를 세므로 그 위장을 뚫는다. */
+    expect(screen.getByTestId("bench-count").textContent, "정원을 넘겨 앉히면 여기서 죽는다").toBe("벤치 7/7");
   });
 });
 
