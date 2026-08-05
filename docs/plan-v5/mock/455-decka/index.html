@@ -81,6 +81,7 @@
   .btn:disabled{opacity:.4;cursor:not-allowed}
 
   .stage{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+  .phone[data-layout="tabs"] .stage{flex:0 1 auto}
 
   .pitchBox{position:relative;flex:1 1 auto;min-height:120px;margin:8px 8px 0;border-radius:12px;overflow:hidden;
     background:repeating-linear-gradient(180deg,var(--grass-a) 0 26px,var(--grass-b) 26px 52px);
@@ -141,9 +142,13 @@
   .railHead .mini{font-size:9px;font-weight:900;color:#0f1115;background:#7f8da3;border-radius:4px;padding:1px 5px;letter-spacing:.04em}
   .railHead b{font-size:12.5px}
   .railHead .hint{font-size:10.5px;color:var(--text-muted)}
-  #teamPrompt{width:100%;min-height:92px;background:var(--sunk);border:1px solid var(--border);border-radius:9px;
+  #teamPrompt,#teamPromptInline{width:100%;min-height:92px;background:var(--sunk);border:1px solid var(--border);border-radius:9px;
     color:var(--text);font:inherit;font-size:13px;padding:9px 10px;resize:vertical}
-  #teamPrompt:focus{outline:none;border-color:var(--accent)}
+  #teamPrompt:focus,#teamPromptInline:focus{outline:none;border-color:var(--accent)}
+  /* 남는 세로는 프롬프트가 먹는다 — "가장 잘 보여야 한다"를 자리 크기로도 표현한다 */
+  .tabPanel[data-p="team"]{display:flex;flex-direction:column}
+  .tabPanel[data-p="team"][hidden]{display:none}
+  #teamPromptInline{flex:1 1 auto;min-height:72px;max-height:none;resize:none}
   .railRow{display:flex;align-items:center;gap:7px;margin-top:6px}
   .railRow .c{font-size:10.5px;color:var(--text-muted)} .railRow .sp{flex:1}
   .tuneToggle{display:flex;align-items:center;gap:6px;background:var(--sunk);border:1px solid var(--border);color:#c8d4e2;
@@ -156,8 +161,36 @@
   .tuneRow .v{width:44px;text-align:right;font-size:11px;color:var(--accent);font-weight:800}
 
   /* 보유 선수 = **모달(바텀시트)**. 실제 앱 deck/PlayerPicker.tsx 와 같은 동선 — 빈 자리를 누르면 올라온다. */
+  /* ── 1안: 경기장 하단 **책갈피 탭**. 프롬프트가 버튼 뒤가 아니라 **펼쳐진 내용**으로 1급이 된다 ── */
+  /* 경기장이 68 에서 멈추고 남는 세로를 **이 탭이 가져간다** — R4 의 249px 여백이 여기로 들어간다 */
+  /* ⚠️ grow 를 1 로 주면 경기장 쪽(.stage)과 남는 세로를 **나눠 가져** 경기장 아래 띠가 남는다
+     (68 상한 스페이서 때와 같은 부류 — 실측 29px 로 잡았다). 반대로 탭에 큰 grow 를 주면
+     이번엔 경기장이 min-height 까지 눌린다(실측 125px). 그래서 grow 로 겨루지 않고,
+     1안에서는 **경기장 쪽이 자기 크기만 갖고**(.stage flex:0) 남는 세로를 탭이 전부 받는다. */
+  .deckTabs{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;background:var(--bg-elevated);border-top:1px solid var(--border)}
+  .deckTabs[hidden]{display:none}
+  .tabRow{display:flex;gap:4px;padding:6px 8px 0}
+  .tabRow button{flex:0 1 auto;display:flex;align-items:center;gap:5px;background:var(--sunk);border:1px solid var(--border);border-bottom:0;
+    color:var(--text-muted);font:inherit;font-size:12px;font-weight:700;border-radius:9px 9px 0 0;padding:7px 11px;cursor:pointer;position:relative;top:1px}
+  .tabRow button[data-on="1"]{background:var(--surface);color:#dbe7ff;border-color:#3c5279;box-shadow:0 -2px 0 var(--accent) inset}
+  /* 프롬프트 탭은 1급이라 넓게 잡고 강조색을 쓴다 — 나머지는 폭을 내용만큼만 */
+  .tabRow button[data-p="team"]{flex:1 1 auto;font-size:12.6px;color:#dbe7ff}
+  .tabRow button[data-p="team"][data-on="1"]{box-shadow:0 -3px 0 var(--accent) inset}
+  .tabRow button[data-p="tune"]{opacity:.72;font-weight:600}
+  .tabRow .dot{font-size:9px;color:#59606d} .tabRow .ic{font-size:13px}
+  .tabPanel{flex:1 1 auto;background:var(--surface);border-top:1px solid #3c5279;
+    padding:9px 10px calc(10px + env(safe-area-inset-bottom,0px));min-height:0;overflow-y:auto}
+  .tabPanel[hidden]{display:none}
+  .tabHint{font-size:11px;color:var(--text-muted);margin-top:6px}
+  .poolCta{width:100%;margin-top:7px;background:var(--sunk);border:1px dashed #3c5279;color:#c8d4e2;font:inherit;font-size:12px;
+    font-weight:700;border-radius:9px;padding:9px;cursor:pointer}
+
+  /* ── 2안: 하단 버튼 바(R4). 팀 지시만 강조색으로 올린다 ── */
   .poolBar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));
     border-top:1px solid var(--border);background:var(--bg-elevated)}
+  .poolBar[hidden]{display:none}
+  .poolBar .btn.hero{background:var(--accent);border-color:var(--accent);color:#08101f;font-size:13px;padding:9px 13px}
+  .poolBar .btn.hero .ic{font-size:15px}
   .poolBar .sp{flex:1}
   .poolBar .c{font-size:11.5px;color:var(--text-muted)}
   .poolBar .c b{color:#c8d4e2}
@@ -307,6 +340,7 @@
   <button data-t="q2" aria-selected="false">정한 것 ② auto 와 한마디 = ㄴ안</button>
   <button data-t="q3" aria-selected="false">정한 것 ③ 경기장 = 68 까지</button>
   <button data-t="q4" aria-selected="false">정한 것 ④ 시트 vs 모달</button>
+  <button data-t="q5" aria-selected="false">정한 것 ⑤ 하단 = 1안 탭</button>
   <button data-t="sum" aria-selected="false">✓ 컨펌</button>
   <button id="focusOn" style="background:#1c2841;color:#dbe7ff;border-color:#3c5279">📱 전체화면으로 보기</button>
 </div></div></nav>
@@ -329,7 +363,7 @@
         <button class="btn sm pri" id="btnSave">저장</button>
       </div>
 
-      <div class="stage">
+      <div class="stage" id="stage">
         <div class="banner" id="banner" hidden>
           <span id="bannerText"></span><span class="sp"></span>
           <button class="btn sm" id="bannerCancel">취소</button>
@@ -340,7 +374,7 @@
           <button class="autoFill" id="btnFill" hidden>⚡ 자동 채우기</button>
         </div>
 
-        <div class="benchWrap">
+        <div class="benchWrap" id="benchWrap">
           <div class="lb">벤치 <span id="benchCount" style="color:#c8d4e2"></span></div>
           <div class="benchRow" id="bench"></div>
         </div>
@@ -348,9 +382,38 @@
         <div class="stageSpacer"></div>
       </div>
 
+      <!-- 1안 — 책갈피 탭 -->
+      <div class="deckTabs" id="deckTabs" hidden>
+        <div class="tabRow" id="tabRow">
+          <button data-p="team" data-on="1"><span class="ic">📣</span> 전체 지시 <b class="dot" id="tabTeamDot">●</b></button>
+          <button data-p="sub" data-on="0"><span class="ic">👥</span> 후보 <b id="tabSubN">0</b></button>
+          <button data-p="tune" data-on="0"><span class="ic">⚙</span> 세부 전술</button>
+        </div>
+        <div class="tabPanel" data-p="team" id="panelTeam">
+          <textarea id="teamPromptInline" placeholder="팀 전체에 내릴 작전 (예: 초반부터 강하게 압박, 역습 위주)"></textarea>
+          <div class="railRow"><span class="c" id="tpInlineCount">0 / 500</span><span class="sp"></span>
+            <span class="c">선수를 누르면 <b style="color:#c8d4e2">그 선수 한마디</b></span></div>
+        </div>
+        <div class="tabPanel" data-p="sub" id="panelSub" hidden>
+          <div id="benchHost"></div>
+          <button class="poolCta" id="btnPoolInTab">👥 제외 명단에서 데려오기 <b style="color:var(--accent)" id="poolCountTab">0</b>명</button>
+        </div>
+        <div class="tabPanel" data-p="tune" id="panelTune" hidden>
+          <div class="tunePanel" style="display:grid">
+            <div class="tuneRow"><span class="k">라인</span><input type="range" min="0" max="4" value="2" /><span class="v">보통</span></div>
+            <div class="tuneRow"><span class="k">압박</span><input type="range" min="0" max="4" value="3" /><span class="v">강함</span></div>
+            <div class="tuneRow"><span class="k">템포</span><input type="range" min="0" max="4" value="2" /><span class="v">보통</span></div>
+            <div class="tuneRow"><span class="k">폭</span><input type="range" min="0" max="4" value="2" /><span class="v">보통</span></div>
+          </div>
+          <div class="tabHint">프롬프트로 다 되는 것들입니다 — 손으로 만지고 싶을 때만 씁니다(3순위).</div>
+        </div>
+      </div>
+
+      <!-- 2안 — 하단 버튼 바 -->
       <div class="poolBar" id="poolBar">
+        <button class="btn hero" id="btnTeam"><span class="ic">📣</span> 팀 지시 <b id="teamDot" style="color:#08101f;opacity:.45">●</b></button>
         <button class="btn" id="btnPool">👥 가진 선수 <b id="poolCount" style="color:var(--accent)">0</b></button>
-        <button class="btn" id="btnTeam">📣 팀 지시 <b id="teamDot" style="color:#59606d">●</b></button>
+        <button class="btn" id="btnTuneBar" title="세부 전술">⚙</button>
         <span class="sp"></span>
         <span class="c" id="poolUp"></span>
       </div>
@@ -367,7 +430,13 @@
         <li><b>auto 와 한마디(②)</b> — <span id="liveQ2">ㄴ안</span></li>
         <li><b>경기장 비율(③)</b> — <span id="liveQ3">—</span></li>
         <li><b>뜨는 방식(④)</b> — <span id="liveQ4">시트(아래에서 올라옴)</span></li>
+        <li><b>하단 구조(⑤)</b> — <span id="liveQ5">1안 — 책갈피 탭</span></li>
       </ul>
+      <div class="knob">
+        <span class="k">하단 구조</span>
+        <span style="flex:1;font-size:12.2px;color:var(--text-muted)"><b style="color:#c8d4e2">1안 탭</b>(프롬프트 펼침) ↔ <b style="color:#c8d4e2">2안 버튼</b></span>
+        <button class="btn sm" id="layoutToggle">1안 ↔ 2안</button>
+      </div>
       <div class="knob">
         <span class="k">뜨는 방식</span>
         <span style="flex:1;font-size:12.2px;color:var(--text-muted)">선수 메뉴 · 가진 선수 · 팀 지시 <b style="color:#c8d4e2">전부 같이</b> 바뀝니다</span>
@@ -484,6 +553,27 @@
   <div class="note">데스크탑(넓은 화면)에서는 모달이 자연스럽고 폰에서는 시트가 자연스럽습니다 — <b>화면 폭에 따라 자동으로 갈라 쓰는 것</b>도 가능합니다(구현 비용 거의 같음). 원하시면 그렇게 잡겠습니다.</div>
 </section>
 
+<!-- ─────────── Q5 하단 구조 ─────────── -->
+<section class="pane" id="pane-q5">
+  <div class="qhead"><span class="qno">정한 것 ⑤</span><h2>경기장 아래 = <b style="color:var(--accent)">1안 · 책갈피 탭</b> — 프롬프트가 펼쳐진 채로 1급</h2></div>
+  <div class="qask">
+    <div class="quote">"팀지시가 더 잘보여야돼. 프롬프트는 우리핵심이기때문에 가장 잘보여야돼 버튼중에서도. … 세부전술은 지시에 들어갈게 아니라 별도 3순위로 있어야할거 같아 이게 1안이고. 2안은 지금처럼하되 아이콘 강조하고. … 뭘더 추천해?"</div>
+    <p style="margin-top:9px"><b>1안을 추천합니다.</b> 이유는 셋인데 <b>첫째가 결정적</b>입니다.</p>
+    <p style="margin-top:7px"><b>① 버튼은 아무리 강조해도 "내용"이 안 보입니다.</b> 아이콘을 키우고 색을 넣어도 보이는 것은 <i>여기에 프롬프트가 있다</i> 까지고, <b>내가 뭐라고 써놨는지</b>는 안 보입니다. 1안은 프롬프트를 <b>펼쳐진 내용</b>으로 올려서, 덱 화면에 들어오면 <b>지금 팀에 내린 지시가 그대로 읽힙니다</b>. "가장 잘 보여야 한다"는 요구는 <b>강조가 아니라 위계</b>의 문제이고, 위계는 "펼쳐져 있느냐 접혀 있느냐"로 갈립니다.</p>
+    <p style="margin-top:7px"><b>② 이미 그 원칙이 코드에 박혀 있습니다.</b> `DirectiveRail` 은 <b>프롬프트를 1급으로 두고 세부조정을 버튼 뒤로 접는</b> 구조입니다(#244 — 다른 축구게임이 세부조정을 두던 자리를 프롬프트가 차지한다고 주석에 적혀 있습니다). 1안은 그 원칙을 덱 화면에 그대로 잇는 것이고, 2안은 프롬프트를 다시 버튼 뒤로 내리는 셈입니다.</p>
+    <p style="margin-top:7px"><b>③ R4 가 남긴 여백 249px(화면의 30%)이 마침 이 탭 자리입니다.</b> 2안은 그 여백이 그대로 남지만, 1안은 그 자리를 <b>프롬프트·후보·세부전술</b>이 채웁니다. 즉 1안은 <b>공짜로 들어갑니다</b> — 경기장 68 상한을 그대로 두고도 화면이 빈 느낌이 없어집니다.</p>
+    <p style="margin-top:7px"><b>세부 전술 = 3순위</b>도 1안이 더 정확히 표현합니다 — 지시 안에 접힌 게 아니라 <b>옆 탭</b>으로, 라벨을 흐리게 해서 "있지만 먼저 볼 것은 아니다"가 됩니다.</p>
+    <p style="margin-top:7px"><b>1안의 대가:</b> 후보(벤치)가 <b>기본으로는 안 보입니다</b> — 탭을 눌러야 나옵니다. 지금은 벤치가 항상 보였으니 <b>이게 바뀌는 유일한 손해</b>입니다. 만져보고 "벤치는 늘 보여야 한다" 싶으면 벤치만 밖으로 빼고 탭은 [전체 지시][세부 전술][가진 선수] 로 줄이면 됩니다.</p>
+  </div>
+  <div class="subh">둘 다 만들어 뒀습니다 — 눌러서 바로 바꿔 보세요</div>
+  <div class="opts" id="q5opts">
+    <label class="opt" data-v="tabs"><div class="t"><i>1안</i>책갈피 탭<em class="pin">이 안을 추천</em></div>
+      <div class="d">경기장 아래에 <b>[📣 전체 지시] [👥 후보] [⚙ 세부 전술]</b>. 기본으로 <b>전체 지시가 펼쳐져</b> 있고, 후보 탭 안에 <b>[제외 명단에서 데려오기]</b> 가 들어갑니다.</div></label>
+    <label class="opt" data-v="buttons"><div class="t"><i>2안</i>하단 버튼 + 아이콘 강조</div>
+      <div class="d">R4 그대로에 <b>[📣 팀 지시]만 강조색</b>으로 키우고 <b>[⚙]</b> 를 그 옆에 둡니다. 벤치는 계속 보입니다.<br>⚠️ 프롬프트 <b>내용</b>은 눌러야 보입니다.</div></label>
+  </div>
+</section>
+
 <!-- ─────────── 요약 ─────────── -->
 <section class="pane" id="pane-sum">
   <div class="qhead"><span class="qno">✓</span><h2>컨펌</h2></div>
@@ -493,8 +583,8 @@
     <div class="sumRow"><span class="lb">② auto 와 한마디</span><span class="vl" id="s2">ㄴ안</span></div>
     <div class="sumRow"><span class="lb">③ 경기장 비율</span><span class="vl" id="s3">—</span></div>
     <div class="sumRow"><span class="lb">④ 뜨는 방식</span><span class="vl" id="s4">—</span></div>
-    <div class="sumRow"><span class="lb">강화 가능 표시</span><span class="vl" id="s5">켬</span></div>
-    <div class="sumRow"><span class="lb">자동 채우기 숨김</span><span class="vl" id="s6">켬</span></div>
+    <div class="sumRow"><span class="lb">⑤ 하단 구조</span><span class="vl" id="s5">—</span></div>
+    <div class="sumRow"><span class="lb">그 밖</span><span class="vl" id="s6">—</span></div>
   </div>
   <div class="copy"><input id="sumStr" readonly value="" /><button class="btn pri" id="copyBtn">복사</button></div>
   <div class="note" style="margin-top:12px">
@@ -598,7 +688,8 @@ let teamPrompt = "";  // 팀 프롬프트(실제 앱 DirectiveRail 의 teamPromp
 let poolFilter = "ALL";
 /* 세 가지는 이미 정해서 기본값으로 박아 뒀다 — hero 는 만져보고 "이대로" 아니면 "다르다"만 말하면 된다.
    다른 안도 그대로 눌러볼 수 있게 남겨 둔다(만져보고 다르게 느끼면 그 자리에서 뒤집을 수 있어야 하므로). */
-const choice = {q1:"A",q2:"ㄴ",q3:68,surface:"sheet",pitchRatio:0,growth:true,fillHide:true};
+const choice = {q1:"A",q2:"ㄴ",q3:68,surface:"sheet",layout:"tabs",pitchRatio:0,growth:true,fillHide:true};
+let deckTab = "team";
 
 /* ══════════════════ 순수 로직 (apps/web 과 같은 규칙) ══════════════════ */
 const getSlot = (role,idx)=>draft.slots.find(s=>s.role===role&&s.slotIndex===idx);
@@ -730,8 +821,13 @@ function render(){
   /* 보유 선수 = 모달. 여기서는 하단 바의 숫자만 갱신하고, 열려 있으면 목록도 다시 그린다 */
   const pool = poolPlayers();
   $("#poolCount").textContent = String(pool.length);
-  $("#teamDot").style.color = teamPrompt ? "var(--ok)" : "#59606d";
+  $("#poolCountTab").textContent = String(pool.length);
+  $("#tabSubN").textContent = String(draft.slots.filter(s=>s.role==="bench").length);
+  $("#teamDot").style.opacity = teamPrompt ? "1" : ".45";
+  $("#tabTeamDot").style.color = teamPrompt ? "var(--ok)" : "#59606d";
   $("#btnTeam").title = teamPrompt ? teamPrompt : "팀 지시 없음";
+  if($("#teamPromptInline") && document.activeElement!==$("#teamPromptInline")) $("#teamPromptInline").value = teamPrompt;
+  $("#tpInlineCount").textContent = `${teamPrompt.length} / 500`;
   const upN = choice.growth ? pool.filter(p=>p.up).length : 0;
   $("#poolUp").innerHTML = upN ? `<b style="color:#ffd98a">↑ ${upN}명</b> 강화 가능` : "";
   if($("#poolList")) renderPoolList();
@@ -1002,6 +1098,40 @@ $("#formation").addEventListener("change",e=>{
   toast(`포메이션을 ${e.target.value} 로 바꿨습니다 — 선수는 그대로, 자리만 다시 배치됩니다.`);
 });
 $("#btnTeam").addEventListener("click",openTeamPrompt);
+$("#btnTuneBar").addEventListener("click",()=>{ openTeamPrompt(); $("#btnTune").click(); });
+$("#btnPoolInTab").addEventListener("click",()=>openPool(null));
+
+/* ══════════════════ 하단 구조 1안(책갈피 탭) / 2안(버튼 바) ══════════════════ */
+function setDeckTab(p){
+  deckTab = p;
+  document.querySelectorAll("#tabRow button").forEach(b=>b.dataset.on = b.dataset.p===p?"1":"0");
+  document.querySelectorAll(".tabPanel").forEach(el=>el.hidden = el.dataset.p!==p);
+  requestAnimationFrame(measureRatio);
+}
+$("#tabRow").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) setDeckTab(b.dataset.p); });
+
+function applyLayout(v){
+  choice.layout = v;
+  const tabs = v==="tabs";
+  $("#phone").dataset.layout = v;
+  $("#deckTabs").hidden = !tabs;
+  $("#poolBar").hidden = tabs;
+  /* 벤치는 DOM 을 하나만 유지하고 **자리를 옮긴다** — 두 벌 만들면 렌더가 갈라진다.
+     1안이면 [후보] 탭 안으로, 2안이면 경기장 바로 아래로 돌아간다. */
+  if(tabs){ $("#benchHost").appendChild($("#benchWrap")); setDeckTab(deckTab); }
+  else $("#stage").insertBefore($("#benchWrap"), $(".stageSpacer"));
+  document.querySelectorAll("#q5opts .opt").forEach(o=>o.dataset.on = (o.dataset.v===v)?"1":"0");
+  $("#liveQ5").textContent = tabs ? "1안 — 책갈피 탭" : "2안 — 하단 버튼 바";
+  render(); requestAnimationFrame(measureRatio); syncSum(); save();
+}
+document.getElementById("q5opts").addEventListener("click",e=>{ const o=e.target.closest(".opt"); if(o) applyLayout(o.dataset.v); });
+$("#layoutToggle").addEventListener("click",()=>applyLayout(choice.layout==="tabs"?"buttons":"tabs"));
+
+/* 1안의 인라인 프롬프트 — 시트/모달의 것과 같은 값을 본다(두 입력이 갈라지지 않게) */
+$("#teamPromptInline").addEventListener("input",e=>{
+  if(e.target.value.length>500) e.target.value = e.target.value.slice(0,500);
+  teamPrompt = e.target.value; render();
+});
 $("#btnReset").addEventListener("click",()=>{ draft=initialDraft(); pending=null; selected=null; render(); toast("보드를 처음 상태로 되돌렸습니다."); });
 /* ══════════════════ 노브 · 선택 ══════════════════ */
 /* 보유 선수가 모달로 빠지면서 화면 아래가 비었다 → 기본값은 고정 비율이 아니라
@@ -1011,8 +1141,9 @@ function applyRatio(v){
   const el = $("#pitch");
   /* 상한이지 고정이 아니다 — 화면이 작으면 그보다 작아지고, 크면 v 에서 멈춘다.
      멈춘 뒤 남는 세로는 .stageSpacer 가 여백으로 들고 있는다(숨기지 않는다). */
-  el.style.flex="1 1 auto"; el.style.height="";
-  el.style.maxHeight = v==="auto" ? "" : Math.round((390-16)*(v/68))+"px";
+  el.style.flex="1 1 auto";
+  const cap = v==="auto" ? "" : Math.round((390-16)*(v/68))+"px";
+  el.style.height = cap; el.style.maxHeight = cap;
   if(v!=="auto") $("#ratio").value = v;
   document.querySelectorAll("#q3opts .opt").forEach(o=>o.dataset.on = (String(o.dataset.v)===String(v))?"1":"0");
   requestAnimationFrame(measureRatio);
@@ -1023,8 +1154,11 @@ function measureRatio(){
   const r = $("#pitch").getBoundingClientRect();
   const ratio = r.width>0 ? Math.round(68 * r.height / r.width) : 0;
   choice.pitchRatio = ratio;
-  /* 여백 = 벤치 아래부터 하단 버튼 바까지. 스페이서의 높이가 아니라 **실제로 빈 자리**를 잰다 */
-  const gap = Math.max(0, Math.round($("#poolBar").getBoundingClientRect().top - $("#bench").getBoundingClientRect().bottom));
+  /* 여백 = 경기장 영역(stage)에서 마지막 내용 아래로 **실제로 비어 있는 자리**.
+     1안은 벤치가 탭 안으로 가므로 마지막 내용이 경기장이고, 2안은 벤치다. */
+  const stage = $("#stage").getBoundingClientRect();
+  const lastEl = $("#stage").contains($("#benchWrap")) ? $("#benchWrap") : $("#pitch");
+  const gap = Math.max(0, Math.round(stage.bottom - lastEl.getBoundingClientRect().bottom));
   choice.spacer = gap;
   const txt = `68 : ${ratio}${choice.q3==="auto"?" (남는 세로 전부)":` (상한 68:${choice.q3})`}${gap>4?` · 아래 여백 ${gap}px`:""}`;
   $("#ratioV").textContent = txt; $("#liveQ3").textContent = txt;
@@ -1060,7 +1194,7 @@ document.getElementById("q3opts").addEventListener("click",e=>{
 
 const Q1TXT = {A:"A안 — 자리 옮기기 / 한마디 쓰기 / 선수 정보 / 닫기",B:"B안 — 원문 이름 그대로 4개",C:"C안 — A안 + 명단에서 빼기"};
 const Q2TXT = {"ㄱ":"ㄱ안 — 한마디 손대지 않음","ㄴ":"ㄴ안 — 빈 칸만 기본 문구","ㄷ":"ㄷ안 — 전부 새로 씀"};
-const DEFAULTS = {q1:"A",q2:"ㄴ",q3:68,surface:"sheet"};
+const DEFAULTS = {q1:"A",q2:"ㄴ",q3:68,surface:"sheet",layout:"tabs"};
 function syncSum(){
   const s1=$("#s1"), s2=$("#s2"), s3=$("#s3");
   const mark = (el,val,key)=>{ el.className = "vl" + (String(val)===String(DEFAULTS[key]) ? "" : " chg"); };
@@ -1071,15 +1205,17 @@ function syncSum(){
   mark(s3,choice.q3,"q3");
   const s4=$("#s4"); s4.textContent = choice.surface==="sheet" ? "시트 — 아래에서 올라옴" : "모달 — 가운데 팝업";
   mark(s4,choice.surface,"surface");
-  $("#s5").textContent = choice.growth?"켬":"끔";
-  $("#s6").textContent = choice.fillHide?"켬":"끔";
-  const same = choice.q1===DEFAULTS.q1 && choice.q2===DEFAULTS.q2 && String(choice.q3)===String(DEFAULTS.q3) && choice.surface===DEFAULTS.surface;
+  const s5=$("#s5"); s5.textContent = choice.layout==="tabs" ? "1안 — 책갈피 탭(프롬프트 펼침)" : "2안 — 하단 버튼 + 아이콘 강조";
+  mark(s5,choice.layout,"layout");
+  $("#s6").textContent = `강화표시 ${choice.growth?"켬":"끔"} · 자동채우기 ${choice.fillHide?"빈칸때만":"항상"}`;
+  const same = choice.q1===DEFAULTS.q1 && choice.q2===DEFAULTS.q2 && String(choice.q3)===String(DEFAULTS.q3)
+    && choice.surface===DEFAULTS.surface && choice.layout===DEFAULTS.layout;
   $("#sumVerdict").textContent = same
     ? "지금 화면은 제안한 그대로입니다 — 이대로 괜찮으면 “OK” 한 마디면 됩니다."
     : "제안과 다르게 바꾸셨습니다 — 아래 줄을 그대로 주시면 그 값으로 만듭니다.";
   $("#sumVerdict").dataset.same = same ? "1" : "0";
   const q3s = choice.q3==="auto" ? `상한없음(실측 68:${choice.pitchRatio})` : `68:${choice.q3}까지(실측 68:${choice.pitchRatio}·여백 ${choice.spacer||0}px)`;
-  const str = `메뉴=${choice.q1}안 · auto한마디=${choice.q2}안 · 경기장=${q3s} · 뜨는방식=${choice.surface==="sheet"?"시트":"모달"} · 강화표시=${choice.growth?"켬":"끔"} · 자동채우기=${choice.fillHide?"빈칸때만":"항상"}`;
+  const str = `메뉴=${choice.q1}안 · auto한마디=${choice.q2}안 · 경기장=${q3s} · 뜨는방식=${choice.surface==="sheet"?"시트":"모달"} · 하단=${choice.layout==="tabs"?"1안탭":"2안버튼"} · 강화표시=${choice.growth?"켬":"끔"}`;
   $("#sumStr").value=str; $("#stickyStr").textContent = (same?"제안 그대로 — ":"바꿈 — ")+str;
 }
 $("#copyBtn").addEventListener("click",async()=>{
@@ -1107,6 +1243,7 @@ function load(){
     if(j.q1) pick("q1",j.q1); if(j.q2) pick("q2",j.q2);
     if(j.q3) applyRatio(j.q3);
     if(j.surface) applySurface(j.surface);
+    if(j.layout) applyLayout(j.layout);
     if(typeof j.growth==="boolean"){ choice.growth=j.growth; $("#optGrowth").checked=j.growth; }
     if(typeof j.fillHide==="boolean"){ choice.fillHide=j.fillHide; $("#optFillHide").checked=j.fillHide; }
   }catch(_){}
@@ -1115,7 +1252,7 @@ function load(){
 
 pick("q1",choice.q1); pick("q2",choice.q2);      // 정한 값이 처음부터 켜져 있게
 $("#formation").value = draft.formation;
-applySurface(choice.surface);
+applySurface(choice.surface); applyLayout(choice.layout);
 load(); applyRatio(choice.q3); render(); measureRatio(); syncSum();
 window.addEventListener("resize",measureRatio);
 </script>

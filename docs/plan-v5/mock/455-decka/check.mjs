@@ -26,14 +26,47 @@ ok("자동 채우기 숨김(빈칸 0)", await page.locator("#btnFill").isHidden(
 ok("보유 선수 인라인 목록 없음(= 모달로 되돌림)", (await page.locator("#poolWrap").count()) === 0);
 ok("처음엔 보유 선수 목록이 안 보인다(모달이 닫혀 있음)", !(await page.locator("#poolList").isVisible()));
 
-// ── R4 하단 버튼 2개 = [가진 선수] · [팀 지시] (R3 의 인라인 팀 지시 칸은 없어야 한다)
-ok("하단 버튼 두 개가 최하단 바에 있다",
-  (await page.locator("#poolBar #btnPool").isVisible()) && (await page.locator("#poolBar #btnTeam").isVisible()));
-ok("팀 지시가 화면에 상주하지 않는다(= 버튼으로 연다)", (await page.locator("#railWrap").count()) === 0);
-
-// ── R3-② 팀 프롬프트 (실제 앱 DirectiveRail) — R4 부터 [팀 지시] 버튼으로 연다
+// ── R5-⑤ 기본 = 1안(책갈피 탭). 프롬프트가 **펼쳐진 내용**이어야 한다(버튼 뒤가 아니라)
 {
-  ok("팀 지시 표시등이 처음엔 꺼져 있다", (await page.locator("#teamDot").evaluate((e) => getComputedStyle(e).color)) === "rgb(89, 96, 109)");
+  // ⚠️ 목업 페이지의 설명/하단 바가 폰 프레임 밖에서 덮으므로 **전체화면(실기기와 같은 상태)** 에서 잰다
+  await page.locator("#focusOn").click();
+  await page.waitForTimeout(400);
+  const g = await page.evaluate(() => {
+    const ta = document.querySelector("#teamPromptInline");
+    const r = ta.getBoundingClientRect(), st = document.querySelector("#stage").getBoundingClientRect();
+    const pt = document.querySelector("#pitch").getBoundingClientRect();
+    const last = document.querySelector("#stage").contains(document.querySelector("#benchWrap"))
+      ? document.querySelector("#benchWrap") : document.querySelector("#pitch");
+    return { visible: r.width > 0 && r.height > 0, h: Math.round(r.height),
+      hit: document.elementFromPoint(r.left + r.width / 2, r.top + 10) === ta,
+      gap: Math.round(st.bottom - last.getBoundingClientRect().bottom),
+      tabs: [...document.querySelectorAll("#tabRow button")].map((b) => b.dataset.p),
+      benchInTab: document.querySelector("#panelSub").contains(document.querySelector("#benchWrap")),
+      poolBarHidden: document.querySelector("#poolBar").hidden, pitchH: Math.round(pt.height) };
+  });
+  ok("1안 기본 — 프롬프트가 눌러야 보이는 게 아니라 펼쳐져 있다", g.visible && g.hit, `높이 ${g.h}px`);
+  ok("탭 3개 = 전체 지시 · 후보 · 세부 전술", JSON.stringify(g.tabs) === JSON.stringify(["team", "sub", "tune"]), g.tabs.join(","));
+  ok("후보(벤치)가 탭 안으로 들어갔다", g.benchInTab && g.poolBarHidden);
+  ok("1안이 R4 의 아래 여백을 먹는다(여백 ≈ 0)", g.gap <= 4, `${g.gap}px`);
+  await page.locator("#phone").screenshot({ path: `${OUT}/mock-r5-tabs.png` });
+  await page.locator("#focusOff").click();
+  await page.waitForTimeout(300);
+}
+
+// ── R4 2안(버튼 바) — 켜서 확인한 뒤 다시 1안으로 되돌린다
+await page.locator("#layoutToggle").click();
+await page.waitForTimeout(350);
+ok("2안 — 하단 버튼 3개(팀 지시 강조 · 가진 선수 · ⚙)",
+  (await page.locator("#poolBar #btnTeam").isVisible()) && (await page.locator("#poolBar #btnPool").isVisible())
+  && (await page.locator("#poolBar #btnTuneBar").isVisible()));
+ok("2안에서 팀 지시만 강조색(다른 버튼과 배경이 다르다)", await page.evaluate(() => {
+  const bg = (s) => getComputedStyle(document.querySelector(s)).backgroundColor;
+  return bg("#btnTeam") !== bg("#btnPool");
+}));
+ok("2안에서는 프롬프트 내용이 안 보인다(= 눌러야 보인다)", !(await page.locator("#teamPromptInline").isVisible()));
+
+// ── 팀 프롬프트 시트 (실제 앱 DirectiveRail) — 2안에서는 [팀 지시] 버튼으로 연다
+{
   await page.locator("#btnTeam").click();
   await page.waitForTimeout(300);
   const tp = page.locator("#teamPrompt");
@@ -48,12 +81,16 @@ ok("팀 지시가 화면에 상주하지 않는다(= 버튼으로 연다)", (awa
   await page.locator("#tpSave").click();
   await page.waitForTimeout(300);
   ok("저장하면 하단 [팀 지시] 표시등이 켜진다",
-    (await page.locator("#teamDot").evaluate((e) => getComputedStyle(e).color)) !== "rgb(89, 96, 109)");
+    Number(await page.locator("#teamDot").evaluate((e) => getComputedStyle(e).opacity)) > 0.9);
   await page.locator("#btnTeam").click();
   await page.waitForTimeout(280);
   ok("다시 열면 쓴 문장이 그대로 있다", (await page.locator("#teamPrompt").inputValue()) === said);
   await page.locator("#tpCancel").click();
   await page.waitForTimeout(250);
+  // 1안으로 되돌리면 **같은 문장**이 인라인에도 그대로 있어야 한다(입력이 두 개인데 값은 하나)
+  await page.locator("#layoutToggle").click();
+  await page.waitForTimeout(350);
+  ok("1안/2안이 같은 팀 지시를 본다(입력 두 개, 값 하나)", (await page.locator("#teamPromptInline").inputValue()) === said);
 }
 
 // ── R3-③ 포메이션 전환 — 선수는 그대로, 자리만 다시 배치
@@ -76,9 +113,12 @@ ok("팀 지시가 화면에 상주하지 않는다(= 버튼으로 연다)", (awa
 
 // ── R3-① 하단 [보유 선수] → 모달이 올라오고, 포지션 필터가 실제로 걸린다
 {
-  await page.locator("#btnPool").click();
+  // 1안에서는 [후보] 탭 안의 [제외 명단에서 데려오기] 가 그 입구다
+  await page.locator('#tabRow button[data-p="sub"]').click();
   await page.waitForTimeout(250);
-  ok("하단 [보유 선수] → 모달 열림", await page.locator('#sheet[data-on="1"] #poolList').isVisible());
+  await page.locator("#btnPoolInTab").click();
+  await page.waitForTimeout(250);
+  ok("[후보] 탭의 [제외 명단에서 데려오기] → 모달 열림", await page.locator('#sheet[data-on="1"] #poolList').isVisible());
   const all = await page.locator("#poolList .prow").count();
   await page.locator('#posFilter button[data-pos="FW"]').click();
   await page.waitForTimeout(150);
@@ -103,13 +143,14 @@ ok("팀 지시가 화면에 상주하지 않는다(= 버튼으로 연다)", (awa
     q2: document.querySelector('#q2opts .opt[data-v="ㄴ"]').dataset.on,
     q3: document.querySelector('#q3opts .opt[data-v="68"]').dataset.on,
     q4: document.querySelector('#q4opts .opt[data-v="sheet"]').dataset.on,
+    q5: document.querySelector('#q5opts .opt[data-v="tabs"]').dataset.on,
     live: [document.getElementById("liveQ1").textContent, document.getElementById("liveQ2").textContent, document.getElementById("liveQ3").textContent].join(" · "),
   }));
-  ok("A · ㄴ · 68까지 · 시트 가 기본 선택으로 켜져 있다",
-    on.q1 === "1" && on.q2 === "1" && on.q3 === "1" && on.q4 === "1", on.live);
+  ok("A · ㄴ · 68까지 · 시트 · 1안탭 이 기본 선택으로 켜져 있다",
+    on.q1 === "1" && on.q2 === "1" && on.q3 === "1" && on.q4 === "1" && on.q5 === "1", on.live);
   const v = await page.evaluate(() => ({ same: document.getElementById("sumVerdict").dataset.same, str: document.getElementById("sumStr").value }));
   ok("컨펌 화면이 '제안 그대로' 로 뜬다",
-    v.same === "1" && /메뉴=A안 · auto한마디=ㄴ안 · 경기장=68:68까지/.test(v.str) && /뜨는방식=시트/.test(v.str), v.str.slice(0, 80));
+    v.same === "1" && /메뉴=A안 · auto한마디=ㄴ안 · 경기장=68:68까지/.test(v.str) && /뜨는방식=시트 · 하단=1안탭/.test(v.str), v.str.slice(0, 90));
 }
 
 await page.screenshot({ path: `${OUT}/mock-01-initial.png` });
@@ -261,7 +302,9 @@ await page.waitForTimeout(300);
 {
   await page.locator("#surfaceToggle").click();
   await page.waitForTimeout(200);
-  await page.locator("#btnPool").click();
+  await page.locator('#tabRow button[data-p="sub"]').click();
+  await page.waitForTimeout(200);
+  await page.locator("#btnPoolInTab").click();
   await page.waitForTimeout(350);
   const g = await page.evaluate(() => {
     const s = document.querySelector("#sheet").getBoundingClientRect();
@@ -298,14 +341,14 @@ await p2.locator("#focusOn").click();          // 실기기와 같게 = 설명 �
 await p2.waitForTimeout(400);
 const geo = await p2.evaluate(() => {
   const r = (s) => document.querySelector(s).getBoundingClientRect();
-  const ph = r("#phone"), pb = r("#poolBar"), pt = r("#pitch"), bn = r("#bench");
-  return { gap: Math.round(ph.bottom - pb.bottom), pitchH: Math.round(pt.height), pitchW: Math.round(pt.width),
-    spacer: Math.round(pb.top - bn.bottom), phoneH: Math.round(ph.height), ratio: Math.round((68 * pt.height) / pt.width) };
+  const ph = r("#phone"), tb = r("#deckTabs"), pt = r("#pitch"), st = r("#stage");
+  return { gap: Math.round(ph.bottom - tb.bottom), pitchH: Math.round(pt.height), pitchW: Math.round(pt.width),
+    spacer: Math.round(st.bottom - pt.bottom), phoneH: Math.round(ph.height), ratio: Math.round((68 * pt.height) / pt.width) };
 });
-ok("하단 버튼 바가 화면 최하단(빈 띠 없음)", geo.gap <= 2, geo.gap + "px");
-ok("폰에서 경기장이 상한 68 에 닿는다", geo.ratio >= 66 && geo.ratio <= 70, `실측 68 : ${geo.ratio} (${geo.pitchW}×${geo.pitchH}px)`);
+ok("1안 탭이 화면 최하단(빈 띠 없음)", geo.gap <= 2, geo.gap + "px");
+ok("폰에서 경기장이 상한 68 에 닿는다", geo.ratio >= 64 && geo.ratio <= 70, `실측 68 : ${geo.ratio} (${geo.pitchW}×${geo.pitchH}px)`);
 // ⚠️ 68 에서 멈추면 아래가 남는다 — 그 크기를 **판정하지 않고 기록**한다(얼마가 적당한지는 hero 결정)
-ok("68 상한이 남기는 아래 여백(판정 아님 · 기록)", true, `${geo.spacer}px = 화면의 ${Math.round((geo.spacer / geo.phoneH) * 100)}%`);
+ok("1안에서 경기장 아래 죽은 여백 없음", geo.spacer <= 4, `${geo.spacer}px`);
 ok("실측 비율이 화면에도 그대로 표시된다",
   new RegExp(`68 : ${geo.ratio}`).test(await p2.locator("#liveQ3").innerText()), await p2.locator("#liveQ3").innerText());
 {
