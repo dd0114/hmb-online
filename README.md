@@ -128,6 +128,8 @@ claude                               # 최초 1회 로그인
 npm test              # 엔진 결정론·계약 + shared + web 유닛
 npm run typecheck
 npm run build:static  # 데모 빌드 → apps/web/dist (백엔드 0, 어느 정적 호스팅에도 그대로 올라간다)
+
+node apps/web/scripts/verify-live.mjs   # §1 링크로 한 판 완주되는지 브라우저로 확인
 ```
 
 `build:static` 산출물은 `npm run play` 와 **같은 코드 경로**다. 서브패스로 서빙할 경우
