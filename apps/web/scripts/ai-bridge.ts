@@ -15,7 +15,12 @@ import { spawn } from "node:child_process";
 import { claudeCodeExecutor } from "../../../packages/server/src/executor/executors/claude-code.js";
 import { KINDS, type ExecutorJob } from "../../../packages/server/src/executor/kinds.js";
 
-const PORT = Number(process.env["HMB_AI_BRIDGE_PORT"] ?? 8791);
+/**
+ * ⚠️ 기본 포트는 **8791 이 아니다** — 이 리포의 엔진 러너(`RUNNER_PORT` 기본 8790)와 그 근처가
+ * 이미 붐빈다(실측: 다른 워크트리의 러너가 8791 을 물고 있었다). 충돌하면 브리지가 안 뜨고
+ * 웹은 조용히 스태틱 폴백으로 내려가 원인이 안 보인다. 바꾸려면 `HMB_AI_BRIDGE_PORT`.
+ */
+const PORT = Number(process.env["HMB_AI_BRIDGE_PORT"] ?? 8801);
 /** 브라우저(다른 오리진: vite dev 5173 / preview 4181)가 부르므로 CORS 를 연다. 로컬 전용이다. */
 const CORS = {
   "Access-Control-Allow-Origin": "*",

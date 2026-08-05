@@ -5,7 +5,7 @@
 // 프롬프트가 실제 AI 전술 인풋이 되게 한다 — 로그인이 없으면 웹이 알아서 스태틱 폴백 + 안내다.
 //
 // 두 프로세스를 한 커맨드로 묶는 이유는 편의가 아니라 **정리**다: 터미널을 닫으면 브리지도 같이
-// 죽어야 한다(안 그러면 8791 을 물고 있는 유령이 다음 실행을 막는다).
+// 죽어야 한다(안 그러면 브리지 포트를 물고 있는 유령이 다음 실행을 막는다).
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -13,7 +13,7 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const webDir = join(here, "..");
 const withAi = process.argv.includes("--ai");
-const bridgePort = process.env.HMB_AI_BRIDGE_PORT ?? "8791";
+const bridgePort = process.env.HMB_AI_BRIDGE_PORT ?? "8801"; // 8790대는 엔진 러너가 쓴다
 const webPort = process.env.HMB_PLAY_PORT ?? "5180";
 
 const children = [];

@@ -1577,7 +1577,7 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
 
 ```bash
 npm run play          # 백엔드 0 (5180)          · = Pages 빌드와 같은 경로
-npm run play:ai       # + 로컬 AI 브리지(8791)
+npm run play:ai       # + 로컬 AI 브리지(8801 — 8790대는 엔진 러너가 쓴다)
 npm run build:static  # HMB_BASE_PATH=/repo/ 로 서브패스 지정, 404.html·.nojekyll 동봉
 ```
 
