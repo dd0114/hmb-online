@@ -721,3 +721,95 @@ test.describe("④ 폰 대조군 — 무회귀", () => {
     expect(cta.hitSelf).toBe(true);
   });
 });
+
+/**
+ * ⑧ **피치가 실제로 얼마나 그려지나** — #456 S2-R1(독립검증 major-1).
+ *
+ * ⚠️ 이 파일은 18개 뷰포트를 돌면서 **캔버스·피치 크기를 한 번도 재지 않았다**(grep 0건).
+ * 그래서 #456 B0 이 컨트롤을 무대 행 안으로 들이며 **세로가 상한/`1fr` 에 걸리는 모든 창에서**
+ * 피치가 컨트롤 높이만큼 줄어든 것을 이 스윕이 전혀 못 봤다(실측 1280×800 −16% · 844×390 −38%).
+ * 커밋 본문이 *"컨트롤이 먹는 만큼 시트가 양보하므로 피치는 줄지 않는다"* 라고 **일반 명제**로
+ * 적혀 있었는데, 그건 **폰 세로에서만 참**이다 — 데스크탑 시트는 고정 높이라 양보하지 않는다.
+ *
+ * 그래서 두 축을 건다:
+ *  ⓐ **컨트롤 층이 무대 행에서 가져가는 몫의 상한** — 성질이지 튜닝값이 아니다. 이 층은 예전에
+ *    토글·스킵이 쌓이며 130px 띠로 자란 전례가 있고(#406 W10 M-1), 그때는 오버레이라 피치를
+ *    덮었지만 지금은 **피치를 깎는다**. 줄이 하나 더 쌓이면 여기서 죽는다.
+ *  ⓑ **피치 실그림 높이의 회귀선** — `object-fit: contain` 기준으로 실제 그려지는 크기다
+ *    (캔버스 박스는 레터박스를 포함해 부풀 수 있어 박스만 재면 축소를 놓친다).
+ *    ⚠️ 이 숫자들은 **설계 목표가 아니라 지금 실측치**다(S2-R1 착지 시점, −2px 여유).
+ *    시트 높이 등급(#348/#355)이나 컨트롤 구성이 바뀌면 같이 갱신하되, **내리려면 근거를 적어라** —
+ *    이 축이 없던 동안 −38% 가 조용히 지나갔다.
+ */
+test.describe("⑧ 피치 실그림 크기 — 컨트롤이 무대 행에 들어와도 회귀하지 않는다 (#456)", () => {
+  /** S2-R1 착지 시점 실측(−2px). 폰 세로만 두 줄 컨트롤이라 상한이 다르다. */
+  const PITCH_FLOOR: Record<string, { h: number; ctlMax: number }> = {
+    "1024x768": { h: 431, ctlMax: 56 },
+    "1024x640": { h: 333, ctlMax: 56 },
+    "1280x600": { h: 293, ctlMax: 56 },
+    "1280x720": { h: 396, ctlMax: 56 },
+    "1280x800": { h: 455, ctlMax: 56 },
+    "1440x560": { h: 253, ctlMax: 56 },
+    "1440x900": { h: 529, ctlMax: 56 },
+    "1512x945": { h: 562, ctlMax: 56 },
+    "1680x1050": { h: 640, ctlMax: 56 },
+    "1920x1080": { h: 662, ctlMax: 56 },
+    "3440x1440": { h: 963, ctlMax: 56 },
+    "1023x768": { h: 393, ctlMax: 56 },
+    "1023x900": { h: 470, ctlMax: 56 },
+    "960x1040": { h: 551, ctlMax: 56 },
+    "900x800": { h: 412, ctlMax: 56 },
+    "853x533": { h: 257, ctlMax: 56 },
+    "820x640": { h: 319, ctlMax: 56 },
+    "768x900": { h: 470, ctlMax: 56 },
+    // 폰 가로 — B0 이 가장 크게 깎은 자리다(226 → 140 → S2-R1 176).
+    "844x390": { h: 174, ctlMax: 56 },
+    // 폰 세로 = hero 가 본 화면. 여기만 시트가 양보해 **B0 전과 같다**(252.57px).
+    "390x844": { h: 251, ctlMax: 92 },
+    // 작은 폰(세로 568) — `match-stage i` 의 절대선 252 는 390×844 **한 점**의 값이라 이 창을
+    // 못 봤다(독립검증 minor-2). ⚠️ 여기는 세로가 짧아 컨트롤이 한 줄로 접히고(위 CSS 임계
+    // `max-height: 720`), 그 덕에 피치가 폰 세로와 **같은 253px** 다 — S2 착지 시점엔 243 이었다.
+    "390x568": { h: 251, ctlMax: 56 },
+  };
+
+  for (const vp of [
+    ...DESKTOP,
+    ...WIDE_LOW,
+    { name: "844x390", width: 844, height: 390 },
+    { name: "390x844", width: 390, height: 844 },
+    { name: "390x568", width: 390, height: 568 },
+  ]) {
+    test(`${vp.name} — 피치가 컨트롤에 깎이지 않는다`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FIRST_HALF");
+      await page.waitForSelector('[data-testid^="viewer-canvas-half"]');
+
+      const m = await page.evaluate(() => {
+        const c = document.querySelector('[data-testid^="viewer-canvas-half"]') as HTMLElement | null;
+        const ctl = document.querySelector("[data-p406-controls]") as HTMLElement | null;
+        if (!c) return null;
+        const r = c.getBoundingClientRect();
+        // 캔버스 backing 은 1050×680 이고 `object-fit: contain` 이라 실그림은 그 비율로 갇힌다.
+        const s = Math.min(r.width / 1050, r.height / 680);
+        return {
+          drawH: Math.round(680 * s),
+          drawW: Math.round(1050 * s),
+          ctlH: ctl ? Math.round(ctl.getBoundingClientRect().height) : 0,
+        };
+      });
+      expect(m, "캔버스가 없다").not.toBeNull();
+
+      const want = PITCH_FLOOR[vp.name];
+      expect(want, `${vp.name}: 기준선이 표에 없다 — 뷰포트를 추가했으면 실측해서 같이 적어라`).toBeTruthy();
+
+      expect(
+        m!.ctlH,
+        `${vp.name}: 컨트롤 층이 ${m!.ctlH}px — 줄이 더 쌓이면 그만큼 피치가 깎인다`,
+      ).toBeLessThanOrEqual(want.ctlMax);
+      expect(
+        m!.drawH,
+        `${vp.name}: 피치 실그림 ${m!.drawW}×${m!.drawH} (기준선 높이 ${want.h})`,
+      ).toBeGreaterThanOrEqual(want.h);
+    });
+  }
+});

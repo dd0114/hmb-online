@@ -282,7 +282,15 @@ test.use({ viewport: { width: 390, height: 844 } });
  * ⚠️ `test.fail` 이 아니라 `skip` 인 것도 의도다 — `test.fail` 은 **실제로 실패해도 "passed" 로
  * 집계**돼(같은 문서 #1) "결함 없음"으로 읽힌다. 지금 참인 것은 아래 "#456 B1" describe 가 잰다.
  */
-test.describe.skip("#421 W4 하이라이트 순서 재생", () => {
+/**
+ * ⚠️ **픽스처 전제는 `skip` 밖에 둔다** — #456 S2-R1(독립검증 minor-1).
+ *
+ * 이 단언은 원래 아래 `skip` 블록 **안**에 있었다. 그런데 살아 있는 계약("#456 B1")이 같은 상수
+ * (`S1`·`S2`)와 같은 픽스처 모양 위에서 도는데, 그 전제를 검사하던 **유일한** 테스트가 같이 꺼지면
+ * 픽스처가 재생성되는 날 새 계약이 **조용히 공허해지거나 거짓 red** 가 된다(둘 다 원인이 안 보인다).
+ * 전제는 릴 기능의 것이 아니라 **이 파일 표본의 것**이라 기능이 내려가도 계속 참이어야 한다.
+ */
+test.describe("#421 픽스처 전제 (기능과 무관 — 표본이 여전히 그 모양인가)", () => {
   test("픽스처 전제 — 두 장면이 자연 재생으로는 못 건너올 만큼 떨어져 있어야 계약이 성립한다", () => {
     const events = reelLog().events;
     const scenes = sceneTicksOf(events);
@@ -309,7 +317,9 @@ test.describe.skip("#421 W4 하이라이트 순서 재생", () => {
     ]);
     expect(sceneShapeAt(events, S2), "S2 = goal").toEqual(["goal"]);
   });
+});
 
+test.describe.skip("#421 W4 하이라이트 순서 재생", () => {
   test("a·b. 종료된 경기 — 디폴트가 하이라이트고 #1 → #2 로 이어진다", async ({ page }) => {
     await openMatch(page, { state: "FINISHED", clock: null, log: reelLog() });
 

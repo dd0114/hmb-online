@@ -285,6 +285,11 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
     );
     // 현행 실측 기준선 — 회귀를 절대값으로도 한 번 더 잡는다(#456 B0 착지 시점 252.57px).
     expect(canvas.height, "폰 피치 높이 기준선").toBeGreaterThanOrEqual(252);
+    /*
+     * ⚠️ **이 계약은 390×844 한 점이다** — 독립검증 minor-2. 다른 창(데스크탑 · 넓고 낮은 창 ·
+     * 폰 가로 · 작은 폰)의 피치 크기는 `p348-desktop-viewport.spec.ts` ⑧ 이 21개 뷰포트로 잰다.
+     * 여기만 보고 "피치는 안 줄었다"를 일반 명제로 읽지 마라 — S2 가 정확히 그렇게 틀렸다.
+     */
   });
 
   /**
@@ -354,6 +359,44 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
       const s = await pageScroll(page);
       expect(s.vScroll, "경기장면 탭에서도 문서 스크롤 0").toBeLessThanOrEqual(1);
       expect(s.hScroll).toBeLessThanOrEqual(1);
+    });
+
+    /**
+     * ⚠️ **`toBeVisible()` 로는 이 결함이 안 잡힌다** — #456 S2 독립검증 blocker-1.
+     *
+     * 바로 위 계약이 보는 `stage-canvas` 는 무대 **섹션**이고, 그 섹션은 700px 로 멀쩡히 서 있는
+     * 채로 **안쪽 피치만 0 높이로 눌릴 수 있다**. 이 화면의 피치 형제는 컨트롤 + 시계 + 스크럽 +
+     * **장면 리스트**라 세로가 컨테이너를 넘고, 피치가 `flex-shrink` 로 그 초과분을 전부 떠안는다.
+     * 실제로 그 상태를 만들어 봤다 — 피치 0px, 캔버스 중심의 최상위 요소가 `viewer-scrub-half1`.
+     *
+     * 그래서 여기서는 **피치 박스의 실제 높이**와 **그 한가운데에 무엇이 있는지**를 직접 잰다
+     * (apps/web CLAUDE.md "계약이 초록으로 거짓말하는 방식" #3·#6).
+     */
+    test(`감독시간 경기장면 탭: 피치가 눌려 사라지지 않는다 (${state})`, async ({ page }) => {
+      await openMatch(page, state);
+      await page.getByTestId("stage-tab-stage").click();
+      await expect(page.getByTestId("stage-canvas")).toBeVisible();
+
+      const pitch = page.locator('[data-testid^="viewer-pitch-half"]');
+      await expect(pitch, "피치 박스는 하나다").toHaveCount(1);
+      const pb = (await pitch.boundingBox())!;
+      expect(pb, "피치 박스가 레이아웃에 존재해야 한다").toBeTruthy();
+
+      /*
+       * 하한을 넉넉히 잡는 이유: 이 탭의 캔버스 상한은 `40svh`(844 → 337px)이고 여기서 재는 것은
+       * "덜 컸다"가 아니라 **"눌려 없어졌다"** 다. 상한 튜닝에는 무감각하고 붕괴에만 반응해야 한다.
+       */
+      expect(pb.height, "피치가 컨트롤에 밀려 0 으로 눌리면 안 된다").toBeGreaterThan(80);
+
+      // 높이만 재면 다른 층이 덮은 경우를 놓친다 — 그 자리에 **실제로** 캔버스가 보이는지까지.
+      const topmost = await page.evaluate(
+        ({ x, y }) => {
+          const el = document.elementFromPoint(x, y);
+          return el ? `${el.tagName}|${el.getAttribute("data-testid") ?? ""}` : null;
+        },
+        { x: pb.x + pb.width / 2, y: pb.y + pb.height / 2 },
+      );
+      expect(topmost, "피치 한가운데의 최상위 요소는 캔버스다").toContain("viewer-canvas-half");
     });
   }
 });
