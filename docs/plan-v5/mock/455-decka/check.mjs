@@ -26,10 +26,18 @@ ok("자동 채우기 숨김(빈칸 0)", await page.locator("#btnFill").isHidden(
 ok("보유 선수 인라인 목록 없음(= 모달로 되돌림)", (await page.locator("#poolWrap").count()) === 0);
 ok("처음엔 보유 선수 목록이 안 보인다(모달이 닫혀 있음)", !(await page.locator("#poolList").isVisible()));
 
-// ── R3-② 팀 프롬프트 자리 (실제 앱 DirectiveRail)
+// ── R4 하단 버튼 2개 = [가진 선수] · [팀 지시] (R3 의 인라인 팀 지시 칸은 없어야 한다)
+ok("하단 버튼 두 개가 최하단 바에 있다",
+  (await page.locator("#poolBar #btnPool").isVisible()) && (await page.locator("#poolBar #btnTeam").isVisible()));
+ok("팀 지시가 화면에 상주하지 않는다(= 버튼으로 연다)", (await page.locator("#railWrap").count()) === 0);
+
+// ── R3-② 팀 프롬프트 (실제 앱 DirectiveRail) — R4 부터 [팀 지시] 버튼으로 연다
 {
+  ok("팀 지시 표시등이 처음엔 꺼져 있다", (await page.locator("#teamDot").evaluate((e) => getComputedStyle(e).color)) === "rgb(89, 96, 109)");
+  await page.locator("#btnTeam").click();
+  await page.waitForTimeout(300);
   const tp = page.locator("#teamPrompt");
-  ok("팀 프롬프트 칸이 화면에 있다", await tp.isVisible());
+  ok("[팀 지시] → 팀 프롬프트 칸이 열린다", await tp.isVisible());
   const said = "초반부터 강하게 압박하고, 뺏으면 곧장 역습으로 간다.";
   await tp.fill(said);
   await page.waitForTimeout(120);
@@ -37,8 +45,15 @@ ok("처음엔 보유 선수 목록이 안 보인다(모달이 닫혀 있음)", !
   await page.locator("#btnTune").click();
   await page.waitForTimeout(150);
   ok("팀 세부 조정 펼침(라인·압박·템포·폭)", (await page.locator("#tunePanel .tuneRow").count()) === 4);
-  await page.locator("#btnTune").click();
-  await page.waitForTimeout(120);
+  await page.locator("#tpSave").click();
+  await page.waitForTimeout(300);
+  ok("저장하면 하단 [팀 지시] 표시등이 켜진다",
+    (await page.locator("#teamDot").evaluate((e) => getComputedStyle(e).color)) !== "rgb(89, 96, 109)");
+  await page.locator("#btnTeam").click();
+  await page.waitForTimeout(280);
+  ok("다시 열면 쓴 문장이 그대로 있다", (await page.locator("#teamPrompt").inputValue()) === said);
+  await page.locator("#tpCancel").click();
+  await page.waitForTimeout(250);
 }
 
 // ── R3-③ 포메이션 전환 — 선수는 그대로, 자리만 다시 배치
@@ -86,12 +101,15 @@ ok("처음엔 보유 선수 목록이 안 보인다(모달이 닫혀 있음)", !
   const on = await page.evaluate(() => ({
     q1: document.querySelector('#q1opts .opt[data-v="A"]').dataset.on,
     q2: document.querySelector('#q2opts .opt[data-v="ㄴ"]').dataset.on,
-    q3: document.querySelector('#q3opts .opt[data-v="auto"]').dataset.on,
+    q3: document.querySelector('#q3opts .opt[data-v="68"]').dataset.on,
+    q4: document.querySelector('#q4opts .opt[data-v="sheet"]').dataset.on,
     live: [document.getElementById("liveQ1").textContent, document.getElementById("liveQ2").textContent, document.getElementById("liveQ3").textContent].join(" · "),
   }));
-  ok("A · ㄴ · 남는세로전부 가 기본 선택으로 켜져 있다", on.q1 === "1" && on.q2 === "1" && on.q3 === "1", on.live);
+  ok("A · ㄴ · 68까지 · 시트 가 기본 선택으로 켜져 있다",
+    on.q1 === "1" && on.q2 === "1" && on.q3 === "1" && on.q4 === "1", on.live);
   const v = await page.evaluate(() => ({ same: document.getElementById("sumVerdict").dataset.same, str: document.getElementById("sumStr").value }));
-  ok("컨펌 화면이 '제안 그대로' 로 뜬다", v.same === "1" && /메뉴=A안 · auto한마디=ㄴ안 · 경기장=남는세로전부/.test(v.str), v.str.slice(0, 70));
+  ok("컨펌 화면이 '제안 그대로' 로 뜬다",
+    v.same === "1" && /메뉴=A안 · auto한마디=ㄴ안 · 경기장=68:68까지/.test(v.str) && /뜨는방식=시트/.test(v.str), v.str.slice(0, 80));
 }
 
 await page.screenshot({ path: `${OUT}/mock-01-initial.png` });
@@ -223,7 +241,7 @@ ok("ㄴ안 auto → 쓴 한마디 보존 + 빈 칸만 채움", promptsAfter >= p
 }
 await page.locator("#phone").screenshot({ path: `${OUT}/mock-08-auto.png` });
 
-// ── 비율: 기본(남는 세로 전부) vs 고정 68:44
+// ── 비율: 기본(68 상한) vs 현행 68:44
 const h0 = (await page.locator("#pitch").boundingBox()).height;
 await page.locator("#tabs button[data-t='q3']").click();
 await page.waitForTimeout(150);
@@ -231,26 +249,63 @@ await page.locator("#pane-q3 .opt[data-v='44']").click();
 await page.locator("#tabs button[data-t='proto']").click();
 await page.waitForTimeout(300);
 const h1 = (await page.locator("#pitch").boundingBox()).height;
-ok("기본(남는 세로 전부)이 현행 68:44 고정보다 경기장이 크다", h0 > h1 + 30, `auto ${Math.round(h0)}px vs 68:44 ${Math.round(h1)}px`);
+ok("기본(68 상한)이 현행 68:44 보다 경기장이 크다", h0 > h1 + 30, `68까지 ${Math.round(h0)}px vs 68:44 ${Math.round(h1)}px`);
 await page.locator("#phone").screenshot({ path: `${OUT}/mock-09-ratio44.png` });
 await page.locator("#tabs button[data-t='q3']").click();
 await page.waitForTimeout(150);
-await page.locator("#pane-q3 .opt[data-v='auto']").click();
+await page.locator("#pane-q3 .opt[data-v='68']").click();
 await page.locator("#tabs button[data-t='proto']").click();
 await page.waitForTimeout(300);
+
+// ── R4-④ 모달(가운데 팝업) 모드 — 같은 내용, 뜨는 방식만 다르다
+{
+  await page.locator("#surfaceToggle").click();
+  await page.waitForTimeout(200);
+  await page.locator("#btnPool").click();
+  await page.waitForTimeout(350);
+  const g = await page.evaluate(() => {
+    const s = document.querySelector("#sheet").getBoundingClientRect();
+    const ph = document.querySelector("#phone").getBoundingClientRect();
+    const rows = document.querySelectorAll("#poolList .prow").length;
+    return { mode: document.querySelector("#sheet").dataset.mode, rows,
+      belowGap: Math.round(ph.bottom - s.bottom), aboveGap: Math.round(s.top - ph.top),
+      pitchVisible: Math.round(document.querySelector("#pitch").getBoundingClientRect().bottom - s.top) };
+  });
+  ok("모달 모드 — 아래·위가 모두 떠 있다(시트가 아니다)", g.mode === "modal" && g.belowGap > 20 && g.aboveGap > 20,
+    JSON.stringify({ 위: g.aboveGap, 아래: g.belowGap }));
+  ok("모달이어도 목록 내용은 같다", g.rows > 0, `${g.rows}행`);
+  await page.locator("#phone").screenshot({ path: `${OUT}/mock-r4-modal.png` });
+  await page.locator("#poolClose").click();
+  await page.waitForTimeout(250);
+  // 선수 메뉴도 같이 모달로 바뀐다(표시 방식은 화면 전체에 하나)
+  await page.locator("#pitch .slot .tok").first().click();
+  await page.waitForTimeout(300);
+  const m = await page.evaluate(() => ({ n: document.querySelectorAll("#sheet .menuList button").length,
+    mode: document.querySelector("#sheet").dataset.mode }));
+  ok("선수 메뉴도 같은 방식으로 뜬다", m.mode === "modal" && m.n >= 4, `${m.n}항목 · ${m.mode}`);
+  await page.locator('#sheet button[data-act="close"]').click();
+  await page.waitForTimeout(250);
+  await page.locator("#surfaceToggle").click();   // 기본(시트)으로 되돌린다
+  await page.waitForTimeout(200);
+  ok("되돌리면 다시 시트", (await page.locator("#sheet").getAttribute("data-mode")) === "sheet");
+}
 
 // ── 폰 실기기 뷰포트(390×844) 별도 확인
 const p2 = await (await b.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 })).newPage();
 await p2.goto(FILE);
 await p2.waitForTimeout(400);
+await p2.locator("#focusOn").click();          // 실기기와 같게 = 설명 없이 폰 전체
+await p2.waitForTimeout(400);
 const geo = await p2.evaluate(() => {
   const r = (s) => document.querySelector(s).getBoundingClientRect();
-  const ph = r("#phone"), pb = r("#poolBar"), pt = r("#pitch"), rw = r("#railWrap");
+  const ph = r("#phone"), pb = r("#poolBar"), pt = r("#pitch"), bn = r("#bench");
   return { gap: Math.round(ph.bottom - pb.bottom), pitchH: Math.round(pt.height), pitchW: Math.round(pt.width),
-    railH: Math.round(rw.height), ratio: Math.round((68 * pt.height) / pt.width) };
+    spacer: Math.round(pb.top - bn.bottom), phoneH: Math.round(ph.height), ratio: Math.round((68 * pt.height) / pt.width) };
 });
-ok("[보유 선수] 바가 화면 최하단(빈 띠 없음)", geo.gap <= 2, geo.gap + "px");
-ok("폰에서 경기장이 남는 세로를 가져간다", geo.ratio >= 60, `실측 68 : ${geo.ratio} (${geo.pitchW}×${geo.pitchH}px · 팀지시 ${geo.railH}px)`);
+ok("하단 버튼 바가 화면 최하단(빈 띠 없음)", geo.gap <= 2, geo.gap + "px");
+ok("폰에서 경기장이 상한 68 에 닿는다", geo.ratio >= 66 && geo.ratio <= 70, `실측 68 : ${geo.ratio} (${geo.pitchW}×${geo.pitchH}px)`);
+// ⚠️ 68 에서 멈추면 아래가 남는다 — 그 크기를 **판정하지 않고 기록**한다(얼마가 적당한지는 hero 결정)
+ok("68 상한이 남기는 아래 여백(판정 아님 · 기록)", true, `${geo.spacer}px = 화면의 ${Math.round((geo.spacer / geo.phoneH) * 100)}%`);
 ok("실측 비율이 화면에도 그대로 표시된다",
   new RegExp(`68 : ${geo.ratio}`).test(await p2.locator("#liveQ3").innerText()), await p2.locator("#liveQ3").innerText());
 {
