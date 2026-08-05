@@ -6,6 +6,123 @@
 
 ---
 
+## 2026-08-05T17:22Z — **배포 v3.21 — 풀스택** — #450 로스터 v2.7(전면 가상 이름 + 62종 활성 그리드) + economy/bots v4 + `short_name`(#411)
+
+- **git**: **`231f205`**(main). 범위(`b59878e`..`231f205`) = **25 files · 4 commits** —
+  `data` 6 · `server-java` 12 · `apps/web` 4 · `docs` 3. **엔진 무접촉**(`packages/engine` 빈 diff).
+- **탑재**: **#450 W1**(`0c4ab52` 로스터 v2.7 발행 — 활성 **62**(GK10/DF17/MF19/FW16) · 은퇴 120
+  `active:false` · 총 182 · 표시명 52종 가상화) · **W2**(`231f205` 발행물 스위치 **두 곳**(yml+Dockerfile)
+  + `DataVersionParityTest` + `short_name` 임포트·API 노출 #411 + `PlayerCatalogV27SeedTest`) ·
+  **공지 억제 창 24h→7일**(`a46c999`).
+- **발행물 스위치**: players `v2.6`→**`v2.7`** · economy `v3`→**`v4`** · bots `v3`→**`v4`** · league **`v2` 무변경**.
+  `application.yml` 과 `Dockerfile` ENV **양쪽** — 한쪽만 올리면 2026-07-27 v8 사고 재현(그 어긋남은
+  이제 `DataVersionParityTest` 가 잡는다. 변이 A/B + 카나리아로 실효 확인).
+- **이미지**: java **`sha256:ab9d3735cb40…`**(신규 빌드) · runner `sha256:97a82f3f362b…`(무변경).
+  롤백 고정: `hmb/server-java:prev-live` = `sha256:a68bda8b4d36…`(v3.20 라이브) · `hmb/servants:prev-live`.
+- **터널**: `https://suites-held-facts-growing.trycloudflare.com` (v3.20 과 동일 URL).
+  web 번들 `index-e5WgZxiP.js` · CDN 전파 **6/6 확인**(§0.8/v3.20 교훈대로 `version.json` 이 아니라
+  **index.html 번들 해시**로 판정 — 배포 직후 3회 중 1회가 구 번들이었고 20초 뒤 6/6 신규).
+- 배포자: root/hmb/roster (hero 지시 *"W2 검증하고 커밋한 다음 배포까지 진행해"*).
+
+### 마이그레이션 **V41** — DB 백업 선행(§8)
+
+`V41__player_short_name.sql` = `ALTER TABLE players ADD COLUMN short_name TEXT`(additive · NOT NULL/DEFAULT
+없음 = **NULL 이 정상값** · `UPDATE`/`DELETE`/`DROP` **0건** = §0.5-7 비가역 아님). Flyway **v40 → v41**.
+
+```
+백업  ~/.local/state/hmb/db-backups/pre-v321-roster-20260805T171506Z.db  (683,491,328 B)
+sha256 3c3a8b08f91e657de42a6887b21eb33a567e2c1b49f8706eb088943b7c62f03f
+검증  integrity_check=ok · flyway_latest=40 · users 206 · user_players 3425 · players 182
+```
+⚠️ **백업 검증은 `?immutable=1` 로 연다** — 백업 파일은 WAL 모드인데 `-shm` 짝이 없어서
+`?mode=ro` 로는 `SQLITE_CANTOPEN(14)` 로 죽는다(§8 예시 그대로 하면 실패한다). 그리고
+`select max(version)` 은 `version` 이 TEXT 라 **"9" > "40"** 으로 읽힌다 —
+`order by installed_rank desc limit 1` 로 봐야 v40 이 나온다. 둘 다 이번에 데였다.
+
+### ⚠️ economy 발행물을 바꾸는 배포 = §0.6 **2-B 재작성**을 했다
+
+라이브는 `source: OVERRIDE`(조정 = `initialGems` 6000→**12000**, 2026-07-28)였다. 그대로 두고
+재시작하면 **economy.v4 가 조용히 무시**된다(starterTop 10종·스타터팩 재설계가 전부 사라진다).
+→ 새 발행물(`economy.v4.json`)에 **그 조정 한 칸만** 얹어 override 를 재작성하고(신규 override 는
+`economy.v4` 와 `initialGems` **한 키만** 다름을 기계 대조로 확인) temp→mv 원자 교체(10001:999).
+**재시작 전에** 배치해서 부팅이 처음부터 v4 로 뜨게 했다(2-B 예시는 재시작 후 절차라 그 사이
+구 override 가 뜨는 창이 생긴다). 구 override 는 `~/.local/state/hmb/db-backups/economy.override.pre-v321.json`.
+부팅 로그 실측 = `Loaded economy v4 … initialGems=12000 … starterTop=10 pool`.
+
+### ⚠️ **이번 배포가 새로 밟은 함정 — `infra/.env` 가 워크트리마다 다르다 (admin 이 회수됐다)**
+
+`docker compose up -d java` 로 컨테이너를 **recreate 하는 순간 admin 이 0명이 됐다**:
+```
+AdminBootstrap : admin bootstrap disabled (hmb.admin.nickname unset) — admins=0 (revoked=1)
+```
+compose 는 **`env_file: [.env]` = 그 워크트리의 `.env` 만** 읽는데, 이 워크트리(`spider9`)의
+`infra/.env` 에는 `HMB_ADMIN_NICKNAME`/`HMB_ADMIN_PASSWORD` 가 **애초에 없었다**(이전 컨테이너는
+그 값을 가진 다른 워크트리에서 떴다). 부팅이 잔존 `is_admin` 플래그까지 **회수**하므로
+`/api/admin/**` 이 전부 401/403 이 되고 — 즉 **보상 우편·공지·잠금해제가 통째로 막힌다.**
+→ `infra/.env`(gitignore·600)에 두 키를 채우고 recreate → `admins=1`(userId 동일 `01KYH4PNVYZJ…`) 복구.
+📌 **다른 워크트리에서 배포하는 다음 사람도 똑같이 밟는다** — recreate 전에
+`grep -c HMB_ADMIN_NICKNAME infra/.env` 를 확인하고, 부팅 후 `AdminBootstrap` 줄을 **반드시 읽어라**.
+`status.sh`·헬스체크는 이걸 **못 잡는다**(#396 무음 부류).
+
+### 게이트
+
+| 게이트 | 결과 |
+|---|---|
+| `./gradlew test --rerun-tasks`(콜드·필터 없음) | **1183 tests · 0 failures · 1 skipped**(=1182 passed) · 170 classes · exit 0. 신규 +12(`DataVersionParityTest` 4 + `PlayerCatalogV27SeedTest` 8). 선행 red **0** · skipped 1 = 선행(`LeagueDivisionRosterDumpTest`) |
+| **독립 검증**(module-verifier, 별도 컨텍스트) | **PASS · blocker 0 · minor 7**. 변이 A(Dockerfile 만 v2.6 = v8 사고 재현) → `applicationYmlAndDockerfilePointAtTheSame…` **exit 1** · 변이 B(양쪽 v2.6) → `consumedVersionsAreTheOnes…` **exit 1** · 카나리아 3건 사망 = 공허 방지 단언 생존. md5 복구 확인 · 트리 청결 |
+| `npm run build -w @hmb/web` | **exit 0**(432 modules) — 루트 게이트는 apps/web 타입을 안 보므로 이것이 유일한 타입 게이트 |
+| `qa-match` / `perceptibility` / 엔진 골든 | **해당 없음** — `packages/engine` 무접촉 |
+| **#241 진행 중 매치** | **해당 없음** — `EngineConfig` 무변경(engine@0.43.0 유지)이라 `resumeState` 계속 유효 |
+
+### 라이브 대조 — **불일치 0**
+
+```
+182 rows · active 62 · inactive 120 · dataVersion v2.7 = 182/182
+active by position  GK 10 / DF 17 / MF 19 / FW 16      ← 명세 격자와 일치
+active by grade     LEGEND 10 / DIA 13 / GOLD 13 / SILVER 13 / BRONZE 13
+발행물 v2.7 ↔ 라이브 전 행 대조(active·name·grade·position·능력치 9종) = 미스매치 0
+```
+- **`admin_locked` 4행이 드디어 갱신됐다** — W3(override 해제)는 **직전 세션이 2026-08-05T17:03:46Z 에
+  이미 집행**했고(`unit_override_reset` 감사 4건), 그래서 이번 부팅 시드가 그 4행을 잡았다:
+  `dataVersion v2.4 → v2.7`. **P181 석다이크 `active` false→true = 오픈**(hero H4).
+- **`short_name`**: 클라이언트 응답 **64/64 전 행 존재**, 풀네임과 다른 것 49. 실존 인물명 노출 **0**.
+- **기보유분 잔존 확인**: 은퇴 카드라도 **보유 중이면 계속 서빙된다**(`deploy-smoke` 응답에
+  P081·P092 포함 = 62 활성 + 보유 은퇴 2). hero 옵션 1 그대로 — ⚠️ 그래서 **은퇴 120종은 실명이
+  남는다**(`data/CLAUDE.md:11` 상용화 차단 항목은 **부분 해소**).
+
+### 스모크
+
+고정 계정 **`deploy-smoke`**(§0.55 — 새 계정으로 경기 완주 금지). 터널 경유 `isNew:false` 재사용 ✔ ·
+`/api/config` 200 · `/api/players` 64행 ✔ · `/api/deck` 200 ✔ · web 200 · CORS 결선 ✔.
+⚠️ **경기 완주 스모크는 돌리지 않았다** — 이 배포는 엔진 무접촉이고 매치 경로 변경이 0이라
+카탈로그 축으로 갈음했다. (완주 검증이 필요한 다음 엔진 열차에서는 §0.55 대로 돌 것.)
+
+### 미오픈 캐릭터 신규 노출 **0**
+
+빌드 산출 `dist/chars/units/manifest.json` = 유닛 **10종**(`bonaldo chunbappe default-unit dukbrayner
+kwonssi kyeongnicius osiyas seokdijk wookringham yeoldona`) = v3.20 과 **동일 집합** ·
+`git diff b59878e..231f205 -- apps/web/public/` **빈 diff**. §0.7 판정축(정적 매니페스트) 그대로.
+
+### ⚠️ 이 배포로 **끝나지 않은 것** (후속 — #450 에 이어짐)
+
+1. **하향 보상 우편 미발송** — 4행이 v2.4(어드민 override 값) → v2.7 정규값으로 내려앉았다:
+   `P174 권씨 805→668`(보유 **1명**) · `P180 경니시우스 807→669`(**3명**·5장) ·
+   `P182 오시야스 822→680`(0명) · `P181 석다이크 812→673`(0명). **보상 대상 = 4명**(권씨1+경니시우스3).
+2. **은퇴 보상 우편 미발송** — `roster-v27-spec.md` §4 = 대체카드 **2,244장**(MULT=3, hero H6).
+   ⚠️ **집행 수단이 아직 없다**(`sub(X)` 매핑·유저별 합산·`POST /api/admin/mails` 배치 ops 미구현).
+3. **하향 공지 3종 + 석다이크 오픈 공지 미게시**(권씨·경니시우스·오시야스).
+   ⚠️ hero verbatim 은 *"권씨랑 오시야쓰"* 였으나 실측상 **피해 최대는 경니시우스**(3명 5장 전원 덱 편성)라
+   3종으로 확장된 상태(#450 hero 결정 4차 §2).
+
+### 참고 — 유저가 체감하는 변화
+
+- 표시명 **52종 교체**(실명→가상). 보유 카드의 이름이 바뀐다.
+- **활성 풀 168 → 62**(뽑기·강화 대상 축소). 보유분은 그대로 쓴다.
+- 스타터팩 2종 교체(P081·P092 → P161·P122) · **starterTop 풀 5 → 10종**(신규 가입자 상위 확정픽).
+- 공지 팝업 억제 창 **24시간 → 7일**(전역).
+
+---
+
 ## 2026-08-05T08:41Z — **배포 v3.20 — web 단독** — #442 폰 엔트리 동선 + R4 용어 정리(투입/벤치/명단/엔트리)
 
 - **git**: **`b59878e`**(main). 범위(`b1cb98a`..`b59878e`) = **17 files · 4 commits** —

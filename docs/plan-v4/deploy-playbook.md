@@ -113,15 +113,29 @@ curl -s -H "Authorization: Bearer $ADMIN_TOKEN" http://localhost:18080/api/admin
 > 배포 지시가 오기 전에 **미리 등록해 두는** 자리다. 여기 있는 건 §0.5 를 돌릴 때 **반드시 같이** 확인하고,
 > 처리하고 나면 항목을 지우고 `deploy-log` 에만 남긴다.
 
-**등록분 — 열차 없음.** (직전 = `v3.20` **web 단독** → **소진**: 2026-08-05 발차, #442 폰 엔트리
-동선 + R4 용어. 라이브 git `b59878e` · engine@**0.43.0** · **Flyway v40** · 발행물 **`players.v2.6`**
-— 백엔드·발행물은 `v3.19`(2026-08-04, 풀스택) 그대로이고 v3.20 은 **Pages 만** 바꿨다.
-스모크 13/13·CDN 전파 함정은 `deploy-log` v3.20 항목에.)
+**등록분 — 열차 없음.** (직전 = `v3.21` **풀스택** → **소진**: 2026-08-05 발차, #450 로스터 v2.7 +
+economy/bots v4 + `short_name`. 라이브 git `231f205` · engine@**0.43.0**(무접촉) · **Flyway v41** ·
+발행물 **`players.v2.7` / `economy.v4` / `bots.v4` / `league.v2`** · java 이미지 `sha256:ab9d3735…`.
+백업 검증 함정(WAL `?immutable=1` · flyway `max(version)` 이 TEXT)은 `deploy-log` v3.21 항목에.)
 
-📌 **`players.v2.7` 을 발행할 때 정합시킬 것**: `admin_locked=1` 4행(P174 권씨 · P180 · P181 · P182)은
-#207 보호로 시드 UPDATE 를 받지 않아 **`data_version` 이 v2.4 에 멈춰 있다**. v2.6 은 이 중 셋을
-`active:false` 로 선언하는데 라이브는 `active=1`(hero 가 8/3 에 연 상태)이라 **보호가 풀리는 순간
-세 유닛이 닫힌다**. 다음 발행에서 그 세 행을 `active:true` 로 맞춰 두면 그 함정이 사라진다.
+### 📌 **다음 배포가 반드시 먼저 볼 것 — `infra/.env` 는 워크트리마다 다르다** (v3.21 실측)
+
+`docker compose up -d java` 로 **recreate 하면 admin 이 회수될 수 있다**. compose 는
+**`env_file: [.env]` = 그 워크트리의 `.env` 만** 읽는데, 워크트리에 따라
+`HMB_ADMIN_NICKNAME`/`HMB_ADMIN_PASSWORD` 가 **없다**. 없으면 부팅이 잔존 `is_admin` 을 **회수**해
+`admins=0` 이 되고 `/api/admin/**` 이 전부 막힌다(보상 우편·공지·잠금해제가 통째로 불가).
+
+```bash
+grep -c HMB_ADMIN_NICKNAME infra/.env          # recreate 전에 — 0 이면 채우고 시작
+docker logs hmb-java 2>&1 | grep AdminBootstrap # 부팅 후 반드시 — 'admins=1' 인가
+```
+⚠️ **`status.sh`·헬스체크는 이걸 못 잡는다**(#396 과 같은 무음 부류). 비번은
+`~/.local/state/hmb/admin-pw-v8.txt`(600).
+
+~~📌 **`players.v2.7` 을 발행할 때 정합시킬 것**~~ → **v3.21 로 소진.** `admin_locked=1` 4행
+(P174·P180·P181·P182)은 W3(`unit_override_reset`, 2026-08-05T17:03:46Z)로 잠금이 풀렸고 v3.21 부팅
+시드가 `data_version v2.4 → v2.7` 로 잡았다. v2.7 이 넷을 전부 `active:true` 로 선언해 **"보호가
+풀리는 순간 닫힌다"는 함정은 발화하지 않았다**(P181 석다이크는 오히려 false→true 로 열렸다).
 
 📌 **economy override 는 계속 켜져 있다**(`source: OVERRIDE`, 조정 = `initialGems 12000` 하나).
 economy 발행물을 건드리는 다음 배포도 **§0.6 2-B 재작성**이 필요하다 — 이건 소진되지 않는 상시 조건이다.
