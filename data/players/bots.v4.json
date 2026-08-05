@@ -1,0 +1,188 @@
+[
+  {
+    "id": "BOT_ATK",
+    "name": "레드 스톰",
+    "persona": "하이라인·강한 압박·빠른 템포로 공격적으로",
+    "analysisText": "공격적인 팀. 하이라인과 강한 압박으로 빠른 템포를 유지하며 최전방이 적극적으로 침투한다. 선수 개개인의 능력은 높지 않으니, 뒷공간을 노리는 빠른 역습으로 맞받아칠 수 있다.",
+    "strengthMul": 0.8,
+    "deck": {
+      "formation": "4-3-3",
+      "starters": [
+        {
+          "playerId": "P116",
+          "slotIndex": 0
+        },
+        {
+          "playerId": "P125",
+          "slotIndex": 1
+        },
+        {
+          "playerId": "P122",
+          "slotIndex": 2
+        },
+        {
+          "playerId": "P120",
+          "slotIndex": 3
+        },
+        {
+          "playerId": "P121",
+          "slotIndex": 4
+        },
+        {
+          "playerId": "P127",
+          "slotIndex": 5
+        },
+        {
+          "playerId": "P131",
+          "slotIndex": 6
+        },
+        {
+          "playerId": "P129",
+          "slotIndex": 7
+        },
+        {
+          "playerId": "P136",
+          "slotIndex": 8,
+          "promptText": "적극 침투"
+        },
+        {
+          "playerId": "P139",
+          "slotIndex": 9,
+          "promptText": "적극 침투"
+        },
+        {
+          "playerId": "P106",
+          "slotIndex": 10
+        }
+      ],
+      "bench": [
+        "P074",
+        "P077",
+        "P094",
+        "P107"
+      ]
+    }
+  },
+  {
+    "id": "BOT_DEF",
+    "name": "블루 월",
+    "persona": "로우블록·역습·안전한 패스",
+    "analysisText": "수비적인 팀. 로우블록으로 진영을 낮게 유지하다 빠른 역습을 노린다. 수비진이 이 리그에서는 두꺼운 편이고 패스는 안전 위주 — 측면 크로스나 지공 상황에서 빈틈을 찾아야 한다.",
+    "deck": {
+      "formation": "5-3-2",
+      "starters": [
+        {
+          "playerId": "P116",
+          "slotIndex": 0
+        },
+        {
+          "playerId": "P121",
+          "slotIndex": 1
+        },
+        {
+          "playerId": "P120",
+          "slotIndex": 2
+        },
+        {
+          "playerId": "P077",
+          "slotIndex": 3
+        },
+        {
+          "playerId": "P078",
+          "slotIndex": 4
+        },
+        {
+          "playerId": "P079",
+          "slotIndex": 5
+        },
+        {
+          "playerId": "P096",
+          "slotIndex": 6
+        },
+        {
+          "playerId": "P093",
+          "slotIndex": 7
+        },
+        {
+          "playerId": "P094",
+          "slotIndex": 8
+        },
+        {
+          "playerId": "P106",
+          "slotIndex": 9
+        },
+        {
+          "playerId": "P107",
+          "slotIndex": 10
+        }
+      ],
+      "bench": [
+        "P074",
+        "P080",
+        "P095",
+        "P108"
+      ]
+    }
+  },
+  {
+    "id": "BOT_BAL",
+    "name": "그린 밸런스",
+    "persona": "균형 잡힌 점유율 축구",
+    "analysisText": "브론즈 등급 중심의 균형 잡힌 팀. 특정 강점 없이 고르게 점유율 축구를 구사한다 — 가입 시 받는 스타터 팩 덱으로 충분히 이길 수 있는 상대다.",
+    "deck": {
+      "formation": "4-4-2",
+      "starters": [
+        {
+          "playerId": "P116",
+          "slotIndex": 0
+        },
+        {
+          "playerId": "P125",
+          "slotIndex": 1
+        },
+        {
+          "playerId": "P122",
+          "slotIndex": 2
+        },
+        {
+          "playerId": "P120",
+          "slotIndex": 3
+        },
+        {
+          "playerId": "P121",
+          "slotIndex": 4
+        },
+        {
+          "playerId": "P127",
+          "slotIndex": 5
+        },
+        {
+          "playerId": "P131",
+          "slotIndex": 6
+        },
+        {
+          "playerId": "P129",
+          "slotIndex": 7
+        },
+        {
+          "playerId": "P134",
+          "slotIndex": 8
+        },
+        {
+          "playerId": "P136",
+          "slotIndex": 9
+        },
+        {
+          "playerId": "P139",
+          "slotIndex": 10
+        }
+      ],
+      "bench": [
+        "P169",
+        "P077",
+        "P095",
+        "P171"
+      ]
+    }
+  }
+]

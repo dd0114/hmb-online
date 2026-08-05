@@ -15,7 +15,8 @@
  *   players.v2.3.json = 180명 동결 — v2.2 + 유닛명 정정 2건 + 신규 비활성 3건 (#207 U-D5/U-D6)
  *   players.v2.4.json = **v2.3 + 신규 LEGEND 2종 append(182)** (#256 석다이크·오시야스)
  *   players.v2.5.json = **v2.4 전 182행 능력치 9종 재롤**(신규 시작 밴드) (#405 성장 재설계)
- *   players.v2.6.json = **v2.5 + 한글 표시명(실선수 172) + shortName** (#406 요구 6) — 최신 발행본
+ *   players.v2.6.json = **v2.5 + 한글 표시명(실선수 172) + shortName** (#406 요구 6)
+ *   players.v2.7.json = **v2.6 + 표시명 가상화(62종) + active 재편(62/120)** (#450 W1) — 최신 발행본
  * ROSTER 는 하나이고 과거 발행물은 전부 **슬라이스로 재현**한다 — v2/v2.1 은 FROZEN_ROSTER_COUNT(172),
  * v2.2/v2.3 은 FROZEN_ROSTER_COUNT_V22(180) 경계다. 신규 유닛이 배열 맨 끝에 append 되므로 그
  * 슬라이스는 발행 당시와 바이트 동일하다(data.test.ts 가 디스크와 대조).
@@ -23,7 +24,7 @@
  * 순서: 이 파일을 import 만 해도(부수효과 없음) `generateAll()`을 호출해 세 산출물을 순수 계산할
  * 수 있다. 파일 쓰기는 CLI로 직접 실행했을 때만 일어난다(맨 아래 entrypoint 가드).
  */
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createRng } from "./rng";
@@ -265,6 +266,103 @@ export const V26_PARODY_UNIT_IDS: readonly string[] = [
   "P182", // 오시야스
 ];
 
+/**
+ * players 카탈로그 v2.7 (#450 W1, 명세 SoT = `docs/plan-v5/roster-v27-spec.md`).
+ * v2.6 위에 얹는 **표시명 + `active` 레이어**(RNG 미사용 · 행 추가 0 · 로스터 무접촉):
+ *   ① 활성으로 남기는 **62종**의 `name`/`shortName` 을 가상명으로 교체(패러디 10종은 무변경)
+ *   ② `active` 재편 — 62종 `true` / 나머지 **120종 `false`**
+ *
+ * ⚠️ **은퇴는 행 삭제가 아니다.** 시드에 prune 이 없고(`upsertPlayers` = INSERT … ON CONFLICT DO
+ * UPDATE), `AdminCatalogService.purge` 는 참조가 1건이라도 있으면 409 다 — 비활성화가 유일한 수단.
+ *
+ * ⚠️ **네 번째 동결 경계가 생기지 않는다.** 남기는 62종이 전부 기존 id 라 ROSTER 에 append 가 없고,
+ * 따라서 `rng.ts`·`roster.ts` 무접촉 · RNG 스트림 1비트도 안 움직인다(명세 §6-1).
+ *
+ * ⚠️ **은퇴 120종의 표시명은 v2.6 그대로**다(명세가 그 120종에 새 이름을 주지 않는다 — §3-2 표는
+ * v2.6 명으로 그들을 식별한다). 가상화 계약은 **활성 62종**에 건다.
+ */
+export const PLAYERS_V27_VERSION = "v2.7";
+
+/**
+ * v2.7 활성 62종 = 명세 §2-2 카드 명세표 전량(등급 → 포지션 → `fit` 내림차순 그대로).
+ *
+ * - `from` = v2.6 발행물의 현재 표시명(**앵커**). 어긋나면 빌더가 throw — 행이 밀리거나 누가
+ *   v2.6 을 고치면 여기서 터진다(`names-ko.ts` 의 `from` 과 같은 장치).
+ * - `to`/`short` = 새 표시명. 패러디 10종(P173~P182)은 `from` 과 **같아야** 한다(개명 대상 아님).
+ * - 격자(등급×포지션) = LEGEND GK2/DF1/MF3/FW4 · DIA·GOLD·SILVER·BRONZE 각 GK2/DF4/MF4/FW3.
+ * - 한국식 가상명 7종(P147·P148·P150·P151·P161·P169·P171)은 hero H1 확정값이다(성 1자 + 이름 2자,
+ *   `short == name`). 나머지 45종은 무국적 2토큰 가상명(`short` = 뒤 토큰).
+ */
+export const V27_ACTIVE_CARDS: readonly { id: string; from: string; to: string; short: string }[] = [
+  // ── LEGEND 10 (패러디 존치 — 이름 무변경) ───────────────────────────────
+  { id: "P182", from: "오시야스", to: "오시야스", short: "오시야스" },
+  { id: "P178", from: "석신", to: "석신", short: "석신" },
+  { id: "P181", from: "석다이크", to: "석다이크", short: "석다이크" },
+  { id: "P177", from: "덕브라이너", to: "덕브라이너", short: "덕브라" },
+  { id: "P175", from: "열라도나", to: "열라도나", short: "열라도나" },
+  { id: "P179", from: "욱링엄", to: "욱링엄", short: "욱링엄" },
+  { id: "P176", from: "춘바페", to: "춘바페", short: "춘바페" },
+  { id: "P174", from: "권씨", to: "권씨", short: "권씨" },
+  { id: "P173", from: "보날두", to: "보날두", short: "보날두" },
+  { id: "P180", from: "경니시우스", to: "경니시우스", short: "경니시" },
+  // ── DIA 13 ────────────────────────────────────────────────────────────
+  { id: "P013", from: "알리송", to: "마르첼 벤티", short: "벤티" },
+  { id: "P014", from: "티보 쿠르투아", to: "요나스 브리크", short: "브리크" },
+  { id: "P021", from: "테오 에르난데스", to: "레안드로 카벨", short: "카벨" },
+  { id: "P020", from: "윌리앙 살리바", to: "닐스 두란테", short: "두란테" },
+  { id: "P015", from: "버질 판다이크", to: "에릭 발딘", short: "발딘" },
+  { id: "P022", from: "김민재", to: "다니엘 오르베", short: "오르베" },
+  { id: "P030", from: "페드리", to: "파블로 시몬티", short: "시몬티" },
+  { id: "P024", from: "케빈 더 브라위너", to: "안톤 그레츠", short: "그레츠" },
+  { id: "P025", from: "주드 벨링엄", to: "티모 라스코", short: "라스코" },
+  { id: "P029", from: "마르틴 외데고르", to: "유리안 델라노", short: "델라노" },
+  { id: "P036", from: "라우타로 마르티네스", to: "마테오 산티노", short: "산티노" },
+  { id: "P033", from: "비니시우스 주니오르", to: "이반 모리안", short: "모리안" },
+  { id: "P031", from: "엘링 홀란", to: "밀란 코발디", short: "코발디" },
+  // ── GOLD 13 ───────────────────────────────────────────────────────────
+  { id: "P038", from: "에데르송", to: "아르민 하벨", short: "하벨" },
+  { id: "P040", from: "얀 오블라크", to: "레온 오스텐", short: "오스텐" },
+  { id: "P050", from: "다비드 알라바", to: "세드릭 마르텔", short: "마르텔" },
+  { id: "P043", from: "마르키뉴스", to: "로만 팔코니", short: "팔코니" },
+  { id: "P148", from: "홍명보", to: "노시운", short: "노시운" },
+  { id: "P150", from: "김주성", to: "표유안", short: "표유안" },
+  { id: "P055", from: "프렝키 더 용", to: "미첼 아르보", short: "아르보" },
+  { id: "P065", from: "브루누 기마랑이스", to: "요엘 카르니", short: "카르니" },
+  { id: "P056", from: "데클런 라이스", to: "스텔란 렌초", short: "렌초" },
+  { id: "P147", from: "유상철", to: "한태겸", short: "한태겸" },
+  { id: "P066", from: "부카요 사카", to: "아드리 소렌토", short: "소렌토" },
+  { id: "P073", from: "로베르트 레반도프스키", to: "엘리안 조반티", short: "조반티" },
+  { id: "P151", from: "황희찬", to: "곽재율", short: "곽재율" },
+  // ── SILVER 13 (스타터팩 전량) ──────────────────────────────────────────
+  { id: "P074", from: "앙드레 오나나", to: "루카스 페롤", short: "페롤" },
+  { id: "P161", from: "조현우", to: "탁서온", short: "탁서온" },
+  { id: "P079", from: "크리스티안 로메로", to: "비토 라이덴", short: "라이덴" },
+  { id: "P080", from: "가브리에우 마갈량이스", to: "오스카르 코르비", short: "코르비" },
+  { id: "P078", from: "리산드로 마르티네스", to: "얀코 브루센", short: "브루센" },
+  { id: "P077", from: "라파엘 바란", to: "필리프 메릴", short: "메릴" },
+  { id: "P093", from: "카이 하베르츠", to: "다미르 에스칼", short: "에스칼" },
+  { id: "P094", from: "제임스 매디슨", to: "알도 티라네", short: "티라네" },
+  { id: "P096", from: "알렉시스 맥 알리스터", to: "알렉 페르잔", short: "페르잔" },
+  { id: "P095", from: "도미니크 소보슬러이", to: "호르헤 미샤크", short: "미샤크" },
+  { id: "P106", from: "가브리에우 제주스", to: "실뱅 도르만", short: "도르만" },
+  { id: "P108", from: "라스무스 호일룬", to: "파울 무라토", short: "무라토" },
+  { id: "P107", from: "마르퀴스 튀랑", to: "아르노 첼리니", short: "첼리니" },
+  // ── BRONZE 13 ─────────────────────────────────────────────────────────
+  { id: "P116", from: "기오르기 마마르다슈빌리", to: "에밀 그라노", short: "그라노" },
+  { id: "P169", from: "김승규", to: "진하람", short: "진하람" },
+  { id: "P122", from: "카스텔로 루케바", to: "마린 카센", short: "카센" },
+  { id: "P120", from: "르니 요로", to: "알빈 로카스", short: "로카스" },
+  { id: "P121", from: "니코 슐로터베크", to: "바르트 아델로", short: "아델로" },
+  { id: "P125", from: "재러드 브랜스웨이트", to: "루디 실베르", short: "실베르" },
+  { id: "P127", from: "워런 자이르에메리", to: "엘리 반데르", short: "반데르" },
+  { id: "P129", from: "가비", to: "오넬 카라조", short: "카라조" },
+  { id: "P134", from: "마누 코네", to: "얀토 텔란", short: "텔란" },
+  { id: "P131", from: "카를로스 발레바", to: "비고 안토닌", short: "안토닌" },
+  { id: "P171", from: "오현규", to: "여은결", short: "여은결" },
+  { id: "P139", from: "요한 바카요코", to: "오토 이반코", short: "이반코" },
+  { id: "P136", from: "엔드릭", to: "핌 질베르", short: "질베르" },
+];
+
 /** league 시드 데이터 버전(봇 클럽명·성향 프리셋·순위 보상). */
 export const LEAGUE_VERSION = "v1";
 
@@ -280,6 +378,71 @@ export const LEAGUE_V2_VERSION = "v2";
  * 과거 매치에서 이 id 를 참조하고 있어 바꾸면 이력이 끊긴다.
  */
 export const BOTS_V3_VERSION = "v3";
+
+/**
+ * bots 부분 버전업 (#450 W1). `bots.v3.json` 은 바이트 불변으로 남기고, **은퇴 카드를 참조하는
+ * 8종 슬롯**만 잔류 카드로 재매핑한 v4 를 새로 발행한다(명세 §6-4).
+ *
+ * ⚠️ **덱 안 중복이 제약이다** — 기본 매핑은 `sub(X)`(같은 등급·포지션 · `fit` 최근접)이지만
+ * 그 카드가 같은 덱에 이미 있으면 차순위로 내려간다. 아래 표는 그걸 이미 푼 결과다.
+ *
+ * 🔴 **구조 결함 1건**: BOT_BAL 은 BRONZE 15장(선발 11 + 벤치 4)을 쓰는데 잔류 BRONZE 는 **13종**이다.
+ * 선발 11 을 BRONZE 로 채우고 모자란 2장을 **벤치에서 SILVER 최저 `fit`** 으로 메운다 —
+ * 봇은 교체를 하지 않으므로(`MatchOrchestrator` = `buildRoster(bot.deckJson(), List.of())`, 벤치가
+ * 시뮬 로스터에 **한 번도 안 들어간다**) **경기 전력 영향 0** 이다(계약이 선발 평균으로 박제).
+ */
+export const BOTS_V4_VERSION = "v4";
+
+/**
+ * bots.v4 교체 매핑 — 봇별 `{은퇴 id: 잔류 id}`. 선발·벤치 어느 쪽이든 같은 표를 탄다.
+ * 여기 없는 id 는 그대로 승계되고, 적용 후 **은퇴 참조 0 · 덱 중복 0** 을 빌더가 검증한다.
+ */
+export const BOTS_V4_REPLACEMENTS: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  BOT_ATK: {
+    P118: "P125", // 최근접 P121 이 같은 덱에 있어 차순위
+    P119: "P122", // 〃
+    P128: "P131",
+    P137: "P139", // 최근접 P136 이 같은 덱에 있어 차순위
+    P092: "P094", // bench
+  },
+  BOT_DEF: {
+    P118: "P121",
+    P119: "P120", // 최근접 P121 이 같은 덱에 있어 차순위
+    P092: "P096", // 최근접 P094 가 같은 덱에 있어 차순위
+  },
+  BOT_BAL: {
+    P118: "P125", // 최근접 P121 이 같은 덱에 있어 차순위
+    P119: "P122", // 〃 (P122 는 v3 벤치에서 선발로 올라온다)
+    P128: "P131", // 〃 (P131 도 v3 벤치에서 선발로)
+    P130: "P134",
+    P137: "P139", // 최근접 P136 이 같은 덱에 있어 차순위
+    P117: "P169", // bench GK
+    P122: "P077", // bench — BRONZE 재고 부족분을 SILVER 최저 fit 으로(전력 영향 0)
+    P131: "P095", // bench — 〃
+    P138: "P171", // bench
+  },
+};
+
+/**
+ * bots.v4 교체 결과의 **독립 기대값**(명세 §6-4 "교체 후 봇 덱 전문"). 매핑을 적용한 결과가 이 표와
+ * 다르면 빌더가 throw — 매핑표와 결과를 **따로** 박아 둬야 한 쪽만 고쳐도 조용히 안 넘어간다.
+ */
+export const BOTS_V4_EXPECTED: Readonly<
+  Record<string, { starters: readonly string[]; bench: readonly string[] }>
+> = {
+  BOT_ATK: {
+    starters: ["P116", "P125", "P122", "P120", "P121", "P127", "P131", "P129", "P136", "P139", "P106"],
+    bench: ["P074", "P077", "P094", "P107"],
+  },
+  BOT_DEF: {
+    starters: ["P116", "P121", "P120", "P077", "P078", "P079", "P096", "P093", "P094", "P106", "P107"],
+    bench: ["P074", "P080", "P095", "P108"],
+  },
+  BOT_BAL: {
+    starters: ["P116", "P125", "P122", "P120", "P121", "P127", "P131", "P129", "P134", "P136", "P139"],
+    bench: ["P169", "P077", "P095", "P171"],
+  },
+};
 
 /**
  * economy 부분 버전업(additive, #209 스타터 개편). `economy.v2.json` 은 **바이트 불변**으로 남기고
@@ -313,6 +476,69 @@ export const STARTER_TOP_POOL = [
 
 /** 가입 시 최상위 pool 에서 지급하는 장수. 1 = "후보 중 1장"(#209). */
 export const STARTER_TOP_COUNT = 1;
+
+/**
+ * economy 부분 버전업 (#450 W1). `economy.v3.json` 은 바이트 불변으로 남기고 **스타터 두 블록만**
+ * 갈아끼운 v4 를 발행한다(명세 §5).
+ *
+ * ⚠️ **`gacha.rates` · `star.copies` · `tenPityMinGrade` 는 무접촉**(명세 §1-6) — 저등급 강화 개선은
+ * **종수 축소만으로** 달성한다. 확률을 건드리면 밸런스(#252)·리그 디비전 편성이 같이 움직인다.
+ */
+export const ECONOMY_V4_VERSION = "v4";
+
+/**
+ * `starterPack` v4 = **14장**(GK 2 / DF 5 / MF 4 / FW 3) — 명세 §5-2, hero H7 확정.
+ * 순서는 v2 생성 규칙과 같은 **포지션 그룹 순**(GK → DF → MF → FW)이다.
+ *
+ * - **GK 2장** = hero 가 지목한 결함의 직접 해소(현행은 GK 1장이라 서비스 시작 이래 대다수가
+ *   골키퍼를 한 번도 못 바꿨다).
+ * - **DF 5장** = 5-3-2 를 짜려면 DF 5 가 필요한데 잔류 SILVER DF 는 4종이라 **BRONZE DF 최고 `fit`**
+ *   인 P122 를 섞는다(등급 혼합 덱을 첫날부터 보여주는 부수 효과).
+ * - 구 팩의 P081(벤 화이트)·P092(메이슨 마운트)는 **은퇴**라 빠지고, 그 두 장이 보상 우편의
+ *   최대 수혜분이 된다(§4-4, 집행은 W2).
+ */
+export const STARTER_PACK_V4 = [
+  "P074", // GK 루카스 페롤 (SILVER)
+  "P161", // GK 탁서온 (SILVER)
+  "P077", // DF 필리프 메릴 (SILVER)
+  "P078", // DF 얀코 브루센 (SILVER)
+  "P079", // DF 비토 라이덴 (SILVER)
+  "P080", // DF 오스카르 코르비 (SILVER)
+  "P122", // DF 마린 카센 (BRONZE — 5백 편성용, BRONZE DF 최고 fit)
+  "P093", // MF 다미르 에스칼 (SILVER)
+  "P094", // MF 알도 티라네 (SILVER)
+  "P095", // MF 호르헤 미샤크 (SILVER)
+  "P096", // MF 알렉 페르잔 (SILVER)
+  "P106", // FW 실뱅 도르만 (SILVER)
+  "P107", // FW 아르노 첼리니 (SILVER)
+  "P108", // FW 파울 무라토 (SILVER)
+] as const;
+
+/**
+ * `starterTop` v4 pool = **활성 LEGEND 10종 전량**(명세 §5-3).
+ * `data/CLAUDE.md` 규칙("활성 유닛만 넣는다")을 지키며 v2.7 의 활성 LEGEND 와 정확히 일치시킨다 —
+ * 빌더가 그 일치를 검증한다(둘이 어긋나면 비활성 유닛을 가입 지급하게 된다, #207 사고 부류).
+ * **LEGEND GK 2종(P178 석신 · P182 오시야스)** 이 들어가는 것이 핵심 — 신규 유저의 1/5 이 LEGEND
+ * 골키퍼로 시작한다(상위 GK 기근에 대한 두 번째 처방, 뽑기 확률 무접촉).
+ * ⚠️ P178 은 유닛 아트가 없다(hero H3 승인) — 아트 입고는 발행물과 무관하다.
+ * **"공용 아트로 나간다"가 아니다**(초판 오기, #452 에서 실화면으로 확정): P178 은 아트 매니페스트
+ * `players` 딕셔너리에 **아예 없고**(`unmapped`) 플레이스홀더 아틀라스에도 없어, web 은 3단 폴백의
+ * 마지막인 **CSS 이니셜**(등급색 링 + 이름 첫 글자)로 그린다. 카드 자리는 `frame-only` 라 빈 칸이
+ * 생기지 않는다. 이 성질은 `apps/web` 이 이미 계약으로 박고 있다(`FullArtCard.test.ts` 가 발행물의
+ * `unmapped[0]` 을 표본으로 뽑는다 = 지금 P178).
+ */
+export const STARTER_TOP_POOL_V4 = [
+  "P173", // 보날두 (FW)
+  "P174", // 권씨 (FW)
+  "P175", // 열라도나 (MF)
+  "P176", // 춘바페 (FW)
+  "P177", // 덕브라이너 (MF)
+  "P178", // 석신 (GK) — hero H3 "아트 없이 먼저 켠다"
+  "P179", // 욱링엄 (MF)
+  "P180", // 경니시우스 (FW)
+  "P181", // 석다이크 (DF)
+  "P182", // 오시야스 (GK)
+] as const;
 
 export type Position = "GK" | "DF" | "MF" | "FW";
 export type Grade = "BRONZE" | "SILVER" | "GOLD" | "DIA" | "LEGEND";
@@ -384,6 +610,12 @@ export interface PlayerSeedV26 extends PlayerSeedV25 {
   /** 밀집 UI(덱 행·전술보드 슬롯·경기 토큰·로그줄)용 짧은 이름. 폴백은 `name`. */
   shortName: string;
 }
+
+/**
+ * players.v2.7 = v2.6 과 **스키마·행 수·필드 순서 동일**(additive 필드 0). 바뀌는 것은 값뿐이다 —
+ * 활성 62종의 `name`/`shortName`, 그리고 182행 전체의 `active`(62 true / 120 false). (#450 W1)
+ */
+export type PlayerSeedV27 = PlayerSeedV26;
 
 const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "technical",
@@ -893,16 +1125,29 @@ export interface GeneratedData {
   playersV24: PlayerSeedV24[];
   /** players.v2.5.json — v2.4 전 182행을 **신규 시작 밴드**로 재롤 (#405 §2.2). 동결. */
   playersV25: PlayerSeedV25[];
-  /** players.v2.6.json — v2.5 + 한글 표시명(실선수 172) + shortName (#406). 최신 발행본. */
+  /** players.v2.6.json — v2.5 + 한글 표시명(실선수 172) + shortName (#406). */
   playersV26: PlayerSeedV26[];
+  /** players.v2.7.json — v2.6 + 표시명 가상화 62종 + active 재편(62/120) (#450). 최신 발행본. */
+  playersV27: PlayerSeedV27[];
   economy: EconomySeed;
+  /**
+   * economy.v3.json — v2 + starterTop 블록 (#209).
+   * ⚠️ 이 필드는 #209 이후 줄곧 반환되고 있었는데 **인터페이스에만 없었다** — 그래서 소비자
+   * (`data.test.ts`)가 `Property 'economyV3' does not exist` 로 타입 에러를 내고 있었다. v4 를
+   * 추가하며 같은 구멍을 반복하지 않으려고 여기서 선언을 맞춘다(#450 W1, 값 변경 0).
+   */
+  economyV3: EconomySeed;
+  /** economy.v4.json — v3 + starterPack/starterTop 교체 (#450 §5). 현행 소비본. */
+  economyV4: EconomySeed;
   bots: BotSeed[];
   /** league.v1.json — 봇 클럽명·성향 프리셋·순위 보상. */
   league: LeagueSeed;
   /** league.v2.json — v1 + divisions(#252 난이도 사다리). 현행 소비본. */
   leagueV2: LeagueSeedV2;
-  /** bots.v3.json — 입문 난이도로 재구성한 연습 봇 3종(#252). 현행 소비본. */
+  /** bots.v3.json — 입문 난이도로 재구성한 연습 봇 3종(#252). */
   botsV3: BotSeed[];
+  /** bots.v4.json — v3 의 은퇴 참조 8슬롯을 잔류 카드로 재매핑 (#450 §6-4). 현행 소비본. */
+  botsV4: BotSeed[];
 }
 
 /** players.v2 에 personality(이름 조회)를 뒤에 덧붙여 v2.1 을 만든다. 매핑 누락은 즉시 에러(결정론·완전성). */
@@ -1132,6 +1377,10 @@ function buildPlayersV25(
 /** 한글(공백 허용) 전용인지 — v2.6 표시명 가드. 라틴 문자·숫자·기호가 섞이면 false. */
 const HANGUL_ONLY = /^[가-힣]+(?: [가-힣]+)*$/;
 
+/** v2.7 표시명 길이 상한 — v2.6 가드값(밀집 UI 실측 폭)을 그대로 승계한다. */
+const V27_MAX_NAME_LEN = 14;
+const V27_MAX_SHORT_LEN = 8;
+
 /**
  * players.v2.5 위에 v2.6 을 만든다 (#406 요구 6, hero 확정 "안 C 하이브리드").
  * **v2.5 이하 빌더는 건드리지 않는다** — 그 발행물들이 그대로 재현돼야 하기 때문(v2.5 가 v2.4 를
@@ -1216,6 +1465,144 @@ function buildPlayersV26(playersV25: PlayerSeedV25[]): PlayerSeedV26[] {
     }
   }
   return out;
+}
+
+/**
+ * players.v2.6 위에 v2.7 을 만든다 (#450 W1, 명세 `docs/plan-v5/roster-v27-spec.md`).
+ * **v2.6 이하 빌더는 건드리지 않는다** — 그 발행물들이 그대로 재현돼야 한다(v2.6 이 v2.5 를 대하는
+ * 방식과 동일). 하는 일은 RNG 가 다 돈 뒤의 **순수 값 변환** 두 가지뿐이다:
+ *   ① `V27_ACTIVE_CARDS` 62종의 `name`/`shortName` 을 가상명으로 교체(패러디 10종은 무변경)
+ *   ② `active` 를 재편 — 그 62종만 `true`, 나머지 120종 `false`
+ *
+ * fail-closed 로 보는 것(조용한 사고를 전부 터뜨린다):
+ *   ① 표 62행 · id 유일 · 전원 v2.6 에 존재
+ *   ② `from` 앵커가 v2.6 의 현재 이름과 일치 — 행이 밀리거나 v2.6 을 고치면 여기서 터진다
+ *   ③ 패러디 10종은 `to`/`short` 가 v2.6 과 **동일**(개명 대상 아님)
+ *   ④ 신규명 = 한글 전용 · 길이 상한 · `short ≤ name` · 빈 문자열 금지
+ *   ⑤ 표시명 **182 전역 유일** · shortName **활성 62 유일**
+ *      (⚠️ shortName 전역 유일은 성립하지 않는다 — v2.6 이 허용하던 "루이스" 2쌍 P101·P118 이
+ *       **둘 다 은퇴**해 비활성 구간에 그대로 남는다. 활성 도감에서는 중복 0 이다.)
+ *   ⑥ `active` 카운트 = 62 / 120
+ *   ⑦ id/position/grade/attributes/personality 는 v2.6 과 **완전 동일**(#405 재롤값 무접촉)
+ */
+function buildPlayersV27(playersV26: PlayerSeedV26[]): PlayerSeedV27[] {
+  if (V27_ACTIVE_CARDS.length !== 62) {
+    throw new Error(`v2.7 활성 표는 62행이어야 하는데 ${V27_ACTIVE_CARDS.length} 이다(#450 §1-1)`);
+  }
+  const byId = new Map(playersV26.map((p) => [p.id, p]));
+  const card = new Map<string, (typeof V27_ACTIVE_CARDS)[number]>();
+  for (const c of V27_ACTIVE_CARDS) {
+    if (card.has(c.id)) throw new Error(`v2.7 활성 표에 ${c.id} 가 두 번 있다`);
+    const src = byId.get(c.id);
+    if (!src) throw new Error(`v2.7 활성 표의 ${c.id} 가 v2.6 카탈로그에 없다`);
+    if (src.name !== c.from) {
+      throw new Error(
+        `${c.id} 의 v2.6 이름이 "${c.from}" 이어야 하는데 "${src.name}" 이다 — ` +
+          `v2.6 은 발행 후 수정 금지다. 표시명 변경은 V27_ACTIVE_CARDS 에서만 한다.`,
+      );
+    }
+    card.set(c.id, c);
+  }
+
+  const parody = new Set(V26_PARODY_UNIT_IDS);
+  for (const c of V27_ACTIVE_CARDS) {
+    const src = byId.get(c.id)!;
+    if (parody.has(c.id)) {
+      // 패러디는 hero D3 "패러디는 남기고" — 이름 축을 건드리지 않는다.
+      if (c.to !== src.name || c.short !== src.shortName) {
+        throw new Error(`${c.id} 는 패러디 유닛이라 개명 대상이 아니다(#450 §2-1 분기 a)`);
+      }
+      continue;
+    }
+    if (!c.to || !HANGUL_ONLY.test(c.to)) {
+      throw new Error(`${c.id} 새 표시명이 한글 전용이 아니다: "${c.to}"`);
+    }
+    if (!c.short || !HANGUL_ONLY.test(c.short)) {
+      throw new Error(`${c.id} 새 shortName 이 한글 전용이 아니다: "${c.short}"`);
+    }
+    if (c.to.length > V27_MAX_NAME_LEN) {
+      throw new Error(`${c.id} 새 표시명 "${c.to}" 이 상한 ${V27_MAX_NAME_LEN}자를 넘는다`);
+    }
+    if (c.short.length > V27_MAX_SHORT_LEN || c.short.length > c.to.length) {
+      throw new Error(`${c.id} 새 shortName "${c.short}" 이 상한/풀네임 길이를 넘는다`);
+    }
+  }
+
+  const activeIds = new Set(V27_ACTIVE_CARDS.map((c) => c.id));
+  const out: PlayerSeedV27[] = playersV26.map((p) => {
+    const c = card.get(p.id);
+    // v2.6 키 순서를 유지한 채 값만 덮는다(스프레드라 순서 보존 — additive 필드 0).
+    return c
+      ? { ...p, name: c.to, active: true, shortName: c.short }
+      : { ...p, active: false };
+  });
+
+  if (new Set(out.map((p) => p.name)).size !== out.length) {
+    throw new Error("v2.7 표시명 충돌 — 가상명이 기존 이름과 겹친다(도감 중복)");
+  }
+  const activeRows = out.filter((p) => p.active);
+  if (activeRows.length !== 62 || out.length - activeRows.length !== 120) {
+    throw new Error(
+      `v2.7 활성 62 / 비활성 120 이어야 하는데 ${activeRows.length} / ${out.length - activeRows.length} 이다`,
+    );
+  }
+  if (new Set(activeRows.map((p) => p.shortName)).size !== activeRows.length) {
+    throw new Error("v2.7 활성 62종의 shortName 이 중복이다 — 밀집 UI 가 두 선수를 구분 못 한다");
+  }
+  for (const id of activeIds) {
+    if (!out.some((p) => p.id === id && p.active)) throw new Error(`${id} 가 활성이 아니다`);
+  }
+
+  // 표시명·active 레이어다: 그 밖은 v2.6 과 완전 동일해야 한다(#405 재롤값 승계).
+  for (let i = 0; i < playersV26.length; i++) {
+    const { name: _n, shortName: _s, active: _a, ...restBefore } = playersV26[i]!;
+    const { name: _m, shortName: _t, active: _b, ...restAfter } = out[i]!;
+    if (JSON.stringify(restBefore) !== JSON.stringify(restAfter)) {
+      throw new Error(`v2.7 레이어가 ${playersV26[i]!.id} 의 이름/active 밖 축을 건드렸다(#450)`);
+    }
+  }
+  return out;
+}
+
+/**
+ * bots.v3 위에 v4 를 만든다 (#450 W1 §6-4) — 은퇴 카드를 참조하는 슬롯만 교체하는 **순수 매핑**.
+ * `formation`·`slotIndex`·`promptText`·`persona`·`analysisText`·`strengthMul` 전부 승계한다.
+ *
+ * fail-closed: ① 매핑표의 은퇴 id 가 그 덱에 실제로 있었나 ② 교체 후 덱 중복 0
+ * ③ 참조 전량이 v2.7 활성인가 ④ 결과가 `BOTS_V4_EXPECTED`(명세 §6-4 전문)와 일치하나.
+ */
+function buildBotsV4(botsV3: BotSeed[], playersV27: PlayerSeedV27[]): BotSeed[] {
+  const active = new Set(playersV27.filter((p) => p.active).map((p) => p.id));
+  return botsV3.map((b) => {
+    const map = BOTS_V4_REPLACEMENTS[b.id] ?? {};
+    const before = [...b.deck.starters.map((s) => s.playerId), ...b.deck.bench];
+    for (const oldId of Object.keys(map)) {
+      if (!before.includes(oldId)) {
+        throw new Error(`bots.v4: ${b.id} 매핑표의 ${oldId} 가 v3 덱에 없다 — 표가 낡았다`);
+      }
+    }
+    const deck: BotSeed["deck"] = {
+      formation: b.deck.formation,
+      starters: b.deck.starters.map((s) => ({ ...s, playerId: map[s.playerId] ?? s.playerId })),
+      bench: b.deck.bench.map((id) => map[id] ?? id),
+    };
+    const after = [...deck.starters.map((s) => s.playerId), ...deck.bench];
+    if (new Set(after).size !== after.length) {
+      throw new Error(`bots.v4: ${b.id} 덱에 중복 playerId 가 생겼다(deck_slots PK 위반)`);
+    }
+    for (const id of after) {
+      if (!active.has(id)) throw new Error(`bots.v4: ${b.id} 가 비활성 유닛 ${id} 을 참조한다`);
+    }
+    const expected = BOTS_V4_EXPECTED[b.id];
+    if (!expected) throw new Error(`bots.v4: ${b.id} 의 기대 덱 전문이 없다`);
+    if (JSON.stringify(deck.starters.map((s) => s.playerId)) !== JSON.stringify(expected.starters)) {
+      throw new Error(`bots.v4: ${b.id} 선발이 명세 §6-4 전문과 다르다`);
+    }
+    if (JSON.stringify(deck.bench) !== JSON.stringify(expected.bench)) {
+      throw new Error(`bots.v4: ${b.id} 벤치가 명세 §6-4 전문과 다르다`);
+    }
+    return { ...b, deck };
+  });
 }
 
 /**
@@ -1779,6 +2166,8 @@ export function generateAll(): GeneratedData {
   const playersV25 = buildPlayersV25(playersV24, ROSTER);
   // #406: v2.6 은 v2.5 위에 얹는 **표시명 레이어**(RNG 미사용 = 순수 문자열 변환, 행 추가 0).
   const playersV26 = buildPlayersV26(playersV25);
+  // #450: v2.7 은 v2.6 위에 얹는 **표시명 + active 레이어**(RNG 미사용, 행 추가 0, 로스터 무접촉).
+  const playersV27 = buildPlayersV27(playersV26);
   const league = buildLeague();
 
   // economy v3(#209) = v2 그대로 + starterTop 블록. v2 객체는 건드리지 않는다(발행물 불변).
@@ -1788,11 +2177,54 @@ export function generateAll(): GeneratedData {
     starterTop: { pool: [...STARTER_TOP_POOL], count: STARTER_TOP_COUNT },
   };
 
+  // economy v4(#450 §5) = **디스크 v3 발행물** 그대로 + 스타터 두 블록 교체.
+  //
+  // ⚠️ **입력이 `economyV3`(메모리) 가 아니라 디스크 파일인 것이 핵심이다.** `economy.v3.json` 은
+  // 발행 이후 세 웨이브가 **JSON 을 직접 편집**해 확장했고 그 웨이브들은 이 생성기를 안 고쳤다:
+  //   #251 시즌 종료 다이아(`league.gemReward` 를 completion/rankBonus 로 재설계)
+  //   #368 리그 매판 보상 트랙(`league.dailyReward` 18칸)
+  //   #408 원정 데일리 미션(`mission.reward`)
+  // 그래서 메모리 `economyV3` 로 v4 를 빚으면 **그 세 기능의 파라미터가 통째로 사라진다**(서버가
+  // 읽는 블록들이다). 명세 §6-5 의 "그 외 전 필드는 v3 **바이트 승계**" 를 문자 그대로 지키려면
+  // 승계 원본이 발행물이어야 한다. 키 순서도 스프레드가 원본 순서를 보존하므로 v3 와 동일하다.
+  const diskV3 = JSON.parse(
+    readFileSync(join(dirname(fileURLToPath(import.meta.url)), `economy.${ECONOMY_V3_VERSION}.json`), "utf8"),
+  ) as Record<string, unknown>;
+  if (diskV3["version"] !== ECONOMY_V3_VERSION) {
+    throw new Error(`economy.v4 의 승계 원본이 v3 발행물이 아니다(version=${String(diskV3["version"])})`);
+  }
+  const economyV4 = {
+    ...diskV3,
+    version: ECONOMY_V4_VERSION,
+    starterPack: [...STARTER_PACK_V4],
+    starterTop: { pool: [...STARTER_TOP_POOL_V4], count: STARTER_TOP_COUNT },
+  } as unknown as EconomySeed;
+  {
+    // fail-closed: 가입 지급은 **신규 획득**이므로 비활성 유닛이 섞이면 정책 위반이다(#207 사고 부류).
+    const activeIds = new Set(playersV27.filter((p) => p.active).map((p) => p.id));
+    for (const id of [...economyV4.starterPack, ...economyV4.starterTop!.pool]) {
+      if (!activeIds.has(id)) throw new Error(`economy.v4: 비활성 유닛 ${id} 을 가입 지급한다(#450 §5)`);
+    }
+    if (new Set(economyV4.starterPack).size !== economyV4.starterPack.length) {
+      throw new Error("economy.v4: starterPack 에 중복 id 가 있다");
+    }
+    // starterTop = **활성 LEGEND 전량**과 정확히 일치(명세 §5-3) — 어긋나면 둘 중 하나가 낡은 것이다.
+    const activeLegend = playersV27
+      .filter((p) => p.active && p.grade === "LEGEND")
+      .map((p) => p.id)
+      .sort();
+    if (JSON.stringify([...economyV4.starterTop!.pool].sort()) !== JSON.stringify(activeLegend)) {
+      throw new Error("economy.v4: starterTop pool 이 v2.7 활성 LEGEND 전량과 다르다(#450 §5-3)");
+    }
+  }
+
   return {
     players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-    economy, economyV3, bots, league,
+    playersV27,
+    economy, economyV3, economyV4, bots, league,
     leagueV2: buildLeagueV2(league),
     botsV3,
+    botsV4: buildBotsV4(botsV3, playersV27),
   };
 }
 
@@ -1808,7 +2240,7 @@ const isMain = (() => {
 if (isMain) {
   const {
     players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-    economy, economyV3, bots, league, leagueV2, botsV3,
+    playersV27, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
   } = generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
   writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(playersV2, null, 2) + "\n");
@@ -1836,11 +2268,19 @@ if (isMain) {
     join(here, `players.${PLAYERS_V26_VERSION}.json`),
     JSON.stringify(playersV26, null, 2) + "\n",
   );
-  writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
   writeFileSync(
-    join(here, `economy.${ECONOMY_V3_VERSION}.json`),
-    JSON.stringify(economyV3, null, 2) + "\n",
+    join(here, `players.${PLAYERS_V27_VERSION}.json`),
+    JSON.stringify(playersV27, null, 2) + "\n",
   );
+  writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
+  // ⚠️ **`economy.v3.json` 은 더 이상 쓰지 않는다**(#450 W1 발견).
+  // 발행 후 세 웨이브(#251 시즌 다이아 · #368 리그 데일리 18칸 · #408 원정 미션)가 이 **발행물 JSON 을
+  // 직접 편집**해 확장했고 생성기는 안 고쳤다. 그래서 여기서 다시 쓰면 그 세 블록이 **조용히 소실**된다
+  // (실제로 이 웨이브에서 한 번 덮어썼다가 복구했다). 대조 계약도 없었다 — `data.test.ts` 의 발행 파일
+  // 동기화 목록에 `economy.v3.json` 이 빠져 있어 드리프트가 어디서도 안 걸렸다.
+  // 지금은 **v4 가 그 디스크 파일을 입력으로 승계**하고(위 `diskV3`), v3 자체는 동결 유물로 둔다.
+  // (`economyV3` 는 v2 + starterTop 이라는 **발행 당시 형태**를 계약이 계속 볼 수 있게 반환만 한다.)
+  void economyV3;
   writeFileSync(join(here, `bots.${DATA_VERSION}.json`), JSON.stringify(bots, null, 2) + "\n");
   writeFileSync(join(here, `league.${LEAGUE_VERSION}.json`), JSON.stringify(league, null, 2) + "\n");
   writeFileSync(
@@ -1848,14 +2288,21 @@ if (isMain) {
     JSON.stringify(leagueV2, null, 2) + "\n",
   );
   writeFileSync(join(here, `bots.${BOTS_V3_VERSION}.json`), JSON.stringify(botsV3, null, 2) + "\n");
+  writeFileSync(join(here, `bots.${BOTS_V4_VERSION}.json`), JSON.stringify(botsV4, null, 2) + "\n");
+  writeFileSync(
+    join(here, `economy.${ECONOMY_V4_VERSION}.json`),
+    JSON.stringify(economyV4, null, 2) + "\n",
+  );
   // eslint-disable-next-line no-console
   console.log(
     `generated ${players.length} players (v2/v2.1 frozen ${playersV2.length}, v2.2 ${playersV22.length} ` +
       `with active, v2.3 ${playersV23.length}, v2.4 ${playersV24.length}, ` +
       `v2.5 ${playersV25.length} rerolled to lowered start bands ` +
       `active=${playersV25.filter((p) => p.active).length}, ` +
-      `v2.6 ${playersV26.length} ko-names+shortName), ` +
-      `economy.${DATA_VERSION}.json + economy.${ECONOMY_V3_VERSION}.json(starterTop), ` +
-      `${bots.length} bots, league.${LEAGUE_VERSION}.json -> data/players/`,
+      `v2.6 ${playersV26.length} ko-names+shortName, ` +
+      `v2.7 ${playersV27.length} fictional names active=${playersV27.filter((p) => p.active).length}), ` +
+      // ⚠️ v3 는 더 이상 쓰지 않는다(#453). 로그에 남겨 두면 다음 사람이 "재생성된다"고 오판한다.
+      `economy.${DATA_VERSION}.json + economy.${ECONOMY_V4_VERSION}.json(starter v4, v3 승계·v3 무기록), ` +
+      `${bots.length} bots + bots.${BOTS_V4_VERSION}.json, league.${LEAGUE_VERSION}.json -> data/players/`,
   );
 }

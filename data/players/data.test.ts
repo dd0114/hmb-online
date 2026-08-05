@@ -290,7 +290,7 @@ const REAL_CLUB_TOKENS: readonly string[] = [
 
 const {
   players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-  economy, economyV3, bots, league, leagueV2, botsV3,
+  playersV27, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
 } = generateAll();
 
 describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
@@ -2035,7 +2035,15 @@ describe("players.v2.6 — 선수명 한글화 + shortName (#406 요구 6, 안 C
     }
   });
 
-  it("한국 선수 대표 8명이 한글로 나온다(#84 존재 검증의 한글 축)", () => {
+  /**
+   * ⚠️ **이 가드의 적용 범위는 로마자 축(ROSTER) + v2~v2.6 발행물뿐이다**(#450 §6-1-8).
+   * v2.7 은 표시 축에서 실명을 제거하는 것이 목적이라 이 8명과 **정면으로 충돌**한다 —
+   * 5명 은퇴(P143 박지성 · P144 차범근 · P145 이강인 · P170 양민혁 · P037 손흥민) ·
+   * 3명 개명(P022 김민재 → 다니엘 오르베 · P151 황희찬 → 곽재율 · P161 조현우 → 탁서온).
+   * **가드를 지우지 않고 범위를 명시해서 남긴다** — 여기서는 계속 참이고, v2.7 축에서는
+   * `v2.7 describe` 의 "EXPECTED_KOREANS 8명의 v2.7 처분" 이 그 사실을 따로 박제한다.
+   */
+  it("한국 선수 대표 8명이 한글로 나온다(#84 존재 검증의 한글 축 — v2.6 까지의 범위)", () => {
     const byEnName = new Map(diskV25.map((p) => [p.name, p]));
     for (const k of EXPECTED_KOREANS) {
       const old = byEnName.get(k.name);
@@ -2108,6 +2116,592 @@ describe("players.v2.6 — 선수명 한글화 + shortName (#406 요구 6, 안 C
       });
       expect(parsed.success, `${p.id} ${p.name}`).toBe(true);
     }
+  });
+});
+
+// ── #450 W1 · players.v2.7 / bots.v4 / economy.v4 ─────────────────────────────
+// 명세 SoT = `docs/plan-v5/roster-v27-spec.md`. 아래 상수는 **전부 그 문서에서 손으로 옮긴 리터럴**이다 —
+// 생성기 상수(`V27_ACTIVE_CARDS` 등)를 재사용하면 자기참조가 되어 표가 틀려도 못 잡는다(NEW_UNITS 규율).
+
+/**
+ * v2.7 발행물의 행 수. ⚠️ **네 번째 동결 경계가 아니다**(명세 §6-1) — v2.7 은 ROSTER 에 append 하지
+ * 않고 기존 id 만 재사용하므로 `rng.ts`·`roster.ts` 무접촉이고 RNG 스트림이 1비트도 안 움직인다.
+ * 이름을 남기는 이유는 "v2.7 은 182행을 그대로 싣는다"를 계약이 부르는 이름이 필요해서다.
+ */
+const FROZEN_ROSTER_COUNT_V27 = 182;
+/** v2.7 활성 종수(명세 §1-1 격자 합). 나머지는 전부 은퇴(비활성). */
+const V27_ACTIVE_TOTAL = 62;
+const V27_INACTIVE_TOTAL = FROZEN_ROSTER_COUNT_V27 - V27_ACTIVE_TOTAL;
+
+/** 명세 §1-1 확정 격자 — 등급 × 포지션 종수. 하드코딩(생성기 재사용 금지). */
+const V27_GRID: Record<Grade, Record<Position, number>> = {
+  LEGEND: { GK: 2, DF: 1, MF: 3, FW: 4 },
+  DIA: { GK: 2, DF: 4, MF: 4, FW: 3 },
+  GOLD: { GK: 2, DF: 4, MF: 4, FW: 3 },
+  SILVER: { GK: 2, DF: 4, MF: 4, FW: 3 },
+  BRONZE: { GK: 2, DF: 4, MF: 4, FW: 3 },
+};
+/** 격자의 포지션 합(명세 부록 A) — 격자를 다른 축으로 한 번 더 검산한다. */
+const V27_POSITION_TOTALS: Record<Position, number> = { GK: 10, DF: 17, MF: 19, FW: 16 };
+
+/** 명세 §2-2 — 활성 62종 id 전량(등급 → 포지션 → fit 내림차순). */
+const V27_ACTIVE_IDS: readonly string[] = [
+  "P182", "P178", "P181", "P177", "P175", "P179", "P176", "P174", "P173", "P180",
+  "P013", "P014", "P021", "P020", "P015", "P022", "P030", "P024", "P025", "P029", "P036", "P033", "P031",
+  "P038", "P040", "P050", "P043", "P148", "P150", "P055", "P065", "P056", "P147", "P066", "P073", "P151",
+  "P074", "P161", "P079", "P080", "P078", "P077", "P093", "P094", "P096", "P095", "P106", "P108", "P107",
+  "P116", "P169", "P122", "P120", "P121", "P125", "P127", "P129", "P134", "P131", "P171", "P139", "P136",
+];
+
+/** 명세 §3-2 — 은퇴(비활성) 120종 id 전량. 표 순서 그대로. */
+const V27_RETIRED_IDS: readonly string[] = [
+  "P001", "P002", "P003", "P004", "P007", "P005", "P008", "P006", "P143", "P012", "P009", "P144", "P011", "P010",
+  "P016", "P018", "P017", "P019", "P026", "P023", "P027", "P028", "P037", "P034", "P035", "P032",
+  "P039", "P041", "P044", "P051", "P047", "P042", "P052", "P046", "P045", "P149", "P048", "P049",
+  "P061", "P057", "P145", "P054", "P146", "P064", "P063", "P053", "P060", "P059", "P062", "P058",
+  "P152", "P067", "P070", "P069", "P068", "P072", "P071", "P153", "P154",
+  "P076", "P075", "P085", "P082", "P087", "P088", "P160", "P081", "P091", "P089", "P159", "P083", "P086", "P090", "P084",
+  "P103", "P097", "P101", "P104", "P156", "P157", "P100", "P092", "P155", "P158", "P098", "P102", "P105", "P099",
+  "P164", "P114", "P109", "P115", "P162", "P163", "P112", "P110", "P111", "P113",
+  "P117", "P168", "P123", "P119", "P124", "P126", "P118", "P166", "P135", "P167", "P133", "P165", "P132", "P130", "P128",
+  "P142", "P138", "P141", "P140", "P172", "P137", "P170",
+];
+
+/** 명세 §2-1-b — 한국식 가상명 7종(hero H1 확정). 성 1자 + 이름 2자 · `short == name`. */
+const V27_KOREAN_STYLE: readonly { id: string; name: string }[] = [
+  { id: "P147", name: "한태겸" },
+  { id: "P148", name: "노시운" },
+  { id: "P150", name: "표유안" },
+  { id: "P151", name: "곽재율" },
+  { id: "P161", name: "탁서온" },
+  { id: "P169", name: "진하람" },
+  { id: "P171", name: "여은결" },
+];
+
+/** 명세 §5-2 — `starterPack` v4 (GK2 / DF5 / MF4 / FW3). */
+const V27_STARTER_PACK: readonly string[] = [
+  "P074", "P161", "P077", "P078", "P079", "P080", "P122",
+  "P093", "P094", "P095", "P096", "P106", "P107", "P108",
+];
+/** 명세 §5-3 — `starterTop.pool` v4 = 활성 LEGEND 10종 전량. */
+const V27_STARTER_TOP: readonly string[] = [
+  "P173", "P174", "P175", "P176", "P177", "P178", "P179", "P180", "P181", "P182",
+];
+
+/** 명세 §6-4 "교체 후 봇 덱 전문". */
+const V27_BOT_DECKS: Record<string, { formation: string; starters: readonly string[]; bench: readonly string[] }> = {
+  BOT_ATK: {
+    formation: "4-3-3",
+    starters: ["P116", "P125", "P122", "P120", "P121", "P127", "P131", "P129", "P136", "P139", "P106"],
+    bench: ["P074", "P077", "P094", "P107"],
+  },
+  BOT_DEF: {
+    formation: "5-3-2",
+    starters: ["P116", "P121", "P120", "P077", "P078", "P079", "P096", "P093", "P094", "P106", "P107"],
+    bench: ["P074", "P080", "P095", "P108"],
+  },
+  BOT_BAL: {
+    formation: "4-4-2",
+    starters: ["P116", "P125", "P122", "P120", "P121", "P127", "P131", "P129", "P134", "P136", "P139"],
+    bench: ["P169", "P077", "P095", "P171"],
+  },
+};
+
+describe("players.v2.7 — 표시명 가상화 + active 재편 (#450 W1)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  /** 디스크의 **발행된** v2.6 — 대조 기준을 코드가 아니라 파일에서 가져온다(자기참조 회피). */
+  const diskV26 = JSON.parse(readFileSync(join(here, "players.v2.6.json"), "utf8")) as {
+    id: string;
+    name: string;
+    position: Position;
+    grade: Grade;
+    attributes: PlayerSeed["attributes"];
+    personality: Personality;
+    active: boolean;
+    shortName: string;
+  }[];
+  const byId = new Map(playersV27.map((p) => [p.id, p]));
+  const activeSet = new Set(V27_ACTIVE_IDS);
+  const parodySet = new Set(V26_PARODY_IDS);
+  const activeRows = playersV27.filter((p) => p.active);
+  /** 개명 대상 52종 = 활성 62 − 패러디 10. */
+  const renamed = activeRows.filter((p) => !parodySet.has(p.id));
+
+  // v2.6 발행물에서 **직접 도출**하는 실명 축(하드코딩하면 스테일해진다 — 명세 §6-1-6).
+  const realRows = diskV26.filter((p) => !parodySet.has(p.id));
+  /** 실명 토큰 전집합 = 풀네임 공백분해 토큰 + shortName. */
+  const realTokens = new Set<string>();
+  for (const p of realRows) {
+    for (const t of p.name.split(" ")) realTokens.add(t);
+    realTokens.add(p.shortName);
+  }
+  const realFullNames = new Set(realRows.map((p) => p.name));
+  /** 한국식(공백 없는) 실명에서 도출한 성·이름 집합. 비한국 3자명(알리송·페드리…)도 포함하는 **초집합**이라 더 보수적이다. */
+  const realNoSpace = realRows.filter((p) => !p.name.includes(" "));
+  const realSurnames = new Set(realNoSpace.map((p) => p.name[0]!));
+  const realGivenNames = new Set(realNoSpace.map((p) => p.name.slice(1)));
+  const parodySurnames = new Set(V26_PARODY_IDS.map((id) => diskV26.find((p) => p.id === id)!.name[0]!));
+
+  // ── ① 이 웨이브의 최상위 게이트: 과거 발행 축이 안 흔들렸나 ────────────────
+  it("발행물 v2 ~ v2.6 이 여전히 **바이트 동일** 재현된다 — 가상화가 과거 축을 안 건드렸다", () => {
+    // 이름 축은 RNG 에 안 들어가고 ROSTER 도 무접촉이라 **깨질 이유가 없다. 깨지면 로스터를 건드린 것.**
+    const cases: readonly [string, unknown][] = [
+      ["players.v2.json", playersV2],
+      ["players.v2.1.json", playersV21],
+      ["players.v2.2.json", playersV22],
+      ["players.v2.3.json", playersV23],
+      ["players.v2.4.json", playersV24],
+      ["players.v2.6.json", playersV26],
+    ];
+    for (const [file, data] of cases) {
+      expect(readFileSync(join(here, file), "utf8"), file).toBe(JSON.stringify(data, null, 2) + "\n");
+    }
+    // v2.5 는 v2.6 의 입력이라 따로 한 번 더(무너지면 가상화가 엉뚱한 스탯 위에 얹힌다).
+    expect(readFileSync(join(here, "players.v2.5.json"), "utf8")).toBe(
+      JSON.stringify(playersV25, null, 2) + "\n",
+    );
+  });
+
+  it("이름·shortName·active 축 **밖**은 디스크 v2.6 과 완전 동일 — 스탯·성격·포지션·등급 무접촉", () => {
+    expect(playersV27).toHaveLength(FROZEN_ROSTER_COUNT_V27);
+    expect(diskV26).toHaveLength(FROZEN_ROSTER_COUNT_V27);
+    const strip = (p: { [k: string]: unknown }) => {
+      const { name: _n, shortName: _s, active: _a, ...rest } = p;
+      return rest;
+    };
+    expect(JSON.stringify(playersV27.map((p) => strip({ ...p })), null, 2)).toBe(
+      JSON.stringify(diskV26.map((p) => strip({ ...p })), null, 2),
+    );
+  });
+
+  it("v2.7 = v2.6 과 **필드 순서·개수 동일**(additive 필드 0)", () => {
+    for (const p of playersV27) {
+      expect(Object.keys(p)).toEqual([
+        "id", "name", "position", "grade", "attributes", "personality", "active", "shortName",
+      ]);
+    }
+  });
+
+  it("id 182개 유일 + P001..P182 순서 유지 — 가상화가 행을 섞지 않았다", () => {
+    const ids = playersV27.map((p) => p.id);
+    expect(new Set(ids).size).toBe(FROZEN_ROSTER_COUNT_V27);
+    expect(ids).toEqual(
+      Array.from({ length: FROZEN_ROSTER_COUNT_V27 }, (_, i) => `P${String(i + 1).padStart(3, "0")}`),
+    );
+  });
+
+  // ── ② 활성 격자 (명세 §1-1) ───────────────────────────────────────────────
+  it(`활성 ${V27_ACTIVE_TOTAL}종 / 비활성 ${V27_INACTIVE_TOTAL}종 — 은퇴는 행 삭제가 아니라 비활성화다`, () => {
+    expect(activeRows).toHaveLength(V27_ACTIVE_TOTAL);
+    expect(playersV27.filter((p) => !p.active)).toHaveLength(V27_INACTIVE_TOTAL);
+    // 총 행 수 불변 = `AdminCatalogService.purge` 가 참조 있으면 409 라 삭제가 구조적으로 불가능하다.
+    expect(playersV27).toHaveLength(FROZEN_ROSTER_COUNT_V27);
+  });
+
+  it("활성 id 집합이 명세 §2-2 62종과 정확히 일치", () => {
+    expect(V27_ACTIVE_IDS).toHaveLength(V27_ACTIVE_TOTAL);
+    expect(new Set(V27_ACTIVE_IDS).size).toBe(V27_ACTIVE_TOTAL);
+    expect(activeRows.map((p) => p.id).sort()).toEqual([...V27_ACTIVE_IDS].sort());
+  });
+
+  it("은퇴 id 집합이 명세 §3-2 120종과 정확히 일치 — 전량 박제", () => {
+    expect(V27_RETIRED_IDS).toHaveLength(V27_INACTIVE_TOTAL);
+    expect(new Set(V27_RETIRED_IDS).size).toBe(V27_INACTIVE_TOTAL);
+    expect(playersV27.filter((p) => !p.active).map((p) => p.id).sort()).toEqual(
+      [...V27_RETIRED_IDS].sort(),
+    );
+    // 두 목록이 서로 배타 + 합집합이 전체 = 빠뜨린 id 0.
+    expect(V27_ACTIVE_IDS.filter((id) => V27_RETIRED_IDS.includes(id))).toEqual([]);
+  });
+
+  it("등급 × 포지션 격자가 명세 §1-1 과 완전 일치 (LEGEND GK2/DF1/MF3/FW4 · 나머지 GK2/DF4/MF4/FW3)", () => {
+    for (const g of GRADES) {
+      for (const pos of POSITIONS) {
+        const n = activeRows.filter((p) => p.grade === g && p.position === pos).length;
+        expect(n, `${g}/${pos}`).toBe(V27_GRID[g][pos]);
+      }
+    }
+    // 격자를 포지션 축으로 한 번 더 검산(명세 부록 A: GK10 · DF17 · MF19 · FW16).
+    for (const pos of POSITIONS) {
+      expect(activeRows.filter((p) => p.position === pos).length, pos).toBe(V27_POSITION_TOTALS[pos]);
+    }
+    // 등급별 합 = LEGEND 10 + 나머지 각 13.
+    expect(activeRows.filter((p) => p.grade === "LEGEND")).toHaveLength(10);
+    for (const g of GRADES.filter((x) => x !== "LEGEND")) {
+      expect(activeRows.filter((p) => p.grade === g), g).toHaveLength(13);
+    }
+  });
+
+  // ── ③ 이름 가드 — 3분기 각각 (명세 §2-1) ─────────────────────────────────
+  it("(a) 패러디 10종: 이름·shortName 이 디스크 v2.6 과 **동일** · 전원 활성", () => {
+    expect(V26_PARODY_IDS).toHaveLength(10);
+    for (const id of V26_PARODY_IDS) {
+      const old = diskV26.find((x) => x.id === id)!;
+      const now = byId.get(id)!;
+      expect(now.name, `${id} 이름 무변경`).toBe(old.name);
+      expect(now.shortName, `${id} shortName 무변경`).toBe(old.shortName);
+      expect(now.active, `${id} 활성`).toBe(true);
+      for (const banned of PARODY_REAL_NAME_KO_DENYLIST) {
+        expect(now.name.includes(banned), `${id} 실명 "${banned}" 포함 금지`).toBe(false);
+      }
+    }
+    // ⚠️ P178 석신은 v2.6 에서 **비활성**이었고 v2.7 에서 `active` 만 뒤집힌다(hero H3).
+    expect(diskV26.find((x) => x.id === "P178")!.active).toBe(false);
+    expect(byId.get("P178")!.active).toBe(true);
+  });
+
+  it("(b) 한국식 7종: 한글 3자 · short == name · 실명 성/이름 집합과 충돌 0 · 패러디 성 회피", () => {
+    expect(V27_KOREAN_STYLE).toHaveLength(7);
+    for (const k of V27_KOREAN_STYLE) {
+      const p = byId.get(k.id)!;
+      expect(p.name, `${k.id} 확정 표시명`).toBe(k.name);
+      expect(p.active, `${k.id} 활성`).toBe(true);
+      expect(p.name, `${k.id} 성1+이름2`).toMatch(/^[가-힣]{3}$/);
+      expect(p.shortName, `${k.id} short == name`).toBe(p.name);
+      // 실존 회피 ①②③ — 집합은 v2.6 발행물에서 직접 도출한다(하드코딩 금지).
+      expect(realFullNames.has(p.name), `${k.id} 성+이름 전체 일치 금지`).toBe(false);
+      expect(realSurnames.has(p.name[0]!), `${k.id} 성 "${p.name[0]}" 충돌`).toBe(false);
+      expect(realGivenNames.has(p.name.slice(1)), `${k.id} 이름 "${p.name.slice(1)}" 충돌`).toBe(false);
+      // 실존 회피 ④ — 패러디 성(권·석·오·경·욱 …)과 겹치면 패러디와 혼동된다.
+      expect(parodySurnames.has(p.name[0]!), `${k.id} 패러디 성 충돌`).toBe(false);
+    }
+    // 내부 유일성 — 성 7개·이름 7개 전부 다름.
+    expect(new Set(V27_KOREAN_STYLE.map((k) => k.name[0])).size).toBe(7);
+    expect(new Set(V27_KOREAN_STYLE.map((k) => k.name.slice(1))).size).toBe(7);
+    // 이 가드가 무의미해지지 않게: 도출 집합이 실제로 비어 있지 않은지 확인(빈 집합이면 전부 통과한다).
+    expect(realSurnames.size).toBeGreaterThan(10);
+    expect(realGivenNames.size).toBeGreaterThan(20);
+  });
+
+  it("(c) 무국적 45종: 한글 2토큰 · short == 마지막 토큰 · 길이 상한", () => {
+    const foreign = renamed.filter((p) => !V27_KOREAN_STYLE.some((k) => k.id === p.id));
+    expect(foreign).toHaveLength(45);
+    for (const p of foreign) {
+      const parts = p.name.split(" ");
+      expect(parts, `${p.id} "${p.name}" 2토큰`).toHaveLength(2);
+      expect(p.shortName, `${p.id} short = 성(뒤 토큰)`).toBe(parts[1]);
+      expect(p.name.length, `${p.id} 풀네임 상한`).toBeLessThanOrEqual(V26_MAX_NAME_LEN);
+      expect(p.shortName.length, `${p.id} short 상한`).toBeLessThanOrEqual(V26_MAX_SHORT_LEN);
+    }
+  });
+
+  // ── ④ 전 62종 공통 — 실명 잔존 0 / 유일성 ────────────────────────────────
+  it("활성 62종 표시명이 전부 한글 전용 · 라틴 문자 0", () => {
+    for (const p of activeRows) {
+      expect(p.name, `${p.id} 한글(공백 허용) 전용`).toMatch(HANGUL_ONLY_RE);
+      expect(p.shortName, `${p.id} short 한글 전용`).toMatch(HANGUL_ONLY_RE);
+      expect(p.name, `${p.id} 라틴 잔류 금지`).not.toMatch(/[A-Za-z]/);
+      expect(p.shortName.length, `${p.id} short ≤ 풀네임`).toBeLessThanOrEqual(p.name.length);
+    }
+  });
+
+  it("🔴 실명 잔존 0 — 신규명 52종의 **어떤 토큰도** v2.6 실명 토큰과 완전 일치하지 않는다", () => {
+    // 명세 §2-1-a "실명 회피" 의 기계 축. **신규 denylist 를 만들지 않는다**(§6-1-9) — 리포에는
+    // 실명이 계속 있으므로(D5=ㄱ) 전역 denylist 는 roster/names-ko/personality 와 충돌한다.
+    // 대신 "v2.6 실명 토큰과의 완전일치 0" 을 건다 = 실제로 막고 싶은 것.
+    expect(renamed).toHaveLength(52);
+    expect(realTokens.size).toBeGreaterThan(100); // 도출 집합이 비면 이 계약이 공허해진다
+    for (const p of renamed) {
+      expect(realFullNames.has(p.name), `${p.id} "${p.name}" 풀네임 실명 일치`).toBe(false);
+      for (const t of p.name.split(" ")) {
+        expect(realTokens.has(t), `${p.id} 토큰 "${t}" 가 실명 토큰과 일치`).toBe(false);
+      }
+      expect(realTokens.has(p.shortName), `${p.id} short "${p.shortName}" 실명 토큰 일치`).toBe(false);
+    }
+  });
+
+  it("활성 62종에 `PARODY_REAL_NAME_KO_DENYLIST` 부분문자열 0", () => {
+    for (const p of activeRows) {
+      for (const banned of PARODY_REAL_NAME_KO_DENYLIST) {
+        expect(p.name.includes(banned), `${p.id} "${p.name}" ⊃ "${banned}"`).toBe(false);
+      }
+    }
+  });
+
+  it("표시명 182 전역 유일 · shortName 활성 62 유일 (V26 허용 중복 2쌍은 활성 구간에서 소멸)", () => {
+    expect(new Set(playersV27.map((p) => p.name)).size).toBe(FROZEN_ROSTER_COUNT_V27);
+    expect(new Set(activeRows.map((p) => p.shortName)).size).toBe(V27_ACTIVE_TOTAL);
+    // ⚠️ shortName **전역** 유일은 성립하지 않는다 — v2.6 허용 중복 2쌍 중 "오나나"는 P105 은퇴 +
+    // P074 개명으로 소멸하지만, "루이스"(P101·P118)는 **둘 다 은퇴**라 비활성 구간에 그대로 남는다.
+    // 그 사실을 숨기지 않고 박제한다(활성 도감에서는 중복 0 이 참이다 = 명세 §2-1-a 가 요구한 것).
+    const dupes = new Map<string, string[]>();
+    for (const p of playersV27) dupes.set(p.shortName, [...(dupes.get(p.shortName) ?? []), p.id]);
+    const remaining = [...dupes.entries()].filter(([, ids]) => ids.length > 1);
+    expect(remaining).toEqual([["루이스", ["P101", "P118"]]]);
+    for (const [, ids] of remaining) {
+      for (const id of ids) expect(byId.get(id)!.active, `${id} 는 은퇴 카드다`).toBe(false);
+    }
+  });
+
+  it("은퇴 120종의 표시명은 v2.6 그대로 — 명세가 그들에게 새 이름을 주지 않는다(§3-2 가 v2.6 명으로 식별)", () => {
+    for (const p of playersV27.filter((x) => !x.active)) {
+      const old = diskV26.find((x) => x.id === p.id)!;
+      expect(p.name, `${p.id} 은퇴 카드 이름 무변경`).toBe(old.name);
+      expect(p.shortName, `${p.id} 은퇴 카드 short 무변경`).toBe(old.shortName);
+    }
+  });
+
+  it("EXPECTED_KOREANS 8명의 v2.7 처분 — 5명 은퇴 · 3명 개명(#84 가드가 v2.7 축에 안 걸리는 이유)", () => {
+    // 명세 §6-1-8. 이 사실을 박제하지 않으면 다음 사람이 "#84 가드가 왜 v2.7 엔 없나"를 다시 묻는다.
+    const byKo = new Map(diskV26.map((p) => [p.name, p]));
+    const retired: string[] = [];
+    const renamedKo: string[] = [];
+    for (const k of EXPECTED_KOREANS) {
+      const row = byKo.get(k.ko);
+      expect(row, `${k.ko} 존재(v2.6 한글 축)`).toBeDefined();
+      const now = byId.get(row!.id)!;
+      if (!now.active) retired.push(row!.id);
+      else {
+        expect(now.name, `${k.ko} 개명됨`).not.toBe(k.ko);
+        renamedKo.push(row!.id);
+      }
+    }
+    expect(retired.sort()).toEqual(["P037", "P143", "P144", "P145", "P170"]);
+    expect(renamedKo.sort()).toEqual(["P022", "P151", "P161"]);
+  });
+
+  it("zod PlayerCard 호환 유지 — 가상명이 계약을 깨지 않는다", () => {
+    for (const p of playersV27) {
+      const parsed = PlayerCard.safeParse({
+        playerId: p.id,
+        name: p.name,
+        position: p.position,
+        attributes: p.attributes,
+      });
+      expect(parsed.success, `${p.id} ${p.name}`).toBe(true);
+    }
+  });
+});
+
+describe("bots.v4 — 은퇴 참조 재매핑 (#450 §6-4)", () => {
+  const byId = new Map(playersV27.map((p) => [p.id, p]));
+  const sum = (id: string) =>
+    Object.values(byId.get(id)!.attributes).reduce((a: number, b: number) => a + b, 0);
+  const startersOfV4 = (b: (typeof botsV4)[number]) => b.deck.starters.map((s) => s.playerId);
+
+  it("id 3종은 v3 와 같다 — matches.bot_id FK 가 과거 매치에서 이 id 를 참조한다", () => {
+    expect(botsV4.map((b) => b.id)).toEqual(botsV3.map((b) => b.id));
+  });
+
+  it.each(["BOT_ATK", "BOT_DEF", "BOT_BAL"])("%s: 덱 전문이 명세 §6-4 와 일치", (botId) => {
+    const b = botsV4.find((x) => x.id === botId)!;
+    const spec = V27_BOT_DECKS[botId]!;
+    expect(b.deck.formation).toBe(spec.formation);
+    expect(startersOfV4(b)).toEqual([...spec.starters]);
+    expect(b.deck.bench).toEqual([...spec.bench]);
+  });
+
+  it("봇 3덱 45슬롯에 **중복 playerId 0** — deck_slots PK 위반 방지", () => {
+    for (const b of botsV4) {
+      const all = [...startersOfV4(b), ...b.deck.bench];
+      expect(all).toHaveLength(15);
+      expect(new Set(all).size, `${b.id} 중복`).toBe(15);
+    }
+    expect(botsV4.flatMap((b) => [...startersOfV4(b), ...b.deck.bench])).toHaveLength(45);
+  });
+
+  it("🔴 봇 참조 **전량이 v2.7 활성** — 없으면 다음 개편에서 같은 사고가 조용히 난다", () => {
+    const active = new Set(playersV27.filter((p) => p.active).map((p) => p.id));
+    for (const b of botsV4) {
+      for (const id of [...startersOfV4(b), ...b.deck.bench]) {
+        expect(active.has(id), `${b.id} → ${id} 비활성 참조`).toBe(true);
+      }
+    }
+    // 대조: v3 는 은퇴 카드를 실제로 참조하고 있었다(이 계약이 무의미하지 않다는 증거).
+    const v3refs = botsV3.flatMap((b) => [...b.deck.starters.map((s) => s.playerId), ...b.deck.bench]);
+    expect(v3refs.filter((id) => !active.has(id)).length).toBeGreaterThan(0);
+  });
+
+  it.each(["BOT_ATK", "BOT_DEF", "BOT_BAL"])("%s: 선발 11 의 포지션 구성이 formation 과 정합", (botId) => {
+    const b = botsV4.find((x) => x.id === botId)!;
+    const pos = startersOfV4(b).map((id) => byId.get(id)!.position);
+    expect(pos.filter((x) => x === "GK"), `${botId} GK`).toHaveLength(1);
+    // formation "4-3-3" = DF-MF-FW. 5-3-2 는 DF5, 4-4-2 는 MF4 — 필드 10명이 그 합이어야 한다.
+    const [df, mf, fw] = b.deck.formation.split("-").map(Number) as [number, number, number];
+    expect(df + mf + fw).toBe(10);
+    expect(pos.filter((x) => x === "DF").length, `${botId} DF`).toBe(df);
+    // ⚠️ MF/FW 는 formation 과 **1명 어긋난다**(BOT_ATK MF3/FW3 vs 3-3 은 맞고, BOT_DEF·BOT_BAL 은
+    // v3 부터 MF 가 하나 적고 FW 가 하나 많거나 그 반대다). 그건 v3 가 만든 성질이고 이 웨이브는
+    // **등급 교체만** 했으므로, 계약은 "v3 와 같은 구성인가"로 건다(아래 별도 it).
+    expect(pos.filter((x) => x === "MF").length + pos.filter((x) => x === "FW").length).toBe(mf + fw);
+  });
+
+  it.each(["BOT_ATK", "BOT_DEF", "BOT_BAL"])("%s: 포지션 구성이 v3 와 동일 — 교체는 카드만", (botId) => {
+    const key = (ids: readonly string[]) => ids.map((id) => byId.get(id)!.position).sort().join(",");
+    expect(key(startersOfV4(botsV4.find((x) => x.id === botId)!))).toBe(
+      key(botsV3.find((x) => x.id === botId)!.deck.starters.map((s) => s.playerId)),
+    );
+  });
+
+  it("🔴 선발 평균 총합 변동 = 기대 델타 박제 — #252 상대 밸런스를 다시 열지 않는다", () => {
+    // 명세 §6-4 실측: BOT_ATK 352.4→353.5 · BOT_DEF 406.5→406.7 · BOT_BAL 343.9→344.4.
+    //
+    // ⚠️ 초판은 `≤0.5%` 임계였는데 **회귀 신호가 0 이었다**(독립검증 minor-7) — 같은 describe 의
+    // "덱 전문이 명세 §6-4 와 일치" 가 선발 11 을 id 단위로 박제하므로, 그 뒤에서 이 임계는 항상 참이다.
+    // 완화 자체의 위험은 0 이지만 **탐지력도 0** 이라 임계를 없애고 **기대 델타 3값을 직접 박는다.**
+    // 이러면 덱 계약이 갱신되는 미래 웨이브에서 전력 변동이 실제로 움직였는지가 이 줄에서 드러난다.
+    const EXPECTED_PCT: Readonly<Record<string, number>> = {
+      BOT_ATK: 0.00310,
+      BOT_DEF: 0.00067,
+      BOT_BAL: 0.00132,
+    };
+    for (const b4 of botsV4) {
+      const b3 = botsV3.find((x) => x.id === b4.id)!;
+      const before = b3.deck.starters.reduce((a, s) => a + sum(s.playerId), 0) / 11;
+      const after = startersOfV4(b4).reduce((a, id) => a + sum(id), 0) / 11;
+      const pct = Math.abs(after - before) / before;
+      expect(pct, `${b4.id} ${before.toFixed(2)}→${after.toFixed(2)}`).toBeCloseTo(
+        EXPECTED_PCT[b4.id]!,
+        5,
+      );
+      // 방향 무관하게 "#252 를 다시 여는 크기"는 아니라는 상한도 같이 남긴다(문서적 하한선).
+      expect(pct, `${b4.id} 상한`).toBeLessThanOrEqual(0.005);
+    }
+  });
+
+  it("BOT_BAL 벤치에만 SILVER 2장 — 잔류 BRONZE 13종 제약의 처방(봇 무교체라 전력 영향 0)", () => {
+    const bal = botsV4.find((b) => b.id === "BOT_BAL")!;
+    // 선발 11 은 전원 BRONZE 여야 한다(그게 "전력 영향 0"의 근거다).
+    for (const id of startersOfV4(bal)) expect(byId.get(id)!.grade, id).toBe("BRONZE");
+    const benchGrades = bal.deck.bench.map((id) => byId.get(id)!.grade);
+    expect(benchGrades.filter((g) => g === "SILVER")).toHaveLength(2);
+    expect(benchGrades.filter((g) => g === "BRONZE")).toHaveLength(2);
+    // 제약의 실체: 활성 BRONZE 가 13종뿐이라 15장을 BRONZE 로 못 채운다.
+    expect(playersV27.filter((p) => p.active && p.grade === "BRONZE")).toHaveLength(13);
+  });
+
+  it("persona·analysisText·strengthMul·formation·slotIndex·promptText 무변경 — 교체는 playerId 뿐", () => {
+    for (const b4 of botsV4) {
+      const b3 = botsV3.find((x) => x.id === b4.id)!;
+      expect(b4.name).toBe(b3.name);
+      expect(b4.persona).toBe(b3.persona);
+      expect(b4.analysisText).toBe(b3.analysisText);
+      expect(b4.strengthMul ?? 1).toBe(b3.strengthMul ?? 1);
+      expect(b4.deck.formation).toBe(b3.deck.formation);
+      expect(b4.deck.starters.map((s) => s.slotIndex)).toEqual(b3.deck.starters.map((s) => s.slotIndex));
+      expect(b4.deck.starters.map((s) => s.promptText ?? null)).toEqual(
+        b3.deck.starters.map((s) => s.promptText ?? null),
+      );
+    }
+    // BOT_ATK 슬롯 8·9 "적극 침투" 가 그대로 살아 있는지 명시(명세 §6-4 검증줄).
+    const atk = botsV4.find((b) => b.id === "BOT_ATK")!;
+    expect(atk.deck.starters.filter((s) => s.promptText === "적극 침투").map((s) => s.slotIndex)).toEqual([8, 9]);
+  });
+
+  it("v3 는 바이트 불변 — v4 는 새 파일이다(발행 후 수정 금지)", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    expect(readFileSync(join(here, "bots.v3.json"), "utf8")).toBe(
+      JSON.stringify(botsV3, null, 2) + "\n",
+    );
+  });
+});
+
+describe("economy.v4 — 스타터 재설계 (#450 §5)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  /**
+   * ⚠️ **승계 원본은 디스크 v3 발행물**이다(생성기의 메모리 `economyV3` 가 아니다).
+   * `economy.v3.json` 은 발행 후 세 웨이브(#251 · #368 · #408)가 **JSON 을 직접 편집**해 확장했고
+   * 생성기는 안 고쳤다 — 그래서 메모리 객체에는 `league.dailyReward`·`mission` 이 아예 없다.
+   * 여기서 디스크를 기준으로 잡는 것이 "그 외 전 필드 v3 바이트 승계"(명세 §6-5)의 유일한 해석이다.
+   */
+  const diskV3 = JSON.parse(readFileSync(join(here, "economy.v3.json"), "utf8")) as Record<string, unknown>;
+  const v4 = JSON.parse(readFileSync(join(here, "economy.v4.json"), "utf8")) as Record<string, unknown>;
+
+  it("version = v4 · 디스크 v3 대비 **바뀐 키가 정확히 3개**(version · starterPack · starterTop)", () => {
+    expect(v4["version"]).toBe("v4");
+    expect(Object.keys(v4)).toEqual(Object.keys(diskV3)); // 키 순서·개수까지 동일(additive 0)
+    const changed = Object.keys(diskV3).filter(
+      (k) => JSON.stringify(diskV3[k]) !== JSON.stringify(v4[k]),
+    );
+    expect(changed.sort()).toEqual(["starterPack", "starterTop", "version"]);
+  });
+
+  it("🔴 `gacha.rates` · `star.copies` · `tenPityMinGrade` **무접촉** — 종수 축소만으로 D2 를 달성한다", () => {
+    // 명세 §1-6. 확률을 건드리면 밸런스(#252)·리그 디비전 편성이 같이 움직인다.
+    const g3 = diskV3["gacha"] as Record<string, unknown>;
+    const g4 = v4["gacha"] as Record<string, unknown>;
+    expect(g4).toEqual(g3);
+    expect(g4["rates"]).toEqual({ BRONZE: 0.45, SILVER: 0.3, GOLD: 0.15, DIA: 0.08, LEGEND: 0.02 });
+    expect(g4["tenPityMinGrade"]).toBe("GOLD");
+    expect((v4["star"] as Record<string, unknown>)["copies"]).toEqual({ "2": 2, "3": 3, "4": 5 });
+    expect(v4["star"]).toEqual(diskV3["star"]);
+  });
+
+  it("🔴 나중 웨이브가 v3 에 얹은 블록이 살아 있다 — #251 시즌 다이아 · #368 리그 18칸 · #408 미션", () => {
+    // 이 계약이 없으면 "메모리 economyV3 로 v4 를 빚는" 실수가 조용히 세 기능을 지운다(실제로 밟았다).
+    expect(v4["mission"]).toEqual(diskV3["mission"]);
+    const l4 = v4["league"] as Record<string, unknown>;
+    expect(l4).toEqual(diskV3["league"]);
+    expect(l4["dailyReward"], "#368 리그 매판 보상 트랙").toBeDefined();
+    expect((l4["gemReward"] as Record<string, unknown>)["completion"], "#251 시즌 종료 다이아").toBeDefined();
+    expect(v4["mission"], "#408 원정 데일리 미션").toBeDefined();
+  });
+
+  it("starterPack v4 = 14장 (GK2 / DF5 / MF4 / FW3) · 명세 §5-2 목록 그대로", () => {
+    expect(v4["starterPack"]).toEqual([...V27_STARTER_PACK]);
+    const byId = new Map(playersV27.map((p) => [p.id, p]));
+    const pack = V27_STARTER_PACK.map((id) => byId.get(id)!);
+    expect(pack).toHaveLength(14);
+    expect(new Set(V27_STARTER_PACK).size).toBe(14);
+    const count = (pos: Position) => pack.filter((p) => p.position === pos).length;
+    expect({ GK: count("GK"), DF: count("DF"), MF: count("MF"), FW: count("FW") }).toEqual({
+      GK: 2, DF: 5, MF: 4, FW: 3,
+    });
+    // hero 가 지목한 결함: 현행은 GK 1장이라 대다수가 골키퍼를 한 번도 못 바꿨다 → 2장.
+    expect((diskV3["starterPack"] as string[]).filter((id) => byId.get(id)!.position === "GK")).toHaveLength(1);
+    // SILVER 13종 전량(H7) + 5백 편성용 BRONZE DF 1장(P122).
+    expect(pack.filter((p) => p.grade === "SILVER")).toHaveLength(13);
+    expect(pack.filter((p) => p.grade === "BRONZE").map((p) => p.id)).toEqual(["P122"]);
+    expect(playersV27.filter((p) => p.active && p.grade === "SILVER").map((p) => p.id).sort()).toEqual(
+      pack.filter((p) => p.grade === "SILVER").map((p) => p.id).sort(),
+    );
+  });
+
+  it("starterTop.pool = 활성 LEGEND 10종 **전량** · count 1 — 비활성 지급 0(#207 사고 부류)", () => {
+    const top = v4["starterTop"] as { pool: string[]; count: number };
+    expect(top.pool).toEqual([...V27_STARTER_TOP]);
+    expect(top.count).toBe(1);
+    const activeLegend = playersV27.filter((p) => p.active && p.grade === "LEGEND").map((p) => p.id);
+    expect([...top.pool].sort()).toEqual([...activeLegend].sort());
+    // 핵심: LEGEND GK 2종이 pool 에 있어 신규 유저의 1/5 이 최상위 골키퍼로 시작한다(§5-3).
+    const byId = new Map(playersV27.map((p) => [p.id, p]));
+    expect(top.pool.filter((id) => byId.get(id)!.position === "GK").sort()).toEqual(["P178", "P182"]);
+    expect(top.pool.filter((id) => byId.get(id)!.position === "DF")).toEqual(["P181"]);
+  });
+
+  it("가입 지급 전량이 v2.7 활성 — starterPack + starterTop 어느 쪽도 비활성 유닛을 주지 않는다", () => {
+    const active = new Set(playersV27.filter((p) => p.active).map((p) => p.id));
+    const top = v4["starterTop"] as { pool: string[] };
+    for (const id of [...(v4["starterPack"] as string[]), ...top.pool]) {
+      expect(active.has(id), `${id} 비활성 지급`).toBe(true);
+    }
+    // 대조: 구 v3 팩은 은퇴 카드 2종(P081 · P092)을 주고 있었다 = 이 계약이 실제로 무언가를 막는다.
+    expect((diskV3["starterPack"] as string[]).filter((id) => !active.has(id)).sort()).toEqual([
+      "P081", "P092",
+    ]);
+  });
+
+  it("v3 는 바이트 불변 — 생성기가 더 이상 v3 를 덮어쓰지 않는다(#450 W1 발견)", () => {
+    // ⚠️ 이 웨이브 전까지 CLI 가 매 실행마다 `economy.v3.json` 을 **재생성**했고, 그 출력에는
+    // #251/#368/#408 의 세 블록이 없다 = 실행할 때마다 조용히 세 기능이 지워진다(실제로 한 번 밟았다).
+    // 대조 계약이 발행 파일 동기화 목록에서도 빠져 있어 어디서도 안 걸렸다.
+    // 지금은 CLI 가 v3 를 쓰지 않는다 — 그 사실을 "디스크 v3 ≠ 메모리 economyV3" 로 박제한다.
+    expect(JSON.stringify(diskV3)).not.toBe(JSON.stringify(economyV3));
+    expect((diskV3["mission"] as unknown) !== undefined).toBe(true);
+    expect((economyV3 as unknown as Record<string, unknown>)["mission"]).toBeUndefined();
+  });
+
+  it("생성기 소스에 v3 쓰기가 없다 — 재유입 창을 정적으로 막는다(독립검증 minor-2)", () => {
+    // ⚠️ 위 계약만으로는 부족하다. 그것은 **런타임 상태**(디스크 ≠ 메모리)를 재는 것이라,
+    // `writeFileSync(economy.v3.json, …)` 이 소스에 재유입돼도 **누군가 generate 를 돌리기 전까지는
+    // green** 이다 = #453 이 조용히 재발할 창이 열려 있다. 그 창을 소스 정적 검사로 닫는다.
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "generate.ts"), "utf8");
+    const writes = [...src.matchAll(/writeFileSync\(\s*\n?\s*join\([^)]*`economy\.\$\{(\w+)\}\.json`/g)]
+      .map((m) => m[1]);
+    expect(writes, "생성기가 쓰는 economy 버전 상수").not.toContain("ECONOMY_V3_VERSION");
+    // 공허 방지 — 이 정규식이 실제로 무언가를 잡고 있음을 증명한다(v2·v4 는 계속 쓴다).
+    expect(writes.length, "economy 쓰기가 하나도 안 잡히면 정규식이 죽은 것").toBeGreaterThanOrEqual(2);
+    expect(writes).toContain("ECONOMY_V4_VERSION");
   });
 });
 
@@ -2319,12 +2913,24 @@ describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과
     ["players.v2.4.json", playersV24],
     ["players.v2.5.json", playersV25],
     ["players.v2.6.json", playersV26],
+    ["players.v2.7.json", playersV27],
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
     ["league.v1.json", league],
     ["bots.v3.json", botsV3],
     ["league.v2.json", leagueV2],
+    ["bots.v4.json", botsV4],
+    ["economy.v4.json", economyV4],
   ];
+  // ⚠️ `economy.v3.json` 은 이 목록에 **넣을 수 없다** — 발행 후 세 웨이브(#251·#368·#408)가 JSON 을
+  // 직접 편집해 확장했고 생성기는 안 고쳤다. 그 드리프트가 이 목록의 공백 때문에 어디서도 안 걸렸다
+  // (#450 W1 발견).
+  //
+  // ⚠️ 반면 `economy.v4.json` 은 **반드시 넣는다**. 초판은 "v4 는 디스크 v3 를 입력으로 만들어지므로
+  // 여기가 아니라 v4 describe 가 디스크 대 디스크로 대조한다"고 제외했는데 **그 논리는 성립하지 않는다**
+  // — 생성기의 `economyV4` 도 같은 디스크 v3 를 읽으므로 목록에 넣으면 그대로 통과한다(실측 확인).
+  // 제외해 두면 "생성기 출력 ≠ 디스크 v4" 가 되어도 red 가 안 뜨고 다음 `npm run generate` 가 출하물을
+  // 조용히 바꾼다 = **이 웨이브가 밟은 #453 지뢰와 정확히 같은 부류의 구멍**이다(독립검증 minor-1).
 
   it.each(cases)("%s 가 디스크에서 바이트 동일(수정·재생성 누락 검출)", (file, data) => {
     const onDisk = readFileSync(join(here, file as string), "utf8");
@@ -2344,7 +2950,11 @@ describe("재생성 결정론 (AC-PL1)", () => {
     expect(JSON.stringify(a.playersV24, null, 2)).toBe(JSON.stringify(b.playersV24, null, 2));
     expect(JSON.stringify(a.playersV25, null, 2)).toBe(JSON.stringify(b.playersV25, null, 2));
     expect(JSON.stringify(a.playersV26, null, 2)).toBe(JSON.stringify(b.playersV26, null, 2));
+    expect(JSON.stringify(a.playersV27, null, 2)).toBe(JSON.stringify(b.playersV27, null, 2));
     expect(JSON.stringify(a.economy, null, 2)).toBe(JSON.stringify(b.economy, null, 2));
+    expect(JSON.stringify(a.economyV3, null, 2)).toBe(JSON.stringify(b.economyV3, null, 2));
+    expect(JSON.stringify(a.economyV4, null, 2)).toBe(JSON.stringify(b.economyV4, null, 2));
+    expect(JSON.stringify(a.botsV4, null, 2)).toBe(JSON.stringify(b.botsV4, null, 2));
     expect(JSON.stringify(a.bots, null, 2)).toBe(JSON.stringify(b.bots, null, 2));
     expect(JSON.stringify(a.league, null, 2)).toBe(JSON.stringify(b.league, null, 2));
     expect(JSON.stringify(a.leagueV2, null, 2)).toBe(JSON.stringify(b.leagueV2, null, 2));
