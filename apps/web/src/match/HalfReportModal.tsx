@@ -55,6 +55,13 @@ export interface HalfReportModalProps {
    * 받아야 한다 — 안 그러면 "리포트가 뜨지 않는다"를 단언하는 계약(#421 i)이 브릿지를 리포트로 오인한다.
    */
   testIdBase?: string;
+  /**
+   * **마지막 장**의 주 버튼 라벨(기본 `닫기`).
+   *
+   * 카드 배열의 마지막이 곧 끝맺음 지점인데, `extraCards` 가 앞으로 오면(#456) 그 자리가 리포트
+   * 카드가 되어 방향을 말할 수 없다 — 호출부가 갈 곳을 알고 있으므로 여기로 내려 준다.
+   */
+  finalCtaLabel?: string;
   onClose: () => void;
 }
 
@@ -98,6 +105,7 @@ export function HalfReportModal({
   extraCards,
   score: scoreOverride = null,
   testIdBase = "half-report",
+  finalCtaLabel,
   onClose,
 }: HalfReportModalProps) {
   // half 가 없으면 조회하지 않는다 — 리포트 카드가 없는 스택이 하프 로그를 부르면 409(아직 안 열린
@@ -258,9 +266,17 @@ export function HalfReportModal({
     });
   }
 
-  // #424: 브릿지 카드는 **언제나 마지막**이다 = "무슨 일이 있었나 → 이제 뭐가 오나" 순서이고,
-  // 마지막 장의 CTA 가 곧 끝맺음 포인트다(설계 §3.2, 조정 포인트 §11-3).
-  if (extraCards?.length) cards.push(...extraCards);
+  /*
+   * #456: 브릿지 카드는 **첫 장**이다. 구 규칙은 "언제나 마지막"이었고 근거는 *"무슨 일이 있었나 →
+   * 이제 뭐가 오나"* 순서였는데(설계 §3.2), 그러면 스킵 경로에서 브릿지 도달에 **클릭 2회**가 걸려
+   * 유저 기억에는 리포트만 남았다(#456 실사 가설 3, hero: *"경기 브릿지 왜 없어?"*).
+   * 전환은 **전환이 일어나는 순간**에 보여야 한다 = 먼저 알리고 자세한 것을 뒤에 붙인다.
+   *
+   * ⚠️ 대가는 `finalCtaLabel` 이 갚는다 — 구 규칙에서는 마지막 장이 브릿지라 그 `ctaLabel`
+   * (`감독시간으로`·`보상과 결과 보기`)이 곧 끝맺음 신호였다. 순서를 뒤집으면 마지막 장이
+   * 리포트가 되어 버튼이 `닫기` 로 퇴화하고, **"다음 화면이 무엇인가"의 유일한 신호가 사라진다.**
+   */
+  if (extraCards?.length) cards.unshift(...extraCards);
 
   const [index, setIndex] = useState(0);
   const total = cards.length;
@@ -345,7 +361,7 @@ export function HalfReportModal({
             data-card={current.id}
             onClick={advance}
           >
-            {last ? (current.ctaLabel ?? "닫기") : "다음"}
+            {last ? (current.ctaLabel ?? finalCtaLabel ?? "닫기") : "다음"}
           </button>
         </div>
       </div>

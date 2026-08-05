@@ -131,17 +131,25 @@ describe("C5 — 보상 연출이 던져도 결과 화면 도달을 막지 않�
   });
 });
 
-describe("스킵 리포트는 브릿지의 앞 카드다(하나의 스택 · 하나의 닫기)", () => {
-  it("리포트 → 브릿지 순서로 넘어가고 마지막 장이 끝맺음이다", () => {
+describe("브릿지는 스킵 리포트의 앞 카드다(하나의 스택 · 하나의 닫기)", () => {
+  /**
+   * ⚠️ **순서가 #456 에서 뒤집혔다.** 구 규칙은 `리포트 → 브릿지` 였고 근거는 *"무슨 일이 있었나 →
+   * 이제 뭐가 오나"* 였는데, 그러면 브릿지 도달에 클릭 2회가 걸려 유저 기억엔 리포트만 남았다
+   * (hero: *"경기 브릿지 왜 없어?"*). 지금은 **전환을 먼저 알리고** 자세한 것이 뒤에 온다.
+   * 두 성질을 **같이** 건다 — 순서만 걸면 마지막 CTA 가 `닫기` 로 퇴화한 반쪽 구현이 통과한다.
+   */
+  it("브릿지 → 리포트 순서로 넘어가고 마지막 장 CTA 가 갈 곳을 말한다", () => {
     mocks.log = { events: [{ tick: 600, minute: 20, type: "goal", team: "home", playerId: "P1" }] };
     const flow = open({ kind: "h1_end", report: 1 }, { detail: { state: "HALFTIME", scoreH1Home: 1, scoreH1Away: 0 } });
 
-    expect(screen.getByTestId("half-report-title").textContent).toBe("전반 리포트");
-    expect(screen.getByTestId("half-report-pager").textContent).toBe("1 / 2");
-    fireEvent.click(screen.getByTestId("half-report-next"));
-
     expect(screen.getByTestId("half-report-card")).toHaveProperty("dataset.card", "bridge");
     expect(screen.getByTestId("half-report-title").textContent).toBe("전반 종료");
+    expect(screen.getByTestId("half-report-pager").textContent).toBe("1 / 2");
+    // 첫 장은 마지막이 아니므로 버튼은 `다음` 이다(브릿지 CTA 가 여기서 거짓말하지 않는다).
+    expect(screen.getByTestId("half-report-next").textContent).toBe("다음");
+    fireEvent.click(screen.getByTestId("half-report-next"));
+
+    expect(screen.getByTestId("half-report-title").textContent).toBe("전반 리포트");
     const cta = screen.getByTestId("half-report-next");
     expect(cta.textContent).toBe("감독시간으로");
     fireEvent.click(cta);

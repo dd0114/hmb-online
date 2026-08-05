@@ -107,6 +107,11 @@ async function mockApi(page: Page, h: Harness) {
         json: { user: { id: "u1", nickname: "테스터", points: 100, wins: 0, draws: 0, losses: 0, isAdmin: false } },
       });
     }
+    if (url.pathname === `/api/matches/${MATCH_ID}/kickoff`) {
+      // BRIEFING 은 폴링하지 않는다 — 이 응답의 캐시 갱신이 유일한 전이 관측원이다(#456 ⑮).
+      h.state = "GEN1";
+      return route.fulfill({ json: detailOf(h) });
+    }
     if (url.pathname === `/api/matches/${MATCH_ID}/skip`) {
       h.skips.push(req.postDataJSON());
       h.state = h.skipTo;
@@ -284,18 +289,18 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     // 셸은 실제로 사라졌다 = 이 상황이 D6 그 자체다(가짜 재현이 아니다).
     await expect(page.getByTestId("genwait-panel")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("stage-shell")).toHaveCount(0);
-    // 그런데 리포트는 살아 있다.
+    // 그런데 스택은 살아 있다(첫 장 = 브릿지, #456).
     await expect(page.getByTestId("half-report")).toBeVisible();
-    await expect(page.getByTestId("half-report-title")).toHaveText("전반 리포트");
-    expect(h.skips).toEqual([{ phase: "FIRST_HALF" }]);
-
-    // 다음 장이 주요 인물(#403 평점, #421 W7) → 그 다음이 브릿지다 — **하나의 스택, 하나의 닫기**.
-    await page.getByTestId("half-report-next").click();
-    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "top-rated");
-    await page.getByTestId("half-report-next").click();
-    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
     await expect(page.getByTestId("half-report-title")).toHaveText("전반 종료");
     await expect(page.getByTestId("flow-bridge-text")).toContainText("후반을 준비");
+    expect(h.skips).toEqual([{ phase: "FIRST_HALF" }]);
+
+    // 다음 장이 타임라인 → 주요 인물(#403 평점, #421 W7) — **하나의 스택, 하나의 닫기**.
+    // ⚠️ #456: 브릿지는 이제 **첫 장**이다(전환은 전환이 일어나는 순간에 보여야 한다, hero 승인).
+    await page.getByTestId("half-report-next").click();
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
+    await page.getByTestId("half-report-next").click();
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "top-rated");
 
     await page.getByTestId("half-report-next").click();
     await expect(page.getByTestId("half-report")).toHaveCount(0);
@@ -451,6 +456,148 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     // 백드롭이 없다 = 뒤 경기 화면이 계속 그려진다(무대가 언마운트되지 않는다).
     await expect(page.getByTestId("stage-shell")).toBeVisible();
     await expect(beat).toHaveCount(0, { timeout: 15_000 });
+  });
+
+  /* ──────────────────────────────────────────────────────────────────────
+   * #456 B2 — hero 실관전 제보 *"경기 브릿지 왜 없어? 트랜지션 없어?"* 의 계약.
+   *
+   * 실사 결론(#456 R): 브릿지는 **있었다**. 안 보인 이유가 넷이고 아래가 그 넷을 각각 문다.
+   *  ⑪ 카드가 **모션 0** 으로 딱 붙어 나타난다 = "전환"으로 안 읽힌다(hero 문장 그대로).
+   *  ⑫ kicker 가 시안(`다음 단계`)에서 `경기 흐름` 으로 회귀해 카드가 "리포트의 한 장"으로 보인다.
+   *  ⑬ 시안의 "눌러서 넘긴다" 안내줄이 코드에 없다 = 비트가 무엇인지 알 방법이 없다.
+   *  ⑭ 스킵 경로에서 브릿지가 **3/3 마지막**이라 두 번 눌러야 나온다 → 리포트만 기억에 남는다.
+   *  ⑮⑯ 4지점 중 **둘(경기 시작·후반 준비)이 화면이 아니었다** — `panel` 종이라 큐에 안 들어간다.
+   * ────────────────────────────────────────────────────────────────────── */
+
+  test("⑪ 브릿지 카드는 등장 애니메이션을 가진다(모션 0 = hero 가 말한 '트랜지션 없음')", async ({ page }) => {
+    // ⚠️ 이 계약이 죽이는 변이: `.bridgeCard` 의 animation 제거 → 카드가 딱 붙어 나타난다.
+    //    `toBeVisible()` 은 이 축을 **원리적으로** 못 본다(#456 R — 기존 16건이 모션 단언 0).
+    const h = await openMatch(page, { state: "SECOND_HALF" });
+    await waitLive(page, 2);
+
+    /*
+     * ⚠️ `getAnimations()` 로 재지 않는다 — 280ms 짜리 등장 모션은 `toBeVisible()` 이 돌아올
+     *    무렵 이미 **끝나서 목록에서 사라진다**(fill-mode none). 그렇게 쓰면 계약이 타이밍에
+     *    따라 뒤집히는 플래키가 되고, 느린 CI 에서는 **모션을 지워도 통과**한다.
+     *    대신 전이 **전에** `animationstart` 를 걸어 "실제로 돌았다"를 잡는다.
+     */
+    await page.evaluate(() => {
+      const w = window as unknown as { __animStarts?: string[] };
+      w.__animStarts = [];
+      document.addEventListener(
+        "animationstart",
+        (e) => {
+          const el = e.target as HTMLElement;
+          w.__animStarts!.push(`${el.dataset?.testid ?? el.tagName}:${(e as AnimationEvent).animationName}`);
+        },
+        true,
+      );
+    });
+
+    h.state = "FINISHED";
+    await expect(page.getByTestId("flow-bridge")).toBeVisible({ timeout: 15_000 });
+
+    const starts = await page.evaluate(() => (window as unknown as { __animStarts: string[] }).__animStarts);
+    expect(
+      starts.filter((s) => s.startsWith("flow-bridge-card:")),
+      `브릿지 카드에 등장 애니메이션이 실제로 돌아야 한다 (관측: ${JSON.stringify(starts)})`,
+    ).not.toHaveLength(0);
+  });
+
+  test("⑫ 카드 kicker 는 시안대로 `다음 단계` 다(전환 신호 — `경기 흐름` 은 회귀다)", async ({ page }) => {
+    const h = await openMatch(page, { state: "SECOND_HALF" });
+    await waitLive(page, 2);
+    h.state = "FINISHED";
+    await expect(page.getByTestId("flow-bridge")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("flow-bridge-card")).toContainText("다음 단계");
+    await expect(page.getByTestId("flow-bridge-card")).not.toContainText("경기 흐름");
+  });
+
+  test("⑬ 비트에 '눌러서 넘긴다' 안내줄이 있다(시안 `424-bridge/index.html:191`)", async ({ page }) => {
+    const h = await openMatch(page, { state: "GEN1" });
+    await expect(page.getByTestId("genwait-panel")).toBeVisible();
+
+    h.state = "FIRST_HALF";
+    const hint = page.getByTestId("flow-beat-hint");
+    await expect(hint).toBeVisible({ timeout: 15_000 });
+    await expect(hint).toContainText("누르면");
+  });
+
+  test("⑭ 스킵 경로 — 브릿지가 **첫 장**이고 마지막 CTA 가 갈 곳을 말한다", async ({ page }) => {
+    /*
+     * 구 동작: [리포트][주요 인물][브릿지] = 브릿지 도달에 **클릭 2회**.
+     * hero 승인 결정(#456 P) = 전환은 전환이 일어나는 순간에 보여야 한다 → 브릿지가 앞.
+     * ⚠️ 그 대가로 **마지막 장의 CTA 가 `닫기` 로 퇴화하면 안 된다** — 그 버튼이 곧 "다음 화면이
+     *    무엇인가"의 유일한 신호다. 두 성질을 **같이** 건다(하나만 걸면 반쪽 구현이 통과한다).
+     */
+    await openMatch(page, { state: "FIRST_HALF", skipTo: "HALFTIME" });
+    await waitLive(page, 1);
+    await page.getByTestId("match-skip").click();
+
+    await expect(page.getByTestId("half-report")).toBeVisible();
+    await expect(page.getByTestId("half-report-pager")).toHaveText("1 / 3");
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
+    await expect(page.getByTestId("half-report-title")).toHaveText("전반 종료");
+
+    await page.getByTestId("half-report-next").click();
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
+    await page.getByTestId("half-report-next").click();
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "top-rated");
+    // 마지막 장의 주 버튼이 브릿지가 말한 목적지를 그대로 말한다(`닫기` 가 아니다).
+    await expect(page.getByTestId("half-report-next")).toHaveText("감독시간으로");
+  });
+
+  test("⑮ 경기 시작(BRIEFING → GEN1)에 전환 한 호흡이 뜬다", async ({ page }) => {
+    /*
+     * 이 지점은 **화면이 없었다** — 전이표에서 `panel` 종이라 `useMatchFlow` 가 큐에서 걸러내고,
+     * `GenWaitPanel` 은 전이와 무관하게 상태만 보고 스텝퍼를 그린다. 즉 유저가 킥오프를 눌러도
+     * 화면이 그냥 갈렸다(hero: *"트랜지션 없어?"*).
+     * ⚠️ BRIEFING 은 폴링하지 않는다(`live-clock.pollIntervalFor`) — 전이 관측은 킥오프
+     *    뮤테이션의 캐시 갱신이 만든다. 그래서 이 계약은 **실제 버튼**을 누른다.
+     */
+    await openMatch(page, { state: "BRIEFING" });
+    const kick = page.getByTestId("kickoff-button");
+    await expect(kick).toBeVisible({ timeout: 15_000 });
+    await kick.click();
+
+    const beat = page.getByTestId("flow-beat");
+    await expect(beat).toBeVisible({ timeout: 15_000 });
+    await expect(beat).toHaveAttribute("data-beat", "match_start");
+    // 대기 화면은 덮이지 않는다(비트는 백드롭이 없다 = #217 AC3 [경기 포기]가 산다).
+    await expect(page.getByTestId("genwait-panel")).toBeVisible();
+    await expect(beat).toHaveCount(0, { timeout: 15_000 });
+  });
+
+  test("⑯ 후반 준비(HALFTIME → GEN2)에 전환 한 호흡이 뜬다", async ({ page }) => {
+    const h = await openMatch(page, { state: "HALFTIME" });
+    await expect(page.getByTestId("resume-button")).toBeVisible();
+
+    h.state = "GEN2";
+    const beat = page.getByTestId("flow-beat");
+    await expect(beat).toBeVisible({ timeout: 15_000 });
+    await expect(beat).toHaveAttribute("data-beat", "h2_start");
+    await expect(page.getByTestId("genwait-panel")).toBeVisible();
+    await expect(beat).toHaveCount(0, { timeout: 15_000 });
+  });
+
+  test("⑰ 알려진 갭 — 탭이 전반 내내 백그라운드면 전반 종료 브릿지는 유실된다", async ({ page }) => {
+    /*
+     * #424 후속 ⑤ 를 **계약으로 박제**한다(고쳤다고 쓰지 않고, 지금 참인 것을 적는다).
+     * React Query 는 hidden 탭에서 폴링을 멈추므로 중간 상태를 하나도 못 보고 `FIRST_HALF →
+     * FINISHED` 가 관측된다. 전이표는 그 경로를 **경기 종료**로만 받는다 = B2 는 안 뜬다.
+     * 이 자리를 메우려면 서버가 "그 사이 무슨 전이가 있었나"를 말해 줘야 한다(server-java 표면).
+     * ⚠️ 이 계약이 green 인 것은 "결함이 없다"가 아니라 **갭의 크기가 그대로다** 라는 뜻이다.
+     */
+    const h = await openMatch(page, { state: "FIRST_HALF" });
+    await waitLive(page, 1);
+
+    h.state = "FINISHED";
+    await expect(page.getByTestId("flow-bridge")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("flow-bridge-title")).toHaveText("경기 종료");
+    // 전반 종료는 관측 자체가 없었으므로 뜨지 않는다 — 닫아도 두 번째 스택이 오지 않는다.
+    await page.getByTestId("flow-bridge-next").click();
+    await page.waitForTimeout(2500);
+    await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
   });
 });
 

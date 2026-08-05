@@ -25,8 +25,21 @@ const LOG = JSON.parse(
 
 const GOALS = LOG.events.filter((e) => e.type === "goal");
 const CARDS = LOG.events.filter((e) => e.type === "card");
-/** 리포트에 실려야 할 줄 수 = 골 + 카드(이 픽스처엔 경고 누적 퇴장이 없어 병합 대상이 없다). */
-const ROW_COUNT = GOALS.length + CARDS.length;
+/*
+ * 리포트에 실려야 할 **줄** 수.
+ * ⚠️ 한때 여기 *"이 픽스처엔 경고 누적 퇴장이 없어 병합 대상이 없다"* 라고 적혀 있었는데
+ *    **거짓이었다** — 그 문장이 낡은 기대값을 정당화하며 red 를 덮고 있었다(#456 실측).
+ *
+ * ⚠️ **두 번째 옐로는 레드와 한 줄로 합쳐진다**(`half-report.ts` — *"유저는 카드가 두 장 나온 줄
+ * 안다"*). 그래서 행 수는 이벤트 수가 아니다: 데모 로그에는 tick 923 에 `yellow`+`red`(H10)가
+ * 같이 있어 14 이벤트 → **13 행**이다.
+ * ⚠️ 이 상수는 그동안 `GOALS + CARDS` 였고 **선행 red 였다**(#456 이 발견 — 병합 로직은 손대지
+ *    않았고 기대값만 낡아 있었다). 숫자를 박지 않고 **같은 규칙을 유도**해 다시 낡지 않게 한다.
+ */
+const MERGED_SECOND_YELLOW = CARDS.filter(
+  (r) => r.detail === "red" && CARDS.some((y) => y.detail === "yellow" && y.playerId === r.playerId),
+).length;
+const ROW_COUNT = GOALS.length + CARDS.length - MERGED_SECOND_YELLOW;
 /** 이 로그 한 하프의 골 수. 목 서버의 확정 스코어를 **여기서 파생**해 두 축이 어긋나지 않게 한다. */
 const HALF = {
   home: GOALS.filter((g) => g.team === "home").length,
@@ -243,6 +256,9 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     const dialog = page.getByTestId("half-report");
     await expect(dialog).toHaveAttribute("role", "dialog");
     await expect(dialog).toHaveAttribute("aria-modal", "true");
+    // ⚠️ #456: 첫 장은 **브릿지**다(전환을 먼저 알리고 자세한 것을 뒤에 붙인다). 리포트는 다음 장.
+    await expect(page.getByTestId("half-report-title")).toHaveText("전반 종료");
+    await page.getByTestId("half-report-next").click();
     await expect(page.getByTestId("half-report-title")).toHaveText("전반 리포트");
   });
 
@@ -250,6 +266,9 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await openMatch(page, "FIRST_HALF");
     await page.getByTestId("match-skip").click();
     await expect(page.getByTestId("half-report")).toBeVisible();
+    // #456: 브릿지가 첫 장이라 타임라인은 다음 장이다.
+    await page.getByTestId("half-report-next").click();
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
 
     const rows = page.locator('[data-testid="half-report-timeline"] li[data-kind]');
     await expect(rows).toHaveCount(ROW_COUNT);
@@ -300,10 +319,12 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await expect(page.locator('[data-testid="viewer-canvas-half1"]')).toHaveCount(0);
   });
 
-  test("e. 리포트 → **주요 인물** → 브릿지 3장이다(#421-2 ②, W7 평점 플립)", async ({ page }) => {
+  test("e. 브릿지 → 리포트 → **주요 인물** 3장이다(#421-2 ②, W7 평점 플립)", async ({ page }) => {
     /*
-     * ⚠️ 이 계약은 두 번 옮겨졌다. ①원래 "스택이 **1장**" → #424 가 브릿지를 마지막 카드로 더해 2장
-     * (설계 §3.2). ②#403 평점 모듈이 머지되며 `주요 인물` 카드가 **실제로 들어와** 3장이 됐다.
+     * ⚠️ 이 계약은 **세 번** 옮겨졌다. ①원래 "스택이 **1장**" → #424 가 브릿지를 마지막 카드로 더해
+     * 2장(설계 §3.2). ②#403 평점 모듈이 머지되며 `주요 인물` 카드가 **실제로 들어와** 3장이 됐다.
+     * ③#456 이 브릿지를 **첫 장**으로 옮겼다(hero: *"경기 브릿지 왜 없어?"* — 마지막에 있으면
+     * 클릭 2회 뒤라 유저 기억엔 리포트만 남는다). 장 수와 내용은 그대로고 순서만 바뀐 것이다.
      * 지키려던 것은 그대로다 — **빈 카드가 끼어들지 않는다**. 그래서 장 수만 세지 않고
      * *그 카드가 무엇을 말하는지*(이름·평점)까지 본다. 평점이 비면 `null` 경로로 돌아가 2장이 되고,
      * 그 경로는 `HalfReportModal.test.ts` 가 계속 지킨다.
@@ -314,6 +335,9 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
 
     await expect(page.getByTestId("half-report-pager")).toHaveText("1 / 3");
     await expect(page.getByTestId("half-report-dots").locator("span")).toHaveCount(3);
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
+
+    await page.getByTestId("half-report-next").click();
     await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
 
     await page.getByTestId("half-report-next").click();
@@ -331,11 +355,11 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
      */
     await expect(page.getByTestId("half-report-motm")).toContainText("테스터");
 
-    await page.getByTestId("half-report-next").click();
-    // 마지막 장은 **브릿지**다(#424 — 브릿지는 언제나 스택의 끝).
-    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
-    await expect(page.getByTestId("half-report-motm")).toHaveCount(0);
-    // 마지막 장의 CTA 가 곧 끝맺음이다(라벨은 브릿지가 상태에서 파생한다 — #424).
+    /*
+     * 주요 인물이 **마지막 장**이다(#456 — 브릿지가 앞으로 갔다). 그래도 끝맺음 버튼은 `닫기` 로
+     * 퇴화하지 않는다: 브릿지가 상태에서 파생한 목적지를 `finalCtaLabel` 로 내려 준다.
+     * ⚠️ 이 단언이 이 웨이브의 **반쪽 구현 방지선**이다 — 순서만 뒤집고 라벨을 안 내리면 여기서 죽는다.
+     */
     await expect(page.getByTestId("half-report-next")).toHaveText("감독시간으로");
   });
 
@@ -368,6 +392,9 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
 
     await expect(page.getByTestId("half-report")).toBeVisible();
     expect(h.skips[0]).toEqual({ phase: "SECOND_HALF" });
+    // #456: 첫 장은 경기 종료 브릿지, 그 다음이 후반 리포트다.
+    await expect(page.getByTestId("half-report-title")).toHaveText("경기 종료");
+    await page.getByTestId("half-report-next").click();
     await expect(page.getByTestId("half-report-title")).toHaveText("후반 리포트");
     // 후반 리포트는 전반 확정 스코어 위에 쌓는다(#233) — 후반만의 점수를 경기 점수로 그리지 않는다.
     await expect(page.getByTestId("half-report-score")).toHaveText(

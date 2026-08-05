@@ -163,3 +163,45 @@ describe("킥오프 비트", () => {
     expect(result.current.beat).toBeNull();
   });
 });
+
+/**
+ * #456 B2 — 전환 비트(경기 시작 · 후반 준비).
+ *
+ * 이 두 지점은 전이표에 **처음부터 있었는데** 종이 `panel` 이라 아래 `overlayOpen` 게이트에서
+ * 걸러지고, 그 대신 화면을 만드는 주체가 **아무도 없었다**(`GenWaitPanel` 은 전이가 아니라 상태를
+ * 본다). 그래서 유저에게는 킥오프를 눌러도 · 감독시간이 끝나도 아무 일도 일어나지 않았다.
+ *
+ * ⚠️ 이 계약이 죽이는 변이 둘:
+ *  ① `isBeatBridgeKind` 분기 제거 → 비트가 안 뜬다(= 되돌리기).
+ *  ② 그 둘을 **오버레이 큐로** 보내기 → `overlayOpen` 이 참이 되어 대기 화면이 딤 뒤로 들어가고
+ *     경과 시계·[경기 포기](#217 AC3)가 가려진다. 그래서 `overlayOpen === false` 를 같이 건다.
+ */
+describe("전환 비트 — 경기 시작 · 후반 준비 (#456)", () => {
+  it("BRIEFING → GEN1 에서 경기 시작 비트가 뜨고 대기 화면을 덮지 않는다", () => {
+    const { result, rerender } = renderHook(({ d }) => useMatchFlow(d), {
+      initialProps: { d: m("BRIEFING") },
+    });
+    rerender({ d: m("GEN1") });
+    expect(result.current.beat).toBe("match_start");
+    expect(result.current.overlayOpen).toBe(false);
+    expect(result.current.bridge).toBeNull();
+    act(() => vi.advanceTimersByTime(1500));
+    expect(result.current.beat).toBeNull();
+  });
+
+  it("HALFTIME → GEN2 에서 후반 준비 비트가 뜬다(레거시 H1_BREAK 도 같다)", () => {
+    const a = renderHook(({ d }) => useMatchFlow(d), { initialProps: { d: m("HALFTIME") } });
+    a.rerender({ d: m("GEN2") });
+    expect(a.result.current.beat).toBe("h2_start");
+    expect(a.result.current.overlayOpen).toBe(false);
+
+    const b = renderHook(({ d }) => useMatchFlow(d), { initialProps: { d: m("H1_BREAK") } });
+    b.rerender({ d: m("GEN2") });
+    expect(b.result.current.beat).toBe("h2_start");
+  });
+
+  it("첫 관측에서는 뜨지 않는다 — 재입장·새로고침 규칙은 비트에도 걸린다", () => {
+    const { result } = renderHook(({ d }) => useMatchFlow(d), { initialProps: { d: m("GEN1") } });
+    expect(result.current.beat).toBeNull();
+  });
+});
