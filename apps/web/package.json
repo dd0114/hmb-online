@@ -6,6 +6,10 @@
   "scripts": {
     "predev": "node scripts/ensure-chars.mjs",
     "dev": "vite",
+    "play": "node scripts/play.mjs",
+    "play:ai": "node scripts/play.mjs --ai",
+    "ai-bridge": "tsx scripts/ai-bridge.ts",
+    "build:static": "node scripts/build-static.mjs",
     "prebuild": "node scripts/ensure-chars.mjs",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",

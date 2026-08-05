@@ -1541,6 +1541,49 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
 - ⚠️ **픽스처 금액을 발행값(100/200/300)과 다르게 둬라.** 같게 두면 클라가 티어→금액을 재계산해도
   관측값이 같아서 그 변이체가 살아남는다(server 웨이브에서 실제로 그렇게 살아남았다).
 
+## 스태틱 데모 모드 — 백엔드 0으로 도는 같은 앱 (#444)
+
+제출 요건 1(GitHub Pages 에서 바로 플레이 + 목데이터)의 구현체. `src/static/**` 가 **브라우저 안의
+목 백엔드**이고, 화면·훅·뷰어는 **한 줄도 바뀌지 않았다**.
+
+- **주입 지점은 `apiFetch` 한 곳**(`api/client.ts`). `#129` 의 `apiBase()` 와 같은 규율 —
+  호출부는 계속 `"/api/..."` 를 넘기고, 스태틱 모드면 네트워크 대신 `static/router.ts` 로 간다.
+- **경기 흐름은 실서버와 같은 계약**이다: 같은 상태머신(BRIEFING→GEN1→…→FINISHED) + 같은
+  `MatchClock`(`phaseStartAt`/`phaseEndsAt`/`halfRealMs`). 그래서 흐름 브릿지(#424)·라이브
+  게이트(#238)·스킵(#421)이 손대지 않고 그대로 돈다. **여기서 규칙을 다시 만들지 마라.**
+- **엔진은 브라우저에서 직접 돈다**(`static/sim.ts` → `runFirstHalf`/`resumeSecondHalf`,
+  하프당 0.2~0.6초). 러너(`packages/server/runner/simulate.ts`)의 `resumeState` 직렬화는
+  **가져오지 않는다** — 프로세스 경계가 없어 carry 를 메모리에 들고 있으면 되고, 새로고침 복구는
+  저장해 둔 **입력으로 재시뮬**한다(결정론이라 같은 로그가 나온다).
+- **AI 폴백은 재발명하지 않았다** — `packages/server` 의 `stubExecutor` 를 그대로 소비한다
+  (`@hmb/server-stub` alias). AI 경로는 로컬 브리지(`scripts/ai-bridge.ts`)가 기존
+  `claudeCodeExecutor` + `prompt/coach.ts` 를 부른다. **로그인 없으면 안내만 하고 폴백**(hero 지시)
+  — 플레이를 막는 분기는 어디에도 없다.
+
+### ⚠️ 라이브 번들이 커지지 않는 것은 **상수 하나**에 달려 있다
+
+`STATIC_BUILD_ENABLED`(= vite `define` 이 꽂는 `__HMB_STATIC_BUILD__` 리터럴)가 목 백엔드
+`import()` 를 감싼다. 이걸 `isStaticMode()`(런타임 함수)나 `import.meta.env` 를 읽는 형태로
+바꾸면 **접힘이 깨져 라이브 프로덕션 빌드에 157 kB 가 실린다**(실측). 반대로
+`import.meta.env.DEV` 를 직접 쓰면 **playwright e2e 의 Node import 가 TypeError** 로 죽는다
+(`char-assets-store` → `client.ts` → `static/mode.ts` 경로가 실재한다). 두 조건을 **동시에**
+만족하는 형태가 지금의 define 이고, `static/mode.test.ts` 가 그 형태를 계약으로 박제한다.
+
+- 같은 이유로 `common/char-manifest.ts` 의 `CHARS_BASE` 도 `(import.meta as …).env?.BASE_URL ?? "/"`
+  다 — 서브패스 배포(#444)를 살리면서 Node import 를 죽이지 않는 유일한 형태다. 값은 라이브
+  기본(`BASE_URL="/"`)에서 정확히 `"/chars"` 로 접혀 **기존 계약·동작 무변경**이다.
+
+### 커맨드
+
+```bash
+npm run play          # 백엔드 0 (5180)          · = Pages 빌드와 같은 경로
+npm run play:ai       # + 로컬 AI 브리지(8791)
+npm run build:static  # HMB_BASE_PATH=/repo/ 로 서브패스 지정, 404.html·.nojekyll 동봉
+```
+
+계약 = `src/static/router.test.ts`(**경기 1판 완주**를 브라우저 없이 박제 — 실엔진을 돌린다) +
+`src/static/mode.test.ts`(스위치·가드 형태).
+
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
 - ⚠️ **e2e 는 리포의 `evidence/**` 에 직접 쓰지 않는다**(#314). 증거 캡처는 `HMB_WRITE_EVIDENCE=1`

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import type { ReactElement } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -29,6 +29,17 @@ import { RequireAdmin } from "./admin/RequireAdmin";
 import { TutorialProvider } from "./common/TutorialProvider";
 import { setUnauthorizedHandler } from "./api/client";
 import { queryClient } from "./api/query-client";
+import { STATIC_BUILD_ENABLED, isStaticMode } from "./static/mode";
+
+/**
+ * 스태틱 모드 안내(#444). **lazy** 인 이유는 코드 분할 취향이 아니라 계약이다 — 정적 import 면
+ * 목 백엔드·엔진·목데이터가 라이브 배포 번들로 딸려 들어간다.
+ */
+const StaticModeBanner = lazy(() =>
+  STATIC_BUILD_ENABLED
+    ? import("./static/StaticModeBanner")
+    : Promise.resolve({ default: () => null }),
+);
 
 /**
  * 미로그인이면 로그인으로 — **어디로 가려 했는지를 들려 보낸다**(#298).
@@ -224,7 +235,8 @@ function App() {
     <QueryClientProvider client={queryClient}>
       {/* 재화 표기 등 서버 부트스트랩 config — 여기 한 곳에서만 조회해 트리에 내린다(#232). */}
       <AppConfigProvider>
-      <BrowserRouter>
+      {/* 서브패스 배포(#444 GitHub Pages) 대응. 기본 BASE_URL="/" → `basename` 미지정과 동일. */}
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <TokenProvider>
           {/* admin 플래그(/api/me additive)를 네비까지 내려준다 — AppNav 가 쿼리 컨텍스트에
               직접 의존하지 않도록(src/admin/admin-flag.ts 주석 참조). */}
@@ -242,6 +254,11 @@ function App() {
           </AdminFlagProvider>
         </TokenProvider>
       </BrowserRouter>
+      {isStaticMode() && (
+        <Suspense fallback={null}>
+          <StaticModeBanner />
+        </Suspense>
+      )}
       </AppConfigProvider>
     </QueryClientProvider>
   );

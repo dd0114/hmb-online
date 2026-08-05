@@ -13,6 +13,7 @@
 import type { CharRef, CharactersManifest, PlaceholderManifest, UnitsManifest } from "./char-manifest";
 import { CHARS_BASE, charsBase, setCharsBase } from "./char-manifest";
 import { apiUrl } from "../api/client";
+import { isStaticMode } from "../static/mode";
 
 /**
  * data/ 발행 매핑 파일의 소비 측 투영(쓰는 필드만).
@@ -93,6 +94,10 @@ export function isUsableBundleIndex(raw: unknown): boolean {
  * **절대 throw 하지 않는다** — 아트 배포 채널의 장애가 화면을 죽이면 안 된다.
  */
 export async function resolveCharsBase(): Promise<string | null> {
+  // 스태틱 모드(#444)엔 아트 번들을 켤 서버가 **존재하지 않는다**. 그래도 물어보면 정적 호스팅이
+  // 404/500 을 주고(폴백은 정상 동작하지만) 콘솔에 매 부팅 에러가 하나씩 남는다 — 데모 빌드에서
+  // 그건 "고장 난 것처럼 보이는" 신호다. 구운 폴백이 유일한 정답인 상황이니 묻지 않는다.
+  if (isStaticMode()) return null;
   const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), BUNDLE_PROBE_TIMEOUT_MS) : null;
   try {

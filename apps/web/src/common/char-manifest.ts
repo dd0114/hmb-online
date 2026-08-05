@@ -34,7 +34,14 @@
  * 그쪽(백엔드 오리진)을 쓰고 없으면 여기로 떨어진다. 폴백이 남아 있어야 **서버가 죽어도 화면이
  * 성립**한다(#309 요구 ③) — 이 상수를 지우지 마라.
  */
-export const CHARS_BASE = "/chars";
+/**
+ * ⚠️ **오리진 루트가 아니라 앱의 base 를 기준으로 잡는다**(#444). `import.meta.env.BASE_URL` 은
+ * 항상 슬래시로 끝나며 기본값이 `"/"` 라, 라이브 배포(CF Pages·데모·dev·vitest)에서는 이 식이
+ * 정확히 `"/chars"` 로 접힌다 — **기존 동작·계약 무변경**. GitHub Pages 처럼 서브패스로 서빙할
+ * 때만 `"/hmb-online/chars"` 가 되어 아트가 404 나지 않는다. 하드코딩된 `"/chars"` 로 되돌리면
+ * 서브패스 빌드에서 전 화면이 이니셜 폴백이 된다.
+ */
+export const CHARS_BASE = `${(import.meta as { env?: { BASE_URL?: string } }).env?.BASE_URL ?? "/"}chars`;
 
 /**
  * 지금 활성인 아트 base. 기본은 구운 폴백이고, 서버 번들이 **유효할 때만**

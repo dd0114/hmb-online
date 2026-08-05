@@ -1,0 +1,59 @@
+# GitHub Pages — 플레이 가능한 스태틱 빌드 (#444, 제출 요건 1)
+#
+# 백엔드 없이 브라우저에서 바로 플레이되는 빌드를 배포한다(목데이터 + 엔진 클라이언트 실행).
+#
+# ⚠️ 라이브 테스터 표면(`hmb-online.pages.dev`, Cloudflare Pages)과 **완전히 분리된 대상**이다.
+#    이 워크플로는 `infra/` 도, CF 토큰도, 백엔드도 건드리지 않는다.
+# ⚠️ 리포가 private 인 동안 GitHub Pages 는 게시되지 않는다(무료 플랜 제약) — 공개 전환은
+#    hero 게이트다. 그때까지 이 워크플로는 **수동 실행(workflow_dispatch)** 으로만 돈다.
+name: pages
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "data/**"
+      - ".github/workflows/pages.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포는 한 번에 하나만. 진행 중인 배포를 취소하지 않는다(반쯤 올라간 사이트를 만들지 않게).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - run: npm ci
+      # base 는 `https://<owner>.github.io/<repo>/` 서브패스다 — 리포 이름에서 파생시켜
+      # 포크·이름 변경에도 따라가게 한다(하드코딩하면 그 순간 전 에셋이 404 다).
+      - name: Build static bundle
+        run: npm run build:static
+        env:
+          HMB_BASE_PATH: /${{ github.event.repository.name }}/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

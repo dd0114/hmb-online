@@ -9,6 +9,9 @@
   ],
   "scripts": {
     "test": "npm run test:t1",
+    "play": "npm run play --workspace @hmb/web",
+    "play:ai": "npm run play:ai --workspace @hmb/web",
+    "build:static": "npm run build:static --workspace @hmb/web",
     "test:watch": "vitest",
     "test:ladder": "HMB_TIER=1 HMB_LADDER=1 node tools/run-gate.mjs --label ladder -- vitest run packages/engine/src/realism",
     "test:full": "npm run test:t2",

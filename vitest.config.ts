@@ -11,8 +11,17 @@ export default defineConfig({
       // 삼켜 `@hmb/viewer-core/playback` 이 index.ts 로 붙는다(#365).
       "@hmb/viewer-core/playback": new URL("./packages/viewer-core/src/playback.mjs", import.meta.url).pathname,
       "@hmb/viewer-core": new URL("./packages/viewer-core/src/index.ts", import.meta.url).pathname,
+      // 스태틱 모드(#444) — `apps/web/vite.config.ts` 의 alias 와 같은 대상. 루트 스위트가
+      // `apps/**` 을 포함하므로 여기에도 있어야 `src/static/**` 계약이 게이트에서 돈다.
+      "@hmb/engine-runtime": new URL("./packages/engine/src/index.ts", import.meta.url).pathname,
+      "@hmb/server-stub": new URL(
+        "./packages/server/src/executor/executors/stub.ts",
+        import.meta.url,
+      ).pathname,
     },
   },
+  // 스태틱 모드 게이트 상수(#444). 번들러 밖에서는 정의가 없으므로 테스트에서도 꽂아 준다.
+  define: { __HMB_STATIC_BUILD__: "true" },
   test: {
     // tools/** = QA 콘솔 레지스트리·CLI 코어(#191). 여기에 없으면 그 계약이 게이트에서 빠진다.
     include: ["packages/**/*.test.ts", "apps/**/*.test.ts", "data/**/*.test.ts", "tools/**/*.test.ts"],

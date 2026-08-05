@@ -7,6 +7,8 @@
  *   so the wrapper is still correct if used outside the React tree).
  */
 
+import { STATIC_BUILD_ENABLED, isStaticMode } from "../static/mode";
+
 export const TOKEN_STORAGE_KEY = "hmb.auth.token";
 /**
  * 로그인에 쓴 provider(guest|mock:google|mock:apple)를 클라에 보관 — /api/me 는 provider 를
@@ -283,7 +285,25 @@ function normalizedPathname(path: string): string {
   return pathname;
 }
 
+/**
+ * 스태틱 모드 목 백엔드(#444) — 게으른 로드. 플래그가 꺼져 있으면 **한 번도 import 되지 않아**
+ * 엔진·목데이터가 라이브 번들에 들어가지 않는다(계약 = `src/static/static-mode.test.ts`).
+ */
+let staticRouter: Promise<typeof import("../static/router")> | null = null;
+
+function loadStaticRouter(): Promise<typeof import("../static/router")> {
+  staticRouter ??= import("../static/router");
+  return staticRouter;
+}
+
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  // 백엔드가 없는 빌드(GitHub Pages·`npm run play`)는 네트워크 대신 브라우저 안에서 답한다.
+  // 적용 지점은 여기 **한 곳**뿐이다 — 호출부·훅·뷰어는 무변경(#129 의 apiBase 와 같은 규율).
+  if (STATIC_BUILD_ENABLED && isStaticMode()) {
+    const { handleStaticRequest } = await loadStaticRouter();
+    return handleStaticRequest<T>(path, (options.method ?? "GET").toUpperCase(), options.body);
+  }
+
   const token = getToken();
   const headers = new Headers(options.headers);
   // 파일 업로드(#309 공지 이미지)는 **Content-Type 을 우리가 정하면 안 된다** — multipart 는
