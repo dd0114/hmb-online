@@ -131,6 +131,26 @@ describe("모달 층위 토큰 (#457 C2)", () => {
     ).toEqual([]);
   });
 
+  /**
+   * ⚠️ **z 는 "보이게" 만 하고 "누를 수 있게" 는 못 한다.**
+   *
+   * `--z-modal` 만 올린 상태의 390×844 실측: 시트가 탭바를 덮고 있는데도 [확인] 바닥 786.8 vs
+   * 탭바 상단 788.5 로 **1.7px** 차라 히트테스트가 통과했다 — 즉 이 파일의 위 계약들만으로는
+   * "버튼을 누를 수 있나"를 못 본다. 그래서 모달이 **자리를 비울 때 쓰는 값**(`--nav-h`)이
+   * 참인지를 여기서 같이 잠근다: 탭바가 그 값보다 커지면 예약이 거짓말이 된다.
+   * (실제로 누를 수 있나는 `e2e/p457-metaux.spec.ts` ① 가 **390×664** 에서 잰다.)
+   */
+  it("탭바 높이 토큰(--nav-h)이 실재하고, 탭바가 그것을 하한으로 되먹는다", () => {
+    // `token()` 은 z-index 용이라 단위 없는 값만 읽는다 — 이건 길이라 원문에서 직접 잰다.
+    const navH = ROOT_CSS.match(/--nav-h\s*:\s*(\d+)px\s*;/);
+    expect(navH, "--nav-h 가 :root 에 없다 — 모달의 자리 예약이 근거를 잃는다").not.toBeNull();
+    expect(Number(navH![1]), "--nav-h 가 0 이면 비우는 자리가 없다").toBeGreaterThan(0);
+    const nav = readFileSync(join(SRC, "common/AppNav.module.css"), "utf8");
+    expect(nav, "탭바가 --nav-h 를 하한으로 쓰지 않으면 예약보다 커질 수 있다").toMatch(
+      /min-height\s*:\s*var\(--nav-h\)/,
+    );
+  });
+
   it("예외는 전부 실재한다 — 낡은 면제가 조용히 남지 않게", () => {
     const keys = new Set(fullScreenLayers().map((l) => `${l.file} ${l.selector}`));
     for (const key of Object.keys(EXEMPT)) expect(keys.has(key), `${key} 가 없다`).toBe(true);

@@ -9,8 +9,15 @@ import { revealAllAndSettle } from "./gacha-reveal-settle";
  * ① **C2 가림 해소** — hero 제보: *"뽑고 나면 확인버튼이 안보여. 하단 바에 가려져."*
  *    ⚠️ `toBeVisible()` 로 쓰면 **가림을 못 잡는다**(DOM 에 있으면 통과) — 루트 §초록 거짓말 ③.
  *    그래서 **좌표 + `elementFromPoint`** 로 "그 점을 누르면 그 버튼이 눌리나"를 잰다(#294 선례).
- *    ⚠️ 그리고 **자기전제를 단언한다**: 시트가 실제로 탭바 밴드와 겹치는 상태에서 재고 있는지.
- *    안 그러면 시트가 짧은 날 계약이 아무것도 안 보고 통과한다.
+ *    ⚠️ **중앙 히트테스트만으로는 공허했다.** 390×844 실측에서 [확인] 바닥은 786.8, 탭바 상단은
+ *    788.5 — **1.7px** 차라 `--z-modal` 을 10 으로 되돌려도 이 스펙이 **통과했다**(변이 검증에서
+ *    들켰다). 일반화하면 버튼 바닥 `0.95·vh − 15` > 탭바 상단 `vh − 55.5` ⇔ **vh < 810** 이므로
+ *    깨지는 곳은 844 가 아니라 **흔한 폰 가시높이**다 → 계약을 두 축으로 다시 세웠다:
+ *      ⓐ 버튼이 탭바 밴드에 **한 픽셀도** 들어가지 않는다(중앙이 아니라 **바닥 가장자리**)
+ *      ⓑ **390×664 에서도** 같은 것을 잰다(여기서 구 레이아웃이 실제로 죽는다)
+ *    ⚠️ 자기전제도 바꿨다 — 자리를 비우는 것이 수정이라 시트는 이제 탭바와 **안 겹친다**.
+ *    대신 *시트가 탭바 바로 위까지 차 있다*(여유 < 40px)를 단언한다. 안 그러면 시트가 짧은 날
+ *    계약이 아무것도 안 보고 통과한다.
  * ② **C2 뒤로가기** — 부재였던 손잡이(영입 헤더).
  * ③ **D 개명** — 홈 타일 `선수` · 화면 제목 `선수`.
  * ④ **D 정렬** — 획득한 좋은 카드 순(등급 내림차순이 첫 화면에 온다).
@@ -151,31 +158,52 @@ test("⓪ C1 홍보 구역 — 확률은 서버가 줄 때만 뜬다 (지어내�
   await expect(page.locator("body")).toContainText("골드 이상 1명 보장");
 });
 
-test("① 10연뽑 [확인] 버튼이 하단 탭바에 가리지 않는다 (좌표·히트테스트)", async ({ page }) => {
-  await auth(page);
-  await mock(page);
-  await page.goto("/recruit");
+/** 세로 844(툴바 없는 이상적 폰) · 664(툴바가 덮은 실제 가시높이). 후자가 이 계약의 이빨이다. */
+for (const vh of [844, 664]) {
+  test(`① 10연뽑 [확인] 버튼이 하단 탭바에 가리지 않는다 — 390×${vh} (좌표·히트테스트)`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: vh });
+    await auth(page);
+    await mock(page);
+    await page.goto("/recruit");
 
-  await page.getByTestId("gacha-ten").click();
-  await expect(page.getByTestId("gacha-reveal")).toBeVisible();
-  await revealAllAndSettle(page);
+    await page.getByTestId("gacha-ten").click();
+    await expect(page.getByTestId("gacha-reveal")).toBeVisible();
+    await revealAllAndSettle(page);
 
-  // 자기전제 — 시트가 **실제로** 탭바 밴드와 겹치는 상태에서 재고 있다(안 겹치면 이 계약은 공허하다).
-  const overlap = await page.evaluate(() => {
-    const sheet = document.querySelector('[data-testid="gacha-reveal"]')!.getBoundingClientRect();
-    const nav = document.querySelector("nav")!.getBoundingClientRect();
-    return Math.min(sheet.bottom, nav.bottom) - Math.max(sheet.top, nav.top);
+    const g = await page.evaluate(() => {
+      const rect = (s: string) => {
+        const r = document.querySelector(s)!.getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, left: r.left, width: r.width, height: r.height };
+      };
+      return { sheet: rect('[data-testid="gacha-reveal"]'), nav: rect("nav"), close: rect('[data-testid="gacha-close"]') };
+    });
+
+    // 자기전제 ⓐ — 탭바가 실제로 그려져 있다(없으면 가림 계약이 통째로 공허하다).
+    expect(g.nav.height, "탭바가 없는 화면에서 재고 있다").toBeGreaterThan(0);
+    // 자기전제 ⓑ — 시트가 탭바 **바로 위**까지 차 있다. 여유가 남아돌면 어떤 구현도 통과한다.
+    expect(g.nav.top - g.sheet.bottom, "시트가 탭바에서 멀면 빡빡한 상태를 안 재는 것이다").toBeLessThan(40);
+
+    // 계약 ⓐ — 버튼이 탭바 밴드에 **한 픽셀도** 들어가지 않는다.
+    expect(g.close.bottom, "[확인] 아랫부분이 탭바 밴드 안이다").toBeLessThanOrEqual(g.nav.top);
+
+    // 계약 ⓑ — 그 버튼의 **바닥 가장자리**를 눌러도 그 버튼이 맞는다(중앙만 재면 1.7px 를 놓친다).
+    const bottomEdge = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="gacha-close"]')!;
+      const r = el.getBoundingClientRect();
+      const top = document.elementFromPoint(r.left + r.width / 2, r.bottom - 2);
+      return { inViewport: r.bottom - 2 < window.innerHeight, hit: !!(top && el.contains(top)) };
+    });
+    expect(bottomEdge.inViewport, "[확인] 아랫부분이 뷰포트 밖이다").toBe(true);
+    expect(bottomEdge.hit, "[확인] 아랫부분을 누르면 다른 요소(하단 탭바)가 먼저 맞는다").toBe(true);
+
+    const close = await hits(page, "gacha-close");
+    expect(close.hit, "[확인] 중앙을 누르면 다른 요소가 먼저 맞는다").toBe(true);
+
+    // 실제로 눌려서 닫힌다 — 히트테스트가 참인데 못 닫히면 그것도 결함이다.
+    await page.getByTestId("gacha-close").click();
+    await expect(page.getByTestId("gacha-reveal")).toHaveCount(0);
   });
-  expect(overlap, "시트와 탭바가 안 겹치면 가림 계약이 공허하다").toBeGreaterThan(0);
-
-  const close = await hits(page, "gacha-close");
-  expect(close.inViewport, "[확인] 이 뷰포트 밖이다").toBe(true);
-  expect(close.hit, "[확인] 을 누르면 다른 요소(하단 탭바)가 먼저 맞는다").toBe(true);
-
-  // 실제로 눌려서 닫힌다 — 히트테스트가 참인데 못 닫히면 그것도 결함이다.
-  await page.getByTestId("gacha-close").click();
-  await expect(page.getByTestId("gacha-reveal")).toHaveCount(0);
-});
+}
 
 test("② 영입 화면에 뒤로가기가 있다 (부재였던 손잡이)", async ({ page }) => {
   await auth(page);

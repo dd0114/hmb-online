@@ -5,7 +5,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  /* ⚠️ 여백을 **로컬 변수**로 둔다 — 아래 폰 미디어쿼리가 `padding` 축약으로 10px 를 다시
+     선언하는데, 축약은 `padding-bottom` 을 **통째로 덮어** 아래 예약이 조용히 사라진다. */
+  --pad: 16px;
+  padding: var(--pad);
+  /* 탭바 자리를 비운다 — 덮는 것(z)과 누를 수 있는 것은 다른 축이다(`--nav-h` 주석 참조).
+     `100lvh − 100svh` = 접히는 브라우저 UI 몫(#386 공지 팝업과 같은 처방). */
+  padding-bottom: calc(var(--pad) + var(--nav-h) + env(safe-area-inset-bottom, 0px) + (100lvh - 100svh));
   z-index: var(--z-modal);
 }
 
@@ -16,7 +22,13 @@
   padding: 18px;
   width: 100%;
   max-width: 420px;
-  max-height: 90vh;
+  /* ⚠️ `90vh` 로 되돌리지 마라 — 그 값은 탭바를 모르므로 vh<810 에서 [확인] 이 탭바 밴드
+     안으로 들어간다(위 padding 주석의 산수).
+     ⚠️ `100%` 도 안 된다 — 퍼센트 max-height 는 부모의 **패딩 박스** 기준이라 위에서 비운
+     자리를 그대로 무시한다(390×664 실측 639 > 탭바 608, 계약이 잡았다). 뷰포트에서 직접 뺀다.
+     `svh` = 툴바가 **떠 있는** 상태의 높이 = 항상 들어가는 쪽(#386 과 같은 축, `dvh` 는 읽는
+     도중 리플로우해서 금지). */
+  max-height: calc(100svh - var(--pad) * 2 - var(--nav-h) - env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
 }
 
@@ -101,7 +113,8 @@
  */
 @media (max-width: 430px) {
   .overlay {
-    padding: 10px;
+    /* 축약이 아니라 **변수만** 바꾼다 — 위 예약(`padding-bottom`)과 시트 상한이 같이 따라온다. */
+    --pad: 10px;
   }
   .sheet {
     padding: 14px 12px;

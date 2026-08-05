@@ -15,6 +15,9 @@
   align-items: stretch;
   background: var(--bg-elevated);
   border-top: 1px solid var(--border);
+  /* 모달이 비워 두는 자리(`--nav-h`)가 실제 높이보다 작으면 그 예약이 거짓말이 된다 →
+     토큰을 하한으로 되먹인다(#457 C2). 계약이 실측 높이 ≤ `--nav-h` 를 확인한다. */
+  min-height: var(--nav-h);
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
