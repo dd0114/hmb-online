@@ -38,6 +38,24 @@ import styles from "./DeckEditor.module.css";
  */
 const PROMPT_SCROLL_MARGIN_PX = 32;
 
+/**
+ * 경기장 아래 **책갈피 탭**(#455 A1 ⑤, hero 확정 — 목업 R5 의 1안).
+ *
+ * 순서가 곧 위계다: **전체 지시(1순위) · 후보(2순위) · 세부 전술(3순위)**. 2안(하단 버튼 +
+ * 아이콘 강조)은 기각됐다 — 버튼은 아무리 강조해도 *"여기에 프롬프트가 있다"* 까지만 보이고
+ * **내가 뭐라고 써놨는지**는 안 보인다. 요구는 강조가 아니라 위계였고, 위계는 펼침 ↔ 접힘으로
+ * 갈린다(#244 `DirectiveRail` 이 이미 그 원칙 위에 서 있다).
+ *
+ * ⚠️ 라벨·아이콘·탭 구성은 **조정 포인트**다(hero 컨펌에 포함되지 않았다) — 벤치를 탭 밖으로
+ * 빼서 둘로 줄이는 변형까지 열려 있다. 이 배열 한 줄이 그 손잡이다.
+ */
+const DECK_TABS = [
+  { id: "team", icon: "📣", label: "전체 지시", rank: 1 },
+  { id: "sub", icon: "👥", label: "후보", rank: 2 },
+  { id: "tune", icon: "⚙", label: "세부 전술", rank: 3 },
+] as const;
+type DeckTabId = (typeof DECK_TABS)[number]["id"];
+
 export interface DeckEditorProps {
   /**
    * 강화 시트 열기 (#286 W3). 에디터는 **시트를 소유하지 않는다** — 페이지가 연다.
@@ -132,6 +150,34 @@ export interface DeckEditorProps {
   promptDisabled?: boolean;
   /** 프롬프트 라벨의 맥락(감독시간이면 "(후반)" 을 붙인다). */
   promptScope?: "deck" | "halftime";
+  /**
+   * **세로 배치 축**(#455 A1). 기본 `"stack"` = 지금까지의 모양(보드 아래 레일이 문서 흐름대로).
+   * `"tabs"` = 경기장이 68 상한까지 커지고 그 아래를 **책갈피 탭 3개**가 채운다.
+   *
+   * ⚠️ **덱셋팅(`DeckPage`)만 `"tabs"` 를 넘긴다.** 이 컴포넌트는 덱셋팅 · 경기전(`BriefingPanel`) ·
+   * 감독시간(`HalftimePanel`) **셋이 공유**하므로, 기본값을 바꾸면 A1 스코프 밖 화면 둘이 같이
+   * 움직인다. 화면을 구별하는 축을 `poolScope`·`placementLocked` 조합으로 **추론하지 않는 이유**도
+   * 그것이다 — 추론은 다음 화면이 늘 때 조용히 틀린다.
+   */
+  layout?: "stack" | "tabs";
+  /**
+   * 탭 레이아웃의 **[세부 전술] 탭 꼬리**에 붙일 것(#455 A1) — 지금은 팀 사기 위젯.
+   *
+   * ⚠️ 왜 여기냐: 그 위젯은 원래 에디터 **아래 형제**였고 폰에서 **68px** 를 먹는다. 68 상한
+   * 경기장 아래 남는 세로를 탭이 가져간다는 약속이 그만큼 깎였다(실측 패널 19px = 프롬프트가
+   * 못 들어간다). `DeckPage` 주석이 이미 *"사기는 곁눈질로 보는 값이고 프롬프트는 이 화면에 온
+   * 이유"* 라고 그 우선순위를 적어 뒀다 — 위로 올리지 않는 것과 같은 이유로 **탭 뒤로** 보낸다.
+   * `layout="stack"` 이면 이 값을 안 쓴다(경기전·감독시간은 넘기지도 않는다).
+   */
+  teamExtra?: ReactNode;
+  /**
+   * 탭 레이아웃의 **[전체 지시] 탭 꼬리**(#455 A1) — 지금은 덱 규칙 위반 안내(`deck-pre-issues`).
+   *
+   * `teamExtra` 와 축이 다르다: 저건 "곁눈질 값을 3순위 탭으로 치운 것"이고, 이건 **프롬프트와
+   * 같은 스크롤러를 쓰게 해 가림을 없애는 것**이다(그 자리 주석에 실측이 있다).
+   * `layout="stack"` 이면 안 쓴다 — 그 화면들은 지금도 페이지 형제로 잘 보인다.
+   */
+  teamPanelNotice?: ReactNode;
 }
 
 /**
@@ -194,10 +240,29 @@ export function DeckEditor(props: DeckEditorProps) {
     railNote,
     promptDisabled,
     promptScope = "deck",
+    layout = "stack",
+    teamExtra,
+    teamPanelNotice,
   } = props;
   const draft = state.draft;
+  const tabs = layout === "tabs";
 
   const [selection, setSelection] = useState<TapSelection>(NO_SELECTION);
+  /** 책갈피 탭(#455 A1 ⑤). 기본은 **[전체 지시]** — 프롬프트가 1순위다. */
+  const [deckTab, setDeckTab] = useState<DeckTabId>("team");
+  /**
+   * [후보] 탭 안의 벤치 자리. `TacticsBoard` 가 **자기 벤치를 여기로 포털**한다 — 벤치를 여기서
+   * 다시 그리면 슬롯·드롭 대상이 두 벌이 되고 규칙이 두 곳에 산다(#439 major-2).
+   */
+  const benchHostRef = useRef<HTMLDivElement>(null);
+  /**
+   * ⚠️ 포털 대상은 **첫 렌더에 아직 null** 이다(ref 가 커밋 뒤에 붙는다). 그대로 두면 벤치가
+   * 영영 안 그려지므로 마운트 후 한 번 다시 그린다. `tabs` 가 아니면 이 상태 자체를 안 쓴다.
+   */
+  const [benchHost, setBenchHost] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (tabs) setBenchHost(benchHostRef.current);
+  }, [tabs]);
   /**
    * 보유 선수 시트. `slot` 이 있으면 **그 자리에 넣을 선수**를 고르는 맥락이고(포지션 자동 필터),
    * null 이면 목록만 여는 맥락이다(첫 빈 자리에 들어간다).
@@ -247,8 +312,23 @@ export function DeckEditor(props: DeckEditorProps) {
    * 숨기지 못하게 — p244 AC4).
    * 되돌리려면: 이 훅을 지우고 ①이나 ③으로 바꾼다.
    */
+  /**
+   * #455 A1 — **탭 레이아웃에서 #244 A′ 를 성립시키는 한 줄.**
+   *
+   * 지시 레일이 `[📣 전체 지시]` 탭 패널로 들어가면서, 다른 탭이 열려 있는 동안 선수를 고르면
+   * 그 선수의 입력칸이 `display:none` 안에 있다 = "선수를 고르면 그 입력창까지 화면이 따라온다"가
+   * 깨진다. 실측으로 잡혔다 — `deck-list-dnd` W4([👥 후보] 탭에서 시트로 배치 → `rail-prompt-input`
+   * 이 hidden) · `p244` AC4(그 프롬프트가 fold 밖).
+   * 아래 스크롤 훅이 **먼저 탭을 맞춰야** 잴 대상이 화면에 생긴다.
+   */
+  useEffect(() => {
+    if (tabs && selection.playerId) setDeckTab("team");
+  }, [tabs, selection.playerId]);
+
   useEffect(() => {
     if (!selection.playerId) return;
+    // 탭이 아직 안 넘어갔으면 이번 렌더에서는 잴 것이 없다 — 위 훅이 넘긴 뒤 다시 들어온다.
+    if (tabs && deckTab !== "team") return;
     const rail = railRef.current;
     if (!rail) return;
     /**
@@ -274,6 +354,16 @@ export function DeckEditor(props: DeckEditorProps) {
      */
     const target = rail.querySelector<HTMLElement>('[data-testid="rail-prompt-input"]') ?? rail;
     if (typeof window.scrollBy !== "function" || typeof target.getBoundingClientRect !== "function") return;
+    /**
+     * ⚠️ 탭 레이아웃에서는 **문서가 스크롤되지 않는다**(`Layout fill` = `overflow:hidden`).
+     * 굴러야 하는 것은 탭 패널이므로 `window.scrollBy` 는 아무 일도 안 한다 —
+     * `scrollIntoView({block:"nearest"})` 가 스크롤 가능한 조상만 **최소로** 굴린다.
+     * 아래 탭바 보정도 필요 없다: 패널은 탭바 **위**에서 이미 잘려 있다.
+     */
+    if (tabs) {
+      if (typeof target.scrollIntoView === "function") target.scrollIntoView({ block: "nearest" });
+      return;
+    }
     const nav = document.querySelector('[data-testid="nav-bottom"]');
     const navTop = nav ? nav.getBoundingClientRect().top : window.innerHeight;
     const floor = Math.min(navTop, window.innerHeight) - PROMPT_SCROLL_MARGIN_PX;
@@ -286,7 +376,8 @@ export function DeckEditor(props: DeckEditorProps) {
           ? rect.bottom - floor
           : 0;
     if (delta !== 0) window.scrollBy({ top: delta, behavior: "smooth" });
-  }, [selection.playerId]);
+    // `deckTab` 이 의존성에 있는 이유 = 탭이 넘어간 **뒤** 한 번 더 들어와야 잴 대상이 화면에 있다.
+  }, [selection.playerId, tabs, deckTab]);
 
   function mutateDraft(next: DeckDraft) {
     onChange({ ...state, draft: next });
@@ -446,6 +537,8 @@ export function DeckEditor(props: DeckEditorProps) {
    * (자리가 있든 없든 내가 가진 카드 전부). 이걸 `벤치` 로 바꾸면 오히려 거짓말이 된다.
    */
   const poolLabel = poolScope === "bench" ? "벤치" : "보유 선수";
+  /** [후보] 탭의 숫자 — 보드가 세는 것과 같은 draft 를 센다(두 곳에서 세면 조용히 갈린다). */
+  const benchCount = draft.slots.filter((s) => s.role === "bench").length;
 
   /**
    * [엔트리] 가 **잠기는** 선수 (#442 R3-B, hero: *"이미 있는 선수는 버튼 비활성화 된 모습으로
@@ -501,9 +594,26 @@ export function DeckEditor(props: DeckEditorProps) {
     ? `${slotNumberLabel(sheetSlot.role, sheetSlot.slotIndex)}번 ${sheetFilter === "ALL" ? "" : `${sheetFilter} `}자리에 넣을 선수`
     : poolLabel;
 
+  /**
+   * 탭 레이아웃(#455 A1)에는 **보드 하단 바가 없다.**
+   *
+   * 담고 있던 것은 전부 다른 자리로 갔다: [보유 선수]·[초기화] → **[후보] 탭**(testid 그대로) ·
+   * Auto → 시트 바(`auto-fill-top`) · 힌트("빈 자리 = 선수 고르기") → 탭 이름이 대신 말한다.
+   *
+   * ⚠️ **조건부 둘도 되살리면 안 된다 — 재 보고 알았다.** 한 번 되살렸더니 그 바가 48px 를 먹어
+   * **빈 덱에서 팀 프롬프트 아래 16px 가 하단 탭바 밑으로 들어갔다**(390×844 실측 prompt bottom
+   * 796 > navTop 780, `p244` AC1-b). 그런데 둘 다 이 화면에 **이미 동등한 자리가 있다**:
+   * - `select-clear`(선택 해제) → 레일의 **×**(`rail-close`). `deck-teamsheet` R2 r1 주석이
+   *   원래부터 *"독 안의 레일 × 와 동치"* 라고 적어 두었다.
+   * - `board-empty-auto`(Auto 배치로 시작) → **빈 상태 오버레이 안**으로 옮겼다(아래 `emptyOverlay`).
+   *   그 오버레이는 `position:absolute` 라 세로 예산이 **0** 이고, 안내문("아래 …를 누르세요")이
+   *   가리키던 버튼이 그 안내 **바로 옆**으로 온 것이라 오히려 직접적이다.
+   * 즉 없앤 것은 손잡이가 아니라 **중복**이다.
+   */
+
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-      <div className={styles.sheet} data-testid="deck-editor">
+      <div className={styles.sheet} data-testid="deck-editor" data-layout={layout}>
         {/* ① 시트 바 — 포메이션 · 전력 · 3지표 · Auto */}
         <TeamSheetBar
           draft={draft}
@@ -522,7 +632,7 @@ export function DeckEditor(props: DeckEditorProps) {
           formationDisabled={lineupDisabled}
         />
 
-        <div className={styles.wrap}>
+        <div className={styles.wrap} data-layout={layout} data-deck-layout={layout}>
           {/* ② 배치(보드) — 벤치는 이 카드 안 */}
           <section className={styles.boardCol}>
             {boardHeader}
@@ -558,6 +668,8 @@ export function DeckEditor(props: DeckEditorProps) {
               swapMode={Boolean(boardMode)}
               /* 벤치를 펴는 건 교체 모드뿐 — 자리 바꾸기는 **선발끼리**라 넣을 선수를 고를 일이 없다. */
               hideBench={hideBench && boardMode !== "subs"}
+              /* 탭 레이아웃이면 벤치는 [후보] 탭 안으로 간다 — **그리는 코드는 그대로**(포털). */
+              benchPortal={tabs ? benchHost : undefined}
               onSlotTap={handleSlotTap}
               /* 빈 상태(#106 R3b A): 선발 0/11 로 처음 들어오면 피치가 "+" 11개짜리 무언의 격자라
                  무엇부터 해야 하는지가 없었다.
@@ -568,8 +680,13 @@ export function DeckEditor(props: DeckEditorProps) {
               emptyOverlay={
                 <>
                   <b className={styles.emptyTitle}>선발이 비어 있습니다</b>
+                  {/* ⚠️ 안내가 가리키는 버튼이 레이아웃마다 다르다 — 탭 레이아웃엔 보드 하단 바가
+                      없고 Auto 는 **위 시트 바**(`auto-fill-top`)에 있다. 문구가 없는 버튼을
+                      가리키면 그게 곧 막다른 길이다(이 오버레이가 원래 겨누던 blocker 와 같은 부류). */}
                   <span className={styles.emptyHint} data-testid="board-empty-hint">
-                    슬롯을 눌러 선수를 고르거나, 아래 [Auto 배치로 시작]을 누르세요
+                    {tabs
+                      ? "슬롯을 눌러 선수를 고르거나, 위 [Auto] 를 누르세요"
+                      : "슬롯을 눌러 선수를 고르거나, 아래 [Auto 배치로 시작]을 누르세요"}
                   </span>
                   {autoDisabled && autoHint && (
                     <span className={styles.emptyNote} data-testid="board-empty-note">
@@ -580,7 +697,7 @@ export function DeckEditor(props: DeckEditorProps) {
               }
               /* 배치 잠금(감독시간)이면 하단 바를 아예 그리지 않는다 — 버튼은 전부 숨겨졌고
                  힌트("빈 자리 = 선수 고르기")는 **틀린 말**이 된다. 35px 도 같이 돌려받는다. */
-              footer={placementLocked ? undefined : (
+              footer={placementLocked || tabs ? undefined : (
                 <>
                   {/* 힌트는 한 줄로 — 세 줄로 접히면 보드 카드가 그만큼 커져 프롬프트를 밀어낸다. */}
                   <span className={styles.boardHint}>
@@ -665,9 +782,43 @@ export function DeckEditor(props: DeckEditorProps) {
             )}
           </section>
 
-          {/* ③ 프롬프트(1급) + 세부조정(⚙ 뒤) — 모바일도 **문서 흐름 그대로**(독 없음) */}
-          <section ref={railRef} className={styles.railCol} data-testid="directive-col">
+          {/* ③-0 책갈피 탭 — **덱셋팅만**(#455 A1 ⑤, hero 확정). 경기전·감독시간은 `layout="stack"`
+              기본값이라 이 줄 자체가 안 그려진다(같은 컴포넌트를 셋이 공유한다). */}
+          {tabs && (
+            <div className={styles.deckTabs} data-testid="deck-tabs" role="tablist" aria-label="덱 편집">
+              {DECK_TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  className={styles.deckTab}
+                  data-testid={`deck-tab-${t.id}`}
+                  data-on={deckTab === t.id ? "1" : undefined}
+                  data-rank={t.rank}
+                  aria-selected={deckTab === t.id}
+                  aria-controls={`deck-tabpanel-${t.id}`}
+                  onClick={() => setDeckTab(t.id)}
+                >
+                  <span aria-hidden="true">{t.icon}</span>
+                  <span>{t.label}</span>
+                  {t.id === "sub" && <span className={styles.deckTabCount}>{benchCount}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* ③ 프롬프트(1급) + 세부조정(⚙ 뒤) — 모바일도 **문서 흐름 그대로**(독 없음).
+              탭 레이아웃에서는 이 자리가 곧 **[전체 지시] 탭 패널**이다(프롬프트는 1순위라
+              기본으로 펼쳐져 있어야 한다 — 그게 1안을 고른 이유다). */}
+          <section
+            ref={railRef}
+            id={tabs ? "deck-tabpanel-team" : undefined}
+            className={tabs ? `${styles.railCol} ${styles.tabPanel}` : styles.railCol}
+            data-testid="directive-col"
+            {...(tabs ? { role: "tabpanel" as const, hidden: deckTab !== "team" } : {})}
+          >
             <DirectiveRail
+              section={tabs ? "prompt" : "all"}
               player={selectedPlayer}
               onOpenGrowth={onOpenGrowth}
               growthLockedReason={growthLockedReason}
@@ -707,7 +858,91 @@ export function DeckEditor(props: DeckEditorProps) {
               }
               onClose={() => setSelection(NO_SELECTION)}
             />
+            {/**
+             * 덱 규칙 위반 안내(`deck-pre-issues`) — 탭 레이아웃에서만 **여기로 들어온다**.
+             *
+             * ⚠️ 취향이 아니라 실측 때문이다. 페이지 형제로 두면 그 목록이 세로를 먹어 탭 패널이
+             * 짧아지고, 그러면 **팀 프롬프트가 패널 밖으로 밀려 그 안내에 가린다** —
+             * 390×844 빈 덱 실측 `hitSelf:false · center←deck-pre-issues`(프롬프트 자체는
+             * 694~796 로 fold 안이었다 = 예산 초과가 아니라 가림), 360×740 도 같다.
+             * 패널 안으로 들어오면 그 목록이 프롬프트와 **같은 스크롤러**를 공유하므로
+             * 프롬프트는 패널 맨 위에 그대로 있고 안내는 아래로 이어진다(#244 AC1-b·AC13).
+             *
+             * ⚠️ 프롬프트 **뒤**에 둔다 — 앞에 두면 안내 길이만큼 프롬프트가 첫 화면에서 밀린다.
+             * ⚠️ 저장 피드백·셋업 CTA 는 **안 옮긴다**: 탭과 무관한 페이지 단위 사건이고, 옮기면
+             *    다른 탭에 있는 동안 "저장되었습니다"가 안 보인다. 전부 조건부라 평소엔 0px 이다.
+             */}
+            {tabs && teamPanelNotice}
           </section>
+
+          {/* ③-b [후보] 탭 — 벤치 줄이 **포털로 여기 들어온다**(TacticsBoard 가 그리는 그대로).
+              1안의 유일한 대가 = 벤치가 기본으로 안 보인다. hero 가 그 대가를 알고 골랐다.
+              되돌리려면 `benchPortal` 을 안 넘기고 탭을 둘로 줄이면 된다(조정 포인트). */}
+          {tabs && (
+            <section
+              id="deck-tabpanel-sub"
+              className={`${styles.railCol} ${styles.tabPanel}`}
+              role="tabpanel"
+              hidden={deckTab !== "sub"}
+            >
+              <div ref={benchHostRef} className={styles.benchHost} />
+              {/* ⚠️ testid 는 하단 바에 있던 것을 **그대로** 쓴다 — 자리를 옮긴 것이지 새 손잡이가
+                  생긴 게 아니다. 이름을 바꾸면 #244·#439·#442 계약이 selector 부재로 죽는다. */}
+              <div className={styles.tabActions}>
+                {!placementLocked && (
+                  <button
+                    type="button"
+                    className={styles.boardBtn}
+                    data-testid="pool-sheet-open"
+                    onClick={() => openSheet(null)}
+                  >
+                    {poolLabel} ({poolPlayers.length})
+                  </button>
+                )}
+                {!placementLocked && !hideReset && (
+                  <button
+                    type="button"
+                    className={styles.boardBtn}
+                    data-testid="board-reset"
+                    onClick={() => {
+                      mutateDraft({ ...draft, slots: [] });
+                      setSelection(NO_SELECTION);
+                    }}
+                  >
+                    초기화
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* ③-c [세부 전술] 탭 — 3순위. 팀 다이얼은 **선수 선택과 무관**하게 팀 값이라
+              선수를 고른 동안에도 이 탭은 그대로다(DirectiveRail `section="tune"`). */}
+          {tabs && !hideTeamTune && (
+            <section
+              id="deck-tabpanel-tune"
+              className={`${styles.railCol} ${styles.tabPanel}`}
+              role="tabpanel"
+              hidden={deckTab !== "tune"}
+            >
+              <DirectiveRail
+                section="tune"
+                tactics={state.tactics}
+                teamPrompt={state.teamPrompt}
+                aiManaged={aiManaged}
+                onTacticsChange={(tactics) => onChange({ ...state, tactics })}
+                onTeamPromptChange={(text) => onChange({ ...state, teamPrompt: text })}
+                onToggleAi={onToggleAi}
+                onPlayerPromptChange={(playerId, text) => mutateDraft(setPrompt(draft, playerId, text))}
+                onRemovePlayer={(playerId) => {
+                  mutateDraft(removePlayer(draft, playerId));
+                  setSelection(NO_SELECTION);
+                }}
+                onClose={() => setSelection(NO_SELECTION)}
+              />
+              {teamExtra}
+            </section>
+          )}
         </div>
       </div>
 

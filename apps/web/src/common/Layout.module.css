@@ -9,6 +9,14 @@
   padding: 16px;
 }
 
+/* 본문이 바닥까지 — 자식이 `flex:1` 로 남는 세로를 가져갈 수 있게 한다(#455 A1).
+   `min-height:0` 이 없으면 넘치는 자식이 스크롤 대신 부모를 늘린다(apps/web/CLAUDE.md 상습 함정). */
+.mainFill {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* 하단 탭바(fixed)에 콘텐츠가 가리지 않도록 하단 여백 확보. */
 .mainWithNav {
   padding-bottom: calc(64px + env(safe-area-inset-bottom, 0));

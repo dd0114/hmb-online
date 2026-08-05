@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { openCandidatesTab } from "./deck-tabs";
 
 /**
  * W4 리스트→보드 드래그앤드롭 + 추천정렬 + 스탯총량 route-mock 스모크 (이슈 #98 요구 5 · 6 부분).
@@ -116,6 +117,8 @@ test("W4 리스트 추천정렬 + 스탯총량 + 리스트→보드 드래그", 
 
   await expect(page.getByTestId("deck-editor")).toBeVisible();
   // #244: 보유 선수 리스트는 **시트** 뒤로 갔다 — 정렬·스탯 계약은 시트 안에서 검증한다.
+  // #455 A1: 폰 폭(390)이라 그 여는 버튼은 [👥 후보] 탭 안이다.
+  await openCandidatesTab(page);
   await page.getByTestId("pool-sheet-open").click();
   await expect(page.getByTestId("player-pool")).toBeVisible();
 
@@ -167,6 +170,7 @@ test("W4 리스트 추천정렬 + 스탯총량 + 리스트→보드 드래그", 
   // 6) 포지션 필터(DF): 그 포지션 내 추천순(overall desc).
   // 드롭 직후 첫 클릭은 @dnd-kit 클릭 억제 창(≈50ms)에 먹힌다 → 여유를 주고 시트 오픈을 확인한다.
   await page.waitForTimeout(300);
+  await openCandidatesTab(page); // #455 A1
   await page.getByTestId("pool-sheet-open").click();
   await expect(page.getByTestId("pool-sheet")).toBeVisible();
   await page.getByTestId("picker-filter-DF").click();

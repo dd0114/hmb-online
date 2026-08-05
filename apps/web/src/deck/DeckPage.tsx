@@ -24,6 +24,7 @@ import { isDirty, makeBaseline, type EditorBaseline } from "./preset-selector-lo
 import { canAutoBuild } from "./auto-lineup";
 import { canFillEmptySlots, fillEmptySlots } from "./fill-empty";
 import { DeckEditor } from "./DeckEditor";
+import { useDeckLayout } from "./use-deck-layout";
 import styles from "./DeckPage.module.css";
 
 interface ServerDeckError {
@@ -74,6 +75,8 @@ export function DeckPage() {
   // 당일(KST) 컨디션 — 보드 토큰/리스트/레일 헤드에 표시. 실패해도 화면은 그대로.
   const { data: conditions } = useTodayConditions();
   const updateDeck = useUpdateDeck();
+  // #455 A1 — 폭 1023 이하만 책갈피 탭. 데스크탑은 종전 2컬럼 그대로다.
+  const deckLayout = useDeckLayout();
 
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [baseline, setBaseline] = useState<EditorBaseline | null>(null);
@@ -245,9 +248,32 @@ export function DeckPage() {
     </div>
   );
 
+  /** 덱 규칙 위반 안내 — 레이아웃에 따라 페이지 형제(stack) 또는 [전체 지시] 탭 꼬리(tabs)로 간다. */
+  const preIssueList =
+    preIssues.length > 0 ? (
+      <ul className={styles.issueList} data-testid="deck-pre-issues">
+        {preIssues.map((issue) => (
+          <li key={issue.rule + (issue.playerId ?? "")} className={styles.issue}>
+            {issue.message}
+          </li>
+        ))}
+      </ul>
+    ) : null;
+
+  // `fill` = 문서 스크롤 0(에디터가 화면 높이를 정확히 채운다). 탭 레이아웃의 전제라
+  // 데스크탑 stack 에서는 켜지 않는다 — 켜면 2컬럼 화면이 잘린다.
   return (
-    <Layout header={header} nav>
+    <Layout header={header} nav fill={deckLayout === "tabs"}>
       <DeckEditor
+        /* #455 A1 — 덱셋팅**만** 탭 레이아웃(경기장 68 상한 + 책갈피 탭 3개). 경기전·감독시간은
+           같은 컴포넌트를 쓰지만 기본값 `"stack"` 그대로라 이 웨이브에서 안 움직인다.
+           ⚠️ 그리고 **폭 1023 이하에서만** 탭이다 — 데스크탑은 보드 | 레일 2컬럼이 그대로 산다.
+           근거·임계는 `use-deck-layout.ts` 머리말(구현이 범위를 넘어 2컬럼을 죽였던 실측 포함). */
+        layout={deckLayout}
+        /* 팀 사기 = [세부 전술] 탭 꼬리(#455 A1). 아래 주석의 "프롬프트 우선"과 같은 이유다 —
+           에디터 형제로 두면 폰에서 68px 를 먹어 그만큼 프롬프트 칸이 줄어든다(실측). */
+        teamExtra={<TeamMoraleWidget relations={relations} compact />}
+        teamPanelNotice={preIssueList}
         onOpenGrowth={(p) => setGrowthPlayer(p)}
         growthLockedReason={growthLockedReason}
         state={editor}
@@ -295,18 +321,11 @@ export function DeckPage() {
           아래로 밀어 **팀 프롬프트가 하단 탭바에 가렸다**(390px 실측 여백 79 → 11, 요구 ≥24).
           #244 의 "프롬프트는 어디서나 첫 화면에"가 이 위젯보다 우선이다 — 사기는 곁눈질로 보는
           값이고 프롬프트는 이 화면에 온 이유다. 계약 = `p244-prompt-first.spec.ts` AC1·AC13. */}
-      <TeamMoraleWidget relations={relations} compact />
-
       <div className={styles.notes}>
-        {preIssues.length > 0 && (
-          <ul className={styles.issueList} data-testid="deck-pre-issues">
-            {preIssues.map((issue) => (
-              <li key={issue.rule + (issue.playerId ?? "")} className={styles.issue}>
-                {issue.message}
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* ⚠️ 탭 레이아웃에서는 이 목록이 **[전체 지시] 탭 안**으로 간다(`teamPanelNotice`).
+            페이지 형제로 두면 탭 패널을 짧게 만들어 팀 프롬프트를 밀어내고 **그 위를 덮는다**
+            (390×844 빈 덱 실측 — `DeckEditor` 의 그 자리 주석에 수치가 있다). */}
+        {deckLayout === "stack" && preIssueList}
         {serverError && (
           <p className={styles.serverError} data-testid="deck-server-error">
             저장 실패 [{serverError.rule}] {serverError.message}

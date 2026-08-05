@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CatalogPlayer } from "../api/hooks";
 import type { ConditionMap } from "../api/v2";
@@ -53,6 +54,15 @@ interface TacticsBoardProps {
    * (교체 모드에서는 다시 편다. 세로가 빡빡한 화면에서 82px 를 그냥 두면 프롬프트가 밀린다.)
    */
   hideBench?: boolean;
+  /**
+   * 벤치 줄을 **다른 DOM 자리로 보낸다**(#455 A1 — 책갈피 탭의 [후보] 탭 안).
+   *
+   * ⚠️ 왜 포털인가: 벤치를 탭 안에서 **다시 그리면** 슬롯·드롭 대상·토큰이 두 벌이 되고, 그때부터
+   * 규칙이 두 곳에 산다(#439 major-2 가 정확히 그 사고였다). `createPortal` 은 React 컨텍스트를
+   * 보존하므로 같은 `DndContext`·같은 `SlotCell` 그대로 자리만 옮긴다.
+   * 안 주면(기본) 지금처럼 보드 카드 안에 붙는다 — 경기전·감독시간은 이 값을 넘기지 않는다.
+   */
+  benchPortal?: HTMLElement | null;
 }
 
 function slotDroppableId(role: SlotRole, slotIndex: number): string {
@@ -213,7 +223,18 @@ function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberL
       </span>
       {/* 보드 토큰 = 밀집 UI(390px 에 11칸) → 짧은 이름 축(#406 요구 6). 선수를 못 찾으면
           `미상 선수` — 구 동작은 여기에 **playerId 를 그대로 찍었다**(`P077`). */}
-      <span className={styles.tokenName}>{playerNameOf(player, "short")}</span>
+      {/* ⚠️ testid 는 계약이 **겹침을 잴 수 있게** 하려고 있다(#455 A1 ②) — 이름표가 아랫줄
+          디스크에 닿는 것은 68/52 하한을 잡을 때 실측 여유가 2px 뿐이던 축이라, 피치를 키우는
+          변경마다 사각형 교차로 재야 한다. 클래스명은 CSS 모듈이 해싱해서 손잡이가 못 된다. */}
+      {/* 이름표 실측 손잡이(#455 A1 ② 겹침 0). ⚠️ **`data-testid` 를 쓰면 안 된다** —
+          `token-` 접두는 이 리포에서 "보드 위 토큰 목록"을 세는 스캐너의 것이라(`p439`·`p442`·
+          `p244`·`deck-list-dnd` 가 `[data-testid^="token-"]` 로 훑는다) 이름표까지 토큰으로
+          잡혀 strict mode 위반이 난다(실측: `board-slot-starter-10` 에서 2개 매치).
+          `pool-assign-*` 를 `pick-` 으로 부르지 말라던 #442 의 함정과 같은 부류다.
+          그래서 상호작용 대상이 아닌 **측정 전용 속성**으로 뺀다. */}
+      <span className={styles.tokenName} data-token-name={playerId}>
+        {playerNameOf(player, "short")}
+      </span>
       {/* 교체로 빠지는 선수 — 60초 안에 "누굴 뺐더라"를 보드에서 바로 읽어야 한다(#244). */}
       {out && (
         <span className={styles.outBadge} data-testid={`token-out-${playerId}`}>
@@ -334,6 +355,26 @@ export function TacticsBoard(props: TacticsBoardProps) {
     onSlotTap: props.onSlotTap,
   };
 
+  const benchSection = (
+    <div className={styles.benchSection} data-testid="board-bench-section">
+      <span className={styles.benchLabel}>
+        벤치 {benchCount} / {BENCH_MAX}
+      </span>
+      <div className={styles.benchRow} data-testid="board-bench">
+        {Array.from({ length: BENCH_MAX }, (_, i) => (
+          <SlotCell
+            key={`bench-${i}`}
+            {...cellProps}
+            role="bench"
+            slotIndex={i}
+            className={styles.benchCell!}
+            compact
+          />
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div
       className={props.swapMode ? `${styles.card} ${styles.cardSwap}` : styles.card}
@@ -377,26 +418,11 @@ export function TacticsBoard(props: TacticsBoardProps) {
         )}
       </div>
 
-      {/* 벤치 = 보드 카드의 일부 (#106: 별도 블록 금지) */}
-      {!props.hideBench && (
-      <div className={styles.benchSection} data-testid="board-bench-section">
-        <span className={styles.benchLabel}>
-          벤치 {benchCount} / {BENCH_MAX}
-        </span>
-        <div className={styles.benchRow} data-testid="board-bench">
-          {Array.from({ length: BENCH_MAX }, (_, i) => (
-            <SlotCell
-              key={`bench-${i}`}
-              {...cellProps}
-              role="bench"
-              slotIndex={i}
-              className={styles.benchCell!}
-              compact
-            />
-          ))}
-        </div>
-      </div>
-      )}
+      {/* 벤치 = 보드 카드의 일부 (#106: 별도 블록 금지).
+          단 `benchPortal` 이 오면 **그 자리로 옮긴다**(#455 A1 [후보] 탭) — 그리는 코드는 하나다. */}
+      {!props.hideBench && (props.benchPortal
+        ? createPortal(benchSection, props.benchPortal)
+        : benchSection)}
 
       {footer && <div className={styles.boardBar}>{footer}</div>}
     </div>

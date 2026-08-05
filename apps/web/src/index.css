@@ -70,6 +70,24 @@ a {
   flex-direction: column;
 }
 
+/*
+ * **화면을 스크롤하지 않는 셸**(#455 A1) — 덱셋팅처럼 "전체화면"이 요구인 화면.
+ *
+ * 기본 `.app-container` 는 `min-height: 100%` 라 내용이 길어지면 문서가 자란다(그게 대부분
+ * 화면에 맞다). 하지만 경기장을 68 상한까지 키우고 **그 아래를 탭이 채운다**(hero 확정 ③⑤)는
+ * 약속은, 화면 밖으로 흘러나가면 지킬 수가 없다 — 실측으로 문서가 **172px 넘쳐** 있었다.
+ *
+ * ⚠️ `dvh` 를 쓰지 않는다 — 툴바가 접힐 때마다 높이가 변해 읽는 도중 리플로우한다
+ *    (apps/web/CLAUDE.md 공지 팝업 절과 같은 규율). 여기서는 `height: 100%`(레이아웃 뷰포트)로
+ *    잠그고, 넘치는 몫은 **안쪽 패널이 스크롤**로 받는다.
+ * ⚠️ 켜는 화면만 켠다 — `Layout fill` 을 넘긴 화면에만 붙는다.
+ */
+.app-container--fill {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 @media (min-width: 900px) {
   .app-container {
     max-width: 720px;

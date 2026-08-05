@@ -136,10 +136,12 @@ test("① 폰에서 경기장이 상한 68 에 닿는다 (실측 w:h)", async ({
  */
 test("② 선수 이름표가 서로 겹치지 않는다 (사각형 교차 0)", async ({ page }) => {
   await openDeck(page);
-  const rects = await page.$$eval('[data-testid^="token-name-"]', (els) =>
+  // ⚠️ 손잡이가 `data-testid` 가 **아닌** 이유 = `token-` 접두는 "보드 위 토큰"을 세는 스캐너의
+  //    것이라 이름표가 거기 끼면 strict mode 위반이 난다(`TacticsBoard.tsx` 그 자리 주석 참조).
+  const rects = await page.$$eval("[data-token-name]", (els) =>
     els.map((el) => {
       const r = el.getBoundingClientRect();
-      return { id: el.getAttribute("data-testid")!, x: r.x, y: r.y, w: r.width, h: r.height };
+      return { id: el.getAttribute("data-token-name")!, x: r.x, y: r.y, w: r.width, h: r.height };
     }),
   );
   expect(rects.length, "이름표에 안정적인 손잡이가 있어야 잴 수 있다").toBeGreaterThanOrEqual(11);
@@ -206,7 +208,9 @@ test("④ 팀 프롬프트가 기본으로 펼쳐져 있다 (눌러야 보이는
 test("⑤ 후보(벤치)가 [후보] 탭 안으로 들어간다", async ({ page }) => {
   await openDeck(page);
   // 기본 탭은 [전체 지시] — 벤치는 아직 화면에 없다.
-  await expect(page.getByTestId("deck-tabpanel-team")).toBeVisible();
+  // ⚠️ 패널은 **id 로** 잡는다. `directive-col`(=[전체 지시] 패널)은 #244·#442 계약이 쓰는
+  //    이름이라 그대로 두고, 새로 생긴 패널 정체성은 `aria-controls` 가 어차피 요구하는 id 로 준다.
+  await expect(page.locator("#deck-tabpanel-team")).toBeVisible();
   await expect(page.getByTestId("board-bench")).toBeHidden();
 
   await page.getByTestId("deck-tab-sub").tap();
@@ -214,7 +218,7 @@ test("⑤ 후보(벤치)가 [후보] 탭 안으로 들어간다", async ({ page 
   await expect(bench).toBeVisible();
   // DOM 상 그 탭 패널의 자손이어야 한다(옆에 나란히 그리면 탭이 무의미하다).
   const inside = await page.evaluate(() => {
-    const panel = document.querySelector('[data-testid="deck-tabpanel-sub"]');
+    const panel = document.getElementById("deck-tabpanel-sub");
     const el = document.querySelector('[data-testid="board-bench"]');
     return !!panel && !!el && panel.contains(el);
   });
@@ -229,16 +233,32 @@ test("⑤ 후보(벤치)가 [후보] 탭 안으로 들어간다", async ({ page 
  */
 test("⑥ 경기장 아래 죽은 여백이 없다 (탭이 바닥까지)", async ({ page }) => {
   await openDeck(page);
-  const gap = await page.evaluate(() => {
-    const tabs = document.querySelector('[data-testid="deck-tabs"]');
-    if (!tabs) return -1;
-    const last = tabs.getBoundingClientRect();
+  /**
+   * ⚠️ **자를 한 번 고쳤다.** 처음엔 탭 **줄**(`deck-tabs`)의 바닥을 쟀는데, 그 줄은 경기장 바로
+   * 아래 34px 짜리 책갈피이고 **패널이 그 아래**라 항상 100px 대가 남는다 — 재는 대상이 틀렸지
+   * 레이아웃이 틀린 게 아니었다. "마지막"은 **지금 열려 있는 탭 패널**의 바닥이다.
+   */
+  const m = await page.evaluate(() => {
+    const panel = document.getElementById("deck-tabpanel-team")!;
+    const editor = document.querySelector('[data-testid="deck-editor"]')!;
     const nav = document.querySelector('[data-testid="nav-bottom"]');
     const floor = nav ? nav.getBoundingClientRect().top : window.innerHeight;
-    return Math.round(floor - last.bottom);
+    return {
+      inside: Math.round(editor.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom),
+      below: Math.round(floor - editor.getBoundingClientRect().bottom),
+      panelH: Math.round(panel.getBoundingClientRect().height),
+      docOver: document.documentElement.scrollHeight - window.innerHeight,
+    };
   });
-  expect(gap, `경기장 아래 남은 띠 ${gap}px`).toBeGreaterThanOrEqual(0);
-  expect(gap, `경기장 아래 남은 띠 ${gap}px — 탭이 바닥까지 채운다`).toBeLessThanOrEqual(8);
+  // ⓐ 에디터 **안**에 죽은 띠가 없다 — 목업에서 세 번 났던 flex 버그(29px 띠 · 보드가 눌림)의 자리다.
+  expect(m.inside, `패널 아래 남은 띠 ${m.inside}px`).toBeGreaterThanOrEqual(0);
+  expect(m.inside, `패널 아래 남은 띠 ${m.inside}px — 패널이 에디터 바닥까지`).toBeLessThanOrEqual(8);
+  // ⓑ 에디터 **아래**는 안내(`deck-pre-issues`·저장 안내)가 앉는 자리라 0 이 아니다. 다만 화면을
+  //    넘겨서는 안 된다 — "전체화면"의 뜻이 그것이고, 넘치면 그만큼이 탭에서 깎인 것이다.
+  expect(m.below, `에디터 아래 안내 영역 ${m.below}px`).toBeGreaterThanOrEqual(0);
+  expect(m.docOver, `문서가 화면을 ${m.docOver}px 넘친다`).toBeLessThanOrEqual(0);
+  // ⓒ 그 결과 프롬프트 칸이 실제로 쓸 만한 크기다(19px 짜리 패널은 "탭이 채웠다"가 아니다).
+  expect(m.panelH, `[전체 지시] 패널 ${m.panelH}px`).toBeGreaterThanOrEqual(120);
 });
 
 // ── ⑦ 가로 넘침 0 (회귀 가드) ────────────────────────────────────────────────

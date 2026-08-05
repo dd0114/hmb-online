@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { openCandidatesTab, openCandidatesTabIfPresent } from "./deck-tabs";
 
 /** 실화면 증빙 — DOM 계약이 초록인데 어포던스가 안 보이는 축은 캡처로만 잡힌다(#439 `.tokenDragging`). */
 const SMOKE_DIR = new URL("../.smoke/", import.meta.url).pathname;
@@ -141,8 +142,13 @@ async function assignTargets(page: Page): Promise<string[]> {
   );
 }
 
-/** 목록 시트를 열고 그 선수의 [엔트리] 를 실터치로 누른다 → 안내 상태 진입. */
+/**
+ * 목록 시트를 열고 그 선수의 [엔트리] 를 실터치로 누른다 → 안내 상태 진입.
+ * ⚠️ 이 헬퍼는 **덱셋팅과 경기전을 둘 다** 태운다. #455 A1 이후 덱셋팅(폰)에서는 여는 버튼이
+ *    [👥 후보] 탭 안이고 경기전은 종전 그대로라, 탭이 있을 때만 연다.
+ */
 async function startAssign(page: Page, playerId: string) {
+  await openCandidatesTabIfPresent(page);
   await page.getByTestId("pool-sheet-open").tap();
   await expect(page.getByTestId("player-pool")).toBeVisible();
   await page.getByTestId(`pool-assign-${playerId}`).tap();
@@ -365,6 +371,7 @@ test("⑨-b 덱셋팅 화면 전수 — 같은 규칙(빈 자리·Auto 힌트 �
   await expect(page.getByTestId("starter-count")).toHaveText(/10\/11/);
   expect(await bannedWords(page, SCAN_ROOTS), "빈 자리 있는 상태").toEqual([]);
 
+  await openCandidatesTab(page); // #455 A1: 폰 덱셋팅에서 여는 버튼은 [👥 후보] 탭 안
   await page.getByTestId("pool-sheet-open").tap();
   await expect(page.getByTestId("player-pool")).toBeVisible();
   expect(await bannedWords(page, SCAN_ROOTS), "보유 선수 시트가 열린 상태").toEqual([]);
@@ -401,6 +408,10 @@ test("⑩ 덱셋팅 — 미배치 선수를 찬 자리에 넣으면 밀려난 �
   await page.getByTestId("board-slot-starter-8").tap();
 
   await expect(page.getByTestId("board-slot-starter-8").getByTestId("token-FW4")).toBeVisible();
+  // #455 A1: 배치되면 그 선수 지시로 넘어가느라 탭이 [전체 지시]로 간다(#244 A′) → 벤치를 보려면
+  // [👥 후보] 탭을 연다. ⚠️ 정원 초과 변이는 토큰 부재로 위장하므로 아래 `bench-count` 도 같이 본다
+  // (이 파일 R4-B 절이 그 이유를 적어 두었다).
+  await openCandidatesTab(page);
   await expect(
     page.getByTestId("board-slot-bench-2").getByTestId("token-MF4"),
     "빈 벤치가 있는데 덱에서 사라지면 안 된다",
@@ -424,6 +435,7 @@ test("⑩ 덱셋팅 — 미배치 선수를 찬 자리에 넣으면 밀려난 �
 test("⑦ 덱셋팅 — 덱에 있는 선수는 [엔트리] 잠김, 미배치 선수는 열려 있다", async ({ page }) => {
   mkdirSync(SMOKE_DIR, { recursive: true });
   await openDeck(page);
+  await openCandidatesTab(page); // #455 A1: 폰 덱셋팅에서 여는 버튼은 [👥 후보] 탭 안
   await page.getByTestId("pool-sheet-open").tap();
   await expect(page.getByTestId("player-pool")).toBeVisible();
 

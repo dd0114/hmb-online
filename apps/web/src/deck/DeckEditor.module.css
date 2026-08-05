@@ -298,3 +298,133 @@
     border-radius: 14px;
   }
 }
+
+/* ══ #455 A1 — 책갈피 탭 레이아웃 (덱셋팅 전용, `layout="tabs"`) ══════════════════════
+ *
+ * hero 확정 ③⑤: 경기장은 **68 상한**까지 커지고, 그 아래 남는 세로를 탭 3개가 전부 가져간다.
+ * 목업 R4 에서 68 상한이 남긴 여백이 **249px(폰 화면의 30%)** 였고, 1안이 "공짜로 들어간다"는
+ * 말의 실체가 그 자리를 탭이 채운다는 뜻이다.
+ *
+ * ⚠️ **grow 로 세로를 겨루지 마라 — 목업에서 세 번 틀렸다.**
+ *    ① 스페이서에 `flex:1` → 경기장과 남는 세로를 **반씩** 나눠 가져 68 상한인데 68:59 에서 멈춤
+ *    ② 탭에 `flex:1 1 auto` + 보드에도 `flex:1` → 경기장 아래 **29px 죽은 띠**
+ *    ③ 탭에 `flex:99` → 이번엔 경기장이 min-height 까지 **125px 로 눌림**
+ *    결론 = 보드는 **자기 크기만** 갖고(`flex:0 1 auto`) 남는 세로는 **탭이 전부** 받는다.
+ *
+ * ⚠️ 데스크탑도 같은 한 줄 배치다 — `@container teamsheet` 2컬럼 규칙을 이 레이아웃에서는
+ *    끈다. 폭 넓은 화면에서 보드 옆에 레일을 세우려면 탭 자체를 안 쓰는 게 맞고, 그 분기는
+ *    이 파일이 아니라 `DeckPage` 가 `layout` 으로 고른다(조정 포인트).
+ */
+.sheet[data-layout="tabs"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* ⚠️ `height:100%` 로 쓰면 안 된다 — `main` 의 내용 높이(형제인 안내·CTA 포함)로 풀려서
+     아래로 삐져나간다. 남는 세로를 **받는다**(flex)가 맞다. `Layout fill` 이 그 전제다. */
+  flex: 1 1 auto;
+}
+
+.wrap[data-layout="tabs"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* 보드는 자기 크기만 — 남는 세로를 탭과 다투지 않는다(위 ①②③). */
+.wrap[data-layout="tabs"] .boardCol {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.deckTabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-top: 10px;
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+}
+
+/* 책갈피 = 아래가 트인 탭. 선택된 탭이 패널과 이어져 보이도록 아래 테두리를 지운다. */
+.deckTab {
+  display: flex;
+  align-items: center;
+  /* 폰 탭 타깃 하한 44px — 이 화면이 이미 지키는 규칙이다(`deck-teamsheet` R3b C 가 스텝·칩·역할을
+     같은 자로 잰다). 탭이 팀 세부 전술의 **접힘 자체**가 되면서 구 `team-tune-toggle` 의 자리를
+     물려받았으므로 하한도 같이 물려받는다. 처음 34px 로 그렸다가 그 계약에 걸렸다. */
+  min-height: 44px;
+  gap: 5px;
+  padding: 7px 10px 6px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 3순위(세부 전술)는 라벨을 한 단계 흐리게 — "있지만 먼저 볼 것은 아니다"(hero 확정 ⑤). */
+.deckTab[data-rank="3"] {
+  opacity: 0.72;
+}
+
+.deckTab[data-on="1"] {
+  border-color: var(--line, rgba(255, 255, 255, 0.16));
+  background: var(--panel, rgba(255, 255, 255, 0.06));
+  color: var(--text, #fff);
+  opacity: 1;
+}
+
+.deckTabCount {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 패널이 남는 세로를 **전부** 받는다. `min-height:0` 이 없으면 안쪽이 넘칠 때 부모를 늘린다. */
+.wrap[data-layout="tabs"] .tabPanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.tabPanel[hidden] {
+  display: none;
+}
+
+/* [후보] 탭 안의 벤치 자리 — 벤치 줄은 TacticsBoard 가 포털로 넣는다(그리는 코드는 하나). */
+.benchHost {
+  min-width: 0;
+}
+
+/* 프롬프트가 남는 세로를 먹는다 — "펼쳐져 있다"는 것이 1안의 존재 이유다(hero 확정 ⑤). */
+.wrap[data-layout="tabs"] .tabPanel [data-rail-body] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 2컬럼(컨테이너 쿼리)은 이 레이아웃에서 끈다 — 한 줄 배치가 탭의 전제다.
+   ⚠️ **오늘은 발화하지 않는다(백스톱이다).** 덱 화면의 `container-type` 은 `@media (min-width:1024px)`
+   안에만 있고 탭은 **≤1023 에서만** 서므로(`use-deck-layout.ts`) 두 조건이 겹치지 않는다.
+   남겨 두는 이유는 그 전제가 깨졌을 때(누가 컨테이너를 아래로 내릴 때) 탭이 조용히 2컬럼 그리드로
+   갈라지는 것을 막기 위해서다 — 그 이동 자체는 `apps/web/CLAUDE.md` 가 금지하고 있다(시트 백드롭). */
+@container teamsheet (min-width: 640px) {
+  .wrap[data-layout="tabs"] {
+    display: flex;
+    grid-template-columns: none;
+  }
+}
+
+/* [후보] 탭의 액션 줄 — 하단 바에서 옮겨온 [보유 선수]·[초기화]. */
+.tabActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
