@@ -5,8 +5,8 @@ import react from "@vitejs/plugin-react";
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  // GitHub Pages 는 `https://<user>.github.io/<repo>/` 서브패스로 서빙한다(#444). 라이브 배포
-  // (CF Pages·데모)는 루트라 기본값 "/" — 즉 이 변수를 안 주면 지금까지와 완전히 같다.
+  // 스태틱 산출물을 서브패스(`https://host/하위경로/`)로 서빙하는 곳을 위한 탈출구(#444).
+  // 라이브 배포(CF Pages·데모)는 루트라 기본값 "/" — 즉 이 변수를 안 주면 지금까지와 완전히 같다.
   base: process.env.VITE_BASE_PATH || "/",
   define: {
     // 스태틱 모드 게이트(#444). **리터럴로 꽂아야** 목 백엔드 `import()` 가 죽은 가지가 되어

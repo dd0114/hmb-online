@@ -1543,8 +1543,15 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
 
 ## 스태틱 데모 모드 — 백엔드 0으로 도는 같은 앱 (#444)
 
-제출 요건 1(GitHub Pages 에서 바로 플레이 + 목데이터)의 구현체. `src/static/**` 가 **브라우저 안의
+제출 요건 1(클론해서 바로 플레이 + 목데이터)의 구현체. `src/static/**` 가 **브라우저 안의
 목 백엔드**이고, 화면·훅·뷰어는 **한 줄도 바뀌지 않았다**.
+
+⚠️ **호스팅 링크는 산출물이 아니다**(hero 결정 2026-08-05, #444). 초안은 GitHub Pages 배포까지
+포함했는데, Pages 는 ①Free 개인 계정에서 **public 리포에서만** 게시되고 ②게시하면 사이트는
+리포가 private 이어도 **인터넷에 공개**된다 — 즉 링크를 켜는 것이 곧 소스·에셋 공개라 요건 3 과
+같은 게이트가 된다. 링크가 필수 요건이 아니므로 **워크플로를 제거**하고 전달 경로를
+`npm run play`(로컬) + `build:static`(이식 가능한 `dist/`)로 좁혔다. `VITE_BASE_PATH` 서브패스
+지원은 남아 있어 나중에 어느 정적 호스팅에든 그대로 올릴 수 있다.
 
 - **주입 지점은 `apiFetch` 한 곳**(`api/client.ts`). `#129` 의 `apiBase()` 와 같은 규율 —
   호출부는 계속 `"/api/..."` 를 넘기고, 스태틱 모드면 네트워크 대신 `static/router.ts` 로 간다.
@@ -1576,9 +1583,9 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
 ### 커맨드
 
 ```bash
-npm run play          # 백엔드 0 (5180)          · = Pages 빌드와 같은 경로
+npm run play          # 백엔드 0 (5180)          · = build:static 산출물과 같은 코드 경로
 npm run play:ai       # + 로컬 AI 브리지(8801 — 8790대는 엔진 러너가 쓴다)
-npm run build:static  # HMB_BASE_PATH=/repo/ 로 서브패스 지정, 404.html·.nojekyll 동봉
+npm run build:static  # → dist/ (이식용). 서브패스면 HMB_BASE_PATH=/하위경로/, 404.html 동봉
 ```
 
 계약 = `src/static/router.test.ts`(**경기 1판 완주**를 브라우저 없이 박제 — 실엔진을 돌린다) +
