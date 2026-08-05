@@ -74,7 +74,7 @@ public class OnboardingService {
      */
     public Optional<CatalogPlayer> starterGrant(String userId) {
         return jdbcClient.sql("""
-                        SELECT p.id, p.name, p.position, p.grade, p.attributes_json, p.active,
+                        SELECT p.id, p.name, p.short_name, p.position, p.grade, p.attributes_json, p.active,
                                COALESCE(up.count, 0) AS owned_count
                         FROM starter_grants g
                         JOIN players p ON p.id = g.player_id
@@ -85,6 +85,7 @@ public class OnboardingService {
                 .query((rs, rowNum) -> new CatalogPlayer(
                         rs.getString("id"),
                         rs.getString("name"),
+                        rs.getString("short_name"),
                         rs.getString("position"),
                         rs.getString("grade"),
                         parseAttributes(rs.getString("attributes_json")),

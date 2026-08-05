@@ -37,7 +37,7 @@ public class CatalogController {
     @GetMapping("/api/players")
     public List<CatalogPlayer> players(@RequestAttribute("userId") String userId) {
         return jdbcClient.sql("""
-                        SELECT p.id, p.name, p.position, p.grade, p.attributes_json, p.active,
+                        SELECT p.id, p.name, p.short_name, p.position, p.grade, p.attributes_json, p.active,
                                COALESCE(up.count, 0) AS owned_count
                         FROM players p
                         LEFT JOIN user_players up ON up.player_id = p.id AND up.user_id = ?
@@ -48,6 +48,7 @@ public class CatalogController {
                 .query((rs, rowNum) -> new CatalogPlayer(
                         rs.getString("id"),
                         rs.getString("name"),
+                        rs.getString("short_name"),
                         rs.getString("position"),
                         rs.getString("grade"),
                         parseAttributes(rs.getString("attributes_json")),

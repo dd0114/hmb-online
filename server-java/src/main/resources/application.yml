@@ -85,13 +85,20 @@ hmb:
     # → **v2.6(현행 소비본, #406 요구 6)** = v2.5 와 `attributes`·`position`·`grade`·`personality`·
     #    `active` 가 **전부 동일**(182행, 신규 채번 0)이고 바뀐 것은 `name` 172건 한글화 + `shortName`
     #    신설뿐이다. 즉 성장 스냅샷(§2.7)·밴드 재계산과 **직교**한다 — 이름만 바뀐다.
-    #    ⚠️ `shortName` 은 서버가 아직 임포트하지 않는다(#411 스위치 소관) → web 은 풀네임 폴백.
-    players-file: ../data/players/players.v2.6.json
-    # economy 는 **v3**(#209) — v2 그대로 + starterTop(가입 최상위 후보) 블록. 값은 #212 리스케일까지
-    # 포함해 v2 와 동일하고(생성기 한 소스), 추가된 것은 그 블록 하나뿐이다.
+    # → **v2.7(현행 소비본, #450 W1)** = v2.6 위의 **표시명 + `active` 재편 레이어**. 182행 그대로이고
+    #    (신규 채번 0 · id 재사용) 바뀐 것은 ①활성 62종의 표시명 가상화 ②`active` 62 활성 / 120 은퇴다.
+    #    은퇴는 **행 삭제가 아니라 플래그**(시드에 prune 이 없고 참조가 남아 있다) — 보유분은 계속 보인다.
+    #    ⚠️ `shortName` 은 **이 웨이브(#450 W2)부터 서버가 임포트한다**(`players.short_name`, V41).
+    #       구 발행물(v2.5 이하)엔 그 필드가 없어 NULL 로 들어오고, web 은 풀네임으로 폴백한다.
+    players-file: ../data/players/players.v2.7.json
+    # economy 는 **v4**(#450 W1) — v3 를 승계하고 **스타터 두 블록만** 바뀌었다(`starterPack` 2슬롯 재매핑
+    # = 은퇴 유닛 제거 · `starterTop.pool` 5종 → 활성 LEGEND 10종). #251(league.gemReward)·
+    # #368(league.dailyReward)·#408(mission.reward) 블록은 v3 에서 **그대로 승계**된다 —
+    # 그 승계가 끊기면 세 기능이 조용히 기본값으로 되돌아간다(#453). 계약 = PlayerCatalogV27SeedTest.
     # ⚠️ 이 경로는 Dockerfile 의 HMB_DATA_ECONOMYFILE 과 **둘 다** 올려야 한다.
-    economy-file: ../data/players/economy.v3.json
-    bots-file:    ../data/players/bots.v3.json
+    economy-file: ../data/players/economy.v4.json
+    # bots 는 **v4**(#450 W1) — 은퇴 유닛을 참조하던 8슬롯 재매핑.
+    bots-file:    ../data/players/bots.v4.json
     league-file:  ../data/players/league.v2.json       # 리그 클럽명·페르소나·보상표 + #252 디비전 사다리
   auth:
     session-ttl-hours: 720

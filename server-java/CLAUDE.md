@@ -24,6 +24,12 @@
   활성 덱이 있으면 절대 덮어쓰지 않는다). 완료 플래그 SoT = `users.tutorial_done`(**V17**, 기존 유저는 1로 백필).
 - ⚠️ economy 파일 경로는 `application.yml` **과** `Dockerfile`(HMB_DATA_ECONOMYFILE) 두 곳에 있다 —
   버전을 올릴 땐 둘 다. 한쪽만 올리면 배포에서 조용히 구파일이 로드된다(starterTop 없으면 기본팩만 지급).
+  - 🟢 **이제 계약이 막는다**(#450 W2): `DataVersionParityTest` 가 두 파일의 텍스트를 읽어 4종
+    (`players`·`economy`·`bots`·`league`)을 **파일명 단위로 대조**하고, 한쪽만 올리면 red 다.
+    "둘 다 구버전에 머무는 것"은 대조로는 안 잡히므로 **소비 중인 파일명을 상수로 못 박는다**
+    (`consumedVersionsAreTheOnesCoveredBySeedTests`) — 다음 스위치는 대응 SeedTest 추가 + 그 상수
+    갱신을 함께 해야 통과한다. Spring 프로퍼티로 재면 **yml 쪽만** 보이므로(Dockerfile 은 테스트
+    JVM 에 없다) 관측 지점은 두 파일 텍스트여야 한다.
 - **무배포 운영(#209 B안)**: `EconomyService` 는 생성자 1회 로드가 아니라 **리로드 가능**하다
   (`volatile Snapshot`). 발행물은 이미지에 구워져 불변이므로, 운영 변경은 **override 파일**
   (`hmb.data.economy-override-file`, 기본 = `hmb.db.path` 의 디렉토리 = 도커 영속 볼륨)에 쓰고 그걸
@@ -35,6 +41,17 @@
   - 리로드는 **파싱만이 아니라 의미도** 본다(카탈로그 실재·기본팩 겹침·count) — 손으로 고친 파일을
     그대로 실으면 이후 모든 가입이 FK 로 죽는다(독립검증 BL-2). 그래도 새는 경우를 대비해 지급
     경로가 카탈로그에 없는 id 를 건너뛴다(= 최상위 누락 ≪ 서비스 중단).
+- **`short_name` (#411, V41)** — 카탈로그의 **표시용 짧은 이름**. 밀집 UI(덱 행·전술보드 슬롯·경기
+  토큰·로그줄)가 한글 풀네임을 못 담아서 data 가 발행물 필드(`shortName`)로 내고, 서버는 그것을
+  풀네임과 **같은 채널**(카탈로그 응답)로 흘린다. **NULL 이 정상값**이다 — ①구 발행물(v2.5 이하)엔
+  필드가 없고 ②`admin_locked=1` 행은 시드 upsert 를 안 받는다. 폴백("없으면 풀네임")은 **web 이
+  소유**하고 서버는 대신 채우지 않는다(채우면 클라가 유무를 구분 못 하고 규칙이 두 벌이 된다).
+  - ⚠️ **알려진 갭(W2 밖)**: `AdminCatalogService` 는 이 필드를 다루지 않는다 — PATCH 로 이름을 바꿔도
+    `short_name` 은 옛값 그대로이고(스테일), 어드민이 만든 유닛은 NULL 이며, `export()` 가 이 키를
+    빼므로 **export → 다음 시드 승격 왕복에서 소실**된다. 손대려면 `UnitRow`·감사 diff·멱등 비교까지
+    같이 움직여야 해서 별도 웨이브다.
+  - ⚠️ `openapi.yaml` 의 `CatalogPlayer` 스키마엔 아직 없다(`docs/**` 는 이 모듈 밖) — `active` 와 같은
+    additive·비필수로 편입 요청 필요.
 - ⚠️ **무배포로 되는 것과 안 되는 것**(과장 금지): 되는 것 = `economy.starterTop`(스타터 최상위 후보).
   **여전히 배포가 필요** = 선수 스탯·등급·신규 유닛(`players.v2.1.json` → players 테이블 부팅 임포트),
   그리고 gacha 확률·rewards 등 나머지 economy 블록(파일에는 있으나 **API 가 없다** — 볼륨

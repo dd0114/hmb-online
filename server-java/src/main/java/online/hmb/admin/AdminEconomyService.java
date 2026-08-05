@@ -28,7 +28,7 @@ import org.springframework.stereotype.Service;
  * economy 무배포 운영 (#209 B안) — <b>재배포 없이</b> 스타터 최상위 후보를 갈아끼우고 리로드한다.
  *
  * <p><b>왜 "리로드"만으로는 안 되는가</b>(이 설계의 핵심): 발행물
- * {@code data/players/economy.v3.json} 은 {@code Dockerfile} 의 {@code COPY} 로 <b>이미지에 구워져</b>
+ * {@code data/players/economy.v4.json} 은 {@code Dockerfile} 의 {@code COPY} 로 <b>이미지에 구워져</b>
  * 있다. 컨테이너 안에서 그 파일은 바뀌지 않으므로, 다시 읽어봐야 같은 바이트다 — 리로드 엔드포인트만
  * 붙이면 "무배포 운영"이 되는 게 아니라 <b>아무 것도 안 하는 버튼</b>이 된다.
  *

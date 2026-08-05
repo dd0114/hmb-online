@@ -127,11 +127,15 @@ public class PlayerCatalogService implements ApplicationRunner {
                 // 한다(어드민 API 로 확정 → export → data 시드 승격 → 재부팅에서 동일 상태). 필드가 없는
                 // 구파일(v2.1 이하)은 1(활성) = 무회귀.
                 int active = p.path("active").isMissingNode() ? 1 : (p.path("active").asBoolean(true) ? 1 : 0);
+                // #411 (V41): 표시용 짧은 이름. **구 발행물(v2.5 이하)엔 없는 필드**라 NULL 이 정상값이고,
+                // 소비 쪽 계약은 "없으면 풀네임 폴백"이다(web player-stats-view.ts). 빈 문자열은 NULL 로
+                // 접는다 — 폴백은 "값이 없다"에서만 도는데, ""는 값이 있는 것처럼 통과해 이름이 사라진다.
+                String shortName = blankToNull(p.path("shortName").asText(null));
 
                 jdbcClient.sql("""
                                 INSERT INTO players(id, name, position, grade, attributes_json, data_version,
-                                                    personality, active)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                                    personality, active, short_name)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                 ON CONFLICT(id) DO UPDATE SET
                                   name = excluded.name,
                                   position = excluded.position,
@@ -139,10 +143,12 @@ public class PlayerCatalogService implements ApplicationRunner {
                                   attributes_json = excluded.attributes_json,
                                   data_version = excluded.data_version,
                                   personality = excluded.personality,
-                                  active = excluded.active
+                                  active = excluded.active,
+                                  short_name = excluded.short_name
                                 WHERE admin_locked = 0
                                 """)
-                        .params(id, name, position, grade, attributesJson, version, personality, active)
+                        .params(id, name, position, grade, attributesJson, version, personality, active,
+                                shortName)
                         .update();
                 count++;
             }
@@ -165,6 +171,11 @@ public class PlayerCatalogService implements ApplicationRunner {
         } catch (IOException | RuntimeException e) {
             log.warn("Failed to read {} from {}: {}", metaKey, file.getAbsolutePath(), e.toString());
         }
+    }
+
+    /** 빈 문자열/공백은 <b>값 없음</b>(NULL)으로 접는다 — 폴백이 도는 조건을 하나로 유지한다. */
+    private static String blankToNull(String raw) {
+        return raw == null || raw.isBlank() ? null : raw.trim();
     }
 
     private static final Set<String> VALID_PERSONALITIES = Set.of("FIERY", "CALM", "GLASS", "AMBITIOUS");

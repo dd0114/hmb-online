@@ -1,0 +1,17 @@
+-- #411 / #450 W2 — 카탈로그에 **표시용 짧은 이름**(`shortName`)을 싣는다.
+--
+-- 왜 컬럼인가: 밀집 UI(덱 행·전술보드 슬롯·경기 토큰·로그줄)는 한글 풀네임(최대 12자)이 안 들어간다.
+-- data 도메인이 짧은 이름을 **발행물 필드**로 내기로 했고(`data/CLAUDE.md` §"shortName 을 왜 시드에
+-- 넣었나" — ⓐ 채택), 그 이유가 결정적이다: 풀네임과 **같은 채널**(서버 카탈로그)로 흘러야
+-- "짧은 건 한글인데 풀네임은 영어"인 혼재 상태가 안 생긴다. 그래서 파생·규칙이 아니라 열이다.
+--
+-- **NULL 이 정상값이다.** 세 경로에서 비어 있을 수 있다:
+--   ① 기존 행 — 이 마이그레이션은 백필하지 않는다. 다음 부팅의 시드 임포트가 v2.7 을 읽어 채운다
+--      (`PlayerCatalogService.upsertPlayers` 가 `short_name = excluded.short_name`).
+--   ② 구 발행물 롤백 — v2.5 이하에는 이 필드 자체가 없어 NULL 로 들어온다(회귀 가드 SeedTest 가
+--      바로 그 경로를 태운다).
+--   ③ `admin_locked = 1` 행 — 시드 upsert 가 건너뛰므로 어드민이 잠근 뒤에는 갱신되지 않고,
+--      어드민 API(`AdminCatalogService`)는 아직 이 필드를 다루지 않는다(알려진 갭, W2 밖).
+-- 소비 쪽 계약은 "없으면 풀네임으로 폴백"이다(web `player-stats-view.ts`). 그래서 NOT NULL 도
+-- DEFAULT 도 걸지 않는다 — 빈 문자열을 기본값으로 주면 폴백이 "이름 없음"으로 무너진다.
+ALTER TABLE players ADD COLUMN short_name TEXT;
