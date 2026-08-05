@@ -66,15 +66,15 @@
   flex-direction: column;
 }
 
-/* 한 행 = [본체 버튼(드래그·탭)] + [투입] (#442 R1). 버튼 중첩은 유효하지 않은 DOM 이라 형제로 둔다.
-   구분선은 행이 갖는다 — 본체 버튼에 두면 [투입] 옆으로 선이 끊긴다. */
+/* 한 행 = [본체 버튼(드래그·탭)] + [엔트리] (#442 R1). 버튼 중첩은 유효하지 않은 DOM 이라 형제로 둔다.
+   구분선은 행이 갖는다 — 본체 버튼에 두면 [엔트리] 옆으로 선이 끊긴다. */
 .row {
   display: flex;
   align-items: stretch;
   border-bottom: 1px solid var(--border);
 }
 
-/* [투입] — 이 선수를 넣을 자리를 보드에서 직접 고른다. 44px 최소 탭 타깃(#73 P1). */
+/* [엔트리] — 이 선수를 넣을 자리를 보드에서 직접 고른다. 44px 최소 탭 타깃(#73 P1). */
 .assign {
   flex: none;
   min-width: 52px;
@@ -88,6 +88,20 @@
   font-weight: 700;
   white-space: nowrap;
   touch-action: manipulation;
+}
+
+/* 이미 명단에 있는 선수 (#442 R3-B) — 자리는 그대로 두고 **누를 수 없음**을 말한다.
+   ⚠️ 신호를 **두 개** 준다: 강조색(accent) 제거 + 낮은 불투명도. 하나만 쓰면 그 축을 못 보는
+   화면·사람에게 활성과 구분되지 않는다(#439 `.tokenDragging` 이 홀드 링을 눌러 "DOM 은 초록인데
+   눈에는 안 보이던" 전례 — 판정은 캡처로 한다, `apps/web/CLAUDE.md`).
+   ⚠️ `display:none`·행 제거가 아니다: 행이 사라지면 목록의 선수 수가 화면마다 달라져 스캔이
+   어렵고, "보유 전원에게 손잡이가 있다"는 대조군 계약의 취지도 깨진다. */
+.assignLocked {
+  composes: assign;
+  color: var(--text-muted);
+  opacity: 0.4;
+  font-weight: 600;
+  cursor: default;
 }
 
 .item,

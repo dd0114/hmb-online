@@ -5,13 +5,17 @@ import { mkdirSync } from "node:fs";
 const SMOKE_DIR = new URL("../.smoke/", import.meta.url).pathname;
 
 /**
- * #442 R1 — **폰 선수 투입 동선**(목록 탭 → [투입] → "교체할 선수를 선택해주세요" → 슬롯 탭).
+ * #442 R1 — **폰 선수 엔트리 동선**(목록 탭 → [엔트리] → "명단에서 바꿀 선수를 선택하세요" → 슬롯 탭).
+ *
+ * ⚠️ 용어는 **R3-A** 에서 바뀌었다(hero: *"엔트리나, 명단으로 사용하자. 투입이랑 교체 대신 그
+ * 단어가 맞는거 같아."*) — 라벨·안내 문구는 아래 ⑥ 이 리터럴로 박는다.
+ * **R3-B**: 이미 명단에 있는 선수는 그 버튼이 **잠긴다**(⑦⑧).
  *
  * ── 왜 이 동선이 필요한가 (구조적 부재, #439 1R 독립검증이 "정당한 이월"로 판정한 항목) ──────
  * 폰에서 선수 목록은 **아래에서 올라오는 시트가 보드를 완전히 덮는다**(#244 프롬프트-우선 전환의
  * 귀결). 그래서 `PlayerPicker` 의 `useDraggable`(리스트 → 슬롯 드래그)은 **드롭 대상이 화면에
  * 없어 원리적으로 도달 불가능한 죽은 코드**다. 목록에서 고른 선수가 갈 수 있는 자리는
- * `sheetSlot ?? firstEmptySlot` 하나뿐이었고, 스쿼드가 꽉 찬 상태(=경기전 교체의 정의)에서는
+ * `sheetSlot ?? firstEmptySlot` 하나뿐이었고, 스쿼드가 꽉 찬 상태(=경기전 명단 교체의 정의)에서는
  * **막다른 안내문**이 전부였다.
  *
  * ⛔ **드래그를 대체하는 것이 아니다** — 데스크탑 포인터 드래그 경로는 그대로 살아 있고
@@ -130,23 +134,23 @@ async function boardMap(page: Page): Promise<Record<string, string | null>> {
   );
 }
 
-/** 지금 "투입 대상"으로 활성화된 슬롯 목록. */
+/** 지금 "엔트리 대상"으로 활성화된 슬롯 목록. */
 async function assignTargets(page: Page): Promise<string[]> {
   return page.evaluate(() =>
     [...document.querySelectorAll('[data-assign-target="true"]')].map((e) => e.getAttribute("data-testid")!),
   );
 }
 
-/** 목록 시트를 열고 그 선수의 [투입] 을 실터치로 누른다 → 안내 상태 진입. */
+/** 목록 시트를 열고 그 선수의 [엔트리] 를 실터치로 누른다 → 안내 상태 진입. */
 async function startAssign(page: Page, playerId: string) {
   await page.getByTestId("pool-sheet-open").tap();
   await expect(page.getByTestId("player-pool")).toBeVisible();
   await page.getByTestId(`pool-assign-${playerId}`).tap();
-  await expect(page.getByTestId("pool-sheet"), "투입을 누르면 시트가 닫혀 보드가 보여야 한다").toHaveCount(0);
+  await expect(page.getByTestId("pool-sheet"), "엔트리를 누르면 시트가 닫혀 보드가 보여야 한다").toHaveCount(0);
 }
 
 // ── ① 안내 상태 진입 ─────────────────────────────────────────────────────────
-test("① 경기전 — [투입] 을 누르면 '교체할 선수를 선택해주세요' + 선발·후보 슬롯이 활성화된다", async ({ page }) => {
+test("① 경기전 — [엔트리] 를 누르면 '명단에서 바꿀 선수를 선택하세요' + 선발·후보 슬롯이 활성화된다", async ({ page }) => {
   mkdirSync(SMOKE_DIR, { recursive: true });
   await openBriefing(page);
   await page.screenshot({ path: `${SMOKE_DIR}p442-idle-390.png` }); // ← 대조군(대기 아님)
@@ -154,7 +158,7 @@ test("① 경기전 — [투입] 을 누르면 '교체할 선수를 선택해주
 
   const bar = page.getByTestId("assign-bar");
   await expect(bar).toBeVisible();
-  await expect(bar, "hero 설계 문구 그대로").toContainText("교체할 선수를 선택해주세요");
+  await expect(bar, "R3-A 확정 문구 그대로").toContainText("명단에서 바꿀 선수를 선택하세요");
   await expect(bar, "누구를 넣는 중인지 말해야 한다").toContainText("공격셋");
 
   const targets = await assignTargets(page);
@@ -173,24 +177,24 @@ test("① 경기전 — [투입] 을 누르면 '교체할 선수를 선택해주
   expect(await assignTargets(page)).toEqual([]);
 });
 
-// ── ② 슬롯 탭 = 교체 ────────────────────────────────────────────────────────
-test("② 선발 슬롯을 탭하면 그 자리 선수와 교체된다(실터치)", async ({ page }) => {
+// ── ② 슬롯 탭 = 명단 맞바꾸기 ────────────────────────────────────────────────
+test("② 선발 슬롯을 탭하면 그 자리 선수와 맞바뀐다(실터치)", async ({ page }) => {
   await openBriefing(page);
   await startAssign(page, "FW3");
 
-  // 슬롯 10 = ELEVEN 의 마지막 = FW2 가 앉아 있는 자리(교체 대상).
+  // 슬롯 10 = ELEVEN 의 마지막 = FW2 가 앉아 있는 자리(맞바꿀 대상).
   await page.getByTestId("board-slot-starter-10").tap();
 
   await expect(
     page.getByTestId("board-slot-starter-10").getByTestId("token-FW3"),
-    "투입한 선수가 그 자리에 들어가야 한다",
+    "엔트리한 선수가 그 자리에 들어가야 한다",
   ).toBeVisible();
   await expect(
     page.getByTestId("board-slot-bench-0").getByTestId("token-FW2"),
-    "밀려난 선발은 투입 선수가 있던 벤치 자리로 내려가야 한다(스쿼드에서 사라지지 않는다)",
+    "밀려난 선발은 올라온 선수가 있던 벤치 자리로 내려가야 한다(스쿼드에서 사라지지 않는다)",
   ).toBeVisible();
-  await expect(page.getByTestId("starter-count"), "교체는 선발 수를 바꾸지 않는다").toHaveText(/11\/11/);
-  await expect(page.getByTestId("assign-bar"), "교체가 끝나면 안내 상태도 끝난다").toHaveCount(0);
+  await expect(page.getByTestId("starter-count"), "맞바꾸기는 선발 수를 바꾸지 않는다").toHaveText(/11\/11/);
+  await expect(page.getByTestId("assign-bar"), "자리가 정해지면 안내 상태도 끝난다").toHaveCount(0);
   expect(await assignTargets(page)).toEqual([]);
 });
 
@@ -207,7 +211,7 @@ test("③ 취소 — 안내 상태에서 빠져나오면 덱은 한 자리도 �
   expect(await assignTargets(page)).toEqual([]);
   expect(await boardMap(page), "취소는 아무것도 바꾸지 않는다").toEqual(before);
 
-  // 취소 뒤에 슬롯을 눌러도 **교체가 일어나지 않는다**(상태가 진짜로 끝났나).
+  // 취소 뒤에 슬롯을 눌러도 **자리가 바뀌지 않는다**(상태가 진짜로 끝났나).
   await page.getByTestId("board-slot-starter-10").tap();
   expect(await boardMap(page)).toEqual(before);
 });
@@ -222,19 +226,19 @@ test("④ 경기전 — 이 동선으로도 벤치 밖 선수는 들어올 수 �
     [...document.querySelectorAll('[data-testid^="pool-assign-"]')].map((e) =>
       e.getAttribute("data-testid")!.replace("pool-assign-", "")),
   );
-  console.log(`[#442-④] 경기전 [투입] 제공 선수 = ${JSON.stringify(offered)} (스쿼드 밖 ${OUTSIDE.length}명)`);
+  console.log(`[#442-④] 경기전 [엔트리] 제공 선수 = ${JSON.stringify(offered)} (스쿼드 밖 ${OUTSIDE.length}명)`);
   // 후보 산출을 두 번 적으면(=poolScope 를 우회하면) 여기가 벌어진다.
   expect([...offered].sort()).toEqual([...BENCH].sort());
   for (const id of OUTSIDE) {
-    await expect(page.getByTestId(`pool-assign-${id}`), `스쿼드 밖 ${id} 에 투입 손잡이가 있다`).toHaveCount(0);
+    await expect(page.getByTestId(`pool-assign-${id}`), `스쿼드 밖 ${id} 에 엔트리 손잡이가 있다`).toHaveCount(0);
   }
 
   await page.getByTestId("pool-sheet-close").tap();
   await expect(page.getByTestId(`token-FW4`), "스쿼드 밖 선수는 보드에 없다").toHaveCount(0);
 });
 
-// ── ⑤ 빈 슬롯 = 교체가 아니라 배치 ───────────────────────────────────────────
-test("⑤ 덱셋팅 — 빈 슬롯을 탭하면 교체가 아니라 **배치**다(아무도 밀려나지 않는다)", async ({ page }) => {
+// ── ⑤ 빈 슬롯 = 맞바꾸기가 아니라 배치 ──────────────────────────────────────
+test("⑤ 덱셋팅 — 빈 슬롯을 탭하면 맞바꾸기가 아니라 **배치**다(아무도 밀려나지 않는다)", async ({ page }) => {
   await openDeck(page);
   // 빈 자리는 **제품 경로로** 만든다(선발 11 저장 가능 상태에서 출발 → 레일에서 제거).
   await page.getByTestId("token-MF4").tap();
@@ -252,5 +256,84 @@ test("⑤ 덱셋팅 — 빈 슬롯을 탭하면 교체가 아니라 **배치**�
   const after = await boardMap(page);
   const moved = Object.keys(before).filter((k) => before[k] !== after[k]);
   console.log(`[#442-⑤] 빈 슬롯 배치로 바뀐 자리 = ${JSON.stringify(moved)}`);
-  expect(moved, "빈 자리 배치는 그 한 칸만 바꾼다 — 교체가 아니다").toEqual(["board-slot-starter-8"]);
+  expect(moved, "빈 자리 배치는 그 한 칸만 바꾼다 — 맞바꾸기가 아니다").toEqual(["board-slot-starter-8"]);
+});
+
+// ── ⑥ R3-A 용어 — 엔트리 / 명단 ──────────────────────────────────────────────
+/**
+ * hero: *"엔트리나, 명단으로 사용하자. 투입이랑 교체 대신 그 단어가 맞는거 같아."*
+ * ⚠️ **문자열을 리터럴로 박는다** — 앱과 같은 상수를 import 하면 상수를 바꾸는 변이가 통과한다
+ * (`apps/web/CLAUDE.md` "초록으로 거짓말하는 방식" ②).
+ */
+test("⑥ 용어 — 행 버튼은 [엔트리], 안내는 '명단에서 바꿀 선수를 선택하세요'", async ({ page }) => {
+  await openBriefing(page);
+  await page.getByTestId("pool-sheet-open").tap();
+  await expect(page.getByTestId("player-pool")).toBeVisible();
+  await expect(page.getByTestId("pool-assign-FW3")).toHaveText("엔트리");
+
+  await page.getByTestId("pool-assign-FW3").tap();
+  const bar = page.getByTestId("assign-bar");
+  await expect(bar).toContainText("명단에서 바꿀 선수를 선택하세요");
+  // 구 용어가 이 동선 어디에도 남아 있지 않다(배너는 "…선수 엔트리" + 안내 + [취소]).
+  expect(await bar.innerText(), "구 용어 잔재").not.toMatch(/투입|교체할/);
+});
+
+// ── ⑦ R3-B 잠금 — 이미 명단에 있는 선수 ──────────────────────────────────────
+/**
+ * hero: *"투입 가능한 선수들만 옆에 띄우거나 이미 있는 선수는 버튼 비활성화 된 모습으로 보이게하자."*
+ * → **비활성화** 를 택했다(행을 숨기면 목록의 선수 수가 화면마다 달라져 스캔이 어렵다).
+ *
+ * ⚠️ 실화면 캡처를 같이 남긴다 — `disabled` 는 DOM 사실이고 **"눈에 구분되나"는 계약이 원리적으로
+ * 못 잡는다**(#439 `.tokenDragging` 이 홀드 링을 눌렀던 전례).
+ */
+test("⑦ 덱셋팅 — 덱에 있는 선수는 [엔트리] 잠김, 미배치 선수는 열려 있다", async ({ page }) => {
+  mkdirSync(SMOKE_DIR, { recursive: true });
+  await openDeck(page);
+  await page.getByTestId("pool-sheet-open").tap();
+  await expect(page.getByTestId("player-pool")).toBeVisible();
+
+  const locked: string[] = [];
+  for (const id of [...ELEVEN, ...BENCH]) {
+    await expect(page.getByTestId(`pool-assign-${id}`), `${id} 는 이미 덱에 있다`).toBeDisabled();
+    locked.push(id);
+  }
+  for (const id of OUTSIDE) {
+    await expect(page.getByTestId(`pool-assign-${id}`), `${id} 는 덱 밖이다`).toBeEnabled();
+  }
+  console.log(`[#442-⑦] 잠긴 선수 ${locked.length}명 / 열린 선수 ${OUTSIDE.length}명 = ${JSON.stringify(OUTSIDE)}`);
+
+  // 잠긴 버튼을 실제로 탭해도 대기 상태로 들어가지 않는다(라벨만 회색인 것이 아니다).
+  await page.getByTestId(`pool-assign-${ELEVEN[0]}`).tap({ force: true });
+  await expect(page.getByTestId("assign-bar"), "잠긴 손잡이가 동선을 열면 안 된다").toHaveCount(0);
+  await expect(page.getByTestId("pool-sheet"), "시트도 그대로 열려 있다").toHaveCount(1);
+
+  // ★ 눈 판정용 — FW 필터는 잠김(FW1·FW2 선발 · FW3 벤치)과 열림(FW4)이 **한 화면에** 선다.
+  await page.screenshot({ path: `${SMOKE_DIR}p442-r3b-lock-390.png` });
+  await page.getByTestId("picker-filter-FW").tap();
+  await expect(page.getByTestId("pool-assign-FW4")).toBeEnabled();
+  await page.getByTestId("pool-sheet").screenshot({ path: `${SMOKE_DIR}p442-r3b-lock-sheet.png` });
+});
+
+// ── ⑧ 잠금이 R2 동선을 죽이지 않는다 ─────────────────────────────────────────
+/**
+ * ⛔ 경기전 후보는 **전원 벤치 선수**다. 잠금 판정을 "덱에 자리가 있나"로 적으면 여기서 **전부**
+ * 잠겨 hero 가 요구한 경기전 엔트리 동선이 통째로 죽는다. 그래서 "명단"의 뜻이 화면마다 다르고
+ * (덱셋팅 = 덱 전체 / 경기전 = 선발), 그 판정은 `poolScope` 를 아는 `DeckEditor` 한 곳에만 있다.
+ */
+test("⑧ 경기전 — 벤치 선수의 [엔트리] 는 열려 있고 끝까지 동작한다", async ({ page }) => {
+  await openBriefing(page);
+  await page.getByTestId("pool-sheet-open").tap();
+  await expect(page.getByTestId("player-pool")).toBeVisible();
+  for (const id of BENCH) {
+    await expect(
+      page.getByTestId(`pool-assign-${id}`),
+      `${id} 가 잠기면 경기전 엔트리 동선이 통째로 죽는다`,
+    ).toBeEnabled();
+  }
+
+  // 열려 있다는 것이 라벨이 아니라 **동작**임을 끝까지 확인한다.
+  await page.getByTestId("pool-assign-FW3").tap();
+  await expect(page.getByTestId("assign-bar")).toBeVisible();
+  await page.getByTestId("board-slot-starter-10").tap();
+  await expect(page.getByTestId("board-slot-starter-10").getByTestId("token-FW3")).toBeVisible();
 });

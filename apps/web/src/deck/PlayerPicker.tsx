@@ -44,13 +44,21 @@ interface PlayerPickerProps {
    */
   inSheet?: boolean;
   /**
-   * **[투입]** — 이 선수를 넣을 자리를 **보드에서 직접 고르는** 동선의 시작점 (#442 R1).
+   * **[엔트리]** — 이 선수를 넣을 자리를 **보드에서 직접 고르는** 동선의 시작점 (#442 R1).
    *
    * 없으면 버튼 자체가 안 그려진다(시트 밖 리스트·읽기 전용 맥락). 후보 산출은 **호출부가 준
-   * `players` 목록이 전부**다 — 여기서 "누가 투입 가능한가"를 다시 판정하면 `poolScope`(#439 R2)와
-   * 갈리는 두 번째 규칙이 생긴다.
+   * `players` 목록이 전부**다 — 여기서 "누가 엔트리에 들어갈 수 있나"를 다시 판정하면
+   * `poolScope`(#439 R2)와 갈리는 두 번째 규칙이 생긴다.
    */
   onAssign?: (playerId: string) => void;
+  /**
+   * **이미 명단에 있어 [엔트리] 가 잠기는 선수** (#442 R3-B).
+   *
+   * ⚠️ **판정을 여기서 하지 않는 것이 요점이다** — "명단"의 뜻이 화면마다 다르고(덱셋팅 = 덱 전체 /
+   * 경기전 = 선발) 그걸 아는 것은 `poolScope` 를 가진 호출부다. `draft` 를 다시 해석하면 같은
+   * 규칙이 두 곳에 적힌다(#439 major-2). 안 주면 아무도 안 잠긴다.
+   */
+  assignLockedIds?: ReadonlySet<string>;
 }
 
 interface PoolItemProps {
@@ -58,10 +66,12 @@ interface PoolItemProps {
   placed: ReturnType<typeof findPlayerSlot>;
   onPick: (playerId: string) => void;
   onAssign?: (playerId: string) => void;
+  /** 이미 명단에 있다 → [엔트리] 만 잠긴다(행 본문 탭은 그대로). 판정은 호출부 소유. */
+  assignLocked?: boolean;
   condition?: number;
   fit: "best" | "mid" | "low" | null;
   pending: boolean;
-  /** 시트 모드 — 배치된 선수도 선택 가능(자리 교체). */
+  /** 시트 모드 — 배치된 선수도 선택 가능(자리 맞바꾸기). */
   selectable?: boolean;
 }
 
@@ -78,12 +88,15 @@ const FIT_CLASSES: Record<"best" | "mid" | "low", string> = {
  * A player already placed on the board is disabled (no drag, no tap) — no duplicates.
  *
  * ⚠️ **행이 곧 버튼이 아니다 — 행 안에 버튼이 둘이다**(#442 R1). 드래그 소스이자 탭-투-플레이스인
- * 본체 버튼 옆에 **[투입]** 이 앉는다. 버튼을 중첩하면(`<button>` 안 `<button>`) 유효하지 않은
+ * 본체 버튼 옆에 **[엔트리]** 가 앉는다. 버튼을 중첩하면(`<button>` 안 `<button>`) 유효하지 않은
  * DOM 이라 브라우저가 조용히 풀어 버리므로, 두 버튼은 **형제**여야 한다.
- * ⚠️ 드래그 노드(`setNodeRef`)·리스너는 계속 **본체 버튼**에 있다 — 행 컨테이너로 옮기면 [투입]
+ * ⚠️ 드래그 노드(`setNodeRef`)·리스너는 계속 **본체 버튼**에 있다 — 행 컨테이너로 옮기면 [엔트리]
  * 탭이 드래그 활성화 판정에 먹힌다(터치 150ms 홀드가 버튼을 삼킨다).
+ * ⚠️ **두 버튼은 잠기는 조건이 다르다**(#442 R3-B): 본체는 `placed && !selectable`(중복 배치 방지),
+ * [엔트리]는 `assignLocked`(이미 명단에 있음). 하나로 합치지 마라 — 시트에서 본체 탭은 지시
+ * 대상 전환·자리 맞바꾸기라 **계속 열려 있어야** 한다.
  */
-function PoolItem({ player, placed, onPick, onAssign, condition, fit, pending, selectable }: PoolItemProps) {
+function PoolItem({ player, placed, onPick, onAssign, assignLocked, condition, fit, pending, selectable }: PoolItemProps) {
   const overall = Math.round(playerOverall(player.attributes));
   const disabled = Boolean(placed) && !selectable;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -152,12 +165,21 @@ function PoolItem({ player, placed, onPick, onAssign, condition, fit, pending, s
       {onAssign && (
         <button
           type="button"
-          className={styles.assign}
+          className={assignLocked ? styles.assignLocked : styles.assign}
           data-testid={`pool-assign-${player.id}`}
-          aria-label={`${playerNameOf(player, "short")} 투입 — 교체할 선수를 고릅니다`}
+          data-locked={assignLocked ? "true" : "false"}
+          /* 잠긴 이유를 **말해 준다** — 회색 버튼만 두면 왜 안 눌리는지 알 길이 없다.
+             `title` 은 데스크탑 호버, `aria-label` 은 스크린리더 몫이다. */
+          aria-label={
+            assignLocked
+              ? `${playerNameOf(player, "short")} — 이미 명단에 있습니다`
+              : `${playerNameOf(player, "short")} 엔트리 — 명단에서 바꿀 선수를 고릅니다`
+          }
+          title={assignLocked ? "이미 명단에 있습니다" : undefined}
+          disabled={assignLocked}
           onClick={() => onAssign(player.id)}
         >
-          투입
+          엔트리
         </button>
       )}
     </div>
@@ -177,7 +199,7 @@ function fitTier(player: CatalogPlayer, filter: Position | "ALL"): "best" | "mid
  * 보유 선수 리스트 — 포지션 필터 + 추천순(player-ranking) 정렬. 탭하면 배치(탭-투-플레이스),
  * 드래그는 보조. #106 R1: 슬롯을 먼저 탭하면 `autoFilter` 로 그 포지션이 자동 선택된다.
  */
-export function PlayerPicker({ players, draft, onPick, onAssign, conditions, autoFilter, pendingPlayerId, inSheet }: PlayerPickerProps) {
+export function PlayerPicker({ players, draft, onPick, onAssign, assignLockedIds, conditions, autoFilter, pendingPlayerId, inSheet }: PlayerPickerProps) {
   const [filter, setFilter] = useState<Position | "ALL">("ALL");
 
   // 슬롯 탭 → 그 포지션으로 필터 전환(자동). autoFilter 가 바뀔 때만 반영한다.
@@ -221,6 +243,7 @@ export function PlayerPicker({ players, draft, onPick, onAssign, conditions, aut
               placed={findPlayerSlot(draft, p.id)}
               onPick={onPick}
               onAssign={onAssign}
+              assignLocked={assignLockedIds?.has(p.id) ?? false}
               condition={conditions?.[p.id]}
               fit={fitTier(p, filter)}
               pending={pendingPlayerId === p.id}
