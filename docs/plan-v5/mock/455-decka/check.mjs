@@ -22,6 +22,19 @@ const power0 = Number(await page.locator("#teamPower").innerText());
 ok("팀 전력 계산", power0 > 0, String(power0));
 ok("자동 채우기 숨김(빈칸 0)", await page.locator("#btnFill").isHidden());
 
+// ── 정한 값 3개가 처음부터 켜져 있다 (hero 는 고를 것이 없다)
+{
+  const on = await page.evaluate(() => ({
+    q1: document.querySelector('#q1opts .opt[data-v="A"]').dataset.on,
+    q2: document.querySelector('#q2opts .opt[data-v="ㄴ"]').dataset.on,
+    q3: document.querySelector('#q3opts .opt[data-v="60"]').dataset.on,
+    live: [document.getElementById("liveQ1").textContent, document.getElementById("liveQ2").textContent, document.getElementById("liveQ3").textContent].join(" · "),
+  }));
+  ok("A · ㄴ · 68:60 이 기본 선택으로 켜져 있다", on.q1 === "1" && on.q2 === "1" && on.q3 === "1", on.live);
+  const v = await page.evaluate(() => ({ same: document.getElementById("sumVerdict").dataset.same, str: document.getElementById("sumStr").value }));
+  ok("컨펌 화면이 '제안 그대로' 로 뜬다", v.same === "1" && /메뉴=A안 · auto한마디=ㄴ안 · 경기장=68:60/.test(v.str), v.str.slice(0, 60));
+}
+
 await page.screenshot({ path: `${OUT}/mock-01-initial.png` });
 await page.locator("#phone").screenshot({ path: `${OUT}/mock-01-phone.png` });
 
@@ -110,22 +123,27 @@ const st3 = await page.locator("#pitch .slot .tok").count();
 ok("자동 채우기 → 다시 11명", st3 === 11, `${st3}명`);
 ok("채운 뒤 버튼 다시 숨김", await page.locator("#btnFill").isHidden());
 
-// ── auto (Q2 미선택 시 게이트)
-await page.locator("#btnAuto").click();
-await page.waitForTimeout(300);
-const gated = await page.locator("#pane-q2").isVisible();
-ok("Q2 미선택이면 auto 가 질문으로 보냄", gated);
-await page.locator("#tabs button[data-t='q2']").click();
-await page.waitForTimeout(200);
-await page.locator("#pane-q2 .opt[data-v='ㄱ']").click();
-await page.locator("#tabs button[data-t='proto']").click();
-await page.waitForTimeout(200);
+// ── C 안으로 바꾸면 컨펌 화면이 "제안과 다름" 으로 바뀐다
+{
+  const v = await page.evaluate(() => ({ same: document.getElementById("sumVerdict").dataset.same, cls: document.getElementById("s1").className }));
+  ok("다른 안을 고르면 컨펌 화면이 '다름' 으로 바뀐다", v.same === "0" && /chg/.test(v.cls), `same=${v.same} · ${v.cls}`);
+}
+
+// ── auto (기본 ㄴ안 = 쓴 한마디 불가침, 질문 없이 바로 동작)
 const promptsBefore = await page.evaluate(() => document.querySelectorAll('.say[data-empty="0"]').length);
 await page.locator("#btnAuto").click();
 await page.waitForTimeout(400);
 const promptsAfter = await page.evaluate(() => document.querySelectorAll('.say[data-empty="0"]').length);
 const toastTxt = await page.locator("#toast").innerText();
-ok("ㄱ안 auto → 한마디 보존", promptsAfter >= promptsBefore, `${promptsBefore}→${promptsAfter} · ${toastTxt.slice(0, 70)}`);
+ok("auto 가 질문 없이 바로 동작(기본 ㄴ안)", !(await page.locator("#pane-q2").isVisible()) && /전력/.test(toastTxt), toastTxt.slice(0, 70));
+ok("ㄴ안 auto → 쓴 한마디 보존 + 빈 칸만 채움", promptsAfter >= promptsBefore, `${promptsBefore}→${promptsAfter} · ${toastTxt.slice(0, 70)}`);
+{
+  const kept = await page.evaluate(() => {
+    // 앞서 저장한 문장이 사람을 따라 그대로 남아 있는가
+    return [...document.querySelectorAll(".tok .say")].filter((s) => s.dataset.empty === "0").length;
+  });
+  ok("auto 뒤에도 한마디 있는 선수가 남아 있다", kept > 0, `${kept}명`);
+}
 await page.locator("#phone").screenshot({ path: `${OUT}/mock-08-auto.png` });
 
 // ── 비율 슬라이더

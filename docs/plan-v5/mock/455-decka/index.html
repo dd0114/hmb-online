@@ -47,6 +47,8 @@
   .note{background:#151d2b;border:1px solid #26364d;border-left:3px solid var(--info);border-radius:8px;padding:9px 11px;font-size:12.3px;color:#c8d4e2;margin:10px 0}
   .note.warn{background:#241d12;border-color:#4a3a1c;border-left-color:var(--warn);color:#e8dbc0}
 
+  .subh{font-size:12.4px;font-weight:700;color:var(--text-muted);margin:2px 0 7px}
+  .pin{font-style:normal;font-size:10.5px;font-weight:800;color:#0f1115;background:#7fd6a0;border-radius:5px;padding:1px 6px;margin-left:auto}
   .opts{display:grid;gap:8px;margin-bottom:10px}
   @media(min-width:760px){.opts{grid-template-columns:repeat(3,1fr)}}
   .opt{display:block;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer}
@@ -209,6 +211,10 @@
   .sumRow .lb{width:150px;font-size:12.3px;color:var(--text-muted)}
   .sumRow .vl{font-size:12.8px;font-weight:800;color:#dbe7ff}
   .sumRow .vl.none{color:#6e7686;font-weight:600}
+  .sumRow .vl.chg{color:#ffd98a}
+  .sumRow .vl.chg::after{content:" (제안과 다름)";font-size:11px;font-weight:700;color:#c8a86a}
+  .verdict{font-size:13.2px;font-weight:800;color:#bfe3c8;background:#132218;border:1px solid #244030;border-radius:10px;padding:10px 12px;margin-bottom:11px}
+  .verdict[data-same="0"]{color:#ffd98a;background:#221c12;border-color:#4a3c22}
   .copy{display:flex;gap:7px;margin-top:11px}
   .copy input{flex:1;background:var(--sunk);border:1px solid var(--border);border-radius:8px;color:#cfd8e4;font:inherit;font-size:12px;padding:8px 10px}
 
@@ -240,23 +246,27 @@
   <h1>덱세팅 화면 개편 — 직접 만져보는 목업 <span style="color:var(--text-muted);font-weight:600;font-size:13px">#455 A-0</span></h1>
   <div class="sub">이 파일은 <b>정적 HTML 한 장</b>입니다(서버·외부 연결 0). 진짜 화면이 아니라 <b>동작을 먼저 확인</b>하려고 만든 것 — 여기서 컨펌해야 A1~A4 개발을 시작합니다.</div>
   <div class="todo">
-    <h3>hero 가 해볼 것 (프로토타입 탭)</h3>
+    <h3>hero 는 <b>만져보고 "OK" 아니면 "다르다"</b> 만 주시면 됩니다 — 고를 것은 없습니다</h3>
     <ol>
       <li><b>선수 꾹 누르기 → 드래그드롭</b> — 0.15초 참으면 잡힙니다(링이 돕니다). 다른 선수 위에 놓으면 <b>자리가 맞바뀝니다</b>.</li>
-      <li><b>선수 한 번 누르기 → 메뉴</b> — 메뉴 4항목이 무엇이어야 하는지가 질문 1번입니다(탭에서 안을 바꿔가며 만져보세요).</li>
+      <li><b>선수 한 번 누르기 → 메뉴</b> — [자리 옮기기] [한마디 쓰기] [선수 정보] [닫기] 네 개(정한 것 ①).</li>
       <li><b>한마디(프롬프트) 입력</b> — 메뉴에서 열어 직접 타이핑해 보세요. 저장하면 선수 왼쪽 위에 초록 점이 붙습니다.</li>
-      <li><b>자동 채우기 / auto</b> — 빈칸을 만들면 경기장 우측 하단에 [자동 채우기]가 나타납니다. 상단 [auto]는 항상 최고 전력으로 다시 짭니다(질문 2번).</li>
-      <li><b>경기장 세로 비율</b> — 옆의 슬라이더로 바꿔가며 "이 정도면 이름이 안 겹친다" 지점을 골라주세요(질문 3번).</li>
+      <li><b>자동 채우기 / auto</b> — 빈칸을 만들면 경기장 우측 하단에 [자동 채우기]가 나타납니다. 상단 [auto]는 최고 전력으로 다시 짜되 <b>써둔 한마디는 건드리지 않습니다</b>(정한 것 ②).</li>
+      <li><b>경기장 세로 비율</b> — <code>68:60</code> 으로 잡아 뒀습니다(정한 것 ③). 옆 슬라이더로 다른 값도 즉시 볼 수 있습니다.</li>
     </ol>
+    <div style="margin-top:8px;font-size:12.6px;color:var(--text-muted)">
+      ①②③ 은 <b style="color:#dbe7ff">이미 정해서 화면에 켜 뒀습니다</b>. 탭에 "왜 그렇게 정했나"와 <b style="color:#dbe7ff">다른 안 만져보기</b> 가 있으니,
+      만져보고 다르게 느껴질 때만 바꿔보시고 그 결과를 알려주세요.
+    </div>
   </div>
 </div></header>
 
 <nav class="tabs"><div class="wrap"><div class="row" id="tabs">
   <button data-t="proto" aria-selected="true">프로토타입 (직접 만져보기)</button>
-  <button data-t="q1" aria-selected="false">질문 1 — 선수 누르면 뜨는 메뉴</button>
-  <button data-t="q2" aria-selected="false">질문 2 — auto 와 내 한마디</button>
-  <button data-t="q3" aria-selected="false">질문 3 — 경기장 비율</button>
-  <button data-t="sum" aria-selected="false">✓ 선택 요약</button>
+  <button data-t="q1" aria-selected="false">정한 것 ① 메뉴 = A안</button>
+  <button data-t="q2" aria-selected="false">정한 것 ② auto 와 한마디 = ㄴ안</button>
+  <button data-t="q3" aria-selected="false">정한 것 ③ 경기장 = 68:60</button>
+  <button data-t="sum" aria-selected="false">✓ 컨펌</button>
   <button id="focusOn" style="background:#1c2841;color:#dbe7ff;border-color:#3c5279">📱 전체화면으로 보기</button>
 </div></div></nav>
 
@@ -307,9 +317,9 @@
     <div class="sideNote">
       <h3>지금 켜져 있는 안</h3>
       <ul>
-        <li><b>메뉴(질문 1)</b> — <span id="liveQ1">A안</span></li>
-        <li><b>auto 와 한마디(질문 2)</b> — <span id="liveQ2">ㄱ안</span></li>
-        <li><b>경기장 비율(질문 3)</b> — <span id="liveQ3">68 : 60</span></li>
+        <li><b>메뉴(①)</b> — <span id="liveQ1">A안</span></li>
+        <li><b>auto 와 한마디(②)</b> — <span id="liveQ2">ㄴ안</span></li>
+        <li><b>경기장 비율(③)</b> — <span id="liveQ3">68 : 60</span></li>
       </ul>
       <div class="knob">
         <span class="k">경기장 세로</span>
@@ -338,17 +348,18 @@
 
 <!-- ─────────── Q1 ─────────── -->
 <section class="pane" id="pane-q1">
-  <div class="qhead"><span class="qno">질문 1</span><h2>선수를 한 번 누르면 뜨는 메뉴, 무엇이 들어가야 하나요?</h2></div>
+  <div class="qhead"><span class="qno">정한 것 ①</span><h2>선수를 누르면 뜨는 메뉴 = <b style="color:var(--accent)">A안</b> — 자리 옮기기 / 한마디 쓰기 / 선수 정보 / 닫기</h2></div>
   <div class="qask">
-    원문에 <b>'위치 이동' · '프롬프트' · '선수 이동' · '선택 취소'</b> 네 개가 적혀 있는데, 설명이 서로 뒤섞여 있어 그대로 만들면 두 항목이 같은 일을 합니다.
+    <b>왜 이렇게 정했나:</b> 원문에 <b>'위치 이동' · '프롬프트' · '선수 이동' · '선택 취소'</b> 네 개가 적혀 있는데, 설명이 서로 뒤섞여 있어 그대로 만들면 두 항목이 같은 일을 하고 <b>'선수 정보'(강화 진입점)가 들어갈 자리가 없어집니다</b>. 그래서 겹치는 둘을 하나로 합치고 그 자리에 선수 정보를 넣었습니다.
     <div class="quote">
       "누르면 '위치 이동' , '프롬프트', '선수 이동', '선택 취소' 버튼이 있어. <b>위치 이동 누르면 프롬프트로 스크롤 다운</b>해서 보여져,
       <b>선수 이동 누르면</b> 현재 보드에 포메이션칸 + 벤치자리 활성화되고 누르면 바뀌어. <b>선수 정보 누르면</b> 선수 스탯이랑 강화 할수 있어."
     </div>
-    <p style="margin-top:9px">즉 실제로 필요한 동작은 <b>①한마디 쓰기 ②자리 옮기기 ③선수 정보·강화 ④닫기</b> 네 가지로 보입니다. 이름과 개수를 골라주세요 — 고르면 프로토타입 메뉴가 바로 바뀝니다.</p>
+    <p style="margin-top:9px">즉 실제로 필요한 동작은 <b>①한마디 쓰기 ②자리 옮기기 ③선수 정보·강화 ④닫기</b> 네 가지입니다. <b>메뉴 이름·개수는 상수 한 줄</b>이라 언제든 바꿀 수 있으니, 나중에 [명단에서 빼기]가 필요해지면 C안으로 켜면 됩니다.</p>
   </div>
+  <div class="subh">다른 안도 눌러볼 수 있습니다 (고르면 프로토타입 메뉴가 즉시 바뀝니다)</div>
   <div class="opts" id="q1opts">
-    <label class="opt" data-v="A"><div class="t"><i>A안</i>동작 이름 그대로 4개</div>
+    <label class="opt" data-v="A"><div class="t"><i>A안</i>동작 이름 그대로 4개<em class="pin">이 안으로 정함</em></div>
       <div class="d"><b>자리 옮기기 / 한마디 쓰기 / 선수 정보 / 닫기</b><br>원문의 '위치 이동'과 '선수 이동'이 같은 일이라 보고 하나로 합친 안. 가장 짧고 헷갈릴 것이 없습니다.</div></label>
     <label class="opt" data-v="B"><div class="t"><i>B안</i>원문 이름 그대로 4개</div>
       <div class="d"><b>위치 이동 / 프롬프트 / 선수 이동 / 선택 취소</b><br>'위치 이동' = 한마디 칸으로 내려가기, '선수 이동' = 자리 옮기기. 이름과 동작이 어긋나 보일 수 있습니다. <b>선수 정보는 들어갈 자리가 없습니다.</b></div></label>
@@ -360,18 +371,21 @@
 
 <!-- ─────────── Q2 ─────────── -->
 <section class="pane" id="pane-q2">
-  <div class="qhead"><span class="qno">질문 2</span><h2>[auto] 를 누르면, 선수들에게 써둔 한마디는 어떻게 되나요?</h2></div>
+  <div class="qhead"><span class="qno">정한 것 ②</span><h2>[auto] 와 써둔 한마디 = <b style="color:var(--accent)">ㄴ안</b> — 쓴 문장은 절대 안 건드리고, 빈 칸만 채운다</h2></div>
   <div class="qask">
     <div class="quote">"초기화 대신에 새로 auto로 할거야 … 현재 가진전력에서 최선으로 배치해주는거야. … 주로 뽑기하고 사용하면되게"</div>
     <p style="margin-top:9px">
       auto 는 <b>11명을 처음부터 다시 짭니다</b> — 뽑기로 좋은 선수가 들어오면 그 선수가 자리를 가져가고, 밀린 선수는 벤치로 갑니다.
-      이때 <b>이미 써둔 한마디(프롬프트)</b>를 어떻게 할지가 결정거리입니다. 예전에 이걸 정하지 않아 <b>한마디가 통째로 날아간 사고</b>가 있었습니다.
     </p>
+    <p style="margin-top:7px"><b>왜 이렇게 정했나:</b> 예전에 <b>한마디가 통째로 날아간 사고</b>가 있었습니다(ㄷ안 = 그 사고와 같은 동작이라 <b>영구 기각</b>).
+      남은 것은 "손 안 댐(ㄱ)" 과 "빈 칸만 채움(ㄴ)" 인데, 지금 [자동 채우기] 가 이미 <b>빈 칸만 채우는 규칙</b>으로 돌고 있습니다 —
+      두 버튼이 같은 규칙을 쓰면 <b>유저가 규칙을 하나만 배우면 됩니다</b>. 뽑기 직후 바로 경기에 들어갈 수 있는 것도 ㄴ안입니다.</p>
   </div>
+  <div class="subh">다른 안도 눌러볼 수 있습니다 (고른 뒤 프로토타입에서 [auto] 를 눌러 보세요)</div>
   <div class="opts" id="q2opts">
     <label class="opt" data-v="ㄱ"><div class="t"><i>ㄱ안</i>한마디는 손대지 않는다</div>
       <div class="d">자리만 바뀌고 <b>내가 쓴 문장은 사람을 따라 그대로</b> 갑니다. 새로 들어온 선수는 한마디가 비어 있습니다.<br><b>가장 안전</b> — 잃는 것이 없습니다.</div></label>
-    <label class="opt" data-v="ㄴ"><div class="t"><i>ㄴ안</i>빈 칸만 기본 문구로 채운다</div>
+    <label class="opt" data-v="ㄴ"><div class="t"><i>ㄴ안</i>빈 칸만 기본 문구로 채운다<em class="pin">이 안으로 정함</em></div>
       <div class="d">쓴 문장은 그대로 두고, <b>비어 있는 선수에게만</b> 포지션 기본 한마디를 넣어 줍니다(지금 [자동 채우기]가 하는 방식과 같음).<br>뽑기 직후 바로 경기 가능.</div></label>
     <label class="opt" data-v="ㄷ"><div class="t"><i>ㄷ안</i>전부 새로 쓴다</div>
       <div class="d">모든 선수의 한마디를 <b>포지션 기본 문구로 덮어씁니다</b>. 팀 전술·감독 한마디도 초기값으로.<br>= 사실상 예전 [초기화] 와 같은 피해. <b>권장하지 않습니다.</b></div></label>
@@ -381,16 +395,15 @@
 
 <!-- ─────────── Q3 ─────────── -->
 <section class="pane" id="pane-q3">
-  <div class="qhead"><span class="qno">질문 3</span><h2>경기장을 세로로 얼마나 늘릴까요?</h2></div>
+  <div class="qhead"><span class="qno">정한 것 ③</span><h2>경기장 세로 = <b style="color:var(--accent)">68 : 60</b> (지금 출하값은 68 : 44)</h2></div>
   <div class="qask">
     <div class="quote">"전술보드가 좁아서 선수들 이름이 겹쳐 그냥 화면 한칸 다 쓰자. 지금 화면 기준상 보유선수가 가장 하단으로 보여지고 경기장은 세로로 더 늘려서 비율 맞추자."</div>
-    <p style="margin-top:9px">
-      프로토타입 옆 슬라이더로 직접 바꿔보고 <b>이름이 안 겹치는 최소 지점</b>을 골라 주세요. 경기장을 늘린 만큼 아래 <b>보유 선수 목록이 짧아집니다</b>(둘이 같은 세로를 나눠 씁니다).
-    </p>
+    <p style="margin-top:9px"><b>왜 이렇게 정했나:</b> 60 이 <b>4-4-2 미드필더 4명 이름 겹침이 풀리는 최소 지점</b>입니다. 더 늘릴수록 아래 <b>보유 선수 목록이 짧아지므로</b>(둘이 같은 세로를 나눠 씁니다) 겹침이 풀리는 선에서 멈췄습니다. CSS 한 줄이라 언제든 조정합니다.</p>
   </div>
+  <div class="subh">슬라이더나 아래 버튼으로 다른 값도 즉시 볼 수 있습니다</div>
   <div class="opts" id="q3opts">
     <label class="opt" data-v="44"><div class="t"><i>지금</i>68 : 44</div><div class="d">현재 출하값. 4-4-2 에서 미드필더 4명 이름이 겹칩니다.</div></label>
-    <label class="opt" data-v="60"><div class="t"><i>제안</i>68 : 60</div><div class="d">경기장이 세로로 약 36% 길어집니다. 보유 선수 목록은 3~4행 정도 보입니다.</div></label>
+    <label class="opt" data-v="60"><div class="t"><i>제안</i>68 : 60<em class="pin">이 값으로 정함</em></div><div class="d">경기장이 세로로 약 36% 길어집니다. 보유 선수 목록은 3~4행 정도 보입니다.</div></label>
     <label class="opt" data-v="76"><div class="t"><i>최대</i>68 : 76</div><div class="d">경기장이 화면 대부분. 보유 선수 목록은 2행 + 스크롤이 됩니다.</div></label>
   </div>
   <div class="note">슬라이더를 움직이면 이 선택도 같이 바뀝니다(4 단위). 최종값은 요약 탭에 남습니다.</div>
@@ -398,27 +411,28 @@
 
 <!-- ─────────── 요약 ─────────── -->
 <section class="pane" id="pane-sum">
-  <div class="qhead"><span class="qno">✓</span><h2>선택 요약</h2></div>
+  <div class="qhead"><span class="qno">✓</span><h2>컨펌</h2></div>
+  <div class="verdict" id="sumVerdict" data-same="1">지금 화면은 제안한 그대로입니다 — 이대로 괜찮으면 “OK” 한 마디면 됩니다.</div>
   <div class="sumTable">
-    <div class="sumRow"><span class="lb">질문 1 — 메뉴</span><span class="vl none" id="s1">아직 안 고름</span></div>
-    <div class="sumRow"><span class="lb">질문 2 — auto 와 한마디</span><span class="vl none" id="s2">아직 안 고름</span></div>
-    <div class="sumRow"><span class="lb">질문 3 — 경기장 비율</span><span class="vl" id="s3">68 : 60</span></div>
+    <div class="sumRow"><span class="lb">① 메뉴</span><span class="vl" id="s1">A안</span></div>
+    <div class="sumRow"><span class="lb">② auto 와 한마디</span><span class="vl" id="s2">ㄴ안</span></div>
+    <div class="sumRow"><span class="lb">③ 경기장 비율</span><span class="vl" id="s3">68 : 60</span></div>
     <div class="sumRow"><span class="lb">보유 선수 자리(남는 세로)</span><span class="vl" id="s4">—</span></div>
     <div class="sumRow"><span class="lb">강화 가능 표시</span><span class="vl" id="s5">켬</span></div>
     <div class="sumRow"><span class="lb">자동 채우기 숨김</span><span class="vl" id="s6">켬</span></div>
   </div>
-  <div class="copy"><input id="sumStr" readonly value="Q1=? · Q2=? · Q3=68:60" /><button class="btn pri" id="copyBtn">복사</button></div>
+  <div class="copy"><input id="sumStr" readonly value="" /><button class="btn pri" id="copyBtn">복사</button></div>
   <div class="note" style="margin-top:12px">
-    이 문자열을 그대로 알려주시면 됩니다(또는 "A안 · ㄱ안 · 60" 처럼 말로 주셔도 됩니다).
-    <b>컨펌 = 이 화면의 동작이 이대로면 개발 시작해도 좋다</b> 는 뜻이고, 그 뒤에 A1~A4 구현에 들어갑니다.
+    <b>컨펌 = 이 화면의 동작이 이대로면 개발을 시작해도 좋다</b> 는 뜻입니다. 그 뒤에 A1~A4 를 실제 화면에 구현합니다.
+    바꾸신 것이 있으면 위 줄을 복사해 주시거나 <b>"경기장은 더 크게"</b> 처럼 말로 주셔도 됩니다.
   </div>
 </section>
 
 </main>
 
 <div class="sticky"><div class="wrap"><div class="row">
-  <span class="s" id="stickyStr">Q1=? · Q2=? · Q3=68:60</span>
-  <button class="btn sm" id="stickyGo">요약 보기</button>
+  <span class="s" id="stickyStr"></span>
+  <button class="btn sm" id="stickyGo">컨펌 화면</button>
 </div></div></div>
 
 <button class="focusBtn" id="focusOff">✕ 설명 다시 보기</button>
@@ -505,7 +519,9 @@ function seedSay(id){
 let draft = initialDraft();
 let pending = null;   // {playerId} — 자리 고르는 중
 let selected = null;  // 강조 토큰
-const choice = {q1:null,q2:null,q3:60,poolH:0,growth:true,fillHide:true};
+/* 세 가지는 이미 정해서 기본값으로 박아 뒀다 — hero 는 만져보고 "이대로" 아니면 "다르다"만 말하면 된다.
+   다른 안도 그대로 눌러볼 수 있게 남겨 둔다(만져보고 다르게 느끼면 그 자리에서 뒤집을 수 있어야 하므로). */
+const choice = {q1:"A",q2:"ㄴ",q3:60,poolH:0,growth:true,fillHide:true};
 
 /* ══════════════════ 순수 로직 (apps/web 과 같은 규칙) ══════════════════ */
 const getSlot = (role,idx)=>draft.slots.find(s=>s.role===role&&s.slotIndex===idx);
@@ -679,13 +695,12 @@ const MENUS = {
 function openMenu(pid){
   const p = BY_ID.get(pid); const s = findSlot(pid);
   selected = pid; render();
-  const items = MENUS[choice.q1||"A"];
+  const items = MENUS[choice.q1];
   const rows = items.map(([act,ic,label,hint])=>
     `<button data-act="${act}" data-pid="${pid}" class="${act==="close"?"mgh":act==="remove"?"danger":""}">
        <span class="ic">${ic}</span><span>${label}</span>${hint?`<span class="hint">${hint}</span>`:""}</button>`).join("");
   openSheet(`<h4>${p.n} <span class="sub">${p.pos} · 전력 ${p.ovr}${s?"":" · 아직 명단 밖"}</span></h4>
-    <div class="menuList">${rows}</div>
-    ${choice.q1?"":'<div class="note" style="margin-top:10px">아직 <b>질문 1</b> 을 안 고르셨습니다 — 지금은 A안으로 보여주고 있어요.</div>'}`);
+    <div class="menuList">${rows}</div>`);
 }
 function openSay(pid){
   const p=BY_ID.get(pid); const s=findSlot(pid);
@@ -840,7 +855,6 @@ $("#btnFill").addEventListener("click",()=>{
                  : "채울 빈 자리가 없습니다.");
 });
 $("#btnAuto").addEventListener("click",()=>{
-  if(!choice.q2){ toast("먼저 [질문 2] 탭에서 한마디 정책을 골라주세요 — 그래야 auto 가 무엇을 할지 정해집니다."); go("q2"); return; }
   const r = autoBuild(); render();
   const tail = choice.q2==="ㄷ" ? `한마디 ${r.over}명 전부 새로 씀(기존 문장 사라짐)`
              : choice.q2==="ㄴ" ? `한마디 ${r.kept}명 유지 · 빈 칸 ${r.filled}명 기본 문구로 채움`
@@ -885,18 +899,25 @@ function pick(group,val){
 }));
 document.getElementById("q3opts").addEventListener("click",e=>{ const o=e.target.closest(".opt"); if(o){ applyRatio(Number(o.dataset.v)); save(); }});
 
+const Q1TXT = {A:"A안 — 자리 옮기기 / 한마디 쓰기 / 선수 정보 / 닫기",B:"B안 — 원문 이름 그대로 4개",C:"C안 — A안 + 명단에서 빼기"};
+const Q2TXT = {"ㄱ":"ㄱ안 — 한마디 손대지 않음","ㄴ":"ㄴ안 — 빈 칸만 기본 문구","ㄷ":"ㄷ안 — 전부 새로 씀"};
+const DEFAULTS = {q1:"A",q2:"ㄴ",q3:60};
 function syncSum(){
-  const q1txt = choice.q1 ? {A:"A안 — 자리 옮기기 / 한마디 쓰기 / 선수 정보 / 닫기",B:"B안 — 원문 이름 그대로 4개",C:"C안 — A안 + 명단에서 빼기"}[choice.q1] : null;
-  const q2txt = choice.q2 ? {"ㄱ":"ㄱ안 — 한마디 손대지 않음","ㄴ":"ㄴ안 — 빈 칸만 기본 문구","ㄷ":"ㄷ안 — 전부 새로 씀"}[choice.q2] : null;
-  const s1=$("#s1"), s2=$("#s2");
-  s1.textContent = q1txt||"아직 안 고름"; s1.className = "vl"+(q1txt?"":" none");
-  s2.textContent = q2txt||"아직 안 고름"; s2.className = "vl"+(q2txt?"":" none");
-  $("#s3").textContent = `68 : ${choice.q3}`;
+  const s1=$("#s1"), s2=$("#s2"), s3=$("#s3");
+  const mark = (el,val,key)=>{ el.className = "vl" + (val===DEFAULTS[key] ? "" : " chg"); };
+  s1.textContent = Q1TXT[choice.q1]; mark(s1,choice.q1,"q1");
+  s2.textContent = Q2TXT[choice.q2]; mark(s2,choice.q2,"q2");
+  s3.textContent = `68 : ${choice.q3}`; mark(s3,choice.q3,"q3");
   $("#s4").textContent = (choice.poolH||0)+"px";
   $("#s5").textContent = choice.growth?"켬":"끔";
   $("#s6").textContent = choice.fillHide?"켬":"끔";
-  const str = `Q1=${choice.q1||"?"} · Q2=${choice.q2||"?"} · Q3=68:${choice.q3} · 목록=${choice.poolH}px · 강화표시=${choice.growth?"켬":"끔"} · 자동채우기숨김=${choice.fillHide?"켬":"끔"}`;
-  $("#sumStr").value=str; $("#stickyStr").textContent=str;
+  const same = choice.q1===DEFAULTS.q1 && choice.q2===DEFAULTS.q2 && choice.q3===DEFAULTS.q3;
+  $("#sumVerdict").textContent = same
+    ? "지금 화면은 제안한 그대로입니다 — 이대로 괜찮으면 “OK” 한 마디면 됩니다."
+    : "제안과 다르게 바꾸셨습니다 — 아래 줄을 그대로 주시면 그 값으로 만듭니다.";
+  $("#sumVerdict").dataset.same = same ? "1" : "0";
+  const str = `메뉴=${choice.q1}안 · auto한마디=${choice.q2}안 · 경기장=68:${choice.q3} · 보유목록=${choice.poolH}px · 강화표시=${choice.growth?"켬":"끔"} · 자동채우기=${choice.fillHide?"빈칸때만":"항상"}`;
+  $("#sumStr").value=str; $("#stickyStr").textContent = (same?"제안 그대로 — ":"바꿈 — ")+str;
 }
 $("#copyBtn").addEventListener("click",async()=>{
   try{ await navigator.clipboard.writeText($("#sumStr").value); toastTop("복사했습니다"); }
@@ -928,6 +949,7 @@ function load(){
 }
 ["input","change"].forEach(ev=>document.addEventListener(ev,()=>save()));
 
+pick("q1",choice.q1); pick("q2",choice.q2);      // 정한 값이 처음부터 켜져 있게
 load(); applyRatio(choice.q3); render(); applyPoolH(); syncSum();
 window.addEventListener("resize",applyPoolH);
 </script>
