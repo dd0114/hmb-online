@@ -16,7 +16,9 @@
   background: var(--bg-elevated);
   border-top: 1px solid var(--border);
   /* 모달이 비워 두는 자리(`--nav-h`)가 실제 높이보다 작으면 그 예약이 거짓말이 된다 →
-     토큰을 하한으로 되먹인다(#457 C2). 계약이 실측 높이 ≤ `--nav-h` 를 확인한다. */
+     토큰을 하한으로 되먹인다(#457 C2).
+     ⚠️ 계약은 이 선언이 **있다**만 본다(`modal-layers.test.ts`) — 상한은 아무도 안 건다.
+     탭바에 줄을 더해 `--nav-h` 를 넘기면 그 예약이 조용히 모자라니 토큰도 같이 올려라. */
   min-height: var(--nav-h);
   padding-bottom: env(safe-area-inset-bottom, 0);
 }

@@ -99,7 +99,9 @@ export function homeTileState(input: HomeTileInput): Record<HomeTile["key"], Til
     },
     me: { sub: meBits.join(" · ") || "전적과 순위", count: 0 },
     players: {
-      sub: ownedTotal > 0 ? `보유 ${ownedCount} / ${ownedTotal}` : "보유 선수와 도감",
+      // ⚠️ 폴백 문구에 `도감` 을 되살리지 마라 — #457 D 로 이 탭은 **선수**로 개명됐다.
+      //    카탈로그가 아직 안 왔을 때(`ownedTotal === 0`) 걸리는 가지라 개명 스윕에서 놓치기 쉽다.
+      sub: ownedTotal > 0 ? `보유 ${ownedCount} / ${ownedTotal}` : "보유 선수와 수집 현황",
       count: 0,
     },
   };

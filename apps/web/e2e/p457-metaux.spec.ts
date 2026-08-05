@@ -114,7 +114,9 @@ async function hits(page: Page, testId: string) {
     ({ cx, cy, testId }) => {
       const top = document.elementFromPoint(cx, cy);
       const target = document.querySelector(`[data-testid="${testId}"]`);
-      return { inViewport: cy > 0 && cy < window.innerHeight, hit: !!(top && target && target.contains(top)) };
+      // 뷰포트 밖 좌표는 `elementFromPoint` 가 null 을 주므로 `hit` 이 곧 "화면 안에서 눌린다"다
+      // — 별도 `inViewport` 필드는 아무도 읽지 않아 지웠다(독립검증 MIN-3).
+      return { hit: !!(top && target && target.contains(top)) };
     },
     { cx, cy, testId },
   );
@@ -158,8 +160,15 @@ test("⓪ C1 홍보 구역 — 확률은 서버가 줄 때만 뜬다 (지어내�
   await expect(page.locator("body")).toContainText("골드 이상 1명 보장");
 });
 
-/** 세로 844(툴바 없는 이상적 폰) · 664(툴바가 덮은 실제 가시높이). 후자가 이 계약의 이빨이다. */
-for (const vh of [844, 664]) {
+/**
+ * 세로 844(툴바 없는 이상적 폰) · 664(툴바가 덮은 실제 가시높이) · **500**(가로모드·큰 글꼴).
+ *
+ * ⚠️ **500 을 "대체값을 죽이는 칸"으로 읽지 마라** — 실측하면 `max-height: 100%` 로 되돌려도
+ * 세 뷰포트가 **전부 통과한다**(오버레이가 이미 탭바 자리를 비워 둬서 퍼센트도 그만큼 줄어든다).
+ * 이 루프가 죽이는 변이는 **상한 자체를 지우는 것**이고, 그건 세 칸 모두에서 죽는다.
+ * 500 은 그러니 형태 판별이 아니라 **가로모드·큰 글꼴 커버리지**로 있는 칸이다.
+ */
+for (const vh of [844, 664, 500]) {
   test(`① 10연뽑 [확인] 버튼이 하단 탭바에 가리지 않는다 — 390×${vh} (좌표·히트테스트)`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: vh });
     await auth(page);
@@ -227,6 +236,22 @@ test("③ 개명 — 홈 타일과 화면 제목이 '선수'다", async ({ page 
   // 화면 전체 텍스트에 '도감'이 남아 있으면 개명이 절반만 된 것이다.
   const body = (await page.locator("body").innerText()).replace(/\s+/g, " ");
   expect(body).not.toContain("도감");
+
+  /**
+   * ⚠️ **위 단언들은 카탈로그가 도착한 상태만 본다.** 홈 타일의 부제는 갈래가 둘이고
+   * (`보유 n / N` ↔ 폴백), 목 로스터가 24명이라 위에서는 **폴백 가지에 도달조차 하지 않는다**
+   * — 실제로 그 가지에 `보유 선수와 도감` 이 남아 있었는데 계약은 초록이었다(독립검증 MAJ-1).
+   * 카탈로그가 비어 오는 상태(신규 유저·구 서버 `{}`)를 따로 태운다.
+   */
+  await page.route((url) => url.pathname === "/api/players", (r) =>
+    r.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  );
+  await page.goto("/home");
+  await expect(page.getByTestId("home-tile-players")).toContainText("선수");
+  await expect(
+    page.getByTestId("home-tile-players"),
+    "카탈로그가 비었을 때의 폴백 부제에 '도감'이 남아 있다",
+  ).not.toContainText("도감");
 });
 
 test("④ 정렬 — 보유 좋은 카드가 먼저 온다", async ({ page }) => {
@@ -250,8 +275,30 @@ test("④ 정렬 — 보유 좋은 카드가 먼저 온다", async ({ page }) =>
   const flips = order.filter((row, i) => i > 0 && order[i - 1]!.owned !== row.owned).length;
   expect(flips, "보유/미보유가 섞여 있다").toBe(1);
 
-  // 보유 구간 첫 카드는 **최고 등급**이다(mock 로스터에 LEGEND 보유가 있다).
+  /**
+   * ⚠️ **첫 카드가 LEGEND 라는 단언만으로는 공허하다** — 목 로스터는 `owned: i < 16` +
+   * `PLAYERS[0] = P001`(LEGEND) 이라 **정렬을 떼도** 보유가 앞이고 첫 칸이 LEGEND 다
+   * (`sortByStrength` 를 `CodexPage.tsx` 에서 제거해도 통과했다, 독립검증 BL-1).
+   * 이 표본에서 정렬이 실제로 하는 일은 **구간 안에서 등급을 내림차순으로 다시 세우는 것**이다
+   * — 원본 순서는 `LEGEND,DIA,GOLD,SILVER,BRONZE,LEGEND,…` 로 5칸마다 등급이 **되올라간다**.
+   * 그래서 계약도 첫 칸이 아니라 **구간 전체의 단조성**으로 건다.
+   */
   const gradeOf = (id: string) => PLAYERS.find((p) => p.id === id)!.grade;
+  // ⚠️ 앱의 `GRADE_ORDER` 를 import 하지 않는다 — 같은 상수를 쓰면 순서를 뒤집는 변이가 통과한다
+  //    (apps/web/CLAUDE.md 「초록으로 거짓말하는 방식」 ②). 기대 순서는 여기에 리터럴로 적는다.
+  const STRONG_FIRST = ["LEGEND", "DIA", "GOLD", "SILVER", "BRONZE"];
+  const rankOf = (id: string) => STRONG_FIRST.indexOf(gradeOf(id));
+  for (const owned of [true, false]) {
+    const seg = order.filter((row) => row.owned === owned).map((row) => rankOf(row.id));
+    expect(seg.length, `${owned ? "보유" : "미보유"} 구간이 비었다 — 단조성 검사가 공허해진다`).
+      toBeGreaterThan(4);
+    // 강한 등급이 0 이므로 정렬된 구간은 **비내림차순**이다. 뒤에서 더 강한 등급이 나오면 위반.
+    const drops = seg.filter((r, i) => i > 0 && r < seg[i - 1]!).length;
+    expect(
+      drops,
+      `${owned ? "보유" : "미보유"} 구간에서 등급이 되올라간다 — 등급 정렬이 안 걸렸다 (${seg.join(",")})`,
+    ).toBe(0);
+  }
   expect(gradeOf(order[0]!.id)).toBe("LEGEND");
 });
 
