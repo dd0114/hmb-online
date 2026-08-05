@@ -29,9 +29,37 @@ export interface ActiveNoticesResponse {
 
 /** [닫기] — 이 **탭 세션** 동안만 억제. 로비는 덱·상점에서 계속 돌아오는 화면이라 인메모리면 매번 뜬다. */
 export const NOTICE_CLOSED_KEY = "hmb.notice.closed.v1";
-/** [24시간 동안 안 보기] — 만료 epoch(ms) 를 기기에 저장. */
+/** [일주일 동안 안 보기] — 만료 epoch(ms) 를 기기에 저장. */
 export const NOTICE_DISMISSED_KEY = "hmb.notice.dismissed.v1";
-export const NOTICE_DISMISS_WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * 억제 창 = **7일**(#450, hero 지시 "공지 일주일간 안보게하자").
+ *
+ * 구값은 24시간이었다. 로비는 덱·상점에서 계속 돌아오는 화면이라 하루짜리 창은 **상시 공지**
+ * (신규 선수 오픈 같은, 한 번 읽으면 끝인 것)를 매일 다시 띄운다. 기간 공지(점검 등)는
+ * `endsAt` 이 짧아 이 창보다 먼저 끝나므로 영향이 없다.
+ *
+ * ⚠️ **저장 키를 올리지 않았다** — 기존 만료값(구 24h 창으로 찍힌 것)은 그냥 더 일찍 만료될 뿐이라
+ * 유저 손해가 없다. 키를 올리면 오히려 이미 닫은 유저 전원에게 팝업이 한 번 더 뜬다.
+ *
+ * ⚠️ 버튼 문구는 이 상수에서 **파생**한다(`noticeDismissLabel`) — 창만 바꾸고 문구를 안 고치면
+ * 화면이 거짓말을 한다.
+ */
+export const NOTICE_DISMISS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * [n일/n시간 동안 안 보기] 버튼 문구 — **창 길이에서 파생**한다.
+ *
+ * 상수와 문구가 각각 손으로 관리되면 다음에 창을 조정할 때 한쪽만 바뀐다. 계약이 이 함수의
+ * 출력과 상수를 같이 본다.
+ */
+export function noticeDismissLabel(windowMs: number = NOTICE_DISMISS_WINDOW_MS): string {
+  const hours = Math.round(windowMs / (60 * 60 * 1000));
+  if (hours % 24 === 0) {
+    const days = hours / 24;
+    return days === 7 ? "일주일 동안 안 보기" : `${days}일 동안 안 보기`;
+  }
+  return `${hours}시간 동안 안 보기`;
+}
 
 /**
  * 억제 키 = `id@revision`.

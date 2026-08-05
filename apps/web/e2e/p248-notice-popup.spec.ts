@@ -170,7 +170,7 @@ test.describe("#248 공지 팝업 — 표시와 억제", () => {
     await expect(page.getByTestId("notice-popup")).toBeVisible();
   });
 
-  test("[24시간 동안 안 보기] = 만료 시각을 기기에 기록하고, 지나면 다시 뜬다", async ({ page }) => {
+  test("[일주일 동안 안 보기] = 만료 시각을 기기에 기록하고, 지나면 다시 뜬다", async ({ page }) => {
     await mockLobby(page, { payload: { notices: [notice({ id: "N1" })] }, status: 200 });
     await gotoLobby(page);
 
@@ -183,8 +183,11 @@ test.describe("#248 공지 팝업 — 표시와 억제", () => {
     ) as Record<string, number>;
     expect(Object.keys(stored)).toEqual(["N1@1"]);
     const expiry = stored["N1@1"];
-    expect(expiry).toBeGreaterThanOrEqual(before + 24 * 3600_000 - 5_000);
-    expect(expiry).toBeLessThanOrEqual(Date.now() + 24 * 3600_000 + 5_000);
+    // #450 — 창이 24시간 → **7일**. 상수 import 로 쓰지 마라(계약이 앱과 같은 값을 읽으면
+    // 임계 변이가 통과한다, apps/web CLAUDE.md "초록으로 거짓말하는 방식" ②).
+    const WEEK_MS = 7 * 24 * 3600_000;
+    expect(expiry).toBeGreaterThanOrEqual(before + WEEK_MS - 5_000);
+    expect(expiry).toBeLessThanOrEqual(Date.now() + WEEK_MS + 5_000);
 
     // 리로드해도(세션이 새로 시작해도) 안 뜬다 — 세션이 아니라 기기 억제다.
     await page.evaluate(() => window.sessionStorage.clear());

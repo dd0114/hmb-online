@@ -14,6 +14,7 @@ import {
   markNoticeClosed,
   markNoticeDismissed,
   noticeCenterView,
+  noticeDismissLabel,
   noticeMetaText,
   noticeSuppressionKey,
   normalizeNotices,
@@ -111,7 +112,27 @@ describe("noticeMetaText — 표시일 뿐 판정이 아니다", () => {
   });
 });
 
-describe("억제 — [닫기](세션) / [24시간](기기)", () => {
+describe("억제 창 길이와 버튼 문구 (#450)", () => {
+  it("창은 **7일**이다 (hero 지시 — 상시 공지가 매일 다시 뜨던 것)", () => {
+    expect(NOTICE_DISMISS_WINDOW_MS).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+
+  /**
+   * ⚠️ 이 계약의 존재 이유: 창만 바꾸고 버튼 문구를 안 고치면 **화면이 거짓말을 한다**
+   * (7일 억제해 놓고 "24시간 동안 안 보기"라고 적혀 있는 상태). 문구를 상수에서 파생시키고,
+   * 파생이 실제로 따라오는지를 여기서 본다.
+   */
+  it("버튼 문구는 창에서 파생된다 — 상수만 바꿔도 화면이 따라온다", () => {
+    expect(noticeDismissLabel()).toBe("일주일 동안 안 보기");
+    // 24시간은 "1일" 로 읽힌다 — 구 문구("24시간 동안 안 보기")를 되살리려는 게 아니라,
+    // 창을 되돌려도 문구가 **거짓말하지 않는다**는 것만 본다.
+    expect(noticeDismissLabel(24 * 60 * 60 * 1000)).toBe("1일 동안 안 보기");
+    expect(noticeDismissLabel(3 * 24 * 60 * 60 * 1000)).toBe("3일 동안 안 보기");
+    expect(noticeDismissLabel(2 * 60 * 60 * 1000)).toBe("2시간 동안 안 보기");
+  });
+});
+
+describe("억제 — [닫기](세션) / [일주일](기기)", () => {
   it("닫기는 sessionStorage 에만 남고 그 공지만 사라진다", () => {
     const data = { notices: [notice("A"), notice("B")] };
     markNoticeClosed(stores, noticeSuppressionKey({ id: "A", revision: 1 }));
