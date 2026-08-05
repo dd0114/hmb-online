@@ -57,6 +57,42 @@
 }
 
 /* 비활성(신규 획득 불가) 표기 #207 U-D7. 흑백 카드(미보유) 위에서도 읽히게 무채색 강조. */
+/*
+ * **강화 가능(선택 대기) 뱃지** (#457 D). 빛이 들어왔다 나가는 것이 hero 요구의 핵심 —
+ * 정적 회색 칩이면 목록에서 안 읽힌다(그게 개편 전 상태였다).
+ * ⚠️ 모션 최소화에서는 **끄지 않고 밝게 고정**한다(#250 규율) — 신호가 사라지면 안 된다.
+ */
+.growthPending {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: var(--glow, var(--warn));
+  border: 1px solid var(--glow, var(--warn));
+  border-radius: 4px;
+  padding: 0 4px;
+  animation: cardGlowPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cardGlowPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--glow, var(--warn)) 40%, transparent);
+    opacity: 0.75;
+  }
+  50% {
+    box-shadow: 0 0 10px 2px color-mix(in srgb, var(--glow, var(--warn)) 55%, transparent);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .growthPending {
+    animation: none;
+    opacity: 1;
+    box-shadow: 0 0 10px 2px color-mix(in srgb, var(--glow, var(--warn)) 55%, transparent);
+  }
+}
+
 .off {
   font-size: 10px;
   font-weight: 700;

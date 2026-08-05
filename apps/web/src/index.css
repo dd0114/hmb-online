@@ -25,6 +25,17 @@
   --grass-a: #17603a;
   --grass-b: #14562f;
   --pitch-line: rgba(255, 255, 255, 0.22);
+  /*
+   * 층위 (#457 C2) — **네비 < 모달**. 이 한 줄의 관계가 규칙 전부다.
+   *
+   * 왜 토큰인가: 하단 탭바가 `z-index:20` 인데 뽑기 결과·가입 연출·트레이드 결과·스냅샷·충전
+   * 오버레이 **5개**가 `z-index:10` 으로 남아 **모달이 네비 아래로 깔렸다**(hero 제보: "뽑고 나면
+   * 확인버튼이 안보여"). `common/Modal` 은 포털이 아니라 인라인 렌더라 이 값이 곧 결과다.
+   * 화면마다 숫자를 적으면 여섯 번째 오버레이가 또 같은 자리에 떨어진다.
+   * 계약 = `common/modal-layers.test.ts`(전화면 오버레이 전수 스캔).
+   */
+  --z-nav: 20;
+  --z-modal: 50;
   color-scheme: dark;
   font-family: system-ui, "Segoe UI", Roboto, sans-serif;
 }

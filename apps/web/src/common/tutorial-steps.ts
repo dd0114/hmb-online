@@ -81,7 +81,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
     id: "codex",
     targetTestId: "home-tile-players",
-    title: "선수 도감에서 보유 선수를 확인",
+    title: "[선수]에서 보유 선수를 확인",
     body: "등급·포지션별로 모은 선수를 모아 봅니다. 아직 못 얻은 선수도 여기서 확인할 수 있어요.",
     enabled: true,
     route: "/home",

@@ -7,6 +7,8 @@ import { GRADE_LABELS, GRADE_ORDER, type Grade } from "../common/grades";
 import type { components } from "../api/schema";
 import { PlayerCard } from "./PlayerCard";
 import { CardGrowthDetail } from "./CardGrowthDetail";
+import { sortByStrength } from "./codex-sort";
+import { usePendingChoices } from "../api/growth-hooks";
 import { useNavLocked } from "../common/nav-lock";
 import type { CatalogPlayer } from "../api/hooks";
 import styles from "./CodexPage.module.css";
@@ -25,7 +27,7 @@ export function CodexPage() {
    *
    * 육성 탭(`/growth`)이 이 화면으로 병합되면서 **"내가 키우는 카드만 보는 뷰"가 갈 곳을
    * 잃었다** — 그 탭이 하던 일이 정확히 `owned` 필터 하나였다(독립검증 MIN-5).
-   * 기본값이 **보유**인 이유: 이 탭은 hero 지정 이름이 "선수 도감"이지만 일상 용도는
+   * 기본값이 **보유**인 이유: 이 탭의 일상 용도는
    * 내 선수를 보는 것이고, 전체 수집 현황은 한 번 더 눌러서 본다.
    */
   const [ownedOnly, setOwnedOnly] = useState(true);
@@ -44,15 +46,36 @@ export function CodexPage() {
   // 통과하고 `.filter` 가 던져 **화면이 통째로 흰 화면**이 된다(#245 와 같은 규칙, #286 실측).
   const roster = useMemo(() => (Array.isArray(players) ? players : []), [players]);
 
+  /**
+   * 기본 순서 = **획득한 좋은 카드 순** (#457 D, hero 지시). 규칙은 `codex-sort.ts` 가 소유한다 —
+   * 여기서 비교자를 다시 적으면 축이 두 곳에서 정해진다.
+   */
   const filtered = useMemo(
     () =>
-      roster.filter(
-        (p) =>
-          (!ownedOnly || p.owned) &&
-          (gradeFilter === "ALL" || p.grade === gradeFilter) &&
-          (positionFilter === "ALL" || p.position === positionFilter),
+      sortByStrength(
+        roster.filter(
+          (p) =>
+            (!ownedOnly || p.owned) &&
+            (gradeFilter === "ALL" || p.grade === gradeFilter) &&
+            (positionFilter === "ALL" || p.position === positionFilter),
+        ),
       ),
     [roster, ownedOnly, gradeFilter, positionFilter],
+  );
+
+  /**
+   * **강화 가능(선택 대기) 표시** (#457 D) — `GET /api/growth/choices` 하나로 목록 전체를 덮는다.
+   * 새 API 가 필요 없다: 이 훅은 이미 보상 시트·결과 화면이 쓰는 **권위 조회**다(봉투 스냅샷이
+   * 아니라 "지금 남은 것"). 도감·덱 리스트만 그동안 이걸 소비하지 않아 *목록에서는* 강화할 게
+   * 있는지 보이지 않았다.
+   *
+   * ⚠️ 경기 중에는 강화 시트가 안 열리므로(`matchLocked`) 뱃지도 붙이지 않는다 — 누를 수 없는
+   * 것을 "가능"이라고 말하지 않는다.
+   */
+  const { data: pendingChoices } = usePendingChoices(undefined, !matchLocked);
+  const pendingIds = useMemo(
+    () => new Set((Array.isArray(pendingChoices) ? pendingChoices : []).map((c) => c.playerId)),
+    [pendingChoices],
   );
 
   const ownedTotal = useMemo(() => roster.filter((p) => p.owned).length, [roster]);
@@ -62,7 +85,7 @@ export function CodexPage() {
       <button type="button" className={styles.back} onClick={() => navigate("/home")}>
         ← 홈
       </button>
-      <h1 className={styles.pageTitle}>도감</h1>
+      <h1 className={styles.pageTitle}>선수</h1>
       <span className={styles.ownedTotal} data-testid="codex-owned-total">
         보유 {ownedTotal}/{roster.length}
       </span>
@@ -72,7 +95,7 @@ export function CodexPage() {
   return (
     <Layout header={header} nav>
       {isLoading && <p>불러오는 중…</p>}
-      {isError && <ErrorToast message="도감을 불러오지 못했습니다" />}
+      {isError && <ErrorToast message="선수 목록을 불러오지 못했습니다" />}
 
       {matchLocked && (
         <p className={styles.lockedNote} data-testid="codex-locked-note">
@@ -150,6 +173,7 @@ export function CodexPage() {
               key={p.id}
               player={p}
               expanded={expandedId === p.id}
+              growthPending={pendingIds.has(p.id)}
               onToggle={() => {
                 if (p.owned && matchLocked) return;   // 안내는 아래 배너가 상시로 한다
                 if (p.owned) setDetailPlayer(p);

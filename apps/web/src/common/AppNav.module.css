@@ -9,7 +9,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 20;
+  z-index: var(--z-nav);
   display: flex;
   justify-content: space-around;
   align-items: stretch;
@@ -128,7 +128,7 @@
     top: 0;
     left: 0;
     bottom: 0;
-    z-index: 20;
+    z-index: var(--z-nav);
     width: 200px;
     display: flex;
     flex-direction: column;

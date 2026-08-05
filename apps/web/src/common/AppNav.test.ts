@@ -64,7 +64,7 @@ describe("AppNav render (LLD §7)", () => {
 
   it("renders all 6 items (홈/게임/덱/선수/영입/내 정보) in each nav (#286)", () => {
     renderNav("/home");
-    // ⚠️ 라벨은 **축약형**이다 — 홈 타일은 풀 네임("덱 구성"·"선수 도감")을 쓴다. 6칸에 풀
+    // ⚠️ 라벨은 **축약형**이다 — 홈 타일은 풀 네임("덱 구성")을 쓴다. 6칸에 풀
     // 네임은 390px 에서 들어가지 않아 의도적으로 갈라 뒀다(docs/plan-v5/home-nav.md §3.1).
     expect(NAV_ITEMS.map((i) => i.label)).toEqual(["홈", "게임", "덱", "선수", "영입", "내 정보"]);
     for (const nav of [screen.getByTestId("nav-bottom"), screen.getByTestId("nav-sidebar")]) {

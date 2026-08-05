@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMe } from "../api/hooks";
 import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
@@ -19,6 +20,7 @@ type Tab = "gacha" | "trade";
  * 트레이드가 열린다(리다이렉트가 그 쿼리를 붙인다). 안 그러면 `/trade` 북마크가 뽑기로 떨어진다.
  */
 export function RecruitPage() {
+  const navigate = useNavigate();
   const { data: me } = useMe();
   const initial: Tab =
     new URLSearchParams(window.location.search).get("tab") === "trade" ? "trade" : "gacha";
@@ -29,8 +31,22 @@ export function RecruitPage() {
    * 헤더를 그리지 않으므로, 상위가 안 그리면 **살 것을 고르는 화면에서 잔액이 사라진다**
    * (실제로 그렇게 됐고 growth-mock 계약이 잡았다). 뽑기·트레이드 둘 다 돈을 쓰는 자리다.
    */
+  /**
+   * ⚠️ **뒤로가기는 버그가 아니라 부재였다** (#457 C2, hero: *"그래서 뒤로가기도 안보여"*).
+   * `ShopPage` 에 `← 홈` 이 있지만 그건 `embedded` 가 아닐 때만 그려진다 — 이 화면이 상점을
+   * `embedded` 로 얹으므로 **실제로는 한 번도 렌더되지 않는 죽은 코드**였다. 헤더를 소유한
+   * 쪽(여기)이 그려야 한다(지갑을 여기서 그리는 것과 같은 이유).
+   */
   const header = (
     <div className={styles.headerRow}>
+      <button
+        type="button"
+        className={styles.back}
+        data-testid="recruit-back"
+        onClick={() => navigate("/home")}
+      >
+        ← 홈
+      </button>
       <h1 className={styles.pageTitle}>영입</h1>
       {typeof me?.wallet?.points === "number" && (
         <PointsBadge points={me.wallet.points} gems={me.wallet.gems ?? 0} />

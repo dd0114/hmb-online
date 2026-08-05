@@ -19,6 +19,7 @@ export interface HomeTile {
 
 /**
  * ⚠️ **순서까지 hero 지정이다** — "게임시작, 덱구성, 영입, 내 정보, 선수 도감으로가자".
+ * ⚠️ 라벨만 **`선수`** 로 바뀌었다 (#457 D, hero: *"'선수 도감'을 '선수'로 바꾸자"*) — 순서는 그대로다.
  * 계약(`e2e/p286-home-nav.spec.ts`)이 DOM 순서를 이 배열과 대조하므로 임의로 정렬하지 말 것.
  */
 export const HOME_TILES: readonly HomeTile[] = [
@@ -26,7 +27,7 @@ export const HOME_TILES: readonly HomeTile[] = [
   { key: "deck", label: "덱 구성", icon: "📋", to: "/deck" },
   { key: "recruit", label: "영입", icon: "✨", to: "/recruit" },
   { key: "me", label: "내 정보", icon: "🙋", to: "/me" },
-  { key: "players", label: "선수 도감", icon: "👥", to: "/players" },
+  { key: "players", label: "선수", icon: "👥", to: "/players" },
 ];
 
 export interface TileState {
