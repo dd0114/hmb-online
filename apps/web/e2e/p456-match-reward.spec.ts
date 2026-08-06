@@ -37,11 +37,88 @@ interface Harness {
   daily: Record<string, unknown> | null;
   /** `/api/me` 의 원정 레이팅(#245 additive). `undefined` = 구 서버. */
   rating: number | undefined;
+  /**
+   * **정산 후** 레이팅 — `FINISHED` 관측 뒤의 `/api/me` 응답이 이 값으로 바뀐다(m1).
+   *
+   * ⚠️ 이 축이 없던 동안 목은 레이팅을 **상수 하나**로만 줬고, 그래서 "정산 전 값을 그린다"는
+   * 회귀가 전 계약을 통과했다(apps/web CLAUDE.md 표 **#4** = 픽스처가 두 상태를 뭉갠다).
+   * 카드가 읽는 값의 신선도는 `MatchPage` 의 `["me"]` 무효화에 달려 있는데, 두 값이 같으면
+   * 그 무효화를 지워도 관측값이 안 변한다. `undefined` 면 정산 전후가 같다(구 표본).
+   */
+  ratingAfter: number | undefined;
+  /**
+   * 이 경기가 만든 **레벨업 선택권**(#405) — `[playerId, 이름, level]`. 순서 = 카드 순서.
+   * 봉투 `GROWTH` 섹션과 `GET /api/growth/choices` 양쪽에 같은 것이 실린다(서버가 그렇게 준다).
+   */
+  choices: { playerId: string; name: string; level: number }[];
+  /** 이미 고른 선택권 id — `GET /api/growth/choices` 에서 빠진다. */
+  chosen: string[];
   /** `/result` 를 500 으로 떨어뜨린다(보상 조회 실패 갈래). */
   resultFails: boolean;
   /** `/result` 응답을 늦춘다 — **도착 전에 카드 수를 세는** 경주를 재현하는 유일한 손잡이. */
   resultDelayMs: number;
   acked: string[];
+}
+
+/**
+ * 후보 3장 — **gain 내림차순이 아니다**(서버는 `positionBaseline × gain` 으로 정렬한다).
+ * 재정렬 변이가 이 픽스처에서 죽는다: `pace` 가 gain 최대인데 마지막이다.
+ */
+const candidatesOf = (playerId: string) => [
+  { stat: "tackling", gain: 2.1, core: true },
+  { stat: "physical", gain: 1.4, core: true },
+  { stat: "pace", gain: 3.6, core: false, reason: { kind: "EVENT", detail: { playerId } } },
+];
+
+const choiceIdOf = (playerId: string) => `ch-${playerId}`;
+
+function pendingChoiceOf(c: Harness["choices"][number]) {
+  return {
+    choiceId: choiceIdOf(c.playerId),
+    playerId: c.playerId,
+    level: c.level,
+    candidates: candidatesOf(c.playerId),
+  };
+}
+
+/** 봉투 `GROWTH` 섹션 = `GET /api/growth/report` 와 **같은 자료**(서버가 한 함수로 만든다). */
+function growthEntriesOf(h: Harness) {
+  return h.choices.map((c) => ({
+    playerId: c.playerId,
+    name: c.name,
+    position: "DF",
+    grade: "GOLD",
+    xpGained: 120,
+    levelBefore: c.level,
+    levelAfter: c.level + 1,
+    cardXp: 10,
+    xpToNext: 200,
+    minutes: "starter",
+    pendingChoices: [pendingChoiceOf(c)],
+  }));
+}
+
+/** `GET /api/growth/card/{playerId}` — 후보 카드가 `from → to` 를 만들 수 있게 하는 최소 모양. */
+function cardEffectiveOf(playerId: string) {
+  const attrs = {
+    pace: 44, shooting: 40, passing: 41, technical: 42,
+    tackling: 44, positioning: 43, physical: 45, stamina: 46, mental: 47,
+  };
+  const caps = Object.fromEntries(Object.keys(attrs).map((k) => [k, 73]));
+  return {
+    playerId,
+    grade: "GOLD",
+    star: 2,
+    attributes: attrs,
+    prePotential: attrs,
+    base: attrs,
+    caps,
+    statLevels: {},
+    startLo: 32,
+    potential: { unlocked: true, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 5 },
+    ovr: 44,
+    completion: 0.2,
+  };
 }
 
 function detailOf(h: Harness) {
@@ -66,12 +143,15 @@ async function mockApi(page: Page, h: Harness) {
     if (!url.pathname.startsWith("/api/")) return route.continue();
 
     if (url.pathname === "/api/me") {
+      // 정산 전/후를 **다른 값**으로 준다(m1) — 두 상태를 뭉개면 신선도 회귀가 안 보인다.
+      const rating =
+        h.state === "FINISHED" && h.ratingAfter !== undefined ? h.ratingAfter : h.rating;
       return route.fulfill(
         json({
           user: { id: "u1", nickname: "테스터", isAdmin: false },
           wallet: { points: 20000, gems: 50 },
           records: { wins: 1, draws: 0, losses: 0 },
-          ...(h.rating === undefined ? {} : { rating: h.rating }),
+          ...(rating === undefined ? {} : { rating }),
         }),
       );
     }
@@ -90,15 +170,50 @@ async function mockApi(page: Page, h: Harness) {
           pointsAwarded: 1200,
           ...(h.daily ? { dailyReward: h.daily } : {}),
           rewardBundle:
-            h.currency.length > 0
+            h.currency.length > 0 || h.choices.length > 0
               ? {
                   bundleId: "b-p456r",
                   source: "MATCH",
                   sourceRef: MATCH_ID,
                   acknowledgedAt: null,
-                  sections: [{ kind: "CURRENCY", entries: h.currency }],
+                  sections: [
+                    ...(h.currency.length > 0 ? [{ kind: "CURRENCY", entries: h.currency }] : []),
+                    ...(h.choices.length > 0
+                      ? [{ kind: "GROWTH", entries: growthEntriesOf(h) }]
+                      : []),
+                  ],
                 }
               : null,
+        }),
+      );
+    }
+    if (url.pathname === "/api/growth/choices") {
+      // "지금 남은 것"의 권위는 봉투 스냅샷이 아니라 이 조회다(`usePendingChoices` 주석).
+      return route.fulfill(
+        json({
+          choices: h.choices
+            .filter((c) => !h.chosen.includes(choiceIdOf(c.playerId)))
+            .map(pendingChoiceOf),
+        }),
+      );
+    }
+    if (url.pathname.startsWith("/api/growth/card/")) {
+      return route.fulfill(json(cardEffectiveOf(url.pathname.split("/").pop()!)));
+    }
+    if (req.method() === "POST" && /^\/api\/growth\/choices\/[^/]+$/.test(url.pathname)) {
+      const choiceId = url.pathname.split("/").pop()!;
+      const src = h.choices.find((c) => choiceIdOf(c.playerId) === choiceId);
+      h.chosen.push(choiceId);
+      const stat = (req.postDataJSON() as { stat: string }).stat;
+      const cand = candidatesOf(src?.playerId ?? "").find((x) => x.stat === stat);
+      return route.fulfill(
+        json({
+          choiceId,
+          playerId: src?.playerId ?? "",
+          level: src?.level ?? 1,
+          stat,
+          gain: cand?.gain ?? 0,
+          card: cardEffectiveOf(src?.playerId ?? ""),
         }),
       );
     }
@@ -123,6 +238,9 @@ async function openMatch(page: Page, over: Partial<Harness> = {}): Promise<Harne
     currency: [{ code: "POINT", amount: 1200 }],
     daily: { slotNo: 3, currency: "GEM", amount: 30, result: "WIN", awarded: true },
     rating: 1043,
+    ratingAfter: undefined,
+    choices: [],
+    chosen: [],
     resultFails: false,
     resultDelayMs: 0,
     acked: [],
@@ -249,8 +367,14 @@ test.describe("#456 B3 W1 — 경기 종료 보상 순차 (AC1·AC2)", () => {
     await expect(page.getByTestId("match-reward-daily-vanished")).toBeVisible();
   });
 
-  test("d. 원정 — 두 번째 카드가 레이팅이다(서버 `/api/me` 값 그대로)", async ({ page }) => {
-    const h = await openMatch(page, { mode: "away", daily: null, rating: 1043 });
+  test("d. 원정 — 두 번째 카드가 **정산 후** 레이팅이다(정산 전 값을 그리면 죽는다)", async ({ page }) => {
+    /*
+     * ⚠️ **정산 전/후를 다른 값으로 준다**(m1). 레이팅은 서버가 `finishMatch` 에서 갱신하고 화면은
+     * `MatchPage` 의 `FINISHED` 최초 관측 → `["me"]` 무효화로 그 값을 받는다. 목이 상수 하나면
+     * 그 무효화를 지워도 관측값이 같아서 **회귀가 계약을 그대로 통과한다**(표 #4).
+     * 1043 = 정산 전 · 1102 = 정산 후. 카드가 말해야 하는 것은 후자다.
+     */
+    const h = await openMatch(page, { mode: "away", daily: null, rating: 1043, ratingAfter: 1102 });
     await finish(page, h);
     await page.getByTestId("flow-bridge-next").click();
 
@@ -259,7 +383,7 @@ test.describe("#456 B3 W1 — 경기 종료 보상 순차 (AC1·AC2)", () => {
     await page.getByTestId("match-reward-next").click();
 
     await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-card", "rating");
-    await expect(page.getByTestId("match-reward-rating-value")).toHaveText("1043");
+    await expect(page.getByTestId("match-reward-rating-value")).toHaveText("1102");
   });
 
   test("d-2. 원정 — 레이팅 축이 없는 구 서버면 두 번째 카드를 지어내지 않는다", async ({ page }) => {
@@ -332,5 +456,211 @@ test.describe("#456 B3 W1 — 경기 종료 보상 순차 (AC1·AC2)", () => {
     await expect(page.getByTestId("reward-sheet")).toBeVisible();
     // 아직 ack 를 치지 않았다 = 보상 카드가 봉투를 대신 확인해 주지 않는다.
     expect(h.acked).toEqual([]);
+  });
+
+  test("i. 순차 공개의 **정답이 배경에 미리 인쇄돼 있지 않다** (W1 독립검증 major-2)", async ({ page }) => {
+    /*
+     * 실캡처가 잡은 것: 카드 `1/2 골드 +1,200 G` 를 보는 **동안** 뒤 결과 패널에 `경기 보상
+     * +1,200 G` 와 `오늘의 보상 +30 Z` 가 그대로 읽혔다(백드롭 `rgba(0,0,0,0.72)`). 골드 3회 ·
+     * 잼 2회 노출이고, 그러면 **순차 공개가 첫 카드에서 이미 무효**다 = B3 의 목적 자체가 사라진다.
+     *
+     * ⚠️ **`toBeVisible()` 로 재면 안 된다**(표 #3) — 오버레이가 전면을 덮으므로 `elementFromPoint`
+     * 도 언제나 오버레이를 돌려준다(0.72 백드롭에서도). 이 결함이 사는 축은 "그 문자열이 화면에
+     * 실재하는가"라서, 고치는 방식도 **배경에서 그 줄을 걷는 것**이고 계약도 그것을 잰다.
+     * ⚠️ 그리고 **양성 대조가 같이 있어야** 한다(표 #6) — 걷는 것이지 지우는 것이 아니므로,
+     * 흐름이 끝나면 같은 줄이 같은 금액으로 돌아와야 한다.
+     */
+    const h = await openMatch(page, { mode: "league" });
+    await finish(page, h);
+    /*
+     * ⚠️ 앵커를 **여기 둘 수 없다** — 종료 전이 순간부터 브릿지가 이미 떠 있어서 그 줄은 이 시점에도
+     * 미뤄져 있다. 그래서 "이 표본에서는 그 줄이 원래 그려진다"를 증명하는 것은 **맨 아래 양성
+     * 대조**다(흐름이 끝나면 같은 금액으로 돌아온다). 그게 없으면 위 `toHaveCount(0)` 들은
+     * "아직 안 그려짐"도 통과하는 공허한 단언이 된다(표 #6).
+     */
+    await page.getByTestId("flow-bridge-next").click();
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-card", "currency");
+    await expect(page.getByTestId("match-reward-currency-POINT")).toHaveAttribute("data-amount", "1200");
+
+    // 카드가 떠 있는 동안 배경에 같은 금액 문자열이 **없다**.
+    await expect(page.getByTestId("reward-points")).toHaveCount(0);
+    await expect(page.getByTestId("reward-daily")).toHaveCount(0);
+
+    await page.getByTestId("match-reward-next").click();
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-card", "daily");
+    await expect(page.getByTestId("reward-points")).toHaveCount(0);
+    await expect(page.getByTestId("reward-daily")).toHaveCount(0);
+
+    // 양성 대조 — 흐름이 끝나면 결과 카드의 보상 줄이 그대로 돌아온다(미룬 것이지 지운 것이 아니다).
+    await page.getByTestId("match-reward-next").click();
+    await expect(page.getByTestId("flow-continuation")).toHaveCount(0);
+    await expect(page.getByTestId("reward-points")).toContainText("1,200");
+    await expect(page.getByTestId("reward-daily")).toHaveAttribute("data-slot", "3");
+  });
+
+  test("j. `/result` 가 에러 없이 매달려도 **탈출구가 있다** (W1 독립검증 major-3)", async ({ page }) => {
+    /*
+     * 이 창의 그릇은 `dismissable={false}` 모달이라 ESC·백드롭 클릭이 안 먹고, 로딩 갈래에는
+     * 컨트롤이 **0개**였다. `apiFetch` 에 타임아웃이 없으므로(3s 타임아웃은 runtime config 전용)
+     * 요청이 **에러 없이** 매달리면 유저는 끝난 경기 결과에 영영 못 간다 — `g` 가 막는 것은
+     * 실패(500)뿐이고 무응답은 그 갈래로 떨어지지 않는다.
+     */
+    const h = await openMatch(page, { mode: "league", resultDelayMs: 30_000 });
+    await finish(page, h);
+    const t0 = Date.now();
+    await page.getByTestId("flow-bridge-next").click();
+    await expect(page.getByTestId("match-reward-loading")).toBeVisible();
+
+    // 즉시 뜨면 그건 상한이 아니라 로딩 화면의 버튼이다 — 기다린 뒤에만 나온다.
+    await page.waitForTimeout(1_500);
+    await expect(page.getByTestId("match-reward-pending-exit")).toHaveCount(0);
+
+    const exit = page.getByTestId("match-reward-pending-exit");
+    await expect(exit).toBeVisible({ timeout: 15_000 });
+    expect(Date.now() - t0, "상한 전에 뜨면 안 된다").toBeGreaterThan(4_000);
+    // 그 버튼은 **다이얼로그 안**에 있어야 한다(밖에 있으면 포커스 트랩이 못 닿는다).
+    expect(await page.getByTestId("flow-continuation").getByRole("button").count()).toBeGreaterThan(0);
+
+    await exit.click();
+    await expect(page.getByTestId("flow-continuation")).toHaveCount(0);
+    await expect(page.getByTestId("result-page")).toBeVisible();
+  });
+});
+
+/* ───────────────────────────────────────────────────────────────────────────────────────────
+ * AC3 — **선수별 순차**. 골드 → 모드별 → 레벨업한 선수를 한 명씩.
+ *
+ * hero: *"경기 종료 보상 페이지를 순차화하자 — 골드 보상, 레이팅 보상, 그리고 **선수별로**."*
+ * 스택·페이저·도트는 `ReportCardStack` 이 이미 갖고 있고(#57 재발명 금지), 후보 3장·적용·축하는
+ * `growth/ChoiceCards` 가 갖는다(보상 시트·강화탭과 **같은 컴포넌트** = 설계 §2.10).
+ * 이 묶음이 새로 지키는 것은 **순서 · 세 버튼의 의미 · 건너뛴 선택권이 남는가** 셋이다.
+ * ─────────────────────────────────────────────────────────────────────────────────────────── */
+
+const TWO_CHOICES = [
+  { playerId: "P001", name: "김수비", level: 4 },
+  { playerId: "P002", name: "박미드", level: 7 },
+];
+
+async function openWithChoices(page: Page, over: Partial<Harness> = {}) {
+  const h = await openMatch(page, { mode: "practice", daily: null, choices: TWO_CHOICES, ...over });
+  await finish(page, h);
+  await page.getByTestId("flow-bridge-next").click();
+  return h;
+}
+
+test.describe("#456 B3 W2 — 선수별 순차 선택 (AC3)", () => {
+  test("k. 골드 다음에 **선수 카드가 사람 수만큼** 선다 (순서·페이저·본인 확인)", async ({ page }) => {
+    await openWithChoices(page);
+    const card = page.getByTestId("match-reward-card");
+
+    await expect(card).toHaveAttribute("data-card", "currency");
+    // 연습이라 모드별 카드는 없다 → 골드 1 + 선수 2 = 3장.
+    await expect(page.getByTestId("match-reward-pager")).toHaveText("1 / 3");
+    await page.getByTestId("match-reward-next").click();
+
+    // 첫 선수 — **누구의 무슨 레벨업인지**가 카드에 있어야 "누구 걸 고르는 중이지?"가 안 된다.
+    await expect(card).toHaveAttribute("data-kind", "choice");
+    await expect(card).toHaveAttribute("data-player", "P001");
+    await expect(page.getByTestId("match-reward-pager")).toHaveText("2 / 3");
+    await expect(card).toContainText("김수비");
+    await expect(card).toContainText("Lv 4 → 5");
+    await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
+    // 🚨 후보 순서는 응답 그대로다 — gain 최대(`pace` 3.6)가 꼴찌인 픽스처라 재정렬이 여기서 죽는다.
+    expect(
+      await page
+        .getByTestId("choice-candidates")
+        .locator("button")
+        .evaluateAll((els) => els.map((el) => el.getAttribute("data-testid"))),
+    ).toEqual(["choice-cand-tackling", "choice-cand-physical", "choice-cand-pace"]);
+
+    // 실화면 증거 — 목적지는 `test-results/`(gitignore). 리포의 `evidence/**` 를 더럽히지 않는다.
+    await page.screenshot({ path: "test-results/p456-choice-card-390.png" });
+
+    // [다음에] = 이 선수를 건너뛴다(고르지 않고 넘긴다).
+    await page.getByTestId("match-reward-choice-later").click();
+    await expect(card).toHaveAttribute("data-player", "P002");
+    await expect(card).toContainText("박미드");
+    await expect(card).toContainText("Lv 7 → 8");
+    await expect(page.getByTestId("match-reward-pager")).toHaveText("3 / 3");
+
+    await page.getByTestId("match-reward-choice-later").click();
+    await expect(page.getByTestId("flow-continuation")).toHaveCount(0);
+  });
+
+  test("l. `[이 스탯 선택]` → 적용·축하 → 다음 선수 (서버로 그 선택이 간다)", async ({ page }) => {
+    const h = await openWithChoices(page);
+    await page.getByTestId("match-reward-next").click(); // 골드 → 첫 선수
+
+    await page.getByTestId("choice-cand-pace").click();
+    await expect(page.getByTestId("choice-celebration")).toBeVisible();
+    await expect(page.getByTestId("choice-applied")).toHaveAttribute("data-stat", "pace");
+    expect(h.chosen).toEqual(["ch-P001"]);
+
+    /*
+     * ⚠️ 적용 뒤에는 이 버튼이 **`다음에`가 아니다** — 미룬 것이 없는데 "다음에"라고 쓰면 방금 한
+     * 선택이 취소된 것처럼 읽힌다. 라벨이 곧 그 순간의 뜻이다.
+     */
+    const later = page.getByTestId("match-reward-choice-later");
+    await expect(later).toHaveText("다음");
+    await later.click();
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-player", "P002");
+
+    /*
+     * ⚠️ **선택해도 카드가 사라지지 않는다.** 적용은 `["growthChoices"]` 를 무효화하므로 목록을
+     * 그대로 따라가면 방금 고른 선수의 카드가 스택에서 빠지고 **인덱스가 밀려 다음 선수를 건너뛴다**.
+     * 이 스택은 열린 순간의 목록으로 박제돼 있어야 한다 — `3 / 3` 이 그 증거다(2 / 2 가 되면 죽는다).
+     */
+    await expect(page.getByTestId("match-reward-pager")).toHaveText("3 / 3");
+
+    // 마지막 장의 버튼은 목적지를 말한다.
+    await expect(page.getByTestId("match-reward-choice-later")).toHaveText("다음에");
+    await page.getByTestId("choice-cand-tackling").click();
+    await expect(page.getByTestId("match-reward-choice-later")).toHaveText("결과 보기");
+    await page.getByTestId("match-reward-choice-later").click();
+    await expect(page.getByTestId("flow-continuation")).toHaveCount(0);
+    expect(h.chosen).toEqual(["ch-P001", "ch-P002"]);
+  });
+
+  test("m. `[전체 건너뛰기]` = **선택권을 남긴다**(서버 자동선택 0)", async ({ page }) => {
+    /*
+     * hero 게이트 확정사항: 전체 건너뛰기는 *포기*가 아니라 *미룸*이다. 서버는 아무 일도 하지
+     * 않고(작업 0), 남은 선택권은 강화탭 `선택 대기 N` 에서 그대로 고를 수 있다.
+     * ⚠️ 그래서 여기서 재는 것은 "화면이 닫혔다"가 아니라 **선택권이 서버에 그대로 있다** 이다.
+     */
+    const h = await openWithChoices(page);
+    await page.getByTestId("match-reward-next").click(); // 골드 → 첫 선수
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-player", "P001");
+
+    await page.getByTestId("match-reward-choice-skip-all").click();
+    await expect(page.getByTestId("flow-continuation")).toHaveCount(0);
+
+    // 아무것도 고르지 않았다 = 서버가 대신 골라 주지 않았다.
+    expect(h.chosen).toEqual([]);
+    expect(h.acked).toEqual([]);
+    // 그리고 남은 선택권은 이어지는 시트가 그대로 회수한다(뱃지 = 선택 '횟수').
+    await expect(page.getByTestId("reward-sheet")).toBeVisible();
+    await expect(page.getByTestId("reward-tab-badge")).toHaveText("2");
+  });
+
+  test("n. 이미 고른 선택권은 카드가 되지 않는다(봉투 스냅샷을 그대로 세지 않는다)", async ({ page }) => {
+    /*
+     * 봉투의 `pendingChoices` 는 **정산 시점 스냅샷**이라 유저가 고른 뒤에도 그대로다(`types.ts`
+     * `bundleChoicesOf` 주석). 그것만 세면 강화탭에서 이미 고른 선수가 여기 또 나온다.
+     */
+    await openWithChoices(page, { chosen: ["ch-P001"] });
+    await page.getByTestId("match-reward-next").click();
+
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-player", "P002");
+    await expect(page.getByTestId("match-reward-pager")).toHaveText("2 / 2");
+  });
+
+  test("o. 선택권이 없으면 선수 카드가 서지 않는다(빈 장을 만들지 않는다)", async ({ page }) => {
+    const h = await openMatch(page, { mode: "practice", daily: null, choices: [] });
+    await finish(page, h);
+    await page.getByTestId("flow-bridge-next").click();
+
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-card", "currency");
+    await expect(page.getByTestId("match-reward-pager")).toHaveCount(0);
+    await expect(page.getByTestId("choice-candidates")).toHaveCount(0);
   });
 });

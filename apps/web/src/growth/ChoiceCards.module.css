@@ -54,22 +54,31 @@
   cursor: pointer;
 }
 
+/*
+ * ⚠️ **세로 카드 3장이다 — 1열 가로 바로 되돌리지 마라** (#456 S4-W2 AC4, hero 지시).
+ * 구 모양은 `display:grid` 1열 + `.cand{display:block;width:100%}` = 가로 바 3개였고, 정보 감량
+ * (현재→적용후·천장 막대·범례·근거줄 제거) 뒤에는 그 폭이 통째로 빈 공간이 된다.
+ * 계약이 **좌표로** 잰다(`p405` f: 세 카드가 같은 줄 · 각자 컨테이너의 절반 미만 · 세로 > 가로).
+ */
 .cands {
   display: grid;
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
   min-width: 0;
 }
 
 .cand {
-  display: block;
-  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
   min-width: 0;
-  padding: 12px 13px;
+  padding: 13px 7px 11px;
   border: 1px solid var(--border);
   border-radius: 14px;
   background: var(--surface);
   color: inherit;
-  text-align: left;
+  text-align: center;
   font: inherit;
   cursor: pointer;
 }
@@ -84,6 +93,7 @@
   cursor: default;
 }
 
+/* 적용 결과 카드(`.applied`)는 한 줄 요약이라 가로 배치를 그대로 쓴다. */
 .candTop {
   display: flex;
   align-items: center;
@@ -92,7 +102,8 @@
 }
 
 .candStat {
-  font-size: 14.5px;
+  max-width: 100%;
+  font-size: 13px;
   font-weight: 800;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -100,7 +111,6 @@
 }
 
 .gainBadge {
-  margin-left: auto;
   flex: none;
   padding: 2px 8px;
   border-radius: 6px;
@@ -109,6 +119,21 @@
   font-size: 13px;
   font-weight: 900;
   font-variant-numeric: tabular-nums;
+}
+
+/* `.applied` 안에서는 gain 이 오른쪽 끝으로 간다(그 줄만 가로 배치다). */
+.applied .gainBadge {
+  margin-left: auto;
+}
+
+/* 카드가 스스로 무엇을 하는지 말하는 줄 — 클릭이 곧 적용이고 되돌릴 수 없다(`.lockNote`). */
+.candCta {
+  margin-top: auto;
+  padding-top: 2px;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--accent);
+  white-space: nowrap;
 }
 
 .candNums {
@@ -136,49 +161,12 @@
   color: var(--ok);
 }
 
-/* 천장 대비 진행 — 축은 그 스탯의 **발행 원본 → 천장**(둘 다 서버 값, 미러 없음). */
-.ceilBar {
-  position: relative;
-  display: block;
-  height: 8px;
-  margin-top: 8px;
-  border-radius: 5px;
-  background: #20262f;
-  overflow: hidden;
-}
-
-.ceilBar i {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  border-radius: 5px;
-}
-
-.ceilCur {
-  left: 0;
-  background: linear-gradient(90deg, #3a5f7d, #4f8cff);
-}
-
-.ceilAdd {
-  background: linear-gradient(90deg, #3fa06a, #63d193);
-}
-
-.ceilLegend {
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.decayNote {
-  margin: 9px 2px 0;
-  font-size: 11px;
-  line-height: 1.5;
-  color: var(--text-muted);
-}
+/*
+ * ⚠️ **천장 막대(`.ceilBar`/`.ceilCur`/`.ceilAdd`) · 범례(`.ceilLegend`) · 감쇠 설명(`.decayNote`)은
+ * 후보 카드에서 은퇴했다** (#456 S4-W2 AC4). 클래스까지 지운 이유 = 남겨 두면 다음 사람이 "이미
+ * 스타일이 있으니" 하고 줄을 되살린다. 축 규칙 자체(`cardAxisWindow`)는 **강화탭 스탯 막대**가
+ * 계속 소비하므로 살아 있다(`growth/attribute-view.ts` · `AttributeLayers.module.css`).
+ */
 
 .applied {
   padding: 13px;
@@ -187,32 +175,26 @@
   background: #1a2333;
 }
 
-/* "왜 이 후보인가" (#405, 목업 화면 ③) — 서버 `reason` 을 문장으로 옮긴 줄. 못 만들면 안 그린다. */
-.candWhy {
-  display: flex;
-  gap: 6px;
-  align-items: flex-start;
-  margin-top: 9px;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: #b7c0cd;
-}
+/* ⚠️ 근거줄(`.candWhy`/`.candWhyTag`)도 같이 은퇴했다 — 위 블록 주석 참조. 문장 매핑은
+   `growth/choice-reason.ts` 에 그대로 있다(소비처 0 = 롤백 자산, 계약 `choice-reason.test.ts`). */
 
-.candWhyTag {
-  flex: none;
-  color: var(--accent);
-  font-weight: 800;
-}
-
-/* 포지션 핵심 배지 (#405, 서버 `619d18b`) — gain 옆에 서서 "얼마나 오르나" 옆에 "값어치가 있나"를
-   놓는다. 중립 톤이다: gain(초록)과 색으로 경쟁하면 어느 쪽을 봐야 하는지가 다시 흐려진다. */
+/* 포지션 핵심 배지 (#405, 서버 `619d18b`) — gain **위**에 서서 "얼마나 오르나" 옆에 "값어치가 있나"를
+   놓는다. 중립 톤이다: gain(초록)과 색으로 경쟁하면 어느 쪽을 봐야 하는지가 다시 흐려진다.
+   좁은 세로 카드라 두 줄로 접힌다 — 잘리는 것보다 낫다(`포지션 핵심` 6자). */
 .coreBadge {
   flex: none;
-  padding: 2px 7px;
+  max-width: 100%;
+  padding: 2px 6px;
   border: 1px solid var(--accent);
   border-radius: 999px;
   color: #9dc0ff;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 800;
-  white-space: nowrap;
+  line-height: 1.35;
+}
+
+/* 배지가 없는 카드의 자리지킴 — 세 카드의 gain 줄이 같은 높이에 서게 한다. */
+.coreSpacer {
+  display: block;
+  height: 16px;
 }

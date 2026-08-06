@@ -6,8 +6,7 @@ import type { CardEffective, ChoiceCandidate, ChoiceResult, PendingChoice } from
 import { CelebrationOverlay } from "../common/CelebrationOverlay";
 import { ErrorToast } from "../common/ErrorToast";
 import { matchInProgressIdOf } from "../common/match-lock";
-import { cardAxisWindow, STAT_LABEL_MAP } from "./growth-config";
-import { reasonTextOf } from "./choice-reason";
+import { STAT_LABEL_MAP } from "./growth-config";
 import styles from "./ChoiceCards.module.css";
 
 /**
@@ -16,17 +15,22 @@ import styles from "./ChoiceCards.module.css";
  * 두 자리에서 모양이 갈리면 안 된다는 게 설계 §2.10 의 명시 요구다. 그래서 선택 뮤테이션·축하
  * 연출·에러 처리까지 **여기 하나가** 갖는다 — 호출부가 흉내 내기 시작하면 한쪽만 낡는다.
  *
- * ── "왜 이 후보인가" 한 줄 ──────────────────────────────────────────────────────────────
- * 서버가 후보마다 `reason` 을 박제해 내린다(`{kind, detail}`). **문장은 클라가 만든다** —
- * 매핑·규율은 `choice-reason.ts`. 만들 수 없으면(모르는 enum · `BASE` · 초판 행의 `null`)
- * **줄을 생략**한다. 지어내지 않는다.
+ * ── ⚠️ 세로 카드 3장 + 정보 감량 (#456 S4-W2 AC4, hero 지시) ─────────────────────────────
+ * hero: *"강화 카드는 이미 세로 3장 — **누가 어떤 스탯 몇 올리는지**만 남기고 정보 감량"*.
+ * 그래서 카드에 **남는 것**은 스탯 라벨 · 포지션 핵심 배지 · `+gain` · `[이 스탯 선택]` 뿐이고,
+ * 아래 다섯은 **의도적으로 없다**:
+ *   ① 현재→적용후(`50.0 → 52.0`) ② 천장 막대 2층 ③ 범례(`시작 N`/`천장까지`/`천장`)
+ *   ④ 근거줄(`왜 …`) ⑤ 감쇠 설명(`낮은 스탯일수록 …`)
+ * 사라진 것은 **화면 줄**이지 규칙이 아니다 — 근거 문장 매핑은 `choice-reason.ts`(+ 그 테스트),
+ * 막대 원점은 `growth-config.cardAxisWindow`(강화탭 스탯 막대가 계속 소비)가 그대로 갖고 있다.
+ * 두 모듈을 **지우지 않은 이유가 그것이다**: hero 가 되돌리라고 하면 화면 줄만 복구하면 된다.
+ * ⚠️ 그리고 `from → to` 는 화면에서 사라졌지 계산에서 사라진 게 아니다 — **축하 연출**
+ * (`44.0 → 47.8 (+3.82)`)과 **적용 후 카드**가 그 값을 쓴다. `candidateView` 가 계속 필요한 이유다.
  *
- * ── 막대의 원점 = 등급 `startLo` (서버 `619d18b`) ────────────────────────────────────────
- * 감쇠가 `r = (v − startLo)/(ceiling − startLo)` 이므로 **이 값이 원점이어야** gain 차이가 막대
- * 길이로 읽힌다. 스탯별 `base` 에서 시작시키면 세 후보가 서로 다른 원점을 갖게 되어 "낮은 스탯일수록
- * 크게 오른다"가 화면에서 사라진다(초판이 그 상태였고 독립 검증이 잡았다).
- * 앵커는 `cardAxisWindow` 가 소유한다 — **강화탭 막대와 같은 함수**라 두 화면이 갈릴 수 없다.
- * 구 서버라 `startLo` 가 없으면 근사 앵커로 그리되 **`시작 N` 라벨은 안 붙인다**(`axis.exact`).
+ * ⚠️ **클릭 = 즉시 적용이다**(두 단계 확인이 아니다). `[이 스탯 선택]` 은 카드 안의 **행동 라벨**이지
+ * 별도 확인 버튼이 아니다 — 확인 단계를 넣으면 이 컴포넌트를 쓰는 두 자리(보상 시트·강화탭)의
+ * 기존 계약이 전부 "클릭 → 축하" 를 전제하고 있어서 같이 깨진다. 되돌릴 수 없는 선택이라는 경고는
+ * `.lockNote` 가 계속 말한다.
  *
  * ── ⚠️ 후보 **순서를 다시 정렬하지 마라** ────────────────────────────────────────────────
  * 서버가 `positionBaseline × gain` 내림차순으로 내린다(`ChoiceCandidate` 주석). 화면에서 제일
@@ -43,20 +47,20 @@ const CELEBRATION_MS = 1700;
  */
 const CELEBRATION_ACCENT = "#ffc24b";
 
-/** 스탯 1종의 "지금 → 적용 후"와 그 스탯의 천장. 카드가 아직 없으면 null(숫자를 지어내지 않는다). */
+/**
+ * 스탯 1종의 "지금 → 적용 후"와 그 스탯의 천장. 카드가 아직 없으면 null(숫자를 지어내지 않는다).
+ *
+ * ⚠️ `from`/`to` 는 **후보 카드가 아니라 축하 연출·적용 후 카드**가 쓴다(AC4 감량). 지우면
+ * `44.0 → 47.8 (+3.82)` 이 `+3.82` 로 퇴화한다.
+ */
 export interface CandidateView {
   stat: string;
   label: string;
   gain: number;
   from: number | null;
   to: number | null;
+  /** 천장 — `to` 를 자르는 데만 쓴다(라벨로는 안 나간다). */
   cap: number | null;
-  /** 세 후보가 **공유**하는 막대 원점(위 머리말). 카드가 없으면 null. */
-  axisLo: number | null;
-  /** 원점이 서버 `startLo` 인가 — 참일 때만 `시작 N` 라벨을 붙인다. */
-  axisExact: boolean;
-  /** 화면에 그릴 근거 한 줄. 만들 수 없으면 null → 줄 생략. */
-  reason: string | null;
   /** 그 포지션 핵심 스탯인가. **모르면 null**(구 박제분) → 배지 생략. */
   core: boolean | null;
 }
@@ -74,12 +78,9 @@ export function candidateView(c: ChoiceCandidate, card: CardEffective | undefine
   const pre = card?.prePotential as unknown as Record<string, number> | undefined;
   const attrs = card?.attributes as unknown as Record<string, number> | undefined;
   const caps = card?.caps as unknown as Record<string, number> | undefined;
-  const base = card?.base as unknown as Record<string, number> | undefined;
   const from = num(pre?.[stat]) ?? num(attrs?.[stat]);
   const cap = num(caps?.[stat]);
   const to = from == null ? null : cap == null ? from + c.gain : Math.min(cap, from + c.gain);
-  // 강화탭 막대와 **같은 함수**로 원점을 잡는다 — 두 화면이 다른 축을 쓰면 같은 카드가 두 모습이 된다.
-  const axis = base && caps ? cardAxisWindow(base, caps, card?.startLo) : null;
   return {
     stat,
     label: STAT_LABEL_MAP[stat] ?? stat,
@@ -87,15 +88,11 @@ export function candidateView(c: ChoiceCandidate, card: CardEffective | undefine
     from,
     to,
     cap,
-    axisLo: axis?.lo ?? null,
-    axisExact: Boolean(axis?.exact),
-    reason: reasonTextOf(c.reason),
     // `false` 로 눕히지 않는다 — 없는 사실을 단언하게 된다(ChoiceCandidate.core 주석).
     core: typeof c.core === "boolean" ? c.core : null,
   };
 }
 
-const pct = (v: number) => Math.max(0, Math.min(100, v));
 const n1 = (v: number) => v.toFixed(1);
 
 function CandidateButton({
@@ -107,19 +104,6 @@ function CandidateButton({
   onPick: () => void;
   disabled: boolean;
 }) {
-  // 막대 축 = **카드 공유 원점 → 그 스탯의 천장**. 원점이 셋 다 같아야 gain 차이가 읽힌다(머리말).
-  const lo = view.axisLo ?? 0;
-  const hi = view.cap ?? 100;
-  const span = hi > lo ? hi - lo : 1;
-  const curPct = view.from == null ? 0 : pct(((view.from - lo) / span) * 100);
-  /*
-   * ⚠️ 상승 구간의 길이는 **증분에서** 낸다(`(to − from)/span`), 두 절대 위치의 차가 아니다.
-   * 위치로 내면 값이 축 하한 아래인 카드에서 양쪽이 0% 로 클램프돼 **상승분이 통째로 사라진다**
-   * (실화면 캡처로 확인 — 이 화면에서 gain 은 지워지면 안 되는 유일한 정보다).
-   * 천장에 걸려 실제 적용분이 gain 보다 작으면 `to` 가 이미 잘려 있으므로 이 식이 그대로 정직하다.
-   */
-  const addPct =
-    view.from == null || view.to == null ? 0 : pct(((view.to - view.from) / span) * 100);
   return (
     <button
       type="button"
@@ -129,56 +113,26 @@ function CandidateButton({
       onClick={onPick}
       disabled={disabled}
     >
-      <span className={styles.candTop}>
-        <span className={styles.candStat}>{view.label}</span>
-        {/*
-          포지션 핵심 배지 — gain 배지 **옆**에 둔다. 이 화면의 판단은 "얼마나 오르나"(gain)와
-          "그게 이 선수에게 값어치가 있나"(core) 둘인데, 후자가 없어서 화면이 지는 선택을
-          유도하고 있었다(서버 `619d18b`). 두 축을 나란히 보여야 비교가 성립한다.
-        */}
-        {view.core === true && (
-          <span className={styles.coreBadge} data-testid={`choice-core-${view.stat}`}>
-            포지션 핵심
-          </span>
-        )}
-        <span className={styles.gainBadge} data-testid={`choice-gain-${view.stat}`}>
-          +{view.gain.toFixed(2)}
+      <span className={styles.candStat}>{view.label}</span>
+      {/*
+        포지션 핵심 배지 — gain 배지 **바로 위**다. 이 화면의 판단은 "얼마나 오르나"(gain)와
+        "그게 이 선수에게 값어치가 있나"(core) 둘인데, 후자가 없어서 화면이 지는 선택을 유도하고
+        있었다(서버 `619d18b`). 감량하면서도 이 배지를 남긴 이유가 그것이다 — 두 축이 같이 있어야
+        비교가 성립하고, gain 만 남기면 화면이 **다시** 지는 선택을 가리킨다.
+      */}
+      {view.core === true ? (
+        <span className={styles.coreBadge} data-testid={`choice-core-${view.stat}`}>
+          포지션 핵심
         </span>
+      ) : (
+        // 자리를 비워 세 카드의 gain 줄이 같은 높이에 선다(없는 사실은 여전히 안 그린다).
+        <span className={styles.coreSpacer} aria-hidden="true" />
+      )}
+      <span className={styles.gainBadge} data-testid={`choice-gain-${view.stat}`}>
+        +{view.gain.toFixed(2)}
       </span>
-      {view.from != null && view.to != null && (
-        <>
-          <span className={styles.candNums}>
-            <span className={styles.candFrom}>{n1(view.from)}</span>
-            <span className={styles.candArrow} aria-hidden="true">
-              →
-            </span>
-            <span className={styles.candTo} data-testid={`choice-to-${view.stat}`}>
-              {n1(view.to)}
-            </span>
-          </span>
-          <span className={styles.ceilBar}>
-            <i className={styles.ceilCur} style={{ width: `${curPct}%` }} />
-            <i className={styles.ceilAdd} style={{ left: `${curPct}%`, width: `${addPct}%` }} />
-          </span>
-          <span className={styles.ceilLegend}>
-            {/* 원점이 서버 `startLo` 일 때만 이름을 붙인다 — 근사 폴백에 정확한 라벨을 달면
-                그게 곧 화면의 거짓말이다(`cardAxisWindow` 주석). */}
-            {view.axisExact && view.axisLo != null ? (
-              <span data-testid={`choice-start-${view.stat}`}>시작 {view.axisLo}</span>
-            ) : (
-              <span />
-            )}
-            {view.cap != null && <span>천장까지 {n1(Math.max(0, view.cap - view.to))} 남음</span>}
-            {view.cap != null && <span>천장 {n1(view.cap)}</span>}
-          </span>
-        </>
-      )}
-      {view.reason && (
-        <span className={styles.candWhy} data-testid={`choice-why-${view.stat}`}>
-          <span className={styles.candWhyTag}>왜</span>
-          <span>{view.reason}</span>
-        </span>
-      )}
+      {/* 되돌릴 수 없는 행동이라 카드가 스스로 무엇을 하는지 말한다(#456 AC3). */}
+      <span className={styles.candCta}>이 스탯 선택</span>
     </button>
   );
 }
@@ -282,9 +236,11 @@ export function ChoiceCandidates({ choice, card, onApplied, footer }: ChoiceCand
             ))}
           </div>
 
-          {/* 세 막대가 **같은 원점**을 쓰는 이유를 말하는 줄 — 그게 이 화면의 정보 기능이다(머리말). */}
-          <p className={styles.decayNote}>낮은 스탯일수록 크게 오릅니다 — 천장에 가까울수록 상승폭이 줄어듭니다.</p>
-
+          {/*
+            ⚠️ 감쇠 설명 줄(`낮은 스탯일수록 크게 오릅니다 …`)은 **은퇴했다**(AC4 감량). 그 줄은
+            세 막대가 같은 원점을 쓴다는 사실을 설명하는 각주였는데, 막대가 사라지면서 설명할
+            대상 자체가 없어졌다. 규칙(감쇠)은 서버에 그대로 있고 결과는 `+gain` 차이로 보인다.
+          */}
           {footer}
         </>
       )}

@@ -450,42 +450,61 @@ test("f. 레벨업 행 → 후보 3장 → 선택 → 적용·축하 + 남은 �
   await page.getByTestId("reward-tab-GROWTH").click();
   await page.getByTestId("reward-section-GROWTH").getByTestId("growth-row-P003").click();
 
-  // 고정 안내(hero 명시 요구) + 후보 3장 + 상승폭 + 현재→적용후 + 천장.
+  // 고정 안내(hero 명시 요구) + 후보 3장 + 상승폭.
   await expect(page.getByTestId("choice-lock-note")).toContainText("선택지는 고정됩니다");
   await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
   await expect(page.getByTestId("choice-gain-tackling")).toHaveText("+3.82");
-  // 44 → min(73, 44+3.82) = 47.8. 서버가 박제한 gain 이 화면 숫자와 같아야 한다.
-  await expect(page.getByTestId("choice-to-tackling")).toHaveText("47.8");
+  // 각 카드가 "무엇을 누르는 것인지"를 스스로 말한다(#456 AC3 — `[이 스탯 선택]`).
+  await expect(page.getByTestId("choice-cand-tackling")).toContainText("이 스탯 선택");
 
-  // "왜 이 후보인가" — 셋 다 **다른 축**이다(그 경기 이벤트 / 포지션 / 지시). 목업 화면 ③ 확인 포인트.
-  await expect(page.getByTestId("choice-why-tackling")).toContainText("이 경기 태클 6회");
-  await expect(page.getByTestId("choice-why-physical")).toContainText("포지션 DF 핵심");
-  await expect(page.getByTestId("choice-why-pace")).toContainText('지시 "넓게 벌려"');
+  /*
+   * ⚠️ **#456 S4-W2 AC4 — 정보 감량.** hero: 후보 카드에서 *"누가 어떤 스탯 몇 올리는지"* 만
+   * 남긴다. 그래서 아래 다섯은 **의도적으로 사라졌다**: 현재→적용후(`choice-to-*`) · 천장 막대
+   * 2층(`ceilCur`/`ceilAdd`) · 범례(`choice-start-*`/천장까지/천장) · 근거줄(`choice-why-*`) ·
+   * 감쇠 설명. 이 파일의 f·i·j·k 가 그 다섯을 **양성으로** 단언하고 있었고, 그 단언들은 정책이
+   * 바뀌어 **도달 불가**가 된 것이라 지우지 않고 *지금 참인 것*으로 다시 썼다(모듈 CLAUDE.md 표 #8).
+   *
+   * ⚠️ 되살릴 조건: hero 가 근거·천장 축을 카드로 되돌리라고 하면 이 단언들이 **먼저 깨진다** —
+   * 그때 `growth/choice-reason.ts`(순수 모듈 + `choice-reason.test.ts`)와 `cardAxisWindow` 가
+   * 그대로 살아 있으므로 화면 줄만 복구하면 된다. 그래서 두 모듈을 지우지 않았다.
+   * ⚠️ gain 배지가 같은 카드에 살아 있는 것이 앵커다 — 없으면 "아직 안 그려짐"도 통과한다(표 #6).
+   */
+  const cand = page.getByTestId("choice-cand-tackling");
+  await expect(cand.getByTestId("choice-gain-tackling")).toBeVisible(); // 앵커
+  await expect(page.getByTestId("choice-to-tackling")).toHaveCount(0);
+  await expect(page.getByTestId("choice-start-tackling")).toHaveCount(0);
+  await expect(page.getByTestId("choice-why-tackling")).toHaveCount(0);
+  await expect(page.getByTestId("choice-why-physical")).toHaveCount(0);
+  await expect(page.getByTestId("choice-why-pace")).toHaveCount(0);
+  await expect(cand.locator('[class*="ceilBar"]')).toHaveCount(0);
+  await expect(page.getByTestId("choice-candidates")).not.toContainText("낮은 스탯일수록");
 
-  // 좌측 앵커 = 서버 `startLo`(BRONZE 32) — 근사치가 아니라 **이름을 붙일 수 있는 값**이다.
-  await expect(page.getByTestId("choice-start-tackling")).toHaveText("시작 32");
-
-  // ⚠️ 라벨과 **막대 원점이 실제로 맞물리는가**. 축 = [32, 73] 이므로 44.0 은 (44−32)/41 ≈ 29.3%.
-  // 라벨만 맞고 막대가 옛 앵커로 그려지는 상태를 이 단언이 죽인다(숫자 두 개가 같은 축을 말한다).
-  const curFrac = await page
-    .getByTestId("choice-cand-tackling")
-    .locator('[class*="ceilCur"]')
-    .evaluate((el) => {
-      const box = (el as HTMLElement).getBoundingClientRect();
-      const track = (el.parentElement as HTMLElement).getBoundingClientRect();
-      return box.width / track.width;
-    });
-  expect(curFrac).toBeGreaterThan(0.27);
-  expect(curFrac).toBeLessThan(0.32);
-
-  // 세 막대가 같은 원점을 쓰므로 `+gain` 이 큰 후보의 초록 구간이 실제로 더 길다.
-  const widths = await page
+  /*
+   * **세로 카드 3장**(AC4). 구 모양은 1열 grid + `display:block` 폭 100% = **가로 바 3개**였다.
+   * CSS 를 읽지 않고 **좌표로** 잰다: 셋이 같은 줄에 앉고(top 이 같다) 각자 컨테이너의 절반보다
+   * 좁으며 세로가 가로보다 길다(tall). 1열로 되돌리면 세 단언이 전부 죽는다.
+   */
+  const boxes = await page
     .getByTestId("choice-candidates")
-    .locator('[class*="ceilAdd"]')
-    .evaluateAll((els) => els.map((el) => (el as HTMLElement).getBoundingClientRect().width));
-  expect(widths).toHaveLength(3);
-  expect(widths[0]).toBeGreaterThan(widths[1]!); // +3.82 > +3.11
-  expect(widths[1]).toBeGreaterThan(widths[2]!); // +3.11 > +2.45
+    .locator("button")
+    .evaluateAll((els) =>
+      els.map((el) => {
+        const r = (el as HTMLElement).getBoundingClientRect();
+        return { top: r.top, left: r.left, w: r.width, h: r.height };
+      }),
+    );
+  expect(boxes).toHaveLength(3);
+  const rowW = await page
+    .getByTestId("choice-candidates")
+    .evaluate((el) => (el as HTMLElement).getBoundingClientRect().width);
+  expect(Math.abs(boxes[1]!.top - boxes[0]!.top)).toBeLessThan(2); // 같은 줄
+  expect(Math.abs(boxes[2]!.top - boxes[0]!.top)).toBeLessThan(2);
+  expect(boxes[0]!.left).toBeLessThan(boxes[1]!.left); // 좌 → 우
+  expect(boxes[1]!.left).toBeLessThan(boxes[2]!.left);
+  for (const b of boxes) {
+    expect(b.w).toBeLessThan(rowW / 2);
+    expect(b.h).toBeGreaterThan(b.w); // 세로 카드
+  }
 
   // `core` 배지 — 있는 것만 그린다(pace 는 core:false).
   await expect(page.getByTestId("choice-core-tackling")).toHaveText("포지션 핵심");
@@ -570,20 +589,30 @@ test("h. 확인 뒤에도 결과 화면에서 남은 선택으로 갈 문이 있
 });
 
 
-test("i. 근거를 못 만들면 줄을 생략한다 — 지어내지 않는다 (BASE · 부재 · 모르는 kind)", async ({ page }) => {
+test("i. `reason` 유무가 **카드 렌더를 가르지 않는다** (BASE · 부재 · 모르는 kind)", async ({ page }) => {
+  /*
+   * ⚠️ **이 테스트의 의미가 뒤집혔다** (#456 S4-W2 AC4). 예전엔 *"근거를 못 만들면 줄을 생략한다"*
+   * 를 화면에서 쟀는데, 그 줄(`choice-why-*`)이 정보 감량으로 카드에서 통째로 빠졌다 — 즉 옛
+   * 단언은 **정책에 의해 도달 불가**가 됐다(모듈 CLAUDE.md 표 #8: 삭제 대신 지금 참인 것으로).
+   *
+   * 지금 이 표본이 지키는 성질은 다른 것이다: `reason` 이 **있든(BEHAVIOR·EVENT·RESULT) 없든
+   * (BASE · 필드 부재 · 모르는 kind) 후보 카드는 똑같이 3장** 이다. 죽이는 변이 = 근거를 못
+   * 만드는 후보를 걸러 내는 것(그러면 유저가 고를 수 있는 스탯이 조용히 줄어든다).
+   *
+   * 문장 매핑 자체(`BASE`·미지 kind → null)의 계약은 **`growth/choice-reason.test.ts`** 가
+   * 그대로 갖고 있다 — 화면에서 잰 것을 순수 모듈이 이어받은 것이지 사라진 게 아니다.
+   */
   await mockApi(page);
   await page.setViewportSize(PHONE);
   await page.goto(`/match/${MATCH_ID}`);
   await page.getByTestId("reward-tab-GROWTH").click();
   await page.getByTestId("reward-section-GROWTH").getByTestId("growth-row-P006").click();
 
-  // c-3: passing = BEHAVIOR(있다) · technical = EVENT(있다) · shooting = 모르는 kind(없다)
-  await expect(page.getByTestId("choice-why-passing")).toContainText('지시 "과감한 패스"');
-  await expect(page.getByTestId("choice-why-technical")).toContainText("이 경기 패스 41회");
-  await expect(page.getByTestId("choice-why-shooting")).toHaveCount(0);
-  // 후보 카드 자체는 셋 다 멀쩡히 있다 — 줄만 없다(공허한 toHaveCount(0) 방지 앵커).
+  // c-3: passing = BEHAVIOR(있다) · technical = EVENT(있다) · shooting = **모르는 kind**(없다)
   await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
   await expect(page.getByTestId("choice-cand-shooting")).toBeVisible();
+  await expect(page.getByTestId("choice-gain-shooting")).toHaveText("+2.90");
+  await expect(page.getByTestId("choice-candidates").locator('[data-testid^="choice-why-"]')).toHaveCount(0);
 
   // c-2 는 P003 의 **두 번째** 선택권이라 c-1 을 소진해야 도달한다 — `BASE`·`reason` 부재 표본.
   await page.getByTestId("reward-pick-later").click();
@@ -591,10 +620,10 @@ test("i. 근거를 못 만들면 줄을 생략한다 — 지어내지 않는다 
   await page.getByTestId("choice-cand-tackling").click();
   await page.getByTestId("reward-pick-next").click();
 
-  await expect(page.getByTestId("choice-why-positioning")).toContainText("승리 보너스"); // RESULT
-  await expect(page.getByTestId("choice-why-mental")).toHaveCount(0); // BASE
-  await expect(page.getByTestId("choice-why-stamina")).toHaveCount(0); // reason 부재(구 행)
-  await expect(page.getByTestId("choice-cand-mental")).toBeVisible(); // 카드는 멀쩡히 있다
+  await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
+  await expect(page.getByTestId("choice-cand-mental")).toBeVisible(); // BASE
+  await expect(page.getByTestId("choice-cand-stamina")).toBeVisible(); // reason 부재(구 행)
+  await expect(page.getByTestId("choice-candidates").locator('[data-testid^="choice-why-"]')).toHaveCount(0);
 });
 
 

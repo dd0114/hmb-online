@@ -22,9 +22,16 @@
  *   경기의 델타를 주는 표면이 없다. 클라가 이전 값과 빼서 만들면 그건 #262 가 금지한
  *   "클라가 서버 규칙을 재구현" 이다(무승부 취급·시즌 리셋이 서버 규칙이다). → 현재 값만 말한다.
  * · **연습 = 없음** — 골드에서 곧장 다음 단계로.
+ *
+ * ── 그 뒤가 **선수별**이다 (AC3, S4-W2) ────────────────────────────────────────────────
+ * 레벨업으로 생긴 선택권 하나가 카드 한 장이다. 순서는 봉투가 준 순서(= 성장 섹션 행 순서) 그대로 —
+ * 여기서 정렬하지 않는다. **아직 안 고른 것만** 세는데, 그 권위는 봉투 스냅샷이 아니라
+ * `GET /api/growth/choices` 다(`types.openChoicesOf` 주석 — 봉투는 "그때 무슨 일이 있었나"의 기록이라
+ * 유저가 고른 뒤에도 그대로다). 교차는 호출부가 하고 이 함수는 **받은 목록을 카드로 옮기기만** 한다.
  */
 import type { MatchDailyReward } from "../api/p3";
-import type { RewardCurrencyEntry } from "./types";
+import type { PendingChoice } from "../api/growth";
+import type { RewardCurrencyEntry, RewardGrowthEntry } from "./types";
 
 export type MatchRewardCard =
   /** 봉투 재화 섹션 전량(코드+수량). 이름·심볼은 `<Amount>`(#232)가 붙인다. */
@@ -32,7 +39,14 @@ export type MatchRewardCard =
   /** 리그 — 그 판이 소비한 오늘의 보상 칸. `awarded:false` = 소멸, `amount:0` = 트랙 소진. */
   | { id: "daily"; slotNo: number; currency: string; amount: number; awarded: boolean }
   /** 원정 — 정산 후 내 레이팅. */
-  | { id: "rating"; rating: number };
+  | { id: "rating"; rating: number }
+  /**
+   * 선수 한 명의 레벨업 선택권 한 건.
+   *
+   * `player` 는 그 선수의 성장 행(이름·등급·포지션) — **없을 수 있다**(봉투 성장 섹션에 그 행이
+   * 없는 경우). 없으면 화면이 이름·아바타를 지어내지 않고 id 로 조회한 이름만 쓴다.
+   */
+  | { id: "choice"; choice: PendingChoice; player: RewardGrowthEntry | null };
 
 export type MatchRewardCardId = MatchRewardCard["id"];
 
@@ -43,6 +57,13 @@ export interface MatchRewardInput {
   dailyReward: MatchDailyReward | null | undefined;
   /** `MeResponse.rating` — 구 서버엔 없다(optional). `?? 0` 폴백 금지. */
   rating: number | null | undefined;
+  /**
+   * **아직 안 고른** 선택권(호출부가 `openChoicesOf` 로 교차한 결과). 순서 = 봉투 순서.
+   * 여기서 다시 거르지 않는다 — 두 곳이 세면 두 화면의 대기 수가 갈린다(#405 §2.5 규율).
+   */
+  choices?: readonly PendingChoice[] | undefined;
+  /** 봉투 성장 섹션 행 — 카드의 이름·아바타 재료. 없는 선수는 `player: null` 이다. */
+  growth?: readonly RewardGrowthEntry[] | undefined;
 }
 
 /**
@@ -92,6 +113,16 @@ export function matchRewardCards(input: MatchRewardInput): MatchRewardCard[] {
     if (typeof input.rating === "number" && Number.isFinite(input.rating)) {
       cards.push({ id: "rating", rating: input.rating });
     }
+  }
+
+  /*
+   * 선수별 — **모드와 무관하다**(연습에서도 레벨업은 난다). 받은 순서 그대로 옮긴다:
+   * 서버가 성장 행 순서로 내려 주고 그 순서가 곧 결과 화면 성장 목록의 순서다.
+   */
+  for (const choice of input.choices ?? []) {
+    if (!choice || typeof choice.choiceId !== "string" || typeof choice.playerId !== "string") continue;
+    const player = (input.growth ?? []).find((e) => e.playerId === choice.playerId) ?? null;
+    cards.push({ id: "choice", choice, player });
   }
 
   return cards;

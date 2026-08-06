@@ -45,6 +45,21 @@ interface ResultPanelProps {
    */
   hasRewardSheet?: boolean;
   /**
+   * **결과 카드의 보상 줄을 미룬다** (#456 S4-W2, W1 독립검증 major-2).
+   *
+   * 경기 흐름 오버레이(#424)가 떠 있는 동안은 이 패널이 그 **뒤에** 그려진다. 그런데 B3 순차
+   * 보상은 같은 금액을 한 장씩 공개하는 연출이라, 뒤에 `경기 보상 +1,200 G` 와 `오늘의 보상
+   * +30 Z` 가 그대로 남아 있으면 **정답이 배경에 미리 인쇄돼 있는 것**이다(실캡처: 골드 3회 ·
+   * 잼 2회 노출, 백드롭 `rgba(0,0,0,0.72)` 라 그대로 읽힌다). 첫 카드에서 순차가 무효가 된다.
+   *
+   * ⚠️ **백드롭을 더 어둡게 하는 것으로는 못 고친다** — 불투명도는 DOM 이 말하지 않아서(모듈
+   * CLAUDE.md "DOM 계약이 초록인데 어포던스가 안 보이는 축") 계약이 검사하는 척만 하게 된다.
+   * 그래서 **줄 자체를 미룬다**: 오버레이가 닫히면 같은 줄이 같은 금액으로 돌아온다(지우는 것이
+   * 아니다 — 계약이 그 복귀를 양성 대조로 같이 잰다).
+   * ⚠️ 값·형식·`data-*` 는 하나도 안 바꾼다. 이 플래그는 **시점**만 정한다.
+   */
+  deferRewardLines?: boolean;
+  /**
    * 선수 기록 집계 (#403 W4) — **셸이 한 번 돌린 같은 결과**를 받는다. 여기서 다시 집계하면
    * 선수 탭과 결과 탭이 같은 경기의 같은 선수에게 다른 평점을 줄 수 있다(집계는 창·로스터에
    * 의존한다). 안 주면 이 섹션을 그리지 않는다 — 결과 패널은 그 없이도 성립한다.
@@ -81,6 +96,7 @@ export function ResultPanel({
   awayName,
   onOpenRewards,
   hasRewardSheet,
+  deferRewardLines = false,
   playerStats,
   myTeamSide = null,
 }: ResultPanelProps) {
@@ -167,12 +183,15 @@ export function ResultPanel({
           <p className={styles.finalScore} data-testid="final-score">
             {homeName} {scoreHome ?? "-"} : {scoreAway ?? "-"} {awayName}
           </p>
-          {result?.pointsAwarded != null && (
+          {/* 순차 보상 카드가 같은 금액을 공개하는 동안은 이 두 줄을 미룬다(위 `deferRewardLines`). */}
+          {!deferRewardLines && result?.pointsAwarded != null && (
             <p className={styles.reward} data-testid="reward-points">
               경기 보상 +<Amount code={CURRENCY_POINT} value={result.pointsAwarded} />
             </p>
           )}
-          <DailyRewardLine reward={(result as { dailyReward?: MatchDailyReward | null })?.dailyReward} />
+          {!deferRewardLines && (
+            <DailyRewardLine reward={(result as { dailyReward?: MatchDailyReward | null })?.dailyReward} />
+          )}
         </section>
 
         {/*

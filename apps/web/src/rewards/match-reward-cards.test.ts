@@ -142,6 +142,111 @@ describe("칸이 소비된 사실은 값이 0이거나 소멸이어도 말한다
   });
 });
 
+/* ───────────────────────────────────────────────────────────────────────────────────────────
+ * AC3 — 선수별 카드 (#456 S4-W2)
+ * ─────────────────────────────────────────────────────────────────────────────────────────── */
+
+const choice = (choiceId: string, playerId: string, level = 4) => ({
+  choiceId,
+  playerId,
+  level,
+  candidates: [{ stat: "pace", gain: 1 }],
+});
+const growthRow = (playerId: string, name: string) => ({ playerId, name, xpGained: 100 });
+
+describe("선수별 카드 — 모드별 카드 **뒤에**, 받은 순서 그대로", () => {
+  it("리그: 골드 → 칸 → 선수 2명", () => {
+    const cards = matchRewardCards({
+      mode: "league",
+      currencies: GOLD,
+      dailyReward: DAILY,
+      rating: 1200,
+      choices: [choice("c1", "P001"), choice("c2", "P002")],
+      growth: [growthRow("P001", "김수비"), growthRow("P002", "박미드")],
+    });
+    expect(cards.map((c) => c.id)).toEqual(["currency", "daily", "choice", "choice"]);
+    expect(cards[2]).toMatchObject({ id: "choice", choice: { choiceId: "c1", playerId: "P001" } });
+    // 그 선수의 성장 행이 같이 실린다 — 이름·등급·포지션의 출처다(안 실으면 카드가 id 만 안다).
+    expect(cards[2]).toMatchObject({ player: { playerId: "P001", name: "김수비" } });
+    expect(cards[3]).toMatchObject({ player: { playerId: "P002", name: "박미드" } });
+  });
+
+  it("🚨 순서를 다시 정하지 않는다 — 받은 순서가 곧 화면 순서다", () => {
+    // 서버가 성장 행 순서로 내려 준다. 여기서 정렬하면 결과 화면 성장 목록과 순서가 갈린다.
+    const cards = matchRewardCards({
+      mode: "practice",
+      currencies: [],
+      dailyReward: null,
+      rating: null,
+      choices: [choice("cZ", "P900", 9), choice("cA", "P001", 2)],
+      growth: [],
+    });
+    expect(cards.map((c) => (c.id === "choice" ? c.choice.choiceId : c.id))).toEqual(["cZ", "cA"]);
+  });
+
+  it("연습이어도 선수 카드는 선다 — 레벨업은 모드와 무관하다", () => {
+    const cards = matchRewardCards({
+      mode: "practice",
+      currencies: [],
+      dailyReward: DAILY,
+      rating: 1200,
+      choices: [choice("c1", "P001")],
+      growth: [growthRow("P001", "김수비")],
+    });
+    expect(cards.map((c) => c.id)).toEqual(["choice"]);
+  });
+
+  it("성장 행이 없는 선수도 카드가 선다 — `player: null`(이름·등급을 지어내지 않는다)", () => {
+    const cards = matchRewardCards({
+      mode: "practice",
+      currencies: [],
+      dailyReward: null,
+      rating: null,
+      choices: [choice("c1", "P404")],
+      growth: [growthRow("P001", "김수비")],
+    });
+    expect(cards[0]).toMatchObject({ id: "choice", player: null });
+  });
+
+  it("선택권이 없으면 선수 카드가 없다(빈 장을 만들지 않는다)", () => {
+    const cards = matchRewardCards({
+      mode: "practice",
+      currencies: GOLD,
+      dailyReward: null,
+      rating: null,
+      choices: [],
+      growth: [growthRow("P001", "김수비")],
+    });
+    expect(cards.map((c) => c.id)).toEqual(["currency"]);
+  });
+
+  it("모양이 아닌 항목은 카드가 되지 않는다(구 서버·손상 응답)", () => {
+    const cards = matchRewardCards({
+      mode: "practice",
+      currencies: [],
+      dailyReward: null,
+      rating: null,
+      choices: [
+        null as never,
+        { choiceId: "c1" } as never, // playerId 없음
+        choice("c2", "P002"),
+      ],
+      growth: [],
+    });
+    expect(cards.map((c) => (c.id === "choice" ? c.choice.choiceId : c.id))).toEqual(["c2"]);
+  });
+
+  it("`choices` 를 안 넘기면(구 호출부) 선수 카드가 0장이다", () => {
+    const cards = matchRewardCards({
+      mode: "practice",
+      currencies: GOLD,
+      dailyReward: null,
+      rating: null,
+    });
+    expect(cards.map((c) => c.id)).toEqual(["currency"]);
+  });
+});
+
 describe("matchDailyRewardOf — 응답 형태를 믿지 않는다", () => {
   it("정상 블록을 꺼낸다", () => {
     expect(matchDailyRewardOf({ dailyReward: DAILY })).toEqual(DAILY);

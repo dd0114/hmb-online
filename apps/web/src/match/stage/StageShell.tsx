@@ -453,6 +453,12 @@ export function StageShell({
                    */
                   hasRewardSheet={Boolean(bundle)}
                   /*
+                   * 경기 흐름 오버레이(#424)가 떠 있는 동안은 결과 카드의 보상 줄을 미룬다 —
+                   * B3 순차 공개의 정답이 **배경에 미리 인쇄되는** 것을 막는다(ResultPanel
+                   * `deferRewardLines` 주석이 SoT). 닫히면 그대로 돌아온다.
+                   */
+                  deferRewardLines={overlayOpen}
+                  /*
                    * 개인 성적 (#403 W4) — 셸이 한 번 돌린 **같은 집계**를 넘긴다. 패널이 자기
                    * 훅을 부르면 창·로스터가 갈려 같은 선수가 두 탭에서 다른 평점을 받을 수 있다.
                    */

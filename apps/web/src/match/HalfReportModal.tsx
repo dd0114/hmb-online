@@ -26,6 +26,15 @@ export interface ReportStackCard {
   kicker?: string;
   /** 이 장이 마지막일 때 주 버튼 라벨. 기본은 `닫기`. */
   ctaLabel?: string;
+  /**
+   * 이 장의 **바닥 액션을 통째로 대신한다**(기본 = `다음`/`ctaLabel` 버튼 하나).
+   *
+   * ⚠️ 넘기면 `onAdvance` 는 이 장에서 **호출되지 않는다** — 넘기는 쪽이 넘김까지 소유한다는 뜻이다.
+   * 자리 = #456 S4 선수별 선택 카드: 한 장에 `[다음에]`·`[전체 건너뛰기]` **둘**이 서야 하는데
+   * (건너뛰기는 이 장이 아니라 **스택 전체**를 끝낸다) 기본 버튼 하나로는 그 두 뜻을 표현할 수 없다.
+   * 카드 본문에 넣지 않는 이유 = 본문은 스크롤 영역이라 목록이 길면 버튼이 화면 밖으로 나간다(#355).
+   */
+  actions?: ReactNode;
   /** 카드 시각 강조(조정 포인트 §11-10) — 호출부 CSS 모듈의 클래스를 그대로 얹는다. */
   className?: string;
   /**
@@ -437,16 +446,18 @@ export function ReportCardStack({
         )}
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.primary}
-            data-testid={`${tid}-next`}
-            /* 현재 장이 무엇인지 버튼에도 남긴다 — 계약이 "브릿지 CTA"를 접두 이름 없이 겨눌 수 있게. */
-            data-card={current.id}
-            onClick={onAdvance}
-          >
-            {last ? (current.ctaLabel ?? finalCtaLabel ?? "닫기") : "다음"}
-          </button>
+          {current.actions ?? (
+            <button
+              type="button"
+              className={styles.primary}
+              data-testid={`${tid}-next`}
+              /* 현재 장이 무엇인지 버튼에도 남긴다 — 계약이 "브릿지 CTA"를 접두 이름 없이 겨눌 수 있게. */
+              data-card={current.id}
+              onClick={onAdvance}
+            >
+              {last ? (current.ctaLabel ?? finalCtaLabel ?? "닫기") : "다음"}
+            </button>
+          )}
         </div>
       </div>
     </>
