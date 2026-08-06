@@ -135,9 +135,14 @@ export const FLOW_COPY = {
      * 오버레이가 보상 데이터를 아는 셈이 돼 C1 이 깨진다. 그래서 라벨을 갈 게 아니라 **둘 다 참인
      * 문장**을 고른다.)
      *
-     * ⚠️ `reward`(`보상 받기`)는 **프로덕션 호출부가 0** 이다(`MatchPage.matchEndContinuation` 는
-     * 아무도 넘기지 않는다). 지우지 않는 이유 = #405 에 공개한 확장점이고 C2~C5 계약이 그 경로를
-     * 탄다(`MatchFlowOverlay.test.ts`). 죽은 문구가 아니라 **아직 호출부가 없는 분기**다.
+     * ⚠️ **`reward`(`보상 받기`)가 이제 출하 라벨이다**(#456 S4) — `App.tsx:190` 이
+     * `matchEndContinuation` 을 넘기면서 그 prop 의 호출부가 **0 → 1** 이 됐다. 시안
+     * `docs/plan-v5/mock/424-bridge/index.html:330` 의 값과 같은 문자열이고, 그 정합이 배선의
+     * 파생임을 `p424` ⑥ 과 `p456-full-journey` 가 매 실행 단언한다.
+     * ⚠️ 한때 이 자리에 *"프로덕션 호출부가 0 이다"* 라고 적혀 있었고 그건 **지금 거짓**이다 —
+     * 같은 사실을 `match-flow.ts` 의 `MatchEndContinuation` 주석이 W1 에 이미 갱신했는데 이쪽만
+     * 낡아 있었다(AC5 스켑틱 ③). **위 `result` 분기가 죽은 것은 아니다**: prop 을 `null` 로 넘길
+     * 수 있고 C2~C5 계약(`MatchFlowOverlay.test.ts`)이 그 경로를 계속 탄다.
      */
     cta: { reward: "보상 받기", result: "보상과 결과 보기" },
   },

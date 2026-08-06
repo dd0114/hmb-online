@@ -648,6 +648,7 @@ test("j. 🚨 후보 순서는 **응답 그대로** — gain 순으로 재정렬
     .getByTestId("choice-candidates")
     .locator("button")
     .evaluateAll((els) => els.map((el) => el.getAttribute("data-testid")));
+  // ORDER-ASSERT — 후보 순서는 서버 응답 그대로(재정렬 금지). 자리 수를 세려면 이 마커를 grep 해라.
   expect(order).toEqual(["choice-cand-passing", "choice-cand-technical", "choice-cand-shooting"]);
 
   // 그리고 그 꼴찌가 **가장 큰 gain** 이다 — 이 표본이 계약을 공허하지 않게 만드는 조건이다.

@@ -506,6 +506,7 @@ test("G4 강화탭 성장(#405 §2.10): Lv/XP 헤더 + 선택 대기 배너 → 
     .getByTestId("choice-candidates")
     .locator("button")
     .evaluateAll((els) => els.map((el) => el.getAttribute("data-testid")));
+  // ORDER-ASSERT — 후보 순서는 서버 응답 그대로(재정렬 금지). 자리 수를 세려면 이 마커를 grep 해라.
   expect(order).toEqual(["choice-cand-shooting", "choice-cand-passing", "choice-cand-tackling"]);
   await expect(page.getByTestId("choice-core-shooting")).toBeVisible();
   await expect(page.getByTestId("choice-core-tackling")).toHaveCount(0);

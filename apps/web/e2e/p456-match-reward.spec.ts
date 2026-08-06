@@ -603,6 +603,7 @@ test.describe("#456 B3 W2 — 선수별 순차 선택 (AC3)", () => {
         .getByTestId("choice-candidates")
         .locator("button")
         .evaluateAll((els) => els.map((el) => el.getAttribute("data-testid"))),
+    // ORDER-ASSERT — 후보 순서는 서버 응답 그대로(재정렬 금지). 자리 수를 세려면 이 마커를 grep 해라.
     ).toEqual(["choice-cand-tackling", "choice-cand-physical", "choice-cand-pace"]);
 
     // 실화면 증거 — 목적지는 `test-results/`(gitignore). 리포의 `evidence/**` 를 더럽히지 않는다.

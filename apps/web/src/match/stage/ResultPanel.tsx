@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
 import { useStartNextLeagueMatch } from "../../api/hooks-v2";
@@ -134,7 +134,22 @@ export function ResultPanel({
   const deckless = useDecklessGuard();
   const [nextError, setNextError] = useState<string | null>(null);
 
+  /**
+   * ⚠️ **더블탭 한 번은 클릭 두 개다 — `disabled` 로는 못 막는다.**
+   *
+   * `disabled={nextMatch.isPending}` 은 React 가 리렌더한 **뒤**에야 걸리므로 같은 이벤트 버스트의
+   * 두 번째 클릭이 그대로 통과한다(실측 `nextCalls 2`). 폰에서 유저가 실제로 하는 동작이다.
+   *
+   * ⚠️ **서버는 이미 안전하다** — `LeagueService.nextMatch` 가 트랜잭션 안에서 진행 중 매치를
+   * 재사용하고, 아니면 409 → `matchInProgressIdOf` 가 같은 매치로 보낸다. **중복 매치는 안 생긴다.**
+   * 그래도 막는 이유는 잃는 것이 없어서다(불필요한 왕복 + 409 경로를 평상시에 태우지 않는다).
+   * 계약 = `p456-full-journey` A(같은 태스크에서 두 번 클릭 → `nextCalls === 1`).
+   */
+  const nextInFlight = useRef(false);
+
   function startNext() {
+    if (nextInFlight.current) return;
+    nextInFlight.current = true;
     setNextError(null);
     /*
      * ⚠️ **원정은 이동만 한다.** 서버의 상대 제시는 유저당 1개라 여기서 새로 받아 오면 유저가
@@ -143,9 +158,14 @@ export function ResultPanel({
      */
     if (match.mode === "away") {
       navigate("/away");
+      nextInFlight.current = false;
       return;
     }
-    if (!deckless.guard()) return;
+    // 덱이 없으면 안내만 뜨고 **화면에 남는다** — 래치를 안 풀면 덱을 만든 뒤 다시 눌러도 죽는다.
+    if (!deckless.guard()) {
+      nextInFlight.current = false;
+      return;
+    }
     nextMatch.mutate(undefined, {
       onSuccess: (res) =>
         navigate(`/match/${res.match.id}`, { state: { leagueRound: res.fixture.round } }),
@@ -156,6 +176,8 @@ export function ResultPanel({
           navigate(`/match/${resumeId}`);
           return;
         }
+        // 아래 두 갈래는 화면에 남는다 → 재시도할 수 있게 래치를 푼다(이동하는 갈래는 안 푼다).
+        nextInFlight.current = false;
         if (deckless.catchReject(err)) return;
         setNextError(
           err instanceof ApiError && err.code === "LEAGUE_INVALID"
