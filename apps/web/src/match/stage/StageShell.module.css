@@ -74,12 +74,12 @@
 /* 스코어 쪽으로 붙인다(홈은 오른쪽 끝, 어웨이는 왼쪽 끝) — 구 `text-align` 과 같은 그림. */
 .teamName.home {
   justify-content: flex-end;
-  color: #7ab0ff;
+  color: var(--team-home-text);
 }
 
 .teamName.away {
   justify-content: flex-start;
-  color: #ff8f8f;
+  color: var(--team-away-text);
 }
 
 /*

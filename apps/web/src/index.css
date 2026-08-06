@@ -18,6 +18,17 @@
   --them: #ff6b6b;
   --warn: #ffc24b;
   --ok: #3ddc84;
+  /*
+   * 팀 사이드 색(#456 B4) — 근거·역할표·"값을 왜 안 합쳤나" 는 `common/team-colors.ts` 머리말이 SoT.
+   * ⚠️ 여기만 고치면 **타임라인 핀이 안 따라온다**(그건 TS 가 만드는 인라인 색이다).
+   *    두 벌을 같이 고쳐라 — `team-colors.test.ts` 가 드리프트를 red 로 잡는다.
+   */
+  --team-home-text: #7ab0ff;
+  --team-away-text: #ff8f8f;
+  --team-home-strong: #3b82f6;
+  --team-away-strong: #ef4444;
+  --team-home-soft: #6ab7ff;
+  --team-away-soft: #ff8a7a;
   --surface: #111826;
   --sunk: #0c111b;
   --hairline: rgba(255, 255, 255, 0.07);

@@ -1,6 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
+import { useStartNextLeagueMatch } from "../../api/hooks-v2";
+import { ApiError } from "../../api/client";
+import { matchInProgressIdOf } from "../../common/match-lock";
+import { useDecklessGuard } from "../../common/useDecklessGuard";
 import { deriveTeamStats, TEAM_STAT_LABELS, type MatchEventLike } from "../match-logic";
 import { GrowthReportSection } from "../GrowthReportSection";
 import { PlayerStatsTable, PlayerTeamSegments, useTeamSegment } from "../PlayerStatsTable";
@@ -97,6 +101,57 @@ export function ResultPanel({
   const scoreHome = result?.scoreHome ?? match.scoreHome;
   const scoreAway = result?.scoreAway ?? match.scoreAway;
 
+  /*
+   * ── 다음 행동 CTA (#456 B5) ────────────────────────────────────────────────
+   * hero: *"경기 종료 후 각각 리그는 다음 경기 시작 버튼과 원정은 다음 원정 떠나기 버튼이 있어야 해"*.
+   *
+   * ⚠️ **`[로비로]` 를 대체하지 않고 그 위에 얹는다.** 이 CTA 에는 실패하는 갈래가 실재하고
+   * (시즌 마지막 라운드 = `LEAGUE_INVALID`), 대체하면 그 순간 나갈 길이 없다. `to-lobby` 는
+   * #348/#355 세로 예산 계약이 **좌표로 재는 앵커**이기도 하다.
+   * ⚠️ **모드를 모르면 아무것도 안 그린다** — 구 서버·연습이 그 자리다. 리그로 추측하면 연습
+   * 경기 뒤에 엉뚱한 리그 라운드를 여는 버튼이 생긴다.
+   */
+  const nextCtaLabel =
+    match.mode === "league" ? "다음 경기 시작" : match.mode === "away" ? "다음 원정 떠나기" : null;
+  const nextMatch = useStartNextLeagueMatch();
+  // 새로 매치를 만드는 버튼이므로 덱 가드가 붙는다(apps/web CLAUDE.md L2 — URL 직접 진입과 같은 층).
+  const deckless = useDecklessGuard();
+  const [nextError, setNextError] = useState<string | null>(null);
+
+  function startNext() {
+    setNextError(null);
+    /*
+     * ⚠️ **원정은 이동만 한다.** 서버의 상대 제시는 유저당 1개라 여기서 새로 받아 오면 유저가
+     * 앞서 받아 둔 후보 목록이 조용히 무효가 된다(#245 hero E2). 고르는 화면으로 보내고,
+     * 제시를 소모하는 결정은 거기서 유저가 한다.
+     */
+    if (match.mode === "away") {
+      navigate("/away");
+      return;
+    }
+    if (!deckless.guard()) return;
+    nextMatch.mutate(undefined, {
+      onSuccess: (res) =>
+        navigate(`/match/${res.match.id}`, { state: { leagueRound: res.fixture.round } }),
+      onError: (err) => {
+        // 409 는 실패가 아니라 **이어가라는 안내**다(#217) — 리그 화면과 같은 처리.
+        const resumeId = matchInProgressIdOf(err);
+        if (resumeId) {
+          navigate(`/match/${resumeId}`);
+          return;
+        }
+        if (deckless.catchReject(err)) return;
+        setNextError(
+          err instanceof ApiError && err.code === "LEAGUE_INVALID"
+            ? `다음 경기를 시작할 수 없습니다 — ${err.message}`
+            : err instanceof Error
+              ? err.message
+              : "다음 경기 시작 실패",
+        );
+      },
+    });
+  }
+
   return (
     <div className={styles.panel} data-testid="result-page">
       <div className={styles.scroll} data-testid="result-scroll">
@@ -182,15 +237,44 @@ export function ResultPanel({
         <GrowthReportSection matchId={match.id} onOpenRewards={onOpenRewards} />
       </div>
 
-      {/* ⚠️ 스크롤 **밖**이다(위 헤더) — `.scroll` 안으로 되돌리면 #355 가 그대로 재발한다. */}
-      <button
-        type="button"
-        className={styles.toLobby}
-        data-testid="to-lobby"
-        onClick={() => navigate("/home")}
-      >
-        로비로
-      </button>
+      {/*
+        ⚠️ 스크롤 **밖**이다(위 헤더) — `.scroll` 안으로 되돌리면 #355 가 그대로 재발한다.
+
+        실패 안내도 **이 층**이다(감독시간 `.ctaAlert` 와 같은 이유, #294 MAJOR): 스크롤 영역
+        끝에 두면 고정 CTA 가 그 위에 앉아 유저는 그것을 볼 방법이 없고, 화면이 클릭 전과
+        완전히 같아 "버튼 먹통"으로 읽힌다.
+      */}
+      {nextError && (
+        <p className={styles.ctaAlert} role="alert" data-testid="result-next-error">
+          {nextError}
+        </p>
+      )}
+      <div className={styles.ctaRow} data-testid="result-cta-row">
+        {nextCtaLabel && (
+          <button
+            type="button"
+            className={styles.nextCta}
+            data-testid="result-next-cta"
+            onClick={startNext}
+            disabled={nextMatch.isPending}
+          >
+            {nextMatch.isPending ? "경기 준비 중…" : nextCtaLabel}
+          </button>
+        )}
+        {/*
+          ⚠️ **모드와 무관하게 항상 남는다.** 다음 경기 CTA 가 실패하는 갈래가 있으므로 이걸
+          없애면 유저가 결과 화면에 갇힌다. testid 도 그대로다 — #348/#355 가 이 앵커로 잰다.
+        */}
+        <button
+          type="button"
+          className={`${styles.toLobby} ${nextCtaLabel ? styles.toLobbySecondary : ""}`}
+          data-testid="to-lobby"
+          onClick={() => navigate("/home")}
+        >
+          로비로
+        </button>
+      </div>
+      {deckless.dialog}
     </div>
   );
 }

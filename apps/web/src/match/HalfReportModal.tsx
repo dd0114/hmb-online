@@ -182,7 +182,19 @@ export function HalfReportModal({
       body: (
         <ol className={styles.rows} data-testid={`${tid}-timeline`}>
           {rows.map((r) => (
-            <li key={r.key} className={styles.row} data-testid={`${tid}-row-${r.tick}`} data-kind={r.kind}>
+            /*
+             * `data-team` 은 **배정한 쪽이 다는 라벨**이다(#456 B4) — 색을 좌표나 순서로 되추론하는
+             * 자리를 만들지 않는다. 팀을 모르는 이벤트(휘슬 등)에는 **속성 자체를 안 단다**:
+             * 없는 소속을 지어내지 않는다는 위 `teamNameOf` 와 같은 규율이고, CSS 도 그 행엔
+             * 색을 안 칠한다.
+             */
+            <li
+              key={r.key}
+              className={styles.row}
+              data-testid={`${tid}-row-${r.tick}`}
+              data-kind={r.kind}
+              {...(r.team === "home" || r.team === "away" ? { "data-team": r.team } : {})}
+            >
               <span className={styles.clock}>{r.clock}</span>
               <span className={styles.icon} aria-hidden="true">
                 {r.icon}
@@ -193,7 +205,14 @@ export function HalfReportModal({
               </span>
               <span className={styles.who}>
                 {r.playerName ?? ""}
-                <span className={styles.side}>{teamNameOf(r.team)}</span>
+                {/*
+                  ⚠️ 색은 **덧붙는 채널이다** — 팀 이름 글자를 지우고 색만 남기지 마라(#262 규율:
+                  단일 색 채널 금지). `data-team-label` 은 계약이 "그 색이 스코어바와 같은 축인가"
+                  를 재는 앵커다.
+                */}
+                <span className={styles.side} data-team-label="">
+                  {teamNameOf(r.team)}
+                </span>
               </span>
             </li>
           ))}

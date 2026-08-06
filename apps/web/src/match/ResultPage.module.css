@@ -129,6 +129,19 @@
 
 /* 주 CTA — **스크롤 밖**의 고정 층(#355). `flex: none` 이라 스크롤 영역이 남은 높이를 다 가져가고
    이 버튼은 자기 높이만 쓴다. 여백은 감독시간 [후반 시작](`HalftimePanel .resume`)과 같은 값. */
+/*
+ * 바닥 CTA 묶음(#456 B5).
+ *
+ * ⚠️ **`display: contents` 다** — 두 버튼이 계속 `.panel`(세로 플렉스)의 **직계 자식**으로 남아
+ * 각자의 margin 으로 자리를 잡는다. 실제 박스를 만들면 `.toLobby` 가 그 박스의 자식이 되면서
+ * 폭·여백 계산이 바뀌어, **다음 CTA 가 없는 연습 모드까지** 지오메트리가 달라진다 — #348/#355 가
+ * `to-lobby` 좌표로 재는 계약이라 그건 곧 그쪽 red 다. 지금은 연습 화면이 **바이트 그대로**다.
+ * 세로로 쌓는 이유: 폰 폭 390 에서 둘을 나란히 두면 각 175px 라 "다음 원정 떠나기"가 두 줄이 된다.
+ */
+.ctaRow {
+  display: contents;
+}
+
 .toLobby {
   flex: none;
   margin: 0 12px calc(10px + env(safe-area-inset-bottom, 0));
@@ -139,6 +152,49 @@
   color: var(--accent-contrast);
   font-size: 16px;
   font-weight: 700;
+}
+
+/*
+ * 다음 행동 = **주 버튼**. `[로비로]` 가 그동안 accent 를 쓰고 있었으므로, 둘이 나란히 서면
+ * 같은 색 두 개가 되어 어느 쪽이 주인지 말하지 않는다 → 로비 쪽을 **보조**로 내린다.
+ * ⚠️ 보조는 `.toLobby` 를 **덮어쓰는 변형**이지 별도 버튼이 아니다(모드가 없을 때는 이 클래스가
+ * 안 붙어 구 모양 그대로다).
+ */
+.nextCta {
+  flex: none;
+  margin: 0 12px 8px;
+  padding: 14px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.nextCta:disabled {
+  opacity: 0.6;
+}
+
+.toLobbySecondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+/*
+ * 실패 안내 — **CTA 와 같은 층**이다(스크롤 밖). 스크롤 영역 끝에 두면 고정 CTA 가 그 위에 앉아
+ * 유저가 볼 수 없고, 화면이 클릭 전과 똑같아 "버튼 먹통"으로 읽힌다(#294 MAJOR 의 그 결함).
+ */
+.ctaAlert {
+  flex: none;
+  margin: 0 12px 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--danger);
+  background: rgba(255, 90, 90, 0.12);
+  color: var(--text);
+  font-size: 13px;
 }
 
 /* 성장 리포트(S1) */

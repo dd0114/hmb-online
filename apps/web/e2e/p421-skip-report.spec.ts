@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { expectNoQaTransport } from "./play-mode-controls";
 
 /**
@@ -450,6 +450,104 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
 
     await closeStack(page);
     await expect(page.getByTestId("result-page")).toBeVisible();
+  });
+
+  /*
+   * ── #456 B4 — *"경기 스킵 이후 결과 보여줄 때 어느 팀인지 색구분해서 보여줘"*(hero verbatim) ──
+   *
+   * 스킵의 착지점이 이 리포트 스택이라 여기가 그 "결과"다. 구 동작: 행에 팀 **이름**은 있었지만
+   * (`.side`) 색은 전부 `--text-muted` 하나라 훑어서 편을 가를 수 없었다.
+   *
+   * ⚠️ **색만 넣고 끝내지 않는다** — 승급/강등 표시(#262)와 같은 규율로 단일 채널 금지다.
+   * 팀 이름 텍스트는 그대로 남고 색이 **덧붙는** 것이어야 한다(계약 c).
+   */
+  test.describe("#456 B4 — 리포트가 어느 팀인지 색으로 구분한다", () => {
+    /** 이 로그에 홈 골과 원정 골이 둘 다 있어야 이 계약이 성립한다(없으면 비교 대상이 없다). */
+    const HOME_GOAL = GOALS.find((g) => g.team === "home")!;
+    const AWAY_GOAL = GOALS.find((g) => g.team === "away")!;
+
+    async function openTimeline(page: Page) {
+      await openMatch(page, "FIRST_HALF");
+      await page.getByTestId("match-skip").click();
+      await expect(page.getByTestId("half-report")).toBeVisible();
+      // 첫 장은 브릿지(#424) — 타임라인은 다음 장이다.
+      await page.getByTestId("half-report-next").click();
+      await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
+    }
+
+    test("전제 — 이 픽스처에 홈·원정 골이 둘 다 있다", () => {
+      expect(HOME_GOAL, "홈 골이 없으면 색 대조가 성립하지 않는다").toBeTruthy();
+      expect(AWAY_GOAL, "원정 골이 없으면 색 대조가 성립하지 않는다").toBeTruthy();
+    });
+
+    test("a. 행이 자기 팀을 데이터로 말한다 — 좌표·순서로 되추론하지 않는다", async ({ page }) => {
+      await openTimeline(page);
+      await expect(page.getByTestId(`half-report-row-${HOME_GOAL.tick}`)).toHaveAttribute(
+        "data-team",
+        "home",
+      );
+      await expect(page.getByTestId(`half-report-row-${AWAY_GOAL.tick}`)).toHaveAttribute(
+        "data-team",
+        "away",
+      );
+    });
+
+    /*
+     * ⚠️ **스코어바를 기준으로 잰다.** "두 행의 색이 다르다"만 보면 리포트가 자기만의 리터럴을
+     * 새로 적어도 통과한다 — 그러면 같은 경기의 같은 팀이 화면마다 다른 색이 된다(정확히 이
+     * 웨이브가 걷어내는 상태다). 팀색 축이 **하나**인지가 재는 대상이다.
+     */
+    test("b. 그 색이 스코어바의 팀색과 같은 축이다(리포트만의 색을 새로 적지 않았다)", async ({ page }) => {
+      await openTimeline(page);
+      const seen = await page.evaluate(
+        ({ homeTick, awayTick }) => {
+          const sideOf = (tick: number) => {
+            const row = document.querySelector(`[data-testid="half-report-row-${tick}"]`);
+            const side = row?.querySelector("[data-team-label]");
+            return side ? getComputedStyle(side).color : null;
+          };
+          const barOf = (s: string) => {
+            const el = document.querySelector(`[data-team-side="${s}"]`);
+            return el ? getComputedStyle(el).color : null;
+          };
+          return {
+            rowHome: sideOf(homeTick),
+            rowAway: sideOf(awayTick),
+            barHome: barOf("home"),
+            barAway: barOf("away"),
+          };
+        },
+        { homeTick: HOME_GOAL.tick, awayTick: AWAY_GOAL.tick },
+      );
+
+      expect(seen.rowHome, "홈 행의 팀 라벨을 찾지 못했다").toBeTruthy();
+      expect(seen.barHome, "스코어바 홈 이름을 찾지 못했다").toBeTruthy();
+      expect(seen.rowHome, "홈 행 색 = 스코어바 홈 색").toBe(seen.barHome);
+      expect(seen.rowAway, "원정 행 색 = 스코어바 원정 색").toBe(seen.barAway);
+      expect(seen.rowHome, "두 팀이 같은 색이면 구분이 아니다").not.toBe(seen.rowAway);
+    });
+
+    test("c. 색은 **덧붙은** 채널이다 — 팀 이름 글자가 그대로 남는다", async ({ page }) => {
+      await openTimeline(page);
+      await expect(page.getByTestId(`half-report-row-${HOME_GOAL.tick}`)).toContainText("테스터");
+      await expect(page.getByTestId(`half-report-row-${AWAY_GOAL.tick}`)).toContainText("봇 FC");
+    });
+
+    /*
+     * 실화면 캡처 — **계약 안에서** 찍는다(apps/web CLAUDE.md: *"캡처를 별도 스펙으로 떼지는 마라 —
+     * 계약이 본 것과 다른 화면을 찍게 된다. 목적지만 가른다"*). 색·대비·톤은 좌표·속성으로 못 보고
+     * 판정은 독립 QA 몫이라(루트 §2-2) 이 파일은 그 입력을 남기는 데까지만 한다.
+     * 기본 목적지는 `test-results/`(gitignore) — 리포에 쓰려면 `HMB_WRITE_EVIDENCE=1`(#314).
+     */
+    test("캡처 — 실화면(계약이 본 그 화면)", async ({ page }) => {
+      await openTimeline(page);
+      const dir =
+        process.env.HMB_WRITE_EVIDENCE === "1"
+          ? new URL("../.smoke/", import.meta.url).pathname
+          : new URL("../test-results/p456-b4/", import.meta.url).pathname;
+      mkdirSync(dir, { recursive: true });
+      await page.screenshot({ path: `${dir}p456-b4-report-teamcolor.png` });
+    });
   });
 
   test("i. 409(이미 넘어갔다)는 에러가 아니다 — 리포트를 열지 않고 상태를 따라간다", async ({ page }) => {
