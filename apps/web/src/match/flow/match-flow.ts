@@ -343,16 +343,18 @@ export interface MatchEndHandoff {
 /**
  * 경기 종료 브릿지의 **다음 화면** 확장점.
  *
- * ⚠️ **현재 프로덕션 호출부는 0 이다**(W6 정정). #405 는 이 prop 이 아니라 **`StageShell` 이 소유한
- * `RewardSheet` + `!overlayOpen` 게이트**로 착지했다(브릿지가 앞, 닫으면 그 자리에서 시트 —
- * `e2e/p424-flow-bridge.spec.ts` ⑨). 그래도 이 타입·배선을 **지우지 않는다**: #405 에 공개한 계약이고,
- * C2(없어도 흐름이 완결된다)가 이 브랜치의 선배포 근거이며, "브릿지 CTA 뒤에 오버레이 안에서 뭔가를
- * 더 보여준다"는 확장점이 사라지면 다음 소비자가 라우트를 새로 파게 된다(C3 이 기각한 형태).
+ * ⚠️ **호출부는 이제 1 이다 — `App.tsx` 의 `MATCH_END_CONTINUATION`**(#456 S4). 그전 상태
+ * (호출부 0)를 이 자리가 오래 기록하고 있었다: #405 는 이 prop 이 아니라 `StageShell` 이 소유한
+ * `RewardSheet` + `!overlayOpen` 게이트로 착지했고(`e2e/p424-flow-bridge.spec.ts` ⑨), 그래서 이
+ * 확장점은 **타입만 있고 아무도 안 쓰는** 채로 남아 있었다. hero 의 순차 보상 요구(B3)가 정확히
+ * 이 모양이라 라우트를 새로 파지 않고 여기를 채웠다(C3 이 기각한 형태를 피한다).
  *
  * · 넘기지 않으면 CTA 라벨은 `보상과 결과 보기` 이고, 누르면 오버레이가 닫혀 보상 시트(봉투 미확인
- *   시) → `FINISHED` 결과 탭이 보인다(C2).
+ *   시) → `FINISHED` 결과 탭이 보인다(C2). **이 갈래는 살아 있다** — 에러 격리(C5)가 그리로 떨어지고
+ *   계약은 `MatchFlowOverlay.test.ts` 의 C2 describe 다.
  * · 넘기면 CTA 가 `보상 받기` 로 바뀌고, 누른 순간 **같은 오버레이 안에서** 이 노드가 렌더된다(C3).
- *   `onDone()` 을 부르면 오버레이가 닫히고 결과 탭으로 간다. `onDone` 은 **멱등**이다(C4).
+ *   `onDone()` 을 부르면 오버레이가 닫히고 결과 탭으로 간다. `onDone` 은 **멱등**이다(C4) —
+ *   보여 줄 보상이 0 인 경기는 그 노드가 렌더 직후 스스로 `onDone` 을 부른다.
  */
 export type MatchEndContinuation = (handoff: MatchEndHandoff, onDone: () => void) => ReactNode;
 

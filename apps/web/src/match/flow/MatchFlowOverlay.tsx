@@ -17,10 +17,11 @@ export interface MatchFlowOverlayProps {
   awayName: string;
   myTeamSide?: "home" | "away" | null;
   /**
-   * #405 보상 흐름 확장점. **현재 프로덕션 호출부는 0** — #405 는 다른 방식으로 착지했다
-   * (`StageShell` 소유 `RewardSheet` + `!overlayOpen` 게이트). 넘기지 않으면 CTA 는
-   * `보상과 결과 보기` 이고, 닫으면 봉투가 미확인일 때 그 시트가, 아니면 결과 탭이 나온다
-   * (C2 — 이 prop 없이도 흐름이 완결된다).
+   * 경기 종료 뒤 오버레이 안에서 올 화면. **출하 호출부 = `App.tsx` 의 `MATCH_END_CONTINUATION`**
+   * (#456 S4 = 순차 보상 카드). 이 prop 이 곧 CTA 라벨을 가른다(`보상 받기` ↔ `보상과 결과 보기`).
+   *
+   * 넘기지 않으면 닫는 즉시 봉투가 미확인일 때 #405 시트가, 아니면 결과 탭이 나온다
+   * (C2 — 이 prop 없이도 흐름이 완결된다. 에러 격리가 그 갈래로 떨어진다).
    */
   matchEndContinuation?: MatchEndContinuation | null;
 }

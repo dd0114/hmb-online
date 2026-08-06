@@ -28,6 +28,11 @@ export interface ReportStackCard {
   ctaLabel?: string;
   /** 카드 시각 강조(조정 포인트 §11-10) — 호출부 CSS 모듈의 클래스를 그대로 얹는다. */
   className?: string;
+  /**
+   * 카드 요소에 붙일 추가 `data-*`. **배정한 쪽이 다는 라벨**이다(#456 B4 규율) — 계약이 상태를
+   * 좌표·문구로 되추론하지 않게. 예: 오늘의 보상 칸이 지급됐나(`data-awarded`).
+   */
+  dataAttrs?: Record<string, string>;
 }
 
 export interface HalfReportModalProps {
@@ -302,8 +307,6 @@ export function HalfReportModal({
   const current = cards[Math.min(index, total - 1)];
   if (!current) return null;
 
-  const remaining = total - index - 1;
-  const behind = Math.min(Math.max(remaining, 0), MAX_BEHIND);
   const last = index + 1 >= total;
 
   /** `NoticePopup` 과 같은 은유 — 주 버튼이 "이 장을 처리하고 다음 장"이다. */
@@ -324,6 +327,67 @@ export function HalfReportModal({
       overlayTestId={`${tid}-overlay`}
       initialFocus={`[data-testid="${tid}-next"]`}
     >
+      <ReportCardStack
+        cards={cards}
+        index={index}
+        onAdvance={advance}
+        testIdBase={tid}
+        score={score}
+        homeName={homeName}
+        awayName={awayName}
+        {...(finalCtaLabel === undefined ? {} : { finalCtaLabel })}
+      />
+    </Modal>
+  );
+}
+
+export interface ReportCardStackProps {
+  cards: readonly ReportStackCard[];
+  /** 지금 보이는 장. 상태는 **소유자가 갖는다** — `HalfReportModal` 은 카드가 바뀔 때 Modal 을
+   *  다시 마운트해야 하므로 index 가 Modal 보다 위에 있어야 한다. */
+  index: number;
+  onAdvance: () => void;
+  testIdBase: string;
+  score?: import("./match-logic").ScorePair | null;
+  homeName?: string;
+  awayName?: string;
+  finalCtaLabel?: string;
+}
+
+/**
+ * 카드 스택의 **그림만** — 뒤 카드·kicker·페이저·제목·본문 페이드·도트·주 버튼.
+ *
+ * ⚠️ `Modal` 을 **자기가 열지 않는다.** 이 조각을 뽑아낸 이유가 그것이다: #456 S4 의 경기 종료
+ * 보상 흐름은 **이미 열려 있는 오버레이 안**(`MatchFlowOverlay` 의 `flow-continuation`)에서
+ * 같은 스택을 그려야 하는데, `HalfReportModal` 을 통째로 쓰면 다이얼로그가 2겹이 되어
+ * `common/Modal` 포커스 트랩이 겹친다 — 이 리포가 설계 단계에서 이미 기각한 사고 유형이다
+ * (`StageShell` · `MatchFlowOverlay` 머리말). 그렇다고 스택 연출을 다시 짜면 그건 재발명이다
+ * (#57) — 그래서 **모달 셸과 카드 그림을 갈랐다**.
+ *
+ * ⚠️ 담는 그릇은 호출부가 준다. `HalfReportModal.module.css` 의 `.stack` 과
+ * `MatchFlowOverlay.module.css` 의 `.contBox` 는 **같은 모양**이다(relative · flex column ·
+ * max-width 360 · max-height 100%) — `.behind` 의 절대배치가 그 박스를 기준으로 앉는다.
+ */
+export function ReportCardStack({
+  cards,
+  index,
+  onAdvance,
+  testIdBase: tid,
+  score = null,
+  homeName = "",
+  awayName = "",
+  finalCtaLabel,
+}: ReportCardStackProps) {
+  const total = cards.length;
+  const current = cards[Math.min(index, total - 1)];
+  if (!current) return null;
+
+  const remaining = total - index - 1;
+  const behind = Math.min(Math.max(remaining, 0), MAX_BEHIND);
+  const last = index + 1 >= total;
+
+  return (
+    <>
       {Array.from({ length: behind }, (_, i) => (
         <div
           key={`behind-${i}`}
@@ -337,6 +401,7 @@ export function HalfReportModal({
         className={`${styles.card} ${current.className ?? ""}`}
         data-testid={`${tid}-card`}
         data-card={current.id}
+        {...(current.dataAttrs ?? {})}
       >
         <div className={styles.top}>
           <span className={styles.kicker}>{current.kicker ?? "리포트"}</span>
@@ -378,13 +443,13 @@ export function HalfReportModal({
             data-testid={`${tid}-next`}
             /* 현재 장이 무엇인지 버튼에도 남긴다 — 계약이 "브릿지 CTA"를 접두 이름 없이 겨눌 수 있게. */
             data-card={current.id}
-            onClick={advance}
+            onClick={onAdvance}
           >
             {last ? (current.ctaLabel ?? finalCtaLabel ?? "닫기") : "다음"}
           </button>
         </div>
       </div>
-    </Modal>
+    </>
   );
 }
 

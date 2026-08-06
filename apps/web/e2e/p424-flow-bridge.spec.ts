@@ -322,7 +322,7 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
   });
 
-  test("⑥ B4 경기 종료 — `matchEndContinuation` 없이도 흐름이 완결된다(출하 형태)", async ({ page }) => {
+  test("⑥ B4 경기 종료 — 보여 줄 보상이 없으면 흐름이 그대로 완결된다", async ({ page }) => {
     const h = await openMatch(page, { state: "SECOND_HALF" });
     await waitLive(page, 2);
     await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
@@ -338,16 +338,27 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
 
     const cta = page.getByTestId("flow-bridge-next");
     /*
-     * ⚠️ 이 자리에 *"#405 미머지 상태의 라벨"* 이라고 적혀 있었는데 **#405 는 이미 머지됐다**
-     * (`origin/main` `4095cff` — 다만 `matchEndContinuation` 이 아니라 `StageShell` 소유
-     * `RewardSheet` + `!overlayOpen` 로 착지, 아래 ⑨ 가 그 계약이다). 라벨이 갈리는 축은
-     * "#405 머지 여부"가 아니라 **`matchEndContinuation` prop 을 넘겼는가**이고, 그 호출부는
-     * 프로덕션에 0 이다. 이 테스트는 **봉투가 없는** 매치라 닫으면 곧바로 결과 탭이다.
+     * ⚠️ **라벨은 `matchEndContinuation` prop 을 넘겼는가의 파생**이다. 한때 이 자리에
+     * *"#405 미머지 상태의 라벨"* 이라고 적혀 있었는데 축이 그게 아니다 — #405 는 `4095cff` 로
+     * 이미 머지됐고(`StageShell` 소유 `RewardSheet` + `!overlayOpen`, 아래 ⑨), 라벨을 가르는 것은
+     * 그 prop 하나다. **#456 S4 가 그 호출부를 0 → 1 로 만들었다**(`App.tsx`) → 출하 라벨이
+     * `보상 받기` 다.
+     *
+     * ⚠️ *"continuation 이 **없어도** 완결된다"*(C2) 갈래는 지운 게 아니라 **자리를 옮겼다** —
+     * prop 을 실제로 `null` 로 넘길 수 있는 곳은 이제 단위 계약뿐이라
+     * `src/match/flow/MatchFlowOverlay.test.ts` 의 C2 describe 가 그 라벨·동작을 계속 지킨다.
+     * 여기서 남는 성질은 **"보여 줄 보상이 0 이어도 흐름이 멈추지 않는다"** 이고, 이 하니스는
+     * 봉투가 없고(`bundle:false`) `mode` 도 없어(연습·구 서버 자리) 카드가 0장이다.
      */
-    await expect(cta).toHaveText("보상과 결과 보기");
+    await expect(cta).toHaveText("보상 받기");
     expect(await hitTestId(page, cta)).toBe("flow-bridge-next");
     await cta.click();
     await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
+    /*
+     * ⚠️ 결과 패널은 오버레이 **뒤에** 이미 그려져 있다 — `result-page` 가 보인다는 것만으로는
+     * 흐름이 완결됐다고 말할 수 없다(CLAUDE.md 표 #3). 보상 층이 실제로 비켰는지를 같이 본다.
+     */
+    await expect(page.getByTestId("flow-continuation")).toHaveCount(0);
     await expect(page.getByTestId("result-page")).toBeVisible();
   });
 
@@ -394,9 +405,17 @@ test.describe("#424 경기 흐름 브릿지 — 폰", () => {
     const cta = page.getByTestId("flow-bridge-next");
     expect(await hitTestId(page, cta), "보상 시트가 브릿지 CTA 를 덮으면 안 된다").toBe("flow-bridge-next");
 
-    // ② 브릿지를 닫으면 **그 자리에서** 보상 시트다(`nextHint` 가 예고한 그대로).
+    /*
+     * ② 브릿지를 닫으면 **같은 층에서** 보상 카드다(#456 S4 = `matchEndContinuation` 배선).
+     *    이 하니스는 봉투에 재화 한 줄이 있으므로 카드 한 장이 선다. 그리고 그 카드를 닫아야
+     *    비로소 시트다 — **한 순간에 하나**라는 성질은 그대로다(`[role=dialog]` 1).
+     */
     await cta.click();
     await expect(page.getByTestId("flow-bridge")).toHaveCount(0);
+    await expect(page.getByTestId("match-reward-card")).toBeVisible();
+    await expect(page.getByTestId("reward-sheet")).toHaveCount(0);
+    await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+    await page.getByTestId("match-reward-next").click();
     await expect(page.getByTestId("reward-sheet")).toBeVisible();
 
     // ③ 미루기만 했지 삼키지 않았다 = 봉투가 미확인인 한 반드시 뜬다.
