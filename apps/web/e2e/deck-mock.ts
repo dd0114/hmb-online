@@ -39,7 +39,23 @@ export function deckSlots() {
 
 const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
 
-export async function bootstrap(page: Page, slots: unknown[], teamPrompt: string | null = null) {
+/**
+ * `bootstrap`/`openDeck` 의 선택 옵션.
+ *
+ * `growthReady` = **선택 대기(3지선다)가 남아 있는 선수 id**. 기본 `[]` 라 이 목을 쓰는 기존
+ * 스펙 20여 개의 화면은 **한 픽셀도 안 바뀐다**(뱃지가 안 뜬다) — 양성 표본은 그 계약이
+ * 명시적으로 켠다(#455 A2-2 ①).
+ */
+export interface DeckMockOptions {
+  growthReady?: string[];
+}
+
+export async function bootstrap(
+  page: Page,
+  slots: unknown[],
+  teamPrompt: string | null = null,
+  opts: DeckMockOptions = {},
+) {
   const state = { deck: { formation: "4-4-2", slots, teamPrompt } };
   await page.route((url) => url.pathname.startsWith("/api/"), (r) => r.fulfill(json({})));
   await page.route((url) => url.pathname === "/api/players", (r) => r.fulfill(json(PLAYERS)));
@@ -63,6 +79,32 @@ export async function bootstrap(page: Page, slots: unknown[], teamPrompt: string
     }
     return r.fulfill(json(state.deck));
   });
+  /**
+   * `GET /api/growth/choices[?playerId=]` — **아직 안 고른** 선택권 (#455 A2-2).
+   *
+   * 모양은 서버 실물을 따른다(`GrowthService.toChoiceMap` = `{choiceId, playerId, level,
+   * candidates:[{stat,gain,reason?,core?}]}`, 봉투는 `{"choices":[...]}`). `playerId` 를 주면
+   * 그 카드만 — 안 주면 전 카드. **그 분기까지 목이 흉내 내야** "선수마다 한 번씩 부르는"
+   * 구현도 화면상으로는 동작하고, 그래서 그 설계는 DOM 이 아니라 **요청 수 계약**으로만
+   * 잡힌다(같은 파일의 `growthReady` 주석 · `p455-a22` ③).
+   */
+  const openChoices = (opts.growthReady ?? []).map((playerId, i) => ({
+    choiceId: `c-${playerId}`,
+    playerId,
+    level: 2 + i,
+    candidates: [
+      { stat: "passing", gain: 0.8, reason: { kind: "POSITION", detail: null }, core: true },
+      { stat: "pace", gain: 1.2, reason: { kind: "BASE", detail: null }, core: false },
+      { stat: "stamina", gain: 0.5, reason: { kind: "BASE", detail: null }, core: false },
+    ],
+  }));
+  await page.route(
+    (url) => url.pathname === "/api/growth/choices",
+    (r) => {
+      const want = new URL(r.request().url()).searchParams.get("playerId");
+      return r.fulfill(json({ choices: want ? openChoices.filter((c) => c.playerId === want) : openChoices }));
+    },
+  );
   /**
    * `GET /api/growth/card/{id}` — **강화 시트가 열리려면 있어야 한다** (#455 A2 ⑥).
    *
@@ -106,7 +148,9 @@ export async function bootstrap(page: Page, slots: unknown[], teamPrompt: string
           starCeilBonus: 1,
           attrHardCap: 99,
           startLo: 50,
-          pendingChoices: [],
+          /* 카드 상세의 배너와 **같은 사실**이어야 한다 — 목이 자기 안에서 모순되면 그 위에
+             서는 계약은 자기가 만든 세계를 검사한다(#342). 서버도 이 둘을 같은 행에서 만든다. */
+          pendingChoices: openChoices.filter((c) => c.playerId === p.id),
           statLevels: Object.fromEntries(keys.map((k) => [k, { lv: 0, xp: 0 }])),
           potential: { unlocked: false, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
           ovr: 60,
@@ -121,8 +165,12 @@ export async function bootstrap(page: Page, slots: unknown[], teamPrompt: string
   });
 }
 
-export async function openDeck(page: Page, teamPrompt: string | null = null) {
-  await bootstrap(page, deckSlots(), teamPrompt);
+export async function openDeck(
+  page: Page,
+  teamPrompt: string | null = null,
+  opts: DeckMockOptions = {},
+) {
+  await bootstrap(page, deckSlots(), teamPrompt, opts);
   await page.goto("/deck");
   await expect(page.getByTestId("deck-editor")).toBeVisible();
   await expect(page.getByTestId("token-FW1")).toBeVisible();

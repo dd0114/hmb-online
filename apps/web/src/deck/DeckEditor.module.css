@@ -345,6 +345,24 @@
 .menuLabel {
   font-weight: 700;
 }
+/*
+ * 강화 가능(선택 대기) 알약 — [선수 정보] 항목 (#455 A2-2).
+ * 토큰의 `↑` 와 **같은 노랑**이라야 "저 토큰의 그 신호"로 읽힌다(`TacticsBoard.module.css`
+ * `.growBadge` 와 같은 값 — 갈라지면 두 표시가 서로 다른 것처럼 보인다).
+ * ⚠️ `flex: none` — 줄면 `↑` 만 남아 뜻이 사라진다(폭 예산은 오른쪽 `.menuHint` 가 양보한다).
+ */
+.menuGrow {
+  flex: none;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ffcf5c;
+  color: #241a02;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .menuHint {
   margin-left: auto;
   padding-left: 8px;

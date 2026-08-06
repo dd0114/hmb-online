@@ -63,6 +63,16 @@ interface TacticsBoardProps {
    * 안 주면(기본) 지금처럼 보드 카드 안에 붙는다 — 경기전·감독시간은 이 값을 넘기지 않는다.
    */
   benchPortal?: HTMLElement | null;
+  /**
+   * **선택 대기(강화 3지선다)가 남아 있는 선수** — 토큰에 `↑` 뱃지 (#455 A2-2).
+   *
+   * ⚠️ **보드는 이 값을 조회하지 않는다.** 출처는 `GET /api/growth/choices` 이고 그걸 부르는 것은
+   * `DeckPage` 다 — `DeckEditor`·`TacticsBoard` 는 덱셋팅·경기전·감독시간 **셋이 공유**하므로,
+   * 여기서 훅을 부르면 그 세 화면 전부에 조회가 붙는다. A1 의 `layout`·A2 의 `playerMenu` 와 같은
+   * **명시 축**이다(화면을 `poolScope`·`placementLocked` 로 추론하지 않는 것과 같은 이유).
+   * 안 주면 뱃지가 없다 = 경기전·감독시간의 오늘 모양 그대로.
+   */
+  growthReadyIds?: ReadonlySet<string>;
 }
 
 function slotDroppableId(role: SlotRole, slotIndex: number): string {
@@ -108,6 +118,8 @@ interface TokenProps {
   selected: boolean;
   numberLabel: string;
   compact?: boolean;
+  /** 선택 대기가 남아 있다 → `↑` (#455 A2-2). */
+  growthReady?: boolean;
 }
 
 /**
@@ -124,7 +136,17 @@ interface TokenProps {
  * 꺼낸 원래 핸들러를 우리 핸들러 안에서 **먼저 호출**한다.
  * ⚠️ 활성화 임계는 `drag-gesture.ts` 한 곳에서 온다(센서와 같은 값) — 갈라지면 링이 거짓말한다.
  */
-function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberLabel, compact, out }: TokenProps) {
+function PlayerToken({
+  playerId,
+  player,
+  hasPrompt,
+  condition,
+  selected,
+  numberLabel,
+  compact,
+  out,
+  growthReady,
+}: TokenProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: playerId });
   const [holding, setHolding] = useState(false);
   const originRef = useRef<{ x: number; y: number } | null>(null);
@@ -220,6 +242,28 @@ function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberL
         <span className={styles.discNum}>{numberLabel}</span>
         {/* 지시(프롬프트) 있음 = 말풍선 점. 이름 옆 5px 점은 이름 말줄임에 같이 잘려 안 보였다. */}
         {hasPrompt ? <span className={styles.sayDot} title="지시 있음" /> : null}
+        {/**
+         * 강화 가능(= 선택 대기 있음) — 디스크 **좌상단** (#455 A2-2).
+         *
+         * ⚠️ 자리가 남은 모서리가 여기뿐이다: 우상단 `sayDot`(지시 있음) · 좌하단 `discNum`(번호) ·
+         *    하단중앙 `outBadge`(감독시간 OUT). 넷이 서로를 안 덮는 것이 이 배치의 전부다.
+         * ⚠️ **`pointer-events:none`** — 제스처를 먹으면 드래그가 죽는다(위 `.holdRing` 과 같은 이유).
+         *    그래서 계약도 "뱃지가 히트테스트의 최상단이다"가 아니라 **"그 사각형 위의 최상단이 이
+         *    토큰이다"** 로 잰다(`p455-a22` 머리말).
+         * ⚠️ testid 접두는 **`growup-`** 이다. `token-` 은 "보드 위 토큰 목록"을 세는 스캐너의
+         *    네임스페이스라(`p439`·`p442`·`p244`·`deck-list-dnd`) 여기에 쓰면 strict mode 위반이
+         *    난다 — A1 이 `token-name-*` 로 실제로 밟았다.
+         */}
+        {growthReady ? (
+          <span
+            className={styles.growBadge}
+            data-testid={`growup-token-${playerId}`}
+            title="강화 가능 — 선택 대기가 남아 있습니다"
+            aria-label="강화 가능"
+          >
+            ↑
+          </span>
+        ) : null}
       </span>
       {/* 보드 토큰 = 밀집 UI(390px 에 11칸) → 짧은 이름 축(#406 요구 6). 선수를 못 찾으면
           `미상 선수` — 구 동작은 여기에 **playerId 를 그대로 찍었다**(`P077`). */}
@@ -264,13 +308,14 @@ interface SlotCellProps {
   style?: React.CSSProperties;
   className: string;
   compact?: boolean;
+  growthReadyIds?: ReadonlySet<string>;
 }
 
 /** A droppable slot on the pitch or bench. Tap = 탭-투-플레이스(선택/배치/교체, tap-place.ts). */
 function SlotCell(props: SlotCellProps) {
   const {
     draft, playersById, conditions, selectedSlot, selectedPlayerId, pendingPlace, subbedOut,
-    onSlotTap, role, slotIndex, style, className, compact,
+    onSlotTap, role, slotIndex, style, className, compact, growthReadyIds,
   } = props;
   const { setNodeRef, isOver } = useDroppable({ id: slotDroppableId(role, slotIndex) });
   const slot = getSlot(draft, role, slotIndex);
@@ -322,6 +367,7 @@ function SlotCell(props: SlotCellProps) {
           numberLabel={slotNumberLabel(role, slotIndex)}
           compact={compact}
           out={subbedOut?.includes(slot.playerId)}
+          growthReady={growthReadyIds?.has(slot.playerId)}
         />
       ) : (
         <span className={styles.emptyMark}>+</span>
@@ -353,6 +399,7 @@ export function TacticsBoard(props: TacticsBoardProps) {
     pendingPlace: props.pendingPlace,
     subbedOut: props.subbedOut,
     onSlotTap: props.onSlotTap,
+    growthReadyIds: props.growthReadyIds,
   };
 
   const benchSection = (

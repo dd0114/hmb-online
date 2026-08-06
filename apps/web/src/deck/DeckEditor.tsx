@@ -214,6 +214,18 @@ export interface DeckEditorProps {
    */
   playerMenu?: boolean;
   /**
+   * **선택 대기(강화 3지선다)가 남아 있는 선수 id** — `↑` 뱃지 (#455 A2-2, 확정 계약의 조정 포인트
+   * *"강화 `↑` 뱃지 노출"*). 보드·벤치 토큰과 선수 메뉴 `[선수 정보]` 항목 **두 곳**에 같은 신호가 뜬다.
+   *
+   * ⚠️ **에디터는 이 값을 조회하지 않는다** — `DeckPage` 가 `usePendingChoices()`(전체 목록 **1회**)로
+   * 받아 `growthReadyIdsOf` 로 접어 넘긴다. 여기서 훅을 부르면 이 컴포넌트를 공유하는 경기전·
+   * 감독시간까지 조회가 붙는다(`layout`·`playerMenu` 와 같은 명시 축).
+   * ⚠️ **`layout` 과 묶지 마라.** 저 둘은 *폰 화면 개편* 이라 폭으로 갈렸지만 이건 **정보**다 —
+   * 폭이 넓어졌다고 "누가 강화 가능한지"가 사라질 이유가 없다(`p455-a22` ⑦ 이 그 사실을 박제한다).
+   * ⚠️ 성(★) 승급 표시는 이 축이 아니다 — 서버 계약이 없다(#455 본문). 여기에 얹지 마라.
+   */
+  growthReadyIds?: ReadonlySet<string>;
+  /**
    * 탭 레이아웃의 **[세부 전술] 탭 꼬리**에 붙일 것(#455 A1) — 지금은 팀 사기 위젯.
    *
    * ⚠️ 왜 여기냐: 그 위젯은 원래 에디터 **아래 형제**였고 폰에서 **68px** 를 먹는다. 68 상한
@@ -295,6 +307,7 @@ export function DeckEditor(props: DeckEditorProps) {
     promptScope = "deck",
     layout = "stack",
     playerMenu = false,
+    growthReadyIds,
     teamExtra,
     teamPanelNotice,
   } = props;
@@ -786,6 +799,8 @@ export function DeckEditor(props: DeckEditorProps) {
               hideBench={hideBench && boardMode !== "subs"}
               /* 탭 레이아웃이면 벤치는 [후보] 탭 안으로 간다 — **그리는 코드는 그대로**(포털). */
               benchPortal={tabs ? benchHost : undefined}
+              /* 강화 가능(선택 대기) `↑` — 안 넘기면 뱃지가 없다(경기전·감독시간의 오늘 모양). */
+              growthReadyIds={growthReadyIds}
               onSlotTap={handleSlotTap}
               /* 빈 상태(#106 R3b A): 선발 0/11 로 처음 들어오면 피치가 "+" 11개짜리 무언의 격자라
                  무엇부터 해야 하는지가 없었다.
@@ -1141,6 +1156,18 @@ export function DeckEditor(props: DeckEditorProps) {
               const growthOff = !onOpenGrowth || Boolean(growthLockedReason);
               const disabled = item.id === "info" && growthOff;
               const hint = item.id === "info" ? (growthLockedReason ?? item.hint) : item.hint;
+              /**
+               * 강화 가능(선택 대기 있음) 표시 (#455 A2-2) — **토큰의 `↑` 를 보고 온 사람이 어느
+               * 항목으로 가야 하는지**를 그 자리에서 잇는다. 확정 계약이 뱃지 자리로 열어 둔 곳이
+               * 정확히 이 항목(`PLAYER_MENU` 의 `info` = 강화 진입점)이다.
+               *
+               * ⚠️ testid 를 **`pmenu-` 로 시작하면 안 된다** — A2 ① 의 *"메뉴는 4항목"* 이
+               * `[data-testid^='pmenu-']` 개수로 재기 때문에 5가 되어 깨진다(A1 의 `token-name-*`
+               * 접두 침범과 같은 부류). `growup-` 접두를 쓴다.
+               * ⚠️ **잠겼다고 감추지 않는다.** 경기 중이라 못 누르는 것과 대기가 없는 것은 다른
+               * 사실이고, 감추면 "경기 끝나고 오면 할 일이 있다"가 화면에서 사라진다.
+               */
+              const showGrow = item.id === "info" && growthReadyIds?.has(menuPlayerId);
               return (
                 <button
                   key={item.id}
@@ -1154,6 +1181,11 @@ export function DeckEditor(props: DeckEditorProps) {
                     {item.icon}
                   </span>
                   <span className={styles.menuLabel}>{item.label}</span>
+                  {showGrow && (
+                    <span className={styles.menuGrow} data-testid="growup-menu">
+                      ↑ 강화 가능
+                    </span>
+                  )}
                   {hint && <span className={styles.menuHint}>{hint}</span>}
                 </button>
               );

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useDeck, usePlayers, useUpdateDeck, type CatalogPlayer, type Deck } from "../api/hooks";
 import { useRelations, useTodayConditions } from "../api/hooks-v2";
+import { usePendingChoices } from "../api/growth-hooks";
 import { Layout } from "../common/Layout";
 import { TeamMoraleWidget } from "../common/RelationBits";
 import { CardGrowthDetail } from "../codex/CardGrowthDetail";
@@ -25,6 +26,7 @@ import { canAutoBuild } from "./auto-lineup";
 import { canFillEmptySlots, fillEmptySlots } from "./fill-empty";
 import { DeckEditor } from "./DeckEditor";
 import { useDeckLayout } from "./use-deck-layout";
+import { growthReadyIdsOf } from "./growth-ready";
 import styles from "./DeckPage.module.css";
 
 interface ServerDeckError {
@@ -114,6 +116,21 @@ export function DeckPage() {
    */
   const matchLocked = useNavLocked();
   const growthLockedReason = matchLocked ? "경기 중에는 강화할 수 없습니다" : null;
+
+  /**
+   * **강화 가능(선택 대기) 신호** (#455 A2-2) — 토큰·선수 메뉴의 `↑`.
+   *
+   * ⚠️ **왕복은 1회다.** `GET /api/growth/choices` 는 `playerId` 를 안 주면 그 유저의 **전 카드**를
+   * 한 번에 준다(`GrowthService.pendingChoices(userId, null)`) — 선수 11명에게 카드 조회를 각각
+   * 때리는 설계가 아니다. 그 사실은 DOM 으로 못 재므로 `p455-a22` ③ 이 **요청 수**를 직접 센다.
+   * 쿼리 키(`["growthChoices", null]`)가 결과 화면·보상 봉투와 **같아서** 앱 전역에서 캐시를 공유한다.
+   * ⚠️ 무효화는 새로 배선할 것이 없다 — `useApplyChoice` 가 성공·실패 양쪽에서 `["growthChoices"]`
+   * 접두를 무효화하므로, 강화 시트에서 선택을 적용하면 이 화면의 뱃지가 저절로 사라진다.
+   * ⚠️ 훅을 `DeckEditor` 안으로 내리지 마라 — 그 컴포넌트는 경기전·감독시간과 공유라 조회가
+   * 세 화면에 붙는다(그 prop 선언부 주석).
+   */
+  const { data: openChoices } = usePendingChoices();
+  const growthReadyIds = useMemo(() => growthReadyIdsOf(openChoices), [openChoices]);
 
   // 첫 진입: 활성 덱 하나만 로드한다(프리셋 조회/적용 없음 — #106).
   useEffect(() => {
@@ -282,6 +299,9 @@ export function DeckPage() {
         teamPanelNotice={preIssueList}
         onOpenGrowth={(p) => setGrowthPlayer(p)}
         growthLockedReason={growthLockedReason}
+        /* 강화 가능 `↑` (#455 A2-2). **`layout` 과 무관하게** 넘긴다 — 정보이지 폰 화면
+           개편이 아니다(그 prop 선언부 주석 · `p455-a22` ⑦). */
+        growthReadyIds={growthReadyIds}
         state={editor}
         onChange={mutateEditor}
         aiManaged={aiManaged}
