@@ -198,6 +198,40 @@ test("AC3 선발에 빈칸이 있으면 노출되고 눌러서 닿는다(빈 덱
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
 });
 
+/**
+ * **AC3-b — `.corner { z-index: 4 }` 가 INERT 라는 *전제* 를 박제한다** (A3 독립검증 minor-1).
+ *
+ * 그 값을 2 로 내려도 위 AC3 이 11/11 통과한다 = **이 계약이 z-index 를 재지 못한다**. 그런데
+ * CSS 주석은 *"계약이 `elementFromPoint` 로 그 순서를 잰다"* 고 적고 있었다 — 검사하는 척한 것이다.
+ * 같은 커밋이 m-1 로 `.growBadge{z-index:3}` 를 이 부류라고 박제해 놓고 자기가 다시 만들었다.
+ *
+ * 못 재는 이유는 **둘 다 z-index 와 무관**하고, 그래서 여기서 재는 것도 z-index 가 아니라 그 둘이다:
+ *   ① `.empty` 가 `pointer-events: none` → 히트테스트는 **원리적으로** 페인트 순서를 못 본다
+ *   ② 출하 기하에서 두 사각형이 **애초에 안 겹친다**
+ * 둘 중 하나라도 깨지면 z-index 가 INERT 가 아니게 되고, 그때 이 단언이 **먼저** red 가 된다
+ * (= "여기 결정이 있었다"는 신호). 값을 지우지 않은 이유는 롤백 자산이라서다.
+ */
+test("AC3-b 빈 상태 안내 카드는 히트테스트에 안 잡히고, 버튼과 겹치지도 않는다", async ({ page }) => {
+  await openDeck(page, [], "board-empty");
+  const m = await page.evaluate(() => {
+    const card = document.querySelector<HTMLElement>('[data-testid="board-empty"]');
+    const btn = document.querySelector<HTMLElement>('[data-testid="auto-fill"]');
+    if (!card || !btn) return null;
+    const c = card.getBoundingClientRect();
+    const b = btn.getBoundingClientRect();
+    return {
+      pe: getComputedStyle(card).pointerEvents,
+      overlaps: !(c.right <= b.left || c.left >= b.right || c.bottom <= b.top || c.top >= b.bottom),
+      card: [Math.round(c.top), Math.round(c.bottom)],
+      btn: [Math.round(b.top), Math.round(b.bottom)],
+    };
+  });
+  console.log(`[a3] z-index INERT 전제 → ${JSON.stringify(m)}`);
+  expect(m, "두 요소가 다 있어야 이 전제를 잴 수 있다").not.toBeNull();
+  expect(m!.pe, "`.empty` 는 포인터를 안 받는다 — 이게 참인 한 히트테스트는 겹침을 못 본다").toBe("none");
+  expect(m!.overlaps, `안내 카드와 버튼은 겹치지 않는다 (card ${m!.card} vs btn ${m!.btn})`).toBe(false);
+});
+
 // ── AC4 ─────────────────────────────────────────────────────────────────────
 /**
  * ⚠️ **규칙 하나당 표본 하나** (apps/web/CLAUDE.md "초록으로 거짓말" ④).

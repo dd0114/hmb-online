@@ -130,14 +130,28 @@ export async function bootstrap(
        * `/api/players` 에서는 84 · `/api/growth/card/MF1` 에서는 73 이 되어 **다른 모순**이
        * 남는다(m-5 가 지목한 것). 서버는 그 두 응답을 같은 행에서 만든다.
        *
-       * 그래서 **깎지 않고 천장을 올린다** — `caps` 를 그 선수가 실제로 들고 있는 값 위로
-       * 잡는다(LEGEND FW1 = 90 이면 `growCeil 89 + starCeilBonus 1`). 등급이 높을수록 `growCeil`
-       * 이 높은 것이 서버 규칙이라 **서버가 만들 수 있는 조합**이고, 카탈로그와도 일치한다.
-       * ⚠️ 반대 방향(카탈로그를 73 으로 깎기)은 택하지 않았다: 90/84/80/76… 의 ovr 산포가
-       * 통째로 뭉개져 **auto 배치 순서·전력 수치에 기대는 스펙**들이 자기 세계를 잃는다.
+       * ⚠️ **A3 초판은 `growCeil` 을 그 선수의 최대 능력치에서 파생시켰고 그건 서버가 만들 수
+       * 없는 조합이다**(A3 독립검증 blocker-1). `GrowthService:501` 은
+       * `GrowthMath.band(tuning, grade).growCeil()` = **등급만의 함수**라, 한 배포에서 등급당
+       * `growCeil` 은 **하나**다 — 같은 GOLD 5명이 72/75/73/72/79 를 받는 상태는 어떤 오버레이로도
+       * 안 나온다. 초판 주석의 근거("등급이 높을수록 높은 것이 서버 규칙")도 실제 규칙
+       * ("등급만으로 결정된다")과 달랐다.
+       *
+       * ⚠️ 그리고 초판이 제시한 딜레마("카탈로그를 깎느냐 / 천장을 올리느냐")는 **거짓 이분법**이다 —
+       * 실제 밴드가 이 카탈로그를 **하나도 안 깎고** 수용한다(카탈로그 최대 vs 밴드:
+       * BRONZE 55/72 · SILVER 69/78 · GOLD 80/84 · DIA 84/90 · LEGEND 90/95). 그래서 ovr 산포
+       * (90/84/80/76…)는 그대로 살아 있고 auto 배치 순서에 기대는 스펙도 자기 세계를 안 잃는다.
+       *
+       * ⚠️ `star: 1` 이면 `starCeilBonus` 는 **0** 이다(`GrowthTuning:269` = `{1:0, 2:1, 3:2, 4:3}`).
+       * 1 을 주면 ★1 인데 ★2 의 보너스를 받는 상태라 이것도 서버가 못 만든다.
+       * (같은 리포의 `e2e/p405-reward-sheet.spec.ts:275` 가 그 사실을 이미 적고 있었다.)
        */
       const a = raw;
-      const capBase = Math.max(73, ...keys.map((k) => raw[k]!));
+      /** 서버 `GrowthTuning.defaultBands()` 의 등급별 `growCeil` — 값의 출처는 서버다. */
+      const GROW_CEIL: Record<string, number> = {
+        BRONZE: 72, SILVER: 78, GOLD: 84, DIA: 90, LEGEND: 95,
+      };
+      const capBase = GROW_CEIL[p.grade] ?? 72;
       return r.fulfill(
         json({
           playerId: p.id,
@@ -154,8 +168,8 @@ export async function bootstrap(
           maxLevel: 40,
           /* `caps = growCeil + starCeilBonus` 를 목 안에서도 성립시킨다 — 셋이 서로 모순이면
              그 위에 서는 계약은 자기가 만든 세계를 검사한다(#342). */
-          growCeil: capBase - 1,
-          starCeilBonus: 1,
+          growCeil: capBase,
+          starCeilBonus: 0,
           attrHardCap: 99,
           startLo: 50,
           /* 카드 상세의 배너와 **같은 사실**이어야 한다 — 목이 자기 안에서 모순되면 그 위에

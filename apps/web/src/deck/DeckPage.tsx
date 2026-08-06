@@ -334,7 +334,10 @@ export function DeckPage() {
                 `빈 자리를 채웁니다 — 보유 ${ownedPlayers.length}명이라 선발 ${STARTER_COUNT}명은 다 못 채웁니다`
             : ownedPlayers.length === 0
               ? "보유 선수가 없습니다"
-              : "채울 빈 자리가 없거나 넣을 선수가 없습니다"
+              : /* ⚠️ "채울 빈 자리가 없거나" 를 되살리지 마라 — A3 이후 이 버튼은
+                   `hasEmptySlotGap` 일 때만 그려지므로, 이 문장이 화면에 뜨는 순간
+                   그 절은 **항상 거짓**이다(A3 독립검증 minor-2). 남는 이유는 하나뿐이다. */
+                "보유 선수를 모두 배치했습니다"
         }
       />
 

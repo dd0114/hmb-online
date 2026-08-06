@@ -163,14 +163,21 @@ test("W2 Auto: 보유 < 11 이어도 **있는 만큼 채운다**(비활성 아�
    * 두 축을 하나로 묶으면 이 상태에서 화면이 통째로 침묵한다(보유 부족 신규 유저가 그 자리다).
    */
   await expect(page.getByTestId("auto-fill")).toBeDisabled();
-  await expect(page.getByTestId("auto-fill")).toHaveAttribute("title", /채울 빈 자리가 없/);
+  /**
+   * ⚠️ **사유가 이 상태에서 참이어야 한다** — 구 문구는 `"채울 빈 자리가 없거나 …"` 였는데,
+   * A3 이 노출을 빈칸에 묶은 뒤로 그 첫 절은 **이 문장이 뜨는 모든 상태에서 거짓**이다
+   * (A3 독립검증 minor-2). 그런데 이 계약이 그 절을 리터럴로 들고 있어서, 거짓 절을 지우는
+   * 것이 곧 red 였다 = 계약이 결함을 굳히고 있었다.
+   */
+  await expect(page.getByTestId("auto-fill")).toHaveAttribute("title", /모두 배치했습니다/);
+  await expect(page.getByTestId("auto-fill")).not.toHaveAttribute("title", /빈 자리가 없/);
   /**
    * ⚠️ **비활성 사유는 폰에서 실제로 읽혀야 한다.** `title` 은 터치에 안 뜨고, A3 이 시트 바의
    * `auto-hint-top`(구 폰 전용 사유 줄)을 없앴다 — 그래서 이 상태에서만 보드 아래 `auto-hint`
    * 가 폰에도 펴진다. 뷰포트 밖 통과를 막으려고 `boundingBox` 로 화면 안인지까지 본다.
    */
   const hint = page.getByTestId("auto-hint");
-  await expect(hint).toContainText("채울 빈 자리가 없");
+  await expect(hint).toContainText("모두 배치했습니다");
   const hb = (await hint.boundingBox())!;
   console.log(`[deck-auto] 폰 비활성 사유 줄 = ${JSON.stringify(hb)}`);
   expect(hb.height, "폰에서 사유 줄이 접혀 있으면(display:none) 높이가 0 이다").toBeGreaterThan(0);
