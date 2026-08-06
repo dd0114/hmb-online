@@ -493,26 +493,30 @@ test("G4 강화탭 성장(#405 §2.10): Lv/XP 헤더 + 선택 대기 배너 → 
   await expect(page.getByTestId("choice-lock-note")).toContainText("선택지는 고정됩니다");
   await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
   await expect(page.getByTestId("choice-gain-tackling")).toHaveText("+3.80");
-  // 근거 줄·순서·core 배지 전부 보상 시트와 **같은 컴포넌트**가 그린다 — 두 자리가 갈리면 안 된다.
-  await expect(page.getByTestId("choice-why-shooting")).toContainText("이 경기 슛 4회");
-  await expect(page.getByTestId("choice-why-tackling")).toContainText('지시 "강하게 압박"');
+  /*
+   * 순서·core 배지·**정보 감량**까지 보상 시트와 같은 컴포넌트가 그린다 — 두 자리가 갈리면 안 된다
+   * (설계 §2.10). #456 S4-W2 AC4 로 카드에서 근거줄·천장 막대·범례·현재→적용후가 빠졌고, 그
+   * 변화는 **여기(강화탭)에도 그대로** 와야 한다. 한쪽만 감량되면 이 세 줄이 그것을 잡는다.
+   */
+  await expect(page.getByTestId("choice-cand-tackling")).toContainText("이 스탯 선택");
+  await expect(page.getByTestId("choice-candidates").locator('[data-testid^="choice-why-"]')).toHaveCount(0);
+  await expect(page.getByTestId("choice-candidates").locator('[class*="ceilBar"]')).toHaveCount(0);
   // 🚨 응답 순서 그대로 — tackling 이 gain 최대(3.8)인데 FW 라 꼴찌다(재정렬하면 여기서 죽는다).
   const order = await page
     .getByTestId("choice-candidates")
     .locator("button")
     .evaluateAll((els) => els.map((el) => el.getAttribute("data-testid")));
+  // ORDER-ASSERT — 후보 순서는 서버 응답 그대로(재정렬 금지). 자리 수를 세려면 이 마커를 grep 해라.
   expect(order).toEqual(["choice-cand-shooting", "choice-cand-passing", "choice-cand-tackling"]);
   await expect(page.getByTestId("choice-core-shooting")).toBeVisible();
   await expect(page.getByTestId("choice-core-tackling")).toHaveCount(0);
-  // 좌측 앵커는 서버 `startLo`(GOLD 50) — 강화탭 축 라벨(50–82)과 **같은 원점**이다.
-  await expect(page.getByTestId("choice-start-shooting")).toHaveText("시작 50");
-  // ⚠️ 이 목의 `패스`(42.0)는 GOLD 시작 밴드(50) **아래**다(레거시 픽스처). 그래도 상승 구간은
-  // 보여야 한다 — 위치 차로 폭을 내면 양쪽이 0% 로 클램프돼 gain 이 통째로 사라진다(실화면에서 잡음).
-  const addWidth = await page
-    .getByTestId("choice-cand-passing")
-    .locator('[class*="ceilAdd"]')
-    .evaluate((el) => (el as HTMLElement).getBoundingClientRect().width);
-  expect(addWidth).toBeGreaterThan(2);
+  /*
+   * ⚠️ **좌측 앵커(`시작 50`)·상승 구간 막대 계약은 여기서 은퇴했다** — 카드에서 축 자체가 빠졌다
+   * (AC4). 원점 규칙(`cardAxisWindow`)은 **강화탭 스탯 막대**가 계속 소비하므로 살아 있고,
+   * 그 계약은 `growth/card-axis.test.ts` + `growth/attribute-view.test.ts` 가 갖는다.
+   * 되살릴 조건 = hero 가 후보 카드에 천장 축을 되돌리는 것.
+   */
+  await expect(page.getByTestId("choice-start-shooting")).toHaveCount(0);
   await page.screenshot({ path: `${SMOKE_DIR}growth-enhance-pending.png`, fullPage: true });
 
   // 선택 → 축하 + 성장분(statAdd) 층이 실제로 오른다 + 배너가 사라진다.

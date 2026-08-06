@@ -61,12 +61,12 @@
 }
 
 .barHome {
-  background: #3b82f6;
+  background: var(--team-home-strong);
   transition: width 0.25s ease;
 }
 
 .barAway {
-  background: #ef4444;
+  background: var(--team-away-strong);
   transition: width 0.25s ease;
 }
 
@@ -96,12 +96,12 @@
 
 .teamSlot.home {
   justify-content: flex-end;
-  color: #7ab0ff;
+  color: var(--team-home-text);
 }
 
 .teamSlot.away {
   justify-content: flex-start;
-  color: #ff8f8f;
+  color: var(--team-away-text);
 }
 
 /* ⚠️ 줄임표는 **이름에만** — 슬롯에 걸면 칩이 통째로 잘린다(스코어바에서 실제로 났던 사고). */
@@ -146,11 +146,11 @@
 
 .possVal.home {
   text-align: right;
-  color: #7ab0ff;
+  color: var(--team-home-text);
 }
 
 .possVal.away {
-  color: #ff8f8f;
+  color: var(--team-away-text);
 }
 
 /* 데스크탑: 시트 높이를 고정(무대 우선)했으므로 세로로 6줄을 쌓으면 스크롤해야 본다.
@@ -575,11 +575,11 @@
 }
 
 .pnumHome {
-  background: #3b82f6;
+  background: var(--team-home-strong);
 }
 
 .pnumAway {
-  background: #ef4444;
+  background: var(--team-away-strong);
 }
 
 .pname {

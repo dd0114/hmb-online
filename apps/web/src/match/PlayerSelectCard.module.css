@@ -80,11 +80,11 @@
 }
 
 .discHome {
-  background: #3b82f6;
+  background: var(--team-home-strong);
 }
 
 .discAway {
-  background: #ef4444;
+  background: var(--team-away-strong);
 }
 
 .ident {

@@ -235,6 +235,63 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
     expect(canvas!.height, "캔버스가 납작해지면 안 됨").toBeGreaterThan(80);
   });
 
+  /*
+   * ── #456 B0 — 경기바가 경기장을 가린다 ──────────────────────────────────
+   *
+   * hero: *"바는 경기장 밖으로 빼. 경기 안 가리게 화면 늘려달라 했잖아."*
+   *
+   * ⚠️ **이 두 계약은 한 쌍으로만 뜻이 있다.** h 만 있으면 컨트롤을 아래로 내리면서 캔버스를
+   * 그만큼 줄이는 구현이 통과하고(가린 건 없어졌지만 피치가 작아졌다 = hero 가 거부한 답),
+   * i 만 있으면 컨트롤을 다시 피치 위에 얹어도 통과한다. 둘을 같이 걸어야 *"무대 행이 세로를
+   * 더 가져간다(시트가 양보한다)"* 만 남는다.
+   */
+  test("h. #456 B0 — 재생 컨트롤이 피치 **밖**에 선다 (경기장을 가리지 않는다)", async ({ page }) => {
+    await openMatch(page);
+    const canvas = (await page.locator('[data-testid^="viewer-canvas-half"]').boundingBox())!;
+    expect(canvas, "캔버스가 있어야 이 계약이 성립한다").toBeTruthy();
+
+    // 컨트롤 층 = `VisualPlayback` 이 자기 표지를 단 그 층(#406 W10 M-1 과 같은 축).
+    const controls = page.locator("[data-p406-controls]");
+    await expect(controls, "컨트롤 층은 하나다").toHaveCount(1);
+    const cb = (await controls.boundingBox())!;
+
+    expect(
+      cb.y,
+      "컨트롤 층은 캔버스가 끝난 **뒤**에 시작한다(겹치면 그 띠 아래 피치가 안 보인다)",
+    ).toBeGreaterThanOrEqual(canvas.y + canvas.height - 1);
+
+    // 무대 행(= `stage-canvas` 박스)이 컨트롤까지 담는다 — 시트 위로 흘러넘치지 않는다.
+    const stage = (await page.getByTestId("stage-canvas").boundingBox())!;
+    expect(stage.y + stage.height, "무대 행이 컨트롤까지 담는다").toBeGreaterThanOrEqual(
+      cb.y + cb.height - 1,
+    );
+    const sheet = (await page.getByTestId("stage-sheet").boundingBox())!;
+    expect(sheet.y, "시트는 컨트롤 아래에서 시작한다").toBeGreaterThanOrEqual(cb.y + cb.height - 1);
+  });
+
+  test("i. #456 B0 — 컨트롤을 밖으로 내도 **피치가 줄지 않는다**", async ({ page }) => {
+    await openMatch(page);
+    const canvas = (await page.locator('[data-testid^="viewer-canvas-half"]').boundingBox())!;
+
+    /*
+     * 폰에서 피치 크기를 정하는 것은 **가로**다(세로 상한 58svh 에 한참 못 미친다).
+     * 그래서 "안 줄었다"의 정의는 두 축이다 — ①화면 폭을 그대로 쓰고 ②그 폭에서 피치 비율.
+     * 절대값(253px)만 걸면 폭이 줄어드는 구현을 못 잡고, 비율만 걸면 통째로 축소해도 통과한다.
+     */
+    expect(canvas.width, "캔버스가 화면 폭을 그대로 쓴다").toBeGreaterThanOrEqual(PHONE.width - 2);
+    const byAspect = (canvas.width * 680) / 1050;
+    expect(canvas.height, "그 폭에서 피치 비율만큼의 높이(1050:680)").toBeGreaterThanOrEqual(
+      byAspect - 1,
+    );
+    // 현행 실측 기준선 — 회귀를 절대값으로도 한 번 더 잡는다(#456 B0 착지 시점 252.57px).
+    expect(canvas.height, "폰 피치 높이 기준선").toBeGreaterThanOrEqual(252);
+    /*
+     * ⚠️ **이 계약은 390×844 한 점이다** — 독립검증 minor-2. 다른 창(데스크탑 · 넓고 낮은 창 ·
+     * 폰 가로 · 작은 폰)의 피치 크기는 `p348-desktop-viewport.spec.ts` ⑧ 이 21개 뷰포트로 잰다.
+     * 여기만 보고 "피치는 안 줄었다"를 일반 명제로 읽지 마라 — S2 가 정확히 그렇게 틀렸다.
+     */
+  });
+
   /**
    * #284 로 **저장할 토글이 없어졌다**(탭 구성은 상태가 정한다). 그래서 이 자리의 계약은
    * "선택이 유지되나"가 아니라 **"리로드해도 그 상태의 탭 구성이 그대로 선다"** 로 바뀐다.
@@ -302,6 +359,77 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
       const s = await pageScroll(page);
       expect(s.vScroll, "경기장면 탭에서도 문서 스크롤 0").toBeLessThanOrEqual(1);
       expect(s.hScroll).toBeLessThanOrEqual(1);
+    });
+
+    /**
+     * ⚠️ **`toBeVisible()` 로는 이 결함이 안 잡힌다** — #456 S2 독립검증 blocker-1.
+     *
+     * 바로 위 계약이 보는 `stage-canvas` 는 무대 **섹션**이고, 그 섹션은 700px 로 멀쩡히 서 있는
+     * 채로 **안쪽 피치만 0 높이로 눌릴 수 있다**. 이 화면의 피치 형제는 컨트롤 + 시계 + 스크럽 +
+     * **장면 리스트**라 세로가 컨테이너를 넘고, 피치가 `flex-shrink` 로 그 초과분을 전부 떠안는다.
+     * 실제로 그 상태를 만들어 봤다 — 피치 0px, 캔버스 중심의 최상위 요소가 `viewer-scrub-half1`.
+     *
+     * 그래서 여기서는 **피치 박스의 실제 높이**와 **그 한가운데에 무엇이 있는지**를 직접 잰다
+     * (apps/web CLAUDE.md "계약이 초록으로 거짓말하는 방식" #3·#6).
+     */
+    test(`감독시간 경기장면 탭: 피치가 눌려 사라지지 않는다 (${state})`, async ({ page }) => {
+      await openMatch(page, state);
+      await page.getByTestId("stage-tab-stage").click();
+      await expect(page.getByTestId("stage-canvas")).toBeVisible();
+
+      const pitch = page.locator('[data-testid^="viewer-pitch-half"]');
+      await expect(pitch, "피치 박스는 하나다").toHaveCount(1);
+      const pb = (await pitch.boundingBox())!;
+      expect(pb, "피치 박스가 레이아웃에 존재해야 한다").toBeTruthy();
+
+      /*
+       * 하한을 넉넉히 잡는 이유: 이 탭의 캔버스 상한은 `40svh`(844 → 337px)이고 여기서 재는 것은
+       * "덜 컸다"가 아니라 **"눌려 없어졌다"** 다. 상한 튜닝에는 무감각하고 붕괴에만 반응해야 한다.
+       */
+      expect(pb.height, "피치가 컨트롤에 밀려 0 으로 눌리면 안 된다").toBeGreaterThan(80);
+
+      // 높이만 재면 다른 층이 덮은 경우를 놓친다 — 그 자리에 **실제로** 캔버스가 보이는지까지.
+      const topmost = await page.evaluate(
+        ({ x, y }) => {
+          const el = document.elementFromPoint(x, y);
+          return el ? `${el.tagName}|${el.getAttribute("data-testid") ?? ""}` : null;
+        },
+        { x: pb.x + pb.width / 2, y: pb.y + pb.height / 2 },
+      );
+      expect(topmost, "피치 한가운데의 최상위 요소는 캔버스다").toContain("viewer-canvas-half");
+    });
+
+    /*
+     * ⚠️ 위 계약은 **두 수정이 서로를 가려 준다**(#456 S2-R1 독립검증 minor-A). 붕괴를 막는 길이
+     * ⓐ 넘치는 층이 자기 안에서 스크롤 · ⓑ 피치가 축소 불가 **두 갈래**인데 한쪽만 살아 있어도
+     * 피치는 안 눌린다 → 다음 웨이브가 한쪽을 "죽은 코드"로 보고 지워도 위 계약은 green 이다.
+     * 여기서 두 갈래를 **각각 단독으로** 잰다(둘 중 하나만 되돌려도 이 테스트는 red).
+     *
+     * 계산된 스타일을 되읽는 모양이지만 동어반복이 아니다 — ⓐ 는 "그 층이 **실제로** 넘친다"는
+     * 사실과 짝지어야 의미가 생기고(안 넘치면 스크롤 여부는 무의미), ⓑ 는 그 초과분을 떠안을 수
+     * 있는 형제가 있다는 전제 위에서만 붕괴를 막는다.
+     */
+    test(`감독시간 경기장면 탭: 붕괴 방지 두 갈래가 각각 살아 있다 (${state})`, async ({ page }) => {
+      await openMatch(page, state);
+      await page.getByTestId("stage-tab-stage").click();
+      await expect(page.getByTestId("stage-canvas")).toBeVisible();
+
+      // ⓐ 넘치는 몫은 **그 층이 자기 안에서** 삼킨다 (`MatchViewer.module.css .controlsFlow`).
+      const flow = page.locator('[data-p406-controls="flow"]');
+      await expect(flow, "감독시간 컨트롤 층은 flow 모드다").toHaveCount(1);
+      const f = await flow.evaluate((el) => ({
+        overflowY: getComputedStyle(el).overflowY,
+        scrollH: el.scrollHeight,
+        clientH: el.clientHeight,
+      }));
+      expect(f.scrollH, "전제: 이 층은 실제로 컨테이너를 넘는다").toBeGreaterThan(f.clientH);
+      expect(["auto", "scroll"], "넘치는 몫을 형제(피치)에게 떠넘기지 않는다").toContain(f.overflowY);
+
+      // ⓑ 피치는 축소 불가다 (`StageShell.module.css` 피치 선택자의 `flex: none`).
+      const shrink = await page
+        .locator('[data-testid^="viewer-pitch-half"]')
+        .evaluate((el) => getComputedStyle(el).flexShrink);
+      expect(shrink, "피치는 형제의 초과분을 떠안지 않는다").toBe("0");
     });
   }
 });

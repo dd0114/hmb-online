@@ -1,6 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useHalfLog, useMatchResult, type MatchDetail } from "../../api/hooks";
+import { useStartNextLeagueMatch } from "../../api/hooks-v2";
+import { ApiError } from "../../api/client";
+import { matchInProgressIdOf } from "../../common/match-lock";
+import { useDecklessGuard } from "../../common/useDecklessGuard";
 import { deriveTeamStats, TEAM_STAT_LABELS, type MatchEventLike } from "../match-logic";
 import { GrowthReportSection } from "../GrowthReportSection";
 import { PlayerStatsTable, PlayerTeamSegments, useTeamSegment } from "../PlayerStatsTable";
@@ -41,6 +45,21 @@ interface ResultPanelProps {
    */
   hasRewardSheet?: boolean;
   /**
+   * **결과 카드의 보상 줄을 미룬다** (#456 S4-W2, W1 독립검증 major-2).
+   *
+   * 경기 흐름 오버레이(#424)가 떠 있는 동안은 이 패널이 그 **뒤에** 그려진다. 그런데 B3 순차
+   * 보상은 같은 금액을 한 장씩 공개하는 연출이라, 뒤에 `경기 보상 +1,200 G` 와 `오늘의 보상
+   * +30 Z` 가 그대로 남아 있으면 **정답이 배경에 미리 인쇄돼 있는 것**이다(실캡처: 골드 3회 ·
+   * 잼 2회 노출, 백드롭 `rgba(0,0,0,0.72)` 라 그대로 읽힌다). 첫 카드에서 순차가 무효가 된다.
+   *
+   * ⚠️ **백드롭을 더 어둡게 하는 것으로는 못 고친다** — 불투명도는 DOM 이 말하지 않아서(모듈
+   * CLAUDE.md "DOM 계약이 초록인데 어포던스가 안 보이는 축") 계약이 검사하는 척만 하게 된다.
+   * 그래서 **줄 자체를 미룬다**: 오버레이가 닫히면 같은 줄이 같은 금액으로 돌아온다(지우는 것이
+   * 아니다 — 계약이 그 복귀를 양성 대조로 같이 잰다).
+   * ⚠️ 값·형식·`data-*` 는 하나도 안 바꾼다. 이 플래그는 **시점**만 정한다.
+   */
+  deferRewardLines?: boolean;
+  /**
    * 선수 기록 집계 (#403 W4) — **셸이 한 번 돌린 같은 결과**를 받는다. 여기서 다시 집계하면
    * 선수 탭과 결과 탭이 같은 경기의 같은 선수에게 다른 평점을 줄 수 있다(집계는 창·로스터에
    * 의존한다). 안 주면 이 섹션을 그리지 않는다 — 결과 패널은 그 없이도 성립한다.
@@ -77,6 +96,7 @@ export function ResultPanel({
   awayName,
   onOpenRewards,
   hasRewardSheet,
+  deferRewardLines = false,
   playerStats,
   myTeamSide = null,
 }: ResultPanelProps) {
@@ -97,6 +117,79 @@ export function ResultPanel({
   const scoreHome = result?.scoreHome ?? match.scoreHome;
   const scoreAway = result?.scoreAway ?? match.scoreAway;
 
+  /*
+   * ── 다음 행동 CTA (#456 B5) ────────────────────────────────────────────────
+   * hero: *"경기 종료 후 각각 리그는 다음 경기 시작 버튼과 원정은 다음 원정 떠나기 버튼이 있어야 해"*.
+   *
+   * ⚠️ **`[로비로]` 를 대체하지 않고 그 위에 얹는다.** 이 CTA 에는 실패하는 갈래가 실재하고
+   * (시즌 마지막 라운드 = `LEAGUE_INVALID`), 대체하면 그 순간 나갈 길이 없다. `to-lobby` 는
+   * #348/#355 세로 예산 계약이 **좌표로 재는 앵커**이기도 하다.
+   * ⚠️ **모드를 모르면 아무것도 안 그린다** — 구 서버·연습이 그 자리다. 리그로 추측하면 연습
+   * 경기 뒤에 엉뚱한 리그 라운드를 여는 버튼이 생긴다.
+   */
+  const nextCtaLabel =
+    match.mode === "league" ? "다음 경기 시작" : match.mode === "away" ? "다음 원정 떠나기" : null;
+  const nextMatch = useStartNextLeagueMatch();
+  // 새로 매치를 만드는 버튼이므로 덱 가드가 붙는다(apps/web CLAUDE.md L2 — URL 직접 진입과 같은 층).
+  const deckless = useDecklessGuard();
+  const [nextError, setNextError] = useState<string | null>(null);
+
+  /**
+   * ⚠️ **더블탭 한 번은 클릭 두 개다 — `disabled` 로는 못 막는다.**
+   *
+   * `disabled={nextMatch.isPending}` 은 React 가 리렌더한 **뒤**에야 걸리므로 같은 이벤트 버스트의
+   * 두 번째 클릭이 그대로 통과한다(실측 `nextCalls 2`). 폰에서 유저가 실제로 하는 동작이다.
+   *
+   * ⚠️ **서버는 이미 안전하다** — `LeagueService.nextMatch` 가 트랜잭션 안에서 진행 중 매치를
+   * 재사용하고, 아니면 409 → `matchInProgressIdOf` 가 같은 매치로 보낸다. **중복 매치는 안 생긴다.**
+   * 그래도 막는 이유는 잃는 것이 없어서다(불필요한 왕복 + 409 경로를 평상시에 태우지 않는다).
+   * 계약 = `p456-full-journey` A(같은 태스크에서 두 번 클릭 → `nextCalls === 1`).
+   */
+  const nextInFlight = useRef(false);
+
+  function startNext() {
+    if (nextInFlight.current) return;
+    nextInFlight.current = true;
+    setNextError(null);
+    /*
+     * ⚠️ **원정은 이동만 한다.** 서버의 상대 제시는 유저당 1개라 여기서 새로 받아 오면 유저가
+     * 앞서 받아 둔 후보 목록이 조용히 무효가 된다(#245 hero E2). 고르는 화면으로 보내고,
+     * 제시를 소모하는 결정은 거기서 유저가 한다.
+     */
+    if (match.mode === "away") {
+      navigate("/away");
+      nextInFlight.current = false;
+      return;
+    }
+    // 덱이 없으면 안내만 뜨고 **화면에 남는다** — 래치를 안 풀면 덱을 만든 뒤 다시 눌러도 죽는다.
+    if (!deckless.guard()) {
+      nextInFlight.current = false;
+      return;
+    }
+    nextMatch.mutate(undefined, {
+      onSuccess: (res) =>
+        navigate(`/match/${res.match.id}`, { state: { leagueRound: res.fixture.round } }),
+      onError: (err) => {
+        // 409 는 실패가 아니라 **이어가라는 안내**다(#217) — 리그 화면과 같은 처리.
+        const resumeId = matchInProgressIdOf(err);
+        if (resumeId) {
+          navigate(`/match/${resumeId}`);
+          return;
+        }
+        // 아래 두 갈래는 화면에 남는다 → 재시도할 수 있게 래치를 푼다(이동하는 갈래는 안 푼다).
+        nextInFlight.current = false;
+        if (deckless.catchReject(err)) return;
+        setNextError(
+          err instanceof ApiError && err.code === "LEAGUE_INVALID"
+            ? `다음 경기를 시작할 수 없습니다 — ${err.message}`
+            : err instanceof Error
+              ? err.message
+              : "다음 경기 시작 실패",
+        );
+      },
+    });
+  }
+
   return (
     <div className={styles.panel} data-testid="result-page">
       <div className={styles.scroll} data-testid="result-scroll">
@@ -112,12 +205,15 @@ export function ResultPanel({
           <p className={styles.finalScore} data-testid="final-score">
             {homeName} {scoreHome ?? "-"} : {scoreAway ?? "-"} {awayName}
           </p>
-          {result?.pointsAwarded != null && (
+          {/* 순차 보상 카드가 같은 금액을 공개하는 동안은 이 두 줄을 미룬다(위 `deferRewardLines`). */}
+          {!deferRewardLines && result?.pointsAwarded != null && (
             <p className={styles.reward} data-testid="reward-points">
               경기 보상 +<Amount code={CURRENCY_POINT} value={result.pointsAwarded} />
             </p>
           )}
-          <DailyRewardLine reward={(result as { dailyReward?: MatchDailyReward | null })?.dailyReward} />
+          {!deferRewardLines && (
+            <DailyRewardLine reward={(result as { dailyReward?: MatchDailyReward | null })?.dailyReward} />
+          )}
         </section>
 
         {/*
@@ -182,15 +278,55 @@ export function ResultPanel({
         <GrowthReportSection matchId={match.id} onOpenRewards={onOpenRewards} />
       </div>
 
-      {/* ⚠️ 스크롤 **밖**이다(위 헤더) — `.scroll` 안으로 되돌리면 #355 가 그대로 재발한다. */}
-      <button
-        type="button"
-        className={styles.toLobby}
-        data-testid="to-lobby"
-        onClick={() => navigate("/home")}
+      {/*
+        ⚠️ 스크롤 **밖**이다(위 헤더) — `.scroll` 안으로 되돌리면 #355 가 그대로 재발한다.
+
+        실패 안내도 **이 층**이다(감독시간 `.ctaAlert` 와 같은 이유, #294 MAJOR): 스크롤 영역
+        끝에 두면 고정 CTA 가 그 위에 앉아 유저는 그것을 볼 방법이 없고, 화면이 클릭 전과
+        완전히 같아 "버튼 먹통"으로 읽힌다.
+      */}
+      {nextError && (
+        <p className={styles.ctaAlert} role="alert" data-testid="result-next-error">
+          {nextError}
+        </p>
+      )}
+      {/*
+        `data-cta-count` 가 배치를 가른다(CSS 머리말이 SoT) — 둘이면 데스크탑에서 **가로 한 줄**이
+        되어 바닥 높이가 CTA 없을 때와 같아진다. 세로로 쌓으면 그 62px 를 `.scroll` 이 내고
+        #355 의 "팀 스탯의 시작이 보인다"가 1024×768·1280×720 에서 깨진다(S3-R1 blocker-1).
+        ⚠️ 개수는 **여기서 파생**한다 — CSS 에 버튼 목록을 다시 적으면 세 번째 버튼이 생기는 날
+        조용히 어긋난다.
+      */}
+      <div
+        className={styles.ctaRow}
+        data-testid="result-cta-row"
+        data-cta-count={nextCtaLabel ? 2 : 1}
       >
-        로비로
-      </button>
+        {nextCtaLabel && (
+          <button
+            type="button"
+            className={styles.nextCta}
+            data-testid="result-next-cta"
+            onClick={startNext}
+            disabled={nextMatch.isPending}
+          >
+            {nextMatch.isPending ? "경기 준비 중…" : nextCtaLabel}
+          </button>
+        )}
+        {/*
+          ⚠️ **모드와 무관하게 항상 남는다.** 다음 경기 CTA 가 실패하는 갈래가 있으므로 이걸
+          없애면 유저가 결과 화면에 갇힌다. testid 도 그대로다 — #348/#355 가 이 앵커로 잰다.
+        */}
+        <button
+          type="button"
+          className={`${styles.toLobby} ${nextCtaLabel ? styles.toLobbySecondary : ""}`}
+          data-testid="to-lobby"
+          onClick={() => navigate("/home")}
+        >
+          로비로
+        </button>
+      </div>
+      {deckless.dialog}
     </div>
   );
 }

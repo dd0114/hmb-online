@@ -193,6 +193,34 @@
   border-bottom: none;
 }
 
+/*
+ * 팀 구분(#456 B4, hero: *"경기 스킵 이후 결과 보여줄 때 어느 팀인지 색구분해서 보여줘"*).
+ *
+ * 채널이 **둘**이다 — ①왼쪽 색 띠(훑을 때 편이 갈린다) ②팀 라벨 글자색. 팀 이름 텍스트는
+ * 그대로 남으므로(위 `.side`) 색을 못 보는 환경에서도 정보가 사라지지 않는다.
+ *
+ * ⚠️ 띠는 `border-left` 가 아니라 **padding 안의 그림자**로 그린다 — 테두리를 더하면 이 행의
+ * 그리드 폭이 3px 줄어 오른쪽 이름 열이 밀린다(`grid-template-columns` 의 `auto` 열이 먼저 눌린다).
+ * ⚠️ 색은 `index.css` 의 `--team-*-text` 다. 여기 리터럴을 적으면 팀색 출처가 다시 갈라진다.
+ */
+.row[data-team] {
+  padding-left: 8px;
+  box-shadow: inset 3px 0 0 0 var(--row-team);
+}
+
+.row[data-team="home"] {
+  --row-team: var(--team-home-text);
+}
+
+.row[data-team="away"] {
+  --row-team: var(--team-away-text);
+}
+
+.row[data-team] .side {
+  color: var(--row-team);
+  font-weight: 700;
+}
+
 .row[data-kind="goal"] .what {
   font-weight: 700;
 }
@@ -277,11 +305,11 @@
 }
 
 .motmNumHome {
-  background: #6ab7ff;
+  background: var(--team-home-soft);
 }
 
 .motmNumAway {
-  background: #ff8a7a;
+  background: var(--team-away-soft);
 }
 
 .motmName {

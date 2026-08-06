@@ -21,7 +21,7 @@ import {
 import { buildViewerSkins } from "./viewer-skins";
 // #421 W4 하이라이트 순서 재생 — 판정은 순수 모듈, 구동은 이 훅, 표시는 이 부품(호출부엔 한 줄씩).
 import { useHighlightSequencer } from "./useHighlightSequencer";
-import { HighlightToggle } from "./HighlightToggle";
+/* `HighlightToggle` import 는 #456 B1 에서 빠졌다 — 부품은 남아 있고 무대가 그리지 않을 뿐이다. */
 import {
   arenaLabelOf,
   canvasPointOf,
@@ -585,7 +585,14 @@ export function VisualPlayback({
    * ⚠️ 조기 반환(`if (failed)`)보다 **위**에 둔다 — 아래로 내리면 실패 경로에서 훅 수가 줄어
    *    "Rendered fewer hooks than expected" 로 화면이 통째로 크래시한다(위 review effect 와 같은 함정).
    */
-  const highlight = useHighlightSequencer({
+  /*
+   * ⚠️ **반환값을 안 받는 것이 #456 B1 의 흔적이다.** 구 코드는 `const highlight = …` 로 받아
+   * 토글 부품에 넘겼다. 토글이 무대에서 내려가며 소비자가 0 이 됐지만 **훅 호출은 남긴다** —
+   * ①훅 개수가 줄면 조기 반환 경로에서 크래시하고(바로 위 주석) ②`HIGHLIGHT_DEFAULT_HALVES` 를
+   * 되돌리는 것만으로 살아나야 하는 롤백 경로가 여기서 끊긴다. 지금은 그 상수가 비어 있어
+   * **시퀀서가 한 번도 발화하지 않는다**(무해한 배선).
+   */
+  useHighlightSequencer({
     viewerRef,
     viewerReady,
     log,
@@ -609,6 +616,22 @@ export function VisualPlayback({
 
   return (
     <div className={styles.stageWrapFill} data-testid={`viewer-visual-half${half}`}>
+      {/*
+        ⚠️ **피치 박스는 #456 B0 의 구조 그 자체다.** 예전엔 이 자리에 캔버스가 바로 있었고 컨트롤이
+        그 위에 절대배치로 떠서 피치를 덮었다(hero: *"바는 경기장 밖으로 빼"*). 이제 무대 행이
+        `[피치][컨트롤]` 두 칸이고 **피치만** 경기 비율을 갖는다 — 컨트롤이 세로를 먹는 만큼
+        시트가 양보한다(계약 = `match-stage.spec.ts` h·i 한 쌍).
+
+        ⚠️ **"피치는 안 줄어든다"는 폰 세로에서만 참이다**(#456 S2 독립검증 major-1). 무대 행이
+        상한이나 `1fr` 에 걸리는 창(데스크탑 · 폰 가로 · 넓고 낮은 창)에서는 시트가 고정 높이라
+        양보하지 않고 **피치가 컨트롤 높이를 낸다**. 그래서 그 창들에서는 컨트롤을 한 줄로 접어
+        손실을 줄이고(`MatchViewer.module.css` 의 `@media (min-width:700px),(max-height:720px)`),
+        남는 손실은 `p348-desktop-viewport.spec.ts` ⑧ 이 뷰포트별 회귀선으로 감시한다.
+
+        자막·정보 카드가 이 박스 **안**에 남는 것도 그 결과다. 컨트롤과 같은 부모에 두면
+        `top: 10%` 같은 비율 좌표가 컨트롤 높이까지 포함해 계산돼 골 자막이 아래로 밀린다.
+      */}
+      <div className={styles.pitch} data-testid={`viewer-pitch-half${half}`}>
       <canvas
         ref={canvasRef}
         key={`viewer-canvas-half${half}`}
@@ -639,6 +662,7 @@ export function VisualPlayback({
       <div ref={flashRef} className={styles.capFlash} aria-live="polite" />
       <div ref={situationRef} className={styles.capSituation} aria-hidden="true" />
       <div ref={bannerRef} className={styles.capBanner} aria-hidden="true" />
+      </div>
       {/*
        * 무대 모드에선 컨트롤을 화면 모서리에 **겹친다**(리서치 R6 — 뷰 컨트롤은 무대 가장자리).
        * 돌려보는 화면(#244 review)에서는 겹치면 피치를 가리므로 **캔버스 아래 흐름**으로 내린다.
@@ -688,8 +712,16 @@ export function VisualPlayback({
           e.stopPropagation();
         }}
       >
-        {/* 하이라이트 ↔ 전체 보기(#421 W4) — 스킵 버튼 위 줄. 돌려보는 화면엔 뜨지 않는다(view.visible). */}
-        <HighlightToggle view={highlight.view} onToggle={highlight.toggle} />
+        {/*
+          ⚠️ **하이라이트 토글은 #456 B1 에서 무대에서 내려갔다**(hero: *"하이라이트 토글 비활성 +
+          그 자리에 스킵"*). 구 자리 = 스킵 버튼 위 줄(`<HighlightToggle view={highlight.view} …/>`).
+
+          **부품을 지우지 않았다** — `HighlightToggle`·`useHighlightSequencer`·순수 모듈은 그대로고
+          여기서 그리지 않을 뿐이다(롤백 자산). 다만 **켜는 문도 같이 닫는다**:
+          `HIGHLIGHT_DEFAULT_HALVES = []`. 둘 중 하나만 하면 *"끄는 버튼 없이 릴이 도는"* 상태가
+          되어 유저가 전체 재생으로 돌아갈 경로를 잃는다(#421 이관 발견). 계약 =
+          `p421-skip-report.spec.ts` a-2 + `highlight-sequencer.test.ts` ⑤.
+        */}
         {/*
           경기 스킵(#421) — **재생 컨트롤 바 옆이지, 그 안이 아니다.**
           #216 계약은 *"플레이 모드 컨트롤 바에는 버튼이 0개"* 다(`matchui-controls-mock` ·

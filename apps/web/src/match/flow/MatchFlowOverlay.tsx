@@ -17,10 +17,11 @@ export interface MatchFlowOverlayProps {
   awayName: string;
   myTeamSide?: "home" | "away" | null;
   /**
-   * #405 보상 흐름 확장점. **현재 프로덕션 호출부는 0** — #405 는 다른 방식으로 착지했다
-   * (`StageShell` 소유 `RewardSheet` + `!overlayOpen` 게이트). 넘기지 않으면 CTA 는
-   * `보상과 결과 보기` 이고, 닫으면 봉투가 미확인일 때 그 시트가, 아니면 결과 탭이 나온다
-   * (C2 — 이 prop 없이도 흐름이 완결된다).
+   * 경기 종료 뒤 오버레이 안에서 올 화면. **출하 호출부 = `App.tsx` 의 `MATCH_END_CONTINUATION`**
+   * (#456 S4 = 순차 보상 카드). 이 prop 이 곧 CTA 라벨을 가른다(`보상 받기` ↔ `보상과 결과 보기`).
+   *
+   * 넘기지 않으면 닫는 즉시 봉투가 미확인일 때 #405 시트가, 아니면 결과 탭이 나온다
+   * (C2 — 이 prop 없이도 흐름이 완결된다. 에러 격리가 그 갈래로 떨어진다).
    */
   matchEndContinuation?: MatchEndContinuation | null;
 }
@@ -34,7 +35,8 @@ export interface MatchFlowOverlayProps {
  * (B2 를 열어 둔 채 감독시간이 만료되면 `HALFTIME`→`GEN2` 로 패널이 갈린다).
  *
  * 스택 자체는 `HalfReportModal` 이 그린다 — 스택 연출(뒤 카드·페이저·도트·뷰포트 여백 #386 ·
- * 본문 페이드 #292)을 **재발명하지 않는다**. 브릿지는 그 배열의 **마지막 카드**로 들어간다.
+ * 본문 페이드 #292)을 **재발명하지 않는다**. 브릿지는 그 배열의 **첫 카드**로 들어간다(#456 —
+ * 구 규칙은 마지막이었고, 그래서 스킵 경로에서 두 번 눌러야 나왔다).
  *
  * ⚠️ **이 오버레이는 어떤 서버 호출도 하지 않는다**(설계 §6.4). 닫기 = 로컬 상태 해제뿐이라
  * "브릿지를 닫았는데 갈 곳이 없다"가 구조적으로 불가능하다 — 닫으면 그 순간의 `panelForState`
@@ -96,6 +98,10 @@ export function MatchFlowOverlay({
     >
       <p className={styles.beatBig}>{FLOW_COPY.beat[beat].big}</p>
       <p className={styles.beatSmall}>{FLOW_COPY.beat[beat].small}</p>
+      {/* 시안 3번째 줄 — 이 층이 "눌러서 넘길 수 있다"를 말하는 유일한 자리다(#456 B2). */}
+      <p className={styles.beatHint} data-testid="flow-beat-hint">
+        {FLOW_COPY.beatHint}
+      </p>
     </div>
   ) : null;
 
@@ -185,6 +191,11 @@ export function MatchFlowOverlay({
         baseline={half != null ? playedBaseline(half === 1 ? "FIRST_HALF" : "SECOND_HALF", match) : null}
         score={bridgeScore(bridge.kind, match)}
         extraCards={[card]}
+        /*
+         * #456: 브릿지가 **첫 장**이라 마지막 장은 리포트다 — 끝맺음 버튼이 `닫기` 로 퇴화하지
+         * 않게 브릿지가 말한 목적지를 그대로 내려 준다(`HalfReportModal.finalCtaLabel` 주석).
+         */
+        finalCtaLabel={model.cta}
         /*
          * 리포트가 없는 스택은 **다른 이름**을 받는다 — "스킵하지 않았으니 리포트가 뜨지 않는다"를
          * 단언하는 계약(#421 i)이 브릿지를 리포트로 오인하면 그 계약이 조용히 무의미해진다.

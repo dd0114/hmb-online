@@ -26,8 +26,22 @@ export interface ReportStackCard {
   kicker?: string;
   /** 이 장이 마지막일 때 주 버튼 라벨. 기본은 `닫기`. */
   ctaLabel?: string;
+  /**
+   * 이 장의 **바닥 액션을 통째로 대신한다**(기본 = `다음`/`ctaLabel` 버튼 하나).
+   *
+   * ⚠️ 넘기면 `onAdvance` 는 이 장에서 **호출되지 않는다** — 넘기는 쪽이 넘김까지 소유한다는 뜻이다.
+   * 자리 = #456 S4 선수별 선택 카드: 한 장에 `[다음에]`·`[전체 건너뛰기]` **둘**이 서야 하는데
+   * (건너뛰기는 이 장이 아니라 **스택 전체**를 끝낸다) 기본 버튼 하나로는 그 두 뜻을 표현할 수 없다.
+   * 카드 본문에 넣지 않는 이유 = 본문은 스크롤 영역이라 목록이 길면 버튼이 화면 밖으로 나간다(#355).
+   */
+  actions?: ReactNode;
   /** 카드 시각 강조(조정 포인트 §11-10) — 호출부 CSS 모듈의 클래스를 그대로 얹는다. */
   className?: string;
+  /**
+   * 카드 요소에 붙일 추가 `data-*`. **배정한 쪽이 다는 라벨**이다(#456 B4 규율) — 계약이 상태를
+   * 좌표·문구로 되추론하지 않게. 예: 오늘의 보상 칸이 지급됐나(`data-awarded`).
+   */
+  dataAttrs?: Record<string, string>;
 }
 
 export interface HalfReportModalProps {
@@ -55,6 +69,13 @@ export interface HalfReportModalProps {
    * 받아야 한다 — 안 그러면 "리포트가 뜨지 않는다"를 단언하는 계약(#421 i)이 브릿지를 리포트로 오인한다.
    */
   testIdBase?: string;
+  /**
+   * **마지막 장**의 주 버튼 라벨(기본 `닫기`).
+   *
+   * 카드 배열의 마지막이 곧 끝맺음 지점인데, `extraCards` 가 앞으로 오면(#456) 그 자리가 리포트
+   * 카드가 되어 방향을 말할 수 없다 — 호출부가 갈 곳을 알고 있으므로 여기로 내려 준다.
+   */
+  finalCtaLabel?: string;
   onClose: () => void;
 }
 
@@ -98,6 +119,7 @@ export function HalfReportModal({
   extraCards,
   score: scoreOverride = null,
   testIdBase = "half-report",
+  finalCtaLabel,
   onClose,
 }: HalfReportModalProps) {
   // half 가 없으면 조회하지 않는다 — 리포트 카드가 없는 스택이 하프 로그를 부르면 409(아직 안 열린
@@ -174,7 +196,19 @@ export function HalfReportModal({
       body: (
         <ol className={styles.rows} data-testid={`${tid}-timeline`}>
           {rows.map((r) => (
-            <li key={r.key} className={styles.row} data-testid={`${tid}-row-${r.tick}`} data-kind={r.kind}>
+            /*
+             * `data-team` 은 **배정한 쪽이 다는 라벨**이다(#456 B4) — 색을 좌표나 순서로 되추론하는
+             * 자리를 만들지 않는다. 팀을 모르는 이벤트(휘슬 등)에는 **속성 자체를 안 단다**:
+             * 없는 소속을 지어내지 않는다는 위 `teamNameOf` 와 같은 규율이고, CSS 도 그 행엔
+             * 색을 안 칠한다.
+             */
+            <li
+              key={r.key}
+              className={styles.row}
+              data-testid={`${tid}-row-${r.tick}`}
+              data-kind={r.kind}
+              {...(r.team === "home" || r.team === "away" ? { "data-team": r.team } : {})}
+            >
               <span className={styles.clock}>{r.clock}</span>
               <span className={styles.icon} aria-hidden="true">
                 {r.icon}
@@ -185,7 +219,14 @@ export function HalfReportModal({
               </span>
               <span className={styles.who}>
                 {r.playerName ?? ""}
-                <span className={styles.side}>{teamNameOf(r.team)}</span>
+                {/*
+                  ⚠️ 색은 **덧붙는 채널이다** — 팀 이름 글자를 지우고 색만 남기지 마라(#262 규율:
+                  단일 색 채널 금지). `data-team-label` 은 계약이 "그 색이 스코어바와 같은 축인가"
+                  를 재는 앵커다.
+                */}
+                <span className={styles.side} data-team-label="">
+                  {teamNameOf(r.team)}
+                </span>
               </span>
             </li>
           ))}
@@ -258,17 +299,23 @@ export function HalfReportModal({
     });
   }
 
-  // #424: 브릿지 카드는 **언제나 마지막**이다 = "무슨 일이 있었나 → 이제 뭐가 오나" 순서이고,
-  // 마지막 장의 CTA 가 곧 끝맺음 포인트다(설계 §3.2, 조정 포인트 §11-3).
-  if (extraCards?.length) cards.push(...extraCards);
+  /*
+   * #456: 브릿지 카드는 **첫 장**이다. 구 규칙은 "언제나 마지막"이었고 근거는 *"무슨 일이 있었나 →
+   * 이제 뭐가 오나"* 순서였는데(설계 §3.2), 그러면 스킵 경로에서 브릿지 도달에 **클릭 2회**가 걸려
+   * 유저 기억에는 리포트만 남았다(#456 실사 가설 3, hero: *"경기 브릿지 왜 없어?"*).
+   * 전환은 **전환이 일어나는 순간**에 보여야 한다 = 먼저 알리고 자세한 것을 뒤에 붙인다.
+   *
+   * ⚠️ 대가는 `finalCtaLabel` 이 갚는다 — 구 규칙에서는 마지막 장이 브릿지라 그 `ctaLabel`
+   * (`감독시간으로`·`보상과 결과 보기`)이 곧 끝맺음 신호였다. 순서를 뒤집으면 마지막 장이
+   * 리포트가 되어 버튼이 `닫기` 로 퇴화하고, **"다음 화면이 무엇인가"의 유일한 신호가 사라진다.**
+   */
+  if (extraCards?.length) cards.unshift(...extraCards);
 
   const [index, setIndex] = useState(0);
   const total = cards.length;
   const current = cards[Math.min(index, total - 1)];
   if (!current) return null;
 
-  const remaining = total - index - 1;
-  const behind = Math.min(Math.max(remaining, 0), MAX_BEHIND);
   const last = index + 1 >= total;
 
   /** `NoticePopup` 과 같은 은유 — 주 버튼이 "이 장을 처리하고 다음 장"이다. */
@@ -289,6 +336,67 @@ export function HalfReportModal({
       overlayTestId={`${tid}-overlay`}
       initialFocus={`[data-testid="${tid}-next"]`}
     >
+      <ReportCardStack
+        cards={cards}
+        index={index}
+        onAdvance={advance}
+        testIdBase={tid}
+        score={score}
+        homeName={homeName}
+        awayName={awayName}
+        {...(finalCtaLabel === undefined ? {} : { finalCtaLabel })}
+      />
+    </Modal>
+  );
+}
+
+export interface ReportCardStackProps {
+  cards: readonly ReportStackCard[];
+  /** 지금 보이는 장. 상태는 **소유자가 갖는다** — `HalfReportModal` 은 카드가 바뀔 때 Modal 을
+   *  다시 마운트해야 하므로 index 가 Modal 보다 위에 있어야 한다. */
+  index: number;
+  onAdvance: () => void;
+  testIdBase: string;
+  score?: import("./match-logic").ScorePair | null;
+  homeName?: string;
+  awayName?: string;
+  finalCtaLabel?: string;
+}
+
+/**
+ * 카드 스택의 **그림만** — 뒤 카드·kicker·페이저·제목·본문 페이드·도트·주 버튼.
+ *
+ * ⚠️ `Modal` 을 **자기가 열지 않는다.** 이 조각을 뽑아낸 이유가 그것이다: #456 S4 의 경기 종료
+ * 보상 흐름은 **이미 열려 있는 오버레이 안**(`MatchFlowOverlay` 의 `flow-continuation`)에서
+ * 같은 스택을 그려야 하는데, `HalfReportModal` 을 통째로 쓰면 다이얼로그가 2겹이 되어
+ * `common/Modal` 포커스 트랩이 겹친다 — 이 리포가 설계 단계에서 이미 기각한 사고 유형이다
+ * (`StageShell` · `MatchFlowOverlay` 머리말). 그렇다고 스택 연출을 다시 짜면 그건 재발명이다
+ * (#57) — 그래서 **모달 셸과 카드 그림을 갈랐다**.
+ *
+ * ⚠️ 담는 그릇은 호출부가 준다. `HalfReportModal.module.css` 의 `.stack` 과
+ * `MatchFlowOverlay.module.css` 의 `.contBox` 는 **같은 모양**이다(relative · flex column ·
+ * max-width 360 · max-height 100%) — `.behind` 의 절대배치가 그 박스를 기준으로 앉는다.
+ */
+export function ReportCardStack({
+  cards,
+  index,
+  onAdvance,
+  testIdBase: tid,
+  score = null,
+  homeName = "",
+  awayName = "",
+  finalCtaLabel,
+}: ReportCardStackProps) {
+  const total = cards.length;
+  const current = cards[Math.min(index, total - 1)];
+  if (!current) return null;
+
+  const remaining = total - index - 1;
+  const behind = Math.min(Math.max(remaining, 0), MAX_BEHIND);
+  const last = index + 1 >= total;
+
+  return (
+    <>
       {Array.from({ length: behind }, (_, i) => (
         <div
           key={`behind-${i}`}
@@ -302,6 +410,7 @@ export function HalfReportModal({
         className={`${styles.card} ${current.className ?? ""}`}
         data-testid={`${tid}-card`}
         data-card={current.id}
+        {...(current.dataAttrs ?? {})}
       >
         <div className={styles.top}>
           <span className={styles.kicker}>{current.kicker ?? "리포트"}</span>
@@ -337,19 +446,21 @@ export function HalfReportModal({
         )}
 
         <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.primary}
-            data-testid={`${tid}-next`}
-            /* 현재 장이 무엇인지 버튼에도 남긴다 — 계약이 "브릿지 CTA"를 접두 이름 없이 겨눌 수 있게. */
-            data-card={current.id}
-            onClick={advance}
-          >
-            {last ? (current.ctaLabel ?? "닫기") : "다음"}
-          </button>
+          {current.actions ?? (
+            <button
+              type="button"
+              className={styles.primary}
+              data-testid={`${tid}-next`}
+              /* 현재 장이 무엇인지 버튼에도 남긴다 — 계약이 "브릿지 CTA"를 접두 이름 없이 겨눌 수 있게. */
+              data-card={current.id}
+              onClick={onAdvance}
+            >
+              {last ? (current.ctaLabel ?? finalCtaLabel ?? "닫기") : "다음"}
+            </button>
+          )}
         </div>
       </div>
-    </Modal>
+    </>
   );
 }
 

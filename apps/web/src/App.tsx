@@ -19,6 +19,8 @@ import { RecruitPage } from "./recruit/RecruitPage";
 import { MePage } from "./me/MePage";
 import { LeaguePage } from "./league/LeaguePage";
 import { MatchPage } from "./match/MatchPage";
+import type { MatchEndContinuation } from "./match/flow/match-flow";
+import { MatchRewardFlow } from "./rewards/MatchRewardFlow";
 import { AdminPage } from "./admin/AdminPage";
 import { AdminFlagProvider } from "./admin/AdminFlagProvider";
 import { StagePreview } from "./design/StagePreview";
@@ -29,6 +31,20 @@ import { RequireAdmin } from "./admin/RequireAdmin";
 import { TutorialProvider } from "./common/TutorialProvider";
 import { setUnauthorizedHandler } from "./api/client";
 import { queryClient } from "./api/query-client";
+
+/**
+ * 경기 종료 브릿지(#424 B4) 뒤에 **오버레이 안에서** 오는 화면 — #456 S4 · B3 의 순차 보상.
+ *
+ * ⚠️ **이 상수가 `matchEndContinuation` 의 유일한 프로덕션 호출부다.** 확장점 자체는 #424 가
+ * 만들어 뒀지만 호출부가 0 이라, 브릿지 CTA 를 누르면 오버레이가 그냥 닫혔다(그 라벨도
+ * `보상과 결과 보기` 였다). 여기 한 줄이 그 라벨과 그 뒤 화면을 동시에 정한다.
+ *
+ * ⚠️ **모듈 최상위 상수다** — 라우트 element 안에서 화살표 함수로 만들면 `App` 이 리렌더될 때마다
+ * 새 함수가 되어 `MatchFlowOverlay` 가 매번 다른 `continuation` 을 들고 렌더된다.
+ */
+const MATCH_END_CONTINUATION: MatchEndContinuation = (handoff, onDone) => (
+  <MatchRewardFlow handoff={handoff} onDone={onDone} />
+);
 
 /**
  * 미로그인이면 로그인으로 — **어디로 가려 했는지를 들려 보낸다**(#298).
@@ -171,7 +187,7 @@ function AppRoutes() {
           path="/match/:id"
           element={
             <RequireAuth>
-              <MatchPage />
+              <MatchPage matchEndContinuation={MATCH_END_CONTINUATION} />
             </RequireAuth>
           }
         />

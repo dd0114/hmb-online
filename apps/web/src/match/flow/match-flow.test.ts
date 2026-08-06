@@ -13,6 +13,7 @@ import {
   enqueueBridge,
   flowNextHint,
   flowSteps,
+  isBeatBridgeKind,
   isOverlayKind,
   matchEndHandoff,
   mergeBridge,
@@ -26,9 +27,12 @@ const detail = (over: Partial<MatchDetail> = {}): MatchDetail =>
 
 describe("P1 — 브릿지는 상태가 아니라 전이에 붙는다", () => {
   it("네 지점의 전이에만 브릿지를 준다", () => {
-    expect(bridgeForTransition("BRIEFING", "GEN1")).toEqual({ kind: "match_start", form: "panel" });
+    // ⚠️ #456: `match_start`·`h2_start` 의 종이 `panel` → **`beat`** 로 바뀌었다. 구 종은
+    //    "대기 화면의 승격"을 뜻했는데 실제로 승격되는 것이 아무것도 없어(큐에서 걸러지고
+    //    `GenWaitPanel` 은 상태만 본다) 그 두 지점은 **화면이 된 적이 없었다**.
+    expect(bridgeForTransition("BRIEFING", "GEN1")).toEqual({ kind: "match_start", form: "beat" });
     expect(bridgeForTransition("FIRST_HALF", "HALFTIME")).toEqual({ kind: "h1_end", form: "overlay" });
-    expect(bridgeForTransition("HALFTIME", "GEN2")).toEqual({ kind: "h2_start", form: "panel" });
+    expect(bridgeForTransition("HALFTIME", "GEN2")).toEqual({ kind: "h2_start", form: "beat" });
     expect(bridgeForTransition("SECOND_HALF", "FINISHED")).toEqual({ kind: "match_end", form: "overlay" });
   });
 
@@ -53,7 +57,29 @@ describe("P1 — 브릿지는 상태가 아니라 전이에 붙는다", () => {
   it("킥오프 비트는 두 전이뿐이다", () => {
     expect(beatForTransition("GEN1", "FIRST_HALF")).toBe("kickoff_h1");
     expect(beatForTransition("GEN2", "SECOND_HALF")).toBe("kickoff_h2");
+    // 전환 비트(#456)는 **이 표가 아니라 전이표**가 만든다 — 두 출처가 겹치지 않는 것이 계약이다.
     expect(beatForTransition("HALFTIME", "GEN2")).toBeNull();
+    expect(beatForTransition("BRIEFING", "GEN1")).toBeNull();
+  });
+
+  /**
+   * #456 B2 — `BridgeKind` 는 **오버레이 아니면 비트**로 전수 분할된다.
+   * 이 계약이 죽이는 변이: 새 종류를 더하면서 어느 술어에도 안 넣기 → 그 전이가 **조용히 무발화**
+   * (구 `panel` 종이 정확히 그 상태였다: 큐에도 안 들어가고 화면도 안 만든다).
+   */
+  it("모든 브릿지 종류는 오버레이 아니면 비트다(사각지대 0)", () => {
+    const kinds = [
+      bridgeForTransition("BRIEFING", "GEN1"),
+      bridgeForTransition("FIRST_HALF", "HALFTIME"),
+      bridgeForTransition("HALFTIME", "GEN2"),
+      bridgeForTransition("H1_BREAK", "GEN2"),
+      bridgeForTransition("SECOND_HALF", "FINISHED"),
+    ].map((b) => b!.kind);
+    expect(new Set(kinds)).toEqual(new Set(["match_start", "h1_end", "h2_start", "match_end"]));
+    for (const k of kinds) expect(isOverlayKind(k) !== isBeatBridgeKind(k)).toBe(true);
+    // 그리고 종(form)이 그 판정과 어긋나지 않는다.
+    expect(bridgeForTransition("H1_BREAK", "GEN2")!.form).toBe("beat");
+    expect(bridgeForTransition("SECOND_HALF", "FINISHED")!.form).toBe("overlay");
   });
 });
 

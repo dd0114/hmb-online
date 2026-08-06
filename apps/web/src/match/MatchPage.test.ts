@@ -60,6 +60,9 @@ vi.mock("../api/hooks", () => {
 vi.mock("../api/hooks-v2", () => ({
   useRelations: () => ({ data: undefined, isLoading: false, isError: false }),
   useTeamPresets: () => ({ data: undefined, isLoading: false, isError: false }),
+  // 결과 패널의 다음 경기 CTA(#456 B5). 이 라우팅 테스트는 **버튼을 누르지 않으므로** 무동작 목이면 된다 —
+  // 동작 계약은 `e2e/p456-result-cta.spec.ts` 소관이다.
+  useStartNextLeagueMatch: () => ({ mutate: () => {}, isPending: false }),
 }));
 
 import { MatchPage } from "./MatchPage";

@@ -20,18 +20,32 @@ import { FLOW_COPY, FLOW_STEPS, type FlowStepId } from "./flow-copy";
 // ── 종류(키) ───────────────────────────────────────────────────────────
 
 export type BridgeKind = "match_start" | "h1_end" | "h2_start" | "match_end";
-export type BeatKind = "kickoff_h1" | "kickoff_h2";
 
 /**
  * 브릿지의 **형태**.
- *  · `panel`  = 이미 있는 대기 화면(`GenWaitPanel`)의 승격. **오버레이 큐에 안 들어간다** —
- *               덮으면 그 화면의 경과 시계·[경기 포기](#217 AC3)가 가려진다.
+ *  · `beat`   = 백드롭 없는 한 호흡(~1초, 자동 소멸). 뒤 화면을 **덮지 않는다**.
  *  · `overlay`= 종료형 카드. 큐에 들어가고 유저 버튼으로 닫는다.
+ *
+ * ⚠️ **`panel` 은 은퇴했다**(#456 B2). 한때 `match_start`·`h2_start` 가 그 종이었고 뜻은
+ * *"이미 있는 대기 화면(`GenWaitPanel`)의 승격"* 이었는데, 실제로는 **아무것도 승격하지 않았다** —
+ * `useMatchFlow` 가 큐에서 걸러내고 `GenWaitPanel` 은 전이가 아니라 **상태만 보고** 스텝퍼를
+ * 그리므로, 그 두 지점에서 화면에 일어나는 일이 **0** 이었다(hero 실관전: *"트랜지션 없어?"*).
+ * 이제 그 둘은 `beat` 다 — 대기 화면의 경과 시계·[경기 포기](#217 AC3)를 가리지 않는다는
+ * 원래 제약(설계 §6.3)은 **백드롭이 없다**는 성질로 그대로 지켜진다.
  */
-export type BridgeForm = "panel" | "overlay";
+export type BridgeForm = "beat" | "overlay";
 
 /** 오버레이 큐에 들어가는 종류만 따로 좁힌다(타입이 §6.3 표를 강제한다). */
 export type OverlayBridgeKind = Extract<BridgeKind, "h1_end" | "match_end">;
+
+/** 비트로 표현되는 종류(= 오버레이가 아닌 나머지). 타입이 두 집합의 전수 분할을 강제한다. */
+export type BeatBridgeKind = Extract<BridgeKind, "match_start" | "h2_start">;
+
+/**
+ * 화면에 뜨는 비트 전량 = **킥오프 2 + 전환 2**.
+ * 전환 비트의 이름을 `BridgeKind` 와 **같은 값**으로 둔 것이 배선의 전부다(매핑표 불필요).
+ */
+export type BeatKind = "kickoff_h1" | "kickoff_h2" | BeatBridgeKind;
 
 export interface BridgeSignal {
   kind: BridgeKind;
@@ -75,16 +89,16 @@ const BRIDGE_TABLE: ReadonlyArray<{
   kind: BridgeKind;
   form: BridgeForm;
 }> = [
-  { from: ["BRIEFING"], to: ["GEN1"], kind: "match_start", form: "panel" },
+  { from: ["BRIEFING"], to: ["GEN1"], kind: "match_start", form: "beat" },
   {
     from: ["FIRST_HALF"],
     to: ["HALFTIME", "H1_BREAK", "GEN2", "SECOND_HALF"],
     kind: "h1_end",
     form: "overlay",
   },
-  { from: ["HALFTIME"], to: ["GEN2"], kind: "h2_start", form: "panel" },
+  { from: ["HALFTIME"], to: ["GEN2"], kind: "h2_start", form: "beat" },
   // 레거시 상태명(P4 이전 배포본의 진행 중 매치) — `panelForState` 가 같이 취급한다.
-  { from: ["H1_BREAK"], to: ["GEN2"], kind: "h2_start", form: "panel" },
+  { from: ["H1_BREAK"], to: ["GEN2"], kind: "h2_start", form: "beat" },
   {
     from: ["SECOND_HALF", "GEN2", "HALFTIME", "H1_BREAK", "FIRST_HALF", "GEN1", "BRIEFING"],
     to: ["FINISHED"],
@@ -125,6 +139,11 @@ export function beatForTransition(
 
 export function isOverlayKind(kind: BridgeKind): kind is OverlayBridgeKind {
   return kind === "h1_end" || kind === "match_end";
+}
+
+/** 오버레이가 아닌 종류 = 비트. 두 술어가 `BridgeKind` 를 **빠짐없이** 가른다. */
+export function isBeatBridgeKind(kind: BridgeKind): kind is BeatBridgeKind {
+  return !isOverlayKind(kind);
 }
 
 // ── 큐 · 중복 제거 · 병합 ──────────────────────────────────────────────
@@ -324,16 +343,18 @@ export interface MatchEndHandoff {
 /**
  * 경기 종료 브릿지의 **다음 화면** 확장점.
  *
- * ⚠️ **현재 프로덕션 호출부는 0 이다**(W6 정정). #405 는 이 prop 이 아니라 **`StageShell` 이 소유한
- * `RewardSheet` + `!overlayOpen` 게이트**로 착지했다(브릿지가 앞, 닫으면 그 자리에서 시트 —
- * `e2e/p424-flow-bridge.spec.ts` ⑨). 그래도 이 타입·배선을 **지우지 않는다**: #405 에 공개한 계약이고,
- * C2(없어도 흐름이 완결된다)가 이 브랜치의 선배포 근거이며, "브릿지 CTA 뒤에 오버레이 안에서 뭔가를
- * 더 보여준다"는 확장점이 사라지면 다음 소비자가 라우트를 새로 파게 된다(C3 이 기각한 형태).
+ * ⚠️ **호출부는 이제 1 이다 — `App.tsx` 의 `MATCH_END_CONTINUATION`**(#456 S4). 그전 상태
+ * (호출부 0)를 이 자리가 오래 기록하고 있었다: #405 는 이 prop 이 아니라 `StageShell` 이 소유한
+ * `RewardSheet` + `!overlayOpen` 게이트로 착지했고(`e2e/p424-flow-bridge.spec.ts` ⑨), 그래서 이
+ * 확장점은 **타입만 있고 아무도 안 쓰는** 채로 남아 있었다. hero 의 순차 보상 요구(B3)가 정확히
+ * 이 모양이라 라우트를 새로 파지 않고 여기를 채웠다(C3 이 기각한 형태를 피한다).
  *
  * · 넘기지 않으면 CTA 라벨은 `보상과 결과 보기` 이고, 누르면 오버레이가 닫혀 보상 시트(봉투 미확인
- *   시) → `FINISHED` 결과 탭이 보인다(C2).
+ *   시) → `FINISHED` 결과 탭이 보인다(C2). **이 갈래는 살아 있다** — 에러 격리(C5)가 그리로 떨어지고
+ *   계약은 `MatchFlowOverlay.test.ts` 의 C2 describe 다.
  * · 넘기면 CTA 가 `보상 받기` 로 바뀌고, 누른 순간 **같은 오버레이 안에서** 이 노드가 렌더된다(C3).
- *   `onDone()` 을 부르면 오버레이가 닫히고 결과 탭으로 간다. `onDone` 은 **멱등**이다(C4).
+ *   `onDone()` 을 부르면 오버레이가 닫히고 결과 탭으로 간다. `onDone` 은 **멱등**이다(C4) —
+ *   보여 줄 보상이 0 인 경기는 그 노드가 렌더 직후 스스로 `onDone` 을 부른다.
  */
 export type MatchEndContinuation = (handoff: MatchEndHandoff, onDone: () => void) => ReactNode;
 

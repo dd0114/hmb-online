@@ -1,18 +1,56 @@
 /* ── 무대 모드(#169 S3) — viewer-core 직접 마운트. iframe 제거 ──────────────────
    React 가 캔버스를 소유하고 코어가 그린다. 캔버스는 무대 박스에 letterbox-fit. */
+/*
+ * ⚠️ **#456 B0 으로 흐름 안으로 들어왔다.** 구 값은 `position: absolute; inset: 0` 이었고, 그건
+ * 무대 박스가 스스로 높이를 갖던 시절(피치 비율 고정)의 전제다. 이제 무대 행의 높이를 **내용이**
+ * 정하므로(피치 + 컨트롤) 절대배치로 남으면 그 높이에 한 픽셀도 기여하지 못해 무대가 0 이 된다
+ * (실제로 그렇게 무너뜨려 봤다 — 캔버스가 `hidden` 이 되고 스펙 16건이 죽었다).
+ */
 .stageRoot {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
 }
 
+/*
+ * 무대 안쪽 = **세로 두 칸**(#456 B0): `[피치][컨트롤]`.
+ *
+ * ⚠️ 예전엔 `position: absolute; inset: 0` 이었다 — 무대 박스가 피치 비율을 갖고 이 래퍼가 그
+ * 안을 꽉 채우면, 컨트롤은 그 위에 뜨는 수밖에 없었다(그래서 폰에서 피치를 덮었다). 이제 비율은
+ * **피치 박스**가 갖고 이 래퍼는 흐름 안에서 두 칸을 세로로 쌓는다.
+ */
 .stageWrapFill {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  height: 100%;
   background: #0f1420;
 }
 
-/* 캔버스(1050×680 backing)를 무대 박스에 맞춘다. 무대 박스는 셸이 피치 비율(≈1050/680)로
-   잡으므로 여백 없이 꽉 찬다(비율이 어긋나면 object-fit 이 letterbox). */
+/*
+ * 피치 박스 — 경기 비율(1050:680)을 갖는 **유일한** 자리. 자막·정보 카드의 절대좌표 기준점이다.
+ * `flex: 0 1 auto` 인 이유: 무대 상한(`.stage` 계열의 `max-height`)에 걸리는 좁은 창에서는
+ * 컨트롤을 자르는 대신 피치가 조금 양보한다 — 컨트롤이 잘리면 스킵·시크를 아예 못 쓴다.
+ */
+.pitch {
+  position: relative;
+  flex: 0 1 auto;
+  min-height: 0;
+  width: 100%;
+  aspect-ratio: 1050 / 680;
+  overflow: hidden;
+}
+
+/* 캔버스(1050×680 backing)를 피치 박스에 맞춘다. 박스가 같은 비율이라 여백 없이 꽉 찬다
+   (비율이 어긋나면 object-fit 이 letterbox). */
 .stageCanvas {
   display: block;
   width: 100%;
@@ -131,16 +169,23 @@
   같은 규칙을 쓸 수 없다(구석에 두면 폰에서 트랙이 100px 남짓이 된다).
 */
 .controlsSeek {
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 6px;
+  /*
+   * ⚠️ **#456 B0 에서 오버레이가 아니게 됐다** — 구 값은 `position: absolute; left/right/bottom: 6px`
+   * 였고, 그것이 hero 제보(*"경기바가 화면을 가린다"*)의 실체다. 지금은 피치 **아래 흐름**에 서고
+   * 그만큼 무대 행이 세로를 더 가져간다(시트가 양보 — `StageShell.module.css` 의 `.stage`).
+   */
+  position: static;
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 6px;
   z-index: 2;
 }
 
 /*
-  ⚠️ **이 박스는 클릭을 통과시킨다** — #406 W3(시크바) ↔ #421/#424(하이라이트 토글·스킵)가 같은
-  오버레이 층을 공유하며 실제로 깨진 자리다.
+  ⚠️ **이 박스는 클릭을 통과시킨다** — 원래 이유(#406 W3 시크바 ↔ #421 스킵이 같은 **오버레이**
+  층을 공유하다 피치를 덮었다)는 #456 B0 이 구조로 해소했지만, 규칙은 **남긴다**: 컨트롤 줄의
+  여백까지 이벤트를 먹으면 그만큼이 죽은 띠가 되고, "실제 컨트롤만 이벤트를 받는다"는 이 층의
+  성질이 admin 오버레이 모드(`controlsOverlay`)에도 그대로 필요하다.
 
   이 컨테이너는 `bottom` 고정 + **높이는 내용이 정한다**. 시크바 하나였을 때는 얇은 띠였는데
   하이라이트 토글(34px 행)과 스킵 버튼이 같은 층에 들어오며 박스가 위로 자라 **피치 위를
@@ -169,10 +214,46 @@
   margin-top: 0;
 }
 
+/*
+ * ⚠️ **세로가 빠듯한 창에서는 컨트롤을 한 줄로 접는다** (#456 S2-R1, 독립검증 major-1).
+ *
+ * B0 으로 컨트롤이 흐름에 들어오며 무대 행에서 **86px**(스킵 38 + 시크 36 + 여백)을 가져간다.
+ * 폰 세로에서는 시트가 그만큼 양보해 피치가 한 픽셀도 안 줄지만, 무대 행이 **상한이나 `1fr` 에
+ * 걸리는 창**(데스크탑 전 비율 · 폰 가로 · 넓고 낮은 창)에서는 시트가 고정 높이라 양보하지 않고
+ * **피치가 그 86px 를 낸다** — 실측 1280×800 −16% · 844×390 −38%. 그래서 그 창들에서만 스킵을
+ * 시크바 **옆**에 세워 층 높이를 86 → 50px 로 줄인다(되찾는 36px = 그 손실의 40%).
+ *
+ * ⚠️ 폰 세로(폭 <700 & 세로 넉넉)는 **일부러 두 줄로 남긴다** — 거기서는 잃는 것이 0 이고,
+ * 시크바 트랙 길이가 곧 정밀도라(#406 W3) 390px 폭을 스킵(76px)과 나눌 이유가 없다.
+ * 임계를 700 으로 잡은 것은 그 폭부터 바가 600px 넘게 남아 정밀도가 사실상 안 줄기 때문이다
+ * (Galaxy Z Fold 내부 673 은 폰 쪽에 남는다 — apps/web CLAUDE.md §2컬럼 임계 절과 같은 밴드).
+ * 나머지 손실을 더 줄이는 길은 컨트롤이 아니라 **시트 높이 등급**(#348/#355)이고 그건 hero 결정이다.
+ * 계약 = `p348-desktop-viewport.spec.ts` ⑧(피치 실그림 크기 하한).
+ */
+@media (min-width: 700px), (max-height: 720px) {
+  .controlsSeek {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  /* 시크바(div)가 남는 폭을 다 쓰고, 스킵 버튼은 자기 크기만 갖는다. */
+  .controlsSeek > div {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .controlsSeek > button {
+    flex: 0 0 auto;
+  }
+}
+
 /* 시각 재생 실패 시 같은 무대 자리에 텍스트 타임라인(스크롤은 이 안에서만). */
 .timelineFill {
-  position: absolute;
-  inset: 0;
+  /* 시각 재생 실패 폴백 — 무대 자리를 그대로 채운다. `.stageRoot` 가 흐름으로 바뀌었으므로
+     (#456 B0) 절대배치 대신 남는 세로를 받는다. 안 그러면 이 폴백이 0 높이로 사라진다. */
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 10px 12px;
@@ -295,9 +376,22 @@
 /*
  * #244 돌려보기 — 컨트롤이 캔버스를 **덮지 않고 아래로 흐른다**. 무대(관전)에서는 겹침이 맞지만
  * (리서치 R6) 좁은 폰에서 돌려볼 때는 피치를 가려서 볼 것을 못 본다(실화면 캡처로 확인).
+ *
+ * ⚠️ **넘치는 세로는 이 층이 자기 안에서 스크롤한다**(#456 S2-R1, 독립검증 blocker-1).
+ * 이 층은 컨트롤 줄뿐 아니라 시계·스크럽·**장면 리스트**까지 담아 컨테이너를 훌쩍 넘는데
+ * (390×844 감독시간 실측 1479px), 그 초과분을 흘려 두면 형제인 피치가 `flex-shrink` 로 전부
+ * 떠안아 **0 높이로 눌리고** `overflow:hidden` 부모에 잘려 화면에서 사라진다.
+ * 계약 = `match-stage.spec.ts` "감독시간 경기장면 탭: 피치가 눌려 사라지지 않는다".
+ *
+ * ⚠️ **이 규칙과 `StageShell.module.css` 의 피치 `flex: none` 은 서로 중복이다**(독립검증 minor-A) —
+ * 붕괴를 막는 길이 둘이라 **한쪽만 살아 있어도 피치는 안 눌린다**. 그래서 "안 쓰는 것 같다"고 지우면
+ * 안 된다. 각각을 단독으로 재는 계약 = 같은 파일의 "붕괴 방지 두 갈래가 각각 살아 있다".
  */
 .controlsFlow {
   position: static;
   width: 100%;
   margin-top: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }

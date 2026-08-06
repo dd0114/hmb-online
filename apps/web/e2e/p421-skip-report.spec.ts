@@ -1,5 +1,5 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { expectNoQaTransport } from "./play-mode-controls";
 
 /**
@@ -25,8 +25,21 @@ const LOG = JSON.parse(
 
 const GOALS = LOG.events.filter((e) => e.type === "goal");
 const CARDS = LOG.events.filter((e) => e.type === "card");
-/** 리포트에 실려야 할 줄 수 = 골 + 카드(이 픽스처엔 경고 누적 퇴장이 없어 병합 대상이 없다). */
-const ROW_COUNT = GOALS.length + CARDS.length;
+/*
+ * 리포트에 실려야 할 **줄** 수.
+ * ⚠️ 한때 여기 *"이 픽스처엔 경고 누적 퇴장이 없어 병합 대상이 없다"* 라고 적혀 있었는데
+ *    **거짓이었다** — 그 문장이 낡은 기대값을 정당화하며 red 를 덮고 있었다(#456 실측).
+ *
+ * ⚠️ **두 번째 옐로는 레드와 한 줄로 합쳐진다**(`half-report.ts` — *"유저는 카드가 두 장 나온 줄
+ * 안다"*). 그래서 행 수는 이벤트 수가 아니다: 데모 로그에는 tick 923 에 `yellow`+`red`(H10)가
+ * 같이 있어 14 이벤트 → **13 행**이다.
+ * ⚠️ 이 상수는 그동안 `GOALS + CARDS` 였고 **선행 red 였다**(#456 이 발견 — 병합 로직은 손대지
+ *    않았고 기대값만 낡아 있었다). 숫자를 박지 않고 **같은 규칙을 유도**해 다시 낡지 않게 한다.
+ */
+const MERGED_SECOND_YELLOW = CARDS.filter(
+  (r) => r.detail === "red" && CARDS.some((y) => y.detail === "yellow" && y.playerId === r.playerId),
+).length;
+const ROW_COUNT = GOALS.length + CARDS.length - MERGED_SECOND_YELLOW;
 /** 이 로그 한 하프의 골 수. 목 서버의 확정 스코어를 **여기서 파생**해 두 축이 어긋나지 않게 한다. */
 const HALF = {
   home: GOALS.filter((g) => g.team === "home").length,
@@ -229,6 +242,50 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await expectNoQaTransport(page, 1);
   });
 
+  /*
+   * ── #456 B1 — *"하이라이트 토글은 비활성화하고 그 자리에 스킵을. 색 톤도 통일."* (hero)
+   *
+   * ⚠️ **부품을 지우지 않았다.** `HighlightToggle`·`useHighlightSequencer` 는 그대로 있고
+   * 무대에서 **그리지 않을** 뿐이다(롤백 자산). 그래서 계약이 두 겹이다 —
+   * ①화면에 없다(여기) ②그래서 **하이라이트 모드가 켜질 경로도 없다**
+   * (`highlight-sequencer.test.ts` 의 `HIGHLIGHT_DEFAULT_HALVES`). ①만 걸면 토글만 숨기고
+   * 디폴트 ON 이 남는 구현이 통과하는데, 그 상태가 정확히 **"끄는 버튼 없이 릴이 도는"**
+   * #421 이관 발견이다(유저가 전체 재생으로 돌아갈 방법을 잃는다).
+   */
+  test("a-2. #456 B1 — 무대에 하이라이트 토글이 없다 (복귀 경로 상실 0)", async ({ page }) => {
+    await openMatch(page, "FIRST_HALF");
+    await expect(page.getByTestId("match-skip")).toBeVisible();
+
+    await expect(page.getByTestId("highlight-toggle"), "토글 버튼 비노출").toHaveCount(0);
+    await expect(page.getByTestId("highlight-mode"), "토글 묶음 자체가 없다").toHaveCount(0);
+    // 상태 줄만 남으면 "왜 장면이 건너뛰지"가 되고 끌 방법이 없다 — 같이 사라져야 한다.
+    await expect(page.getByTestId("highlight-status"), "진행 상태 줄도 없다").toHaveCount(0);
+  });
+
+  test("a-3. #456 B1 — 스킵 버튼 톤이 무대 컨트롤과 통일된다 (단색 강조 알약 아님)", async ({ page }) => {
+    await openMatch(page, "FIRST_HALF");
+    const skip = page.getByTestId("match-skip");
+    await expect(skip).toBeVisible();
+
+    const tone = await skip.evaluate((el) => {
+      const s = getComputedStyle(el);
+      return { bg: s.backgroundColor, border: s.borderTopColor, h: el.getBoundingClientRect().height };
+    });
+    /*
+     * 판정축 = **불투명 단색이 아니다**. accent 색상값을 계약에 적으면 테마 토큰을 바꾸는 순간
+     * 거짓 실패가 된다(apps/web CLAUDE.md "초록으로 거짓말하는 방식" #2와 같은 축) — 그래서
+     * 값이 아니라 **성질**(알파 < 1 인 어두운 배경)을 재고, 테두리는 배경과 **달라야** 한다.
+     */
+    const alpha = /rgba?\([^)]*,\s*([\d.]+)\s*\)/.exec(tone.bg);
+    expect(
+      alpha ? Number(alpha[1]) : 1,
+      `배경이 반투명이어야 컨트롤 층과 톤이 맞는다 — 실측 ${tone.bg}`,
+    ).toBeLessThan(1);
+    expect(tone.border, "테두리는 accent 로 남아 주 액션임을 말한다").not.toBe(tone.bg);
+    // #421 원 계약(터치 타깃)은 그대로다 — 톤을 바꾸느라 누를 수 없게 만들지 않는다.
+    expect(tone.h, "터치 타깃 높이").toBeGreaterThanOrEqual(32);
+  });
+
   test("b. 누르면 `phase` 를 실어 스킵을 요청하고 리포트가 뜬다", async ({ page }) => {
     const h = await openMatch(page, "FIRST_HALF");
     await page.getByTestId("match-skip").click();
@@ -243,6 +300,9 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     const dialog = page.getByTestId("half-report");
     await expect(dialog).toHaveAttribute("role", "dialog");
     await expect(dialog).toHaveAttribute("aria-modal", "true");
+    // ⚠️ #456: 첫 장은 **브릿지**다(전환을 먼저 알리고 자세한 것을 뒤에 붙인다). 리포트는 다음 장.
+    await expect(page.getByTestId("half-report-title")).toHaveText("전반 종료");
+    await page.getByTestId("half-report-next").click();
     await expect(page.getByTestId("half-report-title")).toHaveText("전반 리포트");
   });
 
@@ -250,6 +310,9 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await openMatch(page, "FIRST_HALF");
     await page.getByTestId("match-skip").click();
     await expect(page.getByTestId("half-report")).toBeVisible();
+    // #456: 브릿지가 첫 장이라 타임라인은 다음 장이다.
+    await page.getByTestId("half-report-next").click();
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
 
     const rows = page.locator('[data-testid="half-report-timeline"] li[data-kind]');
     await expect(rows).toHaveCount(ROW_COUNT);
@@ -300,10 +363,12 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
     await expect(page.locator('[data-testid="viewer-canvas-half1"]')).toHaveCount(0);
   });
 
-  test("e. 리포트 → **주요 인물** → 브릿지 3장이다(#421-2 ②, W7 평점 플립)", async ({ page }) => {
+  test("e. 브릿지 → 리포트 → **주요 인물** 3장이다(#421-2 ②, W7 평점 플립)", async ({ page }) => {
     /*
-     * ⚠️ 이 계약은 두 번 옮겨졌다. ①원래 "스택이 **1장**" → #424 가 브릿지를 마지막 카드로 더해 2장
-     * (설계 §3.2). ②#403 평점 모듈이 머지되며 `주요 인물` 카드가 **실제로 들어와** 3장이 됐다.
+     * ⚠️ 이 계약은 **세 번** 옮겨졌다. ①원래 "스택이 **1장**" → #424 가 브릿지를 마지막 카드로 더해
+     * 2장(설계 §3.2). ②#403 평점 모듈이 머지되며 `주요 인물` 카드가 **실제로 들어와** 3장이 됐다.
+     * ③#456 이 브릿지를 **첫 장**으로 옮겼다(hero: *"경기 브릿지 왜 없어?"* — 마지막에 있으면
+     * 클릭 2회 뒤라 유저 기억엔 리포트만 남는다). 장 수와 내용은 그대로고 순서만 바뀐 것이다.
      * 지키려던 것은 그대로다 — **빈 카드가 끼어들지 않는다**. 그래서 장 수만 세지 않고
      * *그 카드가 무엇을 말하는지*(이름·평점)까지 본다. 평점이 비면 `null` 경로로 돌아가 2장이 되고,
      * 그 경로는 `HalfReportModal.test.ts` 가 계속 지킨다.
@@ -314,6 +379,9 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
 
     await expect(page.getByTestId("half-report-pager")).toHaveText("1 / 3");
     await expect(page.getByTestId("half-report-dots").locator("span")).toHaveCount(3);
+    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
+
+    await page.getByTestId("half-report-next").click();
     await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
 
     await page.getByTestId("half-report-next").click();
@@ -331,11 +399,11 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
      */
     await expect(page.getByTestId("half-report-motm")).toContainText("테스터");
 
-    await page.getByTestId("half-report-next").click();
-    // 마지막 장은 **브릿지**다(#424 — 브릿지는 언제나 스택의 끝).
-    await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "bridge");
-    await expect(page.getByTestId("half-report-motm")).toHaveCount(0);
-    // 마지막 장의 CTA 가 곧 끝맺음이다(라벨은 브릿지가 상태에서 파생한다 — #424).
+    /*
+     * 주요 인물이 **마지막 장**이다(#456 — 브릿지가 앞으로 갔다). 그래도 끝맺음 버튼은 `닫기` 로
+     * 퇴화하지 않는다: 브릿지가 상태에서 파생한 목적지를 `finalCtaLabel` 로 내려 준다.
+     * ⚠️ 이 단언이 이 웨이브의 **반쪽 구현 방지선**이다 — 순서만 뒤집고 라벨을 안 내리면 여기서 죽는다.
+     */
     await expect(page.getByTestId("half-report-next")).toHaveText("감독시간으로");
   });
 
@@ -368,6 +436,9 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
 
     await expect(page.getByTestId("half-report")).toBeVisible();
     expect(h.skips[0]).toEqual({ phase: "SECOND_HALF" });
+    // #456: 첫 장은 경기 종료 브릿지, 그 다음이 후반 리포트다.
+    await expect(page.getByTestId("half-report-title")).toHaveText("경기 종료");
+    await page.getByTestId("half-report-next").click();
     await expect(page.getByTestId("half-report-title")).toHaveText("후반 리포트");
     // 후반 리포트는 전반 확정 스코어 위에 쌓는다(#233) — 후반만의 점수를 경기 점수로 그리지 않는다.
     await expect(page.getByTestId("half-report-score")).toHaveText(
@@ -379,6 +450,109 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
 
     await closeStack(page);
     await expect(page.getByTestId("result-page")).toBeVisible();
+  });
+
+  /*
+   * ── #456 B4 — *"경기 스킵 이후 결과 보여줄 때 어느 팀인지 색구분해서 보여줘"*(hero verbatim) ──
+   *
+   * 스킵의 착지점이 이 리포트 스택이라 여기가 그 "결과"다. 구 동작: 행에 팀 **이름**은 있었지만
+   * (`.side`) 색은 전부 `--text-muted` 하나라 훑어서 편을 가를 수 없었다.
+   *
+   * ⚠️ **색만 넣고 끝내지 않는다** — 승급/강등 표시(#262)와 같은 규율로 단일 채널 금지다.
+   * 팀 이름 텍스트는 그대로 남고 색이 **덧붙는** 것이어야 한다(계약 c).
+   */
+  test.describe("#456 B4 — 리포트가 어느 팀인지 색으로 구분한다", () => {
+    /** 이 로그에 홈 골과 원정 골이 둘 다 있어야 이 계약이 성립한다(없으면 비교 대상이 없다). */
+    const HOME_GOAL = GOALS.find((g) => g.team === "home")!;
+    const AWAY_GOAL = GOALS.find((g) => g.team === "away")!;
+
+    async function openTimeline(page: Page) {
+      await openMatch(page, "FIRST_HALF");
+      await page.getByTestId("match-skip").click();
+      await expect(page.getByTestId("half-report")).toBeVisible();
+      // 첫 장은 브릿지(#424) — 타임라인은 다음 장이다.
+      await page.getByTestId("half-report-next").click();
+      await expect(page.getByTestId("half-report-card")).toHaveAttribute("data-card", "timeline");
+    }
+
+    test("전제 — 이 픽스처에 홈·원정 골이 둘 다 있다", () => {
+      expect(HOME_GOAL, "홈 골이 없으면 색 대조가 성립하지 않는다").toBeTruthy();
+      expect(AWAY_GOAL, "원정 골이 없으면 색 대조가 성립하지 않는다").toBeTruthy();
+    });
+
+    test("a. 행이 자기 팀을 데이터로 말한다 — 좌표·순서로 되추론하지 않는다", async ({ page }) => {
+      await openTimeline(page);
+      await expect(page.getByTestId(`half-report-row-${HOME_GOAL.tick}`)).toHaveAttribute(
+        "data-team",
+        "home",
+      );
+      await expect(page.getByTestId(`half-report-row-${AWAY_GOAL.tick}`)).toHaveAttribute(
+        "data-team",
+        "away",
+      );
+    });
+
+    /*
+     * ⚠️ **스코어바를 기준으로 잰다.** "두 행의 색이 다르다"만 보면 리포트가 자기만의 리터럴을
+     * 새로 적어도 통과한다 — 그러면 같은 경기의 같은 팀이 화면마다 다른 색이 된다(정확히 이
+     * 웨이브가 걷어내는 상태다). 팀색 축이 **하나**인지가 재는 대상이다.
+     */
+    test("b. 그 색이 스코어바의 팀색과 같은 축이다(리포트만의 색을 새로 적지 않았다)", async ({ page }) => {
+      await openTimeline(page);
+      const seen = await page.evaluate(
+        ({ homeTick, awayTick }) => {
+          const sideOf = (tick: number) => {
+            const row = document.querySelector(`[data-testid="half-report-row-${tick}"]`);
+            const side = row?.querySelector("[data-team-label]");
+            return side ? getComputedStyle(side).color : null;
+          };
+          const barOf = (s: string) => {
+            const el = document.querySelector(`[data-team-side="${s}"]`);
+            return el ? getComputedStyle(el).color : null;
+          };
+          return {
+            rowHome: sideOf(homeTick),
+            rowAway: sideOf(awayTick),
+            barHome: barOf("home"),
+            barAway: barOf("away"),
+          };
+        },
+        { homeTick: HOME_GOAL.tick, awayTick: AWAY_GOAL.tick },
+      );
+
+      expect(seen.rowHome, "홈 행의 팀 라벨을 찾지 못했다").toBeTruthy();
+      expect(seen.barHome, "스코어바 홈 이름을 찾지 못했다").toBeTruthy();
+      expect(seen.rowHome, "홈 행 색 = 스코어바 홈 색").toBe(seen.barHome);
+      expect(seen.rowAway, "원정 행 색 = 스코어바 원정 색").toBe(seen.barAway);
+      expect(seen.rowHome, "두 팀이 같은 색이면 구분이 아니다").not.toBe(seen.rowAway);
+    });
+
+    test("c. 색은 **덧붙은** 채널이다 — 팀 이름 글자가 그대로 남는다", async ({ page }) => {
+      await openTimeline(page);
+      await expect(page.getByTestId(`half-report-row-${HOME_GOAL.tick}`)).toContainText("테스터");
+      await expect(page.getByTestId(`half-report-row-${AWAY_GOAL.tick}`)).toContainText("봇 FC");
+    });
+
+    /*
+     * 실화면 캡처 — **계약 안에서** 찍는다(apps/web CLAUDE.md: *"캡처를 별도 스펙으로 떼지는 마라 —
+     * 계약이 본 것과 다른 화면을 찍게 된다. 목적지만 가른다"*). 색·대비·톤은 좌표·속성으로 못 보고
+     * 판정은 독립 QA 몫이라(루트 §2-2) 이 파일은 그 입력을 남기는 데까지만 한다.
+     *
+     * ⚠️ **정정**(독립검증 minor-6): 한때 *"리포에 쓰려면 `HMB_WRITE_EVIDENCE=1`"* 이라고 적었는데
+     * 부정확하다 — `.smoke/` 도 `apps/web/.gitignore` 에 걸려 있어 **어느 쪽으로도 리포엔 안
+     * 들어간다**(리포 오염 0 은 #314 가 원한 그대로다). 두 목적지의 실제 차이는 **수명**이다:
+     * 기본 `test-results/` 는 playwright 가 **매 실행 시작에 비우므로** 다른 스펙을 한 번만 돌려도
+     * 사라진다. 눈으로 볼 그림을 남기려면 `HMB_WRITE_EVIDENCE=1` 로 `.smoke/` 에 찍어라.
+     */
+    test("캡처 — 실화면(계약이 본 그 화면)", async ({ page }) => {
+      await openTimeline(page);
+      const dir =
+        process.env.HMB_WRITE_EVIDENCE === "1"
+          ? new URL("../.smoke/", import.meta.url).pathname
+          : new URL("../test-results/p456-b4/", import.meta.url).pathname;
+      mkdirSync(dir, { recursive: true });
+      await page.screenshot({ path: `${dir}p456-b4-report-teamcolor.png` });
+    });
   });
 
   test("i. 409(이미 넘어갔다)는 에러가 아니다 — 리포트를 열지 않고 상태를 따라간다", async ({ page }) => {

@@ -5,6 +5,8 @@
 // 색·높이·우선순위(골>PK>선방>유효슛>코너)는 구 셸과 동일하게 맞춘다 — QA 가 눈에 익은 표기를
 // 그대로 쓰게(재학습 비용 0).
 
+import { TEAM_COLORS } from "../common/team-colors";
+
 export type PinKind = "goal" | "penalty" | "save" | "shot_on" | "corner";
 
 export interface TimelinePin {
@@ -76,7 +78,9 @@ function kindOf(e: PinEventLike): PinKind | null {
 }
 
 const STYLE: Record<PinKind, { height: number; width: number; z: number; color: string }> = {
-  goal: { height: 16, width: 3, z: 5, color: "#3b82f6" }, // 홈=파랑, 원정은 아래에서 빨강으로 덮는다
+  // 골 핀만 팀색이다(나머지는 장면 종류색). 홈이 기본이고 원정은 아래에서 덮는다.
+  // ⚠️ 색은 `common/team-colors.ts` 가 SoT — 여기 리터럴을 되살리면 화면마다 팀색이 갈린다(#456 B4).
+  goal: { height: 16, width: 3, z: 5, color: TEAM_COLORS.home.strong },
   penalty: { height: 14, width: 3, z: 4, color: "#22c55e" },
   save: { height: 11, width: 2, z: 3, color: "#38bdf8" },
   shot_on: { height: 8, width: 2, z: 2, color: "#fbbf24" },
@@ -116,7 +120,7 @@ export function buildTimelinePins(
     const idx = idxOfTick(e.tick);
     if (!(idx >= 0)) continue;
     const s = STYLE[kind];
-    const color = kind === "goal" && e.team === "away" ? "#ef4444" : s.color;
+    const color = kind === "goal" && e.team === "away" ? TEAM_COLORS.away.strong : s.color;
     pins.push({
       tick: e.tick,
       kind,

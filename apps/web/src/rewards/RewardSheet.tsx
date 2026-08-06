@@ -80,15 +80,13 @@ function PickAvatar({ entry, name }: { entry: RewardGrowthEntry; name: string })
   return <CharAvatar playerId={entry.playerId} name={name} grade={entry.grade} size={46} />;
 }
 
-/**
- * 이 카드의 성장 천장 — 서버가 계산해 준 `caps` 값(스탯 공통). **클라가 밴드+★보너스로 재구성하지
- * 않는다**: 두 계수 모두 무배포 조정 대상이라 미러하면 곧 낡는다(§2.8).
+/*
+ * ⚠️ **선택 헤드의 `천장 N` · `★n` 은 은퇴했다** (#456 S4-W2 AC4 — hero 정보 감량 지시).
+ * 그 값을 만들던 `ceilingOf` 도 같이 없앴다: 소비처 0 인 헬퍼를 남기면 다음 사람이 "이미 있으니"
+ * 하고 줄을 되살린다. 되살릴 때 재작성할 규칙은 한 줄이다 — **서버 `caps` 의 최대값을 그대로**
+ * 쓴다(클라가 밴드+★보너스로 재구성하면 무배포 조정에 조용히 어긋난다, §2.8).
+ * 천장 분해 라벨(`천장 73 = 72 + ★2 보너스 1`)은 **강화탭에 그대로 살아 있다**(`growth-ceil-legend`).
  */
-function ceilingOf(card: { caps?: unknown } | undefined): number | null {
-  const caps = card?.caps as Record<string, number> | undefined;
-  const vals = Object.values(caps ?? {}).filter((v) => Number.isFinite(v));
-  return vals.length > 0 ? Math.round(Math.max(...vals)) : null;
-}
 
 const BADGE_CLASS: Record<string, string> = {
   WIN: styles.badgeWin!,
@@ -240,8 +238,6 @@ export function RewardSheet({
                         {GRADE_LABELS[pickedPlayer.grade]}
                       </span>
                     )}
-                    {card?.star != null && <span>★{card.star}</span>}
-                    {ceilingOf(card) != null && <span>천장 {ceilingOf(card)}</span>}
                   </span>
                 </span>
                 <span className={styles.pickLv}>

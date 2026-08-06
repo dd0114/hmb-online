@@ -267,7 +267,30 @@ function liveBound(elapsedFrac: number, testWindowMs: number): number {
 
 test.use({ viewport: { width: 390, height: 844 } });
 
-test.describe("#421 W4 하이라이트 순서 재생", () => {
+/**
+ * ⚠️ **#456 B1 — 이 기능은 무대에서 내려갔다. 아래 describe 는 그래서 `skip` 이다.**
+ *
+ * hero: *"하이라이트 토글 비활성화하고 그 자리에 스킵."* 토글이 없으니 릴을 켜는 손잡이가 없고,
+ * 켜는 문(`HIGHLIGHT_DEFAULT_HALVES`)도 같이 닫았다 — 둘 중 하나만 하면 **끄는 버튼 없이 릴이
+ * 도는** 상태가 되기 때문이다(#421 이관 발견). ⇒ a~h 는 지금 화면에서 **구조적으로 도달 불가**다.
+ *
+ * **지우지 않는 이유**(apps/web CLAUDE.md "정책에 의해 도달 불가가 된 낡은 계약" 항): 부품·훅·순수
+ * 모듈이 전부 살아 있는 **롤백 자산**이고, 되살리는 날 이 7건이 그대로 그 웨이브의 계약이 된다.
+ * **복원 조건** = ①`VisualPlayback` 이 `HighlightToggle` 을 다시 그린다 ②`HIGHLIGHT_DEFAULT_HALVES`
+ * 가 `[2]` 로 돌아온다. 둘 다 되면 `.skip` 을 떼라.
+ *
+ * ⚠️ `test.fail` 이 아니라 `skip` 인 것도 의도다 — `test.fail` 은 **실제로 실패해도 "passed" 로
+ * 집계**돼(같은 문서 #1) "결함 없음"으로 읽힌다. 지금 참인 것은 아래 "#456 B1" describe 가 잰다.
+ */
+/**
+ * ⚠️ **픽스처 전제는 `skip` 밖에 둔다** — #456 S2-R1(독립검증 minor-1).
+ *
+ * 이 단언은 원래 아래 `skip` 블록 **안**에 있었다. 그런데 살아 있는 계약("#456 B1")이 같은 상수
+ * (`S1`·`S2`)와 같은 픽스처 모양 위에서 도는데, 그 전제를 검사하던 **유일한** 테스트가 같이 꺼지면
+ * 픽스처가 재생성되는 날 새 계약이 **조용히 공허해지거나 거짓 red** 가 된다(둘 다 원인이 안 보인다).
+ * 전제는 릴 기능의 것이 아니라 **이 파일 표본의 것**이라 기능이 내려가도 계속 참이어야 한다.
+ */
+test.describe("#421 픽스처 전제 (기능과 무관 — 표본이 여전히 그 모양인가)", () => {
   test("픽스처 전제 — 두 장면이 자연 재생으로는 못 건너올 만큼 떨어져 있어야 계약이 성립한다", () => {
     const events = reelLog().events;
     const scenes = sceneTicksOf(events);
@@ -294,7 +317,9 @@ test.describe("#421 W4 하이라이트 순서 재생", () => {
     ]);
     expect(sceneShapeAt(events, S2), "S2 = goal").toEqual(["goal"]);
   });
+});
 
+test.describe.skip("#421 W4 하이라이트 순서 재생", () => {
   test("a·b. 종료된 경기 — 디폴트가 하이라이트고 #1 → #2 로 이어진다", async ({ page }) => {
     await openMatch(page, { state: "FINISHED", clock: null, log: reelLog() });
 
@@ -469,5 +494,33 @@ test.describe("#421 W4 하이라이트 순서 재생", () => {
       expect(Math.abs(ticks[i]! - ticks[i - 1]!)).toBeLessThan(60);
     }
     await expect(page.locator('[data-testid^="viewer-visual-error"]')).toHaveCount(0);
+  });
+});
+
+/**
+ * 지금 참인 것 — **릴은 저절로 돌지 않는다**(#456 B1).
+ *
+ * 위 describe 를 `skip` 으로 덮기만 하면 이 파일이 아무것도 지키지 않는다. 토글 부재는
+ * `p421-skip-report` a-2 가 잰다(DOM 축). 여기서는 그 **행동 축**을 잰다 — 이 파일에만 있는
+ * 픽스처(두 장면이 자연 재생으로는 못 건너올 만큼 떨어져 있다)가 그 판정을 가능하게 한다.
+ */
+test.describe("#456 B1 — 하이라이트 릴이 무대에서 내려갔다", () => {
+  test("종료 경기에서도 플레이헤드가 장면으로 점프하지 않는다 (디폴트 = 전체 재생)", async ({ page }) => {
+    await openMatch(page, { state: "FINISHED", clock: null, log: reelLog() });
+    await expect(toggle(page), "토글이 무대에 없다").toHaveCount(0);
+
+    /*
+     * 구 동작이면 15초 안에 `S1`(≈98초 지점)로 **점프**했다 — 그게 위 a·b 의 판정축이다.
+     * 지금은 처음부터 흐르므로 그 시간엔 한참 못 미친다. 임계는 그 스펙이 쓰던 값과 같은 축이라
+     * (`S1 - 20`) 되살아나는 순간 여기서 죽는다.
+     */
+    const start = await playhead(page);
+    await page.waitForTimeout(6_000);
+    const after = await playhead(page);
+    expect(after, "재생은 실제로 흐른다 — 멈춰 있으면 이 계약이 공허하다").toBeGreaterThan(start);
+    expect(
+      after,
+      `장면으로 점프했다(${start} → ${after}, 장면 #1 = ${S1}) — 릴이 되살아났다`,
+    ).toBeLessThan(S1 - 20);
   });
 });

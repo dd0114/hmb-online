@@ -95,7 +95,7 @@ const PLAYERS = [
 ];
 
 /** ⚠️ 라우트는 pathname 술어로 — glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지 잡아 흰 화면이 된다. */
-async function mockApi(page: Page, state: string, growth = false) {
+async function mockApi(page: Page, state: string, growth = false, mode?: string) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -119,6 +119,14 @@ async function mockApi(page: Page, state: string, growth = false) {
           opponent: { name: "봇 FC" },
           userDeckSnapshot: SNAPSHOT,
           clock: null,
+          /*
+           * ⚠️ **`mode` 를 안 실으면 결과 화면의 다음 경기 CTA 가 렌더되지 않는다**(#456 B5).
+           * 그 상태로 이 파일 전체가 green 이었고, 정작 CTA 가 그려지는 리그·원정에서 아래 ⑥ 의
+           * 세로 예산이 깨져 있었다 — apps/web CLAUDE.md "초록으로 거짓말하는 방식" **#4**
+           * (픽스처가 두 상태를 뭉갠다) 그대로다. 기본은 계속 미탑재(= 연습, 구 표본 보존)이고
+           * ⑥-b 가 그 팔을 따로 태운다.
+           */
+          ...(mode ? { mode } : {}),
         },
       });
     }
@@ -172,8 +180,8 @@ async function mockApi(page: Page, state: string, growth = false) {
   });
 }
 
-async function openMatch(page: Page, state: string, growth = false) {
-  await mockApi(page, state, growth);
+async function openMatch(page: Page, state: string, growth = false, mode?: string) {
+  await mockApi(page, state, growth, mode);
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "local");
@@ -591,6 +599,73 @@ test.describe("⑥ 결과 화면 — [로비로] 가 어느 데스크탑 비율�
     });
   }
 
+  /**
+   * ⑥-b **다음 경기 CTA 가 그려지는 모드**(#456 B5) — 이 대역이 통째로 비어 있었다.
+   *
+   * 위 ⑥ 의 목은 `mode` 를 안 실어 CTA 가 **렌더되지 않는다**. 그래서 리그·원정에서 바닥 버튼이
+   * 하나 더 생겨 `.scroll` 이 62px 줄어든 것을 **아무도 재지 않았고**, `p348`+`p403`+`p456`
+   * 126건이 전부 green 인 채로 1024×768 · 1280×720 에서 팀 스탯 머리가 잘려 있었다
+   * (독립검증 blocker-1 실측: statsTop 잔량 4px / 0px).
+   *
+   * ⚠️ **단언은 ⑥ 과 같은 것을 쓴다** — 새 임계를 만들면 두 대역이 서로 다른 약속을 하게 된다.
+   * 여기서 재는 것은 "CTA 가 늘어도 그 약속이 그대로인가" 하나다.
+   * ⚠️ 전 비율 스윕은 **리그만** 돈다 — 이 축의 변수는 **바닥 버튼 개수**이지 라벨이 아니라
+   * 원정은 같은 지오메트리다(가장 빠듯한 비율에서 한 점만 대조로 확인한다).
+   */
+  const CTA_MODE_VIEWPORTS = DESKTOP.filter((v) => v.height >= 700);
+
+  for (const vp of CTA_MODE_VIEWPORTS) {
+    test(`⑥-b ${vp.name} — 리그(다음 경기 CTA)에서도 팀 스탯의 시작이 보인다`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FINISHED", false, "league");
+      await expect(page.getByTestId("result-page")).toHaveCount(1);
+      // 전제: 이 팔은 CTA 가 **실제로** 그려져야 의미가 있다(안 그려지면 ⑥ 과 같은 화면이다).
+      await expect(page.getByTestId("result-next-cta")).toHaveCount(1);
+
+      const cta = await box(page, "to-lobby");
+      expect(cta.inViewport, `${vp.name}: [로비로] 가 화면 밖 — bottom ${cta.bottom} > ${cta.vh}`).toBe(true);
+      expect(cta.hitSelf, `${vp.name}: [로비로] 중심을 다른 것이 받는다`).toBe(true);
+
+      const next = await box(page, "result-next-cta");
+      expect(next.inViewport, `${vp.name}: 다음 경기 CTA 가 화면 밖 — bottom ${next.bottom}`).toBe(true);
+      expect(next.hitSelf, `${vp.name}: 다음 경기 CTA 중심을 다른 것이 받는다`).toBe(true);
+
+      const reward = await box(page, "reward-daily");
+      expect(
+        reward.inViewport,
+        `${vp.name}: 결과 카드 마지막 줄이 잘렸다 — bottom ${reward.bottom} > ${reward.vh}`,
+      ).toBe(true);
+
+      const statsTopVisible = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="team-stats"]') as HTMLElement | null;
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        if (r.top + 6 >= window.innerHeight) return false;
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 6);
+        return !!hit && (hit === el || el.contains(hit));
+      });
+      expect(
+        statsTopVisible,
+        `${vp.name}: 다음 경기 CTA 가 생기자 팀 스탯의 시작이 잘렸다 — 이 화면이 "스코어 카드 하나"로 읽힌다`,
+      ).toBe(true);
+    });
+  }
+
+  test("⑥-b 원정도 같은 지오메트리다 — 가장 빠듯한 비율 한 점 대조 (1280×720)", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openMatch(page, "FINISHED", false, "away");
+    await expect(page.getByTestId("result-next-cta")).toHaveText("다음 원정 떠나기");
+    const statsTopVisible = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="team-stats"]') as HTMLElement | null;
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      if (r.top + 6 >= window.innerHeight) return false;
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 6);
+      return !!hit && (hit === el || el.contains(hit));
+    });
+    expect(statsTopVisible, "원정 CTA 에서 팀 스탯의 시작이 잘렸다").toBe(true);
+  });
+
   test("성장 리포트가 붙어도(내용 상한 없음) CTA 는 화면 안 — 1280×800", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await openMatch(page, "FINISHED", true);
@@ -720,4 +795,96 @@ test.describe("④ 폰 대조군 — 무회귀", () => {
     expect(cta.inViewport, `폰 [로비로] bottom ${cta.bottom} > ${cta.vh}`).toBe(true);
     expect(cta.hitSelf).toBe(true);
   });
+});
+
+/**
+ * ⑧ **피치가 실제로 얼마나 그려지나** — #456 S2-R1(독립검증 major-1).
+ *
+ * ⚠️ 이 파일은 18개 뷰포트를 돌면서 **캔버스·피치 크기를 한 번도 재지 않았다**(grep 0건).
+ * 그래서 #456 B0 이 컨트롤을 무대 행 안으로 들이며 **세로가 상한/`1fr` 에 걸리는 모든 창에서**
+ * 피치가 컨트롤 높이만큼 줄어든 것을 이 스윕이 전혀 못 봤다(실측 1280×800 −16% · 844×390 −38%).
+ * 커밋 본문이 *"컨트롤이 먹는 만큼 시트가 양보하므로 피치는 줄지 않는다"* 라고 **일반 명제**로
+ * 적혀 있었는데, 그건 **폰 세로에서만 참**이다 — 데스크탑 시트는 고정 높이라 양보하지 않는다.
+ *
+ * 그래서 두 축을 건다:
+ *  ⓐ **컨트롤 층이 무대 행에서 가져가는 몫의 상한** — 성질이지 튜닝값이 아니다. 이 층은 예전에
+ *    토글·스킵이 쌓이며 130px 띠로 자란 전례가 있고(#406 W10 M-1), 그때는 오버레이라 피치를
+ *    덮었지만 지금은 **피치를 깎는다**. 줄이 하나 더 쌓이면 여기서 죽는다.
+ *  ⓑ **피치 실그림 높이의 회귀선** — `object-fit: contain` 기준으로 실제 그려지는 크기다
+ *    (캔버스 박스는 레터박스를 포함해 부풀 수 있어 박스만 재면 축소를 놓친다).
+ *    ⚠️ 이 숫자들은 **설계 목표가 아니라 지금 실측치**다(S2-R1 착지 시점, −2px 여유).
+ *    시트 높이 등급(#348/#355)이나 컨트롤 구성이 바뀌면 같이 갱신하되, **내리려면 근거를 적어라** —
+ *    이 축이 없던 동안 −38% 가 조용히 지나갔다.
+ */
+test.describe("⑧ 피치 실그림 크기 — 컨트롤이 무대 행에 들어와도 회귀하지 않는다 (#456)", () => {
+  /** S2-R1 착지 시점 실측(−2px). 폰 세로만 두 줄 컨트롤이라 상한이 다르다. */
+  const PITCH_FLOOR: Record<string, { h: number; ctlMax: number }> = {
+    "1024x768": { h: 431, ctlMax: 56 },
+    "1024x640": { h: 333, ctlMax: 56 },
+    "1280x600": { h: 293, ctlMax: 56 },
+    "1280x720": { h: 396, ctlMax: 56 },
+    "1280x800": { h: 455, ctlMax: 56 },
+    "1440x560": { h: 253, ctlMax: 56 },
+    "1440x900": { h: 529, ctlMax: 56 },
+    "1512x945": { h: 562, ctlMax: 56 },
+    "1680x1050": { h: 640, ctlMax: 56 },
+    "1920x1080": { h: 662, ctlMax: 56 },
+    "3440x1440": { h: 963, ctlMax: 56 },
+    "1023x768": { h: 393, ctlMax: 56 },
+    "1023x900": { h: 470, ctlMax: 56 },
+    "960x1040": { h: 551, ctlMax: 56 },
+    "900x800": { h: 412, ctlMax: 56 },
+    "853x533": { h: 257, ctlMax: 56 },
+    "820x640": { h: 319, ctlMax: 56 },
+    "768x900": { h: 470, ctlMax: 56 },
+    // 폰 가로 — B0 이 가장 크게 깎은 자리다(226 → 140 → S2-R1 176).
+    "844x390": { h: 174, ctlMax: 56 },
+    // 폰 세로 = hero 가 본 화면. 여기만 시트가 양보해 **B0 전과 같다**(252.57px).
+    "390x844": { h: 251, ctlMax: 92 },
+    // 작은 폰(세로 568) — `match-stage i` 의 절대선 252 는 390×844 **한 점**의 값이라 이 창을
+    // 못 봤다(독립검증 minor-2). ⚠️ 여기는 세로가 짧아 컨트롤이 한 줄로 접히고(위 CSS 임계
+    // `max-height: 720`), 그 덕에 피치가 폰 세로와 **같은 253px** 다 — S2 착지 시점엔 243 이었다.
+    "390x568": { h: 251, ctlMax: 56 },
+  };
+
+  for (const vp of [
+    ...DESKTOP,
+    ...WIDE_LOW,
+    { name: "844x390", width: 844, height: 390 },
+    { name: "390x844", width: 390, height: 844 },
+    { name: "390x568", width: 390, height: 568 },
+  ]) {
+    test(`${vp.name} — 피치가 컨트롤에 깎이지 않는다`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FIRST_HALF");
+      await page.waitForSelector('[data-testid^="viewer-canvas-half"]');
+
+      const m = await page.evaluate(() => {
+        const c = document.querySelector('[data-testid^="viewer-canvas-half"]') as HTMLElement | null;
+        const ctl = document.querySelector("[data-p406-controls]") as HTMLElement | null;
+        if (!c) return null;
+        const r = c.getBoundingClientRect();
+        // 캔버스 backing 은 1050×680 이고 `object-fit: contain` 이라 실그림은 그 비율로 갇힌다.
+        const s = Math.min(r.width / 1050, r.height / 680);
+        return {
+          drawH: Math.round(680 * s),
+          drawW: Math.round(1050 * s),
+          ctlH: ctl ? Math.round(ctl.getBoundingClientRect().height) : 0,
+        };
+      });
+      expect(m, "캔버스가 없다").not.toBeNull();
+
+      const want = PITCH_FLOOR[vp.name];
+      expect(want, `${vp.name}: 기준선이 표에 없다 — 뷰포트를 추가했으면 실측해서 같이 적어라`).toBeTruthy();
+
+      expect(
+        m!.ctlH,
+        `${vp.name}: 컨트롤 층이 ${m!.ctlH}px — 줄이 더 쌓이면 그만큼 피치가 깎인다`,
+      ).toBeLessThanOrEqual(want.ctlMax);
+      expect(
+        m!.drawH,
+        `${vp.name}: 피치 실그림 ${m!.drawW}×${m!.drawH} (기준선 높이 ${want.h})`,
+      ).toBeGreaterThanOrEqual(want.h);
+    });
+  }
 });

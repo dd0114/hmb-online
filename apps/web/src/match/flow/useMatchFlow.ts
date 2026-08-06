@@ -5,6 +5,7 @@ import {
   beatForTransition,
   bridgeForTransition,
   enqueueBridge,
+  isBeatBridgeKind,
   isOverlayKind,
   type BeatKind,
   type OverlayBridgeKind,
@@ -71,11 +72,15 @@ export function useMatchFlow(match: MatchDetail | undefined): MatchFlowHandle {
     prevRef.current = { id: matchId, state };
 
     const bridge = bridgeForTransition(prev.state, state);
-    // 대기형(`panel`)은 큐에 넣지 않는다 — 그 화면은 이미 패널로 존재하고, 오버레이로 덮으면
-    // `GenWaitPanel` 의 경과 시계·[경기 포기](#217 AC3)가 가려진다(설계 §6.3).
+    // 종료형만 큐에 넣는다. 나머지(`beat`)는 오버레이로 덮으면 `GenWaitPanel` 의 경과 시계·
+    // [경기 포기](#217 AC3)가 가려지므로(설계 §6.3) **백드롭 없는 한 호흡**으로 표현한다.
     if (bridge && isOverlayKind(bridge.kind)) push({ kind: bridge.kind, report: null });
 
-    const nextBeat = beatForTransition(prev.state, state);
+    // 킥오프 비트 + 전환 비트(#456 B2 — 경기 시작·후반 준비). 둘은 **같은 층**이라 마지막 것이
+    // 이긴다: `GEN1 → FIRST_HALF` 는 킥오프뿐이고 `BRIEFING → GEN1` 은 전환뿐이라 실제로 겹치지 않는다.
+    const nextBeat: BeatKind | null =
+      beatForTransition(prev.state, state) ??
+      (bridge && isBeatBridgeKind(bridge.kind) ? bridge.kind : null);
     // `beatMs === 0` = 비트 없음(조정 포인트 §11-2). 켜지지 않은 연출의 타이머를 걸지 않는다.
     if (nextBeat && FLOW_TIMING.beatMs > 0) setBeat(nextBeat);
   }, [matchId, state, push]);

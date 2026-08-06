@@ -1147,11 +1147,27 @@ function curTick(page: Page): Promise<number> {
   return page.evaluate(() => (window as any).__viewer.cur().tick as number);
 }
 
-test("⑯ 떠 있는 컨트롤이 덮은 자리의 선수도 눌린다 · 컨트롤도 그대로 눌린다 (폰 스윕)", async ({ page }) => {
+/**
+ * ⑯ — **이 계약은 #456 B0 에서 방향이 뒤집혔다.**
+ *
+ * <p>구 계약은 *"떠 있는 컨트롤이 덮은 자리의 선수도 눌린다"* 였고, 그 근거는 W10 M-1 의
+ * 판단이었다 — *"컨트롤을 캔버스 밖으로 내리면 폰 무대 세로를 114px 먹고, 무대 박스가 피치
+ * 비율로 잡혀 있으니 `object-fit: contain` 이 좌우까지 줄여 피치 면적이 반이 된다"*.
+ * 그래서 자리를 옮기는 대신 **히트 우선순위**로 풀었고, 이 스펙은 *"덮인 자리가 반드시 있어야
+ * 표본이 성립한다"*(`byControls > 0`)를 전제로 걸고 있었다.
+ *
+ * <p>hero 판정(#456 B0)이 그 전제의 두 번째 문장을 무효로 만들었다 —
+ * *"바는 경기장 밖으로 빼. 경기 안 가리게 **화면 늘려**달라 했잖아."*
+ * 무대 행이 캔버스+컨트롤을 담고 **시트가 그만큼 양보**하므로 피치는 줄지 않는다
+ * (`match-stage.spec.ts` h·i 가 그 둘을 한 쌍으로 잰다). 덮인 자리가 사라졌으니
+ * 이 파일이 재는 것도 *"덮여도 닿는다"* 가 아니라 **"덮지 않는다"** 로 바뀐다.
+ *
+ * <p>⚠️ 히트 우선순위 라우팅(`overlayTokenAt`)은 **지우지 않았다** — admin 풀컨트롤
+ * (`controlsOverlay`)은 여전히 무대 모서리에 겹치는 층이라 그 경로가 살아 있다. 다만 **플레이
+ * 모드에서는 발화하지 않는 백스톱**이고, 그 사실이 곧 아래 ⓐ 다.
+ */
+test("⑯ #456 B0 — 컨트롤 층이 피치를 한 점도 덮지 않는다 · 컨트롤은 그대로 눌린다 (폰 스윕)", async ({ page }) => {
   await open(page);
-  const toggle = page.getByTestId("highlight-toggle");
-  await expect(toggle, "이 계약의 최대 기여 blocker 가 화면에 있어야 표본이 성립한다").toHaveCount(1);
-  const modeBefore = await toggle.getAttribute("data-highlight");
 
   /*
    * ── ⓐ 스윕: 화면 안 토큰의 최상위 요소를 전수 분류.
@@ -1195,8 +1211,8 @@ test("⑯ 떠 있는 컨트롤이 덮은 자리의 선수도 눌린다 · 컨트
   expect(sampled, "표본이 0 이면 이 계약은 공허하다").toBeGreaterThan(100);
   expect(
     byControls,
-    "덮인 자리가 없으면 ⓑ 를 검정할 수 없다 — 폰에서 컨트롤 층이 피치를 덮는다는 기하 전제가 무너졌다",
-  ).toBeGreaterThan(0);
+    "컨트롤 층이 피치 위로 되돌아왔다 — #456 B0 은 '덮여도 닿는다'가 아니라 '덮지 않는다'다",
+  ).toBe(0);
   /*
    * **컨트롤 층 밖**의 크롬(스코어바·패널)은 이 웨이브가 라우팅으로 구제할 수 없다 —
    * `VisualPlayback` 트리 밖이다. 셸은 그리드(`auto / 1fr / auto`)라 원래 겹치지 않고, 실제로
@@ -1210,86 +1226,33 @@ test("⑯ 떠 있는 컨트롤이 덮은 자리의 선수도 눌린다 · 컨트
   });
   expect(intruders, "컨트롤 층 밖의 크롬이 피치 안쪽까지 덮었다 — 라우팅으로 못 고친다(레이아웃)").toEqual([]);
 
-  // ── ⓑ 도달 가능: 덮인 자리를 눌러 **그 선수**가 켜지고, **다른 일은 일어나지 않는다**.
-  let proven = 0;
-  const seen: string[] = [];
-  const tried = new Set<string>();
-  for (let i = 0; i < SWEEP && proven < 3; i++) {
-    const at = Math.round(firstTick + ((lastTick - firstTick) * 0.45 * i) / (SWEEP - 1));
-    await page.evaluate((t: number) => {
-      const v = (window as any).__viewer;
-      v.pause();
-      v.seek(t);
-    }, at);
-    // 매번 **다른 자리**를 태운다 — 같은 선수·같은 컨트롤만 3번 확인하면 표본이 하나다.
-    const cand = (await probeTokens(page)).find(
-      (r) => !r.onCanvas && r.inControls && !tried.has(`${r.team}:${r.id}@${r.blocker}`),
-    );
-    if (!cand) continue;
-    tried.add(`${cand.team}:${cand.id}@${cand.blocker}`);
-    const tickBefore = await curTick(page);
-    await page.mouse.click(cand.cx, cand.cy);
-    await expect
-      .poll(
-        async () => (await drawnRings(page)).some((r) => r.id === cand.id && r.team === cand.team),
-        {
-          message:
-            `${cand.team}:${cand.id} 를 눌렀는데 링이 안 떴다 — 그 자리를 덮은 것은 ` +
-            `\`${cand.blocker}\` 다(요구 5-2: 화면 안 토큰은 전부 도달 가능해야 한다)`,
-        },
-      )
-      .toBe(true);
-    /*
-     * "누르면 **다른 일**이 일어난다" = 0. 릴이 켜지거나 플레이헤드가 움직이면 red.
-     *
-     * ⚠️ **`>= tickBefore`(뒤로만 금지)가 아니라 정확히 같아야 한다** — 느슨하게 한 것이 아니라
-     * 반대로 조인 것이고, 원래 느슨했던 이유가 이번 blocker 와 **같은 뿌리**였다: 목 시계가 폴마다
-     * 흘러 앱이 1초마다 seek-to-now 를 걸던 동안에는 플레이헤드를 정지시킬 수 없어 방향으로밖에
-     * 못 걸었다(`clock()` 머리말). 앵커를 고정한 지금은 정지한다.
-     *
-     * 그리고 그 느슨함이 실제로 변이를 살렸다 — `onPointerDownCapture` 의 `e.preventDefault()`
-     * (시크바가 `<input type="range">` 라 값 변경이 `mousedown` **기본동작**이다)만 지우면
-     * 이 루프의 세 번째 도달점(`home:H7@viewer-seek-half2`, 그 자리 요소가 실제로 `input[range]`)
-     * 에서 **tick 2885 → 3291(Δ+406)** 로 뛰는데, **앞으로** 뛰므로 `>=` 는 통과했다(실측 3/3 생존).
-     * 유저에게는 "선수를 눌렀는데 경기가 앞으로 갔다"이고 그건 뒤로 가는 것과 같은 결함이다.
-     */
-    expect(await toggle.getAttribute("data-highlight"), "하이라이트 모드가 탭에 눌렸다").toBe(modeBefore);
-    const tickAfter = await curTick(page);
-    expect(tickAfter, `선수를 눌렀는데 플레이헤드가 움직였다 ${tickBefore} → ${tickAfter}`).toBe(tickBefore);
-    seen.push(`${cand.team}:${cand.id}@${cand.blocker}`);
-    await page.getByTestId("arena-player-close").click(); // 초기화(재탭은 해제라 축이 뒤집힌다)
-    await expect(page.getByTestId("arena-player-card")).toHaveCount(0);
-    proven++;
-  }
-  console.log(`[M-1] 덮인 자리에서 도달 확인 ${proven}건 — ${seen.join(" · ")}`);
-  expect(proven, "덮인 토큰을 하나도 못 잡았다 — 표본 전제가 흔들렸다").toBeGreaterThanOrEqual(3);
-
-  // ── ⓒ 컨트롤은 여전히 눌린다. 우선순위를 "언제나 가로채기"로 만들면(또는 컨트롤의
-  //     `pointer-events` 를 지우면) 여기서 죽는다 — ⓑ 만으로는 그 변이가 산다.
-  await page.evaluate(() => (window as any).__viewer.pause());
-  const box = (await toggle.boundingBox())!;
-  const near = await tokens(page);
   /*
-   * 토큰에서 **넉넉히** 떨어진 지점을 토글 안에서 고른다. 임계 40 backing px 는 앱 상수
-   * (`HIT_PAD_PX`)를 **일부러 import 하지 않은** 값이다 — 계약이 앱 상수를 되읽으면 임계 변이가
-   * 계약을 데리고 움직인다(apps/web CLAUDE.md "초록으로 거짓말하는 방식" #2).
+   * ── ⓑ 컨트롤은 **자기 자리에서 그대로 눌린다**.
+   *
+   * ⓐ 만 두면 컨트롤 층을 통째로 `pointer-events: none` 으로 만들거나 화면 밖으로 밀어내는
+   * 구현이 통과한다("아무것도 안 덮으니 0"). 그래서 반대 방향을 같이 건다 — 컨트롤이 자기
+   * 중심점에서 최상위 요소여야 한다.
+   *
+   * ⚠️ 클릭이 아니라 **히트테스트**로 잰다. 시크바는 `<input type="range">` 라 클릭이 곧
+   * 플레이헤드 이동이고, 그 부작용을 이 계약이 떠안으면 라이브 게이트(#406 W3)와 다투게 된다.
    */
-  let free: { x: number; y: number } | null = null;
-  for (let gx = 0.1; gx <= 0.9 && !free; gx += 0.1) {
-    for (const gy of [0.5, 0.25, 0.75]) {
-      const x = box.x + box.width * gx;
-      const y = box.y + box.height * gy;
-      const b = await backingPointOf(page, x, y);
-      if (near.every((t) => Math.hypot(t.px - b.x, t.py - b.y) > 40)) {
-        free = { x, y };
-        break;
-      }
-    }
-  }
-  expect(free, "토글 안에서 토큰 없는 지점을 못 찾았다 — 이 단언의 전제").toBeTruthy();
-  await page.mouse.click(free!.x, free!.y);
-  await expect(toggle, "토큰이 없는 자리에서는 컨트롤이 그대로 눌려야 한다").not.toHaveAttribute(
-    "data-highlight",
-    modeBefore!,
+  const seek = page.getByTestId("viewer-seek-bar-half2");
+  await expect(seek, "컨트롤 층에 시크바가 있어야 이 단언의 전제가 성립한다").toHaveCount(1);
+  const sb = (await seek.boundingBox())!;
+  const onTop = await page.evaluate(
+    ([x, y]) => {
+      const el = document.elementFromPoint(x as number, y as number) as HTMLElement | null;
+      return {
+        tag: el?.tagName ?? "(없음)",
+        testid: el?.dataset?.testid ?? null,
+        inControls: !!el?.closest("[data-p406-controls]"),
+      };
+    },
+    [sb.x + sb.width / 2, sb.y + sb.height / 2] as const,
   );
+  expect(
+    onTop.inControls,
+    `시크바 중심을 눌러도 컨트롤이 최상위가 아니다 — 실제로 잡힌 것: ${onTop.tag}/${onTop.testid}`,
+  ).toBe(true);
 });
+
