@@ -53,3 +53,56 @@ export async function openCandidatesTabIfPresent(page: Page): Promise<void> {
 
 /** `[⚙ 세부 전술]` — 전술 다이얼(라인·압박·템포·폭)이 사는 탭. */
 export const openTuneTab = (page: Page) => openDeckPanel(page, "tune");
+
+/**
+ * 보드의 선수를 **지시 대상으로 고른다** — #455 A2 이후 화면마다 경로가 다르다.
+ *
+ * | 화면 | 토큰 탭이 하는 일 |
+ * |---|---|
+ * | 폰 덱셋팅(`data-layout="tabs"`) | **선수 메뉴 시트** → `[한마디 쓰기]` 를 눌러야 지시 칸으로 간다 |
+ * | 경기전 · 감독시간 · 데스크탑 덱(`stack`) | 예전 그대로 — 탭이 곧 그 선수 지시 |
+ *
+ * ⚠️ **"있으면 거친다"가 아니다.** 화면이 스스로 선언한 축(`deck-editor[data-layout]`)을 읽고
+ * **그 화면에서 참이어야 하는 것을 단언**한다 — tabs 인데 메뉴가 없으면 red, stack 인데 메뉴가
+ * 있어도 red. 그래서 "메뉴를 모든 화면에 켠다"·"메뉴를 통째로 없앤다" 두 변이가 **양쪽에서** 죽는다.
+ * (느슨한 `…IfPresent` 를 쓰면 둘 다 조용히 통과한다 — 위 헬퍼 주석과 같은 이유.)
+ *
+ * `touch` = 실터치(`.tap()`)로 밟는다. 폰 제스처 계약(#442)은 `page.mouse` 를 쓰면 그 부류를
+ * 구조적으로 못 잡으므로 그 파일들이 켠다.
+ */
+export async function selectBoardPlayer(
+  page: Page,
+  playerId: string,
+  opts: { touch?: boolean } = {},
+): Promise<void> {
+  const token = page.getByTestId(`token-${playerId}`);
+  await (opts.touch ? token.tap() : token.click());
+  await passPlayerMenu(page, opts);
+}
+
+/**
+ * 토큰을 **이미 눌렀다**는 전제에서, 그 화면이 선수 메뉴를 쓰면 `[한마디 쓰기]` 까지 밟는다.
+ *
+ * 토큰을 셀렉터가 아니라 **순서(nth)** 로 고르는 스펙(`p286-w3`)이 있어서 위 헬퍼와 갈랐다 —
+ * 그쪽에 맞추려고 그 스펙이 자기 손으로 메뉴를 밟게 두면, "메뉴가 어느 화면에 있나"라는 사실이
+ * 스펙마다 복사돼 다음 번에 각자 낡는다.
+ */
+export async function passPlayerMenu(page: Page, opts: { touch?: boolean } = {}): Promise<void> {
+  const editor = page.getByTestId("deck-editor");
+  await expect(editor, "보드가 있는 화면이 아니다").toHaveCount(1);
+  const layout = await editor.getAttribute("data-layout");
+  if (layout === "tabs") {
+    await expect(
+      page.getByTestId("player-menu"),
+      "폰 덱셋팅에서 토큰 탭은 선수 메뉴를 열어야 한다(#455 A2 ①)",
+    ).toHaveCount(1);
+    const say = page.getByTestId("pmenu-say");
+    await (opts.touch ? say.tap() : say.click());
+    await expect(page.getByTestId("player-menu"), "고르면 메뉴는 닫힌다").toHaveCount(0);
+  } else {
+    await expect(
+      page.getByTestId("player-menu"),
+      `이 화면(layout=${layout})에는 선수 메뉴가 없다 — 토큰 탭이 곧 지시다`,
+    ).toHaveCount(0);
+  }
+}

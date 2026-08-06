@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, readFileSync } from "node:fs";
-import { openCandidatesTab, openTuneTab } from "./deck-tabs";
+import { openCandidatesTab, openTuneTab, passPlayerMenu } from "./deck-tabs";
 
 /**
  * #244 — 덱·게임 UI 개편 "프롬프트 1급" 계약 (E2E-TDD: 구현보다 먼저 작성됐다, 루트 CLAUDE §2-3).
@@ -369,6 +369,10 @@ test.describe("#244 프롬프트 1급 — 덱 편성", () => {
   test("AC5 선수 세부조정(역할·지시 칩)도 기본 접힘", async ({ page }) => {
     await openDeck(page);
     await page.getByTestId("token-MF1").click();
+    // #455 A2: 폰 덱셋팅은 토큰 탭이 **선수 메뉴**를 연다 — 지시 레일로 가는 길은 [한마디 쓰기] 다.
+    // ⚠️ AC5 가 재는 것은 그대로다: "레일이 열렸을 때 역할·칩이 **기본 접힘**인가". 메뉴는 그 앞에
+    // 한 걸음을 더한 것이지 접힘의 뜻을 바꾸지 않는다(오히려 세부조정은 한 겹 더 뒤로 갔다).
+    await passPlayerMenu(page);
     await expect(page.getByTestId("rail-prompt-input")).toBeVisible();
     await expect(page.getByTestId("rail-tactical-layer")).toBeHidden();
     await page.getByTestId("rail-tune-toggle").click();

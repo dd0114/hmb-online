@@ -299,6 +299,67 @@
   }
 }
 
+/* ══ #455 A2 — 선수 토큰 탭 메뉴(시트) ═══════════════════════════════════════════
+ *
+ * hero 확정 ④ = **시트**(아래에서 올라옴). 위 `.sheetBox` 를 그대로 쓰고 내용만 다르다 —
+ * 껍데기를 따로 만들면 보유 선수 시트와 모양이 갈라지고, ≥1024 모달 분기도 두 벌이 된다.
+ * ⚠️ **높이를 박지 마라.** 4항목이 자기 크기만 갖고(=시트가 짧다) 그 위로 경기장이 남는 것이
+ *    이 화면에서 시트를 고른 이유다(계약 ③ 이 `상자 위 여백 > 화면의 40%` 로 그걸 잰다).
+ */
+.menuBox {
+  gap: 0;
+}
+.menuList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* 손가락 표적 — 폰에서 네 항목이 붙어 서므로 44 보다 넉넉하게(오탭이 곧 다른 동작이다). */
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 14.5px;
+  text-align: left;
+}
+.menuItem:disabled {
+  opacity: 0.45;
+}
+/* [닫기]는 나머지 셋과 **다른 종류**다(아무 것도 안 바꾼다) → 강조를 뺀다. */
+.menuItemMuted {
+  color: var(--text-muted);
+  background: none;
+}
+.menuIcon {
+  flex: none;
+  width: 22px;
+  text-align: center;
+  font-size: 14px;
+}
+.menuLabel {
+  font-weight: 700;
+}
+.menuHint {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: right;
+}
+.menuSub {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 /* ══ #455 A1 — 책갈피 탭 레이아웃 (덱셋팅 전용, `layout="tabs"`) ══════════════════════
  *
  * hero 확정 ③⑤: 경기장은 **68 상한**까지 커지고, 그 아래 남는 세로를 탭 3개가 전부 가져간다.

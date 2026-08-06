@@ -63,6 +63,50 @@ export async function bootstrap(page: Page, slots: unknown[], teamPrompt: string
     }
     return r.fulfill(json(state.deck));
   });
+  /**
+   * `GET /api/growth/card/{id}` — **강화 시트가 열리려면 있어야 한다** (#455 A2 ⑥).
+   *
+   * ⚠️ 이 목이 없던 동안 덱 화면의 강화 진입점은 **구조적으로 도달 불가능**이었다: 캐치올이 `{}`
+   * 를 주면 `CardGrowthDetail` 이 `card.potential.unlocked` 에서 던지고 컴포넌트가 통째로
+   * 언마운트된다(실측 `pageerror: Cannot read properties of undefined (reading 'unlocked')`).
+   * 레일의 [선수 강화]도 **같은 증상**이라 A2 가 만든 문제가 아니고, 그래서 이 목이 없으면
+   * 그 동선은 어느 덱 스펙에서도 검증할 수 없었다. **목은 계약의 일부다**(#342 의 교훈) —
+   * 모양은 서버 실물(`growth-mock.spec.ts` 픽스처)을 따른다.
+   */
+  await page.route(
+    (url) => url.pathname.startsWith("/api/growth/card/"),
+    (r) => {
+      const id = new URL(r.request().url()).pathname.split("/").pop()!;
+      const p = PLAYERS.find((x) => x.id === id) ?? PLAYERS[0]!;
+      const a = p.attributes as unknown as Record<string, number>;
+      const keys = Object.keys(a);
+      return r.fulfill(
+        json({
+          playerId: p.id,
+          grade: p.grade,
+          star: 1,
+          attributes: a,
+          prePotential: a,
+          base: a,
+          caps: Object.fromEntries(keys.map((k) => [k, 73])),
+          statAdd: {},
+          cardLevel: 1,
+          cardXp: 0,
+          xpToNext: 200,
+          maxLevel: 40,
+          growCeil: 72,
+          starCeilBonus: 1,
+          attrHardCap: 99,
+          startLo: 50,
+          pendingChoices: [],
+          statLevels: Object.fromEntries(keys.map((k) => [k, { lv: 0, xp: 0 }])),
+          potential: { unlocked: false, tier: "RARE", maxTier: "EPIC", lines: [], rollsSinceTierUp: 0, ceilingAt: 9 },
+          ovr: 60,
+          completion: 0.3,
+        }),
+      );
+    },
+  );
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "guest");

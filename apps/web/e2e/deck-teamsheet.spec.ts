@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
-import { openCandidatesTab, openTuneTab } from "./deck-tabs";
+import { openCandidatesTab, openTuneTab, passPlayerMenu } from "./deck-tabs";
 
 /**
  * 팀 시트 재편 R1 (이슈 #106) route-mock 스모크 — 백엔드 없이 vite dev + page.route 로 /api 를
@@ -196,10 +196,14 @@ test("R1→#244 슬롯 탭 → **보유 선수 시트**(포지션 자동 필터)
   await expect(page.getByTestId("rail-title")).toHaveText("미드하나");
 
   // 자리 교체 = 레일의 [이 자리 선수 바꾸기] → 같은 시트에서 **이미 배치된 선수**도 고를 수 있다
-  await page.getByTestId("board-slot-starter-0").click();
+  await page.getByTestId("board-slot-starter-0").click(); // ← **빈** 자리라 그대로 시트가 열린다(메뉴 아님)
   await page.getByTestId("pick-GK1").click();
   await expect(page.getByTestId("starter-count")).toHaveText("선발 2/11");
   await page.getByTestId("token-MF1").click();
+  // #455 A2: 폰 덱셋팅(390)은 **찬** 토큰/슬롯 탭이 선수 메뉴를 연다 — 지시 레일로 가는 길은
+  // 그 메뉴의 [한마디 쓰기] 다(빈 자리는 예전 그대로 보유 선수 시트). 헬퍼가 화면이 선언한
+  // `data-layout` 을 읽어 그 화면에서 참인 경로만 밟는다(데스크탑이면 메뉴가 없다는 것까지 단언).
+  await passPlayerMenu(page);
   await page.getByTestId("rail-swap-player").click();
   await expect(page.getByTestId("pool-sheet")).toBeVisible();
   // 자리에서 연 시트는 그 포지션(MF)으로 필터되어 있다 → 전체로 풀고 이미 배치된 GK1 을 고른다.
@@ -313,18 +317,24 @@ test("R2 r1: 토큰을 **다시** 탭해도 해제되지 않고 그 선수 지�
 
   // 채워진 슬롯(slotIndex 6 = MF2 "미드둘")을 탭 → 배치가 아니라 **선택** 경로 → 독이 펼쳐진다.
   await page.getByTestId("board-slot-starter-6").click();
+  // #455 A2: 폰 덱셋팅(390)은 토큰/찬 슬롯 탭이 **선수 메뉴**를 연다 — 지시 레일로 가는 길은
+  // 그 메뉴의 [한마디 쓰기] 다. 헬퍼가 화면이 선언한 `data-layout` 을 읽어 그 화면에서 참인
+  // 경로만 밟는다(데스크탑이면 메뉴가 없다는 것까지 단언한다).
+  await passPlayerMenu(page);
   await expect(page.getByTestId("rail-title")).toHaveText("미드둘");
   await page.getByTestId("rail-close").click();
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
 
   // 다른 토큰(MF1)을 1탭 → 그 선수 지시가 열린다
   await page.getByTestId("token-MF1").click();
+  await passPlayerMenu(page);
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "player");
   await expect(page.getByTestId("rail-title")).toHaveText("미드하나");
   await expect(page.getByTestId("rail-prompt-input")).toBeVisible();
 
   // r1 계약 본체: **같은** 토큰을 다시 탭해도 팀 지시로 튕기지 않는다(재탭 = 해제 아님).
   await page.getByTestId("token-MF1").click();
+  await passPlayerMenu(page);
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "player");
   await expect(page.getByTestId("rail-title")).toHaveText("미드하나");
 
@@ -474,6 +484,7 @@ test("R3a m1 × 모바일: 390 에서 문장이 한마디로 옮겨지고 안내
   await openDeck(page);
 
   await page.getByTestId("token-MF1").click();
+  await passPlayerMenu(page);
   await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("rail-chip-press").click();
@@ -838,6 +849,7 @@ test("R3b C: 모바일 44px 탭 타깃 — 스텝·칩·역할·세부조정 토
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
   await page.getByTestId("token-MF1").click();
+  await passPlayerMenu(page);
   await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
 
   const ids = ["rail-tune-toggle", "rail-role-attack", "rail-chip-press"];

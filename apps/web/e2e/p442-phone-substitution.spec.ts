@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
-import { openCandidatesTab, openCandidatesTabIfPresent } from "./deck-tabs";
+import { openCandidatesTab, openCandidatesTabIfPresent, selectBoardPlayer } from "./deck-tabs";
 
 /** 실화면 증빙 — DOM 계약이 초록인데 어포던스가 안 보이는 축은 캡처로만 잡힌다(#439 `.tokenDragging`). */
 const SMOKE_DIR = new URL("../.smoke/", import.meta.url).pathname;
@@ -247,7 +247,10 @@ test("④ 경기전 — 이 동선으로도 벤치 밖 선수는 들어올 수 �
 test("⑤ 덱셋팅 — 빈 슬롯을 탭하면 맞바꾸기가 아니라 **배치**다(아무도 밀려나지 않는다)", async ({ page }) => {
   await openDeck(page);
   // 빈 자리는 **제품 경로로** 만든다(선발 11 저장 가능 상태에서 출발 → 레일에서 제거).
-  await page.getByTestId("token-MF4").tap();
+  // #455 A2 — 폰 덱셋팅은 토큰 탭이 **선수 메뉴**를 연다. 지시 칸으로 가는 경로는 그 메뉴의
+  // [한마디 쓰기] 이고, 헬퍼가 화면의 `data-layout` 을 읽어 그 화면에서 참인 경로를 단언한다.
+  // (실터치 유지 — `touch: true` 는 `.tap()` 만 쓴다. 이 파일에 `page.mouse` 는 여전히 없다.)
+  await selectBoardPlayer(page, "MF4", { touch: true });
   await page.getByTestId("rail-remove-player").tap();
   await expect(page.getByTestId("starter-count")).toHaveText(/10\/11/);
   const before = await boardMap(page);
@@ -365,8 +368,25 @@ test("⑨-b 덱셋팅 화면 전수 — 같은 규칙(빈 자리·Auto 힌트 �
   await openDeck(page);
   expect(await bannedWords(page, SCAN_ROOTS), "덱셋팅 기본 상태").toEqual([]);
 
-  // 빈 자리를 만들어 Auto 힌트가 **활성 문구**로 갈리는 갈래도 태운다(둘 다 문구가 다르다).
+  /**
+   * ★ **새 UI 면은 스캔 영역에 들어와야 한다** (#455 A2 — 선수 메뉴 시트).
+   * `SCAN_ROOTS` 는 `deck-editor` + `pool-sheet` 인데 메뉴는 **또 다른 모달**이라 그 둘 밖에 산다.
+   * 스캔 영역을 안 넓히면 새 화면이 생길 때마다 용어 규칙이 조용히 적용되지 않는다 —
+   * 아래 "화면 **전체**" 단언이 그것을 덮지만, 그건 **메뉴가 열려 있을 때만** 참이므로
+   * 여기서 한 번 열어 둔 채로 잰다.
+   */
   await page.getByTestId("token-MF4").tap();
+  await expect(page.getByTestId("player-menu")).toHaveCount(1);
+  expect(await bannedWords(page, ["player-menu"]), "선수 메뉴가 열린 상태").toEqual([]);
+  expect(await bannedWords(page, null), "선수 메뉴를 포함한 화면 전체").toEqual([]);
+  await page.getByTestId("pmenu-close").tap();
+  await expect(page.getByTestId("player-menu")).toHaveCount(0);
+
+  // 빈 자리를 만들어 Auto 힌트가 **활성 문구**로 갈리는 갈래도 태운다(둘 다 문구가 다르다).
+  // #455 A2 — 폰 덱셋팅은 토큰 탭이 **선수 메뉴**를 연다. 지시 칸으로 가는 경로는 그 메뉴의
+  // [한마디 쓰기] 이고, 헬퍼가 화면의 `data-layout` 을 읽어 그 화면에서 참인 경로를 단언한다.
+  // (실터치 유지 — `touch: true` 는 `.tap()` 만 쓴다. 이 파일에 `page.mouse` 는 여전히 없다.)
+  await selectBoardPlayer(page, "MF4", { touch: true });
   await page.getByTestId("rail-remove-player").tap();
   await expect(page.getByTestId("starter-count")).toHaveText(/10\/11/);
   expect(await bannedWords(page, SCAN_ROOTS), "빈 자리 있는 상태").toEqual([]);
@@ -397,7 +417,10 @@ test("⑩ 덱셋팅 — 미배치 선수를 찬 자리에 넣으면 밀려난 �
   await openDeck(page);
 
   // 밀려날 선수(MF4, 선발 8)에 지시를 남긴다 — 그 문장이 살아남는지가 이 결정의 취지다.
-  await page.getByTestId("token-MF4").tap();
+  // #455 A2 — 폰 덱셋팅은 토큰 탭이 **선수 메뉴**를 연다. 지시 칸으로 가는 경로는 그 메뉴의
+  // [한마디 쓰기] 이고, 헬퍼가 화면의 `data-layout` 을 읽어 그 화면에서 참인 경로를 단언한다.
+  // (실터치 유지 — `touch: true` 는 `.tap()` 만 쓴다. 이 파일에 `page.mouse` 는 여전히 없다.)
+  await selectBoardPlayer(page, "MF4", { touch: true });
   await page.getByTestId("rail-prompt-input").fill("측면을 넓게 벌려라");
   await expect(page.getByTestId("rail-prompt-input")).toHaveValue("측면을 넓게 벌려라");
 
@@ -420,7 +443,10 @@ test("⑩ 덱셋팅 — 미배치 선수를 찬 자리에 넣으면 밀려난 �
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
 
   // 지시 보존 — 밀려난 선수를 다시 눌러 그 문장이 그대로인지 본다.
-  await page.getByTestId("token-MF4").tap();
+  // #455 A2 — 폰 덱셋팅은 토큰 탭이 **선수 메뉴**를 연다. 지시 칸으로 가는 경로는 그 메뉴의
+  // [한마디 쓰기] 이고, 헬퍼가 화면의 `data-layout` 을 읽어 그 화면에서 참인 경로를 단언한다.
+  // (실터치 유지 — `touch: true` 는 `.tap()` 만 쓴다. 이 파일에 `page.mouse` 는 여전히 없다.)
+  await selectBoardPlayer(page, "MF4", { touch: true });
   await expect(page.getByTestId("rail-prompt-input")).toHaveValue("측면을 넓게 벌려라");
 });
 

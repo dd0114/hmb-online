@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { mockAll, PLAYERS } from "./p286-mocks";
+import { passPlayerMenu } from "./deck-tabs";
 import { CHAR_ART_MIN_GRADE, showsCharacterArt } from "../src/common/icon-policy";
 
 /**
@@ -25,6 +26,10 @@ async function openRail(page: import("@playwright/test").Page) {
   await page.goto("/deck");
   await page.getByTestId("tactics-board").waitFor();
   await page.locator('[data-testid^="token-"]').nth(3).click();
+  // #455 A2: 이 파일은 `beforeEach` 가 390 으로 내리므로 덱셋팅이 **탭 레이아웃**이고, 토큰 탭은
+  // 곧바로 레일을 열지 않고 **선수 메뉴**를 연다. 헬퍼가 화면이 선언한 `data-layout` 을 읽어
+  // 그 화면에서 참인 경로만 밟는다(stack 이면 메뉴가 없다는 것까지 단언한다).
+  await passPlayerMenu(page);
   await page.getByTestId("rail-title").waitFor();
 }
 

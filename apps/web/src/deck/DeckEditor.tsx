@@ -18,7 +18,7 @@ import { findPlayerSlot, removePlayer, setPrompt, type DeckDraft, type SlotRole 
 import { MOUSE_ACTIVATION_PX, TOUCH_ACTIVATION_MS, TOUCH_TOLERANCE_PX } from "./drag-gesture";
 import { movePlayerToSlot, type EditorState } from "./tactics-logic";
 import { slotPosition } from "./sheet-metrics";
-import { teamPower } from "./team-power";
+import { playerOverall, teamPower } from "./team-power";
 import {
   parseDroppableId,
   playerIdFromDragId,
@@ -55,6 +55,45 @@ const DECK_TABS = [
   { id: "tune", icon: "⚙", label: "세부 전술", rank: 3 },
 ] as const;
 type DeckTabId = (typeof DECK_TABS)[number]["id"];
+
+/**
+ * 선수 토큰을 탭하면 뜨는 **메뉴 시트**(#455 A2 ①④, hero 확정 — 목업 A안).
+ *
+ * ⚠️ **원문 두 항목을 합친 결과다.** hero 원안의 '위치 이동'·'선수 이동'은 화면에서 **같은 동작**
+ * (그 선수를 다른 자리로 보낸다)이라 하나로 합쳤고, 비워진 자리에 **[선수 정보]**(강화 진입점)가
+ * 들어갔다. 되돌리지 마라 — 되돌리면 같은 일을 하는 항목이 두 개인 메뉴가 된다.
+ *
+ * 각 항목이 하는 일은 **이미 있는 동선을 부르는 것뿐**이다(새 상태기계를 만들지 않는다):
+ *   · `move` → `startAssign`  = #442 R1 엔트리 대기(슬롯 탭 → `movePlayerToSlot`)
+ *   · `say`  → `selectPlayer` = #244 A′ 구 토큰 탭이 하던 그 일(탭 레이아웃이면 [전체 지시]로)
+ *   · `info` → `onOpenGrowth` = 레일 [선수 강화](`rail-growth-open`)와 **같은 컴포넌트**(#286 W3)
+ *   · `close`→ 메뉴만 닫는다(아무 것도 안 바꾼다 — 그게 이 항목의 전부다)
+ *
+ * ⚠️ 항목 구성·라벨·힌트는 **조정 포인트**다(hero 컨펌 밖) — 이 배열 한 줄이 그 손잡이다.
+ * ⚠️ 힌트에 `투입`·`교체` 를 쓰지 마라(#442 R4-A 용어축). 이 화면에는 경기장이 없어서 그 말이
+ *    거짓이 되고, `p442` ⑨-b 전수 스캔이 그것을 잡는다. 목업 힌트 *"경기장·벤치에서 고르기"* 를
+ *    **`선발·벤치에서 고르기`** 로 바꾼 것이 그 이유다(보드의 두 구역을 그 화면 말로 부른다).
+ */
+const PLAYER_MENU = [
+  { id: "move", icon: "⇄", label: "자리 옮기기", hint: "선발·벤치에서 고르기" },
+  { id: "say", icon: "💬", label: "한마디 쓰기", hint: "" },
+  { id: "info", icon: "👤", label: "선수 정보", hint: "스탯·강화" },
+  { id: "close", icon: "✕", label: "닫기", hint: "" },
+] as const;
+type PlayerMenuId = (typeof PLAYER_MENU)[number]["id"];
+
+/**
+ * 자리 지정 대기(#442 R1)에 들어온 **이유**. 같은 상태·같은 동작인데 유저가 시킨 일이 다르다.
+ *   · `"entry"` — 목록의 [엔트리]: **명단에 넣는다**(#442 R3-A 확정 문구가 그것을 말한다)
+ *   · `"move"`  — 선수 메뉴의 [자리 옮기기](#455 A2): **이미 명단에 있는 선수를 옮긴다**
+ *
+ * ⚠️ **"이미 명단에 있나"로 추론하지 마라 — 실제로 그렇게 짰다가 경기전이 깨졌다.**
+ * 경기전 후보는 **전원 벤치 선수 = 이미 스쿼드 안**이라(#439 R2) 그 추론이 참이 되고, 안내가
+ * hero 확정 문구 대신 "보낼 자리를 누르세요"로 바뀐다(`p442` ①⑥ 가 실제로 red 였다).
+ * 그 화면이 채우는 "명단"은 **선발 11** 이고(#442 R3-B 표) 벤치 선수를 거기 넣는 것은 여전히
+ * *엔트리* 다. 의도는 상태에서 파생되지 않는다 — 유저가 어느 손잡이를 눌렀느냐가 곧 의도다.
+ */
+type AssignIntent = "entry" | "move";
 
 export interface DeckEditorProps {
   /**
@@ -161,6 +200,20 @@ export interface DeckEditorProps {
    */
   layout?: "stack" | "tabs";
   /**
+   * **선수 토큰 탭 = 메뉴**(#455 A2 ①④). 기본 `false` = 지금까지의 모양(탭이 곧 "그 선수 지시").
+   *
+   * ⚠️ **`layout` 과 다른 축이라 별도 prop 이다.** 오늘은 `DeckPage` 가 둘을 같이 켜지만(폰 덱셋팅),
+   * 하나로 묶으면 다음에 다른 화면이 `layout="tabs"` 를 켜는 순간 메뉴가 **조용히 따라간다**.
+   * 화면 구별을 `poolScope`·`placementLocked` 조합으로 추론하지 않는 것과 같은 이유다(A1 머리말).
+   *
+   * ⚠️ **경기전·감독시간은 안 켠다.** 감독시간은 `boardMode` 로 **탭의 주인이 호출부**이고
+   * (교체 규칙 ≤3·GK≥1 과 전송을 그쪽이 소유한다) `placementLocked` 라 [자리 옮기기]가 열 수 있는
+   * 것이 없다 — 메뉴를 켜면 4항목 중 둘이 아무 일도 못 하는 껍데기가 된다. 경기전은 배치가
+   * 열려 있지만 확정 계약(#455 comment 5196070445)이 **폰 덱셋팅 개편**이라 범위 밖이다.
+   * 그 두 화면의 무회귀는 `p439`·`p276`·`p294` 가 잰다("메뉴를 모든 화면에" 변이가 거기서 죽는다).
+   */
+  playerMenu?: boolean;
+  /**
    * 탭 레이아웃의 **[세부 전술] 탭 꼬리**에 붙일 것(#455 A1) — 지금은 팀 사기 위젯.
    *
    * ⚠️ 왜 여기냐: 그 위젯은 원래 에디터 **아래 형제**였고 폰에서 **68px** 를 먹는다. 68 상한
@@ -241,6 +294,7 @@ export function DeckEditor(props: DeckEditorProps) {
     promptDisabled,
     promptScope = "deck",
     layout = "stack",
+    playerMenu = false,
     teamExtra,
     teamPanelNotice,
   } = props;
@@ -282,7 +336,16 @@ export function DeckEditor(props: DeckEditorProps) {
    * 자리가 없다**. 여기에 `if (poolScope === "bench")` 같은 두 번째 게이트를 만들면 규칙이
    * 두 곳에 적히고, 그게 #439 major-2 가 났던 방식이다.
    */
-  const [assignPlayerId, setAssignPlayerId] = useState<string | null>(null);
+  const [assign, setAssign] = useState<{ playerId: string; intent: AssignIntent } | null>(null);
+  const assignPlayerId = assign?.playerId ?? null;
+  /**
+   * 선수 메뉴가 떠 있는 대상 (#455 A2). `null` = 안 떠 있다.
+   *
+   * ⚠️ **메뉴를 여는 것이 곧 선택은 아니다.** 여기서 `selectPlayer` 까지 같이 부르면 [한마디 쓰기]가
+   * 사실상 no-op 이 되고(이미 그 선수 지시가 열려 있다), 그 항목을 지우는 변이가 살아남는다.
+   * 누구의 메뉴인지는 **시트 제목**이 말한다.
+   */
+  const [menuPlayerId, setMenuPlayerId] = useState<string | null>(null);
 
   // Single DndContext spans the board slots + bench (token sources) AND the owned-player pool list.
   // MouseSensor(터치 아님) + TouchSensor 로 분리한다 — PointerSensor 를 쓰면 터치에서도
@@ -447,8 +510,8 @@ export function DeckEditor(props: DeckEditorProps) {
    * 하나뿐이었고, 스쿼드가 꽉 찬 상태(=경기전 명단 교체)에서는 막다른 안내문이 전부였다.
    * ⛔ 드래그를 **대체하지 않는다** — 데스크탑 포인터 드래그는 그대로다(`deck-list-dnd.spec.ts`).
    */
-  function startAssign(playerId: string) {
-    setAssignPlayerId(playerId);
+  function startAssign(playerId: string, intent: AssignIntent) {
+    setAssign({ playerId, intent });
     setPickNote(null);
     closeSheet();
   }
@@ -471,7 +534,7 @@ export function DeckEditor(props: DeckEditorProps) {
     if (assignPlayerId && !boardMode) {
       mutateDraft(movePlayerToSlot(draft, assignPlayerId, slot.role, slot.slotIndex));
       selectPlayer(assignPlayerId);
-      setAssignPlayerId(null);
+      setAssign(null);
       return;
     }
     // 교체·자리 바꾸기 모드: 탭은 전부 호출부(감독시간)로 넘긴다 — 규칙·전송은 그쪽이 소유한다.
@@ -480,12 +543,44 @@ export function DeckEditor(props: DeckEditorProps) {
       return;
     }
     if (occupant) {
+      /**
+       * #455 A2 ① — **메뉴가 이 탭 앞에 선다**(폰 덱셋팅뿐, `playerMenu`).
+       * 구 동작(= 지금도 경기전·감독시간·데스크탑)은 탭이 곧 "그 선수 지시"였고, 그 일은
+       * 이제 메뉴의 [한마디 쓰기]가 한다. 여기서 선택까지 같이 하지 않는 이유는
+       * `menuPlayerId` 선언부에 있다.
+       */
+      if (playerMenu) {
+        setMenuPlayerId(occupant.playerId);
+        return;
+      }
       selectPlayer(occupant.playerId);
       return;
     }
     // 배치 잠금이면 빈 자리는 아무 일도 하지 않는다(새 선수를 넣는 화면이 아니다).
     if (placementLocked) return;
     openSheet(slot);
+  }
+
+  /**
+   * 선수 메뉴 항목 실행 (#455 A2 ①). **여기서 새 동작을 만들지 않는다** — 네 항목 전부
+   * 이미 있는 동선(`startAssign` · `selectPlayer` · `onOpenGrowth`)을 부르기만 한다.
+   * 새로 적으면 같은 규칙이 두 곳에 살고, 그게 #439 major-2 가 났던 방식이다.
+   */
+  function runPlayerMenu(id: PlayerMenuId, playerId: string) {
+    setMenuPlayerId(null);
+    if (id === "move") {
+      startAssign(playerId, "move");
+      return;
+    }
+    if (id === "say") {
+      selectPlayer(playerId);
+      return;
+    }
+    if (id === "info") {
+      const player = playersById.get(playerId);
+      if (player) onOpenGrowth?.(player);
+    }
+    // "close" = 아무 것도 하지 않는다(위에서 이미 닫혔다).
   }
 
   /**
@@ -584,6 +679,9 @@ export function DeckEditor(props: DeckEditorProps) {
    */
   const names = useMemo(() => buildPlayerNames(playersById), [playersById]);
   const selectedSlotData = selection.playerId ? findPlayerSlot(draft, selection.playerId) : undefined;
+  /** 메뉴가 떠 있는 선수와 그 자리(제목의 부제 = 어디에 있는 누구인가). */
+  const menuPlayer = menuPlayerId ? playersById.get(menuPlayerId) : undefined;
+  const menuSlot = menuPlayerId ? findPlayerSlot(draft, menuPlayerId) : undefined;
   const railRelation = selectedPlayer ? relationOf(relations, selectedPlayer.id) : undefined;
 
   /** 시트의 포지션 자동 필터 — 자리에서 열었으면 그 자리 포지션. */
@@ -641,15 +739,33 @@ export function DeckEditor(props: DeckEditorProps) {
                 `role="status"` = 시각 신호(슬롯 맥박)와 같은 사실을 스크린리더에도 말한다. */}
             {assignPlayerId && (
               <div className={styles.assignBar} data-testid="assign-bar" role="status">
+                {/* ⚠️ **말이 두 갈래다** (#455 A2 ⑤). 이 대기 상태에 들어오는 문은 둘이고 뜻이 다르다:
+                    · 목록의 [엔트리](#442 R1) — 아직 **명단 밖** 선수를 데려온다 → "…엔트리"
+                    · 선수 메뉴의 [자리 옮기기](#455 A2) — **이미 명단에 있는** 선수를 옮긴다
+                    "명단에서 바꿀 선수를 선택하세요"를 후자에 그대로 쓰면 이미 명단에 있는 사람을
+                    명단에 넣으라는 말이 된다. **갈래는 `AssignIntent` 가 들고 있다** — draft 상태로
+                    되추론하면 경기전이 깨진다(그 타입 선언부에 실측 red 가 적혀 있다). */}
                 <b className={styles.assignWho}>
-                  {names.has(assignPlayerId) ? names.full(assignPlayerId) : "선수"} 엔트리
+                  {names.has(assignPlayerId) ? names.full(assignPlayerId) : "선수"}{" "}
+                  {assign?.intent === "move" ? "자리 옮기기" : "엔트리"}
                 </b>
-                <span className={styles.assignHint}>명단에서 바꿀 선수를 선택하세요</span>
+                <span className={styles.assignHint}>
+                  {/* ⚠️ **짧게 써라 — 이 줄은 한 줄 말줄임이다**(`.assignHint`). 첫판은
+                      *"옮길 자리를 누르세요 — 선수가 있으면 맞바꿉니다"*(23자) 였는데 390px 실캡처에서
+                      `— 선수가 …` 로 잘려 **정작 중요한 '맞바꾼다'가 안 보였다**. DOM 계약은 그때도
+                      초록이다(`toContainText` 는 시각적 잘림을 모른다 — #439 `.tokenDragging` 부류).
+                      ⚠️ **이 갈래가 더 빡빡하다**(실측 390×844 `scrollWidth`/`clientWidth`):
+                      `보낼 자리를 누르세요` **169/169**(안 잘림) vs 엔트리 갈래
+                      `명단에서 바꿀 선수를 선택하세요` **204/204**(안 잘림) — 앞 `.assignWho` 가
+                      "미드하나 자리 옮기기"로 길어지며 힌트 자리를 35px 먹기 때문이다.
+                      즉 옛 문구가 잘린 적은 없고, **여기서만** 예산이 줄었다. 문구를 늘릴 거면 이 수치부터 재라. */}
+                  {assign?.intent === "move" ? "보낼 자리를 누르세요" : "명단에서 바꿀 선수를 선택하세요"}
+                </span>
                 <button
                   type="button"
                   className={styles.assignCancel}
                   data-testid="assign-cancel"
-                  onClick={() => setAssignPlayerId(null)}
+                  onClick={() => setAssign(null)}
                 >
                   취소
                 </button>
@@ -976,12 +1092,73 @@ export function DeckEditor(props: DeckEditorProps) {
             /* [엔트리] = 자리를 보드에서 고르는 동선 (#442 R1). 후보는 `poolPlayers` 가 곧 규칙이고,
                그중 **이미 명단에 있는 선수**를 잠그는 판정도 위 `assignLockedIds` 한 곳에서 온다
                (#442 R3-B) — 여기서 다시 계산하지 않는다. */
-            onAssign={startAssign}
+            onAssign={(playerId: string) => startAssign(playerId, "entry")}
             assignLockedIds={assignLockedIds}
             conditions={conditions}
             autoFilter={sheetFilter}
             inSheet
           />
+        </Modal>
+      )}
+
+      {/**
+       * 선수 메뉴 (#455 A2 ①④) — **아래에서 올라오는 시트**.
+       *
+       * ⚠️ 시트 껍데기는 보유 선수 시트와 **같은 클래스**(`sheetBackdrop`/`sheetBox`)를 쓴다.
+       * 그게 hero 확정 ④ 의 *"모달 경로는 코드에 남겨 둔다(폭 기준 분기 여지)"* 에 해당하는
+       * 자리다 — 그 클래스에는 이미 `@media (min-width:1024px)` 에서 **가운데 정렬 모달**로
+       * 바뀌는 분기가 있다. **정직하게**: 이 메뉴는 오늘 폭 ≤899(폰 덱셋팅)에만 뜨므로
+       * 그 분기가 메뉴에 대해서는 **한 번도 발화하지 않는다**. 데스크탑에서 메뉴를 켤 날이 오면
+       * 그 미디어쿼리가 그대로 모달을 만든다(새로 만들 것이 없다).
+       */}
+      {menuPlayerId && (
+        <Modal
+          onClose={() => setMenuPlayerId(null)}
+          labelledBy="player-menu-title"
+          overlayClassName={styles.sheetBackdrop}
+          overlayTestId="player-menu-backdrop"
+          className={`${styles.sheetBox} ${styles.menuBox}`}
+          testId="player-menu"
+        >
+          <div className={styles.sheetHead}>
+            <b id="player-menu-title" data-testid="player-menu-title" className={styles.sheetTitle}>
+              {/* 이름은 초크포인트로만(#406 요구 6). 시트 제목은 한 줄을 통째로 쓰는 넓은 자리 → 풀네임. */}
+              {names.has(menuPlayerId) ? names.full(menuPlayerId) : "선수"}
+              <span className={styles.menuSub}>
+                {menuPlayer ? `${menuPlayer.position} · 전력 ${Math.round(playerOverall(menuPlayer.attributes))}` : ""}
+                {menuSlot
+                  ? ` · ${menuSlot.role === "starter" ? "선발" : "벤치"} ${menuSlot.slotIndex + 1}번`
+                  : ""}
+              </span>
+            </b>
+          </div>
+          <div className={styles.menuList}>
+            {PLAYER_MENU.map((item) => {
+              /* [선수 정보]는 강화 시트를 여는 항목이라 **열 것이 없으면 눌리지 않는다**
+                 (레일 `rail-growth-open` 과 같은 판정 — 경기 중에는 능력치가 도중에 바뀌면 안 된다).
+                 ⚠️ 항목을 **숨기지는 않는다**: 메뉴 모양이 상태에 따라 4↔3 으로 흔들리면 유저가
+                 자리를 외울 수 없고, "A안 = 4항목"이라는 확정 계약도 상태 의존이 된다. */
+              const growthOff = !onOpenGrowth || Boolean(growthLockedReason);
+              const disabled = item.id === "info" && growthOff;
+              const hint = item.id === "info" ? (growthLockedReason ?? item.hint) : item.hint;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`${styles.menuItem} ${item.id === "close" ? styles.menuItemMuted : ""}`}
+                  data-testid={`pmenu-${item.id}`}
+                  disabled={disabled}
+                  onClick={() => runPlayerMenu(item.id, menuPlayerId)}
+                >
+                  <span className={styles.menuIcon} aria-hidden="true">
+                    {item.icon}
+                  </span>
+                  <span className={styles.menuLabel}>{item.label}</span>
+                  {hint && <span className={styles.menuHint}>{hint}</span>}
+                </button>
+              );
+            })}
+          </div>
         </Modal>
       )}
     </DndContext>

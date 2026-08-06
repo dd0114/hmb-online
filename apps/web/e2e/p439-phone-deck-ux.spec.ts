@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { openCandidatesTab } from "./deck-tabs";
+import { openCandidatesTab, selectBoardPlayer } from "./deck-tabs";
 
 /**
  * #439 — 폰 덱·선발 UX 근본 수리. **실제 폰 크기 + 실터치**로만 판정한다.
@@ -342,7 +342,9 @@ async function clickAuto(page: Page) {
  * 진입 조건 + 그 조건을 만드는 경로**를 같이 태운다(구 픽스처는 둘 다 건너뛰었다).
  */
 async function vacateSlot(page: Page, playerId: string) {
-  await page.getByTestId(`token-${playerId}`).click();
+  // #455 A2: 폰 덱셋팅은 토큰 탭이 **선수 메뉴**를 연다(경기전은 예전 그대로). 화면이 선언한
+  // `data-layout` 을 읽어 **그 화면에서 참인 경로**를 단언하며 밟는다 — `deck-tabs.ts` 머리말.
+  await selectBoardPlayer(page, playerId);
   await expect(page.getByTestId("rail-remove-player")).toBeVisible();
   await page.getByTestId("rail-remove-player").click();
   await expect(page.getByTestId(`token-${playerId}`), `${playerId} 가 덱에서 빠져야 한다`).toHaveCount(0);
@@ -350,7 +352,7 @@ async function vacateSlot(page: Page, playerId: string) {
 
 /** 레일에서 그 선수의 프롬프트 원문을 읽는다(토큰 탭 → 입력칸 value). */
 async function promptOf(page: Page, playerId: string): Promise<string> {
-  await page.getByTestId(`token-${playerId}`).click();
+  await selectBoardPlayer(page, playerId); // #455 A2 — 위 `vacateSlot` 과 같은 이유
   await expect(page.getByTestId("rail-prompt-input")).toBeVisible();
   return page.getByTestId("rail-prompt-input").inputValue();
 }
