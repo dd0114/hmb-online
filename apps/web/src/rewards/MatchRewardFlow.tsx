@@ -76,33 +76,63 @@ export function MatchRewardFlow({ handoff, onDone }: MatchRewardFlowProps) {
   const { data: match } = useMatch(handoff.matchId);
   const resultQuery = useMatchResult(handoff.matchId);
   const { data: me } = useMe();
-  /**
-   * "지금 남은 것"의 권위 — 봉투의 `pendingChoices` 는 **정산 시점 스냅샷**이라 이미 고른 것도
-   * 그대로 들어 있다(`types.bundleChoicesOf` 주석). 이걸 안 교차하면 강화탭에서 먼저 고른 선수가
-   * 여기 또 선다.
-   */
-  const { data: openChoices } = usePendingChoices(undefined, true);
 
   /*
-   * 조회가 **끝났나**(성공이든 실패든). 전역 쿼리 클라이언트가 `retry: false` 라 실패는 즉시
+   * 결과 조회가 **끝났나**(성공이든 실패든). 전역 쿼리 클라이언트가 `retry: false` 라 실패는 즉시
    * 확정된다(`api/query-client.ts`). 도착 전에 카드 수를 세면 "보상이 없다"로 읽어 유저가
    * 보상을 통째로 건너뛴다 — 이 게이트가 그 경주를 없앤다.
    */
-  const settled = !resultQuery.isPending;
+  const resultSettled = !resultQuery.isPending;
   const result = resultQuery.data;
+  const bundle = useMemo(() => rewardBundleOf(result), [result]);
+  /** 봉투가 기록한 선택권(정산 시점 스냅샷) — **이미 고른 것도 들어 있다**. */
+  const snapshotChoices = useMemo(() => bundleChoicesOf(bundle), [bundle]);
+
+  /**
+   * "지금 남은 것"의 권위 — 봉투의 `pendingChoices` 는 스냅샷이라 유저가 고른 뒤에도 그대로다
+   * (`types.bundleChoicesOf` 주석). 이걸 안 교차하면 강화탭에서 먼저 고른 선수가 여기 또 선다.
+   *
+   * ⚠️ **봉투에 선택권이 없으면 아예 안 부른다**(m3) — 연습·구 매치까지 매 종료마다 한 번 더 치던
+   * 왕복이 사라진다. 대신 `enabled:false` 인 쿼리는 `isPending` 이 **영원히 참**이라(v5 규약)
+   * 아래 게이트가 그 상태를 따로 통과시켜야 한다.
+   */
+  const needChoices = resultSettled && snapshotChoices.length > 0;
+  const choicesQuery = usePendingChoices(undefined, needChoices);
+
+  /**
+   * ⚠️ **BL-1 — 권위 조회가 끝나기 전에는 스택을 굳히지 않는다.**
+   *
+   * `openChoicesOf` 는 `open` 이 `undefined` 면 **봉투 스냅샷을 그대로** 돌려준다
+   * (`if (!open) return choices;`). 그래서 아래 `frozen` 이 이 게이트 없이 굳으면 **교차가 한 번도
+   * 일어나지 않은 목록이 확정**되고, `frozen` 이라 뒤늦게 도착해도 영영 안 고쳐진다 — 이미 고른
+   * 선수가 카드로 선다(실측 `2 / 3`, 첫 장이 고른 선수).
+   *
+   * ⚠️ **"값이 왔나"로는 부족하다 — `isFetching` 까지 본다.** 이 쿼리의 키는
+   * `growthChoicesKey(undefined)` **전역 하나**이고 `RewardSheet`·`GrowthReportSection` 이 같은
+   * 키를 쓴다. `staleTime` 이 0 이라 react-query 는 **낡은 값을 동기로 돌려주면서** 리페치를
+   * 거는데, 직전 매치에서 선택을 다 골랐다면 그 낡은 값이 `[]` 다 → 교차 결과 ∅ → **선수 카드가
+   * 통째로 사라지고** 유저는 골드 한 장만 본다. 그 상태에서 `data !== undefined` 는 참이다.
+   *
+   * ⚠️ **그래서 `staleTime` 을 올리지 마라.** 마운트 리페치(`staleTime:0` + `refetchOnMount`)가
+   * 이 게이트의 **전제**다 — 올리면 낡은 캐시를 그대로 받아들이고 게이트가 무의미해진다.
+   * 조회가 실패하면(`retry:false`) `isPending`·`isFetching` 이 함께 내려가 스냅샷 폴백으로 굳는다 —
+   * 그때 쓸 수 있는 최선이고 `openChoicesOf` 가 원래 문서화한 동작이다.
+   */
+  const choicesSettled = !needChoices || (!choicesQuery.isPending && !choicesQuery.isFetching);
+  /** 이 열림에 대해 두 조회가 다 끝났나 — **박제 시점의 판정**이다(아래 `frozen` 이 래치를 만든다). */
+  const readyToFreeze = resultSettled && choicesSettled;
 
   const live = useMemo<MatchRewardCard[]>(() => {
-    if (!settled) return [];
-    const bundle = rewardBundleOf(result);
+    if (!readyToFreeze) return [];
     return matchRewardCards({
       mode: match?.mode,
       currencies: currencyEntriesOf(bundle),
       dailyReward: matchDailyRewardOf(result),
       rating: me?.rating,
-      choices: openChoicesOf(bundleChoicesOf(bundle), openChoices),
+      choices: openChoicesOf(snapshotChoices, choicesQuery.data),
       growth: growthEntriesOf(bundle),
     });
-  }, [settled, match?.mode, result, me?.rating, openChoices]);
+  }, [readyToFreeze, match?.mode, result, bundle, snapshotChoices, me?.rating, choicesQuery.data]);
 
   /**
    * ⚠️ **스택은 열린 순간의 목록으로 박제된다.**
@@ -113,8 +143,17 @@ export function MatchRewardFlow({ handoff, onDone }: MatchRewardFlowProps) {
    * 카드 수는 이 화면이 열릴 때 확정되고, 그 뒤의 변화는 이어지는 #405 시트가 반영한다.
    */
   const frozen = useRef<MatchRewardCard[] | null>(null);
-  if (settled && frozen.current === null) frozen.current = live;
+  if (readyToFreeze && frozen.current === null) frozen.current = live;
   const cards = frozen.current ?? [];
+  /**
+   * ⚠️ **박제 여부가 곧 "기다림이 끝났나" 다 — 래치다.**
+   *
+   * `readyToFreeze` 를 그대로 렌더 게이트로 쓰면, 선택을 적용할 때 `useApplyChoice` 가
+   * `["growthChoices"]` 를 무효화 → `isFetching` 이 다시 참 → **화면이 로딩으로 되돌아가고
+   * `ChoiceCandidates` 가 언마운트돼 축하 연출이 같은 프레임에 사라진다**(계약 `l` 이 잡았다).
+   * 기다림은 **열릴 때 한 번**이고, 그 뒤의 목록 변화는 이어지는 #405 시트가 반영한다.
+   */
+  const settled = frozen.current !== null;
 
   const [index, setIndex] = useState(0);
   /** 이 흐름 안에서 **적용을 마친** 선택권 — 카드 바닥 버튼의 라벨이 그 사실을 따라간다. */
@@ -248,14 +287,21 @@ function choiceCard(
           */}
           {ctx.applied ? (ctx.last ? "결과 보기" : "다음") : "다음에"}
         </button>
-        <button
-          type="button"
-          className={styles.ghostAction}
-          data-testid="match-reward-choice-skip-all"
-          onClick={ctx.skipAll}
-        >
-          전체 건너뛰기
-        </button>
+        {/*
+          ⚠️ **마지막 장에는 없다**(m2) — 남길 것이 없는 자리에서 `[다음에]` 와 완전히 같은 동작을
+          하는 두 번째 버튼은 "무엇을 건너뛰는가"를 묻게 만드는 소음이다. 보이는 조건이 곧 그
+          버튼의 뜻이다: **뒤에 아직 선수가 남아 있다.**
+        */}
+        {!ctx.last && (
+          <button
+            type="button"
+            className={styles.ghostAction}
+            data-testid="match-reward-choice-skip-all"
+            onClick={ctx.skipAll}
+          >
+            전체 건너뛰기
+          </button>
+        )}
       </>
     ),
   };

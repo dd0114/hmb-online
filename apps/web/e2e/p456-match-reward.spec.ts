@@ -53,6 +53,25 @@ interface Harness {
   choices: { playerId: string; name: string; level: number }[];
   /** 이미 고른 선택권 id — `GET /api/growth/choices` 에서 빠진다. */
   chosen: string[];
+  /**
+   * **권위 조회를 늦춘다** — `/result` 의 `resultDelayMs` 와 짝인 축(BL-1).
+   *
+   * ⚠️ 이 손잡이가 없던 동안 `n`(이미 고른 선택권은 카드가 되지 않는다)은 코드의 성질이 아니라
+   * **두 쿼리의 도착 순서**를 재고 있었다 — 목이 즉답이라 교차가 늘 제때 일어났을 뿐이다
+   * (모듈 CLAUDE.md 표 #4: 픽스처가 두 상태를 뭉갠다).
+   */
+  choicesDelayMs: number;
+  /**
+   * **첫 응답만 이 매치를 모르는 목록**(`[]`)으로 준다 — 라이브의 **캐시 오염**을 재현한다.
+   *
+   * `usePendingChoices(undefined, …)` 의 queryKey 는 `growthChoicesKey(undefined)` **전역 하나**라
+   * `RewardSheet`·`GrowthReportSection` 이 같은 캐시를 채운다. `staleTime` 이 0 이라 마운트마다
+   * 리페치가 돌지만, 그 사이 react-query 는 **낡은 값을 동기로** 돌려준다 — 직전 매치에서 선택을
+   * 다 골랐다면 그 값이 `[]` 다.
+   */
+  choicesFirstEmpty: boolean;
+  /** `/api/growth/choices` 가 몇 번 불렸나(위 축의 상태 + m3 발화 여부 관측). */
+  choicesHits: number;
   /** `/result` 를 500 으로 떨어뜨린다(보상 조회 실패 갈래). */
   resultFails: boolean;
   /** `/result` 응답을 늦춘다 — **도착 전에 카드 수를 세는** 경주를 재현하는 유일한 손잡이. */
@@ -189,6 +208,10 @@ async function mockApi(page: Page, h: Harness) {
     }
     if (url.pathname === "/api/growth/choices") {
       // "지금 남은 것"의 권위는 봉투 스냅샷이 아니라 이 조회다(`usePendingChoices` 주석).
+      const first = h.choicesHits === 0;
+      h.choicesHits += 1;
+      if (h.choicesDelayMs > 0) await new Promise((r) => setTimeout(r, h.choicesDelayMs));
+      if (first && h.choicesFirstEmpty) return route.fulfill(json({ choices: [] }));
       return route.fulfill(
         json({
           choices: h.choices
@@ -241,6 +264,9 @@ async function openMatch(page: Page, over: Partial<Harness> = {}): Promise<Harne
     ratingAfter: undefined,
     choices: [],
     chosen: [],
+    choicesDelayMs: 0,
+    choicesFirstEmpty: false,
+    choicesHits: 0,
     resultFails: false,
     resultDelayMs: 0,
     acked: [],
@@ -582,6 +608,13 @@ test.describe("#456 B3 W2 — 선수별 순차 선택 (AC3)", () => {
     await expect(card).toContainText("박미드");
     await expect(card).toContainText("Lv 7 → 8");
     await expect(page.getByTestId("match-reward-pager")).toHaveText("3 / 3");
+    /*
+     * 마지막 장에는 `[전체 건너뛰기]` 가 **없다**(m2) — 남길 것이 없는 자리에서 `[다음에]` 와
+     * 완전히 같은 동작을 하는 두 번째 버튼은 "무엇을 건너뛰는가"를 묻게 만든다.
+     * 앵커: 같은 장에 `[다음에]` 는 살아 있다(버튼이 통째로 사라진 상태를 통과시키지 않는다).
+     */
+    await expect(page.getByTestId("match-reward-choice-later")).toBeVisible();
+    await expect(page.getByTestId("match-reward-choice-skip-all")).toHaveCount(0);
 
     await page.getByTestId("match-reward-choice-later").click();
     await expect(page.getByTestId("flow-continuation")).toHaveCount(0);
@@ -652,6 +685,43 @@ test.describe("#456 B3 W2 — 선수별 순차 선택 (AC3)", () => {
 
     await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-player", "P002");
     await expect(page.getByTestId("match-reward-pager")).toHaveText("2 / 2");
+  });
+
+  /* ─────────────────────────────────────────────────────────────────────────────────────────
+   * BL-1 — 스택은 **권위 조회를 기다린 뒤에** 굳는다 (S4-W2 독립검증 blocker)
+   *
+   * 스택은 열린 순간의 목록으로 **박제**된다(적용이 카드를 지워 인덱스가 밀리는 것을 막는다 —
+   * 계약 `l`). 그런데 박제 게이트가 `/result` **하나만** 보고 있었다: `types.openChoicesOf` 는
+   * `open` 이 `undefined` 면 **봉투 스냅샷을 그대로** 돌려주므로(`if (!open) return choices;`),
+   * 권위 조회가 아직이면 **교차가 일어나지 않은 목록이 그대로 확정**되고 다시는 안 바뀐다.
+   *
+   * ⚠️ 같은 함수 15줄 위에 이미 이렇게 써 놓고도 `/result` 에만 걸었다 —
+   *    *"응답 도착 전에 카드 수를 세지 마라."* 아래 두 표본이 그 구멍의 양쪽 끝이다.
+   * ───────────────────────────────────────────────────────────────────────────────────────── */
+
+  test("n-2. 권위 조회가 늦게 와도 **이미 고른 선택권이 카드가 되지 않는다**", async ({ page }) => {
+    // 봉투 스냅샷은 2건(고른 것도 남아 있다), 서버가 말하는 남은 것은 1건.
+    await openWithChoices(page, { chosen: ["ch-P001"], choicesDelayMs: 1_500 });
+
+    await expect(page.getByTestId("match-reward-pager")).toHaveText("1 / 2");
+    await page.getByTestId("match-reward-next").click();
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-player", "P002");
+  });
+
+  test("n-3. 낡은 캐시(`[]`)로 굳지 않는다 — 전역 키를 다른 화면이 먼저 채운다", async ({ page }) => {
+    /*
+     * `usePendingChoices(undefined, …)` 의 queryKey 는 **전역 하나**이고 `staleTime` 이 0 이다.
+     * 그래서 이 화면이 열릴 때 react-query 는 **낡은 값을 동기로** 돌려주면서 리페치를 건다.
+     * 직전 매치에서 선택을 다 골랐다면 그 낡은 값은 `[]` → 교차 결과 ∅ → **선수 카드가 통째로
+     * 사라지고** 유저는 골드 한 장만 본다. 프로덕션 경로다(`RewardSheet`·`GrowthReportSection`
+     * 이 같은 키를 쓴다).
+     * ⚠️ 그러므로 게이트는 "값이 왔나"가 아니라 **"이번 열림의 조회가 끝났나"** 여야 한다.
+     */
+    await openWithChoices(page, { choicesFirstEmpty: true });
+
+    await expect(page.getByTestId("match-reward-pager")).toHaveText("1 / 3");
+    await page.getByTestId("match-reward-next").click();
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-player", "P001");
   });
 
   test("o. 선택권이 없으면 선수 카드가 서지 않는다(빈 장을 만들지 않는다)", async ({ page }) => {

@@ -1373,6 +1373,32 @@ hero: *"경기 종료 보상 페이지를 순차화하자 — 골드 보상, 레
 - ⚠️ **스택은 열린 순간의 목록으로 박제된다**(`MatchRewardFlow` 의 `frozen` ref). 선택을 적용하면
   `useApplyChoice` 가 `["growthChoices"]` 를 무효화하는데, 목록을 그대로 따라가면 **보고 있던 카드가
   스택에서 빠지고 인덱스가 밀려 다음 선수를 통째로 건너뛴다**. 계약이 적용 뒤에도 `3 / 3` 임을 잰다.
+
+#### 🚨 그 박제는 **권위 조회를 기다린 뒤에** 일어나야 한다 (BL-1, W2 독립검증)
+
+`types.openChoicesOf` 는 `open` 이 `undefined` 면 **봉투 스냅샷을 그대로** 돌려준다
+(`if (!open) return choices;`). 초판은 박제 게이트를 `/result` **하나만** 보게 짜서, 권위 조회
+(`GET /api/growth/choices`)가 아직이면 **교차가 한 번도 일어나지 않은 목록이 확정**되고 `frozen`
+이라 영영 안 고쳐졌다. 실측: 조회 1.5s 지연 + 이미 하나 고른 상태 → `2 / 3` 에 **고른 선수가 첫 장**.
+
+- ⚠️ **"값이 왔나"로는 부족하다 — `isFetching` 까지 본다.** 이 쿼리 키는
+  `growthChoicesKey(undefined)` **전역 하나**이고 `RewardSheet`·`GrowthReportSection` 이 같은 키를
+  쓴다. `staleTime` 0 이라 react-query 는 **낡은 값을 동기로 돌려주면서** 리페치를 건다 —
+  직전 매치에서 선택을 다 골랐다면 그 값이 `[]` → 교차 ∅ → **선수 카드가 통째로 사라지고**
+  유저는 골드 한 장만 본다. 그 상태에서 `data !== undefined` 는 **참**이다.
+- ⚠️ **`staleTime` 을 올리지 마라** — 마운트 리페치가 이 게이트의 전제다. 올리면 낡은 캐시를
+  그대로 받아들여 게이트가 무의미해진다(전역 키를 쓰는 세 화면이 같이 걸린다).
+- ⚠️ **기다림은 래치다 — `readyToFreeze` 를 렌더 게이트로 쓰지 마라.** 적용이 `["growthChoices"]`
+  를 무효화하면 `isFetching` 이 다시 참이 되는데, 그걸 그대로 렌더에 물리면 **화면이 로딩으로
+  되돌아가 `ChoiceCandidates` 가 언마운트되고 축하 연출이 같은 프레임에 사라진다**(고치는 중에
+  계약 `l` 이 실제로 잡았다). 판정은 `settled = frozen.current !== null`.
+- ⚠️ **왜 계약이 못 잡았나** — 지연 손잡이가 `/result` 쪽(`resultDelayMs`)에만 있어서 `n`·`k`·`l`·`m`
+  이 **코드의 성질이 아니라 두 쿼리의 도착 순서**를 재고 있었다(표 #4 + #6). 하니스에
+  **`choicesDelayMs`·`choicesFirstEmpty`** 를 신설해 두 시나리오를 각각 박았다(`n-2`·`n-3`).
+- ⚠️ **`enabled` 로 왕복을 줄인 것은 부분적이다**(m3) — 봉투에 선택권이 없으면 이 컴포넌트는
+  구독하지 않지만, **뒤의 `GrowthReportSection` 이 같은 키를 이미 구독**하므로 네트워크 요청
+  자체가 사라지지는 않는다. 그리고 `enabled:false` 쿼리는 `isPending` 이 **영원히 참**이라
+  게이트가 그 상태를 따로 통과시켜야 한다(`!needChoices ||` 항).
 - ⚠️ **`[전체 건너뛰기]` 는 포기가 아니라 미룸이다**(hero 확정) — 서버 작업 **0**. 계약이 재는 것도
   "화면이 닫혔다"가 아니라 **선택권이 서버에 그대로 남아 있다**(`chosen === []` + 시트 뱃지).
 - ⚠️ **바닥 버튼 둘은 카드 본문이 아니라 `ReportStackCard.actions` 로 나간다** — 본문은 스크롤
@@ -1402,7 +1428,11 @@ hero: *"경기 종료 보상 페이지를 순차화하자 — 골드 보상, 레
   (3s 는 runtime config 조회 전용). **자동으로 넘기지는 않는다** — 늦게 와도 보상은 보여 줘야 한다.
 - 계약 = `rewards/match-reward-cards.test.ts`(순서·부재·금액 통과·선수 카드) +
   `e2e/p456-match-reward.spec.ts`(a~o) + `e2e/p424-flow-bridge.spec.ts` ⑥⑨ +
-  `e2e/p405-reward-sheet.spec.ts` f·i·j·k + `e2e/growth-mock.spec.ts`(강화탭 동형).
+  `e2e/p405-reward-sheet.spec.ts` **f·i**(감량으로 다시 쓴 둘 — `j`·`k` 는 이 축을 안 봤고 무접촉이다)
+  + `e2e/growth-mock.spec.ts`(강화탭 동형).
+  후보 **순서**를 단언하는 자리는 셋이다: `p405` **`j`**(648행) · `growth-mock.spec.ts:509` ·
+  `p456` **`k`**. ⚠️ 웨이브 2 초판이 그 자리를 `p405:601` 이라 적었는데 거기는 test `i` 의 주석
+  블록이다(독립검증 FIN-2).
 
 ## ⚠️ 계약이 **초록으로 거짓말하는** 방식 (전부 이 리포에서 실제로 당했다)
 

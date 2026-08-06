@@ -37,7 +37,9 @@ import styles from "./ChoiceCards.module.css";
  * 눈에 띄는 숫자는 gain 배지인데 감쇠 탓에 gain 이 큰 쪽은 **낮은 스탯**이라, gain 순으로 그리면
  * 1번 자리에 **전력(OVR)으로는 지는 선택**이 온다(GK 의 `shooting` 이 그 예: gain 은 2등인데
  * 서버 순서로는 꼴찌다). 정렬 기준값은 안 내려오니 여기서 재현할 수도 없다 — 받은 순서 그대로 그린다.
- * 계약 = `p405-reward-sheet.spec.ts` (gain 내림차순이 **아닌** 응답으로 순서를 단언한다).
+ * 계약 = `p405-reward-sheet.spec.ts` **`j`**(648행) + `growth-mock.spec.ts:509`(강화탭) —
+ * 둘 다 **gain 내림차순이 아닌** 응답으로 DOM 순서를 단언한다. 그리고 #456 S4-W2 가 보상 흐름
+ * (`p456` `k`)에도 같은 표본을 깔았다(gain 최대 `pace` 가 꼴찌인 픽스처) = 세 자리 전부.
  */
 
 const CELEBRATION_MS = 1700;
