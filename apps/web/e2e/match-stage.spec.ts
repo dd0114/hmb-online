@@ -398,6 +398,39 @@ test.describe("AC-W1-1 경기장면 고정 (모바일 390×844)", () => {
       );
       expect(topmost, "피치 한가운데의 최상위 요소는 캔버스다").toContain("viewer-canvas-half");
     });
+
+    /*
+     * ⚠️ 위 계약은 **두 수정이 서로를 가려 준다**(#456 S2-R1 독립검증 minor-A). 붕괴를 막는 길이
+     * ⓐ 넘치는 층이 자기 안에서 스크롤 · ⓑ 피치가 축소 불가 **두 갈래**인데 한쪽만 살아 있어도
+     * 피치는 안 눌린다 → 다음 웨이브가 한쪽을 "죽은 코드"로 보고 지워도 위 계약은 green 이다.
+     * 여기서 두 갈래를 **각각 단독으로** 잰다(둘 중 하나만 되돌려도 이 테스트는 red).
+     *
+     * 계산된 스타일을 되읽는 모양이지만 동어반복이 아니다 — ⓐ 는 "그 층이 **실제로** 넘친다"는
+     * 사실과 짝지어야 의미가 생기고(안 넘치면 스크롤 여부는 무의미), ⓑ 는 그 초과분을 떠안을 수
+     * 있는 형제가 있다는 전제 위에서만 붕괴를 막는다.
+     */
+    test(`감독시간 경기장면 탭: 붕괴 방지 두 갈래가 각각 살아 있다 (${state})`, async ({ page }) => {
+      await openMatch(page, state);
+      await page.getByTestId("stage-tab-stage").click();
+      await expect(page.getByTestId("stage-canvas")).toBeVisible();
+
+      // ⓐ 넘치는 몫은 **그 층이 자기 안에서** 삼킨다 (`MatchViewer.module.css .controlsFlow`).
+      const flow = page.locator('[data-p406-controls="flow"]');
+      await expect(flow, "감독시간 컨트롤 층은 flow 모드다").toHaveCount(1);
+      const f = await flow.evaluate((el) => ({
+        overflowY: getComputedStyle(el).overflowY,
+        scrollH: el.scrollHeight,
+        clientH: el.clientHeight,
+      }));
+      expect(f.scrollH, "전제: 이 층은 실제로 컨테이너를 넘는다").toBeGreaterThan(f.clientH);
+      expect(["auto", "scroll"], "넘치는 몫을 형제(피치)에게 떠넘기지 않는다").toContain(f.overflowY);
+
+      // ⓑ 피치는 축소 불가다 (`StageShell.module.css` 피치 선택자의 `flex: none`).
+      const shrink = await page
+        .locator('[data-testid^="viewer-pitch-half"]')
+        .evaluate((el) => getComputedStyle(el).flexShrink);
+      expect(shrink, "피치는 형제의 초과분을 떠안지 않는다").toBe("0");
+    });
   }
 });
 
